@@ -7711,6 +7711,10 @@ static u8 sm_s_gate;
  * latch DS_000E1C38 (every pressed bit is a new edge), and these go back into
  * it, as 0x500C4's `latch &= level` keeps a held bit latched. 0 by default. */
 static u32 sm_held;
+/* Called by sm_hook with the frame index at each new frame, before that
+ * frame's step is applied: it sees the screen and state the previous pass
+ * left. NULL by default; sm_end clears it. */
+static void (*sm_probe)(u32 frame);
 
 /* One scripted step per presented frame: config_screen_wait swaps DS_000E87A0
  * before its tick passes, so the first hook call after a swap is a new frame. */
@@ -7719,6 +7723,7 @@ static void sm_hook(void *ctx)
     (void)ctx;
     if (DSD(DS_000E87A0) == sm_last_a0) return;
     sm_last_a0 = DSD(DS_000E87A0);
+    if (sm_probe != NULL) sm_probe(sm_frame);
     if (sm_frame < sm_len) {
         const sm_step_t *s = &sm_script[sm_frame];
         if (s->key != 0u) input_push((u8)(s->key >> 8), (u8)s->key);
@@ -7791,6 +7796,7 @@ static void sm_end(u32 frames, const char *what)
 {
     host_set_pump_hook(NULL, NULL);
     sm_held = 0u;
+    sm_probe = NULL;
     CHECK(sm_extra == 0u, what);
     CHECK_EQ_INT((int)sm_frame, (int)frames);
     sm_env_end();
@@ -8754,6 +8760,619 @@ static void sm_check_keyboard(void)
     CHECK(fn_resolve(0x19DF0u) == (void (*)(void))svc_configure_keyboard, "0x19DF0 registered");
 }
 
+/* Cycle 6 (record §K11.7): STATISTICS pages 1 and 2, 0x328B8 0x32F54
+ * 0x32F98 0x33458 0x33058 0x33230. 13 frames. */
+#define SM_COLS(s, m) ((0x2B - text_width(game_string_get(s), (m))) >> 1)
+
+/* Page 1's fields (0x32644, 0x326C4, 0x32F98 read them). */
+static void sm_stats_seed(void)
+{
+    static const struct { u32 f, v; } seed[] = {
+        { 0u, 7u }, { 3u, 0x10005u }, { 4u, 0x10000u }, { 5u, 0xFFFFu }, { 6u, 3u }, { 7u, 4u },
+        { 8u, 2u }, { 9u, 0xFFFFu }, { 0xAu, 250u }, { 0xBu, 0u }, { 0xCu, 999u },
+        { 0x12u, 3932580u }, { 0x13u, 600u },
+    };
+    for (u32 i = 0; i < sizeof seed / sizeof seed[0]; i++) {
+        (void)config_field_set(seed[i].f, seed[i].v);
+        CHECK_EQ_INT((int)config_field_get(seed[i].f), (int)seed[i].v);   /* the field holds it */
+    }
+}
+
+/* Page 2's clear: fields 0..0x27 = 1 + f % 7 (every width holds 7), 0x28 = 5. */
+static void sm_stats_seed_all(void)
+{
+    for (u32 f = 0; f < 0x28u; f++) (void)config_field_set(f, 1u + f % 7u);
+    (void)config_field_set(0x28u, 5u);
+    CHECK_EQ_INT((int)config_field_get(0x27u), 1 + 0x27 % 7);
+    CHECK_EQ_INT((int)config_field_get(0x28u), 5);
+}
+
+static u32 sm_stats_seen;
+/* Frames are numbered from 0: sm_probe(f) runs as frame f is presented,
+ * before step f is applied, so it sees what the passes through step f - 1
+ * left. A pass with the redraw flag clear draws nothing: a glyph planted at
+ * probe 1 (after pass 0's first draw) is still there at probe 2 (0x330AD /
+ * 0x332DC). */
+static void sm_stats_plant(u32 frame)
+{
+    if (frame == 1u) text_glyph_at(2, 'Z', 20, 0xF000u);
+    if (frame == 2u && ch_cell(20, 2) != 0u) sm_stats_seen |= 0x200u;
+}
+
+/* P2A (frames from 0, as above): probes 1..3 see the fields still seeded
+ * (step 0's Esc alone, step 1's Enter alone and, at probe 3, step 2's
+ * Esc-release wait clear nothing); probe 1 sees the hints and the nine rows
+ * of pass 0's first draw (row 12 = 0xC is released by the exit, so it is
+ * looked at here); probe 4 sees the fields cleared once step 3 released
+ * Esc. */
+static void sm_stats_probe(u32 frame)
+{
+    sm_stats_plant(frame);
+    if (frame >= 1u && frame <= 3u && config_field_get(0u) == 1u && config_field_get(0x27u) == 1u + 0x27u % 7u)
+        sm_stats_seen |= 1u << frame;
+    if (frame == 1u && ch_cell(12, 0x20) == 0u)
+        sm_stats_seen |= 0x400u;                             /* nine rows: a tenth draws field 0xFF's 65535 */
+    if (frame == 1u) {
+        ch_expect(0x18, SM_COLS(0x69u, 0x4000u), 'H', 0x4000u, "page 2 hint 0x69 on row 0x18");
+        ch_expect(0x19, SM_COLS(0x6Au, 0x4000u), 'A', 0x4000u, "page 2 hint 0x6A on row 0x19");
+        ch_expect(0x1A, SM_COLS(0xA0u, 0x4000u), 't', 0x4000u, "page 2 hint 0xA0 on row 0x1A");
+        sm_stats_seen |= 0x100u;
+    }
+    if (frame == 4u && config_field_get(0u) == 0u) sm_stats_seen |= 1u << frame;
+}
+
+static void sm_check_stats(void)
+{
+    const u32 s_150c = DSD(DS_0010150C), s_e4 = DSD(DS_001014E4), s_e8 = DSD(DS_001014E8);
+    u8 s_dac[256][3];
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+    ch_text_setup();
+
+    /* (a) 0x328B8 at the cursor (row 4, column 5): 125 s is " 2" (width 5 -
+     * 3, pad 1), ':' and "05" (width 2, pad 0). */
+    text_glyph_at(5, 'Z', 4, 0xF000u);
+    CHECK(ch_cell(4, 5) != 0u, "a seeded glyph under the minutes' pad");
+    DSW(DS_00105F34) = 4u; DSW(DS_00105F34 + 2u) = 5u;
+    svc_draw_mmss(125u, 5u);
+    CHECK_EQ_INT((int)ch_cell(4, 5), 0);                         /* ' ' releases it */
+    ch_expect(4, 6, '2', 0xF000u, "mm:ss minutes");
+    ch_expect(4, 7, ':', 0xF000u, "mm:ss colon 0x80BDC");
+    ch_expect(4, 8, '0', 0xF000u, "mm:ss seconds padded with '0'");
+    ch_expect(4, 9, '5', 0xF000u, "mm:ss seconds");
+
+    /* (b) 0x32F54: 0x2CA78 is `xor eax,eax; ret`, so the average is 0 with
+     * any fields. */
+    sm_stats_seed();
+    CHECK_EQ_INT((int)config_credit_zero(), 0);
+    CHECK_EQ_INT((int)svc_stats_avg(), 0);
+
+    DSD(DS_001014E4) = CH_BUF_A; DSD(DS_001014E8) = CH_BUF_B;
+
+    /* P1A: a new Esc with Enter held stays (0x330A7) and draws; a pass
+     * with nothing draws nothing; a new Esc alone leaves (3 frames). The
+     * draw opens with 0x2F99C, which empties every cell, so a glyph seeded
+     * here would not survive to be a sentinel: the empty-cell checks below
+     * (row 3/4 column 0x25, row 8 column 0x24, row 14 column 28) catch a
+     * glyph the draw puts there (an extra digit, a pad drawn as '0'), not a
+     * pad that fails to release one. */
+    static const sm_step_t p1a[] = { { 0u, 0x3000000u }, { 0u, 0u }, { 0u, 0x2000000u } };
+    actors_reset();
+    sm_stats_seen = 0u;
+    sm_begin(p1a, 3u);
+    sm_probe = sm_stats_plant;
+    svc_stats_page1();
+    sm_end(3u, "STATISTICS page 1: Esc with Enter held stays, Esc leaves");
+    CHECK_EQ_INT((int)sm_stats_seen, 0x200);                     /* no redraw on pass 2 */
+    CHECK(ch_cell(0, SM_COLS(0x81u, 0x5002u)) != 0u, "the title 0x81");
+    ch_expect(3, 4, 'I', 0xF000u, "Idle Mins (0x8F) on row 3");
+    ch_expect(3, 0x24, '5', 0xF000u, "field 3 as is, & 0xFFFF");
+    CHECK_EQ_INT((int)ch_cell(3, 0x25), 0);
+    ch_expect(4, 4, '1', 0xF000u, "1 Player Mins (0x90) on row 4");
+    ch_expect(4, 0x24, '7', 0xF000u, "field 0x12 / 60 = 65543, & 0xFFFF");
+    CHECK_EQ_INT((int)ch_cell(4, 0x25), 0);
+    ch_expect(5, 0x24, '1', 0xF000u, "field 0x13 / 60 = 10");
+    ch_expect(5, 0x25, '0', 0xF000u, "field 0x13 / 60 = 10");
+    ch_expect(6, 0x24, '4', 0xF000u, "field 0xA / 60 = 4");
+    ch_expect(7, 4, 'C', 0xF000u, "Cont Game Mins (0x93) on row 7");
+    ch_expect(7, 0x24, '1', 0xF000u, "field 0xC / 60 = 16");
+    ch_expect(7, 0x25, '6', 0xF000u, "field 0xC / 60 = 16");
+    /* 0x33458 from row 8: 250 / 2 = 125; 999 / 0 is 0; 3932580 / (2 + 3),
+     * & 0xFFFF = 84; 600 / ((0xFFFF + 4) & 0xFFFF) = 200. */
+    ch_expect(8, 4, 'A', 0xF000u, "Ave New 1 pl time (0x94) on row 8");
+    CHECK_EQ_INT((int)ch_cell(8, 0x24), 0);
+    ch_expect(8, 0x25, '2', 0xF000u, "row 8 2:05");
+    ch_expect(8, 0x26, ':', 0xF000u, "row 8 2:05");
+    ch_expect(8, 0x27, '0', 0xF000u, "row 8 2:05");
+    ch_expect(8, 0x28, '5', 0xF000u, "row 8 2:05");
+    ch_expect(9, 0x25, '0', 0xF000u, "row 9 0:00 (a zero sum)");
+    ch_expect(9, 0x28, '0', 0xF000u, "row 9 0:00");
+    ch_expect(10, 0x25, '1', 0xF000u, "row 10 1:24");
+    ch_expect(10, 0x27, '2', 0xF000u, "row 10 1:24");
+    ch_expect(10, 0x28, '4', 0xF000u, "row 10 1:24");
+    ch_expect(11, 4, 'A', 0xF000u, "Ave 2 pl game time (0x97) on row 11");
+    ch_expect(11, 0x25, '3', 0xF000u, "row 11 3:20");
+    ch_expect(11, 0x27, '2', 0xF000u, "row 11 3:20");
+    ch_expect(11, 0x28, '0', 0xF000u, "row 11 3:20");
+    /* 0x32F98(4, 13): AVG TIME/COIN at (5, 14), Percentage Play at (4, 15). */
+    ch_expect(14, 5, 'A', 0xF000u, "AVG TIME/COIN (0x8B) at (col + 1, row + 1)");
+    CHECK_EQ_INT((int)ch_cell(14, 28), 0);
+    ch_expect(14, 29, '0', 0xF000u, "0x328B8(0, 6): minutes in 3 cells");
+    ch_expect(14, 30, ':', 0xF000u, "0x328B8(0, 6)");
+    ch_expect(14, 31, '0', 0xF000u, "0x328B8(0, 6)");
+    ch_expect(14, 32, '0', 0xF000u, "0x328B8(0, 6)");
+    ch_expect(15, 4, 'P', 0xF000u, "Percentage Play (0x8A) at (col, row + 2)");
+    ch_expect(15, 26, '3', 0xF000u, "100 * 0xFFFF / 0x30004 = 33");
+    ch_expect(15, 27, '3', 0xF000u, "100 * 0xFFFF / 0x30004 = 33");
+    ch_expect(0x1B, SM_COLS(0x209u, 0x1000u), 'P', 0x1000u, "PRESS ESCAPE KEY");
+    ch_expect(0x1C, SM_COLS(0x82u, 0x1000u), 'f', 0x1000u, "for more stats (0x82)");
+
+    /* P1B: the latched Enter leaves before any draw and releases "EEPROM
+     * ERROR"'s twelve cells from (0x1B, 0xC) (1 frame). P1C: the latched Esc
+     * (1 frame). */
+    static const sm_step_t p1b[] = { { 0x1C0Du, 0u } };
+    static const sm_step_t p1c[] = { { 0x011Bu, 0u } };
+    for (u32 run = 0; run < 2u; run++) {
+        actors_reset();
+        text_glyph_at(2, 'Z', 20, 0xF000u);
+        text_glyph_at(0x1B, 'Z', 0xC, 0xF000u); text_glyph_at(0x26, 'Z', 0xC, 0xF000u);
+        text_glyph_at(0x27, 'Z', 0xC, 0xF000u);
+        DSD(DS_0010150C) = 0x5A5A5A5Au;
+        sm_begin(run == 0u ? p1b : p1c, 1u);
+        svc_stats_page1();
+        sm_end(1u, run == 0u ? "page 1 left on the latched Enter" : "page 1 left on the latched Esc");
+        CHECK(ch_cell(20, 2) != 0u, "no draw before the exit");
+        CHECK_EQ_INT((int)DSD(DS_0010150C), 0x5A5A5A5A);
+        CHECK_EQ_INT((int)ch_cell(0xC, 0x1B), 0);
+        CHECK_EQ_INT((int)ch_cell(0xC, 0x26), 0);
+        CHECK(ch_cell(0xC, 0x27) != 0u, "only twelve cells released");
+    }
+
+    /* P2A (clear_ok = 1, Esc held, so never new): Esc alone, then Enter
+     * alone, clear nothing; Esc + Enter waits for Esc's release, zeroes
+     * fields 0..0x27 and redraws without the hints; the latched Enter leaves
+     * (5 frames). */
+    static const sm_step_t p2a[] = {
+        { 0u, 0x2000000u }, { 0u, 0x1000000u }, { 0u, 0x3000000u }, { 0u, 0x1000000u }, { 0x1C0Du, 0u } };
+    actors_reset();
+    sm_stats_seed_all();
+    text_glyph_at(0x20, 'Z', 12, 0xF000u);
+    text_glyph_at(SM_COLS(0x69u, 0x4000u), 'Z', 0x18, 0xF000u);
+    sm_stats_seen = 0u;
+    sm_begin(p2a, 5u);
+    sm_held = 0x2000000u;
+    sm_probe = sm_stats_probe;
+    svc_stats_page2(1u);
+    sm_end(5u, "page 2: the Esc + Enter clear, then Enter");
+    CHECK_EQ_INT((int)sm_stats_seen, 0x71E);
+    for (u32 f = 0; f < 0x28u; f++) CHECK_EQ_INT((int)config_field_get(f), 0);
+    CHECK_EQ_INT((int)config_field_get(0x28u), 5);              /* 0x332A5: up to 0x27 */
+    CHECK(ch_cell(0, SM_COLS(0xAAu, 0x5002u)) != 0u, "the title 0xAA");
+    /* Rows 3..5 are drawn; their modes 0xF000/0x4000 pick the same palette
+     * (record §K11.7), so these checks cannot see the alternation. */
+    ch_expect(3, 4, '1', 0xF000u, "1 player games (0xA1) on row 3");
+    ch_expect(3, 0x20, '0', 0xF000u, "field 8 cleared, pad 3");
+    ch_expect(4, 4, '2', 0x4000u, "2 player games (0xA2) on row 4");
+    ch_expect(4, 0x20, '0', 0x4000u, "field 9 cleared on row 4");
+    ch_expect(5, 4, '1', 0xF000u, "1 pl continues (0xA3) on row 5");
+    ch_expect(11, 4, 'F', 0xF000u, "Final continues (0xA9) on row 11");
+    ch_expect(11, 0x20, '0', 0xF000u, "field 0x11");
+    CHECK_EQ_INT((int)ch_cell(0x18, SM_COLS(0x69u, 0x4000u)), 0); /* no hints after the clear */
+    ch_expect(0x1C, SM_COLS(0x82u, 0x1000u), 'f', 0x1000u, "page 2's for more stats");
+
+    /* P2B (clear_ok = 0): Esc + Enter neither clears nor leaves; a new Esc
+     * leaves (2 frames). */
+    static const sm_step_t p2b[] = { { 0u, 0x3000000u }, { 0u, 0x2000000u } };
+    actors_reset();
+    sm_stats_seed();
+    text_glyph_at(SM_COLS(0x69u, 0x4000u), 'Z', 0x18, 0xF000u);
+    sm_begin(p2b, 2u);
+    svc_stats_page2(0u);
+    sm_end(2u, "page 2 without the clear: Esc + Enter stays, Esc leaves");
+    CHECK_EQ_INT((int)config_field_get(8u), 2);
+    CHECK_EQ_INT((int)config_field_get(0u), 7);
+    ch_expect(3, 0x20, '2', 0xF000u, "field 8");
+    ch_expect(4, 0x20, '6', 0x4000u, "field 9 = 65535");
+    ch_expect(4, 0x24, '5', 0x4000u, "field 9 = 65535");
+    CHECK_EQ_INT((int)ch_cell(0x18, SM_COLS(0x69u, 0x4000u)), 0);   /* no hints */
+
+    /* P2C (clear_ok = 1): the latched Esc leaves first (1 frame). */
+    static const sm_step_t p2c[] = { { 0x011Bu, 0u } };
+    actors_reset();
+    text_glyph_at(2, 'Z', 20, 0xF000u);
+    text_glyph_at(0x1B, 'Z', 0xC, 0xF000u); text_glyph_at(0x27, 'Z', 0xC, 0xF000u);
+    sm_begin(p2c, 1u);
+    svc_stats_page2(1u);
+    sm_end(1u, "page 2 left on the latched Esc");
+    CHECK(ch_cell(20, 2) != 0u, "page 2: no draw before the exit");
+    CHECK_EQ_INT((int)ch_cell(0xC, 0x1B), 0);
+    CHECK(ch_cell(0xC, 0x27) != 0u, "page 2: only twelve cells released");
+    CHECK_EQ_INT((int)config_field_get(0u), 7);
+
+    /* 0x32F98's zero-total arm (0x32FDC `je`, 0x32FEB): fields 3..5 all 0 give a
+     * percentage of 0, drawn at the cursor after "Percentage Play" (row
+     * 13 + 2, column 26); no frame. P1A drew "33" there with the fields
+     * seeded. */
+    actors_reset();
+    for (u32 f = 3u; f <= 5u; f++) {
+        (void)config_field_set(f, 0u);
+        CHECK_EQ_INT((int)config_field_get(f), 0);               /* was 0x10005, 0x10000, 0xFFFF */
+    }
+    svc_stats_play(4, 13);
+    ch_expect(15, 4, 'P', 0xF000u, "Percentage Play (0x8A) at (col, row + 2)");
+    ch_expect(15, 26, '0', 0xF000u, "a zero total gives 0");
+    CHECK_EQ_INT((int)ch_cell(15, 27), 0);
+
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+    DSD(DS_0010150C) = s_150c; DSD(DS_001014E4) = s_e4; DSD(DS_001014E8) = s_e8;
+}
+
+/* Cycle 7 (record §K11.8): the histograms and the STATISTICS entry, 0x2E218
+ * 0x2E11C 0x2E248 0x2E5E4 0x32BDC 0x33560 0x2CAC0. 16 frames. */
+#define SM_HBUF 0x039000C0u              /* 0x32BDC's frame at the port scratch SVC_HIST_TMP */
+#define SM_HST  0x00105D64u              /* 0x2E248's state block */
+#define SM_H0   0x00105ECDu              /* histogram 0's 20 counters (0x2D45C) */
+#define SM_H1   0x00105EE1u              /* histogram 1's 20 (0x2D464) */
+#define SM_H2   0x00105EF5u              /* histogram 2's 7 (0x2D46C) */
+
+/* `head` followed by `n` copies of `bar`, into `out`. */
+static const char *sm_hline(char *out, const char *head, char bar, u32 n)
+{
+    const size_t h = strlen(head);
+    memcpy(out, head, h);
+    memset(out + h, bar, n);
+    out[h + n] = 0;
+    return out;
+}
+
+/* The line `s` on screen from (row, col): a ' ' is an empty cell, and so is
+ * the cell after the last. */
+static void sm_row_is(s32 row, s32 col, const char *s, u32 mode, const char *msg)
+{
+    const s32 n = (s32)strlen(s);
+    for (s32 k = 0; k < n; k++) {
+        if (s[k] == ' ') CHECK_EQ_INT((int)ch_cell(row, col + k), 0);
+        else ch_expect(row, col + k, (u8)s[k], mode, msg);
+    }
+    CHECK_EQ_INT((int)ch_cell(row, col + n), 0);
+}
+
+/* The scratch buffer holds `want` and its NUL. */
+static void sm_buf_is(const char *want, const char *msg)
+{
+    CHECK(memcmp(mem + SM_HBUF, want, strlen(want) + 1u) == 0, msg);
+}
+
+/* The counters of record §K11.8: histogram 0 {0: 3, 2: 30, 5: 12, 9: 20,
+ * 19: 7}, 1 {0: 1, 3: 2}, 2 {1: 255, 2..6: 1..5}; the byte past them is
+ * a sentinel. Histogram 1's odd sum makes the median's (sum + 1) >> 1
+ * matter: 2 is reached in bucket 3, 1 would be in bucket 0. */
+static void sm_hist_seed(void)
+{
+    memset(mem + SM_H0, 0, 47);
+    DSB(SM_H0 + 0u) = 3u; DSB(SM_H0 + 2u) = 30u; DSB(SM_H0 + 5u) = 12u;
+    DSB(SM_H0 + 9u) = 20u; DSB(SM_H0 + 19u) = 7u;
+    DSB(SM_H1 + 0u) = 1u; DSB(SM_H1 + 3u) = 2u;
+    DSB(SM_H2 + 1u) = 255u;
+    for (u32 i = 2u; i < 7u; i++) DSB(SM_H2 + i) = (u8)(i - 1u);
+    DSB(DS_00105EFC) = 0x5Bu;
+}
+
+static u32 sm_hist_seen;
+/* Run A (frames from 0; probe f sees what the passes through step f - 1
+ * left): probe 2 page 2 with its hints, probes 3..5 the three histograms,
+ * probe 6 the clear screen inside the release wait. */
+static void sm_hist_probe(u32 frame)
+{
+    char l[64];
+    if (frame == 2u) {
+        ch_expect(0x18, SM_COLS(0x69u, 0x4000u), 'H', 0x4000u, "page 2 with clear_ok = 1 from 0x2CAC0");
+        sm_hist_seen |= 1u << frame;
+    } else if (frame == 3u) {
+        ch_expect(0, 8, 'R', 0x1000u, "the title 0x238 at column (0x28 - 23) >> 1");
+        CHECK_EQ_INT((int)ch_cell(0, 7), 0);
+        sm_row_is(2, 2, sm_hline(l, "  0-  9:  3   4% ", 3, 2u), 0x2000u, "histogram 0, bucket 0");
+        sm_row_is(3, 2, " 10- 19:  0   0% ", 0x2000u, "histogram 0, bucket 1");
+        /* 41 cells from column 2: 0x2F830 cuts the string at 0x2A - 2 - 1 */
+        sm_row_is(4, 2, sm_hline(l, " 20- 29: 30  41% ", 3, 22u), 0x2000u, "histogram 0, bucket 2");
+        sm_row_is(7, 2, sm_hline(l, " 50- 59: 12  16% ", 3, 10u), 0x3000u, "the median bucket 5 in 0x3000");
+        sm_row_is(21, 2, sm_hline(l, "190& UP:  7   9% ", 3, 6u), 0x2000u, "the last bucket");
+        ch_expect(23, 15, 'M', 0x3000u, "MEDIAN: (0x83) on row 20 + 3");
+        sm_row_is(23, 22, " 50- 59", 0x1000u, "the median's range, cut at its ':'");
+        ch_expect(23, 3, 'T', 0x1000u, "TOTAL: (0x84)");
+        sm_row_is(23, 11, "72", 0x1000u, "the total");
+        ch_expect(0x1C, SM_COLS(0x87u, 0x1000u), 'f', 0x1000u, "for next histogram (0x87)");
+        CHECK_EQ_INT((int)ch_cell(0x18, SM_COLS(0x69u, 0x4000u)), 0);   /* hints only on the last */
+        sm_hist_seen |= 1u << frame;
+    } else if (frame == 4u) {
+        ch_expect(0, 8, 'M', 0x1000u, "the title 0x239");
+        sm_row_is(2, 2, sm_hline(l, "  0- 14: 1  33% ", 3, 6u), 0x2000u, "histogram 1, bucket 0");
+        sm_row_is(5, 2, sm_hline(l, " 45- 59: 2  66% ", 3, 13u), 0x3000u, "histogram 1, the median bucket 3");
+        sm_row_is(21, 2, "285& UP: 0   0% ", 0x2000u, "histogram 1, the last bucket");
+        sm_row_is(23, 22, " 45- 59", 0x1000u, "histogram 1's median range");
+        sm_row_is(23, 11, "3", 0x1000u, "histogram 1's total");
+        sm_hist_seen |= 1u << frame;
+    } else if (frame == 5u) {
+        ch_expect(0, 8, 'S', 0x1000u, "the title 0x23A");
+        sm_row_is(2, 2, "   SAURON   0   0% ", 0x2000u, "histogram 2, column 0");
+        sm_row_is(3, 2, sm_hline(l, " BLIZZARD 255  94% ", 3, 20u), 0x3000u, "histogram 2, the median column 1");
+        sm_row_is(8, 2, "    CHAOS   5   1% ", 0x2000u, "histogram 2, column 6");
+        CHECK_EQ_INT((int)ch_cell(10, 15), 0);                   /* no ':' in the line: no MEDIAN */
+        ch_expect(10, 3, 'T', 0x1000u, "TOTAL: on row 7 + 3");
+        sm_row_is(10, 11, "270", 0x1000u, "histogram 2's total");
+        ch_expect(0x1C, SM_COLS(0x20Au, 0x1000u), 'T', 0x1000u, "TO EXIT MENU (0x20A) on the last");
+        ch_expect(0x18, SM_COLS(0x69u, 0x4000u), 'H', 0x4000u, "hint 0x69 with a = 1");
+        ch_expect(0x19, SM_COLS(0x6Au, 0x4000u), 'A', 0x4000u, "hint 0x6A");
+        ch_expect(0x1A, SM_COLS(0x86u, 0x4000u), 't', 0x4000u, "hint 0x86");
+        CHECK_EQ_INT((int)DSB(DS_00105DD8), 0);                  /* not cleared yet */
+        sm_hist_seen |= 1u << frame;
+    } else if (frame == 6u) {
+        ch_expect(0xA, SM_COLS(0x88u, 0x4000u), 'C', 0x4000u, "CLEARING ALL HISTOGRAMS (0x88)");
+        ch_expect(0x1C, SM_COLS(0x20Au, 0x1000u), 'T', 0x1000u, "the clear screen's TO EXIT MENU");
+        CHECK_EQ_INT((int)ch_cell(3, 3), 0);                     /* the screen was reset */
+        u32 nz = 0u;
+        for (u32 i = 0u; i < 47u; i++) nz |= DSB(SM_H0 + i);
+        CHECK_EQ_INT((int)nz, 0);                                /* all three cleared before the wait */
+        CHECK_EQ_INT((int)DSB(DS_00105EFC), 0x5B);
+        CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x38);               /* bits 3, 4, 5 */
+        sm_hist_seen |= 1u << frame;
+    }
+}
+
+static void sm_check_hist(void)
+{
+    const u32 s_150c = DSD(DS_0010150C), s_e4 = DSD(DS_001014E4), s_e8 = DSD(DS_001014E8);
+    u8 s_dac[256][3];
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+    u8 s_cnt[48], s_st[0x24], s_desc[0x70];
+    memcpy(s_cnt, mem + SM_H0, sizeof s_cnt);                    /* 0x105ECD..0x105EFC */
+    memcpy(s_st, mem + SM_HST, sizeof s_st);
+    memcpy(s_desc, mem + 0x2D414u, sizeof s_desc);               /* 0x2D414..0x2D483 */
+    ch_text_setup();
+    char l[64];
+
+    /* (a) 0x2E218: `jl`/`jge` signed; 10 digits at most. */
+    static const struct { s32 v; u32 n; } dg[] = {
+        { 0, 1 }, { 9, 1 }, { 10, 2 }, { 99, 2 }, { 100, 3 }, { 999999999, 9 },
+        { 1000000000, 10 }, { 0x7FFFFFFF, 10 }, { -5, 1 },
+    };
+    for (u32 i = 0; i < sizeof dg / sizeof dg[0]; i++)
+        CHECK_EQ_INT((int)audit_digits(dg[i].v), (int)dg[i].n);
+
+    /* (b) 0x2E11C. */
+    memset(mem + SM_H0, 0xAA, 47);
+    DSB(DS_00105EFC) = 0x5Bu;                                    /* one past histogram 2 */
+    DSB(DS_00105DD8) = 0x00u;
+    CHECK_EQ_INT((int)audit_hist_clear(0u), 0);
+    for (u32 i = 0; i < 20u; i++) CHECK_EQ_INT((int)DSB(SM_H0 + i), 0);   /* 20 bytes */
+    CHECK_EQ_INT((int)DSB(SM_H1), 0xAA);                         /* histogram 1 untouched */
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x08);                   /* bit 0 + 3 */
+    CHECK_EQ_INT((int)audit_hist_clear(2u), 0);
+    for (u32 i = 0; i < 7u; i++) CHECK_EQ_INT((int)DSB(SM_H2 + i), 0);    /* 7 bytes */
+    CHECK_EQ_INT((int)DSB(DS_00105EFC), 0x5B);                   /* past the end */
+    CHECK_EQ_INT((int)DSB(SM_H1 + 19u), 0xAA);
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x28);                   /* + bit 5 */
+    memset(mem + SM_H0, 0xAA, 47);
+    CHECK_EQ_INT((int)audit_hist_clear(3u), -1);                 /* 0x2E123 `jb` */
+    CHECK_EQ_INT((int)DSB(SM_H0), 0xAA);
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x28);                   /* untouched */
+
+    /* (c) 0x2E248 and 0x2E5E4 over the seeded counters (the lines are the
+     * record's; no frame). */
+    sm_hist_seed();
+    memset(mem + SM_HST, 0xA5, sizeof s_st);
+    memset(mem + SM_HBUF, 0xEE, 0x40);
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 0x2Au, SM_HBUF + 0x30u, SM_HBUF + 0x34u, 0x32640u), 23);
+    sm_buf_is("Round Time (in seconds)", "the title copied up to the NUL");
+    CHECK_EQ_INT((int)DSD(SM_HBUF + 0x30u), 30);                 /* the largest */
+    CHECK_EQ_INT((int)DSD(SM_HBUF + 0x34u), 5);                  /* the median: 36 reached in bucket 5 */
+    static const u32 st0[9] = { 1u, 30u, 72u, 9u, 3u, 3u, 0u, 0x32640u, 1u };
+    for (u32 k = 0; k < 9u; k++) CHECK_EQ_INT((int)DSD(SM_HST + 4u * k), (int)st0[k]);
+    CHECK_EQ_INT((int)audit_hist_line(0u, SM_HBUF, 0x2A), 3);
+    sm_buf_is(sm_hline(l, "  0-  9:  3   4% ", 3, 2u), "bucket 0");
+    CHECK_EQ_INT((int)audit_hist_line(1u, SM_HBUF, 0x2A), 0);
+    sm_buf_is(" 10- 19:  0   0% ", "bucket 1: a zero count, no bar");
+    CHECK_EQ_INT((int)audit_hist_line(2u, SM_HBUF, 0x2A), 30);
+    sm_buf_is(sm_hline(l, " 20- 29: 30  41% ", 3, 24u), "bucket 2: the full bar of 42 - 9 - 2 - 7");
+    CHECK_EQ_INT((int)audit_hist_line(5u, SM_HBUF, 0x2A), 12);
+    sm_buf_is(sm_hline(l, " 50- 59: 12  16% ", 3, 10u), "bucket 5");
+    CHECK_EQ_INT((int)audit_hist_line(19u, SM_HBUF, 0x2A), 7);
+    sm_buf_is(sm_hline(l, "190& UP:  7   9% ", 3, 6u), "the last bucket: & UP");
+    memset(mem + SM_HBUF, 0xEE, 0x40);
+    CHECK_EQ_INT((int)audit_hist_line(20u, SM_HBUF, 0x2A), -1);  /* past the 0x14 bytes */
+    CHECK_EQ_INT((int)audit_hist_line(2u, SM_HBUF, 18), -1);     /* a bar of 0 */
+    CHECK_EQ_INT((int)audit_hist_line(2u, 0u, 0x2A), -1);
+    CHECK_EQ_INT((int)DSB(SM_HBUF), 0xEE);                       /* none of the three wrote */
+    CHECK_EQ_INT((int)audit_hist_line(2u, SM_HBUF, 19), 30);
+    sm_buf_is(" 20- 29: 30  41% \x03", "a bar of 1");
+    /* The default bar string "#:" (label 0): L = 2, a half cell is ':'. */
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 0x2Au, 0u, 0u, 0u), 23);
+    CHECK_EQ_INT((int)DSD(SM_HST + 0x1Cu), 0x80B20);
+    CHECK_EQ_INT((int)DSD(SM_HST + 0x20u), 2);
+    CHECK_EQ_INT((int)audit_hist_line(0u, SM_HBUF, 0x2A), 3);
+    sm_buf_is("  0-  9:  3   4% ##:", "two cells and a half");
+    CHECK_EQ_INT((int)audit_hist_line(19u, SM_HBUF, 0x2A), 7);
+    sm_buf_is("190& UP:  7   9% #####:", "five cells and a half");
+    /* Histogram 1: the unit is at least 4 * L (the largest count is 2, so
+     * a count of 1 is 25 / 4 cells, not 25 / 2). */
+    CHECK_EQ_INT((int)audit_hist_format(1u, SM_HBUF, 0x2Au, SM_HBUF + 0x30u, SM_HBUF + 0x34u, 0x32640u), 23);
+    CHECK_EQ_INT((int)DSD(SM_HBUF + 0x34u), 3);                  /* (3 + 1) >> 1 = 2, reached in bucket 3 */
+    CHECK_EQ_INT((int)audit_hist_line(0u, SM_HBUF, 0x2A), 1);
+    sm_buf_is(sm_hline(l, "  0- 14: 1  33% ", 3, 6u), "histogram 1, bucket 0");
+    /* A median bucket that holds exactly half: {0: 2, 3: 1} stops at bucket
+     * 0 (0x2E596 `jle`: 2 <= 2). */
+    DSB(SM_H1 + 0u) = 2u; DSB(SM_H1 + 3u) = 1u;
+    CHECK_EQ_INT((int)audit_hist_format(1u, SM_HBUF, 0x2Au, 0u, SM_HBUF + 0x34u, 0x32640u), 23);
+    CHECK_EQ_INT((int)DSD(SM_HBUF + 0x34u), 0);
+    DSB(SM_H1 + 0u) = 1u; DSB(SM_H1 + 3u) = 2u;
+    /* Histogram 2: the tabbed template; +0x10/+0x14 are not written. */
+    memset(mem + SM_HST, 0xA5, sizeof s_st);
+    CHECK_EQ_INT((int)audit_hist_format(2u, SM_HBUF, 0x2Au, SM_HBUF + 0x30u, SM_HBUF + 0x34u, 0x32640u), 21);
+    sm_buf_is("Selects Per Character:", "the title up to the tab");
+    CHECK_EQ_INT((int)DSD(SM_HBUF + 0x34u), 1);
+    static const u32 st2[9] = { 3u, 255u, 270u, 10u, 0xA5A5A5A5u, 0xA5A5A5A5u, 0x80A6Au, 0x32640u, 1u };
+    for (u32 k = 0; k < 9u; k++) CHECK_EQ_INT((int)DSD(SM_HST + 4u * k), (int)st2[k]);
+    CHECK_EQ_INT((int)audit_hist_line(0u, SM_HBUF, 0x2A), 0);
+    sm_buf_is("   SAURON   0   0% ", "column 0, right-aligned in 10");
+    CHECK_EQ_INT((int)audit_hist_line(1u, SM_HBUF, 0x2A), 255);
+    sm_buf_is(sm_hline(l, " BLIZZARD 255  94% ", 3, 22u), "column 1, the widest");
+    CHECK_EQ_INT((int)audit_hist_line(6u, SM_HBUF, 0x2A), 5);
+    sm_buf_is("    CHAOS   5   1% ", "column 6, the last");
+    CHECK_EQ_INT((int)audit_hist_line(7u, SM_HBUF, 0x2A), -1);   /* past the 7 bytes */
+
+    /* (d) the refusals. */
+    DSD(SM_HST) = 0x77u;
+    CHECK_EQ_INT((int)audit_hist_format(3u, SM_HBUF, 0x2Au, 0u, 0u, 0u), -1);
+    CHECK_EQ_INT((int)DSD(SM_HST), 0);                           /* 0x2E26A before the tests */
+    memset(mem + SM_HBUF, 0xEE, 0x40);
+    CHECK_EQ_INT((int)audit_hist_line(0u, SM_HBUF, 0x2A), -1);   /* no histogram prepared */
+    CHECK_EQ_INT((int)DSB(SM_HBUF), 0xEE);
+    CHECK_EQ_INT((int)audit_hist_format(0u, 0u, 0x2Au, 0u, 0u, 0u), -1);
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 0u, 0u, 0u, 0u), -1);
+    CHECK_EQ_INT((int)DSB(SM_HBUF), 0xEE);
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 23u, 0u, 0u, 0u), -1);   /* the title fills it */
+    CHECK_EQ_INT((int)DSB(SM_HBUF + 22u), ')');
+    CHECK_EQ_INT((int)DSB(SM_HBUF + 23u), 0xEE);                 /* no NUL */
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 24u, 0u, 0u, 0u), 23);
+    CHECK_EQ_INT((int)DSB(SM_HBUF + 23u), 0);
+    DSB(0x2D442u) = 6u;                                          /* histogram 2 with 6 columns: a 7th is left */
+    CHECK_EQ_INT((int)audit_hist_format(2u, SM_HBUF, 0x2Au, 0u, 0u, 0u), -1);
+    DSB(0x2D442u) = 8u;                                          /* 8: the template ends early */
+    DSW(0x2D46Eu) = 8u;                                          /* (8 counters, or the sum refuses it) */
+    CHECK_EQ_INT((int)audit_hist_format(2u, SM_HBUF, 0x2Au, 0u, 0u, 0u), -1);
+    DSB(0x2D442u) = 7u;
+    DSW(0x2D46Eu) = 6u;                                          /* 6 counters for 7 columns */
+    CHECK_EQ_INT((int)audit_hist_format(2u, SM_HBUF, 0x2Au, 0u, 0u, 0u), -1);
+    DSW(0x2D46Eu) = 7u;
+    DSB(0x2D422u) = 1u;                                          /* histogram 0 with one bucket */
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 0x2Au, 0u, 0u, 0u), -1);
+    DSB(0x2D422u) = 0x14u;
+    /* Unit-wide buckets from 1: every range is one value (no '-'), the
+     * high digits are 0 and the last is '+'. */
+    DSD(0x2D418u) = 1u; DSD(0x2D41Cu) = 1u;
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 0x2Au, 0u, 0u, 0x32640u), 23);
+    CHECK_EQ_INT((int)DSD(SM_HST + 0xCu), 5);
+    CHECK_EQ_INT((int)DSD(SM_HST + 0x10u), 2);
+    CHECK_EQ_INT((int)DSD(SM_HST + 0x14u), 0);
+    CHECK_EQ_INT((int)audit_hist_line(1u, SM_HBUF, 0x2A), 0);
+    sm_buf_is(" 1 :  0   0% ", "a one-value range");
+    CHECK_EQ_INT((int)audit_hist_line(19u, SM_HBUF, 0x2A), 7);
+    sm_buf_is(sm_hline(l, "19+:  7   9% ", 3, 7u), "no room for & UP: '+'");
+    /* From 50: the first range is 0-49, the width grows to lo + 4. */
+    DSD(0x2D418u) = 50u;
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 0x2Au, 0u, 0u, 0x32640u), 23);
+    CHECK_EQ_INT((int)DSD(SM_HST + 0xCu), 8);
+    CHECK_EQ_INT((int)audit_hist_line(0u, SM_HBUF, 0x2A), 3);
+    sm_buf_is(sm_hline(l, " 0-49 :  3   4% ", 3, 3u), "0-49");
+    CHECK_EQ_INT((int)audit_hist_line(1u, SM_HBUF, 0x2A), 0);
+    sm_buf_is("50    :  0   0% ", "lo == hi: no range");
+    CHECK_EQ_INT((int)audit_hist_line(19u, SM_HBUF, 0x2A), 7);
+    sm_buf_is(sm_hline(l, "68& UP:  7   9% ", 3, 6u), "& UP at (e + 1) >> 1 = 0");
+    /* 100-wide buckets: four digits each side, and e = 11 - 6 - 4 = 1 puts
+     * "& UP" one cell right. */
+    DSD(0x2D418u) = 100u; DSD(0x2D41Cu) = 100u;
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 0x2Au, 0u, 0u, 0x32640u), 23);
+    CHECK_EQ_INT((int)DSD(SM_HST + 0xCu), 11);
+    CHECK_EQ_INT((int)audit_hist_line(2u, SM_HBUF, 0x2A), 30);
+    sm_buf_is(sm_hline(l, " 200- 299: 30  41% ", 3, 22u), "200-299");
+    CHECK_EQ_INT((int)audit_hist_line(19u, SM_HBUF, 0x2A), 7);
+    sm_buf_is(sm_hline(l, "1900 & UP:  7   9% ", 3, 5u), "& UP at (e + 1) >> 1 = 1");
+    /* Eleven 10-wide buckets: the last range starts at 100, so the low
+     * bound has 3 digits and the high 2; a bucket past the count (11 < the
+     * 20 bytes) is still formatted, its 119 cut to its last 2 digits. */
+    DSD(0x2D418u) = 10u; DSD(0x2D41Cu) = 10u; DSB(0x2D422u) = 11u;
+    CHECK_EQ_INT((int)audit_hist_format(0u, SM_HBUF, 0x2Au, 0u, 0u, 0x32640u), 23);
+    CHECK_EQ_INT((int)DSD(SM_HST + 8u), 65);                     /* bucket 19 is not summed */
+    CHECK_EQ_INT((int)DSD(SM_HST + 0x10u), 3);
+    CHECK_EQ_INT((int)DSD(SM_HST + 0x14u), 2);
+    CHECK_EQ_INT((int)audit_hist_line(1u, SM_HBUF, 0x2A), 0);
+    sm_buf_is(" 10-19 :  0   0% ", "a 3-digit low and a 2-digit high");
+    CHECK_EQ_INT((int)audit_hist_line(10u, SM_HBUF, 0x2A), 0);
+    sm_buf_is("100& UP:  0   0% ", "the last of eleven");
+    CHECK_EQ_INT((int)audit_hist_line(11u, SM_HBUF, 0x2A), 0);
+    sm_buf_is("110-19 :  0   0% ", "past the count, within the size");
+    memcpy(mem + 0x2D414u, s_desc, sizeof s_desc);
+    CHECK(memcmp(mem + 0x2D414u, s_desc, sizeof s_desc) == 0, "the descriptors are back");
+
+    DSD(DS_001014E4) = CH_BUF_A; DSD(DS_001014E8) = CH_BUF_B;
+    CHECK(fn_resolve(0x2CAC0u) == (void (*)(void))svc_statistics_entry, "0x2CAC0 registered");
+
+    /* Run A, 0x2CAC0 (7 frames): page 1 leaves on the latched Enter; page 2
+     * draws (clear_ok = 1) and leaves on the latched Esc; histogram 0 goes
+     * on at a new Esc with Enter held (h < 2); histogram 1 on the latched
+     * Enter; on histogram 2 a new Esc with Enter held clears all three, and
+     * the release wait leaves at the next new Esc. */
+    static const sm_step_t ra[] = {
+        { 0x1C0Du, 0u }, { 0u, 0u }, { 0x011Bu, 0u }, { 0u, 0x3000000u },
+        { 0x1C0Du, 0u }, { 0u, 0x3000000u }, { 0u, 0x2000000u } };
+    actors_reset();
+    sm_hist_seed();
+    DSB(DS_00105DD8) = 0u;
+    sm_hist_seen = 0u;
+    sm_begin(ra, 7u);
+    sm_probe = sm_hist_probe;
+    const u32 ret_a = svc_statistics_entry(0xBCC3Cu);
+    sm_end(7u, "STATISTICS: page 1, page 2, three histograms and the clear");
+    CHECK_EQ_INT((int)sm_hist_seen, 0x7C);
+    CHECK_EQ_INT((int)ret_a, 0x2000000);                         /* the wait's Esc poll */
+    ch_expect(0xA, SM_COLS(0x88u, 0x4000u), 'C', 0x4000u, "the clear screen stays");
+
+    /* Run B, a = 0 (3 frames): the latched Esc, then a new Esc, go on; on
+     * histogram 2 a new Esc with Enter held leaves without the clear. */
+    static const sm_step_t rb[] = { { 0x011Bu, 0u }, { 0u, 0x2000000u }, { 0u, 0x3000000u } };
+    actors_reset();
+    sm_hist_seed();
+    DSB(DS_00105DD8) = 0u;
+    sm_begin(rb, 3u);
+    const u32 ret_b = svc_stats_hist(0u);
+    sm_end(3u, "histograms without the clear");
+    CHECK_EQ_INT((int)ret_b, 2);                                 /* EAX = h at 0x32E76 */
+    CHECK_EQ_INT((int)DSB(SM_H0 + 2u), 30);
+    CHECK_EQ_INT((int)DSB(SM_H2 + 1u), 255);
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0);
+    ch_expect(0, 8, 'S', 0x1000u, "histogram 2 left on screen");
+    ch_expect(0x1C, SM_COLS(0x20Au, 0x1000u), 'T', 0x1000u, "TO EXIT MENU with a = 0");
+    CHECK_EQ_INT((int)ch_cell(0x18, SM_COLS(0x69u, 0x4000u)), 0);   /* no hints with a = 0 */
+
+    /* Run C, a = 1 (3 frames): the latched Enter and Esc go on; on histogram
+     * 2 a new Esc without Enter leaves. */
+    static const sm_step_t rc[] = { { 0x1C0Du, 0u }, { 0x011Bu, 0u }, { 0u, 0x2000000u } };
+    actors_reset();
+    sm_hist_seed();
+    DSB(DS_00105DD8) = 0u;
+    sm_begin(rc, 3u);
+    const u32 ret_c = svc_stats_hist(1u);
+    sm_end(3u, "histograms: a new Esc without Enter leaves");
+    CHECK_EQ_INT((int)ret_c, 0x2000000);                         /* the 0x2EDE0(0, 1) word */
+    CHECK_EQ_INT((int)DSB(SM_H0 + 2u), 30);
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0);
+    ch_expect(0x18, SM_COLS(0x69u, 0x4000u), 'H', 0x4000u, "hint 0x69 with a = 1");
+
+    /* Run D, a = 1 (3 frames): a new Esc and the latched Enter go on; the
+     * latched Esc on histogram 2 ends the three. */
+    static const sm_step_t rd[] = { { 0u, 0x2000000u }, { 0x1C0Du, 0u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_hist_seed();
+    DSB(DS_00105DD8) = 0u;
+    sm_begin(rd, 3u);
+    const u32 ret_d = svc_stats_hist(1u);
+    sm_end(3u, "histograms: the latched Esc after the last leaves");
+    CHECK_EQ_INT((int)ret_d, 0x1B);
+    CHECK_EQ_INT((int)DSB(SM_H0 + 2u), 30);
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0);
+
+    /* After a clear every count is 0: the percentage's zero-sum arm. */
+    memset(mem + SM_H0, 0, 47);
+    CHECK_EQ_INT((int)audit_hist_format(1u, SM_HBUF, 0x2Au, SM_HBUF + 0x30u, SM_HBUF + 0x34u, 0x32640u), 23);
+    CHECK_EQ_INT((int)DSD(SM_HST + 8u), 0);
+    CHECK_EQ_INT((int)audit_hist_line(0u, SM_HBUF, 0x2A), 0);
+    sm_buf_is("  0- 14: 0   0% ", "a zero sum gives 0%");
+
+    memcpy(mem + SM_H0, s_cnt, sizeof s_cnt);
+    memcpy(mem + SM_HST, s_st, sizeof s_st);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+    DSD(DS_0010150C) = s_150c; DSD(DS_001014E4) = s_e4; DSD(DS_001014E8) = s_e8;
+}
+
 /* Runs after test_cfg_helpers, whose one actors_init() it relies on. The
  * menu screens advance the tick model and the key state; those, the menu
  * state DS_00107414..DS_00107453 and the credits dword are put back. */
@@ -8778,6 +9397,8 @@ int test_svcmenu(void)
     sm_check_volume();
     sm_check_controls();
     sm_check_keyboard();
+    sm_check_stats();
+    sm_check_hist();
 
     DSD(DS_000E1C3C) = s_rpt;
     DSW(DS_000E1C40) = s_rpt40; DSW(DS_000E1C42) = s_rpt42; DSW(DS_000E1C44) = s_rpt44;

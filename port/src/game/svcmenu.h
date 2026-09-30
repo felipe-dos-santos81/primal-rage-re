@@ -139,4 +139,67 @@ u32 svc_raw_key_take(void);
  * slots 0..6 sets DS_00108113. Returns 0 — 0x19DF0. */
 u32 svc_configure_keyboard(u32 entry);
 
+/* "m:ss" of `secs` at the text cursor in 0xF000: the minutes right-aligned in
+ * (w & 0xFFFF) - 3 cells padded with ' ', ':', then the seconds in two cells
+ * padded with '0' — 0x328B8. */
+void svc_draw_mmss(u32 secs, u32 w);
+/* AVG TIME/COIN: 0 when 0x2CA78 returns 0, which it always does; else
+ * 60 * (2 * field 5 + field 4) / (its result & 0xFFFF) — 0x32F54. */
+u32 svc_stats_avg(void);
+/* "Percentage Play" at (col, row + 2), then 100 * (u16)(field 4 + field 5) /
+ * (fields 3 + 4 + 5) (0 for a zero sum); "AVG TIME/COIN" at (col + 1,
+ * row + 1), then svc_draw_mmss(svc_stats_avg(), 6) — 0x32F98. */
+void svc_stats_play(s32 col, s32 row);
+/* The four average-time rows of the code-object table 0x326C4 from `row`: a
+ * label at column 4, then m:ss at column 0x24 of (u16)(numerator field /
+ * (u16)(one or two denominator fields)), 0 for a zero sum. Returns row + 4
+ * — 0x33458. */
+u32 svc_stats_rows(s32 row);
+/* STATISTICS page 1: the five rows of 0x32644, svc_stats_rows and
+ * svc_stats_play, drawn once; leaves on the latched Esc or Enter, or on a
+ * new pad Esc while Enter is not held — 0x33058. */
+void svc_stats_page1(void);
+/* STATISTICS page 2 "MORE STATISTICS": the nine rows of 0x32674, drawn once
+ * (again after a clear). With `clear_ok`, holding Esc and Enter together
+ * zeroes config fields 0..0x27 once Esc is released. Leaves as page 1
+ * — 0x33230. */
+void svc_stats_page2(u32 clear_ok);
+
+/* The audit histograms (record §K11.8). Histogram g (0..2) is described by the
+ * code-object descriptor 0x2D414 + 0x10 * g ({template, first bucket width,
+ * bucket width, flags with the bucket count at +0xE}) and counts in the bytes
+ * of storage descriptor 0x2D444 + 8 * (g + 3) (+2 the size, +4 the address):
+ * 0 "Round Time" 0x105ECD, 1 "Match Time" 0x105EE1, 2 "Selects Per Character"
+ * 0x105EF5. audit_hist_format fills the state block 0x105D64 that
+ * audit_hist_line reads. */
+
+/* The decimal digits of `v` (signed), 1..10; 1 for a negative value
+ * — 0x2E218. */
+u32 audit_digits(s32 v);
+/* Zeroes histogram `g`'s counters and sets its dirty bit (g + 3) in
+ * DS_00105DD8; -1 (and nothing written) for g >= 3 (unsigned), else 0
+ * — 0x2E11C. */
+u32 audit_hist_clear(u32 g);
+/* Prepares histogram `g`: copies its title (the template up to a tab or NUL)
+ * into `buf` of `size` bytes, lays out the state block, sums the counters and
+ * stores the largest in [max_out] and the median bucket in [median_out] (each
+ * a mem[] address, 0 = none); `label` is the bar string (0 = "#:" 0x80B20).
+ * Returns the title's length (a tabbed template: its length - 1), or -1
+ * — 0x2E248. */
+u32 audit_hist_format(u32 g, u32 buf, u32 size, u32 max_out, u32 median_out, u32 label);
+/* Formats bucket `i` of the histogram audit_hist_format prepared into `buf`,
+ * `width` cells wide: the bucket's range or column name, its count, its
+ * percentage and a bar. Returns the count, or -1 — 0x2E5E4. */
+u32 audit_hist_line(u32 i, u32 buf, s32 width);
+/* STATISTICS page 3: the three histograms one screen each; the latched Esc or
+ * Enter or a new pad Esc goes on, and after the last one leaves. With `a`, a
+ * new pad Esc on the last with Enter held clears all three. Returns the raw's
+ * EAX (the last key word) — 0x32BDC. */
+u32 svc_stats_hist(u32 a);
+/* STATISTICS: page 1, page 2 (clear_ok = a) and the histograms (a); returns
+ * svc_stats_hist's result — 0x33560. */
+u32 svc_statistics(u32 a);
+/* OPTIONS MENU "STATISTICS": svc_statistics(1) — 0x2CAC0. */
+u32 svc_statistics_entry(u32 entry);
+
 #endif /* PRAGE_GAME_SVCMENU_H */

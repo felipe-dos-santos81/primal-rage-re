@@ -45,6 +45,13 @@ void config_validate(void);
  * arm and 0x2DAE4 are not run by the port (declared no-op / deferred). */
 u32 config_codeword_len(u32 n);
 
+/* 0x2D4EC. Maintains the EEPROM storage image at 0x80CE4, which the port does not
+ * keep (no save/load I/O, spec §7). Its call sites are declared no-ops so a
+ * later persistence cycle has them in place. It takes EAX only: 0x2D4F5
+ * `mov edx,eax` overwrites EDX before any read (record §26 of
+ * 2026-09-29-todo-verify-derivations.md). */
+void config_storage_touch(u32 kind);
+
 /* ---- high-score tables (0x2DB58/0x2DBC4/0x2DCA0; record §46-A) ----------
  * Three packed tables described by the obj-0 descriptors at 0x2D3FC and kept
  * in the data object at [0x2D478 + 8*table]: 0 = the ten scores (0x105E34),
