@@ -92,6 +92,7 @@ class TestOutput(unittest.TestCase):
         ok = os.path.join(ROOT, 'data', 'k11-captures', 'gp-x')
         self.assertEqual(gc.guard_gp(ok), os.path.realpath(ok))
         for bad in (os.path.join(ROOT, 'data', 'k11-captures', 'walk'),
+                    os.path.join(ROOT, 'data', 'k11-captures', 'walk', 'gp-x'),     # review 1: nested
                     os.path.join(ROOT, 'data', 'game', 'C', 'gp-x'), '/tmp/gp-x'):
             with self.assertRaises(SystemExit):
                 gc.guard_gp(bad)
@@ -101,19 +102,78 @@ class TestOutput(unittest.TestCase):
         d = tempfile.mkdtemp(prefix='gpcap-test-')
         self.addCleanup(shutil.rmtree, d, True)
         frames = [bytes([i]) * gc.FRAME_BYTES for i in range(5)]
+        yielded = []
+
+        def gen(paths):
+            for fr in frames:
+                yielded.append(fr[0])
+                yield fr
         orig = gc.sc.read_avi_frames
-        gc.sc.read_avi_frames = lambda paths: iter(frames)
+        gc.sc.read_avi_frames = gen
         try:
-            n = gc.write_frames(d, ['x.avi'], [1, 3, 4])
+            n = gc.write_frames(d, ['x.avi'], [1, 3])
         finally:
             gc.sc.read_avi_frames = orig
-        self.assertEqual(n, 3)
+        self.assertEqual(n, 2)
         import gzip
-        for k, raw in enumerate((1, 3, 4)):
+        for k, raw in enumerate((1, 3)):
             with gzip.open(os.path.join(d, 'frame_%05d.raw.gz' % k)) as f:
                 self.assertEqual(f.read(), frames[raw])
+        self.assertEqual(sorted(os.listdir(d)), ['frame_00000.raw.gz', 'frame_00001.raw.gz', 'window.txt'])
         with open(os.path.join(d, 'window.txt')) as f:
-            self.assertEqual(f.read().split('\n')[-2], '00002 4')
+            self.assertEqual(f.read(), '00000 1\n00001 3\n')
+        self.assertEqual(yielded, [0, 1, 2, 3])        # review 1: decoding stops after the last wanted frame
+
+    def test_publish_keeps_a_good_capture_from_a_failing_rerun(self):
+        import shutil, tempfile
+        d = tempfile.mkdtemp(prefix='gpcap-test-')
+        self.addCleanup(shutil.rmtree, d, True)
+        out = os.path.join(d, 'gp-x')
+
+        def staged(tag):
+            st = gc.stage_dir(out)
+            os.makedirs(st)
+            with open(os.path.join(st, 'poll.log'), 'w') as f:
+                f.write(tag)
+            return st
+        self.assertEqual(gc.publish(staged('good'), out, True), out)
+        self.assertEqual(gc.publish(staged('bad'), out, False), out + '.failed')
+        with open(os.path.join(out, 'poll.log')) as f:
+            self.assertEqual(f.read(), 'good')
+        with open(os.path.join(out + '.failed', 'poll.log')) as f:
+            self.assertEqual(f.read(), 'bad')
+        self.assertEqual(gc.publish(staged('good2'), out, True), out)
+        with open(os.path.join(out, 'poll.log')) as f:
+            self.assertEqual(f.read(), 'good2')
+        self.assertEqual(sorted(os.listdir(d)), ['gp-x', 'gp-x.failed'])
+
+
+def _s(f, raw=0, kb=None, mode=0x27):
+    vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
+    vals.update(f=f, raw=raw, mode=mode, t508=1, t50c=2)
+    return gs.format_s(0, vals, gs.raw_to_kb(raw) if kb is None else kb, 0x1E, 0x1E)
+
+
+class TestChecks(unittest.TestCase):
+    ENTER = 'I ms=1 f=0010 step=0 press=enter scan=1C lin=00010090 old=FF bios=1C0D ring=1 late=0'
+
+    def _checks(self, lines, n=3, want=3):
+        s = gs.Schedule(())
+        return dict((name.split(' (')[0], ok) for name, ok in gc.run_checks('_t', lines, s, n, want))
+
+    def test_mode_0x27_must_follow_the_enter(self):
+        good = ['B ms=0 base=00266000 ptr=0000FE20', _s(0x10, mode=3), self.ENTER, _s(0x11, mode=0x27)]
+        self.assertTrue(self._checks(good)['mode 0x27 after the Enter'])
+        bad = ['B ms=0 base=00266000 ptr=0000FE20', _s(0x10, mode=0x27), self.ENTER, _s(0x11, mode=0x27)]
+        self.assertFalse(self._checks(bad)['mode 0x27 after the Enter'])
+        self.assertFalse(self._checks(good[:3])['mode 0x27 after the Enter'])
+
+    def test_kb_equals_raw_and_frames_written_are_checks(self):
+        L = ['B ms=0 base=00266000 ptr=0000FE20', self.ENTER, _s(0x11, raw=0x80000000)]
+        self.assertTrue(self._checks(L)['snapshots kb == raw'])
+        self.assertFalse(self._checks(L + [_s(0x12, raw=0x80000000, kb=0)])['snapshots kb == raw'])
+        self.assertTrue(self._checks(L, 3, 3)['frames written 3/3'])
+        self.assertFalse(self._checks(L, 2, 3)['frames written 2/3'])
 
 
 class TestFire(unittest.TestCase):

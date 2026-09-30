@@ -97,14 +97,61 @@ def fire(sched, f):
 
 
 FRAME_BYTES = 320 * 200 * 3
+MEM_WAIT_S = 60        # s, harness: how long the poller waits for DOSBox-X's memory file (as k11_capture)
 LOG_CON_ARGS = ['-set', 'dos log console=quiet']      # record named-gaps-a §A.2
 
 
 def guard_gp(out):
+    """--out must be data/k11-captures/gp-<name> exactly: a direct child of the
+    capture root (review 1: not nested inside another capture)."""
     real = kc.guard_out(out)
-    if not os.path.basename(real).startswith('gp-'):
+    if (os.path.dirname(real) != os.path.realpath(kc.CAPTURE_ROOT)
+            or not os.path.basename(real).startswith('gp-')):
         raise SystemExit('gp_capture: --out must be data/k11-captures/gp-<scenario>: %s' % out)
     return real
+
+
+def stage_dir(out):
+    """The sibling directory a run writes into before its CHECKs pass."""
+    return os.path.join(os.path.dirname(out), '.%s.partial' % os.path.basename(out))
+
+
+def publish(stage, out, ok):
+    """Move a staged capture into place only when every CHECK passed; a failing
+    run goes to <out>.failed and leaves a good capture at <out> untouched."""
+    dest = out if ok else out + '.failed'
+    old = dest + '.old'
+    if os.path.exists(old):
+        shutil.rmtree(old)
+    if os.path.exists(dest):
+        os.rename(dest, old)
+    os.rename(stage, dest)
+    if os.path.exists(old):
+        shutil.rmtree(old)
+    return dest
+
+
+def run_checks(name, lines, sched, n_frames, n_want):
+    """The capture's CHECKs, [(label, ok)] (record §G.5.2, review 1)."""
+    recs = [gs.parse(l) for l in lines if l.strip()]
+    try:
+        gs.port_script(name, lines)
+        script_ok, why = True, ''
+    except gs.ScriptError as e:
+        script_ok, why = False, ' (%s)' % e
+    enter = next((i for i, x in enumerate(recs) if x['kind'] == 'I' and x.get('press') == 'enter'), None)
+    first27 = next((i for i, x in enumerate(recs) if x['kind'] in ('S', 'P') and x.get('mode') == 0x27), None)
+    ordered = (enter is not None and first27 is not None and first27 > enter
+               and recs[first27]['f'] >= recs[enter]['f'])
+    snap = gs.snapshots(lines)
+    kbraw = sum(1 for v in snap.values() if v['kb'] != gs.raw_to_kb(v['raw']))
+    return [('base', any(x['kind'] == 'B' for x in recs)),
+            ('steps fired %d/%d' % (sched.fired, sched.total), sched.fired == sched.total),
+            ('end frame reached', any(x['kind'] == 'X' for x in recs)),
+            ('mode 0x27 after the Enter', ordered),
+            ('snapshots kb == raw (%d differ)' % kbraw, kbraw == 0),
+            ('frames written %d/%d' % (n_frames, n_want), n_frames == n_want),
+            ('port script v2%s' % why, script_ok)]
 
 
 def write_frames(out, paths, indices):
@@ -147,7 +194,7 @@ class Poller(threading.Thread):
         self.end_seen = False
 
     def run(self):
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + MEM_WAIT_S
         while not (os.path.exists(self.mem_path) and os.path.getsize(self.mem_path) >= 1 << 20):
             if self.stop.is_set() or time.monotonic() > deadline:
                 return
@@ -254,25 +301,31 @@ def main():
         cap = [hashlib.md5(d).digest() for d in sc.read_avi_frames(paths)]
         start, logs = tcap.post_logo_start(cap, a.game_dir)
         _, idx = tcap.collapse_from(cap, start)
-        os.makedirs(out, exist_ok=True)
-        for old in os.listdir(out):
-            if old.endswith('.raw.gz'):
-                os.remove(os.path.join(out, old))
-        n = write_frames(out, paths, idx)
+        stage = stage_dir(out)
+        if os.path.exists(stage):
+            shutil.rmtree(stage)
+        os.makedirs(stage)
+        n = write_frames(stage, paths, idx)
         for name in ('poll.log', 'dosbox.log'):
             src = os.path.join(root, name)
             if os.path.exists(src):
-                shutil.copyfile(src, os.path.join(out, name))
+                shutil.copyfile(src, os.path.join(stage, name))
         dros = sorted(f for f in os.listdir(avi_dir) if f.lower().endswith('.dro'))
         for d in dros:
-            shutil.copyfile(os.path.join(avi_dir, d), os.path.join(out, d))
+            shutil.copyfile(os.path.join(avi_dir, d), os.path.join(stage, d))
         subprocess.run([sc.which('ffmpeg'), '-v', 'error', '-y', '-sseof', '-1', '-i', paths[-1],
-                        '-update', '1', os.path.join(out, 'last_frame.png')])
+                        '-update', '1', os.path.join(stage, 'last_frame.png')])
         ver = subprocess.run([sc.which('dosbox-x'), '-version'], capture_output=True, text=True)
         ver = ver.stdout + ver.stderr
         with open(a.exe, 'rb') as fx:
             sha = hashlib.sha256(fx.read()).hexdigest()
-        with open(os.path.join(out, 'session.txt'), 'w') as f:
+        lines = []
+        if os.path.exists(os.path.join(stage, 'poll.log')):        # absent: no memory file
+            with open(os.path.join(stage, 'poll.log')) as f:
+                lines = f.read().splitlines()
+        checks = run_checks(a.scenario, lines, poll.sched, n, len(idx))
+        ok = all(c for _, c in checks)
+        with open(os.path.join(stage, 'session.txt'), 'w') as f:
             f.write('scenario=%s\n' % a.scenario)
             f.write('dosbox=%s\n' % next((l for l in ver.splitlines() if 'DOSBox-X version' in l), '?'))
             f.write('argv=%s\n' % shlex.join(cmd))
@@ -281,31 +334,18 @@ def main():
             f.write('time_limit=%d wall_s=%.1f rc=%d\n' % (limit, wall, r.returncode))
             f.write('avis=%s fps=%.4f dro=%s frames=%d raw_window=%d..%d avi_frames=%d twg_last=%s\n'
                     % (avis, sc.ffprobe_fps(paths[0]), dros, n, idx[0], idx[-1], len(cap), logs.get('twg')))
-        lines = []
-        if os.path.exists(os.path.join(out, 'poll.log')):          # absent: no memory file
-            with open(os.path.join(out, 'poll.log')) as f:
-                lines = f.read().splitlines()
-        recs = [gs.parse(l) for l in lines if l.strip()]
-        try:
-            gs.port_script(a.scenario, lines)
-            script_ok, why = True, ''
-        except gs.ScriptError as e:
-            script_ok, why = False, ' (%s)' % e
-        checks = [('base', any(x['kind'] == 'B' for x in recs)),
-                  ('steps fired %d/%d' % (poll.sched.fired, poll.sched.total), poll.sched.fired == poll.sched.total),
-                  ('end frame reached', any(x['kind'] == 'X' for x in recs)),
-                  ('mode 0x27 after the Enter', any(x['kind'] in ('S', 'P') and x.get('mode') == 0x27 for x in recs)),
-                  ('port script v2%s' % why, script_ok)]
-        snap = gs.snapshots(lines)
-        snaps = sorted(snap)
+            for name, c in checks:
+                f.write('check=%s %s\n' % ('ok' if c else 'FAIL', name))
+        snaps = sorted(gs.snapshots(lines))
         missed = sum(b - a - 1 for a, b in zip(snaps, snaps[1:]) if b > a + 1)
-        kbraw = sum(1 for s in snap.values() if s['kb'] != gs.raw_to_kb(s['raw']))
-        print('gp_capture: snapshots %d, f %s..%s, %d frames missed (spec §3.7); kb != raw in %d'
-              % (len(snaps), snaps and '%X' % snaps[0], snaps and '%X' % snaps[-1], missed, kbraw))
-        for name, ok in checks:
-            print('gp_capture: CHECK %s: %s' % (name, 'ok' if ok else 'FAIL'))
-        print('gp_capture: wrote %d frames to %s (raw %d..%d), wall %.1fs' % (n, out, idx[0], idx[-1], wall))
-        return 0 if all(ok for _, ok in checks) else 1
+        print('gp_capture: snapshots %d, f %s..%s, %d frames missed (spec §3.7)'
+              % (len(snaps), snaps and '%X' % snaps[0], snaps and '%X' % snaps[-1], missed))
+        for name, c in checks:
+            print('gp_capture: CHECK %s: %s' % (name, 'ok' if c else 'FAIL'))
+        dest = publish(stage, out, ok)
+        print('gp_capture: wrote %d frames to %s (raw %d..%d), wall %.1fs%s'
+              % (n, dest, idx[0], idx[-1], wall, '' if ok else '; a CHECK failed, %s left as it was' % out))
+        return 0 if ok else 1
     finally:
         if a.keep_avi:
             print('gp_capture: kept %s' % root)
