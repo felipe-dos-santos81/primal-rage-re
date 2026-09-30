@@ -82,9 +82,13 @@ $G _tools/ghidra_proj prage -process PRAGE.EXE \
 decompiled (`docs/FORMATS.md`, `port/decomp/`). The SDL3 port reimplements the
 engine in C over a flat `mem[]` holding the original data image at its
 original addresses (`port/PORTING.md`) and currently covers boot through the
-title screen, the front end and the attract demo — each gated by a byte-exact
-oracle against the original's own captured frames (`make verify`). Real
-interactive gameplay is not yet ported and has no oracle to verify it against.
+title screen, the front end, the attract demo and the service menu — each gated
+by a byte-exact oracle against the original's own captured frames (`make
+verify`). The player-driven match (character select, fight, round end,
+continue, game over) is ported but has no oracle: only seeded unit tests reach
+it, and a DOSBox-X ground-truth capture of a scripted real fight is the open
+work (14 table-reached functions, `docs/superpowers/plans/2026-09-29-all-gaps-ledger.md`
+§H.4, are also still unported).
 
 **64%** (771 of 1203) of the original's real functions have a ported,
 header-commented counterpart in `port/src/` (see `AGENTS.md` for how that

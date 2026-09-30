@@ -12136,6 +12136,249 @@ int test_k11_oracle(void)
     return g_failures - before;
 }
 
+/* ---- the gameplay replay driver (gameplay ground truth U2, spec
+ * docs/superpowers/specs/2026-09-30-gameplay-ground-truth-design.md §4.2,
+ * record §G.9) ----
+ * PR_GP_DUMP=<dir> PR_GP_SCRIPT=<file> (tools/gp_session.py port-script, v2).
+ * As the K11 driver it runs game_init() and the master loop from boot with
+ * the title pin's opcode-8 mirror. Before the iteration that raises the frame
+ * counter DS_000EF6DC to F it queues the script's `key F` lines (in script
+ * order: a chord's words are consumed in one iteration, record §G.4) and
+ * applies its last `bits F` (spec §3.1: 0x500C4 samples the bitmap before
+ * 0x24CDB increments the counter; the capture's S record of F shows what
+ * iteration F read). It stops after the iteration that raises the counter to
+ * `end`. */
+#define GP_LOOP_SLACK 600u          /* harness bound past `end` (record §G.9), not a game value */
+#define GP_STALL_PUMPS 200000u      /* the K11 driver's pump-stall guard */
+#define GP_DS_0010810D 0x0010810Du  /* no symbols.h name: the winner-side byte */
+typedef struct { char op; u32 f, a, b; } GpStep;
+static GpStep *gp_step;
+static u32 gp_n, gp_next, gp_nkeys, gp_keys_sent, gp_enter_frame, gp_enter_state, gp_end;
+static u32 gp_dumped, gp_hash_last, gp_idle_pumps, gp_missed, gp_iters;
+static u32 gp_trace_lines, gp_first_f;
+static int gp_armed, gp_done, gp_failed;
+static char gp_dir[1024];
+static FILE *gp_log, *gp_frames, *gp_trace;
+static jmp_buf gp_end_jb;
+
+static int gp_parse(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (f == NULL) return 0;
+    char line[256];
+    u32 lines = 0;
+    while (fgets(line, sizeof line, f) != NULL) lines++;
+    rewind(f);
+    gp_step = calloc(lines + 1u, sizeof *gp_step);   /* sized from the script, no fixed cap */
+    if (gp_step == NULL) { fclose(f); return 0; }
+    int have_frame = 0, have_state = 0, ok = 1;
+    u32 last_f = 0u;
+    gp_n = gp_nkeys = 0u;
+    while (fgets(line, sizeof line, f) != NULL) {
+        unsigned a = 0u, b = 0u, c = 0u;
+        if (line[0] == '#' || line[0] == '\n') continue;
+        if (sscanf(line, "enter_frame %u", &a) == 1) { gp_enter_frame = a; have_frame = 1; continue; }
+        if (sscanf(line, "enter_state %x", &a) == 1) { gp_enter_state = a; have_state = 1; continue; }
+        GpStep *s = &gp_step[gp_n];
+        if (sscanf(line, "key %u %x %x", &a, &b, &c) == 3) { s->op = 'k'; gp_nkeys++; }
+        else if (sscanf(line, "bits %u %x", &a, &b) == 2) s->op = 'b';
+        else if (sscanf(line, "end %u", &a) == 1) { s->op = 'e'; gp_end = a; }
+        else { ok = 0; break; }
+        if (a < last_f) { ok = 0; break; }        /* the generator sorts by frame */
+        last_f = a;
+        s->f = a; s->a = b; s->b = c;
+        gp_n++;
+    }
+    fclose(f);
+    return ok && have_frame && have_state && gp_n > 0u && gp_step[gp_n - 1u].op == 'e'
+        && gp_step[0].op == 'k' && gp_step[0].f == gp_enter_frame
+        && gp_step[0].a == 0x1Cu && gp_step[0].b == 0x0Du;   /* the mode-3 Enter (0x24ECF) */
+}
+
+/* Applies every step for the iteration about to run (the one that raises the
+ * counter from `f` to f + 1). A step whose frame is already behind is a miss. */
+static void gp_apply(u32 f)
+{
+    while (gp_next < gp_n && gp_step[gp_next].f <= f + 1u) {
+        const GpStep *s = &gp_step[gp_next];
+        if (s->f < f + 1u) {
+            gp_missed++;
+            fprintf(gp_log, "missed %c at f=%u (counter %u)\n", s->op, s->f, f);
+        }
+        if (s->op == 'k') {
+            input_push((u8)s->a, (u8)s->b);
+            fprintf(gp_log, "key %u f=%u scan=%02X ascii=%02X mode=%04X\n",
+                    gp_keys_sent, s->f, s->a, s->b, DSW(DS_00104B00));
+            gp_keys_sent++;
+        } else if (s->op == 'b') {
+            k11_key_bits(s->a);
+            fprintf(gp_log, "bits f=%u kb=%04X\n", s->f, s->a);
+        } else {
+            break;                                   /* 'e' is checked after the iteration */
+        }
+        gp_next++;
+    }
+}
+
+/* Each new displayed image (indices + gfx_dac, hashed as the K11 driver does)
+ * becomes <dir>/frame_%05u.ipx: the 64000 index bytes then the 768-byte DAC,
+ * a third of fe_write_frame's RGB24, which it expands to (rgb = dac[idx]). */
+static void gp_dump_if_new(void)
+{
+    const u8 *fb = gfx_display();
+    if (fb == NULL) fb = mem + DSD(DS_000E87A0);
+    const u32 h = k11_fnv(k11_fnv(2166136261u, fb, 64000u), &gfx_dac[0][0], 768u);
+    if (gp_dumped > 0u && h == gp_hash_last) return;
+    char path[1200];
+    snprintf(path, sizeof path, "%s/frame_%05u.ipx", gp_dir, gp_dumped);
+    FILE *f = fopen(path, "wb");
+    int ok = f != NULL && fwrite(fb, 1, 64000u, f) == 64000u && fwrite(&gfx_dac[0][0], 1, 768u, f) == 768u;
+    if (f != NULL && fclose(f) != 0) ok = 0;
+    if (!ok) { gp_failed = 1; return; }
+    if (gp_dumped == 0u) gp_first_f = DSW(DS_000EF6DC);
+    fprintf(gp_frames, "%05u f=%04X tick=%08X mode=%04X\n", gp_dumped,
+            (unsigned)DSW(DS_000EF6DC), (unsigned)DSD(DS_00101500), (unsigned)DSW(DS_00104B00));
+    gp_hash_last = h;
+    gp_dumped++;
+}
+
+/* The loader's `- LOADING -` screen is on the display between two pumps (the
+ * K11 driver's k11_loader). */
+static void gp_loader(void)
+{
+    if (gp_armed && !gp_done && !gp_failed) gp_dump_if_new();
+}
+
+/* One T line per master-loop iteration, the capture's S field names and
+ * widths (tools/gp_session.py SNAP_FIELDS, spec §4.1). */
+static void gp_trace_line(void)
+{
+    fprintf(gp_trace,
+            "T f=%04X mode=%04X st=%04X tick=%08X t508=%08X t50c=%08X raw=%08X pad=%08X new=%08X held=%08X "
+            "e0=%04X e2=%04X rng=%08X cred=%08X fp=%02X b1d=%02X b1f=%02X b25=%02X w10d=%02X cnt=%02X "
+            "s0_52=%02X s0_54=%02X s0_5a=%02X s1_52=%02X s1_54=%02X s1_5a=%02X ent=%08X\n",
+            (unsigned)DSW(DS_000EF6DC), (unsigned)DSW(DS_00104B00), (unsigned)DSW(DS_000F0A64),
+            (unsigned)DSD(DS_00101500), (unsigned)DSD(DS_00101508), (unsigned)DSD(DS_0010150C),
+            (unsigned)DSD(DS_000E1C30), (unsigned)DSD(DS_000E1C34), (unsigned)DSD(DS_001088E4),
+            (unsigned)DSD(DS_001088D8), (unsigned)DSW(DS_001088E0), (unsigned)DSW(DS_001088E2),
+            (unsigned)DSD(DS_000EF6D8), (unsigned)DSD(DS_00105C00), (unsigned)DSB(DS_00105D60),
+            (unsigned)DSB(DS_00104B1D), (unsigned)DSB(DS_00104B1F), (unsigned)DSB(DS_00104B25),
+            (unsigned)DSB(GP_DS_0010810D), (unsigned)DSB(DS_00108110),
+            (unsigned)DSB(DS_00107802), (unsigned)DSB(DS_00107804), (unsigned)DSB(DS_0010780A),
+            (unsigned)DSB(DS_00107896), (unsigned)DSB(DS_00107898), (unsigned)DSB(DS_0010789E),
+            (unsigned)DSD(DS_0010741C));
+    gp_trace_lines++;
+}
+
+static void gp_fault(u32 exc, u32 eip)
+{
+    fprintf(gp_log, "fault %02X at %08X\n", (unsigned)exc, (unsigned)eip);
+    gp_failed = 1;
+    longjmp(gp_end_jb, 1);
+}
+
+static void gp_hook(void *ctx)
+{
+    (void)ctx;
+    if (!gp_armed || gp_done || gp_failed) return;
+    if (++gp_idle_pumps > GP_STALL_PUMPS) {
+        printf("FAIL %s:%d: the gp replay stalled at f=%u\n", __FILE__, __LINE__, (unsigned)DSW(DS_000EF6DC));
+        exit(1);
+    }
+    gp_dump_if_new();
+}
+
+int test_gp_replay(void)
+{
+    const int before = g_failures;
+    const char *dump = getenv("PR_GP_DUMP");
+    const char *script = getenv("PR_GP_SCRIPT");
+    if (dump == NULL || dump[0] == '\0') return 0;
+    CHECK(script != NULL && script[0] != '\0' && gp_parse(script),
+          "PR_GP_SCRIPT names a parsable gp port script v2");
+    if (g_failures != before) return g_failures - before;
+    snprintf(gp_dir, sizeof gp_dir, "%s", dump);
+    mkdir(dump, 0777);
+    char p[1200];
+    snprintf(p, sizeof p, "%s/gp.log", dump);
+    gp_log = fopen(p, "w");
+    CHECK(gp_log != NULL, "the gp log opens");
+    if (gp_log == NULL) return g_failures - before;
+    snprintf(p, sizeof p, "%s/frames.txt", dump);
+    gp_frames = fopen(p, "w");
+    snprintf(p, sizeof p, "%s/trace.txt", dump);
+    gp_trace = fopen(p, "w");
+    CHECK(gp_frames != NULL && gp_trace != NULL, "the gp dump files open");
+    if (gp_frames == NULL || gp_trace == NULL) return g_failures - before;
+
+    const char *dir = getenv("PR_GAME_DIR");
+    if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
+    game_set_game_dir(dir);
+    game_init();
+    actors_pin_anim_tick_zero(1);
+    host_set_pump_hook(gp_hook, NULL);
+    res_set_screen_hook(gp_loader);
+    host_fault_hook_fn prev_fault = host_set_fault_hook(gp_fault);
+
+    /* Sentinels: none is a mode, frame or state the checks below accept. */
+    static u32 mode_before, mode_after, frame_after, state_after;
+    mode_before = 0xFFFFu; mode_after = 0xFFFFu; frame_after = 0xFFFFFu; state_after = 0xFFFFFu;
+    gp_first_f = 0xFFFFFu;
+    const u32 limit = gp_end + GP_LOOP_SLACK;
+    if (setjmp(gp_end_jb) == 0)
+    for (gp_iters = 0; gp_iters < limit && !gp_done && !gp_failed; gp_iters++) {
+        const u32 f = DSW(DS_000EF6DC);
+        const int enter_now = !gp_armed && f + 1u == gp_enter_frame;
+        if (enter_now) mode_before = DSW(DS_00104B00);
+        if (gp_armed || enter_now) gp_apply(f);
+        if (enter_now) gp_armed = 1;
+        gp_idle_pumps = 0u;
+        game_loop_step();                            /* exactly one game_loop iteration */
+        if (gp_armed && input_has_key())
+            fprintf(gp_log, "left-queued after f=%u\n", (unsigned)DSW(DS_000EF6DC));
+        if (gp_armed) {
+            gp_trace_line();
+            gp_dump_if_new();                        /* a present in an iteration that never pumped */
+        }
+        if (enter_now) {
+            mode_after = DSW(DS_00104B00);
+            frame_after = DSW(DS_000EF6DC);
+            state_after = DSW(DS_000F0A64);
+        }
+        if (gp_armed && DSW(DS_000EF6DC) >= gp_end) gp_done = 1;
+    }
+    /* The fault's longjmp leaves game_loop() past the restart point it armed
+     * on its stack: disarm it, as the K11 driver does. */
+    (void)game_restart_arm(NULL);
+    host_set_pump_hook(NULL, NULL);
+    res_set_screen_hook(NULL);
+    (void)host_set_fault_hook(prev_fault);
+    k11_key_bits(0u);
+    fclose(gp_log);
+    fclose(gp_frames);
+    fclose(gp_trace);
+    free(gp_step);
+
+    CHECK(gp_armed, "the loop reached the script's Enter frame");
+    CHECK_EQ_INT((int)mode_before, 3);               /* 0x24ECF: the Enter arm needs mode 3 */
+    CHECK_EQ_INT((int)mode_after, 0x27);             /* 0x24EE0 */
+    CHECK_EQ_INT((int)frame_after, (int)gp_enter_frame);
+    CHECK_EQ_INT((int)state_after, (int)gp_enter_state);
+    CHECK_EQ_INT((int)gp_keys_sent, (int)gp_nkeys);
+    CHECK_EQ_INT((int)gp_missed, 0);
+    CHECK(gp_done, "the gp script ran to its end frame");
+    CHECK(!gp_failed, "no CPU fault or frame-write failure ended the gp replay");
+    CHECK(gp_dumped > 1u, "the gp frames were written");
+    /* The Enter's iteration always ends with a displayed image and the first
+     * one is always new, so the dump starts at enter_frame (not at a later
+     * loader screen). */
+    CHECK_EQ_INT((int)gp_first_f, (int)gp_enter_frame);
+    /* One T line per f from enter_frame to end: each armed iteration raises
+     * the counter by exactly one (0x24CDB), so a skipped or repeated f fails. */
+    CHECK_EQ_INT((int)gp_trace_lines, (int)(gp_end - gp_enter_frame + 1u));
+    return g_failures - before;
+}
+
 /* ---- named-gaps B: the 0x65431 soft restart (record B) ------------------ */
 
 static jmp_buf rs_jb;

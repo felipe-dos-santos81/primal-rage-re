@@ -17,6 +17,7 @@ ATTRACT_DUMP = /tmp/pr_attract_dump
 FRONTEND_DUMP = /tmp/pr_frontend_dump
 K11_CAPTURES = data/k11-captures
 K11_DUMP = /tmp/pr_k11_dump
+GP_DUMP = /tmp/pr_gp_dump
 scenario ?= walk
 K11_ARGS ?=
 TITLE_PIN_DIR = /tmp/pr_title_pin
@@ -50,7 +51,7 @@ chunk ?= 0
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
-        attract2-oracle attract2-compare k11-capture k11-oracle k11-report
+        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -379,6 +380,33 @@ k11-report: build ## Report-only K11 comparison of the evidence captures (idle, 
 		fi; \
 	done
 
+# Gameplay capture (spec 2026-09-30-gameplay-ground-truth-design.md §4.1): the
+# pinned original under DOSBox-X with frame-keyed injection and a per-frame
+# snapshot log. Writes only data/k11-captures/gp-<scenario>/ (gp_capture.guard_gp).
+GP_ARGS ?=
+gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-pads; gp-idle-loss is planned for U4; writes data/k11-captures/)
+	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
+
+# Gameplay replay (spec 2026-09-30-gameplay-ground-truth-design.md §4.2): the
+# v2 port script from the capture's poll.log, then the PR_GP_DUMP driver alone
+# (game_init once per process). An absent capture skips, or fails under
+# PR_ORACLE_REQUIRED unless GP_OPTIONAL=1. make verify passes GP_OPTIONAL=1:
+# a gp capture skips there like the K11 oracles (spec §4.3, record §G.11), so
+# a checkout without data/k11-captures/gp-pads still passes verify.
+GP_OPTIONAL ?=
+gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump in $(GP_DUMP)/<scenario>)
+	@case "$(scenario)" in gp-?*) ;; *) \
+		echo "usage: make gp-replay scenario=gp-<name> (got scenario=$(scenario))"; exit 2;; esac
+	@if [ -d $(K11_CAPTURES)/$(scenario) ]; then \
+		rm -rf $(GP_DUMP)/$(scenario); mkdir -p $(GP_DUMP); \
+		$(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --out $(GP_DUMP)/$(scenario).script && \
+		PR_GP_DUMP=$(GP_DUMP)/$(scenario) PR_GP_SCRIPT=$(GP_DUMP)/$(scenario).script PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+	elif [ -z "$(GP_OPTIONAL)" ] && [ -n "$${PR_ORACLE_REQUIRED+x}" ]; then \
+		echo "gp-replay: no capture at $(K11_CAPTURES)/$(scenario) (PR_ORACLE_REQUIRED)"; exit 1; \
+	else \
+		echo "gp-replay: no capture at $(K11_CAPTURES)/$(scenario)"; \
+	fi
+
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
@@ -410,8 +438,10 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
 	@echo "== K11 service-menu oracles (the walk and the menuesc restart; each skips without its capture) =="
 	@$(MAKE) --no-print-directory k11-oracle
-	@echo "== k11 tool unit tests =="
-	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare
+	@echo "== gameplay replay driver (the gp-pads capture; skips without it; record §G.11) =="
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-pads GP_OPTIONAL=1
+	@echo "== k11 and gp tool unit tests =="
+	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
