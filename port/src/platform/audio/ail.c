@@ -363,6 +363,12 @@ s32 AIL_sample_status(HSAMPLE sample)
 {
     if (sample == NULL || !sample->used)
         return 0;
+    /* Record k7-k12 §0.7.6: the DIG service 0x6F120 marks a sample done at
+     * its buffer end (0x6F28F). PORT: the mixer owns the voice, so a
+     * playing handle with no live voice has ended. With no device the mixer
+     * is not rendered and a started sample stays 4 (named gap, §0.7.6). */
+    if (sample->state == 4 && !mixer_sample_active(sample))
+        sample->state = 2;
     return sample->state;
 }
 

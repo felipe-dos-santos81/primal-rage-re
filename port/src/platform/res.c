@@ -26,7 +26,8 @@ static u32 g_heap = RES_HEAP;
 /* PORT: the loader's read stalls the master loop. 0x1B3AC reads the entry's
  * payload (0x61C60) between the loader's text draw and the tick re-sync
  * (0x1B45F/0x1B464), and while it blocks the timer ISR 0x1BDF4 advances the tick
- * DS_00101508 alone, so the master loop's gate (0x25643) fails for the read's
+ * DS_00101508 (with its clock DS_00101500, game_isr_ticks) but not the frame
+ * counter DS_0010150C, so the master loop's gate (0x25643) fails for the read's
  * duration. The port's payloads are resident, so the duration is modelled from
  * the bytes read at the rate measured from the DOSBox-X live-RAM poll (record
  * §9.6, corrected by §45-A): the demo's state-6 entry blocks 55 ticks, and in
@@ -85,7 +86,7 @@ static void res_load_present(u32 draw, u32 index)
         if (s_screen_hook != NULL) s_screen_hook();
         /* PORT: the read's stall, advanced on the tick counter the gate reads. */
         u32 size = res_size(index);
-        DSD(DS_00101508) += (size + RES_READ_BYTES_PER_TICK - 1u) / RES_READ_BYTES_PER_TICK;
+        game_isr_ticks((size + RES_READ_BYTES_PER_TICK - 1u) / RES_READ_BYTES_PER_TICK);
         DSD(DS_0010150C) = DSD(DS_00101508);   /* 0x1B45F/0x1B464 */
     }
     DSD(DS_001014FC) = 1u;                                    /* 0x1B3F8 */
@@ -100,6 +101,10 @@ static u32 res_alloc(u32 size)
     g_heap = at + size;
     return at;
 }
+
+/* PORT: the port's 0x1C308 (the paged allocator, host-owned record-§50-D)
+ * exported for 0x1D0BC: a mem[] offset, or 0 when the block does not fit. */
+u32 res_block_alloc(u32 size) { return res_alloc(size); }
 
 u32 res_count(void) { return DSD(DS_001014F0); }
 

@@ -1070,6 +1070,78 @@ static void check_null_fns(void)
     memcpy(mem + DATA_BASE, saved, DATA_LEN);
 }
 
+/* Record §K7 (2026-09-29-k7-k12-derivations.md §0.7.1, Task 2 §2): 0x1D0BC.
+ * Every asserted post-value differs from its seed. */
+static void check_sound_buffers(void)
+{
+    u32 s[4], i;
+    const u32 s_c0 = DSD(DS_001028C0), s_c4 = DSD(DS_001028C4);
+    const u32 s_d0 = DSD(DS_001028D0), s_c8 = DSD(DS_001028C8);
+    const u8 s_b0 = DSB(DS_000A2CB0);
+    for (i = 0; i < 4u; i++) s[i] = DSD(DS_00102870 + i * 0x18u);
+
+    /* Already run (DS_000A2CB0 set, 0x1D0BF): AL = 0, nothing allocated. */
+    DSB(DS_000A2CB0) = 1u;
+    DSD(DS_001028C8) = 1u;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 0);
+    CHECK_EQ_INT((int)DSD(DS_00102870), 0);
+
+    /* First run, DIG set, no sequence: the MIDI arm is skipped (C0 = 0,
+     * 0x1D0D5) and slots 0..3 get 0x8C00, 0x6000, 0x6000, 0x6000 in order
+     * (0x1D14D/0x1D154, the bump allocator returns consecutive blocks). */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028C4) = 0;
+    DSD(DS_001028D0) = 0xD0D0D0D0u;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)DSB(DS_000A2CB0), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028C8), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028D0), (int)0xD0D0D0D0u);
+    CHECK(DSD(DS_00102870) != 0u, "0x1D163 gives slot 0 a buffer");
+    CHECK_EQ_INT((int)(DSD(DS_00102870 + 0x18u) - DSD(DS_00102870)), 0x8C00);
+    CHECK_EQ_INT((int)(DSD(DS_00102870 + 0x30u) - DSD(DS_00102870 + 0x18u)), 0x6000);
+    CHECK_EQ_INT((int)(DSD(DS_00102870 + 0x48u) - DSD(DS_00102870 + 0x30u)), 0x6000);
+
+    /* The MIDI arm (0x1D0CC..0x1D10C): a sequence handle and no buffer yet
+     * allocate 0x5100 bytes into DS_001028D0; no DIG, so the slots keep their
+     * sentinels (0x1D132). */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0x1234u;
+    DSD(DS_001028C4) = 0x5678u;
+    DSD(DS_001028D0) = 0;
+    DSD(DS_001028C8) = 0;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0x0BADu;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK(DSD(DS_001028D0) != 0u, "0x1D0F7 stores the MIDI buffer");
+    CHECK_EQ_INT((int)DSD(DS_001028C0), 0x1234);
+    CHECK_EQ_INT((int)DSD(DS_00102870), 0x0BAD);
+
+    /* Slot 0's buffer already set at entry: the loop is skipped (0x1D147),
+     * ecx stays 0 and 0x1D195 turns the DIG driver off, as the raw does. */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028C4) = 0;
+    DSD(DS_001028C8) = 1u;
+    DSD(DS_00102870) = 0x0BADu;
+    DSD(DS_00102870 + 0x18u) = 0;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028C8), 0);
+    CHECK_EQ_INT((int)DSD(DS_00102870 + 0x18u), 0);
+
+    /* The ISR's counter pair (PORT, 0x1BE0E..0x1BE16). */
+    DSD(DS_00101508) = 0x10u;
+    DSD(DS_00101500) = 0x2000u;
+    game_isr_ticks(3u);
+    CHECK_EQ_INT((int)DSD(DS_00101508), 0x13);
+    CHECK_EQ_INT((int)DSD(DS_00101500), 0x2003);
+
+    DSD(DS_001028C0) = s_c0; DSD(DS_001028C4) = s_c4;
+    DSD(DS_001028D0) = s_d0; DSD(DS_001028C8) = s_c8;
+    DSB(DS_000A2CB0) = s_b0;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = s[i];
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -1194,6 +1266,7 @@ int test_flow(void)
     DSD(DS_001028C8) = 0;
     game_audio_init();
     CHECK_EQ_INT((int)DSD(DS_001028C8), 1);
+    check_sound_buffers();
     /* The init chain must load the FM patch bank (FAT.OPL): the sequencer maps
      * every program change through it, and without it a key-on carries no
      * operator setup, so the OPL core renders silence for the whole run (the

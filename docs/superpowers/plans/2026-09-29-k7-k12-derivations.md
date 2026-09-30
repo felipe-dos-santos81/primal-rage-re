@@ -997,3 +997,141 @@ starts from `tf_demo_fixture` and links its entry in. Row 1 starts from
   text lacks them.
 - §0.5's 85 are now 75 outside, 1 silent (row 219, batch D4) and 9 wired by
   K11.
+
+---
+
+## §2 Task 2: `0x1D0BC`, the ISR clock pair, the AIL end status
+
+Implemented on branch `k7-k12` at `4cda564`. The raw was re-read from the
+fixup-applied image (`$K/dx.py 1D0BC 1D1B0`, `$K/dx.py 1BDF4 1BE30`); both
+bodies match §0.7.1/§0.7.2 and §1.1 instruction for instruction. No raw-wins
+correction.
+
+### §2.1 What was ported
+
+- **`0x1D0BC` = `sound_buffers_alloc()`** (`flow.c`, in the sound module after
+  `sound_music_volume`). The body follows the raw arm by arm:
+  - `0x1D0BF`/`0x1D1A9`: a set `DS_000A2CB0` returns AL = 0.
+  - `0x1D0CC..0x1D0E6`: the MIDI arm needs `DS_001028C4`, `DS_001028C0` and a
+    clear `DS_001028D0`. `0x1D0E8..0x1D0F2` calls `0x1C308(0x41, 0x5100)` and
+    `0x1D0F7` stores the result, 0 included. On success `0x61A70` zeroes the
+    `0x5100` bytes; on failure `0x1D113`/`0x1D11E`/`0x1D124` zero C4, C0 and CC
+    (with `ecx`, which is `[0x1028D0]` = 0 on this path) and `0x62734` prints.
+  - `0x1D132..0x1D17D`: with `DS_001028C8` set and slot 0's `+0x10`
+    (`DS_00102870`) clear at entry, slot `i` gets `0x8C00` (`i` = 0,
+    `0x1D14D`) or `0x6000` (`0x1D154`). `0x1D163` stores the result, 0
+    included; the loop stops at a failure (`0x1D16B`), at `i` = 4 (`0x1D174`)
+    or at a slot whose buffer is set (`0x1D176..0x1D17D`).
+  - `0x1D17F..0x1D195`: `ecx` = 0 (slot 0 got nothing, or its buffer was set
+    at entry) prints and zeroes `DS_001028C8`.
+  - `0x1D19B`/`0x1D19D`: `DS_000A2CB0` = 1, AL = 1.
+  - `PORT:` the two `0x62734` messages (the runtime's printf) are not printed.
+    The `0x41` tag in EAX is not passed: `res_alloc` takes the size only.
+- **`res_block_alloc(size)`** (`res.c`/`res.h`) exports the port's `0x1C308`
+  (the bump allocator `res_alloc`). `0x1C308` stays host-owned.
+- **`game_init`** calls `sound_buffers_alloc()` where the old `PORT:` comment
+  sat, after `game_audio_init()` (`0x1CF40`), as the raw's `0x1BEC4` does at
+  `0x1C0B1` (after `0x1BFDB`). In every run `DS_001028C8` is 1 there
+  (`AIL_install_DIG_INI` always returns the port's driver), so the four slots
+  get their `0x1AC00` bytes. Every later heap block (the movies'
+  `res_load_file`) moves up by `0x1AC00`. The localisation scratch at
+  `0x3800000` stays above it (the heap tops out near `0x2BC0000`).
+- **`game_isr_ticks(n)`** (`flow.c`/`flow.h`, `PORT:`) adds `n` to
+  `DS_00101508` and `DS_00101500` (`0x1BE0E..0x1BE16`). The master loop's spin
+  (`0x256C5`) and `res.c`'s read stall call it. `config.c`'s key-wait loop
+  already models both counters itself and is unchanged. The ISR's
+  `DS_00104B22` gate (`0x1BDF8`) stays unmodelled (todo-verify §1).
+- **`AIL_sample_status`** (`ail.c`) reports 2 for a state-4 handle with no
+  active mixer voice (`mixer_sample_active(owner)`, new in `mixer.c`/`.h`),
+  the port's form of the DIG service's end at `0x6F28F`. Named gap
+  (§0.7.6): with no device the mixer is not rendered, so a started sample stays
+  4 in `--check` and in the suite.
+- **Classification:** the row `1D0BC host-owned record-§50-D` is removed from
+  `tools/port_classification.txt` (user decision §0.9.1, approved).
+- **Comments beyond the brief** (wording only, no code): `flow.c`'s
+  sound-module header no longer says the port does not allocate the `0x1D0BC`
+  buffers, and names where §0.7 settles §K7.3's three decisions. `res.c`'s
+  stall comment now says the ISR advances `DS_00101508` with its clock
+  `DS_00101500` but not `DS_0010150C` (it said "`DS_00101508` alone").
+
+### §2.2 Tests
+
+`test_game.c` `check_sound_buffers()`, called in `test_flow` right after
+`game_audio_init()`'s `DS_001028C8` check. It saves and restores every global
+it seeds except the ISR pair. Each asserted post-value differs from its seed,
+or is a seeded value that the mutated code would overwrite.
+
+| vector | seeds | asserted |
+|---|---|---|
+| already run | `A2CB0` = 1, `C8` = 1, slots = 0 | AL = 0; slot 0 stays 0 |
+| first run, DIG, no sequence | `A2CB0` = 0, `C0` = `C4` = 0, `D0` = `0xD0D0D0D0` | AL = 1; `A2CB0` = 1; `C8` = 1; `D0` unchanged; slot 0 != 0; the slot spacings `0x8C00`, `0x6000`, `0x6000` |
+| MIDI arm | `A2CB0` = 0, `C0` = `0x1234`, `C4` = `0x5678`, `D0` = 0, `C8` = 0, slots = `0x0BAD` | AL = 1; `D0` != 0; `C0` = `0x1234`; slot 0 = `0x0BAD` |
+| slot 0 set at entry | `A2CB0` = 0, `C0` = `C4` = 0, `C8` = 1, slot 0 = `0x0BAD`, slot 1 = 0 | AL = 1; `C8` = 0 (`0x1D195`); slot 1 = 0 |
+| ISR pair | `1508` = `0x10`, `1500` = `0x2000`, `game_isr_ticks(3)` | `0x13`, `0x2003` |
+
+`test_platform.c`'s res stall seeds `DS_00101500` = `0x9ABC` and asserts it
+advances by the same `ceil(res_size(0) / 132674)` as `DS_00101508`.
+`test_audio.c`'s `test_ail` asserts status 2 after the mixer finishes a
+count-1 sample and status 4 while a count-0 sample loops.
+
+Assertion sites: 13254 → **13276** (+22: 19 in `check_sound_buffers`, 1 in
+`test_platform.c`, 2 in `test_audio.c`; `rg -o '\bCHECK(_EQ_INT)?\(' port/tests
+-g '!test.h' | wc -l`).
+
+Before the implementation the build fails: `sound_buffers_alloc` and
+`game_isr_ticks` are undeclared (5 errors).
+
+### §2.3 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
+
+| | mutation | FAIL lines | failing checks |
+|---|---|---|---|
+| a | slot 0's `0x8C00` → `0x6000` | 1 | `test_game.c:1102` (the `0x8C00` spacing, 24576 != 35840) |
+| b | drop `if (i == 0u) DSD(DS_001028C8) = 0;` | 1 | `test_game.c:1129` (slot 0 set at entry, 1 != 0) |
+| c | drop `DSD(DS_00101500) += n;` | 2 | `test_platform.c:272` (the `0x9ABC` stall pin, 39612 != 39614), `test_game.c:1137` (8192 != 8195) |
+| d | drop the `mixer_sample_active` test in `AIL_sample_status` | 1 | `test_audio.c:1502` (4 != 2) |
+| e | drop `DSB(DS_000A2CB0) = 1u` | 1 | `test_game.c:1098` |
+| f | skip the slot-0 entry gate (`0x1D147`) | 2 | `test_game.c:1129`, `:1130` |
+| g | `AIL_sample_status` reports 2 for every state-4 handle | 57 | `test_audio.c:1507` (count 0 still loops) plus 56 existing sound checks |
+| h | drop the `DS_001028D0` store (`0x1D0F7`) | 1 | `test_game.c:1116` |
+| i | drop the once-gate (`0x1D0BF`) | 3 | `test_game.c:1087`, `:1088`, `:1099` |
+
+Every mutation was applied alone, rebuilt, run under `PR_ORACLE_REQUIRED=1`
+and restored (`$K/t2mut.py`, outputs `$K/t2-mut-*.txt`).
+
+### §2.4 Not tested
+
+These arms have no assertion. Mutations j..m were measured and **survive** (0 FAIL lines):
+- (j) the `DS_001028C4` half of the MIDI gate (`0x1D0CC`). No vector has C4
+  clear with C0 set.
+- (k) the `DS_001028D0 == 0` half of the MIDI gate (`0x1D0E6`). No vector has
+  C4 and C0 set with D0 already set.
+- (l) the loop's stop at an already-allocated slot `i` >= 1
+  (`0x1D176..0x1D17D`). No vector presets slot 1..3 with slot 0 clear.
+- (m) the MIDI buffer's zeroing (`0x61A70`). The bump heap's fresh bytes are
+  already zero, and no vector seeds them.
+- The MIDI allocation-failure arm (`0x1D10E..0x1D12F`: C4/C0/CC zeroed) and the
+  slot allocation-failure break (`0x1D16B`), slot 0's failure included. The
+  bump allocator cannot be made to fail in-process without exhausting `mem[]`.
+- `game_init`'s call at `0x1C0B1`: `game_init` runs only in the env-gated
+  drivers and `--check`, and no assertion reads the slot buffers there. The
+  byte-identical dumps show that it moves no frame, not that it runs.
+- The spin's `game_isr_ticks(1u)` (`0x256C5`): no test reads `DS_00101500`
+  across a `game_loop` spin. Mutation c's failures come from the stall and the
+  direct call.
+- The ISR gate `DS_00104B22` is not modelled (todo-verify §1).
+
+### §2.5 Gate
+
+- `make verify`: `EXIT=0` (`$K/verify-t2.txt`, 567 lines). The brief's grep
+  of the oracle lines diffs empty against `$K/oracle-lines-base.txt`
+  (`ORACLES-EQUAL`). No ledger §A line moved.
+- Dumps: `dumps.sh before-t2` at `4cda564` matched `$K/base.sha256`, and so
+  did `dumps.sh after-t2` (`dumpsha.sh`, `DUMPS-IDENTICAL`). Both dumps are
+  deleted.
+- `make audio-render`: `before-t2.wav` and `after-t2.wav` are byte-identical
+  (`cmp`; sha256 `df74acfb…a380844`, 2386412 bytes).
+- `python3 tools/port_progress.py`: `766 1203 64` / `730 731 100` (portable:
+  excludes 81). The Task-1 values were `765 1203 64` / `729 730 100`
+  (excludes 82): ported +1, portable denominator +1. `README.md`'s title stays
+  at 64%, and its portable line now reads 730 of 731.
+- `grep -c '/\* 0x1D0BC' port/src/game/flow.c` = 1.

@@ -118,6 +118,14 @@ void mixer_stop_samples(void)
         g_voices[i].active = 0;
 }
 
+/* 1 when an active voice belongs to `owner` (an AIL sample handle). */
+int mixer_sample_active(const void *owner)
+{
+    for (int i = 0; i < MIXER_VOICES; i++)
+        if (g_voices[i].active && g_voices[i].owner == owner) return 1;
+    return 0;
+}
+
 int mixer_active_voices(void)
 {
     int n = 0;

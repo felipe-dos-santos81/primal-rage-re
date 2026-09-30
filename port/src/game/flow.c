@@ -5909,8 +5909,9 @@ void game_audio_init(void)
      * PORT: the handle is the port's host object (ail.c) and does not fit a
      * mem[] dword, so the port stores 1 as its non-zero stand-in. Every reader
      * tests it against zero; the one call that passes it on, 0x5DBCB below,
-     * the port makes with its own handle. 0x1D0BC, which zeroes it when no
-     * sample buffer can be allocated, is not ported (see game_init). */
+     * the port makes with its own handle. 0x1D0BC (sound_buffers_alloc, which
+     * game_init calls later, as the raw's 0x1C0B1 does) zeroes it when slot 0
+     * gets no buffer. */
     DSD(DS_001028C8) = (dig != NULL) ? 1u : 0u;
     if (dig != NULL) {
         for (int i = 0; i < 4; i++) {
@@ -6088,11 +6089,12 @@ int game_music_notes_seen(void) { return s_music_notes; }
  * s_music_request, not through DS_001028CC, so the dispatcher's music arms
  * (0x1CA14's store, 0x1CA40's status) stay inert, as without an MDI driver.
  * Named gap (spec §7): 0x1CC28's slot choice and 0x1CB18's start (the sample
- * copy into the slot's 0x1D0BC buffer, which the port does not allocate), so
- * no port path writes a slot's +0x04/+0x0C/+0x14. Record §K7 of
- * 2026-09-29-k4-k6-k7-derivations.md derives both from the raw; porting them
- * needs three decisions it names (§K7.3): the +0x10 buffers of the host-owned
- * 0x1D0BC, the 0x500BB clock DS_00101500, and the announcer stand-in below. */
+ * copy into the slot's 0x1D0BC buffer), so no port path writes a slot's
+ * +0x04/+0x0C/+0x14. Record §K7 of 2026-09-29-k4-k6-k7-derivations.md derives
+ * both from the raw; record k7-k12 §0.7 settles the decisions it names
+ * (§K7.3): the +0x10 buffers are 0x1D0BC's (sound_buffers_alloc), the 0x500BB
+ * clock DS_00101500 advances with the ISR tick (game_isr_ticks), and the
+ * announcer stand-in below is retired by the task that ports 0x1CB18. */
 
 #define SND_SLOT_STRIDE 0x18u
 #define SND_SLOT_END    0x60u
@@ -6215,6 +6217,44 @@ void sound_music_volume(u32 v)
     DSD(DS_000A2CB8) = v;                                  /* 0x1CACB */
     if (snd_music_playing() == 1u)                         /* 0x1CAD2..0x1CAF1 */
         AIL_set_sequence_volume(s_sequence, (s32)DSD(DS_000A2CB8), 500);   /* 0x1CAF6..0x1CB09 */
+}
+
+/* 0x1D0BC — record k7-k12 §0.7.1. Once (DS_000A2CB0, 0x1D0BF/0x1D19D): with
+ * a sequence and MDI handle and no MIDI buffer, 0x5100 bytes into
+ * DS_001028D0, zeroed (a failure drops C4/C0/CC); with a DIG driver and slot
+ * 0 unallocated, slot i's +0x10 = 0x8C00 (i = 0) or 0x6000 bytes until a
+ * failure or an allocated slot; slot 0 empty turns the DIG driver off. The
+ * allocator 0x1C308 is res_block_alloc. PORT: the two 0x62734 messages (the
+ * runtime's printf) are not printed. */
+u32 sound_buffers_alloc(void)
+{
+    if (DSB(DS_000A2CB0) != 0u) return 0;                  /* 0x1D0BF/0x1D1A9 */
+    if (DSD(DS_001028C4) != 0u && DSD(DS_001028C0) != 0u
+        && DSD(DS_001028D0) == 0u) {                       /* 0x1D0CC..0x1D0E6 */
+        u32 b = res_block_alloc(0x5100u);                  /* 0x1D0E8..0x1D0F2 0x1C308 */
+        DSD(DS_001028D0) = b;                              /* 0x1D0F7 */
+        if (b != 0u) {
+            memset(mem + b, 0, 0x5100u);                   /* 0x1D100..0x1D107 0x61A70 */
+        } else {
+            DSD(DS_001028C4) = 0;                          /* 0x1D113 */
+            DSD(DS_001028C0) = 0;                          /* 0x1D11E */
+            DSD(DS_001028CC) = 0;                          /* 0x1D124 */
+        }
+    }
+    if (DSD(DS_001028C8) != 0u) {                          /* 0x1D132 */
+        u32 i = 0;                                         /* 0x1D141 */
+        if (DSD(DS_00102870) == 0u) {                      /* 0x1D13B..0x1D147 */
+            do {
+                u32 b = res_block_alloc(i == 0u ? 0x8C00u : 0x6000u);   /* 0x1D149..0x1D15E */
+                DSD(DS_00102870 + i * SND_SLOT_STRIDE) = b;             /* 0x1D163 */
+                if (b == 0u) break;                        /* 0x1D16B */
+                i++;                                       /* 0x1D16D */
+            } while (i < 4u && DSD(DS_00102870 + i * SND_SLOT_STRIDE) == 0u);   /* 0x1D171..0x1D17D */
+        }
+        if (i == 0u) DSD(DS_001028C8) = 0;                 /* 0x1D17F..0x1D195 */
+    }
+    DSB(DS_000A2CB0) = 1u;                                 /* 0x1D19B/0x1D19D */
+    return 1;
 }
 
 /* 0x1CED4 — record §50-D. EAX = the SFX volume. Unchanged from DS_000A2CB4 it
@@ -6594,10 +6634,7 @@ void game_init(void)
     /* 0x20CCC: the init chain writes the overlay row to 0x1D. */
     config_set_credit_row_init();
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
-    /* PORT: 0x1D0BC allocates the MIDI sequence buffer and the four sample
-     * buffers. The port references the XMIDI bank's resource bytes directly
-     * (sequencer.c) and samples.c allocates each handle's conversion buffer on
-     * AIL_start_sample, so no init-time work buffers are needed. */
+    (void)sound_buffers_alloc();  /* 0x1C0B1 0x1D0BC (record k7-k12 §0.7.1) */
     /* 0x47370 loads the localisation table (0x20C10 calls it before 0x10E80);
      * the port reads ENGLISH.TXT directly rather than the DOS memory/file
      * managers. 0x121A0's caption comes from it. */
@@ -6648,6 +6685,18 @@ void game_loop_begin(void)
 {
     DSD(DS_00101508) = 0;
     DSD(DS_0010150C) = 0;
+}
+
+/* PORT: the timer ISR 0x1BDF4's counter pair, n ticks: DS_00101508 and
+ * DS_00101500 (0x1BE0E..0x1BE16); 0x500BB reads the latter as the time
+ * (record k7-k12 §0.7.2). The master loop's spin and the read stall (res.c)
+ * are where the port models the ISR's ticks; config.c's key-wait loop models
+ * them itself. The ISR's DS_00104B22 gate is not modelled (todo-verify
+ * record §1). */
+void game_isr_ticks(u32 n)
+{
+    DSD(DS_00101508) += n;                                 /* 0x1BE0E/0x1BE10 */
+    DSD(DS_00101500) += n;                                 /* 0x1BE0F/0x1BE16 */
 }
 
 void game_loop(void)
@@ -6731,7 +6780,7 @@ void game_loop(void)
          * behind (a resource-read stall), the spin does not run and the loop
          * catches up without waiting — matching the raw. */
         while (DSD(DS_0010150C) - 1u == DSD(DS_00101508)) {  /* 0x256C5 */
-            DSD(DS_00101508)++;
+            game_isr_ticks(1u);
             host_wait_vblank();
         }
 

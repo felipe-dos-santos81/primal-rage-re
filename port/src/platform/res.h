@@ -25,6 +25,9 @@ int res_load_index(const char *game_dir, const char *index_path);
  * error, does not fit mem[]) and leaves the outputs untouched. */
 int res_load_file(const char *game_dir, const char *name, u32 *out_off, u32 *out_size);
 
+/* The port's 0x1C308 (res.c's bump allocator): a mem[] offset, 0 if it does not fit. */
+u32 res_block_alloc(u32 size);
+
 u32 res_count(void);
 
 /* 12-byte, zero-padded, not necessarily NUL-terminated. */

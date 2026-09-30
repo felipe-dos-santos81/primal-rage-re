@@ -71,6 +71,10 @@ void mixer_stop_sample(const void *owner);
 /* Stops every active voice. */
 void mixer_stop_samples(void);
 
+/* 1 when an active voice belongs to `owner` (an AIL sample handle), else 0.
+ * A one-shot voice goes inactive at its buffer's end during mixer_render. */
+int mixer_sample_active(const void *owner);
+
 /* Number of currently active sample voices. PORT: the headless `--check` uses
  * this as the observable form of "a sample became a live voice"; no production
  * code reads it. */
