@@ -3377,3 +3377,65 @@ Corrections (counts, not raw facts):
   not by the voice row.
 - Row 133: counts other than 6, 7 and 8 before the increment.
 - Row 161: `0x81..0xFF` other than `0x80`, and `1..4`/`6..9`.
+
+### §12.1 Final sweep and gate (the tree at `b66b5e0`)
+
+- `rg -n 'not wired' port/src` prints nothing. `rg -n '0x2C3FC' port/src | rg
+  -i 'out of scope|not wired|stand-in'` prints nothing.
+- `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100 (portable:
+  excludes 81 host-owned/deferred and runtime >= 5D000)`. `--unported`
+  without the `runtime` rows lists nothing, so `1CB18` is absent.
+- Assertion sites: **13544** (§12.0.3 gives the sum).
+- The full gate from clean was run with the `/tmp/pr_int_*` overrides. The
+  git-ignored fixtures `ghidra_data.bin` and `title_screen_ref.ppm`, which
+  `make clean` deletes, were copied back byte-identical
+  (sha256 `374c3041…`, `de846fb6…`) before `make build`. Results:
+  - `make build`: 0 warnings.
+  - `make verify`: **`EXIT=0`** (`$K/int-verify-final.txt`, 571 lines,
+    symbols.h byte-identical).
+  - The oracle grep gives 45 lines and diffs empty against
+    `$K/oracle-lines-base.txt`: **`ORACLES-EQUAL`**.
+  - `dumps.sh int-final` then `dumpsha.sh int-final` match `$K/base.sha256`,
+    Task 1's base manifest: **`DUMPS-IDENTICAL`**. Counts: `check/frames`
+    24000, `fe/run1` and `fe/run2` 1384 each; the fe, attract and title
+    drivers print `all checks passed`, and `--check 8000` exits 0.
+    `dumpcmp.sh base int-final` could not run, because the base frames were
+    deleted after Task 1 and only the manifest remains. The dump is deleted.
+  - `make audio-render`: the WAV is byte-identical to `before-t2.wav`
+    (sha256 `df74acfb…a380844`): **`WAV-IDENTICAL`**.
+
+### §12.2 Closure
+
+- **K7 (ledger §F row 10): closed.** Ported: `0x1D0BC` (§2,
+  `sound_buffers_alloc`), `0x1CC28`'s slot choice (§3, in
+  `snd_sample_queue`), `0x1CB18` (§3, `sound_sample_start`) and `0x1CF20`.
+  The ISR clock pair is `game_isr_ticks`. `AIL_sample_status` ends a
+  one-shot once the mixer holds no voice for it (§0.7.6). With no device
+  that stays a named gap.
+- **K12 (ledger §F row 19): closed.** Every §0.4 wiring point is made. By
+  batch: T3 4 (rows 11/12/170/171, §3), A 22, B1 21, B2 30, C 22, D1 31,
+  D2 28, D3 27 and D4 33, which is 218 points over 213 raw calls. Row 219
+  (`0x44AFF`) is reached through row 100's shared call (§12.0.1). The voice
+  tables hold 215 distinct rows. The four T3 rows are pinned by Task 3's
+  own checks, not by a table.
+- **§0.5's 85 raw calls.** 1 is row 219. 9 were wired by K11 (§1.2). 75 are
+  in code the port does not have. §1.2 lists each with its containing
+  entry, and each is wired when that code is ported.
+- **Raw voice calls the port now makes: 228 of 303.** That is the 5 wired
+  before K12, 213, 9 and 1. The other 75 are §1.2's outside sites.
+- **The three §0.9 decisions, as executed:**
+  1. `0x1D0BC` is reclassified from host-owned to ported. Its
+     `record-§50-D` row left `tools/port_classification.txt` (Task 2).
+  2. The title announcer stand-in is retired (Task 3). The title stops the
+     attract's `0x40`/`0x42` loops (`0x121C9`/`0x121D3`), as the raw does.
+  3. `fight.c:4007`'s three "out of scope" calls are wired (batch D1,
+     §8).
+- **Oracles.** Every oracle line equals §1.0's baseline, the four dumps
+  match Task 1's manifest and the FM WAV is unchanged, at every task and
+  at the merged tree.
+- **Counter.** It moved from `765 1203 64` (§1.0) to `767 1203 64`
+  (`0x1D0BC`, `0x1CB18`). Portable: 729 of 730 → 731 of 731. The README's
+  64% and 1203 already match `port_progress.py`'s first line, so
+  `README.md` is unchanged.
+- The ledger's §B.1 `0x1CB18`, §E rows 5/6, §F rows 10/19 and the K12
+  bullet under §E are closed.
