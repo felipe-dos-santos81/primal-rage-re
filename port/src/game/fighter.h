@@ -670,6 +670,22 @@ void fighter_48d94(u32 slot, u32 rec, u32 side);
 int fighter_48be0(u32 slot, u32 rec);
 int fighter_48f54(u32 slot, u32 rec);
 
+/* 0x37640, 0x37774 and 0x37898 (record gameplay-u0 §U0.4). The reaction
+ * 0x32/0x33/0x34 callbacks of every character (0x3531C/0x34E2C: EAX = slot,
+ * EDX = rec, EBX = side): with the other slot finishable (+0x42 bit 5, +0x43
+ * bit 3) they arm the finisher: the 0x1078E4 stream, DS_001078E8 (0 /
+ * 0xBDAE4[char] / 0xBDB00[char]), 0x37D18 or the +0x40 flags, the score
+ * 0x41310(side, 50000). */
+void fighter_37640(u32 slot, u32 rec, u32 side);
+void fighter_37774(u32 slot, u32 rec, u32 side);
+void fighter_37898(u32 slot, u32 rec, u32 side);
+
+/* 0x45C10 (record gameplay-u0 §U0.5). Character 4's 0xBDAE4 finisher entry,
+ * called by 0x379C4 through DS_001078E8 with EAX = slot, EDX = rec: the
+ * record's stream 0xEB7A0 at 3.0 and the slot 7/9/0 with the +0x0C callback
+ * 0x45B50; non-zero return. */
+int fighter_45c10(u32 slot, u32 rec);
+
 /* 0x22CE4. The second way into the 0x22BEC freeze (0x22E44's call): 0x33ACC,
  * 0x39834 with the other slot's +0x5F, the other slot's +0x57 = 2, the side's
  * slot in 0x10/0x0A with +0x10 0x22BEC and +0x5F = 0xFF, 0x22B28, then

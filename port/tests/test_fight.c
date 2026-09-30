@@ -42664,3 +42664,189 @@ int test_fight_voice_sites(void)
     check_4e99c_odd_count();
     return g_failures - before;
 }
+
+/* ---- gameplay-u0: table-reached functions (record gameplay-u0) ----------- */
+
+/* §U0.4: the finisher starters 0x37640/0x37774/0x37898. The seed (z_fseed:
+ * slot 0 on record 0 (+0x51 0), slot 1 char 2 on record 1, DS_001077A8
+ * wired) with the other slot finishable (+0x42 bit 5, +0x43 bit 3), mode
+ * DS_00104B00 = 4 (0x41310 skips mode 3), slot 0's score +0x3C = 1000, the
+ * other char's 0xC9238 stream on a one-word stream (0x37D18's start), and
+ * sentinels on every store: the 0x1078E4 stream, DS_001078E8, DS_001078F6,
+ * DS_001078DC, DS_00104AF8, DS_000F0AFE, DS_00104B02[2], rec+0x59, the
+ * slot's +0x40/+0x41/+0x42/+0x53 and the other slot's +0x52/+0x53/+0x54. */
+#define U0_E4 0x001078E4u   /* no symbols.h name: the 0x379C4 alt stream */
+struct u0_fin {
+    u32 addr;
+    void (*fn)(u32 slot, u32 rec, u32 side);
+    u32 streams, entries, t59, dc;
+    u8 flag_chars;          /* bit c: character c takes the +0x40 flags arm */
+};
+static const struct u0_fin u0_fins[3] = {
+    { 0x37640u, fighter_37640, 0x000C9288u, 0u,          0x000BDA24u, 0x000BD8FEu, 0x0Au },
+    { 0x37774u, fighter_37774, 0x000C92B0u, 0x000BDAE4u, 0x000BDA2Bu, 0x000BD960u, 0x3Fu },
+    { 0x37898u, fighter_37898, 0x000C92D8u, 0x000BDB00u, 0x000BDA32u, 0x000BD9C2u, 0x28u },
+};
+
+static void u0_fin_seed(u32 ch)
+{
+    z_fseed();
+    DSW(DS_00104B00) = 4u;
+    DSB(DS_00105B3A) = 0;
+    DSB(Z_S0 + 0x7Au) = (u8)ch;
+    DSD(Z_S0 + 0x3Cu) = 1000u;
+    DSD(Z_S0 + 0x40u) = 0x00010005u;
+    DSB(Z_S0 + 0x42u) = 0x01u;
+    DSB(Z_S1 + 0x42u) = 0x20u;
+    DSB(Z_S1 + 0x43u) = 0x08u;
+    DSB(Z_S1 + 0x54u) = 0x55u;
+    DSD(0x000C9238u + 2u * 4u) = Z_STF + 0x20u;
+    DSW(Z_STF + 0x20u) = 0x1236u;
+    DSD(U0_E4) = 0xE4E4E4E4u;
+    DSD(DS_001078E8) = 0xE8E8E8E8u;
+    DSW(DS_001078F6) = 0x7777u;
+    DSD(DS_001078DC) = 0xDCDCDCDCu;
+    DSW(DS_00104AF8) = 0x1111u;
+    DSB(DS_00104B02 + 2u) = 0x01u;
+    DSB(0x00104529u) = 0;
+    DSB(Z_R0 + 0x59u) = 0x33u;
+    sound_voice_log_reset();
+}
+
+static void check_u0_finishers(void)
+{
+    u32 k, ch;
+    if (!mz_save()) { CHECK(0, "the gameplay-u0 snapshot allocates"); return; }
+    for (k = 0; k < 3u; k++) {
+        const struct u0_fin *f = &u0_fins[k];
+        CHECK(fn_resolve(f->addr) == (void (*)(void))f->fn,
+              "the finisher starter is registered");
+        /* the image: every character's (char, 0x32 + k) table entry */
+        for (ch = 0; ch < 7u; ch++)
+            CHECK_EQ_INT((int)DSD(0x000A3528u + (ch * 64u + 0x32u + k) * 20u),
+                         (int)f->addr);
+
+        /* The four gates: nothing is stored and no voice plays. */
+        for (ch = 0; ch < 4u; ch++) {
+            u0_fin_seed(3u);
+            if (ch == 0u) DSB(DS_00105B3A) = 1u;
+            if (ch == 1u) DSD(DS_001077A8 + 4u) = 0u;
+            if (ch == 2u) DSB(Z_S1 + 0x42u) = 0xDFu;
+            if (ch == 3u) DSB(Z_S1 + 0x43u) = 0xF7u;
+            f->fn(Z_S0, Z_R0, 0u);
+            CHECK_EQ_INT((int)DSD(U0_E4), (int)0xE4E4E4E4u);
+            CHECK_EQ_INT((int)DSD(DS_001078E8), (int)0xE8E8E8E8u);
+            CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 0x55);
+            CHECK_EQ_INT((int)DSD(Z_S0 + 0x3Cu), 1000);
+            CHECK_EQ_INT((int)sound_voice_log_count(), 0);
+        }
+
+        /* Armed, each character: the tables by the slot's char, the arm by
+         * the flag set (0x37D18 adds its own voice), the common tail. */
+        for (ch = 0; ch < 7u; ch++) {
+            int flags = (int)((f->flag_chars >> ch) & 1u);
+            u0_fin_seed(ch);
+            f->fn(Z_S0, Z_R0, 0u);
+            CHECK_EQ_INT((int)sound_voice_log_count(), flags ? 2 : 3);
+            CHECK_EQ_INT((int)sound_voice_log_at(0), 0xE4);
+            CHECK_EQ_INT((int)sound_voice_log_at(1), 0xE0);
+            CHECK_EQ_INT((int)DSD(U0_E4), (int)DSD(f->streams + ch * 4u));
+            CHECK_EQ_INT((int)DSD(DS_001078E8),
+                         (int)(f->entries ? DSD(f->entries + ch * 4u) : 0u));
+            CHECK_EQ_INT((int)DSW(DS_001078F6), 0);
+            CHECK_EQ_INT((int)(DSB(Z_S0 + 0x42u) & 0x80u), 0x80);
+            /* +0x40..0x43 from 0x00010005: +0x42 bit 7 and +0x41 bit 4 on
+             * both arms; the flags arm ORs 0x400200 (+0x41 bit 1, +0x42 bit
+             * 6); the 0x37D18 arm sets +0x41 bit 1 and 0x37D18 ORs 0x801000
+             * into this (its other) slot. */
+            if (flags) {
+                CHECK_EQ_INT((int)DSB(DS_000F0AFE), 2);
+                CHECK_EQ_INT((int)DSD(Z_S0 + 0x40u), 0x00C11205);
+                CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 0x55);
+            } else {
+                CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0x55);
+                CHECK_EQ_INT((int)DSD(Z_S0 + 0x40u), 0x00811205);
+                CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 9);
+                CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 3);
+                CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 3);
+                CHECK_EQ_INT((int)DSD(Z_R1 + 8u), (int)(Z_STF + 0x20u));
+            }
+            CHECK_EQ_INT((int)DSB(DS_00104B02 + 2u), 0x81);
+            CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 3);
+            CHECK_EQ_INT((int)DSD(DS_001078DC), (int)f->dc);
+            CHECK_EQ_INT((int)DSB(Z_R0 + 0x59u), (int)DSB(f->t59 + ch));
+            CHECK_EQ_INT((int)DSW(DS_00104AF8), 0x384);
+            CHECK_EQ_INT((int)DSD(Z_S0 + 0x3Cu), 51000);
+        }
+
+        /* Side 1: slot 1 (char 1) on record 1 (+0x51 1) against slot 0
+         * (char 4): bit 6 of DS_00104B02[4], slot 1's score; the sprite flag
+         * kills the DS_001078EC record. */
+        u0_fin_seed(4u);
+        {
+            u32 dead = m5_rec();
+            CHECK(dead != 0u, "a pool record for DS_001078EC");
+            if (dead == 0u) break;
+            DSW(dead + 0x28u) = 0;
+            DSD(DS_001078EC) = dead;
+            DSB(0x00104529u) = 2u;
+            DSB(Z_S1 + 0x7Au) = 1u;
+            DSD(Z_S1 + 0x3Cu) = 2000u;
+            DSB(Z_S0 + 0x42u) = 0x20u;
+            DSB(Z_S0 + 0x43u) = 0x08u;
+            DSB(DS_00104B02 + 4u) = 0x01u;
+            DSD(0x000C9238u + 4u * 4u) = Z_STF + 0x20u;
+            f->fn(Z_S1, Z_R1, 1u);
+            CHECK_EQ_INT((int)(DSW(dead + 0x28u) & 8u), 8);
+            CHECK_EQ_INT((int)DSB(DS_00104B02 + 4u), 0x41);
+            CHECK_EQ_INT((int)DSD(Z_S1 + 0x3Cu), 52000);
+            CHECK_EQ_INT((int)DSD(Z_S0 + 0x3Cu), 1000);
+        }
+    }
+    mz_restore();
+}
+
+/* §U0.5: 0x45C10, character 4's 0xBDAE4 entry, as 0x379C4 calls it (slot,
+ * rec; non-zero return): the record on 0xEB7A0 (first word patched to a
+ * plain frame id) at 3.0, 7/9/0, +0x0C = 0x45B50, +0x57/+0x18/+0x1C/+0x14 =
+ * 0; +0x42 untouched. */
+static void check_u0_45c10(void)
+{
+    typedef int (*entry_fn)(u32 slot, u32 rec);
+    entry_fn e;
+    if (!mz_save()) { CHECK(0, "the gameplay-u0 snapshot allocates"); return; }
+    CHECK(fn_resolve(0x45C10u) == (void (*)(void))fighter_45c10,
+          "0x45C10 is registered as fighter_45c10");
+    CHECK_EQ_INT((int)DSD(0x000BDAE4u + 4u * 4u), 0x00045C10);
+    e = (entry_fn)(void *)fn_resolve(0x45C10u);
+    z_fseed();
+    DSW(0x000EB7A0u) = 0x12B1u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    DSB(Z_S0 + 0x57u) = 0x33u;
+    DSB(Z_S0 + 0x42u) = 0x21u;
+    DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSD(Z_S0 + 0x14u) = 0x14141414u;
+    DSD(Z_S0 + 0x18u) = 0x18181818u;
+    DSD(Z_S0 + 0x1Cu) = 0x1C1C1C1Cu;
+    CHECK(e != NULL && e(Z_S0, Z_R0) != 0, "0x45C10 returns non-zero");
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000EB7A0);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x00045B50);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x14u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x42u), 0x21);
+    mz_restore();
+}
+
+int test_table_reached(void)
+{
+    int before = g_failures;
+    check_u0_finishers();
+    check_u0_45c10();
+    return g_failures - before;
+}

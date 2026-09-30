@@ -375,6 +375,15 @@ int actors_init(void)
     fn_register(0x48D94u, (void (*)(void))fighter_48d94);
     fn_register(0x48BE0u, (void (*)(void))fighter_48be0);
     fn_register(0x48F54u, (void (*)(void))fighter_48f54);
+    /* PORT: record gameplay-u0 §U0.4/§U0.5. The reaction 0x32/0x33/0x34
+     * callbacks of every character (the dwords at 0xA3910/0xA3924/0xA3938
+     * + 0x500 * char; 0x3531C case 7 and 0x34E2C, (slot, rec, side)), and
+     * character 4's 0xBDAE4 finisher entry 0x45C10 (the dword at 0xBDAF4;
+     * 0x379C4 calls DS_001078E8 as (slot, rec) and tests the return). */
+    fn_register(0x37640u, (void (*)(void))fighter_37640);
+    fn_register(0x37774u, (void (*)(void))fighter_37774);
+    fn_register(0x37898u, (void (*)(void))fighter_37898);
+    fn_register(0x45C10u, (void (*)(void))fighter_45c10);
 
     /* PORT: record §42-A. The update table's entries 7 (0x2910C, the
      * type-0x0A/0x19 node walk; dword at 0xA8660) and 5 (0x22FE8, the 0x104728

@@ -69,6 +69,7 @@ extern int g_failures;
     X(test_key_loop)     \
     X(test_voice_sites) \
     X(test_fight_voice_sites) \
+    X(test_table_reached) \
     X(test_virtual_clock) \
     X(test_restart)
 
