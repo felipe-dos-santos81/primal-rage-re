@@ -32628,10 +32628,12 @@ static void check_flow_round_over_check(void)
     CHECK_EQ_INT((int)DSB(DS_00104B09), 0);
     CHECK_EQ_INT((int)DSB(DS_00104B13), 1);
 
-    /* side 1 at the threshold: mode 0x32, side 1. */
+    /* side 1 at the threshold: mode 0x32, side 1. The byte is slot 1's
+     * +0x5A, DS_0010789E (0x299AD `mov al,[0x10789e]`, record k7-k12 §5);
+     * slot 1's +0x7A (DS_001078BE) keeps q_mode_seed's 5. */
     k48_seed();
     DSD(DS_00104B00) = 0xBEEF0031u;
-    DSB(DS_001078BE) = 0x78u;
+    DSB(DS_0010789E) = 0x78u;
     flow_round_over_check();
     CHECK_EQ_INT((int)DSW(DS_00104B00), 0x32);
     CHECK_EQ_INT((int)DSB(DS_00104B09), 1);
@@ -32720,7 +32722,9 @@ static void check_mode_31(void)
     /* (d) the round-over integration: below threshold leaves mode 0x31; at
      * the threshold, mode 0x32 with the side. Side 1's own threshold case
      * is deliberately not exercised here: c_seed's fixture's single active-
-     * list entry, combined with DS_001078BE at the raw KO byte 0x78, drives
+     * list entry, combined with DS_001078BE at 0x78 (slot 1's +0x7A, the
+     * character byte, which the port then read in place of the +0x5A score
+     * byte DS_0010789E; corrected by record k7-k12 §5), drives
      * fight_slot_pass's own hit_slot_step/hit_connect into an unrelated,
      * pre-existing combat-descriptor read this task's fixture does not
      * populate (a gap in fight_slot_pass's own test coverage, confirmed by

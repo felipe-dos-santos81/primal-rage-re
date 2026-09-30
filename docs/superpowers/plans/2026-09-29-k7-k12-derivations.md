@@ -1711,6 +1711,215 @@ list both ids).
 
 ---
 
+## §5 Task 5: K12 batch B1, the match-flow music requests and stops
+
+Implemented on branch `k12-t5` (a worktree off `k7-k12` at `9f15a6d`). Every
+batch-B1 call was re-read from the fixup-applied image (`$K/img.bin` with
+capstone), `mov` and `call` both; each C call carries `/* 0xMOV/0xCALL 0x2C3FC
+*/`, or the `0xFIRST..0xCALL` span for the two computed ids. All 21 ids are
+case 1 or case 5 (music requests and stops): no resource read, no rng, no
+frame write.
+
+### §5.1 Corrections (raw wins)
+
+1. **`0x29970`'s second test reads slot 1's `+0x5A`, not `+0x7A`.** `0x299AD
+   a0 9e 78 08 00` is `mov al,[0x10789e]` after the fixup (file displacement
+   `0x8789E` + `0x80000`), the twin of `0x29974`'s `[0x10780a]`. The port read
+   `DS_001078BE` (slot 1's `+0x7A`, the character byte), and §1.3 rows 158/159
+   copied that seed. A character byte is 0..6, so the port's side-1 arm never
+   fired in play. Fixed in its own commit (`37ed017`, `flow.c` and
+   `check_flow_round_over_check`'s seed, which now writes `DS_0010789E`;
+   `DS_001078BE` keeps `q_mode_seed`'s 5). Measured: restoring the old read
+   fails `test_fight.c:32638..32640` (3 FAIL lines: `49 != 50`, `0 != 1`,
+   `119 != 1`). `check_mode_31`'s comment blamed a crash on "DS_001078BE at
+   the raw KO byte 0x78"; it now says that byte is the character byte (the
+   side-1 integration there is still not exercised).
+2. **Row 143's gate was not modelled.** The old comment said the gate "reads
+   only", and the branch drew the two strings unconditionally, which is right
+   for the text, but the voice needs the gate. It is now `(s8)DSB(DS_001088F2)
+   < 1 || DSB(DS_00107813 + r * 0x94) != 0` (`0x28164..0x28178` for side 0,
+   `0x281DA..0x281EE` for side 1: `mov eax,[0x1088ef]; sar eax,0x18; cmp
+   eax,1; jl`, then `cmp byte [0x107813]/[0x1078a7],0; je`).
+
+### §5.2 The rows
+
+21 entries, `K12_B1_ROWS` = 21 (`k12_b1[]`, `test_game.c`).
+
+| row | call (mov/call) | C site | driver | seed | ids |
+|---:|---|---|---|---|---|
+| 130 | `415D2/415DC` | `frontend_darken_marked` | `vs_darken_marked` | `vs_pools`, the list `107608` zeroed, `104ABC` = 0 | `33` |
+| 134 | `4210D/42112` | `game_mode_12_step` case 5 | `vs_mode12_5` | strings, `104B25` = 5, `104AD4` = 0, `10810E` = 8, `104B1F` = 0, `1077A8[0/1]` = the slots with `+0x63` = 1 (`0x418F4` skips both), `108104[0]` = 7, `104529` = 0 | `33` |
+| 136 | `28D81/28D8B` | `frontend_char_screen_hook_voice` | `vs_char_hook_voice` | `vs_pools` | `2E` |
+| 137 | `26A22/26A2C` | `game_hook_26998` | `vs_hook_26998` | `check_mode_1a_hooks`' seeds (stage 2, `104B14` = 1), `1078A7` = 0 | `28` |
+| 138 | `270F2/270F9` | `game_hook_270bc` | `vs_hook_270bc` | the same, `10810D` = 1 | `25` |
+| 142 | `282B6/282BB` | `flow_match_result_text`, -1 arm | `vs_result_m1` | strings, `104AD4` = -1, `104B16` = 3 (no text, `0x28266`) | `24` |
+| 143 | `2817A/2817F` (side 1: `281F0/281F5`) | same, 0/1 arm | `vs_result_0` | `104AD4` = 0, `1088F2` = 0 | `24` |
+| 144 | `282B6/282BB` | same, 2 arm | `vs_result_2` | `104AD4` = 2, `1088F2` = `0x40` | `24` |
+| 146 | `27342/27347` | `flow_arena_ko_check` | `vs_arena_ko_b` | the brief's: `10810D` = 0, `10780A` = `0x10`, `104B12` = 1, slot 1 `+0x5A` = `0x78` | `27`, `22` |
+| 147 | `2734C/27351` | same | same | same | `27`, `22` |
+| 148 | `27AF7/27B01` | `game_mode_0e_step` | `vs_mode0e` | no credit (`105D60` = `105C00` = 0), `105C04` = 0, `104B1F` = 0, `EF6DC` = `0x40`, `108110` = 0, the list zeroed | `27`, `22` |
+| 149 | `27B06/27B0D` | same | same | same | `27`, `22` |
+| 150 | `27599/2759E` | `game_mode_0d_step`, 7th round | `vs_mode0d_final` | `vs_match_end_seed` (below), `104B21` = 6, `10810D` = 0 | `2A`, `24` |
+| 151 | `277A0..277B0` | same, replace arm | `vs_mode0d_replace` | `vs_match_end_seed`, `vs_replace_seed(1)`, `104B21` = 0, `104B12` = 1, `104B0A` = 1 | `25` |
+| 152 | `297BF/297C4` | `game_mode_32_step`, final arm | `vs_mode32_final` | `vs_match_end_seed`, `104B09` = 0, `104AF0` = 3, `104AF1` = 1 | `2A`, `24` |
+| 153 | `29950..29960` | same, replace arm | `vs_mode32_replace` | `vs_match_end_seed`, `vs_replace_seed(1)`, `104B09` = 1, counts 0, `108134[5]` = 3, `104B0A` = 0 | `26` |
+| 156 | `2997E/29983` | `flow_round_over_check` | `vs_round_over_0` | `vs_pools`, `10780A` = `0x78`, `10789E` = 0, `104B1D` = 3, win counts 0, markers `0x5555` | `27`, `22` |
+| 157 | `29988/29992` | same | same | same | `27`, `22` |
+| 158 | `299B7/299C1` | same | `vs_round_over_1` | the same with the scores swapped | `27`, `22` |
+| 159 | `299C6/299CD` | same | same | same | `27`, `22` |
+| 160 | `2968C/29698` | `game_mode_33_step` | `vs_mode33` | `tf_demo_fixture`, `vs_pools`, `104AFE` = 1 | `2B` |
+
+`vs_match_end_seed`: `tf_demo_fixture` (its inert prelude), `vs_pools`,
+strings, `104B0C` = 1, both slots' `+4` records allocated, the `0x4DBEC` free
+list `1083C4` empty, `104AD4` = -1 with `104B16` = 3 (`0x28130` posts `0x24`
+and draws nothing), `104529` = 0, `105BF8` = 0 (`0x2C2B0` releases no cell),
+slot 0's `+0x3C` = 1211 (no `0x41310`). `vs_replace_seed(s)`: only character 3
+free in `104B02` (`0x2716C` loops until `rng(7)` gives it), `0xA8628[3]` = 0
+(`fn_resolve` NULL, so no entrance runs; restored with the data object),
+`10452C` = 3, `1082D0` = 0, `1028F0[s]`/`1028F8[s]` allocated and `1028E0[s]`
+= 0.
+
+- **The `25/26` id** (rows 151/153) is `0x25 + (n != 0)` from the raw's
+  `setne`: `0x277A0 setne al` reads the flags of `0x27799 xor al,1` (the store
+  at `0x2779B` keeps them), and `0x29950` those of `0x29947 xor cl,1`. Row 151
+  runs `n` = 0 (`0x25`), row 153 `n` = 1 (`0x26`).
+- **Rows 150/152 list `0x28130`'s `0x24`** (rows 142-144, wired in this
+  batch) after `0x2A`, in raw order.
+- **Same-id aliasing (§4.2's limit).** No B1 driver's path posts one id twice:
+  rows 156/157 and 158/159 seed one side at `0x78` only, and rows 150/152
+  reach one `0x24`. Rows 142 and 144 are the two C calls of `0x282BB`
+  (exclusive arms). Measured: deleting either fails only its own row.
+- Registers the raw passes that `0x2C3FC` never reads are kept as comments
+  where the old comment named them (`EDX` = `0x78`, `0x1E`, `0x32`, `0xC`,
+  `0x31`, `ECX` = `0x17`, `DL`).
+
+**`not wired` lines** (`rg -c 'not wired' port/src`): `flow.c` 36 → 21 (the
+15 B1 comments; rows 156-159 were split-phrase, rows 146/147 and 148/149 one
+comment each). The other files are unchanged; the total is 169 → 154.
+
+### §5.3 Tests
+
+`test_voice_sites` gains the size check and the 21-row table, and
+`vs_result_gate_check` for row 143's gate: six cases, each counting `0x24` in
+the log after `flow_match_result_text` (data object put back after each).
+
+| r | `1088F2` | own `+0x63` | other `+0x63` | `0x24` |
+|---:|---:|---:|---:|---:|
+| 0 | `0x40` | 0 | 1 | 0 |
+| 0 | `0xFF` (-1) | 0 | 0 | 1 |
+| 0 | `0x40` | 1 | 0 | 1 |
+| 1 | `0x01` | 0 | 1 | 0 |
+| 1 | `0x00` | 0 | 0 | 1 |
+| 1 | `0x40` | 1 | 0 | 1 |
+
+Before the wiring the suite printed 21 `voice site row` lines (`0 of 1` or
+`0 of 2`) and `FAILURES: 21` (the gate check was added after). After it:
+`all checks passed`, with no `voice site row` line.
+
+Assertion sites (`CHECK(`/`CHECK_EQ_INT(` outside `#define`): 13372 →
+**13374** (the size check and the gate check's one `CHECK_EQ_INT`). The
+§5.1 fix changes a seed, not an assertion.
+
+### §5.4 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
+
+`$K/t5mut.py` (outputs `$K/t5-mut-<tag>.txt`, summary `$K/t5mut-summary.txt`)
+replaces one call with `(void)0;` (or applies the named edit), rebuilds, runs
+under `PR_ORACLE_REQUIRED=1` and restores. Every one of the 21 calls was
+deleted, not only the first, middle and last.
+
+| mutation | FAIL lines | printed |
+|---|---:|---|
+| row 130 (`0x415DC`), first | 1 | `test_fixtures.c:232: 0 != 1`; `voice site row 130: 0 of 1` |
+| rows 134, 136, 137, 138, 144, 151, 153, 160 | 1 each | the named row only, `0 of 1` |
+| row 142 (`0x282BB`, -1 arm) | 3 | row 142 `0 of 1`; rows 150 and 152 `1 of 2` (their `0x24`) |
+| row 143 (`0x2817F`) | 5 | row 143 `0 of 1`; the gate check's four `want 1` cases (`test_game.c:10475: 0 != 1`) |
+| row 146 / 148 / 156 / 158 (the `0x27`) | 2 each | the pair's two rows, `0 of 2` |
+| row 147 / 149 / 157 / 159 (the `0x22`) | 2 each | the pair's two rows, `1 of 2` |
+| row 150 (`0x2759E`), middle | 1 | `test_fixtures.c:232: 0 != 2`; `voice site row 150: 0 of 2` |
+| row 152 (`0x297C4`) | 1 | row 152 `0 of 2` |
+| row 160 (`0x29698`), last | 1 | `test_fixtures.c:232: 0 != 1`; `voice site row 160: 0 of 1` |
+| row 151's id `n == 0` (for `!=`) | 1 | row 151 `0 of 1` |
+| row 153's id `n == 0` (for `!=`) | 1 | row 153 `0 of 1` |
+| gate always true | 2 | `test_game.c:10475: 1 != 0` (the two `want 0` cases) |
+| gate `DSB(1088F2) < 1u` (unsigned) | 1 | `0 != 1` (the `0xFF` case) |
+| gate `<= 1` | 1 | `1 != 0` (the `0x01` case) |
+| gate reads the other side's `+0x63` | 4 | `0 != 1` ×2, `1 != 0` ×2 |
+| gate without the `+0x63` test | 2 | `0 != 1` (the two `+0x63` cases) |
+
+No call deletion failed a row outside its path (the pairs share one driver
+and list both ids).
+
+### §5.5 Not tested
+
+- The dispatcher's effect at these sites: the runner has `DS_001028C8` = 0,
+  and case 1's `DS_00105D5C` and song words and case 5's stops are pinned by
+  `check_sound_voice` (§45-A), not here.
+- Each call's position relative to its non-voice neighbours (a call moved
+  later in its function still passes), except the in-order pairs.
+- Row 143's table entry drives side 0 only; side 1 (`0x281F5`) is covered by
+  the gate check, which also has no `0x24` for a mutated side.
+- `game_mode_12_step` case 5's `DS_00104B1F = 3` arm (`0x416D4`, which reaches
+  row 130's call through `frontend_darken_marked`) and its challenge arm
+  (`0x41760`); the driver takes the `DS_00108104[r] = 7` arm.
+- Rows 150/152's sprite arm (`DS_00104529` bit 1), the `0x41310` bonus and
+  a non-empty `0x4DBEC` free list; rows 151/153 with a real entrance.
+- `flow_round_over_check` with both sides at `0x78` (four voices), and
+  `check_mode_31`'s side-1 integration.
+- Rows 137/138 with the audio gate open (`fighter_spawn`'s bank resolves).
+- Mode 0x33's idle pass voices (rows 48/49, batch D1).
+- Row 142's other `DS_00104B16` arms (0, 1 and 2), which draw a string
+  (`0xA89C4[c]` or `0x43`) at row 8 before reaching the same `0x282BB`
+  voice; the driver takes the `>= 3` arm (`0x28266 jmp 0x282B6`), which
+  draws nothing.
+
+### §5.6 Gate
+
+- `make verify` (with the worktree's `/tmp` overrides: `SMK_DUMP`,
+  `TITLE_DUMP`, `ATTRACT_DUMP`, `FRONTEND_DUMP`, `TITLE_PIN_DIR`,
+  `AUDIO_WAV`): `EXIT=0` (`$K/verify-t5.txt`, 571 lines). The oracle grep
+  diffs empty against `$K/oracle-lines-base.txt` (`ORACLES-EQUAL`). All 21
+  rows, and the §5.1 fix, are real play only.
+- Dumps: `dumps.sh t5-final` matches `$K/base.sha256` (`DUMPS-IDENTICAL`;
+  `check/frames` 24000, `fe/run1` and `fe/run2` 1384 each, the three drivers
+  `all checks passed`). No before-dump was taken (`9f15a6d` is Task 4's
+  proven state); the dump is deleted.
+- `make audio-render`: `$K/after-t5.wav` is byte-identical to
+  `before-t2.wav` (sha256 `df74acfb65d345fb…`).
+- `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
+  unchanged (no function is ported; the README stays).
+
+### §5.7 Review 1
+
+1. `docs/PROGRESS.md` gains the K12 batch B1 paragraph.
+2. **Rows 151/153's other `setne` outcome.** The table rows run one value
+   each (151: `n` = 0, `0x25`; 153: `n` = 1, `0x26`), so a hard-coded id
+   would pass them. `vs_setne_check` (`test_game.c`) runs the opposite `n`
+   through the same drivers (`vs_mode0d_replace_b0a(0)`: `0x26` once and no
+   `0x25`; `vs_mode32_replace_b0a(1)`: `0x25` once and no `0x26`); `k12_b1`
+   keeps one entry per row. Measured (`$K/t5mut.py`; FAIL lines exclude
+   `FAILURES: N`):
+
+   | mutation | FAIL lines | printed |
+   |---|---:|---|
+   | row 151's call hard-coded `sound_voice(0x25u)` | 2 | `test_game.c:10535: 0 != 1`, `:10536: 1 != 0`; `row 151 setne case 0: 0x26 x0, 0x25 x1` |
+   | row 153's call hard-coded `sound_voice(0x26u)` | 2 | `test_game.c:10535: 0 != 1`, `:10536: 1 != 0`; `row 153 setne case 1: 0x25 x0, 0x26 x1` |
+   | row 151's id `n == 0` (re-run) | 3 | row 151 `0 of 1` and both setne checks |
+   | row 153's id `n == 0` (re-run) | 3 | row 153 `0 of 1` and both setne checks |
+
+3. §5.5 lists row 142's other `DS_00104B16` arms.
+4. The gate check prints its case on a mismatch (`row 143 gate case I: N
+   0x24 voices, want W`). Re-measured with the gate forced true: 2 FAIL
+   lines (`test_game.c:10513: 1 != 0`), printing cases 0 and 3.
+5. Both checks now snapshot and put back what `tf_voice_sites` does (the
+   data object, the two pools named at entry, the aperture and the DAC; a
+   shared `vs_snap`/`vs_put`) and run with `DS_001028C8` = 0.
+
+Assertion sites: 13374 → **13376** (the setne check's two). Gate:
+`make verify` with the `/tmp` overrides exits 0 with the oracle lines equal
+to `$K/oracle-lines-base.txt` (`$K/verify-t5r1.txt`); `dumps.sh t5-r1`
+matches `$K/base.sha256` (deleted after); the `make audio-render` WAV is
+byte-identical to `before-t2.wav`. `port_progress` is unchanged.
+
 ## §6 Task 6: K12 batch B2, the remaining pure-state voices
 
 Implemented in the worktree `k12-t6` (branch `k12-t6`, from `9f15a6d`). Every
