@@ -696,7 +696,7 @@ no name assigned, and the stated check would settle it.
 | 27 | `0x5de48` | `AIL_init_sequence` (verified) | `(DAT_001028c0,DAT_001028d0,0)` ×2 `FUN_0001c930` | parses the `FORM/CAT/XMID` bank, walks the XMID records, sets up banks/tempo; `0` + "Invalid XMIDI sequence" on bad data. **This is the music load.** | title, in-play | verified body |
 | 28 | `0x5de79` | `AIL_start_sequence` (verified) | `(DAT_001028c0)` — `FUN_0001c930` | silences all channels, resets the track to start, marks playing (state=4). **This is the music start.** | title, in-play | verified body |
 | 29 | `0x5deaf` | `AIL_stop_sequence` (verified) | `(DAT_001028c0)` 5 game call sites (`0x1c930` ×2, `0x1ca6c`, `0x1d018`, `0x1d1b0`; 6th site `0x69b62` is engine-internal) | sends all-notes-off (cc `0xb0/0x40`), marks stopped (state=2). **This is the music stop.** | all | verified body |
-| 30 | `0x5deca` | `AIL_set_sequence_volume` (verified) | `(DAT_001028c0,DAT_000a2cb8,500)` | sets the sequence target volume and a fade time in ms (500 ms here; computes a per-tick delta). | title, in-play | verified body |
+| 30 | `0x5deca` | `AIL_set_sequence_volume` (verified) | `(DAT_001028c0,DAT_000a2cb8,500)` | sets the sequence target volume and a fade time in ms (500 ms here): `0x6A8D0` sets a step of ms*1000/|delta| us, the 120 Hz service `0x69952` steps it and re-sends the logged CC7s every 8th call (record named-gaps-f §F.3). | title, in-play | verified body |
 | 31 | `0x5deed` | `AIL_sequence_status` (verified) | `(DAT_001028c0,param_2,param_3)` `prage.c:8381` (`FUN_0001ca40`); `(DAT_001028c0)` `prage.c:8424` (`FUN_0001cab8`); `(DAT_001028c0)` `prage.c:8745` (`FUN_0001d018`) — all 3 call sites (exhaustive) | returns `sequence+4`; the game treats `4` as *playing*. | in-play, teardown | verified body |
 | 32 | `0x5dfdc` | no-op (purpose unknown) | `FUN_0005dfdc()` — `FUN_00010034`, `FUN_00010610` | empty body (prologue/epilogue only, no stack). Runs once when the sound-driver refcount goes 0→1. Behaviour to reproduce: **nothing**. | init/first use | verified (disasm: only `push/mov/pop/ret`) |
 | 33 | `0x5dfeb` | no-op (purpose unknown) | `FUN_0005dfeb()` — `FUN_000100c4`, `FUN_00010684` | empty body. Runs once when the refcount goes 1→0. Behaviour: **nothing**. | teardown | verified (disasm) |
@@ -957,7 +957,12 @@ payload decode is **verified** against the capture:
   volume and one timer tick, yet ch4 and ch9 written at the same tick imply
   `0x50` vs `0x54`, and the only shipped-image writer of the engine's
   per-channel volume array (`seq+0x350`) is controller 83, which this title
-  never sends (109/115 do not write it). No `SBPRO2.MDI` term varies by channel
+  never sends (109/115 do not write it). (Correction, record
+  `2026-09-30-named-gaps-f-derivations.md` §F.5: `seq+0x350` is also the CC7
+  log, written by `0x688E0` at `0x68A48` on every CC7 and re-sent by
+  `0x69320` during a `0x6A8D0` fade; the driver holds each channel's CC7
+  scaled by the sequence volume of the moment it arrived. The residual was not
+  re-analysed against that.) No `SBPRO2.MDI` term varies by channel
   (round 2 §R2.1 fingerprints the capture as `SBPRO2.MDI`). Reproducing those
   rows would need a fitted constant, which this repo forbids, so
   `documented_excluded` names exactly those rows instead of the whole family.

@@ -22,6 +22,12 @@
 #define SEQ_NOTE_FREE (-1)
 #define SEQ_NO_PATCH 0xFFFFu
 
+/* The AIL service period in us, the driver's +0x10: 0x6A016..0x6A03E stores
+ * 0xF4240 / [0x108D8C] (preference 10, 0x78 = 120 from AIL_startup's
+ * 0x660CF; the game never sets it). The fade step 0x69969 adds it once per
+ * service call (record named-gaps-f §F.3). */
+#define SEQ_SERVICE_US (1000000 / 120)
+
 /* PORT: register-family mask for the driver's applier (SBPRO2.MDI 0x3184),
  * which tests [v+0x1539] in the order 0x80, 0x40, 0x20, 0x10, 0x08, 0x01 and
  * clears each bit after writing that family. */
@@ -77,7 +83,18 @@ static struct {
     int playing;
     u32 age;
     u32 next;          /* rotation cursor: the last slot tried (driver 0xffff) */
-    u8 seqvol;         /* AIL sequence volume (engine input), 0..0x7f */
+    /* PORT: the AIL sequence record's volume fields (record named-gaps-f
+     * §F.3): +0x34 the volume now, +0x38 the target, +0x3C the us accumulated
+     * toward the next step, +0x40 the us per one-unit step; +0x30 the service
+     * calls since the last 0x69250 reset; the CC7 log 0x688E0 keeps at
+     * +0x350 + ch*4 (-1 = none, here a bit in cc7_logged). */
+    s32 seqvol;
+    s32 vol_target;
+    s32 vol_acc;
+    s32 vol_step;
+    u32 svc;
+    u8 cc7_log[SEQ_MIDI_CHANNELS];
+    u16 cc7_logged;
     seq_voice voice[SEQ_OPL_CHANNELS];
     u8 program[SEQ_MIDI_CHANNELS];
     u8 bank[SEQ_MIDI_CHANNELS];
@@ -99,6 +116,7 @@ static struct {
      * the image's AIL sequence-volume default (DAT_00108d94, 0x7f). */
     .next = SEQ_OPL_CHANNELS - 1,
     .seqvol = 0x7f,
+    .vol_target = 0x7f,
     .voice = {
         [0] = { .note = SEQ_NOTE_FREE }, [1] = { .note = SEQ_NOTE_FREE },
         [2] = { .note = SEQ_NOTE_FREE }, [3] = { .note = SEQ_NOTE_FREE },
@@ -180,15 +198,16 @@ static void fam_apply(int opl_ch, u8 mask)
         }
         if (mask & FAM_TL) {
             /* PORT: SBPRO2.MDI 0x319a-0x31c4 (channel level) and
-             * 0x346a-0x34d3 (per-operator fold). The engine scales a received
-             * CC7 by the AIL sequence volume before dispatch (prage.c:49121);
-             * `level` then folds in the channel expression and the per-voice
+             * 0x346a-0x34d3 (per-operator fold). The engine scaled the
+             * received CC7 by the AIL sequence volume before dispatch
+             * (0x68C8B, prage.c:49121), so the channel volume is that scaled
+             * value (midi_control); `level` then folds in the channel expression and the per-voice
              * key-on velocity level with the driver's staircase. Gate bit 0 is
              * the modulator, bit 1 the carrier; the normal-voice gate byte
              * [v+0x1629] is (p[8]&1)|2, so the carrier is always gated. Every
              * shipped payload opens 0x000e (type 0), so the type-3 gate
              * [v+0x18e5] is not reachable and is not modelled. */
-            u8 cc7 = known ? (u8)(((u32)S.seqvol * S.volume[ch]) / 0x7f) : 0;
+            u8 cc7 = known ? S.volume[ch] : 0;
             u8 expr = known ? S.expression[ch] : 0x7f;
             u8 level = scale7(scale7(cc7, expr), S.voice[opl_ch].level);
             u8 gate = (u8)((p[8] & 1) | 2);
@@ -257,7 +276,18 @@ static void midi_control(u8 status, u8 a, u8 b)
     } else if (hi == 0xb0) {
         switch (a) {
         case 6:  S.bend_scale[ch] = b; return;
-        case 7:  S.volume[ch] = b; mask = FAM_TL; break;
+        /* 0x68B0E 0x688E0 logs the CC7 (0x68A48: seq+0x350+ch*4), then
+         * 0x68C8B..0x68CAD scales it by the volume now, clamped to 0..0x7F,
+         * before the driver stores it (record named-gaps-f §F.3). */
+        case 7:
+            S.cc7_log[ch] = b;
+            S.cc7_logged = (u16)(S.cc7_logged | (1u << ch));
+            {
+                s32 v = (S.seqvol * (s32)b) / 0x7f;
+                S.volume[ch] = (u8)(v > 0x7f ? 0x7f : v < 0 ? 0 : v);
+            }
+            mask = FAM_TL;
+            break;
         case 11: S.expression[ch] = b; mask = FAM_TL; break;
         case 1:  S.mod[ch] = b; mask = FAM_AMVIB; break;
         case 10: S.pan[ch] = b; mask = FAM_CONN; break;
@@ -402,6 +432,30 @@ static void key_on(int midi, int note, int vel, u32 dur)
 
 /* The single halt path. Every exit from the parser that stops playback routes
  * here, so no path can stop the stream while leaving OPL channels keyed on. */
+/* 0x69320 — record named-gaps-f §F.3. Re-dispatches every logged CC7
+ * (0xB0|ch, 7, log) through 0x68AB0, which rescales it by the volume now. */
+static void seq_resend_volume(void)
+{
+    for (int ch = 0; ch < SEQ_MIDI_CHANNELS; ch++)
+        if (S.cc7_logged & (1u << ch))
+            midi_control((u8)(0xB0 | ch), 7, S.cc7_log[ch]);
+}
+
+/* 0x69952..0x699C0 — record named-gaps-f §F.3. The service call's volume
+ * step, while the volume is not at its target: add one service period, take
+ * one unit toward the target per +0x40 us, and on every 8th call re-send. */
+static void seq_fade_step(void)
+{
+    if (S.seqvol == S.vol_target) return;                  /* 0x6995F..0x69965 */
+    S.vol_acc += SEQ_SERVICE_US;                            /* 0x69969..0x69971 */
+    while (S.vol_acc >= S.vol_step) {                       /* 0x6997F `jl` */
+        S.vol_acc -= S.vol_step;                            /* 0x6998D */
+        S.seqvol += (S.vol_target > S.seqvol) ? 1 : -1;     /* 0x69990..0x6999F */
+        if (S.seqvol == S.vol_target) break;                /* 0x699AA */
+    }
+    if ((S.svc & 7u) == 0u) seq_resend_volume();            /* 0x699B4 0x699BB */
+}
+
 static void halt(void)
 {
     for (int v = 0; v < SEQ_OPL_CHANNELS; v++)
@@ -568,6 +622,8 @@ int seq_load(const u8 *data, u32 len)
     S.pos = 0;
     S.wait = 0;
     S.loaded = 1;
+    S.svc = 0;                          /* 0x6A578 0x69250: +0x30, the CC7 log */
+    S.cc7_logged = 0;
     return 1;
 }
 
@@ -581,6 +637,28 @@ int seq_load(const u8 *data, u32 len)
 void seq_set_sequence_volume(u8 volume)
 {
     S.seqvol = volume > 0x7f ? 0x7f : volume;
+    S.vol_target = S.seqvol;
+    S.vol_acc = 0;
+    S.vol_step = 0;
+}
+
+/* 0x6A8D0 — record named-gaps-f §F.3. Sets the target; unless it equals the
+ * volume now, a zero time applies it at once and any other time sets the step
+ * ms * 1000 / |volume - target| us (a signed idiv) and clears the
+ * accumulator; then 0x69320 re-sends the logged CC7s. */
+void seq_fade_sequence_volume(s32 volume, s32 ms)
+{
+    S.vol_target = volume;                                  /* 0x6A8E6 */
+    if (S.seqvol == S.vol_target) return;                   /* 0x6A8EF..0x6A8FA */
+    if (ms == 0) {
+        S.seqvol = S.vol_target;                            /* 0x6A8FF */
+    } else {
+        s32 d = S.seqvol - S.vol_target;                    /* 0x6A914..0x6A923 */
+        if (d < 0) d = -d;
+        S.vol_step = (s32)((u32)ms * 1000u) / d;            /* 0x6A904..0x6A92E */
+        S.vol_acc = 0;                                      /* 0x6A930 */
+    }
+    seq_resend_volume();                                    /* 0x6A93B 0x69320 */
 }
 
 void seq_start(void)
@@ -593,6 +671,8 @@ void seq_start(void)
     S.playing = 1;
     S.age = 0;
     S.next = SEQ_OPL_CHANNELS - 1;   /* driver's reset cursor 0xffff */
+    S.svc = 0;                       /* 0x6A79B 0x69250: +0x30, the CC7 log */
+    S.cc7_logged = 0;
     for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
         S.voice[v].note = SEQ_NOTE_FREE;
         S.voice[v].midi = 0;
@@ -648,15 +728,19 @@ void seq_tick(void)
 {
     if (!S.playing)
         return;
+    S.svc++;                                                /* 0x693C1 */
     for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
         if (S.voice[v].note == SEQ_NOTE_FREE)
             continue;
         if (S.voice[v].release == 0 || --S.voice[v].release == 0)
             key_off(v);
     }
-    if (S.wait > 0 && --S.wait > 0)
-        return;
-    process();
+    if (!(S.wait > 0 && --S.wait > 0))
+        process();
+    /* 0x69952: the volume step runs after the events unless the sequence
+     * ended on this call ([0x108E24] set at 0x69548). */
+    if (S.playing)
+        seq_fade_step();
 }
 
 int seq_active_track(void)
@@ -666,6 +750,16 @@ int seq_active_track(void)
         if (S.voice[v].note != SEQ_NOTE_FREE)
             n++;
     return n;
+}
+
+s32 seq_sequence_volume(void)
+{
+    return (s32)S.seqvol;
+}
+
+u8 seq_channel_volume(int ch)
+{
+    return (ch >= 0 && ch < SEQ_MIDI_CHANNELS) ? S.volume[ch] : 0;
 }
 
 int seq_playing(void)

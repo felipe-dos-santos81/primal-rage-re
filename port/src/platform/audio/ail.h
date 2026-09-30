@@ -197,10 +197,10 @@ void AIL_start_sequence(HSEQUENCE sequence);
 void AIL_stop_sequence(HSEQUENCE sequence);
 
 /* 0x5deca — spec audio.md "AIL surface" (row 30). Sets the sequence target
- * volume and a fade time in ms. PORT: the value is forwarded to the
- * sequencer's AIL sequence-volume input, which the original's CC7 arm uses to
- * scale the volume it hands the driver (prage.c:49121); the 500 ms fade is not
- * modelled (the target applies immediately). */
+ * volume and a fade time in ms: 0x6A8D0 (seq_fade_sequence_volume) steps the
+ * volume toward the target in the 120 Hz service, and the CC7 arm scales each
+ * CC7 by the volume of that moment (0x68C8B, prage.c:49121; record
+ * named-gaps-f §F.3). */
 void AIL_set_sequence_volume(HSEQUENCE sequence, s32 volume, u32 fade_ms);
 
 /* 0x5deed — spec audio.md "AIL surface" (row 31). Returns 4 while the sequence

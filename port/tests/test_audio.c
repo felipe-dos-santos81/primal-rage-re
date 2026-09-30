@@ -1410,6 +1410,67 @@ int test_ail(void)
         CHECK_EQ_INT(seq_active_track(), 0);
     }
 
+    /* 4e. The sequence-volume fade (record named-gaps-f §F.3). A successful
+     *     AIL_init_sequence seeds the volume from preference 12 (0x6A5B7:
+     *     [0x108D94] = 0x7F, 0x660E7); 0x6A8D0 then sets the target and the
+     *     step 500 ms * 1000 / |0x7F - 0x3F| = 7812 us without moving the
+     *     volume; each 120 Hz service call (0x69952) adds 1000000 / 120 = 8333
+     *     us and steps one unit per 7812 us, and on every 8th call (+0x30 & 7,
+     *     0x699B4) while a fade is in progress re-sends the logged CC7
+     *     (0x69320), which 0x68C8B scales by the volume of that moment. The
+     *     channel volume moves only on those re-sends: the last is at call 56
+     *     (volume 69 -> 100 * 69 / 127 = 54); the fade ends at call 61, and
+     *     call 64 sees volume == target, so 0x3F is never re-sent. */
+    {
+        static const u8 ev[] = { 0xB0, 0x07, 0x64,            /* CC7 ch0 = 100 */
+                                 0x90, 0x3C, 0x64, 0x7F,      /* note on ch0 */
+                                 0x7F,                        /* 127-tick delta */
+                                 0xFF, 0x2F, 0x00 };
+        static u8 fbank[64];
+        u32 call;
+
+        (void)build_xmi(fbank, ev, sizeof ev);   /* AIL derives the length */
+
+        seq_set_sequence_volume(0x20);           /* sentinel: init must reseed */
+        CHECK_EQ_INT(seq_sequence_volume(), 0x20);
+        CHECK_EQ_INT(AIL_init_sequence(seq, fbank, 0), 1);
+        CHECK_EQ_INT(seq_sequence_volume(), 0x7F);
+        AIL_start_sequence(seq);
+        seq_tick();                              /* call 1: CC7 100 at 0x7F */
+        CHECK_EQ_INT(seq_channel_volume(0), 100);
+        AIL_set_sequence_volume(seq, 0x3F, 500);
+        CHECK_EQ_INT(seq_sequence_volume(), 0x7F);   /* a fade, not a jump */
+        CHECK_EQ_INT(seq_channel_volume(0), 100);
+        for (call = 2; call <= 7; call++) seq_tick();
+        CHECK_EQ_INT(seq_sequence_volume(), 121);    /* 6 calls: 49998 / 7812 */
+        CHECK_EQ_INT(seq_channel_volume(0), 100);    /* no re-send before 8 */
+        seq_tick();                                  /* call 8: re-send */
+        CHECK_EQ_INT(seq_sequence_volume(), 120);
+        CHECK_EQ_INT(seq_channel_volume(0), 94);     /* 100 * 120 / 127 */
+        for (call = 9; call <= 56; call++) seq_tick();
+        CHECK_EQ_INT(seq_sequence_volume(), 69);
+        CHECK_EQ_INT(seq_channel_volume(0), 54);
+        for (call = 57; call <= 60; call++) seq_tick();
+        CHECK_EQ_INT(seq_sequence_volume(), 65);     /* 59 calls: 62 steps */
+        seq_tick();                                  /* call 61: reaches 0x3F */
+        CHECK_EQ_INT(seq_sequence_volume(), 0x3F);
+        for (call = 62; call <= 70; call++) seq_tick();
+        CHECK_EQ_INT(seq_sequence_volume(), 0x3F);
+        CHECK_EQ_INT(seq_channel_volume(0), 54);     /* 0x3F never re-sent */
+        /* A 1 ms fade of 1 unit steps every 1000 us: one 8333 us call takes
+         * the step and stops at the target (0x699AA); without that exit the
+         * 7 further steps would oscillate around it and end one below. */
+        AIL_set_sequence_volume(seq, 0x3E, 1);
+        seq_tick();                                  /* call 71 */
+        CHECK_EQ_INT(seq_sequence_volume(), 0x3E);
+        /* A zero time applies at once (0x6A8FF) and re-sends (0x6A93B). */
+        AIL_set_sequence_volume(seq, 0x50, 0);
+        CHECK_EQ_INT(seq_sequence_volume(), 0x50);
+        CHECK_EQ_INT(seq_channel_volume(0), 62);     /* 100 * 0x50 / 127 */
+        CHECK_EQ_INT(AIL_sequence_status(seq), 4);
+        AIL_stop_sequence(seq);
+    }
+
     /* 5. The 8-bit -> s16 conversion is exact and lives once, in samples.c. */
     {
         static const u8 pcm8[3] = { 0, 128, 255 };
