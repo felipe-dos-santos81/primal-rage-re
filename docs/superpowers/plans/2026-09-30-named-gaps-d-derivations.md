@@ -353,3 +353,72 @@ slot" check fails five times.
 - `sound_sfx_volume`, `snd_sample_stop` and `snd_samples_stop_all` on a
   naturally ended slot. Their status reads are covered by `test_game.c` on
   forced statuses.
+
+## §D.3 Gate and closure
+
+On Task 2's commit `017a37d`, after `make clean` (the two oracle fixtures
+backed up and restored byte-identical) and `make build` (no warning or error
+lines):
+
+- `make verify` with the `pr_d3_*` overrides: **`EXIT=0`**
+  (`$D/verify-t3.txt`). A first run was killed by an external SIGTERM
+  (`make[1]: *** [frontend-oracle] Terminated: 15`, `$D/verify-t3-terminated.txt`,
+  not an oracle failure: every oracle line it had printed matched); the re-run
+  on the same tree completed.
+- Oracle lines equal `$K/oracle-lines-base.txt`: **ORACLES-EQUAL**.
+- Frame dumps (`dumps.sh d-after` + `dumpsha.sh d-after`) equal
+  `$K/base.sha256`: **DUMPS-IDENTICAL**. The `--check 8000` inside the dump
+  exited 0 (no `--check exited non-zero`; `$D/check-after-log.txt` holds only
+  the banner line, no assertion line).
+- `make audio-render` WAV (`$D/after.wav`) equals `$K/before-t2.wav`:
+  **WAV-IDENTICAL**.
+- `python3 tools/port_progress.py` equals `$D/progress-base.txt`:
+  **PROGRESS-UNCHANGED** (`767 1203 64`; no function added).
+
+This is the proof of Finding F11: game code reads the status (§D.0), and the
+gate, not the argument, shows the frames do not move.
+
+### Occupancy in `--check 8000` (`$D/occ.sh`)
+
+| Run | max | full_frames | mean_x100 | loop_slot_moves | CHECK |
+|---|---|---|---|---|---|
+| before (`$D/occ-before.txt`, `af135ec`) | 4 | 5430 | 331 | 6 | 0 |
+| after (`$D/occ-after.txt`) | 4 | 506 | 147 | 6 | 0 |
+| after2 (`$D/occ-after2.txt`) | 4 | 506 | 147 | 6 | 0 |
+
+`diff occ-after.txt occ-after2.txt` is empty: **DETERMINISTIC**. `main.c` was
+restored byte-for-byte after each probe (`MAIN-RESTORED` three times;
+`git diff --stat -- port/src/main.c` empty). The persistent saturation is
+gone: the frames with all four slots busy fall from 5430 to 506 and the mean
+occupancy from 3.31 to 1.47. `max=4` remains because four concurrent
+one-shots can legitimately fill the slots for a few frames.
+`loop_slot_moves` is unchanged (6): the title's legitimate stops of 0x40/0x42.
+
+### Closure
+
+G6 closed. With no device the mixer renders on the ISR tick's virtual clock
+(`game_audio_service`), so a one-shot ends at its length (V1: 61 ticks for
+0x2B11 bytes; BD/BE/BF at 42/52/60) and its slot frees; the attract loops
+keep playing (V2, V6, V7, the `--check` probe).
+
+Raw wins: spec §4.D's "no game code reads sample status" is false. `0x1CE70`,
+`0x1CE04`, `0x1CD9C`, `0x1CED4` and `0x1CC28` call `0x5DD03`, and `0x2C3FC`
+branches on `0x1CE70` (§D.0). The exposure is real but, measured by the gate
+above, moves no frame, oracle line or WAV byte.
+
+Ledger §H.3 (`2026-09-29-all-gaps-ledger.md`): row 6's Evidence cell gains
+the **Closed** text. The count sentence before:
+
+> **Ten named gaps** are open: the six carried by K7+K12 and K11 (#1..#6),
+> `fight_health_sync`'s case 18 (#7), the two new `not modelled` deviations of
+> §H.1a (#8, #9) and `movie.c`'s decode-failure exit (#10).
+
+after:
+
+> **Nine named gaps** are open: the six carried by K7+K12 and K11 (#1..#6),
+> `fight_health_sync`'s case 18 (#7), the two new `not modelled` deviations of
+> §H.1a (#8, #9) and `movie.c`'s decode-failure exit (#10) (#6 closed by
+> named-gaps D).
+
+§H.5's "Ten named gaps remain" is the Task 7 final gate's snapshot and is
+left as written.

@@ -603,9 +603,10 @@ unreachable, unobservable or not a deviation.
 
 ### §H.3 Named gaps still open
 
-**Ten named gaps** are open: the six carried by K7+K12 and K11 (#1..#6),
+**Nine named gaps** are open: the six carried by K7+K12 and K11 (#1..#6),
 `fight_health_sync`'s case 18 (#7), the two new `not modelled` deviations of
-§H.1a (#8, #9) and `movie.c`'s decode-failure exit (#10).
+§H.1a (#8, #9) and `movie.c`'s decode-failure exit (#10) (#6 closed by
+named-gaps D).
 
 The six carried by K7+K12 and K11:
 
@@ -616,7 +617,7 @@ The six carried by K7+K12 and K11:
 | 3 | STATISTICS page 2's `idiv` fault | `0x334CD..0x334E2` (`0x33458`): a non-zero sum with a zero low word raises #DE; drawn as 0 (`svcmenu.c:1192`, record §K11.7, §E-33). |
 | 4 | `0x1D0BC`'s two allocation-failure arms are ported but untested | The MIDI arm `0x1D10E..0x1D12F` (zeroes `DS_001028C4/C0/CC`) and the slot break `0x1D16B` (slot 0's failure included). The bump allocator cannot fail in-process without exhausting `mem[]` (record k7-k12 §0.7.1 and its Not-tested list). |
 | 5 | No oracle reaches the K11 service menu | No capture of the options menu exists. Its 50 functions are pinned only by 160 scripted unit-test frames (record §K11.8/§K11.9). |
-| 6 | Headless sample slots never end | With no audio device the mixer is not rendered, so `AIL_sample_status` keeps a started sample at 4; the raw DIG service marks it done at the buffer end (`0x6F28F`) (`ail.c:369`, record k7-k12 §0.7.6). |
+| 6 | Headless sample slots never end | With no audio device the mixer is not rendered, so `AIL_sample_status` keeps a started sample at 4; the raw DIG service marks it done at the buffer end (`0x6F28F`) (`ail.c:369`, record k7-k12 §0.7.6). **Closed** (named-gaps D, 2026-09-30): with no device the mixer renders on a virtual clock from the ISR tick DS_00101500 at MIXER_OPL_RATE (flow.c game_audio_service); one-shots end at their length and slots free (record 2026-09-30-named-gaps-d-derivations.md §D.1-§D.3; test_virtual_clock). |
 
 Recorded in Task 3a (record `2026-09-29-k1-k9-derivations.md` §K1.1, and
 PROGRESS.md's Task 3a paragraph), carried as a deferred minor, and re-verified
