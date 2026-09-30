@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <setjmp.h>
 
 
 /* ---- test_flow.c ---- */
@@ -11769,5 +11770,230 @@ int test_voice_sites(void)
     tf_voice_sites(k12_c_game, (u32)(sizeof k12_c_game / sizeof k12_c_game[0]));
     CHECK_EQ_INT((int)(sizeof k12_d4 / sizeof k12_d4[0]), K12_D4_ROWS);
     tf_voice_sites(k12_d4, (u32)(sizeof k12_d4 / sizeof k12_d4[0]));
+    return g_failures - before;
+}
+
+/* ---- the K11 ground-truth driver (named-gaps A, record
+ * docs/superpowers/plans/2026-09-30-named-gaps-a-derivations.md §A.3) ----
+ * PR_K11_DUMP=<dir> PR_K11_SCRIPT=<file> (tools/k11_session.py port-script).
+ * It runs game_init() and the master loop from boot, as the pinned original
+ * does (actors_pin_anim_tick_zero mirrors the title pin's opcode-8 site). It
+ * queues the capture's mode-3 Enter (scan 0x1C, ascii 0x0D) before the
+ * iteration whose game_frame raises DS_000EF6DC to `enter_frame`, and applies
+ * the script's pokes there. From the host pump hook it then queues each `key`
+ * and holds each `pad` once the ISR clock DS_00101500 has run `dtick` past the
+ * Enter's. Every distinct displayed frame (indices + gfx_dac) from the Enter on
+ * becomes <dir>/frame_%04d.raw through fe_write_frame. */
+#define K11_MAX_STEPS 512u
+#define K11_MAX_LOOPS 20000u
+#define K11_STALL_PUMPS 200000u
+#define K11_FIMG_END 0x00105E30u   /* tools/k11_fields.py WIN_HI */
+typedef struct { char op; u32 a, b, c; } K11Step;
+static K11Step k11_step[K11_MAX_STEPS];
+static u32 k11_n, k11_next, k11_nkeys, k11_keys_sent, k11_enter_frame, k11_enter_state;
+static u32 k11_t0, k11_pad_end, k11_dumped, k11_hash_last, k11_idle_pumps;
+static int k11_armed, k11_done, k11_pad_on, k11_failed;
+static char k11_dir[1024];
+static FILE *k11_screens, *k11_log;
+/* The script's end can fall inside a blocking loop that only a key the
+ * script does not send would leave (the de scenario's STATISTICS page after
+ * the capture's #DE abort, record §A.8); the hook then leaves game_loop()
+ * through this, the driver's own frame. The game is not run again. */
+static jmp_buf k11_end_jb;
+
+static int k11_parse(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (f == NULL) return 0;
+    char line[256];
+    int have_frame = 0, have_state = 0, ok = 1;
+    k11_n = 0u;
+    k11_nkeys = 0u;
+    while (fgets(line, sizeof line, f) != NULL) {
+        unsigned a = 0u, b = 0u, c = 0u;
+        if (line[0] == '#' || line[0] == '\n') continue;
+        if (sscanf(line, "enter_frame %u", &a) == 1) { k11_enter_frame = a; have_frame = 1; continue; }
+        if (sscanf(line, "enter_state %x", &a) == 1) { k11_enter_state = a; have_state = 1; continue; }
+        if (k11_n >= K11_MAX_STEPS) { ok = 0; break; }
+        K11Step *s = &k11_step[k11_n];
+        if (sscanf(line, "key %u %x %x", &a, &b, &c) == 3) { s->op = 'k'; k11_nkeys++; }
+        else if (sscanf(line, "pad %u %x %u", &a, &b, &c) == 3) s->op = 'p';
+        else if (sscanf(line, "ds_or %x %x", &a, &b) == 2) s->op = 'o';
+        else if (sscanf(line, "field %x %x", &a, &b) == 2) s->op = 'f';
+        else if (sscanf(line, "end %u", &a) == 1) s->op = 'e';
+        else { ok = 0; break; }
+        s->a = a; s->b = b; s->c = c;
+        k11_n++;
+    }
+    fclose(f);
+    return ok && have_frame && have_state && k11_n > 0u && k11_step[k11_n - 1u].op == 'e';
+}
+
+static u32 k11_fnv(u32 h, const u8 *p, u32 n)
+{
+    for (u32 i = 0; i < n; i++) { h ^= p[i]; h *= 16777619u; }
+    return h;
+}
+
+static void k11_dump_if_new(void)
+{
+    const u8 *fb = gfx_display();
+    if (fb == NULL) fb = mem + DSD(DS_000E87A0);
+    const u32 h = k11_fnv(k11_fnv(2166136261u, fb, 64000u), &gfx_dac[0][0], 768u);
+    if (k11_dumped > 0u && h == k11_hash_last) return;
+    char path[1200];
+    snprintf(path, sizeof path, "%s/frame_%04u.raw", k11_dir, k11_dumped);
+    if (!fe_write_frame(path)) { k11_failed = 1; return; }
+    k11_hash_last = h;
+    k11_dumped++;
+}
+
+/* The key bitmap [DS_00101514]+0x2D8/+0x2D9 (record §A.1.5): game_loop copies
+ * host_key_bits() into it each iteration (flow.c 0x500C4 prologue), and the
+ * blocking loops' 0x500C4 pump reads it as it stands, so set both. */
+static void k11_key_bits(u32 kb)
+{
+    host_set_key_bits_override((u16)kb, kb != 0u);
+    u8 *k = mem + DSD(DS_00101514);
+    k[0x2D8] = (u8)(kb >> 8);
+    k[0x2D9] = (u8)kb;
+}
+
+static void k11_hook(void *ctx)
+{
+    (void)ctx;
+    if (!k11_armed || k11_done || k11_failed) return;
+    k11_dump_if_new();
+    if (k11_failed || k11_dumped == 0u) return;   /* no frame to name as settled */
+    const u32 dt = DSD(DS_00101500) - k11_t0;
+    if (k11_pad_on && dt >= k11_pad_end) { k11_key_bits(0u); k11_pad_on = 0; }
+    while (k11_next < k11_n) {
+        const K11Step *s = &k11_step[k11_next];
+        if (s->op == 'o' || s->op == 'f') { k11_next++; continue; }   /* applied at the Enter */
+        if (dt < s->a) break;
+        if (s->op == 'k') {
+            fprintf(k11_screens, "key %u settled %u\n", k11_keys_sent, k11_dumped - 1u);
+            input_push((u8)s->b, (u8)s->c);
+            fprintf(k11_log, "key %u dt=%u tick=%08X f=%04X mode=%04X st=%04X ent=%08X\n",
+                    k11_keys_sent, dt, DSD(DS_00101500), DSW(DS_000EF6DC), DSW(DS_00104B00),
+                    DSW(DS_000F0A64), DSD(DS_0010741C));
+            k11_keys_sent++;
+        } else if (s->op == 'p') {
+            k11_key_bits(s->b);
+            k11_pad_on = 1;
+            k11_pad_end = s->a + s->c;
+        } else {
+            fprintf(k11_screens, "end settled %u\n", k11_dumped - 1u);
+            k11_done = 1;
+            longjmp(k11_end_jb, 1);
+        }
+        k11_next++;
+        k11_idle_pumps = 0u;
+        if (k11_done) break;
+    }
+    if (++k11_idle_pumps > K11_STALL_PUMPS) {
+        printf("FAIL %s:%d: the K11 script stalled at step %u (dt %u)\n", __FILE__, __LINE__, k11_next, dt);
+        exit(1);
+    }
+}
+
+/* The loader's `- LOADING -` screen (res_load_present, record §45-A) is on
+ * the display between two pumps; the front-end driver dumps it through the
+ * same hook (fe_cyc2_loader), and the original shows it in ADJUST VOLUME
+ * (record §A.5, walk capture 158). */
+static void k11_loader(void)
+{
+    if (k11_armed && !k11_done && !k11_failed) k11_dump_if_new();
+}
+
+static void k11_write_fimg(const char *name)
+{
+    char path[1200];
+    snprintf(path, sizeof path, "%s/%s", k11_dir, name);
+    FILE *f = fopen(path, "wb");
+    if (f == NULL || fwrite(mem + DS_00105DAF, 1, K11_FIMG_END - DS_00105DAF, f) != K11_FIMG_END - DS_00105DAF)
+        k11_failed = 1;
+    if (f != NULL) fclose(f);
+}
+
+static void k11_apply_pokes(void)
+{
+    int fields = 0;
+    for (u32 i = 0; i < k11_n; i++) if (k11_step[i].op == 'f') fields = 1;
+    if (fields) k11_write_fimg("fimg_before.bin");
+    const u8 dd8 = DSB(DS_00105DD8);
+    for (u32 i = 0; i < k11_n; i++) {
+        const K11Step *s = &k11_step[i];
+        if (s->op == 'o') DSB(s->a) = (u8)(DSB(s->a) | s->b);
+        else if (s->op == 'f') (void)config_field_set(s->a, s->b);
+    }
+    /* The capture pokes the field image only (tools/k11_fields.py set_), not
+     * config_field_set's dirty bits 0x2DA3B/0x2DA4E. */
+    DSB(DS_00105DD8) = dd8;
+    if (fields) k11_write_fimg("fimg_after.bin");
+}
+
+int test_k11_oracle(void)
+{
+    const int before = g_failures;
+    const char *dump = getenv("PR_K11_DUMP");
+    const char *script = getenv("PR_K11_SCRIPT");
+    if (dump == NULL || dump[0] == '\0') return 0;
+    CHECK(script != NULL && script[0] != '\0' && k11_parse(script),
+          "PR_K11_SCRIPT names a parsable K11 port script");
+    if (g_failures != before) return g_failures - before;
+    snprintf(k11_dir, sizeof k11_dir, "%s", dump);
+    mkdir(dump, 0777);      /* ignore EEXIST, as the front-end driver does */
+    char p[1200];
+    snprintf(p, sizeof p, "%s/screens.txt", dump);
+    k11_screens = fopen(p, "w");
+    snprintf(p, sizeof p, "%s/k11.log", dump);
+    k11_log = fopen(p, "w");
+    CHECK(k11_screens != NULL && k11_log != NULL, "the K11 dump files open");
+    if (k11_screens == NULL || k11_log == NULL) return g_failures - before;
+
+    const char *dir = getenv("PR_GAME_DIR");
+    if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
+    game_set_game_dir(dir);
+    game_init();
+    actors_pin_anim_tick_zero(1);
+    host_set_pump_hook(k11_hook, NULL);
+    res_set_screen_hook(k11_loader);
+
+    /* Sentinels: none is a mode, frame or state the checks below accept. */
+    static u32 mode_before, mode_after, frame_after, state_after;
+    mode_before = 0xFFFFu; mode_after = 0xFFFFu; frame_after = 0xFFFFFu; state_after = 0xFFFFFu;
+    if (setjmp(k11_end_jb) == 0)
+    for (u32 i = 0; i < K11_MAX_LOOPS && !k11_done && !k11_failed; i++) {
+        const int enter_now = !k11_armed && DSW(DS_000EF6DC) == (u16)(k11_enter_frame - 1u);
+        if (enter_now) {
+            mode_before = DSW(DS_00104B00);
+            k11_apply_pokes();
+            input_push(0x1Cu, 0x0Du);                   /* the capture's mode-3 Enter */
+            k11_t0 = DSD(DS_00101500);
+            k11_armed = 1;
+        }
+        DSB(DS_000A81A8) = 1;                           /* exactly one game_loop iteration */
+        game_loop();
+        if (enter_now) {
+            mode_after = DSW(DS_00104B00);
+            frame_after = DSW(DS_000EF6DC);
+            state_after = DSW(DS_000F0A64);
+        }
+    }
+    host_set_pump_hook(NULL, NULL);
+    res_set_screen_hook(NULL);
+    k11_key_bits(0u);
+    fclose(k11_screens);
+    fclose(k11_log);
+
+    CHECK(k11_armed, "the loop reached the capture's Enter frame");
+    CHECK_EQ_INT((int)mode_before, 3);                  /* 0x24ECF: the Enter arm needs mode 3 */
+    CHECK_EQ_INT((int)mode_after, 0x27);                /* 0x24EE0 */
+    CHECK_EQ_INT((int)frame_after, (int)k11_enter_frame);
+    CHECK_EQ_INT((int)state_after, (int)k11_enter_state);
+    CHECK(k11_done, "the K11 script ran to its end");
+    CHECK_EQ_INT((int)k11_keys_sent, (int)k11_nkeys);
+    CHECK(!k11_failed && k11_dumped > 1u, "the K11 frames were written");
     return g_failures - before;
 }

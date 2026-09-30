@@ -72,7 +72,8 @@ extern int g_failures;
 #define TEST_DRIVERS(X)                       \
     X(test_attract,  "PR_ATTRACT_DUMP")       \
     X(test_title,    "PR_TITLE_DUMP")         \
-    X(test_frontend, "PR_FRONTEND_DUMP")
+    X(test_frontend, "PR_FRONTEND_DUMP")      \
+    X(test_k11_oracle, "PR_K11_DUMP")
 
 #define TEST_CASE_DECLARE(name) int name(void);
 TEST_CASES(TEST_CASE_DECLARE)

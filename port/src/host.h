@@ -103,4 +103,10 @@ const char *host_audio_error(void);
  * is the single place to change it. */
 u16 host_key_bits(void);
 
+/* PORT: test seam, no raw counterpart. With `on` set, host_key_bits() returns
+ * `bits` instead of the SDL keyboard state; the K11 oracle driver holds the key
+ * bitmap a capture's poll log recorded through it (named-gaps A record §A.3).
+ * Off by default; nothing outside the tests sets it. */
+void host_set_key_bits_override(u16 bits, int on);
+
 #endif /* PR_HOST_H */

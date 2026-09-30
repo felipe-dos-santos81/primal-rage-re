@@ -2462,6 +2462,14 @@ int test_host(void)
     host_audio_close();
     CHECK_EQ_INT((int)host_audio_rate(), 0);
 
+    /* The K11 key-bits seam (named-gaps A record §A.3): the driver holds the
+     * key bitmap game_loop copies from host_key_bits(). The sentinel 0x1234 is
+     * no SDL keyboard state a headless run can report. */
+    host_set_key_bits_override(0x1234u, 1);
+    CHECK_EQ_INT((int)host_key_bits(), 0x1234);
+    host_set_key_bits_override(0x1234u, 0);
+    CHECK(host_key_bits() != 0x1234u, "the key-bits override is off again");
+
     return g_failures - before;
 }
 

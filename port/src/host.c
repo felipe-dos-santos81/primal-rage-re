@@ -66,8 +66,19 @@ static const SDL_Scancode k_input_bind[16] = {
     SDL_SCANCODE_G, SDL_SCANCODE_H, SDL_SCANCODE_J, SDL_SCANCODE_K,
 };
 
+static int g_key_bits_override_on;
+static u16 g_key_bits_override;
+
+void host_set_key_bits_override(u16 bits, int on)
+{
+    g_key_bits_override = bits;
+    g_key_bits_override_on = on;
+}
+
 u16 host_key_bits(void)
 {
+    /* PORT: the test seam declared in host.h. */
+    if (g_key_bits_override_on) return g_key_bits_override;
     const bool *st = SDL_GetKeyboardState(NULL);
     if (st == NULL) return 0u;
     u16 bits = 0u;

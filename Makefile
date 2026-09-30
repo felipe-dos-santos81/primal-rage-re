@@ -15,6 +15,10 @@ TITLE_CAPTURES = data/title-captures
 TITLE_DUMP = /tmp/pr_title_dump
 ATTRACT_DUMP = /tmp/pr_attract_dump
 FRONTEND_DUMP = /tmp/pr_frontend_dump
+K11_CAPTURES = data/k11-captures
+K11_DUMP = /tmp/pr_k11_dump
+scenario ?= walk
+K11_ARGS ?=
 TITLE_PIN_DIR = /tmp/pr_title_pin
 DECOMP_DIR = port/decomp
 SCRIPTS_DIR = _tools/ghidra_scripts
@@ -46,7 +50,7 @@ chunk ?= 0
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
-        attract2-oracle attract2-compare
+        attract2-oracle attract2-compare k11-capture k11-oracle k11-report
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -322,6 +326,40 @@ attract2-compare:
 	@$(PYTHON) tools/title_compare.py --attract2 --attract2-min-first $(ATTRACT2_MIN_FIRST) \
 		--capture $(TITLE_CAPTURES)/frontend --port $(FRONTEND_DUMP)/run1
 
+# K11 service-menu capture (named-gaps A): the pinned original under DOSBox-X,
+# driven into mode 0x27, with a live-RAM poll log. Writes only
+# data/k11-captures/<scenario>/ (tools/k11_capture.py guards the path).
+k11-capture: title-pin ## Capture the pinned original's service menu (scenario=walk|idle|menuesc|diags|de; writes data/k11-captures/)
+	$(PYTHON) tools/k11_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(K11_ARGS)
+
+# K11 oracle (enforced in verify like the front-end oracle: no
+# PR_ORACLE_REQUIRED, so it skips without the capture and fails on any
+# mismatch with it). The port script comes from the capture's poll log; the
+# PR_K11_DUMP driver runs alone (game_init once per process).
+k11-oracle: build ## K11 service-menu oracle, the walk (skips without data/k11-captures/walk)
+	@echo "== K11 service-menu oracle (pixel-exact, the walk) =="
+	@if [ -d $(K11_CAPTURES)/walk ]; then \
+		rm -rf $(K11_DUMP)/walk; mkdir -p $(K11_DUMP); \
+		$(PYTHON) tools/k11_session.py port-script --scenario walk --capture $(K11_CAPTURES)/walk --out $(K11_DUMP)/walk.script && \
+		PR_K11_DUMP=$(K11_DUMP)/walk PR_K11_SCRIPT=$(K11_DUMP)/walk.script PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+	else \
+		echo "k11-oracle: no capture at $(K11_CAPTURES)/walk, frames not compared"; \
+	fi
+	@$(PYTHON) tools/k11_compare.py --capture $(K11_CAPTURES)/walk --port $(K11_DUMP)/walk
+
+# The evidence scenarios (G1/G2/G3): the same driver and comparison, report-only.
+k11-report: build ## Report-only K11 comparison of the evidence captures (idle, menuesc, diags, de)
+	@for s in idle menuesc diags de; do \
+		if [ -d $(K11_CAPTURES)/$$s ]; then \
+			rm -rf $(K11_DUMP)/$$s; mkdir -p $(K11_DUMP); \
+			$(PYTHON) tools/k11_session.py port-script --scenario $$s --capture $(K11_CAPTURES)/$$s --out $(K11_DUMP)/$$s.script && \
+			PR_K11_DUMP=$(K11_DUMP)/$$s PR_K11_SCRIPT=$(K11_DUMP)/$$s.script PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+			$(PYTHON) tools/k11_compare.py --report --scenario $$s --capture $(K11_CAPTURES)/$$s --port $(K11_DUMP)/$$s; \
+		else \
+			echo "k11-report: no capture at $(K11_CAPTURES)/$$s"; \
+		fi; \
+	done
+
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
@@ -333,7 +371,7 @@ audio-render: build ## Render the title FM music headlessly to a WAV (AUDIO_WAV,
 # The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
 # from the CWD, so the ladder has to produce them (frames >= 25) before the suite
 # consumes them — otherwise that four-frame comparison never runs.
-verify: build ## Full ladder: --check frames, oracle-required tests, front-end + demo-fight + attract cycle-2 ratchet oracles, symbols.h idempotence
+verify: build ## Full ladder: --check frames, oracle-required tests, front-end + demo-fight + attract cycle-2 ratchet oracles, K11 oracle, symbols.h idempotence
 	@echo "== headless frames (must precede the tests that read frames/frame_*.idx) =="
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames)
 	@echo "== tests (oracles required; consume the captured frames) =="
@@ -349,6 +387,10 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory attract2-compare
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
+	@echo "== K11 service-menu oracle (the walk; skips without data/k11-captures/walk) =="
+	@$(MAKE) --no-print-directory k11-oracle
+	@echo "== k11 tool unit tests =="
+	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

@@ -515,7 +515,7 @@ that proves it.
 | `TODO(verify)` in `port/src` | 31 | **0** | `grep -rn 'TODO(verify)' port/src` |
 | `TODO(verify)` in `port/tests` | not measured | 1, explained | the `test_game.c` comment that starts "TODO(verify): the original's live counter is unread" (above `FRONTEND_FRAMES_BEFORE_STATE2`): the front-end driver's frame-counter seed 886; the original's live counter is unread (demo record §1.6); settling it needs a live-RAM dump |
 | `game_frame` cases | 52/52 wired | 52/52 wired | §D |
-| `named gap` sites (`port/src` + `port/tests`) | 35 | 13, all live named gaps (§H.3) or history ("formerly", "pinned") (four named gaps / 12 named-gap sites after named-gaps C, D, E and F, §H.3: `ail.c`'s §0.7.6 site went with gap #6) | `rg -n -i 'named gap' port/src port/tests` |
+| `named gap` sites (`port/src` + `port/tests`) | 35 | 13, all live named gaps (§H.3) or history ("formerly", "pinned") (three named gaps / 12 named-gap sites after named-gaps A, C, D, E and F, §H.3: `ail.c`'s §0.7.6 site went with gap #6) | `rg -n -i 'named gap' port/src port/tests` |
 | `not wired` in `port/src` | ~180 | 0 | `rg 'not wired' port/src` |
 | `not modelled` deviations in `port/src` (fifth source, added in fix round 1) | not enumerated | 10 hits of `rg -n 'not modelled\|not yet modelled\|is not modelled' port/src` (1 of them matches `PORT:.*not modelled` on one line); that alternation is narrower than the broad one: `rg -n 'not\s+modell?ed\|does not model\|unmodelled' port/src` returns 16 lines, and its multi-line form `rg -U 'not(\s\|\n\s*\*)+modell?ed\|does not model\|unmodelled' port/src` returns 18 matches (the 16 plus 2 that wrap a line, in `movie.c` and `ail.h`; 20 printed lines) at 18 locations = 15 distinct deviations, each with a verdict in §H.1a | as named |
 
@@ -603,20 +603,22 @@ unreachable, unobservable or not a deviation.
 
 ### §H.3 Named gaps still open
 
-**Four named gaps** are open: four of the six carried by K7+K12 and K11 (#1, #2, #3, #5).
-#7 was closed by named-gaps E, #6 by named-gaps D, #4 by named-gaps C, and #8, #9 and
-#10 by named-gaps unit F (2026-09-30, record `2026-09-30-named-gaps-f-derivations.md`);
-their rows below keep the evidence.
+**Three named gaps** are open: #1, #2 and #3 of the six carried by K7+K12 and K11.
+#5 was closed by named-gaps A (record `2026-09-30-named-gaps-a-derivations.md`, with the
+residue listed in its row), #4 by named-gaps C, #6 by named-gaps D, #7 by named-gaps E and
+#8, #9 and #10 by named-gaps unit F (2026-09-30, record `2026-09-30-named-gaps-f-derivations.md`);
+their rows below keep the evidence. Rows #1..#3 carry A's capture evidence; their code
+fixes wait for named-gaps plan B.
 
 The six carried by K7+K12 and K11:
 
 | # | Gap | Evidence |
 |---:|---|---|
-| 1 | The idle-timeout / menu-result longjmp is not modelled | `0x2EB80` (`config_key_latched`) stores `DS_00107414 = 0` then `0x2EBB3 jmp 0x65431`, `longjmp(0x1044F4, 1)`; `game_frame` case `0x27` (`0x251C6..0x25215`) takes the same longjmp at `0x25206..0x2520B` (`mov eax,0x1044F4` at `0x25206`, `jmp 0x65431` at `0x2520B`) for any menu result other than 0/-5/-10. The port keeps the store and returns 0 / continues (spec §7, `config.c` and `flow.c` `PORT:` notes). |
-| 2 | TEST CONTROLS RAW DATA reads linear `0xFFE80003` | `0x32573..0x32578`; outside `mem[]` and any DOS memory; drawn as 0 (`svcmenu.c:992`, record §K11.5, §E-32). |
-| 3 | STATISTICS page 2's `idiv` fault | `0x334CD..0x334E2` (`0x33458`): a non-zero sum with a zero low word raises #DE; drawn as 0 (`svcmenu.c:1192`, record §K11.7, §E-33). |
+| 1 | The idle-timeout / menu-result longjmp is not modelled | `0x2EB80` (`config_key_latched`) stores `DS_00107414 = 0` then `0x2EBB3 jmp 0x65431`, `longjmp(0x1044F4, 1)`; `game_frame` case `0x27` (`0x251C6..0x25215`) takes the same longjmp at `0x25206..0x2520B` (`mov eax,0x1044F4` at `0x25206`, `jmp 0x65431` at `0x2520B`) for any menu result other than 0/-5/-10. The port keeps the store and returns 0 / continues (spec §7, `config.c` and `flow.c` `PORT:` notes). **Evidence (named-gaps A §A.6):** the idle timeout fires after `0x4B1` ticks (20.0 s), and the MAIN MENU Esc takes the second longjmp (`0x2520B`); both restart into mode 3, attract state 0, with the frame counter `DS_000EF6DC` kept, one distinct black frame (about four capture frames), then the boot sequence from the TWI5 logo. The fix waits for plan B. |
+| 2 | TEST CONTROLS RAW DATA reads linear `0xFFE80003` | `0x32573..0x32578`; outside `mem[]` and any DOS memory; drawn as 0 (`svcmenu.c:992`, record §K11.5, §E-32). **Evidence (named-gaps A §A.1.1, §A.7):** unreachable in the stock game (field `0x2A` is 4 bits; `0x2FA1A` stores `field & ~3`, so bit 4 is never set); when `DS_00107410 \|= 0x10` is poked, DOS/4GW under DOSBox-X reads `0xFF` with no fault (paging off) and draws `000000FF` — DOSBox-X's answer, not hardware. The decision waits for plan B. |
+| 3 | STATISTICS page 1's `idiv` fault (named-gaps A corrects "page 2": `0x33458` is called from page 1 at `0x331A6`) | `0x334CD..0x334E2` (`0x33458`): the divisor is the sum's low word, so a sum of exactly `0x10000` (divisor 0) raises #DE; drawn as 0 (`svcmenu.c:1192`, record §K11.7, §E-33). **Evidence (named-gaps A §A.8):** with fields 8 = `0xFFFF` and 6 = `1` poked, entering STATISTICS aborts to DOS with `DOS/4GW Professional error (2001): exception 00h (divide by zero)` at unrelocated `1:000234E0` (the `idiv`); no handler is installed. The fix waits for plan B. |
 | 4 | ~~`0x1D0BC`'s two allocation-failure arms are ported but untested~~ **closed** (named-gaps C, record `2026-09-30-named-gaps-c-derivations.md` §C.2/§C.3) | The MIDI arm `0x1D10E..0x1D12F` (zeroes `DS_001028C4/C0/CC`) and the slot break `0x1D16B` (slot 0's failure included). ~~The bump allocator cannot fail in-process without exhausting `mem[]`~~: `res.c`'s `PORT:` seam `res_fail_alloc_nth` fails the n-th request one-shot without moving the heap; `check_sound_buffers` V1-V4 pin both arms and the entry gate (mutations M1, M2). Residue: the two stores of 0 at `0x1D0F7`/`0x1D163` on the failure path are unobservable (§C.2.1). |
-| 5 | No oracle reaches the K11 service menu | No capture of the options menu exists. Its 50 functions are pinned only by 160 scripted unit-test frames (record §K11.8/§K11.9). |
+| 5 | ~~No oracle reaches the K11 service menu~~ **closed by named-gaps A** | `make k11-oracle` (in `make verify`) compares the walk capture `data/k11-captures/walk` with the port (record §A.5, §A.10; a narrow claim). Residue, each a smaller named gap in the record: the STATISTICS page-2 clear (a chord the input cannot type), SOUND/MUSIC TEST playback, the quit-prompt longjmp `0x24AB0` (outside mode `0x27`), and the input channel (keys injected through DOSBox-X's memory file, not the keyboard controller; §A.9). |
 | 6 | Headless sample slots never end | With no audio device the mixer is not rendered, so `AIL_sample_status` keeps a started sample at 4; the raw DIG service marks it done at the buffer end (`0x6F28F`) (`ail.c:369`, record k7-k12 §0.7.6). **Closed** (named-gaps D, 2026-09-30): with no device the mixer renders on a virtual clock from the ISR tick DS_00101500 at MIXER_OPL_RATE (flow.c game_audio_service); one-shots end at their length and slots free (record 2026-09-30-named-gaps-d-derivations.md §D.1-§D.3; test_virtual_clock). |
 
 Recorded in Task 3a (record `2026-09-29-k1-k9-derivations.md` §K1.1, and
@@ -666,9 +668,9 @@ it is not a complete scan of non-Ghidra code.
 ### §H.5 Final gate
 
 Ten named gaps remained at Task 7; nine remained after named-gaps E closed #7,
-eight after named-gaps D closed #6, seven after named-gaps C closed #4 and four
-remain after named-gaps unit F closed #8..#10 (§H.3). §H.1a gives every
-`not modelled` hit a verdict.
+eight after named-gaps D closed #6, seven after named-gaps C closed #4, four
+after named-gaps unit F closed #8..#10 and three remain after named-gaps A closed #5
+(§H.3). §H.1a gives every `not modelled` hit a verdict.
 
 `make clean && make build && make verify` (with the `/tmp/pr_t7_*` dump
 overrides; the two oracle fixtures restored byte-identical after `make clean`,
