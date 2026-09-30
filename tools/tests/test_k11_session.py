@@ -65,6 +65,14 @@ class Session(unittest.TestCase):
         with self.assertRaises(ks.ScriptError):
             ks.port_script('menuesc', lines + [k(30, 0x220, 0x011B)])
 
+    def test_port_script_accepts_a_key_prefix_only_after_an_exit(self):
+        lines = [k(10, 0x200, 0x1C0D), p(11, 0x200, mode=0x27), k(20, 0x210, 0x011B)]
+        with self.assertRaises(ks.ScriptError):       # the run was cut by the time limit
+            ks.port_script('menuesc', lines[:2] + ['E ms=99 reason=time-limit rc=0'])
+        out = ks.port_script('menuesc', lines[:2] + ['E ms=99 reason=exit rc=0'])
+        self.assertNotIn('\nkey ', out)                 # only the Enter was received
+        self.assertTrue(out.endswith('end %d\n' % ks.END_TAIL_TICKS))
+
     def test_port_script_needs_mode_27(self):
         with self.assertRaises(ks.ScriptError):
             ks.port_script('idle', [k(10, 0x200, 0x1C0D), p(11, 0x200, mode=3)])

@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <setjmp.h>
 
 
 /* ---- test_flow.c ---- */
@@ -11702,6 +11703,11 @@ static u32 k11_t0, k11_pad_end, k11_dumped, k11_hash_last, k11_idle_pumps;
 static int k11_armed, k11_done, k11_pad_on, k11_failed;
 static char k11_dir[1024];
 static FILE *k11_screens, *k11_log;
+/* The script's end can fall inside a blocking loop that only a key the
+ * script does not send would leave (the de scenario's STATISTICS page after
+ * the capture's #DE abort, record §A.8); the hook then leaves game_loop()
+ * through this, the driver's own frame. The game is not run again. */
+static jmp_buf k11_end_jb;
 
 static int k11_parse(const char *path)
 {
@@ -11786,6 +11792,7 @@ static void k11_hook(void *ctx)
         } else {
             fprintf(k11_screens, "end settled %u\n", k11_dumped - 1u);
             k11_done = 1;
+            longjmp(k11_end_jb, 1);
         }
         k11_next++;
         k11_idle_pumps = 0u;
@@ -11861,7 +11868,9 @@ int test_k11_oracle(void)
     res_set_screen_hook(k11_loader);
 
     /* Sentinels: none is a mode, frame or state the checks below accept. */
-    u32 mode_before = 0xFFFFu, mode_after = 0xFFFFu, frame_after = 0xFFFFFu, state_after = 0xFFFFFu;
+    static u32 mode_before, mode_after, frame_after, state_after;
+    mode_before = 0xFFFFu; mode_after = 0xFFFFu; frame_after = 0xFFFFFu; state_after = 0xFFFFFu;
+    if (setjmp(k11_end_jb) == 0)
     for (u32 i = 0; i < K11_MAX_LOOPS && !k11_done && !k11_failed; i++) {
         const int enter_now = !k11_armed && DSW(DS_000EF6DC) == (u16)(k11_enter_frame - 1u);
         if (enter_now) {

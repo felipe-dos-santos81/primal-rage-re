@@ -132,6 +132,11 @@ def port_script(name, lines):
         raise ScriptError('no K record: the BIOS keyboard buffer never advanced (plan Task 14 F2)')
     got = [normalise(r['key']) for r in kev]
     want = [key_word(k) for k in keys]
+    aborted = any(r['kind'] == 'E' and r.get('reason') == 'exit' for r in recs)
+    if aborted and len(got) < len(want) and got == want[:len(got)]:
+        # The game left DOSBox-X before its last keys (the de scenario's #DE
+        # abort, record §A.8): the script covers the keys the game received.
+        keys, want = keys[:len(got)], want[:len(got)]
     if got != want:
         raise ScriptError('observed keys %s differ from scenario %s %s'
                           % (['%04X' % w for w in got], name, ['%04X' % w for w in want]))
