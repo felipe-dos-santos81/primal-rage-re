@@ -683,3 +683,10 @@ Arms no unit test or gate run covers, and where (if anywhere) they ran:
   `k11_capture.main` and `k11_session.check_fields` closed; the driver hook
   names no settled frame before the first dump; `PR_K11_DUMP` is in AGENTS.md's
   driver list and `K11_DUMP` in the parallel-rules override list.
+- **Gate r1** (after `d6c3f2e`, `na` overrides incl. `K11_DUMP=/tmp/pr_na_k11`):
+  `verify-exit=0`; `ORACLES-EQUAL` (the 45 base lines); `DUMPS-IDENTICAL`;
+  `make audio-render` then `cmp /tmp/pr_na_fm.wav before-t2.wav`: `cmp-exit=0
+  output=[]`; the five `k11_compare: walk:` lines unchanged; `Ran 34 tests …
+  OK` for the k11 tools under `PR_ORACLE_REQUIRED=1` (fields 7, session 7,
+  capture 9, compare 11; 34 OK without it as well). Assertion sites 13557
+  (unchanged by the round).
