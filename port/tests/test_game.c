@@ -11997,3 +11997,62 @@ int test_k11_oracle(void)
     CHECK(!k11_failed && k11_dumped > 1u, "the K11 frames were written");
     return g_failures - before;
 }
+
+/* ---- named-gaps B: the 0x65431 soft restart (record B) ------------------ */
+
+static jmp_buf rs_jb;
+
+/* 0x65431 lands at the armed point with EAX = 1 (0x6544B..0x65450: val 0
+ * becomes 1; the callers pass EDX = 1) and never returns to its caller. */
+static void rs_check_landing(void)
+{
+    volatile int landed = -1, returned = 0;
+    jmp_buf *const prev = game_restart_arm(&rs_jb);
+    switch (setjmp(rs_jb)) {
+    case 0:
+        landed = 0;
+        game_restart_longjmp();
+        returned = 1;
+        break;
+    case 1:
+        landed = 1;
+        break;
+    default:
+        landed = 2;
+        break;
+    }
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT(returned, 0);
+    CHECK(game_restart_arm(prev) == &rs_jb, "the armed point is handed back");
+}
+
+/* 0x20C24..0x20DE3: the resume tail's stores, each seeded to differ. */
+static void rs_check_resume(void)
+{
+    const u32 v = config_field_get(0x29u);
+    DSD(DS_000EF6D8) = 0x1234u;                 /* 0x20C62 seed */
+    DSD(DS_00104528) = v ^ 0xA5A5A5A5u;         /* 0x20C6D */
+    DSD(DS_001088D0) = 0xDEADu;                 /* 0x20CB0 */
+    DSB(DS_00104B1D) = 0xA5u;                   /* 0x20C37 */
+    DSW(DS_00104AFC) = 0x77u;                   /* 0x20CDF */
+    DSB(DS_00107A54) = 1u;                      /* 0x4F228 */
+    DSW(DS_00104B00) = 0x27u;                   /* 0x10EA1 (game_state_init) */
+    DSW(DS_000F0A64) = 0x33u;                   /* 0x10EA8 */
+    game_init_resume();
+    CHECK_EQ_INT((long)DSD(DS_000EF6D8), 0xABCD);
+    CHECK_EQ_INT((long)DSD(DS_00104528), (long)v);
+    CHECK_EQ_INT((long)DSD(DS_001088D0), (long)((v & 0xFu) * 5u + 0x1Eu));
+    CHECK_EQ_INT((int)DSB(DS_00104B1D), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFC), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107A54), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 3);
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 0);
+}
+
+int test_restart(void)
+{
+    int before = g_failures;
+    rs_check_landing();
+    rs_check_resume();
+    return g_failures - before;
+}

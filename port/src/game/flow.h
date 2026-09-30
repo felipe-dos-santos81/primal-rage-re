@@ -8,6 +8,8 @@
 
 #include "types.h"
 
+#include <setjmp.h>
+
 /* The port of the original's game main, 0x1BEC4. Runs the init chain, then the
  * frame loop until it quits, then the teardown of 0x1BE30. Returns the process
  * exit code (always 0; the original's fatal path exits the process instead).
@@ -21,6 +23,21 @@ int game_main(void);
  * game_loop() -> game_shutdown(). */
 void game_init(void);
 void game_shutdown(void);
+
+/* 0x20C24..0x20DE3 — record named-gaps-b §B.2. The post-setjmp tail of
+ * 0x20C10: game_init runs it last, and a 0x65431 longjmp re-runs it from
+ * game_loop's restart point. */
+void game_init_resume(void);
+
+/* 0x65431 — record named-gaps-b §B.1. WATCOM longjmp(0x1044F4, 1): the soft
+ * restart. Lands at the armed restart point (game_loop's; 0x20C1F's setjmp in
+ * the raw); never returns. */
+_Noreturn void game_restart_longjmp(void);
+
+/* PORT: arms `jb` as the restart point and returns the previous one (NULL
+ * when none). The raw's jmp_buf is the 0x2C-byte register save at DS
+ * 0x1044F4 (0x653FC), which only 0x65431 reads. */
+jmp_buf *game_restart_arm(jmp_buf *jb);
 
 /* Tells game_main() which directory holds the INDEX-listed resources
  * (data/game/C). Must be called before game_main(). */
