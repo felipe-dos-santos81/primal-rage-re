@@ -171,16 +171,16 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   Update the README title and its "N% of the original's D real functions"
   line after any merge that adds or removes a ported function.
   It also prints the adjusted (portable) figure; the README title keeps the raw
-  percentage. As of 2026-09-30 the two lines read `769 1203 64` and
+  percentage. As of 2026-09-30 the two lines read `770 1203 64` and
   `731 731 100`:
-  - **Raw:** 769 ported of 1203 real functions (64%). The 434 unported functions
+  - **Raw:** 770 ported of 1203 real functions (64%). The 433 unported functions
     are not porting targets: 81 are host-owned or deferred (the rows of
     `tools/port_classification.txt` that are not ported, one evidence line each)
-    and 353 are runtime code (>= 0x5D000: WATCOM libc, DOS/4GW glue) that the
+    and 352 are runtime code (>= 0x5D000: WATCOM libc, DOS/4GW glue) that the
     port serves from the host libc.
   - **Portable:** 731 of 731 (100%). The denominator leaves out the 81
     host-owned/deferred functions and everything at or above 0x5D000; the
-    other 38 ported functions (769 - 731) sit in that runtime region, so they
+    other 39 ported functions (770 - 731) sit in that runtime region, so they
     count in the raw figure only.
   `--unported` lists what is left (addr, size, callers, callees), largest
   first; the `runtime` rows are not targets.
