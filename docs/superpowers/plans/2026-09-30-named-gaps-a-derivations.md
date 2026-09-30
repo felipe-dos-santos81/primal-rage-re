@@ -542,3 +542,75 @@ unexplained`, `settled screens exhibited 4/5; missing [12]` — port 12 is page
   page 1, a blocking loop no scripted key leaves (the first `de` report run
   spun there; the walk and the smoke dumps are unchanged by it).
 
+## §A.10 Closure (Task 15)
+
+### The paths
+
+| path | reached by | evidence | oracle |
+|---|---|---|---|
+| MAIN MENU | walk | walk frames 92 (raw 1753), 170 (raw 4345) | k11-oracle |
+| START MENU | walk | walk frames 94..98 (raw 1821..1961) | k11-oracle |
+| CONFIG OPTIONS ("GAME OPTIONS") | walk | walk frame 107 (raw 2241) | k11-oracle |
+| STATISTICS p1 / p2 / histograms 0..2 | walk | walk frames 113 (2455), 116 (2525), 118/120/122 (2593/2660/2734) | k11-oracle |
+| SOUND TEST / MUSIC TEST (entered and left) | walk | walk frames 127 (2941), 132 (3155) | k11-oracle |
+| MODIFY CONTROLS | walk | walk frame 139 (3364); 138 allowed by name (§A.5) | k11-oracle |
+| CONFIGURE KEYBOARD | walk | walk frame 145 (3572) | k11-oracle |
+| TEST CONTROLS (no DIAGS) | walk | walk frames 150/152 (3784/3787); 151 allowed by name (§A.5) | k11-oracle |
+| ADJUST VOLUME, with `- LOADING -` | walk | walk frames 157..160 (3993..4003), LOADING at 158 (3996) | k11-oracle |
+| 2 PLAYER HANDICAP | walk | walk frames 165/166 (4203/4207) | k11-oracle |
+| TEST CONTROLS DIAGS `0xFFE80003` | diags (memory poke) | §A.7: `000000FF`, no fault, diags frame 111 (raw 2383) | report only (B) |
+| idle timeout `0x2EBB3` | idle | §A.6: `idle/poll.log:2616..2618`, idle frames 106..108 | report only (B) |
+| MAIN MENU Esc `0x2520B` | menuesc | §A.6: `menuesc/poll.log:1590..1596`, menuesc frames 108..110 | report only (B) |
+| `0x33458` `#DE` | de (field poke) | §A.8: `de/dosbox.log:15..28`, de frame 99 (raw 2033) | report only (B) |
+| quit prompt longjmp `0x24AB0` | not captured | reached from a game mode, not mode 0x27 (§A.1.3) | — |
+| STATISTICS page 2 clear (Esc + Enter held) | not captured | the input (AUTOTYPE or the injector) types single taps, not chords (§A.2, §A.9) | — |
+| SOUND/MUSIC TEST playback | not captured | no Enter is typed there; the DROs are kept, not compared (§A.4) | — |
+
+No walk screen was dropped (F2 as written was not needed; §A.9).
+
+### The answers (for sub-project B)
+
+- **G1.** Both captured longjmps (the idle timeout `0x2EBB3` after `0x4B1`
+  ticks, 20.0 s, and the MAIN MENU Esc `0x2520B`) restart the game the same
+  way: mode 3, attract state 0, `DS_000EF6DC` kept, one black frame, then the
+  boot sequence from the TWI5 logo (`idle frame 108` = `menuesc frame 110` =
+  `data/title-captures/frontend/frame_1887.raw`). §A.6.
+- **G2.** Unreachable in the stock game (§A.1.1). Under a poke, DOS/4GW +
+  DOSBox-X read `0xFF` at linear `0xFFE80003` with no fault (paging off) and
+  the screen shows `000000FF`. §A.7.
+- **G3.** A zero low word in row `0x96`'s divisor (fields 8 + 6 = `0x10000`)
+  aborts to DOS with `DOS/4GW Professional error (2001): exception 00h (divide
+  by zero)` and the register dump; no handler is installed. §A.8.
+
+### The oracle's claim
+
+Every non-black capture frame between the first capture frame that exhibits
+the port's first MAIN MENU and the final settled MAIN MENU is explained by the
+port (clean, a splice of two adjacent port frames, or a transition row),
+except the two frames allowed by name (§A.5, the presented-DAC gap of
+fidelity-gaps §7.11), and every settled screen the port draws is present in
+the capture (38/38). The claim does not cover the timing between keys, the
+input path through the keyboard controller and the game's IRQ1 handler (the
+capture injects keys, §A.9), the SOUND/MUSIC TEST audio, or anything after the
+walk.
+
+### Named gaps left by A
+
+1. The mid-draw presented-DAC frames (walk 138, 151; diags 110): owner
+   fidelity-gaps §7.11.
+2. The walk's keys are injected through the memory file, not typed through
+   the keyboard controller (§A.9); AUTOTYPE's key loss on this host is not
+   explained.
+3. `0xFFE80003` reads `0xFF` on DOSBox-X; real hardware is not captured.
+4. The instruction that clears `DS_00107414` on the MAIN MENU Esc is not
+   pinned (§A.6).
+
+### Final gate (gate t15, after the last code commit `1ecc23b`)
+
+`make verify` with the `na` overrides: `verify-exit=0`; `ORACLES-EQUAL` (the
+45 base lines); `DUMPS-IDENTICAL`; `WAV-IDENTICAL`; the five `k11_compare:
+walk:` lines equal §A.5's; `Ran 32 tests` for the k11 tools (fields 7, session
+7, capture 9, compare 9). `python3 tools/port_progress.py`: `767 1203 64` and
+`731 731 100 …`, unchanged (A ports no function; the README stays at 64%).
+Assertion sites 13545 → 13557. The captures (`data/k11-captures/{walk, idle,
+menuesc, diags, de}`, git-ignored) are 32, 218, 141, 22 and 19 MB.
