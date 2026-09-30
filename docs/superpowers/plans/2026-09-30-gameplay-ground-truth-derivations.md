@@ -224,6 +224,39 @@ spec §3.5–§3.7:
   `DS_0010150C` restart at 1/2 at some transitions (`0x121`, `0x248`); the spin
   predicate is relative and unaffected.
 ## §G.2 gp_session: constants, pads, log format (U1 Task 2)
+
+`tools/gp_session.py` (stdlib): `DATA_BASE_VA`, `KB_PTR_DS = 0x101514`,
+`KEYTAB_OFF = 0x254`, `BDA_HEAD/TAIL = 0x41A/0x41C`, `SNAP_FIELDS` (the
+spec §4.1 `S` fields; addresses re-checked against `prage.c` `0x500C4` /
+`0x4F644` / `0x2C304` in §G.1), `TRACE_FIELDS`, `KEYS`, `PAD`, `raw_to_kb`,
+`format_s`, `parse`. Harness values, named as such: `ENTER_WAIT = 25.0` s (the
+K11 boot wait, `k11_session.ENTER_WAIT`) and `HOLD_FRAMES = 3` (AUTOTYPE's
+3-tick press, record named-gaps-a §A.9); neither is a game value.
+
+`PAD`'s scans and kb bits are §G.1.2's table. Its BIOS words: the letters and
+P2's Home/PgUp/End/PgDn are the config words at `0x122C62` (§G.1.2: `0x1F73
+0x2D78 0x2C7A 0x2E63 0x1675 0x1769 0x316E 0x326D`, `0x4700 0x4900 0x4F00
+0x5100`); P2's arrows the grey-key `E0` form AUTOTYPE's taps left in the ring
+(record named-gaps-a §A.9: `48E0`, `50E0`; left/right the same form); F1/F2 the
+standard make words `0x3B00`/`0x3C00`. None of these words is acted on by the
+int 16h key loop `0x24D08..0x24EE7` (`flow.c game_key_loop`): it acts on ascii
+`0x0D`, `0x1B`, `0x20`, and with ascii 0 only on scans `0x10`, `0x1F`, `0x24`,
+`0x32`; every letter word here has a non-zero ascii byte, and the ascii-0 words
+(`0x3B00 0x3C00 0x4700 0x4900 0x4F00 0x5100`) hit its `default`. Each still
+latches `DS_00105F30` (`0x24D4D`).
+
+**Spec §7 Q4 — ruled YES (user decision, delegated through the controller,
+2026-09-30):** a pad press also queues its key's BIOS word once, like a real
+keyboard's make code; typematic repeat is not modelled; the
+`gp_capture --no-pad-bios` switch is kept (it turns the pad words off, the
+BIOS keys `enter`/`esc` still queue).
+
+Tests: `python3 -m unittest tools.tests.test_gp_session -v` → `Ran 6 tests … OK`
+(before the module existed: `ModuleNotFoundError: No module named 'gp_session'`).
+Mutation: `p1.b0`/`p1.b1` kb bits swapped in `PAD` →
+`FAIL: test_pad_bits_follow_the_isr_sampler … AssertionError: 512 != 256 : b0`;
+restored → `OK`. (A stale `tools/__pycache__` hid the restore once — same size,
+same second; the proofs after this one run with `PYTHONDONTWRITEBYTECODE=1`.)
 ## §G.3 The scheduler (U1 Task 3)
 ## §G.4 Port script v2 and trace diff (U1 Task 4)
 ## §G.5 gp_capture (U1 Tasks 5–6)
