@@ -2064,9 +2064,8 @@ static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
         return 0;
     }
     case 0x2e:                                      /* 0x2B8D2 */
-        /* PORT: 0x2B2A0's opcode 0x2E calls 0x2C3FC (the voice dispatcher,
-         * sound_voice), not wired (record §45-A). Not silently dropped: the
-         * call is documented here and listed in the Task 7 report. */
+        /* EAX is still 0x2B8F8's operand (0x2B2DB); the id is its low word. */
+        (void)sound_voice((u32)ax & 0xFFFFu);       /* 0x2B8D2/0x2B8D7 0x2C3FC */
         return 0;
     default:                                        /* 0x2B8E8 */
         /* PORT: table opcodes 0x23 and 0x24 both point at 0x2B8E8, as does

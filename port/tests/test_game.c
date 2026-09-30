@@ -6533,7 +6533,7 @@ int test_attract(void)
 
     /* 0x10F28: two signed 16-bit countdowns. Each reload is rng_next(N) + N
      * with N = 0x2D / 0x3C; the second branch also consumes rng_next(2) for the
-     * stubbed voice, so skipping it would shift the stream. */
+     * 0xBE/0xBF voice pick, so skipping it would shift the stream. */
     {
         const u16 saved60 = DSW(DS_000F0A60);
         const u16 saved62 = DSW(DS_000F0A62);
@@ -6548,7 +6548,7 @@ int test_attract(void)
         CHECK_EQ_INT((int)rng_next(0x2Du), 6);   /* stream untouched by the tick */
 
         /* Both expire from 1. Seed 0xABCD: rng_next(0x2D) = 6 -> 0x33;
-         * rng_next(2) = 1 (discarded; without it the next draw is 52 -> 0x70);
+         * rng_next(2) = 1 (the 0xBE pick; without it the next draw is 52 -> 0x70);
          * rng_next(0x3C) = 6 -> 0x42. */
         rng_seed(0xABCDu);
         DSW(DS_000F0A60) = 1;
@@ -10362,6 +10362,29 @@ static const TfVoiceSite k12_b2_game[] = {
     { 192u, vs_mode22,         2u, { 0x29u, 0x22u } },                /* 0x26DB8 */
 };
 
+/* Rows 6/7: 0x10F28 with both countdowns at 1, so both expire in one call
+ * (signed `<= 0` after the decrement, 0x10F3C/0x10F6F `jg`). 0xBD comes
+ * before the rng_next(0x2D) reload (0x10F43, 0x10F4D); the second arm's
+ * rng_next(2) picks 0xBE when non-zero, else 0xBF (0x10F76..0x10F86). Seed
+ * 0xABCD draws 6 then 1 (0xBE); seed 3 draws 17 then 0 (0xBF). */
+static void vc_voice_tick(u32 seed)
+{
+    DSW(DS_000F0A60) = 1u;
+    DSW(DS_000F0A62) = 1u;
+    rng_seed(seed);
+    attract_voice_tick();
+}
+static void vc_voice_tick_be(void) { vc_voice_tick(0xABCDu); }
+static void vc_voice_tick_bf(void) { vc_voice_tick(3u); }
+
+/* Record k7-k12 §7, batch C (attract.c): the attract's sample voices, case 2
+ * (the runner's DS_001028C8 = 0 logs them without a bank read). */
+#define K12_C_GAME_ROWS 2
+static const TfVoiceSite k12_c_game[] = {
+    {   6u, vc_voice_tick_be, 2u, { 0xBDu, 0xBEu } },             /* 0x10F43 */
+    {   7u, vc_voice_tick_bf, 2u, { 0xBDu, 0xBFu } },             /* 0x10F8B */
+};
+
 int test_voice_sites(void)
 {
     int before = g_failures;
@@ -10370,5 +10393,7 @@ int test_voice_sites(void)
     tf_voice_sites(k12_a, (u32)(sizeof k12_a / sizeof k12_a[0]));
     CHECK_EQ_INT((int)(sizeof k12_b2_game / sizeof k12_b2_game[0]), K12_B2_GAME_ROWS);
     tf_voice_sites(k12_b2_game, (u32)(sizeof k12_b2_game / sizeof k12_b2_game[0]));
+    CHECK_EQ_INT((int)(sizeof k12_c_game / sizeof k12_c_game[0]), K12_C_GAME_ROWS);
+    tf_voice_sites(k12_c_game, (u32)(sizeof k12_c_game / sizeof k12_c_game[0]));
     return g_failures - before;
 }

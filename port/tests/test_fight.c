@@ -41320,11 +41320,293 @@ static const TfVoiceSite k12_b2_fight[] = {
     {  65u, vf_3531c,        2u, { 0xECu, 0xE0u } },           /* 0x353CA */
 };
 
+/* ---- record k7-k12 §7, batch C: the oracle-path sample voices ------------
+ * Every id below is a table read from the raw bytes (record §1.1 row 0.2):
+ * 0xBDFFA, 0xBDAA8, 0xE9308, 0xE933C, 0xBE008, 0xE9358, indexed by a byte
+ * of the 0x3AFC4 triple (0xDE114 + c*11, c = char << 6 | reaction) or by
+ * the slot's char +0x7A; record §7.1 gives each row's index. */
+#define VC_S0    DS_001077B0
+#define VC_S1    (DS_001077B0 + 0x94u)
+#define VC_R0    FIGHT_RECS
+#define VC_R1    (FIGHT_RECS + 0x100u)
+#define VC_R2    (FIGHT_RECS + 0x200u)         /* row 58's thrown record */
+#define VC_ST    (FIGHT_RECS + 0x3A00u)        /* tg_seed's seven stream words */
+#define VC_E1    (FIGHT_RECS + 0x3300u)        /* row 38's two list entries */
+#define VC_E2    (FIGHT_RECS + 0x3340u)
+#define VC_ER1   (FIGHT_RECS + 0x3400u)        /* and their actor records */
+#define VC_ER2   (FIGHT_RECS + 0x3480u)
+#define VC_SHADE (FIGHT_RECS + 0x3500u)        /* a non-zero +0x10 (no 0x2AE14) */
+
+/* Row 1: 0x2B2A0 opcode 0x2E through actors_anim_begin's pre-walk (every
+ * command whose high byte has bit 7). `9F2E` is the 0x1F prefix (0x2B2B1
+ * `and ah,0x1f`) with op byte 0x2E and mode 0, so the operand is the next
+ * word (0x2B932); two commands carry the ids 0xD3 and 0xCD, then the word
+ * 0 (bit 7 clear) ends the walk. */
+static void vc_anim_2e(void)
+{
+    static const u16 s[5] = { 0x9F2Eu, 0x00D3u, 0x9F2Eu, 0x00CDu, 0x0000u };
+    u32 rec, i;
+    vf_pools();
+    rec = tf_anim_alloc_record();
+    for (i = 0; i < 5u; i++) DSW(ANIM_SCRATCH + i * 2u) = s[i];
+    if (rec != 0u) actors_anim_begin(rec, ANIM_SCRATCH, 0x40400000u);
+}
+
+/* Rows 33..35: 0x4A634 through fight_effects_pass (0x4A591, unconditional)
+ * with an empty entry list (tf_demo_fixture), mode 3 (not 7/8/9, so no
+ * mode-9 block and no DS_001088BF tail draw). Both slots' +0x42 bit 1 set
+ * (0x4A640); the side's DS_001088A8 byte picks the arm (0x4A655..0x4A697). */
+static void vc_crowd(u8 r0, u8 r1, u32 seed)
+{
+    (void)tf_demo_fixture();
+    DSW(DS_00104B00) = 3u;
+    DSB(VC_S0 + 0x42u) = 2u;
+    DSB(VC_S1 + 0x42u) = 2u;
+    DSB(DS_001088A8) = r0;
+    DSB(DS_001088A8 + 1u) = r1;
+    rng_seed(seed);
+    fight_effects_pass();
+}
+/* Row 33: 0x20 and 0x3F (both ends of 0x20..0x3F), then a second pass with
+ * side 0 at 0x2A only. Seed 18 draws rng_next(3) = 0, 1, 2: 0xCD, 0xCE, 0xCF
+ * (0x4A669..0x4A688). */
+static void vc_crowd_cd(void)
+{
+    vc_crowd(0x20u, 0x3Fu, 18u);
+    DSB(VC_S0 + 0x42u) = 2u;
+    DSB(DS_001088A8) = 0x2Au;
+    fight_effects_pass();
+}
+/* Rows 34/35: 0x10 and 0x17 (both ends of 0x10..0x17). Seed 12 draws
+ * rng_next(2) = 1, 1 (side 0: 0xC9 then 0xDA) and 1, 0 (side 1: 0xCA then
+ * 0xDB). */
+static void vc_crowd_c9(void) { vc_crowd(0x10u, 0x17u, 12u); }
+
+/* Row 38: 0x4B470 through fight_effects_pass case 8 (0x4A08A): two entries
+ * with +0x1C bit 6 (0x4A097; bit 7 clear, so 0x4B69C returns at 0x4B6B3),
+ * the holder side 0 not in its hold (0x4AF04: slot 0's char 0, its record's
+ * +8 = 0 outside 0xE7B02..0xE7B50), a +0x4A link (0x4A0B7) and a shadow in
+ * +0x10 (0x4B4BB). The voice is 0xD1 when rec+0x48 - 0x20 < 3 (signed,
+ * 0x4B483..0x4B489), else 0xD0: 0x20 gives 0xD1, 0x23 gives 0xD0.
+ * DS_00104B1D = 3 ends 0x4B470 at 0x4B547, before the eighth-hit tail. */
+static void vc_trample(void)
+{
+    vf_pools();
+    (void)tf_demo_fixture();
+    mem_fill(VC_E1, 0, 0x300u);
+    DSW(DS_00104B00) = 3u;
+    DSB(DS_00104B1D) = 3u;
+    DSB(VC_S0 + 0x7Au) = 0u;
+    DSD(DS_0010884C) = VC_E1;
+    DSD(VC_E1) = VC_E2;
+    DSD(VC_E2) = DS_0010884C;
+    DSD(VC_E1 + 8u) = VC_ER1;
+    DSD(VC_E2 + 8u) = VC_ER2;
+    DSB(VC_ER1 + 0x48u) = 0x20u;
+    DSB(VC_ER2 + 0x48u) = 0x23u;
+    DSB(VC_ER1 + 0x4Au) = 1u;
+    DSB(VC_ER2 + 0x4Au) = 2u;
+    DSD(VC_E1 + 0x10u) = VC_SHADE;
+    DSD(VC_E2 + 0x10u) = VC_SHADE;
+    DSB(VC_E1 + 0x1Cu) = 0x40u;
+    DSB(VC_E2 + 0x1Cu) = 0x40u;
+    DSB(VC_E1 + 0x1Eu) = 8u;
+    DSB(VC_E2 + 0x1Eu) = 8u;
+    fight_effects_pass();
+}
+
+/* Row 58: 0x3B938 on slot 0, char 4, its +0x08 record at +0x48 = 2 (not
+ * 4, 0x3B948): 0xBDFFA[4] = 0xAC (0x3B9A1..0x3B9B8). */
+static void vc_3b938(void)
+{
+    (void)tf_hit_fixture(4u);
+    mem_fill(VC_R2, 0, 0x68u);
+    DSB(VC_R2 + 0x48u) = 2u;
+    DSD(VC_S0 + 0x08u) = VC_R2;
+    fighter_3b938(VC_S0);
+}
+/* Row 60: 0x36710's third arm (the flag +0x58 = 2, rec+0x36 = 0 and
+ * rec+0x1C = 0, 0x367B5..0x367BC): 0x6E. */
+static void vc_36710(void)
+{
+    (void)tf_hit_fixture(0u);
+    fight_reset_slot_pair(VC_S0, VC_S1, VC_R0, VC_R1);
+    DSB(VC_R0 + 0x51u) = 0u;
+    DSB(VC_S0 + 0x58u) = 2u;
+    DSW(VC_R0 + 0x36u) = 0u;
+    DSD(VC_R0 + 0x1Cu) = 0u;
+    fighter_state_36710(VC_S0, VC_R0);
+}
+/* Row 61: 0x35E6C, after the +0x41 store (0x35ED0): 0x6D. */
+static void vc_35e6c(void)
+{
+    (void)tf_hit_fixture(0u);
+    fight_reset_slot_pair(VC_S0, VC_S1, VC_R0, VC_R1);
+    DSB(VC_R0 + 0x51u) = 0u;
+    DSW(DS_001088E0) = 0u;
+    DSB(VC_S0 + 0x7Au) = 0u;
+    DSB(VC_R0 + 0x56u) = 0u;
+    fighter_state_35e6c(VC_S0, VC_R0);
+}
+/* Row 66: 0x35E04 on side 1's record with its owner slot in +0x14
+ * (0x35E0B), char 2: 0xBDAA8[2] = 0x7B (0x35E26..0x35E38). 0x3BC70 reads
+ * the side's DS_00107D40 row. */
+static void vc_35e04(void)
+{
+    u32 row = FIGHT_RECS + 0x3830u;
+    (void)tf_hit_fixture(0u);
+    fight_reset_slot_pair(VC_S0, VC_S1, VC_R0, VC_R1);
+    DSW(row) = 23u;
+    DSW(row + 2u) = 550u;
+    DSW(row + 4u) = 150u;
+    DSD(DS_00107D40 + 4u) = row;
+    DSB(VC_R1 + 0x51u) = 1u;
+    DSD(VC_R1 + 0x14u) = VC_S1;
+    DSB(VC_S1 + 0x7Au) = 2u;
+    fighter_35e04(VC_R1);
+}
+/* Row 67: 0x34E2C, char 0, reaction 0: the triple's stream 0xE6F94 is
+ * non-zero (0x34F85) and its callback 0; byte[0xDE114 + 7] = 12, so
+ * 0xE9308[12] = 0x8E (0x34F8B..0x34FA4). */
+static void vc_react_stream(void)
+{
+    (void)tf_hit_fixture(0u);
+    fight_reset_slot_pair(VC_S0, VC_S1, VC_R0, VC_R1);
+    hit_reaction_apply(0u, 0u);
+}
+/* Row 68: char 0, reaction 0x2A: no stream, the callback 0x3E3A8 (0x35017);
+ * byte[0xDE114 + 0x2A*11 + 7] = 10, so 0xE9308[10] = 0x87 (0x35019..0x35032). */
+static void vc_react_cb(void)
+{
+    (void)tf_hit_fixture(0u);
+    fight_reset_slot_pair(VC_S0, VC_S1, VC_R0, VC_R1);
+    hit_reaction_apply(0u, 0x2Au);
+}
+/* Row 69: 0x3D17C with the slot's +0x08 clear (0x3D187): 0x91. */
+static void vc_3d17c(void)
+{
+    (void)tf_hit_fixture(0u);
+    fight_reset_slot_pair(VC_S0, VC_S1, VC_R0, VC_R1);
+    fighter_3d17c(VC_S0, VC_R0, 0u);
+}
+/* Row 70: 0x1461C with ctx[2]'s +0x57 = 2 (0x146D7) runs 0x146F0 to its
+ * last call: 0xB1 (0x14807). check_char3_*'s D3 seed. */
+static void vc_1461c(void)
+{
+    c3_seed(VC_S0, VC_S1, VC_R0, VC_R1, VC_ST);
+    DSB(VC_S0 + 0x57u) = 2u;
+    DSB(VC_S0 + 0x42u) = 0x0Cu;
+    DSB(VC_S1 + 0x42u) = 0x08u;
+    DSW(DS_001088E0) = 0u;
+    DSB(DS_000FD11C) = 0u;
+    fighter_1461c(VC_S0, VC_R0, 0u);
+}
+/* Row 71: 0x14814, the voice right after 0x339AC (0x14824/0x14829): 0xB0. */
+static void vc_14814(void)
+{
+    c3_seed(VC_S0, VC_S1, VC_R0, VC_R1, VC_ST);
+    fighter_14814(VC_S0, VC_R0, 0u);
+}
+/* Rows 72/76: 0x14D7C(0) runs 0x39834(1, slot 0's +0x5F) at 0x14DF5, then
+ * 0xB3 (0x14E38). 0x39834 swaps to ctx[0] = 0, so the triple is slot 0's
+ * char: char 4, reaction 0x25 gives byte[0xDE114 + 0x125*11 + 8] = 8, and
+ * 0xE933C[8] = 0x46, the case-3 id (0x39959..0x3996E). The throw's other
+ * seeds are check_throw_3c208's (I). */
+static void vc_14d7c(void)
+{
+    c3_seed(VC_S0, VC_S1, VC_R0, VC_R1, VC_ST);
+    DSB(VC_S0 + 0x42u) = 0u;
+    DSB(VC_S1 + 0x42u) = 0u;
+    DSB(VC_S1 + 0x7Au) = 4u;
+    DSB(VC_S0 + 0x7Au) = 4u;
+    DSB(VC_S0 + 0x5Fu) = 0x25u;
+    DSD(VC_R0 + 0x18u) = (u32)(-8000 - 192);
+    DSD(VC_S0 + 0x2Cu) = (u32)-8000;
+    DSD(VC_R1 + 0x18u) = 6000u - 64u;
+    DSD(VC_S1 + 0x2Cu) = 8000u;
+    DSW(DS_00107D2C) = 3u;
+    fighter_14d7c(0u);
+}
+/* Row 75: 0x39CC8 phase 3 (0x39CE2) landing: slot 1's +0x30 = 5632, equal
+ * to word[0xBD884 + 3*2] (0x39E13 setge), then the 0xBB1DC dust spawn
+ * (0x39ED0, into the private pool) and 0x6C (0x39EDA). */
+static void vc_39cc8(void)
+{
+    vf_pools();
+    kb_seed(VC_S0, VC_S1, VC_R0, VC_R1);
+    DSB(VC_S1 + 0x58u) = 3u;
+    DSD(VC_S1 + 0x30u) = 5632u;
+    DSB(VC_R1 + 0x28u) = 0u;
+    fighter_39cc8(VC_S1, 1u);
+}
+/* Row 92: 0x3AAFC on slot 0 (side 0), reaction 0: 0x39834(0, 0) swaps to
+ * ctx[0] = 1, slot 1's char 0: byte[0xDE114 + 8] = 2, 0xE933C[2] = 0x65
+ * (0x3AB7C); then slot 1's +0x5F = 0x20 passes 0x3A280 (0x3AB8D) and slot
+ * 0's char 3 gives 0xBE008[3] = 0x9F (0x3AB96..0x3ABAF). check_pose_entry's
+ * setup, slot 0's +0x5F = 0xFF (no second triple). */
+static void vc_reaction_apply(void)
+{
+    pose_chain_setup(VC_S0, VC_S1, VC_R0, VC_R1);
+    DSB(VC_S0 + 0x5Fu) = 0xFFu;
+    DSB(VC_S1 + 0x5Fu) = 0x20u;
+    DSB(VC_S0 + 0x53u) = 0u;
+    DSB(VC_S0 + 0x41u) = 0u;
+    DSB(VC_S0 + 0x7Au) = 3u;
+    fighter_reaction_apply(VC_S0, 0u);
+}
+/* Row 93: 0x3AD98(0, the 0x3AFC4 triple of side 0 at char 4, reaction
+ * 0x24): byte[anim[0] + 9] = 5 (0x3ADAA..0x3ADB4), 0xE9358[5] = 0x74; its
+ * anim[2] word 0 spawns no stream (0x3AE1E). */
+static void vc_3ad98(void)
+{
+    u32 anim[3];
+    pose_chain_setup(VC_S0, VC_S1, VC_R0, VC_R1);
+    DSB(VC_S0 + 0x7Au) = 4u;
+    fighter_anim_triple(anim, 0u, 0x24);
+    fighter_3ad98(0u, anim);
+}
+/* Row 94: 0x15350 on slot 1 with the other side's 0x468D8 false (slot 0's
+ * +0x52 = 0, +0x10 = 0; 0x15360..0x15375): 0xAF (0x153BF). */
+static void vc_15350(void)
+{
+    c3_seed(VC_S0, VC_S1, VC_R0, VC_R1, VC_ST);
+    fighter_15350(VC_S1, VC_R1, 0u);
+}
+
+/* Record k7-k12 §7, batch C (actors.c, fight.c, fighter.c): the case-2/3
+ * sample voices the oracle runs reach (the runner's DS_001028C8 = 0 logs
+ * them without a bank read). */
+#define K12_C_FIGHT_ROWS 20
+static const TfVoiceSite k12_c_fight[] = {
+    {   1u, vc_anim_2e,        2u, { 0xD3u, 0xCDu } },                /* 0x2B8D7 */
+    {  33u, vc_crowd_cd,       3u, { 0xCDu, 0xCEu, 0xCFu } },         /* 0x4A6D2 */
+    {  34u, vc_crowd_c9,       4u, { 0xC9u, 0xDAu, 0xCAu, 0xDBu } },  /* 0x4A6B7/0x4A6C8 */
+    {  35u, vc_crowd_c9,       4u, { 0xC9u, 0xDAu, 0xCAu, 0xDBu } },  /* 0x4A6D2 */
+    {  38u, vc_trample,        2u, { 0xD1u, 0xD0u } },                /* 0x4B497 */
+    {  58u, vc_3b938,          1u, { 0xACu } },                       /* 0x3B9B8 */
+    {  60u, vc_36710,          1u, { 0x6Eu } },                       /* 0x367CF */
+    {  61u, vc_35e6c,          1u, { 0x6Du } },                       /* 0x35ED9 */
+    {  66u, vc_35e04,          1u, { 0x7Bu } },                       /* 0x35E38 */
+    {  67u, vc_react_stream,   1u, { 0x8Eu } },                       /* 0x34FA4 */
+    {  68u, vc_react_cb,       1u, { 0x87u } },                       /* 0x35032 */
+    {  69u, vc_3d17c,          1u, { 0x91u } },                       /* 0x3D19D */
+    {  70u, vc_1461c,          1u, { 0xB1u } },                       /* 0x14807 */
+    {  71u, vc_14814,          1u, { 0xB0u } },                       /* 0x14829 */
+    {  72u, vc_14d7c,          2u, { 0x46u, 0xB3u } },                /* 0x14E38 */
+    {  75u, vc_39cc8,          1u, { 0x6Cu } },                       /* 0x39EDA */
+    {  76u, vc_14d7c,          2u, { 0x46u, 0xB3u } },                /* 0x3996E */
+    {  92u, vc_reaction_apply, 2u, { 0x65u, 0x9Fu } },                /* 0x3ABAF */
+    {  93u, vc_3ad98,          1u, { 0x74u } },                       /* 0x3ADC1 */
+    {  94u, vc_15350,          1u, { 0xAFu } },                       /* 0x153BF */
+};
+
 /* Record k7-k12 §6..§10: the fight-area voice sites (tables per batch). */
 int test_fight_voice_sites(void)
 {
     int before = g_failures;
     CHECK_EQ_INT((int)(sizeof k12_b2_fight / sizeof k12_b2_fight[0]), K12_B2_FIGHT_ROWS);
     tf_voice_sites(k12_b2_fight, (u32)(sizeof k12_b2_fight / sizeof k12_b2_fight[0]));
+    CHECK_EQ_INT((int)(sizeof k12_c_fight / sizeof k12_c_fight[0]), K12_C_FIGHT_ROWS);
+    tf_voice_sites(k12_c_fight, (u32)(sizeof k12_c_fight / sizeof k12_c_fight[0]));
     return g_failures - before;
 }

@@ -1916,3 +1916,218 @@ swapped (`!= 0u` → `== 0u`, so `0x56` then `0x54`) gives 1 FAIL line,
   is a `mkstemp` template (unique). The `re-render` and `re-oracle`
   targets write `/tmp/*.ppm` and `/tmp/prage_dataobj.txt` but are not in
   `make verify`. The `--check` step writes `frames/` in the worktree.
+
+---
+
+## §7 Task 7: K12 batch C, the sample voices on oracle paths
+
+Implemented in the worktree `k12-t7` (branch `k12-t7`, from `b7b7c74`).
+Every batch-C call was re-read from the fixup-applied image (`$K/dx.py`), and
+every table id from the same image. Each C call carries its raw addresses:
+a `mov`/`call` pair, or the table read and the call.
+
+These are the first sample voices wired on the enforced oracle paths.
+Rows 1, 6, 7, 33-35, 38, 58, 60, 61, 66-72, 75, 76 and 92-94 now queue and
+start real samples in `--check`, the fe driver, the attract dump and the
+title dump. The frame dumps are unchanged (§7.6).
+
+### §7.1 The 22 wiring points
+
+The ids are case 2, except `0x46` (case 3) in rows 72/76. The table ids come
+from the raw tables in §1.1 row 0.2. The triple is `0x3AFC4`'s:
+`anim[0] = 0xDE114 + c*11`, with `c = char << 6 | reaction`.
+
+| row | call | C site | driver | seed | ids |
+|---:|---|---|---|---|---|
+| 1 | `2B8D2/2B8D7` | `actors.c` `spawn_anim_opcode` case `0x2E` | `vc_anim_2e` | `vf_pools`; `tf_anim_alloc_record`; the stream `9F2E 00D3 9F2E 00CD 0000` at `ANIM_SCRATCH` through `actors_anim_begin` | `D3`, `CD` |
+| 6 | `10F3E/10F43` | `attract.c` `attract_voice_tick` | `vc_voice_tick_be` | `F0A60` = `F0A62` = 1, seed `0xABCD` (draws 6, then 1) | `BD`, `BE` |
+| 7 | `10F7B..10F86`, `10F8B` | same | `vc_voice_tick_bf` | as row 6, seed 3 (draws 17, then 0) | `BD`, `BF` |
+| 33 | `4A669..4A688`, `4A6D2` | `fight.c` `fight_4a634` | `vc_crowd_cd` | `tf_demo_fixture` (empty list), mode 3; both slots' `+0x42` = 2; `1088A8` = `20`/`3F`, seed 18; then a second pass with side 0 at `2A` only; `rng_next(3)` = 0, 1, 2 | `CD`, `CE`, `CF` |
+| 34 | `4A6B2/4A6B7`, `4A6C3/4A6C8` | same | `vc_crowd_c9` | as row 33, `1088A8` = `10`/`17`, seed 12; `rng_next(2)` = 1, 1 (side 0), then 1, 0 (side 1) | `C9`, `DA`, `CA`, `DB` |
+| 35 | `4A6BC`/`4A6CD`, `4A6D2` | same | same | same | `C9`, `DA`, `CA`, `DB` |
+| 38 | `4B478..4B492`, `4B497` | `fight.c` `fight_4b470` | `vc_trample` | `vf_pools`, `tf_demo_fixture`, mode 3, `104B1D` = 3 (ends at `0x4B547`); two type-8 entries: `+0x1C` = `0x40`, holder side 0 (char 0, record `+8` = 0, so `0x4AF04` = 0), `+0x4A` links 1/2, `+0x10` a shadow; records at `+0x48` = `0x20` and `0x23` | `D1`, `D0` |
+| 58 | `3B9A1..3B9B3`, `3B9B8` | `fighter.c` `fighter_3b938` | `vc_3b938` | `tf_hit_fixture(4)`; slot 0 `+0x08` = a zeroed record with `+0x48` = 2 | `BDFFA[4]` = `AC` |
+| 60 | `367C6/367CF` | `fighter.c` `fighter_state_36710` | `vc_36710` | `tf_hit_fixture(0)`, the slot pair; `+0x58` = 2, `rec+0x36` = `rec+0x1C` = 0 | `6E` |
+| 61 | `35ED4/35ED9` | `fighter.c` `fighter_state_35e6c` | `vc_35e6c` | `tf_hit_fixture(0)`, the slot pair, command 0 | `6D` |
+| 66 | `35E26..35E33`, `35E38` | `fighter.c` `fighter_35e04` | `vc_35e04` | side 1's record, `+0x14` = slot 1, slot 1's char 2, the `DS_00107D40[1]` row | `BDAA8[2]` = `7B` |
+| 67 | `34F8B..34F9F`, `34FA4` | `fighter.c` `hit_reaction_apply` | `vc_react_stream` | `tf_hit_fixture(0)`; char 0, reaction 0: stream `0xE6F94`, no callback; byte `+7` = 12 | `E9308[12]` = `8E` |
+| 68 | `35019..3502D`, `35032` | same | `vc_react_cb` | char 0, reaction `0x2A`: no stream, callback `0x3E3A8`; byte `+7` = 10 | `E9308[10]` = `87` |
+| 69 | `3D193/3D19D` | `fighter.c` `fighter_3d17c` | `vc_3d17c` | `tf_hit_fixture(0)`; slot 0 `+0x08` = 0 | `91` |
+| 70 | `14802/14807` | `fighter.c` `fighter_146f0` | `vc_1461c` | `c3_seed`; slot 0 `+0x57` = 2 (`0x146D7`), `FD11C` = 0 | `B1` |
+| 71 | `14824/14829` | `fighter.c` `fighter_14814` | `vc_14814` | `c3_seed` | `B0` |
+| 72 | `14E33/14E38` | `fighter.c` `fighter_14d7c` | `vc_14d7c` | `c3_seed`, test I's positions; slot 1 char 4; slot 0 char 4, `+0x5F` = `0x25` (`0x39834` swaps to `ctx[0]` = 0); byte `+8` = 8 | `E933C[8]` = `46`, `B3` |
+| 75 | `39ED5/39EDA` | `fighter.c` `fighter_39cc8` | `vc_39cc8` | `vf_pools`, `kb_seed`; `+0x58` = 3, slot 1 `+0x30` = 5632, equal to the ground (it lands) | `6C` |
+| 76 | `39959..39969`, `3996E` | `fighter.c` `fighter_39834` | `vc_14d7c` | as row 72 | `46`, `B3` |
+| 92 | `3AB96..3ABAA`, `3ABAF` | `fighter.c` `fighter_reaction_apply` | `vc_reaction_apply` | `pose_chain_setup`; slot 0 `+0x5F` = `FF`, char 3; slot 1 `+0x5F` = `0x20` (`0x3A280` holds), char 0; reaction 0 (`0x39834` byte `+8` = 2) | `E933C[2]` = `65`, `BE008[3]` = `9F` |
+| 93 | `3ADAA..3ADBC`, `3ADC1` | `fighter.c` `fighter_3ad98` | `vc_3ad98` | `pose_chain_setup`; slot 0 char 4; the triple of side 0, reaction `0x24` (byte `+9` = 5, `anim[2]` word 0: no spawn) | `E9358[5]` = `74` |
+| 94 | `153B6/153BF` | `fighter.c` `fighter_15350` | `vc_15350` | `c3_seed`; slot 1, the other side's `0x468D8` false | `AF` |
+
+`K12_C_GAME_ROWS` = 2 (`test_game.c`, `k12_c_game[]`, run from
+`test_voice_sites`). `K12_C_FIGHT_ROWS` = 20 (`test_fight.c`,
+`k12_c_fight[]`, run from `test_fight_voice_sites`). The total is 22. New
+table addresses get local `#define`s in `fighter.c`: `FIGHTER_BDFFA`,
+`FIGHTER_BDAA8`, `FIGHTER_E9308` and `FIGHTER_BE008`. `FIGHTER_E933C` and
+`FIGHTER_E9358` already existed.
+
+**Same-id aliasing (§4.2).** No batch-C path has two calls with one id.
+The one row-33 call runs three times in its driver, and each run posts a
+different id. Rows 72/76 share a driver, and rows 34/35 share one. Deleting
+either call on a shared path fails both rows (§7.4). Row 92's path also
+posts row 76's id (`0x65`, through `0x39834` at `0x3AB7C`), so deleting row
+76's call fails row 92 as well.
+
+**Every id matches the raw.** A temporary print in the runner (not
+committed) showed each row's whole log equal to its `ids`. No row posted
+any other voice.
+
+### §7.2 Corrections (raw wins)
+
+- **Row 38's id.** The old comment and §1.3 say `0xD1` "for si < 3",
+  where si is EDX. The raw reads the record, not EDX:
+  - `0x4B478 mov eax,[eax+8]; 0x4B47B mov al,[eax+0x48]; and eax,0xff;
+    sub eax,0x20; 0x4B486 cmp eax,3; 0x4B489 jge 0x4B492` (`0xD0`),
+    else `0xD1`.
+  - The compare is signed, on a 32-bit value.
+  - The caller's si is `(u16)(rec+0x48 - 0x20)`. For every `+0x48` of
+    `0x20` or more, both forms give the same id.
+  - Below `0x20`, the raw gives `0xD1` and the si form gives `0xD0`.
+  - The port reads the record, as the raw does. Mutation `38sel` (`<= 3`)
+    fails the row.
+- **The `+0x42` test in rows 33-35.** The brief says "bit 2". The raw is
+  `0x4A640 test byte [ebx+0x1077F2],2`: mask 2 (bit 1), as §1.3 has it and
+  as the port already tested.
+- **Row 1's operand.** §1.3 notes that "the one-byte form sign-extends to
+  `0xFFxx`". That form cannot reach opcode `0x2E`:
+  - A command's own opcode is `(word >> 8) & 0x1F` (`0x2B2B1`), at most
+    `0x1F`, so `0x2E` needs the `0x1F` prefix.
+  - Under the prefix, the operand is the next word (mode 0, `0x2B932`) or a
+    variable read (modes `0x2000`-`0x6000`).
+  - EAX still holds that operand at `0x2B8D2` (it is kept from `0x2B2DB`),
+    and `and eax,0xffff` keeps its low word.
+- **Row 70's gates.** §1.3 lists `0x146F0`'s gates `0x14728`, `0x1473A` and
+  `0x147A5` "to `0x14807`". They are branch selectors, and every arm rejoins
+  before `0x147ED`. The call at `0x14807` is unconditional in `0x146F0`.
+- **Rows 6/7.** The brief's worked row gives both rows one driver and the
+  ids `BD`, `BE`. Row 7's entry uses seed 3 instead (pick 0, so `BF`).
+  The two entries then cover both arms of the pick, and swapping the
+  selection (`7sel`) fails both rows.
+
+### §7.3 Tests
+
+The two tables and their size checks. With the tables in and the source
+unwired, the suite printed 22 `voice site row` lines (every row `0 of n`)
+and `FAILURES: 22`. Wired, it prints `all checks passed`.
+
+Assertion sites (`rg -c 'CHECK\(|CHECK_EQ_INT\(' port/tests`, summed):
+13371 → **13373** (the two size checks).
+
+Comments that described these calls as unwired are updated:
+- the `fighter_state_36710`, `fighter_3ad98` and `hit_reaction_apply`
+  headers;
+- `fighter.h`'s `0x3AD98` comment and `attract.h`'s `0x10F28` comment;
+- `test_game.c`'s two `0x10F28` comments (the pick is no longer "stubbed"
+  or "discarded"; no assertion changed).
+
+`not wired` lines (`rg -c 'not wired' port/src`), before → after:
+- `.c` files: `actors.c` 3 → 2, `attract.c` 3 → 0, `fight.c` 26 → 23 and
+  `fighter.c` 67 → 49; the others are unchanged. The total is 144 → 119.
+- Headers: `attract.h` 1 → 0 and `fighter.h` 1 → 0.
+
+### §7.4 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
+
+`$K/t7mut.py` deletes every wired call in turn: the call becomes
+`(void)0;`, the build is redone, `PR_ORACLE_REQUIRED=1 ./build/run_tests`
+runs, and the source is restored. It then applies the selection and index
+mutations. The outputs are `$K/t7-mut-<tag>.txt`, and the summary is
+`$K/t7mut-summary.txt`. Every FAIL line is `test_fixtures.c:232`, the
+in-order check.
+
+| mutation | FAIL lines | failing rows |
+|---|---:|---|
+| delete row 6 (`0x10F43`), first of the game table | 2 | 6, 7 (`0 of 2`) |
+| delete row 7 (`0x10F8B`) | 2 | 6, 7 (`1 of 2`) |
+| delete row 1 (`0x2B8D7`), first of the fight table | 1 | 1 (`0 of 2`) |
+| delete row 33 (`0x4A6D2`, the draw's call) | 1 | 33 (`0 of 3`) |
+| delete `0x4A6B7` / `0x4A6D2` (`DA`) / `0x4A6C8` / `0x4A6D2` (`DB`) | 2 each | 34, 35 (`0` / `1` / `2` / `3 of 4`) |
+| delete row 38 (`0x4B497`) | 1 | 38 (`0 of 2`) |
+| delete rows 58, 60, 61, 66, 67, 68, 69, 70 (middle), 71, 75, 93, 94 (last) | 1 each | their own (`0 of 1`) |
+| delete row 72 (`0x14E38`) | 2 | 72, 76 (`1 of 2`) |
+| delete row 76 (`0x3996E`) | 3 | 72, 76 (`0 of 2`), 92 (`0 of 2`: its path posts `0x65` through `0x39834`) |
+| delete row 92 (`0x3ABAF`) | 1 | 92 (`1 of 2`) |
+| `7sel`: `pick == 0u` | 2 | 6, 7 (`1 of 2`) |
+| `33sel`: `d == 2u ? 0xCE` | 1 | 33 (`2 of 3`) |
+| `34sel`: the second `rng_next(2) == 0u` | 2 | 34, 35 (`2 of 4`) |
+| `38sel`: `- 0x20 <= 3` | 1 | 38 (`1 of 2`) |
+| `67idx` (`anim[0]+8`), `68idx` (`+9`), `93idx` (`+8`) | 1 each | their own (`0 of 1`) |
+| `76idx` (`anim[0]+7`) | 3 | 72, 76, 92 (`0 of 2`) |
+| `92idx` (the other slot's char) | 1 | 92 (`1 of 2`) |
+| `58tab` (`BDFFA` → `BDAA8`), `66tab` (`BDAA8` → `BDFFA`) | 1 each | their own (`0 of 1`) |
+
+The brief's minimum was rows 6, 33 and 94. All of them fail, as do the
+other 21 deletions and the 11 selection and index mutations. No mutation
+failed a row off its own path.
+
+### §7.5 Not tested
+
+- **What the dispatcher does at these sites.** The runner sets
+  `DS_001028C8` = 0, so a call is logged but queues nothing. Task 3's
+  vectors pin the case-2/3 queue and start. The oracle runs' real queues
+  are covered only by frame identity (§7.6).
+- **Rows 33-35's no-call arms:** the first `rng_next(2) == 0` arm, a
+  `1088A8` byte outside both ranges, and `+0x42` bit 1 clear. The `0x4A675`
+  fall-through for a draw above 2 is unreachable (`rng_next(3) < 3`).
+- **Row 38's other callers.** `0x4B69C` (`0x4B779`) and `0x4D7A4`
+  (`0x4D873`) are not driven; only case 8 (`0x4A10B`) is. A `+0x48` below
+  `0x20` (§7.2) is not driven either: si would be `0xFFxx`, which indexes
+  past `0xC9604`.
+- **Row 1's variable-read operand modes** (`0x2000`/`0x4000`/`0x6000`).
+  Only the literal word is driven.
+- **Row 58's `+0x48 == 4` arm.** It makes the same call and is not driven.
+  The `0x63` chars (case 0) are not driven.
+- **Rows 67/68 on one path.** A reaction with both a stream and a callback,
+  such as char 2 reaction `0x0B`, posts `0x7C` twice. That is same-id
+  aliasing, so it is not used.
+- **Row 70's other `0x146F0` arms** (`FD11C` set, `0x14590` true). The
+  voice is on every arm.
+- **`0x39834`'s other callers:** rows 77, 107-110 and 117. Only row 72's
+  and row 92's paths are driven.
+- **The no-call exits:** row 60's first two arms, row 66's `+0x14 == 0`,
+  row 69's `+0x08 != 0`, row 75's non-landing phase 3, row 92's `0x3A280`
+  false and row 94's `0x468D8` true.
+- **Each call's position relative to its non-voice neighbours.** Only the
+  in-order ids on each path are checked.
+
+### §7.6 Gate
+
+- **`make verify`.** It was run with every fixed `/tmp` path overridden
+  (`/tmp/pr_t7_*`). `EXIT=0` (`$K/verify-t7.txt`, 571 lines,
+  `all checks passed`). The brief's grep of the oracle lines diffs empty
+  against `$K/oracle-lines-base.txt` (`ORACLES-EQUAL`).
+- **Dumps.** A before-dump was taken on the unmodified `b7b7c74` build
+  (`dumps.sh t7-before`), and it equals `$K/base.sha256`. The after-dump
+  (`t7-after`) is identical to it (`dumpcmp.sh`, `DUMPS-IDENTICAL`) and
+  also equals `base.sha256`. Counts: `check/frames` 24000, `fe/run1` and
+  `fe/run2` 1384 each, and the three drivers `all checks passed`. Both
+  dumps are deleted.
+- **`./build/prageport --game-dir data/game/C --check 8000`:** `CHECK=0`.
+- **`make audio-render`:** `$K/t7-after.wav` is byte-identical to
+  `before-t2.wav` (`cmp`; sha256 `df74acfb…a380844`, 2386412 bytes). The FM
+  path renders no samples.
+- **Where the voices fire (measured).** A scratch copy of the port printed
+  every `sound_voice` id; the copy is deleted and nothing was committed.
+  The counts below are ids, not rows. The fe, attract and title drivers
+  run unit checks before `game_init`, so their counts include those calls.
+  - `--check 8000`: `BD` ×41, `BE` ×14, `BF` ×18, `C9` ×2, `CA` ×1, `CE`
+    ×2, `CF` ×1, `DA` ×2, `DB` ×1, `D3` ×4, `6D` ×14, `6E` ×1, `6C` ×5,
+    `91` ×1, `B3` ×1, `9F` ×1, and the table ids.
+  - fe dump: `D0` ×2, `46` ×1 (case 3), `AF`, `B0`, `B1` and `87` ×1
+    each, `CD` ×3, `8E` ×1, and the table ids.
+  - attract dump: `BD` ×14, `BE` ×7, `BF` ×4.
+  - title dump: `BD` ×10, `BE` ×4, `BF` ×4.
+
+  So batch C's samples are queued and started on all four oracle paths,
+  and the frames do not move. This matches §0.2's probe: every one of
+  these voices resolves a bank that has already been read.
+- **`python3 tools/port_progress.py`:** `767 1203 64` / `731 731 100`,
+  unchanged. No function is ported, and the README stays as it is.
+- **Build:** 0 warnings.

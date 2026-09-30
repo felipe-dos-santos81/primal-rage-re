@@ -863,3 +863,21 @@ Four assertions whose premise was the stub or the stand-in were rewritten, each 
 There are 6 new assertion sites (13370). The `not wired` count drops by 18 lines (187 to 169). Rows 176/178/182 are split-phrase and keep their unwired `0xE1` half, and row 191's line keeps the unwired `0x22`, all for batch B2. `make verify` stays green with every oracle line unchanged, and the frame dumps and the `make audio-render` WAV are byte-identical. The counter is unchanged at 767 of 1203.
 
 **K12 batch B2: the remaining pure-state voices (record `2026-09-29-k7-k12-derivations.md` §6).** The 30 batch-B2 calls to `0x2C3FC` are now made where the raw makes them, each with its `mov`/`call` pair. All are case 1 (song words) or case 5 (stops): the type-0x2D update's `0xF1` and type 0x09's tail `jmp` `0x4F` (`actors.c`), the attract's phase-4 `0x54`/`0x56` (`attract.c`, the one oracle-path point), the character-screen `0x30`s, the `0x2E`s of `0x4367C`/`0x4454C`, the versus hook's `0x31`/`0x2D`/`0x2F` and `0x4142C`'s `0x32` (`fight.c`), `0x3531C`'s `0xEC`/`0xE0` (`fighter.c`), and in `flow.c` the challenge poll's `0x2D`, mode `0x13`'s `0x2C`, `0x25AE8`'s `0x3D`, mode `0xF`'s `0x2B`, mode `0x1E`'s `0xE1`/`0xE3`/`0xE2` (states 0/4/5/7/8/`0xB..0x10`; one port pair for four raw pairs in states `0xB..0xE`), mode `0x1F`'s `0x3B` and `0x26D4C`'s `0x22`. `test_voice_sites` gains `k12_b2_game` (18 rows), and the new `test_fight_voice_sites` (`test_fight.c`, registered after it) holds `k12_b2_fight` (12 rows); Tasks 7-10 add their fight-area tables there (§6.3). Deleting any one of the 30 calls fails its own row (and the rows that share its path), and swapping row 13's `0x54`/`0x56` selection fails it too. Corrections (raw wins): row 25's `mov` is at `0x43272`, not `0x43285`; two of the `0xE2` calls are `0x1F113`/`0x1F029`, not `0x1F10E`/`0x1F024`; `0x2C3FC` never reads EDX (`0x2C3FF mov edx,eax`). Assertion sites 13372 -> 13374. The `not wired` count drops by 25 lines (169 to 144). The counter is unchanged at 767 of 1203.
+
+**K12 batch C: the sample voices on the oracle paths (record `2026-09-29-k7-k12-derivations.md` §7).** This batch wires 22 calls to `0x2C3FC`, each at the raw's position and with its raw addresses. They are the first K12 voices that queue and start real samples on the enforced oracle paths.
+- `attract.c`: the attract scheduler's `0xBD`, and `0xBE`/`0xBF` chosen by the `rng_next(2)` pick, which is now used rather than discarded.
+- `actors.c`: animation opcode `0x2E`, whose id is the operand's low word.
+- `fight.c`: the effects pass's crowd voices. `0xCD`/`0xCE`/`0xCF` are chosen by the `rng_next(3)` draw, and `0xC9`+`0xDA` or `0xCA`+`0xDB` by the second `rng_next(2)`. The trample's `0xD1`/`0xD0` is also here.
+- `fighter.c`: fifteen fighter voices. `0x6E`, `0x6D`, `0x91`, `0xB1`, `0xB0`, `0xB3`, `0x6C` and `0xAF` are fixed. The rest are table words: `0xBDFFA`/`0xBDAA8`/`0xBE008` by char, and `0xE9308`/`0xE933C`/`0xE9358` by byte 7/8/9 of the reaction triple. `0xE933C[8]` is the case-3 `0x46`.
+
+Tests: `test_voice_sites` gains `k12_c_game` (rows 6/7, with seeds that pick `0xBE` and `0xBF`). `test_fight_voice_sites` gains `k12_c_fight` (20 rows), whose drivers reach each site from a public entry. Every one of the 24 calls was deleted in turn, and each deletion fails its own row and any row that shares its path. The 11 selection and index mutations (the pick, the draw mapping, the second draw, the trample compare, the triple byte offsets and the char tables) fail too.
+
+One correction, where the raw wins: the trample's id comes from the record's `+0x48` byte (`0x4B47B..0x4B489`, `sub 0x20; cmp 3; jge`, signed), not from "si < 3".
+
+The gate result:
+- `make verify` is green, and every oracle line is unchanged.
+- The four frame dumps (`--check 8000`, the fe det runs, the attract and title dumps) are byte-identical to a before-dump and to the base manifest. So the samples now start on those paths, and no frame moves.
+- The `make audio-render` WAV is byte-identical.
+- Assertion sites go from 13371 to 13373.
+- The `not wired` count in the `.c` files drops from 144 to 119. It is also gone from `attract.h` and `fighter.h`.
+- The counter is unchanged at 767 of 1203.
