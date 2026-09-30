@@ -260,9 +260,12 @@ void attract_step(void)
          * port's 3-argument effects_spawn does not model; the same value is the
          * DS_000F0A68 countdown stored below. */
         effects_spawn(DSD(DS_000F0A48), 4u, 0x396ED28u);   /* 0x11151 */
-        /* PORT: 0x2C3FC(0x40) and 0x2C3FC(0x42) voices, not wired (record
-         * §45-A). The raw keeps ecx = 0x2D and bh = 3 live across them (item
-         * 2); those are the DS_000F0A60 / DS_000F0A70 values stored below. */
+        /* 0x11160/0x1116C: the looping s16title samples 0x40 and 0x42 (loop
+         * byte 1; record k7-k12 §0.7.5). The raw keeps ecx = 0x2D and bh = 3
+         * live across them (item 2); those are the DS_000F0A60 / DS_000F0A70
+         * values stored below. */
+        (void)sound_voice(0x40u);                   /* 0x11156/0x11160 0x2C3FC */
+        (void)sound_voice(0x42u);                   /* 0x11165/0x1116C 0x2C3FC */
         DSW(DS_000F0A60) = 0x2Du;                   /* 0x11171 */
         DSW(DS_000F0A62) = 0x3Cu;                   /* 0x11178 */
         DSW(DS_000F0A68) = 0xB4u;                   /* 0x1117F */

@@ -121,8 +121,8 @@ are omitted calls that `rg 'not wired'` does not count.
 | 8 | `attract.c:133` | `10E06` | 100 | 5 | state | attract | A |
 | 9 | `attract.c:152` | `10E6E` | 100 | 5 | state | attract | A |
 | 10 | `attract.c:212` | `11024` | 100 | 5 | state | check, fe, attract, title | A |
-| 11 | `attract.c:260` | `11160` | 40 | 2 | sample | check, fe, attract, title | T3 (loop byte 1) |
-| 12 | `attract.c:260` | `1116C` | 42 | 2 | sample | check, fe, attract, title | T3 (loop byte 1) |
+| 11 | `attract.c:260` | `11160` | 40 | 2 | sample | check, fe, attract, title | T3 (loop byte 1); **wired, §3** |
+| 12 | `attract.c:260` | `1116C` | 42 | 2 | sample | check, fe, attract, title | T3 (loop byte 1); **wired, §3** |
 | 13 | `attract.c:282` | `111FF` | 54/56 | 1 | state | check, fe, attract, title | B2 |
 | 14 | `camera.c:1379` | `17C88` | 64 | 2 | sample | real play only | D1 |
 | 15 | `camera.c:1571` | `12C29` | BF | 2 | sample | real play only | D1 (split phrase) |
@@ -280,8 +280,8 @@ are omitted calls that `rg 'not wired'` does not count.
 | 167 | `flow.c:3949` | `25B51` | 3D | 1 | state | real play only | B2 |
 | 168 | `flow.c:4044` | `28C2A` | D8 | 2 | sample | real play only | D4 |
 | 169 | `flow.c:4193` | `27821` | 2B | 5 | state | real play only | B2 |
-| 170 | `flow.c:4392` | `121CE` | 41 | 5 | state | check, fe, attract, title | T3 (the stand-in replaces it) |
-| 171 | `flow.c:4392` | `121D8` | 43 | 5 | state | check, fe, attract, title | T3 (the stand-in replaces it) |
+| 170 | `flow.c:4392` | `121CE` | 41 | 5 | state | check, fe, attract, title | T3 (the stand-in replaces it); **wired, §3** |
+| 171 | `flow.c:4392` | `121D8` | 43 | 5 | state | check, fe, attract, title | T3 (the stand-in replaces it); **wired, §3** |
 | 172 | `flow.c:4576` | `1159F` | 100 | 5 | state | fe | A |
 | 173 | `flow.c:4595` | `116C4` | 100 | 5 | state | real play only | A |
 | 174 | `flow.c:4617` | `11844` | 100 | 5 | state | real play only | A |
@@ -1225,3 +1225,203 @@ The consequence is the named gap in §2.1. The port stores `DS_00107414 = 0`
 without the longjmp, so a master-loop menu idle for `0x4B0` ticks
 re-initialises instead of leaving. By ruling, the longjmp stays out of scope
 in this task.
+
+---
+
+## §3 Task 3: `0x1CC28`'s slot choice, `0x1CB18`, `0x1CF20`, the stand-in retired
+
+Implemented on branch `k7-k12` at `811b362`. The raw was re-read from the
+fixup-applied image (`$K/dx.py 1CB18 1CDA0`, `1CF20 1CF40`, `11151 11172`,
+`121C0 121DA`, `1D0BC 1D0F8`, `500BB 500C1`). Both bodies match §0.7.3/§0.7.4
+instruction for instruction. The payload sizes were read from the raw
+resource files (a handle is `resource << 23 | offset`, and the GRA files are
+the resource bytes as loaded): `0x03837440` (s16title) = `0x1D85`,
+`0x0383B6F4` (s16title) = `0x5FAE`, `0x03022554` (s16snd2) = `0x8320`,
+`0x180122FD` (s16havsd) = `0x79C0`. The voice records (`DS_000BBDC8`, 12 bytes
+each) are `0x3A` = {2, `0x03022554`, 0}, `0x40` = {2, `0x0383B6F4`, 1},
+`0x42` = {2, `0x03837440`, 1}, and `0x41`/`0x43` = case 5.
+
+### §3.1 What was ported
+
+- **`0x1CC28` = `snd_sample_queue(h, loop)`** (`flow.c`), arm by arm:
+  - `0x1CC37`/`0x1CC44`: no DIG driver, or paused samples, give AL = 0 with no read.
+  - `0x1CC51`: `now = 0x500BB()` (`mov eax,[0x101500]`). `0x1CC5D`: the resolve.
+    `0x1CC62`: `size = [p]`. `0x1CC5B`/`0x1CC64`: the candidate starts at 0.
+  - `0x1CC68 cmp ecx,0x6000; jbe`: above `0x6000`, slot 0 is queued if it is
+    free (`0x1CC70` buffer, `0x1CC79` `+0x04`, `0x1CC89`/`0x1CC94` status
+    != 4). Otherwise the candidate stays 0 (`0x1CCB8`/`0x1CCBA`).
+  - `0x1CCC3..0x1CD32`: at or below `0x6000`, slots 3..0 (`edi` = 3, `esi` =
+    `0x48`, `dec edi; sub esi,0x18; jge`). The first free one is queued. A
+    slot that is not free becomes the candidate when `min > +0x14`
+    (`0x1CD22 cmp ebp,eax; jbe`, unsigned and strict), with `min` starting at
+    `now`.
+  - `0x1CD34..0x1CD84`, the forced arm: `0x5DC8B` (`AIL_stop_sample`), then
+    `0x5DC0F` (`AIL_init_sample`), then the queue. Its `+0x0C` is left as it
+    is. `0x1CB18` overwrites it on the start.
+  - A queue stores `+0x04` = `h`, `+0x08` = the loop byte, and `+0x14` =
+    `0x500BB()` read again at the store (`0x1CCA7`/`0x1CD06`/`0x1CD79`), so a
+    loader stall inside the resolve is included. AL = 1.
+  - `PORT:` a NULL resolve (a handle past the loaded INDEX, in unit fixtures)
+    queues nothing and returns 1. The raw dereferences it.
+- **`0x1CB18` = `sound_sample_start(slot)`** (`flow.c`, declared in `flow.h`),
+  `0x1CB25..0x1CC16`:
+  - `+0x04 == 0` returns.
+  - Otherwise it resolves, and copies `[p]` bytes from `p+4` into the slot's
+    `+0x10` buffer (`rep movsd`/`movsb`).
+  - AIL calls: `AIL_init_sample`, then the address and size, the volume
+    `DS_000A2CB4`, the rate `0x2B11` and the type (0, 0).
+    `AIL_set_sample_loop_count(0)` only when `+0x08 == 1`
+    (`0x1CBD3 cmp eax,1`). Then `AIL_start_sample`.
+  - Finally `+0x0C = +0x04` and `+0x04 = 0`.
+  - `PORT:` a bufferless slot or a NULL resolve is not started. The raw
+    would copy to linear 0.
+- **`0x1CF20`** (`game_audio_service`): `for i in 0..3: 0x1CB18(i)`
+  (`0x1CF21..0x1CF2E`) runs before the music, and it replaces the stand-in's
+  one-slot `game_sample_play`.
+- **The stand-in is retired** (§0.7.5, user decision §0.9.2). The following
+  are deleted: `game_sample_request`, `game_sample_play`, `s_pending_sample`,
+  `s_sample_request`, `SND_ANNOUNCER_ID`, `SOUND_RES` and the `samples.h`
+  include (`flow.c` has no other use of any of them).
+  - `game_state_title`'s first entry now calls `sound_voice(0x41)` and
+    `sound_voice(0x43)` (`0x121C9`/`0x121CE`, `0x121D3`/`0x121D8`), and keeps
+    `s_music_request` (a `PORT:` comment, todo-verify §22).
+  - `attract_step` phase 2 calls `sound_voice(0x40)` and `sound_voice(0x42)`
+    (`0x11156`/`0x11160`, `0x11165`/`0x1116C`).
+  - **Correction to the brief (raw wins):** the brief's comments named
+    `0x1115B`/`0x11160` and `0x11167`/`0x1116C`. The raw has
+    `0x11156 mov eax,0x40`, `0x1115B mov ecx,0x2D`, `0x11160 call`, and then
+    `0x11165 mov eax,0x42`, `0x1116A mov bh,3`, `0x1116C call`. The comments
+    carry the raw addresses.
+- **`main.c`'s `--check` probe** (`attract_loop_playing(h)`) asserts both
+  loops. On the last state-0 frame before the title, slots hold `0x0383B6F4`
+  and `0x03837440` as playing (`+0x0C`, status 4). At title entry + 2,
+  neither does.
+  - **Beyond the brief:** the brief probed `0x40` only. With that probe, the
+    `0x42` queue and the `0x43` stop were both unproved (mutations q and r
+    survived). Review Focus asks for "the attract's two s16title loops play,
+    and the title's first entry stops them", so the probe checks both
+    handles.
+- Sites §0.4 rows 11, 12, 170 and 171 are closed.
+
+### §3.2 Tests
+
+`check_sample_slots()` (`test_game.c`) is called at the end of the rewritten
+0x40 block in `test_flow`, on the live handles and on the buffers from that
+block's `sound_buffers_alloc()`. It restores the aperture, the DAC, the low
+`0x2000` bytes of `mem[]` (vector F) and slot 3's buffer. `ss_seed` sets
+`+0x04 = 0`, `+0x08 = 0x77`, `+0x0C = 0` and `+0x14 = 0x10 + i` on each slot,
+with `now = 0x100`.
+
+| vector | seeds | asserted |
+|---|---|---|
+| A | `ss_seed`; `0x42`, then `0x40` | slot 3: `+0x04` = `0x03837440`, `+0x08` = 1, `+0x14` = `0x100`; slot 2 gets `0x0383B6F4`; slot 1 stays 0 |
+| A2 | slot 3 playing (`sv_status(3,4)`); then slot 3 bufferless | `0x42` goes to slot 2 both times; slot 3's `+0x04` stays 0 |
+| B | A's queue, then `game_audio_service()` | slots 3/2: `+0x0C` = handle, `+0x04` = 0; status 4 (slot 0: 2); the buffer equals `p+4` for `0x1D85` bytes; 2 voices, still 2 after 24×4096 frames (count 0) |
+| B2 | slot 1 queued with `0x03837440` and loop byte **2** | 3 voices; after 24 renders 2 again, and slot 1's status is 2 (count 1, `== 1` is exact) |
+| C | `0x41`, then `0x43` | slot 2's `+0x0C` = 0, status 2, 1 voice; then 0 voices |
+| D | `ss_seed`; `0x3A` twice (`now` `0x100`, then `0x180`) | slot 0: `0x03022554`, loop 0; slot 3 untouched; the forced re-queue stamps `+0x14` = `0x180` |
+| D2 | slot 0 playing; `0x3A` | 1 voice before, 0 after (`0x1CD4F` ends it); slot 0 queued |
+| E | none free, `+0x14` = {`0x90`, `0x50`, `0x70`, `0x60`}; then all `0x100` (= now) | slot 1 evicted (`+0x14` = `0x100`), slots 3/0 keep their sentinels; all at now evicts slot 0 |
+| E2 | ties {`0x90`, `0x50`, `0x70`, `0x50`}; slot 0 at `0x200` and 1..3 at now | slot 3, then slot 0; slot 1 keeps its sentinel in both (a `>=` takes slot 1) |
+| F | slot 3 bufferless with `0x03837440` queued, `mem[0]` = `0x5A5A5A5A` | `+0x04` kept, `+0x0C` = 0, `mem[0]` unchanged |
+
+`check_sound_buffers` gains the MIDI gate's C0 half (`0x1D0D5`, Task 2 review
+minor): `C4` = `0x5678`, `C0` = 0, `D0` = 0, `C8` = 0 gives AL = 1 and `D0`
+still 0.
+
+**Rewritten assertions** (their premise was the stubbed queue or the stand-in):
+
+| where | old | new | raw |
+|---|---|---|---|
+| `check_sound_voice` E | after `sound_voice(3)` every slot's `+0x04` = 0 | slot 0's `+0x04` = `0x180122FD`; slots 1..3 `+0x04` = 0; all `+0x0C` = 0 | `0x2C8D8` → `0x1CC28`: `0x79C0 > 0x6000`, slot 0 free after `0x1CD9C` → `0x1CC99` |
+| `test_flow` (Task-12 block) | the title queued the announcer: a voice is active, the render is non-silent | `sound_buffers_alloc()` = 1, `sound_voice(0x40)` = 1, then the same two facts on `0x40` | `0x11160`, `0x1CC28`, `0x1CF21` → `0x1CB18` |
+| `test_flow` (the `0xCD` block) | `0xCD`'s handle `0x02824B0F`; 0 voices after 24 renders (count 1) | `0x40`'s handle `0x0383B6F4`; 1 voice after 24 renders; `sound_voice(0x41)` = 1; 0 voices | `0x1CBE1` (loop byte 1 → count 0), `0x2C7A5` → `0x1CE04` |
+| `main.c` `--check` | at title + 2 the announcer voice is active and non-silent | on the last attract frame, `0x0383B6F4` and `0x03837440` play; at title + 2, neither does | `0x11160`/`0x1116C`, `0x121CE`/`0x121D8` |
+
+Assertion sites: 13299 → **13364** (+65 = 69 added − 4 removed): 58 in
+`check_sample_slots`, 2 for the C0 half, +2 and +2 in the two `test_flow`
+blocks, and +1 in section E (`rg -o '\bCHECK(_EQ_INT)?\(' port/tests -g
+'!test.h' | wc -l`).
+
+### §3.3 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
+
+`$K/t3mut.py` applies each mutation alone, rebuilds and runs the suite under
+`PR_ORACLE_REQUIRED=1`. For e, f, q and r it also runs `--check 820`.
+Outputs: `$K/t3-mut-*.txt`, summary `$K/t3mut-summary.txt`. d and d2 were
+re-measured through a pty (`$K/ptyrun.py`, `$K/t3-mut-d*-pty.txt`) after
+vector F was hardened (below). The line numbers are the final tree's.
+
+| | mutation | FAIL lines | failing checks |
+|---|---|---:|---|
+| s | the queue stubbed (resolve only, the pre-implementation state) | 29 | A, B, C, D, E, the `test_flow` block (`:1566`, `:1572`, `:1590`) |
+| a | `min > t` → `min >= t` | 4 | E2 (`:1049`, `:1050`, both ties) |
+| b | the scan runs 0..3 | 16 | A (`:928`..`:934`), A2, B |
+| c | the loop-byte test and the count-0 call deleted | 5 | B `:969` (1 voice left), B2, C |
+| c2 | the loop count 0 set unconditionally | 4 | B2 `:979`/`:980`, C |
+| c3 | the loop-byte test `== 1` → `!= 0` | 4 | as c2 |
+| d | the `buf == 0 \|\| p == NULL` guard deleted | 3 | F `:1067`, `:1068`, `:1069` |
+| d2 | only the `buf == 0` half dropped | 3 | as d |
+| e | `game_state_title`'s `sound_voice(0x41u)` deleted | suite 0; `--check` exit 1 | "the title did not stop the attract's loop 0x0383B6F4" |
+| f | `attract.c`'s `sound_voice(0x40u)` deleted | suite 0; `--check` exit 1 | "the attract's loop 0x0383B6F4 was not playing before the title" |
+| q | `attract.c`'s `sound_voice(0x42u)` deleted | suite 0; `--check` exit 1 | "... loop 0x03837440 was not playing before the title" |
+| r | `game_state_title`'s `sound_voice(0x43u)` deleted | suite 0; `--check` exit 1 | "the title did not stop the attract's loop 0x03837440" |
+| g | the C0 half of the MIDI gate dropped (`0x1D0D5`) | 1 | `:1317` (`D0` allocated) |
+| h | the slot-0 arm's status test dropped (`0x1CC94`) | 1 | D2 `:1006` |
+| i | the forced arm's `AIL_stop_sample` dropped (`0x1CD4F`) | 1 | D2 `:1006` |
+| j | the scan's status test dropped (`0x1CCF1`) | 2 | A2 `:942`, `:943` |
+| k | the scan's buffer test dropped (`0x1CCD4`) | 2 | A2 `:947`, `:948` |
+| l | the forced arm's `+0x14` store dropped (`0x1CD7E`) | 2 | D `:999`, E `:1021` |
+| m | the size threshold `0x6000` → `0x9000` | 8 | D, D2, and `check_sound_voice` E (`:771`, `:773`) |
+| n | `0x1CB18`'s `+0x04 = 0` dropped | 1 | B `:958` |
+| o | the copy dropped | 1 | B `:965` |
+| p | `0x1CF20`'s per-slot loop dropped | 13 | the `test_flow` block and B..C |
+
+**Corrections to the brief's mutation expectations (measured):**
+- **(a)** The brief said `>=` fails E's "all at now" case. It does not. With
+  every `+0x14` equal and the scan ending at slot 0, `>=` also leaves the
+  candidate at 0. The first run measured 0 FAIL lines. Vector E2 was added,
+  which separates the two by a tie and by slot 0 above now.
+- **(d)** The first run measured 0 FAIL lines and a SIGBUS. F's three
+  failures were printed but lost in the crashed process's pipe buffer. The
+  crash came from the mutated copy of `0x1D85` bytes over `mem[0..]`, which
+  outlived the vector. F now snapshots and restores the low `0x2000` bytes
+  and stops slot 3's voice. The re-measure gives 3 FAIL lines and `rc` = 1.
+
+### §3.4 Not tested
+
+- The size boundary itself: no shipped case-2 payload is exactly `0x6000`
+  bytes (§0.7.1, the 13 above `0x6000` go to slot 0 only). A mutation from
+  `>` to `>=` at `0x1CC68` has no vector.
+- The slot-0 arm's buffer test (`0x1CC70`): slot 0 without a buffer and a
+  large sample. The forced arm also lands on slot 0 in that case, so the only
+  difference is the forced `0x5DC8B`/`0x5DC0F` on an idle handle, which is not
+  observable.
+- The forced arm on a status-4 slot in the small-sample scan: the forced stop
+  is pinned only through the large arm (D2), where the candidate is always 0.
+- `0x1CB18`'s volume and rate calls (`DS_000A2CB4`, `0x2B11`) and the type
+  (0, 0): no assertion reads them back. The rate is also AIL_init's default.
+- The loader stall inside `0x1CC28`'s resolve making `+0x14` later than `now`
+  (the second `0x500BB` read).
+- The mixer's end status in a windowed run (§0.7.6 named gap). `--check` and
+  the suite render no device, so a started one-shot stays 4.
+
+### §3.5 Gate
+
+- `make verify`: `EXIT=0` (`$K/verify-t3.txt`, 567 lines). The brief's grep
+  of the oracle lines diffs empty against `$K/oracle-lines-base.txt`
+  (`ORACLES-EQUAL`). No ledger §A line moved, and the rewritten `--check 820`
+  probe passes inside it.
+- Dumps: `dumps.sh after-t3` matches `$K/base.sha256` (`dumpsha.sh`,
+  `DUMPS-IDENTICAL`). `--check 8000`, the fe det driver, the attract dump and
+  the title dump all report no failure. The dump is deleted. No before-dump
+  was taken: `811b362` was already proven equal to `base.sha256` (§2.5).
+- `make audio-render`: `after-t3.wav` is byte-identical to `before-t2.wav`
+  (`cmp`; sha256 `df74acfb…a380844`, 2386412 bytes).
+- `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100` (portable:
+  excludes 81). After Task 2 it was `766 1203 64` / `730 731 100`, so ported
+  +1 (`0x1CB18`; `0x1CC28` already had its header). `--unported | grep 1CB18`
+  prints nothing. The README title stays at 64%, and its portable line now
+  reads 731 of 731.
+- `grep -c '/\* 0x1CB18' port/src/game/flow.c` = 1, and `rg
+  'game_sample_play|game_sample_request|s_pending_sample|SND_ANNOUNCER_ID'
+  port/src` is empty.

@@ -766,8 +766,11 @@ static void check_sound_voice(void)
     CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x21);
     CHECK_EQ_INT((int)DSD(DS_001028D4), 0x2803E64);
     CHECK_EQ_INT((int)DSB(DS_001028D9), 0);
+    /* 0x1CD9C cleared every slot, then 0x1CC28 queued 0x180122FD (0x79C0
+     * bytes > 0x6000, so only slot 0; free after the stop) (record k7-k12 §3). */
+    CHECK_EQ_INT((int)DSD(DS_00102864), 0x180122FD);
     for (i = 0; i < 4u; i++) {
-        CHECK_EQ_INT((int)DSD(DS_00102864 + i * 0x18u), 0);
+        if (i != 0u) CHECK_EQ_INT((int)DSD(DS_00102864 + i * 0x18u), 0);
         CHECK_EQ_INT((int)DSD(DS_0010286C + i * 0x18u), 0);
     }
     CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle(0u)), 2);
@@ -888,6 +891,189 @@ static void check_sound_voice(void)
     tf_put(sv_pa, pa, 0x4880u);
     tf_put(sv_idx, idx, nidx);
     tf_put(sv_data, DATA_BASE, 0x8B0D0u);
+}
+
+/* Record §K7 (k7-k12 derivations §0.7.3/§0.7.4, Task 3 §3): 0x1CC28's slot
+ * choice and 0x1CB18's start on the live handles and 0x1D0BC's buffers.
+ * 0x42 = 0x03837440 (0x1D85 bytes, loop byte 1), 0x40 = 0x0383B6F4 (0x5FAE,
+ * loop byte 1), 0x3A = 0x03022554 (0x8320 > 0x6000, loop byte 0). */
+static void ss_seed(void)
+{
+    DSD(DS_001028C8) = 1u;
+    DSB(DS_001028DB) = 0;
+    for (u32 i = 0; i < 4u; i++) {
+        DSD(DS_00102864 + i * 0x18u) = 0;
+        DSB(DS_00102868 + i * 0x18u) = 0x77u;
+        DSD(DS_0010286C + i * 0x18u) = 0;
+        DSD(DS_00102874 + i * 0x18u) = 0x10u + i;
+        AIL_init_sample(sound_slot_handle(i));
+    }
+    mixer_stop_samples();
+    DSD(DS_00101500) = 0x100u;
+}
+
+static void check_sample_slots(void)
+{
+    static u8 ss_ap[320u * 200u], ss_dac[256][3];
+    static s16 ss_buf[4096 * 2];
+    u32 i;
+    memcpy(ss_ap, gfx_aperture(), sizeof ss_ap);
+    memcpy(ss_dac, gfx_dac, sizeof ss_dac);
+    for (i = 0; i < 4u; i++)
+        CHECK(DSD(DS_00102870 + i * 0x18u) != 0u, "0x1D0BC gave every slot a buffer");
+
+    /* A: size <= 0x6000 takes the first free slot from 3 down (0x1CCC3). */
+    ss_seed();
+    CHECK_EQ_INT((int)sound_voice(0x42u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 3u * 0x18u), 0x03837440);
+    CHECK_EQ_INT((int)DSB(DS_00102868 + 3u * 0x18u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00102874 + 3u * 0x18u), 0x100);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 2u * 0x18u), 0);
+    CHECK_EQ_INT((int)sound_voice(0x40u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 2u * 0x18u), 0x0383B6F4);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 1u * 0x18u), 0);
+    {
+        /* A2: slot 3 is not free while it plays (0x1CCE6 0x5DD03 status 4,
+         * 0x1CCF1) or without a buffer (0x1CCCD/0x1CCD4): 0x42 goes to slot 2. */
+        u32 b3 = DSD(DS_00102870 + 3u * 0x18u);
+        ss_seed();
+        sv_status(3u, 4);
+        CHECK_EQ_INT((int)sound_voice(0x42u), 1);
+        CHECK_EQ_INT((int)DSD(DS_00102864 + 3u * 0x18u), 0);
+        CHECK_EQ_INT((int)DSD(DS_00102864 + 2u * 0x18u), 0x03837440);
+        ss_seed();
+        DSD(DS_00102870 + 3u * 0x18u) = 0;
+        CHECK_EQ_INT((int)sound_voice(0x42u), 1);
+        CHECK_EQ_INT((int)DSD(DS_00102864 + 3u * 0x18u), 0);
+        CHECK_EQ_INT((int)DSD(DS_00102864 + 2u * 0x18u), 0x03837440);
+        DSD(DS_00102870 + 3u * 0x18u) = b3;
+        ss_seed();
+        CHECK_EQ_INT((int)sound_voice(0x42u), 1);
+        CHECK_EQ_INT((int)sound_voice(0x40u), 1);
+    }
+
+    /* B: 0x1CF20 -> 0x1CB18 per slot: copy, start, +0x0C = +0x04, +0x04 = 0. */
+    game_audio_service();
+    CHECK_EQ_INT((int)DSD(DS_0010286C + 3u * 0x18u), 0x03837440);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 3u * 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010286C + 2u * 0x18u), 0x0383B6F4);
+    CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle(3u)), 4);
+    CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle(0u)), 2);
+    {
+        const u8 *p = (const u8 *)res_resolve(0x03837440u);
+        CHECK(p != NULL && memcmp(mem + DSD(DS_00102870 + 3u * 0x18u), p + 4, 0x1D85u) == 0,
+              "0x1CB18 copied the sample into the slot's buffer");
+    }
+    CHECK_EQ_INT(mixer_active_voices(), 2);
+    for (i = 0; i < 24u; i++) mixer_render(ss_buf, 4096, MIXER_OPL_RATE);
+    CHECK_EQ_INT(mixer_active_voices(), 2);                 /* loop byte 1: count 0 */
+    {
+        /* B2: the loop count is set only for loop byte 1 (0x1CBD3 `cmp eax,1`):
+         * byte 2 keeps count 1 and the voice ends (0x1D85 bytes, ~34k output
+         * frames). Slot 1, so B's two voices stay. */
+        DSD(DS_00102864 + 1u * 0x18u) = 0x03837440u;
+        DSB(DS_00102868 + 1u * 0x18u) = 2u;
+        sound_sample_start(1u);
+        CHECK_EQ_INT(mixer_active_voices(), 3);
+        for (i = 0; i < 24u; i++) mixer_render(ss_buf, 4096, MIXER_OPL_RATE);
+        CHECK_EQ_INT(mixer_active_voices(), 2);
+        CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle(1u)), 2);
+    }
+
+    /* C: 0x41 stops 0x40's handle (0x2C7A5 -> 0x1CE04), 0x43 the other. */
+    CHECK_EQ_INT((int)sound_voice(0x41u), 1);
+    CHECK_EQ_INT((int)DSD(DS_0010286C + 2u * 0x18u), 0);
+    CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle(2u)), 2);
+    CHECK_EQ_INT(mixer_active_voices(), 1);
+    CHECK_EQ_INT((int)sound_voice(0x43u), 1);
+    CHECK_EQ_INT(mixer_active_voices(), 0);
+
+    /* D: size > 0x6000 only on slot 0 (0x1CC68); slot 0 busy forces it. */
+    ss_seed();
+    CHECK_EQ_INT((int)sound_voice(0x3Au), 1);
+    CHECK_EQ_INT((int)DSD(DS_00102864), 0x03022554);
+    CHECK_EQ_INT((int)DSB(DS_00102868), 0);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 3u * 0x18u), 0);
+    DSD(DS_00101500) = 0x180u;
+    CHECK_EQ_INT((int)sound_voice(0x3Au), 1);
+    CHECK_EQ_INT((int)DSD(DS_00102874), 0x180);
+    /* D2: slot 0 playing is not free (0x1CC89/0x1CC94); the forced arm ends
+     * it (0x1CD4F 0x5DC8B: the mixer voice goes) before queueing. */
+    ss_seed();
+    sv_status(0u, 4);
+    CHECK_EQ_INT(mixer_active_voices(), 1);
+    CHECK_EQ_INT((int)sound_voice(0x3Au), 1);
+    CHECK_EQ_INT(mixer_active_voices(), 0);
+    CHECK_EQ_INT((int)DSD(DS_00102864), 0x03022554);
+
+    /* E: none free: the smallest +0x14 below now (0x1CD22 `jbe`, unsigned),
+     * scanned 3..0; all at now leaves the candidate at slot 0 (0x1CC64). */
+    ss_seed();
+    {
+        static const u32 t[4] = { 0x90u, 0x50u, 0x70u, 0x60u };
+        for (i = 0; i < 4u; i++) {
+            DSD(DS_00102864 + i * 0x18u) = 0x44440000u + i;
+            DSD(DS_00102874 + i * 0x18u) = t[i];
+        }
+    }
+    CHECK_EQ_INT((int)sound_voice(0x42u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 1u * 0x18u), 0x03837440);
+    CHECK_EQ_INT((int)DSD(DS_00102874 + 1u * 0x18u), 0x100);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 3u * 0x18u), 0x44440003);
+    CHECK_EQ_INT((int)DSD(DS_00102864), 0x44440000);
+    ss_seed();
+    for (i = 0; i < 4u; i++) {
+        DSD(DS_00102864 + i * 0x18u) = 0x44440000u + i;
+        DSD(DS_00102874 + i * 0x18u) = 0x100u;
+    }
+    CHECK_EQ_INT((int)sound_voice(0x42u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00102864), 0x03837440);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 3u * 0x18u), 0x44440003);
+    {
+        /* E2: the strict `min > t` (0x1CD22 `jbe` skips equal): a tie keeps
+         * the first slot met from 3 down, and a slot at now is never taken
+         * (slot 0 above now, 1..3 at now: the candidate stays 0). A `>=`
+         * would take slot 1 in both. */
+        static const u32 tt[2][4] = {
+            { 0x90u, 0x50u, 0x70u, 0x50u },
+            { 0x200u, 0x100u, 0x100u, 0x100u },
+        };
+        static const u32 want[2] = { 3u, 0u };
+        for (u32 v = 0; v < 2u; v++) {
+            ss_seed();
+            for (i = 0; i < 4u; i++) {
+                DSD(DS_00102864 + i * 0x18u) = 0x44440000u + i;
+                DSD(DS_00102874 + i * 0x18u) = tt[v][i];
+            }
+            CHECK_EQ_INT((int)sound_voice(0x42u), 1);
+            CHECK_EQ_INT((int)DSD(DS_00102864 + want[v] * 0x18u), 0x03837440);
+            CHECK_EQ_INT((int)DSD(DS_00102864 + 1u * 0x18u), 0x44440001);
+        }
+    }
+
+    /* F: PORT guard: a bufferless slot is not started (the raw would copy
+     * to linear 0). mem[0] carries a sentinel the sample bytes differ from;
+     * the low 0x2000 bytes are snapshotted so a mutated copy cannot outlive
+     * the vector. */
+    ss_seed();
+    {
+        static u8 ss_low[0x2000];
+        u32 b3 = DSD(DS_00102870 + 3u * 0x18u);
+        memcpy(ss_low, mem, sizeof ss_low);
+        DSD(0u) = 0x5A5A5A5Au;
+        DSD(DS_00102870 + 3u * 0x18u) = 0;
+        DSD(DS_00102864 + 3u * 0x18u) = 0x03837440u;
+        sound_sample_start(3u);
+        CHECK_EQ_INT((int)DSD(DS_00102864 + 3u * 0x18u), 0x03837440);
+        CHECK_EQ_INT((int)DSD(DS_0010286C + 3u * 0x18u), 0);
+        CHECK_EQ_INT((int)DSD(0u), 0x5A5A5A5A);
+        DSD(DS_00102870 + 3u * 0x18u) = b3;
+        AIL_stop_sample(sound_slot_handle(3u));
+        memcpy(mem, ss_low, sizeof ss_low);
+    }
+    ss_seed();
+    memcpy(gfx_aperture(), ss_ap, sizeof ss_ap);
+    memcpy(gfx_dac, ss_dac, sizeof ss_dac);
 }
 
 /* ---- the attract's high-score screen 0x1EA08 (record §46-A) ---- */
@@ -1120,6 +1306,16 @@ static void check_sound_buffers(void)
     CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
     CHECK_EQ_INT((int)DSD(DS_001028D0), 0);
     CHECK(DSD(DS_00102870 + 0x48u) != 0u, "the four slots are allocated");
+
+    /* The MIDI gate's C0 half (0x1D0D5): C4 set, C0 clear (the port's MDI
+     * state), no MIDI buffer is taken; no DIG, so no slot is allocated. */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028C4) = 0x5678u;
+    DSD(DS_001028D0) = 0;
+    DSD(DS_001028C8) = 0;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028D0), 0);
 
     /* The MIDI gate's D0 half (0x1D0E6): C4 and C0 set, a MIDI buffer already
      * set, nothing is taken. */
@@ -1356,21 +1552,25 @@ int test_flow(void)
      * audio tests, so the count is 0 here unless the init path loaded it. */
     CHECK_EQ_INT(patches_count(), 181);
     CHECK_EQ_INT((int)game_audio_ticks(), 0);
-    /* Task 12: the title state queued the announcer sample (S16SOUND.GRA's
-     * RIFF/WAVE blob) through the game's own request path; the master loop's
-     * audio service (0x1CF20 -> 0x1CB18) must play it. The title bank's first
-     * note is at XMIDI tick 59, so this single-tick render is before the FM
-     * sounds and any non-silence is the sample's, not the music's. */
+    /* Record §K7 (k7-k12 derivations §0.7.5): the raw's title plays no
+     * sample. The sample path is proved end to end on the attract's looping
+     * 0x40 (s16title 0x0383B6F4, loop byte 1): 0x1D0BC's buffers, 0x1CC28's
+     * queue, 0x1CF20 -> 0x1CB18's start. The title bank's first note is at
+     * XMIDI tick 59, so this single-tick render is before the FM sounds and
+     * any non-silence is the sample's. */
+    DSB(DS_000A2CB0) = 0;
+    for (u32 k = 0; k < 4u; k++) DSD(DS_00102870 + k * 0x18u) = 0;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)sound_voice(0x40u), 1);
     host_wait_vblank();
     game_audio_service();
-    CHECK(mixer_active_voices() > 0,
-          "announcer sample became an active mixer voice");
+    CHECK(mixer_active_voices() > 0, "the queued 0x40 became an active mixer voice");
     {
         static s16 abuf[4096 * 2];
         mixer_render(abuf, 4096, MIXER_OPL_RATE);
         int nz = 0;
         for (int i = 0; i < 4096 * 2; i++) if (abuf[i]) { nz = 1; break; }
-        CHECK(nz, "mixer rendered non-silence with the announcer sample active");
+        CHECK(nz, "mixer rendered non-silence with the 0x40 sample active");
     }
     /* The service is paced by the host's 60 Hz clock, not the loop count, so
      * drive that clock here: one host_wait_vblank() per service advances it one
@@ -1381,17 +1581,18 @@ int test_flow(void)
     }
     CHECK(game_audio_ticks() > 0, "audio service advances the sequencer");
     CHECK(game_music_notes_seen(), "title music keys notes without a device");
-    /* The announcer is sound id 0xCD (DS_000BBDC8[0xCD]: case 2, handle
-     * 0x02824B0F = S16SOUND.GRA + 0x24B0F, loop byte 0), so 0x1CB18 does not
-     * call AIL_set_sample_loop_count and the default count 1 plays it once
-     * (todo-verify record §23): after its 19327 frames at 11025 Hz (~87153
-     * output frames) the voice is gone. */
-    CHECK_EQ_INT((int)DSD(DS_000BBDC8 + 0xCDu * 12u + 4u), 0x02824B0F);
+    /* 0x40's record: case 2, handle 0x0383B6F4, loop byte 1, so 0x1CB18 sets
+     * loop count 0 and the voice outlives ~98k output frames; 0x41 (case 5,
+     * 0x2C7A5) stops it. */
+    CHECK_EQ_INT((int)DSD(DS_000BBDC8 + 0x40u * 12u + 4u), 0x0383B6F4);
     {
         static s16 abuf2[4096 * 2];
         for (int i = 0; i < 24; i++) mixer_render(abuf2, 4096, MIXER_OPL_RATE);
+        CHECK_EQ_INT(mixer_active_voices(), 1);
+        CHECK_EQ_INT((int)sound_voice(0x41u), 1);
         CHECK_EQ_INT(mixer_active_voices(), 0);
     }
+    check_sample_slots();
     /* The voice dispatcher 0x2C3FC and the sound module, on the live handles
      * game_audio_init allocated (record §45-A). */
     check_sound_voice();
