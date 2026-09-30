@@ -104,5 +104,95 @@ class TestSchedule(unittest.TestCase):
             gs.expand(('pad', ('p3.up',), 1))
 
 
+def _s(f, head=0x1E, raw=0, mode=0x27, st=0, **kw):
+    vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
+    vals.update(f=f, raw=raw, mode=mode, st=st, t508=1, t50c=2, **kw)
+    return gs.format_s(0, vals, gs.raw_to_kb(raw), head, 0x30)
+
+
+def _log(extra_after=()):
+    L = ['B ms=0 base=00266000 ptr=0000FE20']
+    L += [_s(f, mode=3) for f in range(0x118, 0x11E)]
+    L.append('I ms=1 f=011D step=0 press=enter scan=1C lin=00010090 old=FF bios=1C0D ring=1 late=0')
+    L += [_s(0x11E, mode=3), _s(0x11F, mode=3)]
+    L.append('H ms=2 f=0120 head=0020')
+    L += [_s(f, head=0x20) for f in range(0x120, 0x126)]
+    L.append('I ms=3 f=0125 step=1 press=p1.up scan=1F lin=00010093 old=FF bios=1F73 ring=1 late=0')
+    L.append('H ms=4 f=0126 head=0022')
+    L += [_s(0x126, head=0x22, raw=0x80000000), _s(0x127, head=0x22, raw=0x80000000)]
+    # 0x12A: a pad change with no BIOS word (a --no-pad-bios press): bits only
+    L += [_s(f, head=0x22, raw=0x100 if f == 0x12A else 0) for f in range(0x128, 0x131)]
+    L += list(extra_after)
+    L.append('X ms=5 f=0130 step=2 end')
+    L.append('E ms=6 reason=time-limit rc=0')
+    return L
+
+
+class TestPortScript(unittest.TestCase):
+    def setUp(self):
+        gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())
+
+    def tearDown(self):
+        gs.SCENARIOS.pop('_t', None)
+
+    def test_script_keys_by_consumption_and_bits_by_raw(self):
+        text = gs.port_script('_t', _log())
+        lines = [l for l in text.splitlines() if not l.startswith('#')]
+        self.assertEqual(lines, ['enter_frame 288', 'enter_state 0000',
+                                 'key 288 1C 0D', 'key 294 1F 73',
+                                 'bits 294 8000', 'bits 296 0000',
+                                 'bits 298 0001', 'bits 299 0000', 'end 304'])
+
+    def test_unpinned_key_is_an_error(self):
+        L = [l for l in _log() if not (l.startswith('S ') and gs.parse(l)['f'] == 0x11F)]
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('_t', L)
+
+    def test_bits_need_the_previous_snapshot(self):
+        L = [l for l in _log() if not (l.startswith('S ') and gs.parse(l)['f'] == 0x129)]
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('_t', L)
+
+    def test_enter_frame_must_be_the_first_key(self):
+        L = [l.replace('mode=0027', 'mode=0003') if l.startswith('S ') and gs.parse(l)['f'] == 0x120 else l
+             for l in _log()]
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('_t', L)
+
+    def test_a_chord_is_consumed_in_one_iteration(self):
+        # 0x24D08..0x24EE7 drains every queued word in one iteration (record
+        # §G.4): three words queued in the spin of 0x12C, all consumed by 0x12D;
+        # the poller writes one H record per word (heads 24, 26, 28).
+        L = [l for l in _log() if l[0] not in 'XE' and not (l.startswith('S ') and gs.parse(l)['f'] >= 0x12C)]
+        L += [_s(0x12C, head=0x22)]
+        for k, (n, w) in enumerate((('p1.up', '1F73'), ('p1.b1', '1769'), ('p2.left', '4BE0'))):
+            L.append('I ms=7 f=012C step=3 press=%s scan=00 lin=00010000 old=FF bios=%s ring=1 late=0' % (n, w))
+        L += ['H ms=8 f=012D head=0024', 'H ms=8 f=012D head=0026', 'H ms=8 f=012D head=0028']
+        L += [_s(f, head=0x28) for f in range(0x12D, 0x131)]
+        L += ['X ms=9 f=0130 step=4 end']
+        lines = [l for l in gs.port_script('_t', L).splitlines() if l.startswith('key')]
+        self.assertEqual(lines, ['key 288 1C 0D', 'key 294 1F 73',
+                                 'key 301 1F 73', 'key 301 17 69', 'key 301 4B E0'])
+        # a word consumed after S(0x12D) was taken (a blocking loop, f frozen) is rejected
+        L2 = L[:-1] + ['H ms=10 f=012D head=002A', 'X ms=9 f=0130 step=4 end']
+        L2.insert(L2.index('H ms=8 f=012D head=0024'),
+                  'I ms=7 f=012C step=3 press=p1.b2 scan=00 lin=00010000 old=FF bios=316E ring=1 late=0')
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('_t', L2)
+
+
+class TestTraceDiff(unittest.TestCase):
+    def test_first_difference_and_tick_apart(self):
+        a = [_s(f, rng=f) for f in range(10)]
+        b = [_s(f, rng=f if f < 7 else 0) for f in range(10) if f != 3]
+        b[0] = _s(0, rng=0, tick=5)
+        r = gs.trace_diff(a, b)
+        self.assertEqual((r['first'], r['field'], r['compared'], r['tick_first']), (7, 'rng', 9, 0))
+
+    def test_identical_traces(self):
+        a = [_s(f) for f in range(4)]
+        self.assertEqual(gs.trace_diff(a, list(a))['first'], None)
+
+
 if __name__ == '__main__':
     unittest.main()

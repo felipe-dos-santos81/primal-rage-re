@@ -180,3 +180,119 @@ class Schedule:
 
     def ended(self, f):
         return self.end_frame is not None and f >= self.end_frame
+
+
+class ScriptError(Exception):
+    pass
+
+
+def snapshots(lines):
+    out = {}
+    for l in lines:
+        r = parse(l)
+        if r and r['kind'] == 'S':
+            out.setdefault(r['f'], r)
+    return out
+
+
+def port_script(name, lines):
+    """poll.log v2 -> port script v2 (spec §4.1). Keys at their consumption
+    frame (the H record paired FIFO with the I press, pinned by S(f-1) showing
+    the old head); bits at each change of S.raw, pinned by S(f-1). The key loop
+    0x24D08..0x24EE7 drains every queued word in one iteration, so the poller
+    writes one H record per consumed word and S(f) must show the head of the
+    last H record of frame f (record §G.4)."""
+    recs = [r for r in (parse(l) for l in lines) if r]
+    snap = snapshots(lines)
+    presses = [r for r in recs if r['kind'] == 'I' and 'press' in r and r.get('bios') is not None]
+    heads = [r for r in recs if r['kind'] == 'H']
+    if len(heads) < len(presses):
+        raise ScriptError('%d BIOS words queued, %d consumed' % (len(presses), len(heads)))
+    last_head = {}
+    for h in heads:
+        last_head[h['f']] = h['head']
+    keys = []
+    for k, (p, h) in enumerate(zip(presses, heads)):
+        c = h['f']
+        prev = snap.get(c - 1)
+        if prev is None or prev['head'] == h['head']:
+            raise ScriptError('key %d (%s) consumption at f=%X unpinned' % (k, p['press'], c))
+        if c in snap and snap[c]['head'] != last_head[c]:
+            raise ScriptError('key %d (%s): S(%X) disagrees with its H record' % (k, p['press'], c))
+        word = p['bios']
+        keys.append((c, word >> 8, word & 0xFF))
+    p27 = next((r for r in recs if r['kind'] in ('S', 'P') and r.get('mode') == 0x27), None)
+    if p27 is None:
+        raise ScriptError('mode 0x27 never observed')
+    if not keys or keys[0][0] != p27['f']:
+        raise ScriptError('the first key (f=%s) is not the frame mode 0x27 appears (f=%X)'
+                          % (keys[0][0] if keys else None, p27['f']))
+    bits, prev_kb = [], 0
+    for f in sorted(snap):
+        if f < p27['f']:
+            continue
+        kb = raw_to_kb(snap[f]['raw'])
+        if kb != prev_kb:
+            if f - 1 not in snap:
+                raise ScriptError('pad change at f=%X unpinned (no S record at f=%X)' % (f, f - 1))
+            bits.append((f, kb))
+            prev_kb = kb
+    end = next((r for r in recs if r['kind'] == 'X'), None)
+    if end is None:
+        raise ScriptError('the scenario end (X record) was not reached')
+    out = ['# gp port script v2: scenario %s' % name,
+           'enter_frame %d' % p27['f'],
+           'enter_state %04X' % p27['st']]
+    ev = [(c, 0, i, 'key %d %02X %02X' % (c, s, a)) for i, (c, s, a) in enumerate(keys)]
+    ev += [(f, 1, 0, 'bits %d %04X' % (f, kb)) for f, kb in bits]
+    out += [t for _, _, _, t in sorted(ev)]
+    out.append('end %d' % end['f'])
+    return '\n'.join(out) + '\n'
+
+
+def trace_diff(a_lines, b_lines):
+    a, b = snapshots(a_lines), snapshots(b_lines)
+    common = sorted(set(a) & set(b))
+    first = field = tick_first = None
+    for f in common:
+        if tick_first is None and a[f]['tick'] != b[f]['tick']:
+            tick_first = f
+        if first is None:
+            for n in TRACE_FIELDS:
+                if a[f][n] != b[f][n]:
+                    first, field = f, n
+                    break
+    return dict(first=first, field=field, compared=len(common), tick_first=tick_first)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('cmd', choices=('port-script', 'trace-diff'))
+    ap.add_argument('--scenario')
+    ap.add_argument('--capture')
+    ap.add_argument('--out')
+    ap.add_argument('--a')
+    ap.add_argument('--b')
+    a = ap.parse_args()
+    if a.cmd == 'trace-diff':
+        with open(os.path.join(a.a, 'poll.log')) as fa, open(os.path.join(a.b, 'poll.log')) as fb:
+            r = trace_diff(fa.read().splitlines(), fb.read().splitlines())
+        print('gp_session: trace-diff: %d frames compared; first difference %s%s; first tick difference %s'
+              % (r['compared'], 'none' if r['first'] is None else 'f=%X' % r['first'],
+                 '' if r['field'] is None else ' (%s)' % r['field'],
+                 'none' if r['tick_first'] is None else 'f=%X' % r['tick_first']))
+        return 0
+    with open(os.path.join(a.capture, 'poll.log')) as f:
+        try:
+            text = port_script(a.scenario, f.read().splitlines())
+        except ScriptError as e:
+            print('gp_session: port-script: %s: %s' % (a.scenario, e))
+            return 1
+    with open(a.out, 'w') as f:
+        f.write(text)
+    print('gp_session: port-script: %s: wrote %s (%d lines)' % (a.scenario, a.out, text.count('\n')))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

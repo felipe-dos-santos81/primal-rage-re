@@ -274,6 +274,42 @@ attribute 'Schedule'`). Mutation: `f < F - 1` → `f < F` in `due` →
 `FAIL: test_until_mode_counts_only_after_the_last_action` (`FAILED
 (failures=2)`); restored → `OK`.
 ## §G.4 Port script v2 and trace diff (U1 Task 4)
+
+`gp_session.port_script`, `snapshots`, `trace_diff`, `ScriptError`, the CLI
+`port-script` / `trace-diff`, as spec §4.1.
+
+**Correction to the plan (raw wins): a chord's BIOS words are consumed in one
+iteration.** The int 16h key loop `0x24D08..0x24EE7` (`dx.py 24CFE 60`:
+`0x24D08 mov ah, 1 … 0x24D0E int 0x16 … 0x24D20 je 0x24eec` exits only when no
+key is queued; otherwise `0x24D2E int 0x16` (AH = 0) reads one and the loop
+repeats; `flow.c game_key_loop`) drains every queued word before the mode
+switch. With spec §7 Q4 ruled YES a chord of `n` pads queues `n` words at once,
+so they are all consumed in the same iteration and the head moves by `2n` in
+one step. The plan's generator would have seen one head change for `n`
+presses ("n BIOS words queued, 1 consumed"). Two changes, both pinned by the
+new test `test_a_chord_is_consumed_in_one_iteration`:
+
+1. `gp_capture`'s poller writes **one `H` record per consumed word** (walking
+   the ring from the old head to the new one; each record carries the head
+   after that word) — §G.5.
+2. `port_script` requires `S(c − 1).head ≠ H.head` for each key (as planned) and
+   `S(c).head` = the head of the **last** `H` record of frame `c` (instead of
+   the key's own `H.head`; identical for a single key). A word consumed after
+   `S(c)` was taken (a blocking loop with `f` frozen at `c`) still fails.
+3. Keys of one frame keep their press (FIFO) order in the script: the plan's
+   `sorted(ev)` would have ordered same-frame keys by their text
+   (`key 301 17 69` before `key 301 1F 73`); the sort key now carries the
+   press index.
+
+Tests: `Ran 18 tests … OK` (the plan's 17 plus the chord test; before:
+`AttributeError: module 'gp_session' has no attribute 'port_script'`).
+Mutations (each restored → `OK`):
+(a) drop `prev is None or` → `ERROR: test_unpinned_key_is_an_error`;
+(b) drop the `f - 1 not in snap` check → `FAIL: test_bits_need_the_previous_snapshot`;
+(c) compare `S(c).head` with the key's own `H.head` →
+`ERROR: test_a_chord_is_consumed_in_one_iteration` (ScriptError);
+(d) the plan's sort without the press index →
+`FAIL: test_a_chord_is_consumed_in_one_iteration`.
 ## §G.5 gp_capture (U1 Tasks 5–6)
 ## §G.6 Make targets (U1 Task 7)
 ## §G.7 The gp-pads capture (U1 Task 8)
