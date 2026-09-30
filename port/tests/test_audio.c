@@ -12,6 +12,11 @@
 #include "platform/audio/sequencer.h"
 #include "platform/audio/patches.h"
 #include "platform/audio/ail.h"
+#include "mem.h"
+#include "symbols.h"
+#include "game/flow.h"
+#include "platform/res.h"
+#include "test_fixtures.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1525,5 +1530,228 @@ int test_ail(void)
     CHECK(AIL_allocate_sample_handle(dig) != NULL,
           "sample handles are reusable after shutdown");
 
+    return g_failures - before;
+}
+
+/* ---- named-gaps D: the virtual mixer clock (record
+ * 2026-09-30-named-gaps-d-derivations.md §D.1) ----------------------------- */
+
+/* Service ticks after which a one-shot of `len` 8-bit bytes at 0x2B11 Hz
+ * (0x1CBA4/0x1CBB0) has ended, for a sub-tick remainder `frac0` in [0, 59].
+ * It restates mixer.c: step = (0x2B11 << 16) / MIXER_OPL_RATE (rate_step);
+ * N reads leave idx = (N * step) >> 16, and the voice ends on the read after
+ * the first N with N * step >= len << 16 (voice_read); k service ticks render
+ * (frac0 + MIXER_OPL_RATE * k) / 60 frames (game_audio_service). */
+static u32 vc_end_tick(u32 len, u32 frac0)
+{
+    const unsigned long long step = (0x2B11ull << 16) / MIXER_OPL_RATE;
+    const unsigned long long reads =
+        (((unsigned long long)len << 16) + step - 1u) / step + 1u;
+    u32 k = 0;
+    while ((frac0 + (unsigned long long)MIXER_OPL_RATE * k) / 60u < reads) k++;
+    return k;
+}
+
+/* The raw's length in ticks: len / 0x2B11 s at 60 ticks/s (0x1CFFA), rounded
+ * up. */
+static u32 vc_ideal_ticks(u32 len)
+{
+    return (len * 60u + 0x2B10u) / 0x2B11u;
+}
+
+/* n timer ticks (0x1BE16, game_isr_ticks), each followed by the master loop's
+ * audio service 0x1CF20. */
+static void vc_ticks(u32 n)
+{
+    for (u32 i = 0; i < n; i++) {
+        game_isr_ticks(1u);
+        game_audio_service();
+    }
+}
+
+/* The slot whose playing handle (+0x0C) is `h`, or -1. */
+static int vc_slot_of(u32 h)
+{
+    for (u32 i = 0; i < 4u; i++)
+        if (DSD(DS_0010286C + i * 0x18u) == h) return (int)i;
+    return -1;
+}
+
+/* The size dword `h` resolves to (0x1CB49); 0 when it does not resolve. */
+static u32 vc_len(u32 h)
+{
+    const u8 *p = (const u8 *)res_resolve(h);
+    return (p != NULL) ? DSD((u32)(p - mem)) : 0u;
+}
+
+/* Every voice stopped and each slot handle inited (status 2), nothing queued
+ * or playing, the DIG driver on and samples unpaused; then one service call
+ * with no new tick rebases the clock. */
+static void vc_quiet(void)
+{
+    mixer_stop_samples();
+    for (u32 i = 0; i < 4u; i++) {
+        AIL_init_sample(sound_slot_handle(i));
+        DSD(DS_00102864 + i * 0x18u) = 0;
+        DSD(DS_0010286C + i * 0x18u) = 0;
+        DSD(DS_00102874 + i * 0x18u) = 0;
+    }
+    DSD(DS_001028C8) = 1u;
+    DSB(DS_001028DB) = 0;
+    game_audio_service();
+}
+
+int test_virtual_clock(void)
+{
+    int before = g_failures;
+    static u8 vc_pcm[0x2B11];           /* one second at 0x2B11 Hz */
+    static u8 vc_short[64];
+    u32 i;
+
+    for (i = 0; i < 4u; i++)
+        CHECK(sound_slot_handle(i) != NULL, "game_audio_init allocated the slot handles");
+    if (sound_slot_handle(0u) == NULL) return g_failures - before;
+    /* test_ail (registered after test_flow) ends with AIL_shutdown and one
+     * re-allocation, so only the pool's first entry is live and slots 1..3's
+     * handles report 0 (record §D.2). The pool is these four handles and
+     * AIL_allocate_sample_handle takes the first free entry: re-take the
+     * released ones here and release them again at the end. */
+    HSAMPLE vc_taken[4];
+    u32 vc_ntaken = 0;
+    while (vc_ntaken < 4u
+           && (vc_taken[vc_ntaken] = AIL_allocate_sample_handle(NULL)) != NULL)
+        vc_ntaken++;
+    tf_voice_snap();                    /* restored by tf_voice_put below */
+    DSD(DS_001028C8) = 1u;
+    if (DSD(DS_00102870) == 0u) {       /* 0x1D0BC's buffers, as test_flow makes them */
+        DSB(DS_000A2CB0) = 0;
+        CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    }
+    for (i = 0; i < 4u; i++)
+        CHECK(DSD(DS_00102870 + i * 0x18u) != 0u, "0x1D0BC gave every slot a buffer");
+
+    /* The shipped records and sizes (record §D.0): BD is 0x42's handle
+     * 0x03837440 as a one-shot, BE/BF are one-shots, all case 2 in entry 7
+     * (S16TITLE.GRA). Resolved here, before any clock rebase. */
+    CHECK_EQ_INT((int)DSD(DS_000BBDC8 + 0xBDu * 12u + 4u), 0x03837440);
+    CHECK_EQ_INT((int)DSD(DS_000BBDC8 + 0xBEu * 12u + 4u), 0x038391C9);
+    CHECK_EQ_INT((int)DSD(DS_000BBDC8 + 0xBFu * 12u + 4u), 0x038416A6);
+    for (i = 0xBDu; i <= 0xBFu; i++) {
+        CHECK_EQ_INT((int)DSB(DS_000BBDC8 + i * 12u), 2);
+        CHECK_EQ_INT((int)DSB(DS_000BBDC8 + i * 12u + 8u), 0);
+    }
+    const u32 len_bd = vc_len(0x03837440u);
+    const u32 len_be = vc_len(0x038391C9u);
+    const u32 len_bf = vc_len(0x038416A6u);
+    CHECK_EQ_INT((int)len_bd, 7557);
+    CHECK_EQ_INT((int)len_be, 9511);
+    CHECK_EQ_INT((int)len_bf, 10904);
+
+    /* V1: a 0x2B11-byte one-shot (AIL's default loop count 1) on slot 0's
+     * handle still plays one tick before its computed end and has ended at it:
+     * 60 ticks of length, + 1 for rate_step's floor (record §D.0). */
+    HSAMPLE h = sound_slot_handle(0u);
+    const u32 lo = vc_end_tick(sizeof vc_pcm, 59u);
+    const u32 hi = vc_end_tick(sizeof vc_pcm, 0u);
+    CHECK_EQ_INT((int)hi, 61);
+    CHECK(lo == hi && hi >= vc_ideal_ticks(sizeof vc_pcm)
+          && hi <= vc_ideal_ticks(sizeof vc_pcm) + 1u,
+          "a one-shot ends within one tick of len / 0x2B11 s, for any remainder");
+    memset(vc_pcm, 0x90, sizeof vc_pcm);
+    vc_quiet();
+    AIL_init_sample(h);
+    AIL_set_sample_address(h, vc_pcm, sizeof vc_pcm);
+    AIL_set_sample_rate(h, 0x2B11u);
+    AIL_start_sample(h);
+    CHECK_EQ_INT((int)AIL_sample_status(h), 4);
+    vc_ticks(lo - 1u);
+    CHECK_EQ_INT((int)AIL_sample_status(h), 4);
+    vc_ticks(hi - (lo - 1u));
+    CHECK_EQ_INT((int)AIL_sample_status(h), 2);
+    CHECK_EQ_INT(mixer_sample_active(h), 0);
+
+    /* V2: the same buffer with loop count 0 (0x1CBE1) still plays after three
+     * one-shot lengths. */
+    vc_quiet();
+    AIL_init_sample(h);
+    AIL_set_sample_address(h, vc_pcm, sizeof vc_pcm);
+    AIL_set_sample_loop_count(h, 0u);
+    AIL_start_sample(h);
+    vc_ticks(3u * hi);
+    CHECK_EQ_INT((int)AIL_sample_status(h), 4);
+    CHECK_EQ_INT(mixer_sample_active(h), 1);
+
+    /* V3: a clock moved back (a mem[] restore) renders nothing; the next
+     * forward tick renders, and 64 bytes end inside it. */
+    memset(vc_short, 0x90, sizeof vc_short);
+    CHECK_EQ_INT((int)vc_end_tick(sizeof vc_short, 0u), 1);
+    vc_quiet();
+    AIL_init_sample(h);
+    AIL_set_sample_address(h, vc_short, sizeof vc_short);
+    AIL_start_sample(h);
+    DSD(DS_00101500) -= 5u;
+    game_audio_service();
+    CHECK_EQ_INT((int)AIL_sample_status(h), 4);
+    vc_ticks(1u);
+    CHECK_EQ_INT((int)AIL_sample_status(h), 2);
+
+    /* V6: six one-shots (BE, BF alternating) across ticks with both attract
+     * loops live, eight starts on four slots: each fires (0x2C483 finds it
+     * ended), takes a free slot and frees it at its length (the dispatcher
+     * never reaches 0x1CC28's forced arm), and the loops keep their slots. */
+    vc_quiet();
+    CHECK_EQ_INT((int)sound_voice(0x40u), 1);
+    CHECK_EQ_INT((int)sound_voice(0x42u), 1);
+    vc_ticks(1u);
+    const int s40 = vc_slot_of(0x0383B6F4u);
+    const int s42 = vc_slot_of(0x03837440u);
+    CHECK(s40 >= 0 && s42 >= 0 && s40 != s42, "the attract loops started in two slots");
+    for (u32 n = 0; n < 6u; n++) {
+        const u32 id = (n & 1u) ? 0xBFu : 0xBEu;
+        const u32 hd = (n & 1u) ? 0x038416A6u : 0x038391C9u;
+        const u32 len = (n & 1u) ? len_bf : len_be;
+        CHECK(vc_end_tick(len, 0u) == vc_end_tick(len, 59u)
+              && vc_end_tick(len, 0u) >= vc_ideal_ticks(len)
+              && vc_end_tick(len, 0u) <= vc_ideal_ticks(len) + 1u,
+              "the one-shot's end is within one tick of len / 0x2B11 s");
+        CHECK_EQ_INT((int)sound_voice(id), 1);
+        vc_ticks(1u);
+        const int s = vc_slot_of(hd);
+        CHECK(s >= 0 && s != s40 && s != s42, "the one-shot took a free slot");
+        if (s < 0) break;
+        CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle((u32)s)), 4);
+        vc_ticks(vc_end_tick(len, 0u) - 1u);
+        CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle((u32)s)), 2);
+    }
+    if (s40 >= 0 && s42 >= 0) {
+        CHECK_EQ_INT((int)DSD(DS_0010286C + (u32)s40 * 0x18u), 0x0383B6F4);
+        CHECK_EQ_INT((int)DSD(DS_0010286C + (u32)s42 * 0x18u), 0x03837440);
+        CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle((u32)s40)), 4);
+        CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle((u32)s42)), 4);
+    }
+
+    /* V7: while BD (0x42's handle, one-shot) plays, 0x2C483 refuses 0x42;
+     * once BD has ended 0x42 queues, and its loop outlives a BD length. */
+    vc_quiet();
+    CHECK(vc_end_tick(len_bd, 0u) == vc_end_tick(len_bd, 59u)
+          && vc_end_tick(len_bd, 0u) >= vc_ideal_ticks(len_bd)
+          && vc_end_tick(len_bd, 0u) <= vc_ideal_ticks(len_bd) + 1u,
+          "BD's end is within one tick of len / 0x2B11 s");
+    CHECK_EQ_INT((int)sound_voice(0xBDu), 1);
+    vc_ticks(1u);
+    CHECK_EQ_INT((int)sound_voice(0x42u), 0);
+    vc_ticks(vc_end_tick(len_bd, 0u) - 1u);
+    CHECK_EQ_INT((int)sound_voice(0x42u), 1);
+    vc_ticks(1u);
+    const int sl = vc_slot_of(0x03837440u);
+    CHECK(sl >= 0, "0x42 started once BD ended");
+    vc_ticks(vc_end_tick(len_bd, 0u));
+    if (sl >= 0)
+        CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle((u32)sl)), 4);
+
+    mixer_stop_samples();
+    for (i = 0; i < 4u; i++) AIL_init_sample(sound_slot_handle(i));
+    for (i = 0; i < vc_ntaken; i++) AIL_release_sample_handle(vc_taken[i]);
+    tf_voice_put();
     return g_failures - before;
 }

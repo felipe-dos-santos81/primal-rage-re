@@ -94,6 +94,9 @@ static int s_music_request;      /* a state asked for music; 0x1CF20 starts it *
 static u32 s_audio_ticks;        /* seq_tick() calls driven since start */
 static u32 s_audio_frac;         /* sub-host-tick sample remainder, /60 */
 static u32 s_last_host_tick;     /* host clock at the last service call */
+/* PORT: the ISR tick DS_00101500 at the last service call; the virtual
+ * mixer clock's base (game_audio_service). */
+static u32 s_last_isr_tick;
 static int s_music_notes;        /* sticky: a note has been keyed */
 static s16 s_audio_buf[AUDIO_FRAMES_MAX * 2];
 
@@ -5911,6 +5914,7 @@ void game_audio_init(void)
     AIL_set_timer_frequency(timer, 0x3c);   /* the original's 60 Hz game tick */
     AIL_start_timer(timer);
     s_last_host_tick = host_tick_count();
+    s_last_isr_tick = DSD(DS_00101500);
 }
 
 /* Locates the title music bank in S16TITLE.GRA through the resource layer: the
@@ -5983,7 +5987,7 @@ static void title_music_start(void)
  * frame is clamped to the host clock's own catch-up bound, so the music tracks
  * wall time without bursting. With no
  * device (host_audio_rate() == 0, e.g. --check) the sequencer still advances
- * but nothing is rendered or submitted. */
+ * and the mixer renders on the virtual clock below; nothing is submitted. */
 void game_audio_service(void)
 {
     for (u32 i = 0; i < 4u; i++) sound_sample_start(i);    /* 0x1CF21..0x1CF2E 0x1CB18 */
@@ -6007,8 +6011,28 @@ void game_audio_service(void)
     s_audio_ticks += ticks;
     if (seq_active_track() > 0) s_music_notes = 1;
 
+    /* PORT: the virtual mixer clock (record named-gaps-d §D.1). With no
+     * device the mixer still renders, so a one-shot's voice reaches its
+     * buffer end and AIL_sample_status reports it ended, as the DIG service
+     * does at 0x6F28F. The frames due come from the ISR tick DS_00101500
+     * (0x1BE16; 60 Hz, 0x1CFFA push 0x3c) at MIXER_OPL_RATE, the fixed
+     * profile rate run_windowed opens a device with; mixer_render and
+     * host_audio_submit (a no-op without a device) are the device path's
+     * own. The host tick is wall time; the ISR tick is the loop's
+     * deterministic clock (the spin 0x256C5 and res.c's read stall advance
+     * it). A tick that moved back (a test restoring mem[]) rebases without
+     * rendering; a stall is clamped like the host clock's. */
+    u32 isr = DSD(DS_00101500);
+    u32 isr_elapsed = isr - s_last_isr_tick;
+    s_last_isr_tick = isr;
+    if (isr_elapsed > 0x7FFFFFFFu) isr_elapsed = 0;
+    if (isr_elapsed > HOST_TICK_MAX_CATCHUP) isr_elapsed = HOST_TICK_MAX_CATCHUP;
+
     u32 rate = host_audio_rate();
-    if (rate == 0) return;
+    if (rate == 0) {
+        rate = MIXER_OPL_RATE;
+        elapsed = isr_elapsed;
+    }
     s_audio_frac += rate * elapsed;     /* samples due, scaled by 60 */
     u32 n = s_audio_frac / 60u;
     s_audio_frac %= 60u;

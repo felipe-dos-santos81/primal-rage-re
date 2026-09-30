@@ -128,8 +128,9 @@ static u32 buf_hash(const u8 *p)
  * loop byte 1, at 0x11160/0x1116C; 0x1CF20 -> 0x1CB18 starts them, and the
  * title's first entry stops them (0x121CE voice 0x41, 0x121D8 voice 0x43).
  * 1 when a slot holds `h` as playing (+0x0C and AIL status 4). No device is
- * open, so the mixer is not rendered and a started voice stays live, which is
- * the loop's own state. */
+ * open, so the mixer renders on the virtual clock (record named-gaps-d §D.1):
+ * a one-shot ends at its length, and these loops (loop count 0, 0x1CBE1)
+ * stay live until the title stops them. */
 static int attract_loop_playing(u32 h)
 {
     for (u32 i = 0; i < 4u; i++)
