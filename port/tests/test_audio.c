@@ -1267,7 +1267,8 @@ int test_sequencer(void)
 /* ---- test_ail.c ---- */
 
 /* Shallow checks for the AIL call surface (Task 10). The end-to-end wiring is
- * Task 11's and the announcer sample is Task 12's; this file only pins the
+ * Task 11's, and the sample path (0x1CC28/0x1CB18, which replaced the title
+ * announcer stand-in) is record k7-k12 §3's; this file only pins the
  * surface's observable contracts: the fixed-profile short-circuit, the
  * preference/timer handle semantics, that music start/stop drives the
  * sequencer, and that a sample-play call converts its bytes and reaches the

@@ -1,12 +1,17 @@
 /* port/tests/test_fixtures.c — the fixtures shared by the test files. Every
- * body here is a byte-for-byte copy of its former per-file definition; only
- * the name and the home changed. */
+ * body here except tf_voice_sites (new, record k7-k12 §4) is a byte-for-byte
+ * copy of its former per-file definition; only the name and the home
+ * changed. */
 #include "test_fixtures.h"
 #include "game/actors.h"
 #include "game/effects.h"
+#include "game/flow.h"
 #include "platform/gfx.h"
+#include "platform/res.h"
 #include "mem.h"
 #include "symbols.h"
+#include "test.h"
+#include <stdio.h>
 #include <string.h>
 
 /* ---- test_fight.c ---- */
@@ -186,4 +191,49 @@ void tf_menu_press(u32 bits)
     DSD(DS_000E1C30) = bits;
     DSB(MT_LAYOUT + 0x2D8u) = (u8)(bits >> 24);
     DSB(MT_LAYOUT + 0x2D9u) = (u8)(bits >> 8);
+}
+
+/* ---- record k7-k12 §4: the K12 voice-site runner ---- */
+
+void tf_voice_sites(const TfVoiceSite *t, u32 count)
+{
+    static u8 d[0x8B0D0], pa[0x4880], pb[0xEBA0], ap[320u * 200u], dac[256][3];
+    const u32 a = DSD(DS_001014EC), b = DSD(DS_001014F4);
+    for (u32 k = 0; k < count; k++) {
+        tf_snap(d, DATA_BASE, 0x8B0D0u);
+        if (a != 0u) tf_snap(pa, a, 0x4880u);
+        if (b != 0u) tf_snap(pb, b, 0xEBA0u);
+        memcpy(ap, gfx_aperture(), sizeof ap);
+        memcpy(dac, gfx_dac, sizeof dac);
+        DSD(DS_001028C8) = 0;
+        sound_voice_log_reset();
+        /* res_block_alloc(0) is the bump heap's next block; it aligns the
+         * heap and does not advance it. */
+        const u32 heap = res_block_alloc(0u);
+        t[k].drive();
+        if (res_block_alloc(0u) != heap)
+            fprintf(stderr, "voice site row %u: the bump heap grew by 0x%X\n",
+                    (unsigned)t[k].row, (unsigned)(res_block_alloc(0u) - heap));
+        CHECK(res_block_alloc(0u) == heap, "a voice site row grew the bump heap");
+        /* Past the cap the log drops ids, so a row id could go unseen:
+         * a row must log at most SOUND_VOICE_LOG_CAP voices. */
+        if (sound_voice_log_count() > SOUND_VOICE_LOG_CAP)
+            fprintf(stderr, "voice site row %u: %u voices logged, over the cap %u\n",
+                    (unsigned)t[k].row, (unsigned)sound_voice_log_count(),
+                    (unsigned)SOUND_VOICE_LOG_CAP);
+        CHECK(sound_voice_log_count() <= SOUND_VOICE_LOG_CAP,
+              "a voice site row logged more voices than the log keeps");
+        u32 j = 0;
+        for (u32 i = 0; i < sound_voice_log_count() && j < t[k].n; i++)
+            if (sound_voice_log_at(i) == t[k].ids[j]) j++;
+        if (j != t[k].n)
+            fprintf(stderr, "voice site row %u: %u of %u ids in order\n",
+                    (unsigned)t[k].row, (unsigned)j, (unsigned)t[k].n);
+        CHECK_EQ_INT((int)j, (int)t[k].n);
+        tf_put(d, DATA_BASE, 0x8B0D0u);
+        if (a != 0u) tf_put(pa, a, 0x4880u);
+        if (b != 0u) tf_put(pb, b, 0xEBA0u);
+        memcpy(gfx_aperture(), ap, sizeof ap);
+        memcpy(gfx_dac, dac, sizeof dac);
+    }
 }
