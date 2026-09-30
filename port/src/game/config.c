@@ -609,13 +609,12 @@ void config_screen_wait_zero(void)
     config_screen_wait(0);                                  /* falls into 0x2EA78 */
 }
 
-/* 0x2EB80 — records §49-X, §49-Y (§50-B). Returns the latched key DS_00105F30 when it is
- * non-zero (0x2EB81..0x2EB8E). Otherwise 0x500BB minus DS_00105F2C is tested
- * unsigned against 0x4B0 (0x2EB94..0x2EB9F `jbe`): at or under, 0 (0x2EBB8);
- * over, the idle timeout stores DS_00107414 = 0 (0x2EBA8) and calls
- * longjmp(0x1044F4, 1) (0x2EBAE..0x2EBB3, 0x65431). PORT: the longjmp quit
- * path is not modelled (spec §7); the store is kept and 0 is returned in its
- * place. Callers: 0x2EBF0 (0x2EBFD), 0x2FFC4 (0x303D9, menu.c), 0x33058 (0x3306B),
+/* 0x2EB80 — records §49-X, §49-Y (§50-B), named-gaps-b §B.3. Returns the
+ * latched key DS_00105F30 when it is non-zero (0x2EB81..0x2EB8E). Otherwise
+ * 0x500BB minus DS_00105F2C is tested unsigned against 0x4B0 (0x2EB94..0x2EB9F
+ * `jbe`): at or under, 0 (0x2EBB8); over, the idle timeout stores DS_00107414
+ * = 0 (0x2EBA8, the menu's active byte) and soft-restarts through
+ * longjmp(0x1044F4, 1) (0x2EBAE..0x2EBB3, game_restart_longjmp). Callers: 0x2EBF0 (0x2EBFD), 0x2FFC4 (0x303D9, menu.c), 0x33058 (0x3306B),
  * 0x33230 (0x33247), 0x32542 and 0x32E36 (svcmenu.c), and 0x2EE41, which lies
  * in no Ghidra function and is not ported (a raw rel32 scan finds 7). */
 u32 config_key_latched(void)
@@ -623,8 +622,8 @@ u32 config_key_latched(void)
     u32 latch = DSD(CFG_KEY_LATCH);                         /* 0x2EB81 */
     if (latch != 0u) return latch;                          /* 0x2EB87 */
     if (DSD(CFG_TICK_ISR) - DSD(CFG_KEY_TIME) > 0x4B0u) {   /* 0x2EB94..0x2EB9F */
-        DSB(CFG_IDLE_FLAG) = 0u;                            /* 0x2EBA8 */
-        /* PORT: 0x2EBB3 jmp 0x65431, longjmp(0x1044F4, 1). */
+        DSB(CFG_IDLE_FLAG) = 0u;                            /* 0x2EBA1 xor ah,ah; 0x2EBA8 */
+        game_restart_longjmp();                             /* 0x2EBA3/0x2EBAE..0x2EBB3 jmp 0x65431, longjmp(0x1044F4, 1) */
     }
     return 0u;                                              /* 0x2EBB8 */
 }

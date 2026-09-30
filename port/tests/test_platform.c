@@ -2905,6 +2905,9 @@ static void check_menu_draw(void)
 }
 
 /* 0x2FFC4 (record §49-X.7). */
+/* The idle timeout's soft restart (record named-gaps-b §B.3) lands here. */
+static jmp_buf ms_jb;
+
 static void check_menu_step(void)
 {
     const u32 T = MT_TABLE + 0x200u;
@@ -3048,9 +3051,16 @@ static void check_menu_step(void)
     DSW(MT_LAYOUT + 0x2D4u) = 1;
     CHECK_EQ_INT((int)DSB(DS_00107414), 1);
 
-    /* Idle past 0x4B0 ticks clears the active flag (the longjmp's stand-in). */
+    /* Idle past 0x4B0 ticks clears the active flag (0x2EBA8) and soft-restarts
+     * (0x2EBB3, record named-gaps-b §B.3). */
     DSD(DS_00101500) = 3000 + 0x4B1;
-    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    {
+        jmp_buf *const prev = game_restart_arm(&ms_jb);
+        volatile int landed = 0;
+        if (setjmp(ms_jb) == 0) (void)menu_step(T, 0x10u, 4u); else landed = 1;
+        (void)game_restart_arm(prev);
+        CHECK_EQ_INT(landed, 1);
+    }
     CHECK_EQ_INT((int)DSB(DS_00107414), 0);
 
     /* Enter runs the item's callback: -5 leaves with a redraw asked for, -10

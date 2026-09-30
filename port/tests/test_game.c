@@ -1522,28 +1522,35 @@ static void check_sound_buffers(void)
 /* Record k7-k12 §2.6: the idle timeout 0x2EB80 (config_key_latched) over the
  * ISR clock. Its difference 0x500BB - DS_00105F2C (0x2EB8F..0x2EB9F) now grows
  * with every master-loop tick (game_isr_ticks), so the master-loop menu
- * 0x2FFC4 (0x303D9) reaches the timeout after 0x4B0 idle ticks. PORT (named
- * gap): the raw stores DS_00107414 = 0 (0x2EBA8) and longjmps (0x2EBB3, jmp
- * 0x65431 with 0x1044F4, 1); the port keeps only the store, so the menu
- * re-initialises on its next step. Pinned here so the behaviour cannot
- * silently change. */
+ * 0x2FFC4 (0x303D9) reaches the timeout after 0x4B0 idle ticks, where the raw
+ * stores DS_00107414 = 0 (0x2EBA8) and longjmps (0x2EBB3, jmp 0x65431 with
+ * 0x1044F4, 1): the soft restart of record named-gaps-b §B.3, which lands at
+ * the armed point here. */
+static jmp_buf idle_jb;
+
 static void check_idle_timeout_clock(void)
 {
     const u32 s_00 = DSD(DS_00101500), s_08 = DSD(DS_00101508);
     const u32 s_2c = DSD(DS_00105F2C), s_30 = DSD(DS_00105F30);
     const u8 s_14 = DSB(DS_00107414);
+    jmp_buf *const prev = game_restart_arm(&idle_jb);
+    volatile int landed = 0;
+    volatile u32 got = 0xFEEDu;
 
     DSD(DS_00105F30) = 0;                    /* no latched key (0x2EB87) */
     DSD(DS_00101500) = 0x7000u;
     DSD(DS_00105F2C) = 0x7000u;              /* stamped now (0x2FFDA/0x2EEFB) */
     DSB(DS_00107414) = 0x5Au;
     game_isr_ticks(0x4B0u);                  /* 0x4B0 idle ticks: not over */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    if (setjmp(idle_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT((int)got, 0);
     CHECK_EQ_INT((int)DSB(DS_00107414), 0x5A);
     game_isr_ticks(1u);                      /* one more: the timeout */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    if (setjmp(idle_jb) == 0) (void)config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);                 /* 0x2EBB3, record named-gaps-b §B.3 */
     CHECK_EQ_INT((int)DSB(DS_00107414), 0);
 
+    (void)game_restart_arm(prev);
     DSD(DS_00101500) = s_00; DSD(DS_00101508) = s_08;
     DSD(DS_00105F2C) = s_2c; DSD(DS_00105F30) = s_30;
     DSB(DS_00107414) = s_14;
@@ -7490,6 +7497,9 @@ static void ch_check_key_name(void)
     CHECK_EQ_INT((int)DSB(CH_DEST + 1u), 0);
 }
 
+/* The idle timeout's soft restart (record named-gaps-b §B.3) lands here. */
+static jmp_buf ckf_jb;
+
 static void ch_check_key_flags(void)
 {
     u32 saved_kb = DSD(DS_00101514);
@@ -7511,7 +7521,10 @@ static void ch_check_key_flags(void)
     DSW(CH_KB + 0x2D6u) = 1u;
 
     /* 0x2EB80: a latched key is returned as is; without one the idle timeout
-     * (unsigned > 0x4B0) stores the flag byte. */
+     * (unsigned > 0x4B0) stores the flag byte and soft-restarts (0x2EBB3). */
+    jmp_buf *const ckf_prev = game_restart_arm(&ckf_jb);
+    volatile int landed = 0;
+    volatile u32 got = 0xFEEDu;
     DSD(CH_KEY_LATCH) = 0x48u;
     DSD(CH_TICK) = 5000u;
     DSD(CH_KEY_TIME) = 1u;
@@ -7520,15 +7533,20 @@ static void ch_check_key_flags(void)
     CHECK_EQ_INT((int)DSB(0x00107414u), 0x55);       /* untouched: a key is latched */
     DSD(CH_KEY_LATCH) = 0u;
     DSD(CH_KEY_TIME) = 5000u - 0x4B0u;               /* exactly 0x4B0: not over */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    if (setjmp(ckf_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT((int)got, 0);
     CHECK_EQ_INT((int)DSB(0x00107414u), 0x55);
     DSD(CH_KEY_TIME) = 5000u - 0x4B1u;               /* one over: the timeout */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    if (setjmp(ckf_jb) == 0) (void)config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);                         /* 0x2EBB3 */
     CHECK_EQ_INT((int)DSB(0x00107414u), 0);
     DSB(0x00107414u) = 0x55u;
     DSD(CH_KEY_TIME) = 5001u;                        /* the clock behind: wraps huge */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    landed = 0;
+    if (setjmp(ckf_jb) == 0) (void)config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);                         /* 0x2EBB3 */
     CHECK_EQ_INT((int)DSB(0x00107414u), 0);
+    (void)game_restart_arm(ckf_prev);
 
     /* Nothing latched, the timeout not due: 0, and the record pointer is kept. */
     DSD(CH_KEY_TIME) = 5000u;
@@ -10885,6 +10903,9 @@ static void vs_menu_run(void)
     mem_fill(VS_MENU, 0, 0x100u);
     DSD(DS_00101514) = MT_LAYOUT;
     tf_menu_press(0x2000000u);
+    /* not idle: the suite's clock has run on past 0x2EB80's 0x4B0 (record
+     * named-gaps-b §B.3: the timeout would soft-restart) */
+    DSD(DS_00105F2C) = DSD(DS_00101500);
     (void)menu_run(VS_MENU, 0x10u, 0u);
 }
 static void vs_menu_step(void)
@@ -10893,6 +10914,7 @@ static void vs_menu_step(void)
     mem_fill(VS_MENU, 0, 0x100u);
     DSD(DS_00101514) = MT_LAYOUT;
     DSB(DS_00107414) = 0u;
+    DSD(DS_00105F2C) = DSD(DS_00101500);   /* not idle (record named-gaps-b §B.3) */
     (void)menu_step(VS_MENU, 0x10u, 0u);
 }
 
@@ -12049,10 +12071,60 @@ static void rs_check_resume(void)
     CHECK_EQ_INT((int)DSW(DS_000F0A64), 0);
 }
 
+/* 0x2EB80: no latch and 0x500BB - DS_00105F2C > 0x4B0 (unsigned, 0x2EB9F
+ * `jbe`) stores DS_00107414 = 0 (0x2EBA8) and longjmps (0x2EBB3). */
+static void rs_check_idle(void)
+{
+    const u32 s_latch = DSD(DS_00105F30), s_tick = DSD(DS_00101500),
+              s_time = DSD(DS_00105F2C);
+    const u8 s_flag = DSB(DS_00107414);
+    jmp_buf *const prev = game_restart_arm(&rs_jb);
+    volatile int landed = 0;
+    volatile u32 got = 0xFEEDu;
+
+    /* at the boundary: 0x4B0 is not over it */
+    DSD(DS_00105F30) = 0u; DSD(DS_00101500) = 0x2000u;
+    DSD(DS_00105F2C) = 0x2000u - 0x4B0u; DSB(DS_00107414) = 0x5Au;
+    if (setjmp(rs_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 0);
+    CHECK_EQ_INT((long)got, 0);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0x5A);
+
+    /* one tick over: the store, then the restart */
+    landed = 0; got = 0xFEEDu;
+    DSD(DS_00105F2C) = 0x2000u - 0x4B1u; DSB(DS_00107414) = 0x5Au;
+    if (setjmp(rs_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT((long)got, 0xFEED);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+    CHECK_EQ_INT((long)DSD(DS_00105F2C), (long)(0x2000u - 0x4B1u));   /* 0x2EB80 stores no reference */
+
+    /* the subtraction is unsigned (0x2EB9F `jbe`): a reference past the
+     * clock wraps to a huge difference and restarts */
+    landed = 0; got = 0xFEEDu;
+    DSD(DS_00105F2C) = 0x2010u; DSB(DS_00107414) = 0x5Au;
+    if (setjmp(rs_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+
+    /* a latched key wins over any idle time (0x2EB87) */
+    landed = 0; got = 0xFEEDu;
+    DSD(DS_00105F30) = 0x41u; DSB(DS_00107414) = 0x5Au;
+    if (setjmp(rs_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 0);
+    CHECK_EQ_INT((long)got, 0x41);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0x5A);
+
+    (void)game_restart_arm(prev);
+    DSD(DS_00105F30) = s_latch; DSD(DS_00101500) = s_tick;
+    DSD(DS_00105F2C) = s_time; DSB(DS_00107414) = s_flag;
+}
+
 int test_restart(void)
 {
     int before = g_failures;
     rs_check_landing();
+    rs_check_idle();
     rs_check_resume();
     return g_failures - before;
 }
