@@ -343,6 +343,8 @@ k11-capture: title-pin ## Capture the pinned original's service menu (scenario=w
 # past the port's final screen (k11_compare K11_OPEN_END). idle stays in
 # k11-report: its stock script ends 180 ticks after the Enter, before the
 # 0x4B1-tick timeout.
+# The menuesc window END must reach K11_OPEN_END['menuesc'] = 388 (tools/k11_compare.py): a
+# measured value like the demo-fight N (measured at 14134c9); raise it if the window grows.
 k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips without its data/k11-captures/<scenario>)
 	@echo "== K11 service-menu oracle (pixel-exact, the walk) =="
 	@if [ -d $(K11_CAPTURES)/walk ]; then \

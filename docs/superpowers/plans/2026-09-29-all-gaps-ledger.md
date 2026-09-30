@@ -502,8 +502,8 @@ Explicitly **not** classified host-owned, and why:
 Measured on branch `all-gaps-final` (from main `475eafa`, which holds every
 cycle above). Every row of §B–§G is closed, re-scoped with evidence, or
 host-owned/deferred with an evidence row in `tools/port_classification.txt`.
-The items still open are the named gaps listed below, each with the address
-that proves it.
+The items still open (as of Task 7) are the named gaps listed below, each with the address
+that proves it; §H.3's first paragraph has the current count.
 
 ### §H.1 The enumerations, re-run
 
@@ -567,7 +567,7 @@ row here.
 
 That is 18 locations and 15 distinct deviations (the `ail.c`/`ail.h`,
 `config.c`/`config.h` and `sequencer.c` ctrl-64/ctrl-121 pairs each describe one
-deviation): 3 named gaps in §H.3 (#1, which was already listed, and the new
+deviation; counts as of Task 7): 3 named gaps in §H.3 (#1, which was already listed, and the new
 #8 and #9), 2 carried named gaps, 1 re-scoped, 1 host-owned, and 8 closed as
 unreachable, unobservable or not a deviation.
 
@@ -653,7 +653,7 @@ omissions, user-reachable now that the three longjmps are real, and
 
 | # | Item | Evidence | Verdict |
 |---|---|---|---|
-| Z1 | `0x20C2B 0x2C8F0(-1, dl=0)`: the unscaled volume re-apply (after ADJUST VOLUME, then the idle restart) | `0x2C8F8..0x2C934` (fields `0x35`/`0x37` halved, or 8/`0x10`) | **ported** in `game_init_resume`; not a first-boot state no-op (`DS_000A2CB8`/`A2CB4` `0x7F` -> `0x50` until the attract's `0x2C8F0(-2)` stores the same `0x50`); gate identical |
+| Z1 | `0x20C2B 0x2C8F0(-1)`: the unscaled volume re-apply (after ADJUST VOLUME, then the idle restart) | `0x2C8F8..0x2C934` (fields `0x35`/`0x37` halved, or 8/`0x10`) | **ported** in `game_init_resume`; not a first-boot state no-op (`DS_000A2CB8`/`A2CB4` `0x7F` -> `0x50` until the attract's `0x2C8F0(-2)` stores the same `0x50`); gate identical |
 | Z2 | `0x20D05/0x20D0A` `[0x107468] = [0x10746C] =` the key record's word `+0x24` | `0x1AEE0` packs `+0x24` from `DS_001014D0` (`0x1AF4D`), the player-1 handicap; `0x394AC` reads `[0x107468 + side*4]` | **ported**; first boot `0` -> `0x64` (the image byte); gate identical |
 | Z3 | `0x20D0F..0x20DE3` the controller checks | a device word `2`/`4`/`6` is probed with `0x4FBBB(3)`/`0x4FBBB(0xC)` (game port `0x201`) and zeroed on a 0 answer; devices are 0 on the first boot, the CONTROLS screen can set them | **named gap**: the answer is the hardware's (`4FBBB` host-owned §49-V); not captured |
 | Z4 | `0x20CEB 0x5D808`; `0x20CD5 0x32970(0, 0)`; `0x20C3D 0x38B70`, `0x20C42 0x2F920`, `0x20C58 0x2BAF4(1)` | `0x5D808: mov word [0xEF6DE],0; ret` (one caller); `0x32970` host-owned §48-V, no port code writes its state; the other three are callees of `0x2BAF4`, re-run by `0x10E80` at `0x10E9C` with no reader in between | `0x5D808` **ported** (`game_isr_word_reset`); `0x32970` **host-owned**; the `0x2BAF4` group **unobservable** (equivalent) |

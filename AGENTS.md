@@ -18,7 +18,7 @@ make title-oracle          # pixel-exact oracles; each skips without its capture
 make attract-oracle smk-oracle frontend-oracle demo-oracle
 make demo-fight-oracle     # ratchet on the demo fight's first unexplained frame (N pinned in the Makefile); in make verify
 make attract2-oracle       # ratchet on the attract's second cycle after the demo (N pinned in the Makefile); in make verify
-make k11-oracle            # K11 service-menu oracle (the walk); in make verify; skips without data/k11-captures/walk
+make k11-oracle            # K11 service-menu oracles (the walk and menuesc); in make verify; each skips without its data/k11-captures/<scenario>
 make k11-capture scenario=walk   # DOSBox-X capture of the service menu (writes data/k11-captures/<scenario>)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 ```
@@ -150,7 +150,12 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   it proves that no content-bearing capture frame in that window is
   unexplained (two mid-draw frames allowed by name) and that every settled port
   screen appears in the capture, from injected keys, not the keyboard
-  controller (record 2026-09-30-named-gaps-a §A.10).
+  controller (record 2026-09-30-named-gaps-a §A.10). It also compares the
+  `menuesc` soft-restart capture (same narrow claim, record named-gaps-b §B.12);
+  that comparison ratchets its window END at 388 (`K11_OPEN_END` in
+  `tools/k11_compare.py`, a measured value like the demo-fight N: raise it when
+  the window grows), because an END taken from the port's own dump passes a
+  port that never restarts.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
@@ -171,16 +176,16 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   Update the README title and its "N% of the original's D real functions"
   line after any merge that adds or removes a ported function.
   It also prints the adjusted (portable) figure; the README title keeps the raw
-  percentage. As of 2026-09-30 the two lines read `770 1203 64` and
+  percentage. As of 2026-09-30 the two lines read `771 1203 64` and
   `731 731 100`:
-  - **Raw:** 770 ported of 1203 real functions (64%). The 433 unported functions
+  - **Raw:** 771 ported of 1203 real functions (64%). The 432 unported functions
     are not porting targets: 81 are host-owned or deferred (the rows of
     `tools/port_classification.txt` that are not ported, one evidence line each)
-    and 352 are runtime code (>= 0x5D000: WATCOM libc, DOS/4GW glue) that the
+    and 351 are runtime code (>= 0x5D000: WATCOM libc, DOS/4GW glue) that the
     port serves from the host libc.
   - **Portable:** 731 of 731 (100%). The denominator leaves out the 81
     host-owned/deferred functions and everything at or above 0x5D000; the
-    other 39 ported functions (770 - 731) sit in that runtime region, so they
+    other 40 ported functions (771 - 731) sit in that runtime region, so they
     count in the raw figure only.
   `--unported` lists what is left (addr, size, callers, callees), largest
   first; the `runtime` rows are not targets.
