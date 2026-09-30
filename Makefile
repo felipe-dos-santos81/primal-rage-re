@@ -332,9 +332,10 @@ attract2-compare:
 k11-capture: title-pin ## Capture the pinned original's service menu (scenario=walk|idle|menuesc|diags|de; writes data/k11-captures/)
 	$(PYTHON) tools/k11_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(K11_ARGS)
 
-# K11 oracle (enforced in verify like the front-end oracle: no
-# PR_ORACLE_REQUIRED, so it skips without the capture and fails on any
-# mismatch with it). The port script comes from the capture's poll log; the
+# K11 oracle (enforced in verify like the front-end oracle: it skips without
+# the capture and fails on any mismatch with it; k11_compare.py ignores an
+# inherited PR_ORACLE_REQUIRED and fails on an absent capture only with
+# --required, which this target does not pass). The port script comes from the capture's poll log; the
 # PR_K11_DUMP driver runs alone (game_init once per process).
 k11-oracle: build ## K11 service-menu oracle, the walk (skips without data/k11-captures/walk)
 	@echo "== K11 service-menu oracle (pixel-exact, the walk) =="

@@ -20,7 +20,11 @@ claim is a failure when broken:
      keys fails. The START still comes from the port's own dump.
 --report prints the same, plus the first unexplained frames' difference boxes,
 and always exits 0 (the evidence scenarios). An absent capture skips (exit 0)
-unless PR_ORACLE_REQUIRED=1. Stdlib only; title_compare is read-only here."""
+unless --required is passed. The environment's PR_ORACLE_REQUIRED is ignored:
+the K11 oracle is enforced like the front-end one and skips without its
+capture, so a PR_ORACLE_REQUIRED=1 inherited from the caller must not turn a
+missing git-ignored capture into a failure. Stdlib only; title_compare is
+read-only here."""
 import argparse
 import os
 import sys
@@ -171,9 +175,11 @@ def main():
     ap.add_argument('--port', required=True)
     ap.add_argument('--scenario')
     ap.add_argument('--report', action='store_true')
+    ap.add_argument('--required', action='store_true',
+                    help='fail (exit 1) when the capture is absent; PR_ORACLE_REQUIRED is not read')
     a = ap.parse_args()
     name = a.scenario or os.path.basename(os.path.normpath(a.capture))
-    required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
+    required = a.required
     if not os.path.isdir(a.capture):
         print('k11_compare: no capture at %s (%s)' % (a.capture, 'FAIL (required)' if required else 'skipped'))
         return 1 if required and not a.report else 0

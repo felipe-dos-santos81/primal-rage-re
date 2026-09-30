@@ -67,7 +67,16 @@ class K11Compare(unittest.TestCase):
     def test_absent_capture_skips_unless_required(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(run(os.path.join(d, 'nope'), d).returncode, 0)
-            self.assertEqual(run(os.path.join(d, 'nope'), d, env={'PR_ORACLE_REQUIRED': '1'}).returncode, 1)
+            self.assertEqual(run(os.path.join(d, 'nope'), d, '--required').returncode, 1)
+
+    def test_inherited_oracle_required_is_ignored(self):
+        # the Makefile's k11-oracle skips without the capture even when the
+        # caller exports PR_ORACLE_REQUIRED=1 (verify does, for other targets):
+        # only an explicit --required makes an absent capture fail
+        with tempfile.TemporaryDirectory() as d:
+            r = run(os.path.join(d, 'nope'), d, env={'PR_ORACLE_REQUIRED': '1'})
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertIn('skipped', r.stdout)
 
     def test_report_always_exits_zero(self):
         r = self.case([self.X, self.A, self.Y, self.B], [self.A, self.B],
