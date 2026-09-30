@@ -87,8 +87,11 @@ by a byte-exact oracle against the original's own captured frames (`make
 verify`). The player-driven match (character select, fight, round end,
 continue, game over) is ported but has no oracle: only seeded unit tests reach
 it, and a DOSBox-X ground-truth capture of a scripted real fight is the open
-work (14 table-reached functions, `docs/superpowers/plans/2026-09-29-all-gaps-ledger.md`
-§H.4, are also still unported).
+work. Code Ghidra never listed is outside the counts below: 27 of the 72
+move-table callbacks and 6 of the 10 finisher entries are still unported
+(`docs/superpowers/plans/2026-09-30-gameplay-u0-derivations.md` §U0.12), and
+the drivers report every unresolved code pointer they meet (`fn_resolve`'s
+miss log).
 
 **64%** (771 of 1203) of the original's real functions have a ported,
 header-commented counterpart in `port/src/` (see `AGENTS.md` for how that
