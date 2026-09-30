@@ -41320,11 +41320,388 @@ static const TfVoiceSite k12_b2_fight[] = {
     {  65u, vf_3531c,        2u, { 0xECu, 0xE0u } },           /* 0x353CA */
 };
 
+/* ---- Record k7-k12 §8, batch D1 (fight.c, camera.c, actors.c): the sample
+ * voices (case 2; 0x5D is case 3) reached only in real play. A driver whose
+ * site picks its id from a byte runs the path twice, once per arm, and the
+ * row lists both ids in that order, so a swapped choice fails. The (u8)+0x48
+ * - 0x20 < 3 tests are signed (`cmp eax,3; jge`): the low arm is driven with
+ * +0x48 = 0x1F (-1) where the byte picks nothing else, which an unsigned
+ * compare would send to the high arm. */
+
+#define VF_B2        (FIGHT_RECS + 0x3300u)  /* a fourth scratch actor record */
+#define VF_HOLD0     (FIGHT_RECS + 0x3840u)  /* gr_patch's held streams */
+#define VF_HOLD1     (FIGHT_RECS + 0x3880u)
+#define VF_00104B1A  0x00104B1Au             /* byte: the mode-0x22 side (CAMERA_MODE22_SIDE) */
+
+/* Row 2: 0x48C4C, the voice is its unconditional tail. */
+static void vf_2d_list_init(void) { actor_type_2d_list_init(); }
+
+/* Row 3: 0x48F98 (fn_register(0x48F98)) with one node at phase 0 within
+ * 0x1000 of slot DS_001078FD = 0's record (0x48FED), the once bit 7 of
+ * DS_00108396 clear (0x49037); 0x37B54 on slot DS_00104AD4 = 0's record
+ * (+0x51 = 0) finds no other-side slot (DS_001077A8[1] = 0). */
+static void vf_2d_near(void)
+{
+    void (*f)(void) = fn_resolve(0x48F98u);
+    vf_pools();
+    mem_fill(VF_NODE, 0, 0x300u);
+    DSD(DS_00108368) = VF_NODE;
+    DSD(VF_NODE) = DS_00108368;
+    DSD(VF_NODE + 8u) = VF_REC;
+    DSD(VF_REC + 0x18u) = 0x0800u;
+    DSB(DS_001078FD) = 0u;
+    DSD(DS_001077B0) = VF_THEM;
+    DSD(DS_00104AD4) = 0u;
+    DSD(DS_001077A8 + 4u) = 0u;
+    DSB(VF_00108396) = 0u;
+    DSB(VF_00108397) = 0u;
+    if (f != NULL) f();
+}
+
+/* Row 14: 0x17CB0 with both projectiles live and on top of each other
+ * (check_projectile_step's C): 0x17BC8's boxes clip to 0x20 x 0x20, so
+ * B1C/B18 > 0 (0x17C78/0x17C81). */
+static void vf_clash(void)
+{
+    u32 p = FIGHT_RECS + 0x200u, p2 = FIGHT_RECS + 0x300u;
+    vf_pools();
+    pc_seed(p, p2);
+    DSD(DS_000FCCE8) = DS_000FCCE8;
+    DSD(DS_001077B0 + 0x94u + 0x08u) = p2;
+    DSB(DS_001077B0 + 0x94u + 0x64u) = 0x20u;
+    camera_projectile_step();
+}
+
+/* Rows 15..17: 0x12BB8 on side 0 (its record's +0x28 = 0) with the dust
+ * actor VF_REC; no gate before the three calls. */
+static void vf_dust_burst(void)
+{
+    vf_pools();
+    mem_fill(VF_NODE, 0, 0x300u);
+    DSD(DS_001077B0) = VF_THEM;
+    DSW(VF_REC + 0x56u) = 0x100u;
+    DSD(VF_REC + 0x18u) = 0x1000u;
+    DSB(VF_00104B1A) = 0u;
+    camera_dust_burst(0u, VF_REC);
+}
+
+/* Rows 20/22: 0x43EA0 / 0x4418C for side 0 with the entry VF_NODE and the
+ * panel VF_REC; palette_acquire's resolve is NULL (DS_001014F0 = 0). The
+ * id is the word 0xC888A[ch] (0x43FA4/0x44288): ch 2 -> 0xC4, ch 5 -> 0xC6. */
+static void vf_char_panel(u8 ch)
+{
+    vf_pools();
+    mem_fill(VF_NODE, 0, 0x300u);
+    DSB(DS_00108166) = ch;
+    DSB(DS_00108166 + 1u) = 0u;
+    DSB(DS_00108170 + 1u) = 0u;
+    DSD(DS_00108154) = VF_NODE;
+    DSD(DS_0010815C) = VF_REC;
+    DSW(VF_REC + 0x56u) = 0x100u;
+    DSD(DS_001014F0) = 0u;
+}
+static void vf_char_portrait(void) { vf_char_panel(2u); fight_char_portrait(0u); }
+static void vf_char_team_portrait(void) { vf_char_panel(5u); fight_char_team_portrait(0u); }
+
+/* Row 21: 0x43D60 for side 0, cursor 0: no button, the other side not
+ * confirmed (no clash), no previous class (no 0x33C18); the entry VF_NODE
+ * dies, the text rows are released (emptied first) and the 0x6C tail. */
+static void vf_char_confirm(void)
+{
+    vf_pools();
+    game_string_table_load("data/game/C");
+    mem_fill(VF_NODE, 0, 0x300u);
+    mem_fill(DS_00105F38 + 0x19u * 0xACu, 0, 4u * 0xACu);
+    DSB(DS_00108166) = 0u;
+    DSB(DS_00108166 + 1u) = 0u;
+    DSW(DS_001088E0) = 0u;
+    DSB(DS_00108170 + 1u) = 0u;
+    DSB(DS_0010816E) = 0xFFu;
+    DSB(DS_0010816E + 1u) = 0xFFu;
+    DSD(DS_00108154) = VF_NODE;
+    DSW(VF_NODE + 0x56u) = 0x100u;
+    fight_char_confirm(0u);
+}
+
+/* Row 23: 0x4434C for side 0, cursor 0 (class 0xC8882[0] = 0), already in
+ * pick slot 0 with no tag (0x44054 returns), no previous class. */
+static void vf_char_team_pick(void)
+{
+    vf_pools();
+    DSB(DS_00108166) = 0u;
+    DSB(DS_00108134) = 0u;
+    DSB(DS_00108134 + 1u) = 0xFFu;
+    DSB(DS_00108134 + 2u) = 0xFFu;
+    DSB(DS_00108134 + 3u) = 0xFFu;
+    DSD(DS_00108114) = 0u;
+    DSB(DS_0010816E) = 0xFFu;
+    fight_char_team_pick(0u);
+}
+
+/* Row 32: 0x4AC80's hold: the entry's +0x1C bit 5 with DS_001088C5 set, and
+ * the actor at DS_00108868's own x, so no band matches (target 0, 0x4AD3B). */
+static void vf_4ac80_hold(void)
+{
+    vf_pools();
+    mem_fill(VF_NODE, 0, 0x300u);
+    DSD(VF_REC + 0x14u) = VF_NODE;
+    DSB(VF_REC + 0x48u) = 0x20u;
+    DSW(VF_REC + 0x56u) = 0x100u;
+    DSD(VF_NODE + 8u) = VF_REC;
+    DSB(VF_NODE + 0x1Cu) = 0x20u;
+    DSB(DS_001088C5) = 1u;
+    DSD(DS_00108868) = VF_REC;
+    fight_4ac80(VF_REC);
+}
+
+/* check_grab_arms' GR_SEED(c1c) on ph_seed's fixture, with gr_patch's
+ * plain streams: the entry VF_NODE (type 4, side byte 1) whose actor VF_REC
+ * (+0x48 = k48, pset 5) holds side 0's point; side 0's character 0 in its
+ * grab move 0x2D, its record's +0x52 = 4, every eighth-hit gate closed. */
+static void vf_gr_seed(u8 c1c, u8 k48)
+{
+    u32 p = FIGHT_RECS + 0x200u, p2 = FIGHT_RECS + 0x300u;
+    u32 fr0 = FIGHT_RECS, ps5 = FIGHT_ACTORS + 5u * 0x20u;
+    vf_pools();
+    ph_seed(p, p2, 0);
+    mem_fill(VF_NODE, 0, 0x40u);
+    mem_fill(VF_REC, 0, 0x68u);
+    mem_fill(VF_THEM, 0, 0x68u);
+    DSW(VF_THEM + 0x56u) = 7u;
+    DSD(DS_0010884C) = VF_NODE;
+    DSD(VF_NODE) = DS_0010884C;
+    DSD(VF_NODE + 8u) = VF_REC;
+    DSD(VF_NODE + 0xCu) = DS_001077B0 + 0x94u;
+    DSB(VF_NODE + 0x21u) = 1u;
+    DSB(VF_NODE + 0x1Eu) = 4u;
+    DSW(VF_NODE + 0x18u) = 50u;
+    DSB(VF_NODE + 0x1Cu) = c1c;
+    DSB(VF_NODE + 0x20u) = 1u;
+    DSD(VF_NODE + 0x10u) = VF_THEM;
+    DSB(VF_REC + 0x48u) = k48;
+    DSW(VF_REC + 0x56u) = 5u;
+    DSD(VF_REC + 0x18u) = 0x1234u;
+    DSD(VF_REC + 0x30u) = 0x05000000u;
+    DSD(ps5 + 4u) = (u32)((100 + 0x18) * 64);
+    DSD(ps5 + 8u) = (u32)((100 + 0x38) * 64);
+    DSB(DS_001088BF) = 0u;
+    DSB(DS_001088C2) = 0u;
+    DSB(DS_00105B3A) = 0u;
+    DSB(DS_001077B0 + 0x5Fu) = 0x2Du;
+    DSB(fr0 + 0x52u) = 4u;
+    DSB(fr0 + 0x4Bu) = 0u;
+    DSD(fr0 + 0x18u) = 0x10000u;
+    DSD(fr0 + 0x1Cu) = 0x800u;
+    DSW(fr0 + 0x32u) = 0x0800u;
+    DSW(fr0 + 0x28u) = 0u;
+    DSB(DS_00104B1D) = 0u;
+    DSW(DS_00104AFC) = 0u;
+    DSB(DS_001088C1) = 0u;
+    DSB(DS_001088F2) = 0u;
+    DSB(DS_001088C5) = 0u;
+    DSD(DS_00108864) = 0u;
+    DSB(VF_00104B1A) = 1u;
+    gr_patch(VF_HOLD0, VF_HOLD1);
+    DSW(VF_HOLD0) = 0x0321u;
+    DSW(VF_HOLD1) = 0x0654u;
+}
+
+/* Row 36: the effects pass's prelude 0x4B69C hit-tests the entry (+0x1C
+ * bit 7) and 0x4B788 grabs it (check_grab_arms' A). The si is the same
+ * +0x48 byte, so the low arm is 0x22 (si 2) here. */
+static void vf_4b788(void)
+{
+    vf_gr_seed(0x85u, 0x22u);
+    fight_effects_pass();
+    gr_unpatch();
+    vf_gr_seed(0x85u, 0x23u);
+    fight_effects_pass();
+    gr_unpatch();
+}
+
+/* Row 37: 0x4CB18 directly (the voice is its first statement), si 3,
+ * side 1's record VF_THEM for 0x1A570. */
+static void vf_4cb18_k(u8 k48)
+{
+    vf_pools();
+    mem_fill(VF_NODE, 0, 0x300u);
+    DSD(VF_NODE + 8u) = VF_REC;
+    DSB(VF_REC + 0x48u) = k48;
+    DSW(VF_REC + 0x56u) = 0x100u;
+    DSD(DS_001077B0 + 0x94u) = VF_THEM;
+    DSW(VF_THEM + 0x56u) = 0x101u;
+    fight_4cb18(VF_NODE, 3u, 0u, 1u);
+}
+static void vf_4cb18(void) { vf_4cb18_k(0x1Fu); vf_4cb18_k(0x23u); }
+
+/* Row 39: 0x4D898 directly (check_grab_arms' E, bit 6 clear): side 0's
+ * 0xC97F2 move grabs; si 3 is passed, so +0x48 is free. */
+static void vf_4d898(void)
+{
+    vf_gr_seed(0x85u, 0x1Fu);
+    (void)fight_4d898(1u, VF_NODE, 3u);
+    gr_unpatch();
+    vf_gr_seed(0x85u, 0x23u);
+    (void)fight_4d898(1u, VF_NODE, 3u);
+    gr_unpatch();
+}
+
+/* Rows 40..42: 0x4C784 for side 0: the ball VF_NODE (side byte 0, actor
+ * VF_REC, no shadow) is eaten and side 1 reaches its third point with the
+ * timer DS_001088A0 running, so the tail stops before 0x4CC0C and the new
+ * ball. */
+static void vf_4c784_k(u8 k48)
+{
+    vf_pools();
+    mem_fill(VF_NODE, 0, 0x400u);
+    DSD(DS_00108864) = VF_NODE;
+    DSD(VF_NODE + 8u) = VF_REC;
+    DSB(VF_REC + 0x48u) = k48;
+    DSW(VF_REC + 0x56u) = 0x100u;
+    DSD(DS_001077B0) = VF_THEM;
+    DSD(DS_00107844) = VF_THEM;
+    DSW(VF_THEM + 0x56u) = 0x101u;
+    DSD(DS_0010886C) = VF_B2;
+    DSW(VF_B2 + 0x56u) = 0x102u;
+    DSB(DS_0010889C + 1u) = 2u;
+    DSW(DS_001088A0) = 1u;
+    fight_4c784(0u);
+}
+static void vf_4c784(void) { vf_4c784_k(0x1Fu); vf_4c784_k(0x23u); }
+
+/* Row 43: 0x4BF18 with one type-1 entry, +0x1C bit 5, at its +0x14 target
+ * (0x4A868 holds); DS_00108868's +0x36 = 0; 0x4C60C's hit test finds no box;
+ * the post-loop timer DS_001088A0 = 2 returns. */
+static void vf_4bf18(void)
+{
+    vf_pools();
+    mem_fill(VF_NODE, 0, 0x400u);
+    DSD(DS_00108868) = VF_B2;
+    DSD(DS_0010884C) = VF_NODE;
+    DSD(VF_NODE) = DS_0010884C;
+    DSD(VF_NODE + 8u) = VF_REC;
+    DSB(VF_NODE + 0x1Eu) = 1u;
+    DSB(VF_NODE + 0x1Cu) = 0x20u;
+    DSB(VF_REC + 0x48u) = 0x20u;
+    DSW(VF_REC + 0x56u) = 0x100u;
+    mem_fill(DS_00100AC8, 0, 8u);
+    DSW(DS_00104B00) = 3u;
+    DSW(DS_001088A0) = 2u;
+    fight_4bf18();
+}
+
+/* Rows 45..47: the effects pass in mode 9 with an empty list (case 14's
+ * count 0 >= 0 - 2), side DS_00104B16 = 0, no hit flags. */
+static void vf_fx9(u8 c3, u16 b0)
+{
+    vf_pools();
+    (void)tf_demo_fixture();
+    DSW(DS_00104B00) = 9u;
+    DSB(DS_00104B16) = 0u;
+    DSB(DS_001088C3) = c3;
+    DSW(DS_001088B0) = b0;
+    DSB(DS_001077B0 + 0x42u) = 0u;
+    DSB(DS_001077B0 + 0x94u + 0x42u) = 0u;
+    fight_effects_pass();
+}
+static void vf_fx9_latch(void) { vf_fx9(0u, 0u); }
+static void vf_fx9_rearm(void) { vf_fx9(1u, 0u); }
+static void vf_fx9_3c(void)    { vf_fx9(1u, 0x3Cu); }
+
+/* Rows 48/49: 0x4DEF4 with the flag DS_001088BB set and an empty list. */
+static void vf_idle(u16 b0)
+{
+    DSD(DS_0010884C) = DS_0010884C;
+    DSB(DS_001088BB) = 1u;
+    DSW(DS_001088B0) = b0;
+    fight_effects_idle_pass();
+}
+static void vf_idle_rearm(void) { vf_idle(0u); }
+static void vf_idle_3c(void)    { vf_idle(0x3Cu); }
+
+/* Rows 50..57: 0x4E99C through 0x4E67C (DS_001088B9 set, DS_001088B8 clear,
+ * slot DS_001088BC = 0's record VF_THEM at x 0: not `big`). `count` is the
+ * list's `processed`: 0 with an empty list, 1 with one stalled entry
+ * (+0x1C bit 1, bit 7 clear, type 1). r = DS_001088BD + 1; the tallies
+ * DS_00108888/DS_0010888A are 0, so v = 9 on the count-1 even arms. */
+static void vf_4e99c(u8 bd, u32 count)
+{
+    vf_pools();
+    game_string_table_load("data/game/C");
+    mem_fill(VF_NODE, 0, 0x300u);
+    DSW(VF_THEM + 0x56u) = 0x100u;
+    DSW(VF_REC + 0x56u) = 0x101u;
+    DSB(VF_REC + 0x48u) = 0x20u;
+    DSB(DS_001088BC) = 0u;
+    DSD(DS_001077B0) = VF_THEM;
+    DSD(DS_00107844) = VF_THEM;
+    DSD(DS_0010884C) = DS_0010884C;
+    if (count != 0u) {
+        DSD(DS_0010884C) = VF_NODE;
+        DSD(VF_NODE) = DS_0010884C;
+        DSD(VF_NODE + 8u) = VF_REC;
+        DSW(VF_NODE + 0x1Cu) = 2u;
+        DSB(VF_NODE + 0x1Eu) = 1u;
+    }
+    DSB(DS_001088B9) = 1u;
+    DSB(DS_001088B8) = 0u;
+    DSB(DS_001088BD) = bd;
+    DSB(DS_001078FA) = 0u;
+    DSW(DS_00104AFC) = 0u;
+    mem_fill(DS_00108888, 0, 10u);
+    fight_4e67c();
+}
+static void vf_4e99c_r1_c0(void) { vf_4e99c(0u, 0u); }   /* r 1: odd, count 0 */
+static void vf_4e99c_r2_c0(void) { vf_4e99c(1u, 0u); }   /* r 2: even, count 0 */
+static void vf_4e99c_r1_c1(void) { vf_4e99c(0u, 1u); }   /* r 1: odd, count 1 */
+static void vf_4e99c_r2_c1(void) { vf_4e99c(1u, 1u); }   /* r 2: even, count 1 */
+static void vf_4e99c_r5_c0(void) { vf_4e99c(4u, 0u); }   /* r 5: odd, count 0 */
+static void vf_4e99c_r6_c0(void) { vf_4e99c(5u, 0u); }   /* r 6: even, count 0 */
+static void vf_4e99c_r5_c1(void) { vf_4e99c(4u, 1u); }   /* r 5: odd, count 1 */
+static void vf_4e99c_r6_c1(void) { vf_4e99c(5u, 1u); }   /* r 6: even, count 1 */
+
+#define K12_D1_ROWS 31
+static const TfVoiceSite k12_d1[] = {
+    {   2u, vf_2d_list_init,       1u, { 0xEFu } },                        /* 0x48CAE */
+    {   3u, vf_2d_near,            1u, { 0xF0u } },                        /* 0x49060 */
+    {  14u, vf_clash,              1u, { 0x64u } },                        /* 0x17C88 */
+    {  15u, vf_dust_burst,         3u, { 0xBFu, 0xD6u, 0xCEu } },          /* 0x12C29 */
+    {  16u, vf_dust_burst,         3u, { 0xBFu, 0xD6u, 0xCEu } },          /* 0x12C33 */
+    {  17u, vf_dust_burst,         3u, { 0xBFu, 0xD6u, 0xCEu } },          /* 0x12C3D */
+    {  20u, vf_char_portrait,      1u, { 0xC4u } },                        /* 0x43FB1 */
+    {  21u, vf_char_confirm,       1u, { 0x6Cu } },                        /* 0x43E96 */
+    {  22u, vf_char_team_portrait, 1u, { 0xC6u } },                        /* 0x44295 */
+    {  23u, vf_char_team_pick,     1u, { 0x6Cu } },                        /* 0x444B6 */
+    {  32u, vf_4ac80_hold,         1u, { 0xC8u } },                        /* 0x4AD81 */
+    {  36u, vf_4b788,              2u, { 0xD4u, 0xD5u } },                 /* 0x4B98F */
+    {  37u, vf_4cb18,              2u, { 0xD1u, 0xD0u } },                 /* 0x4CB3E */
+    {  39u, vf_4d898,              2u, { 0xD4u, 0xD5u } },                 /* 0x4DABE */
+    {  40u, vf_4c784,              4u, { 0xD4u, 0xD6u, 0xCEu, 0xD5u } },   /* 0x4C85C */
+    {  41u, vf_4c784,              4u, { 0xD4u, 0xD6u, 0xCEu, 0xD5u } },   /* 0x4C866 */
+    {  42u, vf_4c784,              4u, { 0xD4u, 0xD6u, 0xCEu, 0xD5u } },   /* 0x4C875 */
+    {  43u, vf_4bf18,              1u, { 0xC8u } },                        /* 0x4BFF0 */
+    {  45u, vf_fx9_latch,          1u, { 0xCBu } },                        /* 0x4A4B5 */
+    {  46u, vf_fx9_rearm,          1u, { 0xCBu } },                        /* 0x4A4ED */
+    {  47u, vf_fx9_3c,             1u, { 0xDCu } },                        /* 0x4A52C */
+    {  48u, vf_idle_rearm,         1u, { 0xCBu } },                        /* 0x4DF11 */
+    {  49u, vf_idle_3c,            1u, { 0xDCu } },                        /* 0x4DF50 */
+    {  50u, vf_4e99c_r1_c0,        1u, { 0x5Du } },                        /* 0x4E9FC/0x4EA01 -> 0x4EB72 */
+    {  51u, vf_4e99c_r2_c0,        1u, { 0x5Eu } },                        /* 0x4EA43 -> 0x4EB6D/0x4EB72 */
+    {  52u, vf_4e99c_r1_c1,        1u, { 0x5Du } },                        /* 0x4EA76/0x4EA7B -> 0x4EB72 */
+    {  53u, vf_4e99c_r2_c1,        1u, { 0x5Eu } },                        /* 0x4EAAA -> 0x4EB6D/0x4EB72 */
+    {  54u, vf_4e99c_r5_c0,        1u, { 0x5Du } },                        /* 0x4EAD1/0x4EAD6 -> 0x4EB72 */
+    {  55u, vf_4e99c_r6_c0,        1u, { 0x5Eu } },                        /* 0x4EB12 -> 0x4EB6D/0x4EB72 */
+    {  56u, vf_4e99c_r5_c1,        1u, { 0x5Du } },                        /* 0x4EB42/0x4EB47 -> 0x4EB72 */
+    {  57u, vf_4e99c_r6_c1,        1u, { 0x5Eu } },                        /* 0x4EB6B -> 0x4EB6D/0x4EB72 */
+};
+
 /* Record k7-k12 §6..§10: the fight-area voice sites (tables per batch). */
 int test_fight_voice_sites(void)
 {
     int before = g_failures;
     CHECK_EQ_INT((int)(sizeof k12_b2_fight / sizeof k12_b2_fight[0]), K12_B2_FIGHT_ROWS);
     tf_voice_sites(k12_b2_fight, (u32)(sizeof k12_b2_fight / sizeof k12_b2_fight[0]));
+    CHECK_EQ_INT((int)(sizeof k12_d1 / sizeof k12_d1[0]), K12_D1_ROWS);
+    tf_voice_sites(k12_d1, (u32)(sizeof k12_d1 / sizeof k12_d1[0]));
     return g_failures - before;
 }

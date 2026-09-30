@@ -592,7 +592,7 @@ void fight_char_portrait(u32 side)
     actor_pset_palette(DSD(DS_0010815C + side * 4u),
                        DSW(DS_000C88F8 + (u32)(ch * 2)),
                        DSD(DS_000C8908 + (u32)(ch * 4)));  /* 0x43F6F..0x43F96 0x2A17C */
-    /* PORT: 0x43FB1 0x2C3FC(0xC888A[ch]) voice, not wired (record §45-A). */
+    (void)sound_voice((u32)DSW(DS_000C888A + (u32)(ch * 2)));  /* 0x43F9B..0x43FAC/0x43FB1 0x2C3FC */
 }
 
 /* 0x43FBC — record §48-S. EAX = side. With ch the side's signed cursor and
@@ -696,7 +696,7 @@ void fight_char_confirm(u32 side)
      * record §K9.6-§K9.8 of 2026-09-29-k1-k9-derivations.md). */
     actor_set_dead(DSD(DS_00108154 + side * 4u));       /* 0x43E7C/0x43E83 0x2B150 */
     fight_char_text_clear(side, 0u);                    /* 0x43E88..0x43E8C 0x432EC */
-    /* PORT: 0x43E96 0x2C3FC(0x6C) voice, not wired (record §45-A). */
+    (void)sound_voice(0x6Cu);                           /* 0x43E91/0x43E96 0x2C3FC */
 }
 
 /* 0x43AAC — record §48-S. The countdown step 0x43B24 runs every 64th frame:
@@ -865,7 +865,7 @@ void fight_char_team_portrait(u32 side)
     actor_pset_palette(DSD(DS_0010815C + side * 4u),
                        DSW(DS_000C88F8 + (u32)(ch * 2)),
                        DSD(DS_000C8908 + (u32)(ch * 4)));  /* 0x44259..0x4427A 0x2A17C */
-    /* PORT: 0x44295 0x2C3FC(0xC888A[ch]) voice, not wired (record §45-A). */
+    (void)sound_voice((u32)DSW(DS_000C888A + (u32)(ch * 2)));  /* 0x4427F..0x44290/0x44295 0x2C3FC */
 }
 
 /* 0x442A0 — record §48-S. EAX = side. 0x43FBC, skipped when the side's
@@ -982,7 +982,7 @@ void fight_char_team_pick(u32 side)
         fight_stage_mark_drop(DSB(DS_0010816A + side), side);  /* 0x44494..0x444A0 0x4248C */
         DSB(DS_0010816E + side) = DSB(DS_0010816A + side);     /* 0x444A5/0x444AB */
     }
-    /* PORT: 0x444B6 0x2C3FC(0x6C) voice, not wired (record §45-A). */
+    (void)sound_voice(0x6Cu);                           /* 0x444B1/0x444B6 0x2C3FC */
 }
 
 /* 0x44798 — record §48-S. The character select's per-frame pass with
@@ -2489,7 +2489,7 @@ void fight_4ac80(u32 rec)
             }
             stream = DSD(DS_000C95D4 + index * 4u); /* 0x4AD73 */
         } else {
-            /* PORT: 0x4AD81 0x2C3FC(0xC8) voice, not wired (record §45-A). */
+            (void)sound_voice(0xC8u);               /* 0x4AD7C/0x4AD81 0x2C3FC */
             DSB(entry + 0x1Eu) = 8u;                /* 0x4AD89 */
             DSB(DSD(entry + 8u) + 0x55u) = 1u;      /* 0x4AD8D */
             stream = DSD(DS_000C958C + index * 4u); /* 0x4AD91 */
@@ -2747,8 +2747,8 @@ static int fight_4b788(u32 hit, u32 entry, u32 index)
     (void)actors_link_held(DSD(entry + 8u), DSW(DSD(entry + 8u) + 0x56u)); /* 0x4B956 */
     actors_anim_begin(DSD(slot), DSD(DS_000C9790 + (u32)ch * 4u),
                       DSD(DS_000C97C8 + (u32)ch * 4u));         /* 0x4B96B */
-    /* PORT: 0x4B98F 0x2C3FC(0xD4 for (u8)+0x48 - 0x20 < 3, else 0xD5) — voice,
-     * not wired (record §45-A). */
+    (void)sound_voice((s32)((u32)DSB(DSD(entry + 8u) + 0x48u) - 0x20u) < 3
+                      ? 0xD4u : 0xD5u);                 /* 0x4B970..0x4B98A/0x4B98F 0x2C3FC (signed `jge`) */
     return 0;                                                   /* 0x4B994 */
 }
 
@@ -2821,8 +2821,8 @@ static void fight_4bd98(u32 entry)
  * +0x20) and 0x4C60C (0x4C760 flag 1, 0x4C774 flag 0; record §43-A). */
 void fight_4cb18(u32 entry, u32 index, u32 flag, u32 side)
 {
-    /* PORT: 0x4CB3E 0x2C3FC(0xD1 for (u8)+0x48 - 0x20 < 3, else 0xD0) — voice,
-     * not wired (record §45-A). */
+    (void)sound_voice((s32)((u32)DSB(DSD(entry + 8u) + 0x48u) - 0x20u) < 3
+                      ? 0xD1u : 0xD0u);                 /* 0x4CB1F..0x4CB39/0x4CB3E 0x2C3FC (signed `jge`) */
     actors_anim_begin(DSD(entry + 8u), DSD(DS_000C9604 + index * 4u),
                       0x40400000u);                             /* 0x4CB52 */
     s32 d = (s32)(DSD(DS_001077E4) - DSD(DS_00107878));         /* 0x4CB63 */
@@ -3223,8 +3223,8 @@ int fight_4d898(u32 hit, u32 entry, u32 index)
     (void)actors_link_held(DSD(entry + 8u), DSW(DSD(entry + 8u) + 0x56u)); /* 0x4DA85 */
     actors_anim_begin(DSD(slot), DSD(DS_000C9790 + (u32)ch * 4u),
                       DSD(DS_000C97C8 + (u32)ch * 4u));         /* 0x4DA9A */
-    /* PORT: 0x4DABE 0x2C3FC(0xD4 for (u8)+0x48 - 0x20 < 3, else 0xD5) — voice,
-     * not wired (record §45-A). */
+    (void)sound_voice((s32)((u32)DSB(DSD(entry + 8u) + 0x48u) - 0x20u) < 3
+                      ? 0xD4u : 0xD5u);                 /* 0x4DA9F..0x4DAB9/0x4DABE 0x2C3FC (signed `jge`) */
     {
         u32 dst = DS_001077B0 + (u32)DSB(DS_00104B1A) * 0x94u;  /* 0x4DB0B/0x4DB64 */
         u32 add;
@@ -3987,7 +3987,9 @@ void fight_4cc0c(void)
  * of the other side, +0x10 = 0x29CDC(side, the side's slot +0x7A)) spawns
  * 0x2580 beyond DS_00108868 on the side's side, walks (type 1, +0x1C bit 5)
  * to 0x1740 from it and becomes DS_00108864, owned by the eaten ball's side
- * (+0x21, +0x0C). The voices are PORT notes. */
+ * (+0x21, +0x0C). The three voices (0xD4 when the ball's (u8)+0x48 - 0x20
+ * < 3 signed, else 0xD5; 0xD6; 0xCE) follow the ball's death (record k7-k12
+ * §8). */
 void fight_4c784(u32 side)
 {
     u32 hs = DSB(DSD(DS_00108864) + 0x21u);                     /* 0x4C78F..0x4C79E */
@@ -4004,9 +4006,10 @@ void fight_4c784(u32 side)
         DSD(DSD(DS_00108864) + 0x10u) = 0;                      /* 0x4C824 */
     }
     actor_set_dead(DSD(DSD(DS_00108864) + 8u));                 /* 0x4C833 0x2B150 */
-    /* PORT: 0x4C85C 0x2C3FC(0xD4 when the ball's (u8)+0x48 - 0x20 < 3, else
-     * 0xD5), 0x4C866 0x2C3FC(0xD6) and 0x4C875 0x2C3FC(0xCE) — voices, out of
-     * scope (spec §7). */
+    (void)sound_voice((s32)((u32)DSB(DSD(DSD(DS_00108864) + 8u) + 0x48u) - 0x20u) < 3
+                      ? 0xD4u : 0xD5u);                 /* 0x4C838..0x4C857/0x4C85C 0x2C3FC (signed `jge`) */
+    (void)sound_voice(0xD6u);                                   /* 0x4C861/0x4C866 0x2C3FC */
+    (void)sound_voice(0xCEu);                                   /* 0x4C86D/0x4C875 0x2C3FC */
     u32 other = side ^ 1u;                                      /* 0x4C86B/0x4C872 */
     DSB(DS_0010889C + other) = (u8)(DSB(DS_0010889C + other) + 1u); /* 0x4C886..0x4C897 */
     actors_anim_begin(DSD(DS_0010886C),
@@ -4271,9 +4274,8 @@ static void fight_4cd98(void)
  *   fight_4AC38/fight_dust_clamp/fight_midpoint/fighter_actor_bit15_clear/
  *   actor_set_dead/actors_anim_begin/fight_4C60C/fight_4CC0C (pre-existing),
  *   fight_4CD98 (newly ported above).
- *   PORT: no voice (0x2C3FC) call site in this function is wired (spec §7,
- *   record §45-A), matching this file's existing convention, 0x4BFF0's
- *   voice(200) included (record §K4.2). */
+ *   The function's one voice call, 0x4BFF0's 0x2C3FC(0xC8), is made
+ *   (record k7-k12 §8). */
 void fight_4bf18(void)
 {
     {
@@ -4316,7 +4318,7 @@ void fight_4bf18(void)
                         if (d <= thresh)                                      /* 0x4C065/0x4C067 `jg` */
                             fight_4ac38(entry, index);                        /* 0x4C06F..0x4C074 */
                     } else if (fight_4a868(entry) != 0u) {                     /* 0x4BFDC..0x4BFE5 */
-                        /* PORT: 0x4BFF0 0x2C3FC(0xC8) voice, not wired (record §45-A). */
+                        (void)sound_voice(0xC8u);                              /* 0x4BFEB/0x4BFF0 0x2C3FC */
                         DSW(rec + 0x38u) = 0;                                  /* 0x4BFF8 */
                         DSW(rec + 0x34u) = 0;                                  /* 0x4C001 */
                         DSW(rec + 0x36u) = 0;                                  /* 0x4C00A */
@@ -4986,21 +4988,20 @@ void fight_effects_pass(void)
             s32 lim = (s32)(side < 3u ? (u32)loc_side[side] : 0u) - 2; /* 0x4A48E..0x4A49E */
             if ((s32)(u32)(u16)loc_c14 >= lim                        /* 0x4A499/0x4A4A1 `jl` */
                     && DSB(DS_001088C3) == 0u) {                     /* 0x4A4A5 */
-                /* PORT: 0x4A4B5 0x2C3FC(0xCB) voice, not wired (record §45-A). */
+                (void)sound_voice(0xCBu);                            /* 0x4A4AE/0x4A4B5 0x2C3FC */
                 DSB(DS_001088C3) = 1u;                               /* 0x4A4BF (BL = 1) */
                 DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);    /* 0x4A4BA..0x4A4CF */
             }
         }
         if (DSB(DS_001088C3) != 0u && DSW(DS_001088B0) == 0u) {      /* 0x4A4D5..0x4A4E6 */
-            /* PORT: 0x4A4ED 0x2C3FC(0xCB) voice, not wired (record §45-A). */
+            (void)sound_voice(0xCBu);                                 /* 0x4A4E8/0x4A4ED 0x2C3FC */
             DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);        /* 0x4A4F2..0x4A501 */
         }
         if (DSB(DS_001088C3) != 0u) {                                /* 0x4A507 */
             u16 pre = DSW(DS_001088B0);                              /* 0x4A510 */
             DSW(DS_001088B0) = (u16)(pre - 1u);                      /* 0x4A51B/0x4A51C */
-            if (pre == 0x3Cu) {                                      /* 0x4A522 */
-                /* PORT: 0x4A52C 0x2C3FC(0xDC) voice, not wired (record §45-A). */
-            }
+            if (pre == 0x3Cu)                                        /* 0x4A522 */
+                (void)sound_voice(0xDCu);                            /* 0x4A527/0x4A52C 0x2C3FC */
         }
         DSB(DS_001088C9) = (u8)((u32)DSB(DS_0010780A) < 0x78u);     /* 0x4A531..0x4A544 */
         DSW(DS_001088B4) = 0;                                        /* 0x4A54D */
@@ -5117,15 +5118,14 @@ void fight_effects_hold_all(void)
 void fight_effects_idle_pass(void)
 {
     if (DSW(DS_001088B0) == 0u && DSB(DS_001088BB) != 0u) {  /* 0x4DEF9..0x4DF0A */
-        /* PORT: 0x4DF0C 0x2C3FC(0xCB) voice, not wired (record §45-A). */
+        (void)sound_voice(0xCBu);                              /* 0x4DF0C/0x4DF11 0x2C3FC */
         DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);    /* 0x4DF16..0x4DF25 */
     }
     {
         u16 pre = DSW(DS_001088B0);                            /* 0x4DF2B/0x4DF33 */
         DSW(DS_001088B0) = (u16)(pre - 1u);                      /* 0x4DF36/0x4DF37 */
-        if (pre == 0x3Cu && DSB(DS_001088BB) != 0u) {              /* 0x4DF3D..0x4DF49 */
-            /* PORT: 0x4DF4B 0x2C3FC(0xDC) voice, not wired (record §45-A). */
-        }
+        if (pre == 0x3Cu && DSB(DS_001088BB) != 0u)                /* 0x4DF3D..0x4DF49 */
+            (void)sound_voice(0xDCu);                              /* 0x4DF4B/0x4DF50 0x2C3FC */
     }
 
     u32 entry = DSD(DS_0010884C);                              /* 0x4DF55 */
@@ -5500,10 +5500,11 @@ static void fight_4e5a4(u32 node, u32 idx)
  * raw's two `jnz`s at 0x4EA80/0x4EB49 are dead code here: their target is
  * only reached with ZF already forced 1 by the `test ecx,ecx`/`idiv` pair
  * immediately above, so they never fire; the port omits them. Every branch
- * ends with a 0x2C3FC(0x5D or 0x5E) voice post; PORT: not wired (record
- * §45-A). At the tail, DS_001088BD in {2, 4, 6} toggles DS_001088BC and
- * calls hit_flash_pair; then DS_001088B9 = 0 always. EBX/ECX/EDX/ESI pushed
- * and popped. Only caller: the unported 0x4E923 (0x4E67C, the DS_001088B9-
+ * ends with a 0x2C3FC(0x5D or 0x5E) voice post (the one raw call 0x4EB72;
+ * the two even count != 0 arms only when their difference v is non-zero,
+ * 0x4EAA4/0x4EB6B `je 0x4EB77`; record k7-k12 §8). At the tail,
+ * DS_001088BD in {2, 4, 6} toggles DS_001088BC and calls hit_flash_pair;
+ * then DS_001088B9 = 0 always. EBX/ECX/EDX/ESI pushed and popped. Only caller: the unported 0x4E923 (0x4E67C, the DS_001088B9-
  * gated post-loop tail). */
 static void fight_4e99c(u32 count)
 {
@@ -5518,44 +5519,46 @@ static void fight_4e99c(u32 count)
         if (bx == 0u && rmod2 != 0) {                                       /* 0x4E9D5/0x4E9D8, 0x4E9DA/0x4E9DC */
             DSB(DS_00108888 + ch * 5u) = 0xAu;                               /* 0x4E9EC */
             DSB(DS_001088BD) = save;                                          /* 0x4E9F4/0x4E9F7 */
-            /* PORT: 0x4EA01 0x2C3FC(0x5D) voice, not wired (record §45-A). */
+            (void)sound_voice(0x5Du);                                         /* 0x4E9FC/0x4EA01 -> 0x4EB72 0x2C3FC */
         } else if (((s32)DSB(DS_001088BD) % 2) == 0 && bx == 0u) {             /* 0x4EA1A/0x4EA1C, 0x4EA1E/0x4EA21 */
             u8 v = (u8)(0xAu - DSB(DS_00108888 + ch * 5u));                      /* 0x4EA33..0x4EA3D */
             DSB(DS_00108888 + ch * 5u + 1u) = v;
-            /* PORT: 0x4EA43->0x4EB72 0x2C3FC(0x5E) voice, not wired. */
+            (void)sound_voice(0x5Eu);                                         /* 0x4EA43 -> 0x4EB6D/0x4EB72 0x2C3FC */
         } else {
             u8 bl = (u8)(0xAu - (u8)bx);                                        /* 0x4EA5C/0x4EA5E/0x4EA60 */
             if (((s32)DSB(DS_001088BD) % 2) != 0) {                              /* 0x4EA62/0x4EA64 */
                 DSB(DS_00108888 + ch * 5u) = bl;                                   /* 0x4EA6F */
                 DSB(DS_001088BD) = save;                                            /* 0x4EA76/0x4EA7B */
-                /* PORT: 0x4EA7B->0x4EB72 0x2C3FC(0x5D) voice, not wired. */
+                (void)sound_voice(0x5Du);                                     /* 0x4EA76/0x4EA7B -> 0x4EB72 0x2C3FC */
             } else {
                 /* the raw's 0x4EA80 `jnz` is dead here (ZF still 1). */
                 u8 v = (u8)(bl - DSB(DS_00108888 + ch * 5u));                        /* 0x4EA96/0x4EA9C */
                 DSB(DS_00108888 + ch * 5u + 1u) = v;
-                /* PORT: v != 0 -> 0x4EAAA->0x4EB6D 0x2C3FC(0x5E) voice, not wired. */
+                if (v != 0u)                                                  /* 0x4EAA4 `je 0x4EB77` */
+                    (void)sound_voice(0x5Eu);                                 /* 0x4EAAA -> 0x4EB6D/0x4EB72 0x2C3FC */
             }
         }
     } else {
         if (bx == 0u && rmod2 != 0) {                                          /* 0x4EAAF/0x4EAB2, 0x4EAB4/0x4EAB6 */
             DSB(DS_0010888A + ch * 5u) = 0xAu;                                   /* 0x4EAC1 */
             DSB(DS_001088BD) = save;                                              /* 0x4EAC9/0x4EACC */
-            /* PORT: 0x4EAD6->0x4EB72 0x2C3FC(0x5D) voice, not wired. */
+            (void)sound_voice(0x5Du);                                             /* 0x4EAD1/0x4EAD6 -> 0x4EB72 0x2C3FC */
         } else if (((s32)DSB(DS_001088BD) % 2) == 0 && bx == 0u) {                 /* 0x4EAEF/0x4EAF1, 0x4EAF3/0x4EAF6 */
             u8 v = (u8)(0xAu - DSB(DS_0010888A + ch * 5u));                          /* 0x4EB02..0x4EB0B */
             DSB(DS_0010888A + ch * 5u + 1u) = v;
-            /* PORT: 0x4EB12->0x4EB6D 0x2C3FC(0x5E) voice, not wired. */
+            (void)sound_voice(0x5Eu);                                             /* 0x4EB12 -> 0x4EB6D/0x4EB72 0x2C3FC */
         } else {
             u8 bl = (u8)(0xAu - (u8)bx);                                            /* 0x4EB28/0x4EB2A/0x4EB2C */
             if (((s32)DSB(DS_001088BD) % 2) != 0) {                                  /* 0x4EB2E/0x4EB30 */
                 DSB(DS_0010888A + ch * 5u) = bl;                                       /* 0x4EB3B */
                 DSB(DS_001088BD) = save;                                                /* 0x4EB42/0x4EB47 */
-                /* PORT: 0x4EB47->0x4EB72 0x2C3FC(0x5D) voice, not wired. */
+                (void)sound_voice(0x5Du);                                         /* 0x4EB42/0x4EB47 -> 0x4EB72 0x2C3FC */
             } else {
                 /* the raw's 0x4EB49 `jnz` is dead here (ZF still 1). */
                 u8 v = (u8)(bl - DSB(DS_0010888A + ch * 5u));                            /* 0x4EB5D/0x4EB63 */
                 DSB(DS_0010888A + ch * 5u + 1u) = v;
-                /* PORT: v != 0 -> 0x4EB6B->0x4EB6D 0x2C3FC(0x5E) voice, not wired. */
+                if (v != 0u)                                                      /* 0x4EB6B `je 0x4EB77` */
+                    (void)sound_voice(0x5Eu);                                     /* 0x4EB6D/0x4EB72 0x2C3FC */
             }
         }
     }

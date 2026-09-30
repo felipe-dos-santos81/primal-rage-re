@@ -9,6 +9,7 @@
 #include "game/effects.h"
 #include "game/fighter.h"
 #include "game/fight.h"
+#include "game/flow.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
@@ -1357,8 +1358,9 @@ static void camera_projectile_hit(u32 side)
 
 /* 0x17BC8 — demo-pose record §26. Both projectiles live: when their 0x20 x
  * 0x20 boxes at DS_00100AA8/AA0 and DS_00100AAC/AA4 overlap (0x140E4 and the
- * two 0x181D0 syncs, with non-empty extents), burst side 0's (0x3B938), kill
- * side 1's (0x2B150) and return 1; else 0. */
+ * two 0x181D0 syncs, with non-empty extents), post voice 0x64 (0x2C3FC,
+ * record k7-k12 §8), burst side 0's (0x3B938), kill side 1's (0x2B150) and
+ * return 1; else 0. */
 static int camera_projectile_clash(void)
 {
     if (camera_box_overlap(DSW(DSD(DS_001077B8) + 0x56u),
@@ -1376,7 +1378,7 @@ static int camera_projectile_clash(void)
         return 0;
     if ((s32)DSD(DS_00100B1C) <= 0) return 0;                  /* 0x17C78 */
     if ((s32)DSD(DS_00100B18) <= 0) return 0;                  /* 0x17C81 */
-    /* PORT: 0x17C88 0x2C3FC(0x64) — voice, not wired (record §45-A). */
+    (void)sound_voice(0x64u);                                  /* 0x17C83/0x17C88 0x2C3FC */
     fighter_3b938(DS_001077B0);                                /* 0x17C92 */
     actor_set_dead(DSD(DS_0010784C));                          /* 0x17C9C 0x2B150 */
     return 1;
@@ -1554,8 +1556,9 @@ void camera_dust_spawn(void)
  * DS_000BD898 as its y, flag 0 when the fighter's record has +0x28 bit 14 set
  * and 0x4000 otherwise, and pointed at the stream 0xEF65A at hold 3.0
  * (0x2BC30). The dust actor is then retired (0x2B150), the three voices
- * 0xBF/0xD6/0xCE are PORT notes, and the slot DS_00104B1A names gains 1 in
- * its +0x5B byte (0x4DBB4). 4 callers, three of them unported. */
+ * 0xBF/0xD6/0xCE are posted (0x2C3FC, record k7-k12 §8), and the slot
+ * DS_00104B1A names gains 1 in its +0x5B byte (0x4DBB4). 4 callers, three
+ * of them unported. */
 void camera_dust_burst(u32 side, u32 dust)
 {
     u32 fighter = DSD(DS_001077B0 + side * 0x94u);     /* 0x12BC9 */
@@ -1568,8 +1571,9 @@ void camera_dust_burst(u32 side, u32 dust)
      * pool-exhaustion 0 rather than write the word before mem[]. */
     if (rec != 0) actors_anim_begin(rec, CAMERA_BURST_STREAM, 0x40400000u);   /* 0x12C18 0x2BC30 */
     actor_set_dead(dust);                              /* 0x12C1D..0x12C1F 0x2B150 */
-    /* PORT: 0x12C24/0x12C2E/0x12C38 0x2C3FC(0xBF, 0xD6, 0xCE) voices, not
-     * wired (record §45-A). */
+    (void)sound_voice(0xBFu);                          /* 0x12C24/0x12C29 0x2C3FC */
+    (void)sound_voice(0xD6u);                          /* 0x12C2E/0x12C33 0x2C3FC */
+    (void)sound_voice(0xCEu);                          /* 0x12C38/0x12C3D 0x2C3FC */
     fight_slot_5b_add(DS_001077B0
                       + (u32)DSB(CAMERA_MODE22_SIDE) * 0x94u, 1);   /* 0x12C42..0x12C64 0x4DBB4 */
 }

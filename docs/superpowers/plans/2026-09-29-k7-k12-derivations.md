@@ -1916,3 +1916,174 @@ swapped (`!= 0u` → `== 0u`, so `0x56` then `0x54`) gives 1 FAIL line,
   is a `mkstemp` template (unique). The `re-render` and `re-oracle`
   targets write `/tmp/*.ppm` and `/tmp/prage_dataobj.txt` but are not in
   `make verify`. The `--check` step writes `frames/` in the worktree.
+
+---
+
+## §8 Task 8: K12 batch D1, the real-play sample voices in fight.c, camera.c and actors.c
+
+Implemented in the worktree `k12-t8` (branch `k12-t8`, from `b7b7c74`). Every
+batch-D1 call was re-read from the fixup-applied image (`$K/dx.py`), the id
+load and the `call` both; each C call carries the pair `/* 0xMOV/0xCALL
+0x2C3FC */`, or the load range when the id is computed. All 31 ids are case 2
+(one sample handle queued) except `0x5D`, which is case 3 (the pair
+`0x281A726`, `0x2819183`). The runner logs them without a bank read
+(`DS_001028C8` = 0, §4.2).
+
+### §8.1 The 31 wiring points
+
+| row | call (id load/call) | C site | driver | seed | ids |
+|---:|---|---|---|---|---|
+| 2 | `48CA9/48CAE` | `actors.c` `actor_type_2d_list_init` tail | `vf_2d_list_init` | none (unconditional) | `EF` |
+| 3 | `4905B/49060` | `actors.c` `actor_type_2d_update` phase 0, near | `vf_2d_near` | `vf_pools`; one node on `DS_00108368` at phase 0, its record `0x800` from slot `DS_001078FD` = 0's (`<= 0x1000`, `0x48FED`), `DS_00108396` = 0 (`0x49037`), `DS_00104AD4` = 0, `DS_001077A8[1]` = 0 (0x37B54 writes nothing); `fn_resolve(0x48F98)` | `F0` |
+| 14 | `17C83/17C88` | `camera.c` `camera_projectile_clash` | `vf_clash` | `pc_seed` with both projectiles live and on top of each other (check_projectile_step's C): B1C = B18 = `0x20` (`0x17C78`/`0x17C81`) | `64` |
+| 15 | `12C24/12C29` | `camera.c` `camera_dust_burst` | `vf_dust_burst` | `vf_pools`; side 0's record `+0x28` = 0, the dust `VF_REC`, `DS_00104B1A` = 0 | `BF`, `D6`, `CE` |
+| 16 | `12C2E/12C33` | same | same | same | same |
+| 17 | `12C38/12C3D` | same | same | same | same |
+| 20 | `43F9B..43FAC/43FB1` | `fight.c` `fight_char_portrait` | `vf_char_portrait` | `vf_pools`; side 0 cursor 2, the other side's byte 0, entry and panel records, `DS_001014F0` = 0 (palette_acquire resolves NULL) | `C4` (= word `0xC888A[2]`) |
+| 21 | `43E91/43E96` | `fight.c` `fight_char_confirm` tail | `vf_char_confirm` | `vf_pools`, the strings; cursor 0, no button, the other side's byte 0 (no clash), `DS_0010816E` = `0xFF` both (no 0x33C18), text rows `0x19..0x1C` emptied first | `6C` |
+| 22 | `4427F..44290/44295` | `fight.c` `fight_char_team_portrait` | `vf_char_team_portrait` | as row 20 with cursor 5 (`DS_00108154[0]` != 0, `0x44196`) | `C6` (= `0xC888A[5]`) |
+| 23 | `444B1/444B6` | `fight.c` `fight_char_team_pick` tail | `vf_char_team_pick` | `vf_pools`; cursor 0 (class 0) already in pick slot 0, no tag (`DS_00108114` = 0), `DS_0010816E` = `0xFF` | `6C` |
+| 32 | `4AD7C/4AD81` | `fight.c` `fight_4ac80` hold | `vf_4ac80_hold` | `vf_pools`; rec `+0x14` = the entry, entry `+0x1C` bit 5, `DS_001088C5` = 1, `DS_00108868` = the rec itself (no band, target 0, `0x4AD3B`) | `C8` |
+| 36 | `4B970..4B98A/4B98F` | `fight.c` `fight_4b788` grab tail | `vf_4b788` | `vf_gr_seed` (check_grab_arms' `GR_SEED(0x85)` on `ph_seed`, `gr_patch`'s plain streams) then `fight_effects_pass()`: the prelude `0x4B69C` hits side 0 and `0x4B788` grabs; twice, `+0x48` = `0x22` then `0x23` | `D4`, `D5` |
+| 37 | `4CB1F..4CB39/4CB3E` | `fight.c` `fight_4cb18` (first statement) | `vf_4cb18` | `vf_pools`; entry actor `+0x48` = `0x1F` then `0x23`, si 3, side 1's record | `D1`, `D0` |
+| 39 | `4DA9F..4DAB9/4DABE` | `fight.c` `fight_4d898` grab tail | `vf_4d898` | `vf_gr_seed`, then `fight_4d898(1, entry, 3)` (check_grab_arms' E, bit 6 clear); `+0x48` = `0x1F` then `0x23` | `D4`, `D5` |
+| 40 | `4C838..4C857/4C85C` | `fight.c` `fight_4c784` | `vf_4c784` | `vf_pools`; the ball `DS_00108864` (side byte 0, no shadow), both slot records, `DS_0010886C` a scratch record, `DS_0010889C[1]` = 2 (the third point) with `DS_001088A0` = 1 (no 0x4CC0C, no new ball); `+0x48` = `0x1F` then `0x23` | `D4`, `D6`, `CE`, `D5` |
+| 41 | `4C861/4C866` | same | same | same | same |
+| 42 | `4C86D/4C875` | same | same | same | same |
+| 43 | `4BFEB/4BFF0` | `fight.c` `fight_4bf18` type 1 | `vf_4bf18` | `vf_pools`; one type-1 entry, `+0x1C` = `0x20`, at its `+0x14` target (0x4A868 holds), `DS_00108868`'s `+0x36` = 0, no 0x100AC8 boxes (0x4C60C misses), mode 3, `DS_001088A0` = 2 (the post-loop return) | `C8` |
+| 45 | `4A4AE/4A4B5` | `fight.c` `fight_effects_pass` mode 9, the latch | `vf_fx9_latch` | `vf_pools`, `tf_demo_fixture`, `DS_00104B00` = 9, `DS_00104B16` = 0, empty list (count 0 >= 0 - 2), `DS_001088C3` = 0, `DS_001088B0` = 0, both slots' `+0x42` = 0 | `CB` |
+| 46 | `4A4E8/4A4ED` | same, the re-arm | `vf_fx9_rearm` | as row 45 with `DS_001088C3` = 1 | `CB` |
+| 47 | `4A527/4A52C` | same, the `0x3C` crossing | `vf_fx9_3c` | as row 46 with `DS_001088B0` = `0x3C` | `DC` |
+| 48 | `4DF0C/4DF11` | `fight.c` `fight_effects_idle_pass` | `vf_idle_rearm` | empty list, `DS_001088BB` = 1, `DS_001088B0` = 0 | `CB` |
+| 49 | `4DF4B/4DF50` | same | `vf_idle_3c` | as row 48 with `DS_001088B0` = `0x3C` | `DC` |
+| 50 | `4E9FC/4EA01` -> `4EB72` | `fight.c` `fight_4e99c` | `vf_4e99c_r1_c0` | `fight_4e67c()` with `DS_001088B9` = 1, `DS_001088B8` = 0, `DS_001088BC` = 0 (record at x 0: not `big`), `DS_001078FA` = 0, tallies 0; `DS_001088BD` = 0 (r = 1), empty list (count 0) | `5D` |
+| 51 | `4EA43` -> `4EB6D/4EB72` | same | `vf_4e99c_r2_c0` | `DS_001088BD` = 1 (r = 2), count 0 | `5E` |
+| 52 | `4EA76/4EA7B` -> `4EB72` | same | `vf_4e99c_r1_c1` | r = 1, one stalled entry (`+0x1C` = 2, type 1): count 1 | `5D` |
+| 53 | `4EAAA` -> `4EB6D/4EB72` | same | `vf_4e99c_r2_c1` | r = 2, count 1: v = 9 - 0 != 0 (`0x4EAA4`) | `5E` |
+| 54 | `4EAD1/4EAD6` -> `4EB72` | same | `vf_4e99c_r5_c0` | `DS_001088BD` = 4 (r = 5), count 0 | `5D` |
+| 55 | `4EB12` -> `4EB6D/4EB72` | same | `vf_4e99c_r6_c0` | r = 6, count 0 | `5E` |
+| 56 | `4EB42/4EB47` -> `4EB72` | same | `vf_4e99c_r5_c1` | r = 5, count 1 | `5D` |
+| 57 | `4EB6B` -> `4EB6D/4EB72` | same | `vf_4e99c_r6_c1` | r = 6, count 1: v = 9 (`0x4EB6B`) | `5E` |
+
+`K12_D1_ROWS` = 31 (`k12_d1[]` in `test_fight.c`, run from
+`test_fight_voice_sites` after the B2 pair). The drivers are `vf_*` (the
+§6.3 convention of `test_fight.c`; the brief's example named one `vs_*`).
+The helper `vf_gr_seed` reuses `ph_seed`/`pc_seed`/`gr_patch`/`gr_unpatch`
+unchanged; every driver that runs `gr_patch` runs `gr_unpatch` before it
+returns. `fight.c:4007`'s three calls (rows 40-42, "out of scope (spec §7)")
+are made where the raw makes them (§0.9, `0x4C85C`/`0x4C866`/`0x4C875`); the
+comment is replaced by the calls. Same-id aliasing (§4.2): rows 15-17 and
+40-42 share one path each and list the path's ids; `0xCE` appears on both
+paths once per pass, and rows 36/37/39/40 run two passes whose ids differ
+by arm, so no row's own call can hide behind a same-id call before it.
+
+**Signed selections.** `0x4B970..0x4B98A`, `0x4CB1F..0x4CB39`,
+`0x4DA9F..0x4DAB9` and `0x4C840..0x4C857` compute `(u8)[actor+0x48] - 0x20`
+in EAX (`and eax,0xff; sub eax,0x20`) and test `cmp eax,3; jge`: signed, so
+a byte below `0x20` takes the low id (`0xD4`/`0xD1`). The port writes
+`(s32)((u32)byte - 0x20u) < 3`. Rows 37, 39 and 40 drive the low arm with
+`0x1F` (-1), where the byte picks nothing else, so an unsigned compare fails
+them (§8.3). Row 36's si is the same byte (the prelude's `(u16)(+0x48 -
+0x20)` indexes the held-stream table), so its low arm is `0x22`.
+
+**`0x2C3FC` does not read EBX.** Row 42's call has `mov ebx,edi` (`0x4C86B`)
+and `xor bl,1` (`0x4C872`) around its `mov eax,0xce` (`0x4C86D`); the
+dispatcher pushes EBX (`0x2C3FC`) and writes it (`0x2C490 mov ebx,edx`)
+before any read, so the one-argument call is exact and EBX is only the
+caller's `other` for the code after the call.
+
+### §8.2 Corrections (raw wins)
+
+- **Rows 52, 54, 56:** §1.3 names `4EA7B`, `4EAD6` and `4EB47` as the rows'
+  `mov`s. They are the `jmp 0x4EB72`s; the `mov eax,0x5d` are at `0x4EA76`,
+  `0x4EAD1` and `0x4EB42`. The comments carry `mov/jmp -> 0x4EB72`.
+- **Row 53:** §1.3 gives its gate as `0x4EB6B je`. That is row 57's; row
+  53's is `0x4EAA4 je 0x4EB77` (the flags of `0x4EA9C sub bl,al`).
+- **Rows 36, 37, 39:** §1.3 and the old comments call the selector "index"
+  / "si". The raw reads the entry actor's own `+0x48` (`0x4B970`/`0x4DA9F`
+  `mov eax,[ecx+8]`, ECX = the entry from `0x4B792`/`0x4D8A2 mov ecx,edx`;
+  `0x4CB1F mov eax,[eax+8]`, EAX = the entry), not the EBX/EDX si argument,
+  and compares it signed (above). The port reads `DSD(entry + 8u) + 0x48u`.
+- **`fight_4bf18`'s header** said no voice site in it was wired, "0x4BFF0's
+  voice(200) included (record §K4.2)". A scan of `0x4BF18..0x4C5B0` finds
+  that one call only; the header now says it is made.
+
+### §8.3 Tests
+
+The table and its size check. With the table in and the source unwired, the
+suite printed 31 `voice site row` lines (every row `0 of n`) and `FAILURES:
+31` (`$K/t8-unwired.txt`). Wired: `all checks passed`, with the suite's
+existing callers of these functions (`check_grab_arms`, `check_volleyball`,
+`check_char_select_pass`, `check_char_team_pass`, `check_worshipper_landing`,
+`check_fx_gate`, `check_projectile_step`, `check_dust_consume`, `check_mode_25`
+and the rest) unchanged and passing.
+
+Assertion sites: 13374 → **13375** (the size check).
+
+`not wired` lines in `.c` files (`rg -c 'not wired' port/src`, the §6.4
+count), before → after: `actors.c` 3 → 1, `camera.c` 1 → 0 (it drops out),
+`fight.c` 26 → 3; the others unchanged. Total 144 → **118** (the three `.h`
+lines are unchanged). `fight.c:4007`'s "out of scope" comment was not a
+`not wired` line.
+
+### §8.4 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
+
+Every one of the 31 calls was deleted in turn (`$K/t8mut.py`: the statement
+becomes `(void)0;`, `cmake --build build`, `PR_ORACLE_REQUIRED=1
+./build/run_tests`, restore; outputs `$K/t8-mut-<tag>.txt`, summary
+`$K/t8mut-summary.txt`). Every FAIL line is `test_fixtures.c:232` (the
+in-order check).
+
+| mutation | FAIL lines | failing rows |
+|---|---:|---|
+| row 2 (`0x48CAE`), first | 1 | 2 (`0 of 1`) |
+| rows 3, 14, 20 (brief), 21, 22, 23, 32, 43, 45 (brief), 46, 47, 48, 49, 50..57 (57 brief, last) | 1 each | their own (`0 of 1`) |
+| rows 36, 37, 39 | 1 each | their own (`0 of 2`) |
+| row 15 / 16 / 17 | 3 each | 15, 16, 17 (`0` / `1` / `2 of 3`) |
+| row 40 / 41 / 42 | 3 each | 40, 41, 42 (`0` / `1` / `2 of 4`) |
+| rows 36/37/39 ids swapped | 1 each | their own (`1 of 2`) |
+| row 40 ids swapped | 3 | 40, 41, 42 (`3 of 4`) |
+| rows 37/39/40 compare made unsigned (`((u32)b - 0x20u) < 3u`) | 1 / 1 / 3 | 37, 39 (`0 of 2`); 40-42 (`0 of 4`) |
+| row 20's id read at `0xC888A` whatever `ch` | 1 | 20 (`0 of 1`) |
+
+No deletion failed a row off its own path.
+
+### §8.5 Not tested
+
+- The dispatcher's effect at these sites (case 2's queue, case 3's pair);
+  §3's tests pin `0x1CC28`/`0x1CB18`, and the runner logs with no DIG driver.
+- Rows 53/57's `v == 0` arms (no call): the in-order runner cannot assert an
+  absent id.
+- Row 36's selection signedness: its si is the same byte, so the low arm is
+  `0x22`, which a signed and an unsigned compare both send to `0xD4`.
+- The other entries to these sites: row 2 through `fighter_48d94`, rows
+  15-17 through `camera_dust_hit` (`0x129FC`), rows 20/22 through the
+  select passes, row 21 through the countdown, row 37 through `0x4B470`'s
+  eighth hit and `0x4C60C`, row 39 through `0x4D7A4`, rows 40-42 through
+  `0x4C60C` and the new-ball tail (the voices precede it), row 43 through
+  `game_mode_21_step`, rows 50-57 through `game_mode_25_step`.
+- A negative cursor in rows 20/22 (the signed `ch` reads below `0xC888A`).
+- Each call's position relative to its non-voice neighbours (e.g. row 32
+  before the type-8 store, row 45 before the latch store), beyond the
+  in-order ids of each path.
+
+### §8.6 Gate
+
+- `make verify` (every fixed `/tmp` path overridden with `/tmp/pr_t8_*`,
+  §6.7): `EXIT=0` (`$K/verify-t8.txt`, 579 lines, `all checks passed`). The
+  brief's grep of the oracle lines diffs empty against
+  `$K/oracle-lines-base.txt` (`ORACLES-EQUAL`). No D1 point is on an oracle
+  path (§0.3), and no oracle line moved.
+- Dumps: `dumps.sh t8-after` matches `$K/base.sha256` (`dumpsha.sh`,
+  `DUMPS-IDENTICAL`; `check/frames` 24000, `fe/run1` and `fe/run2` 1384
+  each, the three drivers `all checks passed`). So the real-play-only claim
+  holds for every row: none of the 31 calls changes a frame of `--check
+  8000`, the fe det driver, the attract or the title dump. No before-dump
+  was taken: the after-dump equals the base manifest itself, which `b7b7c74`
+  was already proven against (§6.7). The dump is deleted.
+- `./build/prageport --game-dir data/game/C --check 8000`: `CHECK=0`.
+- `make audio-render`: `$K/t8-after.wav` is byte-identical to
+  `before-t2.wav` (`cmp`; sha256 `df74acfb…a380844`, 2386412 bytes).
+- `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
+  unchanged (no function is ported; the README stays as it is).
+- Build: 0 warnings. Outputs: `$K/t8-gate.txt`.
