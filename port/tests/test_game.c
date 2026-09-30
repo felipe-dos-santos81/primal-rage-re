@@ -12189,3 +12189,88 @@ int test_restart(void)
     rs_check_resume();
     return g_failures - before;
 }
+
+/* Record named-gaps-b §B.3/§B.6: in the service menu (mode 0x27) with no input
+ * the master loop's 0x500BB clock runs until 0x2EB80 sees more than 0x4B0
+ * ticks since the menu's stamp (0x2FFDA), stores DS_00107414 = 0 and
+ * soft-restarts: 0x20C24's tail, 0x255CC's prologue, then the attract from
+ * its start, as A's idle capture shows (record named-gaps-a §A.6: mode 3,
+ * attract state 0, the frame word DS_000EF6DC and the clock DS_00101500 kept,
+ * then the boot sequence from the TWI5 logo). */
+#define RD_BOOT   50        /* boot iterations compared after the restart */
+#define RD_GUARD  5000      /* > 0x4B1 + RD_BOOT: a clock that stops trips it */
+
+/* The displayed frame as the capture sees it: each pixel's DAC colour (the
+ * captures are RGB, 320x200x3). After the restart the same colours sit one
+ * palette index lower than on the first boot (measured, record named-gaps-b
+ * §B.6b), so the indices are not compared. */
+static u32 rd_frame_hash(void)
+{
+    const u8 *fb = gfx_display();
+    if (fb == NULL) fb = mem + DSD(DS_000E87A0);
+    u32 h = 2166136261u;
+    for (u32 i = 0; i < 64000u; i++) h = k11_fnv(h, gfx_dac[fb[i]], 3u);
+    return h;
+}
+
+int test_restart_drive(void)
+{
+    const int before = g_failures;
+    if (getenv("PR_RESTART") == NULL) return 0;
+    const char *dir = getenv("PR_GAME_DIR");
+    if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
+    game_set_game_dir(dir);
+    game_init();
+    game_loop_begin();
+
+    static u16 boot_state[RD_BOOT];
+    static u32 boot_hash[RD_BOOT];
+    u32 r1 = 0u;
+    for (int i = 0; i < RD_BOOT; i++) {
+        game_loop_step();
+        boot_state[i] = DSW(DS_000F0A64);
+        boot_hash[i] = rd_frame_hash();
+        if (i == 0) r1 = DSD(DS_000EF6D8);
+    }
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 3);            /* 0x10EA1: Enter's mode */
+
+    /* Enter (scan 0x1C, ascii 0xD) in mode 3 stores 0x27 (0x24EE0, record
+     * §55-A); the next iteration initialises MAIN MENU and stamps 0x105F2C. */
+    input_push(0x1Cu, 0x0Du);
+    game_loop_step();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x27);
+    game_loop_step();                                  /* the menu's init */
+    CHECK_EQ_INT((int)DSB(DS_00107414), 1);            /* 0x300C2 */
+    const u32 t0 = DSD(DS_00105F2C);
+    u32 t_prev = 0u, t_last = 0u;
+    u16 f_last = 0u;
+    int n = 0;
+    while (DSW(DS_00104B00) == 0x27u && n < RD_GUARD) {
+        t_prev = t_last;
+        t_last = DSD(DS_00101500);
+        f_last = DSW(DS_000EF6DC);
+        game_loop_step();
+        n++;
+    }
+    CHECK(n < RD_GUARD, "the idle timeout restarts within the guard");
+    CHECK(t_last - t0 > 0x4B0u, "0x2EB9F: over 0x4B0 ticks on the restart iteration");
+    CHECK(t_prev - t0 <= 0x4B0u, "0x2EB9F: not over on the iteration before");
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 3);            /* 0x10EA1 */
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);            /* 0x2EBA8 */
+    CHECK_EQ_INT((long)DSD(DS_0010150C), 1);           /* 0x255DA, then 0x256C0 */
+    CHECK_EQ_INT((long)DSD(DS_00101508), 1);           /* 0x255D4, then the spin */
+    CHECK(DSD(DS_00101500) > t_last, "the 0x500BB clock is not reset (A §A.6)");
+    /* the abandoned iteration's 0x24CDB, then the new one's (A §A.6: kept) */
+    CHECK_EQ_INT((int)DSW(DS_000EF6DC), (int)(u16)(f_last + 2u));
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), (int)boot_state[0]);
+    CHECK_EQ_INT((long)DSD(DS_000EF6D8), (long)r1);    /* reseeded 0xABCD, same first frame */
+    CHECK_EQ_INT((long)rd_frame_hash(), (long)boot_hash[0]);
+    for (int i = 1; i < RD_BOOT; i++) {
+        game_loop_step();
+        CHECK_EQ_INT((int)DSW(DS_000F0A64), (int)boot_state[i]);
+        CHECK_EQ_INT((long)rd_frame_hash(), (long)boot_hash[i]);
+    }
+    printf("test_restart_drive: restart after %d menu iterations (stamp %X, clock %X)\n",
+           n, (unsigned)t0, (unsigned)t_last);
+    return g_failures - before;
+}

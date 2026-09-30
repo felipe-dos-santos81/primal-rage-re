@@ -376,6 +376,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames)
 	@echo "== tests (oracles required; consume the captured frames) =="
 	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
+	@echo "== restart driver (the 0x65431 soft restart, record named-gaps-b §B.3) =="
+	PR_RESTART=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory smk-oracle
 	@echo "== title oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory title-oracle
