@@ -499,6 +499,29 @@ int actors_init(void)
     fn_register(0x3F360u, (void (*)(void))fighter_3f360);
     fn_register(0x3F1F0u, (void (*)(void))fighter_3f1f0);
     fn_register(0x3F284u, (void (*)(void))fighter_3f284);
+    /* PORT: record gameplay-u0 §U0.10. Character 6's reaction-0x22/0x27/0x23
+     * callbacks (the dwords at 0xA55D0/0xA5634/0xA55E4) and character 0's
+     * reaction-0x2E callback (0xA38C0; 0x34E2C, (slot, rec, side)), with the
+     * +0x0C (case 7), +0x18 (0x19020, fn(side), EAX returned) and +0x1C
+     * (0x19505, fn(side)) callbacks each stores (code immediates 0x22071/
+     * 0x22078/0x22081, 0x2231D/0x22324/0x2232D, 0x3F6D9/0x3F6E0/0x3F6E9 and
+     * 0x210F8/0x210FF/0x21108). */
+    fn_register(0x2201Cu, (void (*)(void))fighter_2201c);
+    fn_register(0x21F88u, (void (*)(void))fighter_21f88);
+    fn_register(0x21E10u, (void (*)(void))fighter_21e10);
+    fn_register(0x21EA4u, (void (*)(void))fighter_21ea4);
+    fn_register(0x22294u, (void (*)(void))fighter_22294);
+    fn_register(0x22200u, (void (*)(void))fighter_22200);
+    fn_register(0x220F4u, (void (*)(void))fighter_220f4);
+    fn_register(0x22188u, (void (*)(void))fighter_22188);
+    fn_register(0x3F650u, (void (*)(void))fighter_3f650);
+    fn_register(0x3F5BCu, (void (*)(void))fighter_3f5bc);
+    fn_register(0x3F4B8u, (void (*)(void))fighter_3f4b8);
+    fn_register(0x3F54Cu, (void (*)(void))fighter_3f54c);
+    fn_register(0x210C4u, (void (*)(void))fighter_210c4);
+    fn_register(0x210A4u, (void (*)(void))fighter_210a4);
+    fn_register(0x20FA0u, (void (*)(void))fighter_20fa0);
+    fn_register(0x20FE0u, (void (*)(void))fighter_20fe0);
     fn_register(0x487D4u, (void (*)(void))fighter_487d4);
     fn_register(0x48668u, (void (*)(void))fighter_48668);
     fn_register(0x486F8u, (void (*)(void))fighter_486f8);

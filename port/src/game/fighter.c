@@ -8765,7 +8765,7 @@ void fighter_45b18(u32 rec)
 #define FIGHT_C4_BB0EC  0x000BB0ECu  /* 0x4598E: 0x45908's dust descriptor */
 
 /* 0x3A2A0 — record §48-R. The pose knockback the +0x1C callbacks 0x44DB8,
- * 0x44FF4 and 0x451EC run (the fourth caller, 0x20FE0, is unported). EAX =
+ * 0x44FF4 and 0x451EC run (the fourth caller is 0x20FE0, gameplay-u0). EAX =
  * side; EDX, EBX, ECX and the stack word (RET 4) are 0x39F40's four pose
  * words (0x3A2A5/0x3A2A7 keep EDX/EBX in EDI/ESI; every callee keeps ECX).
  * ctx = 0x33950(side), the (side, ctx[2]'s +0x5F) triple (0x3AFC4) and r =
@@ -10028,8 +10028,8 @@ static void fighter_13244(void)
  * the EBX = 0 its 0x3F19C caller sets is unread. The slot's record spawns
  * 0xBB308 at its own x, y and +0x30 >> 16, a5 = 0x4000 when its +0x28 bit 14
  * is set (else 0); the actor 0x2AE14 returns is not read. Then 0x13244.
- * Callers 0x3F19E (in 0x3F184), 0x3E729 (in 0x3E6A8) and 0x3F46A (in 0x3F450);
- * the last is unported. */
+ * Callers 0x3F19E (in 0x3F184), 0x3E729 (in 0x3E6A8) and 0x3F46A (in 0x3F450,
+ * record gameplay-u0 §U0.10). */
 void fighter_3f308(u32 slot)
 {
     u32 rec, a5;
@@ -10061,7 +10061,7 @@ void fighter_3f308(u32 slot)
  * 0xBB308 at its own x, y and +0x30 >> 16, a5 = 0x4000 when its +0x28 bit 14
  * is set (else 0); the actor 0x2AE14 returns is not read. Then 0x13244.
  * Callers 0x214D9 (0x21458), 0x21DBE (0x21DA4) and 0x220A6 (0x2208C); the last
- * two are unported. */
+ * two are record gameplay-u0 §U0.10's. */
 static void fighter_21f30(u32 slot)
 {
     u32 rec, a5;
@@ -10387,7 +10387,7 @@ u32 fighter_3f1f0(u32 side)
  * by x against ctx[3]'s +0x2C (signed) and 0x1A5AC(ctx[1]): d when x is below
  * and it holds, or x is not below and it fails; else -d. Divided by 64
  * toward zero (0x3C46A..0x3C474 `sar`/`shl`/`sbb`/`sar`). Callers 0x3F2ED
- * (in 0x3F284) and 0x21F0D (in the unported 0x21EA4). */
+ * (in 0x3F284) and 0x21F0D (in 0x21EA4, record gameplay-u0 §U0.10). */
 s32 fighter_3c404(u32 side, s32 n)
 {
     u32 ctx[6];
@@ -10447,6 +10447,474 @@ void fighter_3f3f4(u32 slot, u32 rec, u32 side)
     DSD(slot + 0x0Cu) = 0x0003F360u;                        /* 0x3F432 */
     DSD(slot + 0x18u) = 0x0003F1F0u;                        /* 0x3F439 */
     DSD(slot + 0x1Cu) = 0x0003F284u;                        /* 0x3F442 */
+}
+
+/* ---- character 6's reaction 0x22/0x23/0x27 clusters and character 0's
+ * reaction 0x2E cluster (record gameplay-u0 §U0.10). Ghidra has no function
+ * at any of these addresses; the 0x22/0x27 and 0x2E clusters are twins of
+ * character 0's 0x3F3F4 cluster (0x3F360/0x3F1F0/0x3F284/0x3F184 above). */
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define C6_WORD_104760  0x00104760u  /* 0x22002/0x22031: a word per side, 0x2201C's hold count */
+#define C6_DWORD_10475E 0x0010475Eu  /* 0x21E87: the dword whose high half is that word */
+#define C6_WORD_10475C  0x0010475Cu  /* 0x2227A/0x222A9: 0x22294's hold count */
+#define C6_DWORD_10475A 0x0010475Au  /* 0x2216B */
+#define C0_WORD_10809C  0x0010809Cu  /* 0x3F636/0x3F665: 0x3F650's hold count */
+#define C0_DWORD_10809A 0x0010809Au  /* 0x3F52F */
+#define C6_ANIM_E1724   0x000E1724u  /* 0x22047: 0x2201C's stream */
+#define C6_ANIM_E1754   0x000E1754u  /* 0x21DCE: 0x21DA4's stream */
+#define C6_ANIM_E17C0   0x000E17C0u  /* 0x222B1: 0x22294's stream */
+#define C6_ANIM_E17DC   0x000E17DCu  /* 0x220B6: 0x2208C's stream */
+#define C0_ANIM_E7CEE   0x000E7CEEu  /* 0x3F66D: 0x3F650's stream */
+#define C0_ANIM_E7D20   0x000E7D20u  /* 0x3F47A: 0x3F450's stream */
+#define C6_ANIM_E15DC   0x000E15DCu  /* 0x210D4: 0x210C4's stream */
+
+/* 0x21DA4 — record gameplay-u0 §U0.10. Called only at 0x21FF0 (in
+ * 0x21F88). EAX = rec (ECX); the context is 0x33950(rec's +0x51).
+ * 0x21F30(ctx[2]) with EBX = 0, which survives it for 0x188AC: ctx[0]'s
+ * record at x = rec's +0x18, y = 0; ctx[4] on 0xE1754 at 3.0 through
+ * 0x3C480; the record's +0x61 = 1 and words +0x34, +0x36 and +0x44 = 0;
+ * ctx[2]'s +0x54 = 0 and +0x57 = 3 (0x3F184's shape). */
+static void fighter_21da4(u32 rec)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, (u32)DSB(rec + 0x51u));           /* 0x21DAC..0x21DB3 0x33950 */
+    fighter_21f30(ctx[2]);                                  /* 0x21DB8..0x21DBE */
+    hit_anchor_set(ctx[0], DSD(rec + 0x18u), 0u);           /* 0x21DC3..0x21DC9 0x188AC */
+    hit_anim_start_a(ctx[4], C6_ANIM_E1754, 0x40400000u);   /* 0x21DCE..0x21DDC 0x3C480 */
+    DSB(rec + 0x61u) = 1u;                                  /* 0x21DE1 */
+    DSW(rec + 0x34u) = 0u;                                  /* 0x21DE5 */
+    DSW(rec + 0x36u) = 0u;                                  /* 0x21DEB */
+    DSW(rec + 0x44u) = 0u;                                  /* 0x21DF1 */
+    DSB(ctx[2] + 0x54u) = 0u;                               /* 0x21DF7/0x21DFB */
+    DSB(ctx[2] + 0x57u) = 3u;                               /* 0x21DFF/0x21E03 */
+}
+
+/* 0x21E10 — record gameplay-u0 §U0.10. The slot +0x18 hook 0x2201C stores
+ * (the dword at 0x22078; 0x19020, fn(side), EAX returned); 0x3F1F0's shape
+ * with the word DS 0x104760 (the high half of the dword at 0x10475E): 1
+ * while ctx[4]'s +0x61 is clear; else 0x18C14 with flags 1, 4 and 8 = 0 on
+ * the default boxes, replaced by 1 when the other slot is character 1 in
+ * state 7 on reaction 0x20 or 0x27, and by 1 when the side's word is above
+ * 3, signed. */
+u32 fighter_21e10(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    u32 r;
+    fighter_ctx_same(ctx, side);                            /* 0x21E16..0x21E1A 0x33950 */
+    if (DSB(ctx[4] + 0x61u) == 0u) return 1u;               /* 0x21E1F..0x21E27 -> 0x21E96 */
+    fighter_18bd4(flags);                                   /* 0x21E2D/0x21E31 */
+    flags[1] = 0;                                           /* 0x21E3F */
+    flags[8] = 0;                                           /* 0x21E43 */
+    flags[4] = 0;                                           /* 0x21E47 */
+    r = (u32)fighter_18c14(ctx[0], flags, 0u, 0u);          /* 0x21E36..0x21E4F */
+    if (DSB(ctx[3] + 0x7Au) == 1u && DSB(ctx[3] + 0x53u) == 7u) {  /* 0x21E54..0x21E6E */
+        u8 re = DSB(ctx[3] + 0x5Fu);                        /* 0x21E70 */
+        if (re == 0x20u || re == 0x27u) r = 1u;             /* 0x21E73..0x21E7F */
+    }
+    if ((s32)DSD(C6_DWORD_10475E + ctx[0] * 2u) >> 16 > 3)  /* 0x21E84..0x21E94 `jle` */
+        return 1u;                                          /* 0x21E96 */
+    return r;
+}
+
+/* 0x21EA4 — record gameplay-u0 §U0.10. The slot +0x1C callback 0x2201C
+ * stores (the dword at 0x22081; 0x193B0's 0x19505, fn(side)). The context
+ * is 0x33950(side). When 0x3B298(ctx[1], ctx[2]'s +0x5F) holds: 0x3B714(
+ * ctx[3], ctx[2]). Else 0x39834(ctx[1], +0x5F) (ECX = 0x1A, unread by it),
+ * 0x18B04(ctx[1]) (EDX = 0x14, unread by it and kept), v = 0x3C404(ctx[0],
+ * 0x14) (EBX = 0x78, unread and kept), the pose 0x39F40(ctx[1], v, 0x78,
+ * 0x1A, 0x24) and ctx[3]'s +0x68 steps down by one. */
+void fighter_21ea4(u32 side)
+{
+    u32 ctx[6];
+    s32 v;
+    fighter_ctx_same(ctx, side);                            /* 0x21EAA..0x21EAE 0x33950 */
+    if ((u8)fighter_command_dispatch(ctx[1],
+            (u32)DSB(ctx[2] + 0x5Fu)) != 0u) {              /* 0x21EB3..0x21ECB */
+        fighter_reaction(ctx[3], ctx[2]);                   /* 0x21ECD..0x21ED5 0x3B714 */
+        return;
+    }
+    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));   /* 0x21EDC..0x21EF2 */
+    hit_facing_flag(ctx[1]);                                /* 0x21EF7..0x21F00 0x18B04 */
+    v = fighter_3c404(ctx[0], 0x14);                        /* 0x21F05..0x21F0D */
+    fighter_pose_start(ctx[1], (u32)v, 0x78u, 0x1Au, 0x24u);    /* 0x21F12..0x21F1A 0x39F40 */
+    DSB(ctx[3] + 0x68u) = (u8)(DSB(ctx[3] + 0x68u) - 1u);   /* 0x21F1F/0x21F23 */
+}
+
+/* 0x21F88 — record gameplay-u0 §U0.10. The slot +0x0C callback 0x2201C
+ * stores (the dword at 0x22071; 0x3531C case 7); 0x3F360's shape. EAX =
+ * slot (ESI), EDX = rec (ECX), EBX = side. On the slot's +0x57: 0 waits for
+ * the record's vertical speed to go negative, then sets it to 0xFFFF with
+ * gravity 0x3C and +0x57 = 1; 1 waits until ctx[2]'s +0x30 is below the
+ * landing word (0xBD884 + char * 2, signed) while ctx[4] falls, then
+ * 0x21DA4(ctx[4]) and ctx[2]'s +0x57 = 3; 3 counts the side's word at
+ * 0x104760 up. */
+void fighter_21f88(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    u8 st;
+    fighter_ctx_same(ctx, side);                            /* 0x21F91..0x21F95 0x33950 */
+    st = DSB(slot + 0x57u);                                 /* 0x21F9A */
+    if (st == 0u) {                                         /* 0x21F9D..0x21FAB */
+        if ((s16)DSW(rec + 0x36u) >= 0) return;             /* 0x21FAD/0x21FB2 */
+        DSW(rec + 0x36u) = 0xFFFFu;                         /* 0x21FB4 */
+        DSW(rec + 0x44u) = 0x003Cu;                         /* 0x21FBA */
+        DSB(slot + 0x57u) = 1u;                             /* 0x21FC0 */
+    } else if (st == 1u) {                                  /* 0x21FA1 `jbe` */
+        if ((s32)DSD(DS_000BD882 + (u32)DSB(ctx[2] + 0x7Au) * 2u) >> 16
+                <= (s32)DSD(ctx[2] + 0x30u)) return;        /* 0x21FC6..0x21FE3 `jle` */
+        if ((s16)DSW(ctx[4] + 0x36u) >= 0) return;          /* 0x21FE5..0x21FEE */
+        fighter_21da4(ctx[4]);                              /* 0x21FF0 */
+        DSB(ctx[2] + 0x57u) = 3u;                           /* 0x21FF5/0x21FF9 */
+    } else if (st == 3u) {                                  /* 0x21FA3/0x21FA5 */
+        DSW(C6_WORD_104760 + ctx[0] * 2u) =
+            (u16)(DSW(C6_WORD_104760 + ctx[0] * 2u) + 1u);  /* 0x21FFF/0x22002 */
+    } else {
+        /* PORT: 0x2200C/0x22011 0x62003(1) for +0x57 == 2 or above 3, the
+         * runtime's error exit, out of scope. */
+    }
+}
+
+/* 0x2201C — record gameplay-u0 §U0.10. Character 6's reaction-0x22 callback
+ * (the dword at 0xA55D0, the (char 6, 0x22) entry of 0xA3528). EAX = slot
+ * (EBX), EDX = rec (ECX); the side is not read. ctx = 0x339AC(rec); the
+ * side's word at 0x104760 = 0; ctx[4]'s words +0x36 = 0x280 and +0x44 =
+ * 0x20; the record on 0xE1724 at 3.0 through 0x3C4CC; the slot 9/7/2 with
+ * +0x57 = 0 and the callbacks 0x21F88/0x21E10/0x21EA4. AL = 1 is unread. */
+void fighter_2201c(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)side;
+    hit_anim_ctx(ctx, rec);                                 /* 0x22023..0x22027 0x339AC */
+    DSW(C6_WORD_104760 + ctx[0] * 2u) = 0u;                 /* 0x2202C..0x22031 */
+    DSW(ctx[4] + 0x36u) = 0x0280u;                          /* 0x22039/0x2203D */
+    DSW(ctx[4] + 0x44u) = 0x0020u;                          /* 0x22043/0x2204C */
+    hit_anim_start_b(rec, C6_ANIM_E1724, 0x40400000u);      /* 0x22047..0x22059 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x2205E */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x22062 */
+    DSB(slot + 0x54u) = 2u;                                 /* 0x22066 */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x2206A */
+    DSD(slot + 0x0Cu) = 0x00021F88u;                        /* 0x2206E */
+    DSD(slot + 0x18u) = 0x00021E10u;                        /* 0x22075 */
+    DSD(slot + 0x1Cu) = 0x00021EA4u;                        /* 0x2207E */
+}
+
+/* 0x2208C — record gameplay-u0 §U0.10. Called only at 0x22268 (in
+ * 0x22200). EAX = rec (ECX); the context is 0x33950(rec's +0x51).
+ * 0x21F30(ctx[2]) with EBX = 0 (kept for 0x188AC): ctx[0]'s record at x =
+ * rec's +0x18, y = 0; ctx[4] on 0xE17DC at 3.0 through 0x3C480; the
+ * record's +0x61 = 1; 0x3C148 and 0x3C16C on ctx[0]; ctx[2]'s +0x54 = 0 and
+ * +0x57 = 3. */
+static void fighter_2208c(u32 rec)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, (u32)DSB(rec + 0x51u));           /* 0x22094..0x2209B 0x33950 */
+    fighter_21f30(ctx[2]);                                  /* 0x220A0..0x220A6 */
+    hit_anchor_set(ctx[0], DSD(rec + 0x18u), 0u);           /* 0x220AB..0x220B1 0x188AC */
+    hit_anim_start_a(ctx[4], C6_ANIM_E17DC, 0x40400000u);   /* 0x220B6..0x220C4 0x3C480 */
+    DSB(rec + 0x61u) = 1u;                                  /* 0x220C9 */
+    fighter_3c148(ctx[0]);                                  /* 0x220CD/0x220D0 */
+    fighter_3c16c(ctx[0]);                                  /* 0x220D5/0x220D8 */
+    DSB(ctx[2] + 0x54u) = 0u;                               /* 0x220DD/0x220E1 */
+    DSB(ctx[2] + 0x57u) = 3u;                               /* 0x220E5/0x220E9 */
+}
+
+/* 0x220F4 — record gameplay-u0 §U0.10. The slot +0x18 hook 0x22294 stores
+ * (the dword at 0x22324); 0x21E10 with the side's word at 0x10475C (the
+ * high half of the dword at 0x10475A). */
+u32 fighter_220f4(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    u32 r;
+    fighter_ctx_same(ctx, side);                            /* 0x220FA..0x220FE 0x33950 */
+    if (DSB(ctx[4] + 0x61u) == 0u) return 1u;               /* 0x22103..0x2210B -> 0x2217A */
+    fighter_18bd4(flags);                                   /* 0x22111/0x22115 */
+    flags[1] = 0;                                           /* 0x22123 */
+    flags[8] = 0;                                           /* 0x22127 */
+    flags[4] = 0;                                           /* 0x2212B */
+    r = (u32)fighter_18c14(ctx[0], flags, 0u, 0u);          /* 0x2211A..0x22133 */
+    if (DSB(ctx[3] + 0x7Au) == 1u && DSB(ctx[3] + 0x53u) == 7u) {  /* 0x22138..0x22152 */
+        u8 re = DSB(ctx[3] + 0x5Fu);                        /* 0x22154 */
+        if (re == 0x20u || re == 0x27u) r = 1u;             /* 0x22157..0x22163 */
+    }
+    if ((s32)DSD(C6_DWORD_10475A + ctx[0] * 2u) >> 16 > 3)  /* 0x22168..0x22178 `jle` */
+        return 1u;                                          /* 0x2217A */
+    return r;
+}
+
+/* 0x22188 — record gameplay-u0 §U0.10. The slot +0x1C callback 0x22294
+ * stores (the dword at 0x2232D). The context is 0x33950(side). When
+ * 0x3B298(ctx[1], ctx[2]'s +0x5F) holds: 0x3B714(ctx[3], ctx[2]). Else
+ * 0x39834(ctx[1], +0x5F) (ECX = 0x17 and EBX = 0xA5, unread by it and
+ * kept), the pose 0x39F40(ctx[1], 0x28, 0xA5, 0x17, 0x1D) and ctx[3]'s
+ * +0x68 steps down by one. */
+void fighter_22188(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x2218E..0x22192 0x33950 */
+    if ((u8)fighter_command_dispatch(ctx[1],
+            (u32)DSB(ctx[2] + 0x5Fu)) != 0u) {              /* 0x22197..0x221AF */
+        fighter_reaction(ctx[3], ctx[2]);                   /* 0x221B1..0x221B9 0x3B714 */
+        return;
+    }
+    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));   /* 0x221C0..0x221DB */
+    fighter_pose_start(ctx[1], 0x28u, 0xA5u, 0x17u, 0x1Du); /* 0x221E0..0x221EB 0x39F40 */
+    DSB(ctx[3] + 0x68u) = (u8)(DSB(ctx[3] + 0x68u) - 1u);   /* 0x221F0/0x221F4 */
+}
+
+/* 0x22200 — record gameplay-u0 §U0.10. The slot +0x0C callback 0x22294
+ * stores (the dword at 0x2231D; 0x3531C case 7); 0x21F88 with 0x2208C in
+ * state 1 and the side's word at 0x10475C in state 3. */
+void fighter_22200(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    u8 st;
+    fighter_ctx_same(ctx, side);                            /* 0x22209..0x2220D 0x33950 */
+    st = DSB(slot + 0x57u);                                 /* 0x22212 */
+    if (st == 0u) {                                         /* 0x22215..0x22223 */
+        if ((s16)DSW(rec + 0x36u) >= 0) return;             /* 0x22225/0x2222A */
+        DSW(rec + 0x36u) = 0xFFFFu;                         /* 0x2222C */
+        DSW(rec + 0x44u) = 0x003Cu;                         /* 0x22232 */
+        DSB(slot + 0x57u) = 1u;                             /* 0x22238 */
+    } else if (st == 1u) {                                  /* 0x22219 `jbe` */
+        if ((s32)DSD(DS_000BD882 + (u32)DSB(ctx[2] + 0x7Au) * 2u) >> 16
+                <= (s32)DSD(ctx[2] + 0x30u)) return;        /* 0x2223E..0x2225B `jle` */
+        if ((s16)DSW(ctx[4] + 0x36u) >= 0) return;          /* 0x2225D..0x22266 */
+        fighter_2208c(ctx[4]);                              /* 0x22268 */
+        DSB(ctx[2] + 0x57u) = 3u;                           /* 0x2226D/0x22271 */
+    } else if (st == 3u) {                                  /* 0x2221B/0x2221D */
+        DSW(C6_WORD_10475C + ctx[0] * 2u) =
+            (u16)(DSW(C6_WORD_10475C + ctx[0] * 2u) + 1u);  /* 0x22277/0x2227A */
+    } else {
+        /* PORT: 0x22284/0x22289 0x62003(1) for +0x57 == 2 or above 3, the
+         * runtime's error exit, out of scope. */
+    }
+}
+
+/* 0x22294 — record gameplay-u0 §U0.10. Character 6's reaction-0x27 callback
+ * (the dword at 0xA5634, the (char 6, 0x27) entry). EAX = slot (EBX), EDX =
+ * rec (ECX); the side is not read. ctx = 0x339AC(rec); the side's word at
+ * 0x10475C = 0; the record on 0xE17C0 at 3.0 through 0x3C520; 0x3C16C and
+ * 0x3C148 on ctx[0]; ctx[4]'s words +0x36/+0x44 = 0x12C/0x37 when the side's
+ * word DS_00107D2C is positive (signed), else 0x21C/0x28; the slot 9/7/2
+ * with +0x57 = 0 and the callbacks 0x22200/0x220F4/0x22188. AL = 1 is
+ * unread. */
+void fighter_22294(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)side;
+    hit_anim_ctx(ctx, rec);                                 /* 0x2229B..0x2229F 0x339AC */
+    DSW(C6_WORD_10475C + ctx[0] * 2u) = 0u;                 /* 0x222A4..0x222A9 */
+    hit_anim_start_c(rec, C6_ANIM_E17C0, 0x40400000u);      /* 0x222B1..0x222BD 0x3C520 */
+    fighter_3c16c(ctx[0]);                                  /* 0x222C2/0x222C5 */
+    fighter_3c148(ctx[0]);                                  /* 0x222CA/0x222CD */
+    if ((s16)DSW(DS_00107D2C + ctx[0] * 2u) > 0) {          /* 0x222D2..0x222DE `jle` */
+        DSW(ctx[4] + 0x36u) = 0x012Cu;                      /* 0x222E0/0x222E4 */
+        DSW(ctx[4] + 0x44u) = 0x0037u;                      /* 0x222EA/0x222EE */
+    } else {
+        DSW(ctx[4] + 0x36u) = 0x021Cu;                      /* 0x222F6/0x222FA */
+        DSW(ctx[4] + 0x44u) = 0x0028u;                      /* 0x22300/0x22304 */
+    }
+    DSB(slot + 0x52u) = 9u;                                 /* 0x2230A */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x2230E */
+    DSB(slot + 0x54u) = 2u;                                 /* 0x22312 */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x22316 */
+    DSD(slot + 0x0Cu) = 0x00022200u;                        /* 0x2231A */
+    DSD(slot + 0x18u) = 0x000220F4u;                        /* 0x22321 */
+    DSD(slot + 0x1Cu) = 0x00022188u;                        /* 0x2232A */
+}
+
+/* 0x3F450 — record gameplay-u0 §U0.10. Called only at 0x3F624 (in
+ * 0x3F5BC); 0x2208C with 0x3F308 for 0x21F30 and the stream 0xE7D20. */
+static void fighter_3f450(u32 rec)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, (u32)DSB(rec + 0x51u));           /* 0x3F458..0x3F45F 0x33950 */
+    fighter_3f308(ctx[2]);                                  /* 0x3F464..0x3F46A */
+    hit_anchor_set(ctx[0], DSD(rec + 0x18u), 0u);           /* 0x3F46F..0x3F475 0x188AC */
+    hit_anim_start_a(ctx[4], C0_ANIM_E7D20, 0x40400000u);   /* 0x3F47A..0x3F488 0x3C480 */
+    DSB(rec + 0x61u) = 1u;                                  /* 0x3F48D */
+    fighter_3c148(ctx[0]);                                  /* 0x3F491/0x3F494 */
+    fighter_3c16c(ctx[0]);                                  /* 0x3F499/0x3F49C */
+    DSB(ctx[2] + 0x54u) = 0u;                               /* 0x3F4A1/0x3F4A5 */
+    DSB(ctx[2] + 0x57u) = 3u;                               /* 0x3F4A9/0x3F4AD */
+}
+
+/* 0x3F4B8 — record gameplay-u0 §U0.10. The slot +0x18 hook 0x3F650 stores
+ * (the dword at 0x3F6E0); 0x21E10 with the side's word at 0x10809C (the
+ * high half of the dword at 0x10809A). */
+u32 fighter_3f4b8(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    u32 r;
+    fighter_ctx_same(ctx, side);                            /* 0x3F4BE..0x3F4C2 0x33950 */
+    if (DSB(ctx[4] + 0x61u) == 0u) return 1u;               /* 0x3F4C7..0x3F4CF -> 0x3F53E */
+    fighter_18bd4(flags);                                   /* 0x3F4D5/0x3F4D9 */
+    flags[1] = 0;                                           /* 0x3F4E7 */
+    flags[8] = 0;                                           /* 0x3F4EB */
+    flags[4] = 0;                                           /* 0x3F4EF */
+    r = (u32)fighter_18c14(ctx[0], flags, 0u, 0u);          /* 0x3F4DE..0x3F4F7 */
+    if (DSB(ctx[3] + 0x7Au) == 1u && DSB(ctx[3] + 0x53u) == 7u) {  /* 0x3F4FC..0x3F516 */
+        u8 re = DSB(ctx[3] + 0x5Fu);                        /* 0x3F518 */
+        if (re == 0x20u || re == 0x27u) r = 1u;             /* 0x3F51B..0x3F527 */
+    }
+    if ((s32)DSD(C0_DWORD_10809A + ctx[0] * 2u) >> 16 > 3)  /* 0x3F52C..0x3F53C `jle` */
+        return 1u;                                          /* 0x3F53E */
+    return r;
+}
+
+/* 0x3F54C — record gameplay-u0 §U0.10. The slot +0x1C callback 0x3F650
+ * stores (the dword at 0x3F6E9); 0x22188 with the pose word 0x14 for 0x28
+ * and no +0x68 step. */
+void fighter_3f54c(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x3F552..0x3F556 0x33950 */
+    if ((u8)fighter_command_dispatch(ctx[1],
+            (u32)DSB(ctx[2] + 0x5Fu)) != 0u) {              /* 0x3F55B..0x3F573 */
+        fighter_reaction(ctx[3], ctx[2]);                   /* 0x3F575..0x3F57D 0x3B714 */
+        return;
+    }
+    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));   /* 0x3F584..0x3F59F */
+    fighter_pose_start(ctx[1], 0x14u, 0xA5u, 0x17u, 0x1Du); /* 0x3F5A4..0x3F5AF 0x39F40 */
+}
+
+/* 0x3F5BC — record gameplay-u0 §U0.10. The slot +0x0C callback 0x3F650
+ * stores (the dword at 0x3F6D9; 0x3531C case 7); 0x21F88 with 0x3F450 in
+ * state 1 and the side's word at 0x10809C in state 3. */
+void fighter_3f5bc(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    u8 st;
+    fighter_ctx_same(ctx, side);                            /* 0x3F5C5..0x3F5C9 0x33950 */
+    st = DSB(slot + 0x57u);                                 /* 0x3F5CE */
+    if (st == 0u) {                                         /* 0x3F5D1..0x3F5DF */
+        if ((s16)DSW(rec + 0x36u) >= 0) return;             /* 0x3F5E1/0x3F5E6 */
+        DSW(rec + 0x36u) = 0xFFFFu;                         /* 0x3F5E8 */
+        DSW(rec + 0x44u) = 0x003Cu;                         /* 0x3F5EE */
+        DSB(slot + 0x57u) = 1u;                             /* 0x3F5F4 */
+    } else if (st == 1u) {                                  /* 0x3F5D5 `jbe` */
+        if ((s32)DSD(DS_000BD882 + (u32)DSB(ctx[2] + 0x7Au) * 2u) >> 16
+                <= (s32)DSD(ctx[2] + 0x30u)) return;        /* 0x3F5FA..0x3F617 `jle` */
+        if ((s16)DSW(ctx[4] + 0x36u) >= 0) return;          /* 0x3F619..0x3F622 */
+        fighter_3f450(ctx[4]);                              /* 0x3F624 */
+        DSB(ctx[2] + 0x57u) = 3u;                           /* 0x3F629/0x3F62D */
+    } else if (st == 3u) {                                  /* 0x3F5D7/0x3F5D9 */
+        DSW(C0_WORD_10809C + ctx[0] * 2u) =
+            (u16)(DSW(C0_WORD_10809C + ctx[0] * 2u) + 1u);  /* 0x3F633/0x3F636 */
+    } else {
+        /* PORT: 0x3F640/0x3F645 0x62003(1) for +0x57 == 2 or above 3, the
+         * runtime's error exit, out of scope. */
+    }
+}
+
+/* 0x3F650 — record gameplay-u0 §U0.10. Character 0's reaction-0x2E callback
+ * (the dword at 0xA38C0, the (char 0, 0x2E) entry); 0x22294 with the word at
+ * 0x10809C, the stream 0xE7CEE and the callbacks 0x3F5BC/0x3F4B8/0x3F54C. */
+void fighter_3f650(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)side;
+    hit_anim_ctx(ctx, rec);                                 /* 0x3F657..0x3F65B 0x339AC */
+    DSW(C0_WORD_10809C + ctx[0] * 2u) = 0u;                 /* 0x3F660..0x3F665 */
+    hit_anim_start_c(rec, C0_ANIM_E7CEE, 0x40400000u);      /* 0x3F66D..0x3F679 0x3C520 */
+    fighter_3c16c(ctx[0]);                                  /* 0x3F67E/0x3F681 */
+    fighter_3c148(ctx[0]);                                  /* 0x3F686/0x3F689 */
+    if ((s16)DSW(DS_00107D2C + ctx[0] * 2u) > 0) {          /* 0x3F68E..0x3F69A `jle` */
+        DSW(ctx[4] + 0x36u) = 0x012Cu;                      /* 0x3F69C/0x3F6A0 */
+        DSW(ctx[4] + 0x44u) = 0x0037u;                      /* 0x3F6A6/0x3F6AA */
+    } else {
+        DSW(ctx[4] + 0x36u) = 0x021Cu;                      /* 0x3F6B2/0x3F6B6 */
+        DSW(ctx[4] + 0x44u) = 0x0028u;                      /* 0x3F6BC/0x3F6C0 */
+    }
+    DSB(slot + 0x52u) = 9u;                                 /* 0x3F6C6 */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x3F6CA */
+    DSB(slot + 0x54u) = 2u;                                 /* 0x3F6CE */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x3F6D2 */
+    DSD(slot + 0x0Cu) = 0x0003F5BCu;                        /* 0x3F6D6 */
+    DSD(slot + 0x18u) = 0x0003F4B8u;                        /* 0x3F6DD */
+    DSD(slot + 0x1Cu) = 0x0003F54Cu;                        /* 0x3F6E6 */
+}
+
+/* 0x35E40 — record gameplay-u0 §U0.10. EAX = slot; EBX/EDX pushed. 1 when
+ * the landing word (0xBD884 + char * 2, the dword at 0xBD882 SAR 16) is at
+ * least the slot's +0x30 (signed `jl`) and the slot's record's word +0x36
+ * is not positive (signed `jg`); else 0. Called at 0x210AE (in 0x210A4). */
+static int fighter_35e40(u32 slot)
+{
+    if ((s32)DSD(DS_000BD882 + (u32)DSB(slot + 0x7Au) * 2u) >> 16
+            < (s32)DSD(slot + 0x30u)) return 0;             /* 0x35E42..0x35E56 */
+    if ((s16)DSW(DSD(slot) + 0x36u) > 0) return 0;          /* 0x35E58..0x35E5F */
+    return 1;                                               /* 0x35E61 */
+}
+
+/* 0x20FA0 — record gameplay-u0 §U0.10. The slot +0x18 hook 0x210C4 stores
+ * (the dword at 0x210FF; 0x19020, fn(side), EAX returned). The context is
+ * 0x33950(side) (ECX = 0). 0x18C14 with flags 1 and 8 = 0 and flag 0 = 1
+ * on the default boxes; its result is returned. */
+u32 fighter_20fa0(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    fighter_ctx_same(ctx, side);                            /* 0x20FA6..0x20FAC 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x20FB1..0x20FB7 0x18BD4 */
+    flags[1] = 0;                                           /* 0x20FC0 */
+    flags[8] = 0;                                           /* 0x20FC4 */
+    flags[0] = 1u;                                          /* 0x20FCC */
+    return (u32)fighter_18c14(ctx[0], flags, 0u, 0u);       /* 0x20FD0/0x20FD3 0x18C14 */
+}
+
+/* 0x20FE0 — record gameplay-u0 §U0.10. The slot +0x1C callback 0x210C4
+ * stores (the dword at 0x21108; 0x193B0's 0x19505, fn(side)). The context
+ * is 0x33950(side). ctx[3]'s +0x68 steps down by one; ctx[2]'s +0x18 = 0 and
+ * +0x42 loses bit 2; 0x3A2A0(ctx[0], -100, 0x82, 0x12, 0x14); then 0x3C148(
+ * ctx[1]) when ctx[3]'s +0x53 is 1. */
+void fighter_20fe0(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x20FE6..0x20FEA 0x33950 */
+    DSB(ctx[3] + 0x68u) = (u8)(DSB(ctx[3] + 0x68u) - 1u);   /* 0x20FEF/0x20FF3 */
+    DSD(ctx[2] + 0x18u) = 0u;                               /* 0x20FF6/0x20FFA */
+    DSB(ctx[2] + 0x42u) &= 0xFBu;                           /* 0x21001..0x21017 */
+    (void)fighter_3a2a0(ctx[0], 0xFFFFFF9Cu, 0x82u, 0x12u, 0x14u);  /* 0x21005..0x21023 */
+    if (DSB(ctx[3] + 0x53u) == 1u)                          /* 0x21028/0x2102C */
+        fighter_3c148(ctx[1]);                              /* 0x21032/0x21036 */
+}
+
+/* 0x210A4 — record gameplay-u0 §U0.10. The slot +0x0C callback 0x210C4
+ * stores (the dword at 0x210F8; 0x3531C case 7). EAX = slot, EDX = rec;
+ * EBX's low byte is overwritten. With the slot's +0x57 == 1 and 0x35E40(
+ * slot): the record's words +0x36 and +0x44 = 0. */
+void fighter_210a4(u32 slot, u32 rec, u32 side)
+{
+    (void)side;
+    if (DSB(slot + 0x57u) != 1u) return;                    /* 0x210A4..0x210AC */
+    if (fighter_35e40(slot) == 0) return;                   /* 0x210AE..0x210B5 */
+    DSW(rec + 0x36u) = 0u;                                  /* 0x210B7 */
+    DSW(rec + 0x44u) = 0u;                                  /* 0x210BD */
+}
+
+/* 0x210C4 — record gameplay-u0 §U0.10. Character 6's reaction-0x23 callback
+ * (the dword at 0xA55E4, the (char 6, 0x23) entry). EAX = slot (EBX), EDX =
+ * rec (ECX); the side is not read. 0x339AC(rec) (unread), the record on
+ * 0xE15DC at 3.0 through 0x3C4CC, the slot 9/7/0 with +0x57 = 0 and the
+ * callbacks 0x210A4/0x20FA0/0x20FE0. AL = 1 is unread. */
+void fighter_210c4(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)side;
+    hit_anim_ctx(ctx, rec);                                 /* 0x210CD/0x210CF 0x339AC */
+    hit_anim_start_b(rec, C6_ANIM_E15DC, 0x40400000u);      /* 0x210D4..0x210E0 0x3C4CC */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x210E5 */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x210E9 */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x210ED */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x210F1 */
+    DSD(slot + 0x0Cu) = 0x000210A4u;                        /* 0x210F5 */
+    DSD(slot + 0x18u) = 0x00020FA0u;                        /* 0x210FC */
+    DSD(slot + 0x1Cu) = 0x00020FE0u;                        /* 0x21105 */
 }
 
 /* 0x3605C — record §48-P. EAX = side (ECX); the frame bits are the one stack

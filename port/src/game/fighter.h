@@ -865,6 +865,28 @@ void fighter_3f3f4(u32 slot, u32 rec, u32 side);
 void fighter_3f360(u32 slot, u32 rec, u32 side);
 u32  fighter_3f1f0(u32 side);
 void fighter_3f284(u32 side);
+/* Record gameplay-u0 §U0.10. The twins of the 0x3F3F4 cluster: character
+ * 6's reaction 0x22 (0x2201C: +0x0C 0x21F88, +0x18 0x21E10, +0x1C 0x21EA4)
+ * and 0x27 (0x22294: 0x22200, 0x220F4, 0x22188), character 0's 0x2E
+ * (0x3F650: 0x3F5BC, 0x3F4B8, 0x3F54C); and character 6's reaction 0x23
+ * (0x210C4: 0x210A4, 0x20FA0, 0x20FE0). Setters and +0x0C are (slot, rec,
+ * side), +0x18 hooks fn(side) with EAX returned, +0x1C fn(side). */
+void fighter_2201c(u32 slot, u32 rec, u32 side);
+void fighter_21f88(u32 slot, u32 rec, u32 side);
+u32  fighter_21e10(u32 side);
+void fighter_21ea4(u32 side);
+void fighter_22294(u32 slot, u32 rec, u32 side);
+void fighter_22200(u32 slot, u32 rec, u32 side);
+u32  fighter_220f4(u32 side);
+void fighter_22188(u32 side);
+void fighter_3f650(u32 slot, u32 rec, u32 side);
+void fighter_3f5bc(u32 slot, u32 rec, u32 side);
+u32  fighter_3f4b8(u32 side);
+void fighter_3f54c(u32 side);
+void fighter_210c4(u32 slot, u32 rec, u32 side);
+void fighter_210a4(u32 slot, u32 rec, u32 side);
+u32  fighter_20fa0(u32 side);
+void fighter_20fe0(u32 side);
 void fighter_487d4(u32 slot, u32 rec, u32 side);
 u32  fighter_48668(u32 side);
 void fighter_486f8(u32 side);
