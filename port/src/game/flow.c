@@ -2660,7 +2660,11 @@ void flow_round_timer_step(void)
  * width 2, pad 0, mode 0x4000 through 0x2F528, and 0x4DBB4(the slot
  * DS_00104B1A names, 1) runs (the call at 0x4F638). PORT: a zero
  * DS_001088D0 would fault the original's `idiv` (0x4F5E0); the port returns,
- * as 0x4F4E8 does (record §49-Z). */
+ * as 0x4F4E8 does (record §49-Z). The divisor is never zero in the stock
+ * game: its nine stores (0x20CB0, 0x24B48, 0x24F4C, 0x24FB4, 0x25007,
+ * 0x25061, 0x250B4, 0x25111, 0x25163) each write a value ending
+ * `add reg,0x1E`, (v & 0xF) * 5 + 0x1E where read in full (0x20C9C..0x20CB0,
+ * 0x24B26..0x24B48). */
 void flow_bonus_count_step(void)
 {
     u32 n;

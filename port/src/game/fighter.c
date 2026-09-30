@@ -2726,9 +2726,11 @@ static void fighter_379c4(u32 slot)
              * callbacks 0x37774 (0xBDAE4[char]) and 0x37898 (0xBDB00[char];
              * 0x37640 clears it), ported (record gameplay-u0 §U0.4). The
              * targets registered are character 2's 0x48BE0/0x48F54 (record
-             * §42-B) and character 4's 0x45C10 (§U0.5); a miss on the others
-             * (0x1567C, 0x15908, 0x23BF8, 0x23EC0, 0x402FC, 0x40BBC, 0x45D14)
-             * is recorded by the miss log and falls to the 0xC9260 start. */
+             * §42-B), character 5's 0x40BBC (§50-A) and character 4's
+             * 0x45C10 (§U0.5). The six others (0x1567C, 0x15908, 0x23BF8,
+             * 0x23EC0, 0x402FC, 0x45D14; record gameplay-u0 §U0.12) miss:
+             * the armed miss log records them and the port falls to the
+             * 0xC9260 start where the raw would run the entry. */
             int (*cb)(u32, u32) =
                 (int (*)(u32, u32))(void *)fn_resolve(DSD(DS_001078E8));
             if (cb != 0 && cb(slot, rec) != 0) return;      /* 0x379F0 */
