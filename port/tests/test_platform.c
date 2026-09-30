@@ -24,6 +24,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <setjmp.h>
 #include <dirent.h>
 #include <strings.h>
 #include <stdint.h>
@@ -2366,6 +2368,46 @@ static unsigned long long now_ns(void)
            (unsigned long long)ts.tv_nsec;
 }
 
+/* Record named-gaps-b §B.4: the CPU-fault end of the run (host_cpu_fault). */
+static jmp_buf hf_jb;
+static volatile u32 hf_exc, hf_eip;
+static void hf_hook(u32 exc, u32 eip) { hf_exc = exc; hf_eip = eip; longjmp(hf_jb, 1); }
+
+static void hf_check_hook(void)
+{
+    volatile int landed = 0;
+    host_fault_hook_fn prev = host_set_fault_hook(hf_hook);
+    hf_exc = 0x5Au; hf_eip = 0x5A5Au;
+    if (setjmp(hf_jb) == 0) host_cpu_fault(0x0Eu, 0x32578u, "unused", 3); else landed = 1;
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT((long)hf_exc, 0x0E);
+    CHECK_EQ_INT((long)hf_eip, 0x32578);
+    CHECK(host_set_fault_hook(prev) == hf_hook, "the hook is handed back");
+}
+
+static void hf_check_exit(void)
+{
+    int fds[2];
+    CHECK(pipe(fds) == 0, "pipe");
+    fflush(stdout); fflush(stderr);          /* the child must not re-flush our buffers */
+    pid_t pid = fork();
+    if (pid == 0) {
+        dup2(fds[1], 2); close(fds[0]);
+        host_cpu_fault(0x00u, 0x334E0u, NULL, 7);
+    }
+    close(fds[1]);
+    char buf[256];
+    ssize_t n = read(fds[0], buf, sizeof buf - 1);
+    close(fds[0]);
+    buf[n > 0 ? n : 0] = '\0';
+    int st = 0;
+    waitpid(pid, &st, 0);
+    CHECK(WIFEXITED(st), "the fault ends the process");
+    CHECK_EQ_INT(WEXITSTATUS(st), 7);
+    CHECK(strstr(buf, "00h") != NULL && strstr(buf, "000334E0") != NULL,
+          "the NULL-message line names the exception and the address");
+}
+
 int test_host(void)
 {
     int before = g_failures;
@@ -2470,6 +2512,8 @@ int test_host(void)
     host_set_key_bits_override(0x1234u, 0);
     CHECK(host_key_bits() != 0x1234u, "the key-bits override is off again");
 
+    hf_check_hook();
+    hf_check_exit();
     return g_failures - before;
 }
 

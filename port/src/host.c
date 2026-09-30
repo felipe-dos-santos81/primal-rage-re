@@ -16,6 +16,7 @@
 #include "platform/input.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -251,6 +252,28 @@ void host_set_pump_hook(host_pump_hook_fn fn, void *ctx)
 {
     g_pump_hook = fn;
     g_pump_hook_ctx = ctx;
+}
+
+static host_fault_hook_fn s_fault_hook;
+
+host_fault_hook_fn host_set_fault_hook(host_fault_hook_fn hook)
+{
+    host_fault_hook_fn prev = s_fault_hook;
+    s_fault_hook = hook;
+    return prev;
+}
+
+_Noreturn void host_cpu_fault(u32 exc, u32 eip, const char *msg, int status)
+{
+    if (s_fault_hook != NULL) s_fault_hook(exc, eip);
+    if (msg != NULL)
+        fprintf(stderr, "%s\n", msg);
+    else
+        fprintf(stderr, "prageport: CPU exception %02Xh at %08X: the original "
+                "leaves it to DOS/4GW's default handler, which ends the run\n",
+                (unsigned)exc, (unsigned)eip);
+    host_shutdown();
+    exit(status);
 }
 
 void host_wait_vblank(void)
