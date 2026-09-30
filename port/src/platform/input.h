@@ -19,7 +19,9 @@
  * extended key). When full, the oldest entry is dropped. */
 void input_push(u8 scan, u8 ascii);
 
-/* Non-consuming presence test: 1 when a key is queued, else 0. */
+/* Non-consuming presence test: 1 when a key is queued, else 0. The movie
+ * player reads it as 0x62756, the WATCOM runtime's kbhit (int 21h AH=0Bh on
+ * the BIOS buffer; record named-gaps-f §F.2). */
 int input_has_key(void);
 
 /* int 16h AH=0: blocks (draining host_pump()) until a key is queued, then
@@ -37,14 +39,6 @@ void input_clear(void);
 /* int 16h packs a key as (scan << 8) | ascii; ESC is scan 0x01 / ascii 0x1B,
  * the key 0x249F0 turns into the quit flag DAT_000A81A8. */
 #define INPUT_ESC 0x011Bu
-
-/* PORT: the movie player's abort test (movie.c). The frame loop's keys are
- * 0x24C5C's (game_key_loop, records §53-A/§55-A), which peeks (AH=1) then
- * reads (AH=0) until the queue is empty. A movie has no such loop, so its test
- * must drain: peeking would pin the oldest key, and any later ESC behind it
- * could never be seen. Empties the queue and reports whether ESC was among
- * the keys read. */
-int input_drain_esc(void);
 
 /* ---- game input bitfield (0x500C4 / 0x50161 / 0x4F644) ------------------
  * The original keeps a debounced key level in DAT_000E1C34, a hold latch in

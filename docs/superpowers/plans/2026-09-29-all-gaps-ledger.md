@@ -515,7 +515,7 @@ that proves it.
 | `TODO(verify)` in `port/src` | 31 | **0** | `grep -rn 'TODO(verify)' port/src` |
 | `TODO(verify)` in `port/tests` | not measured | 1, explained | the `test_game.c` comment that starts "TODO(verify): the original's live counter is unread" (above `FRONTEND_FRAMES_BEFORE_STATE2`): the front-end driver's frame-counter seed 886; the original's live counter is unread (demo record §1.6); settling it needs a live-RAM dump |
 | `game_frame` cases | 52/52 wired | 52/52 wired | §D |
-| `named gap` sites (`port/src` + `port/tests`) | 35 | 13, all live named gaps (§H.3) or history ("formerly", "pinned") (seven named gaps / 12 named-gap sites after named-gaps C, D and E, §H.3: `ail.c`'s §0.7.6 site went with gap #6) | `rg -n -i 'named gap' port/src port/tests` |
+| `named gap` sites (`port/src` + `port/tests`) | 35 | 13, all live named gaps (§H.3) or history ("formerly", "pinned") (four named gaps / 12 named-gap sites after named-gaps C, D, E and F, §H.3: `ail.c`'s §0.7.6 site went with gap #6) | `rg -n -i 'named gap' port/src port/tests` |
 | `not wired` in `port/src` | ~180 | 0 | `rg 'not wired' port/src` |
 | `not modelled` deviations in `port/src` (fifth source, added in fix round 1) | not enumerated | 10 hits of `rg -n 'not modelled\|not yet modelled\|is not modelled' port/src` (1 of them matches `PORT:.*not modelled` on one line); that alternation is narrower than the broad one: `rg -n 'not\s+modell?ed\|does not model\|unmodelled' port/src` returns 16 lines, and its multi-line form `rg -U 'not(\s\|\n\s*\*)+modell?ed\|does not model\|unmodelled' port/src` returns 18 matches (the 16 plus 2 that wrap a line, in `movie.c` and `ail.h`; 20 printed lines) at 18 locations = 15 distinct deviations, each with a verdict in §H.1a | as named |
 
@@ -552,8 +552,8 @@ row here.
 | site | deviation | verdict | evidence |
 |---|---|---|---|
 | `config.c` (`config_key_latched`), `config.h` (`0x2EB80`) | idle-timeout longjmp | **named gap §H.3 #1** | `0x2EBAE mov eax,0x1044F4; 0x2EBB3 jmp 0x65431` |
-| `ail.c` / `ail.h` (`AIL_set_sequence_volume`, `0x5DECA`) | the 500 ms sequence-volume fade | **named gap §H.3 #8** | see §H.3 |
-| `movie.c` (`movie_play` header) | the entry skip tests `0x1C752..0x1C766` | **named gap §H.3 #9** | see §H.3 |
+| `ail.c` / `ail.h` (`AIL_set_sequence_volume`, `0x5DECA`) | the 500 ms sequence-volume fade | **closed** (named-gaps-f, 2026-09-30): ported (`0x6A8D0`, `0x69320`, `0x69952..0x699C0`) | record `2026-09-30-named-gaps-f-derivations.md` §F.3 |
+| `movie.c` (`movie_play` header) | the entry skip tests `0x1C752..0x1C766` | **closed** (named-gaps-f, 2026-09-30): ported (`kbhit` and the quit flag) | record `2026-09-30-named-gaps-f-derivations.md` §F.2 |
 | `sequencer.c` (ctrl 64 / ctrl 121) | MDI sustain release `0x3B1E` | named gap §C-13 (carried) | record todo-verify §13 |
 | `sequencer.c` (loop controllers 116/117) | XMIDI FOR/NEXT `0x68AB0` | named gap §C-14 (carried) | record todo-verify §14 |
 | `flow.c` (`game_isr_ticks`) | the ISR's `DS_00104B22` gate | closed: host-owned tick model (todo-verify §1, §K9.5); the ISR `0x1BDF4` is host-owned | `0x2D62C` row in `tools/port_classification.txt` |
@@ -603,9 +603,10 @@ unreachable, unobservable or not a deviation.
 
 ### §H.3 Named gaps still open
 
-**Seven named gaps** are open: four of the six carried by K7+K12 and K11 (#1, #2, #3, #5),
-the two new `not modelled` deviations of §H.1a (#8, #9) and `movie.c`'s
-decode-failure exit (#10). (#7 closed by named-gaps E, #6 by named-gaps D, #4 by named-gaps C.)
+**Four named gaps** are open: four of the six carried by K7+K12 and K11 (#1, #2, #3, #5).
+#7 was closed by named-gaps E, #6 by named-gaps D, #4 by named-gaps C, and #8, #9 and
+#10 by named-gaps unit F (2026-09-30, record `2026-09-30-named-gaps-f-derivations.md`);
+their rows below keep the evidence.
 
 The six carried by K7+K12 and K11:
 
@@ -628,13 +629,14 @@ because Task 7 changes no behaviour (closed):
 | 7 | `fight_health_sync` (`0x34B6C`) case 18 is a `PORT:` `break` (`port/src/game/fight.c:2150`), so a fighter in slot state `+0x52 = 0x12` loses the attack transition | Raw `0x34CC7..0x34D21`: `si = word [DS_001088E0 + side*2]`; if `(si & 0x300) != 0` and `(si & 0xC00) != 0` it exits; else if slot `+0x54` is 0 or 1 it calls `0x3BDDC(side)` and, on a non-zero AL, `0x18B04(side)`. Both callees are ported (`fighter.c`, `/* 0x3BDDC`, `/* 0x18B04`). The state is reachable: the ported `0x36638` (`fighter_state_36638`) stores `+0x52 = 0x12` at `0x366B2` and `0x366D1`, and it has 13 raw call sites (`0x34A55` in the default state `0x349C8`, `0x34BDE` in `fight_health_sync` itself, `0x358A4`, `0x358F9`, `0x36450`, `0x3651C`, `0x36A7A`, `0x36B41`, `0x373C6`, `0x37414`, `0x37456`, `0x375B5`, `0x3822D`). `0x3BDDC` has 7 raw call sites, of which `0x34D0C` is this arm's. The arm needs its own cycle: a seeded test, a mutation proof and the oracle gate. **Closed** (named-gaps E, 2026-09-30): case 18 is ported at the raw's `0x34CC7..0x34D21` with no `PORT:` note; `0x18B04` (`hit_facing_flag`) is exported for it. `check_state18` (`test_fight.c`) covers both gate groups, `+0x54` = 0/1/2, AL = 0 (bit 15 clear, `+0x40` bit 7) and both sides; 14 of 14 mutations fail it. `make verify` exits 0, the oracle lines and the frame dumps are unchanged, the WAV is identical: the arm runs 56 times over `--check 8000` (two AL = 1 transitions, frames 2329 and 3773), and on the old port `0x3531C` -> `0x350D0` made the same two transitions later in the same pass (record `2026-09-30-named-gaps-e-derivations.md` §E.1-§E.4). |
 
 Two `not modelled` deviations from §H.1a and one movie-player exit, verified
-against the raw mirror:
+against the raw mirror; all three **closed** by named-gaps unit F (record
+`2026-09-30-named-gaps-f-derivations.md`, verdicts in the last column):
 
-| # | Gap | Evidence |
-|---:|---|---|
-| 8 | The sequence-volume fade is not modelled | `AIL_set_sequence_volume` (`0x5DECA`, which passes its three arguments to the runtime's `0x6A8D0`) is called with a 500 ms fade: `0x1CAF6 push 0x1F4 … 0x1CB09 call 0x5DECA` (its raw call sites are `0x1C910`, `0x1C9A5`, `0x1C9F0` and `0x1CB09`). The port ignores `fade_ms` and applies the volume at once (`ail.c`, `ail.h` `PORT:` notes). Audible only; no frame reads it. |
-| 9 | The movie player's entry skip tests are not modelled | `0x1C752 call 0x62756; test eax,eax; jne 0x1C878` and `0x1C75F cmp byte [0xA81A8],0; jne 0x1C878`: a pending key or the quit flag skips the movie, and `0x1C878` is the epilogue, reached **without** the exit blank (record K10 §0.1). The port always opens the movie, and leaves it only through its own loop exit flag and key poll (`movie.c` `PORT:` note). |
-| 10 | `movie_play` returns without the exit blank when a frame fails to decode | `movie.c`: `if (!smk_decode_frame(&m, draw)) return 0;` skips `gfx_screen_reset(0)`. In the raw, every exit of the frame loop reaches `0x1C873` (`0x52106(0)`) before the epilogue (record K10 §0.1, §K10.3). Reached only on a corrupt SMK; the shipped movies decode (smk oracle 120/120, 41/41). |
+| # | Gap | Evidence | Verdict |
+|---:|---|---|---|
+| 8 | The sequence-volume fade is not modelled | `AIL_set_sequence_volume` (`0x5DECA`, which passes its three arguments to the runtime's `0x6A8D0`) is called with a 500 ms fade: `0x1CAF6 push 0x1F4 … 0x1CB09 call 0x5DECA` (its raw call sites are `0x1C910`, `0x1C9A5`, `0x1C9F0` and `0x1CB09`). The port ignores `fade_ms` and applies the volume at once (`ail.c`, `ail.h` `PORT:` notes). Audible only; no frame reads it. | **closed**: `0x6A8D0` sets a step of `ms*1000/|delta|` us; the 120 Hz service (`0x69952`, period `1000000/[0x108D8C]` = 8333 us, `0x6A016..0x6A03E`) steps it and re-sends the CC7 log `seq+0x350` every 8th call; ported in `sequencer.c` (§F.3) |
+| 9 | The movie player's entry skip tests are not modelled | `0x1C752 call 0x62756; test eax,eax; jne 0x1C878` and `0x1C75F cmp byte [0xA81A8],0; jne 0x1C878`: a pending key or the quit flag skips the movie, and `0x1C878` is the epilogue, reached **without** the exit blank (record K10 §0.1). The port always opens the movie, and leaves it only through its own loop exit flag and key poll (`movie.c` `PORT:` note). | **closed**: `0x62756` is WATCOM `kbhit` (the port's input queue, `[0xEF910]` never non-zero); `[0xA81A8]` is the quit flag (only writer `0x24A93`, reachable at phase 0 because `0x24C5C`'s key loop runs before `0x25238 call 0x11D04`). Both entry tests and the loop's `kbhit`/`0x50161(0xFF00FF00)` tests ported; the drivers step with `game_loop_step()` instead of presetting the flag (§F.2) |
+| 10 | `movie_play` returns without the exit blank when a frame fails to decode | `movie.c`: `if (!smk_decode_frame(&m, draw)) return 0;` skips `gfx_screen_reset(0)`. In the raw, every exit of the frame loop reaches `0x1C873` (`0x52106(0)`) before the epilogue (record K10 §0.1, §K10.3). Reached only on a corrupt SMK; the shipped movies decode (smk oracle 120/120, 41/41). | **closed**: the raw has no decode-failure exit (`0x1C7E7`'s result is unused); the port leaves the loop to the `0x1C873` blank (§F.1) |
 
 Carried from earlier rows (unchanged, evidence in the row): §C-13 (the MDI
 sustain `0x3B1E`), §C-14 (XMIDI FOR/NEXT), §C-24 (the credit countdown under
@@ -664,8 +666,9 @@ it is not a complete scan of non-Ghidra code.
 ### §H.5 Final gate
 
 Ten named gaps remained at Task 7; nine remained after named-gaps E closed #7,
-eight after named-gaps D closed #6 and seven remain after named-gaps C closed #4
-(§H.3). §H.1a gives every `not modelled` hit a verdict.
+eight after named-gaps D closed #6, seven after named-gaps C closed #4 and four
+remain after named-gaps unit F closed #8..#10 (§H.3). §H.1a gives every
+`not modelled` hit a verdict.
 
 `make clean && make build && make verify` (with the `/tmp/pr_t7_*` dump
 overrides; the two oracle fixtures restored byte-identical after `make clean`,

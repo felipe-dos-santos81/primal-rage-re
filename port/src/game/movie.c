@@ -65,18 +65,23 @@ static void movie_screen_changed(void)
     if (s_screen_hook != NULL) s_screen_hook();
 }
 
-/* 0x1C740 — game_flow "Boot logos". 0x52106(0) at entry blanks the screen and
- * zeroes the tick counters; the open/decode loop runs every frame
+/* 0x1C740 — game_flow "Boot logos"; record named-gaps-f §F.1/§F.2.
+ * 0x52106(0) at entry blanks the screen and zeroes the tick counters. The skip
+ * tests 0x1C752..0x1C766 then leave for the epilogue 0x1C878, without the exit
+ * blank: 0x62756 is the WATCOM runtime's kbhit ([0xEF910], never set, then
+ * int 21h AH=0Bh, the BIOS key buffer: the port's input queue) and
+ * DS_000A81A8 is the quit flag (0x24A93, set by 0x249F0 in 0x24C5C's key loop,
+ * which runs before 0x11D04's attract step in the same iteration). A failed
+ * open (0x1C77F) leaves the same way. The loop runs every frame
  * uVar7 = 1..piVar3[3]: palette (0x65340, after a VBlank spin), decode
  * (0x64130), blit of the frame's dirty rectangles (0x64ED8/0x50D23), advance
- * (0x643CC) unless it is the last, and the per-frame wait (0x65240); the
- * key test (0x62756/0x50161) leaves the loop. The close (0x63CE8) is followed
- * by 0x52106(0) again, inside the opened arm. So the last frame is blitted too
- * and then blanked: capture 1886 is the blank spliced into TWI5 frame 0, and
- * capture 2094 is TWI5 frame 119 spliced into frame 120 (the 121st) before
- * the exit blank (capture 2095).
- * PORT: the raw's DS_000A81A8 and 0x62756 skip tests at entry are not
- * modelled (the port's loop exit flag and key poll); ESC leaves the loop. */
+ * (0x643CC) unless it is the last, and the per-frame wait (0x65240) around the
+ * key tests 0x62756 (kbhit, which does not read the key) and
+ * 0x50161(0xFF00FF00) (a pad edge). Every loop exit reaches the close (0x63CE8)
+ * and 0x52106(0) again at 0x1C873. So the last frame is blitted too and then
+ * blanked: capture 1886 is the blank spliced into TWI5 frame 0, and capture
+ * 2094 is TWI5 frame 119 spliced into frame 120 (the 121st) before the exit
+ * blank (capture 2095). */
 int movie_play(const char *game_dir, const char *name)
 {
     s_presented = 0;
@@ -85,6 +90,9 @@ int movie_play(const char *game_dir, const char *name)
 
     gfx_screen_reset(0u);                          /* 0x1C74D 0x52106 */
     movie_screen_changed();
+
+    if (input_has_key()) return 1;                 /* 0x1C752 0x62756, 0x1C759 */
+    if (DSB(DS_000A81A8) != 0u) return 1;          /* 0x1C75F, 0x1C766 */
 
     u32 off = 0, size = 0;
     if (!res_load_file(game_dir, name, &off, &size)) {
@@ -108,22 +116,29 @@ int movie_play(const char *game_dir, const char *name)
     }
 
     u8 *draw = mem + DSD(DS_000E87A4);
+    int ok = 1;
 
     for (u32 i = 0; i < n; i++) {
-        if (!smk_decode_frame(&m, draw)) return 0;
+        /* PORT: 0x1C7E7 ignores 0x64130's result; the port cannot draw past a
+         * frame it cannot decode, so it leaves the loop to 0x1C86B, as every
+         * raw loop exit does, and reports the failure. */
+        if (!smk_decode_frame(&m, draw)) { ok = 0; break; }
         smk_palette_to(&m, gfx_dac);
         movie_present(w, h);
         s_presented++;
         movie_screen_changed();
 
+        /* PORT: the raw polls both tests inside the frame wait
+         * (0x1C85F jne 0x1C83F); the port paces the whole frame, then polls. */
         movie_pace(delay);
         host_pump();
-        /* Drain the queue, so a key queued before the ESC cannot pin the head
-         * and hide it (input.h INPUT_ESC). A window close must stop the movie
-         * too: the loop that honours it does not run while a movie plays. */
-        if (input_drain_esc() || host_quit_requested()) break;
+        if (input_has_key()) break;                /* 0x1C83F 0x62756, 0x1C846 */
+        if (input_select_bits(0xFF00FF00u) != 0u) break;   /* 0x1C84D, 0x1C854 */
+        /* PORT: a window close must stop the movie too: the loop that honours
+         * it does not run while a movie plays. */
+        if (host_quit_requested()) break;
     }
     gfx_screen_reset(0u);                          /* 0x1C873 0x52106 */
     movie_screen_changed();
-    return 1;
+    return ok;
 }

@@ -5725,10 +5725,9 @@ int test_frontend(void)
                 s7_entry_pre = DSD(DS_000EF6D8);
                 s7_pre_seen = 1;
             }
-            DSB(DS_000A81A8) = 1;          /* exactly one game_loop iteration */
             u16 state_in = DSW(DS_000F0A64);   /* the state this frame starts in */
             fe_loop_i = i;
-            game_loop();
+            game_loop_step();              /* exactly one game_loop iteration */
             if (i == 1069 || i == 1070)
                 sd1[i - 1069] = fe_entry_read(60u) | fe_entry_read(5u) << 1
                               | fe_entry_read(36u) << 2;
@@ -7129,8 +7128,7 @@ int test_attract(void)
                 }
                 if (ph <= ATTRACT_PHASE_MAX) phase_mask |= 1u << ph;
                 if (DSB(DS_000F0A5C) < 32u) fivec_mask |= 1u << DSB(DS_000F0A5C);
-                DSB(DS_000A81A8) = 1;   /* exactly one game_loop iteration */
-                game_loop();
+                game_loop_step();       /* exactly one game_loop iteration */
                 if (log != NULL) {
                     const u8 *fb = mem + DSD(DS_000E87A4);
                     fprintf(log, "%d %u %u\n", frames, (unsigned)ph,
@@ -7175,8 +7173,7 @@ int test_attract(void)
             {
                 int g2 = 0;
                 while (DSW(DS_000F0A64) != 2 && g2++ < 2000) {
-                    DSB(DS_000A81A8) = 1;
-                    game_loop();
+                    game_loop_step();
                 }
                 CHECK_EQ_INT((int)DSW(DS_000F0A64), 2);
                 CHECK_EQ_INT((int)DSW(DS_000EF6DC),
@@ -7261,8 +7258,7 @@ int test_title_window(const char *dump)
      * broken attract from hanging the run. */
     int guard = 0;
     while (DSW(DS_000F0A64) != 1 && guard++ < 200000) {
-        DSB(DS_000A81A8) = 1;   /* exactly one game_loop iteration per call */
-        game_loop();
+        game_loop_step();       /* exactly one game_loop iteration per call */
     }
     CHECK_EQ_INT((int)DSW(DS_000F0A64), 1);
     CHECK(guard < 200000, "title state reached within the drive bound");
@@ -7284,8 +7280,7 @@ int test_title_window(const char *dump)
     u32 isr_still = 0, isr_ticks = 0;
     for (int i = 0; i < TITLE_WINDOW_ITERS; i++) {
         const u32 t00 = DSD(DS_00101500);
-        DSB(DS_000A81A8) = 1;   /* exactly one game_loop iteration per call */
-        game_loop();            /* update -> render -> present -> dump */
+        game_loop_step();       /* update -> render -> present -> dump */
         if (DSD(DS_00101500) == t00) isr_still++;
         isr_ticks += DSD(DS_00101500) - t00;
         if (i == 0) {

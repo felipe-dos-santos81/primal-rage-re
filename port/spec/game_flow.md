@@ -225,7 +225,13 @@ site (`port/src/game/attract.c`, `attract_step` phase 0), decoding into
 `DAT_000E87A4` and presenting through `gfx_present`. `0x1C740` blits every
 frame, the last included, between two `0x52106(0)` calls (`0x1C74D`,
 `0x1C873`). Those calls blank the screen and the DAC and zero the tick
-counters. So TWI5 presents 121 frames and TWG 41. The collapsed smk capture
+counters. After the entry blank, a waiting key (`0x62756`, WATCOM `kbhit`)
+or the quit flag `DS_000A81A8` skips the movie without the exit blank; in the
+loop, a key (left queued, so the next movie skips too) or a pad edge
+(`0x50161(0xFF00FF00)`) leaves through the exit blank (record
+`2026-09-30-named-gaps-f-derivations.md` §F.1/§F.2). So TWI5
+presents 121 frames and TWG 41. The headless drivers step the loop with
+`game_loop_step()`, which leaves the quit flag alone. The collapsed smk capture
 holds TWI5's first 120 only, because the 121st is blanked before a whole
 scanout; the front-end capture's 2094 splices it (demo-pose record §36, which
 settles the old `TODO(verify)`). Streamed Smacker audio is sub-project 2b-ii and not ported. See

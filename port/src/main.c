@@ -144,8 +144,8 @@ static const u32 attract_loops[2] = { 0x0383B6F4u, 0x03837440u };
 
 /* PORT: the original has no headless mode. The port runs the real master loop
  * one frame at a time without opening a window: game_init() runs the init chain
- * once, then each game_loop() call advances exactly one frame because the loop
- * stops as soon as the quit flag DS_000A81A8 is set (preset here). The init is
+ * once, then each game_loop_step() call advances exactly one frame (the step
+ * brake, which leaves the quit flag DS_000A81A8 untouched). The init is
  * split from game_main() so its teardown cannot stop the music between frames,
  * and no device is opened. host_init() is never called, so SDL opens no window
  * and needs no display, and the captured content is driven by the loop's own
@@ -167,8 +167,7 @@ static int run_check(const char *game_dir, int frames)
     u32 host0 = host_tick_count();
     game_init();                       /* init chain once; runs the audio init */
     for (int i = 1; i <= frames; i++) {
-        DSB(DS_000A81A8) = 1;            /* one loop iteration per call */
-        game_loop();                     /* frame i */
+        game_loop_step();                /* frame i: one loop iteration */
         u16 st = DSW(DS_000F0A64);
         if (st == 0)
             for (int k = 0; k < 2; k++)

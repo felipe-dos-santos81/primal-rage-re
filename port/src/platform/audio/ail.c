@@ -452,6 +452,10 @@ s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 sequence_num)
     }
     sequence->loaded = 1;
     sequence->state = 2;
+    /* 0x6A5B7..0x6A5C5: the volume and its target from preference 12,
+     * [0x108D94] = 0x7F (AIL_startup 0x660E7; the game never sets it);
+     * 0x6A57D/0x6A584 clear the step and the accumulator. */
+    seq_set_sequence_volume(0x7f);
     return 1;
 }
 
@@ -473,18 +477,15 @@ void AIL_stop_sequence(HSEQUENCE sequence)
     sequence->state = 2;
 }
 
-/* 0x5deca — spec audio.md "AIL surface" (row 30).
- * PORT: the value feeds the sequencer's sequence-volume input, which the
- * original's CC7 arm uses to scale the driver's volume before dispatch
- * (prage.c:49121). The 500 ms fade is still not modelled (the port applies the
- * target immediately). */
+/* 0x5deca — spec audio.md "AIL surface" (row 30); record named-gaps-f §F.3.
+ * Forwards its three arguments to 0x6A8D0 (seq_fade_sequence_volume): the
+ * volume fades over `fade_ms` in the sequencer's 120 Hz service. */
 void AIL_set_sequence_volume(HSEQUENCE sequence, s32 volume, u32 fade_ms)
 {
-    (void)fade_ms;
     if (sequence == NULL || !sequence->used)
         return;
     sequence->volume = volume;
-    seq_set_sequence_volume((u8)(volume < 0 ? 0 : volume > 0x7f ? 0x7f : volume));
+    seq_fade_sequence_volume(volume, (s32)fade_ms);
 }
 
 /* 0x5deed — spec audio.md "AIL surface" (row 31). */

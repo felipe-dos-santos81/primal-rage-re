@@ -54,10 +54,22 @@ int seq_load(const u8 *data, u32 len);
 /* Engine sequence volume (the AIL sequence volume, 0..0x7f). It is an input,
  * not sequence data: the original's sequencer scales a received CC7 by it
  * before the driver sees it (prage.c:49121), and the SBPRO2.MDI carrier-TL
- * law consumes the scaled value. Defaults to the image's DAT_00108d94 (0x7f);
- * AIL_set_sequence_volume forwards the game's music volume here. Persists
- * across seq_load/seq_start. */
+ * law consumes the scaled value. Defaults to the image's DAT_00108d94 (0x7f).
+ * Sets the volume and its target at once (no fade); AIL_init_sequence seeds
+ * it (0x6A5B7) and AIL_set_sequence_volume fades through
+ * seq_fade_sequence_volume. Persists across seq_load/seq_start. */
 void seq_set_sequence_volume(u8 volume);
+
+/* 0x6A8D0: AIL_set_sequence_volume's engine half. Sets the target volume and,
+ * for a non-zero `ms`, fades toward it one unit per ms*1000/|delta| us of
+ * 120 Hz service calls (seq_tick), re-sending the logged CC7s every 8th call
+ * while the fade runs; `ms` = 0 applies it at once (record named-gaps-f §F.3). */
+void seq_fade_sequence_volume(s32 volume, s32 ms);
+
+/* Test accessors: the AIL sequence volume now (seq+0x34), and a MIDI
+ * channel's volume as the driver holds it (the CC7 scaled when received). */
+s32 seq_sequence_volume(void);
+u8 seq_channel_volume(int ch);
 
 /* Advances the stream by exactly one driver tick (SEQ_TICK_MS) while playing:
  * releases expired notes, then, when the pending delta has elapsed, processes

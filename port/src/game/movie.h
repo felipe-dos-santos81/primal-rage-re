@@ -10,9 +10,12 @@
 
 /* Plays `game_dir`/`name` (e.g. "twi5.smk"; the on-disk file is uppercase and
  * res_load_file's scan matches case-insensitively). Returns 1 when the movie
- * played to the end or was cleanly skipped on a missing/unreadable/unsupported
- * file, and 0 only on a hard failure the caller should report (invalid
- * arguments, or a frame that failed to decode). ESC ends the movie cleanly. */
+ * played to the end, was skipped at entry (a queued key, 0x1C752 kbhit, or the
+ * quit flag DS_000A81A8, 0x1C75F: the entry blank only), was ended by a key
+ * (left queued) or a 0x50161(0xFF00FF00) pad edge, or was cleanly skipped on a
+ * missing/unreadable/unsupported file. Returns 0 on invalid arguments, and on a
+ * frame that failed to decode, which ends the movie with the exit blank
+ * (record named-gaps-f §F.1/§F.2). */
 int movie_play(const char *game_dir, const char *name);
 
 /* PORT: presented-frame count of the last movie_play() call — the player

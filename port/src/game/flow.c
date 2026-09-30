@@ -6747,6 +6747,19 @@ void game_isr_ticks(u32 n)
     DSD(DS_00101500) += n;                                 /* 0x1BE0F/0x1BE16 */
 }
 
+/* PORT: the headless drivers' one-iteration brake (game_loop_step). It is
+ * host state, not the original's: the drivers used to preset the quit flag
+ * DS_000A81A8, which the movie player's entry test 0x1C75F reads mid-iteration
+ * (record named-gaps-f §F.2). */
+static int s_loop_step;
+
+void game_loop_step(void)
+{
+    s_loop_step = 1;
+    game_loop();
+    s_loop_step = 0;
+}
+
 void game_loop(void)
 {
     /* PORT: the raw's 0x255CC prologue (0x255D4/0x255DA) zeroes the tick pair
@@ -6838,7 +6851,7 @@ void game_loop(void)
         if (host_quit_requested()) {
             DSB(DS_000A81A8) = 1;
         }
-    } while (DSB(DS_000A81A8) == 0);
+    } while (DSB(DS_000A81A8) == 0 && !s_loop_step);   /* 0x256DD */
 }
 
 /* ---- modes 0x28-0x2F, the coin/start divert's eight game-start entries
