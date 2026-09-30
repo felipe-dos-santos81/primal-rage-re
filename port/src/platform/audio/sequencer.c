@@ -645,7 +645,12 @@ void seq_set_sequence_volume(u8 volume)
 /* 0x6A8D0 — record named-gaps-f §F.3. Sets the target; unless it equals the
  * volume now, a zero time applies it at once and any other time sets the step
  * ms * 1000 / |volume - target| us (a signed idiv) and clears the
- * accumulator; then 0x69320 re-sends the logged CC7s. */
+ * accumulator; then 0x69320 re-sends the logged CC7s.
+ * PORT: the driver lock is not modelled: 0x6A8E0 `inc dword [drv+0x14]` and
+ * its `dec` (0x6A8F5, 0x6A945..0x6A949) only make the timer callback 0x69370
+ * skip a service that interrupts the call (0x6937B `cmp [esi+0x14],0; jne`);
+ * the port's seq_tick runs from game_audio_service on the game thread, never
+ * inside this call (record named-gaps-b §B.11). */
 void seq_fade_sequence_volume(s32 volume, s32 ms)
 {
     S.vol_target = volume;                                  /* 0x6A8E6 */

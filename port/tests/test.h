@@ -24,7 +24,11 @@ extern int g_failures;
 
 /* One line per unit test; adding a test is one line here. The functions live
  * in the per-area files (test_platform.c, test_game.c, test_fight.c,
- * test_audio.c, test_video.c) — add to the area that owns the code. */
+ * test_audio.c, test_video.c) — add to the area that owns the code.
+ * test_restart must stay last: its rs_check_resume and rs_check_resume_tail
+ * run game_init_resume() on the unit process (game_state_init: mode 3,
+ * attract state 0, a fresh actor pool; the RNG seed; the volumes), which
+ * would change the state any test after it starts from. */
 #define TEST_CASES(X)   \
     X(test_mem)         \
     X(test_le)          \
