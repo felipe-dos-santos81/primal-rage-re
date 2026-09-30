@@ -877,6 +877,21 @@ u32  fighter_3dd14(u32 side);
 void fighter_3dd84(u32 side);
 void fighter_3d424(u32 slot, u32 side);
 u32  fighter_3d3e4(u32 slot);
+/* Record gameplay-u0 §U0.9. Character 5's reaction-0x20 cluster: 0x3D73C
+ * (slot, rec, side) stores the +0x0C 0x3D674 (case 7), the +0x18 hook
+ * 0x3D484 (fn(side), EAX returned) and the +0x1C 0x3D4DC (fn(side)), which
+ * arms 0x3D424/0x3D3E4. Its reaction-0x26 cluster: 0x3DA10 stores 0x3D9E4,
+ * 0x3D858 and 0x3D8AC, which arms the +0x10 handler 0x3D790 (case 10,
+ * (slot, side) as 0x3D424) and 0x3D3E4. */
+void fighter_3d73c(u32 slot, u32 rec, u32 side);
+void fighter_3d674(u32 slot, u32 rec, u32 side);
+u32  fighter_3d484(u32 side);
+void fighter_3d4dc(u32 side);
+void fighter_3da10(u32 slot, u32 rec, u32 side);
+void fighter_3d9e4(u32 slot, u32 rec, u32 side);
+u32  fighter_3d858(u32 side);
+void fighter_3d8ac(u32 side);
+void fighter_3d790(u32 slot, u32 side);
 /* Record §49-U: the pose/animation slot callbacks 0x3EC20/0x3EF44/0x3FB88
  * store. 0x3EA24, 0x3EE00 and 0x3F9C8 are +0x0C callbacks (slot, rec, side);
  * 0x3E6A8 is a +0x10 handler, (slot, side) as 0x3D424. */

@@ -511,6 +511,21 @@ int actors_init(void)
     fn_register(0x3DD84u, (void (*)(void))fighter_3dd84);
     fn_register(0x3D424u, (void (*)(void))fighter_3d424);
     fn_register(0x3D3E4u, (void (*)(void))fighter_3d3e4);
+    /* PORT: record gameplay-u0 §U0.9. Character 5's reaction-0x20 callback
+     * 0x3D73C (the dword at 0xA50A8) with its +0x0C 0x3D674, +0x18 0x3D484 and
+     * +0x1C 0x3D4DC (code immediates at 0x3D766/0x3D76D/0x3D774), and its
+     * reaction-0x26 callback 0x3DA10 (0xA5120) with 0x3D9E4, 0x3D858 and
+     * 0x3D8AC (0x3DA37/0x3DA3E/0x3DA47) and the +0x10 handler 0x3D790 that
+     * 0x3D8AC stores (0x3D97A; case 10, (slot, side)). */
+    fn_register(0x3D73Cu, (void (*)(void))fighter_3d73c);
+    fn_register(0x3D674u, (void (*)(void))fighter_3d674);
+    fn_register(0x3D484u, (void (*)(void))fighter_3d484);
+    fn_register(0x3D4DCu, (void (*)(void))fighter_3d4dc);
+    fn_register(0x3DA10u, (void (*)(void))fighter_3da10);
+    fn_register(0x3D9E4u, (void (*)(void))fighter_3d9e4);
+    fn_register(0x3D858u, (void (*)(void))fighter_3d858);
+    fn_register(0x3D8ACu, (void (*)(void))fighter_3d8ac);
+    fn_register(0x3D790u, (void (*)(void))fighter_3d790);
     /* PORT: record §49-U. The pose callbacks: +0x0C 0x3EA24/0x3EE00/0x3F9C8
      * (0x3531C case 7, (slot, rec, side)) and +0x10 0x3E6A8 (case 10, (slot,
      * side)), stored by the setups 0x3EC20/0x3EF44/0x3FB88 (ported, record §50-A). */
