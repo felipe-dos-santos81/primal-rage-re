@@ -75,5 +75,44 @@ class TestInjector(unittest.TestCase):
         self.assertEqual(m[0x41C:0x41E], (0x20).to_bytes(2, 'little'))
 
 
+class TestAccept(unittest.TestCase):
+    def test_accept_needs_the_spin_across_both_reads(self):
+        # Review Focus 1: v spinning, v2 the logged read, v3 a re-read after it
+        v = {'f': 5, 't508': 1, 't50c': 2}
+        self.assertTrue(gc.accept(v, dict(v), dict(v)))
+        self.assertFalse(gc.accept(dict(v, t50c=1), dict(v), dict(v)))     # not spinning
+        self.assertFalse(gc.accept(v, dict(v, f=6), dict(v, f=6)))         # an iteration between v and v2
+        self.assertFalse(gc.accept(v, dict(v), dict(v, t508=2)))           # a tick during v2's read
+
+
+class TestOutput(unittest.TestCase):
+    def test_guard_requires_gp_prefix(self):
+        ok = os.path.join(ROOT, 'data', 'k11-captures', 'gp-x')
+        self.assertEqual(gc.guard_gp(ok), os.path.realpath(ok))
+        for bad in (os.path.join(ROOT, 'data', 'k11-captures', 'walk'),
+                    os.path.join(ROOT, 'data', 'game', 'C', 'gp-x'), '/tmp/gp-x'):
+            with self.assertRaises(SystemExit):
+                gc.guard_gp(bad)
+
+    def test_frames_stream_to_gzip(self):
+        import shutil, tempfile
+        d = tempfile.mkdtemp(prefix='gpcap-test-')
+        self.addCleanup(shutil.rmtree, d, True)
+        frames = [bytes([i]) * gc.FRAME_BYTES for i in range(5)]
+        orig = gc.sc.read_avi_frames
+        gc.sc.read_avi_frames = lambda paths: iter(frames)
+        try:
+            n = gc.write_frames(d, ['x.avi'], [1, 3, 4])
+        finally:
+            gc.sc.read_avi_frames = orig
+        self.assertEqual(n, 3)
+        import gzip
+        for k, raw in enumerate((1, 3, 4)):
+            with gzip.open(os.path.join(d, 'frame_%05d.raw.gz' % k)) as f:
+                self.assertEqual(f.read(), frames[raw])
+        with open(os.path.join(d, 'window.txt')) as f:
+            self.assertEqual(f.read().split('\n')[-2], '00002 4')
+
+
 if __name__ == '__main__':
     unittest.main()

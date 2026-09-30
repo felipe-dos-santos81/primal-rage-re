@@ -331,6 +331,44 @@ restored → `OK`): `release_due` with `f > h[0]` →
 `FAIL: test_press_holds_and_queues_once`; `consistent` without the `t508`
 compare → `FAIL: test_consistent_rejects_a_moving_counter`; `ring_steps` with
 `h > end` → `FAIL: test_ring_steps_one_head_per_consumed_word`.
+### §G.5.2 The poller, the run, the frames and the checks (Task 6)
+
+`guard_gp` (`k11_capture.guard_out` plus a `gp-` basename), `write_frames`
+(streams the chosen AVI frames to `frame_%05d.raw.gz`, gzip level 1, and
+`window.txt`; stops decoding after the last wanted frame), `dosbox_cmd` (as
+K11's, `DX-CAPTURE /V /O`, the memory file, `dos log console=quiet`),
+`Poller`, `main`. Capture layout: `poll.log`, `frame_%05d.raw.gz`,
+`window.txt`, `session.txt`, `dosbox.log`, `*.dro`, `last_frame.png`. Nothing
+holds all frames: pass 1 keeps only an md5 per AVI frame.
+
+Changes to the plan's code, each with its reason:
+
+1. **The snapshot is closed on both sides (Review Focus 1).** The plan logged
+   `v2` when `v` was spinning and `v`, `v2` agreed on `f` and `t508`. `v2`'s
+   fields are read one after the other, and those read after its `t508` read
+   (`raw` … `ent`, then the bitmap `kb` and the BDA head/tail) could still land
+   after a tick that ends the spin (the ISR samples keys at `0x1BE1C` and the
+   next iteration's `0x500C4` rewrites `raw`). `accept(v, v2, v3)` adds a third
+   read `v3` after `kb`/head/tail and requires `v2`, `v3` to agree as well. Test
+   `test_accept_needs_the_spin_across_both_reads`.
+2. **One `H` record per consumed word** (§G.4), through `ring_steps`.
+3. A self-check line: `kb != raw` counts the `S` records whose bitmap word
+   (read in the spin) differs from `raw_to_kb(raw)`. In the spin no tick has
+   happened since the one that fed this iteration's `0x500C4`, so the two must
+   agree; a count above 0 would show a torn snapshot or a second sampler.
+   Reported, not a CHECK (a blocking pump in a menu may legitimately differ).
+4. `session.txt` also records `avi_frames` (the pass-1 count); the poller
+   sleeps 5 ms while `[DS_00101514]` is still 0 instead of spinning.
+
+Tests: `python3 -m unittest tools.tests.test_gp_capture tools.tests.test_gp_session`
+→ `Ran 27 tests … OK` (9 gp_capture + 18 gp_session; the plan's 24 plus the
+chord, ring and accept tests; before: `AttributeError: module 'gp_capture' has
+no attribute 'guard_gp'` / `'accept'` / `'FRAME_BYTES'`). Mutations (each
+restored → `OK`): `guard_gp` without the `gp-` check →
+`FAIL: test_guard_requires_gp_prefix`; `accept` without `consistent(v2, v3)` →
+`FAIL: test_accept_needs_the_spin_across_both_reads`; frames written raw
+instead of gzip → `ERROR: test_frames_stream_to_gzip`.
+
 ## §G.6 Make targets (U1 Task 7)
 ## §G.7 The gp-pads capture (U1 Task 8)
 ## §G.8 U1 closure (U1 Task 9)
