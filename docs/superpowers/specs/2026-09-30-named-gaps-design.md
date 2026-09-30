@@ -1,6 +1,6 @@
 # Closing the six named gaps: design
 
-**Status:** design approved in conversation (decomposition A-D, order below). Awaiting written-spec review before any plan is written.
+**Status:** design approved in conversation (decomposition A-D, order below). Plans A-D are written (`docs/superpowers/plans/2026-09-30-named-gaps-{a,b,c,d}-*.md`). §8 records what planning found; where §8 and §2-§7 differ, §8 wins (raw wins).
 
 ## 1. Purpose
 
@@ -127,3 +127,54 @@ capture is ground truth for B.
 - The 81 host-owned/deferred and runtime functions the classification file
   excludes.
 - Real audio-device output on this macOS host (SDL audio cannot open here).
+
+## 8. Corrections found while planning (raw wins)
+
+Found by the four read-only planners against the raw mirror. Each is recorded
+with addresses in the owning plan.
+
+- **G1 has three `longjmp` sites, one `setjmp`.** `0x65431` is WATCOM `longjmp`
+  and `0x653FC` is `setjmp`; the single `setjmp` is at `0x20C1F` inside
+  `0x20C10` (its return value is discarded). The jumps come from `0x2EBB3` (the
+  real idle timeout in `0x2EB80`: `[0x101500] - [0x105F2C] > 0x4B0`, unsigned),
+  `0x2520B` (case `0x27`, menu result not 0/-5/-10) and `0x24AB0` ("ABANDON
+  CONQUEST? Y/N" answered yes). All three are a soft restart (RNG re-seed
+  `0xABCD`, `game_state_init`, re-entry at `0x20DE8`). The port's master-loop
+  spin never advances `DS_00101500`, so the idle timeout cannot fire today, and
+  the port currently quits to DOS at `0x24AB0` where the original restarts
+  (fixing it changes two existing test expectations). Plan B closes all three;
+  the restart lands in `game_loop()` as a `PORT:` because the test drivers step
+  one frame per call.
+- **G2 is unreachable in the stock game.** The diagnostic arm needs
+  `DS_00107410 & 0x10` (config field `0x2A` bit 4, stored at `0x2FA10..0x2FA1C`);
+  the field is 4 bits wide (descriptor `0x1B80`) and its only stores clear the
+  low two bits, so only a saved config or a memory poke reaches it. Plan A's
+  DIAGS capture is a "what if" run; Plan B has an ABORT-RAW branch for the case
+  the capture cannot say.
+- **G3:** the `#DE` fires when `v != 0 && (v & 0xFFFF) == 0`; STATISTICS row 2
+  (fields 8 + 6) reaches it with field 8 = `0xFFFF` and field 6 = `1`. The game
+  installs no fault handler (no DPMI `0203h`, vector 0/0Eh unhooked), so DOS/4GW's
+  default handler runs; what it prints is left to Plan A's capture.
+- **G6: game code does read sample status.** §4.D said only `main.c`'s probe
+  does; that is false. Five sound routines call it (`0x1CE70`, `0x1CE04`,
+  `0x1CD9C`, `0x1CED4`, `0x1CC28` twice) and the voice dispatcher `0x2C3FC` skips
+  queueing when `0x1CE70` says a sample plays, so freed slots change which slot a
+  sample takes and whether a voice is queued. The exposure is argued bounded (the
+  loading screen draws on an entry's first resolve only, no RNG on the path) but
+  the gate (oracle lines, dumps, WAV) is the proof. Plan D's clock is not a
+  host-seam "frames consumed" count (the port pushes audio; nothing pulls): it
+  lives in `game_audio_service` (`0x1CF20`), driven by the 60 Hz ISR tick
+  (`0x1CFFA push 0x3c`; the 60.05 Hz figure is a DOSBox measurement), and calls
+  the device path's own `mixer_render`. One behaviour it restores: voice `0xBD`
+  shares handle with `0x42` as a one-shot, so a stuck `0xBD` slot makes the
+  dispatcher refuse `0x42` in the second attract cycle today.
+- **G4:** the arms are described in K7+K12 record §0.7.1 (lines ~388-406) and
+  the "Not tested" entry is §2.4; the two stores at `0x1D0F7` and `0x1D163` write
+  places that must already be 0 and stay untestable residue.
+- **Dependencies between branches.** Plans C and D close ledger rows (§H.3) that
+  exist only on `all-gaps-final`; run them on a branch that contains it.
+- **Captures live under `data/`.** `AGENTS.md` says `data/` is read-only, but the
+  `make title-capture` target is the precedent for a git-ignored capture folder;
+  Plan A's `data/k11-captures/` follows it and its tool refuses to write
+  anywhere else. `le.py` is not in the repo, so plans use capstone on the raw
+  file.
