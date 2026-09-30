@@ -1076,3 +1076,40 @@ against the pre-mutation copy):
 - (e) `if n > end:` → `if False:` → `FAIL: test_an_unreachable_n_fails`.
 - (f) the enforced run continuing past the first unexplained frame →
   `FAIL: test_report_goes_past_the_first_unexplained`.
+
+## §G.15 The trace claim (U3 Task 3)
+
+`gp_compare.trace_claim`: the port's first `T` line per `f` against the
+capture's first `S` line per `f` (`gp_session.snapshots`), over
+`gp_session.TRACE_FIELDS` (`mode st raw pad e0 e2 rng cred s0_5a s1_5a`); an
+`f` the capture did not snapshot is skipped and counted, never compared with a
+default (spec §3.7); the first differing `f` is the ratcheted value; `tick` is
+reported on its own (host-timed, spec §7 Q6), never ratcheted.
+
+**Additions to the plan, from the U2 facts (§H items 1–2; the plan's claim
+covered only `TRACE_FIELDS`, which leaves out `t508`, `ent` and `tick`):**
+
+1. `normalised`: `t508` and `ent` are compared **after** the conversion §H
+   derived, and reported (one line, counts and first `f`), **never ratcheted**.
+   `t508`: port = capture + 1 (the capture reads in the spin, the port after the
+   releasing tick). `ent`: port = capture − `B.base` + `0x80000` (capture linear
+   address to Ghidra linear address; `B` is the capture's first `B` record; a
+   capture `ent` of 0 must be 0 in the port). Neither is compared raw. They are
+   reported rather than ratcheted because `t508`/`t50c` restart at some
+   transitions (spec §3.7), where a difference would say nothing about play.
+2. **A vacuous trace fails**: no port `T` record with a capture snapshot is an
+   exit 1 (`nothing compared`), so a wrong `poll.log` or an empty overlap cannot
+   read as "0 unexplained".
+
+Tests: `Ran 10` in the plan's count would be 8 + 2; with the U3 additions the
+file runs **15** (11 frame-side, 4 trace-side: the plan's two, the conversion
+test, the vacuous test), `OK` (before the trace code: `AttributeError … 'trace_claim'`).
+Mutations (each restored → `Ran 15 … OK`):
+
+- `TRACE_FIELDS + ('tick',)` → `FAIL: test_tick_is_reported_not_ratcheted`.
+- `t508` without the `+ 1` → `FAIL: test_normalised_fields_are_converted_not_compared_raw`.
+- `ent` without the rebase → the same test fails.
+- the `compared == 0` guard removed → `FAIL: test_nothing_compared_fails`.
+- an unsnapshotted `f` compared anyway (the skip removed) → `ERROR:
+  test_first_difference_skips_unsnapshotted_frames` (a `KeyError`, where the plan
+  would have to default the missing record) and `test_nothing_compared_fails`.

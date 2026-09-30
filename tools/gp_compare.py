@@ -225,3 +225,75 @@ def ratchet(name, what, first, end, n, out=print):
     out('gp_compare: %s: %s: first unexplained %d, ratchet N %d ok%s'
         % (name, what, first, n, '' if first == n else ' (improved: raise N)'))
     return 0
+
+
+DATA_BASE_PORT = 0x80000    # the port's data object base (mem.h DATA_BASE), record §H item 2
+
+
+def normalised(cap, port, fs, base):
+    """Fields that differ between the capture and the port by construction (record
+    §H items 1-2), compared after the conversion: t508 (the capture reads it in the
+    spin, the port after the releasing tick: port = capture + 1) and ent (a pointer:
+    capture linear address - the capture's data base + the port's). Returns
+    {field: (compared, differing, first differing f)}; reported, never ratcheted."""
+    out = {'t508': [0, 0, None], 'ent': [0, 0, None]}
+    for f in fs:
+        if f not in cap:
+            continue
+        c, p = cap[f], port[f]
+        want = {'t508': (c['t508'] + 1) & 0xFFFFFFFF}
+        if base is not None:
+            want['ent'] = ((c['ent'] - base + DATA_BASE_PORT) & 0xFFFFFFFF) if c['ent'] else 0
+        for n, w in want.items():
+            out[n][0] += 1
+            if p[n] != w:
+                out[n][1] += 1
+                if out[n][2] is None:
+                    out[n][2] = f
+    return {n: tuple(v) for n, v in out.items()}
+
+
+def trace_claim(name, cap_lines, port_lines, min_first, out=print):
+    cap = gs.snapshots(cap_lines)
+    port = {}
+    for l in port_lines:
+        r = gs.parse(l)
+        if r and r['kind'] == 'T':
+            port.setdefault(r['f'], r)
+    fs = sorted(port)
+    compared = skipped = 0
+    first = field = tick_first = None
+    for f in fs:
+        if f not in cap:
+            skipped += 1
+            continue
+        compared += 1
+        if tick_first is None and cap[f]['tick'] != port[f]['tick']:
+            tick_first = f
+        for n in gs.TRACE_FIELDS:
+            if cap[f][n] != port[f][n]:
+                first, field = f, n
+                break
+        if first is not None:
+            break
+    out('gp_compare: %s: trace: %d frames compared up to the first difference (f %s..), %d without a capture snapshot; first tick '
+        'difference %s (reported, not ratcheted)'
+        % (name, compared, fs and '%X' % fs[0], skipped, 'none' if tick_first is None else 'f=%X' % tick_first))
+    if first is not None:
+        out('gp_compare: %s: trace: first difference f=%X (%d) in %s: capture %X, port %X'
+            % (name, first, first, field, cap[first][field], port[first][field]))
+    base = None
+    for l in cap_lines:
+        r = gs.parse(l)
+        if r and r['kind'] == 'B':
+            base = r['base']
+            break
+    norm = normalised(cap, port, fs, base)
+    out('gp_compare: %s: trace: normalised (reported, not ratcheted): %s'
+        % (name, '; '.join('%s %d of %d differ%s' % (n, d, c, '' if d == 0 else ' (first f=%X)' % f0)
+                           for n, (c, d, f0) in sorted(norm.items()))))
+    if compared == 0:
+        out('gp_compare: %s: trace: FAIL: no port T record has a capture snapshot (nothing compared)' % name)
+        return 1, None
+    end = (fs[-1] + 1) if fs else 0
+    return ratchet(name, 'trace', first, end, min_first, out), first

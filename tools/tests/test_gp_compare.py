@@ -124,5 +124,63 @@ class TestFrames(Dirs):
         self.assertEqual(sum('UNEXPLAINED capture' in l for l in out), 1, out)   # enforced: stops at the first
 
 
+def _t(f, **kw):
+    vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
+    vals.update(f=f, **kw)
+    return 'T ' + gs.format_s(0, vals, 0, 0, 0)[2:]
+
+
+def _S(f, **kw):
+    vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
+    vals.update(f=f, **kw)
+    return gs.format_s(0, vals, 0, 0, 0)
+
+
+class TestTrace(unittest.TestCase):
+    def test_first_difference_skips_unsnapshotted_frames(self):
+        port = [_t(f, rng=f) for f in range(10, 20)]
+        cap = [_S(f, rng=f if f != 17 else 0) for f in range(10, 20) if f != 12]
+        out = []
+        rc, first = gc.trace_claim('t', cap, port, 17, out.append)
+        self.assertEqual((rc, first), (0, 17), out)
+        self.assertIn('1 without a capture snapshot', out[0])
+        rc, _ = gc.trace_claim('t', cap, port, 18, out.append)
+        self.assertEqual(rc, 1)
+
+    def test_tick_is_reported_not_ratcheted(self):
+        port = [_t(f, tick=f) for f in range(3)]
+        cap = [_S(f, tick=0) for f in range(3)]
+        out = []
+        rc, first = gc.trace_claim('t', cap, port, 3, out.append)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertIn('first tick difference f=1', out[0])
+
+
+    def test_normalised_fields_are_converted_not_compared_raw(self):
+        # the record's conversions (section H items 1-2): the port reads t508 one tick
+        # later, and ent is a pointer in two address spaces
+        base = 'B ms=0 base=00266000 ptr=0000FE20'
+        cap = [base] + [_S(f, t508=f, ent=0x2A2BEC) for f in range(3)]
+        port = [_t(f, t508=f + 1, ent=0xBCBEC) for f in range(3)]
+        out = []
+        rc, first = gc.trace_claim('t', cap, port, 3, out.append)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('t508 0 of 3 differ' in l and 'ent 0 of 3 differ' in l for l in out), out)
+        # a raw comparison would differ at every frame; a wrong conversion must be shown
+        port[1] = _t(1, t508=1, ent=0xBCBEC)            # t508 not one tick later at f=1
+        port[2] = _t(2, t508=3, ent=0x2A2BEC)           # ent left in the capture's address space
+        out = []
+        rc, first = gc.trace_claim('t', cap, port, 3, out.append)
+        self.assertEqual((rc, first), (0, None), out)   # reported, never ratcheted
+        self.assertTrue(any('ent 1 of 3 differ (first f=2)' in l and 't508 1 of 3 differ (first f=1)' in l
+                            for l in out), out)
+
+    def test_nothing_compared_fails(self):
+        out = []
+        rc, first = gc.trace_claim('t', [_S(f) for f in range(3)], [_t(f) for f in range(10, 13)], 0, out.append)
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('nothing compared' in l for l in out), out)
+
+
 if __name__ == '__main__':
     unittest.main()
