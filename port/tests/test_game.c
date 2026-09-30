@@ -10519,10 +10519,26 @@ static void vs4_mode12_3(void)
     DSD(bg + 0x1Cu) = 0x2300u;
     game_mode_12_step();
 }
-/* Row 133: state 4, DS_0010810E 7 -> 8 (0x420AD). */
+/* How many times `id` is in the voice log since the runner's reset. */
+static int vs4_log_count(u32 id)
+{
+    u32 i, n = sound_voice_log_count();
+    int k = 0;
+    for (i = 0; i < n; i++)
+        if (sound_voice_log_at(i) == id) k++;
+    return k;
+}
+/* Row 133: state 4, first DS_0010810E 6 -> 7 (0x420B0 `jne`: no 0xC7; the
+ * pass ran: the count is 7 and the state 8), then 7 -> 8 (0x420AD). */
 static void vs4_mode12_4(void)
 {
     vs4_mode12(4u);
+    DSB(DS_0010810E) = 6u;
+    game_mode_12_step();
+    CHECK_EQ_INT((int)DSB(DS_0010810E), 7);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 8);
+    CHECK_EQ_INT(vs4_log_count(0xC7u), 0);
+    DSB(DS_00104B25) = 4u;
     DSB(DS_0010810E) = 7u;
     game_mode_12_step();
 }
@@ -10578,8 +10594,9 @@ static void vs4_mode30_2(void)
     DSB(DS_00104B25) = 2u;
     game_mode_30_step();
 }
-/* Row 161: 0x4F4E8 on a tick multiple of DS_001088D0 = 1 with the countdown
- * byte DS_001088F2 = 5 (non-zero, <= 10). */
+/* Row 161: 0x4F4E8 on a tick multiple of DS_001088D0 = 1. First the
+ * countdown byte DS_001088F2 = 0xB (above 10, 0x4F575 `jg`: no 0x52; the
+ * pass ran: the byte is decremented to 0xA), then 5 (non-zero, <= 10). */
 static void vs4_round_timer(void)
 {
     vs_pools();
@@ -10587,6 +10604,10 @@ static void vs4_round_timer(void)
     DSB(DS_00105B3B) = 0u;
     DSD(DS_001088D0) = 1u;
     DSW(DS_00104AF4) = 7u;
+    DSB(DS_001088F2) = 0x0Bu;
+    flow_round_timer_step();
+    CHECK_EQ_INT((int)DSB(DS_001088F2), 0x0A);
+    CHECK_EQ_INT(vs4_log_count(0x52u), 0);
     DSB(DS_001088F2) = 5u;
     flow_round_timer_step();
 }

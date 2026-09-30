@@ -1933,12 +1933,12 @@ them without a bank read (`DS_001028C8` = 0, §4.2).
 |---:|---|---|---|---|---|
 | 131 | `41D28/41D2B` (`lea eax,[edx+0x34]`) | `flow.c` `game_mode_12_step` case 1 | `vs4_mode12_1` | `vs4_mode12(1)`: `vs_pools`, the strings, seven live portrait actors in `DS_001080C0[0..6]` and `DS_001080F4`; `DS_0010810F` = 0, `DS_00104AFC` = 7, `DS_00108106[0]` = `0x80` (the rest 0), `DS_00108112` = 3, `DS_00104AD4` = 2 | `37` (`0x34` + 3) |
 | 132 | `42074/4207F` | same, case 3 | `vs4_mode12_3` | `vs4_mode12(3)`, `DS_00104AD4` = 0, character 0, stage 0, `DS_00104529` = 0 (the text arm); the background's `+0x36` = 0 and `+0x1C` = `0x2300` (`0x41E7D`) | `3A` |
-| 133 | `420B2/420B7` | same, case 4 | `vs4_mode12_4` | `vs4_mode12(4)`, `DS_0010810E` = 7 (7 -> 8, `0x420AD cmp eax,8`) | `C7` |
+| 133 | `420B2/420B7` | same, case 4 | `vs4_mode12_4` | `vs4_mode12(4)`; first `DS_0010810E` = 6 (6 -> 7, `0x420B0 jne`): the driver checks the byte is 7, the state 8 and no `C7` logged; then state 4 again with 7 (7 -> 8, `0x420AD cmp eax,8`) | `C7` |
 | 135 | `42222/42229` | same, case 6 | `vs4_mode12_6` | `vs4_mode12(6)`, the background's `+0x2C` = `0x1C0` (step 1, `0x42183..0x4219D`), `DS_00107832` = 1 | `BC` |
 | 145 | `27305/2730A` | `flow.c` `flow_arena_ko_check` | `vs4_arena_ko` | `vs4_fight` (`tf_demo_fixture`, `vs_pools`, the strings, live HUD records `DS_001028F0/F8[0..1]`, both slots' `+0x8C` = 0, `DS_00104529` = 0); `DS_0010810D` = 0, `DS_0010780A` = `0x78` (`0x27303`) | `D3` |
 | 154 | `25E2D`/`25E34` `/25E39` | `flow.c` `game_mode_05_step` case 2 | `vs4_mode05_2` | `vs4_fight`; case 2 with `DS_00104B14` = 0, then again with 1 (`0x25E24`) | `D7`, `D9` |
 | 155 | `294CE/294D5` | `flow.c` `game_mode_30_step` case 2 | `vs4_mode30_2` | `vs4_fight`, `DS_00104B14` = 0 | `D7` |
-| 161 | `4F577/4F581` | `flow.c` `flow_round_timer_step` | `vs4_round_timer` | `vs_pools`, the strings, `DS_00105B3B` = 0, `DS_001088D0` = 1, `DS_00104AF4` = 7, `DS_001088F2` = 5 (non-zero, `<= 10`) | `52` |
+| 161 | `4F577/4F581` | `flow.c` `flow_round_timer_step` | `vs4_round_timer` | `vs_pools`, the strings, `DS_00105B3B` = 0, `DS_001088D0` = 1, `DS_00104AF4` = 7; first `DS_001088F2` = `0xB` (above 10, `0x4F575 jg`): the driver checks the byte is `0xA` and no `52` logged; then `DS_001088F2` = 5 (non-zero, `<= 10`) | `52` |
 | 162 | `27FF4/27FF9` | `flow.c` `flow_round_end_check` | `vs4_round_end_ko` | `vs4_fight`; both `+0x5A` at `0x78` (a tie: `0x27C48` leaves `DS_00104AD4` = 2), mode 4, `DS_00104B1D` = 3 (no bonus), `B1E` = `ADC` = 3, win counts 0, characters 0 | `D3` |
 | 163 | `2805A/2805F` | same | `vs4_round_end_time` | as row 162 with both `+0x5A` at 0 and `DS_001088F2` = 0 (`0x28054`) | `D3` |
 | 168 | `28C20/28C2A` | `flow.c` `game_mode_0a_step` | `vs4_mode0a` | `m0a_seed`'s recipe: `tf_demo_fixture`, mode `0xA`, `DS_00107804` = `DS_00107898` = 0 | `D8` |
@@ -2006,6 +2006,10 @@ second id on the same path, so rows sharing an arm list each other's ids.
   `DL = n` (row 131) loads are the callers' own values kept across the call,
   which the port already stores as constants/locals. The one-argument
   `sound_voice` is exact.
+- **§6.4's `not wired` total (a count, not a raw correction):** it is 147,
+  not 144. The per-file drops there are 3 + 1 + 7 + 1 + 10 = 22, and
+  169 - 22 = 147; `git grep -c 'not wired' b7b7c74 -- port/src` gives 147
+  (headers included). §6 itself is left for the controller's integration.
 
 ### §11.3 Row 219 (the silent site `0x44AFF`) is deferred to the merge
 
@@ -2025,9 +2029,15 @@ the source unwired, the suite printed 33 `voice site row` lines (all `0 of
 n`) and `FAILURES: 33` (`$K/t11-unwired.txt`); no heap or cap failure.
 Wired: `all checks passed`.
 
-Assertion sites: 13374 -> **13375** (one size check; `rg -o
-'\bCHECK(_EQ_INT)?\(' port/tests` gives 13377 including `test.h`'s two
-macro definitions).
+Assertion sites: 13374 -> **13380**: the size check, and (review 1) five
+checks inside two drivers, `vs4_mode12_4` (the 6 -> 7 pass: the byte, the
+state and a zero count of `C7` in the log) and `vs4_round_timer` (the `0xB`
+pass: the decremented byte and a zero count of `52`). `rg -o
+'\bCHECK(_EQ_INT)?\(' port/tests` gives 13382 including `test.h`'s two
+macro definitions. The negative checks count the id in
+`sound_voice_log_at(0..count)`, not the log length, so a later batch's voice
+on the same path does not break them; the byte/state checks make them fail
+if the first pass does not run.
 
 `not wired` lines (`rg -c 'not wired' port/src`, headers included): 147 ->
 117 (`nameentry.c` 18 -> 0, `flow.c` 26 -> 15, `flow.h` 1 -> 0; rows 198,
@@ -2065,14 +2075,17 @@ No deletion failed a row off its own path. Four more mutations
 | row 131's `n + 0x34u` -> `0x34u` | 1 | 131 (`0 of 1`) |
 | row 154's pick swapped (`0xD7`/`0xD9`) | 1 | 154 (`1 of 2`) |
 | row 201's pick swapped (`0xE8`/`0xE7`) | 1 | 201 (`1 of 2`) |
-| row 133's `== 8u` gate removed | 0 | survives: see §11.6 |
+| row 133's `== 8u` gate removed (133g) | 1 | `test_game.c:10540: 1 != 0` (the 6 -> 7 pass logged `C7`); before review 1 it survived |
+| row 161's call hoisted out of its `<= 10` arm (161h) | 1 | `test_game.c:10610: 1 != 0` (the `0xB` pass logged `52`) |
+
+Review 1 re-ran rows 133 and 161's deletions with the new drivers: 1 FAIL
+line each (`test_fixtures.c:232`, `0 of 1`), as before
+(`$K/t11mut-summary.txt`, after the `fix round 1` marker).
 
 ### §11.6 Not tested
 
 - The dispatcher's effect at these sites: the runner has no DIG driver, so
   no case-2/3 id reaches `0x1CC28`/`0x1CB18` here (§3's tests pin those).
-- Row 133's gate (`DS_0010810E == 8`): the runner checks presence, not
-  absence, so a voice on every state-4 pass survives (mutation 133g).
 - Each call's position relative to its non-voice neighbours (row 207/208
   after the column store, row 213/216 before it, row 161 before the
   decrement), except the in-order ids on each path.
@@ -2081,7 +2094,7 @@ No deletion failed a row off its own path. Four more mutations
 - Row 132's actor arm (`DS_00104529` bit 1), row 135's `DS_00104529` bit 1
   base, rows 154/155's actor descriptor `0xA8884`.
 - Row 145's second test (rows 146/147, batch B1), rows 162/163's other
-  tails (`0x27DC8`, mode 7, `0x280C4`), row 161 with a countdown above 10.
+  tails (`0x27DC8`, mode 7, `0x280C4`).
 - Rows 206..217 through the autorepeat counters (`DS_001044E0`/`DC`, which
   the image never writes, §53-A.4) and side 1's pad byte; row 218 through a
   queued letter (`DS_001044C8 != DS_001044BC`).
@@ -2116,3 +2129,8 @@ No deletion failed a row off its own path. Four more mutations
 - `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
   unchanged (no function is ported; the README stays as it is).
 - Build: 0 warnings.
+- Review 1 re-ran the gate on the new drivers: `make verify` `EXIT=0`
+  (`$K/verify-t11r1.txt`, 0 warnings, `ORACLES-EQUAL`), `dumps.sh
+  t11r1-after` matches `base.sha256` (the three drivers `all checks
+  passed`; the dump is deleted), the `make audio-render` WAV is
+  byte-identical to `before-t2.wav`, and the counter is unchanged.
