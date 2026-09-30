@@ -212,17 +212,24 @@ def port_script(name, lines):
     recs = [r for r in (parse(l) for l in lines) if r]
     snap = snapshots(lines)
     presses = [r for r in recs if r['kind'] == 'I' and 'press' in r and r.get('bios') is not None]
+    for k, p in enumerate(presses):
+        if p.get('ring') == 0:
+            raise ScriptError('key %d (%s) at f=%X was not queued: the BIOS ring was full'
+                              % (k, p['press'], p['f']))
     heads = [r for r in recs if r['kind'] == 'H']
     if len(heads) < len(presses):
         raise ScriptError('%d BIOS words queued, %d consumed' % (len(presses), len(heads)))
-    last_head = {}
-    for h in heads:
+    last_head, before = {}, {}
+    for k, h in enumerate(heads):
         last_head[h['f']] = h['head']
+        if h['f'] not in before:                # the head before frame f's first word
+            before[h['f']] = heads[k - 1]['head'] if k else None
     keys = []
     for k, (p, h) in enumerate(zip(presses, heads)):
         c = h['f']
         prev = snap.get(c - 1)
-        if prev is None or prev['head'] == h['head']:
+        old = before[c]
+        if prev is None or prev['head'] == h['head'] or (old is not None and prev['head'] != old):
             raise ScriptError('key %d (%s) consumption at f=%X unpinned' % (k, p['press'], c))
         if c in snap and snap[c]['head'] != last_head[c]:
             raise ScriptError('key %d (%s): S(%X) disagrees with its H record' % (k, p['press'], c))

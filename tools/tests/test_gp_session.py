@@ -181,6 +181,21 @@ class TestPortScript(unittest.TestCase):
             gs.port_script('_t', L2)
 
 
+    def test_consumption_needs_the_old_head_before(self):
+        # review 1: S(c - 1) must show exactly the head before frame c's words,
+        # not merely a head other than H's.
+        L = [_s(0x125, head=0x24) if l.startswith('S ') and gs.parse(l)['f'] == 0x125 else l for l in _log()]
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('_t', L)
+
+    def test_a_press_the_full_ring_dropped_is_named(self):
+        L = _log()
+        k = next(i for i, l in enumerate(L) if 'press=p1.up' in l)
+        L[k] = L[k].replace('ring=1', 'ring=0')
+        with self.assertRaises(gs.ScriptError) as cm:
+            gs.port_script('_t', L)
+        self.assertIn('ring was full', str(cm.exception))
+
 class TestTraceDiff(unittest.TestCase):
     def test_first_difference_and_tick_apart(self):
         a = [_s(f, rng=f) for f in range(10)]
