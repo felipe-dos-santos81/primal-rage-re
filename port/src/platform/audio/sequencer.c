@@ -430,8 +430,6 @@ static void key_on(int midi, int note, int vel, u32 dur)
     fam_apply(v, FAM_ALL);
 }
 
-/* The single halt path. Every exit from the parser that stops playback routes
- * here, so no path can stop the stream while leaving OPL channels keyed on. */
 /* 0x69320 — record named-gaps-f §F.3. Re-dispatches every logged CC7
  * (0xB0|ch, 7, log) through 0x68AB0, which rescales it by the volume now. */
 static void seq_resend_volume(void)
@@ -456,6 +454,8 @@ static void seq_fade_step(void)
     if ((S.svc & 7u) == 0u) seq_resend_volume();            /* 0x699B4 0x699BB */
 }
 
+/* The single halt path. Every exit from the parser that stops playback routes
+ * here, so no path can stop the stream while leaving OPL channels keyed on. */
 static void halt(void)
 {
     for (int v = 0; v < SEQ_OPL_CHANNELS; v++)

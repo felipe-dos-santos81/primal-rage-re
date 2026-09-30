@@ -128,6 +128,8 @@ int movie_play(const char *game_dir, const char *name)
         s_presented++;
         movie_screen_changed();
 
+        /* PORT: the raw polls both tests inside the frame wait
+         * (0x1C85F jne 0x1C83F); the port paces the whole frame, then polls. */
         movie_pace(delay);
         host_pump();
         if (input_has_key()) break;                /* 0x1C83F 0x62756, 0x1C846 */

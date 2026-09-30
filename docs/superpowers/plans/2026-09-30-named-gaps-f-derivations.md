@@ -87,6 +87,11 @@ skips it and `0x24C5C` then reads it. `0x50161` is the ported
 word only ever in `0xFF00FF00` (`0x500C4`), it returns the pad bits pressed and
 not yet latched.
 
+The raw polls both tests repeatedly inside the frame wait (`0x1C85F jne
+0x1C83F`); the port paces the whole frame and then polls once (`PORT:` note in
+`movie.c`). That is the same at frame granularity, except that a key arriving
+after the raw's last poll of a wait slice gets one more frame in the raw.
+
 ### The harness conflict, and its fix
 
 `main.c`'s `--check` loop and the five test drivers used to preset
