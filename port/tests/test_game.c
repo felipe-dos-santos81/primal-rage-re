@@ -11072,32 +11072,11 @@ static const TfVoiceSite k12_b1[] = {
     { 160u, vs_mode33,          1u, { 0x2Bu } },          /* 0x29698 */
 };
 
-/* The checks below put back what tf_voice_sites does after each case: the
- * data object, the two actor pools DS_001014EC/DS_001014F4 name at entry
- * (their pools are fixed for the process), the aperture and the DAC; and
- * they run with DS_001028C8 = 0 (no DIG, no bank read). */
-static u8 vs_d[0x8B0D0], vs_pa[0x4880], vs_pb[0xEBA0], vs_ap[320u * 200u], vs_dac[256][3];
-static u32 vs_pa_at, vs_pb_at;
-static void vs_snap(void)
-{
-    vs_pa_at = DSD(DS_001014EC);
-    vs_pb_at = DSD(DS_001014F4);
-    tf_snap(vs_d, DATA_BASE, sizeof vs_d);
-    if (vs_pa_at != 0u) tf_snap(vs_pa, vs_pa_at, sizeof vs_pa);
-    if (vs_pb_at != 0u) tf_snap(vs_pb, vs_pb_at, sizeof vs_pb);
-    memcpy(vs_ap, gfx_aperture(), sizeof vs_ap);
-    memcpy(vs_dac, gfx_dac, sizeof vs_dac);
-    DSD(DS_001028C8) = 0;
-    sound_voice_log_reset();
-}
-static void vs_put(void)
-{
-    tf_put(vs_d, DATA_BASE, sizeof vs_d);
-    if (vs_pa_at != 0u) tf_put(vs_pa, vs_pa_at, sizeof vs_pa);
-    if (vs_pb_at != 0u) tf_put(vs_pb, vs_pb_at, sizeof vs_pb);
-    memcpy(gfx_aperture(), vs_ap, sizeof vs_ap);
-    memcpy(gfx_dac, vs_dac, sizeof vs_dac);
-}
+/* The checks below put back what tf_voice_sites does after each case, with
+ * its own tf_voice_snap/tf_voice_put (test_fixtures.c): the data object, the
+ * two actor pools DS_001014EC/DS_001014F4 name at entry (their pools are
+ * fixed for the process), the aperture and the DAC; and they run with
+ * DS_001028C8 = 0 (no DIG, no bank read). */
 /* How many times `id` is in the voice log. */
 static int vs_log_count(u32 id)
 {
@@ -11119,7 +11098,7 @@ static void vs_result_gate_check(void)
         { 1u, 0x01u, 0u, 1u, 0 }, { 1u, 0x00u, 0u, 0u, 1 }, { 1u, 0x40u, 1u, 0u, 1 },
     };
     for (u32 i = 0; i < 6u; i++) {
-        vs_snap();
+        tf_voice_snap();
         vs_text();
         DSD(DS_00104AD4) = g[i].r;
         DSB(DS_001088F2) = g[i].f2;
@@ -11131,7 +11110,7 @@ static void vs_result_gate_check(void)
             fprintf(stderr, "row 143 gate case %u: %d 0x24 voices, want %d\n",
                     (unsigned)i, n, g[i].want);
         CHECK_EQ_INT(n, g[i].want);
-        vs_put();
+        tf_voice_put();
     }
 }
 
@@ -11145,7 +11124,7 @@ static void vs_setne_check(void)
         { 153u, vs_mode32_replace_b0a, 1u, 0x25u, 0x26u },
     };
     for (u32 i = 0; i < 2u; i++) {
-        vs_snap();
+        tf_voice_snap();
         c[i].drive(c[i].b0a);
         int got = vs_log_count(c[i].want), bad = vs_log_count(c[i].not_);
         if (got != 1 || bad != 0)
@@ -11154,14 +11133,13 @@ static void vs_setne_check(void)
                     (unsigned)c[i].not_, bad);
         CHECK_EQ_INT(got, 1);
         CHECK_EQ_INT(bad, 0);
-        vs_put();
+        tf_voice_put();
     }
 }
 
 /* ---- record k7-k12 §6: batch B2, the flow and attract rows ---------------- */
 
 #define VS2_R          (FIGHT_RECS + 0x400u)   /* a scratch camera-target record (m0f_seed's) */
-#define VS2_0010810D    0x0010810Du /* no symbols.h name: the high byte of 0x10810A */
 
 /* Row 13: 0x11000 case 4 on the actor case 3 spawns (0x111AF, into
  * DS_000F0A50). +0x2C = 0x1100 gives 0x1000 after the 0x100 step, not above
@@ -11228,7 +11206,7 @@ static void vs_mode0f(void)
     (void)tf_demo_fixture();
     mem_fill(VS2_R, 0, 0x100u);
     DSD(DS_001077A8) = VS2_R;
-    DSB(VS2_0010810D) = 0u;
+    DSB(VS_810D) = 0u;
     DSD(DS_00104AD4) = 0u;
     DSW(DS_00104AFE) = 1u;
     game_mode_0f_step();
@@ -11251,7 +11229,10 @@ static void vs_mode1e_done(u8 state)
 }
 static void vs_mode1e_5(void) { vs_mode1e_done(5u); }
 static void vs_mode1e_8(void) { vs_mode1e_done(8u); }
-/* Rows 186/187: the four raw pairs of the one port path, two states each. */
+/* Rows 186/187: the four raw pairs of the one port path (jump table 0x1EE6C:
+ * state 0xB 0x1EF44, 0xC 0x1F034, 0xD 0x1F0C1, 0xE 0x1EFD3), each an E3 call
+ * then an E2 call: B 0x1EF8D/0x1EF97, C 0x1F07F/0x1F089, D 0x1F109/0x1F113,
+ * E 0x1F01F/0x1F029. Row 186's driver runs B and C, row 187's D and E. */
 static void vs_mode1e_bc(void) { vs_mode1e_done(0x0Bu); vs_mode1e_done(0x0Cu); }
 static void vs_mode1e_de(void) { vs_mode1e_done(0x0Du); vs_mode1e_done(0x0Eu); }
 /* Rows 188/189: states 0xF/0x10, ra_check_rearm's recipe (the other side's
@@ -11301,8 +11282,8 @@ static const TfVoiceSite k12_b2_game[] = {
     { 183u, vs_mode1e_7,       2u, { 0x100u, 0xE1u } },               /* 0x1F311 */
     { 184u, vs_mode1e_8,       2u, { 0xE3u, 0xE2u } },                /* 0x1F36C */
     { 185u, vs_mode1e_8,       2u, { 0xE3u, 0xE2u } },                /* 0x1F376 */
-    { 186u, vs_mode1e_bc,      4u, { 0xE3u, 0xE2u, 0xE3u, 0xE2u } },  /* 0x1EF8D/0x1F07F */
-    { 187u, vs_mode1e_de,      4u, { 0xE3u, 0xE2u, 0xE3u, 0xE2u } },  /* 0x1F113/0x1F029 */
+    { 186u, vs_mode1e_bc,      4u, { 0xE3u, 0xE2u, 0xE3u, 0xE2u } },  /* E3: 0x1EF8D (B) 0x1F07F (C) 0x1F109 (D) 0x1F01F (E) */
+    { 187u, vs_mode1e_de,      4u, { 0xE3u, 0xE2u, 0xE3u, 0xE2u } },  /* E2: 0x1EF97 (B) 0x1F089 (C) 0x1F113 (D) 0x1F029 (E) */
     { 188u, vs_mode1e_0f,      1u, { 0xE1u } },                       /* 0x1EFA9 */
     { 189u, vs_mode1e_10,      1u, { 0xE1u } },                       /* 0x1F099 */
     { 190u, vs_mode1f_0,       1u, { 0x3Bu } },                       /* 0x20955 */
@@ -11511,6 +11492,14 @@ static void vs4_mode12_4(void)
     DSB(DS_00104B25) = 4u;
     DSB(DS_0010810E) = 7u;
     game_mode_12_step();
+    /* Record k7-k12 §12.0: 8 -> 9 posts nothing (0x420AD `cmp eax,8; jne`
+     * is an equality, not a `>= 8`): the one 0xC7 stays the 7 -> 8 pass's. */
+    CHECK_EQ_INT(vs4_log_count(0xC7u), 1);
+    DSB(DS_00104B25) = 4u;
+    DSB(DS_0010810E) = 8u;
+    game_mode_12_step();
+    CHECK_EQ_INT((int)DSB(DS_0010810E), 9);
+    CHECK_EQ_INT(vs4_log_count(0xC7u), 1);
 }
 /* Row 135: state 6, the background +0x2C = 0x1C0 so the step is 1
  * (0x42183..0x4219D), cycle byte 1. */
@@ -11541,7 +11530,7 @@ static void vs4_fight(void)
 static void vs4_arena_ko(void)
 {
     vs4_fight();
-    DSB(VS2_0010810D) = 0u;
+    DSB(VS_810D) = 0u;
     DSB(DS_0010780A) = 0x78u;
     flow_arena_ko_check();
 }
@@ -11580,6 +11569,16 @@ static void vs4_round_timer(void)
     CHECK_EQ_INT(vs4_log_count(0x52u), 0);
     DSB(DS_001088F2) = 5u;
     flow_round_timer_step();
+    /* Record k7-k12 §12.0: the boundary 0xA (0x4F572 `cmp edx,0xa; jg`: 10 is
+     * not above 10) and 0x80 (0x4F56F `sar edx,0x18`: -128, signed) post
+     * 0x52 too. */
+    CHECK_EQ_INT(vs4_log_count(0x52u), 1);
+    DSB(DS_001088F2) = 0x0Au;
+    flow_round_timer_step();
+    CHECK_EQ_INT(vs4_log_count(0x52u), 2);
+    DSB(DS_001088F2) = 0x80u;
+    flow_round_timer_step();
+    CHECK_EQ_INT(vs4_log_count(0x52u), 3);
 }
 /* Rows 162/163: 0x27FA8, outside mode 0xB, B1E == ADC, the win counts
  * equal. Row 162: both sides at 0x78 (a tie: 0x27C48 leaves DS_00104AD4 =

@@ -195,18 +195,35 @@ void tf_menu_press(u32 bits)
 
 /* ---- record k7-k12 §4: the K12 voice-site runner ---- */
 
+static u8 tfv_d[0x8B0D0], tfv_pa[0x4880], tfv_pb[0xEBA0], tfv_ap[320u * 200u], tfv_dac[256][3];
+static u32 tfv_pa_at, tfv_pb_at;
+
+void tf_voice_snap(void)
+{
+    tfv_pa_at = DSD(DS_001014EC);
+    tfv_pb_at = DSD(DS_001014F4);
+    tf_snap(tfv_d, DATA_BASE, sizeof tfv_d);
+    if (tfv_pa_at != 0u) tf_snap(tfv_pa, tfv_pa_at, sizeof tfv_pa);
+    if (tfv_pb_at != 0u) tf_snap(tfv_pb, tfv_pb_at, sizeof tfv_pb);
+    memcpy(tfv_ap, gfx_aperture(), sizeof tfv_ap);
+    memcpy(tfv_dac, gfx_dac, sizeof tfv_dac);
+    DSD(DS_001028C8) = 0;
+    sound_voice_log_reset();
+}
+
+void tf_voice_put(void)
+{
+    tf_put(tfv_d, DATA_BASE, sizeof tfv_d);
+    if (tfv_pa_at != 0u) tf_put(tfv_pa, tfv_pa_at, sizeof tfv_pa);
+    if (tfv_pb_at != 0u) tf_put(tfv_pb, tfv_pb_at, sizeof tfv_pb);
+    memcpy(gfx_aperture(), tfv_ap, sizeof tfv_ap);
+    memcpy(gfx_dac, tfv_dac, sizeof tfv_dac);
+}
+
 void tf_voice_sites(const TfVoiceSite *t, u32 count)
 {
-    static u8 d[0x8B0D0], pa[0x4880], pb[0xEBA0], ap[320u * 200u], dac[256][3];
-    const u32 a = DSD(DS_001014EC), b = DSD(DS_001014F4);
     for (u32 k = 0; k < count; k++) {
-        tf_snap(d, DATA_BASE, 0x8B0D0u);
-        if (a != 0u) tf_snap(pa, a, 0x4880u);
-        if (b != 0u) tf_snap(pb, b, 0xEBA0u);
-        memcpy(ap, gfx_aperture(), sizeof ap);
-        memcpy(dac, gfx_dac, sizeof dac);
-        DSD(DS_001028C8) = 0;
-        sound_voice_log_reset();
+        tf_voice_snap();
         /* res_block_alloc(0) is the bump heap's next block; it aligns the
          * heap and does not advance it. */
         const u32 heap = res_block_alloc(0u);
@@ -230,10 +247,6 @@ void tf_voice_sites(const TfVoiceSite *t, u32 count)
             fprintf(stderr, "voice site row %u: %u of %u ids in order\n",
                     (unsigned)t[k].row, (unsigned)j, (unsigned)t[k].n);
         CHECK_EQ_INT((int)j, (int)t[k].n);
-        tf_put(d, DATA_BASE, 0x8B0D0u);
-        if (a != 0u) tf_put(pa, a, 0x4880u);
-        if (b != 0u) tf_put(pb, b, 0xEBA0u);
-        memcpy(gfx_aperture(), ap, sizeof ap);
-        memcpy(gfx_dac, dac, sizeof dac);
+        tf_voice_put();
     }
 }

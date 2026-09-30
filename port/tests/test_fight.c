@@ -41216,8 +41216,6 @@ int test_pose_pool(void)
 #define VF_POOL      0x03F70000u   /* the §51-A private pool (test_game.c's RA_POOL) */
 #define VF_PSET      0x03FA0000u   /* its pset block (RA_PSET) */
 #define VF_00108396  0x00108396u   /* byte: 0x48F98's once bit 7 */
-#define VF_00108397  0x00108397u   /* byte: 0x48F98's node count */
-#define VF_00104529  0x00104529u   /* byte: the sprite-flag config byte */
 #define VF_NODE      (FIGHT_RECS + 0x3000u)  /* a type-0x2D list node */
 #define VF_REC       (FIGHT_RECS + 0x3100u)  /* its actor record */
 #define VF_THEM      (FIGHT_RECS + 0x3200u)  /* the slot record it measures against */
@@ -41248,7 +41246,7 @@ static void vf_2d_far(void)
     DSB(DS_001078FD) = 0u;
     DSD(DS_001077B0) = VF_THEM;
     DSB(VF_00108396) = 0u;
-    DSB(VF_00108397) = 1u;
+    DSB(R46_108397) = 1u;
     if (f != NULL) f();
 }
 /* Row 5: 0x3D784 (type 0x09's teardown, fn_register(0x3D784)): a tail jmp. */
@@ -41301,7 +41299,7 @@ static void vf_3531c(void)
     DSD(DS_001077A8) = DS_001077B0;
     DSD(DS_001077B0) = VF_REC;
     DSW(DS_001078F6) = 1u;
-    DSB(VF_00104529) = 0u;
+    DSB(DS_00104529) = 0u;
     DSB(DS_001077B0 + 0x53u) = 4u;
     fighter_state_3531c(0u);
 }
@@ -41609,7 +41607,6 @@ static const TfVoiceSite k12_c_fight[] = {
  * table read through the wrong slot's character fails its row. ---- */
 #define VF_D2_OWN    1u            /* side 0's character */
 #define VF_D2_OTHER  4u            /* side 1's (ctx[3]'s for side 0) */
-#define VF_0010810D  0x0010810Du   /* byte: the side an entrance places against */
 
 /* Both sides spawned through 0x33EB4 into the private pool: side 0 as `ch0`,
  * side 1 as `ch1`. DS_001078FA = 0 so the two spawns count to 2;
@@ -41641,7 +41638,7 @@ static void vf_entrance(u32 ch, void (*fn)(u32 side))
     DSB(DS_00104B14) = 1u;
     fighter_spawn(1u);
     DSD(DSD(VF_S1) + 0x18u) = 0x1000u;
-    DSB(VF_0010810D) = 1u;
+    DSB(M0F_0010810D) = 1u;
     DSD(DS_000BE018) = 0x7C00u;
     fn(0u);
 }
@@ -42148,7 +42145,7 @@ static void vf_2d_near(void)
     DSD(DS_00104AD4) = 0u;
     DSD(DS_001077A8 + 4u) = 0u;
     DSB(VF_00108396) = 0u;
-    DSB(VF_00108397) = 0u;
+    DSB(R46_108397) = 0u;
     if (f != NULL) f();
 }
 
@@ -42458,27 +42455,22 @@ static void vf_4e99c_r6_c1(void) { vf_4e99c(5u, 1u); }   /* r 6: even, count 1 *
  * 0x4EB32..0x4EB47) store the tally and post 0x5D with no DS_001088BD store,
  * so r = 1 and r = 5 are kept and the tail's {2, 4, 6} test does not toggle
  * DS_001088BC. vf_4e99c seeds DS_001088BD = r - 1 and DS_001088BC = 0; a
- * re-bump would leave r + 1 and DS_001088BC = 1. The data object and the
- * pools named at entry are put back; no DIG driver (DS_001028C8 = 0), so the
- * voices resolve no bank. */
+ * re-bump would leave r + 1 and DS_001088BC = 1. tf_voice_snap/tf_voice_put
+ * (record §12.0) put back the data object, the pools named at entry, the
+ * aperture and the DAC, and reset the voice log; no DIG driver
+ * (DS_001028C8 = 0), so the voices resolve no bank. */
 static void check_4e99c_odd_count(void)
 {
-    static u8 s_data[0x10B0D0u - 0x80000u], s_rec[0xEBA0u], s_pset[0x4880u];
     static const u8 bd[2] = { 0u, 4u };
-    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
     u32 i;
-    tf_snap(s_data, 0x80000u, sizeof s_data);
-    if (rec_pool != 0u) tf_snap(s_rec, rec_pool, sizeof s_rec);
-    if (pset_pool != 0u) tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_voice_snap();
     for (i = 0; i < 2u; i++) {
         DSB(DS_001028C8) = 0u;
         vf_4e99c(bd[i], 1u);
         CHECK_EQ_INT((int)DSB(DS_001088BD), bd[i] + 1);
         CHECK_EQ_INT((int)DSB(DS_001088BC), 0);
     }
-    tf_put(s_data, 0x80000u, sizeof s_data);
-    if (rec_pool != 0u) tf_put(s_rec, rec_pool, sizeof s_rec);
-    if (pset_pool != 0u) tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_voice_put();
 }
 
 #define K12_D1_ROWS 31
@@ -42516,6 +42508,48 @@ static const TfVoiceSite k12_d1[] = {
     {  57u, vf_4e99c_r6_c1,        1u, { 0x5Eu } },                        /* 0x4EB6B -> 0x4EB6D/0x4EB72 */
 };
 
+/* ---- record k7-k12 §12.0: the merge's row 219 ----
+ * 0x44A64 (0x44A64..0x44B0D) is the second copy of 0x449B8's body; the port
+ * runs both through fighter_c4_spawn, so row 100's one C call is row 219's
+ * too (0x44AFA mov eax,0xAB; 0x44AFF call 0x2C3FC). The only gate is
+ * 0x44A72 `test esi,esi; je 0x44B04` on the record's +0x14 slot; both +0x28
+ * bit-14 arms and both +0x51 arms rejoin at 0x44AFA. The driver first runs
+ * with +0x14 = 0 (no 0xAB), then with the slot back, a sentinel in its +0x08
+ * and +0x28 bit 14 clear: the child is spawned into +0x08 with the speed
+ * word -0x200 (0x44A8A mov ebx,0xfffffe00), which 0x449B8's -0x180 cannot
+ * give. */
+static int vf_int_log_count(u32 id)
+{
+    u32 i, n = sound_voice_log_count();
+    int k = 0;
+    for (i = 0; i < n; i++)
+        if (sound_voice_log_at(i) == id) k++;
+    return k;
+}
+static void vf_44a64(void)
+{
+    u32 rec, slot, child;
+    vf_duel(4u, VF_D2_OTHER);
+    rec = DSD(VF_S0);
+    slot = DSD(rec + 0x14u);
+    CHECK(slot != 0u, "row 219: the spawned record has no +0x14 slot");
+    DSD(rec + 0x14u) = 0u;
+    fighter_44a64(rec);
+    CHECK_EQ_INT(vf_int_log_count(0xABu), 0);
+    DSD(rec + 0x14u) = slot;
+    DSD(slot + 0x08u) = 0xA5A5A5A5u;
+    DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) & ~0x4000u);
+    fighter_44a64(rec);
+    child = DSD(slot + 0x08u);
+    CHECK(child != 0xA5A5A5A5u, "row 219: 0x44A64 spawned no child");
+    CHECK_EQ_INT((int)(child != 0xA5A5A5A5u ? DSW(child + 0x34u) : 0u), 0xFE00);
+}
+
+#define K12_INT_ROWS 1
+static const TfVoiceSite k12_int[] = {
+    { 219u, vf_44a64,   1u, { 0xABu } },                       /* 0x44AFF */
+};
+
 /* Record k7-k12 §6..§10: the fight-area voice sites (tables per batch). */
 int test_fight_voice_sites(void)
 {
@@ -42530,6 +42564,8 @@ int test_fight_voice_sites(void)
     tf_voice_sites(k12_d3, (u32)(sizeof k12_d3 / sizeof k12_d3[0]));
     CHECK_EQ_INT((int)(sizeof k12_d1 / sizeof k12_d1[0]), K12_D1_ROWS);
     tf_voice_sites(k12_d1, (u32)(sizeof k12_d1 / sizeof k12_d1[0]));
+    CHECK_EQ_INT((int)(sizeof k12_int / sizeof k12_int[0]), K12_INT_ROWS);
+    tf_voice_sites(k12_int, (u32)(sizeof k12_int / sizeof k12_int[0]));
     check_4e99c_odd_count();
     return g_failures - before;
 }

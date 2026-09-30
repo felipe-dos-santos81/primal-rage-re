@@ -7016,7 +7016,7 @@ void fighter_24804(u32 side)
 }
 
 /* PORT: data-object address symbols.h does not name. */
-#define FIGHTER_BE008   0x000BE008u  /* 0x3ABA2: [char] 0x3AAFC's voice word */
+#define FIGHTER_BE008   0x000BE008u  /* 0x3ABA2: [char] 0x3AAFC's voice word; 0x3A320: 0x3A2A0's */
 
 /* 0x3AAFC. The reaction applier / pose dispatcher 0x3B714 runs for the winner.
  * EAX = slot, the stack argument = the reaction byte. It runs the facing latch,
@@ -8597,7 +8597,6 @@ void fighter_459d0(u32 rec)
 #define FIGHT_C4_C9198  0x000C9198u  /* 0x456F3: [char] the other's stream */
 #define FIGHT_C4_EB61E  0x000EB61Eu  /* 0x4595C: 0x45908's stream */
 #define FIGHT_C4_BB0EC  0x000BB0ECu  /* 0x4598E: 0x45908's dust descriptor */
-#define FIGHTER_BE008   0x000BE008u  /* 0x3A320: [char] u16 voice id */
 
 /* 0x3A2A0 — record §48-R. The pose knockback the +0x1C callbacks 0x44DB8,
  * 0x44FF4 and 0x451EC run (the fourth caller, 0x20FE0, is unported). EAX =

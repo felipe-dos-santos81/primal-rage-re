@@ -42,5 +42,12 @@ typedef struct { u32 row; void (*drive)(void); u32 n; u32 ids[4]; } TfVoiceSite;
  * SOUND_VOICE_LOG_CAP voices and that the log holds ids[0..n) as an in-order
  * subsequence (other voices on the same path may interleave). */
 void tf_voice_sites(const TfVoiceSite *t, u32 count);
+/* The snapshot tf_voice_sites takes around each row, for checks outside a
+ * table (record k7-k12 §12.0): tf_voice_snap saves the data object, the two
+ * actor pools DS_001014EC/DS_001014F4 name at the call, the aperture and the
+ * DAC, then sets DS_001028C8 = 0 and resets the voice log; tf_voice_put puts
+ * them back. One snapshot at a time (the buffers are shared). */
+void tf_voice_snap(void);
+void tf_voice_put(void);
 
 #endif /* PR_TEST_FIXTURES_H */

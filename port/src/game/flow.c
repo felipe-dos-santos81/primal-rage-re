@@ -5412,8 +5412,11 @@ void game_mode_1f_step(void)
  * call). Otherwise:
  * - three text_cells_release_count(-1, 3, 0x2A), (-1, 5, 0x2A), (-1, 7,
  *   0x2A) clears (0x2F388);
- * - the run clock 0x32970(0), out of scope (spec §7); the voice
- *   0x2C3FC(0x29) (case 0) and the deferred 0x2C3FC(0x22, edx=0x1D);
+ * - the run clock 0x32970(0), out of scope (spec §7); the voices
+ *   0x2C3FC(0x29) (case 0) and 0x2C3FC(0x22) (case 5); the raw loads
+ *   EDX = 0x1D before the second call (0x26DB3), but 0x2C3FC never reads
+ *   EDX (0x2C3FF, record k7-k12 §6.2): it pushes and pops it, so the 0x1D
+ *   is the next call's argument (0x26DBF);
  * - prompt_side_erase(0, 0x1D) and prompt_side_erase(1, 0x1D) (0x2C2B0);
  * - the current side's slot byte DS_001077F1[side] |= 0x10 (the slot's
  *   +0x41, as flow.c's other +0x41 writers);
