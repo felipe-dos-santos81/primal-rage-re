@@ -199,3 +199,65 @@ button names in `k11_session.KEYS` are exactly these six.
 
 ## §A.3 Tool and driver contracts (Tasks 3–8)
 
+### §A.3.1 `tools/k11_fields.py` (Task 3)
+
+The codec follows the `0x2D974` (get) and `0x2DA0C` (set) listings line by line
+(each statement cites its address). Re-read here: `0x2DA29..0x2DA34` stores the
+low byte in the byte table first (`[eax+0x85daf]`, DS `0x105DAF + idx`), then
+`0x2DA59..0x2DAC0` writes the nibbles upward from `bitpos >> 1`: an odd
+`bitpos` fills the high nibble of its byte (`0x2DA72..0x2DA90`), a lone last
+nibble the low nibble (`0x2DA9F..0x2DAAE`), whole bytes otherwise
+(`0x2DAB9`). The window `[0x105DAF, 0x105E30)` (129 bytes) covers every
+descriptor: the highest byte-table index is 0x26 (`0x105DD5`), the nibble bytes
+end at `0x105E2E` (exclusive `0x105E2F`), and `0x105E2F` is field 3's carry
+byte (`0x2DB05`). `set_` writes neither the dirty byte `DS_00105DD8`
+(`0x2DA3B`, `0x2DA4E`) nor calls `0x2D4EC`. `Ran 7 tests … OK`. Mutation (the
+two nibble reads of `get` swapped): `FAILED (failures=5)` —
+`test_field_2a_keeps_four_bits`, `test_round_trip_and_isolation_for_every_field`,
+`test_byte_part_is_the_low_byte`, `test_get_reads_the_listing_order`,
+`test_set_then_get_and_neighbour_nibbles_kept`; restored: `OK`.
+
+### §A.3.2 `tools/k11_session.py` (Task 4)
+
+As the plan, with one change: the `de` scenario pokes field 8 = `0xFFFF`,
+field 6 = `1` (spec §8; §A.1.2). `Ran 6 tests … OK`. Mutation (`normalise`
+returns the word unchanged): `ERROR: test_port_script_from_a_synthetic_poll`
+(`ScriptError: observed keys ['1C0D', '50E0', '011B'] differ from scenario _t
+['1C0D', '5000', '011B']`); restored: `OK`.
+
+### §A.3.3 `tools/k11_capture.py` (Task 5)
+
+As the plan. `Ran 6 tests … OK`. Mutation (`+ os.sep` dropped from the guard):
+`FAIL: test_guard_refuses_everything_but_a_capture_subdir`; restored: `OK`.
+
+### §A.3.4 The port side (Task 6)
+
+- **Seam.** `host_set_key_bits_override` (`host.h`/`host.c`, a `PORT:` test
+  seam, off by default). Two checks in `test_host`. Mutation (the override line
+  deleted): `FAIL …/test_platform.c:2455: 0 != 4660`, `FAILURES: 1`; restored:
+  `all checks passed`.
+- **Driver** `test_k11_oracle` in `TEST_DRIVERS` under `PR_K11_DUMP` (runs
+  alone; `game_init()` once).
+- **Smoke** (`/tmp/named-gaps-a/k11smoke.script`: `enter_frame 300`, `key 60 1C
+  0D`, `key 120 01 1B`, `end 240`). Red with `enter_state FFFF`: `FAIL
+  …/test_game.c:11881: 0 != 65535`, `FAILURES: 1`. Green with `enter_state
+  0000`: `all checks passed`, 9 frames `frame_0000..0008.raw`; `screens.txt` =
+  `key 0 settled 2`, `key 1 settled 6`, `end settled 8`; `k11.log` = `key 0
+  dt=60 tick=00000173 f=0165 mode=0027 st=0000 ent=000BCBEC`, `key 1 dt=120
+  tick=000001AF f=019F mode=0027 st=0000 ent=000BCCDC` — identical to the
+  planner's values.
+- **Driver mutation** (the Enter's ascii `0x0D` → `0x0A`): `FAIL
+  …/test_game.c:11879: 3 != 39`, `FAILURES: 1`, exit 1; restored: `all checks
+  passed`, exit 0.
+- **Gate** (`make verify` with the `na` overrides, then the dumps and the WAV):
+  `verify-exit=0`, `ORACLES-EQUAL` (diff against the 45 base lines empty),
+  `DUMPS-IDENTICAL` (`dumpsha.sh na` against `base.sha256`), `WAV-IDENTICAL`
+  (`/tmp/pr_na_fm.wav` = `before-t2.wav`).
+- Assertion sites (`rg -o '\bCHECK(_EQ_INT)?\(' port/tests -g '!test.h' | wc
+  -l`): 13545 → 13557 (+2 seam, +10 driver).
+
+### §A.3.5 `tools/k11_compare.py` (Task 7)
+
+As the plan. `Ran 7 tests … OK`. Mutation (`missing = []`): `FAIL:
+test_missing_settled_screen_fails`; restored: `OK`.
+
