@@ -311,6 +311,26 @@ Mutations (each restored → `OK`):
 (d) the plan's sort without the press index →
 `FAIL: test_a_chord_is_consumed_in_one_iteration`.
 ## §G.5 gp_capture (U1 Tasks 5–6)
+
+### §G.5.1 Snapshot, spin predicate, injector (Task 5)
+
+`tools/gp_capture.py`: `read_snap` (the `SNAP_FIELDS` at `base + ds −
+0x80000`), `spinning` (`([DS_0010150C] − 1) & 0xFFFFFFFF == [DS_00101508]`,
+the `0x256C6..0x256CC` predicate), `consistent` (two reads agree on `f` and
+`t508`: no ISR tick and no iteration between them), `Injector` (the key-state
+byte `[ptr + 0x254 + scan]` bit 7 cleared, released at the spin of
+`f + hold − 1` so iterations `f + 1 .. f + hold` sample it; the BIOS word
+queued once through `k11_capture.bios_insert` for a key, and for a pad unless
+`pad_bios=False`), and `ring_steps` (new, §G.4: the head after each word
+consumed between two head reads, wrapping at the BDA ring end).
+
+Tests: `python3 -m unittest tools.tests.test_gp_capture` → `Ran 6 tests … OK`
+(the plan's 5 plus `test_ring_steps_one_head_per_consumed_word`; before:
+`ImportError: Failed to import test module: test_gp_capture`). Mutations (each
+restored → `OK`): `release_due` with `f > h[0]` →
+`FAIL: test_press_holds_and_queues_once`; `consistent` without the `t508`
+compare → `FAIL: test_consistent_rejects_a_moving_counter`; `ring_steps` with
+`h > end` → `FAIL: test_ring_steps_one_head_per_consumed_word`.
 ## §G.6 Make targets (U1 Task 7)
 ## §G.7 The gp-pads capture (U1 Task 8)
 ## §G.8 U1 closure (U1 Task 9)
