@@ -1499,10 +1499,12 @@ int test_ail(void)
         mixer_render(ail_out, 2, 44100);
         CHECK_EQ_INT(ail_out[0], 18432);
         CHECK_EQ_INT(ail_out[2], 0);
+        CHECK_EQ_INT(AIL_sample_status(hs[0]), 2);   /* 0x6F28F: the DIG service ended it */
         AIL_set_sample_loop_count(hs[0], 0); /* count 0: forever */
         AIL_start_sample(hs[0]);
         mixer_render(ail_out, 2, 44100);
         CHECK_EQ_INT(ail_out[2], 18432);
+        CHECK_EQ_INT(AIL_sample_status(hs[0]), 4);   /* count 0 still loops */
         AIL_stop_sample(hs[0]);
         /* A start with no sample bytes adds no voice, so status stays stopped
          * instead of reporting playing with nothing behind it. */

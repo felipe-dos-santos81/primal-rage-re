@@ -253,6 +253,7 @@ int test_res(void)
               "lazy entry unread after init");
         DSD(DS_001014FC) = 0;
         DSD(DS_00101508) = 0x5678;
+        DSD(DS_00101500) = 0x9ABCu;
         DSD(DS_0010150C) = 0x1234;
         CHECK(res_resolve(res_handle(0u, 0)) != NULL, "s16slabs resolves");
         CHECK_EQ_INT((int)DSD(DS_001014FC), 1);
@@ -266,6 +267,9 @@ int test_res(void)
         CHECK_EQ_INT((int)DSD(DS_00101508),
                      0x5678 + (int)((res_size(0u) + RES_READ_BYTES_PER_TICK - 1u)
                                     / RES_READ_BYTES_PER_TICK));
+        CHECK_EQ_INT((int)DSD(DS_00101500),
+                     0x9ABC + (int)((res_size(0u) + RES_READ_BYTES_PER_TICK - 1u)
+                                    / RES_READ_BYTES_PER_TICK));   /* the ISR's 0x1BE16 pair */
         CHECK_EQ_INT((int)DSD(DS_0010150C), (int)DSD(DS_00101508));
         CHECK((DSD(table + 0u * 20u + 12u) & 0x20000000u) != 0u,
               "lazy entry marked read by its first resolve");

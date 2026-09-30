@@ -89,8 +89,8 @@ interactive gameplay is not yet ported and has no oracle to verify it against.
 **64%** of the original's 1203 real functions have a ported, header-commented
 counterpart in `port/src/` (see `AGENTS.md` for how that figure is computed).
 Excluding host-owned/deferred code and the WATCOM runtime
-(`tools/port_classification.txt`, each with its evidence), **100%** of the 730
-portable functions are ported (729 of 730; rounded up).
+(`tools/port_classification.txt`, each with its evidence), **100%** of the 731
+portable functions are ported (730 of 731; rounded up).
 For the detailed, continuously-updated status — what's ported, what's
 verified, and every named gap with its evidence — see
 **[`docs/PROGRESS.md`](docs/PROGRESS.md)**. The underlying raw-byte

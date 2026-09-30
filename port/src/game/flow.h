@@ -151,6 +151,11 @@ void prompt_side_erase(s32 side, s32 row);
  * game_main(); exported so tests can run it without the full init chain (which
  * reloads the resource index). No device is opened here. */
 void game_audio_init(void);
+/* 0x1D0BC (record k7-k12 §0.7.1): the MIDI buffer and the four sample-slot
+ * buffers (+0x10), once. Returns AL (0 when DS_000A2CB0 was already set). */
+u32 sound_buffers_alloc(void);
+/* PORT: the timer ISR 0x1BDF4's counter pair, n ticks (0x1BE0E..0x1BE16). */
+void game_isr_ticks(u32 n);
 
 /* 0x2C3FC: the voice dispatcher over the 12-byte records at DS_000BBDC8
  * (flow.c). Returns AL: 1, or 0 for id 0, a record case above 5, a playing

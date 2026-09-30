@@ -1070,6 +1070,159 @@ static void check_null_fns(void)
     memcpy(mem + DATA_BASE, saved, DATA_LEN);
 }
 
+/* Record §K7 (2026-09-29-k7-k12-derivations.md §0.7.1, Task 2 §2): 0x1D0BC.
+ * Every asserted post-value differs from its seed, or is a seeded value the
+ * mutated code would overwrite. res_block_alloc(0) peeks the bump allocator's
+ * next block: it aligns the heap and does not advance it. */
+static void check_sound_buffers(void)
+{
+    u32 s[4], i, peek;
+    const u32 s_c0 = DSD(DS_001028C0), s_c4 = DSD(DS_001028C4);
+    const u32 s_d0 = DSD(DS_001028D0), s_c8 = DSD(DS_001028C8);
+    const u8 s_b0 = DSB(DS_000A2CB0);
+    for (i = 0; i < 4u; i++) s[i] = DSD(DS_00102870 + i * 0x18u);
+
+    /* Already run (DS_000A2CB0 set, 0x1D0BF): AL = 0, nothing allocated. */
+    DSB(DS_000A2CB0) = 1u;
+    DSD(DS_001028C8) = 1u;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 0);
+    CHECK_EQ_INT((int)DSD(DS_00102870), 0);
+
+    /* First run, DIG set, no sequence: the MIDI arm is skipped (C0 = 0,
+     * 0x1D0D5) and slots 0..3 get 0x8C00, 0x6000, 0x6000, 0x6000 in order
+     * (0x1D14D/0x1D154, the bump allocator returns consecutive blocks). */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028C4) = 0;
+    DSD(DS_001028D0) = 0xD0D0D0D0u;
+    peek = res_block_alloc(0u);
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)DSB(DS_000A2CB0), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028C8), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028D0), (int)0xD0D0D0D0u);
+    CHECK(DSD(DS_00102870) != 0u, "0x1D163 gives slot 0 a buffer");
+    CHECK_EQ_INT((int)(DSD(DS_00102870 + 0x18u) - DSD(DS_00102870)), 0x8C00);
+    CHECK_EQ_INT((int)(DSD(DS_00102870 + 0x30u) - DSD(DS_00102870 + 0x18u)), 0x6000);
+    CHECK_EQ_INT((int)(DSD(DS_00102870 + 0x48u) - DSD(DS_00102870 + 0x30u)), 0x6000);
+    CHECK_EQ_INT((int)DSD(DS_00102870), (int)peek);   /* slot 0 is the next block */
+    CHECK_EQ_INT((int)(res_block_alloc(0u) - DSD(DS_00102870 + 0x48u)), 0x6000);   /* slot 3's size */
+
+    /* The MIDI gate's C4 half (0x1D0CC): C0 set, C4 clear, no MIDI buffer is
+     * taken. The slots run with slot 4's +0x10 (= DS_001028D0) clear, so a
+     * loop bound past 4 (0x1D171) would allocate into DS_001028D0 too. */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0x1234u;
+    DSD(DS_001028C4) = 0;
+    DSD(DS_001028D0) = 0;
+    DSD(DS_001028C8) = 1u;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028D0), 0);
+    CHECK(DSD(DS_00102870 + 0x48u) != 0u, "the four slots are allocated");
+
+    /* The MIDI gate's D0 half (0x1D0E6): C4 and C0 set, a MIDI buffer already
+     * set, nothing is taken. */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0x1234u;
+    DSD(DS_001028C4) = 0x5678u;
+    DSD(DS_001028D0) = 0xD0D0D0D0u;
+    DSD(DS_001028C8) = 0;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028D0), (int)0xD0D0D0D0u);
+
+    /* The loop's stop at a set slot (0x1D176..0x1D17D): slot 2 holds a buffer,
+     * so slots 0 and 1 are allocated and slots 2 and 3 are left alone. */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028C4) = 0;
+    DSD(DS_001028C8) = 1u;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0;
+    DSD(DS_00102870 + 0x30u) = 0x0BADu;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK(DSD(DS_00102870 + 0x18u) != 0u, "slot 1 is allocated");
+    CHECK_EQ_INT((int)DSD(DS_00102870 + 0x30u), 0x0BAD);
+    CHECK_EQ_INT((int)DSD(DS_00102870 + 0x48u), 0);
+    CHECK_EQ_INT((int)DSD(DS_001028C8), 1);
+
+    /* The MIDI arm (0x1D0CC..0x1D10C): a sequence handle and no buffer yet
+     * allocate 0x5100 bytes into DS_001028D0; no DIG, so the slots keep their
+     * sentinels (0x1D132). */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0x1234u;
+    DSD(DS_001028C4) = 0x5678u;
+    DSD(DS_001028D0) = 0;
+    DSD(DS_001028C8) = 0;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0x0BADu;
+    peek = res_block_alloc(0u);
+    memset(mem + peek, 0xA5, 0x5100u);        /* 0x61A70 must clear these */
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK(DSD(DS_001028D0) != 0u, "0x1D0F7 stores the MIDI buffer");
+    CHECK_EQ_INT((int)DSD(DS_001028C0), 0x1234);
+    CHECK_EQ_INT((int)DSD(DS_00102870), 0x0BAD);
+    CHECK_EQ_INT((int)DSD(DS_001028D0), (int)peek);
+    {
+        u32 nz = 0;
+        for (i = 0; i < 0x5100u; i++) if (DSB(peek + i) != 0u) nz++;
+        CHECK_EQ_INT((int)nz, 0);
+    }
+    CHECK_EQ_INT((int)(res_block_alloc(0u) - peek), 0x5100);   /* the MIDI size */
+
+    /* Slot 0's buffer already set at entry: the loop is skipped (0x1D147),
+     * ecx stays 0 and 0x1D195 turns the DIG driver off, as the raw does. */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028C4) = 0;
+    DSD(DS_001028C8) = 1u;
+    DSD(DS_00102870) = 0x0BADu;
+    DSD(DS_00102870 + 0x18u) = 0;
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028C8), 0);
+    CHECK_EQ_INT((int)DSD(DS_00102870 + 0x18u), 0);
+
+    /* The ISR's counter pair (PORT, 0x1BE0E..0x1BE16). */
+    DSD(DS_00101508) = 0x10u;
+    DSD(DS_00101500) = 0x2000u;
+    game_isr_ticks(3u);
+    CHECK_EQ_INT((int)DSD(DS_00101508), 0x13);
+    CHECK_EQ_INT((int)DSD(DS_00101500), 0x2003);
+
+    DSD(DS_001028C0) = s_c0; DSD(DS_001028C4) = s_c4;
+    DSD(DS_001028D0) = s_d0; DSD(DS_001028C8) = s_c8;
+    DSB(DS_000A2CB0) = s_b0;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = s[i];
+}
+
+/* Record k7-k12 §2.6: the idle timeout 0x2EB80 (config_key_latched) over the
+ * ISR clock. Its difference 0x500BB - DS_00105F2C (0x2EB8F..0x2EB9F) now grows
+ * with every master-loop tick (game_isr_ticks), so the master-loop menu
+ * 0x2FFC4 (0x303D9) reaches the timeout after 0x4B0 idle ticks. PORT (named
+ * gap): the raw stores DS_00107414 = 0 (0x2EBA8) and longjmps (0x2EBB3, jmp
+ * 0x65431 with 0x1044F4, 1); the port keeps only the store, so the menu
+ * re-initialises on its next step. Pinned here so the behaviour cannot
+ * silently change. */
+static void check_idle_timeout_clock(void)
+{
+    const u32 s_00 = DSD(DS_00101500), s_08 = DSD(DS_00101508);
+    const u32 s_2c = DSD(DS_00105F2C), s_30 = DSD(DS_00105F30);
+    const u8 s_14 = DSB(DS_00107414);
+
+    DSD(DS_00105F30) = 0;                    /* no latched key (0x2EB87) */
+    DSD(DS_00101500) = 0x7000u;
+    DSD(DS_00105F2C) = 0x7000u;              /* stamped now (0x2FFDA/0x2EEFB) */
+    DSB(DS_00107414) = 0x5Au;
+    game_isr_ticks(0x4B0u);                  /* 0x4B0 idle ticks: not over */
+    CHECK_EQ_INT((int)config_key_latched(), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0x5A);
+    game_isr_ticks(1u);                      /* one more: the timeout */
+    CHECK_EQ_INT((int)config_key_latched(), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+
+    DSD(DS_00101500) = s_00; DSD(DS_00101508) = s_08;
+    DSD(DS_00105F2C) = s_2c; DSD(DS_00105F30) = s_30;
+    DSB(DS_00107414) = s_14;
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -1194,6 +1347,8 @@ int test_flow(void)
     DSD(DS_001028C8) = 0;
     game_audio_init();
     CHECK_EQ_INT((int)DSD(DS_001028C8), 1);
+    check_sound_buffers();
+    check_idle_timeout_clock();
     /* The init chain must load the FM patch bank (FAT.OPL): the sequencer maps
      * every program change through it, and without it a key-on carries no
      * operator setup, so the OPL core renders silence for the whole run (the
@@ -6761,6 +6916,12 @@ int test_title_window(const char *dump)
 {
     int before = g_failures;
 
+    /* Record k7-k12 §2: game_init's 0x1C0B1 call to 0x1D0BC ran. The image
+     * game_init maps holds 0 at DS_000A2CB0 and at slot 0's +0x10
+     * (DS_00102870), and nothing else writes them. */
+    CHECK_EQ_INT((int)DSB(DS_000A2CB0), 1);
+    CHECK(DSD(DS_00102870) != 0u, "0x1C0B1: slot 0 has its 0x8C00 buffer");
+
     /* The attract handoff iteration ends with DS_000F0A64 == 1 but ran the
      * attract; the title entry is the next iteration. A bounded drive keeps a
      * broken attract from hanging the run. */
@@ -6782,9 +6943,17 @@ int test_title_window(const char *dump)
      * coin poll, the update table and the scene tick do not draw). */
     rng_seed(0xABCDu);
 
+    /* Record k7-k12 §2: the spin 0x256C5 models the ISR's counter pair
+     * (game_isr_ticks), so the 0x500BB clock DS_00101500 advances in every
+     * iteration. DS_00101508 alone is not compared: 0x52106 (gfx_screen_reset)
+     * stores it, and not DS_00101500, inside the window. */
+    u32 isr_still = 0, isr_ticks = 0;
     for (int i = 0; i < TITLE_WINDOW_ITERS; i++) {
+        const u32 t00 = DSD(DS_00101500);
         DSB(DS_000A81A8) = 1;   /* exactly one game_loop iteration per call */
         game_loop();            /* update -> render -> present -> dump */
+        if (DSD(DS_00101500) == t00) isr_still++;
+        isr_ticks += DSD(DS_00101500) - t00;
         if (i == 0) {
             /* State-1 entry (spec DoD #2): the entry frame sets the title
              * countdown to 0x600 and leaves the state machine in state 1. */
@@ -6792,6 +6961,8 @@ int test_title_window(const char *dump)
             CHECK_EQ_INT((int)DSW(DS_000F0A66), 0x600);
         }
     }
+    CHECK_EQ_INT((int)isr_still, 0);
+    CHECK(isr_ticks >= (u32)TITLE_WINDOW_ITERS, "the clock ticks every iteration");
 
     /* The window's own boundary, not the tick count: the 96th tick is the one
      * where DS_000F0A66 has just fallen below 0x11. If the timing drifted, the
