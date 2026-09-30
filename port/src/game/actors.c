@@ -586,13 +586,20 @@ int actors_init(void)
      * fn(side) with EAX returned) and +0x1C 0x45A34 (0x193B0's 0x19505,
      * fn(side)). Its stream 0xEB64E carries the 0xD100 target 0x459D0 (the
      * dwords at 0xEB66E and 0xEB684), opcode 0x11, mode 0x4000. */
-    /* PORT: record §49-Z. The slot +0x0C callbacks 0x45B50 (stored by the
-     * unported 0x45C10, the dword at 0x45C33) and 0x47B04 (stored by the
-     * unported 0x47BFC, the dword at 0x47C56; 0x3531C case 7, (slot, rec,
+    /* PORT: record §49-Z. The slot +0x0C callbacks 0x45B50 (stored by
+     * 0x45C10, the dword at 0x45C33) and 0x47B04 (stored by 0x47BFC, the
+     * dword at 0x47C56; both ported by gameplay-u0; 0x3531C case 7, (slot, rec,
      * side)), and the render table's bit-0 entry 0x4F4E8 (DS_000A86C4[0],
      * the dword at 0xA86C4; fn() with the unread EAX). */
     fn_register(0x45B50u, (void (*)(void))fighter_45b50);
     fn_register(0x47B04u, (void (*)(void))fighter_47b04);
+    /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
+     * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
+     * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
+     * and +0x1C 0x47984 (0x193B0's 0x19505, fn(side)). */
+    fn_register(0x47BFCu, (void (*)(void))fighter_47bfc);
+    fn_register(0x478D4u, (void (*)(void))fighter_478d4);
+    fn_register(0x47984u, (void (*)(void))fighter_47984);
     fn_register(0x4F4E8u, flow_round_timer_step);
     /* PORT: record gameplay-u0 §U0.6. The render table's bit-3 and bit-4
      * entries 0x1DC0C and 0x4F5C8 (DS_000A86C4[3]/[4], the dwords at 0xA86D0

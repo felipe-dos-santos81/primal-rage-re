@@ -1027,6 +1027,13 @@ void fighter_45b50(u32 slot, u32 rec, u32 side);
 void fighter_47a00(u32 side);
 /* 0x47B04: the slot +0x0C callback 0x47BFC stores (slot, rec, side). */
 void fighter_47b04(u32 slot, u32 rec, u32 side);
+/* Record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback 0x47BFC
+ * (slot, rec, side): with the side's DS_00107D2C word >= 1, the slot 9/7/0,
+ * +0x57 = 5 and the callbacks +0x0C 0x47B04, +0x18 0x478D4 (fn(side), EAX
+ * returned: two 0x18C14 passes) and +0x1C 0x47984 (fn(side)). */
+void fighter_47bfc(u32 slot, u32 rec, u32 side);
+u32  fighter_478d4(u32 side);
+void fighter_47984(u32 side);
 
 /* Record §K8c: the update-table entries 4 (0x37C8C), 8 (0x34648), 9
  * (0x3800C), 11 (0x4F890), 12 (0x24150) and 17 (0x45D98), each fn() as

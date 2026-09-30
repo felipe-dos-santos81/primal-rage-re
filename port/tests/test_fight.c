@@ -42970,9 +42970,206 @@ static void check_u0_45b18(void)
     mz_restore();
 }
 
+/* The gameplay-u0 differential harness for the slot +0x18 hooks built on
+ * 0x18C14: over U0_DIFF_N fuzzed sh_seed states (both slots' +0x10/+0x42/
+ * +0x43/+0x53/+0x54/+0x58/+0x62/+0x74/+0x76/+0x7A, both records' +0x18/
+ * +0x1C/+0x61, DS_00100AF8), the hook against a reference that states the
+ * raw's flag bytes and box tables independently; the return value and the
+ * whole data object and fight scratch afterwards must agree. The counters
+ * show the fuzz reaches both results and the reference's later passes. */
+#define U0_DIFF_N 1000u
+#define U0_SCR_LEN (FIGHT_RECS + 0x4000u - FIGHT_ACTORS)
+static u32 u0_lcg;
+static u32 u0_rand(u32 n)
+{
+    u0_lcg = u0_lcg * 1103515245u + 12345u;
+    return (u0_lcg >> 16) % n;
+}
+
+static void u0_fuzz(void)
+{
+    static const u8 st53[3] = { 0u, 7u, 0x0Au };
+    u32 i;
+    /* Half the states are biased toward passing the hooks' early checks
+     * (+0x54/+0x74/+0x42 clear, +0x53 = 0x0A, the records close), so the
+     * later checks and passes are reached too. */
+    int coop = (int)u0_rand(2);
+    sh_seed(Z_S0, Z_S1, Z_R0, Z_R1);
+    for (i = 0; i < 2u; i++) {
+        u32 s = DS_001077B0 + i * 0x94u, r = FIGHT_RECS + i * 0x100u;
+        DSD(s + 0x10u) = u0_rand(2) ? 0x00039CC8u : 0u;
+        DSB(s + 0x42u) = (u8)(u0_rand(coop ? 5 : 2) == 1u ? 8u : 0u);
+        DSB(s + 0x43u) = (u8)(u0_rand(2) ? 4u : 0u);
+        DSB(s + 0x53u) = coop && u0_rand(5) != 0u ? 0x0Au : st53[u0_rand(3)];
+        DSB(s + 0x54u) = (u8)(coop && u0_rand(5) != 0u ? 0u : u0_rand(4));
+        DSB(s + 0x58u) = (u8)u0_rand(5);
+        DSB(s + 0x62u) = (u8)u0_rand(2);
+        DSW(s + 0x74u) = (u16)(coop ? 0u : u0_rand(3));
+        DSW(s + 0x76u) = (u16)u0_rand(coop ? 2u : 3u);
+        DSB(s + 0x7Au) = (u8)u0_rand(7);
+        DSB(r + 0x61u) = (u8)u0_rand(2);
+        DSD(r + 0x18u) = u0_rand(0x4000u);
+        DSD(r + 0x1Cu) = u0_rand(coop ? 0x400u : 0x3000u);
+        DSW(FIGHT_ACTORS + (1u + i) * 0x20u) =
+            (u16)(0x0F35u | (u0_rand(2) ? 0x8000u : 0u));
+        DSD(DS_00100AF8 + i * 4u) = u0_rand(3) - 1u;
+    }
+}
+
+static void u0_snap(u8 *buf)
+{
+    tf_snap(buf, 0x80000u, 0x8B0D0u);
+    tf_snap(buf + 0x8B0D0u, FIGHT_ACTORS, U0_SCR_LEN);
+}
+
+static void u0_put(const u8 *buf)
+{
+    tf_put(buf, 0x80000u, 0x8B0D0u);
+    tf_put(buf + 0x8B0D0u, FIGHT_ACTORS, U0_SCR_LEN);
+}
+
+static void u0_hook_diff(u32 (*hook)(u32 side), u32 (*ref)(u32 side, u32 *pass),
+                         u32 *n_nonzero, u32 *n_later)
+{
+    u8 *pre = (u8 *)malloc(0x8B0D0u + U0_SCR_LEN);
+    u8 *post = (u8 *)malloc(0x8B0D0u + U0_SCR_LEN);
+    u8 *got = (u8 *)malloc(0x8B0D0u + U0_SCR_LEN);
+    u32 it, bad = 0;
+    *n_nonzero = *n_later = 0;
+    if (pre == NULL || post == NULL || got == NULL) {
+        CHECK(0, "the differential buffers allocate");
+        free(pre); free(post); free(got);
+        return;
+    }
+    u0_lcg = 0x5EED0000u;
+    for (it = 0; it < U0_DIFF_N; it++) {
+        u32 side = it & 1u, pass = 0, want, r;
+        u0_fuzz();
+        u0_snap(pre);
+        want = ref(side, &pass);
+        u0_snap(post);
+        u0_put(pre);
+        r = hook(side);
+        u0_snap(got);
+        if (r != want || memcmp(got, post, 0x8B0D0u + U0_SCR_LEN) != 0) bad++;
+        if (want != 0u) (*n_nonzero)++;
+        if (pass > 1u) (*n_later)++;
+    }
+    CHECK_EQ_INT((int)bad, 0);
+    free(pre); free(post); free(got);
+}
+
+/* 0x478D4 as the raw states it: pass 1 flags 1/4/8/0xD/0xE = 0 and
+ * 2/5/9/0xA/0xC = 1 on the boxes 0xC9438/0xC944C; a zero result runs pass 2,
+ * flags 1/4/5/8/0xD/0xE = 0 and 2/9/0xA/0xC = 1 on 0xC9442/0xC944C. */
+static u32 u0_ref_478d4(u32 side, u32 *pass)
+{
+    static const u8 p1[16] = { 2, 0, 1, 2, 0, 1, 2, 2, 0, 1, 1, 2, 1, 0, 0, 2 };
+    static const u8 p2[16] = { 2, 0, 1, 2, 0, 0, 2, 2, 0, 1, 1, 2, 1, 0, 0, 2 };
+    u8 f[16];
+    int r;
+    memcpy(f, p1, 16);
+    *pass = 1u;
+    r = fighter_18c14(side, f, 0x000C9438u, 0x000C944Cu);
+    if (r != 0) return (u32)r;
+    memcpy(f, p2, 16);
+    *pass = 2u;
+    return (u32)fighter_18c14(side, f, 0x000C9442u, 0x000C944Cu);
+}
+
+/* §U0.8: character 2's reaction-0x26 cluster 0x47BFC/0x478D4/0x47984. */
+static void check_u0_47bfc(void)
+{
+    u32 nz, later;
+    if (!mz_save()) { CHECK(0, "the gameplay-u0 snapshot allocates"); return; }
+    CHECK(fn_resolve(0x47BFCu) == (void (*)(void))fighter_47bfc,
+          "0x47BFC is registered as fighter_47bfc");
+    CHECK(fn_resolve(0x478D4u) == (void (*)(void))fighter_478d4,
+          "0x478D4 is registered as fighter_478d4");
+    CHECK(fn_resolve(0x47984u) == (void (*)(void))fighter_47984,
+          "0x47984 is registered as fighter_47984");
+    CHECK_EQ_INT((int)DSD(0x000A3528u + (2u * 64u + 0x26u) * 20u), 0x00047BFC);
+    CHECK_EQ_INT((int)DSD(0x00047C5Du), 0x000478D4);
+    CHECK_EQ_INT((int)DSD(0x00047C66u), 0x00047984);
+
+    /* 0x47BFC: the side's word DS_00107D2C[1] below 1 (0, and 0x8000
+     * signed) stores nothing; 1 arms slot 1 (char 2, record 1). */
+    {
+        static const u16 w[3] = { 0u, 0x8000u, 1u };
+        u32 k;
+        for (k = 0; k < 3u; k++) {
+            z_fseed();
+            DSW(DS_00107D2C + 2u) = w[k];
+            DSW(DS_00107D2C) = 5u;
+            DSB(Z_S1 + 0x57u) = 0x33u;
+            DSD(Z_S1 + 0x0Cu) = 0x0C0C0C0Cu;
+            DSD(Z_S1 + 0x18u) = 0x18181818u;
+            DSD(Z_S1 + 0x1Cu) = 0x1C1C1C1Cu;
+            DSB(Z_S1 + 0x54u) = 0x44u;
+            fighter_47bfc(Z_S1, Z_R1, 1u);
+            if (k < 2u) {
+                CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0x0C0C0C0C);
+                CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 0x33);
+                CHECK_EQ_INT((int)DSD(Z_R1 + 8u), 0x00ABCDEF);
+            } else {
+                CHECK_EQ_INT((int)DSD(Z_R1 + 8u), (int)DSD(0x000C8950u + 2u * 4u));
+                CHECK_EQ_INT((int)DSD(Z_R1 + 0x24u), 0x40000000);
+                CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 9);
+                CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 7);
+                CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 0);
+                CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 5);
+                CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0x00047B04);
+                CHECK_EQ_INT((int)DSD(Z_S1 + 0x18u), 0x000478D4);
+                CHECK_EQ_INT((int)DSD(Z_S1 + 0x1Cu), 0x00047984);
+            }
+        }
+    }
+
+    /* 0x478D4 against the raw's two passes. */
+    u0_hook_diff(fighter_478d4, u0_ref_478d4, &nz, &later);
+    CHECK(nz > 0u && nz < U0_DIFF_N, "the fuzz reaches both 0x478D4 results");
+    CHECK(later > 0u, "the fuzz reaches 0x478D4's second pass");
+
+    /* 0x47984 on side 1: record 1 on 0xED944 (first word a plain id) at
+     * 2.0, the flash pair (DS_001078FA = 2: record 1 +0x59 = 1, record 0
+     * 0xFF), both records' +0x34/+0x42/+0x43 cleared (0x3C148), record 0's
+     * +0x28 bit 5 and +0x24 = 0, slot 1's +0x57 = 0, both slots' +0x74 =
+     * 0x29A. */
+    z_fseed();
+    DSW(0x000ED944u) = 0x12B2u;
+    DSB(DS_001078FA) = 2u;
+    DSB(Z_R0 + 0x59u) = 0x55u;
+    DSB(Z_R1 + 0x59u) = 0x55u;
+    DSW(Z_R0 + 0x34u) = 0x3434u;
+    DSW(Z_R1 + 0x34u) = 0x3434u;
+    DSB(Z_R0 + 0x42u) = 0x42u;
+    DSB(Z_R1 + 0x43u) = 0x43u;
+    DSW(Z_R0 + 0x28u) = 0x0101u;
+    DSD(Z_R0 + 0x24u) = 0x24242424u;
+    DSB(Z_S1 + 0x57u) = 0x57u;
+    DSW(Z_S0 + 0x74u) = 0x1111u;
+    DSW(Z_S1 + 0x74u) = 0x1111u;
+    fighter_47984(1u);
+    CHECK_EQ_INT((int)DSD(Z_R1 + 8u), 0x000ED944);
+    CHECK_EQ_INT((int)DSD(Z_R1 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSB(Z_R1 + 0x59u), 1);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x59u), 0xFF);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(Z_R1 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSB(Z_R1 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x28u), 0x0121);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSW(Z_S0 + 0x74u), 0x29A);
+    CHECK_EQ_INT((int)DSW(Z_S1 + 0x74u), 0x29A);
+    mz_restore();
+}
+
 int test_table_reached(void)
 {
     int before = g_failures;
+    check_u0_47bfc();
     check_u0_45b18();
     check_u0_finishers();
     check_u0_45c10();

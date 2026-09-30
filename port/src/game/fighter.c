@@ -8582,8 +8582,8 @@ void fighter_48d94(u32 slot, u32 rec, u32 side)
 #define FIGHT_ANIM_48F54   0x000EDC82u  /* 0x48F59: 0x48F54's stream */
 
 /* 0x48BE0 — record §42-B. Character 2's 0xBDAE4 finisher entry, which the
- * unported reaction-0x33 callback 0x37774 copies into DS_001078E8 and the
- * ported 0x379C4 calls at 0x379E8 (EAX = slot, EDX = rec, the whole EAX
+ * reaction-0x33 callback 0x37774 (record gameplay-u0 §U0.4) copies into
+ * DS_001078E8 and the ported 0x379C4 calls at 0x379E8 (EAX = slot, EDX = rec, the whole EAX
  * tested at 0x379EE). The record on 0xEDD34 at 2.0 (0x2BC30), the slot 7/9/0
  * with the +0x0C callback 0x48AAC, +0x57 = 0, +0x18/+0x1C/+0x14 = 0 and
  * +0x42 bit 3, then 0x3C190(rec+0x51, 0x80). PORT: the raw returns EAX with
@@ -11308,6 +11308,106 @@ void fighter_47a00(u32 side)
     fighter_39a10(ctx[5], 0x309u);                          /* 0x47AB3..0x47ABC */
     fighter_3c208(ctx[1], (s32)DSD(FIGHT_DIST_47A00
                                    + (u32)DSB(ctx[3] + 0x7Au) * 2u) >> 16); /* 0x47AC1..0x47ADB */
+}
+
+/* PORT: data-object addresses symbols.h does not name (record gameplay-u0
+ * §U0.8). */
+#define FIGHT_BOX_478D4_A  0x000C9438u  /* 0x478EC: 0x478D4's first box table */
+#define FIGHT_BOX_478D4_A2 0x000C9442u  /* 0x47938: its second pass's first */
+#define FIGHT_BOX_478D4_B  0x000C944Cu  /* 0x478DE/0x4796F: the second table */
+#define FIGHT_ANIM_47984   0x000ED944u  /* 0x47991: 0x47984's stream */
+
+/* 0x478D4 — record gameplay-u0 §U0.8. The slot +0x18 hook 0x47BFC stores
+ * (the dword at 0x47C5D; 0x19020's call, fn(side), EAX returned); Ghidra has
+ * no function here. EAX = side; the context is 0x33950(side). 0x18C14 with
+ * flags 1, 4, 8, 0xD and 0xE = 0, flags 2, 5, 9, 0xA and 0xC = 1 and the
+ * box tables 0xC9438 (EBX) and 0xC944C (ECX); a non-zero result is returned.
+ * Else 0x18C14 again from fresh flags: 1, 4, 5, 8, 0xD and 0xE = 0, 2, 9,
+ * 0xA and 0xC = 1 (CH), the boxes 0xC9442 and 0xC944C; its result is
+ * returned. */
+u32 fighter_478d4(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    u32 r;
+    fighter_ctx_same(ctx, side);                            /* 0x478DA..0x478E3 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x478E8..0x478F1 0x18BD4 */
+    flags[1] = 0;                                           /* 0x478FA */
+    flags[8] = 0;                                           /* 0x478FE */
+    flags[4] = 0;                                           /* 0x47902 */
+    flags[0xE] = 0;                                         /* 0x47906 */
+    flags[0xD] = 0;                                         /* 0x4790A */
+    flags[5] = 1u;                                          /* 0x47912 */
+    flags[9] = 1u;                                          /* 0x47916 */
+    flags[0xA] = 1u;                                        /* 0x4791A */
+    flags[0xC] = 1u;                                        /* 0x4791E */
+    flags[2] = 1u;                                          /* 0x47922 */
+    r = (u32)fighter_18c14(ctx[0], flags, FIGHT_BOX_478D4_A,
+                           FIGHT_BOX_478D4_B);              /* 0x47926..0x47929 0x18C14 */
+    if (r != 0u) return r;                                  /* 0x4792E/0x47930 */
+    fighter_18bd4(flags);                                   /* 0x47932..0x4793D 0x18BD4 */
+    flags[5] = 0;                                           /* 0x47947 */
+    flags[1] = 0;                                           /* 0x4794B */
+    flags[8] = 0;                                           /* 0x4794F */
+    flags[4] = 0;                                           /* 0x47953 */
+    flags[9] = 1u;                                          /* 0x47957 */
+    flags[0xA] = 1u;                                        /* 0x4795B */
+    flags[0xE] = 0;                                         /* 0x4795F */
+    flags[0xD] = 0;                                         /* 0x47963 */
+    flags[0xC] = 1u;                                        /* 0x47967 */
+    flags[2] = 1u;                                          /* 0x4796B */
+    return (u32)fighter_18c14(ctx[0], flags, FIGHT_BOX_478D4_A2,
+                              FIGHT_BOX_478D4_B);           /* 0x4796F..0x47978 0x18C14 */
+}
+
+/* 0x47984 — record gameplay-u0 §U0.8. The slot +0x1C callback 0x47BFC stores
+ * (the dword at 0x47C66; 0x193B0's 0x19505, fn(side)); Ghidra has no
+ * function here. EAX = side; the context is 0x33950(side). ctx[4] on
+ * 0xED944 at 2.0 (0x3C480), 0x34D8C(side), 0x18AF8, 0x3C148 on both sides,
+ * ctx[5]'s +0x28 bit 5 and +0x24 = 0, ctx[2]'s +0x57 = 0, and the +0x74 timer
+ * 0x29A through 0x39A10 on ctx[4] and ctx[5]. */
+void fighter_47984(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x47988..0x4798C 0x33950 */
+    hit_anim_start_a(ctx[4], FIGHT_ANIM_47984, 0x40000000u);  /* 0x47991..0x4799F 0x3C480 */
+    hit_flash_pair(ctx[0]);                                 /* 0x479A4/0x479A7 0x34D8C */
+    fighter_18af8();                                        /* 0x479AC */
+    fighter_3c148(0u);                                      /* 0x479B1/0x479B3 */
+    fighter_3c148(1u);                                      /* 0x479B8/0x479BD */
+    DSB(ctx[5] + 0x28u) |= 0x20u;                           /* 0x479C2/0x479C6 */
+    DSD(ctx[5] + 0x24u) = 0;                                /* 0x479CA/0x479CE */
+    DSB(ctx[2] + 0x57u) = 0;                                /* 0x479D5/0x479D9 */
+    fighter_39a10(ctx[4], 0x29Au);                          /* 0x479DD..0x479E6 */
+    fighter_39a10(ctx[5], 0x29Au);                          /* 0x479EB..0x479F4 */
+}
+
+/* 0x47BFC — record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
+ * (the dword at 0xA4220, the (char 2, 0x26) entry of 0x34E2C's 0xA3528
+ * table; Ghidra has no function here). EAX = slot (ECX), EDX = rec; EBX is
+ * not read. The context is 0x339AC(rec). Nothing (AL = 0) unless the side's
+ * word DS_00107D2C[ctx[0]] (the dword at 0x107D2A + side * 2, SAR 16) is at
+ * least 1 (signed). Else ctx[4] on 0xC8950[ctx[2]'s char] at 2.0 through
+ * 0x3C4CC, the slot 9/7/0 with +0x57 = 5 and the callbacks +0x0C 0x47B04,
+ * +0x18 0x478D4 and +0x1C 0x47984. The raw returns AL = 1 (0x47C61);
+ * 0x34E2C's callers never read it (see 0x15350). */
+void fighter_47bfc(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)side;
+    hit_anim_ctx(ctx, rec);                                 /* 0x47C00..0x47C04 0x339AC */
+    if ((s32)(s16)DSW(DS_00107D2C + ctx[0] * 2u) < 1)       /* 0x47C09..0x47C19 */
+        return;
+    hit_anim_start_b(ctx[4], DSD(FIGHT_ANIM_367DC
+                                 + (u32)DSB(ctx[2] + 0x7Au) * 4u),
+                     0x40000000u);                          /* 0x47C22..0x47C3E 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x47C43 */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x47C47 */
+    DSB(slot + 0x54u) = 0;                                  /* 0x47C4B */
+    DSB(slot + 0x57u) = 5u;                                 /* 0x47C4F */
+    DSD(slot + 0x0Cu) = 0x00047B04u;                        /* 0x47C53 */
+    DSD(slot + 0x18u) = 0x000478D4u;                        /* 0x47C5A */
+    DSD(slot + 0x1Cu) = 0x00047984u;                        /* 0x47C63 */
 }
 
 /* 0x47B04 — record §49-Z. The slot +0x0C callback 0x47BFC stores (0x47C53;
