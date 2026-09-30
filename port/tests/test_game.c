@@ -7711,6 +7711,10 @@ static u8 sm_s_gate;
  * latch DS_000E1C38 (every pressed bit is a new edge), and these go back into
  * it, as 0x500C4's `latch &= level` keeps a held bit latched. 0 by default. */
 static u32 sm_held;
+/* Called by sm_hook with the frame index at each new frame, before that
+ * frame's step is applied: it sees the screen and state the previous pass
+ * left. NULL by default; sm_end clears it. */
+static void (*sm_probe)(u32 frame);
 
 /* One scripted step per presented frame: config_screen_wait swaps DS_000E87A0
  * before its tick passes, so the first hook call after a swap is a new frame. */
@@ -7719,6 +7723,7 @@ static void sm_hook(void *ctx)
     (void)ctx;
     if (DSD(DS_000E87A0) == sm_last_a0) return;
     sm_last_a0 = DSD(DS_000E87A0);
+    if (sm_probe != NULL) sm_probe(sm_frame);
     if (sm_frame < sm_len) {
         const sm_step_t *s = &sm_script[sm_frame];
         if (s->key != 0u) input_push((u8)(s->key >> 8), (u8)s->key);
@@ -7791,6 +7796,7 @@ static void sm_end(u32 frames, const char *what)
 {
     host_set_pump_hook(NULL, NULL);
     sm_held = 0u;
+    sm_probe = NULL;
     CHECK(sm_extra == 0u, what);
     CHECK_EQ_INT((int)sm_frame, (int)frames);
     sm_env_end();
@@ -8754,6 +8760,228 @@ static void sm_check_keyboard(void)
     CHECK(fn_resolve(0x19DF0u) == (void (*)(void))svc_configure_keyboard, "0x19DF0 registered");
 }
 
+/* Cycle 6 (record §K11.7): STATISTICS pages 1 and 2, 0x328B8 0x32F54
+ * 0x32F98 0x33458 0x33058 0x33230. 13 frames. */
+#define SM_COLS(s, m) ((0x2B - text_width(game_string_get(s), (m))) >> 1)
+
+/* Page 1's fields (0x32644, 0x326C4, 0x32F98 read them). */
+static void sm_stats_seed(void)
+{
+    static const struct { u32 f, v; } seed[] = {
+        { 0u, 7u }, { 3u, 0x10005u }, { 4u, 0x10000u }, { 5u, 0xFFFFu }, { 6u, 3u }, { 7u, 4u },
+        { 8u, 2u }, { 9u, 0xFFFFu }, { 0xAu, 250u }, { 0xBu, 0u }, { 0xCu, 999u },
+        { 0x12u, 3932580u }, { 0x13u, 600u },
+    };
+    for (u32 i = 0; i < sizeof seed / sizeof seed[0]; i++) {
+        (void)config_field_set(seed[i].f, seed[i].v);
+        CHECK_EQ_INT((int)config_field_get(seed[i].f), (int)seed[i].v);   /* the field holds it */
+    }
+}
+
+/* Page 2's clear: fields 0..0x27 = 1 + f % 7 (every width holds 7), 0x28 = 5. */
+static void sm_stats_seed_all(void)
+{
+    for (u32 f = 0; f < 0x28u; f++) (void)config_field_set(f, 1u + f % 7u);
+    (void)config_field_set(0x28u, 5u);
+    CHECK_EQ_INT((int)config_field_get(0x27u), 1 + 0x27 % 7);
+    CHECK_EQ_INT((int)config_field_get(0x28u), 5);
+}
+
+static u32 sm_stats_seen;
+/* A pass with the redraw flag clear draws nothing: a glyph planted after the
+ * first draw is still there a frame later (0x330AD / 0x332DC). */
+static void sm_stats_plant(u32 frame)
+{
+    if (frame == 1u) text_glyph_at(2, 'Z', 20, 0xF000u);
+    if (frame == 2u && ch_cell(20, 2) != 0u) sm_stats_seen |= 0x200u;
+}
+
+/* P2A: frames 2..4 see the fields still seeded (frame 1's Esc alone, frame
+ * 2's Enter alone and the Esc-release wait clear nothing), frame 2 the hints
+ * and the nine rows of the first draw (row 12 = 0xC is released by the exit,
+ * so it is looked at here), frame 5 the fields cleared. */
+static void sm_stats_probe(u32 frame)
+{
+    sm_stats_plant(frame);
+    if (frame >= 1u && frame <= 3u && config_field_get(0u) == 1u && config_field_get(0x27u) == 1u + 0x27u % 7u)
+        sm_stats_seen |= 1u << frame;
+    if (frame == 1u && ch_cell(12, 0x20) == 0u)
+        sm_stats_seen |= 0x400u;                             /* nine rows: a tenth draws field 0xFF's 65535 */
+    if (frame == 1u) {
+        ch_expect(0x18, SM_COLS(0x69u, 0x4000u), 'H', 0x4000u, "page 2 hint 0x69 on row 0x18");
+        ch_expect(0x19, SM_COLS(0x6Au, 0x4000u), 'A', 0x4000u, "page 2 hint 0x6A on row 0x19");
+        ch_expect(0x1A, SM_COLS(0xA0u, 0x4000u), 't', 0x4000u, "page 2 hint 0xA0 on row 0x1A");
+        sm_stats_seen |= 0x100u;
+    }
+    if (frame == 4u && config_field_get(0u) == 0u) sm_stats_seen |= 1u << frame;
+}
+
+static void sm_check_stats(void)
+{
+    const u32 s_150c = DSD(DS_0010150C), s_e4 = DSD(DS_001014E4), s_e8 = DSD(DS_001014E8);
+    u8 s_dac[256][3];
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+    ch_text_setup();
+
+    /* (a) 0x328B8 at the cursor (row 4, column 5): 125 s is " 2" (width 5 -
+     * 3, pad 1), ':' and "05" (width 2, pad 0). */
+    text_glyph_at(5, 'Z', 4, 0xF000u);
+    CHECK(ch_cell(4, 5) != 0u, "a seeded glyph under the minutes' pad");
+    DSW(DS_00105F34) = 4u; DSW(DS_00105F34 + 2u) = 5u;
+    svc_draw_mmss(125u, 5u);
+    CHECK_EQ_INT((int)ch_cell(4, 5), 0);                         /* ' ' releases it */
+    ch_expect(4, 6, '2', 0xF000u, "mm:ss minutes");
+    ch_expect(4, 7, ':', 0xF000u, "mm:ss colon 0x80BDC");
+    ch_expect(4, 8, '0', 0xF000u, "mm:ss seconds padded with '0'");
+    ch_expect(4, 9, '5', 0xF000u, "mm:ss seconds");
+
+    /* (b) 0x32F54: 0x2CA78 is `xor eax,eax; ret`, so the average is 0 with
+     * any fields. */
+    sm_stats_seed();
+    CHECK_EQ_INT((int)config_credit_zero(), 0);
+    CHECK_EQ_INT((int)svc_stats_avg(), 0);
+
+    DSD(DS_001014E4) = CH_BUF_A; DSD(DS_001014E8) = CH_BUF_B;
+
+    /* P1A: a new Esc with Enter held stays (0x330A7) and draws; a pass
+     * with nothing draws nothing; a new Esc alone leaves (3 frames). */
+    static const sm_step_t p1a[] = { { 0u, 0x3000000u }, { 0u, 0u }, { 0u, 0x2000000u } };
+    actors_reset();
+    text_glyph_at(0x25, 'Z', 4, 0xF000u); text_glyph_at(0x24, 'Z', 8, 0xF000u);
+    text_glyph_at(28, 'Z', 14, 0xF000u);
+    sm_stats_seen = 0u;
+    sm_begin(p1a, 3u);
+    sm_probe = sm_stats_plant;
+    svc_stats_page1();
+    sm_end(3u, "STATISTICS page 1: Esc with Enter held stays, Esc leaves");
+    CHECK_EQ_INT((int)sm_stats_seen, 0x200);                     /* no redraw on pass 2 */
+    CHECK(ch_cell(0, SM_COLS(0x81u, 0x5002u)) != 0u, "the title 0x81");
+    ch_expect(3, 4, 'I', 0xF000u, "Idle Mins (0x8F) on row 3");
+    ch_expect(3, 0x24, '5', 0xF000u, "field 3 as is, & 0xFFFF");
+    CHECK_EQ_INT((int)ch_cell(3, 0x25), 0);
+    ch_expect(4, 4, '1', 0xF000u, "1 Player Mins (0x90) on row 4");
+    ch_expect(4, 0x24, '7', 0xF000u, "field 0x12 / 60 = 65543, & 0xFFFF");
+    CHECK_EQ_INT((int)ch_cell(4, 0x25), 0);
+    ch_expect(5, 0x24, '1', 0xF000u, "field 0x13 / 60 = 10");
+    ch_expect(5, 0x25, '0', 0xF000u, "field 0x13 / 60 = 10");
+    ch_expect(6, 0x24, '4', 0xF000u, "field 0xA / 60 = 4");
+    ch_expect(7, 4, 'C', 0xF000u, "Cont Game Mins (0x93) on row 7");
+    ch_expect(7, 0x24, '1', 0xF000u, "field 0xC / 60 = 16");
+    ch_expect(7, 0x25, '6', 0xF000u, "field 0xC / 60 = 16");
+    /* 0x33458 from row 8: 250 / 2 = 125; 999 / 0 is 0; 3932580 / (2 + 3),
+     * & 0xFFFF = 84; 600 / ((0xFFFF + 4) & 0xFFFF) = 200. */
+    ch_expect(8, 4, 'A', 0xF000u, "Ave New 1 pl time (0x94) on row 8");
+    CHECK_EQ_INT((int)ch_cell(8, 0x24), 0);
+    ch_expect(8, 0x25, '2', 0xF000u, "row 8 2:05");
+    ch_expect(8, 0x26, ':', 0xF000u, "row 8 2:05");
+    ch_expect(8, 0x27, '0', 0xF000u, "row 8 2:05");
+    ch_expect(8, 0x28, '5', 0xF000u, "row 8 2:05");
+    ch_expect(9, 0x25, '0', 0xF000u, "row 9 0:00 (a zero sum)");
+    ch_expect(9, 0x28, '0', 0xF000u, "row 9 0:00");
+    ch_expect(10, 0x25, '1', 0xF000u, "row 10 1:24");
+    ch_expect(10, 0x27, '2', 0xF000u, "row 10 1:24");
+    ch_expect(10, 0x28, '4', 0xF000u, "row 10 1:24");
+    ch_expect(11, 4, 'A', 0xF000u, "Ave 2 pl game time (0x97) on row 11");
+    ch_expect(11, 0x25, '3', 0xF000u, "row 11 3:20");
+    ch_expect(11, 0x27, '2', 0xF000u, "row 11 3:20");
+    ch_expect(11, 0x28, '0', 0xF000u, "row 11 3:20");
+    /* 0x32F98(4, 13): AVG TIME/COIN at (5, 14), Percentage Play at (4, 15). */
+    ch_expect(14, 5, 'A', 0xF000u, "AVG TIME/COIN (0x8B) at (col + 1, row + 1)");
+    CHECK_EQ_INT((int)ch_cell(14, 28), 0);
+    ch_expect(14, 29, '0', 0xF000u, "0x328B8(0, 6): minutes in 3 cells");
+    ch_expect(14, 30, ':', 0xF000u, "0x328B8(0, 6)");
+    ch_expect(14, 31, '0', 0xF000u, "0x328B8(0, 6)");
+    ch_expect(14, 32, '0', 0xF000u, "0x328B8(0, 6)");
+    ch_expect(15, 4, 'P', 0xF000u, "Percentage Play (0x8A) at (col, row + 2)");
+    ch_expect(15, 26, '3', 0xF000u, "100 * 0xFFFF / 0x30004 = 33");
+    ch_expect(15, 27, '3', 0xF000u, "100 * 0xFFFF / 0x30004 = 33");
+    ch_expect(0x1B, SM_COLS(0x209u, 0x1000u), 'P', 0x1000u, "PRESS ESCAPE KEY");
+    ch_expect(0x1C, SM_COLS(0x82u, 0x1000u), 'f', 0x1000u, "for more stats (0x82)");
+
+    /* P1B: the latched Enter leaves before any draw and releases "EEPROM
+     * ERROR"'s twelve cells from (0x1B, 0xC) (1 frame). P1C: the latched Esc
+     * (1 frame). */
+    static const sm_step_t p1b[] = { { 0x1C0Du, 0u } };
+    static const sm_step_t p1c[] = { { 0x011Bu, 0u } };
+    for (u32 run = 0; run < 2u; run++) {
+        actors_reset();
+        text_glyph_at(2, 'Z', 20, 0xF000u);
+        text_glyph_at(0x1B, 'Z', 0xC, 0xF000u); text_glyph_at(0x26, 'Z', 0xC, 0xF000u);
+        text_glyph_at(0x27, 'Z', 0xC, 0xF000u);
+        DSD(DS_0010150C) = 0x5A5A5A5Au;
+        sm_begin(run == 0u ? p1b : p1c, 1u);
+        svc_stats_page1();
+        sm_end(1u, run == 0u ? "page 1 left on the latched Enter" : "page 1 left on the latched Esc");
+        CHECK(ch_cell(20, 2) != 0u, "no draw before the exit");
+        CHECK_EQ_INT((int)DSD(DS_0010150C), 0x5A5A5A5A);
+        CHECK_EQ_INT((int)ch_cell(0xC, 0x1B), 0);
+        CHECK_EQ_INT((int)ch_cell(0xC, 0x26), 0);
+        CHECK(ch_cell(0xC, 0x27) != 0u, "only twelve cells released");
+    }
+
+    /* P2A (clear_ok = 1, Esc held, so never new): Esc alone, then Enter
+     * alone, clear nothing; Esc + Enter waits for Esc's release, zeroes
+     * fields 0..0x27 and redraws without the hints; the latched Enter leaves
+     * (5 frames). */
+    static const sm_step_t p2a[] = {
+        { 0u, 0x2000000u }, { 0u, 0x1000000u }, { 0u, 0x3000000u }, { 0u, 0x1000000u }, { 0x1C0Du, 0u } };
+    actors_reset();
+    sm_stats_seed_all();
+    text_glyph_at(0x20, 'Z', 12, 0xF000u);
+    text_glyph_at(SM_COLS(0x69u, 0x4000u), 'Z', 0x18, 0xF000u);
+    sm_stats_seen = 0u;
+    sm_begin(p2a, 5u);
+    sm_held = 0x2000000u;
+    sm_probe = sm_stats_probe;
+    svc_stats_page2(1u);
+    sm_end(5u, "page 2: the Esc + Enter clear, then Enter");
+    CHECK_EQ_INT((int)sm_stats_seen, 0x71E);
+    for (u32 f = 0; f < 0x28u; f++) CHECK_EQ_INT((int)config_field_get(f), 0);
+    CHECK_EQ_INT((int)config_field_get(0x28u), 5);              /* 0x332A5: up to 0x27 */
+    CHECK(ch_cell(0, SM_COLS(0xAAu, 0x5002u)) != 0u, "the title 0xAA");
+    ch_expect(3, 4, '1', 0xF000u, "1 player games (0xA1) in 0xF000");
+    ch_expect(3, 0x20, '0', 0xF000u, "field 8 cleared, pad 3");
+    ch_expect(4, 4, '2', 0x4000u, "2 player games (0xA2) in 0x4000");
+    ch_expect(4, 0x20, '0', 0x4000u, "field 9 in the row's mode");
+    ch_expect(5, 4, '1', 0xF000u, "the modes alternate");
+    ch_expect(11, 4, 'F', 0xF000u, "Final continues (0xA9) on row 11");
+    ch_expect(11, 0x20, '0', 0xF000u, "field 0x11");
+    CHECK_EQ_INT((int)ch_cell(0x18, SM_COLS(0x69u, 0x4000u)), 0); /* no hints after the clear */
+    ch_expect(0x1C, SM_COLS(0x82u, 0x1000u), 'f', 0x1000u, "page 2's for more stats");
+
+    /* P2B (clear_ok = 0): Esc + Enter neither clears nor leaves; a new Esc
+     * leaves (2 frames). */
+    static const sm_step_t p2b[] = { { 0u, 0x3000000u }, { 0u, 0x2000000u } };
+    actors_reset();
+    sm_stats_seed();
+    text_glyph_at(SM_COLS(0x69u, 0x4000u), 'Z', 0x18, 0xF000u);
+    sm_begin(p2b, 2u);
+    svc_stats_page2(0u);
+    sm_end(2u, "page 2 without the clear: Esc + Enter stays, Esc leaves");
+    CHECK_EQ_INT((int)config_field_get(8u), 2);
+    CHECK_EQ_INT((int)config_field_get(0u), 7);
+    ch_expect(3, 0x20, '2', 0xF000u, "field 8");
+    ch_expect(4, 0x20, '6', 0x4000u, "field 9 = 65535");
+    ch_expect(4, 0x24, '5', 0x4000u, "field 9 = 65535");
+    CHECK_EQ_INT((int)ch_cell(0x18, SM_COLS(0x69u, 0x4000u)), 0);   /* no hints */
+
+    /* P2C (clear_ok = 1): the latched Esc leaves first (1 frame). */
+    static const sm_step_t p2c[] = { { 0x011Bu, 0u } };
+    actors_reset();
+    text_glyph_at(2, 'Z', 20, 0xF000u);
+    text_glyph_at(0x1B, 'Z', 0xC, 0xF000u); text_glyph_at(0x27, 'Z', 0xC, 0xF000u);
+    sm_begin(p2c, 1u);
+    svc_stats_page2(1u);
+    sm_end(1u, "page 2 left on the latched Esc");
+    CHECK(ch_cell(20, 2) != 0u, "page 2: no draw before the exit");
+    CHECK_EQ_INT((int)ch_cell(0xC, 0x1B), 0);
+    CHECK(ch_cell(0xC, 0x27) != 0u, "page 2: only twelve cells released");
+    CHECK_EQ_INT((int)config_field_get(0u), 7);
+
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+    DSD(DS_0010150C) = s_150c; DSD(DS_001014E4) = s_e4; DSD(DS_001014E8) = s_e8;
+}
+
 /* Runs after test_cfg_helpers, whose one actors_init() it relies on. The
  * menu screens advance the tick model and the key state; those, the menu
  * state DS_00107414..DS_00107453 and the credits dword are put back. */
@@ -8778,6 +9006,7 @@ int test_svcmenu(void)
     sm_check_volume();
     sm_check_controls();
     sm_check_keyboard();
+    sm_check_stats();
 
     DSD(DS_000E1C3C) = s_rpt;
     DSW(DS_000E1C40) = s_rpt40; DSW(DS_000E1C42) = s_rpt42; DSW(DS_000E1C44) = s_rpt44;

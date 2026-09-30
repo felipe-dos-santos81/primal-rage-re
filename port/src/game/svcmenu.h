@@ -139,4 +139,30 @@ u32 svc_raw_key_take(void);
  * slots 0..6 sets DS_00108113. Returns 0 — 0x19DF0. */
 u32 svc_configure_keyboard(u32 entry);
 
+/* "m:ss" of `secs` at the text cursor in 0xF000: the minutes right-aligned in
+ * (w & 0xFFFF) - 3 cells padded with ' ', ':', then the seconds in two cells
+ * padded with '0' — 0x328B8. */
+void svc_draw_mmss(u32 secs, u32 w);
+/* AVG TIME/COIN: 0 when 0x2CA78 returns 0, which it always does; else
+ * 60 * (2 * field 5 + field 4) / (its result & 0xFFFF) — 0x32F54. */
+u32 svc_stats_avg(void);
+/* "Percentage Play" at (col, row + 2), then 100 * (u16)(field 4 + field 5) /
+ * (fields 3 + 4 + 5) (0 for a zero sum); "AVG TIME/COIN" at (col + 1,
+ * row + 1), then svc_draw_mmss(svc_stats_avg(), 6) — 0x32F98. */
+void svc_stats_play(s32 col, s32 row);
+/* The four average-time rows of the code-object table 0x326C4 from `row`: a
+ * label at column 4, then m:ss at column 0x24 of (u16)(numerator field /
+ * (u16)(one or two denominator fields)), 0 for a zero sum. Returns row + 4
+ * — 0x33458. */
+u32 svc_stats_rows(s32 row);
+/* STATISTICS page 1: the five rows of 0x32644, svc_stats_rows and
+ * svc_stats_play, drawn once; leaves on the latched Esc or Enter, or on a
+ * new pad Esc while Enter is not held — 0x33058. */
+void svc_stats_page1(void);
+/* STATISTICS page 2 "MORE STATISTICS": the nine rows of 0x32674, drawn once
+ * (again after a clear). With `clear_ok`, holding Esc and Enter together
+ * zeroes config fields 0..0x27 once Esc is released. Leaves as page 1
+ * — 0x33230. */
+void svc_stats_page2(u32 clear_ok);
+
 #endif /* PRAGE_GAME_SVCMENU_H */

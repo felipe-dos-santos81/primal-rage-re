@@ -1320,7 +1320,11 @@ Down swapped (6), the device wraps (17, 18) and the Esc test on `0x0D` (32).
 included the suite's closing `FAILURES: N` line, one too many for every row.
 The rows below are the `test_game.c` FAIL lines re-measured from the same log
 (43..46 are 2, 3, 1 and 1, not 3, 4, 2 and 2), and the labels of 45 and 46
-name the marker bit each one drops.
+name the marker bit each one drops. **The counts are a snapshot** of the suite
+as it stood at Task 5's fix round; later tasks add checks that the same
+mutation can also fail, so a re-run at a later HEAD measures more (at
+`13a99e8`, row 22 fails 18 checks, not 14). The pass/fail verdicts do not
+move.
 
 | # | mutation | result |
 |---|---|---|
@@ -1511,7 +1515,10 @@ call or jump to it and no absolute dword `0x00019DD8`. No port, no row
   seed (not applied), slot 6's old "<HOME>" left highlighted in `0x3000`,
   and slot 9's (`0x100CC6`) initial "<DOWN>" at (0x20, 9).
 
-**Not tested:** the `0x1A331` drop of a stale key word (it shows only when the
+**Not tested** (the first version of KEYS A refused an 'M' against slot 0's
+'m'; fix round 1 removed that slot-0 duplicate case and traded it for the
+slot-6 clash below, so the lower-bound mutation 36 now survives and is listed
+here): the `0x1A331` drop of a stale key word (it shows only when the
 first frame brings no key: one more frame over the brief's 25); the wait on a
 zero key word (`0x1A39A`; the checks after it refuse a zero word anyway, so it
 is not separable); **the duplicate loop's lower bound**: the one refused
@@ -1594,4 +1601,296 @@ was compared: `--check 8000` gives the same `shasum` list over 8000 `.idx` and
 8000 `.pal` files as `k11_t5_frames_after.sha` (FRAMES-IDENTICAL). The header
 grep counts 1 for each of `19C60 19D34 2EBBC 19DF0`. `tools/port_progress.py`
 stays at `765 1203 64` / `729 730 100`: none of the four is a Ghidra
-function.
+function. **Fix round 1** (committed as `13a99e8`): `make verify` exited 0
+again on that tree (`<scratchpad>/k11_t6r1_verify.txt`); its oracle lines
+(`k11_t6r1_or.txt`) equal the first run's and ledger §A's, except the two
+unittest wall-clock lines (`Ran 10 tests in 0.104s`, `Ran 33 tests in
+1.184s`). The fix round changed `port/tests/test_game.c`, the docs and
+comments in `svcmenu.h` only (no code on a frame path), so no frame dump was
+repeated.
+
+## §K11.7 Cycle 6: STATISTICS pages 1 and 2 (executor, Task 7)
+
+Six functions, re-read from the fixed-up image (`k11_dx.py`; the tables and
+strings with `k11_str.py`). Each has exactly one rel32 caller and no absolute
+reference: `0x328B8` from `0x3304D`, `0x32F54` from `0x33048`, `0x32F98` from
+`0x331BD`, `0x33458` from `0x331A8`, `0x33058` from `0x33563` and `0x33230`
+from `0x3356A` (both in `0x33560`, reached by `0x2CAC5 jmp` from `0x2CAC0`,
+which sets EAX = 1). None is a table callback, so none is registered.
+
+**(a) The code-object tables.** `0x32644` holds five 8-byte rows `{u32 string
+id, u8 field, 3 bytes}`, ended by `{0, 0xFF}` at `0x3266C`; `0x33058` walks
+exactly five (EBP 0..0x28, `0x3319D`), so the end row is not read:
+
+| row | id | field |
+|---|---|---|
+| `32644` | `0x8F` "Idle Mins           :" | 3 |
+| `3264C` | `0x90` "1 Player Mins       :" | `0x12` |
+| `32654` | `0x91` "2 Player Mins       :" | `0x13` |
+| `3265C` | `0x92` "New Game Mins       :" | `0xA` |
+| `32664` | `0x93` "Cont Game Mins      :" | `0xC` |
+
+`0x32674` holds nine such rows (ended by `{0, 0xFF}` at `0x326BC`; EDI
+0..0x48, `0x33378`): `0xA1` "1 player games" field 8, `0xA2` "2 player
+games" 9, `0xA3` "1 pl continues" 6, `0xA4` "2 pl continues" 7, `0xA5` "1 pl
+finishes" `0xE`, `0xA6` "Challenge games" `0xD`, `0xA7` "Sudden deaths"
+`0xF`, `0xA8` "Final battles" `0x10`, `0xA9` "Final continues" `0x11`.
+`0x326C4` holds four 12-byte rows `{u32 id, u8 numerator field, u8 0, u16
+denominator field 1, u16 denominator field 2 (0 = none), u16 0}` (ended at
+`0x326F4`; EDI 0..0x30, `0x33548`): `0x94` "Ave New 1 pl time" `0xA / 8`,
+`0x95` "Ave Cont 1 pl time" `0xC / 0xB`, `0x96` "Ave 1 pl game time" `0x12 /
+(8 + 6)`, `0x97` "Ave 2 pl game time" `0x13 / (9 + 7)`. The field widths
+(descriptors at `0x2D300`): 3, 4, 5 are 20 bits; 6..9, `0xB`, `0xD..0x11`
+16 bits; `0xA`, `0xC` 24 bits; `0x12`, `0x13` 32 bits.
+
+**(b) `0x328B8`** (EAX secs, EDX w): minutes `m = secs / 60` (`div`),
+`0x2F464(m & 0xFFFF, (w & 0xFFFF) - 3, pad 1, 0xF000)` (`0x328CB..0x328E5`;
+`xor edx,edx; mov dx,bx`), `":"` (`0x80BDC`) through `0x2F198(-1, -1, ..,
+0xF000)` (row -1: at the cursor), then `0x2F464((secs - m * 60) & 0xFFFF, 2,
+pad 0, 0xF000)`. Against `0x2EFD4`'s pad table (actors.c): pad 1
+right-justifies with `' '`, pad 0 with `'0'`, so 125 s with w = 5 is " 2",
+":", "05", as the brief says; a `' '` releases its cell. Its only caller
+passes w = 6.
+
+**(c) `0x32F54`** re-read from `0x32F56..0x32F90`: `c = 0x2CA78()`; zero
+returns it (`0x32F5F je 0x32F92`); else `edx = 2 * field 5 + field 4`, `eax =
+((edx << 4) - edx) << 2` = 60 * edx, `div (c & 0xFFFF)`. The formula is the
+brief's. **Correction (raw wins): `0x2CA78` is `xor eax,eax; ret`**
+(`config_credit_zero`, record §48-E), so `0x32F54` always returns 0 and its
+division is dead. The brief's "seed c = 7, expect 60" cannot be run: there is
+nothing for `0x2CA78` to read. The test asserts 0 with fields 4 and 5 seeded.
+
+**(d) `0x32F98`** (EAX col, EDX row). **Correction (raw wins): it takes no
+mode**: EBX is zeroed (`0x32FA6`) and ECX overwritten (`0x32F9F mov
+ecx,edx`) before either is read (the caller's ECX = `0x1000` at `0x331B8` is
+dead); the port is `svc_stats_play(col, row)`. `sum = field 4 + field 5`
+(EDX 4..5, `0x32FA1..0x32FB5`), `all = sum + field 3`, `num = 100 * (sum &
+0xFFFF)` (`0x32FC4..0x32FD7`), `pct = all ? num / all : 0` (`idiv`). Then
+"Percentage Play     : " (`0x8A`) at **(col, row + 2)** and `0x2F464((s16)pct,
+0xB, pad 3, 0xF000)` after it; "AVG TIME/COIN       : " (`0x8B`) at **(col +
+1, row + 1)** (`0x33036 lea edx,[ebp+1]`, `0x33039 inc esi`), then
+`0x328B8(0x32F54(), 6)`. So AVG TIME/COIN is drawn one row above Percentage
+Play and one column right. The `je 0x33052` at `0x33025` tests the flags
+left by `0x2F464`, whose last flag-setting instruction is `0x2F485 add
+esp,0x14` (never zero): it always falls through.
+
+**(e) `0x33458`** (EAX row, returns row + 4): per row, the label at (4, row)
+in `0xF000`; `d = field(f1) + field(f2)` when f2 != 0, else `field(f1)`
+(`0x334A6..0x334C7`); when d != 0, `v = (s32)field(num) / (s32)(d & 0xFFFF)`
+(`idiv`, `0x334CD..0x334E2`), else v = d = 0. `t = v & 0xFFFF`, then
+`0x2F434(0x24, row, t / 60, 2, pad 1, 0xF000)`, `":"` at (0x26, row) and
+`0x2F434(0x27, row, t % 60, 2, pad 0, 0xF000)`. **Named gap (PORT):** a
+non-zero d with a zero low word (reachable with f2 set: e.g. fields 8 + 6 =
+0x10000) makes the raw's `idiv` fault (#DE, DOS/4GW aborts); the port draws 0.
+
+**(f) `0x33058`** (STATISTICS page 1). **Correction: EAX is not read**
+(`0x33066 call 0x2EA74` is first); the port is `svc_stats_page1(void)`. EBX =
+1 (the redraw flag). The exits, `0x3306B..0x330A7`: per pass `0x2EA74`, then
+the latched key `0x2EB80`: non-zero and `0x1B` or `0x0D` leaves; then
+`0x2EDE0(0x2000000, 0)`: with the Esc bit (a **new** pad Esc, as `0x50161`
+reports a masked bit only on its edge), `0x2EDE0(0, 0)` (the level) without
+`0x1000000` leaves; with Enter held it stays. §0.5's "Esc or Enter (the
+latched key) leaves" is right but incomplete. With EBX set: `0x52106(EAX)`,
+`0x2F99C`, title `0x81` centred on row 0 in `0x5002`, the five rows from row 3
+(label at column 4 in `0xF000`; the value, divided by 60 with `idiv` for
+fields `0xA`, `0xC`, `0x12`, `0x13`, is drawn `& 0xFFFF` by `0x2F434(0x24,
+row, .., 0xB, pad 3, 0xF000)`), `0x33458(8)`, `0x32F98(4, (s16)(12 + 1))`,
+"PRESS ESCAPE KEY" (`0x209`) and "for more stats" (`0x82`) centred on rows
+`0x1B`/`0x1C` in `0x1000`; EBX = 0. Exit (`0x33204`): "EEPROM ERROR"
+(`0x9F`) released from (0x1B, 0xC) in `0x3000`. The `field == 0x24 && (value
+& 0xFFFF) > 0x4B` arm (`0x33169..0x33194`, which draws `0x9F` there) is dead:
+no row of `0x32644` has field `0x24`. It is ported as written.
+
+**`0x52106`'s argument** (`0x330B1`, and `0x332E4` in page 2) is pinned: EAX
+is the last `0x2EDE0` result, the Esc-masked poll's when it had no Esc bit,
+else the level poll's. **It has no visible effect:** `0x2F99C`, called next,
+runs `0x2BAF4` with EAX = 1, whose non-zero arm calls `0x52106(0)`
+(`0x2BBEA`, actors.c): the ticks, both offscreen buffers, the DAC and the
+aperture are written again with 0. The port passes the value and tests
+nothing of it (a first test asserting `DS_0010150C` = the key word failed
+for exactly this reason and was dropped).
+
+**(g) `0x33230`** (page 2 "MORE STATISTICS", EAX = clear_ok in `[esp+4]`).
+The exits are page 1's (`0x33247..0x3325C`, `0x332B5..0x332D6`). Between
+them, with clear_ok (`0x33262`): when the level `0x2EDE0(0, 0)` has both
+`0x3000000` bits (Esc and Enter held, `and`/`cmp` at `0x33272..0x3327C`), it
+loops `0x2EDE0(0, 0)` + `0x2EA74` while Esc is held (`0x33280..0x33295`),
+then **zeroes config fields 0..0x27** (`0x2DA0C(i, 0)`, ESI 0..0x27 with
+`inc` before the call and `cmp esi,0x28; jl`, `0x33297..0x332A8`), clears
+clear_ok and sets the redraw flag. The draw: `0x52106(EAX)`, `0x2F99C`, title
+`0xAA` in `0x5002`, the nine rows from row 3 (label at column 4, value
+`field & 0xFFFF` by `0x2F434(0x20, row, .., 0xB, pad 3, mode)`), the mode
+EBP starting `0xF000` and alternating with `0x4000` (`0x3335E..0x33372`), the
+two footer lines, and with clear_ok the three hints `0x69` "HOLD LEFT PL
+UPPER LEFT", `0x6A` "AND PRESS LEFT PL UPPER RIGHT", `0xA0` "to clear ALL
+statistics" centred on rows `0x18..0x1A` in `0x4000`. Exit as page 1.
+The fields it clears include the play-time and audit fields pages 1 and 2
+show, and also every other field 0..0x27 (the brief's "the §K11.7 fields").
+
+**The modes of page 2 are invisible.** `0x2F5A0` (`text_glyph_emit`) picks
+the font palette from the mode's high nibble, and `0x4000` and `0xF000` both
+select `0x8099A4` (actors.c, the class-0 switch), so the alternating rows
+are drawn identically; the test cannot tell them apart (mutation 46).
+
+**Values the tests pin** (`sm_check_stats`, 13 scripted frames). The fields
+seeded for page 1: 0 = 7, 3 = 0x10005, 4 = 0x10000, 5 = 0xFFFF, 6 = 3, 7 = 4,
+8 = 2, 9 = 0xFFFF, 0xA = 250, 0xB = 0, 0xC = 999, 0x12 = 3932580, 0x13 = 600
+(each read back).
+
+* `0x328B8(125, 5)` at the cursor (4, 5): a seeded glyph at column 5
+  released by the pad `' '`, then '2', ':', '0', '5' in columns 6..9.
+* `0x2CA78` = 0 and `0x32F54` = 0.
+* P1A (3 frames: a new Esc with Enter held, nothing, a new Esc alone): the
+  title; rows 3..7 with field 3 & 0xFFFF = 5 (not divided), `0x12` / 60 =
+  65543 & 0xFFFF = 7 (column 0x25 empty: pad 3), `0x13` 10, `0xA` 4, `0xC`
+  16; `0x33458` from row 8: " 2:05" (250 / 2), " 0:00" (a zero sum), " 1:24"
+  (3932580 / 5 = 786516, & 0xFFFF = 84), " 3:20" (600 / ((0xFFFF + 4) &
+  0xFFFF)); `0x32F98(4, 13)`: AVG TIME/COIN at (5, 14) with "  0:00" from
+  column 27, Percentage Play at (4, 15) with "33" (100 * 0xFFFF / 0x30004) at
+  columns 26..27 (field 3 dropped gives 49, the `& 0xFFFF` dropped 66); the
+  two footers. A glyph planted by the harness probe after the first draw is
+  still there on the next frame: the pass with the flag clear draws nothing.
+* P1B (latched Enter) and P1C (latched Esc), 1 frame each: no draw (a seeded
+  glyph and the tick `DS_0010150C` kept), and cells 0x1B..0x26 of row 0xC
+  released, 0x27 kept.
+* P2A (clear_ok, Esc held throughout via `sm_held`, so never new; 5 frames):
+  Esc alone, Enter alone, Esc + Enter, Enter alone (Esc released), then the
+  latched Enter. A per-frame probe (`sm_probe`, new in the harness: called
+  with the frame index before that frame's step is applied) sees the hints of
+  the first draw, no tenth row (a tenth would read the end row `{0, 0xFF}`
+and draw field `0xFF`'s -1 as 65535 at (0x20, 12); row 12 = `0xC` is looked
+at here because the exit's release of "EEPROM ERROR" covers its columns
+0x1B..0x26), a planted glyph kept (no redraw on pass 2), fields 0 and
+  0x27 still seeded on frames 2, 3 and 4 (neither key alone clears, and the
+  clear waits for Esc's release), and field 0 cleared on frame 5. After:
+  fields 0..0x27 are 0 and field 0x28 keeps its 5; the redraw shows the
+  labels (rows 3, 4, 5, 11), the values 0 (pad 3) and no hints.
+* P2B (clear_ok = 0; 2 frames: Esc + Enter, then Esc): no clear and no exit
+  on the first frame, the values 2 and 65535, no hints; the new Esc leaves.
+* P2C (clear_ok = 1; the latched Esc, 1 frame): no draw, the release, the
+  fields kept.
+
+So each page's three exits run once: page 1 the latched Enter (P1B), the
+latched Esc (P1C) and a new pad Esc (P1A); page 2 the latched Enter (P2A),
+the latched Esc (P2C) and a new pad Esc (P2B). Loop bounds: page 1's five
+rows (first and last drawn), `0x33458`'s four (first and last, and the play
+rows' position), `0x32F98`'s fields 4..5 (both ends), page 2's nine rows
+(first, last and none after) and the clear's 0..0x27 (field 0, field 0x27,
+field 0x28 kept).
+
+**Not tested:** `0x32F54`'s division arm (dead: `0x2CA78` is constant 0),
+and so its `c == 0` test (mutation 6 survives: with it removed the port
+divides by zero, which AArch64's `udiv` answers with 0, the same result; on
+x86 it would trap); `0x32F98`'s zero-total arm (all three fields 0, where the
+quotient is 0 either way; mutation 57 survives for the same reason); the
+signedness of each `idiv` (every seeded value is positive); `0x328B8`'s `w &
+0xFFFF` (its only caller passes 6); the `#DE` gap of `0x33458` (PORT above);
+the dead `field == 0x24` arm of `0x33058`; the argument of `0x52106` (no
+visible effect, above); page 2's alternating modes (invisible, above); the
+titles beyond one non-empty cell each; the labels other than those named.
+
+**Frame budget.** 13 scripted frames in `sm_check_stats` (P1A 3, P1B 1, P1C
+1, P2A 5, P2B 2, P2C 1); `0x328B8` and `0x32F54` are called directly and
+present no frame. K11 total: 131 + 13 = 144 of 160, which leaves **16** for
+Task 8.
+
+**Red, then green.** With the tests and the header in place and no port, the
+build failed at the link on the six new symbols
+(`<scratchpad>/k11_t7_red.txt`). With the port, the first run failed three
+checks, each on `DS_0010150C` = `0x52106`'s argument: `0x2F99C` runs
+`0x52106(0)` right after (above), so those checks were dropped as untestable.
+Then `PR_ORACLE_REQUIRED=1 ./build/run_tests` printed "all checks passed"
+(`k11_t7_green.txt`).
+
+**Mutations** (each applied, rebuilt, run and reverted by
+`<scratchpad>/k11_t7_mut.py`; the final log is `k11_t7_mut_run.txt`). The
+count is the `test_game.c` FAIL lines as measured; the suite's closing
+`FAILURES: N` line is not counted. Three runs: the first (55 mutations,
+`k11_t7_mut_run1.txt`) left six survivors, 6 and 46 (untestable, below) and
+four weak tests. 10: field 3 = 1 gave 49 with or without it in `0x32F98`'s
+total (it is now `0x10005`: 33 against 49). 35: page 1's no-redraw pass was
+not observed (the harness probe now plants a glyph after the first draw).
+42: P2A's Esc-alone frame came just before the combination, so the
+Esc-alone clear waited for the release into the same pass (the order is now
+Esc alone, then Enter alone). 48: see the second run. The second run
+(`k11_t7_mut_run2.txt`) added 56 (page 2's no-redraw pass) and 57 and left
+48 as well: a tenth page-2 row draws on row `0xC`, which the exit's release
+of "EEPROM ERROR" clears, so its check moved into the probe. The third run
+(`k11_t7_mut_run.txt`, the table below) is on the final suite. Of 57, 54
+fail the suite with exit 1 and no crash; 6, 46 and 57 survive (Not tested,
+above). The table is a snapshot of this suite: later tasks can add checks that
+raise a count, but not change a verdict. The brief's four: `/ 60` as `/ 64`
+(1), the seconds pad as `' '` (2), `0x32F54`'s `c == 0` test removed (6: it
+survives on this AArch64 host, where the division by zero returns 0 and
+does not trap), and the page-1 exit on Esc only (23).
+
+| # | mutation | result |
+|---|---|---|
+| 1 | 0x328B8 / 60 as / 64 | 2 checks |
+| 2 | 0x328B8 seconds pad as space (1) | 2 checks |
+| 3 | 0x328B8 minutes pad as zero (0) | 2 checks |
+| 4 | 0x328B8 minutes width w - 2 | 7 checks |
+| 5 | 0x328B8 colon dropped | 5 checks |
+| 6 | 0x32F54 c == 0 test removed | **survives** (listed under Not tested) |
+| 7 | 0x32F54 returns 1 for c == 0 | 2 checks |
+| 8 | 0x32F98 sum fields 4..6 (upper bound + 1) | 2 checks |
+| 9 | 0x32F98 sum fields 5..5 (lower bound + 1) | 2 checks |
+| 10 | 0x32F98 field 3 dropped from the total | 2 checks |
+| 11 | 0x32F98 numerator without (u16) | 2 checks |
+| 12 | 0x32F98 AVG row at (col, row + 1) | 5 checks |
+| 13 | 0x32F98 Percentage row at row + 1 | 3 checks |
+| 14 | 0x32F98 AVG passes width 5 | 4 checks |
+| 15 | 0x33458 second field always added | 5 checks |
+| 16 | 0x33458 second field never added | 5 checks |
+| 17 | 0x33458 denominator without & 0xFFFF | 2 checks |
+| 18 | 0x33458 quotient without & 0xFFFF | 3 checks |
+| 19 | 0x33458 zero sum shows the numerator | 2 checks |
+| 20 | 0x33458 five rows (upper bound + 1) | 8 checks |
+| 21 | 0x33458 from the second row (lower bound + 1) | 18 checks |
+| 22 | 0x33458 seconds pad as space | 1 check |
+| 23 | 0x33058 exit on Esc only (Enter compare dropped) | 5 checks |
+| 24 | 0x33058 exit on Enter only (Esc compare dropped) | 5 checks |
+| 25 | 0x33058 pad Esc leaves with Enter held | 40 checks |
+| 26 | 0x33058 pad Esc exit dropped | 2 checks |
+| 27 | 0x33058 field 3 divided by 60 | 2 checks |
+| 28 | 0x33058 field 0xC not divided | 2 checks |
+| 29 | 0x33058 value without & 0xFFFF | 4 checks |
+| 30 | 0x33058 value pad 1 (right-justified) | 7 checks |
+| 31 | 0x33058 exit release dropped | 4 checks |
+| 32 | 0x33058 play rows at next (no + 1) | 8 checks |
+| 33 | 0x33058 four rows (upper bound - 1) | 21 checks |
+| 34 | 0x33058 from the second row (lower bound + 1) | 29 checks |
+| 35 | 0x33058 redraws every pass | 1 check |
+| 36 | 0x33058 draw before the exit tests | 6 checks |
+| 37 | 0x33230 clear up to 0x26 (upper bound - 1) | 1 check |
+| 38 | 0x33230 clear up to 0x28 (upper bound + 1) | 1 check |
+| 39 | 0x33230 clear from 1 (lower bound + 1) | 2 checks |
+| 40 | 0x33230 Esc-release wait dropped | 1 check |
+| 41 | 0x33230 clear on Enter alone | 1 check |
+| 42 | 0x33230 clear on Esc alone | 4 checks |
+| 43 | 0x33230 clear offered without clear_ok | 8 checks |
+| 44 | 0x33230 clear_ok kept after the clear | 1 check |
+| 45 | 0x33230 hints drawn without clear_ok | 2 checks |
+| 46 | 0x33230 modes do not alternate | **survives** (listed under Not tested) |
+| 47 | 0x33230 eight rows (upper bound - 1) | 2 checks |
+| 48 | 0x33230 ten rows (upper bound + 1) | 1 check |
+| 49 | 0x33230 from the second row (lower bound + 1) | 8 checks |
+| 50 | 0x33230 exit on Esc only | 2 checks |
+| 51 | 0x33230 exit on Enter only | 4 checks |
+| 52 | 0x33230 pad Esc exit dropped | 2 checks |
+| 53 | 0x33230 exit release dropped | 1 check |
+| 54 | 0x33230 value pad 1 (right-justified) | 6 checks |
+| 55 | 0x33230 no redraw after the clear | 4 checks |
+| 56 | 0x33230 redraws every pass | 1 check |
+| 57 | 0x32F98 zero-total test removed | **survives** (listed under Not tested) |
+
+**Gate (Task 7).** `make verify` exited 0 on the final tree
+(`<scratchpad>/k11_t7_verify.txt`). Its oracle lines (`k11_t7_or.txt`) equal
+§K11.6's fix-round run and contain every oracle line of ledger §A, except the
+two unittest wall-clock lines (`Ran 10 tests in 0.097s`, `Ran 33 tests in
+1.114s`). No 8000-frame dump was compared: `game_init` and
+`svcmenu_register` are unchanged (none of the six is a table callback), and
+the six are reached only from `0x33560`, which is not ported yet, so no frame
+path runs them. The header grep counts 1 for each of `328B8 32F54 32F98
+33458 33058 33230`. `tools/port_progress.py` stays at `765 1203 64` / `729
+730 100`: none of the six is a Ghidra function.

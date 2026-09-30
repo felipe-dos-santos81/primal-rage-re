@@ -6,6 +6,7 @@
 #include "game/config.h"
 #include "game/flow.h"
 #include "game/menu.h"
+#include "platform/gfx.h"
 #include "platform/input.h"
 
 #include "../mem.h"
@@ -42,6 +43,10 @@
 #define SVC_KEYS_NAME     0x00100CD4u   /* 0x19DF0's key-name buffer */
 #define SVC_KEY_LABELS    0x000A2C2Cu   /* eight string ids 0x231 0x234 0x232 0x233 0x21C..0x21F */
 #define SVC_BLANK7        0x00080590u   /* "       " (seven spaces) */
+#define SVC_COLON         0x00080BDCu   /* ":" */
+#define SVC_STATS_P1      0x00032644u   /* code: five {u32 string id, u8 field, 3 pad} rows, page 1 */
+#define SVC_STATS_P2      0x00032674u   /* code: nine such rows, page 2 */
+#define SVC_STATS_AVG     0x000326C4u   /* code: four {u32 id, u8 num, u8 0, u16 f1, u16 f2, u16 0} rows */
 /* The layout bytes are signed chars that the raw reads as the dword three
  * bytes below, `sar 0x18` (0x30932 `mov edx,[0xBD441]` gives the byte at
  * 0xBD444). */
@@ -1114,6 +1119,171 @@ u32 svc_configure_keyboard(u32 entry)
     }
     config_keys_apply(SVC_KEYS_REC);                        /* 0x1A54C..0x1A551 0x1AE28 */
     return 0u;                                              /* 0x1A556 */
+}
+
+/* 0x328B8 — record §K11.7. EAX = secs (ESI), EDX = w (EBX); ECX is not
+ * read (0x328C0 loads the divisor into it). */
+void svc_draw_mmss(u32 secs, u32 w)
+{
+    const u32 m = secs / 60u;                               /* 0x328C0..0x328C9 `div` */
+    text_number_cont((s32)(m & 0xFFFFu), (s32)(w & 0xFFFFu) - 3, 1u, 0xF000u);   /* 0x328CB..0x328E5 0x2F464 */
+    text_cursor_set(-1, -1, mem + SVC_COLON, 0xF000u);      /* 0x328EA..0x328FB 0x2F198 (row -1: the cursor) */
+    text_number_cont((s32)((secs - m * 60u) & 0xFFFFu), 2, 0u, 0xF000u);   /* 0x328D0, 0x32900..0x32913 0x2F464 */
+}
+
+/* 0x32F54 — record §K11.7. */
+u32 svc_stats_avg(void)
+{
+    const u32 c = config_credit_zero();                     /* 0x32F56 0x2CA78 */
+    /* 0x2CA78 is `xor eax,eax; ret`, so this arm always returns 0 and the
+     * division below is never reached (record §K11.7). */
+    if (c == 0u) return 0u;                                 /* 0x32F5D..0x32F5F */
+    const u32 n = config_field_get(5u) * 2u + config_field_get(4u);   /* 0x32F61..0x32F7C */
+    return n * 60u / (c & 0xFFFFu);                         /* 0x32F7E..0x32F90 `div` */
+}
+
+/* 0x32F98 — record §K11.7. EAX = col (ESI), EDX = row (ECX); EBX is zeroed
+ * (0x32FA6) and ECX overwritten (0x32F9F) before either is read. */
+void svc_stats_play(s32 col, s32 row)
+{
+    u32 sum = 0u;
+    for (u32 f = 4u; f != 6u; f++)                          /* 0x32FA1..0x32FB5 */
+        sum += config_field_get(f);                         /* 0x32FAA 0x2D974 */
+    const u32 all = sum + config_field_get(3u);             /* 0x32FB7..0x32FC1 */
+    const s32 num = (s32)((sum & 0xFFFFu) * 100u);          /* 0x32FC4..0x32FD7 */
+    const s32 pct = all != 0u ? num / (s32)all : 0;         /* 0x32FDA..0x32FEB `idiv` */
+    const s32 c = (s16)col, r = (s16)row;                   /* 0x32FF7..0x32FFA `movsx` */
+    text_cursor_set(c, r + 2, game_string_get(0x8Au), 0xF000u);      /* 0x32FED..0x33009 */
+    text_number_cont((s16)pct, 0xB, 3u, 0xF000u);            /* 0x3300E..0x33020 0x2F464 */
+    /* 0x33025 `je 0x33052` tests the flags of 0x2F464's last instruction,
+     * 0x2F485 `add esp,0x14`, which never gives zero: it falls through. */
+    text_cursor_set(c + 1, r + 1, game_string_get(0x8Bu), 0xF000u);  /* 0x33027..0x3303E */
+    svc_draw_mmss(svc_stats_avg(), 6u);                     /* 0x33043..0x3304D 0x32F54, 0x328B8 */
+}
+
+/* 0x33458 — record §K11.7. EAX = row (ESI); [esp] the numerator field,
+ * [esp+4] the second denominator field, EBP the first. */
+u32 svc_stats_rows(s32 row)
+{
+    for (u32 e = SVC_STATS_AVG; e != SVC_STATS_AVG + 0x30u; e += 0xCu, row++) {   /* 0x33463, 0x3353F..0x3354B */
+        const u32 num = DSB(e + 4u);                        /* 0x33465..0x3346D */
+        const u32 f2 = DSW(e + 8u);                         /* 0x33470..0x3347E */
+        text_cursor_set(4, row, game_string_get(DSD(e)), 0xF000u);   /* 0x33479..0x33496 */
+        const u32 f1 = DSW(e + 6u);                         /* 0x3349F */
+        u32 v;
+        if (f2 != 0u) {                                     /* 0x334A6..0x334A8 */
+            const u32 a = config_field_get(f1);             /* 0x334AA..0x334AC 0x2D974 */
+            v = config_field_get(f2) + a;                   /* 0x334B3..0x334BC */
+        } else {
+            v = config_field_get(f1);                       /* 0x334C0..0x334C2 */
+        }
+        if (v != 0u) {                                      /* 0x334C9..0x334CB */
+            const s32 d = (s32)(v & 0xFFFFu);               /* 0x334D7 */
+            /* PORT: a non-zero sum with a zero low word makes the raw's `idiv`
+             * fault (#DE); the port draws 0 in its place (named gap, record
+             * §K11.7). */
+            v = d != 0 ? (u32)((s32)config_field_get(num) / d) : 0u;   /* 0x334CD..0x334E2 `idiv` */
+        }
+        const u32 t = v & 0xFFFFu;                          /* 0x334E9..0x334ED */
+        text_number_set(0x24, row, (s32)(t / 60u), 2, 1u, 0xF000u);    /* 0x334E4..0x3350F 0x2F434 */
+        text_cursor_set(0x26, row, mem + SVC_COLON, 0xF000u);          /* 0x33514..0x33525 0x2F198 */
+        text_number_set(0x27, row, (s32)(t - t / 60u * 60u), 2, 0u, 0xF000u);   /* 0x334F2, 0x33501..0x33542 0x2F434 */
+    }
+    return (u32)row;                                        /* 0x33551 */
+}
+
+/* 0x33058 — record §K11.7. STATISTICS page 1. EAX is not read (0x33066
+ * `call` overwrites it); EBX the redraw flag, EDI the row, EBP the table
+ * offset, ESI the row's field. */
+void svc_stats_page1(void)
+{
+    u32 redraw = 1u;                                        /* 0x33061 */
+    for (;;) {
+        config_screen_wait_zero();                          /* 0x33066 0x2EA74 */
+        const u32 k = config_key_latched();                 /* 0x3306B 0x2EB80 */
+        if (k != 0u && (k == 0x1Bu || k == 0x0Du)) break;   /* 0x33070..0x33080 */
+        u32 keys = config_input_poll(0x2000000u, 0u);       /* 0x33086..0x3308D 0x2EDE0 */
+        if ((keys & 0x2000000u) != 0u) {                    /* 0x33092..0x33097 */
+            keys = config_input_poll(0u, 0u);               /* 0x33099..0x3309D 0x2EDE0 */
+            if ((keys & 0x1000000u) == 0u) break;           /* 0x330A2..0x330A7 */
+        }
+        if (redraw == 0u) continue;                         /* 0x330AD..0x330AF */
+        /* EAX is the last 0x2EDE0's word; the 0x2BAF4(1) inside 0x2F99C runs
+         * 0x52106(0) at once (0x2BBEA), so none of it shows (record §K11.7). */
+        gfx_screen_reset(keys);                             /* 0x330B1 0x52106 */
+        svc_screen_reset();                                 /* 0x330B6 0x2F99C */
+        text_cursor_set(-1, 0, game_string_get(0x81u), 0x5002u);   /* 0x330BB..0x330DA */
+        s32 row = 3;                                        /* 0x330C5 */
+        for (u32 e = SVC_STATS_P1; e != SVC_STATS_P1 + 0x28u; e += 8u, row++) {   /* 0x330D8, 0x33199..0x331A0 */
+            text_cursor_set(4, row, game_string_get(DSD(e)), 0xF000u);    /* 0x330DF..0x330FF */
+            const u32 f = DSB(e + 4u);                      /* 0x330F8 */
+            u32 v;
+            if (f == 0xAu || f == 0xCu || f == 0x12u || f == 0x13u)       /* 0x33104..0x33116 */
+                v = (u32)((s32)config_field_get(f) / 60);   /* 0x3311F..0x33130 `idiv` */
+            else
+                v = config_field_get(f);                    /* 0x3314B..0x33153 */
+            text_number_set(0x24, row, (s32)(v & 0xFFFFu), 0xB, 3u, 0xF000u);   /* 0x33137..0x33164 0x2F434 */
+            /* 0x33169: no row of 0x32644 has field 0x24 (record §K11.7) */
+            if (f == 0x24u && (s32)(v & 0xFFFFu) > 0x4B)    /* 0x33169..0x33177 */
+                text_cursor_set(0x1B, 0xC, game_string_get(0x9Fu), 0x3000u);  /* 0x33179..0x33194 "EEPROM ERROR" */
+        }
+        const u32 next = svc_stats_rows(row);               /* 0x331A6..0x331A8 0x33458 */
+        svc_stats_play(4, (s16)(next + 1u));                /* 0x331AD..0x331BD 0x32F98 (ECX = 0x1000, unread) */
+        text_cursor_set(-1, 0x1B, game_string_get(0x209u), 0x1000u);   /* 0x331C2..0x331D8 */
+        text_cursor_set(-1, 0x1C, game_string_get(0x82u), 0x1000u);    /* 0x331DD..0x331F8 */
+        redraw = 0u;                                        /* 0x331FD */
+    }
+    text_cells_release(0x1B, 0xC, game_string_get(0x9Fu), 0x3000u);   /* 0x33204..0x3321F 0x2F280 */
+}
+
+/* 0x33230 — record §K11.7. STATISTICS page 2. EAX = clear_ok ([esp+4]);
+ * EBX the redraw flag, ESI the row, EDI the table offset, EBP the mode. */
+void svc_stats_page2(u32 clear_ok)
+{
+    u32 armed = clear_ok;                                   /* 0x33239 */
+    u32 redraw = 1u;                                        /* 0x3323D */
+    for (;;) {
+        config_screen_wait_zero();                          /* 0x33242 0x2EA74 */
+        const u32 k = config_key_latched();                 /* 0x33247 0x2EB80 */
+        if (k != 0u && (k == 0x1Bu || k == 0x0Du)) break;   /* 0x3324C..0x3325C */
+        if (armed != 0u && (config_input_poll(0u, 0u) & 0x3000000u) == 0x3000000u) {   /* 0x33262..0x3327C */
+            while ((config_input_poll(0u, 0u) & 0x2000000u) != 0u)   /* 0x33280..0x3328E 0x2EDE0 */
+                config_screen_wait_zero();                  /* 0x33290 0x2EA74 */
+            for (u32 f = 0u; f < 0x28u; f++)                /* 0x33297..0x332A8 */
+                (void)config_field_set(f, 0u);              /* 0x332A0 0x2DA0C */
+            armed = 0u;                                     /* 0x332AA..0x332AC */
+            redraw = 1u;                                    /* 0x332B0 */
+        }
+        u32 keys = config_input_poll(0x2000000u, 0u);       /* 0x332B5..0x332BC 0x2EDE0 */
+        if ((keys & 0x2000000u) != 0u) {                    /* 0x332C1..0x332C6 */
+            keys = config_input_poll(0u, 0u);               /* 0x332C8..0x332CC 0x2EDE0 */
+            if ((keys & 0x1000000u) == 0u) break;           /* 0x332D1..0x332D6 */
+        }
+        if (redraw == 0u) continue;                         /* 0x332DC..0x332DE */
+        /* EAX is the last 0x2EDE0's word; the 0x2BAF4(1) inside 0x2F99C runs
+         * 0x52106(0) at once (0x2BBEA), so none of it shows (record §K11.7). */
+        gfx_screen_reset(keys);                             /* 0x332E4 0x52106 */
+        svc_screen_reset();                                 /* 0x332E9 0x2F99C */
+        text_cursor_set(-1, 0, game_string_get(0xAAu), 0x5002u);   /* 0x332EE..0x33312 */
+        u32 mode = 0xF000u;                                 /* 0x332FD */
+        s32 row = 3;                                        /* 0x332F8 */
+        for (u32 e = SVC_STATS_P2; e != SVC_STATS_P2 + 0x48u; e += 8u, row++) {   /* 0x33310, 0x33374..0x3337B */
+            const u32 f = DSB(e + 4u);                      /* 0x33317..0x33321 */
+            text_cursor_set(4, row, game_string_get(DSD(e)), mode);          /* 0x33324..0x33338 */
+            const u32 v = config_field_get(f);              /* 0x3333D..0x33345 0x2D974 */
+            text_number_set(0x20, row, (s32)(v & 0xFFFFu), 0xB, 3u, mode);   /* 0x3334A..0x33359 0x2F434 */
+            mode = mode == 0xF000u ? 0x4000u : 0xF000u;     /* 0x3335E..0x33372 */
+        }
+        text_cursor_set(-1, 0x1B, game_string_get(0x209u), 0x1000u);   /* 0x3337D..0x33398 */
+        text_cursor_set(-1, 0x1C, game_string_get(0x82u), 0x1000u);    /* 0x3339D..0x333B8 */
+        if (armed != 0u) {                                  /* 0x333BD..0x333C2 */
+            text_cursor_set(-1, 0x18, game_string_get(0x69u), 0x4000u); /* 0x333C4..0x333DF */
+            text_cursor_set(-1, 0x19, game_string_get(0x6Au), 0x4000u); /* 0x333E4..0x333FF */
+            text_cursor_set(-1, 0x1A, game_string_get(0xA0u), 0x4000u); /* 0x33404..0x3341F */
+        }
+        redraw = 0u;                                        /* 0x33424 */
+    }
+    text_cells_release(0x1B, 0xC, game_string_get(0x9Fu), 0x3000u);   /* 0x3342B..0x33446 0x2F280 */
 }
 
 /* PORT: the menu tables 0xBCBDC/0xBCC1C/0xBCCCC hold these as code
