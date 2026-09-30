@@ -11985,6 +11985,16 @@ static void k11_hook(void *ctx)
     }
 }
 
+/* A CPU fault ends the original's run at the faulting instruction (the de
+ * scenario's #DE, record named-gaps-b §B.4): the script ends there too. */
+static void k11_fault(u32 exc, u32 eip)
+{
+    fprintf(k11_screens, "end settled %u\n", k11_dumped - 1u);
+    fprintf(k11_log, "fault %02X at %08X\n", (unsigned)exc, (unsigned)eip);
+    k11_done = 1;
+    longjmp(k11_end_jb, 1);
+}
+
 /* The loader's `- LOADING -` screen (res_load_present, record §45-A) is on
  * the display between two pumps; the front-end driver dumps it through the
  * same hook (fe_cyc2_loader), and the original shows it in ADJUST VOLUME
@@ -12047,6 +12057,7 @@ int test_k11_oracle(void)
     actors_pin_anim_tick_zero(1);
     host_set_pump_hook(k11_hook, NULL);
     res_set_screen_hook(k11_loader);
+    host_fault_hook_fn k11_prev_fault = host_set_fault_hook(k11_fault);
 
     /* Sentinels: none is a mode, frame or state the checks below accept. */
     static u32 mode_before, mode_after, frame_after, state_after;
@@ -12061,8 +12072,7 @@ int test_k11_oracle(void)
             k11_t0 = DSD(DS_00101500);
             k11_armed = 1;
         }
-        DSB(DS_000A81A8) = 1;                           /* exactly one game_loop iteration */
-        game_loop();
+        game_loop_step();                               /* exactly one game_loop iteration */
         if (enter_now) {
             mode_after = DSW(DS_00104B00);
             frame_after = DSW(DS_000EF6DC);
@@ -12071,6 +12081,7 @@ int test_k11_oracle(void)
     }
     host_set_pump_hook(NULL, NULL);
     res_set_screen_hook(NULL);
+    (void)host_set_fault_hook(k11_prev_fault);
     k11_key_bits(0u);
     fclose(k11_screens);
     fclose(k11_log);
