@@ -200,8 +200,8 @@ void nameentry_cells_step(void)
             DSD(c) = actor_spawn((const u32 *)(mem + 0xA7E44u), DSD(c + 4u), 0xFFu,
                                  DSD(c + 8u), 0u);          /* 0x20088 0x2AE14 */
             actors_anim_seek(DSD(c), DSW(NE_LETTER_ANIM + 2u * DSB(c + 0x13u)));   /* 0x200AB 0x2BCF4 */
-            /* PORT: 0x200B5 0x2C3FC(0xB0) and 0x200BF 0x2C3FC(0x7B) voices, not
-             * wired (record §45-A). */
+            (void)sound_voice(0xB0u);                       /* 0x200B0/0x200B5 0x2C3FC */
+            (void)sound_voice(0x7Bu);                       /* 0x200BA/0x200BF 0x2C3FC */
             break;
         }
         case 2u: {                                          /* 0x200C9 */
@@ -215,7 +215,7 @@ void nameentry_cells_step(void)
                 DSB(c + 0x12u) = 3u;                        /* 0x20103 */
                 s32 nv = -NE_SAR16(c + 0xAu);               /* 0x20109..0x20112 */
                 DSW(c + 0xCu) = (u16)(nv / 4);              /* 0x20114..0x20121 (sbb rounds toward zero) */
-                /* PORT: 0x20128 0x2C3FC(0x71) voice, not wired (record §45-A). */
+                (void)sound_voice(0x71u);                   /* 0x20128/0x2012D 0x2C3FC */
             }
             DSD(DSD(c) + 0x1Cu) = DSD(c + 8u);              /* 0x20132..0x2013E */
             break;
@@ -234,8 +234,7 @@ void nameentry_cells_step(void)
                 DSD(c + 8u) = (u32)tgt;                     /* 0x2018E/0x2019A/0x201A9 (the old target, read before 0x2019D) */
                 DSW(c + 0xEu) = 0xFFC0u;                    /* 0x201B1 */
                 DSW(c + 0xCu) = 0u;                         /* 0x201B8 */
-                /* PORT: 0x201C6/0x201CD 0x2C3FC(0xE7 for an odd cell, else 0xE8)
-                 * voice, not wired (record §45-A). */
+                (void)sound_voice((i & 1u) != 0u ? 0xE7u : 0xE8u);   /* 0x201BF `test di,1`, 0x201C6/0x201CD, 0x201D2 0x2C3FC */
             }
             DSD(DSD(c) + 0x1Cu) = DSD(c + 8u);              /* 0x201D7..0x201E3 */
             break;
@@ -264,8 +263,8 @@ void nameentry_cells_step(void)
                 DSW(c + 0xCu) = (u16)((s16)DSW(c + 0xCu) / 3);   /* 0x20295..0x202B2 cwd; idiv cx */
                 DSW(c + 0x10u) = (u16)ebx;                  /* 0x202A6 */
                 DSW(c + 0xEu) = 0x40u;                      /* 0x202BE */
-                /* PORT: 0x202C5 0x2C3FC(0x70) and 0x202CF 0x2C3FC(0x4D) voices,
-                 * not wired (record §45-A). */
+                (void)sound_voice(0x70u);                   /* 0x202B9/0x202C5 0x2C3FC */
+                (void)sound_voice(0x4Du);                   /* 0x202CA/0x202CF 0x2C3FC */
             }
             DSD(DSD(c) + 0x18u) = DSD(c + 4u);              /* 0x202D4..0x202E0 */
             break;
@@ -307,7 +306,7 @@ void nameentry_cells_step(void)
                 (void)actor_spawn((const u32 *)(mem + 0xA7E58u),
                                   ((DSD(DS_001044CC) + 2u * i) << 9) + 0x200u, 0xFFu,
                                   (DSD(DS_001044C4) << 9) + 0x200u, 0u);   /* 0x20435 0x2AE14 */
-                /* PORT: 0x2043F 0x2C3FC(0xE9) voice, not wired (record §45-A). */
+                (void)sound_voice(0xE9u);                   /* 0x2043A/0x2043F 0x2C3FC */
             }
             text_cursor_hold_font2((s32)DSD(DS_001044CC), (s32)DSD(DS_001044C4),
                                    mem + 0x00104343u, 0x4000u);        /* 0x20459 0x2F510 */
@@ -319,7 +318,7 @@ void nameentry_cells_step(void)
         case 9u:                                            /* 0x20487 */
             (void)actor_spawn((const u32 *)(mem + 0xA7E58u), DSD(c + 4u) + 0x200u,
                               0xFFu, DSD(c + 8u) + 0x200u, 0u);   /* 0x204AB 0x2AE14 */
-            /* PORT: 0x204B5 0x2C3FC(0xE9) voice, not wired (record §45-A). */
+            (void)sound_voice(0xE9u);                       /* 0x204B0/0x204B5 0x2C3FC */
             actor_set_dead(DSD(c));                         /* 0x204C2 0x2B150 */
             DSB(c + 0x12u) = 0u;                            /* 0x204C7 (DL = 0) */
             break;
@@ -486,55 +485,55 @@ u32 nameentry_step(u8 side)
     }
     if (DSB(DS_001044D8) == 0u) {                           /* 0x1F4D2 */
         if (ne_pad(side, 0x10u) || ne_repeat(DSD(DS_001044E0))) {   /* 0x1F4DF..0x1F520 */
-            /* PORT: 0x1F526 0x2C3FC(0xE6) voice, not wired (record §45-A). */
+            (void)sound_voice(0xE6u);                       /* 0x1F526/0x1F52B 0x2C3FC */
             u32 eax = DSD(NE_HISCORE_CURSOR_COL);           /* 0x1F537 */
             DSW(NE_HISCORE_CURSOR_COL) = (u16)(DSW(NE_HISCORE_CURSOR_COL) + 3u);   /* 0x1F530..0x1F542 */
             s32 row = (s32)eax >> 16;                       /* 0x1F53F */
             s32 col = NE_SAR16(0x001044CEu);                /* 0x1F54E/0x1F553 */
             if (col > (row == 0xF ? 0x20 : 0x1D)) {         /* 0x1F549..0x1F559, 0x1F576..0x1F579 */
                 DSW(NE_HISCORE_CURSOR_COL) = 0xBu;          /* 0x1F565, 0x1F585 */
-                /* PORT: 0x1F560/0x1F580 0x2C3FC(0x39) voice, not wired (record §45-A). */
+                (void)sound_voice(0x39u);                   /* 0x1F560 or 0x1F580, 0x1F593 0x2C3FC */
             } else {
-                /* PORT: 0x1F58E 0x2C3FC(0x34) voice, not wired (record §45-A). */
+                (void)sound_voice(0x34u);                   /* 0x1F58E/0x1F593 0x2C3FC */
             }
             DSD(DSD(DS_001044B8) + 0x18u) =
                 ((u32)NE_SAR16(0x001044CEu) << 9) + 0x200u; /* 0x1F598..0x1F5AE */
         } else if (ne_pad(side, 0x20u) || ne_repeat(DSD(DS_001044DC))) {   /* 0x1F5B6..0x1F5F6 */
-            /* PORT: 0x1F5F8 0x2C3FC(0xE6) voice, not wired (record §45-A). */
+            (void)sound_voice(0xE6u);                       /* 0x1F5F8/0x1F5FD 0x2C3FC */
             DSW(NE_HISCORE_CURSOR_COL) = (u16)(DSW(NE_HISCORE_CURSOR_COL) - 3u);   /* 0x1F602 */
             if (NE_SAR16(0x001044CEu) < 0xB) {              /* 0x1F60A..0x1F615 `jge` */
                 DSW(NE_HISCORE_CURSOR_COL) = NE_SAR16(NE_HISCORE_CURSOR_COL) == 0xF ? 0x20u : 0x1Du;   /* 0x1F617..0x1F62F */
-                /* PORT: 0x1F638 0x2C3FC(0x35) voice, not wired (record §45-A). */
+                (void)sound_voice(0x35u);                   /* 0x1F638/0x1F644 0x2C3FC */
             } else {
-                /* PORT: 0x1F63F 0x2C3FC(0x38) voice, not wired (record §45-A). */
+                (void)sound_voice(0x38u);                   /* 0x1F63F/0x1F644 0x2C3FC */
             }
             DSD(DSD(DS_001044B8) + 0x18u) =
                 ((u32)NE_SAR16(0x001044CEu) << 9) + 0x200u; /* 0x1F649..0x1F65F */
         } else if (ne_pad(side, 0x80u) || ne_repeat(DSD(DS_001044E0))) {   /* 0x1F667..0x1F6A7 */
-            /* PORT: 0x1F6A9 0x2C3FC(0xE6) voice, not wired (record §45-A). */
+            (void)sound_voice(0xE6u);                       /* 0x1F6A9/0x1F6AE 0x2C3FC */
             DSW(NE_HISCORE_CURSOR_ROW) = (u16)(DSW(NE_HISCORE_CURSOR_ROW) - 3u);   /* 0x1F6B3 */
             if (NE_SAR16(NE_HISCORE_CURSOR_COL) < 6)        /* 0x1F6BB..0x1F6C6 `jge` */
                 DSW(NE_HISCORE_CURSOR_ROW) = 0xFu;          /* 0x1F6C8 */
             if (NE_SAR16(0x001044CEu) == 0x20) {            /* 0x1F6D1..0x1F6DC */
-                /* PORT: 0x1F6DE 0x2C3FC(0x39) voice, not wired (record §45-A). */
+                (void)sound_voice(0x39u);                   /* 0x1F6DE/0x1F6E8 0x2C3FC */
                 DSW(NE_HISCORE_CURSOR_COL) = 0x1Du;         /* 0x1F6F2 */
                 DSD(DSD(DS_001044B8) + 0x18u) = 0x3C00u;    /* 0x1F6F9 */
             } else {
-                /* PORT: 0x1F705 0x2C3FC(0x37) voice, not wired (record §45-A). */
+                (void)sound_voice(0x37u);                   /* 0x1F705/0x1F70A 0x2C3FC */
             }
             DSD(DSD(DS_001044B8) + 0x1Cu) =
                 ((u32)NE_SAR16(NE_HISCORE_CURSOR_COL) << 9) + 0x200u;   /* 0x1F7BA..0x1F7D0 */
         } else if (ne_pad(side, 0x40u) || ne_repeat(DSD(DS_001044DC))) {   /* 0x1F714..0x1F754 */
-            /* PORT: 0x1F75A 0x2C3FC(0xE6) voice, not wired (record §45-A). */
+            (void)sound_voice(0xE6u);                       /* 0x1F75A/0x1F75F 0x2C3FC */
             DSW(NE_HISCORE_CURSOR_ROW) = (u16)(DSW(NE_HISCORE_CURSOR_ROW) + 3u);   /* 0x1F764 */
             if (NE_SAR16(NE_HISCORE_CURSOR_COL) > 0xF)      /* 0x1F76C..0x1F777 `jle` */
                 DSW(NE_HISCORE_CURSOR_ROW) = 6u;            /* 0x1F779 */
             if (NE_SAR16(0x001044CEu) == 0x20) {            /* 0x1F782..0x1F78D */
-                /* PORT: 0x1F78F 0x2C3FC(0x38) voice, not wired (record §45-A). */
+                (void)sound_voice(0x38u);                   /* 0x1F78F/0x1F794 0x2C3FC */
                 DSW(NE_HISCORE_CURSOR_COL) = 0x1Du;         /* 0x1F799 */
                 DSD(DSD(DS_001044B8) + 0x18u) = 0x3C00u;    /* 0x1F7A7 */
             } else {
-                /* PORT: 0x1F7B0 0x2C3FC(0x36) voice, not wired (record §45-A). */
+                (void)sound_voice(0x36u);                   /* 0x1F7B0/0x1F7B5 0x2C3FC */
             }
             DSD(DSD(DS_001044B8) + 0x1Cu) =
                 ((u32)NE_SAR16(NE_HISCORE_CURSOR_COL) << 9) + 0x200u;   /* 0x1F7BA..0x1F7D0 */
@@ -633,7 +632,7 @@ u32 nameentry_step(u8 side)
     (void)actor_spawn((const u32 *)(mem + 0xA7E58u),
                       ((u32)NE_SAR16(0x001044CEu) << 9) + 0x200u, 0xFFu,
                       ((u32)NE_SAR16(NE_HISCORE_CURSOR_COL) << 9) + 0x200u, 0u);   /* 0x1FF27 0x2AE14 */
-    /* PORT: 0x1FF31 0x2C3FC(0xE9) voice, not wired (record §45-A). */
+    (void)sound_voice(0xE9u);                               /* 0x1FF2C/0x1FF31 0x2C3FC */
     u32 cell = NE_CELL((u32)(s32)((s32)DSD(0x00104319u) >> 24));   /* 0x1FF36..0x1FF46 */
     DSB(cell + 0x12u) = 1u;                                 /* 0x1FF4D */
     DSB(cell + 0x13u) = (u8)letter;                         /* 0x1FF5A */

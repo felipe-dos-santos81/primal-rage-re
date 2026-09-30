@@ -11332,6 +11332,335 @@ static const TfVoiceSite k12_c_game[] = {
     {   7u, vc_voice_tick_bf, 2u, { 0xBDu, 0xBFu } },             /* 0x10F8B */
 };
 
+/* ---- record k7-k12 §11: batch D4, the name-entry and flow samples -------- */
+
+#define VS4_DESC  0x000A7E44u   /* the name-entry marker descriptor (0x1EE20's) */
+
+static u32 vs4_actor(void)
+{
+    return actor_spawn((const u32 *)(mem + VS4_DESC), 0x1111u, 0xFFu, 0x2222u, 0u);
+}
+
+/* The name-entry screen as 0x1ED2C leaves it (the three cursor actors, every
+ * cell idle, DS_001044D8/C8/BC = 0, the cursor at column 0xB, row 6), with no
+ * pad bit and no autorepeat, the timer running (DS_0010438C = 500, so
+ * 0x1F4AD does not finish), rank 3, no letter typed of 3, the name at row 4
+ * column 0x24, DS_00104529 = 0 (the text arms) and no blink frame. */
+static void vs4_ne_env(void)
+{
+    vs_pools();
+    game_string_table_load("data/game/C");
+    nameentry_reset();
+    DSB(RA_PAD0) = 0u;
+    DSB(RA_PAD1) = 0u;
+    DSD(RA_REP_H) = 0u;
+    DSD(RA_REP_V) = 0u;
+    DSW(DS_0010438C) = 500u;
+    DSW(DS_001044D6) = 3u;
+    DSB(RA_CNT) = 0u;
+    DSB(RA_LIM) = 3u;
+    DSB(VS_B29) = 0u;
+    DSW(DS_000EF6DC) = 0x21u;
+    DSD(DS_001044C4) = 4u;
+    DSD(DS_001044CC) = 0x24u;
+}
+
+/* One letter cell (stride 0x14 at DS_00104114): +0 handle, +4 x, +8 y, +0xC
+ * vel, +0xE acc, +0x10 target, +0x12 state, +0x13 letter. */
+static void vs4_cell(u32 i, u32 h, u32 x, u32 y, u32 vel, u32 acc, u32 tgt,
+                     u32 st, u32 ch)
+{
+    u32 c = DS_00104114 + 0x14u * i;
+    DSD(c) = h;
+    DSD(c + 4u) = x;
+    DSD(c + 8u) = y;
+    DSW(c + 0xCu) = (u16)vel;
+    DSW(c + 0xEu) = (u16)acc;
+    DSW(c + 0x10u) = (u16)tgt;
+    DSB(c + 0x12u) = (u8)st;
+    DSB(c + 0x13u) = (u8)ch;
+}
+
+/* Rows 198..205: 0x1FFD0 with one cell (two for row 201) in the state. */
+static void vs4_cells_1(void)                  /* 0x20036: spawn */
+{
+    vs4_ne_env();
+    vs4_cell(3u, 0x77u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 1u, 5u);
+    nameentry_cells_step();
+}
+static void vs4_cells_2(void)                  /* 0x200F7: y 0x1F00 + 0x11E past 0x2000 */
+{
+    vs4_ne_env();
+    vs4_cell(2u, vs4_actor(), 0x77u, 0x1F00u, 0xFEu, 0x20u, 0x2000u, 2u, 1u);
+    nameentry_cells_step();
+}
+static void vs4_cells_3(void)                  /* 0x20183 on cell 1 (odd), then cell 2 (even) */
+{
+    vs4_ne_env();
+    vs4_cell(1u, vs4_actor(), 0x77u, 0x1FF1u, 0x10u, 0x20u, 0x2000u, 3u, 1u);
+    vs4_cell(2u, vs4_actor(), 0x77u, 0x1FF1u, 0x10u, 0x20u, 0x2000u, 3u, 1u);
+    nameentry_cells_step();
+}
+static void vs4_cells_5(void)                  /* 0x2027D: x 0x5010 - 0x22 below 0x5000 */
+{
+    vs4_ne_env();
+    vs4_cell(1u, vs4_actor(), 0x5010u, 0x77u, 0xFFDEu, 0x77u, 0x5000u, 5u, 1u);
+    nameentry_cells_step();
+}
+static void vs4_cells_8(void)                  /* 0x203E0: the DEL letter 0x1B */
+{
+    vs4_ne_env();
+    vs4_cell(4u, 0x77u, 0x77u, 0x77u, 0x77u, 0x77u, 0x77u, 8u, 0x1Bu);
+    nameentry_cells_step();
+}
+static void vs4_cells_9(void)                  /* 0x20487 */
+{
+    vs4_ne_env();
+    vs4_cell(7u, vs4_actor(), 0x1000u, 0x2000u, 0x77u, 0x77u, 0x77u, 9u, 1u);
+    nameentry_cells_step();
+}
+
+/* Rows 206..217: 0x1F458 side 0 with one direction bit on the cursor
+ * (column, row); 0x1FCF9 then returns (no face button, no queued letter). */
+static void vs4_ne_dir(u8 mask, u16 col, u16 row)
+{
+    vs4_ne_env();
+    DSW(RA_COL) = col;
+    DSW(RA_ROW) = row;
+    DSB(RA_PAD0) = mask;
+    (void)nameentry_step(0u);
+}
+/* right: 0xB + 3 within 0x1D (0x34); 0x1D + 3 past 0x1D on row 6
+ * (0x1F580) and 0x20 + 3 past 0x20 on row 0xF (0x1F560), both 0x39. */
+static void vs4_ne_right_in(void)   { vs4_ne_dir(0x10u, 0xBu, 6u); }
+static void vs4_ne_right_wrap(void)
+{
+    vs4_ne_dir(0x10u, 0x1Du, 6u);
+    vs4_ne_dir(0x10u, 0x20u, 0xFu);
+}
+/* left: 0xB - 3 below 0xB (0x35); 0xE - 3 not below (0x38). */
+static void vs4_ne_left_wrap(void)  { vs4_ne_dir(0x20u, 0xBu, 6u); }
+static void vs4_ne_left_in(void)    { vs4_ne_dir(0x20u, 0xEu, 6u); }
+/* up (0x80) and down (0x40): on the END column 0x20 (0x39 / 0x38), else
+ * 0x37 / 0x36. */
+static void vs4_ne_up_end(void)     { vs4_ne_dir(0x80u, 0x20u, 0xFu); }
+static void vs4_ne_up(void)         { vs4_ne_dir(0x80u, 0xBu, 9u); }
+static void vs4_ne_down_end(void)   { vs4_ne_dir(0x40u, 0x20u, 0xCu); }
+static void vs4_ne_down(void)       { vs4_ne_dir(0x40u, 0xBu, 6u); }
+/* Row 218: a face button (pad bit 0) picks the letter under the cursor
+ * (column 0xB, row 6: 'A'), count 0 below the limit 3 (0x1FEA3). */
+static void vs4_ne_pick(void)       { vs4_ne_dir(0x01u, 0xBu, 6u); }
+
+/* Mode 0x12 (0x41C28): the seven portrait actors DS_001080C0[0..6] and the
+ * background record DS_001080F4, all live pool records. */
+static void vs4_mode12(u8 state)
+{
+    u32 k;
+    vs_pools();
+    game_string_table_load("data/game/C");
+    for (k = 0; k < 7u; k++) DSD(DS_001080C0 + k * 4u) = vs4_actor();
+    DSD(DS_001080F4) = vs4_actor();
+    DSB(VS_B29) = 0u;
+    DSD(DS_00104AD4) = 0u;
+    DSB(DS_0010782A) = 0u;
+    DSW(DS_00104AFC) = 0u;
+    DSB(DS_00104B25) = state;
+}
+/* Row 131: state 1, stage 0 marked (DS_00108106 bit 7), not the current
+ * stage 7, the counter n = 3 before its increment: 0x34 + 3. */
+static void vs4_mode12_1(void)
+{
+    vs4_mode12(1u);
+    DSB(DS_0010810F) = 0u;
+    DSW(DS_00104AFC) = 7u;
+    mem_fill(DS_00108106, 0, 7u);
+    DSB(DS_00108106) = 0x80u;
+    DSB(DS_00108112) = 3u;
+    DSD(DS_00104AD4) = 2u;
+    game_mode_12_step();
+}
+/* Row 132: state 3 with the background at y 0x2300 (0x41E7D). */
+static void vs4_mode12_3(void)
+{
+    u32 bg;
+    vs4_mode12(3u);
+    bg = DSD(DS_001080F4);
+    DSW(bg + 0x36u) = 0u;
+    DSD(bg + 0x1Cu) = 0x2300u;
+    game_mode_12_step();
+}
+/* How many times `id` is in the voice log since the runner's reset. */
+static int vs4_log_count(u32 id)
+{
+    u32 i, n = sound_voice_log_count();
+    int k = 0;
+    for (i = 0; i < n; i++)
+        if (sound_voice_log_at(i) == id) k++;
+    return k;
+}
+/* Row 133: state 4, first DS_0010810E 6 -> 7 (0x420B0 `jne`: no 0xC7; the
+ * pass ran: the count is 7 and the state 8), then 7 -> 8 (0x420AD). */
+static void vs4_mode12_4(void)
+{
+    vs4_mode12(4u);
+    DSB(DS_0010810E) = 6u;
+    game_mode_12_step();
+    CHECK_EQ_INT((int)DSB(DS_0010810E), 7);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 8);
+    CHECK_EQ_INT(vs4_log_count(0xC7u), 0);
+    DSB(DS_00104B25) = 4u;
+    DSB(DS_0010810E) = 7u;
+    game_mode_12_step();
+}
+/* Row 135: state 6, the background +0x2C = 0x1C0 so the step is 1
+ * (0x42183..0x4219D), cycle byte 1. */
+static void vs4_mode12_6(void)
+{
+    vs4_mode12(6u);
+    DSW(DSD(DS_001080F4) + 0x2Cu) = 0x1C0u;
+    DSB(DS_00107832) = 1u;
+    game_mode_12_step();
+}
+
+/* The fight fixture with the private pool and the HUD bar records
+ * DS_001028F0/F8[side] live (0x1D764 re-seeks them). */
+static void vs4_fight(void)
+{
+    u32 s;
+    (void)tf_demo_fixture();
+    vs_pools();
+    game_string_table_load("data/game/C");
+    for (s = 0; s < 2u; s++) {
+        DSD(DS_001028F0 + s * 4u) = vs4_actor();
+        DSD(DS_001028F8 + s * 4u) = vs4_actor();
+        DSW(DS_001077B0 + s * 0x94u + 0x8Cu) = 0u;
+    }
+    DSB(VS_B29) = 0u;
+}
+/* Row 145: 0x272DC with the winner slot 0 at 0x78 (0x27303). */
+static void vs4_arena_ko(void)
+{
+    vs4_fight();
+    DSB(VS2_0010810D) = 0u;
+    DSB(DS_0010780A) = 0x78u;
+    flow_arena_ko_check();
+}
+/* Rows 154/155: modes 5 and 0x30, state 2. Mode 5 runs twice:
+ * DS_00104B14 = 0 (0xD7), then 1 (0xD9). */
+static void vs4_mode05_2(void)
+{
+    vs4_fight();
+    DSB(DS_00104B14) = 0u;
+    DSB(DS_00104B25) = 2u;
+    game_mode_05_step();
+    DSB(DS_00104B14) = 1u;
+    DSB(DS_00104B25) = 2u;
+    game_mode_05_step();
+}
+static void vs4_mode30_2(void)
+{
+    vs4_fight();
+    DSB(DS_00104B14) = 0u;
+    DSB(DS_00104B25) = 2u;
+    game_mode_30_step();
+}
+/* Row 161: 0x4F4E8 on a tick multiple of DS_001088D0 = 1. First the
+ * countdown byte DS_001088F2 = 0xB (above 10, 0x4F575 `jg`: no 0x52; the
+ * pass ran: the byte is decremented to 0xA), then 5 (non-zero, <= 10). */
+static void vs4_round_timer(void)
+{
+    vs_pools();
+    game_string_table_load("data/game/C");
+    DSB(DS_00105B3B) = 0u;
+    DSD(DS_001088D0) = 1u;
+    DSW(DS_00104AF4) = 7u;
+    DSB(DS_001088F2) = 0x0Bu;
+    flow_round_timer_step();
+    CHECK_EQ_INT((int)DSB(DS_001088F2), 0x0A);
+    CHECK_EQ_INT(vs4_log_count(0x52u), 0);
+    DSB(DS_001088F2) = 5u;
+    flow_round_timer_step();
+}
+/* Rows 162/163: 0x27FA8, outside mode 0xB, B1E == ADC, the win counts
+ * equal. Row 162: both sides at 0x78 (a tie: 0x27C48 leaves DS_00104AD4 =
+ * 2). Row 163: both at 0 with DS_001088F2 = 0 (0x28054), |A - B| = 0. */
+static void vs4_round_end(u8 hp, u8 f2)
+{
+    vs4_fight();
+    DSB(DS_0010780A) = hp;
+    DSB(DS_0010789E) = hp;
+    DSB(DS_001088F2) = f2;
+    DSW(DS_00104B00) = 4u;
+    DSB(DS_00104B1D) = 3u;
+    DSB(DS_00104B1E) = 3u;
+    DSD(DS_00104ADC) = 3u;
+    DSB(DS_00104AF2) = 0u;
+    DSB(DS_00104AF3) = 0u;
+    DSB(DS_0010782A) = 0u;
+    DSB(DS_001078BE) = 0u;
+    flow_round_end_check();
+}
+static void vs4_round_end_ko(void)   { vs4_round_end(0x78u, 0x40u); }
+static void vs4_round_end_time(void) { vs4_round_end(0u, 0u); }
+/* Row 168: 0x28BD4, both +0x54 bytes 0 (0x28C0E..0x28C1E), m0a_seed's
+ * fixture. */
+static void vs4_mode0a(void)
+{
+    (void)tf_demo_fixture();
+    DSD(DS_00104B00) = 0xAu;
+    DSB(DS_00107804) = 0u;
+    DSB(DS_00107898) = 0u;
+    game_mode_0a_step();
+}
+/* Row 193: mode 0x23 state 2 (0x26AD6). */
+static void vs4_mode23_2(void)
+{
+    vs_pools();
+    DSB(VS_B29) = 0u;
+    DSB(DS_00104B25) = 2u;
+    game_mode_23_step();
+}
+
+/* Record k7-k12 §11, batch D4: 33 wiring points, all case 2 (0x4D case 3),
+ * reached only in real play. One entry per wiring point; rows on one path
+ * share a driver and list each other's ids. */
+#define K12_D4_ROWS 33
+static const TfVoiceSite k12_d4[] = {
+    { 131u, vs4_mode12_1,       1u, { 0x37u } },                  /* 0x41D2B */
+    { 132u, vs4_mode12_3,       1u, { 0x3Au } },                  /* 0x4207F */
+    { 133u, vs4_mode12_4,       1u, { 0xC7u } },                  /* 0x420B7 */
+    { 135u, vs4_mode12_6,       1u, { 0xBCu } },                  /* 0x42229 */
+    { 145u, vs4_arena_ko,       1u, { 0xD3u } },                  /* 0x2730A */
+    { 154u, vs4_mode05_2,       2u, { 0xD7u, 0xD9u } },           /* 0x25E39 */
+    { 155u, vs4_mode30_2,       1u, { 0xD7u } },                  /* 0x294D5 */
+    { 161u, vs4_round_timer,    1u, { 0x52u } },                  /* 0x4F581 */
+    { 162u, vs4_round_end_ko,   1u, { 0xD3u } },                  /* 0x27FF9 */
+    { 163u, vs4_round_end_time, 1u, { 0xD3u } },                  /* 0x2805F */
+    { 168u, vs4_mode0a,         1u, { 0xD8u } },                  /* 0x28C2A */
+    { 193u, vs4_mode23_2,       1u, { 0x60u } },                  /* 0x26B32 */
+    { 198u, vs4_cells_1,        2u, { 0xB0u, 0x7Bu } },           /* 0x200B5 */
+    { 199u, vs4_cells_1,        2u, { 0xB0u, 0x7Bu } },           /* 0x200BF */
+    { 200u, vs4_cells_2,        1u, { 0x71u } },                  /* 0x2012D */
+    { 201u, vs4_cells_3,        2u, { 0xE7u, 0xE8u } },           /* 0x201D2 */
+    { 202u, vs4_cells_5,        2u, { 0x70u, 0x4Du } },           /* 0x202C5 */
+    { 203u, vs4_cells_5,        2u, { 0x70u, 0x4Du } },           /* 0x202CF */
+    { 204u, vs4_cells_8,        1u, { 0xE9u } },                  /* 0x2043F */
+    { 205u, vs4_cells_9,        1u, { 0xE9u } },                  /* 0x204B5 */
+    { 206u, vs4_ne_right_in,    2u, { 0xE6u, 0x34u } },           /* 0x1F52B */
+    { 207u, vs4_ne_right_wrap,  4u, { 0xE6u, 0x39u, 0xE6u, 0x39u } }, /* 0x1F593 */
+    { 208u, vs4_ne_right_in,    2u, { 0xE6u, 0x34u } },           /* 0x1F593 */
+    { 209u, vs4_ne_left_in,     2u, { 0xE6u, 0x38u } },           /* 0x1F5FD */
+    { 210u, vs4_ne_left_wrap,   2u, { 0xE6u, 0x35u } },           /* 0x1F644 */
+    { 211u, vs4_ne_left_in,     2u, { 0xE6u, 0x38u } },           /* 0x1F644 */
+    { 212u, vs4_ne_up,          2u, { 0xE6u, 0x37u } },           /* 0x1F6AE */
+    { 213u, vs4_ne_up_end,      2u, { 0xE6u, 0x39u } },           /* 0x1F6E8 */
+    { 214u, vs4_ne_up,          2u, { 0xE6u, 0x37u } },           /* 0x1F70A */
+    { 215u, vs4_ne_down,        2u, { 0xE6u, 0x36u } },           /* 0x1F75F */
+    { 216u, vs4_ne_down_end,    2u, { 0xE6u, 0x38u } },           /* 0x1F794 */
+    { 217u, vs4_ne_down,        2u, { 0xE6u, 0x36u } },           /* 0x1F7B5 */
+    { 218u, vs4_ne_pick,        1u, { 0xE9u } },                  /* 0x1FF31 */
+};
+
 int test_voice_sites(void)
 {
     int before = g_failures;
@@ -11346,5 +11675,7 @@ int test_voice_sites(void)
     tf_voice_sites(k12_b2_game, (u32)(sizeof k12_b2_game / sizeof k12_b2_game[0]));
     CHECK_EQ_INT((int)(sizeof k12_c_game / sizeof k12_c_game[0]), K12_C_GAME_ROWS);
     tf_voice_sites(k12_c_game, (u32)(sizeof k12_c_game / sizeof k12_c_game[0]));
+    CHECK_EQ_INT((int)(sizeof k12_d4 / sizeof k12_d4[0]), K12_D4_ROWS);
+    tf_voice_sites(k12_d4, (u32)(sizeof k12_d4 / sizeof k12_d4[0]));
     return g_failures - before;
 }
