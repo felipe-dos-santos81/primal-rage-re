@@ -61,7 +61,9 @@ class TestInjector(unittest.TestCase):
         inj.release_due(0x100, 11)
         self.assertEqual(m[ptr + gs.KEYTAB_OFF + 0x1F], 0x7F)       # held for iterations 0x101, 0x102
         inj.release_due(0x101, 12)
-        self.assertEqual(m[ptr + gs.KEYTAB_OFF + 0x1F], 0xFF)       # released at the spin of 0x101
+        self.assertEqual(m[ptr + gs.KEYTAB_OFF + 0x1F], 0x7F)       # record §G.7: still down at the spin of 0x101
+        inj.release_due(0x102, 13)
+        self.assertEqual(m[ptr + gs.KEYTAB_OFF + 0x1F], 0xFF)       # released at the spin of 0x102 (F - 1 + n)
         recs = [gs.parse(l) for l in log.getvalue().splitlines()]
         self.assertEqual([r.get('press') or r.get('release') for r in recs], ['p1.up', 'p1.up'])
         self.assertEqual(recs[0]['bios'], 0x1F73)

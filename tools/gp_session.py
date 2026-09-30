@@ -96,15 +96,20 @@ def parse(line):
 # Scenarios (spec §4.1). Harness values: the 150-frame gaps follow the
 # planner's probe's 2.5 s (spec §3.5); time limits cover the probe's timings.
 SCENARIOS = {
-    # U1 Task 8: every pad name, two frames each, 30 apart, on the MAIN MENU
-    # (mode 0x27: 0x500C4 runs every frame, spec §3.1).
+    # U1 Task 8: every pad name, one frame each, 30 apart, on the MAIN MENU
+    # (mode 0x27: 0x500C4 runs every frame, spec §3.1). One frame: the menu
+    # acts on the pad level DS_000E1C34, which a one-frame press never reaches
+    # (0x500C4 keeps a changed bit's old level), so the MAIN MENU stays put;
+    # the chord uses only bits outside the menu's mask 0xC300C000 (record §G.7:
+    # run 1's chord held p1.b1 into the level and 0x2FFC4 returned -1, the
+    # 0x2520B restart).
     'gp-pads': dict(time_limit=75, steps=(
         ('boot', ENTER_WAIT, ('key', 'enter')),
-        ('after_mode', 0x27, 120, ('pad', ('p1.up',), 2)),
-    ) + tuple(('after', 30, ('pad', (n,), 2)) for n in (
+        ('after_mode', 0x27, 120, ('pad', ('p1.up',), 1)),
+    ) + tuple(('after', 30, ('pad', (n,), 1)) for n in (
         'p1.down', 'p1.left', 'p1.right', 'p1.b0', 'p1.b1', 'p1.b2', 'p1.b3', 'p1.start',
         'p2.up', 'p2.down', 'p2.left', 'p2.right', 'p2.b0', 'p2.b1', 'p2.b2', 'p2.b3', 'p2.start'))
-      + (('after', 30, ('pad', ('p1.up', 'p1.b1', 'p2.left'), 5)),     # a chord held 5
+      + (('after', 30, ('pad', ('p1.left', 'p1.b2', 'p2.right'), 5)),     # a chord held 5
          ('after', 60, ('end',))),
     ),
 }

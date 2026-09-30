@@ -67,7 +67,9 @@ class Injector:
         lin = self.ptr + gs.KEYTAB_OFF + scan
         old = self.mm[lin]
         self.mm[lin] = old & 0x7F
-        self.held.append((f + hold - 1, lin, old, name, step))
+        # Pressed in the spin of F - 1 = f; iterations F .. F + hold - 1 sample it,
+        # so it is released in the spin of F - 1 + hold (spec §4.1; record §G.7).
+        self.held.append((f + hold, lin, old, name, step))
         bios = word if (name in gs.KEYS or self.pad_bios) else None
         ring = kc.bios_insert(self.mm, word) if bios is not None else None
         self.log.write('I ms=%d f=%04X step=%d press=%s scan=%02X lin=%08X old=%02X bios=%s ring=%s late=%d\n'
