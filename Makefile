@@ -390,13 +390,18 @@ gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-pads; gp-idle-
 # Gameplay replay (spec 2026-09-30-gameplay-ground-truth-design.md §4.2): the
 # v2 port script from the capture's poll.log, then the PR_GP_DUMP driver alone
 # (game_init once per process). An absent capture skips, or fails under
-# PR_ORACLE_REQUIRED (make verify replays gp-pads that way, record §G.11).
+# PR_ORACLE_REQUIRED unless GP_OPTIONAL=1. make verify passes GP_OPTIONAL=1:
+# a gp capture skips there like the K11 oracles (spec §4.3, record §G.11), so
+# a checkout without data/k11-captures/gp-pads still passes verify.
+GP_OPTIONAL ?=
 gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump in $(GP_DUMP)/<scenario>)
+	@case "$(scenario)" in gp-?*) ;; *) \
+		echo "usage: make gp-replay scenario=gp-<name> (got scenario=$(scenario))"; exit 2;; esac
 	@if [ -d $(K11_CAPTURES)/$(scenario) ]; then \
 		rm -rf $(GP_DUMP)/$(scenario); mkdir -p $(GP_DUMP); \
 		$(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --out $(GP_DUMP)/$(scenario).script && \
 		PR_GP_DUMP=$(GP_DUMP)/$(scenario) PR_GP_SCRIPT=$(GP_DUMP)/$(scenario).script PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
-	elif [ -n "$${PR_ORACLE_REQUIRED+x}" ]; then \
+	elif [ -z "$(GP_OPTIONAL)" ] && [ -n "$${PR_ORACLE_REQUIRED+x}" ]; then \
 		echo "gp-replay: no capture at $(K11_CAPTURES)/$(scenario) (PR_ORACLE_REQUIRED)"; exit 1; \
 	else \
 		echo "gp-replay: no capture at $(K11_CAPTURES)/$(scenario)"; \
@@ -433,8 +438,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
 	@echo "== K11 service-menu oracles (the walk and the menuesc restart; each skips without its capture) =="
 	@$(MAKE) --no-print-directory k11-oracle
-	@echo "== gameplay replay driver (the gp-pads capture; record §G.11) =="
-	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory gp-replay scenario=gp-pads
+	@echo "== gameplay replay driver (the gp-pads capture; skips without it; record §G.11) =="
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-pads GP_OPTIONAL=1
 	@echo "== k11 and gp tool unit tests =="
 	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
