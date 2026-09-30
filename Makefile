@@ -383,7 +383,7 @@ k11-report: build ## Report-only K11 comparison of the evidence captures (idle, 
 # pinned original under DOSBox-X with frame-keyed injection and a per-frame
 # snapshot log. Writes only data/k11-captures/gp-<scenario>/ (gp_capture.guard_gp).
 GP_ARGS ?=
-gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-pads|gp-idle-loss; writes data/k11-captures/)
+gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-pads; gp-idle-loss is planned for U4; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
 
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
@@ -417,7 +417,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
 	@echo "== K11 service-menu oracles (the walk and the menuesc restart; each skips without its capture) =="
 	@$(MAKE) --no-print-directory k11-oracle
-	@echo "== k11 tool unit tests =="
+	@echo "== k11 and gp tool unit tests =="
 	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare

@@ -396,6 +396,9 @@ Two runs of `make gp-capture scenario=gp-pads TITLE_PIN_DIR=/tmp/pr_u1_pin`
 `c43f4462a519adbff68a3c83acbb73db062f453338a470c2e67aba804b33649e`; 422 distinct
 frames, raw 1372..5251; 11 MB). The analysis script is
 `/tmp/gameplay-u1/analyse.py`; its run-2 output `/tmp/gameplay-u1/t8_run2_analysis.txt`.
+(After review 1, `data/k11-captures/gp-pads` holds run 3, §G.9; run 2's
+`poll.log`, `session.txt` and `window.txt` are kept in the ledger's
+`gp-pads-run2/`, and the script and its output in the ledger directory.)
 
 ### §G.7.1 Run 1 and the two corrections it forced
 
@@ -532,10 +535,12 @@ empty).
 **Corrections to the plan (raw/capture wins), each with its evidence:**
 §G.4 (the key loop `0x24D08..0x24EE7` drains a chord's words in one
 iteration: one `H` per word, `S(c).head` against the frame's last `H`, FIFO
-order within a frame; captured in §G.7.3); §G.5.2 (the snapshot's re-read
-`v3`); §G.7.1 (a hold of `n` releases at the spin of `f + n`, not `f + n − 1`;
-the `gp-pads` scenario's one-frame presses and menu-inert chord); §G.0 (the
-gate's grep includes `== demo-fight` and keeps the K11 lines apart).
+order within a frame; captured in §G.7.3); §G.7.1 (a hold of `n` releases at
+the spin of `f + n`, not `f + n − 1`; the `gp-pads` scenario's one-frame
+presses and menu-inert chord); §G.0 (the gate's grep includes `== demo-fight`
+and keeps the K11 lines apart). §G.5.2's snapshot re-read `v3` is a design
+hardening from reasoning about the read order, not a raw/capture correction
+(review 1).
 
 **Open questions.** Q2 closed (§G.7.2: all 18 names and a chord, captured
 twice, each at `press f + 1`, no late injection). Q3 still open with more
@@ -559,3 +564,61 @@ the intended one.
 (`ORACLES-EQUAL`); the 12 `k11_compare:` walk/menuesc lines equal the Task 0
 ones (`K11-EQUAL`); tool tests `Ran 67 tests`; `port_progress.py` `771 1203 64`
 and `731 731 100` (unchanged: U1 ports no function).
+
+## §G.9 Review 1 fixes
+
+Review `.superpowers/sdd/2026-09-30-gameplay-scope/u1-review1.md` ("Needs
+fixes"; spec verdict ✅). New commits on `gameplay-u1`, no history rewritten:
+
+1. **`late` per step (Important).** `Poller` computed `late` from
+   `Schedule.prev_frame` after `due(f)` returned every step, so an earlier step
+   fired in the same call was judged against the last step's frame (repro:
+   `after_mode 0x27 10`, `after 3`, `due(0x10C)`: step 1 is 3 frames late and
+   was logged `late=0`). `Schedule.frame_of[step]` now keeps each step's `F`
+   and `gp_capture.fire(sched, f)` returns `(step, action, late)` per step.
+   Test `test_late_is_judged_per_step`; mutation (the old expression inside
+   `fire`) → `FAIL … [(0, ('key', 'enter'), 0), …] != [(0, ('key', 'enter'), 1), …]`.
+   `gp-pads` could not hit it (30-frame spacing), so §G.7's `late=0` stands.
+2. **`guard_gp`** requires the parent to be exactly `data/k11-captures`
+   (`data/k11-captures/walk/gp-x` is rejected); mutation → `FAIL:
+   test_guard_requires_gp_prefix`.
+3. **Staged publish.** A run writes into `data/k11-captures/.gp-<name>.partial`
+   and `publish` moves it to `gp-<name>` only when every CHECK passed; a
+   failing run goes to `gp-<name>.failed` and leaves a good capture untouched.
+   `session.txt` records one `check=ok|FAIL <label>` line per CHECK. Mutation
+   (always publish to `out`) → `FAIL: test_publish_keeps_a_good_capture_from_a_failing_rerun`.
+4. **CHECK `frames written n/n`**; `test_frames_stream_to_gzip` now asserts the
+   exact file set and that decoding stops after the last wanted frame (mutation:
+   the early `break` removed → FAIL).
+5. **CHECK `mode 0x27 after the Enter`** tests order: the first `S`/`P` in mode
+   `0x27` comes after the Enter's `I` record, at `f` ≥ its `f` (mutation →
+   FAIL).
+6. **CHECK `snapshots kb == raw`** (was only printed; mutation → FAIL). All
+   CHECKs are the pure `run_checks`, unit-tested.
+7. `docs/PROGRESS.md`: the `v3` re-read is described as hardening, and the pad
+   map as confirmed from injected key-state bytes, not the keyboard controller
+   or the IRQ1 handler.
+8. Makefile: the verify banner reads `== k11 and gp tool unit tests ==`; the
+   `gp-capture` help names only `gp-pads` (`gp-idle-loss` "planned for U4");
+   the poller's 60 s memory-file wait is the named harness value `MEM_WAIT_S`.
+9. Hardening (optional in the review): `port_script` requires `S(c − 1).head`
+   to equal the head before frame `c`'s first word (the previous `H` record's
+   head), not merely differ from `H.head` (test
+   `test_consumption_needs_the_old_head_before`, mutation → FAIL), and names a
+   press whose word the full ring dropped (`ring=0`) instead of counting it as
+   queued (test `test_a_press_the_full_ring_dropped_is_named`, mutation → FAIL).
+   The run-1 and run-2 logs still generate their scripts (run 2's is
+   byte-identical to §G.7.3's). Not done: the review's minor 1 (a `race=` flag
+   for a tick between `v3` and the key-state write); the replay uses the
+   observed `S.raw`/`H` frames, so only the evidence field is affected.
+
+Run 3 (the new staging path, over run 2's good capture): `make gp-capture
+scenario=gp-pads TITLE_PIN_DIR=/tmp/pr_u1_pin` → exit 0, `snapshots 2447, f
+5..998, 5 frames missed`, every CHECK `ok` (`base`, `steps fired 20/20`, `end
+frame reached`, `mode 0x27 after the Enter`, `snapshots kb == raw (0 differ)`,
+`frames written 446/446`, `port script v2`), the same seven `check=ok` lines in
+`session.txt`, no `.partial`/`.failed` left in `data/k11-captures`. `poll.log`
+sha256 `9f8860340b77eaefe12a3c480638000609882b752791d6edf33d20067609fa0c`.
+The map is identical to run 2's (all 18 names and the chord `2410` at
+`press f + 1`, `S(f − 1) raw = 0`, 0 of 21 late, `late=1` nowhere in the log);
+BIOS consumption `{1: 7, 2: 8, 3: 5, 4: 2}` (22 of 22 pinned).
