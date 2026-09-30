@@ -358,10 +358,10 @@ void frontend_darken_marked(void)
         e = frontend_list_next(e);                      /* 0x415A9 */
     }
     config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));  /* 0x415CD */
-    /* PORT: 0x415DC 0x2C3FC(0x33, EDX = 0x78) voice, not wired (record §45-A).
-     * EBX (0), ECX (0x13), EDX (0x78) and ESI (0x15) survive 0x32A3C (pushes
-     * EBX/ECX/ESI) and 0x2C3FC (pushes EBX/EDX/EDI, never names ECX/ESI)
-     * into the stores below. */
+    /* EDX = 0x78 (0x415D7). EBX (0), ECX (0x13), EDX (0x78) and ESI (0x15)
+     * survive 0x32A3C (pushes EBX/ECX/ESI) and 0x2C3FC (pushes EBX/EDX/EDI,
+     * never names ECX/ESI) into the stores below. */
+    (void)sound_voice(0x33u);                           /* 0x415D2/0x415DC 0x2C3FC */
     DSW(DS_00104AFE) = 0x78u;                           /* 0x415E1 */
     DSW(DS_001088EE) = 0u;                              /* 0x415E8 */
     DSW(DS_00104AFA) = 0x13u;                           /* 0x415EF */
@@ -794,7 +794,7 @@ void game_mode_12_step(void)
             frontend_mode12_darken_or_tally();                       /* 0x420FE 0x416D4 */
             break;
         }
-        /* PORT: 0x4210D 0x2C3FC(0x33) voice, not wired (record §45-A). */
+        (void)sound_voice(0x33u);                                   /* 0x4210D/0x42112 0x2C3FC */
         if (DSB(DS_00108104 + r) == 7u) {                            /* 0x42127/0x4212A */
             frontend_mode12_advance();                                /* 0x4212C 0x4160C */
             break;
@@ -911,7 +911,7 @@ void frontend_char_screen_hook(void)
  * pops EBX, EDX and EDI (record §42-E.2). */
 void frontend_char_screen_hook_voice(void)
 {
-    /* PORT: 0x28D8B 0x2C3FC(0x2E) voice, not wired (record §45-A). */
+    (void)sound_voice(0x2Eu);                           /* 0x28D81/0x28D8B 0x2C3FC */
     DSD(DS_00104AE4) = FN_00043738;                     /* 0x28D95 */
     frontend_wipe_arm(0x10u);                           /* 0x28D9B 0x4F980 */
 }
@@ -1345,8 +1345,8 @@ void game_hook_26998(void)
     u8 v = (u8)(DSB(a) + 2u);                           /* 0x26A03/0x26A0B */
     DSB(a) = v;                                         /* 0x26A10 */
     if (v > 0x78u) DSB(a) = 0x78u;                      /* 0x26A16/0x26A1B */
-    /* PORT: 0x26A2C 0x2C3FC(0x28) voice, not wired (record §45-A). EDX
-     * (0x5D812, 0x26A27) survives it and 0x46504. */
+    /* EDX (0x5D812, 0x26A27) survives 0x2C3FC and 0x46504. */
+    (void)sound_voice(0x28u);                           /* 0x26A22/0x26A2C 0x2C3FC */
     flow_1082c8_latch();                                /* 0x26A31 0x46504 */
     DSD(DS_00104AE4) = FN_0005D812;                     /* 0x26A36 */
 }
@@ -1365,7 +1365,7 @@ void game_hook_270bc(void)
     DSB(DS_00104B1E) = r;                               /* 0x270CD */
     game_fight_reset(DSW(DS_00104AFC), 1u);             /* 0x270E0 0x20DF4 */
     fighter_spawn((u32)(s32)(s8)DSB(DS_0010810D));      /* 0x270E5..0x270ED 0x33EB4 */
-    /* PORT: 0x270F9 0x2C3FC(0x25) voice, not wired (record §45-A). */
+    (void)sound_voice(0x25u);                           /* 0x270F2/0x270F9 0x2C3FC */
     DSB(DS_00104B0A) = 0u;                              /* 0x270FE */
     u32 side = (u32)(s32)(s8)DSB(DS_0010810D);          /* 0x27104/0x2710A */
     DSB(DS_00104B0B) = DSB(DS_0010780B + side * 0x94u); /* 0x2711B/0x27127 */
@@ -1617,15 +1617,15 @@ void flow_match_result_text(void)
         if (id != 0xFFFFFFFFu)
             text_cursor_hold_font2(-1, 8, game_string_get(id),
                                    0x4000u);            /* 0x282A5 0x1C500, 0x282B1 0x2F510 */
-        /* PORT: 0x282BB 0x2C3FC(0x24) voice, not wired (record §45-A). */
+        (void)sound_voice(0x24u);                       /* 0x282B6/0x282BB 0x2C3FC */
         return;
     }
     if (r <= 1u) {                                      /* 0x28147 `jc`, 0x28149 `jbe` */
         u32 c = r == 0u ? (u32)DSB(DS_0010782A)         /* 0x28186 */
                         : (u32)DSB(DS_001078BE);        /* 0x281FC */
-        /* PORT: 0x2817F/0x281F5 0x2C3FC(0x24) voice, not wired (record
-         * §45-A); its gate (the signed byte DS_001088F2 < 1, or the side's
-         * slot +0x63 != 0, 0x28164..0x28178 / 0x281DA..0x281EE) reads only. */
+        if ((s8)DSB(DS_001088F2) < 1                    /* 0x28164..0x2816F / 0x281DA..0x281E5 */
+                || DSB(DS_00107813 + r * 0x94u) != 0u)  /* 0x28171/0x28178 / 0x281E7/0x281EE */
+            (void)sound_voice(0x24u);                   /* 0x2817A/0x2817F, 0x281F0/0x281F5 0x2C3FC */
         text_cursor_hold_font2(-1, 8, game_string_get(DSD(DS_000A89E0 + c * 4u)),
                                0x4000u);                /* 0x2819C 0x1C500, 0x281A8 0x2F510 */
         text_cursor_hold_font2(-1, 0xB, game_string_get(DSD(DS_000A89FC + c * 4u)),
@@ -1635,7 +1635,7 @@ void flow_match_result_text(void)
     if (r == 2u) {                                      /* 0x2814F/0x28152 */
         text_cursor_hold_font2(-1, 8, game_string_get(0x42u),
                                0x4000u);                /* 0x28250 -> 0x282A5, 0x282B1 */
-        /* PORT: 0x282BB 0x2C3FC(0x24) voice, not wired (record §45-A). */
+        (void)sound_voice(0x24u);                       /* 0x282B6/0x282BB 0x2C3FC */
     }
 }
 
@@ -1703,8 +1703,8 @@ void flow_arena_ko_check(void)
     }
     if (DSB(DS_0010780A + (u32)DSB(DS_00104B12) * 0x94u) < 0x78u)
         return;                                         /* 0x2731B..0x27340 */
-    /* PORT: 0x27347 0x2C3FC(0x27) and 0x27351 0x2C3FC(0x22) voices, not wired
-     * (record §45-A). */
+    (void)sound_voice(0x27u);                           /* 0x27342/0x27347 0x2C3FC */
+    (void)sound_voice(0x22u);                           /* 0x2734C/0x27351 0x2C3FC */
     w = (s32)(s8)DSB(DS_0010810D);                      /* 0x27356/0x2735C */
     DSB(DS_001077F1 + (u32)w * 0x94u) =
         (u8)(DSB(DS_001077F1 + (u32)w * 0x94u) | 0x10u);    /* 0x2736D */
@@ -1881,8 +1881,9 @@ void game_mode_0e_step(void)
         s8 n = (s8)(DSB(DS_00108110) - 1u);             /* 0x27AE5/0x27AEB */
         DSB(DS_00108110) = (u8)n;                       /* 0x27AED */
         if (n < 0) {                                    /* 0x27AF3/0x27AF5 */
-            /* PORT: 0x27B01 0x2C3FC(0x27, EDX = 0x1E) and 0x27B0D
-             * 0x2C3FC(0x22) voices, not wired (record §45-A). */
+            /* EDX = 0x1E (0x27AFC), CH = 0 (0x27B0B): both survive. */
+            (void)sound_voice(0x27u);                   /* 0x27AF7/0x27B01 0x2C3FC */
+            (void)sound_voice(0x22u);                   /* 0x27B06/0x27B0D 0x2C3FC */
             /* 0x27B12 0x29D60 is a ret-only no-op. */
             frontend_darken_all();                      /* 0x27B17 0x29B74 */
             DSB(DS_00104B25) = 0u;                      /* 0x27B1C (CH) */
@@ -1945,7 +1946,7 @@ void game_mode_0d_step(void)
     DSB(DS_00104B21) = n;                               /* 0x2758A */
     if (n == 7u) {                                      /* 0x27590 `jnz` */
         u32 rem;
-        /* PORT: 0x2759E 0x2C3FC(0x2A) voice, not wired (record §45-A). */
+        (void)sound_voice(0x2Au);                       /* 0x27599/0x2759E 0x2C3FC */
         flow_match_result_text();                       /* 0x275A3 0x28130 */
         prompt_side_erase((s32)(s8)(DSB(DS_0010810D) ^ 1u),
                           0x1D);                        /* 0x275A8..0x275B7 0x2C2B0 */
@@ -2002,8 +2003,11 @@ void game_mode_0d_step(void)
         (u8)(DSB(DS_001077F1 + (u32)w * 0x94u) & 0xEFu);    /* 0x2778C */
     n = (u8)(DSB(DS_00104B0A) ^ 1u);                    /* 0x27794/0x27799 */
     DSB(DS_00104B0A) = n;                               /* 0x2779B */
-    /* PORT: 0x277B0 0x2C3FC(0x25 + (n != 0)) voice, not wired (record §45-A);
-     * it pushes and pops EDX, so the mode word below is its EDX = 0xC. */
+    /* 0x277A0 `setne al` reads the flags of 0x27799 `xor al,1` (the store
+     * at 0x2779B leaves them), so the id is 0x25 + (n != 0) (0x277A8 `add
+     * eax,0x25`). 0x2C3FC pushes and pops EDX, so the mode word below is
+     * its EDX = 0xC (0x277AB). */
+    (void)sound_voice(0x25u + (n != 0u ? 1u : 0u));     /* 0x277A0..0x277B0 0x2C3FC */
     DSW(DS_00104B00) = 0xCu;                            /* 0x277AB/0x277B5 */
 }
 
@@ -2055,7 +2059,7 @@ void game_mode_32_step(void)
     DSB(DS_001078FA) = (u8)(DSB(DS_001078FA) - 1u);     /* 0x2978F..0x297A3 */
     if (DSB(DS_00104AF0) == 4u || DSB(DS_00104AF1) == 4u) {  /* 0x2979D..0x297B9 */
         u32 id;
-        /* PORT: 0x297C4 0x2C3FC(0x2A) voice, not wired (record §45-A). */
+        (void)sound_voice(0x2Au);                       /* 0x297BF/0x297C4 0x2C3FC */
         flow_match_result_text();                       /* 0x297C9 0x28130 */
         DSB(DS_001077F1) = (u8)(DSB(DS_001077F1) | 0x10u);  /* 0x297CE */
         DSB(DS_00107885) = (u8)(DSB(DS_00107885) | 0x10u);  /* 0x297D5..0x297E4 */
@@ -2102,8 +2106,10 @@ void game_mode_32_step(void)
         (u8)(DSB(DS_001077F1 + (u32)w * 0x94u) & 0xEFu);    /* 0x29930..0x29940 */
     n = (u8)(DSB(DS_00104B0A) ^ 1u);                    /* 0x2993A/0x29947 */
     DSB(DS_00104B0A) = n;                               /* 0x2994A */
-    /* PORT: 0x29960 0x2C3FC(0x25 + (n != 0)) voice, not wired (record
-     * §45-A); its EDX (0x31) survives into the mode word. */
+    /* 0x29950 `setne al` reads the flags of 0x29947 `xor cl,1` (the store
+     * at 0x2994A leaves them): 0x25 + (n != 0) (0x29958 `add eax,0x25`).
+     * Its EDX (0x31, 0x2995B) survives into the mode word. */
+    (void)sound_voice(0x25u + (n != 0u ? 1u : 0u));     /* 0x29950..0x29960 0x2C3FC */
     DSW(DS_00104B00) = 0x31u;                           /* 0x2995B/0x29965 */
 }
 
@@ -2459,15 +2465,15 @@ void game_mode_30_step(void)
 void flow_round_over_check(void)
 {
     if (DSB(DS_0010780A) >= 0x78u) {                    /* 0x29974..0x2997C */
-        /* PORT: 0x2997E 0x2C3FC(0x27) and 0x29988 0x2C3FC(0x22) voices, not
-         * wired (record §45-A). */
+        (void)sound_voice(0x27u);                       /* 0x2997E/0x29983 0x2C3FC */
+        (void)sound_voice(0x22u);                       /* 0x29988/0x29992 0x2C3FC (EDX = 0x32, 0x2998D) */
         DSW(DS_00104B00) = 0x32u;                       /* 0x29999 */
         DSB(DS_00104B09) = 0u;                          /* 0x299A0 */
         flow_round_winner();                            /* 0x299A6 0x27C48 */
     }
     if (DSB(DS_0010789E) >= 0x78u) {                    /* 0x299AD..0x299B5 */
-        /* PORT: 0x299B7 0x2C3FC(0x27) and 0x299C6 0x2C3FC(0x22) voices, not
-         * wired (record §45-A). */
+        (void)sound_voice(0x27u);                       /* 0x299B7/0x299C1 0x2C3FC (EBX = 0x32, 0x299BC) */
+        (void)sound_voice(0x22u);                       /* 0x299C6/0x299CD 0x2C3FC (DL = 1, 0x299CB) */
         DSW(DS_00104B00) = 0x32u;                       /* 0x299D2 */
         DSB(DS_00104B09) = 1u;                          /* 0x299D9 */
         flow_round_winner();                            /* 0x299DF 0x27C48 */
@@ -2551,7 +2557,7 @@ void game_mode_33_step(void)
         u16 t = (u16)(DSW(DS_00104AFE) - 1u);           /* 0x2966F/0x29679 */
         DSW(DS_00104AFE) = t;                            /* 0x29680 */
         if ((s16)t <= 0) {                               /* 0x29687/0x2968A */
-            /* PORT: 0x2968C 0x2C3FC(0x2B) voice, not wired (record §45-A). */
+            (void)sound_voice(0x2Bu);                   /* 0x2968C/0x29698 0x2C3FC (ECX = 0x17, DL = 0) */
             DSB(DS_00104B25) = 0u;                      /* 0x2969D */
             DSW(DS_00104B00) = 0x17u;                   /* 0x296A8 */
             DSD(DS_00104AE4) = FN_00025AE8;             /* 0x296AF */

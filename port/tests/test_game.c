@@ -10211,11 +10211,280 @@ static const TfVoiceSite k12_a[] = {
     { 197u, vs_menu_step,     1u, { 0x100u } },           /* 0x2FFFD */
 };
 
+/* ---- record k7-k12 §5, batch B1: the match-flow music requests and stops -- */
+
+#define VS_810D   0x0010810Du   /* byte: the winner side (DS_0010810A's top byte) */
+
+/* The private pools and the string table: the rows below draw text. */
+static void vs_text(void)
+{
+    vs_pools();
+    game_string_table_load("data/game/C");
+}
+/* Row 130: 0x41578 on an empty front-end list (no darken), mode 0 for
+ * 0x32A3C. */
+static void vs_darken_marked(void)
+{
+    vs_pools();
+    mem_fill(DS_00107608, 0, 0x190u);
+    DSD(DS_00104ABC) = 0u;
+    DSB(DS_00104B19) = 0u;
+    frontend_darken_marked();
+}
+/* Row 134: 0x41C28 case 5 with DS_0010810E = 8 (0x420E8) and DS_00104B1F !=
+ * 3 (0x420F9). Both camera-target records are the slots with +0x63 = 1, so
+ * 0x418F4 skips both sides; DS_00108104[0] = 7 takes 0x4160C's text arm. */
+static void vs_mode12_5(void)
+{
+    vs_text();
+    DSB(DS_00104B25) = 5u;
+    DSD(DS_00104AD4) = 0u;
+    DSB(DS_0010810E) = 8u;
+    DSB(DS_00104B1F) = 0u;
+    DSD(DS_001077A8) = DS_001077B0;
+    DSD(DS_001077A8 + 4u) = DS_001077B0 + 0x94u;
+    DSB(DS_00107813) = 1u;
+    DSB(DS_001078A7) = 1u;
+    DSB(DS_00108104) = 7u;
+    DSB(VS_B29) = 0u;
+    game_mode_12_step();
+}
+/* Row 136: 0x28D80, the first statement. */
+static void vs_char_hook_voice(void) { vs_pools(); frontend_char_screen_hook_voice(); }
+/* Rows 137/138: 0x26998 and 0x270BC (check_mode_1a_hooks' seeds: stage 2,
+ * no dust, no sound bank). */
+static void vs_fighter_hook_seed(void)
+{
+    vs_pools();
+    DSW(DS_00104AFC) = 2u;
+    DSB(DS_00104B1E) = 0xFFu;
+    DSB(DS_0010816A) = 1u;
+    DSB(DS_0010816A + 1u) = 4u;
+    DSB(DS_00104B14) = 1u;
+    DSB(DS_0010780B) = 0x10u;
+    DSB(DS_0010780B + 0x94u) = 0x77u;
+}
+static void vs_hook_26998(void)
+{
+    vs_fighter_hook_seed();
+    DSB(DS_001078A7) = 0u;
+    game_hook_26998();
+}
+static void vs_hook_270bc(void)
+{
+    vs_fighter_hook_seed();
+    DSB(VS_810D) = 1u;
+    game_hook_270bc();
+}
+/* Rows 142-144: 0x28130. -1 with DS_00104B16 = 3 draws nothing (0x28266);
+ * 0 with the signed byte DS_001088F2 = 0 (below 1, 0x2816F); 2 draws 0x42. */
+static void vs_result_text(u32 r, u8 b16, u8 f2)
+{
+    vs_text();
+    DSD(DS_00104AD4) = r;
+    DSB(DS_00104B16) = b16;
+    DSB(DS_001088F2) = f2;
+    DSB(DS_00107813) = 0u;
+    DSB(DS_001078A7) = 0u;
+    flow_match_result_text();
+}
+static void vs_result_m1(void) { vs_result_text(0xFFFFFFFFu, 3u, 0x40u); }
+static void vs_result_0(void)  { vs_result_text(0u, 0x77u, 0u); }
+static void vs_result_2(void)  { vs_result_text(2u, 0x77u, 0x40u); }
+/* Rows 146/147: 0x272DC's second arm, 0x27347 0x27 then 0x27351 0x22 (the
+ * side's DS_0010780A below 0x78, DS_00104B12's at or above; §1.3 seed). */
+static void vs_arena_ko_b(void)
+{
+    DSB(VS_810D) = 0u;
+    DSB(DS_0010780A) = 0x10u;                  /* side 0 below 0x78: first arm skipped */
+    DSB(DS_00104B12) = 1u;
+    DSB(DS_0010780A + 0x94u) = 0x78u;          /* side 1 at 0x78: second arm */
+    flow_arena_ko_check();
+}
+/* Rows 148/149: 0x27A2C with no credit (0x42F60 returns 0 at 0x2C060), no
+ * forced tick, the frame word's low six bits 0 (0x27ADF) and DS_00108110 = 0,
+ * so the decrement goes negative (0x27AF5); 0x29B74 walks an empty list. */
+static void vs_mode0e(void)
+{
+    vs_pools();
+    DSB(DS_00105D60) = 0u;
+    DSD(DS_00105C00) = 0u;
+    DSB(DS_00105C04) = 0u;
+    DSB(DS_00104B1F) = 0u;
+    DSW(DS_000EF6DC) = 0x40u;
+    DSB(DS_00108110) = 0u;
+    mem_fill(DS_00107608, 0, 0x190u);
+    game_mode_0e_step();
+}
+/* The match-end fixture of rows 150-153: tf_demo_fixture's inert prelude
+ * (0x3C5CC..0x12DA8), a byte DS_00104B0C set, both slots' +4 records live,
+ * the empty 0x4DBEC free list and 0x28130's -1/3 arm (the 0x24 voice, no
+ * text). */
+static void vs_match_end_seed(void)
+{
+    (void)tf_demo_fixture();
+    vs_text();
+    DSB(DS_00104B0C) = 1u;
+    DSD(DS_001077B4) = actor_alloc(0);
+    DSD(DS_001077B4 + 0x94u) = actor_alloc(0);
+    DSD(DS_001083C4) = DS_001083C4;
+    DSD(DS_001083C4 + 4u) = DS_001083C4;
+    DSD(DS_00104AD4) = 0xFFFFFFFFu;
+    DSB(DS_00104B16) = 3u;
+    DSB(VS_B29) = 0u;
+    DSD(DS_00105BF8) = 0u;                     /* 0x2C2B0 releases no cell */
+    DSD(DS_001077EC) = 1211u;                  /* 0x2765C: no 0x41310 */
+}
+/* The replace arm's loser `s`: only character 3 is free (0x2716C), its
+ * 0xA8628 entry is 0 (fn_resolve NULL: no entrance runs), and s's HUD
+ * records (0x1D764's bar and stream, 0x1D838's badge slot) are live or 0. */
+static void vs_replace_seed(u32 s)
+{
+    for (u32 c = 0; c < 7u; c++) DSB(DS_00104B02 + c) = 0x20u;
+    DSB(DS_00104B02 + 3u) = 0x01u;
+    DSD(DS_000A8628 + 3u * 4u) = 0u;
+    DSB(DS_0010452C) = 3u;
+    DSD(DS_001082D0) = 0u;
+    DSD(DS_001028F0 + s * 4u) = actor_alloc(0);
+    DSD(DS_001028F8 + s * 4u) = actor_alloc(0);
+    DSD(DS_001028E0 + s * 4u) = 0u;
+}
+/* Row 150: 0x274FC's seventh round, 0x2759E 0x2A then 0x28130's 0x24. */
+static void vs_mode0d_final(void)
+{
+    vs_match_end_seed();
+    DSB(DS_00104B21) = 6u;
+    DSB(VS_810D) = 0u;
+    game_mode_0d_step();
+}
+/* Row 151: 0x274FC's replace arm, loser side 1; DS_00104B0A 1 ^ 1 = 0, so
+ * 0x25 (0x277A0 `setne`). */
+static void vs_mode0d_replace(void)
+{
+    vs_match_end_seed();
+    vs_replace_seed(1u);
+    DSB(DS_00104B21) = 0u;
+    DSB(DS_00104B12) = 1u;
+    DSB(DS_00104B0A) = 1u;
+    game_mode_0d_step();
+}
+/* Row 152: 0x296B8's final arm, side 0's count 3 -> 4 (0x297A9). */
+static void vs_mode32_final(void)
+{
+    vs_match_end_seed();
+    DSB(DS_00104B09) = 0u;
+    DSB(DS_00104AF0) = 3u;
+    DSB(DS_00104AF1) = 1u;
+    game_mode_32_step();
+}
+/* Row 153: 0x296B8's replace arm, side 1's count 0 -> 1 and the team byte
+ * DS_00108134[4 + 1] = 3; DS_00104B0A 0 ^ 1 = 1, so 0x26. */
+static void vs_mode32_replace(void)
+{
+    vs_match_end_seed();
+    vs_replace_seed(1u);
+    DSB(DS_00104B09) = 1u;
+    DSB(DS_00104AF0) = 0u;
+    DSB(DS_00104AF1) = 0u;
+    DSB(DS_00108134 + 4u + 1u) = 3u;
+    DSB(DS_00104B0A) = 0u;
+    game_mode_32_step();
+}
+/* Rows 156-159: 0x29970 with side 0's +0x5A (0x29974) or side 1's
+ * (DS_0010789E, 0x299AD) at 0x78 and the other at 0. 0x27C48 then runs with
+ * DS_00104B1D = 3 (no round bonus, 0x27CAA..) and the win markers present
+ * (0x256F4 spawns none). */
+static void vs_round_over(u32 side)
+{
+    vs_pools();
+    DSB(DS_0010780A) = side == 0u ? 0x78u : 0u;
+    DSB(DS_0010789E) = side == 0u ? 0u : 0x78u;
+    DSB(DS_00104B1D) = 3u;
+    DSB(DS_00104AF2) = 0u;
+    DSB(DS_00104AF3) = 0u;
+    for (u32 k = 0; k < 4u; k++) {
+        DSD(DS_00104A88 + k * 4u) = 0x5555u;
+        DSD(DS_00104A98 + k * 4u) = 0x5555u;
+    }
+    flow_round_over_check();
+}
+static void vs_round_over_0(void) { vs_round_over(0u); }
+static void vs_round_over_1(void) { vs_round_over(1u); }
+/* Row 160: 0x29638 with DS_00104AFE = 1, so the decrement is <= 0 (0x2968A),
+ * on tf_demo_fixture's inert passes (its effect list is empty). */
+static void vs_mode33(void)
+{
+    (void)tf_demo_fixture();
+    vs_pools();
+    DSW(DS_00104AFE) = 1u;
+    game_mode_33_step();
+}
+
+/* Record k7-k12 §5, batch B1: 21 wiring points, all case 1 or 5 (music
+ * requests and stops). Rows 150/152 also log 0x28130's 0x24 (rows
+ * 142-144's arm), which is wired in this batch. */
+#define K12_B1_ROWS 21
+static const TfVoiceSite k12_b1[] = {
+    { 130u, vs_darken_marked,   1u, { 0x33u } },          /* 0x415DC */
+    { 134u, vs_mode12_5,        1u, { 0x33u } },          /* 0x42112 */
+    { 136u, vs_char_hook_voice, 1u, { 0x2Eu } },          /* 0x28D8B */
+    { 137u, vs_hook_26998,      1u, { 0x28u } },          /* 0x26A2C */
+    { 138u, vs_hook_270bc,      1u, { 0x25u } },          /* 0x270F9 */
+    { 142u, vs_result_m1,       1u, { 0x24u } },          /* 0x282BB (-1) */
+    { 143u, vs_result_0,        1u, { 0x24u } },          /* 0x2817F */
+    { 144u, vs_result_2,        1u, { 0x24u } },          /* 0x282BB (2) */
+    { 146u, vs_arena_ko_b,      2u, { 0x27u, 0x22u } },   /* 0x27347, 0x27351 */
+    { 147u, vs_arena_ko_b,      2u, { 0x27u, 0x22u } },   /* 0x27347, 0x27351 */
+    { 148u, vs_mode0e,          2u, { 0x27u, 0x22u } },   /* 0x27B01, 0x27B0D */
+    { 149u, vs_mode0e,          2u, { 0x27u, 0x22u } },   /* 0x27B01, 0x27B0D */
+    { 150u, vs_mode0d_final,    2u, { 0x2Au, 0x24u } },   /* 0x2759E, 0x282BB */
+    { 151u, vs_mode0d_replace,  1u, { 0x25u } },          /* 0x277B0 */
+    { 152u, vs_mode32_final,    2u, { 0x2Au, 0x24u } },   /* 0x297C4, 0x282BB */
+    { 153u, vs_mode32_replace,  1u, { 0x26u } },          /* 0x29960 */
+    { 156u, vs_round_over_0,    2u, { 0x27u, 0x22u } },   /* 0x29983, 0x29992 */
+    { 157u, vs_round_over_0,    2u, { 0x27u, 0x22u } },   /* 0x29983, 0x29992 */
+    { 158u, vs_round_over_1,    2u, { 0x27u, 0x22u } },   /* 0x299C1, 0x299CD */
+    { 159u, vs_round_over_1,    2u, { 0x27u, 0x22u } },   /* 0x299C1, 0x299CD */
+    { 160u, vs_mode33,          1u, { 0x2Bu } },          /* 0x29698 */
+};
+
+/* Row 143's gate (0x28164..0x28178 for side 0, 0x281DA..0x281EE for side 1):
+ * the 0x24 voice when the signed byte DS_001088F2 is below 1 (`sar eax,0x18;
+ * cmp eax,1; jl`) or side r's own slot +0x63 is non-zero, and none when both
+ * fail. 0xFF is -1 (a signed compare), 1 is not below 1, and the other side's
+ * +0x63 is not read. The data object is put back after each case. */
+static void vs_result_gate_check(void)
+{
+    static u8 d[0x8B0D0];
+    static const struct { u32 r; u8 f2, own, other; int want; } g[6] = {
+        { 0u, 0x40u, 0u, 1u, 0 }, { 0u, 0xFFu, 0u, 0u, 1 }, { 0u, 0x40u, 1u, 0u, 1 },
+        { 1u, 0x01u, 0u, 1u, 0 }, { 1u, 0x00u, 0u, 0u, 1 }, { 1u, 0x40u, 1u, 0u, 1 },
+    };
+    for (u32 i = 0; i < 6u; i++) {
+        tf_snap(d, DATA_BASE, sizeof d);
+        vs_text();
+        DSD(DS_00104AD4) = g[i].r;
+        DSB(DS_001088F2) = g[i].f2;
+        DSB(DS_00107813 + g[i].r * 0x94u) = g[i].own;
+        DSB(DS_00107813 + (g[i].r ^ 1u) * 0x94u) = g[i].other;
+        sound_voice_log_reset();
+        flow_match_result_text();
+        int n = 0;
+        for (u32 k = 0; k < sound_voice_log_count(); k++)
+            if (sound_voice_log_at(k) == 0x24u) n++;
+        CHECK_EQ_INT(n, g[i].want);
+        tf_put(d, DATA_BASE, sizeof d);
+    }
+}
+
 int test_voice_sites(void)
 {
     int before = g_failures;
     /* 22 wiring points, one entry each (rows 139/140 share one path). */
     CHECK_EQ_INT((int)(sizeof k12_a / sizeof k12_a[0]), K12_A_ROWS);
     tf_voice_sites(k12_a, (u32)(sizeof k12_a / sizeof k12_a[0]));
+    CHECK_EQ_INT((int)(sizeof k12_b1 / sizeof k12_b1[0]), K12_B1_ROWS);
+    tf_voice_sites(k12_b1, (u32)(sizeof k12_b1 / sizeof k12_b1[0]));
+    vs_result_gate_check();
     return g_failures - before;
 }
