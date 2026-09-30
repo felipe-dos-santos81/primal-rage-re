@@ -166,6 +166,32 @@ static void res_hook(void)
     res_hook_1508 = DSD(DS_00101508);
 }
 
+/* named-gaps C (record 2026-09-30-named-gaps-c-derivations.md §C.1): res.c's
+ * PORT: allocation-failure seam. Armed with n, the n-th request from then on
+ * returns 0 and leaves the heap where it was (the mem_in_range arm of
+ * res_alloc), and the seam disarms itself; n = 0 disarms. The heap ends where
+ * it started: every request that succeeds here is size 0 (res_block_alloc(0)
+ * aligns the heap and does not advance it), and the one sized request fails. */
+static void check_res_fail_seam(void)
+{
+    const u32 a = res_block_alloc(0u);
+    CHECK(a != 0u, "the bump heap has room");
+
+    res_fail_alloc_nth(3u);
+    CHECK_EQ_INT((int)res_fail_alloc_left(), 3);
+    CHECK_EQ_INT((int)res_block_alloc(0u), (int)a);       /* request 1 succeeds */
+    CHECK_EQ_INT((int)res_fail_alloc_left(), 2);
+    CHECK_EQ_INT((int)res_block_alloc(0u), (int)a);       /* request 2 succeeds */
+    CHECK_EQ_INT((int)res_block_alloc(0x100u), 0);        /* request 3 fails */
+    CHECK_EQ_INT((int)res_fail_alloc_left(), 0);          /* one-shot: disarmed */
+    CHECK_EQ_INT((int)res_block_alloc(0u), (int)a);       /* the failure took nothing */
+
+    res_fail_alloc_nth(1u);
+    res_fail_alloc_nth(0u);                               /* n = 0 disarms */
+    CHECK_EQ_INT((int)res_block_alloc(0u), (int)a);
+    CHECK_EQ_INT((int)res_fail_alloc_left(), 0);          /* an unarmed request leaves it */
+}
+
 int test_res(void)
 {
     int before = g_failures;
@@ -418,6 +444,8 @@ int test_res(void)
         close(big_fd);
         unlink(big_path);
     }
+
+    check_res_fail_seam();
 
     return g_failures - before;
 }
