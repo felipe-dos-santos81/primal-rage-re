@@ -3505,7 +3505,7 @@ void flow_challenge_poll(void)
             frontend_input_reset();                     /* 0x42E67/0x42E69 0x4F1E4 (eax = 0) */
             actors_reset();                             /* 0x42E6E/0x42E73 0x2BAF4 (eax = 1) */
         } else {
-            /* PORT: 0x42E7F 0x2C3FC(0x2D) voice, not wired (record §45-A). */
+            (void)sound_voice(0x2Du);                   /* 0x42E7A/0x42E7F 0x2C3FC */
         }
         if (DSB(DS_00104B1F) == 1u) {                   /* 0x42E84..0x42E8D `jbe` */
             u32 i;
@@ -3584,8 +3584,7 @@ void game_mode_13_step(void)
     u32 side;
     switch (DSB(DS_00104B25)) {                         /* 0x424EE..0x42500 */
     case 0u:
-        /* PORT: 0x4250D 0x2C3FC(0x2C) voice, not wired (record §45-A); EDX
-         * is game_frame's. */
+        (void)sound_voice(0x2Cu);                       /* 0x42508/0x4250D 0x2C3FC; EDX (game_frame's) is not read */
         actors_reset();                                 /* 0x42512..0x4251B 0x2BAF4 (eax = 1) */
         frontend_origin_zero();                         /* 0x42520..0x42524 0x4F1D0 */
         frontend_spawn_row((const u32 *)(mem + DS_000C87BC), 0u, 0u);   /* 0x42529/0x4252E 0x38B18 */
@@ -3931,7 +3930,7 @@ void game_hook_25ae8(void)
     text_cursor_hold_font2(-1, 0xE, game_string_get(0x52u),
                            0x4000u);                    /* 0x25B36 0x1C500, 0x25B42 0x2F510 */
     fight_stage_marks_clear();                        /* 0x25B47 0x4246C */
-    /* PORT: 0x25B51 0x2C3FC(0x3D) voice, not wired (record §45-A). */
+    (void)sound_voice(0x3Du);                           /* 0x25B4C/0x25B51 0x2C3FC */
     if (DSB(DS_00104B1D) == 0u) {                       /* 0x25B56 */
         DSD(DS_00104AE4) = FN_00010E80;                 /* 0x25B6E */
         DSW(DS_001088EE) = 0xB4u;                       /* 0x25B74 */
@@ -4137,7 +4136,7 @@ void game_mode_07_step(void)
  *   DS_00104AEC |= 2 unconditionally; the word DS_00104AFE (no zero-guard,
  * unlike mode 8/9's DS_00104AF8 countdown) decrements by one every call; at
  * or below 0 (signed 16-bit, 0x27811 `test dx,dx`/`jg`) it fires:
- *   - voice 0x2B (0x27821 0x2C3FC, deferred, record §45-A) with DL = 0; since
+ *   - voice 0x2B (0x27821 0x2C3FC, record k7-k12 §6) with DL = 0; since
  *     0x2C3FC preserves EDX unconditionally (record §42-E.2, the same
  *     precedent mode 0xA's port used), DS_00104B1B = DL afterward is
  *     unconditionally 0 (0x27826);
@@ -4175,9 +4174,9 @@ void game_mode_0f_step(void)
     DSW(DS_00104AFE) = (u16)hold;                            /* 0x2780A */
     if (hold > 0) return;                                     /* 0x27811/0x27814 */
 
-    /* PORT: 0x27821 0x2C3FC(0x2B) voice, not wired (record §45-A); its DL
-     * argument is 0 and 0x2C3FC preserves EDX (record §42-E.2), so the store
-     * below is unconditionally 0. */
+    /* 0x2C3FC preserves EDX (record §42-E.2), so the DL = 0 loaded at 0x2781F
+     * is still 0 for the store below. */
+    (void)sound_voice(0x2Bu);                                 /* 0x2781A/0x27821 0x2C3FC */
     DSB(DS_00104B1B) = 0u;                                    /* 0x27826 */
     {
         s32 w = (s32)(s8)DSB(DS_0010810D);                     /* 0x2782C/0x27832 */
@@ -5074,8 +5073,7 @@ void game_mode_1e_step(void)
             && hiscore_rank_pair() != 0u) {                     /* 0x1EEE1/0x1EEE6/0x1EEE8 */
             nameentry_reset();                                  /* 0x1EEEA 0x1ED2C */
             (void)sound_voice(0x100u);                          /* 0x1EEEF/0x1EEF4 0x2C3FC */
-            /* PORT: 0x1EEF9/0x1EEFE 0x2C3FC voice (0xE1), not
-             * wired (record §45-A). */
+            (void)sound_voice(0xE1u);                           /* 0x1EEF9/0x1EEFE 0x2C3FC */
             u32 s0 = DSD(DS_001077EC);                          /* 0x1EF03 */
             u32 s1 = DSD(DS_00107880);                          /* 0x1EF08 */
             if (s0 >= s1) {                                     /* 0x1EF0E/0x1EF10 (unsigned) */
@@ -5121,8 +5119,7 @@ void game_mode_1e_step(void)
                 DSB(DS_00104B25) = 5u;                              /* 0x1F1DB */
                 nameentry_reset();                                  /* 0x1F1E2 0x1ED2C */
                 (void)sound_voice(0x100u);                          /* 0x1F1E7/0x1F1EC 0x2C3FC */
-                /* PORT: 0x1F1F1/0x1F1F6 0x2C3FC voice (0xE1), not
-                 * wired (record §45-A). */
+                (void)sound_voice(0xE1u);                           /* 0x1F1F1/0x1F1F6 0x2C3FC */
                 break;
             }
         }
@@ -5135,8 +5132,8 @@ void game_mode_1e_step(void)
             DSW(DS_00104B00) = 0x15u;                           /* 0x1F230 */
             DSB(DS_00104B25) = 6u;                              /* 0x1F237 */
             DSW(DS_00104AFA) = 0x1Eu;                           /* 0x1F242 */
-            /* PORT: 0x1F249 0x2C3FC(0xE3) and 0x1F253 0x2C3FC(0xE2) voices,
-             * not wired (record §45-A). */
+            (void)sound_voice(0xE3u);                           /* 0x1F23D/0x1F249 0x2C3FC */
+            (void)sound_voice(0xE2u);                           /* 0x1F24E/0x1F253 0x2C3FC */
         }
         break;
     case 0x06u:
@@ -5162,8 +5159,7 @@ void game_mode_1e_step(void)
             if (advance) {
                 DSB(DS_00104B25) = 8u;                               /* 0x1F301 */
                 (void)sound_voice(0x100u);                           /* 0x1F2FC/0x1F307 0x2C3FC */
-                /* PORT: 0x1F30C/0x1F311 0x2C3FC voice (0xE1), not
-                 * wired (record §45-A). */
+                (void)sound_voice(0xE1u);                            /* 0x1F30C/0x1F311 0x2C3FC */
                 nameentry_reset();                                   /* 0x1F316 0x1ED2C */
                 break;
             }
@@ -5177,8 +5173,8 @@ void game_mode_1e_step(void)
             DSW(DS_001088EE) = 0u;                              /* 0x1F34E */
             DSW(DS_00104B00) = 0x15u;                           /* 0x1F355 */
             DSW(DS_00104AFA) = 0x1Eu;                           /* 0x1F365 */
-            /* PORT: 0x1F36C 0x2C3FC(0xE3) and 0x1F376 0x2C3FC(0xE2) voices,
-             * not wired (record §45-A). */
+            (void)sound_voice(0xE3u);                           /* 0x1F360/0x1F36C 0x2C3FC */
+            (void)sound_voice(0xE2u);                           /* 0x1F371/0x1F376 0x2C3FC */
         }
         break;
     case 0x09u:
@@ -5235,9 +5231,12 @@ void game_mode_1e_step(void)
             DSW(DS_00104B00) = 0x15u;                           /* 0x1EF86/0x1F067/0x1F0EE/0x1F009 */
             DSW(DS_00104AFA) = 0x1Eu;                           /* 0x1EF7F/0x1F06E/0x1F0F5/0x1F012 */
             DSB(DS_00104B25) = next_of[k];                      /* 0x1EF66/0x1F079/0x1F103/0x1F019 */
-            /* PORT: 0x1EF8D/0x1F07F/0x1F109/0x1F01F 0x2C3FC(0xE3) and
-             * 0x1EF97/0x1F089/0x1F10E/0x1F024 0x2C3FC(0xE2) voices, not
-             * wired (record §45-A). */
+            /* One port path for four raw pairs (states 0xB/0xC/0xD/0xE):
+             * 0xE3 0x1EF5F/0x1EF8D, 0x1F074/0x1F07F, 0x1F0FE/0x1F109,
+             * 0x1EFF4/0x1F01F; 0xE2 0x1EF92/0x1EF97, 0x1F084/0x1F089,
+             * 0x1F10E/0x1F113, 0x1F024/0x1F029 (record k7-k12 §6). */
+            (void)sound_voice(0xE3u);                           /* 0x1EF8D/0x1F07F/0x1F109/0x1F01F 0x2C3FC */
+            (void)sound_voice(0xE2u);                           /* 0x1EF97/0x1F089/0x1F113/0x1F029 0x2C3FC */
         }
         break;
     }
@@ -5245,8 +5244,9 @@ void game_mode_1e_step(void)
         /* Side 0 is done (state 0xB); arm side 1's entry (state 0xE). The
          * rank probe's own return is discarded (no `test al,al`), so the
          * entry runs even for a non-qualifying score. */
-        /* PORT: 0x1EFA9 0x2C3FC(0xE1) voice, not wired (record §45-A); DL =
-         * 0xE survives it (0x2C3FD push edx, popped on every exit). */
+        /* DL = 0xE (0x1EFA7) survives the voice (0x2C3FD push edx, popped
+         * on every exit). */
+        (void)sound_voice(0xE1u);                               /* 0x1EFA2/0x1EFA9 0x2C3FC */
         DSB(DS_00104B25) = 0x0Eu;                               /* 0x1EFA7/0x1EFAE */
         nameentry_reset();                                      /* 0x1EFB4 0x1ED2C */
         (void)hiscore_rank_single(DSD(DS_00107880));            /* 0x1EFB9/0x1EFBE 0x1EC38 */
@@ -5254,7 +5254,7 @@ void game_mode_1e_step(void)
         break;
     case 0x10u:
         /* Side 1 is done (state 0xC); arm side 0's entry (state 0xD). */
-        /* PORT: 0x1F099 0x2C3FC(0xE1) voice, not wired (record §45-A). */
+        (void)sound_voice(0xE1u);                               /* 0x1F094/0x1F099 0x2C3FC */
         DSB(DS_00104B25) = 0x0Du;                               /* 0x1F09E */
         nameentry_reset();                                      /* 0x1F0A5 0x1ED2C */
         (void)hiscore_rank_single(DSD(DS_001077EC));            /* 0x1F0AA/0x1F0AF 0x1EC38 */
@@ -5309,8 +5309,7 @@ void game_mode_1f_step(void)
     case 0x00u:
         frontend_input_reset();                                 /* 0x2093b 0x4F1E4 */
         actors_reset();                                         /* 0x20949 0x2BAF4 (eax=1) */
-        /* PORT: 0x20955 0x2C3FC(0x3B, edx=0) voice, not wired (record
-         * §45-A; spec §7). */
+        (void)sound_voice(0x3Bu);                               /* 0x2094E/0x20955 0x2C3FC; EDX = 0 is not read */
         frontend_spawn_row((const u32 *)(mem + 0xA7B80u), 0u, 0u); /* 0x2095f 0x38B18 */
         {
             u32 e = frontend_list_next(0u);                     /* 0x20966 0x33904 */
@@ -5440,8 +5439,7 @@ static void flow_26d4c(void)
     text_cells_release_count(-1, 7, 0x2A);                  /* 0x26D98 */
     /* PORT: 0x26D9F 0x32970(0), the run clock, is out of scope (spec §7). */
     (void)sound_voice(0x29u);                               /* 0x26DA4/0x26DA9 0x2C3FC */
-    /* PORT: 0x26DB8 0x2C3FC(0x22, edx=0x1D) voice, not wired (record §45-A;
-     * spec §7). */
+    (void)sound_voice(0x22u);                               /* 0x26DAE/0x26DB8 0x2C3FC; EDX = 0x1D is not read */
     prompt_side_erase(0, 0x1D);                             /* 0x26DBF 0x2C2B0 */
     prompt_side_erase(1, 0x1D);                             /* 0x26DCE */
 

@@ -285,8 +285,8 @@ void attract_step(void)
         u16 v = (u16)(DSW(rec + 0x2Cu) - 0x100u);   /* 0x111D2 */
         DSW(rec + 0x2Cu) = v;
         if (v < 0x1001u) {                          /* 0x111E4 (jg) */
-            /* PORT: 0x2C3FC(DS_000F0A5C == 0 ? 0x54 : 0x56) voice, not wired
-             * (record §45-A). */
+            (void)sound_voice(DSD(DS_000F0A5C) != 0u
+                              ? 0x56u : 0x54u);     /* 0x111EA..0x111FA, 0x111FF 0x2C3FC */
             DSB(DS_000F0A6F) = 5;                   /* 0x1120B */
             /* 0x11206 reloads eax from DS_000F0A50 after the voice call and
              * 0x11211 stores through it; the reload is kept literal. */

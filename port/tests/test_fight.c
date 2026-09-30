@@ -41198,3 +41198,133 @@ int test_pose_pool(void)
     g2_save(); check_p52_21_setup(); g2_restore();
     return g_failures - before;
 }
+
+/* ---- record k7-k12 §6..§10: the fight-area K12 voice sites ----------------
+ * One table per batch (k12_b2_fight here; Tasks 7-10 add k12_c_fight,
+ * k12_d1, k12_d2 and k12_d3), each with its own #define K12_<B>_ROWS and one
+ * size check and one tf_voice_sites call in test_fight_voice_sites. The rules
+ * are record k7-k12 §4.2's: a row is one wiring point, its ids the wired
+ * voices on the driver's path in raw order; a driver seeds every scratch
+ * byte it reads; no bump-heap growth; a later batch adds its own drivers and
+ * table and never edits an earlier batch's rows. */
+
+/* Addresses symbols.h has no name for. */
+#define VF_POOL      0x03F70000u   /* the §51-A private pool (test_game.c's RA_POOL) */
+#define VF_PSET      0x03FA0000u   /* its pset block (RA_PSET) */
+#define VF_00108396  0x00108396u   /* byte: 0x48F98's once bit 7 */
+#define VF_00108397  0x00108397u   /* byte: 0x48F98's node count */
+#define VF_00104529  0x00104529u   /* byte: the sprite-flag config byte */
+#define VF_NODE      (FIGHT_RECS + 0x3000u)  /* a type-0x2D list node */
+#define VF_REC       (FIGHT_RECS + 0x3100u)  /* its actor record */
+#define VF_THEM      (FIGHT_RECS + 0x3200u)  /* the slot record it measures against */
+
+/* A private actor pool (test_game.c's vs_pools), so no driver spawns into
+ * the image's own pool. */
+static void vf_pools(void)
+{
+    DSD(DS_001014F4) = VF_POOL;
+    DSD(DS_001014EC) = VF_PSET;
+    actors_reset();
+}
+
+/* Row 4: 0x48F98 (update entry 1, fn_register(0x48F98)) with one node on
+ * the in-use list DS_00108368 at phase 1 (0x48FB7), 0x2000 away from slot
+ * DS_001078FD = 0's record (> 0x1000, 0x4909C) and the count
+ * DS_00108397 = 1, so n = 0 is not above 0 (0x490D8). */
+static void vf_2d_far(void)
+{
+    void (*f)(void) = fn_resolve(0x48F98u);
+    vf_pools();
+    mem_fill(VF_NODE, 0, 0x300u);
+    DSD(DS_00108368) = VF_NODE;
+    DSD(VF_NODE) = DS_00108368;
+    DSB(VF_NODE + 0x0Cu) = 1u;
+    DSD(VF_NODE + 8u) = VF_REC;
+    DSD(VF_REC + 0x18u) = 0x2000u;
+    DSB(DS_001078FD) = 0u;
+    DSD(DS_001077B0) = VF_THEM;
+    DSB(VF_00108396) = 0u;
+    DSB(VF_00108397) = 1u;
+    if (f != NULL) f();
+}
+/* Row 5: 0x3D784 (type 0x09's teardown, fn_register(0x3D784)): a tail jmp. */
+static void vf_3d784(void)
+{
+    void (*f)(u32) = (void (*)(u32))fn_resolve(0x3D784u);
+    mem_fill(VF_REC, 0, 0x80u);
+    if (f != NULL) f(VF_REC);
+}
+/* Rows 18/30 and 19/28: 0x4367C with DS_00104B1D != 3 (0x43738) or = 3
+ * (0x4454C then 0x444C8); DS_00104B1F = 0 spawns no side, DS_00108173 = 0
+ * takes the 0xC887F / 0xC8880 arms. */
+static void vf_hook_4367c_b1d(u8 b1d)
+{
+    vf_pools();
+    DSB(DS_00104B1F) = 0u;
+    DSB(DS_00108173) = 0u;
+    DSB(DS_00104B1D) = b1d;
+    fight_hook_4367c();
+}
+static void vf_hook_4367c(void)   { vf_hook_4367c_b1d(0u); }
+static void vf_hook_4367c_3(void) { vf_hook_4367c_b1d(3u); }
+/* Rows 24..26: 0x430E8, check_mode_1a_hooks' (k2) arm: DS_00104B17 = 2
+ * (0x25848 keeps the stage, no draw), DS_00104B1F = 3 (no 0x41350),
+ * characters 0 and 6. */
+static void vf_hook_430e8(void)
+{
+    vf_pools();
+    DSB(DS_00104B17) = 2u;
+    DSB(DS_00104B1D) = 0u;
+    DSB(DS_00104B1F) = 3u;
+    DSB(DS_0010816A) = 0u;
+    DSB(DS_0010816B) = 6u;
+    DSB(DS_00108173) = 1u;
+    fight_hook_430e8();
+}
+/* Row 31: 0x4142C, unconditional. */
+static void vf_hook_4142c(void)
+{
+    vf_pools();
+    fight_hook_4142c();
+}
+/* Rows 64/65: 0x3531C side 0 with a live slot (DS_001077A8[0] = slot 0,
+ * its record non-zero, 0x3539A), the voice tick DS_001078F6 = 1 so the
+ * decrement reaches 0 (0x353B9 `jg`), DS_00104529 bit 1 clear (no 0x2B150)
+ * and +0x53 = 4 (0x3540E: +0x56 only). */
+static void vf_3531c(void)
+{
+    mem_fill(VF_REC, 0, 0x80u);
+    DSD(DS_001077A8) = DS_001077B0;
+    DSD(DS_001077B0) = VF_REC;
+    DSW(DS_001078F6) = 1u;
+    DSB(VF_00104529) = 0u;
+    DSB(DS_001077B0 + 0x53u) = 4u;
+    fighter_state_3531c(0u);
+}
+
+/* Record k7-k12 §6, batch B2 (fight.c, actors.c, fighter.c): pure-state
+ * voices, all case 1 or 5. */
+#define K12_B2_FIGHT_ROWS 12
+static const TfVoiceSite k12_b2_fight[] = {
+    {   4u, vf_2d_far,       1u, { 0xF1u } },                  /* 0x490E1 */
+    {   5u, vf_3d784,        1u, { 0x4Fu } },                  /* 0x3D789 */
+    {  18u, vf_hook_4367c,   3u, { 0x100u, 0x2Eu, 0x30u } },   /* 0x43741 */
+    {  19u, vf_hook_4367c_3, 3u, { 0x100u, 0x2Eu, 0x30u } },   /* 0x444D1 */
+    {  24u, vf_hook_430e8,   3u, { 0x31u, 0x2Du, 0x2Fu } },    /* 0x430F2 */
+    {  25u, vf_hook_430e8,   3u, { 0x31u, 0x2Du, 0x2Fu } },    /* 0x4328A */
+    {  26u, vf_hook_430e8,   3u, { 0x31u, 0x2Du, 0x2Fu } },    /* 0x43294 */
+    {  28u, vf_hook_4367c_3, 3u, { 0x100u, 0x2Eu, 0x30u } },   /* 0x44626 */
+    {  30u, vf_hook_4367c,   3u, { 0x100u, 0x2Eu, 0x30u } },   /* 0x43729 */
+    {  31u, vf_hook_4142c,   1u, { 0x32u } },                  /* 0x41483 */
+    {  64u, vf_3531c,        2u, { 0xECu, 0xE0u } },           /* 0x353C0 */
+    {  65u, vf_3531c,        2u, { 0xECu, 0xE0u } },           /* 0x353CA */
+};
+
+/* Record k7-k12 §6..§10: the fight-area voice sites (tables per batch). */
+int test_fight_voice_sites(void)
+{
+    int before = g_failures;
+    CHECK_EQ_INT((int)(sizeof k12_b2_fight / sizeof k12_b2_fight[0]), K12_B2_FIGHT_ROWS);
+    tf_voice_sites(k12_b2_fight, (u32)(sizeof k12_b2_fight / sizeof k12_b2_fight[0]));
+    return g_failures - before;
+}

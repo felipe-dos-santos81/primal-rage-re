@@ -2964,7 +2964,7 @@ static void actor_type_2d_update(void)
                 DSB(node + 0x0Cu) = (u8)(DSB(node + 0x0Cu) + 1u);   /* 0x490C8/0x490CD/0x490D5 */
                 DSB(DS_00108397) = n;                   /* 0x490CF */
                 if ((s8)n > 0) { node = next; continue; }   /* 0x490D8/0x490DA */
-                /* PORT: 0x490E1 0x2C3FC(0xF1) voice, not wired (record §45-A). */
+                (void)sound_voice(0xF1u);               /* 0x490DC/0x490E1 0x2C3FC */
             } else {
                 u32 a5, rec;
                 if (rng_next(0x14u) != 0u) { node = next; continue; }  /* 0x490F9..0x49105 */
@@ -3040,13 +3040,13 @@ static void actor_type_3B9C4(u32 rec)
     DSB(rec2 + 0x64) = 0xff;
 }
 
-/* 0x3D784. Type 0x09's teardown: `mov eax,0x4f; jmp 0x2c3fc`, the 1268-byte
- * voice dispatcher (sound_voice), not wired here (record §45-A). cb2's return
- * is discarded. */
+/* 0x3D784. Type 0x09's teardown: `mov eax,0x4f; jmp 0x2c3fc`, a tail jump
+ * to the 1268-byte voice dispatcher (sound_voice; record k7-k12 §6). cb2's
+ * return is discarded. */
 static void actor_type_3D784(u32 rec)
 {
     (void)rec;
-    /* PORT: 0x2C3FC(0x4F) voice, not wired (record §45-A). */
+    (void)sound_voice(0x4Fu);                           /* 0x3D784/0x3D789 `jmp 0x2c3fc` */
 }
 
 /* 0x3FC90. Type 0x10's teardown: clear the 0x108080 table entry named by the

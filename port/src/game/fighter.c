@@ -3337,10 +3337,11 @@ void fighter_state_3531c(u32 side)
     if ((s16)DSW(DS_001078F6) != 0) {                       /* 0x353A7 */
         DSW(DS_001078F6) = (u16)(DSW(DS_001078F6) - 1u);    /* 0x353AF */
         if ((s16)DSW(DS_001078F6) < 1) {
-            /* PORT: 0x353C0/0x353CA 0x2C3FC(0xEC/0xE0) voices, not wired
-             * (record §45-A). The arm is reachable: DS_001078F6's only writer
-             * 0x36F10 runs from 0x34BE8 once 0x36E78 has set the slot's +0x42
-             * bit 0x10 (record §2 of 2026-09-29-e-open-derivations.md). */
+            /* The arm is reachable: DS_001078F6's only writer 0x36F10 runs
+             * from 0x34BE8 once 0x36E78 has set the slot's +0x42 bit 0x10
+             * (record §2 of 2026-09-29-e-open-derivations.md). */
+            (void)sound_voice(0xECu);                       /* 0x353BB/0x353C0 0x2C3FC */
+            (void)sound_voice(0xE0u);                       /* 0x353C5/0x353CA 0x2C3FC */
             if ((DSB(FSET_104529) & 2u) != 0u)              /* 0x353CF */
                 actor_set_dead(DSD(DS_001078EC));           /* 0x353D8/0x353DD 0x2B150 */
             DSD(slot + 0x40u) |= 0x801000u;                 /* 0x353E2 */
