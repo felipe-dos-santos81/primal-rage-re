@@ -165,10 +165,11 @@ void game_isr_ticks(u32 n);
 u32 sound_voice(u32 id);
 
 /* PORT: test seam (record k7-k12 §4), not original state. sound_voice logs
- * the id of every entry, the first 16 of them, since the last reset.
- * sound_voice_log_count is the number of entries since the reset (it counts
- * past 16); sound_voice_log_at(i) is the i-th id, or 0xFFFFFFFF past the
- * count or the cap. */
+ * the id of every entry, the first SOUND_VOICE_LOG_CAP of them, since the
+ * last reset. sound_voice_log_count is the number of entries since the reset
+ * (it counts past the cap); sound_voice_log_at(i) is the i-th id, or
+ * 0xFFFFFFFF past the count or the cap. */
+#define SOUND_VOICE_LOG_CAP 16u
 void sound_voice_log_reset(void);
 u32 sound_voice_log_count(void);
 u32 sound_voice_log_at(u32 i);

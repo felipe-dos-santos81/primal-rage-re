@@ -1466,22 +1466,52 @@ two actor pools that `DS_001014EC`/`DS_001014F4` name at the runner's entry
 (`0x4880`/`0xEBA0` bytes; skipped when 0), the aperture and the DAC. It sets
 `DS_001028C8` = 0 (no DIG driver: `0x1CE78` and `0x1CC37` return before any
 bank read, so a case-2/3/4 id is logged without a resolve), resets the log,
-runs `drive()`, and requires `ids[0..n)` to appear in the log **in order**
-(other voices may interleave). A miss prints `voice site row R: j of n ids in
-order` to stderr and fails one `CHECK_EQ_INT(j, n)`
-(`test_fixtures.c:215`). Then everything snapshotted is put back.
+takes the bump heap's next block (`res_block_alloc(0)`, which does not
+advance it) and runs `drive()`. It then checks three things (review 1 added
+the first two):
+- the heap is where it was (`test_fixtures.c:217`; a miss prints `voice site
+  row R: the bump heap grew by 0xN`);
+- the row logged at most `SOUND_VOICE_LOG_CAP` (16, now in `flow.h`) voices
+  (`:225`; `voice site row R: N voices logged, over the cap 16`), because
+  past the cap the log drops ids;
+- `ids[0..n)` is an **in-order subsequence** of the log (`:232`
+  `CHECK_EQ_INT(j, n)`; `voice site row R: j of n ids in order`).
 
-Rules for a row (the later batches follow them):
-- `row` is the §0.4 row. One entry per wiring point; two rows on one path
-  (139/140) get one entry each, with the same driver.
-- `ids` lists only **wired** ids on the path, in raw order. A path's voices
-  that a later batch wires are added to that row's `ids` by that batch.
+Then everything snapshotted is put back.
+
+**The subsequence match (verified against the runner code).** The loop walks
+the log once, `for (i = 0; i < count && j < n; i++) if (log[i] == ids[j])
+j++;`: a log entry that is not the next wanted id is skipped, never counted
+against the row. So voices a later batch wires on the same path, before,
+between or after a row's ids, do not break the row, as long as the row still
+logs at most 16 voices (the cap check makes an overflow a clear failure, not
+a silent miss). One limit: the greedy match cannot tell two calls with the
+same id apart. If a later batch wires a second call with a row's id on the
+same path, before the row's own call, deleting the row's call would still
+pass. Batch A's paths have no such pair among the ids §0.4 lists for them
+(`4367C`: `100`, `2E`, `30`; `1EEC0`: `100`, `E1`; `26D4C`: `29`, `22`;
+`25AE8`: `100`, `3D`), but a batch that adds one must say so in its record.
+
+**Consumer rules for Tasks 5-10** (each batch works in its own worktree):
+- `row` is the §0.4 row. There is one entry per wiring point. Two rows on
+  one path get one entry each, with the same driver (139/140).
+- `ids` lists only **wired** ids on the path, in raw order.
+- **A later batch does not edit an earlier batch's rows.** A voice it wires
+  on an earlier row's path is logged but needs no change there (the
+  subsequence match above), which keeps the parallel batches' edits apart.
+- Each batch adds its own `vs_*` drivers, its own `static const TfVoiceSite
+  k12_<b>[]`, a local `#define K12_<B>_ROWS` with a `CHECK_EQ_INT` on the
+  table's size, and one `tf_voice_sites` call inside `test_voice_sites()`
+  (`test_game.c`, registered after `test_key_loop`).
 - `drive()` reaches the site from a public entry (§1.3's column) with seeded
-  `mem[]`. What the runner does not restore, the driver must not leave
-  changed: the draw buffers `DS_001014E8`/`E4`, the scratch areas
-  (`FIGHT_*`, `ANIM_*`, `RA_POOL`/`RA_PSET`, `VS_MENU`) and C static state.
-  `vs_attract0` clears the attract media dir and sets it back to
-  `test_flow`'s `"data/game/C"`.
+  `mem[]`. **Every scratch byte a driver reads is seeded by that driver**
+  (`FIGHT_*`, `ANIM_*`, `RA_POOL`/`RA_PSET` through `vs_pools()`, `VS_MENU`,
+  `MT_LAYOUT`; batch A's drivers leave these changed, and no driver may rely
+  on what an earlier row left there).
+- **No bump-heap (`g_heap`) growth across a row** (the runner checks it). A
+  loader that allocates (a movie, `res_load_file`) must be kept off.
+- **Restore any C static you change.** `vs_attract0` clears the attract
+  media dir and sets it back to `test_flow`'s `"data/game/C"`.
 - `test_voice_sites()` (`test_game.c`, registered after `test_key_loop`)
   holds one table per batch: `static const TfVoiceSite k12_<b>[]`, a local
   `#define K12_<B>_ROWS` with a `CHECK_EQ_INT` on the table's size, and one
@@ -1539,8 +1569,9 @@ Row 194's `0x11DED mov ecx,0x12C` is kept as a note: `0x2C3FC`'s own body
   raw's `0x1F301` store of `DS_00104B25` sits between the `mov` and the
   `call`; the port stores first, which is the same state at the call.
 - The brief's `K12_A_ROWS` example let rows 139/140 share one entry. The
-  table has one entry per wiring point (22), so each row can be named by its
-  own mutation.
+  table has one entry per wiring point (22), so rows 139 and 140 each have
+  their own entry by that rule alone. The two entries run the same path and
+  list the same ids, so deleting either call fails both (§4.5).
 
 **`not wired` lines** (`rg -c 'not wired' port/src`), before → after:
 `attract.c` 7 → 4, `fight.c` 36 → 33, `flow.c` 46 → 36, `menu.c` 2 → 0 (the
@@ -1562,6 +1593,9 @@ The plan asks for the first, middle and last rows. Every one of the 22 was
 measured instead (`$K/t4mut.py`: replace the one `sound_voice` call with
 `(void)0;`, rebuild, run under `PR_ORACLE_REQUIRED=1`, restore; outputs
 `$K/t4-mut-<row>.txt`, summary `$K/t4mut-summary.txt`).
+
+The line `test_fixtures.c:215` below is the subsequence check's line at
+`a011cb1`; after review 1 it is `:232`.
 
 | deleted call | FAIL lines | printed |
 |---|---:|---|
@@ -1642,3 +1676,35 @@ list both ids).
 - `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
   unchanged (no function is ported; the README stays as it is).
 - The `not wired` count: §4.3.
+
+### §4.9 Review 1
+
+- `docs/PROGRESS.md`: 19 `0x100` stop-alls, not 20 (19 + `0x53` + `0x29` +
+  `0xDE` = 22).
+- §4.2 rewritten: the consumer rules for Tasks 5-10 (every scratch byte a
+  driver reads is seeded by it, no bump-heap growth across a row, C statics
+  restored, and later batches do not edit earlier rows), with the
+  subsequence match verified against the runner loop and its one limit
+  (same-id aliasing).
+- `tf_voice_sites` gains two checks: the log count is at most
+  `SOUND_VOICE_LOG_CAP` (moved from `flow.c` to `flow.h` so the fixture can
+  name it), and the bump heap (`res_block_alloc(0)`) does not move across a
+  row. The heap check is beyond the review's list: it makes the "no heap
+  growth" rule enforced rather than stated. Measured
+  (`$K/t4r1mut.py`, `$K/t4r1-mut-*.txt`; FAIL lines exclude `FAILURES: N`):
+
+  | mutation | FAIL lines | failing checks |
+  |---|---:|---|
+  | cap `16u` → `1u` | 4 | `test_fixtures.c:225` and `:232` (`1 != 2`) for rows 139 and 140, the only batch-A rows that log two voices (`2 voices logged, over the cap 1`) |
+  | `vs_attract0` keeps the media dir (the movies load) | 1 | `test_fixtures.c:217` (`voice site row 10: the bump heap grew by 0x12EA48`) |
+
+- §4.3: rows 139/140 each have an entry by the one-entry-per-wiring-point
+  rule alone; deleting either call fails both.
+- Comments: `test_fixtures.h` (ids are the wired voices only),
+  `test_fixtures.c`'s header (`tf_voice_sites` is new, not a moved body),
+  `test_audio.c`'s AIL header (the sample path is record k7-k12 §3's, not
+  "the announcer sample is Task 12's").
+- Assertion sites: 13370 → **13372** (the two runner checks).
+- Gate (ruling: no full `make verify` for this round): `make build` with 0
+  warnings, `PR_ORACLE_REQUIRED=1 ./build/run_tests` gives `all checks
+  passed`, and `./build/prageport --game-dir data/game/C --check 820` exits 0.

@@ -1,11 +1,13 @@
 /* port/tests/test_fixtures.c — the fixtures shared by the test files. Every
- * body here is a byte-for-byte copy of its former per-file definition; only
- * the name and the home changed. */
+ * body here except tf_voice_sites (new, record k7-k12 §4) is a byte-for-byte
+ * copy of its former per-file definition; only the name and the home
+ * changed. */
 #include "test_fixtures.h"
 #include "game/actors.h"
 #include "game/effects.h"
 #include "game/flow.h"
 #include "platform/gfx.h"
+#include "platform/res.h"
 #include "mem.h"
 #include "symbols.h"
 #include "test.h"
@@ -205,7 +207,22 @@ void tf_voice_sites(const TfVoiceSite *t, u32 count)
         memcpy(dac, gfx_dac, sizeof dac);
         DSD(DS_001028C8) = 0;
         sound_voice_log_reset();
+        /* res_block_alloc(0) is the bump heap's next block; it aligns the
+         * heap and does not advance it. */
+        const u32 heap = res_block_alloc(0u);
         t[k].drive();
+        if (res_block_alloc(0u) != heap)
+            fprintf(stderr, "voice site row %u: the bump heap grew by 0x%X\n",
+                    (unsigned)t[k].row, (unsigned)(res_block_alloc(0u) - heap));
+        CHECK(res_block_alloc(0u) == heap, "a voice site row grew the bump heap");
+        /* Past the cap the log drops ids, so a row id could go unseen:
+         * a row must log at most SOUND_VOICE_LOG_CAP voices. */
+        if (sound_voice_log_count() > SOUND_VOICE_LOG_CAP)
+            fprintf(stderr, "voice site row %u: %u voices logged, over the cap %u\n",
+                    (unsigned)t[k].row, (unsigned)sound_voice_log_count(),
+                    (unsigned)SOUND_VOICE_LOG_CAP);
+        CHECK(sound_voice_log_count() <= SOUND_VOICE_LOG_CAP,
+              "a voice site row logged more voices than the log keeps");
         u32 j = 0;
         for (u32 i = 0; i < sound_voice_log_count() && j < t[k].n; i++)
             if (sound_voice_log_at(i) == t[k].ids[j]) j++;

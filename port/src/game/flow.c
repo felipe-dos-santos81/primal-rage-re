@@ -6350,7 +6350,6 @@ void sound_sample_start(u32 slot)
  * res_set_screen_hook): the ids sound_voice was entered with since the last
  * reset, the first SOUND_VOICE_LOG_CAP of them. The K12 site tests (record
  * k7-k12 §4) read it to prove each wired 0x2C3FC call. */
-#define SOUND_VOICE_LOG_CAP 16u
 static u32 s_voice_log[SOUND_VOICE_LOG_CAP];
 static u32 s_voice_log_n;
 void sound_voice_log_reset(void) { s_voice_log_n = 0; }
