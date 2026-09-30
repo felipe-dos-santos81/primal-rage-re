@@ -9894,6 +9894,88 @@ static void check_hud_pass_machine(void)
     CHECK_EQ_INT((int)DSW(p0 + 0x88u), 1);      /* the preamble ran */
 }
 
+/* Named-gaps unit E (record 2026-09-30-named-gaps-e-derivations.md §E.1): run
+ * fight_hud_pass(side) with the side's slot in +0x52 = 0x12, so 0x34B6C's
+ * table 0x34B14 entry 18 (0x34CC7..0x34D21) runs. Both slots are the real
+ * DS_001077B0 pair (0x3BDDC and 0x18B04 index it by side). The slot's +0x53 =
+ * 1 is a no-op in 0x3531C (0x35803) and makes 0x3BDDC skip its 0x3CF38 call,
+ * so the only writer of the observed fields is the case-18 arm. Self's +0x2C
+ * is below the other's, so 0x18B04 sets the record's +0x29 bit 0x40. Seeds:
+ * +0x5F = 0xAA, +0x54 = the case's, DS_001078F8[side] = 0xAA, record +0x29 =
+ * 0; each differs from the value the calls write (0xFF, 2, 1, 0x40). */
+static void s18_run(u32 side, u16 cmd, u8 st54, u8 st40)
+{
+    u32 s = DS_001077B0 + side * 0x94u, so = DS_001077B0 + (1u - side) * 0x94u;
+    u32 r = FIGHT_RECS + side * 0x100u;
+
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(DS_001077B0, DS_001077B0 + 0x94u,
+                          FIGHT_RECS, FIGHT_RECS + 0x100u);
+    DSB(FIGHT_RECS + 0x51u) = 0;
+    DSB(FIGHT_RECS + 0x100u + 0x51u) = 1;
+    DSB(s + 0x42u) = 0;                         /* 0x36E2C gate off */
+    DSB(s + 0x40u) = st40;                      /* 0x3BDF3 bit 7 */
+    DSB(s + 0x52u) = 0x12u;
+    DSB(s + 0x53u) = 1u;
+    DSB(s + 0x54u) = st54;
+    DSB(s + 0x5Fu) = 0xAAu;
+    DSD(s + 0x2Cu) = 0x1000u;                   /* self left of the other */
+    DSD(so + 0x2Cu) = 0x2000u;
+    DSB(r + 0x29u) = 0;
+    DSB(DS_001078F8 + side) = 0xAAu;
+    DSW(DS_001088E0 + side * 2u) = cmd;
+    fight_hud_pass(side);
+}
+
+/* The post-state of one case: `call` = 0x3BDDC ran and returned 1 (the attack
+ * transition), `facing` = 0x18B04 ran. */
+static void s18_expect(u32 side, int call, int facing, u8 st54)
+{
+    u32 s = DS_001077B0 + side * 0x94u;
+    u32 r = FIGHT_RECS + side * 0x100u;
+    CHECK_EQ_INT((int)DSB(s + 0x52u), call ? 3 : 0x12);
+    CHECK_EQ_INT((int)DSB(s + 0x54u), call ? 2 : (int)st54);
+    CHECK_EQ_INT((int)DSB(s + 0x5Fu), call ? 0xFF : 0xAA);
+    CHECK_EQ_INT((int)DSB(DS_001078F8 + side), call ? 1 : 0xAA);
+    CHECK_EQ_INT((int)DSB(r + 0x29u) & 0x40, facing ? 0x40 : 0);
+}
+
+static void check_state18(void)
+{
+    u32 sv_7d40 = DSD(DS_00107D40), sv_7d44 = DSD(DS_00107D40 + 4u);
+    u32 sv_88e0 = DSD(DS_001088E0);
+
+    for (u32 side = 0; side < 2u; side++) {
+        /* A: both gate bits (0x100 in 0x300, 0x400 in 0xC00) -> 0x34D83,
+         * no call, though bit 15 and +0x54 = 0 would let 0x3BDDC fire. */
+        s18_run(side, 0x8500u, 0u, 0u);
+        s18_expect(side, 0, 0, 0u);
+        /* A2/A3: one gate bit alone does not exit (the raw's AND). */
+        s18_run(side, 0x8100u, 0u, 0u);
+        s18_expect(side, 1, 1, 0u);
+        s18_run(side, 0x8800u, 0u, 0u);
+        s18_expect(side, 1, 1, 0u);
+        /* B: +0x54 = 0 and 1 call; 2 does not (0x34CFD..0x34D04). */
+        s18_run(side, 0x8000u, 0u, 0u);
+        s18_expect(side, 1, 1, 0u);
+        s18_run(side, 0x8000u, 1u, 0u);
+        s18_expect(side, 1, 1, 1u);
+        s18_run(side, 0x8000u, 2u, 0u);
+        s18_expect(side, 0, 0, 2u);
+        /* C: 0x3BDDC returns AL = 0 (command bit 15 clear, or the slot's
+         * +0x40 bit 7) -> no 0x18B04 (0x34D11 je 0x34D83). */
+        s18_run(side, 0x0000u, 0u, 0u);
+        s18_expect(side, 0, 0, 0u);
+        s18_run(side, 0x8000u, 0u, 0x80u);
+        s18_expect(side, 0, 0, 0u);
+    }
+
+    (void)tf_hit_fixture(0);
+    DSD(DS_00107D40) = sv_7d40;
+    DSD(DS_00107D40 + 4u) = sv_7d44;
+    DSD(DS_001088E0) = sv_88e0;
+}
+
 /* Task 6b fix round 1: 0x367DC's second 0x2BC30 call passes the side's 0x102900
  * record as the record and the fixed 0xE906A stream as the stream (raw
  * 0x36843 EDX = 0xE906A, 0x36848 EAX = 0x102900[side]; 0x2BC30 stores EDX to
@@ -39546,6 +39628,7 @@ int test_fight(void)
     check_gap_handlers();
     check_deep_callees();
     check_hud_pass_machine();
+    check_state18();
     check_anim_stream_args();
     check_pose_predicate();
     check_pose_accumulator();

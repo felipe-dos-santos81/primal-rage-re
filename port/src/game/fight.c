@@ -2079,8 +2079,8 @@ static int fight_position_gate(u32 rec)
  * slot record DS_001077A8[side] and its fighter (0x34B73..0x34B86), the 0x36E2C
  * position branch (0x34B97..0x34BEF), else the +0x52 dispatch through the
  * 22-entry table 0x34B14 (0x34BF4..0x34C00; above 0x15 runs 0x349C8). Caller:
- * 0x357FC (fight_hud_pass). Case 0x12 is the one arm not reproduced (its
- * PORT: note below; record §K1.1). */
+ * 0x357FC (fight_hud_pass). Case 0x12 (0x34CC7..0x34D21) is record §E.1 of
+ * 2026-09-30-named-gaps-e-derivations.md. */
 static void fight_health_sync(u32 side)
 {
     u32 rec = DSD(DS_001077A8 + side * 4u);     /* 0x34B73 */
@@ -2147,7 +2147,21 @@ static void fight_health_sync(u32 side)
     case 17u:                                   /* 0x34CB8 -> 0x36710 */
         fighter_state_36710(rec, DSD(rec));
         break;
-    case 18u: /* PORT: 0x34CC7 inline cmd gate + 0x3BDDC -> 0x18B04 (§7.10) */ break;
+    case 18u:                                   /* 0x34CC7 inline + 0x3BDDC/0x18B04 */
+        /* Record §E.1 (2026-09-30-named-gaps-e-derivations.md). The command
+         * word's 0x300 and 0xC00 groups both non-zero exit to 0x34D83, the
+         * register-restore epilogue. Otherwise, with the slot's +0x54 at 0 or
+         * 1, EAX = side for both calls. */
+        {
+            u16 w = DSW(DS_001088E0 + side * 2u);       /* 0x34CC7 */
+            if ((w & 0x300u) != 0u && (w & 0xC00u) != 0u)   /* 0x34CD3..0x34CF4 */
+                break;
+            if (DSB(rec + 0x54u) != 0u && DSB(rec + 0x54u) != 1u)  /* 0x34CFA..0x34D04 */
+                break;
+            if (fighter_attack_consume(side) != 0)      /* 0x34D0C 0x3BDDC */
+                hit_facing_flag(side);                  /* 0x34D17 0x18B04 */
+        }
+        break;
     case 19u:                                   /* 0x34D22 inline + 0x33B00 */
         {
             s16 v = (s16)(DSW(rec + 0x8Eu) - 1u);       /* 0x34D22 */

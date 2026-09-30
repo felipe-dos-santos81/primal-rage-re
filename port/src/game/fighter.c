@@ -45,7 +45,6 @@ static void fighter_164e8(u32 side);                     /* 0x164E8 */
 /* The winner-body helpers the think chain 0x1975C/0x3B464 shares; defined with
  * the 0x193B0 and 0x3B714 blocks below. */
 static void hit_stance_timer(u32 side);                  /* 0x1922C */
-static void hit_facing_flag(u32 side);                   /* 0x18B04 */
 static int fighter_3962c(u32 side, u32 param_2);         /* 0x3962C */
 static int fighter_396ac(u32 side, u32 param_2);         /* 0x396AC */
 static void fighter_18b44(u32 slot);                     /* 0x18B44 */
@@ -2027,7 +2026,6 @@ void fighter_state_35d20(u32 slot, u32 rec);                /* 0x35D20 */
 static void fighter_1883c(u32 side, u32 a, u32 b);          /* 0x1883C */
 static void fighter_36e78(u32 slot);                        /* 0x36E78 */
 static u32  hit_record_y(u32 side);                         /* 0x18788 */
-static void hit_facing_flag(u32 side);                      /* 0x18B04 */
 
 /* 0x29BC8. Resolve the character's palette handle for `side` and point `rec`'s
  * pset at it (0x2A17C with word 0). */
@@ -2428,9 +2426,6 @@ void fighter_state_35e6c(u32 slot, u32 rec)
  * 0x3531C case 8 calls it at 0x354BC. Addresses and gates are from
  * docs/superpowers/plans/2026-09-20-demo-fight-derivations.md §3.7, §11.3 and
  * the cycle-2 record §7.8/§7.10. */
-
-/* The chain helpers 0x350D0 shares; defined with the rest of the chain below. */
-static void hit_facing_flag(u32 side);                      /* 0x18B04 */
 
 /* PORT: data-object addresses symbols.h does not name. */
 #define FIGHT_STUN_BASE  0x00107A80u  /* 0x107A80: 0x40-byte per-side table */
@@ -3951,7 +3946,7 @@ static void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits)
 /* 0x18B04. The attacker/defender facing flag: when mode != 0x22 and
  * self+0x2C < other+0x2C set self_rec+0x29 bit 0x40 (else clear it), then
  * slot+0x2C = self+0x2C and rec+0x18 = 0x18714(side). */
-static void hit_facing_flag(u32 side)
+void hit_facing_flag(u32 side)
 {
     u32 ctx[6];
     if (DSW(DS_00104B00) == 0x22u) return;              /* 0x18B16 */
