@@ -9348,6 +9348,49 @@ static void sm_stats_probe(u32 frame)
     if (frame == 4u && config_field_get(0u) == 0u) sm_stats_seen |= 1u << frame;
 }
 
+/* Record named-gaps-b §B.4: the CPU-fault seam catches the fault and leaves
+ * through sf_jb, so nothing after the faulting instruction runs. */
+static jmp_buf sf_jb;
+static volatile u32 sf_exc, sf_eip;
+static volatile int sf_hits;
+static void sf_hook(u32 exc, u32 eip) { sf_exc = exc; sf_eip = eip; sf_hits++; longjmp(sf_jb, 1); }
+
+/* 0x33458 row 2 {0x96, num 0x12, f1 8, f2 6}: field 8 + field 6 = 0x10000,
+ * so EBX & 0xFFFF = 0 and 0x334E0's idiv raises #DE (record named-gaps-b
+ * §B.4; A's de capture aborts to DOS there). Rows 0 (field 8 = 0xFFFF: no
+ * fault) and 1 (field 0xB = 0: no idiv) draw first; row 2's label (0x33479)
+ * is drawn before the idiv, its number (0x334E4..) and row 3 never are. */
+static void sm_check_stats_fault(void)
+{
+    ch_text_setup();
+    const u32 s8 = config_field_get(8u), s6 = config_field_get(6u), sb = config_field_get(0xBu);
+    (void)config_field_set(8u, 0xFFFFu);
+    (void)config_field_set(6u, 1u);
+    (void)config_field_set(0xBu, 0u);
+    CHECK_EQ_INT((long)config_field_get(8u), 0xFFFF);
+    CHECK_EQ_INT((long)config_field_get(6u), 1);
+    const s32 r = 5;
+    text_cursor_set(0x25, r, (const u8 *)"Z", 0u);
+    text_cursor_set(0x25, r + 2, (const u8 *)"Z", 0u);
+    text_cursor_set(4, r + 3, (const u8 *)"Z", 0u);
+    const u32 zs = ch_sprite(r, 0x25);
+    const u32 z2 = ch_sprite(r + 2, 0x25), z3 = ch_sprite(r + 3, 4);
+    CHECK(zs != 0u && z2 == zs && z3 == zs, "the three sentinel cells hold the Z glyph");
+    host_fault_hook_fn prev = host_set_fault_hook(sf_hook);
+    sf_hits = 0; sf_exc = 0x5Au; sf_eip = 0x5A5Au;
+    if (setjmp(sf_jb) == 0) (void)svc_stats_rows(r);
+    (void)host_set_fault_hook(prev);
+    CHECK_EQ_INT(sf_hits, 1);
+    CHECK_EQ_INT((long)sf_exc, 0);                        /* #DE */
+    CHECK_EQ_INT((long)sf_eip, 0x334E0);
+    CHECK(ch_sprite(r, 0x25) != zs, "row 0 is drawn before the fault");
+    CHECK_EQ_INT((long)ch_sprite(r + 2, 0x25), (long)z2); /* 0x334E4.. never runs */
+    CHECK_EQ_INT((long)ch_sprite(r + 3, 4), (long)z3);    /* row 3 never starts */
+    (void)config_field_set(8u, s8);
+    (void)config_field_set(6u, s6);
+    (void)config_field_set(0xBu, sb);
+}
+
 static void sm_check_stats(void)
 {
     const u32 s_150c = DSD(DS_0010150C), s_e4 = DSD(DS_001014E4), s_e8 = DSD(DS_001014E8);
@@ -9924,6 +9967,7 @@ int test_svcmenu(void)
     sm_check_controls();
     sm_check_keyboard();
     sm_check_stats();
+    sm_check_stats_fault();
     sm_check_hist();
 
     DSD(DS_000E1C3C) = s_rpt;

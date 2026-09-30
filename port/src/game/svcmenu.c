@@ -9,6 +9,7 @@
 #include "platform/gfx.h"
 #include "platform/input.h"
 
+#include "../host.h"
 #include "../mem.h"
 #include "../symbols.h"
 
@@ -33,6 +34,16 @@
 #define SVC_KEYREC_TMP    0x03900040u   /* PORT: 0x31138's 0x28-byte stack record, see there */
 #define SVC_NAME_TMP      0x03900080u   /* PORT: 0x31A78/0x31C78's 8-byte name buffer, see there */
 #define SVC_HEX_DIGITS    0x0002EF10u   /* code: "0123456789ABCDEF" */
+/* PORT: record named-gaps-b §B.4 (A's de capture, record named-gaps-a
+ * §A.8, de/dosbox.log:15): the 0x334E0 `idiv` #DE goes to DOS/4GW's default
+ * handler (no program handler hooks vector 0), which prints this line and a
+ * register dump over the text screen and returns to DOS. The port prints the
+ * first line, verbatim with that run's CS:EIP (code base 0x201000), to
+ * stderr; the dump holds that run's register values and is not reproduced.
+ * The errorlevel is not captured (DOS ran the script's EXIT next), so the
+ * port exits 1. */
+#define SVC_DE_MSG      "DOS/4GW Professional error (2001): exception 00h (divide by zero) at 180:002244E0"
+#define SVC_FAULT_EXIT  1
 #define SVC_CTRL_DIAG     0x00031410u   /* code: the 12-byte marker entries, 3 diagnostic ones first */
 #define SVC_CTRL_TABLE    0x00031434u   /* 0x31410 + 0x24: the eight button markers, ended by {0, .., 0} */
 #define SVC_DIAG_HEAD     0x00080BACu   /* "ADDRESS    RAW DATA" */
@@ -1188,11 +1199,11 @@ u32 svc_stats_rows(s32 row)
             v = config_field_get(f1);                       /* 0x334C0..0x334C2 */
         }
         if (v != 0u) {                                      /* 0x334C9..0x334CB */
+            const s32 n = (s32)config_field_get(num);       /* 0x334CD..0x334D5 0x2D974 */
             const s32 d = (s32)(v & 0xFFFFu);               /* 0x334D7 */
-            /* PORT: a non-zero sum with a zero low word makes the raw's `idiv`
-             * fault (#DE); the port draws 0 in its place (named gap, record
-             * §K11.7). */
-            v = d != 0 ? (u32)((s32)config_field_get(num) / d) : 0u;   /* 0x334CD..0x334E2 `idiv` */
+            if (d == 0)                                     /* 0x334E0 idiv, EBX = 0: #DE (record named-gaps-b §B.4) */
+                host_cpu_fault(0x00u, 0x334E0u, SVC_DE_MSG, SVC_FAULT_EXIT);
+            v = (u32)(n / d);                               /* 0x334DD sar edx,31; 0x334E0 idiv ebx */
         }
         const u32 t = v & 0xFFFFu;                          /* 0x334E9..0x334ED */
         text_number_set(0x24, row, (s32)(t / 60u), 2, 1u, 0xF000u);    /* 0x334E4..0x3350F 0x2F434 */
