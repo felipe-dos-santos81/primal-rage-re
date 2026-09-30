@@ -66,7 +66,7 @@
 2E934 deferred record-§48-V (audit no-op)
 32970 host-owned record-§48-V (host owns wall time)
 4FDF5 host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
-4FBBB host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
+4FBBB host-owned record-§49-V (called by the ISR sampler 0x1BBAC, and by 0x20C10's controller checks at 0x20DAC and 0x20DD1, record named-gaps-b §B.6a)
 4FC05 host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
 4FCFD host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
 5004A host-owned record-§55-A (joystick calibration: times the PIT 0x50021 and the game port 0x201 via 0x4FC05/0x4FCFD into 0xE1C1C..0xE1C2C, read only by the ISR sampler 0x1BBAC's 0x4FC05/0x4FCFD/0x4FDF5/0x4FF8F/0x4FFD8)

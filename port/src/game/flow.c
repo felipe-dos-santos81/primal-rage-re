@@ -1,5 +1,7 @@
 /* Port of the top-level game flow. Original addresses are named in comments:
- *   0x1BEC4 game main, 0x20C10 init wrapper, 0x255CC master loop,
+ *   0x1BEC4 game main, 0x20C10 init wrapper (split at its setjmp 0x20C1F:
+ *   game_init, then game_init_resume, the tail a 0x65431 longjmp re-runs),
+ *   0x255CC master loop,
  *   0x24C5C per-frame update, 0x11D04 state machine, 0x51F45 surface setup,
  *   0x336C0 palette dirty-list init, 0x1BE30 teardown.
  * Scope (Task 14): the title-screen path is live. Every call owned by a later
@@ -29,6 +31,7 @@
 #include "platform/audio/sequencer.h"
 #include "host.h"
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -111,6 +114,32 @@ static u32 int10h_query(void) { return 0x13u; }
 static void game_fatal(const char *what)
 {
     fprintf(stderr, "Primal Rage: fatal init error: %s\n", what);
+    exit(1);
+}
+
+/* PORT: host control state, not original state: the raw keeps the registers
+ * of 0x20C10's frame in the jmp_buf at DS 0x1044F4 (record named-gaps-b
+ * §B.1), which only 0x65431 reads. game_loop() arms it. */
+static jmp_buf *s_restart_point;
+
+jmp_buf *game_restart_arm(jmp_buf *jb)
+{
+    jmp_buf *prev = s_restart_point;
+    s_restart_point = jb;
+    return prev;
+}
+
+/* 0x65431 — record named-gaps-b §B.1. WATCOM longjmp(0x1044F4, 1): restores
+ * the registers and ESP saved by 0x653FC at 0x20C1F and returns there with
+ * EAX = 1 (0x6544B: 0 becomes 1). Callers: 0x24AB0, 0x2520B, 0x2EBB3. */
+_Noreturn void game_restart_longjmp(void)
+{
+    if (s_restart_point != NULL)
+        longjmp(*s_restart_point, 1);                /* 0x65442..0x6548D */
+    /* PORT: the raw's setjmp (0x20C1F) always runs before any caller can;
+     * reaching here means a port path ran game code outside game_loop()
+     * with no restart point armed, a port defect. */
+    fprintf(stderr, "Primal Rage: restart longjmp with no restart point\n");
     exit(1);
 }
 
@@ -867,8 +896,9 @@ void game_mode_12_step(void)
         flow_join_prompt_draw();                                             /* 0x423FC 0x271E0 */
         config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));          /* 0x4240E 0x32A3C */
         DSB(DS_00104B19) = 0u;                                                /* 0x4241A */
-        /* PORT: 0x42420 longjmp(0x2DAE4, 0x10, 1) — the front-end quit path,
-         * out of scope (spec §7). */
+        /* PORT: 0x42420..0x42425 0x2DAE4(0x10, 1), the audit add (EDX = 1 from
+         * 0x42415), is deferred (spec §7) as at 0x28E53; a plain call, not a
+         * longjmp (record named-gaps-b §B.6a item 9). */
         break;
     }
 
@@ -6526,7 +6556,8 @@ void sound_voice_match_end(void)
 /* 0x249F0 — record §50-D. The quit prompt (0x24C5C's key 0x10 at 0x24DDF with
  * AL = 0, and its mode arms at 0x24EAD / 0x24EC5 with AL = 0 / 1). `hard_quit`
  * is AL: 0 asks string 0x1EE and a yes sets the quit flag DS_000A81A8, nonzero
- * asks string 0x1EF and a yes leaves through the longjmp quit. It raises the
+ * asks string 0x1EF (ABANDON CONQUEST? Y/N) and a yes soft-restarts (record
+ * named-gaps-b §B.3). It raises the
  * prompt flag DS_00104B22 (0x24A01), pauses the sound (0x1D250), draws the
  * question centred on row 10 (0x24A1C..0x24A32 0x1C500 0x2F198), presents one
  * frame (0x24A37 0x2EA78 with -1) and reads keys (0x24A64 int 16h AH=0) until
@@ -6535,12 +6566,7 @@ void sound_voice_match_end(void)
  * (yes) and 0x1F1 (no), each sign-extended (0x24A4B 0x24A58 movsx). Yes drops
  * the flag (0x24A89); no drops it (0x24ABE) and clears the question's cells
  * (0x24AE7 0x2F280). Any other key loops. It ends by resuming the sound
- * (0x24AF9 0x1D270).
- * PORT: 0x24A9C..0x24AB0 (0x1D270, then the resource free 0x1B084, a no-op
- * under flat mem[] (see game_init), then `jmp 0x65431`, longjmp(0x1044F4, 1))
- * is out of scope (spec §7); the port resumes the sound and ends the run
- * through the same quit flag the AL = 0 arm sets. The blocking key read is
- * input_get_key. */
+ * (0x24AF9 0x1D270). The blocking key read is input_get_key. */
 void game_quit_prompt(u32 hard_quit)
 {
     u32 id = (hard_quit & 0xFFu) == 0u ? 0x1EEu : 0x1EFu;  /* 0x24A0C..0x24A17 */
@@ -6559,8 +6585,8 @@ void game_quit_prompt(u32 hard_quit)
                 DSB(DS_000A81A8) = 1u;                     /* 0x24A93 */
             } else {
                 sound_resume();                            /* 0x24A9C 0x1D270 */
-                DSB(DS_000A81A8) = 1u;                     /* 0x24AA1..0x24AB0 */
-                return;
+                /* PORT: 0x24AA1 0x1B084 (the config writer) is deferred (record §50-C). */
+                game_restart_longjmp();                    /* 0x24AA6..0x24AB0 jmp 0x65431, longjmp(0x1044F4, 1) */
             }
         } else if (key == no) {                            /* 0x24AB5 */
             DSB(DS_00104B22) = 0;                          /* 0x24ABE */
@@ -6644,16 +6670,32 @@ void game_init(void)
     surface_setup();        /* 0x51F45 */
     palette_list_init();    /* 0x336C0 */
     render_list_init();     /* 0x1C350 */
+    /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
+    (void)sound_buffers_alloc();  /* 0x1C0B1 0x1D0BC (record k7-k12 §0.7.1) */
+    /* 0x20C15 0x2F9CC, before the setjmp (0x20C1F), so a 0x65431 longjmp does
+     * not re-run it (record named-gaps-b §B.2). It runs 0x13ADC (effects_init,
+     * inside actors_init above) and 0x2D6F8 (config_validate), so the field
+     * 0x29 the tail reads is what the defaults path wrote. */
+    DSD(DS_0010740C) = 0x0001D2D0u;   /* 0x2FA01 (record §K11.2): 0x2F9CC's pointer; [0x1D2D4] = 0xA2EB4, CONFIG OPTIONS */
+    config_validate();          /* 0x2F9CC's 0x2D6F8 */
+    DSD(DS_00107410) = config_field_get(0x2Au) & 0xFFFFFFFCu;   /* 0x2FA10..0x2FA1C `and al,0xfc` */
+    svcmenu_register();         /* PORT: the options-menu table callbacks (record §K11.2) */
+    /* 0x20C1A/0x20C1F setjmp(0x1044F4): the restart point is game_loop's
+     * (record named-gaps-b §B.2); the tail follows. */
+    game_init_resume();
+}
+
+/* 0x20C24..0x20DE3 — record named-gaps-b §B.2. The post-setjmp tail of
+ * 0x20C10: the first pass runs it from game_init, a 0x65431 longjmp re-runs
+ * it from game_loop's restart point. The tail's calls the port omits are
+ * listed in record named-gaps-b §B.2 (pre-existing). */
+void game_init_resume(void)
+{
+    DSB(DS_00104B1D) = 0u;          /* 0x20C29 xor dl,dl; 0x20C37 (0x2C8F0 keeps EDX) */
     render_projection_reset(0u);    /* 0x20C47 `xor eax,eax`, 0x20C49 0x4F228 */
     rng_seed(0xABCDu);      /* PORT: 0x20C10 seeds the LCG with a hardcoded 0xABCD. */
     /* PORT: 0x20C5D-0x20CC2: DS_00104528 = 0x2D974(0x29) and the three globals
-     * derived from v. The master init 0x2F9CC (0x20C15) runs 0x13ADC
-     * (effects_init, inside actors_init above) then 0x2D6F8 (config_validate)
-     * before this block, so on a fresh image v is what the defaults path wrote. */
-    DSD(DS_0010740C) = 0x0001D2D0u;   /* 0x2FA01 (record §K11.2): 0x2F9CC's pointer; [0x1D2D4] = 0xA2EB4, CONFIG OPTIONS */
-    config_validate();          /* 0x2F9CC's 0x2D6F8, before 0x20C5D */
-    DSD(DS_00107410) = config_field_get(0x2Au) & 0xFFFFFFFCu;   /* 0x2FA10..0x2FA1C `and al,0xfc` */
-    svcmenu_register();         /* PORT: the options-menu table callbacks (record §K11.2) */
+     * derived from v. */
     u32 v = config_field_get(0x29u);                   /* 0x20C68 */
     DSD(DS_00104528) = v;                              /* 0x20C6D */
     /* 0x20C84 0x1E824. The raw runs 0x47370 (the string table, loaded below
@@ -6681,8 +6723,7 @@ void game_init(void)
      * DOSBox-X capture with coin input is what would cover the countdown. */
     /* 0x20CCC: the init chain writes the overlay row to 0x1D. */
     config_set_credit_row_init();
-    /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
-    (void)sound_buffers_alloc();  /* 0x1C0B1 0x1D0BC (record k7-k12 §0.7.1) */
+    DSW(DS_00104AFC) = 0u;  /* 0x20CD3 xor ebx,ebx; 0x20CDF (0x32970, 0x13ADC keep EBX) */
     /* 0x47370 loads the localisation table (0x20C10 calls it before 0x10E80);
      * the port reads ENGLISH.TXT directly rather than the DOS memory/file
      * managers. 0x121A0's caption comes from it. */
@@ -6762,10 +6803,23 @@ void game_loop_step(void)
 
 void game_loop(void)
 {
+    jmp_buf restart;
+    jmp_buf *const prev = game_restart_arm(&restart);
+    if (setjmp(restart) != 0) {
+        /* 0x20C24: 0x65431 resumes after 0x20C1F's setjmp, whose result is
+         * discarded (0x20C24 mov eax,-1), re-runs the tail and re-enters
+         * 0x255CC at 0x20DE8; the iteration that jumped is abandoned (record
+         * named-gaps-b §B.2). PORT: the landing is here, the port's one entry
+         * to 0x255CC, because the drivers step game_loop() one iteration per
+         * call; the re-run is the raw's. */
+        game_init_resume();            /* 0x20C24..0x20DE3 */
+        game_loop_begin();             /* 0x20DE8 0x255CC: 0x255D4/0x255DA */
+    }
     /* PORT: the raw's 0x255CC prologue (0x255D4/0x255DA) zeroes the tick pair
      * once, at the loop's entry. The port's game_loop() is called once per frame
      * by the test/check drivers, so the zeroing lives in game_loop_begin()
-     * (called once by game_main) instead of here. */
+     * (called once by game_main, and by the restart landing above) instead of
+     * here. */
     do {
         {
             /* PORT: the host fills the key bitmap 0x500C4 samples; the binding
@@ -6852,6 +6906,7 @@ void game_loop(void)
             DSB(DS_000A81A8) = 1;
         }
     } while (DSB(DS_000A81A8) == 0 && !s_loop_step);   /* 0x256DD */
+    (void)game_restart_arm(prev);
 }
 
 /* ---- modes 0x28-0x2F, the coin/start divert's eight game-start entries
@@ -7286,13 +7341,13 @@ void game_frame(void)
          * 0x2FFC4 over the table 0xBCBDC (stride 0x10, flags 4 from the
          * `mov ecx,4` at 0x251D5). Results 0, -5 and -10 (0x251F5..0x251FC)
          * go on to 0x4F644; any other result is the longjmp(0x1044F4, 1) at
-         * 0x25206. Enter in mode 3 sets DS_00104B00 to 0x27 (game_key_loop,
+         * 0x2520B. Enter in mode 3 sets DS_00104B00 to 0x27 (game_key_loop,
          * 0x24EE0, record §55-A; the START MENU callbacks 0x2CBC4..0x2CC54
          * (svcmenu.c, record §K11.2) store modes 0x28..0x2E); no oracle
          * driver queues a key, so this arm
          * is not reached by the front-end, demo-fight or attract runs.
-         * PORT: 0x25206 0x65431 longjmp is out of scope (spec §7): the port
-         * skips 0x4F644 and continues.
+         * Any other result soft-restarts (game_restart_longjmp, record
+         * named-gaps-b §B.3).
          * The record §47-B.1 note on the other cases follows. Case 0x17 is ported (0x4F318, record
          * §46-G) and dispatched above as frontend_mode_17_step, case 0x10
          * (0x438B4, record §47-M) as fight_mode_10_step, and cases 0xD
@@ -7334,6 +7389,8 @@ void game_frame(void)
             u32 r = menu_step(0xBCBDCu, 0x10u, 4u);           /* 0x251DF..0x251EE 0x2FFC4 */
             if (r == 0u || r == (u32)-5 || r == (u32)-10)     /* 0x251F3..0x251FC */
                 input_state_update();                          /* 0x25210 0x4F644 */
+            else
+                game_restart_longjmp();                        /* 0x25201..0x2520B jmp 0x65431, longjmp(0x1044F4, 1) */
         }
         break;
     }

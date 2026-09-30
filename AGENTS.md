@@ -34,7 +34,8 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   `frames/frame_*.idx`.
 - There is no per-test filter: `run_tests` is one binary. The drivers that call
   `game_init()` are selected by env var and run alone (`PR_TITLE_DUMP`,
-  `PR_ATTRACT_DUMP`, `PR_FRONTEND_DUMP`, `PR_FRONTEND_DET`, `PR_K11_DUMP`).
+  `PR_ATTRACT_DUMP`, `PR_FRONTEND_DUMP`, `PR_FRONTEND_DET`, `PR_K11_DUMP`,
+  `PR_RESTART`).
 - If a build invoked through `make` looks stale, `cmake --build build` is the
   reliable fallback.
 - macOS host: no `timeout`; SDL audio cannot open here (`-66681`), so the

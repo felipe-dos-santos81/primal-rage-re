@@ -147,8 +147,9 @@ void config_screen_wait(s32 n);
  * callers: 0x2FA40 (0x2FA61, 0x2FE2F) and 0x2FFC4 (0x2FFF1). */
 void config_screen_wait_zero(void);
 
-/* 0x2EB80. The latched key DS_00105F30, or 0; the idle timeout's longjmp quit
- * path (0x65431) is not modelled. */
+/* 0x2EB80. The latched key DS_00105F30, or 0; over 0x4B0 idle ticks the idle
+ * timeout stores DS_00107414 = 0 and soft-restarts (game_restart_longjmp,
+ * 0x65431; record named-gaps-b §B.3). */
 u32 config_key_latched(void);
 
 /* 0x2EBF0. The latched key as the game's key-bit word (arrow pairs

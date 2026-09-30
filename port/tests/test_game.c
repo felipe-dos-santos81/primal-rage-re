@@ -37,6 +37,8 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <setjmp.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 
 /* ---- test_flow.c ---- */
@@ -1522,28 +1524,35 @@ static void check_sound_buffers(void)
 /* Record k7-k12 §2.6: the idle timeout 0x2EB80 (config_key_latched) over the
  * ISR clock. Its difference 0x500BB - DS_00105F2C (0x2EB8F..0x2EB9F) now grows
  * with every master-loop tick (game_isr_ticks), so the master-loop menu
- * 0x2FFC4 (0x303D9) reaches the timeout after 0x4B0 idle ticks. PORT (named
- * gap): the raw stores DS_00107414 = 0 (0x2EBA8) and longjmps (0x2EBB3, jmp
- * 0x65431 with 0x1044F4, 1); the port keeps only the store, so the menu
- * re-initialises on its next step. Pinned here so the behaviour cannot
- * silently change. */
+ * 0x2FFC4 (0x303D9) reaches the timeout after 0x4B0 idle ticks, where the raw
+ * stores DS_00107414 = 0 (0x2EBA8) and longjmps (0x2EBB3, jmp 0x65431 with
+ * 0x1044F4, 1): the soft restart of record named-gaps-b §B.3, which lands at
+ * the armed point here. */
+static jmp_buf idle_jb;
+
 static void check_idle_timeout_clock(void)
 {
     const u32 s_00 = DSD(DS_00101500), s_08 = DSD(DS_00101508);
     const u32 s_2c = DSD(DS_00105F2C), s_30 = DSD(DS_00105F30);
     const u8 s_14 = DSB(DS_00107414);
+    jmp_buf *const prev = game_restart_arm(&idle_jb);
+    volatile int landed = 0;
+    volatile u32 got = 0xFEEDu;
 
     DSD(DS_00105F30) = 0;                    /* no latched key (0x2EB87) */
     DSD(DS_00101500) = 0x7000u;
     DSD(DS_00105F2C) = 0x7000u;              /* stamped now (0x2FFDA/0x2EEFB) */
     DSB(DS_00107414) = 0x5Au;
     game_isr_ticks(0x4B0u);                  /* 0x4B0 idle ticks: not over */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    if (setjmp(idle_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT((int)got, 0);
     CHECK_EQ_INT((int)DSB(DS_00107414), 0x5A);
     game_isr_ticks(1u);                      /* one more: the timeout */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    if (setjmp(idle_jb) == 0) (void)config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);                 /* 0x2EBB3, record named-gaps-b §B.3 */
     CHECK_EQ_INT((int)DSB(DS_00107414), 0);
 
+    (void)game_restart_arm(prev);
     DSD(DS_00101500) = s_00; DSD(DS_00101508) = s_08;
     DSD(DS_00105F2C) = s_2c; DSD(DS_00105F30) = s_30;
     DSB(DS_00107414) = s_14;
@@ -7490,6 +7499,9 @@ static void ch_check_key_name(void)
     CHECK_EQ_INT((int)DSB(CH_DEST + 1u), 0);
 }
 
+/* The idle timeout's soft restart (record named-gaps-b §B.3) lands here. */
+static jmp_buf ckf_jb;
+
 static void ch_check_key_flags(void)
 {
     u32 saved_kb = DSD(DS_00101514);
@@ -7511,7 +7523,10 @@ static void ch_check_key_flags(void)
     DSW(CH_KB + 0x2D6u) = 1u;
 
     /* 0x2EB80: a latched key is returned as is; without one the idle timeout
-     * (unsigned > 0x4B0) stores the flag byte. */
+     * (unsigned > 0x4B0) stores the flag byte and soft-restarts (0x2EBB3). */
+    jmp_buf *const ckf_prev = game_restart_arm(&ckf_jb);
+    volatile int landed = 0;
+    volatile u32 got = 0xFEEDu;
     DSD(CH_KEY_LATCH) = 0x48u;
     DSD(CH_TICK) = 5000u;
     DSD(CH_KEY_TIME) = 1u;
@@ -7520,15 +7535,20 @@ static void ch_check_key_flags(void)
     CHECK_EQ_INT((int)DSB(0x00107414u), 0x55);       /* untouched: a key is latched */
     DSD(CH_KEY_LATCH) = 0u;
     DSD(CH_KEY_TIME) = 5000u - 0x4B0u;               /* exactly 0x4B0: not over */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    if (setjmp(ckf_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT((int)got, 0);
     CHECK_EQ_INT((int)DSB(0x00107414u), 0x55);
     DSD(CH_KEY_TIME) = 5000u - 0x4B1u;               /* one over: the timeout */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    if (setjmp(ckf_jb) == 0) (void)config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);                         /* 0x2EBB3 */
     CHECK_EQ_INT((int)DSB(0x00107414u), 0);
     DSB(0x00107414u) = 0x55u;
     DSD(CH_KEY_TIME) = 5001u;                        /* the clock behind: wraps huge */
-    CHECK_EQ_INT((int)config_key_latched(), 0);
+    landed = 0;
+    if (setjmp(ckf_jb) == 0) (void)config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);                         /* 0x2EBB3 */
     CHECK_EQ_INT((int)DSB(0x00107414u), 0);
+    (void)game_restart_arm(ckf_prev);
 
     /* Nothing latched, the timeout not due: 0, and the record pointer is kept. */
     DSD(CH_KEY_TIME) = 5000u;
@@ -8139,7 +8159,11 @@ static void ch_check_screen_wait_zero(void)
 }
 
 /* 0x249F0 (record §50-D): the quit prompt. Strings 0x1F0/0x1F1 are the
- * localised yes/no letters; the seeds differ from every asserted result. */
+ * localised yes/no letters; the seeds differ from every asserted result. AL =
+ * 1's yes soft-restarts at 0x24AB0 (record named-gaps-b §B.3), landing at
+ * qp_jb; every check below is of a store made before 0x24AB0. */
+static jmp_buf qp_jb;
+
 static void ch_check_quit_prompt(void)
 {
     ch_text_setup();
@@ -8157,12 +8181,13 @@ static void ch_check_quit_prompt(void)
 
     DSD(DS_001028C0) = 0;
     DSD(DS_001028C8) = 0;
+    jmp_buf *const qp_prev = game_restart_arm(&qp_jb);
     for (u32 pass = 0; pass < 4u; pass++) {
         /* pass 0: AL = 0, "no" (lower case) after a stray key.
          * pass 1: AL = 0, "yes" upper case.  pass 2: AL = 1, "yes" lower.
          * pass 3: AL = 1, "no". */
         const u32 hard = (pass >= 2u) ? 1u : 0u;
-        const int want_quit = (pass == 1u || pass == 2u);
+        const int want_quit = (pass == 1u);
         DSD(DS_000E87A0) = CH_BUF_A;
         DSD(DS_000E87A4) = CH_BUF_B;
         DSB(DS_00104B22) = 0x77u;
@@ -8174,7 +8199,9 @@ static void ch_check_quit_prompt(void)
         if (pass == 0u) input_push(0x2D, 'x');            /* not yes, not no */
         u8 k = (pass == 0u) ? lo_no : (pass == 1u) ? yes : (pass == 2u) ? lo_yes : no;
         input_push(0x1E, k);
-        game_quit_prompt(hard);
+        volatile int landed = 0;
+        if (setjmp(qp_jb) == 0) game_quit_prompt(hard); else landed = 1;
+        CHECK_EQ_INT(landed, pass == 2u ? 1 : 0);          /* 0x24AB0 */
         CHECK_EQ_INT((int)DSB(DS_00104B22), 0);           /* seed 0x77 */
         CHECK_EQ_INT((int)DSB(DS_000A81A8), want_quit ? 1 : 0x5A);
         CHECK(!input_has_key(), "the prompt consumed its keys");
@@ -8189,6 +8216,7 @@ static void ch_check_quit_prompt(void)
         }
         CHECK_EQ_INT((int)DSD(DS_000E87A0), (int)CH_BUF_B);   /* one frame presented */
     }
+    (void)game_restart_arm(qp_prev);
 
     DSD(DS_000E87A0) = s_a0;
     DSD(DS_000E87A4) = s_a4;
@@ -9131,6 +9159,11 @@ static void sm_check_controls(void)
     ch_expect(6, 0x12, '2', 0x3000u, "the pad word: 2");
     ch_expect(6, 0x15, '0', 0x3000u, "the pad word: last digit");
     CHECK(ch_cell(7, 0xE) != 0u, "the raw data row is drawn");
+    /* 0x32578's byte, 0xFF as A's diags capture draws it (record named-gaps-b
+     * §B.4): 000000FF */
+    ch_expect(7, 0x13, '0', 0x3000u, "the raw data byte: 000000FF, the last pad digit");
+    ch_expect(7, 0x14, 'F', 0x3000u, "the raw data byte: F");
+    ch_expect(7, 0x15, 'F', 0x3000u, "the raw data byte: the last F");
     ch_expect(0xA, 0x1D, 'C', 0x4000u, "0x80B6C as a string id: string 0xAC");
     ch_expect(0xA, 0x21, 'V', 0x4000u, "0x80B74 as a string id: string 0xB4 Vertigo");
     ch_expect(0xB, 0x20, 'X', 0x3000u, "bit 8 marker over the stick");
@@ -9320,6 +9353,83 @@ static void sm_stats_probe(u32 frame)
         sm_stats_seen |= 0x100u;
     }
     if (frame == 4u && config_field_get(0u) == 0u) sm_stats_seen |= 1u << frame;
+}
+
+/* Record named-gaps-b §B.4: the CPU-fault seam catches the fault and leaves
+ * through sf_jb, so nothing after the faulting instruction runs. */
+static jmp_buf sf_jb;
+static volatile u32 sf_exc, sf_eip;
+static volatile int sf_hits;
+static void sf_hook(u32 exc, u32 eip) { sf_exc = exc; sf_eip = eip; sf_hits++; longjmp(sf_jb, 1); }
+
+/* 0x33458 row 2 {0x96, num 0x12, f1 8, f2 6}: field 8 + field 6 = 0x10000,
+ * so EBX & 0xFFFF = 0 and 0x334E0's idiv raises #DE (record named-gaps-b
+ * §B.4; A's de capture aborts to DOS there). Rows 0 (field 8 = 0xFFFF: no
+ * fault) and 1 (field 0xB = 0: no idiv) draw first; row 2's label (0x33479)
+ * is drawn before the idiv, its number (0x334E4..) and row 3 never are. */
+/* With no hook the #DE ends the process (host_cpu_fault): the child's exit
+ * status and its stderr, which must be exactly A's DOS/4GW line (record
+ * named-gaps-a §A.8, de/dosbox.log:15) and a newline. */
+static void sm_check_stats_fault_exit(s32 r)
+{
+    static const char want[] =
+        "DOS/4GW Professional error (2001): exception 00h (divide by zero) at 180:002244E0\n";
+    int fds[2];
+    CHECK(pipe(fds) == 0, "pipe");
+    fflush(stdout); fflush(stderr);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        dup2(fds[1], 2); close(fds[0]);
+        (void)host_set_fault_hook(NULL);
+        (void)svc_stats_rows(r);
+        _exit(99);                                        /* not reached: the fault exits */
+    }
+    close(fds[1]);
+    char buf[512];
+    size_t got = 0;
+    for (int k = 0; k < 64 && got < sizeof buf - 1u; k++) {
+        const ssize_t n = read(fds[0], buf + got, sizeof buf - 1u - got);
+        if (n <= 0) break;
+        got += (size_t)n;
+    }
+    close(fds[0]);
+    buf[got] = '\0';
+    int st = 0;
+    waitpid(pid, &st, 0);
+    CHECK(WIFEXITED(st) && WEXITSTATUS(st) == 1, "the #DE exits with status 1 (PORT: not captured)");
+    CHECK(strcmp(buf, want) == 0, "the #DE prints A's DOS/4GW line verbatim");
+}
+
+static void sm_check_stats_fault(void)
+{
+    ch_text_setup();
+    const u32 s8 = config_field_get(8u), s6 = config_field_get(6u), sb = config_field_get(0xBu);
+    (void)config_field_set(8u, 0xFFFFu);
+    (void)config_field_set(6u, 1u);
+    (void)config_field_set(0xBu, 0u);
+    CHECK_EQ_INT((long)config_field_get(8u), 0xFFFF);
+    CHECK_EQ_INT((long)config_field_get(6u), 1);
+    const s32 r = 5;
+    text_cursor_set(0x25, r, (const u8 *)"Z", 0u);
+    text_cursor_set(0x25, r + 2, (const u8 *)"Z", 0u);
+    text_cursor_set(4, r + 3, (const u8 *)"Z", 0u);
+    const u32 zs = ch_sprite(r, 0x25);
+    const u32 z2 = ch_sprite(r + 2, 0x25), z3 = ch_sprite(r + 3, 4);
+    CHECK(zs != 0u && z2 == zs && z3 == zs, "the three sentinel cells hold the Z glyph");
+    host_fault_hook_fn prev = host_set_fault_hook(sf_hook);
+    sf_hits = 0; sf_exc = 0x5Au; sf_eip = 0x5A5Au;
+    if (setjmp(sf_jb) == 0) (void)svc_stats_rows(r);
+    (void)host_set_fault_hook(prev);
+    CHECK_EQ_INT(sf_hits, 1);
+    CHECK_EQ_INT((long)sf_exc, 0);                        /* #DE */
+    CHECK_EQ_INT((long)sf_eip, 0x334E0);
+    CHECK(ch_sprite(r, 0x25) != zs, "row 0 is drawn before the fault");
+    CHECK_EQ_INT((long)ch_sprite(r + 2, 0x25), (long)z2); /* 0x334E4.. never runs */
+    CHECK_EQ_INT((long)ch_sprite(r + 3, 4), (long)z3);    /* row 3 never starts */
+    sm_check_stats_fault_exit(r);
+    (void)config_field_set(8u, s8);
+    (void)config_field_set(6u, s6);
+    (void)config_field_set(0xBu, sb);
 }
 
 static void sm_check_stats(void)
@@ -9898,6 +10008,7 @@ int test_svcmenu(void)
     sm_check_controls();
     sm_check_keyboard();
     sm_check_stats();
+    sm_check_stats_fault();
     sm_check_hist();
 
     DSD(DS_000E1C3C) = s_rpt;
@@ -10533,6 +10644,8 @@ static void kl_check_enter(void)
 
 /* ESC (ascii 0x1B): mode 3 asks 0x1EE (AL = 0), mode 0x27 nothing, any other
  * mode 0x1EF (AL = 1). */
+static jmp_buf kl_jb;
+
 static void kl_check_esc(void)
 {
     const u8 yes = game_string_get(0x1F0u)[0];
@@ -10552,12 +10665,19 @@ static void kl_check_esc(void)
     kl_expect_prompt(0x1EFu, 0);
     CHECK_EQ_INT((long)DSD(DS_00104B00), (long)KL_MODE(0x1Cu));
 
-    /* AL = 1's yes: the port's longjmp stand-in is the same quit flag. */
+    /* AL = 1's yes soft-restarts (0x24AB0, record named-gaps-b §B.3); the
+     * quit flag keeps its seed. */
     kl_env(0x04u);
     input_push(0x01, 0x1B);
     input_push(0x15, yes);
-    game_key_loop();
-    kl_expect_prompt(0x1EFu, 1);
+    {
+        jmp_buf *const prev = game_restart_arm(&kl_jb);
+        volatile int landed = 0;
+        if (setjmp(kl_jb) == 0) game_key_loop(); else landed = 1;
+        (void)game_restart_arm(prev);
+        CHECK_EQ_INT(landed, 1);
+    }
+    kl_expect_prompt(0x1EFu, 0);
 
     kl_env(0x27u);
     input_push(0x01, 0x1B);
@@ -10885,6 +11005,9 @@ static void vs_menu_run(void)
     mem_fill(VS_MENU, 0, 0x100u);
     DSD(DS_00101514) = MT_LAYOUT;
     tf_menu_press(0x2000000u);
+    /* not idle: the suite's clock has run on past 0x2EB80's 0x4B0 (record
+     * named-gaps-b §B.3: the timeout would soft-restart) */
+    DSD(DS_00105F2C) = DSD(DS_00101500);
     (void)menu_run(VS_MENU, 0x10u, 0u);
 }
 static void vs_menu_step(void)
@@ -10893,6 +11016,7 @@ static void vs_menu_step(void)
     mem_fill(VS_MENU, 0, 0x100u);
     DSD(DS_00101514) = MT_LAYOUT;
     DSB(DS_00107414) = 0u;
+    DSD(DS_00105F2C) = DSD(DS_00101500);   /* not idle (record named-gaps-b §B.3) */
     (void)menu_step(VS_MENU, 0x10u, 0u);
 }
 
@@ -11897,6 +12021,16 @@ static void k11_hook(void *ctx)
     }
 }
 
+/* A CPU fault ends the original's run at the faulting instruction (the de
+ * scenario's #DE, record named-gaps-b §B.4): the script ends there too. */
+static void k11_fault(u32 exc, u32 eip)
+{
+    fprintf(k11_screens, "end settled %u\n", k11_dumped - 1u);
+    fprintf(k11_log, "fault %02X at %08X\n", (unsigned)exc, (unsigned)eip);
+    k11_done = 1;
+    longjmp(k11_end_jb, 1);
+}
+
 /* The loader's `- LOADING -` screen (res_load_present, record §45-A) is on
  * the display between two pumps; the front-end driver dumps it through the
  * same hook (fe_cyc2_loader), and the original shows it in ADJUST VOLUME
@@ -11959,6 +12093,7 @@ int test_k11_oracle(void)
     actors_pin_anim_tick_zero(1);
     host_set_pump_hook(k11_hook, NULL);
     res_set_screen_hook(k11_loader);
+    host_fault_hook_fn k11_prev_fault = host_set_fault_hook(k11_fault);
 
     /* Sentinels: none is a mode, frame or state the checks below accept. */
     static u32 mode_before, mode_after, frame_after, state_after;
@@ -11973,16 +12108,19 @@ int test_k11_oracle(void)
             k11_t0 = DSD(DS_00101500);
             k11_armed = 1;
         }
-        DSB(DS_000A81A8) = 1;                           /* exactly one game_loop iteration */
-        game_loop();
+        game_loop_step();                               /* exactly one game_loop iteration */
         if (enter_now) {
             mode_after = DSW(DS_00104B00);
             frame_after = DSW(DS_000EF6DC);
             state_after = DSW(DS_000F0A64);
         }
     }
+    /* The script's end leaves game_loop() through k11_end_jb, past the
+     * restart point game_loop() armed on its stack: disarm it. */
+    (void)game_restart_arm(NULL);
     host_set_pump_hook(NULL, NULL);
     res_set_screen_hook(NULL);
+    (void)host_set_fault_hook(k11_prev_fault);
     k11_key_bits(0u);
     fclose(k11_screens);
     fclose(k11_log);
@@ -11995,5 +12133,274 @@ int test_k11_oracle(void)
     CHECK(k11_done, "the K11 script ran to its end");
     CHECK_EQ_INT((int)k11_keys_sent, (int)k11_nkeys);
     CHECK(!k11_failed && k11_dumped > 1u, "the K11 frames were written");
+    return g_failures - before;
+}
+
+/* ---- named-gaps B: the 0x65431 soft restart (record B) ------------------ */
+
+static jmp_buf rs_jb;
+
+/* 0x65431 lands at the armed point with EAX = 1 (0x6544B..0x65450: val 0
+ * becomes 1; the callers pass EDX = 1) and never returns to its caller. */
+static void rs_check_landing(void)
+{
+    volatile int landed = -1, returned = 0;
+    jmp_buf *const prev = game_restart_arm(&rs_jb);
+    switch (setjmp(rs_jb)) {
+    case 0:
+        landed = 0;
+        game_restart_longjmp();
+        returned = 1;
+        break;
+    case 1:
+        landed = 1;
+        break;
+    default:
+        landed = 2;
+        break;
+    }
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT(returned, 0);
+    CHECK(game_restart_arm(prev) == &rs_jb, "the armed point is handed back");
+}
+
+/* 0x20C24..0x20DE3: the resume tail's stores, each seeded to differ. */
+static void rs_check_resume(void)
+{
+    const u32 v = config_field_get(0x29u);
+    /* 0x2F9CC runs at 0x20C15, before the setjmp, so the tail leaves its
+     * stores alone: DS_00107410 with bit 4 poked, as A's diags scenario does
+     * (record named-gaps-a §A.7), and DS_0010740C at a sentinel. */
+    const u32 s_410 = DSD(DS_00107410), s_40c = DSD(DS_0010740C);
+    DSD(DS_00107410) = s_410 | 0x10u;
+    DSD(DS_0010740C) = 0x5A5A5A5Au;
+    DSD(DS_000EF6D8) = 0x1234u;                 /* 0x20C62 seed */
+    DSD(DS_00104528) = v ^ 0xA5A5A5A5u;         /* 0x20C6D */
+    DSD(DS_001088D0) = 0xDEADu;                 /* 0x20CB0 */
+    DSB(DS_00104B1D) = 0xA5u;                   /* 0x20C37 */
+    DSW(DS_00104AFC) = 0x77u;                   /* 0x20CDF */
+    DSB(DS_00107A54) = 1u;                      /* 0x4F228 */
+    DSW(DS_00104B00) = 0x27u;                   /* 0x10EA1 (game_state_init) */
+    DSW(DS_000F0A64) = 0x33u;                   /* 0x10EA8 */
+    game_init_resume();
+    CHECK_EQ_INT((long)DSD(DS_000EF6D8), 0xABCD);
+    CHECK_EQ_INT((long)DSD(DS_00104528), (long)v);
+    CHECK_EQ_INT((long)DSD(DS_001088D0), (long)((v & 0xFu) * 5u + 0x1Eu));
+    CHECK_EQ_INT((int)DSB(DS_00104B1D), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFC), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107A54), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 3);
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 0);
+    CHECK_EQ_INT((long)DSD(DS_00107410), (long)(s_410 | 0x10u));   /* 0x2FA1C not re-run */
+    CHECK_EQ_INT((long)DSD(DS_0010740C), 0x5A5A5A5A);              /* 0x2FA01 not re-run */
+    DSD(DS_00107410) = s_410; DSD(DS_0010740C) = s_40c;
+}
+
+/* 0x2EB80: no latch and 0x500BB - DS_00105F2C > 0x4B0 (unsigned, 0x2EB9F
+ * `jbe`) stores DS_00107414 = 0 (0x2EBA8) and longjmps (0x2EBB3). */
+static void rs_check_idle(void)
+{
+    const u32 s_latch = DSD(DS_00105F30), s_tick = DSD(DS_00101500),
+              s_time = DSD(DS_00105F2C);
+    const u8 s_flag = DSB(DS_00107414);
+    jmp_buf *const prev = game_restart_arm(&rs_jb);
+    volatile int landed = 0;
+    volatile u32 got = 0xFEEDu;
+
+    /* at the boundary: 0x4B0 is not over it */
+    DSD(DS_00105F30) = 0u; DSD(DS_00101500) = 0x2000u;
+    DSD(DS_00105F2C) = 0x2000u - 0x4B0u; DSB(DS_00107414) = 0x5Au;
+    if (setjmp(rs_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 0);
+    CHECK_EQ_INT((long)got, 0);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0x5A);
+
+    /* one tick over: the store, then the restart */
+    landed = 0; got = 0xFEEDu;
+    DSD(DS_00105F2C) = 0x2000u - 0x4B1u; DSB(DS_00107414) = 0x5Au;
+    if (setjmp(rs_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT((long)got, 0xFEED);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+    CHECK_EQ_INT((long)DSD(DS_00105F2C), (long)(0x2000u - 0x4B1u));   /* 0x2EB80 stores no reference */
+
+    /* the subtraction is unsigned (0x2EB9F `jbe`): a reference past the
+     * clock wraps to a huge difference and restarts */
+    landed = 0; got = 0xFEEDu;
+    DSD(DS_00105F2C) = 0x2010u; DSB(DS_00107414) = 0x5Au;
+    if (setjmp(rs_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+
+    /* a latched key wins over any idle time (0x2EB87) */
+    landed = 0; got = 0xFEEDu;
+    DSD(DS_00105F30) = 0x41u; DSB(DS_00107414) = 0x5Au;
+    if (setjmp(rs_jb) == 0) got = config_key_latched(); else landed = 1;
+    CHECK_EQ_INT(landed, 0);
+    CHECK_EQ_INT((long)got, 0x41);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0x5A);
+
+    (void)game_restart_arm(prev);
+    DSD(DS_00105F30) = s_latch; DSD(DS_00101500) = s_tick;
+    DSD(DS_00105F2C) = s_time; DSB(DS_00107414) = s_flag;
+}
+
+/* 0x251F3..0x2520B: 0x2FFC4's result not in {0, -5, -10} is
+ * longjmp(0x1044F4, 1); 0x4F644 (input_state_update) is skipped. game_frame
+ * runs the key loop 0x24CFE first, over an empty int 16h queue here. */
+static void rs_case27_frame(volatile int *landed)
+{
+    if (setjmp(rs_jb) == 0) game_frame(); else *landed = 1;
+}
+
+static void rs_check_case27(void)
+{
+    if (!ra_save()) { CHECK(0, "the case-0x27 snapshot allocates"); return; }
+    jmp_buf *const prev = game_restart_arm(&rs_jb);
+    volatile int landed = 0;
+    kl_env(0x27u);
+    ni_frame_env();
+    sm_env_begin();                               /* the pad layout, not idle */
+    DSD(DS_00105F30) = 0u;                        /* no latched key */
+    mem_fill(DS_00107414, 0, 0x40u);              /* the menu uninitialised */
+    /* MAIN MENU init: result 0, so 0x25210 runs 0x4F644, which writes
+     * ((E4 & 0xFF000000) >> 24) | ((D8 & 0xFF000000) >> 16) = 0 for an
+     * idle pad over the seed */
+    DSW(DS_001088E0) = 0xBEEFu;
+    tf_menu_press(0u);
+    rs_case27_frame(&landed);
+    CHECK_EQ_INT(landed, 0);
+    CHECK_EQ_INT((long)DSD(DS_0010741C), 0xBCBEC);     /* MAIN MENU */
+    CHECK_EQ_INT((int)DSW(DS_001088E0), 0);            /* result 0 runs 0x4F644 */
+    /* Start (nested START MENU, flags 0), release, then Esc: -5 at 0x30466,
+     * a normal exit: no restart */
+    tf_menu_press(0x1000000u);
+    rs_case27_frame(&landed);
+    tf_menu_press(0u);
+    rs_case27_frame(&landed);
+    DSW(DS_001088E0) = 0xBEEFu;
+    tf_menu_press(0x2000000u);
+    rs_case27_frame(&landed);
+    CHECK_EQ_INT(landed, 0);
+    /* -5 runs 0x4F644, which rewrites the word from the held Esc */
+    CHECK(DSW(DS_001088E0) != 0xBEEFu, "the START MENU Esc (-5) runs 0x25210 0x4F644");
+    /* re-init MAIN MENU (flags 4), release, then Esc: -1 at 0x30440 */
+    tf_menu_press(0u);
+    rs_case27_frame(&landed);
+    tf_menu_press(0u);
+    rs_case27_frame(&landed);
+    CHECK_EQ_INT(landed, 0);
+    CHECK_EQ_INT((long)DSD(DS_0010741C), 0xBCBEC);
+    CHECK_EQ_INT((long)DSD(DS_00104B00), (long)KL_MODE(0x27u));
+    DSW(DS_001088E0) = 0xBEEFu;
+    DSB(DS_00107414) = 0x5Au;
+    tf_menu_press(0x2000000u);
+    rs_case27_frame(&landed);
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT((int)DSW(DS_001088E0), 0xBEEF);       /* 0x25210 not reached */
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);            /* 0x3043B, before the -1 at 0x30440 */
+    (void)game_restart_arm(prev);
+    sm_env_end();
+    input_clear();
+    ra_restore();
+}
+
+int test_restart(void)
+{
+    int before = g_failures;
+    rs_check_landing();
+    rs_check_idle();
+    rs_check_case27();
+    rs_check_resume();
+    return g_failures - before;
+}
+
+/* Record named-gaps-b §B.3/§B.6: in the service menu (mode 0x27) with no input
+ * the master loop's 0x500BB clock runs until 0x2EB80 sees more than 0x4B0
+ * ticks since the menu's stamp (0x2FFDA), stores DS_00107414 = 0 and
+ * soft-restarts: 0x20C24's tail, 0x255CC's prologue, then the attract from
+ * its start, as A's idle capture shows (record named-gaps-a §A.6: mode 3,
+ * attract state 0, the frame word DS_000EF6DC and the clock DS_00101500 kept,
+ * then the boot sequence from the TWI5 logo). */
+#define RD_BOOT   50        /* boot iterations compared after the restart */
+#define RD_GUARD  5000      /* > 0x4B1 + RD_BOOT: a clock that stops trips it */
+
+/* The displayed frame as the capture sees it: each pixel's DAC colour (the
+ * captures are RGB, 320x200x3). After the restart the same colours sit one
+ * palette index lower than on the first boot (record named-gaps-b §B.6b): on
+ * the first boot a resolve of a not-yet-loaded entry draws '- LOADING -',
+ * whose font palette 0x80997C takes slot 1 before the attract's; after the
+ * restart the entry is marked loaded (0x1B47A) and the port never evicts it,
+ * so no loader draw runs and the attract's palettes start at slot 1. The raw's
+ * slot order after a restart is not known (named gap), so the indices are not
+ * compared. */
+static u32 rd_frame_hash(void)
+{
+    const u8 *fb = gfx_display();
+    if (fb == NULL) fb = mem + DSD(DS_000E87A0);
+    u32 h = 2166136261u;
+    for (u32 i = 0; i < 64000u; i++) h = k11_fnv(h, gfx_dac[fb[i]], 3u);
+    return h;
+}
+
+int test_restart_drive(void)
+{
+    const int before = g_failures;
+    if (getenv("PR_RESTART") == NULL) return 0;
+    const char *dir = getenv("PR_GAME_DIR");
+    if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
+    game_set_game_dir(dir);
+    game_init();
+    game_loop_begin();
+
+    static u16 boot_state[RD_BOOT];
+    static u32 boot_hash[RD_BOOT];
+    u32 r1 = 0u;
+    for (int i = 0; i < RD_BOOT; i++) {
+        game_loop_step();
+        boot_state[i] = DSW(DS_000F0A64);
+        boot_hash[i] = rd_frame_hash();
+        if (i == 0) r1 = DSD(DS_000EF6D8);
+    }
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 3);            /* 0x10EA1: Enter's mode */
+
+    /* Enter (scan 0x1C, ascii 0xD) in mode 3 stores 0x27 (0x24EE0, record
+     * §55-A); the next iteration initialises MAIN MENU and stamps 0x105F2C. */
+    input_push(0x1Cu, 0x0Du);
+    game_loop_step();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x27);
+    game_loop_step();                                  /* the menu's init */
+    CHECK_EQ_INT((int)DSB(DS_00107414), 1);            /* 0x300C2 */
+    const u32 t0 = DSD(DS_00105F2C);
+    u32 t_prev = 0u, t_last = 0u;
+    u16 f_last = 0u;
+    int n = 0;
+    while (DSW(DS_00104B00) == 0x27u && n < RD_GUARD) {
+        t_prev = t_last;
+        t_last = DSD(DS_00101500);
+        f_last = DSW(DS_000EF6DC);
+        game_loop_step();
+        n++;
+    }
+    CHECK(n < RD_GUARD, "the idle timeout restarts within the guard");
+    CHECK(t_last - t0 > 0x4B0u, "0x2EB9F: over 0x4B0 ticks on the restart iteration");
+    CHECK(t_prev - t0 <= 0x4B0u, "0x2EB9F: not over on the iteration before");
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 3);            /* 0x10EA1 */
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);            /* 0x2EBA8 */
+    CHECK_EQ_INT((long)DSD(DS_0010150C), 1);           /* 0x255DA, then 0x256C0 */
+    CHECK_EQ_INT((long)DSD(DS_00101508), 1);           /* 0x255D4, then the spin */
+    CHECK(DSD(DS_00101500) > t_last, "the 0x500BB clock is not reset (A §A.6)");
+    /* the abandoned iteration's 0x24CDB, then the new one's (A §A.6: kept) */
+    CHECK_EQ_INT((int)DSW(DS_000EF6DC), (int)(u16)(f_last + 2u));
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), (int)boot_state[0]);
+    CHECK_EQ_INT((long)DSD(DS_000EF6D8), (long)r1);    /* reseeded 0xABCD, same first frame */
+    CHECK_EQ_INT((long)rd_frame_hash(), (long)boot_hash[0]);
+    for (int i = 1; i < RD_BOOT; i++) {
+        game_loop_step();
+        CHECK_EQ_INT((int)DSW(DS_000F0A64), (int)boot_state[i]);
+        CHECK_EQ_INT((long)rd_frame_hash(), (long)boot_hash[i]);
+    }
+    printf("test_restart_drive: restart after %d menu iterations (stamp %X, clock %X)\n",
+           n, (unsigned)t0, (unsigned)t_last);
     return g_failures - before;
 }

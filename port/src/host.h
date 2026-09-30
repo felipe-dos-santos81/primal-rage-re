@@ -57,6 +57,16 @@ void host_wait_vblank(void);
 typedef void (*host_pump_hook_fn)(void *ctx);
 void host_set_pump_hook(host_pump_hook_fn fn, void *ctx);
 
+/* PORT: the end of the run on a CPU exception the original leaves to
+ * DOS/4GW's default handler (no program handler: record named-gaps-b §B.4).
+ * With a hook installed (tests) the hook is called and must not return.
+ * Otherwise prints `msg`, or when NULL a line naming `exc` and `eip`, to
+ * stderr, shuts the host down and exits with `status`. */
+_Noreturn void host_cpu_fault(u32 exc, u32 eip, const char *msg, int status);
+typedef void (*host_fault_hook_fn)(u32 exc, u32 eip);
+/* PORT: test seam; returns the previous hook. */
+host_fault_hook_fn host_set_fault_hook(host_fault_hook_fn hook);
+
 /* Hands a w*h RGB24 frame (3 bytes per pixel, row-major) to the host. The frame
  * is presented by the next host_pump(). A no-op when no window is open. */
 void host_present_rgb(const u8 *rgb, int w, int h);

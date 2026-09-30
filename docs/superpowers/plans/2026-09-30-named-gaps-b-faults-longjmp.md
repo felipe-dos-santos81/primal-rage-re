@@ -89,10 +89,13 @@ Five failure modes, each tested by a named task:
    twice, the post-setjmp tail skipped, or the `0x255D4/0x255DA` loop prologue
    not re-run. Tested by Task 1 (`rs_check_resume`) and Task 4 (the `PR_RESTART`
    driver's post-state).
-3. **The idle timeout never fires (or fires one tick early)**: `DS_00101500`
-   not advancing in the master loop (F4), or `>` weakened to `>=`. Tested by
-   Task 2 (`rs_check_idle`, boundary 0x4B0 vs 0x4B1) and Task 4 (the natural
-   timeout inside the guard, with the exact-tick checks).
+3. **The idle timeout fires but does not restart, or fires one tick early**:
+   today the port's compare fires, stores `0x107414 = 0` and returns 0, so the
+   menu silently re-initialises (F4); a fix could also weaken `>` to `>=`,
+   make the unsigned `jbe` compare signed, or break the existing clock/reference
+   the timeout depends on. Tested by Task 2 (`rs_check_idle`: boundary 0x4B0
+   vs 0x4B1, the wrap, the latch) and Task 4 (the natural timeout inside the
+   guard, with the exact-tick checks and the `game_isr_ticks` mutation).
 4. **A fault path returns into game code** (drawing continues after the #DE or
    the `0xFFE80003` read) or draws a fabricated value. Tested by Task 7
    (`sm_check_stats_fault`) and Task 8 (the converted TEST B in
@@ -188,24 +191,49 @@ below is linear (= Ghidra).
 - All three share jmp_buf `0x1044F4` and the single setjmp `0x20C1F`, so one
   port mechanism closes all three.
 
-### F4 (G1). The idle clock DS_00101500 does not advance in the port's master loop
+### F4 (G1). The idle clock and its reference in the port (verified at main `af135ec`)
 - The timer ISR `0x1BDF4`: unless `byte [0x104B22] == 1` (`0x1BDF8..0x1BE00`,
   the pause/prompt flag), it increments **both** `[0x101508]` and `[0x101500]`
   (`0x1BE02..0x1BE16`), calls `0x1BBAC`, `inc word [0xEF6DE]` (`0x1BE21`),
-  calls `0x2D62C`.
-- `0x500BB` returns `[0x101500]` (config.c:512 `CFG_TICK_ISR`). The idle test
-  in `0x2EB80` is `[0x101500] - [0x105F2C] > 0x4B0`.
-- The port models the ISR in two places: `config_screen_wait` (config.c:571..578,
-  increments `0x101508`, `0x101500` and the word `0xEF6DE` under the gate) and
-  the master loop's `0x256C5` spin (flow.c `game_loop`, increments **only**
-  `DS_00101508`). So while the service menu runs through `game_frame` case
-  0x27 (one `0x2FFC4` step per master-loop frame), `0x101500` never advances in
-  the port and the idle timeout can never fire. The G1 task must add the
-  `0x101500` increment (and the `0x104B22` gate) to the master-loop spin, with
-  `make verify` proving no oracle line moves (branch in Task 2 if one does).
-  The `0xEF6DE` word and the ISR calls `0x1BBAC`/`0x2D62C` are **not** added by
-  B (not needed by G1; flow.c:6964 already treats `0xEF6DE` separately);
-  they stay as they are.
+  calls `0x2D62C`. `0x500BB` returns `[0x101500]`. The idle test in `0x2EB80`
+  is `[0x101500] - [0x105F2C] > 0x4B0`.
+- **The port already advances the clock** (an earlier draft of this plan read
+  a pre-`af135ec` tree and said it did not; that claim was wrong and its task is
+  removed). `rg -n 'DS_00101500|game_isr_ticks|CFG_TICK_ISR' port/src` at
+  `af135ec`:
+  - `game_isr_ticks(u32 n)` (flow.c ~6720..6724) adds `n` to `DS_00101508` and
+    `DS_00101500` (`0x1BE0E..0x1BE16`); ungated (the `DS_00104B22` gate is a
+    recorded todo-verify, record §1 of the todo-verify record).
+  - The master loop's `0x256C5` spin calls `game_isr_ticks(1u)` once per
+    retrace (flow.c ~6806..6807), i.e. once per master-loop iteration that is
+    not behind; the resource-read stall calls it with the read's tick count
+    (res.c ~91).
+  - `config_screen_wait` (`0x2EA78`, config.c ~566..578) models the ISR
+    itself: `+1` to `0x101508`, `0x101500` and the word `0xEF6DE` per retrace
+    under the gate.
+- **The reference `DS_00105F2C` is written by the port** at all four raw
+  sites: `0x2EB52/0x2EB57` (config.c ~590, each key read in
+  `config_screen_wait`), `0x2EE04..0x2EE0B` (config.c ~701, a non-zero
+  `config_input_poll`), `0x2EEF2..0x2EEFB` (config.c ~713,
+  `config_input_poll_clear`), and `0x2FFDA/0x2FFDF` (menu.c ~293, `menu_step`'s
+  init).
+- **The compare is ported**: `config_key_latched` (config.c ~622..630) tests
+  `DSD(CFG_TICK_ISR) - DSD(CFG_KEY_TIME) > 0x4B0u` and, when over, stores
+  `DSB(CFG_IDLE_FLAG) = 0` (`0x2EBA8`) and **returns 0 where the raw jumps to
+  `0x65431`** (`PORT:` at config.c ~627). That longjmp is the only missing
+  piece.
+- How the clock moves on the two G1 paths today:
+  - Mode 0x27 (`game_frame` case 0x27, one `menu_step` per master-loop
+    iteration): `+1` per iteration from the spin; the init step also waits once
+    (`0x2FFF1`, menu.c ~295), so the non-init steps see the iteration-start
+    value (`menu_step` waits only at init). After `0x4B1` ticks with no input,
+    the compare fires; the port then stores `0x107414 = 0` (the menu's active
+    byte), returns 0, and the **next** `menu_step` re-initialises MAIN MENU
+    and re-stamps `0x105F2C` (`0x2FFCD..0x2FFDF`). So today the port silently
+    resets the menu every `0x4B1` idle ticks where the raw soft-restarts.
+  - The K11 screens' polling loops (svcmenu.c ~988, ~1213, ~1257, ~1558, each
+    pass preceded by `config_screen_wait_zero`, `+1` tick): the compare fires
+    the same way; the port clears `0x107414` and the screen keeps looping.
 
 ### F5 (G2). The 0xFFE80003 read and the diagnostic flag
 - Site: `0x32573 mov ebx,0xFFE80003; 0x32578 mov bl,[ebx]` in TEST CONTROLS
@@ -339,7 +367,7 @@ below is linear (= Ghidra).
 
 **Interfaces:** Consumes F1-F8 above and A's record. Produces the B record
 (§B.1 longjmp/setjmp, §B.2 the resume tail and F7 table, §B.3 the three longjmp
-sites, §B.4 exception handlers and the G2/G3 branch, §B.5 the idle clock, §B.6
+sites, §B.4 exception handlers and the G2/G3 branch, §B.5 the idle clock and reference as the port has them (F4), §B.6
 evidence consumed from A, §B.7 Not tested, §B.8 closure) and
 `$K/branch.txt` holding two lines `G2=<branch>` and `G3=<branch>`.
 
@@ -383,8 +411,10 @@ evidence consumed from A, §B.7 Not tested, §B.8 closure) and
   Interfaces, copying F1-F8 with their addresses, the F7 table, and these
   corrections: (1) `0x24AB0` is a soft restart, not the quit-to-DOS the port
   models (flow.c `game_quit_prompt`); (2) the `0x4FBBB` classification line
-  omits `0x20DAC`/`0x20DD1`; (3) the port's master loop does not advance
-  `DS_00101500` (F4); (4) the spec's G1 row names only `0x2520B`, the idle
+  omits `0x20DAC`/`0x20DD1`; (3) withdrawn: an earlier draft said the port's
+  master loop does not advance `DS_00101500`; at `af135ec` it does
+  (`game_isr_ticks(1u)` in the `0x256C5` spin, F4), and the reference and the
+  compare are ported, so only the `0x2EBB3` longjmp is missing; (4) the spec's G1 row names only `0x2520B`, the idle
   timeout proper is `0x2EBB3` in `0x2EB80`; (5) the spec's citation "K7+K12
   record §2.6 (idle-timeout store)" does not resolve in
   `2026-09-29-k7-k12-derivations.md` (`rg -n 'idle|0x107414|0x2EBA8'` finds
@@ -603,15 +633,17 @@ evidence consumed from A, §B.7 Not tested, §B.8 closure) and
 
 ---
 
-### Task 2: The idle timeout 0x2EBB3 and the idle clock
+### Task 2: The idle timeout 0x2EBB3 (the missing longjmp only)
 
 **Files:**
 - Modify: `port/src/game/config.c` (`config_key_latched`), `port/src/game/config.h:150-151` (comment)
-- Modify: `port/src/game/flow.c` (`game_loop`'s `0x256C5` spin)
 - Modify: `port/tests/test_game.c` (`rs_check_idle`, called from `test_restart`)
 
 **Interfaces:** Consumes Task 1's `game_restart_longjmp`/`game_restart_arm`,
-F3, F4. Produces the idle path used by Task 4.
+F3, F4. Produces the idle path used by Task 4. Not touched (F4, already
+ported and correct): the clock `DS_00101500` (`game_isr_ticks`, the master
+spin, res.c's stall, `config_screen_wait`), the reference `DS_00105F2C` (its
+four stores) and the compare itself. Only the `0x2EBB3` jump is missing.
 
 - [ ] **Step 1: Write the failing test.**
 
@@ -642,6 +674,15 @@ F3, F4. Produces the idle path used by Task 4.
       CHECK_EQ_INT(landed, 1);
       CHECK_EQ_INT((long)got, 0xFEED);
       CHECK_EQ_INT((int)DSB(0x00107414u), 0);
+      CHECK_EQ_INT((long)DSD(0x00105F2Cu), (long)(0x2000u - 0x4B1u));   /* 0x2EB80 stores no reference */
+
+      /* the subtraction is unsigned (0x2EB9F `jbe`): a reference past the
+       * clock wraps to a huge difference and restarts */
+      landed = 0; got = 0xFEEDu;
+      DSD(0x00105F2Cu) = 0x2010u; DSB(0x00107414u) = 0x5Au;
+      if (setjmp(rs_jb) == 0) got = config_key_latched(); else landed = 1;
+      CHECK_EQ_INT(landed, 1);
+      CHECK_EQ_INT((int)DSB(0x00107414u), 0);
 
       /* a latched key wins over any idle time (0x2EB87) */
       landed = 0; got = 0xFEEDu;
@@ -662,9 +703,11 @@ F3, F4. Produces the idle path used by Task 4.
   the literals above are the same addresses (config.c `CFG_KEY_LATCH`,
   `CFG_KEY_TIME`, `CFG_IDLE_FLAG`).
 
-- [ ] **Step 2: Run; expect FAIL** on the one-tick-over block:
-  `FAIL ...: 0 != 1` (landed) and `FAIL ...: 0 != 65261` (got; the port
-  returns 0 today).
+- [ ] **Step 2: Run; expect FAIL** on the one-tick-over and wrap blocks:
+  `FAIL ...: 0 != 1` (landed, twice) and `FAIL ...: 0 != 65261` (got; the
+  port stores `0x107414 = 0` and returns 0 today, config.c ~625..629). The
+  boundary, the store and the latch checks pass already: they pin the
+  existing compare, which this task does not change.
 
 - [ ] **Step 3: Implement.** In `config_key_latched` replace the `PORT:`
   comment line with the call, and rewrite the header's last sentences:
@@ -677,35 +720,27 @@ F3, F4. Produces the idle path used by Task 4.
   Header: "over, the idle timeout stores DS_00107414 = 0 (0x2EBA8, the menu's
   active byte) and soft-restarts through longjmp(0x1044F4, 1) (0x2EBAE..0x2EBB3,
   game_restart_longjmp, record B §B.3)." Update `config.h:150-151` the same way
-  (drop "is not modelled"). In `game_loop`'s spin add the second ISR counter:
-  ```c
-          while (DSD(DS_0010150C) - 1u == DSD(DS_00101508)) {  /* 0x256C5 */
-              DSD(DS_00101508)++;                               /* 0x1BE02..0x1BE10 */
-              DSD(DS_00101500)++;                               /* 0x1BE08..0x1BE16: the 0x500BB clock (record B §B.5) */
-              host_wait_vblank();
-          }
-  ```
-  and extend the spin's existing `PORT:` comment with: "The ISR's gate on
-  DS_00104B22 (0x1BDF8..0x1BE00), its calls 0x1BBAC/0x2D62C and the 0xEF6DE word
-  are not modelled here (pre-existing; config_screen_wait models the gate)."
+  (drop "is not modelled"). Nothing else changes: the clock, the reference
+  stores and the compare are already ported (F4).
 
 - [ ] **Step 4: Run.** Expected `all checks passed`.
 
 - [ ] **Step 5: Mutation proofs.** (1) `> 0x4B0u` -> `>= 0x4B0u`:
   boundary block `FAIL ...: 1 != 0`. (2) delete `game_restart_longjmp();`:
   `FAIL ...: 0 != 1`. (3) delete the `DSB(CFG_IDLE_FLAG) = 0u;` store:
-  `FAIL ...: 90 != 0`. (4) the spin increment is proved by Task 4 (without it
-  the driver's guard trips: see Task 4 Step 5).
+  `FAIL ...: 90 != 0`. (4) make the compare signed
+  (`(s32)(DSD(CFG_TICK_ISR) - DSD(CFG_KEY_TIME)) > 0x4B0`): the wrap block
+  `FAIL ...: 0 != 1`. (The existing clock is proved end to end by Task 4
+  Step 5 (1).)
 
-- [ ] **Step 6: Gate** (N = 2). The spin increment changes `DS_00101500` in
-  every oracle run; its readers are the menu/svcmenu clocks, which no oracle
-  run reaches. Expected `ORACLES-EQUAL`. If a line moves: revert only the
-  spin line, re-run, and record the moved line with the reader that consumed
-  the clock (`rg -n 'DS_00101500|CFG_TICK_ISR' port/src`); stop and report.
+- [ ] **Step 6: Gate** (N = 2). The only behaviour change is on the path where
+  the compare fires, which no oracle run reaches (no oracle run enters mode
+  0x27 or a K11 screen). Expected `ORACLES-EQUAL`; if a line moves, stop and
+  report the moved line.
 
 - [ ] **Step 7: Commit.** `git add port/src/game/config.c port/src/game/config.h
-  port/src/game/flow.c port/tests/test_game.c`; message
-  `game: idle timeout 0x2EBB3 soft-restarts; master loop advances the 0x500BB clock` + trailer.
+  port/tests/test_game.c`; message
+  `game: idle timeout 0x2EBB3 soft-restarts (was: store and return 0)` + trailer.
 
 ---
 
@@ -908,8 +943,8 @@ timeout and asserts the post-state".
   (`DSD(DS_00105F2C) = t0 + 1u;` and use that as `t0`): all checks still pass
   and `n` grows by exactly 1 (print `n` in a temporary `printf`, remove it).
 
-- [ ] **Step 5: Mutation proofs.** (1) remove Task 2's
-  `DSD(DS_00101500)++;` from the spin: `FAIL ...: the idle timeout restarts
+- [ ] **Step 5: Mutation proofs.** (1) remove `DSD(DS_00101500) += n;` from
+  `game_isr_ticks` (flow.c ~6723, the existing clock the timeout depends on): `FAIL ...: the idle timeout restarts
   within the guard`. (2) remove `game_loop_begin();` from the landing:
   `FAIL ...: <ticks> != 1` twice (the tick pair keeps counting from the
   menu frames). (3) remove `game_init_resume();` from the landing: the mode
@@ -1291,7 +1326,8 @@ body unchanged).
   rows' final status and the mutation table.
 
 - [ ] **Step 4: PROGRESS.md** — append one paragraph: B closed G1 (soft
-  restart at all three raw sites, idle clock), G2/G3 per branch, the
+  restart at all three raw sites; the idle timeout's clock, reference and
+  compare were already ported, only its `0x2EBB3` jump was missing), G2/G3 per branch, the
   `0x24AB0` correction, the tests and the driver.
 
 - [ ] **Step 5: Final gate** (N = 9). Expected `EXIT=0`, `ORACLES-EQUAL`,
@@ -1317,8 +1353,12 @@ body unchanged).
   idle timeout proper is `0x2EBB3` in `0x2EB80`, and `0x24AB0` is the same
   restart: B closes all three. (2) `0x24AB0` corrects existing port behaviour
   (ABANDON CONQUEST yes quits to DOS today) and two existing test
-  expectations. (3) F4: the port's master loop never advances `DS_00101500`,
-  so the idle timeout needs a loop change the spec does not list. (4) The
+  expectations. (3) F4 (corrected after unit D's review): the port's master
+  loop does advance `DS_00101500` (`game_isr_ticks(1u)` in the `0x256C5`
+  spin), and the reference stores and the `> 0x4B0` compare are ported; the
+  idle compare fires today and only stores `0x107414 = 0` and returns 0, so
+  the menu re-initialises instead of the game restarting. G1's idle part needs
+  the `0x2EBB3` longjmp and nothing else; no clock change. (4) The
   landing is in `game_loop`, not in `0x20C10`'s port equivalent (`PORT:`),
   because the drivers step the loop per call. (5) The spec's "K7+K12 record
   §2.6" citation does not resolve. (6) G2 needs a persisted config with field

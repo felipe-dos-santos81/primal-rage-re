@@ -64,7 +64,8 @@ extern int g_failures;
     X(test_key_loop)     \
     X(test_voice_sites) \
     X(test_fight_voice_sites) \
-    X(test_virtual_clock)
+    X(test_virtual_clock) \
+    X(test_restart)
 
 /* One line per env-gated driver; each runs alone, before the unit cases. Every
  * entry is an int(void); the front-end determinism gate needs argv[0], so it is
@@ -73,7 +74,8 @@ extern int g_failures;
     X(test_attract,  "PR_ATTRACT_DUMP")       \
     X(test_title,    "PR_TITLE_DUMP")         \
     X(test_frontend, "PR_FRONTEND_DUMP")      \
-    X(test_k11_oracle, "PR_K11_DUMP")
+    X(test_k11_oracle, "PR_K11_DUMP")    \
+    X(test_restart_drive, "PR_RESTART")
 
 #define TEST_CASE_DECLARE(name) int name(void);
 TEST_CASES(TEST_CASE_DECLARE)

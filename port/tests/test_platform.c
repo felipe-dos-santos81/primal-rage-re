@@ -24,6 +24,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <setjmp.h>
 #include <dirent.h>
 #include <strings.h>
 #include <stdint.h>
@@ -2366,6 +2368,46 @@ static unsigned long long now_ns(void)
            (unsigned long long)ts.tv_nsec;
 }
 
+/* Record named-gaps-b §B.4: the CPU-fault end of the run (host_cpu_fault). */
+static jmp_buf hf_jb;
+static volatile u32 hf_exc, hf_eip;
+static void hf_hook(u32 exc, u32 eip) { hf_exc = exc; hf_eip = eip; longjmp(hf_jb, 1); }
+
+static void hf_check_hook(void)
+{
+    volatile int landed = 0;
+    host_fault_hook_fn prev = host_set_fault_hook(hf_hook);
+    hf_exc = 0x5Au; hf_eip = 0x5A5Au;
+    if (setjmp(hf_jb) == 0) host_cpu_fault(0x0Eu, 0x32578u, "unused", 3); else landed = 1;
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT((long)hf_exc, 0x0E);
+    CHECK_EQ_INT((long)hf_eip, 0x32578);
+    CHECK(host_set_fault_hook(prev) == hf_hook, "the hook is handed back");
+}
+
+static void hf_check_exit(void)
+{
+    int fds[2];
+    CHECK(pipe(fds) == 0, "pipe");
+    fflush(stdout); fflush(stderr);          /* the child must not re-flush our buffers */
+    pid_t pid = fork();
+    if (pid == 0) {
+        dup2(fds[1], 2); close(fds[0]);
+        host_cpu_fault(0x00u, 0x334E0u, NULL, 7);
+    }
+    close(fds[1]);
+    char buf[256];
+    ssize_t n = read(fds[0], buf, sizeof buf - 1);
+    close(fds[0]);
+    buf[n > 0 ? n : 0] = '\0';
+    int st = 0;
+    waitpid(pid, &st, 0);
+    CHECK(WIFEXITED(st), "the fault ends the process");
+    CHECK_EQ_INT(WEXITSTATUS(st), 7);
+    CHECK(strstr(buf, "00h") != NULL && strstr(buf, "000334E0") != NULL,
+          "the NULL-message line names the exception and the address");
+}
+
 int test_host(void)
 {
     int before = g_failures;
@@ -2470,6 +2512,8 @@ int test_host(void)
     host_set_key_bits_override(0x1234u, 0);
     CHECK(host_key_bits() != 0x1234u, "the key-bits override is off again");
 
+    hf_check_hook();
+    hf_check_exit();
     return g_failures - before;
 }
 
@@ -2905,6 +2949,9 @@ static void check_menu_draw(void)
 }
 
 /* 0x2FFC4 (record §49-X.7). */
+/* The idle timeout's soft restart (record named-gaps-b §B.3) lands here. */
+static jmp_buf ms_jb;
+
 static void check_menu_step(void)
 {
     const u32 T = MT_TABLE + 0x200u;
@@ -3048,9 +3095,16 @@ static void check_menu_step(void)
     DSW(MT_LAYOUT + 0x2D4u) = 1;
     CHECK_EQ_INT((int)DSB(DS_00107414), 1);
 
-    /* Idle past 0x4B0 ticks clears the active flag (the longjmp's stand-in). */
+    /* Idle past 0x4B0 ticks clears the active flag (0x2EBA8) and soft-restarts
+     * (0x2EBB3, record named-gaps-b §B.3). */
     DSD(DS_00101500) = 3000 + 0x4B1;
-    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    {
+        jmp_buf *const prev = game_restart_arm(&ms_jb);
+        volatile int landed = 0;
+        if (setjmp(ms_jb) == 0) (void)menu_step(T, 0x10u, 4u); else landed = 1;
+        (void)game_restart_arm(prev);
+        CHECK_EQ_INT(landed, 1);
+    }
     CHECK_EQ_INT((int)DSB(DS_00107414), 0);
 
     /* Enter runs the item's callback: -5 leaves with a redraw asked for, -10

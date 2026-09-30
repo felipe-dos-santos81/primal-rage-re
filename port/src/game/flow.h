@@ -8,6 +8,8 @@
 
 #include "types.h"
 
+#include <setjmp.h>
+
 /* The port of the original's game main, 0x1BEC4. Runs the init chain, then the
  * frame loop until it quits, then the teardown of 0x1BE30. Returns the process
  * exit code (always 0; the original's fatal path exits the process instead).
@@ -21,6 +23,21 @@ int game_main(void);
  * game_loop() -> game_shutdown(). */
 void game_init(void);
 void game_shutdown(void);
+
+/* 0x20C24..0x20DE3 — record named-gaps-b §B.2. The post-setjmp tail of
+ * 0x20C10: game_init runs it last, and a 0x65431 longjmp re-runs it from
+ * game_loop's restart point. */
+void game_init_resume(void);
+
+/* 0x65431 — record named-gaps-b §B.1. WATCOM longjmp(0x1044F4, 1): the soft
+ * restart. Lands at the armed restart point (game_loop's; 0x20C1F's setjmp in
+ * the raw); never returns. */
+_Noreturn void game_restart_longjmp(void);
+
+/* PORT: arms `jb` as the restart point and returns the previous one (NULL
+ * when none). The raw's jmp_buf is the 0x2C-byte register save at DS
+ * 0x1044F4 (0x653FC), which only 0x65431 reads. */
+jmp_buf *game_restart_arm(jmp_buf *jb);
 
 /* Tells game_main() which directory holds the INDEX-listed resources
  * (data/game/C). Must be called before game_main(). */
@@ -209,7 +226,8 @@ void sound_pause(void);
 void sound_resume(void);
 
 /* 0x249F0 (record §50-D). The quit prompt; `hard_quit` is AL (0 = the quit
- * flag, nonzero = the longjmp quit, which the port ends through the same flag).
+ * flag, nonzero = ABANDON CONQUEST, whose yes soft-restarts through
+ * game_restart_longjmp, record named-gaps-b §B.3).
  * Blocks on input_get_key. Called by game_key_loop (ESC, the extended key
  * 0x10; record §55-A). */
 void game_quit_prompt(u32 hard_quit);
@@ -469,9 +487,10 @@ void flow_winner_pose_step(void);
  * velocity and starts the scoreboard actors' animations; 7 scrolls the
  * background until it passes y = -0x180, awards 100000 points (0x41310) and
  * draws the updated score, then dispatches to mode 0x17 (continue), 0x417C4
- * (flow_no_continue_screen) or the join-prompt draw + audit close + longjmp
- * 0x2DAE4(0x10); 8 a countdown (DS_00104AFE) that restores DS_00104B25 from
- * DS_00104B23 at zero. 0x416D4's dead stub call 0x32BAC is 0xC3 (a bare RET)
+ * (flow_no_continue_screen) or the join-prompt draw + audit close + the
+ * audit add 0x2DAE4(0x10, 1) (a call, deferred); 8 a countdown (DS_00104AFE)
+ * that restores DS_00104B25 from DS_00104B23 at zero. 0x416D4's dead stub
+ * call 0x32BAC is 0xC3 (a bare RET)
  * confirmed by raw `read_memory` — its 8 call sites across the image
  * (including 0x41733) are all no-ops. */
 void game_mode_12_step(void);

@@ -139,9 +139,15 @@ with addresses in the owning plan.
   real idle timeout in `0x2EB80`: `[0x101500] - [0x105F2C] > 0x4B0`, unsigned),
   `0x2520B` (case `0x27`, menu result not 0/-5/-10) and `0x24AB0` ("ABANDON
   CONQUEST? Y/N" answered yes). All three are a soft restart (RNG re-seed
-  `0xABCD`, `game_state_init`, re-entry at `0x20DE8`). The port's master-loop
-  spin never advances `DS_00101500`, so the idle timeout cannot fire today, and
-  the port currently quits to DOS at `0x24AB0` where the original restarts
+  `0xABCD`, `game_state_init`, re-entry at `0x20DE8`). The port already
+  advances the idle clock `DS_00101500` (`game_isr_ticks(1u)` in the master
+  loop's `0x256C5` spin, flow.c ~6806; res.c's read stall;
+  `config_screen_wait`), writes the reference `DS_00105F2C` at all four raw
+  sites and ports the `> 0x4B0` compare (`config_key_latched`). So the idle
+  compare does fire today, but the port only stores `DS_00107414 = 0` and
+  returns 0, which makes the menu re-initialise where the original restarts:
+  the `0x2EBB3` jump is the only missing piece. The port also quits to DOS at
+  `0x24AB0` where the original restarts
   (fixing it changes two existing test expectations). Plan B closes all three;
   the restart lands in `game_loop()` as a `PORT:` because the test drivers step
   one frame per call.
