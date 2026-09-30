@@ -161,3 +161,195 @@ which the game's own next read would compute identically (the state is a
 function of `mixer_sample_active`, which the probe does not change).
 `max=4` with `full_frames=5430` of 8000 measures what k7-k12 §7.6 inferred:
 the four slots saturate.
+
+## §D.1 The clock
+
+A virtual mixer clock inside `game_audio_service` (`0x1CF20`, `flow.c`). When
+`host_audio_rate()` is 0, the service no longer returns before the render. It
+takes the frames due from the ISR tick `DS_00101500` (`game_isr_ticks`,
+60 Hz) at the fixed profile rate `MIXER_OPL_RATE`, and runs the **same**
+`mixer_render` -> `host_audio_submit` path as a device run.
+`host_audio_submit` is already a no-op without a device, so the frames are
+discarded. A one-shot's voice goes inactive in `voice_read` at its buffer end,
+and `AIL_sample_status` then reports 2 through its existing
+`mixer_sample_active` check.
+
+The code (`flow.c`, `game_audio_service`, replacing `if (rate == 0) return;`):
+
+```c
+    u32 isr = DSD(DS_00101500);
+    u32 isr_elapsed = isr - s_last_isr_tick;
+    s_last_isr_tick = isr;
+    if (isr_elapsed > 0x7FFFFFFFu) isr_elapsed = 0;
+    if (isr_elapsed > HOST_TICK_MAX_CATCHUP) isr_elapsed = HOST_TICK_MAX_CATCHUP;
+
+    u32 rate = host_audio_rate();
+    if (rate == 0) {
+        rate = MIXER_OPL_RATE;
+        elapsed = isr_elapsed;
+    }
+```
+
+plus `static u32 s_last_isr_tick` (a `PORT:` bookkeeping static beside
+`s_last_host_tick`; the tick itself stays in `mem[]`) and its base
+`s_last_isr_tick = DSD(DS_00101500);` in `game_audio_init`. The sequencer's
+tick count is computed from the host-tick `elapsed` before this block, so the
+music path is unchanged; with a device `elapsed` stays the host-tick delta and
+only `s_last_isr_tick` moves.
+
+- **Why the ISR tick (F6).** `host_tick_count()` is wall clock (`host_pump`
+  advances it by elapsed `now_ns()` intervals), so a clock on it would free
+  slots at jittered frames and make `--check`/driver runs nondeterministic.
+  `DS_00101500` is advanced once per master-loop spin (`flow.c`'s `0x256C5`
+  loop, `game_isr_ticks(1u)`) and by res.c's modelled read stall; `0x500BB`
+  already reads it as the sound module's time.
+- **Why no host.c change (F7).** With a device the port pushes
+  (`host_audio_submit` -> `SDL_PutAudioStreamData`); voices advance when
+  `mixer_render` runs, not when SDL consumes. There is no "frames consumed"
+  count to mirror, so the clock lives in the service.
+- **The time base.** 60 Hz at `0x1CFFA push 0x3c` / `0x1CFFF call 0x5DA87`
+  (AIL_set_timer_frequency). `MIXER_OPL_RATE` 49716 (`mixer.h:50`), the rate
+  `main.c:30` opens the device with.
+- **The clamp** is the existing `HOST_TICK_MAX_CATCHUP` (30, `host.h:15`),
+  shared with the host clock. `rate * elapsed` is at most 49716 x 30 and fits
+  a `u32`.
+- **The backward guard** (`isr_elapsed > 0x7FFFFFFF` -> 0) is a `PORT:` guard
+  with no raw counterpart: in the raw the ISR counter only grows. In the port
+  a test restoring the data object moves `DS_00101500` back.
+
+## §D.2 Tests and mutations
+
+`int test_virtual_clock(void)` in `port/tests/test_audio.c`, registered once as
+the last `TEST_CASES` line (after the WAV render `test_sequencer` and every
+slot reader). It runs on the unit-suite process (no `game_init()`), snapshots
+and restores the data object (`tf_voice_snap`/`tf_voice_put`) and stops every
+voice before it returns. Assertion sites: 13545 -> **13585** (+40, the plan's
+count).
+
+- **V1** (`:1668..1671`): a 0x2B11-byte one-shot on slot 0's handle is 4 one
+  tick before its computed end (61, `vc_end_tick`, the same for remainder 0
+  and 59, within `[ceil(len*60/0x2B11), +1]`) and 2 at it; the mixer voice is
+  gone.
+- **V2** (`:1681..1682`): the same buffer with loop count 0 (`0x1CBE1`) still
+  plays after 3 x 61 ticks.
+- **V3** (`:1694`, `:1696`): the tick moved back by 5 renders nothing (64
+  bytes still 4); the next forward tick renders and they end (2).
+- **V6** (`:1717..1730`): 0x40 and 0x42 through the dispatcher, then six
+  one-shots BE/BF alternating: each is accepted by `0x2C483`, takes a slot
+  that is neither loop's, is 4 after its start and 2 at its end tick (52/60);
+  afterwards both loops keep their slots, handles and status 4.
+- **V7** (`:1744..1750`): while BD (0x42's handle as a one-shot) plays,
+  `0x2C483` refuses 0x42 (AL 0); after BD's 42 ticks 0x42 queues (AL 1),
+  starts, and is still 4 a BD length later.
+- The raw records and sizes (`:1636..1648`): BD/BE/BF handles, case 2, byte 0,
+  and the resolved lengths 7557/9511/10904.
+
+There is no V4/V5; the names follow the plan's Review Focus.
+
+### Correction to the plan (the tree wins): the unit suite's slot handles are released
+
+The plan assumed the unit-suite process still holds the four slot handles
+`game_audio_init` allocated. It does not: `test_ail` (registered after
+`test_flow`) ends with `AIL_shutdown()` and one `AIL_allocate_sample_handle`
+(`test_audio.c`, "7. Shutdown releases everything"), so only `g_samples[0]`
+is live and slots 1..3 report status 0 (`AIL_sample_status` on an unused
+handle). The first red run showed it: 26 failures, among them V6's
+`the one-shot took a free slot`, `0 != 4` / `0 != 2` on the slot status and
+`58988198 != 58963700` (BF's handle in 0x40's slot, taken by `0x1CC28`'s
+forced arm because all four slots read "not 4"). The test now re-takes the
+released pool entries at its start (`AIL_allocate_sample_handle` takes the
+first free entry, and the pool is exactly these four handles) and releases
+them again at its end. No assertion was added or changed for this; the
+handles' liveness is covered by V1's and V6's status-4 checks.
+
+The plan's red `grep -c '^FAIL port/tests/test_audio.c'` matches nothing here:
+the harness prints `FAIL <absolute path>:<line>`. The lists below strip the
+prefix to `port/` and exclude the closing `FAILURES: N` line.
+
+### Red (the code before Step 3; `$D/t2-red.fail`): 14 lines, the plan's 14
+
+```
+FAIL port/tests/test_audio.c:1670: 4 != 2
+FAIL port/tests/test_audio.c:1671: 1 != 0
+FAIL port/tests/test_audio.c:1696: 4 != 2
+FAIL port/tests/test_audio.c:1724: 4 != 2
+FAIL port/tests/test_audio.c:1724: 4 != 2
+FAIL port/tests/test_audio.c:1717: 0 != 1
+FAIL port/tests/test_audio.c:1724: 4 != 2
+FAIL port/tests/test_audio.c:1717: 0 != 1
+FAIL port/tests/test_audio.c:1724: 4 != 2
+FAIL port/tests/test_audio.c:1717: 0 != 1
+FAIL port/tests/test_audio.c:1724: 4 != 2
+FAIL port/tests/test_audio.c:1717: 0 != 1
+FAIL port/tests/test_audio.c:1724: 4 != 2
+FAIL port/tests/test_audio.c:1744: 0 != 1
+```
+
+V1's end and voice, V3's forward tick, V6's end at n = 0 and 1, then at
+n = 2..5 the dispatcher's refusal of the stuck handle and the end, and V7's
+refused 0x42.
+
+### Green
+
+`--check 30` exits 0; `PR_ORACLE_REQUIRED=1 ./build/run_tests` exits 0 with
+0 FAIL lines (`$D/t2-green.txt`); 0 compiler warnings.
+
+### Mutations (`$D/mut-*.fail`; each restored byte-for-byte, `git diff --stat` unchanged, re-run green with 0 FAIL)
+
+| Mutation | What it breaks | Measured FAIL lines |
+|---|---|---|
+| M1 `if (rate == 0) return;` | no render without a device (the old code) | the 14 red lines, identical |
+| M2 drop `elapsed = isr_elapsed;` | virtual rate on the host-tick delta (the suite never pumps it) | the 14 red lines, identical |
+| M3 drop the backward guard | the moved-back tick renders ~0xFFFFFFFB -> clamped 30 ticks | 1: `FAIL port/tests/test_audio.c:1694: 2 != 4` (no `test_game.c` line) |
+| M4 `elapsed = isr_elapsed * 2u;` | a doubled clock | 1: `FAIL port/tests/test_audio.c:1668: 2 != 4` |
+| M5 `if (0) {` in `voice_read` | loops end like one-shots | 24 lines, below |
+
+M5 (verbatim):
+
+```
+FAIL port/tests/test_game.c:1625: 0 != 1
+FAIL port/tests/test_game.c:972: 1 != 2
+FAIL port/tests/test_game.c:980: 2 != 3
+FAIL port/tests/test_game.c:982: 0 != 2
+FAIL port/tests/test_game.c:988: 58963700 != 0
+FAIL port/tests/test_game.c:990: 0 != 1
+FAIL port/tests/test_audio.c:357: no sample wraps past the s16 limits
+FAIL port/tests/test_audio.c:402: a stop for an inactive owner leaves the live voice alone
+FAIL port/tests/test_audio.c:1471: 2 != 4
+FAIL port/tests/test_audio.c:1474: stop_sample stops one handle's voice, not every sample voice
+FAIL port/tests/test_audio.c:1512: 0 != 18432
+FAIL port/tests/test_audio.c:1513: 2 != 4
+FAIL port/tests/test_audio.c:1681: 2 != 4
+FAIL port/tests/test_audio.c:1682: 0 != 1
+FAIL port/tests/test_audio.c:1720: the one-shot took a free slot
+FAIL port/tests/test_audio.c:1720: the one-shot took a free slot
+FAIL port/tests/test_audio.c:1720: the one-shot took a free slot
+FAIL port/tests/test_audio.c:1720: the one-shot took a free slot
+FAIL port/tests/test_audio.c:1720: the one-shot took a free slot
+FAIL port/tests/test_audio.c:1727: 58988198 != 58963700
+FAIL port/tests/test_audio.c:1728: 0 != 58946624
+FAIL port/tests/test_audio.c:1729: 2 != 4
+FAIL port/tests/test_audio.c:1730: 2 != 4
+FAIL port/tests/test_audio.c:1750: 2 != 4
+```
+
+The plan named V2, V6's loop block, V7's last check and `test_flow`'s 0x40
+loop check (`test_game.c:1625`); all fail. The other lines are pre-existing
+loop assertions that the mutation also breaks: `check_sample_slots`
+(`test_game.c:972-990`, the loop-byte-1 voice count), `test_mixer`
+(`:357`, `:402`) and `test_ail` (`:1471-1513`). At n = 1..5 V6's one-shot
+lands in a loop's freed slot (0x42 at 42 ticks, 0x40 at 134), so the "free
+slot" check fails five times.
+
+### Not tested
+
+- The device path (`host_audio_rate() != 0`): SDL audio cannot open on this
+  host (`-66681`). Its only change is that `s_last_isr_tick` moves.
+- The 30-tick clamp on `isr_elapsed`: a res.c stall of more than 30 ticks
+  happens only on a large first read. The clamp is `HOST_TICK_MAX_CATCHUP`,
+  shared with the host clock, with no separate test here.
+- `s_last_isr_tick`'s init in `game_audio_init`: `game_init` runs once per
+  process. V3's rebase covers the equivalent path.
+- `sound_sfx_volume`, `snd_sample_stop` and `snd_samples_stop_all` on a
+  naturally ended slot. Their status reads are covered by `test_game.c` on
+  forced statuses.
