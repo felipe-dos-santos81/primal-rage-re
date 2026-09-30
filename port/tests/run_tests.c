@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "test.h"
+#include "mem.h"
 
 int g_failures = 0;
 
@@ -35,7 +36,14 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < sizeof k_drivers / sizeof k_drivers[0]; i++) {
         const char *v = getenv(k_drivers[i].env);
         if (v != NULL && v[0] != '\0') {
+            /* PORT: the miss log (record gameplay-u0 §U0.1) is armed for the
+             * whole driver process, reported, and checked against the pinned
+             * known-set of that driver. */
+            fn_misslog_arm(1);
             k_drivers[i].fn();
+            fn_misslog_report(k_drivers[i].env);
+            test_fn_misslog_driver(k_drivers[i].env);
+            fn_misslog_arm(0);
             printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
             return g_failures != 0;
         }

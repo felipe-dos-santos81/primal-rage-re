@@ -162,6 +162,7 @@ static void actor_type_2d_update(void);
 static void actor_type_19_spawn(void);
 static void anim_code_37B54(u32 rec, u32 arg);
 static void anim_code_459D0(u32 rec, u32 arg);
+static void anim_code_45B18(u32 rec, u32 arg);
 static void anim_code_3FF90(u32 rec, u32 arg);
 static void anim_code_3FEA8(u32 rec, u32 arg);
 static void anim_code_40034(u32 rec, u32 arg);
@@ -375,6 +376,15 @@ int actors_init(void)
     fn_register(0x48D94u, (void (*)(void))fighter_48d94);
     fn_register(0x48BE0u, (void (*)(void))fighter_48be0);
     fn_register(0x48F54u, (void (*)(void))fighter_48f54);
+    /* PORT: record gameplay-u0 §U0.4/§U0.5. The reaction 0x32/0x33/0x34
+     * callbacks of every character (the dwords at 0xA3910/0xA3924/0xA3938
+     * + 0x500 * char; 0x3531C case 7 and 0x34E2C, (slot, rec, side)), and
+     * character 4's 0xBDAE4 finisher entry 0x45C10 (the dword at 0xBDAF4;
+     * 0x379C4 calls DS_001078E8 as (slot, rec) and tests the return). */
+    fn_register(0x37640u, (void (*)(void))fighter_37640);
+    fn_register(0x37774u, (void (*)(void))fighter_37774);
+    fn_register(0x37898u, (void (*)(void))fighter_37898);
+    fn_register(0x45C10u, (void (*)(void))fighter_45c10);
 
     /* PORT: record §42-A. The update table's entries 7 (0x2910C, the
      * type-0x0A/0x19 node walk; dword at 0xA8660) and 5 (0x22FE8, the 0x104728
@@ -489,6 +499,29 @@ int actors_init(void)
     fn_register(0x3F360u, (void (*)(void))fighter_3f360);
     fn_register(0x3F1F0u, (void (*)(void))fighter_3f1f0);
     fn_register(0x3F284u, (void (*)(void))fighter_3f284);
+    /* PORT: record gameplay-u0 §U0.10. Character 6's reaction-0x22/0x27/0x23
+     * callbacks (the dwords at 0xA55D0/0xA5634/0xA55E4) and character 0's
+     * reaction-0x2E callback (0xA38C0; 0x34E2C, (slot, rec, side)), with the
+     * +0x0C (case 7), +0x18 (0x19020, fn(side), EAX returned) and +0x1C
+     * (0x19505, fn(side)) callbacks each stores (code immediates 0x22071/
+     * 0x22078/0x22081, 0x2231D/0x22324/0x2232D, 0x3F6D9/0x3F6E0/0x3F6E9 and
+     * 0x210F8/0x210FF/0x21108). */
+    fn_register(0x2201Cu, (void (*)(void))fighter_2201c);
+    fn_register(0x21F88u, (void (*)(void))fighter_21f88);
+    fn_register(0x21E10u, (void (*)(void))fighter_21e10);
+    fn_register(0x21EA4u, (void (*)(void))fighter_21ea4);
+    fn_register(0x22294u, (void (*)(void))fighter_22294);
+    fn_register(0x22200u, (void (*)(void))fighter_22200);
+    fn_register(0x220F4u, (void (*)(void))fighter_220f4);
+    fn_register(0x22188u, (void (*)(void))fighter_22188);
+    fn_register(0x3F650u, (void (*)(void))fighter_3f650);
+    fn_register(0x3F5BCu, (void (*)(void))fighter_3f5bc);
+    fn_register(0x3F4B8u, (void (*)(void))fighter_3f4b8);
+    fn_register(0x3F54Cu, (void (*)(void))fighter_3f54c);
+    fn_register(0x210C4u, (void (*)(void))fighter_210c4);
+    fn_register(0x210A4u, (void (*)(void))fighter_210a4);
+    fn_register(0x20FA0u, (void (*)(void))fighter_20fa0);
+    fn_register(0x20FE0u, (void (*)(void))fighter_20fe0);
     fn_register(0x487D4u, (void (*)(void))fighter_487d4);
     fn_register(0x48668u, (void (*)(void))fighter_48668);
     fn_register(0x486F8u, (void (*)(void))fighter_486f8);
@@ -501,6 +534,21 @@ int actors_init(void)
     fn_register(0x3DD84u, (void (*)(void))fighter_3dd84);
     fn_register(0x3D424u, (void (*)(void))fighter_3d424);
     fn_register(0x3D3E4u, (void (*)(void))fighter_3d3e4);
+    /* PORT: record gameplay-u0 §U0.9. Character 5's reaction-0x20 callback
+     * 0x3D73C (the dword at 0xA50A8) with its +0x0C 0x3D674, +0x18 0x3D484 and
+     * +0x1C 0x3D4DC (code immediates at 0x3D766/0x3D76D/0x3D774), and its
+     * reaction-0x26 callback 0x3DA10 (0xA5120) with 0x3D9E4, 0x3D858 and
+     * 0x3D8AC (0x3DA37/0x3DA3E/0x3DA47) and the +0x10 handler 0x3D790 that
+     * 0x3D8AC stores (0x3D97A; case 10, (slot, side)). */
+    fn_register(0x3D73Cu, (void (*)(void))fighter_3d73c);
+    fn_register(0x3D674u, (void (*)(void))fighter_3d674);
+    fn_register(0x3D484u, (void (*)(void))fighter_3d484);
+    fn_register(0x3D4DCu, (void (*)(void))fighter_3d4dc);
+    fn_register(0x3DA10u, (void (*)(void))fighter_3da10);
+    fn_register(0x3D9E4u, (void (*)(void))fighter_3d9e4);
+    fn_register(0x3D858u, (void (*)(void))fighter_3d858);
+    fn_register(0x3D8ACu, (void (*)(void))fighter_3d8ac);
+    fn_register(0x3D790u, (void (*)(void))fighter_3d790);
     /* PORT: record §49-U. The pose callbacks: +0x0C 0x3EA24/0x3EE00/0x3F9C8
      * (0x3531C case 7, (slot, rec, side)) and +0x10 0x3E6A8 (case 10, (slot,
      * side)), stored by the setups 0x3EC20/0x3EF44/0x3FB88 (ported, record §50-A). */
@@ -576,19 +624,34 @@ int actors_init(void)
      * fn(side) with EAX returned) and +0x1C 0x45A34 (0x193B0's 0x19505,
      * fn(side)). Its stream 0xEB64E carries the 0xD100 target 0x459D0 (the
      * dwords at 0xEB66E and 0xEB684), opcode 0x11, mode 0x4000. */
-    /* PORT: record §49-Z. The slot +0x0C callbacks 0x45B50 (stored by the
-     * unported 0x45C10, the dword at 0x45C33) and 0x47B04 (stored by the
-     * unported 0x47BFC, the dword at 0x47C56; 0x3531C case 7, (slot, rec,
+    /* PORT: record §49-Z. The slot +0x0C callbacks 0x45B50 (stored by
+     * 0x45C10, the dword at 0x45C33) and 0x47B04 (stored by 0x47BFC, the
+     * dword at 0x47C56; both ported by gameplay-u0; 0x3531C case 7, (slot, rec,
      * side)), and the render table's bit-0 entry 0x4F4E8 (DS_000A86C4[0],
      * the dword at 0xA86C4; fn() with the unread EAX). */
     fn_register(0x45B50u, (void (*)(void))fighter_45b50);
     fn_register(0x47B04u, (void (*)(void))fighter_47b04);
+    /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
+     * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
+     * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
+     * and +0x1C 0x47984 (0x193B0's 0x19505, fn(side)). */
+    fn_register(0x47BFCu, (void (*)(void))fighter_47bfc);
+    fn_register(0x478D4u, (void (*)(void))fighter_478d4);
+    fn_register(0x47984u, (void (*)(void))fighter_47984);
     fn_register(0x4F4E8u, flow_round_timer_step);
+    /* PORT: record gameplay-u0 §U0.6. The render table's bit-3 and bit-4
+     * entries 0x1DC0C and 0x4F5C8 (DS_000A86C4[3]/[4], the dwords at 0xA86D0
+     * and 0xA86D4; fn() with the unread EAX). */
+    fn_register(0x1DC0Cu, fight_hud_bar_step);
+    fn_register(0x4F5C8u, flow_bonus_count_step);
     fn_register(0x45AD0u, (void (*)(void))fighter_45ad0);
     fn_register(0x45A70u, (void (*)(void))fighter_45a70);
     fn_register(0x459F4u, (void (*)(void))fighter_459f4);
     fn_register(0x45A34u, (void (*)(void))fighter_45a34);
     fn_register(0x459D0u, (void (*)(void))anim_code_459D0);
+    /* PORT: record gameplay-u0 §U0.7. The 0xD100 target 0x45B18 (the dword
+     * at 0xEB70E), opcode 0x11, EAX = rec. */
+    fn_register(0x45B18u, (void (*)(void))anim_code_45B18);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -1712,6 +1775,15 @@ static void anim_code_459D0(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_459d0(rec);
+}
+
+/* 0x45B18 — the animation-opcode target shape (record gameplay-u0 §U0.7;
+ * the 0xD100 word at 0xEB70C, opcode 0x11). anim_indirect passes EAX = rec;
+ * the raw reads only EAX, so this wrapper drops the operand. */
+static void anim_code_45B18(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_45b18(rec);
 }
 
 /* 0x3FF90 — the animation-opcode target shape (record §54-A; the 0xD000
@@ -2891,8 +2963,9 @@ static void actor_type_0a19_update(void)
 /* 0x37B54 — demo-pose record §46-D. EAX = rec: the other side's slot
  * DS_001077A8[(rec+0x51) ^ 1] (the byte index, `and eax,0xff`); when it is
  * not 0, its record's +0x53 = 1. Called by 0x48F98 (0x4904F), 0x45D98
- * (0x45FD3, fighter_45d98, record §K8c.6) and the unported 0x45B43; the D000
- * target at 0xE8564/0xEDAFC. */
+ * (0x45FD3, fighter_45d98, record §K8c.6) and 0x45B18 (0x45B43,
+ * fighter_45b18, record gameplay-u0 §U0.7); the D000 target at
+ * 0xE8564/0xEDAFC. */
 void fighter_37b54(u32 rec)
 {
     u32 slot = DSD(DS_001077A8

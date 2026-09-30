@@ -86,6 +86,138 @@ int test_mem(void)
     return g_failures - before;
 }
 
+/* The miss log (record gameplay-u0 §U0.1/§U0.2). Its pinned known-set: every
+ * stock driver run, and the --check run, records exactly these (address,
+ * caller) pairs. 0x5D812 is the runtime's `xor eax,eax; ret` stub
+ * (0x5D812..0x5D814), deliberately unregistered (actors.c, flow.c): its
+ * return is discarded at both sites, so the skip is equivalent. The
+ * PR_FRONTEND_DUMP driver adds its own unit probe 0x41578 (test_frontend's
+ * "direct-called only, not registered" check, which runs in the same
+ * process before game_init()). Measured with every driver (title, attract,
+ * frontend, restart, K11 walk/menuesc/idle/diags/de) and --check 5/60/820. */
+static const struct { u32 addr; const char *ctx; } k_miss_known[] = {
+    { 0x5D812u, "actor_spawn" },
+    { 0x5D812u, "set_dead" },
+};
+static const struct { u32 addr; const char *ctx; } k_miss_frontend[] = {
+    { 0x41578u, "test_frontend" },
+};
+
+static int fnm_known(u32 addr, const char *ctx, int frontend)
+{
+    for (size_t i = 0; i < sizeof k_miss_known / sizeof k_miss_known[0]; i++)
+        if (k_miss_known[i].addr == addr && strcmp(k_miss_known[i].ctx, ctx) == 0)
+            return 1;
+    if (frontend)
+        for (size_t i = 0; i < sizeof k_miss_frontend / sizeof k_miss_frontend[0]; i++)
+            if (k_miss_frontend[i].addr == addr &&
+                strcmp(k_miss_frontend[i].ctx, ctx) == 0)
+                return 1;
+    return 0;
+}
+
+int test_fn_misslog_driver(const char *env)
+{
+    int before = g_failures;
+    int frontend = strcmp(env, "PR_FRONTEND_DUMP") == 0;
+    u32 want = (u32)(sizeof k_miss_known / sizeof k_miss_known[0]) +
+               (frontend ? (u32)(sizeof k_miss_frontend / sizeof k_miss_frontend[0]) : 0u);
+    CHECK_EQ_INT(fn_misslog_dropped(), 0);
+    CHECK_EQ_INT(fn_misslog_count(), want);
+    for (u32 i = 0; i < fn_misslog_count(); i++)
+        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend)) {
+            printf("fn-miss %s: unexpected 0x%05X from %s\n", env,
+                   (unsigned)fn_misslog_addr(i), fn_misslog_ctx(i));
+            CHECK(0, "the driver's miss log holds only its pinned known-set");
+        }
+    return g_failures - before;
+}
+
+/* A second caller, so a pair differs from another by its caller only. */
+static void (*fnm_probe_ctx(u32 addr))(void) { return fn_resolve(addr); }
+
+int test_fn_misslog(void)
+{
+    int before = g_failures;
+    /* Unregistered sentinels: above the code object, never registered. */
+    const u32 a = 0x00FEDC10u, b = 0x00FEDC20u;
+    CHECK((fn_resolve)(a) == NULL && (fn_resolve)(b) == NULL,
+          "the sentinels are unregistered");
+
+    /* Disarmed: nothing is recorded (the arm just cleared the log). */
+    fn_misslog_arm(1);
+    fn_misslog_arm(0);
+    CHECK(fn_resolve(a) == NULL, "a miss still resolves to NULL");
+    CHECK_EQ_INT(fn_misslog_count(), 0);
+
+    /* Armed: 0 and a registered address are not misses. */
+    fn_misslog_arm(1);
+    CHECK(fn_resolve(0) == NULL, "0 resolves to NULL");
+    CHECK(fn_resolve(FN_0002D62C) == fn_probe, "registered by test_mem");
+    CHECK_EQ_INT(fn_misslog_count(), 0);
+
+    /* One miss: its address, its caller and one hit. */
+    CHECK(fn_resolve(a) == NULL, "the seeded miss resolves to NULL");
+    CHECK_EQ_INT(fn_misslog_count(), 1);
+    CHECK_EQ_INT(fn_misslog_addr(0), a);
+    CHECK(strcmp(fn_misslog_ctx(0), "test_fn_misslog") == 0, "the caller is recorded");
+    CHECK_EQ_INT(fn_misslog_hits(0), 1);
+    CHECK(fn_misslog_has(a) && !fn_misslog_has(b), "has() names the recorded address");
+
+    /* The same pair again counts a hit; another caller is another pair. */
+    (void)fn_resolve(a);
+    CHECK_EQ_INT(fn_misslog_count(), 1);
+    CHECK_EQ_INT(fn_misslog_hits(0), 2);
+    (void)fnm_probe_ctx(a);
+    CHECK_EQ_INT(fn_misslog_count(), 2);
+    CHECK(strcmp(fn_misslog_ctx(1), "fnm_probe_ctx") == 0, "the second caller is recorded");
+    CHECK_EQ_INT(fn_misslog_hits(1), 1);
+    (void)fn_resolve(b);
+    CHECK_EQ_INT(fn_misslog_count(), 3);
+    CHECK_EQ_INT(fn_misslog_addr(2), b);
+
+    /* Past FN_MISSLOG_MAX pairs a miss is counted as dropped, not stored. */
+    for (u32 i = 3; i < FN_MISSLOG_MAX; i++) (void)fn_resolve(0x00FEE000u + i * 4u);
+    CHECK_EQ_INT(fn_misslog_count(), FN_MISSLOG_MAX);
+    CHECK_EQ_INT(fn_misslog_dropped(), 0);
+    (void)fn_resolve(0x00FEF000u);
+    CHECK_EQ_INT(fn_misslog_count(), FN_MISSLOG_MAX);
+    CHECK_EQ_INT(fn_misslog_dropped(), 1);
+
+    /* Re-arming clears both. */
+    fn_misslog_arm(1);
+    CHECK_EQ_INT(fn_misslog_count(), 0);
+    CHECK_EQ_INT(fn_misslog_dropped(), 0);
+    fn_misslog_arm(0);
+
+    /* The --check run's log (main.c writes it after the run; `make verify`
+     * runs --check before this suite): exactly the pinned known-set. */
+    FILE *f = fopen("frames/fn_miss.txt", "r");
+    if (f == NULL) {
+        printf("test_fn_misslog: frames/fn_miss.txt absent, --check log not compared\n");
+    } else {
+        char line[256];
+        int n = 0;
+        while (fgets(line, sizeof line, f) != NULL) {
+            unsigned addr = 0;
+            char ctx[128];
+            if (sscanf(line, "0x%x %127s", &addr, ctx) != 2) {
+                printf("fn_miss.txt: unexpected line %s", line);
+                CHECK(0, "every --check log line is a recorded pair");
+                continue;
+            }
+            n++;
+            if (!fnm_known((u32)addr, ctx, 0)) {
+                printf("fn_miss.txt: unexpected 0x%05X from %s\n", addr, ctx);
+                CHECK(0, "the --check miss log holds only the pinned known-set");
+            }
+        }
+        fclose(f);
+        CHECK_EQ_INT(n, (int)(sizeof k_miss_known / sizeof k_miss_known[0]));
+    }
+    return g_failures - before;
+}
+
 /* ---- test_le.c ---- */
 
 #define EXE "data/game/C/PRAGE.EXE"

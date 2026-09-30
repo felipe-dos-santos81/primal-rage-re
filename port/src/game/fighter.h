@@ -670,6 +670,22 @@ void fighter_48d94(u32 slot, u32 rec, u32 side);
 int fighter_48be0(u32 slot, u32 rec);
 int fighter_48f54(u32 slot, u32 rec);
 
+/* 0x37640, 0x37774 and 0x37898 (record gameplay-u0 §U0.4). The reaction
+ * 0x32/0x33/0x34 callbacks of every character (0x3531C/0x34E2C: EAX = slot,
+ * EDX = rec, EBX = side): with the other slot finishable (+0x42 bit 5, +0x43
+ * bit 3) they arm the finisher: the 0x1078E4 stream, DS_001078E8 (0 /
+ * 0xBDAE4[char] / 0xBDB00[char]), 0x37D18 or the +0x40 flags, the score
+ * 0x41310(side, 50000). */
+void fighter_37640(u32 slot, u32 rec, u32 side);
+void fighter_37774(u32 slot, u32 rec, u32 side);
+void fighter_37898(u32 slot, u32 rec, u32 side);
+
+/* 0x45C10 (record gameplay-u0 §U0.5). Character 4's 0xBDAE4 finisher entry,
+ * called by 0x379C4 through DS_001078E8 with EAX = slot, EDX = rec: the
+ * record's stream 0xEB7A0 at 3.0 and the slot 7/9/0 with the +0x0C callback
+ * 0x45B50; non-zero return. */
+int fighter_45c10(u32 slot, u32 rec);
+
 /* 0x22CE4. The second way into the 0x22BEC freeze (0x22E44's call): 0x33ACC,
  * 0x39834 with the other slot's +0x5F, the other slot's +0x57 = 2, the side's
  * slot in 0x10/0x0A with +0x10 0x22BEC and +0x5F = 0xFF, 0x22B28, then
@@ -790,6 +806,9 @@ void fighter_45a70(u32 slot, u32 rec, u32 side);
 u32  fighter_459f4(u32 side);
 void fighter_45a34(u32 side);
 void fighter_459d0(u32 rec);
+/* 0x45B18 (record gameplay-u0 §U0.7). The 0xD100 target at 0xEB70E: the
+ * child 0xC934C spawned on the record (its index in +0x4B), then 0x37B54. */
+void fighter_45b18(u32 rec);
 /* Record §48-R. Character 4's reaction callbacks 0x44F64 (0x20), 0x450E8
  * (0x21), 0x455A0 (0x22), 0x44970 (0x23), 0x45878 (0x24), 0x44CFC (0x26) and
  * 0x44B10 (0x2D), the (slot, rec, side) registers of 0x34E2C's 0x35045 call;
@@ -846,6 +865,28 @@ void fighter_3f3f4(u32 slot, u32 rec, u32 side);
 void fighter_3f360(u32 slot, u32 rec, u32 side);
 u32  fighter_3f1f0(u32 side);
 void fighter_3f284(u32 side);
+/* Record gameplay-u0 §U0.10. The twins of the 0x3F3F4 cluster: character
+ * 6's reaction 0x22 (0x2201C: +0x0C 0x21F88, +0x18 0x21E10, +0x1C 0x21EA4)
+ * and 0x27 (0x22294: 0x22200, 0x220F4, 0x22188), character 0's 0x2E
+ * (0x3F650: 0x3F5BC, 0x3F4B8, 0x3F54C); and character 6's reaction 0x23
+ * (0x210C4: 0x210A4, 0x20FA0, 0x20FE0). Setters and +0x0C are (slot, rec,
+ * side), +0x18 hooks fn(side) with EAX returned, +0x1C fn(side). */
+void fighter_2201c(u32 slot, u32 rec, u32 side);
+void fighter_21f88(u32 slot, u32 rec, u32 side);
+u32  fighter_21e10(u32 side);
+void fighter_21ea4(u32 side);
+void fighter_22294(u32 slot, u32 rec, u32 side);
+void fighter_22200(u32 slot, u32 rec, u32 side);
+u32  fighter_220f4(u32 side);
+void fighter_22188(u32 side);
+void fighter_3f650(u32 slot, u32 rec, u32 side);
+void fighter_3f5bc(u32 slot, u32 rec, u32 side);
+u32  fighter_3f4b8(u32 side);
+void fighter_3f54c(u32 side);
+void fighter_210c4(u32 slot, u32 rec, u32 side);
+void fighter_210a4(u32 slot, u32 rec, u32 side);
+u32  fighter_20fa0(u32 side);
+void fighter_20fe0(u32 side);
 void fighter_487d4(u32 slot, u32 rec, u32 side);
 u32  fighter_48668(u32 side);
 void fighter_486f8(u32 side);
@@ -858,6 +899,21 @@ u32  fighter_3dd14(u32 side);
 void fighter_3dd84(u32 side);
 void fighter_3d424(u32 slot, u32 side);
 u32  fighter_3d3e4(u32 slot);
+/* Record gameplay-u0 §U0.9. Character 5's reaction-0x20 cluster: 0x3D73C
+ * (slot, rec, side) stores the +0x0C 0x3D674 (case 7), the +0x18 hook
+ * 0x3D484 (fn(side), EAX returned) and the +0x1C 0x3D4DC (fn(side)), which
+ * arms 0x3D424/0x3D3E4. Its reaction-0x26 cluster: 0x3DA10 stores 0x3D9E4,
+ * 0x3D858 and 0x3D8AC, which arms the +0x10 handler 0x3D790 (case 10,
+ * (slot, side) as 0x3D424) and 0x3D3E4. */
+void fighter_3d73c(u32 slot, u32 rec, u32 side);
+void fighter_3d674(u32 slot, u32 rec, u32 side);
+u32  fighter_3d484(u32 side);
+void fighter_3d4dc(u32 side);
+void fighter_3da10(u32 slot, u32 rec, u32 side);
+void fighter_3d9e4(u32 slot, u32 rec, u32 side);
+u32  fighter_3d858(u32 side);
+void fighter_3d8ac(u32 side);
+void fighter_3d790(u32 slot, u32 side);
 /* Record §49-U: the pose/animation slot callbacks 0x3EC20/0x3EF44/0x3FB88
  * store. 0x3EA24, 0x3EE00 and 0x3F9C8 are +0x0C callbacks (slot, rec, side);
  * 0x3E6A8 is a +0x10 handler, (slot, side) as 0x3D424. */
@@ -1008,6 +1064,13 @@ void fighter_45b50(u32 slot, u32 rec, u32 side);
 void fighter_47a00(u32 side);
 /* 0x47B04: the slot +0x0C callback 0x47BFC stores (slot, rec, side). */
 void fighter_47b04(u32 slot, u32 rec, u32 side);
+/* Record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback 0x47BFC
+ * (slot, rec, side): with the side's DS_00107D2C word >= 1, the slot 9/7/0,
+ * +0x57 = 5 and the callbacks +0x0C 0x47B04, +0x18 0x478D4 (fn(side), EAX
+ * returned: two 0x18C14 passes) and +0x1C 0x47984 (fn(side)). */
+void fighter_47bfc(u32 slot, u32 rec, u32 side);
+u32  fighter_478d4(u32 side);
+void fighter_47984(u32 side);
 
 /* Record §K8c: the update-table entries 4 (0x37C8C), 8 (0x34648), 9
  * (0x3800C), 11 (0x4F890), 12 (0x24150) and 17 (0x45D98), each fn() as
