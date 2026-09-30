@@ -1134,7 +1134,7 @@ void fight_hook_430e8(void)
  * incremented before the 0x44616 store). Last, the 0x2E voice and 0x444C8. */
 static void fight_4454c(void)
 {
-    /* PORT: 0x44557 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    (void)sound_voice(0x100u);                          /* 0x44552/0x44557 0x2C3FC */
     if (DSB(DS_00108173) != 0u) {                       /* 0x4455C */
         for (u32 i = 1; i <= 2u; i++) {                 /* 0x44565..0x44586 */
             DSB(DS_0010816D + i) = 0xFFu;               /* 0x44568 */
@@ -1178,7 +1178,7 @@ void fight_hook_4367c(void)
         fight_4454c();                                  /* 0x43688 0x4454C */
         return;
     }
-    /* PORT: 0x43696 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    (void)sound_voice(0x100u);                          /* 0x43691/0x43696 0x2C3FC */
     if (DSB(DS_00108173) != 0u) {                       /* 0x4369B */
         for (u32 i = 1; i <= 2u; i++) {                 /* 0x436A6..0x436C6 */
             u8 v = DSB(DS_00108167 + i);                /* 0x436A9 */
@@ -4748,8 +4748,9 @@ void fight_effects_pass(void)
                     if (x > 0 && x < 0x5400
                             && (DSB(entry + 0x1Cu) & 4u) == 0u) {   /* 0x49FCA..0x49FE1 */
                         DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 4u); /* 0x49FEE */
-                        /* PORT: 0x49FF1 0x2C3FC(0xDE) voice, not wired
-                         * (record §45-A). */
+                        /* 0xDE is case 6: AL = 0 and no write; the
+                         * raw still makes the call. */
+                        (void)sound_voice(0xDEu);            /* 0x49FE9/0x49FF1 0x2C3FC */
                     }
                     if (x >= 0 && x <= 0x5400
                             && (DSB(entry + 0x1Cu) & 1u) != 0u) {   /* 0x49FF6..0x4A00F */

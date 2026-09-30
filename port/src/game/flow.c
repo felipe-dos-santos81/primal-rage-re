@@ -1414,7 +1414,7 @@ void flow_1082c8_init(void)
  * unentered stub 0x11CC8 (`jmp` at 0x11CD4). */
 void game_coin_divert(u32 players)
 {
-    /* PORT: 0x257AD 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    (void)sound_voice(0x100u);                          /* 0x257A8/0x257AD 0x2C3FC */
     actors_reset_al(0u);                                /* 0x257B2/0x257B4 0x2BAF4 */
     DSB(DS_00104B17) = 0u;                              /* 0x257C0 (AH) */
     DSB(DS_00104B19) = 0u;                              /* 0x257C6 */
@@ -1428,13 +1428,14 @@ void game_coin_divert(u32 players)
     mem_fill(DS_00104B02, 0u, 7u);                      /* 0x257FC/0x25801 0x65490 */
     DSD(DS_00104AE4) = FN_0004367C;                     /* 0x25806/0x25810 */
     frontend_wipe_arm(0x10u);                           /* 0x2580B/0x25816 0x4F980 */
-    /* PORT: 0x25820 0x2C3FC(0x53) voice, not wired (record §45-A). Its EAX is
+    /* 0x25820 0x2C3FC(0x53), case 0. Its EAX is
      * 0x257A4's return value, which no caller reads: 0x11EB8 is followed by
      * 0x10DB0, which loads AH first and never reads AL; 0x11D41 returns
      * through 0x11D04 into case 3's `jmp 0x2540F`, and the game-start cases
      * jump there too. In that tail 0x2A31C, 0x3BB90 and 0x12D48 write EAX (or
      * AL) before reading it, the mode tail 0x2545C loads AX and compares only
      * AX, and 0x255CC reloads EAX (0x25621) after 0x24C5C returns. */
+    (void)sound_voice(0x53u);                           /* 0x2581B/0x25820 0x2C3FC */
 }
 
 /* ---- 0x33C18's other callers (record §48-Q) ------------------------------ */
@@ -1515,7 +1516,7 @@ void flow_player_join(u32 side)
     DSD(DS_000F0A48) = 0u;                              /* 0x28DB8 */
     DSD(DS_00104AEC) = 0u;                              /* 0x28DBE */
     DSD(DS_00104AE8) = 0u;                              /* 0x28DC4 */
-    /* PORT: 0x28DCA 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    (void)sound_voice(0x100u);                          /* 0x28DB3/0x28DCA 0x2C3FC */
     DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;   /* 0x28DCF..0x28DE7 */
     text_cursor_hold_font2(-1, 0xA, game_string_get(0x44u),
                            0x4000u);                    /* 0x28DF6 0x1C500, 0x28E02 0x2F510 */
@@ -3922,7 +3923,7 @@ void game_hook_24b54(void)
  * and the hook becomes 0x10E80 when DS_00104B1D == 0, else 0x24B54. */
 void game_hook_25ae8(void)
 {
-    /* PORT: 0x25AF1 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    (void)sound_voice(0x100u);                          /* 0x25AEC/0x25AF1 0x2C3FC */
     DSB(DS_00104B14) = 0u;                              /* 0x25AF8 */
     frontend_input_reset();                             /* 0x25B00 0x4F1E4 */
     actors_reset();                                     /* 0x25B0A 0x2BAF4 (eax = 1) */
@@ -4536,7 +4537,7 @@ static void game_state_4(void)
 {
     switch (DSW(DS_0009AD98)) {
     case 0:
-        /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
+        (void)sound_voice(0x100u);                              /* 0x1159A/0x1159F 0x2C3FC */
         frontend_input_reset();                                 /* 0x4F1E4 (eax = 0) */
         actors_reset();                                         /* 0x2BAF4 (eax = 1) */
         config_set_credit_row(0x1du);                           /* 0x2C06C (eax = 0x1D) */
@@ -4555,7 +4556,7 @@ static void game_state_4(void)
         DSW(DS_0009AD98) = 4;                                   /* 0x116B2 */
         return;
     case 1:
-        /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
+        (void)sound_voice(0x100u);                              /* 0x116BF/0x116C4 0x2C3FC */
         frontend_input_reset();                                 /* 0x4F1E4 (eax = 0) */
         actors_reset();                                         /* 0x2BAF4 (eax = 1) */
         (void)actor_spawn((const u32 *)(mem + 0x9AD84u),        /* 0x2AE14 */
@@ -4577,7 +4578,7 @@ static void game_state_4(void)
         DSW(DS_000F0A74) = 2;                                   /* 0x11832 */
         return;
     case 2:
-        /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
+        (void)sound_voice(0x100u);                              /* 0x1183F/0x11844 0x2C3FC */
         frontend_input_reset();                                 /* 0x4F1E4 (eax = 0) */
         actors_reset();                                         /* 0x2BAF4 (eax = 1) */
         (void)actor_spawn((const u32 *)(mem + 0x9AD84u),        /* 0x2AE14 */
@@ -4838,8 +4839,8 @@ void game_fight_reset(u32 stage, u32 full)
  * character (draw1 + draw2) % 7. Exactly two draws, in that order. */
 static void game_state_6(void)
 {
-    /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
-    /* 0x29D60 is a ret-only no-op. */
+    (void)sound_voice(0x100u);                          /* 0x11A8F/0x11A94 0x2C3FC */
+    /* 0x11A99 0x29D60 is a ret-only no-op. */
     config_set_credit_row(0x1Du);                       /* 0x11AA3 0x2C06C */
 
     u32 draw1 = rng_next(7u);                           /* 0x11AAD (draw 1) */
@@ -5072,7 +5073,8 @@ void game_mode_1e_step(void)
         if (DSD(DS_00104AD4) == 2u && DSB(DS_00104B1F) == 0u    /* 0x1EECF/0x1EED6/0x1EED8/0x1EEDF */
             && hiscore_rank_pair() != 0u) {                     /* 0x1EEE1/0x1EEE6/0x1EEE8 */
             nameentry_reset();                                  /* 0x1EEEA 0x1ED2C */
-            /* PORT: 0x1EEEF/0x1EEF9 0x2C3FC voices (0x100, 0xE1), not
+            (void)sound_voice(0x100u);                          /* 0x1EEEF/0x1EEF4 0x2C3FC */
+            /* PORT: 0x1EEF9/0x1EEFE 0x2C3FC voice (0xE1), not
              * wired (record §45-A). */
             u32 s0 = DSD(DS_001077EC);                          /* 0x1EF03 */
             u32 s1 = DSD(DS_00107880);                          /* 0x1EF08 */
@@ -5118,7 +5120,8 @@ void game_mode_1e_step(void)
             if (advance) {
                 DSB(DS_00104B25) = 5u;                              /* 0x1F1DB */
                 nameentry_reset();                                  /* 0x1F1E2 0x1ED2C */
-                /* PORT: 0x1F1EC/0x1F1F6 0x2C3FC voices (0x100, 0xE1), not
+                (void)sound_voice(0x100u);                          /* 0x1F1E7/0x1F1EC 0x2C3FC */
+                /* PORT: 0x1F1F1/0x1F1F6 0x2C3FC voice (0xE1), not
                  * wired (record §45-A). */
                 break;
             }
@@ -5158,7 +5161,8 @@ void game_mode_1e_step(void)
                        || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F2E1/0x1F2E8/0x1F2EE/0x1F2F4 */
             if (advance) {
                 DSB(DS_00104B25) = 8u;                               /* 0x1F301 */
-                /* PORT: 0x1F307/0x1F311 0x2C3FC voices (0x100, 0xE1), not
+                (void)sound_voice(0x100u);                           /* 0x1F2FC/0x1F307 0x2C3FC */
+                /* PORT: 0x1F30C/0x1F311 0x2C3FC voice (0xE1), not
                  * wired (record §45-A). */
                 nameentry_reset();                                   /* 0x1F316 0x1ED2C */
                 break;
@@ -5404,8 +5408,8 @@ void game_mode_1f_step(void)
  * call). Otherwise:
  * - three text_cells_release_count(-1, 3, 0x2A), (-1, 5, 0x2A), (-1, 7,
  *   0x2A) clears (0x2F388);
- * - the run clock 0x32970(0) and two deferred voices 0x2C3FC(0x29) and
- *   0x2C3FC(0x22, edx=0x1D), out of scope (spec §7);
+ * - the run clock 0x32970(0), out of scope (spec §7); the voice
+ *   0x2C3FC(0x29) (case 0) and the deferred 0x2C3FC(0x22, edx=0x1D);
  * - prompt_side_erase(0, 0x1D) and prompt_side_erase(1, 0x1D) (0x2C2B0);
  * - the current side's slot byte DS_001077F1[side] |= 0x10 (the slot's
  *   +0x41, as flow.c's other +0x41 writers);
@@ -5435,8 +5439,9 @@ static void flow_26d4c(void)
     text_cells_release_count(-1, 5, 0x2A);                  /* 0x26D84 */
     text_cells_release_count(-1, 7, 0x2A);                  /* 0x26D98 */
     /* PORT: 0x26D9F 0x32970(0), the run clock, is out of scope (spec §7). */
-    /* PORT: 0x26DA9 0x2C3FC(0x29) and 0x26DB8 0x2C3FC(0x22, edx=0x1D)
-     * voices, not wired (record §45-A; spec §7). */
+    (void)sound_voice(0x29u);                               /* 0x26DA4/0x26DA9 0x2C3FC */
+    /* PORT: 0x26DB8 0x2C3FC(0x22, edx=0x1D) voice, not wired (record §45-A;
+     * spec §7). */
     prompt_side_erase(0, 0x1D);                             /* 0x26DBF 0x2C2B0 */
     prompt_side_erase(1, 0x1D);                             /* 0x26DCE */
 
@@ -5860,7 +5865,7 @@ void game_audio_init(void)
      * value owned by sub-project 4, and game_audio_init already carries the
      * shipped enable flag above. The shipped EXE data segment holds 0x7f (full)
      * at this address, so the port installs that default rather than playing the
-     * announcer at the zeroed mem[] value. */
+     * samples at the zeroed mem[] value. */
     DSD(DS_000A2CB4) = 0x7f;
     AIL_set_preference(4, 4);
     AIL_set_preference(1, 0x2b11);  /* 11025 Hz sample rate */
@@ -6341,6 +6346,20 @@ void sound_sample_start(u32 slot)
     DSD(DS_00102864 + off) = 0;                            /* 0x1CC11/0x1CC16 */
 }
 
+/* PORT: a test seam, not original state (the pattern of res.c's
+ * res_set_screen_hook): the ids sound_voice was entered with since the last
+ * reset, the first SOUND_VOICE_LOG_CAP of them. The K12 site tests (record
+ * k7-k12 §4) read it to prove each wired 0x2C3FC call. */
+#define SOUND_VOICE_LOG_CAP 16u
+static u32 s_voice_log[SOUND_VOICE_LOG_CAP];
+static u32 s_voice_log_n;
+void sound_voice_log_reset(void) { s_voice_log_n = 0; }
+u32 sound_voice_log_count(void) { return s_voice_log_n; }
+u32 sound_voice_log_at(u32 i)
+{
+    return (i < s_voice_log_n && i < SOUND_VOICE_LOG_CAP) ? s_voice_log[i] : 0xFFFFFFFFu;
+}
+
 /* 0x2C3FC — the voice dispatcher. EAX = the voice id (0 does nothing; 0x100
  * is id 0's record); the record is the 12-byte DS_000BBDC8[id]: +0 the case,
  * +4 a handle, +8 a byte. Cases (jump table 0x2C3E0): 0 nothing; 1 the handle
@@ -6352,7 +6371,10 @@ void sound_sample_start(u32 slot)
  * EDI are preserved; the callers read AL at most. */
 u32 sound_voice(u32 id)
 {
-    if (id == 0u) return 0;                                /* 0x2C401 */
+    /* PORT: the test seam above; no original instruction. */
+    if (s_voice_log_n < SOUND_VOICE_LOG_CAP) s_voice_log[s_voice_log_n] = id;
+    s_voice_log_n++;
+    if (id == 0u) return 0;                               /* 0x2C401 */
     if (id == 0x100u) id = 0;                              /* 0x2C409/0x2C410 */
     u32 rec = DS_000BBDC8 + id * SND_VOICE_REC;            /* 0x2C412..0x2C41B */
     u32 h = DSD(rec + 4u);
@@ -7400,8 +7422,8 @@ void game_state_step(void)
             game_state_4();   /* 0x11578 */
             break;
         case 5:
-            /* PORT: 0x2C3FC(0x100 / ecx = 0x12C) voice/sample cancel, not wired
-             * (record §45-A). */
+            /* 0x11DED ECX = 0x12C: 0x2C3FC's own body never names ECX. */
+            (void)sound_voice(0x100u);                  /* 0x11DE8/0x11DF2 0x2C3FC */
             frontend_match_start();                     /* 0x1EA08 */
             config_set_credit_row(0x1Du);               /* 0x2C06C */
             /* PORT: 0x32970(eax = 0), the run-clock/tick update, is out of scope
@@ -7425,8 +7447,9 @@ void game_state_step(void)
                 DSB(DS_00104B19 + 2u) = 0;              /* 0x11BCE */
                 DSB(DS_00104B15) = 0;                   /* 0x11BD4 */
                 DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11BE0 */
-                /* PORT: 0x29D60 is a ret-only no-op; 0x2C3FC(0x100) voice, not wired
-                 * (record §45-A). */
+                /* PORT: 0x11BE6 0x29D60 is a ret-only no-op, not called;
+                 * then 0x11BF0 `jmp 0x2C3FC`. */
+                (void)sound_voice(0x100u);              /* 0x11BEB/0x11BF0 0x2C3FC */
             } else {
                 fight_arena_frame();                    /* 0x11E8F 0x263F4 */
                 fight_health_bars();                    /* 0x11E94 0x33F08 */

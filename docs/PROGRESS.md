@@ -834,7 +834,7 @@ Ten mutations all fail the suite. The headless 8000-frame dump is byte-identical
 **K7 task 3: `0x1CC28`'s slot choice, `0x1CB18`, `0x1CF20` and the retired announcer stand-in (record `2026-09-29-k7-k12-derivations.md` §3).** `snd_sample_queue` (`0x1CC28`) now queues on a slot, as the raw does:
 - A sample above `0x6000` bytes goes only to slot 0.
 - A smaller one takes the first free slot from 3 down. A free slot has a buffer, nothing queued, and a status other than 4.
-- When no slot is free, the evicted slot is the one whose queue time is strictly below both now and every other slot's (unsigned). A tie keeps the first slot met, and the default is slot 0. The evicted slot is ended and re-inited.
+- When no slot is free, the evicted slot is the last one, scanning from 3 down, whose queue time is strictly below now and below every slot scanned before it (unsigned). A tie keeps the first slot met, and the default is slot 0. The evicted slot is ended and re-inited.
 - The queue writes `+0x04`, `+0x08` and `+0x14`.
 
 `0x1CB18` is ported as `sound_sample_start(slot)`. It copies the sample into the slot's `0x1D0BC` buffer, sets the AIL sample up (the SFX volume, 11025 Hz, 8-bit, and loop count 0 only for loop byte 1) and starts it. `game_audio_service` (`0x1CF20`) calls it for slots 0..3 before the music. `PORT:` a bufferless slot is never started, where the raw would copy to linear 0.
@@ -852,3 +852,12 @@ Two of the brief's mutation expectations were wrong, and the raw won:
 The Task-2 review minor is closed: the C0 half of `0x1D0BC`'s MIDI gate has a vector.
 
 Four assertions whose premise was the stub or the stand-in were rewritten, each with its raw address. There are 65 new assertion sites (13364), and all 22 measured mutations fail. Not tested: the exact `0x6000` boundary (no shipped payload has that size), the slot-0 arm's buffer test, and `0x1CB18`'s volume, rate and type values. The counter moves from 766 to 767 of 1203 (portable: 731 of 731).
+
+**K12 batch A: the `0x100` stop-alls and the case-0/6 voices, plus the voice log (record `2026-09-29-k7-k12-derivations.md` §4).** The 22 batch-A calls to the voice dispatcher `0x2C3FC` are now made where the raw makes them, each with its `mov`/`call` pair. There are 20 `0x100` stop-alls in the attract tails and phase 0, the fight hooks `0x4367C`/`0x4454C`, the coin divert, player join, `0x25AE8`, states 4/5/6/7, mode `0x1E`'s three rank arms and the two menus. The other two are `0x53` (case 0) at the coin divert's tail and `0x29` (case 0) in `0x26D4C`. There is also `0xDE` (case 6) in the effects pass's type 7, which returns 0 and writes nothing. All are pure state, and none of them reads a bank. `sound_voice` gains a `PORT:` test seam that logs the ids it was entered with (`sound_voice_log_reset/count/at`). The shared runner `tf_voice_sites` drives one table row per wiring point from a public entry and requires the row's ids in the log in order, restoring the data object, the pools, the aperture and the DAC after each row. `test_voice_sites` holds batch A's 22 rows, and the later batches add their tables to it. Deleting any one of the 22 calls fails its own row, and only that row (rows 139/140 share one path). Correction (raw wins): `menu_run`'s `mov` is at `0x2FA66`, not the brief's `0x2FA68`. Task 3's review minors are closed:
+- The `0x40` loop pin now renders past a one-shot's length (32 blocks, where 26 would already end one).
+- Vector D pins the large arm's `+0x14` store, and vector E3 pins the scan's unsigned compare.
+- The stale "announcer" comments are fixed.
+- `check_sample_slots` restores the slot state it seeds.
+- The eviction wording above is fixed.
+
+There are 6 new assertion sites (13370). The `not wired` count drops by 18 lines (187 to 169). Rows 176/178/182 are split-phrase and keep their unwired `0xE1` half, and row 191's line keeps the unwired `0x22`, all for batch B2. `make verify` stays green with every oracle line unchanged, and the frame dumps and the `make audio-render` WAV are byte-identical. The counter is unchanged at 767 of 1203.

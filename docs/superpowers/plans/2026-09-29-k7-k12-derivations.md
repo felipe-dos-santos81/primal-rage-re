@@ -118,9 +118,9 @@ are omitted calls that `rg 'not wired'` does not count.
 | 5 | `actors.c:3049` | `3D789` | 4F | 5 | state | real play only | B2 (tail jmp) |
 | 6 | `attract.c:105` | `10F43` | BD | 2 | sample | check, fe, attract, title | C |
 | 7 | `attract.c:115` | `10F8B` | BE/BF | 2 | sample | check, fe, attract, title | C |
-| 8 | `attract.c:133` | `10E06` | 100 | 5 | state | attract | A |
-| 9 | `attract.c:152` | `10E6E` | 100 | 5 | state | attract | A |
-| 10 | `attract.c:212` | `11024` | 100 | 5 | state | check, fe, attract, title | A |
+| 8 | `attract.c:133` | `10E06` | 100 | 5 | state | attract | A; **wired, §4** |
+| 9 | `attract.c:152` | `10E6E` | 100 | 5 | state | attract | A; **wired, §4** |
+| 10 | `attract.c:212` | `11024` | 100 | 5 | state | check, fe, attract, title | A; **wired, §4** |
 | 11 | `attract.c:260` | `11160` | 40 | 2 | sample | check, fe, attract, title | T3 (loop byte 1); **wired, §3** |
 | 12 | `attract.c:260` | `1116C` | 42 | 2 | sample | check, fe, attract, title | T3 (loop byte 1); **wired, §3** |
 | 13 | `attract.c:282` | `111FF` | 54/56 | 1 | state | check, fe, attract, title | B2 |
@@ -137,9 +137,9 @@ are omitted calls that `rg 'not wired'` does not count.
 | 24 | `fight.c:1089` | `430F2` | 31 | 1 | state | real play only | B2 |
 | 25 | `fight.c:1122` | `4328A` | 2D | 5 | state | real play only | B2 |
 | 26 | `fight.c:1122` | `43294` | 2F | 5 | state | real play only | B2 |
-| 27 | `fight.c:1137` | `44557` | 100 | 5 | state | real play only | A |
+| 27 | `fight.c:1137` | `44557` | 100 | 5 | state | real play only | A; **wired, §4** |
 | 28 | `fight.c:1164` | `44626` | 2E | 1 | state | real play only | B2 |
-| 29 | `fight.c:1181` | `43696` | 100 | 5 | state | real play only | A |
+| 29 | `fight.c:1181` | `43696` | 100 | 5 | state | real play only | A; **wired, §4** |
 | 30 | `fight.c:1204` | `43729` | 2E | 1 | state | real play only | B2 |
 | 31 | `fight.c:1263` | `41483` | 32 | 1 | state | real play only | B2 |
 | 32 | `fight.c:2492` | `4AD81` | C8 | 2 | sample | real play only | D1 |
@@ -154,7 +154,7 @@ are omitted calls that `rg 'not wired'` does not count.
 | 41 | `fight.c:4007` | `4C866` | D6 | 2 | sample | real play only | D1 ("out of scope (spec 7)") |
 | 42 | `fight.c:4007` | `4C875` | CE | 2 | sample | real play only | D1 ("out of scope (spec 7)") |
 | 43 | `fight.c:4319` | `4BFF0` | C8 | 2 | sample | real play only | D1 |
-| 44 | `fight.c:4751` | `49FF1` | DE | 6 | state | real play only | A |
+| 44 | `fight.c:4751` | `49FF1` | DE | 6 | state | real play only | A; **wired, §4** |
 | 45 | `fight.c:4988` | `4A4B5` | CB | 2 | sample | real play only | D1 |
 | 46 | `fight.c:4994` | `4A4ED` | CB | 2 | sample | real play only | D1 |
 | 47 | `fight.c:5001` | `4A52C` | DC | 2 | sample | real play only | D1 |
@@ -249,9 +249,9 @@ are omitted calls that `rg 'not wired'` does not count.
 | 136 | `flow.c:930` | `28D8B` | 2E | 1 | state | real play only | B1 |
 | 137 | `flow.c:1364` | `26A2C` | 28 | 1 | state | real play only | B1 |
 | 138 | `flow.c:1384` | `270F9` | 25 | 1 | state | real play only | B1 |
-| 139 | `flow.c:1433` | `257AD` | 100 | 5 | state | fe | A |
-| 140 | `flow.c:1447` | `25820` | 53 | 0 | state | fe | A |
-| 141 | `flow.c:1534` | `28DCA` | 100 | 5 | state | real play only | A |
+| 139 | `flow.c:1433` | `257AD` | 100 | 5 | state | fe | A; **wired, §4** |
+| 140 | `flow.c:1447` | `25820` | 53 | 0 | state | fe | A; **wired, §4** |
+| 141 | `flow.c:1534` | `28DCA` | 100 | 5 | state | real play only | A; **wired, §4** |
 | 142 | `flow.c:1635` | `282BB` | 24 | 1 | state | real play only | B1 |
 | 143 | `flow.c:1641` | `2817F/281F5` | 24 | 1 | state | real play only | B1 |
 | 144 | `flow.c:1653` | `282BB` | 24 | 1 | state | real play only | B1 |
@@ -276,23 +276,23 @@ are omitted calls that `rg 'not wired'` does not count.
 | 163 | `flow.c:2964` | `2805F` | D3 | 2 | sample | real play only | D4 |
 | 164 | `flow.c:3523` | `42E7F` | 2D | 5 | state | real play only | B2 |
 | 165 | `flow.c:3602` | `4250D` | 2C | 1 | state | real play only | B2 |
-| 166 | `flow.c:3941` | `25AF1` | 100 | 5 | state | real play only | A |
+| 166 | `flow.c:3941` | `25AF1` | 100 | 5 | state | real play only | A; **wired, §4** |
 | 167 | `flow.c:3949` | `25B51` | 3D | 1 | state | real play only | B2 |
 | 168 | `flow.c:4044` | `28C2A` | D8 | 2 | sample | real play only | D4 |
 | 169 | `flow.c:4193` | `27821` | 2B | 5 | state | real play only | B2 |
 | 170 | `flow.c:4392` | `121CE` | 41 | 5 | state | check, fe, attract, title | T3 (the stand-in replaces it); **wired, §3** |
 | 171 | `flow.c:4392` | `121D8` | 43 | 5 | state | check, fe, attract, title | T3 (the stand-in replaces it); **wired, §3** |
-| 172 | `flow.c:4576` | `1159F` | 100 | 5 | state | fe | A |
-| 173 | `flow.c:4595` | `116C4` | 100 | 5 | state | real play only | A |
-| 174 | `flow.c:4617` | `11844` | 100 | 5 | state | real play only | A |
-| 175 | `flow.c:4878` | `11A94` | 100 | 5 | state | check, fe | A |
-| 176 | `flow.c:5112` | `1EEF4` | 100 | 5 | state | real play only | A (split phrase) |
+| 172 | `flow.c:4576` | `1159F` | 100 | 5 | state | fe | A; **wired, §4** |
+| 173 | `flow.c:4595` | `116C4` | 100 | 5 | state | real play only | A; **wired, §4** |
+| 174 | `flow.c:4617` | `11844` | 100 | 5 | state | real play only | A; **wired, §4** |
+| 175 | `flow.c:4878` | `11A94` | 100 | 5 | state | check, fe | A; **wired, §4** |
+| 176 | `flow.c:5112` | `1EEF4` | 100 | 5 | state | real play only | A (split phrase); **wired, §4** |
 | 177 | `flow.c:5112` | `1EEFE` | E1 | 1 | state | real play only | B2 (split phrase) |
-| 178 | `flow.c:5158` | `1F1EC` | 100 | 5 | state | real play only | A (split phrase) |
+| 178 | `flow.c:5158` | `1F1EC` | 100 | 5 | state | real play only | A (split phrase); **wired, §4** |
 | 179 | `flow.c:5158` | `1F1F6` | E1 | 1 | state | real play only | B2 (split phrase) |
 | 180 | `flow.c:5173` | `1F249` | E3 | 1 | state | real play only | B2 |
 | 181 | `flow.c:5173` | `1F253` | E2 | 5 | state | real play only | B2 |
-| 182 | `flow.c:5198` | `1F307` | 100 | 5 | state | real play only | A (split phrase) |
+| 182 | `flow.c:5198` | `1F307` | 100 | 5 | state | real play only | A (split phrase); **wired, §4** |
 | 183 | `flow.c:5198` | `1F311` | E1 | 1 | state | real play only | B2 (split phrase) |
 | 184 | `flow.c:5214` | `1F36C` | E3 | 1 | state | real play only | B2 |
 | 185 | `flow.c:5214` | `1F376` | E2 | 5 | state | real play only | B2 |
@@ -301,13 +301,13 @@ are omitted calls that `rg 'not wired'` does not count.
 | 188 | `flow.c:5281` | `1EFA9` | E1 | 1 | state | real play only | B2 |
 | 189 | `flow.c:5290` | `1F099` | E1 | 1 | state | real play only | B2 |
 | 190 | `flow.c:5345` | `20955` | 3B | 1 | state | real play only | B2 |
-| 191 | `flow.c:5476` | `26DA9` | 29 | 0 | state | real play only | A |
+| 191 | `flow.c:5476` | `26DA9` | 29 | 0 | state | real play only | A; **wired, §4** |
 | 192 | `flow.c:5476` | `26DB8` | 22 | 5 | state | real play only | B2 |
 | 193 | `flow.c:5587` | `26B32` | 60 | 2 | sample | real play only | D4 |
-| 194 | `flow.c:7355` | `11DF2` | 100 | 5 | state | check, fe | A |
-| 195 | `flow.c:7380` | `11BF0` | 100 | 5 | state | check, fe | A (tail jmp) |
-| 196 | `menu.c:173` | `2FA6D` | 100 | 5 | state | real play only | A |
-| 197 | `menu.c:295` | `2FFF6` | 100 | 5 | state | real play only | A |
+| 194 | `flow.c:7355` | `11DF2` | 100 | 5 | state | check, fe | A; **wired, §4** |
+| 195 | `flow.c:7380` | `11BF0` | 100 | 5 | state | check, fe | A (tail jmp); **wired, §4** |
+| 196 | `menu.c:173` | `2FA6D` | 100 | 5 | state | real play only | A; **wired, §4** |
+| 197 | `menu.c:295` | `2FFF6` | 100 | 5 | state | real play only | A; **wired, §4** |
 | 198 | `nameentry.c:203` | `200B5` | B0 | 2 | sample | real play only | D4 (split phrase) |
 | 199 | `nameentry.c:203` | `200BF` | 7B | 2 | sample | real play only | D4 (split phrase) |
 | 200 | `nameentry.c:218` | `20128` | 71 | 2 | sample | real play only | D4 |
@@ -1335,7 +1335,7 @@ still 0.
 |---|---|---|---|
 | `check_sound_voice` E | after `sound_voice(3)` every slot's `+0x04` = 0 | slot 0's `+0x04` = `0x180122FD`; slots 1..3 `+0x04` = 0; all `+0x0C` = 0 | `0x2C8D8` → `0x1CC28`: `0x79C0 > 0x6000`, slot 0 free after `0x1CD9C` → `0x1CC99` |
 | `test_flow` (Task-12 block) | the title queued the announcer: a voice is active, the render is non-silent | `sound_buffers_alloc()` = 1, `sound_voice(0x40)` = 1, then the same two facts on `0x40` | `0x11160`, `0x1CC28`, `0x1CF21` → `0x1CB18` |
-| `test_flow` (the `0xCD` block) | `0xCD`'s handle `0x02824B0F`; 0 voices after 24 renders (count 1) | `0x40`'s handle `0x0383B6F4`; 1 voice after 24 renders; `sound_voice(0x41)` = 1; 0 voices | `0x1CBE1` (loop byte 1 → count 0), `0x2C7A5` → `0x1CE04` |
+| `test_flow` (the `0xCD` block) | `0xCD`'s handle `0x02824B0F`; 0 voices after 24 renders (count 1) | `0x40`'s handle `0x0383B6F4`; 1 voice after 32 renders (24 until §4.6: a one-shot `0x40` outlives 24, so 24 did not prove count 0); `sound_voice(0x41)` = 1; 0 voices | `0x1CBE1` (loop byte 1 → count 0), `0x2C7A5` → `0x1CE04` |
 | `main.c` `--check` | at title + 2 the announcer voice is active and non-silent | on the last attract frame, `0x0383B6F4` and `0x03837440` play; at title + 2, neither does | `0x11160`/`0x1116C`, `0x121CE`/`0x121D8` |
 
 Assertion sites: 13299 → **13364** (+65 = 69 added − 4 removed): 58 in
@@ -1400,8 +1400,10 @@ vector F was hardened (below). The line numbers are the final tree's.
   is pinned only through the large arm (D2), where the candidate is always 0.
 - `0x1CB18`'s volume and rate calls (`DS_000A2CB4`, `0x2B11`) and the type
   (0, 0): no assertion reads them back. The rate is also AIL_init's default.
-- The loader stall inside `0x1CC28`'s resolve making `+0x14` later than `now`
-  (the second `0x500BB` read).
+- ~~The loader stall inside `0x1CC28`'s resolve making `+0x14` later than
+  `now` (the second `0x500BB` read).~~ Closed by §4.6 for the large arm
+  (`0x1CCA7`), in the suite's order only; the scan's and the forced arm's
+  second reads (`0x1CD06`, `0x1CD79`) stay untested.
 - The mixer's end status in a windowed run (§0.7.6 named gap). `--check` and
   the suite render no device, so a started one-shot stays 4.
 
@@ -1425,3 +1427,218 @@ vector F was hardened (below). The line numbers are the final tree's.
 - `grep -c '/\* 0x1CB18' port/src/game/flow.c` = 1, and `rg
   'game_sample_play|game_sample_request|s_pending_sample|SND_ANNOUNCER_ID'
   port/src` is empty.
+
+---
+
+## §4 Task 4: K12 batch A, the voice log and the site runner
+
+Implemented on branch `k7-k12` at `8d68a12`. Every batch-A call was re-read
+from the fixup-applied image (`$K/dx.py`), `mov` and `call` both; each C call
+carries the pair `/* 0xMOV/0xCALL 0x2C3FC */`.
+
+### §4.1 The seam (the API Tasks 5-11 consume)
+
+`flow.c`/`flow.h`, marked `PORT:` (a test seam, not original state; the
+pattern of `res.c`'s `res_set_screen_hook`):
+
+```c
+void sound_voice_log_reset(void);   /* count = 0 */
+u32  sound_voice_log_count(void);   /* entries since the reset; counts past 16 */
+u32  sound_voice_log_at(u32 i);     /* the i-th id, or 0xFFFFFFFF past the count or 16 */
+```
+
+`sound_voice` records its argument as its first statement, before the id-0
+return and the `0x100` → 0 fold, so the log holds the id the caller passed
+(`0x100`, not 0). The first 16 are kept (`SOUND_VOICE_LOG_CAP`). Nothing in
+the port reads the log except the tests, so it moves no oracle.
+
+### §4.2 The runner
+
+`test_fixtures.{h,c}`:
+
+```c
+typedef struct { u32 row; void (*drive)(void); u32 n; u32 ids[4]; } TfVoiceSite;
+void tf_voice_sites(const TfVoiceSite *t, u32 count);
+```
+
+For each row it snapshots the data object (`0x80000`, `0x8B0D0` bytes), the
+two actor pools that `DS_001014EC`/`DS_001014F4` name at the runner's entry
+(`0x4880`/`0xEBA0` bytes; skipped when 0), the aperture and the DAC. It sets
+`DS_001028C8` = 0 (no DIG driver: `0x1CE78` and `0x1CC37` return before any
+bank read, so a case-2/3/4 id is logged without a resolve), resets the log,
+runs `drive()`, and requires `ids[0..n)` to appear in the log **in order**
+(other voices may interleave). A miss prints `voice site row R: j of n ids in
+order` to stderr and fails one `CHECK_EQ_INT(j, n)`
+(`test_fixtures.c:215`). Then everything snapshotted is put back.
+
+Rules for a row (the later batches follow them):
+- `row` is the §0.4 row. One entry per wiring point; two rows on one path
+  (139/140) get one entry each, with the same driver.
+- `ids` lists only **wired** ids on the path, in raw order. A path's voices
+  that a later batch wires are added to that row's `ids` by that batch.
+- `drive()` reaches the site from a public entry (§1.3's column) with seeded
+  `mem[]`. What the runner does not restore, the driver must not leave
+  changed: the draw buffers `DS_001014E8`/`E4`, the scratch areas
+  (`FIGHT_*`, `ANIM_*`, `RA_POOL`/`RA_PSET`, `VS_MENU`) and C static state.
+  `vs_attract0` clears the attract media dir and sets it back to
+  `test_flow`'s `"data/game/C"`.
+- `test_voice_sites()` (`test_game.c`, registered after `test_key_loop`)
+  holds one table per batch: `static const TfVoiceSite k12_<b>[]`, a local
+  `#define K12_<B>_ROWS` with a `CHECK_EQ_INT` on the table's size, and one
+  `tf_voice_sites` call. Shared helpers: `vs_pools()` (the private pool
+  `RA_POOL`/`RA_PSET`, then `actors_reset`) and `vs_state(s)`
+  (`game_state_step`'s other gates closed: `DS_00104B1D` = 1, `DS_000F0A71`
+  = 1, `DS_0009AD58` = 1, then `DS_000F0A64` = `s`).
+
+### §4.3 The batch-A rows
+
+22 entries, `K12_A_ROWS` = 22. All ids are case 0, 5 or 6: pure state.
+
+| row | call (mov/call) | C site | driver | seed | ids |
+|---:|---|---|---|---|---|
+| 8 | `10E01/10E06` | `attract.c` `frontend_pause_tail` | `vs_pause_tail` | `F0A71` = 0, `1088D8` byte 3 = `0x20`, byte 1 = `0x10`, `104B19+2` = 1 | `100` |
+| 9 | `10E69/10E6E` | `attract.c` `frontend_continue_tail` | `vs_continue_tail` | as row 8 with the bits swapped | `100` |
+| 10 | `1101F/11024` | `attract.c` `attract_step` case 0 | `vs_attract0` | `vs_pools`, `F0A6F` = 0, media dir NULL | `100` |
+| 27 | `44552/44557` | `fight.c` `fight_4454c` | `vs_hook_4367c_3` | `vs_pools`, `104B1D` = 3 | `100` |
+| 29 | `43691/43696` | `fight.c` `fight_hook_4367c` | `vs_hook_4367c` | `vs_pools`, `104B1D` = 0 | `100` |
+| 44 | `49FE9/49FF1` | `fight.c` `fight_effects_pass` case 7 | `vs_effects_7` | `tf_demo_fixture`; one entry of type 7, `+0x1C` = 0, its actor's `+0x3C` = `0x1000` | `DE` |
+| 139 | `257A8/257AD` | `flow.c` `game_coin_divert` | `vs_coin_divert` | `vs_pools`, players 1 | `100`, `53` |
+| 140 | `2581B/25820` | same | same | same | `100`, `53` |
+| 141 | `28DB3/28DCA` | `flow.c` `flow_player_join` | `vs_player_join` | `vs_pools`, the strings, side 0 | `100` |
+| 166 | `25AEC/25AF1` | `flow.c` `game_hook_25ae8` | `vs_hook_25ae8` | `vs_pools`, the strings | `100` |
+| 172 | `1159A/1159F` | `flow.c` `game_state_4` phase 0 | `vs_state4_0` | `vs_pools`, `vs_state(4)`, `9AD98` = 0 | `100` |
+| 173 | `116BF/116C4` | same, phase 1 | `vs_state4_1` | `9AD98` = 1 | `100` |
+| 174 | `1183F/11844` | same, phase 2 | `vs_state4_2` | `9AD98` = 2 | `100` |
+| 175 | `11A8F/11A94` | `flow.c` `game_state_6` | `vs_state6` | `tf_demo_fixture`, `vs_pools`, `vs_state(6)` | `100` |
+| 176 | `1EEEF/1EEF4` | `flow.c` `game_mode_1e_step` case 0 | `vs_mode1e_0` | `ra_env` (the fresh-CMOS table), `104B25` = 0, `104AD4` = 2, `104B1F` = 0, scores 999999/450000 | `100` |
+| 178 | `1F1E7/1F1EC` | same, case 4 | `vs_mode1e_4` | `ra_env`, `104B25` = 4, `107813` = 0, `1077EC` = 999999, `104AD4` = 1 | `100` |
+| 182 | `1F2FC/1F307` | same, case 7 | `vs_mode1e_7` | `ra_env`, `104B25` = 7, `1078A7` = 0, `107880` = 999999, `104AD4` = 0 | `100` |
+| 191 | `26DA4/26DA9` | `flow.c` `flow_26d4c` | `vs_mode22` | `tf_demo_fixture`, `vs_pools`, `104B1A` = 0, `104AC4` = 0, `104529` = 2 (`check_mode_22`'s arm) | `29` |
+| 194 | `11DE8/11DF2` | `flow.c` `game_state_step` case 5 | `vs_state5` | `ra_env`, `vs_state(5)` | `100` |
+| 195 | `11BEB/11BF0` (tail `jmp`) | same, case 7's timer exit | `vs_state7_exit` | `vs_state(7)`, `F0A6A` = 1, `F0A6C` = 0 | `100` |
+| 196 | `2FA66/2FA6D` | `menu.c` `menu_run` | `vs_menu_run` | `vs_pools`, a zeroed table at `VS_MENU`, `101514` = `MT_LAYOUT`, ESC pressed, flags 0 | `100` |
+| 197 | `2FFF6/2FFFD` | `menu.c` `menu_step` | `vs_menu_step` | `vs_pools`, the zeroed table, `107414` = 0 | `100` |
+
+The call sites keep the rest of their comments. The split-phrase rows keep
+their unwired half as a split phrase: 176/178/182 now read `PORT: 0x1EEF9/
+0x1EEFE 0x2C3FC voice (0xE1), not\n * wired` (and `0x1F1F1/0x1F1F6`,
+`0x1F30C/0x1F311`), and row 191's comment keeps `0x26DB8 0x2C3FC(0x22,
+edx=0x1D) voice, not wired` for batch B2. Row 44's `0xDE` is case 6: the
+dispatcher returns AL = 0 and writes nothing, and the call is still made.
+Row 194's `0x11DED mov ecx,0x12C` is kept as a note: `0x2C3FC`'s own body
+(`0x2C3FC..0x2C8F0`) never names ECX.
+
+**Corrections to the brief (raw wins):**
+- Row 196: the brief's example cites `0x2FA68/0x2FA6D`. The raw is `0x2FA66
+  mov eax,0x100; 0x2FA6B xor esi,esi; 0x2FA6D call`. The comment carries
+  `0x2FA66/0x2FA6D`.
+- Rows 176/178/182: the old comments cited `0x1EEEF/0x1EEF9` (two `mov`s)
+  and `0x1F1EC/0x1F1F6`, `0x1F307/0x1F311` (two calls). Each now names its
+  `mov`/`call` pair: `0x1EEEF/0x1EEF4` + `0x1EEF9/0x1EEFE`, `0x1F1E7/0x1F1EC`
+  + `0x1F1F1/0x1F1F6`, `0x1F2FC/0x1F307` + `0x1F30C/0x1F311`. In row 182 the
+  raw's `0x1F301` store of `DS_00104B25` sits between the `mov` and the
+  `call`; the port stores first, which is the same state at the call.
+- The brief's `K12_A_ROWS` example let rows 139/140 share one entry. The
+  table has one entry per wiring point (22), so each row can be named by its
+  own mutation.
+
+**`not wired` lines** (`rg -c 'not wired' port/src`), before → after:
+`attract.c` 7 → 4, `fight.c` 36 → 33, `flow.c` 46 → 36, `menu.c` 2 → 0 (the
+file drops out of the list); the other files are unchanged. Total 187 → 169.
+`attract.c`'s 7 (not §1.0's 8) is Task 3's wiring of rows 11/12.
+
+### §4.4 Tests
+
+`test_voice_sites` (`test_game.c`): the size check and the 22-row table.
+Before the wiring the suite printed 22 `voice site row` lines and
+`FAILURES: 22`. After it: `all checks passed`.
+
+Assertion sites: 13364 → **13370** (+6: 1 in `tf_voice_sites`, 1 in
+`test_voice_sites`, and 4 from the §4.6 fixes).
+
+### §4.5 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
+
+The plan asks for the first, middle and last rows. Every one of the 22 was
+measured instead (`$K/t4mut.py`: replace the one `sound_voice` call with
+`(void)0;`, rebuild, run under `PR_ORACLE_REQUIRED=1`, restore; outputs
+`$K/t4-mut-<row>.txt`, summary `$K/t4mut-summary.txt`).
+
+| deleted call | FAIL lines | printed |
+|---|---:|---|
+| row 8 (`0x10E06`), first | 1 | `test_fixtures.c:215: 0 != 1`; `voice site row 8: 0 of 1` |
+| rows 9, 10, 27, 29, 44, 141, 166, 172, 173, 174, 176, 178, 182, 191, 194, 195, 196 | 1 each | the named row only, `0 of 1` |
+| row 139 (`0x257AD`) | 2 | rows 139 and 140, `0 of 2` |
+| row 140 (`0x25820`) | 2 | rows 139 and 140, `1 of 2` |
+| row 175 (`0x11A94`), middle | 1 | `test_fixtures.c:215: 0 != 1`; `voice site row 175: 0 of 1` |
+| row 197 (`0x2FFFD`), last | 1 | `test_fixtures.c:215: 0 != 1`; `voice site row 197: 0 of 1` |
+
+No mutation failed a row other than its own (139/140 share a path and both
+list both ids).
+
+### §4.6 Task 3 review minors
+
+1. **The `test_flow` `0x40` loop pin did not prove loop count 0.** The block
+   rendered 4096 + 24 × 4096 = 102,400 frames, but `0x5FAE` frames at
+   `0x2B11` Hz last about 110,450 frames at 49716 Hz, so a one-shot was still
+   live. Measured with mutation c (the loop-byte test and the count-0 call
+   deleted): with 24 or 25 renders the line passes, with 26 it fails. The
+   loop is now 32 renders, and c fails the line (`test_game.c:1626: 0 != 1`,
+   6 FAIL lines in all, 5 before). §3.2's row is corrected.
+2. **Two surviving Task 3 mutations, now tested:**
+   - Dropping the large arm's free-slot `+0x14` store (`0x1CCA7/0x1CCAC`):
+     vector D asserts slot 0's `+0x14` (seeded `0x10`) equals the clock
+     after the call. Measured: 1 FAIL line (`test_game.c:1001: 16 != 258`).
+     In the suite's order this first `0x3A` resolve reads s16snd2 for the
+     first time and stalls 2 ticks, so the stored value is `0x102`, the
+     second `0x500BB` read. Storing the entry's `now` instead also fails
+     (`256 != 258`).
+   - A signed compare in the scan (`0x1CD22 jbe`): vector E3 has now =
+     `0x90000000` and `+0x14` = {`0x88000000`, `0x40`, `0x50`, `0x60`}.
+     Unsigned takes slot 1; signed would take slot 0. Measured: 2 FAIL lines
+     (`test_game.c:1074`, `:1075`).
+3. **Stale references:** `flow.c`'s `DS_000A2CB4` comment ("playing the
+   announcer at the zeroed mem[] value") now says "the samples"; the
+   Makefile's `verify_frames` comment names the "attract/title sample and
+   music assertions". `main.c`'s `#include "platform/audio/mixer.h"` is
+   **not** unused (`MIXER_OPL_RATE`, `main.c:30`) and stays. Follow-up only:
+   `samples_load` (`platform/audio/samples.c`) has no production caller; the
+   suite alone calls it.
+4. `check_sample_slots` now snapshots the four slot records
+   (`DS_00102860`, `0x60` bytes), `DS_00101500`, `DS_001028C8` and
+   `DS_001028DB` at entry and puts them back after its closing `ss_seed()`,
+   so later tests no longer inherit loop bytes `0x77`, queue times
+   `0x10 + i` and now = `0x100`.
+5. `docs/PROGRESS.md`'s K7 task 3 paragraph: the evicted slot is the last
+   one, scanning from 3 down, whose queue time is strictly below now and
+   below every slot scanned before it (it said "below every other slot's",
+   which contradicted "a tie keeps the first slot met").
+
+### §4.7 Not tested
+
+- The dispatcher's effect at these sites. The runner runs with
+  `DS_001028C8` = 0, so a `0x100` stop-all clears only the music words
+  (`DS_001028D4`/`D9`); the sample slots stay as they were. The case-5 and
+  case-0/6 bodies themselves are pinned by `check_sound_voice` (§45-A).
+- Each call's position relative to its neighbours, except 139 before 140
+  (the in-order match). A call moved later in its function still passes.
+- Row 139/140's other entry, `game_state_step`'s coin arm (`0x11D41`), and
+  state 8 (`0x11EB8`). The test calls `game_coin_divert` directly.
+- The unwired voices on the same paths (rows 19, 28, 30, 167, 177, 179,
+  183, 192): their batches (B2) add them to these rows.
+
+### §4.8 Gate
+
+- `make verify`: `EXIT=0` (`$K/verify-t4.txt`, 571 lines). The brief's grep
+  of the oracle lines diffs empty against `$K/oracle-lines-base.txt`
+  (`ORACLES-EQUAL`). No ledger §A line moved. Batch A's nine oracle-path
+  points (rows 8-10, 139, 140, 172, 175, 194, 195) are all state-only.
+- Dumps: `dumps.sh after-t4` matches `$K/base.sha256` (`dumpsha.sh`,
+  `DUMPS-IDENTICAL`; `check/frames` 24000, `fe/run1` and `fe/run2` 1384
+  each, all three drivers `all checks passed`). No before-dump was taken:
+  `8d68a12` was already proven equal to `base.sha256` (§3.5). The dump is
+  deleted.
+- `make audio-render`: `after-t4.wav` is byte-identical to `before-t2.wav`
+  (`cmp`; sha256 `df74acfb…a380844`, 2386412 bytes).
+- `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
+  unchanged (no function is ported; the README stays as it is).
+- The `not wired` count: §4.3.

@@ -29,4 +29,15 @@ void tf_frontend_restore_list(const u8 *saved);
 #define MT_LAYOUT 0x3E2D000u   /* the key layout block DS_00101514 points at */
 void tf_menu_press(u32 bits);
 
+/* ---- record k7-k12 §4: the K12 voice-site runner ---- */
+/* Record k7-k12 §4: one row per wired 0x2C3FC call site (derivations §0.4
+ * row number). drive() reaches the site from a public entry with seeded
+ * mem[]; ids are the voices the raw calls on that path, in order. */
+typedef struct { u32 row; void (*drive)(void); u32 n; u32 ids[4]; } TfVoiceSite;
+/* Runs every row with the data object, both actor pools, the aperture and
+ * the DAC restored after each, DS_001028C8 = 0 (no DIG: no case reads a bank,
+ * 0x1CE78/0x1CC37), and checks the log holds ids[0..n) in order (other wired
+ * voices on the same path may interleave). */
+void tf_voice_sites(const TfVoiceSite *t, u32 count);
+
 #endif /* PR_TEST_FIXTURES_H */

@@ -164,6 +164,15 @@ void game_isr_ticks(u32 n);
  * sample in cases 2/3 or an unlisted case-3 id. */
 u32 sound_voice(u32 id);
 
+/* PORT: test seam (record k7-k12 §4), not original state. sound_voice logs
+ * the id of every entry, the first 16 of them, since the last reset.
+ * sound_voice_log_count is the number of entries since the reset (it counts
+ * past 16); sound_voice_log_at(i) is the i-th id, or 0xFFFFFFFF past the
+ * count or the cap. */
+void sound_voice_log_reset(void);
+u32 sound_voice_log_count(void);
+u32 sound_voice_log_at(u32 i);
+
 /* Record §K6.1, 0x4F714: sound_voice(word 0xC9888[stage]), a tail jump. */
 u32 sound_voice_stage(u32 stage);
 

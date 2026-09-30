@@ -129,8 +129,8 @@ void frontend_pause_tail(void)
         DSB(DS_00104B15) = 0;
         DSW(DS_000F0A6C) = 4;
         DSW(DS_000F0A64) = 4;
-        /* PORT: 0x29D60 is a ret-only no-op; the raw then calls 0x2C3FC(0x100)
-         * (voice, not wired, record §45-A). */
+        /* PORT: 0x29D60 is a ret-only no-op; the raw then calls 0x2C3FC(0x100). */
+        (void)sound_voice(0x100u);                  /* 0x10E01/0x10E06 0x2C3FC */
         return;
     }
     DSW(DS_000F0A64) = 4;
@@ -148,8 +148,8 @@ void frontend_continue_tail(void)
         DSB(DS_00104B15) = 0;
         DSW(DS_000F0A6C) = 5;
         DSW(DS_000F0A64) = 5;
-        /* PORT: 0x29D60 is a ret-only no-op; the raw then calls 0x2C3FC(0x100)
-         * (voice, not wired, record §45-A). */
+        /* PORT: 0x29D60 is a ret-only no-op; the raw then calls 0x2C3FC(0x100). */
+        (void)sound_voice(0x100u);                  /* 0x10E69/0x10E6E 0x2C3FC */
         return;
     }
     DSW(DS_000F0A64) = 5;
@@ -212,7 +212,7 @@ void attract_step(void)
 {
     switch (DSB(DS_000F0A6F)) {
     case 0:
-        /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
+        (void)sound_voice(0x100u);                  /* 0x1101F/0x11024 0x2C3FC */
         DSB(DS_0009AD58) = 1;                       /* 0x11029 */
         /* 0x11035: 0x4F1E4 (frontend_input_reset) ignores eax. */
         frontend_input_reset();                     /* 0x4F1E4 */

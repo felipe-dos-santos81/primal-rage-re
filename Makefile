@@ -31,8 +31,9 @@ GHIDRA_ENV = JAVA_HOME=$(JAVA_HOME_DIR)
 # Optional args: make check frames=120 / make re-render gra=S16CAGE.GRA chunk=1
 frames ?= 60
 # Boot enters state 0 (attract, ~690 frames) before the title, so a verify run
-# must cross the attract to exercise the title/announcer/music assertions. The
-# short `frames` default still drives `make check`'s attract-only smoke render.
+# must cross the attract to exercise the attract/title sample and music
+# assertions. The short `frames` default still drives `make check`'s
+# attract-only smoke render.
 # Coupling: main.c's CHECK_TITLE_REACH_FRAMES (700) makes any --check run at or
 # above it FAIL if the title was not reached. So verify_frames must stay above
 # the attract length; if a future attract grows past 700, raise both the attract
