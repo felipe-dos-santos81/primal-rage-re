@@ -616,3 +616,7 @@ and `make audio-render` + `cmp` against `before-t2.wav`.
   DOS/4GW line verbatim`; R5M2 (`SVC_FAULT_EXIT` 2): `FAIL ...:9399: the #DE
   exits with status 1 (PORT: not captured)`; R5M3 (host.c drops the `\n`):
   `FAIL ...:9400: the #DE prints A's DOS/4GW line verbatim`.
+- Gate r1 (full, after `a53b571`): `EXIT=0`, `ORACLES-EQUAL`, the five K11
+  walk lines unchanged, restart driver `all checks passed` (1198 iterations),
+  `DUMPS-IDENTICAL`, `make audio-render` + `cmp` with `before-t2.wav`:
+  `cmp-exit=0 output=[]`.
