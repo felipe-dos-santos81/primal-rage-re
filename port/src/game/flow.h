@@ -35,6 +35,13 @@ void game_loop_begin(void);
  * pacing) until the quit flag DS_000A81A8 is set. Exposed for tests. */
 void game_loop(void);
 
+/* PORT: exactly one game_loop() iteration, for the headless drivers (--check
+ * and the test drivers). The loop also stops on the quit flag DS_000A81A8, as
+ * the raw's 0x256DD does; the step brake leaves that flag untouched, because
+ * the movie player's entry test 0x1C75F reads it inside the iteration (record
+ * named-gaps-f §F.2). */
+void game_loop_step(void);
+
 /* 0x24C5C: one per-frame update — frame counter, the two 0x94-byte player
  * records, the update process table (DS_000A8644 / DS_00104AE8), then the mode
  * switch on the word DS_00104B00 (jump table 0x24B8C, record §47-B: mode 3 runs

@@ -8,6 +8,7 @@
 #include "test.h"
 #include "game/movie.h"
 #include "platform/gfx.h"
+#include "platform/input.h"
 #include "mem.h"
 #include "symbols.h"
 #include "host.h"
@@ -16,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 
 /* ---- test_smacker.c ---- */
@@ -414,5 +416,154 @@ int test_movie_blit(void)
     DSD(DS_000E87A4) = s_a4;
     DSD(DS_001014E4) = s_e4;
     DSD(DS_001014E8) = s_e8;
+    return g_failures - before;
+}
+
+/* ---- test_movie_exits (record named-gaps-f §F.1, §F.2) ---- */
+
+/* 0x1C740's exits, read from the raw (record §F.1):
+ * - entry 0x1C752..0x1C766: 0x62756 (WATCOM kbhit: the BIOS key buffer, the
+ *   port's input queue) or the quit flag DS_000A81A8 jumps to the epilogue
+ *   0x1C878: the entry blank only, no frame, no exit blank, the key left queued;
+ * - loop 0x1C83F..0x1C854: kbhit (non-consuming) or 0x50161(0xFF00FF00)
+ *   leaves for 0x1C86B, which runs the exit blank 0x1C873;
+ * - 0x1C7E7 ignores the decode's result, so a frame the port cannot decode
+ *   leaves through 0x1C86B too (the port cannot draw past it): exit blank.
+ * The hook counts the screens and, at screen `g_mx_push_at`, queues a key. */
+static int g_mx_screens, g_mx_last_lit, g_mx_push_at;
+
+static void movie_exits_hook(void)
+{
+    g_mx_screens++;
+    g_mx_last_lit = movie_screen_lit();
+    if (g_mx_screens == g_mx_push_at) input_push(0x39, ' ');
+}
+
+static void mx_seed(void)
+{
+    memset(gfx_dac, 0x2A, sizeof gfx_dac);
+    memset(gfx_aperture(), 0x11, 320 * 200);
+    g_mx_screens = 0;
+    g_mx_last_lit = 1;
+    g_mx_push_at = 0;
+}
+
+static u32 mx_rd32(const u8 *p)
+{
+    return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
+}
+
+static void mx_wr32(u8 *p, u32 v)
+{
+    p[0] = (u8)v; p[1] = (u8)(v >> 8); p[2] = (u8)(v >> 16); p[3] = (u8)(v >> 24);
+}
+
+int test_movie_exits(void)
+{
+    int before = g_failures;
+    const char *dir = getenv("PR_GAME_DIR");
+    if (dir == NULL) {
+        printf("test_movie_exits: PR_GAME_DIR unset, skipping\n");
+        return 0;
+    }
+    const u8 s_quit = DSB(DS_000A81A8);
+    const u32 s_34 = DSD(DS_000E1C34), s_38 = DSD(DS_000E1C38);
+    DSB(DS_000A81A8) = 0;
+    DSD(DS_000E1C34) = 0;
+    DSD(DS_000E1C38) = 0;
+    movie_set_screen_hook(movie_exits_hook);
+
+    /* (1) A queued key at entry: 0x1C759 skips to 0x1C878. The key stays
+     * queued (kbhit does not read it) for the next movie and 0x24C5C. */
+    input_clear();
+    input_push(0x39, ' ');
+    mx_seed();
+    CHECK_EQ_INT(movie_play(dir, "twg.smk"), 1);
+    CHECK_EQ_INT((int)movie_frames_presented(), 0);
+    CHECK_EQ_INT(g_mx_screens, 1);                    /* the entry blank only */
+    CHECK_EQ_INT(g_mx_last_lit, 0);
+    CHECK(input_has_key(), "the entry test leaves the key queued");
+    input_clear();
+
+    /* (2) The quit flag at entry: 0x1C766 skips to 0x1C878. */
+    DSB(DS_000A81A8) = 1;
+    mx_seed();
+    CHECK_EQ_INT(movie_play(dir, "twg.smk"), 1);
+    CHECK_EQ_INT((int)movie_frames_presented(), 0);
+    CHECK_EQ_INT(g_mx_screens, 1);
+    DSB(DS_000A81A8) = 0;
+
+    /* (3) A key arriving during frame 2 (screen 3 = entry blank + 2 frames):
+     * the poll after that frame leaves through the exit blank, and the key is
+     * still queued. */
+    input_clear();
+    mx_seed();
+    g_mx_push_at = 3;
+    CHECK_EQ_INT(movie_play(dir, "twg.smk"), 1);
+    CHECK_EQ_INT((int)movie_frames_presented(), 2);
+    CHECK_EQ_INT(g_mx_screens, 4);                    /* + the exit blank */
+    CHECK_EQ_INT(g_mx_last_lit, 0);
+    CHECK(input_has_key(), "the loop test leaves the key queued");
+    input_clear();
+
+    /* (4) 0x1C848 0x50161(0xFF00FF00): a pressed level bit not yet latched is
+     * an edge; the first poll leaves (after frame 1) and latches it. */
+    DSD(DS_000E1C34) = 0x01000000u;
+    DSD(DS_000E1C38) = 0;
+    mx_seed();
+    CHECK_EQ_INT(movie_play(dir, "twg.smk"), 1);
+    CHECK_EQ_INT((int)movie_frames_presented(), 1);
+    CHECK_EQ_INT(g_mx_screens, 3);
+    CHECK_EQ_INT(g_mx_last_lit, 0);
+    CHECK_EQ_INT((long)DSD(DS_000E1C38), 0x01000000L);
+    DSD(DS_000E1C34) = 0;
+    DSD(DS_000E1C38) = 0;
+
+    /* (5) A frame that cannot be decoded: frame 3's payload size is moved onto
+     * frame 4 (the total still matches, so smk_open accepts the file) and
+     * frame 3 decodes from an empty bitstream. Frames 0..2 are presented, then
+     * the exit blank runs (0x1C86B/0x1C873). */
+    {
+        char path[512], tmpl[] = "/tmp/pr_movie_exits_XXXXXX";
+        static u8 buf[1 << 20];
+        size_t n = 0;
+        FILE *f;
+        snprintf(path, sizeof path, "%s/TWG.SMK", dir);
+        f = fopen(path, "rb");
+        CHECK(f != NULL, "TWG.SMK opens");
+        if (f != NULL) {
+            n = fread(buf, 1, sizeof buf, f);
+            fclose(f);
+        }
+        CHECK(n > 0x68u && mx_rd32(buf + 0x0C) > 4u, "TWG.SMK has more than 4 frames");
+        char *tdir = mkdtemp(tmpl);
+        CHECK(tdir != NULL, "temporary directory");
+        if (n > 0x68u && tdir != NULL) {
+            u8 *s3 = buf + 0x68 + 3 * 4, *s4 = buf + 0x68 + 4 * 4;
+            u32 v3 = mx_rd32(s3);
+            mx_wr32(s4, mx_rd32(s4) + (v3 & ~3u));
+            mx_wr32(s3, v3 & 3u);
+            snprintf(path, sizeof path, "%s/bad.smk", tdir);
+            f = fopen(path, "wb");
+            CHECK(f != NULL, "corrupt copy opens for writing");
+            if (f != NULL) {
+                CHECK(fwrite(buf, 1, n, f) == n, "corrupt copy written");
+                fclose(f);
+            }
+            mx_seed();
+            CHECK_EQ_INT(movie_play(tdir, "bad.smk"), 0);
+            CHECK_EQ_INT((int)movie_frames_presented(), 3);
+            CHECK_EQ_INT(g_mx_screens, 5);            /* entry + 3 + exit blank */
+            CHECK_EQ_INT(g_mx_last_lit, 0);
+            remove(path);
+            rmdir(tdir);
+        }
+    }
+
+    movie_set_screen_hook(NULL);
+    input_clear();
+    DSB(DS_000A81A8) = s_quit;
+    DSD(DS_000E1C34) = s_34;
+    DSD(DS_000E1C38) = s_38;
     return g_failures - before;
 }
