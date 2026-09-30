@@ -2643,14 +2643,20 @@ static void fight_4a634(void)
         if ((DSB(slot + 0x42u) & 2u) != 0u) {               /* 0x4A640 */
             u32 r = (u32)DSB(DS_001088A8 + side);           /* 0x4A64F */
             if (r >= 0x20u && r <= 0x3Fu) {                 /* 0x4A655/0x4A65A */
-                (void)rng_next(3u);                         /* 0x4A664 */
-                /* PORT: 0x4A6D2 0x2C3FC(0xCD/0xCE/0xCF by the draw) voice, not wired
-                 * (record §45-A). */
+                u32 d = rng_next(3u);                       /* 0x4A664 */
+                /* 0x4A669 `jb` (0), `jbe` (1), 0x4A673 `je` (2); any other
+                 * value falls to 0xCD at 0x4A675. */
+                (void)sound_voice(d == 1u ? 0xCEu
+                                  : d == 2u ? 0xCFu : 0xCDu);   /* 0x4A669..0x4A688, 0x4A6D2 0x2C3FC */
             } else if (r >= 0x10u && r <= 0x17u) {          /* 0x4A692/0x4A697 */
                 if (rng_next(2u) != 0u) {                   /* 0x4A69E */
-                    (void)rng_next(2u);                     /* 0x4A6A9 */
-                    /* PORT: 0x4A6B7/0x4A6C8 0x2C3FC(0xC9 or 0xCA) and 0x4A6D2
-                     * 0x2C3FC(0xDA or 0xDB) voices, not wired (record §45-A). */
+                    if (rng_next(2u) != 0u) {               /* 0x4A6A9/0x4A6B0 */
+                        (void)sound_voice(0xC9u);           /* 0x4A6B2/0x4A6B7 0x2C3FC */
+                        (void)sound_voice(0xDAu);           /* 0x4A6BC, 0x4A6D2 0x2C3FC */
+                    } else {
+                        (void)sound_voice(0xCAu);           /* 0x4A6C3/0x4A6C8 0x2C3FC */
+                        (void)sound_voice(0xDBu);           /* 0x4A6CD/0x4A6D2 0x2C3FC */
+                    }
                 }
             }
         }
@@ -2877,9 +2883,11 @@ static int fight_4af04(u32 side)
  * launch). EAX = entry, EDX = si. */
 static void fight_4b470(u32 entry, u32 index)
 {
-    /* PORT: 0x4B497 0x2C3FC(0xD1 for si < 3, else 0xD0) — voice, not wired
-     * (record §45-A). */
     u32 rec = DSD(entry + 8u);
+    /* The id is from the record's +0x48 byte, not EDX: 0x4B47B..0x4B489
+     * `sub eax,0x20; cmp eax,3; jge` (signed), record k7-k12 §7.2. */
+    (void)sound_voice((s32)DSB(rec + 0x48u) - 0x20 < 3
+                      ? 0xD1u : 0xD0u);             /* 0x4B478..0x4B492, 0x4B497 0x2C3FC */
     actors_anim_begin(rec, DSD(DS_000C9604 + index * 4u), 0x40400000u); /* 0x4B4B1 */
     if (DSD(entry + 0x10u) == 0u) {                             /* 0x4B4BB */
         u32 sh = actor_spawn((const u32 *)(mem + DSD(DS_000BB920 + index * 4u)),

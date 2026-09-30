@@ -102,17 +102,13 @@ void attract_voice_tick(void)
 {
     DSW(DS_000F0A60) = (u16)(DSW(DS_000F0A60) - 1u);
     if ((s16)DSW(DS_000F0A60) <= 0) {
-        /* PORT: 0x2C3FC(0xBD) voice, not wired (record §45-A). */
+        (void)sound_voice(0xBDu);                   /* 0x10F3E/0x10F43 0x2C3FC */
         DSW(DS_000F0A60) = (u16)(rng_next(0x2Du) + 0x2Du);
     }
     DSW(DS_000F0A62) = (u16)(DSW(DS_000F0A62) - 1u);
     if ((s16)DSW(DS_000F0A62) <= 0) {
-        /* PORT: the raw draws rng_next(2) to pick 0xBE (nonzero) or 0xBF; the
-         * 0x2C3FC call is not wired (record §45-A), but the draw must stay to
-         * keep the shared rng stream faithful. */
-        u32 pick = rng_next(2u);
-        (void)pick;
-        /* PORT: 0x2C3FC(pick ? 0xBE : 0xBF) voice, not wired (record §45-A). */
+        u32 pick = rng_next(2u);                    /* 0x10F71/0x10F76 */
+        (void)sound_voice(pick != 0u ? 0xBEu : 0xBFu);  /* 0x10F7B..0x10F86, 0x10F8B 0x2C3FC */
         DSW(DS_000F0A62) = (u16)(rng_next(0x3Cu) + 0x3Cu);
     }
 }

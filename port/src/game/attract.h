@@ -30,7 +30,8 @@ void attract_state_reset(void);
 
 /* 0x10F28. The attract's voice scheduler: two signed 16-bit countdowns
  * DS_000F0A60/DS_000F0A62 that reload as rng_next(0x2D)+0x2D and
- * rng_next(0x3C)+0x3C. Each expiry draws 0x2C3FC (voice, not wired (record §45-A)). */
+ * rng_next(0x3C)+0x3C. Each expiry calls 0x2C3FC: 0xBD, then 0xBE or 0xBF
+ * by an rng_next(2) pick (record k7-k12 §7). */
 void attract_voice_tick(void);
 
 /* 0x10DB0. The per-state pause tail: when DS_000F0A71 == 0 and the two input

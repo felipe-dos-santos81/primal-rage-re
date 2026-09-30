@@ -974,6 +974,9 @@ void fighter_think(void)
     }
 }
 
+/* PORT: data-object address symbols.h does not name. */
+#define FIGHTER_BDFFA   0x000BDFFAu  /* 0x3B9AB: [char] 0x3B938's voice word */
+
 /* 0x3B938 — demo-pose record §26. EAX = the thrower's slot. */
 void fighter_3b938(u32 slot)
 {
@@ -993,8 +996,8 @@ void fighter_3b938(u32 slot)
     DSW(DSD(slot + 0x08u) + 0x34u) = 0;                 /* 0x3B990 */
     DSW(DSD(slot + 0x08u) + 0x36u) = 0;                 /* 0x3B999 */
     DSD(slot + 0x08u) = 0;                              /* 0x3B9A4 */
-    /* PORT: 0x3B9B8 0x2C3FC(word[0xBDFFA + slot+0x7A * 2]) — voice, not wired
-     * (record §45-A). */
+    (void)sound_voice((u32)DSW(FIGHTER_BDFFA
+                      + (u32)DSB(slot + 0x7Au) * 2u));  /* 0x3B9A1..0x3B9B3, 0x3B9B8 0x2C3FC */
 }
 
 /* 0x3A95C — demo-pose record §26. */
@@ -1905,7 +1908,7 @@ void fighter_state_36300(u32 slot, u32 rec)
 
 /* 0x36710. The +0x52 == 17 handler: step slot+0x58 0 -> 1 -> 2; at 2 with
  * rec+0x36 == 0 and rec+0x1C == 0 write rec+0x43 = byte[0xBD89A], slot+0x52 = 9
- * and call 0x2C3FC(0x6E) (the voice, not wired (record §45-A)). */
+ * and call 0x2C3FC(0x6E) (the voice, record k7-k12 §7). */
 void fighter_state_36710(u32 slot, u32 rec)
 {
     u32 side = DSB(rec + 0x51u);
@@ -1920,8 +1923,7 @@ void fighter_state_36710(u32 slot, u32 rec)
     } else if (f == 2u && (s16)DSW(rec + 0x36u) == 0 && DSD(rec + 0x1Cu) == 0) {
         DSB(rec + 0x43u) = DSB(FIGHT_36710_43);         /* 0x367C3 */
         DSB(slot + 0x52u) = 9u;                         /* 0x367CB */
-        /* PORT: 0x367CF 0x2C3FC(0x6E) — the character voice, not wired
-         * (record §45-A). */
+        (void)sound_voice(0x6Eu);                       /* 0x367C6/0x367CF 0x2C3FC */
     }
 }
 
@@ -2403,7 +2405,7 @@ void fighter_state_35e6c(u32 slot, u32 rec)
     u16 cmd = DSW(DS_001088E0 + side * 2u);
     int bvar = ((cmd >> 8) & 3u) != 0u && ((cmd >> 8) & 0xCu) != 0u;  /* 0x35EE1 */
     DSB(slot + 0x41u) |= 0x80u;                         /* 0x35ED0 */
-    /* PORT: 0x35ED9 0x2C3FC(0x6D) — the character voice, not wired (record §45-A). */
+    (void)sound_voice(0x6Du);                           /* 0x35ED4/0x35ED9 0x2C3FC */
     if (!bvar && fighter_attack_consume(side) != 0) {   /* 0x35F15 */
         hit_facing_flag(side);                          /* 0x35F21 */
         return;
@@ -3476,6 +3478,9 @@ static void fighter_3bc70(u32 side)
         DSW(rec + 0x34u) = 0;                           /* 0x3BCD5 */
 }
 
+/* PORT: data-object address symbols.h does not name. */
+#define FIGHTER_BDAA8   0x000BDAA8u  /* 0x35E2B: [char] 0x35E04's voice word */
+
 /* 0x35E04. An animation-opcode 0x10 target: the words `D000 5E04 0003` in a
  * character's 0xC8B30 attack stream (0xD2278 in the raptor's 0xD2274) load
  * the dword 0x00035E04 into DS_00105BD4. EAX = rec; EDX is pushed and popped
@@ -3489,8 +3494,8 @@ void fighter_35e04(u32 rec)
     DSD(rec + 0x20u) = 0x40400000u;                     /* 0x35E0D */
     DSD(rec + 0x24u) = DSD(rec + 0x20u);                /* 0x35E1C */
     fighter_3bc70((u32)DSB(rec + 0x51u));               /* 0x35E21 */
-    /* PORT: 0x35E38 0x2C3FC(word[0xBDAA8 + byte[slot+0x7A]*2]), slot =
-     * rec+0x14, the voice, not wired (record §45-A). */
+    (void)sound_voice((u32)DSW(FIGHTER_BDAA8
+                      + (u32)DSB(slot + 0x7Au) * 2u));  /* 0x35E26..0x35E33, 0x35E38 0x2C3FC */
 }
 
 /* ---- the 0x3C88C hitbox machine and the 0x3CF38 hit chain ----------------
@@ -3981,12 +3986,16 @@ void hit_sound(u32 ch)
     (void)ch;
 }
 
+/* PORT: data-object address symbols.h does not name. */
+#define FIGHTER_E9308   0x000E9308u  /* 0x34F97/0x35025: the reaction voice words */
+
 /* 0x34E2C. The reaction driver. With reaction == 0xFF it returns; otherwise it
  * resets the reaction state, plays the animation the (char, reaction) table
  * selects and drives the +0x52/+0x53 transitions. The *(u32*)anim[1] callback
  * runs through fn_resolve with the raw's registers (EAX = slot, EDX = rec,
  * EBX = side); 0x3E62C and 0x3D17C are registered, and an unregistered
- * callback is skipped. The 0x2C3FC voice is not wired (record §45-A). */
+ * callback is skipped. Each arm (stream, callback) makes the 0x2C3FC voice
+ * word 0xE9308[byte anim[0]+7] (record k7-k12 §7). */
 void hit_reaction_apply(u32 side, u32 reaction)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
@@ -4022,8 +4031,8 @@ void hit_reaction_apply(u32 side, u32 reaction)
     {
         u16 bx = DSW(anim[2] + 2u);                     /* 0x34F7F */
         if (stream != 0u) {                             /* 0x34F85 */
-            /* PORT: 0x34F97/0x34FA4 the 0xE9308 sound through 0x2C3FC, not wired
-             * (record §45-A). */
+            (void)sound_voice((u32)DSW(FIGHTER_E9308
+                              + (u32)DSB(anim[0] + 7u) * 2u));  /* 0x34F8B..0x34F9F, 0x34FA4 0x2C3FC */
             if (DSB(slot + 0x54u) != 2u)
                 hit_anim_start_b(rec, stream, 0x40000000u);   /* 0x34FBC 0x3C4CC */
             else
@@ -4039,7 +4048,8 @@ void hit_reaction_apply(u32 side, u32 reaction)
         }
     }
     if (callback != 0u) {                               /* 0x35017 */
-        /* PORT: 0x35032 the 0x2C3FC voice, not wired (record §45-A). */
+        (void)sound_voice((u32)DSW(FIGHTER_E9308
+                          + (u32)DSB(anim[0] + 7u) * 2u));  /* 0x35019..0x3502D, 0x35032 0x2C3FC */
         DSB(slot + 0x5Fu) = (u8)reaction;               /* 0x35042 */
         {
             fighter_slot_cb fn = (fighter_slot_cb)(void *)fn_resolve(callback);
@@ -4167,9 +4177,10 @@ void fighter_3d17c(u32 slot, u32 rec, u32 side)
     u32 i = (u32)DSB(rec + 0x51u);                      /* 0x3D183 movzx */
     (void)side;
     if (DSD(slot + 0x08u) != 0u) return;                /* 0x3D187 */
-    /* PORT: 0x3D19D 0x2C3FC(0x91) voice, not wired (record §45-A). The raw
-     * loads EDX = 0xE84C8 for it at 0x3D198; 0x2C3FC preserves EDX (every
-     * RET follows pop edx), so 0x3C4CC takes it as the stream. */
+    /* The raw loads EDX = 0xE84C8 at 0x3D198, before the voice; 0x2C3FC
+     * preserves EDX (every RET follows pop edx), so 0x3C4CC takes it as the
+     * stream. */
+    (void)sound_voice(0x91u);                           /* 0x3D193/0x3D19D 0x2C3FC */
     hit_anim_start_b(rec, FIGHT_ANIM_3D17C, 0x40400000u);   /* 0x3D1A9 0x3C4CC */
     DSB(slot + 0x52u) = 0x0Bu;                          /* 0x3D1AE */
     DSB(slot + 0x53u) = 6u;                             /* 0x3D1B2 */
@@ -4494,7 +4505,7 @@ static void fighter_146f0(u32 rec)
     hit_facing_flag(ctx[0]);                                /* 0x147ED 0x18B04 */
     DSB(ctx[2] + 0x42u) &= 0xFBu;                           /* 0x147F6 */
     DSB(ctx[2] + 0x57u) = 3u;                               /* 0x147FE */
-    /* PORT: 0x14807 0x2C3FC(0xB1) voice, not wired (record §45-A). */
+    (void)sound_voice(0xB1u);                               /* 0x14802/0x14807 0x2C3FC */
 }
 
 /* 0x14814. Character 3's reaction-0x22 callback (*(u32*)0xA46D0, the
@@ -4517,7 +4528,7 @@ void fighter_14814(u32 slot, u32 rec, u32 side)
     u32 stream;
     (void)side;
     hit_anim_ctx(ctx, rec);                                 /* 0x1481F 0x339AC */
-    /* PORT: 0x14829 0x2C3FC(0xB0) voice, not wired (record §45-A). */
+    (void)sound_voice(0xB0u);                               /* 0x14824/0x14829 0x2C3FC */
     if (fighter_396ac(ctx[0], 0u) != 0) {                   /* 0x1482E..0x1483A */
         fighter_18b44(ctx[2]);                              /* 0x1483C..0x14845 */
         /* 0x18B44 pushes and pops EDX, so 0x3C4CC takes EDX = 0xD2E86. */
@@ -4677,7 +4688,7 @@ void fighter_14d7c(u32 side)
     DSB(ctx[3] + 0x41u) |= 0x80u;                           /* 0x14E1F */
     DSB(ctx[3] + 0x52u) = 9u;                               /* 0x14E27 */
     DSB(ctx[3] + 0x53u) = 4u;                               /* 0x14E2F */
-    /* PORT: 0x14E38 0x2C3FC(0xB3) voice, not wired (record §45-A). */
+    (void)sound_voice(0xB3u);                               /* 0x14E33/0x14E38 0x2C3FC */
 }
 
 /* PORT: data-object addresses symbols.h does not name (character 3's
@@ -5381,7 +5392,7 @@ void fighter_39cc8(u32 slot, u32 side)
                               DSD(sl + 0x2Cu),
                               (u32)((s32)DSD(rec + 0x30u) >> 16),
                               0u, 0u);                  /* 0x39EB8..0x39ED0 0x2AE14 */
-            /* PORT: 0x39EDA 0x2C3FC(0x6C) — voice, not wired (record §45-A). */
+            (void)sound_voice(0x6Cu);                   /* 0x39ED5/0x39EDA 0x2C3FC */
         }
         return;
     case 4u:                                            /* 0x39EE4 */
@@ -5829,8 +5840,8 @@ static void fighter_39834(u32 side, s32 b)
     DSW(DS_00107D20 + ctx[0] * 2u) =
         (u16)(DSW(DS_00107D20 + ctx[0] * 2u) + (u16)r);     /* 0x39938/0x3994B */
     DSD(DS_00107D28) = (u32)b;                              /* 0x39953 */
-    /* PORT: 0x3996E 0x2C3FC(word[0xE933C + byte[anim[0]+8]*2]) — voice, not wired
-     * (record §45-A). */
+    (void)sound_voice((u32)DSW(FIGHTER_E933C
+                      + (u32)DSB(anim[0] + 8u) * 2u));      /* 0x39959..0x39969, 0x3996E 0x2C3FC */
     if ((s32)DSD(DS_00107D2A + ctx[0] * 2u) >> 16 >= 0x14)  /* 0x39973/0x39983 */
         DSW(DS_00107824 + (u32)DSB(ctx[5] + 0x51u) * 0x94u) = 0x29Au;  /* 0x399A4 */
     if (DSD(DS_00104ABC) == 1u && DSB(DS_00104B14) == 0u)   /* 0x399AC/0x399BE */
@@ -6996,6 +7007,9 @@ void fighter_24804(u32 side)
     DSB(slot + 0x63u) = 1u;                             /* 0x24954 */
 }
 
+/* PORT: data-object address symbols.h does not name. */
+#define FIGHTER_BE008   0x000BE008u  /* 0x3ABA2: [char] 0x3AAFC's voice word */
+
 /* 0x3AAFC. The reaction applier / pose dispatcher 0x3B714 runs for the winner.
  * EAX = slot, the stack argument = the reaction byte. It runs the facing latch,
  * the 0x39834 pose driver, the 0x3A0FC effect spawn and the pose dispatch on
@@ -7026,10 +7040,9 @@ void fighter_reaction_apply(u32 slot, u32 reaction)
         uvar2 = (u32)DSW(anim2[2] + 2u);                    /* 0x3AB61 */
     }
     fighter_39834(side, (s32)reaction);                     /* 0x3AB7C */
-    if (fighter_3a280((u32)DSB(other + 0x5Fu)) != 0) {      /* 0x3AB81/0x3AB8D */
-        /* PORT: 0x3ABAF 0x2C3FC(word[0xBE008 + byte[self+0x7A]*2]) — voice, not wired
-         * (record §45-A). */
-    }
+    if (fighter_3a280((u32)DSB(other + 0x5Fu)) != 0)       /* 0x3AB81/0x3AB8D */
+        (void)sound_voice((u32)DSW(FIGHTER_BE008
+                          + (u32)DSB(self + 0x7Au) * 2u));  /* 0x3AB96..0x3ABAA, 0x3ABAF 0x2C3FC */
     fighter_3a0fc(ctx[0]);                                  /* 0x3ABB4/0x3ABB7 */
     DSW(other + 0x6Cu) = (u16)(DSW(other + 0x6Cu) + 1u);    /* 0x3ABC0 */
     DSB(other + 0x42u) |= 2u;                               /* 0x3ABC8 */
@@ -7244,7 +7257,7 @@ static void fighter_2bd44_by_index(u32 rec)
 }
 
 /* 0x3AD98. The winner's reaction-effect spawn: play the per-character voice
- * (not wired, record §45-A), then spawn the 0xBB0B0 effect actor at the
+ * (record k7-k12 §7), then spawn the 0xBB0B0 effect actor at the
  * 0x100AD8-derived offset and start the 0xE8E08/22/3C stream selected by
  * word[anim[2]]; finally nudge the slot's +0x5A through 0x392A0. EAX = side,
  * EDX = &anim. */
@@ -7254,8 +7267,8 @@ void fighter_3ad98(u32 side, const u32 anim[3])
     u32 off;
     u32 stream;
     fighter_ctx_swap(ctx, side);                            /* 0x3ADA5 */
-    /* PORT: 0x3ADC1 0x2C3FC(word[0xE9358 + byte[anim[0]+9]*2]) — the voice,
-     * not wired (record §45-A). */
+    (void)sound_voice((u32)DSW(FIGHTER_E9358
+                      + (u32)DSB(anim[0] + 9u) * 2u));      /* 0x3ADAA..0x3ADBC, 0x3ADC1 0x2C3FC */
     off = DSD(DS_000F0AEC) + 0x3BC0u
         - ((u32)DSD(DS_00100AD8 + ctx[0] * 4u) << 6);       /* 0x3ADC9..0x3ADDF */
     off -= (u32)((s32)DSD(ctx[5] + 0x30u) >> 16);           /* 0x3ADE1..0x3ADF1 */
@@ -7738,7 +7751,7 @@ void fighter_15350(u32 slot, u32 rec, u32 side)
     DSD(slot + 0x1Cu) = 0x0001527Cu;                        /* 0x153A9 */
     DSB(slot + 0x42u) |= 4u;                                /* 0x153A6..0x153B3 */
     DSB(slot + 0x57u) = 0u;                                 /* 0x153BB */
-    /* PORT: 0x153BF 0x2C3FC(0xAF) voice, not wired (record §45-A). */
+    (void)sound_voice(0xAFu);                               /* 0x153B6/0x153BF 0x2C3FC */
     DSB(FIGHT_FD118 + ctx[0]) = 0u;                         /* 0x153C4..0x153C9 */
 }
 
