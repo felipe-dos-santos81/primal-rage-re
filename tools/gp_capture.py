@@ -128,6 +128,8 @@ def publish(stage, out, ok):
     os.rename(stage, dest)
     if os.path.exists(old):
         shutil.rmtree(old)
+    if ok and os.path.exists(out + '.failed'):     # a stale failed run must not outlive a good one
+        shutil.rmtree(out + '.failed')
     return dest
 
 

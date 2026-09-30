@@ -142,10 +142,12 @@ class TestOutput(unittest.TestCase):
             self.assertEqual(f.read(), 'good')
         with open(os.path.join(out + '.failed', 'poll.log')) as f:
             self.assertEqual(f.read(), 'bad')
+        self.assertEqual(sorted(os.listdir(d)), ['gp-x', 'gp-x.failed'])
         self.assertEqual(gc.publish(staged('good2'), out, True), out)
         with open(os.path.join(out, 'poll.log')) as f:
             self.assertEqual(f.read(), 'good2')
-        self.assertEqual(sorted(os.listdir(d)), ['gp-x', 'gp-x.failed'])
+        # re-review: a good publish removes a stale <out>.failed (U3/U4 glob gp-*)
+        self.assertEqual(sorted(os.listdir(d)), ['gp-x'])
 
 
 def _s(f, raw=0, kb=None, mode=0x27):
