@@ -38,11 +38,11 @@ void fight_slot_clear(void)
 /* 0x49300, called from state 6's 0x20DF4 at 0x11AC4. It self-links the
  * 0x1083C4 and 0x10884C {next@+0; prev@+4} sentinels (inserting each 0x24-stride
  * node into the 0x1083C4 list with 0x249C0) and seeds DS_001088CC/CB from the
- * draw1 value DS_00104AFC. The port skipped 0x20DF4 as a named gap, but the
- * 0x49C78 walk at 0x49CAF (fight_effects_pass) reads DS_0010884C as its head and
- * loops until it returns to the sentinel, so without this init the uninitialised
- * zero head walks address 0 forever. Ported here because 0x49300 is that walk's
- * liveness precondition; 0x20DF4's other resets stay declared gaps. */
+ * draw1 value DS_00104AFC. The 0x49C78 walk at 0x49CAF (fight_effects_pass)
+ * reads DS_0010884C as its head and loops until it returns to the sentinel, so
+ * without this init the uninitialised zero head walks address 0 forever.
+ * 0x20DF4 itself is ported as game_fight_reset (flow.c, record §46-B), which
+ * calls this at 0x20E38. */
 void fight_list_init(void)
 {
     DSD(DS_00108880) = 0x1500u;                 /* 0x49312 */
@@ -196,7 +196,7 @@ void fight_select_marker_spawn(u32 side, u32 cls, u32 y)
  * character], a2 = side ? 0x4200 : 0x200, a3 = 0xFD, a4 = y, a5 = 0) into
  * DS_001028E0[side]. Callers: 0x27770 (0x274FC) and 0x298F3 (0x296B8) with
  * y = the word at 0xA76D0 (0x980), 0x1D9D5 (0x1D890), 0x1DDBF (0x1DC6C) and
- * 0x25F47 (0x25C88) (record §48-U), and the unported 0x1DBFA (0x1DAE8). */
+ * 0x25F47 (0x25C88) (record §48-U), and 0x1DBFA (0x1DAE8, record §49-M). */
 void fight_hud_badge_spawn(u32 side, u32 ch, u32 y)
 {
     u32 rec = DSD(DS_001028E0 + side * 4u);             /* 0x1D840/0x1D847 */
@@ -1232,8 +1232,8 @@ static void fight_413c8(void)
 
 /* 0x4246C — record §46-F. 0x65490 (a byte fill: EAX = dst, DL = the byte,
  * ECX = the count) zeroes the seven stage bytes DS_00108106..0x10810C, then
- * the byte DS_00108111 = 0 (AH). Callers: 0x25B47 (0x25AE8) and the unported
- * 0x28B37 (0x28788). */
+ * the byte DS_00108111 = 0 (AH). Callers: 0x25B47 (0x25AE8) and 0x28B37
+ * (0x28788). */
 void fight_stage_marks_clear(void)
 {
     for (u32 i = 0; i < 7u; i++)                        /* 0x4247A 0x65490 */
@@ -1769,8 +1769,8 @@ void fight_hud_spawn_b(u32 enable)
  * 0xC9A52[(0x78 - v) * 2] — always table 0xC9A52 (no DS_00104B1D/flag8
  * switch, unlike 0x1D2F0) and the index inverted (0x78 - v rather than v).
  * The EBX/ECX/EDX loads before the 0x10D70 call are dead, as 0x1D2F0's own
- * header notes for its call. Callers: the unported 0x1DB70 (0x1DAE8) and
- * 0x1DC5C (unported, outside this cycle). */
+ * header notes for its call. Callers: 0x1DB70 (0x1DAE8) and 0x1DC5C
+ * (unported: it lies in no Ghidra function and no port path reaches it). */
 static void fight_hud_bar_set_inv(s32 v, u32 side)
 {
     u32 c = v > 0x78 ? 0x78u : (v < 0 ? 0u : (u32)v);   /* 0x1DA86..0x1DA98 */
@@ -1854,7 +1854,7 @@ static void fight_1081f0_clear(void)
  * 0xFD158/0xFD159/0xFD15A/0xFD15B + s * 4 = 0 and the dword 0xFD148 + s * 4 =
  * 0; the word DS_00100B50[s] = 0xFFFF (DI). Then 0x46670 and the byte
  * DS_00100C1D = 0. EBX..EDI are pushed and popped. Callers: 0x25C70
- * (0x25C1C) and the unported 0x26AAF (0x26A50). */
+ * (0x25C1C) and 0x26AAF (0x26A50). */
 void fight_round_reset(void)
 {
     for (u32 s = 0; s < 2u; s++) {                      /* 0x20F05..0x20F86 */
@@ -5267,7 +5267,7 @@ void fight_mode25_face(void)
  *   al,[eax+0x48]; xor ah,ah`, less 0x20, `and edx,0xffff`) and
  *   DS_0010839C[i] = E; else E's +0x1E = 1.
  * EBX..EBP are pushed and popped. Callers: 0x4E271 (0x4E11C, AL = 1), and the
- * unported 0x4E987 (0x4E67C). */
+ * 0x4E987 (0x4E67C). */
 void fight_mode25_spawn(u32 fresh)
 {
     u32 i, node, desc = 0u;
@@ -5417,7 +5417,7 @@ void fight_mode25_enter(void)
  * R->+0x32|; within that band returns 1. Otherwise, when node->+0x14 has not
  * yet passed R->+0x18 (unsigned-looking but the raw's `cmp`/`jl` are signed)
  * in the direction R->+0x34's sign implies, also returns 1; else 0.
- * EBX/ECX/EDX pushed and popped. Only caller: the unported 0x4E74B (0x4E67C,
+ * EBX/ECX/EDX pushed and popped. Only caller: 0x4E74B (0x4E67C,
  * the +0x1C bit 1 clear arm). */
 static u8 fight_4a808(u32 node)
 {
@@ -5439,7 +5439,7 @@ static u8 fight_4a808(u32 node)
 
 /* 0x4A8A8 — record §49-P. EAX = node. fight_4a808's twin against the "live"
  * position fight_2be00(R) (0x2BE00) rather than the stored R->+0x18. Only
- * caller: the unported 0x4E871 (0x4E67C, the +0x1E == 0 arm). */
+ * caller: 0x4E871 (0x4E67C, the +0x1E == 0 arm). */
 static u8 fight_4a8a8(u32 node)
 {
     u32 rec = DSD(node + 8u);                                /* 0x4A8AD */
@@ -5468,7 +5468,7 @@ static u8 fight_4a8a8(u32 node)
  * +0x18, R->+0x30's signed high word) and linked into +0x10; then R->+0x34/
  * +0x36 = -0x60/0x240 (the flinch throw), node->+0x1C &= 0x7F, R->+0x28 |=
  * 0x80 and node->+0x1E = 2. EBX/ECX/ESI pushed and popped. Only caller: the
- * unported 0x4E84E (0x4E67C's per-entry tail-common). */
+ * 0x4E84E (0x4E67C's per-entry tail-common). */
 static void fight_4e5a4(u32 node, u32 idx)
 {
     if ((DSW(node + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4E5B1/0x4E5B8 */
@@ -5514,7 +5514,7 @@ static void fight_4e5a4(u32 node, u32 idx)
  * 0x4EAA4/0x4EB6B `je 0x4EB77`; record k7-k12 §8). At the tail,
  * DS_001088BD in {2, 4, 6} toggles DS_001088BC and calls hit_flash_pair;
  * then DS_001088B9 = 0 always. EBX/ECX/EDX/ESI pushed and popped. Only
- * caller: the unported 0x4E923 (0x4E67C, the DS_001088B9-gated post-loop
+ * caller: 0x4E923 (0x4E67C, the DS_001088B9-gated post-loop
  * tail). */
 static void fight_4e99c(u32 count)
 {
@@ -5606,7 +5606,7 @@ static void fight_4e99c(u32 count)
  * even also clears DS_001088BE. Finally, with DS_001088B8 and both round
  * flags DS_001078F0/F1 set, and (DS_001088BD even, or `processed` != 0),
  * fight_mode25_spawn(0) and DS_001088B8 = 0. EBX..EDI pushed and popped.
- * Only caller: the unported 0x2685A (0x266AC). */
+ * Only caller: 0x2685A (0x266AC). */
 void fight_4e67c(void)
 {
     u32 p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);    /* 0x4E6B8..0x4E6CE, 0x4E799..0x4E7A6 idiom */
@@ -5732,7 +5732,7 @@ void fight_4e67c(void)
  * 001088BD > 6, `acc`'s own two digits are drawn at col 0x17/0x18, again row
  * `acc + 1`. Finally DS_0010888C[base] = (u8)acc (side 0 lands on the named
  * DS_0010888C, side 1 on DS_00108891 — DS_0010888C + 5). EBX..EBP pushed and
- * popped. Only caller: the unported 0x4F06E (0x4EF8C, game_mode_25_reveal)
+ * popped. Only caller: 0x4F06E (0x4EF8C, game_mode_25_reveal)
  * and, indirectly through it, 0x4E928 (0x4E67C's DS_001088B9-gated tail). */
 void fight_mode25_scorecard(void)
 {

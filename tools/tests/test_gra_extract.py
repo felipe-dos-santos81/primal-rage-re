@@ -250,7 +250,8 @@ class ExtractFileTests(unittest.TestCase):
         path = os.path.join(self.dir, 'S16FOO.GRA')
         if banks is None:
             from gra_render import chunks
-            d = open(path, 'rb').read()
+            with open(path, 'rb') as fh:
+                d = fh.read()
             banks = {'S16FOO': palette_records(next(d[o:e] for t, o, e in chunks(d) if t == 5))}
         return extract_file(path, self.out, banks, load_index(os.path.join(self.dir, 'INDEX')), args)
 
@@ -354,7 +355,8 @@ class MainTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def manifest(self):
-        return json.load(open(os.path.join(self.out, 'manifest.json')))
+        with open(os.path.join(self.out, 'manifest.json')) as fh:
+            return json.load(fh)
 
     def test_end_to_end(self):
         rc = main([self.dir, self.out])
@@ -405,8 +407,10 @@ class OracleTests(unittest.TestCase):
         ppm = os.path.join(self.out, 'o.ppm')
         idx = os.path.join(self.out, 'o.idx')
         gra_render.main([path, '0', ppm, '--frame', '10', '--indices', idx])
-        indices = open(idx, 'rb').read()
-        d = open(path, 'rb').read()
+        with open(idx, 'rb') as fh:
+            indices = fh.read()
+        with open(path, 'rb') as fh:
+            d = fh.read()
         bank = palette_records(next(d[o:e] for t, o, e in chunks(d) if t == 5))
         rec0 = bank[0]
         self.assertEqual(len(rec0), 63)
@@ -424,7 +428,8 @@ class OracleTests(unittest.TestCase):
         from gra_render import chunks
         found = []
         for f in sorted(glob.glob(os.path.join(GAME_DIR, 'S16*.GRA'))):
-            d = open(f, 'rb').read()
+            with open(f, 'rb') as fh:
+                d = fh.read()
             body6 = next((d[o:e] for t, o, e in chunks(d) if t == 6), None)
             if body6 is None:
                 continue

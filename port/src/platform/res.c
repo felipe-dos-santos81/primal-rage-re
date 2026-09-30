@@ -50,7 +50,9 @@ static u32 g_heap = RES_HEAP;
  * 0x61C60/0x61CF6/0x61EC0 (DOS I/O), timed by the emulator's disk model. No
  * frame depends on the absolute tick: the gate (0x25643) compares only the
  * pair, which 0x1B464 re-syncs; the ISR's other counters are read masked
- * (DS_000EF6DC's dword readers keep the low bits) or relative (0x2EAF2). */
+ * (DS_000EF6DC's dword readers keep the low bits) or relative (0x2EAF2).
+ * Closing it needs a DOSBox-X trace: a breakpoint at 0x1B45F logging
+ * DS_00101508 for each read. */
 
 /* 0x1B3AC's presentation head (0x1B3B8-0x1B3F8). `draw` is the original's BL:
  * 0 from the init walk's call (0x1B250), 1 from the lazy resolve (0x1B5E9).

@@ -571,6 +571,12 @@ and restores the tick model, the key state, `DS_00107414..0x10744F` and
 (`game_init` runs only in the env-gated drivers). The frame proof below shows
 they move nothing.
 
+**Unobservable** (added by all-gaps Task 7 from the Task 2 review):
+`svc_screen_reset`'s `frontend_origin_zero()` (`0x4F1D0`, zeroing
+`DS_00107A3A`/`DS_00107A38`) runs right after `actors_reset` (`0x2BAF4`), whose
+`0x4F228` call at `0x2BBC4` has already zeroed both words, so dropping it fails
+no check. The raw makes both calls, and so does the port.
+
 **Gate (Task 2).** `make verify` exited 0. Its oracle lines equal §K11.0's,
 apart from the two unittest wall-clock lines (`Ran 10 tests in 0.097s`,
 `Ran 33 tests in 1.082s`), which are not oracle claims. `make check

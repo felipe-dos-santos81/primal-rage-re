@@ -199,8 +199,8 @@ u8 *gfx_aperture(void) { return g_aperture; }
  * PORT: the DAC is gfx_dac and the aperture is g_aperture (the aperture
  * rule); the VBlank spin has nothing to wait for here. It has 7 callers. The
  * ported ones pass 0: 0x2BAF4's param_1 != 0 arm (0x2BBE8 `xor eax,eax`) and
- * the movie player 0x1C740's entry and exit (0x1C74D/0x1C873). The unported
- * ones need not: 0x32E93 and 0x332E4 pass 0x2EDE0's return after a
+ * the movie player 0x1C740's entry and exit (0x1C74D/0x1C873). The four
+ * service-menu ones (svcmenu.c, K11) need not: 0x32E93 and 0x332E4 pass 0x2EDE0's return after a
  * `test eax,0x1000000` has found bit 24 set; 0x330B1 passes 0x2EDE0's return
  * either with bit 25 clear (0x33097 `je`, which can be 0) or, on the other
  * path, after `test eax,0x1000000` (0x330A2) has found bit 24 set; and

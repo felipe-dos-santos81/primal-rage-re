@@ -67,7 +67,9 @@ frame loop is reached through `0x20C10`:
    pacing compare DAT_0010150C vs DAT_00101508
 
 0x24C5C   per-frame update
-  DAT_000EF6DC++                          frame counter
+  0x4F644   input state (unless mode 0x27), the 0x24C73 CPU-AI command block
+  0x38990   projection inputs (0x24CC8; also 0x24CC3 when DAT_00104B26 != 0)
+  DAT_000EF6DC++                          frame counter (a word)
   2 player records at DAT_001077E0, stride 0x94
   process table 1: PTR_FUN_000A8644 + bitmask _DAT_00104AE8 (update)
   int 16h key loop 0x24CFE..0x24EE7 (latch, Enter/ESC/space, Alt keys)
@@ -81,9 +83,12 @@ frame loop is reached through `0x20C10`:
 * **Process tables** — two 32-entry `code *` tables `0x80` bytes apart, each
   gated by a `u32` bitmask: `PTR_FUN_000A8644`/`_DAT_00104AE8` (update, walked
   by `0x24C5C`) and `PTR_FUN_000A86C4`/`_DAT_00104AEC` (render, walked by
-  `0x255CC`). This is the engine's extension seam. The port registers the
-  update table's entries 0 (`0x1324C`), 5 (`0x22FE8`) and 7 (`0x2910C`,
-  demo-pose record §42-A), and 1 (`0x48F98`) and 10 (`0x28F08`, §46-D).
+  `0x255CC`). This is the engine's extension seam. The port registers every
+  update-table entry that is not the no-op `0x5D812` (entries 3 and 18..31):
+  0 `0x1324C`, 1 `0x48F98`, 2 `0x19B90`, 4 `0x37C8C`, 5 `0x22FE8`, 6 `0x25FAC`,
+  7 `0x2910C`, 8 `0x34648`, 9 `0x3800C`, 10 `0x28F08`, 11 `0x4F890`, 12
+  `0x24150`, 13 `0x40554`, 14 `0x407EC`, 15 `0x260BC`, 16 `0x26194`, 17
+  `0x45D98` (all-gaps ledger §B.2).
 * **Tick** — `DAT_00105D88` is incremented by the 9-byte handler `0x2D62C`
   (`DAT_00105D88++`); `main` locks that code page and the `DAT_00105D88` data
   page. **Tick rate = 60 Hz (measured + static).** Static: `0x32B00` converts a
@@ -106,6 +111,11 @@ frame loop is reached through `0x20C10`:
   no `int 21h AX=25` for a timer vector. What would settle it: break at
   `0x2D62C` in the dosbox-x debugger and read the vector/IDT entry, or trace
   the DPMI `int 31h AX=0205` call that installs it.
+  **Correction (all-gaps records `2026-09-29-todo-verify-derivations.md` §1 and
+  `2026-09-29-k1-k9-derivations.md` §K9.5):** "exactly one reference" is wrong.
+  The timer ISR `0x1BDF4` calls it directly (`0x1BE28 call 0x2d62c`), and
+  `0x1BEC4` passes it to the lock `0x109A0` at `0x1BF5B`. The vector that
+  installs `0x1BDF4` is still unread. `0x2D62C` is host-owned (§K9.5).
 * **Pacing** — counter pair `DAT_00101508` (advanced asynchronously, presumably
   by the same tick source) and `DAT_0010150C` (loop-local), compared in
   `0x255CC`. `0x1C740` additionally busy-polls VBlank around the present work.
@@ -545,7 +555,7 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     into modes 9/8/7 instead. Once both sides' slot `+0x54` byte
     (`DS_00107804`/`DS_00107898`, the same field the `0xD500` animation
     opcode clears, `anim_code_3C32C`) read zero, `0x28C2A` plays voice
-    `0xD8` (`0x2C3FC`, named gap §45-A) and unconditionally sets mode
+    `0xD8` (`0x2C3FC`, wired since K12: `flow.c` `0x28C2A`) and unconditionally sets mode
     `DS_00104B00 = 0xB`: the decompiled `DAT_00104b00 = extraout_DX` is the
     `0xB` loaded into `EDX` before the call, which `0x2C3FC` preserves by
     push/pop on every exit path (record §42-E.2) regardless of whether the
@@ -773,7 +783,7 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   halves are ported and both are live. `0x41578` also calls `0x32A3C`
   (`config_play_time_close`), which zeroes `DS_0010746C[mode & 3]`; its
   `0x32970` run clock and its `0x2DAE4` audit adds are out of scope (spec
-  §7), and `0x41578`'s voice `0x2C3FC(0x33)` is not wired (record §45-A). No shipped path spawns types
+  §7), and `0x41578`'s voice `0x2C3FC(0x33)` is wired since K12 (`0x415DC`, record `2026-09-29-k7-k12-derivations.md`). No shipped path spawns types
   0/2/4 yet (`0x13D4C`'s callers `0x29B74`/`0x41578` are not reached; `0x13B3C` is
   dead — see the producer-set bullet above); type 6 (`0x13E28`) **is** spawned
   from the ported select state (`flow.c:367`). The remaining producers
@@ -923,8 +933,8 @@ states 6/7 section below). Each state is a phase machine driven by its own
   `config_set_credit_row(0x1D)` (`0x2C06C`), then the raw's five stores in raw
   order: `DS_000F0A6F` (`0x11E11`), `DS_000F0A72` (`0x11E17`), `DS_000F0A6A`
   (`0x11E1D`), `DS_000F0A6C` (`0x11E2E`), `DS_000F0A64` (`0x11E35`). The `0x2C3FC`
-  voice cancel is not wired (record §45-A) and the `0x32970` run clock is out
-  of scope; both are skipped.
+  voice (`0x11DF2`, id `0x100`) is wired since K12 (record `2026-09-29-k7-k12-derivations.md`); the
+  `0x32970` run clock is out of scope and skipped.
 
 **Gaps this section leaves.** `frontend_match_start` (`0x1EA08`) is the
 attract's high-score screen and is ported whole (record §46-A): `0x2DBC4`/
@@ -1993,7 +2003,7 @@ ratified as this cycle's scope; the winner gate (1 f / 152 B) and the Task-6 tai
 **Named gaps carried (record §7).** `0x19020` (confirmed no-op in that run;
 the "`slot+0x18` never set" of that time is false since record §19, where
 `0x3E62C` stores `0x3E484` at f = 106; since ported, record §35), `0x38154` (since ported, record §48-K), the `0x3Fxxx` closer script (unreachable), 831/832's
-held-frame presentation (un-derivable), the `0x2C3FC` voice stub, and the
+held-frame presentation (un-derivable), the `0x2C3FC` voice stub (since wired, record `2026-09-29-k7-k12-derivations.md`), and the
 interactive match (unowned). The `0x16AFC`/`0x164F4` page-flag tail (§7.11) is
 **ported** (Task 6); the deferred minors are listed at record §7.0.
 
@@ -2177,7 +2187,7 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   `0x10889E`/`0x1088B2` bytes. Before the clear, when `+0x42` bit 1 is set, the
   side's `0x1088A8` reaction byte draws the crowd-voice RNG: rng(3) in
   `0x20..0x3F`, or rng(2) and, when that is non-zero, rng(2) again in
-  `0x10..0x17`. The voices (`0x2C3FC`) are not wired (record §45-A). The port skipped the
+  `0x10..0x17`. The voices (`0x2C3FC`, `0x4A6B7..0x4A6D2`) were not wired then (record §45-A; wired since K12). The port skipped the
   call, so at f = 88 `0x4AB7F` still saw bit 0 and retargeted the worshipper to
   type 8.
 * **Fix.** `fight_4a634` and its call before `DS_001088C2 = 0` (`0x4A5A0`). In
@@ -2281,7 +2291,7 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   the slot's `+0x54/+0x52/+0x53` = 2/4/0 and loads `rec+0x44/+0x36/+0x34`
   from the `DS_00107D40` row (`0xBEF28` + char·6: 23, 550, 150), the
   horizontal speed signed by the slot's word `+0x4E` (−1 here). Its
-  `0x2C3FC` voice call is not wired (record §45-A).
+  `0x2C3FC` voice call (`0x35ED9`) was not wired then (record §45-A; wired since K12).
 * **Fix.** `fighter_35e04`/`fighter_3bc70`, registered through the
   `(rec, arg)` wrapper `anim_code_35E04`. `check_deep_callees` case H and a
   stream walk in `check_anim_hold_scaler` are mutation-proven: the missing

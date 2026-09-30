@@ -270,7 +270,8 @@ static void midi_control(u8 status, u8 a, u8 b)
          * the only one the port plays, sends none. */
         case 64: S.sustain[ch] = b; return;
         /* PORT: 0x3cc0-0x3ce2. The reset does not touch volume, pan or bend
-         * scale; it also calls 0x3b1e(ch), a Task 5 gap. */
+         * scale; it also calls 0x3b1e(ch), the sustain release that the
+         * named gap above (record §13) leaves unmodelled. */
         case 121:
             S.sustain[ch] = 0;
             S.mod[ch] = 0;

@@ -1889,7 +1889,8 @@ static void wp_seed(u32 entry, u32 rec, u8 type)
 /* 0x49C78 types 2, 7 and 9..12 with 0x4B2AC and 0x4A7D4 (record §42-D). The
  * three stream tables' entries 0 and 3 are distinct literal sprite ids, so a
  * wrong index fails. Type 9's and 11's frame-local writes are read only by the
- * unported mode-9 block, so only their mem[] effects are asserted. The
+ * mode-9 block (record §K13.3, tested separately), so only their mem[] effects are
+ * asserted. The
  * type-10 cases that prove +0x1C bit 7 is cleared set it, and run in mode 0x22
  * with DS_00104B1A = 2 so 0x4B69C's 0x17D30 tests neither side (0x17DD0/
  * 0x17E41) and the entry is not trampled. */
@@ -33190,7 +33191,7 @@ static void check_fx_gate(void)
     }
 
     /* §K4.2, 0x4BF18 case 1 with E+0x1C bit 5 set (0x4BFDE). Gate open:
-     * voice 200 (not wired), R's +0x38/+0x34/+0x36 words = 0, type 8, R+0x55
+     * voice 200 (0x4BFF0), R's +0x38/+0x34/+0x36 words = 0, type 8, R+0x55
      * = 1, R begins 0xC958C[3] at 3.0 (0x4BFEB..0x4C02F); the shared tail
      * then runs 0x4C60C, which misses. Gate shut: nothing moves. */
     k4_seed(1, 0x20u, 0x18200u);

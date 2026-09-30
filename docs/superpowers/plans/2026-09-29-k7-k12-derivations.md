@@ -524,6 +524,12 @@ them to the raw's facts:
 3. **`fight.c:4007`'s three calls, marked "out of scope (spec §7)", are wired**
    (batch D1). The raw makes them.
 
+**Answered 2026-09-30** (all-gaps Task 7 fix round 2): the user ratified all
+three in the session on 2026-09-30. Until then they were the all-gaps
+controller's acceptance of this plan, so the sections below that call them a
+"user decision" or "user-approved" (§0.7.1, §2, §3) describe that acceptance,
+and §1.4's "still unanswered" is true as of its date.
+
 ---
 
 ## §1 Task 1: verification, placement and the drive table
@@ -990,7 +996,8 @@ starts from `tf_demo_fixture` and links its entry in. Row 1 starts from
 
 - The three §0.9 decisions are still unanswered: reclassifying `0x1D0BC`,
   retiring the title announcer stand-in, and wiring `fight.c:4007`'s three
-  calls.
+  calls. (They were answered on 2026-09-30: the user ratified all three; see
+  §0.9.)
 - No raw-wins correction to §0 was found. §1.1 adds four raw facts. Id 0
   returns AL = 0 before the table. Case 2 returns AL = 0 on its playing arm.
   Case 4 tests `0x180122FD` and queues it with loop byte 1. `0x1E30C` and

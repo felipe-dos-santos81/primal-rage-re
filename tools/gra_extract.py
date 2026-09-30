@@ -142,7 +142,8 @@ def load_index(path):
     """INDEX (20-byte records) -> {'S16KON': 49, ...}; {} when the file is absent."""
     if not os.path.isfile(path):
         return {}
-    d = open(path, 'rb').read()
+    with open(path, 'rb') as fh:
+        d = fh.read()
     out = {}
     for i in range(0, len(d) - len(d) % 20, 20):
         name = d[i:i + 12].split(b'\0')[0].decode('ascii', 'replace')
@@ -166,7 +167,8 @@ def _bank_of(d):
 def extract_file(path, out_dir, banks, index_map, args):
     """One GRA -> PNGs under out_dir/<STEM>/ and the manifest entry for it."""
     stem = _stem(path)
-    d = open(path, 'rb').read()
+    with open(path, 'rb') as fh:
+        d = fh.read()
     entry = {'gra': os.path.basename(path),
              'resource_index': index_map.get(stem),
              'palette_source': None, 'palette_records': None,
@@ -236,7 +238,8 @@ def main(argv):
     banks = {}
     for f in files:
         try:
-            recs = _bank_of(open(f, 'rb').read())
+            with open(f, 'rb') as fh:
+                recs = _bank_of(fh.read())
         except ValueError:
             recs = None
         if recs is not None:

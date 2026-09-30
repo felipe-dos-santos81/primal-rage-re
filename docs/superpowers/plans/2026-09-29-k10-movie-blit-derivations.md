@@ -321,7 +321,9 @@ Status: confirmed (Task 1, 2026-09-29): k10_check.py 9/9 ok, both
 mutants FAIL, listings match §0.1/§0.4/§0.5.
 
 **host-owned.** `tools/port_classification.txt` row:
-`50D23 host-owned record-§K10 (k10 movie-blit derivations: movie dirty-rect blit, E87A4 vs E87A0 dwords into the aperture (0x50D4A add ebx,0xa0000) and the E87A0 shadow (EDI); the shadow is zeroed by 0x52106(0) at 0x1C873 before any reader; only caller 0x1C82D; movie_present/gfx_present replaces it, smk oracle 120/120 + 41/41)`.
+`50D23 host-owned record-§K10 (k10 movie-blit derivations: movie dirty-rect blit, E87A4 vs E87A0 dwords into the aperture (0x50D4A add ebx,0xa0000) and the E87A0 shadow (EDI); the shadow is zeroed by 0x52106(0) at 0x1C873 before any reader; only caller 0x1C82D; movie_present/gfx_present replaces it, smk oracle 120/120 + 41/41, test_movie_blit)`
+(all-gaps Task 7: the quoted row now matches `tools/port_classification.txt`,
+which ends in `, test_movie_blit`).
 
 ## §K10.6 Correction recorded against the ledger
 

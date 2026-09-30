@@ -1775,7 +1775,7 @@ void game_mode_0c_step(void)
  * which is `xor eax,eax; ret` and always 0, so 0x42F92's 0x2CA7C(1) always
  * runs; the other arm (0x2CAA8, `inc eax; sar eax,1`, then 0x2CA48, which
  * does not read EAX) is dead. Both results are discarded. Callers: 0x27A37
- * (0x27A2C) and the unported 0x42CB4 (three sites). */
+ * (0x27A2C) and 0x42CB4 (three sites). */
 u32 flow_continue_poll(u32 side)
 {
     if (config_credit_ready() == 0u) return 0u;         /* 0x42F63 0x2C060, 0x42F6A */
@@ -2303,8 +2303,10 @@ void game_mode_05_step(void)
             void (*fn)(u32) = (void (*)(u32))(void *)
                 fn_resolve(DSD(DS_000A8628 + ch * 4u));
             if (fn) fn(s);                              /* 0x25F27 */
-            /* PORT: as in 0x274FC, only the registered entrances run; for
-             * the others the call is a named gap. */
+            /* PORT: as in 0x274FC, all seven entries of 0xA8628 are ported
+             * and registered (records §46-C, §48-V), so the guard only skips
+             * a character byte outside 0..6, which the raw would call
+             * through. */
         }
         s = DSB(DS_00104B12);                           /* 0x25F2E/0x25F30 */
         fight_hud_badge_spawn(s, (u32)(s32)(s8)DSB(DS_0010816A + s),
@@ -2455,10 +2457,9 @@ void game_mode_30_step(void)
 /* 0x29970 — record §49-J. The round-over threshold check: for each side
  * with its +0x5A score byte (DS_0010780A/DS_0010789E, zero-extended; 0x78 =
  * 120) at or above 0x78, mode 0x32 and DS_00104B09 = the side, then
- * flow_round_winner. EBX/EDX are pushed and popped. Callers: the unported
- * 0x299A6/0x299DF (0x27C48, flow_round_winner, already documents these as
- * its own callers) — flow_round_over_check is 0x299E8's (mode 0x31,
- * game_mode_31_step) only caller. */
+ * flow_round_winner (0x299A6/0x299DF, which 0x27C48's own header lists as
+ * its callers). EBX/EDX are pushed and popped. Its only caller is 0x299E8
+ * (mode 0x31, game_mode_31_step). */
 void flow_round_over_check(void)
 {
     if (DSB(DS_0010780A) >= 0x78u) {                    /* 0x29974..0x2997C */
@@ -2929,7 +2930,7 @@ void flow_round_over(void)
  *   bytes DS_001078FC = DS_001078FE = 1 (BL), DS_000F0AFE = 2 (CL) and mode
  *   7 (DX). The mode word is compared as a zero-extended word
  *   (0x27FCF/0x2807C). EBX/ECX/EDX/EDI are pushed and popped. Callers:
- *   0x263AF (0x26254) and the unported 0x2669B (0x26540). */
+ *   0x263AF (0x26254) and 0x2669B (0x26540). */
 void flow_round_end_check(void)
 {
     u32 a = DSB(DS_0010780A), b = DSB(DS_0010789E);    /* 0x27FAE, 0x27FBA */
@@ -3581,9 +3582,9 @@ void flow_challenge_poll(void)
  *   side * 0x94 (ESI) non-zero.
  * The loop registers ECX/ESI/EDI/EBP survive 0x2C060 (EAX only, and EDX
  * pushed), 0x2C178 (pushes EBX/ECX/ESI; its 0x2C0F4 pushes ESI/EDI) and
- * 0x2C1C8 (0x2C1D4 pushes ECX/ESI/EDI). No ported path reaches mode 0x13:
- * 0x28788 (mode 9) and 0x41578's callers 0x416D4 and 0x41C28 (mode 0x12)
- * are unported. */
+ * 0x2C1C8 (0x2C1D4 pushes ECX/ESI/EDI). Its entry paths, 0x28788 (mode 9)
+ * and 0x41578's callers 0x416D4 and 0x41C28 (mode 0x12), are ported (records
+ * §48-Y, §48-Z); no oracle path reaches them (all-gaps ledger §D). */
 void game_mode_13_step(void)
 {
     u32 side;
@@ -4158,8 +4159,8 @@ void game_mode_07_step(void)
  *     popped around it), so this call site is a no-op here, the same
  *     treatment already given the four calls onto the neighbouring 0x32BAC
  *     bare-`ret` stub in mode 9's port;
- *   - the deferred run-clock tick 0x32970(0) (0x27874, out of scope, spec
- *     §7; the host clock owns wall time);
+ *   - the run-clock tick 0x32970(0) (0x27874; host-owned, record §48-V:
+ *     the host clock owns wall time);
  *   - config_play_time_close(1, DS_00104B19) (0x27879..0x27886 0x32A3C);
  *   - DS_00104B25 = 0, DS_00104AFA = 0x1F, DS_00104B00 = 0x17 and
  *     DS_00104AE4 = frontend_darken_all (0x29B74) — the same hook mode 9's
@@ -4773,8 +4774,8 @@ void prompt_insert_coin(u32 side, s32 row)
  * The side is used whole in `[esi+0xBAB58]` and 0x2C088's `[eax*4+0x105BF0]`,
  * so a negative one reads below both tables. Callers: 0x275B7 (0x274FC, side
  * (s8)(DS_0010810D ^ 1) by `movsx`, row 0x1D), 0x28CFD (0x28CC8, record
- * §48-J), 0x27E52/0x27E61 (0x27DC8, sides 0 and 1, row 0x1D, record §48-K)
- * and the unported 0x26D4C and 0x42FE0. */
+ * §48-J), 0x27E52/0x27E61 (0x27DC8, sides 0 and 1, row 0x1D, record §48-K),
+ * 0x26DBF/0x26DCE (0x26D4C) and 0x43089..0x43092 (0x42FE0). */
 void prompt_side_erase(s32 side, s32 row)
 {
     if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x2C2B7/0x2C2BE */
@@ -5271,10 +5272,10 @@ void game_mode_1e_step(void)
 /* ---- mode 0x1F, the frame handler 0x208F8 (record §49-J) ----------------- */
 
 /* 0x208F8 — record §49-J. The mode 0x1F handler (0x24C5C case 0x1F, jump
- * table 0x24B8C entry; sole caller, per get_xrefs_to). No ported case stores
- * mode 0x1F today — it is reachable only from the still-unported match-end
- * path — but the raw table 0x24B8C dispatches here regardless, so the port
- * wires it the same as every other case.
+ * table 0x24B8C entry; sole caller, per get_xrefs_to). It is reached from the
+ * match end: mode 0xF's 0x277C0 stores the return mode DS_00104AFA = 0x1F
+ * (0x27896) that the wipe chain later puts in the mode word (0x4F29E); both
+ * are ported, and no oracle path reaches them (all-gaps ledger §D).
  *
  * A 5-state sub-machine on DS_00104B25 (jump table 0x208E4; DL > 4 is a
  * no-op, 0x20927/0x20c00), gated by the per-side character id `charid`
@@ -5757,7 +5758,7 @@ void game_mode_25_step(void)
  * else 0x65 (DS_0010888C <= DS_00108891, unsigned) or 0x66, then always 0x63
  * (sic — the raw redraws string id 0x63, not the winner's own follow-up id)
  * at row 0xE. EBX/ECX/EDX/ESI are pushed and popped. Only caller: the
- * unported 0x252E1 (0x24C5C case 0x25, DS_001088BD == 8 arm). */
+ * 0x252E1 (0x24C5C case 0x25, DS_001088BD == 8 arm). */
 void game_mode_25_reveal(void)
 {
     DSW(DS_0010889A) = 0xF0u;                                /* 0x4EF90/0x4EF9A */
@@ -5803,7 +5804,7 @@ void game_mode_25_reveal(void)
  * 0xB) and 0x68 (row 0xE) font-2 mode 0x4000, cell-releases text rows 6..10
  * (col -1, 0xE cells each — the round-card body 0x4EBB8 drew), then DS_
  * 00104B00 = 6 (back to the fight-select flow), DS_001088C0 = 0, DS_00104B15
- * = 1 and DS_00104AEC |= 1. Only caller: the unported 0x25303 (0x24C5C case
+ * = 1 and DS_00104AEC |= 1. Only caller: 0x25303 (0x24C5C case
  * 0x25, DS_00104B25 == 1 arm, timer expiry). */
 void game_mode_25_exit(void)
 {
@@ -5924,7 +5925,9 @@ void game_audio_init(void)
  * 0x36102: a size dword 0x1338 followed by the XMIDI file (FORM XDIR at
  * 0x36106, whose CAT holds the FORM XMID at 0x36128), the bytes 0x1C930 copies
  * past the size dword. This scan finds that same FORM XMID, so the bank is the
- * table's; what stays unported is the request that names id 0x54/0x56.
+ * table's. The request that names id 0x54/0x56 is wired (attract.c,
+ * 0x111FF), but its 0x1CA14 arm needs the sequence handle DS_001028C0, which
+ * the port keeps 0 (record §22), so this binding still stands in for it.
  * Returns NULL on a bank whose declared FORM size runs past the loaded
  * resource. */
 static const u8 *title_music_bank(void)

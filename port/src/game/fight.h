@@ -117,8 +117,8 @@ void fight_4ac80(u32 rec);
 void fight_slot_clear(void);
 
 /* 0x49300. State 6's fight-effect list init: self-links the DS_001083C4 and
- * DS_0010884C sentinels and seeds DS_001088CC/CB from DS_00104AFC. Called by the
- * unported 0x20DF4 at 0x11AC4; ported because 0x49C78's list walk needs
+ * DS_0010884C sentinels and seeds DS_001088CC/CB from DS_00104AFC. Called by
+ * 0x20DF4 (game_fight_reset, flow.c) at 0x20E38; 0x49C78's list walk needs
  * DS_0010884C to point at itself when the list is empty. */
 void fight_list_init(void);
 
@@ -337,7 +337,7 @@ void fight_4d7a4(u32 entry, u32 index);
 void fight_4987c(u32 side, s32 count, u32 kind);
 
 /* 0x4D2D0 (record §43-A). The effects pass of modes 0x22 and 0x24; its
- * callers 0x26C8C/0x26F58 (the mode frames) are not ported. */
+ * callers are the mode frames 0x26C8C (0x26D28) and 0x26F58 (0x26FF0). */
 void fight_4d2d0(void);
 
 /* 0x4CC0C (record §43-A). The volleyball game's end screen. Callers: 0x4C784

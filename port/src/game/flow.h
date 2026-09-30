@@ -38,8 +38,8 @@ void game_loop(void);
 /* 0x24C5C: one per-frame update — frame counter, the two 0x94-byte player
  * records, the update process table (DS_000A8644 / DS_00104AE8), then the mode
  * switch on the word DS_00104B00 (jump table 0x24B8C, record §47-B: mode 3 runs
- * the state machine, modes 0x11/0x14/0x1A/0x1B their ported handlers, the
- * other cases are named gaps), the DS_00104B15 tail, and the 0x2545C mode tail
+ * the state machine; all 52 entries are wired, all-gaps ledger §D), the
+ * DS_00104B15 tail, and the 0x2545C mode tail
  * (modes 0x0C, 0x21..0x23 and 0x25; record §42-D). Exposed for tests. */
 void game_frame(void);
 
@@ -72,20 +72,22 @@ u32 frontend_resource_known(u32 rec);
 /* 0x29B74: the DS_00104AE4 countdown handler. Clears the effects, spawns a
  * 0x13D4C darken (byte 3) for every live 0x33904 list entry, then
  * DS_001088EE = DS_00104AFE = 0x78 and DS_00104B00 = 0x15. Registered in
- * actors_init; its stores and dispatchers are unported (record §42-E), and
- * 0x27A2C (record §48-E) calls it directly. */
+ * actors_init for its ported stores (0x277C0, 0x28788) and its six ported
+ * `call [0x104ae4]` dispatchers (record §42-E); 0x27A2C (record §48-E) also
+ * calls it directly. */
 void frontend_darken_all(void);
 
 /* 0x41578: spawns a 0x13D4C darken (byte 2) for each live list entry whose +0
  * handle is 0x3E688 or 0x88874B0, runs 0x32A3C, then DS_00104AFE = 0x78,
  * DS_001088EE = 0, DS_00104AFA = 0x13, DS_00104B00 = 0x15, DS_00104B25 = 0.
- * Direct-called only, from unported callers (record §42-E). */
+ * Direct-called only (record §42-E): 0x41755, 0x41DE6, 0x42337 and 0x42352,
+ * all ported. */
 void frontend_darken_marked(void);
 
 /* Record §43-B: the mode 0x1A/0x1B wipe and the DS_00104AE4 hook. None is
- * reached by a ported path (nothing sets mode 0x1A: 0x4F980's eleven callers
- * and the two hooks' storers are unported, and game_frame dispatches mode 3
- * only), so they are unit-tested.
+ * reached on an oracle path: 0x4F980's eleven callers and the two hooks'
+ * storers (0x42CB4, 0x28DA4) are ported, but none runs without input
+ * (all-gaps ledger §D), so they are unit-tested.
  * 0x4F980: DS_001088F5 = 0, DS_00104AFA = ret_mode, DS_00104B00 = 0x1A. */
 void frontend_wipe_arm(u32 ret_mode);
 /* 0x28D68/0x28D80: DS_00104AE4 hooks; the hook becomes 0x43738 and 0x4F980
@@ -128,8 +130,8 @@ void frontend_mode_19_step(void);
 u32 frontend_coin_poll(u32 code);
 /* Record §48-S. The unjoined side's blinking prompt on the character screen
  * (0x432A0's callees; also called by 0x28CC8, record §48-J, and by 0x2C2B0
- * since record §48-T, by 0x27A2C and 0x2791C since record §48-E; the
- * unported 0x424E8 is the rest).
+ * since record §48-T, by 0x27A2C and 0x2791C since record §48-E, and by
+ * 0x424E8, record §48-D).
  * 0x2C178: "PRESS START" (string 0x48, or the 0xBAB60 sprite with the
  * DS_00104529 bit 1) for `side` through 0x2C0F4, which draws on the
  * blink phase DS_000EF6DC & 0x1F == 0 and erases through 0x2C088 on phase
@@ -317,8 +319,8 @@ void frontend_match_start(void);
  * stored as DS_00104B1F): 0x2BAF4(0), the byte resets, 0x33C18 per side,
  * 0x46594, the 7-byte clear of DS_00104B02, the hook 0x4367C and mode 0x1A
  * with the return mode 0x10. Called by game_state_step's coin arm (the
- * accepted mask) and state 8 (3) (record §48-W); the game-start modes
- * 0x28..0x2F, its other callers, are named gaps of the mode switch.
+ * accepted mask) and state 8 (3) (record §48-W), and by the game-start modes
+ * 0x28..0x2F (game_mode_28_step..game_mode_2f_step, record §49-Q).
  * 0x46594: the DS_001082C8/CC/D0 values from the byte DS_0010452C (or 7/4
  * when DS_00108173 != 0), latched into DS_001082C0/C4. */
 void game_coin_divert(u32 players);
@@ -680,9 +682,8 @@ void game_mode_1e_step(void);
  * for the full derivation. */
 void game_mode_1f_step(void);
 
-/* 0x26540 — record §49-O. Mode 0x21's frame handler (0x24C5C case 0x21, one
- * of the fallthrough list's named gaps, dispatched by `call 0x26540; jmp
- * 0x2540F`). Byte-for-byte the fight frame 0x26254's (game_mode_04_step,
+/* 0x26540 — record §49-O. Mode 0x21's frame handler (0x24C5C case 0x21,
+ * dispatched by `call 0x26540; jmp 0x2540F`). Byte-for-byte the fight frame 0x26254's (game_mode_04_step,
  * record §48-K) preamble and gated projection block: fight_slot_clear,
  * camera_screen_base per side, the two position latches, then, only with
  * DS_001078FA == 2, camera_project per side, camera_decay, fighter_pass_a,
@@ -727,8 +728,8 @@ void game_mode_07_step(void);
  * idle-pose walker fight_effects_idle_pass (0x4DEF4, fight.c/fight.h,
  * record §49-F). See flow.c's header comment on game_mode_0f_step for the
  * full derivation: a DS_00104AFE countdown (no zero-guard, unlike modes
- * 8/9's DS_00104AF8) that, on reaching zero or below, plays a deferred
- * voice, clears a bit on DS_0010810D's (the established winner-side macro)
+ * 8/9's DS_00104AF8) that, on reaching zero or below, plays voice 0x2B
+ * (record k7-k12 §6), clears a bit on DS_0010810D's (the established winner-side macro)
  * slot, awards fighter_41310(DS_00104AD4, 0x30D40), runs the deferred
  * 0x32B94/0x32970 (audit/run-clock, spec §7, both no-ops here) and
  * config_play_time_close(1, DS_00104B19) — one of the two live callers

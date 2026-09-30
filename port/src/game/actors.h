@@ -66,8 +66,8 @@ void actor_set_dead(u32 rec);
 void actor_type_49444(u32 rec);
 /* 0x10D70. Clear rec+0x28 bit 2 and write `word` to the record's pset +0, its
  * bit 15 taken from rec+0x28 bit 14. The wipe steps 0x4F9E4/0x4FA88 call it
- * (record §43-B), and so do 0x1D2F0/0x1D464 (fight.c, record §48-U); its
- * 0x1DA84 caller is unported. */
+ * (record §43-B), and so do 0x1D2F0/0x1D464 (fight.c, record §48-U) and
+ * 0x1DA84 (fight.c, 0x1DAE0, record §49-M). */
 void actor_pset_word_set(u32 rec, u32 word);
 /* 0x2BE5C. The mode-1 pset/position updater the type-0x19/0x0A cb1 tails call
  * (0x28FB5/0x2906D): rec+0x1C from the pset y and the 16.16 vertical position,

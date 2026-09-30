@@ -72,9 +72,8 @@ int effects_active(void);
 /* 0x1324C. Screen-shake decay, the update table's entry 0. Dormant in the
  * shipped path: no store sets DS_00104AE8 bit 0. Registered so the existing
  * update-table dispatch reaches it if bit 0 is ever set. The rest of the
- * camera/scene layer (0x12CD4/0x1317C/0x13290/0x1333C) is deferred: its only
- * callers are the unported 0x12D48 dispatcher chain, which no task in this plan
- * owns. */
+ * camera/scene layer (0x12CD4/0x1317C/0x13290/0x1333C and the 0x12D48
+ * dispatcher) is ported in camera.c. */
 void camera_shake_decay(void);
 
 #endif /* PRAGE_GAME_EFFECTS_H */
