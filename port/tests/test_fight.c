@@ -42540,6 +42540,7 @@ static void vf_44a64(void)
     DSD(slot + 0x08u) = 0xA5A5A5A5u;
     DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) & ~0x4000u);
     fighter_44a64(rec);
+    CHECK_EQ_INT(vf_int_log_count(0xABu), 1);
     child = DSD(slot + 0x08u);
     CHECK(child != 0xA5A5A5A5u, "row 219: 0x44A64 spawned no child");
     CHECK_EQ_INT((int)(child != 0xA5A5A5A5u ? DSW(child + 0x34u) : 0u), 0xFE00);

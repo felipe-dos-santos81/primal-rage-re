@@ -117,7 +117,7 @@ them.
 | `0x501A3` | 2944 | 2 / 2: `256A5`@`255CC`P, `2EAD1`@`2EA78`P | — | yes | **closed: host-owned**, §K9.1 | K9 | Dirty-dword blit `E87A4` vs `E87A0` into `0xA0000` (`0x501B0`). All its stores go through EBX. `gfx_present` replaces it (`gfx.c:152`, `config.c:510`). |
 | `0x34B6C` | 541 | 1 / 1: `357FC`@`35658`P | 21, all P | yes | **closed**: header, §K1.1 | K1 | Body is `fight_health_sync` (`fight.c:2066`). The header `/* ---- 0x34B6C` is not counted. |
 | `0x51F72` | 404 | 3 / 3: `52119`, `52123`, `52151`, all @`52106`P | — | yes (boot/movie) | **closed**: `gfx_fill_screen`, §K2.4 | K2 | Unrolled 0xFA00-byte dword fill of `[EAX]` with EDX (`0x51F78..`). `0x52106` uses it on the two `mem[]` buffers and on the aperture; the aperture call stays `g_aperture` (`PORT:`, aperture rule). |
-| `0x1CB18` | 271 | 1 / 1: `1CF26`@`1CF20`P | `1B544`P + AIL `5DC0F/2A/4D/70/A6/C5/E4` | no (no port path writes slot `+0x04`) | **closed**: ported (Task 3, record `2026-09-29-k7-k12-derivations.md` §3) | K7 | Sample start: copies the queued resource into the slot's `0x1D0BC` buffer, then AIL init/set/start. Named gap at `flow.c:5962`. `0x1D0BC` ported too (§2; its host-owned row removed). Now reached every frame through `0x1CF20` (§3). |
+| `0x1CB18` | 271 | 1 / 1: `1CF26`@`1CF20`P | `1B544`P + AIL `5DC0F/2A/4D/70/A6/C5/E4` | ~~no (no port path writes slot `+0x04`)~~ superseded: yes, every frame through `0x1CF20` (Task 3) | **closed**: ported (Task 3, record `2026-09-29-k7-k12-derivations.md` §3) | K7 | Sample start: copies the queued resource into the slot's `0x1D0BC` buffer, then AIL init/set/start. ~~Named gap at `flow.c:5962`~~ (closed by Task 3). `0x1D0BC` ported too (§2; its host-owned row removed). Now reached every frame through `0x1CF20` (§3). |
 | `0x1C528` | 190 | 1 / 1: `1C60B`@`1C5E8`P | `1B544`P | yes | **closed**: shared header, §K1.5 | K1 | A byte-identical copy of `0x14268`. It shares `sprite_node_build` (`sprite.c:55-58`), and the header names it mid-comment. |
 | `0x2E180` | 151 | 1 / 1: `2E983`@`2E934`D | `2E034`U, `2E0A4`U | no (only via deferred `0x2E934`) | **closed: deferred**, §K9.6 | K9 | Audit counter add into the EEPROM image tables `0x2D420/0x2D45E/0x2D460`. |
 | `0x31A78` | 137 | 0 / 4†: `321F2`, `32230`, `324A9`, `324DC` (non-Ghidra code after `31E28`P) | `3157C`P | via non-Ghidra code only | **closed: ported** (`svc_buttons_draw`, `svcmenu.c`), §K11.5 | K11 | Jump-table dispatcher at `0x31A68`. Raw `call`s from `0x321F2`, `0x32230`, `0x324A9`, `0x324DC` (service-menu callback code). |
@@ -416,7 +416,7 @@ phrase "named gap" is summarised here, and the §F cycles own it:
 - the omitted `0x2C3FC` voice calls (K12) — **closed** (record
   `2026-09-29-k7-k12-derivations.md`): §0.3 counts 218 wiring points over 213
   raw calls (75 pure-state, 143 sample, 36 oracle-path, 182 real-play only),
-  all wired in §4-§11, plus the silent `0x44AFF` (row 219, §12.0);
+  all wired in §3-§11 (four of them are Task 3's rows in §3), plus the silent `0x44AFF` (row 219, §12.0);
   `rg 'not wired' port/src` is empty;
 - the menu `0x2EA74` "no-op" claim (K5) — **closed** (Task 3b, §K5: the three `menu.c` sites call `config_screen_wait_zero`).
 
@@ -448,7 +448,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 16 | E-OPEN | §E-1, 14, 21, 24, 25, 27 | — | derive or re-scope | Task 5 |
 | 17 | K10 MOVIE-BLIT | `0x50D23` | 4405 | **own plan**, **closed: host-owned** (§K10; the EDI half is a dead aperture shadow, §K10.3) | Task 6 |
 | 18 | K11 MENU-CB | `0x2F464`, `0x319B0`, `0x31A78` + 11 non-Ghidra service-menu callbacks (§B.2) and their sub-menus | 266 + n/a | **own plan** (the callback code spans `0x2D00C..0x33290` in the raw `call` sites) — **closed** (K11, record §K11.2..§K11.8: 50 functions, 15 304 B, 7 cycles, 160 of 160 scripted frames; counter 762 -> 765; named gaps §E-28..33) | Task 6 |
-| 19 | K12 VOICE-WIRE | about 180 "not wired (record §45-A)" sites | — | **own plan** (≥ 20 sites). Needs proof of no RNG/render effect per site. | Task 6 — **closed** (§4-§11: 218 wiring points over 213 raw calls, plus row 219 `0x44AFF` through row 100's shared call (§12.0); of §0.5's 85 raw calls, that one is row 219, 9 were wired by K11 and 75 are in unported code, listed in §1.2) |
+| 19 | K12 VOICE-WIRE | about 180 "not wired (record §45-A)" sites | — | **own plan** (≥ 20 sites). Needs proof of no RNG/render effect per site. | Task 6 — **closed** (§3-§11: 218 wiring points over 213 raw calls, plus row 219 `0x44AFF` through row 100's shared call (§12.0); of §0.5's 85 raw calls, that one is row 219, 9 were wired by K11 and 75 are in unported code, listed in §1.2) |
 | 20 | STALE | §E rows 2, 3, 7, 8, 9, 10, 11, 12, 19, 20, 23, 26 | — | comment fixes | Task 6 |
 
 Every one of the 34 §B.1 functions is in exactly one cluster: K1 7, K2 4, K3 1,

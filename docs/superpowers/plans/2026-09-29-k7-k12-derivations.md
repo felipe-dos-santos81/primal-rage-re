@@ -3250,7 +3250,7 @@ and `git grep -h -o -P '\bCHECK(_EQ_INT)?\(' <commit> -- port/tests
 | `d5a6b01` | `origin/main` (K11 + Tasks 1-3) | 13506 | 187 | |
 | `34b8b60`, `d009df8`, `22d5766`, `53052f3`, `6cdc6cc`, `299365e` | the merges | 13516, 13520, 13522, 13523, 13524, 13527 | 147, 132, 105, 78, 56, 30 | |
 | `95dd059` | all merged | 13533 | **0** | 0 |
-| this step | | **13544** | 0 | 0 |
+| this step | | **13545** | 0 | 0 |
 
 Corrections (counts, not raw facts):
 - **§4, §5, §6, §8, §9, §10 and §11 are right by this method.** The Task 7
@@ -3262,11 +3262,11 @@ Corrections (counts, not raw facts):
   §6..§11 from `b7b7c74`. Their running figures do not chain. On the
   merged tree the deltas add up. `d5a6b01` has 13506. Tasks 4-11 add
   8 + 4 + 2 + 2 + 3 + 1 + 1 + 6 = 27, which gives the 13533 measured at
-  `95dd059`. This step adds 11: row 219's size check and four driver checks,
-  and three each for rows 133 and 161 (§12.0.5). The total is **13544**.
+  `95dd059`. This step adds 12: row 219's size check, four driver checks and the
+  single-`0xAB` count (review 1), and three each for rows 133 and 161 (§12.0.5). The total is **13545**.
   Put another way: Task 1's 13254, plus Tasks 2-11's 137
   (45 + 65 + 8 + 4 + 2 + 2 + 3 + 1 + 1 + 6), plus K11's 142 on main
-  (`de45dd9` 13441 − `811b362` 13299), plus 11.
+  (`de45dd9` 13441 − `811b362` 13299), plus 12.
 - **`not wired`:** 188 → 0 by batch drops of T3 1, A 18, B1 15, B2 22,
   C 27, D2 27, D3 22, D1 26 and D4 30 (sum 188). §6.4's "169 → 144" mixed
   two bases: 169 is all of `port/src` at `9f15a6d`, and 144 is the `.c`
@@ -3385,7 +3385,7 @@ Corrections (counts, not raw facts):
 - `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100 (portable:
   excludes 81 host-owned/deferred and runtime >= 5D000)`. `--unported`
   without the `runtime` rows lists nothing, so `1CB18` is absent.
-- Assertion sites: **13544** (§12.0.3 gives the sum).
+- Assertion sites: **13545** (§12.0.3 gives the sum).
 - The full gate from clean was run with the `/tmp/pr_int_*` overrides. The
   git-ignored fixtures `ghidra_data.bin` and `title_screen_ref.ppm`, which
   `make clean` deletes, were copied back byte-identical
