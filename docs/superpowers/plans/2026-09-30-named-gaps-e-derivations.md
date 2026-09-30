@@ -70,9 +70,17 @@ Operands:
   port's `rec` in `fight_health_sync`), as an unsigned byte: 0 and 1 pass.
 - Both calls take **EAX = side** (EDX, kept since `0x34B71`; `0x36E2C` pushes
   only ECX and does not write EDX, and the port's case 0 already relies on the
-  same EDX at `0x34C08`). `0x3BDDC` returns its result in AL: `0x3BF57 mov
-  al,1` on the transition and on its `0x3CF38` hit (`0x3BE61`), 0 on its two
-  rejects. The port's `fighter_attack_consume` returns the same 0/1.
+  same EDX at `0x34C08`). `0x3BDDC` returns its result in AL (fix round 1,
+  re-read from the raw). AL = 1 has three `mov al,1` sites. `0x3BE6A` is the
+  `0x3CF38` hit: `0x3BE61 call 0x3cf38; test al,al; je 0x3be71`, then
+  `0x3BE6A mov al,1; jmp 0x3bf64`. `0x3BF46` is the transition with command
+  bit 0x2000 (`+0x4E = 0xFFFF` at `0x3BF40`). `0x3BF57` is the transition
+  with bit 0x1000 (`0x3BF32 jmp 0x3bf57`) or neither bit (`+0x4E = 0` at
+  `0x3BF51`). AL = 0 comes from `0x3BF62 xor al,al`, reached from the two
+  rejects (`0x3BDF7`, the slot's `+0x40` bit 7; `0x3BE11`, command bit 15
+  clear). The port's `fighter_attack_consume` returns the same 0/1. The
+  transition stores `+0x52 = 3` (`0x3BF0A`), `+0x54 = 2` (`0x3BF10`) and
+  `+0x53 = 4` (`0x3BF16`), and `DS_001078F8[side] = 1` (`0x3BF1C`).
 - `0x18B04` takes EAX = side and its result is unused (the arm returns).
 
 ## §E.2 Reachability (the arm is live)
@@ -122,10 +130,17 @@ in `0x3531C` (`0x35803`, which runs after the sync) and makes `0x3BDDC` skip
 its `0x3CF38` call, so the case-18 arm is the only writer of the observed
 fields. Self's `+0x2C` (0x1000) is below the other's (0x2000), so `0x18B04`
 sets the record's `+0x29` bit 0x40. Seeded sentinels: `+0x5F = 0xAA`,
-`DS_001078F8[side] = 0xAA`, the record's `+0x29 = 0`, `+0x54` = the case's
-value; each differs from what the calls write (0xFF, 1, 0x40, 2), and the
-`+0x52` seed 0x12 differs from `0x3BDDC`'s 3. Five assertions per case
-(`s18_expect`), the same eight cases for side 0 and side 1:
+`DS_001078F8[side] = 0xAA`, the record's `+0x29 = 0`, `+0x56 = 0x30`, and
+`+0x54` = the case's value. Each differs from what the calls write (0xFF, 1,
+0x40, 0x31, 2), and the `+0x52` seed 0x12 differs from `0x3BDDC`'s 3. The one
+exception is case B2's `+0x54 = 2`, which equals the `0x3BF10` store. B2 is a
+no-call case, and its `+0x52`/`+0x5F`/`DS_001078F8`/`+0x56` assertions tell
+it apart. The transition's `+0x53 = 4` (`0x3BF16`) makes the same pass's
+`0x3531C` (`0x35803`) take its case 4, `0x3540E inc byte [ecx+0x56]`, so
+`+0x56` goes 0x30 -> 0x31. With no transition it stays 0x30, because
+`+0x53 = 1` is a no-op there. This pins the one behaviour difference §E.4's
+probe found (fix round 1). Six assertions per case (`s18_expect`), with the
+same eight cases for side 0 and side 1:
 
 | Case | cmd | `+0x54` | `+0x40` | 0x3BDDC | 0x18B04 |
 |---|---|---|---|---|---|
@@ -141,7 +156,8 @@ value; each differs from what the calls write (0xFF, 1, 0x40, 2), and the
 TDD: before the port, the suite failed with exactly the 40 assertions of the
 eight calling cases (`FAILURES: 40`; e.g. `test_fight.c:9936: 18 != 3`,
 `:9937: 0 != 2`, `:9938: 170 != 255`, `:9939: 170 != 1`, `:9940: 0 != 64`).
-After: `all checks passed`. Assertion sites 13545 -> 13550 (+5).
+After: `all checks passed`. Assertion sites 13545 -> 13550 (+5); fix round
+1 adds the `+0x56` assertion: 13550 -> 13551.
 
 Mutations (each built and run with `PR_ORACLE_REQUIRED=1`; measured `FAIL`
 lines, the closing `FAILURES: N` excluded):
@@ -163,7 +179,26 @@ lines, the closing `FAILURES: N` excluded):
 | M13 | `0x18B04(1 - side)` | 8 | `test_fight.c:9940: 0 != 64` |
 | M14 | case 18 back to a bare `break` | 40 | `test_fight.c:9936: 18 != 3` |
 
-14 of 14 fail.
+14 of 14 fail (measured before fix round 1's `+0x56` assertion, so the
+counts are of the five-assertion `s18_expect`).
+
+Fix round 1 mutations (six-assertion `s18_expect`; the `+0x56` assertion is
+`test_fight.c:9947`):
+
+| # | Mutation | FAIL lines | Of which `:9947: 48 != 49` |
+|---|---|---:|---:|
+| F1 | the arm does not call `0x3BDDC` (`if (0)`) | 48 | 8 |
+| F2 | `0x3531C` case 4 drops its `+0x56` increment (`fighter.c`, `0x3540E`) | 9 | 8 (the ninth is `:9241: 17 != 18`, an existing check) |
+| F3 | case 18 back to a bare `break` | 48 | 8 |
+
+The probe evidence of §E.4 was re-run in fix round 1 and saved as
+`.superpowers/sdd/2026-09-29-k7-k12/scratch/ne_probe_run.txt` (git-ignored).
+New port: 56 arm runs, 56 `0x3BDDC` calls, AL = 1 twice (f = 2329 side 1,
+f = 3773 side 0), 3 `0x350D0` transitions (f = 2061, 2112, 3921). Old port:
+5 `0x350D0` transitions (the same three plus 2329 and 3773). The demo-fight
+driver has 0 probe lines. The two `--check 8000` frame sets (24000 files
+each) have 0 differences. The probe build was removed and the sources
+restored (`git diff --quiet HEAD -- port/src`).
 
 Gate (plain `make verify` with the `/tmp/pr_ne_*` overrides): EXIT=0, 0
 compiler warnings; the oracle lines equal
@@ -206,8 +241,8 @@ The test's `+0x53 = 1` is such a state.
 
 ## §E.5 Not tested
 
-- `0x3BDDC`'s `0x3CF38`-hit return (`0x3BE61`, AL = 1 without the attack
-  state) reached through case 18: the fixture's `+0x53 = 1` skips that call on
+- `0x3BDDC`'s `0x3CF38`-hit return (`0x3BE6A`, after the `0x3BE61` call;
+  AL = 1 without the attack state) reached through case 18: the fixture's `+0x53 = 1` skips that call on
   purpose. The callee's arms are covered by `check_attack_consume`; the arm's
   own contract (AL != 0 -> `0x18B04`) is covered by B0/B1.
 - `0x18B04`'s mode-0x22 early return and its `+0x18` write

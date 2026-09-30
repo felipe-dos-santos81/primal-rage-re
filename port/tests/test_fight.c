@@ -9902,7 +9902,12 @@ static void check_hud_pass_machine(void)
  * so the only writer of the observed fields is the case-18 arm. Self's +0x2C
  * is below the other's, so 0x18B04 sets the record's +0x29 bit 0x40. Seeds:
  * +0x5F = 0xAA, +0x54 = the case's, DS_001078F8[side] = 0xAA, record +0x29 =
- * 0; each differs from the value the calls write (0xFF, 2, 1, 0x40). */
+ * 0, +0x56 = 0x30; each differs from the value the calls write (0xFF, 2, 1,
+ * 0x40, 0x31), except case B2's +0x54 = 2, which equals 0x3BDDC's 0x3BF10
+ * store; B2 is a no-call case and its other fields tell it apart. The
+ * transition's +0x53 = 4 (0x3BF16) makes the same pass's 0x3531C take case 4,
+ * 0x3540E `inc byte [ecx+0x56]`: +0x56 goes 0x30 -> 0x31, and stays 0x30
+ * (the +0x53 = 1 no-op) when the arm makes no transition. */
 static void s18_run(u32 side, u16 cmd, u8 st54, u8 st40)
 {
     u32 s = DS_001077B0 + side * 0x94u, so = DS_001077B0 + (1u - side) * 0x94u;
@@ -9919,6 +9924,7 @@ static void s18_run(u32 side, u16 cmd, u8 st54, u8 st40)
     DSB(s + 0x53u) = 1u;
     DSB(s + 0x54u) = st54;
     DSB(s + 0x5Fu) = 0xAAu;
+    DSB(s + 0x56u) = 0x30u;
     DSD(s + 0x2Cu) = 0x1000u;                   /* self left of the other */
     DSD(so + 0x2Cu) = 0x2000u;
     DSB(r + 0x29u) = 0;
@@ -9938,12 +9944,14 @@ static void s18_expect(u32 side, int call, int facing, u8 st54)
     CHECK_EQ_INT((int)DSB(s + 0x5Fu), call ? 0xFF : 0xAA);
     CHECK_EQ_INT((int)DSB(DS_001078F8 + side), call ? 1 : 0xAA);
     CHECK_EQ_INT((int)DSB(r + 0x29u) & 0x40, facing ? 0x40 : 0);
+    CHECK_EQ_INT((int)DSB(s + 0x56u), call ? 0x31 : 0x30);   /* 0x3540E */
 }
 
 static void check_state18(void)
 {
     u32 sv_7d40 = DSD(DS_00107D40), sv_7d44 = DSD(DS_00107D40 + 4u);
     u32 sv_88e0 = DSD(DS_001088E0);
+    u8 sv_8f8 = DSB(DS_001078F8), sv_8f9 = DSB(DS_001078F8 + 1u);
 
     for (u32 side = 0; side < 2u; side++) {
         /* A: both gate bits (0x100 in 0x300, 0x400 in 0xC00) -> 0x34D83,
@@ -9974,6 +9982,8 @@ static void check_state18(void)
     DSD(DS_00107D40) = sv_7d40;
     DSD(DS_00107D40 + 4u) = sv_7d44;
     DSD(DS_001088E0) = sv_88e0;
+    DSB(DS_001078F8) = sv_8f8;
+    DSB(DS_001078F8 + 1u) = sv_8f9;
 }
 
 /* Task 6b fix round 1: 0x367DC's second 0x2BC30 call passes the side's 0x102900
