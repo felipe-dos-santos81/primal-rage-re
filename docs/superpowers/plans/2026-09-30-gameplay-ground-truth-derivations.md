@@ -1016,3 +1016,28 @@ stands. Each fix, with its mutation (each restored → `all checks passed`):
 
 Assertion sites: 13776 → **13776** (the trace check replaced one-for-one; the
 Enter test lives in the existing parse check).
+
+## §G.13 The loaders (U3 Task 1)
+
+Worktree `.worktrees/gameplay-u3`, branch `gameplay-u3` from `gameplay-u2`
+(`300eef7`); `data` and `.superpowers` symlinked to the main checkout's, the
+two git-ignored fixtures copied. Every `make verify` in U3 runs with the
+per-agent overrides `SMK_DUMP=/tmp/pr_u3_smk TITLE_DUMP=/tmp/pr_u3_title
+ATTRACT_DUMP=/tmp/pr_u3_att FRONTEND_DUMP=/tmp/pr_u3_fe TITLE_PIN_DIR=/tmp/pr_u3_pin
+AUDIO_WAV=/tmp/pr_u3.wav K11_DUMP=/tmp/pr_u3_k11 GP_DUMP=/tmp/pr_u3_gp`; scratch
+`S=/tmp/gameplay-u3`.
+
+`tools/gp_compare.py`: `expand_ipx` (64 000 indices and the 768-byte DAC to
+RGB24 by `bytes.translate` per channel), `_paths`, `load_capture_frame` (gzip,
+length-checked), `load_port_frame`, `Lazy` (LRU, `cache = 160` frames: a harness
+value, memory only), `View`. Tests: `Ran 2 tests … OK` (before: `ModuleNotFoundError`).
+Mutation: every channel read from `dac[3 * i + 0]` → `FAIL:
+test_expand_is_dac_of_index … b'\x01\x01\x01' != b'\x01\x02\x03'`; restored →
+`OK`.
+
+Cross-check against the RGB writer itself (as U2 §G.10): the expansions of
+the smoke dump's `frame_00001..00005.ipx` (`/tmp/gameplay-u2/smoke`) are
+byte-identical to `fe_write_frame`'s `/tmp/pr_u2_k11/walk/frame_0001.raw` …
+`0005.raw` (`True` ×5). So `expand_ipx` is `fe_write_frame`'s `rgb = dac[idx]`
+and the port frames U3 compares are the same bytes the K11 and front-end
+oracles read.
