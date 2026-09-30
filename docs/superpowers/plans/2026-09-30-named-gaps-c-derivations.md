@@ -98,3 +98,60 @@ Plan: `docs/superpowers/plans/2026-09-30-named-gaps-c-alloc-seam.md`. Spec:
 After the five, `cmp $C/res.c.good port/src/platform/res.c` is silent and the
 rebuilt suite prints `all checks passed`. S1-S4 match the plan's counts
 exactly; S0's count was left open by the plan ("record the count").
+
+## §C.2 The two arms
+
+`test_game.c` `check_sound_buffers()` gains four vectors after the
+slot-0-set-at-entry vector (it now also saves and restores `DS_001028CC`).
+`sound_buffers_alloc()` runs on the unit-suite process from `test_flow`,
+without `game_init()`.
+
+| vector | seeds | armed | asserted |
+|---|---|---|---|
+| V1 MIDI failure (`0x1D10E..0x1D12F`) | `A2CB0` = 0, `C0` = `0x1234`, `C4` = `0x5678`, `CC` = `0xCC01`, `D0` = 0, `C8` = 1, slots = 0 | 1 | AL = 1; count 0; `A2CB0` = 1; C4 = C0 = CC = 0; slot 0 = the pre-call peek (the arm falls into `0x1D132`, the failed request took nothing) |
+| V2 slot 0 fails (`0x1D16B`, ecx = 0) | `A2CB0` = 0, `C0` = `C4` = 0, `D0` = `0xD0D0D0D0`, `C8` = 1, slots = 0 | 1 | AL = 1; count 0; `C8` = 0 (`0x1D195`); slot 1 = 0; heap unmoved |
+| V3 slot k = 1..3 fails | as V2 | k + 1 | AL = 1; count 0; slot 0 = peek; slots 1..k-1 ≠ 0; slots k+1..3 = 0; `C8` = 1; next block − slot k-1 = `0x8C00` (k = 1) / `0x6000` |
+| V4 slot 0 set at entry (`0x1D147`) | `A2CB0` = 0, `C0` = `C4` = 0, `C8` = 1, slot 0 = `0x0BAD`, slots 1..3 = 0 | 1 | AL = 1; count 1 (no request); slot 0 = `0x0BAD`; `C8` = 0 |
+
+Assertion sites: +23 (V1 7, V2 5, V3 7, V4 4); with §C.1's +10 the tree holds
+13578 (13545 + 33). The suite passes on the first run (characterisation of
+arms already ported); the mutations prove the assertions can fail.
+
+Mutations (each alone in `sound_buffers_alloc`, `port/src/game/flow.c`,
+rebuilt, `PR_ORACLE_REQUIRED=1`, restored with `git checkout`; `$C/mut-M*.txt`).
+Lines are `test_game.c`; V1 is `:1431..:1438`, V2 `:1453..:1458`, V3
+`:1476..:1487`, V4 `:1501..:1505`; the pre-existing entry-case vector is
+`:1408..:1410`. Heap offsets are this run's (decimal).
+
+| id | mutation | measured FAIL lines |
+|---|---|---|
+| M1 | delete the MIDI arm's three stores (`0x1D113`/`0x1D11E`/`0x1D124`) | 3: `:1435: 22136 != 0` (C4), `:1436: 4660 != 0` (C0), `:1437: 52225 != 0` (CC) |
+| M1a | delete only the C4 store (`0x1D113`) | 1: `:1435: 22136 != 0` |
+| M1b | delete only the C0 store (`0x1D11E`) | 1: `:1436: 4660 != 0` |
+| M1c | delete only the CC store (`0x1D124`) | 1: `:1437: 52225 != 0` |
+| M2 | delete the loop stop `if (b == 0u) break;` (`0x1D16B`) | 8: V2 `:1456: 1 != 0` (C8), `:1457: 46268088 != 0` (slot 1 = peek), `:1458: 73728 != 0` (heap); V3 k=1 `:1484: 46377656 != 0`, `:1484: 46402232 != 0` (slots 2, 3), `:1487: 84992 != 35840`; V3 k=2 `:1484: 46487224 != 0` (slot 3), `:1487: 49152 != 24576`. k = 3 is unaffected (i = 4 ends the loop). |
+| M3 | count the failed slot: `{ i++; break; }` | 1: `:1456: 1 != 0` (V2 C8) |
+| M4 | any failure turns the DIG off: `{ DSD(DS_001028C8) = 0; break; }` | 3: `:1485: 0 != 1` for k = 1, 2, 3 |
+| M5 | the MIDI failure skips the sample arm (`DSB(DS_000A2CB0) = 1u; return 1;` after the CC store) | 1: `:1438: 0 != 46158520` (V1 slot 0) |
+| M6 | skip the slot-0 entry gate: `if (1) {` (`0x1D147`) | 4: existing entry vector `:1409: 1 != 0` (C8), `:1410: 46194360 != 0` (slot 1); V4 `:1502: 0 != 1` (count), `:1504: 0 != 2989` (slot 0) |
+| M7 | the sample arm never runs: `if (0) {` (`0x1D132`) | 48, among them the new: V1 `:1438: 0 != 45878968`; V2 `:1454: 1 != 0` (count) and `:1456: 1 != 0`; V3 `:1477: 2 != 0`, `3 != 0`, `4 != 0` (the `== 0` count checks can fail), `:1479` ×3, `:1482` ×3, `:1487` ×3; V4 `:1505: 1 != 0`. The rest are existing first-run checks (`:1323..:1328`, `:1341`, `:1372`, `:1409`), `check_sample_slots` (`:926` ×4, `:931..:990`) and `test_flow`'s sample/mixer checks (`:1695`, `:1701`, `:1722`). |
+| S3′ | Task 1's S3 in `res.c` (n = 0 does not disarm), backup refreshed from `HEAD` | 24: `test_platform.c:191: 0 != 45854608` (Task 1's line) and V4's leaked arm (count 1 after the call, never disarmed) failing the next allocation: `test_flow`'s later `sound_buffers_alloc()` loses slot 0, so `:1695` (the 0x40 voice), `:1701` (mixer non-silence), `:1722: 0 != 1`, and `check_sample_slots` `:926` ×4, `:931..:937`, `:946`, `:951`, `:960..:963`, `:968..:990` fail. This is Review Focus 5's leak detection. |
+
+After the table `git status --short port/src` is empty and the rebuilt suite
+prints `all checks passed`. Every count matches the plan's table (M7 and S3′
+were left to measurement: 48 and 24). The two arms' named proofs: M1 (delete
+the MIDI arm's zeroing: 3 FAIL lines, one per store) and M2 (delete the loop
+stop: 8 FAIL lines over V2 and V3).
+
+### §C.2.1 Not tested
+
+- `0x1D0F7`'s store of 0 into `DS_001028D0` on the failure path and `0x1D163`'s
+  store of 0 into the failed slot's `+0x10`: both destinations must already be
+  0 to reach the store (`0x1D0E6`; `0x1D147`/`0x1D176`), so no state tells a
+  store from none.
+- The two `0x62734` messages (`0x8063C` MIDI, `0x80684` slots): `PORT:` not
+  printed (k7-k12 §2.1), so there is nothing to observe.
+- Both arms failing in one call (MIDI and slot 0): the seam is one-shot by
+  design (§C.1); each arm is pinned alone.
+- `0x1C308`'s own failure modes (a real paged allocator with free): host-owned;
+  the port's allocator fails only by `mem_in_range`, which the seam mirrors.
