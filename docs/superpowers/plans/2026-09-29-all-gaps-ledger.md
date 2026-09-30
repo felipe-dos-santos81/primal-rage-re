@@ -432,7 +432,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 |---:|---|---|---:|---|---|
 | 1 | T2 | the 31 `TODO(verify)` sites (§C) | — | resolve or re-scope | Task 2 — **closed** (§C) |
 | 2 | K1 HDR | `0x34B6C`, `0x3BDB0`, `0x1C528`, `0x4682C`, `0x38910`, `0x33714`, `0x51ED8` | 1117 | port (header / one-function split only, no behaviour change; +7 on the counter) | Task 3 — **closed** (Task 3a, §K1) |
-| 3 | K9 CLASSIFY | host-owned: `0x501A3`, `0x4FB98`, `0x4FF8F`, `0x4FFD8`, `0x2D62C`. Deferred: `0x2E180`, `0x2E0A4`, `0x2E034`, `0x2DF8C`, `0x2D498`, `0x32B94`, `0x32BB0`. | 3688 | host-owned/deferred rows in `tools/port_classification.txt` plus derivation rows. **Needs the user's approval (§G).** | Task 3 — **closed** (Task 3a, §K9; 12/12 supported) |
+| 3 | K9 CLASSIFY | host-owned: `0x501A3`, `0x4FB98`, `0x4FF8F`, `0x4FFD8`, `0x2D62C`. Deferred: `0x2E180`, `0x2E0A4`, `0x2E034`, `0x2DF8C`, `0x2D498`, `0x32B94`, `0x32BB0`. | 3688 | host-owned/deferred rows in `tools/port_classification.txt` plus derivation rows. **Needed the user's approval (§G); ratified by the user on 2026-09-30 (§H.2).** | Task 3 — **closed** (Task 3a, §K9; 12/12 supported) |
 | 4 | K2 TRIV | `0x29B70`, `0x32968`, `0x2D4B4`, `0x51F72` | 423 | port | Task 3 — **closed** (Task 3b, §K2 of `2026-09-29-k2-k5-derivations.md`) |
 | 5 | K5 MENU-FRAME | `0x2EA74` (and its 3 ported call sites in `menu.c`) | 4 | port (raw conflict fix) | Task 3 — **closed** (Task 3b, §K5 of `2026-09-29-k2-k5-derivations.md`) |
 | 6 | K3 FRAME-SVC | `0x38990` (called at `0x24CC3`/`0x24CC8`) | 52 | port, **live every frame**. Re-run `demo-fight-oracle attract2-oracle` and diff the dumps. | Task 3 — **closed** (Task 3c, §K3 of `2026-09-29-k3-k8a-derivations.md`) |
@@ -458,7 +458,7 @@ K4 1, K5 1, K6 2, K7 1, K8c 1, K9 12, K10 1, K11 3.
 
 ## §G Classifications for the user (one-way scope decisions)
 
-**Task 3a (2026-09-29): done.** The scan was redone and matches site by site; all 12 rows are supported and written with tags `record-§K9.1..§K9.12` (record `2026-09-29-k1-k9-derivations.md`). Two evidence texts below were corrected there: `0x2DF8C` (`0x61A70` is memset, which is inert on the port's path, §K9.9) and `0x2D62C` (`0x1BFA4` is a lock push, §K9.5).
+**Task 3a (2026-09-29): done. Ratified by the user in the session on 2026-09-30 (§H.2);** the "proposals" wording below is as of Task 1. The scan was redone and matches site by site; all 12 rows are supported and written with tags `record-§K9.1..§K9.12` (record `2026-09-29-k1-k9-derivations.md`). Two evidence texts below were corrected there: `0x2DF8C` (`0x61A70` is memset, which is inert on the port's path, §K9.9) and `0x2D62C` (`0x1BFA4` is a lock push, §K9.5).
 
 **Task 3 must redo the raw caller scan for each row before writing any `tools/port_classification.txt` line.** Scan the fixed-up image for rel32 call/jmp/jcc sites and absolute-dword references. The evidence lines below carry the placeholder tag `record-§TBD-K9`, to be replaced by the derivation-record section that Task 3 writes.
 
@@ -494,7 +494,7 @@ classification row is reverted.
 
 Explicitly **not** classified host-owned, and why:
 - `0x51F72`: two of its three uses fill `mem[]` buffers.
-- `0x50D23`: superseded. It is classified host-owned by record §K10.5 (the EDI stores are the aperture's shadow, dead at `0x1C873`, §K10.3). The classification was directed by the all-gaps controller's K10 task brief, pending the user's ratification.
+- `0x50D23`: superseded. It is classified host-owned by record §K10.5 (the EDI stores are the aperture's shadow, dead at `0x1C873`, §K10.3). The classification was directed by the all-gaps controller's K10 task brief and ratified by the user in the session on 2026-09-30 (§H.2).
 
 ---
 
@@ -517,14 +517,15 @@ that proves it.
 | `game_frame` cases | 52/52 wired | 52/52 wired | §D |
 | `named gap` sites (`port/src` + `port/tests`) | 35 | 13, all live named gaps (§H.3) or history ("formerly", "pinned") | `rg -n -i 'named gap' port/src port/tests` |
 | `not wired` in `port/src` | ~180 | 0 | `rg 'not wired' port/src` |
-| `not modelled` deviations in `port/src` (fifth source, added in fix round 1) | not enumerated | 10 hits of `rg -n 'not modelled\|not yet modelled\|is not modelled' port/src` (1 of them matches `PORT:.*not modelled` on one line); a multi-line-aware search (`rg -U 'not(\s\|\n\s*\*)+modell?ed\|does not model\|unmodelled'`) finds 20 lines at 18 locations = 15 distinct deviations, each with a verdict in §H.1a | as named |
+| `not modelled` deviations in `port/src` (fifth source, added in fix round 1) | not enumerated | 10 hits of `rg -n 'not modelled\|not yet modelled\|is not modelled' port/src` (1 of them matches `PORT:.*not modelled` on one line); that alternation is narrower than the broad one: `rg -n 'not\s+modell?ed\|does not model\|unmodelled' port/src` returns 16 lines, and its multi-line form `rg -U 'not(\s\|\n\s*\*)+modell?ed\|does not model\|unmodelled' port/src` returns 18 matches (the 16 plus 2 that wrap a line, in `movie.c` and `ail.h`; 20 printed lines) at 18 locations = 15 distinct deviations, each with a verdict in §H.1a | as named |
 
 The Task 7 sweep (`rg -n -i 'named gap\|TODO\(verify\)\|not wired\|stand-in\|deferred\|unported' port/src`,
 plus `port/tests` and `port/spec/game_flow.md`) checked every hit against a
 port call-site annotation or header and a raw rel32 scan of the fixed-up image.
 It fixed 62 stale comment sites in `port/src` (commits `1aee088`, and the
-`config_key_latched` callers comment in the closing commit), 7 in `port/tests`
-(6 comments and one literal (6 sites) `0x00104B22u` -> `DS_00104B22`), 1 in
+`config_key_latched` callers comment in the closing commit), edits in 2
+`port/tests` files (`test_game.c`, `test_fight.c`): 1 literal at 6 sites
+(`0x00104B22u` -> `DS_00104B22`) and 6 comment edits, 1 comment in
 `test_video.c`, and 9 places in `game_flow.md`. `port/src` changes are
 comment-only: a comment-stripped compare of every touched file is identical.
 The `stand-in` hits that remain are live `PORT:` stand-ins (the DIG handle
@@ -544,7 +545,9 @@ ISR `0x1BDF4` (already in todo-verify §1 and §K9.5; now noted in the spec).
 
 Task 1's four sources (unported functions, `TODO(verify)`, `game_frame` cases,
 `named gap` prose) never enumerated `PORT:` deviations that say "not
-modelled". Every hit of the multi-line-aware search above has a row here.
+modelled". The narrow single-line search finds 10 lines; the broad single-line
+search finds 16; its multi-line form finds 18 matches. Every one of the 18 has a
+row here.
 
 | site | deviation | verdict | evidence |
 |---|---|---|---|
@@ -586,13 +589,17 @@ unreachable, unobservable or not a deviation.
   evidence: 1, 17 (residue), 27; named gaps: 28–33.
 - **§F:** all 20 cycles closed.
 - **§G:** all 12 K9 rows written with record tags; K10's host-owned verdict is
-  recorded, pending the user's ratification.
-- **Awaiting explicit user ratification** (approved by the controller, not by
-  the user): the 12 K9 rows in `tools/port_classification.txt` (host-owned
-  `0x501A3`, `0x4FB98`, `0x4FF8F`, `0x4FFD8`, `0x2D62C`; deferred `0x2E180`,
-  `0x2E0A4`, `0x2E034`, `0x2DF8C`, `0x2D498`, `0x32B94`, `0x32BB0`), the K10
-  host-owned row `0x50D23`, and the removal of the `0x1D0BC` host-owned row
-  (reclassified to ported, record k7-k12 §0.9).
+  recorded.
+- **Ratified by the user, 2026-09-30** (ratified by the user in the session;
+  before that date these were the all-gaps controller's approvals): the 12 K9 host-owned/deferred rows (`0x501A3`, `0x4FB98`, `0x4FF8F`,
+  `0x4FFD8`, `0x2D62C`; `0x2E180`, `0x2E0A4`, `0x2E034`, `0x2DF8C`, `0x2D498`,
+  `0x32B94`, `0x32BB0`) and the K10 row `0x50D23` in
+  `tools/port_classification.txt`; the reclassification of `0x1D0BC` from
+  host-owned to ported (record k7-k12 §0.9.1); retiring the title announcer
+  stand-in (§0.9.2: the title no longer plays `0xCD`; the attract plays its two
+  s16title loops and the `0xBD`/`0xBE`/`0xBF` one-shots); and wiring
+  `fight.c:4007`'s three calls (§0.9.3).
+  Nothing else is claimed as ratified.
 
 ### §H.3 Named gaps still open
 
@@ -618,7 +625,7 @@ because Task 7 changes no behaviour:
 
 | # | Gap | Evidence |
 |---:|---|---|
-| 7 | `fight_health_sync` (`0x34B6C`) case 18 is a `PORT:` `break`, so a fighter in slot state `+0x52 = 0x12` loses the attack transition | Raw `0x34CC7..0x34D21`: `si = word [DS_001088E0 + side*2]`; if `(si & 0x300) != 0` and `(si & 0xC00) != 0` it exits; else if slot `+0x54` is 0 or 1 it calls `0x3BDDC(side)` and, on a non-zero AL, `0x18B04(side)`. Both callees are ported (`fighter.c`, `/* 0x3BDDC`, `/* 0x18B04`). The state is reachable: the ported `0x36638` (`fighter_state_36638`) stores `+0x52 = 0x12` at `0x366B2` and `0x366D1`, and it has 13 raw call sites (`0x34A55` in the default state `0x349C8`, `0x34BDE` in `fight_health_sync` itself, `0x358A4`, `0x358F9`, `0x36450`, `0x3651C`, `0x36A7A`, `0x36B41`, `0x373C6`, `0x37414`, `0x37456`, `0x375B5`, `0x3822D`). `0x3BDDC` has 7 raw call sites, of which `0x34D0C` is this arm's. The arm needs its own cycle: a seeded test, a mutation proof and the oracle gate. |
+| 7 | `fight_health_sync` (`0x34B6C`) case 18 is a `PORT:` `break` (`port/src/game/fight.c:2150`), so a fighter in slot state `+0x52 = 0x12` loses the attack transition | Raw `0x34CC7..0x34D21`: `si = word [DS_001088E0 + side*2]`; if `(si & 0x300) != 0` and `(si & 0xC00) != 0` it exits; else if slot `+0x54` is 0 or 1 it calls `0x3BDDC(side)` and, on a non-zero AL, `0x18B04(side)`. Both callees are ported (`fighter.c`, `/* 0x3BDDC`, `/* 0x18B04`). The state is reachable: the ported `0x36638` (`fighter_state_36638`) stores `+0x52 = 0x12` at `0x366B2` and `0x366D1`, and it has 13 raw call sites (`0x34A55` in the default state `0x349C8`, `0x34BDE` in `fight_health_sync` itself, `0x358A4`, `0x358F9`, `0x36450`, `0x3651C`, `0x36A7A`, `0x36B41`, `0x373C6`, `0x37414`, `0x37456`, `0x375B5`, `0x3822D`). `0x3BDDC` has 7 raw call sites, of which `0x34D0C` is this arm's. The arm needs its own cycle: a seeded test, a mutation proof and the oracle gate. |
 
 Two `not modelled` deviations from §H.1a and one movie-player exit, verified
 against the raw mirror:
@@ -648,7 +655,7 @@ in a `port/src` comment: `0x37774` (character 2's reaction-0x33 callback),
 `0x45B43`, `0x45C10`, `0x47BFC`, `0x1DC5C` and `0x2EE41` (a `0x2EB80`
 caller). A 14th is not named by address: `fight.h`'s `0x4DBB4` header says
 "its other caller is unported"; a raw rel32 scan names it `0x4F638` (in no
-Ghidra function). Also plus the 75 raw voice calls in code the port
+Ghidra function). Plus the 75 raw voice calls in code the port
 does not have (record k7-k12 §1.2). The sampler routines `0x1B934..0x1BB73`
 are host-owned by §G's evidence but have no classification row, because the
 file holds only Ghidra (`FN_`) addresses. This list is what the comments name;

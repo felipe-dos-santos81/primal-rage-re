@@ -221,7 +221,8 @@ port/tests/test_fixtures.c`).
 Append §1 (with §1.1 verification, §1.2 placement and §1.3 drive table) to the
 derivations. Write the SDD ledger's first entry. Stop and report to the
 controller:
-- the three §0.9 decisions, still unanswered;
+- the three §0.9 decisions, still unanswered (answered 2026-09-30: the user
+  ratified all three; derivations §0.9);
 - any raw-wins correction;
 - the §0.5 verdict counts.
 
