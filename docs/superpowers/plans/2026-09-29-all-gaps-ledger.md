@@ -603,9 +603,9 @@ unreachable, unobservable or not a deviation.
 
 ### §H.3 Named gaps still open
 
-**Ten named gaps** are open: the six carried by K7+K12 and K11 (#1..#6),
-`fight_health_sync`'s case 18 (#7), the two new `not modelled` deviations of
-§H.1a (#8, #9) and `movie.c`'s decode-failure exit (#10).
+**Nine named gaps** are open: the six carried by K7+K12 and K11 (#1..#6),
+the two new `not modelled` deviations of §H.1a (#8, #9) and `movie.c`'s
+decode-failure exit (#10). (#7 closed by named-gaps E.)
 
 The six carried by K7+K12 and K11:
 
@@ -625,7 +625,7 @@ because Task 7 changes no behaviour:
 
 | # | Gap | Evidence |
 |---:|---|---|
-| 7 | `fight_health_sync` (`0x34B6C`) case 18 is a `PORT:` `break` (`port/src/game/fight.c:2150`), so a fighter in slot state `+0x52 = 0x12` loses the attack transition | Raw `0x34CC7..0x34D21`: `si = word [DS_001088E0 + side*2]`; if `(si & 0x300) != 0` and `(si & 0xC00) != 0` it exits; else if slot `+0x54` is 0 or 1 it calls `0x3BDDC(side)` and, on a non-zero AL, `0x18B04(side)`. Both callees are ported (`fighter.c`, `/* 0x3BDDC`, `/* 0x18B04`). The state is reachable: the ported `0x36638` (`fighter_state_36638`) stores `+0x52 = 0x12` at `0x366B2` and `0x366D1`, and it has 13 raw call sites (`0x34A55` in the default state `0x349C8`, `0x34BDE` in `fight_health_sync` itself, `0x358A4`, `0x358F9`, `0x36450`, `0x3651C`, `0x36A7A`, `0x36B41`, `0x373C6`, `0x37414`, `0x37456`, `0x375B5`, `0x3822D`). `0x3BDDC` has 7 raw call sites, of which `0x34D0C` is this arm's. The arm needs its own cycle: a seeded test, a mutation proof and the oracle gate. |
+| 7 | `fight_health_sync` (`0x34B6C`) case 18 is a `PORT:` `break` (`port/src/game/fight.c:2150`), so a fighter in slot state `+0x52 = 0x12` loses the attack transition | Raw `0x34CC7..0x34D21`: `si = word [DS_001088E0 + side*2]`; if `(si & 0x300) != 0` and `(si & 0xC00) != 0` it exits; else if slot `+0x54` is 0 or 1 it calls `0x3BDDC(side)` and, on a non-zero AL, `0x18B04(side)`. Both callees are ported (`fighter.c`, `/* 0x3BDDC`, `/* 0x18B04`). The state is reachable: the ported `0x36638` (`fighter_state_36638`) stores `+0x52 = 0x12` at `0x366B2` and `0x366D1`, and it has 13 raw call sites (`0x34A55` in the default state `0x349C8`, `0x34BDE` in `fight_health_sync` itself, `0x358A4`, `0x358F9`, `0x36450`, `0x3651C`, `0x36A7A`, `0x36B41`, `0x373C6`, `0x37414`, `0x37456`, `0x375B5`, `0x3822D`). `0x3BDDC` has 7 raw call sites, of which `0x34D0C` is this arm's. The arm needs its own cycle: a seeded test, a mutation proof and the oracle gate. **Closed** (named-gaps E, 2026-09-30): case 18 is ported at the raw's `0x34CC7..0x34D21` with no `PORT:` note; `0x18B04` (`hit_facing_flag`) is exported for it. `check_state18` (`test_fight.c`) covers both gate groups, `+0x54` = 0/1/2, AL = 0 (bit 15 clear, `+0x40` bit 7) and both sides; 14 of 14 mutations fail it. `make verify` exits 0, the oracle lines and the frame dumps are unchanged, the WAV is identical: the arm runs 56 times over `--check 8000` (two AL = 1 transitions, frames 2329 and 3773), and on the old port `0x3531C` -> `0x350D0` made the same two transitions later in the same pass (record `2026-09-30-named-gaps-e-derivations.md` §E.1-§E.4). |
 
 Two `not modelled` deviations from §H.1a and one movie-player exit, verified
 against the raw mirror:
@@ -663,7 +663,8 @@ it is not a complete scan of non-Ghidra code.
 
 ### §H.5 Final gate
 
-Ten named gaps remain (§H.3); §H.1a gives every `not modelled` hit a verdict.
+Ten named gaps remained at Task 7; nine remain after named-gaps E closed #7
+(§H.3). §H.1a gives every `not modelled` hit a verdict.
 
 `make clean && make build && make verify` (with the `/tmp/pr_t7_*` dump
 overrides; the two oracle fixtures restored byte-identical after `make clean`,
@@ -713,6 +714,7 @@ One reported minor is not a defect: `main.c`'s `mixer.h` include is used
 **Not done** (each would change code, add or move assertions, or needs new
 evidence):
 - `fight_health_sync` case 18 (§H.3 #7): behaviour; needs its own cycle.
+  **Done** by named-gaps E (record `2026-09-30-named-gaps-e-derivations.md`).
 - `movie.c:114` (now §H.3 #10) returns without the exit blank when `smk_decode_frame` fails
   (the raw's exits all reach `0x1C873`): behaviour.
 - `gfx_fill_screen` has no aperture guard: code.
