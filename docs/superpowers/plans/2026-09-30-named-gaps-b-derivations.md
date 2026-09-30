@@ -220,15 +220,338 @@ object `0x10000..0x74000` and every byte pattern below).
    §A.8; spec §2's "STATISTICS page 2" and the plan's F8 wording).
 8. The instruction A left unpinned for the MAIN MENU Esc clear is `0x3043B`
    (§B.3).
+9. **Found, out of B's scope (reported, not changed):** flow.c's mode-0x12
+   step (`game_mode_12_step`, sub-state 7) carries `PORT: 0x42420
+   longjmp(0x2DAE4, 0x10, 1) — the front-end quit path, out of scope (spec
+   §7)` (and flow.h's "audit close + longjmp 0x2DAE4(0x10)"). The raw is
+   `0x42420 mov eax,0x10; 0x42425 call 0x2DAE4` with EDX = 1 (`0x42415`):
+   a plain call of the audit add `0x2DAE4` (A §A.1.2; field `0x10` += 1),
+   then `0x4242A..0x42433` the function's epilogue. It is not `0x65431` (the
+   scan in §B.1 finds only the three `jmp 0x65431`), so it is not a longjmp
+   and not part of G1; it is an unwired audit-counter call to hand to the
+   ledger owner.
+
+## §B.6b Task log
+
+### Task 1: the restart point and the resume tail
+
+- flow.c: `game_restart_arm` (`PORT:`), `game_restart_longjmp` (`0x65431`),
+  `game_init` split at the setjmp: the pre-setjmp part now ends with
+  `sound_buffers_alloc()` (`0x1C0B1`, correction §B.6a 6) and the four
+  `0x2F9CC` lines (moved up from after `rng_seed`), then calls
+  `game_init_resume()` (`/* 0x20C24..0x20DE3 */`), which holds the rest in
+  its old order plus `DSB(DS_00104B1D) = 0` (`0x20C37`) first and
+  `DSW(DS_00104AFC) = 0` (`0x20CDF`) after `config_set_credit_row_init()`.
+  The `PORT: 0x5004A joystick init` comment moved with the pre-setjmp part
+  (`0x1C0AC`, in `0x1BEC4`). `game_loop()` arms a local jmp_buf; a landing
+  runs `game_init_resume()` and `game_loop_begin()` and then the loop body.
+  flow.h declares the three functions (and includes `<setjmp.h>`).
+- Tests (`test_game.c`, `test_restart`, registered last): `rs_check_landing`
+  (3 sites), `rs_check_resume` (8 sites). The implementation was written
+  before the build was run, so the "fails to build" step was not observed;
+  every assertion is instead proved by a mutation below.
+- Mutations (scratch build, `PR_ORACLE_REQUIRED=1 run_tests`; restored after
+  each; lines are `port/tests/test_game.c`):
+
+  | # | mutation | measured |
+  |---|---|---|
+  | M1 | `longjmp(*s_restart_point, 1)` -> `2` | `FAIL ...:12024: 2 != 1` |
+  | M2 | delete `DSB(DS_00104B1D) = 0u;` | `FAIL ...:12045: 165 != 0` |
+  | M3 | delete `DSW(DS_00104AFC) = 0u;` | `FAIL ...:12046: 119 != 0` |
+  | M4 | delete `game_state_init();` from the tail | `FAIL ...:12048: 39 != 3`, `FAIL ...:12049: 51 != 0` |
+  | M5 | `s_restart_point = jb;` -> `= prev;` | run_tests exits 1, stderr `Primal Rage: restart longjmp with no restart point` |
+  | M6 | delete `render_projection_reset(0u);` from the tail | **survives** (equivalent): `game_state_init`'s `actors_reset` (`0x10E9C 0x2BAF4`) re-runs `0x4F228` at `0x2BBC0`, so the tail's post-state is the same (the raw's own `0x20C58 0x2BAF4` does the same) |
+  | M4+M6 | both | `FAIL ...:12047: 1 != 0` (the `DS_00107A54` check can fail), `12048: 39 != 3`, `12049: 51 != 0` |
+  | M7 | delete `rng_seed(0xABCDu);` | `FAIL ...:12042: 4660 != 43981` |
+  | M8 | delete the `DS_001088D0` store | `FAIL ...:12044: 57005 != 30` |
+  | M9 | delete `DSD(DS_00104528) = v;` | `FAIL ...:12043: 2779096485 != 0` |
+
+Gate t1 (full): `EXIT=0`, `ORACLES-EQUAL`, the five `k11_compare: walk:` lines
+unchanged, `DUMPS-IDENTICAL`, `WAV-IDENTICAL` — the `0x2F9CC` reorder, the
+`sound_buffers_alloc` move and the two zero stores are first-boot no-ops.
+
+### Task 2: the idle timeout 0x2EBB3
+
+- config.c `config_key_latched`: the `PORT:` line becomes
+  `game_restart_longjmp()` after the `0x2EBA8` store; header and config.h
+  rewritten. Nothing else (clock, reference, compare) changes (§B.5).
+- New `rs_check_idle` (12 sites: the boundary, one over, the unsigned wrap,
+  the latch).
+- **Existing assertions changed because the raw wins** (each pinned the old
+  "store and return 0"; each now arms a local restart point):
+  - `test_game.c` `check_idle_timeout_clock` (record k7-k12 §2.6): the
+    one-over `CHECK_EQ_INT(config_key_latched(), 0)` becomes
+    `CHECK_EQ_INT(landed, 1)`; the boundary call is made under `setjmp` too
+    (`CHECK_EQ_INT(got, 0)`), so a mutant that jumps there lands instead of
+    longjmping into an unset jmp_buf.
+  - `test_game.c` `ch_check_key_flags`: the same two changes for the one-over
+    and the wrap (`5001`) calls, and the boundary call under `setjmp`.
+  - `test_platform.c` `check_menu_step`: "Idle past 0x4B0 ticks clears the
+    active flag (the longjmp's stand-in)" — `CHECK_EQ_INT(menu_step(..), 0)`
+    becomes `CHECK_EQ_INT(landed, 1)`.
+  - `test_game.c` `vs_menu_run`/`vs_menu_step` (voice-site rows 196/197): no
+    assertion changes; they now stamp `DS_00105F2C` with the clock first
+    (the suite's clock has run past the timeout; with the jump they would
+    otherwise reach it with no restart point armed).
+  The site count is unchanged by these conversions (one `CHECK` replaces one).
+- Mutations (dev copy; `M` = measured):
+
+  | # | mutation | measured |
+  |---|---|---|
+  | T2M1 | `> 0x4B0u` -> `>= 0x4B0u` | `FAIL ...test_game.c:1546: 65261 != 0`, `:1547: 0 != 90`, `:7537: 65261 != 0`, `:7538: 0 != 85`, then an unarmed call elsewhere ends the suite (`restart longjmp with no restart point`, exit 1) |
+  | T2M2 | delete `game_restart_longjmp();` | `FAIL ...test_game.c:1548: 0 != 1`, `:7537`/`:7543: 0 != 1`, `test_platform.c:3062: 0 != 1`, `test_game.c:12093: 0 != 1`, `:12094: 0 != 65261`, `:12103: 0 != 1` |
+  | T2M3 | delete `DSB(CFG_IDLE_FLAG) = 0u;` | `FAIL ...test_game.c:1549: 90 != 0`, `:7538`/`:7544: 85 != 0`, `test_platform.c:3064: 1 != 0` (and 10 later menu lines), `test_game.c:12095`/`:12104: 90 != 0` |
+  | T2M4 | the compare made signed | `FAIL ...test_game.c:7543: 0 != 1`, `:7544: 85 != 0`, `:12103: 0 != 1`, `:12104: 90 != 0` |
+
+  (Line numbers are those of the dev tree with Tasks 2-4 applied.)
+
+### Task 3: case 0x27's longjmp 0x2520B
+
+- flow.c case `0x27u`: `else game_restart_longjmp();` after the
+  `0/-5/-10` test; the `PORT:` sentence replaced. The comment's `0x25206`
+  (the `mov eax`) is now `0x2520B` (the jump).
+- `rs_check_case27` (12 sites) drives `game_frame()` in mode `0x27`
+  (`kl_env`, `ni_frame_env`, `sm_env_begin` for the pad layout and a fresh
+  stamp), under `ra_save`/`ra_restore`. **Plan correction:** the plan expected
+  `DS_001088E0 = 0` after the START MENU Esc; `0x4F644` writes the live pad
+  there and the Esc is still held (`0x2000000` -> 512), so that check is
+  "`!= 0xBEEF`" (the normal exit ran `0x25210`). Added: `DS_00107414 = 0`
+  after the landing (seeded `0x5A`), the `0x3043B` store (§B.3).
+- Mutations:
+
+  | # | mutation | measured |
+  |---|---|---|
+  | T3M1 | delete the `else` arm | `FAIL ...test_game.c:12174: 0 != 1` |
+  | T3M2 | drop `-5` from the normal set | `FAIL ...:12159: 1 != 0`, `:12161: the START MENU Esc (-5) runs 0x25210 0x4F644`, `:12167: 1 != 0` |
+  | T3M3 | drop `0` from the normal set | `FAIL ...:12147: 1 != 0`, `:12149: 48879 != 0`, `:12159`, `:12167: 1 != 0` |
+  | T3M4 | menu.c: delete `0x3043B`'s store | `FAIL ...test_game.c:12176: 90 != 0` (and 7 `check_menu_step` lines) |
+
+### Task 4: the PR_RESTART driver
+
+- `test_restart_drive` (`TEST_DRIVERS`, `PR_RESTART`; Makefile `verify` runs
+  it after the unit suite). `game_init()`, `game_loop_begin()`, 50 boot
+  iterations recording the attract state, the displayed frame and the RNG
+  word after the first; then the raw's own entry to mode `0x27`, the Enter
+  key (scan `0x1C`, ascii `0x0D`) queued in mode 3 (`0x24EE0`) rather than
+  the plan's direct store; one iteration initialises MAIN MENU (`0x300C2`
+  sets `DS_00107414 = 1`, `0x2FFDA` stamps); then idle iterations until the
+  mode leaves `0x27` (guard 5000).
+- Measured: `restart after 1198 menu iterations (stamp 3E, clock 4EF)`:
+  `0x4EF - 0x3E = 0x4B1` on the restarting iteration and `0x4B0` on the one
+  before (the two `0x2EB9F` checks), as A's capture (`0xA23 - 0x572 = 0x4B1`,
+  A §A.6). With the stamp moved one tick later (temporary edit) the restart
+  came one iteration later (`1199`, stamp `3F`, clock `4F0`) and every check
+  still passed.
+- Post-state checks: mode 3, `DS_00107414 = 0`, the tick pair 1/1, the clock
+  `DS_00101500` not reset and the frame word `DS_000EF6DC` = the value before
+  the restarting iteration + 2 (the abandoned iteration's `0x24CDB` and the
+  new one's; A §A.6: kept), then attract state, RNG word and displayed frame
+  equal to the first boot's for 50 iterations.
+- **The displayed frame is compared as RGB** (each pixel's DAC colour, which
+  is what the RGB captures hold). Measured on the first run: after the
+  restart the same picture uses palette indices one lower than on the first
+  boot (index 22 -> 21, identical DAC colours; 0 RGB bytes differ over frames
+  1..49); comparing indices failed 48 frames. Why the slot moves is not
+  derived here (the palette list `0x336C0` is pre-setjmp state that the
+  restart does not re-initialise, in the raw as in the port); a capture cannot
+  see indices.
+- **Plan correction (equivalent mutant):** the plan expected removing
+  `game_loop_begin()` from the landing to fail the tick-pair checks. It does
+  not: the tail's `game_state_init` runs `0x2BAF4` with EAX = 1
+  (`0x10E9C`), whose `param_1 != 0` arm calls `0x52108` (`gfx_screen_reset(0)`,
+  `0x2BBE8`), which stores 0 in both `DS_00101508` and `DS_0010150C`
+  (`0x52108/0x5210D`). The raw's own tail does the same (`0x20C58 0x2BAF4(1)`
+  and `0x10E9C`), so `0x255D4/0x255DA` are redundant after a restart there as
+  well. The pair checks are proved by T4M3.
+- Mutations (`PR_RESTART=1`):
+
+  | # | mutation | measured |
+  |---|---|---|
+  | T4M1 | delete `DSD(DS_00101500) += n;` in `game_isr_ticks` | `FAIL ...:12255: the idle timeout restarts within the guard`, `:12256`, `:12258: 39 != 3`, `:12259: 1 != 0`, `:12260`/`:12261: 5002 != 1`, `:12262`, `:12264`, `:12266`, `:12267`, the per-frame checks |
+  | T4M2 | delete `game_loop_begin();` from the landing | survives (equivalent, above) |
+  | T4M3 | delete `game_init_resume();` from the landing | `FAIL ...:12255: the idle timeout restarts within the guard`, `:12257`, `:12258: 39 != 3`, `:12259: 1 != 0`, `:12260`/`:12261: 206 != 1`, `:12264: 5056 != 5057`, `:12266: 600282692 != 43981`, `:12267`, the per-frame checks |
+  | T4M4 | the landing also zeroes `DS_000EF6DC` and `DS_00101500` | `FAIL ...:12262: the 0x500BB clock is not reset (A §A.6)`, `:12264: 1 != 1251` |
+
+### Task 5: ABANDON CONQUEST's yes is the soft restart (0x24AB0)
+
+- flow.c `game_quit_prompt`: the AL != 0 yes arm is `sound_resume()`
+  (`0x24A9C`), a `PORT:` for the deferred `0x1B084` (`0x24AA1`, record §50-C),
+  then `game_restart_longjmp()` (`0x24AA6..0x24AB0`); the quit flag is no
+  longer set there. Header and flow.h rewritten ("longjmp quit" is gone from
+  `port/src`).
+- **Existing expectations changed (raw wins):** `ch_check_quit_prompt` pass 2
+  (AL = 1, yes) now lands at an armed point (`CHECK_EQ_INT(landed, pass == 2u
+  ? 1 : 0)`, one new site per pass loop) and expects the quit flag to keep its
+  seed `0x5A` (`want_quit = (pass == 1u)`); `kl_check_esc`'s mode-4 arm
+  (AL = 1) runs `game_key_loop()` under a restart point, asserts
+  `landed == 1` (one new site) and `kl_expect_prompt(0x1EFu, 0)` (was `1`).
+  Every other check of both is of a store made before `0x24AB0` (the
+  `0x24A89` byte, the key consumption, `0x1D270`'s bytes, the question's row
+  and column from `0x24A1C..0x24A32`, the frame `0x24A37`, the latch cleared
+  by that frame at `0x2EA85`), so none became a "sentinel unchanged" check.
+- Mutation T5M1 (the old `DSB(DS_000A81A8) = 1u; return;` in place of the
+  jump): `FAIL ...test_game.c:8202: 0 != 1`, `:8204: 1 != 90`, `:10593: 0 !=
+  1`, `:10499: 1 != 90` (the last is `kl_expect_prompt`'s quit line).
+
+### Task 6: the host CPU-fault end of the run
+
+- host.c/host.h: `host_cpu_fault(exc, eip, msg, status)` (`_Noreturn`,
+  `PORT:`) and `host_set_fault_hook` (`PORT:` test seam). With no hook it
+  prints `msg` (or its own line naming the exception and the 8-digit
+  address) to stderr, runs `host_shutdown()` and `exit(status)`.
+- `test_host`: `hf_check_hook` (4 sites) and `hf_check_exit` (4 sites; a
+  forked child's exit status and stderr).
+- Mutations: T6M1 (drop the hook call): `run_tests` exits 3 with `unused` on
+  stderr (the suite ends there); T6M2 (`exit(1)`): `FAIL
+  ...test_platform.c:2406: 1 != 7`; T6M3 (`%08X` -> `%X`): `FAIL
+  ...test_platform.c:2408: the NULL-message line names the exception and the
+  address`.
+
+### Task 7: G3, the 0x334E0 idiv (ABORT-PINNED)
+
+- svcmenu.c `svc_stats_rows`: the numerator is read first (`0x334CD..0x334D5`,
+  as the raw orders it), then `d == 0` calls `host_cpu_fault(0x00, 0x334E0,
+  SVC_DE_MSG, SVC_FAULT_EXIT)`; otherwise `v = n / d`. `SVC_DE_MSG` is A's
+  verbatim first line (§B.4); `SVC_FAULT_EXIT` is 1 (`PORT:`, errorlevel not
+  captured). The old `PORT: ... draws 0` is gone.
+- `sm_check_stats_fault` (in `test_svcmenu`; 9 sites): fields 8 = `0xFFFF`,
+  6 = 1, `0xB` = 0; sentinel `Z` glyphs at row 0 / row 2 column `0x25` and
+  row 3 column 4; the hook catches exactly one fault, `00h` at `0x334E0`; row
+  0's number is drawn, row 2's number and row 3's label keep the `Z` sprite.
+  The witnesses compare **sprite ids**, not cell values: the text layer can
+  hand the same record back to a redraw, so a cell value survived the old
+  "draws 0" code (measured: with cell values the no-fault mutant failed only
+  the hook checks).
+- Mutations: T7M1 (the old `d != 0 ? n / d : 0`): `FAIL
+  ...test_game.c:9383: 0 != 1`, `:9384: 90 != 0`, `:9385: 23130 != 210144`,
+  `:9387: 16197 != 16239`, `:9388: 16214 != 16239`; T7M2 (exception `0x0E`
+  at `0x334E4`): `:9384: 14 != 0`, `:9385: 210148 != 210144`; T7M3 (fault
+  also on `d == 0xFFFF`, i.e. on row 0): `:9386: row 0 is drawn before the
+  fault`. The three precondition checks (the two field reads and the
+  sentinel glyphs) guard the stimulus; they have no mutant of the code under
+  test.
+
+### Task 8: G2, the 0xFFE80003 read (SILENT)
+
+- svcmenu.c `svc_test_controls`: the DIAGS arm draws `0xFF` on row 7
+  (`text_hex_set(0xE, 7, 0xFF, 8, 0, 0x3000)`) with the `PORT:` of §B.4 (A's
+  `diags` frame 111, DOSBox-X's answer; real hardware not captured). No fault
+  path; `host_cpu_fault` is not used here.
+- TEST B keeps every assertion and adds three `ch_expect` on row 7: `'0'` at
+  `0x13`, `'F'` at `0x14` and `0x15` (`000000FF`; `ch_expect` calls, so no
+  new `CHECK` site in the count).
+- Mutation T8M1 (the old `0u`): `FAIL ...test_game.c:7407: 16197 != 16219`
+  twice (`ch_expect`'s sprite line, for the two `'F'` cells).
+
+### The K11 driver: stepping and the fault end (commit `762bdfc`)
+
+- **Found:** the K11 driver (A's `test_k11_oracle`) still stepped
+  `game_loop()` by presetting the quit flag `DS_000A81A8`, the brake unit F
+  replaced with `game_loop_step()` in the other drivers because the movie
+  player's entry test `0x1C75F` reads that flag mid-iteration (record
+  named-gaps-f §F.2). With B's restart that matters: after the `menuesc`
+  Esc the port skipped the boot logo movies, and `make k11-report` showed
+  `menuesc: 283 frames in window: 31 clean, ... 248 unexplained`, the first at
+  capture 110 (raw 1964, the TWI5 logo). The driver now calls
+  `game_loop_step()`, and installs a fault hook that ends the script at a CPU
+  fault (`end settled`, a `fault` line in `k11.log`), where the original's
+  run ends.
+- Measured with the change (`make k11-report`-equivalent runs, report-only):
+  - `menuesc`: `283 frames in window: 184 clean, 92 splice, 3 transition, 0
+    unexplained, 4 all-black`, `settled screens exhibited 2/2`: the MAIN MENU
+    Esc restart (`0x2520B`) matches the capture frame for frame, the black
+    frame and the TWI5 logo included (A §A.6).
+  - `idle` with the script's `end` moved from 180 to 1500 ticks (a hand edit,
+    so the port runs past the timeout): `window distinct [1..438] (raw
+    1374..4509)`, `264 clean, 159 splice, 2 transition, 9 unexplained, 4
+    all-black`; the 9 are capture 95..103 (raw 1720..1742), the attract before
+    the Enter that the port's dump (which starts at the Enter) does not hold;
+    the window starts at 1 because the port's post-restart boot frames also
+    match the capture's own first boot. From the Enter through the restart
+    (raw 3150) and 19 s of the boot sequence, no capture frame is unexplained.
+  - `diags`: `settled screens exhibited 12/12` (A had 11/12, missing the
+    DIAGS screen the port drew with `00000000`); the one unexplained frame is
+    A's mid-draw capture 110.
+  - `de`: `11 frames in window: 7 clean, 0 splice, 0 transition, 0
+    unexplained, 4 all-black`, `settled screens exhibited 5/5`, no "capture
+    continues" line: the port stops where the original aborts (A had 4/5,
+    missing the page-1 screen with row `0x96` drawn as 0).
+  - `walk` (the enforced oracle): the five lines are unchanged (window
+    `[90..170]`, 38/38, allowed `[138, 151]`, 0 unexplained).
+
+Mutation line numbers in Tasks 2-8 are those measured on the scratch copy of
+the tree at that task's stage (Tasks 2-4 were developed together, then 5-8),
+so later insertions shift some of them in the committed files; each is
+reproducible by applying the mutation to the commit of its task.
 
 ## §B.7 Not tested
 
-(Task 9.)
+- The windowed run's view of a fault: the original prints DOS/4GW's text
+  over the screen and returns to the DOS prompt; the port prints the first
+  line to stderr and exits (`PORT:`). The register dump is not reproduced.
+- The G3 errorlevel (not captured) and G2 on real hardware (A's named gap 3).
+- The ISR gate on `DS_00104B22` in the master spin (pre-existing,
+  todo-verify §1), and the ISR calls `0x1BBAC`/`0x2D62C`.
+- The F7 omissions of the resume tail (§B.2 table): `0x2C8F0(-1, 0)`, the
+  `0x2BAF4` call at `0x20C58` (the port runs it through `game_state_init`
+  only), `0x32970`, `0x5D808`, the `[0x107468]/[0x10746C]` stores and the
+  controller checks. A restart while music plays: `0x5D808` is unported, so
+  the port does not stop what the first pass started.
+- The capture's restart frames in `make verify`: the `PR_RESTART` driver
+  compares the port's restart with the port's own first boot (state, RNG, RGB
+  frames sampled after each iteration, so a movie played inside one
+  iteration is not seen); the frame-for-frame comparison with A's captures
+  (`menuesc`, and `idle` with a hand-extended script) is report-only
+  (`make k11-report` is not in `make verify`, and the stock `idle` port
+  script ends 180 ticks after the Enter, before the timeout).
+- The idle restart from inside a blocking service screen other than the
+  menu (the path exists through `config_key_latched`'s callers at svcmenu.c
+  `0x32542`, `0x32E36`, `0x3306B`, `0x33247`): only the unit calls and the
+  menu-level driver path are run.
+- `0x24AB0` end to end (from a game mode's Esc to the attract): the unit
+  checks land at an armed point; no driver runs a game into the prompt, and A
+  did not capture it.
+- The case where a longjmp finds no armed point (`game_restart_longjmp`'s
+  `PORT:` exit): only mutation M5 reaches it. The K11 driver leaves
+  `game_loop()` by its own `longjmp` at the script's end, which leaves the
+  restart point pointing at the dead `game_loop` frame; that driver runs no
+  game code afterwards.
+- Tasks 2, 3, 5, 6 and 7 were gated with `make verify` only (the oracle
+  lines, the K11 walk and the unit/driver runs); the frame dumps and the WAV
+  were compared at Tasks 1, 4, 8 and 9 (full gates), which bracket them.
 
 ## §B.8 Closure
 
-(Task 9.)
+| Gap | Ledger row | Status | Evidence |
+|---|---|---|---|
+| G1 (all three `jmp 0x65431`) | §H.3 #1, mode table row `0x27` | **closed** | raw §B.1-§B.3; A §A.6; `test_restart`, `PR_RESTART` driver; report-only: `menuesc` 0 unexplained in 283 frames (§B.6b) |
+| G2 (`0xFFE80003`) | §H.3 #2, §E row 32 | **closed (SILENT)**, residue: real hardware | A §A.7; TEST B's row 7 |
+| G3 (`0x334E0` `#DE`) | §H.3 #3, §E row 33 | **closed (ABORT-PINNED)**, residue: errorlevel, register dump | A §A.8; `sm_check_stats_fault`, `test_host` |
+
+Counts: assertion sites 13678 -> 13749 (+71: Task 1 +11, Task 2 +12, Task 3
++12, Task 4 +17, Task 5 +2, Task 6 +8, Task 7 +9, Task 8 +0 (three
+`ch_expect` calls)); the Task 2 conversions and the Task 5 expectation
+changes replaced one site with one site. `python3 tools/port_progress.py`:
+`769 1203 64` -> `770 1203 64` (the `/* 0x65431` header of
+`game_restart_longjmp`, a runtime function, >= `0x5D000`); portable `731 731
+100` unchanged; the README's 64% and its "64% of the original's 1203 real
+functions" line are unchanged by the one function.
 
 ## §B.9 Gates
 
-(Per task.)
+Every gate is `make verify` with the `nb` overrides (`K11_DUMP=/tmp/pr_nb_k11`
+included); "full" adds `dumps.sh nb` + `dumpsha.sh nb` against `base.sha256`
+and `make audio-render` + `cmp` against `before-t2.wav`.
+
+| Gate | EXIT | oracle lines | K11 walk | restart driver | dumps | WAV |
+|---|---|---|---|---|---|---|
+| t0 (full) | 0 | ORACLES-EQUAL | unchanged | — | IDENTICAL | IDENTICAL |
+| t1 (full) | 0 | ORACLES-EQUAL | unchanged | — | IDENTICAL | IDENTICAL |
+| t2 | 0 | ORACLES-EQUAL | unchanged | — | — | — |
+| t3 | 0 | ORACLES-EQUAL | unchanged | — | — | — |
+| t4 (full) | 0 | ORACLES-EQUAL | unchanged | all checks passed (1198 iterations) | IDENTICAL | IDENTICAL |
+| t5 | 0 | ORACLES-EQUAL | unchanged | all checks passed | — | — |
+| t6 | 0 | ORACLES-EQUAL | unchanged | all checks passed | — | — |
+| t7 | 0 | ORACLES-EQUAL | unchanged | all checks passed | — | — |
+| t8 (full) | 0 | ORACLES-EQUAL | unchanged | all checks passed | IDENTICAL | IDENTICAL |
+| t9 (full, after `762bdfc`, the last code commit) | 0 | ORACLES-EQUAL | unchanged | all checks passed (1198 iterations) | IDENTICAL | IDENTICAL |
