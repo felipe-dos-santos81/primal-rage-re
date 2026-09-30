@@ -2450,7 +2450,7 @@ void game_mode_30_step(void)
 }
 
 /* 0x29970 — record §49-J. The round-over threshold check: for each side
- * with its +0x5A score byte (DS_0010780A/DS_001078BE, zero-extended; 0x78 =
+ * with its +0x5A score byte (DS_0010780A/DS_0010789E, zero-extended; 0x78 =
  * 120) at or above 0x78, mode 0x32 and DS_00104B09 = the side, then
  * flow_round_winner. EBX/EDX are pushed and popped. Callers: the unported
  * 0x299A6/0x299DF (0x27C48, flow_round_winner, already documents these as
@@ -2465,7 +2465,7 @@ void flow_round_over_check(void)
         DSB(DS_00104B09) = 0u;                          /* 0x299A0 */
         flow_round_winner();                            /* 0x299A6 0x27C48 */
     }
-    if (DSB(DS_001078BE) >= 0x78u) {                    /* 0x299AD..0x299B5 */
+    if (DSB(DS_0010789E) >= 0x78u) {                    /* 0x299AD..0x299B5 */
         /* PORT: 0x299B7 0x2C3FC(0x27) and 0x299C6 0x2C3FC(0x22) voices, not
          * wired (record §45-A). */
         DSW(DS_00104B00) = 0x32u;                       /* 0x299D2 */
