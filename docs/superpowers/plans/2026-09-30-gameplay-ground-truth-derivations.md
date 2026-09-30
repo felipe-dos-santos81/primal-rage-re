@@ -808,3 +808,44 @@ So the port replays the 22 BIOS words and the 36 bitmap changes of `gp-pads`
 with the capture's `mode st raw pad new held e0 e2 rng cred fp b1d b1f b25 w10d
 cnt s0_* s1_*` at every one of the 721 frames. (Informational: U3 owns the
 comparison and its ratchets; items 2 and 3 are recorded for it in §H.)
+
+## §G.11 `make gp-replay` and the gate (U2 Task 3)
+
+`Makefile`: `GP_DUMP = /tmp/pr_gp_dump` beside `K11_DUMP`; `gp-replay` after
+`gp-capture` (in `.PHONY`; `make help` lists it), as the plan's Step 1 with one
+addition: an absent capture prints `gp-replay: no capture at
+data/k11-captures/<scenario>` and exits 0, **or exits 1 when
+`PR_ORACLE_REQUIRED` is set (even empty, the `make test` convention)**. And
+`make verify` runs it on the U1 capture after the K11 oracles:
+`@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory gp-replay scenario=gp-pads`
+(the controller's instruction for U2: the real `gp-pads` capture is the
+driver's test input, skipped only without `PR_ORACLE_REQUIRED`). The plan put
+nothing in `make verify` (U3's `gp-oracle` adds the idle-loss run); U3's edit
+of the `verify` recipe goes after this line.
+
+**Step 2** (`make gp-replay scenario=gp-pads GP_DUMP=/tmp/pr_u2_gp`):
+`gp_session: port-script: gp-pads: wrote /tmp/pr_u2_gp/gp-pads.script (64
+lines)`, `all checks passed`, exit 0; 721 `T` lines, 3 `.ipx`; `trace.txt`
+byte-identical (`cmp`) to the direct run of §G.10. Branches: `scenario=gp-nonesuch`
+→ `gp-replay: no capture at data/k11-captures/gp-nonesuch`, exit 0; the same
+under `PR_ORACLE_REQUIRED=1` → `… (PR_ORACLE_REQUIRED)`, `make: *** [gp-replay]
+Error 1`. Failure propagation (mutation): a scratch copy of the capture
+(`K11_CAPTURES=$S/caps`, `poll.log` line 322 `P … f=0141 mode=0027 st=0000`
+edited to `st=0001`, so the script says `enter_state 0001`) →
+`FAIL …/port/tests/test_game.c:12366: 0 != 1`, `FAILURES: 1`,
+`make: *** [gp-replay] Error 1` (exit 2). The scratch copy was deleted; nothing
+under `data/` was written.
+
+**Step 3, the gate** (`make verify` with the §G.9 overrides plus
+`GP_DUMP=/tmp/pr_u2_gp`; `$S/t3_verify.txt`): `verify-exit=0`, last line `all
+checks passed`. The 45 oracle lines (the §G.0 pattern) `diff` against
+`.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt` → no output
+(`ORACLES-EQUAL`); the 12 `k11_compare:` lines equal `/tmp/gameplay-u1/k11_base.txt`
+(`K11-EQUAL`); the K11 dumps' sha256 lists equal Task 1's
+(`K11-walk-IDENTICAL`, `K11-menuesc-IDENTICAL`); the verify's gp-replay
+section: `wrote /tmp/pr_u2_gp/gp-pads.script (64 lines)`, `all checks passed`,
+its `trace.txt` identical to Step 2's. `git diff --stat 934992a -- port/src` →
+empty. Assertion sites **13776** = 13761 + 15 (11 from Task 1 as the plan; 4
+from Task 2, the plan's 3 plus §G.10's first-frame check). Tool tests `Ran 67
+tests` (unchanged). `port_progress.py`: `771 1203 64`, `731 731 100`
+(unchanged: U2 ports no function).
