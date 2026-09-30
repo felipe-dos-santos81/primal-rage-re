@@ -385,3 +385,160 @@ k11_compare: walk: 0 unexplained in the window
 Gate t10: `verify-exit=0`, `ORACLES-EQUAL`, `DUMPS-IDENTICAL`,
 `WAV-IDENTICAL`.
 
+## §A.6 G1 evidence: the idle timeout and the MAIN MENU Esc (Task 11)
+
+Captures `data/k11-captures/idle` (keys `1/1`, `time_limit=90 wall_s=90.7`)
+and `data/k11-captures/menuesc` (keys `2/2`, `time_limit=60 wall_s=60.6`),
+both `--input inject`, every `CHECK ok`.
+
+> **G1, idle timeout (`0x2EBB3`).** The Enter is `idle/poll.log:1405` (`K
+> ms=25002 tick=00000571 … key=1C0D`); mode `0x27` from `poll.log:1406`. The
+> stamp `DS_00105F2C` is `0x572` from then on. At `poll.log:2615` (tick
+> `0xA22`) `tick − DS_00105F2C = 0x4B0`, not above `0x4B0` (the `0x2EB9F`
+> `jbe`), and `menu=01`. At `poll.log:2616` (tick `0xA23`, the difference
+> `0x4B1` > `0x4B0`, latch `DS_00105F30 = 0`) the original has cleared
+> `DS_00107414` (`menu=00`, the `0x2EBA8` store) and longjmped to the setjmp at
+> `0x20C1F`: the next changed poll, `poll.log:2618` (tick `0xA25`, `ms=45072`),
+> reads `mode=0003 st=0000 f=05F4` — mode 3, attract state 0; the master frame
+> counter `DS_000EF6DC` is not reset (`0x5F3` → `0x5F4`). The attract then runs
+> from state 0 (`st=0001` at `poll.log:4177`, `ms=71072`). The screen holds the
+> MAIN MENU (`idle frame 106 (raw 1750)`) until `idle frame 107 (raw 3150)`,
+> all black, then `idle frame 108 (raw 3154)`, the TWI5 logo movie, **equal to
+> `data/title-captures/frontend/frame_1887.raw`** — the frame the front-end
+> capture shows when the attract restarts after the first demo (its first
+> all-black frame is 1885). The whole boot sequence follows: TWI5, TWG, the
+> title, the intro ("THE FUTURE…", "WHO WILL RULE THE NEW URTH?"), `idle frames
+> 108..1180`; 528 of the distinct frames from 108 on are byte-equal to
+> frames of `data/title-captures/{title,frontend}`.
+
+Timing: from the Enter's stamp (tick `0x572`) to the store (tick `0xA23`) is
+`0x4B1` ticks = 1201 ticks, 20.0 s at 60 Hz; the wall clock agrees
+(`ms=25012` → `ms=45036`, 20.02 s).
+
+> **G1, MAIN MENU Esc (`0x2520B`).** The Esc is `menuesc/poll.log:1590` (`K
+> ms=28003 tick=00000628 f=01F8 key=011B`). At `poll.log:1593` (tick `0x62B`,
+> `f=01FB`) `menu=00` and the stamp `DS_00105F2C = 0x62B` (the menu step took
+> the key: `0x2EE04..0x2EE0B` stamps on a non-zero input); at
+> `poll.log:1596` (tick `0x62C`, `f=01FC`) `mode=0003 st=0000`. **Correction to
+> the plan:** it expected "no `menu` store" on this path; the capture shows
+> `DS_00107414` cleared one frame before the mode change. `0x251F3..0x2520B`
+> itself stores nothing, so the clear comes from inside the menu step before
+> it returns; the instruction is not pinned here (named for B). The screen: `menuesc frame 108 (raw 1750)` the MAIN MENU until
+> `frame 109 (raw 1960)` all black, then `frame 110 (raw 1964)` the TWI5 logo,
+> equal to `data/title-captures/frontend/frame_1887.raw` — the same soft
+> restart as the idle timeout.
+
+`make k11-report` (report-only; the port's script ends 180 ticks after the last
+key, so the port never reaches the restart): `k11_compare: idle: window
+distinct [104..106] (raw 1743..1750)`, `3 frames … 0 unexplained, 1
+all-black`, `settled screens exhibited 1/1`; `k11_compare: menuesc: window
+distinct [106..108] (raw 1745..1750)`, `settled screens exhibited 2/2`, `0
+unexplained`. The port keeps the store and not the longjmp (`config.c`), and
+its master spin does not advance `DS_00101500` (spec §8), so the timeout does
+not fire there: B's G1 target is the restart shown above (black, then the
+boot logos from TWI5 on, attract state 0, the frame counter kept).
+
+## §A.7 G2 evidence: the 0xFFE80003 read (Task 12)
+
+`data/k11-captures/diags` (keys `12/12`, `time_limit=55 wall_s=55.6`,
+`E … reason=time-limit`): `diags/poll.log:1417` `W ms=25076 ds=00107410
+linear=002ED410 old=00 new=10`, and `diag=00000010` from `poll.log:1418` to
+the end. **The memory-file poke is visible to the guest**: the TEST CONTROLS
+screen draws the DIAGS rows (`0x3236C..0x323D2`), so plan fallback F1 is not
+needed. No DOS/4GW line in `dosbox.log`.
+
+> **G2 (`0x32573..0x32578`).** Unreachable in the stock game (§A.1.1: field
+> `0x2A` is 4 bits, descriptor `0x1B80`; `DS_00107410 = field & ~3`,
+> `0x2FA1C`). With `DS_00107410 |= 0x10` poked (`diags/poll.log:1417`), the
+> original under DOS/4GW + DOSBox-X **does not fault**: it draws `000000FF`
+> for the byte at linear `0xFFE80003` (`diags frame 111 (raw 2383)`, held to
+> raw 2663; against the port's `00000000` the report box is `rows 47..52, x
+> 152..166 (42 px)`, the last two digits). The row above (`0x32558`, the pad
+> word) reads `00000000` in both. DOS/4GW runs with paging off (the `de`
+> capture's register dump: `CR0: PG:0 … PE:1`) and a flat 4 GB data
+> segment, so the read reaches physical `0xFFE80003`, which DOSBox-X returns as
+> `0xFF` (no device there). On real hardware the byte is whatever the chipset
+> maps at that address (commonly a BIOS-flash alias); this capture pins
+> DOSBox-X's answer only.
+
+The report also shows `diags frame 110 (raw 2382)` unexplained: TEST CONTROLS
+mid-draw, 353 black glyph pixels (rows 40..152), otherwise equal to port 15/16
+— the §A.5 C4 shape. `k11_compare: diags: settled screens exhibited 11/12;
+missing [16]`: port 16 is the DIAGS screen with `00000000`.
+
+**Recommendation for B:** the arm stays unreachable without a poke; if B
+models it, the evidence supports "the read returns `0xFF`, no fault" for the
+DOSBox-X target, not an abort.
+
+## §A.8 G3 evidence: the 0x33458 #DE (Task 13)
+
+`data/k11-captures/de`: the pokes `de/poll.log:1402..1405` (`W … ds=00105DB6
+old=00 new=01`, `ds=00105DB8 new=FF`, `ds=00105DEA new=F0`, `ds=00105DEB
+new=0F`), all inside `0x105DAF..0x105E2F`. Decoded from the first `F` record
+after them: `{'0x6': '0x1', '0x8': '0xffff', '0xa': '0x0', '0x12': '0x0'}`
+(fields 6 = 1, 8 = `0xFFFF`; the dividends `0xA` and `0x12` are 0). The C
+cross-check: `k11_session: check-fields: de: tools/k11_fields.set_ matches
+config_field_set over 129 bytes`, exit 0.
+
+> **G3 (`0x334CD..0x334E2`).** With fields 8 = `0xFFFF`, 6 = `1`
+> (`de/poll.log:1402..1405`, decoded above; the codec matches
+> `config_field_set`), entering STATISTICS (the Enter at `poll.log:1657`,
+> tick `0x65A`) **aborts to DOS**. `de/dosbox.log:15` `DOS/4GW Professional
+> error (2001): exception 00h (divide by zero) at 180:002244E0`, then lines
+> 16..28: `TSF32: prev_tsf32 6B24`; `SS 188 DS 188 ES 188 FS 0 GS 20`; `EAX 0
+> EBX 0 ECX 30DD00 EDX 0`; `ESI A EDI 18 EBP 8 ESP 2F0F84`; `CS:IP
+> 180:002244E0 ID 00 COD 0 FLG 246`; the CS/SS/DS/ES/FS/GS descriptors; `CR0:
+> PG:0 ET:1 TS:0 EM:0 MP:0 PE:1 CR2: 0 CR3: 0`; `Crash address (unrelocated)
+> = 1:000234E0`. Object 1 offset `0x234E0` is VA `0x334E0`, the `idiv ebx`;
+> EBX = 0 (the divisor's low word), EAX = 0 (field `0x12`), EDI = `0x18`
+> (row 2 of `0x326C4`, id `0x96`), ESI = `0xA` (the row). The code object's
+> runtime base is `0x2244E0 − 0x234E0 = 0x201000`. DOS then runs the
+> script's `EXIT` (`dosbox.log:29`), so the run ends early: `E ms=32319
+> reason=exit` (`poll.log:1668`), `wall_s=32.6` of 55, keys `5/11` (the
+> capture's `CHECK keys` fails by design). The last game frame is `de frame 99
+> (raw 2033)`: the STATISTICS title over the backdrop, no row drawn yet; the
+> ISR tick stops after `poll.log:1667` (tick `0x662`). `last_frame.png` is
+> black (640×400; the message is in `dosbox.log`, so F3 was not needed).
+
+This matches §A.1.4's prediction: no handler; DOS/4GW's default handler
+prints the register dump and returns to DOS. **Correction to the spec:**
+`0x33458` is called from STATISTICS page 1 (`0x331A6`, `svc_stats_rows`), not
+page 2. Reachability in play: §A.1.2 (65536 one-player game ends with no
+clear).
+
+`make k11-report` for `de` (port script: the 5 received keys, the field
+pokes at the Enter): `window distinct [88..99] (raw 1747..2033)`, `0
+unexplained`, `settled screens exhibited 4/5; missing [12]` — port 12 is page
+1 with row `0x96` drawn as 0, a screen the original never shows.
+
+## §A.9 Fallbacks taken (Task 14)
+
+- **F2, variant (input).** AUTOTYPE typed 11/38 and then 1/38 keys of the
+  walk (§A.4) while the menu probes typed all theirs; the loss is on the host
+  side and not repeatable. Instead of shortening the walk (F2 as written),
+  `k11_capture.py --input inject` (the default) types the scenario through the
+  memory file at AUTOTYPE's timing (`schedule`: the first key at `-w`, one
+  `-p` per item): it clears bit 7 of the IRQ1 key-state byte
+  `[DS_00101514]+0x254+scan` for `HOLD_S = 0.05` s (the hold AUTOTYPE's taps
+  showed, `walk.run1 poll.log:1538..1541`, 3 ticks), and appends the BIOS word
+  to the int 16h ring (`1C0D`, `011B`, `50E0`, `48E0` as the AUTOTYPE runs
+  left them). Every scenario then received all its keys (walk 38/38, idle
+  1/1, menuesc 2/2, diags 12/12; de 5/11 only because the game aborted).
+  Tests: `test_schedule_follows_autotype_timing`,
+  `test_bios_insert_appends_wraps_and_refuses_when_full`,
+  `test_dosbox_cmd_without_autotype` (mutations: the ring wrap removed →
+  `FAIL: test_bios_insert…`; `t += pace` → `t += 0` → `FAIL:
+  test_schedule…`). What this does not exercise: the real keyboard
+  controller and the game's IRQ1 handler, which AUTOTYPE's partial runs did
+  (their keys produced the same `K` words and `kb` runs).
+- **F1** not taken: the memory-file poke is visible (§A.7). **F3** not taken
+  (the text is in `dosbox.log`). **F4** not taken (the timeout fired at 20 s).
+  **F5** not taken (the base was found in every run).
+- Two tool fixes found by the evidence runs (not fallbacks): `port_script`
+  accepts a key prefix when the log ends `reason=exit` (the `de` abort;
+  `test_port_script_accepts_a_key_prefix_only_after_an_exit`, mutation →
+  `ERROR`), and the driver leaves game_loop() at the script's `end` through a
+  `longjmp` to its own frame, because the `de` script ends inside STATISTICS
+  page 1, a blocking loop no scripted key leaves (the first `de` report run
+  spun there; the walk and the smoke dumps are unchanged by it).
+
