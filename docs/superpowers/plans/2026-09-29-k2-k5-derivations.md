@@ -126,8 +126,9 @@ port fills `g_aperture`, the host's model of the screen, with the same dword
 pattern. Reach: live (`0x2BAF4`'s non-zero arm and the movie player).
 
 Test: a buffer with 4 sentinel bytes before and after, both sides; every dword
-of the 0xFA00 bytes = the value, the sentinels untouched, at an unaligned
-address too. Mutation: 0xC7 passes (one row short) fails the last-dword check.
+of the 0xFA00 bytes = the value, the sentinels untouched. Correction (all-gaps
+Task 7): the test (`test_platform.c`, `SCRATCH + 0x30004`) uses one 4-aligned
+address only; the unaligned case is not tested. Mutation: 0xC7 passes (one row short) fails the last-dword check.
 
 ---
 

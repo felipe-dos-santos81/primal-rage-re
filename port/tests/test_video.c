@@ -349,13 +349,13 @@ int test_movie(void)
  * (1) its net screen effect, aperture = E87A4 over each dirty rectangle
  *     (§K10.1), is what movie_present's full-frame gfx_present produces: the
  *     aperture equals the E87A4 buffer at every screen the player writes;
- * (2) its EDI stores to the E87A0 shadow are dead (§K10.3): the exit blank
- *     0x52106(0) at 0x1C873 leaves both offscreen buffers zero, and the player
- *     never swaps them (0x50188 is not in 0x1C740's call tree), so
- *     DS_000E87A0 still names a buffer the blank cleared.
+ * (2) the exit blank 0x52106(0) at 0x1C873 leaves both offscreen buffers
+ *     zero. That is the fact §K10.3's deadness argument for the E87A0 shadow
+ *     needs; that the player never swaps them (0x50188 is not in 0x1C740's
+ *     call tree) is the record's raw scan, not something this test proves.
  * The buffers are test-only and seeded 0xA5, so "zero" proves the blank ran;
  * the aperture is seeded 0x11. They sit clear of the other tests' scratch
- * (0x3E80000, 0x3E90000..0x3E94000). */
+ * (0x3E80000, 0x3E90000..0x3E94000, 0x3E96000). */
 #define MB_BUF_A 0x03E60000u   /* test-only E87A0 buffer ([0x1014E4]) */
 #define MB_BUF_B 0x03E70000u   /* test-only E87A4 buffer ([0x1014E8]) */
 

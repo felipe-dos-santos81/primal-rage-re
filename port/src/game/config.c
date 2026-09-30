@@ -616,7 +616,8 @@ void config_screen_wait_zero(void)
  * longjmp(0x1044F4, 1) (0x2EBAE..0x2EBB3, 0x65431). PORT: the longjmp quit
  * path is not modelled (spec §7); the store is kept and 0 is returned in its
  * place. Callers: 0x2EBF0 (0x2EBFD), 0x2FFC4 (0x303D9, menu.c), 0x33058 (0x3306B),
- * 0x33230 (0x33247) and three unlisted sites. */
+ * 0x33230 (0x33247), 0x32542 and 0x32E36 (svcmenu.c), and 0x2EE41, which lies
+ * in no Ghidra function and is not ported (a raw rel32 scan finds 7). */
 u32 config_key_latched(void)
 {
     u32 latch = DSD(CFG_KEY_LATCH);                         /* 0x2EB81 */
