@@ -47,6 +47,16 @@
 #define SVC_STATS_P1      0x00032644u   /* code: five {u32 string id, u8 field, 3 pad} rows, page 1 */
 #define SVC_STATS_P2      0x00032674u   /* code: nine such rows, page 2 */
 #define SVC_STATS_AVG     0x000326C4u   /* code: four {u32 id, u8 num, u8 0, u16 f1, u16 f2, u16 0} rows */
+#define SVC_HIST_TMP      0x039000C0u   /* PORT: 0x32BDC's stack frame, see there */
+#define SVC_HIST_LABEL    0x00032640u   /* code: "\x03", the bar string 0x32BFF pushes */
+#define SVC_HIST_TITLES   0x000BD460u   /* three string ids 0x238, 0x239, 0x23A (dwords) */
+#define AUDIT_STATE       0x00105D64u   /* the state block 0x2E248 fills (record §K11.8) */
+#define AUDIT_DESC        0x0002D414u   /* code: three 0x10-byte histogram descriptors */
+#define AUDIT_STORE       0x0002D444u   /* code: 8-byte {u16, u16 size, u32 address} storage descriptors */
+#define AUDIT_LABEL       0x00080B20u   /* "#:" */
+#define AUDIT_DASH        0x00080B24u   /* "-" */
+#define AUDIT_UP          0x00080B28u   /* "& UP" */
+#define AUDIT_COLON       0x00080B30u   /* ": " */
 /* The layout bytes are signed chars that the raw reads as the dword three
  * bytes below, `sar 0x18` (0x30932 `mov edx,[0xBD441]` gives the byte at
  * 0xBD444). */
@@ -1286,6 +1296,311 @@ void svc_stats_page2(u32 clear_ok)
     text_cells_release(0x1B, 0xC, game_string_get(0x9Fu), 0x3000u);   /* 0x3342B..0x33446 0x2F280 */
 }
 
+/* 0x2E218 — record §K11.8. EAX = v (ECX); `jl`/`jge` compare signed. */
+u32 audit_digits(s32 v)
+{
+    u32 p = 10u, n = 1u;                                    /* 0x2E21D..0x2E222 */
+    if (v < (s32)p) return n;                               /* 0x2E227..0x2E229 */
+    for (;;) {
+        p *= 10u;                                           /* 0x2E22B..0x2E235 */
+        n++;                                                /* 0x2E234 */
+        if (n >= 10u) break;                                /* 0x2E237..0x2E23A */
+        if (v < (s32)p) break;                              /* 0x2E23C..0x2E23E */
+    }
+    return n;                                               /* 0x2E240 */
+}
+
+/* Bucket `i` of histogram `g`, or -1 past the three histograms or the
+ * table's size. PORT: the raw inlines this read at 0x2E4ED, 0x2E571 and
+ * 0x2E5FD; it is one helper here, with the same tests. */
+static s32 audit_bucket(u32 g, u32 i)
+{
+    if (g >= 3u) return -1;                                 /* 0x2E4ED `jb` (unsigned) */
+    const u32 t = AUDIT_STORE + 8u * (g + 3u);              /* 0x2E4CC..0x2E4DD */
+    if (i >= DSW(t + 2u)) return -1;                        /* 0x2E4F9..0x2E501 */
+    return (s32)DSB(DSD(t + 4u) + i);                       /* 0x2E50A..0x2E510 */
+}
+
+/* 0x2E11C — record §K11.8. EAX = g. */
+u32 audit_hist_clear(u32 g)
+{
+    if (g >= 3u) return 0xFFFFFFFFu;                        /* 0x2E120..0x2E125 `jb` */
+    const u32 s = g + 3u;                                   /* 0x2E136 */
+    DSB(DS_00105DD8 + (s >> 3)) |= (u8)(1u << (s & 7u));   /* 0x2E139..0x2E15B */
+    const u32 d = AUDIT_STORE + 8u * s;                     /* 0x2E12F, 0x2E150, 0x2E155 */
+    /* PORT: 0x2E16C 0x61A70 is the WATCOM memset (runtime) */
+    mem_fill(DSD(d + 4u), 0u, DSW(d + 2u));                 /* 0x2E161..0x2E16C */
+    config_storage_touch(s);                                /* 0x2E171..0x2E173 0x2D4EC */
+    return 0u;                                              /* 0x2E178 */
+}
+
+/* 0x2E248 — record §K11.8. EAX = g (ESI), EDX = buf, EBX = size, ECX =
+ * max_out ([esp]), then two stack dwords: median_out ([esp+0x34]) and label
+ * ([esp+0x38]); `ret 8`. The state block: +0 g + 1, +4 the largest count,
+ * +8 the sum, +0xC the label column's width, +0x10/+0x14 the digits of a
+ * range's low/high bound, +0x18 the template's first tab (0 = none), +0x1C
+ * the bar string, +0x20 its length. */
+u32 audit_hist_format(u32 g, u32 buf, u32 size, u32 max_out, u32 median_out, u32 label)
+{
+    const u32 st = AUDIT_STATE;
+    DSD(st) = 0u;                                           /* 0x2E26A */
+    if (g >= 3u || buf == 0u || (s32)size < 1)              /* 0x2E270..0x2E281 */
+        return 0xFFFFFFFFu;                                 /* 0x2E283 */
+    if (label == 0u) label = AUDIT_LABEL;                   /* 0x2E28D..0x2E291 */
+    DSD(st + 0x1Cu) = label;                                /* 0x2E29A */
+    DSD(st + 0x20u) = (u32)strlen((const char *)(mem + label));   /* 0x2E29D..0x2E2AB `repne scasb` */
+    const u32 desc = AUDIT_DESC + 16u * g;                  /* 0x2E2AE..0x2E2B3 */
+    const u32 tmpl = DSD(desc);                             /* 0x2E2B9 */
+    u32 i = 0u;                                             /* 0x2E2C3 */
+    for (u32 p = buf; p < buf + size; p++, i++) {           /* 0x2E2C9..0x2E2F8 `jb` */
+        const u8 c = DSB(tmpl + i);                         /* 0x2E2DC */
+        if (c == 0u || c == 9u) break;                      /* 0x2E2DE..0x2E2E8 */
+        DSB(p) = c;                                         /* 0x2E2EE */
+    }
+    if (i >= size) return 0xFFFFFFFFu;                      /* 0x2E2FA..0x2E300 `jb` */
+    DSB(buf + i) = 0u;                                      /* 0x2E318 */
+    const u32 t = tmpl + i;                                 /* 0x2E320 */
+    DSD(st + 0x18u) = 0u;                                   /* 0x2E322 */
+    const u32 cols = DSB(desc + 0xEu);                      /* 0x2E3AF (and each [ecx+0xe] read) */
+    if (DSB(t) != 0u) {                                     /* 0x2E329 */
+        DSD(st + 0x18u) = t;                                /* 0x2E33A */
+        u32 w = 0u, p = t;
+        for (u32 c = 0u; c < cols; c++) {                   /* 0x2E3AC..0x2E3B4 */
+            const u32 start = p;                            /* 0x2E344 */
+            p++;                                            /* 0x2E34B */
+            while (DSB(p) != 0u && DSB(p) != 9u) p++;       /* 0x2E34C..0x2E35E */
+            if (p - start > w) w = p - start;               /* 0x2E364..0x2E36C `jbe` */
+            if (DSB(p) == 0u && c != cols - 1u) return 0xFFFFFFFFu;   /* 0x2E36E..0x2E37D */
+            if (DSB(p) != 0u && c == cols - 1u) return 0xFFFFFFFFu;   /* 0x2E38D..0x2E39C */
+        }
+        DSD(st + 0xCu) = w;                                 /* 0x2E3BA */
+    } else {
+        if ((s32)cols < 2) return 0xFFFFFFFFu;              /* 0x2E3C2..0x2E3CC */
+        u32 last = DSD(desc + 8u) * (cols - 2u) + DSD(desc + 4u) - 1u;   /* 0x2E3DC..0x2E3F0 */
+        DSD(st + 0x10u) = audit_digits((s32)(last + 1u));   /* 0x2E3F4..0x2E420 (0x2E218 inline) */
+        if (DSD(desc + 8u) == 1u) last = DSD(desc + 4u) - 1u;   /* 0x2E423..0x2E430 */
+        if (last == 0u) {                                   /* 0x2E434..0x2E43A */
+            DSD(st + 0x14u) = 0u;                           /* 0x2E440 */
+            DSD(st + 0xCu) = DSD(st + 0x10u);               /* 0x2E447..0x2E44A */
+        } else {
+            DSD(st + 0x14u) = audit_digits((s32)last);      /* 0x2E44F..0x2E478 (0x2E218 inline) */
+            DSD(st + 0xCu) = DSD(st + 0x10u) + 1u + DSD(st + 0x14u);   /* 0x2E47B..0x2E488 */
+        }
+        const u32 lo4 = DSD(st + 0x10u) + 4u;               /* 0x2E493..0x2E499 */
+        if (lo4 > DSD(st + 0xCu)) {                         /* 0x2E49C `jbe` */
+            if ((s32)(DSD(st + 0xCu) - DSD(st + 0x10u)) > 2)   /* 0x2E4A4..0x2E4AE */
+                DSD(st + 0xCu) = lo4;                       /* 0x2E4B0 */
+            else if ((s32)(DSD(st + 0x10u) + 1u) > (s32)DSD(st + 0xCu))   /* 0x2E4B5..0x2E4BB */
+                DSD(st + 0xCu) = DSD(st + 0x10u) + 1u;      /* 0x2E4C1 */
+        }
+        DSD(st + 0xCu) += 2u;                               /* 0x2E4C8 */
+    }
+    u32 mx = 0u, sum = 0u;                                  /* 0x2E4DB..0x2E4E5 */
+    for (u32 c = 0u; c < cols; c++) {                       /* 0x2E531..0x2E539 */
+        const s32 v = audit_bucket(g, c);
+        if (v < 0) return 0xFFFFFFFFu;                      /* 0x2E515..0x2E519 */
+        sum += (u32)v;                                      /* 0x2E529 */
+        if ((u32)v > mx) mx = (u32)v;                       /* 0x2E52B..0x2E52F `jbe` */
+    }
+    DSD(st + 4u) = mx;                                      /* 0x2E53F */
+    DSD(st + 8u) = sum;                                     /* 0x2E542 */
+    if (max_out != 0u) DSD(max_out) = mx;                   /* 0x2E545..0x2E54C */
+    if (median_out != 0u) {                                 /* 0x2E54E */
+        s32 half = (s32)(sum + 1u) >> 1;                    /* 0x2E55A..0x2E567 `sar` */
+        u32 c = 0u;
+        while (c < cols) {                                  /* 0x2E59B..0x2E5A2 */
+            const s32 v = audit_bucket(g, c);
+            if (half <= v) break;                           /* 0x2E594..0x2E596 `jle` */
+            c++;                                            /* 0x2E598 */
+            half -= v;                                      /* 0x2E599 */
+        }
+        DSD(median_out) = c;                                /* 0x2E5A4..0x2E5A8 */
+    }
+    DSD(st) = g + 1u;                                       /* 0x2E5AE..0x2E5B2 */
+    if (DSD(st + 0x18u) != 0u)                              /* 0x2E5B4 */
+        return DSD(st + 0x18u) - 1u - tmpl;                 /* 0x2E5B8..0x2E5BD */
+    return (u32)strlen((const char *)(mem + tmpl));         /* 0x2E5C8..0x2E5D4 `repne scasb` */
+}
+
+/* 0x2E5E4 — record §K11.8. EAX = i (EDI), EDX = buf (EBP), EBX = width;
+ * ECX is preserved. The histogram is the one the state block names. */
+u32 audit_hist_line(u32 i, u32 buf, s32 width)
+{
+    const u32 st = AUDIT_STATE;
+    const s32 v = audit_bucket(DSD(st) - 1u, i);            /* 0x2E5EF..0x2E62B */
+    if (v < 0) return 0xFFFFFFFFu;                          /* 0x2E634..0x2E638 */
+    if (buf == 0u) return 0xFFFFFFFFu;                      /* 0x2E642..0x2E646 */
+    const u32 desc = AUDIT_DESC + 16u * (DSD(st) - 1u);     /* 0x2E653..0x2E661 */
+    const s32 bar = width - (s32)DSD(st + 0xCu) - (s32)audit_digits((s32)DSD(st + 4u)) - 7;   /* 0x2E666..0x2E675 */
+    if (bar < 1) return 0xFFFFFFFFu;                        /* 0x2E680..0x2E685 */
+    u32 p = buf;
+    if (DSD(st + 0x18u) != 0u) {                            /* 0x2E692..0x2E69A */
+        u32 q = DSD(st + 0x18u), s = q;
+        for (u32 c = 0u; c <= i; c++) {                     /* 0x2E69C, 0x2E6B9..0x2E6BC `jbe` */
+            q++;                                            /* 0x2E6A0 */
+            s = q;                                          /* 0x2E6A3 */
+            while (DSB(q) != 0u && DSB(q) != 9u) q++;       /* 0x2E6A1..0x2E6B7 */
+        }
+        const s32 len = (s32)(q - s);                       /* 0x2E6C1..0x2E6C6 */
+        if (len < (s32)DSD(st + 0xCu)) {                    /* 0x2E6C8..0x2E6CA `jge` */
+            /* PORT: 0x2E6D7 0x61A70 is the WATCOM memset (runtime) */
+            mem_fill(p, 0x20u, DSD(st + 0xCu) - (u32)len);  /* 0x2E6CC..0x2E6D7 */
+            p += DSD(st + 0xCu) - (u32)len;                 /* 0x2E6DC..0x2E6E4 */
+        }
+        while (s < q) DSB(p++) = DSB(s++);                  /* 0x2E6E6..0x2E6F5 `jae` */
+    } else {
+        const u32 sep = DSD(st + 0x14u) != 0u ? 1u : 0u;    /* 0x2E6F7..0x2E708 */
+        u32 lo = 0u, hi;                                    /* 0x2E70C */
+        if (i == 0u) {                                      /* 0x2E70E */
+            hi = DSD(desc + 4u) - 1u;                       /* 0x2E712..0x2E719 */
+        } else {
+            lo = (i - 1u) * DSD(desc + 8u) + DSD(desc + 4u);   /* 0x2E720..0x2E729 */
+            hi = DSD(desc + 8u) + lo - 1u;                  /* 0x2E72C */
+        }
+        const u32 cols = DSB(desc + 0xEu);
+        (void)text_number_format((s32)lo, mem + p, (s32)DSD(st + 0x10u), 1u);   /* 0x2E734..0x2E743 0x2EFD4 */
+        p += DSD(st + 0x10u);                               /* 0x2E756 */
+        /* PORT: 0x2E75F 0x61A70 is the WATCOM memset (runtime) */
+        mem_fill(p, 0x20u, DSD(st + 0xCu) - DSD(st + 0x10u));   /* 0x2E748..0x2E75F */
+        if (lo != hi && i != cols - 1u) {                   /* 0x2E764..0x2E776 */
+            memcpy(mem + p, mem + AUDIT_DASH, sep);         /* 0x2E778..0x2E799 `rep movs` */
+            (void)text_number_format((s32)hi, mem + p + sep, (s32)DSD(st + 0x14u), 1u);   /* 0x2E79A..0x2E7A8 0x2EFD4 */
+            DSB(p + sep + DSD(st + 0x14u)) = 0x20u;         /* 0x2E7AD..0x2E7B7 */
+        } else if (i == cols - 1u) {                        /* 0x2E7BD..0x2E7C9 */
+            const s32 e = (s32)DSD(st + 0xCu) - (s32)(DSD(st + 0x10u) + 2u) - 4;   /* 0x2E7CB..0x2E7DC */
+            if (e < 0)                                      /* 0x2E7DF..0x2E7E1 */
+                DSB(p) = 0x2Bu;                             /* 0x2E7E3 '+' */
+            else
+                memcpy(mem + p + (u32)((e + 1) >> 1), mem + AUDIT_UP, 4u);   /* 0x2E7E9..0x2E808 */
+        }
+        p += DSD(st + 0xCu) - DSD(st + 0x10u);              /* 0x2E809..0x2E81A */
+        memcpy(mem + p - 2u, mem + AUDIT_COLON, 2u);        /* 0x2E815..0x2E833 */
+    }
+    const u32 n = audit_digits((s32)DSD(st + 4u));          /* 0x2E834..0x2E85D (0x2E218 inline) */
+    (void)text_number_format(v, mem + p, (s32)n, 1u);       /* 0x2E85F..0x2E86E 0x2EFD4 */
+    p += n;                                                 /* 0x2E86C */
+    DSB(p++) = 0x20u;                                       /* 0x2E876..0x2E87D */
+    const s32 pct = DSD(st + 8u) != 0u ? v * 100 / (s32)DSD(st + 8u) : 0;   /* 0x2E87A..0x2E8A6 `idiv` */
+    (void)text_number_format(pct, mem + p, 3, 1u);          /* 0x2E8A8..0x2E8B7 0x2EFD4 */
+    p += 3u;                                                /* 0x2E8B4 */
+    DSB(p++) = 0x25u;                                       /* 0x2E8BC..0x2E8C0 '%' */
+    DSB(p++) = 0x20u;                                       /* 0x2E8C4, 0x2E8DE */
+    const u32 len = DSD(st + 0x20u);
+    u32 units = (u32)bar * len * (u32)v;                    /* 0x2E8C8..0x2E8D0 `imul` */
+    u32 unit = DSD(st + 4u);                                /* 0x2E8D5 */
+    if (unit < len * 4u) unit = len * 4u;                   /* 0x2E8D8..0x2E8E3 `jae` */
+    units += unit >> 1;                                     /* 0x2E8E5..0x2E8E9 */
+    const u32 full = len * unit;                            /* 0x2E8EB..0x2E8F1 */
+    while (units >= full) {                                 /* 0x2E8F4..0x2E908 `jb`/`jae` */
+        DSB(p++) = DSB(DSD(st + 0x1Cu));                    /* 0x2E8F8..0x2E903 */
+        units -= full;                                      /* 0x2E901 */
+    }
+    if (units != 0u) {                                      /* 0x2E90A..0x2E90C */
+        const u32 q = units / unit;                         /* 0x2E90E..0x2E910 `div` */
+        if (q != 0u) DSB(p++) = DSB(DSD(st + 0x1Cu) + q);   /* 0x2E912..0x2E920 */
+    }
+    DSB(p) = 0u;                                            /* 0x2E927 */
+    return (u32)v;                                          /* 0x2E923 */
+}
+
+/* 0x32BDC — record §K11.8. EAX = a ([esp+0x2C]); the histogram index is the
+ * word [esp+0x3C]. PORT: the frame (the 0x2A-byte line buffer at [esp], the
+ * largest count at [esp+0x30], the median at [esp+0x34]) lives at the port
+ * scratch SVC_HIST_TMP at the same offsets. The result is the raw's EAX at
+ * the `ret`; menu_run tests it only for -5 and -10, which no path gives. */
+u32 svc_stats_hist(u32 a)
+{
+    const u32 buf = SVC_HIST_TMP, max = buf + 0x30u, med = buf + 0x34u;
+    u32 eax = a;                                            /* 0x32BE5 */
+    for (s16 h = 0; h < 3; h++) {                           /* 0x32BEB, 0x32F34..0x32F43 */
+        /* EAX is `a`, the latched key or h; the 0x2BAF4(1) inside 0x2F99C runs
+         * 0x52106(0) at once (0x2BBEA), so none of it shows (record §K11.7). */
+        gfx_screen_reset(eax);                              /* 0x32BF5 0x52106 */
+        svc_screen_reset();                                 /* 0x32BFA 0x2F99C */
+        (void)audit_hist_format((u32)h, buf, 0x2Au, max, med, SVC_HIST_LABEL);   /* 0x32BFF..0x32C18 0x2E248 */
+        const u8 *title = game_string_get(DSD(SVC_HIST_TITLES + 4u * (u32)h));   /* 0x32C1D..0x32C29 */
+        const u32 tlen = (u32)strlen((const char *)game_string_get(DSD(SVC_HIST_TITLES + 4u * (u32)h)));   /* 0x32C2B..0x32C46 */
+        text_cursor_set((s32)((0x28u - tlen) >> 1), 0, title, 0x1000u);   /* 0x32C47..0x32C5C `shr` */
+        s32 row = 2;                                        /* 0x32C4C */
+        u32 i = 0u, total = 0u;                             /* 0x32C32, 0x32C5A */
+        for (;;) {
+            const s32 r = (s32)audit_hist_line(i, buf, 0x2A);   /* 0x32C61..0x32C6F 0x2E5E4 */
+            if (r < 0) break;                               /* 0x32C73..0x32C75 */
+            text_cursor_set(2, row, mem + buf, i == DSD(med) ? 0x3000u : 0x2000u);   /* 0x32C77..0x32C92 */
+            i++;                                            /* 0x32C97 */
+            row++;                                          /* 0x32C9C */
+            total += (u32)r;                                /* 0x32C9D */
+        }
+        (void)audit_hist_line(DSD(med), buf, 0x2A);         /* 0x32CA1..0x32CAE 0x2E5E4 */
+        const s32 mrow = (s32)i + 3;                        /* 0x32CB5 */
+        u8 *colon = (u8 *)strchr((const char *)(mem + buf), ':');   /* 0x32CB3..0x32CCE */
+        if (colon != NULL) {                                /* 0x32CD0..0x32CD2 */
+            *colon = 0u;                                    /* 0x32CDE */
+            text_cursor_set(0xF, mrow, game_string_get(0x83u), 0x3000u);   /* 0x32CD4..0x32CEF "MEDIAN:" */
+            text_cursor_set(0x16, mrow, mem + buf, 0x1000u);   /* 0x32CF4..0x32D02 */
+        }
+        text_cursor_set(3, mrow, game_string_get(0x84u), 0x1000u);   /* 0x32D07..0x32D1F "TOTAL:" */
+        text_number_set(0xB, mrow, (s32)total, 5, 3u, 0x1000u);   /* 0x32D24..0x32D39 0x2F434 */
+        if (h == 2) {                                       /* 0x32D3E..0x32D48 */
+            text_cursor_set(-1, 0x1B, game_string_get(0x209u), 0x1000u);   /* 0x32D4E..0x32D69 */
+            text_cursor_set(-1, 0x1C, game_string_get(0x20Au), 0x1000u);   /* 0x32D6E..0x32D89 */
+            if (a != 0u) {                                  /* 0x32D8E..0x32D93 */
+                text_cursor_set(-1, 0x18, game_string_get(0x69u), 0x4000u);   /* 0x32D99..0x32DB4 */
+                text_cursor_set(-1, 0x19, game_string_get(0x6Au), 0x4000u);   /* 0x32DB9..0x32DD4 */
+                text_cursor_set(-1, 0x1A, game_string_get(0x86u), 0x4000u);   /* 0x32DD9..0x32DE8, 0x32E19..0x32E25 */
+            }
+        } else {
+            text_cursor_set(-1, 0x1B, game_string_get(0x209u), 0x1000u);   /* 0x32DEA..0x32E05 */
+            text_cursor_set(-1, 0x1C, game_string_get(0x87u), 0x1000u);    /* 0x32E0A..0x32E25 */
+        }
+        for (;;) {
+            config_screen_wait_zero();                      /* 0x32E31 0x2EA74 */
+            const u32 k = config_key_latched();             /* 0x32E36 0x2EB80 */
+            if (k != 0u && (k == 0x1Bu || k == 0x0Du)) {    /* 0x32E3B..0x32E4B */
+                eax = k;
+                break;
+            }
+            u32 keys = config_input_poll(0x2000000u, 0u);   /* 0x32E51..0x32E55 0x2EDE0 */
+            if ((keys & 0x2000000u) == 0u) continue;        /* 0x32E5A..0x32E5F */
+            eax = (u32)(s32)h;                              /* 0x32E61..0x32E65 */
+            if (h < 2) break;                               /* 0x32E68..0x32E6B */
+            if (a == 0u) return eax;                        /* 0x32E71..0x32E76 */
+            keys = config_input_poll(0u, 1u);               /* 0x32E7C..0x32E83 0x2EDE0 */
+            if ((keys & 0x1000000u) == 0u) return keys;     /* 0x32E88..0x32E8D */
+            gfx_screen_reset(keys);                         /* 0x32E93 0x52106 */
+            svc_screen_reset();                             /* 0x32E98 0x2F99C */
+            text_cursor_set(-1, 0xA, game_string_get(0x88u), 0x4000u);     /* 0x32E9D..0x32EB8 */
+            text_cursor_set(-1, 0x1B, game_string_get(0x209u), 0x1000u);   /* 0x32EBD..0x32ED8 */
+            text_cursor_set(-1, 0x1C, game_string_get(0x20Au), 0x1000u);   /* 0x32EDD..0x32EF8 */
+            for (u32 g = 0u; g < 3u; g++)                   /* 0x32EFD..0x32F0A */
+                eax = audit_hist_clear(g);                  /* 0x32F02 0x2E11C */
+            for (s32 n = 0x5A; --n > 0; ) {                 /* 0x32F0C, 0x32F18..0x32F1B */
+                eax = config_input_poll(0x2000000u, 0u);    /* 0x32F1D..0x32F21 0x2EDE0 */
+                if ((eax & 0x2000000u) != 0u) break;        /* 0x32F26..0x32F2B */
+                config_screen_wait_zero();                  /* 0x32F2D 0x2EA74 */
+                eax = 0xFFFFFFFFu;                          /* 0x2EA78's EAX at its `ret` (0x2EB6E..0x2EB74) */
+            }
+            return eax;                                     /* 0x32F49 */
+        }
+    }
+    return eax;                                             /* 0x32F49 */
+}
+
+/* 0x33560 — record §K11.8. EAX = a (EDX). */
+u32 svc_statistics(u32 a)
+{
+    svc_stats_page1();                                      /* 0x33563 0x33058 (EAX = a, unread) */
+    svc_stats_page2(a);                                     /* 0x33568..0x3356A 0x33230 */
+    return svc_stats_hist(a);                               /* 0x3356F..0x33571 0x32BDC */
+}
+
+/* 0x2CAC0 — record §K11.8. OPTIONS MENU "STATISTICS". */
+u32 svc_statistics_entry(u32 entry)
+{
+    (void)entry;                                            /* EAX is overwritten at 0x2CAC0 */
+    return svc_statistics(1u);                              /* 0x2CAC0 mov eax,1; 0x2CAC5 jmp 0x33560 */
+}
+
 /* PORT: the menu tables 0xBCBDC/0xBCC1C/0xBCCCC hold these as code
  * addresses (record §0.2); menu_step/menu_run reach them through fn_resolve.
  * One-time: fn_register appends unconditionally. Later cycles add their roots. */
@@ -1311,4 +1626,5 @@ void svcmenu_register(void)
     fn_register(0x31F24u, (void (*)(void))svc_modify_controls);
     fn_register(0x32358u, (void (*)(void))svc_test_controls);
     fn_register(0x19DF0u, (void (*)(void))svc_configure_keyboard);
+    fn_register(0x2CAC0u, (void (*)(void))svc_statistics_entry);
 }

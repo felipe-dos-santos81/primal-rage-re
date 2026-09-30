@@ -1051,7 +1051,7 @@ fail the suite with exit 1 and no crash:
 | 39 | `0x31138` Right step +4 (review round 1) | 2 checks (0x54, the right bar) |
 | 40 | `0x31138` Left step -4 (review round 1) | 2 checks (0x60, the left bar) |
 | 41 | `0x30864` volume Left step -7 (review round 1) | 1 check (`0x35` = 0x39) |
-| 42 | the harness leaves `DS_00101514` on the suite's record (test file) | 44 checks, among them the new key-record check |
+| 42 | the harness leaves `DS_00101514` on the suite's record (test file) | 43 checks, among them the new key-record check (corrected in §K11.8: 44 counted the closing `FAILURES` line) |
 
 **Gate (Task 4).** `make verify` exited 0 (`<scratchpad>/k11_t4_verify.txt`).
 Its oracle lines equal §K11.0's except the two unittest wall-clock lines
@@ -1760,9 +1760,10 @@ seeded for page 1: 0 = 7, 3 = 0x10005, 4 = 0x10000, 5 = 0xFFFF, 6 = 3, 7 = 4,
   the first draw, no tenth row (a tenth would read the end row `{0, 0xFF}`
 and draw field `0xFF`'s -1 as 65535 at (0x20, 12); row 12 = `0xC` is looked
 at here because the exit's release of "EEPROM ERROR" covers its columns
-0x1B..0x26), a planted glyph kept (no redraw on pass 2), fields 0 and
-  0x27 still seeded on frames 2, 3 and 4 (neither key alone clears, and the
-  clear waits for Esc's release), and field 0 cleared on frame 5. After:
+0x1B..0x26), a planted glyph kept (no redraw on the second pass), fields
+  0 and 0x27 still seeded at probes 1, 2 and 3 (frames numbered from 0: the
+  probe of frame f runs before step f; neither key alone clears, and the
+  clear waits for Esc's release), and field 0 cleared at probe 4. After:
   fields 0..0x27 are 0 and field 0x28 keeps its 5; the redraw shows the
   labels (rows 3, 4, 5, 11), the values 0 (pad 3) and no hints.
 * P2B (clear_ok = 0; 2 frames: Esc + Enter, then Esc): no clear and no exit
@@ -1781,8 +1782,9 @@ field 0x28 kept).
 **Not tested:** `0x32F54`'s division arm (dead: `0x2CA78` is constant 0),
 and so its `c == 0` test (mutation 6 survives: with it removed the port
 divides by zero, which AArch64's `udiv` answers with 0, the same result; on
-x86 it would trap); `0x32F98`'s zero-total arm (all three fields 0, where the
-quotient is 0 either way; mutation 57 survives for the same reason); the
+x86 it would trap); `0x32F98`'s zero-total **test** (all three fields 0, where the
+quotient is 0 either way; mutation 57 survives for the same reason; the
+arm's value 0 is tested since §K11.8, mutation 58); the
 signedness of each `idiv` (every seeded value is positive); `0x328B8`'s `w &
 0xFFFF` (its only caller passes 6); the `#DE` gap of `0x33458` (PORT above);
 the dead `field == 0x24` arm of `0x33058`; the argument of `0x52106` (no
@@ -1883,6 +1885,7 @@ does not trap), and the page-1 exit on Esc only (23).
 | 55 | 0x33230 no redraw after the clear | 4 checks |
 | 56 | 0x33230 redraws every pass | 1 check |
 | 57 | 0x32F98 zero-total test removed | **survives** (listed under Not tested) |
+| 58 | 0x32F98 zero-total value 1 (added in §K11.8, measured on its final suite) | 1 check |
 
 **Gate (Task 7).** `make verify` exited 0 on the final tree
 (`<scratchpad>/k11_t7_verify.txt`). Its oracle lines (`k11_t7_or.txt`) equal
@@ -1894,3 +1897,314 @@ the six are reached only from `0x33560`, which is not ported yet, so no frame
 path runs them. The header grep counts 1 for each of `328B8 32F54 32F98
 33458 33058 33230`. `tools/port_progress.py` stays at `765 1203 64` / `729
 730 100`: none of the six is a Ghidra function.
+
+## §K11.8 Cycle 7: the histograms and the STATISTICS entry (executor, Task 8)
+
+Seven functions, re-read from the fixed-up image (`k11_dx.py`; listings
+`<scratchpad>/k11_t8_dis_2e248.txt`, `k11_t8_dis_2e5e4.txt`,
+`k11_t8_dis_32bdc.txt`). Callers (rel32 scan and absolute dwords): `0x2E218`
+from `0x2E66E`; `0x2E11C` from `0x32F02`; `0x2E248` from `0x32C18`; `0x2E5E4`
+from `0x32C6A` and `0x32CAE`; `0x32BDC` from `0x33571`; `0x33560` from the
+tail `jmp` at `0x2CAC5`; `0x2CAC0` only through its table dword `0xBCC44`.
+So `0x2CAC0` is registered (`fn_register`) and the other six are reached
+from it. `config_storage_touch` (`0x2D4EC`, the declared no-op) is exported
+from `config.c` for `0x2E11C`; its body is unchanged.
+
+**(a) The descriptors.** `0x2D414` holds three 0x10-byte histogram
+descriptors: `+0` the template, `+4` the first bucket's width (d4), `+8` the
+other buckets' width (d8), and a dword whose byte `+0xE` is the bucket count
+(the brief's "flags" `0x140001`/`0x140002`/`0x70004`: count 0x14, 0x14, 7;
+the low byte 1, 2, 4 is not read by any of the seven):
+
+| desc | template | d4 | d8 | count |
+|---|---|---|---|---|
+| `2D414` | `0x80A24` "Round Time (in seconds)" | 10 | 10 | 20 |
+| `2D424` | `0x80A3C` "Match Time (in seconds)" | 15 | 15 | 20 |
+| `2D434` | `0x80A54` "Selects Per Character:\tSAURON \tBLIZZARD \tTALON \tVERTIGO \tARMADON \tDIABLO \tCHAOS " | 1 | 1 | 7 |
+
+`0x2D444` holds 8-byte storage descriptors `{u16, u16 size, u32 address}`;
+histogram g uses entry g + 3: `2D45C` {`0xB6`, 0x14, `0x105ECD`}, `2D464`
+{`0xD0`, 0x14, `0x105EE1`}, `2D46C` {`0xEA`, 7, `0x105EF5`}. The first word
+is not read here. The screen titles are the strings at `0xBD460` (`0x238`
+"Round Time <in seconds>", `0x239`, `0x23A` "Selects Per Character: "), not
+the templates. The bar string `0x32BFF` pushes is the code-object `0x32640`
+= `"\x03"` (raw bytes `03 00`, the same before and after fixups), one cell
+wide. Fixed strings: `0x80B20` "#:" (the default bar string), `0x80B24` "-",
+`0x80B28` "& UP", `0x80B30` ": " (each copied by length, so the junk bytes
+between them are never read).
+
+**(b) `0x2E218`** (EAX v): 1 for v < 10 (`0x2E227 jl`, signed, so a negative
+v is 1); else it multiplies by 10 and counts while v >= the power (`jge`)
+and the count is below 10 (`0x2E237`). 999999999 is 9, 10^9 and `0x7FFFFFFF`
+are 10.
+
+**(c) `0x2E11C`** (EAX g): -1 for g >= 3 (`0x2E123 jb`, unsigned) with
+nothing written. Else `DSB(0x105DD8 + (g+3) >> 3) |= 1 << ((g+3) & 7)`
+(bits 3, 4, 5), `memset(ptr, 0, size)` of storage descriptor g + 3 (the
+runtime `0x61A70`, `mem_fill` with a `PORT:` note), `0x2D4EC(g + 3)`, and 0.
+
+**(d) `0x2E248`** (EAX g, EDX buf, EBX size, ECX max_out; stack: median_out
+at `[esp+0x34]`, the bar string at `[esp+0x38]`; `ret 8`). The state block
+`0x105D64` (no `symbols.h` name, a local define): `+0` g + 1 (zeroed first at
+`0x2E26A`, set last at `0x2E5B2`), `+4` the largest count, `+8` the sum,
+`+0xC` the label column's width, `+0x10`/`+0x14` the digits of a range's low
+and high bound, `+0x18` the template's first tab (0 = none), `+0x1C` the bar
+string (0 selects "#:"), `+0x20` its length. -1 when g >= 3, buf is 0 or
+size < 1 (signed). The title is copied up to a NUL or a tab
+(`0x2E2DC..0x2E2F8`, `jb` on buf + size); a title that fills `size` returns
+-1 without a NUL. With a tab (histogram 2): each of the count columns runs
+from its tab to the next tab or NUL, and `+0xC` is the widest including the
+tab (10, "\tBLIZZARD "); -1 when the template ends before the last column or
+goes on after it. `+0x10`/`+0x14` are not written on this path. Without a
+tab: -1 for a count below 2; `last = d8 * (count - 2) + d4 - 1`, `+0x10 =
+digits(last + 1)`, and when d8 = 1 `last = d4 - 1`; `+0x14 = digits(last)`
+(0 when last = 0) and `+0xC = +0x10 + 1 + +0x14` (`+0x10` when last = 0).
+When `+0x10 + 4 > +0xC` (unsigned), `+0xC` becomes `+0x10 + 4` if `+0xC -
++0x10 > 2`, else at least `+0x10 + 1`. Then `+0xC += 2`. Histograms 0 and 1:
+`+0x10 = +0x14 = 3`, `+0xC = 9`. The counters: bucket i of the count
+(`0x2E4ED..0x2E510`: -1 past the storage size, which returns -1) are
+summed into `+8`, the largest (unsigned) into `+4` and `[max_out]`. The
+median: `half = (sum + 1) >> 1` (`sar`), then the first bucket with `half <=
+count` (signed `jle`), subtracting each count passed; stored in
+`[median_out]`. The result is the template's length, or with a tab the
+title's length - 1 (`0x2E5B8 lea edi,[edx-1]; sub edi,[ecx]`): 23, 23, 21.
+
+**(e) `0x2E5E4`** (EAX i, EDX buf, EBX width; returns the count or -1): -1
+when the state block names no histogram (`+0 - 1 >= 3`), bucket i is past
+the storage size, buf is 0, or the bar `width - +0xC - digits(+4) - 7` is
+below 1. **Bucket i is bounded by the storage size, not the count:** with the
+stock descriptors the two are equal. The line: with a tab, column i's name
+right-aligned in `+0xC` cells; else the low bound `lo` (0 for i = 0, else
+`(i - 1) * d8 + d4`) in `+0x10` cells (`0x2EFD4` pad 1), `+0xC - +0x10`
+spaces, and over them: when `lo != hi` (`hi` = d4 - 1 for i = 0, else lo +
+d8 - 1) and i is not the last, "-" and hi in `+0x14` cells and a space; for
+the last, "& UP" at `(e + 1) >> 1` with `e = +0xC - +0x10 - 6`, or '+' when
+e < 0; then ": " over the last two cells. Then the count in
+`digits(+4)` cells, a space, `100 * count / sum` (`idiv`; 0 for a zero sum) in
+3 cells, "% ", and the bar: `units = bar * L * count + unit / 2` with `unit =
+max(+4, 4 * L)` (unsigned), one bar[0] per `L * unit`, then bar[q] for `q =
+rest / unit` when q > 0 (a half cell: only with L >= 2, so never with the
+game's `"\x03"`), and a NUL. So histogram 0's bucket 0 with the counts
+below is `"  0-  9:  3   4% \x03\x03"`, the last bucket `"190& UP:  7   9% "`
+and six bars, and histogram 2's column 1 `" BLIZZARD 255  94% "` and 22 bars.
+The model these lines were checked against is `<scratchpad>/k11_t8_model.py`,
+written from the listings, not from the port.
+
+**(f) `0x32BDC`** (EAX a). The frame: a 0x2A-byte line buffer at `[esp]`,
+the largest count at `[esp+0x30]`, the median at `[esp+0x34]`, the
+histogram index as the word `[esp+0x3C]`; the port keeps it at the scratch
+`0x039000C0` with the same offsets (`PORT:`). For h = 0, 1, 2: `0x52106(EAX)`,
+`0x2F99C`, `0x2E248(h, buf, 0x2A, &max, &median, "\x03")`; the title at
+column `(0x28 - strlen) >> 1` (`shr`), row 0, mode `0x1000` (**not** the
+-1 centring: column 8 for all three); the lines from row 2 at column 2
+until `0x2E5E4` returns -1, the median bucket's in mode `0x3000` and the
+others in `0x2000`, their counts summed; then the median's line again,
+**cut at its first ':'**, and only when it has one: "MEDIAN:" (`0x83`) at
+(0xF, n + 3) in `0x3000` and the range at (0x16, n + 3) in `0x1000`. A
+tabbed line has no ':', so **histogram 2 shows no MEDIAN** (the plan's §0.5
+lists MEDIAN for all three). "TOTAL:" (`0x84`) at (3, n + 3) and the sum
+through `0x2F434(0xB, n + 3, total, 5, pad 3, 0x1000)`. Footers: h < 2:
+`0x209` and `0x87` "for next histogram" on rows `0x1B`/`0x1C`; h = 2:
+`0x209` and `0x20A` "TO EXIT MENU", and with a the hints `0x69`, `0x6A`,
+`0x86` "to clear ALL histograms" on rows `0x18..0x1A` in `0x4000` (§0.5
+did not list `0x20A` or `0x86`). The key loop, per pass `0x2EA74`: the
+latched Esc or Enter goes to the next histogram (after the last, the
+function returns); a new pad Esc (`0x2EDE0(0x2000000, 0)`) goes on for h <
+2; on h = 2 it returns when a = 0, or when `0x2EDE0(0, 1)` has no Enter;
+else the clear: `0x52106`, `0x2F99C`, "CLEARING ALL HISTOGRAMS" (`0x88`) on
+row `0xA` in `0x4000`, `0x209` and `0x20A`, `0x2E11C(0..2)`, then up to 89
+passes (`0x5A`, `dec` before the test) that leave at a new pad Esc. A
+drawn line of 41 cells from column 2 is cut to 39 by `0x2F830` (the NUL at
+`0x2A - col - 1`), so the longest bars lose two cells on screen.
+**Interface (raw wins over the brief's `void`):** the port returns the
+raw's EAX at the `ret`: the latched key after the last histogram, h = 2
+for a = 0, the `0x2EDE0(0, 1)` word without Enter, the release poll's word,
+or -1 (`0x2EA78` returns -1 at `0x2EB6E..0x2EB74`) when the wait runs out.
+`menu_run` tests a callback's result only for -5 and -10 (`0x304AA`,
+`0x304B3`), which no path gives (the poll words sit in `0xFF00FF00` and
+bits 24..25).
+
+**(g) `0x33560`** (EAX a): `0x33058` (EAX not read, §K11.7),
+`0x33230(a)`, `0x32BDC(a)`; returns `0x32BDC`'s EAX. **`0x2CAC0`**: `mov
+eax,1; jmp 0x33560`.
+
+**§K9.9 revisited.** `0x2E11C` is a second writer of the audit counters
+`0x105ECD..0x105EFB` that §K9.9 found inert on the port's path. It writes
+only zeros, and only from STATISTICS in the options menu (mode `0x27`),
+which no oracle reaches (§0.7), so the counters still stay 0 on every
+oracle path. The ledger's `2DF8C` row points here.
+
+**Values the tests pin** (`sm_check_hist`, 16 scripted frames). Direct
+calls (no frame): the digit table (brief); `0x2E11C` on groups 0 and 2
+(sizes, the untouched neighbours and sentinel `0x105EFC`, the dirty bits
+`0x08` then `0x28`) and the refusal of group 3. Counters: histogram 0 {0:
+3, 2: 30, 5: 12, 9: 20, 19: 7} (sum 72, largest 30, median 5), 1 {0: 1, 3:
+2} (an odd sum 3: the median is bucket 3, and `sum >> 1` would give 0), 2
+{1: 255, 2..6: 1..5} (sum 270, median 1). The state block for histograms 0
+and 2 field by field (histogram 2's `+0x10`/`+0x14` keep their `0xA5`
+seed); five lines of histogram 0, one of 1 (the unit floor `4 * L`: a count
+of 1 over a largest of 2 is 6 bar cells, not 13), three of 2; the "#:"
+default with its half cells; a bar of 1 (width 19) and of 0 (width 18,
+refused); the refusals (g = 3 zeroing `+0`, buf 0, size 0, a title that
+fills 23 bytes, no histogram prepared, a bucket past the size) and, with
+the code-object descriptors patched and restored, a count of 6 or 8 for
+the tabbed template (8 with 8 counters, so only the column parse can refuse
+it), 6 counters for 7 columns, a median bucket holding exactly half
+(histogram 1 as {0: 2, 3: 1}: bucket 0, by the `jle`), one bucket, one-value
+buckets (d4 = d8 = 1: `+0xC` 5, `+0x14` 0, '+' for the last), d4 = 50 (the
+`+0x10 + 4` width), d4 = d8 = 100 ("& UP" one cell right) and eleven
+10-wide buckets (a 3-digit low and a 2-digit high bound, and bucket 11
+formatted past the count); a zero sum's "0%". Scripted:
+
+* A, `0x2CAC0` (7 frames: page 1's latched Enter; page 2 drawn, probed for
+  its hints, then its latched Esc; a new Esc with Enter held on histogram
+  0; the latched Enter on 1; a new Esc with Enter held on 2; nothing; a new
+  Esc). The probes see each histogram screen (titles at column 8, column 7 empty
+  on the first;
+  whole lines cell by cell, the median line in `0x3000`, the 39-cell cut;
+  MEDIAN and its range cut at the ':' for histograms 0 and 1, none for 2;
+  the totals 72, 3 and 270; the footers; the hints only on the last) and
+  the clear screen with all 47 counters 0, the sentinel kept and
+  `DS_00105DD8` = `0x38` before the wait ends. Result `0x2000000`.
+* B, `0x32BDC(0)` (3 frames: the latched Esc, a new Esc, a new Esc with
+  Enter held on 2): no clear, no hints, "TO EXIT MENU", result 2.
+* C, `0x32BDC(1)` (3 frames: the latched Enter, the latched Esc, a new Esc
+  alone on 2): no clear, the hints, result `0x2000000` (the `0x2EDE0(0, 1)`
+  word).
+* D, `0x32BDC(1)` (3 frames: a new Esc, the latched Enter, the latched Esc
+  on 2): the three end, no clear, result `0x1B`.
+
+**Not tested:** the `0x2D4EC` call in `0x2E11C` (a no-op); the null
+`max_out`/`median_out` arms (a write to address 0 is invisible); the
+bucket read's `g >= 3` inside `0x2E248` (dead: tested at entry); the `>`
+compares of the largest count and the column width (equal values give the
+same result); the separator length 0 (`+0x14 = 0` only when every range is
+one value, where no range is written); the half-cell arm with the game's
+own bar string (L = 1, never taken; it is tested with "#:"); an empty bar
+string (L = 0 would loop or divide by zero in the raw; no caller passes
+one); a title longer than 0x28 (the unsigned column); the release wait's 89
+passes and its -1 result (89 frames); `0x52106`'s argument (no visible
+effect, §K11.7).
+
+**Frame budget.** 16 scripted frames (A 7, B 3, C 3, D 3). K11 total: 144 +
+16 = **160 of 160**.
+
+**Red, then green.** With the tests and the header in place and
+`svcmenu.c` at `e9e2054`, the build failed at the link on `audit_digits`,
+`audit_hist_clear`, `audit_hist_format`, `audit_hist_line`,
+`svc_stats_hist` and `svc_statistics_entry` (`<scratchpad>/k11_t8_red.txt`).
+With the port, the first run failed four checks, all in the test: the
+character at index 22 of the title is ')' (the check said 's'), and three
+descriptor-case lines were checked against the "\x03" bar while the calls
+passed label 0 ("#:"). Both were fixed in the test; then
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` printed "all checks passed"
+(`k11_t8_green.txt`).
+
+**Mutations** (each applied, rebuilt, run and reverted by
+`<scratchpad>/k11_t8_mut.py`; the final log is `k11_t8_mutations.txt`).
+The count is the `test_game.c` FAIL lines as measured; the closing
+`FAILURES: N` line is not counted. Two runs: the first
+(`k11_t8_mutations_run1.txt`) left two weak tests beside the expected
+survivor 60. 10: with a count of 8 the tabbed template also failed the
+counter sum (7 counters), so the column parse's refusal was not needed (the
+case now has 8 counters). 18: no seeded median sat exactly on half (the
+`{0: 2, 3: 1}` case was added). The second run, on the final suite, is the
+table: of 60, 57 fail the suite with exit 1, 8 and 32 crash it (exit -10,
+the suite fails), and 60 survives. The brief's five: `>` for `>=` in
+`0x2E218` (1), the dirty bit without `+ 3` (3), group 3 accepted (4), the
+tab stop removed (6), `0x33560` skipping page 2 (55). Rows 59 and 60 are
+the Task 7 minor: `0x32F98`'s zero-total value as 1 now fails, and the
+test's removal still survives (AArch64 division by zero gives 0).
+
+| # | mutation | result |
+|---|---|---|
+| 1 | 0x2E218 > for >= (10 gives 1) | 1 check |
+| 2 | 0x2E218 at most 9 digits | 2 checks |
+| 3 | 0x2E11C dirty bit without + 3 | 4 checks |
+| 4 | 0x2E11C group 3 accepted | 2 checks |
+| 5 | 0x2E11C one byte too many | 3 checks |
+| 6 | 0x2E248 tab stop removed | 96 checks |
+| 7 | 0x2E248 title fills the buffer accepted (> for >=) | 2 checks |
+| 8 | 0x2E248 default label dropped | crash (SIGBUS, exit -10): label 0 reads the bar string at address 0, and the bar loop writes without end |
+| 9 | 0x2E248 too many columns accepted | 1 check |
+| 10 | 0x2E248 too few columns accepted | 1 check |
+| 11 | 0x2E248 one bucket accepted (< 1) | 1 check |
+| 12 | 0x2E248 d8 == 1 arm dropped | 4 checks |
+| 13 | 0x2E248 last == 0 arm dropped | 4 checks |
+| 14 | 0x2E248 lo + 4 width dropped | 7 checks |
+| 15 | 0x2E248 width + 1 for + 2 | 101 checks |
+| 16 | 0x2E248 lo + 1 width arm dropped | 3 checks |
+| 17 | 0x2E248 a short table accepted | 1 check |
+| 18 | 0x2E248 median < for <= | 1 check |
+| 19 | 0x2E248 median from sum >> 1 | 43 checks |
+| 20 | 0x2E248 median not stored | 92 checks |
+| 21 | 0x2E248 tabbed return is the length | 1 check |
+| 22 | 0x2E248 state +0 not cleared first | 1 check |
+| 23 | 0x2E5E4 bar width - 6 | 11 checks |
+| 24 | 0x2E5E4 name right-align dropped | 48 checks |
+| 25 | 0x2E5E4 i == 0 high bound d4 | 8 checks |
+| 26 | 0x2E5E4 range without the lo != hi test | 1 check |
+| 27 | 0x2E5E4 high bound in the low width | 2 checks |
+| 28 | 0x2E5E4 '+' arm dropped | 1 check |
+| 29 | 0x2E5E4 & UP at e >> 1 | 1 check |
+| 30 | 0x2E5E4 ": " dropped | 39 checks |
+| 31 | 0x2E5E4 zero-sum percentage 1 | 1 check |
+| 32 | 0x2E5E4 unit floor 4 * L dropped | crash (SIGBUS, exit -10): with a largest count of 0 the unit is 0, so `units >= full` never ends |
+| 33 | 0x2E5E4 rounding half unit dropped | 9 checks |
+| 34 | 0x2E5E4 half cell dropped | 2 checks |
+| 35 | 0x2E5E4 count width + 1 | 37 checks |
+| 36 | 0x32BDC title centred by 0x2F198 (-1) | 4 checks |
+| 37 | 0x32BDC median line mode 0x2000 | 78 checks |
+| 38 | 0x32BDC lines from row 3 | 187 checks |
+| 39 | 0x32BDC MEDIAN row i + 2 | 19 checks |
+| 40 | 0x32BDC MEDIAN drawn without the colon | 1 check |
+| 41 | 0x32BDC total not summed | 6 checks |
+| 42 | 0x32BDC last-footer on h == 1 | 6 checks |
+| 43 | 0x32BDC hints without a | 1 check |
+| 44 | 0x32BDC latched Enter ignored | 94 checks |
+| 45 | 0x32BDC latched Esc ignored | 7 checks |
+| 46 | 0x32BDC pad Esc goes on only on h < 1 | 4 checks |
+| 47 | 0x32BDC a == 0 test dropped | 7 checks |
+| 48 | 0x32BDC Enter test dropped | 5 checks |
+| 49 | 0x32BDC clears two histograms | 2 checks |
+| 50 | 0x32BDC release wait dropped | 3 checks |
+| 51 | 0x32BDC wait leaves on Enter | 3 checks |
+| 52 | 0x32BDC four histograms | 2 checks |
+| 53 | 0x32BDC two histograms | 13 checks |
+| 54 | 0x32BDC returns 0 | 4 checks |
+| 55 | 0x33560 skips page 2 | 165 checks |
+| 56 | 0x33560 page 2 with 0 | 1 check |
+| 57 | 0x2CAC0 passes 0 | 8 checks |
+| 58 | 0x2CAC0 registration dropped | 1 check |
+| 59 | 0x32F98 zero-total gives 1 (Task 7 minor 1) | 1 check |
+| 60 | 0x32F98 zero-total test removed (Task 7 mutation 57, re-run) | **survives** (Task 7 mutation 57, listed under §K11.7 Not tested) |
+
+**Task 7 review minors (folded in).** (1) `0x32F98`'s zero-total arm is
+tested by a direct `svc_stats_play(4, 13)` with fields 3..5 = 0 (no frame):
+"0" at (15, 26); §K11.7's table gains row 58. (2) `sm_check_stats`'s P2A
+messages no longer claim the modes: the rows are drawn, the alternation is
+invisible. (3) P1A's three seeds under the page-1 draw are removed: `0x2F99C`
+empties every cell before the draw, so they were no sentinels; the comment
+says the empty-cell checks catch a glyph the draw puts there. (4) The probe
+comments and §K11.7's P2A bullet number frames from 0. (5) `docs/PROGRESS.md`
+now says page 2 draws again after a clear. (6) The §K11.3 and §K11.4 tables
+were re-measured at their snapshots with the closing line excluded
+(`<scratchpad>/k11_t8_remeasure.py`: §K11.3 at `a3d17a6`, §K11.4 rows 1..37
+at `4862074` and 38..42 at `7cb83e6`; logs `k11_t8_re_t3.txt`,
+`k11_t8_re_t4a.txt`, `k11_t8_re_t4b.txt`; each unmutated tree gives 0 FAIL
+lines). Every §K11.3 row matches (mutation 4: one check, then the harness
+exit, which prints no closing line), and §K11.4 rows 1..41 match. §K11.4
+row 42 read 44 and measures 43: it counted the closing line. It is corrected.
+
+**Gate (Task 8).** `make verify` exited 0 on the final tree
+(`<scratchpad>/k11_t8_verify.txt`). Its oracle lines (`k11_t8_or.txt`) equal
+§K11.7's run at `e9e2054` and contain every oracle line of ledger §A, except
+the two unittest wall-clock lines (`Ran 10 tests in 0.097s`, `Ran 33 tests
+in 1.069s`). `svcmenu_register` gains `0x2CAC0`, which runs in `game_init`,
+so the 8000-frame dump was compared: `--check 8000` without that
+registration and with it gives the same `shasum` list over 8000 `.idx` and
+8000 `.pal` files (`k11_t8_frames_before.sha`, `k11_t8_frames_after.sha`).
+The header grep counts 1 for each of `2E218 2E11C 2E248 2E5E4 32BDC 33560
+2CAC0`. `tools/port_progress.py` stays at `765 1203 64` / `729 730 100`:
+none of the seven is a Ghidra function, so README is unchanged. The frame
+dumps were deleted.

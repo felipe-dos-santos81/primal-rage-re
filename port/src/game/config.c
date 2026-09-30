@@ -60,7 +60,7 @@ u32 config_field_get(u32 field)
  * later persistence cycle has them in place. It takes EAX only: 0x2D4F5
  * `mov edx,eax` overwrites EDX before any read (record §26 of
  * 2026-09-29-todo-verify-derivations.md). */
-static void config_storage_touch(u32 kind)
+void config_storage_touch(u32 kind)
 {
     (void)kind;
 }
