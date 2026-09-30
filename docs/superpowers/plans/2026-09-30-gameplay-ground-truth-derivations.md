@@ -258,6 +258,21 @@ Mutation: `p1.b0`/`p1.b1` kb bits swapped in `PAD` →
 restored → `OK`. (A stale `tools/__pycache__` hid the restore once — same size,
 same second; the proofs after this one run with `PYTHONDONTWRITEBYTECODE=1`.)
 ## §G.3 The scheduler (U1 Task 3)
+
+`gp_session.Schedule`, `expand`, `SCENARIOS['gp-pads']`. An action for frame
+`F` fires at the first spin snapshot with `f >= F − 1`: the key-state write
+made in the spin of `F − 1` is sampled by the next ISR tick (`0x1BE1C`) and
+read by iteration `F`'s `0x500C4` (§G.1.1). Modes seen before the `boot` step
+fires are not recorded, so the attract's mode 3 cannot satisfy a later
+`until_mode 3`. The `gp-pads` scenario's gaps (120 frames after mode `0x27`,
+then 30, the chord held 5, the end 60 after it) and its `time_limit = 75` are
+harness values (a stimulus spacing, not game values).
+
+Tests: `Ran 11 tests … OK` (before: `AttributeError: module 'gp_session' has no
+attribute 'Schedule'`). Mutation: `f < F - 1` → `f < F` in `due` →
+`FAIL: test_after_fires_at_the_spin_before_its_frame` and
+`FAIL: test_until_mode_counts_only_after_the_last_action` (`FAILED
+(failures=2)`); restored → `OK`.
 ## §G.4 Port script v2 and trace diff (U1 Task 4)
 ## §G.5 gp_capture (U1 Tasks 5–6)
 ## §G.6 Make targets (U1 Task 7)

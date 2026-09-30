@@ -91,3 +91,92 @@ def parse(line):
         else:
             rec[key] = int(val, 16)
     return rec
+
+
+# Scenarios (spec §4.1). Harness values: the 150-frame gaps follow the
+# planner's probe's 2.5 s (spec §3.5); time limits cover the probe's timings.
+SCENARIOS = {
+    # U1 Task 8: every pad name, two frames each, 30 apart, on the MAIN MENU
+    # (mode 0x27: 0x500C4 runs every frame, spec §3.1).
+    'gp-pads': dict(time_limit=75, steps=(
+        ('boot', ENTER_WAIT, ('key', 'enter')),
+        ('after_mode', 0x27, 120, ('pad', ('p1.up',), 2)),
+    ) + tuple(('after', 30, ('pad', (n,), 2)) for n in (
+        'p1.down', 'p1.left', 'p1.right', 'p1.b0', 'p1.b1', 'p1.b2', 'p1.b3', 'p1.start',
+        'p2.up', 'p2.down', 'p2.left', 'p2.right', 'p2.b0', 'p2.b1', 'p2.b2', 'p2.b3', 'p2.start'))
+      + (('after', 30, ('pad', ('p1.up', 'p1.b1', 'p2.left'), 5)),     # a chord held 5
+         ('after', 60, ('end',))),
+    ),
+}
+
+
+def expand(action):
+    """An action -> [(name, scan, bios_word, hold_frames)]."""
+    if action[0] == 'key':
+        scan, word = KEYS[action[1]]
+        return [(action[1], scan, word, HOLD_FRAMES)]
+    if action[0] == 'pad':
+        return [(n, PAD[n][0], PAD[n][1], action[2]) for n in action[1]]
+    return []
+
+
+class Schedule:
+    """Steps: ('boot', s, act) | ('after_mode', mode, n, act) | ('after', n, act)
+    | ('until_mode', mode, n); an ('end',) action ends the scenario at its frame.
+    An action for frame F fires at the first spin snapshot with f >= F - 1, so
+    iteration F samples it (spec §3.1)."""
+
+    def __init__(self, steps):
+        self.steps = list(steps)
+        self.i = 0
+        self.prev_frame = None
+        self.mode_first = {}
+        self.end_frame = None
+        self.fired = 0
+        self.total = sum(1 for st in self.steps if st[0] != 'until_mode' and st[-1] != ('end',))
+
+    def _target(self, st):
+        if st[0] == 'after_mode':
+            f0 = self.mode_first.get(st[1])
+            return None if f0 is None else f0 + st[2]
+        if st[0] == 'after':
+            return None if self.prev_frame is None else self.prev_frame + st[1]
+        return None
+
+    def on_mode(self, f, mode):
+        if self.i < len(self.steps):
+            st = self.steps[self.i]
+            if st[0] == 'until_mode' and mode == st[1] and self.end_frame is None:
+                self.end_frame = f + st[2]
+                self.i += 1
+                return
+        if self.i > 0 or self.steps[0][0] != 'boot':
+            self.mode_first.setdefault(mode, f)
+
+    def due_boot(self, now_s):
+        if self.i < len(self.steps) and self.steps[self.i][0] == 'boot' and now_s >= self.steps[self.i][1]:
+            self.i += 1
+            self.fired += 1
+            return [(self.i - 1, self.steps[self.i - 1][2])]
+        return []
+
+    def due(self, f):
+        out = []
+        while self.i < len(self.steps):
+            st = self.steps[self.i]
+            if st[0] in ('boot', 'until_mode'):
+                break
+            F = self._target(st)
+            if F is None or f < F - 1:
+                break
+            self.prev_frame = F
+            self.i += 1
+            if st[-1] == ('end',):
+                self.end_frame = F
+                break
+            self.fired += 1
+            out.append((self.i - 1, st[-1]))
+        return out
+
+    def ended(self, f):
+        return self.end_frame is not None and f >= self.end_frame

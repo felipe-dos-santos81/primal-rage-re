@@ -54,5 +54,55 @@ class TestFormat(unittest.TestCase):
         self.assertIsNone(gs.parse('   '))
 
 
+class TestSchedule(unittest.TestCase):
+    STEPS = (('boot', 25.0, ('key', 'enter')),
+             ('after_mode', 0x27, 150, ('key', 'enter')),
+             ('after', 150, ('pad', ('p1.up', 'p1.b1'), 4)),
+             ('until_mode', 0x03, 2))
+
+    def test_boot_fires_on_wall_time_only(self):
+        s = gs.Schedule(self.STEPS)
+        self.assertEqual(s.due_boot(24.9), [])
+        self.assertEqual(s.due_boot(25.0), [(0, ('key', 'enter'))])
+        self.assertEqual(s.due_boot(99.0), [])
+
+    def test_after_fires_at_the_spin_before_its_frame(self):
+        s = gs.Schedule(self.STEPS)
+        s.due_boot(25.0)
+        s.on_mode(0x120, 0x27)
+        self.assertEqual(s.due(0x120 + 148), [])
+        self.assertEqual(s.due(0x120 + 149), [(1, ('key', 'enter'))])   # frame F = f0 + 150
+        self.assertEqual(s.due(0x120 + 150 + 148), [])
+        self.assertEqual(s.due(0x120 + 150 + 149), [(2, ('pad', ('p1.up', 'p1.b1'), 4))])
+
+    def test_a_late_snapshot_still_fires_once(self):
+        s = gs.Schedule(self.STEPS)
+        s.due_boot(25.0)
+        s.on_mode(0x120, 0x27)
+        self.assertEqual(s.due(0x120 + 160), [(1, ('key', 'enter'))])
+        self.assertEqual(s.due(0x120 + 161), [])
+
+    def test_until_mode_counts_only_after_the_last_action(self):
+        s = gs.Schedule(self.STEPS)
+        s.on_mode(0x10, 0x03)                  # mode 3 before the steps: ignored
+        s.due_boot(25.0)
+        s.on_mode(0x120, 0x27)
+        s.due(0x120 + 149)
+        s.due(0x120 + 299)
+        self.assertIsNone(s.end_frame)
+        s.on_mode(0x2000, 0x03)
+        self.assertEqual(s.end_frame, 0x2002)
+        self.assertFalse(s.ended(0x2001))
+        self.assertTrue(s.ended(0x2002))
+        self.assertEqual((s.fired, s.total), (3, 3))
+
+    def test_expand(self):
+        self.assertEqual(gs.expand(('key', 'enter')), [('enter', 0x1C, 0x1C0D, gs.HOLD_FRAMES)])
+        self.assertEqual(gs.expand(('pad', ('p1.up', 'p2.b3'), 4)),
+                         [('p1.up', 0x1F, 0x1F73, 4), ('p2.b3', 0x51, 0x5100, 4)])
+        with self.assertRaises(KeyError):
+            gs.expand(('pad', ('p3.up',), 1))
+
+
 if __name__ == '__main__':
     unittest.main()
