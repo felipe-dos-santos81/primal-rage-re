@@ -2340,3 +2340,206 @@ failed a row off its own path.
 - **`python3 tools/port_progress.py`:** `767 1203 64` / `731 731 100`,
   unchanged. No function is ported, and the README stays as it is.
 - **Build:** 0 warnings.
+
+## §9 Task 9: K12 batch D2, fighter.c's real-play sample voices, part 1
+
+Implemented in the worktree `k12-t9` (branch `k12-t9`, from `b7b7c74`).
+Every batch-D2 call was re-read from the fixup-applied image (`$K/dx.py`),
+`mov` and `call` both; each C call carries its `mov`/`call` pair, or for a
+table id the range from the index load to the call. All 28 points are case-2
+ids (§0.4): each resolves a bank and queues a sample slot. Only `fighter.c`
+changes, at these rows' call sites only (Task 10 edits rows 103-129 of the
+same file in parallel).
+
+### §9.1 The 28 wiring points
+
+Side 0 acts in every driver. `vf_duel(ch0, ch1)` spawns both sides through
+`0x33EB4` into the private pool (`vf_pools`), with `DS_001078FA` = 0 and
+`DS_00104B14` = 1 (no `0x494A8` dust build); the runner's `DS_001028C8` = 0
+closes `0x33E48`'s bank reads. `vf_entrance(ch, fn)` spawns only side 1 (the
+character `VF_D2_OTHER` = 4), puts its record at x `0x1000`, sets
+`DS_0010810D` = 1 and the bound `DS_000BE018` = `0x7C00` (the image's value),
+and runs the `0xA8628` entry `fn(0)` with side 0 as `ch`. The table rows use
+two different characters (own 1, other 4) so a read through the wrong slot
+changes the id: `0xBDAD4[1]` = `0x97`, `0xC75AA[4]` = `0x84`, `0xBE008[4]` =
+`0x83`.
+
+| row | call (mov/call) | C site | driver | seed | ids |
+|---:|---|---|---|---|---|
+| 59 | `362E0/362E5` | `fighter_36280` | `vf_36280` | `vf_duel(1, 4)`; record 0 (its `+0x14` slot set, `0x3628B`) | `6F` |
+| 62 | `37D5C..37D73` | `fighter_37d18` (tail) | `vf_37d18` | `vf_duel(1, 4)`; slot 0, record 0 | `BDAD4[1]` = `97` |
+| 63 | `3923D` (ids from `391FE..39238`) | `fighter_39040` | `vf_39040_3`, `vf_39040_2` | `vf_duel(1, 4)`, slot `+0x63` = 0, mode `DS_00104B00` = 3 (`0x41313`), `0x107A80` zeroed, hit count `0x107D2C` = 3, `0x107D20` = `0x10` (`0x391DE`); `DS_001088A8[0]` = `0x20`/`0x3F`/`0x2A` (rng_next(3)) or `0x1F`/`0x40` (rng_next(2)); the seed is the first whose first draw is the wanted value, searched in the driver | `CD CE CF`; `DA DB` |
+| 73 | `14B7F/14B84` | `fighter_14a5c` (static) | `vf_14988` | `vf_duel(3, 4)`, slot `+0x57` = 2 (`0x14A43`), `DS_000FD11A` = 0; `fighter_14988(slot0, rec0, 0)` | `B1` |
+| 74 | `14BA0/14BA5` | `fighter_14b90` | `vf_14b90` | `vf_duel(3, 4)` | `B0` |
+| 77 | `22BAB/22BB0` | `fighter_22b28` (static) | `vf_22ce4` | `vf_duel(1, 4)`; `fighter_22ce4(0)` | `B5` |
+| 78 | `22EFB/22F00` | `fighter_22e44` | `vf_22e44` | `vf_duel(1, 4)`; its `0x22CE4(1)` makes row 77's call first | `B5`, `B6` |
+| 79 | `236C2/236CB` | `fighter_2365c` | `vf_2365c` | `vf_duel(1, 4)`, slot 0 `+0x08` = 0 (`0x23662`), slot 1 `+0x10` = 0 (`0x2368A`) | `B4` |
+| 80 | `23166/2316B` | `fighter_23130` | `vf_23130` | `vf_duel(1, 4)` | `7C` |
+| 81 | `231AE/231B3` | `fighter_23178` | `vf_23178` | `vf_duel(1, 4)` | `7C` |
+| 82 | `2467F/24684` | `fighter_24568` | `vf_24568` | `vf_entrance(1, …)` | `B4` |
+| 83 | `40E04/40E09` | `fighter_40cb0` | `vf_40cb0` | `vf_entrance(0, …)` | `8C` |
+| 84 | `48952/48957` | `fighter_488b8` | `vf_488b8` | `vf_duel(2, 4)` | `7B` |
+| 85 | `49297/4929C` | `fighter_49150` | `vf_49150` | `vf_entrance(2, …)` | `A2` |
+| 86 | `15A1B/15A22` | `fighter_159a8` | `vf_159a8` | `vf_duel(3, 4)`; record 0 (`0x159B2`) | `B1` |
+| 87 | `15B7B/15B80` | `fighter_15a34` | `vf_15a34` | `vf_entrance(3, …)` | `9C` |
+| 88 | `46127/4612C` | `fighter_45fe8` | `vf_45fe8` | `vf_entrance(4, …)` | `80` |
+| 89 | `3E04F/3E057` | `fighter_3dfc0` | `vf_3dfc0` | `vf_duel(5, 4)`; the other slot live (`0x3DFD9`) | `B9` |
+| 90 | `40FAB/40FB0` | `fighter_40e64` | `vf_40e64` | `vf_entrance(5, …)` | `86` |
+| 91 | `247F0/247F5` | `fighter_24754` | `vf_24754` | `vf_duel(6, 4)` | `A8` |
+| 95 | `3E2F3..3E30C` | `fighter_3e244` | `vf_3e244` | `vf_duel(1, 4)` | `C75AA[4]` = `84` |
+| 96 | `48B05..48B1E` | `fighter_48aac`, `+0x57` = 0 | `vf_48aac` | `vf_duel(1, 4)`, slot 0 `+0x57` = 0 (`0x48AC3`), both slots' `+0x2C` = `0x1000` (`0x48AFA`) | `84`, `59` |
+| 97 | `48B37/48B50` | same | same | same | `84`, `59` |
+| 98 | `48C3B/48C40` | `fighter_48be0` | `vf_48be0` | `vf_duel(2, 4)` | `4B` |
+| 99 | `3A314..3A32D` | `fighter_3a2a0`, r == 0 | `vf_3a2a0` | `vf_duel(1, 4)`, slot 0 `+0x5F` = `0x20` (`0x3A280`'s `0x20..0x3F`), `0xA6728` word `+2` of key `(1 << 6) + 0x20` = 3, so `0x3B298` returns 0 at `0x3B30C` (`c4r_pose_seed`'s route) | `BE008[4]` = `83` |
+| 100 | `44A4E/44A53` | `fighter_c4_spawn` (static) | `vf_449b8` | `vf_duel(4, 4)`; `fighter_449b8(rec0)` (`0x449C6`) | `AB` |
+| 101 | `44C52..44C6B` | `fighter_44bac` | `vf_44bac` | `vf_duel(1, 4)` | `C75AA[4]` = `84` |
+| 102 | `45148/4514D` | `fighter_450e8` | `vf_450e8` | `vf_duel(4, 4)` | `47` |
+
+`K12_D2_ROWS` = 29: 28 wiring points in 29 entries, because row 63's five
+ids exceed the runner's four (`TfVoiceSite.ids[4]`), so it has one entry
+per draw (`rng_next(3)`: `CD`/`CE`/`CF`; `rng_next(2)`: `DA`/`DB`). Each
+row-63 driver calls `fighter_39040` once per id, so every arm of the
+selection is reached.
+
+The table-id macros are local `#define`s (symbols.h has no names):
+`FIGHTER_BDAD4` = `0x000BDAD4u` (row 62; `FSET_BDAD4` exists but is defined
+later in the file), `FIGHTER_C75AA` = `0x000C75AAu` (rows 95, 96, 101) and
+`FIGHTER_BE008` = `0x000BE008u` (row 99).
+
+**Row 219 (`0x44AFF`).** `0x44A64`'s copy of the body (`0x44AFA mov eax,0xAB;
+0x44AFF call`) runs through the same C call as row 100 (`fighter_c4_spawn`),
+so wiring row 100 also makes it; the call's comment names both pairs
+(`0x44A4E/0x44A53 0x2C3FC (0x44A64: 0x44AFA/0x44AFF)`). There is no second
+call. Row 219's table entry (driven through `fighter_44a64`) is **not** added
+here: Task 11 or the controller adds it after the merge.
+
+Same-id aliasing (§4.2): no D2 path makes two calls with one id. Paths that
+also reach row 76's `0x39834` (rows 77, 78, 95, 99, 101) post an `0xE933C`
+id once Task 7 is merged. Those ids (`63..6A 46 75 AC 6F 6B B7 70`) do not
+include any id these rows list.
+
+### §9.2 Corrections (raw wins)
+
+- **Row 95's range:** the brief's example cites `0x3E2F9..0x3E30C`. `0x3E2F9`
+  is inside `0x3E2F7 mov al,[eax+0x7a]`. The index load starts at `0x3E2F3
+  mov eax,[esp+0xc]` (ctx[3]), after `0x3E2EE call 0x39A10`. The comment
+  carries `0x3E2F3..0x3E30C`. By the same reading, the other table rows'
+  ranges are `0x48B05..0x48B1E`, `0x44C52..0x44C6B`, `0x3A314..0x3A32D` and
+  `0x37D5C..0x37D73`.
+- **Row 73's seed:** §1.3 lists `0x14A5C`'s gates `0x14A94`, `0x14AA6` and
+  `0x14B22`. None of them gates the voice. `0x14B7F/0x14B84` follows both
+  arms of each, so the voice is unconditional once `0x14A5C` runs. The
+  driver sets `DS_000FD11A` = 0 only so that it reads seeded state.
+- **Row 97's `mov` is not next to its call.** `0x48B37 mov eax,0x59`, then
+  `0x48B3C` / `0x48B3F` / `0x48B45` (the `DS_00104AE9` bit 2 and the record's
+  `+0x34`) and `0x48B4B mov ebx,0xF0`, then `0x48B50 call`. The port makes
+  the stores first, so the state at the call is the same.
+- **Row 86 and row 89:** a store sits between `mov` and `call` in each
+  (`0x15A20 mov dh,1`, whose `DS_000F0AFE` store `0x15A27` follows the call;
+  `0x3E054` the `+0x57` store). The port keeps the raw's order relative to
+  the call: `DS_000F0AFE` after it, `+0x57` before it.
+- **Row 62's EDX note:** the old comment said `0x2C3FC` "preserves EDX" and
+  called EDX "the voice's second argument". §6.2 established that `0x2C3FC`
+  pushes EDX (`0x2C3FD`) and overwrites it at `0x2C3FF` before any read. The
+  comment now says EDX is not an input and is restored, which is why
+  `0x37D7B` stores `0xBD89C`.
+- **Row 63's selection** matches §1.3: `0x39205 jbe` takes 0 to `CD`,
+  `0x3920A je` takes 1 to `CE`, and anything else goes to `CF` (`0x3921C`).
+  For the other draw, `0x3922F je` takes 0 to `DB` and non-zero to `DA`. The
+  draws that were already there are kept, and their results now pick the id.
+
+### §9.3 Tests
+
+`test_fight_voice_sites` gains `k12_d2[]` with its size check, after the B2
+pair. With the tables in and the source unwired (`git stash push --
+port/src`), the suite printed 29 `voice site row` lines, all `0 of n`, and
+`FAILURES: 29` (`$K/t9-unwired.txt`). Wired, it prints `all checks passed`.
+
+Assertion sites: +1 (the size check), 13374 → **13375** on §6's basis.
+
+`not wired` lines (`rg -c 'not wired' port/src`), before → after:
+`fighter.c` 67 → 40, and the other files are unchanged. The `.c` total goes
+from 144 to 117 (the headers' 3 lines make it 147 to 120). 28 points take 27
+lines, because row 99's comment was a split phrase (`not\n wired`).
+
+### §9.4 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
+
+Every one of the 28 calls was deleted in turn, plus seven index and
+selection mutations (`$K/t9mut.py`: the statement becomes `(void)0;` or the
+named edit, rebuild, `PR_ORACLE_REQUIRED=1 ./build/run_tests`, restore;
+outputs `$K/t9-mut-<label>.txt`, summary `$K/t9mut-summary.txt`). Every
+FAIL line is `test_fixtures.c:232`, the in-order check.
+
+| mutation | FAIL lines | failing rows |
+|---|---:|---|
+| row 59 (`0x362E5`) deleted, first | 1 | 59 (`0 of 1`) |
+| rows 62, 73, 74, 79-84, 86-91, 95, 98-101 deleted | 1 each | their own (`0 of 1`) |
+| row 63 (`0x3923D`) deleted | 2 | both row-63 entries (`0 of 3`, `0 of 2`) |
+| row 77 (`0x22BB0`) deleted | 2 | 77 (`0 of 1`), 78 (`0 of 2`, its path makes row 77's call) |
+| row 78 (`0x22F00`) deleted | 1 | 78 (`1 of 2`) |
+| row 96 / 97 deleted | 2 each | 96, 97 (`0 of 2` / `1 of 2`) |
+| row 85 (`0x4929C`) deleted, middle | 1 | 85 (`0 of 1`) |
+| row 102 (`0x4514D`) deleted, last | 1 | 102 (`0 of 1`) |
+| row 62's index dropped (`0xBDAD4[0]` = `92`) | 1 | 62 |
+| rows 95 / 96 / 99 / 101 index through `ctx[2]` (own char 1: `96`, `96`, `95`, `96`) | 1 / 2 / 1 / 1 | 95 / 96 and 97 / 99 / 101 |
+| row 63 `rng_next(3)` = 0 gives `CE`, not `CD` | 1 | 63 (`0 of 3`) |
+| row 63 `rng_next(2)` test inverted | 1 | 63 (`1 of 2`) |
+
+No mutation failed a row outside its own path.
+
+### §9.5 Real play only (measured)
+
+Two checks support §0.4's "real play only" for these 28 points.
+
+The first is a probe. A scratch copy of `port/` had each of the 28 calls
+replaced by a logging `t9_probe(row, id)` (stderr, then `sound_voice`), and
+was built separately (`scratchpad/t9probe`). It ran `--check 8000`, the
+`PR_FRONTEND_DET`, `PR_ATTRACT_DUMP` and `PR_TITLE_DUMP` drivers, and the
+plain suite. The four oracle runs logged **0** probes (`--check` exit 0,
+the three drivers `all checks passed`). The suite logged 201, and every one
+of the 28 rows fired at least once (its own driver, plus the existing tests
+that call these functions). So none of the 28 is on an oracle path. The
+gate's unchanged oracle lines and frame dumps (§9.6) agree. The probe tree
+and its dumps are deleted.
+
+### §9.6 Gate
+
+- `make verify` (with `SMK_DUMP`, `TITLE_DUMP`, `ATTRACT_DUMP`,
+  `FRONTEND_DUMP`, `TITLE_PIN_DIR` and `AUDIO_WAV` overridden to
+  `/tmp/pr_t9_*`): `EXIT=0` (`$K/verify-t9.txt`, 572 lines, `all checks
+  passed`). The brief's grep of the oracle lines diffs empty against
+  `$K/oracle-lines-base.txt` (`ORACLES-EQUAL`).
+- Dumps: `dumps.sh t9-final` matches `$K/base.sha256` (`dumpsha.sh`, exit 0,
+  `DUMPS-IDENTICAL`). `--check 8000` exited 0 with 24000 frame files, and the
+  fe, attract and title drivers each printed `all checks passed`. No
+  before-dump was taken: `b7b7c74` is Task 6's tree, whose after-dump equals
+  `base.sha256` (§6.7). The dump is deleted.
+- `make audio-render`: `$K/t9-after.wav` is byte-identical to
+  `before-t2.wav` (`cmp`; sha256 `df74acfb…a380844`, 2386412 bytes).
+- `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
+  unchanged (no function is ported; the README stays as it is).
+- Build: 0 warnings.
+
+### §9.7 Not tested
+
+- The dispatcher's effect at these sites. The runner runs with
+  `DS_001028C8` = 0, so no case-2 id reads a bank or queues a slot; §3's
+  tests pin `0x1CC28`/`0x1CB18`.
+- Each call's position relative to its non-voice neighbours (for example,
+  row 86 before the `DS_000F0AFE` store, or row 74 before `0x396AC`), except
+  where two ids share a path (77 before 78, 96 before 97).
+- The other entries to these functions: row 77 through `fighter_235c4`; row
+  91 through the character-6 entrance `0x24804`; row 89 through `0x40E14` and
+  `0x3DE54`; row 73 through the reaction chain rather than `0x14988` directly;
+  the entrances through their `0xA8628` dwords (called directly here); row
+  100 through `0x44A64` (row 219, Task 11).
+- The other arms of these functions, which make no call: row 63 with a hit
+  count of 2 or less, `+0x63` set, round 2, or `a >= 0x23`; row 96/97 with
+  `|d| > 0x100` and `+0x57` of 1 or more; row 99 with r != 0 or the gate
+  closed; rows 59/86/100 with no `+0x14` slot; row 79's two early returns;
+  row 89 with no other slot.
+- Row 63's `rng_next(3)` values 0 and 1 with `r3` at the other edge of
+  `0x20..0x3F`. The driver uses `0x20`, `0x3F` and `0x2A` for the three
+  values and `0x1F`/`0x40` for the two-way draw, so both edges are covered
+  once, not per value.
+- The table-id rows for characters other than 1 and 4.

@@ -889,3 +889,17 @@ The gate result:
 - Assertion sites go from 13371 to 13373.
 - The `not wired` count in the `.c` files drops from 144 to 119. It is also gone from `attract.h` and `fighter.h`.
 - The counter is unchanged at 767 of 1203.
+
+**K12 batch D2: fighter.c's real-play sample voices, part 1 (record `2026-09-29-k7-k12-derivations.md` §9).** The 28 batch-D2 calls to `0x2C3FC` in `fighter.c` are now made where the raw makes them, each with its `mov`/`call` pair (or, for a table id, the index load through the call). All are case-2 sample ids:
+- the landing `0x6F` (`0x36280`);
+- the approach `0xBDAD4[char]` (`0x37D18`);
+- `0x39040`'s combo voice, `CD`/`CE`/`CF` by its `rng_next(3)` or `DA`/`DB` by its `rng_next(2)`, where the existing draws now pick the id;
+- character 3's `0xB1`/`0xB0` (`0x14A5C`, `0x14B90`);
+- the freeze `0xB5`/`0xB6` (`0x22B28`, `0x22E44`);
+- character 1's `0xB4`/`0x7C`/`0x7C` (`0x2365C`, `0x23130`, `0x23178`);
+- the six `0xA8628` entrances' voices and their stream targets (`0xB4`, `0x8C`, `0xA2`, `0x9C`, `0x80`, `0x86`; `0x7B`, `0xB1`, `0xB9`, `0xA8`);
+- the holds and finishers `0xC75AA[char]`, `0x59`, `0x4B`;
+- `0x3A2A0`'s `0xBE008[char]`;
+- character 4's `0xAB` and `0x47`.
+
+`0x44A64`'s copy `0x44AFF` runs through row 100's shared call. Its table row (219) is Task 11's. `test_fight_voice_sites` gains `k12_d2` (29 entries: row 63's five ids are two entries). Each driver spawns both sides into the private pool or runs one entrance against a spawned side. Deleting any one of the 28 calls fails its own row and only rows on its path. So does reading a table through the wrong slot, dropping the index, or swapping row 63's selection. A probe build logged none of the 28 calls in `--check 8000`, the front-end, attract or title runs, which confirms "real play only". Corrections (raw wins): row 95's index load starts at `0x3E2F3`, not `0x3E2F9`. Row 73's §1.3 gates do not gate the voice. `0x2C3FC` restores EDX but never reads it. Assertion sites go from 13374 to 13375. The `not wired` count in `fighter.c` goes from 67 to 40. The counter is unchanged at 767 of 1203.
