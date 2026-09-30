@@ -515,7 +515,7 @@ that proves it.
 | `TODO(verify)` in `port/src` | 31 | **0** | `grep -rn 'TODO(verify)' port/src` |
 | `TODO(verify)` in `port/tests` | not measured | 1, explained | the `test_game.c` comment that starts "TODO(verify): the original's live counter is unread" (above `FRONTEND_FRAMES_BEFORE_STATE2`): the front-end driver's frame-counter seed 886; the original's live counter is unread (demo record §1.6); settling it needs a live-RAM dump |
 | `game_frame` cases | 52/52 wired | 52/52 wired | §D |
-| `named gap` sites (`port/src` + `port/tests`) | 35 | 13, all live named gaps (§H.3) or history ("formerly", "pinned") | `rg -n -i 'named gap' port/src port/tests` |
+| `named gap` sites (`port/src` + `port/tests`) | 35 | 13, all live named gaps (§H.3) or history ("formerly", "pinned") (nine / 12 named-gap sites after named-gaps D, §H.3: `ail.c`'s §0.7.6 site went with gap #6) | `rg -n -i 'named gap' port/src port/tests` |
 | `not wired` in `port/src` | ~180 | 0 | `rg 'not wired' port/src` |
 | `not modelled` deviations in `port/src` (fifth source, added in fix round 1) | not enumerated | 10 hits of `rg -n 'not modelled\|not yet modelled\|is not modelled' port/src` (1 of them matches `PORT:.*not modelled` on one line); that alternation is narrower than the broad one: `rg -n 'not\s+modell?ed\|does not model\|unmodelled' port/src` returns 16 lines, and its multi-line form `rg -U 'not(\s\|\n\s*\*)+modell?ed\|does not model\|unmodelled' port/src` returns 18 matches (the 16 plus 2 that wrap a line, in `movie.c` and `ail.h`; 20 printed lines) at 18 locations = 15 distinct deviations, each with a verdict in §H.1a | as named |
 
@@ -664,7 +664,7 @@ it is not a complete scan of non-Ghidra code.
 
 ### §H.5 Final gate
 
-Ten named gaps remain (§H.3); §H.1a gives every `not modelled` hit a verdict.
+Ten named gaps remain (§H.3) (nine / 12 named-gap sites after named-gaps D, §H.3); §H.1a gives every `not modelled` hit a verdict.
 
 `make clean && make build && make verify` (with the `/tmp/pr_t7_*` dump
 overrides; the two oracle fixtures restored byte-identical after `make clean`,

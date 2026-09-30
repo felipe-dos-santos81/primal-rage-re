@@ -213,6 +213,28 @@ only `s_last_isr_tick` moves.
 - **The clamp** is the existing `HOST_TICK_MAX_CATCHUP` (30, `host.h:15`),
   shared with the host clock. `rate * elapsed` is at most 49716 x 30 and fits
   a `u32`.
+- **Deviation: the clamp drops audio time across a long read stall.** The raw
+  DIG service keeps playing through a read stall (its ISR runs during the
+  read). The port models the stall as ticks added at once (`res.c:91`,
+  `ceil(size / RES_READ_BYTES_PER_TICK)`, 132674 bytes per tick), and the
+  next service renders at most 30 ticks of them. So a stall over 30 ticks
+  (more than 30 x 132674 = 3,980,220 bytes, about 3.98 MB, of first reads
+  before one service call) loses the excess, and a one-shot playing across it
+  ends later than the raw's by that excess. One entry cannot reach it: the
+  largest file in `data/game/C` is `S16REX.GRA`, 3,812,084 bytes = 29 ticks.
+  Several first reads in one loop iteration could sum past 30; whether any
+  shipped path does is not measured. Rendering the excess in `AUDIO_FRAMES_MAX`
+  chunks would remove the deviation; it was not done here (no code change in
+  the fix round).
+- **The headless render also runs the FM path.** `mixer_render` calls
+  `opl_advance` -> `opl_render` for every output frame, so each headless
+  service now synthesises about 829 FM frames per tick (49716 / 60) and
+  discards them with the samples. It is harmless to the outputs: the WAV path
+  (`test_audio.c`) resets the OPL and the mixer before its own render, and the
+  WAV is byte-identical (§D.3). Its cost, measured on `--check 1000` (two runs
+  each, `/usr/bin/time -p`): user time 3.14 s / 4.02 s with the clock against
+  0.94 s / 1.16 s with the old early return (M1). Wall time is unchanged at
+  16.9 s, bounded by the frame wait.
 - **The backward guard** (`isr_elapsed > 0x7FFFFFFF` -> 0) is a `PORT:` guard
   with no raw counterpart: in the raw the ISR counter only grows. In the port
   a test restoring the data object moves `DS_00101500` back.
@@ -245,6 +267,47 @@ count).
   and the resolved lengths 7557/9511/10904.
 
 There is no V4/V5; the names follow the plan's Review Focus.
+
+Of the 40 sites, 24 fail under none of M1-M5, and 23 under none of M1-M6
+(M6 below):
+- Fixture and raw pins (11): the slot handles and buffers (`:1612`, `:1628`,
+  `:1631`), the BD/BE/BF records (`:1636..1641`) and lengths (`:1646..1648`).
+- `vc_end_tick` arithmetic self-checks (5): `:1656`, `:1657`, `:1687`,
+  `:1713`, `:1736`.
+- Start preconditions (6): status 4 after a start (`:1666`, `:1722`), the
+  dispatcher accepting 0x40, 0x42 and BD (`:1703`, `:1704`, `:1740`), and the
+  loops in two slots (`:1708`).
+- `:1747` ("0x42 started once BD ended", `sl >= 0`): it cannot tell 0x42 from
+  BD, because they share handle 0x03837440 and BD's slot keeps it in +0x0C
+  after BD ends. The restoration is carried by `:1744` (the dispatcher's AL)
+  and `:1750` (the slot still 4 a BD length later).
+- V7's refusal while BD plays (`:1742`) fails only under M6.
+
+M6 (measured in the fix round, not committed): `flow.c`'s `0x1CE70` status
+test `if (snd_slot_status(off) == 4) return 1;` replaced by `if (0) return 1;`
+(the dispatcher never sees a playing sample). 15 FAIL lines
+(`$D/mut-M6.fail`):
+
+```
+FAIL port/tests/test_game.c:668: 1 != 0
+FAIL port/tests/test_game.c:669: a playing sample is not queued again
+FAIL port/tests/test_game.c:670: 0 != 402713545
+FAIL port/tests/test_game.c:675: no DIG driver, no read
+FAIL port/tests/test_game.c:681: paused samples, no read
+FAIL port/tests/test_game.c:689: 1 != 0
+FAIL port/tests/test_game.c:691: 0 != 402713545
+FAIL port/tests/test_game.c:716: 1 != 0
+FAIL port/tests/test_game.c:717: 0x4D's first sample plays
+FAIL port/tests/test_game.c:729: 1 != 0
+FAIL port/tests/test_game.c:739: 1 != 0
+FAIL port/tests/test_game.c:784: 402727677 != 1145307136
+FAIL port/tests/test_game.c:785: 0 != 402727677
+FAIL port/tests/test_game.c:786: case 4 with 0x180122FD playing reads nothing
+FAIL port/tests/test_audio.c:1742: 1 != 0
+```
+
+`flow.c` was restored byte-for-byte and the suite re-ran with all checks
+passed.
 
 ### Correction to the plan (the tree wins): the unit suite's slot handles are released
 
@@ -346,8 +409,12 @@ slot" check fails five times.
 - The device path (`host_audio_rate() != 0`): SDL audio cannot open on this
   host (`-66681`). Its only change is that `s_last_isr_tick` moves.
 - The 30-tick clamp on `isr_elapsed`: a res.c stall of more than 30 ticks
-  happens only on a large first read. The clamp is `HOST_TICK_MAX_CATCHUP`,
-  shared with the host clock, with no separate test here.
+  (over about 3.98 MB of first reads before one service call) needs more
+  bytes than any single shipped file holds. The clamp is
+  `HOST_TICK_MAX_CATCHUP`, shared with the host clock, with no separate test
+  here. It is a deviation (§D.1): the raw keeps playing through the stall and
+  the port drops the excess over 30 ticks, so a one-shot spanning such a
+  stall ends later than the raw's.
 - `s_last_isr_tick`'s init in `game_audio_init`: `game_init` runs once per
   process. V3's rebase covers the equivalent path.
 - `sound_sfx_volume`, `snd_sample_stop` and `snd_samples_stop_all` on a
@@ -356,7 +423,7 @@ slot" check fails five times.
 
 ## §D.3 Gate and closure
 
-On Task 2's commit `017a37d`, after `make clean` (the two oracle fixtures
+On Task 2's commit `2fe39ae`, after `make clean` (the two oracle fixtures
 backed up and restored byte-identical) and `make build` (no warning or error
 lines):
 
@@ -393,6 +460,13 @@ gone: the frames with all four slots busy fall from 5430 to 506 and the mean
 occupancy from 3.31 to 1.47. `max=4` remains because four concurrent
 one-shots can legitimately fill the slots for a few frames.
 `loop_slot_moves` is unchanged (6): the title's legitimate stops of 0x40/0x42.
+
+The second-cycle 0x42 restoration (Finding F10) is shown at unit level only:
+V7 (`test_audio.c:1742..1750`). The probe cannot show it:
+`loop_slot_moves` watches the handle +0x0C, and BD and 0x42 share
+0x03837440, so it cannot tell BD's one-shot from 0x42's loop. It stays 6
+before and after. Recording the loop byte +0x08 in the probe would
+separate them; that was not done.
 
 ### Closure
 
