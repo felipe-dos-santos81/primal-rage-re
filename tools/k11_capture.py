@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """K11 ground-truth capture (plan 2026-09-30-named-gaps-a-k11-harness.md,
 record §A.3). The pinned original (make title-pin) runs in DOSBox-X. AUTOTYPE
-types the scenario's keys and DX-CAPTURE /V /O records video and OPL. A
+(or, by default, the poller: --input) types the scenario's keys and
+DX-CAPTURE /V /O records video and OPL. A
 poller thread reads the `[dosbox] memory file` (guest RAM, memory-mapped; a
 runtime linear address is the file offset) and writes poll.log (format:
 k11_session.py). It also applies the scenario's pokes once mode 0x27 is seen.
@@ -13,7 +14,9 @@ CMOS save (0x1B084) cannot write. The CMOS in the game dir must be absent or
 config_validate). Usage:
   k11_capture.py --scenario NAME --out data/k11-captures/NAME
                  [--time-limit S] [--enter-wait S] [--pace S] [--exe PATH]
-                 [--no-pokes] [--keep-avi]"""
+                 [--no-pokes] [--keep-avi] [--input inject|autotype]
+--input inject (the default, record §A.9) types the scenario through the memory
+file; --input autotype hands the key list to DOSBox-X's AUTOTYPE instead."""
 import argparse
 import hashlib
 import mmap
@@ -40,6 +43,21 @@ ANCHOR_VA, ANCHOR = 0x8002D, b'RAGE.S16'                    # combat-fidelity re
 CHECK_VA, CHECK = 0x9AFD8, bytes.fromhex('1400040080110032')  # demo-pose record §38.1
 LOG_CON_ARGS = ['-set', 'dos log console=quiet']            # record §A.2
 BDA_HEAD, BDA_TAIL, BDA_START, BDA_END = 0x41A, 0x41C, 0x480, 0x482
+
+# --input inject (record §A.9): AUTOTYPE's typing stopped mid-scenario on this
+# host (walk runs 1 and 2 typed 11/38 and 1/38 keys), so the poller types the
+# scenario itself through the memory file, as the keyboard path would leave
+# it: the IRQ1 key-state table [DS_00101514]+0x254+scan (bit 7 = released;
+# demo-pose record §50-C.3, read by 0x1B610/0x1B6A0) is pressed for HOLD_S,
+# and the BIOS word is appended to the int 16h ring. The words are the ones
+# AUTOTYPE's taps left in the ring (walk.run1 poll.log: 1C0D, 50E0, 011B; the
+# probe runs: 48E0); left/right follow the same grey-key E0 form. HOLD_S is
+# AUTOTYPE's own press length as the game saw it (walk.run1 poll.log:1538..1541,
+# kb=0040 from tick 0x5F2 to 0x5F5, 3 ticks); it is a stimulus, not a game value.
+KEYTAB_OFF = 0x254
+HOLD_S = 0.05
+BIOS_WORD = {'enter': 0x1C0D, 'esc': 0x011B, 'up': 0x48E0, 'down': 0x50E0,
+             'left': 0x4BE0, 'right': 0x4DE0}
 
 
 def guard_out(out):
@@ -73,7 +91,7 @@ def check_cmos(game_dir):
     return 'absent'
 
 
-def dosbox_cmd(root, game, iso, scenario, time_limit, enter_wait, pace):
+def dosbox_cmd(root, game, iso, scenario, time_limit, enter_wait, pace, autotype=True):
     return ([sc.which('dosbox-x'), '-defaultconf', '-fastlaunch', '-nopromptfolder',
              '-nogui', '-nomenu', '-time-limit', str(time_limit),
              '-set', 'sdl fullscreen=false',
@@ -84,7 +102,7 @@ def dosbox_cmd(root, game, iso, scenario, time_limit, enter_wait, pace):
             + ['-c', 'MOUNT C "%s" -ro' % game,
                '-c', 'IMGMOUNT D "%s" -t iso' % iso,
                '-c', 'C:',
-               '-c', ks.autotype_line(scenario, enter_wait, pace),
+               ] + (['-c', ks.autotype_line(scenario, enter_wait, pace)] if autotype else []) + [
                '-c', 'DX-CAPTURE /V /O PRAGE.EXE -f',
                '-c', 'EXIT'])
 
@@ -101,6 +119,31 @@ def bios_new_keys(mem, prev_tail, tail, start, end):
         if t >= end:
             t = start
     return out
+
+
+def schedule(keys, enter_wait, pace):
+    """AUTOTYPE's timing: the first key after WAIT, then one PACE per list item
+    (',' is an item that types nothing). [(seconds, key)]."""
+    out, t = [], enter_wait
+    for k in keys:
+        if k != ',':
+            out.append((t, k))
+        t += pace
+    return out
+
+
+def bios_insert(mem, word):
+    """Append `word` to the BIOS keyboard ring as int 9 would; False when full."""
+    head, tail = u16(mem, BDA_HEAD), u16(mem, BDA_TAIL)
+    start, end = u16(mem, BDA_START) or 0x1E, u16(mem, BDA_END) or 0x3E
+    nxt = tail + 2
+    if nxt >= end:
+        nxt = start
+    if nxt == head:
+        return False
+    mem[0x400 + tail:0x402 + tail] = word.to_bytes(2, 'little')
+    mem[BDA_TAIL:BDA_TAIL + 2] = nxt.to_bytes(2, 'little')
+    return True
 
 
 def field_pokes(window, descs, pokes):
@@ -126,10 +169,31 @@ def read_kb(mm, base):
 
 
 class Poller(threading.Thread):
-    def __init__(self, mem_path, log_path, pokes, descs, stop):
+    def __init__(self, mem_path, log_path, pokes, descs, stop, typing=()):
         super().__init__(daemon=True)
         self.mem_path, self.log_path, self.pokes, self.descs, self.stop = \
             mem_path, log_path, pokes, descs, stop
+        self.typing = list(typing)      # [(seconds, key)] for --input inject
+        self.held = []                  # [(release_at, linear, old)]
+
+    def type_keys(self, mm, base, now, ms, log):
+        for release_at, lin, old in [h for h in self.held if now >= h[0]]:
+            mm[lin] = old | 0x80
+            self.held.remove((release_at, lin, old))
+            log.write('I ms=%d up=%08X tab=%02X\n' % (ms, lin, old | 0x80))
+        ptr = int.from_bytes(mm[base + ks.KB_PTR_DS - ks.DATA_BASE_VA:][:4], 'little')
+        while self.typing and now >= self.typing[0][0]:
+            if ptr == 0 or ptr + KEYTAB_OFF + 0x100 > len(mm):
+                return
+            _, name = self.typing.pop(0)
+            scan = ks.KEYS[name][0]
+            lin = ptr + KEYTAB_OFF + scan
+            old = mm[lin]
+            mm[lin] = old & 0x7F
+            self.held.append((now + HOLD_S, lin, old))
+            ok = bios_insert(mm, BIOS_WORD[name])
+            log.write('I ms=%d key=%04X down=%08X tab=%02X ring=%s\n'
+                      % (ms, BIOS_WORD[name], lin, old, 1 if ok else 0))
 
     def apply(self, mm, base, ms, log):
         wlo = base + kf.WIN_LO - ks.DATA_BASE_VA
@@ -153,7 +217,7 @@ class Poller(threading.Thread):
             time.sleep(0.05)
         with open(self.mem_path, 'r+b') as fh, open(self.log_path, 'w') as log:
             mm = mmap.mmap(fh.fileno(), 0)          # MAP_SHARED, read-write
-            t0 = time.monotonic()
+            t0 = self.t0 = time.monotonic()
             base, prev, prev_img, prev_tail, pending, scan_at = None, None, None, None, bool(self.pokes), 0.0
             wlen = kf.WIN_HI - kf.WIN_LO
             while not self.stop.is_set():
@@ -185,6 +249,8 @@ class Poller(threading.Thread):
                 if pending and vals['mode'] == 0x27:
                     self.apply(mm, base, ms, log)
                     pending = False
+                if self.typing or self.held:
+                    self.type_keys(mm, base, time.monotonic() - t0, ms, log)
                 time.sleep(0.0005)
             log.write('E ms=%d reason=%s rc=%d\n' % (int((time.monotonic() - t0) * 1000),
                                                      getattr(self, 'reason', 'exit'), getattr(self, 'rc', -1)))
@@ -203,6 +269,8 @@ def main():
     ap.add_argument('--pace', type=float, default=ks.PACE)
     ap.add_argument('--no-pokes', action='store_true')
     ap.add_argument('--keep-avi', action='store_true')
+    ap.add_argument('--input', choices=('inject', 'autotype'), default='inject',
+                    help='inject: the poller types through the memory file (record §A.9)')
     a = ap.parse_args()
     out = guard_out(a.out)
     scn = ks.SCENARIOS[a.scenario]
@@ -217,10 +285,12 @@ def main():
         game = tcap.stage(root, a.exe, a.game_dir)
         iso = os.path.join(root, 'CD', 'RAGECD.ISO')
         os.makedirs(os.path.join(root, 'avi'))
-        cmd = dosbox_cmd(root, game, iso, a.scenario, limit, a.enter_wait, a.pace)
+        cmd = dosbox_cmd(root, game, iso, a.scenario, limit, a.enter_wait, a.pace,
+                         autotype=a.input == 'autotype')
         print('k11_capture: %s' % shlex.join(cmd))
         stop = threading.Event()
-        poll = Poller(os.path.join(root, 'guest.mem'), os.path.join(root, 'poll.log'), pokes, descs, stop)
+        typing = schedule(scn['keys'], a.enter_wait, a.pace) if a.input == 'inject' else ()
+        poll = Poller(os.path.join(root, 'guest.mem'), os.path.join(root, 'poll.log'), pokes, descs, stop, typing)
         poll.start()
         t = time.monotonic()
         r = subprocess.run(cmd)
@@ -249,13 +319,15 @@ def main():
             shutil.copyfile(os.path.join(avi_dir, n), os.path.join(out, n))
         subprocess.run([sc.which('ffmpeg'), '-v', 'error', '-y', '-sseof', '-1', '-i', paths[-1],
                         '-update', '1', os.path.join(out, 'last_frame.png')])
-        ver = subprocess.run([sc.which('dosbox-x'), '-version'], capture_output=True, text=True).stdout
+        ver = subprocess.run([sc.which('dosbox-x'), '-version'], capture_output=True, text=True)
+        ver = ver.stdout + ver.stderr                             # the banner goes to stderr
         with open(os.path.join(out, 'session.txt'), 'w') as f:
             f.write('scenario=%s\n' % a.scenario)
             f.write('dosbox=%s\n' % next((l for l in ver.splitlines() if 'DOSBox-X version' in l), '?'))
             f.write('argv=%s\n' % shlex.join(cmd))
             f.write('exe=%s sha256=%s\n' % (a.exe, hashlib.sha256(open(a.exe, 'rb').read()).hexdigest()))
-            f.write('cmos=%s pokes=%s\n' % (cmos, list(pokes)))
+            f.write('cmos=%s pokes=%s input=%s enter_wait=%g pace=%g\n'
+                    % (cmos, list(pokes), a.input, a.enter_wait, a.pace))
             f.write('time_limit=%d wall_s=%.1f rc=%d\n' % (limit, wall, r.returncode))
             f.write('avis=%s fps=%.4f dro=%s\n' % (avis, sc.ffprobe_fps(paths[0]), dros))
         recs = []

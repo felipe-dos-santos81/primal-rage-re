@@ -14,6 +14,8 @@ poll.log (written by k11_capture.py), one record per line:
   F ms=<int> tick=<hex8> img=<hex>                the field window [0x105DAF,0x105E30) changed
   W ms=<int> ds=<hex8> linear=<hex8> old=<hex2> new=<hex2>   one poked byte
   E ms=<int> reason=<exit|time-limit> rc=<int>    the run ended
+  I ms=<int> key=<hex4> down=<hex8> tab=<hex2> ring=<0|1>   one injected key press
+  I ms=<int> up=<hex8> tab=<hex2>                 its release (k11_capture --input inject)
 
 The port script (read by test_k11_oracle, port/tests/test_game.c):
   enter_frame <dec>        DS_000EF6DC after the iteration that took mode 3 to 0x27

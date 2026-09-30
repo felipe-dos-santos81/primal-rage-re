@@ -63,5 +63,26 @@ class Capture(unittest.TestCase):
         self.assertEqual(window, bytearray(b'\x11' * (kf.WIN_HI - kf.WIN_LO)))   # not mutated
 
 
+    def test_dosbox_cmd_without_autotype(self):
+        cmd = kc.dosbox_cmd('/r', '/r/C', '/r/CD/RAGECD.ISO', 'walk', 75, 25, 1, autotype=False)
+        self.assertFalse(any('AUTOTYPE' in c for c in cmd))
+        self.assertIn('DX-CAPTURE /V /O PRAGE.EXE -f', cmd)
+
+    def test_schedule_follows_autotype_timing(self):
+        self.assertEqual(kc.schedule(('enter', ',', ',', 'esc', 'down'), 25, 1),
+                         [(25, 'enter'), (28, 'esc'), (29, 'down')])
+
+    def test_bios_insert_appends_wraps_and_refuses_when_full(self):
+        mem = bytearray(0x500)
+        mem[0x480:0x484] = bytes.fromhex('1e003e00')              # start 0x1E, end 0x3E
+        mem[0x41A:0x41E] = bytes.fromhex('3c003c00')              # head = tail = 0x3C
+        self.assertTrue(kc.bios_insert(mem, 0x50E0))
+        self.assertEqual(mem[0x43C:0x43E], bytes.fromhex('e050'))
+        self.assertEqual(mem[0x41C:0x41E], bytes.fromhex('1e00'))  # wrapped to start
+        mem[0x41A:0x41C] = bytes.fromhex('2000')                   # head two past the tail
+        self.assertFalse(kc.bios_insert(mem, 0x011B))             # next slot is the head: full
+        self.assertEqual(mem[0x41C:0x41E], bytes.fromhex('1e00'))
+
+
 if __name__ == '__main__':
     unittest.main()
