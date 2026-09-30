@@ -26,7 +26,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import title_compare as tc
 
 # scenario -> {capture index: 'record §A.x: reason'}. Only plan Task 10 adds rows.
-K11_ALLOWED_UNEXPLAINED = {}
+# The walk's two rows are one shape: a glyph screen presented mid-draw, its new
+# glyphs' pixels black (their palette not yet in the presented DAC); every other
+# pixel equals one of the two port frames around it. Owner: the presented DAC
+# state (fidelity-gaps §7.11), as title_compare's front-end frame 833.
+K11_ALLOWED_UNEXPLAINED = {
+    'walk': {
+        138: 'record §A.5: MODIFY CONTROLS mid-draw, port 47/48 plus 940 black glyph px (rows 91..158)',
+        151: 'record §A.5: TEST CONTROLS markers mid-draw, port 58/59 plus 88 black glyph px (rows 120..152)',
+    },
+}
 REPORT_MAX = 5
 
 
@@ -76,9 +85,21 @@ def nearest(ch, port_rows):
     return best_m
 
 
+def canonical(port):
+    """Each port frame's first byte-identical frame: explain() names only the
+    first of identical port frames, so a settled screen equal to an earlier
+    one (the MAIN MENU drawn again after the walk) is credited through it
+    (record §A.5)."""
+    first, out = {}, []
+    for m, data in enumerate(port):
+        out.append(first.setdefault(data, m))
+    return out
+
+
 def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
     n = len(port)
     cache = {}
+    canon = canonical(port)
 
     def ex(j):
         if j not in cache:
@@ -89,7 +110,7 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
     start = next((j for j in range(len(frames)) if any(frames[j])
                   and any(m <= first for m in exhibited(*ex(j)))), None)
     end = next((j for j in range(len(frames) - 1, -1, -1) if any(frames[j])
-                and end_settled in exhibited(*ex(j))), None)
+                and canon[end_settled] in {canon[m] for m in exhibited(*ex(j))}), None)
     if start is None or end is None or end < start:
         print("k11_compare: %s: window empty (start %s, end %s): the capture never exhibits the "
               "port's first or final settled screen" % (name, start, end))
@@ -110,7 +131,8 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
         else:
             exh |= exhibited(kind, data)
     wanted = sorted(set(keys + ([end_settled] if end_settled is not None else [])))
-    missing = [m for m in wanted if m not in exh]
+    exh = {canon[m] for m in exh}
+    missing = [m for m in wanted if canon[m] not in exh]
     bad = [j for j in unexpl if j not in allowed]
     print('k11_compare: %s: window distinct [%d..%d] (raw %d..%d)' % (name, start, end, raws[start], raws[end]))
     print('k11_compare: %s: %d frames in window: %d clean, %d splice, %d transition, %d unexplained, %d all-black'

@@ -75,6 +75,33 @@ class K11Compare(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn('differs in rows', r.stdout)
 
+    def test_repeated_screen_is_credited(self):
+        # the final settled screen equals an earlier port frame (the MAIN MENU
+        # drawn again): explain() names the first, and both count (record §A.5)
+        r = self.case([self.X, self.A, self.B, self.A], [self.A, self.B, self.A],
+                      'key 0 settled 0\nkey 1 settled 1\nend settled 2\n')
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn('settled screens exhibited 3/3; missing []', r.stdout)
+
+    def test_allowed_name_admits_only_its_index(self):
+        sys.path.insert(0, os.path.join(ROOT, 'tools'))
+        import k11_compare as kc
+        self.assertEqual(sorted(kc.K11_ALLOWED_UNEXPLAINED['walk']), [138, 151])
+        import title_compare as tc
+        port = [self.A, self.B]
+        rows = [tc.row_hashes(p) for p in port]
+        cap = [self.X, self.A, self.Y, self.B]
+        import contextlib, io
+        saved = kc.K11_ALLOWED_UNEXPLAINED
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                kc.K11_ALLOWED_UNEXPLAINED = {'t': {2: 'test'}}
+                self.assertEqual(kc.compare('t', cap, list(range(4)), port, rows, [0], 1, False), 0)
+                kc.K11_ALLOWED_UNEXPLAINED = {'t': {3: 'test'}}
+                self.assertEqual(kc.compare('t', cap, list(range(4)), port, rows, [0], 1, False), 1)
+        finally:
+            kc.K11_ALLOWED_UNEXPLAINED = saved
+
     def test_empty_window_fails(self):
         r = self.case([self.X], [self.A, self.B], 'key 0 settled 0\nend settled 1\n')
         self.assertEqual(r.returncode, 1, r.stdout)

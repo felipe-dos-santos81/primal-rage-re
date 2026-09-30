@@ -11797,6 +11797,15 @@ static void k11_hook(void *ctx)
     }
 }
 
+/* The loader's `- LOADING -` screen (res_load_present, record §45-A) is on
+ * the display between two pumps; the front-end driver dumps it through the
+ * same hook (fe_cyc2_loader), and the original shows it in ADJUST VOLUME
+ * (record §A.5, walk capture 158). */
+static void k11_loader(void)
+{
+    if (k11_armed && !k11_done && !k11_failed) k11_dump_if_new();
+}
+
 static void k11_write_fimg(const char *name)
 {
     char path[1200];
@@ -11849,6 +11858,7 @@ int test_k11_oracle(void)
     game_init();
     actors_pin_anim_tick_zero(1);
     host_set_pump_hook(k11_hook, NULL);
+    res_set_screen_hook(k11_loader);
 
     /* Sentinels: none is a mode, frame or state the checks below accept. */
     u32 mode_before = 0xFFFFu, mode_after = 0xFFFFu, frame_after = 0xFFFFFu, state_after = 0xFFFFFu;
@@ -11870,6 +11880,7 @@ int test_k11_oracle(void)
         }
     }
     host_set_pump_hook(NULL, NULL);
+    res_set_screen_hook(NULL);
     k11_key_bits(0u);
     fclose(k11_screens);
     fclose(k11_log);
