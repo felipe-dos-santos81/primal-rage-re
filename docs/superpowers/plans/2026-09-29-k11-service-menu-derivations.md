@@ -2023,7 +2023,7 @@ or -1 (`0x2EA78` returns -1 at `0x2EB6E..0x2EB74`) when the wait runs out.
 `menu_run` tests a callback's result only for -5 and -10 (`0x304AA`,
 `0x304B3`), which no path gives (the poll words sit in `0xFF00FF00` and
 bits 24..25). `menu_run` also stores the result in `DS_00107448` (`0x304A5`),
-and resets that word at `0x304EB` before it is read again, so the `u32`
+and sets that word to 1 at `0x304EB` before it is read again, so the `u32`
 return carries the whole state (`menu.c:392`, `:401`).
 
 **(g) `0x33560`** (EAX a): `0x33058` (EAX not read, §K11.7),
@@ -2089,10 +2089,19 @@ passes and its -1 result (89 frames); `0x52106`'s argument (no visible
 effect, §K11.7). Three more, from the Task 8 review: the signedness of
 the `size < 1` refusal in `0x2E248` (`0x2E27C` `jge`; only size 0 is
 tested, so a negative size is not distinguished); the tabbed template's
-no-pad arm when the length is at least `+0xC` (`0x2E6CA` `jge`), which no
-test reaches and the review reports unreachable (the reason is not
-re-derived here); and the median scan's past-size -1 bucket (`0x2E582`
-`jb`), likewise reported unreachable and not re-derived.
+no-pad arm when the length is at least `+0xC` (`0x2E6CA` `jge`); and the
+median scan's past-size -1 bucket (`0x2E582` `jb`). Both are unreachable, as
+derived by fix round 1 of Task 9 from `k11_t8_dis_2e248.txt` and
+`k11_t8_dis_2e5e4.txt`. `0x2E6CA`: `edi` is the column-name length taken after
+the tab and `edx` is `+0xC`; on the tab path `0x2E248` sets `+0xC` (at
+`0x2E3BA`) to the widest column length including its tab, then jumps to
+`0x2E4CC`, skipping the `+ 2` at `0x2E4C8`, so a name's length is at most `+0xC
+- 1` and `edi >= edx` never holds (it could only if the state block or the
+template were patched between the two calls). `0x2E582`: the sum loop at
+`0x2E4ED..0x2E517` runs first over the same bucket indices (`ebx` below the
+count) and the same storage-size word `[desc + 2]`, and returns -1 on any
+past-size bucket (`0x2E503`, then `0x2E519`), so the median scan never sees
+`eax >= size`.
 
 **Frame budget.** 16 scripted frames (A 7, B 3, C 3, D 3). K11 total: 144 +
 16 = **160 of 160**.
@@ -2224,9 +2233,11 @@ dumps were deleted.
 **Closure re-check.** `k11_closure.py` (`<scratchpad>/k11_closure_final.txt`)
 prints `ALREADY P` for every function of the closure that has a header. Its
 only two `U` lines are `0x1AE28` (`config_keys_apply`, header
-`0x1AE20`) and `0x500BB` (the inline tick read), which §0.3 showed are already
-ported, so `grep "^[0-9a-f]* U"` minus those (and `0x38B18`) prints nothing
-(exit 1). §0.3's 50 functions are all ported.
+`0x1AE20`; "U(nogh)") and `0x500BB` (the inline tick read; "U(gh 6)"), which
+§0.3 showed are already ported. The walker prints no line at all for `0x38B18`
+(`frontend_spawn_row`, also already ported), neither `U` nor `P`. So the
+brief's `grep "^[0-9a-f]* U" | grep -v "^38b18\|^500bb\|^1ae28"` prints nothing
+(exit 1), and §0.3's 50 functions are all ported.
 
 **Totals.** 7 cycles: §K11.2 10 functions, §K11.3 9, §K11.4 5, §K11.5 9,
 §K11.6 4, §K11.7 6 and §K11.8 7, which is **50 functions / 15 304 B**
@@ -2236,18 +2247,22 @@ ported, so `grep "^[0-9a-f]* U"` minus those (and `0x38B18`) prints nothing
 `765 1203 64` / `729 730 100`: 762 at Task 1, 763 after §K11.4 and 765 after
 §K11.5; §K11.6, §K11.7 and §K11.8 hold no Ghidra function. The README title
 (64%) and its "729 of 730" line already read these values, so the README is
-unchanged. `svcmenu_register` makes 19 `fn_register` calls in all, inside `FN_TABLE_MAX`
-(the planner's §0.7 figure was 18 appended entries).
+unchanged. `svcmenu_register` makes 18 `fn_register` calls (11 callbacks and 7
+setters, §0.2/§0.7; `svcmenu.c:1612-1629`), inside `FN_TABLE_MAX`.
 
 **The test seam.** `host_set_pump_hook` (§K11.1, a `PORT:` seam, NULL in the
 game) plus the `sm_*` harness in `test_game.c`. The frame budget is used up:
 **160 of 160** scripted frames (§K11.8).
 
-**Named gaps** (ledger §E rows 28..31, §0.6): the language reload `0x47370`
-(a language change is stored in field `0x29` but not shown); the joystick
-device choice (`+0x2D4`/`+0x2D6`; stored, no host effect); the play-time fields
-`3, 0xA, 0xC, 0x12, 0x13` (page 1 shows 0); and the audit counters
-`0x105ECD..0x105EFB` (the histograms show 0). Each stays as recorded in §0.6.
+**Named gaps** (ledger §E rows 28..33): six. From §0.6: the language reload
+`0x47370` (a language change is stored in field `0x29` but not shown); the
+joystick device choice (`+0x2D4`/`+0x2D6`; stored, no host effect); the
+play-time fields `3, 0xA, 0xC, 0x12, 0x13` (page 1 shows 0); and the audit
+counters `0x105ECD..0x105EFB` (the histograms show 0). From the code (`PORT:`
+notes): the TEST CONTROLS RAW DATA row that reads the byte at linear
+`0xFFE80003`, outside `mem[]` and drawn as 0 (`svcmenu.c:992`, §K11.5), and
+`0x33458`'s `idiv` fault on a zero low word, drawn as 0 (`svcmenu.c:1192`,
+§K11.7). Each stays as recorded in §0.6.
 The deferred CMOS save `0x1B084` (§50-C) is unchanged. `grep -c
 'TODO(verify)' port/src/game/svcmenu.c` prints 0.
 

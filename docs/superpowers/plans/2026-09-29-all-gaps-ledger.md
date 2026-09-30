@@ -232,9 +232,10 @@ header at the baseline (`menu.c:41-43` stated the first four were skipped).
 and registered by `svcmenu_register`: 50 functions, 15 304 reachable
 instruction bytes, in 7 cycles (10 + 9 + 5 + 9 + 4 + 6 + 7). Three are Ghidra
 functions (`0x2F464`, `0x319B0`, `0x31A78`, §B.1), so the counter moved
-762 -> 765 of 1203. The remaining named gaps are §E rows 28..31. The walk
-(`k11_closure.py`) finds no unported function in the closure other than the
-three already-ported `0x38B18`, `0x500BB` and `0x1AE28` (§0.3 of the record).
+762 -> 765 of 1203. The remaining named gaps are §E rows 28..33. The walk
+(`k11_closure.py`, `k11_closure_final.txt`) prints `U` for exactly two functions,
+`0x1AE28` and `0x500BB`, both already ported (§0.3 of the record); it does not
+list `0x38B18` at all (also already ported, `frontend_spawn_row`).
 
 ---
 
@@ -394,18 +395,21 @@ wrong, and Task 6 fixes it.
 | 25 | `tests/test_fight.c:539` | `DS_00100B54`'s value (§7.3) | not re-measured | **closed** (Task 5c, §5): B54 = 163 (7 rows x 37 x 8 = 2072, then `0x1703E..0x1706F`), with B18 = 7; asserted in `check_unfreeze` B/C/D/G. |
 | 26 | `tests/test_game.c:1062` | "0x16 is a still-unported named gap" | `0x4F2B0` ported (§49-G) | **stale** (test comment) |
 | 27 | `tests/test_game.c:4602` | s16title read at boot vs at the title state (§45-A) | boot resource order | **re-scoped** (Task 5c, §6): the port's real boot reads entry 7 at f 3 through the raw's `0x110D8` (attract phase 2). The loop-1973 screen is the front-end driver's, because it enters at state 2. The fix (seeding entry 7's read bit) moves the attract2 dump count 2308 -> 2307 and its named splice, both enforced, so it is not made. |
-
 | 28 | `game/svcmenu.c` (`0x336AE`, CONFIG OPTIONS) | Language reload `0x47370` | The port's `game_string_table_load` is idempotent and English-only (host file I/O) | **named gap** (K11, record §0.6): a language change is stored in field `0x29` but not shown |
 | 29 | `game/svcmenu.c` (`0x31F24`, `0x32358`) | Joystick device choice, device words `+0x2D4/+0x2D6` | The port's input is keyboard-only (host-owned `0x4FF8F`/`0x4FFD8`/`0x5004A`, §K9.3/§K9.4) | **named gap** (K11, record §0.6): picking a joystick is stored faithfully and has no effect on the host |
 | 30 | `game/svcmenu.c` (`0x33058`, STATISTICS page 1) | Play-time fields `3, 0xA, 0xC, 0x12, 0x13` | Their writer, the run clock `0x32970`, is host-owned (`config_play_time_close`) | **named gap** (K11, record §0.6; existing): they stay 0, so page 1 shows 0 |
 | 31 | `game/svcmenu.c` (`0x2E248`, `0x2E5E4`, `0x32BDC`) | Audit counters `0x105ECD..0x105EFB` | Their writers `0x2E180`/`0x2E0A4`/`0x2E034` are deferred (§K9.6..§K9.8) | **named gap** (K11, record §0.6/§K11.8): they stay 0, so the histograms show 0. `0x2E11C`'s clear is ported |
+| 32 | `game/svcmenu.c:992` (`0x32573..0x32578`, TEST CONTROLS RAW DATA row) | The row reads the byte at linear `0xFFE80003` | The address is outside the port's `mem[]` and any DOS memory (record §K11.5) | **named gap** (K11): the port draws 0 in its place (`PORT:` note in the code) |
+| 33 | `game/svcmenu.c:1192` (`0x334CD..0x334E2`, STATISTICS page 2) | `0x33458`'s `idiv` faults (#DE) when the sum is non-zero and its low word is 0 | A hardware fault with no port model (record §K11.7) | **named gap** (K11): the port draws 0 in its place (`PORT:` note in the code) |
 
-Rows 28..31 were added by K11 Task 9. They are not `named gap` comment sites:
-each is recorded in the K11 record §0.6, and only row 28 also has a `PORT:` note
-in the code (`svcmenu.c:335`).
+Rows 28..33 were added by K11 (Task 9 and its fix round 1). They are not
+`named gap` comment sites. Rows 28..31 are recorded in the K11 record §0.6, and
+of them only row 28 has a `PORT:` note in the code (`svcmenu.c:335`); rows 32
+and 33 are `PORT:` notes at `svcmenu.c:992` and `:1192`, recorded in §K11.5 and
+§K11.7.
 
 Rows 3/7/8/10/12/20/23/26 are stale, and so are parts of 2/9/11/19 (12 rows).
-The 35 sites fold into 27 rows. The other gap prose that does not use the
+The 35 sites fold into rows 1..27 (33 rows in the table with K11's 28..33). The other gap prose that does not use the
 phrase "named gap" is summarised here, and the §F cycles own it:
 
 - `0x38990` "deferred" at `flow.c:6784` (K3) — **closed** (Task 3c, §K3: the comment is gone and the calls are wired);
@@ -442,7 +446,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 15 | K8b UPD-BONUS | update entries 15 `0x260BC` and 16 `0x26194` | n/a | port (§E-4) | Task 5 — **closed** (Task 5a, record §B8; plus the K8d setters `0x37EA0`/`0x24078`/`0x45D58`, record §D8) |
 | 16 | E-OPEN | §E-1, 14, 21, 24, 25, 27 | — | derive or re-scope | Task 5 |
 | 17 | K10 MOVIE-BLIT | `0x50D23` | 4405 | **own plan**, **closed: host-owned** (§K10; the EDI half is a dead aperture shadow, §K10.3) | Task 6 |
-| 18 | K11 MENU-CB | `0x2F464`, `0x319B0`, `0x31A78` + 11 non-Ghidra service-menu callbacks (§B.2) and their sub-menus | 266 + n/a | **own plan** (the callback code spans `0x2D00C..0x33290` in the raw `call` sites) — **closed** (K11, record §K11.2..§K11.8: 50 functions, 15 304 B, 7 cycles, 160 of 160 scripted frames; counter 762 -> 765; named gaps §E-28..31) | Task 6 |
+| 18 | K11 MENU-CB | `0x2F464`, `0x319B0`, `0x31A78` + 11 non-Ghidra service-menu callbacks (§B.2) and their sub-menus | 266 + n/a | **own plan** (the callback code spans `0x2D00C..0x33290` in the raw `call` sites) — **closed** (K11, record §K11.2..§K11.8: 50 functions, 15 304 B, 7 cycles, 160 of 160 scripted frames; counter 762 -> 765; named gaps §E-28..33) | Task 6 |
 | 19 | K12 VOICE-WIRE | about 180 "not wired (record §45-A)" sites | — | **own plan** (≥ 20 sites). Needs proof of no RNG/render effect per site. | Task 6 |
 | 20 | STALE | §E rows 2, 3, 7, 8, 9, 10, 11, 12, 19, 20, 23, 26 | — | comment fixes | Task 6 |
 
