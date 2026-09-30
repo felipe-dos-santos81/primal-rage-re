@@ -2794,7 +2794,7 @@ void actor_type_2d_list_init(void)
     DSB(DS_00108398) = 0;                               /* 0x48C97 */
     DSB(DS_00108398 - 1u) = 0;                          /* 0x48C9D: 0x108397 */
     DSB(DS_00108398 - 2u) = 0;                          /* 0x48CA3: 0x108396 */
-    /* PORT: 0x48CAE 0x2C3FC(0xEF) voice, not wired (record §45-A). */
+    (void)sound_voice(0xEFu);                           /* 0x48CA9/0x48CAE 0x2C3FC */
 }
 
 /* 0x290D0. Types 0x0A/0x19's teardown: return the node to 0x104888. */
@@ -2950,7 +2950,7 @@ static void actor_type_2d_update(void)
             if (once != 0u) { node = next; continue; }  /* 0x49037/0x49039 */
             fighter_37b54(DSD(DS_001077B0 + DSD(DS_00104AD4) * 0x94u));    /* 0x4903F..0x4904F */
             DSB(DS_00108396) |= 0x80u;                  /* 0x49054 */
-            /* PORT: 0x49060 0x2C3FC(0xF0) voice, not wired (record §45-A). */
+            (void)sound_voice(0xF0u);                   /* 0x4905B/0x49060 0x2C3FC */
         } else if (ph == 1u) {                          /* 0x48FB7 */
             if ((s32)d > 0x1000) {                      /* 0x4909C/0x490A1 */
                 u32 rec;
