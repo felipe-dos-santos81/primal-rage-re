@@ -67,8 +67,8 @@ Plan: `docs/superpowers/plans/2026-09-30-named-gaps-c-alloc-seam.md`. Spec:
   address in the suite.
 - **Inert when unarmed.** `s_fail_left` starts at 0; `rg -n 'res_fail_alloc|s_fail_left' port/src`
   lists only the two `res.h` declarations (plus their comment), and in
-  `res.c` the static, the two one-line definitions and the `res_alloc` test
-  line: no call of `res_fail_alloc_nth` outside its definition, so in every
+  `res.c` the static (plus its comment, `res.c:98`), the two one-line
+  definitions and the `res_alloc` test line: no call of `res_fail_alloc_nth` outside its definition, so in every
   production and oracle-driver process the `s_fail_left != 0u` test is false
   and `res_alloc` runs today's instructions. Empirically `make verify` exits 0
   with `ORACLES-EQUAL` and `dumps.sh c-t1` matches `$K/base.sha256`
@@ -89,7 +89,7 @@ Plan: `docs/superpowers/plans/2026-09-30-named-gaps-c-alloc-seam.md`. Spec:
 
 | id | mutation (in `res.c`) | measured FAIL lines |
 |---|---|---|
-| S0 | `res_block_alloc` returns 0 (`(void)res_alloc(size); return 0;`) | `:178: the bump heap has room`, then the existing `check_sound_buffers` checks (`test_game.c:1320`, `:1322`-`:1325`, `:1327`, `:1340`, `:1371`, `:1374`, `:1388`, `:1389`, `:1395`, `:1397`), `test_flow`'s slot/mixer checks (`test_game.c:1598`, `:1604`, `:1625`, `:926` ×4, `:931`-`:933`, `:936`, `:937`, `:946`, `:951`, `:960`, `:962`, `:963`): 31 complete FAIL lines, then the suite dies with SIGBUS (`Bus error: 10`) before its summary line (every allocation is 0, so later code writes through offset 0; not analysed further). The seam's own check fails first. |
+| S0 | `res_block_alloc` returns 0 (`(void)res_alloc(size); return 0;`) | killed (SIGBUS); `:178: the bump heap has room` first. Then the existing `check_sound_buffers` checks (`test_game.c:1320`, `:1322`-`:1325`, `:1327`, `:1340`, `:1371`, `:1374`, `:1388`, `:1389`, `:1395`, `:1397`), `test_flow`'s slot/mixer checks (`test_game.c:1598`, `:1604`, `:1625`, `:926` ×4, `:931`-`:933`, `:936`, `:937`, `:946`, `:951`, `:960`, `:962`, `:963`), until the process dies with SIGBUS (`Bus error: 10`) before its summary line. No count is given: the FAIL stream in `$C/mut-S0.txt` is cut at the kill (a truncated last line), so its length is a buffering artefact. Every allocation is 0, so later code writes through offset 0; not analysed further. |
 | S1 | `if (s_fail_left != 0u) return 0;` (fails every armed request, never counts down) | 5: `:182: 0 != 45854608`; `:183: 3 != 2`; `:184: 0 != 45854608`; `:186: 3 != 0`; `:187: 0 != 45854608` |
 | S2 | the seam line after `g_heap = at + size;` (the failure advances the heap) | 2: `:187: 45854864 != 45854608`; `:191: 45854864 != 45854608` |
 | S3 | `if (n != 0u) s_fail_left = n;` (n = 0 does not disarm) | 1: `:191: 0 != 45854608` |
@@ -98,6 +98,21 @@ Plan: `docs/superpowers/plans/2026-09-30-named-gaps-c-alloc-seam.md`. Spec:
 After the five, `cmp $C/res.c.good port/src/platform/res.c` is silent and the
 rebuilt suite prints `all checks passed`. S1-S4 match the plan's counts
 exactly; S0's count was left open by the plan ("record the count").
+
+**Fix round 1 (review of §C.1/§C.2).** Some new sites had no measured mutant
+(`test_platform.c:181` count = 3, `:185` request 3 returns 0, the AL = 1 checks
+`test_game.c:1431`/`:1453`/`:1476`/`:1501`, V1's count `:1432` and `A2CB0`
+`:1434`), and S2 had been run only before V1-V3 existed. Measured on the
+Task 2 tree, backup refreshed from `HEAD` (`git show HEAD:port/src/platform/res.c`),
+each alone, restored (`cmp` silent, `git status --short port/src` empty), then
+`all checks passed`. Every targeted site fails; no test needed a fix.
+
+| id | mutation (in `res.c`) | measured FAIL lines |
+|---|---|---|
+| S5 | delete the seam line in `res_alloc` (the seam never fires) | 23: `test_platform.c:183: 3 != 2`, `:185: 45854608 != 0`, `:186: 3 != 0`, `:187`/`:191: 45854864 != 45854608`; `test_game.c` V1 `:1432: 1 != 0`, `:1435`/`:1436`/`:1437` (`22136`/`4660`/`52225 != 0`), `:1438: 46179512 != 46158776` (slot 0 lands after the 0x5100 MIDI block); V2 `:1454: 1 != 0`, `:1456: 1 != 0`, `:1457: 46324920 != 0`, `:1458: 109568 != 0`; V3 `:1477: 2 != 0`, `3 != 0`, `4 != 0`, `:1484` ×3, `:1487: 109568 != 35840`, `73728 != 24576`, `49152 != 24576` |
+| S2 (re-run) | the seam line after `g_heap = at + size;`, with V1-V3 in place | 7: `test_platform.c:187`/`:191: 45854864 != 45854608`; `test_game.c:1438: 46179512 != 46158776` (V1, the failed 0x5100 request moved the heap), `:1458: 35840 != 0` (V2), `:1487: 60416 != 35840` (V3 k=1), `:1487: 49152 != 24576` ×2 (k=2, 3) |
+| S6 | the setter stores `n - 1u` | 22: `test_platform.c:181: 2 != 3`, `:183: 1 != 2`, `:184: 0 != 45854608`, `:185: 45854608 != 0`, `:187`/`:191: 45854864 != 45854608`, `:192: -2 != 0`; `test_game.c` V1 `:1435`-`:1438`; V2 `:1456`-`:1458`; V3 `:1479: 0 != 46398648`, `:1485: 0 != 1`, `:1487` ×3, `:1482` ×2; V4 `:1502: 0 != 1` |
+
 
 ## §C.2 The two arms
 
@@ -135,11 +150,15 @@ Lines are `test_game.c`; V1 is `:1431..:1438`, V2 `:1453..:1458`, V3
 | M5 | the MIDI failure skips the sample arm (`DSB(DS_000A2CB0) = 1u; return 1;` after the CC store) | 1: `:1438: 0 != 46158520` (V1 slot 0) |
 | M6 | skip the slot-0 entry gate: `if (1) {` (`0x1D147`) | 4: existing entry vector `:1409: 1 != 0` (C8), `:1410: 46194360 != 0` (slot 1); V4 `:1502: 0 != 1` (count), `:1504: 0 != 2989` (slot 0) |
 | M7 | the sample arm never runs: `if (0) {` (`0x1D132`) | 48, among them the new: V1 `:1438: 0 != 45878968`; V2 `:1454: 1 != 0` (count) and `:1456: 1 != 0`; V3 `:1477: 2 != 0`, `3 != 0`, `4 != 0` (the `== 0` count checks can fail), `:1479` ×3, `:1482` ×3, `:1487` ×3; V4 `:1505: 1 != 0`. The rest are existing first-run checks (`:1323..:1328`, `:1341`, `:1372`, `:1409`), `check_sample_slots` (`:926` ×4, `:931..:990`) and `test_flow`'s sample/mixer checks (`:1695`, `:1701`, `:1722`). |
+| M8 | AL = 0 on the run path: the final `return 1;` → `return 0;` (the `0x1D1A3 mov al,dl` equivalent) | 14: `:1431`, `:1453`, `:1476` ×3, `:1501` (`0 != 1`, the new AL checks), plus the existing `:1319`, `:1339`, `:1350`, `:1360`, `:1371`, `:1388`, `:1408` and `test_flow`'s `:1691` |
+| M9 | drop the `0x1D19D` store `DSB(DS_000A2CB0) = 1u;` | 2: `:1320: 0 != 1` (existing first-run check) and `:1434: 0 != 1` (V1) |
 | S3′ | Task 1's S3 in `res.c` (n = 0 does not disarm), backup refreshed from `HEAD` | 24: `test_platform.c:191: 0 != 45854608` (Task 1's line) and V4's leaked arm (count 1 after the call, never disarmed) failing the next allocation: `test_flow`'s later `sound_buffers_alloc()` loses slot 0, so `:1695` (the 0x40 voice), `:1701` (mixer non-silence), `:1722: 0 != 1`, and `check_sample_slots` `:926` ×4, `:931..:937`, `:946`, `:951`, `:960..:963`, `:968..:990` fail. This is Review Focus 5's leak detection. |
 
 After the table `git status --short port/src` is empty and the rebuilt suite
 prints `all checks passed`. Every count matches the plan's table (M7 and S3′
-were left to measurement: 48 and 24). The two arms' named proofs: M1 (delete
+were left to measurement: 48 and 24). M8 and M9 were added in fix round 1 (see
+§C.1's fix-round table for S5, the S2 re-run and S6) so that the AL = 1 checks
+and V1's `A2CB0` check each have a measured mutant. The two arms' named proofs: M1 (delete
 the MIDI arm's zeroing: 3 FAIL lines, one per store) and M2 (delete the loop
 stop: 8 FAIL lines over V2 and V3).
 

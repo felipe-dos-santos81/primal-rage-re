@@ -603,9 +603,9 @@ unreachable, unobservable or not a deviation.
 
 ### §H.3 Named gaps still open
 
-**Ten named gaps** are open: the six carried by K7+K12 and K11 (#1..#6),
+**Nine named gaps** are open: five of the six carried by K7+K12 and K11 (#1..#3, #5, #6),
 `fight_health_sync`'s case 18 (#7), the two new `not modelled` deviations of
-§H.1a (#8, #9) and `movie.c`'s decode-failure exit (#10).
+§H.1a (#8, #9) and `movie.c`'s decode-failure exit (#10) (#4 closed by named-gaps C).
 
 The six carried by K7+K12 and K11:
 
@@ -663,7 +663,7 @@ it is not a complete scan of non-Ghidra code.
 
 ### §H.5 Final gate
 
-Ten named gaps remain (§H.3); §H.1a gives every `not modelled` hit a verdict.
+Ten named gaps remained at Task 7; nine remain after named-gaps C closed #4 (§H.3); §H.1a gives every `not modelled` hit a verdict.
 
 `make clean && make build && make verify` (with the `/tmp/pr_t7_*` dump
 overrides; the two oracle fixtures restored byte-identical after `make clean`,
