@@ -14,10 +14,17 @@ def write_frame(d, i, fill):
 
 
 def run_tool(capture, port, frames):
+    # These cases feed the tool one synthetic capture. Under an inherited
+    # PR_ORACLE_REQUIRED=1 the tool also demands a second capture for its
+    # determinism proof and returns 1, so the outcome would depend on the
+    # caller's environment. Drop the variable: the synthetic cases test the
+    # classifier, not the oracle-required policy.
+    env = dict(os.environ)
+    env.pop("PR_ORACLE_REQUIRED", None)
     return subprocess.run(
         [sys.executable, TOOL, "--capture", capture, "--port", port,
          "--frames", str(frames)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, env=env)
 
 
 class TitleCompareTest(unittest.TestCase):

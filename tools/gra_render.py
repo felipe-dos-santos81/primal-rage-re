@@ -159,7 +159,8 @@ def main(argv):
                          'against byte-for-byte')
     args = ap.parse_args(argv)
 
-    d = open(args.gra, 'rb').read()
+    with open(args.gra, 'rb') as fh:
+        d = fh.read()
     ch = chunks(d)
     if not 0 <= args.chunk < len(ch):
         sys.exit("chunk index %d out of range (have %d)" % (args.chunk, len(ch)))
@@ -188,7 +189,8 @@ def main(argv):
             for x in range(cols):
                 i = y * 256 + x
                 data += bytes(palette[i] if i < n else (0, 0, 0))
-        open(args.out, 'wb').write(b'P6\n%d %d\n255\n' % (cols, rows) + bytes(data))
+        with open(args.out, 'wb') as fh:
+            fh.write(b'P6\n%d %d\n255\n' % (cols, rows) + bytes(data))
         print("wrote %s (%dx%d palette swatches, type 5)" % (args.out, cols, rows),
               file=sys.stderr)
         return
@@ -206,10 +208,11 @@ def main(argv):
     print("frame %d: %dx%d origin (%d,%d) pixels @ %#x" % (args.frame, w, h, x, y, off),
           file=sys.stderr)
     rows, used = decode_sprite(d, w, h, off)
-    open(args.out, 'wb').write(render(rows, w, h, palette))
+    with open(args.out, 'wb') as fh:
+        fh.write(render(rows, w, h, palette))
     if args.indices:
-        open(args.indices, 'wb').write(
-            bytes(v if opaque else 0 for row in rows for v, opaque in row))
+        with open(args.indices, 'wb') as fh:
+            fh.write(bytes(v if opaque else 0 for row in rows for v, opaque in row))
     print("wrote %s (%dx%d, %d RLE bytes from %#x..%#x)"
           % (args.out, w, h, used - off, off, used), file=sys.stderr)
 
