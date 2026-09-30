@@ -521,3 +521,479 @@ them to the raw's facts:
    rewritten to the raw's facts.
 3. **`fight.c:4007`'s three calls, marked "out of scope (spec §7)", are wired**
    (batch D1). The raw makes them.
+
+---
+
+## §1 Task 1: verification, placement and the drive table
+
+Measured on branch `k7-k12` at `cd58f02` (main after the K11 cycle-5 merge),
+not on `all-gaps` at `e57d344`. The source drift since `e57d344` is 16 lines
+in `attract.c`, `flow.c` and `menu.c` (K11's service-menu wiring); every §0.4
+row was re-located through `git diff -U0 e57d344 HEAD` and its line re-read.
+The line numbers below are the current tree's.
+
+**Tooling.** The Ghidra MCP bridge was unavailable in this session too. Code
+and data were read from a fixup-applied image of `PRAGE.EXE`: a Python mirror
+of `mem_load_le` + `mem_load_le_fixups` (`$K/le.py`, `$K/img.bin`) with
+capstone (`$K/dx.py`). That is the Ghidra address space with fixups applied.
+Function extents come from Ghidra's own export, `port/decomp/prage.functions.csv`
+(`$K/fn.py`). `$K` is `.superpowers/sdd/2026-09-29-k7-k12/scratch/`.
+
+### §1.0 Baseline
+
+- `make build && make verify` exits 0 (`$K/verify-base.txt`). Every output
+  line of ledger §A's block appears verbatim in the log. §A's three shorthand
+  lines (the two `unittest` summaries and `all checks passed (symbols.h
+  byte-identical)`) appear as their literal output: `Ran 10 tests`, `Ran 33
+  tests`, `OK` and `all checks passed`.
+- The brief's grep (`$K/oracle-lines-base.txt`) extracts 45 lines. 26 are
+  §A's lines. The other 19 are detail lines §A never lists: the title,
+  front-end and attract2 `window distinct`/`splice bytes`/`transition
+  rows`/`exhibited`/`all-black` lines, the attract `FIRST DIVERGENCE`/`best
+  byte splice`/`attract window` lines, and the Makefile's N-less `== demo-fight
+  oracle` echo. None of them is a claim §A records, so no claim moved. The
+  45-line extract is byte-identical to the K11 cycle's last gate run on the
+  same main. **This `oracle-lines-base.txt` is the file later tasks diff
+  against.**
+- `CHECK`/`CHECK_EQ_INT` sites: **13254** (`$K/checks-base.txt`). Ledger §A's
+  12532 predates the K1-K11 merges.
+- `python3 tools/port_progress.py`: `765 1203 64` / `729 730 100 (portable:
+  excludes 82 host-owned/deferred and runtime >= 5D000)` (`$K/progress-base.txt`).
+- `rg -c 'not wired' port/src`: 188 lines over 11 files
+  (`$K/notwired-base.txt`), the same total as §0.2.
+- `sh $K/dumps.sh base && sh $K/dumpcmp.sh base base` gives `CMP=0`.
+  `check/frames` has **24000** files and `fe/run1` and `fe/run2` have **1384**
+  each: the `e57d344` counts hold. The attract and title drivers write one
+  sub-directory each (`attract/attract`, `title/title`). The dump is 3.5 GB;
+  `$K/base.sha256` (32367 files) fingerprints it.
+
+### §1.1 §0 verified against the raw
+
+Every check below matched §0. There is no raw-wins correction to §0's facts.
+The items marked *addition* are raw facts §0 leaves out that the K7 tasks need.
+
+| § | checked | raw evidence | result |
+|---|---|---|---|
+| 0.7.1 | `0x1D0BC` | `0x1D0BF cmp [0xA2CB0],0; jne 0x1D1A9` (AL = 0); MIDI arm `0x1D0CC..0x1D12F` (`0x5100` from `0x1C308(0x41, 0x5100)` into `DS_001028D0`, zeroed by `0x61A70`; on failure `C4`, `C0`, `CC` = 0 and the `0x62734` message); sample arm `0x1D132..0x1D17D` (`DS_001028C8` set, slot 0 `+0x10` = `DS_00102870` zero at entry, `0x8C00` for slot 0 and `0x6000` after, stride `0x18`, stop at a failure or a set buffer); `0x1D17F test ecx,ecx` then `DS_001028C8 = 0`; `0x1D19D mov [0xA2CB0],dl` | matches |
+| 0.7.1 | init point | `0x1BEC4` (Ghidra `FUN_0001bec4`) calls `0x1CF40` at `0x1BFDB` and `0x1D0BC` at `0x1C0B1`; they are the only callers of each | matches |
+| 0.7.3 | `0x1CC28` | `0x1CC37`/`0x1CC44` gates (AL = 0 at `0x1CD8F`); `0x1CC51 call 0x500BB`; `0x1CC5D call 0x1B544`; `0x1CC68 cmp ecx,0x6000` / `0x1CC6E jbe`; slot 0 free test `0x1CC70..0x1CC94`; candidate 0 at `0x1CCB8..0x1CCBA`; scan `edi = 3..0`, `esi = 0x48..0` at `0x1CCC3..0x1CD32`, free test `+0x10 != 0`, `+0x04 == 0`, `0x5DD03 != 4`, `0x1CCD4 je 0x1CD1C`; `0x1CD22 cmp ebp,eax; jbe` (strict, unsigned); forced arm `0x1CD34..0x1CD84` (`0x5DC8B`, `0x5DC0F`, queue) | matches. Citation: `0x1CC68` is the `cmp`, the `jbe` is `0x1CC6E` |
+| 0.7.4 | `0x1CB18` | `0x1CB39 je` on `+0x04 = 0`; `0x1CB41 call 0x1B544`; copy `size` bytes from `p+4` to `+0x10` (`0x1CB49..0x1CB61`); `0x5DC0F`, `0x5DC2A(h, buf, size)`, `0x5DCC5(h, [0xA2CB4])`, `0x5DCA6(h, 0x2B11)`, `0x5DC4D(h, 0, 0)`, `0x5DCE4(h, 0)` only when `+0x08 == 1` (`0x1CBD3`), `0x5DC70`; `+0x0C = +0x04`, `+0x04 = 0` (`0x1CC03..0x1CC16`). The `0x5DCxx` names are `ail.c`'s headers | matches |
+| 0.7.4 | `0x1CF20` | `0x1CF21..0x1CF2E` calls `0x1CB18` for slots 0..3, then `0x1C930` when `DS_001028CC != 0` (`0x1CF30`); callers `0x256B6`, `0x2EB05` | matches |
+| 0.7.2 | `0x500BB` | `mov eax,[0x101500]; ret`. Its 18 callers are `0x1B58E`, `0x1B5EE`, `0x1CC51`, `0x1CCA7`, `0x1CD06`, `0x1CD79`, `0x1E3FB`, `0x1E4BA`, `0x1E814`, `0x2EB52`, `0x2EB8F`, `0x2EE06`, `0x2EEF6`, `0x2FFDA`, `0x31F9F`, `0x31FDE`, `0x3205D`, `0x320DB` | matches; *addition*: `0x1E3FB` (`0x1E30C`) and `0x1E4BA` (`0x1E458`) also read it; both functions are host-owned heap code (`port_classification.txt` rows `1E30C`/`1E458`), so §0.7.2's "none on an oracle path" stands |
+| 0.7.2 | ISR `0x1BDF4..0x1BE2F` | `0x1BDF8` gate `DS_00104B22 == 1` skips; `0x1BE0E..0x1BE16` increment `DS_00101508` and `DS_00101500` together; then `0x1BBAC`, `inc word [0xEF6DE]`, `0x2D62C` | matches |
+| 0.1 | dispatcher `0x2C3FC` | `0x2C403 test eax,eax; je 0x2C8EA` (id 0: AL = 0, no table read); `0x2C409` id `0x100` becomes 0; case byte `[id*12 + 0xBBDC8]`, `ja 0x2C8E8` above 6; jump table `0x2C3E0` = `2C8DD 2C437 2C473 2C4C6 2C89B 2C57F 2C8E8` for cases 0..6 | matches; *addition*: id 0 returns AL = 0 before the table |
+| 0.1 | case 2 | `0x2C483 call 0x1CE70`; when playing, AL = 0 (`0x2C48A jne 0x2C8E8`); else `0x1CC28(handle, loop byte)` at `0x2C4B6` | matches; *addition*: AL = 0 on the playing arm |
+| 0.1 | case 3 | `0x46`: `0x1CE70(0x2886158)` gate, queue `0x28847C9` then `0x2886158` (loop 0); `0x4D`: gate `0x1201D606`, queue `0x1201D606`, `0x2001513C`; `0x5D`: gate `0x281A726`, queue `0x281A726`, `0x2819183` | matches |
+| 0.1 | case 4 | `0x2C89B` `0x1D238`, `0x1D244`, `DS_00105D5C = 0x21`, `0x1CA14(0x2803E64, 0)`; `0x1CE70(0x180122FD)` and, only when not playing, `0x1CD9C` then `0x1CC28(0x180122FD, 1)` (`0x2C8C0..0x2C8D8`) | matches; *addition*: the playing test and loop byte 1 |
+| 0.1 | case 5 | `0x100` (and 0): `0x1CA6C`, `0x1CD9C` (`0x2C69C`); `0x41`: `0x1CE04(0x383B6F4)` (`0x2C7A5`); `0x43`: `0x1CE04(0x3837440)` (`0x2C7BA`). The handles are immediates in the code; the table records of `0x41`/`0x43` hold handle 0 | matches |
+| 0.1 | table | 244 records at `0xBBDC8`; raw file bytes equal the image (no fixups). Case counts 0 ×5, 1 ×29, 2 ×154, 3 ×3 (`46 4D 5D`), 4 ×1 (`03`), 5 ×18, 6 ×34. Spot checks: `40` case 2 `0383B6F4` loop 1; `41` case 5; `42` case 2 `03837440` loop 1; `43` case 5; `3A` case 2 `03022554`; `CD` case 2 `02824B0F`; `00` (so `100`) case 5; `53` case 0; `D3` case 2 `01000008`; `54`/`56` case 1 `03836102` | matches |
+| 0.2 | word tables | `C888A` = C0 C2 C4 C1 C5 C6 C3; `BDFFA` = 63 63 63 63 AC 63 63 90; `BDAA8` = 49 49 7B 49 49 49 49; `E9308` (26) = 63 76 77 7D 78 79 7C 49 81 82 87 88 8E 8F 94 99 9D 9E A4 A8 7E AC 7F 45 89 A3; `E933C` (16) = 63 64 65 66 67 68 69 6A 46 75 AC 6F 6B B7 63 70; `BE008` = 90 95 A5 9F 83 89 9A; `E9358` = 63 70 71 75 63 74 AC; `C75AA` = 91 96 A6 A0 84 8A 9B; `BDAD4` = 92 97 A7 A1 85 8B 4A. Image equals raw file bytes | matches. Note: `BDFFA[7]` (`90`) is `BE008[0]`, and `E933C[14..15]` (`63 70`) are `E9358[0..1]`: the tables overlap |
+| 0.7.5 | title and attract calls | `0x121C9 mov eax,0x41; 0x121CE call`; `0x121D3 mov eax,0x43; 0x121D8 call` (`FUN_000121a0`); `0x11156 mov eax,0x40; 0x11160 call`; `0x11165 mov eax,0x42; 0x1116C call` (`FUN_00011000`) | matches |
+| 0.2 | the universe | a scan of the image finds 303 `call`/`jmp rel32` to `0x2C3FC` | matches |
+| 0.4 | every row's ids | the immediate or table read before each normalised call (`$K/ids.txt`), including `0x4A6D2` (`CD`/`CE`/`CF` by `jmp` from `0x4A675..0x4A688`, `DA`/`DB` from `0x4A6BC`/`0x4A6CD`), `0x459B9` (`46` by `jmp` from `0x459A3`, `72` from `0x459B4`), `0x45F8C` (`AB` from `0x45E59`, `AC` from `0x45F81`), `0x48B50` (`59` from `0x48B37`), `0x44A53` (`AB` from `0x44A4E`), `0x41D2B` (`lea eax,[edx+0x34]`, `edx` = the byte before its increment) and `0x2B8D7` (`and eax,0xffff` of the operand) | matches all 218 |
+| 0.3 | counts | per file 5/8/4/40/72/66/2/21; 75 state, 143 sample; batches T3 4, A 22, B1 21, B2 30, C 22, D1 31, D2 28, D3 27, D4 33 | matches |
+
+### §1.2 The call addresses and the placement of the 85 outside sites
+
+**Normalised calls.** Each row's call address is in §1.3's second column.
+The 218 rows name 213 distinct `call`/`jmp` addresses, and 213 + 85 + 5 wired
+= 303. Rows that share one raw call:
+- `0x4EB72`: rows 50-57.
+- `0x1F593`: rows 207/208 (`mov` `0x1F580` jumps to it).
+- `0x1F644`: rows 210/211.
+- `0x201D2`: row 201's two `mov`s.
+- `0x282BB`: rows 142/144.
+- `0x459B9`: rows 104/106.
+- `0x45F8C`: rows 126/127.
+- `0x4A6D2`: rows 33/35.
+
+Two rows are tail `jmp`s: `0x3D789` (row 5) and `0x11BF0` (row 195).
+
+**Placement.** For each site, the containing code is Ghidra's function
+(`prage.functions.csv`) when there is one. Otherwise it is the nearest entry
+candidate that reaches the site by intra-procedural flow: a data-object dword,
+a call target, a code immediate, or a block start after `ret`/`jmp`. Ported
+means a `/* 0xADDR` header or an `fn_register` in `port/src` whose flow
+reaches the site (`$K/place2.py`, `$K/place4.py`, `$K/place5.py`). Of the 85
+sites, only `0x44AFF` and the nine service-menu sites are reached from a
+ported header. Only `0x3D3AC` has direct callers (`0x3D664`, `0x3D6D6`), and
+both are in unported code.
+
+Verdict counts: **75 outside**, **1 silent**, and **9 wired since `e57d344`**.
+The last group is a drift correction, not a raw-wins one: K11 ported the
+service-menu callbacks and wired their calls.
+
+- **Silent (1): `0x44AFF`** (`AB`). `0x44A64` is ported
+  (`anim_code_44A64` -> `fighter_44a64`), and its body is the second copy of
+  `0x449B8`'s. The port runs both through one C body, `fighter_c4_spawn`, whose
+  comment names only `0x449B8`'s call `0x44A53` (row 100). Wiring row 100's
+  call in the shared body also makes `0x44AFF`'s. This site becomes
+  **row 219**, batch D4 (Task 11): add `0x44AFF` to the row-100 comment and
+  drive it through `fighter_44a64`. It adds no second call.
+- **Wired (9):**
+  - `0x2C9D4`/`0x2C9E0` (`svc_play_tune`, `svcmenu.c:369/370`)
+  - `0x2C9F0`/`0x2C9FC` (`svc_play_sample`, `:376/377`)
+  - `0x30B34`, `0x30E20`, `0x30E44`, `0x30E59` (ADJUST VOLUME `0x30864`, `:452/518/521/525`)
+  - `0x30F47` (SAMPLE TEST `0x30EB4`, `:344`, repeated by MUSIC TEST at `:363`)
+- **Outside (75):** listed below with their containing entries. Each is wired
+  when that code is ported.
+
+
+| site | containing code | verdict |
+|---|---|---|
+| `11A3D` | `0x11A30` (no reference found; `flow.c` names it "still unwired", a caller of `0x1EA08`) | outside |
+| `11C38` | `0x11C00` (a dword in the data object) | outside |
+| `14F46` | `0x14F00` (a dword in the data object) | outside |
+| `14F9E` | `0x14F50` (a dword in the data object) | outside |
+| `154DD` | `0x1549C` (a dword in the data object) | outside |
+| `1550B` | `0x15500` (a dword in the data object) | outside |
+| `155EA` | `0x155AB` (code immediate at `0x15570`) | outside |
+| `156CA` | `0x1567C` (a dword in the data object) | outside |
+| `15780` | `0x15700` (a dword in the data object) | outside |
+| `15802` | `0x15800` (a dword in the data object) | outside |
+| `158CD` | `0x1587E` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `15956` | `0x15908` (a dword in the data object) | outside |
+| `1599B` | `0x15960` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `212AF` | `0x21200` (a dword in the data object) | outside |
+| `2236D` | `0x22338` (a dword in the data object) | outside |
+| `223EF` | `0x22338` (a dword in the data object) | outside |
+| `224E2` | `0x22494` (a dword in the data object) | outside |
+| `2260E` | `0x22588` (code immediate at `0x22979`) | outside |
+| `228EF` | `0x228BB` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `2292B` | `0x228F9` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `22AA7` | `0x22A40` (a dword in the data object) | outside |
+| `231FB` | `0x231C0` (a dword in the data object) | outside |
+| `23243` | `0x23208` (a dword in the data object) | outside |
+| `23810` | `0x23800` (a dword in the data object) | outside |
+| `2385C` | `0x2381C` (a dword in the data object) | outside |
+| `23BD8` | `0x23B68` (code immediate at `0x23C75`) | outside |
+| `23E9D` | `0x23E6D` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `23F05` | `0x23EC0` (a dword in the data object) | outside |
+| `24001` | `0x23F10` (a dword in the data object) | outside |
+| `2406D` | `0x2400C` (a dword in the data object) | outside |
+| `24214` | `0x241F4` (a dword in the data object) | outside |
+| `242DA` | `0x242C1` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `24317` | `0x242C1` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `243CF` | `0x24338` (a dword in the data object) | outside |
+| `243ED` | `0x24338` (a dword in the data object) | outside |
+| `2455E` | `0x24508` (a dword in the data object) | outside |
+| `295FD` | `0x295C0` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `342EF` | `0x3427C` (a dword in the data object) | outside |
+| `3440D` | `0x3438C` (a dword in the data object) | outside |
+| `3448B` | `0x34418` (a dword in the data object) | outside |
+| `34517` | `0x344A4` (a dword in the data object) | outside |
+| `345A3` | `0x34530` (a dword in the data object) | outside |
+| `3462F` | `0x34608` (a dword in the data object) | outside |
+| `37687` | `0x37640` (a dword in the data object) | outside |
+| `37691` | `0x37640` (a dword in the data object) | outside |
+| `377B9` | `0x37774` (a dword in the data object; `fighter.c` names it the unported reaction-0x33 callback) | outside |
+| `377C3` | `0x37774` (a dword in the data object) | outside |
+| `378DE` | `0x37898` (a dword in the data object; the reaction-0x34 callback) | outside |
+| `378E8` | `0x37898` (a dword in the data object) | outside |
+| `3D12D` | `0x3D10C` (a dword in the data object) | outside |
+| `3D395` | `0x3D328` (a dword in the data object) | outside |
+| `3D3DB` | `0x3D3AC` (called at `0x3D664`, `0x3D6D6`) | outside |
+| `3D643` | `0x3D57D` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `3D730` | `0x3D6E0` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `3D9D7` | `0x3D94D` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `3DAC5` | `0x3DA50` (a dword in the data object) | outside |
+| `3DB2A` | `0x3DADC` (a dword in the data object) | outside |
+| `3DB82` | `0x3DB34` (a dword in the data object) | outside |
+| `3F0C1` | `0x3F0A8` (a dword in the data object) | outside |
+| `4012D` | `0x400FF` (a dword in the data object) | outside |
+| `40137` | `0x400FF` (a dword in the data object) | outside |
+| `402B1` | `0x402A0` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `402E0` | `0x402A0` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `41880` | `0x41878` (no Ghidra function; `flow.c` names it as a `0x259CC` hook storer) | outside |
+| `45C8C` | `0x45C54` (a dword in the data object) | outside |
+| `45D0A` | `0x45C98` (a dword in the data object) | outside |
+| `475D9` | `0x475C0` (after `ret` and zero padding; no call, table or code-immediate reference) | outside |
+| `4779D` | `0x47798` (code immediate at `0x478AF`) | outside |
+| `478C7` | `0x47874` (a dword in the data object) | outside |
+| `47DF7` | `0x47D24` (code immediate at `0x4803A`) | outside |
+| `47E1B` | `0x47E04` (a dword in the data object) | outside |
+| `48518` | `0x484F0` (code immediate at `0x48440`) | outside |
+| `48548` | `0x4852A` (block start after a `ret`/`jmp`; no call or table reference) | outside |
+| `4B0B4` | `0x4B03C` (a dword in the data object) | outside |
+| `4B0BE` | `0x4B03C` (a dword in the data object) | outside |
+
+### §1.3 The drive table
+
+The table has one row per §0.4 row, plus row 219 (§1.2's silent site). Its
+columns:
+
+- **call:** the normalised `call`/`jmp`. The row's own `mov` is in brackets
+  when the comment cites it.
+- **C function:** the port function that holds the comment, in the current tree.
+- **public entry:** the exported function a test calls.
+  - A static function's nearest public caller.
+  - A function the port registers is also reachable as
+    `fn_resolve(0xADDR)` after `actors_init()`.
+- **seed:** the port's own branch conditions to the call, with their raw
+  addresses.
+- **ids:** the ids the path posts, in raw call order. This includes the ids
+  of other §0.4 rows on the same path. A table id names the byte that indexes
+  it.
+- **existing test:** a test that calls the enclosing function (or the named
+  entry). "Path unconfirmed" means the test calls it, but this task did not
+  confirm that it seeds the row's arm.
+
+Rows on one path share a driver:
+- `game_coin_divert` covers rows 139/140.
+- `fight_hook_4367c` covers 29/30/18, or 27/28/19 with `DS_00104B1D = 3`.
+- `fighter_40954` case 2 covers 118/119/121.
+- `nameentry_step` runs `nameentry_cells_step` first (rows 198-205) and
+  `game_mode_1e_step` runs `nameentry_step` (rows 180/184/186-189).
+
+The path to `fighter_39834` (row 76) posts its `E933C` id before the caller's
+own id in rows 72, 77, 92, 107-110 and 117. A driver for those rows sees two
+ids.
+
+The fight-context fixtures are:
+- `tf_hit_fixture(ch)`: two slots, slot 0 live with `ch`, the mode, command
+  and reaction globals.
+- `tf_demo_fixture()`: the arena frame's two slots, an empty effect list, every
+  gate closed.
+- `tf_anim_alloc_record()`/`tf_anim_spawn_stream()`: an actor record and a
+  stream at `ANIM_SCRATCH`.
+
+A row that reads a fighter slot (`DS_001077B0 + side * 0x94`) or its record
+starts from `tf_hit_fixture`. A row that walks the effect list `DS_0010884C`
+starts from `tf_demo_fixture` and links its entry in. Row 1 starts from
+`tf_anim_alloc_record`.
+
+| row | call | C function | public entry | seed (branch, raw address) | ids, raw order | existing test that reaches it |
+|---:|---|---|---|---|---|---|
+| 1 | `2B8D7` | `actors.c` `spawn_anim_opcode` (static), case `0x2E` | `actors_anim_begin(rec, stream, bits)` (its pre-walk runs every command whose high byte has bit 7) | stream words `{0x9F2E, id}`: the `0x1F` prefix (`0x2B2A0` op `& 0x1F`), op byte `0x2E`, mode 0, so the operand is the next word (`anim_operand`, `0x2B932`); `0x2B8D2 and eax,0xffff`. The one-byte form sign-extends to `0xFFxx` and is not a valid id | the operand (oracle runs: `D3`) | none drives op `0x2E` |
+| 2 | `48CAE` | `actors.c` `actor_type_2d_list_init` | the function itself (public), or `fighter_48d94(slot, rec, side)` with slot `+0x57 = 1` (`0x48DBF`) | none: unconditional tail | `EF` | `test_fight.c` `check_finisher_48aac` (calls it) |
+| 3 | `49060` | `actors.c` `actor_type_2d_update` (static; `fn_register(0x48F98)`) | `fn_resolve(0x48F98)()` after `actors_init()` | one node on the in-use list `DS_00108368` with `+0x0C = 0` (`0x48FB5`), `abs(node rec +0x18 - them +0x18) <= 0x1000` (`0x48FED`), `DS_00108396` bit 7 clear (`0x49037`); slot `DS_00104AD4` record valid for `0x37B54` | `F0` | none |
+| 4 | `490E1` | same | same | node `+0x0C = 1` (`0x48FB7`), distance `> 0x1000` (`0x4909C`), `DS_00108397 = 1` so `n = 0` is not `> 0` (`0x490D8`) | `F1` | none |
+| 5 | `3D789` (tail `jmp`) | `actors.c` `actor_type_3D784` (static; `fn_register(0x3D784)`) | `fn_resolve(0x3D784)(rec)` after `actors_init()` | none | `4F` | none |
+| 6 | `10F43` | `attract.c` `attract_voice_tick` | the function (public) | `DSW(DS_000F0A60) = 1` (signed `<= 0` after the decrement, `0x10F3C jg`) | `BD` | `test_game.c` `test_attract` (the "both expire" cases) |
+| 7 | `10F8B` | same | same | `DSW(DS_000F0A62) = 1` (`0x10F6F jg`); `rng_next(2)` != 0 gives `BE`, 0 gives `BF` (`0x10F7D je`) | `BE` or `BF` (the rng pick) | `test_game.c` `test_attract` (seed `0xABCD`: pick 1, so `BE`) |
+| 8 | `10E06` | `attract.c` `frontend_pause_tail` | the function (public) | `DS_000F0A71 = 0`, `DS_001088D8` byte 3 bit `0x20` and byte 1 bit `0x10`, `DS_00104B19+2 != 0` (`0x10DD4`) | `100` | `test_game.c` `test_attract` ("Gate open, DS_00104B19 byte 2 != 0") |
+| 9 | `10E6E` | `attract.c` `frontend_continue_tail` | the function (public) | `DS_000F0A71 = 0`, `DS_001088D8` byte 3 bit `0x10` and byte 1 bit `0x20`, `DS_00104B19+2 != 0` | `100` | `test_game.c` `test_attract` ("Byte-2 branch") |
+| 10 | `11024` | `attract.c` `attract_step` case 0 | `attract_step()` | `DSB(DS_000F0A6F) = 0` (`0x11000` switch). Case 0 also plays the two boot movies; a NULL media dir fails them harmlessly | `100` | none (the attract dump driver only) |
+| 11 | `11160` | same, case 2 | same | `DSB(DS_000F0A6F) = 2` | `40`, then row 12's `42` | none (the attract dump driver only) |
+| 12 | `1116C` | same, case 2 | same | as row 11 | `40`, `42` | as row 11 |
+| 13 | `111FF` | same, case 4 | same | `DSB(DS_000F0A6F) = 4`, `DSD(DS_000F0A50)` a record with `+0x2C` in `0x100..0x1100` so the result `< 0x1001` (`0x111E4`); `DS_000F0A5C == 0` gives `54`, else `56` (`0x111F3`/`0x111FA`) | `54` or `56` | none |
+| 14 | `17C88` | `camera.c` `camera_projectile_clash` (static) | `camera_projectile_step()` | both `DS_001077B8` and `DS_0010784C` non-zero (`0x17CEA`/`0x17CF3`), boxes overlapping and `DS_00100B1C`/`DS_00100B18 > 0` (`0x17C78`/`0x17C81`) | `64`, then row 58's `BDFFA[ch]` (`0x3B938` at `0x17C92`) | `test_fight.c` `check_projectile_step` (its clash case asserts `B1C = B18 = 0x20`) |
+| 15 | `12C29` | `camera.c` `camera_dust_burst` | the function (public), or `camera_dust_hit(node)` | none after the spawn | `BF`, `D6`, `CE` | `test_fight.c` `check_dust_consume` (calls `camera_dust_burst` directly) |
+| 16 | `12C33` | same | same | same | as row 15 | as row 15 |
+| 17 | `12C3D` | same | same | same | as row 15 | as row 15 |
+| 18 | `43741` | `fight.c` `fight_char_screen_open` | the function (public; `fn_register(0x43738)`), or `fight_hook_4367c()` with `DS_00104B1D != 3` (`0x4372E`) | none: first statement | `30` | `test_fight.c` `check_char_screen_open` (calls it) |
+| 19 | `444D1` | `fight.c` `fight_char_screen_open_both` | the function (public), or `fight_hook_4367c()` with `DS_00104B1D = 3` (via `fight_4454c`, `0x4462B`) | none: first statement | `30` | `test_fight.c` `check_char_screen_open` (calls it) |
+| 20 | `43FB1` | `fight.c` `fight_char_portrait(side)` | the function (public), or `fight_char_select_pass` | the side's `DS_00108154`/`DS_0010815C` records valid; `DS_00108166[side] = ch` in 0..6 (`0x43F08`); no early return | `C888A[ch]` (`C0 C2 C4 C1 C5 C6 C3`) | `test_fight.c` `check_char_select_pass` (calls it) |
+| 21 | `43E96` | `fight.c` `fight_char_confirm(side)` | the function (public) | the side's `DS_00108154` record valid; no early return (tail) | `6C` | `test_fight.c` `check_char_select_pass` (calls it) |
+| 22 | `44295` | `fight.c` `fight_char_team_portrait(side)` | the function (public) | `DSD(DS_00108154 + side*4) != 0` (`0x44196`); `DS_00108166[side] = ch` (`0x441F5`) | `C888A[ch]` | `test_fight.c` `check_char_team_pass` (calls it) |
+| 23 | `444B6` | `fight.c` `fight_char_team_pick(side)` | the function (public) | none: tail | `6C` | `test_fight.c` `check_char_team_pass` (calls it) |
+| 24 | `430F2` | `fight.c` `fight_hook_430e8` | the function (public; the `DS_00104AE4` hook) | none: first statement | `31`, then rows 25/26 | `test_fight.c` `check_mode_1a_hooks` (calls it) |
+| 25 | `4328A` | same | same | none: tail | `31`, `2D`, `2F` | as row 24 |
+| 26 | `43294` | same | same | as row 25 | as row 25 | as row 24 |
+| 27 | `44557` | `fight.c` `fight_4454c` (static) | `fight_hook_4367c()` | `DSB(DS_00104B1D) = 3` (`0x4367F`) | `100`, `2E` (row 28), `30` (row 19) | `test_fight.c` `check_mode_1a_hooks` (calls `fight_hook_4367c`; path unconfirmed) |
+| 28 | `44626` | same | same | as row 27 | as row 27 | as row 27 |
+| 29 | `43696` | `fight.c` `fight_hook_4367c` | the function (public) | `DSB(DS_00104B1D) != 3` (`0x4367F`) | `100`, `2E` (row 30), `30` (row 18) | `test_fight.c` `check_mode_1a_hooks` (calls it) |
+| 30 | `43729` | same | same | as row 29 | as row 29 | as row 29 |
+| 31 | `41483` | `fight.c` `fight_hook_4142c` | the function (public) | none | `32` | `test_fight.c` `check_mode_17_hooks` (calls it) |
+| 32 | `4AD81` | `fight.c` `fight_4ac80(rec)` | the function (public; anim code `0x4AC80`) | `rec+0x14 = entry != 0` (`0x4AC90`), `DS_001088C5 != 0` and entry `+0x1C` bit 5 (`0x4ACB6`/`0x4ACC9`), and `target == 0` (`0x4AD3B`): e.g. the entry actor's `fight_2be00` equal to `DS_00108868`'s | `C8` | `test_fight.c` `check_worshipper_landing` (calls it; path unconfirmed) |
+| 33 | `4A6D2` | `fight.c` `fight_4a634` (static) | `fight_effects_pass()` (it calls `fight_4a634` at `0x4A591` unconditionally) | slot `side` `+0x42` bit 1 (`0x4A640`), `DS_001088A8[side]` in `0x20..0x3F` (`0x4A655`/`0x4A65A`); `rng_next(3)` 0/1/2 picks `CD`/`CE`/`CF` (`0x4A664..0x4A688`) | `CD`/`CE`/`CF` by the draw, per side 0 then 1 | `test_fight.c` `check_effects_rng` (calls `fight_effects_pass`; path unconfirmed) |
+| 34 | `4A6B7`/`4A6C8` | same | same | slot `+0x42` bit 1, `DS_001088A8[side]` in `0x10..0x17` (`0x4A692`/`0x4A697`), `rng_next(2) != 0` (`0x4A69E`); the second `rng_next(2)` != 0 gives `C9` (`0x4A6B0`), else `CA` | `C9` then `DA`, or `CA` then `DB` | as row 33 |
+| 35 | `4A6D2` | same | same | as row 34 | as row 34 (the second id) | as row 33 |
+| 36 | `4B98F` | `fight.c` `fight_4b788` (static) | `fight_effects_pass()` via the per-entry prelude `fight_4b69c` (`0x49CFE`) | a list entry with `+0x1C` bit 7 (`0x4B6B3`), `camera_point_hit` != 0 (`0x4B6EC`), and `fight_4b788`'s gates passed (`0x4B7A0`..`0x4B821`) to its tail | `D4` when `index` (`(u8)rec+0x48 - 0x20`) < 3, else `D5` | none |
+| 37 | `4CB3E` | `fight.c` `fight_4cb18(entry, index, flag, side)` | the function (public) | none: first statement | `D1` when `index < 3`, else `D0` | `test_fight.c` `check_grab_arms` (calls it) |
+| 38 | `4B497` | `fight.c` `fight_4b470` (static) | `fight_4d7a4(entry, index)` (public): entry `+0x1C` bit 7 (`0x4D7BB`), `camera_point_hit` != 0 (`0x4D7F2`), `fight_4d898` != 0 (`0x4D80B`); or `fight_effects_pass()` case 8 (`0x4A10B`) | as the entry | `D1` when `index < 3`, else `D0`; then row 37's id only on the eighth hit (`0x4B547..0x4B59E`) | none |
+| 39 | `4DABE` | `fight.c` `fight_4d898(hit, entry, index)` | the function (public) | `fight_4d898`'s gates to its tail (`0x4D8DA`..`0x4D95D`) | `D4` when `index < 3`, else `D5` | `test_fight.c` `check_grab_arms` (calls it; path unconfirmed) |
+| 40 | `4C85C` | `fight.c` `fight_4c784(side)` | the function (public), or `fight_4c60c` (`0x4C697`/`0x4C6A9`) | `DSD(DS_00108864)` a valid ball entry; no early return | `D4` when the ball's `(u8)+0x48 - 0x20 < 3`, else `D5`; then `D6`, `CE` | `test_fight.c` `check_volleyball` (calls it) |
+| 41 | `4C866` | same | same | same | as row 40 | as row 40 |
+| 42 | `4C875` | same | same | same | as row 40 | as row 40 |
+| 43 | `4BFF0` | `fight.c` `fight_4bf18` | the function (public), or `game_mode_21_step` | an entry on `DS_0010884C` with `+0x1E = 1` (`0x4BF6F` table `0x4BEF4`), `+0x1C` bit 5 (`0x4BFCD`) and `fight_4a868(entry) != 0` (`0x4BFDC`) | `C8` | `test_fight.c` `check_fx_gate` (calls it; path unconfirmed) |
+| 44 | `49FF1` | `fight.c` `fight_effects_pass` case 7 | the function (public) | an entry with `+0x1E = 7`, its actor `+0x3C` in `1..0x53FF` and `+0x1C` bit 2 clear (`0x49FCA..0x49FE1`) | `DE` | `test_fight.c` `check_effects_*` (call it; case 7 unconfirmed) |
+| 45 | `4A4B5` | same, the mode-9 tail | same | `DSW(DS_00104B00) = 9` (`0x4A476`), the type-14 count `>=` side count - 2 (`0x4A499`), `DS_001088C3 = 0` (`0x4A4A5`) | `CB` (then row 47 when the drawn countdown is `0x3C`, never: `rng(0x14)+0x78 >= 0x78`) | as row 44 |
+| 46 | `4A4ED` | same | same | mode 9, `DS_001088C3 != 0` and `DSW(DS_001088B0) = 0` (`0x4A4D5..0x4A4E6`) | `CB` | as row 44 |
+| 47 | `4A52C` | same | same | mode 9, `DS_001088C3 != 0`, `DSW(DS_001088B0) = 0x3C` before the decrement (`0x4A522`) | `DC` | as row 44 |
+| 48 | `4DF11` (`mov` `4DF0C`) | `fight.c` `fight_effects_idle_pass` | the function (public) | `DSW(DS_001088B0) = 0` and `DS_001088BB != 0` (`0x4DEF9..0x4DF0A`) | `CB` | `test_fight.c` `check_fx_gate` (calls it; path unconfirmed) |
+| 49 | `4DF50` (`mov` `4DF4B`) | same | same | `DSW(DS_001088B0) = 0x3C` and `DS_001088BB != 0` (`0x4DF3D..0x4DF49`) | `DC` | as row 48 |
+| 50 | `4EB72` (`mov` `4EA01`, a `jmp` to the shared call) | `fight.c` `fight_4e99c` (static) | `fight_4e67c()` (public) with `DS_001088B9 != 0` (`0x4E91A`); `count` is its `processed` (0 with an empty `DS_0010884C` list) | `r = DS_001088BD + 1` odd and `< 5`, `count = 0` (`0x4E9CC..0x4E9DC`) | `5D` | none |
+| 51 | `4EB72` (`mov` `4EA43`) | same | same | `r < 5`, `DS_001088BD` even after the store, `count = 0` (`0x4EA1A`) | `5E` | none |
+| 52 | `4EB72` (`mov` `4EA7B`) | same | same | `r < 5`, `count != 0`, `DS_001088BD` odd (`0x4EA62`) | `5D` | none |
+| 53 | `4EB72` (`4EAAA` -> `4EB6D`) | same | same | `r < 5`, `count != 0`, even, `v != 0` (`0x4EB6B je`) | `5E` | none |
+| 54 | `4EB72` (`mov` `4EAD6`) | same | same | `r >= 5` odd, `count = 0` (`0x4EAAF..0x4EAB6`) | `5D` | none |
+| 55 | `4EB72` (`4EB12` -> `4EB6D`) | same | same | `r >= 5`, even, `count = 0` (`0x4EAEF`) | `5E` | none |
+| 56 | `4EB72` (`mov` `4EB47`) | same | same | `r >= 5`, `count != 0`, odd (`0x4EB2E`) | `5D` | none |
+| 57 | `4EB72` (`4EB6B` -> `4EB6D`) | same | same | `r >= 5`, `count != 0`, even, `v != 0` (`0x4EB6B je`) | `5E` | none |
+| 58 | `3B9B8` | `fighter.c` `fighter_3b938(slot)` | the function (public), or `camera_projectile_step()` (row 14) | none: tail; slot `+0x08` a valid record | `BDFFA[ch]`, `ch` = slot `+0x7A` (`63 63 63 63 AC 63 63`; `63` is case 0, a no-op the raw still calls) | `test_fight.c` `check_projectile_step` (calls it) |
+| 59 | `362E5` | `fighter.c` `fighter_36280(rec)` | the function (public; anim code `0x36280`) | `rec+0x14` slot != 0 (`0x3628B`) | `6F` | `test_fight.c` `check_land_36280` (calls it) |
+| 60 | `367CF` | `fighter.c` `fighter_state_36710(slot, rec)` | the function (public) | the side's `FIGHT_36710_FLAG` byte = 2, `rec+0x36 = 0` and `rec+0x1C = 0` (the third arm) | `6E` | `test_fight.c` `check_state_handlers` (calls it; path unconfirmed) |
+| 61 | `35ED9` | `fighter.c` `fighter_state_35e6c(slot, rec)` | the function (public) | none: after `0x35ED0` | `6D` | `test_fight.c` `check_gap_handlers` (calls it) |
+| 62 | `37D73` | `fighter.c` `fighter_37d18(slot, rec)` | the function (public) | none: tail | `BDAD4[ch]`, `ch` = slot `+0x7A` (`92 97 A7 A1 85 8B 4A`) | `test_fight.c` `check_p52_40554` (calls it) |
+| 63 | `3923D` | `fighter.c` `fighter_39040(side)` | the function (public) | `FIGHT_D2C_BASE[side] > 1` (`0x39056`), slot `+0x63 = 0` (`0x39117`), and not (`a >= 0x23` and `r2 >= 4`) with `a <= 0x23` (`0x39190`/`0x391DE`); `r3 = DS_001088A8[side]` in `0x20..0x3F` takes `rng_next(3)` (`0x391FE`), else `rng_next(2)` (`0x39228`) | `CD`/`CE`/`CF` by `rng_next(3)` = 0/1/2 (`0x3920E..0x3921C`); else `DA` when `rng_next(2) != 0`, `DB` when 0 | `test_fight.c` `check_combo_text` (calls it; path unconfirmed) |
+| 64 | `353C0` | `fighter.c` `fighter_state_3531c(side)` | the function (public) | `DSD(DS_001077A8 + side*4)` a slot with `DSD(slot) != 0` (`0x3539A`), `DSW(DS_001078F6) = 1` so it reaches `< 1` after the decrement (`0x353A7`) | `EC`, `E0` | none found (no `fighter_state_3531c` caller in the tests seeds `DS_001078F6` non-zero) |
+| 65 | `353CA` | same | same | as row 64 | as row 64 | as row 64 |
+| 66 | `35E38` | `fighter.c` `fighter_35e04(rec)` | the function (public; anim code `0x35E04`) | `rec+0x14` slot != 0 (`0x35E0B`) | `BDAA8[ch]`, `ch` = slot `+0x7A` (`49 49 7B 49 49 49 49`) | `test_fight.c` `check_deep_callees` (calls it) |
+| 67 | `34FA4` | `fighter.c` `hit_reaction_apply(side, reaction)` | the function (public) | `reaction != 0xFF` (`0x34E36`) and the triple's stream != 0 (`0x34F85`) | `E9308[b]`, `b` = byte `anim[0]+7` (`[esp+0x18]+7`, `0x34F8F`); then row 68's `E9308[b]` when the callback != 0 | `test_fight.c` `check_char1_reactions_b` and the other `check_char*` reaction tests (call it) |
+| 68 | `35032` | same | same | `reaction != 0xFF` and the triple's callback `anim[1]` dword != 0 (`0x35017`) | `E9308[b]` (the same byte, `0x3501D`) | as row 67 |
+| 69 | `3D19D` | `fighter.c` `fighter_3d17c(slot, rec, side)` | the function (public; `fn_register(0x3D17C)`) | slot `+0x08 = 0` (`0x3D187`) | `91` | `test_fight.c` `check_trex_breath` (calls it) |
+| 70 | `14807` | `fighter.c` `fighter_146f0` (static) | `fighter_1461c(slot, rec, side)` (`fn_register(0x1461C)`) | `ctx[2]+0x57 = 2` (`0x14632` switch, case `0x146D7`), then `fighter_146f0`'s gates (`0x14728`, `0x1473A`, `0x147A5`) to `0x14807` | `B1` | none |
+| 71 | `14829` | `fighter.c` `fighter_14814(slot, rec, side)` | the function (public; `fn_register(0x14814)`) | none | `B0` | none |
+| 72 | `14E38` | `fighter.c` `fighter_14d7c(side)` | the function (public; `fn_register(0x14D7C)`) | none after the `0x14D95` arm | `E933C[..]` (row 76, `0x14DE4`), then `B3` | `test_fight.c` `check_throw_3c208` (calls it) |
+| 73 | `14B84` | `fighter.c` `fighter_14a5c` (static) | `fighter_14988(slot, rec, side)` (`fn_register(0x14988)`) | the case-2 arm (`0x14A43`), then `fighter_14a5c`'s gates (`0x14A94`, `0x14AA6`, `0x14B22`) | `B1` | none |
+| 74 | `14BA5` | `fighter.c` `fighter_14b90(slot, rec, side)` | the function (public; `fn_register(0x14B90)`) | none | `B0` | `test_fight.c` `check_char3_2628` (calls it) |
+| 75 | `39EDA` | `fighter.c` `fighter_39cc8(slot, side)` | the function (public; `fn_register(0x39CC8)`) | slot `+0x58 = 3` (`0x39CE2` table `0x39CB4`), `land` (`0x39E13`: `BD882[ch] >> 16 >= slot+0x30`) | `6C` | `test_fight.c` `check_knockback_pose` (calls it; path unconfirmed) |
+| 76 | `3996E` | `fighter.c` `fighter_39834` (static) | `fighter_14d7c(side)` (public), or any caller below | none before the call | `E933C[b]`, `b` = byte `anim[0]+8` (`0x39959`; `63..6A 46 75 AC 6F 6B B7`; `46` is case 3, two handles) | via `check_throw_3c208` (`fighter_14d7c`) |
+| 77 | `22BB0` | `fighter.c` `fighter_22b28` (static) | `fighter_235c4(side)` or `fighter_22ce4(side)` (public) | none | `E933C[..]` (row 76, `0x2360F` or `0x22D32`), then `B5` | `test_fight.c` `check_freeze_235c4` (calls `fighter_235c4`) |
+| 78 | `22F00` | `fighter.c` `fighter_22e44(side)` | the function (public; `fn_register(0x22E44)`) | none | `B6` | none |
+| 79 | `236CB` | `fighter.c` `fighter_2365c(slot, rec, side)` | the function (public; reaction callback `0x2365C`) | slot `+0x08 = 0` (`0x23662`), the other slot's `+0x10 != 0x22BEC` (`0x2368A`) | `B4` | `test_fight.c` `check_char1_reactions` (calls it; path unconfirmed) |
+| 80 | `2316B` (`mov` `23166`) | `fighter.c` `fighter_23130(slot, rec, side)` | the function (public) | none | `7C` | `test_fight.c` `check_char1_reactions_b` (calls it) |
+| 81 | `231B3` (`mov` `231AE`) | `fighter.c` `fighter_23178(slot, rec, side)` | the function (public) | none | `7C` | `test_fight.c` `check_char1_reactions_b` (calls it) |
+| 82 | `24684` | `fighter.c` `fighter_24568(side)` | the function (public; `fn_register(0x24568)`) | none: the placement loop always breaks | `B4` | none |
+| 83 | `40E09` | `fighter.c` `fighter_40cb0(side)` | the function (public) | as row 82 | `8C` | none |
+| 84 | `48957` | `fighter.c` `fighter_488b8(slot, rec, side)` | the function (public) | none | `7B` | none |
+| 85 | `4929C` | `fighter.c` `fighter_49150(side)` | the function (public) | as row 82 | `A2` | none |
+| 86 | `15A22` | `fighter.c` `fighter_159a8(rec)` | the function (public; anim code `0x159A8`) | `rec+0x14` slot != 0 (`0x159B2`) | `B1` | none |
+| 87 | `15B80` | `fighter.c` `fighter_15a34(side)` | the function (public) | as row 82 | `9C` | none |
+| 88 | `4612C` | `fighter.c` `fighter_45fe8(side)` | the function (public) | as row 82 | `80` | none |
+| 89 | `3E057` | `fighter.c` `fighter_3dfc0(slot, rec)` | the function (public) | the other slot record `o` != 0 (`0x3DFD9`) | `B9` | `test_fight.c` `check_char5_entrance` (calls it) |
+| 90 | `40FB0` | `fighter.c` `fighter_40e64(side)` | the function (public) | as row 82 | `86` | none |
+| 91 | `247F5` | `fighter.c` `fighter_24754(side)` | the function (public), or `fighter_24804` | none | `A8` | `test_fight.c` `check_char6_entrance` (calls it) |
+| 92 | `3ABAF` | `fighter.c` `fighter_reaction_apply(slot, reaction)` | the function (public) | `fighter_3a280(other+0x5F) != 0` (`0x3AB81/0x3AB8D`) | `E933C[..]` (row 76, `0x3AB7C`), then `BE008[ch]`, `ch` = self `+0x7A` (`90 95 A5 9F 83 89 9A`) | `test_fight.c` `check_pose_entry` (calls it; path unconfirmed) |
+| 93 | `3ADC1` | `fighter.c` `fighter_3ad98(side, anim)` | the function (public) | none | `E9358[b]`, `b` = byte `anim[0]+9` (`63 70 71 75 63 74 AC`) | `test_fight.c` `check_pose_entry` (calls it) |
+| 94 | `153BF` | `fighter.c` `fighter_15350(slot, rec, side)` | the function (public; `fn_register(0x15350)`) | `ai_pred_468d8(other) == 0` (`0x15360..0x15375`) | `AF` | `test_fight.c` `check_char3_2425` (calls it; path unconfirmed) |
+| 95 | `3E30C` | `fighter.c` `fighter_3e244(side)` | the function (public) | none | `C75AA[ch]`, `ch` = `ctx[3]`'s char (`91 96 A6 A0 84 8A 9B`) | `test_fight.c` `check_hold_3e244` (calls it) |
+| 96 | `48B1E` | `fighter.c` `fighter_48aac(slot, rec, side)` | the function (public) | state `st = 0` (`0x48AC3`), distance `<= 0x100` (`0x48AFA`) | `C75AA[ch]`, then `59` | `test_fight.c` `check_finisher_48aac` (calls it; path unconfirmed) |
+| 97 | `48B50` | same | same | as row 96 | as row 96 | as row 96 |
+| 98 | `48C40` | `fighter.c` `fighter_48be0(slot, rec)` | the function (public) | none | `4B` | none |
+| 99 | `3A32D` | `fighter.c` `fighter_3a2a0(side, ...)` | the function (public) | `(u8)r = 0` (`0x3A2F7`), `fighter_3a280(ctx[2]+0x5F) != 0` (`0x3A2FF..0x3A312`) | `BE008[ch]`, `ch` = `ctx[3]`'s char | `test_fight.c` `check_char4_react_b` (calls it; path unconfirmed) |
+| 100 | `44A53` | `fighter.c` `fighter_c4_spawn` (static; the shared body of `0x449B8` and `0x44A64`) | `fighter_449b8(rec)` (public) | `rec+0x14` slot != 0 (`0x449C6`) | `AB` | none |
+| 101 | `44C6B` | `fighter.c` `fighter_44bac(side)` | the function (public) | none | `C75AA[ch]` | `test_fight.c` `check_char4_react_a` (calls it) |
+| 102 | `4514D` | `fighter.c` `fighter_450e8(slot, rec, side)` | the function (public) | none | `47` | `test_fight.c` `check_char4_react_b` (calls it) |
+| 103 | `452C6` | `fighter.c` `fighter_45238(rec)` | the function (public; anim code `0x45238`) | `rec+0x14` slot != 0 (`0x4523F`); either arm of `DSW(DS_00104B00) != 0x25` (`0x45252`) | `7B` | `test_fight.c` `check_char4_react_c` (calls it) |
+| 104 | `459B9` (`mov` `459A3`, `jmp`) | `fighter.c` `fighter_45908(rec)` | the function (public), or `fighter_4579c` | slot and `other` != 0 (`0x4591D`/`0x45935`), `other+0x52 = 0x0F` (`0x4597A`) | `46` (case 3: two handles `0x28847C9`, `0x2886158`) | `test_fight.c` `check_char4_react_c` (calls it; path unconfirmed) |
+| 105 | `459AF` | same | same | slot and `other` != 0, `other+0x52 != 0x0F` | `6C`, `72` | as row 104 |
+| 106 | `459B9` | same | same | as row 105 | as row 105 | as row 104 |
+| 107 | `3F312` (`mov` `3F30D`) | `fighter.c` `fighter_3f308(slot)` | the function (public), or `fighter_3e6a8` with `+0x57 = 0` (`0x3E6DA`) | none | `6C`, `72` (via `fighter_3e6a8`: row 76's `E933C[..]` first, `0x3E702`) | none |
+| 108 | `3F356` (`mov` `3F351`) | same | same | none | as row 107 | none |
+| 109 | `21F3A` (`mov` `21F35`) | `fighter.c` `fighter_21f30` (static) | `fighter_21458(slot, rec, side)` (public; `fn_register(0x21458)` wraps it) | slot `+0x58 = 0` (`0x21470` table `0x21448`), `thr > slot+0x30` (`0x214A1`) | `E933C[..]` (row 76, `0x214B2`), `6C`, `72` | none |
+| 110 | `21F7E` (`mov` `21F79`) | same | same | as row 109 | as row 109 | none |
+| 111 | `23328` (`mov` `23323`) | `fighter.c` `fighter_232b4(side)` | the function (public) | `fighter_command_dispatch(ctx[1], ctx[2]+0x5F)` returns 0 (`0x232CA..0x232E2`) | `A9` | `test_fight.c` `check_sc_char6` (calls it; path unconfirmed) |
+| 112 | `3E0E3` | `fighter.c` `fighter_3e064(slot, rec, side)` | the function (public) | none | `B9` | `test_fight.c` `check_sc_char5` (calls it) |
+| 113 | `3DE47` | `fighter.c` `fighter_3dd84(side)` | the function (public) | none | `B7` | `test_fight.c` `check_sc_char5` (calls it) |
+| 114 | `3EED3` | `fighter.c` `fighter_3ee00(slot, rec, side)` | the function (public) | the other side's `DS_001077A8` entry != 0 (`0x3EE0C`), slot `+0x57 = 1` (case 1, `0x3EEC1`) | `BB` | `test_fight.c` `check_posecb_3ee00` (calls it; path unconfirmed) |
+| 115 | `45BAE` | `fighter.c` `fighter_45b50(slot, rec, side)` | the function (public) | slot `+0x57 = 1` (`0x45B65..0x45B6D`) | `50` | `test_fight.c` `check_49z_45b50` (calls it; path unconfirmed) |
+| 116 | `45BF4` | same | same | slot `+0x57 = 2` (`0x45B71`), `DSW(DS_001081EC) = 1` so the decrement reaches 0 (`0x45BD8`) | `D2` | as row 115 |
+| 117 | `47A7B` | `fighter.c` `fighter_47a00(side)` | the function (public), or `fighter_47b04` | none: after `0x47A71` | `E933C[..]` (row 76, `0x47A71`), then `46` | `test_fight.c` `check_49z_47a00` (calls it) |
+| 118 | `408F2` (`mov` `408ED`) | `fighter.c` `fighter_408e8` (static) | `fighter_40954(slot, rec, side)` (public; `fn_register(0x40954)`) | slot `+0x57 = 2` (`0x40979` table `0x40940`, case `0x40A20`) | `6C`, `72`, then row 121's `EE` | `test_fight.c` `check_fs_40954` (calls `fighter_40954`; case 2 unconfirmed) |
+| 119 | `40936` (`mov` `40931`) | same | same | as row 118 | as row 118 | as row 118 |
+| 120 | `3EFD2` (`mov` `3EFC9`) | `fighter.c` `fighter_3ef44(slot, rec, side)` | the function (public) | the other slot `os` != 0 (`0x3EF5C`) | `47` | `test_fight.c` `check_fs_3ef44` (calls it) |
+| 121 | `40B2B` (`mov` `40B26`) | `fighter.c` `fighter_40954(slot, rec, side)` | the function (public) | slot `+0x57 = 2` (`0x40969`/`0x40979`) | `6C`, `72` (rows 118/119, `0x40A20`), then `EE` | as row 118 |
+| 122 | `407D3` (`mov` `407CE`) | `fighter.c` `fighter_406b4()` | the function (public) | none: after the spawn loop | `73` | `test_fight.c` `check_fs_406b4` (calls it) |
+| 123 | `3705E` | `fighter.c` `fighter_36f10(slot)` | the function (public) | `DS_00104B13 != 0` (`0x36F17`), `os` != 0 (`0x36F36`), and `armb`: `DS_00104B14 != 0`, or `os`'s record side != `DSD(DS_00104AD4)`, or `os+0x63 = 1` (`0x36F71..0x36F9A`) | `BDAD4[ch]`, `ch` = slot `+0x7A` | `test_fight.c` `check_fs_36f10` (calls it; path unconfirmed) |
+| 124 | `3FD23` (`mov` `3FD1E`) | `fighter.c` `fighter_3fcb0(rec)` | the function (public; anim code `0x3FCB0`) | `DS_00105B3A <= 1` (`0x3FCB6`), the other side's slot `o` != 0 (`0x3FCD3`), `o+0x52 = 0x10` (`0x3FCD7`) | `48` | `test_fight.c` `check_p54_3fcb0` (calls it; path unconfirmed) |
+| 125 | `40546` (`mov` `40541`) | `fighter.c` `fighter_40434(rec)` | the function (public; anim code `0x40434`) | `rec+0x14` slot != 0 (`0x4043F`), the other slot `o` != 0 (`0x404DC`) | `B8` | `test_fight.c` `check_p54_40434` (calls it; path unconfirmed) |
+| 126 | `45F8C` (`mov` `45E59`, `jmp`) | `fighter.c` `fighter_45d98()` | the function (public; update entry 17) | an entry `e` with state byte `UPD17_STATE+e = 0` (`0x45D9F`), `rng_next(0x0A) = 0` (`0x45DBF`) | `AB` per such entry, in `e` order | `test_game.c` `check_update_k8c` (calls it; path unconfirmed) |
+| 127 | `45F8C` (`mov` `45F81`) | same | same | an entry with state 3 and `(s16)rec+0x36 + rec+0x1C <= 0` (`0x45F3A..0x45F47`) | `AC` | as row 126 |
+| 128 | `240B8` | `fighter.c` `fighter_24078(rec)` | the function (public; anim code `0x24078`) | the other side's `DS_001077A8` entry `o` != 0 (`0x24093`) | `6B`, then `BE008[o+0x7A]` (`0x240BF`) | `test_game.c` `check_anim_setters` (calls it) |
+| 129 | `240CF` | same | same | as row 128 | as row 128 | as row 128 |
+| 130 | `415DC` | `flow.c` `frontend_darken_marked` | the function (public), or `game_mode_12_step` | none: after the list walk | `33` | `test_game.c` `test_effects` (calls it) |
+| 131 | `41D2B` | `flow.c` `game_mode_12_step` case 1 | `game_mode_12_step()` (public) | `DSB(DS_00104B25) = 1` (`0x41C61`), a stage `i` from `DS_0010810F` below 7, `i != DSW(DS_00104AFC)` (`0x41CF6`) and `DS_00108106[i]` bit 7 set (`0x41CFE`) | `34 + n`, `n` = `DS_00108112` before its increment (`0x41D1A..0x41D28`), one per marked stage in the walk | `test_fight.c` `check_mode_12_*` (call it; case 1 unconfirmed) |
+| 132 | `4207F` | same, case 3 | same | `DSB(DS_00104B25) = 3`, `(s16)DSW(DS_001080F4 rec +0x36) + rec+0x1C >= 0x2300` (`0x41E7D`) | `3A` | as row 131 |
+| 133 | `420B7` | same, case 4 | same | `DSB(DS_00104B25) = 4`, `DS_0010810E = 7` so the increment gives 8 (`0x420AD cmp eax,8`) | `C7` | as row 131 |
+| 134 | `42112` (`mov` `4210D`) | same, case 5 | same | `DSB(DS_00104B25) = 5`, `DS_0010810E >= 8` (`0x420E8`), `DS_00104B1F != 3` (`0x420F9`) | `33` | as row 131 |
+| 135 | `42229` | same, case 6 | same | `DSB(DS_00104B25) = 6` (`0x4217D`), `DS_001080F4` a valid record | `BC` (EDX = the remainder) | as row 131 |
+| 136 | `28D8B` | `flow.c` `frontend_char_screen_hook_voice` | the function (public; `fn_register(0x28D80)`) | none: first statement | `2E` | `test_fight.c` `check_char_screen_modes` (calls it) |
+| 137 | `26A2C` | `flow.c` `game_hook_26998` | the function (public) | none after `fighter_spawn` (`0x269E5`) | `28` | `test_fight.c` `check_mode_1a_hooks` (calls it) |
+| 138 | `270F9` | `flow.c` `game_hook_270bc` | the function (public) | none | `25` | `test_fight.c` `check_mode_1a_hooks` (calls it) |
+| 139 | `257AD` | `flow.c` `game_coin_divert(players)` | the function (public), or `game_state_step()` with `DS_00104B1D = 0` and a coin accepted (`0x11D34`) | none: first statement | `100`, then `53` (row 140) | `test_fight.c` `check_coin_divert` (calls it) |
+| 140 | `25820` | same | same | none: tail | `100`, `53` | as row 139 |
+| 141 | `28DCA` | `flow.c` `flow_player_join(side)` | the function (public) | none | `100` | `test_fight.c` `check_33c18_callers_a` (calls it) |
+| 142 | `282BB` | `flow.c` `flow_match_result_text` | the function (public) | `DSD(DS_00104AD4) = 0xFFFFFFFF` (`0x28139`) | `24` | `test_fight.c` `check_33c18_callers_b` (calls it; path unconfirmed) |
+| 143 | `2817F`/`281F5` | same | same | `DSD(DS_00104AD4) = 0` (or 1), and `(s32)DSD(DS_001088EF) >> 24 < 1` or the side's slot `+0x63 != 0` (`0x28164..0x28178`, `0x281DA..0x281EE`) | `24` | as row 142 |
+| 144 | `282BB` | same | same | `DSD(DS_00104AD4) = 2` (`0x2814F`) | `24` | as row 142 |
+| 145 | `2730A` | `flow.c` `flow_arena_ko_check` | the function (public), or `game_mode_0c_step` | `DS_0010780A[DS_0010810D slot] >= 0x78` (`0x272F4..0x27303`) | `D3` | none |
+| 146 | `27347` | same | same | the first test fails, `DS_0010780A[DS_00104B12 slot] >= 0x78` (`0x2731B..0x27340`) | `27`, `22` | none |
+| 147 | `27351` | same | same | as row 146 | as row 146 | none |
+| 148 | `27B01` | `flow.c` `game_mode_0e_step` | the function (public) | `flow_continue_poll` returns 0 (`0x27A2F`), the tick arm (`0x27ACD..0x27AE3`), `DS_00108110 = 0` so the decrement goes negative (`0x27AF3`) | `27`, `22` | `test_fight.c` `check_mode_0e` (calls it; path unconfirmed) |
+| 149 | `27B0D` | same | same | as row 148 | as row 148 | as row 148 |
+| 150 | `2759E` | `flow.c` `game_mode_0d_step` | the function (public) | `DS_00104B0C != 0` (`0x2756E`), `DS_00104B21 = 6` so `n = 7` (`0x27590`) | `2A`, then `flow_match_result_text`'s `24` (rows 142-144) | `test_fight.c` `check_2c2b0` (calls it; path unconfirmed) |
+| 151 | `277B0` | same | same | `DS_00104B0C != 0`, `n != 7` (the arm after `0x276C0`) | `25` when `DS_00104B0A ^ 1 = 0`, else `26` (`0x277A8 add eax,0x25`) | as row 150 |
+| 152 | `297C4` | `flow.c` `game_mode_32_step` | the function (public) | the round-won arm; `DS_00104AF0 = 4` or `DS_00104AF1 = 4` after the increment (`0x2979D..0x297B9`) | `2A`, then row 142-144's `24` | `test_fight.c` `check_33c18_callers_b` (calls it; path unconfirmed) |
+| 153 | `29960` | same | same | the round-won arm, neither count at 4 | `25` or `26` (as row 151) | as row 152 |
+| 154 | `25E39` | `flow.c` `game_mode_05_step` case 2 | the function (public) | `DSB(DS_00104B25) = 2` (`0x25C92` switch) | `D9` when `DS_00104B14 != 0`, else `D7` | `test_fight.c` `check_mode5_a`/`_b` (call it; case 2 unconfirmed) |
+| 155 | `294D5` (`mov` `294CE`) | `flow.c` `game_mode_30_step` case 2 | the function (public) | `DSB(DS_00104B25) = 2` (`0x29332` switch) | `D7` | `test_fight.c` `check_mode_30` (calls it; case 2 unconfirmed) |
+| 156 | `29983` | `flow.c` `flow_round_over_check` | the function (public), or `game_mode_31_step` | `DS_0010780A >= 0x78` (`0x29974`) | `27`, `22`; then rows 158/159 when `DS_001078BE >= 0x78` too | `test_fight.c` `check_flow_round_over_check` (calls it) |
+| 157 | `29992` | same | same | as row 156 | as row 156 | as row 156 |
+| 158 | `299C1` | same | same | `DS_001078BE >= 0x78` (`0x299AD`) | `27`, `22` | as row 156 |
+| 159 | `299CD` | same | same | as row 158 | as row 158 | as row 156 |
+| 160 | `29698` (`mov` `2968C`) | `flow.c` `game_mode_33_step` | the function (public) | `DSW(DS_00104AFE) = 1` so the decrement is `<= 0` (`0x29687`) | `2B` (and the idle pass's rows 48/49 when their gates hold, `0x2965F`) | `test_fight.c` `check_mode_33` (calls it; path unconfirmed) |
+| 161 | `4F581` (`mov` `4F577`) | `flow.c` `flow_round_timer_step` | the function (public; update entry) | `DS_00105B3B = 0` (`0x4F52C`), `DSD(DS_001088D0)` in `1..0x62` (`0x4F539`), `DSW(DS_00104AF4) % DS_001088D0 = 0` (`0x4F548..0x4F55E`), `DS_001088F2 != 0` (`0x4F560`) and `<= 10` signed (`0x4F569..0x4F575`) | `52` | `test_fight.c` `check_49z_round_timer` (calls it; path unconfirmed) |
+| 162 | `27FF9` | `flow.c` `flow_round_end_check` | the function (public) | a side at `>= 0x78` (`0x27FB3`/`0x27FBF`), `DSW(DS_00104B00) != 0x0B`, `DS_00104B1E = DSD(DS_00104ADC)`, `DSD(DS_00104AD4) = 2` (`0x27FCF..0x27FF2`) | `D3` | `test_fight.c` `check_fight_frame_b` (calls it; path unconfirmed) |
+| 163 | `2805F` | same | same | both sides `< 0x78`, `(s32)DSD(DS_001088EF) >> 24 < 1` (`0x28049..0x28054`) | `D3` | as row 162 |
+| 164 | `42E7F` | `flow.c` `flow_challenge_poll` | the function (public), or `game_mode_13_step` | `DS_00108110 = 0` so the decrement goes negative (`0x42E35`), `DSD(DS_00104AD4) != 2` and that slot's `+0x63 != 1` (`0x42E43..0x42E65`) | `2D` | `test_fight.c` `check_mode_13_b` (calls it; path unconfirmed) |
+| 165 | `4250D` | `flow.c` `game_mode_13_step` case 0 | the function (public) | `DSB(DS_00104B25) = 0` (`0x424EE`) | `2C` | `test_fight.c` `m13_step` (calls it; case 0 unconfirmed) |
+| 166 | `25AF1` | `flow.c` `game_hook_25ae8` | the function (public) | none: first statement | `100`, then `3D` | `test_fight.c` `check_mode_17_hooks` (calls it) |
+| 167 | `25B51` | same | same | none | as row 166 | as row 166 |
+| 168 | `28C2A` | `flow.c` `game_mode_0a_step` | the function (public) | `DS_00107804 = 0` and `DS_00107898 = 0` (`0x28C0E..0x28C1E`) | `D8` | `test_fight.c` `check_mode_0a` (calls it; path unconfirmed) |
+| 169 | `27821` | `flow.c` `game_mode_0f_step` | the function (public) | `DSW(DS_00104AFE) = 1` so `hold <= 0` (`0x27811`) | `2B` | `test_fight.c` `check_mode_0f` (calls it; path unconfirmed) |
+| 170 | `121CE` | `flow.c` `game_state_title` (static) | `game_state_step()` with `DSW(DS_000F0A64) = 1` | `DSB(DS_000F0A6F) = 0` (the title's first entry) | `41`, `43` | `test_game.c` `test_frontend` (the title entry); Task 3 owns these two rows |
+| 171 | `121D8` | same | same | as row 170 | as row 170 | as row 170 |
+| 172 | `1159F` | `flow.c` `game_state_4` (static) | `game_state_step()` with `DSW(DS_000F0A64) = 4` | `DSW(DS_0009AD98) = 0` | `100` | none |
+| 173 | `116C4` | same | same | `DSW(DS_0009AD98) = 1` | `100` | none |
+| 174 | `11844` | same | same | `DSW(DS_0009AD98) = 2` | `100` | none |
+| 175 | `11A94` | `flow.c` `game_state_6` (static) | `game_state_step()` with `DSW(DS_000F0A64) = 6` | none: first statement | `100` | `test_fight.c` `check_state6` (drives state 6) |
+| 176 | `1EEF4` | `flow.c` `game_mode_1e_step` case 0 | the function (public) | `DSB(DS_00104B25) = 0`, `DSD(DS_00104AD4) = 2`, `DS_00104B1F = 0`, `hiscore_rank_pair() != 0` (`0x1EECF..0x1EEE8`) | `100`, `E1` | `test_fight.c` `check_mode_1e_*` (call it; path unconfirmed) |
+| 177 | `1EEFE` | same | same | as row 176 | as row 176 | as row 176 |
+| 178 | `1F1EC` | same, case 4 | same | `DSB(DS_00104B25) = 4`, `DS_00107813 = 0` (`0x1F199`), `hiscore_rank_single(DS_001077EC) != 0` (`0x1F1A6`), `advance` (`0x1F1B8`) | `100`, `E1` | as row 176 |
+| 179 | `1F1F6` | same | same | as row 178 | as row 178 | as row 176 |
+| 180 | `1F249` | same, case 5 | same | `DSB(DS_00104B25) = 5`, `nameentry_step(0) = 0` (`0x1F203`) | `nameentry_step(0)`'s ids, then `E3`, `E2` | as row 176 |
+| 181 | `1F253` | same | same | as row 180 | as row 180 | as row 176 |
+| 182 | `1F307` | same, case 7 | same | `DSB(DS_00104B25) = 7`, `DS_001078A7 = 0` (`0x1F2B7`), `hiscore_rank_single(DS_00107880) != 0` (`0x1F2C4`), `advance` | `100`, `E1` | as row 176 |
+| 183 | `1F311` | same | same | as row 182 | as row 182 | as row 176 |
+| 184 | `1F36C` | same, case 8 | same | `DSB(DS_00104B25) = 8`, `nameentry_step(1) = 0` (`0x1F326`) | `nameentry_step(1)`'s ids, then `E3`, `E2` | as row 176 |
+| 185 | `1F376` | same | same | as row 184 | as row 184 | as row 176 |
+| 186 | `1EF8D`/`1F07F`/`1F109`/`1F01F` | same, cases `0x0B..0x0E` | same | `DSB(DS_00104B25)` in `0x0B..0x0E`, `nameentry_step(side_of[k]) = 0` (`0x1EF46`/`0x1F039`/`0x1F0C3`/`0x1EFD8`) | `nameentry_step`'s ids, then `E3`, `E2` | as row 176 |
+| 187 | `1EF97`/`1F089`/`1F113`/`1F029` | same | same | as row 186 | as row 186 | as row 176 |
+| 188 | `1EFA9` | same, case `0x0F` | same | `DSB(DS_00104B25) = 0x0F` | `E1`, then `nameentry_step(1)`'s ids (`0x1EFC3`) | as row 176 |
+| 189 | `1F099` | same, case `0x10` | same | `DSB(DS_00104B25) = 0x10` | `E1`, then `nameentry_step(0)`'s ids (`0x1F0B4`) | as row 176 |
+| 190 | `20955` | `flow.c` `game_mode_1f_step` case 0 | the function (public) | `DSB(DS_00104B25) = 0` (`0x2091B`) | `3B` | `test_fight.c` `check_mode_1f_state0` (calls it) |
+| 191 | `26DA9` | `flow.c` `flow_26d4c` (static) | `game_mode_22_step()` (public) | `(s32)DSD(DS_00104AC4) <= 0` (`0x26D54`) | `29`, `22` | none |
+| 192 | `26DB8` | same | same | as row 191 | as row 191 | none |
+| 193 | `26B32` | `flow.c` `game_mode_23_step` case 2 | the function (public) | `DSB(DS_00104B25) = 2` (`0x26A55` switch) | `60` | `test_fight.c` `check_mode_23` (calls it; case 2 unconfirmed) |
+| 194 | `11DF2` | `flow.c` `game_state_step` case 5 | `game_state_step()` | `DSW(DS_000F0A64) = 5` | `100` | none |
+| 195 | `11BF0` (tail `jmp`) | same, case 7's timer exit | same | `DSW(DS_000F0A64) = 7`, `DSW(DS_000F0A6A) = 1` so the new value is 0 (`0x11E72`) | `100` | `test_game.c` `check_timer_exit` (drives the exit) |
+| 196 | `2FA6D` | `menu.c` `menu_run(table, ...)` | the function (public) | none: after `config_screen_wait_zero` | `100` | `test_platform.c` `check_menu_run` (calls it) |
+| 197 | `2FFFD` (`mov` `2FFF6`) | `menu.c` `menu_step(table, stride, flags)` | the function (public) | `DSB(MENU_ACTIVE) = 0` (`0x2FFCD`) | `100` | `test_platform.c` `check_menu_step` (calls it; first-call path) |
+| 198 | `200B5` | `nameentry.c` `nameentry_cells_step` case 1 | the function (public), or `nameentry_step(side)` (it runs first, `0x1F464`) | a cell `i` (below `NE_CELL_CT`) with state byte `+0x12 = 1` (`0x1FFFA..0x20036`) | `B0`, `7B` per such cell, in cell order | `test_fight.c` `check_nameentry_cells` (calls it; case 1 unconfirmed) |
+| 199 | `200BF` | same | same | as row 198 | as row 198 | as row 198 |
+| 200 | `2012D` (`mov` `20128`) | same, case 2 | same | a cell with `+0x12 = 2` and `tgt < y` (`0x200F7`) | `71` | as row 198 |
+| 201 | `201D2` (`mov` `201C6`/`201CD`) | same, case 3 | same | a cell with `+0x12 = 3` and `tgt < +0x08` (`0x20183`) | `E7` for an odd cell index `i`, else `E8` | as row 198 |
+| 202 | `202C5` | same, case 5 | same | a cell with `+0x12 = 5` and `tgt > x` (`0x2027D`) | `70`, `4D` (case 3: two handles) | as row 198 |
+| 203 | `202CF` | same | same | as row 202 | as row 202 | as row 198 |
+| 204 | `2043F` | same, case 8 | same | a cell with `+0x12 = 8`, letter code `+0x13 = 0x1B` (`0x203E0`) | `E9` | as row 198 |
+| 205 | `204B5` | same, case 9 | same | a cell with `+0x12 = 9` (`0x20487`) | `E9` | as row 198 |
+| 206 | `1F52B` (`mov` `1F526`) | `nameentry.c` `nameentry_step(side)` | the function (public), or `game_mode_1e_step` | not finished (`DSW(DS_0010438C) != 0` or `DS_001044AC != 0`, `0x1F4AD`), `DS_001044D8 = 0` (`0x1F4D2`), the side's pad byte bit `0x10` (`0x1F4DF..0x1F501`); the cells step runs first | `E6`, then `39` (row 207) or `34` (row 208) | `test_fight.c` `check_nameentry_step` (calls it; path unconfirmed) |
+| 207 | `1F593` (`mov` `1F580`) | same | same | as row 206, and the column after `+3` past the row's limit (`0x20` on row `0xF`, else `0x1D`; `0x1F549..0x1F579`) | `E6`, `39` | as row 206 |
+| 208 | `1F593` (`mov` `1F58E`) | same | same | as row 206, the column within the limit | `E6`, `34` | as row 206 |
+| 209 | `1F5FD` (`mov` `1F5F8`) | same | same | not finished, `DS_001044D8 = 0`, no bit `0x10`, pad bit `0x20` (`0x1F5B6..0x1F5F6`) | `E6`, then `35` (row 210) or `38` (row 211) | as row 206 |
+| 210 | `1F644` (`mov` `1F638`) | same | same | as row 209, the column after `-3` below `0xB` (`0x1F60A..0x1F615`) | `E6`, `35` | as row 206 |
+| 211 | `1F644` (`mov` `1F63F`) | same | same | as row 209, the column at or above `0xB` | `E6`, `38` | as row 206 |
+| 212 | `1F6AE` (`mov` `1F6A9`) | same | same | no bit `0x10`/`0x20`, pad bit `0x80` (`0x1F667..0x1F6A7`) | `E6`, then `39` (row 213) or `37` (row 214) | as row 206 |
+| 213 | `1F6E8` (`mov` `1F6DE`) | same | same | as row 212, the column `= 0x20` (`0x1F6D1..0x1F6DC`) | `E6`, `39` | as row 206 |
+| 214 | `1F70A` (`mov` `1F705`) | same | same | as row 212, the column `!= 0x20` | `E6`, `37` | as row 206 |
+| 215 | `1F75F` (`mov` `1F75A`) | same | same | no bit `0x10`/`0x20`/`0x80`, pad bit `0x40` (`0x1F714..0x1F754`) | `E6`, then `38` (row 216) or `36` (row 217) | as row 206 |
+| 216 | `1F794` (`mov` `1F78F`) | same | same | as row 215, the column `= 0x20` (`0x1F782..0x1F78D`) | `E6`, `38` | as row 206 |
+| 217 | `1F7B5` (`mov` `1F7B0`) | same | same | as row 215, the column `!= 0x20` | `E6`, `36` | as row 206 |
+| 218 | `1FF31` | same, the letter pick | same | not finished, a face-button press (pad bits `0x0F`) or a queued letter (`0x1FCF9..0x1FD28`), the letter not DEL `0x1B`/END `0x1C` (`0x1FE0A`/`0x1FE77`), `NE_NAME_COUNT < NE_NAME_LIMIT` (`0x1FEA3..0x1FEAE`) | `E9` (after any of rows 206-217 in the same call) | as row 206 |
+| 219 | `44AFF` (`mov` `44AFA`) | `fighter.c` `fighter_c4_spawn` (static; `0x44A64`'s copy of row 100's body) | `fighter_44a64(rec)` (public; anim code `0x44A64`) | `rec+0x14` slot != 0 (`0x44A72`, the copy of `0x449C6`) | `AB` | none |
+
+### §1.4 Open at the checkpoint
+
+- The three §0.9 decisions are still unanswered: reclassifying `0x1D0BC`,
+  retiring the title announcer stand-in, and wiring `fight.c:4007`'s three
+  calls.
+- No raw-wins correction to §0 was found. §1.1 adds four raw facts. Id 0
+  returns AL = 0 before the table. Case 2 returns AL = 0 on its playing arm.
+  Case 4 tests `0x180122FD` and queues it with loop byte 1. `0x1E30C` and
+  `0x1E458` also read `0x500BB`. `flow.c`'s `sound_voice` already models the
+  first three (`0x2C401`, `0x2C48A`, `0x2C8C0..0x2C8D8`). Only §0.1's table
+  text lacks them.
+- §0.5's 85 are now 75 outside, 1 silent (row 219, batch D4) and 9 wired by
+  K11.
