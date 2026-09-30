@@ -620,5 +620,10 @@ frame reached`, `mode 0x27 after the Enter`, `snapshots kb == raw (0 differ)`,
 `session.txt`, no `.partial`/`.failed` left in `data/k11-captures`. `poll.log`
 sha256 `9f8860340b77eaefe12a3c480638000609882b752791d6edf33d20067609fa0c`.
 The map is identical to run 2's (all 18 names and the chord `2410` at
-`press f + 1`, `S(f − 1) raw = 0`, 0 of 21 late, `late=1` nowhere in the log);
-BIOS consumption `{1: 7, 2: 8, 3: 5, 4: 2}` (22 of 22 pinned).
+`press f + 1`, `S(f − 1) raw = 0`; `late=1` nowhere in the log). The two
+counts measure different things: **21** is the pad presses (18 single names
++ the chord's 3), each `late=0`, i.e. written in the spin of its `F − 1`
+(the scheduled `after`/`after_mode` steps); **22** is the BIOS words, those 21
+plus the boot Enter (wall-timed, logged `late=0` by definition), and all 22
+were consumed and pinned by `port_script` (`presses with bios 22 H 22`).
+BIOS consumption `{1: 7, 2: 8, 3: 5, 4: 2}` over those 22.
