@@ -681,7 +681,7 @@ with no `left-queued` line (as the plan).
 **The gp-pads script** (`python3 tools/gp_session.py port-script --scenario
 gp-pads --capture data/k11-captures/gp-pads --out $S/gp-pads.script` → 64
 lines, byte-identical to `/tmp/gameplay-u1/gp-pads.script` of §G.7.3):
-`all checks passed`, `exit=0`; `gp.log` holds the 22 keys and 36 bits lines in
+`all checks passed`, `exit=0`; `gp.log` holds the 22 keys and 38 bits lines in
 script order, every key logged with `mode=0027` after the first (`key 0 f=321
 … mode=0003`), the chord `key 19/20/21 f=981` (`2C 7A`, `31 6E`, `4D E0`) then
 `bits f=981 kb=2410`, `bits f=986 kb=0000`, and **no `left-queued` line**: the
@@ -713,8 +713,7 @@ tripped and lists it under "Not tested". It is shown failing under mutation (a)
 (`3 != 0`: a step applied one iteration late is exactly a miss) and (e); what
 no *well-formed script* can trip on the unmutated driver is a miss, because
 each `game_loop_step()` raises the counter by one and the parser rejects
-unsorted steps. Not tested: `CHECK(!gp_failed …)` (no scripted path faults; a
-fault would need a capture that faults).
+unsorted steps. (`CHECK(!gp_failed …)` is proven in §H.2 item 2.)
 
 ## §G.10 Every displayed frame and the per-iteration trace (U2 Task 2)
 
@@ -768,11 +767,14 @@ present).
   wrote two frames (`00000 f=025A … mode=001A`, `00001 f=026B … mode=001A`), so
   `gp_dumped > 1u` held. **Correction (measured):** a check added, the first
   dumped frame's `f` equals `enter_frame` (sentinel `gp_first_f = 0xFFFFF`):
-  the Enter's iteration always ends with a displayed image and the first image
-  is always new, so the after-iteration call dumps at `enter_frame` at the
-  latest. Under (a) → `FAIL …:12373: 602 != 300`, `FAILURES: 1`.
+  in the smoke and gp-pads the first frame comes from the pump hook
+  (`f=012C` tick `138`); the after-iteration call would write it only if the
+  pump hook's dump were gone. Under (a) → `FAIL …:12373: 602 != 300`,
+  `FAILURES: 1`.
 - (b) `gp_trace_line()` only when `(gp_iters & 1u) == 0u` →
-  `FAIL …:12370: 300 != 601` (the trace-count check), `FAILURES: 1`.
+  `FAIL …:12370: 300 != 601` (the trace-count check, then
+  `gp_trace_lines == gp_iters_armed`; replaced in §H.2 item 1 by `== end −
+  enter_frame + 1`, which fails the same way), `FAILURES: 1`.
 
 Which call dumps what (measured on the smoke, each call removed alone): without
 the after-iteration call the dump is unchanged (145 frames); without the pump
@@ -781,7 +783,9 @@ blocking fades (`f=012C` ticks `138`/`139`, `f=01C2` ticks `1CF..1D1`,
 `f=0258` tick `267`, `f=025A` tick `269`, `f=026B` tick `27C`). So in the
 smoke every iteration pumps (the spin `0x256C6..0x256DB` pumps), and the
 after-iteration call is the defensive path of Review Focus 3 (an iteration
-whose spin never pumps): kept, and named here as not exercised by the smoke.
+whose spin never pumps). It never writes a frame in the smoke or gp-pads; it
+stands in for the pump hook's dump only under mutation; **no assertion
+protects it**, and Review Focus 3's catch-up present has no check.
 
 **The gp-pads replay** (`$S/gp-pads.script`, 17.6 s wall): `all checks
 passed`; 3 `.ipx` (`f=0141` ticks `14D..14F`, the MAIN MENU fade-in), 721 `T`
@@ -804,9 +808,14 @@ in `TRACE_FIELDS`:**
    `0x266000`, `poll.log`'s `B` record), the port its Ghidra linear address:
    `0x2A2BEC − 0x266000 + 0x80000 = 0xBCBEC` (the "Start" row, §G.7.3).
 
-So the port replays the 22 BIOS words and the 36 bitmap changes of `gp-pads`
+So the port replays the 22 BIOS words and the 38 bitmap changes of `gp-pads`
 with the capture's `mode st raw pad new held e0 e2 rng cred fp b1d b1f b25 w10d
-cnt s0_* s1_*` at every one of the 721 frames. (Informational: U3 owns the
+cnt s0_* s1_*` at every one of the 721 frames. **What that shows is narrow:**
+over `0x141..0x411` only the pad words vary in the capture (`raw` 18 distinct
+values, `e0`/`e2` 3, `pad`/`new`/`held` 2); `mode` (`0x27`), `st`, `rng`,
+`cred`, `fp`, `b1d`, `b1f`, `b25`, `w10d`, `cnt` and the six slot bytes hold one
+value each (measured on run 3, §H.2 item 6), so their equality in this MAIN MENU
+window says little. (Informational: U3 owns the
 comparison and its ratchets; items 2 and 3 are recorded for it in §H.)
 
 ## §G.11 `make gp-replay` and the gate (U2 Task 3)
@@ -815,13 +824,17 @@ comparison and its ratchets; items 2 and 3 are recorded for it in §H.)
 `gp-capture` (in `.PHONY`; `make help` lists it), as the plan's Step 1 with one
 addition: an absent capture prints `gp-replay: no capture at
 data/k11-captures/<scenario>` and exits 0, **or exits 1 when
-`PR_ORACLE_REQUIRED` is set (even empty, the `make test` convention)**. And
-`make verify` runs it on the U1 capture after the K11 oracles:
-`@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory gp-replay scenario=gp-pads`
-(the controller's instruction for U2: the real `gp-pads` capture is the
-driver's test input, skipped only without `PR_ORACLE_REQUIRED`). The plan put
-nothing in `make verify` (U3's `gp-oracle` adds the idle-loss run); U3's edit
-of the `verify` recipe goes after this line.
+`PR_ORACLE_REQUIRED` is set (even empty, the `make test` convention) and
+`GP_OPTIONAL` is empty**. And `make verify` runs it on the U1 capture after the
+K11 oracles: `@$(MAKE) --no-print-directory gp-replay scenario=gp-pads
+GP_OPTIONAL=1` (the controller's instruction: the real `gp-pads` capture is
+the driver's test input). **It skips without the capture, like the K11
+oracles (spec §4.3), whatever `PR_ORACLE_REQUIRED` says** (review 1,
+Important 1, ruling (b); §H.2 item 3): a checkout without
+`data/k11-captures/gp-pads` still passes `make verify`. U3's `gp-oracle` must
+not inherit `PR_ORACLE_REQUIRED` either (pass `GP_OPTIONAL=1` to its
+`gp-replay`). The plan put nothing in `make verify` (U3's `gp-oracle` adds the
+idle-loss run); U3's edit of the `verify` recipe goes after this line.
 
 **Step 2** (`make gp-replay scenario=gp-pads GP_DUMP=/tmp/pr_u2_gp`):
 `gp_session: port-script: gp-pads: wrote /tmp/pr_u2_gp/gp-pads.script (64
@@ -863,7 +876,8 @@ and `make gp-replay scenario=<gp-…>` (in `make verify` on `gp-pads`). No
 - Input: `PR_GP_SCRIPT`, a port script v2 (`gp_session.py port-script`). The
   parser sizes its step array from the script's line count (`calloc`, no fixed
   cap) and rejects a script that is unsorted, lacks `enter_frame`/`enter_state`,
-  does not end in `end`, or whose first step is not a `key` at `enter_frame`.
+  does not end in `end`, or whose first step is not the Enter `key <enter_frame>
+  1C 0D`.
 - The frame rule: before the iteration that raises `DS_000EF6DC` from `f` to
   `f + 1`, every step with frame `≤ f + 1` is applied in script order — `key`
   through `input_push` (a chord's words together, §G.4), `bits` through
@@ -885,11 +899,13 @@ and `make gp-replay scenario=<gp-…>` (in `make verify` on `gp-pads`). No
   loader screen and iteration end; `frames.txt` (`%05u f=%04X tick=%08X
   mode=%04X`); `trace.txt`, one `T` line per armed iteration with the
   `SNAP_FIELDS` names and widths, read after `game_loop_step()` returns.
-- Checks (15 sites): the parse; the log and dump files open; armed; mode 3
+- Checks (15 sites): the parse (including the first key being `1C 0D`, §H.2
+  item 4); the log and dump files open; armed; mode 3
   before and `0x27` after the Enter's iteration, the counter at `enter_frame`
   and `DS_000F0A64 = enter_state` after it (sentinels `0xFFFF`/`0xFFFFF`); keys
-  queued = keys in the script; no missed step; end reached; no fault; more than
-  one frame; the first frame at `enter_frame`; one `T` line per armed iteration.
+  queued = keys in the script; no missed step; end reached; no CPU fault and no
+  frame-write failure; more than one frame; the first frame at `enter_frame`;
+  `end − enter_frame + 1` `T` lines (one per `f`, §H.2 item 1).
 
 **The smoke's mode runs** (§G.10): `300 × 0x27, 1 × 0x2D, 18 × 0x1A, 18 × 0x1B,
 264 × 0x10` over `f = 0x12C..0x384` — the port's first view of spec §3.5's
@@ -902,11 +918,13 @@ every `f` except `tick` (host-timed), `t508` (sampling point) and `ent`
 **Not tested.** A step missed behind a blocking loop (a script cannot express
 one: the generator rejects a key consumed while `f` is frozen, §4.1/Q5, and
 the parser rejects unsorted steps; `gp_missed` is shown failing only under the
-driver mutations of §G.9); a fault during replay (no scripted path faults); a
+driver mutations of §G.9); a CPU fault during replay (no scripted path faults;
+the same check is proven through the frame-write path, §H.2 item 2); a
 script beyond `0xFFFF` frames (the counter is a word; the idle run ends near
 `0x22BA`); a present in an iteration whose spin never pumps (the smoke's and
-gp-pads' iterations all pump, §G.10, so the after-iteration dump is exercised
-only as the first-frame path); `left-queued` (neither script leaves a key).
+gp-pads' iterations all pump, §G.10: the after-iteration dump never writes a
+frame there, and no assertion protects it); `left-queued` (neither script
+leaves a key).
 
 **Gate:** §G.11 Step 3 (the closure commit changes only `docs/`, this record and `AGENTS.md`'s driver list; `make verify` re-run on it, same results, U2 report).
 
@@ -933,8 +951,68 @@ only as the first-frame path); `left-queued` (neither script leaves a key).
 4. **`gp_missed` can fail** (§G.9): under the keys-one-late mutation (`3 !=
    0`); the plan listed it as untestable. Only a well-formed script on the
    unmutated driver cannot trip it.
-5. **`make verify` replays gp-pads** (§G.11), and `gp-replay` fails on an absent
-   capture under `PR_ORACLE_REQUIRED` — both beyond the plan, per the
-   controller's instruction.
+5. **`make verify` replays gp-pads** (§G.11), skipping without the capture
+   (§H.2 item 3); standalone `gp-replay` fails on an absent capture under
+   `PR_ORACLE_REQUIRED` — both beyond the plan, per the controller's
+   instruction.
 6. The plan's baseline grep (`… k11_compare`) was replaced by §G.0's
    (`… == demo-fight`, K11 lines apart), as U1 did.
+
+### §H.2 U2 review 1 fixes
+
+Review `.superpowers/sdd/2026-09-30-gameplay-scope/u2-review1.md` ("Needs
+fixes"; spec verdict compliant). `gameplay-u2` was first rebased onto
+`gameplay-u1` `dfde805` (U1's review fixes). U1's review-fix section, which
+U1 had numbered §G.9, is now **§G.8a**, so U2 keeps §G.9–§G.12 (U3's plan
+uses §G.13+); its references (§G.7's "run 3, §G.8a", `docs/PROGRESS.md`'s U1
+paragraph) were updated. The gp-pads capture is now U1's run 3 (`poll.log`
+sha256 `9f886034…fa0c`); its port script is byte-identical to run 2's
+(`diff` of the two `port-script` outputs, 64 lines, `enter_frame 321`,
+`enter_state 0000`, 22 `key` and 38 `bits` lines), so every §G.9–§G.11 number
+stands. Each fix, with its mutation (each restored → `all checks passed`):
+
+1. **One `T` line per `f` (Minor 1).** `CHECK_EQ_INT(gp_trace_lines,
+   gp_iters_armed)` counted two variables incremented side by side (a harness
+   tautology). Replaced by `gp_trace_lines == gp_end − gp_enter_frame + 1`:
+   each armed iteration raises the counter by exactly one (`0x24CDB`), so a
+   skipped or repeated `f` fails it. Smoke 601, gp-pads 721 (pass). Mutations:
+   trace only on even iterations → `FAIL …:12378: 300 != 601`; a second
+   `gp_trace_line()` in the Enter's iteration (a repeated `f`) → `FAIL
+   …:12379: 602 != 601`. `gp_iters_armed` is gone.
+2. **`CHECK(!gp_failed …)` proven (Minor 2);** its message now reads "no CPU
+   fault or frame-write failure ended the gp replay". Mutation `ok = 0;` after
+   the frame write in `gp_dump_if_new` → `FAILURES: 6`, among them `FAIL
+   …:12371: no CPU fault or frame-write failure ended the gp replay` (also `1
+   != 3` keys, the end, the frames, `1048575 != 300` first frame, `1 != 601`
+   T lines: the write failure stops the loop at the Enter).
+3. **`make verify` skips gp-pads without the capture (Important 1, ruling
+   (b)).** Spec §4.3: a gp capture skips like the K11 oracles. The verify line
+   is `$(MAKE) gp-replay scenario=gp-pads GP_OPTIONAL=1`; `GP_OPTIONAL=1`
+   turns the `PR_ORACLE_REQUIRED` failure off (a make variable, not an
+   inherited env var, so `PR_ORACLE_REQUIRED=1 make verify` skips too).
+   Measured: `PR_ORACLE_REQUIRED=1 make gp-replay scenario=gp-nonesuch` →
+   `… (PR_ORACLE_REQUIRED)`, exit 2; the same with `GP_OPTIONAL=1` →
+   `gp-replay: no capture at data/k11-captures/gp-nonesuch`, exit 0;
+   `PR_ORACLE_REQUIRED=1 make gp-replay scenario=gp-pads GP_OPTIONAL=1` → `all
+   checks passed`. U3's `gp-oracle` must not inherit `PR_ORACLE_REQUIRED`
+   either.
+4. **The first key must be the Enter (Minor 7).** `gp_parse` also requires
+   `gp_step[0]` to be scan `0x1C` ascii `0x0D` (the mode-3 Enter the arm needs,
+   `0x24ECF`). Mutation: the smoke with `key 300 39 20` → `FAIL …:12298:
+   PR_GP_SCRIPT names a parsable gp port script v2`.
+5. **`make gp-replay` without `scenario=` (Minor 6)** fell back to the global
+   `scenario ?= walk` and fed the K11 v1 capture to `port-script`. The recipe
+   now requires `gp-?*`: `make gp-replay` and `make gp-replay scenario=walk` →
+   `usage: make gp-replay scenario=gp-<name> (got scenario=walk)`, exit 2.
+6. **Wording (Minors 3–5):** the bits count is 38 (18 one-frame pads × 2 + the
+   chord's press and release), not 36; the after-iteration dump is stated as
+   unprotected (§G.10, §G.12); the gp-pads match is stated as narrow. Measured
+   on run 3 (721 common `f`): distinct capture values `raw` 18, `e0` 3, `e2` 3,
+   `pad`/`new`/`held` 2 each, and **1** for `mode`, `st`, `rng`, `cred`, `fp`,
+   `b1d`, `b1f`, `b25`, `w10d`, `cnt`, `s0_52/54/5a`, `s1_52/54/5a`, `ent`
+   (correction to the review, which counted `mode` among the varying fields:
+   it is `0x27` at all 721 frames). Differences port vs capture: `tick`,
+   `t508`, `ent` only, 721 each, as before.
+
+Assertion sites: 13776 → **13776** (the trace check replaced one-for-one; the
+Enter test lives in the existing parse check).

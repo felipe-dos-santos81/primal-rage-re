@@ -20,7 +20,7 @@ make demo-fight-oracle     # ratchet on the demo fight's first unexplained frame
 make attract2-oracle       # ratchet on the attract's second cycle after the demo (N pinned in the Makefile); in make verify
 make k11-oracle            # K11 service-menu oracles (the walk and menuesc); in make verify; each skips without its data/k11-captures/<scenario>
 make k11-capture scenario=walk   # DOSBox-X capture of the service menu (writes data/k11-captures/<scenario>)
-make gp-replay scenario=gp-pads  # port replay of a gameplay capture (PR_GP_DUMP driver, .ipx frames + trace); in make verify on gp-pads
+make gp-replay scenario=gp-pads  # port replay of a gameplay capture (PR_GP_DUMP driver, .ipx frames + trace); in make verify on gp-pads, which skips without data/k11-captures/gp-pads
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 ```
 
