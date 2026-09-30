@@ -41320,11 +41320,330 @@ static const TfVoiceSite k12_b2_fight[] = {
     {  65u, vf_3531c,        2u, { 0xECu, 0xE0u } },           /* 0x353CA */
 };
 
+/* Record k7-k12 §10, batch D3 (fighter.c, rows 103-129): the real-play
+ * sample voices, part 2. Each driver starts from the fixture the function's
+ * own check uses (c4r_seed, sc_seed, fs_seed, z_fseed, ...) on the private
+ * pool vf_pools names, and seeds the arm §1.3 gives. */
+#define VF_D3_ST    (FIGHT_RECS + 0x3400u)   /* crafted one-word streams, 0x10 apart */
+#define VF_D3_9B01C 0x0009B01Cu   /* [char] 0x45B50's stream table (0x45B89) */
+#define VF_D3_A8274 0x000A8274u   /* [char] 0x21458 case 0's stream (0x21502) */
+
+/* Row 103: 0x45238 with the record's +0x14 slot (0x4523F), mode 3 (c3_seed):
+ * the 0x45252 != 0x25 arm, then the voice. */
+static void vf_d3_45238(void)
+{
+    vf_pools();
+    c4r_seed();
+    DSD(FIGHT_RECS + 0x14u) = DS_001077B0;
+    fighter_45238(FIGHT_RECS);
+}
+/* Rows 104-106: 0x45908 with the slot and the other slot pointer set
+ * (0x4591D/0x45935); the other slot's +0x52 = 0x0F takes 0x46 (0x4597A), any
+ * other value 0x6C then 0x72. DS_00105B3A = 2 skips the dust (0x4598A). */
+static void vf_d3_45908_52(u8 o52)
+{
+    vf_pools();
+    c4r_seed();
+    c4r_pool();
+    DSD(FIGHT_RECS + 0x14u) = DS_001077B0;
+    DSB(DS_001077B0 + 0x94u + 0x52u) = o52;
+    DSB(DS_00105B3A) = 2u;
+    fighter_45908(FIGHT_RECS);
+}
+static void vf_d3_45908_0f(void) { vf_d3_45908_52(0x0Fu); }
+static void vf_d3_45908_0e(void) { vf_d3_45908_52(0x0Eu); }
+/* Rows 107/108: 0x3F308 on slot 0 (sc_seed: records r0/r1 on psets 1/2). */
+static void vf_d3_3f308(void)
+{
+    vf_pools();
+    sc_seed(5u, 0u, 0);
+    fighter_3f308(DS_001077B0);
+}
+/* Rows 109/110: 0x21458 case 0 (+0x58 = 0, 0x21470) for char 0 with the
+ * slot's +0x30 = 0x83F below the threshold 0x1600 - 0xDC0 (0x214A1), so
+ * 0x21F30 runs (0x214D9); the 0xA8274[0] stream is a crafted frame word. */
+static void vf_d3_21458(void)
+{
+    u32 slot = DS_001077B0;
+    vf_pools();
+    sc_seed(0u, 0u, 0);
+    DSB(slot + 0x58u) = 0u;
+    DSD(slot + 0x30u) = 0x83Fu;
+    DSW(VF_D3_ST) = 0x15F8u;
+    DSD(VF_D3_A8274) = VF_D3_ST;
+    fighter_21458(slot, FIGHT_RECS, 0u);
+}
+/* Row 111: 0x232B4(0) on 0x3B298's 0 arm (0x232E2), check_sc_char6 B's seed:
+ * slot 0 char 6 (key word 0xA6728 + (6 << 6) * 6 + 2 = 3), slot 1 char 3. */
+static void vf_d3_232b4(void)
+{
+    vf_pools();
+    c4r_pose_seed();
+    sc_streams();
+    DSB(DS_001077B0 + 0x7Au) = 6u;
+    DSB(DS_001077B0 + 0x94u + 0x7Au) = 3u;
+    DSW(0x000A6728u + 6u * 0x40u * 6u + 2u) = 3u;
+    DSW(FIGHT_RECS + 0x56u) = 1u;
+    DSW(FIGHT_RECS + 0x156u) = 2u;
+    DSB(DS_001077B0 + 0x42u) = 0x09u;
+    fighter_232b4(0u);
+}
+/* Row 112: 0x3E064 on side 1 (unconditional tail). */
+static void vf_d3_3e064(void)
+{
+    vf_pools();
+    sc_seed(0u, 5u, 0);
+    DSB(DS_001077B0 + 0x94u + 0x52u) = 0u;
+    DSD(FIGHT_RECS + 0x118u) = 0x2100u;
+    DSD(FIGHT_RECS + 0x11Cu) = 0x0301u;
+    DSD(FIGHT_RECS + 0x130u) = 0x00040000u;
+    fighter_3e064(DS_001077B0 + 0x94u, FIGHT_RECS + 0x100u, 0x77u);
+}
+/* Row 113: 0x3DD84(0), check_sc_char5 E's seed (slot 0 char 5, slot 1 char
+ * 3; the psets' +0x18 name the effect sources 0x13D4C reads). */
+static void vf_d3_3dd84(void)
+{
+    vf_pools();
+    c4r_pose_seed();
+    sc_streams();
+    effects_init();
+    DSB(DS_001077B0 + 0x7Au) = 5u;
+    DSB(DS_001077B0 + 0x94u + 0x7Au) = 3u;
+    DSW(FIGHT_RECS + 0x56u) = 1u;
+    DSW(FIGHT_RECS + 0x156u) = 2u;
+    DSD(FIGHT_ACTORS + 0x20u + 0x18u) = SC_SRC0;
+    DSD(FIGHT_ACTORS + 0x40u + 0x18u) = SC_SRC1;
+    DSD(SC_SRC1) = 0;
+    DSD(SC_SRC1 + 0x0Cu) = 0;
+    fighter_3dd84(0u);
+}
+/* Row 114: 0x3EE00 case 1 (+0x57 = 1, 0x3EEC1) with the other side's
+ * DS_001077A8 entry set (0x3EE0C). */
+static void vf_d3_3ee00(void)
+{
+    vf_pools();
+    pcb_seed(0u, 0u);
+    DSB(DS_001077B0 + 0x57u) = 1u;
+    fighter_3ee00(DS_001077B0, FIGHT_RECS, 0u);
+}
+/* Row 115: 0x45B50 with +0x57 = 1 (0x45B65..0x45B6D): the other record is a
+ * pool record (0x2A17C takes its pset) on 0x9B01C[2] = a crafted word. */
+static void vf_d3_45b50_1(void)
+{
+    u32 orec;
+    vf_pools();
+    z_fseed();
+    orec = m5_rec();
+    if (orec == 0u) return;
+    DSD(Z_S1) = orec;
+    DSD(VF_D3_9B01C + 2u * 4u) = Z_STF;
+    mem_fill(DS_00107618, 0, 0x180u);
+    DSD(actor_pset(orec) + 0x18u) = 0u;
+    DSB(Z_S0 + 0x57u) = 1u;
+    fighter_45b50(Z_S0, Z_R0, 0u);
+}
+/* Row 116: +0x57 = 2 (0x45B71) with DS_001081EC = 1, so the decrement
+ * reaches 0 (0x45BD8). */
+static void vf_d3_45b50_2(void)
+{
+    vf_pools();
+    z_fseed();
+    DSB(Z_S0 + 0x57u) = 2u;
+    DSW(DS_001081EC) = 1u;
+    fighter_45b50(Z_S0, Z_R0, 0u);
+}
+/* Row 117: 0x47A00(0) with DS_00105B3A = 2 (no 0xBB128 spawn, 0x47A21) and
+ * 0xC90F8[2] a crafted word. */
+static void vf_d3_47a00(void)
+{
+    vf_pools();
+    z_fseed();
+    DSB(DS_00105B3A) = 2u;
+    DSD(DS_000C90F8 + 2u * 4u) = Z_STF;
+    fighter_47a00(0u);
+}
+/* Rows 118/119/121: 0x40954 case 2 (+0x57 = 2, 0x40979 -> 0x40A20) on side
+ * 0, check_fs_40954's case-2 seed (char 4). */
+static void vf_d3_40954(void)
+{
+    u32 r = FIGHT_RECS, c5 = FIGHT_RECS + 0x100u;
+    vf_pools();
+    fs_seed(4u, 4u, 0);
+    DSB(DS_001077B0 + 0x57u) = 2u;
+    DSW(r + 0x28u) = 0u;
+    DSD(r + 0x18u) = 0x00001818u;
+    DSD(r + 0x1Cu) = 0x00001C1Cu;
+    DSD(r + 0x30u) = 0x00500000u;
+    DSD(c5 + 0x18u) = 0x00002828u;
+    DSD(c5 + 0x1Cu) = 0x00002C2Cu;
+    DSD(c5 + 0x30u) = 0x02C80000u;
+    fighter_40954(DS_001077B0, r, 0u);
+}
+/* Row 120: 0x3EF44 with the record's side slot set (0x3EF5C), char 0. */
+static void vf_d3_3ef44(void)
+{
+    vf_pools();
+    fs_seed(2u, 2u, 0);
+    DSB(DS_001077B0 + 0x7Au) = 0u;
+    fighter_3ef44(DS_001077B0, FIGHT_RECS, 7u);
+}
+/* Row 122: 0x406B4 with one free node on 0x107EF8 (the burst takes it, then
+ * the list is empty and the loop ends, 0x40715), DS_00104AD4 = 0. */
+static void vf_d3_406b4(void)
+{
+    vf_pools();
+    fs_seed(1u, 3u, 0);
+    DSD(DS_00104AD4) = 0u;
+    DSD(DS_00107EF0) = DS_00107EF0;
+    DSD(DS_00107EF0 + 4u) = DS_00107EF0;
+    DSD(DS_00107EF8) = DS_00107EF8;
+    DSD(DS_00107EF8 + 4u) = DS_00107EF8;
+    effects_list_insert_before(DS_00107EF8, 0x00107F00u);
+    fighter_406b4();
+}
+/* Row 123: 0x36F10 arm B (DS_00104B14 = 1, 0x36F71), slot 0 char 2, so the
+ * voice is 0xBDAD4[2] (0x37051); the other slot is char 5 (0xBDAD4[5] =
+ * 0x8B), so reading its char instead fails the row. */
+static void vf_d3_36f10(void)
+{
+    vf_pools();
+    fs_36f10_seed(0u);
+    DSB(DS_001077B0 + 0x94u + 0x7Au) = 5u;
+    DSB(DS_00104B14) = 1u;
+    fighter_36f10(DS_001077B0);
+}
+/* Row 124: 0x3FCB0 with DS_00105B3A = 0 (0x3FCB6), the other slot set and
+ * its +0x52 = 0x10 (0x3FCD3/0x3FCD7), no DS_00108080 actor. */
+static void vf_d3_3fcb0(void)
+{
+    vf_pools();
+    fs_seed(1u, 3u, 0);
+    DSB(DS_00105B3A) = 0u;
+    DSB(DS_001077B0 + 0x94u + 0x52u) = 0x10u;
+    DSD(DS_00108080) = 0u;
+    DSD(DS_00108080 + 4u) = 0u;
+    fighter_3fcb0(FIGHT_RECS);
+}
+/* Row 125: 0x40434 with the record's +0x14 slot (0x4043F) and the other slot
+ * set (0x404DC), 5 * 0xE0 + 3 apart (q = 5). */
+static void vf_d3_40434(void)
+{
+    u32 r = FIGHT_RECS;
+    vf_pools();
+    fs_seed(1u, 3u, 0);
+    fs_head(0x000D501Eu, 0x1613u);
+    DSD(r + 0x14u) = DS_001077B0;
+    DSD(r + 0x18u) = 0x10000u;
+    DSD(r + 0x1Cu) = 0x500u;
+    DSD(r + 0x30u) = 0x00070000u;
+    DSW(r + 0x28u) = 0u;
+    DSD(FIGHT_RECS + 0x118u) = 0xF000u + 5u * 0xE0u + 3u;
+    fighter_40434(r);
+}
+/* Rows 126/127: 0x45D98 (update entry 17) with every entry done (state 4)
+ * but entry 0: state 0 with a seed whose first rng(0xA) is 0 (0x45DBF), or
+ * state 3 landing ((s16)+0x36 + +0x1C <= 0, 0x45F3A..0x45F47). Slot 0 is
+ * DS_00104AD4's, char 3, on a pool record. */
+static void vf_d3_45d98_seed(void)
+{
+    u32 i, rec;
+    vf_pools();
+    for (i = 0; i < 0x60u; i += 8u) DSB(0x00108184u + i) = 4u;
+    DSB(0x001081EEu) = 0u;
+    DSD(DS_00104AD4) = 0u;
+    DSB(DS_001078FD) = 1u;
+    mem_fill(DS_001077B0, 0, 0x94u * 2u);
+    rec = m5_rec();
+    if (rec != 0u) DSB(rec + 0x51u) = 0u;
+    DSD(DS_001077B0) = rec;
+    DSB(DS_001077B0 + 0x7Au) = 3u;
+    DSB(DS_00105B34) = 0u;
+    DSB(DS_00105B34 + 1u) = 1u;
+}
+static void vf_d3_45d98_0(void)
+{
+    u32 seed;
+    vf_d3_45d98_seed();
+    DSB(0x00108184u) = 0u;
+    for (seed = 1u; seed < 1000u; seed++) {
+        rng_seed(seed);
+        if (rng_next(0x0Au) == 0u) break;
+    }
+    rng_seed(seed);
+    fighter_45d98();
+}
+static void vf_d3_45d98_3(void)
+{
+    u32 rec;
+    vf_d3_45d98_seed();
+    rec = m5_rec();
+    if (rec == 0u) return;
+    DSD(0x00108180u) = rec;
+    DSB(0x00108184u) = 3u;
+    DSW(rec + 0x36u) = 0xFFF0u;
+    DSD(rec + 0x1Cu) = 0x10u;                 /* 0x10 - 0x10 = 0: lands */
+    fighter_45d98();
+}
+/* Rows 128/129: 0x24078 with the other side's DS_001077A8 entry set
+ * (0x24093), its char 3 (0xBE008[3] = 0x9F; the caller's slot is char 0,
+ * 0x90), both records pool records. */
+static void vf_d3_24078(void)
+{
+    u32 rec, orec, os = DS_001077B0 + 0x94u;
+    vf_pools();
+    mem_fill(DS_001077B0, 0, 0x94u * 2u);
+    rec = m5_rec();
+    orec = m5_rec();
+    if (rec == 0u || orec == 0u) return;
+    DSB(rec + 0x51u) = 0u;
+    DSB(orec + 0x51u) = 1u;
+    DSD(DS_001077B0) = rec;
+    DSD(os) = orec;
+    DSB(os + 0x7Au) = 3u;
+    DSD(os + 0x2Cu) = 0x00012340u;
+    DSD(orec + 0x30u) = 0x00450000u;
+    DSD(DS_001077A8 + 4u) = os;
+    fighter_24078(rec);
+}
+
+#define K12_D3_ROWS 27
+static const TfVoiceSite k12_d3[] = {
+    { 103u, vf_d3_45238,    1u, { 0x7Bu } },                   /* 0x452C6 */
+    { 104u, vf_d3_45908_0f, 1u, { 0x46u } },                   /* 0x459B9 (0x459A3) */
+    { 105u, vf_d3_45908_0e, 2u, { 0x6Cu, 0x72u } },            /* 0x459AF */
+    { 106u, vf_d3_45908_0e, 2u, { 0x6Cu, 0x72u } },            /* 0x459B9 (0x459B4) */
+    { 107u, vf_d3_3f308,    2u, { 0x6Cu, 0x72u } },            /* 0x3F312 */
+    { 108u, vf_d3_3f308,    2u, { 0x6Cu, 0x72u } },            /* 0x3F356 */
+    { 109u, vf_d3_21458,    2u, { 0x6Cu, 0x72u } },            /* 0x21F3A */
+    { 110u, vf_d3_21458,    2u, { 0x6Cu, 0x72u } },            /* 0x21F7E */
+    { 111u, vf_d3_232b4,    1u, { 0xA9u } },                   /* 0x23328 */
+    { 112u, vf_d3_3e064,    1u, { 0xB9u } },                   /* 0x3E0E3 */
+    { 113u, vf_d3_3dd84,    1u, { 0xB7u } },                   /* 0x3DE47 */
+    { 114u, vf_d3_3ee00,    1u, { 0xBBu } },                   /* 0x3EED3 */
+    { 115u, vf_d3_45b50_1,  1u, { 0x50u } },                   /* 0x45BAE */
+    { 116u, vf_d3_45b50_2,  1u, { 0xD2u } },                   /* 0x45BF4 */
+    { 117u, vf_d3_47a00,    1u, { 0x46u } },                   /* 0x47A7B */
+    { 118u, vf_d3_40954,    3u, { 0x6Cu, 0x72u, 0xEEu } },     /* 0x408F2 */
+    { 119u, vf_d3_40954,    3u, { 0x6Cu, 0x72u, 0xEEu } },     /* 0x40936 */
+    { 120u, vf_d3_3ef44,    1u, { 0x47u } },                   /* 0x3EFD2 */
+    { 121u, vf_d3_40954,    3u, { 0x6Cu, 0x72u, 0xEEu } },     /* 0x40B2B */
+    { 122u, vf_d3_406b4,    1u, { 0x73u } },                   /* 0x407D3 */
+    { 123u, vf_d3_36f10,    1u, { 0xA7u } },                   /* 0x3705E: 0xBDAD4[2] */
+    { 124u, vf_d3_3fcb0,    1u, { 0x48u } },                   /* 0x3FD23 */
+    { 125u, vf_d3_40434,    1u, { 0xB8u } },                   /* 0x40546 */
+    { 126u, vf_d3_45d98_0,  1u, { 0xABu } },                   /* 0x45F8C (0x45E59) */
+    { 127u, vf_d3_45d98_3,  1u, { 0xACu } },                   /* 0x45F8C (0x45F81) */
+    { 128u, vf_d3_24078,    2u, { 0x6Bu, 0x9Fu } },            /* 0x240B8 */
+    { 129u, vf_d3_24078,    2u, { 0x6Bu, 0x9Fu } },            /* 0x240CF: 0xBE008[3] */
+};
+
 /* Record k7-k12 §6..§10: the fight-area voice sites (tables per batch). */
 int test_fight_voice_sites(void)
 {
     int before = g_failures;
     CHECK_EQ_INT((int)(sizeof k12_b2_fight / sizeof k12_b2_fight[0]), K12_B2_FIGHT_ROWS);
     tf_voice_sites(k12_b2_fight, (u32)(sizeof k12_b2_fight / sizeof k12_b2_fight[0]));
+    CHECK_EQ_INT((int)(sizeof k12_d3 / sizeof k12_d3[0]), K12_D3_ROWS);
+    tf_voice_sites(k12_d3, (u32)(sizeof k12_d3 / sizeof k12_d3[0]));
     return g_failures - before;
 }

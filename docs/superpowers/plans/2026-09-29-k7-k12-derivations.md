@@ -1916,3 +1916,191 @@ swapped (`!= 0u` → `== 0u`, so `0x56` then `0x54`) gives 1 FAIL line,
   is a `mkstemp` template (unique). The `re-render` and `re-oracle`
   targets write `/tmp/*.ppm` and `/tmp/prage_dataobj.txt` but are not in
   `make verify`. The `--check` step writes `frames/` in the worktree.
+
+---
+
+## §10 Task 10: K12 batch D3, the real-play sample voices, part 2
+
+Implemented in the worktree `k12-t10` (branch `k12-t10`, from `b7b7c74`).
+Every batch-D3 call was re-read from the fixup-applied image (`$K/dx.py`),
+`mov` and `call` both; each C call carries the pair `/* 0xMOV/0xCALL 0x2C3FC
+*/` (a table id names the load range). All 27 are `fighter.c`. Every id is
+case 2 (one sample handle) except `0x46`, case 3 (two handles), read from
+`0xBBDC8` + 12 × id: `7B` `028567D5`, `6C` `0285D950`, `72` `02858718`, `A9`
+`1800B061`, `B9` `1501B571`, `B7` `15013340`, `BB` `02849803`, `50`
+`0284CE43`, `D2` `0284FAA7`, `EE` `15017C5B`, `47` `02842A34`, `73`
+`02851D3E`, `A7` `22000008`, `48` `1E00EC42`, `B8` `1500460B`, `AB`/`AC`
+both `2000E586`, `6B` `02889340`, `9F` `120063CC`.
+
+### §10.1 The 27 wiring points
+
+| row | call (mov/call) | C site | driver | seed | ids |
+|---:|---|---|---|---|---|
+| 103 | `452C1/452C6` | `fighter_45238`, tail | `vf_d3_45238` | `c4r_seed` (mode 3: the `0x45252` != `0x25` arm), `rec+0x14` = slot 0 | `7B` |
+| 104 | `459A3/459B9` (`459A8 jmp`) | `fighter_45908`, other `+0x52 = 0x0F` | `vf_d3_45908_0f` | `c4r_seed`, `c4r_pool`, `rec+0x14` = slot 0, slot 1 `+0x52 = 0x0F`, `DS_00105B3A` = 2 (no dust, `0x4598A`) | `46` |
+| 105 | `459AA/459AF` | same, else arm | `vf_d3_45908_0e` | as row 104 with `+0x52 = 0x0E` | `6C`, `72` |
+| 106 | `459B4/459B9` | same | same | same | `6C`, `72` |
+| 107 | `3F30D/3F312` | `fighter_3f308`, first statement | `vf_d3_3f308` | `sc_seed(5, 0)` | `6C`, `72` |
+| 108 | `3F351/3F356` | same, tail | same | same | `6C`, `72` |
+| 109 | `21F35/21F3A` | `fighter_21f30` (static), first statement | `vf_d3_21458` | `sc_seed(0, 0)`, slot 0 `+0x58 = 0`, `+0x30 = 0x83F` (below `0x1600 - 0xDC0`, `0x214A1`), `0xA8274[0]` a crafted word | `6C`, `72` |
+| 110 | `21F79/21F7E` | same, tail | same | same | `6C`, `72` |
+| 111 | `23323/23328` | `fighter_232b4`, `0x3B298` = 0 arm | `vf_d3_232b4` | `check_sc_char6` B's: `c4r_pose_seed`, `sc_streams`, chars 6/3, key word `0xA6728 + 0x902` = 3 | `A9` |
+| 112 | `3E0DE/3E0E3` | `fighter_3e064`, tail | `vf_d3_3e064` | `sc_seed(0, 5)`, side 1 | `B9` |
+| 113 | `3DE42/3DE47` | `fighter_3dd84`, tail | `vf_d3_3dd84` | `check_sc_char5` E's: `c4r_pose_seed`, `sc_streams`, `effects_init`, chars 5/3, pset sources | `B7` |
+| 114 | `3EECE/3EED3` | `fighter_3ee00` case 1 | `vf_d3_3ee00` | `pcb_seed(0, 0)`, `+0x57 = 1` | `BB` |
+| 115 | `45BA9/45BAE` | `fighter_45b50`, `+0x57 = 1` (header only) | `vf_d3_45b50_1` | `z_fseed`, the other record a pool record, `0x9B01C[2]` a crafted word, `+0x57 = 1` | `50` |
+| 116 | `45BEF/45BF4` | same, `+0x57 = 2` (header only) | `vf_d3_45b50_2` | `z_fseed`, `+0x57 = 2`, `DS_001081EC` = 1 | `D2` |
+| 117 | `47A76/47A7B` | `fighter_47a00` (header only) | `vf_d3_47a00` | `z_fseed`, `DS_00105B3A` = 2, `0xC90F8[2]` a crafted word | `46` |
+| 118 | `408ED/408F2` | `fighter_408e8` (static), first statement | `vf_d3_40954` | `fs_seed(4, 4)`, slot 0 `+0x57 = 2` (`0x40979` → `0x40A20`), `check_fs_40954` case 2's positions | `6C`, `72`, `EE` |
+| 119 | `40931/40936` | same, tail | same | same | `6C`, `72`, `EE` |
+| 120 | `3EFC9/3EFD2` | `fighter_3ef44`, tail | `vf_d3_3ef44` | `fs_seed(2, 2)`, slot 0 char 0 | `47` |
+| 121 | `40B26/40B2B` | `fighter_40954` case 2 | `vf_d3_40954` | as row 118 | `6C`, `72`, `EE` |
+| 122 | `407CE/407D3` | `fighter_406b4`, after the loop | `vf_d3_406b4` | `fs_seed(1, 3)`, `DS_00104AD4` = 0, one node on `0x107EF8` | `73` |
+| 123 | `37041..3705E` | `fighter_36f10`, arm B | `vf_d3_36f10` | `fs_36f10_seed(0)`, `DS_00104B14` = 1 (`0x36F71`), slot 0 char 2, slot 1 char 5 | `A7` (`0xBDAD4[2]`) |
+| 124 | `3FD1E/3FD23` | `fighter_3fcb0`, tail | `vf_d3_3fcb0` | `fs_seed(1, 3)`, `DS_00105B3A` = 0, slot 1 `+0x52 = 0x10`, no `DS_00108080` actor | `48` |
+| 125 | `40541/40546` | `fighter_40434`, tail | `vf_d3_40434` | `fs_seed(1, 3)`, `0xD501E` a crafted word, `rec+0x14` = slot 0, the other record `5 × 0xE0 + 3` away | `B8` |
+| 126 | `45E59/45F8C` (`45E5E jmp`) | `fighter_45d98` state 0 | `vf_d3_45d98_0` | 11 entries at state 4, entry 0 at state 0, the first seed from 1 whose `rng(0xA)` is 0, slot 0 a pool record, char 3 | `AB` |
+| 127 | `45F81/45F8C` | same, state 3 | `vf_d3_45d98_3` | entry 0 at state 3 on a pool record, `(s16)0xFFF0 + 0x10 = 0` (`0x45F3A..0x45F47`) | `AC` |
+| 128 | `240B3/240B8` | `fighter_24078` (header only) | `vf_d3_24078` | two pool records, slot 1 char 3 as `DS_001077A8[1]` | `6B`, `9F` |
+| 129 | `240BD..240CF` | same (header only) | same | same | `6B`, `9F` (`0xBE008[3]`) |
+
+`K12_D3_ROWS` = 27 (`test_fight.c`, `k12_d3[]`, one size check and one
+`tf_voice_sites` call in `test_fight_voice_sites` after the B2 pair). Every
+driver calls `vf_pools()` first and then the fixture the function's own
+check uses; those fixtures are file-local in `test_fight.c` and none of them
+restores a saved snapshot (`p52_seed`, `hb_seed` and `m5_seed` do, through
+`g2_restore`/`mz_restore`, and are not used). Rows on one path share a
+driver and list each other's ids (105/106, 107/108, 109/110, 118/119/121,
+128/129). Rows 107-110 and 117 run `0x39834` (row 76, batch C) before their
+own ids; its `E933C` id is not wired in this tree and is not listed (§4.2:
+the subsequence match lets it interleave after the merge). Same-id aliasing
+(§4.2): no D3 path makes two calls with one id.
+
+**Placement.** Rows 126/127 are one raw call (`0x45F8C`): the state-0 arm
+loads `0xAB` and jumps to it (`0x45E5E`), the state-3 arm falls into it; the
+port makes one call on each path. Row 104's `0x46` is the raw's `0x459A3 mov;
+0x459A8 jmp 0x459B9`, taken by both sub-arms of `0x4598A` (with or without
+the dust), so the port's call follows the `if`. Rows 105/106 are
+`0x459AA`/`0x459AF` then `0x459B4`/`0x459B9`. Where the raw loads EAX before
+a store the port keeps first (row 120: `0x3EFC9 mov eax,0x47` before the
+`+0x42` store at `0x3EFCE`; row 127: `0x45F81 mov` before the `0x1081EE`
+store at `0x45F86`), the state at the call is the same.
+
+**Header-only rows.** 115/116 (`fighter_45b50`), 117 (`fighter_47a00`) and
+128/129 (`fighter_24078`) had only a header sentence "... not wired (record
+§45-A)". The sentence now names the calls (with their `mov`s) and this
+record. The table address `0xBE008` gets a local `#define D8_24078_VOICE`;
+`0xBDAD4` already had `FSET_BDAD4`. Row 129 indexes by the entry `o`'s
+`+0x7A` (`0x240BF mov al,[ebx+0x7a]`, EBX = `o` from `0x2408C`), row 123 by
+the slot's own `+0x7A` (`0x37048 mov al,[esi+0x7a]`, ESI = the slot).
+
+### §10.2 Corrections (raw wins)
+
+- **Row 104/106's `mov`s.** §1.3 cites row 104 as `459B9` (`mov` `459A3`,
+  `jmp`) and rows 105/106 as `459AF`/`459B9`. The raw's two `0x459B9`
+  entries load different ids: `0x46` from `0x459A3` (via `0x459A8 jmp`) and
+  `0x72` from `0x459B4`. The comments carry `0x459A3/0x459B9` and
+  `0x459B4/0x459B9`, and `0x459AA/0x459AF` for `0x6C`.
+- **Row 103's `mov`** is `0x452C1` (§0.4 cites the call only).
+- **Row 117's `mov`** is `0x47A76`; **row 115/116's** are `0x45BA9`/`0x45BEF`;
+  **row 128's** is `0x240B3` and **row 129's** load is `0x240BD..0x240CA`
+  (`xor eax,eax; mov al,[ebx+0x7a]; mov ax,[eax*2+0xbe008]; and eax,0xffff`).
+- **Row 123's load** is `0x37041..0x3705E` (`xor eax,eax; ...; mov al,
+  [esi+0x7a]; ...; mov ax,[eax*2+0xbdad4]; and eax,0xffff`; the old comment
+  said `0x37051..0x3705E`). The `0x3704B` store of `DS_001078DC` sits inside
+  it; the port stores it first, the same state at the call.
+
+### §10.3 Tests
+
+`k12_d3[]` and its size check. With the table in and the calls unwired, the
+suite printed 27 `voice site row` lines, every one `0 of n`, 27 FAIL lines
+all `test_fixtures.c:232`, no heap or cap failure, and `FAILURES: 27`
+(`$K/t10-step1-unwired.txt`). Row 127's first seed (`+0x1C` = `0x11`, sum 1)
+did not land; the driver now seeds the boundary sum 0. Wired: `all checks
+passed`.
+
+Assertion sites: 13374 → **13375** (the size check).
+
+`not wired` lines (`rg -c 'not wired' port/src`): `fighter.c` 67 → 45
+(22 lines; rows 105/106 and 123 were split phrases, and the header-only
+rows 115/116 and 128/129 shared one line each). Every other file is
+unchanged; the total, headers included, is 147 → 125.
+
+**Real play only (measured per row).** A scratch copy of the tree with an
+`fprintf(stderr, "T10PROBE <row>")` before each of the 27 calls
+(`$K/t10-probe.txt`) ran `--check 8000`, the `PR_FRONTEND_DET`,
+`PR_ATTRACT_DUMP` and `PR_TITLE_DUMP` drivers and the unit suite. The four
+oracle runs printed 0 probes (each `CHECK=0` / `all checks passed`); the unit
+suite printed 214, every row at least twice (the D3 table plus the
+function's own check). So §0.4's "real play only" holds for all 27 rows,
+and the unchanged oracle lines and dumps below agree.
+
+### §10.4 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
+
+Every one of the 27 calls was deleted in turn (`$K/t10mut.py`: the call
+becomes `(void)0;`, rebuild, `PR_ORACLE_REQUIRED=1 ./build/run_tests`,
+restore; outputs `$K/t10-mut-<row>.txt`, summary `$K/t10mut-summary.txt`).
+Every FAIL line is `test_fixtures.c:232`.
+
+| deleted call | FAIL lines | failing rows |
+|---|---:|---|
+| row 103 (`0x452C6`), first | 1 | 103 (`0 of 1`) |
+| rows 104, 111-114, 116, 117, 120, 122-127 | 1 each | their own (`0 of 1`) |
+| row 105 / 106 | 2 each | 105, 106 (`0` / `1 of 2`) |
+| row 107 / 108 | 2 each | 107, 108 (`0` / `1 of 2`) |
+| row 109 / 110 | 2 each | 109, 110 (`0` / `1 of 2`) |
+| row 115 (`0x45BAE`), middle | 1 | 115 (`0 of 1`) |
+| row 118 / 119 / 121 | 3 each | 118, 119, 121 (`0` / `1` / `2 of 3`) |
+| row 128 | 2 | 128, 129 (`0 of 2`) |
+| row 129 (`0x240CF`), last | 2 | 128, 129 (`1 of 2`) |
+
+No deletion failed a row off its own path. Three selection mutations
+(`$K/t10mut2.py`, same summary):
+- `0x4597A`'s test swapped (`== 0x0F` → `!= 0x0F`): 5 FAIL lines, rows 104
+  (`0 of 1`), 105 and 106 (`0 of 2`), plus two `test_fight.c:28090` lines of
+  `check_char4_react_c` (its dust count).
+- Row 123 indexed by the other slot's char (5, `0x8B`) instead of the slot's
+  (2, `0xA7`): 1 FAIL line, row 123 `0 of 1`. The driver seeds the other
+  slot's char 5 for this.
+- Row 129 indexed by the caller's slot char (0, `0x90`) instead of the entry
+  `o`'s (3, `0x9F`): 2 FAIL lines, rows 128/129 `1 of 2`.
+
+### §10.5 Not tested
+
+- The dispatcher's effect at these sites (the runner sets `DS_001028C8` = 0,
+  so no case-2/3 id reads a bank or starts a sample); Task 3's slot tests pin
+  that path.
+- Each call's position relative to its non-voice neighbours (e.g. row 116
+  before the `+0x53`/`+0x52`/`DS_000F0AFE` stores, row 103 after the mode
+  arm), except the in-order ids on each path.
+- Row 103's mode-`0x25` arm; row 104 with the dust (`DS_00105B3A` < 2);
+  rows 107/108 through `0x3F184`/`0x3E6A8` (the driver calls `0x3F308`
+  directly); rows 109/110 through `0x21458`'s `+0x44 = 0` gate (the driver
+  takes the threshold arm); row 111's other arm (no voice); row 116 with the
+  count still above 0 (no voice); row 117 with the `0xBB128` spawn and
+  through `0x47B04`; row 118/119/121 on side 1 (the palette call); row 122
+  with more than one node or an empty list; row 123's arm A (no voice) and
+  the characters other than 2; row 124 with a `DS_00108080` actor; rows
+  126/127 with more than one entry in the same pass (`e` order); rows
+  128/129 for characters other than 3.
+- `0x39834`'s own voice (row 76, batch C) on the paths of rows 107-110 and
+  117: not wired here.
+
+### §10.6 Gate
+
+- `make verify` (every fixed `/tmp` path overridden with `/tmp/pr_t10_*`):
+  `EXIT=0` (`$K/verify-t10.txt`, 579 lines, 7 × `all checks passed`, no
+  warning). The oracle-line grep diffs empty against
+  `$K/oracle-lines-base.txt` (`ORACLES-EQUAL`). The run built the source
+  before the row-123 comment was corrected to `0x37041..0x3705E`; the change
+  is comment-only, and the steps below ran on the final source.
+- Dumps: `dumps.sh t10-after` matches `$K/base.sha256` (`dumpsha.sh`,
+  `DUMPS-IDENTICAL`; `check/frames` 24000, the three drivers `all checks
+  passed`). No before-dump was taken: `b7b7c74` was already proven equal to
+  the base manifest (§6.7), as Task 6 did. The dump is deleted.
+- `./build/prageport --game-dir data/game/C --check 8000`: `CHECK=0`.
+- `make audio-render`: `$K/t10-after.wav` is byte-identical to
+  `before-t2.wav` (`cmp`).
+- `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
+  unchanged (no function is ported; the README stays as it is).
+- Build: 0 warnings.
