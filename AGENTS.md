@@ -18,6 +18,8 @@ make title-oracle          # pixel-exact oracles; each skips without its capture
 make attract-oracle smk-oracle frontend-oracle demo-oracle
 make demo-fight-oracle     # ratchet on the demo fight's first unexplained frame (N pinned in the Makefile); in make verify
 make attract2-oracle       # ratchet on the attract's second cycle after the demo (N pinned in the Makefile); in make verify
+make k11-oracle            # K11 service-menu oracle (the walk); in make verify; skips without data/k11-captures/walk
+make k11-capture scenario=walk   # DOSBox-X capture of the service menu (writes data/k11-captures/<scenario>)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 ```
 
