@@ -12120,11 +12120,72 @@ static void rs_check_idle(void)
     DSD(DS_00105F2C) = s_time; DSB(DS_00107414) = s_flag;
 }
 
+/* 0x251F3..0x2520B: 0x2FFC4's result not in {0, -5, -10} is
+ * longjmp(0x1044F4, 1); 0x4F644 (input_state_update) is skipped. game_frame
+ * runs the key loop 0x24CFE first, over an empty int 16h queue here. */
+static void rs_case27_frame(volatile int *landed)
+{
+    if (setjmp(rs_jb) == 0) game_frame(); else *landed = 1;
+}
+
+static void rs_check_case27(void)
+{
+    if (!ra_save()) { CHECK(0, "the case-0x27 snapshot allocates"); return; }
+    jmp_buf *const prev = game_restart_arm(&rs_jb);
+    volatile int landed = 0;
+    kl_env(0x27u);
+    ni_frame_env();
+    sm_env_begin();                               /* the pad layout, not idle */
+    DSD(DS_00105F30) = 0u;                        /* no latched key */
+    mem_fill(DS_00107414, 0, 0x40u);              /* the menu uninitialised */
+    /* MAIN MENU init: result 0, so 0x25210 runs 0x4F644, which writes
+     * ((E4 & 0xFF000000) >> 24) | ((D8 & 0xFF000000) >> 16) = 0 for an
+     * idle pad over the seed */
+    DSW(DS_001088E0) = 0xBEEFu;
+    tf_menu_press(0u);
+    rs_case27_frame(&landed);
+    CHECK_EQ_INT(landed, 0);
+    CHECK_EQ_INT((long)DSD(DS_0010741C), 0xBCBEC);     /* MAIN MENU */
+    CHECK_EQ_INT((int)DSW(DS_001088E0), 0);            /* result 0 runs 0x4F644 */
+    /* Start (nested START MENU, flags 0), release, then Esc: -5 at 0x30466,
+     * a normal exit: no restart */
+    tf_menu_press(0x1000000u);
+    rs_case27_frame(&landed);
+    tf_menu_press(0u);
+    rs_case27_frame(&landed);
+    DSW(DS_001088E0) = 0xBEEFu;
+    tf_menu_press(0x2000000u);
+    rs_case27_frame(&landed);
+    CHECK_EQ_INT(landed, 0);
+    /* -5 runs 0x4F644, which rewrites the word from the held Esc */
+    CHECK(DSW(DS_001088E0) != 0xBEEFu, "the START MENU Esc (-5) runs 0x25210 0x4F644");
+    /* re-init MAIN MENU (flags 4), release, then Esc: -1 at 0x30440 */
+    tf_menu_press(0u);
+    rs_case27_frame(&landed);
+    tf_menu_press(0u);
+    rs_case27_frame(&landed);
+    CHECK_EQ_INT(landed, 0);
+    CHECK_EQ_INT((long)DSD(DS_0010741C), 0xBCBEC);
+    CHECK_EQ_INT((long)DSD(DS_00104B00), (long)KL_MODE(0x27u));
+    DSW(DS_001088E0) = 0xBEEFu;
+    DSB(DS_00107414) = 0x5Au;
+    tf_menu_press(0x2000000u);
+    rs_case27_frame(&landed);
+    CHECK_EQ_INT(landed, 1);
+    CHECK_EQ_INT((int)DSW(DS_001088E0), 0xBEEF);       /* 0x25210 not reached */
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);            /* 0x3043B, before the -1 at 0x30440 */
+    (void)game_restart_arm(prev);
+    sm_env_end();
+    input_clear();
+    ra_restore();
+}
+
 int test_restart(void)
 {
     int before = g_failures;
     rs_check_landing();
     rs_check_idle();
+    rs_check_case27();
     rs_check_resume();
     return g_failures - before;
 }
