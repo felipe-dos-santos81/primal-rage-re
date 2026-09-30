@@ -603,19 +603,22 @@ unreachable, unobservable or not a deviation.
 
 ### §H.3 Named gaps still open
 
-**Ten named gaps** are open: the six carried by K7+K12 and K11 (#1..#6),
-`fight_health_sync`'s case 18 (#7), the two new `not modelled` deviations of
-§H.1a (#8, #9) and `movie.c`'s decode-failure exit (#10).
+**Nine named gaps** are open on branch `named-gaps-a`: the six carried by
+K7+K12 and K11 (#1..#6) less #5, closed by named-gaps A (record
+`2026-09-30-named-gaps-a-derivations.md`), `fight_health_sync`'s case 18
+(#7), the two new `not modelled` deviations of §H.1a (#8, #9) and `movie.c`'s
+decode-failure exit (#10). Rows #1..#3 now carry A's capture evidence; their
+code fixes wait for named-gaps plan B.
 
 The six carried by K7+K12 and K11:
 
 | # | Gap | Evidence |
 |---:|---|---|
-| 1 | The idle-timeout / menu-result longjmp is not modelled | `0x2EB80` (`config_key_latched`) stores `DS_00107414 = 0` then `0x2EBB3 jmp 0x65431`, `longjmp(0x1044F4, 1)`; `game_frame` case `0x27` (`0x251C6..0x25215`) takes the same longjmp at `0x25206..0x2520B` (`mov eax,0x1044F4` at `0x25206`, `jmp 0x65431` at `0x2520B`) for any menu result other than 0/-5/-10. The port keeps the store and returns 0 / continues (spec §7, `config.c` and `flow.c` `PORT:` notes). |
-| 2 | TEST CONTROLS RAW DATA reads linear `0xFFE80003` | `0x32573..0x32578`; outside `mem[]` and any DOS memory; drawn as 0 (`svcmenu.c:992`, record §K11.5, §E-32). |
-| 3 | STATISTICS page 2's `idiv` fault | `0x334CD..0x334E2` (`0x33458`): a non-zero sum with a zero low word raises #DE; drawn as 0 (`svcmenu.c:1192`, record §K11.7, §E-33). |
+| 1 | The idle-timeout / menu-result longjmp is not modelled | `0x2EB80` (`config_key_latched`) stores `DS_00107414 = 0` then `0x2EBB3 jmp 0x65431`, `longjmp(0x1044F4, 1)`; `game_frame` case `0x27` (`0x251C6..0x25215`) takes the same longjmp at `0x25206..0x2520B` (`mov eax,0x1044F4` at `0x25206`, `jmp 0x65431` at `0x2520B`) for any menu result other than 0/-5/-10. The port keeps the store and returns 0 / continues (spec §7, `config.c` and `flow.c` `PORT:` notes). **Evidence (named-gaps A §A.6):** the idle timeout fires after `0x4B1` ticks (20.0 s), and the MAIN MENU Esc takes the second longjmp (`0x2520B`); both restart into mode 3, attract state 0, with the frame counter `DS_000EF6DC` kept, one distinct black frame (about four capture frames), then the boot sequence from the TWI5 logo. The fix waits for plan B. |
+| 2 | TEST CONTROLS RAW DATA reads linear `0xFFE80003` | `0x32573..0x32578`; outside `mem[]` and any DOS memory; drawn as 0 (`svcmenu.c:992`, record §K11.5, §E-32). **Evidence (named-gaps A §A.1.1, §A.7):** unreachable in the stock game (field `0x2A` is 4 bits; `0x2FA1A` stores `field & ~3`, so bit 4 is never set); when `DS_00107410 \|= 0x10` is poked, DOS/4GW under DOSBox-X reads `0xFF` with no fault (paging off) and draws `000000FF` — DOSBox-X's answer, not hardware. The decision waits for plan B. |
+| 3 | STATISTICS page 1's `idiv` fault (named-gaps A corrects "page 2": `0x33458` is called from page 1 at `0x331A6`) | `0x334CD..0x334E2` (`0x33458`): the divisor is the sum's low word, so a sum of exactly `0x10000` (divisor 0) raises #DE; drawn as 0 (`svcmenu.c:1192`, record §K11.7, §E-33). **Evidence (named-gaps A §A.8):** with fields 8 = `0xFFFF` and 6 = `1` poked, entering STATISTICS aborts to DOS with `DOS/4GW Professional error (2001): exception 00h (divide by zero)` at unrelocated `1:000234E0` (the `idiv`); no handler is installed. The fix waits for plan B. |
 | 4 | `0x1D0BC`'s two allocation-failure arms are ported but untested | The MIDI arm `0x1D10E..0x1D12F` (zeroes `DS_001028C4/C0/CC`) and the slot break `0x1D16B` (slot 0's failure included). The bump allocator cannot fail in-process without exhausting `mem[]` (record k7-k12 §0.7.1 and its Not-tested list). |
-| 5 | No oracle reaches the K11 service menu | No capture of the options menu exists. Its 50 functions are pinned only by 160 scripted unit-test frames (record §K11.8/§K11.9). |
+| 5 | ~~No oracle reaches the K11 service menu~~ **closed by named-gaps A** | `make k11-oracle` (in `make verify`) compares the walk capture `data/k11-captures/walk` with the port (record §A.5, §A.10; a narrow claim). Residue, each a smaller named gap in the record: the STATISTICS page-2 clear (a chord the input cannot type), SOUND/MUSIC TEST playback, the quit-prompt longjmp `0x24AB0` (outside mode `0x27`), and the input channel (keys injected through DOSBox-X's memory file, not the keyboard controller; §A.9). |
 | 6 | Headless sample slots never end | With no audio device the mixer is not rendered, so `AIL_sample_status` keeps a started sample at 4; the raw DIG service marks it done at the buffer end (`0x6F28F`) (`ail.c:369`, record k7-k12 §0.7.6). |
 
 Recorded in Task 3a (record `2026-09-29-k1-k9-derivations.md` §K1.1, and
@@ -663,7 +666,7 @@ it is not a complete scan of non-Ghidra code.
 
 ### §H.5 Final gate
 
-Ten named gaps remain (§H.3); §H.1a gives every `not modelled` hit a verdict.
+Nine named gaps remain on branch `named-gaps-a` (§H.3; #5 closed); §H.1a gives every `not modelled` hit a verdict.
 
 `make clean && make build && make verify` (with the `/tmp/pr_t7_*` dump
 overrides; the two oracle fixtures restored byte-identical after `make clean`,

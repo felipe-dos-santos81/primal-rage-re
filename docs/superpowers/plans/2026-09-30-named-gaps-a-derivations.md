@@ -318,8 +318,8 @@ These runs are kept out of `data/` (`/tmp/named-gaps-a/caps/`).
 Screens (`walk frame <i> (raw <r>)`): 90 (1746) the title logo sweep before
 the Enter; 92 (1753) MAIN MENU; 94..98 (1821..1961) START MENU and its cursor
 rows; 100/101 (2035/2100) MAIN MENU, "GAME OPTIONS" highlighted; 105 (2173)
-OPTIONS MENU; 107 (2241) CONFIG OPTIONS (titled "GAME OPTIONS"); 113 (2455)
-STATISTICS page 1; 116 (2525) page 2 ("MORE STATISTICS"); 118/120/122
+OPTIONS MENU; 107 (2241) CONFIG OPTIONS (titled "GAME OPTIONS"); 114 (2457)
+STATISTICS page 1 (112 (2453) its title alone); 116 (2525) page 2 ("MORE STATISTICS"); 118/120/122
 (2593/2660/2734) the three histograms; 127 (2941) SOUND TEST; 132 (3155) MUSIC
 TEST; 139 (3364) MODIFY CONTROLS; 145 (3572) CONFIGURE KEYBOARD; 150..152
 (3784..3787) TEST CONTROLS (no DIAGS rows); 157..160 (3993..4003) ADJUST
@@ -403,7 +403,8 @@ both `--input inject`, every `CHECK ok`.
 > counter `DS_000EF6DC` is not reset (`0x5F3` → `0x5F4`). The attract then runs
 > from state 0 (`st=0001` at `poll.log:4177`, `ms=71072`). The screen holds the
 > MAIN MENU (`idle frame 106 (raw 1750)`) until `idle frame 107 (raw 3150)`,
-> all black, then `idle frame 108 (raw 3154)`, the TWI5 logo movie, **equal to
+> all black — one distinct frame spanning raw 3150..3153, about four capture
+> frames (70.09 Hz), a timing target for B — then `idle frame 108 (raw 3154)`, the TWI5 logo movie, **equal to
 > `data/title-captures/frontend/frame_1887.raw`** — the frame the front-end
 > capture shows when the attract restarts after the first demo (its first
 > all-black frame is 1885). The whole boot sequence follows: TWI5, TWG, the
@@ -424,7 +425,8 @@ Timing: from the Enter's stamp (tick `0x572`) to the store (tick `0xA23`) is
 > `DS_00107414` cleared one frame before the mode change. `0x251F3..0x2520B`
 > itself stores nothing, so the clear comes from inside the menu step before
 > it returns; the instruction is not pinned here (named for B). The screen: `menuesc frame 108 (raw 1750)` the MAIN MENU until
-> `frame 109 (raw 1960)` all black, then `frame 110 (raw 1964)` the TWI5 logo,
+> `frame 109 (raw 1960)` all black (one distinct frame, raw 1960..1963, about
+> four capture frames), then `frame 110 (raw 1964)` the TWI5 logo,
 > equal to `data/title-captures/frontend/frame_1887.raw` — the same soft
 > restart as the idle timeout.
 
@@ -530,7 +532,15 @@ unexplained`, `settled screens exhibited 4/5; missing [12]` — port 12 is page
   `FAIL: test_bios_insert…`; `t += pace` → `t += 0` → `FAIL:
   test_schedule…`). What this does not exercise: the real keyboard
   controller and the game's IRQ1 handler, which AUTOTYPE's partial runs did
-  (their keys produced the same `K` words and `kb` runs).
+  (their keys produced the same `K` words and `kb` runs). **Fidelity check
+  (review 1):** every non-black frame of the inject walk from 90 to 113 (14
+  frames: the title sweep, MAIN MENU, START MENU and its rows, GAME OPTIONS,
+  OPTIONS MENU, CONFIG OPTIONS, the STATISTICS title) is byte-identical to a
+  frame of AUTOTYPE run 1, which went through the real keyboard controller
+  and the game's IRQ1 handler for those keys (`non-black inject frames
+  90..113: 14; identical in autotype run 1: 14; not found: 0`; the full list
+  is kept in `.superpowers/sdd/2026-09-29-k7-k12/scratch/na-injection-fidelity.txt`,
+  sha256 `2968042e…cf9f`).
 - **F1** not taken: the memory-file poke is visible (§A.7). **F3** not taken
   (the text is in `dosbox.log`). **F4** not taken (the timeout fired at 20 s).
   **F5** not taken (the base was found in every run).
@@ -551,7 +561,7 @@ unexplained`, `settled screens exhibited 4/5; missing [12]` — port 12 is page
 | MAIN MENU | walk | walk frames 92 (raw 1753), 170 (raw 4345) | k11-oracle |
 | START MENU | walk | walk frames 94..98 (raw 1821..1961) | k11-oracle |
 | CONFIG OPTIONS ("GAME OPTIONS") | walk | walk frame 107 (raw 2241) | k11-oracle |
-| STATISTICS p1 / p2 / histograms 0..2 | walk | walk frames 113 (2455), 116 (2525), 118/120/122 (2593/2660/2734) | k11-oracle |
+| STATISTICS p1 / p2 / histograms 0..2 | walk | walk frames 114 (2457), 116 (2525), 118/120/122 (2593/2660/2734) | k11-oracle |
 | SOUND TEST / MUSIC TEST (entered and left) | walk | walk frames 127 (2941), 132 (3155) | k11-oracle |
 | MODIFY CONTROLS | walk | walk frame 139 (3364); 138 allowed by name (§A.5) | k11-oracle |
 | CONFIGURE KEYBOARD | walk | walk frame 145 (3572) | k11-oracle |
@@ -572,27 +582,34 @@ No walk screen was dropped (F2 as written was not needed; §A.9).
 
 - **G1.** Both captured longjmps (the idle timeout `0x2EBB3` after `0x4B1`
   ticks, 20.0 s, and the MAIN MENU Esc `0x2520B`) restart the game the same
-  way: mode 3, attract state 0, `DS_000EF6DC` kept, one black frame, then the
+  way: mode 3, attract state 0, `DS_000EF6DC` kept, one distinct black frame
+  (raw 3150..3153 in idle, 1960..1963 in menuesc: about four capture frames), then the
   boot sequence from the TWI5 logo (`idle frame 108` = `menuesc frame 110` =
   `data/title-captures/frontend/frame_1887.raw`). §A.6.
 - **G2.** Unreachable in the stock game (§A.1.1). Under a poke, DOS/4GW +
   DOSBox-X read `0xFF` at linear `0xFFE80003` with no fault (paging off) and
   the screen shows `000000FF`. §A.7.
-- **G3.** A zero low word in row `0x96`'s divisor (fields 8 + 6 = `0x10000`)
-  aborts to DOS with `DOS/4GW Professional error (2001): exception 00h (divide
+- **G3.** The `idiv` divisor is the sum's low word (`0x334D7 and ebx,0xffff`):
+  it is 0 when fields 8 + 6 sum to exactly `0x10000` (row `0x96`, drawn on
+  STATISTICS page 1). That divisor 0 aborts to DOS with `DOS/4GW Professional error (2001): exception 00h (divide
   by zero)` and the register dump; no handler is installed. §A.8.
 
-### The oracle's claim
+### The oracle's claim (narrow, as AGENTS.md says of the front-end oracle)
 
-Every non-black capture frame between the first capture frame that exhibits
-the port's first MAIN MENU and the final settled MAIN MENU is explained by the
-port (clean, a splice of two adjacent port frames, or a transition row),
-except the two frames allowed by name (§A.5, the presented-DAC gap of
-fidelity-gaps §7.11), and every settled screen the port draws is present in
-the capture (38/38). The claim does not cover the timing between keys, the
-input path through the keyboard controller and the game's IRQ1 handler (the
-capture injects keys, §A.9), the SOUND/MUSIC TEST audio, or anything after the
-walk.
+It proves only that no content-bearing capture frame inside the window is
+unexplained (clean, a splice of two adjacent port frames, or one transition
+row), except the two frames allowed by name (§A.5, the presented-DAC gap of
+fidelity-gaps §7.11), and that every settled screen of the port's dump appears
+in the capture (38/38). The window START is derived from the port's own dump
+(the first capture frame exhibiting a port frame at or before its first
+settled screen); the END is the last capture frame that exhibits the port's
+final settled screen, and since review 1 that frame must also be the
+capture's last non-black frame (`capture continues past the port's final
+screen` otherwise), so a port that stops reacting to its last keys fails. It
+does not prove any frame "correct" beyond byte equality with a capture frame,
+nor the timing between keys, nor the input path through the keyboard
+controller and the game's IRQ1 handler (the capture injects keys, §A.9), nor
+the SOUND/MUSIC TEST audio.
 
 ### Named gaps left by A
 
@@ -605,7 +622,7 @@ walk.
 4. The instruction that clears `DS_00107414` on the MAIN MENU Esc is not
    pinned (§A.6).
 
-### Final gate (gate t15, after the last code commit `1ecc23b`)
+### Final gate (gate t15, after the last code commit `7a1c63c`, ex-`1ecc23b` before the trailer rewrite)
 
 `make verify` with the `na` overrides: `verify-exit=0`; `ORACLES-EQUAL` (the
 45 base lines); `DUMPS-IDENTICAL`; `WAV-IDENTICAL`; the five `k11_compare:
@@ -614,3 +631,55 @@ walk:` lines equal §A.5's; `Ran 32 tests` for the k11 tools (fields 7, session
 `731 731 100 …`, unchanged (A ports no function; the README stays at 64%).
 Assertion sites 13545 → 13557. The captures (`data/k11-captures/{walk, idle,
 menuesc, diags, de}`, git-ignored) are 32, 218, 141, 22 and 19 MB.
+
+## Not tested
+
+Arms no unit test or gate run covers, and where (if anywhere) they ran:
+
+- `k11_capture.Poller.run`, `Poller.type_keys`, `Poller.apply` (the memory-file
+  poller, the key injector and the poke writer): exercised only by the live
+  captures (§A.4, §A.6–§A.8, their `poll.log` `I`/`K`/`W` lines); no unit test
+  drives them (they need a running DOSBox-X).
+- `k11_capture.main`'s `CHECK` verdicts and exit status: live captures only
+  (every scenario printed `ok`, `de` its expected `keys 5/11: FAIL`).
+- `k11_session.check_fields`: run once by hand on the `de` port dump (§A.8,
+  `matches config_field_set over 129 bytes`); no unit test.
+- The driver's `ds_or`/`field` poke path (`k11_apply_pokes`, `fimg_*.bin`) and
+  the end-of-script `longjmp` out of a blocking loop: `make k11-report` only
+  (`diags`, `de`), which is not in `make verify`; the walk's `end` falls in the
+  master loop, where the `longjmp` also runs (in verify) but leaves no blocking
+  loop.
+- The driver's `K11_STALL_PUMPS` exit and `K11_MAX_LOOPS` bound: never reached.
+- `k11_capture --input autotype`: the two failed walk runs and the probes only
+  (§A.4); `dosbox_cmd(autotype=True)` has a unit test, the run path does not.
+- The paths not captured (§A.10): the quit-prompt longjmp `0x24AB0`, the
+  STATISTICS page-2 clear (a chord), SOUND/MUSIC TEST playback.
+
+## §A.11 Review 1 fixes
+
+- **Critical: the window END came from the port's own final screen.** A port
+  that stopped reacting to its last keys passed: the reviewer's proof, redone
+  on the current dump (frames 77..78 deleted, `end settled 76`), printed
+  `window distinct [90..168] (raw 1746..4278)`, `settled screens exhibited
+  37/37`, `0 unexplained in the window`, **exit 0** without the fix. With the
+  fix, `k11_compare` fails when any non-black capture frame follows the END:
+  the same case now prints `k11_compare: walk: capture continues past the
+  port's final screen at 170 (raw 4345)` and exits 1. Unit tests:
+  `test_capture_past_the_final_screen_fails` (capture `[X, A, B, C, B, A]`,
+  port `[A, B, C]`, `end settled 1`; without the fix `FAIL … AssertionError: 0
+  != 1` with `window distinct [1..4]`, `settled screens exhibited 2/2`, `0
+  unexplained in the window`) and `test_trailing_black_capture_frames_pass`.
+  The real walk stays green (capture 170 is both the END and the last
+  non-black frame). A `screens.txt` naming a frame beyond the dump now fails
+  with a message instead of a traceback. The optional per-key `k11.log`
+  mode/ent cross-check against the capture's `P` records was not added.
+- The claim text (§A.10), `docs/PROGRESS.md` and AGENTS.md now state the
+  narrow claim. The ledger §H.3 rows 1, 2, 3 and 5 carry this record's
+  evidence; row 5 is closed with its residue.
+- Minor: STATISTICS page 1 is walk frame 114 (raw 2457), not 113 (an
+  all-black frame); the restart's black frame is one distinct frame over about
+  four capture frames; the injection-fidelity check (§A.9); the k11 unit
+  tests run with `PR_ORACLE_REQUIRED=1` in `make verify`; unclosed files in
+  `k11_capture.main` and `k11_session.check_fields` closed; the driver hook
+  names no settled frame before the first dump; `PR_K11_DUMP` is in AGENTS.md's
+  driver list and `K11_DUMP` in the parallel-rules override list.
