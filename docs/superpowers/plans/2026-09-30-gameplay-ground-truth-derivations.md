@@ -715,3 +715,96 @@ no *well-formed script* can trip on the unmutated driver is a miss, because
 each `game_loop_step()` raises the counter by one and the parser rejects
 unsorted steps. Not tested: `CHECK(!gp_failed …)` (no scripted path faults; a
 fault would need a capture that faults).
+
+## §G.10 Every displayed frame and the per-iteration trace (U2 Task 2)
+
+`gp_dump_if_new` (the K11 driver's hash of `gfx_display()`, else
+`DS_000E87A0`, plus `gfx_dac`; a new hash writes `frame_%05u.ipx` = 64 000
+index bytes then the 768-byte DAC, and a `frames.txt` line `%05u f=%04X
+tick=%08X mode=%04X`), called from the pump hook, the loader-screen hook
+(`res_set_screen_hook(gp_loader)`) and after every armed iteration;
+`gp_trace_line` (one `T` line per armed iteration, `SNAP_FIELDS`' names and
+widths; `w10d` through the local `GP_DS_0010810D 0x0010810Du`, which
+`symbols.h` does not name). Every argument is cast to `unsigned`; the build has
+no warning.
+
+**Red (Step 1):** the checks and the two files, with nothing dumping yet →
+`FAIL …/port/tests/test_game.c:12311: the gp frames were written`,
+`FAILURES: 1`, `exit=1` (as the plan).
+
+**Green (Step 3), the smoke:** `all checks passed`; 145 `.ipx` files of 64 768
+bytes; `trace.txt` 601 lines, `T f=012C` … `T f=0384`; the trace's mode runs
+(`awk '{print $3}' trace.txt | uniq -c`), verbatim:
+
+```
+ 300 mode=0027
+   1 mode=002D
+  18 mode=001A
+  18 mode=001B
+ 264 mode=0010
+```
+
+— all as the plan's scratch run (the capture's `0x1A` also lasts 18 frames,
+`0x248..0x259`, spec §3.5). `frames.txt` by mode: `7 0027, 2 002D, 21 001A,
+18 001B, 97 0010`; first line `00000 f=012C tick=00000138 mode=0027`, last
+`00144 f=0384 tick=0000039E mode=0010`. Every mode of the trace has frames.
+
+**Step 4, the format:** the plan's `translate` expansion of `frame_00000.ipx`
+→ `192000 cb92e3aa69d3 64000` (as the plan). Cross-check against the RGB
+writer itself (added): the expansions of the smoke's `frame_00001..00005.ipx`
+are byte-identical to the K11 walk dump's `fe_write_frame` files
+(`/tmp/pr_u2_k11/walk/frame_0001.raw` … `0005`, the same MAIN MENU fade;
+`frame_00000` differs from the walk's `0000`, whose Enter came at `f = 324`
+instead of 300). So `.ipx` through its DAC is `fe_write_frame`'s RGB24.
+
+**Step 5, the parse:** `gp_session.parse` on the smoke's `trace.txt` →
+`T 601 [] True` (no `SNAP_FIELDS` name missing, every `TRACE_FIELDS` name
+present).
+
+**Mutations (Step 6),** each restored → `all checks passed`:
+
+- (a) the pump hook's and the after-iteration `gp_dump_if_new()` removed:
+  **the plan's check passed** (`all checks passed`): the loader hook alone still
+  wrote two frames (`00000 f=025A … mode=001A`, `00001 f=026B … mode=001A`), so
+  `gp_dumped > 1u` held. **Correction (measured):** a check added, the first
+  dumped frame's `f` equals `enter_frame` (sentinel `gp_first_f = 0xFFFFF`):
+  the Enter's iteration always ends with a displayed image and the first image
+  is always new, so the after-iteration call dumps at `enter_frame` at the
+  latest. Under (a) → `FAIL …:12373: 602 != 300`, `FAILURES: 1`.
+- (b) `gp_trace_line()` only when `(gp_iters & 1u) == 0u` →
+  `FAIL …:12370: 300 != 601` (the trace-count check), `FAILURES: 1`.
+
+Which call dumps what (measured on the smoke, each call removed alone): without
+the after-iteration call the dump is unchanged (145 frames); without the pump
+hook's it has 137: the 8 frames missing are the in-iteration presents of the
+blocking fades (`f=012C` ticks `138`/`139`, `f=01C2` ticks `1CF..1D1`,
+`f=0258` tick `267`, `f=025A` tick `269`, `f=026B` tick `27C`). So in the
+smoke every iteration pumps (the spin `0x256C6..0x256DB` pumps), and the
+after-iteration call is the defensive path of Review Focus 3 (an iteration
+whose spin never pumps): kept, and named here as not exercised by the smoke.
+
+**The gp-pads replay** (`$S/gp-pads.script`, 17.6 s wall): `all checks
+passed`; 3 `.ipx` (`f=0141` ticks `14D..14F`, the MAIN MENU fade-in), 721 `T`
+lines `f=0141..0411`, all `mode=0027`, no `left-queued`. Against the capture's
+`S` records (`gp_session.snapshots(poll.log)`, 721 common `f`, `0x141..0x411`),
+field by field over all `SNAP_FIELDS`: **every field is equal at every `f`
+except three, each explained by the sampling point or the address space, none
+in `TRACE_FIELDS`:**
+
+1. `tick` (721 of 721; first `0x141`: capture `0x56F`, port `0x14F`): host-timed
+   (spec §7 Q6; the boot movies run in real time in DOSBox).
+2. `t508` (721 of 721; capture `0`, port `1` at `0x141`, `t50c` equal): the
+   capture reads in the spin (`[t50c] − 1 == [t508]`, `0x256C6..0x256CC`); the
+   port's `T` is taken after `game_loop_step()` returns, i.e. after the tick
+   that released the spin (`0x1BE10` raised `DS_00101508`), so the port's
+   `t508 = t50c` where the capture's is `t50c − 1`. (Its `tick` is likewise one
+   ISR tick later than a spin read.)
+3. `ent` (721 of 721; capture `0x2A2BEC`, port `0x0BCBEC`): a pointer into the
+   data object; the capture holds DOSBox's linear address (object base
+   `0x266000`, `poll.log`'s `B` record), the port its Ghidra linear address:
+   `0x2A2BEC − 0x266000 + 0x80000 = 0xBCBEC` (the "Start" row, §G.7.3).
+
+So the port replays the 22 BIOS words and the 36 bitmap changes of `gp-pads`
+with the capture's `mode st raw pad new held e0 e2 rng cred fp b1d b1f b25 w10d
+cnt s0_* s1_*` at every one of the 721 frames. (Informational: U3 owns the
+comparison and its ratchets; items 2 and 3 are recorded for it in §H.)
