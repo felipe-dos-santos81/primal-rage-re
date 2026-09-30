@@ -64,5 +64,65 @@ class TestExpand(unittest.TestCase):
             gc.expand_ipx(b'\x00' * 100)
 
 
+class TestFrames(Dirs):
+    def test_clean_and_splice_are_explained(self):
+        b = 5000
+        self.write([1, 2, 3], [rgb(1), rgb(1)[:b] + rgb(2)[b:], rgb(2), rgb(3)])
+        rc, first, out = self.run_claim(4)
+        self.assertEqual((rc, first), (0, None), out)
+
+    def test_first_unexplained_against_the_ratchet(self):
+        bad = bytes([9]) * tc.FRAME_BYTES
+        self.write([1, 2, 3], [rgb(1), rgb(2), bad, rgb(3)])
+        self.assertEqual(self.run_claim(2)[:2], (0, 2))
+        rc, first, out = self.run_claim(3)
+        self.assertEqual((rc, first), (1, 2))
+        self.assertTrue(any('FAIL: first unexplained 2 < ratchet N 3' in l for l in out), out)
+
+    def test_black_frames_are_skipped(self):
+        self.write([1, 2], [rgb(1), bytes(tc.FRAME_BYTES), rgb(2)])
+        self.assertEqual(self.run_claim(3)[:2], (0, None))
+
+    def test_window_start_is_the_port_first_frame(self):
+        self.write([1, 2], [rgb(5), rgb(6), rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(4)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(out[0].startswith('gp_compare: t: frames: window from capture 2 (raw 102)'), out)
+
+    def test_a_match_beyond_the_window_is_found(self):
+        ks = list(range(1, 80))
+        self.write(ks, [rgb(1), rgb(79)])
+        self.assertEqual(self.run_claim(2)[:2], (0, None))
+
+    def test_unpinned_n_fails(self):
+        self.write([1], [rgb(1)])
+        rc, first, out = self.run_claim(None)
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('FAIL: the ratchet N is not pinned' in l for l in out), out)
+
+    def test_an_unreachable_n_fails(self):
+        self.write([1, 2], [rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(3)       # 2 capture frames: N 3 can never be met
+        self.assertEqual((rc, first), (1, None), out)
+        self.assertTrue(any('FAIL: N 3 > end 2' in l for l in out), out)
+
+    def test_an_improved_first_unexplained_is_said(self):
+        bad = bytes([9]) * tc.FRAME_BYTES
+        self.write([1, 2], [rgb(1), rgb(2), bad])
+        rc, first, out = self.run_claim(1)
+        self.assertEqual((rc, first), (0, 2), out)
+        self.assertTrue(any('first unexplained 2, ratchet N 1 ok (improved: raise N)' in l for l in out), out)
+
+    def test_report_goes_past_the_first_unexplained(self):
+        b1, b2 = bytes([9]) * tc.FRAME_BYTES, bytes([8]) * tc.FRAME_BYTES
+        self.write([1, 2], [rgb(1), b1, rgb(2), b2])
+        rc, first, out = self.run_claim(0, report=True)
+        self.assertEqual(first, 1, out)
+        self.assertEqual(sum('UNEXPLAINED capture' in l for l in out), 2, out)
+        self.assertTrue(any('FIRST UNEXPLAINED capture 1 (raw 101)' in l for l in out), out)
+        rc, first, out = self.run_claim(0, report=False)
+        self.assertEqual(sum('UNEXPLAINED capture' in l for l in out), 1, out)   # enforced: stops at the first
+
+
 if __name__ == '__main__':
     unittest.main()

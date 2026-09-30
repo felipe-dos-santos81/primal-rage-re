@@ -101,3 +101,127 @@ class View:
 
     def __getitem__(self, i):
         return self.seq[self.lo + i]
+
+
+def shift(kind, data, lo):
+    if kind == 'clean':
+        return kind, data + lo
+    if kind == 'splice':
+        return kind, [(N + lo, a, b) for N, a, b in data]
+    if kind == 'transition':
+        return kind, [(N + lo, r, a, b) for N, r, a, b in data]
+    return kind, data
+
+
+def exhibited(kind, data):
+    s = set()
+    if kind == 'clean':
+        s.add(data)
+    elif kind == 'splice':
+        for N, lo, hi in data:
+            if hi > 0:
+                s.add(N)
+            if lo < tc.FRAME_BYTES:
+                s.add(N + 1)
+    elif kind == 'transition':
+        for N, _r, _a, _b in data:
+            s.update((N, N + 1))
+    return s
+
+
+def classify(c, port, rows, p):
+    """(kind, data) for capture frame c, the window around p first."""
+    ch = tc.row_hashes(c)
+    n = len(port)
+    lo, hi = max(0, p - BACK), min(n, p + AHEAD)
+    if hi - lo >= 1:
+        kind, data = tc.explain(c, ch, View(port, lo, hi), rows[lo:hi], hi - lo)
+        if kind != 'unexplained':
+            return shift(kind, data, lo)
+    return tc.explain(c, ch, port, rows, n)
+
+
+def frame_claim(name, cap, raws, port, rows, min_first, report, out=print):
+    """Returns (rc, first_unexplained or None, next_after_last_classified)."""
+    start = None
+    head = min(2, len(port))
+    for j in range(len(cap)):
+        c = cap[j]
+        if not any(c):
+            continue
+        kind, data = tc.explain(c, tc.row_hashes(c), View(port, 0, head), rows[:head], head)
+        if 0 in exhibited(kind, data):          # exact: exhibiting port 0 needs only frames 0 and 1
+            start = j
+            break
+    if start is None:
+        out("gp_compare: %s: frames: window empty: no capture frame exhibits the port's first frame" % name)
+        return 1, None, 0
+    p, counts, black, unexpl = 0, collections.Counter(), 0, []
+    j = start
+    while j < len(cap):
+        c = cap[j]
+        if not any(c):
+            black += 1
+            j += 1
+            continue
+        kind, data = classify(c, port, rows, p)
+        counts[kind] += 1
+        if kind == 'unexplained':
+            unexpl.append(j)
+            if not report or len(unexpl) >= REPORT_MAX:
+                break
+        else:
+            ex = exhibited(kind, data)
+            if ex:
+                p = max(p, max(ex))              # the port only moves forward in time
+        j += 1
+    out('gp_compare: %s: frames: window from capture %d (raw %d); %d classified: %d clean, %d splice, '
+        '%d transition, %d unexplained, %d all-black'
+        % (name, start, raws[start], sum(counts.values()), counts['clean'], counts['splice'],
+           counts['transition'], counts['unexplained'], black))
+    for k, u in enumerate(unexpl):
+        cu = cap[u]
+        m = nearest(cu, rows)
+        box = diff_box(cu, port[m])
+        out('gp_compare: %s: frames: %s capture %d (raw %d): nearest port %d, rows %d..%d, x %d..%d (%d px)'
+            % ((name, 'FIRST UNEXPLAINED' if k == 0 else 'UNEXPLAINED', u, raws[u], m) + box))
+    first = unexpl[0] if unexpl else None
+    return ratchet(name, 'frames', first, len(cap), min_first, out), first, j
+
+
+def nearest(c, rows):
+    ch = tc.row_hashes(c)
+    best, best_m = -1, 0
+    for m, ph in enumerate(rows):
+        a, b = tc.row_common(ch, ph)
+        if min(a + b, tc.FRAME_H) > best:
+            best, best_m = min(a + b, tc.FRAME_H), m
+    return best_m
+
+
+def diff_box(c, q):
+    R = tc.ROW
+    rs = [r for r in range(tc.FRAME_H) if c[r * R:(r + 1) * R] != q[r * R:(r + 1) * R]]
+    if not rs:
+        return 0, 0, 0, 0, 0
+    xs = [x for r in rs for x in range(tc.FRAME_W) if c[r * R + 3 * x:r * R + 3 * x + 3] != q[r * R + 3 * x:r * R + 3 * x + 3]]
+    return rs[0], rs[-1], min(xs), max(xs), len(xs)
+
+
+def ratchet(name, what, first, end, n, out=print):
+    """first unexplained (None: none up to `end`) against the pinned N."""
+    if n is None:
+        out('gp_compare: %s: %s: FAIL: the ratchet N is not pinned (U4 Task 5)' % (name, what))
+        return 1
+    if first is None:
+        if n > end:
+            out('gp_compare: %s: %s: FAIL: N %d > end %d: N is unreachable' % (name, what, n, end))
+            return 1
+        out('gp_compare: %s: %s: 0 unexplained through %d; ratchet N %d ok' % (name, what, end - 1, n))
+        return 0
+    if first < n:
+        out('gp_compare: %s: %s: FAIL: first unexplained %d < ratchet N %d' % (name, what, first, n))
+        return 1
+    out('gp_compare: %s: %s: first unexplained %d, ratchet N %d ok%s'
+        % (name, what, first, n, '' if first == n else ' (improved: raise N)'))
+    return 0

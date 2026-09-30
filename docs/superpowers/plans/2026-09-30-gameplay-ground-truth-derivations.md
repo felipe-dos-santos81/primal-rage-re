@@ -1041,3 +1041,38 @@ byte-identical to `fe_write_frame`'s `/tmp/pr_u2_k11/walk/frame_0001.raw` …
 `0005.raw` (`True` ×5). So `expand_ipx` is `fe_write_frame`'s `rgb = dac[idx]`
 and the port frames U3 compares are the same bytes the K11 and front-end
 oracles read.
+
+## §G.14 The frame claim and its ratchet (U3 Task 2)
+
+`gp_compare.shift`, `exhibited` (`k11_compare.exhibited`'s rule, read:
+`tools/k11_compare.py:63`), `classify`, `frame_claim`, `nearest`, `diff_box`,
+`ratchet`; `title_compare.explain` is called as is (no tolerance, mask, crop or
+allowance; `git diff 300eef7 -- tools/title_compare.py` empty). **Harness
+values, named as such (spec §5):** `BACK = 2`, `AHEAD = 64` (the `[p − 2, p + 64)`
+search order: the window only decides which port frames are tried first; a
+frame the window does not explain is tried against the whole dump, so whether
+a frame is explained never depends on it, only possibly which explanation
+(clean, splice or transition) is reported first when two exist), `REPORT_MAX = 5`,
+`Lazy`'s `cache = 160`.
+
+Tests: `Ran 8 tests … OK` (the plan's; before: 6 × `AttributeError: … 'frame_claim'`),
+then 3 added, `Ran 11`: `test_an_unreachable_n_fails` (N above the capture's
+end must fail: a ratchet that could never be met), `test_an_improved_first_unexplained_is_said`
+(the "raise N" hint), `test_report_goes_past_the_first_unexplained` (report mode
+lists two, the enforced run stops at the first), and `test_unpinned_n_fails` now
+asserts the `not pinned` message and `first is None`, so it cannot pass on some
+other failure.
+
+Mutations (each restored → `Ran 11 … OK`, `git diff` of the restored file empty
+against the pre-mutation copy):
+
+- (a) no full-dump fallback in `classify` → `FAIL: test_a_match_beyond_the_window_is_found`.
+- (b) the all-black `continue` removed → `FAIL: test_black_frames_are_skipped`.
+- (c) `first < n` → `first < n − 1` → `FAIL: test_first_unexplained_against_the_ratchet`.
+- (d) the start search taking the first non-black capture frame (`if True:` for
+  `if 0 in exhibited(…)`) → `FAIL: test_window_start_is_the_port_first_frame`.
+  (The first attempt, `start = 0` before the search, did not fail: the search
+  overwrites it — a bad mutation, not a weak test; (d) is the real one.)
+- (e) `if n > end:` → `if False:` → `FAIL: test_an_unreachable_n_fails`.
+- (f) the enforced run continuing past the first unexplained frame →
+  `FAIL: test_report_goes_past_the_first_unexplained`.
