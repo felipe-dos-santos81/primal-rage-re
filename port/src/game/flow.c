@@ -6746,10 +6746,11 @@ void game_init_resume(void)
         DSD(DS_00107468) = h;                        /* 0x20D05 */
         DSD(DS_0010746C) = h;                        /* 0x20D0A */
     }
-    /* PORT: 0x20D0F..0x20DE3, the controller checks, are left out: a device
-     * word 2/4/6 at BIOS+0x2D4/+0x2D6 is probed with 0x4FBBB(3)/0x4FBBB(0xC),
-     * a timed read of the game port 0x201 whose answer depends on the
-     * hardware, which the port does not have (record named-gaps-b §B.11). */
+    /* PORT: 0x20D0F..0x20DE3, the controller checks, are left out: a
+     * named gap (record named-gaps-b §B.11). A device word 2/4/6 at
+     * BIOS+0x2D4/+0x2D6 is probed with 0x4FBBB(3)/0x4FBBB(0xC), a timed read of the
+     * game port 0x201 whose answer depends on the hardware, which the port
+     * does not have and no capture pins. */
 }
 
 /* 0x1BE30 teardown. */

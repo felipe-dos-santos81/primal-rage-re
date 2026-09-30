@@ -119,6 +119,54 @@ class K11Compare(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("capture continues past the port's final screen at 5", r.stdout)
 
+    def open_end(self, capture, port, keys, end_settled, min_end):
+        sys.path.insert(0, os.path.join(ROOT, 'tools'))
+        import k11_compare as kc
+        import title_compare as tc
+        import contextlib, io
+        rows = [tc.row_hashes(p) for p in port]
+        saved = kc.K11_OPEN_END
+        out = io.StringIO()
+        try:
+            kc.K11_OPEN_END = {'t': (min_end, 'test')}
+            with contextlib.redirect_stdout(out):
+                rc = kc.compare('t', capture, list(range(len(capture))), port, rows, keys, end_settled, False)
+        finally:
+            kc.K11_OPEN_END = saved
+        return rc, out.getvalue()
+
+    def test_open_end_pins_menuesc(self):
+        sys.path.insert(0, os.path.join(ROOT, 'tools'))
+        import k11_compare as kc
+        self.assertEqual(kc.K11_OPEN_END['menuesc'][0], 388)
+        self.assertNotIn('walk', kc.K11_OPEN_END)
+
+    def test_open_end_passes_past_the_final_screen(self):
+        # the original runs on past the port's script end: reported, not failed
+        rc, out = self.open_end([self.X, self.A, self.B, self.C, self.B, self.A], [self.A, self.B, self.C],
+                                [0], 1, 4)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("capture continues past the port's final screen at 5", out)
+        self.assertIn('END 4 must be >= 4: ok', out)
+
+    def test_open_end_fails_a_short_window(self):
+        # a port that stops early (never restarts) ends the window before the pin
+        rc, out = self.open_end([self.X, self.A, self.B, self.C, self.B, self.A], [self.A, self.B, self.C],
+                                [0], 1, 5)
+        self.assertEqual(rc, 1, out)
+        self.assertIn('END 4 must be >= 5: FAIL', out)
+
+    def test_open_end_still_fails_unexplained(self):
+        rc, out = self.open_end([self.X, self.A, self.Y, self.B, self.C], [self.A, self.B, self.C],
+                                [0], 1, 0)
+        self.assertEqual(rc, 1, out)
+        self.assertIn('FIRST UNEXPLAINED capture 2', out)
+
+    def test_open_end_still_fails_a_missing_screen(self):
+        rc, out = self.open_end([self.A, self.B, self.A], [self.A, self.C, self.B], [0, 1], 2, 0)
+        self.assertEqual(rc, 1, out)
+        self.assertIn('missing [1]', out)
+
     def test_trailing_black_capture_frames_pass(self):
         r = self.case([self.X, self.A, self.B, bytes(W * H * 3)], [self.A, self.B],
                       'key 0 settled 0\nend settled 1\n')

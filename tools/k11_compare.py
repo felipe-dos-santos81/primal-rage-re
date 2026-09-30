@@ -17,7 +17,9 @@ claim is a failure when broken:
      the window, so a port that renders less than the original fails;
   4. no non-black capture frame follows the window's end, so the END is the
      capture's last content frame and a port that stops reacting to its last
-     keys fails. The START still comes from the port's own dump.
+     keys fails. The START still comes from the port's own dump. A scenario
+     in K11_OPEN_END (menuesc) replaces claim 4 with a ratchet: the END must
+     reach its pinned capture frame, and content past it is reported.
 --report prints the same, plus the first unexplained frames' difference boxes,
 and always exits 0 (the evidence scenarios). An absent capture skips (exit 0)
 unless --required is passed. The environment's PR_ORACLE_REQUIRED is ignored:
@@ -42,6 +44,18 @@ K11_ALLOWED_UNEXPLAINED = {
         138: 'record §A.5: MODIFY CONTROLS mid-draw, port 47/48 plus 940 black glyph px (rows 91..158)',
         151: 'record §A.5: TEST CONTROLS markers mid-draw, port 58/59 plus 88 black glyph px (rows 120..152)',
     },
+}
+# scenario -> (min_end, reason). Claim 4 (no content past the window's END)
+# becomes a ratchet: the END must reach capture frame min_end, and content
+# past it is reported, not failed. Only a scenario whose original keeps
+# running past the port's script end, for a reason the record names, belongs
+# here. min_end is the END measured when the row was added (like the Makefile's
+# demo-fight N): without it a port that never restarted would end the window
+# at the menu and pass.
+K11_OPEN_END = {
+    'menuesc': (388, 'record named-gaps-b §B.12: after the MAIN MENU Esc restart the original runs on '
+                     'until the capture\'s time limit (raw 4175); the port script ends 180 ticks '
+                     '(k11_session END_TAIL_TICKS, a harness value) after the Esc'),
 }
 REPORT_MAX = 5
 
@@ -153,9 +167,17 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
           % (name, len(wanted) - len(missing), len(wanted), missing))
     if allowed and unexpl:
         print('k11_compare: %s: allowed by name: %s' % (name, sorted(j for j in unexpl if j in allowed)))
+    short = False
+    if name in K11_OPEN_END:
+        min_end, why = K11_OPEN_END[name]
+        short = end < min_end
+        print('k11_compare: %s: open end by name (%s): END %d must be >= %d: %s'
+              % (name, why, end, min_end, 'FAIL' if short else 'ok'))
     if past is not None:
-        print("k11_compare: %s: capture continues past the port's final screen at %d (raw %d)"
-              % (name, past, raws[past]))
+        print("k11_compare: %s: capture continues past the port's final screen at %d (raw %d)%s"
+              % (name, past, raws[past], ' (open end)' if name in K11_OPEN_END else ''))
+        if name in K11_OPEN_END:
+            past = None
     if not bad:
         print('k11_compare: %s: 0 unexplained in the window' % name)
     for k, j in enumerate(bad[:REPORT_MAX if report else 1]):
@@ -165,7 +187,7 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
         label = 'FIRST UNEXPLAINED' if k == 0 else 'UNEXPLAINED'
         print('k11_compare: %s: %s capture %d (raw %d): nearest port %d, differs in rows %d..%d, x %d..%d (%d px)'
               % ((name, label, j, raws[j], m) + box))
-    return 0 if not bad and not missing and past is None else 1
+    return 0 if not bad and not missing and past is None and not short else 1
 
 
 def main():

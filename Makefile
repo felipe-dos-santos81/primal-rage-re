@@ -336,8 +336,14 @@ k11-capture: title-pin ## Capture the pinned original's service menu (scenario=w
 # the capture and fails on any mismatch with it; k11_compare.py ignores an
 # inherited PR_ORACLE_REQUIRED and fails on an absent capture only with
 # --required, which this target does not pass). The port script comes from the capture's poll log; the
-# PR_K11_DUMP driver runs alone (game_init once per process).
-k11-oracle: build ## K11 service-menu oracle, the walk (skips without data/k11-captures/walk)
+# PR_K11_DUMP driver runs alone (game_init once per process). The second
+# scenario, menuesc, is the soft restart (record named-gaps-b §B.12): the MAIN
+# MENU Esc, the 0x2520B longjmp, the black frame and the reboot, compared
+# byte-exact with the same narrow claims except that the capture may run on
+# past the port's final screen (k11_compare K11_OPEN_END). idle stays in
+# k11-report: its stock script ends 180 ticks after the Enter, before the
+# 0x4B1-tick timeout.
+k11-oracle: build ## K11 oracles: the walk and the menuesc restart (each skips without its data/k11-captures/<scenario>)
 	@echo "== K11 service-menu oracle (pixel-exact, the walk) =="
 	@if [ -d $(K11_CAPTURES)/walk ]; then \
 		rm -rf $(K11_DUMP)/walk; mkdir -p $(K11_DUMP); \
@@ -347,8 +353,18 @@ k11-oracle: build ## K11 service-menu oracle, the walk (skips without data/k11-c
 		echo "k11-oracle: no capture at $(K11_CAPTURES)/walk, frames not compared"; \
 	fi
 	@$(PYTHON) tools/k11_compare.py --capture $(K11_CAPTURES)/walk --port $(K11_DUMP)/walk
+	@echo "== K11 soft-restart oracle (pixel-exact, menuesc: the MAIN MENU Esc 0x2520B restart) =="
+	@if [ -d $(K11_CAPTURES)/menuesc ]; then \
+		rm -rf $(K11_DUMP)/menuesc; mkdir -p $(K11_DUMP); \
+		$(PYTHON) tools/k11_session.py port-script --scenario menuesc --capture $(K11_CAPTURES)/menuesc --out $(K11_DUMP)/menuesc.script && \
+		PR_K11_DUMP=$(K11_DUMP)/menuesc PR_K11_SCRIPT=$(K11_DUMP)/menuesc.script PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+	else \
+		echo "k11-oracle: no capture at $(K11_CAPTURES)/menuesc, frames not compared"; \
+	fi
+	@$(PYTHON) tools/k11_compare.py --scenario menuesc --capture $(K11_CAPTURES)/menuesc --port $(K11_DUMP)/menuesc
 
-# The evidence scenarios (G1/G2/G3): the same driver and comparison, report-only.
+# The evidence scenarios (G1/G2/G3): the same driver and comparison, report-only
+# (menuesc is also enforced by k11-oracle).
 k11-report: build ## Report-only K11 comparison of the evidence captures (idle, menuesc, diags, de)
 	@for s in idle menuesc diags de; do \
 		if [ -d $(K11_CAPTURES)/$$s ]; then \
@@ -390,7 +406,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory attract2-compare
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
-	@echo "== K11 service-menu oracle (the walk; skips without data/k11-captures/walk) =="
+	@echo "== K11 service-menu oracles (the walk and the menuesc restart; each skips without its capture) =="
 	@$(MAKE) --no-print-directory k11-oracle
 	@echo "== k11 tool unit tests =="
 	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare
