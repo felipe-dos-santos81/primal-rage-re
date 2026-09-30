@@ -116,5 +116,18 @@ class TestOutput(unittest.TestCase):
             self.assertEqual(f.read().split('\n')[-2], '00002 4')
 
 
+class TestFire(unittest.TestCase):
+    def test_late_is_judged_per_step(self):
+        # review 1: two steps firing in one due() call; step 1 (F = 0x10A, due at
+        # the spin of 0x109) is 3 frames late, step 2 (F = 0x10D) is on time.
+        s = gs.Schedule((('after_mode', 0x27, 10, ('key', 'enter')),
+                         ('after', 3, ('key', 'esc'))))
+        s.on_mode(0x100, 0x27)
+        self.assertEqual(gc.fire(s, 0x10C), [(0, ('key', 'enter'), 1), (1, ('key', 'esc'), 0)])
+        s = gs.Schedule((('after_mode', 0x27, 10, ('key', 'enter')),))
+        s.on_mode(0x100, 0x27)
+        self.assertEqual(gc.fire(s, 0x109), [(0, ('key', 'enter'), 0)])
+
+
 if __name__ == '__main__':
     unittest.main()

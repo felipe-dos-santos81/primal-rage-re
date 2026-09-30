@@ -135,6 +135,7 @@ class Schedule:
         self.steps = list(steps)
         self.i = 0
         self.prev_frame = None
+        self.frame_of = {}          # step -> its frame F (set when it fires)
         self.mode_first = {}
         self.end_frame = None
         self.fired = 0
@@ -175,6 +176,7 @@ class Schedule:
             if F is None or f < F - 1:
                 break
             self.prev_frame = F
+            self.frame_of[self.i] = F
             self.i += 1
             if st[-1] == ('end',):
                 self.end_frame = F

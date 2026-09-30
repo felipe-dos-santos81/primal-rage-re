@@ -90,6 +90,12 @@ def accept(v, v2, v3):
     return spinning(v) and consistent(v, v2) and consistent(v2, v3)
 
 
+def fire(sched, f):
+    """The steps due at the spin snapshot f, each with its own lateness:
+    late = 1 unless f is exactly its frame F - 1 (spec §4.1; review 1)."""
+    return [(step, act, int(f != sched.frame_of[step] - 1)) for step, act in sched.due(f)]
+
+
 FRAME_BYTES = 320 * 200 * 3
 LOG_CON_ARGS = ['-set', 'dos log console=quiet']      # record named-gaps-a §A.2
 
@@ -194,8 +200,7 @@ class Poller(threading.Thread):
                         f = v2['f']
                         self.sched.on_mode(f, v2['mode'])
                         inj.release_due(f, ms)
-                        for step, act in self.sched.due(f):
-                            late = int(f != self.sched.prev_frame - 1)
+                        for step, act, late in fire(self.sched, f):
                             for name, scan, word, hold in gs.expand(act):
                                 inj.press(step, f, name, scan, word, hold, late, ms)
                         if not self.end_seen and self.sched.ended(f):
