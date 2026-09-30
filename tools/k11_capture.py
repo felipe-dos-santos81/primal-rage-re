@@ -325,7 +325,8 @@ def main():
             f.write('scenario=%s\n' % a.scenario)
             f.write('dosbox=%s\n' % next((l for l in ver.splitlines() if 'DOSBox-X version' in l), '?'))
             f.write('argv=%s\n' % shlex.join(cmd))
-            f.write('exe=%s sha256=%s\n' % (a.exe, hashlib.sha256(open(a.exe, 'rb').read()).hexdigest()))
+            with open(a.exe, 'rb') as fx:
+                f.write('exe=%s sha256=%s\n' % (a.exe, hashlib.sha256(fx.read()).hexdigest()))
             f.write('cmos=%s pokes=%s input=%s enter_wait=%g pace=%g\n'
                     % (cmos, list(pokes), a.input, a.enter_wait, a.pace))
             f.write('time_limit=%d wall_s=%.1f rc=%d\n' % (limit, wall, r.returncode))

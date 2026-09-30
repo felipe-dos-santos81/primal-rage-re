@@ -11772,6 +11772,7 @@ static void k11_hook(void *ctx)
     (void)ctx;
     if (!k11_armed || k11_done || k11_failed) return;
     k11_dump_if_new();
+    if (k11_failed || k11_dumped == 0u) return;   /* no frame to name as settled */
     const u32 dt = DSD(DS_00101500) - k11_t0;
     if (k11_pad_on && dt >= k11_pad_end) { k11_key_bits(0u); k11_pad_on = 0; }
     while (k11_next < k11_n) {

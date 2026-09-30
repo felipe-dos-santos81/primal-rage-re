@@ -172,8 +172,10 @@ def port_script(name, lines):
 def check_fields(name, port_dir, exe):
     descs = kf.load_descriptors(exe)
     n = kf.WIN_HI - kf.WIN_LO
-    before = bytearray(open(os.path.join(port_dir, 'fimg_before.bin'), 'rb').read())
-    after = open(os.path.join(port_dir, 'fimg_after.bin'), 'rb').read()
+    with open(os.path.join(port_dir, 'fimg_before.bin'), 'rb') as f:
+        before = bytearray(f.read())
+    with open(os.path.join(port_dir, 'fimg_after.bin'), 'rb') as f:
+        after = f.read()
     if len(before) != n or len(after) != n:
         print('k11_session: check-fields: the port window is not %d bytes' % n)
         return 1

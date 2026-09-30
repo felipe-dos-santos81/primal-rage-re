@@ -390,7 +390,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@echo "== K11 service-menu oracle (the walk; skips without data/k11-captures/walk) =="
 	@$(MAKE) --no-print-directory k11-oracle
 	@echo "== k11 tool unit tests =="
-	$(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare
+	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

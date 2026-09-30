@@ -102,6 +102,19 @@ class K11Compare(unittest.TestCase):
         finally:
             kc.K11_ALLOWED_UNEXPLAINED = saved
 
+    def test_capture_past_the_final_screen_fails(self):
+        # the port stops at B while the capture goes on (C, B, then A): the
+        # window END must be the capture's last non-black frame (review 1)
+        r = self.case([self.X, self.A, self.B, self.C, self.B, self.A], [self.A, self.B, self.C],
+                      'key 0 settled 0\nend settled 1\n')
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("capture continues past the port's final screen at 5", r.stdout)
+
+    def test_trailing_black_capture_frames_pass(self):
+        r = self.case([self.X, self.A, self.B, bytes(W * H * 3)], [self.A, self.B],
+                      'key 0 settled 0\nend settled 1\n')
+        self.assertEqual(r.returncode, 0, r.stdout)
+
     def test_empty_window_fails(self):
         r = self.case([self.X], [self.A, self.B], 'key 0 settled 0\nend settled 1\n')
         self.assertEqual(r.returncode, 1, r.stdout)

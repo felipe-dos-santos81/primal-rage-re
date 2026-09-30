@@ -14,7 +14,10 @@ claim is a failure when broken:
      documented capture artefact, port/spec/game_flow.md) and the frames
      K11_ALLOWED_UNEXPLAINED names with their record reference;
   3. every settled screen of screens.txt is exhibited by a capture frame in
-     the window, so a port that renders less than the original fails.
+     the window, so a port that renders less than the original fails;
+  4. no non-black capture frame follows the window's end, so the END is the
+     capture's last content frame and a port that stops reacting to its last
+     keys fails. The START still comes from the port's own dump.
 --report prints the same, plus the first unexplained frames' difference boxes,
 and always exits 0 (the evidence scenarios). An absent capture skips (exit 0)
 unless PR_ORACLE_REQUIRED=1. Stdlib only; title_compare is read-only here."""
@@ -117,6 +120,10 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
         if not report or start is None:
             return 1
         end = len(frames) - 1
+    # The END comes from the port's final screen, so a port that stops
+    # reacting before the capture does would end the window early: every
+    # non-black capture frame after it is a failure (review 1, record §A.5).
+    past = next((j for j in range(end + 1, len(frames)) if any(frames[j])), None)
     allowed = K11_ALLOWED_UNEXPLAINED.get(name, {})
     counts = {'clean': 0, 'splice': 0, 'transition': 0, 'unexplained': 0}
     unexpl, black, exh = [], [], set()
@@ -142,6 +149,9 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
           % (name, len(wanted) - len(missing), len(wanted), missing))
     if allowed and unexpl:
         print('k11_compare: %s: allowed by name: %s' % (name, sorted(j for j in unexpl if j in allowed)))
+    if past is not None:
+        print("k11_compare: %s: capture continues past the port's final screen at %d (raw %d)"
+              % (name, past, raws[past]))
     if not bad:
         print('k11_compare: %s: 0 unexplained in the window' % name)
     for k, j in enumerate(bad[:REPORT_MAX if report else 1]):
@@ -151,7 +161,7 @@ def compare(name, frames, raws, port, port_rows, keys, end_settled, report):
         label = 'FIRST UNEXPLAINED' if k == 0 else 'UNEXPLAINED'
         print('k11_compare: %s: %s capture %d (raw %d): nearest port %d, differs in rows %d..%d, x %d..%d (%d px)'
               % ((name, label, j, raws[j], m) + box))
-    return 0 if not bad and not missing else 1
+    return 0 if not bad and not missing and past is None else 1
 
 
 def main():
@@ -179,6 +189,10 @@ def main():
         return 0 if a.report else 1
     raws = tc.raw_map(a.capture) or list(range(len(frames)))
     keys, end_settled = read_screens(screens)
+    if end_settled is None or any(m >= len(port) for m in keys + [end_settled]):
+        print('k11_compare: %s: screens.txt names a frame the dump does not hold (%d frames)'
+              % (name, len(port)))
+        return 0 if a.report else 1
     rc = compare(name, frames, raws, port, [tc.row_hashes(p) for p in port], keys, end_settled, a.report)
     return 0 if a.report else rc
 

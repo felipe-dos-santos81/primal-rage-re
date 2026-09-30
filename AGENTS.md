@@ -34,7 +34,7 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   `frames/frame_*.idx`.
 - There is no per-test filter: `run_tests` is one binary. The drivers that call
   `game_init()` are selected by env var and run alone (`PR_TITLE_DUMP`,
-  `PR_ATTRACT_DUMP`, `PR_FRONTEND_DUMP`, `PR_FRONTEND_DET`).
+  `PR_ATTRACT_DUMP`, `PR_FRONTEND_DUMP`, `PR_FRONTEND_DET`, `PR_K11_DUMP`).
 - If a build invoked through `make` looks stale, `cmake --build build` is the
   reliable fallback.
 - macOS host: no `timeout`; SDL audio cannot open here (`-66681`), so the
@@ -144,6 +144,12 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   capture frame inside the window the port exhibits is unexplained. It **cannot**
   detect a port that under-renders, and its window is derived from the port's own
   dump. Do not read a green oracle as "the frame is correct".
+  The K11 oracle (`make k11-oracle`) is narrow the same way: its window START
+  comes from the port's dump and its END is the capture's last non-black frame;
+  it proves that no content-bearing capture frame in that window is
+  unexplained (two mid-draw frames allowed by name) and that every settled port
+  screen appears in the capture, from injected keys, not the keyboard
+  controller (record 2026-09-30-named-gaps-a §A.10).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
