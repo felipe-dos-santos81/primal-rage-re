@@ -370,5 +370,19 @@ restored → `OK`): `guard_gp` without the `gp-` check →
 instead of gzip → `ERROR: test_frames_stream_to_gzip`.
 
 ## §G.6 Make targets (U1 Task 7)
+
+`make gp-capture scenario=<gp-…> [GP_ARGS=…]` (after `k11-report`; in
+`.PHONY`; depends on `title-pin`; `--exe $(TITLE_PIN_DIR)/PRAGE.EXE`, so a
+`TITLE_PIN_DIR` override reaches it). `make help | grep gp-capture` prints
+`gp-capture  Capture a gameplay scenario (scenario=gp-pads|gp-idle-loss; writes
+data/k11-captures/)` (`gp-idle-loss` is U4's scenario; U1 defines only
+`gp-pads`). `make verify`'s tool-test line now also runs
+`tools.tests.test_gp_session tools.tests.test_gp_capture`.
+
+Gate (`make verify` with the §G.0 overrides, `/tmp/gameplay-u1/t7_verify.txt`):
+`verify-exit=0`; the oracle lines `diff` against `or_base.txt` → no output
+(`ORACLES-EQUAL`); the 12 `k11_compare:` lines equal `k11_base.txt`
+(`K11-EQUAL`); the tool-test line `Ran 67 tests` = the baseline's 40 + 27
+(18 gp_session + 9 gp_capture).
 ## §G.7 The gp-pads capture (U1 Task 8)
 ## §G.8 U1 closure (U1 Task 9)

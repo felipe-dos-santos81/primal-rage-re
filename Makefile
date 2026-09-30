@@ -50,7 +50,7 @@ chunk ?= 0
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
-        attract2-oracle attract2-compare k11-capture k11-oracle k11-report
+        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -379,6 +379,13 @@ k11-report: build ## Report-only K11 comparison of the evidence captures (idle, 
 		fi; \
 	done
 
+# Gameplay capture (spec 2026-09-30-gameplay-ground-truth-design.md §4.1): the
+# pinned original under DOSBox-X with frame-keyed injection and a per-frame
+# snapshot log. Writes only data/k11-captures/gp-<scenario>/ (gp_capture.guard_gp).
+GP_ARGS ?=
+gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-pads|gp-idle-loss; writes data/k11-captures/)
+	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
+
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
@@ -411,7 +418,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@echo "== K11 service-menu oracles (the walk and the menuesc restart; each skips without its capture) =="
 	@$(MAKE) --no-print-directory k11-oracle
 	@echo "== k11 tool unit tests =="
-	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare
+	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
