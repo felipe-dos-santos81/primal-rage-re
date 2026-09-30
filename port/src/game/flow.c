@@ -6685,12 +6685,13 @@ void game_init(void)
     game_init_resume();
 }
 
-/* 0x20C24..0x20DE3 — record named-gaps-b §B.2. The post-setjmp tail of
- * 0x20C10: the first pass runs it from game_init, a 0x65431 longjmp re-runs
- * it from game_loop's restart point. The tail's calls the port omits are
- * listed in record named-gaps-b §B.2 (pre-existing). */
+/* 0x20C24..0x20DE3 — record named-gaps-b §B.2, §B.11. The post-setjmp tail
+ * of 0x20C10: the first pass runs it from game_init, a 0x65431 longjmp re-runs
+ * it from game_loop's restart point. The tail's calls the port leaves out,
+ * each with its reason, are listed in record named-gaps-b §B.11. */
 void game_init_resume(void)
 {
+    (void)attract_config_volumes_unscaled();   /* 0x20C24 mov eax,-1; 0x20C2B 0x2C8F0(-1) */
     DSB(DS_00104B1D) = 0u;          /* 0x20C29 xor dl,dl; 0x20C37 (0x2C8F0 keeps EDX) */
     render_projection_reset(0u);    /* 0x20C47 `xor eax,eax`, 0x20C49 0x4F228 */
     rng_seed(0xABCDu);      /* PORT: 0x20C10 seeds the LCG with a hardcoded 0xABCD. */
@@ -6730,12 +6731,25 @@ void game_init_resume(void)
     game_string_table_load(s_game_dir);
 
     game_state_init();      /* 0x20C10's FUN_00010E80 */
+    game_isr_word_reset();  /* 0x20CEB 0x5D808 */
 
     /* 0x20CF0-0x20CF9: the key-config record round trip. PORT: the raw packs
      * into a stack record; the port uses a scratch inside the BIOS block
      * (GAME_BIOS_LEN is 0x1000, the key config ends at +0x2ED). */
     config_keys_pack(GAME_BIOS_BASE + 0x800u);       /* 0x20CF2 */
     config_keys_load(GAME_BIOS_BASE + 0x800u);       /* 0x20CF9 */
+    {
+        /* 0x20CFE xor eax,eax; 0x20D00 mov ax,[esp+0x24]: the record's word
+         * +0x24, which 0x1AEE0 packed from the player-1 handicap byte
+         * DS_001014D0 (0x1AF4D), goes into both sides' handicap dwords. */
+        const u32 h = DSW(GAME_BIOS_BASE + 0x800u + 0x24u);
+        DSD(DS_00107468) = h;                        /* 0x20D05 */
+        DSD(DS_0010746C) = h;                        /* 0x20D0A */
+    }
+    /* PORT: 0x20D0F..0x20DE3, the controller checks, are left out: a device
+     * word 2/4/6 at BIOS+0x2D4/+0x2D6 is probed with 0x4FBBB(3)/0x4FBBB(0xC),
+     * a timed read of the game port 0x201 whose answer depends on the
+     * hardware, which the port does not have (record named-gaps-b §B.11). */
 }
 
 /* 0x1BE30 teardown. */
@@ -6786,6 +6800,14 @@ void game_isr_ticks(u32 n)
 {
     DSD(DS_00101508) += n;                                 /* 0x1BE0E/0x1BE10 */
     DSD(DS_00101500) += n;                                 /* 0x1BE0F/0x1BE16 */
+}
+
+/* 0x5D808 — record named-gaps-b §B.11. `mov word [0xEF6DE],0; ret`: clears
+ * the word the timer ISR increments (0x1BE21), which 0x2EA78's key wait
+ * compares (config.c). Its one caller is 0x20C10's tail (0x20CEB). */
+void game_isr_word_reset(void)
+{
+    DSW(DS_000EF6DE) = 0u;                                 /* 0x5D808 */
 }
 
 /* PORT: the headless drivers' one-iteration brake (game_loop_step). It is

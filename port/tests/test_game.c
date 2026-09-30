@@ -12196,6 +12196,41 @@ static void rs_check_resume(void)
     DSD(DS_00107410) = s_410; DSD(DS_0010740C) = s_40c;
 }
 
+/* The tail's stores the first boot cannot show (record named-gaps-b §B.11):
+ * the state a player changes before a restart (the volumes, the handicaps,
+ * the ISR word), seeded to differ, is re-applied from the raw's sources. */
+static void rs_check_resume_tail(void)
+{
+    /* ADJUST VOLUME's fields (0x35 music, 0x37 SFX) and a scale (field
+     * 0x2A's low bits) of 1, so the unscaled arm 0x2C8F8 (halved: 0x32, 0x1E)
+     * differs from the scaled one 0x2C942 ((v * 1 / 3) >> 1: 0x10, 0x0A) */
+    const u32 s_35 = config_field_get(0x35u), s_37 = config_field_get(0x37u),
+              s_2a = config_field_get(0x2Au);
+    (void)config_field_set(0x35u, 0x64u);
+    (void)config_field_set(0x37u, 0x3Cu);
+    (void)config_field_set(0x2Au, (s_2a & ~3u) | 1u);
+    const u8 s_d0 = DSB(DS_001014D0), s_d2 = DSB(DS_001014D2);
+    CHECK_EQ_INT((long)config_field_get(0x35u), 0x64);
+    CHECK_EQ_INT((long)config_field_get(0x37u), 0x3C);
+    DSD(DS_000A2CB8) = 0x11u;                   /* 0x20C2B 0x2C8F0(-1): 0x1CAB8 */
+    DSD(DS_000A2CB4) = 0x22u;                   /* 0x1CED4 */
+    DSB(DS_001014D0) = 0x37u;                   /* the player-1 handicap byte */
+    DSB(DS_001014D2) = 0x44u;                   /* player 2's: not the tail's source */
+    DSD(DS_00107468) = 0xAAAA5555u;             /* 0x20D05 */
+    DSD(DS_0010746C) = 0x5555AAAAu;             /* 0x20D0A */
+    DSW(DS_000EF6DE) = 0x1234u;                 /* 0x20CEB 0x5D808 */
+    game_init_resume();
+    CHECK_EQ_INT((long)DSD(DS_000A2CB8), 0x32);
+    CHECK_EQ_INT((long)DSD(DS_000A2CB4), 0x1E);
+    CHECK_EQ_INT((long)DSD(DS_00107468), 0x37);
+    CHECK_EQ_INT((long)DSD(DS_0010746C), 0x37);
+    CHECK_EQ_INT((int)DSW(DS_000EF6DE), 0);
+    DSB(DS_001014D0) = s_d0; DSB(DS_001014D2) = s_d2;
+    (void)config_field_set(0x35u, s_35);
+    (void)config_field_set(0x37u, s_37);
+    (void)config_field_set(0x2Au, s_2a);
+}
+
 /* 0x2EB80: no latch and 0x500BB - DS_00105F2C > 0x4B0 (unsigned, 0x2EB9F
  * `jbe`) stores DS_00107414 = 0 (0x2EBA8) and longjmps (0x2EBB3). */
 static void rs_check_idle(void)
@@ -12312,6 +12347,7 @@ int test_restart(void)
     rs_check_idle();
     rs_check_case27();
     rs_check_resume();
+    rs_check_resume_tail();
     return g_failures - before;
 }
 

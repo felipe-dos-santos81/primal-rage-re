@@ -185,6 +185,9 @@ void sound_sample_start(u32 slot);
 /* PORT: the timer ISR 0x1BDF4's counter pair, n ticks (0x1BE0E..0x1BE16). */
 void game_isr_ticks(u32 n);
 
+/* 0x5D808: DS_000EF6DE = 0, the ISR's frame word (0x20C10's tail). */
+void game_isr_word_reset(void);
+
 /* 0x2C3FC: the voice dispatcher over the 12-byte records at DS_000BBDC8
  * (flow.c). Returns AL: 1, or 0 for id 0, a record case above 5, a playing
  * sample in cases 2/3 or an unlisted case-3 id. */
