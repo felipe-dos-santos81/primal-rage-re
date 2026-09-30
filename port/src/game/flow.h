@@ -487,9 +487,10 @@ void flow_winner_pose_step(void);
  * velocity and starts the scoreboard actors' animations; 7 scrolls the
  * background until it passes y = -0x180, awards 100000 points (0x41310) and
  * draws the updated score, then dispatches to mode 0x17 (continue), 0x417C4
- * (flow_no_continue_screen) or the join-prompt draw + audit close + longjmp
- * 0x2DAE4(0x10); 8 a countdown (DS_00104AFE) that restores DS_00104B25 from
- * DS_00104B23 at zero. 0x416D4's dead stub call 0x32BAC is 0xC3 (a bare RET)
+ * (flow_no_continue_screen) or the join-prompt draw + audit close + the
+ * audit add 0x2DAE4(0x10, 1) (a call, deferred); 8 a countdown (DS_00104AFE)
+ * that restores DS_00104B25 from DS_00104B23 at zero. 0x416D4's dead stub
+ * call 0x32BAC is 0xC3 (a bare RET)
  * confirmed by raw `read_memory` — its 8 call sites across the image
  * (including 0x41733) are all no-ops. */
 void game_mode_12_step(void);

@@ -37,6 +37,8 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <setjmp.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 
 /* ---- test_flow.c ---- */
@@ -9365,6 +9367,39 @@ static void sf_hook(u32 exc, u32 eip) { sf_exc = exc; sf_eip = eip; sf_hits++; l
  * §B.4; A's de capture aborts to DOS there). Rows 0 (field 8 = 0xFFFF: no
  * fault) and 1 (field 0xB = 0: no idiv) draw first; row 2's label (0x33479)
  * is drawn before the idiv, its number (0x334E4..) and row 3 never are. */
+/* With no hook the #DE ends the process (host_cpu_fault): the child's exit
+ * status and its stderr, which must be exactly A's DOS/4GW line (record
+ * named-gaps-a §A.8, de/dosbox.log:15) and a newline. */
+static void sm_check_stats_fault_exit(s32 r)
+{
+    static const char want[] =
+        "DOS/4GW Professional error (2001): exception 00h (divide by zero) at 180:002244E0\n";
+    int fds[2];
+    CHECK(pipe(fds) == 0, "pipe");
+    fflush(stdout); fflush(stderr);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        dup2(fds[1], 2); close(fds[0]);
+        (void)host_set_fault_hook(NULL);
+        (void)svc_stats_rows(r);
+        _exit(99);                                        /* not reached: the fault exits */
+    }
+    close(fds[1]);
+    char buf[512];
+    size_t got = 0;
+    for (int k = 0; k < 64 && got < sizeof buf - 1u; k++) {
+        const ssize_t n = read(fds[0], buf + got, sizeof buf - 1u - got);
+        if (n <= 0) break;
+        got += (size_t)n;
+    }
+    close(fds[0]);
+    buf[got] = '\0';
+    int st = 0;
+    waitpid(pid, &st, 0);
+    CHECK(WIFEXITED(st) && WEXITSTATUS(st) == 1, "the #DE exits with status 1 (PORT: not captured)");
+    CHECK(strcmp(buf, want) == 0, "the #DE prints A's DOS/4GW line verbatim");
+}
+
 static void sm_check_stats_fault(void)
 {
     ch_text_setup();
@@ -9391,6 +9426,7 @@ static void sm_check_stats_fault(void)
     CHECK(ch_sprite(r, 0x25) != zs, "row 0 is drawn before the fault");
     CHECK_EQ_INT((long)ch_sprite(r + 2, 0x25), (long)z2); /* 0x334E4.. never runs */
     CHECK_EQ_INT((long)ch_sprite(r + 3, 4), (long)z3);    /* row 3 never starts */
+    sm_check_stats_fault_exit(r);
     (void)config_field_set(8u, s8);
     (void)config_field_set(6u, s6);
     (void)config_field_set(0xBu, sb);
@@ -12079,6 +12115,9 @@ int test_k11_oracle(void)
             state_after = DSW(DS_000F0A64);
         }
     }
+    /* The script's end leaves game_loop() through k11_end_jb, past the
+     * restart point game_loop() armed on its stack: disarm it. */
+    (void)game_restart_arm(NULL);
     host_set_pump_hook(NULL, NULL);
     res_set_screen_hook(NULL);
     (void)host_set_fault_hook(k11_prev_fault);
@@ -12129,6 +12168,12 @@ static void rs_check_landing(void)
 static void rs_check_resume(void)
 {
     const u32 v = config_field_get(0x29u);
+    /* 0x2F9CC runs at 0x20C15, before the setjmp, so the tail leaves its
+     * stores alone: DS_00107410 with bit 4 poked, as A's diags scenario does
+     * (record named-gaps-a §A.7), and DS_0010740C at a sentinel. */
+    const u32 s_410 = DSD(DS_00107410), s_40c = DSD(DS_0010740C);
+    DSD(DS_00107410) = s_410 | 0x10u;
+    DSD(DS_0010740C) = 0x5A5A5A5Au;
     DSD(DS_000EF6D8) = 0x1234u;                 /* 0x20C62 seed */
     DSD(DS_00104528) = v ^ 0xA5A5A5A5u;         /* 0x20C6D */
     DSD(DS_001088D0) = 0xDEADu;                 /* 0x20CB0 */
@@ -12146,6 +12191,9 @@ static void rs_check_resume(void)
     CHECK_EQ_INT((int)DSB(DS_00107A54), 0);
     CHECK_EQ_INT((int)DSW(DS_00104B00), 3);
     CHECK_EQ_INT((int)DSW(DS_000F0A64), 0);
+    CHECK_EQ_INT((long)DSD(DS_00107410), (long)(s_410 | 0x10u));   /* 0x2FA1C not re-run */
+    CHECK_EQ_INT((long)DSD(DS_0010740C), 0x5A5A5A5A);              /* 0x2FA01 not re-run */
+    DSD(DS_00107410) = s_410; DSD(DS_0010740C) = s_40c;
 }
 
 /* 0x2EB80: no latch and 0x500BB - DS_00105F2C > 0x4B0 (unsigned, 0x2EB9F
@@ -12279,8 +12327,13 @@ int test_restart(void)
 
 /* The displayed frame as the capture sees it: each pixel's DAC colour (the
  * captures are RGB, 320x200x3). After the restart the same colours sit one
- * palette index lower than on the first boot (measured, record named-gaps-b
- * §B.6b), so the indices are not compared. */
+ * palette index lower than on the first boot (record named-gaps-b §B.6b): on
+ * the first boot a resolve of a not-yet-loaded entry draws '- LOADING -',
+ * whose font palette 0x80997C takes slot 1 before the attract's; after the
+ * restart the entry is marked loaded (0x1B47A) and the port never evicts it,
+ * so no loader draw runs and the attract's palettes start at slot 1. The raw's
+ * slot order after a restart is not known (named gap), so the indices are not
+ * compared. */
 static u32 rd_frame_hash(void)
 {
     const u8 *fb = gfx_display();

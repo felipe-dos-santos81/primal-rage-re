@@ -896,8 +896,9 @@ void game_mode_12_step(void)
         flow_join_prompt_draw();                                             /* 0x423FC 0x271E0 */
         config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));          /* 0x4240E 0x32A3C */
         DSB(DS_00104B19) = 0u;                                                /* 0x4241A */
-        /* PORT: 0x42420 longjmp(0x2DAE4, 0x10, 1) — the front-end quit path,
-         * out of scope (spec §7). */
+        /* PORT: 0x42420..0x42425 0x2DAE4(0x10, 1), the audit add (EDX = 1 from
+         * 0x42415), is deferred (spec §7) as at 0x28E53; a plain call, not a
+         * longjmp (record named-gaps-b §B.6a item 9). */
         break;
     }
 
