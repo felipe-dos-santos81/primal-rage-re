@@ -6555,7 +6555,8 @@ void sound_voice_match_end(void)
 /* 0x249F0 — record §50-D. The quit prompt (0x24C5C's key 0x10 at 0x24DDF with
  * AL = 0, and its mode arms at 0x24EAD / 0x24EC5 with AL = 0 / 1). `hard_quit`
  * is AL: 0 asks string 0x1EE and a yes sets the quit flag DS_000A81A8, nonzero
- * asks string 0x1EF and a yes leaves through the longjmp quit. It raises the
+ * asks string 0x1EF (ABANDON CONQUEST? Y/N) and a yes soft-restarts (record
+ * named-gaps-b §B.3). It raises the
  * prompt flag DS_00104B22 (0x24A01), pauses the sound (0x1D250), draws the
  * question centred on row 10 (0x24A1C..0x24A32 0x1C500 0x2F198), presents one
  * frame (0x24A37 0x2EA78 with -1) and reads keys (0x24A64 int 16h AH=0) until
@@ -6564,12 +6565,7 @@ void sound_voice_match_end(void)
  * (yes) and 0x1F1 (no), each sign-extended (0x24A4B 0x24A58 movsx). Yes drops
  * the flag (0x24A89); no drops it (0x24ABE) and clears the question's cells
  * (0x24AE7 0x2F280). Any other key loops. It ends by resuming the sound
- * (0x24AF9 0x1D270).
- * PORT: 0x24A9C..0x24AB0 (0x1D270, then the resource free 0x1B084, a no-op
- * under flat mem[] (see game_init), then `jmp 0x65431`, longjmp(0x1044F4, 1))
- * is out of scope (spec §7); the port resumes the sound and ends the run
- * through the same quit flag the AL = 0 arm sets. The blocking key read is
- * input_get_key. */
+ * (0x24AF9 0x1D270). The blocking key read is input_get_key. */
 void game_quit_prompt(u32 hard_quit)
 {
     u32 id = (hard_quit & 0xFFu) == 0u ? 0x1EEu : 0x1EFu;  /* 0x24A0C..0x24A17 */
@@ -6588,8 +6584,8 @@ void game_quit_prompt(u32 hard_quit)
                 DSB(DS_000A81A8) = 1u;                     /* 0x24A93 */
             } else {
                 sound_resume();                            /* 0x24A9C 0x1D270 */
-                DSB(DS_000A81A8) = 1u;                     /* 0x24AA1..0x24AB0 */
-                return;
+                /* PORT: 0x24AA1 0x1B084 (the config writer) is deferred (record §50-C). */
+                game_restart_longjmp();                    /* 0x24AA6..0x24AB0 jmp 0x65431, longjmp(0x1044F4, 1) */
             }
         } else if (key == no) {                            /* 0x24AB5 */
             DSB(DS_00104B22) = 0;                          /* 0x24ABE */

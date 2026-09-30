@@ -226,7 +226,8 @@ void sound_pause(void);
 void sound_resume(void);
 
 /* 0x249F0 (record §50-D). The quit prompt; `hard_quit` is AL (0 = the quit
- * flag, nonzero = the longjmp quit, which the port ends through the same flag).
+ * flag, nonzero = ABANDON CONQUEST, whose yes soft-restarts through
+ * game_restart_longjmp, record named-gaps-b §B.3).
  * Blocks on input_get_key. Called by game_key_loop (ESC, the extended key
  * 0x10; record §55-A). */
 void game_quit_prompt(u32 hard_quit);

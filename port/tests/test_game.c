@@ -8157,7 +8157,11 @@ static void ch_check_screen_wait_zero(void)
 }
 
 /* 0x249F0 (record §50-D): the quit prompt. Strings 0x1F0/0x1F1 are the
- * localised yes/no letters; the seeds differ from every asserted result. */
+ * localised yes/no letters; the seeds differ from every asserted result. AL =
+ * 1's yes soft-restarts at 0x24AB0 (record named-gaps-b §B.3), landing at
+ * qp_jb; every check below is of a store made before 0x24AB0. */
+static jmp_buf qp_jb;
+
 static void ch_check_quit_prompt(void)
 {
     ch_text_setup();
@@ -8175,12 +8179,13 @@ static void ch_check_quit_prompt(void)
 
     DSD(DS_001028C0) = 0;
     DSD(DS_001028C8) = 0;
+    jmp_buf *const qp_prev = game_restart_arm(&qp_jb);
     for (u32 pass = 0; pass < 4u; pass++) {
         /* pass 0: AL = 0, "no" (lower case) after a stray key.
          * pass 1: AL = 0, "yes" upper case.  pass 2: AL = 1, "yes" lower.
          * pass 3: AL = 1, "no". */
         const u32 hard = (pass >= 2u) ? 1u : 0u;
-        const int want_quit = (pass == 1u || pass == 2u);
+        const int want_quit = (pass == 1u);
         DSD(DS_000E87A0) = CH_BUF_A;
         DSD(DS_000E87A4) = CH_BUF_B;
         DSB(DS_00104B22) = 0x77u;
@@ -8192,7 +8197,9 @@ static void ch_check_quit_prompt(void)
         if (pass == 0u) input_push(0x2D, 'x');            /* not yes, not no */
         u8 k = (pass == 0u) ? lo_no : (pass == 1u) ? yes : (pass == 2u) ? lo_yes : no;
         input_push(0x1E, k);
-        game_quit_prompt(hard);
+        volatile int landed = 0;
+        if (setjmp(qp_jb) == 0) game_quit_prompt(hard); else landed = 1;
+        CHECK_EQ_INT(landed, pass == 2u ? 1 : 0);          /* 0x24AB0 */
         CHECK_EQ_INT((int)DSB(DS_00104B22), 0);           /* seed 0x77 */
         CHECK_EQ_INT((int)DSB(DS_000A81A8), want_quit ? 1 : 0x5A);
         CHECK(!input_has_key(), "the prompt consumed its keys");
@@ -8207,6 +8214,7 @@ static void ch_check_quit_prompt(void)
         }
         CHECK_EQ_INT((int)DSD(DS_000E87A0), (int)CH_BUF_B);   /* one frame presented */
     }
+    (void)game_restart_arm(qp_prev);
 
     DSD(DS_000E87A0) = s_a0;
     DSD(DS_000E87A4) = s_a4;
@@ -10551,6 +10559,8 @@ static void kl_check_enter(void)
 
 /* ESC (ascii 0x1B): mode 3 asks 0x1EE (AL = 0), mode 0x27 nothing, any other
  * mode 0x1EF (AL = 1). */
+static jmp_buf kl_jb;
+
 static void kl_check_esc(void)
 {
     const u8 yes = game_string_get(0x1F0u)[0];
@@ -10570,12 +10580,19 @@ static void kl_check_esc(void)
     kl_expect_prompt(0x1EFu, 0);
     CHECK_EQ_INT((long)DSD(DS_00104B00), (long)KL_MODE(0x1Cu));
 
-    /* AL = 1's yes: the port's longjmp stand-in is the same quit flag. */
+    /* AL = 1's yes soft-restarts (0x24AB0, record named-gaps-b §B.3); the
+     * quit flag keeps its seed. */
     kl_env(0x04u);
     input_push(0x01, 0x1B);
     input_push(0x15, yes);
-    game_key_loop();
-    kl_expect_prompt(0x1EFu, 1);
+    {
+        jmp_buf *const prev = game_restart_arm(&kl_jb);
+        volatile int landed = 0;
+        if (setjmp(kl_jb) == 0) game_key_loop(); else landed = 1;
+        (void)game_restart_arm(prev);
+        CHECK_EQ_INT(landed, 1);
+    }
+    kl_expect_prompt(0x1EFu, 0);
 
     kl_env(0x27u);
     input_push(0x01, 0x1B);
