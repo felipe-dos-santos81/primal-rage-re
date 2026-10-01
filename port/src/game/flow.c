@@ -122,6 +122,17 @@ static void game_fatal(const char *what)
  * §B.1), which only 0x65431 reads. game_loop() arms it. */
 static jmp_buf *s_restart_point;
 
+/* PORT: test seam, no raw counterpart: the restarts landed in game_loop()
+ * since boot. A landing abandons its iteration, so the frame counter rises by
+ * two in that step (record named-gaps-b §B.6b); the gp replay driver counts
+ * the landings to allow exactly that (record 2026-10-01-gameplay-u11 §K.6). */
+static u32 s_restart_landings;
+
+u32 game_restart_landings(void)
+{
+    return s_restart_landings;
+}
+
 jmp_buf *game_restart_arm(jmp_buf *jb)
 {
     jmp_buf *prev = s_restart_point;
@@ -6858,6 +6869,7 @@ void game_loop(void)
     jmp_buf restart;
     jmp_buf *const prev = game_restart_arm(&restart);
     if (setjmp(restart) != 0) {
+        s_restart_landings++;          /* PORT: test seam (game_restart_landings) */
         /* 0x20C24: 0x65431 resumes after 0x20C1F's setjmp, whose result is
          * discarded (0x20C24 mov eax,-1), re-runs the tail and re-enters
          * 0x255CC at 0x20DE8; the iteration that jumped is abandoned (record

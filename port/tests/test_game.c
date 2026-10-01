@@ -12290,7 +12290,8 @@ static void gp_trace_line(void)
             "T f=%04X mode=%04X st=%04X tick=%08X t508=%08X t50c=%08X raw=%08X pad=%08X new=%08X held=%08X "
             "e0=%04X e2=%04X rng=%08X cred=%08X fp=%02X b1d=%02X b1f=%02X b25=%02X w10d=%02X cnt=%02X "
             "s0_52=%02X s0_54=%02X s0_5a=%02X s1_52=%02X s1_54=%02X s1_5a=%02X ent=%08X "
-            "r0=%02X r1=%02X c0=%02X c1=%02X s0_43=%02X\n",
+            "r0=%02X r1=%02X c0=%02X c1=%02X s0_43=%02X "
+            "lat=%08X spz=%02X mpz=%02X\n",
             (unsigned)DSW(DS_000EF6DC), (unsigned)DSW(DS_00104B00), (unsigned)DSW(DS_000F0A64),
             (unsigned)DSD(DS_00101500), (unsigned)DSD(DS_00101508), (unsigned)DSD(DS_0010150C),
             (unsigned)DSD(DS_000E1C30), (unsigned)DSD(DS_000E1C34), (unsigned)DSD(DS_001088E4),
@@ -12303,7 +12304,11 @@ static void gp_trace_line(void)
             (unsigned)DSD(DS_0010741C),
             (unsigned)DSB(DS_001088A8), (unsigned)DSB(DS_001088A8 + 1u),
             (unsigned)DSB(DS_0010782A), (unsigned)DSB(DS_001078BE),
-            (unsigned)DSB(DS_001077B0 + 0x43u));
+            (unsigned)DSB(DS_001077B0 + 0x43u),
+            /* U11 (record 2026-10-01-gameplay-u11 §K.3): the key-loop latch
+             * (0x24D4D) and the sample / music pause bytes (0x1D220, 0x1D1B0),
+             * gp_session.KEYS_EXTRA's names. */
+            (unsigned)DSD(DS_00105F30), (unsigned)DSB(DS_001028DB), (unsigned)DSB(DS_001028DA));
     gp_trace_lines++;
 }
 
@@ -12361,6 +12366,7 @@ int test_gp_replay(void)
     static u32 mode_before, mode_after, frame_after, state_after;
     mode_before = 0xFFFFu; mode_after = 0xFFFFu; frame_after = 0xFFFFFu; state_after = 0xFFFFFu;
     gp_first_f = 0xFFFFFu;
+    const u32 landings0 = game_restart_landings();
     const u32 limit = gp_end + GP_LOOP_SLACK;
     if (setjmp(gp_end_jb) == 0)
     for (gp_iters = 0; gp_iters < limit && !gp_done && !gp_failed; gp_iters++) {
@@ -12411,8 +12417,13 @@ int test_gp_replay(void)
      * loader screen). */
     CHECK_EQ_INT((int)gp_first_f, (int)gp_enter_frame);
     /* One T line per f from enter_frame to end: each armed iteration raises
-     * the counter by exactly one (0x24CDB), so a skipped or repeated f fails. */
-    CHECK_EQ_INT((int)gp_trace_lines, (int)(gp_end - gp_enter_frame + 1u));
+     * the counter by exactly one (0x24CDB), so a skipped or repeated f fails,
+     * except an iteration a 0x65431 restart abandons: its step raises the
+     * counter twice (record named-gaps-b §B.6b), so each landing accounts for
+     * one f without a T line (record 2026-10-01-gameplay-u11 §K.6). */
+    const u32 landed = game_restart_landings() - landings0;
+    printf("test_gp_replay: %u restart(s) landed\n", (unsigned)landed);
+    CHECK_EQ_INT((int)(gp_trace_lines + landed), (int)(gp_end - gp_enter_frame + 1u));
     return g_failures - before;
 }
 
@@ -12688,6 +12699,7 @@ int test_restart_drive(void)
     game_loop_step();                                  /* the menu's init */
     CHECK_EQ_INT((int)DSB(DS_00107414), 1);            /* 0x300C2 */
     const u32 t0 = DSD(DS_00105F2C);
+    const u32 l0 = game_restart_landings();
     u32 t_prev = 0u, t_last = 0u;
     u16 f_last = 0u;
     int n = 0;
@@ -12699,6 +12711,7 @@ int test_restart_drive(void)
         n++;
     }
     CHECK(n < RD_GUARD, "the idle timeout restarts within the guard");
+    CHECK_EQ_INT((int)(game_restart_landings() - l0), 1);   /* the seam counts the one landing */
     CHECK(t_last - t0 > 0x4B0u, "0x2EB9F: over 0x4B0 ticks on the restart iteration");
     CHECK(t_prev - t0 <= 0x4B0u, "0x2EB9F: not over on the iteration before");
     CHECK_EQ_INT((int)DSW(DS_00104B00), 3);            /* 0x10EA1 */

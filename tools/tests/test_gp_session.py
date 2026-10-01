@@ -44,24 +44,24 @@ class TestTables(unittest.TestCase):
         self.assertFalse(set(gs.MOVE_FIELDS) & set(gs.TRACE_FIELDS))
 
     def test_the_port_t_line_writes_every_snap_field_in_order(self):
-        # port/tests/test_game.c gp_trace_line: the capture's S names and order (spec §4.2)
-        import re
-        src = open(os.path.join(ROOT, 'port', 'tests', 'test_game.c')).read()
-        body = src[src.index('static void gp_trace_line(void)'):]
-        fmt = ''.join(re.findall(r'"([^"]*)"', body[:body.index(');')]))
-        self.assertTrue(fmt.startswith('T '), fmt)
-        self.assertEqual([p.split('=')[0] for p in fmt[2:].split()], [n for n, _, _ in gs.SNAP_FIELDS])
-
-    def test_the_port_t_line_widths_and_addresses_match_snap_fields(self):
-        # review of U6b Task 1 (m1): the names alone let a placeholder of the wrong width or a
-        # DS_ symbol of the wrong address through. Each placeholder is %0{2*size}X and, for the
-        # five U6 fields (record gameplay-u6 §U6.11), each argument reads SNAP_FIELDS' address.
+        # port/tests/test_game.c gp_trace_line: the capture's S names and order (spec §4.2).
+        # plan gameplay-u11 Re-baseline (merge order): the T line is SNAP_FIELDS then
+        # KEYS_EXTRA (the order gp-keys-fight's S lines have). One test for both units' checks
+        # (U11 rebase onto U6b): review of U6b Task 1 (m1): the names alone let a placeholder of
+        # the wrong width or a DS_ symbol of the wrong address through.
         import re
         src = open(os.path.join(ROOT, 'port', 'tests', 'test_game.c')).read()
         body = src[src.index('static void gp_trace_line(void)'):]
         call = body[:body.index(');\n    gp_trace_lines++')]
         fmt = ''.join(re.findall(r'"([^"]*)"', call))
+        self.assertTrue(fmt.startswith('T '), fmt)
+        fields = gs.SNAP_FIELDS + gs.KEYS_EXTRA
+        parts = fmt[2:].replace('\\n', '').split()
+        self.assertEqual([p.split('=')[0] for p in parts], [n for n, _, _ in fields])
+        # each placeholder is as wide as the field (2 hex digits per byte)
+        self.assertEqual([int(w) for w in re.findall(r'%0(\d)X', fmt)], [2 * s for _, _, s in fields])
         rest = call[call.rindex('"') + 1:].lstrip(' ,')
+        rest = re.sub(r'/\*.*?\*/', '', rest, flags=re.S)
         args, depth, cur = [], 0, ''
         for ch in rest:
             if ch == ',' and depth == 0:
@@ -71,18 +71,23 @@ class TestTables(unittest.TestCase):
             depth += (ch == '(') - (ch == ')')
             cur += ch
         args.append(cur.strip())
-        parts = fmt[2:].replace('\\n', '').split()
-        self.assertEqual(len(parts), len(gs.SNAP_FIELDS))
-        self.assertEqual(len(args), len(gs.SNAP_FIELDS), args)
-        for part, arg, (n, addr, size) in zip(parts, args, gs.SNAP_FIELDS):
+        self.assertEqual(len(parts), len(fields))
+        self.assertEqual(len(args), len(fields), args)
+        acc = {1: 'DSB', 2: 'DSW', 4: 'DSD'}
+        for part, arg, (n, addr, size) in zip(parts, args, fields):
             self.assertEqual(part, '%s=%%0%dX' % (n, 2 * size), n)
             # review of U6b Task 2 (m4): the accessor reads the field's size
-            self.assertRegex(arg, r'\bDS%s\(' % {1: 'B', 2: 'W', 4: 'D'}[size], (n, arg))
-            if n in gs.MOVE_FIELDS:
+            self.assertRegex(arg, r'\b%s\(' % acc[size], (n, arg))
+            # the five U6 fields (record gameplay-u6 §U6.11) and the three U11 key fields
+            # (record gameplay-u11 §K.3) read the field's address
+            if n in gs.MOVE_FIELDS or (n, addr, size) in gs.KEYS_EXTRA:
                 m = re.search(r'\bDS_([0-9A-F]{8})(?:\s*\+\s*(0x[0-9A-Fa-f]+|[0-9]+)u?)?\)', arg)
                 self.assertIsNotNone(m, (n, arg))
                 got = int(m.group(1), 16) + (int(m.group(2), 0) if m.group(2) else 0)
                 self.assertEqual(got, addr, (n, arg))
+            # KEYS_EXTRA: accessor by size on the field's own DS_ symbol, no offset
+            if (n, addr, size) in gs.KEYS_EXTRA:
+                self.assertEqual(arg, '(unsigned)%s(DS_%08X)' % (acc[size], addr), n)
 
     def test_an_s_line_without_the_u6_fields_still_parses(self):
         old = [(n, d, s) for n, d, s in gs.SNAP_FIELDS if n not in gs.MOVE_FIELDS]
