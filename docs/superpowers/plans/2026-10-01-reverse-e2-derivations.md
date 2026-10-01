@@ -233,14 +233,19 @@ callbacks, the animation targets `0x22338` and `0x458D4`, the direct `0x29CFC` a
 --out T --expect 579 --expect-u0 575` (8.4 s on the planning host). **Task 5 re-measured every figure on the same image
 (sha1 above) with `port/src` at `098cb7a`; the three lines below are the Task 5 run.** The planning run (`port/src` at
 `e9271df`) read `targets 332 unported, 163 ported` and `49 in unported code, 66 in ported code`; nothing else differs.
-The difference is exactly U6a's four ports (strict `/* 0xADDR` headers added after the planning run; record
+The difference is exactly U6a's four ports (strict entries, header or `fn_register`, added after the planning run; record
 `2026-10-01-gameplay-u6-derivations.md` §U6.2 `0x23208` (e3a5d77), §U6.3 `0x3A588` (f9fbfc7), §U6.4 `0x3640C`
 (7aea1f8), §U6.5 `0x37DCC` (396229d)): three of them are rows (`0x23208` a move-callback, `0x3640C` and `0x37DCC`
 animation targets; each moves unported to ported, so callbacks 27/44 to 26/45, animation targets 65/47 to 63/49,
-targets 332/163 to 329/166), `0x3A588` follows data rather than a `ret` and is outside the universe, and the one
+targets 332/163 to 329/166), `0x3A588` follows data rather than a `ret` and is outside the universe (a class the table cannot see: §E2.11,
+"Functions after inline data"), and the one
 voice site that moves is `0x23243` (in `0x23208`; 49/66 to 48/67). The E1 readiness counts follow
-(leaf 236 to 234, stubs 90 to 89). Re-running the Task 5 code with those four headers removed reproduces the
-planning figures exactly. No class rule (§E2.2) and no class count moved.
+(leaf 236 to 234, stubs 90 to 89). Re-running the Task 5 code with those four addresses removed from the strict set
+(their `/* 0xADDR` headers and their `fn_register` lines, which the strict rule of §E2.4 also counts) reproduces the
+planning figures exactly. The committed table is checked with `python3 tools/entry_triage.py --image IMG --live
+docs/superpowers/plans/2026-10-01-reverse-e2-live-functions.txt --check
+docs/superpowers/plans/2026-10-01-reverse-e2-triage.md` (without `--live` the live column reads `-` and the check
+fails). No class rule (§E2.2) and no class count moved.
 
 ```
 entry-triage: 579 candidates (575 by U0's rule); finisher=9 move-callback=71 span-writer=231 call-table=7 anim-target=112 mid-instruction=3 data=75 code-immediate=15 direct=2 interior=6 data-pointer=48
@@ -313,6 +318,53 @@ It gates track P (§E2.6: 85 + 28 targets wait on it). A proposal, to be planned
 - The 19 voice sites in no body (§E2.7).
 - Readiness is static (§E2.6): stack reads without `ret N`, non-EAX outputs and input-dependent indirect
   targets are not seen.
+- **Functions after inline data (found by Task 5's review; counted here, not a target count).** `0x3A588`
+  (ported by U6a, gameplay-u6 §U6.3) is a real function the table does not hold in any of its three lists. The
+  jump table `0x3A578..0x3A587` follows the `c3` at `0x3A577`, so the function starts after data, not after a
+  `ret` (§E2.1(c) needs an after-`ret` start: not a candidate); the only reference is an immediate in Ghidra
+  code, `mov dword [eax+0x10],0x3A588` at `0x3A686` in `0x3A650` (§E2.5 takes stored callbacks only from
+  non-Ghidra trusted code: not a supplement entry; it is not an untrusted rel32 target either). E2's list
+  cannot see this class. **The probe** (a scratch script, `e2_imm_probe.py`, not committed to `tools/`; no class
+  rule changes, §E2.2 is frozen since Task 1): decode the bytes of every Ghidra function of the committed
+  `prage.functions.csv` linearly from `[entry, entry + size)`; for every instruction that is not a `call`,
+  `jmp`, `jcc`, `loop*` or `jecxz`, take every 4-byte immediate operand with value V in `[0x10000, 0x5D000)`;
+  keep V when V is inside no Ghidra function, an instruction decodes at V, V is not after a `ret` (§E2.1(c))
+  and V is not among the 579 candidates. On the image (sha1 `ff3b8cb1...`, `port/src` at `098cb7a`) it yields
+  **20 values**: 6 ported (strict set: header or `fn_register`), 5 constants by the form of the instruction
+  (not examined further), **9 unexamined**. Track P takes the 9 unexamined rows (and the ported ones, as
+  already-done evidence) as a follow-up input; the 9 is a named gap, not a target count, and the list is
+  neither complete (immediates built in two steps, immediates in non-Ghidra code, data dwords all escape the
+  probe) nor evidence that a row is code (a decode at V is only a necessary condition).
+
+  | value | instruction site(s) holding the immediate | status |
+  |---|---|---|
+  | 10000 | `2C9C3` `mov eax,0x10000` (in `2C9B8`); `3C71E` `test edx,0x10000` (in `3C6E8`) | constant: a bit mask / size (`test`) |
+  | 186A0 | `422B7` `mov edx,0x186a0` (in `41C28`) | constant: 100000 decimal |
+  | 1D2D0 | `2FA01` `mov dword [0x10740c],0x1d2d0` (in `2F9CC`) | unexamined: stored into a data global (a stored callback?) |
+  | 22BEC | `23631`, `468A9`, `468EC` (`mov`/`cmp dword [eax+0x10],0x22bec`) | ported (strict) |
+  | 29D04 | `22B6F` `mov dword [eax+0x14],0x29d04` (in `22B28`) | ported (strict) |
+  | 2D3FC | `2DB6F` `add ebx,0x2d3fc`; `2DBE3` `add esi,0x2d3fc`; `2DCD4` `add edi,0x2d3fc` | unexamined: an addend (stride `0x18` with the next five) |
+  | 2D414 | `2E94E` `add ebx,0x2d414` | unexamined: an addend |
+  | 2D444 | `2D519`, `2E0DD`, `2E19A` (`add`), `2E050` `mov ebp,0x2d444` | unexamined: an addend |
+  | 2D45C | `2DF98` `mov ecx,0x2d45c` | unexamined |
+  | 2D474 | `2DEA5` `mov edx,0x2d474` | unexamined |
+  | 2D48C | `2D4F7` `mov dword [esp+8],0x2d48c` (in `2D4EC`) | unexamined: an argument slot |
+  | 30D40 | `2784B` `mov edx,0x30d40` (in `277C0`) | constant: 200000 decimal |
+  | 39CC8 | `145A1`, `39F1A` (`cmp dword [eax+0x10],..`), `39F8F` (`mov dword [eax+0x10],..`) | ported (strict) |
+  | 3A43C | `3A53A` `mov dword [eax+0x10],0x3a43c` (in `3A504`) | ported (strict) |
+  | 3A588 | `3A686` `mov dword [eax+0x10],0x3a588` (in `3A650`) | ported (strict, U6a) |
+  | 3A6D4 | `3A7D2` `mov dword [eax+0x10],0x3a6d4` (in `3A79C`) | ported (strict) |
+  | 3A820 | `3A91E` `mov dword [eax+0x10],0x3a820` (in `3A8E8`) | unexamined: same `[eax+0x10]` callback slot as `3A588` and its pose family |
+  | 3E688 | `123D6`, `126E2` (`cmp dword [ecx],..`), `12504`, `4158B` (`cmp`), `2096F` `mov ebx,0x3e688` | unexamined: compared and loaded, never stored through a pointer slot |
+  | 40000 | `12429` `mov eax,0x40000`; `3C728` `test edx,0x40000` | constant: a bit mask (`test`) |
+  | 48000 | `14C37` `or edx,0x48000` (in `14B90`) | constant: a bit mask (`or`) |
+
+  Counting the `call`/`jmp`/`jcc` relative targets as immediates too (what capstone reports as an immediate
+  operand) the same filter gives 28 (the reviewer's figure): the other 8 are `0x18694`, `0x18AB6`, `0x18AEF`,
+  `0x31A3F`, `0x31A44`, `0x31B58`, `0x31B5D`, `0x4E598`, all jump targets inside the same Ghidra function whose
+  body has several ranges (§E2.8; `186D0`, `18B04`, `319B0`, `31A78`, `4E350`): six lie in the live body ranges,
+  and `0x31A3F` and `0x31B58` are the five-byte `call 0x2F280` / `call 0x2F198` blocks between two ranges of
+  `319B0` and `31A78`. They are continuations, not entries, and are not counted above.
 - The table walk stops at the next displacement; a table whose end no displacement marks can overrun into
   adjacent code addresses. The span tables' bounds above are checked by hand; the call/jump tables of
   rules 4-5 (7 rows) are not.

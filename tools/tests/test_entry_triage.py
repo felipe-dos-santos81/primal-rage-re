@@ -546,10 +546,12 @@ class CliTests(unittest.TestCase):
 DIFFRUN = os.path.join(ROOT, "build", "diffrun")
 EXE = os.path.join(os.environ.get("PR_GAME_DIR", os.path.join(ROOT, "data", "game", "C")), "PRAGE.EXE")
 LIVE_FILE = os.path.join(ROOT, "docs", "superpowers", "plans", "2026-10-01-reverse-e2-live-functions.txt")
-# U6a ported four non-Ghidra addresses with strict headers after the planning run (record gameplay-u6 §U6.2
+# U6a ported four non-Ghidra addresses (strict entries: header or fn_register) after the planning run (record gameplay-u6 §U6.2
 # 0x23208, §U6.3 0x3A588, §U6.4 0x3640C, §U6.5 0x37DCC; commits e3a5d77, f9fbfc7, 7aea1f8, 396229d). Three are rows
 # of the table (0x23208 a move-callback, 0x3640C and 0x37DCC animation targets); 0x3A588 follows data, not a
-# `ret`, so it is not in the universe. They are the only differences from the planning run's "ported" figures.
+# `ret`, so it is not in the universe. They are the only differences from the planning run's "ported" figures:
+# with the four addresses removed from the strict set (their headers and fn_register lines) the planning
+# figures come back.
 U6A_ROWS = {0x23208, 0x3640C, 0x37DCC}
 U0_CALLBACKS = {int(x, 16) for x in (
     "14EF8 14F50 15478 21114 21374 22938 22A00 231C0 23208 237D0 2381C 3C048 3D10C 3D1EC 3DADC 3DB34 "
@@ -629,5 +631,5 @@ class RealImageTests(unittest.TestCase):
     def test_the_four_u6a_ports(self):
         self.assertEqual({a for a in U6A_ROWS if self.by[a]["ported"]}, U6A_ROWS)
         self.assertNotIn(0x3A588, self.by)                  # follows data, not a ret: outside the universe
-        self.assertTrue(self.t.is_ported(0x3A588))          # but its strict header is there
+        self.assertTrue(self.t.is_ported(0x3A588))          # but its strict entry (header and fn_register) is there
         self.assertEqual(sum(1 for r in self.rows if r["batch"] != "-" and r["ported"]), 166)   # 163 + U6a's 3
