@@ -4518,6 +4518,27 @@ void fighter_3e4c4(u32 side)
     fighter_reaction(ctx[3], ctx[2]);                   /* 0x3E4D9 0x3B714 */
 }
 
+/* 0x3C048 — record gameplay-u6 §U6.15. Every character's reaction-0x3D
+ * callback (the seven dwords 0xA3528 + (c*64 + 0x3D)*20). EAX = slot, EDX =
+ * rec, EBX = side: 0x3BF70, and on success the side's slot +0x4E = 0 and its
+ * record's +0x34 word, +0x43 and +0x42 bytes = 0. Returns 0x3BF70's AL (0x34E2C
+ * does not read it). */
+int fighter_3c048(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    int r;
+    fighter_ctx_same(ctx, side);                        /* 0x3C051..0x3C055 0x33950 */
+    r = fighter_3bf70(slot, rec, side);                 /* 0x3C05A..0x3C05E */
+    if (r != 0) {                                       /* 0x3C065 */
+        u32 own = DSD(DS_001077B0 + ctx[0] * 0x94u);    /* 0x3C073..0x3C084 */
+        DSW(ctx[2] + 0x4Eu) = 0;                        /* 0x3C069/0x3C06D */
+        DSW(own + 0x34u) = 0;                           /* 0x3C08B */
+        DSB(own + 0x43u) = 0;                           /* 0x3C091 */
+        DSB(own + 0x42u) = 0;                           /* 0x3C095 */
+    }
+    return r;                                           /* 0x3C099 */
+}
+
 /* 0x3E3A8. The T-rex's reaction-0x2A callback (*(u32*)0xA3870, the (char 0,
  * 0x2A) entry of 0x34E2C's 0xA3528 table, whose stream word +4 is 0). The
  * context is 0x33950(EBX = side); EAX and EDX are overwritten at 0x3E3AB/

@@ -494,6 +494,10 @@ void fighter_19020(u32 side);
  * 8 = 0 and the default box tables. EAX = side. */
 u32 fighter_3e484(u32 side);
 
+/* 0x3C048 (record gameplay-u6 §U6.15): every character's reaction-0x3D
+ * callback; returns 0x3BF70's AL. */
+int fighter_3c048(u32 slot, u32 rec, u32 side);
+
 /* 0x3E1D0. The +0x18 hook 0x3E3A8 stores: 1 unless the slot's +0x86 >> 16 is
  * in 1..3, else 0x18C14 with flags 5 = 1, 1/4/7/8/0xD/0xE = 0 and the
  * 0xC75F5/0xC75FF box tables. EAX = side. */

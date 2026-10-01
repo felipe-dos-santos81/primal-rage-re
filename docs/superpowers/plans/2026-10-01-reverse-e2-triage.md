@@ -27,7 +27,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 
 | batch | unported | ported |
 |---|---|---|
-| callbacks | 26 | 45 |
+| callbacks | 25 | 46 |
 | finishers | 6 | 3 |
 | voice | 0 | 15 |
 | animation-targets | 63 | 49 |
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 6 |
 | leaf | 234 |
-| stubs | 89 |
+| stubs | 88 |
 
 ## Rows
 
@@ -248,7 +248,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 3B454 | 16 | data | memory operand of the instruction at 3B5DA | yes | - | no | - | - | - |
 | 3B9C4 | 20 | data-pointer | aligned dword BB9F8 BBA04 BBA10 BBA1C | yes | - | yes | other | leaf | - |
 | 3BF70 | 216 | move-callback | dword A3A14 (char 0, reaction 0x3F) dword A3F14 (char 1, reaction 0x3F) dword A4414 (char 2, reaction 0x3F) dword A4914 (char 3, reaction 0x3F) dword A4E14 (char 4, reaction 0x3F) dword A5314 (char 5, reaction 0x3F) dword A5814 (char 6, reaction 0x3F) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
-| 3C048 | 92 | move-callback | dword A39EC (char 0, reaction 0x3D) dword A3EEC (char 1, reaction 0x3D) dword A43EC (char 2, reaction 0x3D) dword A48EC (char 3, reaction 0x3D) dword A4DEC (char 4, reaction 0x3D) dword A52EC (char 5, reaction 0x3D) dword A57EC (char 6, reaction 0x3D) | yes | entry | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 3C048 | 92 | move-callback | dword A39EC (char 0, reaction 0x3D) dword A3EEC (char 1, reaction 0x3D) dword A43EC (char 2, reaction 0x3D) dword A48EC (char 3, reaction 0x3D) dword A4DEC (char 4, reaction 0x3D) dword A52EC (char 5, reaction 0x3D) dword A57EC (char 6, reaction 0x3D) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3C0A4 | 164 | move-callback | dword A3A00 (char 0, reaction 0x3E) dword A3F00 (char 1, reaction 0x3E) dword A4400 (char 2, reaction 0x3E) dword A4900 (char 3, reaction 0x3E) dword A4E00 (char 4, reaction 0x3E) dword A5300 (char 5, reaction 0x3E) dword A5800 (char 6, reaction 0x3E) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3C32C | 44 | anim-target | dword D24FE after the opcode word D500 at D24FC | yes | - | yes | animation-targets | stubs (indirect at 379E8 in 379C4) | - |
 | 3C5E4 | 28 | data | memory operand of the instruction at 3C647 | yes | - | no | - | - | - |

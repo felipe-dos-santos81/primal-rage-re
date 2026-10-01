@@ -44183,3 +44183,65 @@ int test_u6_idle_loss_callbacks(void)
     check_u6_3a588();
     return g_failures - before;
 }
+
+/* ---- gameplay-u6 §U6.13-§U6.16: the moves capture's callbacks ------------
+ * The move-table callbacks the gp-u6-moves scenario reaches (record
+ * gameplay-u6 §U6.12): the T-rex's 0x24/0x25 entry 0x3F0A8 and the three
+ * callbacks it stores, its 0x2D entry 0x3D1EC, every character's 0x3D entry
+ * 0x3C048 and character 1's 0x27 entry 0x231C0. Each check runs inside one
+ * mz_save/mz_restore and seeds sentinels that differ from every
+ * post-condition. */
+
+/* The U6b tests' shared frame (record gameplay-u6 §U6.13-§U6.18): each runs its
+ * checks between mz_save and mz_restore. */
+static int u6b_run(void (*checks)(void))
+{
+    int before = g_failures;
+    u8 sv_slots[0x160], sv_cf0[0x30], sv_ab0[0x50];
+    if (!mz_save()) { CHECK(0, "the gameplay-u6b snapshot allocates"); return 1; }
+    tf_snap(sv_slots, 0x001077A0u, 0x160u);
+    tf_snap(sv_cf0, 0x00107CF0u, 0x30u);
+    tf_snap(sv_ab0, 0x00100AB0u, 0x50u);
+    checks();
+    tf_put(sv_slots, 0x001077A0u, 0x160u);
+    tf_put(sv_cf0, 0x00107CF0u, 0x30u);
+    tf_put(sv_ab0, 0x00100AB0u, 0x50u);
+    mz_restore();
+    return g_failures - before;
+}
+
+/* §U6.15: 0x3C048 is 0x3BF70 with the slot's +0x4E = 0 on success (both flip
+ * states), nothing on a rejection; seven table dwords. */
+static void check_u6b_3c048(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 st = FIGHT_RECS + 0x3A00u, c;
+    for (c = 0; c < 7u; c++)
+        CHECK_EQ_INT((int)DSD(0x000A3528u + (c * 64u + 0x3Du) * 20u), 0x0003C048);
+    CHECK(fn_resolve(0x3C048u) != NULL, "0x3C048 is registered");
+    ra_seed(s0, s1, r0, r1, st);
+    CHECK_EQ_INT(fighter_3c048(s0, r0, 0u), 1);
+    CHECK_EQ_INT((int)DSW(s0 + 0x4Eu), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 3);
+    CHECK_EQ_INT((int)DSB(s0 + 0x5Fu), 0xFF);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSW(s1 + 0x4Eu), 0x1235);
+    ra_seed(s0, s1, r0, r1, st);
+    DSB(r0 + 0x29u) = 0x40u;
+    CHECK_EQ_INT(fighter_3c048(s0, r0, 0u), 1);
+    CHECK_EQ_INT((int)DSW(s0 + 0x4Eu), 0);
+    ra_seed(s0, s1, r0, r1, st);
+    DSB(s0 + 0x40u) = 0x85u;
+    CHECK_EQ_INT(fighter_3c048(s0, r0, 0u), 0);
+    CHECK_EQ_INT((int)DSW(s0 + 0x4Eu), 0x1234);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0xAAAA);
+    ra_seed(s0, s1, r0, r1, st);
+    CHECK_EQ_INT(fighter_3c048(s1, r1, 1u), 1);
+    CHECK_EQ_INT((int)DSW(s1 + 0x4Eu), 0);
+    CHECK_EQ_INT((int)DSW(s0 + 0x4Eu), 0x1234);
+}
+
+int test_u6b_3c048(void)        { return u6b_run(check_u6b_3c048); }
