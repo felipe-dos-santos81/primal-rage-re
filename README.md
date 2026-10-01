@@ -57,6 +57,7 @@ write to it.
 * **JDK 25** (`temurin-25`) for Ghidra 12.2.
 * **dosbox-x** for ground truth (memory layout, runtime behaviour).
 * Python 3 with `capstone` for ad-hoc disassembly checks and `Pillow` for `tools/gra_extract.py`.
+* Python 3 with `unicorn` for the differential harness (`make diff-verify`; `pip install -r tools/requirements-diff.txt`). Optional: `make verify` skips that step without it.
 
 ### Regenerate the decompilation
 

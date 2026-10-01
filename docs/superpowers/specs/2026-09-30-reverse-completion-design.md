@@ -106,12 +106,17 @@ bytes. Basic-block coverage of the original is measured. A function is
 with the reason. Every record states the narrow claim: equivalence on the
 exercised blocks and inputs only.
 
-### 5.4 To settle in E1, not assume
-- Addressing: whether data references are plain linear addresses under flat
-  addressing, or need the `0x80000` data base (the address model says DS offset =
-  address − `0x80000`; fixups write linear addresses).
-- Whether `unicorn` installs cleanly on this host (it is not installed now;
-  `capstone` 5.0.7 is). Fallback: a small 386 interpreter.
+### 5.4 Settled in E1
+Both questions are answered; the evidence is in
+`docs/superpowers/plans/2026-09-30-reverse-completion-e1-derivations.md` §E.1 and §E.2.
+- Addressing: flat, base 0. The code's operands are plain linear addresses (the
+  fixups write them): `rng_next` at `0x5D7DC` reads `mov eax,[0xEF6D8]` and
+  `symbols.h`'s `DS_000EF6D8` is that same address, so the emulator maps the image
+  at `0x10000` with no segment base and no `0x80000` offset. The "DS offset =
+  address − `0x80000`" wording describes how Ghidra names globals, not how the
+  code addresses them.
+- `unicorn` 2.1.4 installs cleanly on this host (macOS arm64, Python 3.12.12;
+  `capstone` 5.0.7 beside it), so no interpreter fallback was needed.
 
 ### 5.5 Output
 One row per function in a verification table (address, blocks hit and total,
