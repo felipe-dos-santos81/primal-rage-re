@@ -36,8 +36,15 @@ SNAP_FIELDS = (
     ('s0_52', 0x107802, 1), ('s0_54', 0x107804, 1), ('s0_5a', 0x10780A, 1),
     ('s1_52', 0x107896, 1), ('s1_54', 0x107898, 1), ('s1_5a', 0x10789E, 1),
     ('ent', 0x10741C, 4),
+    # Plan gameplay-u6b, record gameplay-u6 §U6.11 (appended, so older poll.log
+    # lines simply lack them): the last reaction each side applied (0x34E2C's
+    # 0x34EF6 store to DS_001088A8 + side), the slots' characters (+0x7A) and
+    # slot 0's +0x43 (0x1A6AC's block bits 0x20/0x10).
+    ('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1), ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
+    ('s0_43', 0x1077F3, 1),
 )
 TRACE_FIELDS = ('mode', 'st', 'raw', 'pad', 'e0', 'e2', 'rng', 'cred', 's0_5a', 's1_5a')
+MOVE_FIELDS = ('c0', 'c1', 'r0', 'r1', 's0_43')     # gp_compare's moves claim (record gameplay-u6 §U6.11)
 
 # BIOS keys: (scan, the BIOS word a press queues; record named-gaps-a §A.9).
 KEYS = {'enter': (0x1C, 0x1C0D), 'esc': (0x01, 0x011B)}

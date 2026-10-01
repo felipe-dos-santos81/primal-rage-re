@@ -34,6 +34,31 @@ class TestTables(unittest.TestCase):
             self.assertIn(n, names)
         self.assertEqual(dict((n, (d, s)) for n, d, s in gs.SNAP_FIELDS)['f'], (0x0EF6DC, 2))
 
+    def test_the_u6_fields_are_appended(self):
+        # plan gameplay-u6b, record gameplay-u6 §U6.11: after every U1 field, so older
+        # poll.log lines are a prefix of the new format
+        self.assertEqual(gs.SNAP_FIELDS[-5:], (('r0', 0x1088A8, 1), ('r1', 0x1088A9, 1),
+                                                ('c0', 0x10782A, 1), ('c1', 0x1078BE, 1),
+                                                ('s0_43', 0x1077F3, 1)))
+        self.assertEqual(gs.MOVE_FIELDS, ('c0', 'c1', 'r0', 'r1', 's0_43'))
+        self.assertFalse(set(gs.MOVE_FIELDS) & set(gs.TRACE_FIELDS))
+
+    def test_the_port_t_line_writes_every_snap_field_in_order(self):
+        # port/tests/test_game.c gp_trace_line: the capture's S names and order (spec §4.2)
+        import re
+        src = open(os.path.join(ROOT, 'port', 'tests', 'test_game.c')).read()
+        body = src[src.index('static void gp_trace_line(void)'):]
+        fmt = ''.join(re.findall(r'"([^"]*)"', body[:body.index(');')]))
+        self.assertTrue(fmt.startswith('T '), fmt)
+        self.assertEqual([p.split('=')[0] for p in fmt[2:].split()], [n for n, _, _ in gs.SNAP_FIELDS])
+
+    def test_an_s_line_without_the_u6_fields_still_parses(self):
+        old = [(n, d, s) for n, d, s in gs.SNAP_FIELDS if n not in gs.MOVE_FIELDS]
+        body = ' '.join('%s=%0*X' % (n, 2 * s, 7) for n, _, s in old)
+        snaps = gs.snapshots(['S ms=1 %s kb=0000 head=001E tail=001E' % body])
+        self.assertEqual(snaps[7]['rng'], 7)
+        self.assertNotIn('r0', snaps[7])
+
 
 class TestFormat(unittest.TestCase):
     def test_s_record_round_trip(self):

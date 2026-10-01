@@ -12289,7 +12289,8 @@ static void gp_trace_line(void)
     fprintf(gp_trace,
             "T f=%04X mode=%04X st=%04X tick=%08X t508=%08X t50c=%08X raw=%08X pad=%08X new=%08X held=%08X "
             "e0=%04X e2=%04X rng=%08X cred=%08X fp=%02X b1d=%02X b1f=%02X b25=%02X w10d=%02X cnt=%02X "
-            "s0_52=%02X s0_54=%02X s0_5a=%02X s1_52=%02X s1_54=%02X s1_5a=%02X ent=%08X\n",
+            "s0_52=%02X s0_54=%02X s0_5a=%02X s1_52=%02X s1_54=%02X s1_5a=%02X ent=%08X "
+            "r0=%02X r1=%02X c0=%02X c1=%02X s0_43=%02X\n",
             (unsigned)DSW(DS_000EF6DC), (unsigned)DSW(DS_00104B00), (unsigned)DSW(DS_000F0A64),
             (unsigned)DSD(DS_00101500), (unsigned)DSD(DS_00101508), (unsigned)DSD(DS_0010150C),
             (unsigned)DSD(DS_000E1C30), (unsigned)DSD(DS_000E1C34), (unsigned)DSD(DS_001088E4),
@@ -12299,7 +12300,10 @@ static void gp_trace_line(void)
             (unsigned)DSB(GP_DS_0010810D), (unsigned)DSB(DS_00108110),
             (unsigned)DSB(DS_00107802), (unsigned)DSB(DS_00107804), (unsigned)DSB(DS_0010780A),
             (unsigned)DSB(DS_00107896), (unsigned)DSB(DS_00107898), (unsigned)DSB(DS_0010789E),
-            (unsigned)DSD(DS_0010741C));
+            (unsigned)DSD(DS_0010741C),
+            (unsigned)DSB(DS_001088A8), (unsigned)DSB(DS_001088A8 + 1u),
+            (unsigned)DSB(DS_0010782A), (unsigned)DSB(DS_001078BE),
+            (unsigned)DSB(DS_001077B0 + 0x43u));
     gp_trace_lines++;
 }
 
