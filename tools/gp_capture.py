@@ -5,8 +5,12 @@ A poller thread maps the [dosbox] memory file, takes one consistent snapshot
 per frame while the master loop spins ([DS_0010150C] - 1 == [DS_00101508],
 0x256C6), fires the scenario's frame-keyed injections from that state and
 writes poll.log (format: gp_session). Writes only data/k11-captures/gp-*/.
+A scenario in gp_session.STOP_AT_END stops STOP_TAIL frames after its end.
+Every capture fails a CHECK on keyboard input the harness did not inject:
+nobody may type into DOSBox-X while it runs.
 Usage: gp_capture.py --scenario NAME --out data/k11-captures/NAME [--exe PATH]
-                     [--time-limit S] [--keep-avi] [--no-pad-bios]"""
+                     [--time-limit S] [--keep-avi] [--no-pad-bios] [--no-stop-at-end]
+       gp_capture.py check-input DIR      (audit an existing capture's poll.log)"""
 import argparse
 import gzip
 import hashlib
@@ -14,6 +18,7 @@ import mmap
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -99,6 +104,22 @@ def fire(sched, f):
 FRAME_BYTES = 320 * 200 * 3
 MEM_WAIT_S = 60        # s, harness: how long the poller waits for DOSBox-X's memory file (as k11_capture)
 LOG_CON_ARGS = ['-set', 'dos log console=quiet']      # record named-gaps-a §A.2
+# Stop at the script's end (gp_session.STOP_AT_END). SIGTERM reaches SDL2's own
+# handler (SDL_QuitInit), which queues SDL_QUIT; DOSBox-X's GFX_Events answers it
+# with `if (CheckQuit()) throw(0)`, and CheckQuit returns true at once for
+# `quit warning=false` (the default `auto` may open a dialog while a program
+# runs). throw(0) reaches the same kill-switch branch of main's `catch (int x)`
+# as -time-limit's throw(1) (src/hardware/pic.cpp), the path every capture so
+# far ended on (DOSBox-X 2026.08.31 sources; task capture-hygiene report).
+QUIT_ARGS = ['-set', 'dosbox quit warning=false']
+# Harness values, not game values. STOP_TAIL: frames logged after the end frame
+# before the SIGTERM, one second at 60.05 Hz; the end frame's image reaches the
+# AVI at the next 70.09 Hz retrace (< 1 game frame), the rest is margin for the
+# poller's and SDL's latency. STOP_GRACE_S: how long DOSBox-X may take to exit
+# after it (the time-limit exits took wall_s - time_limit = 0.7..3.2 s in the
+# four gp sessions); then it is killed and the stop CHECK fails.
+STOP_TAIL = 60
+STOP_GRACE_S = 30
 
 
 def guard_gp(out):
@@ -153,7 +174,99 @@ def run_checks(name, lines, sched, n_frames, n_want):
             ('mode 0x27 after the Enter', ordered),
             ('snapshots kb == raw (%d differ)' % kbraw, kbraw == 0),
             ('frames written %d/%d' % (n_frames, n_want), n_frames == n_want),
-            ('port script v2%s' % why, script_ok)]
+            ('port script v2%s' % why, script_ok),
+            input_check(lines)]
+
+
+# The key bitmap bit each key-state scan sets (PAD's third column; p1.b0 and
+# p1.start share 0x0100, p2.b0 and p2.start 0x0001). The host-owned ISR sampler
+# 0x1BBAC fills [DS_00101514]+0x2D8/+0x2D9 from the key-state table (demo-pose
+# record, 0x1BBAC row), so a BIOS key whose scan is a pad's (U11's n, alt-s,
+# alt-m) sets that pad's bit too: an injection explains a bit by its scan.
+SCAN_BIT = {}
+for _scan, _word, _bit in gs.PAD.values():
+    SCAN_BIT[_scan] = SCAN_BIT.get(_scan, 0) | _bit
+# The int 16h ring when the poll.log does not say (it logs no BDA start/end):
+# kc.bios_insert's fallback 0x1E..0x3E, the BIOS default; every head and tail in
+# gp-pads, gp-idle-loss, gp-u5-charsel and gp-u6-moves lies in 0x1E..0x3C.
+RING_START, RING_END = 0x1E, 0x3E
+
+
+def unscripted_input(lines):
+    """Keyboard input the harness did not inject (task capture-hygiene; the
+    gp-u6-moves contamination, U6b task-7 report §6.5), from the records alone.
+
+    Key words: the int 16h tail moves only when a word is inserted (int 9 or
+    kc.bios_insert), so between two S records it must advance by exactly the
+    words the I records logged between them queued (ring=1). The poller logs an
+    injection's I record before the next S reads the tail (Poller.run), and
+    Injector.press queues a press's word once (no repeat), so no tolerance
+    applies. The poll.log carries no ring contents, so a word is checked by
+    count and frame, not by key.
+
+    Pad bits: an I press at the spin of f (logged after S(f)) and its release at
+    the spin of r (also after S(r)) explain the scan's bit in S(f+1)..S(r), and
+    only there; a bit set outside every such window is an unscripted press, a
+    bit clear inside one an unscripted release (a physical key-up overwrites the
+    key-state byte). Measured on the clean captures: every one of the 31 pad
+    windows of gp-pads and gp-u5-charsel shows its bit exactly in S(f+1)..S(r).
+
+    Blind spots: the check detects stray typing, it does not prove its absence.
+    It cannot see a stray press of a pad key inside that key's own scripted
+    hold window (the bit is set either way), input before the first or after
+    the last S record, a stray key-up of a non-pad key (no bitmap bit and no
+    ring word), or a pad tap pressed and released between two S records.
+
+    Returns dict(words=[f...], presses=[(f, bit)...], releases=[(f, bit)...])
+    with each event's first S frame."""
+    recs = [r for r in (gs.parse(l) for l in lines) if r]
+    words, queued, prev_tail = [], 0, None
+    held, wins = {}, {}                  # lin -> [(f, scan)]; bit -> [(lo, hi)]
+    snaps = []
+    for r in recs:
+        k = r['kind']
+        if k == 'I' and 'press' in r:
+            if r.get('bios') is not None and r.get('ring') == 1:
+                queued += 1
+            if r['scan'] in SCAN_BIT:
+                held.setdefault(r['lin'], []).append((r['f'], r['scan']))
+        elif k == 'I' and 'release' in r:
+            if held.get(r['lin']):
+                f0, scan = held[r['lin']].pop(0)
+                wins.setdefault(SCAN_BIT[scan], []).append((f0 + 1, r['f']))
+        elif k == 'S':
+            if prev_tail is not None:
+                extra = len(ring_steps(prev_tail, r['tail'], RING_START, RING_END)) - queued
+                words += [r['f']] * max(extra, 0)
+            prev_tail, queued = r['tail'], 0
+            snaps.append(r)
+    for lst in held.values():            # still held when the log ends
+        for f0, scan in lst:
+            wins.setdefault(SCAN_BIT[scan], []).append((f0 + 1, 0x10000))
+    presses, releases = [], []
+    seen, bad = set(), {}
+    for s in snaps:
+        if s['f'] in seen:               # gs.snapshots: the first S of a frame
+            continue
+        seen.add(s['f'])
+        for bit in (1 << i for i in range(16)):
+            on = bool(s['kb'] & bit)
+            want = any(lo <= s['f'] <= hi for lo, hi in wins.get(bit, ()))
+            state = None if on == want else ('press' if on else 'release')
+            if state is not None and bad.get(bit) != state:
+                (presses if on else releases).append((s['f'], bit))
+            bad[bit] = state
+    return dict(words=words, presses=presses, releases=releases)
+
+
+def input_check(lines):
+    """The CHECK (label, ok) for unscripted_input."""
+    u = unscripted_input(lines)
+    firsts = u['words'][:1] + [f for f, _ in u['presses'][:1] + u['releases'][:1]]
+    if not firsts:
+        return 'no unscripted input', True
+    return ('unscripted input: %d key words, %d pad presses, %d pad releases, first at f=%X'
+            % (len(u['words']), len(u['presses']), len(u['releases']), min(firsts)), False)
 
 
 def write_frames(out, paths, indices):
@@ -176,14 +289,14 @@ def write_frames(out, paths, indices):
     return n
 
 
-def dosbox_cmd(root, game, iso, time_limit):
+def dosbox_cmd(root, game, iso, time_limit, stop_at_end=False):
     return ([sc.which('dosbox-x'), '-defaultconf', '-fastlaunch', '-nopromptfolder',
              '-nogui', '-nomenu', '-time-limit', str(time_limit),
              '-set', 'sdl fullscreen=false',
              '-set', 'dosbox captures=%s' % os.path.join(root, 'avi'),
              '-set', 'dosbox memory file=%s' % os.path.join(root, 'guest.mem'),
              '-set', 'log logfile=%s' % os.path.join(root, 'dosbox.log')]
-            + LOG_CON_ARGS
+            + LOG_CON_ARGS + (QUIT_ARGS if stop_at_end else [])
             + ['-c', 'MOUNT C "%s" -ro' % game, '-c', 'IMGMOUNT D "%s" -t iso' % iso, '-c', 'C:',
                '-c', 'DX-CAPTURE /V /O PRAGE.EXE -f', '-c', 'EXIT'])
 
@@ -194,6 +307,19 @@ class Poller(threading.Thread):
         self.mem_path, self.log_path, self.stop, self.pad_bios = mem_path, log_path, stop, pad_bios
         self.sched = gs.Schedule(steps)
         self.end_seen = False
+
+    stop_tail = None        # frames after the end frame to SIGTERM `proc` (None: run to the time limit)
+    proc = None             # the DOSBox-X Popen
+    signal_f = signal_t = None
+
+    def stop_if_due(self, f):
+        """SIGTERM DOSBox-X once S(F + stop_tail) is logged, F the end frame."""
+        if (self.stop_tail is None or self.proc is None or self.signal_f is not None
+                or not self.sched.ended(f) or f < self.sched.end_frame + self.stop_tail):
+            return False
+        self.proc.send_signal(signal.SIGTERM)
+        self.signal_f, self.signal_t = f, time.monotonic()
+        return True
 
     def run(self):
         deadline = time.monotonic() + MEM_WAIT_S
@@ -255,6 +381,7 @@ class Poller(threading.Thread):
                         if not self.end_seen and self.sched.ended(f):
                             log.write('X ms=%d f=%04X step=%d end\n' % (ms, f, self.sched.i))
                             self.end_seen = True
+                        self.stop_if_due(f)
                         last_f = f
                 time.sleep(0.0003)
             log.write('E ms=%d reason=%s rc=%d\n' % (int((time.monotonic() - t0) * 1000),
@@ -262,7 +389,47 @@ class Poller(threading.Thread):
             mm.close()
 
 
+def wait_dosbox(proc, poll, grace=STOP_GRACE_S):
+    """DOSBox-X's exit code; killed (rc -9) when still running `grace` s after
+    the poller's SIGTERM."""
+    while True:
+        try:
+            return proc.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            if poll.signal_t is not None and time.monotonic() - poll.signal_t > grace:
+                proc.kill()
+                return proc.wait()
+
+
+def check_input_main(argv):
+    """check-input DIR: the unscripted-input CHECK over DIR/poll.log (read-only).
+    Exit 0 ok, 1 FAIL, 2 not a gp capture (no poll.log, or no S records)."""
+    if len(argv) != 1:
+        sys.exit('usage: gp_capture.py check-input DIR')
+    path = os.path.join(argv[0], 'poll.log')
+    if not os.path.isfile(path):
+        print('gp_capture: check-input: no poll.log in %s' % argv[0])
+        return 2
+    with open(path) as f:
+        lines = f.read().splitlines()
+    if not any(l.startswith('S ') for l in lines):
+        print('gp_capture: check-input: no S records: not a gp poll.log (%s)' % path)
+        return 2
+    label, ok = input_check(lines)
+    u = unscripted_input(lines)
+    print('check=%s %s' % ('ok' if ok else 'FAIL', label))
+    for what, ev in (('key words at f', u['words']), ('pad presses at f:bit', u['presses']),
+                     ('pad releases at f:bit', u['releases'])):
+        if ev:
+            items = ['%X' % e if isinstance(e, int) else '%X:%04X' % e for e in ev]
+            print('gp_capture: check-input: %d %s %s%s' % (len(ev), what, ' '.join(items[:12]),
+                                                           ' ...' if len(items) > 12 else ''))
+    return 0 if ok else 1
+
+
 def main():
+    if sys.argv[1:2] == ['check-input']:
+        return check_input_main(sys.argv[2:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--scenario', required=True, choices=sorted(n for n in gs.SCENARIOS if n.startswith('gp-')))
     ap.add_argument('--out', required=True)
@@ -271,6 +438,7 @@ def main():
     ap.add_argument('--time-limit', type=int)
     ap.add_argument('--keep-avi', action='store_true')
     ap.add_argument('--no-pad-bios', action='store_true')
+    ap.add_argument('--no-stop-at-end', action='store_true')
     a = ap.parse_args()
     out = guard_gp(a.out)
     scn = gs.SCENARIOS[a.scenario]
@@ -278,21 +446,25 @@ def main():
         sys.exit('gp_capture: %s missing (run make title-pin)' % a.exe)
     cmos = kc.check_cmos(a.game_dir)
     limit = a.time_limit or scn['time_limit']
+    stop_end = a.scenario in gs.STOP_AT_END and not a.no_stop_at_end
     root = tempfile.mkdtemp(prefix='gpcap-')
     try:
         game = tcap.stage(root, a.exe, a.game_dir)
         iso = os.path.join(root, 'CD', 'RAGECD.ISO')
         os.makedirs(os.path.join(root, 'avi'))
-        cmd = dosbox_cmd(root, game, iso, limit)
+        cmd = dosbox_cmd(root, game, iso, limit, stop_end)
         print('gp_capture: %s' % shlex.join(cmd))
         stop = threading.Event()
         poll = Poller(os.path.join(root, 'guest.mem'), os.path.join(root, 'poll.log'),
                       scn['steps'], stop, pad_bios=not a.no_pad_bios)
         poll.start()
         t = time.monotonic()
-        r = subprocess.run(cmd)
+        proc = subprocess.Popen(cmd)
+        poll.stop_tail, poll.proc = (STOP_TAIL if stop_end else None), proc
+        rc = wait_dosbox(proc, poll)
         wall = time.monotonic() - t
-        poll.rc, poll.reason = r.returncode, ('time-limit' if wall >= limit - 1 else 'exit')
+        poll.rc, poll.reason = rc, ('end' if poll.signal_f is not None
+                                    else 'time-limit' if wall >= limit - 1 else 'exit')
         stop.set()
         poll.join()
         avi_dir = os.path.join(root, 'avi')
@@ -326,6 +498,10 @@ def main():
             with open(os.path.join(stage, 'poll.log')) as f:
                 lines = f.read().splitlines()
         checks = run_checks(a.scenario, lines, poll.sched, n, len(idx))
+        if stop_end:
+            checks.append(('stopped at the end (SIGTERM at f=%s, rc=%d)'
+                           % ('-' if poll.signal_f is None else '%04X' % poll.signal_f, rc),
+                           poll.signal_f is not None and rc == 0))
         ok = all(c for _, c in checks)
         with open(os.path.join(stage, 'session.txt'), 'w') as f:
             f.write('scenario=%s\n' % a.scenario)
@@ -333,7 +509,10 @@ def main():
             f.write('argv=%s\n' % shlex.join(cmd))
             f.write('exe=%s sha256=%s\n' % (a.exe, sha))
             f.write('cmos=%s pad_bios=%d\n' % (cmos, int(not a.no_pad_bios)))
-            f.write('time_limit=%d wall_s=%.1f rc=%d\n' % (limit, wall, r.returncode))
+            f.write('time_limit=%d wall_s=%.1f rc=%d\n' % (limit, wall, rc))
+            if stop_end:
+                f.write('stop_at_end=1 tail=%d signal_f=%s\n'
+                        % (STOP_TAIL, '-' if poll.signal_f is None else '%04X' % poll.signal_f))
             f.write('avis=%s fps=%.4f dro=%s frames=%d raw_window=%d..%d avi_frames=%d twg_last=%s\n'
                     % (avis, sc.ffprobe_fps(paths[0]), dros, n, idx[0], idx[-1], len(cap), logs.get('twg')))
             for name, c in checks:

@@ -14,7 +14,7 @@ poll.log v2, one record per line:
         bios=<hex4|-> ring=<0|1|-> late=<0|1>
   I ms=<int> f=<hex4> step=<n> release=<name> lin=<hex8>
   X ms=<int> f=<hex4> step=<n> end
-  E ms=<int> reason=<exit|time-limit> rc=<int>"""
+  E ms=<int> reason=<exit|time-limit|end> rc=<int>   end: stopped at the script's end (STOP_AT_END)"""
 import argparse
 import os
 import sys
@@ -227,6 +227,16 @@ class Schedule:
 
     def ended(self, f):
         return self.end_frame is not None and f >= self.end_frame
+
+
+# The scenarios whose capture stops at the script's end (gp_capture.STOP_TAIL
+# frames after the X record) instead of running to time_limit. Opt-in: every
+# other scenario still records its post-end tail (gp-idle-loss's, and the
+# post-restart movie gp-keys-fight's plan counts on). gp-u6-moves ran 130 s for
+# an X at 75 s, 278 MB (U6b task-7 report §6.1); it and its re-capture
+# gp-u6-moves-b (a copy of it) are defined on U6b's branch. A name not in
+# SCENARIOS is inert.
+STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b'})
 
 
 class ScriptError(Exception):
