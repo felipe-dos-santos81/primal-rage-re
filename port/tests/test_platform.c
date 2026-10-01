@@ -115,7 +115,9 @@ static const fnm_pair k_miss_frontend[] = {
  *   0x23208 hit_reaction_apply: an UNPORTED move-table callback (character 1,
  *     reaction 0x26; U0 §U0.12's list), f = 0x824, the one hit;
  *   0x3A588 fighter_state_3531c: an UNPORTED state-10 callback (the +0x10
- *     pointer 0x3A650 stores), 5353 hits from f = 0x927;
+ *     pointer 0x3A650 stores), 4995 hits from f = 0x8E7 (measured after the
+ *     0x37B03 fix, record gameplay-u5 §C5.13; U4's pre-fix figures were 5353
+ *     hits from f = 0x927);
  *   (U4 measured a fifth, 0x3640C anim_indirect, an UNPORTED animation-opcode
  *   target at f = 0x173A, past the trace divergence; since the 0x37B03 fix the
  *   replay no longer reaches it, record gameplay-u5 §C5.3/§C5.12.)

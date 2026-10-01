@@ -423,13 +423,14 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # port regression cannot slide the window past the frame that set MIN_FIRST).
 # All re-measured on main c6cac22 (U0's 40 functions) + U3 + U4 (record §G.24): unchanged
 # from the first measurement on the pre-U0 base.
-# MIN_FIRST: first unexplained capture frame 203 (raw 2359), the character select's pick
-# countdown step: the capture shows 12 and Sauron's idle animation running backwards, the
-# port keeps it going forward ~96 frames more (f 0x340 against 0x3A0). The cause is not
-# isolated (no raw address; the fn_resolve miss log holds nothing in the character select
-# but the bare `ret` 0x29D60, record §G.24); raise it when the frame claim improves
-# (gp_compare prints "improved: raise N").
-GP_IDLE_LOSS_MIN_FIRST = 203
+# MIN_FIRST: first unexplained capture frame 787 (raw 3899), round 1 (mode 6): its nearest port
+# frame 575 is f=0x823, one frame before the unregistered move callback 0x23208 at f=0x824
+# (divergence 2, record §G.24, U6's). Raised from 203 by U5 (record 2026-10-01-gameplay-u5
+# §C5.12/§C5.13): divergence 1, the character-select idle animation turning at f=0x340, was the
+# 0x37A58 top wrap comparing rec+0x4F where the raw's 0x37B03/0x37B08 compares the frame byte
+# rec+0x52; with it fixed the claim covers the character select, the time-out, 0x11, 0x17 and the
+# round start. Raise it when the frame claim improves (gp_compare prints "improved: raise N").
+GP_IDLE_LOSS_MIN_FIRST = 787
 # TRACE_MIN_FIRST: first differing f=0x828 (decimal 2088) in rng, port against the capture
 # (capture 73A05D37, port CE92DD04). Four frames earlier (f=0x824) the port's P2 attack
 # misses an UNREGISTERED move-table callback, 0x23208 (character 1, reaction 0x26; U0's

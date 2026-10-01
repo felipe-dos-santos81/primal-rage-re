@@ -426,3 +426,31 @@ fn-miss PR_GP_DUMP distinct=6 dropped=0     (gp-idle-loss)
 ```
 
 The gate check: `ORACLES-EQUAL` (45 lines), `K11-EQUAL`, `WAV-IDENTICAL`, `771 1203 64`, `731 731 100`. The first unexplained capture frame moves from 203 to 787 (the plan's predicted value); Task 3 pins it.
+
+## §C5.13 The frame ratchet pin (Task 3)
+
+**Step 1 (the nearest port frame, `/tmp/pr_u5_gp/gp-idle-loss/frames.txt`, Task 2's nearest port index 575):** `00575 f=0823 tick=00000881 mode=0006`; the next line is `00576 f=0824 tick=00000882 mode=0006`, so the first unexplained capture frame sits one port frame before the unregistered move callback `0x23208` (divergence 2, record §G.24).
+
+**Step 2 (pin):** `GP_IDLE_LOSS_MIN_FIRST` 203 to 787 (raw 3899), the value Task 2's gate measured (`FIRST UNEXPLAINED capture 787 (raw 3899): nearest port 575`); the Makefile comment now states the cause of the old 203 (the `0x37A58` top wrap's operand, §C5.12) and what the claim covers.
+
+**Step 3 (it holds, and it fails):**
+
+```
+frames: first unexplained 787, ratchet N 787 ok
+trace: first differing 2088, ratchet N 2088 ok          (make gp-oracle, exit 0)
+frames: FAIL: first unexplained 787 < ratchet N 788      (GP_IDLE_LOSS_MIN_FIRST=788, make exit 2)
+```
+
+With the old operand (`rec+0x4f`, one line changed in `actors.c`, rebuilt, then restored with `git checkout`):
+
+```
+fn-miss PR_GP_DUMP distinct=7 dropped=0
+FAIL .../test_platform.c:188: 7 != 6
+FAIL .../test_platform.c:193: the driver's miss log holds only its pinned known-set
+gp_compare: gp-idle-loss: frames: FAIL: first unexplained 203 < ratchet N 787
+gp_compare: gp-idle-loss: trace: first differing 2088, ratchet N 2088 ok
+```
+
+**Comment correction (`test_platform.c`, `k_miss_gp_idle_loss`):** the `0x3A588 fighter_state_3531c` line read `5353 hits from f = 0x927` (U4, before the fix). Measured after the `0x37B03` fix: `hits=4995` (the Task 2 verify log, `/tmp/gameplay-u5/t2_verify.txt`, `fn-miss PR_GP_DUMP 0x3A588 fighter_state_3531c hits=4995`, and again in the Task 3 replay) and the first hit at `f = 0x8E7` (a throw-away `fprintf` of `DSW(0xEF6DC)` at the first miss of `0x3A588` in `fn_resolve_from`, not committed, `mem.c` restored). The comment now states both, labelled as measured after the fix, with U4's figures kept as the pre-fix ones.
+
+**Step 4 (gate, `make verify` through `$S/mkv`, log `/tmp/gameplay-u5/t3_verify.txt`):** `all checks passed`, `verify-exit=0`; `FIRST UNEXPLAINED capture 787 (raw 3899)`, `first unexplained 787, ratchet N 787 ok`, `first differing 2088, ratchet N 2088 ok`, `fn-miss PR_GP_DUMP distinct=2` (gp-pads) and `distinct=6` (gp-idle-loss). The gate check: `ORACLES-EQUAL`, `K11-EQUAL`, `WAV-IDENTICAL`, `771 1203 64`, `731 731 100`.
