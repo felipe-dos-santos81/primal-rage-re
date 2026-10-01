@@ -76,7 +76,9 @@ class TestTables(unittest.TestCase):
         self.assertEqual(len(args), len(gs.SNAP_FIELDS), args)
         for part, arg, (n, addr, size) in zip(parts, args, gs.SNAP_FIELDS):
             self.assertEqual(part, '%s=%%0%dX' % (n, 2 * size), n)
-            if n in gs.MOVE_FIELDS or n in ('r0', 'r1'):
+            # review of U6b Task 2 (m4): the accessor reads the field's size
+            self.assertRegex(arg, r'\bDS%s\(' % {1: 'B', 2: 'W', 4: 'D'}[size], (n, arg))
+            if n in gs.MOVE_FIELDS:
                 m = re.search(r'\bDS_([0-9A-F]{8})(?:\s*\+\s*(0x[0-9A-Fa-f]+|[0-9]+)u?)?\)', arg)
                 self.assertIsNotNone(m, (n, arg))
                 got = int(m.group(1), 16) + (int(m.group(2), 0) if m.group(2) else 0)
