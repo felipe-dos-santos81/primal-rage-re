@@ -471,3 +471,15 @@ gp_compare: gp-idle-loss: trace: first differing 2088, ratchet N 2088 ok
 - the 40-frame gap to 7: `FAIL: test_presses_are_separate_edges_before_the_time_out` and `FAIL: test_schedule_fires_the_walk`.
 
 Restored: `Ran 25 tests`, `OK`. No DOSBox-X capture was run (Task 6).
+
+## §C5.15 The replay driver's miss set for `gp-u5-charsel` (Task 5)
+
+`k_miss_gp_charsel[]` in `port/tests/test_platform.c` (`fnm_known` takes a fifth flag, `charsel`; `test_fn_misslog_driver` adds the set's size to `want` when the script's scenario line names `gp-u5-charsel`): `0x29D60 frontend_mode_1b_step` (a bare `ret`, the wipe's end into mode 0x10) and `0x5D812 frontend_mode_1b_step` (the runtime stub, the wipe into mode 5), both classified in §G.24 and predicted in §C5.6. The set is the port's own walk, cut at the first mode-6 frame (`end 1518` = `0x5EE`); a capture's replay replaces the stand-in pad frames in Task 7.
+
+**The port's walk (Step 1's v2 script, pad frames on `gp-idle-loss`'s Enter frames, each pad's BIOS word consumed 2 frames after its press; `/tmp/gameplay-u5/sim/sim6.script`):** `fn-miss PR_GP_DUMP 0x29D60 frontend_mode_1b_step hits=1`, `0x5D812 frontend_mode_1b_step hits=1`, with the base pair `0x5D812 actor_spawn hits=3688` and `0x5D812 set_dead hits=3390`: `distinct=4 dropped=0`.
+
+**RED:** before the set, `FAIL test_platform.c:188: 4 != 2` and `unexpected 0x29D60 from frontend_mode_1b_step`, `unexpected 0x5D812 from frontend_mode_1b_step` (`FAILURES: 3`, `/tmp/gameplay-u5/t5_red.txt`). **GREEN:** `distinct=4 dropped=0`, `all checks passed` (`t5_green.txt`).
+
+**Mutations:** (a) the script's scenario line changed to `gp-u5-sim`: `FAIL: 4 != 2` and both `unexpected` lines (the set applies only to its scenario, `t5_mut1.txt`); (b) the `0x29D60` row deleted from `k_miss_gp_charsel`: `FAIL: 4 != 3` and `unexpected 0x29D60 from frontend_mode_1b_step` (`t5_mut2.txt`). Row restored: `all checks passed`.
+
+**The walk's mode changes (the trace of the replay, `t5_walk.txt`):** `0x10` at `0x293`, `0x1A` at `0x439`, `0x1B` at `0x44B`, `0x11` at `0x45D`, `0x17` at `0x45E`, `0x1A` at `0x54F`, `0x1B` at `0x561`, `5` at `0x573`, `6` at `0x5EE`: equal to §C5.6's prediction.
