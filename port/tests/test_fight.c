@@ -44183,3 +44183,336 @@ int test_u6_idle_loss_callbacks(void)
     check_u6_3a588();
     return g_failures - before;
 }
+
+/* ---- gameplay-u6 §U6.13-§U6.17: the moves capture's callbacks ------------
+ * The move-table callbacks the gp-u6-moves scenario reaches (record
+ * gameplay-u6 §U6.12): the T-rex's 0x24/0x25 entry 0x3F0A8 and the three
+ * callbacks it stores, its 0x2D entry 0x3D1EC, every character's 0x3D entry
+ * 0x3C048, character 1's 0x27 entry 0x231C0, and the 0xD100 targets 0x3F0F0
+ * and 0x3F130 with 0x2BEF4 (§U6.17; §U6.18's 0x3A820 is not ported). Each check runs inside one
+ * mz_save/mz_restore and seeds sentinels that differ from every
+ * post-condition. */
+
+/* The U6b tests' shared frame (record gameplay-u6 §U6.13-§U6.17): each runs its
+ * checks between mz_save and mz_restore. */
+static int u6b_run(void (*checks)(void))
+{
+    int before = g_failures;
+    u8 sv_slots[0x160], sv_cf0[0x30], sv_ab0[0x50];
+    if (!mz_save()) { CHECK(0, "the gameplay-u6b snapshot allocates"); return 1; }
+    tf_snap(sv_slots, 0x001077A0u, 0x160u);
+    tf_snap(sv_cf0, 0x00107CF0u, 0x30u);
+    tf_snap(sv_ab0, 0x00100AB0u, 0x50u);
+    checks();
+    tf_put(sv_slots, 0x001077A0u, 0x160u);
+    tf_put(sv_cf0, 0x00107CF0u, 0x30u);
+    tf_put(sv_ab0, 0x00100AB0u, 0x50u);
+    mz_restore();
+    return g_failures - before;
+}
+
+/* §U6.15: 0x3C048 is 0x3BF70 with the slot's +0x4E = 0 on success (both flip
+ * states), nothing on a rejection; seven table dwords. */
+static void check_u6b_3c048(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 st = FIGHT_RECS + 0x3A00u, c;
+    for (c = 0; c < 7u; c++)
+        CHECK_EQ_INT((int)DSD(0x000A3528u + (c * 64u + 0x3Du) * 20u), 0x0003C048);
+    CHECK(fn_resolve(0x3C048u) != NULL, "0x3C048 is registered");
+    ra_seed(s0, s1, r0, r1, st);
+    CHECK_EQ_INT(fighter_3c048(s0, r0, 0u), 1);
+    CHECK_EQ_INT((int)DSW(s0 + 0x4Eu), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 3);
+    CHECK_EQ_INT((int)DSB(s0 + 0x5Fu), 0xFF);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSW(s1 + 0x4Eu), 0x1235);
+    ra_seed(s0, s1, r0, r1, st);
+    DSB(r0 + 0x29u) = 0x40u;
+    CHECK_EQ_INT(fighter_3c048(s0, r0, 0u), 1);
+    CHECK_EQ_INT((int)DSW(s0 + 0x4Eu), 0);
+    ra_seed(s0, s1, r0, r1, st);
+    DSB(s0 + 0x40u) = 0x85u;
+    CHECK_EQ_INT(fighter_3c048(s0, r0, 0u), 0);
+    CHECK_EQ_INT((int)DSW(s0 + 0x4Eu), 0x1234);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0xAAAA);
+    ra_seed(s0, s1, r0, r1, st);
+    CHECK_EQ_INT(fighter_3c048(s1, r1, 1u), 1);
+    CHECK_EQ_INT((int)DSW(s1 + 0x4Eu), 0);
+    CHECK_EQ_INT((int)DSW(s0 + 0x4Eu), 0x1234);
+}
+
+int test_u6b_3c048(void)        { return u6b_run(check_u6b_3c048); }
+
+/* §U6.14: 0x3D1EC: the record on the stream the dword 0xC8CC0 holds, at 5.0,
+ * then state 9/8/1. The dword is pointed at a crafted head. */
+static void check_u6b_3d1ec(void)
+{
+    u32 st = FIGHT_RECS + 0x3A00u;
+    CHECK_EQ_INT((int)DSD(0x000A38ACu), 0x0003D1EC);
+    CHECK(fn_resolve(0x3D1ECu) == (void (*)(void))fighter_3d1ec, "0x3D1EC is registered");
+    sc_seed(0u, 1u, 0);
+    DSW(st) = 0x1564u;
+    DSD(0x000C8CC0u) = st;
+    DSB(Z_S0 + 0x52u) = 0x0Cu;
+    DSB(Z_S0 + 0x53u) = 0x33u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    fighter_3d1ec(Z_S0, Z_R0, 0u);
+    sc_stream(Z_R0, st, 0x40A00000u, 0x1564u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 8);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 1);
+}
+
+int test_u6b_3d1ec(void)        { return u6b_run(check_u6b_3d1ec); }
+
+/* §U6.13: 0x3F0A8 on side 0 (the stream head patched to the plain id 0x1562):
+ * the record on 0xE7B78 at 3.0, the voice 0x8C, state 9/7/0, +0x57 = 0 and
+ * the three callbacks; the other slot untouched. */
+static void check_u6b_3f0a8(void)
+{
+    CHECK_EQ_INT((int)DSD(0x000A37F8u), 0x0003F0A8);
+    CHECK_EQ_INT((int)DSD(0x000A380Cu), 0x0003F0A8);
+    CHECK(fn_resolve(0x3F0A8u) == (void (*)(void))fighter_3f0a8, "0x3F0A8 is registered");
+    CHECK(fn_resolve(0x3F054u) == (void (*)(void))fighter_3f054, "0x3F054 is registered");
+    CHECK(fn_resolve(0x3EFE0u) == (void (*)(void))fighter_3efe0, "0x3EFE0 is registered");
+    CHECK(fn_resolve(0x3F020u) == (void (*)(void))fighter_3f020, "0x3F020 is registered");
+    sc_seed(0u, 1u, 0);
+    DSW(0x000E7B78u) = 0x1562u;
+    DSB(Z_S0 + 0x52u) = 0x0Cu;
+    DSB(Z_S0 + 0x53u) = 0x33u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSB(Z_S0 + 0x57u) = 0x57u;
+    DSD(Z_S0 + 0x18u) = 0x18181818u;
+    DSD(Z_S0 + 0x1Cu) = 0x1C1C1C1Cu;
+    DSB(Z_S1 + 0x52u) = 0x0Du;
+    sound_voice_log_reset();
+    fighter_3f0a8(Z_S0, Z_R0, 0u);
+    sc_stream(Z_R0, 0x000E7B78u, 0x40400000u, 0x1562u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x0003F054);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x18u), 0x0003EFE0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x1Cu), 0x0003F020);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 0x0D);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 1);
+    CHECK_EQ_INT((int)sound_voice_log_at(0), 0x8C);
+    sound_voice_log_reset();
+}
+
+/* §U6.13: 0x3F054 counts the word 0x1080A4[side] while +0x57 == 1 and, past
+ * 10, starts the side's record on 0xE7BBE at 2.0 and sets +0x57 = 2. */
+static void check_u6b_3f054(void)
+{
+    sc_seed(0u, 1u, 0);
+    DSW(0x000E7BBEu) = 0x1563u;
+    DSD(Z_R0 + 0x08u) = 0x00ABCDEFu;
+    DSB(Z_S0 + 0x57u) = 1u;
+    DSW(0x001080A4u) = 9u;
+    DSW(0x001080A6u) = 0x7777u;
+    fighter_3f054(0x11111111u, 0x22222222u, 0u);    /* EAX/EDX are not read */
+    CHECK_EQ_INT((int)DSW(0x001080A4u), 10);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x08u), 0x00ABCDEF);  /* 10 is not past 10 */
+    fighter_3f054(0x11111111u, 0x22222222u, 0u);
+    CHECK_EQ_INT((int)DSW(0x001080A4u), 11);
+    sc_stream(Z_R0, 0x000E7BBEu, 0x40000000u, 0x1563u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 2);
+    CHECK_EQ_INT((int)DSW(0x001080A6u), 0x7777);      /* side 1's word */
+    fighter_3f054(0x11111111u, 0x22222222u, 0u);      /* +0x57 = 2: nothing */
+    CHECK_EQ_INT((int)DSW(0x001080A4u), 11);
+    DSB(Z_S0 + 0x57u) = 0u;                           /* +0x57 = 0: nothing */
+    fighter_3f054(0x11111111u, 0x22222222u, 0u);
+    CHECK_EQ_INT((int)DSW(0x001080A4u), 11);
+    /* A negative word is signed (0x3F07F `sar eax,0x10`): 0xFFF0 + 1 is -15. */
+    DSB(Z_S1 + 0x57u) = 1u;
+    DSW(0x001080A6u) = 0xFFF0u;
+    DSD(Z_R1 + 0x08u) = 0x00FEDCBAu;
+    fighter_3f054(0u, 0u, 1u);
+    CHECK_EQ_INT((int)DSW(0x001080A6u), 0xFFF1);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 1);
+    CHECK_EQ_INT((int)DSD(Z_R1 + 0x08u), 0x00FEDCBA);
+}
+
+/* §U6.13: 0x3F020 clears the word 0x1080A4[side] and sets the side's slot
+ * +0x57 = 1 after 0x3B714; the other side's word stays. */
+static void check_u6b_3f020(void)
+{
+    sc_seed(0u, 1u, 0);
+    DSW(0x001080A4u) = 0x5151u;
+    DSW(0x001080A6u) = 0x6161u;
+    DSB(Z_S1 + 0x57u) = 0x57u;
+    DSB(Z_S0 + 0x57u) = 0x75u;
+    fighter_3f020(1u);
+    CHECK_EQ_INT((int)DSW(0x001080A6u), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 1);
+    CHECK_EQ_INT((int)DSW(0x001080A4u), 0x5151);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0x75);
+}
+
+/* §U6.13: 0x3EFE0 is 0x3E484's body: the same seeds give the same results
+ * (check_guarded_walk's block N, both sides). */
+static void check_u6b_3efe0(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    sh_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x54u) = 2u;
+    DSB(s1 + 0x62u) = 1u;
+    DSB(s1 + 0x53u) = 0x0Au;
+    DSD(DS_00100AF8) = 0;
+    CHECK_EQ_INT((int)fighter_3efe0(0u), 1);
+    DSD(DS_00100AF8) = 6u;
+    CHECK_EQ_INT((int)fighter_3efe0(0u), 0);
+    DSW(s1 + 0x76u) = 2u;
+    CHECK_EQ_INT((int)fighter_3efe0(0u), 1);
+    DSW(s1 + 0x76u) = 1u;
+    CHECK_EQ_INT((int)fighter_3efe0(0u), 0);
+    DSW(s1 + 0x74u) = 1u;
+    CHECK_EQ_INT((int)fighter_3efe0(0u), 1);
+    DSW(s1 + 0x74u) = 0;
+    DSB(s1 + 0x42u) = 8u;
+    CHECK_EQ_INT((int)fighter_3efe0(0u), 1);
+    DSB(s1 + 0x42u) = 0;
+    DSD(DS_00100AFC) = 0;
+    CHECK_EQ_INT((int)fighter_3efe0(1u), 1);
+    DSD(DS_00100AFC) = 9u;
+    DSW(s0 + 0x74u) = 1u;
+    CHECK_EQ_INT((int)fighter_3efe0(1u), 1);
+    DSW(s0 + 0x74u) = 0;
+    CHECK_EQ_INT((int)fighter_3efe0(1u), 0);
+}
+
+static void u6b_3f0a8_family(void)
+{
+    check_u6b_3f0a8();
+    check_u6b_3f054();
+    check_u6b_3f020();
+    check_u6b_3efe0();
+}
+
+int test_u6b_3f0a8(void)        { return u6b_run(u6b_3f0a8_family); }
+
+/* The one active pool record that `before` (n entries) does not list; 0 for
+ * none or several. */
+static u32 u6b_new_record(const u32 *before, u32 n)
+{
+    u32 r, hit = 0u, k, found = 0u;
+    for (r = actor_list_head(); r != 0; r = actor_next(r)) {
+        for (k = 0; k < n && before[k] != r; k++) {}
+        if (k == n) { hit = r; found++; }
+    }
+    return found == 1u ? hit : 0u;
+}
+
+static u32 u6b_list(u32 *out, u32 cap)
+{
+    u32 r, n = 0;
+    for (r = actor_list_head(); r != 0 && n < cap; r = actor_next(r)) out[n++] = r;
+    return n;
+}
+
+/* The spawn arguments 0x3F0F0/0x3F130 pass to actor_spawn, as actor_spawn
+ * stores them on the new record e: a5 = rec+0x56 | 0x400 (the +0x4A parent
+ * index is a5's low byte & 0x7F and the 0x400 flag selects the parent branch:
+ * +0x28 bit 0x400), a2 = 8 (+0x34) and a4 = -0x5A (+0x36). a3 = 0 is not
+ * observable here: the descriptor 0xBB290's flags word (+8) is 0x0100, so
+ * the child's +0x28 has bit 0x2000 clear and bit 0x0400 set, and pset_write's
+ * child branch (actors.c:2427) rewrites the layer +0x49 from the parent's
+ * pset layer in the same spawn (the pset_write sync). parent is the pool
+ * record the seeded +0x56 names; its +0x4F counter is bumped by the child. */
+static void u6b_spawn_args(u32 e, u32 parent, int count)
+{
+    CHECK_EQ_INT((int)DSB(e + 0x4Au), 5);
+    CHECK((DSW(e + 0x28u) & 0x0400u) != 0u, "the emitter takes the parent branch");
+    CHECK_EQ_INT((int)DSW(e + 0x34u), 8);
+    CHECK_EQ_INT((int)DSW(e + 0x36u), 0xFFA6);
+    CHECK_EQ_INT((int)DSB(parent + 0x4Fu), 0x20 + count);
+    CHECK_EQ_INT((int)DSB(e + 0x5Au), 0x6B);
+}
+
+/* §U6.17: 0x3F0F0 and 0x3F130, the 0xD100 targets of 0x3F0A8's two streams:
+ * no owner slot, nothing; with one, the emitter 0xBB290 is spawned with the
+ * slot in +0x14 and +0x2B bit 0 (0x2BEF4); 0x3F130 also sets +0x50 = 2. */
+static void check_u6b_3f0f0(void)
+{
+    static u32 before[0x80];
+    u32 n, e, rec = Z_R0, parent = actor_record(5u);
+    CHECK_EQ_INT((int)DSD(0x000E7B8Cu), 0x0003F0F0);
+    CHECK_EQ_INT((int)DSW(0x000E7B8Au), 0xD100);
+    CHECK_EQ_INT((int)DSD(0x000E7BC6u), 0x0003F130);
+    CHECK_EQ_INT((int)DSW(0x000E7BC4u), 0xD100);
+    CHECK(fn_resolve(0x3F0F0u) != NULL, "0x3F0F0 is registered");
+    CHECK(fn_resolve(0x3F130u) != NULL, "0x3F130 is registered");
+    sc_seed(0u, 1u, 0);
+    CHECK(parent != 0u, "the pool holds record 5");
+    DSW(rec + 0x56u) = 0x0185u;                 /* parent index 5 (0x85 & 0x7F) */
+    DSB(parent + 0x4Fu) = 0x20u;
+    DSB(parent + 0x5Au) = 0x6Bu;
+    DSD(rec + 0x14u) = 0u;
+    n = u6b_list(before, 0x80u);
+    fighter_3f0f0(rec);
+    fighter_3f130(rec);
+    CHECK_EQ_INT((int)u6b_list(before, 0x80u), (int)n);   /* no owner: no spawn */
+    DSD(rec + 0x14u) = Z_S0;
+    n = u6b_list(before, 0x80u);
+    fighter_3f0f0(rec);
+    e = u6b_new_record(before, n);
+    CHECK(e != 0u, "0x3F0F0 spawns one record");
+    if (e != 0u) {
+        CHECK_EQ_INT((int)DSD(e + 0x14u), (int)Z_S0);
+        CHECK_EQ_INT((int)(DSB(e + 0x2Bu) & 1u), 1);
+        CHECK(DSB(e + 0x50u) != 2u, "0x3F0F0 leaves +0x50");
+        u6b_spawn_args(e, parent, 1);
+    }
+    n = u6b_list(before, 0x80u);
+    fighter_3f130(rec);
+    e = u6b_new_record(before, n);
+    CHECK(e != 0u, "0x3F130 spawns one record");
+    if (e != 0u) {
+        CHECK_EQ_INT((int)DSD(e + 0x14u), (int)Z_S0);
+        CHECK_EQ_INT((int)(DSB(e + 0x2Bu) & 1u), 1);
+        CHECK_EQ_INT((int)DSB(e + 0x50u), 2);
+        u6b_spawn_args(e, parent, 2);
+    }
+}
+
+int test_u6b_3f0f0(void)        { return u6b_run(check_u6b_3f0f0); }
+
+/* §U6.16: 0x231C0 on side 1: state 9/7/0 and +0x0C = 0, the record on 0xE48EE
+ * at 3.0, the voice 0x7C once; +0x57/+0x18/+0x1C untouched. */
+static void check_u6b_231c0(void)
+{
+    CHECK_EQ_INT((int)DSD(0x000A3D34u), 0x000231C0);
+    CHECK(fn_resolve(0x231C0u) != NULL, "0x231C0 is registered");
+    sc_seed(1u, 1u, 0);
+    DSW(0x000E48EEu) = 0x1565u;
+    DSB(Z_S1 + 0x52u) = 0x0Cu;
+    DSB(Z_S1 + 0x53u) = 0x33u;
+    DSB(Z_S1 + 0x54u) = 0x44u;
+    DSD(Z_S1 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSB(Z_S1 + 0x57u) = 0x57u;
+    DSD(Z_S1 + 0x18u) = 0x18181818u;
+    DSD(Z_S1 + 0x1Cu) = 0x1C1C1C1Cu;
+    sound_voice_log_reset();
+    CHECK_EQ_INT(fighter_231c0(Z_S1, Z_R1, 1u), 1);
+    sc_stream(Z_R1, 0x000E48EEu, 0x40400000u, 0x1565u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 0x57);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x18u), 0x18181818);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x1Cu), 0x1C1C1C1C);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 1);
+    CHECK_EQ_INT((int)sound_voice_log_at(0), 0x7C);
+    sound_voice_log_reset();
+}
+
+int test_u6b_231c0(void)        { return u6b_run(check_u6b_231c0); }

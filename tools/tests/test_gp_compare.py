@@ -244,6 +244,21 @@ class TestTrace(unittest.TestCase):
         self.assertFalse(any('ratchet N' in l or 'FAIL' in l for l in out), out)
         self.assertTrue(any('first difference f=2' in l for l in out), out)
 
+    def test_the_moves_claim_compares_the_move_fields_only(self):
+        # record gameplay-u6 §U6.11: rng differs at f=2 (the trace's business), r0 at f=5
+        port = [_t(f, rng=f, r0=0xFF if f < 5 else 0x20) for f in range(10)]
+        cap = [_S(f, rng=f if f != 2 else 9, r0=0xFF if f < 6 else 0x20) for f in range(10)]
+        out = []
+        rc, first = gc.trace_claim('t', cap, port, 5, out.append, False, gs.MOVE_FIELDS, 'moves')
+        self.assertEqual((rc, first), (0, 5), out)
+        self.assertTrue(any('moves: first difference f=5 (5) in r0' in l for l in out), out)
+        self.assertFalse(any('tick' in l or 'normalised' in l for l in out), out)
+        rc, _ = gc.trace_claim('t', cap, port, 6, out.append, False, gs.MOVE_FIELDS, 'moves')
+        self.assertEqual(rc, 1)
+        self.assertTrue(any('moves: FAIL: first differing 5 < ratchet N 6' in l for l in out), out)
+        rc, first = gc.trace_claim('t', cap, port, 2, out.append)
+        self.assertEqual((rc, first), (0, 2))                 # the trace claim is unchanged
+
     def test_nothing_compared_fails(self):
         out = []
         rc, first = gc.trace_claim('t', [_S(f) for f in range(3)], [_t(f) for f in range(10, 13)], 0, out.append)
@@ -270,6 +285,27 @@ class TestCli(Dirs):
         if with_log:
             with open(os.path.join(self.cap, 'poll.log'), 'w') as f:
                 f.write(''.join(_S(k, t508=k - 1) + '\n' for k in range(10, 13)))
+
+    def test_the_moves_claim_runs_when_asked_or_reported_with_its_fields(self):
+        self.dump()                                   # a poll.log with the U6 fields (SNAP_FIELDS)
+        rc, out = self.cli('--report', '--scenario', 'gp-x', '--capture', self.cap, '--port', self.port)
+        self.assertIn('moves: 3 frames compared', out)
+        with open(os.path.join(self.cap, 'poll.log'), 'w') as f:      # an older capture
+            f.write(''.join(' '.join(p for p in _S(k, t508=k - 1).split()
+                                     if p.split('=')[0] not in gs.MOVE_FIELDS) + '\n' for k in range(10, 13)))
+        rc, out = self.cli('--report', '--scenario', 'gp-x', '--capture', self.cap, '--port', self.port)
+        self.assertEqual(rc, 0)
+        self.assertNotIn('moves:', out)
+
+    def test_the_moves_pin_on_a_capture_without_the_fields_fails_cleanly(self):
+        self.dump()
+        with open(os.path.join(self.cap, 'poll.log'), 'w') as f:
+            f.write(''.join(' '.join(p for p in _S(k, t508=k - 1).split()
+                                     if p.split('=')[0] not in gs.MOVE_FIELDS) + '\n' for k in range(10, 13)))
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
+                           '--min-first', '2', '--trace-min-first', '13', '--max-start', '0', '--moves-min-first', '13')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('moves: FAIL: the capture records no move fields', out)
 
     def test_an_absent_capture_skips(self):
         rc, out = self.cli('--scenario', 'gp-x', '--capture', os.path.join(self.d, 'none'), '--port', self.port)

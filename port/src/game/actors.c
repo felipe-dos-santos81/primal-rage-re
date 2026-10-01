@@ -112,6 +112,10 @@ static void anim_code_3640C(u32 rec, u32 arg);
 static void anim_code_37DCC(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
+static void reaction_cb_231C0(u32 slot, u32 rec, u32 side);
+static void anim_code_3F0F0(u32 rec, u32 arg);
+static void anim_code_3F130(u32 rec, u32 arg);
+static void reaction_cb_3C048(u32 slot, u32 rec, u32 side);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -255,6 +259,23 @@ int actors_init(void)
      * (slot, rec, side) registers. */
     fn_register(0x3C0A4u, (void (*)(void))reaction_cb_3C0A4);
     fn_register(0x3BF70u, (void (*)(void))reaction_cb_3BF70);
+    /* PORT: record gameplay-u6 §U6.17. The 0xD100 targets of 0x3F0A8's two
+     * streams (the dwords 0xE7B8C and 0xE7BC6). */
+    fn_register(0x3F0F0u, (void (*)(void))anim_code_3F0F0);
+    fn_register(0x3F130u, (void (*)(void))anim_code_3F130);
+    /* PORT: record gameplay-u6 §U6.13. The T-rex's reaction-0x24/0x25 callback
+     * 0x3F0A8 (the dwords 0xA37F8/0xA380C) with the +0x0C/+0x18/+0x1C callbacks
+     * it stores (0x3F0D2/0x3F0DD/0x3F0E6). */
+    fn_register(0x3F0A8u, (void (*)(void))fighter_3f0a8);
+    fn_register(0x3F054u, (void (*)(void))fighter_3f054);
+    fn_register(0x3EFE0u, (void (*)(void))fighter_3efe0);
+    fn_register(0x3F020u, (void (*)(void))fighter_3f020);
+    /* PORT: record gameplay-u6 §U6.14. The T-rex's reaction-0x2D callback
+     * 0x3D1EC (the dword at 0xA38AC; 0x34E2C, (slot, rec, side)). */
+    fn_register(0x3D1ECu, (void (*)(void))fighter_3d1ec);
+    /* PORT: record gameplay-u6 §U6.15. Every character's reaction-0x3D
+     * callback 0x3C048 (0x34E2C, (slot, rec, side), AL unread). */
+    fn_register(0x3C048u, (void (*)(void))reaction_cb_3C048);
     /* PORT: 0x34E2C's reaction callback 0x3E3A8 (*(u32*)0xA3870, the T-rex's
      * reaction 0x2A), called at 0x35045 with the (slot, rec, side) registers;
      * 0x34E2C returns its AL (0x35045..0x3504F); 0x3CE58 overwrites it at
@@ -422,6 +443,8 @@ int actors_init(void)
      * mode 0x4000. */
     fn_register(0x230F0u, (void (*)(void))reaction_cb_230F0);
     fn_register(0x23130u, (void (*)(void))reaction_cb_23130);
+    /* PORT: record gameplay-u6 §U6.16. Character 1's reaction-0x27 callback. */
+    fn_register(0x231C0u, (void (*)(void))reaction_cb_231C0);
     fn_register(0x23178u, (void (*)(void))reaction_cb_23178);
     fn_register(0x236D8u, (void (*)(void))anim_code_236D8);
     fn_register(0x2372Cu, (void (*)(void))anim_code_2372C);
@@ -1592,6 +1615,36 @@ static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side)
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side)
 {
     (void)fighter_3c0a4(slot, rec, side);
+}
+
+/* 0x231C0 — the reaction-callback shape. PORT: the same 0x35045 call, whose
+ * AL is ignored; this wrapper drops fighter_231c0's result. */
+static void reaction_cb_231C0(u32 slot, u32 rec, u32 side)
+{
+    (void)fighter_231c0(slot, rec, side);
+}
+
+/* 0x3F0F0 and 0x3F130 — the animation-opcode target shape. PORT: anim_indirect
+ * calls every code pointer as (rec, arg); the raw reads EAX = rec only (EDX is
+ * pushed, then set to 8 at 0x3F10D/0x3F14D before any read), so these
+ * wrappers drop the operand (record gameplay-u6 §U6.17). */
+static void anim_code_3F0F0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3f0f0(rec);
+}
+
+static void anim_code_3F130(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3f130(rec);
+}
+
+/* 0x3C048 — the reaction-callback shape. PORT: the same 0x35045 call, whose
+ * AL is ignored; this wrapper drops fighter_3c048's result. */
+static void reaction_cb_3C048(u32 slot, u32 rec, u32 side)
+{
+    (void)fighter_3c048(slot, rec, side);
 }
 
 /* 0x22F74 — the reaction-callback shape (record §42-A). PORT: the same

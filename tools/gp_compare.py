@@ -301,7 +301,12 @@ def normalised(cap, port, fs, base):
     return {n: tuple(v) for n, v in out.items()}
 
 
-def trace_claim(name, cap_lines, port_lines, min_first, out=print, report=False):
+def trace_claim(name, cap_lines, port_lines, min_first, out=print, report=False, fields=None, what='trace'):
+    """The trace claim over `fields` (gp_session.TRACE_FIELDS by default). With
+    what='moves' (gp_session.MOVE_FIELDS, record gameplay-u6 §U6.11) the same
+    comparison is labelled 'moves' and the tick and normalised lines are left to
+    the trace claim."""
+    fields = gs.TRACE_FIELDS if fields is None else fields
     cap = gs.snapshots(cap_lines)
     port = {}
     for l in port_lines:
@@ -318,19 +323,34 @@ def trace_claim(name, cap_lines, port_lines, min_first, out=print, report=False)
         compared += 1
         if tick_first is None and cap[f]['tick'] != port[f]['tick']:
             tick_first = f
-        for n in gs.TRACE_FIELDS:
+        for n in fields:
             if cap[f][n] != port[f][n]:
                 first, field = f, n
                 break
         if first is not None:
             break
-    out('gp_compare: %s: trace: %d frames compared%s (f %s..), %d without a capture snapshot; first tick '
-        'difference %s (reported, not ratcheted)'
-        % (name, compared, '' if first is None else ' up to the first difference', ('%X' % fs[0]) if fs else '-', skipped,
-           'none' if tick_first is None else 'f=%X' % tick_first))
+    if what != 'trace':
+        out('gp_compare: %s: %s: %d frames compared%s (f %s..) over %s, %d without a capture snapshot'
+            % (name, what, compared, '' if first is None else ' up to the first difference',
+               ('%X' % fs[0]) if fs else '-', ' '.join(fields), skipped))
+    else:
+        out('gp_compare: %s: trace: %d frames compared%s (f %s..), %d without a capture snapshot; first tick '
+            'difference %s (reported, not ratcheted)'
+            % (name, compared, '' if first is None else ' up to the first difference', ('%X' % fs[0]) if fs else '-', skipped,
+               'none' if tick_first is None else 'f=%X' % tick_first))
     if first is not None:
-        out('gp_compare: %s: trace: first difference f=%X (%d) in %s: capture %X, port %X'
-            % (name, first, first, field, cap[first][field], port[first][field]))
+        out('gp_compare: %s: %s: first difference f=%X (%d) in %s: capture %X, port %X'
+            % (name, what, first, first, field, cap[first][field], port[first][field]))
+    if what != 'trace':
+        if compared == 0:
+            out('gp_compare: %s: %s: FAIL: no port T record has a capture snapshot (nothing compared)' % (name, what))
+            return 1, None
+        end = (fs[-1] + 1) if fs else 0
+        if report:
+            if first is None:
+                out('gp_compare: %s: %s: 0 differing through %d' % (name, what, end - 1))
+            return 0, first
+        return ratchet(name, what, first, end, min_first, out, 'differing'), first
     base = None
     for l in cap_lines:
         r = gs.parse(l)
@@ -394,6 +414,9 @@ def main():
                     help="the pinned sha256 of the capture's poll.log; with it a different capture fails")
     ap.add_argument('--capture-frames', default=None,
                     help="the pinned number of frame_*.raw.gz in the capture (given with --capture-sha256)")
+    ap.add_argument('--moves-min-first', default=None,
+                    help='the moves claim over gp_session.MOVE_FIELDS (record gameplay-u6 §U6.11); '
+                         'report mode runs it whenever the capture records those fields')
     ap.add_argument('--report', action='store_true')
     a = ap.parse_args()
     name = a.scenario
@@ -429,7 +452,16 @@ def main():
     with open(os.path.join(a.port, 'trace.txt')) as f:
         pl = f.read().splitlines()
     rc2, _ = trace_claim(name, cl, pl, n_trace, print, a.report)
-    return 0 if a.report else (1 if rc1 or rc2 else 0)
+    rc3 = 0
+    snaps = gs.snapshots(cl)
+    has_moves = bool(snaps) and all(n in next(iter(snaps.values())) for n in gs.MOVE_FIELDS)
+    if a.moves_min_first is not None and not has_moves:
+        print('gp_compare: %s: moves: FAIL: the capture records no move fields (nothing compared)' % name)
+        rc3 = 1
+    elif a.moves_min_first is not None or (a.report and has_moves):
+        rc3, _ = trace_claim(name, cl, pl, None if a.report else _int_or_none(a.moves_min_first),
+                             print, a.report, gs.MOVE_FIELDS, 'moves')
+    return 0 if a.report else (1 if rc1 or rc2 or rc3 else 0)
 
 
 if __name__ == '__main__':

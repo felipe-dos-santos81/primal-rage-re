@@ -494,6 +494,28 @@ void fighter_19020(u32 side);
  * 8 = 0 and the default box tables. EAX = side. */
 u32 fighter_3e484(u32 side);
 
+/* 0x3F0F0 and 0x3F130 (record gameplay-u6 §U6.17): the 0xD100 targets of the
+ * 0xE7B78 and 0xE7BBE streams (EAX = rec): the emitter 0xBB290 as the slot's
+ * child, +0x2B bit 0 (0x3F130 also +0x50 = 2). */
+void fighter_3f0f0(u32 rec);
+void fighter_3f130(u32 rec);
+
+/* 0x3F0A8 and its three callbacks (record gameplay-u6 §U6.13): the T-rex's
+ * reaction-0x24 callback (slot, rec, side), the +0x18 hook 0x3EFE0 (fn(side),
+ * EAX returned), the +0x1C callback 0x3F020 (fn(side)) and the per-frame
+ * +0x0C callback 0x3F054 (slot, rec, side). */
+void fighter_3f0a8(u32 slot, u32 rec, u32 side);
+u32  fighter_3efe0(u32 side);
+void fighter_3f020(u32 side);
+void fighter_3f054(u32 slot, u32 rec, u32 side);
+
+/* 0x3D1EC (record gameplay-u6 §U6.14): the T-rex's reaction-0x2D callback. */
+void fighter_3d1ec(u32 slot, u32 rec, u32 side);
+
+/* 0x3C048 (record gameplay-u6 §U6.15): every character's reaction-0x3D
+ * callback; returns 0x3BF70's AL. */
+int fighter_3c048(u32 slot, u32 rec, u32 side);
+
 /* 0x3E1D0. The +0x18 hook 0x3E3A8 stores: 1 unless the slot's +0x86 >> 16 is
  * in 1..3, else 0x18C14 with flags 5 = 1, 1/4/7/8/0xD/0xE = 0 and the
  * 0xC75F5/0xC75FF box tables. EAX = side. */
@@ -741,6 +763,9 @@ int fighter_2365c(u32 slot, u32 rec, u32 side);
 int fighter_230f0(u32 slot, u32 rec, u32 side);
 int fighter_23130(u32 slot, u32 rec, u32 side);
 int fighter_23178(u32 slot, u32 rec, u32 side);
+
+/* 0x231C0 (record gameplay-u6 §U6.16): character 1's reaction-0x27 callback. */
+int fighter_231c0(u32 slot, u32 rec, u32 side);
 
 /* 0x236D8. 0xE4996's 0xD100 target: spawns the 0xBB3BC child of rec with the
  * slot at +0x14. 0x2372C. That child stream's 0xD100 target (also called at

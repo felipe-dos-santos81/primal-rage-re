@@ -132,6 +132,61 @@ SCENARIOS = {
 }
 SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)
 
+# Plan gameplay-u6b (record gameplay-u6 §U6.12): P1 (Sauron, character 0, the
+# pick time-out's) performs twelve attempts against the CPU in round 1, 100
+# frames apart from 10 frames after mode 6 begins (harness values): the
+# keyboard-table entries 0x1A, 0x00, 0x01, 0x1B, 0x06, 0x15 (reactions 0x10,
+# 0x20, 0x24, 0x11, 0x2D, 0x3D) twice, each through tools/gp_moves.py presses
+# (facing 0, a 4-frame step). `gp_moves.py steps --char 0 --facing 0 --moves
+# 1A,00,01,1B,06,15,1A,00,01,1B,06,15 --gap 100 --step 4` prints these steps
+# (tools/tests/test_gp_moves.py regenerates them from the image).
+U6_MOVES_STEPS = (
+    ('after', 100, ('pad', ('p1.left',), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2'), 12)),
+    ('after', 4, ('pad', ('p1.right',), 2)),
+    ('after', 4, ('pad', ('p1.right',), 4)),
+    ('after', 92, ('pad', ('p1.down',), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2'), 12)),
+    ('after', 4, ('pad', ('p1.up',), 4)),
+    ('after', 4, ('pad', ('p1.left',), 4)),
+    ('after', 92, ('pad', ('p1.b2', 'p1.b3'), 4)),
+    ('after', 100, ('pad', ('p1.down',), 2)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down',), 4)),
+    ('after', 4, ('pad', ('p1.up',), 4)),
+    ('after', 92, ('pad', ('p1.left',), 4)),
+    ('after', 4, ('pad', ('p1.down',), 4)),
+    ('after', 4, ('pad', ('p1.up',), 4)),
+    ('after', 92, ('pad', ('p1.b0', 'p1.b1'), 4)),
+    ('after', 100, ('pad', ('p1.left',), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2'), 12)),
+    ('after', 4, ('pad', ('p1.right',), 2)),
+    ('after', 4, ('pad', ('p1.right',), 4)),
+    ('after', 92, ('pad', ('p1.down',), 4)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2'), 12)),
+    ('after', 4, ('pad', ('p1.up',), 4)),
+    ('after', 4, ('pad', ('p1.left',), 4)),
+    ('after', 92, ('pad', ('p1.b2', 'p1.b3'), 4)),
+    ('after', 100, ('pad', ('p1.down',), 2)),
+    ('after', 0, ('pad', ('p1.b0', 'p1.b2'), 12)),
+    ('after', 4, ('pad', ('p1.down',), 4)),
+    ('after', 4, ('pad', ('p1.up',), 4)),
+    ('after', 92, ('pad', ('p1.left',), 4)),
+    ('after', 4, ('pad', ('p1.down',), 4)),
+    ('after', 4, ('pad', ('p1.up',), 4)),
+)
+SCENARIOS['gp-u6-moves'] = dict(time_limit=130, steps=(
+    ('boot', ENTER_WAIT, ('key', 'enter')),       # mode 3 -> 0x27
+    ('after_mode', 0x27, 150, ('key', 'enter')),  # START MENU
+    ('after', 150, ('key', 'enter')),             # LEFT PLAYER ARCADE: mode 0x2D
+    ('after_mode', 0x06, 10, ('pad', ('p1.b0', 'p1.b1'), 4)),   # attempt 1 (offset 0)
+) + U6_MOVES_STEPS + (('after', 92, ('end',)),))  # 100 frames after the last attempt began
+# The re-capture after gp-u6-moves was contaminated by unscripted keyboard input
+# from f=0x9CB (U6b task-7 report §6.5, check-input; user decision; record
+# gameplay-u6 §U6.22): the same steps object and time limit under a new name (record
+# §G.24 item 5), stopped at its end (STOP_AT_END).
+SCENARIOS['gp-u6-moves-b'] = dict(SCENARIOS['gp-u6-moves'])
+
 # U5 (record 2026-10-01-gameplay-u5 §C5.4): LEFT PLAYER ARCADE as gp-idle-loss, then
 # P1 walks the character-select cursor DS_00108166[0] (0x43B24: e0 bits 0x10 right
 # while < 6, 0x20 left while > 0, 0x40 down +4 then clamped to 6, 0x80 up -4 while >= 4)

@@ -57,7 +57,8 @@ chunk ?= 0
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle \
-        entry-triage
+        entry-triage \
+        gp-moves-oracle
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -495,6 +496,40 @@ gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratch
 		--trace-min-first "$(GP_CHARSEL_TRACE_MIN_FIRST)" --max-start "$(GP_CHARSEL_MAX_START)" \
 		--capture-sha256 "$(GP_CHARSEL_CAPTURE_SHA256)" --capture-frames "$(GP_CHARSEL_CAPTURE_FRAMES)"
 
+# Plan gameplay-u6b (record gameplay-u6 §U6.22): the gp-u6-moves-b capture (P1 Sauron's twelve
+# scripted attempts in round 1, record §U6.12; 8 performed, all six distinct moves) against its
+# port replay. gp-u6-moves-b is the clean re-capture: the first capture, gp-u6-moves, recorded
+# unscripted keyboard input from f=0x9CB and is not pinned (record §U6.22). Three ratchets, each
+# the measured first unexplained/differing item (raise it when it improves): the frames, the trace
+# (gp_session.TRACE_FIELDS) and the moves claim (gp_session.MOVE_FIELDS: c0 c1 r0 r1 s0_43,
+# record §U6.11); the window start; the capture identity (a re-capture fails: re-measure, then
+# re-pin). Skips without data/k11-captures/gp-u6-moves-b, like gp-oracle.
+# Provenance (U6b Task 15, `make gp-report scenario=gp-u6-moves-b` on 9fa9ce1 plus the test
+# comment fold-ins; record §U6.22):
+#   MIN_FIRST: "frames: FIRST UNEXPLAINED capture 1005 (raw 4113): nearest port 759, rows 6..26,
+#     x 119..199 (27 px)" (the health-bar rows; consistent with the trace difference below).
+#   TRACE_MIN_FIRST: "trace: first difference f=8D6 (2262) in s1_5a: capture 16, port 2D", six
+#     frames after P1's 0x24 move at f=0x8D0; the replay has no unregistered callback left
+#     (distinct=4), so the cause is not a miss and is not isolated (a named gap, record §U6.22).
+#   MOVES_MIN_FIRST: "moves: first difference f=B85 (2949) in r1: capture 0, port 15".
+#   MAX_START: "frames: window from capture 88 (raw 1741)".
+#   CAPTURE_SHA256/FRAMES: data/k11-captures/gp-u6-moves-b/poll.log and its frame_*.raw.gz count
+#     (U6b Task 6 re-run, re-checked on disk at Task 15).
+GP_MOVES_MIN_FIRST = 1005
+GP_MOVES_TRACE_MIN_FIRST = 2262
+GP_MOVES_MOVES_MIN_FIRST = 2949
+GP_MOVES_MAX_START = 88
+GP_MOVES_CAPTURE_SHA256 = dcf242da915c41f4b4e381babdabdc30cd04ce89ed83e25f5178601e4878b2e3
+GP_MOVES_CAPTURE_FRAMES = 2205
+gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves ratchets (skips without data/k11-captures/gp-u6-moves-b)
+	@echo "== gameplay oracle: gp-u6-moves-b (frame, trace and moves ratchets) =="
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-u6-moves-b GP_OPTIONAL=1
+	@$(PYTHON) tools/gp_compare.py --scenario gp-u6-moves-b --capture $(K11_CAPTURES)/gp-u6-moves-b \
+		--port $(GP_DUMP)/gp-u6-moves-b --min-first "$(GP_MOVES_MIN_FIRST)" \
+		--trace-min-first "$(GP_MOVES_TRACE_MIN_FIRST)" --max-start "$(GP_MOVES_MAX_START)" \
+		--moves-min-first "$(GP_MOVES_MOVES_MIN_FIRST)" \
+		--capture-sha256 "$(GP_MOVES_CAPTURE_SHA256)" --capture-frames "$(GP_MOVES_CAPTURE_FRAMES)"
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario)
@@ -564,10 +599,12 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@echo "== gameplay oracle (frame and trace ratchets; skips without its capture; record §G.16) =="
 	@$(MAKE) --no-print-directory gp-oracle
 	@$(MAKE) --no-print-directory gp-charsel-oracle
+	@echo "== gameplay oracle: gp-u6-moves-b (skips without its capture; record gameplay-u6 §U6.22) =="
+	@$(MAKE) --no-print-directory gp-moves-oracle
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare
+	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
