@@ -125,6 +125,28 @@ SCENARIOS = {
 }
 SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)
 
+# U5 (record 2026-10-01-gameplay-u5 §C5.4): LEFT PLAYER ARCADE as gp-idle-loss, then
+# P1 walks the character-select cursor DS_00108166[0] (0x43B24: e0 bits 0x10 right
+# while < 6, 0x20 left while > 0, 0x40 down +4 then clamped to 6, 0x80 up -4 while >= 4)
+# over all seven cells, 0 (left: the clamp, a no-op) 1 2 3 6 5 4 0 1, confirms on 1 with
+# p1.start (e0 bit 0, 0x43CAD) and runs to the first frame of mode 6 (the round).
+# Harness values: the hold 6 (>= 2 for the level, 0x500C4; < 0x1F, the 0xC000C000 repeat
+# first period 0x1E that the mode 0x27 menu arms at 0x251C6), the 60-frame wait into mode
+# 0x10 and the 40-frame gaps (the confirm lands 420 frames in, before the earliest
+# pick time-out 14 * 64 = 896 frames in: countdown 0xF, 0x437C6, stepped at f & 0x3F == 0),
+# and the 60 s limit (the mode-6 frame is expected near 47 s, §C5.7).
+CHARSEL_WALK = ('p1.left', 'p1.right', 'p1.right', 'p1.right', 'p1.down',
+                'p1.left', 'p1.left', 'p1.up', 'p1.right')
+SCENARIOS['gp-u5-charsel'] = dict(time_limit=60, steps=(
+    ('boot', ENTER_WAIT, ('key', 'enter')),           # mode 3 -> 0x27, MAIN MENU on "Start"
+    ('after_mode', 0x27, 150, ('key', 'enter')),      # START MENU, cursor on row 0 (spec §3.3)
+    ('after', 150, ('key', 'enter')),                 # LEFT PLAYER ARCADE: mode 0x2D
+    ('after_mode', 0x10, 60, ('pad', (CHARSEL_WALK[0],), 6)),
+) + tuple(('after', 40, ('pad', (n,), 6)) for n in CHARSEL_WALK[1:]) + (
+    ('after', 40, ('pad', ('p1.start',), 6)),         # confirm cursor 1
+    ('until_mode', 0x06, 0),                          # the round's first frame
+))
+
 
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""

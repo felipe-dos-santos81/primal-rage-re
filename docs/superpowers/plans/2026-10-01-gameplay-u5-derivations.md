@@ -454,3 +454,20 @@ gp_compare: gp-idle-loss: trace: first differing 2088, ratchet N 2088 ok
 **Comment correction (`test_platform.c`, `k_miss_gp_idle_loss`):** the `0x3A588 fighter_state_3531c` line read `5353 hits from f = 0x927` (U4, before the fix). Measured after the `0x37B03` fix: `hits=4995` (the Task 2 verify log, `/tmp/gameplay-u5/t2_verify.txt`, `fn-miss PR_GP_DUMP 0x3A588 fighter_state_3531c hits=4995`, and again in the Task 3 replay) and the first hit at `f = 0x8E7` (a throw-away `fprintf` of `DSW(0xEF6DC)` at the first miss of `0x3A588` in `fn_resolve_from`, not committed, `mem.c` restored). The comment now states both, labelled as measured after the fix, with U4's figures kept as the pre-fix ones.
 
 **Step 4 (gate, `make verify` through `$S/mkv`, log `/tmp/gameplay-u5/t3_verify.txt`):** `all checks passed`, `verify-exit=0`; `FIRST UNEXPLAINED capture 787 (raw 3899)`, `first unexplained 787, ratchet N 787 ok`, `first differing 2088, ratchet N 2088 ok`, `fn-miss PR_GP_DUMP distinct=2` (gp-pads) and `distinct=6` (gp-idle-loss). The gate check: `ORACLES-EQUAL`, `K11-EQUAL`, `WAV-IDENTICAL`, `771 1203 64`, `731 731 100`.
+
+## §C5.14 The `gp-u5-charsel` scenario (Task 4)
+
+`tools/gp_session.py` `SCENARIOS['gp-u5-charsel']` (time_limit 60) with `CHARSEL_WALK`: the `gp-idle-loss` prefix (two Enter presses 150 frames apart to mode 0x2D), then in mode 0x10 a 60-frame wait and the nine stick presses `left right right right down left left up right` (hold 6, 40-frame gaps), `p1.start` to confirm, `until_mode 0x06`. The cursor path from the raw stick (§C5.4; `0x43B24`, `0x43BB5..0x43C99`) is `0 0 1 2 3 6 5 4 0 1`: all seven cells visited, the first `left` the `> 0` clamp (a no-op), the confirm on cell 1 (`e0` bit 0, `0x43CAD`). The confirm lands 60 + 9 * 40 = 420 frames after mode 0x10 begins, before the earliest pick time-out (14 * 64 = 896, §C5.4).
+
+`TestCharsel` (`tools/tests/test_gp_session.py`) models the stick independently of the scenario (hold in `[2, 0x1F)`; every press separated from the previous by at least hold + 2; the schedule fires at `0x293 + 60 + 40k`, ends at the mode 6 frame with 13 of 13 steps fired).
+
+**RED (Step 2):** `KeyError: 'gp-u5-charsel'`, `Ran 25 tests`, `FAILED (errors=3)`.
+
+**GREEN (Step 4):** `Ran 25 tests`, `OK`; with `test_gp_capture` and `test_gp_compare`: `Ran 67 tests`, `OK`.
+
+**Mutations (each applied to `tools/gp_session.py`, run, restored):**
+- `'p1.right', 'p1.down',` to `'p1.right', 'p1.up',`: `FAIL: test_the_walk_visits_every_cell_and_confirms_on_1`.
+- the hold 6 to 1 on the walk presses: `FAIL: test_the_walk_visits_every_cell_and_confirms_on_1`.
+- the 40-frame gap to 7: `FAIL: test_presses_are_separate_edges_before_the_time_out` and `FAIL: test_schedule_fires_the_walk`.
+
+Restored: `Ran 25 tests`, `OK`. No DOSBox-X capture was run (Task 6).

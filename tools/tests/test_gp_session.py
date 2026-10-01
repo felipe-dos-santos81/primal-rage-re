@@ -246,5 +246,69 @@ class TestIdleLoss(unittest.TestCase):
             gs.SCENARIOS.pop('_t', None)
 
 
+class TestCharsel(unittest.TestCase):
+    """gp-u5-charsel (record 2026-10-01-gameplay-u5 §C5.4): the walk, modelled on the raw."""
+
+    @staticmethod
+    def stick(c, bit):
+        # 0x43B24's stick (0x43BB5..0x43C99) on the signed cursor byte DS_00108166[side]
+        if bit == 0x10 and c < 6:
+            return c + 1
+        if bit == 0x20 and c > 0:
+            return c - 1
+        if bit == 0x40:
+            c = c + 4 if c < 4 else c
+            return 6 if c >= 7 else c
+        if bit == 0x80 and c >= 4:
+            return c - 4
+        return c
+
+    def walk(self):
+        steps = gs.SCENARIOS['gp-u5-charsel']['steps']
+        i = next(k for k, st in enumerate(steps) if st[0] == 'after_mode' and st[1] == 0x10)
+        return steps[i:]
+
+    def test_the_walk_visits_every_cell_and_confirms_on_1(self):
+        c, seen = 0, [0]                       # 0xC8880: P1 starts on 0 (0x4370D, DS_00108173 == 0)
+        for st in self.walk():
+            if st[0] == 'until_mode':
+                break
+            (name,), hold = st[-1][1], st[-1][2]
+            self.assertTrue(2 <= hold < 0x1F, name)
+            bit = gs.PAD[name][2] >> 8
+            if bit & 0xF0:
+                c = self.stick(c, bit & 0xF0)
+                seen.append(c)
+            else:
+                self.assertEqual(bit & 1, 1, name)          # 0x43CAD: e0 bit 0 confirms
+        self.assertEqual(seen, [0, 0, 1, 2, 3, 6, 5, 4, 0, 1])
+        self.assertEqual(sorted(set(seen)), list(range(7)))
+
+    def test_presses_are_separate_edges_before_the_time_out(self):
+        w = self.walk()
+        gaps = [st[2] if st[0] == 'after_mode' else st[1] for st in w if st[0] != 'until_mode']
+        holds = [st[-1][2] for st in w if st[0] != 'until_mode']
+        for g, h in zip(gaps[1:], holds):
+            self.assertGreaterEqual(g, h + 2)      # a released bit falls before the next press
+        self.assertLess(sum(gaps), 14 * 64)        # the earliest pick time-out
+        self.assertEqual(w[-1], ('until_mode', 0x06, 0))
+
+    def test_schedule_fires_the_walk(self):
+        s = gs.Schedule(gs.SCENARIOS['gp-u5-charsel']['steps'])
+        s.due_boot(gs.ENTER_WAIT)
+        s.on_mode(0x141, 0x27)
+        s.due(0x141 + 149); s.due(0x141 + 299)
+        s.on_mode(0x26E, 0x2D); s.on_mode(0x293, 0x10)
+        fired = []
+        for f in range(0x293, 0x293 + 500):
+            fired += [(f + 1, a) for _, a in s.due(f)]
+        self.assertEqual([f for f, _ in fired], [0x293 + 60 + 40 * k for k in range(10)])
+        self.assertEqual(fired[-1][1], ('pad', ('p1.start',), 6))
+        s.on_mode(0x439, 0x1A)
+        self.assertIsNone(s.end_frame)
+        s.on_mode(0x5EE, 0x06)
+        self.assertEqual((s.end_frame, s.fired, s.total), (0x5EE, 13, 13))
+
+
 if __name__ == '__main__':
     unittest.main()
