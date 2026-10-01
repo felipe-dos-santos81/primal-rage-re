@@ -299,6 +299,37 @@ class CallStubTests(unittest.TestCase):
             with self.subTest(kw=kw), self.assertRaises(ValueError):
                 E.Call(0x10020, **kw)
 
+    def test_a_write_base_must_be_none_or_an_argument_index(self):
+        for args, w in ((("eax",), (1, 0x80000, b"\x01")), (("eax",), (-1, 0x80000, b"\x01")),
+                        ((), (0, 0x80000, b"\x01"))):
+            with self.subTest(args=args, w=w), self.assertRaises(ValueError):
+                E.Call(0x10020, args, writes=(w,))
+        E.Call(0x10020, ("eax", "edx"), writes=((1, 0x80000, b"\x01"), (None, 0x80000, b"\x01")))
+
+    # 10000: test eax,eax; jne 10020; (10004) ret      10020: int3 (a stub's bytes never run)
+    JCC = {0x10000: "85C0" "751C" "C3", 0x10020: "CC"}
+
+    def test_a_taken_conditional_tail_jump_to_a_stubbed_entry_is_a_call(self):
+        r = E.run_original(program(self.JCC), 0x10000, regs={"eax": 1},
+                           calls=(E.Call(0x10020, ("eax",), eax=8),))
+        self.assertEqual((r.outcome, r.calls, r.regs["eax"]), ("ok", [(0x10020, (1,))], 8))
+        r = E.run_original(program(self.JCC), 0x10000, regs={"eax": 0}, calls=(E.Call(0x10020, ("eax",)),))
+        self.assertEqual((r.outcome, r.calls), ("ok", []))
+
+    def test_a_not_taken_conditional_jump_falling_into_a_call_set_address_is_not_a_call(self):
+        # 10000: test eax,eax; jne 10005; (10004) nop; (10005) ret
+        r = E.run_original(program({0x10000: "85C0" "7501" "90" "C3"}), 0x10000, regs={"eax": 0},
+                           calls=(E.Call(0x10004),))
+        self.assertEqual((r.outcome, r.calls), ("ok", []))
+
+    def test_an_indirect_call_through_an_unmapped_operand_stops_as_unmodeled(self):
+        # 10000: call [ebx]; ret   with ebx pointing where nothing is mapped
+        r = E.run_original(program({0x10000: "FF13" "C3"}), 0x10000, regs={"ebx": 0x70000000})
+        self.assertEqual((r.outcome, r.detail), ("unmodeled", "indirect call at 0x10000"))
+        r = E.run_original(program({0x10000: "FF13" "C3"}), 0x10000, regs={"ebx": 0x70000000},
+                           calls=(E.Call(0x10020),))
+        self.assertEqual((r.outcome, r.detail), ("unmodeled", "indirect call at 0x10000"))
+
 
 @unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
 class CallScanTests(unittest.TestCase):
@@ -332,6 +363,31 @@ class SwitchScanTests(unittest.TestCase):
     def test_a_guard_without_ja_does_not_bound_it(self):
         below = {**SWITCH, 0x10000: "3C02" "720C" "25FF000000" "FF248500010100" "C3"}     # jb, not ja
         self.assertEqual(E.static_scan(program(below), 0x10000, switches=True).indirect, [0x10009])
+
+    def test_a_ja_that_tests_another_compare_does_not_bound_it(self):
+        # cmp al,2; cmp bl,9; ja; and eax,0xff; jmp [eax*4+0x10100]: the ja tests bl, not al
+        two = {**SWITCH, 0x10000: "3C02" "80FB09" "770C" "25FF000000" "FF248500010100" "C3"}
+        self.assertEqual(E.static_scan(program(two), 0x10000, switches=True).indirect, [0x1000C])
+
+    def test_an_index_replaced_after_the_ja_does_not_bound_it(self):
+        # cmp al,2; ja; mov eax,ebx; jmp [eax*4+0x10100]: eax is no longer what was compared
+        moved = {**SWITCH, 0x10000: "3C02" "7709" "89D8" "FF248500010100" "C3"}
+        self.assertEqual(E.static_scan(program(moved), 0x10000, switches=True).indirect, [0x10006])
+        # the same after the mask: cmp al,2; ja; and eax,0xff; mov eax,ebx; jmp [eax*4+0x10100]
+        masked = {**SWITCH, 0x10000: "3C02" "770E" "25FF000000" "89D8" "FF248500010100" "C3"}
+        self.assertEqual(E.static_scan(program(masked), 0x10000, switches=True).indirect, [0x1000B])
+
+    def test_an_index_with_unchecked_high_bits_does_not_bound_it(self):
+        # cmp al,2; ja; jmp [eax*4+0x10100]: bits 8-31 of eax are not bounded
+        bare = {**SWITCH, 0x10000: "3C02" "7707" "FF248500010100" "C3"}
+        self.assertEqual(E.static_scan(program(bare), 0x10000, switches=True).indirect, [0x10004])
+
+    def test_a_movzx_and_a_move_to_another_register_keep_it_bounded(self):
+        # cmp al,2; ja; movzx eax,al; mov ecx,ebx; jmp [eax*4+0x10100]
+        ok = {**SWITCH, 0x10000: "3C02" "770C" "0FB6C0" "89D9" "FF248500010100" "C3" "C3C3C3"}
+        info = E.static_scan(program(ok), 0x10000, switches=True)
+        self.assertEqual(info.indirect, [])
+        self.assertEqual(info.leaders, [0x10000, 0x10004, 0x10010, 0x10011, 0x10012, 0x10013])
 
 
 if __name__ == "__main__":

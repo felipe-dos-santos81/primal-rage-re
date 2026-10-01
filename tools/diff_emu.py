@@ -101,6 +101,10 @@ class Call:
             raise ValueError("call 0x%X: unknown argument %s" % (self.addr, ", ".join(bad)))
         if self.mode == "real" and (self.writes or self.eax or self.pop):
             raise ValueError("call 0x%X: a real call declares no effect" % self.addr)
+        for w in self.writes:
+            if len(w) != 3 or not (w[0] is None or (isinstance(w[0], int) and 0 <= w[0] < len(self.args))):
+                raise ValueError("call 0x%X: write %r needs a base that is None or an index of its %d args"
+                                 % (self.addr, w, len(self.args)))
 
 
 @dataclass
@@ -191,7 +195,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     executed = set()
     before = {}            # addr -> byte before the run's first write to it
     outside = set()
-    seen = {}              # addr -> (stop kind or None, transfer "call"/"jmp"/None, indirect call insn or None)
+    seen = {}              # addr -> (stop kind or None, transfer (kind, direct target or None) or None, indirect call insn or None)
     allow = frozenset(allow_calls)
     callset = {c.addr: c for c in calls}
     recorded = []
@@ -224,9 +228,10 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
         return image.contains(addr) or STACK_LOW <= addr < STACK_END
 
     def on_code(uc, addr, size, _):
-        executed.add(addr)
+        executed.add(addr)     # includes a stub's entry address: a callee address, not one of F's blocks
         prev, state["prev"] = state["prev"], None
-        if prev is not None and addr in callset:      # arrived by a call or a jmp (record E3 §E3.2)
+        # arrived by a call or a taken jmp/jcc/loop (record E3 §E3.2); a not-taken jcc falling into it is not
+        if prev is not None and addr in callset and (prev[1] is None or prev[1] == addr):
             try:
                 arrive(uc, addr, callset[addr])
             except ValueError as e:
@@ -245,18 +250,22 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
             elif ins.mnemonic in UNMODELED_MNEMONICS:
                 kind = ("unmodeled", "%s at 0x%X" % (ins.mnemonic, addr))
             elif ins.mnemonic == "call":
-                transfer = "call"
+                transfer = ("call", None)
                 tgt = _direct_target(ins)
                 if tgt is None:
                     ind = ins
                 elif tgt not in allow and tgt not in callset:
                     kind = ("unmodeled", "call 0x%X from 0x%X" % (tgt, addr))
-            elif ins.mnemonic == "jmp":
-                transfer = "jmp"
+            elif ins.group(capstone.CS_GRP_JUMP) or ins.mnemonic in ("loop", "loope", "loopne"):
+                transfer = ("jump", _direct_target(ins))      # the target: only a taken jcc arrives there
             seen[addr] = (kind, transfer, ind)
         if ind is not None and kind is None:          # an indirect call: its target, as of now
-            tgt = _indirect_target(uc, ind)
-            if tgt not in allow and tgt not in callset:
+            try:
+                tgt = _indirect_target(uc, ind)
+            except UcError:                           # an operand address nothing maps: E1's stop, not a fault
+                tgt = None
+                kind = ("unmodeled", "indirect call at 0x%X" % addr)
+            if kind is None and tgt not in allow and tgt not in callset:
                 kind = ("unmodeled", "indirect call at 0x%X" % addr if not callset and not allow
                         else "indirect call to 0x%X at 0x%X" % (tgt, addr))
         if kind is not None and state["stop"] is None:
@@ -319,28 +328,65 @@ _FAMILY = {r: fam for fam, rs in {
     for r in rs}
 
 
+_HIGH8 = {"ah": "eax", "bh": "ebx", "ch": "ecx", "dh": "edx"}
+
+
+def _keeps_bound(p, idx, width, clean):
+    """Whether instruction `p`, between the `ja` and the jump, leaves the index bounded. Returns the new
+    `clean` (the index's bits above the compared width are known zero) or None when `p` may widen it.
+    Allowed: `and idx32, imm` with imm inside the width and `movzx idx32, r` from the family at or below
+    the width (both clean it); a mov/movzx/movsx/lea/xor/nop that writes a register of another family."""
+    if p.mnemonic == "and" and len(p.operands) == 2 and p.operands[0].type == cx86.X86_OP_REG \
+            and p.reg_name(p.operands[0].reg) == idx and p.operands[1].type == cx86.X86_OP_IMM \
+            and (p.operands[1].imm & 0xFFFFFFFF) & ~((1 << width) - 1) == 0:
+        return True
+    if p.mnemonic == "movzx" and len(p.operands) == 2 and p.operands[0].type == cx86.X86_OP_REG \
+            and p.reg_name(p.operands[0].reg) == idx and p.operands[1].type == cx86.X86_OP_REG \
+            and _FAMILY.get(p.reg_name(p.operands[1].reg)) == idx and 8 * p.operands[1].size <= width:
+        return True
+    if p.mnemonic == "nop":
+        return clean
+    if p.mnemonic in ("mov", "movzx", "movsx", "lea", "xor") and p.operands \
+            and p.operands[0].type == cx86.X86_OP_REG:
+        dest = p.reg_name(p.operands[0].reg)
+        if _FAMILY.get(dest, _HIGH8.get(dest)) not in (None, idx):
+            return clean
+    return None
+
+
 def switch_cases(image, ins, prior):
     """The case targets of a bounded switch `jmp dword ptr [R*4 + T]` (record E3 §E3.7), else None.
     Bounded means: among the (up to five) instructions `prior` that precede it on its own straight
-    path, a `cmp r, imm` with r in R's family, followed by a `ja` before the jmp; the table then
-    holds imm + 1 dwords (imm masked to the compared width). Stricter than E2's rule (E2 §E2.2),
-    which does not check the register or the `ja`."""
+    path, a `cmp r, imm` with r in R's family immediately followed by a `ja`, then only instructions
+    that keep R bounded (`_keeps_bound`), R's bits above the compared width cleared when that is
+    narrower than 32; the table then holds imm + 1 dwords (imm masked to the compared width).
+    Stricter than E2's rule (E2 §E2.2), which checks neither the register, the `ja`'s place nor the
+    path between the `ja` and the jump."""
     mem = [op for op in ins.operands if op.type == cx86.X86_OP_MEM]
     if ins.mnemonic != "jmp" or not mem or not mem[0].mem.index or mem[0].mem.scale != 4 or mem[0].mem.base:
         return None
-    idx = _FAMILY.get(ins.reg_name(mem[0].mem.index))
-    guard = None
-    for p in prior:
-        if (p.mnemonic == "cmp" and len(p.operands) == 2 and p.operands[0].type == cx86.X86_OP_REG
-                and p.operands[1].type == cx86.X86_OP_IMM and _FAMILY.get(p.reg_name(p.operands[0].reg)) == idx):
-            guard = p
-        elif p.mnemonic == "ja" and guard is not None:
-            width = guard.operands[0].size
-            n = (guard.operands[1].imm & ((1 << (8 * width)) - 1)) + 1
+    reg = ins.reg_name(mem[0].mem.index)
+    idx = _FAMILY.get(reg)
+    for k in range(len(prior) - 1, 0, -1):
+        c, j = prior[k - 1], prior[k]
+        if not (c.mnemonic == "cmp" and j.mnemonic == "ja" and len(c.operands) == 2
+                and c.operands[0].type == cx86.X86_OP_REG and c.operands[1].type == cx86.X86_OP_IMM
+                and _FAMILY.get(c.reg_name(c.operands[0].reg)) == idx):
+            continue
+        width = 8 * c.operands[0].size
+        clean = width == 32
+        for p in prior[k + 1:]:
+            clean = _keeps_bound(p, idx, width, clean)
+            if clean is None:
+                break
+        else:
+            if not clean:
+                continue
+            n = (c.operands[1].imm & ((1 << width) - 1)) + 1
             table = mem[0].mem.disp & 0xFFFFFFFF
             if not image.contains(table, 4 * n):
                 return None
-            return [int.from_bytes(image.bytes_at(table + 4 * k, 4), "little") for k in range(n)]
+            return [int.from_bytes(image.bytes_at(table + 4 * m, 4), "little") for m in range(n)]
     return None
 
 
