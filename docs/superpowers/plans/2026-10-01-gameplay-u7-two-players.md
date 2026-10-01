@@ -12,6 +12,40 @@
 
 **Derivation record:** `docs/superpowers/plans/2026-10-01-gameplay-u7-derivations.md` (§T.0–§T.4 and §T.R written while planning; Tasks 1–7 append §T.5–§T.11). It answers the two questions this unit was asked to run now: **what P2's pad bits do in the original** (§T.2.1: each P2 key sets its spec §3.2 bit in the `+0x2D9` byte; F2 and Home share bit 0, the side-1 start mask `0x100` at `0x9ACBC`; held, P2's bits become the high byte of `DS_001088E2`, newly pressed the low byte, `0x4F6DE`) and **which START MENU rows exist** (§T.1.1: seven rows, `0x2D` LEFT PLAYER ARCADE → side 0 only, `0x2E` RIGHT PLAYER ARCADE → side 1 only, `0x28`/`0x29`/`0x2A`/`0x2B`/`0x2C` both sides human from the start; only the two arcade rows spend a credit, 5 → 4).
 
+## Re-baseline (2026-10-01, main 8eaf25a)
+
+The plan was written on `e9271df`. Since then U5 (`b09b9e6`) and U6a (`8eaf25a`) have merged. **U7 runs after U6b merges.** U6b appends five snapshot bytes (`r0 r1 c0 c1 s0_43`) to every `S`/`T` line and ports more fight callbacks (plan `2026-10-01-gameplay-u6b-moves-capture.md` Task 1, Tasks 8–14). Every value below that U6b can move is written as "re-measured on the merged base in Task N". The changes:
+
+| where | old → new | source |
+|---|---|---|
+| Baseline, the gate | + record `B`, the count of `tools.tests.test_gp_session test_gp_capture test_gp_compare`, and the `diff-verify:` summary line; the counters and the diff-verify line are "the baseline's values, unchanged", not fixed numbers | `8eaf25a`: `Ran 67`, `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected` (record gameplay-u6 §U6.21), `771 1203 64` / `731 731 100`; U6b adds tests and ports functions |
+| Gates (Tasks 3, 5, 6; Execution notes) | the full `make verify` after Tasks 3, 5, 6, 7 → **the task gate** after Tasks 3, 5 and 6 (the task's tests, its oracle, diff-verify); the full gate only at the baseline, at Task 7 and before merge | the user's speed-up ruling of 2026-10-01 |
+| Task 1 Step 4 | `Ran 66` (64 + 2) → `Ran B+2` (69 on `8eaf25a`); `grep -c gp-twop` → `grep -c -- '--scenario {.*gp-twop'` (the help's usage line now wraps the choices, so the plain grep counts 2) | run in a scratch tree of `8eaf25a` |
+| Task 2 / Execution notes | the four suites `Ran 76` → `Ran B+12` (79 on `8eaf25a`) | the same run |
+| Task 3 Step 2, Task 6 Step 1, touch points | anchor after `gp-oracle`'s recipe → after **`gp-charsel-oracle`**'s recipe (`--capture-sha256 "$(GP_CHARSEL_CAPTURE_SHA256)" …`, Makefile:492). The `verify` line now goes after `@$(MAKE) --no-print-directory gp-charsel-oracle` (Makefile:546), not after `gp-oracle` | U5 added `gp-charsel-oracle` and its `verify` line |
+| Task 5 Step 1, Step 2 | predicted misses: three (`0x29D60`, `0x5D812`, `0x3A588`) → **two**, `0x29D60` and `0x5D812`, both `frontend_mode_1b_step` (the preview `distinct=5` → `distinct=4`) | U6a ported `0x3A588` (§U6.21). The preview was re-run on `8eaf25a` (record §T.RB) |
+| Task 5 Step 3 | the table's third row (`0x3A588`) is gone. `fnm_known` gets a new last parameter `twop`; the old code instead added a `&& !(twop && fnm_in(…))` clause at the call. The old `test_fn_misslog_driver` anchors (`int idle_loss = 0, cut = 0;`, a 4-argument `fnm_known`) no longer exist; the new code edits 7 places | `test_platform.c:168-195,277` on `8eaf25a` (U5's 5th parameter `charsel`) |
+| Task 5 Step 4 | mutation `5 != 4`, `unexpected 0x3A588 …` → `4 != 3`, `unexpected 0x5D812 from frontend_mode_1b_step` | the scratch run (record §T.RB) |
+| Task 5 Step 6, Review Focus 5, Task 7 | owners: "U4's O1 (owner U5)" → O1 is **fixed** (U5's `0x37B03` fix, record gameplay-u5 §C5.12). A divergence in the select is new. In the fight, U6b's moves, or a new gap | record gameplay-u5 §C5.12/§C5.19; gameplay-u6 §U6.21 |
+| Where to run | off `main` → off `main` after U6b has merged | the controller's ordering |
+| Task 4 Step 4 | + on a U6b base, record `c0`/`c1` (the slots' characters) from the first mode-6 `S` record | U6b plan Task 1, record gameplay-u6 §U6.11 |
+| Task 5 Step 7 | + `make gp-oracle gp-charsel-oracle` in its task gate (the shared miss-set driver changes) | `test_platform.c` drives every gp replay |
+| Task 7 Step 3 | the full gate's log goes to `final_verify.txt`, so the baseline log is not overwritten. The WAV and `port/src` checks move here from Task 6 Step 4 | the speed-up ruling |
+| What was run | the `203`/`2088` gp-idle-loss ratchets were measured on `e9271df`. They are now `2064`/`8320`. + a "Re-baseline run" entry | Makefile:443/451 |
+| Record | + §T.RB (the preview re-run on `8eaf25a`, the stale statements in §T.4.1–§T.4.3, the U6b dependencies). §T.4.2 is corrected in place | this re-baseline |
+
+**Warnings for the implementer:**
+- **`GP_IDLE_LOSS_TRACE_MIN_FIRST = 8320` is an exact pin** (end + 1): `gp-oracle` fails with "N is unreachable" if a change shortens the gp-idle-loss replay's end. U7 does not touch that scenario, its script or its end. A unit that does must re-measure and re-pin the value, and must never lower the frame N `2064` below what it measures. `GP_CHARSEL_TRACE_MIN_FIRST = 1513` is exact in the same way.
+- **The U6b dependencies:**
+  - The `S`/`T` lines carry five more fields. `gp_twop.py` and the Task 2 fixtures build from `gs.SNAP_FIELDS`, so they are unaffected: the 12 tests pass with U6b's five fields appended in a scratch tree.
+  - `fnm_known` gains U6b's `moves` parameter. U7's `twop` then goes after it, and every call adds one more argument.
+  - U6b's `gp_compare` prints a `moves:` claim (optional `--moves-min-first`). U7 reports it in Task 5 and does not pin it.
+  - `c0`/`c1` (the slots' characters, `+0x7A`) let Task 4 Step 4 read the picks from the capture.
+  - The miss set and the first divergences are re-measured on the merged base in Task 5 Step 1 and Step 6. The two-row prediction above is `8eaf25a`'s.
+  - The tool-test count `B`, the counters and the diff-verify line are the baseline's, re-measured at the baseline.
+- **The capture size.** U5's comparable capture (`gp-u5-charsel`, 60 s) came in 24% above its estimate: 68 MB for 1 464 frames, 46.4 KB/frame, record gameplay-u5 §C5.16. The per-frame size matches §T.3's 46 KB. Expect up to ~130 MB, inside the approved maximum of ~165 MB.
+- **A cross-record discrepancy (raw wins, not U7's to fix).** The U5 record (§C5.4) and the comment above `gp-u5-charsel` (`tools/gp_session.py:136`) cite `0x437C6` as the countdown's `0xF`. The raw has `0x437C6 mov word [0x10816c], 5` (the `DS_00108173 != 0` arm) and `0x437D1 mov word [0x10816c], 0xf`, as §T.1.4 and §T.R item 1 say. Re-disassembled on the fixed-up image.
+
 ---
 
 ## Decisions needed from the user
@@ -26,7 +60,7 @@
 
 - AGENTS.md: "**Never ship a fitted constant.** Every value is derived from the raw bytes or a capture, with the address that proves it. A value that cannot be pinned is a **named gap with its evidence** — never a plausible-looking number." / "**On any plan-vs-raw conflict the raw wins.** Record the correction and the address, in the derivation record and the report."
 - Spec (gameplay) §5: "Harness values (`HOLD_FRAMES`, the 150-frame gaps, `time_limit`, …) are named as harness values with their source, never presented as game values." U7's: the 60/30-frame gaps, the holds of 5, the 70 s limit, `GP_TWOP_END` if needed (record §T.3).
-- `make verify` is THE gate (common brief): the 45 oracle lines (`grep -E '^(oracle C-vs-Python|capture oracle|smk_compare|title_compare|attract_compare|== demo-fight)' <log>`) must equal `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`; the `make audio-render` WAV must be byte-identical to `.superpowers/sdd/2026-09-29-k7-k12/scratch/before-t2.wav`; `python3 tools/port_progress.py` prints `771 1203 64` and `731 731 100` (U7 ports no function). Parallel-safe overrides: `T=u7; SMK_DUMP=/tmp/pr_${T}_smk TITLE_DUMP=/tmp/pr_${T}_title ATTRACT_DUMP=/tmp/pr_${T}_att FRONTEND_DUMP=/tmp/pr_${T}_fe TITLE_PIN_DIR=/tmp/pr_${T}_pin AUDIO_WAV=/tmp/pr_${T}.wav K11_DUMP=/tmp/pr_${T}_k11 GP_DUMP=/tmp/pr_${T}_gp DIFF_IMAGE=/tmp/pr_${T}_diffimg DIFF_TABLE=/tmp/pr_${T}_diff.md`.
+- `make verify` is THE gate (common brief): the 45 oracle lines (`grep -E '^(oracle C-vs-Python|capture oracle|smk_compare|title_compare|attract_compare|== demo-fight)' <log>`) must equal `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`; the `make audio-render` WAV must be byte-identical to `.superpowers/sdd/2026-09-29-k7-k12/scratch/before-t2.wav`; `python3 tools/port_progress.py` and the `diff-verify:` summary line print the baseline's values (on `8eaf25a`: `771 1203 64`, `731 731 100`, `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`; U6b may move them; U7 ports no function, so they must not change). Speed-up ruling (user, 2026-10-01): the full gate runs at the baseline, at Task 7 and before merge; after Tasks 3, 5 and 6 **the task gate** runs (Where to run). Parallel-safe overrides: `T=u7; SMK_DUMP=/tmp/pr_${T}_smk TITLE_DUMP=/tmp/pr_${T}_title ATTRACT_DUMP=/tmp/pr_${T}_att FRONTEND_DUMP=/tmp/pr_${T}_fe TITLE_PIN_DIR=/tmp/pr_${T}_pin AUDIO_WAV=/tmp/pr_${T}.wav K11_DUMP=/tmp/pr_${T}_k11 GP_DUMP=/tmp/pr_${T}_gp DIFF_IMAGE=/tmp/pr_${T}_diffimg DIFF_TABLE=/tmp/pr_${T}_diff.md`.
 - Spec (gameplay) §2: "Fixing any divergence U4 finds is also out of scope: U4 pins it and names it; a follow-up unit fixes it." The same for U7: no file under `port/src` changes.
 - AGENTS.md: "Captures are git-ignored. `data/` is git-ignored and read-only" — U7 writes only `data/k11-captures/gp-twop/` through `make gp-capture` (`gp_capture.guard_gp`). Gp captures skip in `make verify` when absent, even under `PR_ORACLE_REQUIRED` (spec §4.3).
 - AGENTS.md: "Every env-gated driver and `--check` run arms `fn_resolve`'s miss log and must record exactly the pinned known-set … A port that makes a driver reach a new unregistered code pointer fails it: register the target or pin the miss with its evidence."
@@ -40,11 +74,11 @@
 2. **A press that never reached the game, or reached it on another frame.** Task 4 Step 4 checks each scripted press against the frames the raw predicts (`b1f = 3` at the P2-start press's `I.f + 2`, `cred` 4 → 4, mode `0x1A` at the P2-confirm press's `I.f + 3`) from the `I` and `S` records, and the scenario test pins holds ≥ 2 (`test_the_presses_are_both_sides_pads`).
 3. **The replay's miss set pinned too wide or too narrow.** Task 5 pins `k_miss_gp_twop` to exactly the measured `fn-miss` lines, each classified, and proves a dropped row fails the driver (`test_platform.c` count and "unexpected" checks).
 4. **A ratchet pinned where it cannot fail.** Task 6 proves `GP_TWOP_MIN_FIRST + 1`, `GP_TWOP_TRACE_MIN_FIRST + 1`, `GP_TWOP_MAX_START − 1`, a wrong sha256 and a damaged port frame each fail.
-5. **Reading green as "the two-player game is correct".** Task 7 states the narrow claim with the pinned values and the record's "cannot show" list (§T.4.3), and names each divergence with its owner (U5 select, U6 moves) rather than fixing it.
+5. **Reading green as "the two-player game is correct".** Task 7 states the narrow claim with the pinned values and the record's "cannot show" list (§T.4.3), and names each divergence with its owner (U6b moves, or a new named gap; U5's select divergence O1 is fixed, record gameplay-u5 §C5.12) rather than fixing it.
 
 ## Where to run
 
-Branch `gameplay-u7` in `.worktrees/u7`, off `main`. The plan and its record must be on `main` first (the controller commits `docs/superpowers/plans/2026-10-01-gameplay-u7-*.md` from the planning worktree); if they are not, copy them from `.worktrees/reverse-plans/docs/superpowers/plans/`.
+Branch `gameplay-u7` in `.worktrees/u7`, off `main` **after U6b has merged** (Re-baseline). The plan and its record must be on `main` first (the controller commits `docs/superpowers/plans/2026-10-01-gameplay-u7-*.md` from the planning worktree); if they are not, copy them from `.worktrees/reverse-plans/docs/superpowers/plans/`.
 
 ```bash
 cd /Users/felipe.dos.santos/code/mine/primal-rage-reverse
@@ -64,9 +98,13 @@ Every command below assumes `cd /Users/felipe.dos.santos/code/mine/primal-rage-r
 T=u7; make verify SMK_DUMP=/tmp/pr_${T}_smk TITLE_DUMP=/tmp/pr_${T}_title ATTRACT_DUMP=/tmp/pr_${T}_att FRONTEND_DUMP=/tmp/pr_${T}_fe TITLE_PIN_DIR=/tmp/pr_${T}_pin AUDIO_WAV=/tmp/pr_${T}.wav K11_DUMP=/tmp/pr_${T}_k11 GP_DUMP=/tmp/pr_${T}_gp DIFF_IMAGE=/tmp/pr_${T}_diffimg DIFF_TABLE=/tmp/pr_${T}_diff.md > $S/base_verify.txt 2>&1; echo "verify-exit=$?"
 grep -E '^(oracle C-vs-Python|capture oracle|smk_compare|title_compare|attract_compare|== demo-fight)' $S/base_verify.txt | diff - .superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt && echo ORACLES-EQUAL
 python3 tools/port_progress.py
+grep -E '^diff-verify: [0-9]+/[0-9]+ functions' $S/base_verify.txt
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare 2>&1 | grep '^Ran'
 ```
 
-Expected: `verify-exit=0`, `ORACLES-EQUAL`, `771 1203 64` and `731 731 100`. Record the three lines in the ledger. (Call this sequence **the gate** below; it takes ~15 min.)
+Expected: `verify-exit=0`, `ORACLES-EQUAL`; the two `port_progress.py` lines, the `diff-verify:` summary line and `Ran B tests` are the merged base's (on `8eaf25a`: `771 1203 64`, `731 731 100`, `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`, `B = 67`; U6b adds tests and ports functions, so read them here, do not assume them). Record all five values in the ledger; every later "unchanged" means equal to these. (Call this sequence **the gate** below; it takes ~15 min. Its pass condition at Task 7 is `verify-exit=0`, `ORACLES-EQUAL`, the same counters and `diff-verify:` line, the WAV identical, an empty `git diff --stat main -- port/src`.)
+
+**The task gate** (after Tasks 3, 5, 6; the user's 2026-10-01 speed-up ruling): the task's own tests (`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.tests.test_gp_twop tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare` → `Ran B+12 … OK`; after Task 5 also `PR_ORACLE_REQUIRED=1 PR_GAME_DIR=data/game/C ./build/run_tests | tail -1` → `all checks passed`), its oracle (`make gp-twop-oracle GP_DUMP=/tmp/pr_u7_gp`; after Task 5, which edits the shared miss-set driver, also `make gp-oracle gp-charsel-oracle GP_DUMP=/tmp/pr_u7_gp` with their `ok` lines as in the baseline log), `make diff-verify DIFF_IMAGE=/tmp/pr_u7_diffimg DIFF_TABLE=/tmp/pr_u7_diff.md` (its summary line equal to the baseline's), and `git diff --stat main -- port/src` empty.
 
 ## File Structure
 
@@ -84,10 +122,10 @@ Expected: `verify-exit=0`, `ORACLES-EQUAL`, `771 1203 64` and `731 731 100`. Rec
 
 | File | Region | What U7 adds | Conflict with |
 |---|---|---|---|
-| `tools/gp_session.py` | `SCENARIOS`, right after the `'gp-idle-loss'` entry (before the dict's closing `}`, line 125 on `main` `e9271df`) | one block `'gp-twop': dict(...)` | U5/U6/U8/U11 blocks at the same anchor: keep every block |
-| `Makefile` | after `gp-oracle`'s recipe (line 459 on `e9271df`) | the `GP_TWOP_*` variables, `.PHONY: gp-twop-oracle` (its own line, so the shared `.PHONY` list is untouched), the target | other units' `GP_<UNIT>_*` blocks at the same anchor |
-| `Makefile` | `verify`, after `@$(MAKE) --no-print-directory gp-oracle` | one line `@$(MAKE) --no-print-directory gp-twop-oracle` (Task 6) | other units' one-liners there: keep all |
-| `port/tests/test_platform.c` | before `fnm_gp_scenario` (the new table) and inside `test_fn_misslog_driver` (4 changed lines) | `k_miss_gp_twop`, `twop` flag | U5/U6/U8/U11 scenario tables in the same lines; **and** any unit that registers a function in the gp-twop miss set (U6 porting `0x3A588`, a P batch): the second to merge re-measures Task 5 Step 1 and drops the row, or the driver's count check fails |
+| `tools/gp_session.py` | `SCENARIOS`, right after the `'gp-idle-loss'` entry (before the dict's closing `}`, line 125 on `main` `8eaf25a`; U5's `SCENARIOS['gp-u5-charsel']` sits after the dict, U6b's `gp-u6-moves` after the `gp-idle-loss-run2` line, so neither shares this anchor) | one block `'gp-twop': dict(...)` | U8/U11 blocks at the same anchor: keep every block |
+| `Makefile` | after `gp-charsel-oracle`'s recipe (line 492 on `8eaf25a`; U6b's `gp-moves-oracle` may follow it on the merged base: insert after the last gp ratchet block) | the `GP_TWOP_*` variables, `.PHONY: gp-twop-oracle` (its own line, so the shared `.PHONY` list is untouched), the target | other units' `GP_<UNIT>_*` blocks at the same anchor |
+| `Makefile` | `verify`, after `@$(MAKE) --no-print-directory gp-charsel-oracle` (line 546 on `8eaf25a`) | one line `@$(MAKE) --no-print-directory gp-twop-oracle` (Task 6) | other units' one-liners there: keep all |
+| `port/tests/test_platform.c` | before the comment `/* The scenario named by the first line of PR_GP_SCRIPT` (the new table), `fnm_known` (one parameter), its two call sites and `test_fn_misslog_driver` | `k_miss_gp_twop`, `twop` flag and parameter | U6b/U8/U11 scenario tables and parameters in the same lines: keep each, append `twop` last; **and** any unit that registers a function in the gp-twop miss set: the second to merge re-measures Task 5 Step 1 and drops the row, or the driver's count check fails (on `8eaf25a` the predicted rows are `0x29D60`, a bare `ret`, and `0x5D812`, the runtime stub: neither is a porting target, §G.24) |
 | `docs/PROGRESS.md` | end | one paragraph | append-only |
 
 The verify's shared unit-test line (`tools.tests.test_gp_session … test_gp_compare`) is **not** edited: `gp-twop-oracle` runs `tools.tests.test_gp_twop` itself. **No harness extension is needed**: `PAD` already holds the nine `p2.*` names, the injector writes any scan's key-state byte, `port_script` and the port driver carry both kb bytes, and `gp-pads` plus the port preview show P2's bits land (record §T.2.1, §T.4.1).
@@ -190,8 +228,8 @@ Expected: two `ERROR: test_…` lines, `KeyError: 'gp-twop'`, `FAILED (errors=2)
 
 - [ ] **Step 4: Run the tests**
 
-Run: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.tests.test_gp_twop tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare 2>&1 | tail -3` and `python3 tools/gp_capture.py --help | grep -c gp-twop`
-Expected: `Ran 66 tests … OK` (U1–U4's 64 plus these 2); `1`.
+Run: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.tests.test_gp_twop tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare 2>&1 | tail -3` and `python3 tools/gp_capture.py --help | grep -c -- '--scenario {.*gp-twop'`
+Expected: `Ran B+2 tests … OK` (the baseline's `B` plus these 2; on `8eaf25a` `Ran 69`); `1`.
 
 - [ ] **Step 5: Mutation proof** — change `('pad', ('p2.start',), 5)` to `('pad', ('p2.start',), 1)`; run `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.tests.test_gp_twop`. Expected: `FAIL: test_steps_fire_in_order` and `FAIL: test_the_presses_are_both_sides_pads`, `FAILED (failures=2)`. Restore; `OK`.
 
@@ -201,7 +239,7 @@ Expected: `Ran 66 tests … OK` (U1–U4's 64 plus these 2); `1`.
 ## §T.5 The scenario (Task 1)
 
 `SCENARIOS['gp-twop']` as §T.3. `tools/tests/test_gp_twop.py` (TestScenario, 2 tests): before the
-block `KeyError: 'gp-twop'` (2 errors); after, the four gp suites `Ran 66 tests … OK`. Mutation
+block `KeyError: 'gp-twop'` (2 errors); after, the four gp suites `Ran <B+2> tests … OK`. Mutation
 (P2 start hold 5 -> 1): both tests FAIL; restored OK.
 ```
 
@@ -512,7 +550,7 @@ EOF
 ### Task 3: `make gp-twop-oracle` (not yet in `verify`)
 
 **Files:**
-- Modify: `Makefile` (one block after `gp-oracle`'s recipe)
+- Modify: `Makefile` (one block after `gp-charsel-oracle`'s recipe)
 - Modify: record (append §T.7)
 
 **Interfaces:**
@@ -521,7 +559,7 @@ EOF
 
 - [ ] **Step 1: The failing check** — `make gp-twop-oracle; echo exit=$?` → ``make: *** No rule to make target `gp-twop-oracle'.  Stop.``, `exit=2`.
 
-- [ ] **Step 2: Add the target** — after the line `		--capture-sha256 "$(GP_IDLE_LOSS_CAPTURE_SHA256)" --capture-frames "$(GP_IDLE_LOSS_CAPTURE_FRAMES)"` (the end of `gp-oracle`'s recipe), insert:
+- [ ] **Step 2: Add the target** — after the line `		--capture-sha256 "$(GP_CHARSEL_CAPTURE_SHA256)" --capture-frames "$(GP_CHARSEL_CAPTURE_FRAMES)"` (the end of `gp-charsel-oracle`'s recipe, Makefile:492 on `8eaf25a`; if U6b's `gp-moves-oracle` block follows it on the merged base, insert after that block's recipe instead), insert:
 
 ```make
 
@@ -585,7 +623,7 @@ EOF
 )"
 ```
 
-Then run **the gate** (Where to run). Expected unchanged (the target is not in `verify` yet).
+Then run **the task gate** (Where to run). Expected: the tool suites `Ran B+12 … OK`, `make gp-twop-oracle` as Step 3 (skips), the `diff-verify:` line equal to the baseline's, no `port/src` change (the target is not in `verify` yet).
 
 ---
 
@@ -658,7 +696,7 @@ python3 $S/presses.py data/k11-captures/gp-twop
 | 8 | `p1.right` + `p2.left` | `S(f+2)` `e0=1010`, `e2=2020`, mode 6 |
 | 9, 10 | `p1.b1`+`p2.b2`, `p1.b2`+`p2.b1` | `S(f+2)` `e0`/`e2` low bytes `02`/`04` and `04`/`02` |
 
-A `late=1` press shifts its row by the lateness; record it. A word of 0 where a press is expected in mode 5 or 6 is the raw's `0x24C96` arm (the slot's `+0x41 & 0x10`, record §T.1.6), not a failure: record it with the frame. Any other value is a correction of §T.1 or §T.3: record it with its line (raw wins: re-read the cited address before concluding). Also look at the two fighters in a fight frame (`frame_*.raw.gz` near the end, through `gp_compare.load_capture_frame` → PNG as U4 Task 4 Step 2) and record which characters the two classes (2 and 6, §T.1.4) are; the cursor/class bytes are not logged (§T.4.3).
+A `late=1` press shifts its row by the lateness; record it. A word of 0 where a press is expected in mode 5 or 6 is the raw's `0x24C96` arm (the slot's `+0x41 & 0x10`, record §T.1.6), not a failure: record it with the frame. Any other value is a correction of §T.1 or §T.3: record it with its line (raw wins: re-read the cited address before concluding). Also look at the two fighters in a fight frame (`frame_*.raw.gz` near the end, through `gp_compare.load_capture_frame` → PNG as U4 Task 4 Step 2) and record which characters the two classes (2 and 6, §T.1.4) are; the cursor/class bytes are not logged (§T.4.3). U6b dependency: on a base with U6b's fields (`'c0' in gs.SNAP_FIELDS` names), also record `c0`/`c1` (the slots' characters `+0x7A`, record gameplay-u6 §U6.11) from the first mode-6 `S` record next to the fighters the frames show. Their mapping to the class bytes `DS_0010816A` is not derived here: record the values, do not infer one from the other.
 
 - [ ] **Step 5: Record and commit** — append §T.8: `session.txt`, the size against the estimate, the frame count, the sha256, the mode path, the check's line, the press table as measured (each with its `poll.log:<n>`), corrections.
 
@@ -682,7 +720,7 @@ EOF
 - Modify: record (append §T.9)
 
 **Interfaces:**
-- Consumes: the `PR_GP_DUMP` driver, `fnm_in`, `FNM_N`, `fnm_known` (unchanged)
+- Consumes: the `PR_GP_DUMP` driver, `fnm_in`, `FNM_N`, `fnm_known` (one parameter added: `twop`, last)
 - Produces: `k_miss_gp_twop[]`; the first unexplained capture frame `j`, the window start, the first differing `f` (for Task 6)
 
 - [ ] **Step 1: The failing driver (measure the miss set)**
@@ -695,7 +733,7 @@ PR_GP_DUMP=$S/dump PR_GP_SCRIPT=$S/gp-twop.script PR_GAME_DIR=data/game/C ./buil
 grep -E '^fn-miss|FAIL|all checks|stalled|fault' $S/replay0.txt; tail -3 $S/dump/gp.log
 ```
 
-Expected: `# gp port script v2: scenario gp-twop`; `rc=1` with `fn-miss PR_GP_DUMP: unexpected …` for each pair outside the base set. The port preview (record §T.4.1, `main` `e9271df`) predicts exactly three: `0x29D60 frontend_mode_1b_step`, `0x5D812 frontend_mode_1b_step`, `0x3A588 fighter_state_3531c`. Record every `fn-miss PR_GP_DUMP 0x… … hits=…` line.
+Expected: `# gp port script v2: scenario gp-twop`; `rc=1` with `fn-miss PR_GP_DUMP: unexpected …` for each pair outside the base set. The port preview re-run on `main` `8eaf25a` (record §T.RB; on `e9271df` it also missed `0x3A588`, which U6a ported) predicts exactly two: `0x29D60 frontend_mode_1b_step` and `0x5D812 frontend_mode_1b_step` (`distinct=4` with the base pair). U6b dependency: the set is **re-measured on the merged base here**. U6b ports fight callbacks, and the capture's own fight frames may reach callbacks the preview did not. The pin is what this step measures, not the prediction. Record every `fn-miss PR_GP_DUMP 0x… … hits=…` line.
 
 **Branch — the replay stalled or faulted** (`stalled at f=…`, `fault …`, or the end-reached check failed): record the last `T` line of `$S/dump/trace.txt` and the `gp.log` tail; cut the script at the last completed frame `F` (a harness value with that evidence) by setting in the Makefile
 
@@ -707,48 +745,53 @@ GP_TWOP_END = <F>
 
 and redo this step with `--end <F>` on the `port-script` line. A cut replay may record a subset of the pinned set (`fnm_gp_scenario` reads "(cut at"), so pin what the cut run records.
 
-- [ ] **Step 2: Classify each pair** — for each measured pair: if §G.24 of `docs/superpowers/plans/2026-09-30-gameplay-ground-truth-derivations.md` classifies it (the three predicted ones are there: the bare `ret`, the runtime stub, the unported state-10 callback owned by U6), cite it; otherwise disassemble it (`$S/dx.py` of record §T.0 over a `diffrun --image-out` image), look it up in the U0 lists (`docs/superpowers/plans/2026-09-30-gameplay-u0-derivations.md` §U0.12 for move-table callbacks), and write one evidence line (what it is, its owner unit). A pair that would be a two-player-logic routine (anything in §T.1's addresses) is a port bug: name it in §T.9, do not fix it here.
+- [ ] **Step 2: Classify each pair** — for each measured pair: if §G.24 of `docs/superpowers/plans/2026-09-30-gameplay-ground-truth-derivations.md` classifies it (the two predicted ones are there: the bare `ret` and the runtime stub), cite it; if it is a fight callback the U6 record decodes (`docs/superpowers/plans/2026-10-01-gameplay-u6-derivations.md` §U6.10–§U6.18) but the merged base has not ported, cite that section (owner U6b or track P); otherwise disassemble it (`$S/dx.py` of record §T.0 over a `diffrun --image-out` image), look it up in the U0 lists (`docs/superpowers/plans/2026-09-30-gameplay-u0-derivations.md` §U0.12 for move-table callbacks), and write one evidence line (what it is, its owner unit). A pair that would be a two-player-logic routine (anything in §T.1's addresses) is a port bug: name it in §T.9, do not fix it here.
 
-- [ ] **Step 3: Pin it** — in `port/tests/test_platform.c`, insert before the comment `/* The scenario named by the first line of PR_GP_SCRIPT` the table whose rows are **exactly the Step 1 lines** (shown with the three the preview predicts; add or remove rows to match the measurement, with one comment line per row):
+- [ ] **Step 3: Pin it** — in `port/tests/test_platform.c`, insert before the comment `/* The scenario named by the first line of PR_GP_SCRIPT` the table whose rows are **exactly the Step 1 lines** (shown with the two the preview predicts on `8eaf25a`; add or remove rows to match the measurement, with one comment line per row):
 
 ```c
 /* The gp-twop replay's own pairs (gameplay U7, record
  * 2026-10-01-gameplay-u7-derivations.md §T.9: measured on the full replay of
  * data/k11-captures/gp-twop to its X record; each classified there from the
- * raw):
+ * raw), the two hooks of the wipes it passes, as gp-u5-charsel's:
  *   0x29D60 frontend_mode_1b_step: the bare `ret` (record §G.24);
- *   0x5D812 frontend_mode_1b_step: the runtime stub (record §G.24);
- *   0x3A588 fighter_state_3531c: the UNPORTED state-10 callback (§G.24,
- *     owner U6).
+ *   0x5D812 frontend_mode_1b_step: the runtime stub (record §G.24).
  * A scenario with no entry here may miss only the base pair. */
 static const fnm_pair k_miss_gp_twop[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x3A588u, "fighter_state_3531c" },
 };
 
 ```
 
-and in `test_fn_misslog_driver` make these four changes:
+and make these seven changes (the text to replace is `8eaf25a`'s, `test_platform.c:168-195,277`; U6b dependency: on a base where U6b added its `moves` parameter, `fnm_known` already has six parameters and its calls six arguments; keep them and append `twop` / `, twop` / `, 0` after the last one in the same way):
 
 ```c
-    int idle_loss = 0, twop = 0, cut = 0;
+static int fnm_known(u32 addr, const char *ctx, int frontend, int idle_loss, int charsel, int twop)
 ```
 ```c
-        idle_loss = strncmp(sc, "gp-idle-loss", 12) == 0;
+    if (charsel && fnm_in(k_miss_gp_charsel, FNM_N(k_miss_gp_charsel), addr, ctx)) return 1;
+    if (twop && fnm_in(k_miss_gp_twop, FNM_N(k_miss_gp_twop), addr, ctx)) return 1;
+```
+```c
+    int idle_loss = 0, charsel = 0, twop = 0, cut = 0;
+```
+```c
+        charsel = strcmp(sc, "gp-u5-charsel") == 0;
         twop = strcmp(sc, "gp-twop") == 0;
 ```
 ```c
-               (idle_loss ? (u32)FNM_N(k_miss_gp_idle_loss) : 0u) +
+               (charsel ? (u32)FNM_N(k_miss_gp_charsel) : 0u) +
                (twop ? (u32)FNM_N(k_miss_gp_twop) : 0u);
 ```
 ```c
-        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss)
-            && !(twop && fnm_in(k_miss_gp_twop, FNM_N(k_miss_gp_twop),
-                                fn_misslog_addr(i), fn_misslog_ctx(i)))) {
+        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss, charsel, twop)) {
+```
+```c
+            if (!fnm_known((u32)addr, ctx, 0, 0, 0, 0)) {
 ```
 
-(replacing, in order: `int idle_loss = 0, cut = 0;`; the `idle_loss = strncmp…` line, which stays, plus the new line; the `(idle_loss ? … : 0u);` term; the `if (!fnm_known(…)) {` line.)
+(replacing, in order: the `static int fnm_known(…, int charsel)` signature line; the `if (charsel && fnm_in(k_miss_gp_charsel, …)) return 1;` line, which stays, plus the new line under it; `int idle_loss = 0, charsel = 0, cut = 0;`; the `charsel = strcmp(sc, "gp-u5-charsel") == 0;` line, which stays, plus the new line; the `(charsel ? … : 0u);` term; the driver's `if (!fnm_known(…, charsel)) {` line; the `--check` log's `if (!fnm_known((u32)addr, ctx, 0, 0, 0)) {` line in `test_fn_misslog`.)
 
 - [ ] **Step 4: Run to see it pass, and prove a row matters**
 
@@ -757,7 +800,7 @@ cmake --build build 2>&1 | grep -E 'error|warning'
 PR_GP_DUMP=$S/dump PR_GP_SCRIPT=$S/gp-twop.script PR_GAME_DIR=data/game/C ./build/run_tests > $S/replay1.txt 2>&1; echo rc=$?; tail -1 $S/replay1.txt
 ```
 
-Expected: no compiler output; `rc=0`, `all checks passed`. Mutation: delete the last row of `k_miss_gp_twop`, rebuild, rerun → `rc=1`, `FAIL …test_platform.c:…: <n> != <n-1>` and `fn-miss PR_GP_DUMP: unexpected 0x… from …`. Restore; `rc=0`. (While planning, on the preview script with the header `scenario gp-twop`: `rc=0`; without the `0x3A588` row `5 != 4` and `unexpected 0x3A588 from fighter_state_3531c`.) Then `PR_ORACLE_REQUIRED=1 PR_GAME_DIR=data/game/C ./build/run_tests | tail -1` → `all checks passed` (the unit suite: the gp-idle-loss and base sets untouched).
+Expected: no compiler output; `rc=0`, `all checks passed`. Mutation: delete the last row of `k_miss_gp_twop`, rebuild, rerun → `rc=1`, `FAIL …test_platform.c:…: <n> != <n-1>` and `fn-miss PR_GP_DUMP: unexpected 0x… from …`. Restore; `rc=0`. (Re-baseline, on `8eaf25a` with the preview script, header `scenario gp-twop`, and the two-row table: `rc=0`, `all checks passed`; without the last row (`0x5D812 frontend_mode_1b_step`) `rc=1`, `test_platform.c:<line>: 4 != 3` and `unexpected 0x5D812 from frontend_mode_1b_step`. On `e9271df` it was `5 != 4` without the `0x3A588` row.) Then `PR_ORACLE_REQUIRED=1 PR_GAME_DIR=data/game/C ./build/run_tests | tail -1` → `all checks passed` (the unit suite: the gp-idle-loss, gp-u5-charsel and base sets untouched; on `8eaf25a` with the seven changes: `all checks passed`, `rc=0`).
 
 - [ ] **Step 5: The port stays two-human**
 
@@ -774,7 +817,7 @@ Expected (the preview did): `two-human match: ok`, `rc=0`, the join at the same 
 make gp-report scenario=gp-twop 2>&1 | tee $S/report.txt | grep -E 'gp_compare|FAIL|all checks|window'
 ```
 
-From `FIRST UNEXPLAINED capture <j> (raw <r>): nearest port <m> …`, triage exactly as U4 Task 4 Step 2 (the `frames.txt` line `<m>`, both frames to PNG with `gp_compare.load_capture_frame`/`load_port_frame` and Pillow into `$S`, look at both; what differs; the owner with its evidence: U4's O1 if it is the character select's idle animation, record §G.20; U5 otherwise in the select; U6 in the fight). From `first difference f=X (…) in <field>`, triage as U4 Task 4 Step 3 (`grep -n " f=$X " data/k11-captures/gp-twop/poll.log`, `grep -n "^T f=$X " /tmp/pr_gp_dump/gp-twop/trace.txt`, the three frames before, the mode at `X`, and whether a §T.9 miss precedes it in `gp.log`). Record the window start (`window from capture <k>`), `j`, `X`, and each named divergence with its owner. Do not fix.
+From `FIRST UNEXPLAINED capture <j> (raw <r>): nearest port <m> …`, triage exactly as U4 Task 4 Step 2 (the `frames.txt` line `<m>`, both frames to PNG with `gp_compare.load_capture_frame`/`load_port_frame` and Pillow into `$S`, look at both; what differs; the owner with its evidence. U4's O1, the character select's idle animation (§G.20), was fixed by U5's `0x37B03` operand fix (record gameplay-u5 §C5.12), and the one-player select now has no first unexplained frame or trace difference (gp-u5-charsel `516`/`1513` = the script's end, §C5.17). So a divergence in the select is new: name it as a new gap in U5's area, citing the two-player path, the second cursor and P2's prompt and join (§T.1.4). In the fight, the owner is U6b if the divergence is a move callback or reaction the U6 record decodes (§U6.10–§U6.18); otherwise it is a new named gap. On a U6b base, also record the report's `moves:` line: reported, not pinned (Task 6 pins frames and trace only). From `first difference f=X (…) in <field>`, triage as U4 Task 4 Step 3 (`grep -n " f=$X " data/k11-captures/gp-twop/poll.log`, `grep -n "^T f=$X " /tmp/pr_gp_dump/gp-twop/trace.txt`, the three frames before, the mode at `X`, and whether a §T.9 miss precedes it in `gp.log`). Record the window start (`window from capture <k>`), `j`, `X`, and each named divergence with its owner. Do not fix.
 
 - [ ] **Step 7: Commit**
 
@@ -788,7 +831,7 @@ EOF
 )"
 ```
 
-(Add `Makefile` only if the stall branch set `GP_TWOP_END`.) Then run **the gate**: `make verify` does not run `gp-twop` yet, so it must be unchanged.
+(Add `Makefile` only if the stall branch set `GP_TWOP_END`.) Then run **the task gate** (Where to run), including `make gp-oracle gp-charsel-oracle`: this task edits the shared miss-set driver, so the gp-idle-loss and gp-u5-charsel replays must still end `all checks passed` with their ratchet lines as in the baseline log (on `8eaf25a`: `2064`, `8320`; `516`, `1513`).
 
 ---
 
@@ -821,7 +864,7 @@ GP_TWOP_CAPTURE_SHA256 = <sha256>
 GP_TWOP_CAPTURE_FRAMES = <n>
 ```
 
-In `verify`, after `	@$(MAKE) --no-print-directory gp-oracle`, add `	@$(MAKE) --no-print-directory gp-twop-oracle`.
+In `verify`, after `	@$(MAKE) --no-print-directory gp-charsel-oracle` (Makefile:546 on `8eaf25a`; after U6b's `gp-moves-oracle` line if the merged base has one), add `	@$(MAKE) --no-print-directory gp-twop-oracle`.
 
 - [ ] **Step 2: Green**
 
@@ -851,7 +894,7 @@ python3 tools/gp_compare.py --scenario gp-twop --capture data/k11-captures/gp-tw
 
 Expected: `exit=2` with `FAIL: first unexplained <j> < ratchet N <j+1>` (or `N … > end` for the exact pin); `exit=2` with the trace `FAIL`; `exit=2` with `FAIL: window starts at capture <k> … > pinned start <k-1>` (if `k = 0`, skip this one and say so); `exit=2` with `capture: FAIL: poll.log sha256 …`; the damaged dump `FIRST UNEXPLAINED` below `<j>` and `rc=1` (if frame `k` is not exhibited below `j`, pick `k` from a clean capture frame's `nearest port` as U4 did, and record which). Record every output.
 
-- [ ] **Step 4: The gate** — run **the gate**; additionally `grep -E 'gp_twop|gp_compare: gp-twop' $S/…verify log`. Expected: `verify-exit=0`, `ORACLES-EQUAL`, the gp-twop lines as Step 2, `771 1203 64` / `731 731 100`, `cmp /tmp/pr_u7.wav .superpowers/sdd/2026-09-29-k7-k12/scratch/before-t2.wav` silent (run `make audio-render AUDIO_WAV=/tmp/pr_u7.wav` first if the verify log did not), `git diff --stat main -- port/src` empty.
+- [ ] **Step 4: The task gate** — run **the task gate** (Where to run). Expected: the tool suites `Ran B+12 … OK`, `make gp-twop-oracle` as Step 2, the `diff-verify:` line equal to the baseline's, and `git diff --stat main -- port/src` empty. The full `make verify` with `gp-twop-oracle` in it runs at Task 7, which greps its `gp_twop|gp_compare: gp-twop` lines.
 
 - [ ] **Step 5: Commit**
 
@@ -872,11 +915,11 @@ EOF
 **Files:**
 - Modify: record (append §T.11); `docs/PROGRESS.md` (append one paragraph)
 
-- [ ] **Step 1: Record §T.11** — the narrow claim with the pinned values (U3's wording: no content-bearing capture frame from the window start `k` up to `N` is unexplained, the traced fields agree below `F`, the capture is a two-human match by `gp_twop.py check` from the join to the scenario's end); the answers this unit was asked for (P2's pad bits §T.2.1; the START MENU rows and which side each starts §T.1.1; what a second start does §T.1.2; credits §T.1.3; the handicap `0x64` cannot affect an arcade game §T.1.8); every divergence of Task 5 as a named gap with its evidence and owner (U5 select, U6 moves, or a new one); "Not covered": §T.4.3's list plus every mode of the capture's path past `N`.
+- [ ] **Step 1: Record §T.11** — the narrow claim with the pinned values (U3's wording: no content-bearing capture frame from the window start `k` up to `N` is unexplained, the traced fields agree below `F`, the capture is a two-human match by `gp_twop.py check` from the join to the scenario's end); the answers this unit was asked for (P2's pad bits §T.2.1; the START MENU rows and which side each starts §T.1.1; what a second start does §T.1.2; credits §T.1.3; the handicap `0x64` cannot affect an arcade game §T.1.8); every divergence of Task 5 as a named gap with its evidence and owner (U6b moves, a new gap in U5's select area, or a new one; Task 5 Step 6); "Not covered": §T.4.3's list plus every mode of the capture's path past `N`.
 
 - [ ] **Step 2: PROGRESS** — append a paragraph "Gameplay U7: two players (both sides human) …" with: the path, the capture's size and sha256 prefix, the join frame and `cred 4 -> 4`, the three pinned values, the first divergences and owners, the not-covered list in one sentence.
 
-- [ ] **Step 3: Final gate and commit** — run **the gate** (expected as Task 6 Step 4), then:
+- [ ] **Step 3: Final gate and commit** — run **the gate** (the full `make verify`; the plan's final task). Send its log to `$S/final_verify.txt` instead of `base_verify.txt`, so the baseline log survives for comparison, and run `grep -E 'gp_twop|gp_compare: gp-twop' $S/final_verify.txt`. Expected: `verify-exit=0`, `ORACLES-EQUAL`, the gp-twop lines as in Task 6 Step 2, and the counters and the `diff-verify:` line equal to the baseline's. Then `make audio-render AUDIO_WAV=/tmp/pr_u7.wav` (if the verify log did not render it), and `cmp /tmp/pr_u7.wav .superpowers/sdd/2026-09-29-k7-k12/scratch/before-t2.wav` must be silent. `git diff --stat main -- port/src` must be empty. Then commit:
 
 ```bash
 git add docs/superpowers/plans/2026-10-01-gameplay-u7-derivations.md docs/PROGRESS.md
@@ -894,13 +937,20 @@ EOF
 
 - The fixed-up image (`diffrun --image-out`, 1 028 304 bytes, equal to the first draft's) and every listing of record §T.1 (capstone 5.0.7), the operand scans of `0x1088E0`/`0x1088E2`/`0x107468`/`0x108170..74`, and Ghidra MCP `get_xrefs_to` (`0x105C04`, `0x108173`, `0x105F30`, `0x10DB0`, `0x10E18`), `get_function_callers 0x2EB80`, `decompile_function 0x2BF08` (read-only).
 - §T.2's capture reads (the `gp-pads` P2 presses and chord, the per-side classification of three captures, the sha256s, `gp-idle-loss`'s mode timings and size).
-- The preview replay (`run_tests` with `PR_GP_DUMP`, 26 s, 466 frames, 30 MB): as `gp-preview` it fails on the three unknown misses; as `gp-twop` with the Task 5 table `rc=0`; without the `0x3A588` row `5 != 4`.
-- In a scratch tree of `main` `e9271df` with Tasks 1–3 and 5's code exactly as written above: `test_gp_twop` before the scenario (`KeyError`, 2 errors), after (`Ran 12 tests … OK`; the four gp suites 76 tests OK), every mutation of Tasks 1, 2 and 5 failing as stated; `gp_twop.py check` on the three captures (`rc=1`) and on the preview trace (`ok`); `make gp-twop-oracle` without the capture (`exit=0`, also under `PR_ORACLE_REQUIRED`) and with a one-player poll.log under `K11_CAPTURES=$S/fakecaps` (`exit=2`, the FAIL line); `PR_ORACLE_REQUIRED=1 run_tests` → `all checks passed`; `make verify` with the target in `verify` and the parallel-safe overrides: every step through the tool tests passed, the 45 oracle lines equal the base, gp-idle-loss's ratchets `203`/`2088` ok, `gp-twop-oracle` ran its 12 tests and skipped; the last step (`git diff --quiet -- port/src/symbols.h`) failed only because the scratch tree is not a git checkout (`git-rc=129`; the regenerated `symbols.h` is byte-identical to `HEAD`'s). `make audio-render` → WAV identical to `before-t2.wav`; `port_progress.py` → `771 1203 64`, `731 731 100`.
+- The preview replay (`run_tests` with `PR_GP_DUMP`, 26 s, 466 frames, 30 MB): as `gp-preview` it fails on the three unknown misses; as `gp-twop` with the Task 5 table `rc=0`; without the `0x3A588` row `5 != 4` (all on `e9271df`; the `8eaf25a` re-run is under "Re-baseline run" below).
+- In a scratch tree of `main` `e9271df` with Tasks 1–3 and 5's code as then written (Task 5's pre-re-baseline form): `test_gp_twop` before the scenario (`KeyError`, 2 errors), after (`Ran 12 tests … OK`; the four gp suites 76 tests OK), every mutation of Tasks 1, 2 and 5 failing as stated; `gp_twop.py check` on the three captures (`rc=1`) and on the preview trace (`ok`); `make gp-twop-oracle` without the capture (`exit=0`, also under `PR_ORACLE_REQUIRED`) and with a one-player poll.log under `K11_CAPTURES=$S/fakecaps` (`exit=2`, the FAIL line); `PR_ORACLE_REQUIRED=1 run_tests` → `all checks passed`; `make verify` with the target in `verify` and the parallel-safe overrides: every step through the tool tests passed, the 45 oracle lines equal the base, gp-idle-loss's ratchets `203`/`2088` ok (the `e9271df` values; `8eaf25a` pins `2064`/`8320`, Makefile:443/451), `gp-twop-oracle` ran its 12 tests and skipped; the last step (`git diff --quiet -- port/src/symbols.h`) failed only because the scratch tree is not a git checkout (`git-rc=129`; the regenerated `symbols.h` is byte-identical to `HEAD`'s). `make audio-render` → WAV identical to `before-t2.wav`; `port_progress.py` → `771 1203 64`, `731 731 100`.
 - Not run: any DOSBox-X capture (Task 4), and so no `GP_TWOP_*` value; Tasks 4–6's commands that read `data/k11-captures/gp-twop` were exercised only on the stand-ins named above (`presses.py` on `gp-pads`).
+- **Re-baseline run (`main` `8eaf25a`, scratch `…/scratchpad/rebaseline/u7/tree`, a `git archive` of `8eaf25a` with `data` linked and the fixtures copied).** Tasks 1, 2, 3 and 5's code as now written:
+  - Task 1: before the scenario, `KeyError` (2 errors); after, the four suites `Ran 69 … OK` (base `B = 67`); `grep -c -- '--scenario {.*gp-twop'` → `1`. The hold-1 mutation gives 2 FAILs.
+  - Task 2: before `gp_twop.py`, `ModuleNotFoundError` (`FAILED (errors=1)`); after, `Ran 12 … OK` and the four suites `Ran 79 … OK`. All seven mutations fail exactly as the table states. The control: three `FAIL: b1f never reaches 3`, `rc=1`, and the path's first lines as Step 6. With U6b's five `SNAP_FIELDS` appended (a scratch edit), still `Ran 12 … OK`.
+  - Task 3 (the block after `gp-charsel-oracle`'s recipe): the skip gives `exit=0` both times, including under `PR_ORACLE_REQUIRED`; the one-player stand-in gives `exit=2` with the FAIL line and `make: *** [gp-twop-oracle] Error 1`.
+  - Task 5's seven changes, compiled with no compiler output. The preview with the two-row table: `rc=0`, `distinct=4`. Without the `0x5D812` row: `4 != 3` and `unexpected 0x5D812 from frontend_mode_1b_step`. `PR_ORACLE_REQUIRED=1 run_tests` → `all checks passed`.
+  - `gp_twop.py check --trace` on the preview: `join f=2D0 (cred 4 -> 4); 799 S records … fight presses 40/40 … two-human match: ok`.
+  - Not re-run: the full `make verify` (the controller's merge gate covers it).
 
 ## Execution notes
 
 - **Order:** Setup and baseline → Tasks 1, 2, 3 (tools; no capture needed) → **stop for Decisions 1–3** → Task 4 (capture) → 5 → 6 → 7. Tasks 1–3 can be reviewed while the decision is pending.
 - **Model tiers:** Tasks 1–3: a standard model (mechanical, code given). Task 4: a strong model (judging the capture against the raw predictions; stop rules). Task 5: a strong model (miss classification and triage, PNG inspection). Task 6: standard (values from Task 5, failure proofs scripted). Task 7: standard.
-- **Gate:** the baseline gate before Task 1; after Tasks 3, 5, 6, 7 the full gate (verify exit 0, the 45 oracle lines equal, the WAV identical, `771 1203 64` / `731 731 100`, empty `port/src` diff); after Tasks 1, 2 the tool suites (`Ran 66`/`Ran 76 … OK`).
-- **Merge:** see Shared-file touch points; whoever merges after a unit that registers `0x3A588` (U6) or any other function in `k_miss_gp_twop` re-runs Task 5 Steps 1–4 and drops that row.
+- **Gate** (the user's 2026-10-01 speed-up ruling): the full gate at the baseline (before Task 1), at Task 7 and before merge (verify exit 0, the 45 oracle lines equal, the WAV identical, the counters and the `diff-verify:` line equal to the baseline's, empty `port/src` diff); after Tasks 3, 5, 6 **the task gate** (Where to run); after Tasks 1, 2 the tool suites (`Ran B+2`/`Ran B+12 … OK`; 69/79 on `8eaf25a`). The controller may batch trivially small adjacent tasks.
+- **Merge:** see Shared-file touch points. `0x3A588` is already ported (U6a). Whoever merges after a unit that registers a function in `k_miss_gp_twop`, or that changes the replay's reach (U6b's callbacks, if U7 somehow merges first), re-runs Task 5 Steps 1–4 and fixes the rows. The full gate runs before merge.

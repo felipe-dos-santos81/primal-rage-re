@@ -251,6 +251,14 @@ block bits `0x20/0x10`). `MOVE_FIELDS = (c0, c1, r0, r1, s0_43)` drive a third g
 capture records them; `TRACE_FIELDS` is unchanged, so `gp-idle-loss` prints identical lines
 (measured: the report output of the base dump `diff`s empty against the old tool's).
 
+*Re-baseline on main `8eaf25a` (U5 and U6a merged; plan section "Re-baseline").* With the plan's
+Tasks 1, 2 and 4 applied in turn to an export of `8eaf25a`, `make gp-oracle` and `make
+gp-charsel-oracle` print `gp_compare` lines identical to the unmodified tree's after each task
+(`gp-idle-loss: frames: first unexplained 2064, ratchet N 2064 ok`, `trace: 0 differing through 8319;
+ratchet N 8320 ok`; `gp-u5-charsel: frames: first unexplained 516, ratchet N 516 ok`, `trace: 0
+differing through 1512; ratchet N 1513 ok`); neither capture has the bytes, so report mode prints no
+`moves:` line; the `gp-idle-loss` replay still writes 7999 `T` lines.
+
 ## §U6.12 The moves list, the dry runs and the capture estimate
 
 **The port dry run** (`gp_moves.py dry`): the `gp-idle-loss` capture's keys (the same menu path and
@@ -275,6 +283,18 @@ those ported: `0x3F0F0` and `0x3F130` (`anim_indirect`), then (a list variant) `
 (`fighter_state_3531c`, 330 hits); an earlier list variant also reached `0x231C0` (the CPU's
 character-1 reaction 0x27). With all of §U6.13–§U6.18 ported the dry run's miss log is the 4
 harmless pairs (`distinct=4`).
+
+*Re-baseline on main `8eaf25a` (U5 and U6a merged).* The same dry script (`gp_moves.py dry … --start
+0x7FF --end 0xD40`, scenario `gp-u6-moves-dry (cut at 3392)`) replayed on `8eaf25a` plus the plan's
+Tasks 1–4 gives the values above unchanged: misses `0x3F0A8` (1), `0x3D1EC` (2), `0x3C048` (2) besides
+the 4 harmless pairs (`distinct=7`, `FAILURES: 4`), `c0=00 c1=01` at `f=0x7F5`, and 7 of 12 at
+`800 8D0 92D 998 9FC BF0 C54`. With Tasks 8–13 also applied: `distinct=4`, 8 of 12 at `800 8D0 998 9FC
+AC4 B28 B84 C54`. **The cascade differs from the paragraph above:** with only Tasks 8–10 registered
+the misses are `0x3F130 anim_indirect hits=1` and `0x231C0 hit_reaction_apply hits=1` (`distinct=6`),
+and with `0x3F130` and `0x231C0` registered as well (`0x3F0F0` and `0x3A820` left unregistered) the log
+is the 4 harmless pairs: on this base the dry run reaches neither `0x3F0F0` nor `0x3A820`. (Measured
+by replacing the `fn_register` lines with `(void)` references; the capture's replay, not the dry run,
+gates Tasks 11–13.)
 
 **The capture.** The scenario ends 1200 frames after the first attempt (`f = 0xCAF`). From the
 `gp-idle-loss` capture's timing: 2136 capture frames up to `f = 0xCAF`, **103 MB** of

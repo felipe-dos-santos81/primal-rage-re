@@ -10,6 +10,14 @@ and each task appends its section from `§U8.10` on (Task 0 §U8.10 … Task 5
 §U8.15, Tasks 6a–6g §U8.16–§U8.22, Task 7 §U8.23). Raw wins over this text and
 over the plan; a correction is recorded where it is found.
 
+**Re-baseline (2026-10-01, main `8eaf25a`: U5 `b09b9e6` and U6a merged).** The
+raw facts of §U8.1–§U8.6 and §U8.8–§U8.9 do not depend on the port and are
+unchanged. The port-side observations were re-run on `8eaf25a` and are added in
+place, marked "re-baseline": the row and attract-start previews (§U8.3) and the
+plumbing proof (§U8.7, whose frame/trace values and mutation premise changed).
+U6b and U7 merge before U8; their effect on these port-side values is measured
+by the plan's own tasks, not here.
+
 ## §U8.0 Sources and method
 
 - **Image.** `build/diffrun --exe data/game/C/PRAGE.EXE --image-out $S/image.bin`
@@ -197,6 +205,31 @@ then `0x11D04` see it: **mode 3 at F, the wipe from F + 1.** Port preview (hand-
 `f=141 mode 1A cred 4 b1f 1`, `0x10` at `0x165`, mode 6 at `0x6B5`; misses
 `0x29D60`, `0x5D812` (frontend_mode_1b_step), `0x23208`, `0x3A588`.
 
+**Re-baseline previews (`8eaf25a`).** The same hand-built scripts (rows: Enters
+at 321 and 471, presses from 531 60 apart held 4 with their BIOS words, the
+Enter 60 after the last move, `end 2900`; the attract start: `arm pad`, `bits
+320 0100`, `key 322 3B 00`, `bits 324 0000`, `end 2600`), replayed by a scratch
+copy of `port/` at `8eaf25a` with plan Task 5's driver edits (scratch helper
+`apply.py`, not committed). Mode entries (from `trace.txt`) and the misses beyond
+the base pair:
+
+| run | row mode at | divert `b1d`/`b1f`, `cred` | `0x10` at | mode 6 at | misses beyond the base pair |
+|---|---|---|---|---|---|
+| row 1 | `0x24F` `0x2E` | 0 / 2, 5 → 4 | `0x274` | `0x7B5` | `0x29D60`, `0x5D812` (frontend_mode_1b_step), `0x14EF8` and `0x14F50` (hit_reaction_apply, 4 hits each), `0x15510` (anim_indirect, 1 hit) |
+| row 2 | `0x28B` `0x28` | 1 / 3, then 1 by `0x756`; 5 | `0x2B0` | `0x7F5` | `0x29D60`, `0x5D812` |
+| row 3 | `0x2C7` `0x29` | 1 / 3, then 2 by `0x796`; 5 | `0x2EC` | `0x835` | `0x29D60`, `0x5D812` |
+| row 4 | `0x303` `0x2A` | 2 / 3; 5 | `0x328` | `0x875` | `0x29D60`, `0x5D812` |
+| row 5 | `0x33F` `0x2B` | 3 / 3; 5 | `0x364` | never (`0x10` to `f = 2900`) | `0x29D60` |
+| row 6 (one up) | `0x24F` `0x2C` | 4 / 3; 5 | `0x274` | `0x7B5` | `0x29D60`, `0x5D812` |
+| attract | — (mode 3 at `0x140`) | 0 / 1, 5 → 4 (`0x141`) | `0x165` | `0x6B5` | `0x29D60`, `0x5D812` |
+
+Every path equals the `e9271df` preview where both have it. The misses shrank by
+U6a's ports (`0x3A588`, `0x3640C`, `0x23208` are registered, record
+gameplay-u6 §U6.21); `0x15510` (row 1) is new against the `e9271df` preview,
+cause not isolated (the row-1 fight runs a different path once the U6a
+callbacks act). As before, these are previews: the plan pins the sets measured on
+each capture's replay (Task 6 Step 3) on the base U8 runs on.
+
 ## §U8.4 Where each row leads (the first distinct screens)
 
 - **Character select entry.** `0x4367C` (the `DS_00104AE4` hook): with
@@ -293,6 +326,32 @@ ratchet N 2088 ok`; dump 52 MB. `GP_MODES_SCENARIOS="RA:gp-u8-right-arcade"`
 with no capture under `PR_ORACLE_REQUIRED=1`: `gp-modes-oracle: no capture at
 data/k11-captures/gp-u8-right-arcade, skipped`, exit 0.
 
+**Re-baseline (`8eaf25a`).** The values above are `e9271df`'s: 203 was U4's
+divergence 1 (fixed by U5, record gameplay-u5 §C5.12) and 2088 the `rng`
+difference after the `0x23208` miss (ported by U6a, record gameplay-u6 §U6.21).
+The same cut replay on `8eaf25a` (`gp_session.py port-script --scenario
+gp-idle-loss --end 2325`, then the `PR_GP_DUMP` driver; equal to `make gp-replay
+… GP_SCRIPT_ARGS="--end 2325"`, which was also run): `fn-miss PR_GP_DUMP
+distinct=4 dropped=0` (the base pair, `0x29D60`, `0x5D812
+frontend_mode_1b_step`), `all checks passed`; 818 port frames, the last `00817
+f=0915 tick=00000973 mode=0006`; dump 52 MB. `gp_compare --report`: `window from
+capture 90 (raw 1744)`, `FIRST UNEXPLAINED capture 1070 (raw 4182): nearest port
+817, rows 121..199, x 0..319 (10696 px)` — the capture frame after the port's
+last one (port 817 is `f = 0x915`, the cut), so 1070 is how far the cut replay
+got, not a divergence; `trace: 2001 frames compared (f 141..), 4 without a
+capture snapshot`, `0 differing through 2325`. Ratchet runs (`gp_compare.py`
+with `--max-start 90`, the sha256 and 8173 frames pinned): N 1070 / F 2326 →
+`first unexplained 1070, ratchet N 1070 ok`, `0 differing through 2325; ratchet
+N 2326 ok`, rc 0; N 1071 → `frames: FAIL: first unexplained 1070 < ratchet N
+1071`, rc 1; F 2327 → `trace: FAIL: N 2327 > end 2326: N is unreachable`, rc 1;
+the planner's N 203 and N 204 (F 2088) both rc 0, `ratchet N 204 ok (improved:
+raise N)` and `ratchet N 2088 ok (every item is explained: N = 2326 is the exact
+pin)` — so the plan's original mutation (204) could not fail on a base holding
+U5. By `gp_compare.ratchet` (`tools/gp_compare.py:258`): with a first frame `j`
+an N fails iff `N > j`; with no trace difference an N fails iff `N > end` (end =
+the last `T` `f` + 1). N = `j` + 1 and F = end + 1 are therefore the smallest
+values that fail, and the plan's Task 3 Step 4 uses them.
+
 ## §U8.8 Spec Q5 (keys inside blocking loops): not needed by U8
 
 Every U8 input is in a per-frame loop: the MAIN/START menu keys and pads (mode
@@ -316,7 +375,7 @@ step. A unit that keys a blocking loop (the OPTIONS MENU, the quit prompt
 | the quit prompt (Esc in mode 3, `0x249F0(0)`), pause (Space) | key-loop keys outside the START MENU: U11 |
 | mid-match and character-select joins (`0x28CC8`, `0x43B4E`) | U7 |
 | mode `0x2F` | no store of `0x2F` found (§U8.2): not reached from a menu |
-| ENDURANCE's fight (modes `0x30`/`0x31`) | needs the team-select picks (decision D3; §U8.4) |
+| ENDURANCE's fight (modes `0x30`/`0x31`) | needs the team-select picks (decision D3; §U8.4). Re-baseline: D3 named U5 as the owner, but U5 merged without the team pass and its record (gameplay-u5 §C5.19) hands both the team pass `0x44798` and the ENDURANCE fight to U8: the gap has no assigned owner (for the controller) |
 | what a row's fight does past 300 frames | not captured (short captures, brief); `gp-idle-loss` covers the arcade match |
 
 ## §U8.A Scratch helpers (planner; not committed)

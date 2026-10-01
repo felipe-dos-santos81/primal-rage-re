@@ -20,11 +20,31 @@
 2. **D2 — The attract start (Tasks 4, 5, 6g).** It is the spec's "second way into a match" (gameplay spec §3.4), and the raw shows it skips the config decode `0x2D974(0x29)` that every START MENU row runs (record §U8.3), so its fight can differ from LEFT PLAYER ARCADE's. It needs a backward-compatible "pad arm" in three shared files (`tools/gp_session.py`, `tools/gp_capture.py`, `port/tests/test_game.c`). *Recommendation: include.* Cost: if deferred, drop Tasks 4, 5 and 6g and the `gp-u8-attract-start` row of `ROWS`; the second way into a match stays unverified (a named gap). If included and another unit changes the same driver lines first, the merge needs one manual resolution (Shared-file touch points).
 3. **D3 — ENDURANCE stops in its team select.** The team select `0x44798` has no time-out (record §U8.4: its only exit `0x4482A` needs both sides to pick four classes), so an idle walk never reaches the endurance fight. *Recommendation: end the scenario 300 frames into the team select and name the endurance fight as a gap for U5 (the character-select unit, which owns pick inputs).* Cost of the alternative (script eight picks here): deriving the `DS_001088E0/E2` command-word bits the team select reads, which U5 is planned to derive; a wrong pick script yields a capture that stalls in the select (the check below catches it, the capture is wasted).
 
+## Re-baseline (2026-10-01, main 8eaf25a)
+
+Written against `e9271df`; re-based onto `8eaf25a` (U5 `b09b9e6` and U6a merged). The user-approved decisions above are unchanged. Changes (task/step: old → new, source):
+
+1. **Task 3 Step 4 (the reference run and its mutation):** `GP_MODES_REF_MIN_FIRST=203`/`TRACE_MIN_FIRST=2088`, mutation `MIN_FIRST=204` → measured first (a `gp-replay … --end 2325` plus `gp_compare --report` block), then `1070`/`2326` (on `8eaf25a`) with two mutations, `MIN_FIRST=1071` (`frames: FAIL: first unexplained 1070 < ratchet N 1071`) and `TRACE_MIN_FIRST=2327` (`trace: FAIL: N 2327 > end 2326: N is unreachable`). Why: after U5's divergence-1 fix and U6a's ports the cut replay has no divergence, so its first unexplained frame is capture 1070, the frame after the port's last (port 817, `f = 0x915`), and the trace has no difference through 2325; by `gp_compare.ratchet` (`tools/gp_compare.py:258`) N fails iff N > first and, with no difference, F fails iff F > end, so N = 204 passed (`ratchet N 204 ok (improved: raise N)`, rc 0 — run on `8eaf25a`) and only N = j + 1 and F = end + 1 can fail. All values run on `8eaf25a` (record §U8.7 "re-baseline").
+2. **Task 6 Step 4 (the miss-set table):** the anchors `int idle_loss = 0, cut = 0;` and `if (!fnm_known(…, frontend, idle_loss)) {` → `int idle_loss = 0, charsel = 0, cut = 0;` and `…, frontend, idle_loss, charsel)) {` (`port/tests/test_platform.c:180`, `:195`), stated as "whatever flags and parameters the base has" (U6b `moves`, U11 `keys_fight`, U7 `twop` may come first). Re-verified in a scratch build.
+3. **Task 6 Step 3 (miss classification):** `0x23208`, `0x3A588`, `0x3640C` listed as unported → ported (and `0x37DCC`) by U6a (`port/src/game/actors.c` `fn_register`s, record gameplay-u6 §U6.21); `k_miss_gp_idle_loss` now holds only `0x29D60` and `0x5D812 frontend_mode_1b_step` (`test_platform.c:120–123`). The previews were re-run on `8eaf25a` (record §U8.3): row 1 newly misses `0x15510` (`anim_indirect`).
+4. **Task 6 Step 5 (triage):** "U4's divergence 1 (capture 203) or 2 (`0x23208`)" → the end of the port's replay, `gp-idle-loss`'s remaining gap (capture 2064, the round-1 KO scan-out, record §U6.21), or new; divergences 1, 2 and 2b do not occur on this base. Plus the exact-pin rule for `F`.
+5. **Task 0 Step 2–3 and the gate:** expected oracle lines → `gp-idle-loss` 2064/8320 (exact), `gp-u5-charsel` 516/1513, `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected` (run on `8eaf25a`), recorded as the base's own lines; the full `make verify` gate runs at Tasks 0, 7 and before merge, a per-task gate (own tests + `gp-modes-oracle` + `diff-verify`) elsewhere (the user's speed-up ruling); `port_progress.py` compared against Task 0's lines (`771 1203 64` / `731 731 100` on `8eaf25a`; U6b/U7 may change them).
+6. **Line anchors:** `gp_session.py` Task 2 insertion "after line 126 `gp-idle-loss-run2`" → before `def expand` (U5's `gp-u5-charsel` block now sits there, lines 140–148); `port_script` 216 → 238; `test_game.c` 12159/12164–12196/12363–12364 → 12192/12197–12229/12396–12397; `test_platform.c` `FNM_N` 161 → 166, driver 170–200 → 176–201; Makefile `gp-report` 462 → 494–496; the `verify` line goes after `gp-charsel-oracle` (line 546), U5's line after `gp-oracle`. Every replaced text in Tasks 4–5 was checked to exist verbatim on `8eaf25a`.
+7. **Task 5 Step 3:** the long pad-arm preview on `8eaf25a` misses only `0x29D60` and `0x5D812 frontend_mode_1b_step` (no longer `0x23208`, `0x3A588`); `3 != 2` and `3 != 39` unchanged.
+8. **Task 7 Step 1 and record §U8.9:** ENDURANCE's fight "(D3, U5)" → owner unassigned: U5 merged and hands the team pass and the ENDURANCE fight back to U8 (record gameplay-u5 §C5.19). D3 itself (stop in the team select) is unchanged.
+9. **Execution notes:** "run Task 6 after U5 when possible" → U5/U6a merged; U8 runs after U6b and U7 (dependencies listed).
+
+**Warnings for the implementer.**
+- `GP_IDLE_LOSS_TRACE_MIN_FIRST = 8320` is an **exact** pin (no traced difference through `f = 0x207F`; `gp_compare` fails 8321 as unreachable). U8 does not change the `gp-idle-loss` scenario or its replay; if anything in U8 does change that replay's script or end, re-measure and re-pin it, and never set the frame N (2064) below what the run measures. The same holds for every U8 `TRACE_MIN_FIRST` pinned as the replay end + 1 (Task 6 Step 5).
+- Every value Task 6 pins (N, F, window start, miss set) and Task 3 Step 4's `REF_N`/`REF_F` are measured on the base U8 actually runs on, after U6b (snapshot bytes: `SNAP_FIELDS` and the `T` line gain `r0 r1 c0 c1 s0_43`; `TRACE_FIELDS` unchanged; U6b's moves claim in `gp_compare.py` is opt-in, so `gp-modes-one` needs no new argument) and U7; the `8eaf25a` numbers here are references only.
+- `fnm_known`'s parameter list is the base's: U8 adds no parameter, only the scenario-table clause beside the call.
+- Not resolved here: the ENDURANCE/team-pass owner (item 8); the cause of the new row-1 miss `0x15510` (a preview, classified in Task 6a Step 3 if the capture's replay shows it).
+
 ## Global Constraints
 
 - AGENTS.md: "**Never ship a fitted constant.** Every value is derived from the raw bytes or a capture, with the address that proves it. A value that cannot be pinned is a **named gap with its evidence** — never a plausible-looking number." and "**On any plan-vs-raw conflict the raw wins.** Record the correction and the address, in the derivation record and the report."
 - Gameplay spec §5: "Harness values (`HOLD_FRAMES`, the 150-frame gaps, `time_limit`, the `[p − 2, p + 64)` search order, `GP_LOOP_SLACK`) are named as harness values with their source, never presented as game values." U8's harness values: the 60-frame gaps, the 4-frame hold, the 300-frame tail, each `time_limit` and its 6 s margin (record §U8.6).
-- AGENTS.md: "The byte-exact oracle lines are the regression gate and must not move; run `make verify` after any change that can affect rendering, timing or RNG." Common brief: the 45 oracle lines (`grep -E '^(oracle C-vs-Python|capture oracle|smk_compare|title_compare|attract_compare|== demo-fight)' <log>`) must equal `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`; the `make audio-render` WAV must be byte-identical to `before-t2.wav` (in the same directory); `python3 tools/port_progress.py` prints `771 1203 64` and `731 731 100` (U8 ports no function).
+- AGENTS.md: "The byte-exact oracle lines are the regression gate and must not move; run `make verify` after any change that can affect rendering, timing or RNG." Common brief: the 45 oracle lines (`grep -E '^(oracle C-vs-Python|capture oracle|smk_compare|title_compare|attract_compare|== demo-fight)' <log>`) must equal `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`; the `make audio-render` WAV must be byte-identical to `before-t2.wav` (in the same directory); `python3 tools/port_progress.py` prints the same two lines as at Task 0 (U8 ports no function; on main `8eaf25a` they are `771 1203 64` and `731 731 100`, and U6b/U7 merge before U8 and may change them: Task 0 records the base's lines and every later gate compares against those).
 - AGENTS.md: "Captures are git-ignored. `data/` is git-ignored and read-only — never write to it." U8 writes only `data/k11-captures/gp-u8-*` through `make gp-capture` (`gp_capture.guard_gp`). Gameplay spec §4.3 / brief: a gp capture skips in `make verify` when absent, even under `PR_ORACLE_REQUIRED`.
 - AGENTS.md: "Only `CHECK(cond,msg)` and `CHECK_EQ_INT(a,b)`." "**Assertions must be able to fail.** Seed sentinels that differ from the post-conditions, prove a new assertion fails under a mutation of the code it tests, and never assert an unseeded BSS-zero." Python tests are `unittest` in `tools/tests/` with `sys.path.insert(0, ROOT/tools)`.
 - AGENTS.md: "Every env-gated driver and `--check` run arms `fn_resolve`'s miss log and must record exactly the pinned known-set … A port that makes a driver reach a new unregistered code pointer fails it: register the target or pin the miss with its evidence."
@@ -60,7 +80,7 @@ Every command below runs from the worktree root with `S=/tmp/gameplay-u8`. The p
 V="SMK_DUMP=/tmp/pr_u8_smk TITLE_DUMP=/tmp/pr_u8_title ATTRACT_DUMP=/tmp/pr_u8_att FRONTEND_DUMP=/tmp/pr_u8_fe TITLE_PIN_DIR=/tmp/pr_u8_pin AUDIO_WAV=/tmp/pr_u8.wav K11_DUMP=/tmp/pr_u8_k11 GP_DUMP=/tmp/pr_u8_gp DIFF_IMAGE=/tmp/pr_u8_diffimg DIFF_TABLE=/tmp/pr_u8_diff.md"
 ```
 
-**The gate** (after every task; `<n>` the task): 
+**The gate** (the full gate: Task 0, Task 7 and before merge, per the user's 2026-10-01 speed-up ruling; `<n>` the task): 
 
 ```bash
 make verify $V > $S/t<n>_verify.txt 2>&1; echo "verify-exit=$?"
@@ -69,7 +89,9 @@ make audio-render AUDIO_WAV=/tmp/pr_u8.wav > /dev/null && cmp /tmp/pr_u8.wav .su
 python3 tools/port_progress.py
 ```
 
-Expected: `verify-exit=0`, `ORACLES-EQUAL`, `WAV-IDENTICAL`, `771 1203 64` and `731 731 100`.
+Expected: `verify-exit=0`, `ORACLES-EQUAL`, `WAV-IDENTICAL`, and the two `port_progress.py` lines Task 0 recorded (`771 1203 64` / `731 731 100` on `8eaf25a`).
+
+**The per-task gate** (Tasks 1–6g, the same ruling: the task's own tests + its oracle + diff-verify): the task's test commands as written in its steps; `python3 -m unittest tools.tests.test_gp_modes tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare` (from Task 1 on); `make gp-modes-oracle GP_DUMP=$S/gpo` (from Task 3 on; Tasks 5 and 6a–6g also `make gp-replay scenario=gp-pads GP_OPTIONAL=1 GP_DUMP=$S/gpr` and `make gp-oracle GP_DUMP=$S/gpi`, the Enter regression); `make diff-verify DIFF_IMAGE=/tmp/pr_u8_diffimg DIFF_TABLE=/tmp/pr_u8_diff.md` (on `8eaf25a`: `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`; U6b raises both, so expect Task 0's line); `python3 tools/port_progress.py` equal to Task 0's. Each must exit 0. Where a step below says "gate (`<n>` = …)" for Tasks 1–6g, it means this per-task gate.
 
 ## Shared-file touch points
 
@@ -77,12 +99,12 @@ All additive; each region is named so the controller can sequence merges with U5
 
 | file | region | what U8 adds |
 |---|---|---|
-| `tools/gp_session.py` | after `SCENARIOS['gp-idle-loss-run2'] = …` (line 126) | `_u8_menu()` and six `SCENARIOS['gp-u8-…']` entries (Task 2); `SCENARIOS['gp-u8-attract-start']` (Task 4) |
-| `tools/gp_session.py` | before `def port_script` (line 216); inside `port_script` (the `p27` lookup, the `--end` guard, the header lines) | `pad_arm()`; `port_script` takes the arm from `pad_arm` when the scenario has `arm='pad'` and writes `arm pad`; unchanged output for every other scenario (Task 4) |
+| `tools/gp_session.py` | immediately before `def expand(action):`, after the last `SCENARIOS[…]` block (on `8eaf25a`: U5's `SCENARIOS['gp-u5-charsel'] = …`, lines 140–148; `def expand` at line 151) | `_u8_menu()` and six `SCENARIOS['gp-u8-…']` entries (Task 2); `SCENARIOS['gp-u8-attract-start']` (Task 4) |
+| `tools/gp_session.py` | before `def port_script` (line 238 on `8eaf25a`); inside `port_script` (the `p27` lookup, the `--end` guard, the header lines) | `pad_arm()`; `port_script` takes the arm from `pad_arm` when the scenario has `arm='pad'` and writes `arm pad`; unchanged output for every other scenario (Task 4) |
 | `tools/gp_capture.py` | `run_checks` (lines 144–153) | the arm label/predicate for `arm='pad'` (`mode left 3 after the pad arm`); unchanged for Enter scenarios (Task 4) |
-| `port/tests/test_game.c` | the gp driver statics (line 12159), `gp_parse` (12164–12196), the arm checks (12363–12364) | `gp_arm_pad`, the `arm pad` line, the pad-arm parse and `mode_after` expectation (Task 5) |
-| `port/tests/test_platform.c` | after `#define FNM_N` (line 161); `test_fn_misslog_driver` (170–200) | `fnm_scen`, `k_miss_gp_scen[]` keyed by exact scenario name, one `k_miss_gp_u8_*[]` per scenario (Task 6a introduces it; 6b–6g add rows). U8 leaves `fnm_known` untouched and adds its test beside it. U5's plan (Task 5) adds `k_miss_gp_charsel` and a `charsel` parameter to `fnm_known` in the same function, and U5 Task 2 removes `0x3640C` from `k_miss_gp_idle_loss`: keep both units' tables and flags when merging. Because the driver's miss count is exact, a later merge that ports a function a U8 replay misses (U5's `0x3640C`, U6's callbacks) fails that U8 scenario until its set is re-measured (Task 6 Steps 3–4) — never hand-edit the numbers. |
-| `Makefile` | after the `gp-report` recipe (line 462); in `verify` after `@$(MAKE) --no-print-directory gp-oracle` (line 511) | `GP_MODES_*` variables, its own `.PHONY: gp-modes-oracle gp-modes-one` line (the shared `.PHONY` list is not edited), the two targets (Task 3); one `verify` line (Task 3); the pinned `GP_MODES_<ID>_*` and `GP_MODES_SCENARIOS` entries (Tasks 6a–6g). Other units add their own `verify` line at the same place: a one-line merge conflict to resolve by keeping both. |
+| `port/tests/test_game.c` | the gp driver statics (line 12192 on `8eaf25a`), `gp_parse` (12197–12229), the arm checks in `test_gp_replay` (12396–12397) | `gp_arm_pad`, the `arm pad` line, the pad-arm parse and `mode_after` expectation (Task 5) |
+| `port/tests/test_platform.c` | after `#define FNM_N` (line 166 on `8eaf25a`); `test_fn_misslog_driver` (176–201) | `fnm_scen`, `k_miss_gp_scen[]` keyed by exact scenario name, one `k_miss_gp_u8_*[]` per scenario (Task 6a introduces it; 6b–6g add rows). U8 leaves `fnm_known` and its parameter list untouched and adds its own test beside the call. On `8eaf25a` `fnm_known` has five parameters (`addr, ctx, frontend, idle_loss, charsel`: U5 merged `k_miss_gp_charsel` and the `charsel` flag; U5 and U6a removed `0x3640C`, `0x23208` and `0x3A588` from `k_miss_gp_idle_loss`, which now holds only `0x29D60` and `0x5D812 frontend_mode_1b_step`). U6b (`moves`), U11 (`keys_fight`) and U7 (`twop`, in the driver) may add flags before U8 runs: keep every unit's tables and flags when merging. Because the driver's miss count is exact, a later merge that ports a function a U8 replay misses fails that U8 scenario until its set is re-measured (Task 6 Steps 3–4) — never hand-edit the numbers. |
+| `Makefile` | after the `gp-report` recipe (lines 494–496 on `8eaf25a`); in `verify` after the last gameplay-oracle line (on `8eaf25a`: `@$(MAKE) --no-print-directory gp-charsel-oracle`, line 546) | `GP_MODES_*` variables, its own `.PHONY: gp-modes-oracle gp-modes-one` line (the shared `.PHONY` list is not edited), the two targets (Task 3); one `verify` line (Task 3); the pinned `GP_MODES_<ID>_*` and `GP_MODES_SCENARIOS` entries (Tasks 6a–6g). Other units add their own `verify` line at the same place: a one-line merge conflict to resolve by keeping both. |
 | `docs/PROGRESS.md` | end of file | one paragraph (Task 7) |
 | `AGENTS.md` | the gameplay-oracle paragraph | one sentence naming `make gp-modes-oracle` (Task 7) |
 | new files | — | `tools/gp_modes.py`, `tools/tests/test_gp_modes.py` |
@@ -95,8 +117,8 @@ All additive; each region is named so the controller can sequence merges with U5
 - Modify: `docs/superpowers/plans/2026-10-01-gameplay-u8-derivations.md` (append §U8.10)
 
 - [ ] **Step 1: Setup** — run the "Where to run" block; `make build`.
-- [ ] **Step 2: Baseline gate** — run the gate with `<n>` = 0. Expected: `verify-exit=0`, `ORACLES-EQUAL`, `WAV-IDENTICAL`, `771 1203 64`, `731 731 100`; the `gp_compare: gp-idle-loss` ratchet lines `ok` (the capture is in the main checkout's `data/`).
-- [ ] **Step 3: Record** — append `## §U8.10 Baseline (Task 0)` with the commit (`git rev-parse HEAD`), the four gate results and `grep -c . $S/t0_verify.txt`.
+- [ ] **Step 2: Baseline gate** — run the full gate with `<n>` = 0. Expected: `verify-exit=0`, `ORACLES-EQUAL`, `WAV-IDENTICAL`, the two `port_progress.py` lines (`771 1203 64`, `731 731 100` on `8eaf25a`); the `gp_compare: gp-idle-loss` and `gp_compare: gp-u5-charsel` ratchet lines `ok` (the captures are in the main checkout's `data/`). On `8eaf25a` they read `first unexplained 2064, ratchet N 2064 ok`, `0 differing through 8319; ratchet N 8320 ok` (Makefile `GP_IDLE_LOSS_*`, record gameplay-u6 §U6.21), `first unexplained 516, ratchet N 516 ok`, `0 differing through 1512; ratchet N 1513 ok` (`GP_CHARSEL_*`, record gameplay-u5 §C5.18), and `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`; U6b and U7 merge before U8 and may move every one of these, so the base's own lines are what Step 3 records and later gates compare against.
+- [ ] **Step 3: Record** — append `## §U8.10 Baseline (Task 0)` with the commit (`git rev-parse HEAD`), the four gate results, the `gp_compare` ratchet lines, the `diff-verify:` line, `fnm_known`'s parameter list on this base (`grep -n 'static int fnm_known' port/tests/test_platform.c`) and `grep -c . $S/t0_verify.txt`.
 - [ ] **Step 4: Commit**
 
 ```bash
@@ -109,7 +131,7 @@ EOF
 )"
 ```
 
-(If the record is not yet on the branch, copy it from the planning worktree `.worktrees/reverse-plans/docs/superpowers/plans/2026-10-01-gameplay-u8-derivations.md` first and stage it with the plan file in this commit.)
+(The plan and the record are on `main` since `8eaf25a`'s history; branch from a `main` that holds this re-baselined version.)
 
 ---
 
@@ -454,7 +476,7 @@ EOF
 ### Task 2: The six START MENU row scenarios
 
 **Files:**
-- Modify: `tools/gp_session.py` (after line 126, `SCENARIOS['gp-idle-loss-run2'] = …`)
+- Modify: `tools/gp_session.py` (immediately before `def expand(action):`; on `8eaf25a` after U5's `SCENARIOS['gp-u5-charsel']` block, which ends at line 148)
 - Modify: `tools/tests/test_gp_modes.py` (append `TestScenarios` before the `if __name__` block)
 - Modify: record (append §U8.12)
 
@@ -497,7 +519,7 @@ class TestScenarios(unittest.TestCase):
 Run: `python3 -m unittest tools.tests.test_gp_modes -v`
 Expected: `KeyError: 'gp-u8-right-arcade'` (and `'gp-u8-tug-of-war'`).
 
-- [ ] **Step 3: Implement** — insert after the `SCENARIOS['gp-idle-loss-run2'] = …` line (keep its two following blank lines before `def expand`):
+- [ ] **Step 3: Implement** — insert immediately before `def expand(action):`, after the last `SCENARIOS[…]` block (on `8eaf25a` that is U5's `SCENARIOS['gp-u5-charsel'] = dict(…)`, lines 140–148; U6b/U7/U11 may add theirs first), with two blank lines on each side:
 
 ```python
 # Gameplay U8 (plan 2026-10-01-gameplay-u8-other-modes.md, record
@@ -554,7 +576,7 @@ EOF
 ### Task 3: `make gp-modes-oracle` in `make verify`, proved on the U4 capture
 
 **Files:**
-- Modify: `Makefile` (after the `gp-report` recipe, line 462; `verify`, after line 511)
+- Modify: `Makefile` (after the `gp-report` recipe, lines 494–496 on `8eaf25a`; `verify`, after the last gameplay-oracle line, line 546 on `8eaf25a`)
 - Modify: record (append §U8.13)
 
 **Interfaces:**
@@ -604,7 +626,7 @@ gp-modes-one: build
 	fi
 ```
 
-and in `verify`, after `@$(MAKE) --no-print-directory gp-oracle`:
+and in `verify`, after the last gameplay-oracle line (on `8eaf25a`: `@$(MAKE) --no-print-directory gp-charsel-oracle`, which U5 added after `gp-oracle`; keep any line U6b/U7/U11 added there):
 
 ```make
 	@$(MAKE) --no-print-directory gp-modes-oracle
@@ -619,21 +641,34 @@ PR_ORACLE_REQUIRED=1 make gp-modes-oracle GP_DUMP=$S/gpo GP_MODES_SCENARIOS="RA:
 
 Expected: the unit tests `OK`, `exit=0`; then `gp-modes-oracle: no capture at data/k11-captures/gp-u8-right-arcade, skipped`, `exit=0`.
 
-- [ ] **Step 4: The whole path on real data** — `gp-idle-loss` as a reference row, cut where a row scenario ends (`f = 0x7F5 + 300 = 2325`), with U4's pins (Makefile `GP_IDLE_LOSS_*`). Nothing of this is committed; it proves the target before any U8 capture exists:
+- [ ] **Step 4: The whole path on real data** — `gp-idle-loss` as a reference row, cut where a row scenario ends (`f = 0x7F5 + 300 = 2325`), with the cut replay's own pins (the Makefile's `GP_IDLE_LOSS_*` 2064/8320 belong to the full replay to `f = 0x207F` and cannot be used on a cut: an N past the cut's end is unreachable). Nothing of this is committed; it proves the target before any U8 capture exists. The values `REF_N = 1070` and `REF_F = 2326` were measured on `8eaf25a` (re-baseline, record §U8.7); U6b and U7 merge before U8, so first measure them on this base — the replay as `gp-modes-one` runs it, then the report:
 
 ```bash
+rm -rf $S/gpm; make gp-replay scenario=gp-idle-loss GP_OPTIONAL=1 GP_SCRIPT_ARGS="--end 2325" GP_DUMP=$S/gpm 2>&1 | grep -E 'fn-miss PR_GP_DUMP distinct|all checks|FAIL'
+python3 tools/gp_compare.py --report --scenario gp-idle-loss --capture data/k11-captures/gp-idle-loss --port $S/gpm/gp-idle-loss \
+  | grep -E 'window|FIRST UNEXPLAINED|first difference|differing through'; tail -1 $S/gpm/gp-idle-loss/frames.txt; rm -rf $S/gpm
+```
+
+`REF_N` = the `FIRST UNEXPLAINED capture <j>` value; `REF_F` = the `0 differing through <e>` value + 1 (the exact pin, `gp_compare.ratchet`: with no difference, any N ≤ end passes and N = end + 1 fails as unreachable), or, if a `first difference f=<hex> (<F>)` line is printed, that `F`. On `8eaf25a` (re-baseline run): `fn-miss PR_GP_DUMP distinct=4 dropped=0`, `all checks passed`; `window from capture 90 (raw 1744)`; `FIRST UNEXPLAINED capture 1070 (raw 4182): nearest port 817, rows 121..199`; `0 differing through 2325`; `00817 f=0915 tick=00000973 mode=0006`. Port 817 (`f = 0x915` = 2325) is the replay's last frame, so capture 1070 is how far the cut replay got, not a divergence. If `j` is below 1070 or a trace difference appears, the base has a divergence before `f = 0x915` that `make gp-oracle` must also show: stop and report it. Then, with `REF_N`/`REF_F` as measured:
+
+```bash
+REF_N=1070; REF_F=2326     # as measured above
 make gp-modes-oracle GP_DUMP=$S/gpo GP_MODES_KEEP=1 GP_MODES_SCENARIOS="REF:gp-idle-loss" \
-  GP_MODES_REF_END=2325 GP_MODES_REF_MIN_FIRST=203 GP_MODES_REF_TRACE_MIN_FIRST=2088 GP_MODES_REF_MAX_START=90 \
+  GP_MODES_REF_END=2325 GP_MODES_REF_MIN_FIRST=$REF_N GP_MODES_REF_TRACE_MIN_FIRST=$REF_F GP_MODES_REF_MAX_START=90 \
   GP_MODES_REF_CAPTURE_SHA256=773e264731ea83a23623c6ec6cc5547165628d8adcf96f5a7c99c1c2b88c8447 \
   GP_MODES_REF_CAPTURE_FRAMES=8173 > $S/t3_ref.txt 2>&1; echo "exit=$?"
 grep -E 'gp_modes|gp_compare|all checks|FAIL' $S/t3_ref.txt; du -sh $S/gpo/gp-idle-loss
-make gp-modes-oracle GP_DUMP=$S/gpo GP_MODES_SCENARIOS="REF:gp-idle-loss" GP_MODES_REF_END=2325 \
-  GP_MODES_REF_MIN_FIRST=204 GP_MODES_REF_TRACE_MIN_FIRST=2088 GP_MODES_REF_MAX_START=90 \
+make gp-modes-oracle GP_DUMP=$S/gpo GP_MODES_SCENARIOS="REF:gp-idle-loss" \
+  GP_MODES_REF_END=2325 GP_MODES_REF_MIN_FIRST=$((REF_N + 1)) GP_MODES_REF_TRACE_MIN_FIRST=$REF_F GP_MODES_REF_MAX_START=90 \
   GP_MODES_REF_CAPTURE_SHA256=773e264731ea83a23623c6ec6cc5547165628d8adcf96f5a7c99c1c2b88c8447 \
-  GP_MODES_REF_CAPTURE_FRAMES=8173 > $S/t3_ref_fail.txt 2>&1; echo "exit=$?"; grep FAIL $S/t3_ref_fail.txt; ls $S/gpo
+  GP_MODES_REF_CAPTURE_FRAMES=8173 > $S/t3_ref_fail.txt 2>&1; echo "exit=$?"; grep FAIL $S/t3_ref_fail.txt
+make gp-modes-oracle GP_DUMP=$S/gpo GP_MODES_SCENARIOS="REF:gp-idle-loss" \
+  GP_MODES_REF_END=2325 GP_MODES_REF_MIN_FIRST=$REF_N GP_MODES_REF_TRACE_MIN_FIRST=$((REF_F + 1)) GP_MODES_REF_MAX_START=90 \
+  GP_MODES_REF_CAPTURE_SHA256=773e264731ea83a23623c6ec6cc5547165628d8adcf96f5a7c99c1c2b88c8447 \
+  GP_MODES_REF_CAPTURE_FRAMES=8173 > $S/t3_ref_fail2.txt 2>&1; echo "exit=$?"; grep FAIL $S/t3_ref_fail2.txt; ls $S/gpo
 ```
 
-Expected (planner run, 42 s): `exit=0`; the eight `gp_modes: gp-idle-loss: … ok` lines; `all checks passed`; `gp_compare: gp-idle-loss: capture: poll.log sha256 773e2647..8c8447, 8173 frames: matches the pin`; `frames: window from capture 90 (raw 1744)`; `FIRST UNEXPLAINED capture 203 (raw 2359)`; `ratchet N 203 ok`; `trace: first difference f=828 (2088) in rng`; `ratchet N 2088 ok`; dump ≈ 52 MB. The second run: `FAIL: first unexplained 203 < ratchet N 204`, `exit=2`, and `ls $S/gpo` shows only `gp-idle-loss.script` (the dump is removed without `GP_MODES_KEEP`).
+Expected (planner run on `e9271df` 42 s per run; the values re-measured on `8eaf25a`): `exit=0`; the eight `gp_modes: gp-idle-loss: … ok` lines; `all checks passed`; `gp_compare: gp-idle-loss: capture: poll.log sha256 773e2647..8c8447, 8173 frames: matches the pin`; `frames: window from capture 90 (raw 1744)`; `FIRST UNEXPLAINED capture 1070 (raw 4182)`; `first unexplained 1070, ratchet N 1070 ok`; `trace: 0 differing through 2325; ratchet N 2326 ok`; dump ≈ 52 MB. The second run: `frames: FAIL: first unexplained 1070 < ratchet N 1071`, `exit=2`; the third: `trace: FAIL: N 2327 > end 2326: N is unreachable`, `exit=2`; and `ls $S/gpo` shows only `gp-idle-loss.script` (the dump is removed without `GP_MODES_KEEP`). Both mutations sit exactly one above the measured values, so each can fail only if the ratchet compares against the measured first frame and the replay's end. The planner's original mutation (`MIN_FIRST=204` over `203`) passes trivially on any base holding U5: there the cut replay's first unexplained frame is 1070, and `gp_compare.ratchet` prints `ratchet N 204 ok (improved: raise N)`, exit 0 (re-baseline run on `8eaf25a`).
 
 - [ ] **Step 5: Record, gate, commit** — §U8.13: the three outputs. Gate (`<n>` = 3): additionally `grep -E '^== gameplay U8' $S/t3_verify.txt` shows the banner and the unit tests ran.
 
@@ -864,7 +899,7 @@ EOF
 ### Task 5 (D2): The `PR_GP_DUMP` driver accepts the pad arm
 
 **Files:**
-- Modify: `port/tests/test_game.c` (gp driver: statics at line 12159, `gp_parse` 12164–12196, the arm checks 12363–12364)
+- Modify: `port/tests/test_game.c` (gp driver: statics at line 12192, `gp_parse` 12197–12229, the arm checks in `test_gp_replay` 12396–12397, all on `8eaf25a`; the K11 driver's look-alike `mode_before`/`mode_after` checks at 12162–12163 differ in whitespace and are not touched)
 - Modify: record (append §U8.15)
 
 **Interfaces:**
@@ -940,9 +975,9 @@ awk '{print $2, $3, $15, $18}' $S/arm_long/trace.txt | awk '{m=$2; if (m!=p) pri
 make gp-replay scenario=gp-pads GP_DUMP=$S/gpr 2>&1 | tail -1
 ```
 
-Expected: the driver's own checks pass; the only `FAIL` lines are the miss-log ones (`test_platform.c`: `unexpected 0x29D60 from frontend_mode_1b_step` …), because `gp-u8-attract-start` has no pinned set until Task 6g (to `f = 400` the miss log holds the base pair and `0x29D60`, so the count line reads `3 != 2`). The long preview (planner run): `f=0140 mode=0003 cred=00000005 b1f=00`, `f=0141 mode=001A cred=00000004 b1f=01`, `f=0153 mode=001B`, `f=0165 mode=0010`; `gp-pads`: `all checks passed`.
+Expected: the driver's own checks pass; the only `FAIL` lines are the miss-log ones (`test_platform.c`: `unexpected 0x29D60 from frontend_mode_1b_step` …), because `gp-u8-attract-start` has no pinned set until Task 6g (to `f = 400` the miss log holds the base pair and `0x29D60`, so the count line reads `3 != 2`). The long preview (planner run, and the re-baseline run on `8eaf25a`): `f=0140 mode=0003 cred=00000005 b1f=00`, `f=0141 mode=001A cred=00000004 b1f=01`, `f=0153 mode=001B`, `f=0165 mode=0010`; on `8eaf25a` it reaches mode 6 at `f=06B5` and misses, beyond the base pair, only `0x29D60` and `0x5D812` (both `frontend_mode_1b_step`; `0x23208` and `0x3A588`, which the `e9271df` preview missed, are ported by U6a); `gp-pads`: `all checks passed`. (Step 1's unmodified driver also prints the miss-count line `test_platform.c:193: 0 != 2`: the parse fails before `game_init`.)
 
-- [ ] **Step 4: Mutation proof** — `CHECK_EQ_INT((int)mode_after, gp_arm_pad ? 3 : 0x27);` → `CHECK_EQ_INT((int)mode_after, 0x27);`, rebuild, rerun `$S/arm.script`: `FAIL …test_game.c:<line>: 3 != 39` (planner run). Restore, rebuild.
+- [ ] **Step 4: Mutation proof** — `CHECK_EQ_INT((int)mode_after, gp_arm_pad ? 3 : 0x27);` → `CHECK_EQ_INT((int)mode_after, 0x27);`, rebuild, rerun `$S/arm.script`: `FAIL …test_game.c:<line>: 3 != 39` (planner run; re-baseline run on `8eaf25a` with `$S/arm_long.script`: `test_game.c:12404: 3 != 39`). Restore, rebuild.
 
 - [ ] **Step 5: Record, gate, commit** — §U8.15: the outputs; gate (`<n>` = 5; the `gp-pads` and `gp-idle-loss` replays inside `make verify` are the Enter regression).
 
@@ -1011,7 +1046,7 @@ PR_GP_DUMP=$S/gp/$SC PR_GP_SCRIPT=$S/gp/$SC.script PR_GAME_DIR=data/game/C ./bui
   | tee $S/replay_$SC.txt | grep -E 'fn-miss|FAIL|all checks|stalled|fault'
 ```
 
-Expected: no driver FAIL other than the miss log's (`unexpected 0x… from …` and the count line): the scenario has no pinned set yet. Each `fn-miss PR_GP_DUMP 0x<addr> <ctx> hits=<n>` beyond the base pair (`0x5D812 actor_spawn`, `0x5D812 set_dead`) is a pair to pin; classify each from the raw in the record (the known ones, record §G.24: `0x29D60` a bare `ret`; `0x5D812` the runtime's `xor eax,eax; ret` stub; `0x23208`, `0x3A588`, `0x3640C` unported callbacks on U0 §U0.12's lists; anything else: disassemble the target with `img.py` (record §U8.A) and name it — an unported callback is named with its table and owner, never registered here). Planner previews (record §U8.3) saw, besides those, `0x14EF8` and `0x14F50` (`hit_reaction_apply`) in row 1.
+Expected: no driver FAIL other than the miss log's (`unexpected 0x… from …` and the count line): the scenario has no pinned set yet. Each `fn-miss PR_GP_DUMP 0x<addr> <ctx> hits=<n>` beyond the base pair (`0x5D812 actor_spawn`, `0x5D812 set_dead`) is a pair to pin; classify each from the raw in the record (the known ones, record §G.24: `0x29D60` a bare `ret`; `0x5D812` the runtime's `xor eax,eax; ret` stub; anything else: disassemble the target with `img.py` (record §U8.A) and name it — an unported callback is named with its table and owner, never registered here). `0x23208`, `0x3A588`, `0x3640C` and `0x37DCC` are ported on `8eaf25a` (U6a, record gameplay-u6 §U6.21) and U6b ports further callbacks before U8 runs: a miss of a registered address cannot occur, so a replay listing one is running a stale build. Re-baseline previews on `8eaf25a` (record §U8.3, hand-built scripts to `f = 2900`): rows 2, 3, 4 and 6 and the attract start miss only `0x29D60` and `0x5D812 frontend_mode_1b_step` beyond the base pair, row 5 (ENDURANCE, in the team select to the end) only `0x29D60`; row 1 also `0x14EF8` and `0x14F50` (`hit_reaction_apply`, 4 hits each) and `0x15510` (`anim_indirect`, 1 hit; not in the `e9271df` preview, cause not isolated). The pinned set is what Step 3 prints on the merged base, never these previews.
 
 **Branch — stall or fault** (`stalled at f=…`, `fault …`, or `the gp script ran to its end frame` FAIL): as U4 Task 4: record the last `T` line of `$S/gp/$SC/trace.txt`; `F` = its `f`; regenerate the script with `--end F` and continue with it; Step 6 then also pins `GP_MODES_<ID>_END = <F>` with the evidence.
 
@@ -1039,12 +1074,14 @@ static const fnm_scen *fnm_scen_find(const char *name)
 }
 ```
 
-and in `test_fn_misslog_driver` (planner-verified with an attract-start row): after `int idle_loss = 0, cut = 0;` add `const fnm_scen *scen = NULL;`; after `idle_loss = strncmp(sc, "gp-idle-loss", 12) == 0;` add `scen = fnm_scen_find(sc);`; extend `want` with `+ (scen != NULL ? scen->n : 0u)`; and replace `if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss)) {` with
+and in `test_fn_misslog_driver` (planner-verified with an attract-start row; re-verified on `8eaf25a`, see below): after the flags' declaration line (on `8eaf25a`: `int idle_loss = 0, charsel = 0, cut = 0;`; U6b/U7/U11 may have added flags to it) add `const fnm_scen *scen = NULL;`; after `idle_loss = strncmp(sc, "gp-idle-loss", 12) == 0;` (and any flag lines that follow it, on `8eaf25a` `charsel = strcmp(sc, "gp-u5-charsel") == 0;`) add `scen = fnm_scen_find(sc);`; extend `want`'s last term (on `8eaf25a`: `(charsel ? (u32)FNM_N(k_miss_gp_charsel) : 0u);`) with `+ (scen != NULL ? scen->n : 0u)`; and append the scenario-table clause to the loop's `if (!fnm_known(...)) {` condition, keeping `fnm_known`'s argument list as the base has it (five arguments on `8eaf25a`; U6b, U11 may add one each). On `8eaf25a` that is: replace `if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss, charsel)) {` with
 
 ```c
-        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss)
+        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss, charsel)
             && !(scen != NULL && fnm_in(scen->t, scen->n, fn_misslog_addr(i), fn_misslog_ctx(i)))) {
 ```
+
+(Re-baseline check on `8eaf25a`, a scratch copy of `port/` with Task 5's edits, these edits and a `gp-u8-attract-start` row of `0x29D60`/`0x5D812 frontend_mode_1b_step`: the `end 2600` pad-arm replay `distinct=4`, `all checks passed`; with the `0x5D812` row deleted `test_platform.c:214: 4 != 3` and `unexpected 0x5D812 from frontend_mode_1b_step`; the unit suite `all checks passed`.)
 
 **6b–6g** — add `static const fnm_pair k_miss_gp_u8_<name>[] = { … };` above `fnm_scen` and one `{ "<SC>", k_miss_gp_u8_<name>, (u32)FNM_N(k_miss_gp_u8_<name>) },` row to `k_miss_gp_scen[]`. A scenario whose replay misses nothing beyond the base pair gets no row (C has no empty arrays; "a scenario with no entry here may miss only the base pair").
 
@@ -1059,7 +1096,7 @@ python3 tools/gp_compare.py --report --scenario $SC --capture data/k11-captures/
 shasum -a 256 data/k11-captures/$SC/poll.log; ls data/k11-captures/$SC/frame_*.raw.gz | wc -l
 ```
 
-Record verbatim: the window start `w` (`window from capture <w>`), the first unexplained capture frame `j` (with its raw and nearest port frame), the first differing trace `f` (decimal `F`, field, values), the first tick difference, the sha256 and the frame count. Triage the first unexplained frame and the first trace difference exactly as U4 Task 4 Steps 2–3 (the PNG pair from `gp_compare.load_capture_frame`/`load_port_frame`; the `poll.log` and `trace.txt` lines at `F`; whether it is U4's divergence 1 (the character select's pick countdown, record §G.20, capture frame 203 there) or 2 (`0x23208`), or new). A new divergence is named with its evidence and an owner (U5 character select, U6 moves, U7 two players, or this unit's named gaps); none is fixed here. When the trace never differs, `F` = the port's last `T` `f` + 1 (U4's rule). U8 takes one capture per scenario, so `F` has no run-to-run bound; U4's two runs agreed at every `f` from `0x625` (§G.19) — record that as the determinism evidence and its limit.
+Record verbatim: the window start `w` (`window from capture <w>`), the first unexplained capture frame `j` (with its raw and nearest port frame), the first differing trace `f` (decimal `F`, field, values), the first tick difference, the sha256 and the frame count. Triage the first unexplained frame and the first trace difference exactly as U4 Task 4 Steps 2–3 (the PNG pair from `gp_compare.load_capture_frame`/`load_port_frame`; the `poll.log` and `trace.txt` lines at `F`; whether it is the end of the port's replay (the capture frame after the port's last frame, nearest port = the last `.ipx`: how far the port got, not a divergence — as `GP_CHARSEL_MIN_FIRST = 516` and Task 3 Step 4's 1070), `gp-idle-loss`'s remaining frame gap (the three-frame scan-out at the round-1 KO, capture 2064 at `f = 0xC71`..`0xC75`, a named gap in record gameplay-u6 §U6.21 and the Makefile's `GP_IDLE_LOSS_MIN_FIRST` comment), or new. U4's divergences 1 (the pick countdown, §G.20; fixed by U5's `0x37B03` operand fix, record gameplay-u5 §C5.12) and 2 (`0x23208`; ported by U6a) and §U6.8's divergence 2b (`f = 0x871`, absent on `8eaf25a`, §U6.21) are not expected on this base. A new divergence is named with its evidence and an owner (U6 moves, U7 two players, U11 in-match keys, or this unit's named gaps); none is fixed here. When the trace never differs, `F` = the port's last `T` `f` + 1 (U4's rule): that is the exact pin (`gp_compare.ratchet` fails `F + 1` as "N is unreachable"), so a later change that shortens the replay's end (a re-capture, a new `--end`) fails it and must re-measure and re-pin it from the new run, never set a value below what it measures. U8 takes one capture per scenario, so `F` has no run-to-run bound; U4's two runs agreed at every `f` from `0x625` (§G.19) — record that as the determinism evidence and its limit.
 
 - [ ] **Step 6: Pin** — in the Makefile, before `GP_MODES_SCENARIOS =`, one block per scenario:
 
@@ -1108,7 +1145,7 @@ EOF
 **Files:**
 - Modify: record (append §U8.23 closure and named gaps); `docs/PROGRESS.md` (append); `AGENTS.md` (one sentence)
 
-- [ ] **Step 1: Record** — §U8.23: the table of scenarios (capture MB, frames, `w`, `j`, `F`, the first divergence and its owner), the D1 estimate against the measured total, the answers to spec Q5 (record §U8.8) and the credits question (§U8.2), the narrow claim (AGENTS.md's gameplay-oracle text with U8's values), and the named gaps: every row of §U8.9, every mode a capture reached past its N and F as "not covered", ENDURANCE's fight (D3, U5), the attract start's config-decode difference if its trace shows it, and any scenario left unlisted with its evidence.
+- [ ] **Step 1: Record** — §U8.23: the table of scenarios (capture MB, frames, `w`, `j`, `F`, the first divergence and its owner), the D1 estimate against the measured total, the answers to spec Q5 (record §U8.8) and the credits question (§U8.2), the narrow claim (AGENTS.md's gameplay-oracle text with U8's values), and the named gaps: every row of §U8.9, every mode a capture reached past its N and F as "not covered", ENDURANCE's fight and the team pass `0x44798` (D3; owner unassigned: D3 named U5, but U5 merged without them and its record gameplay-u5 §C5.19 hands both to U8 — record that circular hand-off as is and leave the owner to the controller), the attract start's config-decode difference if its trace shows it, and any scenario left unlisted with its evidence.
 - [ ] **Step 2: PROGRESS and AGENTS** — append a `docs/PROGRESS.md` paragraph "Gameplay U8: the other START MENU rows and the attract start …" (scenarios, sizes, pins, first divergences, named gaps). In `AGENTS.md`'s gameplay-oracle paragraph add: "`make gp-modes-oracle` (in `make verify`) applies the same two ratchets to the U8 captures `data/k11-captures/gp-u8-*` (the other START MENU rows and the attract start), each with `GP_MODES_<ID>_*` values and provenance in the Makefile and an evidence check (`tools/gp_modes.py`) that the capture reached its row; each skips without its capture."
 - [ ] **Step 3: Final gate and commit** — gate (`<n>` = 7); `grep -E 'gp_compare: gp-u8' $S/t7_verify.txt` shows every pinned scenario's two `ratchet … ok` lines.
 
@@ -1126,8 +1163,10 @@ EOF
 
 ## Execution notes
 
-- **Order:** 0 → 1 → 2 → 3 (no decision needed) → 4 → 5 (D2) → D1 → 6a 6b 6c 6d 6e 6f (6g after 4–5) → 7. **Run Task 6 on a base that already holds U5's merge when possible:** U5 changes the character select every U8 row passes through (its divergence-1 fix and the `0x3640C` registration), so U8's N values and miss sets measured before it would need re-measuring after it (an improved N still passes, a changed miss set fails). 6a must precede the others (it lands the miss-set table). If another unit has already merged a per-scenario miss-set table into `test_platform.c`, 6a adds its row to that table instead of creating `k_miss_gp_scen`.
+- **Order:** 0 → 1 → 2 → 3 (no decision needed) → 4 → 5 (D2) → D1 → 6a 6b 6c 6d 6e 6f (6g after 4–5) → 7. U5 and U6a are merged (`8eaf25a`) and U8 runs after U6b and U7, so every Task 6 value (N, F, window start, miss set) is measured on that merged base in its own sub-task, never taken from the previews. 6a must precede the others (it lands the miss-set table). If another unit has already merged a per-scenario miss-set table into `test_platform.c`, 6a adds its row to that table instead of creating `k_miss_gp_scen` (on `8eaf25a` none has: U5 used a `charsel` flag; U6b, U7 and U11 plan flags too).
+- **Dependencies on units that merge before U8** (each re-checked at Task 0): U6b appends five bytes to `SNAP_FIELDS` and the port's `T` line (`r0 r1 c0 c1 s0_43`, its Task 1) — Task 1's `_s` helper builds every field from `gs.SNAP_FIELDS`, `TRACE_FIELDS` is unchanged, and U6b's moves claim in `gp_compare.py` runs only with `--moves-min-first` (or in `--report` when the capture has the fields), so `gp-modes-one` is unaffected and a `--report` in Task 6 Step 5 may print an extra, unratcheted moves line; U6b/U11 add `fnm_known` parameters and U7 a driver flag (Task 6 Step 4's anchors say how to keep them); U6b ports further callbacks, which can only shrink a replay's miss set.
 - **Model tiers:** Tasks 0–3 and 7: a standard model (mechanical, code given). Tasks 4–5: standard, with the reviewer checking backward compatibility (Review Focus 3). Tasks 6a–6g: the strongest model available (captures, triage and classification of misses and divergences need judgement under the evidence rules).
 - **Time:** each capture is its `time_limit` (46–69 s) plus encoding; each replay ≈ 40–50 s; `make verify` grows by ≈ 42 s per pinned scenario (record §U8.6–§U8.7).
-- **Gate:** every task ends with the gate block (verify-exit 0, ORACLES-EQUAL, WAV-IDENTICAL, `771 1203 64` / `731 731 100`); a sub-task that cannot pin (a FAIL in Step 1 or 2) still commits its record section and leaves its scenario unlisted.
+- **Gate:** Tasks 0 and 7 (and the pre-merge check) end with the full gate block (verify-exit 0, ORACLES-EQUAL, WAV-IDENTICAL, the `port_progress.py` lines of Task 0); Tasks 1–6g with the per-task gate ("Where to run"); a sub-task that cannot pin (a FAIL in Step 1 or 2) still commits its record section and leaves its scenario unlisted.
+- **What the re-baseline ran on `8eaf25a`** (record §U8.3, §U8.7 "re-baseline"): Tasks 1, 2 and 4's code blocks extracted from this plan into a scratch copy of `tools/` (`test_gp_modes` 9, then 16 tests `OK`; with `test_gp_session`, `test_gp_capture`, `test_gp_compare` 83 tests `OK`; the Task 1 CLI's eight `ok` lines and seven `FAIL` lines; the `gp-pads` and the cut `gp-idle-loss` port scripts byte-identical before and after Task 4); Task 5's and Task 6a's C edits in a scratch copy of `port/` (the Step 1 parse failure, `3 != 2`, the long preview, `gp-pads` `all checks passed`, the `3 != 39` and dropped-pair mutations, the unit suite `all checks passed`); Task 3 Step 4's measurement block, its three ratchet values and both mutations through `gp_compare.py` directly (the Makefile targets do not exist before Task 3; the replay half is `make gp-replay … GP_SCRIPT_ARGS="--end 2325"`, which was run); `make diff-verify`; the six row previews.
 - **What the planner ran** (record §U8.0–§U8.7): every code block in Tasks 1–5 and the Task 6a miss-set mechanism, in a scratch copy of `e9271df`: the 16 `test_gp_modes` tests, the U1–U4 tool suites, the seven mutations, the empty/skip/reference runs of `gp-modes-oracle`, the pad-arm driver run, its mutation (`3 != 39`), the `gp-pads` replay (`all checks passed`), and the full `run_tests` unit suite (`all checks passed`).

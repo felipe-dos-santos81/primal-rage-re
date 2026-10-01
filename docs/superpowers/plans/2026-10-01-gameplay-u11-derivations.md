@@ -293,7 +293,7 @@ landing. The port gets a test seam `game_restart_landings()` (`flow.c`,
 `PORT:`), counted in `game_loop()`'s landing branch; `test_restart_drive`
 asserts it counts its one landing. Measured on the planner's dry run (§K.8):
 without the seam the driver fails `1849 != 1850` (`test_game.c:12378`, the
-unmodified tree); with it `test_gp_replay: 1 restart(s) landed` and all checks
+unmodified tree; `test_game.c:12411` on `main` `8eaf25a`, re-baseline below); with it `test_gp_replay: 1 restart(s) landed` and all checks
 pass; deleting the counter's increment fails both `test_restart_drive`
 (`0 != 1`) and the replay (`1849 != 1850`).
 
@@ -368,6 +368,24 @@ the `0x3A588` row fails the driver (`5 != 4`, `unexpected 0x3A588`). The
 ratchet N 203 ok`, `first differing 2088, ratchet N 2088 ok`, `0 restart(s)
 landed`; the `gp-pads` replay `all checks passed`.
 
+**Re-baseline on `main` `8eaf25a` (U5 and U6a merged, 2026-10-01).** The dry
+run was repeated on a scratch copy of `8eaf25a` with the re-baselined plan's
+patches (Tasks 1–4, 6, 7). Unchanged: `1849 != 1850` before the seam (now at
+`test_game.c:12411`), `1 restart(s) landed` and all checks after it, the table
+above row for row (lat, spz, mpz, b1f, cred, rng, new, e0 at every listed f),
+`11 of 11` and `ratchet N 11 ok`, P2 (`first not reproduced 2`) and P3
+(`pause f=809 FAIL: lat 20 at f=809, want 0`, `first not reproduced 1`).
+Changed: the replay's miss set is the base pair plus `0x29D60
+frontend_mode_1b_step` and `0x5D812 frontend_mode_1b_step` only (`distinct=4`):
+U6a ported and registered `0x3A588` (record gameplay-u6 §U6.21), so Task 6's
+table has two rows, and dropping the `0x29D60` row fails the driver
+(`test_platform.c:204: 4 != 3`, `unexpected 0x29D60 from
+frontend_mode_1b_step`). The `gp-idle-loss` oracle with every change applied:
+`frames: first unexplained 2064, ratchet N 2064 ok`, `trace: 0 differing through
+8319; ratchet N 8320 ok`, `0 restart(s) landed` — every `gp_compare` line equal
+to the unmodified `8eaf25a`'s, and likewise `gp-u5-charsel`'s (516, 1513); the
+`gp-pads` replay `all checks passed`.
+
 **What the dry run does not show:** what the original does. The rules of
 §K.6 are raw-derived; Task 5's capture is their evidence.
 
@@ -399,9 +417,14 @@ Named gaps, each with its evidence:
    and the BIOS ring the harness writes. The SDL scancode → set-1 table of the
    windowed host is untested headless.
 2. **The pause and prompt frames are not compared.** `0x2EA78(-1)` presents
-   one frame with the text; this unit's ratchet is on state. The scenario's
-   frame claim would stop at the character select (`GP_IDLE_LOSS_MIN_FIRST`
-   203, divergence O1) long before the keys.
+   one frame with the text; this unit's ratchet is on state. When planned
+   (`e9271df`) the path's frame claim stopped at the character select
+   (`GP_IDLE_LOSS_MIN_FIRST` 203, divergence O1), long before the keys; on
+   `8eaf25a` it reaches capture frame 2064 (mode 8 at `f = 0xC71`, after round
+   1; record gameplay-u6 §U6.21), so the frames of the keys are now within
+   reach of `gp_compare`. They stay unratcheted here: Task 6 Step 6 records
+   the report-only lines, and a frame ratchet on `gp-keys-fight` is a
+   follow-up.
 3. **A pause or prompt left open** (nothing queued behind the opener) blocks
    with `f` frozen; v2 scripts cannot key it (§K.5).
 4. **QUIT TO DOS's yes** (`0x24A93` → `0x256DD`): ends the process; not

@@ -12,7 +12,7 @@
 
 **Derivation record:** `docs/superpowers/plans/2026-10-01-gameplay-u6-derivations.md` §U6.10–§U6.20 (U6b). Execution appends §U6.22 (U6b execution).
 
-**Depends on:** U6a (`2026-10-01-gameplay-u6a-idle-loss-divergences.md`) merged: its four ports make round 1 a fight the CPU does not stall, the `0x3A820` check reuses U6a's `pose_3a588_seed`, and the record's dry runs were measured on the U6a tree.
+**Depends on:** U6a (`2026-10-01-gameplay-u6a-idle-loss-divergences.md`) merged: its four ports make round 1 a fight the CPU does not stall, the `0x3A820` check reuses U6a's `pose_3a588_seed`, and the record's dry runs were measured on the U6a tree (re-measured on main `8eaf25a`, U5 and U6a merged: the 7-of-12 and 8-of-12 runs are identical, the cascade after Tasks 8–10 is not; see the Re-baseline section).
 
 ## Decisions needed from the user
 
@@ -21,6 +21,37 @@
 1. **The capture and its cost (gates Task 6).** One DOSBox-X capture `data/k11-captures/gp-u6-moves` of about **105 MB** (2136 frames to `f = 0xCAF`, measured from the `gp-idle-loss` capture's sizes, record §U6.12), and in every `make verify` a replay of about 1742 port frames (**~113 MB** of `/tmp`, ~55 s) plus the comparison. *Recommendation:* accept. *Cost of the wrong answer:* without it U6b stops after Task 5 (the tools, the scenario and the dry run are delivered; no callback can be claimed as capture-reached, and Tasks 8–13 move to track P).
 2. **The snapshot format (Task 1).** Five bytes appended to `SNAP_FIELDS` and to the port's `T` line change the `poll.log`/`trace.txt` format for every capture made after the merge (older captures lack the fields and every tool tolerates that, Task 1's tests). U5, U7, U8 and U11 run in parallel: whoever merges second resolves a one-line textual conflict in `SNAP_FIELDS`. *Recommendation:* accept and merge U6b Task 1 early. *Cost of the wrong answer:* without the bytes the capture cannot name the reaction a move produced (the check falls back to `e0`, which proves the input, not the move).
 3. **Porting scope (Tasks 8–14).** Port every unregistered callback the replay reaches, P1's or the CPU's (the record's dry run reached the CPU's `0x231C0`), and the cascade they open, but only the functions the record decodes (§U6.13–§U6.18); any other reached target is pinned in the replay's set with its evidence and handed to track P. *Recommendation:* yes. *Cost of the wrong answer:* porting further targets without a record decode would ship unverified code; pinning more would leave capture-reached gameplay unported.
+
+## Re-baseline (2026-10-01, main 8eaf25a)
+
+The plan was written against `e9271df`; U5 (`b09b9e6`) and U6a (`8eaf25a`) have merged since. Every change below was checked by applying the plan's code blocks to an export of `8eaf25a` (scratch, never committed): Tasks 1–4 and 8–13 in order, building and running each task's tests, both oracles, the Task 5 dry run and all twenty-one C mutations. The decisions above are unchanged.
+
+| where | old → new | source |
+|---|---|---|
+| Task 0 Step 1 | `first unexplained 203` / `first differing 2161` → `frames: first unexplained 2064, ratchet N 2064 ok` / `trace: 0 differing through 8319; ratchet N 8320 ok`; adds the `gp-charsel-oracle` baseline (`516`, `0 differing through 1512; ratchet N 1513 ok`, `distinct=4`) kept as `$S/t0_charsel_lines.txt` | Makefile `GP_IDLE_LOSS_*`, `GP_CHARSEL_*`; record §U6.21; `make gp-oracle` and `make gp-charsel-oracle` run on main |
+| Task 0 Step 2, Task 15 Step 4 | adds `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected` (U6a's specs; U6b adds none) and the tool-test line `Ran 129 tests … OK` | `make diff-verify` and the `verify` unittest line, run on main plus Tasks 1–4 and 8–13 |
+| Task 1 Step 3 | hunk headers `-12256`/`-12266` → `-12289`/`-12299` (U5 added 33 lines to `test_game.c`); the hunk text is unchanged | `git apply -v`: `Hunk #1 succeeded at 12289 (offset 33 lines)` |
+| Task 1 Step 6, Task 2 Step 6, Review Focus 4, Task 15 Step 4 | the `gp-idle-loss` comparison only → also `gp-u5-charsel` (`CHARSEL-EQUAL`) | U5's `gp-charsel-oracle` in `verify` (Makefile) |
+| Task 4 Interfaces and Step 4 items 2–5 | `fnm_known(addr, ctx, frontend, idle_loss)` (4 params) → U5's 5-parameter text as the search string and `fnm_known(…, charsel, moves)` (6 params) as the replacement; the `want` sum keeps U5's `charsel` term | `port/tests/test_platform.c:168-195`, `:277` on main |
+| Task 4 Step 4 item 1, Step 3 | anchors re-checked: the `k_miss_gp_u6_moves` block lands after U5's `k_miss_gp_charsel`; the scenario block lands between `gp-idle-loss-run2` and U5's `CHARSEL_WALK` | `test_platform.c:129-134`, `tools/gp_session.py:126-128` on main |
+| Task 5 expected | unchanged values, now re-measured on main plus Tasks 1–4: the three misses with hits 1/2/2, `c0=00 c1=01`, `7 of 12` at the same frames, `FAILURES: 4`; with Tasks 8–13 applied `8 of 12`, `distinct=4`, `i=00` at `AC4` | the Task 5 commands, run on main |
+| Task 7, Task 10 Step 6 | the cascade "`0x3F0F0`/`0x3F130` next, then `0x3A820`" → on main the dry run with Tasks 8–10 registered reaches `0x3F130 anim_indirect hits=1` and `0x231C0 hit_reaction_apply hits=1`; with those two registered it is `distinct=4`: `0x3F0F0` and `0x3A820` are not reached by the dry run (the capture's replay still decides) | the dry run with the `fn_register` lines of `0x3F0F0`/`0x3F130`/`0x3A820`/`0x231C0`, then of `0x3F0F0`/`0x3A820`, replaced by `(void)` |
+| Tasks 8–13 common steps | adds the E2 table regeneration (only once E2 is merged): ten of the eleven functions are rows or supplement entries of `2026-10-01-reverse-e2-triage.md` | E2 record D3 and §E2.9; E2's `tools/entry_triage.py` (`reverse-e2` `bee802a`) on main plus Tasks 8–13: `targets 323 unported, 172 ported` (from 329/166), `--check` of the unregenerated table fails |
+| Task 10 Step 5, Task 13 Step 5 | the voice mutations name their function (`fighter.c` on main has another `sound_voice(0x8Cu)` at `0x40E04` and two `sound_voice(0x7Cu)` at `0x23166`/`0x231AE`) | `grep` of `port/src/game/fighter.c` |
+| Task 15 Files, Step 2 | `.PHONY` "after `gp-report diff-verify`" → after its last entry `gp-charsel-oracle`; the `verify` line goes after `@$(MAKE) --no-print-directory gp-charsel-oracle` | Makefile lines 56, 546 on main; the edited target ran with empty pins: `gp-replay: no capture …`, `gp_compare: no capture … (skipped)`, `rc=0` |
+| Task 15 Step 1 | "the expected shape from §U6.8: N stops at the character select (U5's divergence)" → no shape predicted; the trace pin may be exact (`0 differing through E3`: F = E3 + 1) | record §U6.21 (U5 fixed divergence 1; the `gp-idle-loss` trace has no difference over its whole run) |
+| Task 15 Step 3 | adds the exact-pin failure form `FAIL: N … > end …: N is unreachable` | `tools/gp_compare.py:263-266`; record §U6.21 Task 5 proofs |
+| Execution notes | the per-task gate follows the 2026-10-01 speed-up ruling | the user's ruling |
+| Record §U6.11, §U6.12 | re-baseline notes (oracle lines, dry runs, cascade) | the runs above |
+
+**Backward compatibility of the shared-tool changes (Tasks 1, 2 and 4), measured on main.** After each of Tasks 1, 2 and 4, `make gp-oracle` and `make gp-charsel-oracle` print `gp_compare` lines byte-identical to the baseline (`diff` empty, `rc=0`): the pinned `poll.log` sha256s are those of the existing captures, which the tools only read; an `S` line without the five bytes still parses (`test_an_s_line_without_the_u6_fields_still_parses`); the trace claim compares `TRACE_FIELDS` only, so the exact pins **8320** (`gp-idle-loss`) and **1513** (`gp-u5-charsel`, F) and the frame pins 2064 and 516 hold; neither oracle passes `--moves-min-first`, and report mode prints no `moves:` line for a capture without the bytes. The `T` line count of the `gp-idle-loss` replay stays 7999, and `gp-pads` still ends `distinct=2`, `all checks passed`.
+
+**Warnings for the implementer.**
+- `GP_IDLE_LOSS_TRACE_MIN_FIRST = 8320` and `GP_CHARSEL_TRACE_MIN_FIRST = 1513` are **exact** pins (end + 1): a change that shortens either replay's script or end fails them as `N is unreachable`. U6b changes neither script; a task that does must re-measure and re-pin both, and must never lower the frame N (2064, 516) below what it measures.
+- `fnm_known` gains a parameter per scenario set: U7, U8 and U11 add theirs the same way, so whoever merges second re-derives the parameter list (a textual conflict, not a semantic one).
+- Task 4's `strncmp(sc, "gp-u6-moves", 11)` deliberately also selects the dry-run script `gp-u6-moves-dry`.
+- Tasks 11 and 12 may not run: on main the dry run does not reach `0x3F0F0` or `0x3A820`. Task 11 runs when the replay lists either `0xD100` target (it ports both); an unreached `0x3A820` stays for track P with "not reached by gp-u6-moves".
+- Everything that depends on the capture (Task 6's check table, Task 7's misses, the Task 15 pins and identity) is measured in its task, never predicted here.
 
 ---
 
@@ -41,7 +72,7 @@
 1. **A capture that did not perform the moves** (wrong character, wrong facing, an attempt eaten by the CPU's attack). Task 6's `gp_moves.py check` must name the performed attempts from `r0` and `c0` before anything is pinned; a move never performed is a named gap, not a re-capture.
 2. **A port whose untraced effects differ from the raw** (voice ids, hold floats, callback pointers). Each port task's seeded tests and the listed mutations (all must fail except the one equivalent mutant of §U6.15, which is named).
 3. **The pinned miss set drifting.** Each port task states the miss line that must disappear; Task 14 pins anything left with its evidence; the replay ends `all checks passed` before Task 15 pins the ratchets.
-4. **A shared-tool change that moves an existing oracle.** Task 1 and Task 2 compare the `gp-idle-loss` oracle output before and after (identical), and Task 15 runs the full gate (45 lines, WAV, K11, gp-pads, gp-idle-loss).
+4. **A shared-tool change that moves an existing oracle.** Task 1 and Task 2 compare the `gp-idle-loss` and `gp-u5-charsel` oracle output before and after (identical), and Task 15 runs the full gate (45 lines, WAV, K11, gp-pads, gp-idle-loss, gp-u5-charsel).
 5. **A ratchet that cannot fail or claims more than the capture.** Task 15 pins measured values only and shows each fails at N+1 (and the start at its pin minus 1); the record states the narrow claim (frames before N, traced fields before F, move fields before M).
 
 ## Where to run
@@ -68,8 +99,8 @@ Expected sha256 `0cfd6f481182f050d5897871068bb9f8fa4410108a56cba0b17be7d513943de
 **Files:** none.
 
 - [ ] **Step 1:** `make gp-oracle $V > $S/t0_oracle.txt 2>&1; echo "rc=$?"; grep -E 'ratchet N|fn-miss' $S/t0_oracle.txt`
-Expected: `rc=0`, `distinct=4`, `first unexplained 203, ratchet N 203 ok`, `first differing 2161, ratchet N 2161 ok` (U6a's pins). Keep `grep '^gp_compare' $S/t0_oracle.txt > $S/t0_gp_lines.txt`.
-- [ ] **Step 2:** `make verify $V > $S/t0_verify.txt 2>&1; echo "verify-exit=$?"`, the 45-line `diff` against `oracle-lines-base.txt` (`ORACLES-EQUAL`), `make audio-render AUDIO_WAV=/tmp/pr_u6b.wav` and `cmp` with `before-t2.wav` (`WAV-EQUAL`), `python3 tools/port_progress.py` (`771 1203 64`, `731 731 100`).
+Expected: `rc=0`, `distinct=4`, `gp_compare: gp-idle-loss: frames: first unexplained 2064, ratchet N 2064 ok`, `gp_compare: gp-idle-loss: trace: 0 differing through 8319; ratchet N 8320 ok` (U6a's pins, record §U6.21; 8320 is the exact pin, end + 1). Keep `grep '^gp_compare' $S/t0_oracle.txt > $S/t0_gp_lines.txt`. Then the U5 oracle: `make gp-charsel-oracle $V > $S/t0_charsel.txt 2>&1; echo "rc=$?"; grep -E 'ratchet N|distinct' $S/t0_charsel.txt` ⇒ `rc=0`, `distinct=4`, `gp_compare: gp-u5-charsel: frames: first unexplained 516, ratchet N 516 ok`, `gp_compare: gp-u5-charsel: trace: 0 differing through 1512; ratchet N 1513 ok`; keep `grep '^gp_compare' $S/t0_charsel.txt > $S/t0_charsel_lines.txt`.
+- [ ] **Step 2:** `make verify $V > $S/t0_verify.txt 2>&1; echo "verify-exit=$?"` (it prints `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`), the 45-line `diff` against `oracle-lines-base.txt` (`ORACLES-EQUAL`), `make audio-render AUDIO_WAV=/tmp/pr_u6b.wav` and `cmp` with `before-t2.wav` (`WAV-EQUAL`), `python3 tools/port_progress.py` (`771 1203 64`, `731 731 100`).
 
 ---
 
@@ -138,7 +169,7 @@ Apply the `T`-line change (`git apply`):
 ```diff
 --- a/port/tests/test_game.c
 +++ b/port/tests/test_game.c
-@@ -12256,7 +12256,8 @@
+@@ -12289,7 +12289,8 @@
      fprintf(gp_trace,
              "T f=%04X mode=%04X st=%04X tick=%08X t508=%08X t50c=%08X raw=%08X pad=%08X new=%08X held=%08X "
              "e0=%04X e2=%04X rng=%08X cred=%08X fp=%02X b1d=%02X b1f=%02X b25=%02X w10d=%02X cnt=%02X "
@@ -148,7 +179,7 @@ Apply the `T`-line change (`git apply`):
              (unsigned)DSW(DS_000EF6DC), (unsigned)DSW(DS_00104B00), (unsigned)DSW(DS_000F0A64),
              (unsigned)DSD(DS_00101500), (unsigned)DSD(DS_00101508), (unsigned)DSD(DS_0010150C),
              (unsigned)DSD(DS_000E1C30), (unsigned)DSD(DS_000E1C34), (unsigned)DSD(DS_001088E4),
-@@ -12266,7 +12267,10 @@
+@@ -12299,7 +12300,10 @@
              (unsigned)DSB(GP_DS_0010810D), (unsigned)DSB(DS_00108110),
              (unsigned)DSB(DS_00107802), (unsigned)DSB(DS_00107804), (unsigned)DSB(DS_0010780A),
              (unsigned)DSB(DS_00107896), (unsigned)DSB(DS_00107898), (unsigned)DSB(DS_0010789E),
@@ -166,7 +197,7 @@ Apply the `T`-line change (`git apply`):
 
 - [ ] **Step 5: Mutation proofs**: `('s0_43', 0x1077F3, 1)` → `0x1077F2` ⇒ `FAIL: test_the_u6_fields_are_appended`; `cp port/tests/test_game.c $S/tg.c && git checkout port/tests/test_game.c`, run the tests ⇒ `FAIL: test_the_port_t_line_writes_every_snap_field_in_order`; `cp $S/tg.c port/tests/test_game.c`.
 
-- [ ] **Step 6: The existing oracles see no change**: `make gp-oracle $V 2>&1 | grep '^gp_compare' | diff - $S/t0_gp_lines.txt && echo GP-EQUAL`; `make gp-replay scenario=gp-pads $V | tail -2` ⇒ `distinct=2`, `all checks passed`; `grep -c ' r0=' /tmp/pr_u6b_gp/gp-idle-loss/trace.txt` ⇒ the `T` line count (7 999).
+- [ ] **Step 6: The existing oracles see no change**: `make gp-oracle $V 2>&1 | grep '^gp_compare' | diff - $S/t0_gp_lines.txt && echo GP-EQUAL`; `make gp-charsel-oracle $V 2>&1 | grep '^gp_compare' | diff - $S/t0_charsel_lines.txt && echo CHARSEL-EQUAL` (the pinned `poll.log` sha256s are of the existing captures, which the tools only read; the trace claim compares `TRACE_FIELDS` only, so the exact pins 8320 and 1513 hold); `make gp-replay scenario=gp-pads $V | tail -2` ⇒ `distinct=2`, `all checks passed`; `grep -c ' r0=' /tmp/pr_u6b_gp/gp-idle-loss/trace.txt` ⇒ the `T` line count (7 999).
 
 - [ ] **Step 7: Commit**: `git add tools/gp_session.py tools/tests/test_gp_session.py port/tests/test_game.c`; `tools: five move bytes in the gp snapshot and the port trace (record gameplay-u6 §U6.11)`.
 
@@ -310,7 +341,7 @@ In `TestCli` before `def test_an_absent_capture_skips`:
 
 - [ ] **Step 5: Mutation proofs** (`PYTHONDONTWRITEBYTECODE=1`): `        for n in fields:` → `        for n in gs.TRACE_FIELDS:` ⇒ `FAIL: test_the_moves_claim_compares_the_move_fields_only`; the `if a.moves_min_first is not None or (a.report and has_moves):` line → `if True:` ⇒ `ERROR: test_the_moves_claim_runs_when_asked_or_reported_with_its_fields`.
 
-- [ ] **Step 6: The idle-loss oracle is unchanged**: `make gp-oracle $V 2>&1 | grep '^gp_compare' | diff - $S/t0_gp_lines.txt && echo GP-EQUAL` (no `moves:` line: that capture has no move bytes).
+- [ ] **Step 6: The idle-loss and charsel oracles are unchanged**: `make gp-oracle $V 2>&1 | grep '^gp_compare' | diff - $S/t0_gp_lines.txt && echo GP-EQUAL`; `make gp-charsel-oracle $V 2>&1 | grep '^gp_compare' | diff - $S/t0_charsel_lines.txt && echo CHARSEL-EQUAL` (no `moves:` line: neither capture has the move bytes, and neither target passes `--moves-min-first`).
 
 - [ ] **Step 7: Commit**: `tools/gp_compare.py tools/tests/test_gp_compare.py`; `tools: gp_compare moves claim over the move bytes (record gameplay-u6 §U6.11)`.
 
@@ -839,7 +870,7 @@ Record §U6.12.
 
 **Files:** Modify `tools/gp_session.py` (after the line `SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)`); `tools/tests/test_gp_session.py` (a class `TestU6Moves` before `if __name__`); `tools/tests/test_gp_moves.py` (one method at the end of `TestRealImage`); `port/tests/test_platform.c` (`k_miss_gp_u6_moves`, `fnm_known`, `test_fn_misslog_driver`).
 
-**Interfaces:** Produces `SCENARIOS['gp-u6-moves']`, `U6_MOVES_STEPS`; `static const fnm_pair k_miss_gp_u6_moves[]`; `fnm_known(addr, ctx, frontend, idle_loss, moves)`.
+**Interfaces:** Produces `SCENARIOS['gp-u6-moves']`, `U6_MOVES_STEPS`; `static const fnm_pair k_miss_gp_u6_moves[]`; `fnm_known(addr, ctx, frontend, idle_loss, charsel, moves)` (U5 made it 5 parameters; this adds the 6th).
 
 - [ ] **Step 1: Write the failing tests.** Before `if __name__ == '__main__':` in `test_gp_session.py`:
 
@@ -882,7 +913,7 @@ At the end of `TestRealImage` in `test_gp_moves.py`:
 
 - [ ] **Step 2: Run to verify they fail**: `KeyError: 'gp-u6-moves'` in both.
 
-- [ ] **Step 3: Implement the scenario.** After `SCENARIOS['gp-idle-loss-run2'] = …`:
+- [ ] **Step 3: Implement the scenario.** After `SCENARIOS['gp-idle-loss-run2'] = …` (on main that line is followed by U5's `CHARSEL_WALK` / `SCENARIOS['gp-u5-charsel']` block; this block goes between them):
 
 ```python
 
@@ -941,7 +972,7 @@ The steps are `gp_moves.py steps --image $S/image.bin --char 0 --facing 0 --move
 
 - [ ] **Step 4: The pinned set for the scenario** (the moves scenario passes the same wipes as `gp-idle-loss`; without these rows the dry run of Task 5 fails with `unexpected 0x29D60 from frontend_mode_1b_step`, measured). In `port/tests/test_platform.c`:
 
-1. Replace
+1. Replace (the start of the comment line right after U5's `k_miss_gp_charsel` array)
 
 ```c
 /* The scenario named by the first line of PR_GP_SCRIPT
@@ -965,21 +996,23 @@ static const fnm_pair k_miss_gp_u6_moves[] = {
 2. Replace
 
 ```c
-static int fnm_known(u32 addr, const char *ctx, int frontend, int idle_loss)
+static int fnm_known(u32 addr, const char *ctx, int frontend, int idle_loss, int charsel)
 {
     if (fnm_in(k_miss_known, FNM_N(k_miss_known), addr, ctx)) return 1;
     if (frontend && fnm_in(k_miss_frontend, FNM_N(k_miss_frontend), addr, ctx)) return 1;
+    if (charsel && fnm_in(k_miss_gp_charsel, FNM_N(k_miss_gp_charsel), addr, ctx)) return 1;
     return idle_loss && fnm_in(k_miss_gp_idle_loss, FNM_N(k_miss_gp_idle_loss), addr, ctx);
 }
 ```
 
-   with
+   with (a 6th parameter after U5's `charsel`)
 
 ```c
-static int fnm_known(u32 addr, const char *ctx, int frontend, int idle_loss, int moves)
+static int fnm_known(u32 addr, const char *ctx, int frontend, int idle_loss, int charsel, int moves)
 {
     if (fnm_in(k_miss_known, FNM_N(k_miss_known), addr, ctx)) return 1;
     if (frontend && fnm_in(k_miss_frontend, FNM_N(k_miss_frontend), addr, ctx)) return 1;
+    if (charsel && fnm_in(k_miss_gp_charsel, FNM_N(k_miss_gp_charsel), addr, ctx)) return 1;
     if (moves && fnm_in(k_miss_gp_u6_moves, FNM_N(k_miss_gp_u6_moves), addr, ctx)) return 1;
     return idle_loss && fnm_in(k_miss_gp_idle_loss, FNM_N(k_miss_gp_idle_loss), addr, ctx);
 }
@@ -988,55 +1021,59 @@ static int fnm_known(u32 addr, const char *ctx, int frontend, int idle_loss, int
 3. Replace
 
 ```c
-    int idle_loss = 0, cut = 0;
+    int idle_loss = 0, charsel = 0, cut = 0;
     if (strcmp(env, "PR_GP_DUMP") == 0) {
         char sc[64];
         fnm_gp_scenario(sc, sizeof sc, &cut);
         idle_loss = strncmp(sc, "gp-idle-loss", 12) == 0;
+        charsel = strcmp(sc, "gp-u5-charsel") == 0;
     }
     u32 want = (u32)FNM_N(k_miss_known) +
                (frontend ? (u32)FNM_N(k_miss_frontend) : 0u) +
-               (idle_loss ? (u32)FNM_N(k_miss_gp_idle_loss) : 0u);
+               (idle_loss ? (u32)FNM_N(k_miss_gp_idle_loss) : 0u) +
+               (charsel ? (u32)FNM_N(k_miss_gp_charsel) : 0u);
 ```
 
-   with
+   with (`strncmp` on 11 characters also selects Task 5's dry-run script, which `gp_moves.py dry` names `gp-u6-moves-dry`)
 
 ```c
-    int idle_loss = 0, moves = 0, cut = 0;
+    int idle_loss = 0, charsel = 0, moves = 0, cut = 0;
     if (strcmp(env, "PR_GP_DUMP") == 0) {
         char sc[64];
         fnm_gp_scenario(sc, sizeof sc, &cut);
         idle_loss = strncmp(sc, "gp-idle-loss", 12) == 0;
+        charsel = strcmp(sc, "gp-u5-charsel") == 0;
         moves = strncmp(sc, "gp-u6-moves", 11) == 0;
     }
     u32 want = (u32)FNM_N(k_miss_known) +
                (frontend ? (u32)FNM_N(k_miss_frontend) : 0u) +
                (idle_loss ? (u32)FNM_N(k_miss_gp_idle_loss) : 0u) +
+               (charsel ? (u32)FNM_N(k_miss_gp_charsel) : 0u) +
                (moves ? (u32)FNM_N(k_miss_gp_u6_moves) : 0u);
 ```
 
 4. Replace
 
 ```c
-        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss)) {
+        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss, charsel)) {
 ```
 
    with
 
 ```c
-        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss, moves)) {
+        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss, charsel, moves)) {
 ```
 
 5. Replace
 
 ```c
-            if (!fnm_known((u32)addr, ctx, 0, 0)) {
+            if (!fnm_known((u32)addr, ctx, 0, 0, 0)) {
 ```
 
    with
 
 ```c
-            if (!fnm_known((u32)addr, ctx, 0, 0, 0)) {
+            if (!fnm_known((u32)addr, ctx, 0, 0, 0, 0)) {
 ```
 
 
@@ -1068,7 +1105,7 @@ python3 tools/gp_moves.py check --image $S/image.bin --char 0 --facing 0 --moves
 grep 'f=07F5 ' $S/dry/trace.txt | grep -o 'c0=.. c1=..'
 ```
 
-Expected (record §U6.12, measured on this tree: U6a plus Tasks 1–4): the misses `0x3F0A8 hit_reaction_apply hits=1`, `0x3D1EC hit_reaction_apply hits=2`, `0x3C048 hit_reaction_apply hits=2` besides the four harmless pairs; `c0=00 c1=01`; `7 of 12 attempts performed` (`i=1A` at `f=800`, `i=01` at `8D0`, `i=1B` at `92D`, `i=06` at `998`, `i=15` at `9FC`, `i=06` at `BF0`, `i=15` at `C54`). `i=00` (reaction `0x20`) is not shown in either window on this tree (P1 is in hit-stun); with the U6b ports it is performed at `f=AC4` (record §U6.12), so its presses are proven. The driver reports `FAIL` for the three unregistered pairs: expected here, they are what Tasks 8–10 port.
+Expected (record §U6.12, measured on this tree: U6a plus Tasks 1–4; re-measured identical on main `8eaf25a` plus Tasks 1–4 at the re-baseline, every line below): the misses `0x3F0A8 hit_reaction_apply hits=1`, `0x3D1EC hit_reaction_apply hits=2`, `0x3C048 hit_reaction_apply hits=2` besides the four harmless pairs; `c0=00 c1=01`; `7 of 12 attempts performed` (`i=1A` at `f=800`, `i=01` at `8D0`, `i=1B` at `92D`, `i=06` at `998`, `i=15` at `9FC`, `i=06` at `BF0`, `i=15` at `C54`). `i=00` (reaction `0x20`) is not shown in either window on this tree (P1 is in hit-stun); with the U6b ports it is performed at `f=AC4` (record §U6.12; re-measured on main with Tasks 1–4 and 8–13 applied: `8 of 12`, `distinct=4`, `i=00` at `AC4`), so its presses are proven. The driver reports `FAIL` for the three unregistered pairs (`FAILURES: 4` on main): expected here, they are what Tasks 8–10 port.
 
 - [ ] **Step 2: Record** the outputs in `$S/t5.txt` for §U6.22. If the dry run shows fewer than the five distinct moves above (`0x10 0x24 0x11 0x2D 0x3D`), or other misses, stop: the decode, the facing or the debounce reading differs from the record (raw wins: re-derive before capturing).
 
@@ -1117,7 +1154,7 @@ grep fn-miss $S/t7_replay.txt
 python3 tools/gp_compare.py --report --scenario gp-u6-moves --capture data/k11-captures/gp-u6-moves --port /tmp/pr_u6b_gp/gp-u6-moves | tee $S/t7_report.txt
 ```
 
-Expected: no stall, no fault; the miss lines (besides the four harmless pairs) name which of Tasks 8–13 run. The record predicts `0x3F0A8`, `0x3D1EC`, `0x3C048` (P1's moves) and possibly `0x231C0` (the CPU's character-1 reaction `0x27`), then the cascades of Tasks 11–12. The report's three claims (`frames:`, `trace:`, `moves:`) are recorded, not pinned.
+Expected: no stall, no fault; the miss lines (besides the four harmless pairs) name which of Tasks 8–13 run. The record predicts `0x3F0A8`, `0x3D1EC`, `0x3C048` (P1's moves) and possibly `0x231C0` (the CPU's character-1 reaction `0x27`), then the cascades of Tasks 11–12. (On main `8eaf25a` the Task 5 dry run, with Tasks 8–10 registered, next reaches `0x3F130 anim_indirect hits=1` and `0x231C0 hit_reaction_apply hits=1`, and with those registered nothing more: `0x3F0F0` and `0x3A820` are not reached by the dry run, record §U6.12 re-baseline note. The capture's replay decides.) The report's three claims (`frames:`, `trace:`, `moves:`) are recorded, not pinned.
 
 ---
 
@@ -1159,7 +1196,8 @@ static int u6b_run(void (*checks)(void))
 
 - **Registration of the test**: in `port/tests/test.h` add `    X(test_u6b_<name>) \` after the last `X(test_u6…` line.
 - **Replay after the port**: Task 7's `PR_GP_DUMP` commands again (`$S/t<N>_replay.txt`); the task's address must be gone from the miss log; a newly listed address goes to its task (11, 12, 13) or to Task 14.
-- **Commit**: the task's files; `game: port <0xADDR> (<what>) reached by gp-u6-moves (record gameplay-u6 §U6.<n>)`.
+- **The E2 table (only when `make entry-triage` exists on the base, i.e. E2 is merged; record E2 D3).** None of these functions is a Ghidra function, and E2's committed table `docs/superpowers/plans/2026-10-01-reverse-e2-triage.md` lists `0x3C048`, `0x3D1EC`, `0x3F0A8`, `0x231C0` (move-callback rows), `0x3F0F0`, `0x3F130` (anim-target rows), `0x3F054`, `0x3EFE0`, `0x3F020`, `0x2BEF4` (supplement) and the voice sites `0x3F0C1`, `0x231FB`; `0x3A820` is not in it. So each port task regenerates the table in its own commit: `build/diffrun --exe data/game/C/PRAGE.EXE --image-out $S/image.bin && python3 tools/entry_triage.py --image $S/image.bin --live docs/superpowers/plans/2026-10-01-reverse-e2-live-functions.txt --out docs/superpowers/plans/2026-10-01-reverse-e2-triage.md --expect 579 --expect-u0 575`, then `make entry-triage` passes, and the table is staged with the task's files. Measured at the re-baseline (E2's tool from `reverse-e2` `bee802a` on main plus all of Tasks 8–13): `targets 329 unported, 166 ported` → `323 unported, 172 ported`, `supplement 131 (35 unported` → `(31 unported`, voice sites `48 in unported code, 67 in ported code` → `46 …, 69 …`; the unregenerated table fails `--check` (`differs from a fresh run`). Each task's own delta is measured, not predicted.
+- **Commit**: the task's files (and the E2 table, above); `game: port <0xADDR> (<what>) reached by gp-u6-moves (record gameplay-u6 §U6.<n>)`.
 
 ### Task 8: `0x3C048` (every character's reaction `0x3D`, the down-up jump)
 
@@ -1580,8 +1618,8 @@ void fighter_3f054(u32 slot, u32 rec, u32 side);
 ```
 
 - [ ] **Step 4**: `all checks passed`.
-- [ ] **Step 5: Mutations**: voice `0x8Cu` → `0x8Du` ⇒ `141 != 140`; `+0x18 = 0x0003EFE0u` → `0x0003E484u` ⇒ `255108 != 258016`; `<= 10` → `<= 9` ⇒ `2 != 1`; `(s32)(s16)DSW(…)` → `(s32)DSW(…)` ⇒ `2 != 1`; the `0x1080A4` clear in `fighter_3f020` → `(void)0;` ⇒ `24929 != 0`; `flags[0] = 1u;` → `0u` in `fighter_3efe0` ⇒ `0 != 1`; the `fn_register(0x3F0A8u, …)` line → `(void)fighter_3f0a8;` ⇒ `0x3F0A8 is registered`.
-- [ ] **Step 6**: replay; `0x3F0A8` gone. The record predicts `0x3F0F0`/`0x3F130` (`anim_indirect`) next: Task 11.
+- [ ] **Step 5: Mutations**: voice `0x8Cu` → `0x8Du` in `fighter_3f0a8` (main has a second `sound_voice(0x8Cu)` at `0x40E04`) ⇒ `141 != 140`; `+0x18 = 0x0003EFE0u` → `0x0003E484u` ⇒ `255108 != 258016`; `<= 10` → `<= 9` ⇒ `2 != 1`; `(s32)(s16)DSW(…)` → `(s32)DSW(…)` ⇒ `2 != 1`; the `0x1080A4` clear in `fighter_3f020` → `(void)0;` ⇒ `24929 != 0`; `flags[0] = 1u;` → `0u` in `fighter_3efe0` ⇒ `0 != 1`; the `fn_register(0x3F0A8u, …)` line → `(void)fighter_3f0a8;` ⇒ `0x3F0A8 is registered`.
+- [ ] **Step 6**: replay; `0x3F0A8` gone. The record predicts `0x3F0F0`/`0x3F130` (`anim_indirect`) next: Task 11. (Main's dry run reaches `0x3F130` only, plus `0x231C0`: Task 13; Task 11 ports both `0xD100` targets whenever either is listed.)
 
 ### Task 11: `0x3F0F0`, `0x3F130` and `0x2BEF4` (the `0xD100` targets in `0x3F0A8`'s streams)
 
@@ -1966,10 +2004,10 @@ static void reaction_cb_231C0(u32 slot, u32 rec, u32 side)
 ```
 
 - [ ] **Step 4**: `all checks passed`.
-- [ ] **Step 5: Mutations**: voice `0x7Cu` → `0x7Bu` ⇒ `123 != 124`; the `fn_register(0x231C0u, …)` line → `(void)reaction_cb_231C0;` ⇒ `0x231C0 is registered`.
+- [ ] **Step 5: Mutations**: voice `0x7Cu` → `0x7Bu` in `fighter_231c0` (main has two other `sound_voice(0x7Cu)` calls) ⇒ `123 != 124`; the `fn_register(0x231C0u, …)` line → `(void)reaction_cb_231C0;` ⇒ `0x231C0 is registered`.
 - [ ] **Step 6**: replay; gone. Commit.
 
-(All of Tasks 8–13 were applied in this order and also with Tasks 8, 9, 11 skipped to a U6a tree while planning: every step built and ended `all checks passed`.)
+(All of Tasks 8–13 were applied in this order and also with Tasks 8, 9, 11 skipped to a U6a tree while planning: every step built and ended `all checks passed`. Re-baseline: applied in this order to main `8eaf25a` plus Tasks 1–4, every anchor matched once, the build is clean, `run_tests` ends `all checks passed`, each of the twenty-one listed C mutations gives its listed first `FAIL` value and the §U6.15 equivalent mutant survives.)
 
 ---
 
@@ -1984,11 +2022,11 @@ static void reaction_cb_231C0(u32 slot, u32 rec, u32 side)
 
 ### Task 15: Pin the three ratchets and the identity; `make verify`
 
-**Files:** `Makefile` (variables and the `gp-moves-oracle` target before `gp-report:`; the `.PHONY` list; one `verify` line after `@$(MAKE) --no-print-directory gp-oracle`).
+**Files:** `Makefile` (variables and the `gp-moves-oracle` target before `gp-report:`, i.e. after U5's `gp-charsel-oracle` block; the `.PHONY` list; one `verify` line after `@$(MAKE) --no-print-directory gp-charsel-oracle`).
 
-- [ ] **Step 1: Measure** on the final head: `make gp-report scenario=gp-u6-moves $V | tee $S/t15_report.txt` ⇒ `window from capture W`, `FIRST UNEXPLAINED capture N` (or `0 unexplained through E`: then N = E + 1, the exact pin), `trace: first difference f=… (F)`, `moves: first difference f=… (M)` (or `0 differing through E2`: M = E2 + 1). These are the pins (measured, never chosen); the expected shape from §U6.8: N stops at the character select (U5's divergence), F at or after the round-1 start.
+- [ ] **Step 1: Measure** on the final head: `make gp-report scenario=gp-u6-moves $V | tee $S/t15_report.txt` ⇒ `window from capture W`, `FIRST UNEXPLAINED capture N` (or `0 unexplained through E`: then N = E + 1, the exact pin), `trace: first difference f=… (F)` (or `0 differing through E3`: F = E3 + 1, the exact pin, as gp-idle-loss's 8320 and gp-u5-charsel's 1513), `moves: first difference f=… (M)` (or `0 differing through E2`: M = E2 + 1). These are the pins (measured, never chosen). No shape is predicted: §U6.8's (N at the character select, F at the round-1 start) is stale, since on main the `gp-idle-loss` replay of the same menu path has no traced difference over its whole run and its first unexplained frame is the three-frame scan-out at the mode-8 entry (capture 2064, record §U6.21).
 
-- [ ] **Step 2: Edit the Makefile.** Add `\` and a continuation line `        gp-moves-oracle` to the `.PHONY` list after `gp-report diff-verify`; before `gp-report: build ##` add (with the measured numbers and their provenance lines in the comment):
+- [ ] **Step 2: Edit the Makefile.** Add `\` and a continuation line `        gp-moves-oracle` to the `.PHONY` list after its last entry (on main the line ends `gp-report diff-verify gp-charsel-oracle`); before `gp-report: build ##` add (with the measured numbers and their provenance lines in the comment):
 
 ```make
 # Plan gameplay-u6b (record gameplay-u6 §U6.22): the gp-u6-moves capture (P1 Sauron's twelve
@@ -2014,7 +2052,7 @@ gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves frame, trace and moves ra
 
 ```
 
-The `<…>` are the six numbers measured in Step 1 and Task 6 Step 4 (the target and the comment ran while planning with empty pins: absent capture ⇒ `gp-replay: no capture …`, `gp_compare: no capture … (skipped)`, `rc=0`). In the `verify` recipe after `	@$(MAKE) --no-print-directory gp-oracle` add:
+The `<…>` are the six numbers measured in Step 1 and Task 6 Step 4 (the target and the comment ran while planning with empty pins: absent capture ⇒ `gp-replay: no capture …`, `gp_compare: no capture … (skipped)`, `rc=0`; re-run at the re-baseline on main `8eaf25a` plus Tasks 1–4: the same three lines). In the `verify` recipe after `	@$(MAKE) --no-print-directory gp-charsel-oracle` (U5's line, which follows `gp-oracle` on main) add:
 
 ```make
 	@echo "== gameplay oracle: gp-u6-moves (skips without its capture; record gameplay-u6 §U6.22) =="
@@ -2032,9 +2070,9 @@ make gp-moves-oracle $V GP_MOVES_MAX_START=$((W-1)) 2>&1 | grep FAIL
 make gp-moves-oracle $V GP_MOVES_CAPTURE_SHA256=00ff 2>&1 | grep FAIL
 ```
 
-Expected: `rc=0` with the three `ratchet N … ok` lines and `matches the pin`; then one `FAIL` line each (`frames: FAIL: first unexplained N < ratchet N N+1`, `trace: FAIL: …`, `moves: FAIL: first differing M < ratchet N M+1`, `window starts at capture W … > pinned start W-1`, `poll.log sha256 … != the pinned 00ff`).
+Expected: `rc=0` with the three `ratchet N … ok` lines and `matches the pin`; then one `FAIL` line each (`frames: FAIL: first unexplained N < ratchet N N+1`, `trace: FAIL: …`, `moves: FAIL: first differing M < ratchet N M+1`; for an exact pin (N = end + 1) the N+1 line is instead `FAIL: N … > end …: N is unreachable`, as U6a's `GP_IDLE_LOSS_TRACE_MIN_FIRST=8321` proof, `window starts at capture W … > pinned start W-1`, `poll.log sha256 … != the pinned 00ff`).
 
-- [ ] **Step 4: The full gate**: `make verify $V > $S/t15_verify.txt 2>&1; echo "verify-exit=$?"`; `ORACLES-EQUAL` (the 45 lines), `WAV-EQUAL`, the `k11_compare` lines equal Task 0's, the gp-idle-loss lines equal `$S/t0_gp_lines.txt`, the gp-moves-oracle lines of Step 3, `python3 tools/port_progress.py` ⇒ `771 1203 64` and `731 731 100`.
+- [ ] **Step 4: The full gate**: `make verify $V > $S/t15_verify.txt 2>&1; echo "verify-exit=$?"`; `ORACLES-EQUAL` (the 45 lines), `WAV-EQUAL`, the `k11_compare` lines equal Task 0's, the gp-idle-loss lines equal `$S/t0_gp_lines.txt` (2064 / 8320), the gp-u5-charsel lines equal `$S/t0_charsel_lines.txt` (516 / 1513), `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected` (U6b adds no diff-verify spec), the tool-test line `Ran 129 tests … OK` (measured on main plus Tasks 1–4), with E2 merged the `entry-triage` step passing on the table the port tasks regenerated, the gp-moves-oracle lines of Step 3, `python3 tools/port_progress.py` ⇒ `771 1203 64` and `731 731 100`.
 - [ ] **Step 5: Commit**: `git add Makefile`; `build: pin the gp-u6-moves frame, trace and moves ratchets in make verify (record gameplay-u6 §U6.22)`.
 
 ---
@@ -2056,13 +2094,14 @@ Expected: `rc=0` with the three `ratchet N … ok` lines and `matches the pin`; 
 | `tools/gp_session.py` | `SNAP_FIELDS` tail; after `TRACE_FIELDS`; after `SCENARIOS['gp-idle-loss-run2']` | five fields; `MOVE_FIELDS`; `U6_MOVES_STEPS` and `SCENARIOS['gp-u6-moves']` |
 | `port/tests/test_game.c` | `gp_trace_line` | five fields appended to the `T` line (another unit appending fields must keep the order equal to `SNAP_FIELDS`: Task 1's test enforces it) |
 | `tools/gp_compare.py` | `trace_claim` signature (backward compatible), `main` | the `moves` claim, `--moves-min-first` |
-| `port/tests/test_platform.c` | before `fnm_gp_scenario`; `fnm_known` (one parameter); `test_fn_misslog_driver` | `k_miss_gp_u6_moves`; units adding their own scenario sets add a parameter the same way |
-| `Makefile` | `.PHONY`, before `gp-report:`, `verify` | `GP_MOVES_*`, `gp-moves-oracle`, one verify line, `tools.tests.test_gp_moves` |
+| `port/tests/test_platform.c` | after U5's `k_miss_gp_charsel`, before `fnm_gp_scenario`; `fnm_known` (a 6th parameter after U5's `charsel`); `test_fn_misslog_driver` | `k_miss_gp_u6_moves`; units adding their own scenario sets add a parameter the same way |
+| `Makefile` | `.PHONY` (after `gp-charsel-oracle`), before `gp-report:`, `verify` (after `gp-charsel-oracle`) | `GP_MOVES_*`, `gp-moves-oracle`, one verify line, `tools.tests.test_gp_moves` |
 | `port/src/game/{fighter.c,fighter.h,actors.c}`, `port/tests/test_fight.c`, `port/tests/test.h` | next to `0x3E3A8`, `0x3A588`, `0x23178`; end of `test_fight.c` | up to eleven functions and six tests |
 | `docs/PROGRESS.md`, `AGENTS.md` | end; Commands, gameplay-oracle paragraph | one paragraph; one line; one sentence |
+| `docs/superpowers/plans/2026-10-01-reverse-e2-triage.md` (only once E2 is merged) | generated, whole file | regenerated by each port task (Tasks 8–13; record E2 D3); a conflict is resolved by regenerating, never by hand |
 
 ## Execution notes
 
 - **Order:** 0 → 1 → 2 → 3 → 4 → 5 → (Decision 1) 6 → 7 → 8–13 as the miss log names them (8, 9, 10 before 11; 12 and 13 whenever listed) → 14 → 15 → 16. Never re-capture `gp-u6-moves` over itself (record §G.24 item 5).
 - **Model tier:** Tasks 1–4 and 8–13 (given code, measured checks): mid tier (Sonnet). Tasks 5–7, 14 and 15 (measurement, judgement on the check table, classification, pins) and all reviews: strong tier (Opus).
-- **Gate:** each task's tests as written; the replay after every port task; `make verify $V` in Tasks 0, 15 and 16 (about 13 minutes plus about 1 minute for the new replay).
+- **Gate:** each task's tests as written; the replay after every port task; `make verify $V` in Tasks 0, 15 and 16 (about 13 minutes plus about 1 minute for the new replay). Under the user's 2026-10-01 speed-up ruling the per-task gate is the task's own tests, its oracle (`gp-oracle` and `gp-charsel-oracle` for Tasks 1, 2 and 4; the replay for Tasks 8–14) and `make diff-verify`; the full `make verify` runs at Task 0, at the final task and before the merge (Task 15 Step 4's full gate may be the one Task 16 runs).
