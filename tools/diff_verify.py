@@ -38,6 +38,13 @@ class Spec:
     unhit_named: dict = field(default_factory=dict)   # block leader -> reason it is not exercised
     allow_calls: tuple = ()
     mutants: tuple = ("@mutant",)    # diffrun binding suffixes that must be reported as MISMATCH
+    eax_mask: int = 0xFFFFFFFF       # the part of the original's EAX the callers read (full = conservative)
+
+    def __post_init__(self):
+        ids = [c.id for c in self.cases]
+        dup = sorted({i for i in ids if ids.count(i) > 1})
+        if dup:
+            raise ValueError("spec %s: duplicate case id %s" % (self.name, ", ".join(dup)))
 
 
 @dataclass
@@ -62,23 +69,46 @@ def cases_text(spec, port_name):
 
 
 def parse_port_output(text):
-    res, cur = {}, None
+    """Parse diffrun's output. Strict: a case is complete only with exactly one `ret` or `error`
+    line and a closing `end`; anything else (truncation, a repeated line, a duplicate case id, an
+    unknown line) is a ValueError, never a default result that could agree with the original."""
+    res, cur, got, ended = {}, None, False, False
     for line in text.splitlines():
         t = line.split()
         if not t:
             continue
         if t[0] == "case":
-            cur = res.setdefault(t[1], PortResult())
+            if len(t) != 2:
+                raise ValueError("malformed case line: %r" % line)
+            if cur is not None:
+                raise ValueError("diffrun output: case %s opened inside an open case" % t[1])
+            if t[1] in res:
+                raise ValueError("diffrun output: duplicate case id %s" % t[1])
+            cur = res[t[1]] = PortResult()
+            got, ended = False, False
         elif cur is None:
             raise ValueError("diffrun output outside a case: %r" % line)
-        elif t[0] == "ret" and t[1] == "eax":
-            cur.eax, cur.mask = int(t[2], 16), int(t[4], 16)
-        elif t[0] == "w":
-            cur.writes[int(t[1], 16)] = int(t[2], 16)
+        elif t[0] == "ret" and len(t) == 5 and t[1] == "eax" and t[3] == "mask":
+            if got:
+                raise ValueError("diffrun output: a second result line in one case: %r" % line)
+            cur.eax, cur.mask, got = int(t[2], 16), int(t[4], 16), True
+        elif t[0] == "w" and len(t) == 3:
+            a = int(t[1], 16)
+            if a in cur.writes:
+                raise ValueError("diffrun output: byte 0x%X written twice in one case" % a)
+            cur.writes[a] = int(t[2], 16)
         elif t[0] == "error":
-            cur.error = " ".join(t[1:])
-        elif t[0] == "end":
+            if got:
+                raise ValueError("diffrun output: a second result line in one case: %r" % line)
+            cur.error, got = " ".join(t[1:]) or "error", True
+        elif t[0] == "end" and len(t) == 1:
+            if not got:
+                raise ValueError("diffrun output: a case ended with no ret or error line")
             cur = None
+        else:
+            raise ValueError("diffrun output: unrecognised line %r" % line)
+    if cur is not None:
+        raise ValueError("diffrun output ended inside an open case (truncated?)")
     return res
 
 
@@ -98,13 +128,19 @@ def run_port(diffrun, exe, image_path, text, timeout=60):
     return parse_port_output(p.stdout)
 
 
-def compare(orig, port):
-    """The discrepancies between one original run and one port run (empty = they agree)."""
+def compare(orig, port, mask=0xFFFFFFFF):
+    """The discrepancies between one original run and one port run (empty = they agree).
+
+    `mask` is the Spec's: the part of the original's EAX that callers read. The port only reports
+    the mask its binding uses; a binding that differs from the Spec is itself a discrepancy, so a
+    port cannot narrow (or zero) the comparison on its own."""
     out = []
     if port.error:
         out.append("port: " + port.error)
-    if (orig.regs["eax"] & port.mask) != port.eax:
-        out.append("eax (mask 0x%X): original 0x%X, port 0x%X" % (port.mask, orig.regs["eax"] & port.mask, port.eax))
+    if port.mask != mask:
+        out.append("port reports eax mask 0x%X, the spec states 0x%X" % (port.mask, mask))
+    if (orig.regs["eax"] & mask) != port.eax:
+        out.append("eax (mask 0x%X): original 0x%X, port 0x%X" % (mask, orig.regs["eax"] & mask, port.eax))
     for a in sorted(set(orig.writes) | set(port.writes)):
         if orig.writes.get(a) != port.writes.get(a):
             o, p = orig.writes.get(a), port.writes.get(a)
@@ -124,12 +160,19 @@ class SpecResult:
     problems: list = field(default_factory=list)
     unhit: list = field(default_factory=list)       # unhit leaders with no stated reason
     outside: list = field(default_factory=list)
+    port_errors: list = field(default_factory=list)  # "<case>: <text>" for each case the port refused
+    diffs: int = 0                                   # eax and byte differences (not port errors)
 
 
 def verify_spec(spec, image, port_results, port_name=None):
     """Compare every case of `spec` against `port_results` (case id -> PortResult)."""
+    sent, got = [c.id for c in spec.cases], set(port_results)
+    if got != set(sent):
+        raise ValueError("%s: the port's results do not match the cases sent: missing %s, extra %s"
+                         % (port_name or spec.name, sorted(set(sent) - got), sorted(got - set(sent))))
     info = E.static_scan(image, spec.entry)
     executed, outside, problems, blocked = set(), set(), [], []
+    port_errors, diffs = [], 0
     for c in spec.cases:
         orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls)
         if orig.outcome != "ok":
@@ -137,12 +180,17 @@ def verify_spec(spec, image, port_results, port_name=None):
             continue
         executed |= orig.executed
         outside |= set(orig.outside)
-        for d in compare(orig, port_results[c.id]):
+        port = port_results[c.id]
+        if port.error:
+            port_errors.append("%s: %s" % (c.id, port.error))
+        for d in compare(orig, port, spec.eax_mask):
             problems.append("%s: %s" % (c.id, d))
+            if not d.startswith("port: "):
+                diffs += 1
     hit, unhit = E.coverage(info, executed)
     res = SpecResult(port_name or spec.name, spec.entry, "VERIFIED", len(spec.cases), len(hit),
                      len(info.leaders), problems, [a for a in unhit if a not in spec.unhit_named],
-                     sorted(outside))
+                     sorted(outside), port_errors, diffs)
     if problems:
         res.verdict = "MISMATCH"
     elif blocked:
@@ -177,7 +225,11 @@ SPECS = [
         Case("f9", {"eax": 9}, {DS_FLAGS: le32(0x205)}),       # AL-only return: EAX bits 8+ are scratch
         Case("f31", {"eax": 31}, {DS_FLAGS: le32(0)}),
         Case("f33", {"eax": 33}, {DS_FLAGS: le32(2)}),         # x86 masks the count to 5 bits
-    ]),
+    # AL only: the original sets AL (`mov al,1` 0x3C586, `xor al,al` 0x3C596) and leaves EAX bits
+    # 8+ as scratch. All five direct callers (0x1650B, 0x16534, 0x16B72, 0x16B9B, 0x19091, found
+    # by scanning the image for `call rel32` to 0x3C570; no `jmp` tail call or pointer to it)
+    # follow the call with `test al,al`; record E1 §E.5.
+    ], eax_mask=0xFF),
     Spec("config_credit_spend", 0x2CA7C, [
         Case("c1", {"eax": 5}, {DS_FREEPLAY: b"\x01", DS_CREDITS: le32(0)}),
         Case("c2", {"eax": 5}, {DS_FREEPLAY: b"\x00", DS_CREDITS: le32(3), DS_NODEBIT: b"\x00"}),
@@ -206,6 +258,18 @@ def verify_all(diffrun, exe, image_path, specs, only=None, mutants=False):
     return results
 
 
+def mutant_detection(r):
+    """(detected, reason). A mutant is detected only when the port ran every case without an error
+    and at least one case differs in EAX or in a changed byte. An unknown binding makes every case
+    a port error, which `compare` also reports as a problem (MISMATCH): that is a mutant that is
+    missing, not one that was caught."""
+    if r.port_errors:
+        return False, "port error: " + r.port_errors[0]
+    if not r.diffs:
+        return False, "no eax or byte difference on any case (verdict %s)" % r.verdict
+    return True, ""
+
+
 def table_row(r):
     note = "; reads outside the image: " + ", ".join("0x%X+%d" % o for o in r.outside) if r.outside else ""
     return "| %s | 0x%05X | %d | %d/%d | %s%s |" % (r.name, r.entry, r.ncases, r.hit, r.total, r.verdict, note)
@@ -229,24 +293,32 @@ def main(argv=None):
                     help="where diffrun dumps the image both sides run from")
     ap.add_argument("--function", help="only this function")
     ap.add_argument("--self-check", action="store_true",
-                    help="also require every mutant binding to be reported as MISMATCH")
+                    help="also require every mutant binding to be detected (an eax or byte difference, "
+                         "and no port error)")
     ap.add_argument("--table", help="write the verification table (markdown) to this file")
     args = ap.parse_args(argv)
 
+    if args.function and args.function not in [s.name for s in SPECS]:
+        print("diff-verify: --function %s names no spec; known: %s"
+              % (args.function, ", ".join(s.name for s in SPECS)))
+        return 2
     if not E.available():
-        return skip("unicorn is not installed (pip install -r tools/requirements-diff.txt)")
+        return skip("unicorn or capstone is not installed (pip install -r tools/requirements-diff.txt)")
     if not os.path.exists(args.exe):
         return skip("%s is absent" % args.exe)
     if not os.path.exists(args.diffrun):
         print("diff-verify: %s is not built (make build)" % args.diffrun)
         return 2
 
-    real = verify_all(args.diffrun, args.exe, args.image, SPECS, args.function)
+    try:
+        real = verify_all(args.diffrun, args.exe, args.image, SPECS, args.function)
+        mutants = (verify_all(args.diffrun, args.exe, args.image, SPECS, args.function, mutants=True)
+                   if args.self_check else [])
+    except (RuntimeError, ValueError) as e:
+        print("diff-verify: error: %s" % e)
+        return 2
     bad = [r for r in real if r.verdict != "VERIFIED"]
-    mutants, missed = [], []
-    if args.self_check:
-        mutants = verify_all(args.diffrun, args.exe, args.image, SPECS, args.function, mutants=True)
-        missed = [r for r in mutants if r.verdict != "MISMATCH"]
+    missed = [(r, why) for r in mutants for ok, why in [mutant_detection(r)] if not ok]
 
     rows = [TABLE_HEAD] + [table_row(r) for r in real + mutants]
     print("\n".join(rows))
@@ -255,8 +327,8 @@ def main(argv=None):
             print("  %s: %s" % (r.name, p))
         for a in r.unhit:
             print("  %s: block 0x%X not exercised" % (r.name, a))
-    for r in missed:
-        print("  %s: the mutant was NOT detected (verdict %s)" % (r.name, r.verdict))
+    for r, why in missed:
+        print("  %s: NOT DETECTED (%s)" % (r.name, why))
     if args.table:
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")

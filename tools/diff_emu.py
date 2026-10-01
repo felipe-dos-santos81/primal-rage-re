@@ -11,11 +11,15 @@ Flat model, confirmed in E1 (record §E.1): PRAGE.EXE is flat 32-bit, operands a
 addresses (rng_next 0x5D7DC reads `mov eax,[0xef6d8]`), so the emulator maps a 64 MB flat space
 with the image at its own addresses and no segment base.
 """
-import capstone
-from capstone import x86 as cx86
 from dataclasses import dataclass, field
 
-try:  # the harness skips cleanly (spec §5.5) when unicorn is not installed
+try:  # the harness skips cleanly (spec §5.5) when capstone is not installed
+    import capstone
+    from capstone import x86 as cx86
+except ImportError:  # pragma: no cover - exercised only on a host without capstone
+    capstone = None
+
+try:  # ... or when unicorn is not installed
     import unicorn
     from unicorn import (Uc, UcError, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE,
                          UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE, UC_PROT_ALL)
@@ -25,9 +29,13 @@ except ImportError:  # pragma: no cover - exercised only on a host without unico
 
 MEM_SIZE = 0x4000000          # = port/src/mem.h MEM_SIZE
 IMAGE_BASE = 0x10000          # = CODE_BASE; the dump starts here
-STACK_TOP = 0x3FF0000         # private emulator stack; the port has none, so it is never diffed
-STACK_LOW = 0x3F00000
-SENTINEL = 0x3FFF000          # the return address pushed for the function; emulation ends here
+# The private emulator stack lives OUTSIDE [0, MEM_SIZE) so that every write the original makes
+# inside the port's mem[] range is diffed; only this range is excluded from the diff (the port
+# has no stack of its own to compare).
+STACK_LOW = 0x7FF00000
+STACK_END = 0x80000000
+STACK_TOP = 0x7FFF0000
+SENTINEL = 0x7FFFF000         # the return address pushed for the function; emulation ends here
 DEFAULT_MAX_INSNS = 200_000
 REGS = ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp")
 
@@ -40,7 +48,7 @@ UNMODELED_MNEMONICS = frozenset({
 
 
 def available():
-    return unicorn is not None
+    return unicorn is not None and capstone is not None
 
 
 class Image:
@@ -72,13 +80,14 @@ class OrigResult:
     outcome: str                 # ok | fault | unmodeled | timeout
     detail: str = ""
     regs: dict = field(default_factory=dict)       # final value of each REGS entry
-    writes: dict = field(default_factory=dict)     # addr -> final byte, only bytes that changed, stack excluded
+    writes: dict = field(default_factory=dict)     # addr -> final byte, only bytes that changed, private stack excluded
     executed: set = field(default_factory=set)     # addresses of executed instructions
     outside: list = field(default_factory=list)    # (addr, size) read or written outside image and stack
 
 
-_md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-_md.detail = True
+if capstone is not None:
+    _md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    _md.detail = True
 
 
 def _decode(data, addr):
@@ -102,10 +111,11 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     allow_calls: direct call targets the emulator may enter; any other call stops the run as
     `unmodeled` (spec §5.2: the closure the port also runs).
     """
-    if unicorn is None:
-        raise RuntimeError("unicorn is not installed (pip install -r tools/requirements-diff.txt)")
+    if not available():
+        raise RuntimeError("unicorn or capstone is not installed (pip install -r tools/requirements-diff.txt)")
     mu = Uc(UC_ARCH_X86, UC_MODE_32)
     mu.mem_map(0, MEM_SIZE, UC_PROT_ALL)
+    mu.mem_map(STACK_LOW, STACK_END - STACK_LOW, UC_PROT_ALL)
     mu.mem_write(image.base, image.data)
     for addr, data in (pokes or {}).items():
         if not image.contains(addr, len(data)):
@@ -131,7 +141,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     allow = frozenset(allow_calls)
 
     def in_scope(addr):
-        return image.contains(addr) or STACK_LOW <= addr < MEM_SIZE
+        return image.contains(addr) or STACK_LOW <= addr < STACK_END
 
     def on_code(uc, addr, size, _):
         executed.add(addr)
@@ -183,7 +193,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     final_regs = {r: mu.reg_read(names[r]) for r in REGS}
     writes = {}
     for a, old in before.items():
-        if STACK_LOW <= a < MEM_SIZE:
+        if STACK_LOW <= a < STACK_END:
             continue
         new = mu.mem_read(a, 1)[0]
         if new != old:

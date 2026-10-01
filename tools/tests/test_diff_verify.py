@@ -5,11 +5,16 @@ The comparison logic is tested with fabricated port results on small hand-assemb
 needs no PRAGE.EXE. The last class runs the real build/diffrun on the real functions; it skips when
 either is absent (the other oracles skip the same way) unless PR_ORACLE_REQUIRED=1.
 """
+import contextlib
+import dataclasses
+import io
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
@@ -53,6 +58,32 @@ class ParseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             V.parse_port_output("w 0x1 0x2\n")
 
+    def test_truncated_or_malformed_output_is_rejected_not_parsed_as_a_result(self):
+        # Each of these used to parse (a case with no ret/error line was eax 0, no writes), so
+        # output cut after `case c5` could agree with an original that returns 0 and writes nothing.
+        ok = "ret eax 0x1 mask 0xFF\n"
+        for name, text in [
+            ("a case still open at EOF", "case a\n"),
+            ("ret without end", "case a\n" + ok),
+            ("end without ret or error", "case a\nend\n"),
+            ("two rets", "case a\n" + ok + ok + "end\n"),
+            ("ret and error", "case a\n" + ok + "error x\nend\n"),
+            ("two errors", "case a\nerror x\nerror y\nend\n"),
+            ("duplicate case ids", "case a\n" + ok + "end\ncase a\n" + ok + "end\n"),
+            ("a case opened inside an open case", "case a\ncase b\n" + ok + "end\n"),
+            ("an unknown line", "case a\n" + ok + "bogus 1\nend\n"),
+            ("a duplicate write address", "case a\n" + ok + "w 0x1 0x2\nw 0x1 0x3\nend\n"),
+            ("end outside a case", ok + "end\n"),
+        ]:
+            with self.subTest(name):
+                with self.assertRaises(ValueError):
+                    V.parse_port_output(text)
+
+    def test_duplicate_case_ids_in_a_spec_are_refused(self):
+        with self.assertRaises(ValueError) as cm:
+            V.Spec("f", 0x10000, [V.Case("a", {}), V.Case("a", {"eax": 1})])
+        self.assertIn("duplicate case id", str(cm.exception))
+
 
 class CompareTests(unittest.TestCase):
     def test_agreement_has_no_discrepancy(self):
@@ -62,8 +93,25 @@ class CompareTests(unittest.TestCase):
         # fighter_slot_flag returns through AL: the original leaves EAX = 0x201 where the port's C
         # return is 1. Bits 8+ are scratch no caller reads, so under mask 0xFF they agree, and
         # under a full mask they do not: the mask is what the binding states, not a loophole.
-        self.assertEqual(V.compare(orig(0x201), V.PortResult(1, 0xFF)), [])
-        self.assertEqual(len(V.compare(orig(0x201), V.PortResult(1, 0xFFFFFFFF))), 1)
+        self.assertEqual(V.compare(orig(0x201), V.PortResult(1, 0xFF), 0xFF), [])
+        self.assertEqual(len(V.compare(orig(0x201), V.PortResult(1, 0xFFFFFFFF), 0xFFFFFFFF)), 1)
+
+    def test_the_spec_mask_not_the_ports_decides(self):
+        # The mask is the Spec's. A port that reports another mask is a discrepancy, so a binding
+        # cannot narrow the comparison by itself.
+        d = V.compare(orig(1), V.PortResult(1, 0xFF), 0xFFFFFFFF)
+        self.assertEqual(d, ["port reports eax mask 0xFF, the spec states 0xFFFFFFFF"])
+        d = V.compare(orig(1), V.PortResult(1, 0xFFFFFFFF), 0xFF)
+        self.assertEqual(d, ["port reports eax mask 0xFFFFFFFF, the spec states 0xFF"])
+
+    def test_a_port_reported_mask_of_zero_cannot_make_a_differing_eax_agree(self):
+        d = V.compare(orig(5), V.PortResult(0, 0), 0xFFFFFFFF)
+        self.assertIn("eax (mask 0xFFFFFFFF): original 0x5, port 0x0", d)
+        self.assertIn("port reports eax mask 0x0, the spec states 0xFFFFFFFF", d)
+        self.assertEqual(len(d), 2)
+
+    def test_the_default_spec_mask_is_the_full_compare(self):
+        self.assertEqual(V.Spec("f", 0x10000, [V.Case("a", {})]).eax_mask, 0xFFFFFFFF)
 
     def test_a_write_the_port_forgot_is_a_discrepancy(self):
         d = V.compare(orig(0, {0x107EE0: 1}), V.PortResult(0, 0xFFFFFFFF, {}))
@@ -76,6 +124,45 @@ class CompareTests(unittest.TestCase):
     def test_a_port_error_is_a_discrepancy(self):
         d = V.compare(orig(0), V.PortResult(0, 0xFFFFFFFF, {}, "unknown binding x"))
         self.assertIn("port: unknown binding x", d)
+
+
+class MutantDetectionTests(unittest.TestCase):
+    def res(self, **kw):
+        return V.SpecResult("m@mutant", 0x10000, "MISMATCH", **kw)
+
+    def test_only_a_real_eax_or_byte_difference_counts_as_detection(self):
+        self.assertEqual(V.mutant_detection(self.res(diffs=2, problems=["a: eax"]))[0], True)
+
+    def test_a_port_error_is_never_detection(self):
+        # an unknown binding makes every case `error unknown binding ...`, which compare() reports
+        # as a problem: that is a missing mutant, not a caught one
+        ok, why = V.mutant_detection(self.res(diffs=0, problems=["a: port: unknown binding m@x"],
+                                              port_errors=["a: unknown binding m@x"]))
+        self.assertFalse(ok)
+        self.assertIn("port error", why)
+        self.assertIn("unknown binding", why)
+
+    def test_a_port_error_beside_a_difference_is_still_not_detection(self):
+        self.assertFalse(V.mutant_detection(self.res(diffs=1, port_errors=["b: boom"]))[0])
+
+    def test_a_mutant_that_agrees_everywhere_is_not_detected(self):
+        ok, why = V.mutant_detection(V.SpecResult("m", 0, "VERIFIED"))
+        self.assertFalse(ok)
+        self.assertIn("no eax or byte difference", why)
+
+
+class MainArgumentTests(unittest.TestCase):
+    def run_main(self, argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = V.main(argv)
+        return rc, out.getvalue()
+
+    def test_an_unknown_function_is_an_error_not_zero_of_zero(self):
+        rc, out = self.run_main(["--function", "rng_nxt"])
+        self.assertEqual(rc, 2)
+        self.assertIn("rng_nxt", out)
+        self.assertIn("rng_next", out)          # the known names are listed
 
 
 # 10000: cmp eax,0; je 10008; inc eax; jmp 10009; (10008) dec eax; (10009) ret
@@ -107,6 +194,34 @@ class VerifySpecTests(unittest.TestCase):
         r = V.verify_spec(spec, image(DIAMOND), {"z": self.ZERO, "o": V.PortResult(3, 0xFFFFFFFF)})
         self.assertEqual(r.verdict, "MISMATCH")
         self.assertEqual(r.problems, ["o: eax (mask 0xFFFFFFFF): original 0x2, port 0x3"])
+
+    def test_a_port_that_returned_other_case_ids_is_an_error_not_a_keyerror(self):
+        spec = V.Spec("d", 0x10000, [V.Case("z", {"eax": 0}), V.Case("o", {"eax": 1})])
+        with self.assertRaises(ValueError) as cm:
+            V.verify_spec(spec, image(DIAMOND), {"z": self.ZERO})
+        self.assertIn("missing ['o']", str(cm.exception))
+        with self.assertRaises(ValueError) as cm:
+            V.verify_spec(spec, image(DIAMOND), {"z": self.ZERO, "o": self.ONE, "x": self.ONE})
+        self.assertIn("extra ['x']", str(cm.exception))
+
+    def test_port_errors_are_recorded_apart_from_differences(self):
+        spec = V.Spec("d", 0x10000, [V.Case("z", {"eax": 0}), V.Case("o", {"eax": 1})])
+        r = V.verify_spec(spec, image(DIAMOND), {"z": V.PortResult(0xFFFFFFFF, 0xFFFFFFFF, {}, "boom"),
+                                                 "o": V.PortResult(3, 0xFFFFFFFF)})
+        self.assertEqual((r.port_errors, r.diffs), (["z: boom"], 1))
+
+    def test_a_port_that_reports_mask_zero_cannot_hide_a_wrong_eax(self):
+        spec = V.Spec("d", 0x10000, [V.Case("z", {"eax": 0}), V.Case("o", {"eax": 1})])
+        r = V.verify_spec(spec, image(DIAMOND), {"z": self.ZERO, "o": V.PortResult(0, 0)})
+        self.assertEqual(r.verdict, "MISMATCH")
+        self.assertEqual(r.problems, ["o: port reports eax mask 0x0, the spec states 0xFFFFFFFF",
+                                      "o: eax (mask 0xFFFFFFFF): original 0x2, port 0x0"])
+
+    def test_the_specs_mask_is_applied_to_the_original(self):
+        # DIAMOND leaves eax = 0x2 for eax = 1; with mask 0xFF a port that reports 2 under 0xFF agrees
+        spec = V.Spec("d", 0x10000, [V.Case("z", {"eax": 0}), V.Case("o", {"eax": 1})], eax_mask=0xFF)
+        r = V.verify_spec(spec, image(DIAMOND), {"z": V.PortResult(0xFF, 0xFF), "o": V.PortResult(2, 0xFF)})
+        self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
 
     def test_an_unmodeled_instruction_makes_the_function_not_exercisable(self):
         spec = V.Spec("i", 0x10000, [V.Case("x", {})])
@@ -140,6 +255,15 @@ class RunPortTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as cm:
                 V.run_port(script, "x.exe", os.path.join(d, "img"), "", timeout=1)
             self.assertIn("timed out", str(cm.exception))
+
+    def test_a_runner_whose_output_is_cut_off_is_an_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            script = os.path.join(d, "cut")
+            with open(script, "w") as f:
+                f.write("#!/bin/sh\nprintf 'case c5\\n'\n")
+            os.chmod(script, os.stat(script).st_mode | stat.S_IXUSR)
+            with self.assertRaises(ValueError):
+                V.run_port(script, "x.exe", os.path.join(d, "img"), "")
 
     def test_a_failing_runner_is_an_error(self):
         with tempfile.TemporaryDirectory() as d:
@@ -198,6 +322,59 @@ class RealFunctionTests(unittest.TestCase):
         r = self.mut["fighter_slot_flag@mutant"]
         self.assertTrue(r.problems and not any("eax" in p for p in r.problems), r.problems)
         self.assertTrue(any("0x107EE0" in p for p in r.problems), r.problems)
+
+    def test_truncated_real_output_is_rejected_where_it_used_to_verify(self):
+        # config_credit_spend's last case is c5 (original: eax 0, no writes). Cutting the real
+        # output after `case c5` used to parse as eax 0 / no writes and so agree with it.
+        spec = [s for s in V.SPECS if s.name == "config_credit_spend"][0]
+        with tempfile.NamedTemporaryFile("w", suffix=".cases", delete=False) as f:
+            f.write(V.cases_text(spec, spec.name))
+        try:
+            full = subprocess.run([DIFFRUN, "--exe", EXE, "--image-out", os.path.join(self.tmp.name, "t.bin"),
+                                   "--cases", f.name], capture_output=True, text=True, check=True).stdout
+        finally:
+            os.unlink(f.name)
+        self.assertEqual(sorted(V.parse_port_output(full)), ["c1", "c2", "c3", "c4", "c5"])
+        cut = full[:full.index("case c5\n") + len("case c5\n")]
+        with self.assertRaises(ValueError):
+            V.parse_port_output(cut)
+
+    def test_a_missing_mutant_binding_is_not_counted_as_detected(self):
+        spec = dataclasses.replace([s for s in V.SPECS if s.name == "rng_next"][0], mutants=("@doesnotexist",))
+        r = V.verify_all(DIFFRUN, EXE, os.path.join(self.tmp.name, "m.bin"), [spec], mutants=True)[0]
+        self.assertEqual(r.verdict, "MISMATCH")        # compare() still turns the port error into a problem
+        ok, why = V.mutant_detection(r)
+        self.assertFalse(ok)
+        self.assertIn("unknown binding", why)
+
+    def test_the_self_check_fails_when_a_mutant_binding_is_missing(self):
+        spec = dataclasses.replace([s for s in V.SPECS if s.name == "rng_next"][0], mutants=("@doesnotexist",))
+        out = io.StringIO()
+        with mock.patch.object(V, "SPECS", [spec]), contextlib.redirect_stdout(out):
+            rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "s.bin"),
+                         "--self-check"])
+        self.assertEqual(rc, 1)
+        self.assertIn("rng_next@doesnotexist: NOT DETECTED (", out.getvalue())
+        self.assertIn("0/1 mutants detected", out.getvalue())
+
+    def test_function_selects_one_spec(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "f.bin"),
+                         "--function", "rng_next", "--self-check"])
+        self.assertEqual(rc, 0)
+        self.assertIn("1/1 functions VERIFIED; 1/1 mutants detected", out.getvalue())
+
+    def test_the_eax_mask_is_stated_by_the_spec_and_only_slot_flag_narrows_it(self):
+        self.assertEqual({s.name: s.eax_mask for s in V.SPECS}, {
+            "rng_next": 0xFFFFFFFF, "fighter_slot_flag": 0xFF,
+            "config_credit_spend": 0xFFFFFFFF, "config_codeword_len": 0xFFFFFFFF})
+        # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
+        spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
+                                   eax_mask=0xFFFFFFFF)
+        r = V.verify_all(DIFFRUN, EXE, os.path.join(self.tmp.name, "k.bin"), [spec])[0]
+        self.assertEqual(r.verdict, "MISMATCH")
+        self.assertTrue(any(p.startswith("f9:") and "eax" in p for p in r.problems), r.problems)
 
     def test_the_slot_flag_case_with_scratch_eax_bits_exists(self):
         # case f9 is what makes the AL mask load-bearing: the original's EAX is 0x201 there.

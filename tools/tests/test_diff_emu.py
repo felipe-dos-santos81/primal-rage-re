@@ -25,6 +25,19 @@ def image(code, at=0x10000):
     return E.Image(bytes(data))
 
 
+class AvailabilityTests(unittest.TestCase):
+    def test_both_unicorn_and_capstone_are_required(self):
+        # the harness skips (spec 5.5) when either is missing; capstone used to be imported
+        # unconditionally, so a host without it errored instead of skipping
+        from unittest import mock
+        with mock.patch.object(E, "capstone", None):
+            self.assertFalse(E.available())
+        with mock.patch.object(E, "unicorn", None):
+            self.assertFalse(E.available())
+        with mock.patch.object(E, "capstone", None), self.assertRaises(RuntimeError):
+            E.run_original(E.Image(bytes(0x100)), 0x10000)
+
+
 @unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed (pip install -r tools/requirements-diff.txt)")
 class RunOriginalTests(unittest.TestCase):
     def test_unicorn_is_installed_when_required(self):
@@ -56,6 +69,19 @@ class RunOriginalTests(unittest.TestCase):
         # 10000: push eax; pop eax; ret
         r = E.run_original(image(bytes.fromhex("50" "58" "C3")), 0x10000, regs={"eax": 9})
         self.assertEqual((r.outcome, r.writes), ("ok", {}))
+
+    def test_a_write_in_the_range_the_emulator_stack_used_to_occupy_is_a_write(self):
+        # The stack used to sit at 0x3F00000.., inside the port's mem[] range, so an original write
+        # there was dropped from the diff. It is now outside MEM_SIZE and every write below
+        # MEM_SIZE is diffed. 10000: mov [0x3F80000],eax; ret   (the target holds 0 before)
+        r = E.run_original(image(bytes.fromhex("A3" "0000F803" "C3")), 0x10000, regs={"eax": 0x12345678})
+        self.assertEqual(r.writes, {0x3F80000: 0x78, 0x3F80001: 0x56, 0x3F80002: 0x34, 0x3F80003: 0x12})
+        self.assertEqual(r.outside, [(0x3F80000, 4)])      # outside the image, so it is also reported
+
+    def test_the_private_stack_is_outside_the_port_memory_range(self):
+        self.assertGreaterEqual(E.STACK_LOW, E.MEM_SIZE)
+        self.assertGreater(E.SENTINEL, E.STACK_LOW)
+        self.assertLess(E.STACK_TOP, E.SENTINEL)
 
     def test_an_invalid_instruction_is_a_fault(self):
         r = E.run_original(image(bytes.fromhex("0F0B")), 0x10000)          # ud2
