@@ -230,8 +230,9 @@ SCENARIOS['gp-u5-charsel'] = dict(time_limit=60, steps=(
 # HOLD_FRAMES; the 20 frames after F2 keep the ESC inside the join's 0x78-frame
 # mode 0x17 (0x28E75); 90 s covers mode 6 at 55.1 s in gp-idle-loss (§G.18)
 # plus the restart's boot movies (14.7 s in gp-pads, §G.7.3). KEYS_EXTRA are
-# the S fields this scenario adds: the latch (0x24D4D), the sample and music
-# pause bytes (0x1D220, 0x1D1B0).
+# the S fields this scenario adds: the latch (0x24D4D), the sample pause byte
+# (0x1D220 xor byte [0x1028DB],1) and the music pause byte (written at 0x1D1C2
+# and 0x1D213, in the function entered at 0x1D1B0).
 KEYS_EXTRA = (('lat', 0x105F30, 4), ('spz', 0x1028DB, 1), ('mpz', 0x1028DA, 1))
 SCENARIOS['gp-keys-fight'] = dict(time_limit=90, extra=KEYS_EXTRA, steps=(
     ('boot', ENTER_WAIT, ('key', 'enter')),         # 0: mode 3 -> 0x27
