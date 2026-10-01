@@ -260,3 +260,15 @@ def coverage(info, executed):
     hit = [a for a in info.leaders if a in executed]
     unhit = [a for a in info.leaders if a not in executed]
     return hit, unhit
+
+
+# ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --
+
+def decode_at(image, addr):
+    """The one instruction at `addr` (a capstone instruction with details), or None if undecodable."""
+    return _decode(image.bytes_at(addr, 15), addr)
+
+
+def disasm_range(image, start, end):
+    """Linear decode of [start, end): the capstone instructions, stopping at the first undecodable byte."""
+    return list(_md.disasm(image.bytes_at(start, end - start), start))
