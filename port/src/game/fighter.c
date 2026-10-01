@@ -5392,8 +5392,9 @@ void fighter_pose_3a6d4(u32 slot, u32 side)
 /* 0x3A588 — record gameplay-u6 §U6.3. The 0x3A650 pose family's per-frame
  * handler 0x3531C case 10 calls through slot+0x10 (0x3A650 stores it at
  * 0x3A686, the dword at 0x3A689 its only reference). The body is 0x3A43C's
- * with the 0xC9030 stream table, the 0x3A650 setter's globs (B = 0x107D00 +
- * side*2, A = 0x107D0C + side*2) and +0x90 = 2 at the end. Phase 0 sets +0x58
+ * with the 0xC9030 stream table, the per-side words the 0x3A650 setter latches
+ * (B = 0x107D00 + side*2, the caller's BX, 0x3A6B7; A = 0x107D0C + side*2,
+ * the slot's +0x2C word, 0x3A6AF) and +0x90 = 2 at the end. Phase 0 sets +0x58
  * = 1; phase 1 starts the self record's 0xC9030[char] stream at 3.0,
  * re-anchors the self record (x kept, y = 0), sets +0x58 = 2 and +0x90 = 2,
  * and, when B[side] is neither 0 nor 5 and (u8)(+0x90 - 1) > 3, snaps the self
