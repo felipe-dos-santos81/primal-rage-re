@@ -53,7 +53,7 @@ chunk ?= 0
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
-        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify
+        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -458,6 +458,28 @@ gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skip
 		--trace-min-first "$(GP_IDLE_LOSS_TRACE_MIN_FIRST)" --max-start "$(GP_IDLE_LOSS_MAX_START)" \
 		--capture-sha256 "$(GP_IDLE_LOSS_CAPTURE_SHA256)" --capture-frames "$(GP_IDLE_LOSS_CAPTURE_FRAMES)"
 
+# U5 character-select walk (record 2026-10-01-gameplay-u5 §C5.16-§C5.18): the gp-u5-charsel capture
+# against its port replay, both ratchets, enforced like gp-oracle (skips without the capture,
+# fails on a present capture with another poll.log). Values measured in U5 Task 7 (report lines in
+# §C5.17), pinned by U5 Task 8 Step 1 (pins.sh); raise N/F when the claims improve.
+# Provenance (U5 Task 7, record §C5.17): the report's FIRST UNEXPLAINED capture line names the frame after
+# the port's last one. The port's script ends where the capture's poll.log ends, its last frame is
+# byte-identical to the capture frame before N, and the capture runs on past it; so N is how far the
+# port got, not a defect. The trace line reports no differing frame through the script's last f, so
+# TRACE_MIN_FIRST is that f plus one, the exact pin (one more fails as unreachable).
+GP_CHARSEL_MIN_FIRST = 516
+GP_CHARSEL_TRACE_MIN_FIRST = 1513
+GP_CHARSEL_MAX_START = 100
+GP_CHARSEL_CAPTURE_SHA256 = 138fb537cd8c364bab0ccc68fc8fdd9079de19f3b0fc789d427f6d9652a18d7e
+GP_CHARSEL_CAPTURE_FRAMES = 1464
+gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratchets (skips without data/k11-captures/gp-u5-charsel)
+	@echo "== gameplay oracle: gp-u5-charsel (frame and trace ratchets) =="
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-u5-charsel GP_OPTIONAL=1
+	@$(PYTHON) tools/gp_compare.py --scenario gp-u5-charsel --capture $(K11_CAPTURES)/gp-u5-charsel \
+		--port $(GP_DUMP)/gp-u5-charsel --min-first "$(GP_CHARSEL_MIN_FIRST)" \
+		--trace-min-first "$(GP_CHARSEL_TRACE_MIN_FIRST)" --max-start "$(GP_CHARSEL_MAX_START)" \
+		--capture-sha256 "$(GP_CHARSEL_CAPTURE_SHA256)" --capture-frames "$(GP_CHARSEL_CAPTURE_FRAMES)"
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario)
@@ -510,6 +532,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-pads GP_OPTIONAL=1
 	@echo "== gameplay oracle (frame and trace ratchets; skips without its capture; record §G.16) =="
 	@$(MAKE) --no-print-directory gp-oracle
+	@$(MAKE) --no-print-directory gp-charsel-oracle
 	@$(MAKE) --no-print-directory diff-verify
 	@echo "== k11 and gp tool unit tests =="
 	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare
