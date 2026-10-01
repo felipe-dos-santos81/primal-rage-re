@@ -769,7 +769,7 @@ static int parse_hex(const char *s, u32 *out)
 {
     char *e;
     unsigned long v = strtoul(s, &e, 16);
-    if (e == s || *e != '\0') return 0;
+    if (e == s || *e != '\0' || v > 0xFFFFFFFFul) return 0;
     *out = (u32)v;
     return 1;
 }
@@ -806,14 +806,16 @@ static void run_case(const case_t *c)
     printf("case %s\n", c->id);
     const binding_t *b = find_binding(c->fn);
     if (!b) { printf("error unknown binding %s\nend\n", c->fn); return; }
+    /* every poke is checked before any is applied, so an error leaves mem[] untouched and the
+     * next case starts from the pristine image. The check is written so it cannot wrap in u32. */
     for (int i = 0; i < c->npoke; i++) {
         const poke_t *p = &c->poke[i];
-        if (p->addr < CODE_BASE || p->addr + p->len > CODE_BASE + g_len) {
+        if (!(p->len <= g_len && p->addr >= CODE_BASE && p->addr - CODE_BASE <= g_len - p->len)) {
             printf("error poke 0x%X outside the image\nend\n", p->addr);
             return;
         }
-        memcpy(mem + p->addr, p->b, p->len);
     }
+    for (int i = 0; i < c->npoke; i++) memcpy(mem + c->poke[i].addr, c->poke[i].b, c->poke[i].len);
     memcpy(g_pre, mem + CODE_BASE, g_len);
 
     u32 eax = 0;
@@ -840,6 +842,11 @@ static int run_cases(const char *path)
         for (char *s = strtok(line, " \t\r\n"); s && n < 4; s = strtok(NULL, " \t\r\n")) t[n++] = s;
         if (n == 0 || t[0][0] == '#') continue;
         if (strcmp(t[0], "case") == 0 && n == 2) {
+            if (open) {
+                fprintf(stderr, "diffrun: case %s opened inside unterminated case %s\n", t[1], c.id);
+                fclose(f);
+                return 0;
+            }
             memset(&c, 0, sizeof c);
             snprintf(c.id, sizeof c.id, "%s", t[1]);
             open = 1;
@@ -866,13 +873,19 @@ static int run_cases(const char *path)
         }
     }
     fclose(f);
+    if (open) fprintf(stderr, "diffrun: case %s has no end line\n", c.id);
     return !open;
 }
 
 int main(int argc, char **argv)
 {
     const char *exe = NULL, *img = NULL, *cases = NULL;
-    for (int i = 1; i + 1 < argc; i += 2) {
+    for (int i = 1; i < argc; i += 2) {
+        if (i + 1 >= argc) {
+            fprintf(stderr, "diffrun: option %s needs a value\n", argv[i]);
+            fprintf(stderr, "usage: diffrun --exe PRAGE.EXE --image-out FILE [--cases FILE]\n");
+            return 2;
+        }
         if (strcmp(argv[i], "--exe") == 0) exe = argv[i + 1];
         else if (strcmp(argv[i], "--image-out") == 0) img = argv[i + 1];
         else if (strcmp(argv[i], "--cases") == 0) cases = argv[i + 1];
@@ -927,6 +940,33 @@ exit=0
 ```
 
 and the image file is `1028304` bytes (`0x10B0D0 - 0x10000`). Run the same command a second time: the output must be identical (a case leaves no state behind).
+
+Then the second smoke, which proves a failed case leaves no state behind and the poke bounds check cannot wrap:
+
+```bash
+printf 'case b1\nfn fighter_slot_flag\nreg eax 5\npoke 0x107EE0 FFFFFFFF\npoke 0x2000000 01\nend\ncase b2\nfn fighter_slot_flag\nreg eax 5\nend\ncase b3\nfn rng_next\npoke 0xFFFFFFF0 0000000000000000000000000000000000000000000000000000000000000000\nend\n' > /tmp/pr_e1_smoke2.cases
+build/diffrun --exe data/game/C/PRAGE.EXE --image-out /tmp/pr_e1_smoke.img --cases /tmp/pr_e1_smoke2.cases; echo exit=$?
+printf 'case b4\nfn rng_next\npoke 100000107EE0 01\nend\n' > /tmp/pr_e1_smoke3.cases
+build/diffrun --exe data/game/C/PRAGE.EXE --image-out /tmp/pr_e1_smoke.img --cases /tmp/pr_e1_smoke3.cases; echo exit=$?
+```
+
+Expected, exactly (`b1` fails on its second poke after its first would have dirtied `0x107EE0`; `b2` must still see the pristine image, so it prints `ret eax 0x0` and the `w` line; `b3` is a 32-byte poke at an address where `addr + len` wraps in u32; the last command's address does not fit in 32 bits and is rejected while parsing):
+
+```
+case b1
+error poke 0x2000000 outside the image
+end
+case b2
+ret eax 0x0 mask 0xFF
+w 0x107EE0 0x20
+end
+case b3
+error poke 0xFFFFFFF0 outside the image
+end
+exit=0
+diffrun: bad poke line
+exit=1
+```
 
 - [ ] **Step 5: The gate that this changed nothing else**
 
@@ -1173,6 +1213,23 @@ class RealFunctionTests(unittest.TestCase):
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
         o = E.run_original(img, spec.entry, c.regs, c.pokes)
         self.assertEqual(o.regs["eax"], 0x201)
+
+
+    def test_an_error_case_leaves_no_state_behind(self):
+        # 'bad' dirties 0x107EE0 with 0xFFFFFFFF (the clean value is 0, so a leak is visible: the
+        # next case would return 1 and write nothing) and then fails the bounds check on its second
+        # poke. 'ok' has no poke of its own at 0x107EE0, so it only sees a clean image if 'bad'
+        # left none behind; run alone it must give the identical result.
+        def case(cid, pokes):
+            return "case %s\nfn fighter_slot_flag\nreg eax 5\n%send\n" % (cid, pokes)
+        bad = case("bad", "poke 0x107EE0 ffffffff\npoke 0x2000000 01\n")
+        ok = case("ok", "")
+        img = os.path.join(self.tmp.name, "isolation.bin")
+        both = V.run_port(DIFFRUN, EXE, img, bad + ok)
+        alone = V.run_port(DIFFRUN, EXE, img, ok)
+        self.assertTrue(both["bad"].error)
+        self.assertEqual((both["ok"].eax, both["ok"].writes), (0, {0x107EE0: 0x20}))
+        self.assertEqual((both["ok"].eax, both["ok"].writes), (alone["ok"].eax, alone["ok"].writes))
 
 
 if __name__ == "__main__":
@@ -1465,7 +1522,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run the unit tests**
 
 Run: `python3 -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify 2>&1 | tail -4`
-Expected: `Ran 46 tests ... OK` (the five real-function tests run when `build/diffrun` and `data/game/C/PRAGE.EXE` exist, and skip otherwise).
+Expected: `Ran 47 tests ... OK` (the six real-function tests run when `build/diffrun` and `data/game/C/PRAGE.EXE` exist, and skip otherwise).
 
 - [ ] **Step 5: Run the CLI**
 
@@ -1616,5 +1673,5 @@ Report: the head SHA, the gate output (EXIT, oracle lines, WAV, counters), the t
 ## Execution notes
 
 - Tasks 1, 2, 4 are Python integration with complete code: a standard-tier implementer. Task 3 is a transcription plus a build and a hand smoke: the cheapest tier is enough. Task 5 is a record plus the gate: standard tier. Review each with a standard-tier reviewer; the final whole-branch review goes to the most capable model.
-- The code in Tasks 1-4 was prototyped and run end to end before this plan was written (46 Python tests pass, nine table rows, every mutation above fails the named tests), so a deviation from it needs a reason in the report.
+- The code in Tasks 1-4 was prototyped and run end to end before this plan was written (47 Python tests pass, nine table rows, every mutation above fails the named tests), so a deviation from it needs a reason in the report.
 - Handoff after E1: E2 (triage of the 575 candidates) and the U5-U8, U11 plans can start, and P (the port batches) starts once the stub design for calls (record §E.6 item 1) is planned.
