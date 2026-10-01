@@ -237,7 +237,11 @@ class TestIdleLoss(unittest.TestCase):
             lines = [l for l in text.splitlines() if not l.startswith('#')]
             self.assertEqual(lines, ['enter_frame 288', 'enter_state 0000', 'key 288 1C 0D', 'end 290'])
             with self.assertRaises(gs.ScriptError):
-                gs.port_script('_t', _log(), end=400)        # past the capture's X record
+                gs.port_script('_t', _log(), end=400)
+            with self.assertRaises(gs.ScriptError) as cm:         # review 1 minor 11: before the Enter
+                gs.port_script('_t', _log(), end=287)
+            self.assertIn('before the Enter', str(cm.exception))
+            self.assertIn('key 288 1C 0D', gs.port_script('_t', _log(), end=288))        # past the capture's X record
         finally:
             gs.SCENARIOS.pop('_t', None)
 

@@ -419,24 +419,41 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # measured first unexplained capture frame / first differing f / window start
 # (MAX_START: the capture frame where the window begins; a later start fails, so a
 # port regression cannot slide the window past the frame that set MIN_FIRST).
-# Measured at 123d3b6 (record §G.20-§G.21): first unexplained capture frame 203 (raw 2359),
-# the character select's pick countdown: the capture shows 12 and the scene running
-# backwards (Sauron's idle animation turns around at f=0x340), the port turns it around at
-# f=0x3A0; raise it when the frame claim improves (gp_compare prints "improved: raise N").
+# All re-measured on main c6cac22 (U0's 40 functions) + U3 + U4 (record §G.24): unchanged
+# from the first measurement on the pre-U0 base.
+# MIN_FIRST: first unexplained capture frame 203 (raw 2359), the character select's pick
+# countdown step: the capture shows 12 and Sauron's idle animation running backwards, the
+# port keeps it going forward ~96 frames more (f 0x340 against 0x3A0). The cause is not
+# isolated (no raw address; the fn_resolve miss log holds nothing in the character select
+# but the bare `ret` 0x29D60, record §G.24); raise it when the frame claim improves
+# (gp_compare prints "improved: raise N").
 GP_IDLE_LOSS_MIN_FIRST = 203
-# Measured at 123d3b6 (record §G.20-§G.21): first differing f=0x828 (decimal 2088) in rng, port
-# against the capture (capture 73A05D37, port CE92DD04): the type-0 fight-effect entry's walk
-# (fight_4b144) draws 5 frames earlier in the port than in the original; run-to-run: none
-# (record §G.19, the two captures agree at every f from 0x625); raise it when the trace
-# claim improves.
+# TRACE_MIN_FIRST: first differing f=0x828 (decimal 2088) in rng, port against the capture
+# (capture 73A05D37, port CE92DD04). Four frames earlier (f=0x824) the port's P2 attack
+# misses an UNREGISTERED move-table callback, 0x23208 (character 1, reaction 0x26; U0's
+# §U0.12 list; fn_misslog, record §G.24), whose effects (animation, slot +0x52/+0x53/+0x54/+0xC,
+# voice 0x79) are not traced fields; whether it causes the rng/hit difference is not excluded.
+# No run-to-run bound (record §G.19: the two captures agree at every f from 0x625); raise it
+# when the trace claim improves.
 GP_IDLE_LOSS_TRACE_MIN_FIRST = 2088
-GP_IDLE_LOSS_MAX_START =
+# MAX_START: the window begins at capture frame 90 (raw 1744), the first capture frame that
+# shows the port's first frame (gp_compare prints "window from capture 90"); it must be < MIN_FIRST.
+GP_IDLE_LOSS_MAX_START = 90
+# The capture the three values belong to: the poll.log sha256 and the frame count of
+# data/k11-captures/gp-idle-loss (record §G.18; run 1 of the two captures, the oracle reads this
+# one). gp-oracle FAILS (never skips) on a present capture with another poll.log: a re-capture
+# invalidates the pins above, because the pick time-out steps in 64-frame units of the absolute
+# frame counter (f & 0x3F == 0, record §G.24), so a re-capture whose character select starts at
+# f <= 0x280 moves everything after it by 64 frames. Re-measure all three, then re-pin these.
+GP_IDLE_LOSS_CAPTURE_SHA256 = 773e264731ea83a23623c6ec6cc5547165628d8adcf96f5a7c99c1c2b88c8447
+GP_IDLE_LOSS_CAPTURE_FRAMES = 8173
 gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skips without data/k11-captures/gp-idle-loss)
 	@echo "== gameplay oracle: gp-idle-loss (frame and trace ratchets) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-idle-loss GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --scenario gp-idle-loss --capture $(K11_CAPTURES)/gp-idle-loss \
 		--port $(GP_DUMP)/gp-idle-loss --min-first "$(GP_IDLE_LOSS_MIN_FIRST)" \
-		--trace-min-first "$(GP_IDLE_LOSS_TRACE_MIN_FIRST)" --max-start "$(GP_IDLE_LOSS_MAX_START)"
+		--trace-min-first "$(GP_IDLE_LOSS_TRACE_MIN_FIRST)" --max-start "$(GP_IDLE_LOSS_MAX_START)" \
+		--capture-sha256 "$(GP_IDLE_LOSS_CAPTURE_SHA256)" --capture-frames "$(GP_IDLE_LOSS_CAPTURE_FRAMES)"
 
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1

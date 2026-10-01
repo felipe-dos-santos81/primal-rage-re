@@ -95,37 +95,96 @@ int test_mem(void)
  * "direct-called only, not registered" check, which runs in the same
  * process before game_init()). Measured with every driver (title, attract,
  * frontend, restart, K11 walk/menuesc/idle/diags/de) and --check 5/60/820. */
-static const struct { u32 addr; const char *ctx; } k_miss_known[] = {
+typedef struct { u32 addr; const char *ctx; } fnm_pair;
+static const fnm_pair k_miss_known[] = {
     { 0x5D812u, "actor_spawn" },
     { 0x5D812u, "set_dead" },
 };
-static const struct { u32 addr; const char *ctx; } k_miss_frontend[] = {
+static const fnm_pair k_miss_frontend[] = {
     { 0x41578u, "test_frontend" },
 };
 
-static int fnm_known(u32 addr, const char *ctx, int frontend)
+/* The gp replay's own known-set (record gameplay-ground-truth §G.24, U4
+ * review 1), per scenario: the PR_GP_DUMP driver replays a capture's script and
+ * the named scenario decides what may be missed, on top of the 0x5D812 pair
+ * above. gp-pads (the MAIN MENU) records only that base set. gp-idle-loss
+ * (measured on the merged base, the full replay to f = 0x207F) adds five
+ * pairs, each classified from the raw in §G.24:
+ *   0x29D60 frontend_mode_1b_step: a bare `ret` (one byte, 0x29D60), f = 0x293;
+ *   0x5D812 frontend_mode_1b_step: the runtime stub again, f = 0x77A;
+ *   0x23208 hit_reaction_apply: an UNPORTED move-table callback (character 1,
+ *     reaction 0x26; U0 §U0.12's list), f = 0x824, the one hit;
+ *   0x3A588 fighter_state_3531c: an UNPORTED state-10 callback (the +0x10
+ *     pointer 0x3A650 stores), 5353 hits from f = 0x927;
+ *   0x3640C anim_indirect: an UNPORTED animation-opcode target, f = 0x173A.
+ * A scenario with no entry here may miss only the base pair. */
+static const fnm_pair k_miss_gp_idle_loss[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+    { 0x23208u, "hit_reaction_apply" },
+    { 0x3A588u, "fighter_state_3531c" },
+    { 0x3640Cu, "anim_indirect" },
+};
+
+/* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
+ * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
+ * cut replay ends before some misses, so it may record a subset. */
+static void fnm_gp_scenario(char *name, size_t n, int *cut)
 {
-    for (size_t i = 0; i < sizeof k_miss_known / sizeof k_miss_known[0]; i++)
-        if (k_miss_known[i].addr == addr && strcmp(k_miss_known[i].ctx, ctx) == 0)
-            return 1;
-    if (frontend)
-        for (size_t i = 0; i < sizeof k_miss_frontend / sizeof k_miss_frontend[0]; i++)
-            if (k_miss_frontend[i].addr == addr &&
-                strcmp(k_miss_frontend[i].ctx, ctx) == 0)
-                return 1;
+    const char *path = getenv("PR_GP_SCRIPT");
+    char line[256] = "";
+    name[0] = '\0';
+    *cut = 0;
+    if (path != NULL) {
+        FILE *f = fopen(path, "r");
+        if (f != NULL) {
+            if (fgets(line, sizeof line, f) == NULL) line[0] = '\0';
+            fclose(f);
+        }
+    }
+    const char *k = strstr(line, "scenario ");
+    if (k == NULL) return;
+    k += 9;
+    size_t i = 0;
+    while (k[i] != '\0' && k[i] != ' ' && k[i] != '\n' && i + 1 < n) { name[i] = k[i]; i++; }
+    name[i] = '\0';
+    *cut = strstr(line, "(cut at") != NULL;
+}
+
+static int fnm_in(const fnm_pair *t, size_t len, u32 addr, const char *ctx)
+{
+    for (size_t i = 0; i < len; i++)
+        if (t[i].addr == addr && strcmp(t[i].ctx, ctx) == 0) return 1;
     return 0;
+}
+
+#define FNM_N(t) (sizeof (t) / sizeof (t)[0])
+
+static int fnm_known(u32 addr, const char *ctx, int frontend, int idle_loss)
+{
+    if (fnm_in(k_miss_known, FNM_N(k_miss_known), addr, ctx)) return 1;
+    if (frontend && fnm_in(k_miss_frontend, FNM_N(k_miss_frontend), addr, ctx)) return 1;
+    return idle_loss && fnm_in(k_miss_gp_idle_loss, FNM_N(k_miss_gp_idle_loss), addr, ctx);
 }
 
 int test_fn_misslog_driver(const char *env)
 {
     int before = g_failures;
     int frontend = strcmp(env, "PR_FRONTEND_DUMP") == 0;
-    u32 want = (u32)(sizeof k_miss_known / sizeof k_miss_known[0]) +
-               (frontend ? (u32)(sizeof k_miss_frontend / sizeof k_miss_frontend[0]) : 0u);
+    int idle_loss = 0, cut = 0;
+    if (strcmp(env, "PR_GP_DUMP") == 0) {
+        char sc[64];
+        fnm_gp_scenario(sc, sizeof sc, &cut);
+        idle_loss = strncmp(sc, "gp-idle-loss", 12) == 0;
+    }
+    u32 want = (u32)FNM_N(k_miss_known) +
+               (frontend ? (u32)FNM_N(k_miss_frontend) : 0u) +
+               (idle_loss ? (u32)FNM_N(k_miss_gp_idle_loss) : 0u);
     CHECK_EQ_INT(fn_misslog_dropped(), 0);
-    CHECK_EQ_INT(fn_misslog_count(), want);
+    if (cut) CHECK(fn_misslog_count() <= want, "a cut gp replay records no more than the pinned set");
+    else CHECK_EQ_INT(fn_misslog_count(), want);
     for (u32 i = 0; i < fn_misslog_count(); i++)
-        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend)) {
+        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss)) {
             printf("fn-miss %s: unexpected 0x%05X from %s\n", env,
                    (unsigned)fn_misslog_addr(i), fn_misslog_ctx(i));
             CHECK(0, "the driver's miss log holds only its pinned known-set");
@@ -207,7 +266,7 @@ int test_fn_misslog(void)
                 continue;
             }
             n++;
-            if (!fnm_known((u32)addr, ctx, 0)) {
+            if (!fnm_known((u32)addr, ctx, 0, 0)) {
                 printf("fn_miss.txt: unexpected 0x%05X from %s\n", addr, ctx);
                 CHECK(0, "the --check miss log holds only the pinned known-set");
             }

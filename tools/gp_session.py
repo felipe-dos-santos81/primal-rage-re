@@ -269,6 +269,8 @@ def port_script(name, lines, end=None):
     if end is not None:
         if end > last:
             raise ScriptError('--end %d is past the capture end f=%X' % (end, last))
+        if end < keys[0][0]:
+            raise ScriptError('--end %d is before the Enter (f=%d): the script would not start' % (end, keys[0][0]))
         last = end
     out = ['# gp port script v2: scenario %s%s' % (name, '' if end is None else ' (cut at %d)' % end),
            'enter_frame %d' % p27['f'],

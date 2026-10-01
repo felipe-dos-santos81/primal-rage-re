@@ -353,6 +353,31 @@ def trace_claim(name, cap_lines, port_lines, min_first, out=print, report=False)
     return ratchet(name, 'trace', first, end, min_first, out, 'differing'), first
 
 
+def capture_identity(name, cap_dir, n_frames, sha, frames, out):
+    """The pins (N, F, the window start) are measured on one capture: the pick time-out
+    steps in 64-frame units of the absolute frame counter (record §G.24), so a re-capture
+    can move the whole timeline. Given --capture-sha256, a capture whose poll.log hashes
+    differently (or whose frame count differs) fails, never skips. Returns True when it matches
+    or no pin was asked for."""
+    if sha is None:
+        return True
+    if sha == '':
+        out('gp_compare: %s: capture: FAIL: the capture identity (poll.log sha256) is not pinned' % name)
+        return False
+    with open(os.path.join(cap_dir, 'poll.log'), 'rb') as f:
+        got = hashlib.sha256(f.read()).hexdigest()
+    want_frames = _int_or_none(frames)
+    if got != sha or (want_frames is not None and n_frames != want_frames):
+        out('gp_compare: %s: capture: FAIL: poll.log sha256 %s (%d frames) != the pinned %s (%s frames): '
+            'a re-capture invalidates the pinned N, F and window start; re-measure them from the new '
+            'capture (record §G.24) before pinning' % (name, got, n_frames, sha,
+                                                       '?' if want_frames is None else want_frames))
+        return False
+    out('gp_compare: %s: capture: poll.log sha256 %s..%s, %d frames: matches the pin'
+        % (name, got[:8], got[-6:], n_frames))
+    return True
+
+
 def _int_or_none(s):
     return None if s in (None, '') else int(s, 0)
 
@@ -365,6 +390,10 @@ def main():
     ap.add_argument('--min-first', default=None)
     ap.add_argument('--trace-min-first', default=None)
     ap.add_argument('--max-start', default=None)
+    ap.add_argument('--capture-sha256', default=None,
+                    help="the pinned sha256 of the capture's poll.log; with it a different capture fails")
+    ap.add_argument('--capture-frames', default=None,
+                    help="the pinned number of frame_*.raw.gz in the capture (given with --capture-sha256)")
     ap.add_argument('--report', action='store_true')
     a = ap.parse_args()
     name = a.scenario
@@ -381,6 +410,9 @@ def main():
         return 0 if a.report else 1
     cpaths = _paths(a.capture, 'frame_%05d.raw.gz')
     ppaths = _paths(a.port, 'frame_%05d.ipx')
+    if not a.report and not capture_identity(name, a.capture, len(cpaths), a.capture_sha256,
+                                             a.capture_frames, print):
+        return 1
     if not cpaths or not ppaths:
         print('gp_compare: %s: no frames (capture %d, port %d)' % (name, len(cpaths), len(ppaths)))
         return 0 if a.report else 1

@@ -291,6 +291,37 @@ class TestCli(Dirs):
         self.assertEqual(rc, 0, out)
         self.assertIn('0 differing through 12; ratchet N 13 ok', out)
 
+    def test_the_capture_identity_pin(self):
+        # review 1, Important 3: the pins belong to one capture; a different poll.log (a re-capture)
+        # must fail, not skip, and say the pins are invalidated
+        self.dump()
+        import hashlib
+        good = hashlib.sha256(open(os.path.join(self.cap, 'poll.log'), 'rb').read()).hexdigest()
+        base = ['--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
+                '--min-first', '2', '--trace-min-first', '13', '--max-start', '0']
+        rc, out = self.cli(*base, '--capture-sha256', good, '--capture-frames', '2')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('matches the pin', out)
+        rc, out = self.cli(*base, '--capture-sha256', '0' * 64, '--capture-frames', '2')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('a re-capture invalidates the pinned N, F and window start', out)
+        rc, out = self.cli(*base, '--capture-sha256', good, '--capture-frames', '3')
+        self.assertEqual(rc, 1, out)                          # the frame count differs
+        self.assertIn('FAIL: poll.log sha256', out)
+        rc, out = self.cli(*base, '--capture-sha256', '')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('capture identity (poll.log sha256) is not pinned', out)
+        # changed poll.log content: the same pin no longer matches
+        with open(os.path.join(self.cap, 'poll.log'), 'a') as f:
+            f.write(_S(99) + '\n')
+        rc, out = self.cli(*base, '--capture-sha256', good, '--capture-frames', '2')
+        self.assertEqual(rc, 1, out)
+        # report mode never checks the identity
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port, '--report',
+                           '--capture-sha256', good)
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn('re-capture', out)
+
     def test_a_capture_without_a_poll_log_fails(self):
         self.dump(with_log=False)
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
