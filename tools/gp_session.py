@@ -66,6 +66,16 @@ PAD = {
     'p2.start': (0x3C, 0x3C00, 0x0001),
 }
 
+# U11 (record 2026-10-01-gameplay-u11 §K.2): the keys the int 16h key loop
+# 0x24D08..0x24EE7 and its blocking readers (the prompt 0x24A64, the pause
+# 0x24E54) act on in a match. Space, y and n are the standard set-1 make words
+# (scan << 8 | ascii); an Alt-letter is its scan with ascii 0, the form the
+# extended-key arms 0x24D96..0x24DB8 test. The key-state side writes the
+# letter's own scan: nothing reads Alt's scan 0x38 (record §K.2), and S (0x1F),
+# M (0x32) and N (0x31) are also P1's up, b3 and b2 in the default binding.
+KEYS.update({'space': (0x39, 0x3920), 'y': (0x15, 0x1579), 'n': (0x31, 0x316E),
+             'alt-q': (0x10, 0x1000), 'alt-s': (0x1F, 0x1F00), 'alt-m': (0x32, 0x3200)})
+
 _DEC = ('ms', 'rc', 'step', 'late', 'ring')
 _TEXT = ('reason', 'press', 'release')
 
@@ -75,8 +85,8 @@ def raw_to_kb(raw):
     return ((raw >> 24) & 0xFF) << 8 | (raw >> 8) & 0xFF
 
 
-def format_s(ms, vals, kb, head, tail):
-    body = ' '.join('%s=%0*X' % (n, 2 * sz, vals[n]) for n, _, sz in SNAP_FIELDS)
+def format_s(ms, vals, kb, head, tail, fields=SNAP_FIELDS):
+    body = ' '.join('%s=%0*X' % (n, 2 * sz, vals[n]) for n, _, sz in fields)
     return 'S ms=%d %s kb=%04X head=%04X tail=%04X' % (ms, body, kb, head, tail)
 
 
@@ -207,6 +217,42 @@ SCENARIOS['gp-u5-charsel'] = dict(time_limit=60, steps=(
 ) + tuple(('after', 40, ('pad', (n,), 6)) for n in CHARSEL_WALK[1:]) + (
     ('after', 40, ('pad', ('p1.start',), 6)),         # confirm cursor 1
     ('until_mode', 0x06, 0),                          # the round's first frame
+))
+
+# U11 (plan 2026-10-01-gameplay-u11-in-match-keys.md, record §K.6): the
+# in-match keys, pressed in round 1 (mode 6) of the gp-idle-loss path, then
+# ABANDON CONQUEST's yes in the join's mode 0x17. The order makes every event
+# change the latch DS_00105F30 (record §K.6). A prompt's or the pause's answer
+# is queued in its opener's spin (`after` 0), so the blocking reader (0x24A64,
+# 0x24E54) finds it at once and f never has to advance inside the blocking
+# loop (spec §7 Q5, record §K.5). Harness values, not game values: the
+# 10-frame gaps exceed the 1-4 iteration BIOS latency (record §G.7.3) plus
+# HOLD_FRAMES; the 20 frames after F2 keep the ESC inside the join's 0x78-frame
+# mode 0x17 (0x28E75); 90 s covers mode 6 at 55.1 s in gp-idle-loss (§G.18)
+# plus the restart's boot movies (14.7 s in gp-pads, §G.7.3). KEYS_EXTRA are
+# the S fields this scenario adds: the latch (0x24D4D), the sample and music
+# pause bytes (0x1D220, 0x1D1B0).
+KEYS_EXTRA = (('lat', 0x105F30, 4), ('spz', 0x1028DB, 1), ('mpz', 0x1028DA, 1))
+SCENARIOS['gp-keys-fight'] = dict(time_limit=90, extra=KEYS_EXTRA, steps=(
+    ('boot', ENTER_WAIT, ('key', 'enter')),         # 0: mode 3 -> 0x27
+    ('after_mode', 0x27, 150, ('key', 'enter')),    # 1: START MENU
+    ('after', 150, ('key', 'enter')),               # 2: LEFT PLAYER ARCADE (mode 0x2D)
+    ('after_mode', 0x06, 10, ('key', 'enter')),     # 3: Enter in a fight: latched only (0x24ECF)
+    ('after', 10, ('key', 'space')),                # 4: - PAUSED - (0x24E19) ...
+    ('after', 0, ('key', 'space')),                 # 5: ... ended by the next space (0x24E67)
+    ('after', 10, ('key', 'alt-s')),                # 6: samples paused (0x24DC9 0x1D220)
+    ('after', 10, ('key', 'esc')),                  # 7: ABANDON CONQUEST? Y/N (0x24EC5) ...
+    ('after', 0, ('key', 'n')),                     # 8: ... no (0x24AB5)
+    ('after', 10, ('key', 'alt-m')),                # 9: music paused (0x24DBF 0x1D1B0)
+    ('after', 10, ('key', 'alt-q')),                # 10: QUIT TO DOS? Y/N (0x24DDF) ...
+    ('after', 0, ('key', 'n')),                     # 11: ... no
+    ('after', 10, ('key', 'alt-s')),                # 12: samples back
+    ('after', 10, ('key', 'alt-m')),                # 13: music back
+    ('after', 10, ('pad', ('p1.start',), 3)),       # 14: F1 = P1 b0 (side 0 already in: 0x28CD7)
+    ('after', 10, ('pad', ('p2.start',), 3)),       # 15: F2 = P2 joins (0x2525F 0x28CC8, 0x25269 0x28DA4)
+    ('after', 20, ('key', 'esc')),                  # 16: ABANDON CONQUEST? Y/N in mode 0x17 ...
+    ('after', 0, ('key', 'y')),                     # 17: ... yes: the 0x24AB0 soft restart
+    ('until_mode', 0x03, 0),                        # 18: the restart's mode 3 (0x20CE6 0x10E80)
 ))
 
 

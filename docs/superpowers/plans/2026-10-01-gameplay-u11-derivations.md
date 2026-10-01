@@ -443,3 +443,16 @@ Named gaps, each with its evidence:
    word.
 10. **Joystick devices** (`+0x2D4`/`+0x2D6` ≠ 0, `0x1B890..0x1BB73`): not
     exercised.
+
+## §K.11 Tool log (Tasks 1–4)
+
+### Task 1: keys, extra fields, scenario
+- `gp_session`: six keys (record §K.2), `format_s(..., fields)`, `KEYS_EXTRA` (record §K.3), `SCENARIOS['gp-keys-fight']` (record §K.6). `gp_capture`: `read_snap(..., fields)`, `Poller(fields=...)`, `main` passes `SNAP_FIELDS + extra`.
+- Tests: before `KeyError: 'gp-keys-fight'`; after `Ran 44 tests … OK` (the plan's 41 + 3: U6b's Task 1, already on main, added three tests to `test_gp_session`). Mutations S1–S4 (PYTHONDONTWRITEBYTECODE=1, 44 tests each):
+  - S1 `read_snap` over `gs.SNAP_FIELDS`: `ERROR: test_extra_fields_are_read_and_logged`, `FAILED (errors=1)`.
+  - S2 `format_s` over `SNAP_FIELDS`: `ERROR: test_extra_fields_are_read_and_logged`, `FAILED (errors=1)`.
+  - S3 `'alt-s': (0x1F, 0x1F73)`: `FAIL: test_keys_are_bios_make_words`, `FAILED (failures=1)`.
+  - S4 step 8 `('after', 1, ...)`: `FAIL: test_an_answer_fires_with_its_opener`, `FAILED (failures=1)`.
+- Raw check (fixed-up image, capstone base 0x10000): the latch store is `0x24D4D mov [0x105F30], eax`; the Alt-letter arms test `bl` (the scan) at `0x24D99`..`0x24DB8` (0x1F -> `call 0x1D220`, 0x32 -> `call 0x1D1B0`, 0x10 -> `call 0x249F0`); `0x1D1B0` toggles `[0x1028DA]` (music pause, `mpz`), `0x1D220` toggles `[0x1028DB]` (samples pause, `spz`). No correction to the plan. The `KEYS_EXTRA` comment names the two functions, not the bytes.
+- Merge note: U6b's five fields are already in `SNAP_FIELDS`; `KEYS_EXTRA` follows them in every `S` line of `gp-keys-fight`. This task does not touch `test_game.c`'s `T` line (Task 3).
+- Compat: `make gp-oracle gp-charsel-oracle` after the change: every `gp_compare` line, the `landed` lines and `all checks passed` identical to the Task 0 baseline.

@@ -32,9 +32,9 @@ import smk_capture as sc
 import title_capture as tcap
 
 
-def read_snap(mm, base):
+def read_snap(mm, base, fields=gs.SNAP_FIELDS):
     out = {}
-    for name, ds, size in gs.SNAP_FIELDS:
+    for name, ds, size in fields:
         o = base + ds - gs.DATA_BASE_VA
         out[name] = int.from_bytes(mm[o:o + size], 'little')
     return out
@@ -302,8 +302,9 @@ def dosbox_cmd(root, game, iso, time_limit, stop_at_end=False):
 
 
 class Poller(threading.Thread):
-    def __init__(self, mem_path, log_path, steps, stop, pad_bios=True):
+    def __init__(self, mem_path, log_path, steps, stop, pad_bios=True, fields=gs.SNAP_FIELDS):
         super().__init__(daemon=True)
+        self.fields = fields          # SNAP_FIELDS plus a scenario's `extra` (U11 record §K.3)
         self.mem_path, self.log_path, self.stop, self.pad_bios = mem_path, log_path, stop, pad_bios
         self.sched = gs.Schedule(steps)
         self.end_seen = False
@@ -366,12 +367,12 @@ class Poller(threading.Thread):
                     for name, scan, word, hold in gs.expand(act):
                         inj.press(step, v['f'], name, scan, word, hold, 0, ms)
                 if spinning(v) and v['f'] != last_f:
-                    v2 = read_snap(mm, base)
+                    v2 = read_snap(mm, base, self.fields)
                     kb = mm[ptr + 0x2D8] << 8 | mm[ptr + 0x2D9]
                     bh, bt = kc.u16(mm, gs.BDA_HEAD), kc.u16(mm, gs.BDA_TAIL)
                     v3 = read_snap(mm, base)
                     if accept(v, v2, v3):
-                        log.write(gs.format_s(ms, v2, kb, bh, bt) + '\n')
+                        log.write(gs.format_s(ms, v2, kb, bh, bt, self.fields) + '\n')
                         f = v2['f']
                         self.sched.on_mode(f, v2['mode'])
                         inj.release_due(f, ms)
@@ -456,7 +457,8 @@ def main():
         print('gp_capture: %s' % shlex.join(cmd))
         stop = threading.Event()
         poll = Poller(os.path.join(root, 'guest.mem'), os.path.join(root, 'poll.log'),
-                      scn['steps'], stop, pad_bios=not a.no_pad_bios)
+                      scn['steps'], stop, pad_bios=not a.no_pad_bios,
+                      fields=gs.SNAP_FIELDS + scn.get('extra', ()))
         poll.start()
         t = time.monotonic()
         proc = subprocess.Popen(cmd)
