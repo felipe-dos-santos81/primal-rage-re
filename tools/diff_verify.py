@@ -39,12 +39,17 @@ class Spec:
     allow_calls: tuple = ()
     mutants: tuple = ("@mutant",)    # diffrun binding suffixes that must be reported as MISMATCH
     eax_mask: int = 0xFFFFFFFF       # the part of the original's EAX the callers read (full = conservative)
+    calls: tuple = ()                # E.Call entries: the callees stubbed or run on both sides, recorded (record E3 §E3.4)
+    gap: str = ""                    # a named gap (spec §5.2): the blocking instruction every case must stop on
 
     def __post_init__(self):
         ids = [c.id for c in self.cases]
         dup = sorted({i for i in ids if ids.count(i) > 1})
         if dup:
             raise ValueError("spec %s: duplicate case id %s" % (self.name, ", ".join(dup)))
+        both = sorted(set(self.allow_calls) & {c.addr for c in self.calls})
+        if both:
+            raise ValueError("spec %s: 0x%X is both allowed and in the call set" % (self.name, both[0]))
 
 
 @dataclass
@@ -53,6 +58,7 @@ class PortResult:
     mask: int = 0xFFFFFFFF
     writes: dict = field(default_factory=dict)
     error: str = ""
+    calls: list = field(default_factory=list)      # (addr, args tuple), in the order the seam saw them
 
 
 def cases_text(spec, port_name):
@@ -64,6 +70,10 @@ def cases_text(spec, port_name):
             out.append("reg %s 0x%X" % (r, v))
         for a, b in c.pokes.items():
             out.append("poke 0x%X %s" % (a, bytes(b).hex()))
+        for k in spec.calls:
+            out.append("stub 0x%X %s 0x%X" % (k.addr, k.mode, k.eax & 0xFFFFFFFF))
+            for base, off, data in k.writes:
+                out.append("swrite %s 0x%X %s" % ("abs" if base is None else "arg%d" % base, off, bytes(data).hex()))
         out.append("end")
     return "\n".join(out) + "\n"
 
@@ -92,6 +102,10 @@ def parse_port_output(text):
             if got:
                 raise ValueError("diffrun output: a second result line in one case: %r" % line)
             cur.eax, cur.mask, got = int(t[2], 16), int(t[4], 16), True
+        elif t[0] == "c" and len(t) >= 2:
+            if got:
+                raise ValueError("diffrun output: a call line after the result line: %r" % line)
+            cur.calls.append((int(t[1], 16), tuple(int(x, 16) for x in t[2:])))
         elif t[0] == "w" and len(t) == 3:
             a = int(t[1], 16)
             if a in cur.writes:
@@ -128,6 +142,12 @@ def run_port(diffrun, exe, image_path, text, timeout=60):
     return parse_port_output(p.stdout)
 
 
+def _call_text(c):
+    if c is None:
+        return "none"
+    return "0x%X(%s)" % (c[0], ", ".join("0x%X" % v for v in c[1]))
+
+
 def compare(orig, port, mask=0xFFFFFFFF):
     """The discrepancies between one original run and one port run (empty = they agree).
 
@@ -141,6 +161,12 @@ def compare(orig, port, mask=0xFFFFFFFF):
         out.append("port reports eax mask 0x%X, the spec states 0x%X" % (port.mask, mask))
     if (orig.regs["eax"] & mask) != port.eax:
         out.append("eax (mask 0x%X): original 0x%X, port 0x%X" % (mask, orig.regs["eax"] & mask, port.eax))
+    oc, pc = list(orig.calls), list(port.calls)
+    for i in range(max(len(oc), len(pc))):
+        o = oc[i] if i < len(oc) else None
+        p = pc[i] if i < len(pc) else None
+        if o != p:
+            out.append("call #%d: original %s, port %s" % (i, _call_text(o), _call_text(p)))
     for a in sorted(set(orig.writes) | set(port.writes)):
         if orig.writes.get(a) != port.writes.get(a):
             o, p = orig.writes.get(a), port.writes.get(a)
@@ -161,7 +187,27 @@ class SpecResult:
     unhit: list = field(default_factory=list)       # unhit leaders with no stated reason
     outside: list = field(default_factory=list)
     port_errors: list = field(default_factory=list)  # "<case>: <text>" for each case the port refused
-    diffs: int = 0                                   # eax and byte differences (not port errors)
+    diffs: int = 0                                   # eax, call and byte differences (not port errors)
+    callees: list = field(default_factory=list)      # (addr, how) for every allowed or call-set callee
+    gap: str = ""                                    # the named gap's blocking instruction, when the spec is one
+
+
+def verify_gap(spec, image):
+    """A named gap (spec §5.2): every case must stop on exactly the instruction the spec names. The
+    port is not run. A case that runs through, or stops elsewhere, is a MISMATCH: the gap is stale
+    or misnamed, and the function becomes a verification target again."""
+    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True)
+    res = SpecResult(spec.name, spec.entry, "NAMED_GAP", len(spec.cases), 0, len(info.leaders), gap=spec.gap)
+    executed = set()
+    for c in spec.cases:
+        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=spec.calls)
+        executed |= orig.executed
+        if (orig.outcome, orig.detail) != ("unmodeled", spec.gap):
+            res.verdict = "MISMATCH"
+            res.problems.append("%s: the gap names '%s', the original %s (%s)" % (
+                c.id, spec.gap, orig.outcome, orig.detail or "returned"))
+    res.hit = len(E.coverage(info, executed)[0])
+    return res
 
 
 def verify_spec(spec, image, port_results, port_name=None):
@@ -170,11 +216,11 @@ def verify_spec(spec, image, port_results, port_name=None):
     if got != set(sent):
         raise ValueError("%s: the port's results do not match the cases sent: missing %s, extra %s"
                          % (port_name or spec.name, sorted(set(sent) - got), sorted(got - set(sent))))
-    info = E.static_scan(image, spec.entry)
+    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True)
     executed, outside, problems, blocked = set(), set(), [], []
     port_errors, diffs = [], 0
     for c in spec.cases:
-        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls)
+        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=spec.calls)
         if orig.outcome != "ok":
             blocked.append("%s: %s (%s)" % (c.id, orig.outcome, orig.detail))
             continue
@@ -185,20 +231,26 @@ def verify_spec(spec, image, port_results, port_name=None):
             port_errors.append("%s: %s" % (c.id, port.error))
         for d in compare(orig, port, spec.eax_mask):
             problems.append("%s: %s" % (c.id, d))
-            if d.startswith(("eax ", "byte ")):     # the strings compare() emits for a real difference
+            if d.startswith(("eax ", "byte ", "call #")):   # the strings compare() emits for a real difference
                 diffs += 1
     hit, unhit = E.coverage(info, executed)
     res = SpecResult(port_name or spec.name, spec.entry, "VERIFIED", len(spec.cases), len(hit),
                      len(info.leaders), problems, [a for a in unhit if a not in spec.unhit_named],
                      sorted(outside), port_errors, diffs)
+    res.callees = sorted([(a, "allow") for a in spec.allow_calls] + [(k.addr, k.mode) for k in spec.calls])
+    # An indirect call hides no block of the function (it returns to the next instruction, which the
+    # scan follows), and a run that reached one resolved its target into the allow-list or the call
+    # set, or stopped (NOT_EXERCISABLE): only an indirect jump that is not a bounded switch keeps a
+    # function PARTIAL (record E3 §E3.7).
+    jumps = [a for a in info.indirect if E.decode_at(image, a).mnemonic != "call"]
     if problems:
         res.verdict = "MISMATCH"
     elif blocked:
         res.verdict, res.problems = "NOT_EXERCISABLE", blocked
-    elif res.unhit or info.indirect or info.truncated:
+    elif res.unhit or jumps or info.truncated:
         res.verdict = "PARTIAL"
-        if info.indirect:
-            res.problems.append("indirect jmp/call at %s: targets unknown" % ",".join(hex(a) for a in info.indirect))
+        if jumps:
+            res.problems.append("indirect jmp/call at %s: targets unknown" % ",".join(hex(a) for a in jumps))
         if info.truncated:
             res.problems.append("static scan truncated")
     return res
@@ -267,6 +319,10 @@ def verify_all(diffrun, exe, image_path, specs, only=None, mutants=False):
     for spec in specs:
         if only and spec.name != only:
             continue
+        if spec.gap:
+            if not mutants:
+                results.append(verify_gap(spec, E.Image.load(image_path)))
+            continue
         names = [spec.name + s for s in spec.mutants] if mutants else [spec.name]
         for name in names:
             port = run_port(diffrun, exe, image_path, cases_text(spec, name))
@@ -282,17 +338,23 @@ def mutant_detection(r):
     if r.port_errors:
         return False, "port error: " + r.port_errors[0]
     if not r.diffs:
-        return False, "no eax or byte difference on any case (verdict %s)" % r.verdict
+        return False, "no eax or byte difference, and no call difference, on any case (verdict %s)" % r.verdict
     return True, ""
 
 
-def table_row(r):
+def table_row(r, verdicts=None):
+    """One row; `verdicts` (entry -> verdict of the real rows) marks each callee with its own check."""
     note = "; reads outside the image: " + ", ".join("0x%X+%d" % o for o in r.outside) if r.outside else ""
-    return "| %s | 0x%05X | %d | %d/%d | %s%s |" % (r.name, r.entry, r.ncases, r.hit, r.total, r.verdict, note)
+    if r.gap:
+        note += " (%s)" % r.gap
+    callees = ", ".join("%05X %s %s" % (a, how, (verdicts or {}).get(a, "unverified"))
+                        for a, how in r.callees) or "-"
+    return "| %s | 0x%05X | %d | %d/%d | %s%s | %s |" % (r.name, r.entry, r.ncases, r.hit, r.total, r.verdict,
+                                                       note, callees)
 
 
-TABLE_HEAD = ("| function | original | cases | blocks hit/total | verdict |\n"
-              "|---|---|---|---|---|")
+TABLE_HEAD = ("| function | original | cases | blocks hit/total | verdict | callees (each by its own check) |\n"
+              "|---|---|---|---|---|---|")
 
 
 def skip(why):
@@ -333,10 +395,15 @@ def main(argv=None):
     except (RuntimeError, ValueError) as e:
         print("diff-verify: error: %s" % e)
         return 2
-    bad = [r for r in real if r.verdict != "VERIFIED"]
+    gaps = [r for r in real if r.gap]
+    funcs = [r for r in real if not r.gap]
+    bad = [r for r in funcs if r.verdict != "VERIFIED"] + [r for r in gaps if r.verdict != "NAMED_GAP"]
     missed = [(r, why) for r in mutants for ok, why in [mutant_detection(r)] if not ok]
+    verdicts = {r.entry: r.verdict for r in real}
+    closed = [r for r in funcs if r.verdict == "VERIFIED"
+              and all(verdicts.get(a) == "VERIFIED" for a, _ in r.callees)]
 
-    rows = [TABLE_HEAD] + [table_row(r) for r in real + mutants]
+    rows = [TABLE_HEAD] + [table_row(r, verdicts) for r in real + mutants]
     print("\n".join(rows))
     for r in real:
         for p in r.problems:
@@ -348,10 +415,11 @@ def main(argv=None):
     if args.table:
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")
-    print("diff-verify: %d/%d functions VERIFIED%s. Claim: equivalence on the exercised blocks and "
-          "inputs only." % (len(real) - len(bad), len(real),
-                            "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
-                            if args.self_check else ""))
+    print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d with every callee VERIFIED. Claim: "
+          "equivalence on the exercised blocks and inputs only, each function with its callees stubbed or "
+          "run as stated." % (len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
+                              "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
+                              if args.self_check else "", len(gaps), len(closed), len(funcs)))
     return 1 if bad or missed else 0
 
 

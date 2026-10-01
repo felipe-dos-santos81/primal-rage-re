@@ -416,5 +416,110 @@ class RealFunctionTests(unittest.TestCase):
         self.assertEqual((both["ok"].eax, both["ok"].writes), (alone["ok"].eax, alone["ok"].writes))
 
 
+# ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
+
+def program(parts):
+    data = bytearray(0x80100)
+    for at, h in parts.items():
+        b = bytes.fromhex(h)
+        data[at - 0x10000:at - 0x10000 + len(b)] = b
+    return E.Image(bytes(data))
+
+
+# 10000: mov eax,5; mov edx,7; call 0x10020; mov [0x80000],eax; ret    10020: (not run when stubbed) ret
+CALLER = program({0x10000: "B805000000" "BA07000000" "E811000000" "A300000800" "C3", 0x10020: "C3"})
+STUB = E.Call(0x10020, ("eax", "edx"), eax=0x42)
+WROTE = {0x80000: 0x42, 0x80001: 0, 0x80002: 0, 0x80003: 0}
+SEEDED = {0x80000: le32(0xFFFFFFFF)}
+
+
+class CallParseTests(unittest.TestCase):
+    def test_cases_text_emits_the_call_set(self):
+        spec = V.Spec("f", 0x10000, [V.Case("a", {"eax": 5, "s0": 0x40400000})], calls=(
+            E.Call(0x10020, ("eax",), eax=1, writes=((None, 0x80008, b"\xab"), (0, 4, b"\x01\x02"))),
+            E.Call(0x10030, mode="real")))
+        self.assertEqual(V.cases_text(spec, "f"),
+                         "case a\nfn f\nreg eax 0x5\nreg s0 0x40400000\n"
+                         "stub 0x10020 stub 0x1\nswrite abs 0x80008 ab\nswrite arg0 0x4 0102\n"
+                         "stub 0x10030 real 0x0\nend\n")
+
+    def test_call_lines_are_parsed_in_order(self):
+        out = V.parse_port_output("case a\nc 0x10020 0x5 0x7\nc 0x10030\nret eax 0x0 mask 0x0\nend\n")
+        self.assertEqual(out["a"].calls, [(0x10020, (5, 7)), (0x10030, ())])
+
+    def test_a_call_line_after_the_result_is_rejected(self):
+        with self.assertRaises(ValueError):
+            V.parse_port_output("case a\nret eax 0x0 mask 0x0\nc 0x10020\nend\n")
+
+    def test_an_address_both_allowed_and_in_the_call_set_is_refused(self):
+        with self.assertRaises(ValueError):
+            V.Spec("f", 0x10000, [], allow_calls=(0x10020,), calls=(E.Call(0x10020),))
+
+    def test_the_table_marks_each_callee_with_its_own_check(self):
+        r = V.SpecResult("f", 0x10000, "VERIFIED", 1, 1, 1, callees=[(0x10020, "stub"), (0x10030, "allow")])
+        self.assertIn("| 10020 stub VERIFIED, 10030 allow unverified |", V.table_row(r, {0x10020: "VERIFIED"}))
+
+
+@needs_unicorn
+class CallVerifyTests(unittest.TestCase):
+    def spec(self, **kw):
+        return V.Spec("c", 0x10000, [V.Case("x", {}, SEEDED)], calls=(STUB,), **kw)
+
+    def test_agreeing_calls_verify(self):
+        r = V.verify_spec(self.spec(), CALLER, {"x": V.PortResult(0x42, writes=WROTE, calls=[(0x10020, (5, 7))])})
+        self.assertEqual((r.verdict, r.hit, r.total, r.problems), ("VERIFIED", 1, 1, []))
+
+    def test_a_missing_call_is_a_mismatch_and_counts_as_a_detection(self):
+        r = V.verify_spec(self.spec(), CALLER, {"x": V.PortResult(0x42, writes=WROTE)})
+        self.assertEqual((r.verdict, r.problems), ("MISMATCH", ["x: call #0: original 0x10020(0x5, 0x7), port none"]))
+        self.assertEqual(V.mutant_detection(r), (True, ""))
+
+    def test_a_call_with_another_argument_is_a_mismatch(self):
+        r = V.verify_spec(self.spec(), CALLER, {"x": V.PortResult(0x42, writes=WROTE, calls=[(0x10020, (5, 8))])})
+        self.assertEqual(r.problems, ["x: call #0: original 0x10020(0x5, 0x7), port 0x10020(0x5, 0x8)"])
+
+    def test_an_extra_call_is_a_mismatch(self):
+        r = V.verify_spec(self.spec(), CALLER, {"x": V.PortResult(
+            0x42, writes=WROTE, calls=[(0x10020, (5, 7)), (0x10020, (5, 7))])})
+        self.assertEqual(r.problems, ["x: call #1: original none, port 0x10020(0x5, 0x7)"])
+
+    def test_an_indirect_call_that_resolved_does_not_keep_the_function_partial(self):
+        img = program({0x10000: "FFD0" "C3", 0x10020: "C3"})
+        spec = V.Spec("i", 0x10000, [V.Case("x", {"eax": 0x10020})], calls=(E.Call(0x10020, ("eax",)),))
+        r = V.verify_spec(spec, img, {"x": V.PortResult(0, calls=[(0x10020, (0x10020,))])})
+        self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
+
+    # 10000: cmp al,2; ja 10010; and eax,0xff; jmp [eax*4+0x10100]; (10010) ret; 10011..10013 ret
+    SWITCH = program({0x10000: "3C02" "770C" "25FF000000" "FF248500010100" "C3" "C3C3C3",
+                      0x10100: "11000100" "12000100" "13000100"})
+
+    def test_a_bounded_switch_counts_its_cases_as_blocks(self):
+        cases = [V.Case("s%d" % n, {"eax": n}) for n in range(4)]
+        port = {"s%d" % n: V.PortResult(n) for n in range(4)}
+        r = V.verify_spec(V.Spec("s", 0x10000, cases), self.SWITCH, port)
+        self.assertEqual((r.verdict, r.hit, r.total), ("VERIFIED", 6, 6))
+        r = V.verify_spec(V.Spec("s", 0x10000, cases[:3]), self.SWITCH, {k: port[k] for k in ("s0", "s1", "s2")})
+        self.assertEqual((r.verdict, r.unhit), ("PARTIAL", [0x10010]))
+
+
+@needs_unicorn
+class GapTests(unittest.TestCase):
+    IN = program({0x10000: "EC" "C3"})           # in al,dx; ret
+
+    def test_a_named_gap_holds_when_every_case_stops_on_it(self):
+        r = V.verify_gap(V.Spec("g", 0x10000, [V.Case("x", {})], mutants=(), gap="in at 0x10000"), self.IN)
+        self.assertEqual((r.verdict, r.problems, r.gap), ("NAMED_GAP", [], "in at 0x10000"))
+
+    def test_a_misnamed_gap_is_a_mismatch(self):
+        r = V.verify_gap(V.Spec("g", 0x10000, [V.Case("x", {})], mutants=(), gap="in at 0x10001"), self.IN)
+        self.assertEqual(r.verdict, "MISMATCH")
+
+    def test_a_gap_the_original_runs_through_is_stale(self):
+        r = V.verify_gap(V.Spec("g", 0x10000, [V.Case("x", {})], mutants=(), gap="in at 0x10000"),
+                         program({0x10000: "C3"}))
+        self.assertEqual(r.verdict, "MISMATCH")
+        self.assertIn("the original ok (returned)", r.problems[0])
+
+
 if __name__ == "__main__":
     unittest.main()
