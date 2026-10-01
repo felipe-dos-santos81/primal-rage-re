@@ -1462,3 +1462,88 @@ in round 1, mode 8, and the match ends by the clock in round 2.)
 
 The shape of the match, which §G.20 compares with the port: P1 never receives
 input (`e0 = 0`, `raw`/`pad` 0 from `0x2D` to the end, the three Enters aside).
+
+## §G.19 Capture run 2 and the determinism answer (U4 Task 3; spec §7 Q1)
+
+**Run 2:** `make gp-capture scenario=gp-idle-loss-run2 …` → exit 0, `snapshots 9793,
+f 5..0x2676, 49 frames missed`, the seven CHECKs `ok`, `frames written 8134/8134`,
+`wall 200.7 s`, `raw 1383..14016`; `poll.log` 9 836 lines, sha256
+`5ce62b39…30c7`; 374 MB. Path identical to run 1's (§G.18); `X f=207F` as run 1.
+
+**The runs are not the same input.** The boot Enter is wall-timed (25.0 s), so it
+lands on another frame, and each queued BIOS word is consumed 1–4 iterations
+later (spec §3.6; cause open):
+
+```
+run 1: enter_frame 321, keys 321 474 622   (press f 0x13F 0x1D6 0x26C; consumed 0x141 0x1DA 0x26E)
+run 2: enter_frame 314, keys 314 464 616   (press f 0x137 0x1CF 0x265; consumed 0x13A 0x1D0 0x268)
+```
+(`gp_session.py port-script` of each; `end 8319` in both; the key gaps are 153/148
+against 150/152 frames.) So `trace-diff`'s absolute-`f` answer
+(`gp_session: trace-diff: 9779 frames compared; first difference f=13B (mode);
+first tick difference f=5`) compares different input frames and does not answer Q1.
+
+**Rebased, as the plan's Step 2 (scratch `/tmp/gameplay-u4/rebase.py`: `S` records
+with `f -= <key frame>`, `gs.format_s`, `trace_diff`; the logs `a<k>.log`/`b<k>.log`).**
+Rebasing by the Enter alone (key 0) differs at `f−321 = 0x140` (mode `0x1A` vs
+`0x1B`) because key 1 and 2 sit at different offsets from key 0 (153 vs 150, 148
+vs 152); by key 1 at `+149`, by key 2 (the last input; after it P1 never acts) at
+**`+978`**, mode `0x1A` (run 1) against `0x10` (run 2). Up to `+977` after key 2,
+all `TRACE_FIELDS` (mode, st, raw, pad, e0, e2, rng, cred, s0_5a, s1_5a) are equal
+in the two runs (`rng` included, `0xD9C00F95` at `+0x3CF`): **deterministic over the
+978 frames after the last input, including the character-select stretch.**
+
+**The pick time-out is not anchored to the key.** Rebased by key 2, run 2's time-out
+comes **6 frames later** (`+984`, run 1 `+978`; mode `0x10` lasts 941 frames in run 1,
+947 in run 2), and from there every later transition is the same 6 frames
+later with the same durations (the mode table: `0x1A +978/+984`, round 1 `+1415/+1421`
+(1 148 frames both), `0x13 +6841/+6847`, `0x1E +7506/+7512`, mode 3 `+7692/+7698`).
+The whole of run 2 shifted by 6 and compared from `+978` on run 1's key 2 frame:
+**`trace_diff` → `first None`, 8 189 frames compared, no `TRACE_FIELDS` difference**
+(the shifted comparison, for the record).
+
+**The same measurement in absolute `f` is cleaner:** over the 9 779 common `f`
+the `TRACE_FIELDS` differ at **85 frames, all inside `0x13B..0x624`** (fourteen runs
+of 4–6 frames, each at an input or a mode change: `0x13B..0x140` the Enter,
+`0x269..0x26D`, `0x27B..0x282`, `0x28D..0x292`, then the character-select
+frames `0x2DA..0x624` every `0x5D` = 93 frames: `rng` 66 frames, `mode` 23, `cred`
+5), and **from `0x625` to the end of the capture (`0x207F`) every `TRACE_FIELDS` value is
+equal in the two runs**: the pick time-out fell at the same absolute
+**`f = 0x640`** in both, though key 2 was consumed 6 frames apart (`0x26E`,
+`0x268`). The probe's pick time-out (`0x600`) is a third value (its Enter `0x120`).
+The anchor is **not** the keys, **not** the tick (at `0x640`: tick `0xA82` run 1,
+`0xA84` run 2; `tick − f` `1090` vs `1092`), and not a constant absolute `f`
+(the probe's `0x600`): it behaves like a clock counted from the boot, a host-timed
+(or boot-anchored) timer, and **its source is an open question** (named in §G.23,
+not guessed; a follow-up reads the mode `0x10` countdown's source, `0x424E8`'s
+sibling for the pick). The slack is 6 frames at most in the two runs.
+
+**Q1 (answer).** Over a run where every input is held to the same frames the
+pinned original is **deterministic in every `TRACE_FIELDS` value**: 978 frames after
+the last input are equal (rebased by it), and from the time-out (`f = 0x625`) to the
+end of the capture (7 000+ frames, absolute `f`) the two runs agree
+in every `TRACE_FIELDS` value, `rng` included. What varies between runs is
+**when the pick time-out comes relative to the keys** (a 6-frame spread between two
+runs, 25 against the probe), which moves a whole later run by that shift.
+The `tick` differs everywhere (`first f=5` absolute; host-timed boot offset),
+reported not ratcheted (Q6, §G.20).
+
+**What the 85 absolute-`f` differences are.** They are the input-timing shift,
+not nondeterminism: the three keys were consumed 7, 10 and 6 frames apart
+between the runs (`0x141/0x13A`, `0x1DA/0x1D0`, `0x26E/0x268`), so every
+game event after a key lands that many frames apart (the fourteen runs of 4–6
+frames are exactly the events in the table of §G.18: the Enter, the wipe, the
+character select's 93-frame `rng` draws), until the pick time-out re-aligns the
+runs at the absolute `f = 0x640`. With the shift removed (rebased by key 2) the
+first 978 frames after the last input are identical. So **there is no run-to-run
+difference that the input timing does not explain**, and for Task 5 the
+run-to-run bound on the trace ratchet is *none*: `F = the port's first differing
+f` (plan: `min(port, run-to-run)`, run-to-run absent). The inputs the port
+replays are run 1's frames (`port-script` of `gp-idle-loss`), which are the ones
+run 1's `S` records were taken under, so the comparison port-against-run 1 is
+a comparison under the same inputs.
+
+**Not established:** why the pick time-out is anchored at the absolute
+`f = 0x640` in two runs and `0x600` in the probe (a clock from the boot, not the
+keys and not `tick`); with only two runs the 6-frame figure is a lower bound of
+the spread.
