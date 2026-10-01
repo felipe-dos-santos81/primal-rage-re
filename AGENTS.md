@@ -171,8 +171,9 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   The gameplay oracle (`make gp-oracle`, in `make verify`) ratchets the first
   unexplained capture frame and the first differing trace frame of
   `data/k11-captures/gp-idle-loss`; its N values and provenance are in the
-  Makefile (the measured N values and their provenance); it skips without the capture,
-  even under `PR_ORACLE_REQUIRED`. Its claim is narrow the same way (record
+  Makefile (with the capture's `poll.log` sha256: another capture fails); it skips without the capture,
+  even under `PR_ORACLE_REQUIRED`. The `PR_GP_DUMP` driver pins its own `fn_resolve` miss set per
+  scenario (`test_platform.c`, record gameplay-ground-truth §G.24). Its claim is narrow the same way (record
   `…-gameplay-ground-truth-derivations.md` §G.16): no content-bearing capture
   frame from the window start up to N is unexplained and the traced fields
   agree below F; the window start is pinned too (`GP_IDLE_LOSS_MAX_START`), so a

@@ -1374,7 +1374,7 @@ filter dropped → `FAIL: test_end_truncates_the_script`; bits filter dropped
 ## §G.18 Capture run 1 and the mode path (U4 Task 2)
 
 **Ruling Q7 (storage; logged here as the controller's instruction requires):**
-spec §7 Q7 is answered YES by the user's delegate: a gp-idle-loss capture of
+spec §7 Q7 is ruled YES (user decision, delegated through the controller, 2026-09-30, as Q4 in §G.2): a gp-idle-loss capture of
 0.3–0.6 GB after gzip is acceptable in the git-ignored `data/k11-captures/`.
 Measured: `data/k11-captures/gp-idle-loss` **376 MB** (`du -sh`; 8 173 distinct
 frames of 14 017 AVI frames), `gp-idle-loss-run2` **374 MB** (8 134 frames):
@@ -1407,7 +1407,7 @@ from the first `S` of the mode):
 |---|---|---|---|---|
 | 3 | 1 | 3 | 320 | attract; the Enter pressed at `f=0x13F` (wall 25.0 s), consumed `0x141` |
 | 323 | 0x141 | 0x27 | 301 | MAIN MENU, credits 5; Enter 2 consumed `0x1DA`, Enter 3 `0x26E` |
-| 631 | 0x26E | 0x2D | 1 | LEFT PLAYER ARCADE; **credits 4** from here (5 → 4) |
+| 631 | 0x26E | 0x2D | 1 | LEFT PLAYER ARCADE (a `P` record, no `cred` field; the first `S` with `cred=4` is `poll.log:633`, `f=0x26F`, mode `0x1A`; the last with 5 is `:629`, `f=0x26D`) |
 | 632, 651 | 0x26F, 0x281 | 0x1A, 0x1B | 18, 18 | the wipe |
 | 670 | 0x293 | 0x10 | 941 | character select, P1 idle |
 | 1612, 1631 | 0x640, 0x652 | 0x1A, 0x1B | 18, 18 | the pick timed out |
@@ -1511,20 +1511,22 @@ frames `0x2DA..0x624` every `0x5D` = 93 frames: `rng` 66 frames, `mode` 23, `cre
 equal in the two runs**: the pick time-out fell at the same absolute
 **`f = 0x640`** in both, though key 2 was consumed 6 frames apart (`0x26E`,
 `0x268`). The probe's pick time-out (`0x600`) is a third value (its Enter `0x120`).
-The anchor is **not** the keys, **not** the tick (at `0x640`: tick `0xA82` run 1,
-`0xA84` run 2; `tick − f` `1090` vs `1092`), and not a constant absolute `f`
-(the probe's `0x600`): it behaves like a clock counted from the boot, a host-timed
-(or boot-anchored) timer, and **its source is an open question** (named in §G.23,
-not guessed; a follow-up reads the mode `0x10` countdown's source, `0x424E8`'s
-sibling for the pick). The slack is 6 frames at most in the two runs.
+The anchor is **not** the keys and **not** the tick (at `0x640`: tick `0xA82` run 1,
+`0xA84` run 2; `tick − f` `1090` vs `1092`). *(Superseded by §G.20 and §J 4: the
+anchor is the absolute frame counter, `f & 0x3F == 0`, `0x43CF0..0x43D01`; not a
+clock, not host-timed, and not an open question. The text that follows in this
+paragraph in the first draft, "a clock counted from the boot … named in §G.23", is
+withdrawn.)*
 
 **Q1 (answer).** Over a run where every input is held to the same frames the
 pinned original is **deterministic in every `TRACE_FIELDS` value**: 978 frames after
 the last input are equal (rebased by it), and from the time-out (`f = 0x625`) to the
 end of the capture (7 000+ frames, absolute `f`) the two runs agree
 in every `TRACE_FIELDS` value, `rng` included. What varies between runs is
-**when the pick time-out comes relative to the keys** (a 6-frame spread between two
-runs, 25 against the probe), which moves a whole later run by that shift.
+**when the pick time-out comes relative to the keys** (6 frames between the two
+runs): in absolute `f` nothing moves after `0x625`, because the time-out is a multiple
+of 64 of the absolute counter (§J 4); the probe's `0x600` differs from `0x640` by one
+64-frame step, not by 25 frames (§J 4).
 The `tick` differs everywhere (`first f=5` absolute; host-timed boot offset),
 reported not ratcheted (Q6, §G.20).
 
@@ -1543,10 +1545,9 @@ replays are run 1's frames (`port-script` of `gp-idle-loss`), which are the ones
 run 1's `S` records were taken under, so the comparison port-against-run 1 is
 a comparison under the same inputs.
 
-**Not established:** why the pick time-out is anchored at the absolute
-`f = 0x640` in two runs and `0x600` in the probe (a clock from the boot, not the
-keys and not `tick`); with only two runs the 6-frame figure is a lower bound of
-the spread.
+*(The first draft's "Not established" paragraph, an open anchor and a 6-frame
+lower bound on a spread, is withdrawn: §G.20 and §J 4 give the anchor, and a 64-frame
+quantisation makes a spread of 6 frames meaningless as a bound.)*
 
 ## §G.20 The port replay of gp-idle-loss and the first divergences (U4 Task 4)
 
@@ -1599,23 +1600,28 @@ frame 111 (`f = 0x340`, a multiple of 64: `0x43CF0..0x43CFF` run `0x43AAC` when
 `f & 0x3F == 0`, `port/src/game/fight.c` `fight_char_select_pass`), keeps
 going forward (frames 111..146) and reverses at port frame 147 (`f = 0x3A0`,
 **96 game frames later**). So the divergence is **in the character select's actor
-animation, not in the digit**: Sauron's idle animation turns around at the
-`f = 0x340` countdown step in the original and at `f ≈ 0x3A0` in the port; the
-digit appears different only because the nearest port frame is the one with the
-same scene. The trace is equal at those frames (mode, st, rng, e0/e2, cred
-all as the original through `f = 0x827`), so nothing in `TRACE_FIELDS` sees it.
+animation, not in the digit**: Sauron's idle animation turns around at `f ≈ 0x340`
+in the original and at `f ≈ 0x3A0` in the port; the digit appears different only
+because the nearest port frame is the one with the same scene. The turn *coincides in
+time* with a countdown step (`0x340 & 0x3F == 0`), and that is all that is known: there
+is no evidence of cause. The steps at `0x2C0` and `0x300` produce no turn (capture
+180..197 track port 88..105 forward through `0x300`), and no raw address for the turn
+is known. **The first draft's hypothesis, a `0x43AAC` side effect the port omits, is
+refuted by the raw** (`0x43AAC..0x43B22` only decrements `DS_0010816C`, then draws the
+number through `0x2F528`, or at 0 confirms each side and arms the wipe; `fight_char_countdown`
+mirrors all of it). The trace is equal at those frames (mode, st, rng, e0/e2, cred all as
+the original through `f = 0x827`), so nothing in `TRACE_FIELDS` sees it.
 
-**Owner and classification: a port divergence in the character-select actor's
-animation (an actors/animation-timing or a `0x43AAC` side effect the port omits);
-not host-timed (the original is deterministic over this window: both captures
-carry the same scene at the same `f` from `0x625`, §G.19), not an unported
-function reached (the replay ran to the end with no fault), not a harness
-artefact (`f` and the inputs are those of the capture; the trace is equal).**
-**Not isolated to a function:** which of the actor/animation routines differ is
-a named gap (§G.23, owner U5, the character-select walk). The countdown itself
-(`DS_0010816C`, the `f & 0x3F` anchor) is the same in both: the pick time-out comes
-at `f = 0x640` in the port and in both captures, which also resolves §G.19's open
-"anchor": it is the absolute frame counter (`f & 0x3F == 0` steps), not a clock.
+**Classification: a port divergence in the character-select actor's animation timing,
+cause not isolated; not host-timed** (the original is deterministic over this window: both
+captures carry the same scene at the same `f` from `0x625`, §G.19); **not an unregistered
+callback reached through `fn_resolve`** (measured, §G.24: the miss log holds nothing in the
+character select, `f = 0x293..0x640`, except `0x29D60`, a bare `ret` hook at `f = 0x293`, the
+wipe's end); not a harness artefact (`f` and the inputs are the capture's; the trace is
+equal). Which actor/animation routine differs is a named gap (§G.23, owner U5). The
+countdown itself (`DS_0010816C`, the `f & 0x3F` anchor) is the same in both: the pick
+time-out comes at `f = 0x640` in the port and in both captures, which resolves §G.19's
+anchor: the absolute frame counter, not a clock (§J 4).
 
 (The later unexplained frames 204..207 are the same scene reversal, `rows 7..19
 x 160..174` plus the reversed scene; the report stops at its `REPORT_MAX = 5`.)
@@ -1632,32 +1638,37 @@ trace.txt T f=0828 mode=0006 … rng=CE92DD04 …                               
 (`f = 0x825, 0x826, 0x827`, the three frames before: identical in all
 `TRACE_FIELDS`, `rng = 0x73A05D37`; the mode at `0x828` is 6, round 1, 51 frames
 after the round start `0x7F5`.) The two runs agree here (§G.19: no difference
-from `0x625`), so this is not run-to-run noise. The port's draw at `0x828` is the
-original's draw 5 frames later: the sequence of `rng` values after `0x822` is the
-same in both (`0x73A05D37` → `0xCE92DD04` → …: the capture changes it at `0x82D`,
-the port at `0x828`), consumed in the same order, so no extra or missing draw —
-a **timing** difference of an effect entry. A throw-away `backtrace` in `rng_next`
-(not committed; `rng.c` restored) names the caller of the draws at `f = 0x822`
-and `0x828`: `fight_4b144 ← fight_4aad0 ← fight_effects_pass ← game_mode_04_step`
-(`rng(2)`, `rng(0x1200)`, `rng(0x1200)`), i.e. the **type-0 fight-effect entry
-(the crowd/worshipper walk, `fight.c` 0x4B144/0x4AAD0)** choosing its next target.
-The original makes the same three draws at `0x822` (the first walk) and the next
-walk's draws at **`0x82D`**; the port at **`0x828`**: its walk to the target ends
-**5 frames earlier**. The state around it, from the `S`/`T` records (equal up to
-`0x827`): at `0x82E` the original's P1 slot changes (`+0x52` 0x11 → 0x10,
-`+0x5A` 0x10 → 0x17: P2's attack connects, `e2` having been `0x4C4C`, `0x1010`,
-`0x2F20` from `0x81A..0x822`), in the port P1 is not hit there (`+0x52` goes to 9
-at `0x837`, `+0x5A` stays `0x10`). From there the fights are different fights.
+from `0x625`), so this is not run-to-run noise. In the `rng` sequence **one step matches**,
+`0x73A05D37 → 0xCE92DD04` (the capture changes `rng` to `0xCE92DD04` at `0x82D`, the port at
+`0x828`, 5 frames earlier); the values after it differ (capture `0x4C16F899` at `0x82E`, port
+`0x8810DA4A` at `0x830`), so nothing is claimed about later draws (the first draft's "the same
+sequence … no extra or missing draw" and "the original makes the same three draws" are
+withdrawn: the port's three draws at `0x822` are observed, the original's are inferred from the
+equal final value). A throw-away `backtrace` in `rng_next` (not committed; `rng.c` restored)
+names the callers of the port's draws at `f = 0x822` and `0x828`:
+`fight_4b144 ← fight_4aad0 ← fight_effects_pass ← game_mode_04_step` (`rng(2)`,
+`rng(0x1200)`, `rng(0x1200)`): the **type-0 fight-effect entry** (`fight.c` 0x4B144/0x4AAD0,
+the crowd walk) choosing its next target. The state around it, from the `S`/`T` records (equal up
+to `0x827`): at `0x82E` the original's P1 slot changes (`+0x52` 0x11 → 0x10, `+0x5A`
+0x10 → 0x17: P2's attack connects, `e2` having been `0x4C4C`, `0x1010`, `0x2F20` from
+`0x81A..0x822`); in the port P1 is not hit there (`+0x52` goes to 9 at `0x837`, `+0x5A` stays
+`0x10`).
 
-**Classification: port bug (probable) in the actors' animation/walk timing;
-the first trace difference and the first frame difference share one signature**:
-an actor animation whose phase differs by a few frames (Sauron's turn-around
-96 frames, the worshipper's walk 5 frames, the opposite sign), deterministically.
-The *cause is not isolated*: not host-timed (the two captures agree from `0x625`
-at every `f`, and `tick` advances 1 per frame around `0x820`: `0xCA1` at `0x820`,
-`0xCA6` at `0x825`), not an unported function (no fault, the same draws in the
-same order), not the harness (the inputs are run 1's own; `f` is the capture's
-frame counter). It is a named gap (§G.23), pinned by the ratchet.
+**An unregistered move callback is reached four frames earlier (review 1, critical 1;
+measured with the miss log, §G.24).** At `f = 0x824` the port's `hit_reaction_apply`
+(side 1, reaction `0x26`) calls `fn_resolve(0x23208)` and misses: the move-table entry of
+character 1, reaction `0x26` (raw `0xA3D20`, pre-fixup dword `0x13208`) is one of the 27 callbacks
+U0 left unregistered (`§U0.12`'s list). Its raw body, `0x23208..0x2324F`: `0x33950`,
+`0x3C4CC(rec, 0xE4900, 3.0f)` (an animation start), slot `+0x52 = 9`, `+0x53 = 7`, `+0x54 = 0`,
+`+0xC = 0`, voice `0x79`, return 1. None of these is a traced field, so the trace cannot see the
+state diverge at `0x824`; the first visible difference comes later, in the exchange (P2's attack,
+`e2 = 0x2F20` at `0x822`) whose outcome differs. **Classification: an unregistered move-table
+callback, owned by the moves unit (U6). That it causes the `rng`/hit difference at `0x828` is
+not excluded and not shown** (that needs the callback ported and the replay rerun, which U4 does
+not do); the crowd entry's draws are what the trace sees first and may be downstream of it. The
+first draft's classification ("port bug in the actors' animation/walk timing … not an unported
+function (no fault)") is withdrawn: "no fault" proves nothing, since an unresolved `fn_resolve`
+is a silent skip.
 
 ### The tick line and spec Q6 (Step 3)
 
@@ -1685,7 +1696,7 @@ tick model (`RES_READ_BYTES_PER_TICK`, `res.c`), host-timed in the original. `en
 ```
 f     capture            port
 141   0x27               0x27        26E 0x2D  26F 0x1A  281 0x1B  293 0x10
-640   0x1A  652 0x1B  664 0x11  665 0x17  756 0x1A  768 0x1B  77A 5  7F5 6   — equal, mode for mode and frame for frame
+640   0x1A  652 0x1B  664 0x11  665 0x17  756 0x1A  768 0x1B  77A 5  7F5 6   — every mode transition at the same f (the pictures diverge from capture 203)
 C71   8 (round 1: KO)    14D9 7 (time up), 154A 8, 154B 0x16, 163C 5, 16B7 6
 D2D   0x16  E1E 5  E99 6  1B4B 7  1BBC 9  1BBD 0x17  1CAE 0x15  1D27 0x13  1FC0 0x1E  1FC4 0x14  1FC5 0x17  207A 3   (capture only)
 ```
@@ -1694,7 +1705,10 @@ D2D   0x16  E1E 5  E99 6  1B4B 7  1BBC 9  1BBD 0x17  1CAE 0x15  1D27 0x13  1FC0 
 port's round 1 lasts 3 300 frames (`0x7F5 → 0x14D9`, ending by the clock, P1's
 `+0x5A = 0x38`, P2's 0) where the original's lasts 1 148 (KO, `+0x5A = 0x78`);
 its round 2 starts at `0x16B7` and is in mode 6 at the script's end `0x207F`
-(`+0x5A = 7`). **Nothing past round 1 is compared with the original's
+(`+0x5A = 7`). *Observation, not explained:* the port's time-up round lasts 3 300 frames where
+the original's time-up rounds last 3 250 (run 1 round 2) and 3 249 (probe); the extra 50
+frames may be an independent clock divergence, which "a consequence of the first divergence"
+would hide, and is recorded here as its own item (§G.23). **Nothing past round 1 is compared with the original's
 `0x1B4B`..`0x207A`**: the port never reaches match end, mode 9, the countdown,
 the challenge, game over or the return to mode 3 before its script ends.
 
@@ -1769,7 +1783,7 @@ first unexplained frame and the first trace difference are marked):
 | `0x10` | `0x293` | `0x293` | equal; **first unexplained capture frame 203 at `f ≈ 0x340`** (Sauron's animation turns around in the original) |
 | `0x1A`, `0x1B`, `0x11`, `0x17` | `0x640`, `0x652`, `0x664`, `0x665` | same | equal (the pick time-out at `f = 0x640`) |
 | `0x1A`, `0x1B`, 5 | `0x756`, `0x768`, `0x77A` | same | equal |
-| 6 (round 1) | `0x7F5` | `0x7F5` | equal; **first trace difference `f = 0x828`** (rng; a fight-effect walk 5 frames earlier in the port) |
+| 6 (round 1) | `0x7F5` | `0x7F5` | equal; **first trace difference `f = 0x828`** (rng; four frames after the port skipped the unregistered move callback `0x23208` at `f = 0x824`, §G.24) |
 | 8 | `0xC71` (KO, `+0x5A = 0x78`) | `0x154A` (after a mode 7 at `0x14D9`, time up, `+0x5A = 0x38`) | differs: a different fight |
 | `0x16`, 5, 6 | `0xD2D`, `0xE1E`, `0xE99` | `0x154B`, `0x163C`, `0x16B7` | shifted by the round-1 length |
 | 7, 9, `0x17`, `0x15`, `0x13`, `0x1E`, `0x14`, `0x17`, 3 | `0x1B4B` … `0x207A` | **not reached** | the port's script ends at `f = 0x207F` in round 2 (mode 6) |
@@ -1788,7 +1802,7 @@ first unexplained frame and the first trace difference are marked):
   `TRACE_FIELDS` difference follows it: 1 764 frames agree in the port while the
   tick drifts; the divergence at `0x828` coincides with `tick` advancing 1 per
   frame in both (§G.20). No evidence that play reads the host-timed tick in the compared
-  window; the port's tick model is not the cause of the two measured divergences.
+  window; nothing measured ties the two divergences to the port's tick model.
   Open for the rest of the run (nothing after `0x828` is compared).
 - **Q7 (storage):** the 0.3–0.6 GB capture was ruled acceptable (§G.18); measured 376 MB and
   374 MB (`du -sh`), the port dump 409 MB (6 497 `.ipx` in `/tmp/pr_u4_gp`).
@@ -1810,27 +1824,38 @@ correct". The ratchet values are measured, not game values; `BACK`, `AHEAD`,
 ## §G.23 Named gaps and what is not covered (U4 Task 6)
 
 1. **The character select actor's idle animation turns around ~96 frames earlier in
-   the original** (`f = 0x340`, the `f & 0x3F` countdown step, against the port's
-   `f ≈ 0x3A0`); capture frame 203. Evidence: §G.20 (scene hashes of capture 185..238
-   against the port's mode-`0x10` frames 62..110, the scene reversing at the digit
-   change). Classification: port divergence (animation/actors timing, or a `0x43AAC`
-   side effect not ported); not host-timed, not an unported function reached, not
-   the harness. **Not isolated.** Owner: U5 (character select walk).
-2. **The type-0 fight-effect entry's walk resolves 5 frames earlier in the port**
-   (rng draws at `f = 0x828` against the original's `0x82D`: `fight_4b144 ←
-   fight_4aad0 ← fight_effects_pass ← game_mode_04_step`; draws and their order equal,
-   timing different) and the original's P2 attack connects at `0x82E` (P1 `+0x52` 0x11 →
-   0x10, `+0x5A` 0x10 → 0x17) where the port's does not. Classification: port divergence,
-   same signature as 1 (an actor animation phase offset by a few frames), not isolated.
-   Owner: U6 (moves) or a new unit for the crowd/fight-effect timing.
-3. **Round 1 is a different fight afterwards:** the CPU's KO in 1 148 frames
-   (`+0x5A = 0x78`) against the port's time-up after 3 300 (`+0x5A = 0x38`); a consequence
-   of 2 (and of whatever else differs after `0x828`), not a separate cause.
+   the original** (`f ≈ 0x340`, against the port's `f ≈ 0x3A0`); capture frame 203. The turn
+   coincides with a countdown step (`f & 0x3F == 0`) but nothing shows it is caused by it:
+   the steps at `0x2C0`/`0x300` produce no turn, and the raw `0x43AAC` has no side effect
+   the port omits (§G.20). Classification: port divergence in animation timing, cause not
+   isolated; not host-timed; no unregistered callback in the character select (the miss log
+   there holds only the bare `ret` `0x29D60`, §G.24). Owner: U5 (character select walk).
+2. **An unregistered move-table callback is reached at `f = 0x824`**: `0x23208`, character
+   1 reaction `0x26` (raw `0xA3D20`; U0 §U0.12's list), four frames before the first trace
+   difference (`rng` at `0x828`); the original's P2 attack then connects at `0x82E` (P1 `+0x52`
+   0x11 → 0x10, `+0x5A` 0x10 → 0x17) and the port's does not. The callback's effects (an animation
+   start, slot `+0x52/+0x53/+0x54/+0xC`, voice `0x79`) are not traced fields. Whether it
+   causes the `rng`/hit difference is not excluded and not shown. Owner: U6 (moves).
+3. **A second unregistered callback keeps P1 in state `0x10` for most of the port's run:**
+   `0x3A588` (the `+0x10` callback `0x3A650` stores for state 10, run by `fighter_state_3531c`
+   case 10), **5 353 misses from `f = 0x927` to the end**. In the port the slot-0 trace holds
+   `+0x52 = 0x10` for 2 994 frames (`0x927..0x14D8`, to the round's time-up) and again for
+   2 358 frames (`0x174A..0x207F`); in the original `+0x52 = 0x10` lasts 22 frames
+   (`0x9F5..0xA0A`) and returns to 0. That, not the first difference, is the likely reason the
+   port's round 1 is a time-up (`+0x5A = 0x38`) where the original's is a KO; the cause is
+   measured as a correlation (a missed callback and a stuck state), not shown by porting it.
+   Owner: U6/U9.
+   **A third, `0x3640C`** (an animation-opcode target stored in animation streams: slot
+   `+0x52 = 0`, `+0x24 = 3.0f`, `+0x4D = 0x14`, the linked actor's `+0x52 = 5`), one miss at
+   `f = 0x173A`, round 2. The full set and its classification: §G.24.
 4. **Not reached by the port's script:** match end (7), results (9, `0x17`), the
    countdown `0x15`, the challenge `0x13`, game over `0x1E`/`0x14`, mode 3 and the credit
    re-initialisation: the port's round 2 is still running at `f = 0x207F`. This is how far
    the port got, not a defect found (spec §4.3). Owner: U9 (win path) after 1–3.
-5. **`t508`/tick model at loads:** port − capture `t508` jumps at every load (§G.20); reported,
+5. **The time-up round length:** the port's 3 300 frames (`0x7F5 → 0x14D9`) against the
+   original's 3 250 / 3 249 for its time-up rounds: an unexplained 50 frames, possibly its own
+   clock divergence, not to be absorbed in item 2 (§G.20).
+5b. **`t508`/tick model at loads:** port − capture `t508` jumps at every load (§G.20); reported,
    not ratcheted. Host-timed in the original; the port's `RES_READ_BYTES_PER_TICK` model.
 6. **Open causes, recorded not guessed:** why a queued key is consumed 1–4 iterations later
    (Q3; press to consumption 2, 4, 2 iterations in run 1 and 3, 1, 3 in run 2); why round 1 in the probe lasted
@@ -1846,6 +1871,112 @@ F = 2088): the rest of the character select (`0x10` from `f ≈ 0x340` to `0x640
 wipes and the round starts (`0x1A/0x1B/0x11/0x17/5` at `0x640..0x77A`: equal in `TRACE_FIELDS`
 but their frames lie past capture 203 and are unexplained or unread), round 1 and 2 (mode 6),
 mode 8, `0x16`, mode 7, 9, `0x17`, `0x15`, `0x13`, `0x1E`, `0x14`, `0x17` and the return to 3.
+
+## §G.24 U4 review 1: the miss-log measurement, the merged base, the pins (U4 review fixes)
+
+Review `.superpowers/sdd/2026-09-30-gameplay-scope/u4-review1.md` ("Needs fixes"; the
+headline measurements reproduce; the triage of the second divergence and the merge
+readiness did not). New commits on `gameplay-u4`; no reviewed commit was rewritten
+except by the mechanical rebase of item 1.
+
+**1. The chain.** `gameplay-u4` was rebased onto `gameplay-u3` (U3's review fixes
+`0900c2a`, `03c83c2`), then `git rebase --onto main 300eef7` (U2's head, in main through
+`d2c8a59`): it now sits on main `c6cac22` (U0 + U1 + U2 merged), U3 and U4 on top. Conflicts
+were textual and kept both sides: the record's appended sections (§I 7a–12 of U3 and §G.17 of
+U4), `docs/PROGRESS.md` (U0's paragraph, U3's fixed paragraph, U4's), and the Makefile
+(U3's `GP_IDLE_LOSS_MAX_START` beside U4's values). Two U3 nits fixed: `docs/PROGRESS.md` now
+reads "28 tool tests (19, plus 9 added by review 1)", and the last Self-Review bullet of
+`2026-09-30-gameplay-u3-frame-compare.md` notes that review 1 made report mode skip the
+ratchet. The U4 closure's first conflict resolution had duplicated U3's paragraph in
+`docs/PROGRESS.md`; removed.
+
+**2. The miss-log measurement** (`make gp-replay scenario=gp-idle-loss` on the merged base,
+`run_tests` arms `fn_misslog` for `PR_GP_DUMP`; a throw-away `fprintf` of `f` in
+`fn_resolve_from`, not committed, gives the frames; raw read from `data/game/C/PRAGE.EXE`
+with capstone, obj-0 file offset = VA + `0x52E54`: call/jmp targets are exact, data
+displacements and immediates in the listings, e.g. `0x49030`, `0x2A588`, are pre-fixup, per AGENTS.md). The full replay to `f = 0x207F` records
+**7 distinct (address, caller) pairs, 0 dropped**:
+
+| address | caller | hits | `f` first..last | what it is (raw) |
+|---|---|---|---|---|
+| `0x5D812` | `actor_spawn` | 6 442 | `0x3..0x2072` | the runtime `xor eax,eax; ret` stub, the type table's empty half; deliberately unregistered, result discarded (U0 §U0.1) |
+| `0x5D812` | `set_dead` | 6 096 | `0x4..0x2078` | the same stub, teardown half |
+| `0x29D60` | `frontend_mode_1b_step` | 1 | `0x293` | **a bare `ret`** (one byte `C3` at `0x29D60`): the wipe's end hook `DS_00104AE4` (`fight.c` 0x43805/0x44541: "a bare `ret`"); the skip is equivalent |
+| `0x5D812` | `frontend_mode_1b_step` | 1 | `0x77A` | the same stub as the hook at the wipe into mode 5 |
+| `0x23208` | `hit_reaction_apply` | 1 | `0x824` | **an unported move-table callback**: character 1, reaction `0x26`, the dword at raw `0xA3D20` (pre-fixup `0x13208`); one of U0 §U0.12's 27. Body `0x23208..0x2324F`: `0x33950`; `0x3C4CC(rec, 0xE4900, 3.0f)` (animation start); slot `+0x52 = 9`, `+0x53 = 7`, `+0x54 = 0`, `+0xC = 0`; voice `0x79`; `al = 1` |
+| `0x3A588` | `fighter_state_3531c` | 5 353 | `0x927..0x207F` | **an unported state-10 callback**: case 10 runs the pointer in slot `+0x10`; `0x3A650` stores `0x3A588` there (immediate at `0x3A686`) with `+0x52 = 0x10`, `+0x53 = 0xA`. Body `0x3A588..0x3A64C`: a phase byte `+0x58` (0 → 1; 1 starts the animation stream `[0x49030 + (+0x7A) * 4]` with `0x2BC30`, `0x188AC`, `+0x58 = 2` …) |
+| `0x3640C` | `anim_indirect` | 1 | `0x173A` | **an unported animation-opcode target** (dwords in the animation streams): slot `+0x52 = 0`, `+0x24 = 3.0f`, `+0x4D = 0x14`, the linked actor's (`+0x14`) `+0x52 = 5`; reached once, in round 2 |
+
+The first two rows and the `0x29D60` row are the harmless ones: stubs and a bare `ret`. The
+last three are unported game code reached in play. **The character select (`f = 0x293..0x640`)
+records only the bare-`ret` hook at its entry**: no unregistered callback there, which is the
+fact §G.20's character-select classification rests on (not "no fault"). The reviewer's lldb
+measurement of `0x23208` (`f = 0x824`, side 1, reaction `0x26`), `0x3A588` (`f = 0x927`)
+and `0x29D60` (`f = 0x293`) is reproduced by the log; `0x3640C` is new (past the reviewer's
+cut at `f = 0x960`). `gp-pads` (the MAIN MENU) records only the two `0x5D812` stub pairs
+(2 891 and 2 853 hits).
+
+**What `0x3A588` costs in the port (a correlation, not a proof).** In the port's trace slot 0's
+`+0x52` is `0x10` (the state `0x3A650` sets) for **2 994 consecutive frames** from `0x927` to
+`0x14D8`, the round's time-up, and for 2 358 frames from `0x174A` to the script's end `0x207F`
+(5 352 of the 5 353 misses); in the original it is `0x10` for 22 frames (`0x9F5..0xA0A`) and
+returns to 0. The original's round 1 is a KO (`+0x5A = 0x78`); the port's a time-up with
+`+0x5A = 0x38`. The log shows the missed callback and the stuck state together; whether porting
+`0x3A588` ends the stall is not shown (U4 does not port it).
+
+**3. The replay driver's own pinned set (Important 2).** On main `run_tests` arms the miss
+log for every `TEST_DRIVERS` row and `test_fn_misslog_driver` pins `{0x5D812 actor_spawn,
+0x5D812 set_dead}`; the `gp-idle-loss` replay records seven pairs, so `make gp-oracle` would
+fail in `make verify` once merged (reproduced: `7 != 2`, five `unexpected` lines). `port/tests/test_platform.c`
+now keeps a per-scenario set: the scenario is read from the first line of `PR_GP_SCRIPT`
+(`# gp port script v2: scenario <name>`); `gp-idle-loss*` adds `k_miss_gp_idle_loss[]` (the
+five non-base rows of the table, the classification in the comment) to the base two; every other
+scenario (gp-pads) may miss only the base pair. A script cut by `--end` (`(cut at N)`) may
+record a subset (`count <= want`) but never an unknown pair. Mutation proofs (each restored,
+`gp-idle-loss` replays `all checks passed`, 7 pairs): removing `0x3A588` from the set (cut
+script) → `fn-miss PR_GP_DUMP: unexpected 0x3A588 from fighter_state_3531c`, `FAIL …:189`
+(the pinned set); adding a fake `{0x12345, "fake"}` → `FAIL …:186: 7 != 8`; removing `0x3640C`
+(full script) → `FAIL …:184: 7 != 6` and `unexpected 0x3640C from anim_indirect`. A new miss in
+the replay fails (an address outside the set), and so does a missing one (the full-script
+count). gp-pads replays green. The assertion sites grow by one (the cut branch).
+
+**4. Re-measurement on the merged base (U0's 40 functions change fight code).**
+`make gp-report` (the replay of this base, `/tmp/pr_u4b_gp`) gives the same three values:
+`window from capture 90 (raw 1744)`, `FIRST UNEXPLAINED capture 203 (raw 2359): nearest port
+106, rows 9..19, x 160..174 (102 px)` and `first difference f=828 (2088) in rng: capture 73A05D37,
+port CE92DD04`; the trace and frame lists are those of the pre-U0 base. So N = 203 and F = 2088
+stand (not raised: no evidence of improvement), and the window start is pinned:
+**`GP_IDLE_LOSS_MAX_START = 90`** (< N = 203), U3's review's start pin, measured here as the
+capture frame where the window begins (`gp_compare` prints `window from capture 90`). The
+`coverage` line (reported, not ratcheted) says 2 non-black port frames up to port 109 are
+exhibited by no classified capture frame (`[9, 11]`).
+
+**5. The capture identity (Important 3).** The pins belong to one git-ignored capture, and the
+timeline is quantised: the pick time-out lands on the 15th `f & 0x3F == 0` step after mode
+`0x10` begins (`0x43CF0..0x43D01` run `0x43AAC`; run 1 entered `0x10` at `0x293`, run 2 at
+`0x28D`, both timed out at `0x640`, the probe entered at `0x26C` and timed out at `0x600`),
+so a re-capture whose character select starts at `f <= 0x280` (13 frames earlier than run 2)
+moves everything after it by 64 frames, and N = 203 and F = 2088 would mean nothing. The
+Makefile now pins the capture beside the values: `GP_IDLE_LOSS_CAPTURE_SHA256 =
+773e2647…8c8447` (the `poll.log` of `data/k11-captures/gp-idle-loss`, **run 1**, which is the
+capture the oracle reads and the pins were measured on; run 2's is `5ce62b39…30c7`) and
+`GP_IDLE_LOSS_CAPTURE_FRAMES = 8173`. `gp_compare --capture-sha256 H --capture-frames N`
+(passed by `gp-oracle`) **fails**, never skips, on a present capture with another `poll.log`
+hash or frame count, with the message that a re-capture invalidates the pinned N, F and window
+start and they must be re-measured; an empty pin fails as "not pinned"; report mode never checks.
+Test `test_the_capture_identity_pin` (good hash passes, wrong hash, wrong frame count, empty pin,
+a changed `poll.log` all fail; mutated to `return True` first it fails). `make gp-oracle
+GP_IDLE_LOSS_CAPTURE_SHA256=00ff` → `FAIL: poll.log sha256 773e2647… (8173 frames) != the pinned
+00ff …`, `exit=2`.
+**Warning for U5–U8 (and any later unit that captures `gp-idle-loss` or a scenario through the
+character select):** a re-capture shifts the timeline in 64-frame steps. Never re-capture to
+"refresh" a pin: capture to a new scenario name, measure it, and pin its own `poll.log` hash. A
+scenario that passes the character select with a pick time-out depends on the frame at which the
+Enter lands (wall-timed, ±8 frames between two runs) through `f & 0x3F`; pin the hash.
+
+**6. Cost.** On this host (load average ~4): the `gp-idle-loss` replay takes **140 s**, the
+comparison **5 s**, and the port dump is **410 MB** of `/tmp` per run (6 497 `.ipx`); the whole
+`make verify` grows by about 2.5 minutes, not the "+10 minutes" of the first report.
 
 ## §J U4 corrections and notes (raw/measured wins over the plan)
 
@@ -1880,3 +2011,18 @@ the 45 oracle lines `diff` against `oracle-lines-base.txt` → no output; the `k
 lines equal `k11_base.txt`; the K11 walk/menuesc dumps' hashes `190cd592…`/`1cf5140c…` as
 U3's; `frames: first unexplained 203, ratchet N 203 ok` and `trace: first differing 2088,
 ratchet N 2088 ok`; `port/src` diff empty.
+10. **Review 1 triage corrections (§G.24):** the second divergence is an unregistered move
+    callback (`0x23208`) reached at `f = 0x824`, not "an actor animation phase" and not "no
+    unported function (no fault)": an unresolved `fn_resolve` is a silent skip, so "no fault"
+    proves nothing, and the miss log (§G.24) is the measurement. Its owner is U6, and the
+    "same signature as divergence 1" and "a consequence of 2" claims are withdrawn.
+11. **The divergence-1 hypothesis "a `0x43AAC` side effect the port omits" is refuted** by the raw
+    (`0x43AAC..0x43B22` only decrements, draws, or confirms and wipes, all mirrored by
+    `fight_char_countdown`); the turn coinciding with the `0x340` countdown step is a coincidence of
+    timing, with no known cause (§G.20).
+12. **The rng-sequence claim was too strong** (§G.20): one step (`0x73A05D37 → 0xCE92DD04`)
+    matches, five frames apart; later values differ.
+13. **The pins are bound to one capture** (§G.24 item 5): `poll.log` sha256 and frame count pinned,
+    `gp-oracle` fails on another capture.
+14. **Wording:** "frame for frame" read as a picture match; the record, PROGRESS and the report now say
+    "every mode transition at the same f". The `make verify` cost is 140 s + 5 s, 410 MB.
