@@ -1370,3 +1370,95 @@ drops the key at `294` (and its bits). Mutations (each restored → `OK`): key
 filter dropped → `FAIL: test_end_truncates_the_script`; bits filter dropped
 (`for f, kb in bits`) → the same `FAIL`; the `--end` past the `X` frame
 (`end=400`) raises `ScriptError` (asserted).
+
+## §G.18 Capture run 1 and the mode path (U4 Task 2)
+
+**Ruling Q7 (storage; logged here as the controller's instruction requires):**
+spec §7 Q7 is answered YES by the user's delegate: a gp-idle-loss capture of
+0.3–0.6 GB after gzip is acceptable in the git-ignored `data/k11-captures/`.
+Measured: `data/k11-captures/gp-idle-loss` **376 MB** (`du -sh`; 8 173 distinct
+frames of 14 017 AVI frames), `gp-idle-loss-run2` **374 MB** (8 134 frames):
+inside the range. Both are git-ignored (`data/`), `data/` still holds nothing
+but the `gp-*` directories this unit wrote through `make gp-capture`.
+
+**Run 1:** `make gp-capture scenario=gp-idle-loss TITLE_PIN_DIR=/tmp/pr_u4_pin`
+(the pinned exe sha256 `8120f1bd…a68d`, zero CMOS, `pad_bios=1`, DOSBox-X
+2026.08.31, `time_limit=200`), exit 0, console `/tmp/gameplay-u4/cap1.txt`:
+`snapshots 9807, f 4..0x2681 (the console prints f in hex), 47 frames missed
+(spec §3.7)` (99.5 % of the 9 854 iterations); `CHECK base`, `steps fired 3/3`,
+`end frame reached`, `mode 0x27 after the Enter`, `snapshots kb == raw (0 differ)`,
+`frames written 8173/8173`, `port script v2`: all `ok`; `wall 200.8 s` (the time
+limit: DOSBox-X was stopped by `-time-limit`, the scenario's end was reached at
+`ms=174412`, then the attract ran on); `raw 1371..14016`. `poll.log` 9 850 lines,
+sha256 `773e2647…8c8447`. `session.txt` records the seven `check=ok` lines. The
+first rerun with `--time-limit 260` that the plan allows was not needed.
+
+**The end record.** `X f=207F` (`ms=174412`) is not the frame of mode 3's first
+observation: `P f=207A mode=0003` came at `ms=159739`; then `f` froze for the boot
+movies (15 s of wall time) and the next spin snapshot is `f=207F`, where the
+scenario's `until_mode` end was logged. So `end 8319` is the frame the master loop
+resumed at, five iterations after mode 3 began. (Both runs: `X f=207F`.)
+
+**The mode path** (script of the plan, `/tmp/gameplay-u4/modepath1.txt`; `f` hex,
+`poll.log:<n>` is the first `S`/`P` record of the mode; credits, slot `+0x5A`
+from the first `S` of the mode):
+
+| poll.log | f | mode | frames | what the record shows |
+|---|---|---|---|---|
+| 3 | 1 | 3 | 320 | attract; the Enter pressed at `f=0x13F` (wall 25.0 s), consumed `0x141` |
+| 323 | 0x141 | 0x27 | 301 | MAIN MENU, credits 5; Enter 2 consumed `0x1DA`, Enter 3 `0x26E` |
+| 631 | 0x26E | 0x2D | 1 | LEFT PLAYER ARCADE; **credits 4** from here (5 → 4) |
+| 632, 651 | 0x26F, 0x281 | 0x1A, 0x1B | 18, 18 | the wipe |
+| 670 | 0x293 | 0x10 | 941 | character select, P1 idle |
+| 1612, 1631 | 0x640, 0x652 | 0x1A, 0x1B | 18, 18 | the pick timed out |
+| 1648, 1650 | 0x664, 0x665 | 0x11, 0x17 | 1, 241 | |
+| 1892, 1911 | 0x756, 0x768 | 0x1A, 0x1B | 18, 18 | |
+| 1930 | 0x77A | 5 | 123 | round start |
+| 2054 | 0x7F5 | 6 | 1148 | round 1 (P2 `e2 = 0x2020` at its first frame, P1 `e0 = 0`) |
+| 3203 | 0xC71 | 8 | 188 | round end: P1 `+0x5A` rose `0x10, 0x17, 0x27, 0x37, 0x3F, 0x51, 0x59, 0x6B, 0x72, 0x78`; P2's stayed 0 |
+| 3389 | 0xD2D | 0x16 | 241 | results (P1 `+0x5A = 0x78`) |
+| 3629 | 0xE1E | 5 | 123 | round start |
+| 3752 | 0xE99 | 6 | 3250 | round 2 |
+| 7003 | 0x1B4B | 7 | 113 | match end |
+| 7114, 7116 | 0x1BBC, 0x1BBD | 9, 0x17 | 1, 241 | P1 `+0x5A = 0x4F`, P2 0 |
+| 7355 | 0x1CAE | 0x15 | 121 | countdown |
+| 7477 | 0x1D27 | 0x13 | 665 | the challenge screen |
+| 8141 | 0x1FC0 | 0x1E | 4 | game over; `cnt = 0xFF` (the count below 0, §3.4) |
+| 8145, 8147 | 0x1FC4, 0x1FC5 | 0x14, 0x17 | 1, 181 | |
+| 8327 | 0x207A | 3 | — | back in mode 3 (credits 5 again at the `X` record) |
+
+The path equals spec §3.5's, mode for mode (`0x27, 0x2D, 0x1A, 0x1B, 0x10, 0x1A,
+0x1B, 0x11, 0x17, 0x1A, 0x1B, 5, 6, 8, 0x16, 5, 6, 7, 9, 0x17, 0x15, 0x13, 0x1E,
+0x14, 0x17, 3`), the credits 5 → 4 at `0x2D` (`f=0x26E`), P1's `+0x5A`
+reaching `0x78` in round 1 and P2's staying 0 throughout the match, and no mode
+`0xE` or `0x1F`. **The idle loss scenario reproduces §3.5's path; the deltas
+differ in one place:**
+
+| segment | spec §3.5 (probe) | run 1 |
+|---|---|---|
+| mode `0x10` (P1 idle) | 916 (`0x26C → 0x600`) | **941** |
+| round 1, mode 6 | **1 831** (`0x7B5 → 0xEDC`) | **1 148** |
+| round 2, mode 6 | 3 249 (`0x10F9 → 0x1DAA`) | 3 250 |
+| 7 → 9 | 111 (`0x1DAA → 0x1E19`) | 113 |
+| `0x13` | 636 (`0x1F84 → 0x2200`) | 665 (`0x1D27 → 0x1FC0`) |
+| P1 `+0x5A` at match end | `0x44` | **`0x4F`** |
+
+Each difference is a **measured difference between the probe and the harness
+capture, not a correction of the path**: the Enters were consumed at other frames
+(probe `0x120/0x1B3/0x247` against run 1's `0x141/0x1DA/0x26E`, and a different
+wall-timed first Enter), the character-select pick time-out fell at another
+frame, and the CPU's round 1 was a different fight from the probe's (a KO after
+1 148 frames, where the probe's lasted 1 831: the same winner, P1's `+0x5A`
+reaching `0x78`, P2's 0). The cause of the round 1 difference is **not
+established**: it begins at a different pick/round start and so a different RNG
+stream (`rng` at `0x77A` is `0xBA9703D6`), but the probe's `rng` was not logged
+at those frames. The spec's "916 frames in mode `0x10`" (probe) and the 941 here are both
+measured; run 2 (§G.19) gives 947 for the same input, so the quantity moves by
+several frames between runs of the harness and the probe's value is one more
+sample of it (the pick time-out's anchor is open, §G.19). The probe's 1 831 against
+1 148 is the one difference the evidence does not close. (The plan's wording "the
+CPU wins round 1 by KO and round 2 on time" holds here: P1's `+0x5A` reaches `0x78`
+in round 1, mode 8, and the match ends by the clock in round 2.)
+
+The shape of the match, which §G.20 compares with the port: P1 never receives
+input (`e0 = 0`, `raw`/`pad` 0 from `0x2D` to the end, the three Enters aside).
