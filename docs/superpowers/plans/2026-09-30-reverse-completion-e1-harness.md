@@ -453,7 +453,7 @@ Record the four results in the ledger. Do not commit a mutation.
 
 **Interfaces:**
 - Consumes: Task 1's `Image`, `_decode`, `_direct_target`.
-- Produces: `static_scan(image, entry, max_insns=4000) -> StaticInfo(leaders, insns, indirect, unresolved, truncated)`; `coverage(info, executed) -> (hit_leaders, unhit_leaders)`. A block counts as hit when its leader instruction executed. Recursive descent follows tail `jmp`s into the next function, so a function's blocks include the code it falls into.
+- Produces: `static_scan(image, entry, max_insns=4000) -> StaticInfo(leaders, insns, indirect, unresolved, truncated)`; `coverage(info, executed) -> (hit_leaders, unhit_leaders)`. A block counts as hit when its leader instruction executed. Recursive descent follows tail `jmp`s (and `loop`/`loope`/`loopne`, which capstone does not put in the jump group) into the next function, so a function's blocks include the code it falls into.
 
 - [ ] **Step 1: Append the failing tests**
 
@@ -501,6 +501,32 @@ class StaticScanTests(unittest.TestCase):
         info = E.static_scan(image(bytes(code)), 0x10000)
         self.assertEqual(info.leaders, [0x10000, 0x10010])
 
+    def test_a_back_edge_terminates_and_makes_the_target_a_leader(self):
+        # 10000: dec ecx; 10001: jnz 0x10000; 10003: ret
+        info = E.static_scan(image(bytes.fromhex("49" "75FD" "C3")), 0x10000)
+        self.assertEqual(info.leaders, [0x10000, 0x10003])
+        self.assertEqual(sorted(info.insns), [0x10000, 0x10001, 0x10003])
+
+    def test_the_instruction_budget_marks_the_scan_truncated(self):
+        img = image(b"\x90" * 20 + b"\xC3")
+        cut = E.static_scan(img, 0x10000, max_insns=5)
+        self.assertEqual((cut.truncated, len(cut.insns)), (True, 5))
+        full = E.static_scan(img, 0x10000, max_insns=1000)
+        self.assertEqual((full.truncated, len(full.insns)), (False, 21))
+
+    def test_loop_targets_and_fall_through_are_leaders(self):
+        # 10000: loop 0x10003; 10002: ret; 10003: ret  (10003 is reachable only through the loop)
+        info = E.static_scan(image(bytes.fromhex("E201" "C3" "C3")), 0x10000)
+        self.assertEqual(info.leaders, [0x10000, 0x10002, 0x10003])
+        for op in ("E1", "E0"):                                      # loope, loopne
+            info = E.static_scan(image(bytes.fromhex(op + "01" "C3" "C3")), 0x10000)
+            self.assertEqual(info.leaders, [0x10000, 0x10002, 0x10003])
+
+    def test_undecodable_bytes_mark_the_scan_truncated(self):
+        # 0F 04 is not an instruction in capstone's 32-bit x86 decoder
+        info = E.static_scan(image(bytes.fromhex("0F04")), 0x10000)
+        self.assertEqual((info.truncated, info.insns), (True, {}))
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -526,7 +552,7 @@ class StaticInfo:
     insns: dict                  # addr -> size, every instruction reached by recursive descent
     indirect: list               # addrs of indirect jmp/call: their targets are unknown (a jump table)
     unresolved: list             # direct targets outside the image
-    truncated: bool              # the descent hit max_insns
+    truncated: bool              # the scan did not cover all reachable bytes (instruction budget or undecodable bytes)
 
 
 def static_scan(image, entry, max_insns=4000):
@@ -546,13 +572,14 @@ def static_scan(image, entry, max_insns=4000):
                 break
             ins = _decode(image.bytes_at(addr, 15), addr)
             if ins is None:
+                truncated = True
                 break
             insns[addr] = ins.size
             nxt = addr + ins.size
             m = ins.mnemonic
             if ins.group(capstone.CS_GRP_RET):
                 break
-            if ins.group(capstone.CS_GRP_JUMP):
+            if ins.group(capstone.CS_GRP_JUMP) or m in ("loop", "loope", "loopne"):
                 tgt = _direct_target(ins)
                 if tgt is None:
                     indirect.append(addr)
@@ -581,7 +608,7 @@ def coverage(info, executed):
 - [ ] **Step 4: Run the tests**
 
 Run: `python3 -m unittest tools.tests.test_diff_emu 2>&1 | tail -4`
-Expected: `Ran 20 tests ... OK`.
+Expected: `Ran 24 tests ... OK`.
 
 - [ ] **Step 5: Commit, then prove the assertions can fail**
 
@@ -596,6 +623,8 @@ EOF
 ```
 
 Mutation (restore with `git checkout -- tools/diff_emu.py`): `perl -0pi -e 's/if m == "jmp":\n                    break/pass/' tools/diff_emu.py` must fail `test_a_direct_target_outside_the_image_is_unresolved` and `test_a_tail_jump_is_followed_into_the_next_function`. Record it in the ledger.
+
+Review-fix mutations (each must fail the named test; restore with `git checkout -- tools/diff_emu.py`): `s/ or m in \("loop", "loope", "loopne"\)//` fails `test_loop_targets_and_fall_through_are_leaders`; deleting `truncated = True` after `if ins is None:` fails `test_undecodable_bytes_mark_the_scan_truncated`; `s/len\(insns\) >= max_insns/len(insns) > max_insns/` fails `test_the_instruction_budget_marks_the_scan_truncated`; deleting the `if addr in insns: break` guard makes `test_a_back_edge_terminates_and_makes_the_target_a_leader` hang (the descent never ends, since `insns` is keyed by address and `max_insns` never trips), so prove it under a 10 s kill, not as a failure.
 
 ---
 
@@ -1436,7 +1465,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run the unit tests**
 
 Run: `python3 -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify 2>&1 | tail -4`
-Expected: `Ran 42 tests ... OK` (the five real-function tests run when `build/diffrun` and `data/game/C/PRAGE.EXE` exist, and skip otherwise).
+Expected: `Ran 46 tests ... OK` (the five real-function tests run when `build/diffrun` and `data/game/C/PRAGE.EXE` exist, and skip otherwise).
 
 - [ ] **Step 5: Run the CLI**
 
@@ -1587,5 +1616,5 @@ Report: the head SHA, the gate output (EXIT, oracle lines, WAV, counters), the t
 ## Execution notes
 
 - Tasks 1, 2, 4 are Python integration with complete code: a standard-tier implementer. Task 3 is a transcription plus a build and a hand smoke: the cheapest tier is enough. Task 5 is a record plus the gate: standard tier. Review each with a standard-tier reviewer; the final whole-branch review goes to the most capable model.
-- The code in Tasks 1-4 was prototyped and run end to end before this plan was written (42 Python tests pass, nine table rows, every mutation above fails the named tests), so a deviation from it needs a reason in the report.
+- The code in Tasks 1-4 was prototyped and run end to end before this plan was written (46 Python tests pass, nine table rows, every mutation above fails the named tests), so a deviation from it needs a reason in the report.
 - Handoff after E1: E2 (triage of the 575 candidates) and the U5-U8, U11 plans can start, and P (the port batches) starts once the stub design for calls (record §E.6 item 1) is planned.
