@@ -328,7 +328,7 @@ class RealFunctionTests(unittest.TestCase):
             "config_codeword_len@mutant", "config_credit_spend@mutant", "config_credit_spend@signed",
             "fighter_23130@novoice", "fighter_23130@voice", "fighter_3640c@mutant", "fighter_37dcc@mutant",
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
-            "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "rng_next@mutant"])
+            "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"])
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -430,15 +430,19 @@ class RealFunctionTests(unittest.TestCase):
     def test_each_e3_mutant_is_caught_by_what_it_breaks(self):
         kinds = {"fighter_23130@voice": {"call #1"}, "fighter_23130@novoice": {"call #1"},
                  "fighter_45878@mutant": {"call #0"}, "anim_10fa8@mutant": {"call #0"},
-                 "hit_anim_start_b@mutant": {"call #0"}, "anim_3e4e4@mutant": {"call #0", "byte"},
+                 "hit_anim_start_b@mutant": {"call #0"}, "hit_anim_start_b@set": {"call #0"},
+                 "anim_3e4e4@mutant": {"call #0", "byte"},
                  "fighter_ctx_same@mutant": {"byte"}, "hit_anim_ctx@mutant": {"byte"}}
         for name, want in kinds.items():
             got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
                    else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
             self.assertEqual(got, want, name)
-        # the 0x3C480 arm only: states 3, 7 and 0x10 (cases h3, h7, h10) take it
-        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["hit_anim_start_b@mutant"].problems}),
-                         ["h10", "h3", "h7"])
+        # the 0x3C480 arm only: every state outside {0,1,2,5,0xE,0x15} takes it, in cases 0..0x16 and the
+        # three out-of-range bytes; the dispatch set itself is pinned by @set, which moves state 0 alone
+        arm = sorted("h%X" % st for st in list(range(0x17)) + [0x7F, 0x80, 0xFF]
+                     if st not in (0, 1, 2, 5, 0xE, 0x15))
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["hit_anim_start_b@mutant"].problems}), arm)
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["hit_anim_start_b@set"].problems}), ["h0"])
 
     def test_the_named_gap_is_0x1b890s_in(self):
         r = self.real["host_1b890"]
@@ -487,7 +491,7 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        self.assertIn("diff-verify: 13/13 functions VERIFIED; 15/15 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 13/13 functions VERIFIED; 16/16 mutants detected; 1 named gaps; "
                       "8/13 with every callee VERIFIED.", out.getvalue())
 
 

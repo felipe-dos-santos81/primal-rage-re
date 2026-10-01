@@ -87,7 +87,7 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   Needs `JAVA_HOME` (temurin-25) and the `ghidra-lx-loader` extension.
 - `dosbox-x` for runtime ground truth (memory-file dumps, debugger breakpoints).
 - Python 3 with `capstone` for ad-hoc disassembly, `Pillow` for `tools/gra_extract.py`.
-- The differential harness (`make diff-verify`, `tools/diff_verify.py`) needs `unicorn` and `capstone` (`pip install -r tools/requirements-diff.txt`; pins `unicorn` 2.1.4 and `capstone` 5.0.7). Without either the step prints its skip line and `make verify` stays green.
+- The differential harness (`make diff-verify`, `tools/diff_verify.py`) needs `unicorn` and `capstone` (`pip install -r tools/requirements-diff.txt`; pins `unicorn` 2.1.4 and `capstone` 5.0.7). Without either the step prints its skip line and `make verify` stays green. Its last line counts the functions VERIFIED, the mutants detected, the named gaps (`NAMED_GAP` rows: the original stops on the instruction the spec names) and the rows whose every callee is VERIFIED by its own check; a stubbed callee that is not is "unverified" in the table's callee column.
 - `tools/` is the RE/oracle toolbox: `le_info.py`, `gra_render.py`,
   `gra_extract.py`, `gen_symbols.py`, `title_pin.py`, `title_compare.py`.
   Check the active plan before editing anything here.
@@ -98,6 +98,11 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
 - Mark deliberate deviations `/* PORT: ... */`; doubts `/* TODO(verify): ... */`.
   No other comment styles in `port/src`.
 - Code addresses stored in data go through `fn_origin()` / `fn_resolve()`.
+- A ported function that a differentially verified function calls opens with
+  `PR_SEAM(0xADDR, args...)` (void) or `PR_SEAM_RET(0xADDR, args...)` (`mem.h`): the harness's
+  call seam, inert outside `build/diffrun`. The arguments are the C signature's, in order; the
+  `E.Call` in `tools/diff_verify.py` names the original's registers and stack slots in the same
+  order (record `2026-10-01-reverse-e3-derivations.md` §E3.3-§E3.5).
 - SDL and file/asset I/O live **only** in `port/src/host.c` and `main.c`. New
   subsystems are data-in: the caller resolves assets and passes bytes/handles.
 - Do not reformat files owned by another module.

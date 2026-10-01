@@ -215,6 +215,20 @@ static void m_3c4cc(const u32 *r, u32 *eax)            /* forgets the 0x3C480 ar
     *eax = 0u;
 }
 
+static void m_3c4cc_set(const u32 *r, u32 *eax)        /* state 0 falls out of the 0x2BC30 set */
+{
+    /* hit_anim_start_a is static to fighter.c: state 0 is sent to the 0x3C480 arm by running the
+     * real function with the slot's state byte set to a state outside the set, then restoring it */
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    u32 at = ctx[2] + 0x52u;
+    u8 st = DSB(at);
+    if (st == 0u) DSB(at) = 3u;
+    hit_anim_start_b(r[R_EAX], r[R_EDX], r[R_S0]);
+    DSB(at) = st;
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -240,6 +254,7 @@ static const binding_t k_bindings[] = {
     { "hit_anim_start_b",         b_3c4cc,        0x00000000u },
     { "fn_resolved",              b_fn_resolved,  0xFFFFFFFFu },
     { "hit_anim_start_b@mutant",  m_3c4cc,        0x00000000u },
+    { "hit_anim_start_b@set",     m_3c4cc_set,    0x00000000u },
     { "fighter_45878@mutant",     m_45878,        0x00000000u },
     { "anim_10fa8@mutant",        m_10fa8,        0x00000000u },
     { "anim_3e4e4@mutant",        m_3e4e4,        0x00000000u },

@@ -316,8 +316,10 @@ E3_SPECS = [
         Case("h%X" % st, {"eax": E3_REC, "edx": 0xE4872, "s0": 0x40400000},
              {E3_REC + 0x51: bytes([side]), DS_SLOTS + side * 0x94: le32(E3_REC2),
               DS_SLOTS + side * 0x94 + 0x52: bytes([st])})
-        for st, side in ((1, 0), (3, 1), (5, 0), (7, 1), (0xE, 0), (0x10, 1), (0x15, 0))
-    ], allow_calls=(0x339AC,), calls=(ANIM_BEGIN, HIT_A), eax_mask=0),
+        # every state 0..0x16 and three out-of-range bytes, so the dispatch set {0,1,2,5,0xE,0x15} ->
+        # 0x2BC30, everything else -> 0x3C480 is pinned value by value, not only its two blocks
+        for st, side in [(s, s & 1) for s in range(0x17)] + [(0x7F, 1), (0x80, 0), (0xFF, 1)]
+    ], allow_calls=(0x339AC,), calls=(ANIM_BEGIN, HIT_A), eax_mask=0, mutants=("@mutant", "@set")),
     Spec("host_1b890", 0x1B890, [Case("g0", {})], mutants=(), gap="in at 0x1B899"),
 ]
 

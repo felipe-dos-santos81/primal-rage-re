@@ -155,18 +155,20 @@ caller return through a stack argument: mutation P2 fails the stub tests and eve
 Four E2 `stubs` rows that are already ported (their callees are the most frequent: voice `0x2C3FC`,
 `0x2BC30`, `0x2AE14`, `0x3C4CC`), plus three of their callees by their own checks. Porting unported rows is
 track P's (decision D2). Each C function is reached by a binding in `diff_runner.c`; the animation targets are
-`static` and registered, so `diffrun` registers the port's code pointers once (`actors_init`, after pointing
-the two pool pointers at a scratch range for the call and restoring them; the image is checked unchanged).
+`static` and registered, so `diffrun` registers the port's code pointers once, at every `fn_register` call site of `port/src` (the
+list in §E3.8: `actors_init`, after pointing the two pool pointers at a scratch range for the call and
+restoring them, then `effects_init`'s `camera_register`, `attract_scene_tick`'s `attract_register` and
+`svcmenu_register`; the image is checked unchanged or restored from the dump).
 
 | row (E2 class, evidence) | C function | calls | allow | cases | blocks | EAX mask, evidence |
 |---|---|---|---|---|---|---|
-| `0x23130` (move-callback, `dword A3CA8`, char 1 reaction 0x20; voice site `0x2316B`) | `fighter_23130` (EAX slot, EDX rec, EBX side) | `HIT_B` stub, `VOICE` stub | `0x33950` | 2 (side 0, 1; slot `+0x52..+0x54` and `+0x0C` seeded) | 1/1 | `0xFF`: `mov al,1` at `0x23170`; the C returns 1 |
+| `0x23130` (move-callback, `dword A3CA8`, char 1 reaction 0x20; voice site `0x2316B`) | `fighter_23130` (EAX slot, EDX rec, EBX side) | `HIT_B` stub, `VOICE` stub | `0x33950` | 2 (side 0, 1; slot `+0x52..+0x54` and `+0x0C` seeded) | 1/1 | `0xFF`: `mov al,1` at `0x23170`; the C returns 1. The second case (`v1`) cannot differ from the first: EBX (the side) only feeds `0x33950`'s stack buffer, which is allow-mode and not compared; it is kept as a second run of the same blocks, not as extra evidence |
 | `0x45878` (move-callback, `dword A4BF8`, char 4 reaction 0x24) | `fighter_45878` (EAX slot, EDX rec) | `ANIM_BEGIN` stub | - | 2 (`+0x42` 0x00 and 0xFB; every written field seeded) | 1/1 | `0`: the C is void; its callers are `0x35045` in `0x34E2C` ("whose AL is ignored": `actors.c`'s reaction-callback wrappers, records §42-A/§43-C; not re-derived here) and `0x46148` in `0x46138`, whose EAX returns to `0x2B2A0`'s indirect call sites, which overwrite EAX at once (`mov eax,ecx` at `0x2B575`, `0x2B59A`, `0x2B5F0`; `diff_runner.c`'s 3640c note) |
 | `0x10FA8` (anim-target, `dword E88D4` after `D100`) | `anim_code_10FA8` via `fn_resolve` (rec, arg) | `SPAWN` stub | - | 2 (no registers; EAX, EDX set) | 1/1 | `0`: an animation target; no direct caller (a `call rel32` scan finds 0), reached from `0x2B2A0`'s indirect sites |
 | `0x3E4E4` (anim-target, `dword E7BF4` after `D500`) | `anim_code_3E4E4` via `fn_resolve` | `ANIM_BEGIN` stub | - | 2 (`rec+0x14` 0 and a slot; `+0x36`, `+0x44`, `slot+0x57` seeded) | 3/3 | `0`, as `0x10FA8` (no direct caller) |
 | callee `0x33950` | `fighter_ctx_same(out, side)`; binding copies `out` to `mem[EAX]` | - | - | 2 (side 0, 1; 24 bytes at EAX seeded `0xAA`; slot pointers seeded) | 1/1 | `0`: the C is void (the original leaves EAX = `out`) |
 | callee `0x339AC` | `hit_anim_ctx(out, rec)`, the same binding form | - | - | 2 (`rec+0x51` 0, 1; `+0x50` the other value) | 1/1 | `0`, as `0x33950` |
-| callee `0x3C4CC` | `hit_anim_start_b(rec, stream, frame)` (made non-static) | `ANIM_BEGIN` stub, `HIT_A` stub | `0x339AC` | 7: states 1, 3, 5, 7, 0xE, 0x10, 0x15, sides alternating | 10/10 | `0`: void; EAX at return is the stubbed callee's (named limit §E3.8) |
+| callee `0x3C4CC` | `hit_anim_start_b(rec, stream, frame)` (made non-static) | `ANIM_BEGIN` stub, `HIT_A` stub | `0x339AC` | 26: every slot state `0..0x16` and `0x7F`, `0x80`, `0xFF`, side = state parity for `0..0x16` (Task 8 widened Task 7's 7 cases, so the dispatch set `{0,1,2,5,0xE,0x15}` -> `0x2BC30`, else `0x3C480` is pinned value by value) | 10/10 | `0`: void; EAX at return is the stubbed callee's (named limit §E3.8) |
 | `0x1B890` (E2's `in` blocker, host-owned) | none: a named gap | - | - | 1 | 1/9 | `NAMED_GAP`: `in at 0x1B899` |
 
 **Result** (`python3 tools/diff_verify.py --self-check` on the replay's final state, 3.61 s real):
@@ -186,27 +188,40 @@ the two pool pointers at a scratch range for the call and restoring them; the im
 | anim_3e4e4 | 0x3E4E4 | 2 | 3/3 | VERIFIED | 2BC30 stub unverified |
 | fighter_ctx_same | 0x33950 | 2 | 1/1 | VERIFIED | - |
 | hit_anim_ctx | 0x339AC | 2 | 1/1 | VERIFIED | - |
-| hit_anim_start_b | 0x3C4CC | 7 | 10/10 | VERIFIED | 2BC30 stub unverified, 339AC allow VERIFIED, 3C480 stub unverified |
+| hit_anim_start_b | 0x3C4CC | 26 | 10/10 | VERIFIED | 2BC30 stub unverified, 339AC allow VERIFIED, 3C480 stub unverified |
 | host_1b890 | 0x1B890 | 1 | 1/9 | NAMED_GAP (in at 0x1B899) | - |
 ```
 
-followed by the 15 mutant rows (all `MISMATCH`) and the counter line:
+followed by the 16 mutant rows (all `MISMATCH`; Task 8 added `hit_anim_start_b@set`) and the counter line:
 
 ```
-diff-verify: 13/13 functions VERIFIED; 15/15 mutants detected; 1 named gaps; 8/13 with every callee VERIFIED. Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+diff-verify: 13/13 functions VERIFIED; 16/16 mutants detected; 1 named gaps; 8/13 with every callee VERIFIED. Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
 ```
 
 E1's six rows and seven mutants are unchanged apart from the new last column (`-`).
 
+**Callees without a row, and the callee column's depth.** Four stubbed callees have no row of their own and
+read `unverified` in the last column: `0x2C3FC` (voice), `0x2BC30` (animation begin), `0x2AE14` (`actor_spawn`)
+and `0x3C480` (`hit_anim_start_a`); P verifies them. The column is **one level deep**: it names the callees
+of the row's own function, each with the verdict of its own row, and says nothing of that callee's callees
+(a row whose callee is itself VERIFIED with an `unverified` stub of its own, such as `0x23130` -> `0x3C4CC`
+-> `0x2BC30`/`0x3C480`, shows only `3C4CC stub VERIFIED`). "8/13 with every callee VERIFIED" counts that one level.
+
+**Seeds are hand pokes, not snapshots.** Every case's `pokes` are chosen bytes written into the image's zero
+BSS (`E3_SLOT`, `E3_REC`, ... at `0x10A200`..), not state captured from a run. Spec
+`2026-09-30-reverse-completion-design.md` §5.3 asks for real snapshots; this is a named deviation, the same
+one E1 made (E1 §E.7), and the claim stays "equivalence on the exercised blocks and inputs only".
+
 **Unhit blocks:** none in the seven functions (every leader of each `static_scan` executed). `0x1B890`'s eight
 unhit blocks lie after the `in` the gap names.
 
-**The eight new mutants and what catches each** (Task 7's `test_each_e3_mutant_is_caught_by_what_it_breaks`):
+**The nine new mutants and what catches each** (Task 7's `test_each_e3_mutant_is_caught_by_what_it_breaks`):
 `fighter_23130@voice` (voice id `0x7D`) and `@novoice` (no voice call) only by `call #1`;
 `fighter_45878@mutant` (frame `0x40000000`), `anim_10fa8@mutant` (layer `0xE5`) only by `call #0`;
-`hit_anim_start_b@mutant` (always `0x2BC30`) only by `call #0`, and only on cases `h3`, `h7`, `h10` (the
-`0x3C480` arm); `anim_3e4e4@mutant` (skips the `+0x14` test) by `call #0` and bytes; `fighter_ctx_same@mutant`
-and `hit_anim_ctx@mutant` by bytes. Five of them are invisible to E1's EAX-and-bytes comparison.
+`hit_anim_start_b@mutant` (always `0x2BC30`) only by `call #0`, and only on the cases whose state is outside
+`{0,1,2,5,0xE,0x15}` (the `0x3C480` arm: 20 of the 26); `hit_anim_start_b@set` (state 0 leaves the `0x2BC30` set) only by `call #0` on case
+`h0`; `anim_3e4e4@mutant` (skips the `+0x14` test) by `call #0` and bytes; `fighter_ctx_same@mutant`
+and `hit_anim_ctx@mutant` by bytes. Six of them are invisible to E1's EAX-and-bytes comparison. Ported-source mutations of the dispatch set itself (Task 8, scratch script, `fighter.c` restored after each) are each reported `MISMATCH` on the real row: dropping any one of the six members, adding `3`, adding `0x80`, and replacing the set by `st <= 1u`.
 
 **Two observations the batch makes on real code.** (1) `0x23130` stores the slot state `9` before calling
 `0x3C4CC`, so with the slot being fighter slot 0 `0x3C4CC` takes its `0x3C480` arm: the run with `0x3C4CC` in
@@ -218,17 +233,34 @@ the cases exercise `0x23130`'s own block, not `0x3C4CC`'s dispatch, which its ow
 ## §E3.7 Indirect calls and jump tables
 
 **Bounded switches.** `static_scan(..., switches=True)` (used by `diff_verify`; E2's `entry_triage` keeps the
-default, so its committed table cannot move) follows `jmp dword ptr [R*4 + T]` (no base register) when the
-straight run before it holds `cmp r, imm` with `r` in `R`'s register family (`al`/`ax`/`eax` all bound
-`eax`), followed by `ja`; the table then holds `imm + 1` dwords (`imm` masked to the compared width). This is
-stricter than E2's rule (E2 §E2.2 checks neither the register nor the `ja`). On the image:
+default, so its committed table cannot move) follows `jmp dword ptr [R*4 + T]` (no base register) under this
+rule (Tasks 3-4's fix round; `diff_emu.switch_cases`):
+
+1. Among the up to five instructions that precede the `jmp` on its own straight run there is a `cmp r, imm`
+   with `r` in `R`'s register family (`al`/`ax`/`eax` all bound `eax`) **immediately followed by the `ja`**:
+   the `ja` is the instruction directly after that `cmp`, and tests that `cmp`.
+2. Between the `ja` and the `jmp` there is only an `and idx32, imm` or a `movzx idx32, r` that masks the
+   index (both clear its upper bits), or a `nop`, or a `mov`/`movzx`/`movsx`/`lea`/`xor` whose destination is
+   a register of **another** family (it leaves the index alone). Any other instruction, including any other
+   write to the index's own family, breaks the bound and the jump stays unknown.
+3. A **narrow** compare (`cmp al`, `cmp ax`) needs the register's upper bits cleared by that point (the
+   `and eax,0xff` / `and edi,0xffff` forms); otherwise the compare does not bound the 32-bit index.
+
+The table then holds `imm + 1` dwords (`imm` masked to the compared width). This is stricter than E2's rule
+(E2 §E2.2 checks neither the register, nor the `ja`'s place, nor the path between the `ja` and the jump); the
+first implementation (`d34a7ce`) was looser than this and accepted a `ja` that tested another `cmp` and an
+index rewritten between the `ja` and the jump, which could hide blocks (a false "every block hit"), so the fix
+round (`4127800`) tightened it. **Join-point limit:** the walk is over the straight run the scan itself followed;
+it does not check that no other path joins that run between the `ja` and the `jmp`, so a branch into the middle
+of the mask or move would reach the `jmp` with an unbounded index. It is not reachable in the functions checked
+here (`0x2C3FC`, `0x2B2A0`, `0x1BD06` inside `0x1BBAC`) and is a named limit (§E3.8). On the image:
 
 | function | switch | E1 scan | with switches |
 |---|---|---|---|
 | `0x2C3FC` (voice) | `cmp al,6; ja; and eax,0xff; jmp [eax*4+0x2c3e0]` at `0x2C422..0x2C42F` | 7 leaders, unknown jump `0x2C42F` | 100 leaders, none unknown |
 | `0x2B2A0` (animation dispatcher) | `cmp di,0x2e; ja; and edi,0xffff; jmp [edi*4+0x2b1e4]` at `0x2B2EC..0x2B2FC` | 6 leaders, `0x2B2FC` | 85 leaders; left: the indirect **calls** `0x2B56D`, `0x2B594`, `0x2B5EA` |
-| `0x1BBAC` | `0x1BD06` bounded (`cmp ax,6`); `0x1BD7C` is `cmp ax,6; ja; xor edx,edx; mov dx,ax; jmp [edx*4+...]` | 35, two unknown | 42, `0x1BD7C` unknown (the index moved registers) |
-| `0x18350` | `lea esi,[eax*4]; ... jmp cs:[esi+0x18334]` at `0x18384` | 6, `0x18384` | unchanged: a pre-scaled base, not an index |
+| `0x1BBAC` | `0x1BD06` bounded (`cmp ax,6`); `0x1BD7C` is `cmp ax,6; ja; xor edx,edx; mov dx,ax; jmp [edx*4+...]` | 35, two unknown | 42, `0x1BD7C` unknown: the compare bounds `ax`, the `mov dx,ax` copies it to `edx` and the `jmp` indexes `edx`, a different family from the compared one; the rule does not follow a bound across a register copy (conservative) |
+| `0x18350` | `lea esi,[eax*4]; ... jmp cs:[esi+0x18334]` at `0x18384` | 6, `0x18384` | unchanged: a pre-scaled base, not an index; stays indirect, conservatively |
 
 **An indirect call no longer keeps a function `PARTIAL`.** It returns to the next instruction, which the scan
 follows, so it hides no block; and a run that reaches it either resolves the target into the allow-list or
@@ -264,7 +296,11 @@ switch keeps a function `PARTIAL` (mutation V4 fails a test).
   the real callee writes is exercised only as far as the declared writes and the cases' pokes produce those
   values.
 - **Switch bounds:** an index moved to another register (`0x1BD7C`) or pre-scaled into a base (`0x18384`)
-  stays an unknown jump.
+  stays an unknown jump, conservatively (§E3.7). **Join points (m5):** the guard walk does not check for a
+  second path joining the straight run between the `ja` and the `jmp`; not reachable in the checked functions.
+- **Seeds are hand pokes into zero BSS, not real snapshots** (spec §5.3; named deviation, E1 precedent; §E3.6).
+- **Four stubbed callees have no row** (`0x2C3FC`, `0x2BC30`, `0x2AE14`, `0x3C480`) and the callee column is one
+  level deep (§E3.6).
 - **`0x2AE14` reports `desc` as a mem[] offset only when `desc` lies in `mem[]`.** `0x2F5A0` passes a C
   stack array, which has no offset: the seam reports `0xFFFFFFFF` (above `MEM_SIZE`, so no spec can name it)
   instead of computing `desc - mem` across objects. A spec under `0x2F5A0` therefore allows `0x2AE14` (it
@@ -309,3 +345,10 @@ host-owned `0x1BBAC`, given a seamed host-side C function.
 - The replay: every red and green output and every mutation result quoted in the plan; the final
   self-check above; `make verify` on the replay's final state (quoted in the plan's Task 8).
 - The real-image switch figures and the `ret N` table above; the direct-callee counts of §E3.1.
+- **Closure (Task 8, on the implemented tree, head `9ea965c` plus this commit):** `make diff-verify` runs 131
+  Python tests OK and prints `13/13 functions VERIFIED; 16/16 mutants detected; 1 named gaps; 8/13 with every
+  callee VERIFIED`; `PR_ORACLE_REQUIRED=1 ./build/run_tests` all checks passed; `make entry-triage` unchanged
+  (329 unported, 166 ported; 48 / 67 / 19); the full `make verify` (parallel-safe overrides) exit 0 with the 45
+  oracle lines equal to `oracle-lines-base.txt`, the `make audio-render` WAV equal to `before-t2.wav`,
+  `771 1203 64` / `731 731 100`. `grep 'pr_seam = '` finds the hook set only in `diff_runner.c` and, inside
+  `test_call_seam`, `test_platform.c`.
