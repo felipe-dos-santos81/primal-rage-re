@@ -18,6 +18,8 @@ FRONTEND_DUMP = /tmp/pr_frontend_dump
 K11_CAPTURES = data/k11-captures
 K11_DUMP = /tmp/pr_k11_dump
 GP_DUMP = /tmp/pr_gp_dump
+DIFF_IMAGE ?= /tmp/pr_diff_image.bin
+DIFF_TABLE ?= /tmp/pr_diff_table.md
 scenario ?= walk
 K11_ARGS ?=
 TITLE_PIN_DIR = /tmp/pr_title_pin
@@ -51,7 +53,7 @@ chunk ?= 0
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
-        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report
+        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -459,6 +461,19 @@ gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts an
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario)
 
+# Differential verification (spec 2026-09-30-reverse-completion-design §5): the original's own
+# bytes run in an emulator against the port's C functions from the same image; compares every
+# changed byte, the return register and the block coverage. Skips cleanly without unicorn
+# (spec §5.5); tools/diff_verify.py skips without PRAGE.EXE. The claim is narrow: equivalence on
+# the exercised blocks and inputs only.
+diff-verify: build ## Differential verification: original x86 bytes vs the port's C functions (skips without unicorn)
+	@echo "== differential verification (original bytes vs the port's C; record E1) =="
+	@if $(PYTHON) -c "import unicorn" 2>/dev/null; then \
+		$(PYTHON) -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify && \
+		$(PYTHON) tools/diff_verify.py --diffrun $(BUILD_DIR)/diffrun --exe $(GAME_DIR)/PRAGE.EXE \
+			--image $(DIFF_IMAGE) --table $(DIFF_TABLE) --self-check; \
+	else echo "diff-verify: skipped: unicorn is not installed (pip install -r tools/requirements-diff.txt)"; fi
+
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
@@ -494,6 +509,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-pads GP_OPTIONAL=1
 	@echo "== gameplay oracle (frame and trace ratchets; skips without its capture; record §G.16) =="
 	@$(MAKE) --no-print-directory gp-oracle
+	@$(MAKE) --no-print-directory diff-verify
 	@echo "== k11 and gp tool unit tests =="
 	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
