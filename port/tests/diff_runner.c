@@ -124,7 +124,7 @@ static int parse_hex(const char *s, u32 *out)
 {
     char *e;
     unsigned long v = strtoul(s, &e, 16);
-    if (e == s || *e != '\0') return 0;
+    if (e == s || *e != '\0' || v > 0xFFFFFFFFul) return 0;
     *out = (u32)v;
     return 1;
 }
@@ -161,14 +161,16 @@ static void run_case(const case_t *c)
     printf("case %s\n", c->id);
     const binding_t *b = find_binding(c->fn);
     if (!b) { printf("error unknown binding %s\nend\n", c->fn); return; }
+    /* every poke is checked before any is applied, so an error leaves mem[] untouched and the
+     * next case starts from the pristine image. The check is written so it cannot wrap in u32. */
     for (int i = 0; i < c->npoke; i++) {
         const poke_t *p = &c->poke[i];
-        if (p->addr < CODE_BASE || p->addr + p->len > CODE_BASE + g_len) {
+        if (!(p->len <= g_len && p->addr >= CODE_BASE && p->addr - CODE_BASE <= g_len - p->len)) {
             printf("error poke 0x%X outside the image\nend\n", p->addr);
             return;
         }
-        memcpy(mem + p->addr, p->b, p->len);
     }
+    for (int i = 0; i < c->npoke; i++) memcpy(mem + c->poke[i].addr, c->poke[i].b, c->poke[i].len);
     memcpy(g_pre, mem + CODE_BASE, g_len);
 
     u32 eax = 0;
@@ -195,6 +197,11 @@ static int run_cases(const char *path)
         for (char *s = strtok(line, " \t\r\n"); s && n < 4; s = strtok(NULL, " \t\r\n")) t[n++] = s;
         if (n == 0 || t[0][0] == '#') continue;
         if (strcmp(t[0], "case") == 0 && n == 2) {
+            if (open) {
+                fprintf(stderr, "diffrun: case %s opened inside unterminated case %s\n", t[1], c.id);
+                fclose(f);
+                return 0;
+            }
             memset(&c, 0, sizeof c);
             snprintf(c.id, sizeof c.id, "%s", t[1]);
             open = 1;
@@ -221,13 +228,19 @@ static int run_cases(const char *path)
         }
     }
     fclose(f);
+    if (open) fprintf(stderr, "diffrun: case %s has no end line\n", c.id);
     return !open;
 }
 
 int main(int argc, char **argv)
 {
     const char *exe = NULL, *img = NULL, *cases = NULL;
-    for (int i = 1; i + 1 < argc; i += 2) {
+    for (int i = 1; i < argc; i += 2) {
+        if (i + 1 >= argc) {
+            fprintf(stderr, "diffrun: option %s needs a value\n", argv[i]);
+            fprintf(stderr, "usage: diffrun --exe PRAGE.EXE --image-out FILE [--cases FILE]\n");
+            return 2;
+        }
         if (strcmp(argv[i], "--exe") == 0) exe = argv[i + 1];
         else if (strcmp(argv[i], "--image-out") == 0) img = argv[i + 1];
         else if (strcmp(argv[i], "--cases") == 0) cases = argv[i + 1];
