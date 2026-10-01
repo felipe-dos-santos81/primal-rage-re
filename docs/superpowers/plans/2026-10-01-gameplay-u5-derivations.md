@@ -483,3 +483,41 @@ Restored: `Ran 25 tests`, `OK`. No DOSBox-X capture was run (Task 6).
 **Mutations:** (a) the script's scenario line changed to `gp-u5-sim`: `FAIL: 4 != 2` and both `unexpected` lines (the set applies only to its scenario, `t5_mut1.txt`); (b) the `0x29D60` row deleted from `k_miss_gp_charsel`: `FAIL: 4 != 3` and `unexpected 0x29D60 from frontend_mode_1b_step` (`t5_mut2.txt`). Row restored: `all checks passed`.
 
 **The walk's mode changes (the trace of the replay, `t5_walk.txt`):** `0x10` at `0x293`, `0x1A` at `0x439`, `0x1B` at `0x44B`, `0x11` at `0x45D`, `0x17` at `0x45E`, `0x1A` at `0x54F`, `0x1B` at `0x561`, `5` at `0x573`, `6` at `0x5EE`: equal to §C5.6's prediction.
+
+## §C5.16 The `gp-u5-charsel` capture (Task 6)
+
+**Decision 1 (storage), logged as §G.18 logged Q7:** the user approved the capture's storage (about 55 MB, at most 170 MB), relayed by the controller at Task 6's dispatch. The capture went only through `make gp-capture` (`/tmp/gameplay-u5/mkv`, the parallel-safe overrides); no other path under `data/` was written, and the existing captures were not touched. One run, no rerun (`end frame reached` ok on the first).
+
+**Command:** `$S/mkv gp-capture scenario=gp-u5-charsel` (log `/tmp/gameplay-u5/cap.txt`). Output: `snapshots 2332, f 5..925, 5 frames missed (spec §3.7)`; `CHECK base`, `steps fired 13/13`, `end frame reached`, `mode 0x27 after the Enter`, `snapshots kb == raw (0 differ)`, `frames written 1464/1464`, `port script v2`: all `ok`; `wrote 1464 frames to data/k11-captures/gp-u5-charsel (raw 1382..4203), wall 60.7s`.
+
+**`session.txt`:** `scenario=gp-u5-charsel`, DOSBox-X 2026.08.31 SDL2, `time_limit=60 wall_s=60.7 rc=0`, `exe=/tmp/pr_u5_pin/PRAGE.EXE sha256=8120f1bd1df389ed94cb329c030f95d9e38caad193bbd9840717af557161a68d`, `cmos=zero pad_bios=1`, `avis=['prage_000.avi','prage_001.avi'] fps=70.0866 dro=['prage_000.dro'] frames=1464 raw_window=1382..4203 avi_frames=4204 twg_last=1331`.
+
+**Size:** `du -sh data/k11-captures/gp-u5-charsel` = 68 MB (1470 entries), against §C5.7's ~55 MB estimate (under the 170 MB cap; the estimate was low by about 24%, the walk window has more frames/content than gp-idle-loss's). **Frames:** 1464. **`poll.log` sha256:** `138fb537cd8c364bab0ccc68fc8fdd9079de19f3b0fc789d427f6d9652a18d7e`.
+
+**Step 2 (`/tmp/gameplay-u5/modepath.py data/k11-captures/gp-u5-charsel`), verbatim:**
+```
+poll.log:2 P f=0 mode=0
+poll.log:3 P f=1 mode=3
+poll.log:315 P f=13A mode=27
+poll.log:622 P f=268 mode=2D
+poll.log:623 P f=269 mode=1A
+poll.log:643 P f=27B mode=1B
+poll.log:662 P f=28D mode=10
+poll.log:1114 P f=433 mode=1A
+poll.log:1134 P f=445 mode=1B
+poll.log:1151 P f=457 mode=11
+poll.log:1153 P f=458 mode=17
+poll.log:1395 P f=549 mode=1A
+poll.log:1414 P f=55B mode=1B
+poll.log:1433 P f=56D mode=5
+poll.log:1557 P f=5E8 mode=6
+e0 edges in mode 0x10: f=2CA:20(poll.log:726) f=2F2:10(poll.log:769) f=31A:10(poll.log:812) f=342:10(poll.log:854) f=36A:40(poll.log:897) f=392:20(poll.log:941) f=3BA:20(poll.log:984) f=3E2:80(poll.log:1027) f=40A:10(poll.log:1070) f=432:01(poll.log:1113)
+sticks: [32, 16, 16, 16, 64, 32, 32, 128, 16, 1]
+```
+
+**Against the prediction (§C5.6, brief Step 2):**
+- Mode path equal: `3, 0x27, 0x2D, 0x1A, 0x1B, 0x10, 0x1A, 0x1B, 0x11, 0x17, 0x1A, 0x1B, 5, 6`. Credits 5 to 4 at `0x2D`: `cred=5` at the S record f=0x267 (mode 0x27, poll.log:310), `cred=4` at f=0x269 (mode 0x1A, poll.log:624); f=0x268 (mode 0x2D) has an `H` and `P` record but no `S` (one of the 5 missed snapshots), so the edge frame itself is "not observed".
+- Sticks equal: `[32, 16, 16, 16, 64, 32, 32, 128, 16, 1]` (left, right x3, down, left x2, up, right, confirm on cell 1, bit 0).
+- **Deviation 1 (the brief's wording, not the port):** each `e0` edge is TWO frames after its press's `I` record, not one: `I press` f=0x2C8 (poll.log:723) to the edge f=0x2CA (poll.log:726); likewise 0x2F0 to 0x2F2, 0x318 to 0x31A, 0x340 to 0x342, 0x368 to 0x36A, 0x390 to 0x392, 0x3B8 to 0x3BA, 0x3E0 to 0x3E2, 0x408 to 0x40A, and the confirm `I` f=0x430 (poll.log:1110) to f=0x432 (poll.log:1113). This is what §C5.15 already used for the port (the BIOS word consumed 2 frames after its press). Every edge frame was observed (none among the 5 missed snapshots).
+- **Deviation 2 (timing, not behaviour):** the capture's mode-0x10 entry is f=0x28D and the confirm edge f=0x432, so the pick ends the mode at f=0x433 (one frame after the confirm edge, as predicted), 0x433 - 0x28D = 422 frames into mode 0x10 (predicted about 420; below the 896-frame earliest time-out). The port's own walk (§C5.15, stand-in pad frames) had `0x10` at `0x293` and `0x1A` at `0x439` (edge `0x438`): the capture is 6 frames earlier throughout (0x28D vs 0x293; 0x433 vs 0x439; 0x445 vs 0x44B; 0x457 vs 0x45D; 0x458 vs 0x45E; 0x549 vs 0x54F; 0x55B vs 0x561; 0x56D vs 0x573; 0x5E8 vs 0x5EE), a constant offset that comes from the stand-in Enter frames (the capture's third Enter `I` press is f=0x265, with mode 0x2D at 0x268); Task 7 replaces the stand-in pad frames with the capture's, so the offset closes there.
+- The pick, not the time-out, ends mode 0x10: confirmed (edge bit 0 at f=0x432, `0x1A` at f=0x433).
