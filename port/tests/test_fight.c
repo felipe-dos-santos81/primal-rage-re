@@ -44417,14 +44417,13 @@ static u32 u6b_list(u32 *out, u32 cap)
     return n;
 }
 
-/* §U6.17: 0x3F0F0 and 0x3F130, the 0xD100 targets of 0x3F0A8's two streams:
- * no owner slot, nothing; with one, the emitter 0xBB290 is spawned with the
- * slot in +0x14 and +0x2B bit 0 (0x2BEF4); 0x3F130 also sets +0x50 = 2. */
 /* The spawn arguments 0x3F0F0/0x3F130 pass to actor_spawn, as actor_spawn
  * stores them on the new record e: a5 = rec+0x56 | 0x400 (the +0x4A parent
  * index is a5's low byte & 0x7F and the 0x400 flag selects the parent branch:
  * +0x28 bit 0x400), a2 = 8 (+0x34) and a4 = -0x5A (+0x36). a3 = 0 is not
- * observable: the child branch's layer (+0x49) is rewritten from the parent's
+ * observable here: the descriptor 0xBB290's flags word (+8) is 0x0100, so
+ * the child's +0x28 has bit 0x2000 clear and bit 0x0400 set, and pset_write's
+ * child branch (actors.c:2427) rewrites the layer +0x49 from the parent's
  * pset layer in the same spawn (the pset_write sync). parent is the pool
  * record the seeded +0x56 names; its +0x4F counter is bumped by the child. */
 static void u6b_spawn_args(u32 e, u32 parent, int count)
@@ -44437,6 +44436,9 @@ static void u6b_spawn_args(u32 e, u32 parent, int count)
     CHECK_EQ_INT((int)DSB(e + 0x5Au), 0x6B);
 }
 
+/* §U6.17: 0x3F0F0 and 0x3F130, the 0xD100 targets of 0x3F0A8's two streams:
+ * no owner slot, nothing; with one, the emitter 0xBB290 is spawned with the
+ * slot in +0x14 and +0x2B bit 0 (0x2BEF4); 0x3F130 also sets +0x50 = 2. */
 static void check_u6b_3f0f0(void)
 {
     static u32 before[0x80];
