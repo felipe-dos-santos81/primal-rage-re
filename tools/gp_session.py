@@ -233,8 +233,10 @@ class Schedule:
 # frames after the X record) instead of running to time_limit. Opt-in: every
 # other scenario still records its post-end tail (gp-idle-loss's, and the
 # post-restart movie gp-keys-fight's plan counts on). gp-u6-moves ran 130 s for
-# an X at 75 s, 278 MB (U6b task-7 report §6.1); it is defined on its own branch.
-STOP_AT_END = frozenset({'gp-u6-moves'})
+# an X at 75 s, 278 MB (U6b task-7 report §6.1); it and its re-capture
+# gp-u6-moves-b (a copy of it) are defined on U6b's branch. A name not in
+# SCENARIOS is inert.
+STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b'})
 
 
 class ScriptError(Exception):

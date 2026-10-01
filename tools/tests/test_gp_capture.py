@@ -292,6 +292,42 @@ class TestUnscriptedInput(unittest.TestCase):
                 self.assertEqual(gc.input_check(data.decode().splitlines()), want)
 
 
+class TestCheckInputCli(unittest.TestCase):
+    def run_cli(self, d):
+        import contextlib
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = gc.check_input_main([d])
+        return rc, out.getvalue()
+
+    def test_missing_poll_log_and_non_gp_log_exit_2(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self.run_cli(d)
+            self.assertEqual(rc, 2)
+            self.assertIn('no poll.log in %s' % d, out)
+            with open(os.path.join(d, 'poll.log'), 'w') as f:      # a K11 log: P/K records, no S
+                f.write('B ms=0 base=00266000\nK ms=1 tick=00000001 f=0001 key=1C0D\n')
+            rc, out = self.run_cli(d)
+            self.assertEqual(rc, 2)
+            self.assertIn('no S records: not a gp poll.log', out)
+
+    def test_ok_and_fail_exit_codes(self):
+        import tempfile
+        t = TestUnscriptedInput()
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, 'poll.log'), 'w') as f:
+                f.write('\n'.join(t.clean()) + '\n')
+            self.assertEqual(self.run_cli(d), (0, 'check=ok no unscripted input\n'))
+            bad = t.clean()
+            bad[-1] = _st(0x14, 0x0100, 0x20)
+            with open(os.path.join(d, 'poll.log'), 'w') as f:
+                f.write('\n'.join(bad) + '\n')
+            rc, out = self.run_cli(d)
+            self.assertEqual(rc, 1)
+            self.assertIn('check=FAIL unscripted input: 0 key words, 1 pad presses', out)
+
+
 class TestStopAtEnd(unittest.TestCase):
     class Proc:
         def __init__(self, exits_on_term=True):
@@ -356,6 +392,7 @@ class TestStopAtEnd(unittest.TestCase):
         # gp-idle-loss records its post-end tail on purpose; gp-keys-fight's plan
         # counts on its post-restart movie tail: neither stops early.
         self.assertIn('gp-u6-moves', gs.STOP_AT_END)
+        self.assertIn('gp-u6-moves-b', gs.STOP_AT_END)      # U6b's re-capture (user decision)
         for name in ('gp-pads', 'gp-idle-loss', 'gp-idle-loss-run2', 'gp-u5-charsel', 'gp-keys-fight'):
             self.assertNotIn(name, gs.STOP_AT_END)
         for name in gs.STOP_AT_END & set(gs.SCENARIOS):    # a stop needs an end frame

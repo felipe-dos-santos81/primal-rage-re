@@ -211,6 +211,12 @@ def unscripted_input(lines):
     key-state byte). Measured on the clean captures: every one of the 31 pad
     windows of gp-pads and gp-u5-charsel shows its bit exactly in S(f+1)..S(r).
 
+    Blind spots: the check detects stray typing, it does not prove its absence.
+    It cannot see a stray press of a pad key inside that key's own scripted
+    hold window (the bit is set either way), input before the first or after
+    the last S record, a stray key-up of a non-pad key (no bitmap bit and no
+    ring word), or a pad tap pressed and released between two S records.
+
     Returns dict(words=[f...], presses=[(f, bit)...], releases=[(f, bit)...])
     with each event's first S frame."""
     recs = [r for r in (gs.parse(l) for l in lines) if r]
@@ -396,11 +402,19 @@ def wait_dosbox(proc, poll, grace=STOP_GRACE_S):
 
 
 def check_input_main(argv):
-    """check-input DIR: the unscripted-input CHECK over DIR/poll.log (read-only)."""
+    """check-input DIR: the unscripted-input CHECK over DIR/poll.log (read-only).
+    Exit 0 ok, 1 FAIL, 2 not a gp capture (no poll.log, or no S records)."""
     if len(argv) != 1:
         sys.exit('usage: gp_capture.py check-input DIR')
-    with open(os.path.join(argv[0], 'poll.log')) as f:
+    path = os.path.join(argv[0], 'poll.log')
+    if not os.path.isfile(path):
+        print('gp_capture: check-input: no poll.log in %s' % argv[0])
+        return 2
+    with open(path) as f:
         lines = f.read().splitlines()
+    if not any(l.startswith('S ') for l in lines):
+        print('gp_capture: check-input: no S records: not a gp poll.log (%s)' % path)
+        return 2
     label, ok = input_check(lines)
     u = unscripted_input(lines)
     print('check=%s %s' % ('ok' if ok else 'FAIL', label))
