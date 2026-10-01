@@ -50,9 +50,17 @@ static struct { u32 addr; const char *ctx; u32 hits; } fn_miss[FN_MISSLOG_MAX];
 static u32 fn_miss_len, fn_miss_dropped;
 static int fn_miss_armed;
 
+/* PORT: the call seam's hook (mem.h, record 2026-10-01-reverse-e3 §E3.3);
+ * NULL except in build/diffrun. */
+pr_seam_fn pr_seam;
+
 void (*fn_resolve_from(u32 orig_addr, const char *ctx))(void)
 {
     void (*fn)(void) = (fn_resolve)(orig_addr);
+    if (fn == NULL && orig_addr != 0 && pr_seam != NULL) {
+        u32 eax;
+        (void)pr_seam(orig_addr, 0, NULL, &eax);
+    }
     if (fn != NULL || orig_addr == 0 || !fn_miss_armed) return fn;
     for (u32 i = 0; i < fn_miss_len; i++)
         if (fn_miss[i].addr == orig_addr && strcmp(fn_miss[i].ctx, ctx) == 0) {

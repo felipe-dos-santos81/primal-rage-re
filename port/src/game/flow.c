@@ -6473,6 +6473,7 @@ u32 sound_voice_log_at(u32 i)
  * EDI are preserved; the callers read AL at most. */
 u32 sound_voice(u32 id)
 {
+    PR_SEAM_RET(0x2C3FCu, id);
     /* PORT: the test seam above; no original instruction. */
     if (s_voice_log_n < SOUND_VOICE_LOG_CAP) s_voice_log[s_voice_log_n] = id;
     s_voice_log_n++;

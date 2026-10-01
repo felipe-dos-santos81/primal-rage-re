@@ -2247,6 +2247,7 @@ static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
  * 0x40000000 at 0x155BF), so the port passes and stores those dwords raw. */
 void actors_anim_begin(u32 rec, u32 stream, u32 frame_bits)
 {
+    PR_SEAM(0x2BC30u, rec, stream, frame_bits);
     DSD(rec + 0x0c) = 0;
     DSD(rec + 0x10) = 0;
     DSB(rec + 0x52) = 0;

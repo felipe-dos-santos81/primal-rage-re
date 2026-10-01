@@ -32,6 +32,7 @@ extern int g_failures;
 #define TEST_CASES(X)   \
     X(test_mem)         \
     X(test_fn_misslog)  \
+    X(test_call_seam)   \
     X(test_le)          \
     X(test_res)         \
     X(test_gra)         \
