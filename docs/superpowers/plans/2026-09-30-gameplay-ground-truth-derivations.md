@@ -1978,6 +1978,15 @@ Enter lands (wall-timed, ±8 frames between two runs) through `f & 0x3F`; pin th
 comparison **5 s**, and the port dump is **410 MB** of `/tmp` per run (6 497 `.ipx`); the whole
 `make verify` grows by about 2.5 minutes, not the "+10 minutes" of the first report.
 
+**7. The gate after the fixes** (`make verify` with `SMK_DUMP=/tmp/pr_u4b_smk … GP_DUMP=/tmp/pr_u4b_gp`,
+`/tmp/gameplay-u4/b_verify.txt`, 761 s in all on this host): `verify-exit=0`; the 45 oracle lines equal
+`oracle-lines-base.txt`; the `k11_compare:` lines equal `k11_base.txt` and the K11 walk/menuesc dump hashes
+(`190cd592…`, `1cf5140c…`) equal U3's; `make audio-render` is byte-identical (`cmp`) to
+`.superpowers/sdd/2026-09-29-k7-k12/scratch/before-t2.wav`; the two gp replays print `distinct=2` (gp-pads)
+and `distinct=7` (gp-idle-loss) with their pinned sets; the oracle prints `capture: poll.log sha256
+773e2647..8c8447, 8173 frames: matches the pin`, `ratchet N 203 ok` and `ratchet N 2088 ok`; tool tests
+`Ran 104`.
+
 ## §J U4 corrections and notes (raw/measured wins over the plan)
 
 1. **The plan's mutation proof of the `--end` key filter did not fail** (§G.17): its `end=295`
