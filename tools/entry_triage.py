@@ -456,3 +456,136 @@ class Triage:
             return "dead", "no rel32 at any code offset, no immediate, no aligned dword; unaligned dwords %s" % refs
         return "unclassified", "rel32 at %s outside the trusted code; unaligned dwords %s" % (
             " ".join("%X" % x for x in far[:4]), refs)
+
+    # ---- per-row facts (§E2.4-§E2.8)
+    def is_ported(self, a):
+        """A Ghidra function by port_progress's rule; any other address by the strict rule (§E2.4)."""
+        return a in self.ported_ghidra if a in self.gentries else a in self.ported_strict
+
+    def live_status(self, v):
+        """Evidence only, never a class (§E2.8): `entry` when the live project has a function at v,
+        `body of X` when v is inside the body of the live function X, else `-`."""
+        if v in self.live:
+            return "entry"
+        for e in sorted(self.live):
+            if any(lo <= v <= hi for lo, hi in self.live[e]):
+                return "body of %X" % e
+        return "-"
+
+    def next_boundary(self, v):
+        """The first Ghidra entry or candidate above v, else RUNTIME_BASE: the row's size bound."""
+        nxt = [RUNTIME_BASE]
+        i = bisect.bisect_right(self.gstart, v)
+        if i < len(self.gstart):
+            nxt.append(self.gstart[i])
+        j = bisect.bisect_right(self.cands, v)
+        if j < len(self.cands):
+            nxt.append(self.cands[j])
+        return min(nxt)
+
+    def body_facts(self, info):
+        calls, voice, retn, unmodeled = set(), [], False, set()
+        for a in sorted(info.insns):
+            ins = self.ins(a)
+            t = self.direct_target(ins)
+            if ins.mnemonic in ("call", "jmp") and t == VOICE_FN:
+                voice.append(a)
+            if ins.mnemonic == "call" and t is not None:
+                calls.add(t)
+            if ins.mnemonic == "ret" and ins.operands:
+                retn = True
+            if ins.mnemonic in de.UNMODELED_MNEMONICS:
+                unmodeled.add(ins.mnemonic)
+        return calls, voice, retn, sorted(unmodeled)
+
+    def closure(self, e):
+        """The direct-call tree under e, breadth first in address order: (callees, blocker). The blocker
+        names the nearest thing in the tree the emulator cannot run unaided (§E2.6): an unmodeled
+        instruction, an indirect call or jump that is not a bounded switch, or a truncated scan, with
+        the function that holds it."""
+        if e in self._closure:
+            return self._closure[e]
+        seen, queue, blocker = {e}, collections.deque([e]), None
+        while queue:
+            f = queue.popleft()
+            info = self.scan(f)
+            calls, _, _, unmodeled = self.body_facts(info)
+            if blocker is None:
+                if unmodeled:
+                    blocker = "%s in %X" % (unmodeled[0], f)
+                elif info.indirect:
+                    blocker = "indirect at %X in %X" % (info.indirect[0], f)
+                elif info.truncated:
+                    blocker = "truncated scan in %X" % f
+            for t in sorted(calls):
+                if CODE_LO <= t < CODE_HI and t not in seen:
+                    seen.add(t)
+                    queue.append(t)
+        seen.discard(e)
+        self._closure[e] = (seen, blocker)
+        return self._closure[e]
+
+    def readiness(self, e):
+        """What E1 can do with the entry today (§E2.6), first match:
+        stack-args  the entry returns with `ret N` (E1 has no stack-argument binding, E1 §E.6.3);
+        stubs       something in its call tree cannot run in the emulator (named);
+        callees     every callee in its tree runs, but one below RUNTIME_BASE is not ported yet (port it
+                    first, or stub it);
+        allow-list  every callee in its tree is ported: E1's allow-list runs it today;
+        leaf        no call at all."""
+        _, _, retn, _ = self.body_facts(self.scan(e))
+        if retn:
+            return "stack-args"
+        tree, blocker = self.closure(e)
+        if blocker:
+            return "stubs (%s)" % blocker
+        unported = sorted(t for t in tree if t < RUNTIME_BASE and not self.is_ported(t))
+        if unported:
+            return "callees (%s)" % " ".join("%X" % t for t in unported[:4])
+        return "allow-list" if tree else "leaf"
+
+    def run(self):
+        cands = self.candidates()
+        self.load_tables()
+        self.build(cands)
+        rows = []
+        for v in cands:
+            c, ev = self.classify(v)
+            target = c not in NOT_TARGET
+            voice = self.body_facts(self.bodies[v])[1] if target else []
+            batch = "-" if not target else BATCH.get(c) or ("voice" if voice else "other")
+            rows.append(dict(addr=v, size=self.next_boundary(v) - v, cls=c, evidence=ev,
+                             u0=self.after_ret_u0(v), live=self.live_status(v), ported=self.is_ported(v),
+                             batch=batch, e1=self.readiness(v) if target else "-", voice=voice))
+        return rows
+
+    def supplement(self):
+        """Trusted entries outside the universe and outside Ghidra (§E2.5): helpers and stored callbacks."""
+        out = []
+        for e in sorted(set(self.entries) - self.cset):
+            voice = self.body_facts(self.scan(e))[1]
+            out.append(dict(addr=e, why=self.reason(e) or "stale: " + self.entries[e], live=self.live_status(e),
+                            ported=self.is_ported(e),
+                            e1=self.readiness(e), voice=voice))
+        return out
+
+    def voice_placement(self, rows, supp):
+        """Every rel32 call/jmp to VOICE_FN outside the Ghidra functions, placed in the body of a target
+        row, a supplement entry or an untrusted entry, or nowhere (§E2.7)."""
+        self.untrusted()
+        owners = ([(r["addr"], "row") for r in rows if r["batch"] != "-"]
+                  + [(s["addr"], "supplement") for s in supp]
+                  + [(x, "untrusted") for x in self.uentries])
+        out = []
+        for s in self.rel32_anywhere(VOICE_FN):
+            if self.in_ghidra(s):
+                continue
+            where = None
+            for e, kind in owners:
+                body = self.scan(e) if kind != "untrusted" else de.static_scan(self.img, e)
+                if s in body.insns:
+                    where = (e, kind)
+                    break
+            out.append(dict(site=s, entry=where[0] if where else None, kind=where[1] if where else "-",
+                            ported=self.is_ported(where[0]) if where else False))
+        return out

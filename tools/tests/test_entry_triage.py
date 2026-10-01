@@ -360,3 +360,70 @@ class SwitchTests(unittest.TestCase):
         self.assertNotIn(0x10040, body.insns)
         self.assertEqual(body.indirect, [])
         self.assertEqual(t.scan(0x10100).indirect, [0x10100])
+
+
+LIVE = {0x12000: [(0x12000, 0x12002)], 0x103F0: [(0x103F0, 0x10410)]}
+
+
+@needs_capstone
+class RowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        w = build_world()
+        cls.t = T.Triage(w.image(), sorted(w.ghidra), {0x10200}, {T.VOICE_FN}, LIVE)
+        cls.rows = {r["addr"]: r for r in cls.t.run()}
+        cls.supp = {s["addr"]: s for s in cls.t.supplement()}
+
+    def test_run_keeps_the_classes(self):
+        self.assertEqual({a: r["cls"] for a, r in self.rows.items()}, EXPECTED)
+
+    def test_batches_and_targets(self):
+        b = {a: r["batch"] for a, r in self.rows.items()}
+        self.assertEqual((b[0x12000], b[0x12100], b[0x14000], b[0x16000]),
+                         ("finishers", "callbacks", "span-writers", "animation-targets"))
+        self.assertEqual((b[0x15000], b[0x10400], b[0x16900]), ("voice", "other", "other"))
+        for a in (0x10300, 0x10500, 0x1210F, 0x12113, 0x16200, 0x16300, 0x16500, 0x16600, 0x17204):
+            self.assertEqual(b[a], "-", "%X" % a)
+            self.assertEqual(self.rows[a]["e1"], "-", "%X" % a)
+
+    def test_the_voice_column_names_the_site_for_targets_only(self):
+        self.assertEqual(self.rows[0x15000]["voice"], [0x15000])
+        self.assertEqual(self.rows[0x17204]["voice"], [])      # its scan reaches 17205's call: not a target
+
+    def test_the_u0_column(self):
+        self.assertFalse(self.rows[0x16900]["u0"])
+        self.assertEqual(sum(1 for r in self.rows.values() if r["u0"]), len(EXPECTED) - 1)
+
+    def test_size_runs_to_the_next_candidate_or_ghidra_entry(self):
+        self.assertEqual(self.rows[0x10500]["size"], 0x11000 - 0x10500)   # the Ghidra function 11000
+        self.assertEqual(self.rows[0x12000]["size"], 0x12100 - 0x12000)   # the candidate 12100
+
+    def test_the_live_column_is_evidence_only(self):
+        self.assertEqual(self.rows[0x12000]["live"], "entry")
+        self.assertEqual(self.rows[0x10400]["live"], "body of 103F0")
+        self.assertEqual(self.rows[0x10200]["live"], "-")
+        self.assertEqual(self.rows[0x12000]["cls"], "finisher")
+
+    def test_the_supplement_holds_the_helper_the_stored_entry_and_the_span_code(self):
+        self.assertEqual({a: s["why"] for a, s in self.supp.items()},
+                         {0x13000: "called at 12100", 0x13100: "immediate at 12105",
+                          0x5D020: "slot 80104 of table 80100, read by `call` at 51E5C",
+                          0x5D040: "stale: slot 80108 of table 80100, read by `call` at 51E5C"})
+
+    def test_e1_readiness(self):
+        e1 = {a: r["e1"] for a, r in self.rows.items()}
+        self.assertEqual(e1[0x10200], "leaf")
+        self.assertEqual(e1[0x15000], "allow-list")
+        self.assertEqual(e1[0x12100], "callees (13000)")
+        self.assertEqual(e1[0x14000], "stubs (indirect at 14000 in 14000)")
+        self.assertEqual(e1[0x15100], "stubs (in in 18000)")
+        self.assertEqual(e1[0x16000], "stack-args")
+
+    def test_ported_rows(self):
+        self.assertTrue(self.rows[0x10200]["ported"])
+        self.assertFalse(self.rows[0x10400]["ported"])
+
+    def test_voice_sites_are_placed(self):
+        v = {x["site"]: (x["entry"], x["kind"]) for x in self.t.voice_placement(list(self.rows.values()),
+                                                                             list(self.supp.values()))}
+        self.assertEqual(v, {0x15000: (0x15000, "row"), 0x17205: (0x17200, "untrusted"), 0x17010: (None, "-")})
