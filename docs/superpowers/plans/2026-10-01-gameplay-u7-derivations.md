@@ -366,7 +366,10 @@ The BIOS words are inert (§T.1.9).
 1 371..14 016, `session.txt`; 0.646 distinct per AVI frame). A 70 s run at
 70.0866 fps holds ~4 906 AVI frames, ~3 535 after the post-logo start, so
 ~2 280 distinct frames: **~105 MB expected, at most ~165 MB** (every frame
-distinct). Task 4 measures it. The port dump: §T.4's preview wrote 466 `.ipx`
+distinct). Task 4 measures it. (A later data point, record gameplay-u5
+§C5.16: `gp-u5-charsel`, 60 s, came in at 68 MB for 1 464 frames, 46.4 KB per
+frame, 24% above its estimate. The per-frame size agrees with this estimate's;
+the frame count was the low part.) The port dump: §T.4's preview wrote 466 `.ipx`
 frames, 30 MB, in 26 s.
 
 ## §T.4 Port preview (a hand-built script; not the capture's)
@@ -405,19 +408,25 @@ run ends `all checks passed`, `rc=0`; with the `0x3A588` row dropped it fails
 `gp_twop.py check --trace <dump>/trace.txt`: `join f=2D0 (cred 4 -> 4); 799 S
 records from the join to the end; side 0 [('pad', 799)], side 1 [('pad', 799)];
 fight presses 40/40 … two-human match: ok`. At the end (`0x5EE`) slot 1 `+0x52
-= 0x10`, `+0x5A = 0xF` (P1's attack landed).
+= 0x10`, `+0x5A = 0xF` (P1's attack landed). (All of this is on `e9271df`. The
+re-run on `main` `8eaf25a`, where `0x3A588` is ported, is in §T.RB.)
 
 ### §T.4.2 What the preview says
 
 The port takes the raw's two-player path (join on a credit with no debit,
-both-confirm wipe, no CPU words on either side), and the only misses past the
-select are `0x3A588`, the unported state-10 callback U4 named (§G.23 item 3,
-owner U6). So the first fight divergence is expected where U4's was
-(unported move code), not in the two-player logic, and the first frame
-divergence may be U4's O1 (the character select's idle animation, owner U5):
-the select here spans `f = 0x293..0x367`, across the countdown steps at
-`0x2C0`, `0x300`, `0x340`. A preview only: the capture's frames, key latency
-and BIOS words differ, and the plan pins nothing from it.
+both-confirm wipe, no CPU words on either side). On `e9271df` the only miss
+past the select was `0x3A588`, the unported state-10 callback U4 named (§G.23
+item 3, owner U6). U6a has ported it (record gameplay-u6 §U6.21). On `main`
+`8eaf25a` the preview misses only the two harmless wipe hooks, `0x29D60` and
+`0x5D812` from `frontend_mode_1b_step` (§T.RB). So the first fight divergence,
+if any, is expected in move code the merged base has not ported (U6b's scope),
+not in the two-player logic. U4's O1 (the character select's idle animation)
+was fixed by U5 (record gameplay-u5 §C5.12), and the one-player select now
+matches the capture through mode 6 (§C5.17). A first frame divergence in this
+select would therefore be new and specific to two players: the select here
+spans `f = 0x293..0x367`, across the countdown steps at `0x2C0`, `0x300` and
+`0x340`. A preview only: the capture's frames, key latency and BIOS words
+differ, and the plan pins nothing from it.
 
 ### §T.4.3 What U7 cannot show (stated before the capture)
 
@@ -427,7 +436,10 @@ and BIOS words differ, and the plan pins nothing from it.
   per-frame command-word source (§T.1.6). A CPU word that happens to equal the
   pad word is not detected frame by frame; over a fight a CPU side is (§T.2.2).
 - The cursor and class bytes (`DS_00108166`, `DS_0010816A`) are not logged:
-  the picks are visible only in the frames.
+  the picks are visible only in the frames. (Once U6b merges, the snapshot
+  carries `c0`/`c1`, the slots' characters at `+0x7A` (record gameplay-u6
+  §U6.11). That is the character, not the cursor or class byte, and its
+  mapping to the class is not derived here.)
 - The physical keyboard (the claims start at the IRQ1 key-state table), the
   grey/keypad `E0` distinction, typematic repeat (spec §7 Q4), joysticks (the
   device words `+0x2D4/+0x2D6` stay 0).
@@ -462,3 +474,45 @@ from the first draft (raw wins):
 6. §T.2.2's check now stops at the `X` record (the capture runs on to its time
    limit with no input; a match end there would drop `b1f`), and reads a port
    `trace.txt` (`--trace`).
+
+## §T.RB Re-baseline to `main` `8eaf25a` (2026-10-01)
+
+Since the plan was written, U5 (`b09b9e6`) and U6a (`8eaf25a`) have merged. U7
+runs after U6b. Re-measured in a scratch `git archive` of `8eaf25a`, with
+`data` linked and the fixtures copied:
+
+1. **The preview (§T.4.1's script, verbatim, header `scenario gp-twop`).** With
+   no gp-twop table, `rc=1` and the driver's `test_platform.c:193: 4 != 2`. The
+   miss lines: `0x5D812 actor_spawn hits=3524`, `0x5D812 set_dead hits=3222`,
+   `0x29D60 frontend_mode_1b_step hits=1`, `0x5D812 frontend_mode_1b_step
+   hits=1`, `distinct=4 dropped=0`. `0x3A588` is gone: U6a ported it (record
+   gameplay-u6 §U6.21). With the plan's re-baselined Task 5 code (the two-row
+   `k_miss_gp_twop` and `fnm_known`'s new last parameter `twop`), `rc=0`,
+   `all checks passed`. Without the `0x5D812` row, `4 != 3` and `unexpected
+   0x5D812 from frontend_mode_1b_step`.
+2. **The mode path equals §T.4.1's frame for frame** (`gp_twop.py path --trace`):
+   `0x2D@26E`, `0x1A@26F` (b1f 1, cred 4), `0x10@293`, `0x1A@367` (b1f 3),
+   `0x1B@379`, `0x11@38B`, `0x17@38C`, `0x1A@47D`, `0x1B@48F`, `5@4A1`,
+   `6@51C`. `gp_twop.py check --trace`: `join f=2D0 (cred 4 -> 4); 799 S records
+   … side 0 [('pad', 799)], side 1 [('pad', 799)]; fight presses 40/40 …
+   two-human match: ok`.
+3. **The tools on the merged base.** The three gp suites now hold 67 tests (U5
+   added tests), so the plan's counts are `B+2`/`B+12` (69/79). `gp_twop.py
+   check` on `gp-idle-loss`, `gp-pads` and `gp-idle-loss-run2` still gives
+   `rc=1`, `b1f never reaches 3`. The 12 tests pass with U6b's five
+   `SNAP_FIELDS` appended (`r0 r1 c0 c1 s0_43`; a scratch edit as in the U6b
+   plan's Task 1), because the fixtures are built from `gs.SNAP_FIELDS`.
+4. **The U6b dependencies** (stated, not measured: U6b is not on `main`):
+   - Every capture made after U6b carries the five fields. `gp_twop.py` ignores
+     them; `c0`/`c1` name the slots' characters (§T.4.3).
+   - `fnm_known` gains U6b's `moves` parameter before U7's `twop`.
+   - U6b's ported callbacks change what the replay reaches. Task 5 Step 1's set
+     and Step 6's divergences are re-measured on the merged base.
+   - U6b's `gp_compare` `moves:` claim is reported, not pinned, by U7.
+5. **Corrected in place:** §T.4.2 (the `0x3A588` and O1 owners: both closed by
+   U6a and U5); §T.4.3 (`c0`/`c1`); §T.3 (U5's size data point).
+6. **A cross-record discrepancy (raw wins; not edited here, it is U5's).** The
+   U5 record §C5.4 and the comment above `gp-u5-charsel` in `tools/gp_session.py`
+   cite `0x437C6` as the countdown's `0xF`. The fixed-up image (capstone 5.0.7,
+   `dx.py 437BD 20`) has `0x437C4 je 0x437d1`, `0x437C6 mov word [0x10816c], 5`
+   and `0x437D1 mov word [0x10816c], 0xf`, as §T.1.4 and §T.R item 1 say.
