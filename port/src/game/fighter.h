@@ -494,6 +494,15 @@ void fighter_19020(u32 side);
  * 8 = 0 and the default box tables. EAX = side. */
 u32 fighter_3e484(u32 side);
 
+/* 0x3F0A8 and its three callbacks (record gameplay-u6 §U6.13): the T-rex's
+ * reaction-0x24 callback (slot, rec, side), the +0x18 hook 0x3EFE0 (fn(side),
+ * EAX returned), the +0x1C callback 0x3F020 (fn(side)) and the per-frame
+ * +0x0C callback 0x3F054 (slot, rec, side). */
+void fighter_3f0a8(u32 slot, u32 rec, u32 side);
+u32  fighter_3efe0(u32 side);
+void fighter_3f020(u32 side);
+void fighter_3f054(u32 slot, u32 rec, u32 side);
+
 /* 0x3D1EC (record gameplay-u6 §U6.14): the T-rex's reaction-0x2D callback. */
 void fighter_3d1ec(u32 slot, u32 rec, u32 side);
 

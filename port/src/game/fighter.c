@@ -4555,6 +4555,78 @@ void fighter_3d1ec(u32 slot, u32 rec, u32 side)
     DSB(slot + 0x54u) = 1u;                             /* 0x3D20B */
 }
 
+/* PORT: data-object addresses symbols.h does not name. */
+#define FIGHT_ANIM_3F0A8 0x000E7B78u  /* 0x3F0AD: the reaction-0x24 stream */
+#define FIGHT_ANIM_3F054 0x000E7BBEu  /* 0x3F087: the +0x57 == 1 stream */
+#define FIGHT_1080A4     0x001080A4u  /* 0x3F03F/0x3F070: a word per side */
+
+/* 0x3F0A8 — record gameplay-u6 §U6.13. The T-rex's reaction-0x24 and 0x25
+ * callback (*(u32*)0xA37F8 and 0xA380C, the (char 0, 0x24/0x25) entries of
+ * 0x34E2C's 0xA3528 table, its only references). EAX = slot, EDX = rec; EBX is saved and reused as the slot.
+ * The 0xE7B78 stream at hold 3.0 through 0x3C4CC, the voice 0x8C, state 9/7/0,
+ * +0x57 = 0 and the callbacks +0x0C 0x3F054 (0x3531C case 7), +0x18 0x3EFE0
+ * (0x19020's hook) and +0x1C 0x3F020 (0x193B0's 0x19505 call); AL = 1, which
+ * 0x34E2C does not read (0x35049). */
+void fighter_3f0a8(u32 slot, u32 rec, u32 side)
+{
+    (void)side;
+    hit_anim_start_b(rec, FIGHT_ANIM_3F0A8, 0x40400000u);   /* 0x3F0AB..0x3F0B7 0x3C4CC */
+    (void)sound_voice(0x8Cu);                           /* 0x3F0BC/0x3F0C1 0x2C3FC */
+    DSB(slot + 0x52u) = 9u;                             /* 0x3F0C6 */
+    DSB(slot + 0x53u) = 7u;                             /* 0x3F0CA */
+    DSB(slot + 0x54u) = 0;                              /* 0x3F0CE */
+    DSD(slot + 0x0Cu) = 0x0003F054u;                    /* 0x3F0D2 */
+    DSB(slot + 0x57u) = 0;                              /* 0x3F0D9 */
+    DSD(slot + 0x18u) = 0x0003EFE0u;                    /* 0x3F0DD */
+    DSD(slot + 0x1Cu) = 0x0003F020u;                    /* 0x3F0E6 */
+}
+
+/* 0x3EFE0 — record gameplay-u6 §U6.13. The slot +0x18 hook 0x3F0A8 stores,
+ * called by 0x19020 as fn(side) with EAX returned: 0x3E484's body (0x18C14
+ * with flag 0 = 1, flags 1 and 8 = 0, EBX = ECX = 0). */
+u32 fighter_3efe0(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    fighter_ctx_same(ctx, side);                            /* 0x3EFEC 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x3EFF7 0x18BD4 */
+    flags[1] = 0;                                           /* 0x3F000 */
+    flags[8] = 0;                                           /* 0x3F004 */
+    flags[0] = 1u;                                          /* 0x3F00C */
+    return (u32)fighter_18c14(ctx[0], flags, 0u, 0u);       /* 0x3F013 0x18C14 */
+}
+
+/* 0x3F020 — record gameplay-u6 §U6.13. The slot +0x1C callback 0x3F0A8
+ * stores; 0x193B0 calls it at 0x19505 as fn(side). 0x3B714(ctx[3], ctx[2])
+ * as 0x3E4C4, then the word 0x1080A4[side] = 0 and the side's slot +0x57 = 1. */
+void fighter_3f020(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x3F028 0x33950 */
+    fighter_reaction(ctx[3], ctx[2]);                   /* 0x3F02D..0x3F035 0x3B714 */
+    DSW(FIGHT_1080A4 + ctx[0] * 2u) = 0;                /* 0x3F03A..0x3F03F */
+    DSB(ctx[2] + 0x57u) = 1u;                           /* 0x3F047/0x3F04B */
+}
+
+/* 0x3F054 — record gameplay-u6 §U6.13. The per-frame +0x0C callback 0x3F0A8
+ * stores (0x3531C case 7: EAX = slot, EDX = rec, EBX = side; only EBX is
+ * read). With the side's slot +0x57 == 1 it counts the word 0x1080A4[side]
+ * up and, past 10 (signed), starts the side's record on 0xE7BBE at hold 2.0
+ * through 0x2BC30 and sets +0x57 = 2; any other +0x57 returns. */
+void fighter_3f054(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)slot;
+    (void)rec;
+    fighter_ctx_same(ctx, side);                        /* 0x3F05B 0x33950 */
+    if (DSB(ctx[2] + 0x57u) != 1u) return;              /* 0x3F064..0x3F06B */
+    DSW(FIGHT_1080A4 + ctx[0] * 2u) =
+        (u16)(DSW(FIGHT_1080A4 + ctx[0] * 2u) + 1u);    /* 0x3F070 */
+    if ((s32)(s16)DSW(FIGHT_1080A4 + ctx[0] * 2u) <= 10) return;   /* 0x3F078..0x3F085 */
+    actors_anim_begin(ctx[4], FIGHT_ANIM_3F054, 0x40000000u);       /* 0x3F087..0x3F095 0x2BC30 */
+    DSB(ctx[2] + 0x57u) = 2u;                           /* 0x3F09A/0x3F09E */
+}
+
 /* 0x3E3A8. The T-rex's reaction-0x2A callback (*(u32*)0xA3870, the (char 0,
  * 0x2A) entry of 0x34E2C's 0xA3528 table, whose stream word +4 is 0). The
  * context is 0x33950(EBX = side); EAX and EDX are overwritten at 0x3E3AB/

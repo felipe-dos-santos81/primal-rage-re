@@ -73,6 +73,7 @@ extern int g_failures;
     X(test_u6_idle_loss_callbacks) \
     X(test_u6b_3c048) \
     X(test_u6b_3d1ec) \
+    X(test_u6b_3f0a8) \
     X(test_virtual_clock) \
     X(test_restart)
 
