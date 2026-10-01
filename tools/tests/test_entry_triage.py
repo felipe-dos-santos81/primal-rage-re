@@ -483,3 +483,151 @@ class TableCapTests(unittest.TestCase):
         self.assertEqual(t.slots[vals[T.MAX_TABLE - 1]][0][2], T.MAX_TABLE - 1)    # slot 511: in
         self.assertNotIn(vals[T.MAX_TABLE], t.slots)                                # slot 512: out
         self.assertNotIn(vals[T.MAX_TABLE + 7], t.slots)
+
+
+@needs_capstone
+class CliTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        d = self.tmp.name
+        w = build_world()
+        self.img = os.path.join(d, "image.bin")
+        with open(self.img, "wb") as f:
+            f.write(bytes(w.data))
+        self.csv = os.path.join(d, "functions.csv")
+        with open(self.csv, "w") as f:
+            f.write("entry,size,name,n_callers,n_callees,decompiled\n")
+            for s, n in sorted(w.ghidra):
+                f.write("%08x,%d,FUN_%08x,0,0,ok\n" % (s, n, s))
+        self.src = os.path.join(d, "src")
+        os.mkdir(self.src)
+        with open(os.path.join(self.src, "a.c"), "w") as f:
+            f.write("/* 0x10200 — record */\n/* 0x2C3FC — record */\n")
+        self.out = os.path.join(d, "table.md")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def main(self, *extra):
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = T.main(["--image", self.img, "--functions", self.csv, "--src", self.src] + list(extra))
+        return rc, buf.getvalue()
+
+    def test_the_counts_the_table_and_the_check(self):
+        # 24 = len(EXPECTED): fix round 1 (3be31c4) planted 17300 for the slot-precedence rule after the
+        # brief counted 23.
+        rc, text = self.main("--out", self.out, "--expect", "24", "--expect-u0", "23")
+        self.assertEqual(rc, 0, text)
+        self.assertIn("entry-triage: 24 candidates (23 by U0's rule)", text)
+        with open(self.out) as f:
+            table = f.read()
+        self.assertIn("| 15000 | 256 | call-table | dword 80200 = table 80200[0], read by `call` at 11000 | yes | - "
+                      "| no | voice | allow-list | 15000 |", table)
+        self.assertIn("| 16900 | 512 | data-pointer | aligned dword 90064 | no | - | no | other | leaf | - |", table)
+        self.assertIn("| 10200 | 256 | code-immediate | immediate of the instruction at 10000 | yes | - | yes | other "
+                      "| leaf | - |", table)
+        self.assertIn("| 17205 | 17200 | untrusted | no |", table)
+        self.assertIn("| 17200 | 17020 | - | no |", table)
+        self.assertEqual(self.main("--check", self.out)[0], 0)
+        with open(self.out, "a") as f:
+            f.write("edited\n")
+        rc, text = self.main("--check", self.out)
+        self.assertEqual(rc, 1)
+        self.assertIn("differs from a fresh run", text)
+
+    def test_a_wrong_expected_count_fails(self):
+        self.assertEqual(self.main("--expect", "23")[0], 1)
+        self.assertEqual(self.main("--expect-u0", "24")[0], 1)
+
+
+DIFFRUN = os.path.join(ROOT, "build", "diffrun")
+EXE = os.path.join(os.environ.get("PR_GAME_DIR", os.path.join(ROOT, "data", "game", "C")), "PRAGE.EXE")
+LIVE_FILE = os.path.join(ROOT, "docs", "superpowers", "plans", "2026-10-01-reverse-e2-live-functions.txt")
+# U6a ported four non-Ghidra addresses with strict headers after the planning run (record gameplay-u6 §U6.2
+# 0x23208, §U6.3 0x3A588, §U6.4 0x3640C, §U6.5 0x37DCC; commits e3a5d77, f9fbfc7, 7aea1f8, 396229d). Three are rows
+# of the table (0x23208 a move-callback, 0x3640C and 0x37DCC animation targets); 0x3A588 follows data, not a
+# `ret`, so it is not in the universe. They are the only differences from the planning run's "ported" figures.
+U6A_ROWS = {0x23208, 0x3640C, 0x37DCC}
+U0_CALLBACKS = {int(x, 16) for x in (
+    "14EF8 14F50 15478 21114 21374 22938 22A00 231C0 23208 237D0 2381C 3C048 3D10C 3D1EC 3DADC 3DB34 "
+    "3DCEC 3F0A8 475EC 47608 47624 47720 47874 47FCC 48608 48964 489A0").split()}
+U0_FINISHERS = {0x1567C, 0x15908, 0x23BF8, 0x23EC0, 0x402FC, 0x45D14}
+U0_VOICE = {int(x, 16) for x in (
+    "11A3D 11C38 14F46 14F9E 154DD 1550B 155EA 156CA 15780 15802 158CD 15956 1599B 212AF 2236D 223EF "
+    "224E2 2260E 228EF 2292B 22AA7 231FB 23243 23810 2385C 23BD8 23E9D 23F05 24001 2406D 24214 242DA "
+    "24317 243CF 243ED 2455E 295FD 342EF 3440D 3448B 34517 345A3 3462F 3D12D 3D395 3D730 3DAC5 3DB2A "
+    "3DB82 3F0C1 4012D 40137 402B1 402E0 41880 45C8C 45D0A 475D9 4779D 478C7 47DF7 47E1B 48518 48548 "
+    "4B0B4 4B0BE").split()}
+# Measured on the image `diffrun --image-out` writes at e9271df (record §E2.9). A change of a class
+# rule moves these: update them with the record, never alone.
+REAL_CLASSES = {"finisher": 9, "move-callback": 71, "span-writer": 231, "call-table": 7, "anim-target": 112,
+                "mid-instruction": 3, "data": 75, "code-immediate": 15, "direct": 2, "interior": 6,
+                "data-pointer": 48}
+
+
+@needs_capstone
+@unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
+                     "build/diffrun or PRAGE.EXE absent")
+class RealImageTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        img = os.path.join(cls.tmp.name, "image.bin")
+        subprocess.run([DIFFRUN, "--exe", EXE, "--image-out", img], check=True, capture_output=True)
+        strict, loose = T.load_ported(os.path.join(ROOT, "port", "src"))
+        ghidra = T.load_ghidra(os.path.join(ROOT, "port", "decomp", "prage.functions.csv"))
+        cls.t = T.Triage(E.Image.load(img), ghidra, strict, loose & {s for s, _ in ghidra}, T.load_live(LIVE_FILE))
+        cls.rows = cls.t.run()
+        cls.by = {r["addr"]: r for r in cls.rows}
+        cls.supp = cls.t.supplement()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_the_universe_is_579_and_u0s_rule_gives_575(self):
+        self.assertEqual(len(self.rows), 579)
+        self.assertEqual(sum(1 for r in self.rows if r["u0"]), 575)
+        self.assertEqual({r["addr"] for r in self.rows if not r["u0"]}, {0x10602, 0x10604, 0x36114, 0x3C87C})
+
+    def test_the_class_counts(self):
+        self.assertEqual(dict(collections.Counter(r["cls"] for r in self.rows)), REAL_CLASSES)
+
+    def test_the_unported_callbacks_and_finishers_are_u0s(self):
+        un = lambda c: {r["addr"] for r in self.rows if r["cls"] == c and not r["ported"]}
+        self.assertEqual(un("move-callback"), U0_CALLBACKS - {0x23208})       # 0x23208: ported by U6a (§U6.2)
+        self.assertEqual(un("finisher"), U0_FINISHERS)
+
+    def test_u0s_animation_examples_are_animation_targets(self):
+        for a in (0x241A8, 0x37DCC, 0x400E0):
+            self.assertEqual(self.by[a]["cls"], "anim-target", "%X" % a)
+
+    def test_no_entry_is_stale(self):
+        self.assertEqual(self.t.stale, [])
+
+    def test_the_span_tables(self):
+        self.assertEqual(self.t.span_tables, {0x80C8C, 0x80D0C, 0x80E0C, 0x81010, 0x81110})
+
+    def test_the_live_column(self):
+        self.assertEqual(collections.Counter(r["live"].split(" ")[0] for r in self.rows),
+                         {"-": 553, "entry": 22, "body": 4})
+
+    def test_the_voice_sites(self):
+        sites = self.t.rel32_anywhere(T.VOICE_FN)
+        self.assertEqual(len(sites), 303)               # k7-k12 §0.2
+        placed = {v["site"]: v for v in self.t.voice_placement(self.rows, self.supp)}
+        self.assertTrue(U0_VOICE <= set(placed))
+        self.assertEqual(collections.Counter((placed[s]["kind"], placed[s]["ported"]) for s in U0_VOICE),
+                         {("row", False): 39, ("row", True): 1, ("supplement", False): 9, ("-", False): 17})
+        # the one row site that moved to ported is 0x23243, in the body of 0x23208 (ported by U6a, §U6.2)
+        self.assertEqual((placed[0x23243]["entry"], placed[0x23243]["kind"], placed[0x23243]["ported"]),
+                         (0x23208, "row", True))
+
+    def test_the_four_u6a_ports(self):
+        self.assertEqual({a for a in U6A_ROWS if self.by[a]["ported"]}, U6A_ROWS)
+        self.assertNotIn(0x3A588, self.by)                  # follows data, not a ret: outside the universe
+        self.assertTrue(self.t.is_ported(0x3A588))          # but its strict header is there
+        self.assertEqual(sum(1 for r in self.rows if r["batch"] != "-" and r["ported"]), 166)   # 163 + U6a's 3

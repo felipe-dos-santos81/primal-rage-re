@@ -160,29 +160,30 @@ switch, or a truncated scan); `callees (...)` (all runnable, but a callee below 
 `allow-list` (every callee is ported: E1's allow-list runs it today); `leaf` (no call). Readiness is
 static: a stack-argument read without `ret N` and an EAX-only output (E1 §E.6.2) are not detected here.
 
-Planning run, unported targets (332): **leaf 236** (227 span writers, 8 animation targets, `0x10604`),
-**allow-list 6** (`0x475EC`, `0x47608` callbacks; three animation targets; `0x29CFC`), **stubs 90**,
+Unported targets (329; the planning run had 332 before U6a's ports, §E2.9): **leaf 234** (227 span writers, 6 animation
+targets, `0x10604`),
+**allow-list 6** (`0x475EC`, `0x47608` callbacks; three animation targets; `0x29CFC`), **stubs 89**,
 callees 0, stack-args 0. The `stubs` blockers: the animation dispatcher's code-pointer call at `0x2B56D`
-in `0x2B2A0` (59 rows), `actor_spawn`'s indirect at `0x2B0E9` in `0x2AE14` (22), `0x18384` in `0x18350`
+in `0x2B2A0` (58 rows), `actor_spawn`'s indirect at `0x2B0E9` in `0x2AE14` (22), `0x18384` in `0x18350`
 (2), `0x6811A` in `0x680F0` (1), `in` in `0x1B890` (1, `0x1BDF4`), `0x62006` in `0x62003` (1), and the
 four span dispatchers' own table calls (`0x5215C`, `0x57F80`, `0x57FFB`, `0x58CBD`, which are
 `0x80C8C` slots and so span-writer rows).
 
-**The call-stub gap (E1 §E.6.1) gates track P.** Every one of the 86 non-span `stubs` rows has a clean
+**The call-stub gap (E1 §E.6.1) gates track P.** Every one of the 85 non-span `stubs` rows has a clean
 own body (no indirect, no unmodeled instruction, no `ret N`): the blocker is always inside a ported
 callee's tree. They call 43 distinct direct callees: 35 ported and 8 not (`0x1BBAC 0x22404 0x23960
-0x2BDB8 0x2BDE8 0x2BEF4 0x2D62C 0x3A9D8`); the most frequent are `0x2C3FC` (voice, 36 rows), `0x2BC30`
-(31), `0x3C4CC` (22) and `0x2AE14` (22), all ported. So stubbing at the direct-callee boundary (§E2.10)
-makes all 86, and 28 of the 30 `stubs` supplement entries (the other two are span code with their own
+0x2BDB8 0x2BDE8 0x2BEF4 0x2D62C 0x3A9D8`); the most frequent are `0x2C3FC` (voice, 35 rows), `0x2BC30`
+(31), `0x2AE14` (22) and `0x3C4CC` (21), all ported. So stubbing at the direct-callee boundary (§E2.10)
+makes all 85, and 28 of the 30 `stubs` supplement entries (the other two are span code with their own
 table call), runnable.
 
 ## §E2.7 Voice sites
 
 A scan of every byte offset below `0x5D000` finds 303 rel32 `call`/`jmp` to `0x2C3FC` (k7-k12 §0.2's
 count). 134 lie outside the Ghidra functions. Placed in the first body (target rows, then the supplement,
-then the untrusted entries) whose scan holds the site: **49 in unported code** (40 in target rows, 9 in
-supplement entries: all among U0's 66), **66 in ported code** (50 rows, 12 supplement, 4 untrusted),
-**19 in no body**: U0's 17 plus `0x39EDA` and `0x45F8C`. So U0's 66 split 40 / 9 / 17. The 19, with the
+then the untrusted entries) whose scan holds the site: **48 in unported code** (39 in target rows, 9 in
+supplement entries: all among U0's 66), **67 in ported code** (51 rows, 12 supplement, 4 untrusted),
+**19 in no body**: U0's 17 plus `0x39EDA` and `0x45F8C`. So U0's 66 split 39 / 9 / 17 plus 1 in a ported row (`0x23243`, in `0x23208`, ported by U6a). The 19, with the
 nearest plausible start before each (a backward search for an after-`ret` address outside Ghidra), whether
 that start's scan reaches the site, and what references the start:
 
@@ -226,23 +227,33 @@ callbacks, the animation targets `0x22338` and `0x458D4`, the direct `0x29CFC` a
 `0x402FC`) and **4 are inside a live body** (`0x18625` in `0x186D0`, `0x18AAE` in `0x18B04`, `0x2C1AD` in
 `0x2C1C8`, `0x40303` in `0x402FC`), which agrees with their `interior` class.
 
-## §E2.9 Planning-run results (preliminary, re-measured in Task 5)
+## §E2.9 Results (planning run, re-measured in Task 5)
 
 `python3 tools/entry_triage.py --image IMG --live docs/superpowers/plans/2026-10-01-reverse-e2-live-functions.txt
---out T --expect 579 --expect-u0 575` (8.4 s on the planning host):
+--out T --expect 579 --expect-u0 575` (8.4 s on the planning host). **Task 5 re-measured every figure on the same image
+(sha1 above) with `port/src` at `098cb7a`; the three lines below are the Task 5 run.** The planning run (`port/src` at
+`e9271df`) read `targets 332 unported, 163 ported` and `49 in unported code, 66 in ported code`; nothing else differs.
+The difference is exactly U6a's four ports (strict `/* 0xADDR` headers added after the planning run; record
+`2026-10-01-gameplay-u6-derivations.md` §U6.2 `0x23208` (e3a5d77), §U6.3 `0x3A588` (f9fbfc7), §U6.4 `0x3640C`
+(7aea1f8), §U6.5 `0x37DCC` (396229d)): three of them are rows (`0x23208` a move-callback, `0x3640C` and `0x37DCC`
+animation targets; each moves unported to ported, so callbacks 27/44 to 26/45, animation targets 65/47 to 63/49,
+targets 332/163 to 329/166), `0x3A588` follows data rather than a `ret` and is outside the universe, and the one
+voice site that moves is `0x23243` (in `0x23208`; 49/66 to 48/67). The E1 readiness counts follow
+(leaf 236 to 234, stubs 90 to 89). Re-running the Task 5 code with those four headers removed reproduces the
+planning figures exactly. No class rule (§E2.2) and no class count moved.
 
 ```
 entry-triage: 579 candidates (575 by U0's rule); finisher=9 move-callback=71 span-writer=231 call-table=7 anim-target=112 mid-instruction=3 data=75 code-immediate=15 direct=2 interior=6 data-pointer=48
-entry-triage: targets 332 unported, 163 ported; supplement 131 (35 unported, 0 stale); untrusted entries 30
-entry-triage: voice sites outside Ghidra 134: 49 in unported code, 66 in ported code, 19 nowhere
+entry-triage: targets 329 unported, 166 ported; supplement 131 (35 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 48 in unported code, 67 in ported code, 19 nowhere
 ```
 
 | class | rows | U0's | | batch | unported | ported |
 |---|---|---|---|---|---|---|
-| finisher | 9 | 9 | | callbacks | 27 | 44 |
+| finisher | 9 | 9 | | callbacks | 26 | 45 |
 | move-callback | 71 | 71 | | finishers | 6 | 3 |
 | span-writer | 231 | 231 | | voice | 0 | 15 |
-| call-table | 7 | 7 | | animation-targets | 65 | 47 |
+| call-table | 7 | 7 | | animation-targets | 63 | 49 |
 | anim-target | 112 | 111 | | span-writers | 231 | 0 |
 | mid-instruction | 3 | 3 | | other | 3 | 54 |
 | data | 75 | 73 | | | | |
@@ -251,9 +262,9 @@ entry-triage: voice sites outside Ghidra 134: 49 in unported code, 66 in ported 
 | interior | 6 | 6 | | | | |
 | data-pointer | 48 | 48 | | | | |
 | jump-table, dead, unclassified | 0 | 0 | | | | |
-| **total** | **579** | **575** | | **targets** | **332** | **163** |
+| **total** | **579** | **575** | | **targets** | **329** | **166** |
 
-Cross-checks against U0: the 27 unported move callbacks are exactly U0's 27; the 6 unported finishers are
+Cross-checks against U0: the 26 unported move callbacks are exactly U0's 27 less `0x23208` (ported by U6a); the 6 unported finishers are
 exactly U0's six (the tenth finisher value, `0x40BBC`, and the 72nd move-callback value, `0x14B90`, are
 Ghidra functions, so outside the universe); U0's three animation examples are `anim-target`. The
 animation targets' dwords all lie in `0xD213A..0xEE3BC` (56 after `D100`, 31 after `D500`, 24 after
@@ -264,14 +275,14 @@ animation targets' dwords all lie in `0xD213A..0xEE3BC` (56 after `D100`, 31 aft
 `k7-k12/scratch/oracle-lines-base.txt`, the `make audio-render` WAV identical to `before-t2.wav`, and
 `port_progress.py` `771 1203 64` / `731 731 100`.
 
-**The counted target list for track P** (unported, by batch): callbacks 27, finishers 6, animation
-targets 65, span writers 231 (or the six dispatchers, Decision D2), other 3 (`0x10604`, `0x1BDF4`,
-`0x29CFC`), voice 0 rows (the 49 + 19 voice sites ride with their bodies' batches, §E2.7); plus the
+**The counted target list for track P** (unported, by batch): callbacks 26, finishers 6, animation
+targets 63, span writers 231 (or the six dispatchers, Decision D2), other 3 (`0x10604`, `0x1BDF4`,
+`0x29CFC`), voice 0 rows (the 48 + 19 voice sites ride with their bodies' batches, §E2.7); plus the
 supplement's 35 unported entries and the 8 unported untrusted entries (§E2.5).
 
 ## §E2.10 Follow-up (not a task): the call-stub design E1 §E.6.1 names
 
-It gates track P (§E2.6: 86 + 28 targets wait on it). A proposal, to be planned as its own unit:
+It gates track P (§E2.6: 85 + 28 targets wait on it). A proposal, to be planned as its own unit:
 
 1. **A stub is data in the `Spec`:** `(callee address, EAX it returns, bytes it writes)` per case. Both sides
    apply the same writes and return the same EAX, and both record the call.
