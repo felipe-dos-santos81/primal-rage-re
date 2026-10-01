@@ -430,9 +430,9 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # capture enters mode 8 (game_mode_08_step 0x28468) at f=0xC71 (poll.log P record) from the
 # round-1 fight (mode 6), and capture 2063 is port 1666 (f=0xC71) clean, so 2064 lies in mode 8
 # between f=0xC71 and f=0xC75, on the fight screen. Every row of it equals the same row of a port
-# frame: rows 0..2 port 1666 (f=0xC71), rows 3..97 port 1669 (f=0xC74), rows 98..199 port 1670
-# (f=0xC75). A three-frame scan-out is outside the explain model (clean, a splice of two adjacent
-# frames, one transition row), and port 1667/1668 (f=0xC72/0xC73) appear in no capture frame;
+# frame: rows 0..2 equal in port 1665/1666 (f=0xC70/0xC71), rows 3..97 port 1669 (f=0xC74),
+# rows 98..199 port 1670 (f=0xC75). A three-frame scan-out is outside the explain model (clean,
+# a splice of two adjacent frames, one transition row), and port 1667/1668 (f=0xC72/0xC73) appear in no capture frame;
 # the capture has no S snapshot for f=0xC71..0xC73 (as at its other mode changes). Why the
 # original's scan-out shows three frames is not isolated: a named gap with that evidence.
 # Provenance: U4 pinned 203; U5 raised it to 787 (record 2026-10-01-gameplay-u5 §C5.12/§C5.13:

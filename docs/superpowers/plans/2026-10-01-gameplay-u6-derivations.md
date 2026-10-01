@@ -359,3 +359,192 @@ functions, six test functions, twenty-one C mutations of which one equivalent); 
 (`test_gp_session`, `test_gp_compare`, `test_gp_capture`, `test_gp_moves` `OK`, seven Python mutations
 each fail, `PYTHONDONTWRITEBYTECODE=1`); the scenario schedule simulation (first press `0x7FF`, end
 `0xCAF`); the dry runs and their checks; the capture-size estimate; `port_progress.py`.
+
+## §U6.21 U6a execution
+
+**Base.** Branch `gameplay-u6a` off `main` `b09b9e6` (U5 merged), not `e9271df` as §U6.1/§U6.7
+assume. U5 had already fixed divergence 1 (the `0x37A58` top wrap) and removed `0x3640C`'s
+`k_miss_gp_idle_loss` row, so the plan's pre-U5 expectations (frame N 203, trace `0x871`/2161,
+`distinct=7`, `0x3A588` hits 5353/4626) were replaced by measured values (ledger rulings Task 0,
+Task 1, Tasks 2-4 Step 7, Task 5). Every number below is measured on this base. The raw won on
+every instruction check (none differs from the plan's C); the corrections are to the plan's
+expectations, to comment addresses and to review minors, listed at the end.
+
+**Commits.**
+
+| commit | what |
+|---|---|
+| `7aea1f8` | port `0x3640C` (§U6.4) |
+| `e3a5d77` | port `0x23208` (§U6.2) |
+| `396229d` | port `0x37DCC` (§U6.5) |
+| `f9fbfc7` | port `0x3A588` (§U6.3) |
+| `098cb7a` | re-pin the `gp-idle-loss` ratchets: frame 2064, trace 8320 exact, start 90 |
+
+**Per task: the replay's `fn-miss` lines and the three `gp_compare` values** (frame first
+unexplained / window start / trace; the replay is `make gp-replay`/`gp-oracle` on `gp-idle-loss`).
+
+| task | fn-miss pairs (hits) | frame / start / trace |
+|---|---|---|
+| 0 baseline (no code) | `0x5D812 actor_spawn` 6431, `0x5D812 set_dead` 6082, `0x29D60 frontend_mode_1b_step` 1, `0x5D812 frontend_mode_1b_step` 1, `0x23208 hit_reaction_apply` 1, `0x3A588 fighter_state_3531c` 4995; `distinct=6 dropped=0`; no `0x3640C` | 787 / 90 / `f=828` (2088) in rng, capture `73A05D37`, port `CE92DD04` |
+| 1 `0x3640C` | identical to Task 0 (`0x3640C` is not reached on this path since U5) | 787 / 90 / 2088 |
+| 2 `0x23208` | `actor_spawn` 6447, `set_dead` 6104, `0x29D60` 1, `0x5D812 frontend_mode_1b_step` 1, `0x3A588` 5141; `distinct=5`; `0x23208` absent | 1332 / 90 / `f=A0F` (2575) in rng, capture `1798A372`, port `3AA8A36B` |
+| 3 `0x37DCC` | identical to Task 2 (`cmp` of `trace.txt` against Task 2's silent) | 1332 / 90 / 2575 |
+| 4 `0x3A588` | `actor_spawn` 6268, `set_dead` 5872, `0x29D60` 1, `0x5D812 frontend_mode_1b_step` 1; `distinct=4 dropped=0` = the four harmless pairs | 2064 / 90 / `0 differing through 8319 ... N = 8320 is the exact pin` |
+
+Task 0 baseline detail: `window from capture 90 (raw 1744); 694 classified (487 clean, 202 splice,
+0 transition, 5 unexplained, 8 all-black)`, `FIRST UNEXPLAINED capture 787 (raw 3899)`. Task 4
+detail: `window from capture 90 (raw 1744); 1967 classified: 1024 clean, 941 splice, 1 transition, 1
+unexplained, 8 all-black`; `FIRST UNEXPLAINED capture 2064 (raw 5190): nearest port 1670, rows
+0..97, x 0..319 (13832 px)`; `trace: 7973 frames compared (f 141..), 26 without a capture
+snapshot`; `ent 0 of 7973 differ; t508 2948 of 7973 differ (first f=281)` (reported, not
+ratcheted). `gp_compare` prints the compared range `f 141..` in hex (0x141 = 321) and the ratchet
+end in decimal (8319 = 0x207F). Distinct sets only shrank by the ported function at each step, as
+§U6.7 predicts, but from the post-U5 start (6, 6, 5, 5, 4): `0x3640C` was already out, and the
+`0x3A588` hit count rose 4995 -> 5141 at Task 2 only because the replay ran further.
+`port_progress.py` printed `771 1203 64` / `731 731 100` at every task: none of the four is a
+`symbols.h` `FN_` address.
+
+**The path after U6a, measured (Task 4; `trace.txt` first `f` per mode, against the capture's `P`
+records of `poll.log`).** The port's first `f` per mode equals the capture's `P` record in every
+row:
+
+| mode | port after U6a = capture `P` |
+|---|---|
+| `0x27`, `0x2D`, `0x1A`, `0x1B`, `0x10`, `0x1A`, `0x1B`, `0x11`, `0x17`, `0x1A`, `0x1B`, 5, 6 | `0x141`, `0x26E`, `0x26F`, `0x281`, `0x293`, `0x640`, `0x652`, `0x664`, `0x665`, `0x756`, `0x768`, `0x77A`, `0x7F5` |
+| 8 (round 1 KO, P1 `+0x5A = 0x78`) | `0xC71` |
+| `0x16`, 5, 6 | `0xD2D`, `0xE1E`, `0xE99` |
+| 7 | `0x1B4B` |
+| 9, `0x17`, `0x15`, `0x13` | `0x1BBC`, `0x1BBD`, `0x1CAE`, `0x1D27` |
+| `0x1E`, `0x14`, `0x17` | `0x1FC0`, `0x1FC4`, `0x1FC5` |
+| 3 | `0x207A` (ends the run) |
+
+(Capture `P` records read from `data/k11-captures/gp-idle-loss/poll.log`; port column from Task 4's
+mode-path script. The ledger ruling names the six frames `0xC71, 0x1B4B, 0x1BBC, 0x1D27, 0x1FC0,
+0x1FC5`.) Against §U6.8's "port after U6a" column, measured on the pre-U5 base, every mode is the
+same and in the same order but `0x5F`-`0x80` frames earlier (the U5 character-select timing fix):
+`0xCD0 -> 0xC71`, `0x1BB9 -> 0x1B4B`, `0x1C2A -> 0x1BBC`, `0x1D95 -> 0x1D27`, `0x2040 -> 0x1FC0`,
+`0x2045 -> 0x1FC5`. Mode 3 is now reached (`0x207A`), where §U6.8 had it not reached.
+
+**Divergence 2b and the round-length gap do not occur on this base.** §U6.8's first trace
+difference (`f=0x871`, the crowd-effect walk drawing `rng` one frame late) is not present: the trace
+has no difference at any compared `f` through 8319 (`0 differing through 8319`), so no localisation
+was needed and §U6.19 item 1 is withdrawn, not carried. The 0x871 observation was made on the
+pre-U5 base; why it vanished is not isolated here (the base also differs by U5's changes, and
+the record does not establish which one removed it; nothing in U6a depends on it). Round lengths (§U6.19 item 2):
+round 1 is `0x7F5 -> 0xC71` = 1148 frames and round 2 `0xE99 -> 0x1B4B` = 3250 frames in the port,
+equal to the original's 1148 and 3250 (§U6.8), because the port's mode entries equal the capture's
+`P` records; the 1243 and 3280 of §U6.8 do not occur, and item 2 is withdrawn.
+
+**Mutations (every mutation's first `FAIL` line, applied alone, rebuilt, restored; the unmutated
+suite re-run `all checks passed` after each).**
+
+- `0x3640C` (Task 1): `DSB(slot + 0x52u) = 5u` -> `(void)slot`: `FAIL test_fight.c:43893: 51 != 5`;
+  `DSB(rec + 0x4Du) = 0x14u` -> `0x15u`: `FAIL test_fight.c:43890: 21 != 20`; the `fn_register`
+  line -> `(void)anim_code_3640C`: `FAIL test_fight.c:43874: actors_init registered 0x3640C`. diff-verify
+  mutation `0x40400000u` -> `0x40000000u`: `k0/k1: byte 0x10A026: original 0x40, port 0x00`,
+  `0/1 functions VERIFIED`. The ledger ruling removed the `test_platform.c` row-restore mutation
+  (U5 already removed the row).
+- `0x23208` (Task 2): `sound_voice(0x79u)` -> `0x7Au`: `test_fight.c:43935: 122 != 121`;
+  `DSD(slot+0x0Cu) = 0u` -> `(void)0`: `:43929: 202116108 != 0`; `DSB(slot+0x53u) = 7u` -> `8u`:
+  `:43927: 8 != 7`; hold `0x40400000u` -> `0x40000000u`: `:33627 (sc_stream): 1073741824 !=
+  1077936128`; the `fn_register` line removed: `:43912: 0x23208 is registered as fighter_23208`;
+  restoring the `k_miss_gp_idle_loss` row: `test_platform.c:198: 5 != 6` (replay driver, rc 1).
+  Review minor m1 (Task 2): `DSB(rec+0x52u) = 0u` -> `DSW(...)`: `test_fight.c:43895: 0 != 165`;
+  an extra `DSB(rec+0x28u) = 0u`: `:43896: 0 != 165`.
+- `0x37DCC` (Task 3): `DSB(DS_001078FC) = 1u` -> `2u`: `test_fight.c:43965: 2 != 1`; the
+  `fn_register` line removed: `:43966: actors_init registered 0x37DCC`. Review minor m5:
+  `DSB(slot+0x54u) = 0u` -> `DSW(...)`: `:43932: 0 != 85`; `DSD(slot+0x0Cu) = 0u` plus
+  `DSD(slot+0x10u) = 0u`: `:43933: 0 != 269488144`.
+- `0x3A588` (Task 4): `+0x90` `2u` -> `3u`: `test_fight.c:44066: 3 != 2`; A read `DS_00107D0C` ->
+  `0x00107D08`: `:44093: 17185 != -32767`; B read `DS_00107D00` -> `0x00107D04`: `:44068: -4096
+  != 22136`; `FIGHT_ANIM_3A588` `0xC9030` -> `0xC9008`: `:44060: 861862 != 861896`; the
+  `fn_register` line removed: `:44150: actors_init registered 0x3A588 as fighter_pose_3a588`;
+  restoring the `k_miss_gp_idle_loss` row: `test_platform.c:194: 4 != 5` (replay driver; `make
+  gp-oracle` rc 2).
+- Task 5 (Makefile pins, each rc 2): `GP_IDLE_LOSS_TRACE_MIN_FIRST=8321`: `gp_compare: gp-idle-loss:
+  trace: FAIL: N 8321 > end 8320: N is unreachable`; `GP_IDLE_LOSS_MIN_FIRST=2065`: `gp_compare:
+  gp-idle-loss: frames: FAIL: first unexplained 2064 < ratchet N 2065`; `GP_IDLE_LOSS_MAX_START=89`:
+  `gp_compare: gp-idle-loss: frames: FAIL: window starts at capture 90 (raw 1744) > pinned start 89`.
+
+**Task 5's outputs (verbatim).** Pins: `GP_IDLE_LOSS_MIN_FIRST = 2064`,
+`GP_IDLE_LOSS_TRACE_MIN_FIRST = 8320`, `GP_IDLE_LOSS_MAX_START = 90` (unchanged). `make gp-oracle`:
+
+```
+gp_compare: gp-idle-loss: frames: first unexplained 2064, ratchet N 2064 ok
+gp_compare: gp-idle-loss: trace: 0 differing through 8319; ratchet N 8320 ok
+```
+
+Full `make verify` on `098cb7a`: exit 0, the 45 oracle lines equal, WAV equal, K11 equal, the
+`gp-u5-charsel` ratchets unchanged (`516`, `1513`), `diff-verify: 6/6 functions VERIFIED; 7/7
+mutants detected`, `771 1203 64` / `731 731 100`. The trace pin is the exact end (N = end + 1):
+an N above 8320 fails as unreachable, so the claim now is "no traced difference at any compared
+`f` of the run" (narrow as always, record §G.16: the traced fields only, 26 `f` without a capture
+snapshot not compared).
+
+**Named gap: capture frame 2064 (cause not isolated).** Capture 2064 (raw 5190) is the first
+unexplained frame. Capture 2063 is port 1666 clean (f=0xC71, mode 6 -> 8, `game_mode_08_step`
+`0x28468`; the capture's `P ms=74192 f=0C71 mode=0008` follows `S ms=74174 f=0C70 mode=0006`),
+2062 is port 1665 clean, 2065 a splice of port 1670/1671. Every row of capture 2064 equals the same
+row of a port frame (exact per-row md5), from three frames in time order: rows 0..2 equal in port
+1665/1666 (f=0xC70/0xC71, identical there), rows 3..97 port 1669 (f=0xC74), rows 98..199 port 1670
+(f=0xC75); the top 98 rows against 1669 differ by 315 px, all in rows 0..2. The explain model
+(clean, a two-adjacent-frame splice, one transition row) cannot express a three-source scan-out, so
+it reports unexplained; port 1667/1668 (f=0xC72/0xC73) appear in no capture frame. The capture has
+no `S` snapshot for f=0xC71..0xC73 (the same P-record pattern, one to three `S` skipped, recurs at
+every mode change of this capture: the 26 f "without a capture snapshot"), and 0x1B4A -> 0x1B4E
+spans 68 ms against 0xC70 -> 0xC74's 76 ms, so the snapshot gap itself is not evidence of a stall.
+Nothing in the traced state differs around it. On screen: the round-1 fight screen (Sauron against
+Blizzard nameplates, timer 40, both fighters mid-arena). Why the original's display shows three game
+frames in one 70.09 Hz scan-out (two presents within one scan, f=0xC72/0xC73 never shown), whether
+that is the original's present timing at the mode-8 entry or a capture artefact, and whether the
+port's per-f present timing deviates there, is not established. Closing it needs a three-source
+splice model or captured present times. Not a port defect shown, and not guessed. Report mode also
+lists four further unexplained capture frames, 7559..7562 (nearest port 0, rows 0..199), beyond the
+ratcheted first item; not investigated (reported, not ratcheted).
+
+**Named gaps from §U6.19, re-checked against the measurements.**
+
+1. Divergence 2b (§U6.19 item 1): withdrawn, does not occur (above).
+2. Round lengths (item 2): withdrawn, the port's 1148 and 3250 equal the original's (above).
+3. Divergence 1 and the capture-703 observation (item 3): divergence 1 was U5's and is fixed
+   (record gameplay-u5 §C5.12/§C5.13); the frame claim now holds to capture 2063, past capture 703,
+   which is therefore explained (by the whole-dump search, not the narrow observation of §U6.8).
+   What remains of the frame claim is the frame-2064 gap above.
+4. E1 verification: `0x3640C` and `0x37DCC` are verified by E1 diff-verify
+   (`fighter_3640c 0x3640C 2 3/3 VERIFIED`, `fighter_37dcc 0x37DCC 2 1/1 VERIFIED`, `diff-verify: 6/6
+   functions VERIFIED; 7/7 mutants detected`, `unittest tools.tests.test_diff_verify` OK) with their
+   mutants detected (Task 1: 5/5, 6/6 mutants; Task 3: 6/6, 7/7). `0x23208` and `0x3A588` are not
+   E1-verifiable today: no spec was added for them (closures with calls, indirect transfers per
+   §U6.6; the closure sizes were not re-measured in U6a). They are verified by seeded unit tests
+   (the mutations above) and by the replay (a pinned miss before, none after). `0x3640C` has no
+   capture-backed reach on this path: its only evidence was the pre-U5 port bug (U4, f=0x173A); it
+   stays an animation-opcode target (seven `0xD000` stream dwords asserted in the image), covered
+   by unit tests and E1, and for track P.
+5. Counters (item 8): still true for the four ported functions: none is in `symbols.h` (`FN_`
+   addresses), `port_progress.py` printed `771 1203 64` / `731 731 100` at every task, so README and
+   AGENTS counters did not move. Item 8's remark that live Ghidra lists `0x23208` is not restated:
+   Task 2 measured no `FN_` there.
+6. Items 4-7 of §U6.19 are U6b's and stand as written.
+
+**Plan-vs-raw corrections (raw wins).** None for the C of the four functions: Tasks 1-4 each
+compared the plan's C against the fixed-up image (capstone, base `0x10000`) at every offset and
+width, and it matched byte for byte (`0x37DCC`'s stream sites: 17 dword hits, all after `0xD100`,
+at exactly the listed addresses). Corrections to text and expectations:
+
+- `0x2B573` -> `0x2B575`: in `0x3640C`'s comment and `diff_runner.c`'s comment, `0x2B573` is `xor
+  ecx,ecx` and `mov eax,ecx` is at `0x2B575` (`0x2B59A`, `0x2B5F0` unchanged); fixed in Task 2 (m4)
+  and Task 4 (m6).
+- Review minors folded in: m1 (`check_u6_3640c` neighbour checks `rec+0x53`/`+0x28`, Task 2); m5
+  (`check_u6_23208` sentinels at slot `+0x55`/`+0x10`, Task 3); m6 (above) and m7 (the diff test
+  renames, no assertion changed: `test_every_ported_function_agrees_with_the_original_on_every_block`,
+  `test_the_eax_mask_is_stated_by_the_spec_per_function`, Task 4); m8 (`fighter_pose_3a588` header:
+  "globs" replaced by the per-side words the `0x3A650` setter latches: B = `0x107D00 + side*2`
+  at `0x3A6B7`, A = `0x107D0C + side*2` at `0x3A6AF`, Task 5); m9 (Makefile comment: rows 0..2 equal
+  in port 1665/1666 (f=0xC70/0xC71), Task 6). `0x3A6D4`'s header and the `glob_a`/`glob_b`
+  parameter names of `fighter_pose_commit` still use "glob", outside m8's scope.
+- Expectations replaced by measurements (post-U5 base): `distinct=6` (not 7) at the start,
+  frame N 787 (not 203), trace 2088 (unchanged) and then 2575, 8320 (not 2161), `0x3A588` hits
+  4995 then 5141 then none (not 5353/4626); Step 6's `test_platform.c` wording is by the ledger rulings
+  (three, then two pairs); `Ran 44` of `test_diff_verify` is `Ran 71` (`test_diff_emu` and
+  `test_diff_verify` together, unchanged across Tasks 1-4); the brief's `make gp-oracle` mutation
+  for the Makefile pins is N+1 forms (8321, 2065, 89).
