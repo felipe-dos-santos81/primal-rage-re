@@ -432,9 +432,10 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # between f=0xC71 and f=0xC75, on the fight screen. Every row of it equals the same row of a port
 # frame: rows 0..2 equal in port 1665/1666 (f=0xC70/0xC71), rows 3..97 port 1669 (f=0xC74),
 # rows 98..199 port 1670 (f=0xC75). A three-frame scan-out is outside the explain model (clean,
-# a splice of two adjacent frames, one transition row), and port 1667/1668 (f=0xC72/0xC73) appear in no capture frame;
-# the capture has no S snapshot for f=0xC71..0xC73 (as at its other mode changes). Why the
-# original's scan-out shows three frames is not isolated: a named gap with that evidence.
+# a splice of two adjacent frames, one transition row), and port 1667/1668 (f=0xC72/0xC73)
+# appear in no capture frame; the capture has no S snapshot for f=0xC71..0xC73 (as at several
+# other mode changes, not all: record §U6.21). Why the original's scan-out shows three frames
+# is not isolated: a named gap with that evidence.
 # Provenance: U4 pinned 203; U5 raised it to 787 (record 2026-10-01-gameplay-u5 §C5.12/§C5.13:
 # the 0x37A58 top wrap compares the frame byte rec+0x52, raw 0x37B03/0x37B08); 787 was the miss of
 # the then-unregistered move callback 0x23208 (divergence 2, record §G.24), ported by U6a.

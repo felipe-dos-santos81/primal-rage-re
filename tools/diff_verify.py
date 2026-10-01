@@ -242,7 +242,7 @@ SPECS = [
     Spec("config_codeword_len", 0x2D4B4, [
         Case("w%d" % n, {"eax": n}) for n in (0, 1, 0x26, 0xFF, 0x1000)
     ]),
-    # Record gameplay-u6 §U6.6. Mask 0: the three 0x2B2A0 call sites reload EAX at once (0x2B573,
+    # Record gameplay-u6 §U6.6. Mask 0: the three 0x2B2A0 call sites reload EAX at once (0x2B575,
     # 0x2B59A, 0x2B5F0), so the comparison is the changed bytes alone.
     Spec("fighter_3640c", 0x3640C, [
         Case("k0", {"eax": U6_REC, "edx": 0x11223344},

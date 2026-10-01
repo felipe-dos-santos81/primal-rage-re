@@ -399,8 +399,12 @@ unexplained, 8 all-black`; `FIRST UNEXPLAINED capture 2064 (raw 5190): nearest p
 snapshot`; `ent 0 of 7973 differ; t508 2948 of 7973 differ (first f=281)` (reported, not
 ratcheted). `gp_compare` prints the compared range `f 141..` in hex (0x141 = 321) and the ratchet
 end in decimal (8319 = 0x207F). Distinct sets only shrank by the ported function at each step, as
-§U6.7 predicts, but from the post-U5 start (6, 6, 5, 5, 4): `0x3640C` was already out, and the
-`0x3A588` hit count rose 4995 -> 5141 at Task 2 only because the replay ran further.
+§U6.7 predicts, but from the post-U5 start (6, 6, 5, 5, 4): `0x3640C` was already out. Task 2's
+replay counts changed against Task 1's, from the same script and end (`f=0x207F`): `0x5D812
+actor_spawn` 6431 -> 6447, `set_dead` 6082 -> 6104, `0x3A588` 4995 -> 5141 (`/tmp/pr_u6a/t1_replay.txt`,
+`t2_replay.txt`); the fight path changed once `0x23208` was ported, and the cause of the count
+change is not isolated (Task 2's report said "because the replay now runs further", which the
+equal script end does not support). Task 4's counts (6268, 5872, `0x3A588` gone) are lower again.
 `port_progress.py` printed `771 1203 64` / `731 731 100` at every task: none of the four is a
 `symbols.h` `FN_` address.
 
@@ -421,9 +425,10 @@ row:
 (Capture `P` records read from `data/k11-captures/gp-idle-loss/poll.log`; port column from Task 4's
 mode-path script. The ledger ruling names the six frames `0xC71, 0x1B4B, 0x1BBC, 0x1D27, 0x1FC0,
 0x1FC5`.) Against §U6.8's "port after U6a" column, measured on the pre-U5 base, every mode is the
-same and in the same order but `0x5F`-`0x80` frames earlier (the U5 character-select timing fix):
-`0xCD0 -> 0xC71`, `0x1BB9 -> 0x1B4B`, `0x1C2A -> 0x1BBC`, `0x1D95 -> 0x1D27`, `0x2040 -> 0x1FC0`,
-`0x2045 -> 0x1FC5`. Mode 3 is now reached (`0x207A`), where §U6.8 had it not reached.
+same and in the same order but `0x50`-`0x80` frames earlier (the U5 character-select timing fix;
+the rows named here moved by `0x5F`, `0x6E`, `0x6E`, `0x6E`, `0x80`, `0x80`): `0xCD0 -> 0xC71`,
+`0x1BB9 -> 0x1B4B`, `0x1C2A -> 0x1BBC`, `0x1D95 -> 0x1D27`, `0x2040 -> 0x1FC0`, `0x2045 -> 0x1FC5`;
+the `0x16`, 5, 6 rows moved by `0x50`: `0xD7D -> 0xD2D`, `0xE6E -> 0xE1E`, `0xEE9 -> 0xE99`. Mode 3 is now reached (`0x207A`), where §U6.8 had it not reached.
 
 **Divergence 2b and the round-length gap do not occur on this base.** §U6.8's first trace
 difference (`f=0x871`, the crowd-effect walk drawing `rng` one frame late) is not present: the trace
@@ -490,8 +495,15 @@ row of a port frame (exact per-row md5), from three frames in time order: rows 0
 (f=0xC75); the top 98 rows against 1669 differ by 315 px, all in rows 0..2. The explain model
 (clean, a two-adjacent-frame splice, one transition row) cannot express a three-source scan-out, so
 it reports unexplained; port 1667/1668 (f=0xC72/0xC73) appear in no capture frame. The capture has
-no `S` snapshot for f=0xC71..0xC73 (the same P-record pattern, one to three `S` skipped, recurs at
-every mode change of this capture: the 26 f "without a capture snapshot"), and 0x1B4A -> 0x1B4E
+no `S` snapshot for f=0xC71..0xC73. Measured from `poll.log` over the traced range `0x141..0x207F`:
+26 `f` have no `S` record, and 26 `P` records fall in the range, 16 with an `S` at the same `f` and
+10 without. The gap is at some mode entries only: missing at `0x26E`/`0x270`, `0x652`/`0x653`,
+`0xC71`..`0xC73`, `0xD2D`/`0xD2E`, `0xE1E`, `0x1B4B`..`0x1B4D`, `0x1BBD`..`0x1BBF`, `0x1FC0`,
+`0x1FC5`/`0x1FC6` and five in a row at `0x207A`..`0x207E` (the run's end); present at `0x141`,
+`0x26F`, `0x281`, `0x293`, `0x640`, `0x664`, `0x665`, `0x756`, `0x768`, `0x77A`, `0x7F5`, `0xE99`,
+`0x1BBC`, `0x1CAE`, `0x1D27`, `0x1FC4`. Two of the 26 are not at a `P` record at all: `0x1D28`
+(the frame after the `0x1D27` entry) and `0x1D7B`. So no every-mode-change pattern holds, and the
+gap is not shown to be tied to the mode change. 0x1B4A -> 0x1B4E
 spans 68 ms against 0xC70 -> 0xC74's 76 ms, so the snapshot gap itself is not evidence of a stall.
 Nothing in the traced state differs around it. On screen: the round-1 fight screen (Sauron against
 Blizzard nameplates, timer 40, both fighters mid-arena). Why the original's display shows three game
@@ -522,8 +534,12 @@ ratcheted first item; not investigated (reported, not ratcheted).
    by unit tests and E1, and for track P.
 5. Counters (item 8): still true for the four ported functions: none is in `symbols.h` (`FN_`
    addresses), `port_progress.py` printed `771 1203 64` / `731 731 100` at every task, so README and
-   AGENTS counters did not move. Item 8's remark that live Ghidra lists `0x23208` is not restated:
-   Task 2 measured no `FN_` there.
+   AGENTS counters did not move. Item 8's remark that live Ghidra lists `0x23208` is true
+   (`FUN_00023208`, body `0x23208..0x2324F`); only the committed decomp
+   (`port/decomp/prage.functions.csv`, no `23208` row, checked with grep) and the generated
+   `port/src/symbols.h` (no `FN_` for it) lack it, which is why the counters do not move. A future
+   decomp re-export would add the row and `port_progress.py` would then count it as ported, since
+   `fighter_23208` already carries a `/* 0x23208` header.
 6. Items 4-7 of §U6.19 are U6b's and stand as written.
 
 **Plan-vs-raw corrections (raw wins).** None for the C of the four functions: Tasks 1-4 each
@@ -533,7 +549,9 @@ at exactly the listed addresses). Corrections to text and expectations:
 
 - `0x2B573` -> `0x2B575`: in `0x3640C`'s comment and `diff_runner.c`'s comment, `0x2B573` is `xor
   ecx,ecx` and `mov eax,ecx` is at `0x2B575` (`0x2B59A`, `0x2B5F0` unchanged); fixed in Task 2 (m4)
-  and Task 4 (m6).
+  and Task 4 (m6). The final review found one more: `tools/diff_verify.py`'s `fighter_3640c` spec
+  comment (the "reload EAX at once" list) still cited `0x2B573`; fixed to `0x2B575` in the final
+  review commit.
 - Review minors folded in: m1 (`check_u6_3640c` neighbour checks `rec+0x53`/`+0x28`, Task 2); m5
   (`check_u6_23208` sentinels at slot `+0x55`/`+0x10`, Task 3); m6 (above) and m7 (the diff test
   renames, no assertion changed: `test_every_ported_function_agrees_with_the_original_on_every_block`,
