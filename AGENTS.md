@@ -47,6 +47,9 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   reliable fallback.
 - macOS host: no `timeout`; SDL audio cannot open here (`-66681`), so the
   windowed run is silent — use `make audio-render` to hear the FM path.
+- `make gp-capture` fails (`check=FAIL unscripted input`) on any key word or pad bit the harness did
+  not inject, so nobody may type into the DOSBox-X window while it runs; audit an existing capture
+  with `python3 tools/gp_capture.py check-input data/k11-captures/<scenario>`.
 
 ## Address model (get this wrong and everything downstream is wrong)
 
