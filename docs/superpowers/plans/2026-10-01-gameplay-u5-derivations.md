@@ -335,3 +335,59 @@ fn-miss PR_GP_DUMP distinct=7 dropped=0     (gp-idle-loss)
 ```
 
 The gate check: the 45 oracle lines equal `oracle-lines-base.txt` (`ORACLES-EQUAL`); `make audio-render` is byte-identical to `before-t2.wav` (`WAV-IDENTICAL`); `python3 tools/port_progress.py` prints `771 1203 64` and `731 731 100`. The 12 `k11_compare:` lines (walk 6, menuesc 6) are saved as the baseline (`$S/k11_base.txt`; the `K11-EQUAL` diff is trivially equal here): walk `0 unexplained in the window`, menuesc `0 unexplained in the window`, menuesc open end `END 388 must be >= 388: ok`. The base is the one the plan was measured on.
+
+## §C5.11 The gate
+
+Measured at `80db456` on the unmodified source (no source change committed). Scratch only: `$S/img.bin` (`build/diffrun --exe data/game/C/PRAGE.EXE --image-out`), `$S/orig_idle_tick.py`, `$S/instr_at.py`, `$S/at_summary.py`, `$S/t1/` (a throw-away clone, instrumented, never committed).
+
+### (i) The raw (the fixed-up image, capstone, `0x37A9B..0x37B24`)
+
+```
+037B03  8b534f           mov edx, dword ptr [ebx + 0x4f]
+037B06  31c0             xor eax, eax
+037B08  c1fa18           sar edx, 0x18
+037B0B  8a434d           mov al, byte ptr [ebx + 0x4d]
+037B0E  39c2             cmp edx, eax
+037B10  7c04             jl 0x37b16
+037B12  c6435200         mov byte ptr [ebx + 0x52], 0
+037B16  807b5200         cmp byte ptr [ebx + 0x52], 0
+```
+
+The dword at `rec+0x4F` shifted right arithmetically by 24 is the signed byte at `rec+0x52`. `port/src/game/actors.c:1387` reads `if ((s32)(s8)DSB(rec + 0x4fu) >= (s32)DSB(rec + 0x4du))`.
+
+### (ii) The original's bytes on the discriminating input (`python3 $S/orig_idle_tick.py . $S/img.bin`)
+
+```
+top 0x1D +1, 0x4F=0      outcome=ok rec+0x52 -> 0x00
+kids 3 +1, 0x4F=0x20     outcome=ok rec+0x52 -> 0x04
+mid 0x10 +1, 0x4F=0      outcome=ok rec+0x52 -> 0x11
+bottom 0 -1              outcome=ok rec+0x52 -> 0x1D
+```
+
+### (iii) The port's character-select fighter, current against fixed (scratch clone; `PR_AT=1`, `PR_GP_DUMP`, the 1120-frame script of `gp-idle-loss`; 462 `AT` lines each)
+
+```
+current: 462 frames, max v52 3B, first out of 0..1D 0x340 id AD78, flips [('0x33d', '01'), ('0x39a', 'FF'), ('0x454', '01')]
+fixed: 462 frames, max v52 1D, first out of 0..1D none, flips [('0x33d', '01'), ('0x39a', 'FF'), ('0x454', '01')]
+first difference: f=340 current v52=1E fixed v52=0
+```
+
+### The candidates (§C5.1) against this run
+
+| # | prediction | this run |
+|---|---|---|
+| C1 timer rate | same values shifted in time; no value outside the idle set | refuted: a value outside `0..0x1D` (`0x1E`, max `0x3B`) in the current build; the fixed build never leaves `0..0x1D` |
+| C2 other counter | drift growing with the tick offset | refuted: the direction flips (`rec+0x58`) are identical with and without the fix (`0x33D`, `0x39A`, `0x454`) |
+| C3 ordering | a one-frame offset | refuted: the first difference is a value (`0x1E` against `0`) at one frame, `f = 0x340` |
+| C4 initial state | different period or wrap from the first frame | refuted: the traces are equal from the first `AT` line to `0x33F` (the first difference is `f=340`) |
+| C5 wrong byte at `0x37B03` | out-of-range value at the first up-pass of `0x1D`; original wraps to 0 | confirmed by (i), (ii), (iii) |
+
+### The gate
+
+| evidence | required | observed |
+|---|---|---|
+| (i) raw | `0x37B03 mov edx,[ebx+0x4f]` + `0x37B08 sar edx,0x18` | both present, verbatim |
+| (ii) original's bytes | `top … -> 0x00`, `kids … -> 0x04` | `0x00` and `0x04` (all four lines verbatim) |
+| (iii) port frame | `first difference: f=340 current v52=1E fixed v52=0` | verbatim (all three lines verbatim) |
+
+**Decision: PASS. All three as expected, go to Task 2 (Task 3 adds the capture-level evidence).**
