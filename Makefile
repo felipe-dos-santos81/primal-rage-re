@@ -415,12 +415,21 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # so PR_ORACLE_REQUIRED does not fail it either, record §H.2 item 3) and fails
 # on a broken claim or an unpinned N once the capture exists. Both claims are
 # narrow (record §G.16): neither says the frames or state after the first
-# unexplained/differing one are right. U4 Task 5 pins both values from the
+# unexplained/differing one are right. U4 pinned the values below from the
 # measured first unexplained capture frame / first differing f / window start
 # (MAX_START: the capture frame where the window begins; a later start fails, so a
 # port regression cannot slide the window past the frame that set MIN_FIRST).
-GP_IDLE_LOSS_MIN_FIRST =
-GP_IDLE_LOSS_TRACE_MIN_FIRST =
+# Measured at 123d3b6 (record §G.20-§G.21): first unexplained capture frame 203 (raw 2359),
+# the character select's pick countdown: the capture shows 12 and the scene running
+# backwards (Sauron's idle animation turns around at f=0x340), the port turns it around at
+# f=0x3A0; raise it when the frame claim improves (gp_compare prints "improved: raise N").
+GP_IDLE_LOSS_MIN_FIRST = 203
+# Measured at 123d3b6 (record §G.20-§G.21): first differing f=0x828 (decimal 2088) in rng, port
+# against the capture (capture 73A05D37, port CE92DD04): the type-0 fight-effect entry's walk
+# (fight_4b144) draws 5 frames earlier in the port than in the original; run-to-run: none
+# (record §G.19, the two captures agree at every f from 0x625); raise it when the trace
+# claim improves.
+GP_IDLE_LOSS_TRACE_MIN_FIRST = 2088
 GP_IDLE_LOSS_MAX_START =
 gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skips without data/k11-captures/gp-idle-loss)
 	@echo "== gameplay oracle: gp-idle-loss (frame and trace ratchets) =="

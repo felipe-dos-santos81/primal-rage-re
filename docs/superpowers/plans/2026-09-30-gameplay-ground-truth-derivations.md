@@ -1697,3 +1697,52 @@ its round 2 starts at `0x16B7` and is in mode 6 at the script's end `0x207F`
 (`+0x5A = 7`). **Nothing past round 1 is compared with the original's
 `0x1B4B`..`0x207A`**: the port never reaches match end, mode 9, the countdown,
 the challenge, game over or the return to mode 3 before its script ends.
+
+## §G.21 The pinned ratchets and the proof that each fails (U4 Task 5)
+
+**The values** (Makefile, with provenance comments, measured at `123d3b6`):
+
+- `GP_IDLE_LOSS_MIN_FIRST = 203`: the first unexplained capture frame `j` of §G.20
+  (raw 2359), the character select's pick countdown at `f = 0x340` (capture shows 12,
+  and Sauron's idle animation running backwards; the port reverses it at `f = 0x3A0`).
+  Not the exact-pin case (an unexplained frame exists).
+- `GP_IDLE_LOSS_TRACE_MIN_FIRST = 2088`: the first differing `f` of §G.20 (`0x828`,
+  decimal), field `rng`, **not lowered by a run-to-run difference**: the plan's `F =
+  min(port, run-to-run)` has no run-to-run term (§G.19: every difference between the
+  two captures before `0x625` is the input-timing shift, and none after).
+  Both are `ratchet N … ok` below.
+
+**Green.** `make gp-oracle GP_DUMP=/tmp/pr_u4_gp TITLE_PIN_DIR=/tmp/pr_u4_pin` (`/tmp/gameplay-u4/o.txt`),
+`exit=0`: `frames: first unexplained 203, ratchet N 203 ok` (`108 classified: 87 clean,
+20 splice, 0 transition, 1 unexplained, 6 all-black`; the enforced run stops at the
+first), `trace: first differing 2088, ratchet N 2088 ok`.
+
+**Each can fail** (outputs verbatim):
+
+```
+make gp-oracle … GP_IDLE_LOSS_MIN_FIRST=204   → exit=2
+gp_compare: gp-idle-loss: frames: FAIL: first unexplained 203 < ratchet N 204
+make gp-oracle … GP_IDLE_LOSS_TRACE_MIN_FIRST=2089   → exit=2
+gp_compare: gp-idle-loss: trace: FAIL: first differing 2088 < ratchet N 2089
+```
+A damaged port frame below N (the plan's `k = len(lines) // 4` = 1 624 lies past the
+explained region, in a stretch the capture frames below 203 do not exhibit, so —
+as the plan's own fallback says — `k` is taken from the `nearest port` of a clean
+capture frame: capture 198 is clean against port frame 106 only, the digit region
+included): port frame 106 with `byte 32000` XOR `0xFF` (copy of the dump,
+`/tmp/gameplay-u4/dmg`) → `FIRST UNEXPLAINED capture 198 (raw 2345): nearest port 106,
+rows 100..100, x 0..0 (1 px)`, `FAIL: first unexplained 198 < ratchet N 203`, `rc=1`.
+Control: the same damage on port frame 1 624 (past the compared region) leaves both
+ratchets `ok`, `rc=0`. The trace: the port `T f=0400` line's `cred` edited
+`00000004 → 00000009` (`/tmp/gameplay-u4/dmg3`) → `first difference f=400 (1024) in cred:
+capture 4, port 9`, `FAIL: first differing 1024 < ratchet N 2088`, `rc=1`.
+
+**The full gate** (`make verify` with the §G.17 overrides, `/tmp/gameplay-u4/t5_verify.txt`):
+`verify-exit=0`, last line `all checks passed`. The 45 oracle lines (the §G.0
+pattern) `diff` against `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`
+→ no output (`ORACLES-EQUAL`, 45 lines); the `k11_compare:` lines equal
+`/tmp/gameplay-u1/k11_base.txt` (`K11-EQUAL`); the K11 walk and menuesc dumps' content hashes
+(sha256 of the sorted frame sha256s) equal U3's gate dumps' (`190cd592…`, `1cf5140c…`);
+the gameplay section prints the two ratchet lines above; tool tests `Ran 94` (92 + the
+two `TestIdleLoss` tests); `git diff --stat 934992a -- port/src` → empty;
+`port_progress.py` `771 1203 64` / `731 731 100` (unchanged: U4 ports no function).
