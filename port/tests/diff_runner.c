@@ -32,7 +32,7 @@ static void b_credit_spend(const u32 *r, u32 *eax)     { *eax = config_credit_sp
 static void b_codeword_len(const u32 *r, u32 *eax)     { *eax = config_codeword_len(r[R_EAX]); }
 /* 0x3640C and 0x37DCC (record gameplay-u6 §U6.4/§U6.5): animation-opcode targets with no C return
  * value. Their callers, the three `call [0x105BD4]` sites of 0x2B2A0 (0x2B56D, 0x2B594, 0x2B5EA),
- * each overwrite EAX at once (`mov eax,ecx` at 0x2B573, 0x2B59A, 0x2B5F0), so no caller reads it:
+ * each overwrite EAX at once (`mov eax,ecx` at 0x2B575, 0x2B59A, 0x2B5F0), so no caller reads it:
  * the binding mask is 0 and the comparison is the changed bytes. */
 static void b_3640c(const u32 *r, u32 *eax)            { fighter_3640c(r[R_EAX]); *eax = 0u; }
 static void b_37dcc(const u32 *r, u32 *eax)            { (void)r; fighter_37dcc(); *eax = 0u; }

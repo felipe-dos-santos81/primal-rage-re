@@ -310,7 +310,7 @@ class RealFunctionTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def test_the_four_ported_functions_agree_with_the_original_on_every_block(self):
+    def test_every_ported_function_agrees_with_the_original_on_every_block(self):
         self.assertEqual(sorted(self.real), ["config_codeword_len", "config_credit_spend",
                                              "fighter_3640c", "fighter_37dcc", "fighter_slot_flag", "rng_next"])
         for name, r in self.real.items():
@@ -378,7 +378,7 @@ class RealFunctionTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("1/1 functions VERIFIED; 1/1 mutants detected", out.getvalue())
 
-    def test_the_eax_mask_is_stated_by_the_spec_and_only_slot_flag_narrows_it(self):
+    def test_the_eax_mask_is_stated_by_the_spec_per_function(self):
         self.assertEqual({s.name: s.eax_mask for s in V.SPECS}, {
             "rng_next": 0xFFFFFFFF, "fighter_slot_flag": 0xFF,
             "config_credit_spend": 0xFFFFFFFF, "config_codeword_len": 0xFFFFFFFF,

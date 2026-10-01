@@ -43973,11 +43973,213 @@ static void check_u6_37dcc(void)
     DSB(DS_001078FC) = sv;
 }
 
+/* §U6.3: the 0x3A650 family's handler 0x3A588. pose_handler_seed with
+ * character 3 (0xC9030[3] = 0xD26C8, first word the sprite 0x17DB), the
+ * 0x3A650 setter's B/A words (B = 0x107D00 + side*2, A = 0x107D0C + side*2)
+ * zeroed, and the sibling families' pairs armed as traps (0x3A6D4's
+ * 0x107D04/0x107D08 and 0x3A43C's 0x107D10/0x107D14: B = 3, A = 0x4321 would
+ * snap if read). hit_anchor_x is made inert as in check_pose_handler_3a6d4. */
+static void pose_3a588_seed(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    pose_handler_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x7Au) = 3;
+    DSB(s1 + 0x7Au) = 3;
+    DSB(s1 + 0x58u) = 1;
+    DSD(r1 + 8u) = 0xDEADBEEFu;
+    DSD(r1 + 0x24u) = 0xDEADBEEFu;
+    DSD(r1 + 0x18u) = 0x5678;
+    DSW(r1 + 0x56u) = 1;
+    DSD(s0 + 0x2Cu) = 0x1234;
+    DSD(s1 + 0x2Cu) = 0x1234;
+    DSW(0x00107D00u) = 0;                    /* B[0] = 0: the gate closed */
+    DSW(0x00107D02u) = 0;                    /* B[1] */
+    DSW(0x00107D0Cu) = 0;                    /* A[0] */
+    DSW(0x00107D0Eu) = 0;                    /* A[1] */
+    DSW(0x00107D04u) = 3;                    /* 0x3A6D4's B[0]: a trap */
+    DSW(0x00107D08u) = 0x4321;
+    DSW(0x00107D10u) = 3;                    /* 0x3A43C's B[0]: a trap */
+    DSW(0x00107D14u) = 0x4321;
+    DSD(DS_001077A8) = 0;
+    DSD(DS_001077A8 + 4u) = 0;
+    DSD(DS_00100AF0) = DSD(s0 + 0x20u);
+    DSD(DS_00100AF0 + 4u) = DSD(s1 + 0x20u);
+    DSD(DS_00100AB0) = 0x1000;
+    DSD(DS_00100AB0 + 8u) = 0x2000;
+}
+
+static void check_u6_3a588(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u8 sv_slots[0x160];
+    u8 sv_d00[0x30];
+    u8 sv_ab0[0x50];
+    u16 sv_78f6 = DSW(DS_001078F6);
+    u32 sv_4ec = DSD(DS_001014EC);
+    u16 sv_4b00 = DSW(DS_00104B00);
+    u8 sv_4b1d = DSB(DS_00104B1D);
+    u8 sv_5b38 = DSB(DS_00105B38);
+    u8 sv_5b36 = DSB(DS_00105B36);
+    u8 sv_5b3a = DSB(DS_00105B3A);
+    u32 sv_4abc = DSD(DS_00104ABC);
+    u16 sv_w0 = DSW(0x000A6728u);
+    u32 sv_d8 = DSD(0x000A3528u + 8u);
+    u8 sv_e11a = DSB(0x000DE11Au);
+    tf_snap(sv_slots, 0x001077A0u, 0x160u);
+    tf_snap(sv_d00, 0x00107D00u, 0x30u);
+    tf_snap(sv_ab0, 0x00100AB0u, 0x50u);
+
+    /* The raw's references: 0x3A650 stores 0x3A588 (the dword at 0x3A689). */
+    CHECK_EQ_INT((int)DSD(0x0003A689u), 0x0003A588);
+
+    /* 0x3A5A5/0x3A5B1: phase 0 arms +0x58 and touches nothing else. */
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x58u) = 0;
+    DSB(s0 + 0x90u) = 0x55;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 1);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 0x55);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)0xDEADBEEFu);
+
+    /* 0x3A59F/0x3A5A1: +0x58 above 1 returns before anything. */
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x58u) = 2;
+    DSB(s0 + 0x90u) = 0x55;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 2);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 0x55);
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), (int)0xDEADBEEFu);
+
+    /* Phase 1 with B[0] = 0: the 0xC9030[3] stream at 3.0, the re-anchor
+     * (x kept, y = 0), +0x58 = 2, +0x90 = 2 and no snap. */
+    pose_3a588_seed(s0, s1, r0, r1);
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000D26C8);    /* 0xC9030[3] */
+    CHECK_EQ_INT((int)DSD(r0 + 0x20u), 0x40400000);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSB(r0 + 0x52u), 0);
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS), 0x17DB);   /* the stream's first id */
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 2);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 2);          /* 0x3A642, not 1 or 3 */
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);     /* B[0] = 0: no snap */
+    CHECK_EQ_INT((int)DSD(r1 + 8u), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), (int)0xDEADBEEFu);
+
+    /* Character 0 reads 0xC9030[0] = 0xE7372 (first word 0x1083). */
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x7Au) = 0;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000E7372);
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS), 0x1083);
+
+    /* B[0] = 3, A[0] = 0x4321, +0x90 = 0: the snap (0x3A634/0x3A639). */
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSW(0x00107D00u) = 3;
+    DSW(0x00107D0Cu) = 0x4321;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x4321);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x4321 - 0x1000);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 2);
+
+    /* A negative A word is sign-extended (0x3A60B `sar ebx,0x10`). */
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSW(0x00107D00u) = 3;
+    DSW(0x00107D0Cu) = 0x8001;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), (int)0xFFFF8001u);
+
+    /* The 0x3A578 table: +0x90 = 1 and 4 skip the snap; 5 is past it. */
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x90u) = 1;
+    DSW(0x00107D00u) = 3;
+    DSW(0x00107D0Cu) = 0x4321;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 2);
+
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x90u) = 4;
+    DSW(0x00107D00u) = 3;
+    DSW(0x00107D0Cu) = 0x4321;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x90u) = 5;
+    DSW(0x00107D00u) = 3;
+    DSW(0x00107D0Cu) = 0x4321;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x4321 - 0x1000);
+
+    /* B[0] = 5 closes the snap (0x3A612 `cmp edx,5; je`). */
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSW(0x00107D00u) = 5;
+    DSW(0x00107D0Cu) = 0x4321;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+
+    /* The B/A words are the self side's: B[1] = 3, A[1] = 0x4321 leave side 0's
+     * gate closed (and the seed's traps stay unread). */
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSW(0x00107D02u) = 3;
+    DSW(0x00107D0Eu) = 0x4321;
+    fighter_pose_3a588(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+
+    /* The side-1 mirror: EBX = 1 drives slot 1 and record 1 from B[1]/A[1]. */
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSW(0x00107D02u) = 3;
+    DSW(0x00107D0Eu) = 0x6543;
+    fighter_pose_3a588(s1, 1u);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x000D26C8);
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x20u), 0x17DB);
+    CHECK_EQ_INT((int)DSB(s1 + 0x58u), 2);
+    CHECK_EQ_INT((int)DSB(s1 + 0x90u), 2);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0x6543);
+    CHECK_EQ_INT((int)DSD(r1 + 0x18u), 0x6543 - 0x2000);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 1);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)0xDEADBEEFu);
+
+    /* The wiring: actors_init registered 0x3A588, and 0x3531C case 10 resolves
+     * slot+0x10 and calls it with (EAX = slot, EBX = side). */
+    CHECK(fn_resolve(0x3A588u) == (void (*)(void))fighter_pose_3a588,
+          "actors_init registered 0x3A588 as fighter_pose_3a588");
+    pose_3a588_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x53u) = 0x0A;
+    DSD(s0 + 0x10u) = 0x0003A588u;
+    DSW(DS_001078F6) = 0;
+    DSD(DS_001077A8) = s0;
+    fighter_state_3531c(0u);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000D26C8);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 2);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 2);
+
+    tf_put(sv_slots, 0x001077A0u, 0x160u);
+    tf_put(sv_d00, 0x00107D00u, 0x30u);
+    tf_put(sv_ab0, 0x00100AB0u, 0x50u);
+    DSW(DS_001078F6) = sv_78f6;
+    DSD(DS_001014EC) = sv_4ec;
+    DSW(DS_00104B00) = sv_4b00;
+    DSB(DS_00104B1D) = sv_4b1d;
+    DSB(DS_00105B38) = sv_5b38;
+    DSB(DS_00105B36) = sv_5b36;
+    DSB(DS_00105B3A) = sv_5b3a;
+    DSD(DS_00104ABC) = sv_4abc;
+    DSW(0x000A6728u) = sv_w0;
+    DSD(0x000A3528u + 8u) = sv_d8;
+    DSB(0x000DE11Au) = sv_e11a;
+}
+
 int test_u6_idle_loss_callbacks(void)
 {
     int before = g_failures;
     check_u6_3640c();
     check_u6_23208();
     check_u6_37dcc();
+    check_u6_3a588();
     return g_failures - before;
 }
