@@ -40,12 +40,12 @@ class Dirs(unittest.TestCase):
         with open(os.path.join(self.cap, 'window.txt'), 'w') as f:
             f.write(''.join('%05d %d\n' % (j, 100 + j) for j in range(len(cap_frames))))
 
-    def run_claim(self, n, report=False):
+    def run_claim(self, n, report=False, max_start=100):
         cap = gc.Lazy(gc._paths(self.cap, 'frame_%05d.raw.gz'), gc.load_capture_frame)
         port = gc.Lazy(gc._paths(self.port, 'frame_%05d.ipx'), gc.load_port_frame)
         rows = [tc.row_hashes(port[m]) for m in range(len(port))]
         out = []
-        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n, report, out.append)
+        rc, first, _ = gc.frame_claim('t', cap, tc.raw_map(self.cap), port, rows, n, report, out.append, max_start)
         return rc, first, out
 
 
@@ -123,6 +123,65 @@ class TestFrames(Dirs):
         rc, first, out = self.run_claim(0, report=False)
         self.assertEqual(sum('UNEXPLAINED capture' in l for l in out), 1, out)   # enforced: stops at the first
 
+    def test_the_window_start_cannot_slide_forward(self):
+        # review 1, Important 1: a port that regressed to a screen recurring later in the
+        # capture moved the window start past the frame that set N, and went green
+        cap = [rgb(9), rgb(2), rgb(3), rgb(7), rgb(1), rgb(2)]
+        self.write([9, 2, 3], cap)
+        rc, first, out = self.run_claim(3, max_start=0)
+        self.assertEqual((rc, first), (0, 3), out)
+        self.write([1, 2, 3], cap)                       # regressed port: starts at capture 4
+        rc, first, out = self.run_claim(3, max_start=0)
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(any('window starts at capture 4 (raw 104) > pinned start 0' in l for l in out), out)
+        rc, first, out = self.run_claim(3, max_start=10)  # a loose pin: start >= N still fails
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(any('window start 4 >= ratchet N 3' in l for l in out), out)
+
+    def test_an_earlier_window_start_is_said(self):
+        self.write([1, 2], [rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(2, max_start=1)
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(any('window start 0 < pinned start 1 (improved: lower the pin)' in l for l in out), out)
+
+    def test_an_unset_start_pin_fails(self):
+        self.write([1, 2], [rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(2, max_start=None)
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(any('window-start pin is not set' in l for l in out), out)
+
+    def test_report_mode_prints_no_verdict_and_checks_no_pin(self):
+        bad = bytes([9]) * tc.FRAME_BYTES
+        self.write([1, 2], [rgb(1), bad])
+        rc, first, out = self.run_claim(None, report=True, max_start=None)
+        self.assertEqual(first, 1, out)
+        self.assertFalse(any('ratchet N' in l or 'FAIL' in l or 'pinned' in l or 'pin is' in l for l in out), out)
+
+    def test_a_fully_explained_run_names_the_exact_pin(self):
+        self.write([1, 2], [rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(1)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('every item is explained: N = 2 is the exact pin' in l for l in out), out)
+        out2 = self.run_claim(2)[2]
+        self.assertFalse(any('exact pin' in l for l in out2), out2)
+
+    def test_coverage_is_reported_for_a_port_frame_the_capture_never_shows(self):
+        # review 1, Important 3: a garbage port frame between two good ones explains nothing,
+        # and the full-dump search never looks at it; it is reported, not ratcheted
+        self.write([1, 99, 2], [rgb(1), rgb(2)])
+        rc, first, out = self.run_claim(2)
+        self.assertEqual((rc, first), (0, None), out)
+        self.assertTrue(any('1 non-black port frame(s) up to port 2 not exhibited' in l and '[1]' in l
+                            for l in out), out)
+
+    def test_named_gap_order_is_not_claimed(self):
+        # review 1, Important 3: the claim is order-free (record §I item 9). These pass on
+        # purpose; if an order check is ever added, this test must change with the record.
+        self.write([1, 99, 2], [rgb(1), rgb(2)])
+        self.assertEqual(self.run_claim(2)[:2], (0, None))        # an inserted, wrong port frame
+        self.write([1, 2, 3], [rgb(1), rgb(3), rgb(2), rgb(1)])
+        self.assertEqual(self.run_claim(4)[:2], (0, None))        # a capture that goes back in time
+
 
 def _t(f, **kw):
     vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
@@ -176,6 +235,15 @@ class TestTrace(unittest.TestCase):
         self.assertTrue(any('ent 1 of 3 differ (first f=2)' in l and 't508 1 of 3 differ (first f=1)' in l
                             for l in out), out)
 
+    def test_report_mode_prints_no_ratchet_verdict(self):
+        port = [_t(f, rng=f) for f in range(3)]
+        cap = [_S(f, rng=f if f != 2 else 7) for f in range(3)]
+        out = []
+        rc, first = gc.trace_claim('t', cap, port, None, out.append, True)
+        self.assertEqual((rc, first), (0, 2), out)
+        self.assertFalse(any('ratchet N' in l or 'FAIL' in l for l in out), out)
+        self.assertTrue(any('first difference f=2' in l for l in out), out)
+
     def test_nothing_compared_fails(self):
         out = []
         rc, first = gc.trace_claim('t', [_S(f) for f in range(3)], [_t(f) for f in range(10, 13)], 0, out.append)
@@ -214,15 +282,19 @@ class TestCli(Dirs):
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port)
         self.assertEqual(rc, 1, out)
         self.assertEqual(out.count('FAIL: the ratchet N is not pinned'), 2, out)
+        self.assertIn('FAIL: the window-start pin is not set', out)
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
                            '--min-first', '2', '--trace-min-first', '13')
+        self.assertEqual(rc, 1, out)                     # the start pin alone is still unset
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
+                           '--min-first', '2', '--trace-min-first', '13', '--max-start', '0')
         self.assertEqual(rc, 0, out)
         self.assertIn('0 differing through 12; ratchet N 13 ok', out)
 
     def test_a_capture_without_a_poll_log_fails(self):
         self.dump(with_log=False)
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
-                           '--min-first', '2', '--trace-min-first', '13')
+                           '--min-first', '2', '--trace-min-first', '13', '--max-start', '0')
         self.assertEqual(rc, 1, out)
         self.assertIn('has no poll.log', out)
 
@@ -232,11 +304,28 @@ class TestCli(Dirs):
         with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
             f.write(bytes([9]) * tc.FRAME_BYTES)
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
-                           '--min-first', '2', '--trace-min-first', '13')
+                           '--min-first', '2', '--trace-min-first', '13', '--max-start', '0')
         self.assertEqual(rc, 1, out)
         rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port, '--report')
         self.assertEqual(rc, 0, out)
         self.assertIn('FIRST UNEXPLAINED capture 1', out)
+        self.assertNotIn('ratchet N', out)
+
+    def test_report_mode_exits_zero_when_the_claims_cannot_run(self):
+        # review 1, Important 2: "window empty" and "nothing compared" return 1 from the
+        # claims; make gp-report must still exit 0 (main's report guard is load-bearing)
+        self.write([1, 2], [rgb(5), rgb(6)])                     # no capture frame shows port 0
+        with open(os.path.join(self.port, 'trace.txt'), 'w') as f:
+            f.write(''.join(_t(k) + '\n' for k in range(10, 13)))
+        with open(os.path.join(self.cap, 'poll.log'), 'w') as f:
+            f.write(''.join(_S(k) + '\n' for k in range(50, 53)))   # no f in common: nothing compared
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port, '--report')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('window empty', out)
+        self.assertIn('nothing compared', out)
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
+                           '--min-first', '1', '--trace-min-first', '1', '--max-start', '0')
+        self.assertEqual(rc, 1, out)
 
 
 if __name__ == '__main__':

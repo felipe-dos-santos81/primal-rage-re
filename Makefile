@@ -415,15 +415,18 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # on a broken claim or an unpinned N once the capture exists. Both claims are
 # narrow (record §G.16): neither says the frames or state after the first
 # unexplained/differing one are right. U4 Task 5 pins both values from the
-# measured first unexplained capture frame / first differing f.
+# measured first unexplained capture frame / first differing f / window start
+# (MAX_START: the capture frame where the window begins; a later start fails, so a
+# port regression cannot slide the window past the frame that set MIN_FIRST).
 GP_IDLE_LOSS_MIN_FIRST =
 GP_IDLE_LOSS_TRACE_MIN_FIRST =
+GP_IDLE_LOSS_MAX_START =
 gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skips without data/k11-captures/gp-idle-loss)
 	@echo "== gameplay oracle: gp-idle-loss (frame and trace ratchets) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-idle-loss GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --scenario gp-idle-loss --capture $(K11_CAPTURES)/gp-idle-loss \
 		--port $(GP_DUMP)/gp-idle-loss --min-first "$(GP_IDLE_LOSS_MIN_FIRST)" \
-		--trace-min-first "$(GP_IDLE_LOSS_TRACE_MIN_FIRST)"
+		--trace-min-first "$(GP_IDLE_LOSS_TRACE_MIN_FIRST)" --max-start "$(GP_IDLE_LOSS_MAX_START)"
 
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1

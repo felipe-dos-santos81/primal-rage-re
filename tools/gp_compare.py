@@ -8,7 +8,11 @@ record §G.13..). Two claims, each a ratchet on its first unexplained item:
           model: clean, a byte splice of adjacent port frames (the 70.09 Hz
           capture against the 60.05 Hz game), or one transition row. All-black
           capture frames are the documented capture artefact and are skipped.
-          The first unexplained capture frame must be >= --min-first N.
+          The first unexplained capture frame must be >= --min-first N, and the
+          window start (the first capture frame that shows the port's first frame)
+          must be <= --max-start and < N, so a regressed port cannot slide the window
+          forward past the frame that set N. Not claimed: the order of the port's
+          frames, and that every port frame appears (a coverage count is reported).
   trace   the capture's S records (poll.log) against the port's T records
           (trace.txt) by the frame counter f, over gp_session.TRACE_FIELDS;
           the first differing f must be >= --trace-min-first F. tick is
@@ -19,11 +23,12 @@ AHEAD) around the last explained index p first, then the whole dump, so the
 result is the unwindowed classification (the window is a search order, a
 harness value). Enforced runs stop at the first unexplained frame; --report
 goes on (up to REPORT_MAX) and always exits 0. An absent capture skips (exit
-0); a present capture with an unpinned N fails. Stdlib only; title_compare and
+0); a present capture with an unpinned N or start fails. Stdlib only; title_compare and
 gp_session are read-only here."""
 import argparse
 import collections
 import gzip
+import hashlib
 import os
 import sys
 
@@ -141,8 +146,37 @@ def classify(c, port, rows, p):
     return tc.explain(c, ch, port, rows, n)
 
 
-def frame_claim(name, cap, raws, port, rows, min_first, report, out=print):
-    """Returns (rc, first_unexplained or None, next_after_last_classified)."""
+BLACK_ROW = hashlib.md5(bytes(tc.ROW)).digest()
+
+
+def start_check(name, start, raws, max_start, min_first, out=print):
+    """The window START is ratcheted too (record §I item 8): the start is where the
+    capture first shows the port's first frame, so a port that regressed to an earlier
+    screen that recurs later in the capture would slide it forward, past the frame that
+    set N, and go green. It must not be later than the pinned start, and it must lie
+    below N (a window at or beyond N claims nothing)."""
+    rc = 0
+    if max_start is None:
+        out('gp_compare: %s: frames: FAIL: the window-start pin is not set (GP_IDLE_LOSS_MAX_START)' % name)
+        rc = 1
+    elif start > max_start:
+        out('gp_compare: %s: frames: FAIL: window starts at capture %d (raw %d) > pinned start %d'
+            % (name, start, raws[start], max_start))
+        rc = 1
+    elif start < max_start:
+        out('gp_compare: %s: frames: window start %d < pinned start %d (improved: lower the pin)'
+            % (name, start, max_start))
+    if min_first is not None and start >= min_first:
+        out('gp_compare: %s: frames: FAIL: window start %d >= ratchet N %d: the window claims nothing below N'
+            % (name, start, min_first))
+        rc = 1
+    return rc
+
+
+def frame_claim(name, cap, raws, port, rows, min_first, report, out=print, max_start=None):
+    """Returns (rc, first_unexplained or None, next_after_last_classified). In report
+    mode no ratchet verdict is printed and no pin is checked (rc stays 1 only for
+    "window empty"; main() turns every report-mode rc into 0)."""
     start = None
     head = min(2, len(port))
     for j in range(len(cap)):
@@ -156,7 +190,7 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print):
     if start is None:
         out("gp_compare: %s: frames: window empty: no capture frame exhibits the port's first frame" % name)
         return 1, None, 0
-    p, counts, black, unexpl = 0, collections.Counter(), 0, []
+    p, counts, black, unexpl, seen = 0, collections.Counter(), 0, [], set()
     j = start
     while j < len(cap):
         c = cap[j]
@@ -172,6 +206,7 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print):
                 break
         else:
             ex = exhibited(kind, data)
+            seen |= ex
             if ex:
                 p = max(p, max(ex))              # the port only moves forward in time
         j += 1
@@ -186,7 +221,19 @@ def frame_claim(name, cap, raws, port, rows, min_first, report, out=print):
         out('gp_compare: %s: frames: %s capture %d (raw %d): nearest port %d, rows %d..%d, x %d..%d (%d px)'
             % ((name, 'FIRST UNEXPLAINED' if k == 0 else 'UNEXPLAINED', u, raws[u], m) + box))
     first = unexpl[0] if unexpl else None
-    return ratchet(name, 'frames', first, len(cap), min_first, out), first, j
+    # Coverage, reported and NOT ratcheted (record §I item 9, a named gap): the port's
+    # non-black frames up to the last one the capture exhibits that no classified capture
+    # frame exhibits. Order is not claimed either.
+    missing = [m for m in range(min(p + 1, len(rows))) if m not in seen and any(h != BLACK_ROW for h in rows[m])]
+    out('gp_compare: %s: frames: coverage (reported, not ratcheted): %d non-black port frame(s) up to port %d '
+        'not exhibited by any classified capture frame%s'
+        % (name, len(missing), p, '' if not missing else ': %s%s' % (missing[:20], ' ...' if len(missing) > 20 else '')))
+    if report:
+        if first is None:
+            out('gp_compare: %s: frames: 0 unexplained through %d' % (name, len(cap) - 1))
+        return 0, first, j
+    rc = max(ratchet(name, 'frames', first, len(cap), min_first, out), start_check(name, start, raws, max_start, min_first, out))
+    return rc, first, j
 
 
 def nearest(c, rows):
@@ -217,7 +264,8 @@ def ratchet(name, what, first, end, n, out=print, noun='unexplained'):
         if n > end:
             out('gp_compare: %s: %s: FAIL: N %d > end %d: N is unreachable' % (name, what, n, end))
             return 1
-        out('gp_compare: %s: %s: 0 %s through %d; ratchet N %d ok' % (name, what, noun, end - 1, n))
+        out('gp_compare: %s: %s: 0 %s through %d; ratchet N %d ok%s'
+            % (name, what, noun, end - 1, n, '' if n == end else ' (every item is explained: N = %d is the exact pin)' % end))
         return 0
     if first < n:
         out('gp_compare: %s: %s: FAIL: first %s %d < ratchet N %d' % (name, what, noun, first, n))
@@ -253,7 +301,7 @@ def normalised(cap, port, fs, base):
     return {n: tuple(v) for n, v in out.items()}
 
 
-def trace_claim(name, cap_lines, port_lines, min_first, out=print):
+def trace_claim(name, cap_lines, port_lines, min_first, out=print, report=False):
     cap = gs.snapshots(cap_lines)
     port = {}
     for l in port_lines:
@@ -278,7 +326,7 @@ def trace_claim(name, cap_lines, port_lines, min_first, out=print):
             break
     out('gp_compare: %s: trace: %d frames compared%s (f %s..), %d without a capture snapshot; first tick '
         'difference %s (reported, not ratcheted)'
-        % (name, compared, '' if first is None else ' up to the first difference', fs and '%X' % fs[0], skipped,
+        % (name, compared, '' if first is None else ' up to the first difference', ('%X' % fs[0]) if fs else '-', skipped,
            'none' if tick_first is None else 'f=%X' % tick_first))
     if first is not None:
         out('gp_compare: %s: trace: first difference f=%X (%d) in %s: capture %X, port %X'
@@ -298,6 +346,10 @@ def trace_claim(name, cap_lines, port_lines, min_first, out=print):
         out('gp_compare: %s: trace: FAIL: no port T record has a capture snapshot (nothing compared)' % name)
         return 1, None
     end = (fs[-1] + 1) if fs else 0
+    if report:
+        if first is None:
+            out('gp_compare: %s: trace: 0 differing through %d' % (name, end - 1))
+        return 0, first
     return ratchet(name, 'trace', first, end, min_first, out, 'differing'), first
 
 
@@ -312,6 +364,7 @@ def main():
     ap.add_argument('--port', required=True)
     ap.add_argument('--min-first', default=None)
     ap.add_argument('--trace-min-first', default=None)
+    ap.add_argument('--max-start', default=None)
     ap.add_argument('--report', action='store_true')
     a = ap.parse_args()
     name = a.scenario
@@ -337,12 +390,13 @@ def main():
     raws = tc.raw_map(a.capture) or list(range(len(cap)))
     n_frames = None if a.report else _int_or_none(a.min_first)
     n_trace = None if a.report else _int_or_none(a.trace_min_first)
-    rc1, _, _ = frame_claim(name, cap, raws, port, rows, n_frames if not a.report else 0, a.report)
+    rc1, _, _ = frame_claim(name, cap, raws, port, rows, n_frames, a.report, print,
+                            None if a.report else _int_or_none(a.max_start))
     with open(os.path.join(a.capture, 'poll.log')) as f:
         cl = f.read().splitlines()
     with open(os.path.join(a.port, 'trace.txt')) as f:
         pl = f.read().splitlines()
-    rc2, _ = trace_claim(name, cl, pl, n_trace if not a.report else 0)
+    rc2, _ = trace_claim(name, cl, pl, n_trace, print, a.report)
     return 0 if a.report else (1 if rc1 or rc2 else 0)
 
 
