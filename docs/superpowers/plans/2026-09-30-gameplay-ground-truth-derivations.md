@@ -1113,3 +1113,105 @@ Mutations (each restored → `Ran 15 … OK`):
 - an unsnapshotted `f` compared anyway (the skip removed) → `ERROR:
   test_first_difference_skips_unsnapshotted_frames` (a `KeyError`, where the plan
   would have to default the missing record) and `test_nothing_compared_fails`.
+
+## §G.16 The CLI, `make gp-oracle` / `gp-report`, `make verify` (U3 Task 4)
+
+`gp_compare.py --scenario N --capture DIR --port DIR [--min-first N]
+[--trace-min-first F] [--report]`. Beyond the plan: a capture directory without
+a `poll.log` fails (report mode: exit 0 and says so); report mode prints
+`report only: no ratchet applied, exit 0`; the ratchet's wording is per claim
+(`first unexplained` for frames, `first differing` for the trace). Tests (the
+CLI class, 4): an absent capture skips (exit 0, `(skipped)`), a present capture
+with unpinned values fails (twice) and passes once pinned, a capture without
+`poll.log` fails, `--report` exits 0 where the enforced run exits 1. Mutations
+(each restored → `OK`): unpinned N treated as 0 → `FAIL:
+test_a_present_capture_needs_pinned_values` and `test_unpinned_n_fails`; the
+absent-capture skip returning 1 → `FAIL: test_an_absent_capture_skips`; the trace
+N ignored (`n_trace = 0`) → `FAIL: test_a_present_capture_needs_pinned_values`.
+(Two further mutations of `main`'s final `return 0 if a.report else …` survive:
+in report mode both ratchets run with N = 0, which no `first` can be below, so
+the explicit `0 if a.report` is a redundant guard, not an untested branch.)
+Suite: `Ran 19 tests` in `test_gp_compare`.
+
+**Self-comparison through the CLI** (scratch, not committed: U2's smoke dump
+`/tmp/gameplay-u2/smoke`, 145 `.ipx`, expanded into a fake capture
+`/tmp/gameplay-u3/gp-fake`, its `trace.txt` rewritten as `S` records), verbatim:
+
+```
+gp_compare: gp-fake: frames: window from capture 0 (raw 0); 138 classified: 138 clean, 0 splice, 0 transition, 0 unexplained, 7 all-black
+gp_compare: gp-fake: frames: 0 unexplained through 144; ratchet N 145 ok
+gp_compare: gp-fake: trace: 601 frames compared (f 12C..), 0 without a capture snapshot; first tick difference none (reported, not ratcheted)
+gp_compare: gp-fake: trace: normalised (reported, not ratcheted): t508 601 of 601 differ (first f=12C); ent not compared (the capture has no B record)
+gp_compare: gp-fake: trace: 0 differing through 900; ratchet N 901 ok
+```
+
+(The plan's "139 clean" is 145 − 7 = 138 here; its counts were loose. The
+`t508` line is the self-comparison's own artefact: the fake capture copies the
+port's `t508`, so the `+ 1` conversion of real captures does not hold.) Without
+`--min-first`/`--trace-min-first`: `FAIL: the ratchet N is not pinned` for both,
+rc 1; against `/tmp/gameplay-u3/nothing`: `no capture at … (skipped)`, rc 0.
+
+**Makefile.** `GP_IDLE_LOSS_MIN_FIRST` and `GP_IDLE_LOSS_TRACE_MIN_FIRST`
+(empty until U4 Task 5), `gp-oracle`, `gp-report`, both in `.PHONY` and `make
+help`; `verify` runs `gp-oracle` after U2's `gp-replay scenario=gp-pads
+GP_OPTIONAL=1` line, and `tools.tests.test_gp_compare` joined the tool-test
+line. **Both gp-oracle and gp-report pass `GP_OPTIONAL=1` to `gp-replay`**
+(record §H.2 item 3): a missing gp capture skips even under `PR_ORACLE_REQUIRED`
+(spec §4.3), where the plan's bare `gp-replay` would have failed there.
+
+**The report on U1's gp-pads** (`make gp-report scenario=gp-pads
+GP_DUMP=/tmp/pr_u3_gp`, `all checks passed`; U1's run 3, 446 distinct frames),
+verbatim:
+
+```
+gp_compare: gp-pads: report only: no ratchet applied, exit 0
+gp_compare: gp-pads: frames: window from capture 104 (raw 1744); 7 classified: 2 clean, 0 splice, 0 transition, 5 unexplained, 2 all-black
+gp_compare: gp-pads: frames: FIRST UNEXPLAINED capture 108 (raw 3930): nearest port 0, rows 0..199, x 0..319 (63947 px)
+gp_compare: gp-pads: frames: UNEXPLAINED capture 109 (raw 3935): nearest port 0, rows 0..199, x 0..319 (63952 px)
+gp_compare: gp-pads: frames: UNEXPLAINED capture 110 (raw 3936): nearest port 0, rows 0..199, x 0..319 (63952 px)
+gp_compare: gp-pads: frames: UNEXPLAINED capture 111 (raw 3940): nearest port 0, rows 0..199, x 0..319 (63955 px)
+gp_compare: gp-pads: frames: UNEXPLAINED capture 112 (raw 3941): nearest port 0, rows 0..199, x 0..319 (63955 px)
+gp_compare: gp-pads: trace: 721 frames compared (f 141..), 0 without a capture snapshot; first tick difference f=141 (reported, not ratcheted)
+gp_compare: gp-pads: trace: normalised (reported, not ratcheted): ent 0 of 721 differ; t508 0 of 721 differ
+gp_compare: gp-pads: trace: 0 differing through 1041; ratchet N 0 ok
+```
+
+What it shows (read from the capture and the port dump, not asserted by the
+tool): the port's dump is 3 `.ipx` (the MAIN MENU fade-in, §G.10). Capture
+104 (raw 1744) is clean port 0, 105 (raw 1746) all-black, 106 (raw 1747) clean
+port 2, i.e. the fade-in and the settled MAIN MENU, which the capture then holds
+as one distinct frame for 721 game iterations. Capture 107 (raw 3926) is
+all-black and 108 (raw 3930) the first screen after it: raw 1744 → 3930 is
+31.19 s at 70.0866 fps, and `f = 0x141 → 0x88C` (the idle-timeout restart's mode 3,
+`poll.log` `P … f=088C mode=0003`, §G.7.3) is 31.09 s at 60.05 Hz. So **the
+first unexplained capture frame is the first screen after the original's
+idle-timeout restart, which the port never reaches because its script ends at
+`f = 0x411` (`end 1041`, 60 frames after the chord)** — exactly the spec §4.3
+case "when the port's script ends before the capture … `j` bounds how far the
+port got". It is not a rendering difference. The trace over the 721 common
+frames `0x141..0x411`: no `TRACE_FIELDS` difference; `t508` equals the capture's
+`+ 1` and `ent` equals the capture's rebased by the `B` record's `0x266000`, at
+**all 721** (§H items 1–2 confirmed by the tool: 0 of 721 differ); `tick`
+differs from the first frame (host-timed). As in §G.10 this is narrow: over
+those frames only the pad words vary (mode is `0x27` throughout).
+
+An enforced run of the same dump on gp-pads (real data; not a gate, gp-pads has
+no pinned values): `--min-first 108 --trace-min-first 1042` → `first unexplained
+108, ratchet N 108 ok` and `0 differing through 1041; ratchet N 1042 ok`, rc 0;
+`--min-first 109` → `FAIL: first unexplained 108 < ratchet N 109`;
+`--min-first 107` → `ratchet N 107 ok (improved: raise N)`; `--trace-min-first
+1043` → `FAIL: N 1043 > end 1042: N is unreachable`. (For a trace with no
+difference, N is the end of the port's trace, `last f + 1`: the exact pin.)
+
+**The gate** (`make verify` with the §G.13 overrides, `/tmp/gameplay-u3/t4_verify.txt`):
+`verify-exit=0`, last line `all checks passed`. The 45 oracle lines (the §G.0
+pattern) `diff` against
+`.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt` → no output
+(`ORACLES-EQUAL`); the 12 `k11_compare:` lines equal `/tmp/gameplay-u1/k11_base.txt`
+(`K11-EQUAL`); the K11 dumps' content hashes (sha256 over the sorted per-file
+sha256, walk and menuesc) equal U2's gate dumps'; the gameplay sections read
+`gp-replay: no capture at data/k11-captures/gp-idle-loss` and `gp_compare: no
+capture at data/k11-captures/gp-idle-loss (skipped)` (the gp-pads replay line ran
+and passed before it); tool tests `Ran 92 tests` (67 + 25) `OK`;
+`port_progress.py` `771 1203 64` / `731 731 100` (unchanged: U3 ports no
+function); no `port/` file changed.

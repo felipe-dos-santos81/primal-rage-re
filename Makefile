@@ -51,7 +51,7 @@ chunk ?= 0
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
-        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay
+        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -407,6 +407,28 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 		echo "gp-replay: no capture at $(K11_CAPTURES)/$(scenario)"; \
 	fi
 
+# Gameplay oracle (spec 2026-09-30-gameplay-ground-truth-design.md §4.3): the
+# capture against the port's replay, a frame ratchet (title_compare's explain
+# model) and a trace ratchet (S against T by the frame counter). Enforced like
+# the K11 oracle: it skips without the capture (gp-replay gets GP_OPTIONAL=1,
+# so PR_ORACLE_REQUIRED does not fail it either, record §H.2 item 3) and fails
+# on a broken claim or an unpinned N once the capture exists. Both claims are
+# narrow (record §G.16): neither says the frames or state after the first
+# unexplained/differing one are right. U4 Task 5 pins both values from the
+# measured first unexplained capture frame / first differing f.
+GP_IDLE_LOSS_MIN_FIRST =
+GP_IDLE_LOSS_TRACE_MIN_FIRST =
+gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skips without data/k11-captures/gp-idle-loss)
+	@echo "== gameplay oracle: gp-idle-loss (frame and trace ratchets) =="
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-idle-loss GP_OPTIONAL=1
+	@$(PYTHON) tools/gp_compare.py --scenario gp-idle-loss --capture $(K11_CAPTURES)/gp-idle-loss \
+		--port $(GP_DUMP)/gp-idle-loss --min-first "$(GP_IDLE_LOSS_MIN_FIRST)" \
+		--trace-min-first "$(GP_IDLE_LOSS_TRACE_MIN_FIRST)"
+
+gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
+	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
+	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario)
+
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
@@ -440,8 +462,10 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory k11-oracle
 	@echo "== gameplay replay driver (the gp-pads capture; skips without it; record §G.11) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-pads GP_OPTIONAL=1
+	@echo "== gameplay oracle (frame and trace ratchets; skips without its capture; record §G.16) =="
+	@$(MAKE) --no-print-directory gp-oracle
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture
+	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="

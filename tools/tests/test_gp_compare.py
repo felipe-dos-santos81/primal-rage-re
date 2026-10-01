@@ -1,5 +1,5 @@
 # tools/tests/test_gp_compare.py
-import gzip, io, os, shutil, sys, tempfile, unittest
+import contextlib, gzip, io, os, shutil, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
@@ -146,6 +146,7 @@ class TestTrace(unittest.TestCase):
         self.assertIn('1 without a capture snapshot', out[0])
         rc, _ = gc.trace_claim('t', cap, port, 18, out.append)
         self.assertEqual(rc, 1)
+        self.assertTrue(any('FAIL: first differing 17 < ratchet N 18' in l for l in out), out)
 
     def test_tick_is_reported_not_ratcheted(self):
         port = [_t(f, tick=f) for f in range(3)]
@@ -180,6 +181,62 @@ class TestTrace(unittest.TestCase):
         rc, first = gc.trace_claim('t', [_S(f) for f in range(3)], [_t(f) for f in range(10, 13)], 0, out.append)
         self.assertEqual((rc, first), (1, None), out)
         self.assertTrue(any('nothing compared' in l for l in out), out)
+
+
+class TestCli(Dirs):
+    def cli(self, *args):
+        buf = io.StringIO()
+        old = sys.argv
+        sys.argv = ['gp_compare.py'] + list(args)
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = gc.main()
+        finally:
+            sys.argv = old
+        return rc, buf.getvalue()
+
+    def dump(self, n_frames=2, with_log=True):
+        self.write(list(range(1, n_frames + 1)), [rgb(k) for k in range(1, n_frames + 1)])
+        with open(os.path.join(self.port, 'trace.txt'), 'w') as f:
+            f.write(''.join(_t(k) + '\n' for k in range(10, 13)))
+        if with_log:
+            with open(os.path.join(self.cap, 'poll.log'), 'w') as f:
+                f.write(''.join(_S(k, t508=k - 1) + '\n' for k in range(10, 13)))
+
+    def test_an_absent_capture_skips(self):
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', os.path.join(self.d, 'none'), '--port', self.port)
+        self.assertEqual(rc, 0)
+        self.assertIn('no capture at', out)
+        self.assertIn('(skipped)', out)
+
+    def test_a_present_capture_needs_pinned_values(self):
+        self.dump()
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port)
+        self.assertEqual(rc, 1, out)
+        self.assertEqual(out.count('FAIL: the ratchet N is not pinned'), 2, out)
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
+                           '--min-first', '2', '--trace-min-first', '13')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('0 differing through 12; ratchet N 13 ok', out)
+
+    def test_a_capture_without_a_poll_log_fails(self):
+        self.dump(with_log=False)
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
+                           '--min-first', '2', '--trace-min-first', '13')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('has no poll.log', out)
+
+    def test_report_mode_exits_zero_on_a_failing_claim(self):
+        self.dump()
+        os.remove(os.path.join(self.cap, 'frame_00001.raw.gz'))
+        with gzip.open(os.path.join(self.cap, 'frame_00001.raw.gz'), 'wb') as f:
+            f.write(bytes([9]) * tc.FRAME_BYTES)
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port,
+                           '--min-first', '2', '--trace-min-first', '13')
+        self.assertEqual(rc, 1, out)
+        rc, out = self.cli('--scenario', 'gp-x', '--capture', self.cap, '--port', self.port, '--report')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('FIRST UNEXPLAINED capture 1', out)
 
 
 if __name__ == '__main__':

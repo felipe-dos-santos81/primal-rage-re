@@ -208,7 +208,7 @@ def diff_box(c, q):
     return rs[0], rs[-1], min(xs), max(xs), len(xs)
 
 
-def ratchet(name, what, first, end, n, out=print):
+def ratchet(name, what, first, end, n, out=print, noun='unexplained'):
     """first unexplained (None: none up to `end`) against the pinned N."""
     if n is None:
         out('gp_compare: %s: %s: FAIL: the ratchet N is not pinned (U4 Task 5)' % (name, what))
@@ -217,13 +217,13 @@ def ratchet(name, what, first, end, n, out=print):
         if n > end:
             out('gp_compare: %s: %s: FAIL: N %d > end %d: N is unreachable' % (name, what, n, end))
             return 1
-        out('gp_compare: %s: %s: 0 unexplained through %d; ratchet N %d ok' % (name, what, end - 1, n))
+        out('gp_compare: %s: %s: 0 %s through %d; ratchet N %d ok' % (name, what, noun, end - 1, n))
         return 0
     if first < n:
-        out('gp_compare: %s: %s: FAIL: first unexplained %d < ratchet N %d' % (name, what, first, n))
+        out('gp_compare: %s: %s: FAIL: first %s %d < ratchet N %d' % (name, what, noun, first, n))
         return 1
-    out('gp_compare: %s: %s: first unexplained %d, ratchet N %d ok%s'
-        % (name, what, first, n, '' if first == n else ' (improved: raise N)'))
+    out('gp_compare: %s: %s: first %s %d, ratchet N %d ok%s'
+        % (name, what, noun, first, n, '' if first == n else ' (improved: raise N)'))
     return 0
 
 
@@ -276,9 +276,10 @@ def trace_claim(name, cap_lines, port_lines, min_first, out=print):
                 break
         if first is not None:
             break
-    out('gp_compare: %s: trace: %d frames compared up to the first difference (f %s..), %d without a capture snapshot; first tick '
+    out('gp_compare: %s: trace: %d frames compared%s (f %s..), %d without a capture snapshot; first tick '
         'difference %s (reported, not ratcheted)'
-        % (name, compared, fs and '%X' % fs[0], skipped, 'none' if tick_first is None else 'f=%X' % tick_first))
+        % (name, compared, '' if first is None else ' up to the first difference', fs and '%X' % fs[0], skipped,
+           'none' if tick_first is None else 'f=%X' % tick_first))
     if first is not None:
         out('gp_compare: %s: trace: first difference f=%X (%d) in %s: capture %X, port %X'
             % (name, first, first, field, cap[first][field], port[first][field]))
@@ -289,11 +290,61 @@ def trace_claim(name, cap_lines, port_lines, min_first, out=print):
             base = r['base']
             break
     norm = normalised(cap, port, fs, base)
-    out('gp_compare: %s: trace: normalised (reported, not ratcheted): %s'
+    out('gp_compare: %s: trace: normalised (reported, not ratcheted): %s%s'
         % (name, '; '.join('%s %d of %d differ%s' % (n, d, c, '' if d == 0 else ' (first f=%X)' % f0)
-                           for n, (c, d, f0) in sorted(norm.items()))))
+                           for n, (c, d, f0) in sorted(norm.items()) if n != 'ent' or base is not None),
+           '' if base is not None else '; ent not compared (the capture has no B record)'))
     if compared == 0:
         out('gp_compare: %s: trace: FAIL: no port T record has a capture snapshot (nothing compared)' % name)
         return 1, None
     end = (fs[-1] + 1) if fs else 0
-    return ratchet(name, 'trace', first, end, min_first, out), first
+    return ratchet(name, 'trace', first, end, min_first, out, 'differing'), first
+
+
+def _int_or_none(s):
+    return None if s in (None, '') else int(s, 0)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--scenario', required=True)
+    ap.add_argument('--capture', required=True)
+    ap.add_argument('--port', required=True)
+    ap.add_argument('--min-first', default=None)
+    ap.add_argument('--trace-min-first', default=None)
+    ap.add_argument('--report', action='store_true')
+    a = ap.parse_args()
+    name = a.scenario
+    if a.report:
+        print('gp_compare: %s: report only: no ratchet applied, exit 0' % name)
+    if not os.path.isdir(a.capture):
+        print('gp_compare: no capture at %s (skipped)' % a.capture)
+        return 0
+    if not os.path.isfile(os.path.join(a.port, 'trace.txt')):
+        print('gp_compare: no port dump at %s (trace.txt missing)' % a.port)
+        return 0 if a.report else 1
+    if not os.path.isfile(os.path.join(a.capture, 'poll.log')):
+        print('gp_compare: %s: capture %s has no poll.log' % (name, a.capture))
+        return 0 if a.report else 1
+    cpaths = _paths(a.capture, 'frame_%05d.raw.gz')
+    ppaths = _paths(a.port, 'frame_%05d.ipx')
+    if not cpaths or not ppaths:
+        print('gp_compare: %s: no frames (capture %d, port %d)' % (name, len(cpaths), len(ppaths)))
+        return 0 if a.report else 1
+    cap = Lazy(cpaths, load_capture_frame)
+    port = Lazy(ppaths, load_port_frame)
+    rows = [tc.row_hashes(port[m]) for m in range(len(port))]
+    raws = tc.raw_map(a.capture) or list(range(len(cap)))
+    n_frames = None if a.report else _int_or_none(a.min_first)
+    n_trace = None if a.report else _int_or_none(a.trace_min_first)
+    rc1, _, _ = frame_claim(name, cap, raws, port, rows, n_frames if not a.report else 0, a.report)
+    with open(os.path.join(a.capture, 'poll.log')) as f:
+        cl = f.read().splitlines()
+    with open(os.path.join(a.port, 'trace.txt')) as f:
+        pl = f.read().splitlines()
+    rc2, _ = trace_claim(name, cl, pl, n_trace if not a.report else 0)
+    return 0 if a.report else (1 if rc1 or rc2 else 0)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
