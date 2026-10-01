@@ -112,7 +112,18 @@ SCENARIOS = {
       + (('after', 30, ('pad', ('p1.left', 'p1.b2', 'p2.right'), 5)),     # a chord held 5
          ('after', 60, ('end',))),
     ),
+    # U4 (spec §4.4): MAIN MENU -> START MENU -> LEFT PLAYER ARCADE, P1 idle
+    # through the match to game over and mode 3. The 150-frame gaps are the
+    # planner's probe's 2.5 s and the 200 s limit covers its 169.9 s (harness
+    # values, not game values).
+    'gp-idle-loss': dict(time_limit=200, steps=(
+        ('boot', ENTER_WAIT, ('key', 'enter')),       # mode 3 -> 0x27, MAIN MENU on "Start"
+        ('after_mode', 0x27, 150, ('key', 'enter')),  # START MENU, cursor on row 0 (spec §3.3)
+        ('after', 150, ('key', 'enter')),             # LEFT PLAYER ARCADE: mode 0x2D
+        ('until_mode', 0x03, 0),                      # back in mode 3 after game over
+    )),
 }
+SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)
 
 
 def expand(action):
@@ -202,7 +213,7 @@ def snapshots(lines):
     return out
 
 
-def port_script(name, lines):
+def port_script(name, lines, end=None):
     """poll.log v2 -> port script v2 (spec §4.1). Keys at their consumption
     frame (the H record paired FIFO with the I press, pinned by S(f-1) showing
     the old head); bits at each change of S.raw, pinned by S(f-1). The key loop
@@ -251,16 +262,21 @@ def port_script(name, lines):
                 raise ScriptError('pad change at f=%X unpinned (no S record at f=%X)' % (f, f - 1))
             bits.append((f, kb))
             prev_kb = kb
-    end = next((r for r in recs if r['kind'] == 'X'), None)
-    if end is None:
+    xrec = next((r for r in recs if r['kind'] == 'X'), None)
+    if xrec is None:
         raise ScriptError('the scenario end (X record) was not reached')
-    out = ['# gp port script v2: scenario %s' % name,
+    last = xrec['f']
+    if end is not None:
+        if end > last:
+            raise ScriptError('--end %d is past the capture end f=%X' % (end, last))
+        last = end
+    out = ['# gp port script v2: scenario %s%s' % (name, '' if end is None else ' (cut at %d)' % end),
            'enter_frame %d' % p27['f'],
            'enter_state %04X' % p27['st']]
-    ev = [(c, 0, i, 'key %d %02X %02X' % (c, s, a)) for i, (c, s, a) in enumerate(keys)]
-    ev += [(f, 1, 0, 'bits %d %04X' % (f, kb)) for f, kb in bits]
+    ev = [(c, 0, i, 'key %d %02X %02X' % (c, s, a)) for i, (c, s, a) in enumerate(keys) if c <= last]
+    ev += [(f, 1, 0, 'bits %d %04X' % (f, kb)) for f, kb in bits if f <= last]
     out += [t for _, _, _, t in sorted(ev)]
-    out.append('end %d' % end['f'])
+    out.append('end %d' % last)
     return '\n'.join(out) + '\n'
 
 
@@ -287,6 +303,7 @@ def main():
     ap.add_argument('--out')
     ap.add_argument('--a')
     ap.add_argument('--b')
+    ap.add_argument('--end', type=int)
     a = ap.parse_args()
     if a.cmd == 'trace-diff':
         with open(os.path.join(a.a, 'poll.log')) as fa, open(os.path.join(a.b, 'poll.log')) as fb:
@@ -298,7 +315,7 @@ def main():
         return 0
     with open(os.path.join(a.capture, 'poll.log')) as f:
         try:
-            text = port_script(a.scenario, f.read().splitlines())
+            text = port_script(a.scenario, f.read().splitlines(), end=a.end)
         except ScriptError as e:
             print('gp_session: port-script: %s: %s' % (a.scenario, e))
             return 1

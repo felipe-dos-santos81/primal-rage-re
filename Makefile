@@ -384,7 +384,7 @@ k11-report: build ## Report-only K11 comparison of the evidence captures (idle, 
 # pinned original under DOSBox-X with frame-keyed injection and a per-frame
 # snapshot log. Writes only data/k11-captures/gp-<scenario>/ (gp_capture.guard_gp).
 GP_ARGS ?=
-gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-pads; gp-idle-loss is planned for U4; writes data/k11-captures/)
+gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-pads|gp-idle-loss; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
 
 # Gameplay replay (spec 2026-09-30-gameplay-ground-truth-design.md §4.2): the
@@ -394,12 +394,13 @@ gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-pads; gp-idle-
 # a gp capture skips there like the K11 oracles (spec §4.3, record §G.11), so
 # a checkout without data/k11-captures/gp-pads still passes verify.
 GP_OPTIONAL ?=
+GP_SCRIPT_ARGS ?=
 gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump in $(GP_DUMP)/<scenario>)
 	@case "$(scenario)" in gp-?*) ;; *) \
 		echo "usage: make gp-replay scenario=gp-<name> (got scenario=$(scenario))"; exit 2;; esac
 	@if [ -d $(K11_CAPTURES)/$(scenario) ]; then \
 		rm -rf $(GP_DUMP)/$(scenario); mkdir -p $(GP_DUMP); \
-		$(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --out $(GP_DUMP)/$(scenario).script && \
+		$(PYTHON) tools/gp_session.py port-script --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --out $(GP_DUMP)/$(scenario).script $(GP_SCRIPT_ARGS) && \
 		PR_GP_DUMP=$(GP_DUMP)/$(scenario) PR_GP_SCRIPT=$(GP_DUMP)/$(scenario).script PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
 	elif [ -z "$(GP_OPTIONAL)" ] && [ -n "$${PR_ORACLE_REQUIRED+x}" ]; then \
 		echo "gp-replay: no capture at $(K11_CAPTURES)/$(scenario) (PR_ORACLE_REQUIRED)"; exit 1; \

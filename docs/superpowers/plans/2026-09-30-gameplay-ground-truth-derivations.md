@@ -1330,3 +1330,43 @@ values, not game values.
 12. `docs/superpowers/plans/2026-09-30-gameplay-u3-frame-compare.md` ended with
     stray planner-artifact text after its last Self-Review bullet (closing tags and
     a line telling the reader to run `build_u3.py` from a scratchpad); removed.
+
+
+## §G.17 The scenario and the script truncation (U4 Task 1)
+
+Worktree `.worktrees/gameplay-u4`, branch `gameplay-u4` from `gameplay-u3`
+(`b78fd51`); `data` symlinked to the main checkout's, the two git-ignored
+fixtures (`port/tests/ghidra_data.bin`, `title_screen_ref.ppm`) copied. Every
+`make verify` in U4 runs with the per-agent overrides `SMK_DUMP=/tmp/pr_u4_smk
+TITLE_DUMP=/tmp/pr_u4_title ATTRACT_DUMP=/tmp/pr_u4_att FRONTEND_DUMP=/tmp/pr_u4_fe
+TITLE_PIN_DIR=/tmp/pr_u4_pin AUDIO_WAV=/tmp/pr_u4.wav K11_DUMP=/tmp/pr_u4_k11
+GP_DUMP=/tmp/pr_u4_gp`; scratch `S=/tmp/gameplay-u4`. The plan says "main checkout";
+U4 runs in the worktree (the controller's instruction), so `S`-relative paths and
+`data/k11-captures/gp-idle-loss*` resolve through the symlink to the one shared
+`data/`.
+
+`SCENARIOS['gp-idle-loss']` (the plan's steps: boot Enter, `after_mode 0x27 150`
+Enter, `after 150` Enter, `until_mode 3 0`; `time_limit = 200`) and
+`SCENARIOS['gp-idle-loss-run2']` (a copy); `port_script(name, lines, end=None)`
+(the local `X` record renamed `xrec`; `--end F` keeps the keys and bits at
+`f <= F` and writes `end F`, a header comment `(cut at F)`; an `--end` past the
+capture's `X` frame is a `ScriptError`); `gp_session.py port-script … --end F`;
+`make gp-replay … GP_SCRIPT_ARGS="--end F"` (`GP_SCRIPT_ARGS ?=`, appended to the
+`port-script` command); the `make help` line for `gp-capture` now names
+`gp-pads|gp-idle-loss`. The 150-frame gaps and the 200 s limit are harness
+values (spec §5), the probe's 2.5 s and 169.9 s.
+
+Tests: `python3 -m unittest tools.tests.test_gp_session` → `Ran 22 tests … OK`
+(U1's 20 after review 1 plus the 2 of `TestIdleLoss`; before the code:
+`KeyError: 'gp-idle-loss'` and `TypeError: port_script() got an unexpected
+keyword argument 'end'`, `FAILED (errors=2)`).
+
+**Correction to the plan's mutation proof (measured).** The plan says dropping the
+`if c <= last` filter on keys fails `test_end_truncates_the_script`. It does not:
+the plan's `end=295` lies after every key (`288`, `294`), so only the `bits`
+filter (`bits 296`) is exercised; with the key filter dropped the test stayed `OK`.
+The test gained a second cut, `end=290`, which keeps only the Enter at `288` and
+drops the key at `294` (and its bits). Mutations (each restored → `OK`): key
+filter dropped → `FAIL: test_end_truncates_the_script`; bits filter dropped
+(`for f, kb in bits`) → the same `FAIL`; the `--end` past the `X` frame
+(`end=400`) raises `ScriptError` (asserted).

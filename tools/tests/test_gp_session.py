@@ -209,5 +209,38 @@ class TestTraceDiff(unittest.TestCase):
         self.assertEqual(gs.trace_diff(a, list(a))['first'], None)
 
 
+class TestIdleLoss(unittest.TestCase):
+    def test_steps_fire_on_the_probe_path(self):
+        # spec §3.5: mode 0x27 first at 0x120, back in mode 3 at 0x22BA
+        s = gs.Schedule(gs.SCENARIOS['gp-idle-loss']['steps'])
+        self.assertEqual(s.due_boot(gs.ENTER_WAIT), [(0, ('key', 'enter'))])
+        s.on_mode(0x120, 0x27)
+        self.assertEqual(s.due(0x120 + 149), [(1, ('key', 'enter'))])
+        self.assertEqual(s.due(0x120 + 299), [(2, ('key', 'enter'))])
+        for f, m in ((0x247, 0x2D), (0x26C, 0x10), (0x7B5, 6), (0x1F84, 0x13), (0x2200, 0x1E)):
+            s.on_mode(f, m)
+        self.assertIsNone(s.end_frame)
+        s.on_mode(0x22BA, 0x03)
+        self.assertEqual((s.end_frame, s.fired, s.total), (0x22BA, 3, 3))
+        self.assertEqual(gs.SCENARIOS['gp-idle-loss-run2']['steps'], gs.SCENARIOS['gp-idle-loss']['steps'])
+
+    def test_end_truncates_the_script(self):
+        gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())
+        try:
+            text = gs.port_script('_t', _log(), end=295)
+            lines = [l for l in text.splitlines() if not l.startswith('#')]
+            self.assertEqual(lines, ['enter_frame 288', 'enter_state 0000',
+                                     'key 288 1C 0D', 'key 294 1F 73', 'bits 294 8000', 'end 295'])
+            # a cut before the second key: the key and its bits are dropped (the plan's
+            # end=295 keeps every key, so it cannot see the key filter; record §G.17)
+            text = gs.port_script('_t', _log(), end=290)
+            lines = [l for l in text.splitlines() if not l.startswith('#')]
+            self.assertEqual(lines, ['enter_frame 288', 'enter_state 0000', 'key 288 1C 0D', 'end 290'])
+            with self.assertRaises(gs.ScriptError):
+                gs.port_script('_t', _log(), end=400)        # past the capture's X record
+        finally:
+            gs.SCENARIOS.pop('_t', None)
+
+
 if __name__ == '__main__':
     unittest.main()
