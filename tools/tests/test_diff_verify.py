@@ -489,6 +489,16 @@ class CallVerifyTests(unittest.TestCase):
         r = V.verify_spec(spec, img, {"x": V.PortResult(0, calls=[(0x10020, (0x10020,))])})
         self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
 
+    def test_an_args_free_indirect_target_against_a_port_reporting_args_is_a_mismatch(self):
+        # D3: the spec declares args=() for the indirect target (compared by address only); a port that
+        # later registers it reports its arguments, and the row must turn MISMATCH until the spec names them
+        img = program({0x10000: "FFD0" "C3", 0x10020: "C3"})
+        spec = V.Spec("i", 0x10000, [V.Case("x", {"eax": 0x10020})], calls=(E.Call(0x10020, ()),))
+        r = V.verify_spec(spec, img, {"x": V.PortResult(0, calls=[(0x10020, ())])})
+        self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
+        r = V.verify_spec(spec, img, {"x": V.PortResult(0, calls=[(0x10020, (0x10020,))])})
+        self.assertEqual((r.verdict, r.problems), ("MISMATCH", ["x: call #0: original 0x10020(), port 0x10020(0x10020)"]))
+
     # 10000: cmp al,2; ja 10010; and eax,0xff; jmp [eax*4+0x10100]; (10010) ret; 10011..10013 ret
     SWITCH = program({0x10000: "3C02" "770C" "25FF000000" "FF248500010100" "C3" "C3C3C3",
                       0x10100: "11000100" "12000100" "13000100"})
@@ -510,6 +520,10 @@ class GapTests(unittest.TestCase):
         r = V.verify_gap(V.Spec("g", 0x10000, [V.Case("x", {})], mutants=(), gap="in at 0x10000"), self.IN)
         self.assertEqual((r.verdict, r.problems, r.gap), ("NAMED_GAP", [], "in at 0x10000"))
 
+    def test_a_gap_spec_with_no_cases_is_refused(self):
+        with self.assertRaises(ValueError):
+            V.Spec("g", 0x10000, [], mutants=(), gap="in at 0x10000")
+
     def test_a_misnamed_gap_is_a_mismatch(self):
         r = V.verify_gap(V.Spec("g", 0x10000, [V.Case("x", {})], mutants=(), gap="in at 0x10001"), self.IN)
         self.assertEqual(r.verdict, "MISMATCH")
@@ -519,6 +533,60 @@ class GapTests(unittest.TestCase):
                          program({0x10000: "C3"}))
         self.assertEqual(r.verdict, "MISMATCH")
         self.assertIn("the original ok (returned)", r.problems[0])
+
+
+@unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
+                     "build/diffrun or PRAGE.EXE absent")
+class DiffrunStubTests(unittest.TestCase):
+    """The port side of the call stubs (record E3 §E3.3): diffrun's stub lines and the PR_SEAM hook."""
+
+    def run_text(self, text):
+        with tempfile.TemporaryDirectory() as d:
+            return V.run_port(DIFFRUN, EXE, os.path.join(d, "img"), text)
+
+    def test_stubbed_callees_are_recorded_with_their_c_arguments_in_order(self):
+        # 0x23130: slot 0x10A200 (+0x52..+0x54 seeded 7F), rec 0x10A300, side 1
+        out = self.run_text("case a\nfn fighter_23130\nreg eax 0x10A200\nreg edx 0x10A300\nreg ebx 0x1\n"
+                            "poke 0x10A252 7f7f7f\nstub 0x3C4CC stub 0x0\nstub 0x2C3FC stub 0x1\nend\n")["a"]
+        self.assertEqual(out.calls, [(0x3C4CC, (0x10A300, 0xE4872, 0x40400000)), (0x2C3FC, (0x7C,))])
+        self.assertEqual((out.eax, out.error), (1, ""))
+        self.assertEqual([out.writes.get(a) for a in (0x10A252, 0x10A253, 0x10A254)], [9, 7, 0])
+
+    def test_a_real_callee_runs_and_its_own_calls_are_recorded(self):
+        # slot 0 is the fighter slot and the record's +0x51 names side 0, so 0x3C4CC reads the +0x52
+        # that 0x23130 has just set to 9 (seeded 0): its 0x3C480 arm, with the slot's record 0x10A400
+        out = self.run_text("case r\nfn fighter_23130\nreg eax 0x1077B0\nreg edx 0x10A300\nreg ebx 0x0\n"
+                            "poke 0x1077B0 00a41000\npoke 0x107802 00\npoke 0x10A351 00\n"
+                            "stub 0x3C4CC real 0x0\nstub 0x2BC30 stub 0x0\nstub 0x3C480 stub 0x0\n"
+                            "stub 0x2C3FC stub 0x1\nend\n")["r"]
+        self.assertEqual(out.calls, [(0x3C4CC, (0x10A300, 0xE4872, 0x40400000)),
+                                     (0x3C480, (0x10A400, 0xE4872, 0x40400000)), (0x2C3FC, (0x7C,))])
+
+    def test_stack_slots_reach_the_binding(self):
+        # 0x3C4CC alone: side 1 (+0x51), slot 1's record 0x10A400 and state 5: the 0x2BC30 arm
+        out = self.run_text("case s\nfn hit_anim_start_b\nreg eax 0x10A300\nreg edx 0xE4872\nreg s0 0x40400000\n"
+                            "poke 0x10A351 01\npoke 0x107844 00a41000\npoke 0x107896 05\n"
+                            "stub 0x2BC30 stub 0x0\nstub 0x3C480 stub 0x0\nend\n")["s"]
+        self.assertEqual(out.calls, [(0x2BC30, (0x10A400, 0xE4872, 0x40400000))])
+
+    def test_stub_writes_land_at_an_address_or_an_argument_plus_offset(self):
+        out = self.run_text("case w\nfn fighter_45878\nreg eax 0x10A200\nreg edx 0x10A300\n"
+                            "stub 0x2BC30 stub 0x0\nswrite abs 0x10A500 5a\nswrite arg0 0x52 33\nend\n")["w"]
+        self.assertEqual((out.writes.get(0x10A500), out.writes.get(0x10A352)), (0x5A, 0x33))
+
+    def test_a_stub_write_outside_the_image_is_an_error(self):
+        out = self.run_text("case x\nfn fighter_45878\nreg eax 0x10A200\nreg edx 0x10A300\n"
+                            "stub 0x2BC30 stub 0x0\nswrite abs 0x2000000 01\nend\n")["x"]
+        self.assertEqual(out.error, "a stub write outside the image")
+
+    def test_the_animation_targets_are_registered(self):
+        out = self.run_text("case t\nfn anim_10fa8\nstub 0x2AE14 stub 0x0\nend\n")["t"]
+        self.assertEqual(out.calls, [(0x2AE14, (0x9AD08, 0, 0xE4, 0, 0))])
+
+    def test_a_malformed_stub_line_is_refused(self):
+        for line in ("stub 0x2BC30 skip 0x0", "stub 0x2BC30 stub", "swrite abs 0x10A500 5a"):
+            with self.subTest(line=line), self.assertRaises(RuntimeError):
+                self.run_text("case m\nfn fighter_45878\n%s\nend\n" % line)
 
 
 if __name__ == "__main__":

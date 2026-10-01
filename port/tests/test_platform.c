@@ -354,9 +354,13 @@ int test_call_seam(void)
     /* PR_SEAM_RET returns the hook's EAX when it stubs, and the body's value when it runs
      * (sound_voice(0) returns 0 at 0x2C401). */
     s_seam_n = 0u;
+    sound_voice_log_reset();
     CHECK_EQ_INT(sound_voice(0u), 0x5A);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 0);       /* the stubbed call leaves no log entry */
     s_seam_stub = 0;
     CHECK_EQ_INT(sound_voice(0u), 0);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 1);       /* the body ran and logged id 0 ... */
+    sound_voice_log_reset();                             /* ... which no later test may see */
     CHECK_EQ_INT(s_seam_n, 2);
     CHECK(s_seam_addr[0] == 0x2C3FCu && s_seam_addr[1] == 0x2C3FCu, "both calls are seen");
     CHECK(s_seam_nargs[1] == 1u && s_seam_args[1][0] == 0u, "with the voice id");
@@ -365,13 +369,21 @@ int test_call_seam(void)
      * FN_0002D62C) and 0 are not. */
     s_seam_n = 0u;
     s_seam_stub = 1;
+    fn_misslog_arm(1);                       /* the report must not depend on the miss log, nor change it */
     CHECK(fn_resolve(miss) == NULL, "the miss still resolves to NULL");
     CHECK(fn_resolve(FN_0002D62C) == fn_probe, "registered by test_mem");
     CHECK(fn_resolve(0u) == NULL, "0 resolves to NULL");
     CHECK_EQ_INT(s_seam_n, 1);
     CHECK(s_seam_addr[0] == miss && s_seam_nargs[0] == 0u, "the miss, with no arguments");
+    CHECK(fn_resolve(miss) == NULL, "the repeated miss (the log's early-return path)");
+    CHECK_EQ_INT(s_seam_n, 2);                           /* reported on the repeat too, not only the first insert */
+    CHECK_EQ_INT((int)fn_misslog_count(), 1);            /* one pair, two hits: the hook adds none and hides none */
+    CHECK(fn_misslog_addr(0) == miss, "the log holds the miss");
+    CHECK_EQ_INT((int)fn_misslog_hits(0), 2);
+    fn_misslog_arm(0);
 
     pr_seam = NULL;
+    CHECK_EQ_INT((int)sound_voice_log_count(), 0);       /* nothing this test did is left in the voice log */
     return g_failures - before;
 }
 

@@ -3359,6 +3359,7 @@ void actors_update(void)
  * the 0x2AC80 alloc flag (EAX at that call). */
 u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
 {
+    PR_SEAM_RET(0x2AE14u, (u32)((const u8 *)desc - mem), a2, a3, a4, a5);
     const u8 *dp = (const u8 *)desc;
     u32 rec = actor_alloc(a5);
     if (rec == 0) return 0;

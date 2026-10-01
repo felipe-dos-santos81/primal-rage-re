@@ -50,6 +50,8 @@ class Spec:
         both = sorted(set(self.allow_calls) & {c.addr for c in self.calls})
         if both:
             raise ValueError("spec %s: 0x%X is both allowed and in the call set" % (self.name, both[0]))
+        if self.gap and not self.cases:
+            raise ValueError("spec %s: a named gap with no cases holds vacuously" % self.name)
 
 
 @dataclass
