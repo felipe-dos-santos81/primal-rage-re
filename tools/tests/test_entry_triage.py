@@ -157,6 +157,16 @@ def build_world():
     w.entry(0x16800, bytes.fromhex("DDC8C3"))          # its first instruction does not decode
     w.put(0x90058, le32(0x16800))
     w.put(0x17010, rel32(0x17010, T.VOICE_FN))         # a voice call in untrusted bytes, in no body
+    # a slot of two tables of different kinds: the jump table 80300 (read first, lower address) and the
+    # call table 80800 (read by the Ghidra function 18300); the call slot names it (§E2.2: call before jmp)
+    w.fn(0x18300, bytes.fromhex("FF1485") + le32(0x80800) + b"\xc3")
+    w.entry(0x17300, XOR_RET)
+    w.put(0x80304, le32(0x17300))
+    w.put(0x80800, le32(0x17300))
+    # above the cut: a slot of the call table 80200 (first found) and of the span table 80600 (names it)
+    w.entry(0x5D0A0, XOR_RET)
+    w.put(0x80208, le32(0x5D0A0))
+    w.put(0x80604, le32(0x5D0A0))
     return w
 
 
@@ -166,7 +176,7 @@ EXPECTED = {
     0x14000: "span-writer", 0x14100: "span-writer", 0x14200: "span-writer", 0x15000: "call-table",
     0x15100: "jump-table", 0x16000: "anim-target", 0x16100: "anim-target", 0x16200: "dead",
     0x16300: "unclassified", 0x16400: "data-pointer", 0x16500: "data", 0x16600: "data",
-    0x16900: "data-pointer", 0x16B00: "dead", 0x17204: "interior",
+    0x16900: "data-pointer", 0x16B00: "dead", 0x17204: "interior", 0x17300: "call-table",
 }
 
 
@@ -297,6 +307,7 @@ class ClassTests(unittest.TestCase):
         self.assertEqual(ev[0x14100], "dword 80180 = table 80180[0], read by `call` at 14000")
         self.assertEqual(ev[0x14200], "dword 80600 = table 80600[0], read by `call` at 5D025")
         self.assertEqual(ev[0x15100], "dword 80300 = table 80300[0], read by `jmp` at 11100")
+        self.assertEqual(ev[0x17300], "dword 80800 = table 80800[0], read by `call` at 18300")
         self.assertEqual(ev[0x16000], "dword 90002 after the opcode word D100 at 90000")
         self.assertEqual(ev[0x16100], "dword 90014 after the opcode word DF11 at 90010")
         self.assertEqual(ev[0x1210F], "inside the instruction at 1210C (code of 12100)")
@@ -408,7 +419,8 @@ class RowTests(unittest.TestCase):
         self.assertEqual({a: s["why"] for a, s in self.supp.items()},
                          {0x13000: "called at 12100", 0x13100: "immediate at 12105",
                           0x5D020: "slot 80104 of table 80100, read by `call` at 51E5C",
-                          0x5D040: "stale: slot 80108 of table 80100, read by `call` at 51E5C"})
+                          0x5D040: "stale: slot 80108 of table 80100, read by `call` at 51E5C",
+                          0x5D0A0: "slot 80604 of table 80600, read by `call` at 5D025"})
 
     def test_e1_readiness(self):
         e1 = {a: r["e1"] for a, r in self.rows.items()}
@@ -427,3 +439,47 @@ class RowTests(unittest.TestCase):
         v = {x["site"]: (x["entry"], x["kind"]) for x in self.t.voice_placement(list(self.rows.values()),
                                                                              list(self.supp.values()))}
         self.assertEqual(v, {0x15000: (0x15000, "row"), 0x17205: (0x17200, "untrusted"), 0x17010: (None, "-")})
+
+
+@needs_capstone
+class PortedRoutingTests(unittest.TestCase):
+    """is_ported routes a Ghidra entry to the port_progress rule and any other address to the strict
+    rule (§E2.4); the two sets disagree on purpose so a mixed-up lookup is visible."""
+
+    @classmethod
+    def setUpClass(cls):
+        w = build_world()
+        # strict: 10200 (non-Ghidra) and 18000 (a Ghidra entry); loose: VOICE_FN and 18100 (Ghidra
+        # entries) and 10400 (non-Ghidra, a comment that is not at column 0)
+        cls.t = T.Triage(w.image(), sorted(w.ghidra), {0x10200, 0x18000}, {T.VOICE_FN, 0x18100, 0x10400})
+
+    def test_a_non_ghidra_address_follows_the_strict_rule(self):
+        self.assertTrue(self.t.is_ported(0x10200))
+        self.assertFalse(self.t.is_ported(0x10400))        # only in the loose set
+        self.assertFalse(self.t.is_ported(0x10300))        # in neither
+
+    def test_a_ghidra_entry_follows_the_loose_rule(self):
+        self.assertTrue(self.t.is_ported(T.VOICE_FN))
+        self.assertTrue(self.t.is_ported(0x18100))
+        self.assertFalse(self.t.is_ported(0x18000))        # only in the strict set
+        self.assertFalse(self.t.is_ported(0x18200))        # in neither
+
+    def test_the_rows_carry_the_same_routing(self):
+        rows = {r["addr"]: r["ported"] for r in self.t.run()}
+        self.assertEqual((rows[0x10200], rows[0x10400], rows[0x10300]), (True, False, False))
+
+
+@needs_capstone
+class TableCapTests(unittest.TestCase):
+    def test_a_table_walk_stops_at_max_table_slots(self):
+        w = World()
+        w.fn(0x10000, bytes.fromhex("FF1485") + le32(0x81000) + b"\xc3")    # call dword [eax*4+0x81000]; ret
+        n = T.MAX_TABLE + 8
+        vals = [0x20000 + 0x10 * i for i in range(n)]                      # code addresses, no displacement stop
+        w.put(0x81000, b"".join(le32(v) for v in vals))
+        t = T.Triage(w.image(), sorted(w.ghidra))
+        t.cands, t.cset = [], set()
+        t.build([])
+        self.assertEqual(t.slots[vals[T.MAX_TABLE - 1]][0][2], T.MAX_TABLE - 1)    # slot 511: in
+        self.assertNotIn(vals[T.MAX_TABLE], t.slots)                                # slot 512: out
+        self.assertNotIn(vals[T.MAX_TABLE + 7], t.slots)

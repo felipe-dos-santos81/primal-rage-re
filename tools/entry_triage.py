@@ -13,7 +13,8 @@ The universe (record §E2.1; U0 §U0.12's "575 plausible entries"): every addres
   (d) decodes as one instruction.
 U0's own rule (after_ret_u0) skipped the fillers greedily before testing, so the 00 that ends
 `ret 4` (C2 04 00) was eaten as a filler: every row says whether U0's rule admits it (§E2.1).
-Every candidate gets exactly one class: the first rule of CLASS_ORDER whose evidence exists (§E2.2).
+Every candidate gets exactly one class: the first rule of §E2.2 whose evidence exists (`classify` applies
+them in that order; CLASS_ORDER is only the order the rendered table lists the classes in).
 
   tools/entry_triage.py --image IMG [--functions CSV] [--src DIR] [--live FILE]
                         [--out TABLE.md | --check TABLE.md] [--expect N] [--expect-u0 N]
@@ -64,7 +65,9 @@ def load_ghidra(path):
 
 def load_ported(src):
     """(strict, loose). strict: an fn_register(0xADDR or a `/* 0xADDR` comment at column 0 (§E2.4);
-    loose: tools/port_progress.py's rule (a `/* 0xADDR` anywhere on a line, or fn_register)."""
+    loose: the address set of tools/port_progress.py's rule before its last step (a `/* 0xADDR` anywhere
+    on a line, or fn_register). port_progress then intersects it with the symbols.h `FN_` addresses; the
+    caller does that (`loose & {Ghidra entries}`), and the two agree on today's tree (771 ported)."""
     strict, loose = set(), set()
     for ext in ("c", "h"):
         for f in glob.glob(os.path.join(src, "**", "*." + ext), recursive=True):
@@ -334,7 +337,7 @@ class Triage:
             if hit:
                 return hit[1]
         elif v in self.slots and self.entry_like(v):
-            p, T, k, kind, a = self.slots[v][0]
+            p, T, k, kind, a = self.best_slot(v)
             if v < RUNTIME_BASE or any(s[1] in self.span_tables for s in self.slots[v]):
                 return "slot %X of table %X, read by `%s` at %X" % (p, T, kind, a)
         if v in self.calls and CODE_LO <= v < RUNTIME_BASE and not self.in_ghidra(v):
@@ -359,13 +362,18 @@ class Triage:
                 return at, w
         return None
 
+    def best_slot(self, v):
+        """The slot of v that names its class (§E2.2 rules 3-5): any span table first, then a table read
+        by a `call`, then one read by a `jmp`; the first found among equals."""
+        return min(self.slots[v], key=lambda s: 0 if s[1] in self.span_tables else 1 if s[3] == "call" else 2)
+
     def table_class(self, v):
         if v in self.fin:
             return "finisher", "dword %s" % " ".join("%X" % p for p in self.fin[v])
         if v in self.mcb:
             return "move-callback", " ".join("dword %X (char %d, reaction 0x%02X)" % x for x in self.mcb[v])
         if v in self.slots:
-            p, T, k, kind, a = self.slots[v][0]
+            p, T, k, kind, a = self.best_slot(v)
             c = "span-writer" if T in self.span_tables else ("call-table" if kind == "call" else "jump-table")
             return c, "dword %X = table %X[%d], read by `%s` at %X" % (p, T, k, kind, a)
         for p in self.dwords.get(v, ()):

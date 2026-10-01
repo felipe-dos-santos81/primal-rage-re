@@ -97,7 +97,7 @@ makes V part of that code: rule 11); "a jump-table or pointer-table entry in dat
 callback" is rule 2; "a finisher entry" is rule 1; "dead code" is rule 14; "data" is rules 7, 8 and 11/13
 (not an entry). **"A voice site" is a property of a body, not a way of being reached**: a target whose body
 holds a direct `call`/`jmp 0x2C3FC` (k7-k12 §0.2's voice entry) goes to the `voice` batch when its class has
-no batch of its own, and every row lists its voice sites (§E2.7).
+no batch of its own, and a target row lists its voice sites (a non-target row lists none, §E2.7).
 
 **Batches** (the P track's input, spec §4): finishers, callbacks, span-writers, animation-targets by class;
 `voice` for a rules-4/5/9/10/12 target with a voice site; `other` for the rest; `-` for a non-target.
