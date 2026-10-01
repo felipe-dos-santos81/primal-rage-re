@@ -387,6 +387,15 @@ class TestU6Moves(unittest.TestCase):
             fired += len(s.due(f))
         self.assertEqual((fired, s.total, s.end_frame), (37, 37, 0x7FF + 1200))
 
+    def test_the_recapture_scenario_is_a_copy_that_stops_at_its_end(self):
+        # U6b re-capture (user decision): gp-u6-moves-b differs from gp-u6-moves only by name
+        a, b = gs.SCENARIOS['gp-u6-moves'], gs.SCENARIOS['gp-u6-moves-b']
+        self.assertIsNot(a, b)
+        self.assertEqual(a, b)
+        self.assertIs(a['steps'], b['steps'])
+        self.assertEqual(b['time_limit'], 130)
+        self.assertIn('gp-u6-moves-b', gs.STOP_AT_END)
+
 
 if __name__ == '__main__':
     unittest.main()
