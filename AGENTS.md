@@ -24,6 +24,7 @@ make gp-capture scenario=gp-pads  # DOSBox-X gameplay capture (frame-keyed injec
 make gp-replay scenario=gp-pads  # port replay of a gameplay capture (PR_GP_DUMP driver, .ipx frames + trace); in make verify on gp-pads, which skips without data/k11-captures/gp-pads
 make gp-oracle             # gameplay oracle: frame + trace ratchets on data/k11-captures/gp-idle-loss (N values in the Makefile); in make verify; skips without the capture
 make gp-charsel-oracle     # the same ratchets on data/k11-captures/gp-u5-charsel (the character-select walk; N 516 = how far the port's replay got, F 1513, the poll.log hash pinned); in make verify; skips without the capture
+make gp-moves-oracle       # gameplay oracle: gp-u6-moves-b frame, trace and moves ratchets (N values in the Makefile); in make verify; skips without the capture
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
@@ -195,6 +196,9 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   appears are not claimed** (a named gap; a coverage count is only reported). Where
   the port's script ends before the capture the first unexplained frame is how far
   the port got, not a defect.
+  `make gp-moves-oracle` does the same for `data/k11-captures/gp-u6-moves-b` and adds a
+  third ratchet, `moves`, over the snapshot's move bytes (`c0 c1 r0 r1 s0_43`, record
+  gameplay-u6 §U6.11); its claim is as narrow.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two

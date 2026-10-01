@@ -586,3 +586,324 @@ at exactly the listed addresses). Corrections to text and expectations:
   (three, then two pairs); `Ran 44` of `test_diff_verify` is `Ran 71` (`test_diff_emu` and
   `test_diff_verify` together, unchanged across Tasks 1-4); the brief's `make gp-oracle` mutation
   for the Makefile pins is N+1 forms (8321, 2065, 89).
+
+## §U6.22 U6b execution
+
+**Base.** Branch `gameplay-u6b` off `main` `973a427` (U5, U6a and E2 merged), rebased onto `main`
+`2f0c65f` once the capture-hygiene change (below) had merged. Image sha256 `0cfd6f48…3dec`
+(§U6.0) at every task. Sources: the SDD ledger and task reports
+(`.superpowers/sdd/2026-10-01-gameplay-u6b-moves-capture/`), the measurement files in `/tmp/pr_u6b`
+and, for the closure, the Task 15 runs (`t15_report.txt`, `t15_green.txt`, `t15_matrix.txt`,
+`t15_verify.txt`). Per the user's speed-up ruling the per-task gate was the task's own tests, its
+oracle (`gp-oracle` and `gp-charsel-oracle` for the shared-tool tasks, the replay for the port
+tasks) and `make diff-verify`; the full `make verify` ran at Task 15.
+
+**Commits** (pre-rebase SHAs, as the reports name them, in brackets).
+
+| commit | task | what |
+|---|---|---|
+| `fe196c4` (merged early: `main` `0ba96f3`) | 1 | five snapshot bytes `r0 r1 c0 c1 s0_43` in `S` records and `T` lines (§U6.11) |
+| `90834af` (`dbbf90e`) | 2 | `gp_compare`'s `moves` claim and `--moves-min-first` |
+| `db1192a` (`3a6a6c4`) | 3 | `tools/gp_moves.py` (the table decode, `steps`, `dry`, `check`) |
+| `5c58901` (`9ac4151`) | 4 | the `gp-u6-moves` scenario and the replay's pinned set (`fnm_known`'s 6th parameter `moves`) |
+| `bece773`, `eb1c5bf` (merged: `main` `2f0c65f`) | 6b | capture hygiene (below) |
+| `fab7708` (`e425863`) | 8 | port `0x3C048` (§U6.15) |
+| `09181ea` (`bc95fc3`) | 9 | port `0x3D1EC` (§U6.14) |
+| `dfcaf05` (`af7771f`) | 10 | port `0x3F0A8`, `0x3F054`, `0x3EFE0`, `0x3F020` (§U6.13) |
+| `52639e0` | 6 (re-run) | the `gp-u6-moves-b` scenario |
+| `525e731` | 11 | port `0x3F0F0`, `0x3F130`, `0x2BEF4` (§U6.17) |
+| `9fa9ce1` | 13 | port `0x231C0` (§U6.16), with the review fold-in g6 |
+| `cd594a1` | 15 | `make gp-moves-oracle` and its pins, with the fold-ins g7/g8 |
+
+Tasks 12 and 14 did not run (below). Each port commit regenerated the E2 table
+(`2026-10-01-reverse-e2-triage.md`, record E2 D3; `make entry-triage` OK after each): targets
+`329 unported, 166 ported` at the base, then `328/167` (Task 8), `327/168` (Task 9), `326/169`
+(Task 10), `324/171` (Task 11), `323/172` (Task 13), the re-baseline's prediction; voice sites
+outside Ghidra `48 / 67 / 19` (unported / ported / nowhere) until Task 10's `47 / 68 / 19` and
+Task 13's `46 / 69 / 19`.
+
+**Task 5, the dry run** (`task-7-report.md`): equal to the re-baseline's values (§U6.12). Misses
+`0x3F0A8` (1), `0x3D1EC` (2), `0x3C048` (2) besides the four harmless pairs, `distinct=7`, `FAILURES:
+4`; `c0=00 c1=01`; `7 of 12 attempts performed` at `800 8D0 92D 998 9FC BF0 C54`.
+
+**The first capture, `gp-u6-moves`: contaminated, not pinned** (`task-7-report.md` §6, `task-6b-report.md`).
+`make gp-capture scenario=gp-u6-moves` ran once: rc 0, its seven `check=` lines all `ok`, `c0=0` at
+mode 6, the path `gp-idle-loss`'s, poll.log sha256 `6bed58feec27f2b74a9dec0dafe6c34bd613715293f9a410c815b3f18ac368bd`.
+It is **278 MB, 5757 frames**, not the planned ~105 MB: the scenario's `X` record is at `f=0xCAF`
+as planned, but DOSBox-X kept recording to the 130 s time limit (snapshots to `f=0x198B`, into
+round 2); Decision 1's estimate counted frames only to `0xCAF`. Its check table: 5 of 12 performed
+(`0x10` at `0x800`, `0x24` at `0x8D0`, `0x2D` at `0x998` and `0xBF0`, `0x3D` at `0x9FC`). **The capture
+recorded input the harness did not inject:** 63 BIOS key words with no injection from `f=0x9CB`
+and pad presses of `U`/`I` (bits `0x0100`/`0x0200`) from `f=0xA52` to `0x1843`. The report's first count
+(49 pad presses, first word consumed at `0x9CD`) used a ±2-frame tolerance; Task 6b's exact rule
+gives `check=FAIL unscripted input: 63 key words, 51 pad presses, 0 pad releases, first at f=9CB`
+(re-run read-only at Task 16: the same line). The same scan finds none in `gp-pads`,
+`gp-idle-loss` or `gp-u5-charsel`. Likely cause (an inference the capture cannot prove): desktop
+keystrokes reached the DOSBox-X window during a windowed `make run`. None of the seven checks could
+see it (`kb == raw` holds because the game really saw the keys; `steps fired` counts only the
+harness's steps). Its replay (Tasks 1–4) missed `0x3F0A8` (1), `0x3D1EC` (2), `0x3C048` (1) and
+`0x3A820 fighter_state_3531c` (101) (`distinct=8`, `FAILURES: 5`); two measurement-only cut replays
+(`port-script --end` at `f=0x9CC` and `0xA51`) showed `0x3F0A8` and one `0x3D1EC` before the stray
+input, `0x3C048` by `0xA51`, and `0x3A820` in neither: reached only after the stray input. Per record
+§G.24 item 5 it was not re-captured over. **User decision (2026-10-01):** re-capture under a new
+name after adding a check that fails on unscripted input and a stop at the script's end, with
+nobody using the keyboard or the DOSBox-X window during the run. `gp-u6-moves` stays in
+`data/k11-captures/` (278 MB) for the user to delete; no `make` target or ratchet reads it (only
+Task 6b's `check-input` test does, pinned by its sha256 and skipped when it is absent).
+
+**Capture hygiene (Task 6b; `bece773`, review fixes `eb1c5bf`; merged to `main` `2f0c65f`).**
+`tools/gp_capture.py` gains `check=ok no unscripted input` (FAIL on any BIOS word not matched by an
+`I` press between two `S` records, tolerance none, or any pad bit set outside its scripted window
+`S(f+1)..S(r)` or clear inside it) and `check-input <dir>` (read-only; exit 1 on FAIL, 2 without
+`S` records or `poll.log`); `STOP_AT_END = {gp-u6-moves, gp-u6-moves-b}` sends SIGTERM once
+`S(F + 60)` is logged (`STOP_TAIL = 60`, one second at 60.05 Hz; `STOP_GRACE_S = 30`, then kill; both
+harness values) and adds `check=ok stopped at the end (SIGTERM at f=X, rc=0)`. Tool tests 110 -> 127
+on `main`; fourteen mutations each fail the suite. The residual blind spots are named in the code
+and AGENTS.md: the check cannot see a stray press of a pad key inside that key's scripted hold
+window, input before the first or after the last `S` record, a stray key-up of a non-pad key, or a
+pad tap pressed and released between two `S` records; it detects stray typing but does not prove
+its absence.
+
+**The clean capture, `gp-u6-moves-b`** (`task-7b-report.md`; scenario commit `52639e0`: a copy of
+`gp-u6-moves`, same steps object, time limit 130 s, in `STOP_AT_END`). `make gp-capture
+scenario=gp-u6-moves-b`, run once: rc 0, wall 76.8 s, `stop_at_end=1 tail=60 signal_f=0CEB`, all nine
+lines `check=ok` (`base`, `steps fired 37/37`, `end frame reached`, `mode 0x27 after the Enter`,
+`snapshots kb == raw (0 differ)`, `frames written 2205/2205`, `port script v2`, `no unscripted
+input`, `stopped at the end (SIGTERM at f=0CEB, rc=0)`); `X ms=75222 f=0CAF step=38 end`, `E ms=76451
+reason=end rc=0`; 3293 `S` records (`f 4..CEB`, 11 frames missed); **107 MB, 2205 frames, poll.log sha256
+`dcf242da915c41f4b4e381babdabdc30cd04ce89ed83e25f5178601e4878b2e3`** (re-checked on disk at Task 15,
+with `check-input` `ok`, rc 0); the pinned exe sha256 `8120f1bd…a68d`, as `gp-idle-loss`'s. This was
+the first real use of the stop (Cocoa driver, the game running). `c0=0` and `c1=1` at mode 6
+(`f=0x7F5`); the path is `gp-idle-loss`'s to within a frame; round 1 ends (mode 8) at `f=0xCBE`, inside
+the 60-frame tail; no late press. Plan-text correction (capture wins): the plan's expected path
+lists mode `0x2D` after `0x27`, but no `S` snapshot samples mode `0x2D` in this capture, in
+`gp-u6-moves`, `gp-idle-loss` or `gp-u5-charsel` (in `gp-idle-loss` its `P` record is at `0x26E`, an `f`
+with no `S` record, §U6.21).
+
+**The check table** (`gp_moves.py check`, verbatim):
+
+```
+gp_moves: check: attempt at f=7FF i=1A: performed (f=800 c0=0 mode=06)
+gp_moves: check: attempt at f=863 i=00: not shown
+gp_moves: check: attempt at f=8C7 i=01: performed (f=8D0 c0=0 mode=06)
+gp_moves: check: attempt at f=92B i=1B: not shown
+gp_moves: check: attempt at f=98F i=06: performed (f=998 c0=0 mode=06)
+gp_moves: check: attempt at f=9F3 i=15: performed (f=9FC c0=0 mode=06)
+gp_moves: check: attempt at f=A57 i=1A: not shown
+gp_moves: check: attempt at f=ABB i=00: performed (f=AC4 c0=0 mode=06)
+gp_moves: check: attempt at f=B1F i=01: performed (f=B28 c0=0 mode=06)
+gp_moves: check: attempt at f=B83 i=1B: performed (f=B84 c0=0 mode=06)
+gp_moves: check: attempt at f=BE7 i=06: not shown
+gp_moves: check: attempt at f=C4B i=15: performed (f=C54 c0=0 mode=06)
+gp_moves: check: 8 of 12 attempts performed
+```
+
+**All six distinct moves were performed**, each at `c0=0` in mode 6: `0x10` at `0x800`, `0x20` at
+`0xAC4`, `0x24` at `0x8D0` and `0xB28`, `0x11` at `0xB84`, `0x2D` at `0x998`, `0x3D` at `0x9FC` and
+`0xC54`; there is no not-performed move to name. The four not shown are explained by their windows
+(`t6b_notshown.txt`): each scripted input reaches `e0` (`0x2525@864`, `0x0C0C@92C`, `0x0303@A58`,
+`0x4545@BE8`), while P1 is still in the previous move (`r0` stays `0x10`, `0x24`, `0x3D`, `0x11`
+respectively, `s0_52` non-zero). The performed set differs from the dry run's (8 of 12 with every port,
+§U6.12: `1B` at `0x92D` and `06` at `0xBF0` there, `01` at `0xB28` and `1B` at `0xB84` here). The check's
+rules (Tasks 1–4, raw-derived): `r0` is the reaction side 0 itself applied; a performed attempt is a
+change of `r0` into the attempt's reactions (or a rising edge of `s0_43 & 0x30` for a block) inside
+`[F, F+gap)`; `0xFF` (`r0`'s reset at `0x4952A`) is never a performed value (no keyboard reaction of any
+character is `0xFF`); a repeated identical reaction is a false negative only.
+
+**The replays' miss logs** (`fn-miss` pairs besides the four harmless ones `0x5D812` x3 and
+`0x29D60`; `make gp-replay`):
+
+| tree | capture | other misses (hits) | distinct |
+|---|---|---|---|
+| Tasks 1–4 (Task 7) | `gp-u6-moves` | `0x3F0A8` 1, `0x3D1EC` 2, `0x3C048` 1, `0x3A820` 101 | 8 |
+| + Task 8 | `gp-u6-moves` | `0x3F0A8` 1, `0x3D1EC` 2 | 6 |
+| + Task 9 | `gp-u6-moves` | `0x3F0A8` 2, `0x3A820` 18, `0x4B03C anim_indirect` 1 | 7 |
+| + Task 10 | `gp-u6-moves` | `0x3F130` 2, `0x231C0` 1, `0x3F0F0` 1 | 7 |
+| + Tasks 8–10 (Task 7 re-run) | `gp-u6-moves-b` | `0x3F130` 1, `0x231C0` 1 | 6 |
+| + Task 11 | `gp-u6-moves-b` | `0x231C0` 1 | 5 |
+| + Task 13 | `gp-u6-moves-b` | none; `all checks passed` | 4 |
+
+The rows on `gp-u6-moves` after Task 8 lie on the port's own path after its first divergence on
+that capture (trace `f=0x8D1`, moves `f=0x919`) and, for `0x3A820` and `0x4B03C`, after the stray
+input: by ruling they were not acted on, and both are absent from every `gp-u6-moves-b` replay.
+**Reach on `gp-u6-moves-b` of the three functions ported before the re-capture**, measured at Task 15
+in a scratch copy of this head (`/tmp/pr_u6b_reach`) with that one `fn_register` line replaced by a
+`(void)` reference, replaying the same port script (`/tmp/pr_u6b_reach/all.txt`; each run rc 1, `distinct=5`, the pinned-set
+assertion `test_platform.c:205: 5 != 4` failing as it must): `0x3F0A8 hit_reaction_apply hits=2`,
+`0x3D1EC hit_reaction_apply hits=1`, `0x3C048 hit_reaction_apply hits=2`. Each count equals the
+capture's own performances of the move whose table callback it is (`0x24` twice, `0x2D` once, `0x3D`
+twice, the check table above).
+
+**Which port tasks ran, and each function's evidence.**
+
+| function | task | reached by `gp-u6-moves-b` | verified by |
+|---|---|---|---|
+| `0x3C048` | 8 | yes, 2 hits with it unregistered (the `0x3D` moves at `0x9FC` and `0xC54`) | seeded unit tests; the replay |
+| `0x3D1EC` | 9 | yes, 1 hit with it unregistered (the `0x2D` move at `0x998`) | seeded unit tests; the replay |
+| `0x3F0A8` | 10 | yes, 2 hits with it unregistered (the `0x24` moves at `0x8D0` and `0xB28`) | seeded unit tests; the replay |
+| `0x3F054`, `0x3EFE0`, `0x3F020` | 10 | through `0x3F0A8`'s stores (slot `+0x0C/+0x18/+0x1C`); not measured apart | seeded unit tests |
+| `0x3F130` | 11 | yes, the Task 7 re-run's miss (1) | seeded unit tests; the replay |
+| `0x2BEF4` | 11 | runs under `0x3F130` (a direct call at `0x3F169`); its effect, the emitter's `+0x2B` bit 0, is not a traced field | seeded unit tests only |
+| `0x3F0F0` | 11 | **no** (ported because Task 11 ports both `0xD100` targets, ruling; reached once on `gp-u6-moves` after Task 10, post-divergence) | seeded unit tests only |
+| `0x231C0` | 13 | yes, the miss (1) of the re-run and of Task 11's replay | seeded unit tests; the replay |
+
+Task 12 (`0x3A820`) was skipped: `gp-u6-moves-b` does not reach it, and its only reach was in
+`gp-u6-moves`'s contaminated stretch; it goes to track P with "not reached by gp-u6-moves-b". Task
+14 was skipped: after Task 13 the replay holds only the four harmless pairs and ends `all checks
+passed`, so no unregistered pair is left to pin. Every port task compared the plan's C against the
+fixed-up image (capstone, base `0x10000`) instruction by instruction, including the table dwords
+(`0xA38AC`, `0xA37F8`/`0xA380C`, the seven `0xA39EC + c*0x500`, `0xE7B8C`/`0xE7BC6` after `0xD100` words,
+`0xA3D34`): no correction to any function's C. `port_progress.py` printed `771 1203 64` / `731 731
+100` at every task (§U6.19 item 8: none of the ten is a `symbols.h` `FN_` address).
+
+**Mutations: every mutation's first `FAIL` line** (each applied alone, rebuilt or re-run, restored;
+Python ones under `PYTHONDONTWRITEBYTECODE=1`).
+
+- Task 1: `s0_43` `0x1077F3` -> `0x1077F2`: `FAIL test_the_u6_fields_are_appended`; `test_game.c` without
+  the `T`-line fields: `FAIL test_the_port_t_line_writes_every_snap_field_in_order`.
+- Task 2: `for n in fields` -> `gs.TRACE_FIELDS`: `FAIL test_the_moves_claim_compares_the_move_fields_only`;
+  the moves-run condition -> `True`: `ERROR test_the_moves_claim_runs_when_asked_or_reported_with_its_fields`;
+  m1: `c0`/`c1` addresses swapped in `test_game.c`: `FAIL 1079486 != 1079338 : ('c0', …)`; `r0=%02X` ->
+  `%04X`: `FAIL 'r0=%04X' != 'r0=%02X'`.
+- Task 3: `REPRESS` 2 -> 1: `FAIL test_a_repress_needs_the_debounce_gap`; the facing tuples swapped:
+  `FAIL test_absolute_folds_the_facing_bits`; the previous-`r0` condition deleted: `FAIL
+  test_a_reaction_already_shown_is_not_a_new_attempt`; `| keep` deleted: `FAIL test_the_0x20_motion`;
+  `KB_TABLE` -> `0x0C619C`: `FAIL test_character_0_entries`; `r['f'] + 1` -> `r['f']`: `FAIL
+  test_the_first_p1_press_names_the_attempt_frame`; the block's previous-record condition deleted:
+  `FAIL test_a_block_already_held_is_not_a_new_attempt`; mask `0x30` -> `0xFF`: `FAIL
+  test_only_the_block_bits_count`; `(r, 0xFF)` added to the expected set: `FAIL
+  test_no_keyboard_reaction_is_ff_or_beyond_the_move_table`; the no-fields guard -> `if False`: `FAIL
+  test_check_on_a_capture_without_the_move_fields_fails_cleanly`; m4: `DSB` -> `DSW` for `s0_43`:
+  `FAIL test_the_port_t_line_widths_and_addresses_match_snap_fields`.
+- Task 4: `after_mode` 10 -> 11, and the last step deleted: each `FAIL test_the_moves_fire_from_round_1`
+  and `test_the_scenario_steps_are_the_tool_s`;
+  g1 `& 0x30` -> `& 0x20`: `FAIL test_a_stance_1_block_is_bit_0x10`; g2 window `F + gap + 50`: `FAIL
+  test_the_window_ends_before_f_plus_gap`; g3 the `c0` refusal -> `if False`: `FAIL
+  test_check_refuses_another_character_s_run`; `(c0, mode)` -> `(0, 0)`: `FAIL
+  test_check_prints_c0_and_mode_at_each_hit`.
+- Task 6b: fourteen mutations (M1–M14 of `task-6b-report.md`), each failing `test_gp_capture`.
+- Task 8 (`0x3C048`): `ctx[2] +0x4E = 0` -> `(void)0`: `FAIL test_fight.c:44225 65535 != 0`;
+  `fn_register` removed: `FAIL 0x3C048 is registered`. The equivalent mutant of §U6.15 (the three `own`
+  writes deleted) survives, as the record says.
+- Task 9 (`0x3D1EC`): hold `0x40A00000` -> `0x40400000`: `FAIL test_fight.c:33627 1077936128 !=
+  1084227584`; `+0x54 = 1` -> `0`: `FAIL :44266 0 != 1`; `fn_register` removed: `FAIL 0x3D1EC is registered`.
+- Task 10: voice `0x8C` -> `0x8D` in `fighter_3f0a8`: `141 != 140`; `+0x18` `0x3EFE0` -> `0x3E484`:
+  `255108 != 258016`; `<= 10` -> `<= 9`: `2 != 1`; `(s32)(s16)` -> `(s32)`: `2 != 1`; the `0x1080A4` clear
+  in `fighter_3f020` -> `(void)0`: `24929 != 0`; `flags[0] = 1` -> `0` in `fighter_3efe0`: `0 != 1`;
+  `fn_register(0x3F0A8)` removed: `0x3F0A8 is registered`.
+- Task 11: `|= 1` -> `|= 2` (`0x2BEF4`): `0 != 1`; `+0x50 = 2` -> `(void)0`: `0 != 2`; the `slot == 0`
+  return in `fighter_3f0f0` removed: `4 != 3`; `fn_register(0x3F130)` removed: `0x3F130 is registered`.
+- Task 13: voice `0x7C` -> `0x7B` in `fighter_231c0`: `123 != 124`; `fn_register(0x231C0)` removed:
+  `0x231C0 is registered`. g6 (the spawn arguments of `0x3F0F0`/`0x3F130`): flags `| 0x400` -> `| 0`:
+  `0 != 5`; a2 8 -> 9: `9 != 8`; a4 `-0x5A` -> `-0x5B`: `65445 != 65446`; `+0x56` -> `+0x58`: `0 != 5`. The
+  mutant a3 0 -> 3 survives and is named (below).
+
+**The pins (Task 15).** Measured on `9fa9ce1` by `make gp-report scenario=gp-u6-moves-b`
+(`t15_report.txt`; replay `distinct=4`, `all checks passed`), then pinned in `cd594a1`:
+
+| variable | value | the measured line |
+|---|---|---|
+| `GP_MOVES_MIN_FIRST` (N) | 1005 | `frames: FIRST UNEXPLAINED capture 1005 (raw 4113): nearest port 759, rows 6..26, x 119..199 (27 px)` |
+| `GP_MOVES_TRACE_MIN_FIRST` (F) | 2262 | `trace: first difference f=8D6 (2262) in s1_5a: capture 16, port 2D` |
+| `GP_MOVES_MOVES_MIN_FIRST` (M) | 2949 | `moves: first difference f=B85 (2949) in r1: capture 0, port 15` |
+| `GP_MOVES_MAX_START` (W) | 88 | `frames: window from capture 88 (raw 1741); 913 classified: 556 clean, 351 splice, 1 transition, 5 unexplained, 9 all-black` |
+| `GP_MOVES_CAPTURE_SHA256`, `_FRAMES` | `dcf242da…b2e3`, 2205 | `shasum -a 256` of `poll.log`; the `frame_*.raw.gz` count |
+
+None is an exact pin: each is a first unexplained or differing item, not an end. The frame and trace
+values equal the Task 7 re-run's (before Tasks 11 and 13); the moves value moved from `f=0xA4E`
+(2638, `r1`: capture `27`, port `C`) to `f=0xB85`. `make gp-moves-oracle` (`t15_green.txt`, rc 0):
+`capture: poll.log sha256 dcf242da..78b2e3, 2205 frames: matches the pin`, `frames: first unexplained
+1005, ratchet N 1005 ok`, `trace: first differing 2262, ratchet N 2262 ok`, `moves: first differing
+2949, ratchet N 2949 ok`. **Each pin fails** (`t15_matrix.txt`, each rc 2):
+
+- `GP_MOVES_MIN_FIRST=1006`: `frames: FAIL: first unexplained 1005 < ratchet N 1006`
+- `GP_MOVES_TRACE_MIN_FIRST=2263`: `trace: FAIL: first differing 2262 < ratchet N 2263`
+- `GP_MOVES_MOVES_MIN_FIRST=2950`: `moves: FAIL: first differing 2949 < ratchet N 2950`
+- `GP_MOVES_MAX_START=87`: `frames: FAIL: window starts at capture 88 (raw 1741) > pinned start 87`
+- `GP_MOVES_CAPTURE_SHA256=00ff`: `capture: FAIL: poll.log sha256 dcf242da…b2e3 (2205 frames) != the pinned 00ff (2205 frames): a re-capture invalidates the pinned N, F and window start; …`
+
+**The first trace difference, measured (cause not isolated).** At `f=0x8D6`, six frames after P1's
+`0x24` move at `0x8D0`, P2's slot `+0x5A` (the counter that is `0x78` for P1 at the round-1 KO,
+§U6.21) rises from `0x13` to `0x16` in the capture and to `0x2D` in the port; at `0x8D5`, `0x8D6`, `0x8D7`,
+`0x8DA` and `0x8E0` no other snapshot field differs except `t508`/`t50c`/`ent`, which are reported, not
+traced (record gameplay-ground-truth §H). The replay has no unregistered callback left, so this is not a miss. Task 7b's
+inference that the divergence was plausibly the then-unported `0x3F130` or `0x231C0` is refuted: with
+both ported, F is unchanged. The frame N is downstream of it: port frame 759 is `f=0x8DA`
+(`frames.txt`), four frames later, and its rows 6..26 are the health bars; the moves difference
+(`r1` at `0xB85`) is later still.
+
+**The full gate (Task 15 Step 4, `t15_verify.txt`).** `make verify $V`: `verify-exit=0`; the 45 oracle
+lines equal `oracle-lines-base.txt` (`ORACLES-EQUAL`); `make audio-render` `cmp`-equal to `before-t2.wav`
+(`WAV-EQUAL`); the 11 `k11_compare` lines equal U6a's and E2's final verify runs; the `gp-idle-loss`
+lines equal `t0_gp_lines.txt` (`2064`, `0 differing through 8319; ratchet N 8320 ok`); the `gp-u5-charsel`
+lines equal `t0_charsel_lines.txt` (`516`, `1513`); the gp-pads replay `distinct=2`; the `gp-u6-moves-b`
+lines equal Step 3's; `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected` (U6b adds no spec);
+`entry-triage: targets 323 unported, 172 ported` (passing); the k11/gp tool-test line `Ran 158 tests …
+OK` (measured; the plan's 129 predates the capture-hygiene tests and the review fold-in tests);
+`symbols.h` regenerates identically; `port_progress.py` `771 1203 64` / `731 731 100`. Task 16 (docs
+only) re-ran `PR_ORACLE_REQUIRED=1 ./build/run_tests` and `make gp-moves-oracle`.
+
+**Corrections and review rulings (raw or capture wins).**
+
+- The capture size (278 MB to the time limit, not ~105 MB to the script's end): fixed for later
+  captures by the stop at the end (`gp-u6-moves-b`: 107 MB).
+- The first unscripted input is at `f=0x9CB` (the tail advance), not `0x9CD` (the frame its word was
+  consumed); 51 pad presses, not 49 (exact windows).
+- `r0` attribution (Task 3's concern that `r0` changes when P1 is hit is wrong): `r[side]` is the
+  side's own applied reaction, written only at `0x34EF6` (`0x34E2C`, `ebx` = the acting side) via
+  `0x3CE58` and `0x350D0`; all five `0x3CF38` call sites (`0x190E7`, `0x352A6`, `0x354BC`, `0x35DE8`,
+  `0x3BE61`) pass the updating side, so a CPU hit writes `r1`. A repeated identical reaction is a false
+  negative (the exact counter, slot `+0x84`, incremented at `0x34EEB`, is not a snapshot field).
+  `0x3D004` (the mode-`0x25` approach chain, `0x384A5`) applies entry 0's reaction without input, which
+  is why `check` prints `c0` and the mode at each hit.
+- The block is a rising edge: `0x1A6AC` tests `+0x43 & 0x20` (stance 0) or `& 0x10` (stance 1), sets it
+  (`and 0xCF; or 0x20/0x10`) and returns early when it is already set; the bits are cleared only by
+  `0x1A8F4` at `0x1A94D`. The brief's "any frame with `s0_43 & 0x30`" would count a held block.
+- Captures without the five bytes: `gp_compare --moves-min-first` and `gp_moves check` exit cleanly
+  (rc 1, a message) where the briefs' code raised `KeyError`.
+- The plan's expected path lists mode `0x2D` (above). `test_platform.c`'s `strncmp(sc,
+  "gp-u6-moves", 11)` selects `gp-u6-moves-b` too (intended).
+- Review minors folded in: m1 (Task 2), m4/m5 (Task 3), g1–g3 and g5 (Task 4), g6 (Task 13), g7
+  (the §U6.17 comment back above `check_u6b_3f0f0`) and g8 (the a3 comment, below) (Task 15). Parked,
+  not done: m3 (the `[-5:]` tail assertion breaks on the next `SNAP_FIELDS` append), m6 (report-mode
+  `moves` FAIL line wording), m7 (`has_moves` inspects the capture only), g4 (a late first press shifts
+  the windows; false negatives only; `late` is reported), Task 4's helper placement and the 130 s
+  limit's comment, Task 9's test exercising only the `0x3C480` branch of `0x3C4CC`, Task 10's header line
+  length and the `0x34E2C` AL comment wording that differs between `fighter.c` and `actors.c`.
+
+**Named gaps.**
+
+1. §U6.19 item 4: E1 cannot verify `0x3F0A8`, `0x3C048`, `0x231C0`, `0x3F054`, `0x3F020`, `0x3EFE0`,
+   `0x3F0F0`, `0x3F130`, `0x3D1EC` (closures with indirect transfers or stack-argument callees);
+   `0x2BEF4` is a static leaf with no binding. They are verified by seeded unit tests and, where
+   reached, by the replay.
+2. §U6.19 item 5: the block (`0x1AB5C`/`0x1A7CC`) needs the opponent's attack at a known frame (owner
+   U7); no throw entry is identified in character 0's table.
+3. §U6.19 item 6: the equivalent mutant of §U6.15 (confirmed by Task 8).
+4. §U6.19 item 7: the port's `HIT_TABLE_PLAYER`/`HIT_TABLE_CPU` names are swapped relative to their use.
+5. `0x3A820` (§U6.18) is **not reached by `gp-u6-moves-b`** and stays unported: track P.
+6. `0x3F0F0` is not reached by `gp-u6-moves-b`, and `0x2BEF4`'s effect is not traced: both are
+   verified by unit tests only. In `check_u6b_3f0f0` the spawn argument a3 = 0 is not observable: the
+   descriptor `0xBB290`'s flags word (`+8`) is `0x0100`, so the child's `+0x28` has bit `0x2000` clear and
+   bit `0x0400` set, and `pset_write`'s child branch (`actors.c:2427`) rewrites the layer `+0x49` from the
+   parent's pset layer in the same spawn (the mutant a3 0 -> 3 survives).
+7. The first trace difference at `f=0x8D6` (above): cause not isolated; F, and with it N and M, stop
+   there.
+8. The capture checks' residual blind spots: the unscripted-input check cannot see a stray press of
+   a pad key inside its scripted hold window, input before the first or after the last `S` record, a
+   stray key-up of a non-pad key, or a pad tap between two `S` records. The stop at the end is proven
+   once (this capture, Cocoa driver); under `SDL_VIDEODRIVER=dummy` DOSBox-X hangs at exit on both the
+   SIGTERM and the time-limit paths; it applies only to the opted-in scenarios, and nothing after
+   `f=0xCEB` is captured.
+9. The contaminated `gp-u6-moves` (278 MB) is left in `data/k11-captures/` for the user to delete; it
+   is not pinned.
+10. Carried from §G.16: the order of the port's frames and that every port frame appears are not
+    claimed (`coverage (reported, not ratcheted): 9 non-black port frame(s) up to port 758 not
+    exhibited`), and 8 `f` without a capture snapshot are not compared.
+11. §U6.19 item 8: the counters do not move (`771 1203 64`, `731 731 100`).
+
+**The claim (narrow, record §G.16).** No content-bearing capture frame of `gp-u6-moves-b` before
+N = 1005 (from the window start 88) is unexplained; `TRACE_FIELDS` agree below F = 2262 and
+`MOVE_FIELDS` below M = 2949; nothing is claimed about frames or state after those, nor about the
+order of the port's frames. The capture itself shows that the original performed all six distinct
+moves at `c0=0`; the port's agreement on the move bytes holds only below M.
