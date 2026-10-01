@@ -334,7 +334,7 @@ fn-miss PR_GP_DUMP distinct=2 dropped=0     (gp-pads)
 fn-miss PR_GP_DUMP distinct=7 dropped=0     (gp-idle-loss)
 ```
 
-The gate check: the 45 oracle lines equal `oracle-lines-base.txt` (`ORACLES-EQUAL`); `make audio-render` is byte-identical to `before-t2.wav` (`WAV-IDENTICAL`); `python3 tools/port_progress.py` prints `771 1203 64` and `731 731 100`. The 12 `k11_compare:` lines (walk 6, menuesc 6) are saved as the baseline (`$S/k11_base.txt`; the `K11-EQUAL` diff is trivially equal here): walk `0 unexplained in the window`, menuesc `0 unexplained in the window`, menuesc open end `END 388 must be >= 388: ok`. The base is the one the plan was measured on.
+The gate check: the 45 oracle lines equal `oracle-lines-base.txt` (`ORACLES-EQUAL`); `make audio-render` is byte-identical to `before-t2.wav` (`WAV-IDENTICAL`); `python3 tools/port_progress.py` prints `771 1203 64` and `731 731 100`. The 11 `k11_compare:` lines (walk 5, menuesc 6) are saved as the baseline (`$S/k11_base.txt`; the `K11-EQUAL` diff is trivially equal here): walk `0 unexplained in the window`, menuesc `0 unexplained in the window`, menuesc open end `END 388 must be >= 388: ok`. The base is the one the plan was measured on.
 
 ## §C5.11 The gate
 
