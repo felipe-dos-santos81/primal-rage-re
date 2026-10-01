@@ -52,20 +52,49 @@ static const u8 k_bios_letter[26] = {
     0x15, 0x2C
 };
 
-/* PORT: the host key binding. Bit 0 is the coin input 0x11F28 debits against;
- * the rest are the held inputs the mode transitions and the menus read. */
-static const SDL_Scancode k_input_bind[16] = {
-    SDL_SCANCODE_5,      /* 0: coin */
-    SDL_SCANCODE_1,      /* 1: player 1 start */
-    SDL_SCANCODE_2,      /* 2: player 2 start */
-    SDL_SCANCODE_UP,     /* 3 */
-    SDL_SCANCODE_DOWN,   /* 4 */
-    SDL_SCANCODE_LEFT,   /* 5 */
-    SDL_SCANCODE_RIGHT,  /* 6 */
-    SDL_SCANCODE_SPACE,  /* 7 */
-    SDL_SCANCODE_A, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_F,
-    SDL_SCANCODE_G, SDL_SCANCODE_H, SDL_SCANCODE_J, SDL_SCANCODE_K,
+/* PORT: the host stands in for the IRQ1 key-state table and the ISR sampler
+ * 0x1BBAC (host-owned, record §50-C) with the game's default binding: the
+ * scans +0x2DE..+0x2ED hold, the high bytes of the config words at 0xA2C62
+ * (record gameplay-ground-truth §G.1.2; every bit captured in gp-pads,
+ * §G.7.2). The letters map through k_bios_letter; the other pad keys here. */
+typedef struct { SDL_Scancode sdl; u8 scan; } host_scan_pair;
+static const host_scan_pair k_bios_pad[] = {
+    { SDL_SCANCODE_UP, 0x48 },    { SDL_SCANCODE_DOWN, 0x50 },
+    { SDL_SCANCODE_LEFT, 0x4B },  { SDL_SCANCODE_RIGHT, 0x4D },
+    { SDL_SCANCODE_HOME, 0x47 },  { SDL_SCANCODE_PAGEUP, 0x49 },
+    { SDL_SCANCODE_END, 0x4F },   { SDL_SCANCODE_PAGEDOWN, 0x51 },
+    { SDL_SCANCODE_F1, 0x3B },    { SDL_SCANCODE_F2, 0x3C },
 };
+
+/* PORT: 0x1BBAC's device-0 combine for one key, under the default binding:
+ * +0x2D8 = 0x1B610 | 0x1B730 | 0x1B850 (P1: S X Z C give 0x80 0x40 0x20 0x10,
+ * U I N M give 1 2 4 8, F1 (+0x28F) gives 1) and +0x2D9 the same for P2 (the
+ * arrows, Home PgUp End PgDn, F2 at +0x290), as the kb word (+0x2D8 << 8) |
+ * +0x2D9. Any other scan is no pad key. */
+u16 host_kb_bit(u8 scan)
+{
+    switch (scan) {
+    case 0x1F: return 0x8000u;   /* S */
+    case 0x2D: return 0x4000u;   /* X */
+    case 0x2C: return 0x2000u;   /* Z */
+    case 0x2E: return 0x1000u;   /* C */
+    case 0x16: return 0x0100u;   /* U */
+    case 0x3B: return 0x0100u;   /* F1 */
+    case 0x17: return 0x0200u;   /* I */
+    case 0x31: return 0x0400u;   /* N */
+    case 0x32: return 0x0800u;   /* M */
+    case 0x48: return 0x0080u;   /* Up */
+    case 0x50: return 0x0040u;   /* Down */
+    case 0x4B: return 0x0020u;   /* Left */
+    case 0x4D: return 0x0010u;   /* Right */
+    case 0x47: return 0x0001u;   /* Home */
+    case 0x3C: return 0x0001u;   /* F2 */
+    case 0x49: return 0x0002u;   /* PgUp */
+    case 0x4F: return 0x0004u;   /* End */
+    case 0x51: return 0x0008u;   /* PgDn */
+    default: return 0u;
+    }
+}
 
 static int g_key_bits_override_on;
 static u16 g_key_bits_override;
@@ -83,8 +112,10 @@ u16 host_key_bits(void)
     const bool *st = SDL_GetKeyboardState(NULL);
     if (st == NULL) return 0u;
     u16 bits = 0u;
-    for (int i = 0; i < 16; i++)
-        if (st[k_input_bind[i]]) bits |= (u16)(1u << i);
+    for (int i = 0; i < 26; i++)
+        if (st[SDL_SCANCODE_A + i]) bits |= host_kb_bit(k_bios_letter[i]);
+    for (size_t i = 0; i < sizeof k_bios_pad / sizeof k_bios_pad[0]; i++)
+        if (st[k_bios_pad[i].sdl]) bits |= host_kb_bit(k_bios_pad[i].scan);
     return bits;
 }
 

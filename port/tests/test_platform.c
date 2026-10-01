@@ -2625,6 +2625,19 @@ int test_host(void)
 {
     int before = g_failures;
 
+    /* The default binding (record gameplay-ground-truth §G.1.2; every bit
+     * captured in gp-pads, §G.7.2): a set-1 scan's kb bit. */
+    {
+        static const u8 scans[18] = { 0x1F, 0x2D, 0x2C, 0x2E, 0x16, 0x17, 0x31, 0x32, 0x3B,
+                                      0x48, 0x50, 0x4B, 0x4D, 0x47, 0x49, 0x4F, 0x51, 0x3C };
+        static const u16 bits[18] = { 0x8000, 0x4000, 0x2000, 0x1000, 0x0100, 0x0200, 0x0400, 0x0800, 0x0100,
+                                      0x0080, 0x0040, 0x0020, 0x0010, 0x0001, 0x0002, 0x0004, 0x0008, 0x0001 };
+        for (int i = 0; i < 18; i++) CHECK_EQ_INT(host_kb_bit(scans[i]), bits[i]);
+        CHECK_EQ_INT(host_kb_bit(0x10), 0);     /* Q: Alt-Q's letter is no pad key */
+        CHECK_EQ_INT(host_kb_bit(0x38), 0);     /* Alt: read by nothing (record u11 §K.2) */
+        CHECK_EQ_INT(host_kb_bit(0x06), 0);     /* '5': the stale "coin" binding */
+    }
+
     /* host_pump()/host_present_rgb()/host_shutdown() before host_init(): the
      * suite runs headless with no window, so all three must be safe no-ops. */
     host_shutdown();

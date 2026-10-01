@@ -107,11 +107,15 @@ u32  host_audio_rate(void);
 const char *host_audio_error(void);
 
 /* PORT: the 16 input bits the game's bitfield carries, packed as the two key
- * bytes at DAT_00101514 + 0x2d8/0x2d9. Which physical key drives which bit is a
- * port choice: the original's mapping lives in a hardware keyboard handler and
- * BIOS scancode space SDL does not have. The binding table lives in host.c and
- * is the single place to change it. */
+ * bytes at DAT_00101514 + 0x2d8/0x2d9 (kb word (+0x2D8 << 8) | +0x2D9): the
+ * SDL keys pressed, through host_kb_bit. */
 u16 host_key_bits(void);
+
+/* PORT: one set-1 scan's kb bit under the game's default binding (record
+ * gameplay-ground-truth §G.1.2): P1 S X Z C / U I N M / F1, P2 the arrows /
+ * Home PgUp End PgDn / F2; 0 for any other scan. Stands in for the host-owned
+ * ISR sampler 0x1BBAC's device-0 path. */
+u16 host_kb_bit(u8 scan);
 
 /* PORT: test seam, no raw counterpart. With `on` set, host_key_bits() returns
  * `bits` instead of the SDL keyboard state; the K11 oracle driver holds the key
