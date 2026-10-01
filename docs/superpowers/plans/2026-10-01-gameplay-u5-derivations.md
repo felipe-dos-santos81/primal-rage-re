@@ -137,9 +137,7 @@ verify-exit=0
 
 The frame claim now runs from capture 90 through the whole character select (`f = 0x293..0x640`),
 the time-out wipes, `0x11`, `0x17`, the round start (mode 5) and into round 1 up to capture 787
-(raw 3899), whose nearest port frame 575 is `f = 0x823` mode 6 (`$S/vo2/gp/gp-idle-loss/frames.txt`
-line 576: `00575 f=0823 tick=00000881 mode=0006`): one frame before the unregistered `0x23208` at
-`f = 0x824` (record §G.24, divergence 2, U6's). The trace ratchet is unchanged (2088). Gate
+(raw 3899), whose nearest port frame by the row-hash heuristic is 575 (`f = 0x823`, mode 6; `nearest()` is a heuristic, see §C5.19 item 9, and no longer the evidence). Pixel measurement (Task 9 fix wave, §C5.19 item 13): the capture frame before it, 786, is a splice of port 574/575 (`f = 0x822`/`0x823`; 575 alone differs in 1878 px), and for capture 787 the port frame with the fewest differing pixels is 576 (`f = 0x824`, 7470 px; port 575 differs in 11357 px), the frame where the unregistered `0x23208` is missed (record §G.24, divergence 2, U6's). The trace ratchet is unchanged (2088). Gate
 evidence from the same run: the 45 oracle lines `diff` against
 `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt` → `ORACLES-EQUAL`;
 `make audio-render AUDIO_WAV=$S/vo2/a.wav` → `cmp` with `before-t2.wav`: `WAV-IDENTICAL`;
@@ -334,7 +332,7 @@ fn-miss PR_GP_DUMP distinct=2 dropped=0     (gp-pads)
 fn-miss PR_GP_DUMP distinct=7 dropped=0     (gp-idle-loss)
 ```
 
-The baseline log is `/tmp/gameplay-u5/base_verify.txt` (outside the repo). The gate check: the 45 oracle lines equal `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt` (`ORACLES-EQUAL`); `make audio-render` is byte-identical to `.superpowers/sdd/2026-09-29-k7-k12/scratch/before-t2.wav` (`WAV-IDENTICAL`); `python3 tools/port_progress.py` prints `771 1203 64` and `731 731 100`. The 11 `k11_compare:` lines (walk 5, menuesc 6) are saved as the baseline (`$S/k11_base.txt`; the `K11-EQUAL` diff is trivially equal here): walk `0 unexplained in the window (2 mid-draw frames allowed by name)`, menuesc `0 unexplained in the window (2 mid-draw frames allowed by name)`, menuesc open end `END 388 must be >= 388: ok`. The base is the one the plan was measured on.
+The baseline log is `/tmp/gameplay-u5/base_verify.txt` (outside the repo). The gate check: the 45 oracle lines equal `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt` (`ORACLES-EQUAL`); `make audio-render` is byte-identical to `.superpowers/sdd/2026-09-29-k7-k12/scratch/before-t2.wav` (`WAV-IDENTICAL`); `python3 tools/port_progress.py` prints `771 1203 64` and `731 731 100`. The 11 `k11_compare:` lines (walk 5, menuesc 6) are saved as the baseline (`$S/k11_base.txt`; the `K11-EQUAL` diff is trivially equal here): walk `0 unexplained in the window` with `k11_compare: walk: allowed by name: [138, 151]` (the two mid-draw frames; `/tmp/gameplay-u5/k11_base.txt:4`), menuesc plain `0 unexplained in the window` (it has no allowed frames; `tools/k11_compare.py:182` prints that line), menuesc open end `END 388 must be >= 388: ok`. The base is the one the plan was measured on.
 
 ## §C5.11 The gate
 
@@ -584,7 +582,7 @@ Five of the ten pad keys (the third right, the down, the two lefts, the up) and 
 
 ## §C5.19 Closure: the narrow claims, named gaps, coverage and corrections (Task 9)
 
-**The narrow claims, stated.** `make gp-charsel-oracle` (in `make verify`) proves two things about `data/k11-captures/gp-u5-charsel` (the `poll.log` sha256 and the 1464 frames pinned): (1) no content-bearing capture frame from the window start (capture frame 100, `GP_CHARSEL_MAX_START`) up to N = 516 is unexplained by the port's replay (`GP_CHARSEL_MIN_FIRST = 516`); (2) the traced fields `mode st raw pad e0 e2 rng cred s0_5a s1_5a` agree on every compared frame below F = 1513 (`GP_CHARSEL_TRACE_MIN_FIRST`, through f = 1512 = 0x5E8). It does **not** trace the cursor or class bytes (`0x108166`, `0x10816A` are not `SNAP_FIELDS`; record §C5.5), does not claim the port renders everything (a port that under-renders passes; the order of the port's frames and that every one appears are not claimed, 8 non-black port frames are reported as not exhibited), and says nothing past the script's end (mode 6's first frame, f = 0x5E8; capture 516 onward is round 1 running on, how far the port got, not a defect). `gp-oracle` (the `gp-idle-loss` run) now claims the whole `gp-idle-loss` character select: after the `0x37B03` fix its frame claim runs from capture 90 through the character select (`f = 0x293..0x640`), the time-out wipes, `0x11`, `0x17` and the round start into round 1 up to capture 787 (§C5.11 (c)); the trace ratchet is unchanged at 2088 (the `rng` difference at `f = 0x828`).
+**The narrow claims, stated.** `make gp-charsel-oracle` (in `make verify`) proves two things about `data/k11-captures/gp-u5-charsel` (the `poll.log` sha256 and the 1464 frames pinned): (1) no content-bearing capture frame from the window start (capture frame 100, `GP_CHARSEL_MAX_START`) up to N = 516 is unexplained by the port's replay (`GP_CHARSEL_MIN_FIRST = 516`); (2) the traced fields `mode st raw pad e0 e2 rng cred s0_5a s1_5a` agree on every compared frame below F = 1513 (`GP_CHARSEL_TRACE_MIN_FIRST`, through f = 1512 = 0x5E8). It does **not** trace the cursor or class bytes (`0x108166`, `0x10816A` are not `SNAP_FIELDS`; record §C5.5), does not claim the port renders everything (a port that under-renders passes; the order of the port's frames and that every one appears are not claimed, 8 non-black port frames are reported as not exhibited), and says nothing past the script's end (mode 6's first frame, f = 0x5E8; capture 516 onward is round 1 running on, how far the port got, not a defect). `gp-oracle` (the `gp-idle-loss` run) now claims the whole `gp-idle-loss` character select: after the `0x37B03` fix its frame claim runs from capture 90 through the character select (`f = 0x293..0x640`), the time-out wipes, `0x11`, `0x17` and the round start into round 1 up to capture 787 (§C5.3 (c)); the trace ratchet is unchanged at 2088 (the `rng` difference at `f = 0x828`).
 
 **Named gaps and coverage** (each is a gap, not a finding; record §C5.5 and Tasks 7-8):
 - The second player's slot: LEFT PLAYER ARCADE shows only P2's prompt (`0x43B24` polls `0x11F28(1)`, draws `0x432A0`); P2 joining and walking is U7's.
@@ -595,6 +593,10 @@ Five of the ten pad keys (the third right, the down, the two lefts, the up) and 
 - The character names: inferred from the audit string order, not claimed (the frames show TALON and SAURON on the HUD; the seven cells' names are not compared).
 - Voices: not compared (audio is outside the frame and trace claims).
 - `0x3640C` (`anim_indirect`, an unported animation-opcode target, U0's list, track P): still unported; the `gp-idle-loss` replay no longer reaches it after the fix (§C5.12), and `gp-u5-charsel` never did.
+- The ENDURANCE fight (START MENU row 5, `0x2CC3C`, mode `0x2B` / sub 3; gameplay-ground-truth spec §3.3): not walked; handed to U8 (other modes), a named gap here.
+- Hidden or boss characters: a negative finding, not a gap (§C5.5: the cursor byte's writers keep it in `0..6` and P1's class comes only from `0xC8882[c]`, 7 entries; the caveat that an indexed write could set `DS_00108173` stays the named gap above).
+- The gp oracles never check port frames the capture does not exhibit (owner: a later gp-oracle unit): for `gp-u5-charsel` 8 non-black port frames, `[9, 11, 231, 272, 273, 274, 276, 277]`, all 8 are wipe/load screens by `frames.txt` (port 9, 11: `f=0x26A` mode `0x1A`; 231: `f=0x446` mode `0x1B`; 272-274: `f=0x55B` mode `0x1A`; 276, 277: `f=0x55C` mode `0x1B`; the review's "6 of them" is corrected to the measured 8 of 8); the whole-branch review garbled port frame 231 in a scratch dump and the oracle still passed.
+- The capture-identity pin covers `poll.log` (sha256) and the frame count only, not the contents of `frame_*.raw.gz` (owner: a later gp-oracle unit).
 - Divergences Task 7 left open, each with its owner: (a) the frame claim's first unexplained frame (capture 516) is the end of the script: harness, how far the port got; round 1 after it is U6's (the `gp-idle-loss` round-1 divergences, record §G.24: the unregistered `0x23208` at `f = 0x824`, the `0x3A588` state-10 callback with `hits=4995` from `f = 0x8E7`, §C5.13, and the `rng` difference at `f = 0x828`); (b) `t508` (not a trace field): 856 of 1194 differ after the §H `+1` normalisation, steps at `f = 0x27B, 0x432, 0x447, 0x55B, 0x55C`; four sit in load/wipe modes and belong to the existing record §G gap item 5b / §G.20 (the loader tick model, `RES_READ_BYTES_PER_TICK`), the fifth (`0x432`, mode 0x10) is not shown to be (§C5.17); no owner beyond that existing item; (c) `tick` differs from `f = 0x13B` (host-timed, spec §7 Q6); (d) the BIOS key is consumed 1 to 3 frames after its press (spec §7 Q3, record §G gap item 6): the replay uses the observed frames, so it does not depend on the cause; (e) 5 capture frames without a snapshot (`0x13A 0x1D0 0x268 0x445 0x446`, spec §3.7), not compared by the trace claim, their modes checked from the `P` records; (f) the 8 reported-only non-black port frames `[9, 11, 231, 272, 273, 274, 276, 277]` (the 70.09 Hz capture against the 60.05 Hz game).
 
 **Corrections of the plan by the raw or the capture (the raw wins), numbered:**
@@ -613,7 +615,9 @@ Five of the ten pad keys (the third right, the down, the two lefts, the up) and 
 
 **Scratch.** The throw-away instrumented clone `/tmp/gameplay-u5/t1` (§C5.11, never committed, outside the repo) was removed in Task 9; the outputs it produced are pasted in §C5.11. The other `/tmp/gameplay-u5` artefacts are not in the repo and are not needed to read this record.
 
-**Final gate** (`$S/mkv verify > $S/t9_verify.txt`, `verify-exit=0`, `all checks passed`; the check output is `$S/t9_gate.txt`, run after the Makefile comment fix of Task 9):
+**Final gate** (`$S/mkv verify > $S/t9_verify.txt`, `verify-exit=0`, `all checks passed`; the check output is `$S/t9_gate.txt`, started after the Makefile comment fix of Task 9: the Makefile's last write 14:15:05, the verify log created 14:16:13 and last written 14:27:59, the commit at 14:28:46, from file timestamps and the commit time):
+
+The two `attract: twi5.smk playback failed` / `attract: twg.smk playback failed` lines `make verify` prints are pre-existing, not from U5: they are in the Task 0 baseline log too (`/tmp/gameplay-u5/base_verify.txt`, lines 75 and 106 for `twi5.smk`).
 
 ```
 oracle lines: 45
@@ -630,3 +634,14 @@ fn-miss PR_GP_DUMP distinct=4 dropped=0        (gp-u5-charsel)
 gp_compare: gp-u5-charsel: frames: first unexplained 516, ratchet N 516 ok
 gp_compare: gp-u5-charsel: trace: 0 differing through 1512; ratchet N 1513 ok
 ```
+
+**Fix wave (after the Task 9 and whole-branch reviews; docs and comments only).** Item 13: the pixel measurement behind `GP_IDLE_LOSS_MIN_FIRST = 787`, on the `make verify` dump `/tmp/pr_u5_gp/gp-idle-loss` (6502 port frames) and `data/k11-captures/gp-idle-loss` (8173 frames) with `gp_compare`'s own loaders (`load_capture_frame`, `load_port_frame`, `diff_box`, `nearest`, `tc.explain`; scratch script `c787.py`, not committed), printed output:
+
+```
+capture 786 px per port frame {573: 18188, 574: 15995, 575: 1878, 576: 15031, 577: 17420}   (fewest: port 575 f=0823, 1878 px)
+  explain over port 570..579: splice {574, 575}
+capture 787 px per port frame {574: 18531, 575: 11357, 576: 7470, 577: 16425}   (fewest: port 576 f=0824, 7470 px)
+  nearest() row-hash heuristic: port 575 px 11357
+```
+
+(Ports 568..581 were printed; the others are 15000..40000 px.) `frames.txt`: `00575 f=0823`, `00576 f=0824` (mode 6). Capture 786 is a splice of port 574/575 and capture 787 is nearest in pixels to port 576, the frame of the `0x23208` miss, so the claim that the first unexplained frame sits at the divergence-2 frame holds; the earlier "one frame before" came from the `nearest()` heuristic and is withdrawn. The Makefile comment and §C5.3 (c) now cite this.
