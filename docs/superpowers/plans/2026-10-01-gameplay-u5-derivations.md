@@ -391,3 +391,38 @@ first difference: f=340 current v52=1E fixed v52=0
 | (iii) port frame | `first difference: f=340 current v52=1E fixed v52=0` | verbatim (all three lines verbatim) |
 
 **Decision: PASS. All three as expected, go to Task 2 (Task 3 adds the capture-level evidence).**
+
+## §C5.12 The fix (Task 2)
+
+`anim_code_37A58` (`port/src/game/actors.c`) now compares `rec+0x52` at the top wrap, the byte `0x37B03 mov edx,[ebx+0x4f]` / `0x37B08 sar edx,0x18` leaves in `edx` (§C5.11 (i)). One operand changed (`0x4f` to `0x52`); the header comment states the raw.
+
+**Step 2 (RED, the new Tick C and Tick D against the unfixed operand):**
+
+```
+FAIL .../port/tests/test_game.c:4776: 30 != 0
+FAIL .../port/tests/test_game.c:4790: 0 != 4
+FAILURES: 2
+```
+
+**Step 4 (GREEN):** `all checks passed`. A mutation of the fix (`>=` to `>` at `0x37B10`) fails Tick C alone (`test_game.c:4776: 30 != 0`, `FAILURES: 1`); restored.
+
+**Step 5 (the gp-idle-loss miss set).** The replay no longer reaches `0x3640C` (the divergent idle frame `0x1E` was the sprite id that led to it, §C5.3). With the row still present:
+
+```
+fn-miss PR_GP_DUMP distinct=6 dropped=0
+FAIL .../port/tests/test_platform.c:185: 6 != 7
+```
+
+After deleting the `0x3640C anim_indirect` row and rewording the comment: `distinct=6`, `all checks passed`. (The comment's `5353` hits of `0x3A588` was U4's measurement on the old trajectory; this run records `hits=4995` for it. Not a pin, left as U4 wrote it.)
+
+**Step 6 (gate, `make verify` through `$S/mkv`; log `/tmp/gameplay-u5/t2_verify.txt`):** `all checks passed`, `verify-exit=0`.
+
+```
+gp_compare: gp-idle-loss: frames: FIRST UNEXPLAINED capture 787 (raw 3899): nearest port 575, rows 147..199, x 0..319 (11357 px)
+gp_compare: gp-idle-loss: frames: first unexplained 787, ratchet N 203 ok (improved: raise N)
+gp_compare: gp-idle-loss: trace: first differing 2088, ratchet N 2088 ok
+fn-miss PR_GP_DUMP distinct=2 dropped=0     (gp-pads)
+fn-miss PR_GP_DUMP distinct=6 dropped=0     (gp-idle-loss)
+```
+
+The gate check: `ORACLES-EQUAL` (45 lines), `K11-EQUAL`, `WAV-IDENTICAL`, `771 1203 64`, `731 731 100`. The first unexplained capture frame moves from 203 to 787 (the plan's predicted value); Task 3 pins it.
