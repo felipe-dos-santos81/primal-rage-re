@@ -43,3 +43,9 @@ add_executable(run_tests tests/run_tests.c ${TEST_SOURCES})
 target_include_directories(run_tests PRIVATE src tests)
 target_link_libraries(run_tests PRIVATE prage_core)
 add_test(NAME unit COMMAND run_tests WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/..")
+
+# The port side of the differential harness (tools/diff_verify.py, spec
+# 2026-09-30-reverse-completion-design §5). A tool, not a test: its file name does not match the
+# tests/test_*.c glob above, so run_tests does not link it.
+add_executable(diffrun tests/diff_runner.c)
+target_link_libraries(diffrun PRIVATE prage_core)
