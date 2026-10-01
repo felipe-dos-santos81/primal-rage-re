@@ -151,6 +151,32 @@ class StaticScanTests(unittest.TestCase):
         info = E.static_scan(image(bytes(code)), 0x10000)
         self.assertEqual(info.leaders, [0x10000, 0x10010])
 
+    def test_a_back_edge_terminates_and_makes_the_target_a_leader(self):
+        # 10000: dec ecx; 10001: jnz 0x10000; 10003: ret
+        info = E.static_scan(image(bytes.fromhex("49" "75FD" "C3")), 0x10000)
+        self.assertEqual(info.leaders, [0x10000, 0x10003])
+        self.assertEqual(sorted(info.insns), [0x10000, 0x10001, 0x10003])
+
+    def test_the_instruction_budget_marks_the_scan_truncated(self):
+        img = image(b"\x90" * 20 + b"\xC3")
+        cut = E.static_scan(img, 0x10000, max_insns=5)
+        self.assertEqual((cut.truncated, len(cut.insns)), (True, 5))
+        full = E.static_scan(img, 0x10000, max_insns=1000)
+        self.assertEqual((full.truncated, len(full.insns)), (False, 21))
+
+    def test_loop_targets_and_fall_through_are_leaders(self):
+        # 10000: loop 0x10003; 10002: ret; 10003: ret  (10003 is reachable only through the loop)
+        info = E.static_scan(image(bytes.fromhex("E201" "C3" "C3")), 0x10000)
+        self.assertEqual(info.leaders, [0x10000, 0x10002, 0x10003])
+        for op in ("E1", "E0"):                                      # loope, loopne
+            info = E.static_scan(image(bytes.fromhex(op + "01" "C3" "C3")), 0x10000)
+            self.assertEqual(info.leaders, [0x10000, 0x10002, 0x10003])
+
+    def test_undecodable_bytes_mark_the_scan_truncated(self):
+        # 0F 04 is not an instruction in capstone's 32-bit x86 decoder
+        info = E.static_scan(image(bytes.fromhex("0F04")), 0x10000)
+        self.assertEqual((info.truncated, info.insns), (True, {}))
+
 
 if __name__ == "__main__":
     unittest.main()

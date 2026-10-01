@@ -199,7 +199,7 @@ class StaticInfo:
     insns: dict                  # addr -> size, every instruction reached by recursive descent
     indirect: list               # addrs of indirect jmp/call: their targets are unknown (a jump table)
     unresolved: list             # direct targets outside the image
-    truncated: bool              # the descent hit max_insns
+    truncated: bool              # the scan did not cover all reachable bytes (instruction budget or undecodable bytes)
 
 
 def static_scan(image, entry, max_insns=4000):
@@ -219,13 +219,14 @@ def static_scan(image, entry, max_insns=4000):
                 break
             ins = _decode(image.bytes_at(addr, 15), addr)
             if ins is None:
+                truncated = True
                 break
             insns[addr] = ins.size
             nxt = addr + ins.size
             m = ins.mnemonic
             if ins.group(capstone.CS_GRP_RET):
                 break
-            if ins.group(capstone.CS_GRP_JUMP):
+            if ins.group(capstone.CS_GRP_JUMP) or m in ("loop", "loope", "loopne"):
                 tgt = _direct_target(ins)
                 if tgt is None:
                     indirect.append(addr)
