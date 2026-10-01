@@ -312,13 +312,47 @@ class StaticInfo:
     truncated: bool              # the scan did not cover all reachable bytes (instruction budget or undecodable bytes)
 
 
-def static_scan(image, entry, max_insns=4000, stop=()):
-    """`stop`: call-set addresses (record E3 §E3.4); a jump to one is a tail call, not followed."""
+# The registers whose low part a guard may compare (record E3 §E3.7): cmp al/ax/eax all bound eax.
+_FAMILY = {r: fam for fam, rs in {
+    "eax": ("al", "ax", "eax"), "ebx": ("bl", "bx", "ebx"), "ecx": ("cl", "cx", "ecx"),
+    "edx": ("dl", "dx", "edx"), "esi": ("si", "esi"), "edi": ("di", "edi"), "ebp": ("bp", "ebp")}.items()
+    for r in rs}
+
+
+def switch_cases(image, ins, prior):
+    """The case targets of a bounded switch `jmp dword ptr [R*4 + T]` (record E3 §E3.7), else None.
+    Bounded means: among the (up to five) instructions `prior` that precede it on its own straight
+    path, a `cmp r, imm` with r in R's family, followed by a `ja` before the jmp; the table then
+    holds imm + 1 dwords (imm masked to the compared width). Stricter than E2's rule (E2 §E2.2),
+    which does not check the register or the `ja`."""
+    mem = [op for op in ins.operands if op.type == cx86.X86_OP_MEM]
+    if ins.mnemonic != "jmp" or not mem or not mem[0].mem.index or mem[0].mem.scale != 4 or mem[0].mem.base:
+        return None
+    idx = _FAMILY.get(ins.reg_name(mem[0].mem.index))
+    guard = None
+    for p in prior:
+        if (p.mnemonic == "cmp" and len(p.operands) == 2 and p.operands[0].type == cx86.X86_OP_REG
+                and p.operands[1].type == cx86.X86_OP_IMM and _FAMILY.get(p.reg_name(p.operands[0].reg)) == idx):
+            guard = p
+        elif p.mnemonic == "ja" and guard is not None:
+            width = guard.operands[0].size
+            n = (guard.operands[1].imm & ((1 << (8 * width)) - 1)) + 1
+            table = mem[0].mem.disp & 0xFFFFFFFF
+            if not image.contains(table, 4 * n):
+                return None
+            return [int.from_bytes(image.bytes_at(table + 4 * k, 4), "little") for k in range(n)]
+    return None
+
+
+def static_scan(image, entry, max_insns=4000, stop=(), switches=False):
+    """`stop`: call-set addresses (record E3 §E3.4); a jump to one is a tail call, not followed.
+    `switches`: follow a bounded switch's case targets (switch_cases) instead of flagging it."""
     stop = frozenset(stop)
     insns, leaders, indirect, unresolved = {}, {entry}, [], []
     work, truncated = [entry], False
     while work:
         addr = work.pop()
+        path = []                     # the instructions of this straight run, for a switch's guard
         while True:
             if addr in insns:
                 break
@@ -336,12 +370,20 @@ def static_scan(image, entry, max_insns=4000, stop=()):
             insns[addr] = ins.size
             nxt = addr + ins.size
             m = ins.mnemonic
+            path = (path + [ins])[-6:]
             if ins.group(capstone.CS_GRP_RET):
                 break
             if ins.group(capstone.CS_GRP_JUMP) or m in ("loop", "loope", "loopne"):
                 tgt = _direct_target(ins)
                 if tgt is None:
-                    indirect.append(addr)
+                    cases = switch_cases(image, ins, path[:-1]) if switches else None
+                    if cases is None:
+                        indirect.append(addr)
+                    else:
+                        for t in cases:
+                            if t not in stop:
+                                leaders.add(t)
+                                work.append(t)
                     break
                 if tgt not in stop:
                     leaders.add(tgt)

@@ -308,5 +308,31 @@ class CallScanTests(unittest.TestCase):
         self.assertEqual(sorted(E.static_scan(img, 0x10000, stop=[0x10020]).insns), [0x10000])
 
 
+
+# 10000: cmp al,2; ja 10010; and eax,0xff; jmp [eax*4+0x10100]; (10010) ret
+# table 10100: 10011 10012 10013, each a ret (record E3 §E3.7)
+SWITCH = {0x10000: "3C02" "770C" "25FF000000" "FF248500010100" "C3" "C3C3C3",
+          0x10100: "11000100" "12000100" "13000100"}
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class SwitchScanTests(unittest.TestCase):
+    def test_a_bounded_switch_is_followed_when_asked(self):
+        info = E.static_scan(program(SWITCH), 0x10000, switches=True)
+        self.assertEqual(info.indirect, [])
+        self.assertEqual(info.leaders, [0x10000, 0x10004, 0x10010, 0x10011, 0x10012, 0x10013])
+
+    def test_without_switches_the_scan_is_e1s(self):
+        self.assertEqual(E.static_scan(program(SWITCH), 0x10000).indirect, [0x10009])
+
+    def test_a_guard_on_another_register_does_not_bound_it(self):
+        other = {**SWITCH, 0x10000: "80FB02" "770B" "25FF000000" "FF248500010100" "C3"}   # cmp bl,2
+        self.assertEqual(E.static_scan(program(other), 0x10000, switches=True).indirect, [0x1000A])
+
+    def test_a_guard_without_ja_does_not_bound_it(self):
+        below = {**SWITCH, 0x10000: "3C02" "720C" "25FF000000" "FF248500010100" "C3"}     # jb, not ja
+        self.assertEqual(E.static_scan(program(below), 0x10000, switches=True).indirect, [0x10009])
+
+
 if __name__ == "__main__":
     unittest.main()
