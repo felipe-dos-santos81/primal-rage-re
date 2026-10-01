@@ -1101,9 +1101,10 @@ covered only `TRACE_FIELDS`, which leaves out `t508`, `ent` and `tick`):**
    exit 1 (`nothing compared`), so a wrong `poll.log` or an empty overlap cannot
    read as "0 unexplained".
 
-Tests: `Ran 10` in the plan's count would be 8 + 2; with the U3 additions the
-file runs **15** (11 frame-side, 4 trace-side: the plan's two, the conversion
-test, the vacuous test), `OK` (before the trace code: `AttributeError … 'trace_claim'`).
+Tests: the plan's count was `Ran 10` (2 loader + 6 frame + 2 trace); with the
+U3 additions the file runs **15** at this point (2 loader, 9 frame, 4 trace: the
+plan's two, the conversion test, the vacuous test), `OK` (before the trace
+code: `AttributeError … 'trace_claim'`); the CLI class of §G.16 makes it 19.
 Mutations (each restored → `Ran 15 … OK`):
 
 - `TRACE_FIELDS + ('tick',)` → `FAIL: test_tick_is_reported_not_ratcheted`.
@@ -1212,6 +1213,59 @@ pattern) `diff` against
 sha256, walk and menuesc) equal U2's gate dumps'; the gameplay sections read
 `gp-replay: no capture at data/k11-captures/gp-idle-loss` and `gp_compare: no
 capture at data/k11-captures/gp-idle-loss (skipped)` (the gp-pads replay line ran
-and passed before it); tool tests `Ran 92 tests` (67 + 25) `OK`;
+and passed before it); tool tests `Ran 92 tests` `OK` (`test_gp_compare`'s 19 included);
 `port_progress.py` `771 1203 64` / `731 731 100` (unchanged: U3 ports no
 function); no `port/` file changed.
+
+**The claim, stated narrowly (AGENTS.md's language for the front-end and K11
+oracles).** The frame claim proves that no content-bearing capture frame from
+the window start up to the first unexplained one is unexplained by the port's
+frames under `title_compare`'s model (clean, a byte splice of adjacent port
+frames, one transition row); it does not prove the frames after it, nor that
+the port draws what the capture draws where both are black (all-black capture
+frames are skipped), and **it cannot detect a port that under-renders**: its
+window start is where the capture first shows the port's own first frame, and
+every port frame the dump holds is a candidate explanation. A port that stops
+early only moves the first unexplained frame earlier (so the ratchet catches
+that), and the claim never says how much of the capture the port was supposed
+to reach. A green frame claim is not "the frame is correct". The trace
+claim proves the `TRACE_FIELDS` equal at every snapshotted `f` below its first
+difference; unsnapshotted frames (spec §3.7) are not compared, `tick` is not
+claimed (host-timed), `t508` and `ent` are reported after their conversions and
+not ratcheted, and **over a window where little varies it says little**: the
+only measured trace evidence so far is `gp-pads` (mode `0x27` throughout, only
+the pad words vary, §G.10, §H.2 item 6). The values `GP_IDLE_LOSS_MIN_FIRST` and
+`GP_IDLE_LOSS_TRACE_MIN_FIRST` are not pinned by U3 (no `gp-idle-loss` capture
+exists yet); U4 Task 5 pins them from a measured first unexplained frame and a
+measured first differing `f`, each with its provenance, and proves each can fail.
+The `[p − 2, p + 64)` search order, `REPORT_MAX` and the LRU size are harness
+values, not game values.
+
+## §I U3 corrections and notes (raw/measured wins over the plan)
+
+1. **`make gp-oracle` and `gp-report` pass `GP_OPTIONAL=1`** to `gp-replay`
+   (the plan's recipe passed nothing): spec §4.3 says a gp capture skips like
+   the K11 oracles, and §H.2 item 3 made a bare `gp-replay` fail on an absent
+   capture under `PR_ORACLE_REQUIRED` (which `make verify`'s callers may set).
+2. **The trace claim also reports `t508` and `ent` after the §H conversions**
+   (plan: `TRACE_FIELDS` only). Measured on `gp-pads`: 0 of 721 differ for both
+   (§G.16), which confirms §H items 1 and 2 with the tool. Reported, not
+   ratcheted (they restart/convert at transitions, spec §3.7).
+3. **A vacuous trace (nothing compared) fails**; a capture directory without
+   `poll.log` fails; the ratchet words its noun per claim. None is in the plan.
+4. **The plan's expected self-comparison counts were loose** (`139 clean`):
+   145 frames − 7 all-black = **138** classified (§G.16).
+5. **The windowed search is a search order, not a guarantee of the same kind**
+   (the plan: "the classification equals the unwindowed one"): whether a frame is
+   explained never depends on the window (the full dump is the fallback), but
+   when a frame has both a clean and a splice explanation the window may report
+   the one nearer `p` (§G.14). The ratchet reads only explained/unexplained.
+6. **`AGENTS.md`'s command block names `make gp-capture scenario=gp-pads`**,
+   not the plan's `gp-idle-loss`: that scenario does not exist before U4
+   (`gp_session.SCENARIOS` holds `gp-pads` only; U1 says "planned for U4").
+7. **The first measured frame ratchet value is the port's script end, not a
+   rendering difference** (§G.16: `gp-pads`, first unexplained capture frame
+   108 = the first screen after the original's idle-timeout restart, which the
+   port's script ends 60 frames after its chord and never reaches). For
+   `gp-idle-loss` U4 should expect the same shape if its replay stops early:
+   N then bounds how far the port got, as spec §4.3 says.

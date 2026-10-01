@@ -20,7 +20,10 @@ make demo-fight-oracle     # ratchet on the demo fight's first unexplained frame
 make attract2-oracle       # ratchet on the attract's second cycle after the demo (N pinned in the Makefile); in make verify
 make k11-oracle            # K11 service-menu oracles (the walk and menuesc); in make verify; each skips without its data/k11-captures/<scenario>
 make k11-capture scenario=walk   # DOSBox-X capture of the service menu (writes data/k11-captures/<scenario>)
+make gp-capture scenario=gp-pads  # DOSBox-X gameplay capture (frame-keyed injection, per-frame snapshot log); writes data/k11-captures/gp-<scenario>
 make gp-replay scenario=gp-pads  # port replay of a gameplay capture (PR_GP_DUMP driver, .ipx frames + trace); in make verify on gp-pads, which skips without data/k11-captures/gp-pads
+make gp-oracle             # gameplay oracle: frame + trace ratchets on data/k11-captures/gp-idle-loss (N values in the Makefile); in make verify; skips without the capture
+make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 ```
 
@@ -165,6 +168,15 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   `tools/k11_compare.py`, a measured value like the demo-fight N: raise it when
   the window grows), because an END taken from the port's own dump passes a
   port that never restarts.
+  The gameplay oracle (`make gp-oracle`, in `make verify`) ratchets the first
+  unexplained capture frame and the first differing trace frame of
+  `data/k11-captures/gp-idle-loss`; its N values and provenance are in the
+  Makefile (empty until the capture is pinned); it skips without the capture,
+  even under `PR_ORACLE_REQUIRED`. Its claim is narrow the same way (record
+  `…-gameplay-ground-truth-derivations.md` §G.16): no content-bearing capture
+  frame before N is unexplained and the traced fields agree below F; it cannot
+  detect a port that under-renders, and where the port's script ends before the
+  capture the first unexplained frame is how far the port got, not a defect.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
