@@ -320,3 +320,18 @@ character select 59.5 KB, `0x1A..5` 38.3 KB, the fight 45.5 KB. U4's wall clock:
 `time_limit = 60` leaves ~14 s. Expected capture ≈ 55 MB (the same 60 s of DOSBox at U4's
 density); the upper bound, every AVI frame from raw 1371 to 4206 distinct at 60 KB, is 170 MB.
 The port dump to mode 6 is 23 MB (§C5.6). Measured in the plan's Task 6.
+
+## §C5.10 Baseline
+
+Run in the worktree `.worktrees/gameplay-u5c` (branch `gameplay-u5c`; the plan's `.worktrees/gameplay-u5` was already set up under this name). Base commit: `80db456` (`main` `e9271df` plus the committed plans).
+
+`make verify` (through the `$S/mkv` wrapper, `S=/tmp/gameplay-u5`) ends `all checks passed`, `verify-exit=0`. The `gp-oracle` and miss-set lines, as measured:
+
+```
+gp_compare: gp-idle-loss: frames: first unexplained 203, ratchet N 203 ok
+gp_compare: gp-idle-loss: trace: first differing 2088, ratchet N 2088 ok
+fn-miss PR_GP_DUMP distinct=2 dropped=0     (gp-pads)
+fn-miss PR_GP_DUMP distinct=7 dropped=0     (gp-idle-loss)
+```
+
+The gate check: the 45 oracle lines equal `oracle-lines-base.txt` (`ORACLES-EQUAL`); `make audio-render` is byte-identical to `before-t2.wav` (`WAV-IDENTICAL`); `python3 tools/port_progress.py` prints `771 1203 64` and `731 731 100`. The 12 `k11_compare:` lines (walk 6, menuesc 6) are saved as the baseline (`$S/k11_base.txt`; the `K11-EQUAL` diff is trivially equal here): walk `0 unexplained in the window`, menuesc `0 unexplained in the window`, menuesc open end `END 388 must be >= 388: ok`. The base is the one the plan was measured on.
