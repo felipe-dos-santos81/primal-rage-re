@@ -20,6 +20,9 @@ K11_DUMP = /tmp/pr_k11_dump
 GP_DUMP = /tmp/pr_gp_dump
 DIFF_IMAGE ?= /tmp/pr_diff_image.bin
 DIFF_TABLE ?= /tmp/pr_diff_table.md
+E2_IMAGE ?= /tmp/pr_e2_image.bin
+E2_TABLE = docs/superpowers/plans/2026-10-01-reverse-e2-triage.md
+E2_LIVE = docs/superpowers/plans/2026-10-01-reverse-e2-live-functions.txt
 scenario ?= walk
 K11_ARGS ?=
 TITLE_PIN_DIR = /tmp/pr_title_pin
@@ -53,7 +56,8 @@ chunk ?= 0
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
-        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle
+        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle \
+        entry-triage
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -508,6 +512,20 @@ diff-verify: build ## Differential verification: original x86 bytes vs the port'
 			--image $(DIFF_IMAGE) --table $(DIFF_TABLE) --self-check; \
 	else echo "diff-verify: skipped: unicorn or capstone is not installed (pip install -r tools/requirements-diff.txt)"; fi
 
+# E2 (record docs/superpowers/plans/2026-10-01-reverse-e2-derivations.md): triage of the entry
+# candidates Ghidra never listed. The committed table must equal a fresh run on the image the port's
+# loader dumps, so a port change that ports a target regenerates it in the same commit. Skips without
+# capstone or PRAGE.EXE.
+entry-triage: build ## E2 triage of the non-Ghidra entry candidates: unit tests + the committed table must equal a fresh run (skips without capstone)
+	@echo "== entry triage (the non-Ghidra entry candidates; record E2) =="
+	@if ! $(PYTHON) -c "import capstone" 2>/dev/null; then \
+		echo "entry-triage: skipped: capstone is not installed (pip install -r tools/requirements-diff.txt)"; \
+	elif [ ! -f $(GAME_DIR)/PRAGE.EXE ]; then echo "entry-triage: skipped: $(GAME_DIR)/PRAGE.EXE is absent"; \
+	else $(PYTHON) -m unittest tools.tests.test_entry_triage && \
+		./$(BUILD_DIR)/diffrun --exe $(GAME_DIR)/PRAGE.EXE --image-out $(E2_IMAGE) && \
+		$(PYTHON) tools/entry_triage.py --image $(E2_IMAGE) --live $(E2_LIVE) --check $(E2_TABLE) \
+			--expect 579 --expect-u0 575; fi
+
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
@@ -545,6 +563,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory gp-oracle
 	@$(MAKE) --no-print-directory gp-charsel-oracle
 	@$(MAKE) --no-print-directory diff-verify
+	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
 	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
