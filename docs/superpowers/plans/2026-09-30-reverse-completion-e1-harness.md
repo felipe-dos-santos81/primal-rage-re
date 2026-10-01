@@ -1675,3 +1675,34 @@ Report: the head SHA, the gate output (EXIT, oracle lines, WAV, counters), the t
 - Tasks 1, 2, 4 are Python integration with complete code: a standard-tier implementer. Task 3 is a transcription plus a build and a hand smoke: the cheapest tier is enough. Task 5 is a record plus the gate: standard tier. Review each with a standard-tier reviewer; the final whole-branch review goes to the most capable model.
 - The code in Tasks 1-4 was prototyped and run end to end before this plan was written (47 Python tests pass, nine table rows, every mutation above fails the named tests), so a deviation from it needs a reason in the report.
 - Handoff after E1: E2 (triage of the 575 candidates) and the U5-U8, U11 plans can start, and P (the port batches) starts once the stub design for calls (record §E.6 item 1) is planned.
+
+---
+
+## Post-review amendments
+
+The code blocks in Tasks 1-4 above were written before implementation. The committed files supersede
+them: where a block and the committed file differ, the file is right. What changed after the blocks
+were written:
+
+- **Task 2, review fix** (`db8c673`, plan blocks synced in `2894a61`): `static_scan` follows `loop`,
+  `loope` and `loopne`, and undecodable bytes set `truncated = True`.
+- **Task 3, review fix** (`11ef66e`, plan blocks synced in `cc6e66a`): `diffrun` validates every poke
+  before applying any (no state left behind by an error case), the bounds check cannot wrap in `u32`,
+  `parse_hex` rejects values above `0xFFFFFFFF`, and three silent input errors are rejected (a `case`
+  inside an open case, a case with no `end` at end of file, a trailing flag with no value). The plan's
+  Task 4 test block gained `test_an_error_case_leaves_no_state_behind`.
+- **Final-review fix wave** (`c9431b0`, not synced into the blocks above):
+  - `tools/diff_verify.py`: strict `parse_port_output` (exactly one `ret` or `error` and an `end` per
+    case; duplicate ids, unknown lines and an open case at EOF are errors); `Spec` refuses duplicate
+    case ids; `verify_spec` requires the returned ids to equal the ids sent; `mutant_detection` (a
+    mutant counts only with no port error and an eax or byte difference; the self-check prints
+    `NOT DETECTED (reason)`); `--function` with an unknown name exits 2; `Spec.eax_mask` (default
+    `0xFFFFFFFF`, `fighter_slot_flag` `0xFF`), `compare(orig, port, mask)` using it, and a port-reported
+    mask that differs is a discrepancy; `main` exits 2 on a runner error; `SpecResult` gained
+    `port_errors` and `diffs`.
+  - `tools/diff_emu.py`: the private stack is mapped at `0x7FF00000` outside `MEM_SIZE`
+    (`STACK_LOW`, `STACK_END`, `STACK_TOP`, `SENTINEL`), only that range is excluded from the write
+    diff; the `capstone` import is guarded and `available()` needs both libraries.
+  - `Makefile`: the `diff-verify` guard is `import unicorn, capstone`.
+  - Tests: `test_diff_verify.py` 23 to 43, `test_diff_emu.py` 24 to 27 (70 in all).
+
