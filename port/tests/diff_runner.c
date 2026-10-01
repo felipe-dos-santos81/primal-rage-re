@@ -7,10 +7,13 @@
 #include "mem.h"
 #include "symbols.h"
 #include "game/actors.h"
+#include "game/attract.h"
+#include "game/effects.h"
 #include "game/config.h"
 #include "game/fighter.h"
 #include "game/flow.h"
 #include "game/rng.h"
+#include "game/svcmenu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,6 +74,10 @@ static void b_anim_ctx(const u32 *r, u32 *eax)
     *eax = 0u;
 }
 static void b_3c4cc(const u32 *r, u32 *eax)            { hit_anim_start_b(r[R_EAX], r[R_EDX], r[R_S0]); *eax = 0u; }
+/* A probe of the port's code-pointer table: EAX = an original address, the result 1 when the port
+ * registered it and 0 when not (fn_resolve_from then reports the miss to the hook, as in a spec's
+ * indirect call). Nothing is called. Tested over every fn_register site (test_diff_verify.py). */
+static void b_fn_resolved(const u32 *r, u32 *eax)      { *eax = fn_resolve(r[R_EAX]) != NULL ? 1u : 0u; }
 
 /* Self-check mutants. Each is a plausible porting bug, kept only so tools/diff_verify.py
  * --self-check can prove the harness reports a difference (an assertion that cannot fail proves
@@ -231,6 +238,7 @@ static const binding_t k_bindings[] = {
     { "fighter_ctx_same",         b_ctx_same,     0x00000000u },
     { "hit_anim_ctx",             b_anim_ctx,     0x00000000u },
     { "hit_anim_start_b",         b_3c4cc,        0x00000000u },
+    { "fn_resolved",              b_fn_resolved,  0xFFFFFFFFu },
     { "hit_anim_start_b@mutant",  m_3c4cc,        0x00000000u },
     { "fighter_45878@mutant",     m_45878,        0x00000000u },
     { "anim_10fa8@mutant",        m_10fa8,        0x00000000u },
@@ -269,18 +277,31 @@ static int load_image(const char *exe, const char *img_path)
     return memcmp(mem + CODE_BASE, g_pristine, g_len) == 0;
 }
 
-/* actors_init registers the port's code pointers (fn_register) once it has validated the two
- * pool pointers, which only game_init sets. Point them at a scratch range above the image for
- * the call, then restore them: mem[] is the loader's image again (checked). */
+/* Every fn_register call site of port/src, so that an indirect call to any ported code pointer
+ * resolves to its C function (record E3 §E3.7, decision D3: an unregistered target is reported as
+ * a miss, and a registered one must not be). The sites (grep fn_register port/src): actors_init,
+ * effects_init's camera_register, attract_scene_tick's attract_register, svcmenu_register.
+ * actors_init validates the two pool pointers, which only game_init sets: point them at a scratch
+ * range above the image for the call, then restore them. attract_scene_tick registers and then
+ * walks the mask DS_00104AD0, so the mask is zeroed for the call. effects_init also builds the
+ * effects pool in the image, so the image is put back from the dump after it. The other three
+ * leave mem[] as the loader had it, which is checked. */
 static int register_code(void)
 {
-    u32 pool = DSD(DS_001014F4), pset = DSD(DS_001014EC);
+    u32 pool = DSD(DS_001014F4), pset = DSD(DS_001014EC), mask = DSD(DS_00104AD0);
     DSD(DS_001014F4) = 0x2000000u;
     DSD(DS_001014EC) = 0x2100000u;
+    DSD(DS_00104AD0) = 0u;
     int ok = actors_init();
     DSD(DS_001014F4) = pool;
     DSD(DS_001014EC) = pset;
-    return ok && memcmp(mem + CODE_BASE, g_pristine, g_len) == 0;
+    attract_scene_tick();
+    DSD(DS_00104AD0) = mask;
+    svcmenu_register();
+    int same = memcmp(mem + CODE_BASE, g_pristine, g_len) == 0;
+    effects_init();
+    memcpy(mem + CODE_BASE, g_pristine, g_len);
+    return ok && same;
 }
 
 typedef struct { u32 addr; u32 len; u8 b[64]; } poke_t;
@@ -304,7 +325,8 @@ typedef struct {
 } case_t;
 
 static const case_t *g_case;          /* the case running, for the seam hook */
-static int g_seam_error;              /* a stub write the hook refused */
+static int g_seam_error;              /* a stub write the hook refused: 1 outside the image, 2 an argument the callee lacks */
+static u32 g_seam_addr, g_seam_arg, g_seam_nargs;
 
 static int seam_hook(u32 addr, u32 nargs, const u32 *args, u32 *eax)
 {
@@ -320,7 +342,13 @@ static int seam_hook(u32 addr, u32 nargs, const u32 *args, u32 *eax)
         const swrite_t *w = &s->w[i];
         u32 at = w->off;
         if (w->base >= 0) {
-            if ((u32)w->base >= nargs) { g_seam_error = 1; continue; }
+            if ((u32)w->base >= nargs) {
+                g_seam_error = 2;
+                g_seam_addr = addr;
+                g_seam_arg = (u32)w->base;
+                g_seam_nargs = nargs;
+                continue;
+            }
             at = args[w->base] + w->off;
         }
         if (!(at >= CODE_BASE && w->p.len <= g_len && at - CODE_BASE <= g_len - w->p.len)) {
@@ -339,6 +367,19 @@ static int parse_hex(const char *s, u32 *out)
     unsigned long v = strtoul(s, &e, 16);
     if (e == s || *e != '\0' || v > 0xFFFFFFFFul) return 0;
     *out = (u32)v;
+    return 1;
+}
+
+/* A plain decimal (what cases_text writes for `argN`): digits only, no sign, no 0x. */
+static int parse_dec(const char *s, u32 *out)
+{
+    u32 v = 0;
+    if (*s == '\0') return 0;
+    for (; *s; s++) {
+        if (*s < '0' || *s > '9' || v > 100u) return 0;
+        v = v * 10u + (u32)(*s - '0');
+    }
+    *out = v;
     return 1;
 }
 
@@ -391,7 +432,9 @@ static void run_case(const case_t *c)
     g_seam_error = 0;
     b->call(c->reg, &eax);
     g_case = NULL;
-    if (g_seam_error) printf("error a stub write outside the image\n");
+    if (g_seam_error == 2)
+        printf("error a stub write names argument %u, but 0x%X reports %u arguments\n", g_seam_arg, g_seam_addr, g_seam_nargs);
+    else if (g_seam_error) printf("error a stub write outside the image\n");
     else printf("ret eax 0x%X mask 0x%X\n", eax & b->eax_mask, b->eax_mask);
     for (u32 i = 0; i < g_len; i++)
         if (mem[CODE_BASE + i] != g_pre[i]) printf("w 0x%X 0x%02X\n", CODE_BASE + i, mem[CODE_BASE + i]);
@@ -444,13 +487,13 @@ static int run_cases(const char *path)
                 fprintf(stderr, "diffrun: bad stub line\n"); fclose(f); return 0;
             }
         } else if (strcmp(t[0], "swrite") == 0 && n == 4 && c.nstub > 0
-                   && c.stub[c.nstub - 1].nw < 4) {
+                   && !c.stub[c.nstub - 1].real && c.stub[c.nstub - 1].nw < 4) {
             /* swrite <abs|argN> <off> <bytes>, for the last stub line */
             stub_t *s = &c.stub[c.nstub - 1];
             swrite_t *w = &s->w[s->nw++];
             u32 k = 0;
             if (strcmp(t[1], "abs") == 0) w->base = -1;
-            else if (strncmp(t[1], "arg", 3) == 0 && parse_hex(t[1] + 3, &k) && k < 8) w->base = (int)k;
+            else if (strncmp(t[1], "arg", 3) == 0 && parse_dec(t[1] + 3, &k) && k < 8) w->base = (int)k;
             else { fprintf(stderr, "diffrun: bad swrite base\n"); fclose(f); return 0; }
             if (!parse_hex(t[2], &w->off) || !parse_bytes(t[3], &w->p)) {
                 fprintf(stderr, "diffrun: bad swrite line\n"); fclose(f); return 0;

@@ -365,6 +365,20 @@ int test_call_seam(void)
     CHECK(s_seam_addr[0] == 0x2C3FCu && s_seam_addr[1] == 0x2C3FCu, "both calls are seen");
     CHECK(s_seam_nargs[1] == 1u && s_seam_args[1][0] == 0u, "with the voice id");
 
+    /* actor_spawn reports desc as a mem[] offset when it lies in mem[], and a sentinel no spec
+     * can name when it does not (0x2F5A0 passes a C stack array). */
+    {
+        static const u32 c_desc[4] = { 0u, 0u, 0u, 0u };     /* not in mem[] */
+        s_seam_n = 0u;
+        s_seam_stub = 1;
+        CHECK_EQ_INT((int)actor_spawn((const u32 *)(mem + 0x9AD08u), 1u, 2u, 3u, 4u), 0x5A);
+        CHECK_EQ_INT((int)actor_spawn(c_desc, 1u, 2u, 3u, 4u), 0x5A);
+        CHECK_EQ_INT(s_seam_n, 2);
+        CHECK(s_seam_addr[0] == 0x2AE14u && s_seam_nargs[0] == 5u && s_seam_args[0][0] == 0x9AD08u
+              && s_seam_args[0][1] == 1u && s_seam_args[0][4] == 4u, "a desc in mem[] is its offset");
+        CHECK(s_seam_args[1][0] == 0xFFFFFFFFu && s_seam_args[1][3] == 3u, "a C array desc is the sentinel");
+    }
+
     /* fn_resolve: an unregistered address is seen with no arguments; a registered one (test_mem's
      * FN_0002D62C) and 0 are not. */
     s_seam_n = 0u;

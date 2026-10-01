@@ -265,6 +265,14 @@ switch keeps a function `PARTIAL` (mutation V4 fails a test).
   values.
 - **Switch bounds:** an index moved to another register (`0x1BD7C`) or pre-scaled into a base (`0x18384`)
   stays an unknown jump.
+- **`0x2AE14` reports `desc` as a mem[] offset only when `desc` lies in `mem[]`.** `0x2F5A0` passes a C
+  stack array, which has no offset: the seam reports `0xFFFFFFFF` (above `MEM_SIZE`, so no spec can name it)
+  instead of computing `desc - mem` across objects. A spec under `0x2F5A0` therefore allows `0x2AE14` (it
+  runs the body on both sides) rather than stubbing it (Task 7, from Task 6's review).
+- **`diffrun` registers every `fn_register` call site of `port/src`** (`actors_init`, `effects_init`'s
+  `camera_register`, `attract_scene_tick`'s `attract_register`, `svcmenu_register`), so D3's fail-closed
+  rule holds for each ported code pointer; a test greps the sources for the call sites and probes each
+  registered address (Task 7).
 - **A seam must be the callee's first statement**, and the original function must be one C function: a
   callee the port inlined or split cannot be stubbed until it is one function (PORTING.md's rule).
 - E1's limits stand: flags and the other registers are not compared; all of a spec's cases share one

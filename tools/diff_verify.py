@@ -268,6 +268,59 @@ DS_NODEBIT = 0x104B1F
 U6_REC, U6_OWNER = 0x10A000, 0x10A100   # inside the image's zero BSS (record gameplay-u6 §U6.6)
 DS_1078FC = 0x1078FC         # the byte 0x37DCC stores (record gameplay-u6 §U6.5)
 
+# ---- E3: the call stubs' worked batch (record 2026-10-01-reverse-e3 §E3.6) ----------------------
+E3_SLOT, E3_REC, E3_REC2, E3_OUT = 0x10A200, 0x10A300, 0x10A400, 0x10A500   # zero BSS of the image
+DS_SLOTS = 0x1077B0            # DS_001077B0: the two 0x94-byte fighter slots; +0 holds the slot's record
+VOICE = E.Call(0x2C3FC, ("eax",), eax=1)
+ANIM_BEGIN = E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4)
+HIT_B = E.Call(0x3C4CC, ("eax", "edx", "s0"), pop=4)
+HIT_A = E.Call(0x3C480, ("eax", "edx", "s0"), pop=4)
+SPAWN = E.Call(0x2AE14, ("eax", "edx", "ecx", "ebx", "s0"), pop=4)
+SLOT_PTRS = {DS_SLOTS: le32(E3_REC), DS_SLOTS + 0x94: le32(E3_REC2)}
+OUT_SEED = {E3_OUT: b"\xaa" * 24}
+
+E3_SPECS = [
+    Spec("fighter_23130", 0x23130, [
+        Case("v0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0},
+             {E3_SLOT + 0x52: b"\x7f\x7f\x7f", E3_SLOT + 0x0C: le32(0xFFFFFFFF)}),
+        Case("v1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1},
+             {E3_SLOT + 0x52: b"\x7f\x7f\x7f", E3_SLOT + 0x0C: le32(0xFFFFFFFF)}),
+    ], allow_calls=(0x33950,), calls=(HIT_B, VOICE), eax_mask=0xFF,
+       mutants=("@voice", "@novoice")),
+    Spec("fighter_45878", 0x45878, [
+        Case("b0", {"eax": E3_SLOT, "edx": E3_REC},
+             {E3_REC + 0x53: b"\x00", E3_REC + 0x59: b"\x00", E3_SLOT + 0x52: b"\x7f\x7f\x7f",
+              E3_SLOT + 0x57: b"\x7f", E3_SLOT + 0x0C: le32(0xFFFFFFFF), E3_SLOT + 0x18: le32(0xFFFFFFFF),
+              E3_SLOT + 0x1C: le32(0xFFFFFFFF), E3_SLOT + 0x88: b"\xff\xff", E3_SLOT + 0x42: b"\x00"}),
+        Case("b1", {"eax": E3_SLOT, "edx": E3_REC},
+             {E3_SLOT + 0x42: b"\xfb", E3_SLOT + 0x88: b"\x01\x00"}),
+    ], calls=(ANIM_BEGIN,), eax_mask=0),
+    Spec("anim_10fa8", 0x10FA8, [
+        Case("s0", {}),
+        Case("s1", {"eax": E3_REC, "edx": 0x55}),
+    ], calls=(SPAWN,), eax_mask=0),
+    Spec("anim_3e4e4", 0x3E4E4, [
+        Case("e0", {"eax": E3_REC}, {E3_REC + 0x14: le32(0), E3_REC + 0x36: b"\xff\xff", E3_REC + 0x44: b"\xff\xff"}),
+        Case("e1", {"eax": E3_REC}, {E3_REC + 0x14: le32(E3_SLOT), E3_REC + 0x36: b"\xff\xff",
+                                     E3_REC + 0x44: b"\xff\xff", E3_SLOT + 0x57: b"\x7f"}),
+    ], calls=(ANIM_BEGIN,), eax_mask=0),
+    Spec("fighter_ctx_same", 0x33950, [
+        Case("x0", {"eax": E3_OUT, "edx": 0}, {**OUT_SEED, **SLOT_PTRS}),
+        Case("x1", {"eax": E3_OUT, "edx": 1}, {**OUT_SEED, **SLOT_PTRS}),
+    ], eax_mask=0),
+    Spec("hit_anim_ctx", 0x339AC, [
+        Case("y0", {"eax": E3_OUT, "edx": E3_REC}, {**OUT_SEED, **SLOT_PTRS, E3_REC + 0x50: b"\x01\x00"}),
+        Case("y1", {"eax": E3_OUT, "edx": E3_REC}, {**OUT_SEED, **SLOT_PTRS, E3_REC + 0x50: b"\x00\x01"}),
+    ], eax_mask=0),
+    Spec("hit_anim_start_b", 0x3C4CC, [
+        Case("h%X" % st, {"eax": E3_REC, "edx": 0xE4872, "s0": 0x40400000},
+             {E3_REC + 0x51: bytes([side]), DS_SLOTS + side * 0x94: le32(E3_REC2),
+              DS_SLOTS + side * 0x94 + 0x52: bytes([st])})
+        for st, side in ((1, 0), (3, 1), (5, 0), (7, 1), (0xE, 0), (0x10, 1), (0x15, 0))
+    ], allow_calls=(0x339AC,), calls=(ANIM_BEGIN, HIT_A), eax_mask=0),
+    Spec("host_1b890", 0x1B890, [Case("g0", {})], mutants=(), gap="in at 0x1B899"),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -310,7 +363,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-]
+] + E3_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

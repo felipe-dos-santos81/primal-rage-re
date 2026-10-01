@@ -311,16 +311,24 @@ class RealFunctionTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_every_ported_function_agrees_with_the_original_on_every_block(self):
-        self.assertEqual(sorted(self.real), ["config_codeword_len", "config_credit_spend",
-                                             "fighter_3640c", "fighter_37dcc", "fighter_slot_flag", "rng_next"])
+        self.assertEqual(sorted(self.real), ["anim_10fa8", "anim_3e4e4", "config_codeword_len",
+                                             "config_credit_spend", "fighter_23130", "fighter_3640c",
+                                             "fighter_37dcc", "fighter_45878", "fighter_ctx_same",
+                                             "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
+                                             "host_1b890", "rng_next"])
         for name, r in self.real.items():
+            if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
+                continue
             self.assertEqual((r.verdict, r.problems, r.unhit, r.hit), ("VERIFIED", [], [], r.total), name)
             self.assertEqual(r.outside, [], name)
 
     def test_every_mutant_is_reported_as_a_mismatch(self):
         self.assertEqual(sorted(self.mut), [
+            "anim_10fa8@mutant", "anim_3e4e4@mutant",
             "config_codeword_len@mutant", "config_credit_spend@mutant", "config_credit_spend@signed",
-            "fighter_3640c@mutant", "fighter_37dcc@mutant", "fighter_slot_flag@mutant", "rng_next@mutant"])
+            "fighter_23130@novoice", "fighter_23130@voice", "fighter_3640c@mutant", "fighter_37dcc@mutant",
+            "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
+            "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "rng_next@mutant"])
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -382,7 +390,9 @@ class RealFunctionTests(unittest.TestCase):
         self.assertEqual({s.name: s.eax_mask for s in V.SPECS}, {
             "rng_next": 0xFFFFFFFF, "fighter_slot_flag": 0xFF,
             "config_credit_spend": 0xFFFFFFFF, "config_codeword_len": 0xFFFFFFFF,
-            "fighter_3640c": 0, "fighter_37dcc": 0})
+            "fighter_3640c": 0, "fighter_37dcc": 0,
+            "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
+            "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)
@@ -414,6 +424,71 @@ class RealFunctionTests(unittest.TestCase):
         self.assertTrue(both["bad"].error)
         self.assertEqual((both["ok"].eax, both["ok"].writes), (0, {0x107EE0: 0x20}))
         self.assertEqual((both["ok"].eax, both["ok"].writes), (alone["ok"].eax, alone["ok"].writes))
+
+    # ---- E3's worked batch (record 2026-10-01-reverse-e3 §E3.6) ----
+
+    def test_each_e3_mutant_is_caught_by_what_it_breaks(self):
+        kinds = {"fighter_23130@voice": {"call #1"}, "fighter_23130@novoice": {"call #1"},
+                 "fighter_45878@mutant": {"call #0"}, "anim_10fa8@mutant": {"call #0"},
+                 "hit_anim_start_b@mutant": {"call #0"}, "anim_3e4e4@mutant": {"call #0", "byte"},
+                 "fighter_ctx_same@mutant": {"byte"}, "hit_anim_ctx@mutant": {"byte"}}
+        for name, want in kinds.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        # the 0x3C480 arm only: states 3, 7 and 0x10 (cases h3, h7, h10) take it
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["hit_anim_start_b@mutant"].problems}),
+                         ["h10", "h3", "h7"])
+
+    def test_the_named_gap_is_0x1b890s_in(self):
+        r = self.real["host_1b890"]
+        self.assertEqual((r.verdict, r.gap, r.problems), ("NAMED_GAP", "in at 0x1B899", []))
+
+    def spec(self, name, **kw):
+        return dataclasses.replace([s for s in V.SPECS if s.name == name][0], **kw)
+
+    def test_a_call_set_callee_without_a_port_seam_is_a_mismatch(self):
+        # 0x33950 (fighter_ctx_same) has no PR_SEAM: recorded on the original side only
+        spec = self.spec("fighter_23130", allow_calls=(),
+                         calls=(E.Call(0x33950, (), mode="real"), V.HIT_B, V.VOICE))
+        r = V.verify_all(DIFFRUN, EXE, os.path.join(self.tmp.name, "n.bin"), [spec])[0]
+        self.assertEqual(r.verdict, "MISMATCH")
+        self.assertTrue(r.problems[0].startswith("v0: call #0: original 0x33950(), port 0x3C4CC("), r.problems)
+
+    def test_a_real_callee_runs_on_both_sides_and_its_own_calls_are_recorded(self):
+        # 0x3C4CC run, not stubbed, inside 0x23130: its 0x2BC30 or 0x3C480 call joins the list
+        spec = self.spec("fighter_23130", allow_calls=(0x33950, 0x339AC),
+                         calls=(E.Call(0x3C4CC, ("eax", "edx", "s0"), mode="real"), V.ANIM_BEGIN, V.HIT_A, V.VOICE),
+                         cases=[V.Case("r0", {"eax": V.DS_SLOTS, "edx": V.E3_REC, "ebx": 0},
+                                       {V.E3_REC + 0x51: b"\x00", V.DS_SLOTS: le32(V.E3_REC2),
+                                        V.DS_SLOTS + 0x52: b"\x00"})])
+        img = os.path.join(self.tmp.name, "r.bin")
+        r = V.verify_all(DIFFRUN, EXE, img, [spec])[0]
+        self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
+        o = E.run_original(E.Image.load(img), spec.entry, spec.cases[0].regs, spec.cases[0].pokes,
+                           spec.allow_calls, calls=spec.calls)
+        # EAX is fighter slot 0 and the record's +0x51 names side 0, so 0x3C4CC reads the +0x52 that
+        # 0x23130 has just set to 9 (seeded 0, an arm-0x2BC30 state): the 0x3C480 arm (fighter.c's
+        # record §43-C note on 0x23130)
+        self.assertEqual([a for a, _ in o.calls], [0x3C4CC, 0x3C480, 0x2C3FC])
+
+    def test_a_stub_write_relative_to_an_argument_lands_on_both_sides(self):
+        anim = E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4, writes=((0, 0x52, b"\x33"),))
+        spec = self.spec("fighter_45878", calls=(anim,))
+        img = os.path.join(self.tmp.name, "w.bin")
+        port = V.run_port(DIFFRUN, EXE, img, V.cases_text(spec, spec.name))
+        self.assertEqual(port["b0"].writes.get(V.E3_REC + 0x52), 0x33)
+        r = V.verify_spec(spec, E.Image.load(img), port)
+        self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
+
+    def test_the_self_check_counts_functions_mutants_gaps_and_closed_rows(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
+                         "--self-check"])
+        self.assertEqual(rc, 0)
+        self.assertIn("diff-verify: 13/13 functions VERIFIED; 15/15 mutants detected; 1 named gaps; "
+                      "8/13 with every callee VERIFIED.", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
@@ -587,6 +662,70 @@ class DiffrunStubTests(unittest.TestCase):
         for line in ("stub 0x2BC30 skip 0x0", "stub 0x2BC30 stub", "swrite abs 0x10A500 5a"):
             with self.subTest(line=line), self.assertRaises(RuntimeError):
                 self.run_text("case m\nfn fighter_45878\n%s\nend\n" % line)
+
+    # ---- Task 6 review folds (e7, e8) ----
+
+    def test_a_stub_write_relative_to_argument_1_lands_there(self):
+        # 0x2BC30's arguments are (rec, stream, frame): arg1 is the stream, whatever arg0 is
+        out = self.run_text("case a\nfn fighter_45878\nreg eax 0x10A200\nreg edx 0x10A300\n"
+                            "stub 0x2BC30 stub 0x0\nswrite arg1 0x10 a7\nend\n")["a"]
+        stream = out.calls[0][1][1]
+        self.assertNotEqual(stream, out.calls[0][1][0])
+        self.assertEqual((out.error, out.writes.get(stream + 0x10)), ("", 0xA7))
+        self.assertNotIn(out.calls[0][1][0] + 0x10, out.writes)
+
+    def test_a_stub_write_naming_an_argument_the_callee_does_not_report_is_refused(self):
+        # 0x2AE14 reports five arguments (arg0..arg4); arg5 does not exist
+        out = self.run_text("case n\nfn anim_10fa8\nstub 0x2AE14 stub 0x0\nswrite arg5 0x0 5a\nend\n")["n"]
+        self.assertEqual(out.error, "a stub write names argument 5, but 0x2AE14 reports 5 arguments")
+        self.assertEqual(out.writes, {})
+
+    def test_a_swrite_after_a_real_stub_line_is_refused(self):
+        # a real callee declares no effect (Python's Call refuses the same)
+        with self.assertRaises(RuntimeError):
+            self.run_text("case r\nfn fighter_45878\nreg eax 0x10A200\nreg edx 0x10A300\n"
+                          "stub 0x2BC30 real 0x0\nswrite abs 0x10A500 5a\nend\n")
+
+    def test_the_argument_index_of_a_swrite_is_a_plain_decimal(self):
+        for base in ("arg0x1", "arg+1", "arg-1", "arg", "arg1x", "arg8"):
+            with self.subTest(base=base), self.assertRaises(RuntimeError):
+                self.run_text("case d\nfn fighter_45878\nreg eax 0x10A200\nreg edx 0x10A300\n"
+                              "stub 0x2BC30 stub 0x0\nswrite %s 0x0 5a\nend\n" % base)
+        # what cases_text emits (decimal) is accepted: arg1, and arg8 is refused above
+        out = self.run_text("case d\nfn fighter_45878\nreg eax 0x10A200\nreg edx 0x10A300\n"
+                            "stub 0x2BC30 stub 0x0\nswrite arg1 0x10 5a\nend\n")["d"]
+        self.assertEqual(out.error, "")
+
+    def test_every_fn_register_call_site_is_reached_by_the_registration(self):
+        # the fail-closed rule of D3 holds for every ported code pointer: an address a ported module
+        # registers resolves in diffrun (no miss reported); an unregistered one is reported
+        import re
+        sites = set()
+        addrs = set()
+        symbols = open(os.path.join(ROOT, "port/src/symbols.h")).read()
+        for dirpath, _, files in os.walk(os.path.join(ROOT, "port/src")):
+            for f in files:
+                if not f.endswith(".c") or f == "mem.c":
+                    continue
+                text = open(os.path.join(dirpath, f)).read()
+                for m in re.finditer(r"\bfn_register\(\s*(0x[0-9A-Fa-f]+|FN_[0-9A-Fa-f]+)", text):
+                    sites.add(f)
+                    a = m.group(1)
+                    if a.startswith("FN_"):
+                        a = re.search(r"#define %s (0x[0-9A-Fa-f]+)u" % a, symbols).group(1)
+                    addrs.add(int(a, 16))
+        self.assertEqual(sites, {"actors.c", "attract.c", "effects.c", "svcmenu.c"})
+        self.assertGreater(len(addrs), 90)
+        for want in (0x1324C, 0x4F7F4, 0x2CB74, 0x2CAC0, 0x10FA8):
+            self.assertIn(want, addrs)
+        # a stub line for the address makes a reported miss visible as a `c` line
+        text = "".join("case r%X\nfn fn_resolved\nreg eax 0x%X\nstub 0x%X stub 0x0\nend\n" % (a, a, a)
+                       for a in sorted(addrs))
+        text += "case miss\nfn fn_resolved\nreg eax 0x10020\nstub 0x10020 stub 0x0\nend\n"
+        out = self.run_text(text)
+        for a in sorted(addrs):
+            self.assertEqual((out["r%X" % a].eax, out["r%X" % a].calls), (1, []), hex(a))
+        self.assertEqual((out["miss"].eax, out["miss"].calls), (0, [(0x10020, ())]))
 
 
 if __name__ == "__main__":
