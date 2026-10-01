@@ -186,3 +186,273 @@ class Triage:
                         elif op.type == de.cx86.X86_OP_MEM:
                             operands.add(op.mem.disp & 0xFFFFFFFF)
         return sorted(v for v in set(self.dwords) | operands if self.plausible(v))
+
+    # ---- the data tables (§E2.2 rules 1-2)
+    def load_tables(self):
+        self.fin = collections.defaultdict(list)
+        for T in FINISHER_TABLES:
+            for i in range(FINISHER_SLOTS):
+                if self.u32(T + 4 * i):
+                    self.fin[self.u32(T + 4 * i)].append(T + 4 * i)
+        self.mcb = collections.defaultdict(list)
+        for c in range(MOVE_CHARS):
+            for r in range(MOVE_REACTIONS):
+                e = MOVE_TABLE + (c * MOVE_REACTIONS + r) * MOVE_STRIDE
+                if self.u32(e):
+                    self.mcb[self.u32(e)].append((e, c, r))
+
+    # ---- trusted code (§E2.2): Ghidra's functions, then the entries the evidence proves, to a fixpoint
+    def entry_like(self, v):
+        """An entry outside Ghidra anywhere in the code object (the RUNTIME_BASE cut is the universe's,
+        not the trusted code's: span code continues above it, §E2.3)."""
+        return (CODE_LO <= v < CODE_HI and not self.in_ghidra(v) and self.after_ret(v)
+                and self.ins(v) is not None)
+
+    def index(self):
+        self.imm, self.disp, self.rel, self.calls = (collections.defaultdict(list) for _ in range(4))
+        self.readers = collections.defaultdict(list)
+        for a in sorted(self.trusted):
+            ins = self.trusted[a]
+            t = self.direct_target(ins)
+            if t is not None:
+                (self.calls if ins.mnemonic == "call" else self.rel)[t].append(a)
+                continue
+            for op in ins.operands:
+                if op.type == de.cx86.X86_OP_IMM:
+                    self.imm[op.imm & 0xFFFFFFFF].append(a)
+                elif op.type == de.cx86.X86_OP_MEM:
+                    T = op.mem.disp & 0xFFFFFFFF
+                    self.disp[T].append(a)
+                    if ins.mnemonic in ("call", "jmp") and op.mem.index != 0 and op.mem.scale == 4:
+                        self.readers[T].append((ins.mnemonic, a))
+        self.slots = collections.defaultdict(list)       # value -> (slot, table, index, kind, reader)
+        for T, rs in sorted(self.readers.items()):
+            kind, a = min(rs, key=lambda r: r[1])
+            p = T
+            while (self.img.contains(p, 4) and CODE_LO <= self.u32(p) < CODE_HI and p - T < 4 * MAX_TABLE
+                   and (p == T or p not in self.disp)):
+                self.slots[self.u32(p)].append((p, T, (p - T) // 4, kind, a))
+                p += 4
+        span = {T for T, rs in self.readers.items()
+                if any(k == "call" and self.owner[a] == SPAN_BLIT for k, a in rs)}
+        while True:                                      # a table read inside a span writer is a span table
+            wcode = {a for v, ss in self.slots.items() if v in self.bodies and any(s[1] in span for s in ss)
+                     for a in self.bodies[v].insns}
+            more = {T for T, rs in self.readers.items() if any(k == "call" and a in wcode for k, a in rs)}
+            if more <= span:
+                break
+            span |= more
+        self.span_tables = span
+        self.tstarts = sorted(self.trusted)
+
+    def switch_targets(self, insns, a):
+        """The case targets of the switch `jmp dword ptr [reg*4 + T]` at a, bounded by its own
+        `cmp <reg>, N; ja` (N + 1 cases) among the five instructions before it; None without that guard."""
+        ins = self.ins(a)
+        mem = [op for op in ins.operands if op.type == de.cx86.X86_OP_MEM]
+        if ins.mnemonic != "jmp" or not mem or mem[0].mem.index == 0 or mem[0].mem.scale != 4:
+            return None
+        for b in sorted(x for x in insns if a - 24 <= x < a)[-5:]:
+            c = self.ins(b)
+            if (c.mnemonic == "cmp" and len(c.operands) == 2 and c.operands[0].type == de.cx86.X86_OP_REG
+                    and c.operands[1].type == de.cx86.X86_OP_IMM):
+                T = mem[0].mem.disp & 0xFFFFFFFF
+                n = (c.operands[1].imm & 0xFF if c.operands[1].size == 1 else c.operands[1].imm) + 1
+                if not self.img.contains(T, 4 * n):
+                    return None
+                return [self.u32(T + 4 * k) for k in range(n)]
+        return None
+
+    def scan(self, e):
+        """static_scan from e, extended through every bounded switch (§E2.2): the body P would port."""
+        if e in self.bodies:
+            return self.bodies[e]
+        info = de.static_scan(self.img, e)
+        insns, leaders, indirect = dict(info.insns), set(info.leaders), []
+        truncated, unresolved = info.truncated, list(info.unresolved)
+        work, seen = list(info.indirect), set()
+        while work:
+            a = work.pop()
+            if a in seen:
+                continue
+            seen.add(a)
+            targets = self.switch_targets(insns, a)
+            if targets is None:
+                indirect.append(a)
+                continue
+            for t in targets:
+                sub = de.static_scan(self.img, t)
+                for x, n in sub.insns.items():
+                    insns.setdefault(x, n)
+                leaders |= set(sub.leaders)
+                truncated = truncated or sub.truncated
+                unresolved += sub.unresolved
+                work += sub.indirect
+        self.bodies[e] = de.StaticInfo(sorted(leaders), insns, sorted(set(indirect)), sorted(set(unresolved)),
+                                       truncated)
+        return self.bodies[e]
+
+    def trust(self, e):
+        for a in sorted(self.scan(e).insns):
+            if a not in self.trusted:
+                self.trusted[a] = self.ins(a)
+                self.owner[a] = e
+
+    def build(self, cands):
+        self.cands = cands
+        self.cset = set(cands)
+        self.trusted, self.owner, self.bodies = {}, {}, {}
+        for s, n in self.ghidra:
+            if CODE_LO <= s < CODE_HI:
+                for ins in de.disasm_range(self.img, s, s + n):
+                    self.trusted[ins.address] = ins
+                    self.owner[ins.address] = s
+        self.entries = {}                                # trusted non-Ghidra entry -> how it is reached
+        while True:
+            self.index()
+            pool = (self.cset | set(self.slots) | set(self.calls) | set(self.imm)) - set(self.entries)
+            added = {}
+            for v in sorted(pool):
+                why = self.reason(v)
+                if why:
+                    added[v] = why
+            if not added:
+                break
+            self.entries.update(added)
+            for e in sorted(added):
+                self.trust(e)
+        # a table walk can shrink as more code is trusted (a newly trusted reader ends it): an entry
+        # whose evidence the final index no longer holds is stale and is reported, never dropped
+        self.stale = sorted(e for e in self.entries if self.reason(e) is None)
+        for v in cands:
+            self.scan(v)
+
+    def reason(self, v):
+        """Why v is a trusted entry, from the current index (§E2.2), or None."""
+        if v in self.cset:
+            hit = self.table_class(v)
+            if hit:
+                return hit[1]
+        elif v in self.slots and self.entry_like(v):
+            p, T, k, kind, a = self.slots[v][0]
+            if v < RUNTIME_BASE or any(s[1] in self.span_tables for s in self.slots[v]):
+                return "slot %X of table %X, read by `%s` at %X" % (p, T, kind, a)
+        if v in self.calls and CODE_LO <= v < RUNTIME_BASE and not self.in_ghidra(v):
+            return "called at %X" % self.calls[v][0]
+        if v in self.imm and self.plausible(v):
+            return "immediate at %X" % self.imm[v][0]
+        return None
+
+    # ---- the classes (§E2.2), first match wins
+    def anim_word(self, p):
+        """The opcode word that makes the dword at p an animation code pointer, or None (§E2.2 rule 6)."""
+        for at, prefix in ((p - 2, False), (p - 4, True)):
+            if not self.img.contains(at, 2):
+                continue
+            w = self.u16(at)
+            if not (w & 0x8000) or (w & 0x6000) != 0x4000:
+                continue
+            op = (w >> 8) & 0x1F
+            if not prefix and op in ANIM_CODE_OPS:
+                return at, w
+            if prefix and op == 0x1F and (w & 0xFF) in ANIM_CODE_OPS:
+                return at, w
+        return None
+
+    def table_class(self, v):
+        if v in self.fin:
+            return "finisher", "dword %s" % " ".join("%X" % p for p in self.fin[v])
+        if v in self.mcb:
+            return "move-callback", " ".join("dword %X (char %d, reaction 0x%02X)" % x for x in self.mcb[v])
+        if v in self.slots:
+            p, T, k, kind, a = self.slots[v][0]
+            c = "span-writer" if T in self.span_tables else ("call-table" if kind == "call" else "jump-table")
+            return c, "dword %X = table %X[%d], read by `%s` at %X" % (p, T, k, kind, a)
+        for p in self.dwords.get(v, ()):
+            w = self.anim_word(p)
+            if w:
+                return "anim-target", "dword %X after the opcode word %04X at %X" % (p, w[1], w[0])
+        return None
+
+    def covering(self, v):
+        """The trusted instruction that holds v strictly inside it, or None."""
+        i = bisect.bisect_right(self.tstarts, v) - 1
+        while i >= 0 and self.tstarts[i] > v - 16:
+            a = self.tstarts[i]
+            if a < v < a + self.trusted[a].size:
+                return a
+            i -= 1
+        return None
+
+    def starts_with_fill(self, v):
+        """True when v begins with a filler (a zero filler needs two zero bytes: `add [eax],al`)."""
+        return any(self.img.bytes_at(v, len(f)) == f for f in FILLERS[:-1]) or self.img.bytes_at(v, 2) == b"\x00\x00"
+
+    def rel32_anywhere(self, v):
+        """Byte level: every E8/E9/0F 8x rel32 at any offset below RUNTIME_BASE that lands on v."""
+        if self._rel32 is None:
+            self._rel32 = collections.defaultdict(list)
+            d, base = self.img.data, self.img.base
+            for o in range(0, min(RUNTIME_BASE - base - 5, len(d) - 6)):
+                b = d[o]
+                if b in (0xE8, 0xE9):
+                    t = base + o + 5 + int.from_bytes(d[o + 1:o + 5], "little", signed=True)
+                elif b == 0x0F and 0x80 <= d[o + 1] <= 0x8F:
+                    t = base + o + 6 + int.from_bytes(d[o + 2:o + 6], "little", signed=True)
+                else:
+                    continue
+                self._rel32[t].append(base + o)
+        return self._rel32.get(v, [])
+
+    def untrusted(self):
+        """Code outside the trusted set that only untrusted bytes reach (§E2.5): every rel32 target X
+        below RUNTIME_BASE that is a plausible entry, not trusted, and whose rel32 sites are all outside
+        the trusted instructions -> those sites; and self.uowner, each instruction of their scans -> the
+        first such X (in address order)."""
+        if not hasattr(self, "uentries"):
+            self.rel32_anywhere(0)
+            self.uentries = {t: s for t, s in sorted(self._rel32.items())
+                             if t not in self.trusted and self.plausible(t)
+                             and not any(a in self.trusted for a in s)}
+            self.uowner = {}
+            for x in self.uentries:
+                for a in sorted(de.static_scan(self.img, x).insns):
+                    self.uowner.setdefault(a, x)
+        return self.uentries
+
+    def classify(self, v):
+        hit = self.table_class(v)
+        if hit:
+            return hit
+        a = self.covering(v)
+        if a is not None:
+            return "mid-instruction", "inside the instruction at %X (code of %X)" % (a, self.owner[a])
+        if v in self.disp:
+            return "data", "memory operand of the instruction at %X" % self.disp[v][0]
+        if self.starts_with_fill(v):
+            return "data", "filler at %X (%s)" % (v, self.img.bytes_at(v, 3).hex())
+        if self.bodies[v].truncated:
+            return "data", "undecodable bytes on the scan from %X" % v
+        if v in self.imm:
+            return "code-immediate", "immediate of the instruction at %X" % self.imm[v][0]
+        if v in self.calls:
+            return "direct", "`call` at %X" % self.calls[v][0]
+        if v in self.trusted and self.owner[v] != v:
+            return "interior", "an instruction of the code of %X" % self.owner[v]
+        if v in self.rel:
+            a = self.rel[v][0]
+            return "interior", "`%s` at %X in the code of %X" % (self.trusted[a].mnemonic, a, self.owner[a])
+        aligned = [p for p in self.dwords.get(v, ()) if p % 4 == 0]
+        if aligned:
+            return "data-pointer", "aligned dword %s" % " ".join("%X" % p for p in aligned[:4])
+        self.untrusted()
+        x = self.uowner.get(v)
+        if x is not None and x != v:
+            return "interior", "an instruction of the scan from %X, which only the rel32 at %s (untrusted bytes) reaches" % (
+                x, " ".join("%X" % s for s in self.uentries[x][:4]))
+        refs = " ".join("%X" % p for p in self.dwords.get(v, ())[:4])
+        far = self.rel32_anywhere(v)
+        if not far:
+            return "dead", "no rel32 at any code offset, no immediate, no aligned dword; unaligned dwords %s" % refs
+        return "unclassified", "rel32 at %s outside the trusted code; unaligned dwords %s" % (
+            " ".join("%X" % x for x in far[:4]), refs)

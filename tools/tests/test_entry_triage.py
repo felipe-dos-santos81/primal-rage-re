@@ -270,3 +270,93 @@ class DiffEmuHelperTests(unittest.TestCase):
         self.assertEqual(E.decode_at(img, 0x10000).mnemonic, "xor")
         self.assertIsNone(E.decode_at(img, 0x10004))
         self.assertEqual([i.address for i in E.disasm_range(img, 0x10000, 0x10006)], [0x10000, 0x10002, 0x10003])
+
+
+def classified(w=None):
+    t = world_triage(w)
+    cands = t.candidates()
+    t.load_tables()
+    t.build(cands)
+    return t, {v: t.classify(v) for v in cands}
+
+
+@needs_capstone
+class ClassTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.t, cls.got = classified()
+
+    def test_every_planted_candidate_gets_its_class(self):
+        self.assertEqual({a: c for a, (c, _) in self.got.items()}, EXPECTED)
+
+    def test_the_evidence_names_the_proving_address(self):
+        ev = {a: e for a, (_, e) in self.got.items()}
+        self.assertEqual(ev[0x12000], "dword BDAE4")
+        self.assertEqual(ev[0x12100], "dword A3F8C (char 2, reaction 0x05)")
+        self.assertEqual(ev[0x14000], "dword 80100 = table 80100[0], read by `call` at 51E5C")
+        self.assertEqual(ev[0x14100], "dword 80180 = table 80180[0], read by `call` at 14000")
+        self.assertEqual(ev[0x14200], "dword 80600 = table 80600[0], read by `call` at 5D025")
+        self.assertEqual(ev[0x15100], "dword 80300 = table 80300[0], read by `jmp` at 11100")
+        self.assertEqual(ev[0x16000], "dword 90002 after the opcode word D100 at 90000")
+        self.assertEqual(ev[0x16100], "dword 90014 after the opcode word DF11 at 90010")
+        self.assertEqual(ev[0x1210F], "inside the instruction at 1210C (code of 12100)")
+        self.assertEqual(ev[0x12113], "an instruction of the code of 12100")
+        self.assertEqual(ev[0x10500], "`jge` at 10011 in the code of 10000")
+        self.assertEqual(ev[0x10400], "`call` at 1000C")
+        self.assertEqual(ev[0x10300], "memory operand of the instruction at 10007")
+        self.assertEqual(ev[0x10200], "immediate of the instruction at 10000")
+        self.assertEqual(ev[0x16500], "filler at 16500 (8bc031)")
+        self.assertEqual(ev[0x16600], "undecodable bytes on the scan from 16600")
+        self.assertEqual(ev[0x16400], "aligned dword 90040")
+        self.assertEqual(ev[0x17204], "an instruction of the scan from 17200, which only the rel32 at 17020 "
+                                      "(untrusted bytes) reaches")
+        self.assertEqual(ev[0x16300], "rel32 at 17000 outside the trusted code; unaligned dwords 90032")
+        self.assertTrue(ev[0x16200].startswith("no rel32 at any code offset"), ev[0x16200])
+
+    def test_the_table_classes_win_over_a_plain_aligned_dword(self):
+        # 0x12000 is also the aligned dword at 0x80400; without the finisher table it is a data pointer
+        w = build_world()
+        w.put(0xBDAE4, le32(0))
+        self.assertEqual(classified(w)[1][0x12000][0], "data-pointer")
+
+    def test_a_span_table_read_above_the_runtime_cut_is_found(self):
+        # 5D020 is trusted as a slot of the span table 80100 although it lies above RUNTIME_BASE
+        self.assertIn(0x5D020, self.t.entries)
+        self.assertEqual(self.t.span_tables, {0x80100, 0x80180, 0x80600})
+
+    def test_an_entry_whose_evidence_the_final_index_lost_is_stale(self):
+        self.assertEqual(self.t.stale, [0x5D040])
+        self.assertIsNone(self.t.reason(0x5D040))
+        self.assertEqual(self.t.entries[0x5D040], "slot 80108 of table 80100, read by `call` at 51E5C")
+
+    def test_above_the_cut_only_span_code_is_trusted(self):
+        self.assertNotIn(0x5D060, self.t.entries)      # slot 80204 of the call table 80200
+        self.assertNotIn(0x5D080, self.t.entries)      # called by the Ghidra function 18200
+        self.assertIn(0x5D060, self.t.slots)
+        self.assertIn(0x5D080, self.t.calls)
+
+    def test_the_untrusted_entries(self):
+        self.assertEqual(self.t.untrusted(), {0x16300: [0x17000], 0x17200: [0x17020]})
+
+
+@needs_capstone
+class SwitchTests(unittest.TestCase):
+    def test_a_bounded_switch_extends_the_body_and_an_unbounded_one_stays_indirect(self):
+        w = World()
+        # 10000: cmp al,1 / ja 0x10010 / and eax,0xff / jmp dword [eax*4+0x80000]; 10010: ret
+        w.put(0x10000, bytes.fromhex("3C01" "770C" "25FF000000" "FF2485") + le32(0x80000))
+        w.put(0x10010, b"\xc3")
+        w.put(0x80000, le32(0x10020) + le32(0x10030) + le32(0x10040))
+        w.put(0x10020, bytes.fromhex("31C0C3"))
+        w.put(0x10030, bytes.fromhex("40C3"))
+        w.put(0x10040, bytes.fromhex("48C3"))          # case 2: beyond `cmp al,1`, not part of the body
+        # 10100: the same jmp with no guard
+        w.put(0x10100, bytes.fromhex("FF2485") + le32(0x80000))
+        t = T.Triage(w.image(), [])
+        t.bodies = {}
+        body = t.scan(0x10000)
+        self.assertIn(0x10020, body.insns)
+        self.assertIn(0x10030, body.insns)
+        self.assertNotIn(0x10040, body.insns)
+        self.assertEqual(body.indirect, [])
+        self.assertEqual(t.scan(0x10100).indirect, [0x10100])
