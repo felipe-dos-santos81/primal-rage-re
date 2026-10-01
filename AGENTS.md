@@ -171,7 +171,7 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   The gameplay oracle (`make gp-oracle`, in `make verify`) ratchets the first
   unexplained capture frame and the first differing trace frame of
   `data/k11-captures/gp-idle-loss`; its N values and provenance are in the
-  Makefile (empty until the capture is pinned); it skips without the capture,
+  Makefile (the measured N values and their provenance); it skips without the capture,
   even under `PR_ORACLE_REQUIRED`. Its claim is narrow the same way (record
   `…-gameplay-ground-truth-derivations.md` §G.16): no content-bearing capture
   frame from the window start up to N is unexplained and the traced fields

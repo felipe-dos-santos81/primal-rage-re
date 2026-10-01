@@ -1746,3 +1746,137 @@ pattern) `diff` against `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines
 the gameplay section prints the two ratchet lines above; tool tests `Ran 94` (92 + the
 two `TestIdleLoss` tests); `git diff --stat 934992a -- port/src` → empty;
 `port_progress.py` `771 1203 64` / `731 731 100` (unchanged: U4 ports no function).
+
+## §G.22 U4 closure (U4 Task 6)
+
+**Delivered.** The `gp-idle-loss` and `gp-idle-loss-run2` scenarios and `port_script
+… end=` / `--end` / `GP_SCRIPT_ARGS` (§G.17; commit `307a6cc`); the real capture on
+the pinned original under DOSBox-X (§G.18, run 1 376 MB) and its determinism twin
+(§G.19, 374 MB); the port replay and the two first divergences (§G.20); both
+ratchets pinned in the Makefile and shown to fail (§G.21, commit `1708eb5`). No file
+under `port/src` changed (`git diff --stat 934992a -- port/src` empty); the K11 tools and
+the `title_*`/`smk_*` tools are untouched; the only edits outside the record are
+`tools/gp_session.py`, its test, the Makefile, `docs/PROGRESS.md` and `AGENTS.md`.
+
+**The path table** (capture against port; `f` hex, first frame of each mode; the
+first unexplained frame and the first trace difference are marked):
+
+| mode | capture first `f` | port first `f` | |
+|---|---|---|---|
+| `0x27` | `0x141` | `0x141` | equal |
+| `0x2D` | `0x26E` | `0x26E` | equal; credits 5 → 4 in both |
+| `0x1A`, `0x1B` | `0x26F`, `0x281` | `0x26F`, `0x281` | equal |
+| `0x10` | `0x293` | `0x293` | equal; **first unexplained capture frame 203 at `f ≈ 0x340`** (Sauron's animation turns around in the original) |
+| `0x1A`, `0x1B`, `0x11`, `0x17` | `0x640`, `0x652`, `0x664`, `0x665` | same | equal (the pick time-out at `f = 0x640`) |
+| `0x1A`, `0x1B`, 5 | `0x756`, `0x768`, `0x77A` | same | equal |
+| 6 (round 1) | `0x7F5` | `0x7F5` | equal; **first trace difference `f = 0x828`** (rng; a fight-effect walk 5 frames earlier in the port) |
+| 8 | `0xC71` (KO, `+0x5A = 0x78`) | `0x154A` (after a mode 7 at `0x14D9`, time up, `+0x5A = 0x38`) | differs: a different fight |
+| `0x16`, 5, 6 | `0xD2D`, `0xE1E`, `0xE99` | `0x154B`, `0x163C`, `0x16B7` | shifted by the round-1 length |
+| 7, 9, `0x17`, `0x15`, `0x13`, `0x1E`, `0x14`, `0x17`, 3 | `0x1B4B` … `0x207A` | **not reached** | the port's script ends at `f = 0x207F` in round 2 (mode 6) |
+
+**Spec §7 answers.**
+
+- **Q1 (deterministic?):** yes over the run under the same input frames, with
+  the one input-timing shift of §G.19: 978 frames after the last input identical
+  (rebased), and every `TRACE_FIELDS` value equal at every `f` from `0x625` to the
+  end of the two captures. What the harness cannot hold fixed is the consumption
+  frame of each key (1–4 iterations after it is queued, Q3), so the runs differ by 6–10
+  frames at each key and the pick-countdown steps (`f & 0x3F == 0`) re-align them at
+  `f = 0x640`. The trace ratchet therefore has no run-to-run bound.
+- **Q6 (does play read the host-timed clock?):** `tick` differs at every compared
+  frame (a boot offset, drifting ~15 ticks over the first 1 764 frames), and no
+  `TRACE_FIELDS` difference follows it: 1 764 frames agree in the port while the
+  tick drifts; the divergence at `0x828` coincides with `tick` advancing 1 per
+  frame in both (§G.20). No evidence that play reads the host-timed tick in the compared
+  window; the port's tick model is not the cause of the two measured divergences.
+  Open for the rest of the run (nothing after `0x828` is compared).
+- **Q7 (storage):** the 0.3–0.6 GB capture was ruled acceptable (§G.18); measured 376 MB and
+  374 MB (`du -sh`), the port dump 409 MB (6 497 `.ipx` in `/tmp/pr_u4_gp`).
+
+**The narrow claim (U3 Task 5's text, with the pinned values).** `make gp-oracle` proves
+that no content-bearing capture frame of `gp-idle-loss` before the 203rd distinct
+frame (raw 2359) is unexplained by the port's frames under `title_compare`'s model
+(clean, a byte splice of adjacent port frames, or one transition row), and that
+`mode st raw pad e0 e2 rng cred s0_5a s1_5a` agree at every snapshotted `f` from `0x141`
+up to (not including) `f = 2088 = 0x828`. It does **not** say the frames or state after those
+are right (the port diverges in the fight from `0x828` and never reaches the match
+end), it cannot detect a port that under-renders (the window's start is the
+port's own first frame, all-black capture frames are skipped), it does not claim
+`tick`, `t508` or `ent`, and it says nothing about what the 7 000 frames of the run
+after the first divergence look like in the port. A green oracle is not "the frame is
+correct". The ratchet values are measured, not game values; `BACK`, `AHEAD`,
+`REPORT_MAX`, `HOLD_FRAMES`, the 150-frame gaps and the 200 s limit are harness values.
+
+## §G.23 Named gaps and what is not covered (U4 Task 6)
+
+1. **The character select actor's idle animation turns around ~96 frames earlier in
+   the original** (`f = 0x340`, the `f & 0x3F` countdown step, against the port's
+   `f ≈ 0x3A0`); capture frame 203. Evidence: §G.20 (scene hashes of capture 185..238
+   against the port's mode-`0x10` frames 62..110, the scene reversing at the digit
+   change). Classification: port divergence (animation/actors timing, or a `0x43AAC`
+   side effect not ported); not host-timed, not an unported function reached, not
+   the harness. **Not isolated.** Owner: U5 (character select walk).
+2. **The type-0 fight-effect entry's walk resolves 5 frames earlier in the port**
+   (rng draws at `f = 0x828` against the original's `0x82D`: `fight_4b144 ←
+   fight_4aad0 ← fight_effects_pass ← game_mode_04_step`; draws and their order equal,
+   timing different) and the original's P2 attack connects at `0x82E` (P1 `+0x52` 0x11 →
+   0x10, `+0x5A` 0x10 → 0x17) where the port's does not. Classification: port divergence,
+   same signature as 1 (an actor animation phase offset by a few frames), not isolated.
+   Owner: U6 (moves) or a new unit for the crowd/fight-effect timing.
+3. **Round 1 is a different fight afterwards:** the CPU's KO in 1 148 frames
+   (`+0x5A = 0x78`) against the port's time-up after 3 300 (`+0x5A = 0x38`); a consequence
+   of 2 (and of whatever else differs after `0x828`), not a separate cause.
+4. **Not reached by the port's script:** match end (7), results (9, `0x17`), the
+   countdown `0x15`, the challenge `0x13`, game over `0x1E`/`0x14`, mode 3 and the credit
+   re-initialisation: the port's round 2 is still running at `f = 0x207F`. This is how far
+   the port got, not a defect found (spec §4.3). Owner: U9 (win path) after 1–3.
+5. **`t508`/tick model at loads:** port − capture `t508` jumps at every load (§G.20); reported,
+   not ratcheted. Host-timed in the original; the port's `RES_READ_BYTES_PER_TICK` model.
+6. **Open causes, recorded not guessed:** why a queued key is consumed 1–4 iterations later
+   (Q3; press to consumption 2, 4, 2 iterations in run 1 and 3, 1, 3 in run 2); why round 1 in the probe lasted
+   1 831 frames against 1 148 here (§G.18; the probe's Enter frames and rng stream were not
+   logged to compare).
+7. **Harness gaps:** each run's key frames differ by the wall-timed first Enter and by the
+   consumption jitter; the comparison is therefore against run 1's frames, and a single run-to-run
+   bound would need the pick re-alignment of §G.19. The capture's first
+   `0x13B..0x624` frames are not input-comparable between the two runs.
+
+**Not covered** (each mode of spec §3.5 past the frame claim's N = 203 and the trace's
+F = 2088): the rest of the character select (`0x10` from `f ≈ 0x340` to `0x640`), its time-out
+wipes and the round starts (`0x1A/0x1B/0x11/0x17/5` at `0x640..0x77A`: equal in `TRACE_FIELDS`
+but their frames lie past capture 203 and are unexplained or unread), round 1 and 2 (mode 6),
+mode 8, `0x16`, mode 7, 9, `0x17`, `0x15`, `0x13`, `0x1E`, `0x14`, `0x17` and the return to 3.
+
+## §J U4 corrections and notes (raw/measured wins over the plan)
+
+1. **The plan's mutation proof of the `--end` key filter did not fail** (§G.17): its `end=295`
+   is after every key. The test gained `end=290`; both filters now fail under mutation.
+2. **The capture's end is not the first mode-3 frame** (§G.18): mode 3 at `f = 0x207A`
+   (`ms=159739`), the end record `X f=207F` after the 15 s of boot movies with `f`
+   frozen; `end 8319` is the frame the master loop resumed at.
+3. **Spec §3.5's deltas are one sample** (§G.18): mode `0x10` lasted 916 (probe), 941
+   (run 1), 947 (run 2) frames; round 1 1 831 (probe) against 1 148 (both runs); the
+   path is the same, the mode order and credits too.
+4. **The pick time-out is anchored to the absolute frame counter** (§G.19 left it open, §G.20
+   closes it): `fight_char_select_pass` runs `0x43AAC` when `DS_000EF6DC & 0x3F == 0`
+   (`0x43CF0..0x43CFF`), so the pick expires at a multiple of 64 (`f = 0x640` in both captures
+   and the port, `0x600` in the probe), whatever frame the keys were consumed at.
+5. **Run-to-run comparison needs the rebase** (§G.19): the plan's `trace-diff` by absolute
+   `f` compares different input frames; the rebase by the last key, and the absolute
+   comparison from `0x625`, are what answer Q1.
+6. **`GP_IDLE_LOSS_END` was not needed** (§G.20): the replay ran to `end 8319` with no stall
+   or fault, so `gp-oracle` has no truncation argument.
+7. **The first unexplained frame is a real animation divergence, not the script end** (§G.20),
+   unlike gp-pads' (§I item 7); but the match's later modes are still uncovered because the
+   port's script ends in round 2 (§G.23 item 4).
+8. **The plan's damaged-frame index** `k = len(lines) // 4` falls outside the explained
+   region (§G.21); the nearest-port fallback of the plan's own text was used.
+9. The record's section number for the U4 closure is §G.22 and the named gaps §G.23, as the plan's
+   header says; the corrections are this §J.
+
+**Final gate** (`make verify` with the §G.17 overrides after the closure edits,
+`/tmp/gameplay-u4/t6_verify.txt`): `verify-exit=0`, last line `all checks passed`;
+the 45 oracle lines `diff` against `oracle-lines-base.txt` → no output; the `k11_compare:`
+lines equal `k11_base.txt`; the K11 walk/menuesc dumps' hashes `190cd592…`/`1cf5140c…` as
+U3's; `frames: first unexplained 203, ratchet N 203 ok` and `trace: first differing 2088,
+ratchet N 2088 ok`; `port/src` diff empty.
