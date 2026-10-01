@@ -478,6 +478,85 @@ Named gaps, each with its evidence:
 - Fold-in k8 (review minor): `test_gp_replay` read `landings0` right after `game_init()`; it is now taken at the arm point (`enter_now`, with `gp_armed = 1`), so only landings inside the armed window excuse a frame, and a `CHECK` that the count was taken (sentinel `0xFFFFFFFF`) fails if the arm is never reached. Behaviour unchanged: the dry run prints `1 restart(s) landed`, `all checks passed`, evidence `11 of 11 events ok`, effects `first not reproduced 11, ratchet N 11 ok`; `PR_RESTART` `all checks passed`; the replays of gp-idle-loss and gp-u5-charsel print `0 restart(s) landed`. No mutation proves k8 itself: no pre-arm landing exists in any replay, so the change is a guard, not a measured behaviour.
 - Light gate (with `gp-keys-oracle`): `all checks passed` twice, `gp-exit=0`, `GP-IDLE-LOSS-EQUAL`, ratchets 2064 / 8320 / 516 / 1513 ok, `diff-verify: 6/6 ... 7/7`, `771 1203 64`, `731 731 100`.
 
+## §K.12 The capture, the replay and the pins
+
+### Capture (Task 5)
+
+One run of `make gp-capture scenario=gp-keys-fight` (no `GP_ARGS`; base `1a9e2bb`, after the capture-hygiene merge `2f0c65f`), not repeated. `session.txt`:
+
+```
+scenario=gp-keys-fight
+dosbox=DOSBox-X version 2026.08.31 SDL2, copyright 2011-2026 The DOSBox-X Team.
+exe=/tmp/pr_title_pin/PRAGE.EXE sha256=8120f1bd1df389ed94cb329c030f95d9e38caad193bbd9840717af557161a68d
+cmos=zero pad_bios=1
+time_limit=90 wall_s=90.7 rc=0
+avis=['prage_000.avi', 'prage_001.avi'] fps=70.0866 dro=['prage_000.dro'] frames=1166 raw_window=1383..5235 avi_frames=6307 twg_last=1332
+check=ok base
+check=ok steps fired 18/18
+check=ok end frame reached
+check=ok mode 0x27 after the Enter
+check=ok snapshots kb == raw (0 differ)
+check=ok frames written 1166/1166
+check=ok port script v2
+check=ok no unscripted input
+```
+
+- `gp_capture: snapshots 3249, f 5..CBE, 9 frames missed`; the missed `f` are `13A 1D0 268 652 653 86F 870 871 872`. `python3 tools/gp_capture.py check-input data/k11-captures/gp-keys-fight`: `check=ok no unscripted input`, exit 0.
+- Size `du -sh` 50M (51232 KB): 1166 frames (raw 1383..5235) plus `poll.log` (3323 lines). D1 estimated about 70 MB; the window is shorter than the estimate assumed (it ends at the time limit, raw 5235). `wall_s` 90.7 is the harness `time_limit = 90` plus shutdown (`E ms=90365 reason=time-limit`): `gp-keys-fight` is not in `STOP_AT_END`, so the run keeps its post-restart tail to the limit.
+- Identity: `poll.log` sha256 `8425afbc46d51173532f6f4c27a8f16c594e2bc572b4273e056bdbf51a9678ae`, 1166 `frame_*.raw.gz`.
+
+**The path and the event frames** (Task 5 Step 2; `S`/`P` mode changes, presses and consumptions):
+
+| poll.log | record | what |
+|---|---|---|
+| 3 | `P f=0 mode=3` | boot |
+| 312, 314, 315 | `I f=138 enter`, `H f=13A`, `P f=13A mode=27` | step 0 |
+| 466, 467 | `I f=1CF enter`, `H f=1D0` | step 1 (START MENU) |
+| 618, 621–623 | `I f=265 enter`, `H f=268`, `P f=268 mode=2D`, `P f=269 mode=1A` | step 2 (LEFT PLAYER ARCADE) |
+| 643, 662 | `P f=27B mode=1B`, `P f=28D mode=10` | |
+| 1610, 1629, 1646, 1648 | `P f=640 mode=1A`, `f=652 1B`, `f=664 11`, `f=665 17` | |
+| 1890, 1909, 1928 | `P f=756 mode=1A`, `f=768 1B`, `f=77A 5` | |
+| 2052 | `P f=7F5 mode=6` | round 1 (as `gp-idle-loss`, record §G.18: mode 6 at `0x7F5`) |
+| 2063, 2064 | `I f=7FE enter`, `H f=7FF` | step 3 |
+| 2076–2079 | `I f=808 space` ×2, `H f=809` ×2 | steps 4, 5 |
+| 2092, 2094 | `I f=812 alt-s`, `H f=814` | step 6 |
+| 2105–2109 | `I f=81C esc`, `I f=81C n`, `H f=81E` ×2 | steps 7, 8 |
+| 2121, 2124 | `I f=826 alt-m`, `H f=829` | step 9 |
+| 2134–2139 | `I f=830 alt-q`, `I f=830 n`, `H f=833` ×2 | steps 10, 11 |
+| 2150, 2153 | `I f=83A alt-s`, `H f=83D` | step 12 |
+| 2163, 2166 | `I f=844 alt-m`, `H f=847` | step 13 |
+| 2176, 2179 | `I f=84E p1.start` (`3B00`), `H f=851` | step 14 |
+| 2189, 2191, 2193 | `I f=858 p2.start` (`3C00`), `P f=85A mode=17`, `H f=85B` | step 15 (the join) |
+| 2213–2218 | `I f=86C esc`, `I f=86C y`, `H f=86F` ×2 | steps 16, 17 |
+| 2219 | `P f=870 mode=3` (ms 57272, tick `CF6`) | the `0x24AB0` restart |
+| 2220, 2223 | `S f=873 mode=3` (ms 71849), `X f=873 step=19 end` | step 18 (after the boot movies, 14.6 s) |
+| 3323 | `E ms=90365 reason=time-limit rc=0` | |
+
+The path before mode 6 is the expected one (the `…` of the expectation holds `0x640..0x77A`: `1A 1B 11 17 1A 1B 5`). Every answer's `H` is in its opener's frame (`809`, `81E`, `833`, `86F`). Mode `0x17` comes one frame after F2's raw bit (`F = 0x859`, `P f=85A`).
+
+**The raw evidence** (Task 5 Step 3): `python3 tools/gp_keys.py evidence --capture data/k11-captures/gp-keys-fight` prints eleven `ok` rows and `evidence: 11 of 11 events ok`. The `S` records each rule reads (latch hex):
+
+| event | c (F) | before → at (poll.log) | observed |
+|---|---|---|---|
+| enter | `7FF` | `7FE` → `7FF` (2062, 2065) | lat 0 → `D`; mode 6 = 6; spz/mpz 0/0 |
+| pause | `809` | `808` → `809` (2075, 2080) | lat `D` → 0; mode 6; spz/mpz 0/0 kept |
+| alt-s on | `814` | `813` → `814` (2093, 2095) | lat 0 → `1F`; spz 0 → 1; mpz 0 kept |
+| esc-n | `81E` | `81D` → `81E` (2107, 2110) | lat `1F` → 0; mode 6; spz/mpz 1/0 kept |
+| alt-m on | `829` | `828` → `829` (2123, 2125) | lat 0 → `32`; mpz 0 → 1; spz 1 kept |
+| altq-n | `833` | `832` → `833` (2137, 2140) | lat `32` → 0; mode 6; spz/mpz 1/1 kept |
+| alt-s off | `83D` | `83C` → `83D` (2152, 2154) | lat 0 → `1F`; spz 1 → 0; mpz 1 kept |
+| alt-m off | `847` | `846` → `847` (2165, 2167) | lat `1F` → `32`; mpz 1 → 0; spz 0 kept |
+| f1 | `851` (`84F`) | `84E`, `84F`, `850` (2175, 2177, 2178) | raw `01000000` at `84F`; at `850` new `01000000`, e0 `0101`; mode/b1f 6/1 at `84E` and `850` (lat `3B` at `851`) |
+| f2 | `85B` (`859`) | `858`, `859`, `85A` (2188, 2190, 2192) | raw `00000100` at `859`; first record after it `85A`: mode `0x17`, b1f 1 → 3, cred 4 kept (lat `3C` at `85B`) |
+| esc-y | `86F` | `86E` (2216), none at `86F`, next `873` (2220) | mode `0x17` before (∉ {3, `0x27`}), cred 4 before; no `S` at `86F`; at `873` mode 3, rng `0000ABCD`, cred 5 |
+
+No rule was corrected: the raw rules of §K.6 hold on the capture as written.
+
+**Review notes k3, k4 and k9 on the real capture.**
+- k4 (exact-record rules on snapshot gaps): none of the frames a rule reads (`c − 1`, `c`, `F − 1`, `F + 1`) is among the nine missed frames, so no event is unjudgeable by a gap. The steady-state coverage of the events' span is complete: no `S` is missing from `0x654` to `0x86E`.
+- k3 (the restart): **named gap.** The capture has no `S` at `c = 0x86F`, and also none at `870 871 872`; the first record after `c` is at `0x873` (14.6 s later, after the boot movies), while the port's trace has its first record after the landing at `c + 1` (§K.8: 2158 = `c + 1`). Both pass the rule (it reads "the first record after `c`"), but at different frames. "No record at `c`" is consistent with abandonment and not proved by it: the poller was reading at `f = 0x86F` (the two `H` records, ms 57248–57249) and its next state change is `P f=870 mode=3` at ms 57272, so iteration `0x86F` ended in the restart (mode 3 is set by the restart tail) with no spin the poller saw; but the other missed frames (`13A 1D0 268 652 653`) are iterations that never spun at a mode change (`t508` resets, e.g. `0x654` `t508=5`), the same signature a poller gap would leave. The log cannot tell the two apart; the claim for event 10 rests on the record after it (mode 3, rng `0xABCD`, the boot `cred`) and on the raw (`0x24AB0`, §K.6), not on the absence alone.
+- k9 (the boot credit count): the capture's first `S` record is `poll.log:4` `f=5 mode=3 cred=5`; `cred` stays 5 until `f = 0x269` (mode `0x1A`, the start of LEFT PLAYER ARCADE, cred 4) and the restart's first record (`0x873`) shows 5 again. So the first `S` carries the boot value 5, and the restart restores it.
+
 ## §K.13 The host binding (Task 7)
 
 **The raw truth (§K.7).** Fixed-up image (`build/diffrun --exe data/game/C/PRAGE.EXE --image-out`, capstone base `0x10000`, file offset = VA - `0x10000`), re-read for this task:
