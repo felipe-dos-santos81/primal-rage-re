@@ -67,7 +67,7 @@ def load_ported(src):
     """(strict, loose). strict: an fn_register(0xADDR or a `/* 0xADDR` comment at column 0 (§E2.4);
     loose: the address set of tools/port_progress.py's rule before its last step (a `/* 0xADDR` anywhere
     on a line, or fn_register). port_progress then intersects it with the symbols.h `FN_` addresses; the
-    caller does that (`loose & {Ghidra entries}`), and the two agree on today's tree (771 ported)."""
+    caller does that (`loose & {Ghidra entries}`), and the two agreed on the tree of 2026-10-01 (771 ported)."""
     strict, loose = set(), set()
     for ext in ("c", "h"):
         for f in glob.glob(os.path.join(src, "**", "*." + ext), recursive=True):
@@ -249,8 +249,11 @@ class Triage:
         self.tstarts = sorted(self.trusted)
 
     def switch_targets(self, insns, a):
-        """The case targets of the switch `jmp dword ptr [reg*4 + T]` at a, bounded by its own
-        `cmp <reg>, N; ja` (N + 1 cases) among the five instructions before it; None without that guard."""
+        """The case targets of the switch `jmp dword ptr [reg*4 + T]` at a (a `jmp` through a memory operand
+        with an index register and scale 4), bounded by a guard: the first `cmp <reg>, <imm>` (a register
+        and an immediate operand) among the last five instructions in [a - 24, a) (N = imm, masked to a byte
+        when the immediate is one byte, so N + 1 cases). It does not check that the compared register is the
+        index, nor that a `ja` follows; None without such a `cmp`, or when the table leaves the image."""
         ins = self.ins(a)
         mem = [op for op in ins.operands if op.type == de.cx86.X86_OP_MEM]
         if ins.mnemonic != "jmp" or not mem or mem[0].mem.index == 0 or mem[0].mem.scale != 4:
@@ -619,6 +622,9 @@ def render_table(t, rows, supp, voice):
            "(record `2026-10-01-reverse-e2-derivations.md`). Do not edit by hand: `make entry-triage` "
            "fails when this file differs from a fresh run.", "",
            "Universe: %d candidates, of which U0's rule admits %d (column `u0`)." % (len(rows), u0), "",
+           "Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (functions after "
+           "inline data, reached only by an immediate in Ghidra code; track P takes them as follow-up input).",
+           "",
            "## Counts by class", "", "| class | rows | of them U0's |", "|---|---|---|"]
     out += ["| %s | %d | %d |" % (c, by_cls[c], sum(1 for r in rows if r["cls"] == c and r["u0"]))
             for c in CLASS_ORDER if by_cls[c]]

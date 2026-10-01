@@ -27,7 +27,7 @@ make gp-charsel-oracle     # the same ratchets on data/k11-captures/gp-u5-charse
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
-make entry-triage          # E2: triage of the non-Ghidra entry candidates; the committed table must equal a fresh run (in make verify; skips without capstone)
+make entry-triage          # E2: triage of the non-Ghidra entry candidates; the committed table must equal a fresh run (in make verify; skips without capstone or PRAGE.EXE; fails under PR_ORACLE_REQUIRED=1)
 ```
 
 - **Run the binaries from the repo root.** Several tests default to the relative
@@ -227,6 +227,11 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   `.superpowers/` deliberately — it is the recovery map, not build output.
 - Commit style: `<area>: <what changed>`. **Never `git add -A`** — stage named files.
 - Only commit when asked.
+- **The E2 target list is a gate** (`docs/superpowers/plans/2026-10-01-reverse-e2-triage.md`; `make entry-triage`, in
+  `make verify`, fails when it differs from a fresh run). A commit that ports a target (a new `/* 0xADDR` header or
+  `fn_register`) regenerates the table in the same commit (decision D3):
+  `./build/diffrun --exe data/game/C/PRAGE.EXE --image-out /tmp/e2img && python3 tools/entry_triage.py --image /tmp/e2img --live docs/superpowers/plans/2026-10-01-reverse-e2-live-functions.txt --out docs/superpowers/plans/2026-10-01-reverse-e2-triage.md`.
+  A conflict in that file is resolved by regenerating it after the rebase, never by merging lines by hand.
 
 ## Layout
 

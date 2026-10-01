@@ -515,12 +515,14 @@ diff-verify: build ## Differential verification: original x86 bytes vs the port'
 # E2 (record docs/superpowers/plans/2026-10-01-reverse-e2-derivations.md): triage of the entry
 # candidates Ghidra never listed. The committed table must equal a fresh run on the image the port's
 # loader dumps, so a port change that ports a target regenerates it in the same commit. Skips without
-# capstone or PRAGE.EXE.
-entry-triage: build ## E2 triage of the non-Ghidra entry candidates: unit tests + the committed table must equal a fresh run (skips without capstone)
+# capstone or PRAGE.EXE, and fails instead under PR_ORACLE_REQUIRED=1 (make verify sets it).
+entry-triage: build ## E2 triage of the non-Ghidra entry candidates: unit tests + the committed table must equal a fresh run (skips without capstone or PRAGE.EXE; fails under PR_ORACLE_REQUIRED=1)
 	@echo "== entry triage (the non-Ghidra entry candidates; record E2) =="
 	@if ! $(PYTHON) -c "import capstone" 2>/dev/null; then \
 		echo "entry-triage: skipped: capstone is not installed (pip install -r tools/requirements-diff.txt)"; \
+		[ "$${PR_ORACLE_REQUIRED}" != 1 ] || exit 1; \
 	elif [ ! -f $(GAME_DIR)/PRAGE.EXE ]; then echo "entry-triage: skipped: $(GAME_DIR)/PRAGE.EXE is absent"; \
+		[ "$${PR_ORACLE_REQUIRED}" != 1 ] || exit 1; \
 	else $(PYTHON) -m unittest tools.tests.test_entry_triage && \
 		./$(BUILD_DIR)/diffrun --exe $(GAME_DIR)/PRAGE.EXE --image-out $(E2_IMAGE) && \
 		$(PYTHON) tools/entry_triage.py --image $(E2_IMAGE) --live $(E2_LIVE) --check $(E2_TABLE) \

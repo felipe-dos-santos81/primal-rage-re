@@ -517,7 +517,7 @@ class CliTests(unittest.TestCase):
         return rc, buf.getvalue()
 
     def test_the_counts_the_table_and_the_check(self):
-        # 24 = len(EXPECTED): fix round 1 (3be31c4) planted 17300 for the slot-precedence rule after the
+        # 24 = len(EXPECTED): fix round 1 (8c60507) planted 17300 for the slot-precedence rule after the
         # brief counted 23.
         rc, text = self.main("--out", self.out, "--expect", "24", "--expect-u0", "23")
         self.assertEqual(rc, 0, text)
@@ -543,7 +543,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.main("--expect-u0", "24")[0], 1)
 
 
-DIFFRUN = os.path.join(ROOT, "build", "diffrun")
+DIFFRUN = os.path.join(os.environ.get("BUILD_DIR", os.path.join(ROOT, "build")), "diffrun")
 EXE = os.path.join(os.environ.get("PR_GAME_DIR", os.path.join(ROOT, "data", "game", "C")), "PRAGE.EXE")
 LIVE_FILE = os.path.join(ROOT, "docs", "superpowers", "plans", "2026-10-01-reverse-e2-live-functions.txt")
 # U6a ported four non-Ghidra addresses (strict entries: header or fn_register) after the planning run (record gameplay-u6 §U6.2
@@ -563,8 +563,11 @@ U0_VOICE = {int(x, 16) for x in (
     "24317 243CF 243ED 2455E 295FD 342EF 3440D 3448B 34517 345A3 3462F 3D12D 3D395 3D730 3DAC5 3DB2A "
     "3DB82 3F0C1 4012D 40137 402B1 402E0 41880 45C8C 45D0A 475D9 4779D 478C7 47DF7 47E1B 48518 48548 "
     "4B0B4 4B0BE").split()}
-# Measured on the image `diffrun --image-out` writes at e9271df (record §E2.9). A change of a class
-# rule moves these: update them with the record, never alone.
+# Measured on the image `diffrun --image-out` writes (record §E2.9). These depend on the image and the
+# class rules (§E2.2) only, never on port/src: a change of a class rule moves them (update them with the
+# record, never alone). The ported-state figures (how many targets are ported, the per-batch split, the
+# voice sites' ported flag) move with every track-P port, so no assertion below pins them: they live in
+# the committed table, which `--check` regenerates in the P commit.
 REAL_CLASSES = {"finisher": 9, "move-callback": 71, "span-writer": 231, "call-table": 7, "anim-target": 112,
                 "mid-instruction": 3, "data": 75, "code-immediate": 15, "direct": 2, "interior": 6,
                 "data-pointer": 48}
@@ -600,8 +603,13 @@ class RealImageTests(unittest.TestCase):
 
     def test_the_unported_callbacks_and_finishers_are_u0s(self):
         un = lambda c: {r["addr"] for r in self.rows if r["cls"] == c and not r["ported"]}
-        self.assertEqual(un("move-callback"), U0_CALLBACKS - {0x23208})       # 0x23208: ported by U6a (§U6.2)
-        self.assertEqual(un("finisher"), U0_FINISHERS)
+        # invariant under P ports (a port moves a row out of `un`, never in): the unported ones are a subset
+        # of U0's, and every one of U0's is a row of that class
+        self.assertTrue(un("move-callback") <= U0_CALLBACKS, sorted(un("move-callback") - U0_CALLBACKS))
+        self.assertTrue(un("finisher") <= U0_FINISHERS, sorted(un("finisher") - U0_FINISHERS))
+        cls = lambda c: {r["addr"] for r in self.rows if r["cls"] == c}
+        self.assertTrue(U0_CALLBACKS <= cls("move-callback"))
+        self.assertTrue(U0_FINISHERS <= cls("finisher"))
 
     def test_u0s_animation_examples_are_animation_targets(self):
         for a in (0x241A8, 0x37DCC, 0x400E0):
@@ -622,9 +630,13 @@ class RealImageTests(unittest.TestCase):
         self.assertEqual(len(sites), 303)               # k7-k12 §0.2
         placed = {v["site"]: v for v in self.t.voice_placement(self.rows, self.supp)}
         self.assertTrue(U0_VOICE <= set(placed))
-        self.assertEqual(collections.Counter((placed[s]["kind"], placed[s]["ported"]) for s in U0_VOICE),
-                         {("row", False): 39, ("row", True): 1, ("supplement", False): 9, ("-", False): 17})
-        # the one row site that moved to ported is 0x23243, in the body of 0x23208 (ported by U6a, §U6.2)
+        # placement (which body holds a site) does not depend on port/src; the ported flag does
+        self.assertEqual(collections.Counter(placed[s]["kind"] for s in U0_VOICE),
+                         {"row": 40, "supplement": 9, "-": 17})
+        self.assertEqual(len(placed), 134)
+        self.assertEqual(sum(1 for v in placed.values() if v["kind"] == "-"), 19)
+        self.assertEqual(sum(1 for v in placed.values() if v["kind"] == "-" and v["ported"]), 0)
+        # 0x23243 is in the body of 0x23208 (ported by U6a, §U6.2): ported stays true under later ports
         self.assertEqual((placed[0x23243]["entry"], placed[0x23243]["kind"], placed[0x23243]["ported"]),
                          (0x23208, "row", True))
 
@@ -632,4 +644,7 @@ class RealImageTests(unittest.TestCase):
         self.assertEqual({a for a in U6A_ROWS if self.by[a]["ported"]}, U6A_ROWS)
         self.assertNotIn(0x3A588, self.by)                  # follows data, not a ret: outside the universe
         self.assertTrue(self.t.is_ported(0x3A588))          # but its strict entry (header and fn_register) is there
-        self.assertEqual(sum(1 for r in self.rows if r["batch"] != "-" and r["ported"]), 166)   # 163 + U6a's 3
+        targets = [r for r in self.rows if r["batch"] != "-"]
+        self.assertEqual(len(targets), 495)             # a class-only figure (329 + 166 at U6a)
+        # ports only add: at least U6a's 166 are ported (a P port raises this, never lowers it)
+        self.assertGreaterEqual(sum(1 for r in targets if r["ported"]), 166)

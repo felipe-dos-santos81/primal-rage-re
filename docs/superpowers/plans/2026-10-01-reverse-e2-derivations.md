@@ -8,7 +8,7 @@ a counted list with evidence per row"). Plan: `2026-10-01-reverse-e2-entry-triag
 `port/decomp/prage.functions.csv` (1352 rows: 1207 real + 145 `.image`), and `port/src` at `e9271df`.
 
 **Status of the numbers.** Every figure in §E2.1-§E2.9 was measured in the planning scratch run and
-re-measured in the plan's Task 5 at commit `bc7ab91`, with one class of difference, all of it the
+re-measured in the plan's Task 5 at commit `fce3cc9`, with one class of difference, all of it the
 "ported" column: the branch sits on U6a, whose ports of `0x23208`, `0x3640C` and `0x37DCC` moved those
 three rows from unported to ported (the planning run, on `e9271df`, saw them unported). The figures that
 depend on "ported" are therefore the Task 5 ones (targets 329 unported / 166 ported, callbacks 26 / 45,
@@ -280,15 +280,22 @@ Ghidra functions, so outside the universe); U0's three animation examples are `a
 animation targets' dwords all lie in `0xD213A..0xEE3BC` (56 after `D100`, 31 after `D500`, 24 after
 `D000`; no `0x1F`-prefix form), U0's "`0xD2xxx..0xEDxxx` streams".
 
-**The gate, in a full copy of the tree at `e9271df` with the plan's changes applied:** `make verify` exit 0
-(with the `entry-triage` step printing the three lines above), the 45 oracle lines equal to
-`k7-k12/scratch/oracle-lines-base.txt`, the `make audio-render` WAV identical to `before-t2.wav`, and
-`port_progress.py` `771 1203 64` / `731 731 100`.
+**The gate.** In a full copy of the tree at `e9271df` with the plan's changes applied (the planning run), the
+`entry-triage` step printed the planning-run lines (`targets 332 unported, 163 ported`, `voice sites outside
+Ghidra 134: 49 in unported code, 66 in ported code, 19 nowhere`). At the branch head on U6a (Task 7, before the
+rebase onto main): `make verify` exit 0, with the `entry-triage` step printing the three lines above
+(329/166 and 48/67/19), the 45 oracle lines equal to `k7-k12/scratch/oracle-lines-base.txt`, the `make
+audio-render` WAV identical to `before-t2.wav`, and `port_progress.py` `771 1203 64` / `731 731 100`. Both
+gates left the oracle lines, the WAV and the counters unchanged: E2 changes nothing under `port/src`.
 
 **The counted target list for track P** (unported, by batch): callbacks 26, finishers 6, animation
-targets 63, span writers 231 (or the six dispatchers, Decision D2), other 3 (`0x10604`, `0x1BDF4`,
-`0x29CFC`), voice 0 rows (the 48 + 19 voice sites ride with their bodies' batches, §E2.7); plus the
-supplement's 35 unported entries and the 8 unported untrusted entries (§E2.5).
+targets 63, span writers 231, other 3 (`0x10604`, `0x1BDF4`, `0x29CFC`), voice 0 rows (the 48 + 19 voice
+sites ride with their bodies' batches, §E2.7); plus the supplement's 35 unported entries and the 8 unported
+untrusted entries (§E2.5). **Decision D2 (decided by the user, 2026-10-01) is that the 231 span writers are
+not ported one by one:** P verifies the six dispatchers the table `0x80C8C` holds (`0x5215C`, `0x57F80`,
+`0x57FFB`, `0x58CBD`, `0x5D218`, `0x5D28F`) with the writers allow-listed. So of the 329 unported targets, 231
+are span writers (verified through their dispatchers) and **98 are targets P actually ports** (callbacks 26 +
+finishers 6 + animation targets 63 + other 3), plus the supplement's and the untrusted entries' unported ones.
 
 ## §E2.10 Follow-up (not a task): the call-stub design E1 §E.6.1 names
 
