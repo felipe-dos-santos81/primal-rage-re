@@ -20,7 +20,7 @@ make demo-fight-oracle     # ratchet on the demo fight's first unexplained frame
 make attract2-oracle       # ratchet on the attract's second cycle after the demo (N pinned in the Makefile); in make verify
 make k11-oracle            # K11 service-menu oracles (the walk and menuesc); in make verify; each skips without its data/k11-captures/<scenario>
 make k11-capture scenario=walk   # DOSBox-X capture of the service menu (writes data/k11-captures/<scenario>)
-make gp-capture scenario=gp-pads  # DOSBox-X gameplay capture (frame-keyed injection, per-frame snapshot log); writes data/k11-captures/gp-<scenario>
+make gp-capture scenario=gp-pads  # DOSBox-X gameplay capture (frame-keyed injection, per-frame snapshot log); writes data/k11-captures/<scenario> (scenario names are gp-…)
 make gp-replay scenario=gp-pads  # port replay of a gameplay capture (PR_GP_DUMP driver, .ipx frames + trace); in make verify on gp-pads, which skips without data/k11-captures/gp-pads
 make gp-oracle             # gameplay oracle: frame + trace ratchets on data/k11-captures/gp-idle-loss (N values in the Makefile); in make verify; skips without the capture
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
@@ -174,9 +174,13 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   Makefile (empty until the capture is pinned); it skips without the capture,
   even under `PR_ORACLE_REQUIRED`. Its claim is narrow the same way (record
   `…-gameplay-ground-truth-derivations.md` §G.16): no content-bearing capture
-  frame before N is unexplained and the traced fields agree below F; it cannot
-  detect a port that under-renders, and where the port's script ends before the
-  capture the first unexplained frame is how far the port got, not a defect.
+  frame from the window start up to N is unexplained and the traced fields
+  agree below F; the window start is pinned too (`GP_IDLE_LOSS_MAX_START`), so a
+  regressed port cannot slide it forward. It cannot detect a port that
+  under-renders, and **the order of the port's frames and that every port frame
+  appears are not claimed** (a named gap; a coverage count is only reported). Where
+  the port's script ends before the capture the first unexplained frame is how far
+  the port got, not a defect.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two

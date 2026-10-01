@@ -788,7 +788,8 @@ stands in for the pump hook's dump only under mutation; **no assertion
 protects it**, and Review Focus 3's catch-up present has no check.
 
 **The gp-pads replay** (`$S/gp-pads.script`, 17.6 s wall): `all checks
-passed`; 3 `.ipx` (`f=0141` ticks `14D..14F`, the MAIN MENU fade-in), 721 `T`
+passed`; 3 `.ipx` (`f=0141` ticks `14D..14F`: the title screen under the Enter's yellow
+wipe, an all-black frame, the settled MAIN MENU; corrected in §I item 7a), 721 `T`
 lines `f=0141..0411`, all `mode=0027`, no `left-queued`. Against the capture's
 `S` records (`gp_session.snapshots(poll.log)`, 721 common `f`, `0x141..0x411`),
 field by field over all `SNAP_FIELDS`: **every field is equal at every `f`
@@ -1129,10 +1130,12 @@ with unpinned values fails (twice) and passes once pinned, a capture without
 test_a_present_capture_needs_pinned_values` and `test_unpinned_n_fails`; the
 absent-capture skip returning 1 → `FAIL: test_an_absent_capture_skips`; the trace
 N ignored (`n_trace = 0`) → `FAIL: test_a_present_capture_needs_pinned_values`.
-(Two further mutations of `main`'s final `return 0 if a.report else …` survive:
-in report mode both ratchets run with N = 0, which no `first` can be below, so
-the explicit `0 if a.report` is a redundant guard, not an untested branch.)
-Suite: `Ran 19 tests` in `test_gp_compare`.
+(**Corrected in review 1, §I item 10:** the two mutations of `main`'s final
+`return 0 if a.report else …` that survived here were not redundant. In report mode
+`frame_claim` returns 1 for "window empty" and `trace_claim` for "nothing
+compared", so the guard is what makes `make gp-report` exit 0 exactly when the
+comparison is most broken; it is now tested and each mutation fails.)
+Suite: `Ran 19 tests` in `test_gp_compare` at this commit; 28 after review 1.
 
 **Self-comparison through the CLI** (scratch, not committed: U2's smoke dump
 `/tmp/gameplay-u2/smoke`, 145 `.ipx`, expanded into a fake capture
@@ -1162,7 +1165,7 @@ line. **Both gp-oracle and gp-report pass `GP_OPTIONAL=1` to `gp-replay`**
 
 **The report on U1's gp-pads** (`make gp-report scenario=gp-pads
 GP_DUMP=/tmp/pr_u3_gp`, `all checks passed`; U1's run 3, 446 distinct frames),
-verbatim:
+verbatim (re-run after review 1, so the coverage line and the missing ratchet lines are the current output):
 
 ```
 gp_compare: gp-pads: report only: no ratchet applied, exit 0
@@ -1172,16 +1175,19 @@ gp_compare: gp-pads: frames: UNEXPLAINED capture 109 (raw 3935): nearest port 0,
 gp_compare: gp-pads: frames: UNEXPLAINED capture 110 (raw 3936): nearest port 0, rows 0..199, x 0..319 (63952 px)
 gp_compare: gp-pads: frames: UNEXPLAINED capture 111 (raw 3940): nearest port 0, rows 0..199, x 0..319 (63955 px)
 gp_compare: gp-pads: frames: UNEXPLAINED capture 112 (raw 3941): nearest port 0, rows 0..199, x 0..319 (63955 px)
+gp_compare: gp-pads: frames: coverage (reported, not ratcheted): 0 non-black port frame(s) up to port 2 not exhibited by any classified capture frame
 gp_compare: gp-pads: trace: 721 frames compared (f 141..), 0 without a capture snapshot; first tick difference f=141 (reported, not ratcheted)
 gp_compare: gp-pads: trace: normalised (reported, not ratcheted): ent 0 of 721 differ; t508 0 of 721 differ
-gp_compare: gp-pads: trace: 0 differing through 1041; ratchet N 0 ok
+gp_compare: gp-pads: trace: 0 differing through 1041
 ```
 
 What it shows (read from the capture and the port dump, not asserted by the
-tool): the port's dump is 3 `.ipx` (the MAIN MENU fade-in, §G.10). Capture
-104 (raw 1744) is clean port 0, 105 (raw 1746) all-black, 106 (raw 1747) clean
-port 2, i.e. the fade-in and the settled MAIN MENU, which the capture then holds
-as one distinct frame for 721 game iterations. Capture 107 (raw 3926) is
+tool): the port's dump is 3 `.ipx`. Capture 104 (raw 1744) is clean port 0 (the
+title screen under the Enter's yellow wipe: the title-to-menu transition), 105
+(raw 1746) all-black, 106 (raw 1747) clean port 2 (the settled MAIN MENU), which
+the capture then holds as one distinct frame for 721 game iterations. (The
+earlier text called port 0 the "MAIN MENU fade-in", inherited from §G.10; the
+reviewer rendered both.) Capture 107 (raw 3926) is
 all-black and 108 (raw 3930) the first screen after it: raw 1744 → 3930 is
 31.19 s at 70.0866 fps, and `f = 0x141 → 0x88C` (the idle-timeout restart's mode 3,
 `poll.log` `P … f=088C mode=0003`, §G.7.3) is 31.09 s at 60.05 Hz. So **the
@@ -1202,7 +1208,12 @@ no pinned values): `--min-first 108 --trace-min-first 1042` → `first unexplain
 `--min-first 109` → `FAIL: first unexplained 108 < ratchet N 109`;
 `--min-first 107` → `ratchet N 107 ok (improved: raise N)`; `--trace-min-first
 1043` → `FAIL: N 1043 > end 1042: N is unreachable`. (For a trace with no
-difference, N is the end of the port's trace, `last f + 1`: the exact pin.)
+difference, N is the end of the port's trace, `last f + 1`: the exact pin.) After
+review 1 an enforced run also needs `--max-start`: `--max-start 104` → rc 0; `103`
+→ `FAIL: window starts at capture 104 (raw 1744) > pinned start 103`; `108` →
+`window start 104 < pinned start 108 (improved: lower the pin)`; unset → `FAIL: the
+window-start pin is not set (GP_IDLE_LOSS_MAX_START)`. On `gp-pads` the exact pins
+would be start 104, N 108, F 1042.
 
 **The gate** (`make verify` with the §G.13 overrides, `/tmp/gameplay-u3/t4_verify.txt`):
 `verify-exit=0`, last line `all checks passed`. The 45 oracle lines (the §G.0
@@ -1235,9 +1246,29 @@ claimed (host-timed), `t508` and `ent` are reported after their conversions and
 not ratcheted, and **over a window where little varies it says little**: the
 only measured trace evidence so far is `gp-pads` (mode `0x27` throughout, only
 the pad words vary, §G.10, §H.2 item 6). The values `GP_IDLE_LOSS_MIN_FIRST` and
-`GP_IDLE_LOSS_TRACE_MIN_FIRST` are not pinned by U3 (no `gp-idle-loss` capture
-exists yet); U4 Task 5 pins them from a measured first unexplained frame and a
-measured first differing `f`, each with its provenance, and proves each can fail.
+`GP_IDLE_LOSS_TRACE_MIN_FIRST` and `GP_IDLE_LOSS_MAX_START` are not pinned by U3
+(no `gp-idle-loss` capture exists yet); U4 Task 5 pins them from a measured first
+unexplained frame, a measured first differing `f` and the measured window start,
+each with its provenance, and proves each can fail.
+
+**What the frame claim does not claim (review 1, §I items 8–9).** The window
+START is ratcheted (it must not be later than the pin and must lie below N), so
+a regressed port cannot slide the window past the frame that set N; the claim
+holds from the window start, not from capture frame 0 (the frames before it, the
+title before the Enter, are not checked). **Order and port-frame coverage are not
+claimed by the ratchet.** The full-dump fallback lets any port frame explain any
+capture frame, and port frames the capture never shows are not required: a
+garbage port frame inserted between two good ones (port `[1, 99, 2]` against
+capture `[1, 2]`) and a capture that goes back in time (capture `[1, 3, 2, 1]`
+against port `[1, 2, 3]`) both pass. A reported coverage line counts the
+non-black port frames up to the last one the capture exhibits that no classified
+capture frame exhibits (it flags the first example, not the second); it is
+reported and not ratcheted in this unit. **Named gap:** a coverage and an order
+ratchet (every non-black port frame up to the last exhibited one must be
+exhibited, in order), sound at 70.09 Hz capture against 60.05 Hz game under the
+same splice model; the tests `test_named_gap_order_is_not_claimed` and
+`test_coverage_is_reported_…` pin the current behaviour so a later change must
+update this paragraph.
 The `[p − 2, p + 64)` search order, `REPORT_MAX` and the LRU size are harness
 values, not game values.
 
@@ -1269,3 +1300,33 @@ values, not game values.
    port's script ends 60 frames after its chord and never reaches). For
    `gp-idle-loss` U4 should expect the same shape if its replay stops early:
    N then bounds how far the port got, as spec §4.3 says.
+7a. (item 7 wording) **Port frames 0..2 of `gp-pads`** are the title screen under
+   the Enter's yellow wipe, an all-black frame and the settled MAIN MENU, not "the
+   MAIN MENU fade-in" (§G.10 and §G.16 said so; review 1 rendered them). Capture 104
+   is clean port 0 and 106 clean port 2. Evidence unchanged, wording corrected.
+8. **The window START is ratcheted (review 1, Important 1).** The start is where the
+   capture first shows the port's first frame, so a port whose first frame regressed
+   to a screen that recurs later in the capture slid it forward past the frame that
+   set N, and the claim went green (reviewer's fixture: port `[9,2,3]` against
+   capture `[9,2,3,7,1,2]` with N=3 gave `(0, 3)`, the regressed port `[1,2,3]`
+   gave `(0, None)`). New pin `GP_IDLE_LOSS_MAX_START` (Makefile, `--max-start`,
+   empty until U4 pins it; an unset pin fails once the capture exists, like the
+   other pins), and the start must also lie below N. Test
+   `test_the_window_start_cannot_slide_forward`; mutations (`start > max_start` and
+   `start >= N` checks removed, unset-pin check removed) each fail a named test.
+9. **Order and port-frame coverage are not claimed (review 1, Important 3), a named
+   gap.** See §G.16's "What the frame claim does not claim". A reported coverage
+   line was added; no ratchet. `AGENTS.md` and `docs/PROGRESS.md` say the same.
+10. **Report mode (review 1, Important 2 and Minor 4).** `make gp-report` always
+    exits 0, including when `frame_claim` finds no window and `trace_claim` compares
+    nothing (the condition is printed; `main`'s guard is load-bearing, §G.16 corrected,
+    test `test_report_mode_exits_zero_when_the_claims_cannot_run`, mutation of the
+    guard fails it). It prints no ratchet verdict and checks no pin after "no ratchet
+    applied" (tests for both claims; mutations fail).
+11. **Minors 5 and 9.** A fully explained enforced run with N below the end prints
+    `every item is explained: N = <end> is the exact pin` (as `title_compare`
+    prints "window end + 1 is the exact pin"); the empty-trace header no longer
+    prints `(f []..)`.
+12. `docs/superpowers/plans/2026-09-30-gameplay-u3-frame-compare.md` ended with
+    stray planner-artifact text after its last Self-Review bullet (closing tags and
+    a line telling the reader to run `build_u3.py` from a scratchpad); removed.
