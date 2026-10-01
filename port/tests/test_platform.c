@@ -108,24 +108,21 @@ static const fnm_pair k_miss_frontend[] = {
  * review 1), per scenario: the PR_GP_DUMP driver replays a capture's script and
  * the named scenario decides what may be missed, on top of the 0x5D812 pair
  * above. gp-pads (the MAIN MENU) records only that base set. gp-idle-loss
- * (measured on the merged base, the full replay to f = 0x207F) adds four
+ * (measured on the merged base, the full replay to f = 0x207F) adds three
  * pairs, each classified from the raw in §G.24:
  *   0x29D60 frontend_mode_1b_step: a bare `ret` (one byte, 0x29D60), f = 0x293;
  *   0x5D812 frontend_mode_1b_step: the runtime stub again, f = 0x77A;
- *   0x23208 hit_reaction_apply: an UNPORTED move-table callback (character 1,
- *     reaction 0x26; U0 §U0.12's list), f = 0x824, the one hit;
  *   0x3A588 fighter_state_3531c: an UNPORTED state-10 callback (the +0x10
  *     pointer 0x3A650 stores), 4995 hits from f = 0x8E7 (measured after the
  *     0x37B03 fix, record gameplay-u5 §C5.13; U4's pre-fix figures were 5353
  *     hits from f = 0x927);
- *   (U4 measured a fifth, 0x3640C anim_indirect, an UNPORTED animation-opcode
- *   target at f = 0x173A, past the trace divergence; since the 0x37B03 fix the
- *   replay no longer reaches it, record gameplay-u5 §C5.3/§C5.12.)
+ * Ported since (record gameplay-u6 §U6.7): 0x3640C (anim_indirect, U4's f = 0x173A;
+ * unreached since the 0x37B03 fix, record gameplay-u5 §C5.3/§C5.12), 0x23208
+ * (hit_reaction_apply, f = 0x824).
  * A scenario with no entry here may miss only the base pair. */
 static const fnm_pair k_miss_gp_idle_loss[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x23208u, "hit_reaction_apply" },
     { 0x3A588u, "fighter_state_3531c" },
 };
 

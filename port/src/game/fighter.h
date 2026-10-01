@@ -1073,6 +1073,10 @@ void fighter_47b04(u32 slot, u32 rec, u32 side);
  * +0x57 = 5 and the callbacks +0x0C 0x47B04, +0x18 0x478D4 (fn(side), EAX
  * returned: two 0x18C14 passes) and +0x1C 0x47984 (fn(side)). */
 void fighter_47bfc(u32 slot, u32 rec, u32 side);
+/* 0x23208 (record gameplay-u6 §U6.2). Character 1's reaction-0x26 callback
+ * (slot, rec, side): the record on 0xE4900 at 3.0, the slot 9/7/0 with +0x0C =
+ * 0, the voice 0x79. */
+void fighter_23208(u32 slot, u32 rec, u32 side);
 u32  fighter_478d4(u32 side);
 void fighter_47984(u32 side);
 

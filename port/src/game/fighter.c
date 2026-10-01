@@ -1862,7 +1862,7 @@ void fighter_36280(u32 rec)
  * its +0x52 = 0, its hold 3.0 and +0x4D = 0x14; with the owner slot rec+0x14
  * set, that slot's +0x52 = 5. EDX is pushed and popped (0x3640C/0x3642B);
  * the EAX it leaves (the owner slot) is not read by the three 0x2B2A0 call
- * sites, which each reload EAX at once (0x2B573, 0x2B59A, 0x2B5F0). */
+ * sites, which each reload EAX at once (0x2B575, 0x2B59A, 0x2B5F0). */
 void fighter_3640c(u32 rec)
 {
     u32 slot;
@@ -11051,6 +11051,28 @@ void fighter_487d4(u32 slot, u32 rec, u32 side)
     DSD(ctx[2] + 0x18u) = 0u;                               /* 0x48896 */
     fighter_3605c(ctx[0], 0x40900000u);                     /* 0x4889D..0x488A5 */
     DSB(ctx[2] + 0x57u) = 3u;                               /* 0x488AA/0x488AE */
+}
+
+/* PORT: a data-object address symbols.h does not name. */
+#define FIGHT_ANIM_23208 0x000E4900u  /* 0x2321A: 0x23208's stream */
+
+/* 0x23208 — record gameplay-u6 §U6.2. Character 1's reaction-0x26 callback
+ * (the dword at 0xA3D20, its only reference; Ghidra has no function here).
+ * 0x34E2C calls it at 0x35045 with EAX = slot, EDX = rec, EBX = side and does
+ * not read its AL (0x35049 `add esp,0x28`). The context 0x33950(side) is built
+ * and never read; the record on 0xE4900 at 3.0 (0x3C4CC, whose RET 4 pops the
+ * 0x23221 push), the slot's +0x52/+0x53/+0x54 = 9/7/0 and +0x0C = 0, then the
+ * voice 0x79. */
+void fighter_23208(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x23211..0x23215 0x33950 */
+    hit_anim_start_b(rec, FIGHT_ANIM_23208, 0x40400000u);   /* 0x2321A..0x23226 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x2322B */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x2322F */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x23233 */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x2323C */
+    (void)sound_voice(0x79u);                               /* 0x23237/0x23243 0x2C3FC */
 }
 
 /* 0x23250 — record §48-P. Character 6's slot +0x18 hook (0x23568; 0x19020,

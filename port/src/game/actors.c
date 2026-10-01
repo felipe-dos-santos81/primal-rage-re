@@ -641,6 +641,9 @@ int actors_init(void)
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
      * and +0x1C 0x47984 (0x193B0's 0x19505, fn(side)). */
     fn_register(0x47BFCu, (void (*)(void))fighter_47bfc);
+    /* PORT: record gameplay-u6 §U6.2. Character 1's reaction-0x26 callback
+     * 0x23208 (the dword at 0xA3D20; 0x34E2C, (slot, rec, side)). */
+    fn_register(0x23208u, (void (*)(void))fighter_23208);
     fn_register(0x478D4u, (void (*)(void))fighter_478d4);
     fn_register(0x47984u, (void (*)(void))fighter_47984);
     fn_register(0x4F4E8u, flow_round_timer_step);

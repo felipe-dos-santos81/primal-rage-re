@@ -43892,15 +43892,55 @@ static void check_u6_3640c(void)
             CHECK_EQ_INT((int)DSB(rec + 0x4Eu), 0xA5);
             CHECK_EQ_INT((int)DSB(own + 0x52u), k ? 5 : 0x33);
             CHECK_EQ_INT((int)DSB(own + 0x53u), 0xC3);
+            CHECK_EQ_INT((int)DSB(rec + 0x53u), 0xA5);  /* a wider +0x52 store would hit it */
+            CHECK_EQ_INT((int)DSB(rec + 0x28u), 0xA5);  /* a wider +0x24 store would hit it */
         }
     }
     tf_put(sv_rec, rec, sizeof sv_rec);
     tf_put(sv_own, own, sizeof sv_own);
 }
 
+/* §U6.2: 0x23208, character 1's reaction-0x26 entry, as 0x34E2C calls it
+ * (slot, rec, side) on side 1: the record on 0xE4900 (first word patched to a
+ * plain frame id) at 3.0, the slot 9/7/0 and +0x0C = 0, the voice 0x79 once;
+ * +0x57/+0x18/+0x1C untouched. */
+static void check_u6_23208(void)
+{
+    if (!mz_save()) { CHECK(0, "the gameplay-u6 snapshot allocates"); return; }
+    CHECK_EQ_INT((int)DSD(0x000A3528u + (1u * 64u + 0x26u) * 20u), 0x00023208);
+    CHECK(fn_resolve(0x23208u) == (void (*)(void))fighter_23208,
+          "0x23208 is registered as fighter_23208");
+    sc_seed(1u, 1u, 0);
+    DSW(0x000E4900u) = 0x1561u;
+    DSB(Z_S1 + 0x52u) = 0x0Cu;
+    DSB(Z_S1 + 0x53u) = 0x33u;
+    DSB(Z_S1 + 0x54u) = 0x44u;
+    DSD(Z_S1 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSB(Z_S1 + 0x57u) = 0x57u;
+    DSD(Z_S1 + 0x18u) = 0x18181818u;
+    DSD(Z_S1 + 0x1Cu) = 0x1C1C1C1Cu;
+    DSD(Z_R0 + 0x08u) = 0x00ABCDEFu;
+    sound_voice_log_reset();
+    fighter_23208(Z_S1, Z_R1, 1u);
+    sc_stream(Z_R1, 0x000E4900u, 0x40400000u, 0x1561u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 0x57);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x18u), 0x18181818);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x1Cu), 0x1C1C1C1C);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x08u), 0x00ABCDEF);   /* the other record */
+    CHECK_EQ_INT((int)sound_voice_log_count(), 1);
+    CHECK_EQ_INT((int)sound_voice_log_at(0), 0x79);
+    sound_voice_log_reset();
+    mz_restore();
+}
+
 int test_u6_idle_loss_callbacks(void)
 {
     int before = g_failures;
     check_u6_3640c();
+    check_u6_23208();
     return g_failures - before;
 }
