@@ -52,6 +52,36 @@ class TestTables(unittest.TestCase):
         self.assertTrue(fmt.startswith('T '), fmt)
         self.assertEqual([p.split('=')[0] for p in fmt[2:].split()], [n for n, _, _ in gs.SNAP_FIELDS])
 
+    def test_the_port_t_line_widths_and_addresses_match_snap_fields(self):
+        # review of U6b Task 1 (m1): the names alone let a placeholder of the wrong width or a
+        # DS_ symbol of the wrong address through. Each placeholder is %0{2*size}X and, for the
+        # five U6 fields (record gameplay-u6 §U6.11), each argument reads SNAP_FIELDS' address.
+        import re
+        src = open(os.path.join(ROOT, 'port', 'tests', 'test_game.c')).read()
+        body = src[src.index('static void gp_trace_line(void)'):]
+        call = body[:body.index(');\n    gp_trace_lines++')]
+        fmt = ''.join(re.findall(r'"([^"]*)"', call))
+        rest = call[call.rindex('"') + 1:].lstrip(' ,')
+        args, depth, cur = [], 0, ''
+        for ch in rest:
+            if ch == ',' and depth == 0:
+                args.append(cur.strip())
+                cur = ''
+                continue
+            depth += (ch == '(') - (ch == ')')
+            cur += ch
+        args.append(cur.strip())
+        parts = fmt[2:].replace('\\n', '').split()
+        self.assertEqual(len(parts), len(gs.SNAP_FIELDS))
+        self.assertEqual(len(args), len(gs.SNAP_FIELDS), args)
+        for part, arg, (n, addr, size) in zip(parts, args, gs.SNAP_FIELDS):
+            self.assertEqual(part, '%s=%%0%dX' % (n, 2 * size), n)
+            if n in gs.MOVE_FIELDS or n in ('r0', 'r1'):
+                m = re.search(r'\bDS_([0-9A-F]{8})(?:\s*\+\s*(0x[0-9A-Fa-f]+|[0-9]+)u?)?\)', arg)
+                self.assertIsNotNone(m, (n, arg))
+                got = int(m.group(1), 16) + (int(m.group(2), 0) if m.group(2) else 0)
+                self.assertEqual(got, addr, (n, arg))
+
     def test_an_s_line_without_the_u6_fields_still_parses(self):
         old = [(n, d, s) for n, d, s in gs.SNAP_FIELDS if n not in gs.MOVE_FIELDS]
         body = ' '.join('%s=%0*X' % (n, 2 * s, 7) for n, _, s in old)
