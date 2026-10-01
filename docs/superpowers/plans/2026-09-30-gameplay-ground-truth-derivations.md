@@ -1547,3 +1547,153 @@ a comparison under the same inputs.
 `f = 0x640` in two runs and `0x600` in the probe (a clock from the boot, not the
 keys and not `tick`); with only two runs the 6-frame figure is a lower bound of
 the spread.
+
+## §G.20 The port replay of gp-idle-loss and the first divergences (U4 Task 4)
+
+`make gp-report scenario=gp-idle-loss GP_DUMP=/tmp/pr_u4_gp TITLE_PIN_DIR=/tmp/pr_u4_pin`
+(`/tmp/gameplay-u4/report1.txt`; the build ran in the worktree's `build/`). **No
+stall and no fault:** the driver's `all checks passed` (the Enter arm, the three
+keys queued, no `left-queued`/`missed`/`fault` line in `gp.log`, `end 8319`
+reached); the script is `enter_frame 321`, `key 321/474/622 1C 0D`, `end 8319` (7
+lines: no pad bits); 6 497 `.ipx` (409 MB; `frames.txt` ends `06496 f=207F
+tick=000020EA mode=0006`), 7 999 `T` lines. The plan's `GP_IDLE_LOSS_END` branch
+is **not needed** (the Makefile is unchanged by this task). The two claims, verbatim:
+
+```
+gp_compare: gp-idle-loss: report only: no ratchet applied, exit 0
+gp_compare: gp-idle-loss: frames: window from capture 90 (raw 1744); 112 classified: 87 clean, 20 splice, 0 transition, 5 unexplained, 6 all-black
+gp_compare: gp-idle-loss: frames: FIRST UNEXPLAINED capture 203 (raw 2359): nearest port 106, rows 9..19, x 160..174 (102 px)
+gp_compare: gp-idle-loss: frames: UNEXPLAINED capture 204 (raw 2360): nearest port 106, rows 7..19, x 160..174 (122 px)
+gp_compare: gp-idle-loss: frames: UNEXPLAINED capture 205 (raw 2362): nearest port 72, rows 7..19, x 160..174 (156 px)
+gp_compare: gp-idle-loss: frames: UNEXPLAINED capture 206 (raw 2366): nearest port 71, rows 7..19, x 160..174 (156 px)
+gp_compare: gp-idle-loss: frames: UNEXPLAINED capture 207 (raw 2369): nearest port 70, rows 7..19, x 160..174 (156 px)
+gp_compare: gp-idle-loss: frames: first unexplained 203, ratchet N 0 ok (improved: raise N)
+gp_compare: gp-idle-loss: trace: 1764 frames compared up to the first difference (f 141..), 4 without a capture snapshot; first tick difference f=141 (reported, not ratcheted)
+gp_compare: gp-idle-loss: trace: first difference f=828 (2088) in rng: capture 73A05D37, port CE92DD04
+gp_compare: gp-idle-loss: trace: normalised (reported, not ratcheted): ent 0 of 7973 differ; t508 7655 of 7973 differ (first f=281)
+gp_compare: gp-idle-loss: trace: first differing 2088, ratchet N 0 ok (improved: raise N)
+```
+
+(`window from capture 90` is the first capture frame the port's first dump
+exhibits; 7 973 frames compared = the common `f` of the port's 7 999 and the
+capture's 9 807 snapshots; the report-mode "ratchet N 0" is the unpinned value,
+not a result.)
+
+### The first unexplained capture frame (Step 2)
+
+Capture 203 (raw 2359) against the nearest port frame 106 (`frames.txt`: `00106
+f=0334 tick=0000034E mode=0010`): the character select (mode `0x10`), Sauron on
+the left, the pick-countdown number at the top. The differing 102 px lie in rows
+9..19, x 160..174: **the countdown digits** — the capture shows **12**, the port
+frame **13** (PNGs `/tmp/gameplay-u4/cap_203.png`, `port_106.png`, crops `*_crop.png`
+read by eye). The rest of the picture is identical to port frame 106.
+
+What the neighbouring frames show (digit region masked, scene hashes matched against
+every mode-`0x10` port frame, `/tmp/gameplay-u4`): capture 185..202 follow port
+frames 93..108/110 in order (the scene, with the 13 digit, as the port draws it);
+capture **203** is the first frame whose digit is the next one (12; the mid-flip
+frame, 204+ show it whole) **and** from 203 the scene runs *backwards* through
+port frames 106, 105, … 100, 99, … 80 (capture 203..238), one scene step per
+capture frame, where the port's own scene, after the same digit change at port
+frame 111 (`f = 0x340`, a multiple of 64: `0x43CF0..0x43CFF` run `0x43AAC` when
+`f & 0x3F == 0`, `port/src/game/fight.c` `fight_char_select_pass`), keeps
+going forward (frames 111..146) and reverses at port frame 147 (`f = 0x3A0`,
+**96 game frames later**). So the divergence is **in the character select's actor
+animation, not in the digit**: Sauron's idle animation turns around at the
+`f = 0x340` countdown step in the original and at `f ≈ 0x3A0` in the port; the
+digit appears different only because the nearest port frame is the one with the
+same scene. The trace is equal at those frames (mode, st, rng, e0/e2, cred
+all as the original through `f = 0x827`), so nothing in `TRACE_FIELDS` sees it.
+
+**Owner and classification: a port divergence in the character-select actor's
+animation (an actors/animation-timing or a `0x43AAC` side effect the port omits);
+not host-timed (the original is deterministic over this window: both captures
+carry the same scene at the same `f` from `0x625`, §G.19), not an unported
+function reached (the replay ran to the end with no fault), not a harness
+artefact (`f` and the inputs are those of the capture; the trace is equal).**
+**Not isolated to a function:** which of the actor/animation routines differ is
+a named gap (§G.23, owner U5, the character-select walk). The countdown itself
+(`DS_0010816C`, the `f & 0x3F` anchor) is the same in both: the pick time-out comes
+at `f = 0x640` in the port and in both captures, which also resolves §G.19's open
+"anchor": it is the absolute frame counter (`f & 0x3F == 0` steps), not a clock.
+
+(The later unexplained frames 204..207 are the same scene reversal, `rows 7..19
+x 160..174` plus the reversed scene; the report stops at its `REPORT_MAX = 5`.)
+
+### The first trace difference (Step 3)
+
+`first difference f=828 (2088) in rng: capture 73A05D37, port CE92DD04`.
+```
+poll.log  S f=0827 mode=0006 … e0=0000 e2=0000 rng=73A05D37 … s0_5a=10 s1_5a=00     (tick 00000CA8)
+trace.txt T f=0827 mode=0006 … e0=0000 e2=0000 rng=73A05D37 … s0_5a=10 s1_5a=00     (tick 00000892)
+poll.log  S f=0828 mode=0006 … rng=73A05D37 …                                       (tick 00000CA9)
+trace.txt T f=0828 mode=0006 … rng=CE92DD04 …                                       (tick 00000893)
+```
+(`f = 0x825, 0x826, 0x827`, the three frames before: identical in all
+`TRACE_FIELDS`, `rng = 0x73A05D37`; the mode at `0x828` is 6, round 1, 51 frames
+after the round start `0x7F5`.) The two runs agree here (§G.19: no difference
+from `0x625`), so this is not run-to-run noise. The port's draw at `0x828` is the
+original's draw 5 frames later: the sequence of `rng` values after `0x822` is the
+same in both (`0x73A05D37` → `0xCE92DD04` → …: the capture changes it at `0x82D`,
+the port at `0x828`), consumed in the same order, so no extra or missing draw —
+a **timing** difference of an effect entry. A throw-away `backtrace` in `rng_next`
+(not committed; `rng.c` restored) names the caller of the draws at `f = 0x822`
+and `0x828`: `fight_4b144 ← fight_4aad0 ← fight_effects_pass ← game_mode_04_step`
+(`rng(2)`, `rng(0x1200)`, `rng(0x1200)`), i.e. the **type-0 fight-effect entry
+(the crowd/worshipper walk, `fight.c` 0x4B144/0x4AAD0)** choosing its next target.
+The original makes the same three draws at `0x822` (the first walk) and the next
+walk's draws at **`0x82D`**; the port at **`0x828`**: its walk to the target ends
+**5 frames earlier**. The state around it, from the `S`/`T` records (equal up to
+`0x827`): at `0x82E` the original's P1 slot changes (`+0x52` 0x11 → 0x10,
+`+0x5A` 0x10 → 0x17: P2's attack connects, `e2` having been `0x4C4C`, `0x1010`,
+`0x2F20` from `0x81A..0x822`), in the port P1 is not hit there (`+0x52` goes to 9
+at `0x837`, `+0x5A` stays `0x10`). From there the fights are different fights.
+
+**Classification: port bug (probable) in the actors' animation/walk timing;
+the first trace difference and the first frame difference share one signature**:
+an actor animation whose phase differs by a few frames (Sauron's turn-around
+96 frames, the worshipper's walk 5 frames, the opposite sign), deterministically.
+The *cause is not isolated*: not host-timed (the two captures agree from `0x625`
+at every `f`, and `tick` advances 1 per frame around `0x820`: `0xCA1` at `0x820`,
+`0xCA6` at `0x825`), not an unported function (no fault, the same draws in the
+same order), not the harness (the inputs are run 1's own; `f` is the capture's
+frame counter). It is a named gap (§G.23), pinned by the ratchet.
+
+### The tick line and spec Q6 (Step 3)
+
+`first tick difference f=141` (the first compared frame): the capture's tick
+counts from DOSBox's start (`0x56F`-ish plus the boot movies) and the port's from
+its Enter; `tick − f` is constant in the port (`0x1A`) and grows in the capture
+(1075 at `0x200`, 1090 at `0x640`, 1153 at `0x1000`, 1156 at `0x2000` in run
+1; run 2 runs 2–3 ticks above it at the same `f`): host-timed, as spec §7 Q6
+guessed. **No `TRACE_FIELDS` difference follows within 60 frames of the first tick
+difference** (`f = 0x141` → the first difference is at `0x828`, 1 764 frames
+later): in the 1 764 frames compared before the divergence the port agrees with the
+original in every `TRACE_FIELDS` value while the tick offset drifts by 15, so
+**play in that window does not read the host-timed tick in any way the trace
+shows** (the pick countdown is `f`-anchored, above). Q6 stays open for the
+rest of the run (the divergence at `0x828` is not correlated with a tick event:
+the capture's tick advances 1 per frame there). `t508` (reported, not ratcheted):
+7 655 of 7 973 frames differ from the `+1` rule; port − capture takes the
+values `{1: 318, 0: 929, 2: 276 …}` and jumps at every load (`0x281`, `0x622`, `0x640`,
+`0x654`, `0x7C1`, `0xE1F` (+1 793), `0x163C`, `0x1D29`, `0x1FC1` …): the loaders'
+tick model (`RES_READ_BYTES_PER_TICK`, `res.c`), host-timed in the original. `ent`:
+0 of 7 973 differ after the `B` rebase.
+
+### The path against the capture's
+
+```
+f     capture            port
+141   0x27               0x27        26E 0x2D  26F 0x1A  281 0x1B  293 0x10
+640   0x1A  652 0x1B  664 0x11  665 0x17  756 0x1A  768 0x1B  77A 5  7F5 6   — equal, mode for mode and frame for frame
+C71   8 (round 1: KO)    14D9 7 (time up), 154A 8, 154B 0x16, 163C 5, 16B7 6
+D2D   0x16  E1E 5  E99 6  1B4B 7  1BBC 9  1BBD 0x17  1CAE 0x15  1D27 0x13  1FC0 0x1E  1FC4 0x14  1FC5 0x17  207A 3   (capture only)
+```
+
+(From `trace.txt` and the `S`/`P` records: `/tmp/gameplay-u4/pathtable.txt`.) The
+port's round 1 lasts 3 300 frames (`0x7F5 → 0x14D9`, ending by the clock, P1's
+`+0x5A = 0x38`, P2's 0) where the original's lasts 1 148 (KO, `+0x5A = 0x78`);
+its round 2 starts at `0x16B7` and is in mode 6 at the script's end `0x207F`
+(`+0x5A = 7`). **Nothing past round 1 is compared with the original's
+`0x1B4B`..`0x207A`**: the port never reaches match end, mode 9, the countdown,
+the challenge, game over or the return to mode 3 before its script ends.
