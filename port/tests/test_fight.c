@@ -44397,3 +44397,64 @@ static void u6b_3f0a8_family(void)
 }
 
 int test_u6b_3f0a8(void)        { return u6b_run(u6b_3f0a8_family); }
+
+/* The one active pool record that `before` (n entries) does not list; 0 for
+ * none or several. */
+static u32 u6b_new_record(const u32 *before, u32 n)
+{
+    u32 r, hit = 0u, k, found = 0u;
+    for (r = actor_list_head(); r != 0; r = actor_next(r)) {
+        for (k = 0; k < n && before[k] != r; k++) {}
+        if (k == n) { hit = r; found++; }
+    }
+    return found == 1u ? hit : 0u;
+}
+
+static u32 u6b_list(u32 *out, u32 cap)
+{
+    u32 r, n = 0;
+    for (r = actor_list_head(); r != 0 && n < cap; r = actor_next(r)) out[n++] = r;
+    return n;
+}
+
+/* §U6.17: 0x3F0F0 and 0x3F130, the 0xD100 targets of 0x3F0A8's two streams:
+ * no owner slot, nothing; with one, the emitter 0xBB290 is spawned with the
+ * slot in +0x14 and +0x2B bit 0 (0x2BEF4); 0x3F130 also sets +0x50 = 2. */
+static void check_u6b_3f0f0(void)
+{
+    static u32 before[0x80];
+    u32 n, e, rec = Z_R0;
+    CHECK_EQ_INT((int)DSD(0x000E7B8Cu), 0x0003F0F0);
+    CHECK_EQ_INT((int)DSW(0x000E7B8Au), 0xD100);
+    CHECK_EQ_INT((int)DSD(0x000E7BC6u), 0x0003F130);
+    CHECK_EQ_INT((int)DSW(0x000E7BC4u), 0xD100);
+    CHECK(fn_resolve(0x3F0F0u) != NULL, "0x3F0F0 is registered");
+    CHECK(fn_resolve(0x3F130u) != NULL, "0x3F130 is registered");
+    sc_seed(0u, 1u, 0);
+    DSD(rec + 0x14u) = 0u;
+    n = u6b_list(before, 0x80u);
+    fighter_3f0f0(rec);
+    fighter_3f130(rec);
+    CHECK_EQ_INT((int)u6b_list(before, 0x80u), (int)n);   /* no owner: no spawn */
+    DSD(rec + 0x14u) = Z_S0;
+    n = u6b_list(before, 0x80u);
+    fighter_3f0f0(rec);
+    e = u6b_new_record(before, n);
+    CHECK(e != 0u, "0x3F0F0 spawns one record");
+    if (e != 0u) {
+        CHECK_EQ_INT((int)DSD(e + 0x14u), (int)Z_S0);
+        CHECK_EQ_INT((int)(DSB(e + 0x2Bu) & 1u), 1);
+        CHECK(DSB(e + 0x50u) != 2u, "0x3F0F0 leaves +0x50");
+    }
+    n = u6b_list(before, 0x80u);
+    fighter_3f130(rec);
+    e = u6b_new_record(before, n);
+    CHECK(e != 0u, "0x3F130 spawns one record");
+    if (e != 0u) {
+        CHECK_EQ_INT((int)DSD(e + 0x14u), (int)Z_S0);
+        CHECK_EQ_INT((int)(DSB(e + 0x2Bu) & 1u), 1);
+        CHECK_EQ_INT((int)DSB(e + 0x50u), 2);
+    }
+}
+
+int test_u6b_3f0f0(void)        { return u6b_run(check_u6b_3f0f0); }

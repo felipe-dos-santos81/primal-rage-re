@@ -494,6 +494,12 @@ void fighter_19020(u32 side);
  * 8 = 0 and the default box tables. EAX = side. */
 u32 fighter_3e484(u32 side);
 
+/* 0x3F0F0 and 0x3F130 (record gameplay-u6 §U6.17): the 0xD100 targets of the
+ * 0xE7B78 and 0xE7BBE streams (EAX = rec): the emitter 0xBB290 as the slot's
+ * child, +0x2B bit 0 (0x3F130 also +0x50 = 2). */
+void fighter_3f0f0(u32 rec);
+void fighter_3f130(u32 rec);
+
 /* 0x3F0A8 and its three callbacks (record gameplay-u6 §U6.13): the T-rex's
  * reaction-0x24 callback (slot, rec, side), the +0x18 hook 0x3EFE0 (fn(side),
  * EAX returned), the +0x1C callback 0x3F020 (fn(side)) and the per-frame

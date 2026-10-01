@@ -112,6 +112,8 @@ static void anim_code_3640C(u32 rec, u32 arg);
 static void anim_code_37DCC(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
+static void anim_code_3F0F0(u32 rec, u32 arg);
+static void anim_code_3F130(u32 rec, u32 arg);
 static void reaction_cb_3C048(u32 slot, u32 rec, u32 side);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
@@ -255,6 +257,10 @@ int actors_init(void)
      * pair per character at stride 0x500), called at 0x35045 with the raw's
      * (slot, rec, side) registers. */
     fn_register(0x3C0A4u, (void (*)(void))reaction_cb_3C0A4);
+    /* PORT: record gameplay-u6 §U6.17. The 0xD100 targets of 0x3F0A8's two
+     * streams (the dwords 0xE7B8C and 0xE7BC6). */
+    fn_register(0x3F0F0u, (void (*)(void))anim_code_3F0F0);
+    fn_register(0x3F130u, (void (*)(void))anim_code_3F130);
     /* PORT: record gameplay-u6 §U6.13. The T-rex's reaction-0x24/0x25 callback
      * 0x3F0A8 (the dwords 0xA37F8/0xA380C) with the +0x0C/+0x18/+0x1C callbacks
      * it stores (0x3F0D2/0x3F0DD/0x3F0E6). */
@@ -1606,6 +1612,22 @@ static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side)
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side)
 {
     (void)fighter_3c0a4(slot, rec, side);
+}
+
+/* 0x3F0F0 and 0x3F130 — the animation-opcode target shape. PORT: anim_indirect
+ * calls every code pointer as (rec, arg); the raw reads EAX = rec only (EDX is
+ * pushed, then set to 8 at 0x3F10D/0x3F14D before any read), so these
+ * wrappers drop the operand (record gameplay-u6 §U6.17). */
+static void anim_code_3F0F0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3f0f0(rec);
+}
+
+static void anim_code_3F130(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3f130(rec);
 }
 
 /* 0x3C048 — the reaction-callback shape. PORT: the same 0x35045 call, whose

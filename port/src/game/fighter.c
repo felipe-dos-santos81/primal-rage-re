@@ -4627,6 +4627,49 @@ void fighter_3f054(u32 slot, u32 rec, u32 side)
     DSB(ctx[2] + 0x57u) = 2u;                           /* 0x3F09A/0x3F09E */
 }
 
+#define FIGHT_DESC_3F0F0 0x000BB290u  /* 0x3F115/0x3F155: the emitter descriptor */
+
+/* 0x2BEF4 — record gameplay-u6 §U6.17. `or byte [eax+0x2B],1; ret`: sets bit 0
+ * of the record's +0x2B. Its two callers are 0x3F0F0 and 0x3F130 (0x3F125,
+ * 0x3F169); Ghidra has no function here. */
+static void fighter_2bef4(u32 rec)
+{
+    DSB(rec + 0x2Bu) |= 1u;                             /* 0x2BEF4 */
+}
+
+/* 0x3F0F0 — record gameplay-u6 §U6.17. The animation-opcode 0x11 target in the
+ * reaction-0x24 stream (the dword at 0xE7B8C after the 0xD100 word at 0xE7B8A,
+ * its only reference). EAX = rec; EBX, ECX, EDX and ESI are saved and set
+ * before any read. With the record's +0x14 (its slot) set, it spawns the
+ * emitter 0xBB290 (a2 = EDX = 8, a3 = ECX = 0, a4 = EBX = -0x5A, a5 = the
+ * record's +0x56 | 0x400), gives it the slot in +0x14 and sets its +0x2B bit 0
+ * through 0x2BEF4. */
+void fighter_3f0f0(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x3F0F6 */
+    u32 e;
+    if (slot == 0u) return;                             /* 0x3F0FA */
+    e = actor_spawn((const u32 *)(mem + FIGHT_DESC_3F0F0), 8u, 0u, 0xFFFFFFA6u,
+                    (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x3F0FC..0x3F11A 0x2AE14 */
+    DSD(e + 0x14u) = slot;                              /* 0x3F11F/0x3F122 */
+    fighter_2bef4(e);                                   /* 0x3F125 0x2BEF4 */
+}
+
+/* 0x3F130 — record gameplay-u6 §U6.17. The same target in the 0xE7BBE stream
+ * (the dword at 0xE7BC6 after its 0xD100 word, its only reference): 0x3F0F0's
+ * body with the emitter's +0x50 = 2 before +0x14. */
+void fighter_3f130(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x3F136 */
+    u32 e;
+    if (slot == 0u) return;                             /* 0x3F13A */
+    e = actor_spawn((const u32 *)(mem + FIGHT_DESC_3F0F0), 8u, 0u, 0xFFFFFFA6u,
+                    (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x3F13C..0x3F15A 0x2AE14 */
+    DSB(e + 0x50u) = 2u;                                /* 0x3F162 */
+    DSD(e + 0x14u) = slot;                              /* 0x3F15F/0x3F166 */
+    fighter_2bef4(e);                                   /* 0x3F169 0x2BEF4 */
+}
+
 /* 0x3E3A8. The T-rex's reaction-0x2A callback (*(u32*)0xA3870, the (char 0,
  * 0x2A) entry of 0x34E2C's 0xA3528 table, whose stream word +4 is 0). The
  * context is 0x33950(EBX = side); EAX and EDX are overwritten at 0x3E3AB/

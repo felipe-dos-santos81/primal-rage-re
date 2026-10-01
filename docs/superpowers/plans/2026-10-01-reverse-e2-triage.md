@@ -30,7 +30,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | callbacks | 23 | 48 |
 | finishers | 6 | 3 |
 | voice | 0 | 15 |
-| animation-targets | 63 | 49 |
+| animation-targets | 61 | 51 |
 | span-writers | 231 | 0 |
 | other | 3 | 54 |
 
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 6 |
 | leaf | 234 |
-| stubs | 86 |
+| stubs | 84 |
 
 ## Rows
 
@@ -281,8 +281,8 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 3EDF0 | 16 | data | memory operand of the instruction at 3EE36 | yes | - | no | - | - | - |
 | 3EF44 | 356 | move-callback | dword A37D0 (char 0, reaction 0x22) dword A37E4 (char 0, reaction 0x23) dword A50BC (char 5, reaction 0x21) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3EFD2 |
 | 3F0A8 | 72 | move-callback | dword A37F8 (char 0, reaction 0x24) dword A380C (char 0, reaction 0x25) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3F0C1 |
-| 3F0F0 | 64 | anim-target | dword E7B8C after the opcode word D100 at E7B8A | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 3F130 | 68 | anim-target | dword E7BC6 after the opcode word D100 at E7BC4 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 3F0F0 | 64 | anim-target | dword E7B8C after the opcode word D100 at E7B8A | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 3F130 | 68 | anim-target | dword E7BC6 after the opcode word D100 at E7BC4 | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3F174 | 404 | anim-target | dword D4DD8 after the opcode word D100 at D4DD6 | yes | - | no | animation-targets | leaf | - |
 | 3F3F4 | 604 | move-callback | dword A3820 (char 0, reaction 0x26) dword A3834 (char 0, reaction 0x27) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3F650 | 164 | move-callback | dword A38C0 (char 0, reaction 0x2E) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
@@ -676,7 +676,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 270BC | immediate at 2713A | - | yes | stubs (indirect at 412DD in 412A0) | 270F9 |
 | 2BDB8 | called at 21432 | entry | no | leaf | - |
 | 2BDE8 | called at 361A7 | entry | no | leaf | - |
-| 2BEF4 | called at 3F125 | entry | no | leaf | - |
+| 2BEF4 | called at 3F125 | entry | yes | leaf | - |
 | 35E40 | called at 210AE | entry | yes | leaf | - |
 | 38034 | called at 402A7 | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3A9D8 | called at 482B9 | entry | no | stubs (indirect at 2B56D in 2B2A0) | - |
