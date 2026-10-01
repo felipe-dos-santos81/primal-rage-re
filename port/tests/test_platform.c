@@ -131,7 +131,9 @@ static const fnm_pair k_miss_gp_charsel[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
-/* gp-u6-moves (plan gameplay-u6b, record gameplay-u6 §U6.12) passes the same
+/* gp-u6-moves (plan gameplay-u6b, record gameplay-u6 §U6.12; the prefix match
+ * in test_fn_misslog_driver also selects the re-capture gp-u6-moves-b and the
+ * dry-run script gp-u6-moves-dry, record §U6.22) passes the same
  * MAIN MENU, START MENU and character-select wipes as gp-idle-loss, so it
  * records the same two harmless pairs (record §G.24): the bare `ret` 0x29D60
  * and the runtime stub 0x5D812, both from frontend_mode_1b_step. */

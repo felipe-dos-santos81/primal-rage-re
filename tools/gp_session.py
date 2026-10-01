@@ -182,8 +182,8 @@ SCENARIOS['gp-u6-moves'] = dict(time_limit=130, steps=(
     ('after_mode', 0x06, 10, ('pad', ('p1.b0', 'p1.b1'), 4)),   # attempt 1 (offset 0)
 ) + U6_MOVES_STEPS + (('after', 92, ('end',)),))  # 100 frames after the last attempt began
 # The re-capture after gp-u6-moves was contaminated by unscripted keyboard input
-# from f=0x9CB (U6b task-7 report §6.5, check-input; user decision; U6b record
-# §U6.22 to come): the same steps object and time limit under a new name (record
+# from f=0x9CB (U6b task-7 report §6.5, check-input; user decision; record
+# gameplay-u6 §U6.22): the same steps object and time limit under a new name (record
 # §G.24 item 5), stopped at its end (STOP_AT_END).
 SCENARIOS['gp-u6-moves-b'] = dict(SCENARIOS['gp-u6-moves'])
 

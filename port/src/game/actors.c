@@ -258,6 +258,7 @@ int actors_init(void)
      * pair per character at stride 0x500), called at 0x35045 with the raw's
      * (slot, rec, side) registers. */
     fn_register(0x3C0A4u, (void (*)(void))reaction_cb_3C0A4);
+    fn_register(0x3BF70u, (void (*)(void))reaction_cb_3BF70);
     /* PORT: record gameplay-u6 §U6.17. The 0xD100 targets of 0x3F0A8's two
      * streams (the dwords 0xE7B8C and 0xE7BC6). */
     fn_register(0x3F0F0u, (void (*)(void))anim_code_3F0F0);
@@ -275,7 +276,6 @@ int actors_init(void)
     /* PORT: record gameplay-u6 §U6.15. Every character's reaction-0x3D
      * callback 0x3C048 (0x34E2C, (slot, rec, side), AL unread). */
     fn_register(0x3C048u, (void (*)(void))reaction_cb_3C048);
-    fn_register(0x3BF70u, (void (*)(void))reaction_cb_3BF70);
     /* PORT: 0x34E2C's reaction callback 0x3E3A8 (*(u32*)0xA3870, the T-rex's
      * reaction 0x2A), called at 0x35045 with the (slot, rec, side) registers;
      * 0x34E2C returns its AL (0x35045..0x3504F); 0x3CE58 overwrites it at

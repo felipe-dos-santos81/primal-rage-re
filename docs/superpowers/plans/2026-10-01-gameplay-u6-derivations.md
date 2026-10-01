@@ -700,10 +700,26 @@ gp_moves: check: 8 of 12 attempts performed
 
 **All six distinct moves were performed**, each at `c0=0` in mode 6: `0x10` at `0x800`, `0x20` at
 `0xAC4`, `0x24` at `0x8D0` and `0xB28`, `0x11` at `0xB84`, `0x2D` at `0x998`, `0x3D` at `0x9FC` and
-`0xC54`; there is no not-performed move to name. The four not shown are explained by their windows
-(`t6b_notshown.txt`): each scripted input reaches `e0` (`0x2525@864`, `0x0C0C@92C`, `0x0303@A58`,
-`0x4545@BE8`), while P1 is still in the previous move (`r0` stays `0x10`, `0x24`, `0x3D`, `0x11`
-respectively, `s0_52` non-zero). The performed set differs from the dry run's (8 of 12 with every port,
+`0xC54`; there is no not-performed move to name. **The four not shown: observations, cause not
+isolated** (read from `poll.log`'s `S` records over each window `[F, F+100)`, Task 16 fix round):
+
+- `i=00` (`0x20`) at `F=0x863`: the inputs reach `e0` as `0x2525@864`, `0x1510@868`, `0x1510@86C`, while
+  `s0_52 = 0x10` (it is `0x10` from before `F` to `0x891`, then `09@892`, `00@8B3`); `r0` stays `0x10`
+  over the whole window.
+- `i=1B` (`0x11`) at `F=0x92B`: the input reaches `e0` as `0x0C0C@92C` while `s0_52 = 0x10` and `r0 =
+  0x24`; `s0_52` is `00` at `0x933`; `r0` changes inside the window, to `0x02` at `0x934` (`s0_52 = 09`),
+  not to `0x11`, and stays `0x02` to the window's end.
+- `i=1A` (`0x10`) at `F=0xA57`: the input reaches `e0` as `0x0303@A58` while `s0_52 = 0x10`; `r0` stays
+  `0x3D` over the window; `s0_52` is `09@A8C`, `12@AAD`, `00@AB5`.
+- `i=06` (`0x2D`) at `F=0xBE7`: `s0_52` is `00` at `0xBE8`, the first frame the input is in `e0`
+  (`0x4545`); it is `0x10` from `0xBE9` to `0xBFE` (the later inputs `0x4540@BEC` and `0x8580@BF0` arrive
+  while it is `0x10`) and `00` from `0xBFF`; `r0` stays `0x11` (since `0xB84`) over the whole window;
+  `r1` changes `0x02 -> 0x11` at `0xC0A`. A re-applied `0x11` (which `r0` cannot show, the
+  repeated-reaction false negative below) would fit the `s0_52` rise at `0xBE9`; that is unproven.
+
+So the earlier reading "P1 is still in its previous move" does not hold for `0x92B` (`r0` changes
+inside the window) or `0xBE7` (`s0_52 = 00` when the input first arrives); why none of the four shows
+its move is not isolated. The performed set differs from the dry run's (8 of 12 with every port,
 §U6.12: `1B` at `0x92D` and `06` at `0xBF0` there, `01` at `0xB28` and `1B` at `0xB84` here). The check's
 rules (Tasks 1–4, raw-derived): `r0` is the reaction side 0 itself applied; a performed attempt is a
 change of `r0` into the attempt's reactions (or a rising edge of `s0_43 & 0x30` for a block) inside
@@ -822,15 +838,17 @@ values equal the Task 7 re-run's (before Tasks 11 and 13); the moves value moved
 - `GP_MOVES_MAX_START=87`: `frames: FAIL: window starts at capture 88 (raw 1741) > pinned start 87`
 - `GP_MOVES_CAPTURE_SHA256=00ff`: `capture: FAIL: poll.log sha256 dcf242da…b2e3 (2205 frames) != the pinned 00ff (2205 frames): a re-capture invalidates the pinned N, F and window start; …`
 
+`GP_MOVES_CAPTURE_FRAMES` is not mutated on its own (the identity proof changes the sha256 only).
+
 **The first trace difference, measured (cause not isolated).** At `f=0x8D6`, six frames after P1's
 `0x24` move at `0x8D0`, P2's slot `+0x5A` (the counter that is `0x78` for P1 at the round-1 KO,
 §U6.21) rises from `0x13` to `0x16` in the capture and to `0x2D` in the port; at `0x8D5`, `0x8D6`, `0x8D7`,
 `0x8DA` and `0x8E0` no other snapshot field differs except `t508`/`t50c`/`ent`, which are reported, not
 traced (record gameplay-ground-truth §H). The replay has no unregistered callback left, so this is not a miss. Task 7b's
 inference that the divergence was plausibly the then-unported `0x3F130` or `0x231C0` is refuted: with
-both ported, F is unchanged. The frame N is downstream of it: port frame 759 is `f=0x8DA`
-(`frames.txt`), four frames later, and its rows 6..26 are the health bars; the moves difference
-(`r1` at `0xB85`) is later still.
+both ported, F is unchanged. N's nearest port frame, 759, is `f=0x8DA` (`frames.txt`), four frames
+after F, with differing rows 6..26; the moves difference (`r1` at `f=0xB85`, M = 2949) is later still.
+No causal link from F to N or to M is shown.
 
 **The full gate (Task 15 Step 4, `t15_verify.txt`).** `make verify $V`: `verify-exit=0`; the 45 oracle
 lines equal `oracle-lines-base.txt` (`ORACLES-EQUAL`); `make audio-render` `cmp`-equal to `before-t2.wav`
@@ -863,6 +881,13 @@ only) re-ran `PR_ORACLE_REQUIRED=1 ./build/run_tests` and `make gp-moves-oracle`
   (rc 1, a message) where the briefs' code raised `KeyError`.
 - The plan's expected path lists mode `0x2D` (above). `test_platform.c`'s `strncmp(sc,
   "gp-u6-moves", 11)` selects `gp-u6-moves-b` too (intended).
+- Final review (whole branch), raw wins: `0x3F0F0` and `0x3F130` re-read the record's `+0x14` after the
+  spawn (`0x3F11F mov esi,[esi+0x14]` / `0x3F15F`, then the store at `0x3F122` / `0x3F166`; checked by
+  capstone over the fixed-up image); the port read it once before `actor_spawn` and now re-reads it as the
+  raw does. No seeded unit case distinguishes the two (the spawn does not write the caller's `+0x14` in
+  the tests' seeds), so no assertion was added; the gate lines did not move. The same round moved the
+  U6b `fn_register` block in `actors.c` after the `0x3C0A4`/`0x3BF70` pair, fixed three stale comments
+  and replaced the four not-shown attempts' unsupported cause and named gap 7's causal wording (above).
 - Review minors folded in: m1 (Task 2), m4/m5 (Task 3), g1–g3 and g5 (Task 4), g6 (Task 13), g7
   (the §U6.17 comment back above `check_u6b_3f0f0`) and g8 (the a3 comment, below) (Task 15). Parked,
   not done: m3 (the `[-5:]` tail assertion breaks on the next `SNAP_FIELDS` append), m6 (report-mode
@@ -887,20 +912,23 @@ only) re-ran `PR_ORACLE_REQUIRED=1 ./build/run_tests` and `make gp-moves-oracle`
    descriptor `0xBB290`'s flags word (`+8`) is `0x0100`, so the child's `+0x28` has bit `0x2000` clear and
    bit `0x0400` set, and `pset_write`'s child branch (`actors.c:2427`) rewrites the layer `+0x49` from the
    parent's pset layer in the same spawn (the mutant a3 0 -> 3 survives).
-7. The first trace difference at `f=0x8D6` (above): cause not isolated; F, and with it N and M, stop
-   there.
-8. The capture checks' residual blind spots: the unscripted-input check cannot see a stray press of
+7. The first trace difference at `f=0x8D6` (above): cause not isolated. N's nearest port frame (759,
+   `f=0x8DA`, rows 6..26) comes four frames after F and M (`f=0xB85`) later; no causal link from F to
+   N or M is shown.
+8. Why four of the twelve attempts are not shown (`0x863`, `0x92B`, `0xA57`, `0xBE7`; the
+   observations above) is not isolated.
+9. The capture checks' residual blind spots: the unscripted-input check cannot see a stray press of
    a pad key inside its scripted hold window, input before the first or after the last `S` record, a
    stray key-up of a non-pad key, or a pad tap between two `S` records. The stop at the end is proven
    once (this capture, Cocoa driver); under `SDL_VIDEODRIVER=dummy` DOSBox-X hangs at exit on both the
    SIGTERM and the time-limit paths; it applies only to the opted-in scenarios, and nothing after
    `f=0xCEB` is captured.
-9. The contaminated `gp-u6-moves` (278 MB) is left in `data/k11-captures/` for the user to delete; it
+10. The contaminated `gp-u6-moves` (278 MB) is left in `data/k11-captures/` for the user to delete; it
    is not pinned.
-10. Carried from §G.16: the order of the port's frames and that every port frame appears are not
+11. Carried from §G.16: the order of the port's frames and that every port frame appears are not
     claimed (`coverage (reported, not ratcheted): 9 non-black port frame(s) up to port 758 not
     exhibited`), and 8 `f` without a capture snapshot are not compared.
-11. §U6.19 item 8: the counters do not move (`771 1203 64`, `731 731 100`).
+12. §U6.19 item 8: the counters do not move (`771 1203 64`, `731 731 100`).
 
 **The claim (narrow, record §G.16).** No content-bearing capture frame of `gp-u6-moves-b` before
 N = 1005 (from the window start 88) is unexplained; `TRACE_FIELDS` agree below F = 2262 and

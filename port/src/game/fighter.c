@@ -4646,12 +4646,11 @@ static void fighter_2bef4(u32 rec)
  * through 0x2BEF4. */
 void fighter_3f0f0(u32 rec)
 {
-    u32 slot = DSD(rec + 0x14u);                        /* 0x3F0F6 */
     u32 e;
-    if (slot == 0u) return;                             /* 0x3F0FA */
+    if (DSD(rec + 0x14u) == 0u) return;                 /* 0x3F0F6/0x3F0FA */
     e = actor_spawn((const u32 *)(mem + FIGHT_DESC_3F0F0), 8u, 0u, 0xFFFFFFA6u,
                     (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x3F0FC..0x3F11A 0x2AE14 */
-    DSD(e + 0x14u) = slot;                              /* 0x3F11F/0x3F122 */
+    DSD(e + 0x14u) = DSD(rec + 0x14u);                  /* 0x3F11F re-read after the spawn, 0x3F122 */
     fighter_2bef4(e);                                   /* 0x3F125 0x2BEF4 */
 }
 
@@ -4660,13 +4659,13 @@ void fighter_3f0f0(u32 rec)
  * body with the emitter's +0x50 = 2 before +0x14. */
 void fighter_3f130(u32 rec)
 {
-    u32 slot = DSD(rec + 0x14u);                        /* 0x3F136 */
-    u32 e;
-    if (slot == 0u) return;                             /* 0x3F13A */
+    u32 slot, e;
+    if (DSD(rec + 0x14u) == 0u) return;                 /* 0x3F136/0x3F13A */
     e = actor_spawn((const u32 *)(mem + FIGHT_DESC_3F0F0), 8u, 0u, 0xFFFFFFA6u,
                     (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x3F13C..0x3F15A 0x2AE14 */
+    slot = DSD(rec + 0x14u);                            /* 0x3F15F re-read after the spawn */
     DSB(e + 0x50u) = 2u;                                /* 0x3F162 */
-    DSD(e + 0x14u) = slot;                              /* 0x3F15F/0x3F166 */
+    DSD(e + 0x14u) = slot;                              /* 0x3F166 */
     fighter_2bef4(e);                                   /* 0x3F169 0x2BEF4 */
 }
 
