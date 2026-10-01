@@ -115,7 +115,8 @@ def presses(phases, facing, step):
     the phase does not ask for is released, a name it asks for as new is
     (re)pressed there (released REPRESS frames first when it was held), and a name
     it asks for as held is held from there; all are released one step after
-    the last phase."""
+    the last phase. `step` (the frames between phases) is a harness value, not a
+    game value: only REPRESS and the phase tables are derived."""
     seq = [p[0] for p in phases if p[0]]
     if len(seq) > 1 and seq[1] == seq[0]:
         seq = seq[:1] + seq[2:]
@@ -223,7 +224,16 @@ def check(snaps, f0, attempts, table, gap):
     before it does not (0xFF, the reset value 0x4952A, is in no table reaction:
     the 7 characters' keyboard reactions are all < 0x40); a block when s0_43 &
     0x30 (0x1A6AC's 0x20/0x10) becomes set (the record before it has neither).
-    F = f0 + offset; 'no-snapshot' when no S record lies in the window."""
+    F = f0 + offset; 'no-snapshot' when no S record lies in the window.
+    Attribution of r0: it is the side's own applied reaction, written only at
+    0x34EF6 (0x34E2C, ebx = the acting side) from 0x3CE58 (side, i: the side's
+    own character entry) and 0x350D0 (the side's own command word); all five
+    0x3CF38 call sites (0x190E7, 0x352A6, 0x354BC, 0x35DE8, 0x3BE61) pass the
+    updating side, so a CPU hit writes r1, never r0. A reaction repeated with
+    none between leaves r0 unchanged: a false negative, never a false positive.
+    Not every r0 change is an input: 0x3D004 (the mode-0x25 approach chain,
+    0x384A5) applies entry 0's reaction with none, so main() prints c0 and the
+    mode at each counted hit for the reader to judge."""
     out = []
     for t, item, _ in attempts:
         F = f0 + t
@@ -256,6 +266,13 @@ def first_press(lines):
         if r and r['kind'] == 'I' and str(r.get('press', '')).startswith('p1.'):
             return r['f'] + 1
     return None
+
+
+def first_c0(snaps, F1):
+    """Slot 0's character (c0) in the first snapshot at or after F1 - 1 (the
+    spin snapshot of the first press, first_press), or None."""
+    fs = [f for f in snaps if f >= F1 - 1]
+    return snaps[min(fs)]['c0'] if fs else None
 
 
 def _moves(s):
@@ -308,12 +325,19 @@ def main():
     if not snaps or any(k not in r for r in snaps.values() for k in ('r0', 's0_43')):
         print('gp_moves: check: the capture records no move fields (r0, s0_43): nothing checked')
         return 1
+    c0 = first_c0(snaps, F1)
+    if c0 != a.char:
+        print('gp_moves: check: c0 at the first press (f=%X) is %s, not --char %d: '
+              'the capture is another character\'s run, nothing checked'
+              % (F1, 'absent' if c0 is None else '%d' % c0, a.char))
+        return 1
     n = 0
     for t, item, verdict, hit in check(snaps, f0, attempts, table, a.gap):
         n += verdict == 'performed'
         print('gp_moves: check: attempt at f=%X %s: %s%s'
               % (f0 + t, 'block' if item == BLOCK else 'i=%02X' % item, verdict,
-                 '' if hit is None else ' (f=%X)' % hit))
+                 '' if hit is None else ' (f=%X c0=%d mode=%02X)'
+                 % (hit, snaps[hit]['c0'], snaps[hit]['mode'])))
     print('gp_moves: check: %d of %d attempts performed' % (n, len(attempts)))
     return 0
 

@@ -127,6 +127,21 @@ class TestCheck(unittest.TestCase):
         snaps[105] = snap(105, s0_43=0xA0)
         self.assertEqual(gm.check(snaps, 100, att, self.T, 10)[0][2:], ('performed', 105))
 
+    def test_a_stance_1_block_is_bit_0x10(self):
+        # 0x1A6AC: stance 1 sets +0x43 bit 0x10 (stance 0: 0x20); the mask is 0x30
+        att = gm.plan(self.T, [gm.BLOCK], 0, 10, 4)
+        snaps = {f: snap(f, s0_43=0x00) for f in range(99, 110)}
+        snaps[105] = snap(105, s0_43=0x10)
+        self.assertEqual(gm.check(snaps, 100, att, self.T, 10)[0][2:], ('performed', 105))
+
+    def test_the_window_ends_before_f_plus_gap(self):
+        # [F, F + gap): a reaction at exactly F + gap belongs to the next attempt
+        att = gm.plan(self.T, [0], 0, 10, 4)
+        late = {f: snap(f, r0=0xFF if f < 110 else 0x20) for f in range(99, 125)}
+        self.assertEqual(gm.check(late, 100, att, self.T, 10)[0][2], 'not shown')
+        last = {f: snap(f, r0=0xFF if f < 109 else 0x20) for f in range(99, 125)}
+        self.assertEqual(gm.check(last, 100, att, self.T, 10)[0][2:], ('performed', 109))
+
     def test_a_block_already_held_is_not_a_new_attempt(self):
         # review of U6b Task 3: 0x1A6AC leaves +0x43 bit 0x20/0x10 set while blocking
         att = gm.plan(self.T, [gm.BLOCK], 0, 10, 4)
@@ -165,6 +180,41 @@ class TestCli(unittest.TestCase):
                                 '--step', '4', '--capture', d], capture_output=True, text=True)
         self.assertEqual(r.returncode, 1, r.stderr)
         self.assertIn('records no move fields', r.stdout)
+        self.assertEqual(r.stderr, '')
+
+
+    def capture(self, c0, r0_from=5):
+        """A poll.log with the first press at f=0x100 (F = 0x101, attempt of
+        entry 0) and S records 0x100..0x11F: r0 0xFF, then 0x20 from F + r0_from."""
+        lines = ['I ms=1 f=0100 step=0 press=p1.b0 scan=16 lin=0 old=96 bios=1675 ring=1 late=0']
+        for f in range(0x100, 0x120):
+            vals = {n: 0 for n, _, _ in gs.SNAP_FIELDS}
+            vals.update(f=f, mode=6, c0=c0, r0=0x20 if f >= 0x101 + r0_from else 0xFF)
+            lines.append(gs.format_s(f, vals, 0, 0, 0))
+        return lines
+
+    def run_check(self, lines):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, 'poll.log'), 'w') as f:
+                f.write('\n'.join(lines) + '\n')
+            img = os.path.join(d, 'image.bin')
+            with open(img, 'wb') as f:
+                f.write(synthetic().data)
+            return subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'gp_moves.py'), 'check',
+                                   '--image', img, '--char', '0', '--moves', '00', '--gap', '10',
+                                   '--step', '4', '--capture', d], capture_output=True, text=True)
+
+    def test_check_prints_c0_and_mode_at_each_hit(self):
+        r = self.run_check(self.capture(0))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('attempt at f=101 i=00: performed (f=106 c0=0 mode=06)', r.stdout)
+        self.assertIn('1 of 1 attempts performed', r.stdout)
+
+    def test_check_refuses_another_character_s_run(self):
+        r = self.run_check(self.capture(3))
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('c0 at the first press (f=101) is 3, not --char 0', r.stdout)
+        self.assertNotIn('performed', r.stdout)
         self.assertEqual(r.stderr, '')
 
 
@@ -215,6 +265,16 @@ class TestRealImage(unittest.TestCase):
             for i, ent in gm.decode(self.img, c).items():
                 self.assertLess(ent[0], 0x40, (c, i))
                 self.assertTrue(set(gm.expected({i: ent}, i)).isdisjoint({0xFF}), (c, i))
+
+    def test_the_scenario_steps_are_the_tool_s(self):
+        t = gm.decode(self.img, 0)
+        att = gm.plan(t, [0x1A, 0, 1, 0x1B, 6, 0x15] * 2, 0, 100, 4)
+        first, steps = gm.scenario_steps(att)
+        sc = gs.SCENARIOS['gp-u6-moves']['steps']
+        self.assertEqual(first, 0)
+        self.assertEqual(sc[3], ('after_mode', 0x06, 10, steps[0][2]))
+        self.assertEqual(list(sc[4:-1]), steps[1:])
+        self.assertEqual(sc[-1], ('after', 100 - (att[-1][2][-1][0] - att[-1][0]), ('end',)))
 
 
 if __name__ == '__main__':

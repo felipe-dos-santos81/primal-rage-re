@@ -367,5 +367,26 @@ class TestCharsel(unittest.TestCase):
         self.assertEqual((s.end_frame, s.fired, s.total), (0x5EE, 13, 13))
 
 
+class TestU6Moves(unittest.TestCase):
+    def test_the_moves_fire_from_round_1(self):
+        # plan gameplay-u6b: the idle-loss menu path, then 34 press groups from 10 frames
+        # after mode 6 begins, the end 1200 frames after the first (record §U6.12)
+        s = gs.Schedule(gs.SCENARIOS['gp-u6-moves']['steps'])
+        self.assertEqual(s.due_boot(gs.ENTER_WAIT), [(0, ('key', 'enter'))])
+        s.on_mode(0x141, 0x27)
+        self.assertEqual(s.due(0x141 + 149), [(1, ('key', 'enter'))])
+        self.assertEqual(s.due(0x141 + 299), [(2, ('key', 'enter'))])
+        for f, m in ((0x26E, 0x2D), (0x293, 0x10), (0x77A, 5)):
+            s.on_mode(f, m)
+            self.assertEqual(s.due(f), [])
+        s.on_mode(0x7F5, 6)
+        self.assertEqual(s.due(0x7F5 + 8), [])
+        self.assertEqual(s.due(0x7FF - 1), [(3, ('pad', ('p1.b0', 'p1.b1'), 4))])
+        fired = 4
+        for f in range(0x7FF, 0xCAF + 1):
+            fired += len(s.due(f))
+        self.assertEqual((fired, s.total, s.end_frame), (37, 37, 0x7FF + 1200))
+
+
 if __name__ == '__main__':
     unittest.main()
