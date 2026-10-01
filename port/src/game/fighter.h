@@ -660,6 +660,9 @@ void fighter_36280(u32 rec);
  * EAX = rec: +0x52 = 0, hold 3.0, +0x4D = 0x14; the owner slot (rec+0x14),
  * when set, +0x52 = 5. */
 void fighter_3640c(u32 rec);
+/* 0x37DCC (record gameplay-u6 §U6.5): the 0xD100 target of seventeen
+ * streams; sets the byte DS_001078FC = 1. */
+void fighter_37dcc(void);
 
 /* 0x48AAC and 0x48D94 (record §42-B). Character 2's two finisher +0x0C
  * callbacks (0x3531C case 7: EAX = slot, EDX = rec, EBX = side), stored by

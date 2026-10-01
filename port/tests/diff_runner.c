@@ -35,6 +35,7 @@ static void b_codeword_len(const u32 *r, u32 *eax)     { *eax = config_codeword_
  * each overwrite EAX at once (`mov eax,ecx` at 0x2B573, 0x2B59A, 0x2B5F0), so no caller reads it:
  * the binding mask is 0 and the comparison is the changed bytes. */
 static void b_3640c(const u32 *r, u32 *eax)            { fighter_3640c(r[R_EAX]); *eax = 0u; }
+static void b_37dcc(const u32 *r, u32 *eax)            { (void)r; fighter_37dcc(); *eax = 0u; }
 
 /* Self-check mutants. Each is a plausible porting bug, kept only so tools/diff_verify.py
  * --self-check can prove the harness reports a difference (an assertion that cannot fail proves
@@ -82,6 +83,12 @@ static void m_3640c(const u32 *r, u32 *eax)            /* forgets the owner slot
     DSB(r[R_EAX] + 0x4Du) = 0x14u;
     *eax = 0u;
 }
+static void m_37dcc(const u32 *r, u32 *eax)            /* stores 2 */
+{
+    (void)r;
+    DSB(DS_001078FC) = 2u;
+    *eax = 0u;
+}
 
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -94,7 +101,9 @@ static const binding_t k_bindings[] = {
     { "config_codeword_len@mutant", m_codeword_len, 0xFFFFFFFFu },
     { "config_credit_spend@signed", m_credit_spend_signed, 0xFFFFFFFFu },
     { "fighter_3640c",            b_3640c,        0x00000000u },
+    { "fighter_37dcc",            b_37dcc,        0x00000000u },
     { "fighter_3640c@mutant",     m_3640c,        0x00000000u },
+    { "fighter_37dcc@mutant",     m_37dcc,        0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

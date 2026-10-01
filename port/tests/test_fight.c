@@ -43903,7 +43903,7 @@ static void check_u6_3640c(void)
 /* §U6.2: 0x23208, character 1's reaction-0x26 entry, as 0x34E2C calls it
  * (slot, rec, side) on side 1: the record on 0xE4900 (first word patched to a
  * plain frame id) at 3.0, the slot 9/7/0 and +0x0C = 0, the voice 0x79 once;
- * +0x57/+0x18/+0x1C untouched. */
+ * +0x55/+0x10/+0x57/+0x18/+0x1C untouched. */
 static void check_u6_23208(void)
 {
     if (!mz_save()) { CHECK(0, "the gameplay-u6 snapshot allocates"); return; }
@@ -43916,6 +43916,8 @@ static void check_u6_23208(void)
     DSB(Z_S1 + 0x53u) = 0x33u;
     DSB(Z_S1 + 0x54u) = 0x44u;
     DSD(Z_S1 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSB(Z_S1 + 0x55u) = 0x55u;
+    DSD(Z_S1 + 0x10u) = 0x10101010u;
     DSB(Z_S1 + 0x57u) = 0x57u;
     DSD(Z_S1 + 0x18u) = 0x18181818u;
     DSD(Z_S1 + 0x1Cu) = 0x1C1C1C1Cu;
@@ -43927,6 +43929,8 @@ static void check_u6_23208(void)
     CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 7);
     CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 0);
     CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x55u), 0x55);         /* a 16-bit +0x54 store would hit it */
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x10u), 0x10101010);   /* a 64-bit +0x0C store would hit it */
     CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 0x57);
     CHECK_EQ_INT((int)DSD(Z_S1 + 0x18u), 0x18181818);
     CHECK_EQ_INT((int)DSD(Z_S1 + 0x1Cu), 0x1C1C1C1C);
@@ -43937,10 +43941,43 @@ static void check_u6_23208(void)
     mz_restore();
 }
 
+/* §U6.5: 0x37DCC sets DS_001078FC = 1 and reads nothing; its seventeen 0xD100
+ * stream dwords. */
+static void check_u6_37dcc(void)
+{
+    static const u32 site[17] = {
+        0xD2B98u, 0xD329Cu, 0xD4816u, 0xD4F30u, 0xE113Cu, 0xE18DCu, 0xE4502u,
+        0xE502Cu, 0xE78A4u, 0xE8676u, 0xE871Eu, 0xEB154u, 0xEB724u, 0xEB7D8u,
+        0xEB8AEu, 0xED520u, 0xEDB4Au,
+    };
+    u8 sv = DSB(DS_001078FC);
+    u32 rec = FIGHT_RECS;
+    u8 sv_rec[0x60];
+    u6_anim_fn fn = (u6_anim_fn)(void *)fn_resolve(0x37DCCu);
+    u32 k;
+    for (k = 0; k < 17u; k++) {
+        CHECK_EQ_INT((int)DSD(site[k]), 0x00037DCC);
+        CHECK_EQ_INT((int)DSW(site[k] - 2u), 0xD100);
+    }
+    tf_snap(sv_rec, rec, sizeof sv_rec);
+    DSB(DS_001078FC) = 0x5Au;
+    fighter_37dcc();
+    CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
+    CHECK(fn != NULL, "actors_init registered 0x37DCC");
+    DSB(DS_001078FC) = 0x5Au;
+    mem_fill(rec, 0xA5, sizeof sv_rec);
+    if (fn != NULL) fn(rec, 0x1234u);
+    CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
+    CHECK_EQ_INT((int)DSB(rec + 0x52u), 0xA5);      /* the record is not read or written */
+    tf_put(sv_rec, rec, sizeof sv_rec);
+    DSB(DS_001078FC) = sv;
+}
+
 int test_u6_idle_loss_callbacks(void)
 {
     int before = g_failures;
     check_u6_3640c();
     check_u6_23208();
+    check_u6_37dcc();
     return g_failures - before;
 }

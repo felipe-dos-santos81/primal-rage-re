@@ -1874,6 +1874,14 @@ void fighter_3640c(u32 rec)
     DSB(slot + 0x52u) = 5u;                             /* 0x36427 */
 }
 
+/* 0x37DCC — record gameplay-u6 §U6.5. The 0xD100 stream target (opcode 0x11)
+ * at seventeen dwords (0xD2B98 .. 0xEDB4A, each after a 0xD100 word; Ghidra
+ * has no function here): `mov byte [0x1078FC],1; ret`. It reads no register. */
+void fighter_37dcc(void)
+{
+    DSB(DS_001078FC) = 1u;                              /* 0x37DCC */
+}
+
 /* 0x36300. The +0x52 == 13 handler. */
 void fighter_state_36300(u32 slot, u32 rec)
 {

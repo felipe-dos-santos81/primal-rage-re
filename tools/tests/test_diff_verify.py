@@ -312,7 +312,7 @@ class RealFunctionTests(unittest.TestCase):
 
     def test_the_four_ported_functions_agree_with_the_original_on_every_block(self):
         self.assertEqual(sorted(self.real), ["config_codeword_len", "config_credit_spend",
-                                             "fighter_3640c", "fighter_slot_flag", "rng_next"])
+                                             "fighter_3640c", "fighter_37dcc", "fighter_slot_flag", "rng_next"])
         for name, r in self.real.items():
             self.assertEqual((r.verdict, r.problems, r.unhit, r.hit), ("VERIFIED", [], [], r.total), name)
             self.assertEqual(r.outside, [], name)
@@ -320,7 +320,7 @@ class RealFunctionTests(unittest.TestCase):
     def test_every_mutant_is_reported_as_a_mismatch(self):
         self.assertEqual(sorted(self.mut), [
             "config_codeword_len@mutant", "config_credit_spend@mutant", "config_credit_spend@signed",
-            "fighter_3640c@mutant", "fighter_slot_flag@mutant", "rng_next@mutant"])
+            "fighter_3640c@mutant", "fighter_37dcc@mutant", "fighter_slot_flag@mutant", "rng_next@mutant"])
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -382,7 +382,7 @@ class RealFunctionTests(unittest.TestCase):
         self.assertEqual({s.name: s.eax_mask for s in V.SPECS}, {
             "rng_next": 0xFFFFFFFF, "fighter_slot_flag": 0xFF,
             "config_credit_spend": 0xFFFFFFFF, "config_codeword_len": 0xFFFFFFFF,
-            "fighter_3640c": 0})
+            "fighter_3640c": 0, "fighter_37dcc": 0})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)

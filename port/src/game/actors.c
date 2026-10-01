@@ -109,6 +109,7 @@ static void anim_code_14E80(u32 rec, u32 arg);
 static void anim_code_370F0(u32 rec, u32 arg);
 static void anim_code_36280(u32 rec, u32 arg);
 static void anim_code_3640C(u32 rec, u32 arg);
+static void anim_code_37DCC(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
@@ -377,6 +378,9 @@ int actors_init(void)
      * mode 0x4000) of seven streams (the dwords at 0xD2156, 0xD3E2A, 0xE063E,
      * 0xE39F2, 0xE6DF2, 0xEA626 and 0xECBFA). */
     fn_register(0x3640Cu, (void (*)(void))anim_code_3640C);
+    /* PORT: record gameplay-u6 §U6.5. The 0xD100 target 0x37DCC (opcode 0x11,
+     * mode 0x4000) of seventeen streams (the dwords 0xD2B98 .. 0xEDB4A). */
+    fn_register(0x37DCCu, (void (*)(void))anim_code_37DCC);
     fn_register(0x48AACu, (void (*)(void))fighter_48aac);
     fn_register(0x48D94u, (void (*)(void))fighter_48d94);
     fn_register(0x48BE0u, (void (*)(void))fighter_48be0);
@@ -1450,6 +1454,16 @@ static void anim_code_3640C(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_3640c(rec);
+}
+
+/* 0x37DCC — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x37DCC reads neither (one store and
+ * RET), so this wrapper drops both (record gameplay-u6 §U6.5). */
+static void anim_code_37DCC(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+    fighter_37dcc();
 }
 
 /* 0x36870 — the animation-opcode target shape. PORT: anim_indirect calls every
