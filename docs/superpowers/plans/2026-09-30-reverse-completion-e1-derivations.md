@@ -8,7 +8,7 @@ harness and verifies four already-ported functions with it; it changes nothing u
 **Tooling.** The original side is `tools/diff_emu.py` (`unicorn` 2.1.4 runs the original bytes,
 `capstone` 5.0.7 decodes them for the static scan). The port side is `build/diffrun`
 (`port/tests/diff_runner.c`, linked with `prage_core`). The driver and verdicts are
-`tools/diff_verify.py`; `make diff-verify` runs it and the 70 Python tests, and `make verify` calls it
+`tools/diff_verify.py`; `make diff-verify` runs it and the 71 Python tests, and `make verify` calls it
 after `gp-oracle`. Every address below was read from the image the loader leaves in `mem[]` (fixups
 applied: the dump `diffrun --image-out` writes, 1 028 304 bytes from `0x10000`), disassembled with
 `capstone` in 32-bit mode.
@@ -85,9 +85,12 @@ Both sides start from identical memory because the original side reads the port 
 or `error` line and a closing `end`; a case open at the end of the text, a repeated result line, a
 duplicate case id, a duplicate write address or an unknown line is a `ValueError`. `Spec` refuses
 duplicate case ids, and `verify_spec` requires the ids the port returned to equal the ids sent. A mutant
-counts as detected only if no case has a port error and at least one case differs in EAX or a byte
-(`mutant_detection`): an unknown binding makes every case a port error, which is a missing mutant, not
-a caught one, and fails the self-check as `NOT DETECTED (port error: ...)`. `--function` with a name
+counts as detected only if no case has a port error and at least one problem is an EAX or a byte
+difference (`mutant_detection`; the driver counts the problems that begin `eax ` or `byte `, the
+strings `compare` emits for those). A port error is never detection, and neither is a mask-only
+discrepancy (`port reports eax mask ...`): that is a MISMATCH but not an observed difference in what
+the function computes. An unknown binding makes every case a port error, which is a missing mutant,
+not a caught one, and fails the self-check as `NOT DETECTED (port error: ...)`. `--function` with a name
 that is in no spec exits 2.
 
 **Verdicts** (`verify_spec`), in this precedence:
@@ -135,12 +138,17 @@ The `@signed` mutant is caught only by case `c5` (`0x80000001`); removing `c5` m
 
 **Mutation proofs.** Each was applied to the committed file, the named tests were run, and the file was
 restored with `git checkout` (none was committed); the Task 3 entries are the exception, being
-reproductions on the pre-fix binary. "Mutation -> test that failed", all other tests passing:
+reproductions on the pre-fix binary. "Mutation -> test that failed", all other tests passing. Every
+list below was re-run against the committed 71 tests (final-review fix 2) and names exactly the tests that
+fail now; where a test added after the mutation was first proved also fails, it is listed:
 
 Task 1 (`tools/diff_emu.py`, 15 tests):
-- `if new != old:` -> `if True:` -> `test_a_write_of_the_value_already_there_is_not_a_change`
-- `"int", "int3"` -> `"int3"` in `UNMODELED_MNEMONICS` -> `test_int_is_unmodeled_and_named`
-- drop the `STACK_LOW` `continue` in the writes diff -> `test_stack_traffic_is_not_a_write`
+- `if new != old:` -> `if True:` -> `test_a_write_of_the_value_already_there_is_not_a_change`,
+  `test_the_four_ported_functions_agree_with_the_original_on_every_block`,
+  `test_the_unsigned_guard_case_is_the_only_one_that_catches_the_signed_mutant`
+- `"int", "int3"` -> `"int3"` in `UNMODELED_MNEMONICS` -> `test_int_is_unmodeled_and_named`,
+  `test_an_unmodeled_instruction_makes_the_function_not_exercisable`
+- drop the private-stack `continue` in the writes diff -> `test_stack_traffic_is_not_a_write`
 - `elif tgt not in allow:` -> `elif False:` -> `test_a_call_outside_the_allow_list_is_unmodeled`
 
 Task 2 (static scan, 20 tests, then 24 after the review fix):
@@ -161,29 +169,35 @@ Task 3 (`diffrun`, reproduced on the pre-fix binary with scratch case files, the
   outside the image` after
 
 Task 4 (`tools/diff_verify.py`, 47 tests in all at that point):
-- remove case `c5` -> `test_every_mutant_is_reported_as_a_mismatch` and
-  `test_the_unsigned_guard_case_is_the_only_one_that_catches_the_signed_mutant`
+- remove case `c5` -> `test_every_mutant_is_reported_as_a_mismatch`,
+  `test_the_unsigned_guard_case_is_the_only_one_that_catches_the_signed_mutant` and
+  `test_truncated_real_output_is_rejected_where_it_used_to_verify` (it cuts the output after `case c5`)
 - the byte-diff loop -> `for a in []` -> `test_a_write_the_original_did_not_make_is_a_discrepancy`,
-  `test_a_write_the_port_forgot_is_a_discrepancy`, `test_a_forgotten_write_is_caught_by_the_byte_diff_alone`
-  and `test_every_mutant_is_reported_as_a_mismatch`
+  `test_a_write_the_port_forgot_is_a_discrepancy`, `test_a_forgotten_write_is_caught_by_the_byte_diff_alone`,
+  `test_every_mutant_is_reported_as_a_mismatch` and `test_function_selects_one_spec` (the self-check
+  needs a byte or EAX difference to count a mutant)
 - the `PARTIAL` branch -> `elif False:` -> `test_an_indirect_jump_keeps_the_function_partial` and
   `test_an_unexercised_block_is_partial_not_verified`
 - `fighter_slot_flag`'s binding mask `0xFF` -> `0xFFFFFFFF` in `diff_runner.c`, `diffrun` rebuilt ->
-  `test_the_four_ported_functions_agree_with_the_original_on_every_block` (the AL-only return is the
-  one case where an unmasked EAX would be flagged)
+  `test_the_four_ported_functions_agree_with_the_original_on_every_block` (the port-reported mask now
+  differs from the `Spec`'s on every `fighter_slot_flag` case)
 
 `python3 -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify` ran 47 tests, OK, no skips,
-before the final-review fix wave below, and now runs 70 (27 in
-`test_diff_emu.py`, 24 before and 3 added; 43 in `test_diff_verify.py`), OK, no skips.
+before the final-review fix wave below, and now runs 71 (27 in
+`test_diff_emu.py`, 24 before and 3 added; 44 in `test_diff_verify.py`), OK, no skips.
 
 **Final-review fix wave.** The whole-branch review found four defects of the harness (not of the port),
 each reproduced on scratch inputs, and two minors. They are fixed in one commit with a test each (the
 tests were written first and failed: 69 tests with 18 failures and 13 errors before the fix, all OK
-after, 70 with one added during the mutation proofs):
+after, 70 with one added during the mutation proofs and 71 after fix 2 below):
 - Important 1, truncated port output parsed as a result: output cut after `case c5` gave `eax 0`, no
   writes, which agrees with `c5`'s original result, so `verify_spec` returned VERIFIED. The parser is now
   strict, duplicate ids are refused, and the id sets must match (above, §E.3).
-- Important 2, a missing mutant counted as detected: `mutant_detection` (above).
+- Important 2, a missing mutant counted as detected: `mutant_detection` (above). The first version
+  counted every problem not starting `port: ` as a difference, so a port reporting only a different
+  mask (`port reports eax mask ...`) still counted as detected; fix 2 counts only `eax `/`byte `
+  problems (test `test_a_mask_only_discrepancy_is_not_a_mutant_detection`, which failed on the old
+  rule: `(1, []) != (0, [])`).
 - Important 3, `--function <typo>` exited 0 with `0/0 functions VERIFIED`: it exits 2 now.
 - Important 4, the EAX mask was chosen by the port under test (a binding mask of 0 left EAX uncompared):
   the mask is the `Spec`'s and a differing port mask is a discrepancy.
@@ -193,7 +207,7 @@ after, 70 with one added during the mutation proofs):
   `unicorn`: `available()` needs both, `run_original` raises when either is missing, and the Makefile
   checks `import unicorn, capstone`.
 
-Mutation proofs of the fix wave (applied to the committed code, the 70 tests run, restored with
+Mutation proofs of the fix wave (applied to the committed code, the 71 tests run, restored with
 `git checkout`; nothing else failed in any run):
 - no open-case-at-EOF check in `parse_port_output` -> `test_truncated_or_malformed_output_...` (subtests
   `a case still open at EOF`, `ret without end`), `test_truncated_real_output_is_rejected_where_it_used_to_verify`,
@@ -206,10 +220,16 @@ Mutation proofs of the fix wave (applied to the committed code, the 70 tests run
   `test_a_port_error_is_never_detection`, `test_a_missing_mutant_binding_is_not_counted_as_detected`,
   `test_the_self_check_fails_when_a_mutant_binding_is_missing`
 - the `--function` check off -> `test_an_unknown_function_is_an_error_not_zero_of_zero`
-- the port-reported mask not checked -> `test_a_port_reported_mask_of_zero_cannot_make_a_differing_eax_agree`,
-  `test_the_spec_mask_not_the_ports_decides`
+- the port-reported mask not checked (`if port.mask != mask:` -> `if False:`) ->
+  `test_a_port_reported_mask_of_zero_cannot_make_a_differing_eax_agree`,
+  `test_the_spec_mask_not_the_ports_decides`, `test_a_mask_only_discrepancy_is_not_a_mutant_detection`,
+  `test_a_port_that_reports_mask_zero_cannot_hide_a_wrong_eax`
 - the mask taken from the port again (`compare(orig, port, port.mask)`) ->
-  `test_a_port_that_reports_mask_zero_cannot_hide_a_wrong_eax`, `test_the_eax_mask_is_stated_by_the_spec_and_only_slot_flag_narrows_it`
+  `test_a_port_that_reports_mask_zero_cannot_hide_a_wrong_eax`,
+  `test_the_eax_mask_is_stated_by_the_spec_and_only_slot_flag_narrows_it`,
+  `test_a_mask_only_discrepancy_is_not_a_mutant_detection`
+- the old detection rule (`if not d.startswith("port: "):` in place of `if d.startswith(("eax ", "byte ")):`)
+  -> `test_a_mask_only_discrepancy_is_not_a_mutant_detection`
 - `fighter_slot_flag`'s `Spec` loses `eax_mask=0xFF` -> `test_the_four_ported_functions_agree_with_the_original_on_every_block`,
   `test_a_forgotten_write_is_caught_by_the_byte_diff_alone`, `test_the_eax_mask_is_stated_by_the_spec_and_only_slot_flag_narrows_it`
 - the write diff excluding `a >= 0x3F00000` again (the old overlap) ->
@@ -265,14 +285,33 @@ Disassembled with `capstone`, every site is followed by `test al, al; jne`:
 | `0x16B9B` | `test al,al; jne 0x16BBD` |
 | `0x19091` | `test al,al; jne 0x1915B` |
 
-The taken branches at `0x16556` and `0x16BBD` start with `lea eax, [ecx*8]` (EAX is written before it
-is read). The branch at `0x19091` goes to `0x1915B`, the epilogue (`add esp,4; pop edx; pop ecx; pop
-ebx; ret`) of the function that begins at `0x19068`, with EAX as the callee left it; that function
-also reaches `0x1915B` from its entry (`je` at `0x19075` and `0x19082`) with EAX as its caller passed
-it, so it has no defined EAX return, but its own callers were not examined. That is a named gap in this
-evidence: the `0xFF` mask is justified by the five sites reading AL, not by a proof that nothing reads
-the scratch bits further up the call chain. The other three functions have no such evidence and keep
-the full mask.
+Every path from each site, followed through both branches until EAX is rewritten, writes the whole of
+EAX before anything reads bits 8 and up (a small branch-following scan, not a full data-flow analysis; a
+`call` before the rewrite would have been flagged and none was reached). Sites `0x1650B`, `0x16534`,
+`0x16B72` and `0x16B9B` rewrite EAX in full at `0x16514` (`mov eax,[edx+0xFD148]`), `0x16556`
+(`lea eax,[ecx*8]`), `0x16B7B` (`mov eax,[edx+0xFD128]`) or `0x16BBD` (`lea eax,[ecx*8]`). Site
+`0x19091` rewrites it at `0x190B0` (`xor eax,eax`) or `0x190BF` (`mov eax,edx`), except on the branch to
+`0x1915B`, the epilogue (`add esp,4; pop edx; pop ecx; pop ebx; ret` at `0x19161`) of the function that
+begins at `0x19068` (`push ebx`; the two bytes before it, `0x19066`, are the padding `mov eax,eax`). That
+branch returns with EAX as `fighter_slot_flag` left it, so the question is who reads EAX after a return
+from `0x19068`. Found by decoding every offset of the image and searching it: exactly 12 direct
+callers (`call rel32`) and nothing else: no `jmp rel32`, no other `jmp`/`jcc`/`loop` whose target is
+`0x19068`, and no 4-byte value `0x19068` anywhere in the 1 028 304-byte dump (so no stored pointer and no
+immediate that loads it). Each caller overwrites EAX in full before any read:
+
+| callers of `0x19068` | what follows the call |
+|---|---|
+| `0x262F5`, `0x26484`, `0x265E1`, `0x267CF`, `0x2747F`, `0x29AE7` | `push`/`mov ecx,ebx,edx` (no EAX access), then `xor eax,eax` before `call 0x17FA0` |
+| `0x282FD`, `0x28513`, `0x28842`, `0x28BFF` | `call 0x49C78`, whose first EAX access is `xor eax,eax` at `0x49C81` (after six `push`es and a `sub esp`) |
+| `0x2754F`, `0x2970B` | `call 0x12DA8`, which reads EAX nowhere before writing it: it sets AL (`mov al,[0xF0AFE]`), tests only AL, and then writes all of EAX on both paths (`lea eax,[edx*8]` or `mov eax,[0x1077E0]`) before `mov [0x1078F4],ax` |
+
+So the scratch bits of `fighter_slot_flag`'s EAX are never read on any path the scan reaches from the
+five call sites. Residual caveats, stated as what a static scan cannot show: a computed jump or an
+indirect call through a register could still reach `0x19068` or the five sites by arithmetic that
+produces the address at run time (no 4-byte constant equal to either address exists, but the scan cannot
+rule out a sum or a table of offsets); the branch-following scan is not a data-flow analysis and does not
+follow calls; and the `0xFF` mask is therefore evidence from the code the image contains, not a proof of
+every possible control flow. The other three functions have no such evidence and keep the full mask.
 
 **Findings in the harness itself, made visible by review of Tasks 2 and 3.** These are defects of the
 harness's own development, fixed before it was relied on; they are not defects of the port. The plan's

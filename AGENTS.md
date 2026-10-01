@@ -25,7 +25,7 @@ make gp-replay scenario=gp-pads  # port replay of a gameplay capture (PR_GP_DUMP
 make gp-oracle             # gameplay oracle: frame + trace ratchets on data/k11-captures/gp-idle-loss (N values in the Makefile); in make verify; skips without the capture
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
-make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn; in make verify)
+make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
 ```
 
 - **Run the binaries from the repo root.** Several tests default to the relative
@@ -77,7 +77,7 @@ make diff-verify           # differential verification: the original's bytes vs 
   Needs `JAVA_HOME` (temurin-25) and the `ghidra-lx-loader` extension.
 - `dosbox-x` for runtime ground truth (memory-file dumps, debugger breakpoints).
 - Python 3 with `capstone` for ad-hoc disassembly, `Pillow` for `tools/gra_extract.py`.
-- The differential harness (`make diff-verify`, `tools/diff_verify.py`) needs `unicorn` (`pip install -r tools/requirements-diff.txt`; pins `unicorn` 2.1.4 and `capstone` 5.0.7). Without it the step prints its skip line and `make verify` stays green.
+- The differential harness (`make diff-verify`, `tools/diff_verify.py`) needs `unicorn` and `capstone` (`pip install -r tools/requirements-diff.txt`; pins `unicorn` 2.1.4 and `capstone` 5.0.7). Without either the step prints its skip line and `make verify` stays green.
 - `tools/` is the RE/oracle toolbox: `le_info.py`, `gra_render.py`,
   `gra_extract.py`, `gen_symbols.py`, `title_pin.py`, `title_compare.py`.
   Check the active plan before editing anything here.
