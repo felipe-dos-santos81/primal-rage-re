@@ -463,10 +463,11 @@ gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skip
 # fails on a present capture with another poll.log). Values measured in U5 Task 7 (report lines in
 # §C5.17), pinned by U5 Task 8 Step 1 (pins.sh); raise N/F when the claims improve.
 # Provenance (U5 Task 7, record §C5.17): the report's FIRST UNEXPLAINED capture line names the frame after
-# the port's last one. The port's script ends where the capture's poll.log ends, its last frame is
-# byte-identical to the capture frame before N, and the capture runs on past it; so N is how far the
-# port got, not a defect. The trace line reports no differing frame through the script's last f, so
-# TRACE_MIN_FIRST is that f plus one, the exact pin (one more fails as unreachable).
+# the port's last one. The port's script ends at the capture's mode-6 frame (f = 0x5E8 = 1512), while
+# the capture's poll.log runs on to about f = 0x925 (round 1 until the 60 s limit); the port's last
+# frame is byte-identical to the capture frame before N, so N is how far the port got, not a defect.
+# The trace line reports no differing frame through the script's last f, so TRACE_MIN_FIRST is that
+# f plus one, the exact pin (one more fails as unreachable).
 GP_CHARSEL_MIN_FIRST = 516
 GP_CHARSEL_TRACE_MIN_FIRST = 1513
 GP_CHARSEL_MAX_START = 100
