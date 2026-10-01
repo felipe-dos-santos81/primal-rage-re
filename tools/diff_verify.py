@@ -185,7 +185,7 @@ def verify_spec(spec, image, port_results, port_name=None):
             port_errors.append("%s: %s" % (c.id, port.error))
         for d in compare(orig, port, spec.eax_mask):
             problems.append("%s: %s" % (c.id, d))
-            if not d.startswith("port: "):
+            if d.startswith(("eax ", "byte ")):     # the strings compare() emits for a real difference
                 diffs += 1
     hit, unhit = E.coverage(info, executed)
     res = SpecResult(port_name or spec.name, spec.entry, "VERIFIED", len(spec.cases), len(hit),

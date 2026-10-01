@@ -217,6 +217,19 @@ class VerifySpecTests(unittest.TestCase):
         self.assertEqual(r.problems, ["o: port reports eax mask 0x0, the spec states 0xFFFFFFFF",
                                       "o: eax (mask 0xFFFFFFFF): original 0x2, port 0x0"])
 
+    def test_a_mask_only_discrepancy_is_not_a_mutant_detection(self):
+        # EAX (under the Spec mask) and every byte agree; only the port's reported mask differs. That
+        # is a MISMATCH, but it is neither an eax nor a byte difference, so it must not count as a
+        # detected mutant (the old rule counted every problem that did not start with "port: ").
+        spec = V.Spec("d", 0x10000, [V.Case("z", {"eax": 0}), V.Case("o", {"eax": 1})])
+        r = V.verify_spec(spec, image(DIAMOND), {"z": V.PortResult(0xFFFFFFFF, 0xFF), "o": self.ONE})
+        self.assertEqual(r.verdict, "MISMATCH")
+        self.assertEqual(r.problems, ["z: port reports eax mask 0xFF, the spec states 0xFFFFFFFF"])
+        self.assertEqual((r.diffs, r.port_errors), (0, []))
+        ok, why = V.mutant_detection(r)
+        self.assertFalse(ok)
+        self.assertIn("no eax or byte difference", why)
+
     def test_the_specs_mask_is_applied_to_the_original(self):
         # DIAMOND leaves eax = 0x2 for eax = 1; with mask 0xFF a port that reports 2 under 0xFF agrees
         spec = V.Spec("d", 0x10000, [V.Case("z", {"eax": 0}), V.Case("o", {"eax": 1})], eax_mask=0xFF)
