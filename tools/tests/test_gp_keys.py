@@ -184,6 +184,21 @@ class TestEvidence(unittest.TestCase):
         rec[c] = dict(rec[c - 1], f=c)
         self.assertIn('abandons', ' '.join(gk.judge(('restart',), c, None, rec, 5)))
 
+    def test_the_port_cannot_supply_its_own_boot_cred(self):
+        # The capture boots with 5 credits. A port whose first record says 7 and
+        # whose restart leaves 7 would pass if the expectation came from its own
+        # first record; judged against the capture's, the restart fails.
+        L = _fight()
+        rec = gk.records(L, 'S')
+        c = [r for r in gk.judge_all(L, rec) if r[0] == 'esc-y'][0][1]
+        self.assertEqual([r[3] for r in gk.judge_all(L, rec) if r[0] == 'esc-y'], [[]])
+        rec[min(rec)] = dict(rec[min(rec)], cred=7)
+        after = next(f for f in sorted(rec) if f > c)
+        rec[after] = dict(rec[after], cred=7)
+        bad = [r for r in gk.judge_all(L, rec) if r[3]]
+        self.assertEqual([r[0] for r in bad], ['esc-y'])
+        self.assertIn('want 3/%X/5' % gk.RESTART_SEED, ' '.join(bad[0][3]))
+
     def test_an_answer_read_a_frame_later_fails(self):
         L = _fight({'esc-n': 'split'})
         bad = [(r[0], r[3]) for r in gk.judge_all(L, gk.records(L, 'S')) if r[3]]

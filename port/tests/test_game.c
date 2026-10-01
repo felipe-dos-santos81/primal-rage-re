@@ -12366,7 +12366,7 @@ int test_gp_replay(void)
     static u32 mode_before, mode_after, frame_after, state_after;
     mode_before = 0xFFFFu; mode_after = 0xFFFFu; frame_after = 0xFFFFFu; state_after = 0xFFFFFu;
     gp_first_f = 0xFFFFFu;
-    const u32 landings0 = game_restart_landings();
+    u32 landings0 = 0xFFFFFFFFu;                     /* taken at the arm point below */
     const u32 limit = gp_end + GP_LOOP_SLACK;
     if (setjmp(gp_end_jb) == 0)
     for (gp_iters = 0; gp_iters < limit && !gp_done && !gp_failed; gp_iters++) {
@@ -12374,7 +12374,10 @@ int test_gp_replay(void)
         const int enter_now = !gp_armed && f + 1u == gp_enter_frame;
         if (enter_now) mode_before = DSW(DS_00104B00);
         if (gp_armed || enter_now) gp_apply(f);
-        if (enter_now) gp_armed = 1;
+        if (enter_now) {
+            gp_armed = 1;
+            landings0 = game_restart_landings();     /* only landings in the armed window excuse a frame */
+        }
         gp_idle_pumps = 0u;
         game_loop_step();                            /* exactly one game_loop iteration */
         if (gp_armed && input_has_key())
@@ -12421,6 +12424,7 @@ int test_gp_replay(void)
      * except an iteration a 0x65431 restart abandons: its step raises the
      * counter twice (record named-gaps-b §B.6b), so each landing accounts for
      * one f without a T line (record 2026-10-01-gameplay-u11 §K.6). */
+    CHECK(landings0 != 0xFFFFFFFFu, "the landing count was taken at the arm point");
     const u32 landed = game_restart_landings() - landings0;
     printf("test_gp_replay: %u restart(s) landed\n", (unsigned)landed);
     CHECK_EQ_INT((int)(gp_trace_lines + landed), (int)(gp_end - gp_enter_frame + 1u));

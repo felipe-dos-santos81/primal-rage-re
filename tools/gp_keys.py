@@ -176,7 +176,9 @@ def judge_all(cap_lines, rec):
     """[(label, c, F, reasons)] for every event, judged on `rec` at the capture's frames."""
     fr = frames(cap_lines)
     cap = records(cap_lines, 'S')
-    boot_cred = rec[min(rec)]['cred'] if rec else None
+    # The restart's cred expectation is the CAPTURE's first record: the port's own
+    # trace must not supply the value it is judged against.
+    boot_cred = cap[min(cap)]['cred'] if cap else None
     out = []
     for label, step, n, rule in EVENTS:
         got = [fr.get(s) for s in range(step, step + n)]

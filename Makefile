@@ -58,7 +58,7 @@ chunk ?= 0
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle \
         entry-triage \
-        gp-moves-oracle
+        gp-moves-oracle gp-keys-oracle
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -530,6 +530,25 @@ gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves 
 		--moves-min-first "$(GP_MOVES_MOVES_MIN_FIRST)" \
 		--capture-sha256 "$(GP_MOVES_CAPTURE_SHA256)" --capture-frames "$(GP_MOVES_CAPTURE_FRAMES)"
 
+# U11 in-match keys (plan 2026-10-01-gameplay-u11-in-match-keys.md, record
+# 2026-10-01-gameplay-u11-derivations.md §K.6/§K.12): tools/gp_keys.py judges
+# each key event of data/k11-captures/gp-keys-fight twice: `evidence` (the
+# capture shows the raw-derived effect) and `effects` (the port's PR_GP_DUMP
+# replay shows it at the same frames; a ratchet: the events before the first
+# the port does not reproduce must number >= GP_KEYS_MIN_EFFECTS). Skips without
+# the capture; with it, an unpinned value or another poll.log fails. Narrow: an
+# event is judged on the latch, the pause bytes, the pad words, mode, b1f, cred
+# and rng only; the pause/prompt frames are not compared (record §K.10).
+GP_KEYS_MIN_EFFECTS =
+GP_KEYS_CAPTURE_SHA256 =
+gp-keys-oracle: build ## In-match keys: evidence + effects ratchet on gp-keys-fight (skips without data/k11-captures/gp-keys-fight)
+	@echo "== in-match keys oracle: gp-keys-fight (evidence, effects ratchet) =="
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-keys-fight GP_OPTIONAL=1
+	@$(PYTHON) tools/gp_keys.py evidence --capture $(K11_CAPTURES)/gp-keys-fight \
+		--capture-sha256 "$(GP_KEYS_CAPTURE_SHA256)"
+	@$(PYTHON) tools/gp_keys.py effects --capture $(K11_CAPTURES)/gp-keys-fight --port $(GP_DUMP)/gp-keys-fight \
+		--min-effects "$(GP_KEYS_MIN_EFFECTS)" --capture-sha256 "$(GP_KEYS_CAPTURE_SHA256)"
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario)
@@ -601,10 +620,11 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory gp-charsel-oracle
 	@echo "== gameplay oracle: gp-u6-moves-b (skips without its capture; record gameplay-u6 §U6.22) =="
 	@$(MAKE) --no-print-directory gp-moves-oracle
+	@$(MAKE) --no-print-directory gp-keys-oracle
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
-	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves
+	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare tools.tests.test_gp_moves tools.tests.test_gp_keys
 	@echo "== title_compare unit tests (splice3, record §47-A) =="
 	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
