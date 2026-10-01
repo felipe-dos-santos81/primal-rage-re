@@ -27,7 +27,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 
 | batch | unported | ported |
 |---|---|---|
-| callbacks | 25 | 46 |
+| callbacks | 24 | 47 |
 | finishers | 6 | 3 |
 | voice | 0 | 15 |
 | animation-targets | 63 | 49 |
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 6 |
 | leaf | 234 |
-| stubs | 88 |
+| stubs | 87 |
 
 ## Rows
 
@@ -255,7 +255,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 3C87C | 16 | data | memory operand of the instruction at 3CAE0 | no | - | no | - | - | - |
 | 3D10C | 112 | move-callback | dword A37BC (char 0, reaction 0x21) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3D12D |
 | 3D17C | 112 | move-callback | dword A37A8 (char 0, reaction 0x20) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3D19D |
-| 3D1EC | 40 | move-callback | dword A38AC (char 0, reaction 0x2D) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 3D1EC | 40 | move-callback | dword A38AC (char 0, reaction 0x2D) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3D214 | 88 | anim-target | dword E84CC after the opcode word D100 at E84CA | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3D26C | 188 | anim-target | dword E85A8 after the opcode word D100 at E85A6 | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3D328 | 1044 | anim-target | dword D4B22 after the opcode word D100 at D4B20 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | 3D395 |

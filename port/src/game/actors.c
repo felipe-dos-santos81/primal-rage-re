@@ -255,6 +255,9 @@ int actors_init(void)
      * pair per character at stride 0x500), called at 0x35045 with the raw's
      * (slot, rec, side) registers. */
     fn_register(0x3C0A4u, (void (*)(void))reaction_cb_3C0A4);
+    /* PORT: record gameplay-u6 §U6.14. The T-rex's reaction-0x2D callback
+     * 0x3D1EC (the dword at 0xA38AC; 0x34E2C, (slot, rec, side)). */
+    fn_register(0x3D1ECu, (void (*)(void))fighter_3d1ec);
     /* PORT: record gameplay-u6 §U6.15. Every character's reaction-0x3D
      * callback 0x3C048 (0x34E2C, (slot, rec, side), AL unread). */
     fn_register(0x3C048u, (void (*)(void))reaction_cb_3C048);

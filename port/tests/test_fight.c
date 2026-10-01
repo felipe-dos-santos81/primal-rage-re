@@ -44245,3 +44245,25 @@ static void check_u6b_3c048(void)
 }
 
 int test_u6b_3c048(void)        { return u6b_run(check_u6b_3c048); }
+
+/* §U6.14: 0x3D1EC: the record on the stream the dword 0xC8CC0 holds, at 5.0,
+ * then state 9/8/1. The dword is pointed at a crafted head. */
+static void check_u6b_3d1ec(void)
+{
+    u32 st = FIGHT_RECS + 0x3A00u;
+    CHECK_EQ_INT((int)DSD(0x000A38ACu), 0x0003D1EC);
+    CHECK(fn_resolve(0x3D1ECu) == (void (*)(void))fighter_3d1ec, "0x3D1EC is registered");
+    sc_seed(0u, 1u, 0);
+    DSW(st) = 0x1564u;
+    DSD(0x000C8CC0u) = st;
+    DSB(Z_S0 + 0x52u) = 0x0Cu;
+    DSB(Z_S0 + 0x53u) = 0x33u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    fighter_3d1ec(Z_S0, Z_R0, 0u);
+    sc_stream(Z_R0, st, 0x40A00000u, 0x1564u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 8);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 1);
+}
+
+int test_u6b_3d1ec(void)        { return u6b_run(check_u6b_3d1ec); }

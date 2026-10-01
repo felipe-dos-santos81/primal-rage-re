@@ -4539,6 +4539,22 @@ int fighter_3c048(u32 slot, u32 rec, u32 side)
     return r;                                           /* 0x3C099 */
 }
 
+/* PORT: a data-object address symbols.h does not name. */
+#define FIGHT_C8CC0      0x000C8CC0u  /* 0x3D1F1: the reaction-0x2D stream dword */
+
+/* 0x3D1EC — record gameplay-u6 §U6.14. The T-rex's reaction-0x2D callback
+ * (*(u32*)0xA38AC, the (char 0, 0x2D) entry, its only reference). EAX = slot,
+ * EDX = rec: the stream the dword 0xC8CC0 holds at hold 5.0 through 0x3C4CC,
+ * then state 9/8/1; AL = 1 (unread). */
+void fighter_3d1ec(u32 slot, u32 rec, u32 side)
+{
+    (void)side;
+    hit_anim_start_b(rec, DSD(FIGHT_C8CC0), 0x40A00000u);   /* 0x3D1EF..0x3D1FC 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                             /* 0x3D201 */
+    DSB(slot + 0x53u) = 8u;                             /* 0x3D205 */
+    DSB(slot + 0x54u) = 1u;                             /* 0x3D20B */
+}
+
 /* 0x3E3A8. The T-rex's reaction-0x2A callback (*(u32*)0xA3870, the (char 0,
  * 0x2A) entry of 0x34E2C's 0xA3528 table, whose stream word +4 is 0). The
  * context is 0x33950(EBX = side); EAX and EDX are overwritten at 0x3E3AB/
