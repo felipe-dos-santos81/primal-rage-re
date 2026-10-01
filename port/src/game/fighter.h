@@ -764,6 +764,9 @@ int fighter_230f0(u32 slot, u32 rec, u32 side);
 int fighter_23130(u32 slot, u32 rec, u32 side);
 int fighter_23178(u32 slot, u32 rec, u32 side);
 
+/* 0x231C0 (record gameplay-u6 §U6.16): character 1's reaction-0x27 callback. */
+int fighter_231c0(u32 slot, u32 rec, u32 side);
+
 /* 0x236D8. 0xE4996's 0xD100 target: spawns the 0xBB3BC child of rec with the
  * slot at +0x14. 0x2372C. That child stream's 0xD100 target (also called at
  * 0x2463E): spawns the 0xBB3D0 projectile into the slot's +0x08. §43-C. */

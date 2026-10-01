@@ -27,7 +27,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 
 | batch | unported | ported |
 |---|---|---|
-| callbacks | 23 | 48 |
+| callbacks | 22 | 49 |
 | finishers | 6 | 3 |
 | voice | 0 | 15 |
 | animation-targets | 61 | 51 |
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 6 |
 | leaf | 234 |
-| stubs | 84 |
+| stubs | 83 |
 
 ## Rows
 
@@ -134,7 +134,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 230F0 | 64 | move-callback | dword A3D0C (char 1, reaction 0x25) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 23130 | 72 | move-callback | dword A3CA8 (char 1, reaction 0x20) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 2316B |
 | 23178 | 72 | move-callback | dword A3D48 (char 1, reaction 0x28) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 231B3 |
-| 231C0 | 72 | move-callback | dword A3D34 (char 1, reaction 0x27) | yes | entry | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | 231FB |
+| 231C0 | 72 | move-callback | dword A3D34 (char 1, reaction 0x27) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 231FB |
 | 23208 | 808 | move-callback | dword A3D20 (char 1, reaction 0x26) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 23243 |
 | 23530 | 148 | move-callback | dword A55F8 (char 6, reaction 0x24) | yes | entry | yes | callbacks | stubs (indirect at 18384 in 18350) | - |
 | 2365C | 124 | move-callback | dword A3D70 (char 1, reaction 0x2A) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 236CB |
@@ -831,7 +831,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 22F00 | 22E44 | supplement | yes |
 | 2316B | 23130 | row | yes |
 | 231B3 | 23178 | row | yes |
-| 231FB | 231C0 | row | no |
+| 231FB | 231C0 | row | yes |
 | 23243 | 23208 | row | yes |
 | 23328 | 232B4 | supplement | yes |
 | 236CB | 2365C | row | yes |

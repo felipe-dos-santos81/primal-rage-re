@@ -112,6 +112,7 @@ static void anim_code_3640C(u32 rec, u32 arg);
 static void anim_code_37DCC(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
+static void reaction_cb_231C0(u32 slot, u32 rec, u32 side);
 static void anim_code_3F0F0(u32 rec, u32 arg);
 static void anim_code_3F130(u32 rec, u32 arg);
 static void reaction_cb_3C048(u32 slot, u32 rec, u32 side);
@@ -442,6 +443,8 @@ int actors_init(void)
      * mode 0x4000. */
     fn_register(0x230F0u, (void (*)(void))reaction_cb_230F0);
     fn_register(0x23130u, (void (*)(void))reaction_cb_23130);
+    /* PORT: record gameplay-u6 §U6.16. Character 1's reaction-0x27 callback. */
+    fn_register(0x231C0u, (void (*)(void))reaction_cb_231C0);
     fn_register(0x23178u, (void (*)(void))reaction_cb_23178);
     fn_register(0x236D8u, (void (*)(void))anim_code_236D8);
     fn_register(0x2372Cu, (void (*)(void))anim_code_2372C);
@@ -1612,6 +1615,13 @@ static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side)
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side)
 {
     (void)fighter_3c0a4(slot, rec, side);
+}
+
+/* 0x231C0 — the reaction-callback shape. PORT: the same 0x35045 call, whose
+ * AL is ignored; this wrapper drops fighter_231c0's result. */
+static void reaction_cb_231C0(u32 slot, u32 rec, u32 side)
+{
+    (void)fighter_231c0(slot, rec, side);
 }
 
 /* 0x3F0F0 and 0x3F130 — the animation-opcode target shape. PORT: anim_indirect

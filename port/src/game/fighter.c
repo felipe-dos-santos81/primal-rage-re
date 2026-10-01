@@ -6638,6 +6638,26 @@ int fighter_23130(u32 slot, u32 rec, u32 side)
     return 1;                                           /* 0x23170 */
 }
 
+/* PORT: a data-object address symbols.h does not name. */
+#define FIGHT_ANIM_231C0 0x000E48EEu  /* 0x231DF: the reaction-0x27 stream */
+
+/* 0x231C0 — record gameplay-u6 §U6.16. Character 1's reaction-0x27 callback
+ * (*(u32*)0xA3D34, its only reference), same registers and dead context as
+ * 0x23130: state 9/7/0 and +0x0C = 0 first (so 0x3C4CC sees +0x52 = 9), the
+ * 0xE48EE stream at 3.0, the voice 0x7C; AL = 1 (unread). */
+int fighter_231c0(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x231C9..0x231CD 0x33950 */
+    DSB(slot + 0x52u) = 9u;                             /* 0x231D2 */
+    DSB(slot + 0x53u) = 7u;                             /* 0x231DB */
+    DSB(slot + 0x54u) = 0;                              /* 0x231E4 */
+    DSD(slot + 0x0Cu) = 0;                              /* 0x231EA */
+    hit_anim_start_b(rec, FIGHT_ANIM_231C0, 0x40400000u);   /* 0x231D6..0x231F1 0x3C4CC */
+    (void)sound_voice(0x7Cu);                           /* 0x231F6/0x231FB 0x2C3FC */
+    return 1;                                           /* 0x23200 */
+}
+
 /* 0x23178 — record §43-C. Character 1's reaction-0x28 callback (*(u32*)
  * 0xA3D48, its only reference): 0x23130's body with the 0xE48DC stream. */
 int fighter_23178(u32 slot, u32 rec, u32 side)

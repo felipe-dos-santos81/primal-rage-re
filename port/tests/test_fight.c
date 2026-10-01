@@ -44420,10 +44420,27 @@ static u32 u6b_list(u32 *out, u32 cap)
 /* §U6.17: 0x3F0F0 and 0x3F130, the 0xD100 targets of 0x3F0A8's two streams:
  * no owner slot, nothing; with one, the emitter 0xBB290 is spawned with the
  * slot in +0x14 and +0x2B bit 0 (0x2BEF4); 0x3F130 also sets +0x50 = 2. */
+/* The spawn arguments 0x3F0F0/0x3F130 pass to actor_spawn, as actor_spawn
+ * stores them on the new record e: a5 = rec+0x56 | 0x400 (the +0x4A parent
+ * index is a5's low byte & 0x7F and the 0x400 flag selects the parent branch:
+ * +0x28 bit 0x400), a2 = 8 (+0x34) and a4 = -0x5A (+0x36). a3 = 0 is not
+ * observable: the child branch's layer (+0x49) is rewritten from the parent's
+ * pset layer in the same spawn (the pset_write sync). parent is the pool
+ * record the seeded +0x56 names; its +0x4F counter is bumped by the child. */
+static void u6b_spawn_args(u32 e, u32 parent, int count)
+{
+    CHECK_EQ_INT((int)DSB(e + 0x4Au), 5);
+    CHECK((DSW(e + 0x28u) & 0x0400u) != 0u, "the emitter takes the parent branch");
+    CHECK_EQ_INT((int)DSW(e + 0x34u), 8);
+    CHECK_EQ_INT((int)DSW(e + 0x36u), 0xFFA6);
+    CHECK_EQ_INT((int)DSB(parent + 0x4Fu), 0x20 + count);
+    CHECK_EQ_INT((int)DSB(e + 0x5Au), 0x6B);
+}
+
 static void check_u6b_3f0f0(void)
 {
     static u32 before[0x80];
-    u32 n, e, rec = Z_R0;
+    u32 n, e, rec = Z_R0, parent = actor_record(5u);
     CHECK_EQ_INT((int)DSD(0x000E7B8Cu), 0x0003F0F0);
     CHECK_EQ_INT((int)DSW(0x000E7B8Au), 0xD100);
     CHECK_EQ_INT((int)DSD(0x000E7BC6u), 0x0003F130);
@@ -44431,6 +44448,10 @@ static void check_u6b_3f0f0(void)
     CHECK(fn_resolve(0x3F0F0u) != NULL, "0x3F0F0 is registered");
     CHECK(fn_resolve(0x3F130u) != NULL, "0x3F130 is registered");
     sc_seed(0u, 1u, 0);
+    CHECK(parent != 0u, "the pool holds record 5");
+    DSW(rec + 0x56u) = 0x0185u;                 /* parent index 5 (0x85 & 0x7F) */
+    DSB(parent + 0x4Fu) = 0x20u;
+    DSB(parent + 0x5Au) = 0x6Bu;
     DSD(rec + 0x14u) = 0u;
     n = u6b_list(before, 0x80u);
     fighter_3f0f0(rec);
@@ -44445,6 +44466,7 @@ static void check_u6b_3f0f0(void)
         CHECK_EQ_INT((int)DSD(e + 0x14u), (int)Z_S0);
         CHECK_EQ_INT((int)(DSB(e + 0x2Bu) & 1u), 1);
         CHECK(DSB(e + 0x50u) != 2u, "0x3F0F0 leaves +0x50");
+        u6b_spawn_args(e, parent, 1);
     }
     n = u6b_list(before, 0x80u);
     fighter_3f130(rec);
@@ -44454,7 +44476,40 @@ static void check_u6b_3f0f0(void)
         CHECK_EQ_INT((int)DSD(e + 0x14u), (int)Z_S0);
         CHECK_EQ_INT((int)(DSB(e + 0x2Bu) & 1u), 1);
         CHECK_EQ_INT((int)DSB(e + 0x50u), 2);
+        u6b_spawn_args(e, parent, 2);
     }
 }
 
 int test_u6b_3f0f0(void)        { return u6b_run(check_u6b_3f0f0); }
+
+/* §U6.16: 0x231C0 on side 1: state 9/7/0 and +0x0C = 0, the record on 0xE48EE
+ * at 3.0, the voice 0x7C once; +0x57/+0x18/+0x1C untouched. */
+static void check_u6b_231c0(void)
+{
+    CHECK_EQ_INT((int)DSD(0x000A3D34u), 0x000231C0);
+    CHECK(fn_resolve(0x231C0u) != NULL, "0x231C0 is registered");
+    sc_seed(1u, 1u, 0);
+    DSW(0x000E48EEu) = 0x1565u;
+    DSB(Z_S1 + 0x52u) = 0x0Cu;
+    DSB(Z_S1 + 0x53u) = 0x33u;
+    DSB(Z_S1 + 0x54u) = 0x44u;
+    DSD(Z_S1 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSB(Z_S1 + 0x57u) = 0x57u;
+    DSD(Z_S1 + 0x18u) = 0x18181818u;
+    DSD(Z_S1 + 0x1Cu) = 0x1C1C1C1Cu;
+    sound_voice_log_reset();
+    CHECK_EQ_INT(fighter_231c0(Z_S1, Z_R1, 1u), 1);
+    sc_stream(Z_R1, 0x000E48EEu, 0x40400000u, 0x1565u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 0x57);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x18u), 0x18181818);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x1Cu), 0x1C1C1C1C);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 1);
+    CHECK_EQ_INT((int)sound_voice_log_at(0), 0x7C);
+    sound_voice_log_reset();
+}
+
+int test_u6b_231c0(void)        { return u6b_run(check_u6b_231c0); }
