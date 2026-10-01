@@ -1856,6 +1856,32 @@ void fighter_36280(u32 rec)
     (void)sound_voice(0x6Fu);                           /* 0x362E0/0x362E5 0x2C3FC */
 }
 
+/* 0x3640C — record gameplay-u6 §U6.4. The 0xD000 stream target (opcode 0x10)
+ * at the seven dwords 0xD2156, 0xD3E2A, 0xE063E, 0xE39F2, 0xE6DF2, 0xEA626 and
+ * 0xECBFA (each after a 0xD000 word; Ghidra has no function here). EAX = rec:
+ * its +0x52 = 0, its hold 3.0 and +0x4D = 0x14; with the owner slot rec+0x14
+ * set, that slot's +0x52 = 5. EDX is pushed and popped (0x3640C/0x3642B);
+ * the EAX it leaves (the owner slot) is not read by the three 0x2B2A0 call
+ * sites, which each reload EAX at once (0x2B575, 0x2B59A, 0x2B5F0). */
+void fighter_3640c(u32 rec)
+{
+    u32 slot;
+    DSB(rec + 0x52u) = 0u;                              /* 0x3640D */
+    DSD(rec + 0x24u) = 0x40400000u;                     /* 0x36416 */
+    DSB(rec + 0x4Du) = 0x14u;                           /* 0x36411/0x3641D */
+    slot = DSD(rec + 0x14u);                            /* 0x36420 */
+    if (slot == 0u) return;                             /* 0x36423/0x36425 */
+    DSB(slot + 0x52u) = 5u;                             /* 0x36427 */
+}
+
+/* 0x37DCC — record gameplay-u6 §U6.5. The 0xD100 stream target (opcode 0x11)
+ * at seventeen dwords (0xD2B98 .. 0xEDB4A, each after a 0xD100 word; Ghidra
+ * has no function here): `mov byte [0x1078FC],1; ret`. It reads no register. */
+void fighter_37dcc(void)
+{
+    DSB(DS_001078FC) = 1u;                              /* 0x37DCC */
+}
+
 /* 0x36300. The +0x52 == 13 handler. */
 void fighter_state_36300(u32 slot, u32 rec)
 {
@@ -5357,6 +5383,53 @@ void fighter_pose_3a6d4(u32 slot, u32 side)
         }
     }
     DSB(ctx[3] + 0x90u) = 3u;                               /* 0x3A78E */
+}
+
+/* PORT: 0xC9030 (the 0x3A650 family's per-character animation-stream table,
+ * read at 0x3A5CA) has no symbols.h name. */
+#define FIGHT_ANIM_3A588  0x000C9030u
+
+/* 0x3A588 — record gameplay-u6 §U6.3. The 0x3A650 pose family's per-frame
+ * handler 0x3531C case 10 calls through slot+0x10 (0x3A650 stores it at
+ * 0x3A686, the dword at 0x3A689 its only reference). The body is 0x3A43C's
+ * with the 0xC9030 stream table, the per-side words the 0x3A650 setter latches
+ * (B = 0x107D00 + side*2, the caller's BX, 0x3A6B7; A = 0x107D0C + side*2,
+ * the slot's +0x2C word, 0x3A6AF) and +0x90 = 2 at the end. Phase 0 sets +0x58
+ * = 1; phase 1 starts the self record's 0xC9030[char] stream at 3.0,
+ * re-anchors the self record (x kept, y = 0), sets +0x58 = 2 and +0x90 = 2,
+ * and, when B[side] is neither 0 nor 5 and (u8)(+0x90 - 1) > 3, snaps the self
+ * x to A[side] (the jump table at 0x3A578 sends 1..4 to 0x3A63E, past the
+ * snap). Phases above 1 return. The raw takes EAX = slot, EBX = side; the ctx
+ * swap overwrites EAX, so only the side is read. 0x2BC30 returns with RET 4,
+ * popping the 0x3A5BD push, so from 0x3A5DA on the ESP offsets name ctx[1]
+ * (the side) and ctx[5] (rec_self). */
+void fighter_pose_3a588(u32 slot, u32 side)
+{
+    u32 ctx[6];
+    u8 phase;
+    (void)slot;
+    fighter_ctx_swap(ctx, side);                            /* 0x3A58B..0x3A58F 0x33A10 */
+    phase = DSB(ctx[3] + 0x58u);                            /* 0x3A594/0x3A598 */
+    if (phase == 0u) {                                      /* 0x3A59D/0x3A5A5 */
+        DSB(ctx[3] + 0x58u) = 1u;                           /* 0x3A5B1 */
+        return;
+    }
+    if (phase != 1u) return;                                /* 0x3A59F/0x3A5A1 */
+    actors_anim_begin(ctx[5],                                /* 0x3A5BD..0x3A5D5 0x2BC30 */
+                      DSD(FIGHT_ANIM_3A588
+                          + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                      0x40400000u);
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);        /* 0x3A5DA..0x3A5E7 0x188AC */
+    DSB(ctx[3] + 0x58u) = 2u;                               /* 0x3A5F0 */
+    {
+        s32 a = (s32)(s16)DSW(DS_00107D0C + ctx[1] * 2u);   /* 0x3A5F8/0x3A60B */
+        s32 b = (s32)(s16)DSW(DS_00107D00 + ctx[1] * 2u);   /* 0x3A5FF/0x3A608 */
+        if (b != 0 && b != 5) {                             /* 0x3A60E..0x3A615 */
+            if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)        /* 0x3A61B..0x3A625 */
+                hit_anchor_x(ctx[1], (u32)a);               /* 0x3A634..0x3A639 0x188DC */
+        }
+    }
+    DSB(ctx[3] + 0x90u) = 2u;                               /* 0x3A642 */
 }
 
 /* ---- the 0x39F40 knockback pose's handler 0x39CC8 ---------------------- */
@@ -11033,6 +11106,28 @@ void fighter_487d4(u32 slot, u32 rec, u32 side)
     DSD(ctx[2] + 0x18u) = 0u;                               /* 0x48896 */
     fighter_3605c(ctx[0], 0x40900000u);                     /* 0x4889D..0x488A5 */
     DSB(ctx[2] + 0x57u) = 3u;                               /* 0x488AA/0x488AE */
+}
+
+/* PORT: a data-object address symbols.h does not name. */
+#define FIGHT_ANIM_23208 0x000E4900u  /* 0x2321A: 0x23208's stream */
+
+/* 0x23208 — record gameplay-u6 §U6.2. Character 1's reaction-0x26 callback
+ * (the dword at 0xA3D20, its only reference; Ghidra has no function here).
+ * 0x34E2C calls it at 0x35045 with EAX = slot, EDX = rec, EBX = side and does
+ * not read its AL (0x35049 `add esp,0x28`). The context 0x33950(side) is built
+ * and never read; the record on 0xE4900 at 3.0 (0x3C4CC, whose RET 4 pops the
+ * 0x23221 push), the slot's +0x52/+0x53/+0x54 = 9/7/0 and +0x0C = 0, then the
+ * voice 0x79. */
+void fighter_23208(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x23211..0x23215 0x33950 */
+    hit_anim_start_b(rec, FIGHT_ANIM_23208, 0x40400000u);   /* 0x2321A..0x23226 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x2322B */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x2322F */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x23233 */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x2323C */
+    (void)sound_voice(0x79u);                               /* 0x23237/0x23243 0x2C3FC */
 }
 
 /* 0x23250 — record §48-P. Character 6's slot +0x18 hook (0x23568; 0x19020,

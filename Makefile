@@ -422,24 +422,33 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # (MAX_START: the capture frame where the window begins; a later start fails, so a
 # port regression cannot slide the window past the frame that set MIN_FIRST).
 # All re-measured on main c6cac22 (U0's 40 functions) + U3 + U4 (record §G.24): unchanged
-# from the first measurement on the pre-U0 base (MIN_FIRST re-pinned by U5, below).
-# MIN_FIRST: first unexplained capture frame 787 (raw 3899), round 1 (mode 6): by pixels the port
-# frame nearest to it is 576 (f=0x824, 7470 px), the frame where the unregistered move callback
-# 0x23208 is missed (divergence 2, record §G.24, U6's); capture 786 is a splice of port 574/575
-# (record 2026-10-01-gameplay-u5 §C5.19 item 13). Raised from 203 by U5 (record 2026-10-01-gameplay-u5
-# §C5.12/§C5.13): divergence 1, the character-select idle animation turning at f=0x340, was the
-# 0x37A58 top wrap comparing rec+0x4F where the raw's 0x37B03/0x37B08 compares the frame byte
-# rec+0x52; with it fixed the claim covers the character select, the time-out, 0x11, 0x17 and the
-# round start. Raise it when the frame claim improves (gp_compare prints "improved: raise N").
-GP_IDLE_LOSS_MIN_FIRST = 787
-# TRACE_MIN_FIRST: first differing f=0x828 (decimal 2088) in rng, port against the capture
-# (capture 73A05D37, port CE92DD04). Four frames earlier (f=0x824) the port's P2 attack
-# misses an UNREGISTERED move-table callback, 0x23208 (character 1, reaction 0x26; U0's
-# §U0.12 list; fn_misslog, record §G.24), whose effects (animation, slot +0x52/+0x53/+0x54/+0xC,
-# voice 0x79) are not traced fields; whether it causes the rng/hit difference is not excluded.
-# No run-to-run bound (record §G.19: the two captures agree at every f from 0x625); raise it
-# when the trace claim improves.
-GP_IDLE_LOSS_TRACE_MIN_FIRST = 2088
+# from the first measurement on the pre-U0 base (MIN_FIRST re-pinned by U5 and U6a,
+# TRACE_MIN_FIRST by U6a, below).
+# MIN_FIRST: first unexplained capture frame 2064 (raw 5190), measured after U6a ported 0x3640C,
+# 0x23208, 0x37DCC and 0x3A588 (record gameplay-u6 §U6.21): gp_compare --report prints "nearest
+# port 1670, rows 0..97, x 0..319 (13832 px)". Port 1670 is f=0xC75, mode 8 (frames.txt); the
+# capture enters mode 8 (game_mode_08_step 0x28468) at f=0xC71 (poll.log P record) from the
+# round-1 fight (mode 6), and capture 2063 is port 1666 (f=0xC71) clean, so 2064 lies in mode 8
+# between f=0xC71 and f=0xC75, on the fight screen. Every row of it equals the same row of a port
+# frame: rows 0..2 equal in port 1665/1666 (f=0xC70/0xC71), rows 3..97 port 1669 (f=0xC74),
+# rows 98..199 port 1670 (f=0xC75). A three-frame scan-out is outside the explain model (clean,
+# a splice of two adjacent frames, one transition row), and port 1667/1668 (f=0xC72/0xC73)
+# appear in no capture frame; the capture has no S snapshot for f=0xC71..0xC73 (as at several
+# other mode changes, not all: record §U6.21). Why the original's scan-out shows three frames
+# is not isolated: a named gap with that evidence.
+# Provenance: U4 pinned 203; U5 raised it to 787 (record 2026-10-01-gameplay-u5 §C5.12/§C5.13:
+# the 0x37A58 top wrap compares the frame byte rec+0x52, raw 0x37B03/0x37B08); 787 was the miss of
+# the then-unregistered move callback 0x23208 (divergence 2, record §G.24), ported by U6a.
+# Raise it when the frame claim improves (gp_compare prints "improved: raise N").
+GP_IDLE_LOSS_MIN_FIRST = 2064
+# TRACE_MIN_FIRST: no traced difference over the whole replay, port against the capture:
+# gp_compare prints "0 differing through 8319 ... N = 8320 is the exact pin" (7973 frames compared,
+# f = 0x141..0x207F, i.e. decimal 321..8319; 26 f without a capture snapshot are not compared).
+# N = end + 1 = 8320 is the exact pin (gp_compare's ratchet: an N above the end fails as
+# unreachable), so a traced difference at any compared f fails it. Raised from 2088 by U6a's
+# four ports (record gameplay-u6 §U6.21); 2088 = 0x828 was the rng difference four frames after
+# the miss of 0x23208 (record §G.24). No run-to-run bound (record §G.19).
+GP_IDLE_LOSS_TRACE_MIN_FIRST = 8320
 # MAX_START: the window begins at capture frame 90 (raw 1744), the first capture frame that
 # shows the port's first frame (gp_compare prints "window from capture 90"); it must be < MIN_FIRST.
 GP_IDLE_LOSS_MAX_START = 90

@@ -108,6 +108,8 @@ static void anim_code_37CFC(u32 rec, u32 arg);
 static void anim_code_14E80(u32 rec, u32 arg);
 static void anim_code_370F0(u32 rec, u32 arg);
 static void anim_code_36280(u32 rec, u32 arg);
+static void anim_code_3640C(u32 rec, u32 arg);
+static void anim_code_37DCC(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
@@ -224,6 +226,10 @@ int actors_init(void)
     /* PORT: its sibling 0x3A6D4, which the 0x3A79C setter stores in slot+0x10
      * at 0x3A7D2 (the dword at 0x3A7D5 is its only reference). */
     fn_register(0x3A6D4u, (void (*)(void))fighter_pose_3a6d4);
+    /* PORT: record gameplay-u6 §U6.3. Their sibling 0x3A588, which the
+     * 0x3A650 setter stores in slot+0x10 at 0x3A686 (the dword at 0x3A689 is
+     * its only reference). */
+    fn_register(0x3A588u, (void (*)(void))fighter_pose_3a588);
     /* PORT: the knockback pose's handler 0x39CC8, which the setter 0x39F40
      * stores in slot+0x10 at 0x39F8F; same case-10 shape as 0x3A43C. */
     fn_register(0x39CC8u, (void (*)(void))fighter_39cc8);
@@ -372,6 +378,13 @@ int actors_init(void)
      * calls DS_001078E8 as (slot, rec) and tests the return). */
     fn_register(0x3E244u, (void (*)(void))fighter_3e244);
     fn_register(0x36280u, (void (*)(void))anim_code_36280);
+    /* PORT: record gameplay-u6 §U6.4. The 0xD000 target 0x3640C (opcode 0x10,
+     * mode 0x4000) of seven streams (the dwords at 0xD2156, 0xD3E2A, 0xE063E,
+     * 0xE39F2, 0xE6DF2, 0xEA626 and 0xECBFA). */
+    fn_register(0x3640Cu, (void (*)(void))anim_code_3640C);
+    /* PORT: record gameplay-u6 §U6.5. The 0xD100 target 0x37DCC (opcode 0x11,
+     * mode 0x4000) of seventeen streams (the dwords 0xD2B98 .. 0xEDB4A). */
+    fn_register(0x37DCCu, (void (*)(void))anim_code_37DCC);
     fn_register(0x48AACu, (void (*)(void))fighter_48aac);
     fn_register(0x48D94u, (void (*)(void))fighter_48d94);
     fn_register(0x48BE0u, (void (*)(void))fighter_48be0);
@@ -636,6 +649,9 @@ int actors_init(void)
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
      * and +0x1C 0x47984 (0x193B0's 0x19505, fn(side)). */
     fn_register(0x47BFCu, (void (*)(void))fighter_47bfc);
+    /* PORT: record gameplay-u6 §U6.2. Character 1's reaction-0x26 callback
+     * 0x23208 (the dword at 0xA3D20; 0x34E2C, (slot, rec, side)). */
+    fn_register(0x23208u, (void (*)(void))fighter_23208);
     fn_register(0x478D4u, (void (*)(void))fighter_478d4);
     fn_register(0x47984u, (void (*)(void))fighter_47984);
     fn_register(0x4F4E8u, flow_round_timer_step);
@@ -1432,6 +1448,26 @@ static void anim_code_36280(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_36280(rec);
+}
+
+/* 0x3640C — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x3640C takes EAX = rec and does not
+ * read EDX (pushed at 0x3640C, DL overwritten at 0x36411, popped at 0x3642B),
+ * so this wrapper drops the operand (record gameplay-u6 §U6.4). */
+static void anim_code_3640C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3640c(rec);
+}
+
+/* 0x37DCC — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x37DCC reads neither (one store and
+ * RET), so this wrapper drops both (record gameplay-u6 §U6.5). */
+static void anim_code_37DCC(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+    fighter_37dcc();
 }
 
 /* 0x36870 — the animation-opcode target shape. PORT: anim_indirect calls every

@@ -211,6 +211,8 @@ DS_FLAGS = 0x107EE0
 DS_CREDITS = 0x105C00
 DS_FREEPLAY = 0x105D60
 DS_NODEBIT = 0x104B1F
+U6_REC, U6_OWNER = 0x10A000, 0x10A100   # inside the image's zero BSS (record gameplay-u6 §U6.6)
+DS_1078FC = 0x1078FC         # the byte 0x37DCC stores (record gameplay-u6 §U6.5)
 
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
@@ -240,6 +242,20 @@ SPECS = [
     Spec("config_codeword_len", 0x2D4B4, [
         Case("w%d" % n, {"eax": n}) for n in (0, 1, 0x26, 0xFF, 0x1000)
     ]),
+    # Record gameplay-u6 §U6.6. Mask 0: the three 0x2B2A0 call sites reload EAX at once (0x2B575,
+    # 0x2B59A, 0x2B5F0), so the comparison is the changed bytes alone.
+    Spec("fighter_3640c", 0x3640C, [
+        Case("k0", {"eax": U6_REC, "edx": 0x11223344},
+             {U6_REC + 0x52: b"\x7f", U6_REC + 0x24: le32(0xDEADBEEF), U6_REC + 0x4D: b"\x99",
+              U6_REC + 0x14: le32(0)}),
+        Case("k1", {"eax": U6_REC, "edx": 0x11223344},
+             {U6_REC + 0x52: b"\x7f", U6_REC + 0x24: le32(0xDEADBEEF), U6_REC + 0x4D: b"\x99",
+              U6_REC + 0x14: le32(U6_OWNER), U6_OWNER + 0x52: b"\x33"}),
+    ], eax_mask=0),
+    Spec("fighter_37dcc", 0x37DCC, [
+        Case("d0", {}, {DS_1078FC: b"\x00"}),
+        Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
+    ], eax_mask=0),
 ]
 
 

@@ -220,6 +220,12 @@ void fighter_pose_3a43c(u32 slot, u32 side);
  * (dead), EBX = side. */
 void fighter_pose_3a6d4(u32 slot, u32 side);
 
+/* 0x3A588 (record gameplay-u6 §U6.3). The 0x3A650 pose family's per-frame
+ * handler: 0x3A43C's body with the 0xC9030[char] stream, the 0x107D00/0x107D0C
+ * B/A words and +0x90 = 2. 0x3531C case 10 resolves it from slot+0x10;
+ * registered in actors_init. EAX = slot (dead), EBX = side. */
+void fighter_pose_3a588(u32 slot, u32 side);
+
 /* 0x39CC8. The 0x39F40 knockback pose's per-frame handler (slot+0x10, which
  * 0x39F40 stores at 0x39F8F): the slot +0x14 callback through 0x35050, then a
  * +0x58 machine. 0 arms; 1 launches through 0x39B30 (gravity, vertical and
@@ -656,6 +662,13 @@ void fighter_3e244(u32 side);
  * streams (EAX = rec): with an owner slot, the landing (+0x58, 0x188AC,
  * +0x54, +0x42 bit 2, the record's +0x36/+0x24) and a 0xBB1DC spawn. */
 void fighter_36280(u32 rec);
+/* 0x3640C (record gameplay-u6 §U6.4): the 0xD000 target of seven streams.
+ * EAX = rec: +0x52 = 0, hold 3.0, +0x4D = 0x14; the owner slot (rec+0x14),
+ * when set, +0x52 = 5. */
+void fighter_3640c(u32 rec);
+/* 0x37DCC (record gameplay-u6 §U6.5): the 0xD100 target of seventeen
+ * streams; sets the byte DS_001078FC = 1. */
+void fighter_37dcc(void);
 
 /* 0x48AAC and 0x48D94 (record §42-B). Character 2's two finisher +0x0C
  * callbacks (0x3531C case 7: EAX = slot, EDX = rec, EBX = side), stored by
@@ -1069,6 +1082,10 @@ void fighter_47b04(u32 slot, u32 rec, u32 side);
  * +0x57 = 5 and the callbacks +0x0C 0x47B04, +0x18 0x478D4 (fn(side), EAX
  * returned: two 0x18C14 passes) and +0x1C 0x47984 (fn(side)). */
 void fighter_47bfc(u32 slot, u32 rec, u32 side);
+/* 0x23208 (record gameplay-u6 §U6.2). Character 1's reaction-0x26 callback
+ * (slot, rec, side): the record on 0xE4900 at 3.0, the slot 9/7/0 with +0x0C =
+ * 0, the voice 0x79. */
+void fighter_23208(u32 slot, u32 rec, u32 side);
 u32  fighter_478d4(u32 side);
 void fighter_47984(u32 side);
 
