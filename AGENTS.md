@@ -23,6 +23,7 @@ make k11-capture scenario=walk   # DOSBox-X capture of the service menu (writes 
 make gp-capture scenario=gp-pads  # DOSBox-X gameplay capture (frame-keyed injection, per-frame snapshot log); writes data/k11-captures/<scenario> (scenario names are gp-…)
 make gp-replay scenario=gp-pads  # port replay of a gameplay capture (PR_GP_DUMP driver, .ipx frames + trace); in make verify on gp-pads, which skips without data/k11-captures/gp-pads
 make gp-oracle             # gameplay oracle: frame + trace ratchets on data/k11-captures/gp-idle-loss (N values in the Makefile); in make verify; skips without the capture
+make gp-charsel-oracle     # the same ratchets on data/k11-captures/gp-u5-charsel (the character-select walk; N 516 = how far the port's replay got, F 1513, the poll.log hash pinned); in make verify; skips without the capture
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
@@ -175,7 +176,10 @@ make diff-verify           # differential verification: the original's bytes vs 
   `data/k11-captures/gp-idle-loss`; its N values and provenance are in the
   Makefile (with the capture's `poll.log` sha256: another capture fails); it skips without the capture,
   even under `PR_ORACLE_REQUIRED`. The `PR_GP_DUMP` driver pins its own `fn_resolve` miss set per
-  scenario (`test_platform.c`, record gameplay-ground-truth §G.24). Its claim is narrow the same way (record
+  scenario (`test_platform.c`, record gameplay-ground-truth §G.24).
+  `make gp-charsel-oracle` (in `make verify`) does the same for `data/k11-captures/gp-u5-charsel`
+  (record gameplay-u5 §C5.18): N = 516 is the script's end (how far the port's replay got, not a
+  divergence), F = 1513, the `poll.log` sha256 and frame count are pinned; it skips without the capture. Its claim is narrow the same way (record
   `…-gameplay-ground-truth-derivations.md` §G.16): no content-bearing capture
   frame from the window start up to N is unexplained and the traced fields
   agree below F; the window start is pinned too (`GP_IDLE_LOSS_MAX_START`), so a

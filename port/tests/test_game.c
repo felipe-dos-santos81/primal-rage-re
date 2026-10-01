@@ -4756,6 +4756,39 @@ static void check_idle_tick_37a58(void)
     CHECK(DSD(DS_000EF6D8) != lcg1, "the expiry drew rng(2)");
     CHECK_EQ_INT((int)DSB(rec + 0x58), draw != 0u ? 1 : 0xff);
     CHECK_EQ_INT((int)DSB(rec + 0x52), draw != 0u ? 6 : 4);
+
+    /* Tick C: counting up past the last frame wraps to 0. 0x37B03 loads the
+     * dword at rec+0x4F and 0x37B08 `sar edx,0x18` keeps its top byte, which is
+     * rec+0x52 (0x4F + 3), the frame just stored at 0x37AAB; 0x37B0E/0x37B10
+     * zero it when that signed byte is >= rec+0x4D (record gameplay-u5 §C5.2).
+     * rec+0x4F (the child count) is 0 here, so a port that compares rec+0x4F
+     * keeps 0x1E, a sprite id past the character's 0x1E idle frames. */
+    DSB(rec + 0x4c) = 5;
+    DSB(rec + 0x52) = 0x1d;
+    DSB(rec + 0x58) = 1;
+    DSB(rec + 0x4f) = 0;
+    DSD(rec + 8) = ANIM_SCRATCH;
+    DSD(rec + 0x20) = 0;
+    DSD(rec + 0x24) = 0x3f800000u;
+    DSW(rec + 0x28) = 0;
+    DSW(rec + 0x2a) = 0;
+    actor_sync(rec);
+    CHECK_EQ_INT((int)DSB(rec + 0x52), 0);           /* 0x1E >= 0x1E: wrapped */
+
+    /* Tick D: the child count takes no part. rec+0x4F = 0x20 (>= rec+0x4D)
+     * and rec+0x52 = 3 counting up: the frame is 4, not reset. */
+    DSB(rec + 0x4c) = 5;
+    DSB(rec + 0x52) = 3;
+    DSB(rec + 0x58) = 1;
+    DSB(rec + 0x4f) = 0x20;
+    DSD(rec + 8) = ANIM_SCRATCH;
+    DSD(rec + 0x20) = 0;
+    DSD(rec + 0x24) = 0x3f800000u;
+    DSW(rec + 0x28) = 0;
+    DSW(rec + 0x2a) = 0;
+    actor_sync(rec);
+    CHECK_EQ_INT((int)DSB(rec + 0x52), 4);
+    DSB(rec + 0x4f) = 0;
 }
 
 int test_anim(void)

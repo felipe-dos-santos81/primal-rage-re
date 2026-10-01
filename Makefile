@@ -53,7 +53,7 @@ chunk ?= 0
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
-        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify
+        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -422,14 +422,16 @@ gp-replay: build ## Replay a gameplay capture in the port (scenario=gp-…; dump
 # (MAX_START: the capture frame where the window begins; a later start fails, so a
 # port regression cannot slide the window past the frame that set MIN_FIRST).
 # All re-measured on main c6cac22 (U0's 40 functions) + U3 + U4 (record §G.24): unchanged
-# from the first measurement on the pre-U0 base.
-# MIN_FIRST: first unexplained capture frame 203 (raw 2359), the character select's pick
-# countdown step: the capture shows 12 and Sauron's idle animation running backwards, the
-# port keeps it going forward ~96 frames more (f 0x340 against 0x3A0). The cause is not
-# isolated (no raw address; the fn_resolve miss log holds nothing in the character select
-# but the bare `ret` 0x29D60, record §G.24); raise it when the frame claim improves
-# (gp_compare prints "improved: raise N").
-GP_IDLE_LOSS_MIN_FIRST = 203
+# from the first measurement on the pre-U0 base (MIN_FIRST re-pinned by U5, below).
+# MIN_FIRST: first unexplained capture frame 787 (raw 3899), round 1 (mode 6): by pixels the port
+# frame nearest to it is 576 (f=0x824, 7470 px), the frame where the unregistered move callback
+# 0x23208 is missed (divergence 2, record §G.24, U6's); capture 786 is a splice of port 574/575
+# (record 2026-10-01-gameplay-u5 §C5.19 item 13). Raised from 203 by U5 (record 2026-10-01-gameplay-u5
+# §C5.12/§C5.13): divergence 1, the character-select idle animation turning at f=0x340, was the
+# 0x37A58 top wrap comparing rec+0x4F where the raw's 0x37B03/0x37B08 compares the frame byte
+# rec+0x52; with it fixed the claim covers the character select, the time-out, 0x11, 0x17 and the
+# round start. Raise it when the frame claim improves (gp_compare prints "improved: raise N").
+GP_IDLE_LOSS_MIN_FIRST = 787
 # TRACE_MIN_FIRST: first differing f=0x828 (decimal 2088) in rng, port against the capture
 # (capture 73A05D37, port CE92DD04). Four frames earlier (f=0x824) the port's P2 attack
 # misses an UNREGISTERED move-table callback, 0x23208 (character 1, reaction 0x26; U0's
@@ -456,6 +458,29 @@ gp-oracle: build ## Gameplay oracle: gp-idle-loss frame and trace ratchets (skip
 		--port $(GP_DUMP)/gp-idle-loss --min-first "$(GP_IDLE_LOSS_MIN_FIRST)" \
 		--trace-min-first "$(GP_IDLE_LOSS_TRACE_MIN_FIRST)" --max-start "$(GP_IDLE_LOSS_MAX_START)" \
 		--capture-sha256 "$(GP_IDLE_LOSS_CAPTURE_SHA256)" --capture-frames "$(GP_IDLE_LOSS_CAPTURE_FRAMES)"
+
+# U5 character-select walk (record 2026-10-01-gameplay-u5 §C5.16-§C5.18): the gp-u5-charsel capture
+# against its port replay, both ratchets, enforced like gp-oracle (skips without the capture,
+# fails on a present capture with another poll.log). Values measured in U5 Task 7 (report lines in
+# §C5.17), pinned by U5 Task 8 Step 1 (pins.sh); raise N/F when the claims improve.
+# Provenance (U5 Task 7, record §C5.17): the report's FIRST UNEXPLAINED capture line names the frame after
+# the port's last one. The port's script ends at the capture's mode-6 frame (f = 0x5E8 = 1512), while
+# the capture's poll.log runs on to about f = 0x925 (round 1 until the 60 s limit); the port's last
+# frame is byte-identical to the capture frame before N, so N is how far the port got, not a defect.
+# The trace line reports no differing frame through the script's last f, so TRACE_MIN_FIRST is that
+# f plus one, the exact pin (one more fails as unreachable).
+GP_CHARSEL_MIN_FIRST = 516
+GP_CHARSEL_TRACE_MIN_FIRST = 1513
+GP_CHARSEL_MAX_START = 100
+GP_CHARSEL_CAPTURE_SHA256 = 138fb537cd8c364bab0ccc68fc8fdd9079de19f3b0fc789d427f6d9652a18d7e
+GP_CHARSEL_CAPTURE_FRAMES = 1464
+gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratchets (skips without data/k11-captures/gp-u5-charsel)
+	@echo "== gameplay oracle: gp-u5-charsel (frame and trace ratchets) =="
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-u5-charsel GP_OPTIONAL=1
+	@$(PYTHON) tools/gp_compare.py --scenario gp-u5-charsel --capture $(K11_CAPTURES)/gp-u5-charsel \
+		--port $(GP_DUMP)/gp-u5-charsel --min-first "$(GP_CHARSEL_MIN_FIRST)" \
+		--trace-min-first "$(GP_CHARSEL_TRACE_MIN_FIRST)" --max-start "$(GP_CHARSEL_MAX_START)" \
+		--capture-sha256 "$(GP_CHARSEL_CAPTURE_SHA256)" --capture-frames "$(GP_CHARSEL_CAPTURE_FRAMES)"
 
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
@@ -509,6 +534,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-pads GP_OPTIONAL=1
 	@echo "== gameplay oracle (frame and trace ratchets; skips without its capture; record §G.16) =="
 	@$(MAKE) --no-print-directory gp-oracle
+	@$(MAKE) --no-print-directory gp-charsel-oracle
 	@$(MAKE) --no-print-directory diff-verify
 	@echo "== k11 and gp tool unit tests =="
 	PR_ORACLE_REQUIRED=1 $(PYTHON) -m unittest tools.tests.test_k11_fields tools.tests.test_k11_session tools.tests.test_k11_capture tools.tests.test_k11_compare tools.tests.test_gp_session tools.tests.test_gp_capture tools.tests.test_gp_compare

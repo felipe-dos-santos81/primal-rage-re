@@ -1363,7 +1363,9 @@ static void anim_code_12720(u32 rec, u32 arg)
  * with — draws rng(2) and flips rec+0x58 between +1 and 0xFF when rec+0x4C
  * expires, and in mode 6 with the variable back at 0 draws rng(3) and restarts
  * the character's idle stream from 0xBDAB8[char] (0 for the raptor, so it
- * skips). The dispatcher passed EAX=rec; the arg is ignored. */
+ * skips). The dispatcher passed EAX=rec; the arg is ignored. The top wrap
+ * reads the frame itself: 0x37B03 loads the dword at rec+0x4F and 0x37B08
+ * `sar edx,0x18` keeps its top byte, rec+0x52 (record gameplay-u5 §C5.2). */
 #define DS_000BDAB8 0x000BDAB8u
 static void anim_code_37A58(u32 rec, u32 arg)
 {
@@ -1384,7 +1386,7 @@ static void anim_code_37A58(u32 rec, u32 arg)
             if (stream != 0) actors_anim_begin(rec, stream, 0x40400000u);
         }
     }
-    if ((s32)(s8)DSB(rec + 0x4fu) >= (s32)DSB(rec + 0x4du))
+    if ((s32)(s8)DSB(rec + 0x52u) >= (s32)DSB(rec + 0x4du)) /* 0x37B03: [rec+0x4F] >> 24 */
         DSB(rec + 0x52u) = 0;                               /* 0x37B12 */
     if ((s8)DSB(rec + 0x52u) < 0)
         DSB(rec + 0x52u) = (u8)(DSB(rec + 0x4du) - 1u);     /* 0x37B21 */
