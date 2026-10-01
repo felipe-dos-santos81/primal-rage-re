@@ -27,6 +27,7 @@ make gp-charsel-oracle     # the same ratchets on data/k11-captures/gp-u5-charse
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
+make entry-triage          # E2: triage of the non-Ghidra entry candidates; the committed table must equal a fresh run (in make verify; skips without capstone)
 ```
 
 - **Run the binaries from the repo root.** Several tests default to the relative

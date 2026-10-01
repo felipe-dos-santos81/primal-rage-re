@@ -7,10 +7,15 @@ a counted list with evidence per row"). Plan: `2026-10-01-reverse-e2-entry-triag
 `2026-09-30-reverse-completion-e1-derivations.md` §E.6), the committed Ghidra export
 `port/decomp/prage.functions.csv` (1352 rows: 1207 real + 145 `.image`), and `port/src` at `e9271df`.
 
-**Status of the numbers.** Every figure in §E2.1-§E2.9 was measured in the planning scratch run
-(2026-10-01, the code the plan's Tasks 2-5 contain, run against the image below). They are
-**preliminary: re-measured in the plan's Task 5** and pinned there by `RealImageTests`; Task 7 replaces
-this paragraph with the Task 5 figures, or records each difference and its cause.
+**Status of the numbers.** Every figure in §E2.1-§E2.9 was measured in the planning scratch run and
+re-measured in the plan's Task 5 at commit `bc7ab91`, with one class of difference, all of it the
+"ported" column: the branch sits on U6a, whose ports of `0x23208`, `0x3640C` and `0x37DCC` moved those
+three rows from unported to ported (the planning run, on `e9271df`, saw them unported). The figures that
+depend on "ported" are therefore the Task 5 ones (targets 329 unported / 166 ported, callbacks 26 / 45,
+animation targets 63 / 49, voice sites 48 / 67 / 19, §E2.6's leaf and stub counts); no class, evidence,
+batch or supplement entry moved, and §E2.9's lead paragraph names each row. The real-image tests
+(`RealImageTests` in `tools/tests/test_entry_triage.py`) pin them, and `make entry-triage` fails when the
+committed table differs from a fresh run.
 
 **The image.** `build/diffrun --exe data/game/C/PRAGE.EXE --image-out FILE` at `e9271df`: 1 028 304 bytes
 from `0x10000` (to `0x10B0D0`, the data object's end), sha1 `ff3b8cb14e00f1c282de7b7e15dcd7c230766947`
@@ -331,15 +336,16 @@ It gates track P (§E2.6: 85 + 28 targets wait on it). A proposal, to be planned
   keep V when V is inside no Ghidra function, an instruction decodes at V, V is not after a `ret` (§E2.1(c))
   and V is not among the 579 candidates. On the image (sha1 `ff3b8cb1...`, `port/src` at `098cb7a`) it yields
   **20 values**: 6 ported (strict set: header or `fn_register`), 5 constants by the form of the instruction
-  (not examined further), **9 unexamined**. Track P takes the 9 unexamined rows (and the ported ones, as
-  already-done evidence) as a follow-up input; the 9 is a named gap, not a target count, and the list is
+  (not examined further), 1 interior to a live Ghidra body (`0x3E688`), **8 unexamined**. Track P takes the 8
+  unexamined rows (and the ported ones, as already-done evidence) as a follow-up input; the 8 is a named
+  gap, not a target count, and the list is
   neither complete (immediates built in two steps, immediates in non-Ghidra code, data dwords all escape the
   probe) nor evidence that a row is code (a decode at V is only a necessary condition).
 
   | value | instruction site(s) holding the immediate | status |
   |---|---|---|
-  | 10000 | `2C9C3` `mov eax,0x10000` (in `2C9B8`); `3C71E` `test edx,0x10000` (in `3C6E8`) | constant: a bit mask / size (`test`) |
-  | 186A0 | `422B7` `mov edx,0x186a0` (in `41C28`) | constant: 100000 decimal |
+  | 10000 | `2C9C3` `mov eax,0x10000` (in `2C9B8`); `3C71E` `test edx,0x10000` (in `3C6E8`); in the runtime region: `5E711` `sub edi,0x10000` (in `5E6D9`), `6B250` `cmp dword [esp],0x10000` (in `6B1ED`), `6F1A9` `sub edx,0x10000` (in `6F120`) | constant: a bit mask / size (`test`) |
+  | 186A0 | `422B7` `mov edx,0x186a0` (in `41C28`); in the runtime region: `63289` `mov ebx,0x186a0` (in `63180`) | constant: 100000 decimal |
   | 1D2D0 | `2FA01` `mov dword [0x10740c],0x1d2d0` (in `2F9CC`) | unexamined: stored into a data global (a stored callback?) |
   | 22BEC | `23631`, `468A9`, `468EC` (`mov`/`cmp dword [eax+0x10],0x22bec`) | ported (strict) |
   | 29D04 | `22B6F` `mov dword [eax+0x14],0x29d04` (in `22B28`) | ported (strict) |
@@ -355,7 +361,7 @@ It gates track P (§E2.6: 85 + 28 targets wait on it). A proposal, to be planned
   | 3A588 | `3A686` `mov dword [eax+0x10],0x3a588` (in `3A650`) | ported (strict, U6a) |
   | 3A6D4 | `3A7D2` `mov dword [eax+0x10],0x3a6d4` (in `3A79C`) | ported (strict) |
   | 3A820 | `3A91E` `mov dword [eax+0x10],0x3a820` (in `3A8E8`) | unexamined: same `[eax+0x10]` callback slot as `3A588` and its pose family |
-  | 3E688 | `123D6`, `126E2` (`cmp dword [ecx],..`), `12504`, `4158B` (`cmp`), `2096F` `mov ebx,0x3e688` | unexamined: compared and loaded, never stored through a pointer slot |
+  | 3E688 | `123D6`, `126E2` (`cmp dword [ecx],..`), `12504`, `4158B` (`cmp`), `2096F` `mov ebx,0x3e688` | interior to a live Ghidra body: `0x3E688` lies inside the live `0x3E62C` (`0x3E62C-0x3E695`, `2026-10-01-reverse-e2-live-functions.txt`), a continuation of a function Ghidra knows, not an entry; compared and loaded, never stored through a pointer slot |
   | 40000 | `12429` `mov eax,0x40000`; `3C728` `test edx,0x40000` | constant: a bit mask (`test`) |
   | 48000 | `14C37` `or edx,0x48000` (in `14B90`) | constant: a bit mask (`or`) |
 
