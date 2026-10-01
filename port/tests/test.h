@@ -70,6 +70,7 @@ extern int g_failures;
     X(test_voice_sites) \
     X(test_fight_voice_sites) \
     X(test_table_reached) \
+    X(test_u6_idle_loss_callbacks) \
     X(test_virtual_clock) \
     X(test_restart)
 

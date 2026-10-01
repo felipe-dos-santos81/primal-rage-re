@@ -30,6 +30,11 @@ static void b_rng_next(const u32 *r, u32 *eax)         { *eax = rng_next(r[R_EAX
 static void b_slot_flag(const u32 *r, u32 *eax)        { *eax = (u32)fighter_slot_flag(r[R_EAX]); }
 static void b_credit_spend(const u32 *r, u32 *eax)     { *eax = config_credit_spend(r[R_EAX]); }
 static void b_codeword_len(const u32 *r, u32 *eax)     { *eax = config_codeword_len(r[R_EAX]); }
+/* 0x3640C and 0x37DCC (record gameplay-u6 §U6.4/§U6.5): animation-opcode targets with no C return
+ * value. Their callers, the three `call [0x105BD4]` sites of 0x2B2A0 (0x2B56D, 0x2B594, 0x2B5EA),
+ * each overwrite EAX at once (`mov eax,ecx` at 0x2B573, 0x2B59A, 0x2B5F0), so no caller reads it:
+ * the binding mask is 0 and the comparison is the changed bytes. */
+static void b_3640c(const u32 *r, u32 *eax)            { fighter_3640c(r[R_EAX]); *eax = 0u; }
 
 /* Self-check mutants. Each is a plausible porting bug, kept only so tools/diff_verify.py
  * --self-check can prove the harness reports a difference (an assertion that cannot fail proves
@@ -70,6 +75,14 @@ static void m_codeword_len(const u32 *r, u32 *eax)     /* `>` for the signed `jg
     *eax = e;
 }
 
+static void m_3640c(const u32 *r, u32 *eax)            /* forgets the owner slot's +0x52 */
+{
+    DSB(r[R_EAX] + 0x52u) = 0u;
+    DSD(r[R_EAX] + 0x24u) = 0x40400000u;
+    DSB(r[R_EAX] + 0x4Du) = 0x14u;
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -80,6 +93,8 @@ static const binding_t k_bindings[] = {
     { "config_credit_spend@mutant", m_credit_spend, 0xFFFFFFFFu },
     { "config_codeword_len@mutant", m_codeword_len, 0xFFFFFFFFu },
     { "config_credit_spend@signed", m_credit_spend_signed, 0xFFFFFFFFu },
+    { "fighter_3640c",            b_3640c,        0x00000000u },
+    { "fighter_3640c@mutant",     m_3640c,        0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

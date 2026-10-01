@@ -656,6 +656,10 @@ void fighter_3e244(u32 side);
  * streams (EAX = rec): with an owner slot, the landing (+0x58, 0x188AC,
  * +0x54, +0x42 bit 2, the record's +0x36/+0x24) and a 0xBB1DC spawn. */
 void fighter_36280(u32 rec);
+/* 0x3640C (record gameplay-u6 §U6.4): the 0xD000 target of seven streams.
+ * EAX = rec: +0x52 = 0, hold 3.0, +0x4D = 0x14; the owner slot (rec+0x14),
+ * when set, +0x52 = 5. */
+void fighter_3640c(u32 rec);
 
 /* 0x48AAC and 0x48D94 (record §42-B). Character 2's two finisher +0x0C
  * callbacks (0x3531C case 7: EAX = slot, EDX = rec, EBX = side), stored by

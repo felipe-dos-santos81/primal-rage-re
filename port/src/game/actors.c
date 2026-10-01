@@ -108,6 +108,7 @@ static void anim_code_37CFC(u32 rec, u32 arg);
 static void anim_code_14E80(u32 rec, u32 arg);
 static void anim_code_370F0(u32 rec, u32 arg);
 static void anim_code_36280(u32 rec, u32 arg);
+static void anim_code_3640C(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
@@ -372,6 +373,10 @@ int actors_init(void)
      * calls DS_001078E8 as (slot, rec) and tests the return). */
     fn_register(0x3E244u, (void (*)(void))fighter_3e244);
     fn_register(0x36280u, (void (*)(void))anim_code_36280);
+    /* PORT: record gameplay-u6 §U6.4. The 0xD000 target 0x3640C (opcode 0x10,
+     * mode 0x4000) of seven streams (the dwords at 0xD2156, 0xD3E2A, 0xE063E,
+     * 0xE39F2, 0xE6DF2, 0xEA626 and 0xECBFA). */
+    fn_register(0x3640Cu, (void (*)(void))anim_code_3640C);
     fn_register(0x48AACu, (void (*)(void))fighter_48aac);
     fn_register(0x48D94u, (void (*)(void))fighter_48d94);
     fn_register(0x48BE0u, (void (*)(void))fighter_48be0);
@@ -1432,6 +1437,16 @@ static void anim_code_36280(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_36280(rec);
+}
+
+/* 0x3640C — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x3640C takes EAX = rec and does not
+ * read EDX (pushed at 0x3640C, DL overwritten at 0x36411, popped at 0x3642B),
+ * so this wrapper drops the operand (record gameplay-u6 §U6.4). */
+static void anim_code_3640C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3640c(rec);
 }
 
 /* 0x36870 — the animation-opcode target shape. PORT: anim_indirect calls every

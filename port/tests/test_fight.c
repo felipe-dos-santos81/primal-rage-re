@@ -43846,3 +43846,61 @@ int test_table_reached(void)
     check_u0_bonus_count_step();
     return g_failures - before;
 }
+
+/* ---- gameplay-u6 §U6.2-§U6.5: the four idle-loss callbacks ----------------
+ * The functions the gp-idle-loss replay reached unregistered (record
+ * gameplay-ground-truth §G.24) or, once those were ported, reached next
+ * (0x37DCC, record gameplay-u6 §U6.5). Each check seeds sentinels that differ
+ * from every post-condition, asserts the raw's references in the image, and
+ * calls the function both directly and through its fn_resolve registration. */
+
+typedef void (*u6_anim_fn)(u32 rec, u32 arg);
+
+/* §U6.4: 0x3640C, EAX = rec: +0x52 = 0, hold 3.0, +0x4D = 0x14, and the owner
+ * slot rec+0x14's +0x52 = 5 when it is set; the seven 0xD000 stream dwords. */
+static void check_u6_3640c(void)
+{
+    static const u32 site[7] = {
+        0xD2156u, 0xD3E2Au, 0xE063Eu, 0xE39F2u, 0xE6DF2u, 0xEA626u, 0xECBFAu,
+    };
+    u32 rec = FIGHT_RECS, own = FIGHT_RECS + 0x200u;
+    u8 sv_rec[0x60], sv_own[0x60];
+    u6_anim_fn fn = (u6_anim_fn)(void *)fn_resolve(0x3640Cu);
+    u32 k, pass;
+    for (k = 0; k < 7u; k++) {
+        CHECK_EQ_INT((int)DSD(site[k]), 0x0003640C);
+        CHECK_EQ_INT((int)DSW(site[k] - 2u), 0xD000);
+    }
+    CHECK(fn != NULL, "actors_init registered 0x3640C");
+    tf_snap(sv_rec, rec, sizeof sv_rec);
+    tf_snap(sv_own, own, sizeof sv_own);
+    for (pass = 0; pass < 2u; pass++) {          /* direct, then through fn_resolve */
+        for (k = 0; k < 2u; k++) {               /* no owner, then an owner slot */
+            mem_fill(rec, 0xA5, sizeof sv_rec);
+            mem_fill(own, 0xC3, sizeof sv_own);
+            DSB(rec + 0x52u) = 0x7Fu;
+            DSD(rec + 0x24u) = 0xDEADBEEFu;
+            DSB(rec + 0x4Du) = 0x99u;
+            DSD(rec + 0x14u) = k ? own : 0u;
+            DSB(own + 0x52u) = 0x33u;
+            if (pass == 0u) fighter_3640c(rec);
+            else if (fn != NULL) fn(rec, 0xFFFFu);
+            CHECK_EQ_INT((int)DSB(rec + 0x52u), 0);
+            CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+            CHECK_EQ_INT((int)DSB(rec + 0x4Du), 0x14);
+            CHECK_EQ_INT((int)DSB(rec + 0x4Cu), 0xA5);  /* the neighbours stay */
+            CHECK_EQ_INT((int)DSB(rec + 0x4Eu), 0xA5);
+            CHECK_EQ_INT((int)DSB(own + 0x52u), k ? 5 : 0x33);
+            CHECK_EQ_INT((int)DSB(own + 0x53u), 0xC3);
+        }
+    }
+    tf_put(sv_rec, rec, sizeof sv_rec);
+    tf_put(sv_own, own, sizeof sv_own);
+}
+
+int test_u6_idle_loss_callbacks(void)
+{
+    int before = g_failures;
+    check_u6_3640c();
+    return g_failures - before;
+}

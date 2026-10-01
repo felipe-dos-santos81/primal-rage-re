@@ -1856,6 +1856,24 @@ void fighter_36280(u32 rec)
     (void)sound_voice(0x6Fu);                           /* 0x362E0/0x362E5 0x2C3FC */
 }
 
+/* 0x3640C — record gameplay-u6 §U6.4. The 0xD000 stream target (opcode 0x10)
+ * at the seven dwords 0xD2156, 0xD3E2A, 0xE063E, 0xE39F2, 0xE6DF2, 0xEA626 and
+ * 0xECBFA (each after a 0xD000 word; Ghidra has no function here). EAX = rec:
+ * its +0x52 = 0, its hold 3.0 and +0x4D = 0x14; with the owner slot rec+0x14
+ * set, that slot's +0x52 = 5. EDX is pushed and popped (0x3640C/0x3642B);
+ * the EAX it leaves (the owner slot) is not read by the three 0x2B2A0 call
+ * sites, which each reload EAX at once (0x2B573, 0x2B59A, 0x2B5F0). */
+void fighter_3640c(u32 rec)
+{
+    u32 slot;
+    DSB(rec + 0x52u) = 0u;                              /* 0x3640D */
+    DSD(rec + 0x24u) = 0x40400000u;                     /* 0x36416 */
+    DSB(rec + 0x4Du) = 0x14u;                           /* 0x36411/0x3641D */
+    slot = DSD(rec + 0x14u);                            /* 0x36420 */
+    if (slot == 0u) return;                             /* 0x36423/0x36425 */
+    DSB(slot + 0x52u) = 5u;                             /* 0x36427 */
+}
+
 /* 0x36300. The +0x52 == 13 handler. */
 void fighter_state_36300(u32 slot, u32 rec)
 {
