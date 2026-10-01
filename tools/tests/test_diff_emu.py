@@ -110,3 +110,47 @@ class RunOriginalTests(unittest.TestCase):
         a = E.run_original(img, 0x10000, pokes=pokes)
         b = E.run_original(img, 0x10000, pokes=pokes)
         self.assertEqual((a.regs, a.writes), (b.regs, b.writes))
+
+
+# 10000: cmp eax,0; je 10008; inc eax; jmp 10009; (10008) dec eax; (10009) ret
+DIAMOND = bytes.fromhex("83F800" "7403" "40" "EB01" "48" "C3")
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class StaticScanTests(unittest.TestCase):
+    def test_blocks_of_a_diamond(self):
+        info = E.static_scan(image(DIAMOND), 0x10000)
+        self.assertEqual(info.leaders, [0x10000, 0x10005, 0x10008, 0x10009])
+        self.assertEqual((info.indirect, info.truncated), ([], False))
+
+    def test_coverage_reports_the_unhit_block(self):
+        img = image(DIAMOND)
+        info = E.static_scan(img, 0x10000)
+        taken = E.run_original(img, 0x10000, regs={"eax": 0})       # je taken: skips 0x10005
+        hit, unhit = E.coverage(info, taken.executed)
+        self.assertEqual((hit, unhit), ([0x10000, 0x10008, 0x10009], [0x10005]))
+        other = E.run_original(img, 0x10000, regs={"eax": 1})
+        _, unhit2 = E.coverage(info, taken.executed | other.executed)
+        self.assertEqual(unhit2, [])
+
+    def test_an_indirect_jump_is_flagged(self):
+        info = E.static_scan(image(bytes.fromhex("FFE0")), 0x10000)    # jmp eax
+        self.assertEqual(info.indirect, [0x10000])
+
+    def test_a_direct_target_outside_the_image_is_unresolved(self):
+        # jmp 0x7000000
+        rel = (0x7000000 - 0x10005) & 0xFFFFFFFF
+        info = E.static_scan(image(b"\xE9" + le32(rel)), 0x10000)
+        self.assertEqual(info.unresolved, [0x7000000])
+
+    def test_a_tail_jump_is_followed_into_the_next_function(self):
+        # 10000: jmp 0x10010      10010: xor eax,eax; ret
+        code = bytearray(0x20)
+        code[0:5] = b"\xE9" + le32(0x10010 - 0x10005)
+        code[0x10:0x13] = bytes.fromhex("31C0" "C3")
+        info = E.static_scan(image(bytes(code)), 0x10000)
+        self.assertEqual(info.leaders, [0x10000, 0x10010])
+
+
+if __name__ == "__main__":
+    unittest.main()

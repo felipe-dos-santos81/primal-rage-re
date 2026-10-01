@@ -189,3 +189,63 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
         if new != old:
             writes[a] = new
     return OrigResult(outcome, detail, final_regs, writes, executed, sorted(outside))
+
+
+# ---- static scan: the function's basic blocks, for the coverage claim (spec §5.3) -------------
+
+@dataclass
+class StaticInfo:
+    leaders: list                # sorted block-leader addresses
+    insns: dict                  # addr -> size, every instruction reached by recursive descent
+    indirect: list               # addrs of indirect jmp/call: their targets are unknown (a jump table)
+    unresolved: list             # direct targets outside the image
+    truncated: bool              # the descent hit max_insns
+
+
+def static_scan(image, entry, max_insns=4000):
+    insns, leaders, indirect, unresolved = {}, {entry}, [], []
+    work, truncated = [entry], False
+    while work:
+        addr = work.pop()
+        while True:
+            if addr in insns:
+                break
+            if not image.contains(addr):
+                unresolved.append(addr)
+                break
+            if len(insns) >= max_insns:
+                truncated = True
+                work.clear()
+                break
+            ins = _decode(image.bytes_at(addr, 15), addr)
+            if ins is None:
+                break
+            insns[addr] = ins.size
+            nxt = addr + ins.size
+            m = ins.mnemonic
+            if ins.group(capstone.CS_GRP_RET):
+                break
+            if ins.group(capstone.CS_GRP_JUMP):
+                tgt = _direct_target(ins)
+                if tgt is None:
+                    indirect.append(addr)
+                    break
+                leaders.add(tgt)
+                work.append(tgt)
+                if m == "jmp":
+                    break
+                leaders.add(nxt)
+                addr = nxt
+                continue
+            if ins.group(capstone.CS_GRP_CALL) and _direct_target(ins) is None:
+                indirect.append(addr)
+            addr = nxt
+    return StaticInfo(sorted(a for a in leaders if a in insns), insns, sorted(set(indirect)),
+                      sorted(set(unresolved)), truncated)
+
+
+def coverage(info, executed):
+    """(hit, unhit) block leaders: a block is hit when its leader instruction executed."""
+    hit = [a for a in info.leaders if a in executed]
+    unhit = [a for a in info.leaders if a not in executed]
+    return hit, unhit
