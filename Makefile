@@ -539,8 +539,13 @@ gp-moves-oracle: build ## Gameplay oracle: gp-u6-moves-b frame, trace and moves 
 # the capture; with it, an unpinned value or another poll.log fails. Narrow: an
 # event is judged on the latch, the pause bytes, the pad words, mode, b1f, cred
 # and rng only; the pause/prompt frames are not compared (record §K.10).
-GP_KEYS_MIN_EFFECTS =
-GP_KEYS_CAPTURE_SHA256 =
+# MIN_EFFECTS: the port reproduces the first 11 of the 11 events of record §K.6 on
+# data/k11-captures/gp-keys-fight (Task 6, record §K.12: "effects: first not reproduced 11,
+# ratchet N 0 ok (improved: raise N)"); raise it when gp_keys prints "improved: raise N".
+# CAPTURE_SHA256: that capture's poll.log; another capture fails until it is re-measured
+# (Task 5 Step 1) and both values re-pinned.
+GP_KEYS_MIN_EFFECTS = 11
+GP_KEYS_CAPTURE_SHA256 = 8425afbc46d51173532f6f4c27a8f16c594e2bc572b4273e056bdbf51a9678ae
 gp-keys-oracle: build ## In-match keys: evidence + effects ratchet on gp-keys-fight (skips without data/k11-captures/gp-keys-fight)
 	@echo "== in-match keys oracle: gp-keys-fight (evidence, effects ratchet) =="
 	@$(MAKE) --no-print-directory gp-replay scenario=gp-keys-fight GP_OPTIONAL=1

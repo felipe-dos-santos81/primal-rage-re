@@ -557,6 +557,63 @@ No rule was corrected: the raw rules of §K.6 hold on the capture as written.
 - k3 (the restart): **named gap.** The capture has no `S` at `c = 0x86F`, and also none at `870 871 872`; the first record after `c` is at `0x873` (14.6 s later, after the boot movies), while the port's trace has its first record after the landing at `c + 1` (§K.8: 2158 = `c + 1`). Both pass the rule (it reads "the first record after `c`"), but at different frames. "No record at `c`" is consistent with abandonment and not proved by it: the poller was reading at `f = 0x86F` (the two `H` records, ms 57248–57249) and its next state change is `P f=870 mode=3` at ms 57272, so iteration `0x86F` ended in the restart (mode 3 is set by the restart tail) with no spin the poller saw; but the other missed frames (`13A 1D0 268 652 653`) are iterations that never spun at a mode change (`t508` resets, e.g. `0x654` `t508=5`), the same signature a poller gap would leave. The log cannot tell the two apart; the claim for event 10 rests on the record after it (mode 3, rng `0xABCD`, the boot `cred`) and on the raw (`0x24AB0`, §K.6), not on the absence alone.
 - k9 (the boot credit count): the capture's first `S` record is `poll.log:4` `f=5 mode=3 cred=5`; `cred` stays 5 until `f = 0x269` (mode `0x1A`, the start of LEFT PLAYER ARCADE, cred 4) and the restart's first record (`0x873`) shows 5 again. So the first `S` carries the boot value 5, and the restart restores it.
 
+### Replay and pins (Task 6)
+
+**The miss set (Step 1, before the table).** `gp_session.py port-script --scenario gp-keys-fight` wrote a 38-line script (`enter_frame 314`); the `PR_GP_DUMP` replay printed `test_gp_replay: 1 restart(s) landed` and
+
+```
+fn-miss PR_GP_DUMP 0x5D812 actor_spawn hits=4420
+fn-miss PR_GP_DUMP 0x5D812 set_dead hits=4079
+fn-miss PR_GP_DUMP 0x29D60 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP 0x5D812 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+FAIL …test_platform.c:193: 4 != 2
+fn-miss PR_GP_DUMP: unexpected 0x29D60 from frontend_mode_1b_step
+fn-miss PR_GP_DUMP: unexpected 0x5D812 from frontend_mode_1b_step
+FAILURES: 3
+```
+
+The only failures are the miss log's. The measured set is the re-baselined one (§K.8): the base pair plus `0x29D60 frontend_mode_1b_step` (a bare `ret`, the wipe's end into mode `0x10`, record §G.24) and `0x5D812 frontend_mode_1b_step` (the runtime's `xor eax,eax; ret` stub, the wipe into mode 5, record §G.24). No `0x23208`, `0x3A588`, `0x3640C` or `0x37DCC` miss (no regression of U6a's registrations); no pair outside §G.24.
+
+**The table (Step 2).** `k_miss_gp_keys_fight[]` holds those two rows; `fnm_known(addr, ctx, frontend, idle_loss, charsel, keys_fight)` (U5's `charsel` 5th, `keys_fight` 6th; the `--check` call passes `0, 0, 0, 0`). The brief's patch applied as written (`git apply`, offsets only). `make gp-replay scenario=gp-keys-fight`: `test_gp_replay: 1 restart(s) landed`, `all checks passed`. Mutation (restored): delete the `0x29D60` row → `FAIL …test_platform.c:204: 4 != 3`, `fn-miss PR_GP_DUMP: unexpected 0x29D60 from frontend_mode_1b_step`, `FAILURES: 2`.
+
+**The effects (Step 3).** `gp_keys.py effects --min-effects 0` on the replay: eleven `ok` rows (the same `c`/`F` as the evidence) and `effects: first not reproduced 11, ratchet N 0 ok (improved: raise N)`. K = 11, the dry run's prediction (§K.8). No `FAIL` row. The restart is judged at different frames on the two sides (review note k3): the port's trace has no `T` at `0x86F` and its first record after it is `0x870` (mode 3, rng `ABCD`, cred 5, b1f 0; `T` lines at `870..873`, the replay's end), the capture's is `0x873`; both meet the rule.
+
+**The pins (Step 4).** Makefile: `GP_KEYS_MIN_EFFECTS = 11`, `GP_KEYS_CAPTURE_SHA256 = 8425afbc46d51173532f6f4c27a8f16c594e2bc572b4273e056bdbf51a9678ae`, with the provenance comment. `make gp-keys-oracle`: `test_gp_replay: 1 restart(s) landed`, `all checks passed`, `evidence: 11 of 11 events ok`, `effects: first not reproduced 11, ratchet N 11 ok`, exit 0.
+
+**Mutations of the pins (Step 5) and the present-capture failure matrix (review note k9)**, each alone, restored:
+
+| # | mutation | result |
+|---|---|---|
+| R1 | `GP_KEYS_MIN_EFFECTS=12` | `effects: FAIL: ratchet N 12 > 11 events`, make exit 2 |
+| R2 | `GP_KEYS_CAPTURE_SHA256=0000…0000` | `FAIL: poll.log sha256 8425afbc…678ae, pinned 0000…0000 (re-measure and re-pin)` (at the evidence step), exit 2 |
+| R3 | `GP_KEYS_MIN_EFFECTS=` | `effects: FAIL: --min-effects is not pinned (first not reproduced: 11)`, exit 2 |
+| R4 | `flow.c` `game_key_loop`: the pause's `config_screen_wait(-1);` (`0x24E46/0x24E4B`) deleted, rebuilt | replay `all checks passed`; `evidence: 11 of 11 events ok`; `effects: pause f=809 FAIL: lat 20 at f=809, want 0`, `FAIL: first not reproduced 1 < ratchet N 11`, exit 2 |
+| R5 | `GP_KEYS_CAPTURE_SHA256=` | `FAIL: --capture-sha256 is not pinned (this poll.log: 8425afbc…678ae)`, exit 2 |
+| R6 | `PR_ORACLE_REQUIRED=1 make gp-keys-oracle` | passes: `1 restart(s) landed`, `11 of 11`, `ratchet N 11 ok`, exit 0 |
+| R7 | `GP_KEYS_MIN_EFFECTS=10` | `first not reproduced 11, ratchet N 10 ok (improved: raise N)`, exit 0 |
+
+**The report-only comparison (Step 6).** `make gp-report scenario=gp-keys-fight`:
+
+```
+gp_compare: gp-keys-fight: frames: window from capture 100 (raw 1747); 1028 classified: 660 clean, 361 splice, 2 transition, 5 unexplained, 12 all-black
+gp_compare: gp-keys-fight: frames: FIRST UNEXPLAINED capture 835 (raw 3934): nearest port 593, rows 0..91, x 0..319 (17138 px)
+gp_compare: gp-keys-fight: frames: UNEXPLAINED capture 1136 (raw 5027): nearest port 0, rows 0..199, x 0..319 (55564 px)
+gp_compare: gp-keys-fight: frames: UNEXPLAINED capture 1137 (raw 5032): nearest port 0, rows 0..199, x 0..319 (49426 px)
+gp_compare: gp-keys-fight: frames: UNEXPLAINED capture 1138 (raw 5036): nearest port 0, rows 0..199, x 0..319 (49426 px)
+gp_compare: gp-keys-fight: frames: UNEXPLAINED capture 1139 (raw 5041): nearest port 0, rows 0..199, x 0..319 (45420 px)
+gp_compare: gp-keys-fight: frames: coverage (reported, not ratcheted): 13 non-black port frame(s) up to port 788 not exhibited by any classified capture frame: [9, 11, 246, 247, 280, 281, 415, 455, 456, 457, 458, 460, 500]
+gp_compare: gp-keys-fight: trace: 1841 frames compared (f 13A..), 8 without a capture snapshot; first tick difference f=13B (reported, not ratcheted)
+gp_compare: gp-keys-fight: trace: normalised (reported, not ratcheted): ent 0 of 1841 differ; t508 1504 of 1841 differ (first f=27B)
+gp_compare: gp-keys-fight: trace: 0 differing through 2163
+```
+
+- **Trace:** no traced difference through `f = 0x873` (2163), the replay's end: the path to round 1, every event and the restart agree on every `TRACE_FIELDS` field.
+- **Finding: capture frame 835 (cause not isolated).** It is not before the first event's `c` (`0x7FF`): it falls at the altq-n event (`c = 0x833`). Measured against the port's frames (`frames.txt`: port 592 = `f=0x832`, 593 = `f=0x833`): capture 834 equals port `0x832` exactly; capture 835's rows 0..80 equal port `0x832`, rows 92..199 equal port `0x833`, and rows 81..91 at x 56..189 (73–99 px a row differ from both, inside Sauron's sprite) equal neither; capture 836's rows 0..91 equal `0x833`. So 835 is a top/bottom splice of `0x832`/`0x833` with an 11-row band that neither port frame holds. The band shows no prompt text. Candidates, not decided: the QUIT TO DOS? prompt (`0x249F0`) presents through `0x2EA78(-1)` and the port's dump holds one frame per `f`, so a prompt present is not dumped (§K.10 item 2); or a sprite drawn during scan-out. The pause (`0x809`) and ABANDON (`0x81E`) prompts left no unexplained frame. Not ratcheted here; a frame ratchet on `gp-keys-fight` is the follow-up §K.10 item 2 names.
+- Captures 1136–1139 (raw 5027..5041) are past the replay's end: the capture plays the restart's boot movies at `f = 0x870..0x872` (14.6 s); the port's replay ends at `0x873`, and its 155 frames at `f=0x870` (the restart's screens) do not explain them. This is where the port's script ends, not a divergence.
+
+**Gate (light, `t6`).** `all checks passed` (plain and `PR_RESTART=1`); `gp-exit=0`; `GP-IDLE-LOSS-EQUAL`; `gp-idle-loss` `first unexplained 2064, ratchet N 2064 ok`, `trace: 0 differing through 8319; ratchet N 8320 ok`, `0 restart(s) landed`; `gp-u5-charsel` `516` and `1513` ok, `0 restart(s) landed`; `gp-keys-fight` `1 restart(s) landed`, `evidence: 11 of 11 events ok`, `effects: first not reproduced 11, ratchet N 11 ok`; `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`; tool tests `Ran 141 tests OK` (the plan's 120 + 3 from U6b's Task 1 + 1 for k5 + 17 that the capture-hygiene merge `2f0c65f` added to `test_gp_capture`: 13 → 30); `771 1203 64`, `731 731 100`.
+
 ## §K.13 The host binding (Task 7)
 
 **The raw truth (§K.7).** Fixed-up image (`build/diffrun --exe data/game/C/PRAGE.EXE --image-out`, capstone base `0x10000`, file offset = VA - `0x10000`), re-read for this task:
