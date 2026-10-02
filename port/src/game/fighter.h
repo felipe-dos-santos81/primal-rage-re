@@ -1250,5 +1250,7 @@ void fighter_48170(u32 side);
 void fighter_480b4(u32 side);
 void fighter_4811c(u32 slot, u32 rec, u32 side);
 void fighter_4811c_case10(u32 slot, u32 side);
+/* §P3.8: 0x48608's +0x0C callback (slot, rec, side). */
+void fighter_4844c(u32 slot, u32 rec, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

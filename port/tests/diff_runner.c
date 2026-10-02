@@ -2047,6 +2047,87 @@ static void m_4811c_order(const u32 *r, u32 *eax)      /* +0x54 = 0 after the 0x
     *eax = 0u;
 }
 
+/* §P3.8: the +0x0C callback 0x4844C (0x3531C case 7), mask 0. */
+static void b_4844c(const u32 *r, u32 *eax)            { fighter_4844c(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void m_4844c_at(u32 side, int swap, int uns, int noabs, int late54, int ubound, int zext)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);
+    DSW(0x0010838Cu + ctx[0] * 2u) = (u16)(DSW(0x0010838Cu + ctx[0] * 2u) + 1u);
+    DSW(0x00108388u + ctx[0] * 2u) = (u16)(DSW(0x00108388u + ctx[0] * 2u) + 1u);
+    switch (DSB(ctx[2] + 0x57u)) {
+    case 0u: {
+        s32 v = (s32)(s16)DSW(ctx[4] + 0x34u);
+        u16 c = DSW(0x0010838Cu + ctx[0] * 2u);
+        if (!noabs && v < 0) v = -v;
+        if (v > 0x15E) DSB(ctx[4] + 0x42u) = 0u;
+        if (uns ? c <= 0x1Eu : (s32)(s16)c <= 0x1E) return;
+        DSB(ctx[2] + 0x54u) = 0u;
+        fighter_36870(ctx[4]);
+        return;
+    }
+    case 2u: {
+        int hit = (DSB(ctx[3] + 0x43u) & 0x30u) != 0u;
+        u32 t = (hit != swap) ? 0x000C94CEu : 0x000C94BAu, e;
+        s32 n = (s32)(s16)DSW(0x00108388u + ctx[0] * 2u);
+        for (e = t; e != t + 0x14u; e += 4u)
+            if ((s32)(s16)DSW(e) == n) (void)sound_voice((u32)DSW(e + 2u));
+        return;
+    }
+    case 3u: {
+        s32 w;
+        u16 x;
+        DSW(ctx[2] + 0x74u) = 0u;
+        DSB(ctx[4] + 0x28u) = (u8)(DSB(ctx[4] + 0x28u) | 0x20u);
+        DSW(0x00108384u + ctx[0] * 2u) = DSW(ctx[2] + 0x2Cu);
+        w = (s32)(s16)DSW(0x000BD884u + (u32)DSB(ctx[2] + 0x7Au) * 2u);
+        if (ubound ? (u32)w <= DSD(ctx[2] + 0x30u) : w <= (s32)DSD(ctx[2] + 0x30u)) return;
+        if (!late54) DSB(ctx[2] + 0x54u) = 0u;
+        fighter_3c148(ctx[0]);
+        if (late54) DSB(ctx[2] + 0x54u) = 0u;
+        fighter_3c16c(ctx[0]);
+        hit_anchor_set(ctx[0], DSD(ctx[4] + 0x18u), 0u);
+        actors_anim_begin(ctx[4], DSD(0x000C8B58u + (u32)DSB(ctx[2] + 0x7Au) * 4u), 0x40400000u);
+        x = DSW(0x00108384u + ctx[0] * 2u);
+        hit_anchor_x(ctx[0], zext ? (u32)x : (u32)(s32)(s16)x);
+        DSB(ctx[2] + 0x57u) = 4u;
+        return;
+    }
+    default:
+        return;
+    }
+}
+static void m_4844c(const u32 *r, u32 *eax)            /* the two voice tables swapped */
+{
+    m_4844c_at(r[R_EBX], 1, 0, 0, 0, 0, 0);
+    *eax = 0u;
+}
+static void m_4844c_signed(const u32 *r, u32 *eax)     /* the count 0x10838C compared unsigned */
+{
+    m_4844c_at(r[R_EBX], 0, 1, 0, 0, 0, 0);
+    *eax = 0u;
+}
+static void m_4844c_abs(const u32 *r, u32 *eax)        /* +0x34 compared without its absolute value */
+{
+    m_4844c_at(r[R_EBX], 0, 0, 1, 0, 0, 0);
+    *eax = 0u;
+}
+static void m_4844c_order(const u32 *r, u32 *eax)      /* +0x54 = 0 after 0x3C148 */
+{
+    m_4844c_at(r[R_EBX], 0, 0, 0, 1, 0, 0);
+    *eax = 0u;
+}
+static void m_4844c_bound(const u32 *r, u32 *eax)      /* the slot's +0x30 compared unsigned */
+{
+    m_4844c_at(r[R_EBX], 0, 0, 0, 0, 1, 0);
+    *eax = 0u;
+}
+static void m_4844c_zext(const u32 *r, u32 *eax)       /* 0x188DC's word zero-extended */
+{
+    m_4844c_at(r[R_EBX], 0, 0, 0, 0, 0, 1);
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -2276,6 +2357,13 @@ static const binding_t k_bindings[] = {
     { "fighter_4811c@mutant",     m_4811c,        0x00000000u },
     { "fighter_4811c@signed",     m_4811c_signed, 0x00000000u },
     { "fighter_4811c@order",      m_4811c_order,  0x00000000u },
+    { "fighter_4844c",            b_4844c,        0x00000000u },
+    { "fighter_4844c@mutant",     m_4844c,        0x00000000u },
+    { "fighter_4844c@signed",     m_4844c_signed, 0x00000000u },
+    { "fighter_4844c@abs",        m_4844c_abs,    0x00000000u },
+    { "fighter_4844c@order",      m_4844c_order,  0x00000000u },
+    { "fighter_4844c@bound",      m_4844c_bound,  0x00000000u },
+    { "fighter_4844c@zext",       m_4844c_zext,   0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -362,7 +362,7 @@ P3_MASKS = {"fighter_475ec": 0, "fighter_47608": 0, "fighter_47624": 0, "fighter
             "fighter_47874": 0, "fighter_47830": 0, "fighter_47798": 0xFFFFFFFF, "fighter_477a8": 0xFFFFFFFF,
             "fighter_477e8": 0, "fighter_47fcc": 0, "fighter_47cb0": 0xFFFFFFFF, "fighter_47d24": 0,
             "fighter_47e9c": 0, "fighter_48608": 0, "fighter_48054": 0xFFFFFFFF, "fighter_480b4": 0,
-            "fighter_48170": 0, "fighter_4811c": 0}
+            "fighter_48170": 0, "fighter_4811c": 0, "fighter_4844c": 0}
 P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"call #0"},
             "fighter_47608@mutant": {"call #0 memory"}, "fighter_47624@mutant": {"call #0 memory"},
             "fighter_48964@mutant": {"call #1"}, "fighter_48964@late": {"call #0 memory"},
@@ -397,7 +397,11 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
             "fighter_48170@order": {"call #3 memory", "call #4 memory"},
             "fighter_48170@reset": {"call #4"},
             "fighter_4811c@mutant": {"call #0"}, "fighter_4811c@signed": {"byte", "call #0"},
-            "fighter_4811c@order": {"call #0 memory"}}
+            "fighter_4811c@order": {"call #0 memory"},
+            "fighter_4844c@mutant": {"call #0", "call #1"}, "fighter_4844c@signed": {"byte", "call #0"},
+            "fighter_4844c@abs": {"byte"}, "fighter_4844c@order": {"call #0 memory"},
+            "fighter_4844c@bound": {"byte", "call #0", "call #1", "call #2", "call #3", "call #4"},
+            "fighter_4844c@zext": {"call #4"}}
 
 
 @needs_unicorn
@@ -657,7 +661,11 @@ class RealFunctionTests(unittest.TestCase):
                           # 0x36D98 on the other slot (g1, g3: the cases whose 0x468D8 AL is set), 0x4811C's word
                           # signed (i5 alone)
                           ("fighter_48054@eax", ["n2", "n3"]), ("fighter_480b4@signed", ["x2", "x3"]),
-                          ("fighter_48170@reset", ["g1", "g3"]), ("fighter_4811c@signed", ["i5"])):
+                          ("fighter_48170@reset", ["g1", "g3"]), ("fighter_4811c@signed", ["i5"]),
+                          # 0x4844C: the count signed (a3 alone), |+0x34| (a2's -0x15F alone), the bound signed
+                          # (aB's -1 alone), 0x188DC's word signed (aA's 0xF000 alone)
+                          ("fighter_4844c@signed", ["a3"]), ("fighter_4844c@abs", ["a2"]),
+                          ("fighter_4844c@bound", ["aB"]), ("fighter_4844c@zext", ["aA"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
@@ -672,7 +680,7 @@ class RealFunctionTests(unittest.TestCase):
                                  0x22404: (), 0x36870: ("esi", "edi", "ebp"), 0x35838: ("ebx", "edx"),
                                  0x3B298: ("edx", "edi", "ebp"), 0x39FB0: (), 0x3A95C: ("edx",),
                                  0x3C190: ("edx",), 0x3B714: ("edx",), 0x48170: (), 0x3C148: (), 0x468D8: (),
-                                 0x36D98: (), 0x188DC: ("edx",)})
+                                 0x36D98: (), 0x188DC: ("edx",), 0x3C16C: ()})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -767,8 +775,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (63), the 14 without are counted apart
-        self.assertIn("diff-verify: 77/77 functions VERIFIED; 150/150 mutants detected; 1 named gaps; "
-                      "11/63 rows with callees closed (14 have none).", out.getvalue())
+        self.assertIn("diff-verify: 78/78 functions VERIFIED; 156/156 mutants detected; 1 named gaps; "
+                      "11/64 rows with callees closed (14 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

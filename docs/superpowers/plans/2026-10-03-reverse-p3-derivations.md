@@ -391,10 +391,51 @@ EBX = side, ctx; the side's words `0x10838C` and `0x108388` + 1 (`inc edx; inc e
   `0x2BC30(ctx[4], [0xC8B58 + 4c], 3.0)`, `0x188DC(side, the signed word 0x108384[side])`, +0x57 = 4.
 - 1, 4 and above 4: nothing.
 
-Cases `a0`..`aD` (14); `@mutant` (the tables swapped) `call #0` (`a6`/`a7`: key 2 is 0x78 in both), `@signed` (the
-count unsigned: `a3`'s 0x7FFF + 1 alone), `@abs` (no absolute value: `a2`'s -0x15F alone), `@order` (+0x54 after
-`0x3C148`) `call #0 memory`, `@bound` (the dword +0x30 unsigned: `aB`'s -1 alone, where the raw goes on), `@zext`
-(`aA`'s +0x2C word 0xF000 alone, `call #4`).
+Cases `a0`..`aR` (28, 23/23 blocks); `@mutant` (the tables swapped) `call #0`/`call #1` (`a5`/`a6`: key 2 is 0x78 in
+both; `aR`'s second voice), `@signed` (the count unsigned: `a3`'s 0x7FFF + 1 alone), `@abs` (no absolute value: `a2`'s
+-0x15F alone), `@order` (+0x54 after `0x3C148`) `call #0 memory`, `@bound` (the dword +0x30 unsigned: `aB`'s -1 alone,
+where the raw goes on), `@zext` (`aA`'s +0x2C word 0xF000 alone, `call #4`).
+
+**Review of the row and the unit check (same commit; each hole closed and proved by a port mutation, the row by `diff_verify
+--function fighter_4844c`, the unit check by `run_tests`).** About 90 mutations of `fighter_4844c` (the side index of
+each word, the slot/record/other-slot choice, each bound, width, sign, table, loop bound and start, entry skip, the
+argument of each callee, the state byte's high bits) were run against both; the first run found these survivors and
+each is closed:
+- *Zero-extended or word-wide `+0x42` clear* survived both: `rec+0x43` was unseeded (zero). The row seeds `+0x43`
+  (0x4B own, 0x4C other) and the unit run asserts it (`DSW(+0x42) = 0` fails).
+- *The table's keys.* The row exercised three of the ten (key, voice) pairs (CE 2 and 56, BA 25; keys 4 and 0x33 in neither table); `aE..aK`
+  and the unit sweep now run all ten (CE: 2/0x78 4/0x70 25/0x70 51/0x79 56/0x71; BA: 2/0x78 4/0x68 25/0x68 51/0x79
+  56/0x64) on both sides, with `+0x43` on bits inside the mask 0x30 (0x10, 0x20, 0x30) and outside it (0x00, 0x0F,
+  0xCF: a mask of 0xFF or `!= 0` of the byte would pick `0xC94CE`) and the own slot's `+0x43` the opposite. The real
+  table has unique, positive keys, so a `movsx` compare and a stop at the first match are unobservable on it: `aQ`
+  pokes the first key of `0xC94CE` to 0xFFFE (-2) against the count 0xFFFD + 1 (a zero-extended compare fails) and
+  `aR` pokes `0xC94BA`'s second key to 2 (the scan goes on: 0x78 then 0x6A in the row, then 0x68 in the unit run,
+  where the words are put back); an early `return` after the first voice fails both.
+- *Side 1.* The unit check ran state 0 and state 3 on side 0 only and the row's side-1 cases were few (`a2`, `a6`, `aB`,
+  `aD`); every state now runs on both sides in the unit check (`P3_S/P3_R`, slot 1 character 2 on record 1 whose +0x51
+  is 1, where `0x36870` reads the side from the record: the other side's `0x100CE0` word is what it clears), `aL` ends
+  state 0 on side 1, and the other side's slot (`+0x54..+0x57`, `+0x74`) and record (`+0x18/+0x28/+0x34/+0x42/+0x43`) carry
+  sentinels in the row. `rec+0x51` takes 0 and 1 only here (the records are the two slots'), and `0x4844C` never reads
+  it: the side is EBX, so the index-versus-side confusion that a `0x36870` call hides is what the unit check's other-side
+  words (`0x100CE0[1 - side]` cleared, `[side]` kept) observe.
+- *Calls nothing observed.* The unit check asserted none of `0x3C148`, `0x3C16C`, `0x188AC` or the hold of `0x2BC30`.
+  State 3's ending is now run with slot 1's `+0x42` bit 3 set (`0x188AC`'s latch is then slot `+0x2C/+0x30` = record
+  `+0x18/+0x1C`), every field the ending touches seeded on both records, and asserts `+0x34/+0x43/+0x42` (0x3C148),
+  `+0x36/+0x44` (0x3C16C), `+0x1C = 0` and slot `+0x30 = 0` (0x188AC with y = 0), `+0x18` kept (its x), `+0x20/+0x24`
+  = 3.0 and `+8` the stream (0x2BC30), `+0x2C` the signed word, `+0x57` = 4 and the other record untouched.
+  A dword store of `0x108384[side]` (it clobbers `0x108388`) fails (the unit check seeds `0x108388`).
+- *Bounds.* State 3's compare is now run with the word `0xBD884[char]` negative (`0xF000` against -1: `jle` returns; an
+  unsigned word would end the move; poked in the row as `aO`, in the unit check as `0xF000`), the dword `+0x30` with its high
+  half set (`0x117FF`/`0x113FF`: a word read would end the move) and `0x1400` against -1 (a compare of `+0x30` unsigned
+  ends in the raw, returns unsigned). A state byte of 0x82/0x83/0xFF (rows `aM`, `aN`) takes the table's `ja` path, as
+  does 6 (not 2/3 by its low bits).
+- *Arguments the raw ignores.* The unit helpers call the callback with EAX/EDX swapped to the other side's slot and
+  record: a port that read the slot or record argument instead of the context fails.
+Not distinguishable and not claimed: the table's voice read as `DSD(e) >> 16` against `DSW(e + 2)` (the same bits);
+a word clear of `+0x54` and the order of `0x3C148`/`0x3C16C` in the unit check (the row compares both: the call order,
+and the word's `+0x55` neighbour, which `0x36870` overwrites afterwards in a unit run); the state byte as a signed
+`char` (every value above 4 goes the same way). The diff rows poke at most 16 words of at most 64 bytes, so the slots and
+records are composed as buffers (`p3_4844c`).
 
 ## §P3.9 The gp scenarios: only gp-u10-ending holds a P3 member
 
@@ -472,13 +513,13 @@ the E2 suite 44):
 | Task 4 | `68/68 ...; 114/114 ...; 10/54 ... (14 have none)` | `290 / 205`; callbacks `2 / 69`; supplement 15; stubs 55; voice `29 / 86 / 19` |
 | Task 5 | `72/72 ...; 127/127 ...; 11/58 ... (14 have none)` | `289 / 206`; callbacks `1 / 70`; supplement 13; stubs 54; voice `28 / 87 / 19` |
 | Task 6 | `77/77 ...; 141/141 ...; 11/63 ... (14 have none)` | `288 / 207`; callbacks `0 / 71`; supplement 9; stubs 53; voice `28 / 87 / 19` |
-| Task 7 | `78/78 functions VERIFIED; 147/147 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` | unchanged (`0x4844C` is outside E2's universe) |
+| Task 7 | `78/78 functions VERIFIED; 156/156 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` | unchanged (`0x4844C` is outside E2's universe) |
 
 The closed rows added: `0x475EC`, `0x47608` (Task 2: `0x1A570` has P1's row), `0x47720` (Task 3: `0x3C4CC` and the
 allowed `0x339AC`), `0x47FCC` (Task 5: `0x3C4CC` and `0x33950`). The rows (cases, blocks hit/total), all `VERIFIED`:
 `475ec` 3 3/3, `47608` 3 3/3, `47624` 2 1/1, `48964` 3 6/6, `489a0` 3 6/6, `47720` 2 1/1, `476fc` 3 3/3, `47648` 2 1/1,
 `47688` 5 6/6, `47874` 2 1/1, `47830` 5 3/3, `47798` 2 1/1, `477a8` 2 1/1, `477e8` 2 1/1, `47fcc` 2 1/1, `47cb0` 5 5/5,
-`47d24` 3 1/1, `47e9c` 16 17/17, `48608` 2 1/1, `48054` 3 3/3, `480b4` 3 1/1, `48170` 3 3/3, `4811c` 6 8/8, `4844c` 14
+`47d24` 3 1/1, `47e9c` 16 17/17, `48608` 2 1/1, `48054` 3 3/3, `480b4` 3 1/1, `48170` 3 3/3, `4811c` 6 8/8, `4844c` 28
 23/23. What alone catches each mutant is pinned by `test_each_p3_mutant_is_caught_by_what_it_breaks` (`P3_KINDS`) and
 its case lists. **A store sweep** (scratch: every non-stack store instruction of each row, `fstp` included, must be
 the last writer of a byte that differs from the case's start at the end or at a recorded call, in some case) finds

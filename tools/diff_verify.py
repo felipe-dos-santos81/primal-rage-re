@@ -1282,6 +1282,96 @@ P3_SPECS += [
     ], calls=(ANIM54,), eax_mask=0, mutants=("@mutant", "@signed", "@order")),
 ]
 
+# 0x3C16C (fighter_3c16c): EAX = side; it saves EDX, the one register it writes (record §P3.8).
+CLEAR36 = E.Call(0x3C16C, ("eax",))
+
+
+# 0x4844C (the +0x0C callback 0x48608 stores; 0x3531C case 7, EAX unread; record §P3.8). EBX = side, the context
+# 0x33950(side). Each frame the side's words 0x10838C and 0x108388 + 1. By the own slot's +0x57 (table 0x48438):
+# 0: the own record's word +0x34 in absolute value above 0x15E clears its +0x42; once the count 0x10838C (signed)
+# exceeds 0x1E, +0x54 = 0 and 0x36870(the own record); 2: the count 0x108388 against the five (key, voice) words of
+# 0xC94CE (the other slot's +0x43 & 0x30) or 0xC94BA, a voice on the equal key; 3: the own slot's word +0x74 = 0, the
+# record's +0x28 bit 5, the side's word 0x108384 = the slot's word +0x2C; with the signed word 0xBD884[the own
+# character] above the slot's dword +0x30 (signed): +0x54 = 0, 0x3C148(side), 0x3C16C(side), 0x188AC(side, the
+# record's +0x18, 0), the record on 0xC8B58[the own character] at 3.0, 0x188DC(side, that word 0x108384, signed) and
+# +0x57 = 4; 1, 4 and above nothing. The other side's words carry sentinels; the slot's +0x2C/+0x30 and the record's
+# +0x18/+0x28/+0x34/+0x42 are seeded per case.
+def p3_4844c(cid, side, st, w34=0x100, cnt=(0x10, 0x10), o43=0, x2c=0x2C2C2C2C, x30=0x30303030, stub=None, bd=None, tbl=None):
+    # diffrun takes 16 pokes per case, 64 bytes each: each slot is three buffers (+0, +0x2C..+0x43, +0x54..+0x7A)
+    # and each record one (+0x18..+0x43)
+    w84, w88, w8c = [0x8484, 0x8686], [0x8888, 0x8A8A], [0x8C8C, 0x8E8E]
+    w88[side], w8c[side] = cnt
+    pokes = {0x108384: b"".join(le32(v)[:2] for v in w84 + w88 + w8c)}
+    for k, (rec, ch) in enumerate(((E3_REC, 5), (E3_REC2, 3))):
+        own = k == side
+        mid, hi, r = bytearray(0x18), bytearray(0x27), bytearray(0x2C)
+        mid[0:8] = le32(x2c) + le32(x30) if own else bytes(8)     # the other slot's +0x2C/+0x30 stay zero
+        # the own slot's +0x43 is the opposite of the voice table's key (the other slot's +0x43 & 0x30 is the one read)
+        mid[0x17] = o43 if not own else (0x00 if o43 & 0x30 else 0x30)
+        hi[0:4] = bytes([0x54, 0x55, 0x56, st]) if own else bytes([0x64, 0x65, 0x66, 0x67])
+        hi[0x20:0x22] = b"\x74\x74" if own else b"\x75\x75"
+        hi[0x26] = ch
+        r[0:4] = le32(0x18181818 if own else 0x19191919)
+        r[0x10] = 0x08 if own else 0x04
+        r[0x1C:0x1E] = le32(w34)[:2] if own else b"\x00\x02"
+        r[0x2A] = 0x42 if own else 0x43
+        r[0x2B] = 0x4B if own else 0x4C
+        pokes[DS_SLOTS + k * 0x94] = le32(rec)
+        pokes[DS_SLOTS + k * 0x94 + 0x2C] = bytes(mid)
+        pokes[DS_SLOTS + k * 0x94 + 0x54] = bytes(hi)
+        pokes[rec + 0x18] = bytes(r)
+    pokes.update(tbl or {})
+    if bd is not None:
+        pokes[0xBD884 + 2 * (5 if side == 0 else 3)] = le32(bd)[:2]
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_OUT, "ebx": side}, pokes, {} if stub is None else stub)
+
+
+P3_SPECS += [
+    # a0..aR: state 0's two bounds (|+0x34| 0x100/0x15F/-0x15F/-0x15E; the count 0x1D/0x1E/0x7FFF + 1), state 2's
+    # two tables, all ten (key, voice) pairs (aE..aK with a5..a8; 6 matches none) and the table byte's bits outside the
+    # mask, state 3's bound (0x1800 against 0x1800, 0x17FF and -1) with a negative word +0x2C (aA), the negative table
+    # word 0xBD884 (aO), the dword +0x30's high half (aP), the negative key (aQ) and the duplicated key (aR), and the
+    # states that do nothing (a4, aC, aD, the byte 0x82/0x83: aM, aN).
+    Spec("fighter_4844c", 0x4844C, [
+        p3_4844c("a0", 0, 0, w34=0x100, cnt=(0x10, 0x1D)),
+        p3_4844c("a1", 0, 0, w34=0x15F, cnt=(0x10, 0x1E)),
+        p3_4844c("a2", 1, 0, w34=0xFEA1, cnt=(0x10, 0x10)),
+        p3_4844c("a3", 0, 0, w34=0xFEA2, cnt=(0x10, 0x7FFF)),
+        p3_4844c("a4", 0, 1),
+        p3_4844c("a5", 0, 2, cnt=(1, 0), o43=0x10),
+        p3_4844c("a6", 1, 2, cnt=(0x18, 0), o43=0x00),
+        p3_4844c("a7", 0, 2, cnt=(0x37, 0), o43=0x20, stub={0x2C3FC: 0}),
+        p3_4844c("a8", 0, 2, cnt=(5, 0), o43=0x10),
+        p3_4844c("a9", 0, 3, x30=0x1800),
+        p3_4844c("aA", 0, 3, x2c=0x1234F000, x30=0x17FF),
+        p3_4844c("aB", 1, 3, x30=0xFFFFFFFF),
+        p3_4844c("aC", 0, 4),
+        p3_4844c("aD", 1, 5),
+        # every (key, voice) pair of both tables (CE: 2, 4, 25, 0x33, 0x38; BA: the same keys), the byte +0x43 & 0x30
+        # on bits outside the mask (0xCF, 0x0F: BA) and both bits (0x30: CE), side 1's own count
+        p3_4844c("aE", 0, 2, cnt=(3, 0), o43=0x10),
+        p3_4844c("aF", 1, 2, cnt=(0x32, 0), o43=0xCF),
+        p3_4844c("aG", 0, 2, cnt=(0x18, 0), o43=0x30),
+        p3_4844c("aH", 1, 2, cnt=(0x32, 0), o43=0x20),
+        p3_4844c("aI", 0, 2, cnt=(1, 0), o43=0xCF),
+        p3_4844c("aJ", 1, 2, cnt=(3, 0), o43=0xCF),
+        p3_4844c("aK", 0, 2, cnt=(0x37, 0), o43=0x0F),
+        # state 0 on side 1 reaching its end (0x36870 on the other record); the state byte's high bits (0x82, 0x83)
+        p3_4844c("aL", 1, 0, w34=0x100, cnt=(0x10, 0x1E)),
+        p3_4844c("aM", 0, 0x82, cnt=(1, 0), o43=0x10),
+        p3_4844c("aN", 0, 0x83, x30=0x17FF),
+        # state 3's bound: the word 0xBD884[char] negative (0xF000 against -1: not above), and the dword +0x30
+        # with its high half set (0x117FF: the low word alone would end the move)
+        p3_4844c("aO", 0, 3, x30=0xFFFFFFFF, bd=0xF000),
+        p3_4844c("aP", 0, 3, x30=0x000117FF),
+        # the key compared by `movsx` (the table's first key 0xFFFE = -2 against the count 0xFFFD + 1) and the scan going
+        # on after a match (the other table's second key made 2 as well: two voices)
+        p3_4844c("aQ", 0, 2, cnt=(0xFFFD, 0), o43=0x10, tbl={0xC94CE: b"\xFE\xFF\x7B\x00"}),
+        p3_4844c("aR", 1, 2, cnt=(1, 0), o43=0x00, tbl={0xC94BE: b"\x02\x00\x6A\x00"}),
+    ], allow_calls=(0x33950,), calls=(ANIM54, VOICE, CLEAR34, CLEAR36, ANCHOR, ANIM_BEGIN, ANCHORX), eax_mask=0,
+       mutants=("@mutant", "@signed", "@abs", "@order", "@bound", "@zext")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
