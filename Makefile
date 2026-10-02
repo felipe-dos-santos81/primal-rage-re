@@ -59,6 +59,7 @@ chunk ?= 0
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle \
         entry-triage \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle
+.PHONY: gp-modes-oracle gp-modes-one
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -603,6 +604,39 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 		--moves-min-first "$(GP_TWOP_MOVES_MIN_FIRST)" \
 		--capture-sha256 "$(GP_TWOP_CAPTURE_SHA256)" --capture-frames "$(GP_TWOP_CAPTURE_FRAMES)"
 
+# Gameplay U8 (plan 2026-10-01-gameplay-u8-other-modes.md, record 2026-10-01-gameplay-u8-
+# derivations.md): the other START MENU rows and the attract start, one capture each. For every
+# <ID>:<scenario> in GP_MODES_SCENARIOS whose data/k11-captures/<scenario> exists: the evidence
+# check that the capture reached its row (tools/gp_modes.py), the port replay (cut at
+# GP_MODES_<ID>_END when set) and both ratchets with the capture identity pin; an absent capture
+# skips (exit 0), even under PR_ORACLE_REQUIRED (spec §4.3). A scenario is listed only once its
+# values are pinned (record §U8.16-§U8.22), each value's provenance in its comment. The port dump
+# is removed after its comparison unless GP_MODES_KEEP=1 (record §U8.6: 52-89 MB of /tmp each).
+GP_MODES_SCENARIOS =
+GP_MODES_KEEP ?=
+gp-modes-oracle: build ## Gameplay U8 oracle: the other START MENU rows and the attract start (each skips without its capture)
+	@echo "== gameplay U8: other modes (frame and trace ratchets; each skips without its capture) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_modes
+	@for p in $(GP_MODES_SCENARIOS); do \
+		$(MAKE) --no-print-directory gp-modes-one GP_MODES_ID=$${p%%:*} scenario=$${p#*:} || exit 1; \
+	done
+
+gp-modes-one: build
+	@if [ -d $(K11_CAPTURES)/$(scenario) ]; then \
+		$(PYTHON) tools/gp_modes.py check --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) && \
+		$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1 \
+			GP_SCRIPT_ARGS="$(if $(GP_MODES_$(GP_MODES_ID)_END),--end $(GP_MODES_$(GP_MODES_ID)_END))" && \
+		$(PYTHON) tools/gp_compare.py --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
+			--port $(GP_DUMP)/$(scenario) --min-first "$(GP_MODES_$(GP_MODES_ID)_MIN_FIRST)" \
+			--trace-min-first "$(GP_MODES_$(GP_MODES_ID)_TRACE_MIN_FIRST)" \
+			--max-start "$(GP_MODES_$(GP_MODES_ID)_MAX_START)" \
+			--capture-sha256 "$(GP_MODES_$(GP_MODES_ID)_CAPTURE_SHA256)" \
+			--capture-frames "$(GP_MODES_$(GP_MODES_ID)_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_MODES_KEEP)" ] || rm -rf $(GP_DUMP)/$(scenario); exit $$rc; \
+	else \
+		echo "gp-modes-oracle: no capture at $(K11_CAPTURES)/$(scenario), skipped"; \
+	fi
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario)
@@ -678,6 +712,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory gp-moves-oracle
 	@$(MAKE) --no-print-directory gp-keys-oracle
 	@$(MAKE) --no-print-directory gp-twop-oracle
+	@$(MAKE) --no-print-directory gp-modes-oracle
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="

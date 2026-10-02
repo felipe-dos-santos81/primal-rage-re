@@ -500,3 +500,30 @@ STOP_AT_END decision (the controller's ruling: opt in unless a later task compar
 Tests: `tools.tests.test_gp_modes` `Ran 11 tests ... OK` (the plan's 11); the per-task gate `test_gp_modes test_gp_session test_gp_capture test_gp_compare` `Ran 103 tests OK`; verify's k11/gp line nine modules `Ran 171` plus `test_gp_twop` and `test_gp_modes` = `Ran 195` OK on this base. `port_progress.py`: `771 1203 64` / `731 731 100`, unchanged.
 
 Mutations: `gp-u8-handicap` `_u8_menu(('p1.up',), 6, 66)` -> `_u8_menu(('p1.down',) * 6, 6, 66)`: `FAIL: test_every_row_has_a_scenario_and_the_walk_is_derived`; dropping `gp-u8-endurance` from `STOP_AT_END`: `FAIL: test_opt_in_scenarios` (`'gp-u8-endurance' not found in frozenset(...)`). Both restored.
+
+## §U8.13 `make gp-modes-oracle` in `make verify`, proved on gp-idle-loss (Task 3)
+
+`Makefile`: `GP_MODES_SCENARIOS` (empty until Task 6a) and `GP_MODES_KEEP`, the targets `gp-modes-oracle` and `gp-modes-one` (the brief's text verbatim, placed before the `gp-report` recipe, i.e. after `gp-twop-oracle`'s recipe on this base), the line `@$(MAKE) --no-print-directory gp-modes-oracle` in `verify` after `gp-twop-oracle`'s, and its own `.PHONY: gp-modes-oracle gp-modes-one` line directly after the shared `.PHONY` list (the shared list is not edited). Anchors re-found by content: the plan's `8eaf25a` line numbers are stale.
+
+Step 1: before the edit `make gp-modes-oracle` printed `No rule to make target 'gp-modes-oracle'.  Stop.`, `exit=2`. Step 3 after it: the empty list runs the 11 `test_gp_modes` tests, `OK`, `exit=0`; `PR_ORACLE_REQUIRED=1 … GP_MODES_SCENARIOS="RA:gp-u8-right-arcade"` prints `gp-modes-oracle: no capture at data/k11-captures/gp-u8-right-arcade, skipped`, `exit=0`.
+
+Step 4, the reference row `REF:gp-idle-loss` cut at `--end 2325` (the planning numbers 203/2088/204 and the re-baseline's 1070/2326 on `8eaf25a` were not used as pins; the values were measured first on this head, `34331fb`, with `GP_DUMP=/tmp/pr_u8_gp`):
+
+- `make gp-replay scenario=gp-idle-loss GP_OPTIONAL=1 GP_SCRIPT_ARGS="--end 2325"`: `fn-miss PR_GP_DUMP distinct=4 dropped=0`, `all checks passed`.
+- `gp_compare --report`: `window from capture 90 (raw 1744)`; `FIRST UNEXPLAINED capture 1070 (raw 4182): nearest port 817, rows 121..199`; `trace: 0 differing through 2325`; the dump's last line `00817 f=0915 tick=00000973 mode=0006` (`f = 0x915` = 2325, the replay's last frame, so capture 1070 is how far the cut replay got).
+- Pins: `REF_N = 1070` (the first unexplained capture frame), `REF_F = 2326` (`0 differing through 2325`, plus 1: the exact pin; `gp_compare.ratchet` fails any N above the end as unreachable), start 90 (the window start), capture sha `773e2647…8c8447`, 8173 frames. They equal the `8eaf25a` re-baseline's, so U6b and U7 did not move this cut replay.
+
+The run through `gp-modes-oracle` (`GP_MODES_KEEP=1`): `exit=0`; the eight `gp_modes: gp-idle-loss: … ok` lines (f=26E P, 26F, 5 -> 4, 293, 7F5, 207F); `all checks passed`; `capture: poll.log sha256 773e2647..8c8447, 8173 frames: matches the pin`; `frames: window from capture 90 (raw 1744); 973 classified … 1 unexplained`; `FIRST UNEXPLAINED capture 1070 (raw 4182)`; `first unexplained 1070, ratchet N 1070 ok`; `trace: 0 differing through 2325; ratchet N 2326 ok`; the kept dump 52 MB; without `GP_MODES_KEEP` the dump directory is removed (`ls /tmp/pr_u8_gp` showed only `gp-idle-loss.script` for this scenario).
+
+Failure matrix (every pin one step beyond the measured value must fail; each run exit 2; logs `/tmp/gameplay-u8/t3_ref*.txt`):
+
+| mutation | verbatim FAIL line |
+|---|---|
+| `MIN_FIRST` 1071 (N + 1) | `gp_compare: gp-idle-loss: frames: FAIL: first unexplained 1070 < ratchet N 1071` |
+| `TRACE_MIN_FIRST` 2327 (F + 1) | `gp_compare: gp-idle-loss: trace: FAIL: N 2327 > end 2326: N is unreachable` |
+| `MAX_START` 89 (start - 1) | `gp_compare: gp-idle-loss: frames: FAIL: window starts at capture 90 (raw 1744) > pinned start 89` |
+| `CAPTURE_FRAMES` 8174 | `gp_compare: gp-idle-loss: capture: FAIL: poll.log sha256 773e2647…8c8447 (8173 frames) != the pinned 773e2647…8c8447 (8174 frames): a re-capture invalidates the pinned N, F and window start; re-measure them from the new capture (record §G.24) before pinning` |
+
+Not a pin: with the cut replay and no divergence, a lower N (the planner's 204 over 203) passes as `ratchet N 204 ok (improved: raise N)`; only N = j + 1 and F = end + 1 can fail.
+
+Per-task gate on this head (logs `/tmp/gameplay-u8/t3_*.txt`, dumps under `GP_DUMP=/tmp/pr_u8_gp`): the gp tool suites (`test_gp_modes test_gp_session test_gp_capture test_gp_compare test_gp_twop test_gp_moves test_gp_keys`) `Ran 155 tests OK`; `make gp-modes-oracle` (empty list, banner `== gameplay U8: other modes …`, 11 tests OK) exit 0; `gp-oracle`, `gp-charsel-oracle`, `gp-moves-oracle`, `gp-keys-oracle`, `gp-twop-oracle` each exit 0 with every verdict line, fn-miss pair and distinct count identical to the Task 0 baseline (`base_gp_lines.txt`: 2064/8320, 516/1513, 1005/2262/2949, keys 11/11, twop 612/1506/1506, distinct=4); `diff-verify: 13/13 functions VERIFIED; 17/17 mutants detected; 1 named gaps; 0/5 rows with callees closed (8 have none)` (equal to Task 0); `port_progress.py` `771 1203 64` / `731 731 100`. No full `make verify` (the controller's speed-up ruling); no capture.
