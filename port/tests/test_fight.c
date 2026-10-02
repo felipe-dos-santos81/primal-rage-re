@@ -45525,7 +45525,7 @@ static void p2_check_0c(void)
     union { float f; u32 u; } v;
     CHECK(fn_resolve(0x212CCu) == (void (*)(void))fighter_212cc, "0x212CC is registered");
     CHECK(fn_resolve(0x22638u) == (void (*)(void))fighter_22638, "0x22638 is registered");
-    /* 0x22638 starts right after its own jump table (0x22618, 8 dwords) */
+    /* evidence lines (image only, not port logic): 0x22638 starts right after its own jump table (0x22618, 8 dwords) */
     CHECK_EQ_INT((int)DSD(0x00022618u), 0x000227C3);
     CHECK_EQ_INT((int)DSD(0x00022634u), 0x00022930);
 
@@ -45583,9 +45583,14 @@ static void p2_check_0c(void)
     v.f = 1.5f;
     DSD(0x00104738u) = v.u;
     DSB(Z_S0 + 0x57u) = 3u;
+    DSB(Z_S0 + 0x8Au) = 0x8Au;
     f(Z_S0, Z_R0, 0u);
     CHECK_EQ_INT((int)DSD(0x00104738u), 0x3F800000);
     CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
+    /* state 3 does nothing: not case 1 (which would set +0x8A = 0 and start 0xE4DCE) nor case 2 */
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x8Au), 0x8A);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000E4E08);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 0);
 }
 
 int test_p2_0c(void)            { return u6b_run(p2_check_0c); }

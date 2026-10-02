@@ -311,7 +311,13 @@ ctx[3].+0x53 not 0xA -> +0x57 = 1; else the own command bit 0 -> `0x2BC30(ctx[4]
 dword [eax*4+0x104738]`), +0x57 = 4, voice 0x7D; the latched bit 2 -> `0xE4E34`, 5; bit 1 -> `0xE4E4A`, 6; bit 3 ->
 `0xE4E72`, 7 (each at 3.0, voice 0x78); 3..7 and above 7 nothing. The 16 cases p0..pF reach every block; pE (the
 count `0x8000` + 1, negative) and pF (+0x5D = 0x80, 128 against 4) pin the two signedness choices
-(`fighter_22638@signed`, `@byte5d`, each caught by its case alone).
+(`fighter_22638@signed`, `@byte5d`, each caught by its case alone). A seventeenth case, pG (side 0, state 3, count
+`0x70` + 1 = 0x71, +0x5D = 0), tells which slot's character indexes `0xA8300`: the own slot is character 5 (0x6E) and
+the other character 3 (0x78), so only the other's word exceeds 0x71 and floors +0x5D to 1 (`@char`, caught by pG
+alone); for side 1 (pD, pF) the other slot is slot 0, character 5. The table's entries 4..7 (0x22624..0x22634) all
+equal entry 3's target `0x22930` and no case selects them separately: pB (+0x57 = 3) covers that block. **Named limit
+(0xA82EC):** `0xA82EC[c]` is 4 for every character, so its character index and the word's sign extension are not
+observable with the game's data; the cases do not poke another value there.
 
 **Named limit (x87).** The raw adds in x87 registers (precision control as the runtime leaves it; unicorn starts with
 FCW `0x37F`, extended) and compares the +0.1 sum before it is rounded to the float; the port adds in double

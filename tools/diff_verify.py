@@ -884,7 +884,8 @@ def f32(x):
 
 # 0x22638: cmd = the two sides' command words DS_001088E0 (own, other); lat/cnt = the side's words 0x104754 and
 # 0x104758 (the other side's carry sentinels); fl = the side's float 0x104738; o53/o5d/o63 = the other slot's
-# +0x53/+0x5D/+0x63 (its character 3: the words 0xA82EC[3] = 4 and 0xA8300[3] = 0x78); st = the own +0x57.
+# +0x53/+0x5D/+0x63 (its character 3 for side 0, whose own slot is character 5; for side 1 the other is slot 0,
+# character 5: the words 0xA82EC[3] = 4 and 0xA8300[3] = 0x78, 0xA8300[5] = 0x6E); st = the own +0x57.
 def p2_22638(cid, side, st, cmd=(0, 0), lat=0, cnt=0x200, fl=2.0, o53=0x0A, o5d=7, o63=0, stub=None):
     own, oth = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
     words = [cmd[0], cmd[1]] if side == 0 else [cmd[1], cmd[0]]
@@ -916,7 +917,8 @@ P2_SPECS += [
     # p0..p15 (record §P2.9): the frame count's step and the two bounds, the +0x5D drain (the other side's stick
     # or its +0x63) and floor, the float's -0.7/+0.1 with the 1.0 and 3.0 clamps, the latch, and each state.
     # p14: the count 0x8000 + 1 is negative (signed: 0x78 > it, +0x5D floored to 1); p15: +0x5D = 0x80 is 128
-    # against 4 (a signed byte would read -128 and zero it).
+    # against 4 (a signed byte would read -128 and zero it). pG: the count 0x71 lies between the own character 5's
+    # 0xA8300 word (0x6E) and the other's character 3 (0x78): only the other slot's floors +0x5D (0) to 1.
     Spec("fighter_22638", 0x22638, [
         p2_22638("p0", 0, 0, cnt=0x14, o5d=0, fl=2.0),
         p2_22638("p1", 0, 0, cmd=(1, 0x10), cnt=0x13, o5d=9, fl=1.5),
@@ -934,8 +936,9 @@ P2_SPECS += [
         p2_22638("pD", 1, 2, cmd=(1, 0), fl=1.2, stub={0x2C3FC: 0}),
         p2_22638("pE", 0, 0, cnt=0x8000, o5d=0),
         p2_22638("pF", 1, 3, cmd=(0, 0x20), o5d=0x80),
+        p2_22638("pG", 0, 3, cnt=0x70, o5d=0),
     ], allow_calls=(0x33950,), calls=(ANIM_BEGIN, ANIM54, VOICE), eax_mask=0,
-       mutants=("@mutant", "@signed", "@byte5d")),
+       mutants=("@mutant", "@signed", "@byte5d", "@char")),
 ]
 
 SPECS = [

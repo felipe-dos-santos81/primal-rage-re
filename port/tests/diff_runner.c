@@ -1369,6 +1369,19 @@ static void m_22638_signed(const u32 *r, u32 *eax)     /* the +0x5D floor's coun
     if (floor_s && !floor_u && b5d == 1u) DSB(ctx[3] + 0x5Du) = 0u;
     *eax = 0u;
 }
+static void m_22638_char(const u32 *r, u32 *eax)       /* the floor's 0xA8300 indexed by the own slot's character */
+{
+    u32 ctx[6], c_oth, c_own;
+    int floor_ok, floor_bad;
+    fighter_ctx_same(ctx, r[R_EBX]);
+    fighter_22638(r[R_EAX], r[R_EDX], r[R_EBX]);
+    c_oth = (u32)DSB(ctx[3] + 0x7Au);
+    c_own = (u32)DSB(ctx[2] + 0x7Au);
+    floor_ok = (s16)DSW(0x000A8300u + c_oth * 2u) > (s16)DSW(0x00104758u + ctx[0] * 2u);
+    floor_bad = (s16)DSW(0x000A8300u + c_own * 2u) > (s16)DSW(0x00104758u + ctx[0] * 2u);
+    if (floor_ok && !floor_bad && DSB(ctx[3] + 0x5Du) == 1u) DSB(ctx[3] + 0x5Du) = 0u;
+    *eax = 0u;
+}
 static void m_22638_byte5d(const u32 *r, u32 *eax)     /* the drain compares +0x5D as a signed byte */
 {
     u32 ctx[6], c;
@@ -1527,6 +1540,7 @@ static const binding_t k_bindings[] = {
     { "fighter_22638@mutant",     m_22638,        0x00000000u },
     { "fighter_22638@signed",     m_22638_signed, 0x00000000u },
     { "fighter_22638@byte5d",     m_22638_byte5d, 0x00000000u },
+    { "fighter_22638@char",       m_22638_char,   0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

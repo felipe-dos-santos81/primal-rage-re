@@ -351,7 +351,8 @@ P2_KINDS = {"fighter_237d0@mutant": {"call #0"}, "fighter_237d0@guard": {"byte",
             "fighter_22588@mutant": {"call #1"}, "fighter_22588@order": {"call #4 memory"},
             "fighter_212cc@mutant": {"call #0"}, "fighter_212cc@signed": {"byte"},
             "fighter_212cc@side": {"byte", "call #0"}, "fighter_22638@mutant": {"call #1"},
-            "fighter_22638@signed": {"byte"}, "fighter_22638@byte5d": {"byte"}}
+            "fighter_22638@signed": {"byte"}, "fighter_22638@byte5d": {"byte"},
+            "fighter_22638@char": {"byte"}}
 
 
 @needs_unicorn
@@ -560,9 +561,9 @@ class RealFunctionTests(unittest.TestCase):
                          ["k1", "k2", "k4"])
         # 0x22404's distance is a signed word: only a2's negative entry tells it from a zero-extended one
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_22404@signed"].problems}), ["a2"])
-        # 0x212CC: only m2's word -1 tells the signed bound; 0x22638: only pE's count 0x8001 and pF's +0x5D 0x80
+        # 0x212CC: only m2's word -1 tells the signed bound; 0x22638: only pE's count 0x8001, pF's +0x5D 0x80 and pG's count 0x71 (the other slot's character)
         for name, ids in (("fighter_212cc@signed", ["m2"]), ("fighter_22638@signed", ["pE"]),
-                          ("fighter_22638@byte5d", ["pF"])):
+                          ("fighter_22638@byte5d", ["pF"]), ("fighter_22638@char", ["pG"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
         # 0x211F0's word at 0xA81B0 is zero-extended (b2 alone pokes it to 0xF000) and its 0x39834 byte is the own
         # slot's +0x5F (the slots' sentinels differ, so every case tells a wrong slot; plan P2 Task 7 review)
@@ -678,7 +679,7 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (18), the 12 without are counted apart
-        self.assertIn("diff-verify: 54/54 functions VERIFIED; 88/88 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 54/54 functions VERIFIED; 89/89 mutants detected; 1 named gaps; "
                       "7/41 rows with callees closed (13 have none).", out.getvalue())
 
 
