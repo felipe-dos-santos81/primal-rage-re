@@ -180,14 +180,18 @@ the call (`0x23C1D`) and **preserved by `0x1A570`**; AL set: `cmp edi,[w*4+0xA83
 else `0x23C55` loads `0xE19E6`; AL clear: `jle` keeps EDX, else `0xE19E6`. Signed compares. Then `0x2BC30(rec, EDX,
 3.0)` and the slot 7/9/0, +0x0C = `0x23B68` (`0x23C72`), +0x57/+0x18/+0x1C/+0x14 = 0, +0x42 |= 8 (`mov dh,[ebx+0x42];
 or dh,8`), `mov al,1`. The image's tables: flag bytes `01 00 01 00 00 01 00 00` at `0xA83C4`, thresholds `0x2600`,
-0, `0x6000`, 0, 0, `0x3100` at `0xA83CC`. Cases: stage 1 (flag 0, EAX 0), stage `0x105` with its flag byte poked 0
-(EAX `0x100`), both AL values with x below, equal to and above the threshold, and x = `0xFFFFF000` against `0x3100` for
-both AL values (a signed compare; an unsigned one flips both).
+0, `0x6000`, 0, 0, `0x3100` at `0xA83CC`. Cases (11): stage 1 (flag 0, EAX 0; `e0`), stage `0x105` with its flag byte
+(`0xFF` in the image) poked 0 (EAX `0x100`; `e1`), stage `0x205` with its flag byte (`0x12`) poked 0 (EAX `0x200`;
+`e2`), both AL values with x below, equal to and above the threshold (AL set, stage 0 `0x2600`: `a0` `0x2000`, `a1`
+`0x2600`, `a6` `0x2601`; AL clear, stage 2 `0x6000`: `a7` `0x5FFF`, `a3` `0x6000`, `a2` `0x6001`), and x =
+`0xFFFFF000` against `0x3100` for both AL values (`a4`, `a5`: a signed compare; an unsigned one flips both).
+Correction (Task 3 review, 2026-10-02): the first spec had no AL-set case above the threshold, so a port testing
+`x != thr` there stayed VERIFIED; `a6` and the mutant `fighter_23bf8@ne` (caught by `a6` alone) close it.
 
 **`0x402FC`** (char 0's `0xBDB00` entry), 1 block: `sub esp,0x18; mov eax,esp; call 0x339ac` (EDX = rec), `mov
 word [ctx[0]*2+0x1080a0],0`, `0x3C4CC(rec, 0xE7C40, 3.0)`, the slot 9/7/2, +0x57 = 0, +0x0C = `0x401D4` (`0x4033A`),
 +0x18 = +0x1C = 0, `mov al,1`. +0x14 and +0x42 untouched. Cases: rec+0x51 = 0 and 1 (the word index), the 3C4CC stub's
-EAX 0 and `0x1234` (AL overwritten).
+EAX 0 and `0x1234` (AL overwritten); +0x42 seeded with the sentinel `0x42` in both (a port that writes it mismatches).
 
 ## §P1.7 The slot +0x0C callbacks: dispatch and shape
 
@@ -285,12 +289,15 @@ The replay's per-task gates (`make diff-verify entry-triage` with scratch image 
 |---|---|---|
 | `834b703` | `13/13 functions VERIFIED; 17/17 mutants detected; 1 named gaps; 0/5 rows with callees closed (8 have none)` | `targets 323 unported, 172 ported; supplement 131 (31 unported, 0 stale)`; voice `46 / 69 / 19` |
 | Task 2 | `17/17 ...; 21/21 ...; 0/9 ... (8 have none)` | `319 / 176`; finishers `2 / 7`; stubs 79; voice `43 / 72 / 19` |
-| Task 3 | `20/20 ...; 25/25 ...; 1/11 ... (9 have none)` | `317 / 178`; finishers `0 / 9`; stubs 77; voice `43 / 72 / 19` |
+| Task 3 | `20/20 ...; 26/26 ...; 1/11 ... (9 have none)` (25/25 in the replay; +1 the fix-round mutant `fighter_23bf8@ne`) | `317 / 178`; finishers `0 / 9`; stubs 77; voice `43 / 72 / 19` |
 | Task 4 | `23/23 ...; 28/28 ...; 1/14 ... (9 have none)` | unchanged (the three are outside E2's lists) |
 | Task 5 | `26/26 ...; 31/31 ...; 1/17 ... (9 have none)` | `317 / 178`; supplement `28` unported; voice `40 / 75 / 19` |
 
+The Task 4 and Task 5 rows are the replay's; after Task 3's fix round (one more mutant, `fighter_23bf8@ne`) each
+mutant count on `reverse-p1` is one higher (`29/29`, `32/32`), the other figures unchanged.
+
 The batch's rows (the self-check table): `fighter_1567c` 2 cases 1/1, `fighter_15908` 2 1/1, `fighter_23ec0` 2 1/1,
-`fighter_45d14` 2 1/1, `fighter_actor_bit15_clear` 4 1/1, `fighter_23bf8` 8 8/8, `fighter_402fc` 2 1/1,
+`fighter_45d14` 2 1/1, `fighter_actor_bit15_clear` 4 1/1, `fighter_23bf8` 11 8/8, `fighter_402fc` 2 1/1,
 `fighter_15584` 9 9/9, `fighter_1579c` 7 11/11, `fighter_23d38` 14 24/24, `fighter_38034` 2 3/3, `fighter_23b68` 5
 5/5, `fighter_401d4` 9 14/14: all `VERIFIED`, no unhit block. `fighter_402fc` is the one closed row (`339AC allow
 VERIFIED, 3C4CC stub VERIFIED`).
@@ -298,7 +305,8 @@ VERIFIED, 3C4CC stub VERIFIED`).
 **What catches each mutant** (`test_each_p1_mutant_is_caught_by_what_it_breaks`): `fighter_1567c@mutant` (0x15908's
 stream) `call #0`; `fighter_15908@mutant` (voice 0xAA) `call #1`; `fighter_23ec0@mutant` (the stores after the voice)
 `call #1 memory`; `fighter_45d14@mutant` (frame 2.0) `call #0`; `fighter_actor_bit15_clear@mutant` (bit 14) `eax`;
-`fighter_23bf8@mutant` (the two compares swapped) `call #1`; `fighter_23bf8@zero` (early return 0) `eax` (case `e1`);
+`fighter_23bf8@mutant` (the two compares swapped) `call #1`; `fighter_23bf8@zero` (early return 0) `eax` (cases `e1`,
+`e2`); `fighter_23bf8@ne` (the AL-set compare as `!=`) `call #1` (case `a6` alone);
 `fighter_402fc@mutant` (the word store after the call) `call #0 memory`; `fighter_15584@mutant` (the voice by the own
 character) `call #1`; `fighter_1579c@mutant` (handle 0x1F874610) `call #1`; `fighter_23d38@mutant` (the held record
 started first) `call #0`, `call #1`; `fighter_38034@mutant` (no bit 10) `call #1`; `fighter_23b68@mutant` (x and y

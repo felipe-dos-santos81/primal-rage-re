@@ -299,7 +299,8 @@ P1_MASKS = {"fighter_1567c": 0xFF, "fighter_15908": 0xFF, "fighter_23ec0": 0xFF,
 P1_KINDS = {"fighter_1567c@mutant": {"call #0"}, "fighter_15908@mutant": {"call #1"},
             "fighter_23ec0@mutant": {"call #1 memory"}, "fighter_45d14@mutant": {"call #0"},
             "fighter_actor_bit15_clear@mutant": {"eax"}, "fighter_23bf8@mutant": {"call #1"},
-            "fighter_23bf8@zero": {"eax"}, "fighter_402fc@mutant": {"call #0 memory"}}
+            "fighter_23bf8@zero": {"eax"}, "fighter_23bf8@ne": {"call #1"},
+            "fighter_402fc@mutant": {"call #0 memory"}}
 
 
 @needs_unicorn
@@ -466,6 +467,8 @@ class RealFunctionTests(unittest.TestCase):
             got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
                    else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
             self.assertEqual(got, want, name)
+        # x above the threshold with AL set (case a6) is the only case that tells `<` from `!=`
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_23bf8@ne"].problems}), ["a6"])
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
@@ -565,7 +568,7 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (11), the 9 without are counted apart
-        self.assertIn("diff-verify: 20/20 functions VERIFIED; 25/25 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 20/20 functions VERIFIED; 26/26 mutants detected; 1 named gaps; "
                       "1/11 rows with callees closed (9 have none).", out.getvalue())
 
 

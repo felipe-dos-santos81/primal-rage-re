@@ -44604,7 +44604,7 @@ static void p1_check_23bf8(void)
 
 /* §P1.6: 0x402FC through its registration on side 1: the word 0x1080A2 = 0
  * (0x1080A0 kept), the slot 9/7/2 with the +0x0C callback 0x401D4, +0x57/
- * +0x18/+0x1C = 0, +0x14 kept. */
+ * +0x18/+0x1C = 0, +0x14 and +0x42 kept. */
 static void p1_check_402fc(void)
 {
     p1_entry_fn e;
@@ -44623,6 +44623,7 @@ static void p1_check_402fc(void)
     DSD(Z_S1 + 0x14u) = 0x14141414u;
     DSD(Z_S1 + 0x18u) = 0x18181818u;
     DSD(Z_S1 + 0x1Cu) = 0x1C1C1C1Cu;
+    DSB(Z_S1 + 0x42u) = 0x42u;
     CHECK_EQ_INT(e(Z_S1, Z_R1), 1);
     CHECK_EQ_INT((int)DSW(0x001080A0u), 0xA0A0);
     CHECK_EQ_INT((int)DSW(0x001080A2u), 0);
@@ -44634,6 +44635,7 @@ static void p1_check_402fc(void)
     CHECK_EQ_INT((int)DSD(Z_S1 + 0x14u), 0x14141414);
     CHECK_EQ_INT((int)DSD(Z_S1 + 0x18u), 0);
     CHECK_EQ_INT((int)DSD(Z_S1 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x42u), 0x42);
 }
 
 static void p1_check_finishers(void)

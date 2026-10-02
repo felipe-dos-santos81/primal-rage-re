@@ -349,6 +349,28 @@ static void m_23bf8_zero(const u32 *r, u32 *eax)       /* the early return as 0,
     if (DSB(0x000A83C4u + DSW(DS_00104AFC)) == 0u) { *eax = 0u; return; }
     *eax = fighter_23bf8(r[R_EAX], r[R_EDX]);
 }
+static void m_23bf8_ne(const u32 *r, u32 *eax)         /* the AL-set compare as x != threshold */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u32 w = DSW(DS_00104AFC), stream = 0x000E1A06u;
+    if (DSB(0x000A83C4u + w) == 0u) { *eax = w & 0xFF00u; return; }
+    if (fighter_actor_bit15_clear(DSB(rec + 0x51u))) {
+        if ((s32)DSD(rec + 0x18u) != (s32)DSD(0x000A83CCu + w * 4u)) stream = 0x000E19E6u;
+    } else if ((s32)DSD(rec + 0x18u) > (s32)DSD(0x000A83CCu + w * 4u)) {
+        stream = 0x000E19E6u;
+    }
+    actors_anim_begin(rec, stream, 0x40400000u);
+    DSB(slot + 0x53u) = 7u;
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x54u) = 0u;
+    DSD(slot + 0x0Cu) = 0x00023B68u;
+    DSB(slot + 0x57u) = 0u;
+    DSD(slot + 0x18u) = 0u;
+    DSD(slot + 0x1Cu) = 0u;
+    DSD(slot + 0x14u) = 0u;
+    DSB(slot + 0x42u) = (u8)(DSB(slot + 0x42u) | 8u);
+    *eax = 1u;
+}
 static void m_402fc(const u32 *r, u32 *eax)            /* the word store after the 0x3C4CC call */
 {
     u32 ctx[6], slot = r[R_EAX], rec = r[R_EDX];
@@ -411,6 +433,7 @@ static const binding_t k_bindings[] = {
     { "fighter_actor_bit15_clear@mutant", m_1a570, 0x000000FFu },
     { "fighter_23bf8@mutant",     m_23bf8,        0xFFFFFFFFu },
     { "fighter_23bf8@zero",       m_23bf8_zero,   0xFFFFFFFFu },
+    { "fighter_23bf8@ne",         m_23bf8_ne,     0xFFFFFFFFu },
     { "fighter_402fc@mutant",     m_402fc,        0x000000FFu },
 };
 

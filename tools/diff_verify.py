@@ -413,7 +413,8 @@ P1_SPECS = [
     ], eax_mask=0xFF),
     # 0x23BF8 (record §P1.6). The image's own stage tables: flag bytes 01 00 01 00 00 01 at 0xA83C4,
     # thresholds 0x2600 (stage 0), 0x6000 (2), 0x3100 (5) at 0xA83CC. e1 pokes a flag byte zero for the
-    # stage word 0x105 so the early return's EAX is 0x100; a4/a5 pin the signed compares.
+    # stage word 0x105 so the early return's EAX is 0x100 (e2: 0x205, image byte 0x12, EAX 0x200); a0/a1/a6 put x
+    # below, at and above the threshold with AL set, a7/a3/a2 with AL clear; a4/a5 pin the signed compares.
     Spec("fighter_23bf8", 0x23BF8, [
         p1_23bf8("e0", 1, None, 0, 0),
         p1_23bf8("e1", 0x105, None, 0, 1, {0xA83C4 + 0x105: b"\x00"}),
@@ -423,11 +424,16 @@ P1_SPECS = [
         p1_23bf8("a3", 2, 0, 0x6000, 1),
         p1_23bf8("a4", 5, 1, 0xFFFFF000, 0),
         p1_23bf8("a5", 5, 0, 0xFFFFF000, 1),
-    ], calls=(BIT15, ANIM_BEGIN), mutants=("@mutant", "@zero")),
-    # 0x402FC: 0x339AC runs on both sides (allow, record E3 §E3.6); its side is rec+0x51.
+        p1_23bf8("a6", 0, 1, 0x2601, 0),
+        p1_23bf8("a7", 2, 0, 0x5FFF, 1),
+        p1_23bf8("e2", 0x205, None, 0, 0, {0xA83C4 + 0x205: b"\x00"}),
+    ], calls=(BIT15, ANIM_BEGIN), mutants=("@mutant", "@zero", "@ne")),
+    # 0x402FC: 0x339AC runs on both sides (allow, record E3 §E3.6); its side is rec+0x51. +0x42, which it
+    # never writes, carries a sentinel.
     Spec("fighter_402fc", 0x402FC, [
         Case("z%d" % side, {"eax": E3_SLOT, "edx": E3_REC},
-             {**P1_SEED, **SLOT_PTRS, E3_REC + 0x51: bytes([side]), 0x1080A0: b"\xa0\xa0\xa2\xa2"},
+             {**P1_SEED, **SLOT_PTRS, E3_REC + 0x51: bytes([side]), 0x1080A0: b"\xa0\xa0\xa2\xa2",
+              E3_SLOT + 0x42: b"\x42"},
              {0x3C4CC: 0x1234} if side else {})
         for side in (0, 1)
     ], allow_calls=(0x339AC,), calls=(HIT_B,), eax_mask=0xFF),
