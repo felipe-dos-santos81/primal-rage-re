@@ -738,13 +738,27 @@ gp-modes-one: build
 # animation that would have set DS_00104B0C) is not claimed (record §W.9).
 # The values below are pinned by the plan's Tasks 9 and 11 from the measured report lines
 # (record §W.12/§W.14); raise each when it improves.
-GP_WIN_MIN_FIRST =
-GP_WIN_TRACE_MIN_FIRST =
-GP_WIN_MAX_START =
-GP_WIN_MILESTONES =
-GP_WIN_WIN_MIN_FIRST =
-GP_WIN_CAPTURE_SHA256 =
-GP_WIN_CAPTURE_FRAMES =
+# gp-u9-win (record §W.12): measured at de44e7f (+ its miss set) on the capture below
+# (poll.log sha256 and its 2521 stored frames pinned together). Report lines, verbatim:
+#   "frames: FIRST UNEXPLAINED capture 346 (raw 2830): nearest port 221, rows 0..4, x 0..319 (933 px)"
+#   "frames: window from capture 100 (raw 1744)"
+#   "trace: first difference f=866 (2150) in rng: capture 9BE3F91A, port 8D1ACCD4"
+#   "path: 0 not reproduced through 7; ratchet N 0 ok (every item is explained: N = 8 is the exact pin)"
+#   "win: first difference f=C5A (3162) in afc: capture 6, port 3"
+# MIN_FIRST 346: capture 346 is rows 0..4 of port 218 (f=0x48A) over rows 5..199 of port 221
+# (f=0x48D): the guest ran three frames in one capture interval at the round-1 KO poke (W
+# f=0489; the S records of 0x48A..0x48C are missed too), a splice gp_compare's two-frame model
+# does not explain; not a port divergence (named in §W.12). TRACE_MIN_FIRST 2150: the original
+# draws rng at f=0x866 in mode 9, 6 frames after the port's miss of the unported animation
+# target 0x21044 (f=0x860; P track). WIN_MIN_FIRST 3162: match 2's stage, 0x25848's rng pick,
+# follows that rng. MILESTONES 8: all reproduced. Raise each when it improves.
+GP_WIN_MIN_FIRST = 346
+GP_WIN_TRACE_MIN_FIRST = 2150
+GP_WIN_MAX_START = 100
+GP_WIN_MILESTONES = 8
+GP_WIN_WIN_MIN_FIRST = 3162
+GP_WIN_CAPTURE_SHA256 = 7dcea0f16403c0fa52b6ef690edbcccb5340d9b9d1ec96c66ca4d11770708ba8
+GP_WIN_CAPTURE_FRAMES = 2521
 GP_ENDING_MIN_FIRST =
 GP_ENDING_TRACE_MIN_FIRST =
 GP_ENDING_MAX_START =
@@ -752,6 +766,9 @@ GP_ENDING_MILESTONES =
 GP_ENDING_WIN_MIN_FIRST =
 GP_ENDING_CAPTURE_SHA256 =
 GP_ENDING_CAPTURE_FRAMES =
+# The port dump is removed after its comparison unless GP_WIN_KEEP=1 (as gp-modes-one's
+# GP_MODES_KEEP; record §W.10: 129 MB and 302 MB of /tmp).
+GP_WIN_KEEP ?=
 .PHONY: gp-win-oracle gp-ending-oracle gp-win-one
 gp-win-oracle: build ## Gameplay U9 oracle: win-path evidence, frame/trace/milestone/win ratchets on data/k11-captures/gp-u9-win (skips without it)
 	@echo "== gameplay oracle: gp-u9-win (the win path under pokes; plan U9/U10) =="
@@ -772,7 +789,8 @@ gp-win-one: build
 			--capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)" --capture-frames "$(GP_$(GP_WIN_ID)_CAPTURE_FRAMES)" && \
 		$(PYTHON) tools/gp_win.py path --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
 			--port $(GP_DUMP)/$(scenario) --min-milestones "$(GP_$(GP_WIN_ID)_MILESTONES)" \
-			--win-min-first "$(GP_$(GP_WIN_ID)_WIN_MIN_FIRST)" --capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)"; fi
+			--win-min-first "$(GP_$(GP_WIN_ID)_WIN_MIN_FIRST)" --capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)"; \
+		rc=$$?; [ -n "$(GP_WIN_KEEP)" ] || rm -rf $(GP_DUMP)/$(scenario); exit $$rc; fi
 
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1

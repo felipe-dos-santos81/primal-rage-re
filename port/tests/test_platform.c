@@ -229,6 +229,21 @@ static const fnm_pair k_miss_gp_u8_attract_start[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u9-win (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
+ * §W.12), measured on its full replay to its X record (f = 0xDAE): the two wipe hooks
+ * of §G.24 (0x29D60, a bare `ret`; 0x5D812, the runtime stub), from f = 0x28D, and the
+ * E2 animation targets the CPU's CHAOS reaches after the poked KOs (unported P-track
+ * rows of reverse-e2-triage.md, anim-target class): 0x400E0 (dword 0xD2816) at
+ * f = 0x59C in mode 8, 0x21044 (dword 0xE1606) at f = 0x860 and 0x21084 (dword
+ * 0xE162C) at f = 0x874 in mode 9. */
+static const fnm_pair k_miss_gp_u9_win[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+    { 0x400E0u, "anim_indirect" },
+    { 0x21044u, "anim_indirect" },
+    { 0x21084u, "anim_indirect" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -281,6 +296,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u8-handicap", 0, k_miss_gp_u8_handicap, FNM_N(k_miss_gp_u8_handicap) },
     { "gp-u8-endurance", 0, k_miss_gp_u8_endurance, FNM_N(k_miss_gp_u8_endurance) },
     { "gp-u8-attract-start", 0, k_miss_gp_u8_attract_start, FNM_N(k_miss_gp_u8_attract_start) },
+    { "gp-u9-win", 0, k_miss_gp_u9_win, FNM_N(k_miss_gp_u9_win) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a

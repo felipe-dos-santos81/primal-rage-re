@@ -136,6 +136,14 @@ class TestU10(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("FAIL: SAURON's ending", text)
 
+    def test_a_cpu_round_win_at_round_1_fails(self):
+        # the U10 round-1 row's own w3 == 0 (Task 6 re-review): a CPU round win in mode 8
+        path, d = _u10()
+        L = _log(path, change=lambda f, m, k: dict(k, w3=1) if m == 0x08 else k)
+        out = io.StringIO()
+        self.assertEqual(gw.evidence('gp-u10-ending', L + _pokes(d), lambda s: out.write(s + '\n')), 1)
+        self.assertIn("FAIL: round 1 KO with the seven lands poked P1's", out.getvalue())
+
     def test_a_consumed_death_done_byte_fails(self):
         path, d = _u10()
         # the poke landed after mode 0xD consumed the game's own byte: the S record at the
