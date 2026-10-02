@@ -404,6 +404,52 @@ class TestStopAtEnd(unittest.TestCase):
             self.assertTrue(last[-1] == ('end',) or last[0] == 'until_mode', name)
 
 
+class TestMemsize(unittest.TestCase):
+    """gp-u10-ending runs DOSBox-X with memsize=64, a harness value of that scenario only
+    (record §W.13); every other scenario's argv is the one its capture was taken with."""
+    MEM = ['-set', 'dosbox memsize=64']
+
+    def cmd(self, name, root='/r'):         # as gp_capture.main builds it
+        scn = gs.SCENARIOS[name]
+        return gc.dosbox_cmd(root, os.path.join(root, 'C'), os.path.join(root, 'CD', 'RAGECD.ISO'),
+                             scn['time_limit'], name in gs.STOP_AT_END, scn.get('memsize'))
+
+    def test_only_gp_u10_ending_sets_it(self):
+        for name in gs.SCENARIOS:
+            cmd, old = self.cmd(name), gc.dosbox_cmd('/r', '/r/C', '/r/CD/RAGECD.ISO',
+                                                     gs.SCENARIOS[name]['time_limit'],
+                                                     name in gs.STOP_AT_END)
+            if name == 'gp-u10-ending':
+                i = cmd.index('dosbox memory file=/r/guest.mem') + 1
+                self.assertEqual(cmd[i:i + 2], self.MEM)
+                self.assertEqual(cmd[:i] + cmd[i + 2:], old)
+            else:
+                self.assertFalse([a for a in cmd if 'memsize' in a], name)
+                self.assertEqual(cmd, old, name)
+
+    def test_the_captures_argv(self):
+        # The argv= line of each capture's session.txt (shlex.join of the command): one
+        # scenario without the flag, gp-u10-ending with it, after the memory file pair.
+        import shlex
+        seen = 0
+        for name in ('gp-u9-win', 'gp-u10-ending'):
+            path = os.path.join(ROOT, 'data', 'k11-captures', name, 'session.txt')
+            if not os.path.isfile(path):
+                continue
+            with open(path) as f:
+                argv = shlex.split(next(l for l in f if l.startswith('argv='))[5:])
+            mem = next(a for a in argv if a.startswith('dosbox memory file='))
+            root = os.path.dirname(mem.split('=', 1)[1])
+            cmd = self.cmd(name, root)
+            cmd[0] = argv[0]                        # the host's dosbox-x path
+            self.assertEqual(cmd, argv, name)
+            i = argv.index(mem) + 1
+            self.assertEqual(argv[i:i + 2] == self.MEM, name == 'gp-u10-ending', name)
+            seen += 1
+        if not seen:
+            self.skipTest('no gp-u9-win / gp-u10-ending capture')
+
+
 class TestFire(unittest.TestCase):
     def test_late_is_judged_per_step(self):
         # review 1: two steps firing in one due() call; step 1 (F = 0x10A, due at

@@ -377,8 +377,10 @@ SCENARIOS['gp-u9-win'] = dict(time_limit=110, extra=WIN_EXTRA, steps=WIN_MENU + 
 # bonus (modes 0x23/0x22/0x24), the final (mode 0xC: seven opponents, each KO'd by a poke
 # and replaced in mode 0xD once DEATH_DONE is poked), mode 0xF, the ending (mode 0x1F),
 # the high-score entry (mode 0x1E) and back to mode 3. 240 s: 1.3x the port-predicted
-# end at 185 s (record §W.7), a harness value.
-SCENARIOS['gp-u10-ending'] = dict(time_limit=240, extra=WIN_EXTRA, steps=WIN_MENU + (
+# end at 185 s (record §W.7), a harness value. memsize=64: DOSBox-X's guest memory in MB,
+# a harness value, not a game value (record §W.13): under DOSBox-X's default 16 MB the
+# original printed "Primal Rage is out of memory." in the 4th final fight (f=0x14F6).
+SCENARIOS['gp-u10-ending'] = dict(time_limit=240, extra=WIN_EXTRA, memsize=64, steps=WIN_MENU + (
     ('after_entry', 0x06, 1, 10, ('poke', ((0x108106, lands_marked(0, 0)), (0x10789E, b'\x78')))),
     ('after_entry', 0x06, 2, 10, KO_P2),
 ) + tuple(st for k in range(1, 8) for st in (

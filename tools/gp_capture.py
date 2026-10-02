@@ -329,13 +329,16 @@ def write_frames(out, paths, indices):
     return n
 
 
-def dosbox_cmd(root, game, iso, time_limit, stop_at_end=False):
+def dosbox_cmd(root, game, iso, time_limit, stop_at_end=False, memsize=None):
+    """memsize: a scenario's DOSBox-X guest memory in MB (a harness value); None emits no
+    flag, so DOSBox-X's default applies and the argv is the one every older capture used."""
     return ([sc.which('dosbox-x'), '-defaultconf', '-fastlaunch', '-nopromptfolder',
              '-nogui', '-nomenu', '-time-limit', str(time_limit),
              '-set', 'sdl fullscreen=false',
              '-set', 'dosbox captures=%s' % os.path.join(root, 'avi'),
-             '-set', 'dosbox memory file=%s' % os.path.join(root, 'guest.mem'),
-             '-set', 'log logfile=%s' % os.path.join(root, 'dosbox.log')]
+             '-set', 'dosbox memory file=%s' % os.path.join(root, 'guest.mem')]
+            + ([] if memsize is None else ['-set', 'dosbox memsize=%d' % memsize])
+            + ['-set', 'log logfile=%s' % os.path.join(root, 'dosbox.log')]
             + LOG_CON_ARGS + (QUIT_ARGS if stop_at_end else [])
             + ['-c', 'MOUNT C "%s" -ro' % game, '-c', 'IMGMOUNT D "%s" -t iso' % iso, '-c', 'C:',
                '-c', 'DX-CAPTURE /V /O PRAGE.EXE -f', '-c', 'EXIT'])
@@ -497,7 +500,7 @@ def main():
         game = tcap.stage(root, a.exe, a.game_dir)
         iso = os.path.join(root, 'CD', 'RAGECD.ISO')
         os.makedirs(os.path.join(root, 'avi'))
-        cmd = dosbox_cmd(root, game, iso, limit, stop_end)
+        cmd = dosbox_cmd(root, game, iso, limit, stop_end, scn.get('memsize'))
         print('gp_capture: %s' % shlex.join(cmd))
         stop = threading.Event()
         poll = Poller(os.path.join(root, 'guest.mem'), os.path.join(root, 'poll.log'),
