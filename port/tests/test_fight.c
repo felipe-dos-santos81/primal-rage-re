@@ -45140,6 +45140,23 @@ static int p2_run_reaction(u32 addr)
     return -1;
 }
 
+/* 0x14FA8 sets the byte +0x60 = 1 of the one record it spawns (and +0x59 =
+ * 2); the pool is scanned for it (a seeded pool holds no other +0x60 = 1 once
+ * actors_reset has run, which the count proves) and rec+0x4B must be that
+ * record's own +0x56 (the pool index actor_spawn stores). Returns the count. */
+static int p2_spawned_index_matches(u32 rec)
+{
+    u32 base = DSD(DS_001014F4), k, found = 0u, idx = 0u;
+    for (k = 0; k < ACTOR_POOL_RECORDS; k++) {
+        u32 e = base + k * ACTOR_REC_SIZE;
+        if (DSB(e + 0x60u) == 1u && DSB(e + 0x59u) == 2u) { found++; idx = k; }
+    }
+    CHECK_EQ_INT((int)found, 1);
+    CHECK_EQ_INT((int)DSB(rec + 0x4Bu), (int)idx);
+    CHECK_EQ_INT((int)DSW(base + idx * ACTOR_REC_SIZE + 0x56u), (int)idx);
+    return (int)found;
+}
+
 static void p2_check_stream_targets(void)
 {
     static const u32 dw[4] = { 0x000D2E2Eu, 0x000D2E34u, 0x000D2E5Eu, 0x000D2E64u };
@@ -45163,6 +45180,7 @@ static void p2_check_stream_targets(void)
     CHECK_EQ_INT((int)DSB(held + 0x59u), 2);
     CHECK_EQ_INT((int)DSW(held + 0x34u), fighter_actor_bit15_clear(0u) ? 0xFEB6 : 0x014A);
     CHECK(DSB(Z_R0 + 0x4Bu) != 0xEEu, "0x14FA8 stored the spawned record's index");
+    (void)p2_spawned_index_matches(Z_R0);
     /* the held record now blocks the callback (the guard at 0x14EFD) */
     DSB(Z_S0 + 0x53u) = 0x33u;
     fighter_14ef8(Z_S0, Z_R0, 0u);
@@ -45174,6 +45192,7 @@ static void p2_check_stream_targets(void)
     if (held == 0u) return;
     CHECK_EQ_INT((int)DSW(held + 0x34u), fighter_actor_bit15_clear(0u) ? 0xFDDA : 0x0226);
     CHECK(DSB(Z_R0 + 0x4Bu) != 0xEEu, "0x14FA8 stored the spawned record's index");
+    (void)p2_spawned_index_matches(Z_R0);
 }
 
 static void p2_check_reactions_3(void)
