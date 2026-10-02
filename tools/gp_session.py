@@ -139,6 +139,29 @@ SCENARIOS = {
         ('after', 150, ('key', 'enter')),             # LEFT PLAYER ARCADE: mode 0x2D
         ('until_mode', 0x03, 0),                      # back in mode 3 after game over
     )),
+    # U7 (plan 2026-10-01-gameplay-u7-two-players.md, record 2026-10-01-gameplay-u7-derivations.md
+    # §T.3): LEFT PLAYER ARCADE (b1f = 1, credits 5 -> 4), then P2 joins in the
+    # character select (0x11F28(1): a credit and P2's start mask 0x100 newly
+    # pressed, 0x43B4E; b1f |= 2, no debit), each side moves its cursor once and
+    # confirms (bit 0 of its command word, 0x43CAD; both confirmed ends the
+    # select, 0x43BF0), and both press keys in the fight. Harness values: holds
+    # of 5 (a press reaches the pad level one iteration late, record §G.7.2, so
+    # a 1-frame press never acts), the 60/30-frame gaps, the end 60 frames after
+    # the last press, and the 70 s limit (record §T.3).
+    'gp-twop': dict(time_limit=70, steps=(
+        ('boot', ENTER_WAIT, ('key', 'enter')),       # mode 3 -> 0x27, MAIN MENU on "Start"
+        ('after_mode', 0x27, 150, ('key', 'enter')),  # START MENU, cursor on row 0 (spec §3.3)
+        ('after', 150, ('key', 'enter')),             # LEFT PLAYER ARCADE: mode 0x2D
+        ('after_mode', 0x10, 60, ('pad', ('p2.start',), 5)),   # P2 joins (F2)
+        ('after', 60, ('pad', ('p1.right',), 5)),     # P1 cursor 0 -> 1
+        ('after', 30, ('pad', ('p2.left',), 5)),      # P2 cursor 5 -> 4
+        ('after', 30, ('pad', ('p1.b0',), 5)),        # P1 confirms (U)
+        ('after', 30, ('pad', ('p2.b0',), 5)),        # P2 confirms (Home): the select ends
+        ('after_mode', 0x06, 60, ('pad', ('p1.right', 'p2.left'), 30)),  # both walk in
+        ('after', 60, ('pad', ('p1.b1', 'p2.b2'), 5)),
+        ('after', 30, ('pad', ('p1.b2', 'p2.b1'), 5)),
+        ('after', 60, ('end',)),
+    )),
 }
 SCENARIOS['gp-idle-loss-run2'] = dict(SCENARIOS['gp-idle-loss'])   # the determinism run (spec §7 Q1)
 
@@ -205,7 +228,8 @@ SCENARIOS['gp-u6-moves-b'] = dict(SCENARIOS['gp-u6-moves'])
 # Harness values: the hold 6 (>= 2 for the level, 0x500C4; < 0x1F, the 0xC000C000 repeat
 # first period 0x1E that the mode 0x27 menu arms at 0x251C6), the 60-frame wait into mode
 # 0x10 and the 40-frame gaps (the confirm lands 420 frames in, before the earliest
-# pick time-out 14 * 64 = 896 frames in: countdown 0xF, 0x437C6, stepped at f & 0x3F == 0),
+# pick time-out 14 * 64 = 896 frames in: countdown 0xF, stored at 0x437D1; 0x437C6
+# stores 5 when DS_00108173 != 0; stepped at f & 0x3F == 0),
 # and the 60 s limit (the mode-6 frame is expected near 47 s, §C5.7).
 CHARSEL_WALK = ('p1.left', 'p1.right', 'p1.right', 'p1.right', 'p1.down',
                 'p1.left', 'p1.left', 'p1.up', 'p1.right')
@@ -337,8 +361,12 @@ class Schedule:
 # post-restart movie gp-keys-fight's plan counts on). gp-u6-moves ran 130 s for
 # an X at 75 s, 278 MB (U6b task-7 report §6.1); it and its re-capture
 # gp-u6-moves-b (a copy of it) are defined on U6b's branch. A name not in
-# SCENARIOS is inert.
-STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b'})
+# SCENARIOS is inert. gp-twop (U7, record §T.5) stops at its end too: its end is
+# 60 frames after the last press and nothing past it is compared (gp_twop.py
+# checks up to the X record; the port replay's script ends there, so a capture
+# frame past it is unexplained either way; gp-twop-oracle pins N and F at or
+# before it), so the ~23 s of idle fight the 70 s limit leaves would only cost bytes.
+STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop'})
 
 
 class ScriptError(Exception):

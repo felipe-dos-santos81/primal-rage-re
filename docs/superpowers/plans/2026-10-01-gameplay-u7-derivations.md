@@ -516,3 +516,30 @@ runs after U6b. Re-measured in a scratch `git archive` of `8eaf25a`, with
    cite `0x437C6` as the countdown's `0xF`. The fixed-up image (capstone 5.0.7,
    `dx.py 437BD 20`) has `0x437C4 je 0x437d1`, `0x437C6 mov word [0x10816c], 5`
    and `0x437D1 mov word [0x10816c], 0xf`, as §T.1.4 and §T.R item 1 say.
+
+## §T.5 The scenario (Task 1)
+
+`SCENARIOS['gp-twop']` as §T.3. `tools/tests/test_gp_twop.py` (TestScenario, 2 tests): before the
+block `KeyError: 'gp-twop'` (2 errors); after, the four gp suites `Ran 94 tests … OK` (B = 92 on
+`1142462` + 2; `gp_capture.py --help` lists `gp-twop`). Mutation (P2 start hold 5 -> 1): both tests
+FAIL; restored OK.
+
+**Rebase decision: `gp-twop` is in `STOP_AT_END`** (U6b/capture-hygiene opt-in, `tools/gp_session.py`).
+What compares past the scenario's end: nothing. `gp_twop.py` (Task 2) checks up to the `X` record and
+ignores later records (`test_records_after_the_end_are_not_checked`); the port replay's script ends at
+`X` (§T.3), so a capture frame past the port's last frame is unexplained whether or not the capture
+holds a tail (`gp_compare.frame_claim` classifies every capture frame from the window start, `N` is
+the first unexplained one; `trace_claim` walks the port's `T` records only); the ratchets (Tasks 5-6)
+pin `N`/`F` at or before the port's end. The 70 s limit (§T.3) then only bounds a stall; the capture
+stops `STOP_TAIL` = 60 frames after `X` (~47 s expected) instead of idling ~23 s more. Guarded by the
+`gp-twop` assertion in `test_gp_capture.TestStopAtEnd.test_opt_in_scenarios` (which also requires
+the scenario's last step to be `('end',)`); removing the name from the set fails that test.
+
+**Correction (raw wins): the character-select countdown's `0xF` store is `0x437D1`, not `0x437C6`.**
+Fixed-up image (`build/diffrun --exe data/game/C/PRAGE.EXE --image-out`, capstone, base `0x10000`):
+`0x437BD cmp byte [0x108173],0` / `0x437C4 je 0x437D1` / `0x437C6 mov word [0x10816C],5` /
+`0x437CF jmp 0x437DA` / `0x437D1 mov word [0x10816C],0xF`. So `0xF` is the `DS_00108173 == 0` arm
+(`0x437D1`), `5` the other (`0x437C6`), as §T.1.4 and §T.R item 1 say. The comment above
+`gp-u5-charsel` in `tools/gp_session.py` and the U5 record §C5.4 ("The time-out") cited `0x437C6`
+for the `0xF`; both corrected in this commit. Neither changes a pinned value (the earliest time-out
+stays 14 x 64 = 896 frames).
