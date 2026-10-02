@@ -349,8 +349,14 @@ Named gaps and limits:
   oracle moves; in play those effects are missing (as before P2).
 - **The callee rows** (decision D3): the new stubs `0x34D8C 0x18C14 0x18AF8 0x39834 0x39A10 0x3C208 0x3C358 0x36870`
   and the earlier unverified `0x2BC30 0x2C3FC 0x2AE14 0x3C480` get rows in C1; `0x22404` has its own row here.
+  Also in C1: `0x18BD4` (run on both sides, allow-unverified in the `2116c`/`22510` rows, which it keeps open) and
+  P1's stubs `0x188AC` and `0x2A17C`.
   After P2 the counter reads `7/41 rows with callees closed (13 have none)`.
 - **x87** (§P2.9).
+- **`0x22638`'s table entries 4..7** (`0x22624..0x22634`) are never selected alone: they share `0x22930` with entry 3,
+  which case pB covers (§P2.9).
+- **Image-only checks:** the unit checks of a callback's image dword (`DSD(table_dw)` in `p2_check_guarded`), of
+  `0x225A6`'s rel32 and of `0x22638`'s table read the image's bytes: evidence lines, not tests of the port.
 - **One stub EAX per case** (§P1.12): `0x14FF8`/`0x150AC` call `0x2AE14` once, so not affected.
 - **No capture reaches** `0x2116C 0x22510 0x211F0 0x22588 0x22404 0x212CC 0x22638 0x21374 0x22938` or the Task 2/4
   callbacks other than `0x2381C`: no gp miss set held one (§P2.12). Two replays exercise a P2 member: U8's
@@ -364,6 +370,8 @@ Named gaps and limits:
 P2 **24** (19 + `0x22638 0x229FC` + `0x14FA8 0x14FF8 0x150AC`); P4 **20** (less `0x14FA8`); P5 **13** (less
 `0x14FF8 0x150AC`); the rest unchanged. Total **145 functions** in 8 porting batches (143 + the two stored callbacks
 outside E2). `0x22404` precedes `0x224EC` (P7) and is now ported.
+Duties U10 hands on (record gameplay-u9-u10 §W.16): `0x475EC` -> P3, `0x3DA50` -> P5, `0x37DD4` -> P6, `0x29C78` -> P7;
+each such batch drops its row from `k_miss_gp_u10_ending` and re-measures the set, which follows the opponent order.
 
 ## §P2.12 The U8 and U9/U10 interactions
 
@@ -490,4 +498,3 @@ four ratchet lines per U9/U10 scenario the plan did not list, with gp-u10-ending
 from 2121/5634 to 9954 (§P2.12, record gameplay-u9-u10 §W.16). Outside P2: `tools.tests.test_title_pin
 test_patches_all_sites_and_nothing_else` fails on this tree and on main (not in `make verify`; title_pin gained
 master-loop draw pins without that test's update), a named issue for the closeout.
-

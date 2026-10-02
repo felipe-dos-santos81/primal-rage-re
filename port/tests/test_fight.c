@@ -45012,6 +45012,7 @@ static void p2_check_guarded(u32 addr, void (*fn)(void), u32 table_dw, u32 strea
 {
     p2_cb_fn f;
     CHECK(fn_resolve(addr) == fn, "the move callback is registered");
+    /* An evidence line, not a port test: it reads the image's dword, not the port. */
     CHECK_EQ_INT((int)DSD(table_dw), (int)addr);
     f = (p2_cb_fn)(void *)fn_resolve(addr);
     if (f == NULL) return;

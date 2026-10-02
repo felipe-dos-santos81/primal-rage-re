@@ -1321,7 +1321,10 @@ unreachable`. The exact pins pass (exit 0).
 `0x2381C`'s: with it ported, both sides keep `rng` and every traced field to the replay's end. The
 WIN fields' `f = 0x1602` difference (`b0c` set 29 frames late) is gone too while the port still
 misses `0x37DD4`/`0x29C78` at every death stream, so it followed the `rng` and the opponent order,
-not those two targets (§W.14 had not separated them). The frame ratchet is still capped at 331 by
+not those two targets (§W.14 had not separated them). **The claim is narrow:** the replay still misses `0x37DD4`
+and `0x29C78` (33 hits each), `0x3DA50` and `0x475EC` (11 hits), whose effects the traced fields cannot see, so the
+clean trace to `f = 0x26E1` does not claim the death streams or the mode-`0xF` content are reproduced, and it is no
+evidence of correctness past the frame ratchet's 331. The frame ratchet is still capped at 331 by
 the mode-8 catch-up; `--report` (which stops after `REPORT_MAX` = 5 unexplained) now lists 331,
 341, 342, then **2062** (raw 4954, nearest port 1686, `f = 0xB9A`, mode `0x12`, rows 192..197,
 166 px) and **3686** (raw 7145, nearest port 3071, `f = 0x12EA`, mode `0x24`, rows 20..25, 379 px):
@@ -1333,4 +1336,3 @@ the same set (`distinct=7`, `0x29D60`, `0x5D812`, `0x400E0`, `0x21044`, `0x21084
 unexplained 346, ratchet N 346 ok`, `trace: first differing 2150, ratchet N 2150 ok`, `path: 0 not
 reproduced through 7; ratchet N 8 ok`, `win: first differing 3162, ratchet N 3162 ok`, window from
 capture 100: every `GP_WIN_*` pin holds unchanged.
-
