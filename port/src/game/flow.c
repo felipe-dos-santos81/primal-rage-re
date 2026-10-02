@@ -6758,10 +6758,12 @@ void game_init_resume(void)
      * render_proj_y's 3414/4096), so text row 1 lands on the captured screen
      * rows 7-12.
      * PORT: named gap, record §24 of 2026-09-29-todo-verify-derivations.md:
-     * the captures (data/title-captures/title, title2, frontend) have no coin
-     * input, so the oracles cover the no-input window only; the decrementers
-     * 0x2CA48/0x2CA7C are unit-tested against the raw (test_game.c), and a
-     * DOSBox-X capture with coin input is what would cover the countdown. */
+     * the captures (data/title-captures/title, title2, frontend) cover the
+     * no-input window only; the decrementers 0x2CA48/0x2CA7C are unit-tested
+     * against the raw (test_game.c), and a DOSBox-X capture whose start
+     * presses spend credits is what would cover the countdown. This build has
+     * no coin input: nothing increments the count, only 0x2C304's init
+     * (0x2C317) sets it (record 2026-10-01-gameplay-u11 §K.4). */
     /* 0x20CCC: the init chain writes the overlay row to 0x1D. */
     config_set_credit_row_init();
     DSW(DS_00104AFC) = 0u;  /* 0x20CD3 xor ebx,ebx; 0x20CDF (0x32970, 0x13ADC keep EBX) */
@@ -6887,7 +6889,8 @@ void game_loop(void)
     do {
         {
             /* PORT: the host fills the key bitmap 0x500C4 samples; the binding
-             * is host.c's table (host_key_bits()). */
+             * is the original's default one (host.c host_kb_bit(), which
+             * host_key_bits() applies; record 2026-10-01-gameplay-u11 §K.13). */
             u16 bits = host_key_bits();
             u8 *k = mem + DSD(DS_00101514);
             k[0x2d8] = (u8)(bits >> 8);

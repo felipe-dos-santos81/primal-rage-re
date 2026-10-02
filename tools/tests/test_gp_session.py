@@ -53,6 +53,8 @@ class TestTables(unittest.TestCase):
         src = open(os.path.join(ROOT, 'port', 'tests', 'test_game.c')).read()
         body = src[src.index('static void gp_trace_line(void)'):]
         call = body[:body.index(');\n    gp_trace_lines++')]
+        # comments (/* */ and //) go before the format string and the arguments are read
+        call = re.sub(r'/\*.*?\*/|//[^\n]*', '', call, flags=re.S)
         fmt = ''.join(re.findall(r'"([^"]*)"', call))
         self.assertTrue(fmt.startswith('T '), fmt)
         fields = gs.SNAP_FIELDS + gs.KEYS_EXTRA
@@ -61,7 +63,6 @@ class TestTables(unittest.TestCase):
         # each placeholder is as wide as the field (2 hex digits per byte)
         self.assertEqual([int(w) for w in re.findall(r'%0(\d)X', fmt)], [2 * s for _, _, s in fields])
         rest = call[call.rindex('"') + 1:].lstrip(' ,')
-        rest = re.sub(r'/\*.*?\*/', '', rest, flags=re.S)
         args, depth, cur = [], 0, ''
         for ch in rest:
             if ch == ',' and depth == 0:
