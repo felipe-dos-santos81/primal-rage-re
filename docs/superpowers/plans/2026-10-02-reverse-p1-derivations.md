@@ -82,19 +82,25 @@ basic blocks of `diff_emu.static_scan(..., switches=True)` from the entry (tail 
 
 | batch | functions | members (addr) | callees to seam first |
 |---|---|---|---|
-| **P1** (this plan) | 12 + the row of `0x1A570` | finishers `1567C 15908 23EC0 45D14 23BF8 402FC`; their +0x0C callbacks `15584 1579C 23D38 23B68 401D4`; `38034` | `1A570 2A17C 188AC` (and `38034` as a callee) |
+| **P1** (this plan) | 16 + the row of `0x1A570` | finishers `1567C 15908 23EC0 45D14 23BF8 402FC`; their +0x0C callbacks `15584 1579C 23D38 23B68 401D4`; `38034`; the finisher streams' 0xD100 targets `156D4 23CA4 23868 3F174` (final review, §P1.12) | `1A570 2A17C 188AC` (and `38034` as a callee) |
 | **P2** callbacks A | 19 | `14EF8 14F50 15478 21114 21374 2116C 211F0 212CC 22938 22510 22404 22588 22A00 237D0 2381C 3D10C 3DADC 3DB34 3DCEC` | `34D8C 18BD4 18C14 18AF8 39834 39A10 3C208 3C358` |
 | **P3** callbacks B | 24 | `475EC 47608 47624 47720 476FC 47648 47688 47874 47798 477A8 477E8 47830 47FCC 47CB0 47D24 47E9C 48608 48054 48170 480B4 4811C 4844C 48964 489A0` | `3C190 35838 39FB0 3A95C 3B298 3B714 36870 188DC 36D98 3C148 468D8 3C16C` |
-| **P4** animation A | 24 | leaves `156D4 18BC8 21084 23CA4 3F174 400E0`; `14FA8 1549C 154E8 15510 229E8 241A8 243F8 3427C 34308 3438C 34418 344A4 34530 345BC 400EC 40358 45C54 489DC` | `29C08` |
-| **P5** animation B | 16 | `14FF8 150AC 156E0 21044 22AB8 23868 37B70 3D328 3DA50 3DB8C 3DC3C 403A0 40FBC 48A20 24508 24454` | `2AD40` |
+| **P4** animation A | 21 | leaves `18BC8 21084 400E0`; `14FA8 1549C 154E8 15510 229E8 241A8 243F8 3427C 34308 3438C 34418 344A4 34530 345BC 400EC 40358 45C54 489DC` | `29C08` |
+| **P5** animation B | 15 | `14FF8 150AC 156E0 21044 22AB8 37B70 3D328 3DA50 3DB8C 3DC3C 403A0 40FBC 48A20 24508 24454` | `2AD40` |
 | **P6** animation C | 18 | `22338 22494 22A40 23F10 2400C 241F4 24338 24220 2BDA0 37DD4 3E160 40148 40170 45C98 47E04 47E30 482E4 48374` | `39280 39F40 13244 2A148 2BCF4 1890C 5D7DC 29BC8 37D18 13C70 3AA54` |
 | **P7** unported callees, outside-E2 targets | 14 | `2BDB8 213F4 3E424 224EC 23960 23A7C 2BDE8 36114 3A9D8 48254 23AE0 29C78 4B03C 213F0` | `1883C 33A10 2B150 41310 49444` |
 | **P8** other | 16 + triage | `10604 29CFC 1BDF4 19AD4 19DD5 26163 26226 34962 45444 49078 2EE3C 37E40 3A3FC 3A820 4AEC4 1D2D0`; triage of `2D3FC..2D48C` (six addends of stride 0x18 whose scan runs into runtime code and an `int` at `0x6201B`/`0x62003`: data, not entries, until shown otherwise); the 15 voice sites still in no body | `13420 249B0 249D0 37B54 2EB80 18714 10D70`; `1BBAC`/`2D62C` are host-owned |
 | **C1, C2** callee rows | about 45 rows, no port | the ported callees P rows stub: after P1 `2C3FC 2BC30 2AE14 3C480 188AC 2A17C`, then each batch's seamed list above | none (verification only) |
 | **span** | 6 dispatchers + 231 writers | decision D2 of the plan (§P1.10) | - |
 
-So **8 porting batches, 143 functions** (12 + 19 + 24 + 24 + 16 + 18 + 14 + 16), two verification-only batches of
-callee rows, and the span decision. Notes: `22404` precedes `22588` and `224EC` (P2 before P7); `48170` precedes
+So **8 porting batches, 143 functions** (16 + 19 + 24 + 21 + 15 + 18 + 14 + 16; the final review moved `156D4 23CA4
+3F174` from P4 and `23868` from P5 into P1, §P1.12), two verification-only batches of callee rows, and the span
+decision. Two members left in later batches sit on the finisher path: `0x156E0` (P5; the dword `0xD3310` in
+`0x1567C`'s stream) and `0x15510` (P4; `0xD2B62`, which both `0xD32A8` and `0xD3334` reach through their jump to
+`0xD2B60`): §P1.12. **Note for P2:** U8's `gp-u8-right-arcade` replay reaches `0x14EF8` and `0x14F50` (two P2
+members); after U8 merges, P2 must drop those two pairs from `k_miss_gp_u8_right_arcade` (`test_platform.c`), then
+re-measure and raise `GP_MODES_RA_MIN_FIRST` / `GP_MODES_RA_TRACE_MIN_FIRST` (the Makefile) to what the replay then
+reaches. Notes: `22404` precedes `22588` and `224EC` (P2 before P7); `48170` precedes
 `480B4` (both P3); `1BDF4` calls the host-owned ISR sampler `0x1BBAC` (`in` at `0x1B899`, E3's `NAMED_GAP` row) and
 `0x2D62C` (tick): its row stubs both, which needs seamed host-side C functions or stays a named gap; `19DD5` is two
 bytes inside the live Ghidra body of `0x19D34` (E2 §E2.5): reclassify, not port; `0x45444` calls the runtime error path
@@ -296,9 +302,19 @@ allow-listed". Allow-listed means both sides run the writer; the port has no C f
   `0x5D812` and `0x29D60`: no scripted run arms a finisher, so registering the twelve changes no oracle line (the
   prototype's and the replay's `make verify` agree). The finisher path in play (O4) is therefore claimed by
   differential verification only; its screen stays unseen until a capture (U9's pokes, say) reaches it. The final
-  `make verify` agrees: no oracle line moved.
-- **Who advances +0x57 from 0 in `0x15584`/`0x1579C`.** Their case 0 does nothing; the animation streams the entries
-  start presumably carry the step (an animation-opcode target), not examined here.
+  `make verify` agrees: no oracle line moved. The same holds for the four stream targets of §P1.12 (none is in a
+  pinned miss set; the final review's `make verify` moved no line).
+- **The finisher path in play (final review I4, §P1.12).** The callbacks `0x15584`/`0x1579C` do nothing at +0x57 = 0
+  and `0x23B68` acts only at 1: the step comes from the streams' 0xD100 targets `0x156D4` and `0x23CA4`, which the
+  first version of this batch left unregistered, so in play those finishers stalled at +0x57 = 0 where the port had
+  fallen back to `0xC9260[char]` before. They are ported now with `0x23868` and `0x3F174`; on their real streams
+  `0x1567C`, `0x15908` and `0x23BF8` run to their end stores (`test_p1_anim_targets`). **Still open:** the streams
+  call `0x156E0` (`0xD3310`) and `0x15510` (`0xD2B62`), unported (P5, P4; neither touches +0x57: `0x156E0` places
+  and starts the other side's record and plays the voice `0xD6`, `0x15510` spawns from `0x9B07C` after `0x29C08`), so
+  character 3's two finishers lack those effects; `0x23D38` (char 6) and `0x401D4` (char 0) step +0x57
+  themselves but wait on positions (the held record within 0x1000 of the fighter) and on the word +0x36 going negative,
+  which the fight's physics, not the stream walk, produce: the unit run does not reach their ends and nothing here
+  claims them.
 - E3's limits stand: seeds are hand pokes; the memory at a call is mem[] only; the callee column is one level deep.
 
 ## §P1.11 Results and facts verified by running
@@ -311,19 +327,22 @@ The replay's per-task gates (`make diff-verify entry-triage` with scratch image 
 | `834b703` | `13/13 functions VERIFIED; 17/17 mutants detected; 1 named gaps; 0/5 rows with callees closed (8 have none)` | `targets 323 unported, 172 ported; supplement 131 (31 unported, 0 stale)`; voice `46 / 69 / 19` |
 | Task 2 | `17/17 ...; 21/21 ...; 0/9 ... (8 have none)` | `319 / 176`; finishers `2 / 7`; stubs 79; voice `43 / 72 / 19` |
 | Task 3 | `20/20 ...; 26/26 ...; 1/11 ... (9 have none)` (25/25 in the replay; +1 the fix-round mutant `fighter_23bf8@ne`) | `317 / 178`; finishers `0 / 9`; stubs 77; voice `43 / 72 / 19` |
-| Task 4 | `23/23 ...; 34/34 ...; 1/14 ... (9 have none)` (28/28 in the replay; +1 `@ne`, +5 the review's boundary mutants) | unchanged (the three are outside E2's lists) |
+| Task 4 | `23/23 ...; 29/29 ...; 1/14 ... (9 have none)` as measured at `00360f3` (28/28 in the replay; +1 `@ne`); the review's five boundary mutants came with `faddb85`, before Task 5 (final review m5: this row read 34/34) | unchanged (the three are outside E2's lists) |
 | Task 5 | `26/26 ...; 39/39 ...; 1/17 ... (9 have none)` (31/31 in the replay; +1, +5, and +2 from Task 5's review: `@no36`, `@noneg`) | `317 / 178`; supplement `28` unported; voice `40 / 75 / 19` |
+| final review fix | `30/30 ...; 47/47 ...; 1/18 ... (12 have none)` (+4 mutants of I1/I2: `fighter_15584@no42`, `fighter_1579c@no42`, `fighter_15584@own4`, `fighter_23d38@noand`; +4 rows and their `@mutant`s of I4, §P1.12) | `313 / 182`; animation targets `57 / 55`; supplement `28` unported; voice `40 / 75 / 19` |
 
 The Task 4 and Task 5 rows quoted by the plan are the replay's; on `reverse-p1` the review rounds added eight mutants
 and cases (Task 3: `fighter_23bf8@ne`; Task 4's fold-in: `fighter_23d38@ge/@unsigned/@bit`, `fighter_15584@ge`,
-`fighter_1579c@ge`; Task 5's fix: `fighter_401d4@no36`, `fighter_23d38@noneg`), the other figures unchanged. The final
-counter is the Task 5 row: `26/26 functions VERIFIED; 39/39 mutants detected; 1 named gaps; 1/17 rows with callees
-closed (9 have none)`.
+`fighter_1579c@ge`; Task 5's fix: `fighter_401d4@no36`, `fighter_23d38@noneg`), the other figures unchanged. The
+counter at Task 6 was the Task 5 row: `26/26 functions VERIFIED; 39/39 mutants detected; 1 named gaps; 1/17 rows with
+callees closed (9 have none)`; after the final review's fix round (§P1.12) it is `30/30 functions VERIFIED; 47/47
+mutants detected; 1 named gaps; 1/18 rows with callees closed (12 have none)`.
 
 The batch's rows (the self-check table): `fighter_1567c` 2 cases 1/1, `fighter_15908` 2 1/1, `fighter_23ec0` 2 1/1,
 `fighter_45d14` 2 1/1, `fighter_actor_bit15_clear` 4 1/1, `fighter_23bf8` 11 8/8, `fighter_402fc` 2 1/1,
 `fighter_15584` 10 9/9, `fighter_1579c` 8 11/11, `fighter_23d38` 21 24/24, `fighter_38034` 2 3/3, `fighter_23b68` 6
-5/5, `fighter_401d4` 9 14/14 (cases, then blocks hit/total): all `VERIFIED`, no unhit block. `fighter_402fc` is the one closed row (`339AC allow
+5/5, `fighter_401d4` 9 14/14, and (§P1.12) `fighter_156d4` 3 3/3, `fighter_23ca4` 6 4/4, `fighter_23868` 5 9/9,
+`fighter_3f174` 2 1/1 (cases, then blocks hit/total): all `VERIFIED`, no unhit block. `fighter_402fc` is the one closed row (`339AC allow
 VERIFIED, 3C4CC stub VERIFIED`).
 
 **What catches each mutant** (`test_each_p1_mutant_is_caught_by_what_it_breaks`): `fighter_1567c@mutant` (0x15908's
@@ -344,6 +363,12 @@ bit 14) byte, case `gJ`; `fighter_23d38@noneg` (case 1 without the `neg` at `0x2
 `fighter_15584@ge` (case 3 clamps below 0x400 only) byte, case `c9`; `fighter_1579c@ge` (case 3 copies at 0x400 too)
 `call #0 #1 #2` and byte, case `c7`; `fighter_401d4@no36` (case 1 without the store rec+0x36 = 0 at `0x4027E`) byte,
 case `t4` (sentinel `0x3636`); `fighter_23bf8@ne` `call #1`, case `a6`; `fighter_23bf8@zero` `eax`, cases `e1 e2`.
+The final review's (§P1.12): `fighter_15584@no42` and `fighter_1579c@no42` (case 1 without `or byte [ctx[3]+0x42],4`,
+`0x155CD`/`0x157E5`) byte and `call #1 memory`, case `c1` alone; `fighter_23d38@noand` (case 3 without `and byte
+[..+0x29],0xbf`, `0x23E70`) byte and `call #0/#1/#2 memory`, case `gA` alone; `fighter_15584@own4` (case 3's copy to
+the own slot's +4 record) byte, cases `c3 c4 c5 c9`; `fighter_156d4@mutant` (the record's own +0x57) byte;
+`fighter_23ca4@mutant` (an unsigned division) byte, cases `k3 k5` alone; `fighter_23868@mutant` (the x offset by the
+other bit-14 arm) `call #0` alone; `fighter_3f174@mutant` (+0x44 = 0x28) byte.
 
 **The seams are needed** (replay): without `PR_SEAM_RET(0x1A570u, side)` the row reads `a0: call #0: original
 0x1A570(0x0), port 0x2BC30(0x10A300, 0xE19E6, 0x40400000)`; without `0x2A17C`'s, `c4: call #1: original
@@ -369,3 +394,85 @@ animation dwords and the 8 outside E2; `callee_clobbers` for `0x1A570 0x2A17C 0x
 ()`); the image's stage, threshold, stream and voice tables quoted above; every unit-test mutation of the plan.
 
 **Closure (Task 6, on `7bd60ac`, the Task 5 head `f60281d` plus the one-line `0x23B68` change and the `0x379C4` comment):** `make verify` EXIT=0 (14 min), the 45 oracle lines equal to `oracle-lines-base.txt`, the `make audio-render` WAV equal to `before-t2.wav`, the gameplay ratchets as at the baseline (gp-idle-loss N 2064 / 8320, gp-u5-charsel 516 / 1513, gp-u6-moves-b 1005 / 2262 / 2949, gp-twop 612 / 1506 / 1506, gp-keys-fight 11), `diff-verify: 26/26 functions VERIFIED; 39/39 mutants detected; 1 named gaps; 1/17 rows with callees closed (9 have none)` (the plan expected `31/31`: the review rounds added eight mutants, see the table above), `entry-triage: targets 317 unported, 178 ported; supplement 131 (28 unported, 0 stale)`, voice `40 / 75 / 19`, `771 1203 64` / `731 731 100`, `pr_seam = ` assigned only in `port/tests/diff_runner.c` and `port/tests/test_platform.c`.
+
+## §P1.12 The final review's fix round (2026-10-02)
+
+The whole-branch review (`progress.md`, "Final review (opus)") found three stores no case could observe, a wrong
+callback argument, and a stall the batch had introduced on the finisher path. Each fix is from the raw (capstone over
+the image of §P1.1, sha1 `ff3b8cb1...`, unchanged).
+
+**I1, I2: the stores the seeds hid.** A store whose operand leaves the byte unchanged cannot show: `0x155CD`/`0x157E5`
+`or byte [ctx[3]+0x42],4` against slot 1's seed `0x24` (bit 2 already set), and `0x23E70` `and byte [..+0x29],0xbf`
+against the held record's seed `0x29` (bit 6 already clear) in case `gA`. The seeds are now `0x20` and, for the cases
+whose word +0x28 has bit 14 clear, `0x69` (`g9`, bit 14 set, keeps `0x29`, which `0x23E67`'s `or` changes). The
+reviewer's store sweep (scratch `sweep.py`: every non-stack store of every case, observable when some byte changes
+to its final value) finds no store left unobservable in the 13 P1 rows and the four of I4. The two slots' +4 records
+were both `E3_OUT`; slot 0's is now `P1_OWN4 = E3_OUT + 0x20`, so a port copying case 3's word to the own slot's +4
+record differs (`@own4`). The callback seed stays at 14 pokes: the two words +0x2C share one poke.
+
+**I3: `0x38434`'s callback arguments.** `mov ebx,eax` (`0x38438`, EAX = side) and nothing writes EBX before `call
+dword ptr [ecx+0xc]` (`0x384D9`, with `mov eax,ecx` at `0x384D7` and EDX = `[ecx]` from `0x38449`): the callback gets
+(slot, rec, side), as from `0x3531C` case 7 (`0x35431`). The port passed the slot as the side, and the comment said no
+registered callback reached the path; `0x45454` (registered by U0's §48-R) and P1's callbacks do, and with EBX = a
+slot address `0x33950(side)` would index far outside `mem[]`. Fixed to `fn(slot, DSD(slot), side)`.
+
+**I4: the stream targets.** The finisher entries start streams whose `0xD100` words (opcode `0x11`, mode `0x4000`:
+the dword after the word goes to `DS_00105BD4`, the next word is the operand, and `0x2B57F..0x2B594` calls `[0x105bd4]`
+with EAX = rec, EDX = the operand zero-extended, ECX = 0, then `mov eax,ecx` at `0x2B59A`: **mask 0** for all four)
+name four functions E2 lists as animation targets and nobody had ported:
+
+| target | where (dword, operand) | bytes | C |
+|---|---|---|---|
+| `0x156D4` | `0xD32BE 0xD32D6 0xD3326` (`0xD32A8`, `0x1567C`), `0xD334A 0xD3362` (`0xD3334`, `0x15908`), `0xE1BE2 0xEB83A 0xEDCA4`; operand 0 | `mov eax,[eax+0x14]; test; je; inc byte [eax+0x57]; ret` | the owner slot's +0x57 steps |
+| `0x23CA4` | `0xE1A4E` (`0xE1A06`, `0x23BF8`); 0 | 40 instructions, 4 blocks, no call: slot = rec+0x14 and `DS_001077A8[(rec+0x51 ^ 1) & 0xFF]` both non-zero, else return; slot+0x54 = 2; `(0xA83CC[DS_00104AFC] - rec+0x18) / 0x48` (`idiv` by a constant `esi = 0x48`, `sar edx,0x1f` as the sign) into the word +0x34; words +0x36 = 0x200, +0x38 = 0x28, +0x44 = 0x10; `DS_000F0AFE` = AH = 0 (`xor ah,ah`), `DS_000F0AFF` = rec+0x51, slot+0x57 + 1 (read at `0x23D02`) | `fighter_23ca4` |
+| `0x23868` | `0xE1B32` (`0xE1B24`, `0x23EC0`; operand 2), `0xE14E6` (0), `0xE1514` (1) | 9 blocks; calls `0x2AE14` twice and `0x2A17C` twice (both seamed, stubbed: SPAWN, PALETTE); reads EDX (`add edx,edx`; the words `0xC0 0x180 0x20` at `0xA8364`) | `fighter_23868(rec, arg)`, below |
+| `0x3F174` | `0xE7C6E` (`0xE7C40`, `0x402FC`), `0xD4DD8`; 0 | `mov word [eax+0x36],0x280; mov word [eax+0x44],0x20; ret` | `fighter_3f174` |
+
+`0x23868`: with the owner slot rec+0x14 (`edi`), w = the word `0xA8364[arg]`; rec's word +0x28 bit 14 set: `[esp]`
+= w, ECX = `0xC00`; clear: `[esp]` = -w, ECX = `0xFFFFF400`; `0x2AE14(0xBB330, rec+0x18 + movsx cx, rec+0x30 >> 16,
+rec+0x1C + 0x1200, bit 14 ? 0x4000 : 0)` (`0x238D1..0x238F0`); slot+8 = its EAX, its word +0x34 = `[esp]`, `[slot+8]`
++0x14 = slot (+8 read again at `0x238FF`); `0x2AE14(0xBB344, 0, 0, 0, rec+0x56 word | 0x400)`, its +0x59 = 2, +0x60 =
+1, rec+0x4B = its byte +0x56; rec+0x51 non-zero: `0x2A17C([slot+8], 0xC, 0)` then `0x2A17C(second, 0xC, 0)` (the
+second record lives in ECX across the first `0x2A17C`, which saves ECX). It pushes EBX, ECX, ESI, EDI, not EDX (the
+dispatcher does not read it).
+
+Each is ported (`fighter.c`, `/* 0xADDR — record §P1.12 */`), registered through `anim_code_` wrappers
+(`actors.c`; the three that read EAX only drop the operand, `0x23868`'s passes it), and differentially verified:
+`fighter_156d4` (no owner; +0x57 0x57 -> 0x58; 0xFF -> 0), `fighter_23ca4` (no owner; the other side's slot 0; side 1
+reading `DS_001077A8`; side 0, a negative distance -0x1000 -> -56 = `0xFFC8`, where an unsigned or a flooring division
+differs; side 2 reading `DS_001077B4` (`(2 ^ 1) & 0xFF = 3`); the distance `0x80000000` -> `0xE38F`), `fighter_23868`
+(no owner; bit 14 clear, set, and the word `0xBFFF`; operands 0, 1, 2; both values of rec+0x51; a negative x and z),
+`fighter_3f174` (two records). E2's table, regenerated in the same commit: `313 unported, 182 ported`, animation
+targets `57 / 55`, stubs 76, voice `40 / 75 / 19`. `port_progress.py` stays `771 1203 64` / `731 731 100` (none is a
+Ghidra function).
+
+**Named limit of `0x23868`'s row.** A stub has one EAX per case, so both `0x2AE14` stubs return the same record: a
+port that put the second record's stores (+0x59, +0x60, the +0x56 it copies) on the held one would still verify. The
+unit test `test_p1_anim_targets` runs `0x23868` on the pool with the real `actor_spawn` and pins the two records apart
+(the held one at x - 0xC00 with +0x34 = `0xFF40`, the second with +0x59 = 2 and +0x60 = 1; a mutation that writes
++0x59 on the held record fails it).
+
+**The finishers on their real streams.** `test_p1_anim_targets` starts slot 0's entry on its real stream (the victim,
+slot 1, character 2, with the word +0x2C = 0x1000) and each frame syncs both records (`actor_sync`, which walks the
+stream and dispatches the 0xD100 targets) and runs the +0x0C callback while +0x53 is 7, as `0x3531C` case 7 does. A
+scratch probe of the same loop printed, for `0x1567C`: +0x57 0 -> 2 at frame 9 (`0x156D4` at `0xD32BC`, then case 1),
+3 at 18 (`0xD32D4`), 4 at 65 (case 3's clamp), 5 at 192 (`0xD3324`; case 5: +0x53 = 3); `0x15908`: 2 at 9, 3 at 18,
+the end at 65 (case 3); `0x23BF8`: +0x57 = 1 and the end at 36 (`0x23CA4`, then `0x23B68`). The test pins the three
+ends (+0x57 5, 3, 1; +0x53 = 3); with `0x156D4` unregistered `0x1567C` and `0x15908` stay at +0x57 = 0, and with
+`0x23CA4` unregistered `0x23BF8` does (both mutations fail the test). The probe's fn_resolve misses on slot 0's record
+were `0x156E0` (`0xD3310`) and `0x15510` (`0xD2B62`), §P1.10's open items, and the pinned `0x5D812`. `0x23EC0`
+reached +0x57 = 2 and `0x402FC` stayed at 0 (§P1.10: they wait on positions and on +0x36, which this loop does not
+move). It is a fixture run, not a capture: the screen stays unclaimed.
+
+**m7.** `test_p1_anim_targets` also pins `0x23B68`'s zero divisor (rec+0x30 = `0x0000FFFF`, >> 16 = 0): both words
++0x2C keep their sentinels (`0xABCD`, `0xCCCC`); the earlier behaviour (store 0) fails it.
+
+**The fix round's gate (on `83a8a9e`, the code head; the docs commit changes no code):** `make verify` with the
+parallel-safe overrides EXIT=0 (48 min 36 s), the 45 oracle lines equal to `oracle-lines-base.txt`, `make
+audio-render` cmp-equal to `before-t2.wav`, the gameplay ratchets as at the baseline (gp-idle-loss N 2064 / 8320,
+gp-u5-charsel 516 / 1513, gp-u6-moves-b 1005 / 2262 / 2949, gp-keys-fight 11, gp-twop 612 / 1506 / 1506: no capture
+reaches the four targets or the `0x38434` change), `diff-verify: 30/30 functions VERIFIED; 47/47 mutants detected; 1
+named gaps; 1/18 rows with callees closed (12 have none)`, `entry-triage: targets 313 unported, 182 ported;
+supplement 131 (28 unported, 0 stale)`, voice `40 / 75 / 19`, `PR_ORACLE_REQUIRED=1 ./build/run_tests` all checks
+passed, `771 1203 64` / `731 731 100`, `pr_seam = ` assigned only in `port/tests/diff_runner.c` and
+`port/tests/test_platform.c`.
