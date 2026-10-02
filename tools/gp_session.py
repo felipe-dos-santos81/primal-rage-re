@@ -353,6 +353,41 @@ def lands_marked(side, char):
     0x80 | side << 6 | the winner's character (record §W.4)."""
     return bytes([0x80 | side << 6 | char]) * 7
 
+# The menu path of gp-idle-loss (spec §4.4) and the immediate confirm of the
+# character-select cursor 0 (character 0, SAURON; p1.start = e0 bit 0, 0x43CAD, as
+# gp-u5-charsel's confirm, record gameplay-u5 §C5.4). Harness values: the 60-frame
+# wait into mode 0x10 and the hold 6 (gp-u5-charsel's), the 10 frames into each
+# fight mode before a poke (the round is live: 0x27FA8 runs every mode-6 frame).
+WIN_MENU = (
+    ('boot', ENTER_WAIT, ('key', 'enter')),           # mode 3 -> 0x27, MAIN MENU on "Start"
+    ('after_mode', 0x27, 150, ('key', 'enter')),      # START MENU, cursor on row 0 (spec §3.3)
+    ('after', 150, ('key', 'enter')),                 # LEFT PLAYER ARCADE: mode 0x2D
+    ('after_mode', 0x10, 60, ('pad', ('p1.start',), 6)),   # confirm cursor 0: character 0
+)
+# U9 (record §W.6): two poked KOs win match 1 (0x27BA4: 2 wins of 3), the conquered-lands
+# screen (mode 0x12) and the next opponent's wipe, to 60 frames into match 2's round 1.
+# 110 s: 1.4x the port-predicted end at 78 s (record §W.7), a harness value.
+SCENARIOS['gp-u9-win'] = dict(time_limit=110, extra=WIN_EXTRA, steps=WIN_MENU + (
+    ('after_entry', 0x06, 1, 10, KO_P2),              # round 1: P2 KO'd, mode 8
+    ('after_entry', 0x06, 2, 10, KO_P2),              # round 2: P1 wins the match, mode 9
+    ('after_entry', 0x06, 3, 60, ('end',)),           # match 2, round 1
+))
+# U10 (record §W.6): round 1 also marks all seven lands P1's, so the won match is the
+# seventh land (0x41C28 state 5: DS_00108104[0] == 7): WORLD DOMINATION, the health
+# bonus (modes 0x23/0x22/0x24), the final (mode 0xC: seven opponents, each KO'd by a poke
+# and replaced in mode 0xD once DEATH_DONE is poked), mode 0xF, the ending (mode 0x1F),
+# the high-score entry (mode 0x1E) and back to mode 3. 240 s: 1.3x the port-predicted
+# end at 185 s (record §W.7), a harness value.
+SCENARIOS['gp-u10-ending'] = dict(time_limit=240, extra=WIN_EXTRA, steps=WIN_MENU + (
+    ('after_entry', 0x06, 1, 10, ('poke', ((0x108106, lands_marked(0, 0)), (0x10789E, b'\x78')))),
+    ('after_entry', 0x06, 2, 10, KO_P2),
+) + tuple(st for k in range(1, 8) for st in (
+    ('after_entry', 0x0C, k, 10, KO_P2),              # the final's k-th opponent KO'd: mode 0xD
+    ('after_entry', 0x0D, k, 10, DEATH_DONE),         # replaced (k < 7) or mode 0xF (k = 7)
+)) + (
+    ('until_mode', 0x03, 0),                          # back in mode 3 after the high-score entry
+))
+
 
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""
@@ -465,11 +500,12 @@ class Schedule:
 # the 60-frame tail still holds the frames past the end that N names; ENDURANCE
 # ends 300 frames into its team select (D3), where the idle tail is a still
 # screen. The attract start stops too (record §U8.14): the same arrangement, its N and F
-# sit at the replay's end.
+# sit at the replay's end. gp-u9-win and gp-u10-ending (plan U9/U10) stop too: nothing
+# past their end is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
-                         'gp-u8-attract-start'})
+                         'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending'})
 
 
 class ScriptError(Exception):

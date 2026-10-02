@@ -438,6 +438,20 @@ class TestWinPokes(unittest.TestCase):
         self.assertEqual(gs.lands_marked(1, 3), b'\xC3' * 7)
         self.assertEqual(gs.WIN_FIELDS[:4], ('afc', 'ad4', 'w2', 'w3'))
 
+    def test_the_scenarios(self):
+        u9 = gs.SCENARIOS['gp-u9-win']['steps']
+        self.assertEqual([st[-1] for st in u9 if st[-1][0] == 'poke'], [gs.KO_P2, gs.KO_P2])
+        u10 = gs.SCENARIOS['gp-u10-ending']['steps']
+        pokes = [st for st in u10 if isinstance(st[-1], tuple) and st[-1][0] == 'poke']
+        self.assertEqual(len(pokes), 2 + 14)
+        self.assertEqual(pokes[0][-1][1], ((0x108106, b'\x80' * 7), (0x10789E, b'\x78')))
+        self.assertEqual([(st[1], st[2]) for st in pokes[2:]],
+                         [(m, k) for k in range(1, 8) for m in (0x0C, 0x0D)])
+        self.assertEqual(u10[-1], ('until_mode', 0x03, 0))
+        for name in ('gp-u9-win', 'gp-u10-ending'):
+            self.assertIn(name, gs.STOP_AT_END)
+            self.assertEqual(gs.SCENARIOS[name]['extra'], gs.WIN_EXTRA)
+
 
 class TestPokeScript(unittest.TestCase):
     def setUp(self):
