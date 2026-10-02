@@ -220,6 +220,15 @@ static const fnm_pair k_miss_gp_u8_endurance[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
 };
 
+/* gp-u8-attract-start (P1's F1 in mode 3, the pad arm: b1d = 0, b1f = 1;
+ * record §U8.22), to its X record (f = 0x7E1): the same two wipe hooks
+ * (record §G.24), the bare `ret` 0x29D60 and the runtime stub 0x5D812, from
+ * frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_u8_attract_start[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -271,6 +280,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u8-tug-of-war", 0, k_miss_gp_u8_tug_of_war, FNM_N(k_miss_gp_u8_tug_of_war) },
     { "gp-u8-handicap", 0, k_miss_gp_u8_handicap, FNM_N(k_miss_gp_u8_handicap) },
     { "gp-u8-endurance", 0, k_miss_gp_u8_endurance, FNM_N(k_miss_gp_u8_endurance) },
+    { "gp-u8-attract-start", 0, k_miss_gp_u8_attract_start, FNM_N(k_miss_gp_u8_attract_start) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a
