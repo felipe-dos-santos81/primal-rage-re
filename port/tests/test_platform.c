@@ -312,6 +312,95 @@ int test_fn_misslog(void)
     return g_failures - before;
 }
 
+/* ---- the call seam (mem.h PR_SEAM; record 2026-10-01-reverse-e3 §E3.3) ---- */
+
+static u32 s_seam_n, s_seam_addr[4], s_seam_nargs[4], s_seam_args[4][6];
+static int s_seam_stub;                 /* the probe's answer: 1 stubs the call, 0 runs the body */
+
+static int seam_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    if (s_seam_n < 4) {
+        s_seam_addr[s_seam_n] = addr;
+        s_seam_nargs[s_seam_n] = nargs;
+        for (u32 i = 0; i < nargs && i < 6; i++) s_seam_args[s_seam_n][i] = args[i];
+    }
+    s_seam_n++;
+    *eax = 0x5Au;
+    return s_seam_stub;
+}
+
+int test_call_seam(void)
+{
+    int before = g_failures;
+    const u32 rec = 0x03F00000u;              /* above the image, inside mem[] */
+    const u32 miss = 0x00FEDC30u;             /* above the code object, never registered */
+
+    /* Stubbed: the hook gets the original address and the C arguments in order, and the body
+     * does not run (the 0xA5 sentinels at +0x0C and +0x24, which the body zeroes and sets to the
+     * frame, survive). */
+    mem_fill(rec, 0xA5u, 0x68u);
+    pr_seam = seam_probe;
+    s_seam_n = 0u;
+    s_seam_stub = 1;
+    actors_anim_begin(rec, 0x000EB58Cu, 0x40400000u);
+    CHECK_EQ_INT(s_seam_n, 1);
+    CHECK_EQ_INT(s_seam_addr[0], 0x2BC30);
+    CHECK_EQ_INT(s_seam_nargs[0], 3);
+    CHECK(s_seam_args[0][0] == rec && s_seam_args[0][1] == 0x000EB58Cu
+          && s_seam_args[0][2] == 0x40400000u, "the arguments in C order");
+    CHECK_EQ_INT(DSD(rec + 0x0Cu), 0xA5A5A5A5u);
+    CHECK_EQ_INT(DSD(rec + 0x24u), 0xA5A5A5A5u);
+
+    /* PR_SEAM_RET returns the hook's EAX when it stubs, and the body's value when it runs
+     * (sound_voice(0) returns 0 at 0x2C401). */
+    s_seam_n = 0u;
+    sound_voice_log_reset();
+    CHECK_EQ_INT(sound_voice(0u), 0x5A);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 0);       /* the stubbed call leaves no log entry */
+    s_seam_stub = 0;
+    CHECK_EQ_INT(sound_voice(0u), 0);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 1);       /* the body ran and logged id 0 ... */
+    sound_voice_log_reset();                             /* ... which no later test may see */
+    CHECK_EQ_INT(s_seam_n, 2);
+    CHECK(s_seam_addr[0] == 0x2C3FCu && s_seam_addr[1] == 0x2C3FCu, "both calls are seen");
+    CHECK(s_seam_nargs[1] == 1u && s_seam_args[1][0] == 0u, "with the voice id");
+
+    /* actor_spawn reports desc as a mem[] offset when it lies in mem[], and a sentinel no spec
+     * can name when it does not (0x2F5A0 passes a C stack array). */
+    {
+        static const u32 c_desc[4] = { 0u, 0u, 0u, 0u };     /* not in mem[] */
+        s_seam_n = 0u;
+        s_seam_stub = 1;
+        CHECK_EQ_INT((int)actor_spawn((const u32 *)(mem + 0x9AD08u), 1u, 2u, 3u, 4u), 0x5A);
+        CHECK_EQ_INT((int)actor_spawn(c_desc, 1u, 2u, 3u, 4u), 0x5A);
+        CHECK_EQ_INT(s_seam_n, 2);
+        CHECK(s_seam_addr[0] == 0x2AE14u && s_seam_nargs[0] == 5u && s_seam_args[0][0] == 0x9AD08u
+              && s_seam_args[0][1] == 1u && s_seam_args[0][4] == 4u, "a desc in mem[] is its offset");
+        CHECK(s_seam_args[1][0] == 0xFFFFFFFFu && s_seam_args[1][3] == 3u, "a C array desc is the sentinel");
+    }
+
+    /* fn_resolve: an unregistered address is seen with no arguments; a registered one (test_mem's
+     * FN_0002D62C) and 0 are not. */
+    s_seam_n = 0u;
+    s_seam_stub = 1;
+    fn_misslog_arm(1);                       /* the report must not depend on the miss log, nor change it */
+    CHECK(fn_resolve(miss) == NULL, "the miss still resolves to NULL");
+    CHECK(fn_resolve(FN_0002D62C) == fn_probe, "registered by test_mem");
+    CHECK(fn_resolve(0u) == NULL, "0 resolves to NULL");
+    CHECK_EQ_INT(s_seam_n, 1);
+    CHECK(s_seam_addr[0] == miss && s_seam_nargs[0] == 0u, "the miss, with no arguments");
+    CHECK(fn_resolve(miss) == NULL, "the repeated miss (the log's early-return path)");
+    CHECK_EQ_INT(s_seam_n, 2);                           /* reported on the repeat too, not only the first insert */
+    CHECK_EQ_INT((int)fn_misslog_count(), 1);            /* one pair, two hits: the hook adds none and hides none */
+    CHECK(fn_misslog_addr(0) == miss, "the log holds the miss");
+    CHECK_EQ_INT((int)fn_misslog_hits(0), 2);
+    fn_misslog_arm(0);
+
+    pr_seam = NULL;
+    CHECK_EQ_INT((int)sound_voice_log_count(), 0);       /* nothing this test did is left in the voice log */
+    return g_failures - before;
+}
+
 /* ---- test_le.c ---- */
 
 #define EXE "data/game/C/PRAGE.EXE"

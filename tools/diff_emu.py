@@ -38,6 +38,13 @@ STACK_TOP = 0x7FFF0000
 SENTINEL = 0x7FFFF000         # the return address pushed for the function; emulation ends here
 DEFAULT_MAX_INSNS = 200_000
 REGS = ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp")
+# The dwords above the return address at entry: the stack arguments a `ret N` function pops
+# (record E3 §E3.5). A case sets them as regs["s0"]..regs["s3"]; a call record reads them the same way.
+STACK_ARGS = ("s0", "s1", "s2", "s3")
+# The value a stub leaves in each register its callee does not preserve (Call.clobbers, record E3
+# §E3.12): an original caller that reads one after the call computes with this value, which the
+# port's C (it cannot read a callee's registers) does not reproduce, so the row turns MISMATCH.
+CLOBBER_POISON = 0xC10BBE2D
 
 # Instructions the harness cannot model faithfully: the function becomes NOT_EXERCISABLE with the
 # instruction named (spec §5.2), never a guessed result.
@@ -75,6 +82,42 @@ class Image:
         return self.data[off:off + n]
 
 
+@dataclass(frozen=True)
+class Call:
+    """A callee in the call set (spec §5.2, record E3 §E3.4). Each arrival at `addr` by a `call` or
+    a `jmp` is recorded as (addr, the values of `args`), `args` naming registers or stack slots in
+    the order the port's C signature passes them. mode "stub": the callee's bytes do not run; its
+    `writes` are applied ((base, offset, bytes): base None is absolute, an int is that argument's
+    value), EAX becomes `eax`, every register in `clobbers` (the ones the callee does not preserve,
+    derived from its bytes: `callee_clobbers`) becomes CLOBBER_POISON, and the callee returns,
+    popping `pop` bytes of stack arguments (its own `ret N`). mode "real": the bytes run (the callee
+    is proven by its own check)."""
+    addr: int
+    args: tuple = ()
+    mode: str = "stub"
+    eax: int = 0
+    writes: tuple = ()
+    pop: int = 0
+    clobbers: tuple = ()
+
+    def __post_init__(self):
+        if self.mode not in ("stub", "real"):
+            raise ValueError("call 0x%X: mode %r is neither stub nor real" % (self.addr, self.mode))
+        bad = [a for a in self.args if a not in REGS + STACK_ARGS]
+        if bad:
+            raise ValueError("call 0x%X: unknown argument %s" % (self.addr, ", ".join(bad)))
+        if self.mode == "real" and (self.writes or self.eax or self.pop or self.clobbers):
+            raise ValueError("call 0x%X: a real call declares no effect" % self.addr)
+        bad = [r for r in self.clobbers if r not in REGS or r == "eax"]
+        if bad:
+            raise ValueError("call 0x%X: clobbers %s: a register other than eax (eax is the stub's `eax`)"
+                             % (self.addr, ", ".join(bad)))
+        for w in self.writes:
+            if len(w) != 3 or not (w[0] is None or (isinstance(w[0], int) and 0 <= w[0] < len(self.args))):
+                raise ValueError("call 0x%X: write %r needs a base that is None or an index of its %d args"
+                                 % (self.addr, w, len(self.args)))
+
+
 @dataclass
 class OrigResult:
     outcome: str                 # ok | fault | unmodeled | timeout
@@ -83,11 +126,17 @@ class OrigResult:
     writes: dict = field(default_factory=dict)     # addr -> final byte, only bytes that changed, private stack excluded
     executed: set = field(default_factory=set)     # addresses of executed instructions
     outside: list = field(default_factory=list)    # (addr, size) read or written outside image and stack
+    calls: list = field(default_factory=list)      # (addr, args tuple) per arrival at a call-set address, in order
+    call_mem: list = field(default_factory=list)   # per arrival: {addr: byte} changed since the start, private stack excluded
 
 
 if capstone is not None:
     _md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
     _md.detail = True
+
+if unicorn is not None:   # capstone's register names -> unicorn's ids, for an indirect call's operand
+    _UC_REG = {n: getattr(ux, "UC_X86_REG_" + n.upper())
+               for n in ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp")}
 
 
 def _decode(data, addr):
@@ -103,13 +152,31 @@ def _direct_target(ins):
     return None
 
 
-def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=DEFAULT_MAX_INSNS):
+def _indirect_target(uc, ins):
+    """The target of an indirect call, read from the registers and memory as they are now."""
+    op = ins.operands[0]
+    if op.type == cx86.X86_OP_REG:
+        return uc.reg_read(_UC_REG[ins.reg_name(op.reg)])
+    m = op.mem
+    ea = m.disp
+    if m.base:
+        ea += uc.reg_read(_UC_REG[ins.reg_name(m.base)])
+    if m.index:
+        ea += uc.reg_read(_UC_REG[ins.reg_name(m.index)]) * m.scale
+    return int.from_bytes(uc.mem_read(ea & 0xFFFFFFFF, 4), "little")
+
+
+def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=DEFAULT_MAX_INSNS,
+                 calls=()):
     """Run the original function at `entry` once from `image` with `regs` and `pokes` applied.
 
     regs: {"eax": v, ...}; pokes: {addr: bytes}, applied inside the image before the run (the
     port side applies them to the same bytes, so both sides start from identical memory).
-    allow_calls: direct call targets the emulator may enter; any other call stops the run as
+    allow_calls: call targets the emulator may enter, unrecorded; any other call stops the run as
     `unmodeled` (spec §5.2: the closure the port also runs).
+    calls: Call entries (record E3 §E3.4): their targets may be called, directly or indirectly,
+    and every arrival is recorded in `OrigResult.calls`. With no calls and no allow-list entry for
+    it, an indirect call stops the run as E1's "indirect call at" (E1 §E.3).
     """
     if not available():
         raise RuntimeError("unicorn or capstone is not installed (pip install -r tools/requirements-diff.txt)")
@@ -127,43 +194,112 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
              "ebp": ux.UC_X86_REG_EBP}
     for r in REGS:
         mu.reg_write(names[r], 0)
-    for r, v in (regs or {}).items():
-        mu.reg_write(names[r], v & 0xFFFFFFFF)
     esp = STACK_TOP - 4
+    for r, v in (regs or {}).items():
+        if r in STACK_ARGS:
+            mu.mem_write(esp + 4 + 4 * STACK_ARGS.index(r), (v & 0xFFFFFFFF).to_bytes(4, "little"))
+        else:
+            mu.reg_write(names[r], v & 0xFFFFFFFF)
     mu.mem_write(esp, SENTINEL.to_bytes(4, "little"))
     mu.reg_write(ux.UC_X86_REG_ESP, esp)
 
-    state = {"stop": None}
+    state = {"stop": None, "prev": None}
     executed = set()
     before = {}            # addr -> byte before the run's first write to it
     outside = set()
-    seen = {}              # addr -> mnemonic class, so each address is decoded once
+    seen = {}              # addr -> (stop kind or None, transfer (kind, direct target or None) or None, indirect call insn or None)
     allow = frozenset(allow_calls)
+    callset = {c.addr: c for c in calls}
+    recorded, recorded_mem = [], []
+
+    def arg(uc, esp, a):
+        if a in STACK_ARGS:
+            return int.from_bytes(uc.mem_read(esp + 4 + 4 * STACK_ARGS.index(a), 4), "little")
+        return uc.reg_read(names[a])
+
+    def changed(uc):
+        """{addr: byte} of every byte that differs from the case's start (pokes applied), private
+        stack excluded: what the port's seam hook reports from mem[] against its copy (§E3.12)."""
+        out = {}
+        for a, old in before.items():
+            if not STACK_LOW <= a < STACK_END:
+                new = uc.mem_read(a, 1)[0]
+                if new != old:
+                    out[a] = new
+        return out
+
+    def arrive(uc, addr, c):
+        """Record the arrival at a call-set address with the memory changed so far; for a stub,
+        apply its effect and return."""
+        esp = uc.reg_read(ux.UC_X86_REG_ESP)
+        vals = tuple(arg(uc, esp, a) for a in c.args)
+        recorded.append((addr, vals))
+        recorded_mem.append(changed(uc))
+        if c.mode == "real":
+            return
+        for base, off, data in c.writes:
+            at = (off if base is None else vals[base] + off) & 0xFFFFFFFF
+            if not image.contains(at, len(data)):
+                raise ValueError("stub 0x%X writes 0x%X+%d, outside the image" % (addr, at, len(data)))
+            for i, b in enumerate(uc.mem_read(at, len(data))):
+                before.setdefault(at + i, b)
+            uc.mem_write(at, bytes(data))
+        uc.reg_write(ux.UC_X86_REG_EAX, c.eax & 0xFFFFFFFF)
+        for r in c.clobbers:
+            uc.reg_write(names[r], CLOBBER_POISON)
+        ret = int.from_bytes(uc.mem_read(esp, 4), "little")
+        uc.reg_write(ux.UC_X86_REG_ESP, esp + 4 + c.pop)
+        uc.reg_write(ux.UC_X86_REG_EIP, ret)
 
     def in_scope(addr):
         return image.contains(addr) or STACK_LOW <= addr < STACK_END
 
     def on_code(uc, addr, size, _):
-        executed.add(addr)
+        executed.add(addr)     # includes a stub's entry address: a callee address, not one of F's blocks
+        prev, state["prev"] = state["prev"], None
+        # arrived by a call or a taken jmp/jcc/loop (record E3 §E3.2); a not-taken jcc falling into it is not
+        if prev is not None and addr in callset and (prev[1] is None or prev[1] == addr):
+            try:
+                arrive(uc, addr, callset[addr])
+            except ValueError as e:
+                state["stop"] = ("unmodeled", str(e))
+                uc.emu_stop()
+                return
+            if callset[addr].mode == "stub":
+                return
         if addr in seen:
-            kind = seen[addr]
+            kind, transfer, ind = seen[addr]
         else:
             ins = _decode(uc.mem_read(addr, 15), addr)
-            kind = None
+            kind, transfer, ind = None, None, None
             if ins is None:
                 kind = ("unmodeled", "undecodable bytes at 0x%X" % addr)
             elif ins.mnemonic in UNMODELED_MNEMONICS:
                 kind = ("unmodeled", "%s at 0x%X" % (ins.mnemonic, addr))
             elif ins.mnemonic == "call":
+                transfer = ("call", None)
                 tgt = _direct_target(ins)
                 if tgt is None:
-                    kind = ("unmodeled", "indirect call at 0x%X" % addr)
-                elif tgt not in allow:
+                    ind = ins
+                elif tgt not in allow and tgt not in callset:
                     kind = ("unmodeled", "call 0x%X from 0x%X" % (tgt, addr))
-            seen[addr] = kind
+            elif ins.group(capstone.CS_GRP_JUMP) or ins.mnemonic in ("loop", "loope", "loopne"):
+                transfer = ("jump", _direct_target(ins))      # the target: only a taken jcc arrives there
+            seen[addr] = (kind, transfer, ind)
+        if ind is not None and kind is None:          # an indirect call: its target, as of now
+            try:
+                tgt = _indirect_target(uc, ind)
+            except UcError:                           # an operand address nothing maps: E1's stop, not a fault
+                tgt = None
+                kind = ("unmodeled", "indirect call at 0x%X" % addr)
+            if kind is None and tgt not in allow and tgt not in callset:
+                kind = ("unmodeled", "indirect call at 0x%X" % addr if not callset and not allow
+                        else "indirect call to 0x%X at 0x%X" % (tgt, addr))
         if kind is not None and state["stop"] is None:
             state["stop"] = kind
             uc.emu_stop()
+            return
+        state["prev"] = transfer
 
     def on_write(uc, access, addr, size, value, _):
         for a in range(addr, addr + size):
@@ -198,7 +334,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
         new = mu.mem_read(a, 1)[0]
         if new != old:
             writes[a] = new
-    return OrigResult(outcome, detail, final_regs, writes, executed, sorted(outside))
+    return OrigResult(outcome, detail, final_regs, writes, executed, sorted(outside), recorded, recorded_mem)
 
 
 # ---- static scan: the function's basic blocks, for the coverage claim (spec §5.3) -------------
@@ -212,11 +348,87 @@ class StaticInfo:
     truncated: bool              # the scan did not cover all reachable bytes (instruction budget or undecodable bytes)
 
 
-def static_scan(image, entry, max_insns=4000):
+# The registers whose low part a guard may compare (record E3 §E3.7): cmp al/ax/eax all bound eax.
+_FAMILY = {r: fam for fam, rs in {
+    "eax": ("al", "ax", "eax"), "ebx": ("bl", "bx", "ebx"), "ecx": ("cl", "cx", "ecx"),
+    "edx": ("dl", "dx", "edx"), "esi": ("si", "esi"), "edi": ("di", "edi"), "ebp": ("bp", "ebp")}.items()
+    for r in rs}
+
+
+_HIGH8 = {"ah": "eax", "bh": "ebx", "ch": "ecx", "dh": "edx"}
+
+
+def _keeps_bound(p, idx, width, clean):
+    """Whether instruction `p`, between the `ja` and the jump, leaves the index bounded. Returns the new
+    `clean` (the index's bits above the compared width are known zero) or None when `p` may widen it.
+    Allowed: `and idx32, imm` with imm inside the width and `movzx idx32, r` from the family at or below
+    the width (both clean it); a mov/movzx/movsx/lea/xor/nop that writes a register of another family."""
+    if p.mnemonic == "and" and len(p.operands) == 2 and p.operands[0].type == cx86.X86_OP_REG \
+            and p.reg_name(p.operands[0].reg) == idx and p.operands[1].type == cx86.X86_OP_IMM \
+            and (p.operands[1].imm & 0xFFFFFFFF) & ~((1 << width) - 1) == 0:
+        return True
+    if p.mnemonic == "movzx" and len(p.operands) == 2 and p.operands[0].type == cx86.X86_OP_REG \
+            and p.reg_name(p.operands[0].reg) == idx and p.operands[1].type == cx86.X86_OP_REG \
+            and _FAMILY.get(p.reg_name(p.operands[1].reg)) == idx and 8 * p.operands[1].size <= width:
+        return True
+    if p.mnemonic == "nop":
+        return clean
+    if p.mnemonic in ("mov", "movzx", "movsx", "lea", "xor") and p.operands \
+            and p.operands[0].type == cx86.X86_OP_REG:
+        dest = p.reg_name(p.operands[0].reg)
+        if _FAMILY.get(dest, _HIGH8.get(dest)) not in (None, idx):
+            return clean
+    return None
+
+
+def switch_cases(image, ins, prior):
+    """The case targets of a bounded switch `jmp dword ptr [R*4 + T]` (record E3 §E3.7), else None.
+    Bounded means: among the (up to five) instructions `prior` that precede it on its own straight
+    path, a `cmp r, imm` with r in R's family immediately followed by a `ja`, then only instructions
+    that keep R bounded (`_keeps_bound`), R's bits above the compared width cleared when that is
+    narrower than 32; the table then holds imm + 1 dwords (imm masked to the compared width).
+    Stricter than E2's rule (E2 §E2.2), which checks neither the register, the `ja`'s place nor the
+    path between the `ja` and the jump."""
+    mem = [op for op in ins.operands if op.type == cx86.X86_OP_MEM]
+    if ins.mnemonic != "jmp" or not mem or not mem[0].mem.index or mem[0].mem.scale != 4 or mem[0].mem.base:
+        return None
+    reg = ins.reg_name(mem[0].mem.index)
+    idx = _FAMILY.get(reg)
+    for k in range(len(prior) - 1, 0, -1):
+        c, j = prior[k - 1], prior[k]
+        if not (c.mnemonic == "cmp" and j.mnemonic == "ja" and len(c.operands) == 2
+                and c.operands[0].type == cx86.X86_OP_REG and c.operands[1].type == cx86.X86_OP_IMM
+                and _FAMILY.get(c.reg_name(c.operands[0].reg)) == idx):
+            continue
+        width = 8 * c.operands[0].size
+        clean = width == 32
+        for p in prior[k + 1:]:
+            clean = _keeps_bound(p, idx, width, clean)
+            if clean is None:
+                break
+        else:
+            if not clean:
+                continue
+            n = (c.operands[1].imm & ((1 << width) - 1)) + 1
+            table = mem[0].mem.disp & 0xFFFFFFFF
+            if not image.contains(table, 4 * n):
+                return None
+            return [int.from_bytes(image.bytes_at(table + 4 * m, 4), "little") for m in range(n)]
+    return None
+
+
+def static_scan(image, entry, max_insns=4000, stop=(), switches=False, resolved=None):
+    """`stop`: call-set addresses (record E3 §E3.4); a jump to one is a tail call, not followed.
+    `switches`: follow a bounded switch's case targets (switch_cases) instead of flagging it.
+    `resolved`: {jmp address: (guard, table, n)}, jump tables resolved by hand (RESOLVED_JUMPS): the
+    jump's n case targets are read from the table and followed."""
+    stop = frozenset(stop)
+    resolved = resolved or {}
     insns, leaders, indirect, unresolved = {}, {entry}, [], []
     work, truncated = [entry], False
     while work:
         addr = work.pop()
+        path = []                     # the instructions of this straight run, for a switch's guard
         while True:
             if addr in insns:
                 break
@@ -234,15 +446,26 @@ def static_scan(image, entry, max_insns=4000):
             insns[addr] = ins.size
             nxt = addr + ins.size
             m = ins.mnemonic
+            path = (path + [ins])[-6:]
             if ins.group(capstone.CS_GRP_RET):
                 break
             if ins.group(capstone.CS_GRP_JUMP) or m in ("loop", "loope", "loopne"):
                 tgt = _direct_target(ins)
                 if tgt is None:
-                    indirect.append(addr)
+                    cases = switch_cases(image, ins, path[:-1]) if switches else None
+                    if cases is None and addr in resolved:
+                        cases = resolved_cases(image, resolved[addr])
+                    if cases is None:
+                        indirect.append(addr)
+                    else:
+                        for t in cases:
+                            if t not in stop:
+                                leaders.add(t)
+                                work.append(t)
                     break
-                leaders.add(tgt)
-                work.append(tgt)
+                if tgt not in stop:
+                    leaders.add(tgt)
+                    work.append(tgt)
                 if m == "jmp":
                     break
                 leaders.add(nxt)
@@ -260,6 +483,125 @@ def coverage(info, executed):
     hit = [a for a in info.leaders if a in executed]
     unhit = [a for a in info.leaders if a not in executed]
     return hit, unhit
+
+
+# ---- the registers a callee does not preserve (record E3 §E3.12), for Call.clobbers -------------
+
+# Jump tables `switch_cases` does not follow (an index moved to another register, or pre-scaled into a
+# base, record §E3.7), resolved by hand for the trees of the seamed callees (record §E3.5, §E3.12):
+# jmp address -> (the guard `cmp` that bounds the index, the table, its entry count = the cmp's imm + 1).
+# The case targets are always read from the table in the image; a test re-checks each guard and table
+# from the bytes (test_diff_verify.py, test_each_resolved_jump_table_matches_the_bytes).
+RESOLVED_JUMPS = {
+    # 0x18350: cmp al,6; ja; and eax,0xff; lea esi,[eax*4]; ...; jmp cs:[esi+0x18334]
+    0x18384: (0x18366, 0x18334, 7),
+    # 0x29DB8 and 0x29F34: cmp dx,5; ja; xor r,r; mov r16,dx; jmp cs:[r*4+T]
+    0x29DFE: (0x29DF3, 0x29D70, 6),
+    0x29E62: (0x29E57, 0x29D88, 6),
+    0x29EDF: (0x29ED4, 0x29DA0, 6),
+    0x29F78: (0x29F6D, 0x29EEC, 6),
+    0x29FE5: (0x29FDA, 0x29F04, 6),
+    0x2A056: (0x2A04B, 0x29F1C, 6),
+}
+
+
+def resolved_cases(image, entry):
+    """The case targets of a RESOLVED_JUMPS entry, read from the image."""
+    _, table, n = entry
+    if not image.contains(table, 4 * n):
+        return None
+    return [int.from_bytes(image.bytes_at(table + 4 * m, 4), "little") for m in range(n)]
+
+
+def _saved_and_written(image, f, resolved):
+    """(saved, written, direct callees) of the function at `f`. saved: the registers its entry
+    pushes (the leading `push reg` run) that the pops directly before EVERY `ret` restore (`add
+    esp, imm` may sit between them; `leave` restores ebp); nothing when a jump lands inside such a
+    pop sequence (it would skip a restore). written: every register family an instruction of its
+    static scan writes (capstone's regs_access; push and call excluded); every register when the
+    scan is unsure: an indirect call, an indirect jump neither a bounded switch nor in `resolved`,
+    a direct target outside the image, or a truncated scan."""
+    info = static_scan(image, f, switches=True, resolved=resolved)
+    every = set(REGS)
+    if info.truncated or info.unresolved:
+        return set(), every, set()
+    ins = {a: _decode(image.bytes_at(a, 15), a) for a in info.insns}
+    entry, a = [], f
+    while a in ins and ins[a].mnemonic == "push" and ins[a].operands[0].type == cx86.X86_OP_REG:
+        entry.append(ins[a].reg_name(ins[a].operands[0].reg))
+        a += ins[a].size
+    order = sorted(ins)
+    restored, landed = None, False
+    targets = set(info.leaders)                   # every jump target (and fall-through) of the scan
+    for i, x in enumerate(order):
+        if not ins[x].group(capstone.CS_GRP_RET):
+            continue
+        pops, seq, j = set(), [], i - 1
+        while j >= 0 and order[j] + ins[order[j]].size == order[j + 1]:
+            p = ins[order[j]]
+            if p.mnemonic == "pop" and p.operands[0].type == cx86.X86_OP_REG:
+                pops.add(p.reg_name(p.operands[0].reg))
+            elif p.mnemonic == "leave":
+                pops.add("ebp")
+            elif not (p.mnemonic == "add" and p.op_str.startswith("esp,")):
+                break
+            seq.append(order[j])
+            j -= 1
+        # a jump into the restore sequence below its first instruction, or onto the ret after it,
+        # skips a restore: the function then saves nothing
+        if seq and any(a in targets for a in sorted(seq)[1:] + [x]):
+            landed = True
+        restored = pops if restored is None else restored & pops
+    saved = set() if landed else set(entry) & (restored or set())
+    written, callees = set(), set()
+    for x in info.indirect:
+        if ins[x].mnemonic != "call":             # an indirect jump nothing resolved: its targets are unknown
+            written |= every
+    for x in order:
+        p = ins[x]
+        if p.mnemonic == "call":
+            t = _direct_target(p)
+            if t is None:
+                written |= every
+            else:
+                callees.add(t)
+            continue
+        if p.mnemonic == "push":
+            continue
+        for r in p.regs_access()[1]:
+            fam = _FAMILY.get(p.reg_name(r), _HIGH8.get(p.reg_name(r)))
+            if fam in every:
+                written.add(fam)
+    return saved, written, callees
+
+
+def callee_clobbers(image, addr, resolved=None):
+    """The registers other than EAX that the function at `addr` may change on some path, its whole
+    direct-call tree included (a least fixpoint, so recursion is handled): written minus saved,
+    per function, plus what its callees clobber that it does not save. A callee outside the image
+    clobbers everything. Over-approximating is the safe direction: a poisoned register a caller
+    really relies on turns its row MISMATCH (fail-closed), never VERIFIED. `resolved` defaults to
+    RESOLVED_JUMPS; {} gives the result with no hand-resolved jump table."""
+    resolved = RESOLVED_JUMPS if resolved is None else resolved
+    local, work = {}, [addr]
+    while work:
+        f = work.pop()
+        if f in local:
+            continue
+        local[f] = _saved_and_written(image, f, resolved) if image.contains(f) else (set(), set(REGS), set())
+        work.extend(local[f][2])
+    clob = {f: set() for f in local}
+    moved = True
+    while moved:
+        moved = False
+        for f, (saved, written, callees) in local.items():
+            c = set(written)
+            for g in callees:
+                c |= clob[g]
+            c -= saved
+            if c != clob[f]:
+                clob[f], moved = c, True
+    return tuple(r for r in REGS if r != "eax" and r in clob[addr])
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --

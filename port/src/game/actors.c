@@ -2247,6 +2247,7 @@ static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
  * 0x40000000 at 0x155BF), so the port passes and stores those dwords raw. */
 void actors_anim_begin(u32 rec, u32 stream, u32 frame_bits)
 {
+    PR_SEAM(0x2BC30u, rec, stream, frame_bits);
     DSD(rec + 0x0c) = 0;
     DSD(rec + 0x10) = 0;
     DSB(rec + 0x52) = 0;
@@ -3352,12 +3353,22 @@ void actors_update(void)
     }
 }
 
+/* PORT: the call seam's report of `desc` (record 2026-10-01-reverse-e3 §E3.5/§E3.8): its mem[]
+ * offset, the original's linear address. 0x2F5A0 passes a C stack array, which has no offset;
+ * that case reports 0xFFFFFFFF (above MEM_SIZE), which no spec can name. */
+static u32 spawn_desc_arg(const u32 *desc)
+{
+    uintptr_t d = (uintptr_t)desc, base = (uintptr_t)mem;
+    return d >= base && d - base < MEM_SIZE ? (u32)(d - base) : 0xFFFFFFFFu;
+}
+
 /* 0x2AE14. The register arguments are pinned by disassembly in
  * docs/superpowers/plans/2026-09-17-actor-system-args.md: EAX=desc, EDX=a2,
  * ECX=a3, EBX=a4, and the flags word a5 on the stack. a5's low 16 bits are also
  * the 0x2AC80 alloc flag (EAX at that call). */
 u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
 {
+    PR_SEAM_RET(0x2AE14u, spawn_desc_arg(desc), a2, a3, a4, a5);
     const u8 *dp = (const u8 *)desc;
     u32 rec = actor_alloc(a5);
     if (rec == 0) return 0;

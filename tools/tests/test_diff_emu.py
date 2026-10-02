@@ -204,5 +204,301 @@ class StaticScanTests(unittest.TestCase):
         self.assertEqual((info.truncated, info.insns), (True, {}))
 
 
+
+# ---- E3: call stubs and stack arguments (record 2026-10-01-reverse-e3 §E3.2, §E3.5) ------------
+
+def program(parts):
+    """An image from {address: hex bytes}."""
+    data = bytearray(0x80100)
+    for at, h in parts.items():
+        b = bytes.fromhex(h)
+        data[at - 0x10000:at - 0x10000 + len(b)] = b
+    return E.Image(bytes(data))
+
+
+# 10000: mov eax,5; mov edx,7; call 0x10020; mov [0x80000],eax; ret
+# 10020: mov dword [0x80004],0x11111111; mov eax,9; ret
+CALLER = {0x10000: "B805000000" "BA07000000" "E811000000" "A300000800" "C3",
+          0x10020: "C70504000800" "11111111" "B809000000" "C3"}
+SEED = {0x80000: le32(0xFFFFFFFF), 0x80004: le32(0x22222222)}
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class CallStubTests(unittest.TestCase):
+    def test_a_stubbed_call_is_recorded_and_its_bytes_do_not_run(self):
+        r = E.run_original(program(CALLER), 0x10000, pokes=SEED,
+                           calls=(E.Call(0x10020, ("eax", "edx"), eax=0x42),))
+        self.assertEqual((r.outcome, r.calls), ("ok", [(0x10020, (5, 7))]))
+        self.assertEqual(r.writes, {0x80000: 0x42, 0x80001: 0, 0x80002: 0, 0x80003: 0})   # 0x80004 untouched
+        self.assertNotIn(0x1002A, r.executed)
+
+    def test_a_real_call_runs_the_callee_and_is_recorded(self):
+        r = E.run_original(program(CALLER), 0x10000, pokes=SEED,
+                           calls=(E.Call(0x10020, ("eax",), mode="real"),))
+        self.assertEqual((r.outcome, r.calls, r.regs["eax"]), ("ok", [(0x10020, (5,))], 9))
+        self.assertEqual(r.writes[0x80004], 0x11)
+
+    def test_stub_writes_land_at_an_address_or_at_an_argument_plus_offset(self):
+        c = E.Call(0x10020, ("eax", "edx"), writes=((None, 0x80008, b"\xab"), (0, 0x80010 - 5, b"\xcd")))
+        r = E.run_original(program(CALLER), 0x10000, pokes=SEED, calls=(c,))
+        self.assertEqual((r.writes[0x80008], r.writes[0x80010]), (0xAB, 0xCD))
+
+    def test_a_stub_write_outside_the_image_stops_the_run(self):
+        c = E.Call(0x10020, ("eax",), writes=((None, 0x2000000, b"\x01"),))
+        r = E.run_original(program(CALLER), 0x10000, calls=(c,))
+        self.assertEqual(r.outcome, "unmodeled")
+        self.assertIn("outside the image", r.detail)
+
+    # 10000: push 0x33; call 0x10020; ret      10020: mov eax,[esp+4]; ret 4
+    PUSHER = {0x10000: "6A33" "E819000000" "C3", 0x10020: "8B442404" "C20400"}
+
+    def test_a_stub_pops_its_stack_arguments_and_records_them(self):
+        r = E.run_original(program(self.PUSHER), 0x10000, calls=(E.Call(0x10020, ("s0",), pop=4),))
+        self.assertEqual((r.outcome, r.calls), ("ok", [(0x10020, (0x33,))]))
+        r = E.run_original(program(self.PUSHER), 0x10000, calls=(E.Call(0x10020, ("s0",), pop=0),),
+                           max_insns=1000)
+        self.assertNotEqual(r.outcome, "ok")      # the caller's ret then pops 0x33 as its return address
+
+    def test_a_case_sets_the_stack_arguments(self):
+        r = E.run_original(program({0x10000: "8B442404" "C20400"}), 0x10000, regs={"s0": 0x1234})
+        self.assertEqual((r.outcome, r.regs["eax"]), ("ok", 0x1234))
+
+    def test_an_indirect_call_through_a_register_is_resolved_at_run_time(self):
+        r = E.run_original(program({0x10000: "FFD0" "C3", 0x10020: "C3"}), 0x10000, regs={"eax": 0x10020},
+                           calls=(E.Call(0x10020, ("eax",)),))
+        self.assertEqual((r.outcome, r.calls), ("ok", [(0x10020, (0x10020,))]))
+
+    def test_an_indirect_call_through_a_table_is_resolved_at_run_time(self):
+        # 10000: call [ebx*4 + 0x80000]; ret
+        r = E.run_original(program({0x10000: "FF149D00000800" "C3", 0x10020: "C3"}), 0x10000,
+                           regs={"ebx": 1}, pokes={0x80004: le32(0x10020)}, calls=(E.Call(0x10020, ("ebx",)),))
+        self.assertEqual((r.outcome, r.calls), ("ok", [(0x10020, (1,))]))
+
+    def test_an_indirect_call_to_an_unlisted_target_names_the_target(self):
+        r = E.run_original(program({0x10000: "FFD0" "C3"}), 0x10000, regs={"eax": 0x10030},
+                           calls=(E.Call(0x10020),))
+        self.assertEqual((r.outcome, r.detail), ("unmodeled", "indirect call to 0x10030 at 0x10000"))
+
+    def test_an_indirect_call_to_an_allowed_target_runs(self):
+        r = E.run_original(program({0x10000: "FFD0" "C3", 0x10020: "B809000000" "C3"}), 0x10000,
+                           regs={"eax": 0x10020}, allow_calls={0x10020})
+        self.assertEqual((r.outcome, r.regs["eax"], r.calls), ("ok", 9, []))
+
+    def test_a_tail_jump_to_a_stubbed_entry_returns_to_the_caller(self):
+        r = E.run_original(program({0x10000: "E91B000000", 0x10020: "CC"}), 0x10000, regs={"eax": 3},
+                           calls=(E.Call(0x10020, ("eax",), eax=8),))
+        self.assertEqual((r.outcome, r.calls, r.regs["eax"]), ("ok", [(0x10020, (3,))], 8))
+
+    def test_falling_into_a_call_set_address_is_not_a_call(self):
+        r = E.run_original(program({0x10000: "90" "C3"}), 0x10000, calls=(E.Call(0x10001),))
+        self.assertEqual((r.outcome, r.calls), ("ok", []))
+
+    def test_a_call_declaration_is_checked(self):
+        for kw in ({"args": ("eax", "foo")}, {"mode": "skip"}, {"mode": "real", "eax": 1},
+                   {"mode": "real", "pop": 4}):
+            with self.subTest(kw=kw), self.assertRaises(ValueError):
+                E.Call(0x10020, **kw)
+
+    def test_a_write_base_must_be_none_or_an_argument_index(self):
+        for args, w in ((("eax",), (1, 0x80000, b"\x01")), (("eax",), (-1, 0x80000, b"\x01")),
+                        ((), (0, 0x80000, b"\x01"))):
+            with self.subTest(args=args, w=w), self.assertRaises(ValueError):
+                E.Call(0x10020, args, writes=(w,))
+        E.Call(0x10020, ("eax", "edx"), writes=((1, 0x80000, b"\x01"), (None, 0x80000, b"\x01")))
+
+    # 10000: test eax,eax; jne 10020; (10004) ret      10020: int3 (a stub's bytes never run)
+    JCC = {0x10000: "85C0" "751C" "C3", 0x10020: "CC"}
+
+    def test_a_taken_conditional_tail_jump_to_a_stubbed_entry_is_a_call(self):
+        r = E.run_original(program(self.JCC), 0x10000, regs={"eax": 1},
+                           calls=(E.Call(0x10020, ("eax",), eax=8),))
+        self.assertEqual((r.outcome, r.calls, r.regs["eax"]), ("ok", [(0x10020, (1,))], 8))
+        r = E.run_original(program(self.JCC), 0x10000, regs={"eax": 0}, calls=(E.Call(0x10020, ("eax",)),))
+        self.assertEqual((r.outcome, r.calls), ("ok", []))
+
+    def test_a_not_taken_conditional_jump_falling_into_a_call_set_address_is_not_a_call(self):
+        # 10000: test eax,eax; jne 10005; (10004) nop; (10005) ret
+        r = E.run_original(program({0x10000: "85C0" "7501" "90" "C3"}), 0x10000, regs={"eax": 0},
+                           calls=(E.Call(0x10004),))
+        self.assertEqual((r.outcome, r.calls), ("ok", []))
+
+    def test_an_indirect_call_through_an_unmapped_operand_stops_as_unmodeled(self):
+        # 10000: call [ebx]; ret   with ebx pointing where nothing is mapped
+        r = E.run_original(program({0x10000: "FF13" "C3"}), 0x10000, regs={"ebx": 0x70000000})
+        self.assertEqual((r.outcome, r.detail), ("unmodeled", "indirect call at 0x10000"))
+        r = E.run_original(program({0x10000: "FF13" "C3"}), 0x10000, regs={"ebx": 0x70000000},
+                           calls=(E.Call(0x10020),))
+        self.assertEqual((r.outcome, r.detail), ("unmodeled", "indirect call at 0x10000"))
+
+
+# ---- E3 final review: the memory at each call (I1) and the registers a stub clobbers (I2), §E3.12 ----
+
+# 10000: mov byte [0x80000],1; call 0x10020; mov byte [0x80001],2; call 0x10020; ret    10020: int3
+TWO_CALLS = {0x10000: "C60500000800" "01" "E814000000" "C60501000800" "02" "E808000000" "C3", 0x10020: "CC"}
+# 10000: mov edx,7; mov ebx,3; call 0x10020; mov [0x80000],edx; mov [0x80004],ebx; ret    10020: int3
+READS_EDX = {0x10000: "BA07000000" "BB03000000" "E811000000" "891500000800" "891D04000800" "C3", 0x10020: "CC"}
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class CallMemoryTests(unittest.TestCase):
+    def test_each_call_records_the_bytes_changed_so_far(self):
+        # the first call sees the first store only; the second sees both stores and the first stub's
+        # write; the return addresses the calls push are on the private stack and are not reported
+        stub = E.Call(0x10020, writes=((None, 0x80010, b"\x07"),))
+        r = E.run_original(program(TWO_CALLS), 0x10000, calls=(stub,))
+        self.assertEqual(r.outcome, "ok")
+        self.assertEqual(r.call_mem, [{0x80000: 1}, {0x80000: 1, 0x80001: 2, 0x80010: 7}])
+
+    def test_a_store_of_the_value_already_there_is_not_a_change_at_the_call(self):
+        r = E.run_original(program(TWO_CALLS), 0x10000, pokes={0x80000: b"\x01"}, calls=(E.Call(0x10020),))
+        self.assertEqual(r.call_mem, [{}, {0x80001: 2}])
+
+    def test_a_real_call_records_the_memory_at_its_entry(self):
+        r = E.run_original(program(CALLER), 0x10000, pokes=SEED, calls=(E.Call(0x10020, mode="real"),))
+        self.assertEqual((r.calls, r.call_mem), ([(0x10020, ())], [{}]))
+        self.assertEqual(r.writes[0x80004], 0x11)        # the callee's own store comes after the record
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class ClobberTests(unittest.TestCase):
+    def test_a_stub_poisons_the_registers_it_clobbers_and_keeps_the_others(self):
+        seed = {0x80000: le32(0xFFFFFFFF), 0x80004: le32(0xFFFFFFFF)}
+        r = E.run_original(program(READS_EDX), 0x10000, pokes=seed, calls=(E.Call(0x10020, clobbers=("edx",)),))
+        self.assertEqual((r.outcome, r.regs["edx"], r.regs["ebx"]), ("ok", E.CLOBBER_POISON, 3))
+        self.assertEqual(r.writes, {**{0x80000 + i: b for i, b in enumerate(le32(E.CLOBBER_POISON))},
+                                    0x80004: 3, 0x80005: 0, 0x80006: 0, 0x80007: 0})
+        r = E.run_original(program(READS_EDX), 0x10000, pokes=seed, calls=(E.Call(0x10020),))
+        self.assertEqual((r.regs["edx"], r.regs["ebx"]), (7, 3))
+
+    def test_a_clobber_declaration_is_checked(self):
+        for kw in ({"clobbers": ("eax",)}, {"clobbers": ("esp",)}, {"clobbers": ("s0",)},
+                   {"mode": "real", "clobbers": ("edx",)}):
+            with self.subTest(kw=kw), self.assertRaises(ValueError):
+                E.Call(0x10020, **kw)
+        E.Call(0x10020, clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+
+    def test_the_clobbered_set_is_written_minus_what_entry_and_every_ret_restore(self):
+        # push ebx; xor ebx,ebx; xor ecx,ecx; pop ebx; ret
+        self.assertEqual(E.callee_clobbers(program({0x10000: "53" "31DB" "31C9" "5B" "C3"}), 0x10000), ("ecx",))
+        # mov dh,1; ret: a write to a high byte clobbers its register
+        self.assertEqual(E.callee_clobbers(program({0x10000: "B601" "C3"}), 0x10000), ("edx",))
+        # push esi; xor esi,esi; test eax,eax; je 10009; pop esi; ret; (10009) ret: one ret skips the pop
+        img = program({0x10000: "56" "31F6" "85C0" "7402" "5E" "C3" "C3"})
+        self.assertEqual(E.callee_clobbers(img, 0x10000), ("esi",))
+        # push ebx; push esi; xor esi,esi; add esp,0 between the pops; pop esi; pop ebx; ret
+        img = program({0x10000: "53" "56" "31F6" "5E" "83C400" "5B" "C3"})
+        self.assertEqual(E.callee_clobbers(img, 0x10000), ())
+
+    def test_a_callees_clobbers_count_unless_the_caller_saves_them(self):
+        # 10000: push ecx; call 10020; pop ecx; ret      10020: mov edx,1; mov ecx,2; ret
+        img = program({0x10000: "51" "E81A000000" "59" "C3", 0x10020: "BA01000000" "B902000000" "C3"})
+        self.assertEqual(E.callee_clobbers(img, 0x10020), ("ecx", "edx"))
+        self.assertEqual(E.callee_clobbers(img, 0x10000), ("edx",))
+
+    def test_an_indirect_call_clobbers_every_register_not_saved(self):
+        self.assertEqual(E.callee_clobbers(program({0x10000: "FFD0" "C3"}), 0x10000),
+                         ("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+        # push esi; push edi; push ebp; call eax; pop ebp; pop edi; pop esi; ret
+        img = program({0x10000: "56" "57" "55" "FFD0" "5D" "5F" "5E" "C3"})
+        self.assertEqual(E.callee_clobbers(img, 0x10000), ("ebx", "ecx", "edx"))
+
+    def test_an_unresolved_indirect_jump_or_an_outside_target_clobbers_everything(self):
+        # jmp eax: its targets are unknown (fix round 2: no longer skipped silently)
+        self.assertEqual(E.callee_clobbers(program({0x10000: "FFE0"}), 0x10000),
+                         ("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+        # jmp 0x5000, below the image
+        self.assertEqual(E.callee_clobbers(program({0x10000: "E9FB4FFFFF"}), 0x10000),
+                         ("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+
+    # 10000: push edi; cmp dx,1; ja 10050; xor ebx,ebx; mov bx,dx; jmp [ebx*4+0x10100]
+    # 10030: xor esi,esi; pop edi; ret     10040: xor ecx,ecx; pop edi; ret     10050: pop edi; ret
+    MOVED = program({0x10000: "57" "6683FA01" "7749" "31DB" "6689D3" "FF249D00010100",
+                     0x10030: "31F6" "5F" "C3", 0x10040: "31C9" "5F" "C3", 0x10050: "5F" "C3",
+                     0x10100: "30000100" "40000100"})
+
+    def test_a_hand_resolved_jump_table_is_followed_and_without_it_everything_is_clobbered(self):
+        # the index is moved from dx to ebx, so switch_cases does not bound it (record §E3.7)
+        self.assertEqual(E.callee_clobbers(self.MOVED, 0x10000, {}), ("ebx", "ecx", "edx", "esi", "ebp"))
+        self.assertEqual(E.callee_clobbers(self.MOVED, 0x10000, {0x1000C: (0x10001, 0x10100, 2)}),
+                         ("ebx", "ecx", "esi"))
+
+    def test_a_jump_into_the_restore_sequence_means_nothing_is_saved(self):
+        # push ebx; push esi; xor esi,esi; test eax,eax; jne 10009; pop esi; (10009) pop ebx; ret: saved
+        # nothing, so the written ESI and the popped EBX both count
+        self.assertEqual(E.callee_clobbers(program({0x10000: "53" "56" "31F6" "85C0" "7501" "5E" "5B" "C3"}),
+                                           0x10000), ("ebx", "esi"))
+        # push ebx; xor ebx,ebx; test eax,eax; jne 10008; pop ebx; (10008) ret: a jump onto the ret skips the pop
+        self.assertEqual(E.callee_clobbers(program({0x10000: "53" "31DB" "85C0" "7501" "5B" "C3"}), 0x10000),
+                         ("ebx",))
+        # the same jumping to the first pop skips no restore
+        self.assertEqual(E.callee_clobbers(program({0x10000: "53" "56" "31F6" "85C0" "7500" "5E" "5B" "C3"}),
+                                           0x10000), ())
+
+    def test_mutual_recursion_reaches_the_fixpoint(self):
+        # 10000: call 10020; ret      10020: xor esi,esi; call 10000; ret
+        img = program({0x10000: "E81B000000" "C3", 0x10020: "31F6" "E8D9FFFFFF" "C3"})
+        self.assertEqual(E.callee_clobbers(img, 0x10000), ("esi",))
+        self.assertEqual(E.callee_clobbers(img, 0x10020), ("esi",))
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class CallScanTests(unittest.TestCase):
+    def test_a_jump_to_a_call_set_address_is_a_tail_call_not_scanned(self):
+        img = program({0x10000: "E91B000000", 0x10020: "40" "C3"})
+        self.assertEqual(sorted(E.static_scan(img, 0x10000).insns), [0x10000, 0x10020, 0x10021])
+        self.assertEqual(sorted(E.static_scan(img, 0x10000, stop=[0x10020]).insns), [0x10000])
+
+
+
+# 10000: cmp al,2; ja 10010; and eax,0xff; jmp [eax*4+0x10100]; (10010) ret
+# table 10100: 10011 10012 10013, each a ret (record E3 §E3.7)
+SWITCH = {0x10000: "3C02" "770C" "25FF000000" "FF248500010100" "C3" "C3C3C3",
+          0x10100: "11000100" "12000100" "13000100"}
+
+
+@unittest.skipUnless(E.available() or REQUIRED, "unicorn not installed")
+class SwitchScanTests(unittest.TestCase):
+    def test_a_bounded_switch_is_followed_when_asked(self):
+        info = E.static_scan(program(SWITCH), 0x10000, switches=True)
+        self.assertEqual(info.indirect, [])
+        self.assertEqual(info.leaders, [0x10000, 0x10004, 0x10010, 0x10011, 0x10012, 0x10013])
+
+    def test_without_switches_the_scan_is_e1s(self):
+        self.assertEqual(E.static_scan(program(SWITCH), 0x10000).indirect, [0x10009])
+
+    def test_a_guard_on_another_register_does_not_bound_it(self):
+        other = {**SWITCH, 0x10000: "80FB02" "770B" "25FF000000" "FF248500010100" "C3"}   # cmp bl,2
+        self.assertEqual(E.static_scan(program(other), 0x10000, switches=True).indirect, [0x1000A])
+
+    def test_a_guard_without_ja_does_not_bound_it(self):
+        below = {**SWITCH, 0x10000: "3C02" "720C" "25FF000000" "FF248500010100" "C3"}     # jb, not ja
+        self.assertEqual(E.static_scan(program(below), 0x10000, switches=True).indirect, [0x10009])
+
+    def test_a_ja_that_tests_another_compare_does_not_bound_it(self):
+        # cmp al,2; cmp bl,9; ja; and eax,0xff; jmp [eax*4+0x10100]: the ja tests bl, not al
+        two = {**SWITCH, 0x10000: "3C02" "80FB09" "770C" "25FF000000" "FF248500010100" "C3"}
+        self.assertEqual(E.static_scan(program(two), 0x10000, switches=True).indirect, [0x1000C])
+
+    def test_an_index_replaced_after_the_ja_does_not_bound_it(self):
+        # cmp al,2; ja; mov eax,ebx; jmp [eax*4+0x10100]: eax is no longer what was compared
+        moved = {**SWITCH, 0x10000: "3C02" "7709" "89D8" "FF248500010100" "C3"}
+        self.assertEqual(E.static_scan(program(moved), 0x10000, switches=True).indirect, [0x10006])
+        # the same after the mask: cmp al,2; ja; and eax,0xff; mov eax,ebx; jmp [eax*4+0x10100]
+        masked = {**SWITCH, 0x10000: "3C02" "770E" "25FF000000" "89D8" "FF248500010100" "C3"}
+        self.assertEqual(E.static_scan(program(masked), 0x10000, switches=True).indirect, [0x1000B])
+
+    def test_an_index_with_unchecked_high_bits_does_not_bound_it(self):
+        # cmp al,2; ja; jmp [eax*4+0x10100]: bits 8-31 of eax are not bounded
+        bare = {**SWITCH, 0x10000: "3C02" "7707" "FF248500010100" "C3"}
+        self.assertEqual(E.static_scan(program(bare), 0x10000, switches=True).indirect, [0x10004])
+
+    def test_a_movzx_and_a_move_to_another_register_keep_it_bounded(self):
+        # cmp al,2; ja; movzx eax,al; mov ecx,ebx; jmp [eax*4+0x10100]
+        ok = {**SWITCH, 0x10000: "3C02" "770C" "0FB6C0" "89D9" "FF248500010100" "C3" "C3C3C3"}
+        info = E.static_scan(program(ok), 0x10000, switches=True)
+        self.assertEqual(info.indirect, [])
+        self.assertEqual(info.leaders, [0x10000, 0x10004, 0x10010, 0x10011, 0x10012, 0x10013])
+
+
 if __name__ == "__main__":
     unittest.main()

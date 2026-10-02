@@ -4090,6 +4090,7 @@ void hit_anchor_y(u32 side, u32 y)
 static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits)
 {
     u32 ctx[6];
+    PR_SEAM(0x3C480u, rec, stream, frame_bits);
     hit_anim_ctx(ctx, rec);                             /* 0x3C48E */
     hit_anchor_set(ctx[0], DSD(ctx[4] + 0x18u), 0u);    /* 0x3C49F */
     /* 0x3C4B0 loads slot+0x2C into EBX before the 0x2BC30 call, which
@@ -4101,9 +4102,10 @@ static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits)
 }
 
 /* 0x3C4CC. Dispatch on slot+0x52: {0,1,2,5,0xE,0x15} -> 0x2BC30, else 0x3C480. */
-static void hit_anim_start_b(u32 rec, u32 stream, u32 frame_bits)
+void hit_anim_start_b(u32 rec, u32 stream, u32 frame_bits)
 {
     u32 ctx[6];
+    PR_SEAM(0x3C4CCu, rec, stream, frame_bits);
     hit_anim_ctx(ctx, rec);                             /* 0x3C4D6 */
     {
         u8 st = DSB(ctx[2] + 0x52u);

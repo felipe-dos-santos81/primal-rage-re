@@ -74,4 +74,37 @@ int         fn_misslog_has(u32 addr);
  * `fn-miss <tag> distinct=N dropped=N`. */
 void        fn_misslog_report(const char *tag);
 
+/* PORT: the differential harness's call seam (record 2026-10-01-reverse-e3
+ * §E3.3); no original instruction. A ported function another one calls opens
+ * with PR_SEAM (void) or PR_SEAM_RET (a value), passing its own original
+ * address and its arguments in the order of its C signature. pr_seam is NULL
+ * in every binary but build/diffrun, which installs a hook: the hook records
+ * the call (address and arguments, in order) when the address is in the
+ * case's call set, and returns 1 to stub it (the function returns at once,
+ * PR_SEAM_RET with *eax) or 0 to run the body. fn_resolve_from also calls the
+ * hook, with no arguments, for an unregistered address while pr_seam is set:
+ * an indirect call the port cannot make is still recorded. */
+typedef int (*pr_seam_fn)(u32 addr, u32 nargs, const u32 *args, u32 *eax);
+extern pr_seam_fn pr_seam;
+#define PR_SEAM(addr, ...)                                                  \
+    do {                                                                    \
+        if (pr_seam) {                                                      \
+            const u32 seam_a_[] = { __VA_ARGS__ };                          \
+            u32 seam_e_;                                                    \
+            if (pr_seam((addr), (u32)(sizeof seam_a_ / sizeof seam_a_[0]),  \
+                        seam_a_, &seam_e_))                                 \
+                return;                                                     \
+        }                                                                   \
+    } while (0)
+#define PR_SEAM_RET(addr, ...)                                              \
+    do {                                                                    \
+        if (pr_seam) {                                                      \
+            const u32 seam_a_[] = { __VA_ARGS__ };                          \
+            u32 seam_e_;                                                    \
+            if (pr_seam((addr), (u32)(sizeof seam_a_ / sizeof seam_a_[0]),  \
+                        seam_a_, &seam_e_))                                 \
+                return seam_e_;                                             \
+        }                                                                   \
+    } while (0)
+
 #endif /* PR_MEM_H */

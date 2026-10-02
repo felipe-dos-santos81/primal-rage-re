@@ -822,6 +822,7 @@ u16  hit_reaction_b(u32 side);                        /* 0x3CC58 */
 void hit_flash_pair(u32 side);                        /* 0x34D8C */
 void hit_reaction_apply(u32 side, u32 reaction);      /* 0x34E2C */
 void hit_anim_ctx(u32 out[6], u32 rec);               /* 0x339AC */
+void hit_anim_start_b(u32 rec, u32 stream, u32 frame_bits); /* 0x3C4CC */
 int  hit_reaction_allow(u32 side, u32 reaction);      /* 0x4CE70 */
 int  hit_geometry(u32 side, u32 table, u32 idx);      /* 0x1DDF4 */
 void hit_anchor_set(u32 side, u32 x, u32 y);          /* 0x188AC */

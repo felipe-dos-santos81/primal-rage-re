@@ -560,11 +560,13 @@ gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts an
 
 # Differential verification (spec 2026-09-30-reverse-completion-design §5): the original's own
 # bytes run in an emulator against the port's C functions from the same image; compares every
-# changed byte, the return register and the block coverage. Skips cleanly without unicorn or
-# capstone (spec §5.5); tools/diff_verify.py skips without PRAGE.EXE. The claim is narrow: equivalence on
-# the exercised blocks and inputs only.
+# changed byte, the return register, the ordered list of calls into the call set with the memory changed
+# so far at each (record E3: callees stubbed or run on both sides, the port through its PR_SEAM lines; a
+# stub poisons the registers its callee does not preserve) and the block coverage. Skips
+# cleanly without unicorn or capstone (spec §5.5); tools/diff_verify.py skips without PRAGE.EXE. The
+# claim is narrow: equivalence on the exercised blocks and inputs only.
 diff-verify: build ## Differential verification: original x86 bytes vs the port's C functions (skips without unicorn or capstone)
-	@echo "== differential verification (original bytes vs the port's C; record E1) =="
+	@echo "== differential verification (original bytes vs the port's C; records E1, E3) =="
 	@if $(PYTHON) -c "import unicorn, capstone" 2>/dev/null; then \
 		$(PYTHON) -m unittest tools.tests.test_diff_emu tools.tests.test_diff_verify && \
 		$(PYTHON) tools/diff_verify.py --diffrun $(BUILD_DIR)/diffrun --exe $(GAME_DIR)/PRAGE.EXE \
