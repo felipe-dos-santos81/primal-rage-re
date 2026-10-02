@@ -9,6 +9,7 @@ Narrow claim, in every verdict: VERIFIED means equivalence on the exercised bloc
 only. It does not mean the function is correct for states the cases never produce.
 """
 import argparse
+import dataclasses
 import os
 import subprocess
 import sys
@@ -28,6 +29,7 @@ class Case:
     id: str
     regs: dict
     pokes: dict = field(default_factory=dict)      # addr -> bytes
+    stub_eax: dict = field(default_factory=dict)   # callee addr -> this case's stub EAX (record E3 §E3.12)
 
 
 @dataclass
@@ -52,6 +54,19 @@ class Spec:
             raise ValueError("spec %s: 0x%X is both allowed and in the call set" % (self.name, both[0]))
         if self.gap and not self.cases:
             raise ValueError("spec %s: a named gap with no cases holds vacuously" % self.name)
+        stubs = {k.addr for k in self.calls if k.mode == "stub"}
+        for c in self.cases:
+            bad = sorted(set(c.stub_eax) - stubs)
+            if bad:
+                raise ValueError("spec %s case %s: stub_eax names 0x%X, not a stub of the call set"
+                                 % (self.name, c.id, bad[0]))
+
+
+def case_calls(spec, case):
+    """The spec's call set with this case's stub EAX values applied: a stub's EAX can vary per case,
+    so a port cannot agree by hard-coding the constant a caller reads (record E3 §E3.12)."""
+    return tuple(dataclasses.replace(k, eax=case.stub_eax[k.addr]) if k.addr in case.stub_eax else k
+                 for k in spec.calls)
 
 
 @dataclass
@@ -61,6 +76,7 @@ class PortResult:
     writes: dict = field(default_factory=dict)
     error: str = ""
     calls: list = field(default_factory=list)      # (addr, args tuple), in the order the seam saw them
+    call_mem: list = field(default_factory=list)   # per call: {addr: byte} mem[] changed since the start, at that call
 
 
 def cases_text(spec, port_name):
@@ -72,7 +88,7 @@ def cases_text(spec, port_name):
             out.append("reg %s 0x%X" % (r, v))
         for a, b in c.pokes.items():
             out.append("poke 0x%X %s" % (a, bytes(b).hex()))
-        for k in spec.calls:
+        for k in case_calls(spec, c):
             out.append("stub 0x%X %s 0x%X" % (k.addr, k.mode, k.eax & 0xFFFFFFFF))
             for base, off, data in k.writes:
                 out.append("swrite %s 0x%X %s" % ("abs" if base is None else "arg%d" % base, off, bytes(data).hex()))
@@ -108,6 +124,15 @@ def parse_port_output(text):
             if got:
                 raise ValueError("diffrun output: a call line after the result line: %r" % line)
             cur.calls.append((int(t[1], 16), tuple(int(x, 16) for x in t[2:])))
+            cur.call_mem.append({})
+        elif t[0] == "m" and len(t) == 3:
+            # a byte of mem[] that differs from the case's start at the last call (record E3 §E3.12)
+            if got or not cur.calls:
+                raise ValueError("diffrun output: a memory line outside a call: %r" % line)
+            a = int(t[1], 16)
+            if a in cur.call_mem[-1]:
+                raise ValueError("diffrun output: byte 0x%X reported twice at one call" % a)
+            cur.call_mem[-1][a] = int(t[2], 16)
         elif t[0] == "w" and len(t) == 3:
             a = int(t[1], 16)
             if a in cur.writes:
@@ -150,6 +175,10 @@ def _call_text(c):
     return "0x%X(%s)" % (c[0], ", ".join("0x%X" % v for v in c[1]))
 
 
+def _byte_text(v):
+    return "unchanged" if v is None else "0x%02X" % v
+
+
 def compare(orig, port, mask=0xFFFFFFFF):
     """The discrepancies between one original run and one port run (empty = they agree).
 
@@ -169,11 +198,20 @@ def compare(orig, port, mask=0xFFFFFFFF):
         p = pc[i] if i < len(pc) else None
         if o != p:
             out.append("call #%d: original %s, port %s" % (i, _call_text(o), _call_text(p)))
+        if o is not None and p is not None:
+            # the memory at the call (record E3 §E3.12): a store moved across a stubbed call changes
+            # what the callee would read, though the bytes at return may agree
+            om = orig.call_mem[i] if i < len(orig.call_mem) else {}
+            pm = port.call_mem[i] if i < len(port.call_mem) else {}
+            if om != pm:
+                a = min(x for x in set(om) | set(pm) if om.get(x) != pm.get(x))
+                out.append("call #%d memory: %d bytes changed so far in the original, %d in the port; first "
+                           "difference at 0x%X: original %s, port %s"
+                           % (i, len(om), len(pm), a, _byte_text(om.get(a)), _byte_text(pm.get(a))))
     for a in sorted(set(orig.writes) | set(port.writes)):
         if orig.writes.get(a) != port.writes.get(a):
-            o, p = orig.writes.get(a), port.writes.get(a)
             out.append("byte 0x%X: original %s, port %s" % (
-                a, "unchanged" if o is None else "0x%02X" % o, "unchanged" if p is None else "0x%02X" % p))
+                a, _byte_text(orig.writes.get(a)), _byte_text(port.writes.get(a))))
     return out
 
 
@@ -202,7 +240,7 @@ def verify_gap(spec, image):
     res = SpecResult(spec.name, spec.entry, "NAMED_GAP", len(spec.cases), 0, len(info.leaders), gap=spec.gap)
     executed = set()
     for c in spec.cases:
-        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=spec.calls)
+        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c))
         executed |= orig.executed
         if (orig.outcome, orig.detail) != ("unmodeled", spec.gap):
             res.verdict = "MISMATCH"
@@ -222,7 +260,7 @@ def verify_spec(spec, image, port_results, port_name=None):
     executed, outside, problems, blocked = set(), set(), [], []
     port_errors, diffs = [], 0
     for c in spec.cases:
-        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=spec.calls)
+        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c))
         if orig.outcome != "ok":
             blocked.append("%s: %s (%s)" % (c.id, orig.outcome, orig.detail))
             continue
@@ -271,11 +309,13 @@ DS_1078FC = 0x1078FC         # the byte 0x37DCC stores (record gameplay-u6 §U6.
 # ---- E3: the call stubs' worked batch (record 2026-10-01-reverse-e3 §E3.6) ----------------------
 E3_SLOT, E3_REC, E3_REC2, E3_OUT = 0x10A200, 0x10A300, 0x10A400, 0x10A500   # zero BSS of the image
 DS_SLOTS = 0x1077B0            # DS_001077B0: the two 0x94-byte fighter slots; +0 holds the slot's record
+# clobbers: the registers each callee does not preserve, E.callee_clobbers over the image (record
+# §E3.5's table; a real-image test re-derives them)
 VOICE = E.Call(0x2C3FC, ("eax",), eax=1)
-ANIM_BEGIN = E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4)
-HIT_B = E.Call(0x3C4CC, ("eax", "edx", "s0"), pop=4)
-HIT_A = E.Call(0x3C480, ("eax", "edx", "s0"), pop=4)
-SPAWN = E.Call(0x2AE14, ("eax", "edx", "ecx", "ebx", "s0"), pop=4)
+ANIM_BEGIN = E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4, clobbers=("edx",))
+HIT_B = E.Call(0x3C4CC, ("eax", "edx", "s0"), pop=4, clobbers=("edx",))
+HIT_A = E.Call(0x3C480, ("eax", "edx", "s0"), pop=4, clobbers=("edx",))
+SPAWN = E.Call(0x2AE14, ("eax", "edx", "ecx", "ebx", "s0"), pop=4, clobbers=("ebx", "ecx", "edx"))
 SLOT_PTRS = {DS_SLOTS: le32(E3_REC), DS_SLOTS + 0x94: le32(E3_REC2)}
 OUT_SEED = {E3_OUT: b"\xaa" * 24}
 
@@ -283,10 +323,11 @@ E3_SPECS = [
     Spec("fighter_23130", 0x23130, [
         Case("v0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0},
              {E3_SLOT + 0x52: b"\x7f\x7f\x7f", E3_SLOT + 0x0C: le32(0xFFFFFFFF)}),
+        # the voice stub returns AL = 0 here: 0x23130 ignores it (`mov al,1` at 0x23170)
         Case("v1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1},
-             {E3_SLOT + 0x52: b"\x7f\x7f\x7f", E3_SLOT + 0x0C: le32(0xFFFFFFFF)}),
+             {E3_SLOT + 0x52: b"\x7f\x7f\x7f", E3_SLOT + 0x0C: le32(0xFFFFFFFF)}, {0x2C3FC: 0}),
     ], allow_calls=(0x33950,), calls=(HIT_B, VOICE), eax_mask=0xFF,
-       mutants=("@voice", "@novoice")),
+       mutants=("@voice", "@novoice", "@reorder")),
     Spec("fighter_45878", 0x45878, [
         Case("b0", {"eax": E3_SLOT, "edx": E3_REC},
              {E3_REC + 0x53: b"\x00", E3_REC + 0x59: b"\x00", E3_SLOT + 0x52: b"\x7f\x7f\x7f",
@@ -316,9 +357,9 @@ E3_SPECS = [
         Case("h%X" % st, {"eax": E3_REC, "edx": 0xE4872, "s0": 0x40400000},
              {E3_REC + 0x51: bytes([side]), DS_SLOTS + side * 0x94: le32(E3_REC2),
               DS_SLOTS + side * 0x94 + 0x52: bytes([st])})
-        # every state 0..0x16 and three out-of-range bytes, so the dispatch set {0,1,2,5,0xE,0x15} ->
+        # every state byte 0..0xFF (side = its parity), so the dispatch set {0,1,2,5,0xE,0x15} ->
         # 0x2BC30, everything else -> 0x3C480 is pinned value by value, not only its two blocks
-        for st, side in [(s, s & 1) for s in range(0x17)] + [(0x7F, 1), (0x80, 0), (0xFF, 1)]
+        for st, side in [(s, s & 1) for s in range(0x100)]
     ], allow_calls=(0x339AC,), calls=(ANIM_BEGIN, HIT_A), eax_mask=0, mutants=("@mutant", "@set")),
     Spec("host_1b890", 0x1B890, [Case("g0", {})], mutants=(), gap="in at 0x1B899"),
 ]
@@ -399,6 +440,16 @@ def mutant_detection(r):
     return True, ""
 
 
+def closed_rows(funcs, verdicts):
+    """(closed, with_callees): the rows that have callees, and those of them that are VERIFIED with
+    every callee VERIFIED by its own row (one level deep, record §E3.6). Rows with no callee are
+    counted apart, so they cannot make the figure look closer than it is (record §E3.4)."""
+    with_callees = [r for r in funcs if r.callees]
+    closed = [r for r in with_callees if r.verdict == "VERIFIED"
+              and all(verdicts.get(a) == "VERIFIED" for a, _ in r.callees)]
+    return closed, with_callees
+
+
 def table_row(r, verdicts=None):
     """One row; `verdicts` (entry -> verdict of the real rows) marks each callee with its own check."""
     note = "; reads outside the image: " + ", ".join("0x%X+%d" % o for o in r.outside) if r.outside else ""
@@ -426,7 +477,8 @@ def main(argv=None):
     ap.add_argument("--exe", default="data/game/C/PRAGE.EXE")
     ap.add_argument("--image", default=os.path.join(tempfile.gettempdir(), "pr_diff_image.bin"),
                     help="where diffrun dumps the image both sides run from")
-    ap.add_argument("--function", help="only this function")
+    ap.add_argument("--function", help="only this function (its callees' rows are not run, so the callee "
+                                       "column reads 'unverified' for each; record E3 §E3.8)")
     ap.add_argument("--self-check", action="store_true",
                     help="also require every mutant binding to be detected (an eax or byte difference, "
                          "and no port error)")
@@ -457,8 +509,7 @@ def main(argv=None):
     bad = [r for r in funcs if r.verdict != "VERIFIED"] + [r for r in gaps if r.verdict != "NAMED_GAP"]
     missed = [(r, why) for r in mutants for ok, why in [mutant_detection(r)] if not ok]
     verdicts = {r.entry: r.verdict for r in real}
-    closed = [r for r in funcs if r.verdict == "VERIFIED"
-              and all(verdicts.get(a) == "VERIFIED" for a, _ in r.callees)]
+    closed, with_callees = closed_rows(funcs, verdicts)
 
     rows = [TABLE_HEAD] + [table_row(r, verdicts) for r in real + mutants]
     print("\n".join(rows))
@@ -472,11 +523,12 @@ def main(argv=None):
     if args.table:
         with open(args.table, "w") as f:
             f.write("\n".join(rows) + "\n")
-    print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d with every callee VERIFIED. Claim: "
-          "equivalence on the exercised blocks and inputs only, each function with its callees stubbed or "
-          "run as stated." % (len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
-                              "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
-                              if args.self_check else "", len(gaps), len(closed), len(funcs)))
+    print("diff-verify: %d/%d functions VERIFIED%s; %d named gaps; %d/%d rows with callees closed (%d have "
+          "none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees "
+          "stubbed or run as stated." % (len([r for r in funcs if r.verdict == "VERIFIED"]), len(funcs),
+                                         "; %d/%d mutants detected" % (len(mutants) - len(missed), len(mutants))
+                                         if args.self_check else "", len(gaps), len(closed), len(with_callees),
+                                         len(funcs) - len(with_callees)))
     return 1 if bad or missed else 0
 
 

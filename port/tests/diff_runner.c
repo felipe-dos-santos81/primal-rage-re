@@ -155,6 +155,18 @@ static void m_23130_novoice(const u32 *r, u32 *eax)   /* forgets the voice call 
     hit_anim_start_b(r[R_EDX], 0x000E4872u, 0x40400000u);
     *eax = 1u;
 }
+static void m_23130_reorder(const u32 *r, u32 *eax)   /* the slot stores after 0x3C4CC, not before */
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, r[R_EBX]);
+    hit_anim_start_b(r[R_EDX], 0x000E4872u, 0x40400000u);
+    DSB(r[R_EAX] + 0x52u) = 9u;
+    DSB(r[R_EAX] + 0x53u) = 7u;
+    DSB(r[R_EAX] + 0x54u) = 0u;
+    DSD(r[R_EAX] + 0x0Cu) = 0u;
+    (void)sound_voice(0x7Cu);
+    *eax = 1u;
+}
 static void m_45878(const u32 *r, u32 *eax)            /* the 0x2BC30 frame at 2.0, not 3.0 */
 {
     actors_anim_begin(r[R_EDX], 0x000EB58Cu, 0x40000000u);
@@ -246,6 +258,7 @@ static const binding_t k_bindings[] = {
     { "fighter_23130",            b_23130,        0x000000FFu },
     { "fighter_23130@voice",      m_23130_voice,  0x000000FFu },
     { "fighter_23130@novoice",    m_23130_novoice, 0x000000FFu },
+    { "fighter_23130@reorder",    m_23130_reorder, 0x000000FFu },
     { "fighter_45878",            b_45878,        0x00000000u },
     { "anim_10fa8",               b_10fa8,        0x00000000u },
     { "anim_3e4e4",               b_3e4e4,        0x00000000u },
@@ -343,6 +356,34 @@ static const case_t *g_case;          /* the case running, for the seam hook */
 static int g_seam_error;              /* a stub write the hook refused: 1 outside the image, 2 an argument the callee lacks */
 static u32 g_seam_addr, g_seam_arg, g_seam_nargs;
 
+/* Prints `<tag> <addr> <byte>` for every non-zero byte of mem[lo..hi), the range outside the image
+ * where the load left zeros, and clears it when `clear` (the case's end) but not at a call. */
+static void scan_outside(u32 lo, u32 hi, char tag, int clear)
+{
+    static const u8 zero[0x10000];
+    for (u32 a = lo; a < hi; ) {
+        u32 n = hi - a < sizeof zero ? hi - a : (u32)sizeof zero;
+        if (memcmp(mem + a, zero, n) == 0) { a += n; continue; }      /* a zero block: nothing written */
+        for (u32 i = 0; i < n; i++)
+            if (mem[a + i] != 0) {
+                printf("%c 0x%X 0x%02X\n", tag, a + i, mem[a + i]);
+                if (clear) mem[a + i] = 0;
+            }
+        a += n;
+    }
+}
+
+/* The memory at a recorded call (record E3 §E3.12): one `m` line per byte of mem[] that differs from
+ * the case's start (the image against g_pre, the rest against the load's zeros), so a store the port
+ * moves across a stubbed call is a difference although the bytes at return may agree. */
+static void print_call_memory(void)
+{
+    scan_outside(0, CODE_BASE, 'm', 0);
+    for (u32 i = 0; i < g_len; i++)
+        if (mem[CODE_BASE + i] != g_pre[i]) printf("m 0x%X 0x%02X\n", CODE_BASE + i, mem[CODE_BASE + i]);
+    scan_outside(CODE_BASE + g_len, MEM_SIZE, 'm', 0);
+}
+
 static int seam_hook(u32 addr, u32 nargs, const u32 *args, u32 *eax)
 {
     const stub_t *s = NULL;
@@ -352,6 +393,7 @@ static int seam_hook(u32 addr, u32 nargs, const u32 *args, u32 *eax)
     printf("c 0x%X", addr);
     for (u32 i = 0; i < nargs; i++) printf(" 0x%X", args[i]);
     printf("\n");
+    print_call_memory();
     if (s->real) return 0;
     for (int i = 0; i < s->nw; i++) {
         const swrite_t *w = &s->w[i];
@@ -412,19 +454,6 @@ static int parse_bytes(const char *s, poke_t *p)
     return 1;
 }
 
-/* Prints, then clears, every non-zero byte of mem[lo..hi): the bytes the case wrote outside the
- * image, where the load left zeros. */
-static void flush_outside(u32 lo, u32 hi)
-{
-    for (u32 a = lo; a < hi; a += 8) {
-        uint64_t w;
-        memcpy(&w, mem + a, 8);
-        if (w == 0) continue;
-        for (u32 i = 0; i < 8; i++)
-            if (mem[a + i] != 0) { printf("w 0x%X 0x%02X\n", a + i, mem[a + i]); mem[a + i] = 0; }
-    }
-}
-
 static void run_case(const case_t *c)
 {
     printf("case %s\n", c->id);
@@ -453,8 +482,8 @@ static void run_case(const case_t *c)
     else printf("ret eax 0x%X mask 0x%X\n", eax & b->eax_mask, b->eax_mask);
     for (u32 i = 0; i < g_len; i++)
         if (mem[CODE_BASE + i] != g_pre[i]) printf("w 0x%X 0x%02X\n", CODE_BASE + i, mem[CODE_BASE + i]);
-    flush_outside(0, CODE_BASE);
-    flush_outside(CODE_BASE + g_len, MEM_SIZE);
+    scan_outside(0, CODE_BASE, 'w', 1);              /* the case's writes outside the image, cleared */
+    scan_outside(CODE_BASE + g_len, MEM_SIZE, 'w', 1);
     memcpy(mem + CODE_BASE, g_pristine, g_len);
     printf("end\n");
 }

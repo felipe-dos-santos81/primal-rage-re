@@ -41,6 +41,10 @@ REGS = ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp")
 # The dwords above the return address at entry: the stack arguments a `ret N` function pops
 # (record E3 §E3.5). A case sets them as regs["s0"]..regs["s3"]; a call record reads them the same way.
 STACK_ARGS = ("s0", "s1", "s2", "s3")
+# The value a stub leaves in each register its callee does not preserve (Call.clobbers, record E3
+# §E3.12): an original caller that reads one after the call computes with this value, which the
+# port's C (it cannot read a callee's registers) does not reproduce, so the row turns MISMATCH.
+CLOBBER_POISON = 0xC10BBE2D
 
 # Instructions the harness cannot model faithfully: the function becomes NOT_EXERCISABLE with the
 # instruction named (spec §5.2), never a guessed result.
@@ -84,14 +88,17 @@ class Call:
     a `jmp` is recorded as (addr, the values of `args`), `args` naming registers or stack slots in
     the order the port's C signature passes them. mode "stub": the callee's bytes do not run; its
     `writes` are applied ((base, offset, bytes): base None is absolute, an int is that argument's
-    value), EAX becomes `eax`, and the callee returns, popping `pop` bytes of stack arguments (its
-    own `ret N`). mode "real": the bytes run (the callee is proven by its own check)."""
+    value), EAX becomes `eax`, every register in `clobbers` (the ones the callee does not preserve,
+    derived from its bytes: `callee_clobbers`) becomes CLOBBER_POISON, and the callee returns,
+    popping `pop` bytes of stack arguments (its own `ret N`). mode "real": the bytes run (the callee
+    is proven by its own check)."""
     addr: int
     args: tuple = ()
     mode: str = "stub"
     eax: int = 0
     writes: tuple = ()
     pop: int = 0
+    clobbers: tuple = ()
 
     def __post_init__(self):
         if self.mode not in ("stub", "real"):
@@ -99,8 +106,12 @@ class Call:
         bad = [a for a in self.args if a not in REGS + STACK_ARGS]
         if bad:
             raise ValueError("call 0x%X: unknown argument %s" % (self.addr, ", ".join(bad)))
-        if self.mode == "real" and (self.writes or self.eax or self.pop):
+        if self.mode == "real" and (self.writes or self.eax or self.pop or self.clobbers):
             raise ValueError("call 0x%X: a real call declares no effect" % self.addr)
+        bad = [r for r in self.clobbers if r not in REGS or r == "eax"]
+        if bad:
+            raise ValueError("call 0x%X: clobbers %s: a register other than eax (eax is the stub's `eax`)"
+                             % (self.addr, ", ".join(bad)))
         for w in self.writes:
             if len(w) != 3 or not (w[0] is None or (isinstance(w[0], int) and 0 <= w[0] < len(self.args))):
                 raise ValueError("call 0x%X: write %r needs a base that is None or an index of its %d args"
@@ -116,6 +127,7 @@ class OrigResult:
     executed: set = field(default_factory=set)     # addresses of executed instructions
     outside: list = field(default_factory=list)    # (addr, size) read or written outside image and stack
     calls: list = field(default_factory=list)      # (addr, args tuple) per arrival at a call-set address, in order
+    call_mem: list = field(default_factory=list)   # per arrival: {addr: byte} changed since the start, private stack excluded
 
 
 if capstone is not None:
@@ -198,18 +210,31 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     seen = {}              # addr -> (stop kind or None, transfer (kind, direct target or None) or None, indirect call insn or None)
     allow = frozenset(allow_calls)
     callset = {c.addr: c for c in calls}
-    recorded = []
+    recorded, recorded_mem = [], []
 
     def arg(uc, esp, a):
         if a in STACK_ARGS:
             return int.from_bytes(uc.mem_read(esp + 4 + 4 * STACK_ARGS.index(a), 4), "little")
         return uc.reg_read(names[a])
 
+    def changed(uc):
+        """{addr: byte} of every byte that differs from the case's start (pokes applied), private
+        stack excluded: what the port's seam hook reports from mem[] against its copy (§E3.12)."""
+        out = {}
+        for a, old in before.items():
+            if not STACK_LOW <= a < STACK_END:
+                new = uc.mem_read(a, 1)[0]
+                if new != old:
+                    out[a] = new
+        return out
+
     def arrive(uc, addr, c):
-        """Record the arrival at a call-set address; for a stub, apply its effect and return."""
+        """Record the arrival at a call-set address with the memory changed so far; for a stub,
+        apply its effect and return."""
         esp = uc.reg_read(ux.UC_X86_REG_ESP)
         vals = tuple(arg(uc, esp, a) for a in c.args)
         recorded.append((addr, vals))
+        recorded_mem.append(changed(uc))
         if c.mode == "real":
             return
         for base, off, data in c.writes:
@@ -220,6 +245,8 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
                 before.setdefault(at + i, b)
             uc.mem_write(at, bytes(data))
         uc.reg_write(ux.UC_X86_REG_EAX, c.eax & 0xFFFFFFFF)
+        for r in c.clobbers:
+            uc.reg_write(names[r], CLOBBER_POISON)
         ret = int.from_bytes(uc.mem_read(esp, 4), "little")
         uc.reg_write(ux.UC_X86_REG_ESP, esp + 4 + c.pop)
         uc.reg_write(ux.UC_X86_REG_EIP, ret)
@@ -307,7 +334,7 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
         new = mu.mem_read(a, 1)[0]
         if new != old:
             writes[a] = new
-    return OrigResult(outcome, detail, final_regs, writes, executed, sorted(outside), recorded)
+    return OrigResult(outcome, detail, final_regs, writes, executed, sorted(outside), recorded, recorded_mem)
 
 
 # ---- static scan: the function's basic blocks, for the coverage claim (spec §5.3) -------------
@@ -451,6 +478,86 @@ def coverage(info, executed):
     hit = [a for a in info.leaders if a in executed]
     unhit = [a for a in info.leaders if a not in executed]
     return hit, unhit
+
+
+# ---- the registers a callee does not preserve (record E3 §E3.12), for Call.clobbers -------------
+
+def _saved_and_written(image, f):
+    """(saved, written, direct callees) of the function at `f`. saved: the registers its entry
+    pushes (the leading `push reg` run) that the pops directly before EVERY `ret` restore (`add
+    esp, imm` may sit between them; `leave` restores ebp). written: every register family an
+    instruction of its static scan writes (capstone's regs_access; push and call excluded), all of
+    them for an indirect call (its target is unknown) or a truncated scan."""
+    info = static_scan(image, f, switches=True)
+    every = set(REGS)
+    if info.truncated:
+        return set(), every, set()
+    ins = {a: _decode(image.bytes_at(a, 15), a) for a in info.insns}
+    entry, a = [], f
+    while a in ins and ins[a].mnemonic == "push" and ins[a].operands[0].type == cx86.X86_OP_REG:
+        entry.append(ins[a].reg_name(ins[a].operands[0].reg))
+        a += ins[a].size
+    order = sorted(ins)
+    restored = None
+    for i, x in enumerate(order):
+        if not ins[x].group(capstone.CS_GRP_RET):
+            continue
+        pops, j = set(), i - 1
+        while j >= 0 and order[j] + ins[order[j]].size == order[j + 1]:
+            p = ins[order[j]]
+            if p.mnemonic == "pop" and p.operands[0].type == cx86.X86_OP_REG:
+                pops.add(p.reg_name(p.operands[0].reg))
+            elif p.mnemonic == "leave":
+                pops.add("ebp")
+            elif not (p.mnemonic == "add" and p.op_str.startswith("esp,")):
+                break
+            j -= 1
+        restored = pops if restored is None else restored & pops
+    saved = set(entry) & (restored or set())
+    written, callees = set(), set()
+    for x in order:
+        p = ins[x]
+        if p.mnemonic == "call":
+            t = _direct_target(p)
+            if t is None:
+                written |= every
+            else:
+                callees.add(t)
+            continue
+        if p.mnemonic == "push":
+            continue
+        for r in p.regs_access()[1]:
+            fam = _FAMILY.get(p.reg_name(r), _HIGH8.get(p.reg_name(r)))
+            if fam in every:
+                written.add(fam)
+    return saved, written, callees
+
+
+def callee_clobbers(image, addr):
+    """The registers other than EAX that the function at `addr` may change on some path, its whole
+    direct-call tree included (a least fixpoint, so recursion is handled): written minus saved,
+    per function, plus what its callees clobber that it does not save. A callee outside the image
+    clobbers everything. Over-approximating is the safe direction: a poisoned register a caller
+    really relies on turns its row MISMATCH (fail-closed), never VERIFIED."""
+    local, work = {}, [addr]
+    while work:
+        f = work.pop()
+        if f in local:
+            continue
+        local[f] = _saved_and_written(image, f) if image.contains(f) else (set(), set(REGS), set())
+        work.extend(local[f][2])
+    clob = {f: set() for f in local}
+    moved = True
+    while moved:
+        moved = False
+        for f, (saved, written, callees) in local.items():
+            c = set(written)
+            for g in callees:
+                c |= clob[g]
+            c -= saved
+            if c != clob[f]:
+                clob[f], moved = c, True
+    return tuple(r for r in REGS if r != "eax" and r in clob[addr])
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --

@@ -326,7 +326,7 @@ class RealFunctionTests(unittest.TestCase):
         self.assertEqual(sorted(self.mut), [
             "anim_10fa8@mutant", "anim_3e4e4@mutant",
             "config_codeword_len@mutant", "config_credit_spend@mutant", "config_credit_spend@signed",
-            "fighter_23130@novoice", "fighter_23130@voice", "fighter_3640c@mutant", "fighter_37dcc@mutant",
+            "fighter_23130@novoice", "fighter_23130@reorder", "fighter_23130@voice", "fighter_3640c@mutant", "fighter_37dcc@mutant",
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"])
         for name, r in self.mut.items():
@@ -428,21 +428,34 @@ class RealFunctionTests(unittest.TestCase):
     # ---- E3's worked batch (record 2026-10-01-reverse-e3 §E3.6) ----
 
     def test_each_e3_mutant_is_caught_by_what_it_breaks(self):
+        # @reorder (the slot stores moved after the 0x3C4CC call) agrees in EAX, every byte and the call
+        # list: only the memory at call #0 tells it apart (record §E3.12). @set pokes the slot's state
+        # byte around its call, so the memory at that call differs too.
         kinds = {"fighter_23130@voice": {"call #1"}, "fighter_23130@novoice": {"call #1"},
+                 "fighter_23130@reorder": {"call #0 memory"},
                  "fighter_45878@mutant": {"call #0"}, "anim_10fa8@mutant": {"call #0"},
-                 "hit_anim_start_b@mutant": {"call #0"}, "hit_anim_start_b@set": {"call #0"},
+                 "hit_anim_start_b@mutant": {"call #0"}, "hit_anim_start_b@set": {"call #0", "call #0 memory"},
                  "anim_3e4e4@mutant": {"call #0", "byte"},
                  "fighter_ctx_same@mutant": {"byte"}, "hit_anim_ctx@mutant": {"byte"}}
         for name, want in kinds.items():
             got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
                    else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
             self.assertEqual(got, want, name)
-        # the 0x3C480 arm only: every state outside {0,1,2,5,0xE,0x15} takes it, in cases 0..0x16 and the
-        # three out-of-range bytes; the dispatch set itself is pinned by @set, which moves state 0 alone
-        arm = sorted("h%X" % st for st in list(range(0x17)) + [0x7F, 0x80, 0xFF]
-                     if st not in (0, 1, 2, 5, 0xE, 0x15))
+        # the 0x3C480 arm only: every state byte outside {0,1,2,5,0xE,0x15} takes it (250 of the 256
+        # cases); the dispatch set itself is pinned by @set, which moves state 0 alone
+        arm = sorted("h%X" % st for st in range(0x100) if st not in (0, 1, 2, 5, 0xE, 0x15))
+        self.assertEqual(len(arm), 250)
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["hit_anim_start_b@mutant"].problems}), arm)
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["hit_anim_start_b@set"].problems}), ["h0"])
+
+    def test_each_stub_declares_the_registers_its_callee_clobbers(self):
+        # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
+        img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
+        stubs = {k.addr: k.clobbers for s in V.SPECS for k in s.calls if k.mode == "stub"}
+        self.assertEqual(stubs, {0x2C3FC: (), 0x2BC30: ("edx",), 0x3C4CC: ("edx",), 0x3C480: ("edx",),
+                                 0x2AE14: ("ebx", "ecx", "edx")})
+        for addr, declared in stubs.items():
+            self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
     def test_the_named_gap_is_0x1b890s_in(self):
         r = self.real["host_1b890"]
@@ -491,8 +504,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        self.assertIn("diff-verify: 13/13 functions VERIFIED; 16/16 mutants detected; 1 named gaps; "
-                      "8/13 with every callee VERIFIED.", out.getvalue())
+        # the closed-row count is over the rows that have callees (5), the 8 without are counted apart
+        self.assertIn("diff-verify: 13/13 functions VERIFIED; 17/17 mutants detected; 1 named gaps; "
+                      "0/5 rows with callees closed (8 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
@@ -525,6 +539,42 @@ class CallParseTests(unittest.TestCase):
     def test_call_lines_are_parsed_in_order(self):
         out = V.parse_port_output("case a\nc 0x10020 0x5 0x7\nc 0x10030\nret eax 0x0 mask 0x0\nend\n")
         self.assertEqual(out["a"].calls, [(0x10020, (5, 7)), (0x10030, ())])
+
+    def test_memory_lines_belong_to_the_call_before_them(self):
+        out = V.parse_port_output("case a\nc 0x10020\nm 0x80000 0x1\nc 0x10030 0x5\nm 0x80000 0x1\n"
+                                  "m 0x80001 0x2\nret eax 0x0 mask 0x0\nend\n")
+        self.assertEqual(out["a"].calls, [(0x10020, ()), (0x10030, (5,))])
+        self.assertEqual(out["a"].call_mem, [{0x80000: 1}, {0x80000: 1, 0x80001: 2}])
+
+    def test_a_memory_line_outside_a_call_or_repeated_is_rejected(self):
+        for name, text in [("before any call", "case a\nm 0x80000 0x1\nret eax 0x0 mask 0x0\nend\n"),
+                           ("after the result", "case a\nc 0x10020\nret eax 0x0 mask 0x0\nm 0x80000 0x1\nend\n"),
+                           ("twice at one call", "case a\nc 0x10020\nm 0x80000 0x1\nm 0x80000 0x2\n"
+                                                 "ret eax 0x0 mask 0x0\nend\n")]:
+            with self.subTest(name), self.assertRaises(ValueError):
+                V.parse_port_output(text)
+
+    def test_cases_text_emits_each_cases_own_stub_eax(self):
+        spec = V.Spec("f", 0x10000, [V.Case("a", {}), V.Case("b", {}, {}, {0x10020: 0x99})],
+                      calls=(E.Call(0x10020, eax=0x42),))
+        self.assertEqual(V.cases_text(spec, "f"), "case a\nfn f\nstub 0x10020 stub 0x42\nend\n"
+                                                  "case b\nfn f\nstub 0x10020 stub 0x99\nend\n")
+
+    def test_a_stub_eax_must_name_a_stub_of_the_call_set(self):
+        for calls in ((), (E.Call(0x10020, mode="real"),)):
+            with self.subTest(calls=calls), self.assertRaises(ValueError):
+                V.Spec("f", 0x10000, [V.Case("a", {}, {}, {0x10020: 1})], calls=calls)
+
+    def test_only_rows_with_callees_count_toward_the_closed_figure(self):
+        def row(entry, verdict, callees):
+            return V.SpecResult("r%X" % entry, entry, verdict, callees=callees)
+        a = row(0xA, "VERIFIED", [])                      # no callee: counted apart
+        b = row(0xB, "VERIFIED", [(0xA, "stub")])         # its callee is VERIFIED: closed
+        c = row(0xC, "VERIFIED", [(0xA, "stub"), (0xF, "stub")])   # 0xF has no row
+        d = row(0xD, "MISMATCH", [(0xA, "allow")])
+        verdicts = {r.entry: r.verdict for r in (a, b, c, d)}
+        closed, with_callees = V.closed_rows([a, b, c, d], verdicts)
+        self.assertEqual(([r.entry for r in closed], [r.entry for r in with_callees]), ([0xB], [0xB, 0xC, 0xD]))
 
     def test_a_call_line_after_the_result_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -578,6 +628,56 @@ class CallVerifyTests(unittest.TestCase):
         r = V.verify_spec(spec, img, {"x": V.PortResult(0, calls=[(0x10020, (0x10020,))])})
         self.assertEqual((r.verdict, r.problems), ("MISMATCH", ["x: call #0: original 0x10020(), port 0x10020(0x10020)"]))
 
+    # ---- E3 final review (record §E3.12) ----
+
+    # 10000: mov byte [0x80000],1; call 0x10020; mov byte [0x80001],2; call 0x10020; ret    10020: int3
+    TWO_CALLS = program({0x10000: "C60500000800" "01" "E814000000" "C60501000800" "02" "E808000000" "C3",
+                         0x10020: "CC"})
+
+    def test_a_store_moved_across_a_stubbed_call_is_a_mismatch(self):
+        spec = V.Spec("m", 0x10000, [V.Case("x", {}, {0x80000: b"\xff\xff"})], calls=(E.Call(0x10020),))
+        final, calls = {0x80000: 1, 0x80001: 2}, [(0x10020, ()), (0x10020, ())]
+        good = V.PortResult(0, 0, final, calls=calls, call_mem=[{0x80000: 1}, dict(final)])
+        r = V.verify_spec(dataclasses.replace(spec, eax_mask=0), self.TWO_CALLS, {"x": good})
+        self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
+        late = V.PortResult(0, 0, final, calls=calls, call_mem=[{}, dict(final)])    # the store after the call
+        r = V.verify_spec(dataclasses.replace(spec, eax_mask=0), self.TWO_CALLS, {"x": late})
+        self.assertEqual(r.problems, ["x: call #0 memory: 1 bytes changed so far in the original, 0 in the port; "
+                                      "first difference at 0x80000: original 0x01, port unchanged"])
+        self.assertEqual(V.mutant_detection(r), (True, ""))
+
+    # 10000: mov edx,7; mov ebx,3; call 0x10020; mov [0x80000],edx; mov [0x80004],ebx; ret    10020: int3
+    READS_EDX = program({0x10000: "BA07000000" "BB03000000" "E811000000" "891500000800" "891D04000800" "C3",
+                         0x10020: "CC"})
+
+    def test_a_caller_that_reads_a_clobbered_register_diverges_from_the_port(self):
+        # the port's C cannot read a callee's EDX: what it computes is what the caller would with EDX
+        # preserved (7). With the clobber declared the original reads the poison instead, so the row is
+        # a MISMATCH: such a caller needs that callee run `real`, not stubbed (record §E3.12)
+        seed = {0x80000: le32(0xFFFFFFFF), 0x80004: le32(0xFFFFFFFF)}
+        port = V.PortResult(0, 0, {0x80000: 7, 0x80001: 0, 0x80002: 0, 0x80003: 0,
+                                   0x80004: 3, 0x80005: 0, 0x80006: 0, 0x80007: 0}, calls=[(0x10020, ())])
+        spec = V.Spec("k", 0x10000, [V.Case("x", {}, seed)], eax_mask=0, calls=(E.Call(0x10020),))
+        r = V.verify_spec(spec, self.READS_EDX, {"x": port})
+        self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
+        spec = dataclasses.replace(spec, calls=(E.Call(0x10020, clobbers=("edx",)),))
+        r = V.verify_spec(spec, self.READS_EDX, {"x": port})
+        self.assertEqual(r.verdict, "MISMATCH")
+        self.assertEqual(r.problems[0], "x: byte 0x80000: original 0x%02X, port 0x07" % (E.CLOBBER_POISON & 0xFF))
+
+    def test_a_stub_eax_varied_per_case_catches_a_port_that_hard_codes_it(self):
+        # CALLER stores the stub's EAX: a port that writes the constant 0x42 agrees with a fixed stub EAX
+        cases = [V.Case("a", {}, SEEDED), V.Case("b", {}, SEEDED, {0x10020: 0x99})]
+        fixed = V.PortResult(0x42, writes=WROTE, calls=[(0x10020, (5, 7))])
+        r = V.verify_spec(V.Spec("c", 0x10000, cases[:1], calls=(STUB,)), CALLER, {"a": fixed})
+        self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
+        r = V.verify_spec(V.Spec("c", 0x10000, cases, calls=(STUB,)), CALLER, {"a": fixed, "b": fixed})
+        self.assertEqual(r.verdict, "MISMATCH")
+        self.assertTrue(r.problems and all(p.startswith("b:") for p in r.problems), r.problems)
+        passed = V.PortResult(0x99, writes={**WROTE, 0x80000: 0x99}, calls=[(0x10020, (5, 7))])
+        r = V.verify_spec(V.Spec("c", 0x10000, cases, calls=(STUB,)), CALLER, {"a": fixed, "b": passed})
+        self.assertEqual((r.verdict, r.problems), ("VERIFIED", []))
+
     # 10000: cmp al,2; ja 10010; and eax,0xff; jmp [eax*4+0x10100]; (10010) ret; 10011..10013 ret
     SWITCH = program({0x10000: "3C02" "770C" "25FF000000" "FF248500010100" "C3" "C3C3C3",
                       0x10100: "11000100" "12000100" "13000100"})
@@ -630,6 +730,18 @@ class DiffrunStubTests(unittest.TestCase):
         self.assertEqual(out.calls, [(0x3C4CC, (0x10A300, 0xE4872, 0x40400000)), (0x2C3FC, (0x7C,))])
         self.assertEqual((out.eax, out.error), (1, ""))
         self.assertEqual([out.writes.get(a) for a in (0x10A252, 0x10A253, 0x10A254)], [9, 7, 0])
+
+    def test_the_port_reports_the_memory_at_each_call(self):
+        # 0x23130 stores the slot's +0x52..+0x54 and +0x0C before 0x3C4CC (seeded 7F and FFFFFFFF, so each
+        # store is a change); @reorder makes them after it, so its first call sees none of them
+        text = ("case a\nfn %s\nreg eax 0x10A200\nreg edx 0x10A300\nreg ebx 0x1\n"
+                "poke 0x10A252 7f7f7f\npoke 0x10A20C ffffffff\nstub 0x3C4CC stub 0x0\nstub 0x2C3FC stub 0x1\nend\n")
+        stores = {0x10A252: 9, 0x10A253: 7, 0x10A254: 0, 0x10A20C: 0, 0x10A20D: 0, 0x10A20E: 0, 0x10A20F: 0}
+        out = self.run_text(text % "fighter_23130")["a"]
+        self.assertEqual(out.call_mem, [stores, stores])
+        out = self.run_text(text % "fighter_23130@reorder")["a"]
+        self.assertEqual(out.call_mem, [{}, stores])
+        self.assertEqual(out.writes, stores)
 
     def test_a_real_callee_runs_and_its_own_calls_are_recorded(self):
         # slot 0 is the fighter slot and the record's +0x51 names side 0, so 0x3C4CC reads the +0x52
