@@ -188,6 +188,14 @@ static const fnm_pair k_miss_gp_u8_left_training[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u8-right-training (START MENU row 3, b1d = 1, b1f = 3; record §U8.18),
+ * to its X record (f = 0x961): the same two wipe hooks (record §G.24), the
+ * bare `ret` 0x29D60 and the runtime stub 0x5D812, from frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_u8_right_training[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -235,6 +243,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-twop", 0, k_miss_gp_twop, FNM_N(k_miss_gp_twop) },
     { "gp-u8-right-arcade", 0, k_miss_gp_u8_right_arcade, FNM_N(k_miss_gp_u8_right_arcade) },
     { "gp-u8-left-training", 0, k_miss_gp_u8_left_training, FNM_N(k_miss_gp_u8_left_training) },
+    { "gp-u8-right-training", 0, k_miss_gp_u8_right_training, FNM_N(k_miss_gp_u8_right_training) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a
