@@ -81,6 +81,7 @@ extern int g_failures;
     X(test_p1_callbacks) \
     X(test_p1_anim_targets) \
     X(test_virtual_clock) \
+    X(test_gp_poke_script) \
     X(test_restart)
 
 /* One line per env-gated driver; each runs alone, before the unit cases. Every

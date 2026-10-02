@@ -31,6 +31,7 @@
 #include "game/svcmenu.h"
 #include "game/menu.h"
 #include <string.h>
+#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12184,7 +12185,7 @@ int test_k11_oracle(void)
 #define GP_LOOP_SLACK 600u          /* harness bound past `end` (record §G.9), not a game value */
 #define GP_STALL_PUMPS 200000u      /* the K11 driver's pump-stall guard */
 #define GP_DS_0010810D 0x0010810Du  /* no symbols.h name: the winner-side byte */
-typedef struct { char op; u32 f, a, b; } GpStep;
+typedef struct { char op; u32 f, a, b; u8 d[16]; } GpStep;   /* 'p': a = address, b = length, d = bytes */
 static GpStep *gp_step;
 static u32 gp_n, gp_next, gp_nkeys, gp_keys_sent, gp_enter_frame, gp_enter_state, gp_end;
 static u32 gp_dumped, gp_hash_last, gp_idle_pumps, gp_missed, gp_iters;
@@ -12194,6 +12195,22 @@ static int gp_arm_pad;              /* `arm pad` (record gameplay-u8 §U8.3): th
 static char gp_dir[1024];
 static FILE *gp_log, *gp_frames, *gp_trace;
 static jmp_buf gp_end_jb;
+static u32 gp_npokes, gp_pokes_applied;   /* plan U9/U10 (record §W.8): the script's `poke` lines */
+
+/* A `poke` line's hex bytes: an even count of hex digits, 1..16 bytes. */
+static int gp_poke_bytes(const char *hex, u8 *out, unsigned *len)
+{
+    size_t n = strlen(hex);
+    if (n == 0u || n % 2u != 0u || n / 2u > 16u) return 0;
+    for (size_t i = 0; i < n; i += 2u) {
+        unsigned v;
+        if (!isxdigit((unsigned char)hex[i]) || !isxdigit((unsigned char)hex[i + 1u])
+            || sscanf(hex + i, "%2x", &v) != 1) return 0;
+        out[i / 2u] = (u8)v;
+    }
+    *len = (unsigned)(n / 2u);
+    return 1;
+}
 
 static int gp_parse(const char *path)
 {
@@ -12209,8 +12226,10 @@ static int gp_parse(const char *path)
     u32 last_f = 0u;
     gp_n = gp_nkeys = 0u;
     gp_arm_pad = 0;
+    gp_npokes = gp_pokes_applied = 0u;
     while (fgets(line, sizeof line, f) != NULL) {
         unsigned a = 0u, b = 0u, c = 0u;
+        char hex[40];
         if (line[0] == '#' || line[0] == '\n') continue;
         if (strncmp(line, "arm pad", 7) == 0) { gp_arm_pad = 1; continue; }
         if (sscanf(line, "enter_frame %u", &a) == 1) { gp_enter_frame = a; have_frame = 1; continue; }
@@ -12218,6 +12237,10 @@ static int gp_parse(const char *path)
         GpStep *s = &gp_step[gp_n];
         if (sscanf(line, "key %u %x %x", &a, &b, &c) == 3) { s->op = 'k'; gp_nkeys++; }
         else if (sscanf(line, "bits %u %x", &a, &b) == 2) s->op = 'b';
+        /* plan U9/U10: `poke <f> <addr hex8> <bytes hex>`, inside the data object
+         * 0x80000..0x10B0CF (AGENTS.md). */
+        else if (sscanf(line, "poke %u %x %39s", &a, &b, hex) == 3 && gp_poke_bytes(hex, s->d, &c)
+                 && b >= 0x80000u && b <= 0x10B0D0u - c) { s->op = 'p'; gp_npokes++; }
         else if (sscanf(line, "end %u", &a) == 1) { s->op = 'e'; gp_end = a; }
         else { ok = 0; break; }
         if (a < last_f) { ok = 0; break; }        /* the generator sorts by frame */
@@ -12251,6 +12274,10 @@ static void gp_apply(u32 f)
         } else if (s->op == 'b') {
             k11_key_bits(s->a);
             fprintf(gp_log, "bits f=%u kb=%04X\n", s->f, s->a);
+        } else if (s->op == 'p') {
+            memcpy(mem + s->a, s->d, s->b);          /* the capture's W record, written in the spin of f - 1 */
+            fprintf(gp_log, "poke f=%u addr=%08X len=%u\n", s->f, s->a, s->b);
+            gp_pokes_applied++;
         } else {
             break;                                   /* 'e' is checked after the iteration */
         }
@@ -12296,7 +12323,9 @@ static void gp_trace_line(void)
             "e0=%04X e2=%04X rng=%08X cred=%08X fp=%02X b1d=%02X b1f=%02X b25=%02X w10d=%02X cnt=%02X "
             "s0_52=%02X s0_54=%02X s0_5a=%02X s1_52=%02X s1_54=%02X s1_5a=%02X ent=%08X "
             "r0=%02X r1=%02X c0=%02X c1=%02X s0_43=%02X "
-            "lat=%08X spz=%02X mpz=%02X\n",
+            "lat=%08X spz=%02X mpz=%02X "
+            "afc=%04X ad4=%08X w2=%02X w3=%02X b1e=%02X b21=%02X b14=%02X b0c=%02X t104=%04X "
+            "m106=%08X m10a=%08X sc0=%08X c82=%02X\n",
             (unsigned)DSW(DS_000EF6DC), (unsigned)DSW(DS_00104B00), (unsigned)DSW(DS_000F0A64),
             (unsigned)DSD(DS_00101500), (unsigned)DSD(DS_00101508), (unsigned)DSD(DS_0010150C),
             (unsigned)DSD(DS_000E1C30), (unsigned)DSD(DS_000E1C34), (unsigned)DSD(DS_001088E4),
@@ -12313,7 +12342,13 @@ static void gp_trace_line(void)
             /* U11 (record 2026-10-01-gameplay-u11 §K.3): the key-loop latch
              * (0x24D4D) and the sample / music pause bytes (0x1D220, 0x1D1B0),
              * gp_session.KEYS_EXTRA's names. */
-            (unsigned)DSD(DS_00105F30), (unsigned)DSB(DS_001028DB), (unsigned)DSB(DS_001028DA));
+            (unsigned)DSD(DS_00105F30), (unsigned)DSB(DS_001028DB), (unsigned)DSB(DS_001028DA),
+            /* plan U9/U10 (record §W.2): gp_session.WIN_EXTRA's names. */
+            (unsigned)DSW(DS_00104AFC), (unsigned)DSD(DS_00104AD4), (unsigned)DSB(DS_00104AF2),
+            (unsigned)DSB(DS_00104AF3), (unsigned)DSB(DS_00104B1E), (unsigned)DSB(DS_00104B21),
+            (unsigned)DSB(DS_00104B14), (unsigned)DSB(DS_00104B0C), (unsigned)DSW(DS_00108104),
+            (unsigned)DSD(DS_00108106), (unsigned)DSD(DS_0010810A), (unsigned)DSD(DS_001077EC),
+            (unsigned)DSB(DS_00107832));
     gp_trace_lines++;
 }
 
@@ -12418,6 +12453,7 @@ int test_gp_replay(void)
     CHECK_EQ_INT((int)frame_after, (int)gp_enter_frame);
     CHECK_EQ_INT((int)state_after, (int)gp_enter_state);
     CHECK_EQ_INT((int)gp_keys_sent, (int)gp_nkeys);
+    CHECK_EQ_INT((int)gp_pokes_applied, (int)gp_npokes);   /* plan U9/U10: every poke written */
     CHECK_EQ_INT((int)gp_missed, 0);
     CHECK(gp_done, "the gp script ran to its end frame");
     CHECK(!gp_failed, "no CPU fault or frame-write failure ended the gp replay");
@@ -12435,6 +12471,84 @@ int test_gp_replay(void)
     const u32 landed = game_restart_landings() - landings0;
     printf("test_gp_replay: %u restart(s) landed\n", (unsigned)landed);
     CHECK_EQ_INT((int)(gp_trace_lines + landed), (int)(gp_end - gp_enter_frame + 1u));
+    return g_failures - before;
+}
+
+/* Plan U9/U10 (record 2026-10-02-gameplay-u9-u10-derivations.md §W.8): the gp
+ * driver's `poke` line. gp_parse takes it (an address in the data object, 1..16
+ * bytes) and gp_apply writes it before the iteration that raises the frame
+ * counter to its frame. No game_init(): parse and apply only. */
+static int gp_poke_parses(const char *path, const char *body)
+{
+    FILE *f = fopen(path, "w");
+    if (f == NULL) return -1;
+    fputs("# gp port script v2: scenario t\nenter_frame 10\nenter_state 0000\nkey 10 1C 0D\n", f);
+    fputs(body, f);
+    fputs("end 13\n", f);
+    fclose(f);
+    const int ok = gp_parse(path);
+    free(gp_step);
+    gp_step = NULL;
+    return ok;
+}
+
+int test_gp_poke_script(void)
+{
+    const int before = g_failures;
+    char path[] = "/tmp/pr_gp_poke_XXXXXX";
+    const int fd = mkstemp(path);
+    CHECK(fd >= 0, "a temp script opens");
+    if (fd < 0) return g_failures - before;
+    FILE *f = fdopen(fd, "w");
+    fputs("# gp port script v2: scenario t\nenter_frame 10\nenter_state 0000\nkey 10 1C 0D\n"
+          "poke 12 0010789E 78\npoke 12 00108106 81828384858687\nend 13\n", f);
+    fclose(f);
+    CHECK(gp_parse(path), "a script with poke lines parses");
+    CHECK_EQ_INT((int)gp_npokes, 2);
+    CHECK_EQ_INT((int)gp_n, 4);
+    CHECK_EQ_INT(gp_step[1].op, 'p');
+    CHECK_EQ_INT((int)gp_step[1].a, 0x10789E);
+    CHECK_EQ_INT((int)gp_step[1].b, 1);
+    CHECK_EQ_INT((int)gp_step[2].b, 7);
+    CHECK_EQ_INT((int)gp_step[2].d[6], 0x87);
+    /* Sentinels the pokes overwrite, and one past the second poke they must not;
+     * the bytes are restored at the end (later cases share mem[]). */
+    u8 keep[9];
+    keep[8] = DSB(0x10789Eu);
+    for (u32 i = 0; i < 8u; i++) keep[i] = DSB(0x108106u + i);
+    DSB(0x10789Eu) = 0x11u;
+    for (u32 i = 0; i < 8u; i++) DSB(0x108106u + i) = 0x22u;
+    gp_log = tmpfile();
+    CHECK(gp_log != NULL, "a temp log opens");
+    if (gp_log == NULL) { free(gp_step); gp_step = NULL; remove(path); return g_failures - before; }
+    gp_next = 1u;                                /* the Enter is behind */
+    gp_missed = 0u;
+    gp_apply(10u);                               /* the iteration raising the counter to 11: none due */
+    CHECK_EQ_INT((int)DSB(0x10789Eu), 0x11);
+    CHECK_EQ_INT((int)gp_pokes_applied, 0);
+    gp_apply(11u);                               /* the iteration raising it to 12 */
+    CHECK_EQ_INT((int)DSB(0x10789Eu), 0x78);
+    CHECK_EQ_INT((int)DSB(0x108106u), 0x81);
+    CHECK_EQ_INT((int)DSB(0x10810Cu), 0x87);
+    CHECK_EQ_INT((int)DSB(0x10810Du), 0x22);
+    CHECK_EQ_INT((int)gp_pokes_applied, 2);
+    CHECK_EQ_INT((int)gp_missed, 0);
+    CHECK_EQ_INT((int)gp_next, 3);               /* stops before the `end` step (f=13): not yet due */
+    DSB(0x10789Eu) = keep[8];
+    for (u32 i = 0; i < 8u; i++) DSB(0x108106u + i) = keep[i];
+    fclose(gp_log);
+    gp_log = NULL;
+    free(gp_step);
+    gp_step = NULL;
+    /* Refused: below the data object, past its end, an odd digit count, 17 bytes, a non-hex digit. */
+    CHECK_EQ_INT(gp_poke_parses(path, "poke 12 0007FFFF 78\n"), 0);
+    CHECK_EQ_INT(gp_poke_parses(path, "poke 12 0010B0CF 7878\n"), 0);
+    CHECK_EQ_INT(gp_poke_parses(path, "poke 12 0010789E 787\n"), 0);
+    CHECK_EQ_INT(gp_poke_parses(path, "poke 12 00108106 0102030405060708090A0B0C0D0E0F1011\n"), 0);
+    CHECK_EQ_INT(gp_poke_parses(path, "poke 12 0010789E zz\n"), 0);
+    CHECK_EQ_INT(gp_poke_parses(path, "poke 12 FFFFFFF0 0102030405060708090A0B0C0D0E0F10\n"), 0);   /* b + c wraps */
+    CHECK_EQ_INT(gp_poke_parses(path, "poke 12 0010B0CF 78\n"), 1);   /* the last byte of the object */
+    remove(path);
     return g_failures - before;
 }
 

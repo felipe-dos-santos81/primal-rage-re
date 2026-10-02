@@ -57,7 +57,7 @@ class TestTables(unittest.TestCase):
         call = re.sub(r'/\*.*?\*/|//[^\n]*', '', call, flags=re.S)
         fmt = ''.join(re.findall(r'"([^"]*)"', call))
         self.assertTrue(fmt.startswith('T '), fmt)
-        fields = gs.SNAP_FIELDS + gs.KEYS_EXTRA
+        fields = gs.SNAP_FIELDS + gs.KEYS_EXTRA + gs.WIN_EXTRA     # + plan U9/U10's (record §W.2)
         parts = fmt[2:].replace('\\n', '').split()
         self.assertEqual([p.split('=')[0] for p in parts], [n for n, _, _ in fields])
         # each placeholder is as wide as the field (2 hex digits per byte)
@@ -81,13 +81,13 @@ class TestTables(unittest.TestCase):
             self.assertRegex(arg, r'\b%s\(' % acc[size], (n, arg))
             # the five U6 fields (record gameplay-u6 §U6.11) and the three U11 key fields
             # (record gameplay-u11 §K.3) read the field's address
-            if n in gs.MOVE_FIELDS or (n, addr, size) in gs.KEYS_EXTRA:
+            if n in gs.MOVE_FIELDS or (n, addr, size) in gs.KEYS_EXTRA + gs.WIN_EXTRA:
                 m = re.search(r'\bDS_([0-9A-F]{8})(?:\s*\+\s*(0x[0-9A-Fa-f]+|[0-9]+)u?)?\)', arg)
                 self.assertIsNotNone(m, (n, arg))
                 got = int(m.group(1), 16) + (int(m.group(2), 0) if m.group(2) else 0)
                 self.assertEqual(got, addr, (n, arg))
             # KEYS_EXTRA: accessor by size on the field's own DS_ symbol, no offset
-            if (n, addr, size) in gs.KEYS_EXTRA:
+            if (n, addr, size) in gs.KEYS_EXTRA + gs.WIN_EXTRA:
                 self.assertEqual(arg, '(unsigned)%s(DS_%08X)' % (acc[size], addr), n)
 
     def test_an_s_line_without_the_u6_fields_still_parses(self):
@@ -401,6 +401,89 @@ class TestU6Moves(unittest.TestCase):
         self.assertIs(a['steps'], b['steps'])
         self.assertEqual(b['time_limit'], 130)
         self.assertIn('gp-u6-moves-b', gs.STOP_AT_END)
+
+
+class TestWinPokes(unittest.TestCase):
+    """Plan gameplay-u9-u10 (record 2026-10-02-gameplay-u9-u10-derivations.md §W.8)."""
+    STEPS = (('boot', 25.0, ('key', 'enter')),
+             ('after_entry', 0x06, 2, 10, ('poke', ((0x10789E, b'\x78'),))),
+             ('after_entry', 0x06, 3, 60, ('end',)))
+
+    def test_after_entry_keys_on_the_kth_s_entry(self):
+        s = gs.Schedule(self.STEPS)
+        s.on_snap(0x50, 0x03)
+        s.on_snap(0x60, 0x06)                     # before the boot step: not counted
+        s.due_boot(25.0)
+        for f, mode in ((0x100, 0x27), (0x200, 0x06), (0x210, 0x06), (0x300, 0x08), (0x400, 0x06)):
+            s.on_snap(f, mode)
+        self.assertEqual(s.entry_frame, {(0x27, 1): 0x100, (0x06, 1): 0x200, (0x08, 1): 0x300,
+                                         (0x06, 2): 0x400})
+        self.assertEqual(s.due(0x400 + 8), [])
+        self.assertEqual(s.due(0x400 + 9), [(1, ('poke', ((0x10789E, b'\x78'),)))])
+        s.on_snap(0x500, 0x09)
+        s.on_snap(0x600, 0x06)
+        self.assertFalse(s.ended(0x600 + 59))
+        s.due(0x600 + 59)
+        self.assertEqual(s.end_frame, 0x63C)
+        self.assertEqual((s.fired, s.total), (2, 2))
+
+    def test_w_record_round_trip(self):
+        w = gs.format_w(12, 0x48F, 5, 0x108106, b'\x00' * 7, b'\x80' * 7, 0, 0)
+        self.assertEqual(w, 'W ms=12 f=048F step=5 addr=00108106 len=7 was=00000000000000 '
+                            'now=80808080808080 late=0 race=0')
+        r = gs.parse(w)
+        self.assertEqual((r['kind'], r['f'], r['addr'], r['len'], r['was'], r['now'], r['race']),
+                         ('W', 0x48F, 0x108106, 7, '00000000000000', '80808080808080', 0))
+        self.assertEqual(gs.lands_marked(0, 0), b'\x80' * 7)
+        self.assertEqual(gs.lands_marked(1, 3), b'\xC3' * 7)
+        self.assertEqual(gs.WIN_FIELDS[:4], ('afc', 'ad4', 'w2', 'w3'))
+
+    def test_the_scenarios(self):
+        u9 = gs.SCENARIOS['gp-u9-win']['steps']
+        self.assertEqual([st[-1] for st in u9
+                          if isinstance(st[-1], tuple) and st[-1][0] == 'poke'],
+                         [gs.KO_P2, gs.KO_P2])
+        u10 = gs.SCENARIOS['gp-u10-ending']['steps']
+        pokes = [st for st in u10 if isinstance(st[-1], tuple) and st[-1][0] == 'poke']
+        self.assertEqual(len(pokes), 2 + 14)
+        self.assertEqual(pokes[0][-1][1], ((0x108106, b'\x80' * 7), (0x10789E, b'\x78')))
+        self.assertEqual([(st[1], st[2]) for st in pokes[2:]],
+                         [(m, k) for k in range(1, 8) for m in (0x0C, 0x0D)])
+        self.assertEqual(pokes[1][-1], gs.KO_P2)                          # round 2
+        self.assertEqual([st[-1] for st in pokes[2:]], [gs.KO_P2, gs.DEATH_DONE] * 7)
+        u9_pokes = [st for st in u9 if isinstance(st[-1], tuple) and st[-1][0] == 'poke']
+        self.assertEqual([st[3] for st in u9_pokes + pokes], [10] * (2 + 16))   # every frame offset
+        self.assertEqual(u10[-1], ('until_mode', 0x03, 0))
+        for name in ('gp-u9-win', 'gp-u10-ending'):
+            self.assertIn(name, gs.STOP_AT_END)
+            self.assertEqual(gs.SCENARIOS[name]['extra'], gs.WIN_EXTRA)
+
+
+class TestPokeScript(unittest.TestCase):
+    def setUp(self):
+        gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())
+
+    def tearDown(self):
+        gs.SCENARIOS.pop('_t', None)
+
+    W = 'W ms=4 f=0128 step=3 addr=0010789E len=1 was=00 now=78 late=0 race=0'
+
+    def test_a_poke_is_replayed_at_the_next_frame(self):
+        text = gs.port_script('_t', _log(extra_after=[self.W]))
+        self.assertIn('poke 297 0010789E 78', text.splitlines())        # 0x128 + 1
+        self.assertEqual(text.splitlines()[-1], 'end 304')
+
+    def test_a_raced_poke_is_refused(self):
+        with self.assertRaisesRegex(gs.ScriptError, 'raced'):
+            gs.port_script('_t', _log(extra_after=[self.W.replace('race=0', 'race=1')]))
+
+    def test_a_poke_without_its_snapshot_is_refused(self):
+        with self.assertRaisesRegex(gs.ScriptError, 'unpinned'):
+            gs.port_script('_t', _log(extra_after=[self.W.replace('f=0128', 'f=0140')]))
+
+    def test_end_cuts_the_pokes(self):
+        text = gs.port_script('_t', _log(extra_after=[self.W]), end=0x128)
+        self.assertNotIn('poke', text)
 
 
 if __name__ == '__main__':

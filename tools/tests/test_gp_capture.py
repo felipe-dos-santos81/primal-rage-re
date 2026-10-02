@@ -404,6 +404,52 @@ class TestStopAtEnd(unittest.TestCase):
             self.assertTrue(last[-1] == ('end',) or last[0] == 'until_mode', name)
 
 
+class TestMemsize(unittest.TestCase):
+    """gp-u10-ending runs DOSBox-X with memsize=64, a harness value of that scenario only
+    (record §W.13); every other scenario's argv is the one its capture was taken with."""
+    MEM = ['-set', 'dosbox memsize=64']
+
+    def cmd(self, name, root='/r'):         # as gp_capture.main builds it
+        scn = gs.SCENARIOS[name]
+        return gc.dosbox_cmd(root, os.path.join(root, 'C'), os.path.join(root, 'CD', 'RAGECD.ISO'),
+                             scn['time_limit'], name in gs.STOP_AT_END, scn.get('memsize'))
+
+    def test_only_gp_u10_ending_sets_it(self):
+        for name in gs.SCENARIOS:
+            cmd, old = self.cmd(name), gc.dosbox_cmd('/r', '/r/C', '/r/CD/RAGECD.ISO',
+                                                     gs.SCENARIOS[name]['time_limit'],
+                                                     name in gs.STOP_AT_END)
+            if name == 'gp-u10-ending':
+                i = cmd.index('dosbox memory file=/r/guest.mem') + 1
+                self.assertEqual(cmd[i:i + 2], self.MEM)
+                self.assertEqual(cmd[:i] + cmd[i + 2:], old)
+            else:
+                self.assertFalse([a for a in cmd if 'memsize' in a], name)
+                self.assertEqual(cmd, old, name)
+
+    def test_the_captures_argv(self):
+        # The argv= line of each capture's session.txt (shlex.join of the command): one
+        # scenario without the flag, gp-u10-ending with it, after the memory file pair.
+        import shlex
+        seen = 0
+        for name in ('gp-u9-win', 'gp-u10-ending'):
+            path = os.path.join(ROOT, 'data', 'k11-captures', name, 'session.txt')
+            if not os.path.isfile(path):
+                continue
+            with open(path) as f:
+                argv = shlex.split(next(l for l in f if l.startswith('argv='))[5:])
+            mem = next(a for a in argv if a.startswith('dosbox memory file='))
+            root = os.path.dirname(mem.split('=', 1)[1])
+            cmd = self.cmd(name, root)
+            cmd[0] = argv[0]                        # the host's dosbox-x path
+            self.assertEqual(cmd, argv, name)
+            i = argv.index(mem) + 1
+            self.assertEqual(argv[i:i + 2] == self.MEM, name == 'gp-u10-ending', name)
+            seen += 1
+        if not seen:
+            self.skipTest('no gp-u9-win / gp-u10-ending capture')
+
+
 class TestFire(unittest.TestCase):
     def test_late_is_judged_per_step(self):
         # review 1: two steps firing in one due() call; step 1 (F = 0x10A, due at
@@ -415,6 +461,58 @@ class TestFire(unittest.TestCase):
         s = gs.Schedule((('after_mode', 0x27, 10, ('key', 'enter')),))
         s.on_mode(0x100, 0x27)
         self.assertEqual(gc.fire(s, 0x109), [(0, ('key', 'enter'), 0)])
+
+
+class TestPoke(unittest.TestCase):
+    """Plan gameplay-u9-u10 (record 2026-10-02-gameplay-u9-u10-derivations.md §W.8)."""
+
+    def _ref(self, m):
+        _put(m, 0x0EF6DC, 2, 0x48F)
+        _put(m, 0x101508, 4, 7)
+        _put(m, 0x10150C, 4, 8)
+        return gc.read_snap(m, BASE)
+
+    def test_apply_poke_writes_at_the_data_base_and_logs(self):
+        m, log = _mem(), io.StringIO()
+        ref = self._ref(m)
+        _put(m, 0x10789E, 1, 0x11)
+        writes = ((0x108106, b'\x80' * 7), (0x10789E, b'\x78'))
+        race = gc.apply_poke(m, BASE, log, 5, 0x48F, writes, 0, 12, ref, lambda: gc.read_snap(m, BASE))
+        self.assertEqual(race, 0)
+        o = BASE + 0x10789E - gs.DATA_BASE_VA
+        self.assertEqual(m[o], 0x78)
+        o = BASE + 0x108106 - gs.DATA_BASE_VA
+        self.assertEqual(bytes(m[o:o + 8]), b'\x80' * 7 + b'\x00')
+        self.assertEqual(log.getvalue().splitlines(), [
+            gs.format_w(12, 0x48F, 5, 0x108106, b'\x00' * 7, b'\x80' * 7, 0, 0),
+            gs.format_w(12, 0x48F, 5, 0x10789E, b'\x11', b'\x78', 0, 0)])
+
+    def test_a_tick_between_the_snapshot_and_the_write_is_a_race(self):
+        m, log = _mem(), io.StringIO()
+        ref = self._ref(m)
+        moved = lambda: dict(gc.read_snap(m, BASE), t508=8)
+        self.assertEqual(gc.apply_poke(m, BASE, log, 5, 0x48F, ((0x10789E, b'\x78'),), 1, 12, ref, moved), 1)
+        self.assertIn('late=1 race=1', log.getvalue())
+
+    def test_a_frame_counter_step_between_the_snapshot_and_the_write_is_a_race(self):
+        # review of plan U9/U10 Task 3: the re-read's f alone differs (t508 unmoved)
+        m, log = _mem(), io.StringIO()
+        ref = self._ref(m)
+        stepped = lambda: dict(gc.read_snap(m, BASE), f=ref['f'] + 1)
+        self.assertEqual(gc.apply_poke(m, BASE, log, 5, 0x48F, ((0x10789E, b'\x78'),), 1, 12, ref, stepped), 1)
+        self.assertIn('late=1 race=1', log.getvalue())
+
+    def test_the_poke_check(self):
+        s = gs.Schedule((('after', 1, ('poke', ((0x108106, b'\x80' * 7), (0x10789E, b'\x78')))),))
+        s.prev_frame = 0x100
+        s.due(0x100)
+        ok = gs.format_w(0, 0x100, 0, 0x108106, b'\x00' * 7, b'\x80' * 7, 0, 0)
+        ok2 = gs.format_w(0, 0x100, 0, 0x10789E, b'\x00', b'\x78', 0, 0)
+        self.assertEqual(gc.poke_check([ok, ok2], s), ('pokes written 2/2, 0 raced', True))
+        self.assertEqual(gc.poke_check([ok], s), ('pokes written 1/2, 0 raced', False))
+        raced = ok2.replace('race=0', 'race=1')
+        self.assertEqual(gc.poke_check([ok, raced], s), ('pokes written 2/2, 1 raced', False))
+        self.assertEqual(gc.poke_check([], gs.Schedule(())), ('pokes written 0/0, 0 raced', True))
 
 
 if __name__ == '__main__':

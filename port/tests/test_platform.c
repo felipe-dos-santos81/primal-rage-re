@@ -229,6 +229,37 @@ static const fnm_pair k_miss_gp_u8_attract_start[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* gp-u9-win (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
+ * §W.12), measured on its full replay to its X record (f = 0xDAE): the two wipe hooks
+ * of §G.24 (0x29D60, a bare `ret`, from f = 0x28D; 0x5D812, the runtime stub, from
+ * f = 0x405), and the E2 animation targets the CPU's CHAOS reaches after the poked KOs
+ * (unported P-track rows of reverse-e2-triage.md, anim-target class): 0x400E0 (dword 0xD2816) at
+ * f = 0x59C in mode 8, 0x21044 (dword 0xE1606) at f = 0x860 and 0x21084 (dword
+ * 0xE162C) at f = 0x874 in mode 9. */
+static const fnm_pair k_miss_gp_u9_win[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+    { 0x400E0u, "anim_indirect" },
+    { 0x21044u, "anim_indirect" },
+    { 0x21084u, "anim_indirect" },
+};
+
+/* gp-u10-ending (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
+ * §W.14), measured on its full replay to its X record (f = 0x26E1); raw wins over the
+ * plan's prediction (gp-u9-win's pairs and 0x3DA50): the two wipe hooks of §G.24
+ * (0x29D60, a bare `ret`, from f = 0x286; 0x5D812, the runtime stub, from f = 0x3FE), and three
+ * unported P-track targets: 0x2381C (E2 move-callback row, dword 0xA560C, CHAOS's
+ * reaction 0x25) at f = 0x848 in mode 6 (round 2), and the death-animation stream's
+ * targets 0x37DD4 (E2 anim-target row, dword 0xD2BCE) at f = 0x1518 and 0x29C78
+ * (outside E2, record reverse-p1 §P1.2, dword 0xD2BDA) at f = 0x151B in mode 0xD. */
+static const fnm_pair k_miss_gp_u10_ending[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+    { 0x2381Cu, "hit_reaction_apply" },
+    { 0x37DD4u, "anim_indirect" },
+    { 0x29C78u, "anim_indirect" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -281,6 +312,8 @@ static const gp_set k_gp_sets[] = {
     { "gp-u8-handicap", 0, k_miss_gp_u8_handicap, FNM_N(k_miss_gp_u8_handicap) },
     { "gp-u8-endurance", 0, k_miss_gp_u8_endurance, FNM_N(k_miss_gp_u8_endurance) },
     { "gp-u8-attract-start", 0, k_miss_gp_u8_attract_start, FNM_N(k_miss_gp_u8_attract_start) },
+    { "gp-u9-win", 0, k_miss_gp_u9_win, FNM_N(k_miss_gp_u9_win) },
+    { "gp-u10-ending", 0, k_miss_gp_u10_ending, FNM_N(k_miss_gp_u10_ending) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a

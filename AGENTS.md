@@ -26,6 +26,8 @@ make gp-oracle             # gameplay oracle: frame + trace ratchets on data/k11
 make gp-charsel-oracle     # the same ratchets on data/k11-captures/gp-u5-charsel (the character-select walk; N 516 = how far the port's replay got, F 1513, the poll.log hash pinned); in make verify; skips without the capture
 make gp-moves-oracle       # gameplay oracle: gp-u6-moves-b frame, trace and moves ratchets (N values in the Makefile); in make verify; skips without the capture
 make gp-keys-oracle        # in-match keys: gp-keys-fight evidence + effects ratchet (GP_KEYS_MIN_EFFECTS and the poll.log sha256 in the Makefile); in make verify; skips without the capture
+make gp-win-oracle         # U9: the win path under pokes, data/k11-captures/gp-u9-win: evidence (tools/gp_win.py check), frame/trace/milestone/win ratchets (GP_WIN_* in the Makefile); in make verify; skips without the capture
+make gp-ending-oracle      # U10: the ending under pokes, data/k11-captures/gp-u10-ending (GP_ENDING_*); in make verify; skips without the capture
 make gp-twop-oracle        # two-human gameplay oracle: gp-twop must be a two-human match (tools/gp_twop.py), then frame + trace + moves ratchets (N 612, F 1506 and moves N 1506 = the port script's end, the poll.log sha256 pinned in the Makefile); in make verify; skips without the capture
 make gp-modes-oracle       # the same ratchets on the seven U8 captures data/k11-captures/gp-u8-* (the other START MENU rows and the attract start; GP_MODES_<ID>_* pins in the Makefile, an evidence check per capture, tools/gp_modes.py); in make verify; each skips without its capture
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
@@ -223,6 +225,17 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   Its claim is as narrow, and it says nothing about the two-player game past the scenario's end; it skips without
   the capture.
   `make gp-modes-oracle` (in `make verify`) applies the same two ratchets to the U8 captures `data/k11-captures/gp-u8-*` (the other START MENU rows and the attract start), each with `GP_MODES_<ID>_*` values and provenance in the Makefile and an evidence check (`tools/gp_modes.py`) that the capture reached its row; each skips without its capture. Record gameplay-u8 §U8.23 has the table of N, F and the window start per scenario and the named gaps: N and F are the end of the port's replay in six of the seven (RA diverges at f=0x7B7 on the unported `0x14EF8`/`0x14F50`, whose port drops its two miss rows and re-measures its N and F); nothing past them is covered, ENDURANCE's fight is a named gap, and the damaged-frame proof depends on the frame chosen.
+  `make gp-win-oracle`/`gp-ending-oracle` (plan 2026-10-02-gameplay-u9-u10, record §W.9) reach the
+  win and the ending under memory pokes (a `poke` step writes bytes in the spin; the port replays
+  the capture's `W` records as `poke` lines at W.f + 1, the iteration that reads them, record §W.8). Their claim is as narrow, and what
+  a poke replaced is not claimed: the KO by hits, the six earlier won matches, the final's death
+  animations. Only character 0's ending is captured. Both frame ratchets stop at round 1's mode-8 entry (f=0x48A), so nothing is compared pixel by pixel from there on (the conquered-lands screen, WORLD DOMINATION, the final, the ending in mode 0x1F, the high-score entry), and past the trace pins (U9 f=0x866, U10 f=0x849) the only claims are the WIN fields (to f=0xC5A / 0x1602) and the milestone frames, most of which are mode changes driven by replayed pokes and do not check which opponent is fought. `gp-u10-ending` runs DOSBox-X with
+  `memsize=64`, a harness value (the original ran out of memory in the poked final at 16 MB,
+  record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The frame ratchets of both stop at the mode-8 entry (U9 N 346, U10 N 331), where
+  the screen holds one frame about 43 ms and the two-frame splice model cannot express the
+  catch-up: a comparison-model limit, not a port divergence (§W.12, §W.14). A P batch that ports
+  a target in a miss set re-measures and re-pins (U9: `0x400E0`/`0x21084` P4, `0x21044` P5; U10:
+  `0x2381C` P2, `0x37DD4` P6, `0x29C78` P7).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two

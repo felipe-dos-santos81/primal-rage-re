@@ -14,7 +14,9 @@ poll.log v2, one record per line:
         bios=<hex4|-> ring=<0|1|-> late=<0|1>
   I ms=<int> f=<hex4> step=<n> release=<name> lin=<hex8>
   X ms=<int> f=<hex4> step=<n> end
-  E ms=<int> reason=<exit|time-limit|end> rc=<int>   end: stopped at the script's end (STOP_AT_END)"""
+  E ms=<int> reason=<exit|time-limit|end> rc=<int>   end: stopped at the script's end (STOP_AT_END)
+  W ms=<int> f=<hex4> step=<n> addr=<hex8> len=<n> was=<hex> now=<hex> late=<0|1> race=<0|1>
+        a memory poke written in the spin of f, read by iteration f + 1 (plan U9/U10)"""
 import argparse
 import os
 import sys
@@ -76,8 +78,8 @@ PAD = {
 KEYS.update({'space': (0x39, 0x3920), 'y': (0x15, 0x1579), 'n': (0x31, 0x316E),
              'alt-q': (0x10, 0x1000), 'alt-s': (0x1F, 0x1F00), 'alt-m': (0x32, 0x3200)})
 
-_DEC = ('ms', 'rc', 'step', 'late', 'ring')
-_TEXT = ('reason', 'press', 'release')
+_DEC = ('ms', 'rc', 'step', 'late', 'ring', 'len', 'race')
+_TEXT = ('reason', 'press', 'release', 'was', 'now')
 
 
 def raw_to_kb(raw):
@@ -88,6 +90,13 @@ def raw_to_kb(raw):
 def format_s(ms, vals, kb, head, tail, fields=SNAP_FIELDS):
     body = ' '.join('%s=%0*X' % (n, 2 * sz, vals[n]) for n, _, sz in fields)
     return 'S ms=%d %s kb=%04X head=%04X tail=%04X' % (ms, body, kb, head, tail)
+
+
+def format_w(ms, f, step, addr, was, now, late, race):
+    """The W record of one poke write (plan U9/U10): `was` the bytes before,
+    `now` the bytes written, hex."""
+    return ('W ms=%d f=%04X step=%d addr=%08X len=%d was=%s now=%s late=%d race=%d'
+            % (ms, f, step, addr, len(now), bytes(was).hex().upper(), bytes(now).hex().upper(), late, race))
 
 
 def parse(line):
@@ -317,6 +326,71 @@ SCENARIOS['gp-u8-attract-start'] = dict(time_limit=61, arm='pad', steps=(
 ))
 
 
+# Plan gameplay-u9-u10 (record 2026-10-02-gameplay-u9-u10-derivations.md §W.2-§W.6): the
+# win path and the ending, reached under memory pokes (spec 2026-09-30-reverse-completion-design
+# §4 G, §7 "Wins and endings without pokes"). A ('poke', ((addr, bytes), ...)) action writes
+# the bytes at the linear address in the spin of F - 1 (the iteration F reads them), logged as
+# W records; the port replays them as `poke` lines at F. WIN_EXTRA: the S fields both scenarios
+# add (record §W.2): the stage word (0x25848), the match result (0x27BA4), the round wins
+# (0x27C48), the round index, the final's KO count (0x274FC), the final flag (0x25C88), the
+# death-done byte (0x37FF2), the lands-held bytes and the seven land marks (0x41C28, 0x286BC),
+# slot 0's score (+0x3C) and its world-domination count (+0x82, 0x416C2).
+WIN_EXTRA = (('afc', 0x104AFC, 2), ('ad4', 0x104AD4, 4), ('w2', 0x104AF2, 1), ('w3', 0x104AF3, 1),
+             ('b1e', 0x104B1E, 1), ('b21', 0x104B21, 1), ('b14', 0x104B14, 1), ('b0c', 0x104B0C, 1),
+             ('t104', 0x108104, 2), ('m106', 0x108106, 4), ('m10a', 0x10810A, 4),
+             ('sc0', 0x1077EC, 4), ('c82', 0x107832, 1))
+WIN_FIELDS = tuple(n for n, _, _ in WIN_EXTRA)
+# P2's +0x5A damage byte (DS_0010789E) at 0x78: the KO the round-end checks test
+# (0x27FA8 `cmp 0x78`, 0x272DC's DS_00104B12 side), record §W.3.
+KO_P2 = ('poke', ((0x10789E, b'\x78'),))
+# The byte 0x37EA0 sets at 0x37FF2 when a KO'd fighter's death animation ends; mode
+# 0xD (0x274FC) waits for it, and a poked KO never starts that animation (record §W.5).
+DEATH_DONE = ('poke', ((0x104B0C, b'\x01'),))
+
+
+def lands_marked(side, char):
+    """The seven land marks DS_00108106..0x10810C as 0x286BC writes a won land:
+    0x80 | side << 6 | the winner's character (record §W.4)."""
+    return bytes([0x80 | side << 6 | char]) * 7
+
+# The menu path of gp-idle-loss (spec §4.4) and the immediate confirm of the
+# character-select cursor 0 (character 0, SAURON; p1.start = e0 bit 0, 0x43CAD, as
+# gp-u5-charsel's confirm, record gameplay-u5 §C5.4). Harness values: the 60-frame
+# wait into mode 0x10 and the hold 6 (gp-u5-charsel's), the 10 frames into each
+# fight mode before a poke (the round is live: 0x27FA8 runs every mode-6 frame).
+WIN_MENU = (
+    ('boot', ENTER_WAIT, ('key', 'enter')),           # mode 3 -> 0x27, MAIN MENU on "Start"
+    ('after_mode', 0x27, 150, ('key', 'enter')),      # START MENU, cursor on row 0 (spec §3.3)
+    ('after', 150, ('key', 'enter')),                 # LEFT PLAYER ARCADE: mode 0x2D
+    ('after_mode', 0x10, 60, ('pad', ('p1.start',), 6)),   # confirm cursor 0: character 0
+)
+# U9 (record §W.6): two poked KOs win match 1 (0x27BA4: 2 wins of 3), the conquered-lands
+# screen (mode 0x12) and the next opponent's wipe, to 60 frames into match 2's round 1.
+# 110 s: 1.4x the port-predicted end at 78 s (record §W.7), a harness value.
+SCENARIOS['gp-u9-win'] = dict(time_limit=110, extra=WIN_EXTRA, steps=WIN_MENU + (
+    ('after_entry', 0x06, 1, 10, KO_P2),              # round 1: P2 KO'd, mode 8
+    ('after_entry', 0x06, 2, 10, KO_P2),              # round 2: P1 wins the match, mode 9
+    ('after_entry', 0x06, 3, 60, ('end',)),           # match 2, round 1
+))
+# U10 (record §W.6): round 1 also marks all seven lands P1's, so the won match is the
+# seventh land (0x41C28 state 5: DS_00108104[0] == 7): WORLD DOMINATION, the health
+# bonus (modes 0x23/0x22/0x24), the final (mode 0xC: seven opponents, each KO'd by a poke
+# and replaced in mode 0xD once DEATH_DONE is poked), mode 0xF, the ending (mode 0x1F),
+# the high-score entry (mode 0x1E) and back to mode 3. 240 s: 1.3x the port-predicted
+# end at 185 s (record §W.7), a harness value. memsize=64: DOSBox-X's guest memory in MB,
+# a harness value, not a game value (record §W.13): under DOSBox-X's default 16 MB the
+# original printed "Primal Rage is out of memory." in the 4th final fight (f=0x14F6).
+SCENARIOS['gp-u10-ending'] = dict(time_limit=240, extra=WIN_EXTRA, memsize=64, steps=WIN_MENU + (
+    ('after_entry', 0x06, 1, 10, ('poke', ((0x108106, lands_marked(0, 0)), (0x10789E, b'\x78')))),
+    ('after_entry', 0x06, 2, 10, KO_P2),
+) + tuple(st for k in range(1, 8) for st in (
+    ('after_entry', 0x0C, k, 10, KO_P2),              # the final's k-th opponent KO'd: mode 0xD
+    ('after_entry', 0x0D, k, 10, DEATH_DONE),         # replaced (k < 7) or mode 0xF (k = 7)
+)) + (
+    ('until_mode', 0x03, 0),                          # back in mode 3 after the high-score entry
+))
+
+
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""
     if action[0] == 'key':
@@ -329,7 +403,9 @@ def expand(action):
 
 class Schedule:
     """Steps: ('boot', s, act) | ('after_mode', mode, n, act) | ('after', n, act)
-    | ('until_mode', mode, n); an ('end',) action ends the scenario at its frame.
+    | ('after_entry', mode, k, n, act) | ('until_mode', mode, n); an ('end',) action
+    ends the scenario at its frame. after_entry: F = the frame of the k-th entry
+    into `mode` (on_snap) + n.
     An action for frame F fires at the first spin snapshot with f >= F - 1, so
     iteration F samples it (spec §3.1)."""
 
@@ -339,6 +415,9 @@ class Schedule:
         self.prev_frame = None
         self.frame_of = {}          # step -> its frame F (set when it fires)
         self.mode_first = {}
+        self.snap_mode = None
+        self.entry_count = {}
+        self.entry_frame = {}       # (mode, k) -> the first S frame of the k-th entry
         self.end_frame = None
         self.fired = 0
         self.total = sum(1 for st in self.steps if st[0] != 'until_mode' and st[-1] != ('end',))
@@ -349,6 +428,9 @@ class Schedule:
             return None if f0 is None else f0 + st[2]
         if st[0] == 'after':
             return None if self.prev_frame is None else self.prev_frame + st[1]
+        if st[0] == 'after_entry':
+            f0 = self.entry_frame.get((st[1], st[2]))
+            return None if f0 is None else f0 + st[3]
         return None
 
     def on_mode(self, f, mode):
@@ -360,6 +442,18 @@ class Schedule:
                 return
         if self.i > 0 or self.steps[0][0] != 'boot':
             self.mode_first.setdefault(mode, f)
+
+    def on_snap(self, f, mode):
+        """An accepted S record's mode (gp_capture.Poller, after on_mode): the k-th
+        entry into a mode is the k-th S record whose mode differs from the previous
+        S record's, counted, like mode_first, once the boot step fired. Only S records
+        count: a P record can catch a mode word mid-iteration (plan U9/U10)."""
+        prev, self.snap_mode = self.snap_mode, mode
+        if prev is None or prev == mode or (self.i == 0 and self.steps and self.steps[0][0] == 'boot'):
+            return
+        k = self.entry_count.get(mode, 0) + 1
+        self.entry_count[mode] = k
+        self.entry_frame[(mode, k)] = f
 
     def due_boot(self, now_s):
         if self.i < len(self.steps) and self.steps[self.i][0] == 'boot' and now_s >= self.steps[self.i][1]:
@@ -408,11 +502,12 @@ class Schedule:
 # the 60-frame tail still holds the frames past the end that N names; ENDURANCE
 # ends 300 frames into its team select (D3), where the idle tail is a still
 # screen. The attract start stops too (record §U8.14): the same arrangement, its N and F
-# sit at the replay's end.
+# sit at the replay's end. gp-u9-win and gp-u10-ending (plan U9/U10) stop too: nothing
+# past their end is compared.
 STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
                          'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
                          'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap',
-                         'gp-u8-attract-start'})
+                         'gp-u8-attract-start', 'gp-u9-win', 'gp-u10-ending'})
 
 
 class ScriptError(Exception):
@@ -496,6 +591,14 @@ def port_script(name, lines, end=None):
                 raise ScriptError('pad change at f=%X unpinned (no S record at f=%X)' % (f, f - 1))
             bits.append((f, kb))
             prev_kb = kb
+    pokes = []
+    for k, w in enumerate(r for r in recs if r['kind'] == 'W'):
+        if w['race']:
+            raise ScriptError('poke %d (%08X) at f=%X raced the iteration' % (k, w['addr'], w['f']))
+        if w['f'] not in snap:
+            raise ScriptError('poke %d (%08X) at f=%X unpinned (no S record at f=%X)'
+                              % (k, w['addr'], w['f'], w['f']))
+        pokes.append((w['f'] + 1, w['addr'], w['now']))
     xrec = next((r for r in recs if r['kind'] == 'X'), None)
     if xrec is None:
         raise ScriptError('the scenario end (X record) was not reached')
@@ -512,6 +615,7 @@ def port_script(name, lines, end=None):
     out += ['enter_frame %d' % p27['f'], 'enter_state %04X' % p27['st']]
     ev = [(c, 0, i, 'key %d %02X %02X' % (c, s, a)) for i, (c, s, a) in enumerate(keys) if c <= last]
     ev += [(f, 1, 0, 'bits %d %04X' % (f, kb)) for f, kb in bits if f <= last]
+    ev += [(f, 2, i, 'poke %d %08X %s' % (f, a, d)) for i, (f, a, d) in enumerate(pokes) if f <= last]
     out += [t for _, _, _, t in sorted(ev)]
     out.append('end %d' % last)
     return '\n'.join(out) + '\n'
