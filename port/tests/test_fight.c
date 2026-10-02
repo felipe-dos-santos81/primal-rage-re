@@ -45948,3 +45948,127 @@ static void p3_check_47874(void)
 }
 
 int test_p3_47874(void)         { return u6b_run(p3_check_47874); }
+
+/* §P3.6: 0x47FCC and the three callbacks it stores, through their
+ * registrations (side 0: ctx[2] = slot 0, ctx[3] = slot 1). The image dwords
+ * are evidence lines, not port behaviour. */
+static void p3_check_47fcc(void)
+{
+    p2_cb_fn f;
+    p2_hook_fn h;
+    p2_side_fn g;
+    u8 fl[16];
+    u32 k, r, c;
+    union { float f; u32 u; } v;
+    CHECK(fn_resolve(0x47FCCu) == (void (*)(void))fighter_47fcc, "0x47FCC is registered");
+    CHECK(fn_resolve(0x47CB0u) == (void (*)(void))fighter_47cb0, "0x47CB0 is registered");
+    CHECK(fn_resolve(0x47D24u) == (void (*)(void))fighter_47d24, "0x47D24 is registered");
+    CHECK(fn_resolve(0x47E9Cu) == (void (*)(void))fighter_47e9c, "0x47E9C is registered");
+    CHECK_EQ_INT((int)DSD(0x000A41E4u), 0x00047FCC);
+    CHECK_EQ_INT((int)DSD(0x00048024u), 0x00047E9C);
+    CHECK_EQ_INT((int)DSD(0x0004802Fu), 0x00047CB0);
+    CHECK_EQ_INT((int)DSD(0x0004803Au), 0x00047D24);
+    /* 0x47E9C starts right after its own jump table 0x47E8C (4 dwords) */
+    CHECK_EQ_INT((int)DSD(0x00047E8Cu), 0x00047EE1);
+    CHECK_EQ_INT((int)DSD(0x00047E98u), 0x00047F2F);
+
+    /* 0x47FCC on side 0: the side's dword 0x108370 = 0, its record on
+     * 0xC8950[slot 0's character] at 2.0, slot 0 7/9/0 armed, +0x57 = 0,
+     * +0x41 bit 7. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x47FCCu);
+    if (f == NULL) return;
+    z_fseed();
+    c = (u32)DSB(Z_S0 + 0x7Au);
+    DSW(DSD(0x000C8950u + c * 4u)) = 0x12B1u;
+    DSD(0x00108370u) = 0x70707070u;
+    DSB(Z_S0 + 0x41u) = 0x01u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    DSB(Z_S0 + 0x57u) = 0x77u;
+    f(0x0A0A0A0Au, 0x0B0B0B0Bu, 0u);
+    CHECK_EQ_INT((int)DSD(0x00108370u), 0);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), (int)DSD(0x000C8950u + c * 4u));
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x00047E9C);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x18u), 0x00047CB0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x1Cu), 0x00047D24);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x41u), 0x81);
+
+    /* 0x47CB0 on side 0: the word +0x88 = 4 returns 1; 2 returns
+     * 0x18C14(0, flags 1/4/7/8/0xD/0xE = 0, 5 = 1, the rest 2, 0xC946A,
+     * 0xC9474) on the same seeded state. */
+    h = (p2_hook_fn)(void *)fn_resolve(0x47CB0u);
+    if (h == NULL) return;
+    z_fseed();
+    DSW(Z_S0 + 0x88u) = 4u;
+    CHECK_EQ_INT((int)h(0u), 1);
+    z_fseed();
+    DSW(Z_S0 + 0x88u) = 2u;
+    r = h(0u);
+    z_fseed();
+    DSW(Z_S0 + 0x88u) = 2u;
+    for (k = 0; k < 16u; k++) fl[k] = 2u;
+    fl[1] = fl[4] = fl[7] = fl[8] = fl[0xD] = fl[0xE] = 0u;
+    fl[5] = 1u;
+    CHECK_EQ_INT((int)r, fighter_18c14(0u, fl, 0x000C946Au, 0x000C9474u));
+
+    /* 0x47D24 on side 0: slot 0's +0x42 bit 2 and +0x57 = 3, the side's
+     * float 0x108378 (1.5) is the own record's frame on 0xED9D0, then 3.0;
+     * the side's byte 0x108394 = 0; the voice 0x66 last. */
+    g = (p2_side_fn)(void *)fn_resolve(0x47D24u);
+    if (g == NULL) return;
+    z_fseed();
+    DSW(0x000ED9D0u) = 0x12B1u;
+    DSW(DSD(0x000C90F8u + (u32)DSB(Z_S1 + 0x7Au) * 4u)) = 0x12B2u;
+    v.f = 1.5f;
+    DSD(0x00108378u) = v.u;
+    DSB(0x00108394u) = 0x94u;
+    DSB(Z_S0 + 0x42u) = 0u;
+    DSB(Z_S0 + 0x57u) = 0x77u;
+    sound_voice_log_reset();
+    g(0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000ED9D0);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x3FC00000);
+    CHECK_EQ_INT((int)DSD(0x00108378u), 0x40400000);
+    CHECK_EQ_INT((int)DSB(0x00108394u), 0);
+    CHECK_EQ_INT((int)(DSB(Z_S0 + 0x42u) & 4u), 4);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
+    CHECK(sound_voice_log_count() >= 1u, "a voice plays");
+    CHECK_EQ_INT((int)sound_voice_log_at(sound_voice_log_count() - 1u), 0x66);
+    sound_voice_log_reset();
+
+    /* 0x47E9C as 0x3531C case 7 calls it (slot 0, its record, side 0): state
+     * 1 starts the record on 0xEDA40 at 2.0, +0x57 = 2, +0x8A = 0, and the
+     * count 0x3C + 1 sets the byte 0x108394; state 3 with the command's bit 0
+     * takes the float 2.0 to (float)(2.0 - 0.1), and 1.15 to 1.1f. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x47E9Cu);
+    if (f == NULL) return;
+    z_fseed();
+    DSW(0x000EDA40u) = 0x12B1u;
+    DSB(Z_S0 + 0x57u) = 1u;
+    DSB(Z_S0 + 0x8Au) = 0x8Au;
+    DSD(0x00108370u) = 0x3Cu;
+    DSB(0x00108394u) = 0x94u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000EDA40);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 2);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x8Au), 0);
+    CHECK_EQ_INT((int)DSD(0x00108370u), 0x3D);
+    CHECK_EQ_INT((int)DSB(0x00108394u), 1);
+    for (k = 0; k < 2u; k++) {
+        z_fseed();
+        DSB(Z_S0 + 0x57u) = 3u;
+        DSW(DS_001088E0) = 1u;
+        v.f = k == 0u ? 2.0f : 1.15f;
+        DSD(0x00108378u) = v.u;
+        f(Z_S0, Z_R0, 0u);
+        v.f = (float)(2.0 + -0.1);
+        CHECK_EQ_INT((int)DSD(0x00108378u), k == 0u ? (int)v.u : 0x3F8CCCCD);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
+    }
+}
+
+int test_p3_47fcc(void)         { return u6b_run(p3_check_47fcc); }

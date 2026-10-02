@@ -265,6 +265,51 @@ image) finds **0 double sums on a float midpoint**: for those floats the two sto
 outside [1.0, 6.0]: the code stores 3.0 (`0x47D24`) and clamps to [1.1f, 5.0f], and the cases use 1.0, 1.15, 2.0,
 3.0, 4.95 and 6.0.
 
+**The control word (Task 5, raw over plan).** The paragraph above assumes the x87 adds at 64-bit precision. The
+image's runtime does not: its FPU init `0x6B98F` (the init-table entry at `0xF09F2`, priority 2, in the table at
+`0xF09E0` that `0x738A2` walks) runs `fninit` and, an FPU present (`fnstcw` high byte 3), `0x6B954` -> `0x72A66` with
+AX = the word `0xF09B4` = **`0x127F`**, loaded by `fldcw` at `0x72A83`: precision control 53 bits (bits 8-9 = 10b),
+rounding to nearest (bits 10-11 = 0), every exception masked. The code object's other control-word loads are
+`0x6B70D` (`fninit; fldcw [0xF09B4]`, the same word) and the `frndint` helper `0x61A4E..0x61A5F` (high byte 0x1F
+around one `frndint`, the saved word restored); nothing stores to `0xF09B4` (its only dword references are the
+two loads, `0x6B70F` and `0x6B979`). Under `0x127F` the `fadd qword` rounds the exact sum to 53 bits, the port's
+double sum (the x87's wider exponent range does not matter: the sum of a float and ±0.1 is a normal double), and
+`fstp dword` rounds that to the float: **the port's two roundings, for every input**. The exhaustive check then
+covers the other precisions on [1.0, 6.0].
+
+**The check, reproduced** (Task 5; scratch scripts `x87_check.py` and `x87_all.py`, the addends `0x80C6C`/`0x80C64`,
+the 1.1 of `0x80C74` and the 5.0f of `0x80C7C` read from the diff image). Over the 20 971 521 floats of [1.0, 6.0]
+(bits `0x3F800000..0x40C00000`), for each addend:
+
+- A (the record's): double sums on a float midpoint: **0** and 0.
+- B (exact integers, (f + d) * 2^60 in int64): the single rounding of the exact sum to 24 bits (x87 precision 64 or
+  24) against the port: **0** and 0 stores differ; the rounding to 53 and then 24 bits (precision 53): 0 and 0; after
+  the clamps (`0x47F83..0x47FBA` on the stored float): 0 and 0.
+- C (unicorn 2.1.4's x87, QEMU softfloat, running `fld dword; fadd qword; fstp dword` itself in a loop): with
+  `fldcw` 0x037F (64-bit) and 0x127F (53-bit), **0** stores differ from the port, before or after the clamps.
+- A negative control proves A-C can fail: the addend 2^-24 + 2^-56 puts every double sum of [1, 2) on a midpoint
+  (8 388 608), and B single and C at 0x037F report 4 194 304 different stores (3 774 873 after the clamps), while
+  B's 53-bit model and C at 0x127F report 0 (the double rounding is the 53-bit x87's).
+- Every 32-bit pattern of the float (C, `x87_all.py`: 4 294 967 296 inputs, NaNs, infinities, denormals and
+  negatives included, with control words 0x037F and 0x127F and both addends): **0** stores differ from the port
+  (0 non-NaN sums, 0 NaN payloads, 0 after the clamps).
+
+**What is covered and what is not.** Covered: the stored float of `0x47E9C`'s state 3 equals the original's for
+every float of [1.0, 6.0], both addends, at x87 precision 64, 53 and 24 with rounding to nearest (A, B, C), and for
+every 32-bit pattern at precision 64 and 53 (C alone: unicorn's softfloat against the host, no exact-integer
+model outside [2^-36, 8)); precision 24 is checked on [1.0, 6.0] only. The plan's domain [1.0, 6.0] holds every
+value the game can store there: `0x108378` is written only by `0x47D24` (3.0), `0x47F7D` (the sum) and the
+clamps (`0x47F9A` 1.1f, `0x47FBA` 5.0f; a linear disassembly of the code object finds no other instruction naming
+`0x108378..0x10837F`; a write through a computed pointer, a block clear say, is not excluded), so the sum's input
+is in [1.1f, 5.0f] once `0x47D24` has run. Assumed, not proved: **rounding to nearest-even on both
+sides** (the original's from `0x127F`; the host's default mode, with no `-ffast-math` and `FLT_EVAL_METHOD` 0 on
+arm64 and x86-64 SSE2: a 32-bit x87 host build is not covered); that **no code outside the code object** (DOS/4GW,
+the sound drivers) changes the control word at run time (no DOSBox-X reading of the word was taken). A state-3 call
+before any `0x47D24` (BSS 0.0) is outside the domain but inside the 2^32 run. **The diff-verify
+rows run the original at unicorn's reset control word `0x0000`** (measured: `fnstcw` reads 0; precision 24,
+rounding to nearest), not the game's `0x127F`: `0x47E9C`'s rows compare the port with the single rounding, which
+B and C show equal on [1.0, 6.0], where every case's float lies.
+
 ## §P3.7 Task 6: `0x48608`, its +0x18/+0x1C callbacks, `0x48170` and the +0x10 handler `0x4811C`
 
 **`0x48608`** (r 0x27; ECX = the slot, ESI = the record, EBX = rec+0x51 via `xor ebx,ebx; mov bl,[edx+0x51]`):
@@ -366,7 +411,10 @@ Named gaps and limits:
 - **The callee rows** (D3): the new stubs `0x35838 0x3B298 0x39FB0 0x3A95C 0x3C190 0x3B714 0x3C148 0x468D8 0x36D98
   0x188DC 0x3C16C` join C1 with P2's eight and E3's four; `0x48170` has its own row here. After P3 the counter reads
   `11/64 rows with callees closed (14 have none)`.
-- **x87** (§P3.6): equal stored floats proved for every float of [1.0, 6.0]; not claimed outside.
+- **x87** (§P3.6): the image's runtime control word `0x127F` (53-bit, nearest) makes the raw's sum the port's;
+  equal stored floats also proved at 64- and 24-bit precision for every float of [1.0, 6.0] (the reachable
+  domain) and, through unicorn's x87, at 64 and 53 bits for every 32-bit pattern; rounding to nearest assumed on
+  both sides; the diff-verify rows run the original at control word 0.
 - **Not observable with the image's data and not claimed:** `0x47CB0`'s word sign (§P3.6); `0x47688`'s timer word is
   10 in the image (its sign is pinned by the poke of `h4`, not by game data).
 - **Unit checks of the +0x18 hooks** compare with `0x18C14` run on the expected flags in one fixture state; a flag

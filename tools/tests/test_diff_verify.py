@@ -359,7 +359,8 @@ P2_KINDS = {"fighter_237d0@mutant": {"call #0"}, "fighter_237d0@guard": {"byte",
 P3_MASKS = {"fighter_475ec": 0, "fighter_47608": 0, "fighter_47624": 0, "fighter_48964": 0, "fighter_489a0": 0,
             "fighter_47720": 0, "fighter_476fc": 0, "fighter_47648": 0xFFFFFFFF, "fighter_47688": 0,
             "fighter_47874": 0, "fighter_47830": 0, "fighter_47798": 0xFFFFFFFF, "fighter_477a8": 0xFFFFFFFF,
-            "fighter_477e8": 0}
+            "fighter_477e8": 0, "fighter_47fcc": 0, "fighter_47cb0": 0xFFFFFFFF, "fighter_47d24": 0,
+            "fighter_47e9c": 0}
 P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"call #0"},
             "fighter_47608@mutant": {"call #0 memory"}, "fighter_47624@mutant": {"call #0 memory"},
             "fighter_48964@mutant": {"call #1"}, "fighter_48964@late": {"call #0 memory"},
@@ -376,7 +377,14 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
             "fighter_47830@order": {"call #0 memory"},
             "fighter_47798@mutant": {"call #0"}, "fighter_47798@eax": {"eax"},
             "fighter_477a8@mutant": {"call #0"},
-            "fighter_477e8@mutant": {"call #0"}, "fighter_477e8@order": {"call #1 memory"}}
+            "fighter_477e8@mutant": {"call #0"}, "fighter_477e8@order": {"call #1 memory"},
+            "fighter_47fcc@mutant": {"call #0"}, "fighter_47fcc@order": {"call #0 memory"},
+            "fighter_47cb0@mutant": {"call #0"}, "fighter_47cb0@ge": {"eax", "call #0"},
+            "fighter_47cb0@lo": {"eax", "call #0"},
+            "fighter_47d24@mutant": {"call #2"}, "fighter_47d24@order": {"call #6 memory"},
+            "fighter_47d24@signed": {"call #3"}, "fighter_47d24@frame": {"call #1"},
+            "fighter_47e9c@mutant": {"byte"}, "fighter_47e9c@slot": {"byte", "call #0"},
+            "fighter_47e9c@signed": {"byte"}, "fighter_47e9c@order": {"call #0 memory"}}
 
 
 @needs_unicorn
@@ -621,7 +629,11 @@ class RealFunctionTests(unittest.TestCase):
                           # the voice's EAX (w1's stub returns 0)
                           ("fighter_47830@mutant", ["z1", "z2"]),
                           ("fighter_47830@side", ["z0", "z1", "z2", "z3", "z4"]),
-                          ("fighter_47798@eax", ["w1"])):
+                          ("fighter_47798@eax", ["w1"]),
+                          # 0x47CB0's bounds (k1's 3 alone tells `jg`, k2's 1 alone `jge`), 0x47D24's distance
+                          # signed (b2 alone), 0x47E9C's count signed (eD alone)
+                          ("fighter_47cb0@ge", ["k1"]), ("fighter_47cb0@lo", ["k2"]),
+                          ("fighter_47d24@signed", ["b2"]), ("fighter_47e9c@signed", ["eD"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
@@ -730,8 +742,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (54), the 14 without are counted apart
-        self.assertIn("diff-verify: 68/68 functions VERIFIED; 119/119 mutants detected; 1 named gaps; "
-                      "10/54 rows with callees closed (14 have none).", out.getvalue())
+        self.assertIn("diff-verify: 72/72 functions VERIFIED; 132/132 mutants detected; 1 named gaps; "
+                      "11/58 rows with callees closed (14 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

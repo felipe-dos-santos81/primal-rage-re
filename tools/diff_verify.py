@@ -1109,6 +1109,76 @@ P3_SPECS += [
          allow_calls=(0x33950,), calls=(REACT, ANIM_BEGIN), eax_mask=0, mutants=("@mutant", "@order")),
 ]
 
+# 0x47FCC (record §P3.6) reads EBX alone (`mov edx,ebx`; the context 0x33950(side)): the side's dword 0x108370 = 0,
+# then the own record on 0xC8950[the own slot's character] at 2.0 and the own slot armed (P2's p2_ctx_case seeds:
+# characters 5 and 3, sentinels on +0x0C..+0x1F, +0x41/+0x42, +0x52..+0x57); both sides' dwords 0x108370 seeded.
+P3_108370_SEED = {0x108370: le32(0x70707070) + le32(0x74747474)}
+
+
+# 0x47D24 (the +0x1C callback 0x47FCC stores; 0x193B0, fn(side)): the side's float 0x108378 is 0x2BC30's frame
+# (pushed as a dword), then 3.0; the side's byte 0x108394 = 0; the signed word 0xC947E[the other slot's character]
+# (`sar 0x10` of the dword 0xC947C + 2c) is 0x3C208's distance, poked negative for character 3 in b2. Both slots'
+# bytes +0x42..+0x5F carry different sentinels (the own +0x5F is 0x39834's byte; +0x42 takes bit 2).
+def p3_47d24(cid, side, dist=None):
+    pokes = {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+             DS_SLOTS + 0x42: bytes(range(0x42, 0x60)), DS_SLOTS + 0x94 + 0x42: bytes(range(0xC2, 0xE0)),
+             0x108378: f32(1.5) + f32(2.5), 0x108394: b"\x94\x95"}
+    if dist is not None:
+        pokes[0xC947E + 2 * 3] = le32(dist)[:2]
+    return Case(cid, {"eax": side}, pokes)
+
+
+# 0x47E9C (the +0x0C callback 0x47FCC stores; 0x3531C case 7, EAX unread). Its state byte is the EAX slot's +0x57
+# (`mov ecx,eax` at 0x47EA0, `mov al,[ecx+0x57]` at 0x47EC9: E3_SLOT here, `st`), its stores go to ctx[2] (the
+# side's slot, +0x57 seeded 0x57). Each frame the side's dword 0x108370 + 1 (signed, above 0x3C sets the byte
+# 0x108394); 0: the slot's word +0x88 (`sar 0x10` of the dword +0x86) above 3 sets +0x57 = 1; 1: the own record on
+# 0xEDA40 at 2.0, +0x57 = 2, +0x8A = 0; 3: the side's float 0x108378 takes -0.1 on the command's bit 0, else +0.1
+# on bit 1, then below 1.1 (the double 0x80C74) becomes 1.1f, above 5.0f becomes 5.0f; 2 and above 3 nothing.
+def p3_47e9c(cid, side, st, cnt=0x10, w88=0, cmd=0, fl=2.0):
+    own = DS_SLOTS + side * 0x94
+    cnts, words, fls = [0x70707070, 0x74747474], [0x5A5A, 0xA5A5], [f32(1.5), f32(2.5)]
+    cnts[side], words[side], fls[side] = cnt, cmd, f32(fl)
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_OUT, "ebx": side},
+                {**SLOT_PTRS, E3_SLOT + 0x57: bytes([st]), own + 0x57: b"\x57", own + 0x86: b"\x86\x86" + le32(w88)[:2],
+                 own + 0x8A: b"\x8a", 0x108370: le32(cnts[0]) + le32(cnts[1]), 0x108378: fls[0] + fls[1],
+                 0x108394: b"\x94\x95", 0x1088E0: le32(words[0])[:2] + le32(words[1])[:2]})
+
+
+P3_SPECS += [
+    Spec("fighter_47fcc", 0x47FCC, [p2_ctx_case("s0", 0, P3_108370_SEED), p2_ctx_case("s1", 1, P3_108370_SEED)],
+         allow_calls=(0x33950,), calls=(HIT_B,), eax_mask=0, mutants=("@mutant", "@order")),
+    # 0x47CB0 (the +0x18 hook; 0x19020, fn(side), the whole EAX): flags 1, 8, 4, 0xD, 0xE, 7 = 0 and 5 = 1; the own
+    # slot's signed word +0x88 in 1..3 (`jg`/`jge` against immediates) calls 0x18C14(side, the flags, 0xC946A,
+    # 0xC9474), else 1. k4: the word -1 (signed: below 1).
+    Spec("fighter_47cb0", 0x47CB0, [
+        p2_2116c("k0", 0, 4), p2_2116c("k1", 0, 3, stub=0), p2_2116c("k2", 1, 1, stub=0x12345678),
+        p2_2116c("k3", 1, 0), p2_2116c("k4", 0, 0xFFFF),
+    ], allow_calls=(0x33950, 0x18BD4), calls=(CHECKS,), mutants=("@mutant", "@ge", "@lo")),
+    Spec("fighter_47d24", 0x47D24, [p3_47d24("b0", 0), p3_47d24("b1", 1), p3_47d24("b2", 0, 0xF000)],
+         allow_calls=(0x33950,), calls=(FLASH, ANIM_BEGIN, HIT_A, PLACE, FACING, POSE, HOLD, TIMER, VOICE),
+         eax_mask=0, mutants=("@mutant", "@order", "@signed", "@frame")),
+    # e0..eF: the count's bound (0x3B + 1 stays, 0x3C + 1 sets; 0x7FFFFFFF + 1 is negative), each state, the word
+    # +0x88 (3, 4, -1), the float's two steps (bit 0 first, then bit 1; 0xFFFC has neither), and both clamps.
+    Spec("fighter_47e9c", 0x47E9C, [
+        p3_47e9c("e0", 0, 0, cnt=0x3B, w88=3),
+        p3_47e9c("e1", 0, 0, cnt=0x3C, w88=4),
+        p3_47e9c("e2", 1, 1, cnt=0),
+        p3_47e9c("e3", 0, 2),
+        p3_47e9c("e4", 0, 4),
+        p3_47e9c("e5", 0, 3, cmd=1, fl=2.0),
+        p3_47e9c("e6", 1, 3, cmd=2, fl=2.0),
+        p3_47e9c("e7", 0, 3, cmd=3, fl=2.0),
+        p3_47e9c("e8", 0, 3, cmd=0xFFFC, fl=2.0),
+        p3_47e9c("e9", 0, 3, cmd=1, fl=1.15),
+        p3_47e9c("eA", 1, 3, cmd=2, fl=4.95),
+        p3_47e9c("eB", 0, 3, fl=1.0),
+        p3_47e9c("eC", 0, 3, fl=6.0),
+        p3_47e9c("eD", 0, 2, cnt=0x7FFFFFFF),
+        p3_47e9c("eE", 1, 0, w88=0xFFFF),
+        p3_47e9c("eF", 0, 3, cmd=0x0101, fl=3.0),
+    ], allow_calls=(0x33950,), calls=(ANIM_BEGIN,), eax_mask=0, mutants=("@mutant", "@slot", "@signed", "@order")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

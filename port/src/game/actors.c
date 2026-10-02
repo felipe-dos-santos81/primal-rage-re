@@ -784,6 +784,15 @@ int actors_init(void)
     fn_register(0x47798u, (void (*)(void))fighter_47798);
     fn_register(0x477A8u, (void (*)(void))fighter_477a8);
     fn_register(0x477E8u, (void (*)(void))fighter_477e8);
+    /* PORT: record 2026-10-03-reverse-p3 §P3.6. Character 2's reaction-0x23
+     * callback 0x47FCC (the dword at 0xA41E4) and the three callbacks it
+     * stores (+0x0C 0x47E9C, after its own jump table 0x47E8C, 0x3531C case 7,
+     * (slot, rec, side); +0x18 0x47CB0, 0x19020, fn(side) with EAX returned;
+     * +0x1C 0x47D24, 0x193B0's 0x19505, fn(side)). */
+    fn_register(0x47FCCu, (void (*)(void))fighter_47fcc);
+    fn_register(0x47CB0u, (void (*)(void))fighter_47cb0);
+    fn_register(0x47D24u, (void (*)(void))fighter_47d24);
+    fn_register(0x47E9Cu, (void (*)(void))fighter_47e9c);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)

@@ -15629,3 +15629,153 @@ void fighter_477e8(u32 side)
     DSD(ctx[2] + 0x0Cu) = 0u;                               /* 0x4781A */
     DSD(ctx[2] + 0x14u) = 0u;                               /* 0x47821 */
 }
+
+#define P3_108370      0x00108370u  /* 0x47FDD/0x47EAE: a dword per side, 0x47E9C's frame count */
+#define P3_108378      0x00108378u  /* 0x47D49/0x47DC3/0x47F4B: a float per side, 0x47D24's frame */
+#define P3_108394      0x00108394u  /* 0x47DD0/0x47EC2: a byte per side */
+#define P3_BOX_C946A   0x000C946Au  /* 0x47D0B (EBX) */
+#define P3_BOX_C9474   0x000C9474u  /* 0x47D06 (ECX) */
+#define P3_ANIM_47D24  0x000ED9D0u  /* 0x47D44 */
+#define P3_DIST_C947E  0x000C947Eu  /* 0x47D83: [char] the high half of the dword at 0xC947C + 2c */
+#define P3_ANIM_47E9C  0x000EDA40u  /* 0x47F04 */
+#define P3_D_80C6C     0x00080C6Cu  /* 0x47F51: the double -0.1 */
+#define P3_D_80C64     0x00080C64u  /* 0x47F75: the double 0.1 */
+#define P3_D_80C74     0x00080C74u  /* 0x47F8F: the double 1.1 */
+#define P3_F_80C7C     0x00080C7Cu  /* 0x47FAF: the float 5.0 */
+
+/* 0x47FCC — record §P3.6. Character 2's reaction-0x23 callback (the dword at
+ * 0xA41E4). EBX = side (`mov edx,ebx` at 0x47FCF; the EAX slot and EDX record
+ * are not read); the context is 0x33950(side). The side's dword 0x108370 = 0;
+ * the own record (ctx[4]) on 0xC8950[the own slot's character] at 2.0
+ * (0x3C4CC); the own slot (ctx[2]) 7/9/0 with the +0x0C callback 0x47E9C
+ * (0x3531C case 7), the +0x18 hook 0x47CB0 (0x19020) and the +0x1C callback
+ * 0x47D24 (0x193B0's 0x19505), +0x57 = 0, +0x41 bit 7. PORT: AL = 1
+ * (0x4804E) unread (§P2.2). */
+void fighter_47fcc(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)slot;
+    (void)rec;
+    fighter_ctx_same(ctx, side);                            /* 0x47FCF..0x47FD3 0x33950 */
+    DSD(P3_108370 + ctx[0] * 4u) = 0u;                      /* 0x47FD8..0x47FDD */
+    hit_anim_start_b(ctx[4], DSD(P2_STREAMS_21374 + (u32)DSB(ctx[2] + 0x7Au) * 4u),
+                     0x40000000u);                          /* 0x47FE4..0x48000 0x3C4CC */
+    DSB(ctx[2] + 0x53u) = 7u;                               /* 0x48009 */
+    DSB(ctx[2] + 0x52u) = 9u;                               /* 0x48011 */
+    DSB(ctx[2] + 0x54u) = 0u;                               /* 0x48019 */
+    DSD(ctx[2] + 0x0Cu) = 0x00047E9Cu;                      /* 0x48021 */
+    DSD(ctx[2] + 0x18u) = 0x00047CB0u;                      /* 0x4802C */
+    DSD(ctx[2] + 0x1Cu) = 0x00047D24u;                      /* 0x48037 */
+    DSB(ctx[2] + 0x57u) = 0u;                               /* 0x48042 */
+    DSB(ctx[2] + 0x41u) = (u8)(DSB(ctx[2] + 0x41u) | 0x80u);   /* 0x4804A */
+}
+
+/* 0x47CB0 — record §P3.6. The slot +0x18 hook 0x47FCC stores (the dword at
+ * 0x4802F; 0x19020, fn(side), the whole EAX tested). The flags 1, 8, 4, 0xD,
+ * 0xE and 7 = 0, 5 = 1. With the own slot's signed word +0x88 (`sar 0x10` of
+ * the dword +0x86) above 3 or below 1 it returns 1; else 0x18C14(side, the
+ * flags, 0xC946A, 0xC9474)'s result. */
+u32 fighter_47cb0(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    s32 w;
+    fighter_ctx_same(ctx, side);                            /* 0x47CB6..0x47CBA 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x47CBF/0x47CC3 0x18BD4 */
+    flags[1] = 0;                                           /* 0x47CCC */
+    flags[8] = 0;                                           /* 0x47CD0 */
+    flags[4] = 0;                                           /* 0x47CD4 */
+    flags[0xD] = 0;                                         /* 0x47CD8 */
+    flags[5] = 1u;                                          /* 0x47CCA/0x47CDC */
+    flags[0xE] = 0;                                         /* 0x47CE4 */
+    flags[7] = 0;                                           /* 0x47CE8 */
+    w = (s32)DSD(ctx[2] + 0x86u) >> 16;                     /* 0x47CE0..0x47CF2 */
+    if (w > 3 || w < 1)                                     /* 0x47CF5..0x47CFD */
+        return 1u;                                          /* 0x47CFF */
+    return (u32)fighter_18c14(ctx[0], flags, P3_BOX_C946A, P3_BOX_C9474);   /* 0x47D06..0x47D17 0x18C14 */
+}
+
+/* 0x47D24 — record §P3.6. The slot +0x1C callback 0x47FCC stores (the dword at
+ * 0x4803A; 0x193B0's 0x19505, fn(side), EAX unread). The context is
+ * 0x33950(side). 0x34D8C(side); the own slot's +0x42 bit 2; the own record on
+ * 0xED9D0 at the side's float 0x108378 (pushed as a dword, 0x2BC30); the
+ * other record on 0xC90F8[the other slot's character] at 3.0 (0x3C480);
+ * 0x3C208(side, the signed word 0xC947E[that character]); 0x18AF8;
+ * 0x39834(the other side, the own slot's +0x5F); 0x3C358(side); the own
+ * slot's +0x57 = 3, the side's float = 3.0 and byte 0x108394 = 0;
+ * 0x39A10(each record, 0x309); the voice 0x66. */
+void fighter_47d24(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x47D28..0x47D2C 0x33950 */
+    hit_flash_pair(ctx[0]);                                 /* 0x47D31/0x47D34 0x34D8C */
+    DSB(ctx[2] + 0x42u) = (u8)(DSB(ctx[2] + 0x42u) | 4u);   /* 0x47D39/0x47D3D */
+    actors_anim_begin(ctx[4], P3_ANIM_47D24, DSD(P3_108378 + ctx[0] * 4u));   /* 0x47D41..0x47D54 0x2BC30 */
+    hit_anim_start_a(ctx[5], DSD(P2_STREAMS_C90F8 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                     0x40400000u);                          /* 0x47D59..0x47D72 0x3C480 */
+    fighter_3c208(ctx[0], (s32)(s16)DSW(P3_DIST_C947E + (u32)DSB(ctx[3] + 0x7Au) * 2u));   /* 0x47D77..0x47D90 */
+    fighter_18af8();                                        /* 0x47D95 */
+    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));   /* 0x47D9A..0x47DAB */
+    fighter_3c358(ctx[0]);                                  /* 0x47DB0/0x47DB3 */
+    DSB(ctx[2] + 0x57u) = 3u;                               /* 0x47DB8/0x47DBC */
+    DSD(P3_108378 + ctx[0] * 4u) = 0x40400000u;             /* 0x47DC0/0x47DC3 */
+    DSB(P3_108394 + ctx[0]) = 0u;                           /* 0x47DCE/0x47DD0 */
+    fighter_39a10(ctx[4], 0x309u);                          /* 0x47DD6..0x47DDF */
+    fighter_39a10(ctx[5], 0x309u);                          /* 0x47DE4..0x47DED */
+    (void)sound_voice(0x66u);                               /* 0x47DF2/0x47DF7 0x2C3FC */
+}
+
+/* 0x47E9C — record §P3.6. The slot +0x0C callback 0x47FCC stores (the dword at
+ * 0x48024; 0x3531C case 7, EAX unread); its bytes start right after its own
+ * jump table 0x47E8C (4 dwords). EBX = side, the context 0x33950(side); the
+ * state byte is the EAX slot's +0x57 (`mov ecx,eax`, 0x47EC9), the stores go
+ * to ctx[2]. Each frame the side's dword 0x108370 + 1, above 0x3C (signed)
+ * setting the side's byte 0x108394 = 1. Then by the state: 0 sets the own
+ * slot's +0x57 = 1 once its signed word +0x88 exceeds 3; 1 starts the own
+ * record on 0xEDA40 at 2.0 (+0x57 = 2, +0x8A = 0); 3 steps the side's float
+ * 0x108378 by -0.1 on the command's bit 0, else +0.1 on bit 1, then clamps it
+ * to 1.1f below the double 1.1 and to 5.0f above 5.0f; 2 and above 3
+ * nothing. PORT: the raw adds on the x87 (0x47F4B..0x47F7D) under the
+ * control word its runtime loads at start, 0x127F (53-bit precision, round
+ * to nearest: the word 0xF09B4, init 0x6B98F), which is the port's double
+ * addition and rounding to the float; at 64-bit precision the stored floats
+ * are equal too for every float of [1.0, 6.0] (record §P3.6, an exhaustive
+ * check). */
+void fighter_47e9c(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    s32 n;
+    (void)rec;
+    fighter_ctx_same(ctx, side);                            /* 0x47EA0..0x47EA6 0x33950 */
+    n = (s32)(DSD(P3_108370 + ctx[0] * 4u) + 1u);           /* 0x47EAB..0x47EB5 */
+    DSD(P3_108370 + ctx[0] * 4u) = (u32)n;                  /* 0x47EB6 */
+    if (n > 0x3C) DSB(P3_108394 + ctx[0]) = 1u;             /* 0x47EBD..0x47EC2 */
+    switch (DSB(slot + 0x57u)) {                            /* 0x47EC9..0x47ED9 table 0x47E8C */
+    case 0u:
+        if ((s32)DSD(ctx[2] + 0x86u) >> 16 <= 3) return;    /* 0x47EE1..0x47EF1 */
+        DSB(ctx[2] + 0x57u) = 1u;                           /* 0x47EF7/0x47EFB */
+        return;
+    case 1u:
+        actors_anim_begin(ctx[4], P3_ANIM_47E9C, 0x40000000u);  /* 0x47F04..0x47F12 0x2BC30 */
+        DSB(ctx[2] + 0x57u) = 2u;                           /* 0x47F17/0x47F1B */
+        DSB(ctx[2] + 0x8Au) = 0u;                           /* 0x47F1F/0x47F23 */
+        return;
+    case 3u: {
+        u32 a = P3_108378 + ctx[0] * 4u;
+        u32 cmd = (u32)DSW(DS_001088E0 + side * 2u);        /* 0x47F2F/0x47F31, 0x47F59 */
+        if ((cmd & 1u) != 0u)                               /* 0x47F38..0x47F49 */
+            p2_set_f32(a, (float)((double)p2_f32(a) + p2_f64(P3_D_80C6C)));   /* 0x47F4B/0x47F51, 0x47F7D */
+        else if ((cmd & 2u) != 0u)                          /* 0x47F60..0x47F6B */
+            p2_set_f32(a, (float)((double)p2_f32(a) + p2_f64(P3_D_80C64)));   /* 0x47F6D..0x47F7D */
+        if (!((double)p2_f32(a) >= p2_f64(P3_D_80C74))) {   /* 0x47F83..0x47F98 `jae` */
+            DSD(a) = 0x3F8CCCCDu;                           /* 0x47F9A: 1.1f */
+            return;
+        }
+        if (p2_f32(a) > p2_f32(P3_F_80C7C))                 /* 0x47FA9..0x47FB8 `jbe` */
+            DSD(a) = 0x40A00000u;                           /* 0x47FBA: 5.0f */
+        return;
+    }
+    default:                                                /* 2 (0x47FC4), above 3 (`ja` 0x47ECE) */
+        return;
+    }
+}
