@@ -736,6 +736,12 @@ int actors_init(void)
     fn_register(0x15478u, (void (*)(void))fighter_15478);
     fn_register(0x3DCECu, (void (*)(void))fighter_3dcec);
     fn_register(0x21114u, (void (*)(void))fighter_21114);
+    /* PORT: record 2026-10-02-reverse-p2 §P2.6. Character 6's reaction-0x21
+     * and character 1's reaction-0x22 callbacks (the dwords 0xA55BC and
+     * 0xA3CD0; 0x34E2C at 0x35045, (slot, rec, side)), which arm the side's
+     * slot with the callbacks registered below. */
+    fn_register(0x21374u, (void (*)(void))fighter_21374);
+    fn_register(0x22938u, (void (*)(void))fighter_22938);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)

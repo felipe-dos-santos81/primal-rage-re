@@ -27,7 +27,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 
 | batch | unported | ported |
 |---|---|---|
-| callbacks | 11 | 60 |
+| callbacks | 9 | 62 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
 | animation-targets | 54 | 58 |
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 6 |
 | leaf | 231 |
-| stubs | 62 |
+| stubs | 60 |
 
 ## Rows
 
@@ -113,7 +113,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 21084 | 64 | anim-target | dword E162C after the opcode word D100 at E162A | yes | - | no | animation-targets | leaf | - |
 | 210C4 | 80 | move-callback | dword A55E4 (char 6, reaction 0x23) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 21114 | 608 | move-callback | dword A3DAC (char 1, reaction 0x2D) dword A56AC (char 6, reaction 0x2D) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
-| 21374 | 128 | move-callback | dword A55BC (char 6, reaction 0x21) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 21374 | 128 | move-callback | dword A55BC (char 6, reaction 0x21) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 213F4 | 84 | anim-target | dword E16BA after the opcode word D000 at E16B8 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 21448 | 16 | data | memory operand of the instruction at 21482 | yes | - | no | - | - | - |
 | 216D4 | 24 | data | memory operand of the instruction at 2171F | yes | - | no | - | - | - |
@@ -124,7 +124,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 22338 | 348 | anim-target | dword E4E46 after the opcode word D500 at E4E44 | yes | entry | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 2236D 223EF |
 | 22494 | 88 | anim-target | dword E4E1A after the opcode word D500 at E4E18 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 224E2 |
 | 224EC | 1100 | anim-target | dword E4E30 after the opcode word D500 at E4E2E | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
-| 22938 | 176 | move-callback | dword A3CD0 (char 1, reaction 0x22) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 22938 | 176 | move-callback | dword A3CD0 (char 1, reaction 0x22) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 229E8 | 24 | anim-target | dword E1562 after the opcode word D500 at E1560 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 22A00 | 64 | move-callback | dword A55A8 (char 6, reaction 0x20) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 22A40 | 120 | anim-target | dword E154A after the opcode word D100 at E1548 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | 22AA7 |

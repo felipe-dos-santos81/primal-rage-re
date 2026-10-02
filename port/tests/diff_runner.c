@@ -1039,6 +1039,57 @@ static void m_21114_side(const u32 *r, u32 *eax)       /* the other side's point
     m_21114_at(r, eax, (u32)DSB(r[R_EDX] + 0x51u) ^ 1u, 0x000E481Cu, 0x000E1702u);
 }
 
+/* §P2.6: the context-built move callbacks (0x34E2C at 0x35045), mask 0. */
+static void b_21374(const u32 *r, u32 *eax)            { fighter_21374(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_22938(const u32 *r, u32 *eax)            { fighter_22938(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void m_21374(const u32 *r, u32 *eax)            /* the stream by the other slot's character */
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, r[R_EBX]);
+    hit_anim_start_b(ctx[4], DSD(0x000C8950u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x40000000u);
+    DSB(ctx[2] + 0x53u) = 7u;
+    DSB(ctx[2] + 0x52u) = 9u;
+    DSB(ctx[2] + 0x54u) = 0u;
+    DSD(ctx[2] + 0x0Cu) = 0x000212CCu;
+    DSD(ctx[2] + 0x18u) = 0x0002116Cu;
+    DSD(ctx[2] + 0x1Cu) = 0x000211F0u;
+    DSB(ctx[2] + 0x57u) = 0u;
+    DSB(ctx[2] + 0x41u) = (u8)(DSB(ctx[2] + 0x41u) | 0x80u);
+    *eax = 0u;
+}
+static void m_22938_at(const u32 *r, u32 *eax, int own_flash, int late_first)
+{
+    u32 ctx[6];
+    *eax = 0u;
+    fighter_ctx_same(ctx, r[R_EBX]);
+    if ((DSB(ctx[3] + 0x42u) & 0x10u) != 0u) return;
+    DSB(ctx[2] + 0x57u) = 0u;
+    DSD(ctx[2] + 0x0Cu) = 0x00022638u;
+    DSD(ctx[2] + 0x18u) = 0x00022510u;
+    DSD(ctx[2] + 0x1Cu) = 0x00022588u;
+    DSB(ctx[2] + 0x52u) = 9u;
+    DSB(ctx[2] + 0x54u) = 0u;
+    DSB(ctx[2] + 0x53u) = 7u;
+    DSW(0x00104758u + ctx[0] * 2u) = 0u;
+    if (late_first) {
+        DSW(0x00104754u + ctx[0] * 2u) = 0u;
+        DSD(0x00104738u + ctx[0] * 4u) = 0x40400000u;
+    }
+    hit_anim_start_b(ctx[4], 0x000E4DB4u, 0x40400000u);
+    hit_flash_pair(own_flash ? ctx[0] : ctx[1]);
+    DSB(ctx[2] + 0x42u) = (u8)(DSB(ctx[2] + 0x42u) | 4u);
+    DSW(0x00104754u + ctx[0] * 2u) = 0u;
+    DSD(0x00104738u + ctx[0] * 4u) = 0x40400000u;
+}
+static void m_22938(const u32 *r, u32 *eax)            /* 0x34D8C on the own side */
+{
+    m_22938_at(r, eax, 1, 0);
+}
+static void m_22938_order(const u32 *r, u32 *eax)      /* the word 0x104754 and the float before the calls */
+{
+    m_22938_at(r, eax, 0, 1);
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -1152,6 +1203,11 @@ static const binding_t k_bindings[] = {
     { "fighter_3dcec@mutant",     m_3dcec,        0x00000000u },
     { "fighter_21114@mutant",     m_21114,        0x00000000u },
     { "fighter_21114@side",       m_21114_side,   0x00000000u },
+    { "fighter_21374",            b_21374,        0x00000000u },
+    { "fighter_22938",            b_22938,        0x00000000u },
+    { "fighter_21374@mutant",     m_21374,        0x00000000u },
+    { "fighter_22938@mutant",     m_22938,        0x00000000u },
+    { "fighter_22938@order",      m_22938_order,  0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

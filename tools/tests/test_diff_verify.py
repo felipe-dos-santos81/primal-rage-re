@@ -326,7 +326,8 @@ P1_KINDS = {"fighter_1567c@mutant": {"call #0"}, "fighter_15908@mutant": {"call 
 P2_MASKS = {"fighter_237d0": 0, "fighter_2381c": 0, "fighter_3dadc": 0, "fighter_3db34": 0, "fighter_3d10c": 0,
             "fighter_22a00": 0, "fighter_229fc": 0, "fighter_14ef8": 0, "fighter_14f50": 0,
             "fighter_14fa8": 0, "fighter_14ff8": 0, "fighter_150ac": 0,
-            "fighter_15478": 0, "fighter_3dcec": 0, "fighter_21114": 0}
+            "fighter_15478": 0, "fighter_3dcec": 0, "fighter_21114": 0,
+            "fighter_21374": 0, "fighter_22938": 0}
 P2_KINDS = {"fighter_237d0@mutant": {"call #0"}, "fighter_237d0@guard": {"byte", "call #0", "call #1"},
             "fighter_2381c@mutant": {"call #1"}, "fighter_3dadc@mutant": {"call #1 memory"},
             "fighter_3db34@mutant": {"call #0"}, "fighter_3d10c@mutant": {"call #0", "call #1"},
@@ -336,7 +337,9 @@ P2_KINDS = {"fighter_237d0@mutant": {"call #0"}, "fighter_237d0@guard": {"byte",
             "fighter_14fa8@mutant": {"call #0"}, "fighter_14ff8@mutant": {"call #1"},
             "fighter_150ac@mutant": {"call #1"},
             "fighter_15478@mutant": {"call #0 memory"}, "fighter_3dcec@mutant": {"call #0"},
-            "fighter_21114@mutant": {"call #0"}, "fighter_21114@side": {"byte", "call #0"}}
+            "fighter_21114@mutant": {"call #0"}, "fighter_21114@side": {"byte", "call #0"},
+            "fighter_21374@mutant": {"call #0"}, "fighter_22938@mutant": {"call #1"},
+            "fighter_22938@order": {"call #0 memory", "call #1 memory"}}
 
 
 @needs_unicorn
@@ -548,7 +551,7 @@ class RealFunctionTests(unittest.TestCase):
         stubs = {k.addr: k.clobbers for s in V.SPECS for k in s.calls if k.mode == "stub"}
         self.assertEqual(stubs, {0x2C3FC: (), 0x2BC30: ("edx",), 0x3C4CC: ("edx",), 0x3C480: ("edx",),
                                  0x2AE14: ("ebx", "ecx", "edx"), 0x1A570: (), 0x2A17C: ("edx",),
-                                 0x188AC: ("edx",), 0x38034: ()})
+                                 0x188AC: ("edx",), 0x38034: (), 0x34D8C: ()})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -641,8 +644,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (18), the 12 without are counted apart
-        self.assertIn("diff-verify: 45/45 functions VERIFIED; 66/66 mutants detected; 1 named gaps; "
-                      "5/32 rows with callees closed (13 have none).", out.getvalue())
+        self.assertIn("diff-verify: 47/47 functions VERIFIED; 69/69 mutants detected; 1 named gaps; "
+                      "6/34 rows with callees closed (13 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

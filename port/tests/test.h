@@ -83,6 +83,7 @@ extern int g_failures;
     X(test_p2_guarded) \
     X(test_p2_reactions_3) \
     X(test_p2_unconditional) \
+    X(test_p2_arming) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
     X(test_restart)

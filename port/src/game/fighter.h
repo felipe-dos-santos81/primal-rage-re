@@ -1186,5 +1186,8 @@ void fighter_150ac(u32 rec);
 void fighter_15478(u32 slot, u32 rec, u32 side);
 void fighter_3dcec(u32 slot, u32 rec, u32 side);
 void fighter_21114(u32 slot, u32 rec, u32 side);
+/* §P2.6: the move callbacks that arm the side's own slot (slot, rec, side). */
+void fighter_21374(u32 slot, u32 rec, u32 side);
+void fighter_22938(u32 slot, u32 rec, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */
