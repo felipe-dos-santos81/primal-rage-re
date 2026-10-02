@@ -669,7 +669,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 23250 | immediate at 23568 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 232B4 | immediate at 2356F | entry | yes | stubs (indirect at 62006 in 62003) | 23328 |
 | 23960 | called at 23AB7 | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 23B68 | immediate at 23C72 | - | no | stubs (indirect at 2B0E9 in 2AE14) | 23BD8 |
+| 23B68 | immediate at 23C72 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | 23BD8 |
 | 24220 | immediate at 243A1 | - | no | stubs (indirect at 2B0E9 in 2AE14) | 242DA 24317 |
 | 24454 | immediate at 24529 | - | no | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 26998 | immediate at 2697B | - | yes | stubs (indirect at 412DD in 412A0) | 26A2C |
@@ -678,7 +678,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 2BDE8 | called at 361A7 | entry | no | leaf | - |
 | 2BEF4 | called at 3F125 | entry | yes | leaf | - |
 | 35E40 | called at 210AE | entry | yes | leaf | - |
-| 38034 | called at 402A7 | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 38034 | called at 402A7 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3A9D8 | called at 482B9 | entry | no | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3BC70 | called at 35E21 | entry | yes | leaf | - |
 | 3BCE0 | called at 24704 | entry | yes | stubs (indirect at 2B56D in 2B2A0) | - |
@@ -723,7 +723,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 3F5BC | immediate at 3F6D6 | entry | yes | stubs (indirect at 62006 in 62003) | - |
 | 3F7F4 | immediate at 3FBED | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3F85C | immediate at 3FBF8 | entry | yes | stubs (indirect at 2B56D in 2B2A0) | - |
-| 401D4 | immediate at 4033A | entry | no | stubs (indirect at 2B0E9 in 2AE14) | 402B1 402E0 |
+| 401D4 | immediate at 4033A | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | 402B1 402E0 |
 | 430C0 | immediate at 4327B | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 44B38 | immediate at 44D50 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 44BAC | immediate at 44D5B | - | yes | stubs (indirect at 2B56D in 2B2A0) | 44C6B |
@@ -837,7 +837,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 236CB | 2365C | row | yes |
 | 23810 | 237D0 | row | no |
 | 2385C | 2381C | row | no |
-| 23BD8 | 23B68 | supplement | no |
+| 23BD8 | 23B68 | supplement | yes |
 | 23E9D | - | - | no |
 | 23F05 | 23EC0 | row | yes |
 | 24001 | 23F10 | row | no |
@@ -899,8 +899,8 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 3FD23 | 3FCB0 | row | yes |
 | 4012D | 400EC | row | no |
 | 40137 | 400EC | row | no |
-| 402B1 | 401D4 | supplement | no |
-| 402E0 | 401D4 | supplement | no |
+| 402B1 | 401D4 | supplement | yes |
+| 402E0 | 401D4 | supplement | yes |
 | 40546 | 40434 | row | yes |
 | 40E09 | 40CB0 | row | yes |
 | 40FB0 | 40E64 | row | yes |

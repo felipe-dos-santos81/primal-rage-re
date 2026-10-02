@@ -1153,5 +1153,9 @@ int  fighter_402fc(u32 slot, u32 rec);
 void fighter_15584(u32 slot, u32 rec, u32 side);
 void fighter_1579c(u32 slot, u32 rec, u32 side);
 void fighter_23d38(u32 slot, u32 rec, u32 side);
+void fighter_23b68(u32 slot, u32 rec, u32 side);
+void fighter_401d4(u32 slot, u32 rec, u32 side);
+/* 0x38034 (record §P1.9): the call of 0x401D4's case 3, EAX = a side. */
+void fighter_38034(u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

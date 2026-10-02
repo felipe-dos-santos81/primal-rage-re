@@ -44716,4 +44716,74 @@ static void p1_check_callbacks_a(void)
     CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
 }
 
-int test_p1_callbacks(void)     { return u6b_run(p1_check_callbacks_a); }
+/* §P1.9: 0x23B68 and 0x401D4 through their registrations, and 0x38034
+ * through 0x401D4's case 3 (sc_seed's pool, so 0x38034's spawn runs). */
+static void p1_check_callbacks_b(void)
+{
+    u32 tgt = FIGHT_RECS + 0x200u;
+    p1_cb_fn f;
+    CHECK(fn_resolve(0x23B68u) == (void (*)(void))fighter_23b68, "0x23B68 is registered");
+    CHECK(fn_resolve(0x401D4u) == (void (*)(void))fighter_401d4, "0x401D4 is registered");
+    CHECK_EQ_INT((int)DSD(0x00023C75u), 0x00023B68);
+    CHECK_EQ_INT((int)DSD(0x0004033Du), 0x000401D4);
+    CHECK_EQ_INT((int)(DSD(0x000402A8u) + 0x402ACu), 0x00038034);   /* 0x402A7's rel32 */
+
+    /* 0x23B68 with +0x57 = 1 and rec+0x1C set: 0x400000 / 3 = 0x155555 into
+     * both words +0x2C; nothing else (DS_001078FC kept). */
+    f = (p1_cb_fn)(void *)fn_resolve(0x23B68u);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(Z_S0 + 4u) = tgt;
+    DSW(tgt + 0x2Cu) = 0xCCCCu;
+    DSB(Z_S0 + 0x57u) = 1u;
+    DSD(Z_R0 + 0x30u) = 0x00030000u;
+    DSD(Z_R0 + 0x1Cu) = 0x77u;
+    DSB(DS_001078FC) = 0xFCu;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x2Cu), 0x5555);
+    CHECK_EQ_INT((int)DSW(tgt + 0x2Cu), 0x5555);
+    CHECK_EQ_INT((int)DSB(DS_001078FC), 0xFC);
+
+    /* 0x401D4 case 0, the word +0x36 negative: 0xFFFF, +0x44 = 0x3C, +0x57 = 1. */
+    f = (p1_cb_fn)(void *)fn_resolve(0x401D4u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_S0 + 0x57u) = 0u;
+    DSW(Z_R0 + 0x36u) = 0x8000u;
+    DSW(Z_R0 + 0x44u) = 0x4444u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0xFFFF);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x44u), 0x3C);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
+
+    /* 0x401D4 case 3 with DS_00105B3A = 2 (no spawn of its own): 0x38034 on
+     * side 1 (character 4) starts that side's record on 0xBDD00[4] at 1.0 and
+     * spawns; the voices 0x46 then 0x6C; the slot 3/9, DS_001078FC = 1. */
+    sc_seed(2u, 4u, 0);
+    DSW(DSD(0x000BDD00u + 4u * 4u)) = 0x12B5u;
+    DSB(DS_001078FD) = 1u;
+    DSB(DS_00105B3A) = 2u;
+    DSB(DS_001078FC) = 0xFCu;
+    DSB(Z_S0 + 0x57u) = 3u;
+    DSB(Z_S0 + 0x53u) = 0x55u;
+    DSB(Z_S0 + 0x52u) = 0x55u;
+    sound_voice_log_reset();
+    f(Z_S0, DSD(Z_S0), 0u);
+    CHECK_EQ_INT((int)DSD(DSD(Z_S1) + 8u), (int)DSD(0x000BDD00u + 4u * 4u));
+    CHECK_EQ_INT((int)DSD(DSD(Z_S1) + 0x24u), 0x3F800000);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 2);
+    CHECK_EQ_INT((int)sound_voice_log_at(0), 0x46);
+    CHECK_EQ_INT((int)sound_voice_log_at(1), 0x6C);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 3);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
+    sound_voice_log_reset();
+}
+
+static void p1_check_callbacks(void)
+{
+    p1_check_callbacks_a();
+    p1_check_callbacks_b();
+}
+
+int test_p1_callbacks(void)     { return u6b_run(p1_check_callbacks); }
