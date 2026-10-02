@@ -1891,6 +1891,162 @@ static void m_47e9c_order(const u32 *r, u32 *eax)      /* state 1's +0x57 = 2 be
     *eax = 0u;
 }
 
+/* §P3.7: 0x48608 (0x34E2C at 0x35045), mask 0; the +0x18 hook 0x48054 (the whole EAX); the +0x1C callback 0x480B4
+ * and its callee 0x48170 (EAX = side; 0x480FB reloads EAX), mask 0; the +0x10 handler 0x4811C as 0x3531C case 10
+ * calls it (EAX = slot, EDX = rec, EBX = side), mask 0. */
+static void b_48608(const u32 *r, u32 *eax)            { fighter_48608(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_48054(const u32 *r, u32 *eax)            { *eax = fighter_48054(r[R_EAX]); }
+static void b_480b4(const u32 *r, u32 *eax)            { fighter_480b4(r[R_EAX]); *eax = 0u; }
+static void b_48170(const u32 *r, u32 *eax)            { fighter_48170(r[R_EAX]); *eax = 0u; }
+static void b_4811c(const u32 *r, u32 *eax)            { fighter_4811c(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void m_48608_at(const u32 *r, u32 speed, int late, int by_ebx)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], s = (u32)DSB(rec + 0x51u);
+    hit_anim_start_b(rec, 0x000ED834u, 0x40000000u);
+    if (!late) fighter_3c190(s, speed);
+    DSB(rec + 0x42u) = 0x1Eu;
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x53u) = 7u;
+    DSB(slot + 0x54u) = 0u;
+    DSB(slot + 0x57u) = 0u;
+    DSD(slot + 0x0Cu) = 0x0004844Cu;
+    DSW(0x0010838Cu + (by_ebx ? r[R_EBX] : s) * 2u) = 0u;
+    DSD(slot + 0x18u) = 0x00048054u;
+    DSD(slot + 0x1Cu) = 0x000480B4u;
+    if (late) fighter_3c190(s, speed);
+}
+static void m_48608(const u32 *r, u32 *eax)            /* 0x3C190 with 0x80 (0x47874's) */
+{
+    m_48608_at(r, 0x80u, 0, 0);
+    *eax = 0u;
+}
+static void m_48608_order(const u32 *r, u32 *eax)      /* the stores before 0x3C190 */
+{
+    m_48608_at(r, 0x78u, 1, 0);
+    *eax = 0u;
+}
+static void m_48608_side(const u32 *r, u32 *eax)       /* the word 0x10838C by EBX, not rec+0x51 */
+{
+    m_48608_at(r, 0x78u, 0, 1);
+    *eax = 0u;
+}
+static u32 m_48054_at(u32 side, int mode)
+{
+    u32 ctx[6], k, v;
+    u8 f[16];
+    fighter_ctx_same(ctx, side);
+    for (k = 0; k < 16u; k++) f[k] = 2u;
+    f[1] = f[8] = f[4] = f[0xD] = 0u;
+    f[5] = 1u;
+    f[9] = mode == 1 ? 2u : 1u;
+    v = (u32)fighter_18c14(ctx[0], f, 0x000C9492u, 0x000C949Cu);
+    if (mode != 2 && DSB(ctx[2] + 0x57u) != 0u) v = 1u;
+    return v;
+}
+static void m_48054(const u32 *r, u32 *eax)            /* flag 9 left at 2 */
+{
+    *eax = m_48054_at(r[R_EAX], 1);
+}
+static void m_48054_eax(const u32 *r, u32 *eax)        /* 0x18C14's result even with +0x57 set */
+{
+    *eax = m_48054_at(r[R_EAX], 2);
+}
+static void m_480b4_at(u32 side, int own_side, int zext, int own_char)
+{
+    u32 ctx[6], w;
+    fighter_ctx_same(ctx, side);
+    (void)fighter_command_dispatch(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));
+    fighter_39a10(ctx[4], 0x309u);
+    fighter_39a10(ctx[5], 0x309u);
+    fighter_48170(ctx[0]);
+    w = DSW(0x000C94A6u + (u32)DSB(ctx[own_char ? 2 : 3] + 0x7Au) * 2u);
+    fighter_3c208(ctx[own_side ? 0 : 1], zext ? (s32)w : (s32)(s16)w);
+}
+static void m_480b4(const u32 *r, u32 *eax)            /* 0x3C208 on the own side */
+{
+    m_480b4_at(r[R_EAX], 1, 0, 0);
+    *eax = 0u;
+}
+static void m_480b4_signed(const u32 *r, u32 *eax)     /* the distance word zero-extended */
+{
+    m_480b4_at(r[R_EAX], 0, 1, 0);
+    *eax = 0u;
+}
+static void m_480b4_char(const u32 *r, u32 *eax)       /* the distance by the own slot's character */
+{
+    m_480b4_at(r[R_EAX], 0, 0, 1);
+    *eax = 0u;
+}
+static void m_48170_at(u32 side, int own_x, int late57, int own_reset)
+{
+    u32 ctx[6], x, other = 1u - side;
+    u32 own_s = 0x001077B0u + side * 0x94u, oth_s = 0x001077B0u + other * 0x94u;
+    fighter_ctx_same(ctx, side);
+    DSW(0x00108388u + side * 2u) = 0u;
+    fighter_3c148(side);
+    fighter_3c148(other);
+    hit_anim_start_a(DSD(own_s), 0x000ED850u, 0x40400000u);
+    if (!late57) DSB(own_s + 0x57u) = 2u;
+    if ((u8)ai_pred_468d8(other) != 0u) fighter_36d98(own_reset ? own_s : oth_s);
+    if (late57) DSB(own_s + 0x57u) = 2u;
+    x = DSD(ctx[own_x ? 2 : 3] + 0x2Cu);
+    hit_anim_start_a(DSD(oth_s), DSD(0x000C90F8u + (u32)DSB(oth_s + 0x7Au) * 4u), 0x40400000u);
+    hit_anchor_x(ctx[1], x);
+    DSB(oth_s + 0x52u) = 0x10u;
+    DSB(oth_s + 0x53u) = 0x0Au;
+    DSB(oth_s + 0x54u) = 0u;
+    DSD(oth_s + 0x10u) = 0x0004811Cu;
+    DSB(oth_s + 0x58u) = 0u;
+    DSB(0x00108392u + side) = (DSB(oth_s + 0x43u) & 0x30u) != 0u ? 1u : 0u;
+}
+static void m_48170(const u32 *r, u32 *eax)            /* 0x188DC with the own slot's +0x2C */
+{
+    m_48170_at(r[R_EAX], 1, 0, 0);
+    *eax = 0u;
+}
+static void m_48170_order(const u32 *r, u32 *eax)      /* the own +0x57 = 2 after 0x468D8 */
+{
+    m_48170_at(r[R_EAX], 0, 1, 0);
+    *eax = 0u;
+}
+static void m_48170_reset(const u32 *r, u32 *eax)      /* 0x36D98 on the own slot */
+{
+    m_48170_at(r[R_EAX], 0, 0, 1);
+    *eax = 0u;
+}
+static void m_4811c_at(const u32 *r, int on_slot, int uns, int late54)
+{
+    u32 slot = r[R_EAX], a = 0x00108380u + r[R_EBX] * 2u;
+    u8 st = DSB(slot + 0x58u);
+    if (st < 1u) return;
+    if (st == 1u) {
+        DSW(a) = 0u;
+        DSB(slot + 0x58u) = 2u;
+        return;
+    }
+    if (st != 2u) return;
+    DSW(a) = (u16)(DSW(a) + 1u);
+    if (uns ? DSW(a) <= 0x0Fu : (s32)(s16)DSW(a) <= 0x0F) return;
+    if (!late54) DSB(slot + 0x54u) = 0u;
+    fighter_36870(on_slot ? slot : r[R_EDX]);
+    if (late54) DSB(slot + 0x54u) = 0u;
+}
+static void m_4811c(const u32 *r, u32 *eax)            /* 0x36870 on the slot, not the record */
+{
+    m_4811c_at(r, 1, 0, 0);
+    *eax = 0u;
+}
+static void m_4811c_signed(const u32 *r, u32 *eax)     /* the count compared unsigned */
+{
+    m_4811c_at(r, 0, 1, 0);
+    *eax = 0u;
+}
+static void m_4811c_order(const u32 *r, u32 *eax)      /* +0x54 = 0 after the 0x36870 call */
+{
+    m_4811c_at(r, 0, 0, 1);
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -2101,6 +2257,25 @@ static const binding_t k_bindings[] = {
     { "fighter_47e9c@slot",       m_47e9c_slot,   0x00000000u },
     { "fighter_47e9c@signed",     m_47e9c_signed, 0x00000000u },
     { "fighter_47e9c@order",      m_47e9c_order,  0x00000000u },
+    { "fighter_48608",            b_48608,        0x00000000u },
+    { "fighter_48054",            b_48054,        0xFFFFFFFFu },
+    { "fighter_480b4",            b_480b4,        0x00000000u },
+    { "fighter_48170",            b_48170,        0x00000000u },
+    { "fighter_4811c",            b_4811c,        0x00000000u },
+    { "fighter_48608@mutant",     m_48608,        0x00000000u },
+    { "fighter_48608@order",      m_48608_order,  0x00000000u },
+    { "fighter_48608@side",       m_48608_side,   0x00000000u },
+    { "fighter_48054@mutant",     m_48054,        0xFFFFFFFFu },
+    { "fighter_48054@eax",        m_48054_eax,    0xFFFFFFFFu },
+    { "fighter_480b4@mutant",     m_480b4,        0x00000000u },
+    { "fighter_480b4@signed",     m_480b4_signed, 0x00000000u },
+    { "fighter_480b4@char",       m_480b4_char,   0x00000000u },
+    { "fighter_48170@mutant",     m_48170,        0x00000000u },
+    { "fighter_48170@order",      m_48170_order,  0x00000000u },
+    { "fighter_48170@reset",      m_48170_reset,  0x00000000u },
+    { "fighter_4811c@mutant",     m_4811c,        0x00000000u },
+    { "fighter_4811c@signed",     m_4811c_signed, 0x00000000u },
+    { "fighter_4811c@order",      m_4811c_order,  0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

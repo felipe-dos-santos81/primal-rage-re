@@ -1238,5 +1238,17 @@ void fighter_47fcc(u32 slot, u32 rec, u32 side);
 u32  fighter_47cb0(u32 side);
 void fighter_47d24(u32 side);
 void fighter_47e9c(u32 slot, u32 rec, u32 side);
+/* §P3.7: 0x48608 (slot, rec, side), its +0x18 hook fn(side) and +0x1C
+ * callback fn(side), the +0x1C callback's callee 0x48170(side), and the
+ * +0x10 handler 0x4811C (slot, rec, side) with its case-10 adapter; and the
+ * callee 0x36D98 (no longer file-local, so the harness's mutants can call
+ * it). */
+void fighter_36d98(u32 slot);
+void fighter_48608(u32 slot, u32 rec, u32 side);
+u32  fighter_48054(u32 side);
+void fighter_48170(u32 side);
+void fighter_480b4(u32 side);
+void fighter_4811c(u32 slot, u32 rec, u32 side);
+void fighter_4811c_case10(u32 slot, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

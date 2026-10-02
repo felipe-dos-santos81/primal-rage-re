@@ -361,7 +361,8 @@ P3_MASKS = {"fighter_475ec": 0, "fighter_47608": 0, "fighter_47624": 0, "fighter
             "fighter_47720": 0, "fighter_476fc": 0, "fighter_47648": 0xFFFFFFFF, "fighter_47688": 0,
             "fighter_47874": 0, "fighter_47830": 0, "fighter_47798": 0xFFFFFFFF, "fighter_477a8": 0xFFFFFFFF,
             "fighter_477e8": 0, "fighter_47fcc": 0, "fighter_47cb0": 0xFFFFFFFF, "fighter_47d24": 0,
-            "fighter_47e9c": 0}
+            "fighter_47e9c": 0, "fighter_48608": 0, "fighter_48054": 0xFFFFFFFF, "fighter_480b4": 0,
+            "fighter_48170": 0, "fighter_4811c": 0}
 P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"call #0"},
             "fighter_47608@mutant": {"call #0 memory"}, "fighter_47624@mutant": {"call #0 memory"},
             "fighter_48964@mutant": {"call #1"}, "fighter_48964@late": {"call #0 memory"},
@@ -386,7 +387,17 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
             "fighter_47d24@mutant": {"call #2"}, "fighter_47d24@order": {"call #6 memory"},
             "fighter_47d24@signed": {"call #3"}, "fighter_47d24@frame": {"call #1"},
             "fighter_47e9c@mutant": {"byte"}, "fighter_47e9c@slot": {"byte", "call #0"},
-            "fighter_47e9c@signed": {"byte"}, "fighter_47e9c@order": {"call #0 memory"}}
+            "fighter_47e9c@signed": {"byte"}, "fighter_47e9c@order": {"call #0 memory"},
+            "fighter_48608@mutant": {"call #1"}, "fighter_48608@order": {"call #1 memory"},
+            "fighter_48608@side": {"byte"},
+            "fighter_48054@mutant": {"call #0"}, "fighter_48054@eax": {"eax"},
+            "fighter_480b4@mutant": {"call #4"}, "fighter_480b4@signed": {"call #4"},
+            "fighter_480b4@char": {"call #4"},
+            "fighter_48170@mutant": {"call #5", "call #6"},
+            "fighter_48170@order": {"call #3 memory", "call #4 memory"},
+            "fighter_48170@reset": {"call #4"},
+            "fighter_4811c@mutant": {"call #0"}, "fighter_4811c@signed": {"byte", "call #0"},
+            "fighter_4811c@order": {"call #0 memory"}}
 
 
 @needs_unicorn
@@ -640,7 +651,13 @@ class RealFunctionTests(unittest.TestCase):
                           # 0x47CB0's bounds (k1's 3 alone tells `jg`, k2's 1 alone `jge`), 0x47D24's distance
                           # signed (b2 alone), 0x47E9C's count signed (eD alone)
                           ("fighter_47cb0@ge", ["k1"]), ("fighter_47cb0@lo", ["k2"]),
-                          ("fighter_47d24@signed", ["b2"]), ("fighter_47e9c@signed", ["eD"])):
+                          ("fighter_47d24@signed", ["b2"]), ("fighter_47e9c@signed", ["eD"]),
+                          # 0x48054's 1 when the own +0x57 is set (n2, n3: each side), 0x480B4's distance signed
+                          # (x2 on side 0, x3 on side 1: each a word of the other slot's character), 0x48170's
+                          # 0x36D98 on the other slot (g1, g3: the cases whose 0x468D8 AL is set), 0x4811C's word
+                          # signed (i5 alone)
+                          ("fighter_48054@eax", ["n2", "n3"]), ("fighter_480b4@signed", ["x2", "x3"]),
+                          ("fighter_48170@reset", ["g1", "g3"]), ("fighter_4811c@signed", ["i5"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
@@ -654,7 +671,8 @@ class RealFunctionTests(unittest.TestCase):
                                  0x39834: ("edx", "ebp"), 0x39A10: ("edx",), 0x3C208: ("edx",), 0x3C358: (),
                                  0x22404: (), 0x36870: ("esi", "edi", "ebp"), 0x35838: ("ebx", "edx"),
                                  0x3B298: ("edx", "edi", "ebp"), 0x39FB0: (), 0x3A95C: ("edx",),
-                                 0x3C190: ("edx",), 0x3B714: ("edx",)})
+                                 0x3C190: ("edx",), 0x3B714: ("edx",), 0x48170: (), 0x3C148: (), 0x468D8: (),
+                                 0x36D98: (), 0x188DC: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -748,9 +766,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (54), the 14 without are counted apart
-        self.assertIn("diff-verify: 72/72 functions VERIFIED; 136/136 mutants detected; 1 named gaps; "
-                      "11/58 rows with callees closed (14 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (63), the 14 without are counted apart
+        self.assertIn("diff-verify: 77/77 functions VERIFIED; 150/150 mutants detected; 1 named gaps; "
+                      "11/63 rows with callees closed (14 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

@@ -1186,6 +1186,102 @@ P3_SPECS += [
     ], allow_calls=(0x33950,), calls=(ANIM_BEGIN,), eax_mask=0, mutants=("@mutant", "@slot", "@signed", "@order")),
 ]
 
+# The callees the 0x48608 family stubs (record §P3.7), args from their bytes, clobbers from E.callee_clobbers:
+# 0x48170 EAX = side (it saves every register it writes); 0x3C148 EAX = side; 0x468D8 EAX = side (it returns
+# AL); 0x36D98 EAX = slot; 0x188DC EAX = side, EDX = x (clobbers EDX). All plain `ret`.
+ARM170 = E.Call(0x48170, ("eax",))
+CLEAR34 = E.Call(0x3C148, ("eax",))
+PRED = E.Call(0x468D8, ("eax",))
+RESET = E.Call(0x36D98, ("eax",))
+ANCHORX = E.Call(0x188DC, ("eax", "edx"), clobbers=("edx",))
+
+
+# 0x48608 (record §P3.7): the EDX record on 0xED834 at 2.0, 0x3C190(rec+0x51, 0x78), the record's +0x42 = 0x1E, the
+# EAX slot 9/7/0 with +0x57 = 0 and three callbacks (+0x0C 0x4844C, +0x18 0x48054, +0x1C 0x480B4), and the word
+# 0x10838C[rec+0x51] = 0 (EBX = rec+0x51, loaded before both calls, which keep it). EBX at entry is not read
+# (1 - rec+0x51 in every case).
+def p3_48608(cid, r51):
+    # r2's rec+0x51 = 0x80 is read zero-extended (`xor eax,eax; mov al,[edx+0x51]`; a sign-extending read passes
+    # 0xFFFFFF80 to 0x3C190 and indexes the word elsewhere): its word is at 0x10838C + 0x100, sentinel 0x9090
+    far = {0x10838C + 2 * r51: b"\x90\x90"} if r51 > 1 else {}
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": (1 - r51) & 0xFFFFFFFF},
+                {**P3_SLOT_CBS, E3_SLOT + 0x55: b"\x55\x56\x57", E3_REC + 0x42: b"\x42", E3_REC + 0x51: bytes([r51]),
+                 0x10838C: b"\x8c\x8c\x8e\x8e", **far})
+
+
+# 0x48054 (the +0x18 hook; 0x19020, fn(side), the whole EAX): flags 1, 8, 4, 0xD = 0, 5 and 9 = 1; 0x18C14(side,
+# the flags, EBX = 0xC9492, ECX = 0xC949C: both loaded before 0x33950/0x18BD4, which keep them); with the own slot's
+# +0x57 non-zero the result is replaced by 1.
+def p3_48054(cid, side, st, stub):
+    # the other slot's +0x57 is the opposite (0x55 when the own is clear, 0 when set): a read of either slot
+    # alone, or of the other, changes the result in some case
+    return Case(cid, {"eax": side},
+                {**SLOT_PTRS, DS_SLOTS + side * 0x94 + 0x57: bytes([st]),
+                 DS_SLOTS + (1 - side) * 0x94 + 0x57: b"\x00" if st else b"\x55"}, {0x18C14: stub})
+
+
+# 0x480B4 (the +0x1C callback; 0x193B0, fn(side)): 0x3B298(the other side, the own +0x5F) (its AL unread),
+# 0x39A10(each record, 0x309), 0x48170(side), 0x3C208(the other side, the signed word 0xC94A6[the other slot's
+# character], `sar 0x10` of the dword 0xC94A4 + 2c), poked negative for character 3 in x2.
+def p3_480b4(cid, side, al, d3=0x0123, d5=0x0456):
+    # the words of both characters (slot 0 is 5, slot 1 is 3) differ, so the other slot's character is told
+    # from the own and from a fixed one on both sides; x2/x3 poke the used word negative
+    pokes = {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+             DS_SLOTS + 0x52: bytes(range(0x52, 0x60)), DS_SLOTS + 0x94 + 0x52: bytes(range(0xD2, 0xE0)),
+             0xC94A6 + 2 * 3: le32(d3)[:2], 0xC94A6 + 2 * 5: le32(d5)[:2]}
+    return Case(cid, {"eax": side}, pokes, {0x3B298: al})
+
+
+# 0x48170 (called by 0x480B4 at 0x480F6, EAX = side; 0x480FB reloads EAX): the side's word 0x108388 = 0, 0x3C148 on
+# both sides, the own record on 0xED850 at 3.0 (0x3C480), the own slot's +0x57 = 2, 0x468D8(the other side) and on
+# its AL 0x36D98(the other slot), the other record on 0xC90F8[its character] at 3.0, 0x188DC(the other side, the
+# other slot's +0x2C read before that call), then the other slot 0x10/0xA/0 with the +0x10 handler 0x4811C (0x3531C
+# case 10), +0x58 = 0, and the side's byte 0x108392 = (the other slot's +0x43 & 0x30) != 0. Both slots' +0x10..+0x13,
+# +0x2C and +0x43 differ, the per-side words and bytes carry sentinels.
+def p3_48170(cid, side, al, o43):
+    oth = DS_SLOTS + (1 - side) * 0x94
+    return Case(cid, {"eax": side},
+                {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+                 DS_SLOTS + 0x10: le32(0x10101010), DS_SLOTS + 0x94 + 0x10: le32(0x90909090),
+                 DS_SLOTS + 0x2C: le32(0x2C2C2C2C), DS_SLOTS + 0x94 + 0x2C: le32(0xACACACAC),
+                 DS_SLOTS + 0x43: b"\x43", DS_SLOTS + 0x94 + 0x43: b"\xc3", oth + 0x43: bytes([o43]),
+                 DS_SLOTS + 0x52: bytes(range(0x52, 0x59)), DS_SLOTS + 0x94 + 0x52: bytes(range(0xD2, 0xD9)),
+                 0x108388: b"\x88\x88\x8a\x8a", 0x108392: b"\x92\x93"}, {0x468D8: al})
+
+
+# 0x4811C (the +0x10 handler 0x48170 stores; 0x3531C case 10 at 0x354E2: EAX = slot, EDX = the slot's record loaded
+# at 0x35396, EBX = side; the case's `ret` leaves EAX unread): by the slot's +0x58: 0 nothing; 1 the word
+# 0x108380[side] = 0 and +0x58 = 2; 2 the word + 1 and, above 0xF (signed: `sar 0x10` of the dword 0x10837E + 2 *
+# side), +0x54 = 0 and 0x36870(rec); above 2 nothing. i5: the word 0x7FFF + 1 is negative.
+def p3_4811c(cid, side, st, w):
+    words = [0x8080, 0x8282]
+    words[side] = w
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": side},
+                {E3_SLOT + 0x54: b"\x54", E3_SLOT + 0x58: bytes([st]),
+                 0x108380: le32(words[0])[:2] + le32(words[1])[:2]})
+
+
+P3_SPECS += [
+    Spec("fighter_48608", 0x48608, [p3_48608("r0", 0), p3_48608("r1", 1), p3_48608("r2", 0x80)],
+         calls=(HIT_B, SPEED), eax_mask=0, mutants=("@mutant", "@order", "@side")),
+    Spec("fighter_48054", 0x48054, [p3_48054("n0", 0, 0, 0), p3_48054("n1", 1, 0, 0x12345678),
+                                    p3_48054("n2", 0, 3, 0),
+                                    p3_48054("n3", 1, 3, 0x0F0F0F0F)],
+         allow_calls=(0x33950, 0x18BD4), calls=(CHECKS,), mutants=("@mutant", "@eax")),
+    Spec("fighter_480b4", 0x480B4, [p3_480b4("x0", 0, 0), p3_480b4("x1", 1, 1), p3_480b4("x2", 0, 0, 0xF000),
+                                    p3_480b4("x3", 1, 1, d5=0xF456)],
+         allow_calls=(0x33950,), calls=(DISPATCH, TIMER, ARM170, PLACE), eax_mask=0,
+         mutants=("@mutant", "@signed", "@char")),
+    Spec("fighter_48170", 0x48170, [p3_48170("g0", 0, 0, 0x10), p3_48170("g1", 1, 1, 0x20), p3_48170("g2", 0, 0, 0xCF),
+                                    p3_48170("g3", 0, 1, 0x30)],
+         allow_calls=(0x33950,), calls=(CLEAR34, HIT_A, PRED, RESET, ANCHORX), eax_mask=0,
+         mutants=("@mutant", "@order", "@reset")),
+    Spec("fighter_4811c", 0x4811C, [
+        p3_4811c("i0", 0, 0, 0x0F), p3_4811c("i1", 1, 1, 0x0F), p3_4811c("i2", 0, 2, 0x0F), p3_4811c("i3", 1, 2, 0x0E),
+        p3_4811c("i4", 0, 3, 0x0F), p3_4811c("i5", 0, 2, 0x7FFF), p3_4811c("i6", 1, 2, 0x0F),
+    ], calls=(ANIM54,), eax_mask=0, mutants=("@mutant", "@signed", "@order")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

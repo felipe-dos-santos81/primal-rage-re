@@ -27,7 +27,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 
 | batch | unported | ported |
 |---|---|---|
-| callbacks | 1 | 70 |
+| callbacks | 0 | 71 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
 | animation-targets | 54 | 58 |
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 4 |
 | leaf | 231 |
-| stubs | 54 |
+| stubs | 53 |
 
 ## Rows
 
@@ -366,7 +366,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 48254 | 144 | anim-target | dword ED872 after the opcode word D500 at ED870 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 482E4 | 144 | anim-target | dword ED8A8 after the opcode word D500 at ED8A6 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 48374 | 660 | anim-target | dword ED8EA after the opcode word D500 at ED8E8 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
-| 48608 | 688 | move-callback | dword A4234 (char 2, reaction 0x27) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 48608 | 688 | move-callback | dword A4234 (char 2, reaction 0x27) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 488B8 | 172 | move-callback | dword A41D0 (char 2, reaction 0x22) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 48957 |
 | 48964 | 60 | move-callback | dword A41F8 (char 2, reaction 0x24) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 489A0 | 60 | move-callback | dword A420C (char 2, reaction 0x25) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
@@ -752,10 +752,10 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 47984 | immediate at 47C63 | - | yes | stubs (indirect at 18384 in 18350) | - |
 | 47CB0 | immediate at 4802C | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 47D24 | immediate at 48037 | - | yes | stubs (indirect at 2B56D in 2B2A0) | 47DF7 |
-| 48054 | immediate at 48655 | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 480B4 | immediate at 4865E | - | no | stubs (indirect at 62006 in 62003) | - |
-| 4811C | immediate at 48231 | - | no | stubs (indirect at 379E8 in 379C4) | - |
-| 48170 | called at 480F6 | entry | no | stubs (indirect at 18384 in 18350) | - |
+| 48054 | immediate at 48655 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 480B4 | immediate at 4865E | - | yes | stubs (indirect at 62006 in 62003) | - |
+| 4811C | immediate at 48231 | - | yes | stubs (indirect at 379E8 in 379C4) | - |
+| 48170 | called at 480F6 | entry | yes | stubs (indirect at 18384 in 18350) | - |
 | 48668 | immediate at 488E1 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 486F8 | immediate at 488F7 | - | yes | stubs (indirect at 62006 in 62003) | - |
 | 5D004 | slot 8130C of table 81110, read by `call` at 521AE | - | no | leaf | - |
