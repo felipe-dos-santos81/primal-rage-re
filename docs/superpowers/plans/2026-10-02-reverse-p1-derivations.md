@@ -191,7 +191,8 @@ Correction (Task 3 review, 2026-10-02): the first spec had no AL-set case above 
 **`0x402FC`** (char 0's `0xBDB00` entry), 1 block: `sub esp,0x18; mov eax,esp; call 0x339ac` (EDX = rec), `mov
 word [ctx[0]*2+0x1080a0],0`, `0x3C4CC(rec, 0xE7C40, 3.0)`, the slot 9/7/2, +0x57 = 0, +0x0C = `0x401D4` (`0x4033A`),
 +0x18 = +0x1C = 0, `mov al,1`. +0x14 and +0x42 untouched. Cases: rec+0x51 = 0 and 1 (the word index), the 3C4CC stub's
-EAX 0 and `0x1234` (AL overwritten); +0x42 seeded with the sentinel `0x42` in both (a port that writes it mismatches).
+EAX 0 and `0x1234` (AL overwritten); +0x42 seeded with the sentinel `0x42` in both and asserted kept (Task 3 review: a
+port that writes it mismatches).
 
 ## §P1.7 The slot +0x0C callbacks: dispatch and shape
 
@@ -209,15 +210,17 @@ finisher by setting the slot's +0x53 = 3, +0x52 = 9, `DS_000F0AFE` = 4 and `DS_0
 case 2 `0x2BC30(ctx[5], [0x9B054 + 4*char], 1.0)`; case 3 ctx[5]'s word +0x2C -= 0x40 and, when the zero-extended word
 is at most 0x400 (`cmp eax,0x400; jg` on `and eax,0xffff`), = 0x400 and +0x57 += 1; then `[ctx[3]+4]`'s word +0x2C =
 ctx[5]'s; case 5 the end stores; 0, 4 and above 5 nothing. EDX (rec) is not read (`mov edx,ebx` overwrites it).
-Cases: every +0x57 from 0 to 6, word +0x2C `0x500` (stays above), `0x420` (clamps), `0x10` (wraps to `0xFFD0`, above:
-a signed 16-bit compare would clamp).
+Cases (10): every +0x57 from 0 to 6, word +0x2C `0x500` (stays above), `0x420` (clamps), `0x10` (wraps to `0xFFD0`, above:
+a signed 16-bit compare would clamp), and (Task 4 review, `c9`) `0x440`, which the -0x40 takes to exactly `0x400`: the
+boundary of `jg` against `jge`.
 
 **`0x1579C`** (11 blocks; table `0x1578C`: `15900 157C3 1580F 15835`): cases 1 and 2 as `0x15584`'s; case 3: word
 +0x2C -= 0x40; above 0x400 copy it to `[ctx[3]+4]`+0x2C (`0x158ED`, E2's untrusted entry) and return; else ctx[5]+0x29
 bit 6 cleared and +0x34 = 0x80 when ctx[5]'s word +0x28 has bit 14, else set and 0xFF80; `0x2BC30(ctx[5], 0xE8C82,
 3.0)` with **EBX = `0x1187FAE0` loaded before it** (`0x1589E`), which `0x2BC30` preserves, so `0x2A17C(ctx[5], 0x18,
 0x1187FAE0)`; word +0x2C = 0x1000, +0x28 |= 0x80, voice `0xEA`, the end stores. Case 0 and above 3 nothing. The run
-confirms the EBX reading: the original records `0x2A17C(0x10A400, 0x18, 0x1187FAE0)`.
+confirms the EBX reading: the original records `0x2A17C(0x10A400, 0x18, 0x1187FAE0)`. Cases (8): the seven of the first
+spec plus (Task 4 review, `c7`) the word `0x440` -> exactly `0x400`: the full path, where a `jge` would copy and return.
 
 **`0x23D38`** (24 blocks; table `0x23D20`: `23D58 23DB4 23DE4 23E14 23EBD 23EA5`; EAX = slot, EDX = rec, EBX not
 read): case 0 by the record's word +0x28 bit 14: set, `F0AF0 + 0x3000 >= rec+0x18` returns, else rec+0x18 =
@@ -226,7 +229,12 @@ pairing); +0x57 += 1. Case 1: `|F0AF0 - rec+0x18| > 0x2000` returns (`neg` then 
 passes), else `0x2BC30(rec, 0xE1BAE, 3.0)`, +0x57 += 1. Case 2: the same against `[slot+8]`'s +0x18 within 0x1000,
 `0xE1BBC`. Case 3: within 0xB00 the record at slot+8 takes rec's x and y, words +0x34 = 0, +0x2C = 0xE00, +0x29 bit 6
 from rec's +0x28 bit 14; `0x2BC30(rec, 0xE1BD2, 3.0)`, `0x2BC30([slot+8], 0xE1C0C, 3.0)`, +0x57 += 1, voice `0xD6`.
-Case 5 the end stores; 4 and above 5 nothing. Cases: 14, every block.
+Case 5 the end stores; 4 and above 5 nothing. Cases (21): the first 14 reach every block; Task 4's review added seven
+boundary and sign cases, `gE`..`gK`: case 0 with x at the bound (`0x13000` with bit 14 set returns, `0xD000` with it
+clear returns; `gE`, `gF`), x `0xFFFFF000` (negative: bit set returns, bit clear moves to `0x13000`; `gG`, `gH`), case 1
+with `F0AF0 - x = 0x80000000` (`neg` leaves it negative, `jg` passes: it moves; `gI`), word +0x28 = `0xBFFF` with x
+`0xC000` (bit 14 clear: moves; `gJ`) and case 1 with a difference of `0x80000001` (`neg` makes it `0x7FFFFFFF`:
+returns; `gK`).
 
 ## §P1.9 `0x23B68`, `0x401D4`, `0x38034`
 
@@ -236,8 +244,10 @@ into rec+0x2C and `[slot+4]`+0x2C; with rec+0x1C zero: word rec+0x38 = 0 (before
 0xE87AC, 1.0)`, `0x2AE14(0xA83B0, rec+0x18, rec+0x30 >> 16, rec+0x1C, 0)` (the fields re-read after `0x2BC30`;
 `mov ecx,eax` overwrites the rec pointer, unused after), voice `0x5C` with DL = 1, then +0x53 = 3, `DS_001078FC` =
 DL (= 1: `0x2C3FC` preserves EDX), +0x52 = 9, `DS_000F0AFE` = AH = 4. The SPAWN stub's EAX is not read (`mov eax,0x5c`
-at `0x23BD1`). Cases: +0x57 = 0, 2, 1 with rec+0x1C set, 1 with it clear, and divisors 3 and -3 (`0x400000/3 =
-0x155555`, word `0x5555`; truncation toward zero, C's).
+at `0x23BD1`). Cases (6): +0x57 = 0, 2, 1 with rec+0x1C set, 1 with it clear, and divisors 3 and -3 (`0x400000/3 =
+0x155555`, word `0x5555`; truncation toward zero, C's); Task 5's review added `q5`, the dword rec+0x30 = `0xFFFD8000`:
+the raw divides by `sar ebx,0x10` = -3 and stores the word `0xAAAB` (a signed `/0x10000` would divide by -2 and store
+`0x0000`). The row has 5/5 blocks.
 
 **`0x401D4`** (14 blocks; EAX = slot, EDX = rec, EBX = side): `0x33950(side)`; +0x57 0: word rec+0x36 negative
 (`cmp word [ecx+0x36],0; jge`) sets it 0xFFFF, +0x44 = 0x3C, +0x57 = 1. 1: `mov eax,[char*2 + 0xbd882]; sar eax,16`
@@ -247,7 +257,8 @@ at `0x23BD1`). Cases: +0x57 = 0, 2, 1 with rec+0x1C set, 1 with it clear, and di
 `DS_00105B3A` below 2 (`cmp eax,2; jge` on the zero-extended byte) `0x2AE14(0xBB0EC, rec+0x18, rec+0x30 >> 16, 0, 0)`,
 voice `0x6C`, +0x53 = 3, +0x52 = 9, `DS_001078FC` = 1. 2 and above 3 nothing. Thresholds in the image (`0xBD882 +
 2c`, >> 16): 0x1600, 0x1400, 0x1400, 0x1600, 0x1800, 0x1800, 0x1180 for c = 0..6. Cases: 9; the EDX record is
-`E3_OUT`, not the side's record `E3_REC` (ctx[4]), so a port that confuses them differs.
+`E3_OUT`, not the side's record `E3_REC` (ctx[4]), so a port that confuses them differs. Case 1's store rec+0x36 = 0
+(`0x4027E`) was unobservable while `t4` seeded the word with 0 (Task 5 review): `t4` now seeds `0x3636`.
 
 **`0x38034`** (3 blocks; EAX = side): slot = `0x1077B0 + side*0x94` (`shl 3; add; shl 2; add` = `*0x25`, then `*4`);
 `0x2BC30(rec, [0xBDD00 + 4*char], 1.0)`; flag = rec's word +0x28 bit 14 ? 0x4000 : 0; `0x2AE14([0xBDD1C + 4*char], 0,
@@ -263,19 +274,29 @@ allow-listed". Allow-listed means both sides run the writer; the port has no C f
 `0x57FFB` alone is 556 instructions, 178 blocks and 18 indirect table calls (scratch survey).
 
 **Named gaps and limits of P1:**
-- **`0x23B68`'s `idiv` by zero.** The raw faults (#DE) when rec+0x30 >> 16 is 0; the port leaves the quotient 0
-  (`/* PORT: */` in the C; C division by zero is undefined, and on this arm64 host it does not trap). No case divides by
-  zero: the emulator would stop with a fault and the row would be `NOT_EXERCISABLE`.
+- **`0x23B68`'s `idiv` by zero.** The raw faults (#DE) when `rec+0x30 >> 16` is 0 (`0x23B82..0x23B8D`: `mov
+  ebx,[edx+0x30]; sar ebx,0x10; idiv ebx`, no handler on this path). The divisor is the signed word rec+0x32, the high
+  half of the dword +0x30, which `actor_spawn` writes from its a3 (`actors.c`: `DSW(rec + 0x32) = (u16)a3`, a
+  depth-like value). Checked: every store to a `+0x32` word in `port/src` (a grep) is `actor_spawn`'s a3, a copy of
+  another record's +0x32 (`fight.c`; `fighter.c` `0x37FA1`), a +-0x20 step (`0x454E0`, `0x45522`) or a plain value
+  (`0x45584`, `0x45F1A`); none stores a constant 0, so no raw path is known to reach it. This is a search of the
+  ported stores only, not a proof over the unported ones. The port skips both +0x2C stores on a zero divisor and
+  continues with the spawn and the end stores (`/* PORT: */` in the C; Task 6 changed it from storing 0, to match
+  `0x407EC`, whose port, on the same `idiv` of `+0x32`, leaves +0x2C unchanged, §52-A). No case divides by zero: the
+  emulator would stop with a fault and the row would be `NOT_EXERCISABLE`; the rows were re-verified after the change
+  (the zero path lies outside every case).
 - **`0x23BF8`'s main-path EAX.** The raw returns `0x2BC30`'s EAX with AL = 1; the port returns 1. The only caller reads
   EAX != 0, which AL = 1 settles; with mask `0xFFFFFFFF` (needed for the early path) the cases keep the `0x2BC30` stub's
-  EAX at 0, a harness value: the upper 24 bits on that path are not claimed.
+  EAX at 0, a harness value: the upper 24 bits on that path are not claimed (the raw's EAX there is whatever `0x2BC30`
+  leaves with AL forced to 1; `0x379C4` tests it against 0 only, so in play only AL = 1 matters).
 - **Callee rows.** After P1 the counter reads `1/17 rows with callees closed (9 have none)`: the stubbed `0x2BC30`,
   `0x2C3FC`, `0x2AE14`, `0x188AC` and `0x2A17C` have no row; every P1 row's claim holds "given each stub behaves as
   declared" (E3 §E3.4) until C1 discharges them.
 - **No capture reaches the batch.** Every driver's pinned `fn_resolve` miss set (`test_platform.c`) holds only
   `0x5D812` and `0x29D60`: no scripted run arms a finisher, so registering the twelve changes no oracle line (the
   prototype's and the replay's `make verify` agree). The finisher path in play (O4) is therefore claimed by
-  differential verification only; its screen stays unseen until a capture (U9's pokes, say) reaches it.
+  differential verification only; its screen stays unseen until a capture (U9's pokes, say) reaches it. The final
+  `make verify` agrees: no oracle line moved.
 - **Who advances +0x57 from 0 in `0x15584`/`0x1579C`.** Their case 0 does nothing; the animation streams the entries
   start presumably carry the step (an animation-opcode target), not examined here.
 - E3's limits stand: seeds are hand pokes; the memory at a call is mem[] only; the callee column is one level deep.
@@ -290,16 +311,19 @@ The replay's per-task gates (`make diff-verify entry-triage` with scratch image 
 | `834b703` | `13/13 functions VERIFIED; 17/17 mutants detected; 1 named gaps; 0/5 rows with callees closed (8 have none)` | `targets 323 unported, 172 ported; supplement 131 (31 unported, 0 stale)`; voice `46 / 69 / 19` |
 | Task 2 | `17/17 ...; 21/21 ...; 0/9 ... (8 have none)` | `319 / 176`; finishers `2 / 7`; stubs 79; voice `43 / 72 / 19` |
 | Task 3 | `20/20 ...; 26/26 ...; 1/11 ... (9 have none)` (25/25 in the replay; +1 the fix-round mutant `fighter_23bf8@ne`) | `317 / 178`; finishers `0 / 9`; stubs 77; voice `43 / 72 / 19` |
-| Task 4 | `23/23 ...; 28/28 ...; 1/14 ... (9 have none)` | unchanged (the three are outside E2's lists) |
-| Task 5 | `26/26 ...; 31/31 ...; 1/17 ... (9 have none)` | `317 / 178`; supplement `28` unported; voice `40 / 75 / 19` |
+| Task 4 | `23/23 ...; 34/34 ...; 1/14 ... (9 have none)` (28/28 in the replay; +1 `@ne`, +5 the review's boundary mutants) | unchanged (the three are outside E2's lists) |
+| Task 5 | `26/26 ...; 39/39 ...; 1/17 ... (9 have none)` (31/31 in the replay; +1, +5, and +2 from Task 5's review: `@no36`, `@noneg`) | `317 / 178`; supplement `28` unported; voice `40 / 75 / 19` |
 
-The Task 4 and Task 5 rows are the replay's; after Task 3's fix round (one more mutant, `fighter_23bf8@ne`) each
-mutant count on `reverse-p1` is one higher (`29/29`, `32/32`), the other figures unchanged.
+The Task 4 and Task 5 rows quoted by the plan are the replay's; on `reverse-p1` the review rounds added eight mutants
+and cases (Task 3: `fighter_23bf8@ne`; Task 4's fold-in: `fighter_23d38@ge/@unsigned/@bit`, `fighter_15584@ge`,
+`fighter_1579c@ge`; Task 5's fix: `fighter_401d4@no36`, `fighter_23d38@noneg`), the other figures unchanged. The final
+counter is the Task 5 row: `26/26 functions VERIFIED; 39/39 mutants detected; 1 named gaps; 1/17 rows with callees
+closed (9 have none)`.
 
 The batch's rows (the self-check table): `fighter_1567c` 2 cases 1/1, `fighter_15908` 2 1/1, `fighter_23ec0` 2 1/1,
 `fighter_45d14` 2 1/1, `fighter_actor_bit15_clear` 4 1/1, `fighter_23bf8` 11 8/8, `fighter_402fc` 2 1/1,
-`fighter_15584` 9 9/9, `fighter_1579c` 7 11/11, `fighter_23d38` 14 24/24, `fighter_38034` 2 3/3, `fighter_23b68` 5
-5/5, `fighter_401d4` 9 14/14: all `VERIFIED`, no unhit block. `fighter_402fc` is the one closed row (`339AC allow
+`fighter_15584` 10 9/9, `fighter_1579c` 8 11/11, `fighter_23d38` 21 24/24, `fighter_38034` 2 3/3, `fighter_23b68` 6
+5/5, `fighter_401d4` 9 14/14 (cases, then blocks hit/total): all `VERIFIED`, no unhit block. `fighter_402fc` is the one closed row (`339AC allow
 VERIFIED, 3C4CC stub VERIFIED`).
 
 **What catches each mutant** (`test_each_p1_mutant_is_caught_by_what_it_breaks`): `fighter_1567c@mutant` (0x15908's
@@ -312,6 +336,14 @@ character) `call #1`; `fighter_1579c@mutant` (handle 0x1F874610) `call #1`; `fig
 started first) `call #0`, `call #1`; `fighter_38034@mutant` (no bit 10) `call #1`; `fighter_23b68@mutant` (x and y
 swapped) `call #1`; `fighter_401d4@mutant` (`0x38034` after the first voice) `call #0`, `call #1`. Every row with a
 callee has a mutant only the call list or the memory at a call catches.
+
+The review rounds' mutants, each pinned to the cases that alone catch it (`test_each_p1_mutant_is_caught_by_what_it_breaks`):
+`fighter_23d38@ge` (case 0 `jg`/`jl` for `jge`/`jle`) byte, cases `gE gF`; `fighter_23d38@unsigned` (cases 0 and 1
+compared unsigned) byte and `call #0`, cases `gG gH gI`; `fighter_23d38@bit` (case 0 tests the whole word +0x28, not
+bit 14) byte, case `gJ`; `fighter_23d38@noneg` (case 1 without the `neg` at `0x23DC1`) byte and `call #0`, case `gK`;
+`fighter_15584@ge` (case 3 clamps below 0x400 only) byte, case `c9`; `fighter_1579c@ge` (case 3 copies at 0x400 too)
+`call #0 #1 #2` and byte, case `c7`; `fighter_401d4@no36` (case 1 without the store rec+0x36 = 0 at `0x4027E`) byte,
+case `t4` (sentinel `0x3636`); `fighter_23bf8@ne` `call #1`, case `a6`; `fighter_23bf8@zero` `eax`, cases `e1 e2`.
 
 **The seams are needed** (replay): without `PR_SEAM_RET(0x1A570u, side)` the row reads `a0: call #0: original
 0x1A570(0x0), port 0x2BC30(0x10A300, 0xE19E6, 0x40400000)`; without `0x2A17C`'s, `c4: call #1: original
@@ -335,3 +367,5 @@ Other facts run: the image sha1 and size; `unicorn` 2.1.4 / `capstone` 5.0.7; th
 69 `0x1A570` call sites; the three jump tables' entries; the 27 after-table ends and their references; the 128
 animation dwords and the 8 outside E2; `callee_clobbers` for `0x1A570 0x2A17C 0x188AC 0x38034` (`() ("edx",) ("edx",)
 ()`); the image's stage, threshold, stream and voice tables quoted above; every unit-test mutation of the plan.
+
+**Closure (Task 6, on `7bd60ac`, the Task 5 head `f60281d` plus the one-line `0x23B68` change and the `0x379C4` comment):** `make verify` EXIT=0 (14 min), the 45 oracle lines equal to `oracle-lines-base.txt`, the `make audio-render` WAV equal to `before-t2.wav`, the gameplay ratchets as at the baseline (gp-idle-loss N 2064 / 8320, gp-u5-charsel 516 / 1513, gp-u6-moves-b 1005 / 2262 / 2949, gp-twop 612 / 1506 / 1506, gp-keys-fight 11), `diff-verify: 26/26 functions VERIFIED; 39/39 mutants detected; 1 named gaps; 1/17 rows with callees closed (9 have none)` (the plan expected `31/31`: the review rounds added eight mutants, see the table above), `entry-triage: targets 317 unported, 178 ported; supplement 131 (28 unported, 0 stale)`, voice `40 / 75 / 19`, `771 1203 64` / `731 731 100`, `pr_seam = ` assigned only in `port/tests/diff_runner.c` and `port/tests/test_platform.c`.
