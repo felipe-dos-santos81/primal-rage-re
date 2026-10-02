@@ -405,11 +405,17 @@ def p1_23bf8(cid, stage, al, x, side, extra=None):
 # 0x2A17C (actor_pset_palette): EAX = rec, EDX = word, EBX = handle; a plain `ret`; it saves ECX and ESI and
 # clobbers EDX (E.callee_clobbers; record §P1.4).
 PALETTE = E.Call(0x2A17C, ("eax", "edx", "ebx"), clobbers=("edx",))
-# 14 pokes (diffrun takes 16 per case): the two slots' characters (5 and 3), +0x42 and +4 (E3_OUT, the
-# record case 3 copies to), sentinels on everything the callbacks store; +0x52..+0x57 as one poke.
+# 14 pokes (diffrun takes 16 per case): the two slots' characters (5 and 3), +0x42 and +4, sentinels on
+# everything the callbacks store; +0x52..+0x57 as one poke. Slot 1's +0x42 is 0x20, bit 2 clear, so case 1's
+# `or byte [ctx[3]+0x42],4` (0x155CD, 0x157E5) shows (final review I1; @no42). The two slots' +4 records
+# differ (final review I2): slot 0's is P1_OWN4, slot 1's E3_OUT, so case 3's copy to the other slot's +4
+# record (0x15647, 0x158ED) cannot pass as a copy to its own (@own4); both words +0x2C carry a sentinel, in
+# one poke (E3_OUT + 0x2C .. P1_OWN4 + 0x2D).
+P1_OWN4 = E3_OUT + 0x20
 P1_SEED_CB = {DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03", DS_SLOTS + 0x42: b"\x42",
-              DS_SLOTS + 0x94 + 0x42: b"\x24", DS_SLOTS + 4: le32(E3_OUT), DS_SLOTS + 0x94 + 4: le32(E3_OUT),
-              E3_OUT + 0x2C: b"\xcc\xcc", 0xF0AFE: b"\xfe", 0x1078FC: b"\xfc",
+              DS_SLOTS + 0x94 + 0x42: b"\x20", DS_SLOTS + 4: le32(P1_OWN4), DS_SLOTS + 0x94 + 4: le32(E3_OUT),
+              E3_OUT + 0x2C: b"\xcc\xcc" + bytes(P1_OWN4 - E3_OUT - 2) + b"\xdd\xdd",
+              0xF0AFE: b"\xfe", 0x1078FC: b"\xfc",
               E3_REC2 + 0x29: b"\x29", E3_REC2 + 0x34: b"\x34\x34"}
 
 
@@ -424,10 +430,14 @@ def p1_cb(name, entry, rows, calls, stub_eax=None, mutants=("@mutant",)):
 
 
 def p1_23d38(cid, st, x, ox, w28):
+    # the held record's +0x29 has bit 6 clear when the word +0x28's bit 14 is set (case 3 sets it, 0x23E67)
+    # and set when it is clear (case 3 clears it, `and byte [..+0x29],0xbf` 0x23E70): either store shows
+    # (final review I1; @noand, case gA)
+    b29 = b"\x29" if w28 & 0x4000 else b"\x69"
     return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0},
                 {E3_SLOT + 0x57: bytes([st]), E3_SLOT + 8: le32(E3_REC2), 0xF0AF0: le32(0x10000),
                  E3_REC + 0x18: le32(x), E3_REC + 0x1C: le32(0x1C1C), E3_REC + 0x28: le32(w28)[:2],
-                 E3_REC2 + 0x18: le32(ox), E3_REC2 + 0x1C: le32(0x2C2C), E3_REC2 + 0x29: b"\x29",
+                 E3_REC2 + 0x18: le32(ox), E3_REC2 + 0x1C: le32(0x2C2C), E3_REC2 + 0x29: b29,
                  E3_REC2 + 0x2C: b"\xcc\xcc", E3_REC2 + 0x34: b"\x34\x34", E3_SLOT + 0x52: b"\x52\x53",
                  0xF0AFE: b"\xfe", 0x1078FC: b"\xfc"})
 
@@ -475,8 +485,8 @@ P1_SPECS = [
     ], allow_calls=(0x339AC,), calls=(HIT_B,), eax_mask=0xFF),
     # 0x15584 and 0x1579C (record §P1.8): 0x33950 runs on both sides (allow); with side 0 the other slot is
     # slot 1 (character 3), with side 1 slot 0 (character 5); the side's own slot (ctx[2]: slot 0 for side 0,
-    # character 5) has the other character, so the mutant's wrong index shows. ctx[3]+4 points at E3_OUT, the
-    # record whose word +0x2C case 3 copies to. 0x15584's c9 and 0x1579C's c7: the word 0x440 is exactly 0x400
+    # character 5) has the other character, so the mutant's wrong index shows. ctx[3]+4 points at E3_OUT (side
+    # 0; P1_OWN4 for side 1), the record whose word +0x2C case 3 copies to. 0x15584's c9 and 0x1579C's c7: the word 0x440 is exactly 0x400
     # after the subtract, where `jg` (0x15638, 0x15850) does not jump: only they tell `jg` from `jge` (@ge).
     p1_cb("fighter_15584", 0x15584, [(0, 0, 0, {}), (1, 1, 0, {}), (2, 2, 1, {}),
                                       (3, 3, 0, {E3_REC2 + 0x2C: b"\x00\x05"}),
@@ -484,13 +494,13 @@ P1_SPECS = [
                                       (5, 3, 0, {E3_REC2 + 0x2C: b"\x10\x00"}),
                                       (6, 4, 0, {}), (7, 5, 0, {}), (8, 6, 0, {}),
                                       (9, 3, 0, {E3_REC2 + 0x2C: b"\x40\x04"})],
-          calls=(ANIM_BEGIN, VOICE), stub_eax={1: {0x2C3FC: 0}}, mutants=("@mutant", "@ge")),
+          calls=(ANIM_BEGIN, VOICE), stub_eax={1: {0x2C3FC: 0}}, mutants=("@mutant", "@ge", "@no42", "@own4")),
     p1_cb("fighter_1579c", 0x1579C, [(0, 0, 0, {}), (1, 1, 0, {}), (2, 2, 1, {}),
                                       (3, 3, 0, {E3_REC2 + 0x2C: b"\x00\x05"}),
                                       (4, 3, 0, {E3_REC2 + 0x2C: b"\x20\x04", E3_REC2 + 0x28: b"\x00\x40"}),
                                       (5, 3, 1, {E3_REC + 0x28: b"\xff\xbf\x00\x00\x20\x04"}),
                                       (6, 4, 0, {}), (7, 3, 0, {E3_REC2 + 0x2C: b"\x40\x04"})],
-          calls=(ANIM_BEGIN, PALETTE, VOICE), mutants=("@mutant", "@ge")),
+          calls=(ANIM_BEGIN, PALETTE, VOICE), mutants=("@mutant", "@ge", "@no42")),
     # 0x23D38 (record §P1.8): DS_000F0AF0 = 0x10000; the record at slot+8 is E3_REC2. Case 0's boundaries
     # and signedness (Task 4 review): gE/gF put x exactly at the bound (0x13000 with bit 14 of the word +0x28
     # set, 0xD000 with it clear; `jge` 0x23D79 and `jle` 0x23DA5 return, @ge does not); gG/gH a negative x
@@ -508,7 +518,7 @@ P1_SPECS = [
             ("gE", 0, 0x13000, 0, 0x4000), ("gF", 0, 0xD000, 0, 0), ("gG", 0, 0xFFFFF000, 0, 0x4000),
             ("gH", 0, 0xFFFFF000, 0, 0), ("gI", 1, 0x80010000, 0, 0), ("gJ", 0, 0xC000, 0, 0xBFFF),
             ("gK", 1, 0x8000FFFF, 0, 0))
-    ], calls=(ANIM_BEGIN, VOICE), eax_mask=0, mutants=("@mutant", "@ge", "@unsigned", "@bit", "@noneg")),
+    ], calls=(ANIM_BEGIN, VOICE), eax_mask=0, mutants=("@mutant", "@ge", "@unsigned", "@bit", "@noneg", "@noand")),
     # 0x38034 (record §P1.9): side 0 is character 2, side 1 character 4; the spawn stub's EAX is the record
     # whose +0x59 0x38034 sets, a different one per case.
     Spec("fighter_38034", 0x38034, [

@@ -310,7 +310,11 @@ P1_KINDS = {"fighter_1567c@mutant": {"call #0"}, "fighter_15908@mutant": {"call 
             "fighter_1579c@ge": {"call #0", "call #1", "call #2", "byte"},
             "fighter_38034@mutant": {"call #1"}, "fighter_23b68@mutant": {"call #1"},
             "fighter_401d4@mutant": {"call #0", "call #1"},
-            "fighter_401d4@no36": {"byte"}, "fighter_23d38@noneg": {"byte", "call #0"}}
+            "fighter_401d4@no36": {"byte"}, "fighter_23d38@noneg": {"byte", "call #0"},
+            # final review I1/I2: the stores the first seeds hid, and the two slots' +4 records
+            "fighter_15584@no42": {"byte", "call #1 memory"}, "fighter_1579c@no42": {"byte", "call #1 memory"},
+            "fighter_15584@own4": {"byte"},
+            "fighter_23d38@noand": {"byte", "call #0 memory", "call #1 memory", "call #2 memory"}}
 
 
 @needs_unicorn
@@ -486,7 +490,12 @@ class RealFunctionTests(unittest.TestCase):
                           ("fighter_1579c@ge", ["c7"]),
                           # Task 5 review: the store rec+0x36 = 0 (0x4027E) shows on t4 alone (its sentinel
                           # 0x3636); without the `neg` (0x23DC1) only gK's 0x80000001 passes
-                          ("fighter_401d4@no36", ["t4"]), ("fighter_23d38@noneg", ["gK"])):
+                          ("fighter_401d4@no36", ["t4"]), ("fighter_23d38@noneg", ["gK"]),
+                          # final review I1: slot 1's +0x42 bit 2 clear (case 1, c1 alone), the held
+                          # record's +0x29 bit 6 set where case 3 clears it (gA alone); I2: case 3's copy
+                          # goes to the other slot's +4 record, which differs from the own slot's
+                          ("fighter_15584@no42", ["c1"]), ("fighter_1579c@no42", ["c1"]),
+                          ("fighter_23d38@noand", ["gA"]), ("fighter_15584@own4", ["c3", "c4", "c5", "c9"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
@@ -588,7 +597,7 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (17), the 9 without are counted apart
-        self.assertIn("diff-verify: 26/26 functions VERIFIED; 39/39 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 26/26 functions VERIFIED; 43/43 mutants detected; 1 named gaps; "
                       "1/17 rows with callees closed (9 have none).", out.getvalue())
 
 

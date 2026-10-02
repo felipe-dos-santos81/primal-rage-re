@@ -634,6 +634,59 @@ static void m_401d4_no36(const u32 *r, u32 *eax)       /* case 1 without the sto
     *eax = 0u;
 }
 
+/* Final review I1/I2: the stores that were unobservable under the first seeds (slot 1's +0x42 had bit 2
+ * set, the held record's +0x29 bit 6 clear) and the two slots' +4 records, now distinct. */
+static void m_cb_no42(const u32 *r, void (*fn)(u32, u32, u32))   /* case 1 without `or [ctx[3]+0x42],4` */
+{
+    u32 ctx[6], slot = r[R_EAX];
+    fighter_ctx_same(ctx, r[R_EBX]);
+    if (DSB(slot + 0x57u) == 1u) {
+        actors_anim_begin(ctx[5], DSD(0x000C90F8u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x40000000u);
+        (void)sound_voice(DSW(0x000C75AAu + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+    } else {
+        fn(slot, r[R_EDX], r[R_EBX]);
+    }
+}
+static void m_15584_no42(const u32 *r, u32 *eax)       { m_cb_no42(r, fighter_15584); *eax = 0u; }
+static void m_1579c_no42(const u32 *r, u32 *eax)       { m_cb_no42(r, fighter_1579c); *eax = 0u; }
+static void m_15584_own4(const u32 *r, u32 *eax)       /* case 3 copies to the own slot's +4 record */
+{
+    u32 ctx[6], slot = r[R_EAX];
+    fighter_ctx_same(ctx, r[R_EBX]);
+    if (DSB(slot + 0x57u) == 3u) {
+        DSW(ctx[5] + 0x2Cu) = (u16)(DSW(ctx[5] + 0x2Cu) - 0x40u);
+        if (DSW(ctx[5] + 0x2Cu) <= 0x400u) {
+            DSW(ctx[5] + 0x2Cu) = 0x400u;
+            DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+        }
+        DSW(DSD(ctx[2] + 4u) + 0x2Cu) = DSW(ctx[5] + 0x2Cu);
+    } else {
+        fighter_15584(slot, r[R_EDX], r[R_EBX]);
+    }
+    *eax = 0u;
+}
+static void m_23d38_noand(const u32 *r, u32 *eax)      /* case 3 without the `and [..+0x29],0xbf` (0x23E70) */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], o = DSD(slot + 8u);
+    if (DSB(slot + 0x57u) == 3u && (DSW(rec + 0x28u) & 0x4000u) == 0u) {
+        u32 dd = DSD(rec + 0x18u) - DSD(o + 0x18u);
+        if ((s32)dd < 0) dd = 0u - dd;
+        if ((s32)dd > 0xB00) { *eax = 0u; return; }
+        DSD(o + 0x18u) = DSD(rec + 0x18u);
+        DSD(o + 0x1Cu) = DSD(rec + 0x1Cu);
+        DSW(o + 0x34u) = 0u;
+        DSW(o + 0x2Cu) = 0x0E00u;
+        actors_anim_begin(rec, 0x000E1BD2u, 0x40400000u);
+        actors_anim_begin(o, 0x000E1C0Cu, 0x40400000u);
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+        (void)sound_voice(0xD6u);
+    } else {
+        fighter_23d38(slot, rec, r[R_EBX]);
+    }
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -701,6 +754,10 @@ static const binding_t k_bindings[] = {
     { "fighter_23d38@bit",        m_23d38_bit,    0x00000000u },
     { "fighter_15584@ge",         m_15584_ge,     0x00000000u },
     { "fighter_1579c@ge",         m_1579c_ge,     0x00000000u },
+    { "fighter_15584@no42",       m_15584_no42,   0x00000000u },
+    { "fighter_1579c@no42",       m_1579c_no42,   0x00000000u },
+    { "fighter_15584@own4",       m_15584_own4,   0x00000000u },
+    { "fighter_23d38@noand",      m_23d38_noand,  0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
