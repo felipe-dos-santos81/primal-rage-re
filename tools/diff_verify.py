@@ -1068,19 +1068,25 @@ P3_SLOT_CBS = {E3_SLOT + 0x0C: b"".join(le32(v * 0x01010101) for v in (0x0C, 0x1
 
 # 0x47874 (record §P3.5): the EDX record on 0xED974 at 2.0, the EAX slot 9/7/0 with four callbacks (+0x0C 0x47830,
 # +0x18 0x477A8, +0x1C 0x477E8, +0x14 0x47798), then 0x3C190(rec+0x51, 0x80) and the voice 0x4B. EBX is not read:
-# every case has EBX = 1 - rec+0x51.
+# every case has EBX = 1 - rec+0x51 (v2's 0x80 is read zero-extended, `xor eax,eax; mov al,[esi+0x51]`).
 def p3_47874(cid, r51, voice_al=1):
-    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1 - r51}, {**P3_SLOT_CBS, E3_REC + 0x51: bytes([r51])},
-                {0x2C3FC: voice_al})
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": (1 - r51) & 0xFFFFFFFF},
+                {**P3_SLOT_CBS, E3_REC + 0x51: bytes([r51])}, {0x2C3FC: voice_al})
 
 
 # 0x47830 (the +0x0C callback; 0x3531C case 7): the command word DS_001088E0[rec+0x51] (the whole byte index); with
 # both bits 0x100 and 0x800 set (`xor dl,dl; and dh,9; cmp edx,0x900`) nothing, else the record on 0xED9A4 at 2.0
-# and the slot's +0x0C/+0x14 = 0. EBX is 1 - rec+0x51, the other word a sentinel that takes the other branch.
+# and the slot's +0x0C/+0x14 = 0. EBX is 1 - rec+0x51, the other word a sentinel that takes the other branch. z5's
+# rec+0x51 = 0x80 (read zero-extended: its word is at +0x100, the two near ones the other word).
 def p3_47830(cid, r51, own, other):
     words = [own, other] if r51 == 0 else [other, own]
-    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1 - r51},
-                {**P3_SLOT_CBS, E3_REC + 0x51: bytes([r51]), 0x1088E0: le32(words[0])[:2] + le32(words[1])[:2]})
+    seed = le32(words[0])[:2] + le32(words[1])[:2]
+    if r51 > 1:
+        seed, far = le32(other)[:2] * 2, {0x1088E0 + 2 * r51: le32(own)[:2]}
+    else:
+        far = {}
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": (1 - r51) & 0xFFFFFFFF},
+                {**P3_SLOT_CBS, E3_REC + 0x51: bytes([r51]), 0x1088E0: seed, **far})
 
 
 # 0x477E8 (the +0x1C callback; 0x193B0, fn(side)): 0x3B714(the other slot, the own slot), the own record on 0xED9A4
@@ -1092,12 +1098,12 @@ def p3_477e8(cid, side):
 
 
 P3_SPECS += [
-    Spec("fighter_47874", 0x47874, [p3_47874("v0", 0), p3_47874("v1", 1, 0)],
-         calls=(HIT_B, SPEED, VOICE), eax_mask=0, mutants=("@mutant", "@side")),
+    Spec("fighter_47874", 0x47874, [p3_47874("v0", 0), p3_47874("v1", 1, 0), p3_47874("v2", 0x80)],
+         calls=(HIT_B, SPEED, VOICE), eax_mask=0, mutants=("@mutant", "@side", "@sext", "@early")),
     Spec("fighter_47830", 0x47830, [
         p3_47830("z0", 0, 0x0900, 0), p3_47830("z1", 0, 0x0100, 0x0900), p3_47830("z2", 1, 0x0800, 0x0900),
-        p3_47830("z3", 1, 0xF6FF, 0x0900), p3_47830("z4", 0, 0xFFFF, 0),
-    ], calls=(ANIM_BEGIN,), eax_mask=0, mutants=("@mutant", "@side", "@order")),
+        p3_47830("z3", 1, 0xF6FF, 0x0900), p3_47830("z4", 0, 0xFFFF, 0), p3_47830("z5", 0x80, 0x0900, 0x0100),
+    ], calls=(ANIM_BEGIN,), eax_mask=0, mutants=("@mutant", "@side", "@order", "@sext")),
     # 0x47798 (the +0x14 callback; 0x1952F/0x3514C/0x350B8, fn(slot) with EAX = EDX = the slot, the whole EAX
     # tested): the voice 0x4C, then EAX = 1 (`mov eax,1` over the voice's EAX: w1's stub returns 0).
     Spec("fighter_47798", 0x47798, [

@@ -1592,21 +1592,33 @@ static void b_47830(const u32 *r, u32 *eax)            { fighter_47830(r[R_EAX],
 static void b_47798(const u32 *r, u32 *eax)            { *eax = fighter_47798(r[R_EAX]); }
 static void b_477a8(const u32 *r, u32 *eax)            { *eax = fighter_477a8(r[R_EAX]); }
 static void b_477e8(const u32 *r, u32 *eax)            { fighter_477e8(r[R_EAX]); *eax = 0u; }
-static void m_47874_at(const u32 *r, int late, int by_ebx)
+#define M47874_LATE 1
+#define M47874_EBX  2
+#define M47874_SEXT 4
+#define M47874_EARLY 8
+static void m_47874_at(const u32 *r, int how)
 {
     u32 slot = r[R_EAX], rec = r[R_EDX];
+    u32 side = (how & M47874_SEXT) ? (u32)(s32)(s8)DSB(rec + 0x51u) : (u32)DSB(rec + 0x51u);
+    if (how & M47874_EARLY) {
+        DSB(slot + 0x53u) = 7u;
+        DSB(slot + 0x54u) = 0u;
+        DSB(slot + 0x52u) = 9u;
+    }
     hit_anim_start_b(rec, 0x000ED974u, 0x40000000u);
-    DSB(slot + 0x53u) = 7u;
-    DSB(slot + 0x54u) = 0u;
-    DSB(slot + 0x52u) = 9u;
-    if (!late) {
+    if (!(how & M47874_EARLY)) {
+        DSB(slot + 0x53u) = 7u;
+        DSB(slot + 0x54u) = 0u;
+        DSB(slot + 0x52u) = 9u;
+    }
+    if (!(how & M47874_LATE)) {
         DSD(slot + 0x0Cu) = 0x00047830u;
         DSD(slot + 0x18u) = 0x000477A8u;
         DSD(slot + 0x1Cu) = 0x000477E8u;
         DSD(slot + 0x14u) = 0x00047798u;
     }
-    fighter_3c190(by_ebx ? r[R_EBX] : (u32)DSB(rec + 0x51u), 0x80u);
-    if (late) {
+    fighter_3c190((how & M47874_EBX) ? r[R_EBX] : side, 0x80u);
+    if (how & M47874_LATE) {
         DSD(slot + 0x0Cu) = 0x00047830u;
         DSD(slot + 0x18u) = 0x000477A8u;
         DSD(slot + 0x1Cu) = 0x000477E8u;
@@ -1616,18 +1628,29 @@ static void m_47874_at(const u32 *r, int late, int by_ebx)
 }
 static void m_47874(const u32 *r, u32 *eax)            /* the four callbacks stored after 0x3C190 */
 {
-    m_47874_at(r, 1, 0);
+    m_47874_at(r, M47874_LATE);
     *eax = 0u;
 }
 static void m_47874_side(const u32 *r, u32 *eax)       /* 0x3C190 on EBX, not rec+0x51 */
 {
-    m_47874_at(r, 0, 1);
+    m_47874_at(r, M47874_EBX);
     *eax = 0u;
 }
-static void m_47830_at(const u32 *r, int any, int by_ebx, int early)
+static void m_47874_sext(const u32 *r, u32 *eax)       /* rec+0x51 read sign-extended (v2's 0x80) */
+{
+    m_47874_at(r, M47874_SEXT);
+    *eax = 0u;
+}
+static void m_47874_early(const u32 *r, u32 *eax)      /* +0x52/+0x53/+0x54 stored before the 0x3C4CC call */
+{
+    m_47874_at(r, M47874_EARLY);
+    *eax = 0u;
+}
+static void m_47830_at(const u32 *r, int any, int by_ebx, int early, int sext)
 {
     u32 slot = r[R_EAX], rec = r[R_EDX];
-    u32 w = DSW(0x001088E0u + (by_ebx ? r[R_EBX] : (u32)DSB(rec + 0x51u)) * 2u) & 0x0900u;
+    u32 idx = sext ? (u32)(s32)(s8)DSB(rec + 0x51u) : (u32)DSB(rec + 0x51u);
+    u32 w = DSW(0x001088E0u + (by_ebx ? r[R_EBX] : idx) * 2u) & 0x0900u;
     if (any ? w != 0u : w == 0x0900u) return;
     if (early) {
         DSD(slot + 0x0Cu) = 0u;
@@ -1639,17 +1662,22 @@ static void m_47830_at(const u32 *r, int any, int by_ebx, int early)
 }
 static void m_47830(const u32 *r, u32 *eax)            /* either bit skips */
 {
-    m_47830_at(r, 1, 0, 0);
+    m_47830_at(r, 1, 0, 0, 0);
     *eax = 0u;
 }
 static void m_47830_side(const u32 *r, u32 *eax)       /* the command word by EBX, not rec+0x51 */
 {
-    m_47830_at(r, 0, 1, 0);
+    m_47830_at(r, 0, 1, 0, 0);
     *eax = 0u;
 }
 static void m_47830_order(const u32 *r, u32 *eax)      /* +0x0C/+0x14 zeroed before the 0x2BC30 call */
 {
-    m_47830_at(r, 0, 0, 1);
+    m_47830_at(r, 0, 0, 1, 0);
+    *eax = 0u;
+}
+static void m_47830_sext(const u32 *r, u32 *eax)       /* the command word by the sign-extended rec+0x51 */
+{
+    m_47830_at(r, 0, 0, 0, 1);
     *eax = 0u;
 }
 static void m_47798(const u32 *r, u32 *eax)            /* the voice 0x4B */
@@ -2045,9 +2073,12 @@ static const binding_t k_bindings[] = {
     { "fighter_477e8",            b_477e8,        0x00000000u },
     { "fighter_47874@mutant",     m_47874,        0x00000000u },
     { "fighter_47874@side",       m_47874_side,   0x00000000u },
+    { "fighter_47874@sext",       m_47874_sext,   0x00000000u },
+    { "fighter_47874@early",      m_47874_early,  0x00000000u },
     { "fighter_47830@mutant",     m_47830,        0x00000000u },
     { "fighter_47830@side",       m_47830_side,   0x00000000u },
     { "fighter_47830@order",      m_47830_order,  0x00000000u },
+    { "fighter_47830@sext",       m_47830_sext,   0x00000000u },
     { "fighter_47798@mutant",     m_47798,        0xFFFFFFFFu },
     { "fighter_47798@eax",        m_47798_eax,    0xFFFFFFFFu },
     { "fighter_477a8@mutant",     m_477a8,        0xFFFFFFFFu },

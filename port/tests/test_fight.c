@@ -45890,22 +45890,42 @@ static void p3_check_47874(void)
     CHECK_EQ_INT((int)sound_voice_log_at(0), 0x4B);
     sound_voice_log_reset();
 
-    /* 0x47830: side 0's command word 0x0900 keeps the slot; 0x0100 starts the
-     * record on 0xED9A4 at 2.0 and clears +0x0C/+0x14. */
+    /* the same on side 1's record (rec+0x51 = 1): 0x3C190 reads the byte, so
+     * the side 1 record's word +0x34 is -0x80 and side 0's is untouched. */
+    z_fseed();
+    DSB(Z_R1 + 0x51u) = 1u;
+    p3_set_bit15(1u, 0);
+    DSW(0x000ED974u) = 0x12B1u;
+    DSW(Z_R0 + 0x34u) = 0x3434u;
+    DSW(Z_R1 + 0x34u) = 0x3535u;
+    f(Z_S1, Z_R1, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R1 + 8u), 0x000ED974);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0x00047830);
+    CHECK_EQ_INT((int)DSW(Z_R1 + 0x34u), 0xFF80);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0x3434);
+    sound_voice_log_reset();
+
+    /* 0x47830: the command word DS_001088E0[rec+0x51]: 0x0900 keeps the slot,
+     * 0x0100 starts the record on 0xED9A4 at 2.0 and clears +0x0C/+0x14; the
+     * last two run on side 1's record (rec+0x51 = 1) with the other word the
+     * opposite, so an index of 0 reads the wrong one. */
     f = (p2_cb_fn)(void *)fn_resolve(0x47830u);
     if (f == NULL) return;
-    for (k = 0; k < 2u; k++) {
+    for (k = 0; k < 4u; k++) {
+        u32 rc = k < 2u ? Z_R0 : Z_R1, sl = k < 2u ? Z_S0 : Z_S1;
+        int keep = k == 0u || k == 2u;
         z_fseed();
-        DSB(Z_R0 + 0x51u) = 0u;
-        DSW(DS_001088E0) = k == 0u ? 0x0900u : 0x0100u;
+        DSB(rc + 0x51u) = k < 2u ? 0u : 1u;
+        DSW(DS_001088E0) = k == 0u ? 0x0900u : k == 1u ? 0x0100u : k == 2u ? 0x0100u : 0x0900u;
+        DSW(DS_001088E0 + 2u) = k == 2u ? 0x0900u : k == 3u ? 0x0100u : 0x0000u;
         DSW(0x000ED9A4u) = 0x12B1u;
-        DSD(Z_R0 + 8u) = 0x08080808u;
-        DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
-        DSD(Z_S0 + 0x14u) = 0x14141414u;
-        f(Z_S0, Z_R0, 0u);
-        CHECK_EQ_INT((int)DSD(Z_R0 + 8u), k == 0u ? 0x08080808 : 0x000ED9A4);
-        CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), k == 0u ? 0x0C0C0C0C : 0);
-        CHECK_EQ_INT((int)DSD(Z_S0 + 0x14u), k == 0u ? 0x14141414 : 0);
+        DSD(rc + 8u) = 0x08080808u;
+        DSD(sl + 0x0Cu) = 0x0C0C0C0Cu;
+        DSD(sl + 0x14u) = 0x14141414u;
+        f(sl, rc, 0u);
+        CHECK_EQ_INT((int)DSD(rc + 8u), keep ? 0x08080808 : 0x000ED9A4);
+        CHECK_EQ_INT((int)DSD(sl + 0x0Cu), keep ? 0x0C0C0C0C : 0);
+        CHECK_EQ_INT((int)DSD(sl + 0x14u), keep ? 0x14141414 : 0);
     }
 
     /* 0x47798, as the +0x14 callers call it (the slot): the voice 0x4C, then
@@ -45918,17 +45938,46 @@ static void p3_check_47874(void)
     CHECK_EQ_INT((int)sound_voice_log_at(0), 0x4C);
     sound_voice_log_reset();
 
-    /* 0x477A8: 0x18C14(side, flags 0 = 1, 1/8 = 0, the rest 2, 0, 0) on the
-     * same seeded state. */
+    /* 0x477A8: 0x18C14(side, flags 0 = 1, 1/8 = 0, the rest 2, 0, 0): per
+     * side, DS_00100AF8[side] <= 0 returns 1 (flag 0) and else the other
+     * slot's +0x42 bit 3 returns 1 (flag 8); the other side's dword is the
+     * opposite, so a wrong side or an unset flag 8 or 0 gives another result. */
     h = (p2_hook_fn)(void *)fn_resolve(0x477A8u);
     if (h == NULL) return;
-    z_fseed();
-    r = h(1u);
-    z_fseed();
-    for (k = 0; k < 16u; k++) fl[k] = 2u;
-    fl[0] = 1u;
-    fl[1] = fl[8] = 0u;
-    CHECK_EQ_INT((int)r, fighter_18c14(1u, fl, 0u, 0u));
+    for (k = 0; k < 8u; k++) {
+        u32 sd = k & 1u, le = (k >> 1) & 1u, bit = (k >> 2) & 1u;
+        z_fseed();
+        DSD(DS_00100AF8 + sd * 4u) = le ? 0u : 1u;
+        DSD(DS_00100AF8 + (sd ^ 1u) * 4u) = le ? 1u : 0u;
+        DSW(DS_001077B0 + (sd ^ 1u) * 0x94u + 0x74u) = 0u;
+        DSW(DS_001077B0 + (sd ^ 1u) * 0x94u + 0x76u) = 0u;
+        DSB(DS_001077B0 + (sd ^ 1u) * 0x94u + 0x42u) = bit ? 8u : 0u;
+        r = h(sd);
+        CHECK_EQ_INT((int)r, (le || bit) ? 1 : 0);
+        for (u32 i = 0; i < 16u; i++) fl[i] = 2u;
+        fl[0] = 1u;
+        fl[1] = fl[8] = 0u;
+        z_fseed();
+        DSD(DS_00100AF8 + sd * 4u) = le ? 0u : 1u;
+        DSD(DS_00100AF8 + (sd ^ 1u) * 4u) = le ? 1u : 0u;
+        DSW(DS_001077B0 + (sd ^ 1u) * 0x94u + 0x74u) = 0u;
+        DSW(DS_001077B0 + (sd ^ 1u) * 0x94u + 0x76u) = 0u;
+        DSB(DS_001077B0 + (sd ^ 1u) * 0x94u + 0x42u) = bit ? 8u : 0u;
+        CHECK_EQ_INT((int)r, fighter_18c14(sd, fl, 0u, 0u));
+    }
+    /* flag 1 = 0: the other slot's word +0x74 non-zero or +0x76 above 1
+     * returns 1 where flag 0 and flag 8 would pass */
+    for (k = 0; k < 4u; k++) {
+        u32 sd = k & 1u, wo = (k >> 1) ? 0x76u : 0x74u;
+        z_fseed();
+        DSD(DS_00100AF8 + sd * 4u) = 1u;
+        DSW(DS_001077B0 + (sd ^ 1u) * 0x94u + 0x74u) = 0u;
+        DSW(DS_001077B0 + (sd ^ 1u) * 0x94u + 0x76u) = 0u;
+        DSB(DS_001077B0 + (sd ^ 1u) * 0x94u + 0x42u) = 0u;
+        CHECK_EQ_INT((int)h(sd), 0);
+        DSW(DS_001077B0 + (sd ^ 1u) * 0x94u + wo) = 2u;
+        CHECK_EQ_INT((int)h(sd), 1);
+    }
 
     /* 0x477E8 on side 0: after 0x3B714(slot 1, slot 0), the own record on
      * 0xED9A4 at 2.0 and slot 0's +0x0C/+0x14 = 0. */
@@ -45939,7 +45988,15 @@ static void p3_check_47874(void)
     DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
     DSD(Z_S0 + 0x14u) = 0x14141414u;
     DSD(Z_S1 + 0x0Cu) = 0x8C8C8C8Cu;
+    DSB(Z_S0 + 0x5Fu) = 0x3Cu;
+    DSB(Z_S1 + 0x5Fu) = 0x3Eu;
+    DSB(Z_S0 + 0x65u) = 0x77u;
+    DSB(Z_S1 + 0x65u) = 0x78u;
     g(0u);
+    /* 0x3B714(slot 1, slot 0) copies the own slot's +0x5F to the other
+     * slot's +0x65 (0x3B7E2); the swapped call would copy slot 1's */
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x65u), 0x3C);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x65u), 0x77);
     CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000ED9A4);
     CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40000000);
     CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0);

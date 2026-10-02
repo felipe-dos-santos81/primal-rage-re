@@ -373,8 +373,9 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
             "fighter_47688@mutant": {"call #2"}, "fighter_47688@pivot": {"call #2"},
             "fighter_47688@zext": {"call #3"}, "fighter_47688@eax": {"call #1", "call #2", "call #3"},
             "fighter_47874@mutant": {"call #1 memory"}, "fighter_47874@side": {"call #1"},
+            "fighter_47874@sext": {"call #1"}, "fighter_47874@early": {"call #0 memory"},
             "fighter_47830@mutant": {"byte", "call #0"}, "fighter_47830@side": {"byte", "call #0"},
-            "fighter_47830@order": {"call #0 memory"},
+            "fighter_47830@order": {"call #0 memory"}, "fighter_47830@sext": {"byte", "call #0"},
             "fighter_47798@mutant": {"call #0"}, "fighter_47798@eax": {"eax"},
             "fighter_477a8@mutant": {"call #0"},
             "fighter_477e8@mutant": {"call #0"}, "fighter_477e8@order": {"call #1 memory"},
@@ -631,7 +632,9 @@ class RealFunctionTests(unittest.TestCase):
                           # rec+0x51 (every case: the other word takes the other branch), and 0x47798's 1 replaces
                           # the voice's EAX (w1's stub returns 0)
                           ("fighter_47830@mutant", ["z1", "z2"]),
-                          ("fighter_47830@side", ["z0", "z1", "z2", "z3", "z4"]),
+                          ("fighter_47830@side", ["z0", "z1", "z2", "z3", "z4", "z5"]),
+                          # rec+0x51 = 0x80 (v2/z5) is read zero-extended: each alone tells a `movsx`
+                          ("fighter_47874@sext", ["v2"]), ("fighter_47830@sext", ["z5"]),
                           ("fighter_47798@eax", ["w1"]),
                           # 0x47CB0's bounds (k1's 3 alone tells `jg`, k2's 1 alone `jge`), 0x47D24's distance
                           # signed (b2 alone), 0x47E9C's count signed (eD alone)
@@ -745,7 +748,7 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (54), the 14 without are counted apart
-        self.assertIn("diff-verify: 72/72 functions VERIFIED; 133/133 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 72/72 functions VERIFIED; 136/136 mutants detected; 1 named gaps; "
                       "11/58 rows with callees closed (14 have none).", out.getvalue())
 
 

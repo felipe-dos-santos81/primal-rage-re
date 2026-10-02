@@ -220,6 +220,19 @@ branch: `@side` is caught by all five; `@mutant` (either bit skips) by `z1`/`z2`
 0xED9A4, 2.0)` with EBX = ctx[2] loaded before the call; ctx[2]'s +0x0C = +0x14 = 0. Cases `y0`/`y1`, both slots'
 +0x0C..+0x1F seeded differently; `@mutant` (the slots swapped) `call #0`, `@order` `call #1 memory`.
 
+**Stubbed callees (§E3.10 item 3).** `0x3C190` (`ret`; EAX = side, EDX = the speed: `neg edx` at `0x3C1B4` on it, `mov ebx,eax`
+before `0x1A570`): clobbers **EDX** only. It saves EBX and ECX (`push ebx; push ecx` `0x3C190`/`0x3C191`, popped
+`0x3C1C2`/`0x3C1C3`) and writes EDX (`neg edx`); `0x1A570` clobbers nothing but EAX. `0x3B714` (`ret`; EAX = the other slot
+`mov esi,eax`, EDX = the own slot `mov ebp,edx` `0x3B71E`): clobbers **EDX** only. It saves EBX, ECX, ESI, EDI, EBP
+(`0x3B714`..`0x3B718`) and writes EDX throughout (`0x3B72D`, `0x3B73A`, `0x3B7DE`, `0x3B88B`), and its callees clobber
+nothing beyond EAX and EDX. Both equal `diff_emu.callee_clobbers` over the image, with and without the hand-resolved
+jumps, and `test_each_stub_declares_the_registers_its_callee_clobbers` re-derives them.
+
+**Fix round 1.** The 0xFF-range `rec+0x51` is read zero-extended by `0x47874` (`xor eax,eax; mov al,[esi+0x51]`) and by
+`0x47830` (`xor edx,edx; mov dl,[eax+0x51]`): cases `v2` and `z5` (rec+0x51 = 0x80; `z5`'s own word at `0x1088E0 + 0x100`,
+the near words `0x0100`) with `@sext` mutants `call #1` and `call #0`, each caught by its new case alone; `@early` for
+`0x47874` (+0x52/0x53/0x54 before `0x3C4CC`) `call #0 memory`. `z5` also joins `@side`'s catchers (EBX = -0x7F).
+
 ## §P3.6 Task 5: `0x47FCC` and the three callbacks it stores (x87)
 
 **`0x47FCC`** (r 0x23): `mov edx,ebx` (EBX alone), ctx; the side's dword `0x108370` = 0 (`0x47FDD`, before the call);
