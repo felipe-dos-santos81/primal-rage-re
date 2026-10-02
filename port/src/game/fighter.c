@@ -14955,3 +14955,53 @@ void fighter_150ac(u32 rec)
     DSW(DSD(slot + 8u) + 0x2Eu) = (u16)(DSW(DSD(slot + 8u) + 0x2Eu) + 4u);   /* 0x15144/0x15147 */
     DSB(DSD(slot + 8u) + 0x4Eu) = 1u;                       /* 0x1514C/0x1514F */
 }
+
+#define P2_ANIM_15478 0x000D2DD2u  /* 0x1547D */
+#define P2_C8CD4      0x000C8CD4u  /* 0x3DCF1: the dword holding 0x3DCEC's stream */
+#define P2_ANIM_21114_C1 0x000E481Cu  /* 0x21142: character 1 */
+#define P2_ANIM_21114_C6 0x000E1702u  /* 0x21149: character 6 */
+
+/* 0x15478 — record §P2.5. Character 3's reaction-0x2D callback (the dword at
+ * 0xA47AC): the record on 0xD2DD2 at 4.0 (0x3C4CC), the slot 9/8/0. PORT:
+ * the raw returns AL = 1 (0x15494); unread (§P2.2). */
+void fighter_15478(u32 slot, u32 rec, u32 side)
+{
+    (void)side;
+    hit_anim_start_b(rec, P2_ANIM_15478, 0x40800000u);      /* 0x1547D..0x15487 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x1548C */
+    DSB(slot + 0x53u) = 8u;                                 /* 0x15490 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x15496 */
+}
+
+/* 0x3DCEC — record §P2.5. Character 5's reaction-0x2D callback (the dword at
+ * 0xA51AC): the record on the stream the dword 0xC8CD4 holds (0xD40F2 in the
+ * image), read at the call, at 4.0; the slot 9/8/1. PORT: AL unread. */
+void fighter_3dcec(u32 slot, u32 rec, u32 side)
+{
+    (void)side;
+    hit_anim_start_b(rec, DSD(P2_C8CD4), 0x40800000u);      /* 0x3DCF1..0x3DCFC 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x3DD01 */
+    DSB(slot + 0x53u) = 8u;                                 /* 0x3DD05 */
+    DSB(slot + 0x54u) = 1u;                                 /* 0x3DD0B */
+}
+
+/* 0x21114 — record §P2.5. Characters 1's and 6's reaction-0x2D callback (the
+ * dwords at 0xA3DAC and 0xA56AC). p = DS_001077A8[rec+0x51] (the byte, not
+ * masked); none: AL = 0, nothing written. By p's +0x7A: 1 starts the record
+ * on 0xE481C, 6 on 0xE1702, at 5.0 (0x3C4CC); any other character starts
+ * nothing. Then the slot 9/8/1. PORT: AL unread (§P2.2). */
+void fighter_21114(u32 slot, u32 rec, u32 side)
+{
+    u32 p = DSD(DS_001077A8 + (u32)DSB(rec + 0x51u) * 4u);  /* 0x2111A..0x21122 */
+    u8 c;
+    (void)side;
+    if (p == 0u) return;                                    /* 0x21128/0x2112A */
+    c = DSB(p + 0x7Au);                                     /* 0x21131 */
+    if (c == 1u)                                            /* 0x21134..0x21139 */
+        hit_anim_start_b(rec, P2_ANIM_21114_C1, 0x40A00000u);   /* 0x21142, 0x2114E/0x21153 0x3C4CC */
+    else if (c == 6u)                                       /* 0x2113B/0x2113E */
+        hit_anim_start_b(rec, P2_ANIM_21114_C6, 0x40A00000u);   /* 0x21149, 0x2114E/0x21153 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x21158 */
+    DSB(slot + 0x53u) = 8u;                                 /* 0x2115C */
+    DSB(slot + 0x54u) = 1u;                                 /* 0x21162 */
+}

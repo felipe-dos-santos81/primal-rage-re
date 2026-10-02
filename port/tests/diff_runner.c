@@ -996,6 +996,49 @@ static void m_150ac(const u32 *r, u32 *eax)            /* the z offset 0x1200, n
     *eax = 0u;
 }
 
+/* §P2.5: the unconditional move callbacks (0x34E2C at 0x35045), mask 0. */
+static void b_15478(const u32 *r, u32 *eax)            { fighter_15478(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_3dcec(const u32 *r, u32 *eax)            { fighter_3dcec(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_21114(const u32 *r, u32 *eax)            { fighter_21114(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void m_15478(const u32 *r, u32 *eax)            /* the slot stores before the 0x3C4CC call */
+{
+    u32 slot = r[R_EAX];
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x53u) = 8u;
+    DSB(slot + 0x54u) = 0u;
+    hit_anim_start_b(r[R_EDX], 0x000D2DD2u, 0x40800000u);
+    *eax = 0u;
+}
+static void m_3dcec(const u32 *r, u32 *eax)            /* the image's stream 0xD40F2 hard-coded */
+{
+    u32 slot = r[R_EAX];
+    hit_anim_start_b(r[R_EDX], 0x000D40F2u, 0x40800000u);
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x53u) = 8u;
+    DSB(slot + 0x54u) = 1u;
+    *eax = 0u;
+}
+static void m_21114_at(const u32 *r, u32 *eax, u32 idx, u32 s1, u32 s6)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u32 p = DSD(DS_001077A8 + idx * 4u);
+    *eax = 0u;
+    if (p == 0u) return;
+    if (DSB(p + 0x7Au) == 1u) hit_anim_start_b(rec, s1, 0x40A00000u);
+    else if (DSB(p + 0x7Au) == 6u) hit_anim_start_b(rec, s6, 0x40A00000u);
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x53u) = 8u;
+    DSB(slot + 0x54u) = 1u;
+}
+static void m_21114(const u32 *r, u32 *eax)            /* the two characters' streams swapped */
+{
+    m_21114_at(r, eax, (u32)DSB(r[R_EDX] + 0x51u), 0x000E1702u, 0x000E481Cu);
+}
+static void m_21114_side(const u32 *r, u32 *eax)       /* the other side's pointer (rec+0x51 ^ 1) */
+{
+    m_21114_at(r, eax, (u32)DSB(r[R_EDX] + 0x51u) ^ 1u, 0x000E481Cu, 0x000E1702u);
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -1102,6 +1145,13 @@ static const binding_t k_bindings[] = {
     { "fighter_14fa8@mutant",     m_14fa8,        0x00000000u },
     { "fighter_14ff8@mutant",     m_14ff8,        0x00000000u },
     { "fighter_150ac@mutant",     m_150ac,        0x00000000u },
+    { "fighter_15478",            b_15478,        0x00000000u },
+    { "fighter_3dcec",            b_3dcec,        0x00000000u },
+    { "fighter_21114",            b_21114,        0x00000000u },
+    { "fighter_15478@mutant",     m_15478,        0x00000000u },
+    { "fighter_3dcec@mutant",     m_3dcec,        0x00000000u },
+    { "fighter_21114@mutant",     m_21114,        0x00000000u },
+    { "fighter_21114@side",       m_21114_side,   0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

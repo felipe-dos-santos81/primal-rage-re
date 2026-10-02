@@ -45182,3 +45182,78 @@ static void p2_check_reactions_3(void)
 }
 
 int test_p2_reactions_3(void)   { return u6b_run(p2_check_reactions_3); }
+
+/* §P2.5: the unconditional move callbacks through their registrations (slot
+ * 0, its record, side 0; the stream heads patched to a plain frame id). */
+static void p2_check_unconditional(void)
+{
+    p2_cb_fn f;
+    CHECK(fn_resolve(0x15478u) == (void (*)(void))fighter_15478, "0x15478 is registered");
+    CHECK(fn_resolve(0x3DCECu) == (void (*)(void))fighter_3dcec, "0x3DCEC is registered");
+    CHECK(fn_resolve(0x21114u) == (void (*)(void))fighter_21114, "0x21114 is registered");
+    CHECK_EQ_INT((int)DSD(0x000A47ACu), 0x00015478);
+    CHECK_EQ_INT((int)DSD(0x000A51ACu), 0x0003DCEC);
+    CHECK_EQ_INT((int)DSD(0x000A3DACu), 0x00021114);
+    CHECK_EQ_INT((int)DSD(0x000A56ACu), 0x00021114);
+    CHECK_EQ_INT((int)DSD(0x000C8CD4u), 0x000D40F2);
+
+    /* 0x15478: the record on 0xD2DD2 at 4.0, the slot 9/8/0. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x15478u);
+    if (f == NULL) return;
+    z_fseed();
+    DSW(0x000D2DD2u) = 0x12B1u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000D2DD2);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40800000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 8);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+
+    /* 0x3DCEC: the stream the dword 0xC8CD4 holds, at 4.0, the slot 9/8/1. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x3DCECu);
+    if (f == NULL) return;
+    z_fseed();
+    DSW(0x000D40F2u) = 0x12B1u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000D40F2);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40800000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 8);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 1);
+
+    /* 0x21114: rec+0x51 = 0 selects DS_001077A8[0] = slot 0 (character 1
+     * here): the record on 0xE481C at 5.0; with slot 1 (character 2) no
+     * stream, but the slot stores; with a zero pointer nothing. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x21114u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_S0 + 0x7Au) = 1u;
+    DSB(Z_S1 + 0x7Au) = 2u;
+    DSW(0x000E481Cu) = 0x12B1u;
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000E481C);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40A00000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 8);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 1);
+    z_fseed();
+    DSB(Z_S1 + 0x7Au) = 2u;
+    DSB(Z_R0 + 0x51u) = 1u;
+    DSD(Z_R0 + 8u) = 0x08080808u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x08080808);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 1);
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSD(DS_001077A8) = 0u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0x44);
+}
+
+int test_p2_unconditional(void) { return u6b_run(p2_check_unconditional); }

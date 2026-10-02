@@ -325,7 +325,8 @@ P1_KINDS = {"fighter_1567c@mutant": {"call #0"}, "fighter_15908@mutant": {"call 
 # of its mutants.
 P2_MASKS = {"fighter_237d0": 0, "fighter_2381c": 0, "fighter_3dadc": 0, "fighter_3db34": 0, "fighter_3d10c": 0,
             "fighter_22a00": 0, "fighter_229fc": 0, "fighter_14ef8": 0, "fighter_14f50": 0,
-            "fighter_14fa8": 0, "fighter_14ff8": 0, "fighter_150ac": 0}
+            "fighter_14fa8": 0, "fighter_14ff8": 0, "fighter_150ac": 0,
+            "fighter_15478": 0, "fighter_3dcec": 0, "fighter_21114": 0}
 P2_KINDS = {"fighter_237d0@mutant": {"call #0"}, "fighter_237d0@guard": {"byte", "call #0", "call #1"},
             "fighter_2381c@mutant": {"call #1"}, "fighter_3dadc@mutant": {"call #1 memory"},
             "fighter_3db34@mutant": {"call #0"}, "fighter_3d10c@mutant": {"call #0", "call #1"},
@@ -333,7 +334,9 @@ P2_KINDS = {"fighter_237d0@mutant": {"call #0"}, "fighter_237d0@guard": {"byte",
             "fighter_22a00@mutant": {"call #0 memory"}, "fighter_229fc@mutant": {"byte"},
             "fighter_14ef8@mutant": {"call #0"}, "fighter_14f50@mutant": {"call #0"},
             "fighter_14fa8@mutant": {"call #0"}, "fighter_14ff8@mutant": {"call #1"},
-            "fighter_150ac@mutant": {"call #1"}}
+            "fighter_150ac@mutant": {"call #1"},
+            "fighter_15478@mutant": {"call #0 memory"}, "fighter_3dcec@mutant": {"call #0"},
+            "fighter_21114@mutant": {"call #0"}, "fighter_21114@side": {"byte", "call #0"}}
 
 
 @needs_unicorn
@@ -529,6 +532,11 @@ class RealFunctionTests(unittest.TestCase):
         # the guard's high byte (case g0, slot+8 = 0x01000000) is the only case that tells a dword test from
         # a byte test
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_237d0@guard"].problems}), ["g0"])
+        # 0x3DCEC's stream dword: only u1 pokes it; 0x21114's index by rec+0x51, not its other side: every case
+        # (each has one pointer, on its own side, so the other index reads 0 or a pointer)
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_3dcec@mutant"].problems}), ["u1"])
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_21114@side"].problems}),
+                         ["w0", "w1", "w2", "w3", "w4", "w5", "w6"])
         # 0x3D10C ignores EBX: g3 (rec+0x51 = 1, side 0) alone tells an index by side, and g4 (rec+0x51 = side = 0x80, so the side index agrees there)
         # alone a `movsx` for the `movzx` (plan P2 Task 2 review)
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_3d10c@side"].problems}), ["g3"])
@@ -633,8 +641,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (18), the 12 without are counted apart
-        self.assertIn("diff-verify: 42/42 functions VERIFIED; 62/62 mutants detected; 1 named gaps; "
-                      "2/29 rows with callees closed (13 have none).", out.getvalue())
+        self.assertIn("diff-verify: 45/45 functions VERIFIED; 66/66 mutants detected; 1 named gaps; "
+                      "5/32 rows with callees closed (13 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

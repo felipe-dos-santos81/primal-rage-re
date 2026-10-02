@@ -729,6 +729,13 @@ int actors_init(void)
     fn_register(0x14FA8u, (void (*)(void))anim_code_14FA8);
     fn_register(0x14FF8u, (void (*)(void))anim_code_14FF8);
     fn_register(0x150ACu, (void (*)(void))anim_code_150AC);
+    /* PORT: record 2026-10-02-reverse-p2 §P2.5. The unconditional move
+     * callbacks: character 3's reaction 0x2D (the dword 0xA47AC), character
+     * 5's (0xA51AC) and characters 1's and 6's (0xA3DAC, 0xA56AC); 0x34E2C at
+     * 0x35045, (slot, rec, side). */
+    fn_register(0x15478u, (void (*)(void))fighter_15478);
+    fn_register(0x3DCECu, (void (*)(void))fighter_3dcec);
+    fn_register(0x21114u, (void (*)(void))fighter_21114);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)

@@ -716,6 +716,41 @@ P2_SPECS += [
     Spec("fighter_150ac", 0x150AC, [p2_held(*r) for r in P2_HELD_ROWS], calls=(BIT15, SPAWN), eax_mask=0),
 ]
 
+# The unconditional move callbacks (record §P2.5): no guard, the record started, the slot 9/8/0 or 9/8/1.
+# 0x3DCEC reads its stream from the dword 0xC8CD4 (0xD40F2 in the image): u1 pokes another value there, so a
+# port that hard-codes the image's value differs. 0x21114 indexes DS_001077A8 by rec+0x51 (0x2111C) and
+# switches on that slot's +0x7A: 1 and 6 start a stream (`jbe`/`je`), 0, 2..5 and above 6 do not (`jb`, the
+# `jmp` at 0x21140); w0 a zero pointer (nothing stored); w5 side 2 reads 0x1077B0 (a `xor edx,edx; mov
+# dl,..` index: no `& 1`).
+P2_SEED_UNC = {E3_SLOT + 0x52: b"\x52\x53\x54"}
+
+
+def p2_21114(cid, side, ptrs, char):
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0},
+                {**P2_SEED_UNC, E3_REC + 0x51: bytes([side]), DS_SLOTS - 8: b"".join(le32(v) for v in ptrs),
+                 E3_REC2 + 0x7A: bytes([char])})
+
+
+P2_SPECS += [
+    Spec("fighter_15478", 0x15478, [
+        Case("u0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, P2_SEED_UNC),
+        Case("u1", {"eax": E3_SLOT, "edx": E3_REC2, "ebx": 1}, {E3_SLOT + 0x52: b"\x09\x09\x09"}),
+    ], calls=(HIT_B,), eax_mask=0),
+    Spec("fighter_3dcec", 0x3DCEC, [
+        Case("u0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, P2_SEED_UNC),
+        Case("u1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1}, {**P2_SEED_UNC, 0xC8CD4: le32(0x000E1234)}),
+    ], calls=(HIT_B,), eax_mask=0),
+    Spec("fighter_21114", 0x21114, [
+        p2_21114("w0", 0, (0, E3_REC2, 0, 0), 1),
+        p2_21114("w1", 0, (E3_REC2, 0, 0, 0), 1),
+        p2_21114("w2", 1, (0, E3_REC2, 0, 0), 6),
+        p2_21114("w3", 1, (0, E3_REC2, 0, 0), 0),
+        p2_21114("w4", 0, (E3_REC2, 0, 0, 0), 2),
+        p2_21114("w5", 2, (0, 0, E3_REC2, 0), 7),
+        p2_21114("w6", 0, (E3_REC2, 0, 0, 0), 5),
+    ], calls=(HIT_B,), eax_mask=0, mutants=("@mutant", "@side")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

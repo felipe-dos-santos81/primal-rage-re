@@ -27,7 +27,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 
 | batch | unported | ported |
 |---|---|---|
-| callbacks | 14 | 57 |
+| callbacks | 11 | 60 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
 | animation-targets | 54 | 58 |
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 6 |
 | leaf | 231 |
-| stubs | 65 |
+| stubs | 62 |
 
 ## Rows
 
@@ -80,7 +80,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 15350 | 136 | move-callback | dword A470C (char 3, reaction 0x25) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 153BF |
 | 153D8 | 100 | anim-target | dword D312A after the opcode word D100 at D3128 | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 1543C | 60 | anim-target | dword D308E after the opcode word D100 at D308C | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | 1546E |
-| 15478 | 36 | move-callback | dword A47AC (char 3, reaction 0x2D) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 15478 | 36 | move-callback | dword A47AC (char 3, reaction 0x2D) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 1549C | 76 | anim-target | dword D3232 after the opcode word D100 at D3230 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 154DD |
 | 154E8 | 404 | anim-target | dword D327C after the opcode word D100 at D327A | yes | - | no | animation-targets | stubs (indirect at 6811A in 680F0) | 1550B |
 | 1567C | 88 | finisher | dword BDAF0 | yes | - | yes | finishers | stubs (indirect at 2B56D in 2B2A0) | 156CA |
@@ -112,7 +112,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 21044 | 64 | anim-target | dword E1606 after the opcode word D100 at E1604 | yes | - | no | animation-targets | allow-list | - |
 | 21084 | 64 | anim-target | dword E162C after the opcode word D100 at E162A | yes | - | no | animation-targets | leaf | - |
 | 210C4 | 80 | move-callback | dword A55E4 (char 6, reaction 0x23) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
-| 21114 | 608 | move-callback | dword A3DAC (char 1, reaction 0x2D) dword A56AC (char 6, reaction 0x2D) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 21114 | 608 | move-callback | dword A3DAC (char 1, reaction 0x2D) dword A56AC (char 6, reaction 0x2D) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 21374 | 128 | move-callback | dword A55BC (char 6, reaction 0x21) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 213F4 | 84 | anim-target | dword E16BA after the opcode word D000 at E16B8 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 21448 | 16 | data | memory operand of the instruction at 21482 | yes | - | no | - | - | - |
@@ -267,7 +267,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 3DB34 | 88 | move-callback | dword A510C (char 5, reaction 0x25) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3DB82 |
 | 3DB8C | 176 | anim-target | dword D4AB8 after the opcode word D000 at D4AB6 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3DC3C | 176 | anim-target | dword D4B00 after the opcode word D000 at D4AFE | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 3DCEC | 888 | move-callback | dword A51AC (char 5, reaction 0x2D) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 3DCEC | 888 | move-callback | dword A51AC (char 5, reaction 0x2D) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3E064 | 252 | move-callback | dword A50D0 (char 5, reaction 0x22) | yes | - | yes | callbacks | stubs (indirect at 2B0E9 in 2AE14) | 3E0E3 |
 | 3E160 | 584 | anim-target | dword E86E0 after the opcode word D100 at E86DE | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3E3A8 | 124 | move-callback | dword A3870 (char 0, reaction 0x2A) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |

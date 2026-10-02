@@ -1182,5 +1182,9 @@ void fighter_14f50(u32 slot, u32 rec, u32 side);
 void fighter_14fa8(u32 rec);
 void fighter_14ff8(u32 rec);
 void fighter_150ac(u32 rec);
+/* §P2.5: the unconditional move callbacks (slot, rec, side). */
+void fighter_15478(u32 slot, u32 rec, u32 side);
+void fighter_3dcec(u32 slot, u32 rec, u32 side);
+void fighter_21114(u32 slot, u32 rec, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */
