@@ -215,10 +215,12 @@ mode `0xD` from `f = 0x1830` to its limit `0x4800`** (§W.7). So U10 pokes
 replaces (the death animation, its remains actor, its `rng(0x10)` draw) is not claimed, and
 `gp_win.py check` fails the capture if the game had set the byte itself before the poke.
 **Corrected by the capture (§W.13, raw wins):** the original confirms the mode-`0xD` half (with no
-death-done poke it stayed in mode `0xD` from `f = 0x14C0` to `0x413A`, 190 s), but "a poked KO
-starts no death animation" is too strong: in `gp-u10-ending` the game itself sets
+death-done poke it stayed in mode `0xD` from `f = 0x14C0` to `0x413A`, 190 s, §W.13 run 2), but "a
+poked KO starts no death animation" is too strong: in `gp-u10-ending` the game itself sets
 `DS_00104B0C = 1` at `f = 0x1602`, in mode `0xF`, 190 frames after the 7th poked KO was counted
-(`0x1544`). `0x37FF6` being the only non-zero store, `0x37EA0` ran there. Why the death
+(`0x1544`). `0x37FF6` is the only non-zero store among the seven direct references to
+`0x104B0C` (the capstone sweep above and Ghidra's xrefs agree: reads `0x27562`, `0x2971E`;
+writes `0x2703D`, `0x27200`, `0x27582`, `0x29744`, `0x37FF6`), so `0x37EA0` ran there. Why the death
 animation ends in mode `0xF` and not in mode `0xD` is not established (a named gap, §W.13).
 
 ## §W.6 The ending (raw)
@@ -607,20 +609,34 @@ gp_compare: gp-u9-win: win: first difference f=C5A (3162) in afc: capture 6, por
 
 **The first differences, named (none fixed here):**
 
-- **Frames, 346: a capture-timing artefact, not a port divergence.** Capture 346 equals port
-  221 (`f = 0x48D`, mode 8) on rows 5..199 (0 px) and port 218 (`f = 0x48A`) on rows 0..4
-  (0 px); capture 345 is port 218 on rows 0..4 as well. So between two capture frames
-  (14.3 ms) the guest ran `f = 0x48A..0x48D`, and the capture never shows `0x48B`/`0x48C`.
-  Port frames 219-221 are in the coverage list, and the `S` records of `0x48A..0x48C` are
-  missed (§W.11). This is the iteration right after the round-1 KO poke (`W f=0489`): a
-  DOSBox-X catch-up that spans three game frames, which gp_compare's two-adjacent-frame
-  splice model does not explain. **Named gap:** the frame ratchet stops at the first such
-  catch-up until the comparison models it. Raise N then.
-  The next unexplained, 356 (`f = 0x495`/`0x496`, mode 8), is port 229 on rows 0..43 and
-  port 230 on rows 44..199, except 8 px on row 195 and a 12 × 10 px area at x 270..281,
-  rows 155..164 (one of the arena's small figures). It is not classified further.
-  1374-1376 (port 1089-1091, `f = 0x85F..0x861`, mode 9) sit at the `0x21044` miss
-  (`f = 0x860`): the P track.
+- **Frames, 346: a long frame at the mode-8 entry, then the catch-up: the frame model's
+  limit, not a port divergence** (corrected in fix round 1 from the raw indices). In
+  `window.txt`, capture 345 is raw 2827 and capture 346 is raw 2830. Raws 2828 and 2829 were
+  not stored because they repeat 2827. So the screen held port 218 (`f = 0x48A`, mode 8's first
+  frame, `P f=048A`) for three capture frames, about 43 ms. Then the game caught up through
+  `0x48B..0x48D`. Measured on a fresh replay's dump, row by row against the `.ipx` frames:
+  - capture 344 (raw 2826) is port 217 (`f = 0x489`) on all 200 rows;
+  - capture 345 (raw 2827) is port 218 on all rows;
+  - capture 346 (raw 2830) is port 218 on rows 0..4 and port 221 (`f = 0x48D`) on rows 5..199,
+    0 px each;
+  - capture 347 is port 222.
+
+  Capture 346 is therefore a splice of ports 218 and 221, which the two-adjacent-frame model
+  (clean, a splice of two adjacent frames, one transition row) cannot express. Ports 219/220
+  (`f = 0x48B/0x48C`) appear in no capture frame. **The poke did not cause it.** The `S` records
+  are missed at many mode entries with no poke (`13A`, `268`, `2DD`, `6E2`, `7D3`, `BA1`,
+  `CE5`; and at `48A` and `858`, which follow a `W`). The same three-frame scan-out at a mode-8
+  entry is gp-idle-loss's capture 2064, with no poke (Makefile `GP_IDLE_LOSS_MIN_FIRST`
+  comment, record §U6.21). Why the original's scan-out does this is not isolated.
+  **Named gap:** the frame ratchet stops at the first such frame until the comparison models
+  it. Raise N then.
+  The next unexplained frame, 356 (raw 2840, mode 8), is also the model's limit. Rows 0..43
+  equal port 229 (`f = 0x495`) and rows 44..199 equal port 230 (`f = 0x496`), except 221 px at
+  x 270..293, rows 155..195 (one of the arena's small figures). Those 221 px all equal port 231
+  (`f = 0x497`). Every pixel comes from ports 229/230/231: a partial-draw composite, not a row
+  splice. So N's cap is the comparison model. The first unexplained frame that could be real
+  content is 1374 (port 1089-1091, `f = 0x85F..0x861`, mode 9, with 1375 and 1376), at the
+  `0x21044` miss (`f = 0x860`): the P track.
 - **Trace, 2150 (`f = 0x866`, mode 9): the P track.** The original's `rng` steps from
   `8D1ACCD4` (the value both sides hold from `0x85A`) to `9BE3F91A` at `f = 0x866`; the port's
   does not. That is 6 frames after the port's first miss of `0x21044` (`f = 0x860`), which the
@@ -918,12 +934,20 @@ by the next run.
    `0x1BF1A` passes the zero result of `0x1AD64`). So the 4th opponent's
    resource load found no memory.
 2. **No death-done pokes** (only the `0x0C` KO steps; `u10_probe.txt`). The original stayed in
-   mode `0xD` from `f = 0x14C0` to `0x413A`, 11 386 frames ≈ 190 s, until the time limit
-   (`steps fired 7/13`, `pokes written 4/4, 0 raced`). This confirms §W.5's mode-`0xD` claim in
-   the original: the poke is needed.
-3. **The final's pokes at +120 frames instead of +10** (`u10_probe2.txt`). Five final fights
-   completed (`steps fired 15/20`, `pokes written 12/12, 0 raced`, snapshots to `f = 0x1914`).
-   Then the game crawled: 121 frames in 135 s, with no host sleep (the session clock and the
+   mode `0xD` from `f = 0x14C0` to `0x413A`, 11 386 frames ≈ 190 s, until the time limit.
+   That span was read by the controller from the run's `gp-u10-ending.failed/poll.log`, which
+   no longer exists (the next run replaced it). What survives is
+   `/tmp/gameplay-u9u10/u10_probe.txt`: `snapshots 16671, f 5..413A`, `steps fired 7/13`,
+   `pokes written 4/4, 0 raced`, wall 300.6 s. Seven steps are the four menu steps, the two
+   round KOs and the first final KO. The 8th step, the second final KO, keys on mode `0xC`'s 2nd
+   entry, which never came. That is consistent with the claim. This confirms §W.5's
+   mode-`0xD` claim in the original: the poke is needed.
+3. **The final's pokes at +120 frames instead of +10, under DOSBox-X's default 16 MB** (no
+   `memsize` pair in its argv; `u10_probe2.txt`). Five final fights completed (`steps fired
+   15/20`, `pokes written 12/12, 0 raced`, snapshots to `f = 0x1914`). Then the game crawled:
+   121 frames in 135 s, from the controller's reading of that run's `poll.log` (P/W records
+   `ms=128091 f=0x1882` → `ms=263442 f=0x18FB`: `0x79` = 121 frames in 135.4 s; that
+   `poll.log` was replaced by the next run). There was no host sleep (the session clock and the
    wall agree, wall 300.7 s). That is consistent with memory exhaustion (paging or allocator
    thrash under 16 MB), but it is not proven.
 4. **The plan's scenario with `memsize=64`**, the kept capture: every CHECK `ok` and evidence
@@ -1048,22 +1072,36 @@ gp_compare: gp-u10-ending: win: first difference f=1602 (5634) in b0c: capture 1
 
 **The first differences, named (none fixed here):**
 
-- **Frames, 331: a capture-timing artefact, the same kind as U9's 346 (§W.12), not a port
-  divergence.** Row by row (`frame_00331.raw.gz` against the port's `.ipx`): capture 330
-  (raw 2828) is port 216 (`f = 0x483`, mode 8) on all 200 rows; capture 331 (raw 2831) is port
-  216 on rows 0..1, port 218 (`f = 0x485`) on rows 2..63 and port 219 (`f = 0x486`) on rows
-  64..199; capture 332 is ports 219/220 (a normal splice). Raws 2829-2830 are not stored (they
-  repeat 2828). So the guest held `0x483` for three capture frames and then ran `0x484..0x486` in
-  one capture interval, the iteration right after the round-1 KO poke (`W f=0482`, mode 8 at
-  `P f=0483`); the `S` records of `0x483` and `0x484` are missed (`S` at `0x482`, ms 40477, then
-  `0x485`, ms 40534). gp_compare's two-adjacent-frame splice model does not explain a three-frame
-  capture interval. **Named gap (as §W.12):** the frame ratchet stops at the first such catch-up
-  after a poke until the comparison models it; raise N then. The U9 and U10 frame ratchets are
-  both capped by it, each at its round-1 KO poke.
-  The next unexplained, 341/342 (`f = 0x48E..0x490`, mode 8), are a splice of ports 227/228 and
-  228/229 except rows 155..195 (a figure at the bottom of the arena), not classified further.
-  1274/1275 (port 1025, `f = 0x847..0x849`, rows 101..192) sit at the `0x2381C` miss
-  (`f = 0x848`): the P track.
+- **Frames, 331: a long frame at the mode-8 entry, then the catch-up, as U9's 346 (§W.12):
+  the frame model's limit, not a port divergence** (corrected in fix round 1 from the raw
+  indices). In `window.txt`, capture 330 is raw 2828 and capture 331 is raw 2831. Raws 2829
+  and 2830 were not stored because they repeat 2828. So the screen held port 216 (`f = 0x483`,
+  mode 8's first frame, `P f=0483`) for three capture frames, about 43 ms. Then the game caught
+  up through `0x484..0x486`. Row by row against a fresh replay's `.ipx` frames:
+  - capture 329 (raw 2827) is port 215 (`f = 0x482`);
+  - capture 330 is port 216 on all 200 rows;
+  - capture 331 is port 216 on rows 0..1, port 218 (`f = 0x485`) on rows 2..63 and port 219
+    (`f = 0x486`) on rows 64..199, 0 px each;
+  - capture 332 is ports 219/220 (a two-frame splice).
+
+  Capture 331 is a three-frame composite, which the two-adjacent-frame model cannot express.
+  Port 217 (`f = 0x484`) appears in no capture frame. The poke did not cause it: the `S`
+  records are missed at many mode entries with no poke (`134`, `261`, `274`, `2D6`, `6DB`,
+  `7CC`, `B9A`, `DA9`, `1429`, `246E`, `24FC`, `262D`). The same scan-out is at gp-idle-loss's
+  unpoked mode-8 entry (record §U6.21). **Named gap (as §W.12):** the frame ratchet stops at
+  the first such frame until the comparison models it. Raise N then. The U9 and U10 frame
+  ratchets are both capped by it, each at its mode-8 entry.
+  The next unexplained frames, 341/342 (mode 8), are the model's limit as well; no pixel lacks
+  a port source.
+  - 341 (raw 2841) is port 227 (`f = 0x48E`) on rows 0..146 and port 228 (`f = 0x48F`) on rows
+    147..199, except 221 px at x 270..293, rows 155..195, which all equal port 229
+    (`f = 0x490`).
+  - 342 (raw 2842) is port 228 on rows 0..199, except 942 px at x 0..293, rows 155..199, which
+    all equal port 229.
+
+  Both are partial-draw composites (the arena figure at the bottom), as U9's 356. The first
+  unexplained frames that could be real content are 1274/1275 (port 1025, `f = 0x847..0x849`,
+  rows 101..192), at the `0x2381C` miss (`f = 0x848`): the P track.
 - **Trace, 2121 (`f = 0x849`, mode 6, round 2): the P track (`0x2381C`).** Both sides hold
   `rng = 38ABE3AD` to `0x847` and at `f = 0x848` both draw it to `5A8FCA6A` and set `r1 = 0x25`
   (CHAOS's reaction `0x25`), the reaction whose move callback is `0x2381C`, which the port misses

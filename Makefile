@@ -745,10 +745,16 @@ gp-modes-one: build
 #   "trace: first difference f=866 (2150) in rng: capture 9BE3F91A, port 8D1ACCD4"
 #   "path: 0 not reproduced through 7; ratchet N 0 ok (every item is explained: N = 8 is the exact pin)"
 #   "win: first difference f=C5A (3162) in afc: capture 6, port 3"
-# MIN_FIRST 346: capture 346 is rows 0..4 of port 218 (f=0x48A) over rows 5..199 of port 221
-# (f=0x48D): the guest ran three frames in one capture interval at the round-1 KO poke (W
-# f=0489; the S records of 0x48A..0x48C are missed too), a splice gp_compare's two-frame model
-# does not explain; not a port divergence (named in §W.12). TRACE_MIN_FIRST 2150: the original
+# MIN_FIRST 346: a long frame at the mode-8 entry, then the catch-up (window.txt: capture 345 is
+# raw 2827, 346 is raw 2830; raws 2828-2829 repeat 2827, so the screen held port 218, f=0x48A,
+# the first mode-8 frame, for three capture frames, ~43 ms). Capture 346 is rows 0..4 of port 218
+# and rows 5..199 of port 221 (f=0x48D), 0 px each: a splice of ports 218 and 221, which the
+# two-adjacent-frame model cannot express; ports 219/220 (f=0x48B/0x48C) appear in no capture
+# frame. Not a port divergence, and not the poke's: the same scan-out is at gp-idle-loss's
+# unpoked mode-8 entry (capture 2064, record §U6.21), and S records are missed at many unpoked
+# mode entries here too. The next unexplained, 356, is a partial-draw composite of ports
+# 229/230/231 (no pixel without a port source); the first that can be real content is 1374, at
+# the 0x21044 miss (named in §W.12). TRACE_MIN_FIRST 2150: the original
 # draws rng at f=0x866 in mode 9, 6 frames after the port's miss of the unported animation
 # target 0x21044 (f=0x860; P track). WIN_MIN_FIRST 3162: match 2's stage, 0x25848's rng pick,
 # follows that rng. MILESTONES 8: all reproduced. Raise each when it improves.
@@ -766,11 +772,15 @@ GP_WIN_CAPTURE_FRAMES = 2521
 #   "trace: first difference f=849 (2121) in rng: capture 5A8FCA6A, port A854BFB9"
 #   "path: 0 not reproduced through 29; ratchet N 0 ok (every item is explained: N = 30 is the exact pin)"
 #   "win: first difference f=1602 (5634) in b0c: capture 1, port 0"
-# MIN_FIRST 331: capture 331 is rows 0..1 of port 216 (f=0x483), rows 2..63 of port 218
-# (f=0x485) and rows 64..199 of port 219 (f=0x486): the guest ran 0x484..0x486 in one capture
-# interval right after the round-1 KO poke (W f=0482; the S records of 0x483..0x484 are missed),
-# the catch-up gp_compare's two-frame splice model does not explain, as gp-u9-win's 346; not a
-# port divergence (named in §W.14). TRACE_MIN_FIRST 2121: at f=0x848 (mode 6, round 2) both
+# MIN_FIRST 331: a long frame at the mode-8 entry, then the catch-up, as gp-u9-win's 346
+# (window.txt: capture 330 is raw 2828, 331 is raw 2831; raws 2829-2830 repeat 2828, so the
+# screen held port 216, f=0x483, the first mode-8 frame, for three capture frames, ~43 ms).
+# Capture 331 is rows 0..1 of port 216, rows 2..63 of port 218 (f=0x485) and rows 64..199 of
+# port 219 (f=0x486), 0 px each: a three-frame composite the two-adjacent-frame model cannot
+# express; not a port divergence, and not the poke's (the same at gp-idle-loss's unpoked mode-8
+# entry, record §U6.21). The next unexplained, 341/342, are partial-draw composites of ports
+# 227/228/229 and 228/229 (no pixel without a port source); the first that can be real content
+# is 1274, at the 0x2381C miss (named in §W.14). TRACE_MIN_FIRST 2121: at f=0x848 (mode 6, round 2) both
 # sides draw rng and set CHAOS's reaction 0x25, whose move callback 0x2381C the port misses
 # (f=0x848); the port then draws rng a frame early (f=0x849) and turns to reaction 0x15 (P
 # track). WIN_MIN_FIRST 5634: the original's death-animation end 0x37EA0 sets DS_00104B0C at
