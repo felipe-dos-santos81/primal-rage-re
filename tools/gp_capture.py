@@ -88,6 +88,38 @@ class Injector:
             self.log.write('I ms=%d f=%04X step=%d release=%s lin=%08X\n' % (ms, f, h[4], h[3], h[1]))
 
 
+def apply_poke(mm, base, log, step, f, writes, late, ms, ref, reread):
+    """A ('poke', writes) action in the spin of f (plan U9/U10): each (addr, data)
+    is written at the linear address's place in the memory file (base + addr -
+    DATA_BASE_VA, as read_snap) and logged as a W record. `ref` is the accepted S
+    snapshot; reread() re-reads it after the writes: when f or the tick DS_00101508
+    moved, the iteration may have begun before the bytes landed, so the record
+    says race=1 and gp_session.port_script refuses it. Returns the race flag."""
+    olds = []
+    for addr, data in writes:
+        o = base + addr - gs.DATA_BASE_VA
+        olds.append(bytes(mm[o:o + len(data)]))
+        mm[o:o + len(data)] = data
+    race = int(not consistent(ref, reread()))
+    for (addr, data), was in zip(writes, olds):
+        log.write(gs.format_w(ms, f, step, addr, was, data, late, race) + '\n')
+    return race
+
+
+def expected_pokes(sched):
+    """The poke writes of the steps that fired (Schedule.frame_of)."""
+    return sum(len(sched.steps[i][-1][1]) for i in sched.frame_of
+               if sched.steps[i][-1][0] == 'poke')
+
+
+def poke_check(lines, sched):
+    """The CHECK (label, ok): one W record per poke write of the fired steps, none raced."""
+    ws = [r for r in (gs.parse(l) for l in lines) if r and r['kind'] == 'W']
+    raced = sum(1 for w in ws if w['race'])
+    want = expected_pokes(sched)
+    return ('pokes written %d/%d, %d raced' % (len(ws), want, raced), len(ws) == want and raced == 0)
+
+
 def accept(v, v2, v3):
     """A snapshot v2 is logged only when v was in the spin state and neither an
     iteration nor an ISR tick came between v and v3, the re-read after v2
@@ -182,7 +214,8 @@ def run_checks(name, lines, sched, n_frames, n_want):
             ('snapshots kb == raw (%d differ)' % kbraw, kbraw == 0),
             ('frames written %d/%d' % (n_frames, n_want), n_frames == n_want),
             ('port script v2%s' % why, script_ok),
-            input_check(lines)]
+            input_check(lines),
+            poke_check(lines, sched)]
 
 
 # The key bitmap bit each key-state scan sets (PAD's third column; p1.b0 and
@@ -382,8 +415,12 @@ class Poller(threading.Thread):
                         log.write(gs.format_s(ms, v2, kb, bh, bt, self.fields) + '\n')
                         f = v2['f']
                         self.sched.on_mode(f, v2['mode'])
+                        self.sched.on_snap(f, v2['mode'])
                         inj.release_due(f, ms)
                         for step, act, late in fire(self.sched, f):
+                            if act[0] == 'poke':
+                                apply_poke(mm, base, log, step, f, act[1], late, ms, v2,
+                                           lambda: read_snap(mm, base))
                             for name, scan, word, hold in gs.expand(act):
                                 inj.press(step, f, name, scan, word, hold, late, ms)
                         if not self.end_seen and self.sched.ended(f):

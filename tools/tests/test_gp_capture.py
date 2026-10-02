@@ -417,5 +417,49 @@ class TestFire(unittest.TestCase):
         self.assertEqual(gc.fire(s, 0x109), [(0, ('key', 'enter'), 0)])
 
 
+class TestPoke(unittest.TestCase):
+    """Plan gameplay-u9-u10 (record 2026-10-02-gameplay-u9-u10-derivations.md §W.8)."""
+
+    def _ref(self, m):
+        _put(m, 0x0EF6DC, 2, 0x48F)
+        _put(m, 0x101508, 4, 7)
+        _put(m, 0x10150C, 4, 8)
+        return gc.read_snap(m, BASE)
+
+    def test_apply_poke_writes_at_the_data_base_and_logs(self):
+        m, log = _mem(), io.StringIO()
+        ref = self._ref(m)
+        _put(m, 0x10789E, 1, 0x11)
+        writes = ((0x108106, b'\x80' * 7), (0x10789E, b'\x78'))
+        race = gc.apply_poke(m, BASE, log, 5, 0x48F, writes, 0, 12, ref, lambda: gc.read_snap(m, BASE))
+        self.assertEqual(race, 0)
+        o = BASE + 0x10789E - gs.DATA_BASE_VA
+        self.assertEqual(m[o], 0x78)
+        o = BASE + 0x108106 - gs.DATA_BASE_VA
+        self.assertEqual(bytes(m[o:o + 8]), b'\x80' * 7 + b'\x00')
+        self.assertEqual(log.getvalue().splitlines(), [
+            gs.format_w(12, 0x48F, 5, 0x108106, b'\x00' * 7, b'\x80' * 7, 0, 0),
+            gs.format_w(12, 0x48F, 5, 0x10789E, b'\x11', b'\x78', 0, 0)])
+
+    def test_a_tick_between_the_snapshot_and_the_write_is_a_race(self):
+        m, log = _mem(), io.StringIO()
+        ref = self._ref(m)
+        moved = lambda: dict(gc.read_snap(m, BASE), t508=8)
+        self.assertEqual(gc.apply_poke(m, BASE, log, 5, 0x48F, ((0x10789E, b'\x78'),), 1, 12, ref, moved), 1)
+        self.assertIn('late=1 race=1', log.getvalue())
+
+    def test_the_poke_check(self):
+        s = gs.Schedule((('after', 1, ('poke', ((0x108106, b'\x80' * 7), (0x10789E, b'\x78')))),))
+        s.prev_frame = 0x100
+        s.due(0x100)
+        ok = gs.format_w(0, 0x100, 0, 0x108106, b'\x00' * 7, b'\x80' * 7, 0, 0)
+        ok2 = gs.format_w(0, 0x100, 0, 0x10789E, b'\x00', b'\x78', 0, 0)
+        self.assertEqual(gc.poke_check([ok, ok2], s), ('pokes written 2/2, 0 raced', True))
+        self.assertEqual(gc.poke_check([ok], s), ('pokes written 1/2, 0 raced', False))
+        raced = ok2.replace('race=0', 'race=1')
+        self.assertEqual(gc.poke_check([ok, raced], s), ('pokes written 2/2, 1 raced', False))
+        self.assertEqual(gc.poke_check([], gs.Schedule(())), ('pokes written 0/0, 0 raced', True))
+
+
 if __name__ == '__main__':
     unittest.main()
