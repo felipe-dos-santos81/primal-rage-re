@@ -46,8 +46,8 @@ def deref_arg(a):
     record 2026-10-02-reverse-p2 §P2.7). None for any other argument."""
     if not (a.startswith("[") and a.endswith("]")):
         return None
-    reg, _, off = a[1:-1].partition("+")
-    if reg not in REGS or (off and not off.isdigit()):
+    reg, plus, off = a[1:-1].partition("+")
+    if reg not in REGS or (plus and not (off.isascii() and off.isdigit())):
         return None
     return reg, int(off or "0")
 # The dwords above the return address at entry: the stack arguments a `ret N` function pops
@@ -128,6 +128,9 @@ class Call:
             if len(w) != 3 or not (w[0] is None or (isinstance(w[0], int) and 0 <= w[0] < len(self.args))):
                 raise ValueError("call 0x%X: write %r needs a base that is None or an index of its %d args"
                                  % (self.addr, w, len(self.args)))
+            if w[0] is not None and deref_arg(self.args[w[0]]) is not None:
+                raise ValueError("call 0x%X: write %r is based on %s, a dereferenced value, not a pointer"
+                                 % (self.addr, w, self.args[w[0]]))
 
 
 @dataclass

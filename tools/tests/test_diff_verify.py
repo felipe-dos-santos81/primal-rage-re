@@ -693,14 +693,23 @@ class DerefArgTests(unittest.TestCase):
     2026-10-02-reverse-p2 §P2.7: 0x18C14's flag bytes live on its caller's stack)."""
 
     def test_a_deref_argument_reads_the_dword_the_register_points_at(self):
-        r = E.run_original(DEREF, 0x10000, calls=(E.Call(0x10020, ("edx", "[edx]", "[edx+4]")),))
+        # the stub overwrites the buffer: the arguments are read before it runs
+        stub = E.Call(0x10020, ("edx", "[edx]", "[edx+4]"), writes=((None, 0x80010, b"\0" * 8),))
+        r = E.run_original(DEREF, 0x10000, calls=(stub,))
         self.assertEqual(r.outcome, "ok")
         self.assertEqual(r.calls, [(0x10020, (0x80010, 0x44332211, 0x88776655))])
 
     def test_a_malformed_deref_argument_is_refused(self):
-        for a in ("[esp]", "[edx+x]", "[edx-4]", "edx+4", "[edx"):
+        for a in ("[esp]", "[edx+x]", "[edx-4]", "edx+4", "[edx", "[edx+]", "[edx+\u00b2]"):
             with self.assertRaises(ValueError, msg=a):
                 E.Call(0x10020, ("eax", a))
+
+    def test_a_stub_write_based_on_a_deref_argument_is_refused(self):
+        # a deref argument is the dword at an address, not an address: it cannot be a write's base
+        for base in (1, 2):
+            with self.assertRaises(ValueError, msg=base):
+                E.Call(0x10020, ("edx", "[edx]", "[edx+4]"), writes=((base, 0, b"\0"),))
+        E.Call(0x10020, ("edx", "[edx]"), writes=((0, 0, b"\0"),))
 
 
 class CallParseTests(unittest.TestCase):

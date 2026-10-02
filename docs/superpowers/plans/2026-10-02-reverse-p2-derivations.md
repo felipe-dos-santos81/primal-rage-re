@@ -254,7 +254,7 @@ handlers again and the registration table has a fixed limit"), and each run appe
 for 351 distinct addresses (a scratch count). `fn_register` now skips a pair (address, function) already in the table;
 `fn_resolve` returns the first entry for an address, so a repeated identical pair could never be returned: no
 behaviour changes. One address has two functions (`0x255CC`); a second function for an address is still appended
-(`test_fn_register_repeats` pins both, and without the skip it aborts on its 1 301st registration).
+(`test_fn_register_repeats` pins both halves of the match: the second function for `0xF00F8` must be found by `fn_origin` (an address-only skip drops it), and the same function at a second address must resolve there (a function-only skip drops it); without the skip it aborts on its 1 301st registration).
 
 ## §P2.8 The +0x1C callbacks and 0x22404 (Task 7)
 

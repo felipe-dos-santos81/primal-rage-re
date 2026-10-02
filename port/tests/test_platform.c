@@ -471,8 +471,11 @@ static int seam_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
 
 /* Record 2026-10-02-reverse-p2 §P2.7: registering one (address, function)
  * pair more times than the table holds (FN_TABLE_MAX = 1300) adds it once;
- * before the fix the 1301st call aborted the run. A second function for the
- * same address is still appended after it, and fn_resolve keeps the first. */
+ * before the fix the 1301st call aborted the run. The skip matches on the
+ * pair, not on either half: a second function for the same address is still
+ * appended (fn_origin finds it, fn_resolve keeps the first), and the same
+ * function at a second address is too (an address-only skip drops the first,
+ * a function-only skip the second). */
 static void fnreg_probe_a(void) {}
 static void fnreg_probe_b(void) {}
 
@@ -483,6 +486,9 @@ int test_fn_register_repeats(void)
     CHECK(fn_resolve(0xF00F8u) == fnreg_probe_a, "the repeated pair resolves");
     fn_register(0xF00F8u, fnreg_probe_b);
     CHECK(fn_resolve(0xF00F8u) == fnreg_probe_a, "the first pair for an address wins");
+    CHECK(fn_origin(fnreg_probe_b) == 0xF00F8u, "a second function for an address is appended, not skipped");
+    fn_register(0xF00FCu, fnreg_probe_a);
+    CHECK(fn_resolve(0xF00FCu) == fnreg_probe_a, "the same function at a second address is appended, not skipped");
     return g_failures - before;
 }
 

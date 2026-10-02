@@ -45399,16 +45399,46 @@ static void p2_check_hooks(void)
 
     /* 0x22510 on side 1: the side's word 0x104758 + 2 = 0x15 lies above 0x14;
      * 0x10 inside: 0x18C14(1, flags 1/4/7/8/0xD/0xE = 0, 5/9 = 1, 0xA82C4,
-     * 0xA82CE). */
+     * 0xA82CE). On the plain seed 0x18C14 returns 1 anyway (flag 9 wants the
+     * facing test 0x189FC true, which needs slot 0's x below slot 1's after
+     * 0x1DDF4's latch): the records' x are set (0x100 and 0x500, so the latched
+     * slot x are 0x240 and 0x3C0) so that it returns 0 inside the bounds and the
+     * bound's 1 differs from it. */
     h = (p2_hook_fn)(void *)fn_resolve(0x22510u);
     if (h == NULL) return;
     z_fseed();
+    DSD(Z_R0 + 0x18u) = 0x100u;
+    DSD(Z_R1 + 0x18u) = 0x500u;
+    DSW(0x0010475Au) = 0x10u;
+    CHECK_EQ_INT((int)h(1u), 0);
+    z_fseed();
+    DSD(Z_R0 + 0x18u) = 0x100u;
+    DSD(Z_R1 + 0x18u) = 0x500u;
     DSW(0x0010475Au) = 0x15u;
     CHECK_EQ_INT((int)h(1u), 1);
     z_fseed();
+    DSD(Z_R0 + 0x18u) = 0x100u;
+    DSD(Z_R1 + 0x18u) = 0x500u;
+    DSW(0x0010475Au) = 0x14u;
+    CHECK_EQ_INT((int)h(1u), 0);
+    z_fseed();
+    DSD(Z_R0 + 0x18u) = 0x100u;
+    DSD(Z_R1 + 0x18u) = 0x500u;
+    DSW(0x0010475Au) = 0x0Du;
+    CHECK_EQ_INT((int)h(1u), 0);
+    z_fseed();
+    DSD(Z_R0 + 0x18u) = 0x100u;
+    DSD(Z_R1 + 0x18u) = 0x500u;
+    DSW(0x0010475Au) = 0x0Cu;
+    CHECK_EQ_INT((int)h(1u), 1);
+    z_fseed();
+    DSD(Z_R0 + 0x18u) = 0x100u;
+    DSD(Z_R1 + 0x18u) = 0x500u;
     DSW(0x0010475Au) = 0x10u;
     r = h(1u);
     z_fseed();
+    DSD(Z_R0 + 0x18u) = 0x100u;
+    DSD(Z_R1 + 0x18u) = 0x500u;
     DSW(0x0010475Au) = 0x10u;
     for (k = 0; k < 16u; k++) fl[k] = 2u;
     fl[1] = fl[4] = fl[7] = fl[8] = fl[0xD] = fl[0xE] = 0u;
