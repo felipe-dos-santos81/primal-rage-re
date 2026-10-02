@@ -607,6 +607,13 @@ gp_compare: gp-u9-win: win: first difference f=C5A (3162) in afc: capture 6, por
 | `GP_WIN_CAPTURE_SHA256` | `7dcea0f16403c0fa52b6ef690edbcccb5340d9b9d1ec96c66ca4d11770708ba8` | `shasum -a 256 …/poll.log` (§W.11) |
 | `GP_WIN_CAPTURE_FRAMES` | 2521 | `ls … \| grep -c raw.gz` (§W.11), pinned with the sha256 |
 
+**Re-measure (Task 11 review).** A P batch that ports `0x400E0` or `0x21084` (P4) or
+`0x21044` (P5; batches of record `2026-10-02-reverse-p1-derivations.md`) drops its row from
+`k_miss_gp_u9_win`, re-measures the U9 set (match 2's stage follows the `rng`, so the set can
+change) and re-pins TRACE/WIN/MIN_FIRST. The miss-set check fails when a row's target is
+ported, but the trace and win ratchets fail only when they get worse, so an improved value
+would otherwise stay pinned low. The same sentence is in the Makefile `GP_WIN_*` comment.
+
 **The first differences, named (none fixed here):**
 
 - **Frames, 346: a long frame at the mode-8 entry, then the catch-up: the frame model's
@@ -1069,6 +1076,15 @@ gp_compare: gp-u10-ending: win: first difference f=1602 (5634) in b0c: capture 1
 | `GP_ENDING_WIN_MIN_FIRST` | 5634 | `win: first difference f=1602 (5634)` |
 | `GP_ENDING_CAPTURE_SHA256` | `a88de48ad39e90df1e3d3329fbd5aa876c69a08484fa22c66db8deebd3feff38` | `shasum -a 256 …/poll.log` (§W.13) |
 | `GP_ENDING_CAPTURE_FRAMES` | 5704 | `ls … \| grep -c raw.gz` (§W.13), pinned with the sha256 |
+
+**Re-measure (Task 11 review).** A P batch that ports `0x2381C` (P2), `0x37DD4` (P6) or
+`0x29C78` (P7) drops its row from `k_miss_gp_u10_ending`, re-measures the U10 set (the
+final's opponent order follows the `rng`, so the set can change, e.g. `0x3DA50`, §W.7) and
+re-pins TRACE/WIN/MIN_FIRST. The trace and win ratchets fail only when they get worse, so an
+improvement stays pinned low until it is re-measured. The same sentence is in the Makefile
+`GP_ENDING_*` comment. The wipe hooks' first frames (lldb on the miss log's new-entry store,
+as §W.12) are `0x29D60` at `f = 0x286` and `0x5D812` (`frontend_mode_1b_step`) at
+`f = 0x3FE` (mode `0x1B` both; U9: `0x28D` and `0x405`).
 
 **The first differences, named (none fixed here):**
 

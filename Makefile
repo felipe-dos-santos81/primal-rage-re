@@ -758,6 +758,9 @@ gp-modes-one: build
 # draws rng at f=0x866 in mode 9, 6 frames after the port's miss of the unported animation
 # target 0x21044 (f=0x860; P track). WIN_MIN_FIRST 3162: match 2's stage, 0x25848's rng pick,
 # follows that rng. MILESTONES 8: all reproduced. Raise each when it improves.
+# Re-measure: a P batch that ports 0x400E0 or 0x21084 (P4) or 0x21044 (P5) drops its row,
+# re-measures the U9 set (match 2's stage follows the rng, so the set can change) and re-pins
+# TRACE/WIN/MIN_FIRST: the trace and win ratchets fail only when they get worse.
 GP_WIN_MIN_FIRST = 346
 GP_WIN_TRACE_MIN_FIRST = 2150
 GP_WIN_MAX_START = 100
@@ -782,11 +785,15 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # 227/228/229 and 228/229 (no pixel without a port source); the first that can be real content
 # is 1274, at the 0x2381C miss (named in §W.14). TRACE_MIN_FIRST 2121: at f=0x848 (mode 6, round 2) both
 # sides draw rng and set CHAOS's reaction 0x25, whose move callback 0x2381C the port misses
-# (f=0x848); the port then draws rng a frame early (f=0x849) and turns to reaction 0x15 (P
-# track). WIN_MIN_FIRST 5634: the original's death-animation end 0x37EA0 sets DS_00104B0C at
+# (f=0x848); the port then draws rng again at f=0x849, which the original does not through the
+# round-2 KO (f=0x850), and turns to reaction 0x15 (P track). WIN_MIN_FIRST 5634: the original's death-animation end 0x37EA0 sets DS_00104B0C at
 # f=0x1602 (mode 0xF), the port's at f=0x161F: its stream first runs the unported targets
-# 0x37DD4/0x29C78, and its opponent order follows the rng after f=0x849 (P track).
-# MILESTONES 30: all reproduced. Raise each when it improves.
+# 0x37DD4/0x29C78, and its opponent order follows the rng after f=0x849 (the two are not
+# separated; P track). MILESTONES 30: all reproduced. Raise each when it improves.
+# Re-measure: a P batch that ports 0x2381C (P2), 0x37DD4 (P6) or 0x29C78 (P7) drops its row,
+# re-measures the U10 set (the final's opponent order follows the rng, so the set can change,
+# e.g. 0x3DA50) and re-pins TRACE/WIN/MIN_FIRST: the trace and win ratchets fail only when they
+# get worse, so an improvement stays pinned low until it is re-measured.
 GP_ENDING_MIN_FIRST = 331
 GP_ENDING_TRACE_MIN_FIRST = 2121
 GP_ENDING_MAX_START = 83

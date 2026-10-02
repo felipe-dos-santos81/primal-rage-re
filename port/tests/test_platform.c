@@ -231,9 +231,9 @@ static const fnm_pair k_miss_gp_u8_attract_start[] = {
 
 /* gp-u9-win (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
  * §W.12), measured on its full replay to its X record (f = 0xDAE): the two wipe hooks
- * of §G.24 (0x29D60, a bare `ret`; 0x5D812, the runtime stub), from f = 0x28D, and the
- * E2 animation targets the CPU's CHAOS reaches after the poked KOs (unported P-track
- * rows of reverse-e2-triage.md, anim-target class): 0x400E0 (dword 0xD2816) at
+ * of §G.24 (0x29D60, a bare `ret`, from f = 0x28D; 0x5D812, the runtime stub, from
+ * f = 0x405), and the E2 animation targets the CPU's CHAOS reaches after the poked KOs
+ * (unported P-track rows of reverse-e2-triage.md, anim-target class): 0x400E0 (dword 0xD2816) at
  * f = 0x59C in mode 8, 0x21044 (dword 0xE1606) at f = 0x860 and 0x21084 (dword
  * 0xE162C) at f = 0x874 in mode 9. */
 static const fnm_pair k_miss_gp_u9_win[] = {
@@ -247,7 +247,7 @@ static const fnm_pair k_miss_gp_u9_win[] = {
 /* gp-u10-ending (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
  * §W.14), measured on its full replay to its X record (f = 0x26E1); raw wins over the
  * plan's prediction (gp-u9-win's pairs and 0x3DA50): the two wipe hooks of §G.24
- * (0x29D60, a bare `ret`; 0x5D812, the runtime stub), from f = 0x286, and three
+ * (0x29D60, a bare `ret`, from f = 0x286; 0x5D812, the runtime stub, from f = 0x3FE), and three
  * unported P-track targets: 0x2381C (E2 move-callback row, dword 0xA560C, CHAOS's
  * reaction 0x25) at f = 0x848 in mode 6 (round 2), and the death-animation stream's
  * targets 0x37DD4 (E2 anim-target row, dword 0xD2BCE) at f = 0x1518 and 0x29C78
