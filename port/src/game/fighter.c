@@ -14891,10 +14891,10 @@ void fighter_14f50(u32 slot, u32 rec, u32 side)
 
 /* 0x14FA8 — record §P2.4. The 0xD000 target (opcode 0x10, mode 0x4000) at
  * the dwords 0xD2E2E (0x14EF8's stream 0xD2E26) and 0xD2E5E (0x14F50's
- * 0xD2E56). EAX = rec (EDX is pushed and
- * zeroed at 0x14FBF before any read). 0x2AE14(0xBB36C, 0, 0, 0, rec's word
- * +0x56 | 0x400); the spawned record's +0x59 = 2; for side 1 (rec+0x51) its
- * +0x4E = 1 and word +0x2E += 4; rec+0x4B = its byte +0x56; its +0x60 = 1. */
+ * 0xD2E56). EAX = rec (EDX is pushed and zeroed at 0x14FBF before any read).
+ * 0x2AE14(0xBB36C, 0, 0, 0, rec's word +0x56 | 0x400); the spawned record's
+ * +0x59 = 2; for side 1 (rec+0x51) its +0x4E = 1 and word +0x2E += 4;
+ * rec+0x4B = its byte +0x56; its +0x60 = 1. */
 void fighter_14fa8(u32 rec)
 {
     u32 e = actor_spawn((const u32 *)(mem + P2_DESC_14FA8), 0u, 0u, 0u,
