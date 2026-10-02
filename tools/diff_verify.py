@@ -967,13 +967,16 @@ def p3_speed(name, entry, mutants=("@mutant",)):
 
 # 0x48964/0x489A0 (record §P3.3): the slot's +0x41 bit 6 refuses (q0: 0x40 alone; q1/q2 0xBF, every other bit);
 # else the bit is set and 0x35838(slot, rec, 0x2000 or 0x1000 by 0x1A570(rec+0x51)'s AL). EBX is not read (`mov
-# bl,[ecx+0x41]` overwrites it): q2 runs side 0 with rec+0x51 = 1.
+# bl,[ecx+0x41]` overwrites it): q2 runs side 0 with rec+0x51 = 1, q3 with rec+0x51 = 0x80 (`xor eax,eax; mov
+# al,[edx+0x51]` zero-extends the byte: only a sign-extending read passes 0xFFFFFF80 to 0x1A570).
 def p3_dirs(name, entry, mutants):
     return Spec(name, entry, [
         Case("q0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x41: b"\x40", E3_REC + 0x51: b"\x00"}),
         Case("q1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x41: b"\xbf", E3_REC + 0x51: b"\x00"},
              {0x1A570: 0}),
         Case("q2", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x41: b"\xbf", E3_REC + 0x51: b"\x01"},
+             {0x1A570: 1}),
+        Case("q3", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x41: b"\xbf", E3_REC + 0x51: b"\x80"},
              {0x1A570: 1}),
     ], calls=(BIT15, DIRS), eax_mask=0, mutants=mutants)
 
@@ -986,8 +989,10 @@ P3_SPECS = [
         Case("n0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x52: b"\x52\x53\x54"}),
         Case("n1", {"eax": E3_SLOT, "edx": E3_REC2, "ebx": 1}, {E3_SLOT + 0x52: b"\x52\x53\x54"}),
     ], calls=(ANIM_BEGIN,), eax_mask=0),
-    p3_dirs("fighter_48964", 0x48964, ("@mutant", "@side")),
-    p3_dirs("fighter_489a0", 0x489A0, ("@mutant",)),
+    # both with the same four mutants: the directions swapped (@mutant on 0x48964, @swap on 0x489A0), the +0x41 bit
+    # set after the 0x1A570 call (@late, @mutant), 0x1A570 on EBX (@side), the byte sign-extended (@sext)
+    p3_dirs("fighter_48964", 0x48964, ("@mutant", "@late", "@side", "@sext")),
+    p3_dirs("fighter_489a0", 0x489A0, ("@mutant", "@swap", "@side", "@sext")),
 ]
 
 # The callees 0x47688 stubs (record §P3.4), args from their bytes, clobbers from E.callee_clobbers: 0x3B298 EAX =

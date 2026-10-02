@@ -1441,29 +1441,55 @@ static void m_47624(const u32 *r, u32 *eax)            /* the slot stores before
     actors_anim_begin(r[R_EDX], 0x000ED79Au, 0x40800000u);
     *eax = 0u;
 }
-static void m_48964_at(const u32 *r, u32 when_al, u32 other, int by_side, int late41)
+static void m_48964_at(const u32 *r, u32 when_al, u32 other, int by_side, int late41, int sext)
 {
     u32 slot = r[R_EAX], rec = r[R_EDX];
     int al;
     if ((DSB(slot + 0x41u) & 0x40u) != 0u) return;
     if (!late41) DSB(slot + 0x41u) = (u8)(DSB(slot + 0x41u) | 0x40u);
-    al = fighter_actor_bit15_clear(by_side ? r[R_EBX] : (u32)DSB(rec + 0x51u));
+    al = fighter_actor_bit15_clear(by_side ? r[R_EBX]
+                                   : sext ? (u32)(int)(signed char)DSB(rec + 0x51u) : (u32)DSB(rec + 0x51u));
     if (late41) DSB(slot + 0x41u) = (u8)(DSB(slot + 0x41u) | 0x40u);
     fighter_state_35838(slot, rec, al != 0 ? when_al : other);
 }
 static void m_48964(const u32 *r, u32 *eax)            /* the directions swapped */
 {
-    m_48964_at(r, 0x1000u, 0x2000u, 0, 0);
+    m_48964_at(r, 0x1000u, 0x2000u, 0, 0, 0);
+    *eax = 0u;
+}
+static void m_48964_late(const u32 *r, u32 *eax)       /* +0x41 bit 6 set after the 0x1A570 call */
+{
+    m_48964_at(r, 0x2000u, 0x1000u, 0, 1, 0);
     *eax = 0u;
 }
 static void m_48964_side(const u32 *r, u32 *eax)       /* 0x1A570 on EBX, not rec+0x51 */
 {
-    m_48964_at(r, 0x2000u, 0x1000u, 1, 0);
+    m_48964_at(r, 0x2000u, 0x1000u, 1, 0, 0);
+    *eax = 0u;
+}
+static void m_48964_sext(const u32 *r, u32 *eax)       /* rec+0x51 sign-extended (the original zero-extends) */
+{
+    m_48964_at(r, 0x2000u, 0x1000u, 0, 0, 1);
     *eax = 0u;
 }
 static void m_489a0(const u32 *r, u32 *eax)            /* +0x41 bit 6 set after the 0x1A570 call */
 {
-    m_48964_at(r, 0x1000u, 0x2000u, 0, 1);
+    m_48964_at(r, 0x1000u, 0x2000u, 0, 1, 0);
+    *eax = 0u;
+}
+static void m_489a0_swap(const u32 *r, u32 *eax)       /* the directions swapped */
+{
+    m_48964_at(r, 0x2000u, 0x1000u, 0, 0, 0);
+    *eax = 0u;
+}
+static void m_489a0_side(const u32 *r, u32 *eax)       /* 0x1A570 on EBX, not rec+0x51 */
+{
+    m_48964_at(r, 0x1000u, 0x2000u, 1, 0, 0);
+    *eax = 0u;
+}
+static void m_489a0_sext(const u32 *r, u32 *eax)       /* rec+0x51 sign-extended (the original zero-extends) */
+{
+    m_48964_at(r, 0x1000u, 0x2000u, 0, 0, 1);
     *eax = 0u;
 }
 
@@ -1707,8 +1733,13 @@ static const binding_t k_bindings[] = {
     { "fighter_47608@mutant",     m_47608,        0x00000000u },
     { "fighter_47624@mutant",     m_47624,        0x00000000u },
     { "fighter_48964@mutant",     m_48964,        0x00000000u },
+    { "fighter_48964@late",       m_48964_late,   0x00000000u },
     { "fighter_48964@side",       m_48964_side,   0x00000000u },
+    { "fighter_48964@sext",       m_48964_sext,   0x00000000u },
     { "fighter_489a0@mutant",     m_489a0,        0x00000000u },
+    { "fighter_489a0@swap",       m_489a0_swap,   0x00000000u },
+    { "fighter_489a0@side",       m_489a0_side,   0x00000000u },
+    { "fighter_489a0@sext",       m_489a0_sext,   0x00000000u },
     { "fighter_47720",            b_47720,        0x00000000u },
     { "fighter_476fc",            b_476fc,        0x00000000u },
     { "fighter_47648",            b_47648,        0xFFFFFFFFu },

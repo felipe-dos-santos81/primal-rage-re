@@ -45695,6 +45695,49 @@ static void p3_check_simple(void)
             CHECK_EQ_INT((int)DSD(Z_R0 + 8u), (int)DSD((hi ? 0x000C8A40u : 0x000C8AB8u) + c * 4u));
         }
     }
+
+    /* Which side's actor decides: 0x475EC/0x47608 index 0x1A570 by EBX (the
+     * side argument), 0x48964/0x489A0 by the record's +0x51 byte and never by
+     * EBX. Each call has the argument and the byte name different sides and the
+     * two actors at opposite bit 15, so a read of the wrong index flips the
+     * outcome. */
+    z_fseed();
+    CHECK(p3_actor(0u) != p3_actor(1u), "the two sides have distinct actors");
+    for (k = 0; k < 2u; k++) {
+        f = (p2_cb_fn)(void *)fn_resolve(addr[k]);
+        if (f == NULL) return;
+        for (set = 0; set < 2u; set++) {
+            z_fseed();
+            DSB(Z_R0 + 0x51u) = 0u;
+            DSW(Z_R0 + 0x34u) = 0x3434u;
+            p3_set_bit15(0u, (int)(1u - set));
+            p3_set_bit15(1u, (int)set);
+            f(Z_S0, Z_R0, 1u);
+            CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u),
+                         k == 0u ? (set ? 0x0258 : 0xFDA8) : (set ? 0x02EE : 0xFD12));
+        }
+    }
+    for (k = 3; k < 5u; k++) {
+        f = (p2_cb_fn)(void *)fn_resolve(addr[k]);
+        if (f == NULL) return;
+        for (set = 0; set < 2u; set++) {
+            int hi;
+            z_fseed();
+            c = (u32)DSB(Z_S0 + 0x7Au);
+            DSW(DSD(0x000C8A40u + c * 4u)) = 0x12B1u;
+            DSW(DSD(0x000C8AB8u + c * 4u)) = 0x12B2u;
+            DSB(Z_R0 + 0x51u) = 1u;
+            DSW(Z_R0 + 0x28u) = 0u;
+            DSB(Z_S0 + 0x41u) = 0u;
+            DSB(Z_S0 + 0x43u) = 0u;
+            p3_set_bit15(0u, (int)(1u - set));
+            p3_set_bit15(1u, (int)set);
+            f(Z_S0, Z_R0, 0u);
+            hi = (k == 3u) == (set == 0u);
+            CHECK_EQ_INT((int)DSB(Z_S0 + 0x43u), hi ? 2 : 1);
+            CHECK_EQ_INT((int)DSD(Z_R0 + 8u), (int)DSD((hi ? 0x000C8A40u : 0x000C8AB8u) + c * 4u));
+        }
+    }
 }
 
 int test_p3_simple(void)        { return u6b_run(p3_check_simple); }

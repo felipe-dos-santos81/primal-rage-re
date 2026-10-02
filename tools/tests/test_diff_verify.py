@@ -360,8 +360,10 @@ P3_MASKS = {"fighter_475ec": 0, "fighter_47608": 0, "fighter_47624": 0, "fighter
             "fighter_47720": 0, "fighter_476fc": 0, "fighter_47648": 0xFFFFFFFF, "fighter_47688": 0}
 P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"call #0"},
             "fighter_47608@mutant": {"call #0 memory"}, "fighter_47624@mutant": {"call #0 memory"},
-            "fighter_48964@mutant": {"call #1"}, "fighter_48964@side": {"call #0"},
-            "fighter_489a0@mutant": {"call #0 memory"},
+            "fighter_48964@mutant": {"call #1"}, "fighter_48964@late": {"call #0 memory"},
+            "fighter_48964@side": {"call #0"}, "fighter_48964@sext": {"call #0"},
+            "fighter_489a0@mutant": {"call #0 memory"}, "fighter_489a0@swap": {"call #1"},
+            "fighter_489a0@side": {"call #0"}, "fighter_489a0@sext": {"call #0"},
             "fighter_47720@mutant": {"call #0"}, "fighter_47720@ebx": {"byte", "call #0"},
             "fighter_476fc@mutant": {"byte"}, "fighter_476fc@sext": {"byte"},
             "fighter_47648@mutant": {"call #0"},
@@ -598,7 +600,10 @@ class RealFunctionTests(unittest.TestCase):
                    else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
             self.assertEqual(got, want, name)
         # 0x1A570's argument is EBX (side), not rec+0x51: only the cases where the two differ catch it
-        for name, ids in (("fighter_475ec@side", ["s0", "s2"]), ("fighter_48964@side", ["q2"]),
+        for name, ids in (("fighter_475ec@side", ["s0", "s2"]), ("fighter_48964@side", ["q2", "q3"]),
+                          ("fighter_489a0@side", ["q2", "q3"]),
+                          # their rec+0x51 is read zero-extended (`xor eax,eax; mov al,[edx+0x51]`): q3's 0x80 alone
+                          ("fighter_48964@sext", ["q3"]), ("fighter_489a0@sext", ["q3"]),
                           # 0x476FC's byte is zero-extended (c2's 0x80 alone), 0x47688's timer word signed (h4
                           # alone), its 0x39FB0 slot the other one (h1/h3, the cases that reach it)
                           ("fighter_476fc@sext", ["c2"]), ("fighter_47688@zext", ["h4"]),
@@ -709,8 +714,8 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (46), the 13 without are counted apart
-        self.assertIn("diff-verify: 63/63 functions VERIFIED; 104/104 mutants detected; 1 named gaps; "
+        # the closed-row count is over the rows that have callees (49), the 14 without are counted apart
+        self.assertIn("diff-verify: 63/63 functions VERIFIED; 109/109 mutants detected; 1 named gaps; "
                       "10/49 rows with callees closed (14 have none).", out.getvalue())
 
 

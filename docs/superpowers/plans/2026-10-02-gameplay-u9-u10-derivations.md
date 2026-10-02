@@ -1322,7 +1322,7 @@ unreachable`. The exact pins pass (exit 0).
 WIN fields' `f = 0x1602` difference (`b0c` set 29 frames late) is gone too while the port still
 misses `0x37DD4`/`0x29C78` at every death stream, so it followed the `rng` and the opponent order,
 not those two targets (§W.14 had not separated them). **The claim is narrow:** the replay still misses `0x37DD4`
-and `0x29C78` (33 hits each), `0x3DA50` and `0x475EC` (11 hits), whose effects the traced fields cannot see, so the
+and `0x29C78` (33 hits each), `0x3DA50` (1 hit) and `0x475EC` (11 hits; ported by track P batch 3), whose effects the traced fields cannot see, so the
 clean trace to `f = 0x26E1` does not claim the death streams or the mode-`0xF` content are reproduced, and it is no
 evidence of correctness past the frame ratchet's 331. The frame ratchet is still capped at 331 by
 the mode-8 catch-up; `--report` (which stops after `REPORT_MAX` = 5 unexplained) now lists 331,
