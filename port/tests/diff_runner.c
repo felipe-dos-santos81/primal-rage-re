@@ -1238,6 +1238,151 @@ static void m_22588_order(const u32 *r, u32 *eax)      /* +0x5D after the 0x3C20
     *eax = 0u;
 }
 
+/* §P2.9: the slot +0x0C callbacks as 0x3531C case 7 calls them (0x35431), mask 0. */
+static void b_212cc(const u32 *r, u32 *eax)            { fighter_212cc(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_22638(const u32 *r, u32 *eax)            { fighter_22638(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void m_212cc_at(const u32 *r, int mode)
+{
+    u32 ctx[6];
+    u8 st;
+    fighter_ctx_same(ctx, r[R_EBX]);
+    st = DSB(ctx[2] + 0x57u);
+    if (st == 0u) {
+        if (mode == 1 ? DSW(0x000A81AEu) >= DSW(ctx[2] + 0x88u)
+                      : (s16)DSW(0x000A81AEu) >= (s16)DSW(ctx[2] + 0x88u)) return;
+        DSB(ctx[2] + 0x57u) = 1u;
+        return;
+    }
+    if (st != 1u) return;
+    {
+        u32 p = DSD(DS_001077A8 + (mode == 2 ? ctx[0] : (u32)DSB(r[R_EDX] + 0x51u)) * 4u);
+        u8 c;
+        if (p == 0u) return;
+        c = DSB(p + 0x7Au);
+        if (c == 1u) hit_anim_start_b(ctx[4], mode == 3 ? 0x000E16E6u : 0x000E4A18u, 0x40400000u);
+        else if (c == 6u) hit_anim_start_b(ctx[4], mode == 3 ? 0x000E4A18u : 0x000E16E6u, 0x40400000u);
+    }
+    DSB(ctx[2] + 0x52u) = 9u;
+    DSB(ctx[2] + 0x57u) = 2u;
+    DSB(ctx[2] + 0x8Au) = 0u;
+}
+static void m_212cc(const u32 *r, u32 *eax)            /* the two characters' streams swapped */
+{
+    m_212cc_at(r, 3);
+    *eax = 0u;
+}
+static void m_212cc_signed(const u32 *r, u32 *eax)     /* the state-0 bound compared unsigned */
+{
+    m_212cc_at(r, 1);
+    *eax = 0u;
+}
+static void m_212cc_side(const u32 *r, u32 *eax)       /* the pointer by the context's side, not rec+0x51 */
+{
+    m_212cc_at(r, 2);
+    *eax = 0u;
+}
+static void m_22638(const u32 *r, u32 *eax)            /* the voice 0x78 for the bit-0 start too */
+{
+    u32 ctx[6], c, cmd, a = DS_001088E0;
+    union { float f; u32 u; } v;
+    double d;
+    fighter_ctx_same(ctx, r[R_EBX]);
+    {
+        u32 t = (u32)DSW(a + ctx[1] * 2u) & 0xF0u;
+        DSW(0x00104758u + ctx[0] * 2u) = (u16)(DSW(0x00104758u + ctx[0] * 2u) + 1u);
+        if (t != 0u || DSB(ctx[3] + 0x63u) != 0u) {
+            c = (u32)DSB(ctx[3] + 0x7Au);
+            if ((s32)(u32)DSB(ctx[3] + 0x5Du) <= (s32)(s16)DSW(0x000A82ECu + c * 2u))
+                DSB(ctx[3] + 0x5Du) = 0u;
+            else
+                DSB(ctx[3] + 0x5Du) = (u8)(DSB(ctx[3] + 0x5Du) - DSB(0x000A82ECu + c * 2u));
+        }
+    }
+    c = (u32)DSB(ctx[3] + 0x7Au);
+    if ((s16)DSW(0x000A8300u + c * 2u) > (s16)DSW(0x00104758u + ctx[0] * 2u)) {
+        u8 b = DSB(ctx[3] + 0x5Du);
+        DSB(ctx[3] + 0x5Du) = (u8)(b >= 1u ? b : 1u);
+    }
+    cmd = (u32)DSW(a + ctx[0] * 2u);
+    v.u = DSD(0x00104738u + ctx[0] * 4u);
+    if ((cmd & 1u) != 0u) {
+        memcpy(&d, mem + 0x0008098Cu, sizeof d);
+        v.f = (float)((double)v.f + d);
+        if (v.f < 1.0f) v.f = 1.0f;
+        DSD(0x00104738u + ctx[0] * 4u) = v.u;
+    } else {
+        double sum;
+        memcpy(&d, mem + 0x00080980u, sizeof d);
+        sum = (double)v.f + d;
+        v.f = (float)sum;
+        if (sum > 3.0) v.f = 3.0f;
+        DSD(0x00104738u + ctx[0] * 4u) = v.u;
+    }
+    if ((cmd & 0x0Eu) != 0u) DSW(0x00104754u + ctx[0] * 2u) = (u16)cmd;
+    *eax = 0u;
+    switch (DSB(ctx[2] + 0x57u)) {
+    case 0:
+        if ((s16)DSW(0x00104758u + ctx[0] * 2u) > 0x14) DSB(ctx[2] + 0x57u) = 1u;
+        return;
+    case 1:
+        actors_anim_begin(ctx[4], 0x000E4DCEu, 0x40400000u);
+        DSB(ctx[2] + 0x57u) = 3u;
+        DSB(ctx[2] + 0x8Au) = 0u;
+        return;
+    case 2:
+        if (DSB(ctx[3] + 0x5Du) < 1u) { fighter_36870(ctx[5]); DSB(ctx[2] + 0x57u) = 1u; return; }
+        if (DSB(ctx[3] + 0x53u) != 0x0Au) { DSB(ctx[2] + 0x57u) = 1u; return; }
+        if ((cmd & 1u) != 0u) {
+            actors_anim_begin(ctx[4], 0x000E4E08u, DSD(0x00104738u + ctx[0] * 4u));
+            DSB(ctx[2] + 0x57u) = 4u;
+            (void)sound_voice(0x78u);
+        } else if ((DSW(0x00104754u + ctx[0] * 2u) & 4u) != 0u) {
+            actors_anim_begin(ctx[4], 0x000E4E34u, 0x40400000u);
+            DSB(ctx[2] + 0x57u) = 5u;
+            (void)sound_voice(0x78u);
+        } else if ((DSW(0x00104754u + ctx[0] * 2u) & 2u) != 0u) {
+            actors_anim_begin(ctx[4], 0x000E4E4Au, 0x40400000u);
+            DSB(ctx[2] + 0x57u) = 6u;
+            (void)sound_voice(0x78u);
+        } else if ((DSW(0x00104754u + ctx[0] * 2u) & 8u) != 0u) {
+            actors_anim_begin(ctx[4], 0x000E4E72u, 0x40400000u);
+            DSB(ctx[2] + 0x57u) = 7u;
+            (void)sound_voice(0x78u);
+        }
+        return;
+    default:
+        return;
+    }
+}
+/* 0x22638's two boundary mutants run the port, then redo the one store their bug changes. */
+static void m_22638_signed(const u32 *r, u32 *eax)     /* the +0x5D floor's count compared unsigned */
+{
+    u32 ctx[6], c;
+    u8 b5d;
+    int floor_s, floor_u;
+    fighter_ctx_same(ctx, r[R_EBX]);
+    fighter_22638(r[R_EAX], r[R_EDX], r[R_EBX]);
+    c = (u32)DSB(ctx[3] + 0x7Au);
+    floor_s = (s16)DSW(0x000A8300u + c * 2u) > (s16)DSW(0x00104758u + ctx[0] * 2u);
+    floor_u = DSW(0x000A8300u + c * 2u) > DSW(0x00104758u + ctx[0] * 2u);
+    b5d = DSB(ctx[3] + 0x5Du);
+    if (floor_s && !floor_u && b5d == 1u) DSB(ctx[3] + 0x5Du) = 0u;
+    *eax = 0u;
+}
+static void m_22638_byte5d(const u32 *r, u32 *eax)     /* the drain compares +0x5D as a signed byte */
+{
+    u32 ctx[6], c;
+    s8 b;
+    int drain;
+    fighter_ctx_same(ctx, r[R_EBX]);
+    c = (u32)DSB(ctx[3] + 0x7Au);
+    b = (s8)DSB(ctx[3] + 0x5Du);
+    drain = (DSW(DS_001088E0 + ctx[1] * 2u) & 0xF0u) != 0u || DSB(ctx[3] + 0x63u) != 0u;
+    fighter_22638(r[R_EAX], r[R_EDX], r[R_EBX]);
+    if (drain && b < 0 && (s32)b <= (s32)(s16)DSW(0x000A82ECu + c * 2u)) DSB(ctx[3] + 0x5Du) = 0u;
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -1374,6 +1519,14 @@ static const binding_t k_bindings[] = {
     { "fighter_211f0@slot",       m_211f0_slot,   0x00000000u },
     { "fighter_22588@mutant",     m_22588,        0x00000000u },
     { "fighter_22588@order",      m_22588_order,  0x00000000u },
+    { "fighter_212cc",            b_212cc,        0x00000000u },
+    { "fighter_22638",            b_22638,        0x00000000u },
+    { "fighter_212cc@mutant",     m_212cc,        0x00000000u },
+    { "fighter_212cc@signed",     m_212cc_signed, 0x00000000u },
+    { "fighter_212cc@side",       m_212cc_side,   0x00000000u },
+    { "fighter_22638@mutant",     m_22638,        0x00000000u },
+    { "fighter_22638@signed",     m_22638_signed, 0x00000000u },
+    { "fighter_22638@byte5d",     m_22638_byte5d, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

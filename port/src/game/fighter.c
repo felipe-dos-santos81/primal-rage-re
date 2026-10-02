@@ -2944,6 +2944,7 @@ void fighter_37898(u32 slot, u32 rec, u32 side)
  *   3: nothing; 4: 0x379C4(S). EAX = rec. */
 void fighter_36870(u32 rec)
 {
+    PR_SEAM(0x36870u, rec);
     u32 side, other, s, so, rec_s;
     if (DSW(DS_00104B00) == 0x25u) {                        /* 0x3687F */
         fighter_385b0(rec);                                 /* 0x36884 */
@@ -15213,4 +15214,178 @@ void fighter_22588(u32 side)
     fighter_39a10(ctx[4], 0x29Au);                          /* 0x225D9..0x225E2 */
     fighter_39a10(ctx[5], 0x29Au);                          /* 0x225E7..0x225F0 */
     (void)sound_voice((u32)DSW(P2_VOICE_C75AA + (u32)DSB(ctx[3] + 0x7Au) * 2u));   /* 0x225F5..0x2260E 0x2C3FC */
+}
+
+#define P2_ANIM_212CC_C1 0x000E4A18u  /* 0x21337: character 1 */
+#define P2_ANIM_212CC_C6 0x000E16E6u  /* 0x2133E: character 6 */
+#define P2_A82EC         0x000A82ECu  /* 0x22690/0x226A6: [char] a signed word (the dword 0xA82EA's high half) and its low byte */
+#define P2_A8300         0x000A8300u  /* 0x226D3: [char] the frame count below which +0x5D stays at least 1 */
+#define P2_D_8098C       0x0008098Cu  /* 0x22725: the double -0.7 */
+#define P2_D_80980       0x00080980u  /* 0x22752: the double 0.1 */
+#define P2_F_80988       0x00080988u  /* 0x22760: the float 3.0 */
+#define P2_ANIM_22638_1  0x000E4DCEu  /* 0x227E2: state 1 */
+#define P2_ANIM_22638_4  0x000E4E08u  /* 0x22863: state 2, command bit 0 */
+#define P2_ANIM_22638_5  0x000E4E34u  /* 0x2289E: state 2, latched bit 2 */
+#define P2_ANIM_22638_6  0x000E4E4Au  /* 0x228CF: state 2, latched bit 1 */
+#define P2_ANIM_22638_7  0x000E4E72u  /* 0x2290B: state 2, latched bit 3 */
+
+/* 0x212CC — record §P2.9. The slot +0x0C callback 0x21374 stores (the dword
+ * at 0x213C0; 0x3531C case 7, (slot, rec, side), EAX unread). EBX = side, the
+ * context 0x33950(side); ECX = the EDX record (0x212D0). By the own slot's
+ * +0x57: 0 with the word 0xA81AE below its word +0x88 (signed `jge`) steps it
+ * to 1; 1 takes p = DS_001077A8[rec+0x51] (none: nothing) and, for p's +0x7A
+ * 1 or 6, the own record on 0xE4A18 or 0xE16E6 at 3.0 (0x3C4CC), then the own
+ * slot's +0x52 = 9, +0x57 = 2, +0x8A = 0; above 1 nothing. */
+void fighter_212cc(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    u8 st;
+    (void)slot;
+    fighter_ctx_same(ctx, side);                            /* 0x212D0..0x212D6 0x33950 */
+    st = DSB(ctx[2] + 0x57u);                               /* 0x212DB/0x212DF */
+    if (st == 0u) {                                         /* 0x212E2/0x212E4, 0x212ED */
+        if ((s16)DSW(P2_A81AE) >= (s16)DSW(ctx[2] + 0x88u)) return;   /* 0x212F5..0x21307 */
+        DSB(ctx[2] + 0x57u) = 1u;                           /* 0x2130D */
+        return;
+    }
+    if (st != 1u) return;                                   /* 0x212E6 */
+    {
+        u32 p = DSD(DS_001077A8 + (u32)DSB(rec + 0x51u) * 4u);   /* 0x21316..0x2131E */
+        u8 c;
+        if (p == 0u) return;                                /* 0x21324/0x21326 */
+        c = DSB(p + 0x7Au);                                 /* 0x21328 */
+        if (c == 1u)                                        /* 0x2132B..0x2132F */
+            hit_anim_start_b(ctx[4], P2_ANIM_212CC_C1, 0x40400000u);   /* 0x21337, 0x21343..0x2134C 0x3C4CC */
+        else if (c == 6u)                                   /* 0x21331/0x21333 */
+            hit_anim_start_b(ctx[4], P2_ANIM_212CC_C6, 0x40400000u);   /* 0x2133E, 0x21343..0x2134C 0x3C4CC */
+    }
+    DSB(ctx[2] + 0x52u) = 9u;                               /* 0x21355 */
+    DSB(ctx[2] + 0x57u) = 2u;                               /* 0x2135D */
+    DSB(ctx[2] + 0x8Au) = 0u;                               /* 0x21365 */
+}
+
+static float p2_f32(u32 a)
+{
+    union { float f; u32 u; } v;
+    v.u = DSD(a);
+    return v.f;
+}
+
+static void p2_set_f32(u32 a, float f)
+{
+    union { float f; u32 u; } v;
+    v.f = f;
+    DSD(a) = v.u;
+}
+
+static double p2_f64(u32 a)
+{
+    double d;
+    memcpy(&d, mem + a, sizeof d);
+    return d;
+}
+
+/* 0x22638 — record §P2.9. The slot +0x0C callback 0x22938 stores (the dword
+ * at 0x22963; 0x3531C case 7, EAX unread); its bytes start right after its
+ * own jump table 0x22618. EBX = side, the context 0x33950(side); the EAX slot
+ * and EDX record are not read. Each frame: the side's count 0x104758 + 1; when
+ * the other side's stick (DS_001088E0 & 0xF0) or the other slot's +0x63 is
+ * set, the other slot's +0x5D drains by the byte 0xA82EC[its character] (to 0
+ * when at most that word); while 0xA8300[that character] exceeds the count,
+ * +0x5D stays at least 1; the side's float 0x104738 takes -0.7 down to 1.0 on
+ * the command's bit 0, else +0.1 up to 3.0; a command with bits 1..3 is
+ * latched in 0x104754. Then by the own slot's +0x57 (table 0x22618): 0 waits
+ * for the count above 0x14 (+0x57 = 1); 1 starts the own record on 0xE4DCE at
+ * 3.0 (+0x57 = 3, +0x8A = 0); 2 ends (0x36870 on the other record when +0x5D
+ * is 0, +0x57 = 1 when the other slot is not in state 0xA) or starts the own
+ * record on 0xE4E08 at the float (bit 0; +0x57 = 4, voice 0x7D), 0xE4E34
+ * (latched bit 2; 5), 0xE4E4A (bit 1; 6) or 0xE4E72 (bit 3; 7) at 3.0 with
+ * the voice 0x78; 3..7 nothing. PORT: the raw adds in x87 extended precision
+ * and compares the +0.1 sum before rounding (0x22750..0x22769); the port adds
+ * in double: for the floats this code keeps (1.0..3.0) the stored float and
+ * the comparison are the same (record §P2.9). */
+void fighter_22638(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    u32 c, cmd;
+    (void)slot;
+    (void)rec;
+    fighter_ctx_same(ctx, side);                            /* 0x2263C..0x22640 0x33950 */
+    {
+        u32 t = (u32)DSW(DS_001088E0 + ctx[1] * 2u) & 0xF0u;   /* 0x22645..0x22662 */
+        DSW(P2_104758 + ctx[0] * 2u) = (u16)(DSW(P2_104758 + ctx[0] * 2u) + 1u);   /* 0x22653..0x22668 */
+        if (t != 0u || DSB(ctx[3] + 0x63u) != 0u) {         /* 0x22670..0x2267C */
+            c = (u32)DSB(ctx[3] + 0x7Au);                   /* 0x2267E..0x2268A */
+            if ((s32)(u32)DSB(ctx[3] + 0x5Du) <= (s32)(s16)DSW(P2_A82EC + c * 2u))   /* 0x2268C..0x226A4 */
+                DSB(ctx[3] + 0x5Du) = 0u;                   /* 0x226B5 */
+            else
+                DSB(ctx[3] + 0x5Du) = (u8)(DSB(ctx[3] + 0x5Du) - DSB(P2_A82EC + c * 2u));   /* 0x226A6..0x226B0 */
+        }
+    }
+    c = (u32)DSB(ctx[3] + 0x7Au);                           /* 0x226BD..0x226C9 */
+    if ((s16)DSW(P2_A8300 + c * 2u) > (s16)DSW(P2_104758 + ctx[0] * 2u)) {   /* 0x226D3..0x226E2 */
+        u8 b = DSB(ctx[3] + 0x5Du);                         /* 0x226E4..0x226EB */
+        DSB(ctx[3] + 0x5Du) = (u8)(b >= 1u ? b : 1u);       /* 0x226F0..0x226FE */
+    }
+    cmd = (u32)DSW(DS_001088E0 + ctx[0] * 2u);              /* 0x22701/0x22704 */
+    if ((cmd & 1u) != 0u) {                                 /* 0x2270C..0x2271D */
+        float f = (float)((double)p2_f32(P2_104738 + ctx[0] * 4u) + p2_f64(P2_D_8098C));   /* 0x2271F..0x2272B */
+        p2_set_f32(P2_104738 + ctx[0] * 4u, f);
+        if (f < 1.0f)                                       /* 0x22731..0x2273C */
+            p2_set_f32(P2_104738 + ctx[0] * 4u, 1.0f);      /* 0x2273E */
+    } else {
+        double s = (double)p2_f32(P2_104738 + ctx[0] * 4u) + p2_f64(P2_D_80980);   /* 0x2274A..0x22758 */
+        p2_set_f32(P2_104738 + ctx[0] * 4u, (float)s);      /* 0x2275A */
+        if (s > (double)p2_f32(P2_F_80988))                 /* 0x22760..0x22769 */
+            p2_set_f32(P2_104738 + ctx[0] * 4u, 3.0f);      /* 0x2276B */
+    }
+    if ((DSW(DS_001088E0 + ctx[0] * 2u) & 0x0Eu) != 0u)     /* 0x22775..0x2278C */
+        DSW(P2_104754 + ctx[0] * 2u) = DSW(DS_001088E0 + ctx[0] * 2u);   /* 0x2278E/0x22795 */
+    switch (DSB(ctx[2] + 0x57u)) {                          /* 0x2279C..0x227BC table 0x22618 */
+    case 0:
+        if ((s16)DSW(P2_104758 + ctx[0] * 2u) <= 0x14) return;   /* 0x227C3..0x227CF */
+        DSB(ctx[2] + 0x57u) = 1u;                           /* 0x227D9 */
+        return;
+    case 1:
+        actors_anim_begin(ctx[4], P2_ANIM_22638_1, 0x40400000u);   /* 0x227E2..0x227F0 0x2BC30 */
+        DSB(ctx[2] + 0x57u) = 3u;                           /* 0x227F9 */
+        DSB(ctx[2] + 0x8Au) = 0u;                           /* 0x22801 */
+        return;
+    case 2:
+        if (DSB(ctx[3] + 0x5Du) < 1u) {                     /* 0x2280D..0x2281D */
+            fighter_36870(ctx[5]);                          /* 0x2281F/0x22823 */
+            DSB(ctx[2] + 0x57u) = 1u;                       /* 0x2282C */
+            return;
+        }
+        if (DSB(ctx[3] + 0x53u) != 0x0Au) {                 /* 0x22835..0x2283D */
+            DSB(ctx[2] + 0x57u) = 1u;                       /* 0x22843 */
+            return;
+        }
+        if ((DSW(DS_001088E0 + ctx[0] * 2u) & 1u) != 0u) {  /* 0x2284C..0x2285E */
+            actors_anim_begin(ctx[4], P2_ANIM_22638_4, DSD(P2_104738 + ctx[0] * 4u));   /* 0x22860..0x22873 0x2BC30 */
+            DSB(ctx[2] + 0x57u) = 4u;                       /* 0x2287C */
+            (void)sound_voice(0x7Du);                       /* 0x22880, 0x2292B 0x2C3FC */
+            return;
+        }
+        if ((DSW(P2_104754 + ctx[0] * 2u) & 4u) != 0u) {    /* 0x2288A..0x2289C */
+            actors_anim_begin(ctx[4], P2_ANIM_22638_5, 0x40400000u);   /* 0x2289E..0x228AC 0x2BC30 */
+            DSB(ctx[2] + 0x57u) = 5u;                       /* 0x228B5 */
+            (void)sound_voice(0x78u);                       /* 0x22926/0x2292B 0x2C3FC */
+            return;
+        }
+        if ((DSW(P2_104754 + ctx[0] * 2u) & 2u) != 0u) {    /* 0x228BB..0x228CD */
+            actors_anim_begin(ctx[4], P2_ANIM_22638_6, 0x40400000u);   /* 0x228CF..0x228DD 0x2BC30 */
+            DSB(ctx[2] + 0x57u) = 6u;                       /* 0x228E6 */
+            (void)sound_voice(0x78u);                       /* 0x228EA/0x228EF 0x2C3FC */
+            return;
+        }
+        if ((DSW(P2_104754 + ctx[0] * 2u) & 8u) != 0u) {    /* 0x228F9..0x22909 */
+            actors_anim_begin(ctx[4], P2_ANIM_22638_7, 0x40400000u);   /* 0x2290B..0x22919 0x2BC30 */
+            DSB(ctx[2] + 0x57u) = 7u;                       /* 0x22922 */
+            (void)sound_voice(0x78u);                       /* 0x22926/0x2292B 0x2C3FC */
+        }
+        return;
+    default:                                                /* 3..7 (0x22930), above 7 (`ja` 0x227A5) */
+        return;
+    }
 }

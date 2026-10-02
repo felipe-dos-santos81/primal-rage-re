@@ -644,7 +644,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 210A4 | immediate at 210F5 | - | yes | allow-list | - |
 | 2116C | immediate at 213C8 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 211F0 | immediate at 213D3 | - | yes | stubs (indirect at 18384 in 18350) | 212AF |
-| 212CC | immediate at 213BD | - | no | stubs (indirect at 2B56D in 2B2A0) | - |
+| 212CC | immediate at 213BD | - | yes | stubs (indirect at 2B56D in 2B2A0) | - |
 | 215B0 | called at 21B50 | entry | yes | stubs (indirect at 18384 in 18350) | - |
 | 21994 | called at 21B43 | entry | yes | stubs (indirect at 2B56D in 2B2A0) | - |
 | 21A88 | immediate at 21CE0 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |

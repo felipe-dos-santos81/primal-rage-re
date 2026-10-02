@@ -520,6 +520,9 @@ RESOLVED_JUMPS = {
     0x29F78: (0x29F6D, 0x29EEC, 6),
     0x29FE5: (0x29FDA, 0x29F04, 6),
     0x2A056: (0x2A04B, 0x29F1C, 6),
+    # 0x22638 (record 2026-10-02-reverse-p2 §P2.9): cmp al,7; ja; and eax,0xff; lea edx,[eax*4]; mov eax,[esp];
+    # add eax,eax; jmp cs:[edx+0x22618]
+    0x227BC: (0x227A3, 0x22618, 8),
 }
 
 

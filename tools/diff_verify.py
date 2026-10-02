@@ -236,7 +236,8 @@ def verify_gap(spec, image):
     """A named gap (spec §5.2): every case must stop on exactly the instruction the spec names. The
     port is not run. A case that runs through, or stops elsewhere, is a MISMATCH: the gap is stale
     or misnamed, and the function becomes a verification target again."""
-    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True)
+    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
+                         resolved=E.RESOLVED_JUMPS)
     res = SpecResult(spec.name, spec.entry, "NAMED_GAP", len(spec.cases), 0, len(info.leaders), gap=spec.gap)
     executed = set()
     for c in spec.cases:
@@ -256,7 +257,8 @@ def verify_spec(spec, image, port_results, port_name=None):
     if got != set(sent):
         raise ValueError("%s: the port's results do not match the cases sent: missing %s, extra %s"
                          % (port_name or spec.name, sorted(set(sent) - got), sorted(got - set(sent))))
-    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True)
+    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
+                         resolved=E.RESOLVED_JUMPS)
     executed, outside, problems, blocked = set(), set(), [], []
     port_errors, diffs = [], 0
     for c in spec.cases:
@@ -858,6 +860,82 @@ P2_SPECS += [
     Spec("fighter_22588", 0x22588, [p2_1c("d0", 0), p2_1c("d1", 1), p2_1c("d2", 0, 0xF000)],
          allow_calls=(0x33950,), calls=(FACING, FLASH, ARM404, HOLD, PLACE, TIMER, VOICE), eax_mask=0,
          mutants=("@mutant", "@order")),
+]
+
+# 0x36870 (fighter_36870): EAX = rec, a plain `ret`; it clobbers ESI, EDI and EBP (E.callee_clobbers).
+ANIM54 = E.Call(0x36870, ("eax",), clobbers=("esi", "edi", "ebp"))
+
+
+# The slot +0x0C callbacks 0x21374 and 0x22938 store (record §P2.9) run as 0x3531C case 7 calls them (0x35431:
+# EAX = slot, EDX = rec, EBX = side; `xor eax,eax` at 0x35434): mask 0. Both read EBX alone for the context.
+# 0x212CC: the own slot's +0x57 (state), word +0x88 (against 0xA81AE's 3, signed) and +0x8A; in state 1 the
+# pointer DS_001077A8[rec+0x51] (EDX's record, E3_OUT here: not ctx[4]) and its +0x7A (1, 6 or another).
+def p2_212cc(cid, st, w88=0x0100, ridx=0, ptrs=(E3_REC2, 0), char=1):
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_OUT, "ebx": 0},
+                {**SLOT_PTRS, DS_SLOTS - 8: b"".join(le32(v) for v in ptrs), E3_REC2 + 0x7A: bytes([char]),
+                 E3_OUT + 0x51: bytes([ridx]), DS_SLOTS + 0x52: bytes([0x52, 0x53, 0x54, 0x55, 0x56, st]),
+                 DS_SLOTS + 0x88: le32(w88)[:2] + b"\x8a"})
+
+
+def f32(x):
+    import struct
+    return struct.pack("<f", x)
+
+
+# 0x22638: cmd = the two sides' command words DS_001088E0 (own, other); lat/cnt = the side's words 0x104754 and
+# 0x104758 (the other side's carry sentinels); fl = the side's float 0x104738; o53/o5d/o63 = the other slot's
+# +0x53/+0x5D/+0x63 (its character 3: the words 0xA82EC[3] = 4 and 0xA8300[3] = 0x78); st = the own +0x57.
+def p2_22638(cid, side, st, cmd=(0, 0), lat=0, cnt=0x200, fl=2.0, o53=0x0A, o5d=7, o63=0, stub=None):
+    own, oth = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    words = [cmd[0], cmd[1]] if side == 0 else [cmd[1], cmd[0]]
+    lw, cw = [0x5454, 0x5656], [0x5858, 0x5A5A]
+    lw[side], cw[side] = lat, cnt
+    fls = [f32(1.5), f32(2.5)]
+    fls[side] = f32(fl)
+    oth_bytes = bytearray(range(0x53, 0x64))
+    oth_bytes[0] = o53
+    oth_bytes[0x5D - 0x53] = o5d
+    oth_bytes[0x63 - 0x53] = o63
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_OUT, "ebx": side},
+                {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+                 0x1088E0: le32(words[0])[:2] + le32(words[1])[:2],
+                 0x104754: b"".join(le32(v)[:2] for v in lw + cw), 0x104738: fls[0] + fls[1],
+                 own + 0x52: bytes([0x52, 0x53, 0x54, 0x55, 0x56, st]), own + 0x8A: b"\x8a",
+                 oth + 0x53: bytes(oth_bytes)}, {} if stub is None else stub)
+
+
+P2_SPECS += [
+    # m2: the word +0x88 = -1 against 3: signed `jge` returns; unsigned it would step +0x57. m3/m4/m5: state 1
+    # with the pointer's character 1, 6 and 2; m6 a zero pointer; m9 rec+0x51 = 1 reads DS_001077AC.
+    Spec("fighter_212cc", 0x212CC, [
+        p2_212cc("m0", 0, 0x0004), p2_212cc("m1", 0, 0x0003), p2_212cc("m2", 0, 0xFFFF),
+        p2_212cc("m3", 1, char=1), p2_212cc("m4", 1, char=6), p2_212cc("m5", 1, char=2),
+        p2_212cc("m6", 1, ptrs=(0, E3_REC2)), p2_212cc("m7", 2), p2_212cc("m8", 0xFF),
+        p2_212cc("m9", 1, ridx=1, ptrs=(0, E3_REC2), char=6),
+    ], allow_calls=(0x33950,), calls=(HIT_B,), eax_mask=0, mutants=("@mutant", "@signed", "@side")),
+    # p0..p15 (record §P2.9): the frame count's step and the two bounds, the +0x5D drain (the other side's stick
+    # or its +0x63) and floor, the float's -0.7/+0.1 with the 1.0 and 3.0 clamps, the latch, and each state.
+    # p14: the count 0x8000 + 1 is negative (signed: 0x78 > it, +0x5D floored to 1); p15: +0x5D = 0x80 is 128
+    # against 4 (a signed byte would read -128 and zero it).
+    Spec("fighter_22638", 0x22638, [
+        p2_22638("p0", 0, 0, cnt=0x14, o5d=0, fl=2.0),
+        p2_22638("p1", 0, 0, cmd=(1, 0x10), cnt=0x13, o5d=9, fl=1.5),
+        p2_22638("p2", 0, 1, cmd=(0x0C, 0), o5d=3, o63=1, fl=2.95),
+        p2_22638("p3", 0, 2, o5d=0),
+        p2_22638("p4", 0, 2, o53=0x09),
+        p2_22638("p5", 0, 2, cmd=(1, 0), fl=2.0),
+        p2_22638("p6", 0, 2, cmd=(4, 0)),
+        p2_22638("p7", 0, 2, cmd=(2, 0)),
+        p2_22638("p8", 0, 2, cmd=(8, 0)),
+        p2_22638("p9", 0, 2),
+        p2_22638("pA", 0, 2, lat=6),
+        p2_22638("pB", 0, 3),
+        p2_22638("pC", 0, 8),
+        p2_22638("pD", 1, 2, cmd=(1, 0), fl=1.2, stub={0x2C3FC: 0}),
+        p2_22638("pE", 0, 0, cnt=0x8000, o5d=0),
+        p2_22638("pF", 1, 3, cmd=(0, 0x20), o5d=0x80),
+    ], allow_calls=(0x33950,), calls=(ANIM_BEGIN, ANIM54, VOICE), eax_mask=0,
+       mutants=("@mutant", "@signed", "@byte5d")),
 ]
 
 SPECS = [

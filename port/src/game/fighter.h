@@ -1202,5 +1202,8 @@ void fighter_39834(u32 side, s32 b);
 void fighter_22404(u32 side);
 void fighter_211f0(u32 side);
 void fighter_22588(u32 side);
+/* §P2.9: the slot +0x0C callbacks they store (slot, rec, side). */
+void fighter_212cc(u32 slot, u32 rec, u32 side);
+void fighter_22638(u32 slot, u32 rec, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

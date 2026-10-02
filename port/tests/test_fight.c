@@ -45515,3 +45515,77 @@ static void p2_check_1c(void)
 }
 
 int test_p2_1c(void)            { return u6b_run(p2_check_1c); }
+
+/* §P2.9: the slot +0x0C callbacks 0x21374 and 0x22938 store, through their
+ * registrations as 0x3531C case 7 calls them (slot 0, its record, side 0;
+ * slot 1 character 3). */
+static void p2_check_0c(void)
+{
+    p2_cb_fn f;
+    union { float f; u32 u; } v;
+    CHECK(fn_resolve(0x212CCu) == (void (*)(void))fighter_212cc, "0x212CC is registered");
+    CHECK(fn_resolve(0x22638u) == (void (*)(void))fighter_22638, "0x22638 is registered");
+    /* 0x22638 starts right after its own jump table (0x22618, 8 dwords) */
+    CHECK_EQ_INT((int)DSD(0x00022618u), 0x000227C3);
+    CHECK_EQ_INT((int)DSD(0x00022634u), 0x00022930);
+
+    /* 0x212CC state 0: the word +0x88 = 4 lies above 0xA81AE's 3: +0x57 = 1;
+     * state 1 with DS_001077A8[rec+0x51] = slot 0 (character 6): the record on
+     * 0xE16E6 at 3.0, +0x52 = 9, +0x57 = 2, +0x8A = 0. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x212CCu);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_S0 + 0x57u) = 0u;
+    DSW(Z_S0 + 0x88u) = 4u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
+    z_fseed();
+    DSB(Z_S0 + 0x7Au) = 6u;
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSW(0x000E16E6u) = 0x12B1u;
+    DSB(Z_S0 + 0x57u) = 1u;
+    DSB(Z_S0 + 0x8Au) = 0x8Au;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000E16E6);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 2);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x8Au), 0);
+
+    /* 0x22638 state 2, the other slot in state 0xA with +0x5D = 7, the own
+     * command word bit 0: the float 2.0 - 0.7 is stored (1.3f), the record
+     * on 0xE4E08 at that hold, +0x57 = 4, the voice 0x7D; the frame count
+     * steps. Then with the float 1.5: 0.8 is clamped to 1.0. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x22638u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_S1 + 0x7Au) = 3u;
+    DSB(Z_S1 + 0x53u) = 0x0Au;
+    DSB(Z_S1 + 0x5Du) = 7u;
+    DSB(Z_S1 + 0x63u) = 0u;
+    DSW(DS_001088E0) = 1u;
+    DSW(DS_001088E0 + 2u) = 0u;
+    DSW(0x00104758u) = 0x0200u;
+    v.f = 2.0f;
+    DSD(0x00104738u) = v.u;
+    DSW(0x000E4E08u) = 0x12B1u;
+    DSB(Z_S0 + 0x57u) = 2u;
+    sound_voice_log_reset();
+    f(Z_S0, Z_R0, 0u);
+    v.f = (float)(2.0 + -0.7);
+    CHECK_EQ_INT((int)DSD(0x00104738u), (int)v.u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000E4E08);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), (int)v.u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 4);
+    CHECK_EQ_INT((int)DSW(0x00104758u), 0x0201);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 1);
+    CHECK_EQ_INT((int)sound_voice_log_at(0), 0x7D);
+    sound_voice_log_reset();
+    v.f = 1.5f;
+    DSD(0x00104738u) = v.u;
+    DSB(Z_S0 + 0x57u) = 3u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(0x00104738u), 0x3F800000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
+}
+
+int test_p2_0c(void)            { return u6b_run(p2_check_0c); }
