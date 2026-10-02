@@ -196,45 +196,64 @@ static int fnm_in(const fnm_pair *t, size_t len, u32 addr, const char *ctx)
 
 #define FNM_N(t) (sizeof (t) / sizeof (t)[0])
 
-static int fnm_known(u32 addr, const char *ctx, int frontend, int idle_loss, int charsel, int moves,
-                     int keys_fight, int twop)
+/* The gp miss sets keyed by scenario name (the name fnm_gp_scenario reads):
+ * prefix 0 matches the name exactly, 1 every name that starts with it
+ * (gp-idle-loss also selects gp-idle-loss-run2; gp-u6-moves also selects
+ * gp-u6-moves-b and gp-u6-moves-dry). At most one entry may match a name. */
+typedef struct { const char *name; int prefix; const fnm_pair *rows; size_t n; } gp_set;
+static const gp_set k_gp_sets[] = {
+    { "gp-idle-loss", 1, k_miss_gp_idle_loss, FNM_N(k_miss_gp_idle_loss) },
+    { "gp-u5-charsel", 0, k_miss_gp_charsel, FNM_N(k_miss_gp_charsel) },
+    { "gp-u6-moves", 1, k_miss_gp_u6_moves, FNM_N(k_miss_gp_u6_moves) },
+    { "gp-keys-fight", 0, k_miss_gp_keys_fight, FNM_N(k_miss_gp_keys_fight) },
+    { "gp-twop", 0, k_miss_gp_twop, FNM_N(k_miss_gp_twop) },
+};
+
+/* The one entry of k_gp_sets that matches the scenario name, or NULL (a
+ * scenario with no entry may miss only the base pair). */
+static const gp_set *fnm_gp_set(const char *name)
+{
+    const gp_set *hit = NULL;
+    int matches = 0;
+    for (size_t i = 0; i < FNM_N(k_gp_sets); i++) {
+        const gp_set *e = &k_gp_sets[i];
+        size_t len = strlen(e->name);
+        if (e->prefix ? strncmp(name, e->name, len) == 0 : strcmp(name, e->name) == 0) {
+            if (hit == NULL) hit = e;
+            matches++;
+        }
+    }
+    if (matches > 1) printf("fn-miss: %d gp miss sets match scenario %s\n", matches, name);
+    CHECK(matches <= 1, "at most one gp miss set matches the scenario name");
+    return matches == 1 ? hit : NULL;
+}
+
+static int fnm_known(u32 addr, const char *ctx, int frontend, const gp_set *sc)
 {
     if (fnm_in(k_miss_known, FNM_N(k_miss_known), addr, ctx)) return 1;
     if (frontend && fnm_in(k_miss_frontend, FNM_N(k_miss_frontend), addr, ctx)) return 1;
-    if (charsel && fnm_in(k_miss_gp_charsel, FNM_N(k_miss_gp_charsel), addr, ctx)) return 1;
-    if (moves && fnm_in(k_miss_gp_u6_moves, FNM_N(k_miss_gp_u6_moves), addr, ctx)) return 1;
-    if (keys_fight && fnm_in(k_miss_gp_keys_fight, FNM_N(k_miss_gp_keys_fight), addr, ctx)) return 1;
-    if (twop && fnm_in(k_miss_gp_twop, FNM_N(k_miss_gp_twop), addr, ctx)) return 1;
-    return idle_loss && fnm_in(k_miss_gp_idle_loss, FNM_N(k_miss_gp_idle_loss), addr, ctx);
+    return sc != NULL && fnm_in(sc->rows, sc->n, addr, ctx);
 }
 
 int test_fn_misslog_driver(const char *env)
 {
     int before = g_failures;
     int frontend = strcmp(env, "PR_FRONTEND_DUMP") == 0;
-    int idle_loss = 0, charsel = 0, moves = 0, keys_fight = 0, twop = 0, cut = 0;
+    const gp_set *sc = NULL;
+    int cut = 0;
     if (strcmp(env, "PR_GP_DUMP") == 0) {
-        char sc[64];
-        fnm_gp_scenario(sc, sizeof sc, &cut);
-        idle_loss = strncmp(sc, "gp-idle-loss", 12) == 0;
-        charsel = strcmp(sc, "gp-u5-charsel") == 0;
-        moves = strncmp(sc, "gp-u6-moves", 11) == 0;
-        keys_fight = strcmp(sc, "gp-keys-fight") == 0;
-        twop = strcmp(sc, "gp-twop") == 0;
+        char name[64];
+        fnm_gp_scenario(name, sizeof name, &cut);
+        sc = fnm_gp_set(name);
     }
     u32 want = (u32)FNM_N(k_miss_known) +
                (frontend ? (u32)FNM_N(k_miss_frontend) : 0u) +
-               (idle_loss ? (u32)FNM_N(k_miss_gp_idle_loss) : 0u) +
-               (charsel ? (u32)FNM_N(k_miss_gp_charsel) : 0u) +
-               (moves ? (u32)FNM_N(k_miss_gp_u6_moves) : 0u) +
-               (keys_fight ? (u32)FNM_N(k_miss_gp_keys_fight) : 0u) +
-               (twop ? (u32)FNM_N(k_miss_gp_twop) : 0u);
+               (sc != NULL ? (u32)sc->n : 0u);
     CHECK_EQ_INT(fn_misslog_dropped(), 0);
     if (cut) CHECK(fn_misslog_count() <= want, "a cut gp replay records no more than the pinned set");
     else CHECK_EQ_INT(fn_misslog_count(), want);
     for (u32 i = 0; i < fn_misslog_count(); i++)
-        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, idle_loss, charsel, moves,
-                       keys_fight, twop)) {
+        if (!fnm_known(fn_misslog_addr(i), fn_misslog_ctx(i), frontend, sc)) {
             printf("fn-miss %s: unexpected 0x%05X from %s\n", env,
                    (unsigned)fn_misslog_addr(i), fn_misslog_ctx(i));
             CHECK(0, "the driver's miss log holds only its pinned known-set");
@@ -316,7 +335,7 @@ int test_fn_misslog(void)
                 continue;
             }
             n++;
-            if (!fnm_known((u32)addr, ctx, 0, 0, 0, 0, 0, 0)) {
+            if (!fnm_known((u32)addr, ctx, 0, NULL)) {
                 printf("fn_miss.txt: unexpected 0x%05X from %s\n", addr, ctx);
                 CHECK(0, "the --check miss log holds only the pinned known-set");
             }
