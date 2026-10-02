@@ -234,7 +234,7 @@ with the other side's byte 0 (P2 not joined) arms the hook `0x430E8` and the wip
 (`0x43BF0..0x43C1E`).
 
 **The time-out.** `0x43CF0..0x43D01`: `0x43AAC` runs when `DS_000EF6DC & 0x3F == 0`; the countdown
-`DS_0010816C` starts at `0xF` (`0x437C6`) and at 0 confirms every side whose byte is 1. The
+`DS_0010816C` starts at `0xF` (`0x437D1 mov word [0x10816c],0xf`, the `DS_00108173 == 0` arm; `0x437C6` stores 5 on the other arm: corrected in U7 record §T.5, re-disassembled on the fixed-up image) and at 0 confirms every side whose byte is 1. The
 earliest time-out is therefore **14 × 64 = 896 frames** after mode `0x10` begins (the first step
 can fall on its first frame), the latest 960.
 

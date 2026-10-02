@@ -393,6 +393,7 @@ class TestStopAtEnd(unittest.TestCase):
         # counts on its post-restart movie tail: neither stops early.
         self.assertIn('gp-u6-moves', gs.STOP_AT_END)
         self.assertIn('gp-u6-moves-b', gs.STOP_AT_END)      # U6b's re-capture (user decision)
+        self.assertIn('gp-twop', gs.STOP_AT_END)            # U7: nothing past its end is compared (record §T.5)
         for name in ('gp-pads', 'gp-idle-loss', 'gp-idle-loss-run2', 'gp-u5-charsel', 'gp-keys-fight'):
             self.assertNotIn(name, gs.STOP_AT_END)
         for name in gs.STOP_AT_END & set(gs.SCENARIOS):    # a stop needs an end frame

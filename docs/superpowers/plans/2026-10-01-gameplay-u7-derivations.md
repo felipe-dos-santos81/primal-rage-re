@@ -508,7 +508,7 @@ runs after U6b. Re-measured in a scratch `git archive` of `8eaf25a`, with
    - `fnm_known` gains U6b's `moves` parameter before U7's `twop`.
    - U6b's ported callbacks change what the replay reaches. Task 5 Step 1's set
      and Step 6's divergences are re-measured on the merged base.
-   - U6b's `gp_compare` `moves:` claim is reported, not pinned, by U7.
+   - U6b's `gp_compare` `moves:` claim: reported by U7 as planned, pinned at the final review (§T.10).
 5. **Corrected in place:** §T.4.2 (the `0x3A588` and O1 owners: both closed by
    U6a and U5); §T.4.3 (`c0`/`c1`); §T.3 (U5's size data point).
 6. **A cross-record discrepancy (raw wins; not edited here, it is U5's).** The
@@ -516,3 +516,400 @@ runs after U6b. Re-measured in a scratch `git archive` of `8eaf25a`, with
    cite `0x437C6` as the countdown's `0xF`. The fixed-up image (capstone 5.0.7,
    `dx.py 437BD 20`) has `0x437C4 je 0x437d1`, `0x437C6 mov word [0x10816c], 5`
    and `0x437D1 mov word [0x10816c], 0xf`, as §T.1.4 and §T.R item 1 say.
+
+## §T.5 The scenario (Task 1)
+
+`SCENARIOS['gp-twop']` as §T.3. `tools/tests/test_gp_twop.py` (TestScenario, 2 tests): before the
+block `KeyError: 'gp-twop'` (2 errors); after, the four gp suites `Ran 94 tests … OK` (B = 92 on
+`1142462` + 2; `gp_capture.py --help` lists `gp-twop`). Mutation (P2 start hold 5 -> 1): both tests
+FAIL; restored OK.
+
+**Rebase decision: `gp-twop` is in `STOP_AT_END`** (U6b/capture-hygiene opt-in, `tools/gp_session.py`).
+What compares past the scenario's end: nothing. `gp_twop.py` (Task 2) checks up to the `X` record and
+ignores later records (`test_records_after_the_end_are_not_checked`); the port replay's script ends at
+`X` (§T.3), so a capture frame past the port's last frame is unexplained whether or not the capture
+holds a tail (`gp_compare.frame_claim` classifies every capture frame from the window start, `N` is
+the first unexplained one; `trace_claim` walks the port's `T` records only); the ratchets (Tasks 5-6)
+pin `N`/`F` at or before the port's end. The 70 s limit (§T.3) then only bounds a stall; the capture
+stops `STOP_TAIL` = 60 frames after `X` (~47 s expected) instead of idling ~23 s more. Guarded by the
+`gp-twop` assertion in `test_gp_capture.TestStopAtEnd.test_opt_in_scenarios` (which also requires
+the scenario's last step to be `('end',)`); removing the name from the set fails that test.
+
+**Correction (raw wins): the character-select countdown's `0xF` store is `0x437D1`, not `0x437C6`.**
+Fixed-up image (`build/diffrun --exe data/game/C/PRAGE.EXE --image-out`, capstone, base `0x10000`):
+`0x437BD cmp byte [0x108173],0` / `0x437C4 je 0x437D1` / `0x437C6 mov word [0x10816C],5` /
+`0x437CF jmp 0x437DA` / `0x437D1 mov word [0x10816C],0xF`. So `0xF` is the `DS_00108173 == 0` arm
+(`0x437D1`), `5` the other (`0x437C6`), as §T.1.4 and §T.R item 1 say. The comment above
+`gp-u5-charsel` in `tools/gp_session.py` and the U5 record §C5.4 ("The time-out") cited `0x437C6`
+for the `0xF`; both corrected in this commit. Neither changes a pinned value (the earliest time-out
+stays 14 x 64 = 896 frames).
+
+## §T.6 The two-human check (Task 2)
+
+`tools/gp_twop.py` (`pad_word`, `classify`, `load`, `two_human`, `mode_path`; CLI `check|path`),
+`tools/tests/test_gp_twop.py` gains `TestTwoHuman` (10 tests; the file has 12). The fixtures build from
+`gs.SNAP_FIELDS` (U6b's five fields included), and the check ran on a real port `trace.txt` (the
+`gp-idle-loss` replay's, whose `T` lines carry U11's `lat spz mpz` after `s0_43`): the extra fields do
+not matter (`b1f never reaches 3`, as for a one-player run). Before the module:
+`ModuleNotFoundError: No module named 'gp_twop'` (1 error); after, the four gp suites
+`Ran 104 tests … OK` (B = 92 + 12).
+
+Mutations (each alone, restored after; `PYTHONDONTWRITEBYTECODE=1`):
+
+| mutation | result |
+|---|---|
+| `pad_word` side test `== 0` -> `== 1` | FAIL `test_pad_word_is_0x4f644`, `test_a_two_human_match_passes`, `test_a_side_that_never_pressed_fails` |
+| `if r['b1f'] != 3 and` -> `if False and` | ERROR `test_b1f_dropping_after_the_join_fails` |
+| `end = None if xrec is None else xrec['f']` -> `end = None` | FAIL `test_a_two_human_match_passes`, `test_records_after_the_end_are_not_checked` |
+| `if out['pressed'][side] == 0:` -> `if False:` | FAIL `test_a_side_that_never_pressed_fails` |
+| `r['mode'] == 5 and e in ENTRANCE_WORDS` -> `e in ENTRANCE_WORDS` | ERROR `test_the_entrance_word_is_allowed_in_mode_5_only` |
+| the T -> S line rewrite in `load` -> `pass` | FAIL `test_a_port_trace_reads_as_s_records` |
+| `mode_path`'s `r['mode'] != prev` dropped | FAIL `test_mode_path` |
+
+Control (`check` on the one-player captures): `gp-idle-loss`, `gp-pads`, `gp-idle-loss-run2` each print
+`gp_twop: <name>: FAIL: b1f never reaches 3 (no S record has both sides human)`, rc=1. `path` on
+`gp-idle-loss`: `poll.log:4 f=4 mode=3 b1f=0 cred=5`, `:324 f=141 mode=27 b1f=0 cred=5`,
+`:633 f=26F mode=1A b1f=1 cred=4`, `:652 f=281 mode=1B b1f=1 cred=4`, `:671 f=293 mode=10 b1f=1 cred=4`
+(then `:1613 f=640 mode=1A b1f=1 cred=4`).
+
+## §T.7 `make gp-twop-oracle` (Task 3; not in `verify` yet)
+
+The target sits after `gp-keys-oracle`'s recipe (the base is `main` `1142462`, where the gp oracles are
+`gp-oracle`, `gp-charsel-oracle`, `gp-moves-oracle`, `gp-keys-oracle`; the plan's anchor after
+`gp-charsel-oracle` was re-anchored by content); `gp-twop-oracle` is appended to the `.PHONY` list. Its six
+variables are empty until Tasks 5-6 measure them.
+
+1. Red (the target absent): ``make: *** No rule to make target `gp-twop-oracle'.  Stop.``, `exit=2`.
+2. No capture (`data/k11-captures/gp-twop` absent), plain and under `PR_ORACLE_REQUIRED=1`: `exit=0` both;
+   `Ran 13 tests … OK` (12 from Task 2 plus the no-debit test, below),
+   `gp-twop-oracle: no capture at data/k11-captures/gp-twop (skipped)`,
+   `gp-replay: no capture at data/k11-captures/gp-twop`, `gp_compare: no capture at data/k11-captures/gp-twop (skipped)`.
+3. A capture that is not two-human (a scratch capture root holding `gp-idle-loss`'s `poll.log`; nothing
+   under `data/` written), `PR_ORACLE_REQUIRED=1`: `exit=2`;
+   `gp_twop: gp-twop: FAIL: b1f never reaches 3 (no S record has both sides human)`,
+   `make: *** [gp-twop-oracle] Error 1` (the replay and the ratchets never run).
+
+Fold-ins from the Task 1-2 review:
+
+- (t1) `two_human` fails when the join frame has a prior record and the credit changed at the join
+  (`credit B -> J at the join f=…`): the raw's no-debit rule (§T.1.3; 0x2CA93 skips the debit 0x2CA9C when
+  b1f != 0). Test `test_a_credit_debited_at_the_join_fails` (credit 5 before, 4 at the join). Mutation
+  (the `if out['cred_join'] != out['cred_before']` test replaced by `if False`, scratch copy): that test
+  FAILs (`0 != 1`); restored OK.
+- (t2) the `gp_twop.py` usage text says a port trace is converted only when the file is named `trace.txt`;
+  any other name is read as a `poll.log` and finds no S records (checked: a T-record log under another name
+  reports `b1f never reaches 3`).
+
+## §T.8 The capture `gp-twop` (Task 4)
+
+`make gp-capture scenario=gp-twop`, captured once (`session.txt`: DOSBox-X 2026.08.31, exe sha256
+`8120f1bd…a68d`, `time_limit=70 wall_s=47.7 rc=0`, `stop_at_end=1 tail=60 signal_f=061D`, `frames=680
+raw_window=1388..3290 avi_frames=3291`). Every check is ok: base, steps fired 11/11, end frame reached,
+mode 0x27 after the Enter, kb == raw (0 differ), frames written 680/680, port script v2, no unscripted
+input, stopped at the end. The tool reported 8 frames missed (spec §3.7); none falls where a press is
+checked (the gaps are S(f+1) of Enter step 0 and S(f+3), S(f+2) of Enter steps 1 and 2: mode-0x27
+frames nothing checks). `poll.log` sha256
+`9c01a73bfb04be19f794316e80b784a86b782b65f06592f2091d1544edf2e22c` (1614 lines; X `poll.log:1553`,
+`f=05E1 step=12 end`; E `reason=end rc=0`; re-checked at closure with `shasum -a 256`). Size: 30 MB
+(30 592 KB for 680 frames, 45.0 KB per frame), against the §T.3 estimate of ~105 MB and the approved
+maximum of ~165 MB. The difference is the STOP_AT_END cut (§T.5): 47.7 s instead of 70 s, and 680
+distinct frames out of the 1903 AVI frames after the post-logo start (0.357) instead of §T.3's 0.646.
+
+Mode path (`gp_twop.py path`): `:311` 0x27 (b1f 0, cred 5), `:618` 0x1A (b1f 1, cred 4), `:637` 0x1B,
+`:654` 0x10 f=286, join at f=2C3 (b1f 3), `:881` 0x1A f=35A, `:901` 0x1B, `:918` 0x11, `:920` 0x17,
+`:1162` 0x1A, `:1181` 0x1B, `:1200` 5, `:1324` 6 f=50F. b1f is 3 and cred is 4 from the join to the end.
+This is the path §T.3 predicted; the CPU did not take the join, the countdown did not end mode 0x10,
+and mode 8 never appears before the end.
+
+Two-human: `join f=2C3 (cred 4 -> 4); 797 S records from the join to X f=5E1; side 0 [('pad', 797)],
+side 1 [('pad', 797)]; fight presses 40/40`, `two-human match: ok`. Only the `pad` class appears (no
+`zero`, `entrance` or `other`).
+
+Presses (all late=0): `:714` p2.start f=2C1 (`I` record: `scan=3C`), S(2C3) new 00000100, b1f 3, cred 4
+(S(2C2) still b1f 1, cred 4: no debit, 0x2CA93); `:777` p1.right S(2FF) e0 1010; `:810` p2.left S(31D)
+e2 2020; `:843` p1.b0 S(33B) e0 0101, mode 0x10; `:876` p2.b0 S(359) e2 0101, S(35A) mode 0x1A
+(0x43BF0); `:1384/:1385` S(54C) e0 1010 e2 2020, mode 6; `:1450/:1451` S(588) e0 0202 e2 0404;
+`:1486/:1487` S(5A6) e0 0404 e2 0202. Every press matched §T.1/§T.3, with no corrections. The first
+mode-6 S record (`:1324`) has c0=02 c1=06, and c0/c1 first became 2/6 at `:1181` (f=482). The fight
+frames (capture 600, 640, 676) show TALON (side 0) against CHAOS (side 1), city ruins, timer 56 to 55.
+This record does not derive how c0/c1 map to the class bytes `DS_0010816A`.
+
+## §T.9 The replay, its miss set and the first divergences (Task 5)
+
+Base `ff1b32a` (main `1142462` + Tasks 1-3; U5, U6a, U6b, U11 merged). The capture is Task 4's
+`data/k11-captures/gp-twop` (`poll.log` sha256 `9c01a73b…2e22c`, 680 frames, X at f=5E1).
+
+**The replay.** `gp_session.py port-script --scenario gp-twop` writes 34 lines, header
+`# gp port script v2: scenario gp-twop`, 16 `bits` lines, `end 1505` (= X, f=5E1). The
+`PR_GP_DUMP` driver runs the whole script: the last `T` record is `f=05E1 mode=0006`, the last port
+frame is `463 f=05E1`, and there is no stall and no fault. No `GP_TWOP_END` cut is needed. Before the
+table (`rc=1`):
+
+```
+fn-miss PR_GP_DUMP 0x5D812 actor_spawn hits=3349
+fn-miss PR_GP_DUMP 0x5D812 set_dead hits=3047
+fn-miss PR_GP_DUMP 0x29D60 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP 0x5D812 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+FAIL …test_platform.c:219: 4 != 2
+fn-miss PR_GP_DUMP: unexpected 0x29D60 from frontend_mode_1b_step
+fn-miss PR_GP_DUMP: unexpected 0x5D812 from frontend_mode_1b_step
+```
+
+The measurement matches the prediction (§T.RB item 1) exactly. No already-ported address is
+missed, and no unexpected target appears: this fight's replay misses only the harmless pairs on a
+base with U6b's ports (an observation of this one fight, not a claim about other fights).
+Classification, both from §G.24 of the ground-truth record:
+- `0x29D60 frontend_mode_1b_step`: the bare `ret`, the wipe's end hook into mode 0x10.
+- `0x5D812 frontend_mode_1b_step`: the runtime `xor eax,eax; ret` stub, the hook at the wipe into
+  mode 5.
+
+Neither is a two-player routine (§T.1) or a porting target.
+
+**The pin.** `port/tests/test_platform.c`:
+- `k_miss_gp_twop[]` holds those two rows.
+- `fnm_known` gains `twop` as its 8th parameter, after U6b's `moves` and U11's `keys_fight`.
+- The selector is `twop = strcmp(sc, "gp-twop") == 0`.
+- The `want` count gains the term `(twop ? FNM_N(k_miss_gp_twop) : 0u)`.
+- The driver's `fnm_known` call gains `, twop`, and the `--check` log's call gains one more `0`.
+
+After the edit: no compiler output, `rc=0`, `all checks passed`. Mutation (the `0x5D812` row
+dropped): `rc=1`, `FAIL …test_platform.c:233: 4 != 3`,
+`fn-miss PR_GP_DUMP: unexpected 0x5D812 from frontend_mode_1b_step`. Restored: `rc=0`.
+`PR_ORACLE_REQUIRED=1 PR_GAME_DIR=data/game/C ./build/run_tests` prints `all checks passed`.
+
+**The port stays two-human.** `gp_twop.py check --trace` on the replay's `trace.txt` gives
+`join f=2C3 (cred 4 -> 4); 799 S records from the join to the end; side 0 [('pad', 799)], side 1
+[('pad', 799)]; fight presses 40/40`, `two-human match: ok`, `rc=0`. The join is at f=2C3, the
+capture's frame. `path --trace` lists the following mode changes:
+- f=134 0x27
+- f=261 0x2D
+- f=262 0x1A (b1f 1, cred 4)
+- f=274 0x1B
+- f=286 0x10
+- f=35A 0x1A (b1f 3)
+- f=36C 0x1B
+- f=37E 0x11
+- f=37F 0x17
+- f=470 0x1A
+- f=482 0x1B
+- f=494 5
+- f=50F 6
+
+The capture's `path` prints 0x1B at f=276 and f=36E and has no 0x2D line. That comes from its `S`
+gaps, not from a divergence: the capture's `P` records read `f=0261 mode=002D` (`poll.log:616`),
+`f=0274 mode=001B` (`:636`) and `f=036C mode=001B` (`:900`). In f=0x134..0x5E1 the capture
+has no `S` record at 8 frames: 134, 1CC, 261, 263, 274, 275, 36C and 36D. These are Task 4's
+"8 frames missed" and the trace's "8 without a capture snapshot".
+
+**The comparison** (`make gp-report scenario=gp-twop GP_DUMP=/tmp/pr_u7_gp`):
+
+```
+gp_compare: gp-twop: frames: window from capture 83 (raw 1742); 524 classified: 347 clean, 171 splice, 1 transition, 5 unexplained, 10 all-black
+gp_compare: gp-twop: frames: FIRST UNEXPLAINED capture 612 (raw 3223): nearest port 463, rows 91..169, x 55..184 (477 px)
+gp_compare: gp-twop: frames: UNEXPLAINED capture 613 (raw 3224): nearest port 463, rows 91..189, x 10..184 (2578 px)
+gp_compare: gp-twop: frames: UNEXPLAINED capture 614 (raw 3225): nearest port 461, rows 91..191, x 9..269 (4879 px)
+gp_compare: gp-twop: frames: UNEXPLAINED capture 615 (raw 3226): nearest port 461, rows 91..191, x 9..269 (5032 px)
+gp_compare: gp-twop: frames: UNEXPLAINED capture 616 (raw 3227): nearest port 461, rows 91..191, x 3..269 (5312 px)
+gp_compare: gp-twop: frames: coverage (reported, not ratcheted): 11 non-black port frame(s) up to port 463 not exhibited by any classified capture frame: [9, 11, 31, 175, 215, 216, 217, 218, 220, 222, 260]
+gp_compare: gp-twop: trace: 1190 frames compared (f 134..), 8 without a capture snapshot; first tick difference f=135 (reported, not ratcheted)
+gp_compare: gp-twop: trace: normalised (reported, not ratcheted): ent 0 of 1190 differ; t508 840 of 1190 differ (first f=264)
+gp_compare: gp-twop: trace: 0 differing through 1505
+gp_compare: gp-twop: moves: 1190 frames compared (f 134..) over c0 c1 r0 r1 s0_43, 8 without a capture snapshot
+gp_compare: gp-twop: moves: 0 differing through 1505
+```
+
+**The triage.**
+
+1. *Frames: the first unexplained capture frame is j = 612, and it marks the end of the port's
+   script, not a divergence.* With `gp_compare.classify` around port 440, capture 598-611 exhibit
+   port 452-463 in order (clean, or a splice of adjacent frames). Capture 611 is clean on port
+   463, the port's last frame (`frames.txt` `00463 f=05E1`, the script's `end 1505`). Capture
+   612-616 are the five unexplained frames (the report's "5 unexplained"), with nearest port
+   463/463/461/461/461.
+
+   I rendered capture 611, capture 612 and port 463 side by side (Pillow,
+   `/tmp/gameplay-u7/cap611_cap612_port463.png`). All three show the round-1 fight: TALON (left)
+   against CHAOS (right), city ruins, timer 56. Capture 612 differs from port 463 only in the
+   fighters' and spectators' bodies (rows 91..169), which are their next animation pose. That is
+   the frame after X, which the capture's 60-frame STOP_AT_END tail holds (§T.5) and the port's
+   script never ran.
+
+   So every content-bearing capture frame from the window start 83 through 611 is explained:
+   - the START MENU and its wipes;
+   - the two-player character select, f=0x286..0x35A, with P2's join, both cursors and both
+     confirms;
+   - the wipes, the versus screen and the stage entrance;
+   - the fight to X.
+
+   There is no select divergence, so no new gap opens in U5's area. There is no fight divergence,
+   so nothing goes to U6b or a new gap. This is the same as gp-u5-charsel's N = 516, "how far the
+   port's replay got" (gameplay-u5 §C5.17).
+
+2. *Trace: there is no differing frame.* The `S`/`T` fields agree on all 1190 compared frames,
+   f=0x134..0x5E1 = 1505, the script's end. 8 frames have no capture snapshot (the gaps above).
+   The tick difference from f=135 and the t508 normalisation (first f=264) are the host-timed
+   fields, reported and not ratcheted, as in every gp scenario (spec §7 Q6). So the trace has no
+   first difference X to triage (no `poll.log`/`trace.txt` line pair, no preceding miss). For
+   Task 6, the measured end is 1505.
+
+3. *Moves: 0 differing through 1505* (reported here; pinned at 1506 in §T.10). The comparison covers `c0 c1 r0 r1
+   s0_43` on 1190 frames. Both sides' move bytes agree through the fight's 40 presses (P1 b1/b2
+   against P2 b2/b1, record §T.3).
+
+Window start 83 (raw 1742). There are no named divergences. The one boundary is the script's end
+at f=5E1: capture frames from 612 onward lie past the port's last frame, and the record names
+that as a harness boundary, not a gap.
+
+## §T.10 The pins and the failure proofs (Task 6)
+
+Base `597c78c`. `make gp-report scenario=gp-twop GP_DUMP=/tmp/pr_u7_gp` was re-run on this head and prints
+the §T.9 lines unchanged. The values (all measured, none fitted):
+
+| Makefile variable | value | source |
+|---|---|---|
+| `GP_TWOP_MIN_FIRST` | 612 | "FIRST UNEXPLAINED capture 612 (raw 3223): nearest port 463": the port's last frame (f=5E1, the script's `end 1505`); capture 612..679 is the STOP_AT_END tail (the 60 game frames after X) the port never ran |
+| `GP_TWOP_TRACE_MIN_FIRST` | 1506 | "trace: 0 differing through 1505" (f=0x134..0x5E1; 8 f without a snapshot) -> end + 1, the exact pin (1507 fails as unreachable) |
+| `GP_TWOP_MOVES_MIN_FIRST` | 1506 | "moves: 0 differing through 1505" over `c0 c1 r0 r1 s0_43` (1190 frames, 8 without a snapshot) -> end + 1, the exact pin (1507 fails as unreachable); added by the final review |
+| `GP_TWOP_MAX_START` | 83 | "window from capture 83 (raw 1742)"; 83 < 612 |
+| `GP_TWOP_CAPTURE_SHA256` | `9c01a73b…f2e22c` (full value in the Makefile) | §T.8 |
+| `GP_TWOP_CAPTURE_FRAMES` | 680 | §T.8 |
+
+**What the three ratchets are.** N = 612, F = 1506 and the moves N = 1506 are the end of the port's script, "how far the port
+got" (like gp-u5-charsel's 516/1513, gameplay-u5 §C5.17), not divergences: no content-bearing capture frame
+from 83 up to 611 is unexplained and no traced or moves field differs through f=1505, so there is no divergence to
+name. They would be raised only by lengthening the port's script (a harness change, re-measured then).
+
+**The moves claim is pinned** (final review of U7; the plan's "reported, not pinned" predates U6b's
+`gp-moves-oracle`, which pins it, and the measured value is already the exact end: no cost). `gp_compare`
+prints the claim only with `--moves-min-first` (or `--report`): the recipe passes
+`--moves-min-first "$(GP_TWOP_MOVES_MIN_FIRST)"` and prints "moves: 0 differing through 1505; ratchet N 1506 ok".
+The moves fields (`c0 c1 r0 r1 s0_43`) are not in `gp_session.TRACE_FIELDS`, so the trace pin does not cover
+them: the moves pin is a separate gate (proof below). Until that review the Makefile and the claims in this
+record said "reported" while the recipe did not print it.
+
+**Green** (`make gp-twop-oracle GP_DUMP=/tmp/pr_u7_gp`, `exit=0`): `Ran 13 tests ... OK`; `gp_twop: gp-twop:
+join f=2C3 (cred 4 -> 4); 797 S records from the join to X f=5E1; side 0 [('pad', 797)], side 1 [('pad', 797)];
+fight presses 40/40`; `two-human match: ok`; `capture: poll.log sha256 9c01a73b..f2e22c, 680 frames: matches
+the pin`; `frames: window from capture 83 (raw 1742); 520 classified: 347 clean, 171 splice, 1 transition, 1
+unexplained, 10 all-black`; `frames: first unexplained 612, ratchet N 612 ok`; `trace: 0 differing through
+1505; ratchet N 1506 ok`; `moves: 0 differing through 1505; ratchet N 1506 ok`. (520 classified against the report's 524: `gp_compare.frame_claim` keeps classifying
+past an unexplained frame in report mode, up to `REPORT_MAX` of them, and stops at the first with a ratchet.)
+
+**Each pin can fail** (each `exit=2`):
+- `GP_TWOP_MIN_FIRST=613`: `frames: FAIL: first unexplained 612 < ratchet N 613`
+- `GP_TWOP_TRACE_MIN_FIRST=1507`: `trace: FAIL: N 1507 > end 1506: N is unreachable`
+- `GP_TWOP_MOVES_MIN_FIRST=1507`: `moves: FAIL: N 1507 > end 1506: N is unreachable`
+- `GP_TWOP_MAX_START=82`: `frames: FAIL: window starts at capture 83 (raw 1742) > pinned start 82`
+- `GP_TWOP_CAPTURE_SHA256=0000…0` (64 zeros): `capture: FAIL: poll.log sha256 9c01a73b… (680 frames) != the pinned 0000… (680 frames): a re-capture invalidates the pinned N, F and window start; ...`
+- `GP_TWOP_CAPTURE_FRAMES=681`: `capture: FAIL: ... (680 frames) != the pinned 9c01a73b… (681 frames)`
+
+**Damaged output fails the ratchets** (a copy of the replay's dump, `gp_compare.py` directly, `--min-first 612
+--trace-min-first 1506 --moves-min-first 1506 --max-start 83`):
+- port frame 400 (f=05A2, mode 6) with byte 32000 flipped: `FIRST UNEXPLAINED capture 537 (raw 3148): nearest
+  port 400, rows 100..100, x 0..0 (1 px)`, `FAIL: first unexplained 537 < ratchet N 612`, `rc=1`.
+- port frame 200 (f=0474, mode 0x1A) the same: capture 308 unexplained, `rc=1`.
+- Not detected: port frames 116 (f=0307) and 300 (f=0523) damaged the same way left `first unexplained 612 ... ok`.
+  The damaged row (row 100, the 320 bytes at 32000) is identical in the neighbouring port frames (equal across
+  115-117 and 299-301, not across 399-401), so a capture frame still matches a neighbour or a splice; frame 200's
+  row equals 199's but not 201's and was detected. The oracle does not claim that every port frame appears (AGENTS.md),
+  and a damage confined to rows the neighbouring port frame shares is not seen by it. Frames 400 and 200 are the
+  proof; 116 and 300 are the limit.
+- trace: `cred` at `f=0400` changed 4 -> 5 in the copy's `trace.txt`: `trace: first difference f=400 (1024) in cred:
+  capture 4, port 5`, `FAIL: first differing 1024 < ratchet N 1506`.
+- moves: `c1` at `f=0500` changed 06 -> 07 in the copy's `trace.txt`: the trace claim stays `0 differing through
+  1505; ratchet N 1506 ok` (`c1` is not a trace field) and `moves: first difference f=500 (1280) in c1: capture 6,
+  port 7`, `moves: FAIL: first differing 1280 < ratchet N 1506`, `rc=1`. (f=0400 has c1=00: the characters are set
+  at f=482, §T.8.)
+
+**Wiring.** `make verify` runs `gp-twop-oracle` after `gp-keys-oracle`. The task gate: tool suites `Ran 105 ... OK`
+(B = 92 + 13); `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected` (the baseline's); `git diff --stat main --
+port/src` empty. The full `make verify` runs at Task 7 (§T.11).
+
+## §T.11 U7 closure (Task 7)
+
+**The narrow claim, with the pinned values.** `make gp-twop-oracle` (in `make verify`, skipped without
+`data/k11-captures/gp-twop`, even under `PR_ORACLE_REQUIRED`) shows, for the capture whose `poll.log`
+sha256 is `9c01a73b…f2e22c` (680 frames), and no more:
+- the capture is a two-human match by `tools/gp_twop.py check`, from the join at f=2C3 (`cred 4 -> 4`) to the
+  scenario's end X at f=5E1: 797 `S` records, each side's command words written from its own pad (`pad` class
+  only, never `zero`, `entrance` or `other`), 40 of 40 fight presses landed (§T.8);
+- no content-bearing capture frame from the window start 83 up to N = 612 is unexplained (the START MENU, the
+  character select with P2's join, both cursors and both confirms, the wipes, the versus screen, the entrance
+  and the fight to X);
+- the traced fields agree on every compared frame below F = 1506 (f=0x134..0x5E1; 1190 frames, 8 without a
+  capture snapshot); the moves fields (`c0 c1 r0 r1 s0_43`) agree on the same frames below their own N = 1506 (pinned, §T.10).
+
+N = 612 and F = 1506 are the end of the port's script (how far the port got, like gp-u5-charsel's 516/1513), not
+divergences. A green run does not say the two-player game is correct: the oracle cannot detect a port that
+under-renders, and the order of the port's frames and that every port frame appears are not claimed (11
+non-black port frames up to port 463 are not exhibited by any classified capture frame, reported in §T.9). One
+limit is measured (§T.10): a damage confined to rows that the neighbouring port frame shares (row 100 in port
+frames 116 and 300) leaves the frame ratchet green.
+
+**What this unit was asked, and where it is answered.**
+- P2's pad bits (§T.2.1): each P2 key sets its spec §3.2 bit in the `+0x2D9` byte; F2 and Home share bit 0 (the
+  side-1 start mask `0x100`, `0x9ACBC`); held, they become the high byte of `DS_001088E2`, newly pressed the low
+  byte (`0x4F6DE`). Confirmed in the capture: p2.left `e2 2020`, p2.b0 `e2 0101`, the chord `e0 1010 e2 2020` (§T.8).
+- The START MENU rows and which side each starts (§T.1.1): seven rows. `0x2D` LEFT PLAYER ARCADE starts side 0,
+  `0x2E` RIGHT PLAYER ARCADE side 1, and `0x28`/`0x29`/`0x2A`/`0x2B`/`0x2C` both sides human from the start;
+  `DS_00104B1F` holds one bit per human side. Only the two arcade rows spend a credit (5 -> 4).
+- What a second start does (§T.1.2): it depends on the mode. In the attract it starts a game for the sides that
+  pressed; in the character select (mode `0x10`) it joins that side (`0x43B4E`: `DS_00104B1F |= side + 1`); in an
+  arcade fight it joins mid-match (`0x28CC8` -> `0x28DA4`); on the continue/challenge screens it continues.
+  The capture shows the select join: b1f 1 -> 3 at f=2C3, no debit (§T.8).
+- Credits (§T.1.3): a join never debits (`0x2CA93 cmp byte [0x104b1f],0` skips the debit; a join only requires a
+  credit, `0x2C060`), measured `cred 4 -> 4` at the join and 4 to the end (§T.8). There is no coin input in this
+  build's play path.
+- The handicap `0x64` (§T.1.8): its only read is `0x394AC`, reached only in mode `0x2C` (`DS_00104B1D = 4`) with
+  both sides human, so it cannot affect an arcade game.
+
+**Named gaps.** None opened by this unit: Task 5 found no divergence in the window, so no select divergence
+(U5's O1 is fixed, gameplay-u5 §C5.12) and no fight divergence (nothing for U6b's moves). Two reported items are
+not triaged and not claimed: the 11 coverage-only port frames and the one `transition` frame (§T.9). Harness
+values with their sources: the 60/30-frame gaps, the holds of 5, the 70 s limit, the STOP_AT_END tail of 60
+(§T.3, §T.5). The capture is 30 MB, below the §T.3 estimate of ~105 MB, because of the STOP_AT_END cut (§T.8).
+
+**Not covered** (§T.4.3, plus the capture's path past N):
+- the `+0x63` CPU flags themselves (the evidence is `b1f = 3`, each confirm's `+0x63 = 0` and the per-frame
+  command-word source), and the cursor and class bytes (the picks are visible only in the frames; c0/c1 = 2/6
+  are logged but their mapping to the class bytes is not derived);
+- the physical keyboard, the `E0` grey/keypad distinction, typematic repeat (spec §7 Q4), joysticks;
+- the other two-player entries: RIGHT PLAYER ARCADE + P1 join, the attract double start, the mid-fight join
+  (`0x28DA4`), 2 PLAYER HANDICAP, training/tug/endurance (U8);
+- everything past X (round end, match end, continue/challenge offers with two humans, winner/loser credits): the
+  capture's tail after X is unexplained by construction and the port never ran it;
+- run-to-run determinism under two-human input (one capture, Decision 3).
+
+**The full gate, before the rebase onto E3** (`make verify` on `c80c7b7`'s pre-rebase head with the t=u7 overrides, log `/tmp/gameplay-u7/final_verify.txt`,
+577 lines):
+- `verify-exit=0`; the 45 oracle lines equal `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`;
+- all five gp oracles ok: gp-idle-loss 2064/8320, gp-u5-charsel 516/1513, gp-u6-moves-b 1005/2262/2949,
+  gp-keys-fight effects 11 of 11, and gp-twop as §T.10 (`two-human match: ok`, `matches the pin`, `first
+  unexplained 612, ratchet N 612 ok`, `0 differing through 1505; ratchet N 1506 ok`); the first four equal the
+  baseline's lines (`base_gp_lines.txt`);
+- `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`, `python3 tools/port_progress.py` `771 1203 64` and
+  `731 731 100`, all equal to the baseline;
+- the unit-test line of `verify` `Ran 171 tests ... OK` (the baseline's count on this base);
+- `make audio-render AUDIO_WAV=/tmp/pr_u7.wav` (`verify` does not render it under that override): `cmp` against
+  `before-t2.wav` is silent;
+- `git diff --stat 1142462 -- port/src` (the branch's merge base) is empty. `git diff --stat main -- port/src` is
+  not: `main` has since merged E3 (`834b703`, which edits `port/src`), none of it U7's. Re-check against `main`
+  after the merge.
+
+**The full gate after the rebase onto E3** (`make verify` on `5c34f5b` (main `834b703` + U7), the t=u7m overrides,
+log `/tmp/pr_u7m_verify.txt`, 690 lines, `/tmp/pr_u7m_rc.txt`; run before the moves pin of the final-review fix,
+which adds one printed line and one pin and changes no port code):
+- `verify-exit=0`, `ORACLES-EQUAL` (the 45 oracle lines), `WAV-EQUAL` (`/tmp/pr_u7m.wav`, rendered by `verify`,
+  `cmp` against `before-t2.wav` silent);
+- the five gp oracles ok: gp-idle-loss 2064/8320, gp-u5-charsel 516/1513, gp-u6-moves-b 1005/2262/2949,
+  gp-keys-fight effects 11 of 11, gp-twop 612/1506 (`two-human match: ok`, `matches the pin`);
+- `diff-verify: 13/13 functions VERIFIED; 17/17 mutants detected; 1 named gaps; 0/5 rows with callees closed (8
+  have none)` (the E3-era line, replacing the pre-E3 6/6 and 7/7 above);
+- `entry-triage: 579 candidates (575 by U0's rule) ...; targets 323 unported, 172 ported; supplement 131 (31
+  unported, 0 stale); untrusted entries 30`;
+- `python3 tools/port_progress.py`: `771 1203 64` and `731 731 100`; the unit-test lines `Ran 171 ... OK`.
+
+**The final-review fix** (§T.10: the moves pin; `make gp-twop-oracle GP_DUMP=/tmp/pr_u7_gp` `exit=0` with `moves: 0
+differing through 1505; ratchet N 1506 ok`; `GP_TWOP_MOVES_MIN_FIRST=1507` fails as unreachable; a changed `c1`
+fails the moves claim) is gated by the task gate in `task-7-report.md`.
