@@ -92,7 +92,7 @@ sides swapped (round 1 mode 8 at `0xC71`, round 2 timeout → mode 7 → 9).
 of mode 6 makes that iteration's `0x27FA8` end the round. The harness found the round ended
 in the same iteration (poke before `f = 0x490`, mode 8 at `0x490`). What it replaces: the hits
 that would have raised `+0x5A` to `0x78`, and the KO reaction they would start (no
-`0x39FF4` on that path). The claim never covers those (§W.10).
+`0x39FF4` on that path). The claim never covers those (§W.9; corrected from §W.10, Task 7 review).
 
 ## §W.4 The tour (raw)
 
@@ -176,7 +176,7 @@ With the defaults (§W.1: difficulty 9, `DS_00105B3A = 0`) the path is `0x417C4`
 **The marks poke:** the seven bytes `0x108106..0x10810C = 0x80 | 0 << 6 | c0`
 (`gp_session.lands_marked(0, c0)`), written with round 1's KO, make the first won match the
 seventh land: state 1 counts six, state 3 the seventh. The current land's byte is rewritten by
-`0x286BC` with the same value. What it replaces: six won matches (§W.10).
+`0x286BC` with the same value. What it replaces: six won matches (§W.9; corrected from §W.10, Task 7 review).
 
 ## §W.5 The final and the death-done poke (raw, and a run)
 
@@ -214,6 +214,12 @@ mode `0xD` from `f = 0x1830` to its limit `0x4800`** (§W.7). So U10 pokes
 `DS_00104B0C = 1` (`gp_session.DEATH_DONE`) 10 frames into each mode-`0xD` entry; what it
 replaces (the death animation, its remains actor, its `rng(0x10)` draw) is not claimed, and
 `gp_win.py check` fails the capture if the game had set the byte itself before the poke.
+**Corrected by the capture (§W.13, raw wins):** the original confirms the mode-`0xD` half (with no
+death-done poke it stayed in mode `0xD` from `f = 0x14C0` to `0x413A`, 190 s), but "a poked KO
+starts no death animation" is too strong: in `gp-u10-ending` the game itself sets
+`DS_00104B0C = 1` at `f = 0x1602`, in mode `0xF`, 190 frames after the 7th poked KO was counted
+(`0x1544`). `0x37FF6` being the only non-zero store, `0x37EA0` ran there. Why the death
+animation ends in mode `0xF` and not in mode `0xD` is not established (a named gap, §W.13).
 
 ## §W.6 The ending (raw)
 
@@ -258,6 +264,10 @@ then `0xD`/`0xC` every 10 frames (14C0 … 1538; opponents VERTIGO … 5, 4, 1, 
 `0x1F` 1814**, `0x15` 1905, `0x1F` 1DB6, `0x15` 1DF7, **mode `0x1E` 217C** (score 5 380 000),
 **mode 3 26DF (9951)**. `gp_win.py check` on the replay's own trace (`T` read as `S`): 30/30
 milestones. Port dump 4 750 frames, 302 MB.
+**Corrected by the capture (§W.13):** the preview models the original's timing but not its
+memory. The port has no DOS memory limit, and under DOSBox-X's default `memsize` (16 MB) the
+original stops in the final ("Primal Rage is out of memory.", at the 4th opponent). So the
+capture runs with `memsize=64`, a harness value of `gp-u10-ending` only.
 
 **Wall time and storage (estimates, harness values):** mode `0x27` appears ~25 s after
 DOSBox-X starts (`ENTER_WAIT`), and the game runs at 60.05 frames/s, so U9's end is at
@@ -320,6 +330,11 @@ the same code, other table entries), the tour's repeat at difficulty < 9 and the
 `DS_00105B3A != 0` branch into the final (`0x423E3`/`0x271E0`, §W.4), the continue in the
 final (mode `0xE` from `0x272DC`), the sprite layouts (`DS_00104529` bit 1 clear in the
 defaults, §W.1).
+Added by the capture (§W.13): the original's memory growth over the poked final (it runs out
+of memory in the 4th final fight under DOSBox-X's default 16 MB, `gp-u10-ending` runs with
+`memsize=64`): not root-caused, and whether the real game, with fought and unpoked KOs, runs out
+the same way is unknown. Also the death animation that ends in mode `0xF` but not in mode `0xD`
+(§W.5's correction).
 
 ## §W.10 The Makefile targets and the port preview (Task 7, runs on `a76af68`)
 
@@ -349,6 +364,14 @@ No other driver failure. The previews were deleted afterwards. `make -n verify` 
 `gp-modes-one` before the new lines (it executes the recursive `gp_compare`; the same on the
 unmodified Makefile), so the order is read from the Makefile: `gp-modes-oracle`,
 `gp-win-oracle`, `gp-ending-oracle`, `diff-verify`.
+
+**The counts (Task 7 review note).** §W.7's "2 029 frames" and the "2 031 entries" above count two
+different preview runs (the planner's scratch driver and Task 7's preview script, both on the
+preview's own frames, ending at `f = 0xDB4`), and a dump directory's entries include three files
+that are not frames: `frames.txt`, `gp.log`, `trace.txt`. The replay of the capture
+(§W.12, script ending at the capture's `X`, `f = 0xDAE`) holds 2 029 entries = 2 026
+`frame_*.ipx` + those three. Neither preview dump survives, so the two-entry difference between
+the previews is not resolved; no value is pinned from either.
 
 ## §W.11 The `gp-u9-win` capture (Task 8, on `9603d45`)
 
@@ -486,3 +509,236 @@ unmarked land, which holds (`m106/m10a` mark only land 5). Whether the port repr
 the pick at the capture's frames is the Task 9 replay's trace ratchet (§W.12).
 Wall time 81.7 s against the predicted ~78 s; 2 521 stored frames and 119 MB inside §W.7's
 estimate (1 500-2 700 frames, ~70-130 MB).
+
+## §W.13 The `gp-u10-ending` capture (Task 10, on `9603d45` + the `memsize` hack, committed as `bfb0058`)
+
+Taken by the controller after three probes (below), with DOSBox-X's guest memory at 64 MB
+(`-set 'dosbox memsize=64'`, right after the `dosbox memory file=` pair). That flag was an
+uncommitted one-line edit of `gp_capture.dosbox_cmd` when the capture ran; `bfb0058` commits
+it as the scenario's harness value (`SCENARIOS['gp-u10-ending']['memsize'] = 64`, every other
+scenario's argv unchanged), and `TestMemsize.test_the_captures_argv` rebuilds both U9's and this
+capture's `argv=` line from the committed code exactly. Log `/tmp/gameplay-u9u10/u10_capture_final.txt`.
+
+`session.txt`, all of it:
+
+```
+scenario=gp-u10-ending
+dosbox=DOSBox-X version 2026.08.31 SDL2, copyright 2011-2026 The DOSBox-X Team.
+argv=/opt/homebrew/bin/dosbox-x -defaultconf -fastlaunch -nopromptfolder -nogui -nomenu -time-limit 240 -set 'sdl fullscreen=false' -set 'dosbox captures=/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-t03kpurf/avi' -set 'dosbox memory file=/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-t03kpurf/guest.mem' -set 'dosbox memsize=64' -set 'log logfile=/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-t03kpurf/dosbox.log' -set 'dos log console=quiet' -set 'dosbox quit warning=false' -c 'MOUNT C "/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-t03kpurf/C" -ro' -c 'IMGMOUNT D "/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-t03kpurf/CD/RAGECD.ISO" -t iso' -c C: -c 'DX-CAPTURE /V /O PRAGE.EXE -f' -c EXIT
+exe=/tmp/pr_u910_pin/PRAGE.EXE sha256=8120f1bd1df389ed94cb329c030f95d9e38caad193bbd9840717af557161a68d
+cmos=zero pad_bios=1
+time_limit=240 wall_s=205.6 rc=0
+stop_at_end=1 tail=60 signal_f=271D
+avis=['prage_000.avi', 'prage_001.avi'] fps=70.0866 dro=['prage_000.dro'] frames=5704 raw_window=1391..14354 avi_frames=14359 twg_last=1340
+check=ok base
+check=ok steps fired 20/20
+check=ok end frame reached
+check=ok mode 0x27 after the Enter
+check=ok snapshots kb == raw (0 differ)
+check=ok frames written 5704/5704
+check=ok port script v2
+check=ok no unscripted input
+check=ok pokes written 17/17, 0 raced
+check=ok stopped at the end (SIGTERM at f=271D, rc=0)
+```
+
+The CHECK lines and the tool's summary:
+
+```
+title_pin: wrote /tmp/pr_u910_pin/PRAGE.EXE (pinned: title entry 12, 111, 0 + anim opcode-8 0 + master-loop draws 0x256B1, 0x256D6 -> 0)
+gp_capture: snapshots 9972, f 4..271D, 38 frames missed (spec §3.7)
+gp_capture: CHECK base: ok
+gp_capture: CHECK steps fired 20/20: ok
+gp_capture: CHECK end frame reached: ok
+gp_capture: CHECK mode 0x27 after the Enter: ok
+gp_capture: CHECK snapshots kb == raw (0 differ): ok
+gp_capture: CHECK frames written 5704/5704: ok
+gp_capture: CHECK port script v2: ok
+gp_capture: CHECK no unscripted input: ok
+gp_capture: CHECK pokes written 17/17, 0 raced: ok
+gp_capture: CHECK stopped at the end (SIGTERM at f=271D, rc=0): ok
+gp_capture: wrote 5704 frames to /Users/felipe.dos.santos/code/mine/primal-rage-reverse/data/k11-captures/gp-u10-ending (raw 1391..14354), wall 205.6s
+```
+
+The evidence (`python3 tools/gp_win.py check --scenario gp-u10-ending --capture data/k11-captures/gp-u10-ending`,
+`/tmp/gameplay-u9u10/u10_evidence.txt`) and the input audit:
+
+```
+gp_win: gp-u10-ending: evidence: character select (mode 0x10) at f=286 ok
+gp_win: gp-u10-ending: evidence: round 1: P1 is character 0 (cursor 0 confirmed, 0x43CAD) at f=479 ok
+gp_win: gp-u10-ending: evidence: round 1 KO with the seven lands poked P1's at f=485 ok
+gp_win: gp-u10-ending: evidence: round 2 (mode 6, round index 2) at f=847 ok
+gp_win: gp-u10-ending: evidence: round 2 KO: P1 wins the match (0x27BA4 result 0) -> mode 9 at f=854 ok
+gp_win: gp-u10-ending: evidence: the conquered-lands screen (mode 0x12, 0x4142C), the won land marked by 0x286BC (0x80 | side 0 | character) at f=B9C ok
+gp_win: gp-u10-ending: evidence: 0x41C28 state 3 counts the seventh land at f=C3D ok
+gp_win: gp-u10-ending: evidence: WORLD DOMINATION: 0x4160C clears the marks, +0x82 = 1 at f=C89 ok
+gp_win: gp-u10-ending: evidence: YOU MUST REPLENISH YOUR HEALTH: mode 0x23 (0x417C4, 0x26978) at f=DBB ok
+gp_win: gp-u10-ending: evidence: the health bonus (mode 0x22) at f=E36 ok
+gp_win: gp-u10-ending: evidence: mode 0x24 (0x26F58) at f=12EA ok
+gp_win: gp-u10-ending: evidence: the final: mode 0xC, stage 7, flag DS_00104B14 (0x26F58, 0x25C88) at f=14B6 ok
+gp_win: gp-u10-ending: evidence: final opponent 1 KO'd -> mode 0xD (0x272DC) at f=14C2 ok
+gp_win: gp-u10-ending: evidence: final opponent 1 replaced (0x274FC, count 1) at f=14CC ok
+gp_win: gp-u10-ending: evidence: final opponent 2 KO'd -> mode 0xD (0x272DC) at f=14D6 ok
+gp_win: gp-u10-ending: evidence: final opponent 2 replaced (0x274FC, count 2) at f=14E0 ok
+gp_win: gp-u10-ending: evidence: final opponent 3 KO'd -> mode 0xD (0x272DC) at f=14EA ok
+gp_win: gp-u10-ending: evidence: final opponent 3 replaced (0x274FC, count 3) at f=14F4 ok
+gp_win: gp-u10-ending: evidence: final opponent 4 KO'd -> mode 0xD (0x272DC) at f=14FE ok
+gp_win: gp-u10-ending: evidence: final opponent 4 replaced (0x274FC, count 4) at f=1508 ok
+gp_win: gp-u10-ending: evidence: final opponent 5 KO'd -> mode 0xD (0x272DC) at f=1512 ok
+gp_win: gp-u10-ending: evidence: final opponent 5 replaced (0x274FC, count 5) at f=151C ok
+gp_win: gp-u10-ending: evidence: final opponent 6 KO'd -> mode 0xD (0x272DC) at f=1526 ok
+gp_win: gp-u10-ending: evidence: final opponent 6 replaced (0x274FC, count 6) at f=1530 ok
+gp_win: gp-u10-ending: evidence: final opponent 7 KO'd -> mode 0xD (0x272DC) at f=153A ok
+gp_win: gp-u10-ending: evidence: YOU ARE MASTER OF THE NEW URTH: mode 0xF, count 7 (0x274FC) at f=1544 ok
+gp_win: gp-u10-ending: evidence: SAURON's ending (mode 0x1F, 0x208F8): the winner's character DS_0010782A[DS_00104AD4 * 0x94] (0x20900..0x20914) is 0 at f=1816 ok
+gp_win: gp-u10-ending: evidence: the ending, second part (mode 0x1F, state 3) at f=1DB8 ok
+gp_win: gp-u10-ending: evidence: the high-score entry (mode 0x1E) at f=217E ok
+gp_win: gp-u10-ending: evidence: back in mode 3 at f=26E1 ok
+gp_win: gp-u10-ending: evidence: 30/30 milestones ok
+$ python3 tools/gp_capture.py check-input data/k11-captures/gp-u10-ending
+check=ok no unscripted input
+```
+
+Size and identity:
+
+```
+$ du -sh data/k11-captures/gp-u10-ending
+259M	data/k11-captures/gp-u10-ending
+$ ls data/k11-captures/gp-u10-ending | grep -c raw.gz
+5704
+$ shasum -a 256 data/k11-captures/gp-u10-ending/poll.log
+a88de48ad39e90df1e3d3329fbd5aa876c69a08484fa22c66db8deebd3feff38  data/k11-captures/gp-u10-ending/poll.log
+$ grep '^W' data/k11-captures/gp-u10-ending/poll.log
+W ms=40477 f=0482 step=4 addr=00108106 len=7 was=00000000000000 now=80808080808080 late=0 race=0
+W ms=40477 f=0482 step=4 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=56708 f=0850 step=5 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=110443 f=14BF step=6 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=110636 f=14CB step=7 addr=00104B0C len=1 was=00 now=01 late=0 race=0
+W ms=111203 f=14D5 step=8 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=111372 f=14DF step=9 addr=00104B0C len=1 was=00 now=01 late=0 race=0
+W ms=111856 f=14E9 step=10 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=112019 f=14F3 step=11 addr=00104B0C len=1 was=00 now=01 late=0 race=0
+W ms=112188 f=14FD step=12 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=112355 f=1507 step=13 addr=00104B0C len=1 was=00 now=01 late=0 race=0
+W ms=112521 f=1511 step=14 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=112687 f=151B step=15 addr=00104B0C len=1 was=00 now=01 late=0 race=0
+W ms=113188 f=1525 step=16 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=113355 f=152F step=17 addr=00104B0C len=1 was=00 now=01 late=0 race=0
+W ms=113820 f=1539 step=18 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=113997 f=1543 step=19 addr=00104B0C len=1 was=00 now=01 late=0 race=0
+```
+
+The first `S` record of each mode entry a milestone names (modes `0x10`/1, 6/1, 8/1, 6/2, 9/1,
+`0x12`/1, `0x23`/1, `0x22`/1, `0x24`/1, `0xC`/1-8 interleaved with `0xD`/1-7, `0xF`/1, `0x1F`/1-2,
+`0x1E`/1 and mode 3's second entry), cut to the fields the milestones and this section read
+(the full lines are in `poll.log` at these `f`, pinned by its sha256):
+
+```
+S f=0286 mode=0010 st=0000 rng=723D2EA7 c0=00 c1=00 s0_5a=00 s1_5a=00 afc=0000 ad4=00000000 w2=00 w3=00 b1e=00 b21=00 b14=00 b0c=00 t104=0000 m106=00000000 m10a=00000000 sc0=00000000 c82=00
+S f=0479 mode=0006 st=0000 rng=BA9703D6 c0=00 c1=06 s0_5a=00 s1_5a=00 afc=0005 ad4=FFFFFFFF w2=00 w3=00 b1e=01 b21=00 b14=00 b0c=00 t104=0000 m106=00000000 m10a=00000000 sc0=00000000 c82=00
+S f=0485 mode=0008 st=0000 rng=9F40FBD1 c0=00 c1=06 s0_5a=00 s1_5a=78 afc=0005 ad4=FFFFFFFF w2=01 w3=00 b1e=01 b21=00 b14=00 b0c=00 t104=0000 m106=80808080 m10a=00808080 sc0=00004E20 c82=00
+S f=0847 mode=0006 st=0000 rng=38ABE3AD c0=00 c1=06 s0_5a=00 s1_5a=00 afc=0005 ad4=FFFFFFFF w2=01 w3=00 b1e=02 b21=00 b14=00 b0c=00 t104=0000 m106=80808080 m10a=00808080 sc0=00009C40 c82=00
+S f=0854 mode=0009 st=0000 rng=A854BFB9 c0=00 c1=06 s0_5a=00 s1_5a=78 afc=0005 ad4=00000000 w2=02 w3=00 b1e=02 b21=00 b14=00 b0c=00 t104=0000 m106=80808080 m10a=00808080 sc0=0000EA60 c82=00
+S f=0B9C mode=0012 st=0000 rng=9C0059AF c0=00 c1=06 s0_5a=50 s1_5a=78 afc=0005 ad4=00000000 w2=02 w3=00 b1e=02 b21=00 b14=00 b0c=00 t104=0000 m106=80808080 m10a=00808080 sc0=00013880 c82=00
+S f=0DBB mode=0023 st=0000 rng=B7068FEC c0=00 c1=06 s0_5a=50 s1_5a=78 afc=0005 ad4=00000000 w2=02 w3=00 b1e=03 b21=00 b14=00 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=0E36 mode=0022 st=0000 rng=CDA69EAB c0=00 c1=06 s0_5a=50 s1_5a=78 afc=0005 ad4=00000000 w2=02 w3=00 b1e=03 b21=00 b14=00 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=12EA mode=0024 st=0000 rng=B9817EFB c0=00 c1=06 s0_5a=50 s1_5a=78 afc=0005 ad4=00000000 w2=02 w3=00 b1e=03 b21=00 b14=00 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=14B6 mode=000C st=0000 rng=6489969D c0=00 c1=01 s0_5a=00 s1_5a=00 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=00 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=14C2 mode=000D st=0000 rng=6489969D c0=00 c1=01 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=00 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=14CC mode=000C st=0000 rng=A7CBE694 c0=00 c1=04 s0_5a=00 s1_5a=00 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=01 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=14D6 mode=000D st=0000 rng=A7CBE694 c0=00 c1=04 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=01 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=14E0 mode=000C st=0000 rng=7AE20E13 c0=00 c1=03 s0_5a=00 s1_5a=00 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=02 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=14EA mode=000D st=0000 rng=5D1E86DA c0=00 c1=03 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=02 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=14F4 mode=000C st=0000 rng=0C6ACCA9 c0=00 c1=00 s0_5a=00 s1_5a=00 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=03 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=14FE mode=000D st=0000 rng=0C6ACCA9 c0=00 c1=00 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=03 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=1508 mode=000C st=0000 rng=FD64D85F c0=00 c1=06 s0_5a=00 s1_5a=00 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=04 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=1512 mode=000D st=0000 rng=FD64D85F c0=00 c1=06 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=04 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=151C mode=000C st=0000 rng=DAFB5735 c0=00 c1=05 s0_5a=00 s1_5a=00 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=05 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=1526 mode=000D st=0000 rng=DAFB5735 c0=00 c1=05 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=05 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=1530 mode=000C st=0000 rng=6CC68132 c0=00 c1=02 s0_5a=00 s1_5a=00 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=06 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=153A mode=000D st=0000 rng=6CC68132 c0=00 c1=02 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=06 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=0002BF20 c82=01
+S f=1544 mode=000F st=0000 rng=C25C7220 c0=00 c1=02 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=07 b14=01 b0c=00 t104=0007 m106=00000000 m10a=00000000 sc0=004F0A60 c82=01
+S f=1816 mode=001F st=0000 rng=164D416B c0=00 c1=02 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=07 b14=01 b0c=01 t104=0007 m106=00000000 m10a=00000000 sc0=005217A0 c82=01
+S f=1DB8 mode=001F st=0000 rng=164D416B c0=00 c1=02 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=07 b14=01 b0c=01 t104=0007 m106=00000000 m10a=00000000 sc0=005217A0 c82=01
+S f=217E mode=001E st=0000 rng=164D416B c0=00 c1=02 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=07 b14=01 b0c=01 t104=0007 m106=00000000 m10a=00000000 sc0=005217A0 c82=01
+S f=26E1 mode=0003 st=0000 rng=164D416B c0=00 c1=02 s0_5a=00 s1_5a=78 afc=0007 ad4=00000000 w2=00 w3=00 b1e=01 b21=07 b14=00 b0c=01 t104=0007 m106=00000000 m10a=00000000 sc0=005217A0 c82=01
+```
+
+**The ending's frames.** Mode `0x1F` entry 1 (SAURON's ending, `ad4 = 0`, `c0 = 0`) at
+`f = 0x1816`, entry 2 (state 3) at `f = 0x1DB8` (`S` and `P` agree on both). The capture's last
+stored frame is `data/k11-captures/gp-u10-ending/last_frame.png` (61 283 bytes, written by the
+tool; mode 3 at the stop, `f = 0x271D`).
+
+**The path's details (from the records above).** The marks poke wrote all seven bytes
+(`W … addr=00108106 len=7 … now=80808080808080`), the round-1 KO landed in the same spin, and
+mode `0x12` showed the seventh land (`t104 = 7` at `0xC3D`); WORLD DOMINATION cleared the marks
+and set `c82 = 1`. The final's seven opponents were, in order, `c1` = 1, 4, 3, 0, 6, 5, 2
+(BLIZZARD, ARMADON, VERTIGO, SAURON, CHAOS, DIABLO, TALON); each death-done poke found
+`b0c = 0` and the next `0xC` entry has `b21 = k`. Scores: `sc0 = 0x4F0A60` (5 180 000) at mode
+`0xF`, `0x5217A0` (5 380 000) from the ending on, both as the preview's. Mode `0x1E` was entered
+three times (`0x217E`, `0x24FB`, `0x2629`, with mode `0x15` between) before mode `0x14`, `0x17`
+and mode 3 at `0x26E1`; the milestone is the first entry. **The game set `b0c` itself** at
+`f = 0x1602`, in mode `0xF` (§W.5's correction): no milestone reads `b0c` after the 7th KO.
+
+**Against the preview (§W.7)**, mode-entry frames (`P` records) against the preview's:
+
+| span | capture `P` | preview | Δ |
+|---|---|---|---|
+| `0x27` … `0x22` (`0x27` 134, `0x10` 286, 6 479, 8 483, 6 847, 9 851, `0x12` B9A, `0x23` DBB, `0x22` E36) | | 141 … E43 | −13 |
+| `0x24` | `12EA` | `12EA` | 0 |
+| `0x17` 139E, 5 143B, `0xC` 14B6, `0xD` 14C0 | | the same | 0 |
+| the next `0xC`/`0xD` entries (`14CC`, `14D6` … `153A`), every 10 frames | | `14CA` … `1538` | +2 |
+| `0xF` 1544, `0x17` 179C, `0x15` 179D, `0x1F` 1816, `0x15` 1907, `0x1F` 1DB8, `0x15` 1DF9, `0x1E` 217E, mode 3 26E1 | | 1542 … 26DF | +2 |
+
+The −13 is the harness's Enter timing, as in U9 (§W.11). It vanishes in mode `0x22`, which
+lasts `0x4B4` frames against the preview's `0x4A7`. P1's `+0x5A` is `0x50` at its entry, from
+the CPU's hits in modes 8 and 9 after the poked KOs. Whether `0x26C8C`'s duration follows that
+damage, or an absolute clock, is not established here. The Task 11 replay runs at the capture's
+frames and judges it. The +2 is the harness's: the first `S` record of the first mode-`0xD`
+entry is `0x14C2`, not `0x14C0` (the snapshots of `0x14C0..0x14C1` were missed), so that
+`after_entry` poke landed 2 frames later than in the preview. The opponent order also differs
+from the preview's (`0x2716C`'s draws follow the RNG). The capture ends (`X`) at 189.6 s on the
+session clock against the predicted ~185 s, with 5 704 stored frames and 259 MB, inside
+§W.7's estimate (4 200-7 600 frames, ~200-360 MB).
+
+### The memory limit (raw wins)
+
+Four runs of the original, all on the pinned `PRAGE.EXE` (sha256 `8120f1bd…`), the zero CMOS
+and DOSBox-X 2026.08.31 (ledger; logs in `/tmp/gameplay-u9u10/`). Runs 2 and 3 used uncommitted
+scenario variants and a 300 s time limit. Their `gp-u10-ending.failed` directories were replaced
+by the next run.
+
+1. **The plan's scenario, DOSBox-X's default `memsize`** (16 MB: `memsize = 16` in
+   `/opt/homebrew/Cellar/dosbox-x/2026.08.31/share/dosbox-x/dosbox-x.reference.full.conf:525`;
+   the argv has no `memsize` pair), `u10_capture.txt`. The original printed
+   `LOG: Primal Rage is out of memory.` and exited to DOS in the 4th final fight. Snapshots
+   `f 5..14F6`, `steps fired 12/20`, `pokes written 9/9, 0 raced`, `no unscripted input: ok`,
+   wall 116.3 s. The kept capture's 4th mode-`0xC` entry is `f = 0x14F4`. The message comes from the
+   fatal-error exit `0x1D290(code = eax)`: `0x65380(0xEF998, table[code], "Primal Rage"
+   (0x80880), edx)`, then `0x62003(code)`. The table is `0xA2CBC`, entry 8 =
+   `0xA2CDC` → `0x807F0` `"%s is out of memory.\n"`. Its only code-8 caller is `0x1B5DB` in
+   `0x1B544`, the resource-handle resolver (`res.c`/`sprite.c` cite it): an entry not yet
+   loaded is loaded by `0x1E774`, and if its pointer is still 0 (and flag `0x40000000` is
+   clear), the call is fatal. Capstone over the fixed-up image `/tmp/pr_u910_e2.bin` plus
+   Ghidra's xrefs to `0x1D290` (18 call sites; the only `eax = 8` is `0x1B5D4`, and
+   `0x1BF1A` passes the zero result of `0x1AD64`). So the 4th opponent's
+   resource load found no memory.
+2. **No death-done pokes** (only the `0x0C` KO steps; `u10_probe.txt`). The original stayed in
+   mode `0xD` from `f = 0x14C0` to `0x413A`, 11 386 frames ≈ 190 s, until the time limit
+   (`steps fired 7/13`, `pokes written 4/4, 0 raced`). This confirms §W.5's mode-`0xD` claim in
+   the original: the poke is needed.
+3. **The final's pokes at +120 frames instead of +10** (`u10_probe2.txt`). Five final fights
+   completed (`steps fired 15/20`, `pokes written 12/12, 0 raced`, snapshots to `f = 0x1914`).
+   Then the game crawled: 121 frames in 135 s, with no host sleep (the session clock and the
+   wall agree, wall 300.7 s). That is consistent with memory exhaustion (paging or allocator
+   thrash under 16 MB), but it is not proven.
+4. **The plan's scenario with `memsize=64`**, the kept capture: every CHECK `ok` and evidence
+   30/30, as above.
+
+**Named gap (stays):** the growth of the original's memory use over the poked final is not
+root-caused. What is known is the failure site: a resource load in `0x1B544`, at the 4th opponent
+under 16 MB. Which allocations accumulate is not known: the KO'd opponents' resources, the death
+animations the pokes cut short, or the remains actors that never spawn. Nor is it known whether
+the real game, with fought and unpoked KOs, would run out in 16 MB too. `memsize=64` is a
+harness value of this scenario, not a game value. It claims nothing about the original's memory
+requirement.
