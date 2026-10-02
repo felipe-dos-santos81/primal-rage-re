@@ -668,12 +668,26 @@ GP_MODES_HC_TRACE_MIN_FIRST = 2274
 GP_MODES_HC_MAX_START = 80
 GP_MODES_HC_CAPTURE_SHA256 = 8f35fd3abd3a5c527e0f72984ed8ba419cadbcefa4e53b349d5a1ed7b69cdfa3
 GP_MODES_HC_CAPTURE_FRAMES = 1081
+# gp-u8-endurance (record §U8.21): measured at 20c379e (+ its miss set) on the capture below. The
+# scenario ends 300 frames into the team select 0x44798 (decision D3: idle, ENDURANCE never leaves
+# mode 0x10; its fight is a named gap, record §U8.9), so N is where that team-select tail ends.
+# MIN_FIRST: first unexplained capture frame 278 (raw 2759): capture 277 equals port 163 (f=0x494,
+# the port's last presented frame; the team select presents every third f), so 278 shows the next
+# present, which the port never ran (its script ends at the capture's X record, f=0x495): how far the
+# port got, not a divergence. TRACE_MIN_FIRST: "0 differing through 1173", end + 1 = 1174, the exact
+# pin; MAX_START: the window starts at capture frame 90 (raw 1744). Raise N/F when they improve.
+GP_MODES_EN_MIN_FIRST = 278
+GP_MODES_EN_TRACE_MIN_FIRST = 1174
+GP_MODES_EN_MAX_START = 90
+GP_MODES_EN_CAPTURE_SHA256 = 01c9069076ce231d652dbe1d97f0a80155d5e73bef932b0254816a79ec746204
+GP_MODES_EN_CAPTURE_FRAMES = 308
 GP_MODES_SCENARIOS =
 GP_MODES_SCENARIOS += RA:gp-u8-right-arcade
 GP_MODES_SCENARIOS += LT:gp-u8-left-training
 GP_MODES_SCENARIOS += RT:gp-u8-right-training
 GP_MODES_SCENARIOS += TW:gp-u8-tug-of-war
 GP_MODES_SCENARIOS += HC:gp-u8-handicap
+GP_MODES_SCENARIOS += EN:gp-u8-endurance
 GP_MODES_KEEP ?=
 gp-modes-oracle: build ## Gameplay U8 oracle: the other START MENU rows and the attract start (each skips without its capture)
 	@echo "== gameplay U8: other modes (frame and trace ratchets; each skips without its capture) =="
