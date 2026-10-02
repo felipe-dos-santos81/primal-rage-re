@@ -179,6 +179,15 @@ static const fnm_pair k_miss_gp_u8_right_arcade[] = {
     { 0x14F50u, "hit_reaction_apply" },
 };
 
+/* gp-u8-left-training (START MENU row 2, b1d = 1, b1f = 3; record §U8.17),
+ * to its X record (f = 0x921): the two hooks of the wipes it passes, as
+ * gp-u5-charsel's: 0x29D60, the bare `ret`, and 0x5D812, the runtime stub
+ * (record §G.24), both from frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_u8_left_training[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -225,6 +234,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-keys-fight", 0, k_miss_gp_keys_fight, FNM_N(k_miss_gp_keys_fight) },
     { "gp-twop", 0, k_miss_gp_twop, FNM_N(k_miss_gp_twop) },
     { "gp-u8-right-arcade", 0, k_miss_gp_u8_right_arcade, FNM_N(k_miss_gp_u8_right_arcade) },
+    { "gp-u8-left-training", 0, k_miss_gp_u8_left_training, FNM_N(k_miss_gp_u8_left_training) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a
