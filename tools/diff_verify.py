@@ -1056,6 +1056,59 @@ P3_SPECS += [
        mutants=("@mutant", "@pivot", "@zext")),
 ]
 
+# The callees the 0x47874 family stubs (record §P3.5): 0x3C190 EAX = side, EDX = the speed (`mov ebx,eax` before
+# 0x1A570, EDX read after); 0x3B714 EAX = the other slot, EDX = the own slot (`mov esi,eax; mov ebp,edx`). Both
+# plain `ret`, both clobber EDX.
+SPEED = E.Call(0x3C190, ("eax", "edx"), clobbers=("edx",))
+REACT = E.Call(0x3B714, ("eax", "edx"), clobbers=("edx",))
+P3_SLOT_CBS = {E3_SLOT + 0x0C: b"".join(le32(v * 0x01010101) for v in (0x0C, 0x10, 0x14, 0x18, 0x1C)),
+               E3_SLOT + 0x52: b"\x52\x53\x54"}
+
+
+# 0x47874 (record §P3.5): the EDX record on 0xED974 at 2.0, the EAX slot 9/7/0 with four callbacks (+0x0C 0x47830,
+# +0x18 0x477A8, +0x1C 0x477E8, +0x14 0x47798), then 0x3C190(rec+0x51, 0x80) and the voice 0x4B. EBX is not read:
+# every case has EBX = 1 - rec+0x51.
+def p3_47874(cid, r51, voice_al=1):
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1 - r51}, {**P3_SLOT_CBS, E3_REC + 0x51: bytes([r51])},
+                {0x2C3FC: voice_al})
+
+
+# 0x47830 (the +0x0C callback; 0x3531C case 7): the command word DS_001088E0[rec+0x51] (the whole byte index); with
+# both bits 0x100 and 0x800 set (`xor dl,dl; and dh,9; cmp edx,0x900`) nothing, else the record on 0xED9A4 at 2.0
+# and the slot's +0x0C/+0x14 = 0. EBX is 1 - rec+0x51, the other word a sentinel that takes the other branch.
+def p3_47830(cid, r51, own, other):
+    words = [own, other] if r51 == 0 else [other, own]
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1 - r51},
+                {**P3_SLOT_CBS, E3_REC + 0x51: bytes([r51]), 0x1088E0: le32(words[0])[:2] + le32(words[1])[:2]})
+
+
+# 0x477E8 (the +0x1C callback; 0x193B0, fn(side)): 0x3B714(the other slot, the own slot), the own record on 0xED9A4
+# at 2.0, the own slot's +0x0C/+0x14 = 0 (both slots' +0x0C..+0x1F seeded).
+def p3_477e8(cid, side):
+    return Case(cid, {"eax": side},
+                {**SLOT_PTRS, DS_SLOTS + 0x0C: b"".join(le32(v * 0x01010101) for v in (0x0C, 0x10, 0x14, 0x18, 0x1C)),
+                 DS_SLOTS + 0x94 + 0x0C: b"".join(le32(v * 0x01010101) for v in (0x8C, 0x90, 0x94, 0x98, 0x9C))})
+
+
+P3_SPECS += [
+    Spec("fighter_47874", 0x47874, [p3_47874("v0", 0), p3_47874("v1", 1, 0)],
+         calls=(HIT_B, SPEED, VOICE), eax_mask=0, mutants=("@mutant", "@side")),
+    Spec("fighter_47830", 0x47830, [
+        p3_47830("z0", 0, 0x0900, 0), p3_47830("z1", 0, 0x0100, 0x0900), p3_47830("z2", 1, 0x0800, 0x0900),
+        p3_47830("z3", 1, 0xF6FF, 0x0900), p3_47830("z4", 0, 0xFFFF, 0),
+    ], calls=(ANIM_BEGIN,), eax_mask=0, mutants=("@mutant", "@side", "@order")),
+    # 0x47798 (the +0x14 callback; 0x1952F/0x3514C/0x350B8, fn(slot) with EAX = EDX = the slot, the whole EAX
+    # tested): the voice 0x4C, then EAX = 1 (`mov eax,1` over the voice's EAX: w1's stub returns 0).
+    Spec("fighter_47798", 0x47798, [
+        Case("w0", {"eax": E3_SLOT, "edx": E3_SLOT}),
+        Case("w1", {"eax": E3_SLOT, "edx": E3_SLOT}, {}, {0x2C3FC: 0}),
+    ], calls=(VOICE,), mutants=("@mutant", "@eax")),
+    Spec("fighter_477a8", 0x477A8, [p3_hook0("k0", 0, 0), p3_hook0("k1", 1, 0x12345678)],
+         allow_calls=(0x33950, 0x18BD4), calls=(CHECKS,), mutants=("@mutant",)),
+    Spec("fighter_477e8", 0x477E8, [p3_477e8("y0", 0), p3_477e8("y1", 1)],
+         allow_calls=(0x33950,), calls=(REACT, ANIM_BEGIN), eax_mask=0, mutants=("@mutant", "@order")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

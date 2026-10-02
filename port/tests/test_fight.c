@@ -45837,3 +45837,114 @@ static void p3_check_47720(void)
 }
 
 int test_p3_47720(void)         { return u6b_run(p3_check_47720); }
+
+/* §P3.5: 0x47874 and the four callbacks it stores, through their
+ * registrations (slot 0, its record, side 0). The image dwords are
+ * evidence lines, not port behaviour. */
+static void p3_check_47874(void)
+{
+    p2_cb_fn f;
+    p2_hook_fn h;
+    p2_side_fn g;
+    u8 fl[16];
+    u32 k, r;
+    CHECK(fn_resolve(0x47874u) == (void (*)(void))fighter_47874, "0x47874 is registered");
+    CHECK(fn_resolve(0x47830u) == (void (*)(void))fighter_47830, "0x47830 is registered");
+    CHECK(fn_resolve(0x47798u) == (void (*)(void))fighter_47798, "0x47798 is registered");
+    CHECK(fn_resolve(0x477A8u) == (void (*)(void))fighter_477a8, "0x477A8 is registered");
+    CHECK(fn_resolve(0x477E8u) == (void (*)(void))fighter_477e8, "0x477E8 is registered");
+    CHECK_EQ_INT((int)DSD(0x000A41BCu), 0x00047874);
+    CHECK_EQ_INT((int)DSD(0x0004789Au), 0x00047830);
+    CHECK_EQ_INT((int)DSD(0x000478A1u), 0x000477A8);
+    CHECK_EQ_INT((int)DSD(0x000478A8u), 0x000477E8);
+    CHECK_EQ_INT((int)DSD(0x000478AFu), 0x00047798);
+
+    /* 0x47874: the record on 0xED974 at 2.0, the slot 9/7/0 with the four
+     * callbacks, 0x3C190(0, 0x80) (side 0's actor bit 15 clear: the record's
+     * word +0x34 = -0x80), the voice 0x4B. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x47874u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    p3_set_bit15(0u, 0);
+    DSW(0x000ED974u) = 0x12B1u;
+    DSW(Z_R0 + 0x34u) = 0x3434u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSD(Z_S0 + 0x14u) = 0x14141414u;
+    DSD(Z_S0 + 0x18u) = 0x18181818u;
+    DSD(Z_S0 + 0x1Cu) = 0x1C1C1C1Cu;
+    sound_voice_log_reset();
+    f(Z_S0, Z_R0, 1u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000ED974);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x00047830);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x14u), 0x00047798);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x18u), 0x000477A8);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x1Cu), 0x000477E8);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0xFF80);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 1);
+    CHECK_EQ_INT((int)sound_voice_log_at(0), 0x4B);
+    sound_voice_log_reset();
+
+    /* 0x47830: side 0's command word 0x0900 keeps the slot; 0x0100 starts the
+     * record on 0xED9A4 at 2.0 and clears +0x0C/+0x14. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x47830u);
+    if (f == NULL) return;
+    for (k = 0; k < 2u; k++) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSW(DS_001088E0) = k == 0u ? 0x0900u : 0x0100u;
+        DSW(0x000ED9A4u) = 0x12B1u;
+        DSD(Z_R0 + 8u) = 0x08080808u;
+        DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+        DSD(Z_S0 + 0x14u) = 0x14141414u;
+        f(Z_S0, Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R0 + 8u), k == 0u ? 0x08080808 : 0x000ED9A4);
+        CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), k == 0u ? 0x0C0C0C0C : 0);
+        CHECK_EQ_INT((int)DSD(Z_S0 + 0x14u), k == 0u ? 0x14141414 : 0);
+    }
+
+    /* 0x47798, as the +0x14 callers call it (the slot): the voice 0x4C, then
+     * 1 (the caller then zeroes the field). */
+    h = (p2_hook_fn)(void *)fn_resolve(0x47798u);
+    if (h == NULL) return;
+    sound_voice_log_reset();
+    CHECK_EQ_INT((int)h(Z_S0), 1);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 1);
+    CHECK_EQ_INT((int)sound_voice_log_at(0), 0x4C);
+    sound_voice_log_reset();
+
+    /* 0x477A8: 0x18C14(side, flags 0 = 1, 1/8 = 0, the rest 2, 0, 0) on the
+     * same seeded state. */
+    h = (p2_hook_fn)(void *)fn_resolve(0x477A8u);
+    if (h == NULL) return;
+    z_fseed();
+    r = h(1u);
+    z_fseed();
+    for (k = 0; k < 16u; k++) fl[k] = 2u;
+    fl[0] = 1u;
+    fl[1] = fl[8] = 0u;
+    CHECK_EQ_INT((int)r, fighter_18c14(1u, fl, 0u, 0u));
+
+    /* 0x477E8 on side 0: after 0x3B714(slot 1, slot 0), the own record on
+     * 0xED9A4 at 2.0 and slot 0's +0x0C/+0x14 = 0. */
+    g = (p2_side_fn)(void *)fn_resolve(0x477E8u);
+    if (g == NULL) return;
+    z_fseed();
+    DSW(0x000ED9A4u) = 0x12B1u;
+    DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSD(Z_S0 + 0x14u) = 0x14141414u;
+    DSD(Z_S1 + 0x0Cu) = 0x8C8C8C8Cu;
+    g(0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000ED9A4);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x14u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), (int)0x8C8C8C8Cu);
+}
+
+int test_p3_47874(void)         { return u6b_run(p3_check_47874); }
