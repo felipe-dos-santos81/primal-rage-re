@@ -2755,9 +2755,10 @@ static void fighter_379c4(u32 slot)
              * targets registered are character 2's 0x48BE0/0x48F54 (record
              * §42-B), character 5's 0x40BBC (§50-A) and character 4's
              * 0x45C10 (§U0.5). The six others (0x1567C, 0x15908, 0x23BF8,
-             * 0x23EC0, 0x402FC, 0x45D14; record gameplay-u0 §U0.12) miss:
-             * the armed miss log records them and the port falls to the
-             * 0xC9260 start where the raw would run the entry. */
+             * 0x23EC0, 0x402FC, 0x45D14; record gameplay-u0 §U0.12) are
+             * registered too since track P batch 1 (record reverse-p1 §P1.4),
+             * so every non-zero entry of both tables resolves and this path
+             * runs the entry where the raw does. */
             int (*cb)(u32, u32) =
                 (int (*)(u32, u32))(void *)fn_resolve(DSD(DS_001078E8));
             if (cb != 0 && cb(slot, rec) != 0) return;      /* 0x379F0 */
@@ -14498,17 +14499,21 @@ void fighter_38034(u32 side)
  * rec+0x30 >> 16, rec+0x1C, 0) (the fields read again after 0x2BC30), the
  * voice 0x5C, the slot's +0x53 = 3, DS_001078FC = 1 (DL, which 0x2C3FC
  * preserves), +0x52 = 9 and DS_000F0AFE = 4. PORT: the raw's `idiv` faults
- * (#DE) on a zero divisor; the port leaves the quotient 0 there (named gap
- * §P1.10; no case divides by zero). */
+ * (#DE) on a zero divisor (the divisor is the signed word rec+0x32, written by
+ * actor_spawn's a3; no raw path is known to reach 0); the port skips both
+ * +0x2C stores there and continues, as 0x407EC does (named gap §P1.10; no
+ * case divides by zero). */
 void fighter_23b68(u32 slot, u32 rec, u32 side)
 {
-    s32 d, q;
+    s32 d;
     (void)side;
     if (DSB(slot + 0x57u) != 1u) return;                    /* 0x23B6E..0x23B7B */
     d = (s32)DSD(rec + 0x30u) >> 16;                        /* 0x23B82..0x23B87 */
-    q = d != 0 ? (s32)0x400000 / d : 0;                     /* 0x23B7D..0x23B8D */
-    DSW(rec + 0x2Cu) = (u16)q;                              /* 0x23B8F */
-    DSW(DSD(slot + 4u) + 0x2Cu) = (u16)q;                   /* 0x23B93..0x23B96 */
+    if (d != 0) {                                           /* PORT: see above */
+        u16 q = (u16)((s32)0x400000 / d);                   /* 0x23B7D..0x23B8D */
+        DSW(rec + 0x2Cu) = q;                               /* 0x23B8F */
+        DSW(DSD(slot + 4u) + 0x2Cu) = q;                    /* 0x23B93..0x23B96 */
+    }
     if (DSD(rec + 0x1Cu) != 0u) return;                     /* 0x23B9A..0x23B9E */
     DSW(rec + 0x38u) = 0u;                                  /* 0x23BAC */
     actors_anim_begin(rec, P1_23B68_STREAM, 0x3F800000u);   /* 0x23BA0..0x23BB2 0x2BC30 */
