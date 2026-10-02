@@ -309,7 +309,8 @@ P1_KINDS = {"fighter_1567c@mutant": {"call #0"}, "fighter_15908@mutant": {"call 
             "fighter_23d38@bit": {"byte"}, "fighter_15584@ge": {"byte"},
             "fighter_1579c@ge": {"call #0", "call #1", "call #2", "byte"},
             "fighter_38034@mutant": {"call #1"}, "fighter_23b68@mutant": {"call #1"},
-            "fighter_401d4@mutant": {"call #0", "call #1"}}
+            "fighter_401d4@mutant": {"call #0", "call #1"},
+            "fighter_401d4@no36": {"byte"}, "fighter_23d38@noneg": {"byte", "call #0"}}
 
 
 @needs_unicorn
@@ -482,7 +483,10 @@ class RealFunctionTests(unittest.TestCase):
         # bound, a negative x and F0AF0 - x = 0x80000000, the word 0xBFFF; the word 0x440 in case 3)
         for name, ids in (("fighter_23d38@ge", ["gE", "gF"]), ("fighter_23d38@unsigned", ["gG", "gH", "gI"]),
                           ("fighter_23d38@bit", ["gJ"]), ("fighter_15584@ge", ["c9"]),
-                          ("fighter_1579c@ge", ["c7"])):
+                          ("fighter_1579c@ge", ["c7"]),
+                          # Task 5 review: the store rec+0x36 = 0 (0x4027E) shows on t4 alone (its sentinel
+                          # 0x3636); without the `neg` (0x23DC1) only gK's 0x80000001 passes
+                          ("fighter_401d4@no36", ["t4"]), ("fighter_23d38@noneg", ["gK"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
@@ -584,7 +588,7 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (17), the 9 without are counted apart
-        self.assertIn("diff-verify: 26/26 functions VERIFIED; 37/37 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 26/26 functions VERIFIED; 39/39 mutants detected; 1 named gaps; "
                       "1/17 rows with callees closed (9 have none).", out.getvalue())
 
 

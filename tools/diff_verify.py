@@ -496,7 +496,8 @@ P1_SPECS = [
     # set, 0xD000 with it clear; `jge` 0x23D79 and `jle` 0x23DA5 return, @ge does not); gG/gH a negative x
     # (signed compares; @unsigned flips both); gJ the word 0xBFFF (bit 14 clear, every other bit set: `and
     # dh,0x40` 0x23D60, not a test of the whole word, @bit). Case 1: gI puts F0AF0 - x at 0x80000000, which
-    # `neg` (0x23DC1) leaves negative so `jg` passes (@unsigned returns); gK at 0x80000001 (|d| 0x7FFFFFFF).
+    # `neg` (0x23DC1) leaves negative so `jg` passes (@unsigned returns); gK at 0x80000001 (|d| 0x7FFFFFFF;
+    # without the `neg`, @noneg, it would pass).
     Spec("fighter_23d38", 0x23D38, [
         p1_23d38(cid, st, x, ox, w28) for cid, st, x, ox, w28 in (
             ("g0", 0, 0x12000, 0, 0x4000), ("g1", 0, 0x14000, 0, 0x4000), ("g2", 0, 0xE000, 0, 0),
@@ -507,7 +508,7 @@ P1_SPECS = [
             ("gE", 0, 0x13000, 0, 0x4000), ("gF", 0, 0xD000, 0, 0), ("gG", 0, 0xFFFFF000, 0, 0x4000),
             ("gH", 0, 0xFFFFF000, 0, 0), ("gI", 1, 0x80010000, 0, 0), ("gJ", 0, 0xC000, 0, 0xBFFF),
             ("gK", 1, 0x8000FFFF, 0, 0))
-    ], calls=(ANIM_BEGIN, VOICE), eax_mask=0, mutants=("@mutant", "@ge", "@unsigned", "@bit")),
+    ], calls=(ANIM_BEGIN, VOICE), eax_mask=0, mutants=("@mutant", "@ge", "@unsigned", "@bit", "@noneg")),
     # 0x38034 (record §P1.9): side 0 is character 2, side 1 character 4; the spawn stub's EAX is the record
     # whose +0x59 0x38034 sets, a different one per case.
     Spec("fighter_38034", 0x38034, [
@@ -518,18 +519,20 @@ P1_SPECS = [
         for side, w28, sp in ((0, 0x4000, E3_REC2), (1, 0xBFFF, E3_OUT))
     ], calls=(ANIM_BEGIN, SPAWN), eax_mask=0),
     # 0x23B68 (record §P1.9): +0x57 0 and 2 do nothing; 1 with rec+0x1C set only divides; d = 3 and -3 pin
-    # the truncating signed division. The slot's +4 record is E3_OUT.
+    # the truncating signed division. The slot's +4 record is E3_OUT. q5's dword +0x30 0xFFFD8000 (negative,
+    # low half set): `sar ebx,0x10` (0x23B87) gives -3 where a signed / 0x10000 gives -2.
     Spec("fighter_23b68", 0x23B68, [
         Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0},
              {E3_SLOT + 0x52: bytes([0x52, 0x53, 0x54, 0x55, 0x56, st]), E3_SLOT + 4: le32(E3_OUT),
               E3_REC + 0x18: le32(0x12345), E3_REC + 0x1C: le32(y), E3_REC + 0x2C: b"\xcc\xcc",
-              E3_REC + 0x30: le32(d << 16), E3_REC + 0x38: b"\x38\x38", E3_OUT + 0x2C: b"\xcc\xcc",
+              E3_REC + 0x30: le32(w30), E3_REC + 0x38: b"\x38\x38", E3_OUT + 0x2C: b"\xcc\xcc",
               0xF0AFE: b"\xfe", 0x1078FC: b"\xfc"})
-        for cid, st, y, d in (("q0", 0, 0, 3), ("q2", 2, 0, 3), ("q1", 1, 0x77, 3), ("q3", 1, 0, 3),
-                              ("q4", 1, 0, -3 & 0xFFFF))
+        for cid, st, y, w30 in (("q0", 0, 0, 0x30000), ("q2", 2, 0, 0x30000), ("q1", 1, 0x77, 0x30000),
+                                ("q3", 1, 0, 0x30000), ("q4", 1, 0, 0xFFFD0000), ("q5", 1, 0, 0xFFFD8000))
     ], calls=(ANIM_BEGIN, SPAWN, VOICE), eax_mask=0),
     # 0x401D4 (record §P1.9): 0x33950 runs on both sides; EDX (rec) is E3_OUT, not the side's record E3_REC
-    # (ctx[4]), so a port that confuses them differs. Side 0's slot has character 1 (threshold 0x1400).
+    # (ctx[4]), so a port that confuses them differs. Side 0's slot has character 1 (threshold 0x1400). t4's
+    # rec word +0x36 is the sentinel 0x3636 (case 1 never reads it), so the store 0x4027E shows (@no36).
     Spec("fighter_401d4", 0x401D4, [
         Case(cid, {"eax": E3_SLOT, "edx": E3_OUT, "ebx": 0},
              {**SLOT_PTRS, E3_SLOT + 0x52: bytes([0x52, 0x53, 0x54, 0x55, 0x56, st]),
@@ -539,9 +542,10 @@ P1_SPECS = [
               0x1078FD: b"\x01", 0x105B3A: bytes([b3a]), 0x1078FC: b"\xfc"})
         for cid, st, s30, r36, o36, b3a in (
             ("t0", 0, 0, 0, 0x0001, 0), ("t1", 0, 0, 0, 0x8000, 0),
-            ("t2", 1, 0x1400, 0x8000, 0, 0), ("t3", 1, 0x13FF, 0x7FFF, 0, 0), ("t4", 1, 0x13FF, 0x8000, 0, 0),
+            ("t2", 1, 0x1400, 0x8000, 0, 0), ("t3", 1, 0x13FF, 0x7FFF, 0, 0), ("t4", 1, 0x13FF, 0x8000, 0x3636, 0),
             ("t5", 2, 0, 0, 0, 0), ("t6", 3, 0, 0, 0, 1), ("t7", 3, 0, 0, 0, 2), ("t8", 4, 0, 0, 0, 0))
-    ], allow_calls=(0x33950,), calls=(ANCHOR, ANIM_BEGIN, F38034, VOICE, SPAWN), eax_mask=0),
+    ], allow_calls=(0x33950,), calls=(ANCHOR, ANIM_BEGIN, F38034, VOICE, SPAWN), eax_mask=0,
+         mutants=("@mutant", "@no36")),
 ]
 
 SPECS = [

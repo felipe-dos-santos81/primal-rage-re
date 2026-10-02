@@ -602,6 +602,38 @@ static void m_401d4(const u32 *r, u32 *eax)            /* case 3's 0x38034 after
     *eax = 0u;
 }
 
+static void m_23d38_noneg(const u32 *r, u32 *eax)      /* case 1 without the `neg` at 0x23DC1 */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    if (DSB(slot + 0x57u) == 1u) {
+        if ((s32)(DSD(DS_000F0AF0) - DSD(rec + 0x18u)) > 0x2000) { *eax = 0u; return; }
+        actors_anim_begin(rec, 0x000E1BAEu, 0x40400000u);
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+    } else {
+        fighter_23d38(slot, rec, r[R_EBX]);
+    }
+    *eax = 0u;
+}
+static void m_401d4_no36(const u32 *r, u32 *eax)       /* case 1 without the store rec+0x36 = 0 (0x4027E) */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], ctx[6];
+    fighter_ctx_same(ctx, r[R_EBX]);
+    if (DSB(slot + 0x57u) == 1u) {
+        s32 thr = (s32)DSD(0x000BD882u + (u32)DSB(ctx[2] + 0x7Au) * 2u) >> 16;
+        if (thr > (s32)DSD(ctx[2] + 0x30u) && (s16)DSW(ctx[4] + 0x36u) < 0) {
+            hit_anchor_set(ctx[0], DSD(rec + 0x18u), 0u);
+            actors_anim_begin(ctx[4], 0x000E876Au, 0x40400000u);
+            DSW(rec + 0x34u) = 0u;
+            DSW(rec + 0x44u) = 0u;
+            DSB(ctx[2] + 0x54u) = 0u;
+            DSB(ctx[2] + 0x57u) = 3u;
+        }
+    } else {
+        fighter_401d4(slot, rec, r[R_EBX]);
+    }
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -662,6 +694,8 @@ static const binding_t k_bindings[] = {
     { "fighter_38034@mutant",     m_38034,        0x00000000u },
     { "fighter_23b68@mutant",     m_23b68,        0x00000000u },
     { "fighter_401d4@mutant",     m_401d4,        0x00000000u },
+    { "fighter_401d4@no36",       m_401d4_no36,   0x00000000u },
+    { "fighter_23d38@noneg",      m_23d38_noneg,  0x00000000u },
     { "fighter_23d38@ge",         m_23d38_ge,     0x00000000u },
     { "fighter_23d38@unsigned",   m_23d38_unsigned, 0x00000000u },
     { "fighter_23d38@bit",        m_23d38_bit,    0x00000000u },
