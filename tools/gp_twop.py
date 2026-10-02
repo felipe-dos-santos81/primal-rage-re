@@ -5,6 +5,9 @@ record 2026-10-01-gameplay-u7-derivations.md §T.1-§T.2. Stdlib only.
 
   gp_twop.py check --capture DIR    exit 0 when DIR/poll.log is a two-human match
   gp_twop.py check --trace FILE     the same over a port trace.txt (T records)
+                                    (a trace is converted only when the file is named
+                                    trace.txt; any other name is read as a poll.log
+                                    and finds no S records)
   gp_twop.py path  --capture DIR    the mode path with b1f, cred, e0 and e2
 
 The raw (record §T.1): DS_00104B1F (`b1f`) holds one bit per human side.
@@ -17,7 +20,8 @@ written only by 0x4F644 from the pads (0x4F6BD/0x4F6DE), by 0x24C96 (0, while
 the slot's +0x41 has bit 0x10) and by 0x246D4 (character 1's entrance in mode
 5: 0xA000/0x9000, 0x246EE/0x246F9). The CPU's writers, 0x472CA/0x472FF/0x47325
 (0x47208) and 0x3B207..0x3B278 (0x3B134), run only for a slot whose +0x63 is
-non-zero (0x472B9, 0x3B170). The check runs up to the scenario's X record (the
+non-zero (0x472B9, 0x3B170). A join must not debit the credit counter: 0x2CA93
+skips the debit 0x2CA9C when b1f != 0 (record §T.1.3). The check runs up to the scenario's X record (the
 capture runs on to its time limit with no input)."""
 import argparse
 import os
@@ -81,6 +85,9 @@ def two_human(lines):
     before = [f for f in fs if f < join]
     if before:
         out['cred_before'] = snap[before[-1]]['cred']
+        if out['cred_join'] != out['cred_before']:
+            out['fail'].append('credit %X -> %X at the join f=%X: P2 joining must not debit (0x2CA93 skips 0x2CA9C when b1f != 0)'
+                               % (out['cred_before'], out['cred_join'], join))
     for f in fs:
         if f < join:
             continue

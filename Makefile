@@ -58,7 +58,7 @@ chunk ?= 0
         title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle \
         entry-triage \
-        gp-moves-oracle gp-keys-oracle
+        gp-moves-oracle gp-keys-oracle gp-twop-oracle
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -553,6 +553,30 @@ gp-keys-oracle: build ## In-match keys: evidence + effects ratchet on gp-keys-fi
 		--capture-sha256 "$(GP_KEYS_CAPTURE_SHA256)"
 	@$(PYTHON) tools/gp_keys.py effects --capture $(K11_CAPTURES)/gp-keys-fight --port $(GP_DUMP)/gp-keys-fight \
 		--min-effects "$(GP_KEYS_MIN_EFFECTS)" --capture-sha256 "$(GP_KEYS_CAPTURE_SHA256)"
+
+# Gameplay U7 oracle (plan docs/superpowers/plans/2026-10-01-gameplay-u7-two-players.md, record
+# docs/superpowers/plans/2026-10-01-gameplay-u7-derivations.md): data/k11-captures/gp-twop, LEFT
+# PLAYER ARCADE with P2 joining in the character select and both sides pressing keys in a short
+# fight. The tool tests always run; with the capture present it must first be a two-human match
+# (tools/gp_twop.py check, record §T.1.6), then the frame and trace ratchets as gp-oracle's. Skips
+# without the capture, even under PR_ORACLE_REQUIRED (spec §4.3). An empty pin with the capture
+# present FAILS (gp_compare: "not pinned"); U7 Task 6 measures and pins them.
+GP_TWOP_MIN_FIRST =
+GP_TWOP_TRACE_MIN_FIRST =
+GP_TWOP_MAX_START =
+GP_TWOP_CAPTURE_SHA256 =
+GP_TWOP_CAPTURE_FRAMES =
+GP_TWOP_END =
+gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame and trace ratchets on data/k11-captures/gp-twop (skips without it)
+	@echo "== gameplay oracle: gp-twop (two humans; frame and trace ratchets; record U7) =="
+	$(PYTHON) -m unittest tools.tests.test_gp_twop
+	@if [ -d $(K11_CAPTURES)/gp-twop ]; then $(PYTHON) tools/gp_twop.py check --capture $(K11_CAPTURES)/gp-twop; \
+		else echo "gp-twop-oracle: no capture at $(K11_CAPTURES)/gp-twop (skipped)"; fi
+	@$(MAKE) --no-print-directory gp-replay scenario=gp-twop GP_OPTIONAL=1 GP_SCRIPT_ARGS="$(if $(GP_TWOP_END),--end $(GP_TWOP_END))"
+	@$(PYTHON) tools/gp_compare.py --scenario gp-twop --capture $(K11_CAPTURES)/gp-twop \
+		--port $(GP_DUMP)/gp-twop --min-first "$(GP_TWOP_MIN_FIRST)" \
+		--trace-min-first "$(GP_TWOP_TRACE_MIN_FIRST)" --max-start "$(GP_TWOP_MAX_START)" \
+		--capture-sha256 "$(GP_TWOP_CAPTURE_SHA256)" --capture-frames "$(GP_TWOP_CAPTURE_FRAMES)"
 
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1

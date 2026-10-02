@@ -87,6 +87,14 @@ class TestTwoHuman(unittest.TestCase):
         L = _match() + [_s(0x511, b1f=1, e2=0x2020)]           # past X: the capture's idle tail
         self.assertEqual(gt.two_human(L)['fail'], [])
 
+    def test_a_credit_debited_at_the_join_fails(self):
+        # 0x2CA93 skips the debit 0x2CA9C when b1f != 0 (record §T.1.3): a capture whose credit drops at the join is not this path
+        L = [_s(f, mode=0x10, b1f=1, cred=5) for f in range(0x2F0, 0x300)] + _match()[16:]
+        r = gt.two_human(L)
+        self.assertEqual((r['cred_before'], r['cred_join']), (5, 4))
+        self.assertEqual(len(r['fail']), 1)
+        self.assertIn('credit 5 -> 4 at the join f=300', r['fail'][0])
+
     def test_one_human_fails(self):
         L = [l.replace('b1f=03', 'b1f=01') for l in _match()]
         self.assertEqual(gt.two_human(L)['fail'], ['b1f never reaches 3 (no S record has both sides human)'])

@@ -571,3 +571,31 @@ Control (`check` on the one-player captures): `gp-idle-loss`, `gp-pads`, `gp-idl
 `gp-idle-loss`: `poll.log:4 f=4 mode=3 b1f=0 cred=5`, `:324 f=141 mode=27 b1f=0 cred=5`,
 `:633 f=26F mode=1A b1f=1 cred=4`, `:652 f=281 mode=1B b1f=1 cred=4`, `:671 f=293 mode=10 b1f=1 cred=4`
 (then `:1613 f=640 mode=1A b1f=1 cred=4`).
+
+## §T.7 `make gp-twop-oracle` (Task 3; not in `verify` yet)
+
+The target sits after `gp-keys-oracle`'s recipe (the base is `main` `1142462`, where the gp oracles are
+`gp-oracle`, `gp-charsel-oracle`, `gp-moves-oracle`, `gp-keys-oracle`; the plan's anchor after
+`gp-charsel-oracle` was re-anchored by content); `gp-twop-oracle` is appended to the `.PHONY` list. Its six
+variables are empty until Tasks 5-6 measure them.
+
+1. Red (the target absent): ``make: *** No rule to make target `gp-twop-oracle'.  Stop.``, `exit=2`.
+2. No capture (`data/k11-captures/gp-twop` absent), plain and under `PR_ORACLE_REQUIRED=1`: `exit=0` both;
+   `Ran 13 tests … OK` (12 from Task 2 plus the no-debit test, below),
+   `gp-twop-oracle: no capture at data/k11-captures/gp-twop (skipped)`,
+   `gp-replay: no capture at data/k11-captures/gp-twop`, `gp_compare: no capture at data/k11-captures/gp-twop (skipped)`.
+3. A capture that is not two-human (a scratch capture root holding `gp-idle-loss`'s `poll.log`; nothing
+   under `data/` written), `PR_ORACLE_REQUIRED=1`: `exit=2`;
+   `gp_twop: gp-twop: FAIL: b1f never reaches 3 (no S record has both sides human)`,
+   `make: *** [gp-twop-oracle] Error 1` (the replay and the ratchets never run).
+
+Fold-ins from the Task 1-2 review:
+
+- (t1) `two_human` fails when the join frame has a prior record and the credit changed at the join
+  (`credit B -> J at the join f=…`): the raw's no-debit rule (§T.1.3; 0x2CA93 skips the debit 0x2CA9C when
+  b1f != 0). Test `test_a_credit_debited_at_the_join_fails` (credit 5 before, 4 at the join). Mutation
+  (the `if out['cred_join'] != out['cred_before']` test replaced by `if False`, scratch copy): that test
+  FAILs (`0 != 1`); restored OK.
+- (t2) the `gp_twop.py` usage text says a port trace is converted only when the file is named `trace.txt`;
+  any other name is read as a `poll.log` and finds no S records (checked: a T-record log under another name
+  reports `b1f never reaches 3`).
