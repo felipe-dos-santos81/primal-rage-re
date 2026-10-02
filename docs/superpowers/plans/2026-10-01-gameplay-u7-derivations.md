@@ -599,3 +599,128 @@ Fold-ins from the Task 1-2 review:
 - (t2) the `gp_twop.py` usage text says a port trace is converted only when the file is named `trace.txt`;
   any other name is read as a `poll.log` and finds no S records (checked: a T-record log under another name
   reports `b1f never reaches 3`).
+
+## §T.9 The replay, its miss set and the first divergences (Task 5)
+
+Base `61f60ca` (main `1142462` + Tasks 1-3; U5, U6a, U6b, U11 merged). The capture is Task 4's
+`data/k11-captures/gp-twop` (`poll.log` sha256 `9c01a73b…2e22c`, 680 frames, X at f=5E1).
+
+**The replay.** `gp_session.py port-script --scenario gp-twop` writes 34 lines, header
+`# gp port script v2: scenario gp-twop`, 16 `bits` lines, `end 1505` (= X, f=5E1). The
+`PR_GP_DUMP` driver runs the whole script: the last `T` record is `f=05E1 mode=0006`, the last port
+frame is `463 f=05E1`, and there is no stall and no fault. No `GP_TWOP_END` cut is needed. Before the
+table (`rc=1`):
+
+```
+fn-miss PR_GP_DUMP 0x5D812 actor_spawn hits=3349
+fn-miss PR_GP_DUMP 0x5D812 set_dead hits=3047
+fn-miss PR_GP_DUMP 0x29D60 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP 0x5D812 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+FAIL …test_platform.c:219: 4 != 2
+fn-miss PR_GP_DUMP: unexpected 0x29D60 from frontend_mode_1b_step
+fn-miss PR_GP_DUMP: unexpected 0x5D812 from frontend_mode_1b_step
+```
+
+The measurement matches the prediction (§T.RB item 1) exactly. No already-ported address is
+missed, and no unexpected target appears, so U6b's ports leave this fight's misses unchanged.
+Classification, both from §G.24 of the ground-truth record:
+- `0x29D60 frontend_mode_1b_step`: the bare `ret`, the wipe's end hook into mode 0x10.
+- `0x5D812 frontend_mode_1b_step`: the runtime `xor eax,eax; ret` stub, the hook at the wipe into
+  mode 5.
+
+Neither is a two-player routine (§T.1) or a porting target.
+
+**The pin.** `port/tests/test_platform.c`:
+- `k_miss_gp_twop[]` holds those two rows.
+- `fnm_known` gains `twop` as its 8th parameter, after U6b's `moves` and U11's `keys_fight`.
+- The selector is `twop = strcmp(sc, "gp-twop") == 0`.
+- The `want` count gains the term `(twop ? FNM_N(k_miss_gp_twop) : 0u)`.
+- The driver's `fnm_known` call gains `, twop`, and the `--check` log's call gains one more `0`.
+
+After the edit: no compiler output, `rc=0`, `all checks passed`. Mutation (the `0x5D812` row
+dropped): `rc=1`, `FAIL …test_platform.c:233: 4 != 3`,
+`fn-miss PR_GP_DUMP: unexpected 0x5D812 from frontend_mode_1b_step`. Restored: `rc=0`.
+`PR_ORACLE_REQUIRED=1 PR_GAME_DIR=data/game/C ./build/run_tests` prints `all checks passed`.
+
+**The port stays two-human.** `gp_twop.py check --trace` on the replay's `trace.txt` gives
+`join f=2C3 (cred 4 -> 4); 799 S records from the join to the end; side 0 [('pad', 799)], side 1
+[('pad', 799)]; fight presses 40/40`, `two-human match: ok`, `rc=0`. The join is at f=2C3, the
+capture's frame. `path --trace` lists the following mode changes:
+- f=134 0x27
+- f=261 0x2D
+- f=262 0x1A (b1f 1, cred 4)
+- f=274 0x1B
+- f=286 0x10
+- f=35A 0x1A (b1f 3)
+- f=36C 0x1B
+- f=37E 0x11
+- f=37F 0x17
+- f=470 0x1A
+- f=482 0x1B
+- f=494 5
+- f=50F 6
+
+The capture's `path` prints 0x1B at f=276 and f=36E and has no 0x2D line. That comes from its `S`
+gaps, not from a divergence: the capture's `P` records read `f=0261 mode=002D` (`poll.log:616`),
+`f=0274 mode=001B` (`:636`) and `f=036C mode=001B` (`:900`). In f=0x134..0x5E1 the capture
+has no `S` record at 8 frames: 134, 1CC, 261, 263, 274, 275, 36C and 36D. These are Task 4's
+"8 frames missed" and the trace's "8 without a capture snapshot".
+
+**The comparison** (`make gp-report scenario=gp-twop GP_DUMP=/tmp/pr_u7_gp`):
+
+```
+gp_compare: gp-twop: frames: window from capture 83 (raw 1742); 524 classified: 347 clean, 171 splice, 1 transition, 5 unexplained, 10 all-black
+gp_compare: gp-twop: frames: FIRST UNEXPLAINED capture 612 (raw 3223): nearest port 463, rows 91..169, x 55..184 (477 px)
+gp_compare: gp-twop: frames: UNEXPLAINED capture 613 (raw 3224): nearest port 463, rows 91..189, x 10..184 (2578 px)
+gp_compare: gp-twop: frames: UNEXPLAINED capture 614 (raw 3225): nearest port 461, rows 91..191, x 9..269 (4879 px)
+gp_compare: gp-twop: frames: UNEXPLAINED capture 615 (raw 3226): nearest port 461, rows 91..191, x 9..269 (5032 px)
+gp_compare: gp-twop: frames: UNEXPLAINED capture 616 (raw 3227): nearest port 461, rows 91..191, x 3..269 (5312 px)
+gp_compare: gp-twop: frames: coverage (reported, not ratcheted): 11 non-black port frame(s) up to port 463 not exhibited by any classified capture frame: [9, 11, 31, 175, 215, 216, 217, 218, 220, 222, 260]
+gp_compare: gp-twop: trace: 1190 frames compared (f 134..), 8 without a capture snapshot; first tick difference f=135 (reported, not ratcheted)
+gp_compare: gp-twop: trace: normalised (reported, not ratcheted): ent 0 of 1190 differ; t508 840 of 1190 differ (first f=264)
+gp_compare: gp-twop: trace: 0 differing through 1505
+gp_compare: gp-twop: moves: 1190 frames compared (f 134..) over c0 c1 r0 r1 s0_43, 8 without a capture snapshot
+gp_compare: gp-twop: moves: 0 differing through 1505
+```
+
+**The triage.**
+
+1. *Frames: the first unexplained capture frame is j = 612, and it marks the end of the port's
+   script, not a divergence.* With `gp_compare.classify` around port 440, capture 598-611 exhibit
+   port 452-463 in order (clean, or a splice of adjacent frames). Capture 611 is clean on port
+   463, the port's last frame (`frames.txt` `00463 f=05E1`, the script's `end 1505`). Capture
+   612-619 are all unexplained, with nearest port 463/461/460.
+
+   I rendered capture 611, capture 612 and port 463 side by side (Pillow,
+   `/tmp/gameplay-u7/cap611_cap612_port463.png`). All three show the round-1 fight: TALON (left)
+   against CHAOS (right), city ruins, timer 56. Capture 612 differs from port 463 only in the
+   fighters' and spectators' bodies (rows 91..169), which are their next animation pose. That is
+   the frame after X, which the capture's 60-frame STOP_AT_END tail holds (§T.5) and the port's
+   script never ran.
+
+   So every content-bearing capture frame from the window start 83 through 611 is explained:
+   - the START MENU and its wipes;
+   - the two-player character select, f=0x286..0x35A, with P2's join, both cursors and both
+     confirms;
+   - the wipes, the versus screen and the stage entrance;
+   - the fight to X.
+
+   There is no select divergence, so no new gap opens in U5's area. There is no fight divergence,
+   so nothing goes to U6b or a new gap. This is the same as gp-u5-charsel's N = 516, "how far the
+   port's replay got" (gameplay-u5 §C5.17).
+
+2. *Trace: there is no differing frame.* The `S`/`T` fields agree on all 1190 compared frames,
+   f=0x134..0x5E1 = 1505, the script's end. 8 frames have no capture snapshot (the gaps above).
+   The tick difference from f=135 and the t508 normalisation (first f=264) are the host-timed
+   fields, reported and not ratcheted, as in every gp scenario (spec §7 Q6). So the trace has no
+   first difference X to triage (no `poll.log`/`trace.txt` line pair, no preceding miss). For
+   Task 6, the measured end is 1505.
+
+3. *Moves (reported, not pinned): 0 differing through 1505.* The comparison covers `c0 c1 r0 r1
+   s0_43` on 1190 frames. Both sides' move bytes agree through the fight's 40 presses (P1 b1/b2
+   against P2 b2/b1, record §T.3).
+
+Window start 83 (raw 1742). There are no named divergences. The one boundary is the script's end
+at f=5E1: capture frames from 612 onward lie past the port's last frame, and the record names
+that as a harness boundary, not a gap.
