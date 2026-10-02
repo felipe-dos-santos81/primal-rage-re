@@ -1204,3 +1204,53 @@ fields at the death-animation end.
   callees closed (12 have none).`, the post-P1 baseline.
 - `git diff --stat 1085402 -- port/src`: empty.
 - The full `make verify` was not run (instructed).
+
+## §W.15 The final gate (Task 12, on `e25eff0` + the Task 12 docs)
+
+The full `make verify` with the plan's parallel-safe overrides and `E2_IMAGE=/tmp/pr_u910_e2.bin`, log `/tmp/gameplay-u9u10/final_verify.txt`. No function is ported and `port/src` is untouched, so every counter is the baseline's (main `1085402`, ledger Task 0).
+
+```
+verify-exit=0
+ORACLES-EQUAL   (45 lines, equal to oracle-lines-base.txt)
+WAV-EQUAL
+771 1203 64
+731 731 100 (portable: excludes 81 host-owned/deferred and runtime >= 5D000)
+diff-verify: 30/30 functions VERIFIED; 47/47 mutants detected; 1 named gaps; 1/18 rows with callees closed (12 have none). Claim: equivalence on the exercised blocks and input
+entry-triage: 579 candidates (575 by U0's rule); finisher=9 move-callback=71 span-writer=231 call-table=7 anim-target=112 mid-instruction=3 data=75 code-immediate=15 direct=2 interior=6 data-pointer=48
+entry-triage: targets 313 unported, 182 ported; supplement 131 (28 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 40 in unported code, 75 in ported code, 19 nowhere
+
+gp_compare: gp-idle-loss: frames: first unexplained 2064, ratchet N 2064 ok
+gp_compare: gp-idle-loss: trace: 0 differing through 8319; ratchet N 8320 ok
+gp_compare: gp-u5-charsel: frames: first unexplained 516, ratchet N 516 ok
+gp_compare: gp-u5-charsel: trace: 0 differing through 1512; ratchet N 1513 ok
+gp_compare: gp-u6-moves-b: frames: first unexplained 1005, ratchet N 1005 ok
+gp_compare: gp-u6-moves-b: trace: first differing 2262, ratchet N 2262 ok
+gp_compare: gp-u6-moves-b: moves: first differing 2949, ratchet N 2949 ok
+gp_compare: gp-twop: frames: first unexplained 612, ratchet N 612 ok
+gp_compare: gp-twop: trace: 0 differing through 1505; ratchet N 1506 ok
+gp_compare: gp-twop: moves: 0 differing through 1505; ratchet N 1506 ok
+gp_compare: gp-u8-right-arcade: frames: first unexplained 726, ratchet N 726 ok
+gp_compare: gp-u8-right-arcade: trace: first differing 1978, ratchet N 1978 ok
+gp_compare: gp-u8-left-training: frames: first unexplained 1076, ratchet N 1076 ok
+gp_compare: gp-u8-left-training: trace: 0 differing through 2337; ratchet N 2338 ok
+gp_compare: gp-u8-right-training: frames: first unexplained 1098, ratchet N 1098 ok
+gp_compare: gp-u8-right-training: trace: 0 differing through 2401; ratchet N 2402 ok
+gp_compare: gp-u8-tug-of-war: frames: first unexplained 1107, ratchet N 1107 ok
+gp_compare: gp-u8-tug-of-war: trace: 0 differing through 2465; ratchet N 2466 ok
+gp_compare: gp-u8-handicap: frames: first unexplained 1022, ratchet N 1022 ok
+gp_compare: gp-u8-handicap: trace: 0 differing through 2273; ratchet N 2274 ok
+gp_compare: gp-u8-endurance: frames: first unexplained 278, ratchet N 278 ok
+gp_compare: gp-u8-endurance: trace: 0 differing through 1173; ratchet N 1174 ok
+gp_compare: gp-u8-attract-start: frames: first unexplained 1087, ratchet N 1087 ok
+gp_compare: gp-u8-attract-start: trace: 0 differing through 2017; ratchet N 2018 ok
+gp_compare: gp-u9-win: frames: first unexplained 346, ratchet N 346 ok
+gp_compare: gp-u9-win: trace: first differing 2150, ratchet N 2150 ok
+gp_compare: gp-u10-ending: frames: first unexplained 331, ratchet N 331 ok
+gp_compare: gp-u10-ending: trace: first differing 2121, ratchet N 2121 ok
+gp_keys: gp-keys-fight: effects: first not reproduced 11, ratchet N 11 ok
+gp_win: gp-u9-win: evidence: 8/8 milestones ok
+gp_win: gp-u10-ending: evidence: 30/30 milestones ok
+```
+
+The `gp_win ... path` lines: all 8 (U9) and all 30 (U10) milestones print `capture F port F` with the same frame on both sides, and every `gp_win ... evidence` line is `ok` (log lines `gp_win: gp-u9-win: path:` and `gp_win: gp-u10-ending: path:`). The eight gp python suites (`test_gp_session test_gp_capture test_gp_compare test_gp_twop test_gp_win test_gp_keys test_gp_modes test_gp_moves`): `Ran 191 tests`, `OK`; the four of the plan's gate command (session, capture, compare, twop): `Ran 118`. `git diff --stat main -- port/src`: empty. No `FAIL` line in the log.
