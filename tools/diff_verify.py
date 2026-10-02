@@ -1237,7 +1237,8 @@ def p3_480b4(cid, side, al, d3=0x0123, d5=0x0456):
 # its AL 0x36D98(the other slot), the other record on 0xC90F8[its character] at 3.0, 0x188DC(the other side, the
 # other slot's +0x2C read before that call), then the other slot 0x10/0xA/0 with the +0x10 handler 0x4811C (0x3531C
 # case 10), +0x58 = 0, and the side's byte 0x108392 = (the other slot's +0x43 & 0x30) != 0. Both slots' +0x10..+0x13,
-# +0x2C and +0x43 differ, the per-side words and bytes carry sentinels.
+# +0x2C and +0x43 differ, the per-side words and bytes carry sentinels. g4's stub EAX 0x100 (AL 0, upper bits set):
+# 0x481F0 tests AL only (`test al,al`), so no 0x36D98 call follows (plan P3 Task 6 review).
 def p3_48170(cid, side, al, o43):
     oth = DS_SLOTS + (1 - side) * 0x94
     return Case(cid, {"eax": side},
@@ -1273,9 +1274,9 @@ P3_SPECS += [
          allow_calls=(0x33950,), calls=(DISPATCH, TIMER, ARM170, PLACE), eax_mask=0,
          mutants=("@mutant", "@signed", "@char")),
     Spec("fighter_48170", 0x48170, [p3_48170("g0", 0, 0, 0x10), p3_48170("g1", 1, 1, 0x20), p3_48170("g2", 0, 0, 0xCF),
-                                    p3_48170("g3", 0, 1, 0x30)],
+                                    p3_48170("g3", 0, 1, 0x30), p3_48170("g4", 1, 0x100, 0x10)],
          allow_calls=(0x33950,), calls=(CLEAR34, HIT_A, PRED, RESET, ANCHORX), eax_mask=0,
-         mutants=("@mutant", "@order", "@reset")),
+         mutants=("@mutant", "@order", "@reset", "@al")),
     Spec("fighter_4811c", 0x4811C, [
         p3_4811c("i0", 0, 0, 0x0F), p3_4811c("i1", 1, 1, 0x0F), p3_4811c("i2", 0, 2, 0x0F), p3_4811c("i3", 1, 2, 0x0E),
         p3_4811c("i4", 0, 3, 0x0F), p3_4811c("i5", 0, 2, 0x7FFF), p3_4811c("i6", 1, 2, 0x0F),

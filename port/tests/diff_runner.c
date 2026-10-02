@@ -1977,7 +1977,7 @@ static void m_480b4_char(const u32 *r, u32 *eax)       /* the distance by the ow
     m_480b4_at(r[R_EAX], 0, 0, 1);
     *eax = 0u;
 }
-static void m_48170_at(u32 side, int own_x, int late57, int own_reset)
+static void m_48170_at(u32 side, int own_x, int late57, int own_reset, int whole_eax)
 {
     u32 ctx[6], x, other = 1u - side;
     u32 own_s = 0x001077B0u + side * 0x94u, oth_s = 0x001077B0u + other * 0x94u;
@@ -1987,7 +1987,8 @@ static void m_48170_at(u32 side, int own_x, int late57, int own_reset)
     fighter_3c148(other);
     hit_anim_start_a(DSD(own_s), 0x000ED850u, 0x40400000u);
     if (!late57) DSB(own_s + 0x57u) = 2u;
-    if ((u8)ai_pred_468d8(other) != 0u) fighter_36d98(own_reset ? own_s : oth_s);
+    if ((whole_eax ? (u32)ai_pred_468d8(other) : (u32)(u8)ai_pred_468d8(other)) != 0u)
+        fighter_36d98(own_reset ? own_s : oth_s);
     if (late57) DSB(own_s + 0x57u) = 2u;
     x = DSD(ctx[own_x ? 2 : 3] + 0x2Cu);
     hit_anim_start_a(DSD(oth_s), DSD(0x000C90F8u + (u32)DSB(oth_s + 0x7Au) * 4u), 0x40400000u);
@@ -2001,17 +2002,22 @@ static void m_48170_at(u32 side, int own_x, int late57, int own_reset)
 }
 static void m_48170(const u32 *r, u32 *eax)            /* 0x188DC with the own slot's +0x2C */
 {
-    m_48170_at(r[R_EAX], 1, 0, 0);
+    m_48170_at(r[R_EAX], 1, 0, 0, 0);
     *eax = 0u;
 }
 static void m_48170_order(const u32 *r, u32 *eax)      /* the own +0x57 = 2 after 0x468D8 */
 {
-    m_48170_at(r[R_EAX], 0, 1, 0);
+    m_48170_at(r[R_EAX], 0, 1, 0, 0);
     *eax = 0u;
 }
 static void m_48170_reset(const u32 *r, u32 *eax)      /* 0x36D98 on the own slot */
 {
-    m_48170_at(r[R_EAX], 0, 0, 1);
+    m_48170_at(r[R_EAX], 0, 0, 1, 0);
+    *eax = 0u;
+}
+static void m_48170_al(const u32 *r, u32 *eax)         /* 0x468D8's whole EAX tested, not AL */
+{
+    m_48170_at(r[R_EAX], 0, 0, 0, 1);
     *eax = 0u;
 }
 static void m_4811c_at(const u32 *r, int on_slot, int uns, int late54)
@@ -2354,6 +2360,7 @@ static const binding_t k_bindings[] = {
     { "fighter_48170@mutant",     m_48170,        0x00000000u },
     { "fighter_48170@order",      m_48170_order,  0x00000000u },
     { "fighter_48170@reset",      m_48170_reset,  0x00000000u },
+    { "fighter_48170@al",         m_48170_al,     0x00000000u },
     { "fighter_4811c@mutant",     m_4811c,        0x00000000u },
     { "fighter_4811c@signed",     m_4811c_signed, 0x00000000u },
     { "fighter_4811c@order",      m_4811c_order,  0x00000000u },

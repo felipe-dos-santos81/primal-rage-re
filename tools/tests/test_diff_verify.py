@@ -395,7 +395,7 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
             "fighter_480b4@char": {"call #4"},
             "fighter_48170@mutant": {"call #5", "call #6"},
             "fighter_48170@order": {"call #3 memory", "call #4 memory"},
-            "fighter_48170@reset": {"call #4"},
+            "fighter_48170@reset": {"call #4"}, "fighter_48170@al": {"call #4", "call #5", "call #6"},
             "fighter_4811c@mutant": {"call #0"}, "fighter_4811c@signed": {"byte", "call #0"},
             "fighter_4811c@order": {"call #0 memory"},
             "fighter_4844c@mutant": {"call #0", "call #1"}, "fighter_4844c@signed": {"byte", "call #0"},
@@ -658,10 +658,12 @@ class RealFunctionTests(unittest.TestCase):
                           ("fighter_47d24@signed", ["b2"]), ("fighter_47e9c@signed", ["eD"]),
                           # 0x48054's 1 when the own +0x57 is set (n2, n3: each side), 0x480B4's distance signed
                           # (x2 on side 0, x3 on side 1: each a word of the other slot's character), 0x48170's
-                          # 0x36D98 on the other slot (g1, g3: the cases whose 0x468D8 AL is set), 0x4811C's word
+                          # 0x36D98 on the other slot (g1, g3: the cases whose 0x468D8 AL is set), 0x468D8's AL
+                          # alone tested (g4's stub EAX 0x100 alone, `test al,al` at 0x481F0), 0x4811C's word
                           # signed (i5 alone)
                           ("fighter_48054@eax", ["n2", "n3"]), ("fighter_480b4@signed", ["x2", "x3"]),
-                          ("fighter_48170@reset", ["g1", "g3"]), ("fighter_4811c@signed", ["i5"]),
+                          ("fighter_48170@reset", ["g1", "g3"]), ("fighter_48170@al", ["g4"]),
+                          ("fighter_4811c@signed", ["i5"]),
                           # 0x4844C: the count signed (a3 alone), |+0x34| (a2's -0x15F alone), the bound signed
                           # (aB's -1 alone), 0x188DC's word signed (aA's 0xF000 alone)
                           ("fighter_4844c@signed", ["a3"]), ("fighter_4844c@abs", ["a2"]),
@@ -774,8 +776,8 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (63), the 14 without are counted apart
-        self.assertIn("diff-verify: 78/78 functions VERIFIED; 156/156 mutants detected; 1 named gaps; "
+        # the closed-row count is over the rows that have callees (64), the 14 without are counted apart
+        self.assertIn("diff-verify: 78/78 functions VERIFIED; 157/157 mutants detected; 1 named gaps; "
                       "11/64 rows with callees closed (14 have none).", out.getvalue())
 
 
