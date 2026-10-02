@@ -55,7 +55,7 @@ writes it:
 | name | address, size | what writes it |
 |---|---|---|
 | `afc` | `DS_00104AFC`, 2 | the stage word: `0x25848` (stage pick), `0x26F58`/`0x271E0` (= 7, the final) |
-| `ad4` | `DS_00104AD4`, 4 | the match result: `0x27BA4` (0, 1, 2 or -1), `0x259CC` (-1) |
+| `ad4` | `DS_00104AD4`, 4 | the match result. Every store (`mov dword ptr [0x104ad4], x`, found by scanning the fixed-up image for the dword `0x104AD4` and decoding each hit, capstone base `0x10000`): `0x27C3D` (`0x27BA4`: 0, 1, 2 or -1), `0x25A0E` (`0x259CC`: -1) and the mode-9/7 paths `0x283AE`, `0x283EE`, `0x28409` (each right after `or byte ptr [0x104aec], 2`), `0x288F3` (2), `0x28961` (0, after `cmp eax, 1`) and `0x28973` (1, after the same test on `DS_001078A7`) |
 | `w2`, `w3` | `DS_00104AF2`, `DS_00104AF3`, 1 each | the round wins: `0x27C48` |
 | `b1e` | `DS_00104B1E`, 1 | the round index (`0x259CC` = 0; 1, 2 at each round start) |
 | `b21` | `DS_00104B21`, 1 | the final's KO count: `0x274FC` (`0x2758A`) |

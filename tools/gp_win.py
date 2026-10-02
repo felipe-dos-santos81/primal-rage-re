@@ -62,12 +62,12 @@ _MATCH1 = (
 MILESTONES = {
     'gp-u9-win': _START + _MATCH1 + (
         ('0x41C28 state 3 counts one land for P1', 0x12, 1, lambda r: r['t104'] & 0xFF == 1),
-        ('match 2, round 1: a new land and opponent (0x25848, 0x41350)', 0x06, 3,
+        ('match 2, round 1: a new, unmarked land (0x25848 picks the stage, 0x41760)', 0x06, 3,
          lambda r: r['b1e'] == 1 and r['w2'] == 0 and land(r, r['afc']) == 0),
     ),
     'gp-u10-ending': _START + (
         ('round 1 KO with the seven lands poked P1\'s', 0x08, 1,
-         lambda r: r['s1_5a'] == 0x78 and r['w2'] == 1 and r['ad4'] == NO_RESULT
+         lambda r: r['s1_5a'] == 0x78 and r['w2'] == 1 and r['w3'] == 0 and r['ad4'] == NO_RESULT
          and lands(r) == [0x80 | r['c0']] * 7),
     ) + _MATCH1[1:] + (
         ('0x41C28 state 3 counts the seventh land', 0x12, 1, lambda r: r['t104'] & 0xFF == 7),
@@ -83,7 +83,8 @@ MILESTONES = {
         ('final opponent %d replaced (0x274FC, count %d)' % (k, k), 0x0C, k + 1, _all(b21=k)),
     )[:2 if k < 7 else 1]) + (
         ('YOU ARE MASTER OF THE NEW URTH: mode 0xF, count 7 (0x274FC)', 0x0F, 1, _all(b21=7)),
-        ('the ending (mode 0x1F, 0x208F8)', 0x1F, 1, None),
+        ('SAURON\'s ending (mode 0x1F, 0x208F8): the winner\'s character DS_0010782A[DS_00104AD4 * 0x94] '
+         '(0x20900..0x20914) is 0', 0x1F, 1, _all(ad4=0, c0=0)),
         ('the ending, second part (mode 0x1F, state 3)', 0x1F, 2, None),
         ('the high-score entry (mode 0x1E)', 0x1E, 1, None),
         ('back in mode 3', 0x03, 1, None),
@@ -136,16 +137,28 @@ def trace_from(lines):
 
 
 def death_done_set(lines, snaps):
-    """The frames of the DEATH_DONE pokes (W records at DS_00104B0C) that found the byte
-    already set, in the W record or in the S record of the spin they were written in:
-    there the game ended a death animation itself and the poke stood in for nothing."""
+    """The frames of the DEATH_DONE pokes (W records at DS_00104B0C) that did not stand for
+    the game's own death-done byte: the byte already set (in the W record or in the S record
+    of the spin they were written in), the spin not in mode 0xD, or the KO count (b21)
+    moved since the mode-0xD entry began: the game set the byte itself, mode 0xD
+    (0x27562..0x2758A) consumed it and the poke landed after, finding it clear."""
     addr = gs.DEATH_DONE[1][0][0]
+    fs = sorted(snaps)
     out = []
     for r in (gs.parse(l) for l in lines):
-        if r and r['kind'] == 'W' and r['addr'] == addr:
-            s = snaps.get(r['f'])
-            if s is None or s['b0c'] != 0 or r['was'] != '00':
-                out.append(r['f'])
+        if not (r and r['kind'] == 'W' and r['addr'] == addr):
+            continue
+        s = snaps.get(r['f'])
+        if s is None or s['b0c'] != 0 or r['was'] != '00' or s['mode'] != 0x0D:
+            out.append(r['f'])
+            continue
+        first = s
+        for f in reversed([f for f in fs if f < r['f']]):
+            if snaps[f]['mode'] != 0x0D:
+                break
+            first = snaps[f]
+        if first['b21'] != s['b21']:
+            out.append(r['f'])
     return out
 
 
@@ -169,7 +182,7 @@ def evidence(name, lines, out=print):
         prev = f
     bad = death_done_set(lines, snaps)
     if bad:
-        out('gp_win: %s: evidence: FAIL: the death-done poke at f=%X found the byte set' % (name, bad[0]))
+        out('gp_win: %s: evidence: FAIL: the death-done poke at f=%X did not find a clear byte in the mode-0xD entry' % (name, bad[0]))
         return 1
     out('gp_win: %s: evidence: %d/%d milestones ok' % (name, len(MILESTONES[name]), len(MILESTONES[name])))
     return 0
@@ -180,6 +193,8 @@ def reproduced(name, cap_lines, port_lines):
     the frames the capture snapshotted; rows = [(label, capture f, port f)]."""
     snaps, port = snaps_from(cap_lines), trace_from(port_lines)
     start = start_frame(snaps)
+    if start is None:
+        return 0, [(row[0], None, None) for row in MILESTONES[name]]
     shared = {f: port[f] for f in port if f in snaps}
     cf = milestone_frames(name, snaps, start)
     pf = milestone_frames(name, shared, start)
@@ -229,15 +244,24 @@ def main():
         return 1
     with open(os.path.join(a.port, 'trace.txt')) as f:
         pl = f.read().splitlines()
+    return path(name, cl, pl, None if a.min_milestones in (None, '') else int(a.min_milestones),
+                a.win_min_first)
+
+
+def path(name, cl, pl, min_milestones, win_min_first=None, out=print):
+    """The path command on the two logs' lines: 0 ok, 1 FAIL."""
+    if start_frame(snaps_from(cl)) is None:
+        out('gp_win: %s: path: FAIL: mode 0x27 never observed in the capture' % name)
+        return 1
     n, rows = reproduced(name, cl, pl)
     for label, c, p in rows:
-        print('gp_win: %s: path: %-70s capture %s port %s' % (name, label, '-' if c is None else '%X' % c,
-                                                             '-' if p is None else '%X' % p))
-    rc = gc.ratchet(name, 'path', None if n == len(rows) else n, len(rows),
-                    None if a.min_milestones in (None, '') else int(a.min_milestones), print, 'not reproduced')
-    if a.win_min_first is not None:
-        rc2, _ = gc.trace_claim(name, cl, pl, None if a.win_min_first == '' else int(a.win_min_first),
-                                print, False, gs.WIN_FIELDS, 'win')
+        out('gp_win: %s: path: %-70s capture %s port %s' % (name, label, '-' if c is None else '%X' % c,
+                                                          '-' if p is None else '%X' % p))
+    rc = gc.ratchet(name, 'path', None if n == len(rows) else n, len(rows), min_milestones, out,
+                    'not reproduced')
+    if win_min_first is not None:
+        rc2, _ = gc.trace_claim(name, cl, pl, None if win_min_first == '' else int(win_min_first),
+                                out, False, gs.WIN_FIELDS, 'win')
         rc = rc or rc2
     return rc
 
