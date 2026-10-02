@@ -419,6 +419,13 @@ int actors_init(void)
     fn_register(0x37774u, (void (*)(void))fighter_37774);
     fn_register(0x37898u, (void (*)(void))fighter_37898);
     fn_register(0x45C10u, (void (*)(void))fighter_45c10);
+    /* PORT: record 2026-10-02-reverse-p1 §P1.5. The finisher entries of
+     * characters 3, 4 and 6 (the dwords at 0xBDAF0, 0xBDB0C, 0xBDB10 and
+     * 0xBDB18; 0x379C4 calls DS_001078E8 as (slot, rec) and tests EAX). */
+    fn_register(0x1567Cu, (void (*)(void))fighter_1567c);
+    fn_register(0x15908u, (void (*)(void))fighter_15908);
+    fn_register(0x23EC0u, (void (*)(void))fighter_23ec0);
+    fn_register(0x45D14u, (void (*)(void))fighter_45d14);
 
     /* PORT: record §42-A. The update table's entries 7 (0x2910C, the
      * type-0x0A/0x19 node walk; dword at 0xA8660) and 5 (0x22FE8, the 0x104728

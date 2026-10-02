@@ -14121,3 +14121,90 @@ void fighter_45d58(void)
     DSB(UPD17_DONE) = 0u;                                   /* 0x45D75 */
     DSB(DS_00104AEA) = (u8)(DSB(DS_00104AEA) | 2u);         /* 0x45D6C..0x45D7B */
 }
+
+/* ---- track P batch 1: the finisher entries and their slot +0x0C callbacks ----
+ * Record 2026-10-02-reverse-p1-derivations.md. 0x379C4 calls a finisher entry
+ * through DS_001078E8 at 0x379E8 as (EAX = slot, EDX = rec) and tests the whole
+ * EAX at 0x379EE; 0x3531C case 7 (0x35431) and 0x38434 (0x384D9) call a slot's
+ * +0x0C callback as (EAX = slot, EDX = rec, EBX = side) and discard EAX. */
+#define P1_FIN_1567C_STREAM 0x000D32A8u  /* 0x15681 */
+#define P1_FIN_15908_STREAM 0x000D3334u  /* 0x1590D */
+#define P1_FIN_23EC0_STREAM 0x000E1B24u  /* 0x23EC5 */
+#define P1_FIN_45D14_STREAM 0x000EB876u  /* 0x45D19 */
+
+/* 0x1567C — record §P1.5. Character 3's 0xBDAE4 finisher entry (the dword at
+ * 0xBDAF0): the record on 0xD32A8 at 3.0 (0x2BC30), the slot 7/9/0 with the
+ * +0x0C callback 0x15584, +0x57 = 0, +0x18/+0x1C/+0x14 = 0, +0x42 bit 3, the
+ * voice 0xAF. PORT: the raw returns the voice's EAX with AL = 1 (0x156CF);
+ * 0x379EE reads only EAX != 0, which AL = 1 settles, so the port returns 1. */
+int fighter_1567c(u32 slot, u32 rec)
+{
+    actors_anim_begin(rec, P1_FIN_1567C_STREAM, 0x40400000u); /* 0x1567F..0x1568B 0x2BC30 */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x15690 */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x15694 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x15698 */
+    DSD(slot + 0x0Cu) = 0x00015584u;                        /* 0x1569C */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x156A3 */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x156A7 */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x156B1 */
+    DSB(slot + 0x42u) = (u8)(DSB(slot + 0x42u) | 8u);       /* 0x156AE..0x156BB */
+    DSD(slot + 0x14u) = 0u;                                 /* 0x156C3 */
+    (void)sound_voice(0xAFu);                               /* 0x156BE/0x156CA 0x2C3FC */
+    return 1;                                               /* 0x156CF */
+}
+
+/* 0x15908 — record §P1.5. Character 3's 0xBDB00 finisher entry (the dword at
+ * 0xBDB0C): 0x1567C's shape on the stream 0xD3334 with the +0x0C callback
+ * 0x1579C, the voice 0xAF. PORT: AL = 1 at 0x1595B, returned as 1 (0x1567C). */
+int fighter_15908(u32 slot, u32 rec)
+{
+    actors_anim_begin(rec, P1_FIN_15908_STREAM, 0x40400000u); /* 0x1590B..0x15917 0x2BC30 */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x1591C */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x15920 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x15924 */
+    DSD(slot + 0x0Cu) = 0x0001579Cu;                        /* 0x15928 */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x1592F */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x15933 */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x1593D */
+    DSB(slot + 0x42u) = (u8)(DSB(slot + 0x42u) | 8u);       /* 0x1593A..0x15947 */
+    DSD(slot + 0x14u) = 0u;                                 /* 0x1594F */
+    (void)sound_voice(0xAFu);                               /* 0x1594A/0x15956 0x2C3FC */
+    return 1;                                               /* 0x1595B */
+}
+
+/* 0x23EC0 — record §P1.5. Character 6's 0xBDB00 finisher entry (the dword at
+ * 0xBDB18): the record on 0xE1B24 at 3.0, the slot 7/9/0 with the +0x0C
+ * callback 0x23D38, +0x57/+0x18/+0x1C/+0x14 = 0 (+0x42 untouched), the voice
+ * 0xAA. PORT: AL = 1 at 0x23F0A, returned as 1 (0x1567C). */
+int fighter_23ec0(u32 slot, u32 rec)
+{
+    actors_anim_begin(rec, P1_FIN_23EC0_STREAM, 0x40400000u); /* 0x23EC3..0x23ECF 0x2BC30 */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x23ED4 */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x23ED8 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x23EDC */
+    DSD(slot + 0x0Cu) = 0x00023D38u;                        /* 0x23EE0 */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x23EE7 */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x23EEB */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x23EF2 */
+    DSD(slot + 0x14u) = 0u;                                 /* 0x23EFE */
+    (void)sound_voice(0xAAu);                               /* 0x23EF9/0x23F05 0x2C3FC */
+    return 1;                                               /* 0x23F0A */
+}
+
+/* 0x45D14 — record §P1.5. Character 4's 0xBDB00 finisher entry (the dword at
+ * 0xBDB10): the record on 0xEB876 at 3.0, the slot 3/9/0 with no +0x0C
+ * callback, +0x57/+0x18/+0x1C/+0x14 = 0; no voice. PORT: the raw returns
+ * 0x2BC30's EAX with AL = 1 (0x45D4D), returned as 1 (0x1567C). */
+int fighter_45d14(u32 slot, u32 rec)
+{
+    actors_anim_begin(rec, P1_FIN_45D14_STREAM, 0x40400000u); /* 0x45D17..0x45D23 0x2BC30 */
+    DSB(slot + 0x53u) = 3u;                                 /* 0x45D28 */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x45D2C */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x45D30 */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x45D34 */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x45D3B */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x45D3F */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x45D46 */
+    DSD(slot + 0x14u) = 0u;                                 /* 0x45D4F */
+    return 1;                                               /* 0x45D4D */
+}

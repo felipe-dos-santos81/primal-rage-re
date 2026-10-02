@@ -1139,4 +1139,12 @@ void fighter_45d58(void);
  * DS_00104AE9 |= 8. Callers 0x1467F, 0x149EB, 0x39195. */
 void fighter_4f944(u32 v);
 
+/* Track P batch 1 (record 2026-10-02-reverse-p1-derivations.md §P1.5): the
+ * finisher entries 0x379C4 calls through DS_001078E8 as (slot, rec), testing
+ * the whole EAX; registered in actors_init. */
+int  fighter_1567c(u32 slot, u32 rec);
+int  fighter_15908(u32 slot, u32 rec);
+int  fighter_23ec0(u32 slot, u32 rec);
+int  fighter_45d14(u32 slot, u32 rec);
+
 #endif /* PRAGE_GAME_FIGHTER_H */

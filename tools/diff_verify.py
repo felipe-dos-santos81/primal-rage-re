@@ -364,6 +364,31 @@ E3_SPECS = [
     Spec("host_1b890", 0x1B890, [Case("g0", {})], mutants=(), gap="in at 0x1B899"),
 ]
 
+# ---- track P batch 1: the finisher entries and their +0x0C callbacks (record 2026-10-02-reverse-p1) --
+# A finisher entry runs as 0x379C4 calls it at 0x379E8: EAX = slot, EDX = rec. Mask 0xFF: the raw sets AL = 1
+# over its last callee's EAX and 0x379EE's `test eax,eax` is the only read (record §P1.4). Every field the
+# function writes is seeded with a sentinel; +0x42, the one it reads (`or ah,8`), takes 0x21 and 0xFF; the
+# voice stub returns AL = 1 and 0 (the function overwrites AL with `mov al,1`).
+P1_SEED = {E3_SLOT + 0x52: b"\x52\x53\x54", E3_SLOT + 0x57: b"\x57", E3_SLOT + 0x0C: le32(0x0C0C0C0C),
+           E3_SLOT + 0x14: le32(0x14141414), E3_SLOT + 0x18: le32(0x18181818), E3_SLOT + 0x1C: le32(0x1C1C1C1C)}
+
+
+def p1_finisher(name, entry, voice):
+    calls = (ANIM_BEGIN, VOICE) if voice else (ANIM_BEGIN,)
+    return Spec(name, entry, [
+        Case("f0", {"eax": E3_SLOT, "edx": E3_REC}, {**P1_SEED, E3_SLOT + 0x42: b"\x21"}),
+        Case("f1", {"eax": E3_SLOT, "edx": E3_REC}, {**P1_SEED, E3_SLOT + 0x42: b"\xff"},
+             {0x2C3FC: 0} if voice else {}),
+    ], calls=calls, eax_mask=0xFF)
+
+
+P1_SPECS = [
+    p1_finisher("fighter_1567c", 0x1567C, True),
+    p1_finisher("fighter_15908", 0x15908, True),
+    p1_finisher("fighter_23ec0", 0x23EC0, True),
+    p1_finisher("fighter_45d14", 0x45D14, False),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -406,7 +431,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS
+] + E3_SPECS + P1_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

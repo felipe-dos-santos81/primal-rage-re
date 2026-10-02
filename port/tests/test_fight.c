@@ -44516,3 +44516,63 @@ static void check_u6b_231c0(void)
 }
 
 int test_u6b_231c0(void)        { return u6b_run(check_u6b_231c0); }
+
+/* ---- track P batch 1 (record 2026-10-02-reverse-p1-derivations.md) ----------
+ * The finisher entries and their +0x0C callbacks. Differential verification
+ * (tools/diff_verify.py, P1_SPECS) is the behavioural oracle; these checks pin
+ * what it does not see: the registrations and the image references that make
+ * 0x379C4 and 0x3531C reach each function, and one seeded run through the
+ * registration with sentinels on every store. */
+
+typedef int (*p1_entry_fn)(u32 slot, u32 rec);
+
+/* §P1.5: one finisher entry through its registration, as 0x379C4 calls it
+ * (slot, rec): the stream head patched to a plain frame id (0x2BC30 stops on
+ * it), sentinels on every slot field it stores, +0x42 = 0x21. */
+static void p1_check_finisher(u32 addr, void (*fn)(void), u32 table_dw, u32 stream,
+                              u32 st53, u32 cb0c, int or42, u32 voice)
+{
+    p1_entry_fn e;
+    CHECK(fn_resolve(addr) == fn, "the finisher entry is registered");
+    CHECK_EQ_INT((int)DSD(table_dw), (int)addr);
+    e = (p1_entry_fn)(void *)fn_resolve(addr);
+    z_fseed();
+    DSW(stream) = 0x12B1u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    DSB(Z_S0 + 0x57u) = 0x33u;
+    DSB(Z_S0 + 0x42u) = 0x21u;
+    DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSD(Z_S0 + 0x14u) = 0x14141414u;
+    DSD(Z_S0 + 0x18u) = 0x18181818u;
+    DSD(Z_S0 + 0x1Cu) = 0x1C1C1C1Cu;
+    sound_voice_log_reset();
+    CHECK(e != NULL && e(Z_S0, Z_R0) != 0, "the finisher entry returns non-zero");
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), (int)stream);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), (int)st53);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), (int)cb0c);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x14u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x42u), or42 ? 0x29 : 0x21);
+    CHECK_EQ_INT((int)sound_voice_log_count(), voice ? 1 : 0);
+    if (voice) CHECK_EQ_INT((int)sound_voice_log_at(0), (int)voice);
+    sound_voice_log_reset();
+}
+
+static void p1_check_finishers(void)
+{
+    p1_check_finisher(0x1567Cu, (void (*)(void))fighter_1567c, 0x000BDAF0u, 0x000D32A8u,
+                      7u, 0x00015584u, 1, 0xAFu);
+    p1_check_finisher(0x15908u, (void (*)(void))fighter_15908, 0x000BDB0Cu, 0x000D3334u,
+                      7u, 0x0001579Cu, 1, 0xAFu);
+    p1_check_finisher(0x23EC0u, (void (*)(void))fighter_23ec0, 0x000BDB18u, 0x000E1B24u,
+                      7u, 0x00023D38u, 0, 0xAAu);
+    p1_check_finisher(0x45D14u, (void (*)(void))fighter_45d14, 0x000BDB10u, 0x000EB876u,
+                      3u, 0u, 0, 0u);
+}
+
+int test_p1_finishers(void)     { return u6b_run(p1_check_finishers); }
