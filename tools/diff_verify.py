@@ -1031,8 +1031,9 @@ def p3_hook0(cid, side, stub):
 
 # 0x47688 (the +0x1C callback 0x47720 stores; 0x193B0, fn(side)): the slots' bytes +0x52..+0x5F carry different
 # sentinels (slot 0 0x52.., slot 1 0xD2..: the own +0x5F is the byte 0x3B298 and 0x39834 take), the other slot's
-# +0x54 selects 0x39FB0 (2) or 0x3A95C; the signed word 0xBEDD8 (10 in the image, `sar 0x10` of the dword
-# 0xBEDD6) is poked negative in h4, where a zero-extended read differs.
+# +0x54 selects 0x39FB0 (2) or 0x3A95C (h5: 0x66, the unit run's value; the others 0x54/0xD4); the signed word
+# 0xBEDD8 (10 in the image, `sar 0x10` of the dword 0xBEDD6) is poked negative in h4, where a zero-extended read
+# differs. 0x3B298's AL alone is tested (`test al,al`): h3's stub EAX 0x100 has AL 0 (plan P3 Task 3 review).
 def p3_47688(cid, side, al, o54=None, timer=None):
     pokes = {**SLOT_PTRS, DS_SLOTS + 0x52: bytes(range(0x52, 0x60)), DS_SLOTS + 0x94 + 0x52: bytes(range(0xD2, 0xE0))}
     if o54 is not None:
@@ -1051,9 +1052,9 @@ P3_SPECS += [
          allow_calls=(0x33950, 0x18BD4), calls=(CHECKS,), mutants=("@mutant",)),
     Spec("fighter_47688", 0x47688, [
         p3_47688("h0", 0, 1), p3_47688("h1", 0, 0, o54=2), p3_47688("h2", 1, 0), p3_47688("h3", 1, 0x100, o54=2),
-        p3_47688("h4", 0, 0, timer=0xFFF0),
+        p3_47688("h4", 0, 0, timer=0xFFF0), p3_47688("h5", 1, 0, o54=0x66),
     ], allow_calls=(0x33950,), calls=(DISPATCH, POSE, PIVOT, STANCE, TIMER), eax_mask=0,
-       mutants=("@mutant", "@pivot", "@zext")),
+       mutants=("@mutant", "@pivot", "@zext", "@eax")),
 ]
 
 # The callees the 0x47874 family stubs (record §P3.5): 0x3C190 EAX = side, EDX = the speed (`mov ebx,eax` before

@@ -1550,12 +1550,13 @@ static void m_47648(const u32 *r, u32 *eax)            /* flag 0 left at 2 */
     f[8] = 0;
     *eax = (u32)fighter_18c14(ctx[0], f, 0u, 0u);
 }
-static void m_47688_at(u32 side, u32 stance, int own_pivot, int zext)
+static void m_47688_at(u32 side, u32 stance, int own_pivot, int zext, int whole_eax)
 {
     u32 ctx[6];
-    u32 w;
+    u32 w, al;
     fighter_ctx_same(ctx, side);
-    if ((u8)fighter_command_dispatch(ctx[1], (u32)DSB(ctx[2] + 0x5Fu)) != 0u) return;
+    al = (u32)fighter_command_dispatch(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));
+    if ((whole_eax ? al : (u32)(u8)al) != 0u) return;
     fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));
     if (DSB(ctx[3] + 0x54u) == 2u) fighter_39fb0(own_pivot ? ctx[2] : ctx[3]);
     else fighter_3a95c(ctx[1], stance);
@@ -1564,17 +1565,22 @@ static void m_47688_at(u32 side, u32 stance, int own_pivot, int zext)
 }
 static void m_47688(const u32 *r, u32 *eax)            /* 0x3A95C with 0xE */
 {
-    m_47688_at(r[R_EAX], 0x0Eu, 0, 0);
+    m_47688_at(r[R_EAX], 0x0Eu, 0, 0, 0);
     *eax = 0u;
 }
 static void m_47688_pivot(const u32 *r, u32 *eax)      /* 0x39FB0 on the own slot */
 {
-    m_47688_at(r[R_EAX], 0x0Fu, 1, 0);
+    m_47688_at(r[R_EAX], 0x0Fu, 1, 0, 0);
     *eax = 0u;
 }
 static void m_47688_zext(const u32 *r, u32 *eax)       /* the timer word zero-extended */
 {
-    m_47688_at(r[R_EAX], 0x0Fu, 0, 1);
+    m_47688_at(r[R_EAX], 0x0Fu, 0, 1, 0);
+    *eax = 0u;
+}
+static void m_47688_eax(const u32 *r, u32 *eax)        /* 0x3B298's whole EAX tested, not AL */
+{
+    m_47688_at(r[R_EAX], 0x0Fu, 0, 0, 1);
     *eax = 0u;
 }
 
@@ -2031,6 +2037,7 @@ static const binding_t k_bindings[] = {
     { "fighter_47688@mutant",     m_47688,        0x00000000u },
     { "fighter_47688@pivot",      m_47688_pivot,  0x00000000u },
     { "fighter_47688@zext",       m_47688_zext,   0x00000000u },
+    { "fighter_47688@eax",        m_47688_eax,    0x00000000u },
     { "fighter_47874",            b_47874,        0x00000000u },
     { "fighter_47830",            b_47830,        0x00000000u },
     { "fighter_47798",            b_47798,        0xFFFFFFFFu },

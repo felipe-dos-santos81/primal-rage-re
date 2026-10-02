@@ -371,7 +371,7 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
             "fighter_476fc@mutant": {"byte"}, "fighter_476fc@sext": {"byte"},
             "fighter_47648@mutant": {"call #0"},
             "fighter_47688@mutant": {"call #2"}, "fighter_47688@pivot": {"call #2"},
-            "fighter_47688@zext": {"call #3"},
+            "fighter_47688@zext": {"call #3"}, "fighter_47688@eax": {"call #1", "call #2", "call #3"},
             "fighter_47874@mutant": {"call #1 memory"}, "fighter_47874@side": {"call #1"},
             "fighter_47830@mutant": {"byte", "call #0"}, "fighter_47830@side": {"byte", "call #0"},
             "fighter_47830@order": {"call #0 memory"},
@@ -624,6 +624,9 @@ class RealFunctionTests(unittest.TestCase):
                           # alone), its 0x39FB0 slot the other one (h1/h3, the cases that reach it)
                           ("fighter_476fc@sext", ["c2"]), ("fighter_47688@zext", ["h4"]),
                           ("fighter_47688@pivot", ["h1", "h3"]),
+                          # 0x3B298's AL alone is tested: h3's stub EAX 0x100 (AL 0) alone tells the whole EAX;
+                          # 0x3A95C's stance 0xF on every case that reaches it, h5's other +0x54 0x66 included
+                          ("fighter_47688@eax", ["h3"]), ("fighter_47688@mutant", ["h2", "h4", "h5"]),
                           # 0x47830 skips only with both bits 0x100 and 0x800 (z1/z2 have one), indexes by
                           # rec+0x51 (every case: the other word takes the other branch), and 0x47798's 1 replaces
                           # the voice's EAX (w1's stub returns 0)
@@ -742,7 +745,7 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (54), the 14 without are counted apart
-        self.assertIn("diff-verify: 72/72 functions VERIFIED; 132/132 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 72/72 functions VERIFIED; 133/133 mutants detected; 1 named gaps; "
                       "11/58 rows with callees closed (14 have none).", out.getvalue())
 
 

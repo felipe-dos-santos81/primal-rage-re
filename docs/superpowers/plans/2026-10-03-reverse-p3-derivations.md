@@ -186,9 +186,11 @@ at `0x47674`); `0x18C14(ctx[0], flags, EBX = 0, ECX = 0)`; returns its EAX. Case
 `0x39834(ctx[1], ctx[2].+0x5F)`; `0x39FB0(ctx[3])` when ctx[3]'s +0x54 is 2 (`mov eax,[esp+0xc]` survives the
 compare into the call), else `0x3A95C(ctx[1], 0xF)`; `0x39A10(ctx[5], the signed word 0xBEDD8)` (`mov
 edx,[0xbedd6]; sar edx,0x10`; 10 in the image). Cases `h0` (AL 1), `h1` (the other +0x54 = 2), `h2` (side 1), `h3`
-(side 1, +0x54 = 2, stub EAX `0x100`), `h4` (the word poked `0xFFF0`); the slots' +0x52..+0x5F carry different
-sentinels. `@mutant` (`0x3A95C` with 0xE) `call #2`; `@pivot` (`0x39FB0` on the own slot) `call #2`, `h1`/`h3`
-alone; `@zext` `call #3`, `h4` alone.
+(side 1, +0x54 = 2, stub EAX `0x100`), `h4` (the word poked `0xFFF0`), `h5` (side 1, the other +0x54 = 0x66, the unit
+run's value; Task 3 review); the slots' +0x52..+0x5F carry different sentinels (the other +0x54 is 0xD4/0x54 where
+not poked). `@mutant` (`0x3A95C` with 0xE) `call #2`, `h2`/`h4`/`h5`; `@pivot` (`0x39FB0` on the own slot) `call
+#2`, `h1`/`h3` alone; `@zext` `call #3`, `h4` alone; `@eax` (`0x3B298`'s whole EAX tested, not AL; Task 3 review)
+`call #1`..`#3`, `h3` alone (measured with `h5` in place: `h5`'s stub EAX is 0).
 
 **The unit run of `0x47688`** uses the real callees on the fixture: `0x3B298(1, slot 0's +0x5F)` returns 0 there
 (measured), slot 1's +0x54 = 0x66 takes `0x3A95C` (slot 1 0x10/0xA/0, +0x10 = 0) and +0x54 = 2 takes `0x39FB0` (+0x10
