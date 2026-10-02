@@ -12190,6 +12190,7 @@ static u32 gp_n, gp_next, gp_nkeys, gp_keys_sent, gp_enter_frame, gp_enter_state
 static u32 gp_dumped, gp_hash_last, gp_idle_pumps, gp_missed, gp_iters;
 static u32 gp_trace_lines, gp_first_f;
 static int gp_armed, gp_done, gp_failed;
+static int gp_arm_pad;              /* `arm pad` (record gameplay-u8 §U8.3): the arm is a pad press in mode 3 */
 static char gp_dir[1024];
 static FILE *gp_log, *gp_frames, *gp_trace;
 static jmp_buf gp_end_jb;
@@ -12207,9 +12208,11 @@ static int gp_parse(const char *path)
     int have_frame = 0, have_state = 0, ok = 1;
     u32 last_f = 0u;
     gp_n = gp_nkeys = 0u;
+    gp_arm_pad = 0;
     while (fgets(line, sizeof line, f) != NULL) {
         unsigned a = 0u, b = 0u, c = 0u;
         if (line[0] == '#' || line[0] == '\n') continue;
+        if (strncmp(line, "arm pad", 7) == 0) { gp_arm_pad = 1; continue; }
         if (sscanf(line, "enter_frame %u", &a) == 1) { gp_enter_frame = a; have_frame = 1; continue; }
         if (sscanf(line, "enter_state %x", &a) == 1) { gp_enter_state = a; have_state = 1; continue; }
         GpStep *s = &gp_step[gp_n];
@@ -12223,8 +12226,10 @@ static int gp_parse(const char *path)
         gp_n++;
     }
     fclose(f);
-    return ok && have_frame && have_state && gp_n > 0u && gp_step[gp_n - 1u].op == 'e'
-        && gp_step[0].op == 'k' && gp_step[0].f == gp_enter_frame
+    if (!(ok && have_frame && have_state && gp_n > 0u && gp_step[gp_n - 1u].op == 'e')) return 0;
+    if (gp_arm_pad)                                  /* the pad press's bits at the arm frame (0x11D04) */
+        return gp_step[0].op == 'b' && gp_step[0].f == gp_enter_frame && gp_step[0].a != 0u;
+    return gp_step[0].op == 'k' && gp_step[0].f == gp_enter_frame
         && gp_step[0].a == 0x1Cu && gp_step[0].b == 0x0Du;   /* the mode-3 Enter (0x24ECF) */
 }
 
@@ -12406,8 +12411,10 @@ int test_gp_replay(void)
     free(gp_step);
 
     CHECK(gp_armed, "the loop reached the script's Enter frame");
-    CHECK_EQ_INT((int)mode_before, 3);               /* 0x24ECF: the Enter arm needs mode 3 */
-    CHECK_EQ_INT((int)mode_after, 0x27);             /* 0x24EE0 */
+    CHECK_EQ_INT((int)mode_before, 3);               /* 0x24ECF / 0x25238: either arm needs mode 3 */
+    /* 0x24EE0 stores 0x27 in the Enter's iteration; a pad arm leaves mode 3 one
+     * iteration later, when the level (0x500C4) reaches 0x4F644 and 0x11D04. */
+    CHECK_EQ_INT((int)mode_after, gp_arm_pad ? 3 : 0x27);
     CHECK_EQ_INT((int)frame_after, (int)gp_enter_frame);
     CHECK_EQ_INT((int)state_after, (int)gp_enter_state);
     CHECK_EQ_INT((int)gp_keys_sent, (int)gp_nkeys);
