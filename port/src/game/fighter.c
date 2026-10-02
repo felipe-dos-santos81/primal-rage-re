@@ -15306,10 +15306,11 @@ static double p2_f64(u32 a)
  * is 0, +0x57 = 1 when the other slot is not in state 0xA) or starts the own
  * record on 0xE4E08 at the float (bit 0; +0x57 = 4, voice 0x7D), 0xE4E34
  * (latched bit 2; 5), 0xE4E4A (bit 1; 6) or 0xE4E72 (bit 3; 7) at 3.0 with
- * the voice 0x78; 3..7 nothing. PORT: the raw adds in x87 extended precision
- * and compares the +0.1 sum before rounding (0x22750..0x22769); the port adds
- * in double: for the floats this code keeps (1.0..3.0) the stored float and
- * the comparison are the same (record §P2.9). */
+ * the voice 0x78; 3..7 nothing. PORT: the raw adds on the x87 at the
+ * runtime's 53-bit precision (control word 0x127F, record 2026-10-03-reverse-p3
+ * §P3.6) and compares the +0.1 sum before rounding (0x22750..0x22769); the
+ * port adds in double: the comparison is the same, and for the floats this
+ * code keeps (1.0..3.0) the stored float is the same (record §P2.9). */
 void fighter_22638(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];

@@ -10,6 +10,7 @@ import dataclasses
 import io
 import os
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -771,6 +772,26 @@ SEEDED = {0x80000: le32(0xFFFFFFFF)}
 
 # 10000: mov edx,0x80010; call 0x10020; ret    10020: ret    80010: 11 22 33 44 55 66 77 88
 DEREF = program({0x10000: "BA10000800" "E816000000" "C3", 0x10020: "C3", 0x80010: "1122334455667788"})
+
+
+# 10000: fnstcw [0x80024]; fld dword [0x80010]; fadd qword [0x80018]; fstp dword [0x80020]; ret
+# 80010: 1.0f; 80018: the double 2^-24 + 2^-56. The exact sum lies just above the midpoint 1 + 2^-24: one
+# rounding to the float (24- or 64-bit precision) gives 0x3F800001; 53-bit precision drops the 2^-56 first,
+# lands on the midpoint and rounds to even, 0x3F800000.
+X87 = program({0x10000: "D93D24000800" "D90510000800" "DC0518000800" "D91D20000800" "C3",
+               0x80010: "0000803F", 0x80018: struct.pack("<d", 2.0 ** -24 + 2.0 ** -56).hex()})
+
+
+@needs_unicorn
+class X87ControlWordTests(unittest.TestCase):
+    """The original runs at the game's x87 control word 0x127F (raw 0x72A83, the word at 0xF09B4; record
+    2026-10-03-reverse-p3 §P3.6), not unicorn's reset 0x0000."""
+
+    def test_the_original_runs_at_the_games_control_word(self):
+        r = E.run_original(X87, 0x10000, pokes={0x80020: b"\xff" * 6})
+        self.assertEqual(r.outcome, "ok")
+        self.assertEqual(bytes(r.writes.get(0x80024 + k, 0xFF) for k in range(2)), le32(0x127F)[:2])
+        self.assertEqual(bytes(r.writes.get(0x80020 + k, 0xFF) for k in range(4)), le32(0x3F800000))
 
 
 @needs_unicorn

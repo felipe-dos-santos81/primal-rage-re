@@ -217,6 +217,11 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
             mu.reg_write(names[r], v & 0xFFFFFFFF)
     mu.mem_write(esp, SENTINEL.to_bytes(4, "little"))
     mu.reg_write(ux.UC_X86_REG_ESP, esp)
+    # The game's x87 control word, not unicorn's reset 0x0000 (24-bit precision, every exception unmasked):
+    # the init-table entry at 0xF09F0 (routine dword at 0xF09F2 = 0x6B98F) calls 0x6B954 -> 0x72A66, whose
+    # `fldcw` at 0x72A83 loads the word at 0xF09B4 = 0x127F (53-bit precision, round to nearest, every
+    # exception masked); 0x6B70D loads the same word (record 2026-10-03-reverse-p3 §P3.6).
+    mu.reg_write(ux.UC_X86_REG_FPCW, 0x127F)
 
     state = {"stop": None, "prev": None}
     executed = set()

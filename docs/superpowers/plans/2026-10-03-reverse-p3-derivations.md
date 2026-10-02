@@ -287,7 +287,11 @@ AX = the word `0xF09B4` = **`0x127F`**, loaded by `fldcw` at `0x72A83`: precisio
 rounding to nearest (bits 10-11 = 0), every exception masked. The code object's other control-word loads are
 `0x6B70D` (`fninit; fldcw [0xF09B4]`, the same word) and the `frndint` helper `0x61A4E..0x61A5F` (high byte 0x1F
 around one `frndint`, the saved word restored); nothing stores to `0xF09B4` (its only dword references are the
-two loads, `0x6B70F` and `0x6B979`). Under `0x127F` the `fadd qword` rounds the exact sum to 53 bits, the port's
+two loads, `0x6B70F` and `0x6B979`). The code object also holds `fnsave [eax]` at `0x6B94C` (which leaves the control
+word at `0x037F`, as `fninit` does) and `frstor [eax]` at `0x6B950`: their only references are the pointer stores at
+`0x6B969`/`0x6B96F` (`0x6B94B` and `0x6B950` into `0xF09B8`/`0xF09BC`, when the byte `0xEF931` is set), and nothing in
+the code object reads those two dwords (their only references are those stores), so no code of the object calls
+the pair; a caller outside the object (DOS/4GW) is not excluded. Under `0x127F` the `fadd qword` rounds the exact sum to 53 bits, the port's
 double sum (the x87's wider exponent range does not matter: the sum of a float and ±0.1 is a normal double), and
 `fstp dword` rounds that to the float: **the port's two roundings, for every input**. The exhaustive check then
 covers the other precisions on [1.0, 6.0].
@@ -317,13 +321,23 @@ value the game can store there: `0x108378` is written only by `0x47D24` (3.0), `
 clamps (`0x47F9A` 1.1f, `0x47FBA` 5.0f; a linear disassembly of the code object finds no other instruction naming
 `0x108378..0x10837F`; a write through a computed pointer, a block clear say, is not excluded), so the sum's input
 is in [1.1f, 5.0f] once `0x47D24` has run. Assumed, not proved: **rounding to nearest-even on both
-sides** (the original's from `0x127F`; the host's default mode, with no `-ffast-math` and `FLT_EVAL_METHOD` 0 on
-arm64 and x86-64 SSE2: a 32-bit x87 host build is not covered); that **no code outside the code object** (DOS/4GW,
+sides** (the original's from `0x127F`; the host's default mode, with no `-ffast-math`); that **no code outside the code object** (DOS/4GW,
 the sound drivers) changes the control word at run time (no DOSBox-X reading of the word was taken). A state-3 call
-before any `0x47D24` (BSS 0.0) is outside the domain but inside the 2^32 run. **The diff-verify
-rows run the original at unicorn's reset control word `0x0000`** (measured: `fnstcw` reads 0; precision 24,
-rounding to nearest), not the game's `0x127F`: `0x47E9C`'s rows compare the port with the single rounding, which
-B and C show equal on [1.0, 6.0], where every case's float lies.
+before any `0x47D24` (BSS 0.0) is outside the domain but inside the 2^32 run. **The host's evaluation method:**
+with `FLT_EVAL_METHOD` 0 (arm64, x86-64 SSE2; this host is arm64) the port's sum is a double, the 53-bit model; a
+32-bit x87 host build (`FLT_EVAL_METHOD` 2, the sum held in long double and the cast rounding it once to the float)
+gives the single rounding of the exact sum (exact in 64 bits), the precision-64 model, shown equal on [1.0, 6.0]
+(B, C) and for every pattern (C at `0x037F`).
+
+**The harness's control word (Task 5 review).** Unicorn 2.1.4 resets the x87 control word to `0x0000` (measured:
+`fnstcw` reads 0; precision 24, every exception unmasked), so the rows first ran the original at single precision.
+`run_original` now seeds the game's `0x127F` after ESP (`tools/diff_emu.py`, the evidence above in its comment), and
+`X87ControlWordTests` pins it: a snippet whose stored float is `0x3F800001` at precision 24 or 64 and `0x3F800000` at
+53 (1.0f + the double 2^-24 + 2^-56), and the control word read back as `0x127F`; without the seed it fails. The only
+verified rows with x87 code are `fighter_22638` (P2, record §P2.9 corrected) and `fighter_47e9c`; both stay VERIFIED
+with every mutant caught under the seed. The unit check of state 3 now expects the literal `0x3FF33333` (1.9f, the
+float nearest the exact 2.0 + the double -0.1, 2.4e-8 from it against a half-ulp of 6.0e-8), not the port's own
+arithmetic.
 
 ## §P3.7 Task 6: `0x48608`, its +0x18/+0x1C callbacks, `0x48170` and the +0x10 handler `0x4811C`
 
@@ -429,7 +443,7 @@ Named gaps and limits:
 - **x87** (§P3.6): the image's runtime control word `0x127F` (53-bit, nearest) makes the raw's sum the port's;
   equal stored floats also proved at 64- and 24-bit precision for every float of [1.0, 6.0] (the reachable
   domain) and, through unicorn's x87, at 64 and 53 bits for every 32-bit pattern; rounding to nearest assumed on
-  both sides; the diff-verify rows run the original at control word 0.
+  both sides; the diff-verify rows run the original at the game's `0x127F` (seeded; unicorn resets to `0x0000`).
 - **Not observable with the image's data and not claimed:** `0x47CB0`'s word sign (§P3.6); `0x47688`'s timer word is
   10 in the image (its sign is pinned by the poke of `h4`, not by game data).
 - **Unit checks of the +0x18 hooks** compare with `0x18C14` run on the expected flags in one fixture state; a flag

@@ -46100,7 +46100,9 @@ static void p3_check_47fcc(void)
     /* 0x47E9C as 0x3531C case 7 calls it (slot 0, its record, side 0): state
      * 1 starts the record on 0xEDA40 at 2.0, +0x57 = 2, +0x8A = 0, and the
      * count 0x3C + 1 sets the byte 0x108394; state 3 with the command's bit 0
-     * takes the float 2.0 to (float)(2.0 - 0.1), and 1.15 to 1.1f. */
+     * takes the float 2.0 to 0x3FF33333 (1.9f, the float nearest the exact
+     * 2.0 + the double -0.1 of 0x80C6C, 2.4e-8 from it: no midpoint) and 1.15
+     * to 1.1f. */
     f = (p2_cb_fn)(void *)fn_resolve(0x47E9Cu);
     if (f == NULL) return;
     z_fseed();
@@ -46122,8 +46124,7 @@ static void p3_check_47fcc(void)
         v.f = k == 0u ? 2.0f : 1.15f;
         DSD(0x00108378u) = v.u;
         f(Z_S0, Z_R0, 0u);
-        v.f = (float)(2.0 + -0.1);
-        CHECK_EQ_INT((int)DSD(0x00108378u), k == 0u ? (int)v.u : 0x3F8CCCCD);
+        CHECK_EQ_INT((int)DSD(0x00108378u), k == 0u ? 0x3FF33333 : 0x3F8CCCCD);
         CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
     }
 }
