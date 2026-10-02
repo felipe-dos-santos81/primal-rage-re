@@ -27,6 +27,7 @@ make gp-charsel-oracle     # the same ratchets on data/k11-captures/gp-u5-charse
 make gp-moves-oracle       # gameplay oracle: gp-u6-moves-b frame, trace and moves ratchets (N values in the Makefile); in make verify; skips without the capture
 make gp-keys-oracle        # in-match keys: gp-keys-fight evidence + effects ratchet (GP_KEYS_MIN_EFFECTS and the poll.log sha256 in the Makefile); in make verify; skips without the capture
 make gp-twop-oracle        # two-human gameplay oracle: gp-twop must be a two-human match (tools/gp_twop.py), then frame + trace + moves ratchets (N 612, F 1506 and moves N 1506 = the port script's end, the poll.log sha256 pinned in the Makefile); in make verify; skips without the capture
+make gp-modes-oracle       # the same ratchets on the seven U8 captures data/k11-captures/gp-u8-* (the other START MENU rows and the attract start; GP_MODES_<ID>_* pins in the Makefile, an evidence check per capture, tools/gp_modes.py); in make verify; each skips without its capture
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
@@ -221,6 +222,7 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   window start 83 and the `poll.log` sha256 and frame count are pinned; the moves claim is pinned too (N 1506).
   Its claim is as narrow, and it says nothing about the two-player game past the scenario's end; it skips without
   the capture.
+  `make gp-modes-oracle` (in `make verify`) applies the same two ratchets to the U8 captures `data/k11-captures/gp-u8-*` (the other START MENU rows and the attract start), each with `GP_MODES_<ID>_*` values and provenance in the Makefile and an evidence check (`tools/gp_modes.py`) that the capture reached its row; each skips without its capture. Record gameplay-u8 §U8.23 has the table of N, F and the window start per scenario and the named gaps: N and F are the end of the port's replay in six of the seven (RA diverges at f=0x7B7 on the unported `0x14EF8`/`0x14F50`, whose port drops its two miss rows and re-measures its N and F); nothing past them is covered, ENDURANCE's fight is a named gap, and the damaged-frame proof depends on the frame chosen.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
