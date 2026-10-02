@@ -14,7 +14,9 @@ poll.log v2, one record per line:
         bios=<hex4|-> ring=<0|1|-> late=<0|1>
   I ms=<int> f=<hex4> step=<n> release=<name> lin=<hex8>
   X ms=<int> f=<hex4> step=<n> end
-  E ms=<int> reason=<exit|time-limit|end> rc=<int>   end: stopped at the script's end (STOP_AT_END)"""
+  E ms=<int> reason=<exit|time-limit|end> rc=<int>   end: stopped at the script's end (STOP_AT_END)
+  W ms=<int> f=<hex4> step=<n> addr=<hex8> len=<n> was=<hex> now=<hex> late=<0|1> race=<0|1>
+        a memory poke written in the spin of f, read by iteration f + 1 (plan U9/U10)"""
 import argparse
 import os
 import sys
@@ -76,8 +78,8 @@ PAD = {
 KEYS.update({'space': (0x39, 0x3920), 'y': (0x15, 0x1579), 'n': (0x31, 0x316E),
              'alt-q': (0x10, 0x1000), 'alt-s': (0x1F, 0x1F00), 'alt-m': (0x32, 0x3200)})
 
-_DEC = ('ms', 'rc', 'step', 'late', 'ring')
-_TEXT = ('reason', 'press', 'release')
+_DEC = ('ms', 'rc', 'step', 'late', 'ring', 'len', 'race')
+_TEXT = ('reason', 'press', 'release', 'was', 'now')
 
 
 def raw_to_kb(raw):
@@ -88,6 +90,13 @@ def raw_to_kb(raw):
 def format_s(ms, vals, kb, head, tail, fields=SNAP_FIELDS):
     body = ' '.join('%s=%0*X' % (n, 2 * sz, vals[n]) for n, _, sz in fields)
     return 'S ms=%d %s kb=%04X head=%04X tail=%04X' % (ms, body, kb, head, tail)
+
+
+def format_w(ms, f, step, addr, was, now, late, race):
+    """The W record of one poke write (plan U9/U10): `was` the bytes before,
+    `now` the bytes written, hex."""
+    return ('W ms=%d f=%04X step=%d addr=%08X len=%d was=%s now=%s late=%d race=%d'
+            % (ms, f, step, addr, len(now), bytes(was).hex().upper(), bytes(now).hex().upper(), late, race))
 
 
 def parse(line):
@@ -317,6 +326,34 @@ SCENARIOS['gp-u8-attract-start'] = dict(time_limit=61, arm='pad', steps=(
 ))
 
 
+# Plan gameplay-u9-u10 (record 2026-10-02-gameplay-u9-u10-derivations.md §W.2-§W.6): the
+# win path and the ending, reached under memory pokes (spec 2026-09-30-reverse-completion-design
+# §4 G, §7 "Wins and endings without pokes"). A ('poke', ((addr, bytes), ...)) action writes
+# the bytes at the linear address in the spin of F - 1 (the iteration F reads them), logged as
+# W records; the port replays them as `poke` lines at F. WIN_EXTRA: the S fields both scenarios
+# add (record §W.2): the stage word (0x25848), the match result (0x27BA4), the round wins
+# (0x27C48), the round index, the final's KO count (0x274FC), the final flag (0x25C88), the
+# death-done byte (0x37FF2), the lands-held bytes and the seven land marks (0x41C28, 0x286BC),
+# slot 0's score (+0x3C) and its world-domination count (+0x82, 0x416C2).
+WIN_EXTRA = (('afc', 0x104AFC, 2), ('ad4', 0x104AD4, 4), ('w2', 0x104AF2, 1), ('w3', 0x104AF3, 1),
+             ('b1e', 0x104B1E, 1), ('b21', 0x104B21, 1), ('b14', 0x104B14, 1), ('b0c', 0x104B0C, 1),
+             ('t104', 0x108104, 2), ('m106', 0x108106, 4), ('m10a', 0x10810A, 4),
+             ('sc0', 0x1077EC, 4), ('c82', 0x107832, 1))
+WIN_FIELDS = tuple(n for n, _, _ in WIN_EXTRA)
+# P2's +0x5A damage byte (DS_0010789E) at 0x78: the KO the round-end checks test
+# (0x27FA8 `cmp 0x78`, 0x272DC's DS_00104B12 side), record §W.3.
+KO_P2 = ('poke', ((0x10789E, b'\x78'),))
+# The byte 0x37EA0 sets at 0x37FF2 when a KO'd fighter's death animation ends; mode
+# 0xD (0x274FC) waits for it, and a poked KO never starts that animation (record §W.5).
+DEATH_DONE = ('poke', ((0x104B0C, b'\x01'),))
+
+
+def lands_marked(side, char):
+    """The seven land marks DS_00108106..0x10810C as 0x286BC writes a won land:
+    0x80 | side << 6 | the winner's character (record §W.4)."""
+    return bytes([0x80 | side << 6 | char]) * 7
+
+
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""
     if action[0] == 'key':
@@ -329,7 +366,9 @@ def expand(action):
 
 class Schedule:
     """Steps: ('boot', s, act) | ('after_mode', mode, n, act) | ('after', n, act)
-    | ('until_mode', mode, n); an ('end',) action ends the scenario at its frame.
+    | ('after_entry', mode, k, n, act) | ('until_mode', mode, n); an ('end',) action
+    ends the scenario at its frame. after_entry: F = the frame of the k-th entry
+    into `mode` (on_snap) + n.
     An action for frame F fires at the first spin snapshot with f >= F - 1, so
     iteration F samples it (spec §3.1)."""
 
@@ -339,6 +378,9 @@ class Schedule:
         self.prev_frame = None
         self.frame_of = {}          # step -> its frame F (set when it fires)
         self.mode_first = {}
+        self.snap_mode = None
+        self.entry_count = {}
+        self.entry_frame = {}       # (mode, k) -> the first S frame of the k-th entry
         self.end_frame = None
         self.fired = 0
         self.total = sum(1 for st in self.steps if st[0] != 'until_mode' and st[-1] != ('end',))
@@ -349,6 +391,9 @@ class Schedule:
             return None if f0 is None else f0 + st[2]
         if st[0] == 'after':
             return None if self.prev_frame is None else self.prev_frame + st[1]
+        if st[0] == 'after_entry':
+            f0 = self.entry_frame.get((st[1], st[2]))
+            return None if f0 is None else f0 + st[3]
         return None
 
     def on_mode(self, f, mode):
@@ -360,6 +405,18 @@ class Schedule:
                 return
         if self.i > 0 or self.steps[0][0] != 'boot':
             self.mode_first.setdefault(mode, f)
+
+    def on_snap(self, f, mode):
+        """An accepted S record's mode (gp_capture.Poller, after on_mode): the k-th
+        entry into a mode is the k-th S record whose mode differs from the previous
+        S record's, counted, like mode_first, once the boot step fired. Only S records
+        count: a P record can catch a mode word mid-iteration (plan U9/U10)."""
+        prev, self.snap_mode = self.snap_mode, mode
+        if prev is None or prev == mode or (self.i == 0 and self.steps and self.steps[0][0] == 'boot'):
+            return
+        k = self.entry_count.get(mode, 0) + 1
+        self.entry_count[mode] = k
+        self.entry_frame[(mode, k)] = f
 
     def due_boot(self, now_s):
         if self.i < len(self.steps) and self.steps[self.i][0] == 'boot' and now_s >= self.steps[self.i][1]:

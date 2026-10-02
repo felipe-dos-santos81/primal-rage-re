@@ -403,5 +403,41 @@ class TestU6Moves(unittest.TestCase):
         self.assertIn('gp-u6-moves-b', gs.STOP_AT_END)
 
 
+class TestWinPokes(unittest.TestCase):
+    """Plan gameplay-u9-u10 (record 2026-10-02-gameplay-u9-u10-derivations.md §W.8)."""
+    STEPS = (('boot', 25.0, ('key', 'enter')),
+             ('after_entry', 0x06, 2, 10, ('poke', ((0x10789E, b'\x78'),))),
+             ('after_entry', 0x06, 3, 60, ('end',)))
+
+    def test_after_entry_keys_on_the_kth_s_entry(self):
+        s = gs.Schedule(self.STEPS)
+        s.on_snap(0x50, 0x03)
+        s.on_snap(0x60, 0x06)                     # before the boot step: not counted
+        s.due_boot(25.0)
+        for f, mode in ((0x100, 0x27), (0x200, 0x06), (0x210, 0x06), (0x300, 0x08), (0x400, 0x06)):
+            s.on_snap(f, mode)
+        self.assertEqual(s.entry_frame, {(0x27, 1): 0x100, (0x06, 1): 0x200, (0x08, 1): 0x300,
+                                         (0x06, 2): 0x400})
+        self.assertEqual(s.due(0x400 + 8), [])
+        self.assertEqual(s.due(0x400 + 9), [(1, ('poke', ((0x10789E, b'\x78'),)))])
+        s.on_snap(0x500, 0x09)
+        s.on_snap(0x600, 0x06)
+        self.assertFalse(s.ended(0x600 + 59))
+        s.due(0x600 + 59)
+        self.assertEqual(s.end_frame, 0x63C)
+        self.assertEqual((s.fired, s.total), (2, 2))
+
+    def test_w_record_round_trip(self):
+        w = gs.format_w(12, 0x48F, 5, 0x108106, b'\x00' * 7, b'\x80' * 7, 0, 0)
+        self.assertEqual(w, 'W ms=12 f=048F step=5 addr=00108106 len=7 was=00000000000000 '
+                            'now=80808080808080 late=0 race=0')
+        r = gs.parse(w)
+        self.assertEqual((r['kind'], r['f'], r['addr'], r['len'], r['was'], r['now'], r['race']),
+                         ('W', 0x48F, 0x108106, 7, '00000000000000', '80808080808080', 0))
+        self.assertEqual(gs.lands_marked(0, 0), b'\x80' * 7)
+        self.assertEqual(gs.lands_marked(1, 3), b'\xC3' * 7)
+        self.assertEqual(gs.WIN_FIELDS[:4], ('afc', 'ad4', 'w2', 'w3'))
+
+
 if __name__ == '__main__':
     unittest.main()
