@@ -1157,5 +1157,12 @@ void fighter_23b68(u32 slot, u32 rec, u32 side);
 void fighter_401d4(u32 slot, u32 rec, u32 side);
 /* 0x38034 (record §P1.9): the call of 0x401D4's case 3, EAX = a side. */
 void fighter_38034(u32 side);
+/* The 0xD100 stream targets the finisher streams reach (record §P1.12), as
+ * the animation dispatcher's opcode 0x11 calls them (EAX = rec, EDX = the
+ * operand word); registered in actors_init through anim_code wrappers. */
+void fighter_156d4(u32 rec);
+void fighter_23ca4(u32 rec);
+void fighter_23868(u32 rec, u32 arg);
+void fighter_3f174(u32 rec);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

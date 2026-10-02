@@ -14576,3 +14576,110 @@ void fighter_401d4(u32 slot, u32 rec, u32 side)
     DSB(slot + 0x52u) = 9u;                                 /* 0x402EB */
     DSB(DS_001078FC) = 1u;                                  /* 0x402EF */
 }
+
+/* 0x156D4 — record §P1.12. The 0xD100 stream target (opcode 0x11, mode
+ * 0x4000) at the dwords 0xD32BE, 0xD32D6, 0xD3326, 0xD334A, 0xD3362, 0xE1BE2,
+ * 0xEB83A and 0xEDCA4 (the finisher streams 0xD32A8 of 0x1567C and 0xD3334
+ * of 0x15908 among them; Ghidra has no function here): `mov eax,[eax+0x14];
+ * test eax,eax; je; inc byte [eax+0x57]; ret`. EAX = rec; the owner slot's
+ * +0x57 steps, the counter the +0x0C callbacks 0x15584/0x1579C switch on.
+ * EDX is not read; the EAX it leaves is overwritten by the dispatcher
+ * (`mov eax,ecx` 0x2B59A). */
+void fighter_156d4(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                            /* 0x156D4 */
+    if (slot == 0u) return;                                 /* 0x156D7/0x156D9 */
+    DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);       /* 0x156DB */
+}
+
+#define P1_23CA4_THR    0x000A83CCu  /* 0x23CD5: [stage] dword, 0x23BF8's thresholds */
+
+/* 0x23CA4 — record §P1.12. The 0xD100 target (opcode 0x11, mode 0x4000) at
+ * the dword 0xE1A4E in 0x23BF8's stream 0xE1A06 (its only reference). EAX =
+ * rec; EDX pushed, not read. With the owner slot rec+0x14 and the other
+ * side's slot pointer DS_001077A8[(rec+0x51 ^ 1) & 0xFF] both non-zero: the
+ * slot's +0x54 = 2; the word rec+0x34 = (0xA83CC[DS_00104AFC] - rec+0x18) /
+ * 0x48 (a signed `idiv` by a constant: no fault); words +0x36 = 0x200, +0x38
+ * = 0x28, +0x44 = 0x10; DS_000F0AFE = 0 (AH after `xor ah,ah`), DS_000F0AFF
+ * = rec+0x51 and the slot's +0x57 steps (read before the two global stores,
+ * 0x23D02). EBX..ESI pushed and popped; the dispatcher overwrites EAX. */
+void fighter_23ca4(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                            /* 0x23CAA */
+    s32 d;
+    u8 st;
+    if (slot == 0u) return;                                 /* 0x23CAD/0x23CAF */
+    if (DSD(DS_001077A8 + ((u32)(DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 4u) == 0u)
+        return;                                             /* 0x23CB1..0x23CC4 */
+    DSB(slot + 0x54u) = 2u;                                 /* 0x23CC8 */
+    d = (s32)(DSD(P1_23CA4_THR + (u32)DSW(DS_00104AFC) * 4u)
+              - DSD(rec + 0x18u));                          /* 0x23CCC..0x23CDC */
+    d /= 0x48;                                              /* 0x23CDE..0x23CE8 */
+    DSW(rec + 0x36u) = 0x0200u;                             /* 0x23CEA */
+    DSW(rec + 0x38u) = 0x0028u;                             /* 0x23CF0 */
+    DSW(rec + 0x44u) = 0x0010u;                             /* 0x23CF6 */
+    DSW(rec + 0x34u) = (u16)d;                              /* 0x23CFC */
+    st = DSB(slot + 0x57u);                                 /* 0x23D02 */
+    DSB(DS_000F0AFE) = 0u;                                  /* 0x23D00/0x23D05 */
+    DSB(DS_000F0AFF) = DSB(rec + 0x51u);                    /* 0x23D0B/0x23D10 */
+    DSB(slot + 0x57u) = (u8)(st + 1u);                      /* 0x23D0E/0x23D15 */
+}
+
+#define P1_23868_DIST   0x000A8364u  /* 0x23890/0x238A8: [arg] word, the held record's +0x34 */
+#define P1_23868_DESC_A 0x000BB330u  /* 0x238EB: the held record */
+#define P1_23868_DESC_B 0x000BB344u  /* 0x23918: the second spawn */
+
+/* 0x23868 — record §P1.12. The 0xD100 target (opcode 0x11, mode 0x4000) at
+ * the dwords 0xE14E6, 0xE1514 and 0xE1B32 (the last in 0x23EC0's stream
+ * 0xE1B24), with the operand words 0, 1 and 2 after them. EAX = rec, EDX =
+ * the operand (zero-extended by the dispatcher, 0x2B588..0x2B58D). With the
+ * owner slot rec+0x14: w = the word 0xA8364[arg]; by the word rec+0x28's bit
+ * 14, set: +w and x + 0xC00, clear: -w and x - 0xC00 (`movsx` of 0xF400);
+ * 0x2AE14(0xBB330, that x, rec+0x30 >> 16, rec+0x1C + 0x1200, bit 14 ?
+ * 0x4000 : 0) is the slot's held record (+8): its word +0x34 = the +-w, its
+ * +0x14 = the slot (+8 read again, 0x238FF); 0x2AE14(0xBB344, 0, 0, 0, the
+ * word rec+0x56 | 0x400): its +0x59 = 2, +0x60 = 1, and rec+0x4B = its byte
+ * +0x56; with rec+0x51 non-zero 0x2A17C(the held record, 0xC, 0) and
+ * 0x2A17C(the second record, 0xC, 0). EBX, ECX, ESI, EDI pushed and popped
+ * (EDX is not: the dispatcher does not read it); the dispatcher overwrites
+ * EAX. */
+void fighter_23868(u32 rec, u32 arg)
+{
+    u32 slot = DSD(rec + 0x14u);                            /* 0x23871 */
+    u32 w, keep, off, flag, e, e2;
+    if (slot == 0u) return;                                 /* 0x23874/0x23876 */
+    w = DSW(P1_23868_DIST + arg * 2u);                      /* 0x2388A/0x23890/0x238A8 */
+    if ((DSW(rec + 0x28u) & 0x4000u) == 0u) {               /* 0x2387C..0x2388E */
+        keep = 0u - w;                                      /* 0x23897..0x238A3 */
+        off = 0xFFFFF400u;                                  /* 0x2389E */
+    } else {
+        keep = w;                                           /* 0x238B4 */
+        off = 0x00000C00u;                                  /* 0x238AF */
+    }
+    flag = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u;   /* 0x238B7..0x238CC */
+    e = actor_spawn((const u32 *)(mem + P1_23868_DESC_A),
+                    DSD(rec + 0x18u) + (u32)(s32)(s16)off,
+                    (u32)((s32)DSD(rec + 0x30u) >> 16),
+                    DSD(rec + 0x1Cu) + 0x1200u, flag);      /* 0x238D1..0x238F0 0x2AE14 */
+    DSD(slot + 8u) = e;                                     /* 0x238F8 */
+    DSW(e + 0x34u) = (u16)keep;                             /* 0x238F5/0x238FB */
+    DSD(DSD(slot + 8u) + 0x14u) = slot;                     /* 0x238FF/0x23902 */
+    e2 = actor_spawn((const u32 *)(mem + P1_23868_DESC_B), 0u, 0u, 0u,
+                     (u32)DSW(rec + 0x56u) | 0x400u);       /* 0x23905..0x2391D 0x2AE14 */
+    DSB(e2 + 0x59u) = 2u;                                   /* 0x23922 */
+    DSB(e2 + 0x60u) = 1u;                                   /* 0x23926 */
+    DSB(rec + 0x4Bu) = DSB(e2 + 0x56u);                     /* 0x2392C/0x2392F */
+    if (DSB(rec + 0x51u) == 0u) return;                     /* 0x23932/0x23936 */
+    actor_pset_palette(DSD(slot + 8u), 0x0Cu, 0u);          /* 0x23938..0x23942 0x2A17C */
+    actor_pset_palette(e2, 0x0Cu, 0u);                      /* 0x23947..0x23950 0x2A17C */
+}
+
+/* 0x3F174 — record §P1.12. The 0xD100 target (opcode 0x11, mode 0x4000) at
+ * the dwords 0xD4DD8 and 0xE7C6E (the last in 0x402FC's stream 0xE7C40):
+ * `mov word [eax+0x36],0x280; mov word [eax+0x44],0x20; ret`. EAX = rec; no
+ * other register read. */
+void fighter_3f174(u32 rec)
+{
+    DSW(rec + 0x36u) = 0x0280u;                             /* 0x3F174 */
+    DSW(rec + 0x44u) = 0x0020u;                             /* 0x3F17A */
+}

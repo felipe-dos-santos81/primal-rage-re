@@ -558,6 +558,73 @@ P1_SPECS = [
          mutants=("@mutant", "@no36")),
 ]
 
+# ---- final review I4 (record 2026-10-02-reverse-p1 §P1.12): the 0xD100 targets of the finisher streams --
+# Each runs as the animation dispatcher's opcode 0x11 calls it (0x2B57F..0x2B594): EAX = rec, EDX = the operand
+# word (zero-extended), ECX = 0. Mask 0: the dispatcher overwrites EAX (`mov eax,ecx` 0x2B59A).
+P1_ANIM_SEED = {E3_SLOT + 0x54: b"\x54\x55\x56\x57", 0xF0AFE: b"\xfe\xfe",
+                E3_REC + 0x34: b"\x34\x34\x36\x36\x38\x38", E3_REC + 0x44: b"\x44\x44"}
+
+
+def p1_23ca4(cid, owner, side, others, stage, x):
+    """0x23CA4: owner = rec+0x14; side = rec+0x51; others = the four DS_001077A8 dwords (the slot pointers
+    0x23CBB indexes by (side ^ 1) & 0xFF); stage = DS_00104AFC (0xA83CC: 0x2600, 0, 0x6000); x = rec+0x18."""
+    return Case(cid, {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+                {**P1_ANIM_SEED, E3_REC + 0x14: le32(owner), E3_REC + 0x18: le32(x), E3_REC + 0x51: bytes([side]),
+                 DS_SLOTS - 8: b"".join(le32(v) for v in others), DS_STAGE: le32(stage)[:2]})
+
+
+def p1_23868(cid, owner, arg, w28, side, x, y, z, sp):
+    """0x23868: EDX = the operand (0, 1, 2 in the streams: the words 0xC0, 0x180, 0x20 at 0xA8364); the
+    SPAWN stub returns `sp` for both spawns (one EAX per stub per case: §P1.12's limit), seeded with
+    sentinels on every field the function stores or reads there."""
+    return Case(cid, {"eax": E3_REC, "edx": arg, "ecx": 0},
+                {E3_REC + 0x14: le32(owner), E3_REC + 0x18: le32(x) + le32(y),
+                 E3_REC + 0x28: le32(w28)[:2] + b"\x00" * 6 + le32(z),
+                 E3_REC + 0x4B: b"\x4b" + bytes(5) + bytes([side]) + bytes(4) + b"\x23\x01",
+                 E3_SLOT + 8: le32(0x08080808), sp + 0x14: le32(0x14141414), sp + 0x34: b"\x34\x34",
+                 sp + 0x56: b"\x5a\x00\x00\x59\x00\x00\x00\x00\x00\x00\x60"},
+                {0x2AE14: sp})
+
+
+P1_ANIM_SPECS = [
+    # 0x156D4: no owner; the owner's +0x57 0x57 -> 0x58; 0xFF wraps to 0 (a byte `inc`).
+    Spec("fighter_156d4", 0x156D4, [
+        Case("s0", {"eax": E3_REC, "edx": 0, "ecx": 0}, {E3_REC + 0x14: le32(0), E3_REC + 0x57: b"\x57"}),
+        Case("s1", {"eax": E3_REC, "edx": 0, "ecx": 0},
+             {E3_REC + 0x14: le32(E3_SLOT), E3_SLOT + 0x57: b"\x57", E3_REC + 0x57: b"\x57"}),
+        Case("s2", {"eax": E3_REC2, "edx": 0, "ecx": 0},
+             {E3_REC2 + 0x14: le32(E3_SLOT), E3_SLOT + 0x57: b"\xff", E3_REC2 + 0x57: b"\x57"}),
+    ], eax_mask=0),
+    # 0x23CA4: k0 no owner; k1 the other side's slot pointer 0 (side 0 reads DS_001077AC); k2 side 1 (reads
+    # DS_001077A8), stage 0, d = 0x2600 - 0x1000 = 0x1600 (/0x48 = 0x4E); k3 side 0, stage 2, d = 0x6000 -
+    # 0x7000 = -0x1000 (-56.9: `idiv` truncates to -56, 0xFFC8; unsigned or floor division differs); k4 side 2:
+    # (2 ^ 1) & 0xFF = 3 reads DS_001077B4 (a logical not would read [0]); k5 side 1, stage 5, x 0x80003100
+    # (d = 0x80000000, the most negative: -0x1C71C71 / 0xE38F).
+    Spec("fighter_23ca4", 0x23CA4, [
+        p1_23ca4("k0", 0, 1, (E3_SLOT, E3_SLOT, 0, 0), 0, 0x1000),
+        p1_23ca4("k1", E3_SLOT, 0, (E3_SLOT, 0, 0, 0), 0, 0x1000),
+        p1_23ca4("k2", E3_SLOT, 1, (E3_REC2, 0, 0, 0), 0, 0x1000),
+        p1_23ca4("k3", E3_SLOT, 0, (0, E3_REC2, 0, 0), 2, 0x7000),
+        p1_23ca4("k4", E3_SLOT, 2, (0, 0, 0, E3_REC2), 2, 0x5000),
+        p1_23ca4("k5", E3_SLOT, 1, (E3_REC2, 0, 0, 0), 5, 0x80003100),
+    ], eax_mask=0),
+    # 0x23868: n0 no owner; n1 bit 14 clear (-w, x - 0xC00), operand 0, side 0 (no palette); n2 bit 14 set,
+    # operand 1, side 1 (both palettes); n3 the word 0xBFFF (bit 14 clear, every other bit set: `and ah,0x40`
+    # 0x23882), operand 2, side 1; n4 bit 14 set with a negative x and z (`sar` 0x238E4), side 0.
+    Spec("fighter_23868", 0x23868, [
+        p1_23868("n0", 0, 0, 0, 0, 0x5000, 0x100, 0x30000, E3_OUT),
+        p1_23868("n1", E3_SLOT, 0, 0, 0, 0x5000, 0x100, 0x30000, E3_OUT),
+        p1_23868("n2", E3_SLOT, 1, 0x4000, 1, 0x7000, 0x200, 0x50000, E3_REC2),
+        p1_23868("n3", E3_SLOT, 2, 0xBFFF, 1, 0x6000, 0x300, 0x70000, E3_OUT),
+        p1_23868("n4", E3_SLOT, 2, 0x4000, 0, 0xFFFFF000, 0, 0xFFFD8000, E3_REC2),
+    ], calls=(SPAWN, PALETTE), eax_mask=0),
+    Spec("fighter_3f174", 0x3F174, [
+        Case("t%d" % i, {"eax": rec, "edx": 0, "ecx": 0},
+             {rec + 0x34: b"\x34\x34\x36\x36", rec + 0x44: b"\x44\x44"})
+        for i, rec in enumerate((E3_REC, E3_REC2))
+    ], eax_mask=0),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -600,7 +667,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

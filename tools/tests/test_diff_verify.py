@@ -297,7 +297,9 @@ EXE = os.path.join(os.environ.get("PR_GAME_DIR", os.path.join(ROOT, "data", "gam
 P1_MASKS = {"fighter_1567c": 0xFF, "fighter_15908": 0xFF, "fighter_23ec0": 0xFF, "fighter_45d14": 0xFF,
             "fighter_actor_bit15_clear": 0xFF, "fighter_23bf8": 0xFFFFFFFF, "fighter_402fc": 0xFF,
             "fighter_15584": 0, "fighter_1579c": 0, "fighter_23d38": 0,
-            "fighter_38034": 0, "fighter_23b68": 0, "fighter_401d4": 0}
+            "fighter_38034": 0, "fighter_23b68": 0, "fighter_401d4": 0,
+            # final review I4: the finisher streams' 0xD100 targets (the dispatcher overwrites EAX)
+            "fighter_156d4": 0, "fighter_23ca4": 0, "fighter_23868": 0, "fighter_3f174": 0}
 P1_KINDS = {"fighter_1567c@mutant": {"call #0"}, "fighter_15908@mutant": {"call #1"},
             "fighter_23ec0@mutant": {"call #1 memory"}, "fighter_45d14@mutant": {"call #0"},
             "fighter_actor_bit15_clear@mutant": {"eax"}, "fighter_23bf8@mutant": {"call #1"},
@@ -314,7 +316,10 @@ P1_KINDS = {"fighter_1567c@mutant": {"call #0"}, "fighter_15908@mutant": {"call 
             # final review I1/I2: the stores the first seeds hid, and the two slots' +4 records
             "fighter_15584@no42": {"byte", "call #1 memory"}, "fighter_1579c@no42": {"byte", "call #1 memory"},
             "fighter_15584@own4": {"byte"},
-            "fighter_23d38@noand": {"byte", "call #0 memory", "call #1 memory", "call #2 memory"}}
+            "fighter_23d38@noand": {"byte", "call #0 memory", "call #1 memory", "call #2 memory"},
+            # final review I4: 0x23868's x offset by the other arm shows in the spawn's arguments alone
+            "fighter_156d4@mutant": {"byte"}, "fighter_23ca4@mutant": {"byte"},
+            "fighter_23868@mutant": {"call #0"}, "fighter_3f174@mutant": {"byte"}}
 
 
 @needs_unicorn
@@ -495,7 +500,9 @@ class RealFunctionTests(unittest.TestCase):
                           # record's +0x29 bit 6 set where case 3 clears it (gA alone); I2: case 3's copy
                           # goes to the other slot's +4 record, which differs from the own slot's
                           ("fighter_15584@no42", ["c1"]), ("fighter_1579c@no42", ["c1"]),
-                          ("fighter_23d38@noand", ["gA"]), ("fighter_15584@own4", ["c3", "c4", "c5", "c9"])):
+                          ("fighter_23d38@noand", ["gA"]), ("fighter_15584@own4", ["c3", "c4", "c5", "c9"]),
+                          # I4: an unsigned division differs on the negative distances only (k3, k5)
+                          ("fighter_23ca4@mutant", ["k3", "k5"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
@@ -596,9 +603,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (17), the 9 without are counted apart
-        self.assertIn("diff-verify: 26/26 functions VERIFIED; 43/43 mutants detected; 1 named gaps; "
-                      "1/17 rows with callees closed (9 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (18), the 12 without are counted apart
+        self.assertIn("diff-verify: 30/30 functions VERIFIED; 47/47 mutants detected; 1 named gaps; "
+                      "1/18 rows with callees closed (12 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

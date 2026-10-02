@@ -687,6 +687,59 @@ static void m_23d38_noand(const u32 *r, u32 *eax)      /* case 3 without the `an
     *eax = 0u;
 }
 
+/* Final review I4 (record 2026-10-02-reverse-p1 §P1.12): the 0xD100 targets of the finisher streams, as the
+ * animation dispatcher's opcode 0x11 calls them (0x2B57F..0x2B594: EAX = rec, EDX = the operand word, ECX =
+ * 0). Mask 0: the dispatcher overwrites EAX (`mov eax,ecx` 0x2B59A). */
+static void b_156d4(const u32 *r, u32 *eax)            { fighter_156d4(r[R_EAX]); *eax = 0u; }
+static void b_23ca4(const u32 *r, u32 *eax)            { fighter_23ca4(r[R_EAX]); *eax = 0u; }
+static void b_23868(const u32 *r, u32 *eax)            { fighter_23868(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void b_3f174(const u32 *r, u32 *eax)            { fighter_3f174(r[R_EAX]); *eax = 0u; }
+static void m_156d4(const u32 *r, u32 *eax)            /* the record's own +0x57, not its owner slot's */
+{
+    if (DSD(r[R_EAX] + 0x14u) != 0u) DSB(r[R_EAX] + 0x57u) = (u8)(DSB(r[R_EAX] + 0x57u) + 1u);
+    *eax = 0u;
+}
+static void m_23ca4(const u32 *r, u32 *eax)            /* the distance divided unsigned */
+{
+    u32 rec = r[R_EAX], slot = DSD(rec + 0x14u);
+    *eax = 0u;
+    if (slot == 0u || DSD(DS_001077A8 + ((u32)(DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 4u) == 0u) return;
+    DSB(slot + 0x54u) = 2u;
+    DSW(rec + 0x36u) = 0x0200u;
+    DSW(rec + 0x38u) = 0x0028u;
+    DSW(rec + 0x44u) = 0x0010u;
+    DSW(rec + 0x34u) = (u16)((DSD(0x000A83CCu + (u32)DSW(DS_00104AFC) * 4u) - DSD(rec + 0x18u)) / 0x48u);
+    DSB(DS_000F0AFE) = 0u;
+    DSB(DS_000F0AFF) = DSB(rec + 0x51u);
+    DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+}
+static void m_23868(const u32 *r, u32 *eax)            /* the held record's x offset by the other bit-14 arm */
+{
+    u32 rec = r[R_EAX], slot = DSD(rec + 0x14u), w, e, e2, bit;
+    *eax = 0u;
+    if (slot == 0u) return;
+    w = DSW(0x000A8364u + r[R_EDX] * 2u);
+    bit = DSW(rec + 0x28u) & 0x4000u;
+    e = actor_spawn((const u32 *)(mem + 0x000BB330u), DSD(rec + 0x18u) + (bit ? 0xFFFFF400u : 0xC00u),
+                    (u32)((s32)DSD(rec + 0x30u) >> 16), DSD(rec + 0x1Cu) + 0x1200u, bit ? 0x4000u : 0u);
+    DSD(slot + 8u) = e;
+    DSW(e + 0x34u) = (u16)(bit ? w : 0u - w);
+    DSD(DSD(slot + 8u) + 0x14u) = slot;
+    e2 = actor_spawn((const u32 *)(mem + 0x000BB344u), 0u, 0u, 0u, (u32)DSW(rec + 0x56u) | 0x400u);
+    DSB(e2 + 0x59u) = 2u;
+    DSB(e2 + 0x60u) = 1u;
+    DSB(rec + 0x4Bu) = DSB(e2 + 0x56u);
+    if (DSB(rec + 0x51u) == 0u) return;
+    actor_pset_palette(DSD(slot + 8u), 0x0Cu, 0u);
+    actor_pset_palette(e2, 0x0Cu, 0u);
+}
+static void m_3f174(const u32 *r, u32 *eax)            /* +0x44 = 0x28 */
+{
+    DSW(r[R_EAX] + 0x36u) = 0x0280u;
+    DSW(r[R_EAX] + 0x44u) = 0x0028u;
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -758,6 +811,14 @@ static const binding_t k_bindings[] = {
     { "fighter_1579c@no42",       m_1579c_no42,   0x00000000u },
     { "fighter_15584@own4",       m_15584_own4,   0x00000000u },
     { "fighter_23d38@noand",      m_23d38_noand,  0x00000000u },
+    { "fighter_156d4",            b_156d4,        0x00000000u },
+    { "fighter_23ca4",            b_23ca4,        0x00000000u },
+    { "fighter_23868",            b_23868,        0x00000000u },
+    { "fighter_3f174",            b_3f174,        0x00000000u },
+    { "fighter_156d4@mutant",     m_156d4,        0x00000000u },
+    { "fighter_23ca4@mutant",     m_23ca4,        0x00000000u },
+    { "fighter_23868@mutant",     m_23868,        0x00000000u },
+    { "fighter_3f174@mutant",     m_3f174,        0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
