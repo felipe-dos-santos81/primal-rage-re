@@ -44991,3 +44991,104 @@ static void p1_check_anim_targets(void)
 }
 
 int test_p1_anim_targets(void)  { return u6b_run(p1_check_anim_targets); }
+
+/* ---- track P batch 2 (record 2026-10-02-reverse-p2-derivations.md) ----------
+ * The move callbacks 0x14EF8..0x3DCEC and the callbacks they store.
+ * Differential verification (tools/diff_verify.py, P2_SPECS) is the
+ * behavioural oracle; these checks pin what it does not see: the
+ * registrations and the image dwords that make 0x34E2C, 0x3531C, 0x19020 and
+ * 0x193B0 reach each function, and one seeded run through each registration
+ * with sentinels on every store. */
+
+typedef void (*p2_cb_fn)(u32 slot, u32 rec, u32 side);
+
+/* §P2.3: one guard-shaped move callback through its registration, as 0x34E2C
+ * calls it (slot 0, its record, side 0): with slot+8 = 0x01000000 nothing is
+ * written; with it clear the stream head is patched to a plain frame id
+ * (0x2BC30 stops on it) and every slot field it stores carries a sentinel.
+ * arm57: 0x22A00's shape (+0x57 = 0, +0x5F kept); clears18: +0x18/+0x1C = 0. */
+static void p2_check_guarded(u32 addr, void (*fn)(void), u32 table_dw, u32 stream, u32 frame,
+                             u32 st52, u32 st53, u32 cb0c, int arm57, int clears18, u32 voice)
+{
+    p2_cb_fn f;
+    CHECK(fn_resolve(addr) == fn, "the move callback is registered");
+    CHECK_EQ_INT((int)DSD(table_dw), (int)addr);
+    f = (p2_cb_fn)(void *)fn_resolve(addr);
+    if (f == NULL) return;
+    z_fseed();
+    DSW(stream) = 0x12B1u;
+    DSD(Z_S0 + 8u) = 0x01000000u;
+    DSB(Z_S0 + 0x53u) = 0x33u;
+    DSB(Z_S0 + 0x5Fu) = 0x22u;
+    sound_voice_log_reset();
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 0x33);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x5Fu), 0x22);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 0);
+    z_fseed();
+    DSW(stream) = 0x12B1u;
+    DSD(Z_S0 + 8u) = 0u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    DSB(Z_S0 + 0x57u) = 0x77u;
+    DSB(Z_S0 + 0x5Fu) = 0x22u;
+    DSB(Z_S0 + 0x64u) = 0x64u;
+    DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSD(Z_S0 + 0x18u) = 0x18181818u;
+    DSD(Z_S0 + 0x1Cu) = 0x1C1C1C1Cu;
+    sound_voice_log_reset();
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), (int)stream);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), (int)frame);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), (int)st52);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), (int)st53);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), (int)cb0c);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x64u), 0x22);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), arm57 ? 0 : 0x77);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x5Fu), arm57 ? 0x22 : 0xFF);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x18u), clears18 ? 0 : 0x18181818);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x1Cu), clears18 ? 0 : 0x1C1C1C1C);
+    CHECK_EQ_INT((int)sound_voice_log_count(), voice ? 1 : 0);
+    if (voice) CHECK_EQ_INT((int)sound_voice_log_at(0), (int)voice);
+    sound_voice_log_reset();
+}
+
+static void p2_check_guarded_all(void)
+{
+    p2_cb_fn f;
+    p2_check_guarded(0x237D0u, (void (*)(void))fighter_237d0, 0x000A5620u, 0x000E14D8u, 0x40400000u,
+                     0x0Bu, 6u, 0u, 0, 0, 0xAAu);
+    p2_check_guarded(0x2381Cu, (void (*)(void))fighter_2381c, 0x000A560Cu, 0x000E1506u, 0x40400000u,
+                     0x0Bu, 6u, 0u, 0, 0, 0xAAu);
+    p2_check_guarded(0x3DADCu, (void (*)(void))fighter_3dadc, 0x000A50F8u, 0x000D4AB2u, 0x40400000u,
+                     0x0Bu, 6u, 0u, 0, 1, 0xB8u);
+    p2_check_guarded(0x3DB34u, (void (*)(void))fighter_3db34, 0x000A510Cu, 0x000D4AFAu, 0x40400000u,
+                     0x0Bu, 6u, 0u, 0, 1, 0xB8u);
+    p2_check_guarded(0x3D10Cu, (void (*)(void))fighter_3d10c, 0x000A37BCu, 0x000E84C8u, 0x40400000u,
+                     0x0Bu, 6u, 0u, 0, 1, 0x91u);
+    p2_check_guarded(0x22A00u, (void (*)(void))fighter_22a00, 0x000A55A8u, 0x000E1534u, 0x40400000u,
+                     9u, 7u, 0x000229FCu, 1, 0, 0u);
+    /* 0x3D10C's word DS_001080AC[rec+0x51] (0x3D170): side 1's word only. */
+    z_fseed();
+    DSW(0x000E84C8u) = 0x12B1u;
+    DSD(Z_S1 + 8u) = 0u;
+    DSW(0x001080ACu) = 0xACACu;
+    DSW(0x001080AEu) = 0xAEAEu;
+    fighter_3d10c(Z_S1, Z_R1, 1u);
+    CHECK_EQ_INT((int)DSW(0x001080ACu), 0xACAC);
+    CHECK_EQ_INT((int)DSW(0x001080AEu), 0x0080);
+    /* 0x229FC, the +0x0C callback 0x22A00 stores (the dword at 0x22A2D), is
+     * the `ret` that ends 0x229E8: 0x3531C case 7 reaches it and nothing
+     * changes. */
+    CHECK_EQ_INT((int)DSD(0x00022A2Du), 0x000229FC);
+    CHECK_EQ_INT((int)DSB(0x000229FCu), 0xC3);
+    CHECK(fn_resolve(0x229FCu) == (void (*)(void))fighter_229fc, "0x229FC is registered");
+    f = (p2_cb_fn)(void *)fn_resolve(0x229FCu);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_S0 + 0x57u) = 0x57u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0x57);
+}
+
+int test_p2_guarded(void)       { return u6b_run(p2_check_guarded_all); }

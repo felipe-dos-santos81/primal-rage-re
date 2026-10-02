@@ -14683,3 +14683,149 @@ void fighter_3f174(u32 rec)
     DSW(rec + 0x36u) = 0x0280u;                             /* 0x3F174 */
     DSW(rec + 0x44u) = 0x0020u;                             /* 0x3F17A */
 }
+
+/* ---- track P batch 2: the move callbacks and the callbacks they store -------
+ * Record 2026-10-02-reverse-p2-derivations.md. 0x34E2C calls a move callback
+ * (the +0 dword of a 0xA3528 move-table entry) at 0x35045 as (EAX = slot,
+ * EDX = rec, EBX = side), and 0x3531C case 7 (0x35431) a slot +0x0C callback
+ * with the same registers; no caller reads the EAX either returns (record
+ * §P2.2), so the port's callbacks return nothing. */
+#define P2_ANIM_237D0 0x000E14D8u  /* 0x237DF */
+#define P2_ANIM_2381C 0x000E1506u  /* 0x2382B */
+#define P2_ANIM_3DADC 0x000D4AB2u  /* 0x3DAEB */
+#define P2_ANIM_3DB34 0x000D4AFAu  /* 0x3DB43 */
+#define P2_ANIM_3D10C 0x000E84C8u  /* 0x3D128 */
+#define P2_ANIM_22A00 0x000E1534u  /* 0x22A0F */
+#define P2_1080AC     0x001080ACu  /* 0x3D170: a word per side (0x3D17C's too) */
+
+/* 0x237D0 — record §P2.3. Character 6's reaction-0x26 callback (the dword at
+ * 0xA5620). With the slot's +8 clear: the record on 0xE14D8 at 3.0 (0x3C4CC),
+ * the slot 0xB/6/0, +0x0C = 0, +0x64 = +0x5F, +0x5F = 0xFF, the voice 0xAA.
+ * PORT: the raw returns AL = 0 (0x237DB) or 1 (0x23815); unread (§P2.2). */
+void fighter_237d0(u32 slot, u32 rec, u32 side)
+{
+    u8 r5f;
+    (void)side;
+    if (DSD(slot + 8u) != 0u) return;                       /* 0x237D5/0x237D9 */
+    hit_anim_start_b(rec, P2_ANIM_237D0, 0x40400000u);      /* 0x237DF..0x237E9 0x3C4CC */
+    DSB(slot + 0x52u) = 0x0Bu;                              /* 0x237EE */
+    DSB(slot + 0x53u) = 6u;                                 /* 0x237F2 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x237F6 */
+    r5f = DSB(slot + 0x5Fu);                                /* 0x237FA */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x237FD */
+    DSB(slot + 0x64u) = r5f;                                /* 0x23804 */
+    DSB(slot + 0x5Fu) = 0xFFu;                              /* 0x2380C */
+    (void)sound_voice(0xAAu);                               /* 0x23807/0x23810 0x2C3FC */
+}
+
+/* 0x2381C — record §P2.3. Character 6's reaction-0x25 callback (the dword at
+ * 0xA560C): 0x237D0's shape on the stream 0xE1506. PORT: AL unread (§P2.2). */
+void fighter_2381c(u32 slot, u32 rec, u32 side)
+{
+    u8 r5f;
+    (void)side;
+    if (DSD(slot + 8u) != 0u) return;                       /* 0x23821/0x23825 */
+    hit_anim_start_b(rec, P2_ANIM_2381C, 0x40400000u);      /* 0x2382B..0x23835 0x3C4CC */
+    DSB(slot + 0x52u) = 0x0Bu;                              /* 0x2383A */
+    DSB(slot + 0x53u) = 6u;                                 /* 0x2383E */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x23842 */
+    r5f = DSB(slot + 0x5Fu);                                /* 0x23846 */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x23849 */
+    DSB(slot + 0x64u) = r5f;                                /* 0x23850 */
+    DSB(slot + 0x5Fu) = 0xFFu;                              /* 0x23858 */
+    (void)sound_voice(0xAAu);                               /* 0x23853/0x2385C 0x2C3FC */
+}
+
+/* 0x3DADC — record §P2.3. Character 5's reaction-0x24 callback (the dword at
+ * 0xA50F8): the record on 0xD4AB2 at 3.0, the slot 0xB/6/0, +0x0C = +0x18 =
+ * +0x1C = 0, +0x64 = +0x5F, +0x5F = 0xFF, the voice 0xB8. PORT: AL unread. */
+void fighter_3dadc(u32 slot, u32 rec, u32 side)
+{
+    u8 r5f;
+    (void)side;
+    if (DSD(slot + 8u) != 0u) return;                       /* 0x3DAE1/0x3DAE5 */
+    hit_anim_start_b(rec, P2_ANIM_3DADC, 0x40400000u);      /* 0x3DAEB..0x3DAF5 0x3C4CC */
+    DSB(slot + 0x52u) = 0x0Bu;                              /* 0x3DAFA */
+    DSB(slot + 0x53u) = 6u;                                 /* 0x3DAFE */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x3DB02 */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x3DB06 */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x3DB0D */
+    r5f = DSB(slot + 0x5Fu);                                /* 0x3DB14 */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x3DB17 */
+    DSB(slot + 0x64u) = r5f;                                /* 0x3DB1E */
+    DSB(slot + 0x5Fu) = 0xFFu;                              /* 0x3DB26 */
+    (void)sound_voice(0xB8u);                               /* 0x3DB21/0x3DB2A 0x2C3FC */
+}
+
+/* 0x3DB34 — record §P2.3. Character 5's reaction-0x25 callback (the dword at
+ * 0xA510C): 0x3DADC's shape on the stream 0xD4AFA. PORT: AL unread. */
+void fighter_3db34(u32 slot, u32 rec, u32 side)
+{
+    u8 r5f;
+    (void)side;
+    if (DSD(slot + 8u) != 0u) return;                       /* 0x3DB39/0x3DB3D */
+    hit_anim_start_b(rec, P2_ANIM_3DB34, 0x40400000u);      /* 0x3DB43..0x3DB4D 0x3C4CC */
+    DSB(slot + 0x52u) = 0x0Bu;                              /* 0x3DB52 */
+    DSB(slot + 0x53u) = 6u;                                 /* 0x3DB56 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x3DB5A */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x3DB5E */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x3DB65 */
+    r5f = DSB(slot + 0x5Fu);                                /* 0x3DB6C */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x3DB6F */
+    DSB(slot + 0x64u) = r5f;                                /* 0x3DB76 */
+    DSB(slot + 0x5Fu) = 0xFFu;                              /* 0x3DB7E */
+    (void)sound_voice(0xB8u);                               /* 0x3DB79/0x3DB82 0x2C3FC */
+}
+
+/* 0x3D10C — record §P2.3. Character 0's reaction-0x21 callback (the dword at
+ * 0xA37BC); 0x3D17C's shape with the word 0x80. ESI = rec+0x51 (movzx,
+ * 0x3D113, before the guard). With the slot's +8 clear: the voice 0x91, then
+ * the record on 0xE84C8 at 3.0 (EDX loaded at 0x3D128, before the voice, which
+ * preserves it), the slot 0xB/6/0, +0x0C = +0x18 = +0x1C = 0, +0x64 = +0x5F,
+ * +0x5F = 0xFF and DS_001080AC[side] = 0x80. PORT: AL unread (§P2.2). */
+void fighter_3d10c(u32 slot, u32 rec, u32 side)
+{
+    u32 i = (u32)DSB(rec + 0x51u);                          /* 0x3D113 movzx */
+    u8 r5f;
+    (void)side;
+    if (DSD(slot + 8u) != 0u) return;                       /* 0x3D117/0x3D11B */
+    (void)sound_voice(0x91u);                               /* 0x3D123/0x3D12D 0x2C3FC */
+    hit_anim_start_b(rec, P2_ANIM_3D10C, 0x40400000u);      /* 0x3D132..0x3D139 0x3C4CC */
+    DSB(slot + 0x52u) = 0x0Bu;                              /* 0x3D13E */
+    DSB(slot + 0x53u) = 6u;                                 /* 0x3D142 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x3D146 */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x3D14A */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x3D151 */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x3D158 */
+    r5f = DSB(slot + 0x5Fu);                                /* 0x3D15F */
+    DSB(slot + 0x5Fu) = 0xFFu;                              /* 0x3D162 */
+    DSB(slot + 0x64u) = r5f;                                /* 0x3D16B */
+    DSW(P2_1080AC + i * 2u) = 0x0080u;                      /* 0x3D166/0x3D170 */
+}
+
+/* 0x22A00 — record §P2.3. Character 6's reaction-0x20 callback (the dword at
+ * 0xA55A8): with the slot's +8 clear, the record on 0xE1534 at 3.0, the slot
+ * 9/7/0 with the +0x0C callback 0x229FC (0x3531C case 7), +0x57 = 0, +0x64 =
+ * +0x5F; no voice. PORT: AL unread (§P2.2). */
+void fighter_22a00(u32 slot, u32 rec, u32 side)
+{
+    (void)side;
+    if (DSD(slot + 8u) != 0u) return;                       /* 0x22A05/0x22A09 */
+    hit_anim_start_b(rec, P2_ANIM_22A00, 0x40400000u);      /* 0x22A0F..0x22A19 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x22A1E */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x22A22 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x22A26 */
+    DSD(slot + 0x0Cu) = 0x000229FCu;                        /* 0x22A2A */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x22A34 */
+    DSB(slot + 0x64u) = DSB(slot + 0x5Fu);                  /* 0x22A31/0x22A38 */
+}
+
+/* 0x229FC — record §P2.3. The `ret` (c3) that ends 0x229E8, which 0x22A00
+ * stores as the slot's +0x0C callback (the dword at 0x22A2D): 0x3531C case 7
+ * calls it every frame and it does nothing. */
+void fighter_229fc(u32 slot, u32 rec, u32 side)
+{
+    (void)slot;
+    (void)rec;
+    (void)side;
+}

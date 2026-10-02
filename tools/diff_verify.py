@@ -625,6 +625,50 @@ P1_ANIM_SPECS = [
     ], eax_mask=0),
 ]
 
+# ---- track P batch 2: the move callbacks 0x14EF8..0x3DCEC and the callbacks they store (record
+# 2026-10-02-reverse-p2) --------------------------------------------------------------------------------
+# A move callback runs as 0x34E2C calls it at 0x35045: EAX = slot, EDX = rec, EBX = side. Mask 0: 0x34E2C
+# returns the callback's EAX to 0x352CD (whose 0x350D0 returns to 0x3531C, whose only caller 0x35803 loads
+# `mov eax,ebx`) and to 0x3CF2E (`mov al,1` at 0x3CF33; 0x3CE58's two callers read AL alone, `mov dl,al`
+# at 0x3CF84/0x3D03A): no caller reads it (record §P2.2). Every slot field the function writes carries a
+# sentinel that differs from what it writes; +0x5F (copied to +0x64) takes 0x22 and 0x80.
+P2_SEED = {E3_SLOT + 0x0C: le32(0x0C0C0C0C), E3_SLOT + 0x18: le32(0x18181818), E3_SLOT + 0x1C: le32(0x1C1C1C1C),
+           E3_SLOT + 0x52: b"\x52\x53\x54\x55\x56\x57", E3_SLOT + 0x5F: b"\x22", E3_SLOT + 0x64: b"\x64"}
+
+
+def p2_guarded(name, entry, voice, mutants=("@mutant",), extra=None):
+    """A guard-shaped move callback (record §P2.3): `cmp dword [slot+8],0; je` else AL = 0 and nothing
+    written. g0: slot+8 = 0x01000000 (non-zero in its high byte only, so a byte test runs the body); g1:
+    the body, +0x5F 0x22; g2: the body, +0x5F 0x80, side 1, the voice stub's AL = 0 (`mov al,1` overwrites
+    it). `extra(i)` adds pokes per case."""
+    ex = extra or (lambda i: {})
+    return Spec(name, entry, [
+        Case("g0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P2_SEED, E3_SLOT + 8: le32(0x01000000), **ex(0)}),
+        Case("g1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P2_SEED, E3_SLOT + 8: le32(0), **ex(1)}),
+        Case("g2", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1},
+             {**P2_SEED, E3_SLOT + 8: le32(0), E3_SLOT + 0x5F: b"\x80", **ex(2)}, {0x2C3FC: 0} if voice else {}),
+    ], calls=(HIT_B, VOICE) if voice else (HIT_B,), eax_mask=0, mutants=mutants)
+
+
+# 0x3D10C writes the word DS_001080AC[rec+0x51] (0x3D170): rec+0x51 is 0 in g0/g1 and 1 in g2, both words
+# seeded with sentinels.
+def p2_3d10c_extra(i):
+    return {E3_REC + 0x51: bytes([1 if i == 2 else 0]), 0x1080AC: b"\xac\xac\xae\xae"}
+
+
+P2_SPECS = [
+    p2_guarded("fighter_237d0", 0x237D0, True, ("@mutant", "@guard")),
+    p2_guarded("fighter_2381c", 0x2381C, True),
+    p2_guarded("fighter_3dadc", 0x3DADC, True),
+    p2_guarded("fighter_3db34", 0x3DB34, True),
+    p2_guarded("fighter_3d10c", 0x3D10C, True, extra=p2_3d10c_extra),
+    p2_guarded("fighter_22a00", 0x22A00, False),
+    # 0x229FC is the `ret` that ends 0x229E8 (0x229FC: c3), the +0x0C callback 0x22A00 stores: nothing at all.
+    Spec("fighter_229fc", 0x229FC, [
+        Case("r0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x57: b"\x57"}),
+    ], eax_mask=0),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -667,7 +711,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

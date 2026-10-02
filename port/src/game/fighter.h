@@ -1164,5 +1164,16 @@ void fighter_156d4(u32 rec);
 void fighter_23ca4(u32 rec);
 void fighter_23868(u32 rec, u32 arg);
 void fighter_3f174(u32 rec);
+/* Track P batch 2 (record 2026-10-02-reverse-p2-derivations.md §P2.3): the
+ * guard-shaped move callbacks 0x34E2C calls as (slot, rec, side), and the
+ * +0x0C callback 0x22A00 stores (0x3531C case 7, the same registers);
+ * registered in actors_init. */
+void fighter_237d0(u32 slot, u32 rec, u32 side);
+void fighter_2381c(u32 slot, u32 rec, u32 side);
+void fighter_3dadc(u32 slot, u32 rec, u32 side);
+void fighter_3db34(u32 slot, u32 rec, u32 side);
+void fighter_3d10c(u32 slot, u32 rec, u32 side);
+void fighter_22a00(u32 slot, u32 rec, u32 side);
+void fighter_229fc(u32 slot, u32 rec, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

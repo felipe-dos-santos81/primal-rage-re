@@ -80,6 +80,7 @@ extern int g_failures;
     X(test_p1_finishers) \
     X(test_p1_callbacks) \
     X(test_p1_anim_targets) \
+    X(test_p2_guarded) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
     X(test_restart)

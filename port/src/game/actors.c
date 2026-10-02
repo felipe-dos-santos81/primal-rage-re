@@ -703,6 +703,18 @@ int actors_init(void)
     fn_register(0x23CA4u, (void (*)(void))anim_code_23CA4);
     fn_register(0x23868u, (void (*)(void))anim_code_23868);
     fn_register(0x3F174u, (void (*)(void))anim_code_3F174);
+    /* PORT: record 2026-10-02-reverse-p2 §P2.3. The guard-shaped move
+     * callbacks (the move-table dwords 0xA5620, 0xA560C, 0xA50F8, 0xA510C,
+     * 0xA37BC and 0xA55A8; 0x34E2C at 0x35045, (slot, rec, side)) and the
+     * +0x0C callback 0x22A00 stores, 0x229FC (the dword at 0x22A2D, the `ret`
+     * that ends 0x229E8; 0x3531C case 7, the same registers). */
+    fn_register(0x237D0u, (void (*)(void))fighter_237d0);
+    fn_register(0x2381Cu, (void (*)(void))fighter_2381c);
+    fn_register(0x3DADCu, (void (*)(void))fighter_3dadc);
+    fn_register(0x3DB34u, (void (*)(void))fighter_3db34);
+    fn_register(0x3D10Cu, (void (*)(void))fighter_3d10c);
+    fn_register(0x22A00u, (void (*)(void))fighter_22a00);
+    fn_register(0x229FCu, (void (*)(void))fighter_229fc);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)

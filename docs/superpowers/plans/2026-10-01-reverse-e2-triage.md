@@ -27,7 +27,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 
 | batch | unported | ported |
 |---|---|---|
-| callbacks | 22 | 49 |
+| callbacks | 16 | 55 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
 | animation-targets | 57 | 55 |
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 6 |
 | leaf | 231 |
-| stubs | 76 |
+| stubs | 70 |
 
 ## Rows
 
@@ -126,7 +126,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 224EC | 1100 | anim-target | dword E4E30 after the opcode word D500 at E4E2E | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 22938 | 176 | move-callback | dword A3CD0 (char 1, reaction 0x22) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 229E8 | 24 | anim-target | dword E1562 after the opcode word D500 at E1560 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
-| 22A00 | 64 | move-callback | dword A55A8 (char 6, reaction 0x20) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 22A00 | 64 | move-callback | dword A55A8 (char 6, reaction 0x20) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 22A40 | 120 | anim-target | dword E154A after the opcode word D100 at E1548 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | 22AA7 |
 | 22AB8 | 112 | anim-target | dword E1850 after the opcode word D100 at E184E | yes | - | no | animation-targets | allow-list | - |
 | 22F74 | 116 | move-callback | dword A3D5C (char 1, reaction 0x29) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
@@ -139,8 +139,8 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 23530 | 148 | move-callback | dword A55F8 (char 6, reaction 0x24) | yes | entry | yes | callbacks | stubs (indirect at 18384 in 18350) | - |
 | 2365C | 124 | move-callback | dword A3D70 (char 1, reaction 0x2A) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 236CB |
 | 236D8 | 84 | anim-target | dword E49A4 after the opcode word D100 at E49A2 | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 237D0 | 76 | move-callback | dword A5620 (char 6, reaction 0x26) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | 23810 |
-| 2381C | 76 | move-callback | dword A560C (char 6, reaction 0x25) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | 2385C |
+| 237D0 | 76 | move-callback | dword A5620 (char 6, reaction 0x26) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 23810 |
+| 2381C | 76 | move-callback | dword A560C (char 6, reaction 0x25) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 2385C |
 | 23868 | 532 | anim-target | dword E14E6 after the opcode word D100 at E14E4 | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 23A7C | 380 | anim-target | dword E18C4 after the opcode word D100 at E18C2 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 23BF8 | 172 | finisher | dword BDAFC | yes | - | yes | finishers | stubs (indirect at 2B56D in 2B2A0) | - |
@@ -253,7 +253,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 3C32C | 44 | anim-target | dword D24FE after the opcode word D500 at D24FC | yes | - | yes | animation-targets | stubs (indirect at 379E8 in 379C4) | - |
 | 3C5E4 | 28 | data | memory operand of the instruction at 3C647 | yes | - | no | - | - | - |
 | 3C87C | 16 | data | memory operand of the instruction at 3CAE0 | no | - | no | - | - | - |
-| 3D10C | 112 | move-callback | dword A37BC (char 0, reaction 0x21) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3D12D |
+| 3D10C | 112 | move-callback | dword A37BC (char 0, reaction 0x21) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3D12D |
 | 3D17C | 112 | move-callback | dword A37A8 (char 0, reaction 0x20) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3D19D |
 | 3D1EC | 40 | move-callback | dword A38AC (char 0, reaction 0x2D) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3D214 | 88 | anim-target | dword E84CC after the opcode word D100 at E84CA | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
@@ -263,8 +263,8 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 3D784 | 652 | data-pointer | aligned dword BBA4C | yes | - | yes | voice | stubs (indirect at 6811A in 680F0) | 3D789 |
 | 3DA10 | 64 | move-callback | dword A5120 (char 5, reaction 0x26) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3DA50 | 140 | anim-target | dword D4BEC after the opcode word D100 at D4BEA | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | 3DAC5 |
-| 3DADC | 88 | move-callback | dword A50F8 (char 5, reaction 0x24) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3DB2A |
-| 3DB34 | 88 | move-callback | dword A510C (char 5, reaction 0x25) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3DB82 |
+| 3DADC | 88 | move-callback | dword A50F8 (char 5, reaction 0x24) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3DB2A |
+| 3DB34 | 88 | move-callback | dword A510C (char 5, reaction 0x25) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 3DB82 |
 | 3DB8C | 176 | anim-target | dword D4AB8 after the opcode word D000 at D4AB6 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3DC3C | 176 | anim-target | dword D4B00 after the opcode word D000 at D4AFE | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 3DCEC | 888 | move-callback | dword A51AC (char 5, reaction 0x2D) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
@@ -835,8 +835,8 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 23243 | 23208 | row | yes |
 | 23328 | 232B4 | supplement | yes |
 | 236CB | 2365C | row | yes |
-| 23810 | 237D0 | row | no |
-| 2385C | 2381C | row | no |
+| 23810 | 237D0 | row | yes |
+| 2385C | 2381C | row | yes |
 | 23BD8 | 23B68 | supplement | yes |
 | 23E9D | - | - | no |
 | 23F05 | 23EC0 | row | yes |
@@ -879,7 +879,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 378DE | 37898 | row | yes |
 | 378E8 | 37898 | row | yes |
 | 39EDA | - | - | no |
-| 3D12D | 3D10C | row | no |
+| 3D12D | 3D10C | row | yes |
 | 3D19D | 3D17C | row | yes |
 | 3D395 | 3D328 | row | no |
 | 3D3DB | 3D3AC | supplement | yes |
@@ -888,8 +888,8 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 3D789 | 3D784 | row | yes |
 | 3D9D7 | 3D8AC | supplement | yes |
 | 3DAC5 | 3DA50 | row | no |
-| 3DB2A | 3DADC | row | no |
-| 3DB82 | 3DB34 | row | no |
+| 3DB2A | 3DADC | row | yes |
+| 3DB82 | 3DB34 | row | yes |
 | 3DE47 | 3DD84 | supplement | yes |
 | 3E057 | 3DFC0 | supplement | yes |
 | 3E0E3 | 3E064 | row | yes |
