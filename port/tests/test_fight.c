@@ -45417,3 +45417,70 @@ static void p2_check_hooks(void)
 }
 
 int test_p2_hooks(void)         { return u6b_run(p2_check_hooks); }
+
+typedef void (*p2_side_fn)(u32 side);
+
+/* §P2.8: the slot +0x1C callbacks 0x21374 and 0x22938 store, as 0x193B0 calls
+ * them (fn(side)), and 0x22588's callee 0x22404 (side 0: ctx[2] = slot 0,
+ * ctx[3] = slot 1, character 2). */
+static void p2_check_1c(void)
+{
+    p2_side_fn f;
+    CHECK(fn_resolve(0x211F0u) == (void (*)(void))fighter_211f0, "0x211F0 is registered");
+    CHECK(fn_resolve(0x22588u) == (void (*)(void))fighter_22588, "0x22588 is registered");
+    CHECK_EQ_INT((int)(DSD(0x000225A7u) + 0x225ABu), 0x00022404);   /* 0x225A6's rel32 */
+
+    /* 0x22404: the own record on 0xE4DEA at 2.0, the own slot's +0x57 = 2,
+     * the other slot 0xA/9/0 with +0x10 = 0. */
+    z_fseed();
+    DSB(Z_S1 + 0x7Au) = 2u;
+    DSW(0x000E4DEAu) = 0x12B1u;
+    DSW(DSD(0x000C90F8u + 2u * 4u)) = 0x12B2u;
+    DSB(Z_S0 + 0x57u) = 0x77u;
+    DSB(Z_S1 + 0x54u) = 0x44u;
+    DSD(Z_S1 + 0x10u) = 0x10101010u;
+    fighter_22404(0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000E4DEA);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 2);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x10u), 0);
+
+    /* 0x211F0: the own slot's +0x57 = 2, the other's +0x53 = 0xF, the voice
+     * 0xC75AA[2] (0xA6) last. */
+    f = (p2_side_fn)(void *)fn_resolve(0x211F0u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_S1 + 0x7Au) = 2u;
+    DSW(0x000E1672u) = 0x12B1u;
+    DSW(DSD(0x000C90F8u + 2u * 4u)) = 0x12B2u;
+    DSB(Z_S0 + 0x57u) = 0x77u;
+    sound_voice_log_reset();
+    f(0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 2);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 0x0F);
+    CHECK(sound_voice_log_count() >= 1u, "a voice plays");
+    CHECK_EQ_INT((int)sound_voice_log_at(sound_voice_log_count() - 1u), 0xA6);
+    sound_voice_log_reset();
+
+    /* 0x22588: through 0x22404 (the other slot 0xA/9/0), then the other
+     * slot's +0x5D = 0x44 and the voice 0xA6. */
+    f = (p2_side_fn)(void *)fn_resolve(0x22588u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_S1 + 0x7Au) = 2u;
+    DSW(0x000E4DEAu) = 0x12B1u;
+    DSW(DSD(0x000C90F8u + 2u * 4u)) = 0x12B2u;
+    DSB(Z_S1 + 0x5Du) = 0x5Du;
+    sound_voice_log_reset();
+    f(0u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x5Du), 0x44);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 2);
+    CHECK(sound_voice_log_count() >= 1u, "a voice plays");
+    CHECK_EQ_INT((int)sound_voice_log_at(sound_voice_log_count() - 1u), 0xA6);
+    sound_voice_log_reset();
+}
+
+int test_p2_1c(void)            { return u6b_run(p2_check_1c); }

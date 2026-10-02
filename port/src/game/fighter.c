@@ -49,7 +49,6 @@ static int fighter_3962c(u32 side, u32 param_2);         /* 0x3962C */
 static int fighter_396ac(u32 side, u32 param_2);         /* 0x396AC */
 static void fighter_18b44(u32 slot);                     /* 0x18B44 */
 static void fighter_39278(u32 v);                        /* 0x39278 */
-static void fighter_39834(u32 side, s32 b);              /* 0x39834 */
 static u32 fighter_36d20(u32 slot);                      /* 0x36D20 */
 static void fighter_2bd44_by_index(u32 rec);             /* 0x3B4D4 = 0x3B844 */
 static void fighter_18bd4(u8 flags[16]);                 /* 0x18BD4 */
@@ -626,7 +625,6 @@ static int fighter_input_scan(u32 side, s32 n1, s32 n2, u32 mask)
 #define FIGHT_BLOCK_END0   0x000C8F68u  /* 0x1A8F4: per-char stream */
 #define FIGHT_BLOCK_END1   0x000C8FB8u  /* 0x1A8F4: per-char stream, +0x54 1 */
 
-static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits); /* 0x3C480 */
 static void fighter_ctx_rec_swap(u32 out[6], u32 rec);           /* 0x33A68 */
 
 /* 0x1A6AC — record §38. */
@@ -1714,7 +1712,6 @@ void fighter_state_35d7c(u32 side)
 
 static void fighter_state_367dc(u32 slot, u32 rec);         /* 0x367DC */
 static void hit_stance_timer(u32 side);                     /* 0x1922C */
-static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits); /* 0x3C480 */
 static void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits); /* 0x3C520 */
 
 /* PORT: data-object addresses symbols.h does not name. */
@@ -2660,6 +2657,7 @@ void fighter_37d18(u32 slot, u32 rec)
  * EDX = value. */
 void fighter_39a10(u32 rec, u32 value)
 {
+    PR_SEAM(0x39A10u, rec, value);
     u32 side = (u32)DSB(rec + 0x51u);                       /* 0x39A11 */
     DSW(DS_001077B0 + side * 0x94u + 0x74u) = (u16)value;   /* 0x39A28 */
 }
@@ -4091,7 +4089,7 @@ void hit_anchor_y(u32 side, u32 y)
 }
 
 /* 0x3C480. anim-begin plus the two anchor writes. */
-static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits)
+void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits)
 {
     u32 ctx[6];
     PR_SEAM(0x3C480u, rec, stream, frame_bits);
@@ -6193,8 +6191,9 @@ L5E7:
  * the per-level table, run the 0x392A0 pose and the 0x39738 damage scaler, then
  * the 0x36D98/0x36CE4 stance transitions and the +0x5A/+0x5D clamps. EAX = side,
  * EDX = b (the reaction). */
-static void fighter_39834(u32 side, s32 b)
+void fighter_39834(u32 side, s32 b)
 {
+    PR_SEAM(0x39834u, side, (u32)b);
     u32 ctx[6];
     u32 anim[3];
     u32 edi;
@@ -8409,8 +8408,9 @@ s32 fighter_3b90c(u32 side, s32 delta)
 /* 0x18AF8. The facing flag for both sides: `xor eax,eax; call 0x18B04`, then
  * `mov eax,1` falls into 0x18B04 at 0x18B04. EAX is not a result (0x3C208
  * reloads it at 0x3C227). */
-static void fighter_18af8(void)
+void fighter_18af8(void)
 {
+    PR_SEAM0(0x18AF8u);
     hit_facing_flag(0u);                                /* 0x18AF8/0x18AFA */
     hit_facing_flag(1u);                                /* 0x18AFF, fall-through */
 }
@@ -8429,6 +8429,7 @@ static void fighter_18af8(void)
  * EDX (0x186D0/0x18B04 push it), so 0x3C24D tests the argument itself. */
 void fighter_3c208(u32 side, s32 dist)
 {
+    PR_SEAM(0x3C208u, side, (u32)dist);
     u32 other;
     u32 want = (u32)dist;
     u32 d;
@@ -8487,6 +8488,7 @@ void fighter_3c208(u32 side, s32 dist)
  * +0) clear word +0x34 and bytes +0x43/+0x42, then ctx[4]/ctx[5] clear +0x1C. */
 void fighter_3c358(u32 side)
 {
+    PR_SEAM(0x3C358u, side);
     u32 ctx[6];
     u32 self = DS_001077B0 + side * 0x94u;              /* 0x3C368..0x3C380 */
     u32 other = DS_001077B0 + (1u - side) * 0x94u;      /* 0x3C382..0x3C3A6 */
@@ -15133,4 +15135,82 @@ u32 fighter_22510(u32 side)
     if (w > 0x14 || w < 0x0D)                               /* 0x22559..0x22561 */
         return 1u;                                          /* 0x22563 */
     return (u32)fighter_18c14(ctx[0], flags, P2_BOX_22510_A, P2_BOX_22510_B);   /* 0x2256A..0x2257B 0x18C14 */
+}
+
+#define P2_ANIM_211F0    0x000E1672u  /* 0x21200: EDX, kept through 0x34D8C */
+#define P2_STREAMS_C90F8 0x000C90F8u  /* 0x21229/0x2243D: [char] the other record's stream */
+#define P2_DIST_A81B0    0x000A81B0u  /* 0x2124C: [char] a word, zero-extended */
+#define P2_DIST_A82D8    0x000A82D8u  /* 0x22459/0x225C7: [char] the high half of the dword at 0xA82D6 + 2c */
+#define P2_VOICE_C75AA   0x000C75AAu  /* 0x212A2/0x22601: [char] a voice word */
+#define P2_ANIM_22404    0x000E4DEAu  /* 0x22411 */
+
+/* 0x22404 — record §P2.8. Called by 0x22588 (0x225A6) and 0x224EC (0x224FC)
+ * with EAX = side; both overwrite EAX after it. The context is 0x33950(side).
+ * The own record on 0xE4DEA at 2.0 (0x2BC30), the own slot's +0x57 = 2, the
+ * other record on 0xC90F8[the other slot's character] at 2.0 (0x3C480),
+ * 0x3C208(side, the signed word 0xA82D8[that character]), the other slot
+ * 0xA/9/0 (+0x53/+0x52/+0x54) with +0x10 = 0. */
+void fighter_22404(u32 side)
+{
+    u32 ctx[6];
+    PR_SEAM(0x22404u, side);
+    fighter_ctx_same(ctx, side);                            /* 0x22408..0x2240C 0x33950 */
+    actors_anim_begin(ctx[4], P2_ANIM_22404, 0x40000000u);  /* 0x22411..0x2241F 0x2BC30 */
+    DSB(ctx[2] + 0x57u) = 2u;                               /* 0x22428 */
+    hit_anim_start_a(ctx[5], DSD(P2_STREAMS_C90F8 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                     0x40000000u);                          /* 0x2242C..0x22448 0x3C480 */
+    fighter_3c208(ctx[0], (s32)(s16)DSW(P2_DIST_A82D8 + (u32)DSB(ctx[3] + 0x7Au) * 2u));   /* 0x2244D..0x22466 */
+    DSB(ctx[3] + 0x53u) = 0x0Au;                            /* 0x2246F */
+    DSB(ctx[3] + 0x52u) = 9u;                               /* 0x22477 */
+    DSB(ctx[3] + 0x54u) = 0u;                               /* 0x2247F */
+    DSD(ctx[3] + 0x10u) = 0u;                               /* 0x22487 */
+}
+
+/* 0x211F0 — record §P2.8. The slot +0x1C callback 0x21374 stores (the dword
+ * at 0x213D6; 0x193B0's 0x19505, fn(side), EAX unread). The context is
+ * 0x33950(side). 0x34D8C(side); the own record on 0xE1672 at 2.0 (0x3C4CC;
+ * EDX loaded at 0x21200, before 0x34D8C, which keeps it); the other record on
+ * 0xC90F8[the other slot's character] at 2.0 (0x3C480); 0x18AF8; 0x3C208(side,
+ * the word 0xA81B0[that character], zero-extended); 0x39834(the other side,
+ * the own slot's +0x5F); 0x3C358(side); 0x39A10(each record, 0x29A; EDX =
+ * 0x29A at 0x21275 survives 0x3C358); the voice 0xC75AA[that character]; the
+ * own slot's +0x57 = 2 and the other's +0x53 = 0xF. The character is re-read
+ * at each use (0x21221, 0x21242, 0x2129A). */
+void fighter_211f0(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x211F4..0x211F8 0x33950 */
+    hit_flash_pair(ctx[0]);                                 /* 0x211FD..0x21205 0x34D8C */
+    hit_anim_start_b(ctx[4], P2_ANIM_211F0, 0x40000000u);   /* 0x2120A..0x21213 0x3C4CC */
+    hit_anim_start_a(ctx[5], DSD(P2_STREAMS_C90F8 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                     0x40000000u);                          /* 0x21218..0x21234 0x3C480 */
+    fighter_18af8();                                        /* 0x21239 */
+    fighter_3c208(ctx[0], (s32)(u32)DSW(P2_DIST_A81B0 + (u32)DSB(ctx[3] + 0x7Au) * 2u));  /* 0x2123E..0x21257 */
+    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));   /* 0x2125C..0x2126D */
+    fighter_3c358(ctx[0]);                                  /* 0x21272..0x2127A */
+    fighter_39a10(ctx[4], 0x29Au);                          /* 0x2127F/0x21283 */
+    fighter_39a10(ctx[5], 0x29Au);                          /* 0x21288..0x21291 */
+    (void)sound_voice((u32)DSW(P2_VOICE_C75AA + (u32)DSB(ctx[3] + 0x7Au) * 2u));   /* 0x21296..0x212AF 0x2C3FC */
+    DSB(ctx[2] + 0x57u) = 2u;                               /* 0x212B8 */
+    DSB(ctx[3] + 0x53u) = 0x0Fu;                            /* 0x212C0 */
+}
+
+/* 0x22588 — record §P2.8. The slot +0x1C callback 0x22938 stores (the dword
+ * at 0x22979; 0x193B0's 0x19505, fn(side)). The context is 0x33950(side).
+ * 0x18AF8; 0x34D8C(the other side); 0x22404(side); 0x3C358(side); the other
+ * slot's +0x5D = 0x44; 0x3C208(side, the signed word 0xA82D8[the other slot's
+ * character]); 0x39A10(each record, 0x29A); the voice 0xC75AA[that character]. */
+void fighter_22588(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x2258C..0x22590 0x33950 */
+    fighter_18af8();                                        /* 0x22595 */
+    hit_flash_pair(ctx[1]);                                 /* 0x2259A/0x2259E 0x34D8C */
+    fighter_22404(ctx[0]);                                  /* 0x225A3/0x225A6 */
+    fighter_3c358(ctx[0]);                                  /* 0x225AB/0x225AE */
+    DSB(ctx[3] + 0x5Du) = 0x44u;                            /* 0x225B7 */
+    fighter_3c208(ctx[0], (s32)(s16)DSW(P2_DIST_A82D8 + (u32)DSB(ctx[3] + 0x7Au) * 2u));   /* 0x225BB..0x225D4 */
+    fighter_39a10(ctx[4], 0x29Au);                          /* 0x225D9..0x225E2 */
+    fighter_39a10(ctx[5], 0x29Au);                          /* 0x225E7..0x225F0 */
+    (void)sound_voice((u32)DSW(P2_VOICE_C75AA + (u32)DSB(ctx[3] + 0x7Au) * 2u));   /* 0x225F5..0x2260E 0x2C3FC */
 }

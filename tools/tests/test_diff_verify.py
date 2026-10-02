@@ -327,7 +327,8 @@ P2_MASKS = {"fighter_237d0": 0, "fighter_2381c": 0, "fighter_3dadc": 0, "fighter
             "fighter_22a00": 0, "fighter_229fc": 0, "fighter_14ef8": 0, "fighter_14f50": 0,
             "fighter_14fa8": 0, "fighter_14ff8": 0, "fighter_150ac": 0,
             "fighter_15478": 0, "fighter_3dcec": 0, "fighter_21114": 0,
-            "fighter_21374": 0, "fighter_22938": 0, "fighter_2116c": 0xFFFFFFFF, "fighter_22510": 0xFFFFFFFF}
+            "fighter_21374": 0, "fighter_22938": 0, "fighter_2116c": 0xFFFFFFFF, "fighter_22510": 0xFFFFFFFF,
+            "fighter_22404": 0, "fighter_211f0": 0, "fighter_22588": 0}
 P2_KINDS = {"fighter_237d0@mutant": {"call #0"}, "fighter_237d0@guard": {"byte", "call #0", "call #1"},
             "fighter_2381c@mutant": {"call #1"}, "fighter_3dadc@mutant": {"call #1 memory"},
             "fighter_3db34@mutant": {"call #0"}, "fighter_3d10c@mutant": {"call #0", "call #1"},
@@ -342,7 +343,10 @@ P2_KINDS = {"fighter_237d0@mutant": {"call #0"}, "fighter_237d0@guard": {"byte",
             "fighter_22938@order": {"call #0 memory", "call #1 memory"},
             "fighter_2116c@mutant": {"call #0"}, "fighter_2116c@unsigned": {"eax", "call #0"},
             "fighter_2116c@eax": {"eax"}, "fighter_22510@mutant": {"call #0"},
-            "fighter_22510@ge": {"eax", "call #0"}}
+            "fighter_22510@ge": {"eax", "call #0"},
+            "fighter_22404@mutant": {"call #1 memory"}, "fighter_22404@signed": {"call #2"},
+            "fighter_211f0@mutant": {"call #2"}, "fighter_211f0@order": {"call #9 memory"},
+            "fighter_22588@mutant": {"call #1"}, "fighter_22588@order": {"call #4 memory"}}
 
 
 @needs_unicorn
@@ -549,6 +553,8 @@ class RealFunctionTests(unittest.TestCase):
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_22510@ge"].problems}), ["j1"])
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_2116c@eax"].problems}),
                          ["k1", "k2", "k4"])
+        # 0x22404's distance is a signed word: only a2's negative entry tells it from a zero-extended one
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_22404@signed"].problems}), ["a2"])
         # 0x3D10C ignores EBX: g3 (rec+0x51 = 1, side 0) alone tells an index by side, and g4 (rec+0x51 = side = 0x80, so the side index agrees there)
         # alone a `movsx` for the `movzx` (plan P2 Task 2 review)
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_3d10c@side"].problems}), ["g3"])
@@ -561,7 +567,9 @@ class RealFunctionTests(unittest.TestCase):
         self.assertEqual(stubs, {0x2C3FC: (), 0x2BC30: ("edx",), 0x3C4CC: ("edx",), 0x3C480: ("edx",),
                                  0x2AE14: ("ebx", "ecx", "edx"), 0x1A570: (), 0x2A17C: ("edx",),
                                  0x188AC: ("edx",), 0x38034: (), 0x34D8C: (),
-                                 0x18C14: ("ebx", "edx", "ebp")})
+                                 0x18C14: ("ebx", "edx", "ebp"), 0x18AF8: ("ebx", "ecx", "edx"),
+                                 0x39834: ("edx", "ebp"), 0x39A10: ("edx",), 0x3C208: ("edx",), 0x3C358: (),
+                                 0x22404: ()})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -654,8 +662,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (18), the 12 without are counted apart
-        self.assertIn("diff-verify: 49/49 functions VERIFIED; 74/74 mutants detected; 1 named gaps; "
-                      "6/36 rows with callees closed (13 have none).", out.getvalue())
+        self.assertIn("diff-verify: 52/52 functions VERIFIED; 80/80 mutants detected; 1 named gaps; "
+                      "6/39 rows with callees closed (13 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

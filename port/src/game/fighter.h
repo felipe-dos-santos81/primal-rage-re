@@ -1192,5 +1192,15 @@ void fighter_22938(u32 slot, u32 rec, u32 side);
 /* §P2.7: the slot +0x18 hooks they store, fn(side) as 0x19020 calls them. */
 u32  fighter_2116c(u32 side);
 u32  fighter_22510(u32 side);
+/* §P2.8: the slot +0x1C callbacks they store, fn(side) as 0x193B0 calls them,
+ * and 0x22588's callee 0x22404 (side); and three callees they stub, no
+ * longer file-local so the harness's mutants can call them: 0x3C480, 0x18AF8
+ * and 0x39834. */
+void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits);
+void fighter_18af8(void);
+void fighter_39834(u32 side, s32 b);
+void fighter_22404(u32 side);
+void fighter_211f0(u32 side);
+void fighter_22588(u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

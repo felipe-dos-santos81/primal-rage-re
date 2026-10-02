@@ -1142,6 +1142,91 @@ static void m_22510_ge(const u32 *r, u32 *eax)         /* `>= 0x14` for `jg` */
     *eax = m_hook(r[R_EAX], 0x000A82C4u, 0x000A82CEu, 4);
 }
 
+/* §P2.8: the slot +0x1C callbacks as 0x193B0 calls them at 0x19505 (EAX = side; 0x19508 reloads EAX), and
+ * 0x22404 as 0x22588 (0x225A6) calls it (0x225AB reloads EAX): mask 0. */
+static void b_22404(const u32 *r, u32 *eax)            { fighter_22404(r[R_EAX]); *eax = 0u; }
+static void b_211f0(const u32 *r, u32 *eax)            { fighter_211f0(r[R_EAX]); *eax = 0u; }
+static void b_22588(const u32 *r, u32 *eax)            { fighter_22588(r[R_EAX]); *eax = 0u; }
+static void m_22404_at(u32 side, int late57, int zext)
+{
+    u32 ctx[6];
+    u32 w;
+    fighter_ctx_same(ctx, side);
+    actors_anim_begin(ctx[4], 0x000E4DEAu, 0x40000000u);
+    if (!late57) DSB(ctx[2] + 0x57u) = 2u;
+    hit_anim_start_a(ctx[5], DSD(0x000C90F8u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x40000000u);
+    if (late57) DSB(ctx[2] + 0x57u) = 2u;
+    w = DSW(0x000A82D8u + (u32)DSB(ctx[3] + 0x7Au) * 2u);
+    fighter_3c208(ctx[0], zext ? (s32)w : (s32)(s16)w);
+    DSB(ctx[3] + 0x53u) = 0x0Au;
+    DSB(ctx[3] + 0x52u) = 9u;
+    DSB(ctx[3] + 0x54u) = 0u;
+    DSD(ctx[3] + 0x10u) = 0u;
+}
+static void m_22404(const u32 *r, u32 *eax)            /* +0x57 = 2 after the 0x3C480 call */
+{
+    m_22404_at(r[R_EAX], 1, 0);
+    *eax = 0u;
+}
+static void m_22404_signed(const u32 *r, u32 *eax)     /* the distance word zero-extended */
+{
+    m_22404_at(r[R_EAX], 0, 1);
+    *eax = 0u;
+}
+static void m_211f0_at(u32 side, int own_char, int early57)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);
+    hit_flash_pair(ctx[0]);
+    hit_anim_start_b(ctx[4], 0x000E1672u, 0x40000000u);
+    hit_anim_start_a(ctx[5], DSD(0x000C90F8u + (u32)DSB(ctx[own_char ? 2 : 3] + 0x7Au) * 4u), 0x40000000u);
+    fighter_18af8();
+    fighter_3c208(ctx[0], (s32)(u32)DSW(0x000A81B0u + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));
+    fighter_3c358(ctx[0]);
+    fighter_39a10(ctx[4], 0x29Au);
+    fighter_39a10(ctx[5], 0x29Au);
+    if (early57) DSB(ctx[2] + 0x57u) = 2u;
+    (void)sound_voice((u32)DSW(0x000C75AAu + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+    DSB(ctx[2] + 0x57u) = 2u;
+    DSB(ctx[3] + 0x53u) = 0x0Fu;
+}
+static void m_211f0(const u32 *r, u32 *eax)            /* the other record's stream by the own character */
+{
+    m_211f0_at(r[R_EAX], 1, 0);
+    *eax = 0u;
+}
+static void m_211f0_order(const u32 *r, u32 *eax)      /* +0x57 = 2 before the voice */
+{
+    m_211f0_at(r[R_EAX], 0, 1);
+    *eax = 0u;
+}
+static void m_22588_at(u32 side, int own_flash, int late5d)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);
+    fighter_18af8();
+    hit_flash_pair(own_flash ? ctx[0] : ctx[1]);
+    fighter_22404(ctx[0]);
+    fighter_3c358(ctx[0]);
+    if (!late5d) DSB(ctx[3] + 0x5Du) = 0x44u;
+    fighter_3c208(ctx[0], (s32)(s16)DSW(0x000A82D8u + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+    if (late5d) DSB(ctx[3] + 0x5Du) = 0x44u;
+    fighter_39a10(ctx[4], 0x29Au);
+    fighter_39a10(ctx[5], 0x29Au);
+    (void)sound_voice((u32)DSW(0x000C75AAu + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+}
+static void m_22588(const u32 *r, u32 *eax)            /* 0x34D8C on the own side */
+{
+    m_22588_at(r[R_EAX], 1, 0);
+    *eax = 0u;
+}
+static void m_22588_order(const u32 *r, u32 *eax)      /* +0x5D after the 0x3C208 call */
+{
+    m_22588_at(r[R_EAX], 0, 1);
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -1267,6 +1352,15 @@ static const binding_t k_bindings[] = {
     { "fighter_2116c@eax",        m_2116c_eax,    0xFFFFFFFFu },
     { "fighter_22510@mutant",     m_22510,        0xFFFFFFFFu },
     { "fighter_22510@ge",         m_22510_ge,     0xFFFFFFFFu },
+    { "fighter_22404",            b_22404,        0x00000000u },
+    { "fighter_211f0",            b_211f0,        0x00000000u },
+    { "fighter_22588",            b_22588,        0x00000000u },
+    { "fighter_22404@mutant",     m_22404,        0x00000000u },
+    { "fighter_22404@signed",     m_22404_signed, 0x00000000u },
+    { "fighter_211f0@mutant",     m_211f0,        0x00000000u },
+    { "fighter_211f0@order",      m_211f0_order,  0x00000000u },
+    { "fighter_22588@mutant",     m_22588,        0x00000000u },
+    { "fighter_22588@order",      m_22588_order,  0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
