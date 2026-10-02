@@ -281,6 +281,34 @@ SCENARIOS['gp-keys-fight'] = dict(time_limit=90, extra=KEYS_EXTRA, steps=(
 ))
 
 
+# Gameplay U8 (plan 2026-10-01-gameplay-u8-other-modes.md, record
+# 2026-10-01-gameplay-u8-derivations.md §U8.3): START MENU rows 1..6 and the
+# attract start. The walk: the mode-3 Enter (MAIN MENU on "Start"), the Enter
+# that opens START MENU on row 0 (0x2CB74 -> 0x2FFC4(0xBCCCC)), one p1.down per
+# row (menu_step 0x3055E: the level edge of 0x40004000) or, for row 6, one p1.up
+# (0x30511..0x3052F: row -1 wraps to the count, 7), then the Enter that runs the
+# row's setter (0x3046F..0x304A2). Harness values: U4's 150-frame gap; 60-frame
+# gaps and a 4-frame hold (one level edge: the hold is under the 0x1E-frame
+# repeat delay that 0x251C6..0x251DA re-arms every mode-0x27 frame); the end 300
+# frames into the reach mode; time_limit = U4's wall timeline (§U8.6) + 6 s.
+def _u8_menu(moves, reach, time_limit):
+    steps = (('boot', ENTER_WAIT, ('key', 'enter')),
+             ('after_mode', 0x27, 150, ('key', 'enter')))
+    steps += tuple(('after', 60, ('pad', (m,), 4)) for m in moves)
+    steps += (('after', 60, ('key', 'enter')), ('until_mode', reach, 300))
+    return dict(time_limit=time_limit, steps=steps)
+
+
+SCENARIOS['gp-u8-right-arcade'] = _u8_menu(('p1.down',), 6, 66)          # row 1, mode 0x2E
+SCENARIOS['gp-u8-left-training'] = _u8_menu(('p1.down',) * 2, 6, 67)     # row 2, mode 0x28
+SCENARIOS['gp-u8-right-training'] = _u8_menu(('p1.down',) * 3, 6, 68)    # row 3, mode 0x29
+SCENARIOS['gp-u8-tug-of-war'] = _u8_menu(('p1.down',) * 4, 6, 69)        # row 4, mode 0x2A
+# Row 5, mode 0x2B: the team select 0x44798 has no time-out (§U8.4), so the
+# scenario ends 300 frames into mode 0x10.
+SCENARIOS['gp-u8-endurance'] = _u8_menu(('p1.down',) * 5, 0x10, 46)
+SCENARIOS['gp-u8-handicap'] = _u8_menu(('p1.up',), 6, 66)                # row 6, mode 0x2C
+
+
 def expand(action):
     """An action -> [(name, scan, bios_word, hold_frames)]."""
     if action[0] == 'key':
@@ -366,7 +394,15 @@ class Schedule:
 # checks up to the X record; the port replay's script ends there, so a capture
 # frame past it is unexplained either way; gp-twop-oracle pins N and F at or
 # before it), so the ~23 s of idle fight the 70 s limit leaves would only cost bytes.
-STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop'})
+# The six gp-u8 START MENU rows (record §U8.12) stop too: their frame N is the
+# capture frame after the port replay's last frame (the replay ends at the
+# script's end) and F the replay's end + 1, so nothing later is compared, and
+# the 60-frame tail still holds the frames past the end that N names; ENDURANCE
+# ends 300 frames into its team select (D3), where the idle tail is a still
+# screen. The attract start (Task 4) decides separately.
+STOP_AT_END = frozenset({'gp-u6-moves', 'gp-u6-moves-b', 'gp-twop',
+                         'gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
+                         'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap'})
 
 
 class ScriptError(Exception):

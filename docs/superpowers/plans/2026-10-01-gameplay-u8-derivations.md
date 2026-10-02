@@ -481,3 +481,22 @@ Mutations (each alone, restored after; `PYTHONDONTWRITEBYTECODE=1`):
 - M2 the credits line -> `ok = after is not None`: `FAIL: test_divert_and_credits_are_checked` (`failures=1`).
 - M3 `if want['stay']:` -> `if False:`: `FAIL: test_endurance_must_stay_in_the_team_select` (`failures=1`).
 - M4 `r['ent'] - off == START_ENTRY` -> `True`: `FAIL: test_start_menu_must_be_open` (`failures=1`).
+
+## §U8.12 The six START MENU row scenarios (Task 2)
+
+`gp_session._u8_menu(moves, reach, time_limit)` and six `SCENARIOS` entries, inserted before `def expand` after the `gp-keys-fight` block (the base moved since the plan's `8eaf25a` anchor: U6b, U11 and U7 added their scenarios first; re-anchored by content, no code invented). Source of every value: §U8.3 (the walk: Enter, Enter, k x `p1.down` or one `p1.up`, Enter) and §U8.6 (the time limits `65 + k`, ENDURANCE 46); the gaps (150, 60), the 4-frame hold and the 300-frame tail are harness values.
+
+| scenario | row | moves | reach | time_limit | STOP_AT_END |
+|---|---|---|---|---|---|
+| `gp-u8-right-arcade` | 1 | 1 x `p1.down` | 6 | 66 | yes |
+| `gp-u8-left-training` | 2 | 2 x `p1.down` | 6 | 67 | yes |
+| `gp-u8-right-training` | 3 | 3 x `p1.down` | 6 | 68 | yes |
+| `gp-u8-tug-of-war` | 4 | 4 x `p1.down` | 6 | 69 | yes |
+| `gp-u8-endurance` | 5 | 5 x `p1.down` | 0x10 | 46 | yes |
+| `gp-u8-handicap` | 6 | 1 x `p1.up` (the wrap) | 6 | 66 | yes |
+
+STOP_AT_END decision (the controller's ruling: opt in unless a later task compares frames after the script's end; plan Tasks 3 and 6 read). Per scenario the answer is the same, no frame past the script's end is compared: Task 3's `gp-modes-one` runs `gp_compare` with the port dump of a replay that ends at the script's end (`--end` only when a stall cuts it earlier); Task 6 Step 5 pins `N` as the first unexplained capture frame, which for a replay that ran to its end is the capture frame after the port's last frame ("how far the port got, not a divergence", the plan's own wording, `GP_CHARSEL_MIN_FIRST = 516` and Task 3 Step 4's 1070), `F` as the replay's last `T` frame + 1 (an exact pin), `MAX_START` the window start, and the capture sha/frame count (the pin of the capture as recorded, including its 60-frame tail). `gp_capture.STOP_TAIL` = 60 game frames after the `X` record keeps the capture frames past the port's last frame that `N` names (the same arrangement as `gp-twop`, `gp-u6-moves`). So the six row scenarios are in `STOP_AT_END`: rows 1-4 and 6 save the idle fight's remainder of the time limit, ENDURANCE ends in its team select 300 frames in (D3) where the tail is a still screen. `gp-u8-attract-start` (Task 4) decides separately; it is not added here. Test: `test_gp_capture.TestStopAtEnd.test_opt_in_scenarios` gained six `assertIn` lines (the existing opt-in pattern; its loop already asserts each member ends in an `until_mode` or `end` step).
+
+Tests: `tools.tests.test_gp_modes` `Ran 11 tests ... OK` (the plan's 11); the per-task gate `test_gp_modes test_gp_session test_gp_capture test_gp_compare` `Ran 103 tests OK`; verify's k11/gp line nine modules `Ran 171` plus `test_gp_twop` and `test_gp_modes` = `Ran 195` OK on this base. `port_progress.py`: `771 1203 64` / `731 731 100`, unchanged.
+
+Mutations: `gp-u8-handicap` `_u8_menu(('p1.up',), 6, 66)` -> `_u8_menu(('p1.down',) * 6, 6, 66)`: `FAIL: test_every_row_has_a_scenario_and_the_walk_is_derived`; dropping `gp-u8-endurance` from `STOP_AT_END`: `FAIL: test_opt_in_scenarios` (`'gp-u8-endurance' not found in frozenset(...)`). Both restored.

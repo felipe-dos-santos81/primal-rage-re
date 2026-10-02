@@ -137,5 +137,32 @@ class TestCheck(unittest.TestCase):
         self.assertIn('the row mode 0x2E appears', _failed(gm.check('gp-u8-right-arcade', L)))
 
 
+class TestScenarios(unittest.TestCase):
+    def test_every_row_has_a_scenario_and_the_walk_is_derived(self):
+        # START MENU opens on row 0 (spec §3.3); row k is k p1.down, row 6 one p1.up (the wrap)
+        for name, w in gm.ROWS.items():
+            if name == 'gp-idle-loss' or w['mode'] is None:
+                continue
+            steps = gs.SCENARIOS[name]['steps']
+            acts = [st[-1] for st in steps if isinstance(st[-1], tuple)]
+            want = [('pad', ('p1.up',), 4)] if w['row'] == 6 else [('pad', ('p1.down',), 4)] * w['row']
+            self.assertEqual([a for a in acts if a[0] == 'pad'], want, name)
+            self.assertEqual([a for a in acts if a[0] == 'key'], [('key', 'enter')] * 3, name)
+            self.assertEqual(steps[-1], ('until_mode', w['reach'], 300), name)
+
+    def test_row_schedule_fires_the_walk(self):
+        s = gs.Schedule(gs.SCENARIOS['gp-u8-tug-of-war']['steps'])
+        self.assertEqual(s.due_boot(gs.ENTER_WAIT), [(0, ('key', 'enter'))])
+        s.on_mode(0x141, 0x27)
+        self.assertEqual(s.due(0x141 + 149), [(1, ('key', 'enter'))])
+        got = [s.due(0x141 + 149 + 60 * k) for k in range(1, 6)]
+        self.assertEqual(got, [[(k + 1, ('pad', ('p1.down',), 4))] for k in range(1, 5)] + [[(6, ('key', 'enter'))]])
+        s.on_mode(0x303, 0x2A)
+        s.on_mode(0x328, 0x10)
+        self.assertIsNone(s.end_frame)
+        s.on_mode(0x875, 6)
+        self.assertEqual((s.end_frame, s.fired, s.total), (0x875 + 300, 7, 7))
+
+
 if __name__ == '__main__':
     unittest.main()
