@@ -543,3 +543,31 @@ Fixed-up image (`build/diffrun --exe data/game/C/PRAGE.EXE --image-out`, capston
 `gp-u5-charsel` in `tools/gp_session.py` and the U5 record §C5.4 ("The time-out") cited `0x437C6`
 for the `0xF`; both corrected in this commit. Neither changes a pinned value (the earliest time-out
 stays 14 x 64 = 896 frames).
+
+## §T.6 The two-human check (Task 2)
+
+`tools/gp_twop.py` (`pad_word`, `classify`, `load`, `two_human`, `mode_path`; CLI `check|path`),
+`tools/tests/test_gp_twop.py` gains `TestTwoHuman` (10 tests; the file has 12). The fixtures build from
+`gs.SNAP_FIELDS` (U6b's five fields included), and the check ran on a real port `trace.txt` (the
+`gp-idle-loss` replay's, whose `T` lines carry U11's `lat spz mpz` after `s0_43`): the extra fields do
+not matter (`b1f never reaches 3`, as for a one-player run). Before the module:
+`ModuleNotFoundError: No module named 'gp_twop'` (1 error); after, the four gp suites
+`Ran 104 tests … OK` (B = 92 + 12).
+
+Mutations (each alone, restored after; `PYTHONDONTWRITEBYTECODE=1`):
+
+| mutation | result |
+|---|---|
+| `pad_word` side test `== 0` -> `== 1` | FAIL `test_pad_word_is_0x4f644`, `test_a_two_human_match_passes`, `test_a_side_that_never_pressed_fails` |
+| `if r['b1f'] != 3 and` -> `if False and` | ERROR `test_b1f_dropping_after_the_join_fails` |
+| `end = None if xrec is None else xrec['f']` -> `end = None` | FAIL `test_a_two_human_match_passes`, `test_records_after_the_end_are_not_checked` |
+| `if out['pressed'][side] == 0:` -> `if False:` | FAIL `test_a_side_that_never_pressed_fails` |
+| `r['mode'] == 5 and e in ENTRANCE_WORDS` -> `e in ENTRANCE_WORDS` | ERROR `test_the_entrance_word_is_allowed_in_mode_5_only` |
+| the T -> S line rewrite in `load` -> `pass` | FAIL `test_a_port_trace_reads_as_s_records` |
+| `mode_path`'s `r['mode'] != prev` dropped | FAIL `test_mode_path` |
+
+Control (`check` on the one-player captures): `gp-idle-loss`, `gp-pads`, `gp-idle-loss-run2` each print
+`gp_twop: <name>: FAIL: b1f never reaches 3 (no S record has both sides human)`, rc=1. `path` on
+`gp-idle-loss`: `poll.log:4 f=4 mode=3 b1f=0 cred=5`, `:324 f=141 mode=27 b1f=0 cred=5`,
+`:633 f=26F mode=1A b1f=1 cred=4`, `:652 f=281 mode=1B b1f=1 cred=4`, `:671 f=293 mode=10 b1f=1 cred=4`
+(then `:1613 f=640 mode=1A b1f=1 cred=4`).
