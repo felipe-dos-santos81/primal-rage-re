@@ -44516,3 +44516,478 @@ static void check_u6b_231c0(void)
 }
 
 int test_u6b_231c0(void)        { return u6b_run(check_u6b_231c0); }
+
+/* ---- track P batch 1 (record 2026-10-02-reverse-p1-derivations.md) ----------
+ * The finisher entries and their +0x0C callbacks. Differential verification
+ * (tools/diff_verify.py, P1_SPECS) is the behavioural oracle; these checks pin
+ * what it does not see: the registrations and the image references that make
+ * 0x379C4 and 0x3531C reach each function, and one seeded run through the
+ * registration with sentinels on every store. */
+
+typedef int (*p1_entry_fn)(u32 slot, u32 rec);
+
+/* §P1.5: one finisher entry through its registration, as 0x379C4 calls it
+ * (slot, rec): the stream head patched to a plain frame id (0x2BC30 stops on
+ * it), sentinels on every slot field it stores, +0x42 = 0x21. */
+static void p1_check_finisher(u32 addr, void (*fn)(void), u32 table_dw, u32 stream,
+                              u32 st53, u32 cb0c, int or42, u32 voice)
+{
+    p1_entry_fn e;
+    CHECK(fn_resolve(addr) == fn, "the finisher entry is registered");
+    CHECK_EQ_INT((int)DSD(table_dw), (int)addr);
+    e = (p1_entry_fn)(void *)fn_resolve(addr);
+    z_fseed();
+    DSW(stream) = 0x12B1u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    DSB(Z_S0 + 0x57u) = 0x33u;
+    DSB(Z_S0 + 0x42u) = 0x21u;
+    DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSD(Z_S0 + 0x14u) = 0x14141414u;
+    DSD(Z_S0 + 0x18u) = 0x18181818u;
+    DSD(Z_S0 + 0x1Cu) = 0x1C1C1C1Cu;
+    sound_voice_log_reset();
+    CHECK(e != NULL && e(Z_S0, Z_R0) != 0, "the finisher entry returns non-zero");
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), (int)stream);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), (int)st53);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), (int)cb0c);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x14u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x42u), or42 ? 0x29 : 0x21);
+    CHECK_EQ_INT((int)sound_voice_log_count(), voice ? 1 : 0);
+    if (voice) CHECK_EQ_INT((int)sound_voice_log_at(0), (int)voice);
+    sound_voice_log_reset();
+}
+
+/* §P1.6: 0x23BF8 through its registration. Stage 1 (flag byte 0) returns 0
+ * with nothing stored; stage 0x105 (its flag byte poked 0) returns 0x100;
+ * stage 0 (threshold 0x2600) with the side's actor word bit 15 clear and
+ * rec+0x18 = 0x2000 takes the far stream 0xE19E6; with bit 15 set and
+ * rec+0x18 = 0x2000 the near stream 0xE1A06. */
+static void p1_check_23bf8(void)
+{
+    p1_entry_fn e;
+    u32 aw;
+    CHECK(fn_resolve(0x23BF8u) == (void (*)(void))fighter_23bf8, "0x23BF8 is registered");
+    CHECK_EQ_INT((int)DSD(0x000BDAFCu), 0x00023BF8);
+    e = (p1_entry_fn)(void *)fn_resolve(0x23BF8u);
+    if (e == NULL) return;
+    z_fseed();
+    DSW(0x000E19E6u) = 0x12B2u;
+    DSW(0x000E1A06u) = 0x12B3u;
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSD(Z_R0 + 0x18u) = 0x2000u;
+    DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSW(DS_00104AFC) = 1u;
+    CHECK_EQ_INT(e(Z_S0, Z_R0), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x0C0C0C0C);
+    DSW(DS_00104AFC) = 0x105u;
+    DSB(0x000A83C4u + 0x105u) = 0u;
+    CHECK_EQ_INT(e(Z_S0, Z_R0), 0x100);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x0C0C0C0C);
+    DSW(DS_00104AFC) = 0u;
+    aw = DSD(DS_001014EC) + (u32)DSW(Z_R0 + 0x56u) * 0x20u;
+    DSW(aw) = 0x0F35u;
+    CHECK_EQ_INT(e(Z_S0, Z_R0), 1);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000E19E6);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x00023B68);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 7);
+    DSW(aw) = 0x8F35u;
+    DSD(Z_R0 + 0x18u) = 0x2000u;
+    CHECK_EQ_INT(e(Z_S0, Z_R0), 1);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000E1A06);
+}
+
+/* §P1.6: 0x402FC through its registration on side 1: the word 0x1080A2 = 0
+ * (0x1080A0 kept), the slot 9/7/2 with the +0x0C callback 0x401D4, +0x57/
+ * +0x18/+0x1C = 0, +0x14 and +0x42 kept. */
+static void p1_check_402fc(void)
+{
+    p1_entry_fn e;
+    CHECK(fn_resolve(0x402FCu) == (void (*)(void))fighter_402fc, "0x402FC is registered");
+    CHECK_EQ_INT((int)DSD(0x000BDB00u), 0x000402FC);
+    e = (p1_entry_fn)(void *)fn_resolve(0x402FCu);
+    if (e == NULL) return;
+    z_fseed();
+    DSW(0x000E7C40u) = 0x12B4u;
+    DSB(Z_R1 + 0x51u) = 1u;
+    DSW(0x001080A0u) = 0xA0A0u;
+    DSW(0x001080A2u) = 0xA2A2u;
+    DSB(Z_S1 + 0x54u) = 0x44u;
+    DSB(Z_S1 + 0x57u) = 0x33u;
+    DSD(Z_S1 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSD(Z_S1 + 0x14u) = 0x14141414u;
+    DSD(Z_S1 + 0x18u) = 0x18181818u;
+    DSD(Z_S1 + 0x1Cu) = 0x1C1C1C1Cu;
+    DSB(Z_S1 + 0x42u) = 0x42u;
+    CHECK_EQ_INT(e(Z_S1, Z_R1), 1);
+    CHECK_EQ_INT((int)DSW(0x001080A0u), 0xA0A0);
+    CHECK_EQ_INT((int)DSW(0x001080A2u), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0x000401D4);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x14u), 0x14141414);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x42u), 0x42);
+}
+
+static void p1_check_finishers(void)
+{
+    p1_check_finisher(0x1567Cu, (void (*)(void))fighter_1567c, 0x000BDAF0u, 0x000D32A8u,
+                      7u, 0x00015584u, 1, 0xAFu);
+    p1_check_finisher(0x15908u, (void (*)(void))fighter_15908, 0x000BDB0Cu, 0x000D3334u,
+                      7u, 0x0001579Cu, 1, 0xAFu);
+    p1_check_finisher(0x23EC0u, (void (*)(void))fighter_23ec0, 0x000BDB18u, 0x000E1B24u,
+                      7u, 0x00023D38u, 0, 0xAAu);
+    p1_check_finisher(0x45D14u, (void (*)(void))fighter_45d14, 0x000BDB10u, 0x000EB876u,
+                      3u, 0u, 0, 0u);
+    p1_check_23bf8();
+    p1_check_402fc();
+}
+
+int test_p1_finishers(void)     { return u6b_run(p1_check_finishers); }
+
+typedef void (*p1_cb_fn)(u32 slot, u32 rec, u32 side);
+
+/* §P1.8: the three +0x0C callbacks the finisher entries store, through their
+ * registrations as 0x3531C case 7 calls them (slot 0, its record, side 0; the
+ * other slot is slot 1, whose +4 points at FIGHT_RECS + 0x200). */
+static void p1_check_callbacks_a(void)
+{
+    u32 tgt = FIGHT_RECS + 0x200u;
+    p1_cb_fn f;
+    CHECK(fn_resolve(0x15584u) == (void (*)(void))fighter_15584, "0x15584 is registered");
+    CHECK(fn_resolve(0x1579Cu) == (void (*)(void))fighter_1579c, "0x1579C is registered");
+    CHECK(fn_resolve(0x23D38u) == (void (*)(void))fighter_23d38, "0x23D38 is registered");
+    CHECK_EQ_INT((int)DSD(0x0001569Fu), 0x00015584);
+    CHECK_EQ_INT((int)DSD(0x0001592Bu), 0x0001579C);
+    CHECK_EQ_INT((int)DSD(0x00023EE3u), 0x00023D38);
+
+    /* 0x15584 case 3: 0x420 - 0x40 = 0x3E0 is at most 0x400: set 0x400, step
+     * +0x57, copy to the other slot's +4 record; then case 5. */
+    f = (p1_cb_fn)(void *)fn_resolve(0x15584u);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(Z_S1 + 4u) = tgt;
+    DSW(tgt + 0x2Cu) = 0xCCCCu;
+    DSW(DSD(Z_S1) + 0x2Cu) = 0x0420u;
+    DSB(Z_S0 + 0x57u) = 3u;
+    f(Z_S0, DSD(Z_S0), 0u);
+    CHECK_EQ_INT((int)DSW(DSD(Z_S1) + 0x2Cu), 0x400);
+    CHECK_EQ_INT((int)DSW(tgt + 0x2Cu), 0x400);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 4);
+    DSB(Z_S0 + 0x57u) = 5u;
+    f(Z_S0, DSD(Z_S0), 0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 3);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(DS_000F0AFE), 4);
+    CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
+
+    /* 0x1579C case 3 above 0x400: 0x500 - 0x40 = 0x4C0 is copied, +0x57 kept. */
+    f = (p1_cb_fn)(void *)fn_resolve(0x1579Cu);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(Z_S1 + 4u) = tgt;
+    DSW(tgt + 0x2Cu) = 0xCCCCu;
+    DSW(DSD(Z_S1) + 0x2Cu) = 0x0500u;
+    DSB(Z_S0 + 0x57u) = 3u;
+    f(Z_S0, DSD(Z_S0), 0u);
+    CHECK_EQ_INT((int)DSW(tgt + 0x2Cu), 0x4C0);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
+
+    /* 0x23D38 case 0, the record's +0x28 bit 14 clear: rec+0x18 = 0xC000 lies
+     * below DS_000F0AF0 - 0x3000 = 0xD000, so it moves to 0x13000. */
+    f = (p1_cb_fn)(void *)fn_resolve(0x23D38u);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(DS_000F0AF0) = 0x10000u;
+    DSW(Z_R0 + 0x28u) = 0u;
+    DSD(Z_R0 + 0x18u) = 0xC000u;
+    DSB(Z_S0 + 0x57u) = 0u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x18u), 0x13000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
+}
+
+/* §P1.9: 0x23B68 and 0x401D4 through their registrations, and 0x38034
+ * through 0x401D4's case 3 (sc_seed's pool, so 0x38034's spawn runs). */
+static void p1_check_callbacks_b(void)
+{
+    u32 tgt = FIGHT_RECS + 0x200u;
+    p1_cb_fn f;
+    CHECK(fn_resolve(0x23B68u) == (void (*)(void))fighter_23b68, "0x23B68 is registered");
+    CHECK(fn_resolve(0x401D4u) == (void (*)(void))fighter_401d4, "0x401D4 is registered");
+    CHECK_EQ_INT((int)DSD(0x00023C75u), 0x00023B68);
+    CHECK_EQ_INT((int)DSD(0x0004033Du), 0x000401D4);
+    CHECK_EQ_INT((int)(DSD(0x000402A8u) + 0x402ACu), 0x00038034);   /* 0x402A7's rel32 */
+
+    /* 0x23B68 with +0x57 = 1 and rec+0x1C set: 0x400000 / 3 = 0x155555 into
+     * both words +0x2C; nothing else (DS_001078FC kept). */
+    f = (p1_cb_fn)(void *)fn_resolve(0x23B68u);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(Z_S0 + 4u) = tgt;
+    DSW(tgt + 0x2Cu) = 0xCCCCu;
+    DSB(Z_S0 + 0x57u) = 1u;
+    DSD(Z_R0 + 0x30u) = 0x00030000u;
+    DSD(Z_R0 + 0x1Cu) = 0x77u;
+    DSB(DS_001078FC) = 0xFCu;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x2Cu), 0x5555);
+    CHECK_EQ_INT((int)DSW(tgt + 0x2Cu), 0x5555);
+    CHECK_EQ_INT((int)DSB(DS_001078FC), 0xFC);
+
+    /* 0x401D4 case 0, the word +0x36 negative: 0xFFFF, +0x44 = 0x3C, +0x57 = 1. */
+    f = (p1_cb_fn)(void *)fn_resolve(0x401D4u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_S0 + 0x57u) = 0u;
+    DSW(Z_R0 + 0x36u) = 0x8000u;
+    DSW(Z_R0 + 0x44u) = 0x4444u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0xFFFF);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x44u), 0x3C);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
+
+    /* 0x401D4 case 3 with DS_00105B3A = 2 (no spawn of its own): 0x38034 on
+     * side 1 (character 4) starts that side's record on 0xBDD00[4] at 1.0 and
+     * spawns; the voices 0x46 then 0x6C; the slot 3/9, DS_001078FC = 1. */
+    sc_seed(2u, 4u, 0);
+    DSW(DSD(0x000BDD00u + 4u * 4u)) = 0x12B5u;
+    DSB(DS_001078FD) = 1u;
+    DSB(DS_00105B3A) = 2u;
+    DSB(DS_001078FC) = 0xFCu;
+    DSB(Z_S0 + 0x57u) = 3u;
+    DSB(Z_S0 + 0x53u) = 0x55u;
+    DSB(Z_S0 + 0x52u) = 0x55u;
+    sound_voice_log_reset();
+    f(Z_S0, DSD(Z_S0), 0u);
+    CHECK_EQ_INT((int)DSD(DSD(Z_S1) + 8u), (int)DSD(0x000BDD00u + 4u * 4u));
+    CHECK_EQ_INT((int)DSD(DSD(Z_S1) + 0x24u), 0x3F800000);
+    CHECK_EQ_INT((int)sound_voice_log_count(), 2);
+    CHECK_EQ_INT((int)sound_voice_log_at(0), 0x46);
+    CHECK_EQ_INT((int)sound_voice_log_at(1), 0x6C);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 3);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
+    sound_voice_log_reset();
+}
+
+static void p1_check_callbacks(void)
+{
+    p1_check_callbacks_a();
+    p1_check_callbacks_b();
+}
+
+int test_p1_callbacks(void)     { return u6b_run(p1_check_callbacks); }
+
+/* §P1.12 (final review I4): the 0xD100 targets of the finisher streams.
+ * Each through its registration as the dispatcher's opcode 0x11 calls it
+ * (rec, the operand word), with sentinels on every store; then the
+ * finishers whose callbacks wait on them, run on their real streams. */
+typedef void (*p1_anim_fn)(u32 rec, u32 arg);
+
+static void p1_check_anim_leaves(void)
+{
+    p1_anim_fn f;
+    u32 k;
+    static const u32 dw[] = { 0x000D32BEu, 0x000D32D6u, 0x000D3326u, 0x000D334Au, 0x000D3362u,
+                              0x000E1BE2u, 0x000EB83Au, 0x000EDCA4u };
+    for (k = 0; k < sizeof dw / sizeof dw[0]; k++) {
+        CHECK_EQ_INT((int)DSW(dw[k] - 2u), 0xD100);
+        CHECK_EQ_INT((int)DSD(dw[k]), 0x000156D4);
+    }
+    CHECK_EQ_INT((int)DSD(0x000E1A4Eu), 0x00023CA4);
+    CHECK_EQ_INT((int)DSD(0x000E1B32u), 0x00023868);
+    CHECK_EQ_INT((int)DSW(0x000E1B36u), 2);                 /* its operand word */
+    CHECK_EQ_INT((int)DSD(0x000E7C6Eu), 0x0003F174);
+
+    /* 0x156D4: no owner slot, nothing; with one, its +0x57 steps (a byte). */
+    f = (p1_anim_fn)(void *)fn_resolve(0x156D4u);
+    CHECK(f != NULL, "0x156D4 is registered");
+    if (f == NULL) return;
+    z_fseed();
+    DSD(Z_R0 + 0x14u) = 0u;
+    DSB(Z_R0 + 0x57u) = 0x57u;
+    DSB(Z_S0 + 0x57u) = 0x33u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x57u), 0x57);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0x33);
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0x34);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x57u), 0x57);
+    DSB(Z_S0 + 0x57u) = 0xFFu;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0);
+
+    /* 0x23CA4 on side 0 (the other side's slot DS_001077AC set), stage 2
+     * (0xA83CC[2] = 0x6000), rec+0x18 = 0x7000: (-0x1000) / 0x48 = -56. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x23CA4u);
+    CHECK(f != NULL, "0x23CA4 is registered");
+    if (f == NULL) return;
+    z_fseed();
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSD(Z_R0 + 0x18u) = 0x7000u;
+    DSW(DS_00104AFC) = 2u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    DSB(Z_S0 + 0x57u) = 0x33u;
+    DSW(Z_R0 + 0x34u) = 0x3434u;
+    DSW(Z_R0 + 0x36u) = 0x3636u;
+    DSW(Z_R0 + 0x38u) = 0x3838u;
+    DSW(Z_R0 + 0x44u) = 0x4444u;
+    DSB(DS_000F0AFE) = 0x55u;
+    DSB(DS_000F0AFF) = 0x55u;
+    f(Z_R0, 0x1234u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0xFFC8);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0x200);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x38u), 0x28);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x44u), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0);
+    CHECK_EQ_INT((int)DSB(DS_000F0AFF), 0);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0x34);
+    /* the other side's slot pointer 0: nothing */
+    DSD(DS_001077A8 + 4u) = 0u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    f(Z_R0, 0x1234u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0x44);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 0x34);
+
+    /* 0x3F174: the words +0x36 = 0x280, +0x44 = 0x20, nothing else. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x3F174u);
+    CHECK(f != NULL, "0x3F174 is registered");
+    if (f == NULL) return;
+    DSW(Z_R0 + 0x34u) = 0x3434u;
+    DSW(Z_R0 + 0x36u) = 0x3636u;
+    DSW(Z_R0 + 0x44u) = 0x4444u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0x3434);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0x280);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x44u), 0x20);
+
+    /* m7: 0x23B68 with a zero divisor (rec+0x30 >> 16 = 0) leaves both words
+     * +0x2C as they were (§P1.10's PORT); rec+0x1C set, so nothing else. */
+    z_fseed();
+    DSD(Z_S0 + 4u) = FIGHT_RECS + 0x200u;
+    DSW(FIGHT_RECS + 0x200u + 0x2Cu) = 0xCCCCu;
+    DSW(Z_R0 + 0x2Cu) = 0xABCDu;
+    DSB(Z_S0 + 0x57u) = 1u;
+    DSD(Z_R0 + 0x30u) = 0x0000FFFFu;
+    DSD(Z_R0 + 0x1Cu) = 0x77u;
+    fighter_23b68(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x2Cu), 0xABCD);
+    CHECK_EQ_INT((int)DSW(FIGHT_RECS + 0x200u + 0x2Cu), 0xCCCC);
+}
+
+/* 0x23868 through its registration on the pool (real spawns): operand 0
+ * (0xA8364[0] = 0xC0), the record's +0x28 bit 14 clear: the held record at
+ * x - 0xC00 with +0x34 = -0xC0, its +0x14 the slot, the slot's +8 it; the
+ * second record (not the held one) +0x59 = 2, +0x60 = 1, and rec+0x4B its
+ * pool index (+0x56). */
+static void p1_check_anim_23868(void)
+{
+    static u32 before[0x80];
+    p1_anim_fn f = (p1_anim_fn)(void *)fn_resolve(0x23868u);
+    u32 n, e, e2 = 0u, r, x;
+    CHECK(f != NULL, "0x23868 is registered");
+    if (f == NULL) return;
+    sh_seed(Z_S0, Z_S1, Z_R0, Z_R1);
+    c4r_pool();
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSW(Z_R0 + 0x28u) = 0u;
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSD(Z_R0 + 0x18u) = 0x5000u;
+    DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+    DSD(Z_S0 + 8u) = 0x08080808u;
+    n = u6b_list(before, 0x80u);
+    f(Z_R0, 0u);
+    e = DSD(Z_S0 + 8u);
+    CHECK(e != 0x08080808u && e != 0u, "the slot's +8 holds the spawned record");
+    x = 0u;
+    for (r = actor_list_head(); r != 0; r = actor_next(r)) {
+        u32 k;
+        for (k = 0; k < n && before[k] != r; k++) {}
+        if (k == n && r != e) { e2 = r; x++; }
+    }
+    CHECK_EQ_INT((int)x, 1);                                /* one record besides the held one */
+    if (e == 0x08080808u || e == 0u || e2 == 0u) return;
+    CHECK_EQ_INT((int)DSD(e + 0x18u), 0x4400);
+    CHECK_EQ_INT((int)DSW(e + 0x34u), 0xFF40);
+    CHECK_EQ_INT((int)DSD(e + 0x14u), (int)Z_S0);
+    CHECK_EQ_INT((int)DSB(e2 + 0x59u), 2);
+    CHECK_EQ_INT((int)DSB(e2 + 0x60u), 1);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(e2 + 0x56u));
+    CHECK(DSB(e + 0x59u) != 2u || DSB(e + 0x60u) != 1u, "the held record is not the second one");
+}
+
+/* The finishers on their real streams (record §P1.12): slot 0 runs the
+ * entry, then each frame its record syncs (actor_sync walks the stream and
+ * dispatches the 0xD100 targets) and, while +0x53 is 7, the +0x0C callback
+ * runs as 0x3531C case 7 calls it. The victim (slot 1, character 2) has the
+ * word +0x2C 0x1000, so 0x15584/0x1579C case 3 clamps after 48 frames.
+ * Returns the frame +0x53 leaves 7, or -1. */
+static int p1_run_finisher(u32 addr, u32 c0)
+{
+    p1_entry_fn e = (p1_entry_fn)(void *)fn_resolve(addr);
+    int f;
+    if (e == NULL) return -2;
+    sh_seed(Z_S0, Z_S1, Z_R0, Z_R1);
+    c4r_pool();
+    DSB(Z_S0 + 0x7Au) = (u8)c0;
+    DSB(Z_S1 + 0x7Au) = 2u;
+    DSD(DS_001077A8) = Z_S0;
+    DSD(DS_001077A8 + 4u) = Z_S1;
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSD(Z_R1 + 0x14u) = Z_S1;
+    DSW(Z_R1 + 0x2Cu) = 0x1000u;
+    if (e(Z_S0, Z_R0) == 0) return -3;
+    for (f = 0; f < 600; f++) {
+        actor_sync(Z_R0);
+        actor_sync(Z_R1);
+        if (DSB(Z_S0 + 0x53u) != 7u) return f;
+        {
+            p1_cb_fn cb = (p1_cb_fn)(void *)fn_resolve(DSD(Z_S0 + 0xCu));
+            if (cb) cb(Z_S0, DSD(Z_S0), 0u);
+        }
+        if (DSB(Z_S0 + 0x53u) != 7u) return f;
+    }
+    return -1;
+}
+
+static void p1_check_anim_finishers(void)
+{
+    /* 0x1567C (0xD32A8): +0x57 steps 0 -> 1 at 0x156D4 (0xD32BC; case 1 takes
+     * it to 2), 2 -> 3 at 0xD32D4, 3 -> 4 by case 3's clamp, 4 -> 5 at 0xD3324:
+     * case 5 ends the finisher (+0x53 = 3). Without 0x156D4 it stays 0. */
+    CHECK(p1_run_finisher(0x1567Cu, 3u) >= 0, "0x1567C's finisher ends");
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 5);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 3);
+    /* 0x15908 (0xD3334): 0x156D4 at 0xD3348 and 0xD3360, then 0x1579C's case 3
+     * ends it with +0x57 at 3. */
+    CHECK(p1_run_finisher(0x15908u, 3u) >= 0, "0x15908's finisher ends");
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 3);
+    /* 0x23BF8 (0xE1A06): 0x23CA4 (0xE1A4C) steps +0x57 to 1, and 0x23B68
+     * ends it. */
+    CHECK(p1_run_finisher(0x23BF8u, 6u) >= 0, "0x23BF8's finisher ends");
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 3);
+}
+
+static void p1_check_anim_targets(void)
+{
+    p1_check_anim_leaves();
+    p1_check_anim_23868();
+    p1_check_anim_finishers();
+}
+
+int test_p1_anim_targets(void)  { return u6b_run(p1_check_anim_targets); }

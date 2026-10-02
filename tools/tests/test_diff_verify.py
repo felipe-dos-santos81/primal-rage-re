@@ -292,6 +292,35 @@ class RunPortTests(unittest.TestCase):
 DIFFRUN = os.path.join(ROOT, "build", "diffrun")
 EXE = os.path.join(os.environ.get("PR_GAME_DIR", os.path.join(ROOT, "data", "game", "C")), "PRAGE.EXE")
 
+# Track P batch 1 (record 2026-10-02-reverse-p1): its rows with their EAX masks, and what alone catches
+# each of its mutants.
+P1_MASKS = {"fighter_1567c": 0xFF, "fighter_15908": 0xFF, "fighter_23ec0": 0xFF, "fighter_45d14": 0xFF,
+            "fighter_actor_bit15_clear": 0xFF, "fighter_23bf8": 0xFFFFFFFF, "fighter_402fc": 0xFF,
+            "fighter_15584": 0, "fighter_1579c": 0, "fighter_23d38": 0,
+            "fighter_38034": 0, "fighter_23b68": 0, "fighter_401d4": 0,
+            # final review I4: the finisher streams' 0xD100 targets (the dispatcher overwrites EAX)
+            "fighter_156d4": 0, "fighter_23ca4": 0, "fighter_23868": 0, "fighter_3f174": 0}
+P1_KINDS = {"fighter_1567c@mutant": {"call #0"}, "fighter_15908@mutant": {"call #1"},
+            "fighter_23ec0@mutant": {"call #1 memory"}, "fighter_45d14@mutant": {"call #0"},
+            "fighter_actor_bit15_clear@mutant": {"eax"}, "fighter_23bf8@mutant": {"call #1"},
+            "fighter_23bf8@zero": {"eax"}, "fighter_23bf8@ne": {"call #1"},
+            "fighter_402fc@mutant": {"call #0 memory"},
+            "fighter_15584@mutant": {"call #1"}, "fighter_1579c@mutant": {"call #1"},
+            "fighter_23d38@mutant": {"call #0", "call #1"},
+            "fighter_23d38@ge": {"byte"}, "fighter_23d38@unsigned": {"byte", "call #0"},
+            "fighter_23d38@bit": {"byte"}, "fighter_15584@ge": {"byte"},
+            "fighter_1579c@ge": {"call #0", "call #1", "call #2", "byte"},
+            "fighter_38034@mutant": {"call #1"}, "fighter_23b68@mutant": {"call #1"},
+            "fighter_401d4@mutant": {"call #0", "call #1"},
+            "fighter_401d4@no36": {"byte"}, "fighter_23d38@noneg": {"byte", "call #0"},
+            # final review I1/I2: the stores the first seeds hid, and the two slots' +4 records
+            "fighter_15584@no42": {"byte", "call #1 memory"}, "fighter_1579c@no42": {"byte", "call #1 memory"},
+            "fighter_15584@own4": {"byte"},
+            "fighter_23d38@noand": {"byte", "call #0 memory", "call #1 memory", "call #2 memory"},
+            # final review I4: 0x23868's x offset by the other arm shows in the spawn's arguments alone
+            "fighter_156d4@mutant": {"byte"}, "fighter_23ca4@mutant": {"byte"},
+            "fighter_23868@mutant": {"call #0"}, "fighter_3f174@mutant": {"byte"}}
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
@@ -311,11 +340,11 @@ class RealFunctionTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_every_ported_function_agrees_with_the_original_on_every_block(self):
-        self.assertEqual(sorted(self.real), ["anim_10fa8", "anim_3e4e4", "config_codeword_len",
+        self.assertEqual(sorted(self.real), sorted(["anim_10fa8", "anim_3e4e4", "config_codeword_len",
                                              "config_credit_spend", "fighter_23130", "fighter_3640c",
                                              "fighter_37dcc", "fighter_45878", "fighter_ctx_same",
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
-                                             "host_1b890", "rng_next"])
+                                             "host_1b890", "rng_next"] + list(P1_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
@@ -323,12 +352,13 @@ class RealFunctionTests(unittest.TestCase):
             self.assertEqual(r.outside, [], name)
 
     def test_every_mutant_is_reported_as_a_mismatch(self):
-        self.assertEqual(sorted(self.mut), [
+        self.assertEqual(sorted(self.mut), sorted([
             "anim_10fa8@mutant", "anim_3e4e4@mutant",
             "config_codeword_len@mutant", "config_credit_spend@mutant", "config_credit_spend@signed",
             "fighter_23130@novoice", "fighter_23130@reorder", "fighter_23130@voice", "fighter_3640c@mutant", "fighter_37dcc@mutant",
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
-            "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"])
+            "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
+            + list(P1_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -392,7 +422,8 @@ class RealFunctionTests(unittest.TestCase):
             "config_credit_spend": 0xFFFFFFFF, "config_codeword_len": 0xFFFFFFFF,
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
-            "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF})
+            "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
+            **P1_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)
@@ -448,12 +479,39 @@ class RealFunctionTests(unittest.TestCase):
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["hit_anim_start_b@mutant"].problems}), arm)
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["hit_anim_start_b@set"].problems}), ["h0"])
 
+    def test_each_p1_mutant_is_caught_by_what_it_breaks(self):
+        # track P batch 1 (record 2026-10-02-reverse-p1): what alone catches each mutant; every row with a
+        # callee has one that only the call list or the memory at a call catches
+        for name, want in P1_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        # x above the threshold with AL set (case a6) is the only case that tells `<` from `!=`
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_23bf8@ne"].problems}), ["a6"])
+        # Task 4 review: the boundaries and signedness only the added cases reach (0x23D38 case 0 x at the
+        # bound, a negative x and F0AF0 - x = 0x80000000, the word 0xBFFF; the word 0x440 in case 3)
+        for name, ids in (("fighter_23d38@ge", ["gE", "gF"]), ("fighter_23d38@unsigned", ["gG", "gH", "gI"]),
+                          ("fighter_23d38@bit", ["gJ"]), ("fighter_15584@ge", ["c9"]),
+                          ("fighter_1579c@ge", ["c7"]),
+                          # Task 5 review: the store rec+0x36 = 0 (0x4027E) shows on t4 alone (its sentinel
+                          # 0x3636); without the `neg` (0x23DC1) only gK's 0x80000001 passes
+                          ("fighter_401d4@no36", ["t4"]), ("fighter_23d38@noneg", ["gK"]),
+                          # final review I1: slot 1's +0x42 bit 2 clear (case 1, c1 alone), the held
+                          # record's +0x29 bit 6 set where case 3 clears it (gA alone); I2: case 3's copy
+                          # goes to the other slot's +4 record, which differs from the own slot's
+                          ("fighter_15584@no42", ["c1"]), ("fighter_1579c@no42", ["c1"]),
+                          ("fighter_23d38@noand", ["gA"]), ("fighter_15584@own4", ["c3", "c4", "c5", "c9"]),
+                          # I4: an unsigned division differs on the negative distances only (k3, k5)
+                          ("fighter_23ca4@mutant", ["k3", "k5"])):
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
+
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
         stubs = {k.addr: k.clobbers for s in V.SPECS for k in s.calls if k.mode == "stub"}
         self.assertEqual(stubs, {0x2C3FC: (), 0x2BC30: ("edx",), 0x3C4CC: ("edx",), 0x3C480: ("edx",),
-                                 0x2AE14: ("ebx", "ecx", "edx")})
+                                 0x2AE14: ("ebx", "ecx", "edx"), 0x1A570: (), 0x2A17C: ("edx",),
+                                 0x188AC: ("edx",), 0x38034: ()})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -545,9 +603,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (5), the 8 without are counted apart
-        self.assertIn("diff-verify: 13/13 functions VERIFIED; 17/17 mutants detected; 1 named gaps; "
-                      "0/5 rows with callees closed (8 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (18), the 12 without are counted apart
+        self.assertIn("diff-verify: 30/30 functions VERIFIED; 47/47 mutants detected; 1 named gaps; "
+                      "1/18 rows with callees closed (12 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

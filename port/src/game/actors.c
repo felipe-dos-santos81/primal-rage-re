@@ -115,6 +115,10 @@ static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 static void reaction_cb_231C0(u32 slot, u32 rec, u32 side);
 static void anim_code_3F0F0(u32 rec, u32 arg);
 static void anim_code_3F130(u32 rec, u32 arg);
+static void anim_code_156D4(u32 rec, u32 arg);
+static void anim_code_23CA4(u32 rec, u32 arg);
+static void anim_code_23868(u32 rec, u32 arg);
+static void anim_code_3F174(u32 rec, u32 arg);
 static void reaction_cb_3C048(u32 slot, u32 rec, u32 side);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
@@ -419,6 +423,17 @@ int actors_init(void)
     fn_register(0x37774u, (void (*)(void))fighter_37774);
     fn_register(0x37898u, (void (*)(void))fighter_37898);
     fn_register(0x45C10u, (void (*)(void))fighter_45c10);
+    /* PORT: record 2026-10-02-reverse-p1 §P1.5. The finisher entries of
+     * characters 3, 4 and 6 (the dwords at 0xBDAF0, 0xBDB0C, 0xBDB10 and
+     * 0xBDB18; 0x379C4 calls DS_001078E8 as (slot, rec) and tests EAX). */
+    fn_register(0x1567Cu, (void (*)(void))fighter_1567c);
+    fn_register(0x15908u, (void (*)(void))fighter_15908);
+    fn_register(0x23EC0u, (void (*)(void))fighter_23ec0);
+    fn_register(0x45D14u, (void (*)(void))fighter_45d14);
+    /* PORT: record 2026-10-02-reverse-p1 §P1.6. Character 6's 0xBDAE4 and
+     * character 0's 0xBDB00 entries (the dwords at 0xBDAFC and 0xBDB00). */
+    fn_register(0x23BF8u, (void (*)(void))fighter_23bf8);
+    fn_register(0x402FCu, (void (*)(void))fighter_402fc);
 
     /* PORT: record §42-A. The update table's entries 7 (0x2910C, the
      * type-0x0A/0x19 node walk; dword at 0xA8660) and 5 (0x22FE8, the 0x104728
@@ -667,6 +682,27 @@ int actors_init(void)
      * the dword at 0xA86C4; fn() with the unread EAX). */
     fn_register(0x45B50u, (void (*)(void))fighter_45b50);
     fn_register(0x47B04u, (void (*)(void))fighter_47b04);
+    /* PORT: record 2026-10-02-reverse-p1 §P1.8. The slot +0x0C callbacks
+     * the finisher entries 0x1567C, 0x15908 and 0x23EC0 store (the dwords
+     * at 0x1569F, 0x1592B and 0x23EE3; 0x3531C case 7, (slot, rec, side)). */
+    fn_register(0x15584u, (void (*)(void))fighter_15584);
+    fn_register(0x1579Cu, (void (*)(void))fighter_1579c);
+    fn_register(0x23D38u, (void (*)(void))fighter_23d38);
+    /* PORT: record 2026-10-02-reverse-p1 §P1.9. The +0x0C callbacks the
+     * entries 0x23BF8 and 0x402FC store (the dwords at 0x23C75 and 0x4033D;
+     * 0x3531C case 7, (slot, rec, side)). */
+    fn_register(0x23B68u, (void (*)(void))fighter_23b68);
+    fn_register(0x401D4u, (void (*)(void))fighter_401d4);
+    /* PORT: record 2026-10-02-reverse-p1 §P1.12. The 0xD100 targets (opcode
+     * 0x11, mode 0x4000) of the finisher streams: 0x156D4 (the dwords
+     * 0xD32BE/0xD32D6 in 0x1567C's 0xD32A8, 0xD334A/0xD3362 in 0x15908's
+     * 0xD3334, and 0xD3326 0xE1BE2 0xEB83A 0xEDCA4), 0x23CA4 (0xE1A4E in
+     * 0x23BF8's 0xE1A06), 0x23868 (0xE1B32 in 0x23EC0's 0xE1B24, and 0xE14E6
+     * 0xE1514) and 0x3F174 (0xE7C6E in 0x402FC's 0xE7C40, and 0xD4DD8). */
+    fn_register(0x156D4u, (void (*)(void))anim_code_156D4);
+    fn_register(0x23CA4u, (void (*)(void))anim_code_23CA4);
+    fn_register(0x23868u, (void (*)(void))anim_code_23868);
+    fn_register(0x3F174u, (void (*)(void))anim_code_3F174);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
@@ -1638,6 +1674,37 @@ static void anim_code_3F130(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_3f130(rec);
+}
+
+/* 0x156D4, 0x23CA4 and 0x3F174 — the animation-opcode target shape. PORT:
+ * anim_indirect calls every code pointer as (rec, arg); the raw reads EAX =
+ * rec only (0x156D4 and 0x3F174 never touch EDX; 0x23CA4 pushes it at 0x23CA6
+ * and loads it at 0x23CD5 before any read), so these wrappers drop the operand
+ * (record 2026-10-02-reverse-p1 §P1.12). */
+static void anim_code_156D4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_156d4(rec);
+}
+
+static void anim_code_23CA4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_23ca4(rec);
+}
+
+static void anim_code_3F174(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3f174(rec);
+}
+
+/* 0x23868 — the animation-opcode target shape: the raw reads both EAX = rec
+ * and EDX = the operand word (`add edx,edx` 0x2388A, the index of the word
+ * table 0xA8364), so the wrapper passes both (record §P1.12). */
+static void anim_code_23868(u32 rec, u32 arg)
+{
+    fighter_23868(rec, arg);
 }
 
 /* 0x3C048 — the reaction-callback shape. PORT: the same 0x35045 call, whose
@@ -2642,6 +2709,7 @@ void actor_pset_flag_5f(u32 rec, u8 flag)
  * acquire path. */
 void actor_pset_palette(u32 rec, u32 word, u32 handle)
 {
+    PR_SEAM(0x2A17Cu, rec, word, handle);
     u32 pset = actor_pset(rec);                             /* 0x2A182..0x2A190 */
     DSW(pset + 0x02u) = (u16)(word | (DSB(rec + 0x5fu) != 0 ? 0x800u : 0u));
     if (handle == 0) return;                                /* 0x2A1AA/0x2A1AC */

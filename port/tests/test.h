@@ -77,6 +77,9 @@ extern int g_failures;
     X(test_u6b_3f0a8) \
     X(test_u6b_3f0f0) \
     X(test_u6b_231c0) \
+    X(test_p1_finishers) \
+    X(test_p1_callbacks) \
+    X(test_p1_anim_targets) \
     X(test_virtual_clock) \
     X(test_restart)
 

@@ -1139,4 +1139,30 @@ void fighter_45d58(void);
  * DS_00104AE9 |= 8. Callers 0x1467F, 0x149EB, 0x39195. */
 void fighter_4f944(u32 v);
 
+/* Track P batch 1 (record 2026-10-02-reverse-p1-derivations.md §P1.5): the
+ * finisher entries 0x379C4 calls through DS_001078E8 as (slot, rec), testing
+ * the whole EAX; registered in actors_init. */
+int  fighter_1567c(u32 slot, u32 rec);
+int  fighter_15908(u32 slot, u32 rec);
+int  fighter_23ec0(u32 slot, u32 rec);
+int  fighter_45d14(u32 slot, u32 rec);
+u32  fighter_23bf8(u32 slot, u32 rec);
+int  fighter_402fc(u32 slot, u32 rec);
+/* The slot +0x0C callbacks the finisher entries store (record §P1.8/§P1.9),
+ * as 0x3531C case 7 calls them (slot, rec, side); registered in actors_init. */
+void fighter_15584(u32 slot, u32 rec, u32 side);
+void fighter_1579c(u32 slot, u32 rec, u32 side);
+void fighter_23d38(u32 slot, u32 rec, u32 side);
+void fighter_23b68(u32 slot, u32 rec, u32 side);
+void fighter_401d4(u32 slot, u32 rec, u32 side);
+/* 0x38034 (record §P1.9): the call of 0x401D4's case 3, EAX = a side. */
+void fighter_38034(u32 side);
+/* The 0xD100 stream targets the finisher streams reach (record §P1.12), as
+ * the animation dispatcher's opcode 0x11 calls them (EAX = rec, EDX = the
+ * operand word); registered in actors_init through anim_code wrappers. */
+void fighter_156d4(u32 rec);
+void fighter_23ca4(u32 rec);
+void fighter_23868(u32 rec, u32 arg);
+void fighter_3f174(u32 rec);
+
 #endif /* PRAGE_GAME_FIGHTER_H */
