@@ -57,7 +57,7 @@ class TestTables(unittest.TestCase):
         call = re.sub(r'/\*.*?\*/|//[^\n]*', '', call, flags=re.S)
         fmt = ''.join(re.findall(r'"([^"]*)"', call))
         self.assertTrue(fmt.startswith('T '), fmt)
-        fields = gs.SNAP_FIELDS + gs.KEYS_EXTRA
+        fields = gs.SNAP_FIELDS + gs.KEYS_EXTRA + gs.WIN_EXTRA     # + plan U9/U10's (record §W.2)
         parts = fmt[2:].replace('\\n', '').split()
         self.assertEqual([p.split('=')[0] for p in parts], [n for n, _, _ in fields])
         # each placeholder is as wide as the field (2 hex digits per byte)
@@ -81,13 +81,13 @@ class TestTables(unittest.TestCase):
             self.assertRegex(arg, r'\b%s\(' % acc[size], (n, arg))
             # the five U6 fields (record gameplay-u6 §U6.11) and the three U11 key fields
             # (record gameplay-u11 §K.3) read the field's address
-            if n in gs.MOVE_FIELDS or (n, addr, size) in gs.KEYS_EXTRA:
+            if n in gs.MOVE_FIELDS or (n, addr, size) in gs.KEYS_EXTRA + gs.WIN_EXTRA:
                 m = re.search(r'\bDS_([0-9A-F]{8})(?:\s*\+\s*(0x[0-9A-Fa-f]+|[0-9]+)u?)?\)', arg)
                 self.assertIsNotNone(m, (n, arg))
                 got = int(m.group(1), 16) + (int(m.group(2), 0) if m.group(2) else 0)
                 self.assertEqual(got, addr, (n, arg))
             # KEYS_EXTRA: accessor by size on the field's own DS_ symbol, no offset
-            if (n, addr, size) in gs.KEYS_EXTRA:
+            if (n, addr, size) in gs.KEYS_EXTRA + gs.WIN_EXTRA:
                 self.assertEqual(arg, '(unsigned)%s(DS_%08X)' % (acc[size], addr), n)
 
     def test_an_s_line_without_the_u6_fields_still_parses(self):
