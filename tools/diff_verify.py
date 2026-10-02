@@ -821,6 +821,9 @@ P2_SPECS += [
 # E.callee_clobbers: 0x18AF8 takes nothing (`xor eax,eax; call 0x18b04`); 0x39834 EAX = side, EDX = a byte;
 # 0x39A10 EAX = rec, EDX = the word (`movsx ebx,dx`); 0x3C208 EAX = side, EDX = the distance; 0x3C358 EAX = side
 # (it pushes EDX and loads it from EAX before any read); 0x22404 EAX = side. All plain `ret`.
+# FACING over-declares: 0x18AF8 preserves EBX/ECX/EDX (0x18B04 pushes them, the epilogue at 0x18AEF pops them).
+# That is the safe direction here, but a future 0x3C208 row that stubs FACING would fail falsely, because
+# 0x3C24D tests EDX after it: declare no clobbers there.
 FACING = E.Call(0x18AF8, (), clobbers=("ebx", "ecx", "edx"))
 POSE = E.Call(0x39834, ("eax", "edx"), clobbers=("edx", "ebp"))
 TIMER = E.Call(0x39A10, ("eax", "edx"), clobbers=("edx",))
@@ -830,24 +833,28 @@ ARM404 = E.Call(0x22404, ("eax",))
 
 
 # The slot +0x1C callbacks (record §P2.8) run as 0x193B0 calls them at 0x19505: EAX = side; 0x19508 loads
-# `mov eax,[esp+8]`: mask 0. Both slots' bytes +0x52..+0x5F carry sentinels (+0x5F = 0x5F is 0x211F0's byte
-# for 0x39834); the characters 5 (slot 0) and 3 (slot 1) differ. `dist` pokes the word 0xA82D8 + 2 * 3 (the
-# 0xA82D6 dword's high half for character 3, `sar 0x10`) negative, where a zero-extended read differs.
-def p2_1c(cid, side, dist=None):
+# `mov eax,[esp+8]`: mask 0. The slots' bytes +0x52..+0x5F carry different sentinels (slot 0 0x52.., slot 1
+# 0xD2..: +0x5F is 0x211F0's byte for 0x39834, so a read of the other slot's differs); the characters 5 (slot 0)
+# and 3 (slot 1) differ. `dist` pokes the word 0xA82D8 + 2 * 3 (the 0xA82D6 dword's high half for character 3,
+# `sar 0x10`) negative, where a zero-extended read differs; `zext` pokes 0xA81B0 + 2 * 3 (0x211F0's word for
+# character 3, `xor edx,edx; mov dx`) to 0xF000, where a sign-extended read differs.
+def p2_1c(cid, side, dist=None, zext=None):
     pokes = {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03",
-             DS_SLOTS + 0x52: bytes(range(0x52, 0x60)), DS_SLOTS + 0x94 + 0x52: bytes(range(0x52, 0x60)),
+             DS_SLOTS + 0x52: bytes(range(0x52, 0x60)), DS_SLOTS + 0x94 + 0x52: bytes(range(0xD2, 0xE0)),
              DS_SLOTS + 0x10: le32(0x10101010), DS_SLOTS + 0x94 + 0x10: le32(0x10101010)}
     if dist is not None:
         pokes[0xA82D8 + 2 * 3] = le32(dist)[:2]
+    if zext is not None:
+        pokes[0xA81B0 + 2 * 3] = le32(zext)[:2]
     return Case(cid, {"eax": side}, pokes)
 
 
 P2_SPECS += [
     Spec("fighter_22404", 0x22404, [p2_1c("a0", 0), p2_1c("a1", 1), p2_1c("a2", 0, 0xF000)],
          allow_calls=(0x33950,), calls=(ANIM_BEGIN, HIT_A, PLACE), eax_mask=0, mutants=("@mutant", "@signed")),
-    Spec("fighter_211f0", 0x211F0, [p2_1c("b0", 0), p2_1c("b1", 1)],
+    Spec("fighter_211f0", 0x211F0, [p2_1c("b0", 0), p2_1c("b1", 1), p2_1c("b2", 0, None, 0xF000)],
          allow_calls=(0x33950,), calls=(FLASH, HIT_B, HIT_A, FACING, PLACE, POSE, HOLD, TIMER, VOICE), eax_mask=0,
-         mutants=("@mutant", "@order")),
+         mutants=("@mutant", "@order", "@zext", "@slot")),
     Spec("fighter_22588", 0x22588, [p2_1c("d0", 0), p2_1c("d1", 1), p2_1c("d2", 0, 0xF000)],
          allow_calls=(0x33950,), calls=(FACING, FLASH, ARM404, HOLD, PLACE, TIMER, VOICE), eax_mask=0,
          mutants=("@mutant", "@order")),

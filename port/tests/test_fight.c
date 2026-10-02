@@ -45458,7 +45458,8 @@ static void p2_check_1c(void)
     p2_side_fn f;
     CHECK(fn_resolve(0x211F0u) == (void (*)(void))fighter_211f0, "0x211F0 is registered");
     CHECK(fn_resolve(0x22588u) == (void (*)(void))fighter_22588, "0x22588 is registered");
-    CHECK_EQ_INT((int)(DSD(0x000225A7u) + 0x225ABu), 0x00022404);   /* 0x225A6's rel32 */
+    /* An evidence line, not a port test: it reads the image's bytes (0x225A6's rel32), not the port. */
+    CHECK_EQ_INT((int)(DSD(0x000225A7u) + 0x225ABu), 0x00022404);
 
     /* 0x22404: the own record on 0xE4DEA at 2.0, the own slot's +0x57 = 2,
      * the other slot 0xA/9/0 with +0x10 = 0. */

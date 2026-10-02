@@ -1173,7 +1173,7 @@ static void m_22404_signed(const u32 *r, u32 *eax)     /* the distance word zero
     m_22404_at(r[R_EAX], 0, 1);
     *eax = 0u;
 }
-static void m_211f0_at(u32 side, int own_char, int early57)
+static void m_211f0_at(u32 side, int own_char, int early57, int sext, int other5f)
 {
     u32 ctx[6];
     fighter_ctx_same(ctx, side);
@@ -1181,8 +1181,9 @@ static void m_211f0_at(u32 side, int own_char, int early57)
     hit_anim_start_b(ctx[4], 0x000E1672u, 0x40000000u);
     hit_anim_start_a(ctx[5], DSD(0x000C90F8u + (u32)DSB(ctx[own_char ? 2 : 3] + 0x7Au) * 4u), 0x40000000u);
     fighter_18af8();
-    fighter_3c208(ctx[0], (s32)(u32)DSW(0x000A81B0u + (u32)DSB(ctx[3] + 0x7Au) * 2u));
-    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));
+    fighter_3c208(ctx[0], sext ? (s32)(s16)DSW(0x000A81B0u + (u32)DSB(ctx[3] + 0x7Au) * 2u)
+                              : (s32)(u32)DSW(0x000A81B0u + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[other5f ? 3 : 2] + 0x5Fu));
     fighter_3c358(ctx[0]);
     fighter_39a10(ctx[4], 0x29Au);
     fighter_39a10(ctx[5], 0x29Au);
@@ -1193,12 +1194,22 @@ static void m_211f0_at(u32 side, int own_char, int early57)
 }
 static void m_211f0(const u32 *r, u32 *eax)            /* the other record's stream by the own character */
 {
-    m_211f0_at(r[R_EAX], 1, 0);
+    m_211f0_at(r[R_EAX], 1, 0, 0, 0);
     *eax = 0u;
 }
 static void m_211f0_order(const u32 *r, u32 *eax)      /* +0x57 = 2 before the voice */
 {
-    m_211f0_at(r[R_EAX], 0, 1);
+    m_211f0_at(r[R_EAX], 0, 1, 0, 0);
+    *eax = 0u;
+}
+static void m_211f0_zext(const u32 *r, u32 *eax)       /* the 0xA81B0 word sign-extended */
+{
+    m_211f0_at(r[R_EAX], 0, 0, 1, 0);
+    *eax = 0u;
+}
+static void m_211f0_slot(const u32 *r, u32 *eax)       /* 0x39834's byte from the other slot's +0x5F */
+{
+    m_211f0_at(r[R_EAX], 0, 0, 0, 1);
     *eax = 0u;
 }
 static void m_22588_at(u32 side, int own_flash, int late5d)
@@ -1359,6 +1370,8 @@ static const binding_t k_bindings[] = {
     { "fighter_22404@signed",     m_22404_signed, 0x00000000u },
     { "fighter_211f0@mutant",     m_211f0,        0x00000000u },
     { "fighter_211f0@order",      m_211f0_order,  0x00000000u },
+    { "fighter_211f0@zext",       m_211f0_zext,   0x00000000u },
+    { "fighter_211f0@slot",       m_211f0_slot,   0x00000000u },
     { "fighter_22588@mutant",     m_22588,        0x00000000u },
     { "fighter_22588@order",      m_22588_order,  0x00000000u },
 };

@@ -278,6 +278,15 @@ empty in C11), `0x39834`, `0x39A10`, `0x3C208`, `0x3C358`, `0x22404`. `hit_anim_
 `fighter_211f0@mutant` (the own character's stream) `call #2`; `@order` (+0x57 before the voice) `call #9 memory`;
 `fighter_22588@mutant` (`0x34D8C` on the own side) `call #1`; `@order` (+0x5D after `0x3C208`) `call #4 memory`.
 
+Fix round 1 (Task 7 review). `0xA81B0` is read zero-extended by `0x211F0` (`xor edx,edx; mov dx`) but every word
+for c = 0..6 is below 0x8000, so no stock case told a sign-extended read: case `b2` pokes `0xA81B0 + 2 * 3`
+(character 3, slot 1's) to `0xF000`, and `fighter_211f0@zext` (`(s32)(s16)`) is caught by `b2` alone, at `call #4`
+(the `0x3C208` row). The slots' `+0x52..+0x5F` sentinels now differ (slot 0 `0x52..`, slot 1 `0xD2..`), so
+`0x39834`'s byte (`ctx[2]` `+0x5F`, 0x21260) is distinguishable from the other slot's: `fighter_211f0@slot` (reads
+`ctx[3]` `+0x5F`) is caught by `b0`, `b1` and `b2`, at `call #5` (the `0x39834` row). The `FACING` stub
+over-declares its clobbers (`0x18AF8` preserves EBX/ECX/EDX: `0x18B04` pushes them, the epilogue at `0x18AEF` pops
+them); safe here, but a `0x3C208` row stubbing it would fail falsely, since `0x3C24D` tests EDX after it.
+
 ## §P2.9 The +0x0C callbacks (Task 8)
 
 **`0x212CC`** (EBX = side; ECX = the EDX record, `mov ecx,edx` at `0x212D0`): by ctx[2]'s +0x57: 0: `cmp dx,[..+0x88]`
