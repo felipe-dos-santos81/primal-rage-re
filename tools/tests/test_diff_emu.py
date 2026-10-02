@@ -402,6 +402,38 @@ class ClobberTests(unittest.TestCase):
         img = program({0x10000: "56" "57" "55" "FFD0" "5D" "5F" "5E" "C3"})
         self.assertEqual(E.callee_clobbers(img, 0x10000), ("ebx", "ecx", "edx"))
 
+    def test_an_unresolved_indirect_jump_or_an_outside_target_clobbers_everything(self):
+        # jmp eax: its targets are unknown (fix round 2: no longer skipped silently)
+        self.assertEqual(E.callee_clobbers(program({0x10000: "FFE0"}), 0x10000),
+                         ("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+        # jmp 0x5000, below the image
+        self.assertEqual(E.callee_clobbers(program({0x10000: "E9FB4FFFFF"}), 0x10000),
+                         ("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+
+    # 10000: push edi; cmp dx,1; ja 10050; xor ebx,ebx; mov bx,dx; jmp [ebx*4+0x10100]
+    # 10030: xor esi,esi; pop edi; ret     10040: xor ecx,ecx; pop edi; ret     10050: pop edi; ret
+    MOVED = program({0x10000: "57" "6683FA01" "7749" "31DB" "6689D3" "FF249D00010100",
+                     0x10030: "31F6" "5F" "C3", 0x10040: "31C9" "5F" "C3", 0x10050: "5F" "C3",
+                     0x10100: "30000100" "40000100"})
+
+    def test_a_hand_resolved_jump_table_is_followed_and_without_it_everything_is_clobbered(self):
+        # the index is moved from dx to ebx, so switch_cases does not bound it (record §E3.7)
+        self.assertEqual(E.callee_clobbers(self.MOVED, 0x10000, {}), ("ebx", "ecx", "edx", "esi", "ebp"))
+        self.assertEqual(E.callee_clobbers(self.MOVED, 0x10000, {0x1000C: (0x10001, 0x10100, 2)}),
+                         ("ebx", "ecx", "esi"))
+
+    def test_a_jump_into_the_restore_sequence_means_nothing_is_saved(self):
+        # push ebx; push esi; xor esi,esi; test eax,eax; jne 10009; pop esi; (10009) pop ebx; ret: saved
+        # nothing, so the written ESI and the popped EBX both count
+        self.assertEqual(E.callee_clobbers(program({0x10000: "53" "56" "31F6" "85C0" "7501" "5E" "5B" "C3"}),
+                                           0x10000), ("ebx", "esi"))
+        # push ebx; xor ebx,ebx; test eax,eax; jne 10008; pop ebx; (10008) ret: a jump onto the ret skips the pop
+        self.assertEqual(E.callee_clobbers(program({0x10000: "53" "31DB" "85C0" "7501" "5B" "C3"}), 0x10000),
+                         ("ebx",))
+        # the same jumping to the first pop skips no restore
+        self.assertEqual(E.callee_clobbers(program({0x10000: "53" "56" "31F6" "85C0" "7500" "5E" "5B" "C3"}),
+                                           0x10000), ())
+
     def test_mutual_recursion_reaches_the_fixpoint(self):
         # 10000: call 10020; ret      10020: xor esi,esi; call 10000; ret
         img = program({0x10000: "E81B000000" "C3", 0x10020: "31F6" "E8D9FFFFFF" "C3"})

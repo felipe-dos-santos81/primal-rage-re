@@ -480,8 +480,8 @@ def main(argv=None):
     ap.add_argument("--function", help="only this function (its callees' rows are not run, so the callee "
                                        "column reads 'unverified' for each; record E3 §E3.8)")
     ap.add_argument("--self-check", action="store_true",
-                    help="also require every mutant binding to be detected (an eax or byte difference, "
-                         "and no port error)")
+                    help="also require every mutant binding to be detected (an eax, byte, call-list or "
+                         "call-memory difference, and no port error)")
     ap.add_argument("--table", help="write the verification table (markdown) to this file")
     args = ap.parse_args(argv)
 

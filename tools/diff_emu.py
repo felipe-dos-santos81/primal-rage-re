@@ -417,10 +417,13 @@ def switch_cases(image, ins, prior):
     return None
 
 
-def static_scan(image, entry, max_insns=4000, stop=(), switches=False):
+def static_scan(image, entry, max_insns=4000, stop=(), switches=False, resolved=None):
     """`stop`: call-set addresses (record E3 §E3.4); a jump to one is a tail call, not followed.
-    `switches`: follow a bounded switch's case targets (switch_cases) instead of flagging it."""
+    `switches`: follow a bounded switch's case targets (switch_cases) instead of flagging it.
+    `resolved`: {jmp address: (guard, table, n)}, jump tables resolved by hand (RESOLVED_JUMPS): the
+    jump's n case targets are read from the table and followed."""
     stop = frozenset(stop)
+    resolved = resolved or {}
     insns, leaders, indirect, unresolved = {}, {entry}, [], []
     work, truncated = [entry], False
     while work:
@@ -450,6 +453,8 @@ def static_scan(image, entry, max_insns=4000, stop=(), switches=False):
                 tgt = _direct_target(ins)
                 if tgt is None:
                     cases = switch_cases(image, ins, path[:-1]) if switches else None
+                    if cases is None and addr in resolved:
+                        cases = resolved_cases(image, resolved[addr])
                     if cases is None:
                         indirect.append(addr)
                     else:
@@ -482,15 +487,43 @@ def coverage(info, executed):
 
 # ---- the registers a callee does not preserve (record E3 §E3.12), for Call.clobbers -------------
 
-def _saved_and_written(image, f):
+# Jump tables `switch_cases` does not follow (an index moved to another register, or pre-scaled into a
+# base, record §E3.7), resolved by hand for the trees of the seamed callees (record §E3.5, §E3.12):
+# jmp address -> (the guard `cmp` that bounds the index, the table, its entry count = the cmp's imm + 1).
+# The case targets are always read from the table in the image; a test re-checks each guard and table
+# from the bytes (test_diff_verify.py, test_each_resolved_jump_table_matches_the_bytes).
+RESOLVED_JUMPS = {
+    # 0x18350: cmp al,6; ja; and eax,0xff; lea esi,[eax*4]; ...; jmp cs:[esi+0x18334]
+    0x18384: (0x18366, 0x18334, 7),
+    # 0x29DB8 and 0x29F34: cmp dx,5; ja; xor r,r; mov r16,dx; jmp cs:[r*4+T]
+    0x29DFE: (0x29DF3, 0x29D70, 6),
+    0x29E62: (0x29E57, 0x29D88, 6),
+    0x29EDF: (0x29ED4, 0x29DA0, 6),
+    0x29F78: (0x29F6D, 0x29EEC, 6),
+    0x29FE5: (0x29FDA, 0x29F04, 6),
+    0x2A056: (0x2A04B, 0x29F1C, 6),
+}
+
+
+def resolved_cases(image, entry):
+    """The case targets of a RESOLVED_JUMPS entry, read from the image."""
+    _, table, n = entry
+    if not image.contains(table, 4 * n):
+        return None
+    return [int.from_bytes(image.bytes_at(table + 4 * m, 4), "little") for m in range(n)]
+
+
+def _saved_and_written(image, f, resolved):
     """(saved, written, direct callees) of the function at `f`. saved: the registers its entry
     pushes (the leading `push reg` run) that the pops directly before EVERY `ret` restore (`add
-    esp, imm` may sit between them; `leave` restores ebp). written: every register family an
-    instruction of its static scan writes (capstone's regs_access; push and call excluded), all of
-    them for an indirect call (its target is unknown) or a truncated scan."""
-    info = static_scan(image, f, switches=True)
+    esp, imm` may sit between them; `leave` restores ebp); nothing when a jump lands inside such a
+    pop sequence (it would skip a restore). written: every register family an instruction of its
+    static scan writes (capstone's regs_access; push and call excluded); every register when the
+    scan is unsure: an indirect call, an indirect jump neither a bounded switch nor in `resolved`,
+    a direct target outside the image, or a truncated scan."""
+    info = static_scan(image, f, switches=True, resolved=resolved)
     every = set(REGS)
-    if info.truncated:
+    if info.truncated or info.unresolved:
         return set(), every, set()
     ins = {a: _decode(image.bytes_at(a, 15), a) for a in info.insns}
     entry, a = [], f
@@ -498,11 +531,12 @@ def _saved_and_written(image, f):
         entry.append(ins[a].reg_name(ins[a].operands[0].reg))
         a += ins[a].size
     order = sorted(ins)
-    restored = None
+    restored, landed = None, False
+    targets = set(info.leaders)                   # every jump target (and fall-through) of the scan
     for i, x in enumerate(order):
         if not ins[x].group(capstone.CS_GRP_RET):
             continue
-        pops, j = set(), i - 1
+        pops, seq, j = set(), [], i - 1
         while j >= 0 and order[j] + ins[order[j]].size == order[j + 1]:
             p = ins[order[j]]
             if p.mnemonic == "pop" and p.operands[0].type == cx86.X86_OP_REG:
@@ -511,10 +545,18 @@ def _saved_and_written(image, f):
                 pops.add("ebp")
             elif not (p.mnemonic == "add" and p.op_str.startswith("esp,")):
                 break
+            seq.append(order[j])
             j -= 1
+        # a jump into the restore sequence below its first instruction, or onto the ret after it,
+        # skips a restore: the function then saves nothing
+        if seq and any(a in targets for a in sorted(seq)[1:] + [x]):
+            landed = True
         restored = pops if restored is None else restored & pops
-    saved = set(entry) & (restored or set())
+    saved = set() if landed else set(entry) & (restored or set())
     written, callees = set(), set()
+    for x in info.indirect:
+        if ins[x].mnemonic != "call":             # an indirect jump nothing resolved: its targets are unknown
+            written |= every
     for x in order:
         p = ins[x]
         if p.mnemonic == "call":
@@ -533,18 +575,20 @@ def _saved_and_written(image, f):
     return saved, written, callees
 
 
-def callee_clobbers(image, addr):
+def callee_clobbers(image, addr, resolved=None):
     """The registers other than EAX that the function at `addr` may change on some path, its whole
     direct-call tree included (a least fixpoint, so recursion is handled): written minus saved,
     per function, plus what its callees clobber that it does not save. A callee outside the image
     clobbers everything. Over-approximating is the safe direction: a poisoned register a caller
-    really relies on turns its row MISMATCH (fail-closed), never VERIFIED."""
+    really relies on turns its row MISMATCH (fail-closed), never VERIFIED. `resolved` defaults to
+    RESOLVED_JUMPS; {} gives the result with no hand-resolved jump table."""
+    resolved = RESOLVED_JUMPS if resolved is None else resolved
     local, work = {}, [addr]
     while work:
         f = work.pop()
         if f in local:
             continue
-        local[f] = _saved_and_written(image, f) if image.contains(f) else (set(), set(REGS), set())
+        local[f] = _saved_and_written(image, f, resolved) if image.contains(f) else (set(), set(REGS), set())
         work.extend(local[f][2])
     clob = {f: set() for f in local}
     moved = True

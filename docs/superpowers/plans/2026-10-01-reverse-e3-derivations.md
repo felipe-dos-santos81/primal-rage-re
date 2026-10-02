@@ -163,6 +163,31 @@ test (`test_each_stub_declares_the_registers_its_callee_clobbers`) re-derives ea
 `callee_clobbers` takes an indirect call to clobber every register; the five values do not depend on that rule
 (a scratch run that ignores the indirect calls of the five trees gives the same sets).
 
+**Hand-resolved jump tables (fix round 2).** Seven indirect jumps in these trees are switches `switch_cases`
+does not bound (§E3.7: the index is moved to another register, or pre-scaled into a base), and an unresolved
+jump now clobbers every register (§E3.12). Each is resolved by its guard, in `diff_emu.RESOLVED_JUMPS`; the case
+targets are read from the table in the image:
+
+| jump | function | guard (raw) | table | entries |
+|---|---|---|---|---|
+| `0x18384` | `0x18350` | `cmp al,6` `0x18366`; `ja`; `and eax,0xff`; `lea esi,[eax*4]`; `mov ecx,0xcf399`; `lea eax,[edx*2]`; `add ecx,eax`; `jmp cs:[esi+0x18334]` (ESI untouched after the `lea`) | `0x18334` | 7 |
+| `0x29DFE` | `0x29DB8` | `cmp dx,5` `0x29DF3`; `ja`; `xor ebx,ebx`; `mov bx,dx` | `0x29D70` | 6 |
+| `0x29E62` | `0x29DB8` | `cmp dx,5` `0x29E57`; `ja`; `xor esi,esi`; `mov si,dx` | `0x29D88` | 6 |
+| `0x29EDF` | `0x29DB8` | `cmp dx,5` `0x29ED4`; `ja`; `xor ecx,ecx`; `mov cx,dx` | `0x29DA0` | 6 |
+| `0x29F78` | `0x29F34` | `cmp dx,5` `0x29F6D`; `ja`; `xor eax,eax`; `mov ax,dx` | `0x29EEC` | 6 |
+| `0x29FE5` | `0x29F34` | `cmp dx,5` `0x29FDA`; `ja`; `xor ecx,ecx`; `mov cx,dx` | `0x29F04` | 6 |
+| `0x2A056` | `0x29F34` | `cmp dx,5` `0x2A04B`; `ja`; `xor ebx,ebx`; `mov bx,dx` | `0x29F1C` | 6 |
+
+A real-image test (`test_each_resolved_jump_table_matches_the_bytes`) decodes each window from the guard to the
+jump and requires exactly these instructions, the entry count = the `cmp`'s imm + 1, every target in the image,
+and that `switch_cases` alone leaves the jump unknown. Without the resolutions (`callee_clobbers(image, a, {})`)
+`0x2BC30`, `0x3C4CC` and `0x3C480` clobber EDX, EDI, EBP (through `0x2A408` -> `0x29F34`, and `0x18350`; removing
+`0x18384` alone adds EBP to `0x3C4CC`/`0x3C480`, removing any `0x29F34` jump adds EDI and EBP to all three,
+removing a `0x29DB8` jump changes nothing, `0x2B2A0` saving what it would add); `0x2AE14` is unchanged (it saves
+ESI, EDI, EBP itself). With them the declared sets above are the derived ones. This agrees with the final
+re-review, which resolved the same tables by hand (case targets write only EAX/EBX/ECX/EDX/ESI). No other
+indirect jump remains in the five trees (222 functions); their remaining indirect transfers are calls.
+
 ## §E3.6 The worked batch
 
 Four E2 `stubs` rows that are already ported (their callees are the most frequent: voice `0x2C3FC`,
@@ -330,7 +355,9 @@ EAX, a value the caller made itself, §E3.6); (b)
   the real callee writes is exercised only as far as the declared writes and the cases' pokes produce those
   values.
 - **Switch bounds:** an index moved to another register (`0x1BD7C`) or pre-scaled into a base (`0x18384`)
-  stays an unknown jump, conservatively (§E3.7). **Join points (m5):** the guard walk does not check for a
+  stays an unknown jump, conservatively (§E3.7), for coverage; for `callee_clobbers` an unknown jump clobbers
+  every register unless it is one of the seven hand-resolved tables of §E3.5 (a P callee whose tree holds
+  another must add its resolution, with the same test, or accept the larger set). **Join points (m5):** the guard walk does not check for a
   second path joining the straight run between the `ja` and the `jmp`; not reachable in the checked functions.
 - **Seeds are hand pokes into zero BSS, not real snapshots** (spec §5.3; named deviation, E1 precedent; §E3.6).
 - **Four stubbed callees have no row** (`0x2C3FC`, `0x2BC30`, `0x2AE14`, `0x3C480`) and the callee column is one
@@ -361,7 +388,7 @@ On the planning host (macOS arm64, Apple clang 21, no other load): the planner's
 rows, 15 mutants, 29 `diffrun` launches) took 3.61 s real, against E1's 1.35 s for 6 + 7; its 116 Python tests
 15.2 s; a clean build of the tree 2.31 s at `-j8`. `make verify` on the prototype: 743 s real, exit 0. **After
 the final-review fixes (measured on the implemented tree):** the self-check runs 14 real rows and 17 mutants
-(30 `diffrun` launches; `0x3C4CC` has 256 cases) in 7.8 s real; `make diff-verify` runs 150 Python tests (21.3 s) and the self-check, 29.8 s in all.
+(30 `diffrun` launches; `0x3C4CC` has 256 cases) in 7.8 s real; `make diff-verify` runs 155 Python tests (21.8 s, after fix round 2) and the self-check, 29.7 s in all.
 Task 8's closure figures (131 tests, 16 mutants) are superseded. The memory report at each call scans mem[]
 outside the image for non-zero bytes; with that scan done 64 KiB at a time (`memcmp` against a zero block,
 `scan_outside` in `diff_runner.c`, which the end of each case uses too), the 256 cases of `0x3C4CC` take 1.3 s
@@ -429,7 +456,7 @@ callees from the regenerated E2 table.
   oracle lines equal to `oracle-lines-base.txt`, the `make audio-render` WAV equal to `before-t2.wav`,
   `771 1203 64` / `731 731 100`. `grep 'pr_seam = '` finds the hook set only in `diff_runner.c` and, inside
   `test_call_seam`, `test_platform.c`.
-- **Final-review closure (§E3.12, on `1f7f172` plus the fix commit):** `make diff-verify` runs 150 Python tests
+- **Final-review closure (§E3.12, on `1f7f172` plus the two fix commits):** `make diff-verify` runs 155 Python tests
   OK and prints `13/13 functions VERIFIED; 17/17 mutants detected; 1 named gaps; 0/5 rows with callees closed (8
   have none)`; `make entry-triage` unchanged (329 unported, 166 ported; 48 / 67 / 19);
   `PR_ORACLE_REQUIRED=1 ./build/run_tests` all checks passed. `port/src` changes only by a comment (`flow.c`),
@@ -469,10 +496,13 @@ values, as the real callee's saves would. A real callee declares none (it runs i
 anything outside `eax ebx ecx edx esi edi ebp` are refused. **Derivation**, from the bytes:
 `diff_emu.callee_clobbers(image, addr)`. Per function of the callee's direct-call tree: written (every register
 family an instruction of its `static_scan` writes, by capstone's `regs_access`; `push` and `call` excluded;
-every register for an indirect call or a truncated scan) minus saved (the entry's leading `push reg` run, kept
-only for the registers the pops directly before **every** `ret` restore; `add esp,imm` may sit between them,
-`leave` restores EBP); plus whatever its callees clobber that it does not save, solved as a least fixpoint
-(recursion converges); a callee outside the image clobbers everything. It over-approximates where it is unsure,
+every register when the scan is unsure: an indirect call, an indirect jump that is neither a bounded switch
+nor in `RESOLVED_JUMPS` (fix round 2: the first form skipped such a jump silently), a direct target outside the
+image, or a truncated scan) minus saved (the entry's leading `push reg` run, kept only for the registers the
+pops directly before **every** `ret` restore; `add esp,imm` may sit between them, `leave` restores EBP; nothing
+at all when a jump lands inside a restore sequence below its first instruction or onto its `ret`, fix round
+2); plus whatever its callees clobber that it does not save, solved as a least fixpoint (recursion converges);
+a callee outside the image clobbers everything. The seven hand-resolved jump tables are §E3.5's. It over-approximates where it is unsure,
 which is the safe direction: poisoning a register the callee really preserves can only turn a row `MISMATCH`.
 The five seamed callees' sets are §E3.5's last column.
 
@@ -499,6 +529,15 @@ stub's EAX.
 **I3: the counter.** "8/13 with every callee VERIFIED" counted the eight rows that have no callee as closed,
 while none of the five rows with callees was (each stubs a callee without a row). `closed_rows` now counts over
 the rows that have callees and reports the others apart: `0/5 rows with callees closed (8 have none)`.
+
+**Fix round 2 (re-review).** `callee_clobbers` was not conservative for an indirect jump `static_scan` left
+unresolved (it skipped it). Now such a jump, or a direct target outside the image, clobbers every register;
+seven moved-index or pre-scaled tables in the trees of the seamed callees are resolved by hand (§E3.5) and
+re-checked from the bytes; a jump into a restore sequence makes a function save nothing; the `--self-check`
+help names all four detecting differences. Five new tests (150 -> 155; the ret-landing case is part of the
+restore-sequence test); mutations M1 (unresolved jump skipped), M2 (outside target ignored), M3 (resolutions not
+followed), M4/M6 (landing check off, or not counting the `ret`), M5 (`0x18384`'s count 6) and M7 (no default
+resolutions) each fail a test. The declared sets and all 13 rows are unchanged.
 
 **Tests and mutations.** Nineteen new tests (`test_diff_emu.py`: `CallMemoryTests` 3, `ClobberTests`
 6; `test_diff_verify.py`: 5 parse/counter tests, 3 synthetic verify tests, the clobber re-derivation on the

@@ -457,6 +457,47 @@ class RealFunctionTests(unittest.TestCase):
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
+    # the hand resolutions of E.RESOLVED_JUMPS (record §E3.5, §E3.12): from the guard to the jump, the bytes
+    WINDOWS = {
+        0x18384: ["cmp al, 6", "ja 0x1838b", "and eax, 0xff", "lea esi, [eax*4]", "mov ecx, 0xcf399",
+                  "lea eax, [edx*2]", "add ecx, eax", "jmp dword ptr cs:[esi + 0x18334]"],
+        0x29DFE: ["cmp dx, 5", "ja 0x29e2d", "xor ebx, ebx", "mov bx, dx", "jmp dword ptr cs:[ebx*4 + 0x29d70]"],
+        0x29E62: ["cmp dx, 5", "ja 0x29ea5", "xor esi, esi", "mov si, dx", "jmp dword ptr cs:[esi*4 + 0x29d88]"],
+        0x29EDF: ["cmp dx, 5", "ja 0x29ee7", "xor ecx, ecx", "mov cx, dx", "jmp dword ptr cs:[ecx*4 + 0x29da0]"],
+        0x29F78: ["cmp dx, 5", "ja 0x29faf", "xor eax, eax", "mov ax, dx", "jmp dword ptr cs:[eax*4 + 0x29eec]"],
+        0x29FE5: ["cmp dx, 5", "ja 0x2a01c", "xor ecx, ecx", "mov cx, dx", "jmp dword ptr cs:[ecx*4 + 0x29f04]"],
+        0x2A056: ["cmp dx, 5", "ja 0x2a05e", "xor ebx, ebx", "mov bx, dx", "jmp dword ptr cs:[ebx*4 + 0x29f1c]"],
+    }
+
+    def test_each_resolved_jump_table_matches_the_bytes(self):
+        # the guard bounds the index the jump uses (al masked into eax then esi = eax*4; dx moved into a
+        # cleared register), so the table holds the cmp's imm + 1 entries, each a target in the image
+        img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
+        self.assertEqual(sorted(E.RESOLVED_JUMPS), sorted(self.WINDOWS))
+        for jmp, (guard, table, n) in E.RESOLVED_JUMPS.items():
+            got, a = [], guard
+            while a <= jmp:
+                ins = E.decode_at(img, a)
+                got.append("%s %s" % (ins.mnemonic, ins.op_str))
+                a += ins.size
+            self.assertEqual(got, self.WINDOWS[jmp], hex(jmp))
+            cmp = E.decode_at(img, guard)
+            self.assertEqual(cmp.operands[1].imm + 1, n, hex(jmp))
+            self.assertIn("0x%x]" % table, got[-1])
+            targets = E.resolved_cases(img, E.RESOLVED_JUMPS[jmp])
+            self.assertTrue(len(targets) == n and all(img.contains(t) for t in targets), hex(jmp))
+            # switch_cases does not bound these forms itself: the resolution is what follows them
+            self.assertIn(jmp, E.static_scan(img, jmp, switches=True).indirect)
+
+    def test_without_the_resolutions_the_callees_clobber_edi_and_ebp(self):
+        # the conservative result: an unresolved jump clobbers everything, which reaches 0x2BC30, 0x3C4CC and
+        # 0x3C480 through 0x2A408 -> 0x29F34 (and 0x18350); the resolutions are what keep the declared sets
+        img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
+        for addr in (0x2BC30, 0x3C4CC, 0x3C480):
+            self.assertEqual(E.callee_clobbers(img, addr, {}), ("edx", "edi", "ebp"), hex(addr))
+            self.assertEqual(E.callee_clobbers(img, addr), ("edx",), hex(addr))
+        self.assertEqual(E.callee_clobbers(img, 0x2AE14, {}), ("ebx", "ecx", "edx"))
+
     def test_the_named_gap_is_0x1b890s_in(self):
         r = self.real["host_1b890"]
         self.assertEqual((r.verdict, r.gap, r.problems), ("NAMED_GAP", "in at 0x1B899", []))
