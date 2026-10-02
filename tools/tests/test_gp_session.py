@@ -440,13 +440,19 @@ class TestWinPokes(unittest.TestCase):
 
     def test_the_scenarios(self):
         u9 = gs.SCENARIOS['gp-u9-win']['steps']
-        self.assertEqual([st[-1] for st in u9 if st[-1][0] == 'poke'], [gs.KO_P2, gs.KO_P2])
+        self.assertEqual([st[-1] for st in u9
+                          if isinstance(st[-1], tuple) and st[-1][0] == 'poke'],
+                         [gs.KO_P2, gs.KO_P2])
         u10 = gs.SCENARIOS['gp-u10-ending']['steps']
         pokes = [st for st in u10 if isinstance(st[-1], tuple) and st[-1][0] == 'poke']
         self.assertEqual(len(pokes), 2 + 14)
         self.assertEqual(pokes[0][-1][1], ((0x108106, b'\x80' * 7), (0x10789E, b'\x78')))
         self.assertEqual([(st[1], st[2]) for st in pokes[2:]],
                          [(m, k) for k in range(1, 8) for m in (0x0C, 0x0D)])
+        self.assertEqual(pokes[1][-1], gs.KO_P2)                          # round 2
+        self.assertEqual([st[-1] for st in pokes[2:]], [gs.KO_P2, gs.DEATH_DONE] * 7)
+        u9_pokes = [st for st in u9 if isinstance(st[-1], tuple) and st[-1][0] == 'poke']
+        self.assertEqual([st[3] for st in u9_pokes + pokes], [10] * (2 + 16))   # every frame offset
         self.assertEqual(u10[-1], ('until_mode', 0x03, 0))
         for name in ('gp-u9-win', 'gp-u10-ending'):
             self.assertIn(name, gs.STOP_AT_END)
