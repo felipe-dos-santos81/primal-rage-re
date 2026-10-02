@@ -646,10 +646,22 @@ GP_MODES_RT_TRACE_MIN_FIRST = 2402
 GP_MODES_RT_MAX_START = 90
 GP_MODES_RT_CAPTURE_SHA256 = 496964928c537f3b428414e21d02f254b399af4b2f39b393d10d9855c74f1ea5
 GP_MODES_RT_CAPTURE_FRAMES = 1167
+# gp-u8-tug-of-war (record §U8.19): measured at c212a83 (+ its miss set) on the capture below.
+# MIN_FIRST: first unexplained capture frame 1107 (raw 4343): capture 1106 equals port 826 (f=0x9A1,
+# the port's last frame, 0 px), so 1107 is the next game frame, which the port never ran (its script
+# ends at the capture's X record): how far the port got, not a divergence (gp_compare's row-hash
+# "nearest port 825"). TRACE_MIN_FIRST: "0 differing through 2465", end + 1 = 2466, the exact pin;
+# MAX_START: the window starts at capture frame 104 (raw 1741). Raise N/F when they improve.
+GP_MODES_TW_MIN_FIRST = 1107
+GP_MODES_TW_TRACE_MIN_FIRST = 2466
+GP_MODES_TW_MAX_START = 104
+GP_MODES_TW_CAPTURE_SHA256 = 30cd09b8d24a51a41cc37c0ffebd433a08e5a741b248f28e8112c28ff04d1439
+GP_MODES_TW_CAPTURE_FRAMES = 1176
 GP_MODES_SCENARIOS =
 GP_MODES_SCENARIOS += RA:gp-u8-right-arcade
 GP_MODES_SCENARIOS += LT:gp-u8-left-training
 GP_MODES_SCENARIOS += RT:gp-u8-right-training
+GP_MODES_SCENARIOS += TW:gp-u8-tug-of-war
 GP_MODES_KEEP ?=
 gp-modes-oracle: build ## Gameplay U8 oracle: the other START MENU rows and the attract start (each skips without its capture)
 	@echo "== gameplay U8: other modes (frame and trace ratchets; each skips without its capture) =="
