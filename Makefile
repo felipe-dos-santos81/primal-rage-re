@@ -759,13 +759,31 @@ GP_WIN_MILESTONES = 8
 GP_WIN_WIN_MIN_FIRST = 3162
 GP_WIN_CAPTURE_SHA256 = 7dcea0f16403c0fa52b6ef690edbcccb5340d9b9d1ec96c66ca4d11770708ba8
 GP_WIN_CAPTURE_FRAMES = 2521
-GP_ENDING_MIN_FIRST =
-GP_ENDING_TRACE_MIN_FIRST =
-GP_ENDING_MAX_START =
-GP_ENDING_MILESTONES =
-GP_ENDING_WIN_MIN_FIRST =
-GP_ENDING_CAPTURE_SHA256 =
-GP_ENDING_CAPTURE_FRAMES =
+# gp-u10-ending (record §W.14): measured at 0ea42d0 (+ its miss set) on the capture below
+# (poll.log sha256 and its 5704 stored frames pinned together). Report lines, verbatim:
+#   "frames: FIRST UNEXPLAINED capture 331 (raw 2831): nearest port 219, rows 0..63, x 0..319 (10336 px)"
+#   "frames: window from capture 83 (raw 1745)"
+#   "trace: first difference f=849 (2121) in rng: capture 5A8FCA6A, port A854BFB9"
+#   "path: 0 not reproduced through 29; ratchet N 0 ok (every item is explained: N = 30 is the exact pin)"
+#   "win: first difference f=1602 (5634) in b0c: capture 1, port 0"
+# MIN_FIRST 331: capture 331 is rows 0..1 of port 216 (f=0x483), rows 2..63 of port 218
+# (f=0x485) and rows 64..199 of port 219 (f=0x486): the guest ran 0x484..0x486 in one capture
+# interval right after the round-1 KO poke (W f=0482; the S records of 0x483..0x484 are missed),
+# the catch-up gp_compare's two-frame splice model does not explain, as gp-u9-win's 346; not a
+# port divergence (named in §W.14). TRACE_MIN_FIRST 2121: at f=0x848 (mode 6, round 2) both
+# sides draw rng and set CHAOS's reaction 0x25, whose move callback 0x2381C the port misses
+# (f=0x848); the port then draws rng a frame early (f=0x849) and turns to reaction 0x15 (P
+# track). WIN_MIN_FIRST 5634: the original's death-animation end 0x37EA0 sets DS_00104B0C at
+# f=0x1602 (mode 0xF), the port's at f=0x161F: its stream first runs the unported targets
+# 0x37DD4/0x29C78, and its opponent order follows the rng after f=0x849 (P track).
+# MILESTONES 30: all reproduced. Raise each when it improves.
+GP_ENDING_MIN_FIRST = 331
+GP_ENDING_TRACE_MIN_FIRST = 2121
+GP_ENDING_MAX_START = 83
+GP_ENDING_MILESTONES = 30
+GP_ENDING_WIN_MIN_FIRST = 5634
+GP_ENDING_CAPTURE_SHA256 = a88de48ad39e90df1e3d3329fbd5aa876c69a08484fa22c66db8deebd3feff38
+GP_ENDING_CAPTURE_FRAMES = 5704
 # The port dump is removed after its comparison unless GP_WIN_KEEP=1 (as gp-modes-one's
 # GP_MODES_KEEP; record §W.10: 129 MB and 302 MB of /tmp).
 GP_WIN_KEEP ?=
