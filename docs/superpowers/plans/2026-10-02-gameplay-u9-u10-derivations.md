@@ -320,3 +320,32 @@ the same code, other table entries), the tour's repeat at difficulty < 9 and the
 `DS_00105B3A != 0` branch into the final (`0x423E3`/`0x271E0`, §W.4), the continue in the
 final (mode `0xE` from `0x272DC`), the sprite layouts (`DS_00104529` bit 1 clear in the
 defaults, §W.1).
+
+## §W.10 The Makefile targets and the port preview (Task 7, runs on `a76af68`)
+
+`make gp-win-oracle gp-ending-oracle GP_DUMP=/tmp/pr_u910_gp` (no capture): each prints `Ran 9
+tests` / `OK` (`tools.tests.test_gp_win`) and then `gp-win-one: no capture at
+data/k11-captures/gp-u9-win (skipped)` / `… gp-u10-ending (skipped)`, exit 0. In `verify` the
+two lines follow `gp-modes-oracle` (U8's lines kept).
+
+An unpinned present capture fails (stand-in `poll.log` built from the U9 preview's `T` lines
+read as `S`, in a scratch `K11_CAPTURES`, never `data/`): `gp_win: gp-u9-win: capture: FAIL:
+poll.log sha256 622b3e9f…54c2 != the pinned (unpinned): re-measure, then re-pin` and
+`make: *** [gp-win-one] Error 1`.
+
+The port preview (scripts of §W.7's frames; each replay `test_gp_replay: 0 restart(s) landed`):
+
+- U9: dump 2 031 entries, 129 MB, 58.8 s wall; `fn-miss` distinct = 7: `0x5D812`
+  `actor_spawn` (3 523 hits) and `set_dead` (3 015) (the driver's known pair, §G.24),
+  `0x29D60` and `0x5D812` from `frontend_mode_1b_step`, `0x400E0`, `0x21044`, `0x21084`
+  `anim_indirect` (1 hit each): exactly §W.7's prediction; the only failures are the
+  miss-set check (`7 != 2` and the five `unexpected` lines). `gp_win: gp-u9-win: evidence:
+  8/8 milestones ok`.
+- U10: dump 302 MB, 2 min 46 s wall; distinct = 8: the same plus `0x3DA50` `anim_indirect`
+  (1 hit; `actor_spawn`/`set_dead` 66 079 / 65 219); failures `8 != 2` and six `unexpected`
+  lines. `gp_win: gp-u10-ending: evidence: 30/30 milestones ok`.
+
+No other driver failure. The previews were deleted afterwards. `make -n verify` stops in
+`gp-modes-one` before the new lines (it executes the recursive `gp_compare`; the same on the
+unmodified Makefile), so the order is read from the Makefile: `gp-modes-oracle`,
+`gp-win-oracle`, `gp-ending-oracle`, `diff-verify`.

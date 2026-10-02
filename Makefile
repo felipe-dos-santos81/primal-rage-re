@@ -725,6 +725,55 @@ gp-modes-one: build
 		echo "gp-modes-oracle: no capture at $(K11_CAPTURES)/$(scenario), skipped"; \
 	fi
 
+# Gameplay U9/U10 oracles (plan docs/superpowers/plans/2026-10-02-gameplay-u9-u10-win-and-endings.md,
+# record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
+# (data/k11-captures/gp-u9-win) and the ending (data/k11-captures/gp-u10-ending), each reached
+# under memory pokes (gp_session's ('poke', ...) steps; the port replays the capture's W records
+# as `poke` lines at the same frames). The tool tests always run; with a capture present it must
+# first show the raw-derived path (tools/gp_win.py check, record §W.9), then the frame and trace
+# ratchets (gp_compare), the milestone ratchet (the leading milestones the port reaches at the
+# capture's frame) and the win-fields trace ratchet (gp_session.WIN_FIELDS). Skips without the
+# capture, even under PR_ORACLE_REQUIRED (spec §4.3); with it, an empty pin FAILS. The claims are
+# narrow like gp-oracle's: what a poke replaced (the hits that would have KO'd P2, the death
+# animation that would have set DS_00104B0C) is not claimed (record §W.9).
+# The values below are pinned by the plan's Tasks 9 and 11 from the measured report lines
+# (record §W.12/§W.14); raise each when it improves.
+GP_WIN_MIN_FIRST =
+GP_WIN_TRACE_MIN_FIRST =
+GP_WIN_MAX_START =
+GP_WIN_MILESTONES =
+GP_WIN_WIN_MIN_FIRST =
+GP_WIN_CAPTURE_SHA256 =
+GP_WIN_CAPTURE_FRAMES =
+GP_ENDING_MIN_FIRST =
+GP_ENDING_TRACE_MIN_FIRST =
+GP_ENDING_MAX_START =
+GP_ENDING_MILESTONES =
+GP_ENDING_WIN_MIN_FIRST =
+GP_ENDING_CAPTURE_SHA256 =
+GP_ENDING_CAPTURE_FRAMES =
+.PHONY: gp-win-oracle gp-ending-oracle gp-win-one
+gp-win-oracle: build ## Gameplay U9 oracle: win-path evidence, frame/trace/milestone/win ratchets on data/k11-captures/gp-u9-win (skips without it)
+	@echo "== gameplay oracle: gp-u9-win (the win path under pokes; plan U9/U10) =="
+	$(PYTHON) -m unittest tools.tests.test_gp_win
+	@$(MAKE) --no-print-directory gp-win-one scenario=gp-u9-win GP_WIN_ID=WIN
+gp-ending-oracle: build ## Gameplay U10 oracle: ending evidence, frame/trace/milestone/win ratchets on data/k11-captures/gp-u10-ending (skips without it)
+	@echo "== gameplay oracle: gp-u10-ending (the ending under pokes; plan U9/U10) =="
+	$(PYTHON) -m unittest tools.tests.test_gp_win
+	@$(MAKE) --no-print-directory gp-win-one scenario=gp-u10-ending GP_WIN_ID=ENDING
+gp-win-one: build
+	@if [ ! -d $(K11_CAPTURES)/$(scenario) ]; then echo "gp-win-one: no capture at $(K11_CAPTURES)/$(scenario) (skipped)"; else \
+		$(PYTHON) tools/gp_win.py check --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
+			--capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)" && \
+		$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1 && \
+		$(PYTHON) tools/gp_compare.py --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
+			--port $(GP_DUMP)/$(scenario) --min-first "$(GP_$(GP_WIN_ID)_MIN_FIRST)" \
+			--trace-min-first "$(GP_$(GP_WIN_ID)_TRACE_MIN_FIRST)" --max-start "$(GP_$(GP_WIN_ID)_MAX_START)" \
+			--capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)" --capture-frames "$(GP_$(GP_WIN_ID)_CAPTURE_FRAMES)" && \
+		$(PYTHON) tools/gp_win.py path --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
+			--port $(GP_DUMP)/$(scenario) --min-milestones "$(GP_$(GP_WIN_ID)_MILESTONES)" \
+			--win-min-first "$(GP_$(GP_WIN_ID)_WIN_MIN_FIRST)" --capture-sha256 "$(GP_$(GP_WIN_ID)_CAPTURE_SHA256)"; fi
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario)
@@ -801,6 +850,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory gp-keys-oracle
 	@$(MAKE) --no-print-directory gp-twop-oracle
 	@$(MAKE) --no-print-directory gp-modes-oracle
+	@$(MAKE) --no-print-directory gp-win-oracle
+	@$(MAKE) --no-print-directory gp-ending-oracle
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="
