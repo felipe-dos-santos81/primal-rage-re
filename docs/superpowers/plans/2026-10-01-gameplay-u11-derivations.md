@@ -151,7 +151,7 @@ are those of record demo-pose §55-A (`0x1E8` `- PAUSED -`, `0x1EE` `QUIT TO
 DOS? Y/N`, `0x1EF` `ABANDON CONQUEST? Y/N`, `0x1F0`/`0x1F1` `Y`/`N`; the
 strings are in the string-table resource `0x47370` loads, which is why
 Ghidra's string search finds none). **Alt itself (scan `0x38`) is read by
-nothing:** it is no configured pad scan (`0x122C62` holds `1F 2D 2C 2E 16 17 31
+nothing:** it is no configured pad scan (`0x122C62` — the address is `0xA2C62`, see §K.13 — holds `1F 2D 2C 2E 16 17 31
 32 48 50 4B 4D 47 49 4F 51`, record gameplay-ground-truth §G.1.2) and no
 code compares `0x38`. A real Alt-letter therefore also presses the letter's
 own scan in the key-state table: under the default binding **Alt-S also holds
@@ -416,7 +416,7 @@ Named gaps, each with its evidence:
 1. **Physical keyboard path** (spec §7): claims start at the key-state table
    and the BIOS ring the harness writes. The SDL scancode → set-1 table of the
    windowed host is untested headless.
-2. **The pause and prompt frames are not compared.** `0x2EA78(-1)` presents
+2. **The pause and prompt frames are not compared** (the one unexplained frame in the key window, capture 835 at the QUIT TO DOS? event, is recorded in §K.12, "Finding: capture frame 835"). `0x2EA78(-1)` presents
    one frame with the text; this unit's ratchet is on state. When planned
    (`e9271df`) the path's frame claim stopped at the character select
    (`GP_IDLE_LOSS_MIN_FIRST` 203, divergence O1), long before the keys; on
@@ -443,3 +443,230 @@ Named gaps, each with its evidence:
    word.
 10. **Joystick devices** (`+0x2D4`/`+0x2D6` ≠ 0, `0x1B890..0x1BB73`): not
     exercised.
+
+## §K.11 Tool log (Tasks 1–4)
+
+### Task 1: keys, extra fields, scenario
+- `gp_session`: six keys (record §K.2), `format_s(..., fields)`, `KEYS_EXTRA` (record §K.3), `SCENARIOS['gp-keys-fight']` (record §K.6). `gp_capture`: `read_snap(..., fields)`, `Poller(fields=...)`, `main` passes `SNAP_FIELDS + extra`.
+- Tests: before `KeyError: 'gp-keys-fight'`; after `Ran 44 tests … OK` (the plan's 41 + 3: U6b's Task 1, already on main, added three tests to `test_gp_session`). Mutations S1–S4 (PYTHONDONTWRITEBYTECODE=1, 44 tests each):
+  - S1 `read_snap` over `gs.SNAP_FIELDS`: `ERROR: test_extra_fields_are_read_and_logged`, `FAILED (errors=1)`.
+  - S2 `format_s` over `SNAP_FIELDS`: `ERROR: test_extra_fields_are_read_and_logged`, `FAILED (errors=1)`.
+  - S3 `'alt-s': (0x1F, 0x1F73)`: `FAIL: test_keys_are_bios_make_words`, `FAILED (failures=1)`.
+  - S4 step 8 `('after', 1, ...)`: `FAIL: test_an_answer_fires_with_its_opener`, `FAILED (failures=1)`.
+- Raw check (fixed-up image, capstone base 0x10000): the latch store is `0x24D4D mov [0x105F30], eax`; the Alt-letter arms test `bl` (the scan) at `0x24D99`..`0x24DB8` (0x1F -> `call 0x1D220`, 0x32 -> `call 0x1D1B0`, 0x10 -> `call 0x249F0`); `0x1D1B0` toggles `[0x1028DA]` (not an xor: writes 0 at 0x1D1C2 / 1 at 0x1D213; see Task 2) (music pause, `mpz`), `0x1D220` toggles `[0x1028DB]` (samples pause, `spz`). No correction to the plan. The `KEYS_EXTRA` comment names the two functions, not the bytes.
+- Merge note: U6b's five fields are already in `SNAP_FIELDS`; `KEYS_EXTRA` follows them in every `S` line of `gp-keys-fight`. This task does not touch `test_game.c`'s `T` line (Task 3).
+- Compat: `make gp-oracle gp-charsel-oracle` after the change: every `gp_compare` line, the `landed` lines and `all checks passed` identical to the Task 0 baseline.
+
+### Task 2: gp_keys.py
+- `tools/gp_keys.py {evidence|effects} --capture DIR [--port DIR] [--min-effects N] [--capture-sha256 HEX]`: one row per event of `gp_keys.EVENTS`, judged by `judge(rule, c, F, rec, boot_cred)` from the same frames (`c` from the `I` presses paired FIFO with the `H` records, `F` a pad event's first raw frame with its kb bit) on the capture's `S` records (`evidence`) or the port's `T` records (`effects`, the ratchet: the events before the first one the port does not reproduce must number at least N). Absent capture: `skipped`, exit 0; unpinned `--min-effects`, N above the 11 events, an empty or another `--capture-sha256`: exit 1. Rules as record §K.6's table: latch rules (`latched`/`cleared`/`toggled`) need the latch to differ before the key, the mode unchanged and the pause bytes flipped or kept; `b0` reads `new`/`e0` at `F + 1`; `join` reads the first record in `F + 1 .. F + 9` (mode `0x17`, `b1f | 2`, `cred` kept); `restart` needs no record at `c` and the next record at mode 3, rng `0xABCD`, boot `cred`.
+- Tests: before `ModuleNotFoundError: No module named 'gp_keys'`; after `Ran 83 tests ... OK` for `test_gp_keys` + `test_gp_session` + `test_gp_capture` + `test_gp_compare` (the plan's 80 + 3: U6b Task 1's tests, already on main; 13 in `test_gp_keys`). The Makefile's seven-module tool-test line is 110 tests and 123 with `test_gp_keys` (the Makefile gains `tools.tests.test_gp_keys` in Task 4). Mutations M1-M9 (`PYTHONDONTWRITEBYTECODE=1`, 13 tests each): M1 `FAIL: test_an_unchanged_latch_cannot_show_an_event`; M2 `FAIL: test_a_restart_must_abandon_its_iteration`; M3 `FAIL: test_the_ratchet_fails_below_n_and_unpinned`; M4 `FAIL: test_another_capture_fails_the_pin`; M5, M6, M7, M8 `FAIL: test_each_rule_can_fail`; M9 `FAIL: test_another_capture_fails_the_pin`; each `FAILED (failures=1)`, restored run `Ran 13 tests ... OK`.
+- Fold-in (Task 1 review, k1): `test_an_answer_fires_with_its_opener` now asserts the whole ordered action list of steps 9-17 with their `after` gaps (10, 10, 0, 10, 10, 10, 10, 20, 0), the `until_mode` step 18 and the step count, and walks `Schedule` through them (frames `frame_of[8] + cumulative gap`). Mutations (both in `SCENARIOS['gp-keys-fight']`, each `FAIL: test_an_answer_fires_with_its_opener`, restored): step 12 `alt-s` -> `alt-m`; step 16's gap 20 -> 10.
+- Fold-in (k2): the `KEYS_EXTRA` comment names the toggle sites. Raw check (fixed-up image, capstone base 0x10000, file offset = VA - 0x10000): `0x1D220 xor byte [0x1028DB],1` (then `0x1D229 mov al,[0x1028DB]`, `cmp eax,1`, `je 0x1CD9C`); the music byte has no xor: `0x1D1B0` reads `[0x1028DA]`, if 1 writes 0 at `0x1D1C2 mov [0x1028DA],dl` (dl = 0 from `0x1D1C0`), else writes 1 at `0x1D213 mov byte [0x1028DA],1`. Correction to Task 1's note: `0x1D1B0` is a conditional set/clear, not an `xor`; the flip the rule checks (`mpz` 0 -> 1 -> 0) is the same.
+
+### Task 3: the port side
+- Seam: `game_restart_landings()` (`flow.c`/`flow.h`, `PORT:`), incremented in `game_loop`'s `setjmp` landing branch; `test_gp_replay` counts the landings (`const u32 landings0`), prints `test_gp_replay: <n> restart(s) landed` and checks `gp_trace_lines + landed == end - enter_frame + 1`; `test_restart_drive` asserts the seam counts its one landing. The `T` line ends `... ent=%08X r0=%02X r1=%02X c0=%02X c1=%02X s0_43=%02X lat=%08X spz=%02X mpz=%02X` (U6b's five, then `KEYS_EXTRA`: `DS_00105F30` DSD, `DS_001028DB` DSB, `DS_001028DA` DSB). The brief's `test_game.c` hunks were re-anchored by content (U6b moved those lines; `12415` replaces `12411` for the old failing check, `12714`/`12426` replace P1's `12710`/`12422`).
+- Red (Step 2, unmodified port): `FAIL test_game.c:12415: 1849 != 1850`, `FAILURES: 1`. Python: `test_the_port_t_line_writes_every_snap_field_in_order` failed on the longer T line before its change (expected names `SNAP_FIELDS` only).
+- `tools/tests/test_gp_session.py` `test_the_port_t_line_writes_every_snap_field_in_order`: names now `SNAP_FIELDS + KEYS_EXTRA`; plus placeholder widths (2 hex digits per byte, all fields) and, for `KEYS_EXTRA`'s three, the accessor by size and `DS_%08X` address (the last three `(unsigned)DSx(DS_...)` arguments). The test on this branch checked names only; the width/address/accessor checks did not exist and are new here. Mutations (each `FAIL` of that test, restored `Ran 28 OK`): drop `mpz` from the format and the argument; swap `DS_001028DB`/`DS_001028DA`; `mpz=%04X`.
+- Green (Step 4): `test_gp_replay: 1 restart(s) landed`, `all checks passed`; `PR_RESTART`: `all checks passed`; `evidence: 11 of 11 events ok`; `effects: first not reproduced 11, ratchet N 11 ok`; the §K.8 table (lat `D 0 1F 0 32 0 1F 32 3B 3C`, 2157 `-`, 2158 `mode=3 lat=0 ... cred=5 rng=0000ABCD`; spz/mpz flips 2067/2087/2107/2117) reproduced.
+- Mutations: P1 (delete the increment): `PR_RESTART` `FAIL test_game.c:12714: 0 != 1`; replay `0 restart(s) landed`, `FAIL test_game.c:12426: 1849 != 1850`. P2 (swap the two byte arguments in `gp_trace_line`): replay still passes, `effects: FAIL: first not reproduced 2 < ratchet N 11`. P3 (comment out the pause's `config_screen_wait(-1);`, flow.c `0x24E46/0x24E4B`): replay passes, `effects: FAIL: first not reproduced 1 < ratchet N 11`. All restored.
+- Gate (light, without `gp-keys-oracle`): `all checks passed` twice, `gp-exit=0`, `GP-IDLE-LOSS-EQUAL`, replays `0 restart(s) landed`, `gp-idle-loss frames 2064 / trace 8320` ok, `gp-u5-charsel 516 / 1513` ok, `diff-verify: 6/6 ... 7/7`, tool tests `Ran 123 tests OK` (the plan's 120 + 3 from U6b Task 1), `771 1203 64`, `731 731 100`.
+
+### Task 4: make gp-keys-oracle
+- `make gp-keys-oracle` (also under `PR_ORACLE_REQUIRED=1`) without `data/k11-captures/gp-keys-fight`: `gp-replay: no capture at ...` then two `gp_keys: gp-keys-fight: no capture at data/k11-captures/gp-keys-fight, skipped` (the gp oracles skip even when oracles are required, gameplay spec §4.3); `make help` shows `gp-keys-oracle  In-match keys: evidence + effects ratchet on gp-keys-fight (...)`. `.PHONY` was re-anchored by content (main's continuation line now ends `entry-triage`; `gp-keys-oracle` appended after it); the recipe follows `gp-charsel-oracle`'s, `verify` calls it after `gp-charsel-oracle`. `GP_KEYS_MIN_EFFECTS` and `GP_KEYS_CAPTURE_SHA256` are empty until Task 6 (an unpinned value fails with a capture present).
+- Tool-test line (`verify`): `tools.tests.test_gp_keys` added; this branch has no `test_gp_moves` module on the line (U6b's later tasks add it at merge). Gate: `Ran 124 tests OK` = the plan's 120 + 3 (U6b Task 1 in `test_gp_session`) + 1 (the k5 test below).
+- Fold-in k5 (review minor): `judge_all` took `boot_cred` from the first record of the side being judged, so the effects judge derived the restart's expected credits from the port's own trace. It now takes the capture's first `S` record for both judges. Test `test_the_port_cannot_supply_its_own_boot_cred`: the capture boots with 5 credits; a port record set whose first record and post-restart record say 7 fails the restart (`want 3/<seed>/5`); with the old derivation (`rec[min(rec)]`, mutated in) the same test fails (`[] != ['esc-y']`); restored, 14 tests OK. The real capture's first `S` record is the boot value only if the poller's first record precedes any credit change; Task 5/6 check this on the real capture.
+- Fold-in k8 (review minor): `test_gp_replay` read `landings0` right after `game_init()`; it is now taken at the arm point (`enter_now`, with `gp_armed = 1`), so only landings inside the armed window excuse a frame, and a `CHECK` that the count was taken (sentinel `0xFFFFFFFF`) fails if the arm is never reached. Behaviour unchanged: the dry run prints `1 restart(s) landed`, `all checks passed`, evidence `11 of 11 events ok`, effects `first not reproduced 11, ratchet N 11 ok`; `PR_RESTART` `all checks passed`; the replays of gp-idle-loss and gp-u5-charsel print `0 restart(s) landed`. No mutation proves k8 itself: no pre-arm landing exists in any replay, so the change is a guard, not a measured behaviour.
+- Light gate (with `gp-keys-oracle`): `all checks passed` twice, `gp-exit=0`, `GP-IDLE-LOSS-EQUAL`, ratchets 2064 / 8320 / 516 / 1513 ok, `diff-verify: 6/6 ... 7/7`, `771 1203 64`, `731 731 100`.
+
+## §K.12 The capture, the replay and the pins
+
+### Capture (Task 5)
+
+One run of `make gp-capture scenario=gp-keys-fight` (no `GP_ARGS`; base `1a9e2bb`, after the capture-hygiene merge `2f0c65f`; pre-rebase hashes, Task 7 is `d9fc573` after the rebase onto U6b, §K.15), not repeated. `session.txt` (transcribed; argv line omitted: temp paths):
+
+```
+scenario=gp-keys-fight
+dosbox=DOSBox-X version 2026.08.31 SDL2, copyright 2011-2026 The DOSBox-X Team.
+exe=/tmp/pr_title_pin/PRAGE.EXE sha256=8120f1bd1df389ed94cb329c030f95d9e38caad193bbd9840717af557161a68d
+cmos=zero pad_bios=1
+time_limit=90 wall_s=90.7 rc=0
+avis=['prage_000.avi', 'prage_001.avi'] fps=70.0866 dro=['prage_000.dro'] frames=1166 raw_window=1383..5235 avi_frames=6307 twg_last=1332
+check=ok base
+check=ok steps fired 18/18
+check=ok end frame reached
+check=ok mode 0x27 after the Enter
+check=ok snapshots kb == raw (0 differ)
+check=ok frames written 1166/1166
+check=ok port script v2
+check=ok no unscripted input
+```
+
+- `gp_capture: snapshots 3249, f 5..CBE, 9 frames missed`; the missed `f` are `13A 1D0 268 652 653 86F 870 871 872`. `python3 tools/gp_capture.py check-input data/k11-captures/gp-keys-fight`: `check=ok no unscripted input`, exit 0.
+- Size `du -sh` 50M (51232 KB): 1166 frames (raw 1383..5235) plus `poll.log` (3323 lines). D1 estimated about 70 MB; the window is shorter than the estimate assumed (it ends at the time limit, raw 5235). `wall_s` 90.7 is the harness `time_limit = 90` plus shutdown (`E ms=90365 reason=time-limit`): `gp-keys-fight` is not in `STOP_AT_END`, so the run keeps its post-restart tail to the limit.
+- Identity: `poll.log` sha256 `8425afbc46d51173532f6f4c27a8f16c594e2bc572b4273e056bdbf51a9678ae`, 1166 `frame_*.raw.gz`.
+
+**The path and the event frames** (Task 5 Step 2; `S`/`P` mode changes, presses and consumptions):
+
+| poll.log | record | what |
+|---|---|---|
+| 3 | `P f=0 mode=3` | boot |
+| 312, 314, 315 | `I f=138 enter`, `H f=13A`, `P f=13A mode=27` | step 0 |
+| 466, 467 | `I f=1CF enter`, `H f=1D0` | step 1 (START MENU) |
+| 618, 621–623 | `I f=265 enter`, `H f=268`, `P f=268 mode=2D`, `P f=269 mode=1A` | step 2 (LEFT PLAYER ARCADE) |
+| 643, 662 | `P f=27B mode=1B`, `P f=28D mode=10` | |
+| 1610, 1629, 1646, 1648 | `P f=640 mode=1A`, `f=652 1B`, `f=664 11`, `f=665 17` | |
+| 1890, 1909, 1928 | `P f=756 mode=1A`, `f=768 1B`, `f=77A 5` | |
+| 2052 | `P f=7F5 mode=6` | round 1 (as `gp-idle-loss`, record §G.18: mode 6 at `0x7F5`) |
+| 2063, 2064 | `I f=7FE enter`, `H f=7FF` | step 3 |
+| 2076–2079 | `I f=808 space` ×2, `H f=809` ×2 | steps 4, 5 |
+| 2092, 2094 | `I f=812 alt-s`, `H f=814` | step 6 |
+| 2105–2109 | `I f=81C esc`, `I f=81C n`, `H f=81E` ×2 | steps 7, 8 |
+| 2121, 2124 | `I f=826 alt-m`, `H f=829` | step 9 |
+| 2134–2139 | `I f=830 alt-q`, `I f=830 n`, `H f=833` ×2 | steps 10, 11 |
+| 2150, 2153 | `I f=83A alt-s`, `H f=83D` | step 12 |
+| 2163, 2166 | `I f=844 alt-m`, `H f=847` | step 13 |
+| 2176, 2179 | `I f=84E p1.start` (`3B00`), `H f=851` | step 14 |
+| 2189, 2191, 2193 | `I f=858 p2.start` (`3C00`), `P f=85A mode=17`, `H f=85B` | step 15 (the join) |
+| 2213–2218 | `I f=86C esc`, `I f=86C y`, `H f=86F` ×2 | steps 16, 17 |
+| 2219 | `P f=870 mode=3` (ms 57272, tick `CF6`) | the `0x24AB0` restart |
+| 2220, 2223 | `S f=873 mode=3` (ms 71849), `X f=873 step=19 end` | step 18 (after the boot movies, 14.6 s) |
+| 3323 | `E ms=90365 reason=time-limit rc=0` | |
+
+The path before mode 6 is the expected one (the `…` of the expectation holds `0x640..0x77A`: `1A 1B 11 17 1A 1B 5`). Every answer's `H` is in its opener's frame (`809`, `81E`, `833`, `86F`). Mode `0x17` comes one frame after F2's raw bit (`F = 0x859`, `P f=85A`).
+
+**The raw evidence** (Task 5 Step 3): `python3 tools/gp_keys.py evidence --capture data/k11-captures/gp-keys-fight` prints eleven `ok` rows and `evidence: 11 of 11 events ok`. The `S` records each rule reads (latch hex):
+
+| event | c (F) | before → at (poll.log) | observed |
+|---|---|---|---|
+| enter | `7FF` | `7FE` → `7FF` (2062, 2065) | lat 0 → `D`; mode 6 = 6; spz/mpz 0/0 |
+| pause | `809` | `808` → `809` (2075, 2080) | lat `D` → 0; mode 6; spz/mpz 0/0 kept |
+| alt-s on | `814` | `813` → `814` (2093, 2095) | lat 0 → `1F`; spz 0 → 1; mpz 0 kept |
+| esc-n | `81E` | `81D` → `81E` (2107, 2110) | lat `1F` → 0; mode 6; spz/mpz 1/0 kept |
+| alt-m on | `829` | `828` → `829` (2123, 2125) | lat 0 → `32`; mpz 0 → 1; spz 1 kept |
+| altq-n | `833` | `832` → `833` (2137, 2140) | lat `32` → 0; mode 6; spz/mpz 1/1 kept |
+| alt-s off | `83D` | `83C` → `83D` (2152, 2154) | lat 0 → `1F`; spz 1 → 0; mpz 1 kept |
+| alt-m off | `847` | `846` → `847` (2165, 2167) | lat `1F` → `32`; mpz 1 → 0; spz 0 kept |
+| f1 | `851` (`84F`) | `84E`, `84F`, `850` (2175, 2177, 2178) | raw `01000000` at `84F`; at `850` new `01000000`, e0 `0101`; mode/b1f 6/1 at `84E` and `850` (lat `3B` at `851`) |
+| f2 | `85B` (`859`) | `858`, `859`, `85A` (2188, 2190, 2192) | raw `00000100` at `859`; first record after it `85A`: mode `0x17`, b1f 1 → 3, cred 4 kept (lat `3C` at `85B`) |
+| esc-y | `86F` | `86E` (2216), none at `86F`, next `873` (2220) | mode `0x17` before (∉ {3, `0x27`}), cred 4 before; no `S` at `86F`; at `873` mode 3, rng `0000ABCD`, cred 5 |
+
+No rule was corrected: the raw rules of §K.6 hold on the capture as written.
+
+**Review notes k3, k4 and k9 on the real capture.**
+- k4 (exact-record rules on snapshot gaps): none of the frames a rule reads (`c − 1`, `c`, `F − 1`, `F + 1`) is among the nine missed frames, so no event is unjudgeable by a gap. The steady-state coverage of the events' span is complete: no `S` is missing from `0x654` to `0x86E`.
+- k3 (the restart): **named gap.** The capture has no `S` at `c = 0x86F`, and also none at `870 871 872`; the first record after `c` is at `0x873` (14.6 s later, after the boot movies), while the port's trace has its first record after the landing at `c + 1` (§K.8: 2158 = `c + 1`). Both pass the rule (it reads "the first record after `c`"), but at different frames. "No record at `c`" is consistent with abandonment and not proved by it: the poller was reading at `f = 0x86F` (the two `H` records, ms 57248–57249) and its next state change is `P f=870 mode=3` at ms 57272, so iteration `0x86F` ended in the restart (mode 3 is set by the restart tail) with no spin the poller saw; but the other missed frames (`13A 1D0 268 652 653`) are iterations that never spun, at a mode or screen change (`t508` resets, e.g. `0x654` `t508=5`), the same signature a poller gap would leave. The log cannot tell the two apart; the claim for event 10 rests on the record after it (mode 3, rng `0xABCD`, the boot `cred`) and on the raw (`0x24AB0`, §K.6), not on the absence alone.
+- k9 (the boot credit count): the capture's first `S` record is `poll.log:4` `f=5 mode=3 cred=5`; `cred` stays 5 until `f = 0x269` (mode `0x1A`, the start of LEFT PLAYER ARCADE, cred 4) and the restart's first record (`0x873`) shows 5 again. So the first `S` carries the boot value 5, and the restart restores it.
+
+### Replay and pins (Task 6)
+
+**The miss set (Step 1, before the table).** `gp_session.py port-script --scenario gp-keys-fight` wrote a 38-line script (`enter_frame 314`); the `PR_GP_DUMP` replay printed `test_gp_replay: 1 restart(s) landed` and
+
+```
+fn-miss PR_GP_DUMP 0x5D812 actor_spawn hits=4420
+fn-miss PR_GP_DUMP 0x5D812 set_dead hits=4079
+fn-miss PR_GP_DUMP 0x29D60 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP 0x5D812 frontend_mode_1b_step hits=1
+fn-miss PR_GP_DUMP distinct=4 dropped=0
+FAIL …test_platform.c:193: 4 != 2
+fn-miss PR_GP_DUMP: unexpected 0x29D60 from frontend_mode_1b_step
+fn-miss PR_GP_DUMP: unexpected 0x5D812 from frontend_mode_1b_step
+FAILURES: 3
+```
+
+The only failures are the miss log's. The measured set is the re-baselined one (§K.8): the base pair plus `0x29D60 frontend_mode_1b_step` (a bare `ret`, the wipe's end into mode `0x10`, record §G.24) and `0x5D812 frontend_mode_1b_step` (the runtime's `xor eax,eax; ret` stub, the wipe into mode 5, record §G.24). No `0x23208`, `0x3A588`, `0x3640C` or `0x37DCC` miss (no regression of U6a's registrations); no pair outside §G.24.
+
+**The table (Step 2).** `k_miss_gp_keys_fight[]` holds those two rows; `fnm_known(addr, ctx, frontend, idle_loss, charsel, keys_fight)` (U5's `charsel` 5th, `keys_fight` 6th; the `--check` call passes `0, 0, 0, 0`; pre-rebase: after the rebase onto U6b it takes 7 flags, `moves` 6th and `keys_fight` 7th, §K.15). The brief's patch applied as written (`git apply`, offsets only). `make gp-replay scenario=gp-keys-fight`: `test_gp_replay: 1 restart(s) landed`, `all checks passed`. Mutation (restored): delete the `0x29D60` row → `FAIL …test_platform.c:204: 4 != 3`, `fn-miss PR_GP_DUMP: unexpected 0x29D60 from frontend_mode_1b_step`, `FAILURES: 2`.
+
+**The effects (Step 3).** `gp_keys.py effects --min-effects 0` on the replay: eleven `ok` rows (the same `c`/`F` as the evidence) and `effects: first not reproduced 11, ratchet N 0 ok (improved: raise N)`. K = 11, the dry run's prediction (§K.8). No `FAIL` row. The restart is judged at different frames on the two sides (review note k3): the port's trace has no `T` at `0x86F` and its first record after it is `0x870` (mode 3, rng `ABCD`, cred 5, b1f 0; `T` lines at `870..873`, the replay's end), the capture's is `0x873`; both meet the rule.
+
+**The pins (Step 4).** Makefile: `GP_KEYS_MIN_EFFECTS = 11`, `GP_KEYS_CAPTURE_SHA256 = 8425afbc46d51173532f6f4c27a8f16c594e2bc572b4273e056bdbf51a9678ae`, with the provenance comment. `make gp-keys-oracle`: `test_gp_replay: 1 restart(s) landed`, `all checks passed`, `evidence: 11 of 11 events ok`, `effects: first not reproduced 11, ratchet N 11 ok`, exit 0.
+
+**Mutations of the pins (Step 5) and the present-capture failure matrix (review note k9)**, each alone, restored:
+
+| # | mutation | result |
+|---|---|---|
+| R1 | `GP_KEYS_MIN_EFFECTS=12` | `effects: FAIL: ratchet N 12 > 11 events`, make exit 2 |
+| R2 | `GP_KEYS_CAPTURE_SHA256=0000…0000` | `FAIL: poll.log sha256 8425afbc…678ae, pinned 0000…0000 (re-measure and re-pin)` (at the evidence step), exit 2 |
+| R3 | `GP_KEYS_MIN_EFFECTS=` | `effects: FAIL: --min-effects is not pinned (first not reproduced: 11)`, exit 2 |
+| R4 | `flow.c` `game_key_loop`: the pause's `config_screen_wait(-1);` (`0x24E46/0x24E4B`) deleted, rebuilt | replay `all checks passed`; `evidence: 11 of 11 events ok`; `effects: pause f=809 FAIL: lat 20 at f=809, want 0`, `FAIL: first not reproduced 1 < ratchet N 11`, exit 2 |
+| R5 | `GP_KEYS_CAPTURE_SHA256=` | `FAIL: --capture-sha256 is not pinned (this poll.log: 8425afbc…678ae)`, exit 2 |
+| R6 | `PR_ORACLE_REQUIRED=1 make gp-keys-oracle` | passes: `1 restart(s) landed`, `11 of 11`, `ratchet N 11 ok`, exit 0 |
+| R7 | `GP_KEYS_MIN_EFFECTS=10` | `first not reproduced 11, ratchet N 10 ok (improved: raise N)`, exit 0 |
+
+**The report-only comparison (Step 6).** `make gp-report scenario=gp-keys-fight`:
+
+```
+gp_compare: gp-keys-fight: frames: window from capture 100 (raw 1747); 1028 classified: 660 clean, 361 splice, 2 transition, 5 unexplained, 12 all-black
+gp_compare: gp-keys-fight: frames: FIRST UNEXPLAINED capture 835 (raw 3934): nearest port 593, rows 0..91, x 0..319 (17138 px)
+gp_compare: gp-keys-fight: frames: UNEXPLAINED capture 1136 (raw 5027): nearest port 0, rows 0..199, x 0..319 (55564 px)
+gp_compare: gp-keys-fight: frames: UNEXPLAINED capture 1137 (raw 5032): nearest port 0, rows 0..199, x 0..319 (49426 px)
+gp_compare: gp-keys-fight: frames: UNEXPLAINED capture 1138 (raw 5036): nearest port 0, rows 0..199, x 0..319 (49426 px)
+gp_compare: gp-keys-fight: frames: UNEXPLAINED capture 1139 (raw 5041): nearest port 0, rows 0..199, x 0..319 (45420 px)
+gp_compare: gp-keys-fight: frames: coverage (reported, not ratcheted): 13 non-black port frame(s) up to port 788 not exhibited by any classified capture frame: [9, 11, 246, 247, 280, 281, 415, 455, 456, 457, 458, 460, 500]
+gp_compare: gp-keys-fight: trace: 1841 frames compared (f 13A..), 8 without a capture snapshot; first tick difference f=13B (reported, not ratcheted)
+gp_compare: gp-keys-fight: trace: normalised (reported, not ratcheted): ent 0 of 1841 differ; t508 1504 of 1841 differ (first f=27B)
+gp_compare: gp-keys-fight: trace: 0 differing through 2163
+```
+
+- **Trace:** no traced difference through `f = 0x873` (2163), the replay's end: the path to round 1, every event and the restart agree on every `TRACE_FIELDS` field.
+- **Finding: capture frame 835 (cause not isolated).** It is not before the first event's `c` (`0x7FF`): it falls at the altq-n event (`c = 0x833`). Measured against the port's frames (`frames.txt`: port 592 = `f=0x832`, 593 = `f=0x833`): capture 834 equals port `0x832` exactly; capture 835's rows 0..80 equal port `0x832`, rows 92..199 equal port `0x833`, and rows 81..91 differ from both (x 56..189 in rows 81..88, 0..189 in rows 89..91; 73–99 px a row, in and around Sauron's sprite) equal neither; capture 836's rows 0..91 equal `0x833`. So 835 is a top/bottom splice of `0x832`/`0x833` with an 11-row band that neither port frame holds. The band shows no prompt text. Candidates, not decided: the QUIT TO DOS? prompt (`0x249F0`) presents through `0x2EA78(-1)` and the port's dump holds one frame per `f`, so a prompt present is not dumped (§K.10 item 2); or a sprite drawn during scan-out. The pause (`0x809`) and ABANDON (`0x81E`) prompts left no unexplained frame. Not ratcheted here; a frame ratchet on `gp-keys-fight` is the follow-up §K.10 item 2 names.
+- Captures 1136–1139 (raw 5027..5041) are past the replay's end: the capture plays the restart's boot movies at `f = 0x870..0x872` (14.6 s); the port's replay ends at `0x873`, and its 155 frames at `f=0x870` (the restart's screens) do not explain them. This is where the port's script ends, not a divergence.
+
+**Gate (light, `t6`).** `all checks passed` (plain and `PR_RESTART=1`); `gp-exit=0`; `GP-IDLE-LOSS-EQUAL`; `gp-idle-loss` `first unexplained 2064, ratchet N 2064 ok`, `trace: 0 differing through 8319; ratchet N 8320 ok`, `0 restart(s) landed`; `gp-u5-charsel` `516` and `1513` ok, `0 restart(s) landed`; `gp-keys-fight` `1 restart(s) landed`, `evidence: 11 of 11 events ok`, `effects: first not reproduced 11, ratchet N 11 ok`; `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`; tool tests `Ran 141 tests OK` (the plan's 120 + 3 from U6b's Task 1 + 1 for k5 + 17 that the capture-hygiene merge `2f0c65f` added to `test_gp_capture`: 13 → 30); `771 1203 64`, `731 731 100`.
+
+## §K.13 The host binding (Task 7)
+
+**The raw truth (§K.7).** Fixed-up image (`build/diffrun --exe data/game/C/PRAGE.EXE --image-out`, capstone base `0x10000`, file offset = VA - `0x10000`), re-read for this task:
+- The default config words are at linear `0xA2C62` (DS offset `0x22C62`; `0x1AE20` is `mov eax,0xA2C62` into `0x1AE28`): twenty little-endian words, the first at `0xA2C62` being `0000`: `0000 1f73 2d78 2c7a 2e63 1675 1769 316e 326d 0000 4800 5000 4b00 4d00 4700 4900 4f00 5100 0064 0064` (re-read for this closure: bytes `00 00 73 1f 78 2d …`). Their high bytes are the scans `+0x2DE..+0x2ED` hold: `1F 2D 2C 2E 16 17 31 32 | 48 50 4B 4D 47 49 4F 51`. **Correction:** the records (§K.2, gameplay-ground-truth §G.1.2 prose, named-gaps A) and this task's brief write the address as `0x122C62`, which is outside the image (data object ends `0x10B0CF`); it is `0xA2C62` (the `mov eax,0xA2C62` at `0x1AE20` and the §G.1.2 file offset `0xA2C62 + 0x46E54` agree). The `host.c` comment says `0xA2C62`.
+- `0x1B610` reads `+0x2DE..+0x2E1` into `0x80 0x40 0x20 0x10` (`0x1B62A..0x1B691`); `0x1B730` `+0x2E2..+0x2E5` into `1 2 4 8`; `0x1B850` returns bit 0 from `[+0x28F] & 0x80` clear (`0x254 + 0x3B`, F1); `0x1B6A0` (`+0x2E6..+0x2E9`), `0x1B7C0` (`+0x2EA..+0x2ED`) and `0x1B870` (`+0x290`, F2) are the same for P2. `0x1BD0E call 0x1b610 .. 0x1BD43 call 0x1b730 .. 0x1BD4A call 0x1b850 .. 0x1BD5B mov [edx+0x2d8],al` and `0x1BD84 call 0x1b6a0 .. 0x1BDB4 call 0x1b870 .. 0x1BDC0 mov [eax+0x2d9],dl`: kb word = `(+0x2D8 << 8) | +0x2D9`.
+- All 18 scan -> bit pairs of `host_kb_bit` match: S `1F` 0x8000, X `2D` 0x4000, Z `2C` 0x2000, C `2E` 0x1000, U `16` 0x0100, I `17` 0x0200, N `31` 0x0400, M `32` 0x0800, F1 `3B` 0x0100, Up `48` 0x0080, Down `50` 0x0040, Left `4B` 0x0020, Right `4D` 0x0010, Home `47` 0x0001, PgUp `49` 0x0002, End `4F` 0x0004, PgDn `51` 0x0008, F2 `3C` 0x0001. No other correction.
+
+**The change.** `host.c`: `k_input_bind` (and its "coin" bit 0, which does not exist, §K.4) is gone; `host_kb_bit(u8 scan)` is the pure default binding (a `PORT:` host helper, no ported function: `port_progress.py` stays `771 1203 64` / `731 731 100`); `host_key_bits()` ORs `host_kb_bit(k_bios_letter[i])` over the pressed letters and `host_kb_bit(k_bios_pad[i].scan)` over the pressed Up/Down/Left/Right/Home/PgUp/End/PgDn/F1/F2. `host.h` states it. `port/spec/game_flow.md`'s one stale sentence ("host.c's `k_input_bind` table; bit 0 = coin") now names `host_kb_bit`.
+
+**Tests (`test_platform.c`, top of `test_host`; the plan's hunk `@@ -2611` applied as written, no re-anchor needed).** 21 new `CHECK_EQ_INT`: the 18 pairs plus Q `0x10`, Alt `0x38` and `'5'` `0x06` giving 0. Red: with only the test applied the build fails (`call to undeclared function 'host_kb_bit'`, three errors). Green: `all checks passed`. Mutations (each restored, `all checks passed` after): F2 `0x0001u` -> `0x0100u`: `FAIL test_platform.c:2621: 256 != 1`, `FAILURES: 1`; `default: return 0u;` -> `return 1u;`: `FAIL test_platform.c:2622/2623/2624: 1 != 0`, `FAILURES: 3`.
+
+**Gate (light, with `gp-keys-oracle`).** `all checks passed` twice (plain and `PR_RESTART=1`), `gp-exit=0`, `GP-IDLE-LOSS-EQUAL`, ratchets 2064 / 8320 / 516 / 1513 ok, `gp_keys` skips (no capture yet), `diff-verify: 6/6 ... 7/7`, `Ran 124 tests`, `771 1203 64`, `731 731 100`. No oracle line moves (every driver uses `host_set_key_bits_override`). The windowed binary was not run (headless tests only).
+
+**Named gaps that stay.** (1) The SDL scancode -> set-1 scan table (letters through `k_bios_letter`, the ten pad keys through `k_bios_pad`) is untested headless; `host_key_bits()` reads `SDL_GetKeyboardState`, which no test seeds. (2) Configured bindings: only the default is followed (§K.10 item 8). (3) `translate_key` still queues no BIOS words for F1/F2/Home/PgUp/End/PgDn (§K.7, §K.10 item 7). (4) The old `k_input_bind` table (bit 0 `5` "coin", 1 `1`, 2 `2`, 3..6 Up/Down/Left/Right, 7 Space, 8..15 `A S D F G H J K`) is gone: `5 1 2`, Space and `A D F G H J K` no longer set any pad bit, and S and the arrows now set the default binding's bits (Enter was never a pad bit; it is a BIOS word, §K.2). The windowed attract/menus that relied on `1`/`2`/`5` as start keys now start with U/F1 (P1) and Home/F2 (P2), as the original's default binding does.
+
+## §K.14 Closure (Task 8)
+
+**What U11 delivered** (branch `gameplay-u11`, rebased onto `main` `2f0c65f`; Task 1 `0d110dd`, Task 2 `c87c0fa`, Task 3 `9c1f691`, Task 4 `7cc9a0c`, Task 7 `1a9e2bb`, Task 5 `15d6495`, Task 6 `ea6bcce` — pre-rebase hashes; the hashes after the rebase onto U6b `9763f82` are in §K.15). The raw derivation of the in-match keys (§K.1–§K.7); the scenario `gp-keys-fight` and its three extra snapshot fields `lat spz mpz` (Task 1); `tools/gp_keys.py`, which judges each event twice from the same frames, `evidence` on the capture and `effects` on the port's trace (Task 2); the port's `T` line carrying the three fields and the test seam `game_restart_landings()` (`PORT:`, Task 3); `make gp-keys-oracle` in `make verify` (Task 4); the windowed host's default key binding, `host_kb_bit` (Task 7, §K.13); the capture itself, taken once (D1 taken, Task 5, §K.12 "Capture"); the replay's two pinned miss rows and the pins (Task 6, §K.12 "Replay and pins"). No function is ported: `port_progress.py` stays `771 1203 64` / `731 731 100`, and `port/src/symbols.h` is identical to `main`'s (`git diff --stat main -- port/src/symbols.h` is empty).
+
+**The claim (verbatim from §K.10, with K and the capture sha).** For the eleven events of §K.6, at the capture's own frames: the original shows the raw-derived state change (evidence) and the port shows the same one (effects, ratcheted). Judged fields only: `lat spz mpz mode b1f cred rng new e0` and the presence of the `S`/`T` record at `c`. **K = 11** of 11 events reproduced (`GP_KEYS_MIN_EFFECTS = 11`, an exact pin: the effects line is `first not reproduced 11`), on the capture `gp-keys-fight` with `poll.log` sha256 `8425afbc46d51173532f6f4c27a8f16c594e2bc572b4273e056bdbf51a9678ae` (`GP_KEYS_CAPTURE_SHA256`; 1166 frames; 50 MB). The evidence step reads `evidence: 11 of 11 events ok`.
+
+**Questions the unit answers.**
+- **Spec §7 Q5 (keys under `game_frame`).** The key loop runs once per master-loop iteration in every mode, so every in-match key is keyed by `f` like the U1-U4 keys; the two blocking readers wait with `f` frozen and the answer is queued in the same spin as its opener. **No tick-keyed step is added** (§K.5). On the capture every answer's `H` is in its opener's frame (`809`, `81E`, `833`, `86F`; §K.12).
+- **Spec §7 Q2, the in-match part.** F1 is P1's `b0` in a fight (kb `0100`, raw frame `F = 0x84F`: at `0x850` new `01000000`, `e0 = 0101`, mode and `b1f` unchanged); F2 mid-match joins side 1 for free (raw frame `F = 0x859`; the first record after it, `0x85A`, is mode `0x17` with `b1f` 1 to 3 and `cred` unchanged at 4), because `0x2CA93` skips the subtraction once `b1f` is set (§K.4). Both from the capture (§K.12 rows `f1`, `f2`).
+- **The coin question.** There is no coin key: nothing adds a credit (writers of `DS_00105C00`, §K.4); a fight only ever lowers the count, and the restart restores the boot value (capture: `cred` 5 at `f = 5`, 4 from `0x269`, 5 at the restart's `0x873`, §K.12 k9).
+- **The stale host claim.** Fixed in Task 7 (D2 taken): the windowed host follows the default binding (§K.13); `k_input_bind`'s "coin" bit and the wrong layout (O10) are gone, and `port/spec/game_flow.md`'s one stale sentence names `host_kb_bit`. The Closeout's O10 has nothing left to do except the named gaps below.
+
+**Corrections made on the way (the raw won).** The mid-pause byte `0x1D1B0` writes (0 at `0x1D1C2`, else 1 at `0x1D213`) rather than xor-toggling, the same observable flip (§K.11 Task 2, with the pointer in Task 1's bullet); the default pad config words are at linear `0xA2C62`, not `0x122C62` (§K.13; §K.2 now points there); `boot_cred` is taken from the capture's first `S` record for both judges, not from each side's own (§K.11 Task 4, confirmed 5 on the capture, §K.12 k9); `landings0` is taken at the arm point of the replay, so a landing before the arm cannot count (§K.11 Task 4).
+
+**Every named gap of §K.10, restated, with what the capture added.**
+1. **Physical keyboard path.** Claims start at the key-state table and the BIOS ring the harness writes; the SDL scancode to set-1 table of the windowed host is untested headless (§K.13).
+2. **The pause and prompt frames are not compared.** The state is ratcheted, the frames are not. The report-only comparison (§K.12 Step 6) leaves one unexplained frame in the key window, capture 835 at the QUIT TO DOS? event (altq-n, `c = 0x833`; rows 0..80 = port `f = 0x832`, rows 92..199 = port `f = 0x833`, rows 81..91 match neither; x 56..189 in rows 81..88, 0..189 in rows 89..91; cause not isolated: the prompt's one presented frame, not dumped by the port, or a sprite drawn during scan-out). Not ratcheted; a frame ratchet on `gp-keys-fight` is the follow-up. Captures 1136-1139 are past the replay's end (the restart's boot movies, `f = 0x870..0x872`), not a divergence.
+3. **A pause or prompt left open** (nothing queued behind the opener) blocks with `f` frozen; v2 scripts cannot key it (§K.5).
+4. **QUIT TO DOS's yes** (`0x24A93` to `0x256DD`) ends the process; not captured, and the replay driver has no model of the loop exit.
+5. **Alt-J** (`0x5004A`): host-owned, not ported, not pressed.
+6. **`0x1B084` in ABANDON's yes**: deferred (record §50-C); the config write is not observed.
+7. **BIOS words for F1/F2/Home/PgUp/End/PgDn** are not queued by the windowed host (`translate_key`): latch-only in a match (§K.7).
+8. **Configurable bindings**: the raw reads `+0x2DE..+0x2ED`, which the service menu can change; the host follows the default binding only.
+9. **Typematic repeat** is not modelled (spec §7 Q4); a held key queues one word.
+10. **Joystick devices** (`+0x2D4`/`+0x2D6` not 0, `0x1B890..0x1BB73`): not exercised.
+11. **New: the restart record gap (review note k3).** The capture has no `S` at `c = 0x86F` and none at `0x870..0x872`; its first record after `c` is `0x873`, the port's is `0x870`. Both meet the rule at different frames, and "no record at `c`" is consistent with abandonment but not proved by it (the same signature as the mode-change gaps `13A 1D0 268 652 653`). Event 10's claim rests on the record after it (mode 3, rng `0xABCD`, the boot `cred`) and on the raw (`0x24AB0`).
+12. **New: the host's key set after Task 7.** In the windowed run `5 1 2`, Space and `A D F G H J K` no longer set pad bits (the removed `k_input_bind`; S and the arrows keep a bit, now the default binding's; Enter was never a pad bit), as in the original's default binding (§K.13 item 4).
+
+**Merge notes ("Shared-file touch points") — done** (the rebase onto U6b `9763f82`, §K.15): (a) `port/tests/test_game.c` `gp_trace_line`'s `T` format ends `ent=%08X r0=%02X r1=%02X c0=%02X c1=%02X s0_43=%02X lat=%08X spz=%02X mpz=%02X`, U6b's five arguments before U11's three; (b) `tools/tests/test_gp_session.py` has ONE T-line test over `SNAP_FIELDS + KEYS_EXTRA` keeping every check of both units; (c) `port/tests/test_platform.c` `fnm_known` takes `charsel` 5th, `moves` 6th, `keys_fight` 7th, every call site and the `--check` call (five zeros) updated; (d) the `Makefile` tool-test line lists `test_gp_moves` and `test_gp_keys`, and `.PHONY` and `verify` keep both units' targets; (e) `tools/gp_session.py` and `tools/gp_capture.py` merged without a conflict. No re-capture and no re-pin was needed. The full `make verify` on the rebased head passed (§K.15).
+
+**Gate (light, `t8`).** `all checks passed` (plain and `PR_RESTART=1`); `gp-exit=0`; `GP-IDLE-LOSS-EQUAL`; `gp-idle-loss` `first unexplained 2064, ratchet N 2064 ok` and `0 differing through 8319; ratchet N 8320 ok`, `0 restart(s) landed`; `gp-u5-charsel` `516` / `1513` ok, `0 restart(s) landed`; `gp-keys-fight` `1 restart(s) landed`, `evidence: 11 of 11 events ok`, `effects: first not reproduced 11, ratchet N 11 ok`; `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`; tool tests `Ran 141 tests`; `771 1203 64`, `731 731 100`; `symbols.h` unchanged against `main`. The full `make verify` was not run here (ruling: it runs on the rebased head before the merge).
+
+## §K.15 Rebase onto U6b (`9763f82`)
+
+**The rebase.** `gameplay-u11` (old head `62a3921`, base `2f0c65f`) rebased onto `main` `9763f82` (U6b merged); every commit kept, none squashed. New hashes (`git log --oneline main..HEAD` before the final-review fix commit): Task 1 `f36d31a`, Task 2 `eb22827`, Task 3 `a3833f9`, Task 4 `f4b8ab5`, Task 7 `d9fc573`, Task 5 `427c1e9`, Task 6 `89867b2`, Task 8 `5d8fba8`. Each rebased commit was checked out and built (`cmake --build build`) and passed `test_gp_session`/`test_gp_moves`/`test_gp_keys`. Conflicts: the `Makefile` (`.PHONY`, the two oracle blocks, `verify`: `gp-moves-oracle` then `gp-keys-oracle`, one `diff-verify`, one `entry-triage`, the tool-test line with `test_gp_moves` and `test_gp_keys`), `port/tests/test_platform.c` and `docs/PROGRESS.md` (U6b's paragraph first).
+
+**`fnm_known` now takes 7 flags:** `fnm_known(addr, ctx, frontend, idle_loss, charsel, moves, keys_fight)` (`moves` 6th, `keys_fight` 7th); both tables (`k_miss_gp_u6_moves`, `k_miss_gp_keys_fight`), both selectors, both `want` terms; the driver call passes `moves, keys_fight`; the `--check` call `0, 0, 0, 0, 0`.
+
+**One T-line test.** `tools/tests/test_gp_session.py` auto-merged, but U6b's `test_the_port_t_line_widths_and_addresses_match_snap_fields` then failed `35 != 32` (the `T` line ends with `lat spz mpz`). Resolved inside Task 3's commit (`a3833f9`): the two tests are one, `test_the_port_t_line_writes_every_snap_field_in_order`, over `SNAP_FIELDS + KEYS_EXTRA`, keeping every check: the `T ` prefix; names in order; the placeholder width list; as many placeholders and arguments as fields; each placeholder exactly `name=%0{2*size}X`; each accessor `DSB`/`DSW`/`DSD` by size; the `DS_` address (plus offset) of the five move fields and the three key fields; each key field exactly `(unsigned)DSx(DS_%08X)`. C comments (`/* */` and, after the final review, `//`) are stripped from the call before the format string and the arguments are read: U11's `/* U11 (record … §K.3) … */` comment sits inside the argument list. Six mutations of `gp_trace_line`, each alone and restored, fail it: mpz dropped from the `T` line (names differ); `r0` widened to `%04X` (widths differ); the `c0`/`c1` `DS_` arguments swapped (`1079486 != 1079338` at `c0`); `DSB` → `DSW` on mpz (accessor); `lat` as `DS_00105F2C + 4u` (exact form); `spz` reading `DS_001028DA` (`1059034 != 1059035`). A `//` and a `/* */` comment holding quotes and commas inside the argument list leave it green.
+
+**Gate (full `make verify` on `5d8fba8`, parallel-safe dump paths).** `make verify` exit 0; the 45 oracle lines equal `oracle-lines-base.txt`; `make audio-render` cmp-equal to `before-t2.wav`; `PR_ORACLE_REQUIRED=1 ./build/run_tests` and with `PR_RESTART=1`: `all checks passed`; `gp-idle-loss` `first unexplained 2064, ratchet N 2064 ok`, `0 differing through 8319; ratchet N 8320 ok`; `gp-u5-charsel` `516` / `1513` ok; `gp-u6-moves-b` `1005` / `2262` / `moves 2949` ok; `gp-keys-fight` `evidence: 11 of 11 events ok`, `effects: first not reproduced 11, ratchet N 11 ok`, `1 restart(s) landed`; every gp replay `distinct=4 dropped=0` (the pinned pairs); `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`; `entry-triage: targets 323 unported, 172 ported`; tool tests `Ran 171 tests OK` (main's 158 + `test_gp_keys`'s 14 − the merged T-line test); `771 1203 64`, `731 731 100`.

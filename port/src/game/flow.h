@@ -39,6 +39,10 @@ _Noreturn void game_restart_longjmp(void);
  * 0x1044F4 (0x653FC), which only 0x65431 reads. */
 jmp_buf *game_restart_arm(jmp_buf *jb);
 
+/* PORT: test seam, no raw counterpart: how many 0x65431 restarts have landed
+ * at game_loop()'s restart point since boot. */
+u32 game_restart_landings(void);
+
 /* Tells game_main() which directory holds the INDEX-listed resources
  * (data/game/C). Must be called before game_main(). */
 void game_set_game_dir(const char *dir);

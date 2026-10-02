@@ -25,6 +25,7 @@ make gp-replay scenario=gp-pads  # port replay of a gameplay capture (PR_GP_DUMP
 make gp-oracle             # gameplay oracle: frame + trace ratchets on data/k11-captures/gp-idle-loss (N values in the Makefile); in make verify; skips without the capture
 make gp-charsel-oracle     # the same ratchets on data/k11-captures/gp-u5-charsel (the character-select walk; N 516 = how far the port's replay got, F 1513, the poll.log hash pinned); in make verify; skips without the capture
 make gp-moves-oracle       # gameplay oracle: gp-u6-moves-b frame, trace and moves ratchets (N values in the Makefile); in make verify; skips without the capture
+make gp-keys-oracle        # in-match keys: gp-keys-fight evidence + effects ratchet (GP_KEYS_MIN_EFFECTS and the poll.log sha256 in the Makefile); in make verify; skips without the capture
 make gp-report scenario=gp-pads  # report-only comparison of a gp capture against its port replay (no ratchet, exit 0)
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 make diff-verify           # differential verification: the original's bytes vs the port's C functions (skips without unicorn or capstone; in make verify)
@@ -199,6 +200,12 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   `make gp-moves-oracle` does the same for `data/k11-captures/gp-u6-moves-b` and adds a
   third ratchet, `moves`, over the snapshot's move bytes (`c0 c1 r0 r1 s0_43`, record
   gameplay-u6 §U6.11); its claim is as narrow.
+  `make gp-keys-oracle` (in `make verify`; record gameplay-u11 §K.10/§K.14) judges the 11 in-match
+  key events of `data/k11-captures/gp-keys-fight` on state only: at each event's capture frame the
+  capture shows the raw-derived change (`evidence`) and the port's replay shows the same one
+  (`effects`, ratchet `GP_KEYS_MIN_EFFECTS` = 11, `poll.log` sha256 pinned), judged on the latch,
+  pause bytes, pad words, `mode`, `b1f`, `cred` and `rng` only; no frame is compared (the pause and
+  prompt screens are a named gap); it skips without the capture.
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
