@@ -452,3 +452,32 @@ own commit after this one, with `fnm_known(u32 addr, const char *ctx, int
 frontend, const gp_set *sc)` and a name-keyed table `k_gp_sets` (`{ name, prefix,
 rows, n }`); U8's scenario sets are then added as table entries (the plan's
 "scenario-table clause"), never as parameters.
+
+## §U8.11 The evidence checker (Task 1)
+
+`tools/gp_modes.py` (`ROWS`, `check`, `path`, the CLI) and `tools/tests/test_gp_modes.py`, both exactly as the plan's Task 1 gives them; no correction to the plan's text was needed (raw wins: `TestRowsFromTheRaw.test_setters_and_divert_arguments` reads the setters at `0x2CBC4 + 0x18 k`, the seven divert immediates and the three `0x2CA7C` call sites `0x250BA`/`0x25117`/`0x25173` from `data/game/C/PRAGE.EXE` (obj-0 immediates, file offset `VA + 0x52E54`) and agrees with every `ROWS` value).
+
+Tests: `python3 -m unittest tools.tests.test_gp_modes -v` -> `Ran 9 tests ... OK` (the plan's 9, none skipped). Per-task gate: `tools.tests.test_gp_modes test_gp_session test_gp_capture test_gp_compare` `Ran 101 tests OK`; verify's k11/gp line (`PR_ORACLE_REQUIRED=1`, nine modules) `Ran 171 tests OK` (unchanged: `test_gp_modes` is not in that line; Task 3 adds it to `gp-modes-oracle`).
+
+CLI on the U4 capture (read-only), as the plan expects:
+
+```
+gp_modes: gp-idle-loss: the row mode 0x2D appears: ok (f=26E (P))
+gp_modes: gp-idle-loss: no other game-start mode: ok
+gp_modes: gp-idle-loss: START MENU open (ent 0xBCCDC) before the select: ok
+gp_modes: gp-idle-loss: the divert: b1d=0 b1f=1: ok (f=26F b1d=0 b1f=1)
+gp_modes: gp-idle-loss: credits spent 1: ok (5 -> 4)
+gp_modes: gp-idle-loss: the character select (mode 0x10) follows: ok (f=293)
+gp_modes: gp-idle-loss: mode 0x6 reached: ok (f=7F5)
+gp_modes: gp-idle-loss: the scenario end (X record): ok (f=207F)
+rc=0
+```
+
+and `--scenario gp-u8-right-arcade` on the same capture: seven `FAIL` lines (`the row mode 0x2E appears`, `no other game-start mode (2D)`, `START MENU open ...`, `the divert: b1d=0 b1f=2`, `credits spent 1`, `the character select ... follows`, `mode 0x6 reached`) and only `the scenario end (X record): ok (f=207F)`; `rc=1`.
+
+Mutations (each alone, restored after; `PYTHONDONTWRITEBYTECODE=1`):
+
+- M1 `gp-u8-tug-of-war` `b1f=3` -> `b1f=1`: `FAIL: test_divert_and_credits_are_checked`, `FAIL: test_setters_and_divert_arguments` (`FAILED (failures=2)`).
+- M2 the credits line -> `ok = after is not None`: `FAIL: test_divert_and_credits_are_checked` (`failures=1`).
+- M3 `if want['stay']:` -> `if False:`: `FAIL: test_endurance_must_stay_in_the_team_select` (`failures=1`).
+- M4 `r['ent'] - off == START_ENTRY` -> `True`: `FAIL: test_start_menu_must_be_open` (`failures=1`).
