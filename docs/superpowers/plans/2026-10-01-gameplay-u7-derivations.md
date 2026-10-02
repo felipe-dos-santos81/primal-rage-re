@@ -790,8 +790,8 @@ join f=2C3 (cred 4 -> 4); 797 S records from the join to X f=5E1; side 0 [('pad'
 fight presses 40/40`; `two-human match: ok`; `capture: poll.log sha256 9c01a73b..f2e22c, 680 frames: matches
 the pin`; `frames: window from capture 83 (raw 1742); 520 classified: 347 clean, 171 splice, 1 transition, 1
 unexplained, 10 all-black`; `frames: first unexplained 612, ratchet N 612 ok`; `trace: 0 differing through
-1505; ratchet N 1506 ok`. (520 classified: with the pin set, the report's "524 ... 5 unexplained" becomes the
-ratchet's view, which stops listing at the first unexplained frame.)
+1505; ratchet N 1506 ok`. (520 classified against the report's 524: `gp_compare.frame_claim` keeps classifying
+past an unexplained frame in report mode, up to `REPORT_MAX` of them, and stops at the first with a ratchet.)
 
 **Each pin can fail** (each `exit=2`):
 - `GP_TWOP_MIN_FIRST=613`: `frames: FAIL: first unexplained 612 < ratchet N 613`
@@ -814,3 +814,72 @@ ratchet's view, which stops listing at the first unexplained frame.)
 **Wiring.** `make verify` runs `gp-twop-oracle` after `gp-keys-oracle`. The task gate: tool suites `Ran 105 ... OK`
 (B = 92 + 13); `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected` (the baseline's); `git diff --stat main --
 port/src` empty. The full `make verify` runs at Task 7 (§T.11).
+
+## §T.11 U7 closure (Task 7)
+
+**The narrow claim, with the pinned values.** `make gp-twop-oracle` (in `make verify`, skipped without
+`data/k11-captures/gp-twop`, even under `PR_ORACLE_REQUIRED`) shows, for the capture whose `poll.log`
+sha256 is `9c01a73b…f2e22c` (680 frames), and no more:
+- the capture is a two-human match by `tools/gp_twop.py check`, from the join at f=2C3 (`cred 4 -> 4`) to the
+  scenario's end X at f=5E1: 797 `S` records, each side's command words written from its own pad (`pad` class
+  only, never `zero`, `entrance` or `other`), 40 of 40 fight presses landed (§T.8);
+- no content-bearing capture frame from the window start 83 up to N = 612 is unexplained (the START MENU, the
+  character select with P2's join, both cursors and both confirms, the wipes, the versus screen, the entrance
+  and the fight to X);
+- the traced fields agree on every compared frame below F = 1506 (f=0x134..0x5E1; 1190 frames, 8 without a
+  capture snapshot); the moves fields (`c0 c1 r0 r1 s0_43`) also agree through 1505 (reported, not pinned, §T.10).
+
+N = 612 and F = 1506 are the end of the port's script (how far the port got, like gp-u5-charsel's 516/1513), not
+divergences. A green run does not say the two-player game is correct: the oracle cannot detect a port that
+under-renders, and the order of the port's frames and that every port frame appears are not claimed (11
+non-black port frames up to port 463 are not exhibited by any classified capture frame, reported in §T.9).
+
+**What this unit was asked, and where it is answered.**
+- P2's pad bits (§T.2.1): each P2 key sets its spec §3.2 bit in the `+0x2D9` byte; F2 and Home share bit 0 (the
+  side-1 start mask `0x100`, `0x9ACBC`); held, they become the high byte of `DS_001088E2`, newly pressed the low
+  byte (`0x4F6DE`). Confirmed in the capture: p2.left `e2 2020`, p2.b0 `e2 0101`, the chord `e0 1010 e2 2020` (§T.8).
+- The START MENU rows and which side each starts (§T.1.1): seven rows. `0x2D` LEFT PLAYER ARCADE starts side 0,
+  `0x2E` RIGHT PLAYER ARCADE side 1, and `0x28`/`0x29`/`0x2A`/`0x2B`/`0x2C` both sides human from the start;
+  `DS_00104B1F` holds one bit per human side. Only the two arcade rows spend a credit (5 -> 4).
+- What a second start does (§T.1.2): it depends on the mode. In the attract it starts a game for the sides that
+  pressed; in the character select (mode `0x10`) it joins that side (`0x43B4E`: `DS_00104B1F |= side + 1`); in an
+  arcade fight it joins mid-match (`0x28CC8` -> `0x28DA4`); on the continue/challenge screens it continues.
+  The capture shows the select join: b1f 1 -> 3 at f=2C3, no debit (§T.8).
+- Credits (§T.1.3): a join never debits (`0x2CA93 cmp byte [0x104b1f],0` skips the debit; a join only requires a
+  credit, `0x2C060`), measured `cred 4 -> 4` at the join and 4 to the end (§T.8). There is no coin input in this
+  build's play path.
+- The handicap `0x64` (§T.1.8): its only read is `0x394AC`, reached only in mode `0x2C` (`DS_00104B1D = 4`) with
+  both sides human, so it cannot affect an arcade game.
+
+**Named gaps.** None opened by this unit: Task 5 found no divergence in the window, so no select divergence
+(U5's O1 is fixed, gameplay-u5 §C5.12) and no fight divergence (nothing for U6b's moves). Two reported items are
+not triaged and not claimed: the 11 coverage-only port frames and the one `transition` frame (§T.9). Harness
+values with their sources: the 60/30-frame gaps, the holds of 5, the 70 s limit, the STOP_AT_END tail of 60
+(§T.3, §T.5). The capture is 30 MB, below the §T.3 estimate of ~105 MB, because of the STOP_AT_END cut (§T.8).
+
+**Not covered** (§T.4.3, plus the capture's path past N):
+- the `+0x63` CPU flags themselves (the evidence is `b1f = 3`, each confirm's `+0x63 = 0` and the per-frame
+  command-word source), and the cursor and class bytes (the picks are visible only in the frames; c0/c1 = 2/6
+  are logged but their mapping to the class bytes is not derived);
+- the physical keyboard, the `E0` grey/keypad distinction, typematic repeat (spec §7 Q4), joysticks;
+- the other two-player entries: RIGHT PLAYER ARCADE + P1 join, the attract double start, the mid-fight join
+  (`0x28DA4`), 2 PLAYER HANDICAP, training/tug/endurance (U8);
+- everything past X (round end, match end, continue/challenge offers with two humans, winner/loser credits): the
+  capture's tail after X is unexplained by construction and the port never ran it;
+- run-to-run determinism under two-human input (one capture, Decision 3).
+
+**The full gate** (`make verify` on `c334571` with the t=u7 overrides, log `/tmp/gameplay-u7/final_verify.txt`,
+577 lines):
+- `verify-exit=0`; the 45 oracle lines equal `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`;
+- all five gp oracles ok: gp-idle-loss 2064/8320, gp-u5-charsel 516/1513, gp-u6-moves-b 1005/2262/2949,
+  gp-keys-fight effects 11 of 11, and gp-twop as §T.10 (`two-human match: ok`, `matches the pin`, `first
+  unexplained 612, ratchet N 612 ok`, `0 differing through 1505; ratchet N 1506 ok`); the first four equal the
+  baseline's lines (`base_gp_lines.txt`);
+- `diff-verify: 6/6 functions VERIFIED; 7/7 mutants detected`, `python3 tools/port_progress.py` `771 1203 64` and
+  `731 731 100`, all equal to the baseline;
+- the unit-test line of `verify` `Ran 171 tests ... OK` (the baseline's count on this base);
+- `make audio-render AUDIO_WAV=/tmp/pr_u7.wav` (`verify` does not render it under that override): `cmp` against
+  `before-t2.wav` is silent;
+- `git diff --stat 1142462 -- port/src` (the branch's merge base) is empty. `git diff --stat main -- port/src` is
+  not: `main` has since merged E3 (`834b703`, which edits `port/src`), none of it U7's. Re-check against `main`
+  after the merge.
