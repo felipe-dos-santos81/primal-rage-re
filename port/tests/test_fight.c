@@ -44563,6 +44563,79 @@ static void p1_check_finisher(u32 addr, void (*fn)(void), u32 table_dw, u32 stre
     sound_voice_log_reset();
 }
 
+/* §P1.6: 0x23BF8 through its registration. Stage 1 (flag byte 0) returns 0
+ * with nothing stored; stage 0x105 (its flag byte poked 0) returns 0x100;
+ * stage 0 (threshold 0x2600) with the side's actor word bit 15 clear and
+ * rec+0x18 = 0x2000 takes the far stream 0xE19E6; with bit 15 set and
+ * rec+0x18 = 0x2000 the near stream 0xE1A06. */
+static void p1_check_23bf8(void)
+{
+    p1_entry_fn e;
+    u32 aw;
+    CHECK(fn_resolve(0x23BF8u) == (void (*)(void))fighter_23bf8, "0x23BF8 is registered");
+    CHECK_EQ_INT((int)DSD(0x000BDAFCu), 0x00023BF8);
+    e = (p1_entry_fn)(void *)fn_resolve(0x23BF8u);
+    if (e == NULL) return;
+    z_fseed();
+    DSW(0x000E19E6u) = 0x12B2u;
+    DSW(0x000E1A06u) = 0x12B3u;
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSD(Z_R0 + 0x18u) = 0x2000u;
+    DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSW(DS_00104AFC) = 1u;
+    CHECK_EQ_INT(e(Z_S0, Z_R0), 0);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x0C0C0C0C);
+    DSW(DS_00104AFC) = 0x105u;
+    DSB(0x000A83C4u + 0x105u) = 0u;
+    CHECK_EQ_INT(e(Z_S0, Z_R0), 0x100);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x0C0C0C0C);
+    DSW(DS_00104AFC) = 0u;
+    aw = DSD(DS_001014EC) + (u32)DSW(Z_R0 + 0x56u) * 0x20u;
+    DSW(aw) = 0x0F35u;
+    CHECK_EQ_INT(e(Z_S0, Z_R0), 1);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000E19E6);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x00023B68);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 7);
+    DSW(aw) = 0x8F35u;
+    DSD(Z_R0 + 0x18u) = 0x2000u;
+    CHECK_EQ_INT(e(Z_S0, Z_R0), 1);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000E1A06);
+}
+
+/* §P1.6: 0x402FC through its registration on side 1: the word 0x1080A2 = 0
+ * (0x1080A0 kept), the slot 9/7/2 with the +0x0C callback 0x401D4, +0x57/
+ * +0x18/+0x1C = 0, +0x14 kept. */
+static void p1_check_402fc(void)
+{
+    p1_entry_fn e;
+    CHECK(fn_resolve(0x402FCu) == (void (*)(void))fighter_402fc, "0x402FC is registered");
+    CHECK_EQ_INT((int)DSD(0x000BDB00u), 0x000402FC);
+    e = (p1_entry_fn)(void *)fn_resolve(0x402FCu);
+    if (e == NULL) return;
+    z_fseed();
+    DSW(0x000E7C40u) = 0x12B4u;
+    DSB(Z_R1 + 0x51u) = 1u;
+    DSW(0x001080A0u) = 0xA0A0u;
+    DSW(0x001080A2u) = 0xA2A2u;
+    DSB(Z_S1 + 0x54u) = 0x44u;
+    DSB(Z_S1 + 0x57u) = 0x33u;
+    DSD(Z_S1 + 0x0Cu) = 0x0C0C0C0Cu;
+    DSD(Z_S1 + 0x14u) = 0x14141414u;
+    DSD(Z_S1 + 0x18u) = 0x18181818u;
+    DSD(Z_S1 + 0x1Cu) = 0x1C1C1C1Cu;
+    CHECK_EQ_INT(e(Z_S1, Z_R1), 1);
+    CHECK_EQ_INT((int)DSW(0x001080A0u), 0xA0A0);
+    CHECK_EQ_INT((int)DSW(0x001080A2u), 0);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0x000401D4);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x14u), 0x14141414);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x1Cu), 0);
+}
+
 static void p1_check_finishers(void)
 {
     p1_check_finisher(0x1567Cu, (void (*)(void))fighter_1567c, 0x000BDAF0u, 0x000D32A8u,
@@ -44573,6 +44646,8 @@ static void p1_check_finishers(void)
                       7u, 0x00023D38u, 0, 0xAAu);
     p1_check_finisher(0x45D14u, (void (*)(void))fighter_45d14, 0x000BDB10u, 0x000EB876u,
                       3u, 0u, 0, 0u);
+    p1_check_23bf8();
+    p1_check_402fc();
 }
 
 int test_p1_finishers(void)     { return u6b_run(p1_check_finishers); }

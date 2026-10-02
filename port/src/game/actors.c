@@ -426,6 +426,10 @@ int actors_init(void)
     fn_register(0x15908u, (void (*)(void))fighter_15908);
     fn_register(0x23EC0u, (void (*)(void))fighter_23ec0);
     fn_register(0x45D14u, (void (*)(void))fighter_45d14);
+    /* PORT: record 2026-10-02-reverse-p1 §P1.6. Character 6's 0xBDAE4 and
+     * character 0's 0xBDB00 entries (the dwords at 0xBDAFC and 0xBDB00). */
+    fn_register(0x23BF8u, (void (*)(void))fighter_23bf8);
+    fn_register(0x402FCu, (void (*)(void))fighter_402fc);
 
     /* PORT: record §42-A. The update table's entries 7 (0x2910C, the
      * type-0x0A/0x19 node walk; dword at 0xA8660) and 5 (0x22FE8, the 0x104728

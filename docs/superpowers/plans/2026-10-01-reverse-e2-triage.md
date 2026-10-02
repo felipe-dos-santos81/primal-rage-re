@@ -28,7 +28,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | batch | unported | ported |
 |---|---|---|
 | callbacks | 22 | 49 |
-| finishers | 2 | 7 |
+| finishers | 0 | 9 |
 | voice | 0 | 15 |
 | animation-targets | 61 | 51 |
 | span-writers | 231 | 0 |
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 6 |
 | leaf | 234 |
-| stubs | 79 |
+| stubs | 77 |
 
 ## Rows
 
@@ -143,7 +143,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 2381C | 76 | move-callback | dword A560C (char 6, reaction 0x25) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | 2385C |
 | 23868 | 532 | anim-target | dword E14E6 after the opcode word D100 at E14E4 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 23A7C | 380 | anim-target | dword E18C4 after the opcode word D100 at E18C2 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 23BF8 | 172 | finisher | dword BDAFC | yes | - | no | finishers | stubs (indirect at 2B56D in 2B2A0) | - |
+| 23BF8 | 172 | finisher | dword BDAFC | yes | - | yes | finishers | stubs (indirect at 2B56D in 2B2A0) | - |
 | 23CA4 | 540 | anim-target | dword E1A4E after the opcode word D100 at E1A4C | yes | - | no | animation-targets | leaf | - |
 | 23EC0 | 80 | finisher | dword BDB18 | yes | - | yes | finishers | stubs (indirect at 2B56D in 2B2A0) | 23F05 |
 | 23F10 | 252 | anim-target | dword E4FE0 after the opcode word D100 at E4FDE | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | 24001 |
@@ -305,7 +305,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 400EC | 92 | anim-target | dword E86F6 after the opcode word D100 at E86F4 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 4012D 40137 |
 | 40148 | 40 | anim-target | dword E8716 after the opcode word D100 at E8714 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 40170 | 396 | anim-target | dword E86EE after the opcode word D100 at E86EC | yes | - | no | animation-targets | stubs (indirect at 18384 in 18350) | - |
-| 402FC | 7 | finisher | dword BDB00 | yes | entry | no | finishers | stubs (indirect at 2B56D in 2B2A0) | - |
+| 402FC | 7 | finisher | dword BDB00 | yes | entry | yes | finishers | stubs (indirect at 2B56D in 2B2A0) | - |
 | 40303 | 85 | interior | an instruction of the code of 402FC | yes | body of 402FC | no | - | - | - |
 | 40358 | 72 | anim-target | dword D4EF6 after the opcode word D100 at D4EF4 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 403A0 | 148 | anim-target | dword D4F62 after the opcode word D100 at D4F60 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |

@@ -382,11 +382,55 @@ def p1_finisher(name, entry, voice):
     ], calls=calls, eax_mask=0xFF)
 
 
+# 0x1A570: AL = 1 when the actor word of the side's record has bit 15 clear (record §P1.4). Its stub EAX is
+# the C predicate's 0 or 1 (the AL the 69 callers read).
+BIT15 = E.Call(0x1A570, ("eax",))
+P1_PSET = 0x10A600            # zero BSS of the image: a pset base for DS_001014EC
+DS_PSET_BASE = 0x1014EC
+DS_STAGE = 0x104AFC           # DS_00104AFC, the word 0x23BF8 indexes 0xA83C4/0xA83CC by
+
+
+def p1_bit15(cid, side, idx, word):
+    return Case(cid, {"eax": side}, {DS_SLOTS + side * 0x94: le32(E3_REC), E3_REC + 0x56: le32(idx)[:2],
+                                     DS_PSET_BASE: le32(P1_PSET), P1_PSET + idx * 0x20: le32(word)[:2]})
+
+
+def p1_23bf8(cid, stage, al, x, side, extra=None):
+    pokes = {**P1_SEED, E3_SLOT + 0x42: bytes([0x21 + side]), DS_STAGE: le32(stage)[:2],
+             E3_REC + 0x51: bytes([side]), E3_REC + 0x18: le32(x)}
+    pokes.update(extra or {})
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC}, pokes, {} if al is None else {0x1A570: al})
+
+
 P1_SPECS = [
     p1_finisher("fighter_1567c", 0x1567C, True),
     p1_finisher("fighter_15908", 0x15908, True),
     p1_finisher("fighter_23ec0", 0x23EC0, True),
     p1_finisher("fighter_45d14", 0x45D14, False),
+    Spec("fighter_actor_bit15_clear", 0x1A570, [
+        p1_bit15("b0", 0, 3, 0x7FFF), p1_bit15("b1", 1, 5, 0x8000), p1_bit15("b2", 0, 7, 0xFFFF),
+        p1_bit15("b3", 1, 2, 0x0000),
+    ], eax_mask=0xFF),
+    # 0x23BF8 (record §P1.6). The image's own stage tables: flag bytes 01 00 01 00 00 01 at 0xA83C4,
+    # thresholds 0x2600 (stage 0), 0x6000 (2), 0x3100 (5) at 0xA83CC. e1 pokes a flag byte zero for the
+    # stage word 0x105 so the early return's EAX is 0x100; a4/a5 pin the signed compares.
+    Spec("fighter_23bf8", 0x23BF8, [
+        p1_23bf8("e0", 1, None, 0, 0),
+        p1_23bf8("e1", 0x105, None, 0, 1, {0xA83C4 + 0x105: b"\x00"}),
+        p1_23bf8("a0", 0, 1, 0x2000, 0),
+        p1_23bf8("a1", 0, 1, 0x2600, 1),
+        p1_23bf8("a2", 2, 0, 0x6001, 0),
+        p1_23bf8("a3", 2, 0, 0x6000, 1),
+        p1_23bf8("a4", 5, 1, 0xFFFFF000, 0),
+        p1_23bf8("a5", 5, 0, 0xFFFFF000, 1),
+    ], calls=(BIT15, ANIM_BEGIN), mutants=("@mutant", "@zero")),
+    # 0x402FC: 0x339AC runs on both sides (allow, record E3 §E3.6); its side is rec+0x51.
+    Spec("fighter_402fc", 0x402FC, [
+        Case("z%d" % side, {"eax": E3_SLOT, "edx": E3_REC},
+             {**P1_SEED, **SLOT_PTRS, E3_REC + 0x51: bytes([side]), 0x1080A0: b"\xa0\xa0\xa2\xa2"},
+             {0x3C4CC: 0x1234} if side else {})
+        for side in (0, 1)
+    ], allow_calls=(0x339AC,), calls=(HIT_B,), eax_mask=0xFF),
 ]
 
 SPECS = [

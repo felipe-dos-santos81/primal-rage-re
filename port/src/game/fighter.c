@@ -121,6 +121,7 @@ int fighter_state_ok(u32 side)
 
 int fighter_actor_bit15_clear(u32 side)
 {
+    PR_SEAM_RET(0x1A570u, side);
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
     return (DSW(actor) & 0x8000u) == 0;
@@ -14207,4 +14208,67 @@ int fighter_45d14(u32 slot, u32 rec)
     DSD(slot + 0x1Cu) = 0u;                                 /* 0x45D46 */
     DSD(slot + 0x14u) = 0u;                                 /* 0x45D4F */
     return 1;                                               /* 0x45D4D */
+}
+
+#define P1_23BF8_FLAG  0x000A83C4u  /* 0x23C08: [DS_00104AFC] byte, 0 = no finisher here */
+#define P1_23BF8_X     0x000A83CCu  /* 0x23C36/0x23C4C: [DS_00104AFC] dword, the x threshold */
+#define P1_23BF8_NEAR  0x000E1A06u  /* 0x23C1D: the stream EDX keeps through 0x1A570 */
+#define P1_23BF8_FAR   0x000E19E6u  /* 0x23C55 */
+
+/* 0x23BF8 — record §P1.6. Character 6's 0xBDAE4 finisher entry (the dword at
+ * 0xBDAFC). With the byte P1_23BF8_FLAG[DS_00104AFC] zero it returns at once,
+ * EAX the zero-extended word with AL cleared (`xor al,al` at 0x23C11: 0x379EE
+ * tests the whole EAX, so the port returns the same value). Else 0x1A570(the
+ * record's side) picks the compare: AL set, the far stream when rec+0x18 is
+ * below the threshold (signed `jge` at 0x23C3D); AL clear, when it is above it
+ * (`jle` at 0x23C53); otherwise the near stream, the EDX 0x1A570 preserves.
+ * The record on that stream at 3.0, the slot 7/9/0 with the +0x0C callback
+ * 0x23B68, +0x57/+0x18/+0x1C/+0x14 = 0, +0x42 bit 3. PORT: the raw returns
+ * 0x2BC30's EAX with AL = 1 (0x23C98); only EAX != 0 is read, so the port
+ * returns 1. */
+u32 fighter_23bf8(u32 slot, u32 rec)
+{
+    u32 w = DSW(DS_00104AFC);                               /* 0x23C00..0x23C02 */
+    u32 stream = P1_23BF8_NEAR;
+    if (DSB(P1_23BF8_FLAG + w) == 0u) return w & 0xFF00u;   /* 0x23C08..0x23C11 */
+    if (fighter_actor_bit15_clear(DSB(rec + 0x51u))) {      /* 0x23C18..0x23C29 0x1A570 */
+        if ((s32)DSD(rec + 0x18u) < (s32)DSD(P1_23BF8_X + w * 4u))   /* 0x23C33..0x23C3F */
+            stream = P1_23BF8_FAR;                          /* 0x23C55 */
+    } else if ((s32)DSD(rec + 0x18u) > (s32)DSD(P1_23BF8_X + w * 4u)) {  /* 0x23C49..0x23C53 */
+        stream = P1_23BF8_FAR;                              /* 0x23C55 */
+    }
+    actors_anim_begin(rec, stream, 0x40400000u);            /* 0x23C5A..0x23C61 0x2BC30 */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x23C66 */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x23C6A */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x23C6E */
+    DSD(slot + 0x0Cu) = 0x00023B68u;                        /* 0x23C72 */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x23C79 */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x23C7D */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x23C84 */
+    DSD(slot + 0x14u) = 0u;                                 /* 0x23C8E */
+    DSB(slot + 0x42u) = (u8)(DSB(slot + 0x42u) | 8u);       /* 0x23C8B..0x23C9A */
+    return 1u;                                              /* 0x23C98 */
+}
+
+#define P1_402FC_STREAM 0x000E7C40u  /* 0x40319 */
+
+/* 0x402FC — record §P1.6. Character 0's 0xBDB00 finisher entry (the dword at
+ * 0xBDB00): the context from the record (0x339AC), the word FIGHT_SC_1080A0
+ * [its side] = 0, 0x3C4CC(rec, 0xE7C40, 3.0), the slot 9/7/2 with the +0x0C
+ * callback 0x401D4, +0x57/+0x18/+0x1C = 0 (+0x14 and +0x42 untouched). PORT:
+ * the raw returns 0x3C4CC's EAX with AL = 1 (0x40348), returned as 1. */
+int fighter_402fc(u32 slot, u32 rec)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                                 /* 0x40303..0x40307 0x339AC */
+    DSW(0x001080A0u + ctx[0] * 2u) = 0u;                    /* 0x4030C..0x40311 */
+    hit_anim_start_b(rec, P1_402FC_STREAM, 0x40400000u);    /* 0x40319..0x40325 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x4032A */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x4032E */
+    DSB(slot + 0x54u) = 2u;                                 /* 0x40332 */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x40336 */
+    DSD(slot + 0x0Cu) = 0x000401D4u;                        /* 0x4033A */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x40341 */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x4034A */
+    return 1;                                               /* 0x40348 */
 }
