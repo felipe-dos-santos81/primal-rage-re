@@ -553,6 +553,14 @@ def port_script(name, lines, end=None):
                 raise ScriptError('pad change at f=%X unpinned (no S record at f=%X)' % (f, f - 1))
             bits.append((f, kb))
             prev_kb = kb
+    pokes = []
+    for k, w in enumerate(r for r in recs if r['kind'] == 'W'):
+        if w['race']:
+            raise ScriptError('poke %d (%08X) at f=%X raced the iteration' % (k, w['addr'], w['f']))
+        if w['f'] not in snap:
+            raise ScriptError('poke %d (%08X) at f=%X unpinned (no S record at f=%X)'
+                              % (k, w['addr'], w['f'], w['f']))
+        pokes.append((w['f'] + 1, w['addr'], w['now']))
     xrec = next((r for r in recs if r['kind'] == 'X'), None)
     if xrec is None:
         raise ScriptError('the scenario end (X record) was not reached')
@@ -569,6 +577,7 @@ def port_script(name, lines, end=None):
     out += ['enter_frame %d' % p27['f'], 'enter_state %04X' % p27['st']]
     ev = [(c, 0, i, 'key %d %02X %02X' % (c, s, a)) for i, (c, s, a) in enumerate(keys) if c <= last]
     ev += [(f, 1, 0, 'bits %d %04X' % (f, kb)) for f, kb in bits if f <= last]
+    ev += [(f, 2, i, 'poke %d %08X %s' % (f, a, d)) for i, (f, a, d) in enumerate(pokes) if f <= last]
     out += [t for _, _, _, t in sorted(ev)]
     out.append('end %d' % last)
     return '\n'.join(out) + '\n'

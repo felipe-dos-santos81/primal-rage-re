@@ -439,5 +439,32 @@ class TestWinPokes(unittest.TestCase):
         self.assertEqual(gs.WIN_FIELDS[:4], ('afc', 'ad4', 'w2', 'w3'))
 
 
+class TestPokeScript(unittest.TestCase):
+    def setUp(self):
+        gs.SCENARIOS['_t'] = dict(time_limit=1, steps=())
+
+    def tearDown(self):
+        gs.SCENARIOS.pop('_t', None)
+
+    W = 'W ms=4 f=0128 step=3 addr=0010789E len=1 was=00 now=78 late=0 race=0'
+
+    def test_a_poke_is_replayed_at_the_next_frame(self):
+        text = gs.port_script('_t', _log(extra_after=[self.W]))
+        self.assertIn('poke 297 0010789E 78', text.splitlines())        # 0x128 + 1
+        self.assertEqual(text.splitlines()[-1], 'end 304')
+
+    def test_a_raced_poke_is_refused(self):
+        with self.assertRaisesRegex(gs.ScriptError, 'raced'):
+            gs.port_script('_t', _log(extra_after=[self.W.replace('race=0', 'race=1')]))
+
+    def test_a_poke_without_its_snapshot_is_refused(self):
+        with self.assertRaisesRegex(gs.ScriptError, 'unpinned'):
+            gs.port_script('_t', _log(extra_after=[self.W.replace('f=0128', 'f=0140')]))
+
+    def test_end_cuts_the_pokes(self):
+        text = gs.port_script('_t', _log(extra_after=[self.W]), end=0x128)
+        self.assertNotIn('poke', text)
+
+
 if __name__ == '__main__':
     unittest.main()
