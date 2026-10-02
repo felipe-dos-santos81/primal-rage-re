@@ -7889,8 +7889,16 @@ static void fighter_18bd4(u8 flags[16])
  * 8 ctx[3] +0x42 bit 3; 9 0x189FC(ctx[1]); 0xA 0x18A4C(ctx[0]); 0xB ctx[4]
  * +0x61; 0xD 0x39EFC(ctx[1]); 0xC ctx[3] +0x53 == 0x0A; 0xE 0x3B298(ctx[1],
  * ctx[2] +0x5F); 4 ctx[3] +0x54 == 2. */
+/* PORT: the harness seam passes the 16 flag bytes by value, four
+ * little-endian dwords (record 2026-10-02-reverse-p2 §P2.7): the raw's EDX is
+ * a buffer on its caller's stack, which has no mem[] offset to compare. */
+#define P2_FLAGS_DW(f, k) ((u32)(f)[k] | (u32)(f)[(k) + 1] << 8 | (u32)(f)[(k) + 2] << 16 \
+                           | (u32)(f)[(k) + 3] << 24)
+
 int fighter_18c14(u32 side, u8 flags[16], u32 box_a, u32 box_b)
 {
+    PR_SEAM_RET(0x18C14u, side, P2_FLAGS_DW(flags, 0), P2_FLAGS_DW(flags, 4), P2_FLAGS_DW(flags, 8),
+                P2_FLAGS_DW(flags, 12), box_a, box_b);
     u32 ctx[6];
     u8 f;
     int le;
@@ -15066,4 +15074,63 @@ void fighter_22938(u32 slot, u32 rec, u32 side)
     DSB(ctx[2] + 0x42u) = (u8)(DSB(ctx[2] + 0x42u) | 4u);   /* 0x229C2 */
     DSW(P2_104754 + ctx[0] * 2u) = 0u;                      /* 0x229C6..0x229D0 */
     DSD(P2_104738 + ctx[0] * 4u) = 0x40400000u;             /* 0x229CB/0x229D8 */
+}
+
+#define P2_A81AC         0x000A81ACu  /* 0x211BC: 0x2116C's low bound word */
+#define P2_A81AE         0x000A81AEu  /* 0x211A8: its high bound word */
+#define P2_BOX_2116C_A   0x000A81BEu  /* 0x211D8 (EBX) */
+#define P2_BOX_2116C_B   0x000A81C8u  /* 0x211D3 (ECX) */
+#define P2_BOX_22510_A   0x000A82C4u  /* 0x2256F (EBX) */
+#define P2_BOX_22510_B   0x000A82CEu  /* 0x2256A (ECX) */
+
+/* 0x2116C — record §P2.7. The slot +0x18 hook 0x21374 stores (the dword at
+ * 0x213CB; 0x19020's call at 0x1903F, fn(side), the whole EAX tested). The
+ * context is 0x33950(side); the flags from 0x18BD4 with 1, 8, 4, 0xE, 7 and
+ * 0xD = 0 and 5 = 1. With the side's slot word +0x88 above the word 0xA81AE
+ * or below the word 0xA81AC (signed) it returns 1; else 0x18C14(side, the
+ * flags, 0xA81BE, 0xA81C8)'s result. */
+u32 fighter_2116c(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    fighter_ctx_same(ctx, side);                            /* 0x21172..0x21176 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x2117B/0x2117F 0x18BD4 */
+    flags[1] = 0;                                           /* 0x21188 */
+    flags[8] = 0;                                           /* 0x2118C */
+    flags[4] = 0;                                           /* 0x21190 */
+    flags[0xE] = 0;                                         /* 0x21194 */
+    flags[7] = 0;                                           /* 0x21198 */
+    flags[5] = 1u;                                          /* 0x2119C */
+    flags[0xD] = 0;                                         /* 0x211A4 */
+    if ((s16)DSW(P2_A81AE) < (s16)DSW(ctx[2] + 0x88u))     /* 0x211A8..0x211B6 */
+        return 1u;                                          /* 0x211CC */
+    if ((s16)DSW(P2_A81AC) > (s16)DSW(ctx[2] + 0x88u))     /* 0x211B8..0x211CA */
+        return 1u;                                          /* 0x211CC */
+    return (u32)fighter_18c14(ctx[0], flags, P2_BOX_2116C_A, P2_BOX_2116C_B);   /* 0x211D3..0x211E4 0x18C14 */
+}
+
+/* 0x22510 — record §P2.7. The slot +0x18 hook 0x22938 stores (the dword at
+ * 0x2296E; 0x19020, fn(side), the whole EAX tested). The flags 1, 8, 4, 0xE,
+ * 7 and 0xD = 0, 5 and 9 = 1. With the side's word 0x104758 (the high half
+ * of the dword at 0x104756 + 2 * side, `sar 0x10`) above 0x14 or below 0xD
+ * it returns 1; else 0x18C14(side, the flags, 0xA82C4, 0xA82CE)'s result. */
+u32 fighter_22510(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    s32 w;
+    fighter_ctx_same(ctx, side);                            /* 0x22516..0x2251A 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x2251F/0x22523 0x18BD4 */
+    flags[1] = 0;                                           /* 0x2252C */
+    flags[8] = 0;                                           /* 0x22530 */
+    flags[5] = 1u;                                          /* 0x22534 */
+    flags[9] = 1u;                                          /* 0x22538 */
+    flags[4] = 0;                                           /* 0x2253F */
+    flags[0xE] = 0;                                         /* 0x22543 */
+    flags[7] = 0;                                           /* 0x2254E */
+    flags[0xD] = 0;                                         /* 0x22555 */
+    w = (s32)(s16)DSW(P2_104758 + ctx[0] * 2u);             /* 0x22547/0x22552 */
+    if (w > 0x14 || w < 0x0D)                               /* 0x22559..0x22561 */
+        return 1u;                                          /* 0x22563 */
+    return (u32)fighter_18c14(ctx[0], flags, P2_BOX_22510_A, P2_BOX_22510_B);   /* 0x2256A..0x2257B 0x18C14 */
 }

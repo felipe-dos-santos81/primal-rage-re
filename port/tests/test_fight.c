@@ -45358,3 +45358,62 @@ static void p2_check_arming(void)
 }
 
 int test_p2_arming(void)        { return u6b_run(p2_check_arming); }
+
+typedef u32 (*p2_hook_fn)(u32 side);
+
+/* §P2.7: the slot +0x18 hooks 0x21374 and 0x22938 store, through 0x19020
+ * (DS_00100AF8[side] = 1 when the hook returns 0, else 0): out of their
+ * bounds they return 1; inside, they return 0x18C14's result on their flags
+ * (the same call made here on the expected flags, on the same seeded state). */
+static void p2_check_hooks(void)
+{
+    p2_hook_fn h;
+    u8 fl[16];
+    u32 r, k;
+    CHECK(fn_resolve(0x2116Cu) == (void (*)(void))fighter_2116c, "0x2116C is registered");
+    CHECK(fn_resolve(0x22510u) == (void (*)(void))fighter_22510, "0x22510 is registered");
+
+    /* 0x2116C on side 0: the slot's word +0x88 = 4 lies above 0xA81AE's 3. */
+    z_fseed();
+    DSD(Z_S0 + 0x18u) = 0x0002116Cu;
+    DSW(Z_S0 + 0x88u) = 4u;
+    DSD(DS_00100AF8) = 0xAAAAAAAAu;
+    fighter_19020(0u);
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
+    /* inside 1..3: 0x18C14(0, flags 1/4/7/8/0xD/0xE = 0, 5 = 1, the rest 2,
+     * 0xA81BE, 0xA81C8) */
+    h = (p2_hook_fn)(void *)fn_resolve(0x2116Cu);
+    if (h == NULL) return;
+    z_fseed();
+    DSW(Z_S0 + 0x88u) = 2u;
+    r = h(0u);
+    z_fseed();
+    DSW(Z_S0 + 0x88u) = 2u;
+    for (k = 0; k < 16u; k++) fl[k] = 2u;
+    fl[1] = fl[4] = fl[7] = fl[8] = fl[0xD] = fl[0xE] = 0u;
+    fl[5] = 1u;
+    CHECK_EQ_INT((int)r, fighter_18c14(0u, fl, 0x000A81BEu, 0x000A81C8u));
+    z_fseed();
+    DSW(Z_S0 + 0x88u) = 0u;
+    CHECK_EQ_INT((int)h(0u), 1);
+
+    /* 0x22510 on side 1: the side's word 0x104758 + 2 = 0x15 lies above 0x14;
+     * 0x10 inside: 0x18C14(1, flags 1/4/7/8/0xD/0xE = 0, 5/9 = 1, 0xA82C4,
+     * 0xA82CE). */
+    h = (p2_hook_fn)(void *)fn_resolve(0x22510u);
+    if (h == NULL) return;
+    z_fseed();
+    DSW(0x0010475Au) = 0x15u;
+    CHECK_EQ_INT((int)h(1u), 1);
+    z_fseed();
+    DSW(0x0010475Au) = 0x10u;
+    r = h(1u);
+    z_fseed();
+    DSW(0x0010475Au) = 0x10u;
+    for (k = 0; k < 16u; k++) fl[k] = 2u;
+    fl[1] = fl[4] = fl[7] = fl[8] = fl[0xD] = fl[0xE] = 0u;
+    fl[5] = fl[9] = 1u;
+    CHECK_EQ_INT((int)r, fighter_18c14(1u, fl, 0x000A82C4u, 0x000A82CEu));
+}
+
+int test_p2_hooks(void)         { return u6b_run(p2_check_hooks); }

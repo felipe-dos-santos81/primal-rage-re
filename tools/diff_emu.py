@@ -38,6 +38,18 @@ STACK_TOP = 0x7FFF0000
 SENTINEL = 0x7FFFF000         # the return address pushed for the function; emulation ends here
 DEFAULT_MAX_INSNS = 200_000
 REGS = ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp")
+
+
+def deref_arg(a):
+    """(reg, offset) for a Call argument `[reg]` or `[reg+N]` (N decimal): the dword at that address when
+    the callee is reached, for a pointer argument with no mem[] offset to compare (a caller's stack buffer;
+    record 2026-10-02-reverse-p2 §P2.7). None for any other argument."""
+    if not (a.startswith("[") and a.endswith("]")):
+        return None
+    reg, _, off = a[1:-1].partition("+")
+    if reg not in REGS or (off and not off.isdigit()):
+        return None
+    return reg, int(off or "0")
 # The dwords above the return address at entry: the stack arguments a `ret N` function pops
 # (record E3 §E3.5). A case sets them as regs["s0"]..regs["s3"]; a call record reads them the same way.
 STACK_ARGS = ("s0", "s1", "s2", "s3")
@@ -103,7 +115,7 @@ class Call:
     def __post_init__(self):
         if self.mode not in ("stub", "real"):
             raise ValueError("call 0x%X: mode %r is neither stub nor real" % (self.addr, self.mode))
-        bad = [a for a in self.args if a not in REGS + STACK_ARGS]
+        bad = [a for a in self.args if a not in REGS + STACK_ARGS and deref_arg(a) is None]
         if bad:
             raise ValueError("call 0x%X: unknown argument %s" % (self.addr, ", ".join(bad)))
         if self.mode == "real" and (self.writes or self.eax or self.pop or self.clobbers):
@@ -215,6 +227,9 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     def arg(uc, esp, a):
         if a in STACK_ARGS:
             return int.from_bytes(uc.mem_read(esp + 4 + 4 * STACK_ARGS.index(a), 4), "little")
+        d = deref_arg(a)
+        if d is not None:
+            return int.from_bytes(uc.mem_read((uc.reg_read(names[d[0]]) + d[1]) & 0xFFFFFFFF, 4), "little")
         return uc.reg_read(names[a])
 
     def changed(uc):

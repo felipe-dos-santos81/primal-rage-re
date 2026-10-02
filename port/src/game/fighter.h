@@ -1189,5 +1189,8 @@ void fighter_21114(u32 slot, u32 rec, u32 side);
 /* §P2.6: the move callbacks that arm the side's own slot (slot, rec, side). */
 void fighter_21374(u32 slot, u32 rec, u32 side);
 void fighter_22938(u32 slot, u32 rec, u32 side);
+/* §P2.7: the slot +0x18 hooks they store, fn(side) as 0x19020 calls them. */
+u32  fighter_2116c(u32 side);
+u32  fighter_22510(u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

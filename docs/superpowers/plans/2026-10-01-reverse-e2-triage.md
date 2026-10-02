@@ -642,7 +642,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 20FA0 | immediate at 210FC | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 20FE0 | immediate at 21105 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 210A4 | immediate at 210F5 | - | yes | allow-list | - |
-| 2116C | immediate at 213C8 | - | no | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 2116C | immediate at 213C8 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 211F0 | immediate at 213D3 | - | no | stubs (indirect at 18384 in 18350) | 212AF |
 | 212CC | immediate at 213BD | - | no | stubs (indirect at 2B56D in 2B2A0) | - |
 | 215B0 | called at 21B50 | entry | yes | stubs (indirect at 18384 in 18350) | - |
@@ -660,7 +660,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 22188 | immediate at 2232A | entry | yes | stubs (indirect at 62006 in 62003) | - |
 | 22200 | immediate at 2231A | entry | yes | stubs (indirect at 62006 in 62003) | - |
 | 22404 | called at 224FC | entry | no | stubs (indirect at 2B56D in 2B2A0) | - |
-| 22510 | immediate at 2296B | - | no | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 22510 | immediate at 2296B | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 22588 | immediate at 22976 | - | no | stubs (indirect at 18384 in 18350) | 2260E |
 | 22CE4 | called at 22E64 | entry | yes | stubs (indirect at 62006 in 62003) | - |
 | 22D8C | immediate at 22F84 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |

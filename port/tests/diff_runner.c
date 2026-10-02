@@ -1090,6 +1090,58 @@ static void m_22938_order(const u32 *r, u32 *eax)      /* the word 0x104754 and 
     m_22938_at(r, eax, 0, 1);
 }
 
+/* §P2.7: the slot +0x18 hooks as 0x19020 calls them at 0x1903F (EAX = side); 0x19048 tests the whole EAX. */
+static void b_2116c(const u32 *r, u32 *eax)            { *eax = fighter_2116c(r[R_EAX]); }
+static void b_22510(const u32 *r, u32 *eax)            { *eax = fighter_22510(r[R_EAX]); }
+static u32 m_hook(u32 side, u32 lo_box, u32 hi_box, int mode)
+{
+    u32 ctx[6];
+    u8 f[16];
+    u32 k;
+    fighter_ctx_same(ctx, side);
+    for (k = 0; k < 16u; k++) f[k] = 2u;
+    f[1] = f[8] = f[4] = f[0xE] = f[7] = 0u;
+    f[5] = 1u;
+    f[0xD] = (mode == 1) ? 2u : 0u;
+    if (lo_box == 0x000A81BEu) {
+        if (mode == 2) {
+            if (DSW(0x000A81AEu) < DSW(ctx[2] + 0x88u) || DSW(0x000A81ACu) > DSW(ctx[2] + 0x88u)) return 1u;
+        } else if ((s16)DSW(0x000A81AEu) < (s16)DSW(ctx[2] + 0x88u)
+                   || (s16)DSW(0x000A81ACu) > (s16)DSW(ctx[2] + 0x88u)) {
+            return 1u;
+        }
+        k = (u32)fighter_18c14(ctx[0], f, lo_box, hi_box);
+        return mode == 3 ? 1u : k;
+    }
+    f[9] = (mode == 1) ? 0u : 1u;
+    f[0xD] = 0u;
+    {
+        s32 w = (s32)(s16)DSW(0x00104758u + ctx[0] * 2u);
+        if ((mode == 4 ? w >= 0x14 : w > 0x14) || w < 0x0D) return 1u;
+    }
+    return (u32)fighter_18c14(ctx[0], f, lo_box, hi_box);
+}
+static void m_2116c(const u32 *r, u32 *eax)            /* flag 0xD left at 2 */
+{
+    *eax = m_hook(r[R_EAX], 0x000A81BEu, 0x000A81C8u, 1);
+}
+static void m_2116c_unsigned(const u32 *r, u32 *eax)   /* the bounds compared unsigned */
+{
+    *eax = m_hook(r[R_EAX], 0x000A81BEu, 0x000A81C8u, 2);
+}
+static void m_2116c_eax(const u32 *r, u32 *eax)        /* 1 instead of 0x18C14's result */
+{
+    *eax = m_hook(r[R_EAX], 0x000A81BEu, 0x000A81C8u, 3);
+}
+static void m_22510(const u32 *r, u32 *eax)            /* flag 9 = 0, not 1 */
+{
+    *eax = m_hook(r[R_EAX], 0x000A82C4u, 0x000A82CEu, 1);
+}
+static void m_22510_ge(const u32 *r, u32 *eax)         /* `>= 0x14` for `jg` */
+{
+    *eax = m_hook(r[R_EAX], 0x000A82C4u, 0x000A82CEu, 4);
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -1208,6 +1260,13 @@ static const binding_t k_bindings[] = {
     { "fighter_21374@mutant",     m_21374,        0x00000000u },
     { "fighter_22938@mutant",     m_22938,        0x00000000u },
     { "fighter_22938@order",      m_22938_order,  0x00000000u },
+    { "fighter_2116c",            b_2116c,        0xFFFFFFFFu },
+    { "fighter_22510",            b_22510,        0xFFFFFFFFu },
+    { "fighter_2116c@mutant",     m_2116c,        0xFFFFFFFFu },
+    { "fighter_2116c@unsigned",   m_2116c_unsigned, 0xFFFFFFFFu },
+    { "fighter_2116c@eax",        m_2116c_eax,    0xFFFFFFFFu },
+    { "fighter_22510@mutant",     m_22510,        0xFFFFFFFFu },
+    { "fighter_22510@ge",         m_22510_ge,     0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)
