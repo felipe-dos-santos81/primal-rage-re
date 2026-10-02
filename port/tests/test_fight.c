@@ -44653,3 +44653,67 @@ static void p1_check_finishers(void)
 }
 
 int test_p1_finishers(void)     { return u6b_run(p1_check_finishers); }
+
+typedef void (*p1_cb_fn)(u32 slot, u32 rec, u32 side);
+
+/* §P1.8: the three +0x0C callbacks the finisher entries store, through their
+ * registrations as 0x3531C case 7 calls them (slot 0, its record, side 0; the
+ * other slot is slot 1, whose +4 points at FIGHT_RECS + 0x200). */
+static void p1_check_callbacks_a(void)
+{
+    u32 tgt = FIGHT_RECS + 0x200u;
+    p1_cb_fn f;
+    CHECK(fn_resolve(0x15584u) == (void (*)(void))fighter_15584, "0x15584 is registered");
+    CHECK(fn_resolve(0x1579Cu) == (void (*)(void))fighter_1579c, "0x1579C is registered");
+    CHECK(fn_resolve(0x23D38u) == (void (*)(void))fighter_23d38, "0x23D38 is registered");
+    CHECK_EQ_INT((int)DSD(0x0001569Fu), 0x00015584);
+    CHECK_EQ_INT((int)DSD(0x0001592Bu), 0x0001579C);
+    CHECK_EQ_INT((int)DSD(0x00023EE3u), 0x00023D38);
+
+    /* 0x15584 case 3: 0x420 - 0x40 = 0x3E0 is at most 0x400: set 0x400, step
+     * +0x57, copy to the other slot's +4 record; then case 5. */
+    f = (p1_cb_fn)(void *)fn_resolve(0x15584u);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(Z_S1 + 4u) = tgt;
+    DSW(tgt + 0x2Cu) = 0xCCCCu;
+    DSW(DSD(Z_S1) + 0x2Cu) = 0x0420u;
+    DSB(Z_S0 + 0x57u) = 3u;
+    f(Z_S0, DSD(Z_S0), 0u);
+    CHECK_EQ_INT((int)DSW(DSD(Z_S1) + 0x2Cu), 0x400);
+    CHECK_EQ_INT((int)DSW(tgt + 0x2Cu), 0x400);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 4);
+    DSB(Z_S0 + 0x57u) = 5u;
+    f(Z_S0, DSD(Z_S0), 0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 3);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(DS_000F0AFE), 4);
+    CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
+
+    /* 0x1579C case 3 above 0x400: 0x500 - 0x40 = 0x4C0 is copied, +0x57 kept. */
+    f = (p1_cb_fn)(void *)fn_resolve(0x1579Cu);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(Z_S1 + 4u) = tgt;
+    DSW(tgt + 0x2Cu) = 0xCCCCu;
+    DSW(DSD(Z_S1) + 0x2Cu) = 0x0500u;
+    DSB(Z_S0 + 0x57u) = 3u;
+    f(Z_S0, DSD(Z_S0), 0u);
+    CHECK_EQ_INT((int)DSW(tgt + 0x2Cu), 0x4C0);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
+
+    /* 0x23D38 case 0, the record's +0x28 bit 14 clear: rec+0x18 = 0xC000 lies
+     * below DS_000F0AF0 - 0x3000 = 0xD000, so it moves to 0x13000. */
+    f = (p1_cb_fn)(void *)fn_resolve(0x23D38u);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(DS_000F0AF0) = 0x10000u;
+    DSW(Z_R0 + 0x28u) = 0u;
+    DSD(Z_R0 + 0x18u) = 0xC000u;
+    DSB(Z_S0 + 0x57u) = 0u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x18u), 0x13000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
+}
+
+int test_p1_callbacks(void)     { return u6b_run(p1_check_callbacks_a); }

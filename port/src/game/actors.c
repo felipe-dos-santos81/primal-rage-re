@@ -678,6 +678,12 @@ int actors_init(void)
      * the dword at 0xA86C4; fn() with the unread EAX). */
     fn_register(0x45B50u, (void (*)(void))fighter_45b50);
     fn_register(0x47B04u, (void (*)(void))fighter_47b04);
+    /* PORT: record 2026-10-02-reverse-p1 §P1.8. The slot +0x0C callbacks
+     * the finisher entries 0x1567C, 0x15908 and 0x23EC0 store (the dwords
+     * at 0x1569F, 0x1592B and 0x23EE3; 0x3531C case 7, (slot, rec, side)). */
+    fn_register(0x15584u, (void (*)(void))fighter_15584);
+    fn_register(0x1579Cu, (void (*)(void))fighter_1579c);
+    fn_register(0x23D38u, (void (*)(void))fighter_23d38);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
@@ -2653,6 +2659,7 @@ void actor_pset_flag_5f(u32 rec, u8 flag)
  * acquire path. */
 void actor_pset_palette(u32 rec, u32 word, u32 handle)
 {
+    PR_SEAM(0x2A17Cu, rec, word, handle);
     u32 pset = actor_pset(rec);                             /* 0x2A182..0x2A190 */
     DSW(pset + 0x02u) = (u16)(word | (DSB(rec + 0x5fu) != 0 ? 0x800u : 0u));
     if (handle == 0) return;                                /* 0x2A1AA/0x2A1AC */

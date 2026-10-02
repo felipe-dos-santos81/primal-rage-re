@@ -14272,3 +14272,190 @@ int fighter_402fc(u32 slot, u32 rec)
     DSD(slot + 0x1Cu) = 0u;                                 /* 0x4034A */
     return 1;                                               /* 0x40348 */
 }
+
+#define P1_CB_STREAM_C90F8  0x000C90F8u  /* 0x155B8/0x157D0: [the other's char] dword, a stream */
+#define P1_CB_VOICE_C75AA   0x000C75AAu  /* 0x155DD/0x157F5: [the other's char] u16, a voice id */
+#define P1_CB_STREAM_9B054  0x0009B054u  /* 0x15608/0x15820: [the other's char] dword, a stream */
+#define P1_1579C_STREAM     0x000E8C82u  /* 0x15895 */
+#define P1_1579C_PALETTE    0x1187FAE0u  /* 0x1589E: EBX, which 0x2BC30 preserves, 0x2A17C's handle */
+
+/* 0x15584 — record §P1.8. The slot +0x0C callback 0x1567C stores (the
+ * immediate at 0x1569F; no Ghidra function, no E2 row: it follows the jump
+ * table 0x1556C, not a `ret`). EAX = slot, EDX = rec (not read), EBX = side;
+ * the context is 0x33950(side). Dispatched on the slot's +0x57 through the
+ * six-entry table 0x1556C (`cmp al,5; ja` at 0x15596): 1 puts the other's
+ * record ctx[5] on 0xC90F8[the other's char] at 2.0, sets the other slot's
+ * +0x42 bit 2, plays the voice 0xC75AA[char] and steps +0x57; 2 puts ctx[5]
+ * on 0x9B054[char] at 1.0; 3 lowers ctx[5]'s word +0x2C by 0x40 and, at
+ * 0x400 or below (a signed compare of the zero-extended word), sets it 0x400
+ * and steps +0x57; then copies it to the word +0x2C of the record at the other
+ * slot's +4; 5 sets the slot's +0x53 = 3, +0x52 = 9, DS_000F0AFE = 4 and
+ * DS_001078FC = 1; 0, 4 and above 5 do nothing. */
+void fighter_15584(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)rec;
+    fighter_ctx_same(ctx, side);                            /* 0x15588..0x1558E 0x33950 */
+    switch (DSB(slot + 0x57u)) {                            /* 0x15593..0x155A3 table 0x1556C */
+    case 1u:                                                /* 0x155AB */
+        actors_anim_begin(ctx[5], DSD(P1_CB_STREAM_C90F8 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                          0x40000000u);                     /* 0x155AB..0x155C4 0x2BC30 */
+        DSB(ctx[3] + 0x42u) = (u8)(DSB(ctx[3] + 0x42u) | 4u); /* 0x155CD */
+        (void)sound_voice(DSW(P1_CB_VOICE_C75AA + (u32)DSB(ctx[3] + 0x7Au) * 2u)); /* 0x155D1..0x155EA 0x2C3FC */
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);   /* 0x155EF */
+        return;
+    case 2u:                                                /* 0x155F7 */
+        actors_anim_begin(ctx[5], DSD(P1_CB_STREAM_9B054 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                          0x3F800000u);                     /* 0x155F7..0x15613 0x2BC30 */
+        return;
+    case 3u:                                                /* 0x1561D */
+        DSW(ctx[5] + 0x2Cu) = (u16)(DSW(ctx[5] + 0x2Cu) - 0x40u);   /* 0x15621 */
+        if (DSW(ctx[5] + 0x2Cu) <= 0x400u) {                /* 0x1562A..0x15638 */
+            DSW(ctx[5] + 0x2Cu) = 0x400u;                   /* 0x1563E */
+            DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);   /* 0x15644 */
+        }
+        DSW(DSD(ctx[3] + 4u) + 0x2Cu) = DSW(ctx[5] + 0x2Cu);    /* 0x15647..0x15656 */
+        return;
+    case 5u:                                                /* 0x1565F */
+        DSB(slot + 0x53u) = 3u;                             /* 0x15661 */
+        DSB(slot + 0x52u) = 9u;                             /* 0x15667 */
+        DSB(DS_000F0AFE) = 4u;                              /* 0x1566B */
+        DSB(DS_001078FC) = 1u;                              /* 0x15671 */
+        return;
+    default:                                                /* 0x15677: 0, 4, above 5 */
+        return;
+    }
+}
+
+/* 0x1579C — record §P1.8. The slot +0x0C callback 0x15908 stores (the
+ * immediate at 0x1592B; after the jump table 0x1578C, no E2 row). 0x15584's
+ * cases 1 and 2 (0x157C3, 0x1580F) through the four-entry table 0x1578C
+ * (`cmp al,3; ja` at 0x157AE); case 3 (0x15835) lowers ctx[5]'s word +0x2C by
+ * 0x40 and, above 0x400, copies it to the record at the other slot's +4
+ * (0x158ED: E2's untrusted entry, a block of this function); at 0x400 or below:
+ * ctx[5]'s +0x29 bit 6 cleared and word +0x34 = 0x80 when its word +0x28 has
+ * bit 14, else bit 6 set and +0x34 = 0xFF80; ctx[5] on 0xE8C82 at 3.0, then
+ * 0x2A17C(ctx[5], 0x18, 0x1187FAE0); word +0x2C = 0x1000, +0x28 bit 7, the
+ * voice 0xEA, the slot's +0x53 = 3, +0x52 = 9, DS_000F0AFE = 4, DS_001078FC
+ * = 1. Case 0 and above 3 do nothing. */
+void fighter_1579c(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)rec;
+    fighter_ctx_same(ctx, side);                            /* 0x157A0..0x157A6 0x33950 */
+    switch (DSB(slot + 0x57u)) {                            /* 0x157AB..0x157BB table 0x1578C */
+    case 1u:                                                /* 0x157C3 */
+        actors_anim_begin(ctx[5], DSD(P1_CB_STREAM_C90F8 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                          0x40000000u);                     /* 0x157C3..0x157DC 0x2BC30 */
+        DSB(ctx[3] + 0x42u) = (u8)(DSB(ctx[3] + 0x42u) | 4u); /* 0x157E5 */
+        (void)sound_voice(DSW(P1_CB_VOICE_C75AA + (u32)DSB(ctx[3] + 0x7Au) * 2u)); /* 0x157E9..0x15802 0x2C3FC */
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);   /* 0x15807 */
+        return;
+    case 2u:                                                /* 0x1580F */
+        actors_anim_begin(ctx[5], DSD(P1_CB_STREAM_9B054 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                          0x3F800000u);                     /* 0x1580F..0x1582B 0x2BC30 */
+        return;
+    case 3u:                                                /* 0x15835 */
+        DSW(ctx[5] + 0x2Cu) = (u16)(DSW(ctx[5] + 0x2Cu) - 0x40u);   /* 0x15839 */
+        if (DSW(ctx[5] + 0x2Cu) > 0x400u) {                 /* 0x15842..0x15850 */
+            DSW(DSD(ctx[3] + 4u) + 0x2Cu) = DSW(ctx[5] + 0x2Cu);    /* 0x158ED..0x158FC */
+            return;
+        }
+        if ((DSW(ctx[5] + 0x28u) & 0x4000u) != 0u) {        /* 0x15856..0x15868 */
+            DSB(ctx[5] + 0x29u) = (u8)(DSB(ctx[5] + 0x29u) & 0xBFu);  /* 0x1586E */
+            DSW(ctx[5] + 0x34u) = 0x0080u;                  /* 0x15876 */
+        } else {
+            DSB(ctx[5] + 0x29u) = (u8)(DSB(ctx[5] + 0x29u) | 0x40u);  /* 0x15882 */
+            DSW(ctx[5] + 0x34u) = 0xFF80u;                  /* 0x1588A */
+        }
+        actors_anim_begin(ctx[5], P1_1579C_STREAM, 0x40400000u);  /* 0x15890..0x158A3 0x2BC30 */
+        actor_pset_palette(ctx[5], 0x18u, P1_1579C_PALETTE);      /* 0x158A8..0x158B1 0x2A17C */
+        DSW(ctx[5] + 0x2Cu) = 0x1000u;                      /* 0x158BA */
+        DSB(ctx[5] + 0x28u) = (u8)(DSB(ctx[5] + 0x28u) | 0x80u);  /* 0x158C4 */
+        (void)sound_voice(0xEAu);                           /* 0x158C8/0x158CD 0x2C3FC */
+        DSB(slot + 0x53u) = 3u;                             /* 0x158D2 */
+        DSB(slot + 0x52u) = 9u;                             /* 0x158D6 */
+        DSB(DS_000F0AFE) = 4u;                              /* 0x158DA */
+        DSB(DS_001078FC) = 1u;                              /* 0x158E1 */
+        return;
+    default:                                                /* 0x15900: 0 and above 3 */
+        return;
+    }
+}
+
+#define P1_23D38_SNAP   0x000E1BAEu  /* 0x23DCF */
+#define P1_23D38_REACH  0x000E1BBCu  /* 0x23DFF */
+#define P1_23D38_GRAB   0x000E1BD2u  /* 0x23E74 */
+#define P1_23D38_HELD   0x000E1C0Cu  /* 0x23E83 */
+
+/* |v| as the raw's `test; jge; neg` computes it: 0x80000000 stays itself. */
+static s32 p1_abs(u32 v)
+{
+    return (s32)v < 0 ? (s32)(0u - v) : (s32)v;
+}
+
+/* 0x23D38 — record §P1.8. The slot +0x0C callback 0x23EC0 stores (the
+ * immediate at 0x23EE3; after the jump table 0x23D20, no E2 row). EAX = slot,
+ * EDX = rec, EBX (the side) not read. Dispatched on +0x57 through the six-
+ * entry table 0x23D20 (`cmp dl,5; ja` at 0x23D41): 0 moves rec+0x18 to
+ * DS_000F0AF0 -/+ 0x3000 by the record's word +0x28 bit 14 when it lies beyond
+ * that bound (signed) and steps +0x57; 1 within 0x2000 of DS_000F0AF0 puts the
+ * record on 0xE1BAE at 3.0 and steps; 2 within 0x1000 of the record at slot+8
+ * puts it on 0xE1BBC and steps; 3 within 0xB00 of it moves that record onto
+ * this one (x, y, words +0x34 = 0, +0x2C = 0xE00, +0x29 bit 6 from the word
+ * +0x28's bit 14), starts both (0xE1BD2, 0xE1C0C at 3.0), steps and plays the
+ * voice 0xD6; 5 sets +0x53 = 3, +0x52 = 9, DS_000F0AFE = 4, DS_001078FC = 1;
+ * 4 and above 5 do nothing. Distances are |a - b| by `neg` and compared
+ * signed (`jg`). */
+void fighter_23d38(u32 slot, u32 rec, u32 side)
+{
+    u32 other;
+    (void)side;
+    switch (DSB(slot + 0x57u)) {                            /* 0x23D3E..0x23D50 table 0x23D20 */
+    case 0u:                                                /* 0x23D58 */
+        if ((DSW(rec + 0x28u) & 0x4000u) != 0u) {           /* 0x23D58..0x23D74 */
+            if ((s32)(DSD(DS_000F0AF0) + 0x3000u) >= (s32)DSD(rec + 0x18u)) return;  /* 0x23D76 */
+            DSD(rec + 0x18u) = DSD(DS_000F0AF0) - 0x3000u;  /* 0x23D7F..0x23D8B */
+        } else {
+            if ((s32)(DSD(DS_000F0AF0) - 0x3000u) <= (s32)DSD(rec + 0x18u)) return;  /* 0x23D94..0x23DA5 */
+            DSD(rec + 0x18u) = DSD(DS_000F0AF0) + 0x3000u;  /* 0x23DAB */
+        }
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);   /* 0x23D8E/0x23DAE */
+        return;
+    case 1u:                                                /* 0x23DB4 */
+        if (p1_abs(DSD(DS_000F0AF0) - DSD(rec + 0x18u)) > 0x2000) return;  /* 0x23DB4..0x23DC9 */
+        actors_anim_begin(rec, P1_23D38_SNAP, 0x40400000u); /* 0x23DCF..0x23DD9 0x2BC30 */
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);   /* 0x23DDE */
+        return;
+    case 2u:                                                /* 0x23DE4 */
+        other = DSD(slot + 8u);
+        if (p1_abs(DSD(rec + 0x18u) - DSD(other + 0x18u)) > 0x1000) return;  /* 0x23DE4..0x23DF9 */
+        actors_anim_begin(rec, P1_23D38_REACH, 0x40400000u);  /* 0x23DFF..0x23E09 0x2BC30 */
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);   /* 0x23E0E */
+        return;
+    case 3u:                                                /* 0x23E14 */
+        other = DSD(slot + 8u);
+        if (p1_abs(DSD(rec + 0x18u) - DSD(other + 0x18u)) > 0xB00) return;   /* 0x23E14..0x23E29 */
+        DSD(DSD(slot + 8u) + 0x18u) = DSD(rec + 0x18u);    /* 0x23E2F..0x23E35 */
+        DSD(DSD(slot + 8u) + 0x1Cu) = DSD(rec + 0x1Cu);    /* 0x23E38..0x23E3E */
+        DSW(DSD(slot + 8u) + 0x34u) = 0u;                   /* 0x23E41..0x23E44 */
+        DSW(DSD(slot + 8u) + 0x2Cu) = 0x0E00u;              /* 0x23E4A..0x23E4D */
+        if ((DSW(rec + 0x28u) & 0x4000u) != 0u)             /* 0x23E53..0x23E62 */
+            DSB(DSD(slot + 8u) + 0x29u) = (u8)(DSB(DSD(slot + 8u) + 0x29u) | 0x40u);  /* 0x23E64..0x23E67 */
+        else
+            DSB(DSD(slot + 8u) + 0x29u) = (u8)(DSB(DSD(slot + 8u) + 0x29u) & 0xBFu);  /* 0x23E6D..0x23E70 */
+        actors_anim_begin(rec, P1_23D38_GRAB, 0x40400000u); /* 0x23E74..0x23E7E 0x2BC30 */
+        actors_anim_begin(DSD(slot + 8u), P1_23D38_HELD, 0x40400000u);  /* 0x23E83..0x23E90 0x2BC30 */
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);   /* 0x23E95 */
+        (void)sound_voice(0xD6u);                           /* 0x23E98/0x23E9D 0x2C3FC */
+        return;
+    case 5u:                                                /* 0x23EA5 */
+        DSB(slot + 0x53u) = 3u;                             /* 0x23EA7 */
+        DSB(slot + 0x52u) = 9u;                             /* 0x23EAD */
+        DSB(DS_000F0AFE) = 4u;                              /* 0x23EB1 */
+        DSB(DS_001078FC) = 1u;                              /* 0x23EB7 */
+        return;
+    default:                                                /* 0x23EBD: 4, above 5 */
+        return;
+    }
+}

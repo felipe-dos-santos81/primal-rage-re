@@ -402,6 +402,36 @@ def p1_23bf8(cid, stage, al, x, side, extra=None):
     return Case(cid, {"eax": E3_SLOT, "edx": E3_REC}, pokes, {} if al is None else {0x1A570: al})
 
 
+# 0x2A17C (actor_pset_palette): EAX = rec, EDX = word, EBX = handle; a plain `ret`; it saves ECX and ESI and
+# clobbers EDX (E.callee_clobbers; record §P1.4).
+PALETTE = E.Call(0x2A17C, ("eax", "edx", "ebx"), clobbers=("edx",))
+# 14 pokes (diffrun takes 16 per case): the two slots' characters (5 and 3), +0x42 and +4 (E3_OUT, the
+# record case 3 copies to), sentinels on everything the callbacks store; +0x52..+0x57 as one poke.
+P1_SEED_CB = {DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03", DS_SLOTS + 0x42: b"\x42",
+              DS_SLOTS + 0x94 + 0x42: b"\x24", DS_SLOTS + 4: le32(E3_OUT), DS_SLOTS + 0x94 + 4: le32(E3_OUT),
+              E3_OUT + 0x2C: b"\xcc\xcc", 0xF0AFE: b"\xfe", 0x1078FC: b"\xfc",
+              E3_REC2 + 0x29: b"\x29", E3_REC2 + 0x34: b"\x34\x34"}
+
+
+def p1_cb(name, entry, rows, calls, stub_eax=None):
+    """A +0x0C callback's cases: (index, the slot's +0x57, side, extra pokes)."""
+    return Spec(name, entry, [
+        Case("c%d" % i, {"eax": E3_SLOT, "edx": E3_REC, "ebx": side},
+             {**SLOT_PTRS, **P1_SEED_CB, E3_SLOT + 0x52: bytes([0x52, 0x53, 0x54, 0x55, 0x56, st]), **extra},
+             (stub_eax or {}).get(i, {}))
+        for i, st, side, extra in rows
+    ], allow_calls=(0x33950,), calls=calls, eax_mask=0)
+
+
+def p1_23d38(cid, st, x, ox, w28):
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0},
+                {E3_SLOT + 0x57: bytes([st]), E3_SLOT + 8: le32(E3_REC2), 0xF0AF0: le32(0x10000),
+                 E3_REC + 0x18: le32(x), E3_REC + 0x1C: le32(0x1C1C), E3_REC + 0x28: le32(w28)[:2],
+                 E3_REC2 + 0x18: le32(ox), E3_REC2 + 0x1C: le32(0x2C2C), E3_REC2 + 0x29: b"\x29",
+                 E3_REC2 + 0x2C: b"\xcc\xcc", E3_REC2 + 0x34: b"\x34\x34", E3_SLOT + 0x52: b"\x52\x53",
+                 0xF0AFE: b"\xfe", 0x1078FC: b"\xfc"})
+
+
 P1_SPECS = [
     p1_finisher("fighter_1567c", 0x1567C, True),
     p1_finisher("fighter_15908", 0x15908, True),
@@ -437,6 +467,30 @@ P1_SPECS = [
              {0x3C4CC: 0x1234} if side else {})
         for side in (0, 1)
     ], allow_calls=(0x339AC,), calls=(HIT_B,), eax_mask=0xFF),
+    # 0x15584 and 0x1579C (record §P1.8): 0x33950 runs on both sides (allow); with side 0 the other slot is
+    # slot 1 (character 3), with side 1 slot 0 (character 5); the own slot's character differs (6, 1) so the
+    # mutant's wrong index shows. ctx[3]+4 points at E3_OUT, the record whose word +0x2C case 3 copies to.
+    p1_cb("fighter_15584", 0x15584, [(0, 0, 0, {}), (1, 1, 0, {}), (2, 2, 1, {}),
+                                      (3, 3, 0, {E3_REC2 + 0x2C: b"\x00\x05"}),
+                                      (4, 3, 0, {E3_REC2 + 0x2C: b"\x20\x04"}),
+                                      (5, 3, 0, {E3_REC2 + 0x2C: b"\x10\x00"}),
+                                      (6, 4, 0, {}), (7, 5, 0, {}), (8, 6, 0, {})],
+          calls=(ANIM_BEGIN, VOICE), stub_eax={1: {0x2C3FC: 0}}),
+    p1_cb("fighter_1579c", 0x1579C, [(0, 0, 0, {}), (1, 1, 0, {}), (2, 2, 1, {}),
+                                      (3, 3, 0, {E3_REC2 + 0x2C: b"\x00\x05"}),
+                                      (4, 3, 0, {E3_REC2 + 0x2C: b"\x20\x04", E3_REC2 + 0x28: b"\x00\x40"}),
+                                      (5, 3, 1, {E3_REC + 0x28: b"\xff\xbf\x00\x00\x20\x04"}),
+                                      (6, 4, 0, {})],
+          calls=(ANIM_BEGIN, PALETTE, VOICE)),
+    # 0x23D38 (record §P1.8): DS_000F0AF0 = 0x10000; the record at slot+8 is E3_REC2.
+    Spec("fighter_23d38", 0x23D38, [
+        p1_23d38(cid, st, x, ox, w28) for cid, st, x, ox, w28 in (
+            ("g0", 0, 0x12000, 0, 0x4000), ("g1", 0, 0x14000, 0, 0x4000), ("g2", 0, 0xE000, 0, 0),
+            ("g3", 0, 0xC000, 0, 0), ("g4", 1, 0xDFFF, 0, 0), ("g5", 1, 0x12000, 0, 0),
+            ("g6", 2, 0x5000, 0x6001, 0), ("g7", 2, 0x7000, 0x6000, 0), ("g8", 3, 0x5000, 0x5B01, 0x4000),
+            ("g9", 3, 0x5000, 0x4500, 0x4000), ("gA", 3, 0x5000, 0x5000, 0), ("gB", 4, 0, 0, 0),
+            ("gC", 5, 0, 0, 0), ("gD", 6, 0, 0, 0))
+    ], calls=(ANIM_BEGIN, VOICE), eax_mask=0),
 ]
 
 SPECS = [

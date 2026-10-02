@@ -1148,5 +1148,10 @@ int  fighter_23ec0(u32 slot, u32 rec);
 int  fighter_45d14(u32 slot, u32 rec);
 u32  fighter_23bf8(u32 slot, u32 rec);
 int  fighter_402fc(u32 slot, u32 rec);
+/* The slot +0x0C callbacks the finisher entries store (record §P1.8/§P1.9),
+ * as 0x3531C case 7 calls them (slot, rec, side); registered in actors_init. */
+void fighter_15584(u32 slot, u32 rec, u32 side);
+void fighter_1579c(u32 slot, u32 rec, u32 side);
+void fighter_23d38(u32 slot, u32 rec, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */
