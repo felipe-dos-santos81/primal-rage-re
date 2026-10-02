@@ -349,3 +349,140 @@ No other driver failure. The previews were deleted afterwards. `make -n verify` 
 `gp-modes-one` before the new lines (it executes the recursive `gp_compare`; the same on the
 unmodified Makefile), so the order is read from the Makefile: `gp-modes-oracle`,
 `gp-win-oracle`, `gp-ending-oracle`, `diff-verify`.
+
+## §W.11 The `gp-u9-win` capture (Task 8, on `9603d45`)
+
+Taken by the controller (`make gp-capture scenario=gp-u9-win TITLE_PIN_DIR=/tmp/pr_u910_pin`,
+log `/tmp/gameplay-u9u10/u9_capture.txt`) with the user at the machine; three earlier runs on
+a sleeping host failed to align the TWG logo or were suspended (ledger), and their
+`gp-u9-win.failed` directory was replaced by the tool. DOSBox-X's default `memsize` (16 MB):
+U9's argv has no `memsize` pair (§W.13).
+
+`session.txt`, all of it:
+
+```
+scenario=gp-u9-win
+dosbox=DOSBox-X version 2026.08.31 SDL2, copyright 2011-2026 The DOSBox-X Team.
+argv=/opt/homebrew/bin/dosbox-x -defaultconf -fastlaunch -nopromptfolder -nogui -nomenu -time-limit 110 -set 'sdl fullscreen=false' -set 'dosbox captures=/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-vbdp0k6f/avi' -set 'dosbox memory file=/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-vbdp0k6f/guest.mem' -set 'log logfile=/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-vbdp0k6f/dosbox.log' -set 'dos log console=quiet' -set 'dosbox quit warning=false' -c 'MOUNT C "/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-vbdp0k6f/C" -ro' -c 'IMGMOUNT D "/var/folders/h_/rk2gng5d0x99pw7x_3dg6mj40000gn/T/gpcap-vbdp0k6f/CD/RAGECD.ISO" -t iso' -c C: -c 'DX-CAPTURE /V /O PRAGE.EXE -f' -c EXIT
+exe=/tmp/pr_u910_pin/PRAGE.EXE sha256=8120f1bd1df389ed94cb329c030f95d9e38caad193bbd9840717af557161a68d
+cmos=zero pad_bios=1
+time_limit=110 wall_s=81.7 rc=0
+stop_at_end=1 tail=60 signal_f=0DEA
+avis=['prage_000.avi', 'prage_001.avi'] fps=70.0866 dro=['prage_000.dro'] frames=2521 raw_window=1380..5671 avi_frames=5672 twg_last=1329
+check=ok base
+check=ok steps fired 6/6
+check=ok end frame reached
+check=ok mode 0x27 after the Enter
+check=ok snapshots kb == raw (0 differ)
+check=ok frames written 2521/2521
+check=ok port script v2
+check=ok no unscripted input
+check=ok pokes written 2/2, 0 raced
+check=ok stopped at the end (SIGTERM at f=0DEA, rc=0)
+```
+
+The CHECK lines and the tool's summary:
+
+```
+title_pin: wrote /tmp/pr_u910_pin/PRAGE.EXE (pinned: title entry 12, 111, 0 + anim opcode-8 0 + master-loop draws 0x256B1, 0x256D6 -> 0)
+gp_capture: snapshots 3541, f 5..DEA, 17 frames missed (spec §3.7)
+gp_capture: CHECK base: ok
+gp_capture: CHECK steps fired 6/6: ok
+gp_capture: CHECK end frame reached: ok
+gp_capture: CHECK mode 0x27 after the Enter: ok
+gp_capture: CHECK snapshots kb == raw (0 differ): ok
+gp_capture: CHECK frames written 2521/2521: ok
+gp_capture: CHECK port script v2: ok
+gp_capture: CHECK no unscripted input: ok
+gp_capture: CHECK pokes written 2/2, 0 raced: ok
+gp_capture: CHECK stopped at the end (SIGTERM at f=0DEA, rc=0): ok
+gp_capture: wrote 2521 frames to /Users/felipe.dos.santos/code/mine/primal-rage-reverse/data/k11-captures/gp-u9-win (raw 1380..5671), wall 81.7s
+```
+
+The evidence (`python3 tools/gp_win.py check --scenario gp-u9-win --capture data/k11-captures/gp-u9-win`,
+`/tmp/gameplay-u9u10/u9_evidence.txt`) and the input audit:
+
+```
+gp_win: gp-u9-win: evidence: character select (mode 0x10) at f=28D ok
+gp_win: gp-u9-win: evidence: round 1: P1 is character 0 (cursor 0 confirmed, 0x43CAD) at f=480 ok
+gp_win: gp-u9-win: evidence: round 1 KO: 0x27C48 counts P1, 0x27BA4 leaves the match open, 0x27FA8 -> mode 8 at f=48D ok
+gp_win: gp-u9-win: evidence: round 2 (mode 6, round index 2) at f=84E ok
+gp_win: gp-u9-win: evidence: round 2 KO: P1 wins the match (0x27BA4 result 0) -> mode 9 at f=85A ok
+gp_win: gp-u9-win: evidence: the conquered-lands screen (mode 0x12, 0x4142C), the won land marked by 0x286BC (0x80 | side 0 | character) at f=BA4 ok
+gp_win: gp-u9-win: evidence: 0x41C28 state 3 counts one land for P1 at f=C0E ok
+gp_win: gp-u9-win: evidence: match 2, round 1: a new, unmarked land (0x25848 picks the stage, 0x41760) at f=D72 ok
+gp_win: gp-u9-win: evidence: 8/8 milestones ok
+$ python3 tools/gp_capture.py check-input data/k11-captures/gp-u9-win
+check=ok no unscripted input
+```
+
+Size and identity:
+
+```
+$ du -sh data/k11-captures/gp-u9-win
+119M	data/k11-captures/gp-u9-win
+$ ls data/k11-captures/gp-u9-win | grep -c raw.gz
+2521
+$ shasum -a 256 data/k11-captures/gp-u9-win/poll.log
+7dcea0f16403c0fa52b6ef690edbcccb5340d9b9d1ec96c66ca4d11770708ba8  data/k11-captures/gp-u9-win/poll.log
+$ grep '^W' data/k11-captures/gp-u9-win/poll.log
+W ms=40465 f=0489 step=4 addr=0010789E len=1 was=00 now=78 late=0 race=0
+W ms=56683 f=0857 step=5 addr=0010789E len=1 was=00 now=78 late=0 race=0
+```
+
+The first `S` record of each mode entry a milestone names (modes `0x10`/1, 6/1, 8/1, 6/2,
+9/1, `0x12`/1, 6/3):
+
+```
+S ms=30942 f=028D mode=0010 st=0000 tick=000006CE t508=0000001B t50c=0000001C raw=00000000 pad=00000000 new=00000000 held=00000000 e0=0000 e2=0000 rng=723D2EA7 cred=00000004 fp=00 b1d=00 b1f=01 b25=00 w10d=00 cnt=00 s0_52=00 s0_54=00 s0_5a=00 s1_52=00 s1_54=00 s1_5a=00 ent=002A2CDC r0=00 r1=00 c0=00 c1=00 s0_43=00 afc=0000 ad4=00000000 w2=00 w3=00 b1e=00 b21=00 b14=00 b0c=00 t104=0000 m106=00000000 m10a=00000000 sc0=00000000 c82=00 kb=0000 head=0024 tail=0024
+S ms=40306 f=0480 mode=0006 st=0000 tick=000008FF t508=000000C5 t50c=000000C6 raw=00000000 pad=00000000 new=00000000 held=00000000 e0=0000 e2=0000 rng=BA9703D6 cred=00000004 fp=00 b1d=00 b1f=01 b25=03 w10d=00 cnt=00 s0_52=00 s0_54=00 s0_5a=00 s1_52=00 s1_54=00 s1_5a=00 ent=002A2CDC r0=FF r1=FF c0=00 c1=06 s0_43=80 afc=0005 ad4=FFFFFFFF w2=00 w3=00 b1e=01 b21=00 b14=00 b0c=00 t104=0000 m106=00000000 m10a=00000000 sc0=00000000 c82=00 kb=0000 head=0026 tail=0026
+S ms=40520 f=048D mode=0008 st=0000 tick=0000090C t508=000000D2 t50c=000000D3 raw=00000000 pad=00000000 new=00000000 held=00000000 e0=0000 e2=0000 rng=B486137C cred=00000004 fp=00 b1d=00 b1f=01 b25=03 w10d=00 cnt=00 s0_52=00 s0_54=00 s0_5a=00 s1_52=04 s1_54=02 s1_5a=78 ent=002A2CDC r0=FF r1=FF c0=00 c1=06 s0_43=80 afc=0005 ad4=FFFFFFFF w2=01 w3=00 b1e=01 b21=00 b14=00 b0c=00 t104=0000 m106=00000000 m10a=00000000 sc0=00004E20 c82=00 kb=0000 head=0026 tail=0026
+S ms=56541 f=084E mode=0006 st=0000 tick=00000CCD t508=0000007B t50c=0000007C raw=00000000 pad=00000000 new=00000000 held=00000000 e0=0000 e2=4C4C rng=A364E551 cred=00000004 fp=00 b1d=00 b1f=01 b25=03 w10d=00 cnt=00 s0_52=00 s0_54=00 s0_5a=00 s1_52=00 s1_54=00 s1_5a=00 ent=002A2CDC r0=FF r1=FF c0=00 c1=06 s0_43=80 afc=0005 ad4=FFFFFFFF w2=01 w3=00 b1e=02 b21=00 b14=00 b0c=00 t104=0000 m106=00000000 m10a=00000000 sc0=00009C40 c82=00 kb=0000 head=0026 tail=0026
+S ms=56743 f=085A mode=0009 st=0000 tick=00000CD9 t508=00000087 t50c=00000088 raw=00000000 pad=00000000 new=00000000 held=00000000 e0=0000 e2=0000 rng=8D1ACCD4 cred=00000004 fp=00 b1d=00 b1f=01 b25=03 w10d=00 cnt=00 s0_52=00 s0_54=00 s0_5a=00 s1_52=09 s1_54=00 s1_5a=78 ent=002A2CDC r0=FF r1=23 c0=00 c1=06 s0_43=80 afc=0005 ad4=00000000 w2=02 w3=00 b1e=02 b21=00 b14=00 b0c=00 t104=0000 m106=00000000 m10a=00000000 sc0=0000EA60 c82=00 kb=0000 head=0026 tail=0026
+S ms=70901 f=0BA4 mode=0012 st=0000 tick=00001029 t508=00000009 t50c=0000000A raw=00000000 pad=00000000 new=00000000 held=00000000 e0=0000 e2=0000 rng=EFA7BD3D cred=00000004 fp=00 b1d=00 b1f=01 b25=08 w10d=00 cnt=00 s0_52=00 s0_54=00 s0_5a=49 s1_52=01 s1_54=00 s1_5a=78 ent=002A2CDC r0=FF r1=21 c0=00 c1=06 s0_43=80 afc=0005 ad4=00000000 w2=02 w3=00 b1e=02 b21=00 b14=00 b0c=00 t104=0000 m106=00000000 m10a=00008000 sc0=00013880 c82=00 kb=0000 head=0026 tail=0026
+S ms=79106 f=0D72 mode=0006 st=0000 tick=00001215 t508=000000AB t50c=000000AC raw=00000000 pad=00000000 new=00000000 held=00000000 e0=0000 e2=2000 rng=B3DCA3FB cred=00000004 fp=00 b1d=00 b1f=01 b25=03 w10d=00 cnt=00 s0_52=00 s0_54=00 s0_5a=00 s1_52=00 s1_54=00 s1_5a=00 ent=002A2CDC r0=FF r1=FF c0=00 c1=04 s0_43=80 afc=0006 ad4=FFFFFFFF w2=00 w3=00 b1e=01 b21=00 b14=00 b0c=00 t104=0001 m106=00000000 m10a=00008000 sc0=00013880 c82=00 kb=0000 head=0026 tail=0026
+```
+
+Each poke ended its round in the iteration that read it: the `P` records (logged at each mode
+or state change, read outside the spin, so `f` is the iteration that stored the mode) show mode 8 at `f = 0x48A` after `W f=0489` and mode 9 at `f = 0x858`
+after `W f=0857` (the write lands in the spin of `W.f`, iteration `W.f + 1` reads it, §W.8).
+The first `S` records of those entries are 3 and 2 frames later (`0x48D`, `0x85A`): the
+snapshots of `0x48A..0x48C` and `0x858..0x859` were not taken consistently (the
+`17 frames missed` of the summary line), so the milestone frames are the `S` frames.
+
+**Against the preview (§W.7).** The mode-entry frames (`P` records) against the preview's
+first frame in each mode:
+
+| mode | capture `P` | preview | Δ |
+|---|---|---|---|
+| `0x27` | `13A` | `141` | −7 |
+| `0x10` | `28D` | `293` | −6 |
+| 6 (round 1, stage 5, P2 = CHAOS `c1 = 6`) | `480` | `486` | −6 |
+| 8 (KO poke) | `48A` | `490` | −6 |
+| `0x16` | `6E2` | `6E8` | −6 |
+| 5 | `7D3` | `7D9` | −6 |
+| 6 (round 2) | `84E` | `854` | −6 |
+| 9 (KO poke) | `858` | `85E` | −6 |
+| `0x17` | `AB0` | `AB6` | −6 |
+| `0x12` | `BA1` | `BA7` | −6 |
+| lands 1 (`t104`, the evidence row) | `C0E` (`S`) | `C14` | −6 |
+| `0x17` | `C5A` | `C60` | −6 |
+| `0x1A` | `CD3` | `CD9` | −6 |
+| 5 | `CF7` | `CFD` | −6 |
+| 6 (match 2) | `D72` | `D78` | −6 |
+| the end (`X`) | `DAE` | `DB4` | −6 |
+
+From mode `0x10` on every entry is exactly 6 frames before the preview's (mode `0x27`: 7).
+The shift is the harness's: the preview pressed the three menu Enters at gp-idle-loss's
+frames (321/474/622), the capture's boot Enter is the wall-clock step `ENTER_WAIT`
+(`I f=0139`) and its later steps key on the capture's own `S` records (`I f=01CF`,
+`0265`, `02C8`). From mode `0x10` on, the game's durations between the entries are the
+preview's frame for frame.
+**One difference that is not a timing shift:** match 2's opponent. The capture's mode 6
+at `D72` has `afc = 6`, `c1 = 4` (ARMADON); the preview had stage 3, P2 = VERTIGO. The
+stage is `0x25848`'s `rng(n)` pick at `0x258FD` (§W.4), so it follows the RNG state at the
+pick, which a 6-frame shift of the whole run changes; the milestone only requires a new,
+unmarked land, which holds (`m106/m10a` mark only land 5). Whether the port reproduces
+the pick at the capture's frames is the Task 9 replay's trace ratchet (§W.12).
+Wall time 81.7 s against the predicted ~78 s; 2 521 stored frames and 119 MB inside §W.7's
+estimate (1 500-2 700 frames, ~70-130 MB).
