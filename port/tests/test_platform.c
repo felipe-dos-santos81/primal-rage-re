@@ -167,16 +167,15 @@ static const fnm_pair k_miss_gp_twop[] = {
  * capture and classified from the raw in the record.
  * gp-u8-right-arcade (START MENU row 1, b1f = 2), to its X record (f = 0x8E1):
  *   0x29D60 frontend_mode_1b_step: the bare `ret` (record §G.24);
- *   0x5D812 frontend_mode_1b_step: the runtime stub (record §G.24);
- *   0x14EF8 and 0x14F50 hit_reaction_apply: unported move callbacks (the
- *   dwords 0xA46A8 and 0xA46BC, character 3's reactions 0x20/0x21, called
- *   through [0x105BD4] at 0x2B56D; record reverse-e2 triage), owner track P
- *   (batch P2); not registered here. */
+ *   0x5D812 frontend_mode_1b_step: the runtime stub (record §G.24).
+ * The move callbacks it reaches, 0x14EF8 and 0x14F50 (the dwords 0xA46A8 and
+ * 0xA46BC, character 3's reactions 0x20/0x21, called by hit_reaction_apply at
+ * 0x35045), and their streams' 0xD000 targets 0x14FA8, 0x14FF8 and 0x150AC
+ * (anim_indirect) are ported by track P batch 2 (record
+ * 2026-10-02-reverse-p2 §P2.4), so none of them is a miss. */
 static const fnm_pair k_miss_gp_u8_right_arcade[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x14EF8u, "hit_reaction_apply" },
-    { 0x14F50u, "hit_reaction_apply" },
 };
 
 /* gp-u8-left-training (START MENU row 2, b1d = 1, b1f = 3; record §U8.17),

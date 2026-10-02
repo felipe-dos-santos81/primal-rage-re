@@ -45068,6 +45068,10 @@ static void p2_check_guarded_all(void)
                      0x0Bu, 6u, 0u, 0, 1, 0x91u);
     p2_check_guarded(0x22A00u, (void (*)(void))fighter_22a00, 0x000A55A8u, 0x000E1534u, 0x40400000u,
                      9u, 7u, 0x000229FCu, 1, 0, 0u);
+    p2_check_guarded(0x14EF8u, (void (*)(void))fighter_14ef8, 0x000A46A8u, 0x000D2E26u, 0x40000000u,
+                     0x0Bu, 6u, 0u, 0, 1, 0xB2u);
+    p2_check_guarded(0x14F50u, (void (*)(void))fighter_14f50, 0x000A46BCu, 0x000D2E56u, 0x40000000u,
+                     0x0Bu, 6u, 0u, 0, 1, 0xB2u);
     /* 0x3D10C's word DS_001080AC[rec+0x51] (0x3D170): side 1's word only. */
     z_fseed();
     DSW(0x000E84C8u) = 0x12B1u;
@@ -45092,3 +45096,79 @@ static void p2_check_guarded_all(void)
 }
 
 int test_p2_guarded(void)       { return u6b_run(p2_check_guarded_all); }
+
+typedef void (*p2_anim_fn)(u32 rec, u32 arg);
+
+/* §P2.4: character 3's reactions 0x20/0x21 on their real streams. The
+ * 0xD000 words (opcode 0x10, mode 0x4000) at 0xD2E2C/0xD2E32 (0xD2E26) and
+ * 0xD2E5C/0xD2E62 (0xD2E56) name 0x14FA8 then 0x14FF8, and 0x14FA8 then
+ * 0x150AC; slot 0 (character 3)
+ * runs the callback through its registration, then its record syncs each
+ * frame (actor_sync walks the stream and dispatches the targets) until the
+ * held record lands in the slot's +8 (rec+0x4B carries the sentinel 0xEE).
+ * Returns that frame, or -1. */
+static int p2_run_reaction(u32 addr)
+{
+    p2_cb_fn cb = (p2_cb_fn)(void *)fn_resolve(addr);
+    int f;
+    if (cb == NULL) return -2;
+    sh_seed(Z_S0, Z_S1, Z_R0, Z_R1);
+    c4r_pool();
+    DSB(Z_S0 + 0x7Au) = 3u;
+    DSB(Z_S1 + 0x7Au) = 2u;
+    DSD(DS_001077A8) = Z_S0;
+    DSD(DS_001077A8 + 4u) = Z_S1;
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSD(Z_R1 + 0x14u) = Z_S1;
+    DSD(Z_S0 + 8u) = 0u;
+    DSB(Z_R0 + 0x4Bu) = 0xEEu;
+    cb(Z_S0, Z_R0, 0u);
+    for (f = 0; f < 400; f++) {
+        actor_sync(Z_R0);
+        if (DSD(Z_S0 + 8u) != 0u) return f;
+    }
+    return -1;
+}
+
+static void p2_check_stream_targets(void)
+{
+    static const u32 dw[4] = { 0x000D2E2Eu, 0x000D2E34u, 0x000D2E5Eu, 0x000D2E64u };
+    static const u32 fn[4] = { 0x00014FA8u, 0x00014FF8u, 0x00014FA8u, 0x000150ACu };
+    u32 k, held;
+    int f;
+    for (k = 0; k < 4u; k++) {
+        CHECK_EQ_INT((int)DSW(dw[k] - 2u), 0xD000);
+        CHECK_EQ_INT((int)DSD(dw[k]), (int)fn[k]);
+        CHECK(fn_resolve(fn[k]) != NULL, "the stream target is registered");
+    }
+    /* 0x14EF8 (0xD2E26): 0x14FA8 spawns its record (rec+0x4B takes the
+     * spawned record's index), then 0x14FF8 puts the held record in the
+     * slot's +8, with the word +0x34 = -0x14A when 0x1A570(0) is set, else
+     * 0x14A. */
+    f = p2_run_reaction(0x14EF8u);
+    CHECK(f >= 0, "0x14EF8's stream puts a held record in the slot's +8");
+    held = DSD(Z_S0 + 8u);
+    if (held == 0u) return;
+    CHECK_EQ_INT((int)DSD(held + 0x14u), (int)Z_S0);
+    CHECK_EQ_INT((int)DSB(held + 0x59u), 2);
+    CHECK_EQ_INT((int)DSW(held + 0x34u), fighter_actor_bit15_clear(0u) ? 0xFEB6 : 0x014A);
+    CHECK(DSB(Z_R0 + 0x4Bu) != 0xEEu, "0x14FA8 stored the spawned record's index");
+    /* the held record now blocks the callback (the guard at 0x14EFD) */
+    DSB(Z_S0 + 0x53u) = 0x33u;
+    fighter_14ef8(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 0x33);
+    /* 0x14F50 (0xD2E56): 0x14FA8 again, then 0x150AC's word -0x226 or 0x226. */
+    f = p2_run_reaction(0x14F50u);
+    CHECK(f >= 0, "0x14F50's stream puts a held record in the slot's +8");
+    held = DSD(Z_S0 + 8u);
+    if (held == 0u) return;
+    CHECK_EQ_INT((int)DSW(held + 0x34u), fighter_actor_bit15_clear(0u) ? 0xFDDA : 0x0226);
+    CHECK(DSB(Z_R0 + 0x4Bu) != 0xEEu, "0x14FA8 stored the spawned record's index");
+}
+
+static void p2_check_reactions_3(void)
+{
+    p2_check_stream_targets();
+}
+
+int test_p2_reactions_3(void)   { return u6b_run(p2_check_reactions_3); }

@@ -120,6 +120,9 @@ static void anim_code_23CA4(u32 rec, u32 arg);
 static void anim_code_23868(u32 rec, u32 arg);
 static void anim_code_3F174(u32 rec, u32 arg);
 static void reaction_cb_3C048(u32 slot, u32 rec, u32 side);
+static void anim_code_14FA8(u32 rec, u32 arg);
+static void anim_code_14FF8(u32 rec, u32 arg);
+static void anim_code_150AC(u32 rec, u32 arg);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -715,6 +718,17 @@ int actors_init(void)
     fn_register(0x3D10Cu, (void (*)(void))fighter_3d10c);
     fn_register(0x22A00u, (void (*)(void))fighter_22a00);
     fn_register(0x229FCu, (void (*)(void))fighter_229fc);
+    /* PORT: record 2026-10-02-reverse-p2 §P2.4. Character 3's reaction-0x20
+     * and 0x21 callbacks (the move-table dwords 0xA46A8 and 0xA46BC; 0x34E2C
+     * at 0x35045, (slot, rec, side)), which gp-u8-right-arcade reaches, and
+     * the 0xD000 targets (opcode 0x10, mode 0x4000) of their streams: 0x14FA8
+     * (the dwords 0xD2E2E and 0xD2E5E), 0x14FF8 (0xD2E34 in 0xD2E26) and
+     * 0x150AC (0xD2E64 in 0xD2E56). */
+    fn_register(0x14EF8u, (void (*)(void))fighter_14ef8);
+    fn_register(0x14F50u, (void (*)(void))fighter_14f50);
+    fn_register(0x14FA8u, (void (*)(void))anim_code_14FA8);
+    fn_register(0x14FF8u, (void (*)(void))anim_code_14FF8);
+    fn_register(0x150ACu, (void (*)(void))anim_code_150AC);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
@@ -1709,6 +1723,29 @@ static void anim_code_3F174(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_3f174(rec);
+}
+
+/* 0x14FA8, 0x14FF8 and 0x150AC — the animation-opcode target shape. PORT:
+ * anim_indirect calls every code pointer as (rec, arg); the raw reads EAX =
+ * rec only (0x14FA8 pushes EDX and zeroes it at 0x14FBF, 0x14FF8/0x150AC load
+ * it at 0x15021/0x15032 and 0x150D5/0x150E6 before any read), so these
+ * wrappers drop the operand (record 2026-10-02-reverse-p2 §P2.4). */
+static void anim_code_14FA8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_14fa8(rec);
+}
+
+static void anim_code_14FF8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_14ff8(rec);
+}
+
+static void anim_code_150AC(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_150ac(rec);
 }
 
 /* 0x23868 — the animation-opcode target shape: the raw reads both EAX = rec

@@ -14829,3 +14829,129 @@ void fighter_229fc(u32 slot, u32 rec, u32 side)
     (void)rec;
     (void)side;
 }
+
+#define P2_ANIM_14EF8 0x000D2E26u  /* 0x14F07 */
+#define P2_ANIM_14F50 0x000D2E56u  /* 0x14F5F */
+#define P2_DESC_14FA8 0x000BB36Cu  /* 0x14FC1 */
+#define P2_DESC_HELD  0x000BB380u  /* 0x15069 (0x14FF8), 0x1511D (0x150AC) */
+
+/* 0x14EF8 — record §P2.4. Character 3's reaction-0x20 callback (the dword at
+ * 0xA46A8): with the slot's +8 clear, the record on 0xD2E26 at 2.0 (0x3C4CC),
+ * the slot 0xB/6/0, +0x0C = +0x18 = +0x1C = 0, +0x64 = +0x5F, +0x5F = 0xFF,
+ * the voice 0xB2. PORT: AL unread (§P2.2). */
+void fighter_14ef8(u32 slot, u32 rec, u32 side)
+{
+    u8 r5f;
+    (void)side;
+    if (DSD(slot + 8u) != 0u) return;                       /* 0x14EFD/0x14F01 */
+    hit_anim_start_b(rec, P2_ANIM_14EF8, 0x40000000u);      /* 0x14F07..0x14F11 0x3C4CC */
+    DSB(slot + 0x52u) = 0x0Bu;                              /* 0x14F16 */
+    DSB(slot + 0x53u) = 6u;                                 /* 0x14F1A */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x14F1E */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x14F22 */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x14F29 */
+    r5f = DSB(slot + 0x5Fu);                                /* 0x14F30 */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x14F33 */
+    DSB(slot + 0x64u) = r5f;                                /* 0x14F3A */
+    DSB(slot + 0x5Fu) = 0xFFu;                              /* 0x14F42 */
+    (void)sound_voice(0xB2u);                               /* 0x14F3D/0x14F46 0x2C3FC */
+}
+
+/* 0x14F50 — record §P2.4. Character 3's reaction-0x21 callback (the dword at
+ * 0xA46BC): 0x14EF8's shape on the stream 0xD2E56. PORT: AL unread. */
+void fighter_14f50(u32 slot, u32 rec, u32 side)
+{
+    u8 r5f;
+    (void)side;
+    if (DSD(slot + 8u) != 0u) return;                       /* 0x14F55/0x14F59 */
+    hit_anim_start_b(rec, P2_ANIM_14F50, 0x40000000u);      /* 0x14F5F..0x14F69 0x3C4CC */
+    DSB(slot + 0x52u) = 0x0Bu;                              /* 0x14F6E */
+    DSB(slot + 0x53u) = 6u;                                 /* 0x14F72 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x14F76 */
+    DSD(slot + 0x0Cu) = 0u;                                 /* 0x14F7A */
+    DSD(slot + 0x18u) = 0u;                                 /* 0x14F81 */
+    r5f = DSB(slot + 0x5Fu);                                /* 0x14F88 */
+    DSD(slot + 0x1Cu) = 0u;                                 /* 0x14F8B */
+    DSB(slot + 0x64u) = r5f;                                /* 0x14F92 */
+    DSB(slot + 0x5Fu) = 0xFFu;                              /* 0x14F9A */
+    (void)sound_voice(0xB2u);                               /* 0x14F95/0x14F9E 0x2C3FC */
+}
+
+/* 0x14FA8 — record §P2.4. The 0xD000 target (opcode 0x10, mode 0x4000) at
+ * the dwords 0xD2E2E (0x14EF8's stream 0xD2E26) and 0xD2E5E (0x14F50's
+ * 0xD2E56). EAX = rec (EDX is pushed and
+ * zeroed at 0x14FBF before any read). 0x2AE14(0xBB36C, 0, 0, 0, rec's word
+ * +0x56 | 0x400); the spawned record's +0x59 = 2; for side 1 (rec+0x51) its
+ * +0x4E = 1 and word +0x2E += 4; rec+0x4B = its byte +0x56; its +0x60 = 1. */
+void fighter_14fa8(u32 rec)
+{
+    u32 e = actor_spawn((const u32 *)(mem + P2_DESC_14FA8), 0u, 0u, 0u,
+                        (u32)(DSW(rec + 0x56u) | 0x400u)); /* 0x14FAE..0x14FC6 0x2AE14 */
+    DSB(e + 0x59u) = 2u;                                    /* 0x14FCB */
+    if (DSB(rec + 0x51u) != 0u) {                           /* 0x14FCF/0x14FD4 */
+        DSB(e + 0x4Eu) = 1u;                                /* 0x14FDC */
+        DSW(e + 0x2Eu) = (u16)(DSW(e + 0x2Eu) + 4u);        /* 0x14FD8..0x14FE3 */
+    }
+    DSB(rec + 0x4Bu) = DSB(e + 0x56u);                      /* 0x14FE7/0x14FEA */
+    DSB(e + 0x60u) = 1u;                                    /* 0x14FED */
+}
+
+/* 0x14FF8 — record §P2.4. The 0xD000 target at the dword 0xD2E34 in 0xD2E26.
+ * EAX = rec; with its owner slot rec+0x14 (ESI): by 0x1A570(rec+0x51) the
+ * word w = -0x14A and the x offset -0x1200 (AL set) or 0x14A and 0x1200;
+ * 0x2AE14(0xBB380, rec+0x18 + offset, rec+0x30 >> 16, rec+0x1C + 0x1600,
+ * rec's word +0x28 bit 14 ? 0x4000 : 0) into the slot's +8, its +0x59 = 2,
+ * word +0x34 = w, +0x14 = the slot; for side 1 its word +0x2E += 4 and +0x4E
+ * = 1 (the slot's +8 re-read at each store, 0x1507A..0x15098). */
+void fighter_14ff8(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                            /* 0x15003 */
+    u32 w, dx, flag, e;
+    if (slot == 0u) return;                                 /* 0x15006/0x15008 */
+    if (fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)) != 0) {   /* 0x1500E..0x1501A 0x1A570 */
+        w = 0xFFFFFEB6u;                                    /* 0x1501C/0x15026 */
+        dx = 0xFFFFEE00u;                                   /* 0x15021 */
+    } else {
+        w = 0x0000014Au;                                    /* 0x1502B */
+        dx = 0x00001200u;                                   /* 0x15032 */
+    }
+    flag = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u;   /* 0x15037..0x1504C */
+    e = actor_spawn((const u32 *)(mem + P2_DESC_HELD), DSD(rec + 0x18u) + (u32)(s32)(s16)dx,
+                    (u32)((s32)DSD(rec + 0x30u) >> 16),
+                    DSD(rec + 0x1Cu) + 0x1600u, flag);      /* 0x15051..0x1506E 0x2AE14 */
+    DSD(slot + 8u) = e;                                     /* 0x15073 */
+    DSB(e + 0x59u) = 2u;                                    /* 0x15076 */
+    DSW(DSD(slot + 8u) + 0x34u) = (u16)w;                   /* 0x1507A..0x15080 */
+    DSD(DSD(slot + 8u) + 0x14u) = slot;                     /* 0x15084/0x15087 */
+    if (DSB(rec + 0x51u) == 0u) return;                     /* 0x1508A/0x1508E */
+    DSW(DSD(slot + 8u) + 0x2Eu) = (u16)(DSW(DSD(slot + 8u) + 0x2Eu) + 4u);   /* 0x15090/0x15093 */
+    DSB(DSD(slot + 8u) + 0x4Eu) = 1u;                       /* 0x15098/0x1509B */
+}
+
+/* 0x150AC — record §P2.4. The 0xD000 target at the dword 0xD2E64 in 0x14F50's
+ * stream 0xD2E56: 0x14FF8's shape with the word 0x226 (-0x226 when 0x1A570's
+ * AL is set, 0x150D0..0x150E6). */
+void fighter_150ac(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                            /* 0x150B7 */
+    u32 w, dx, flag, e;
+    if (slot == 0u) return;                                 /* 0x150BA/0x150BC */
+    if (fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)) != 0) {   /* 0x150C2..0x150CE 0x1A570 */
+        w = 0xFFFFFDDAu;                                    /* 0x150D0/0x150DA */
+        dx = 0xFFFFEE00u;                                   /* 0x150D5 */
+    } else {
+        w = 0x00000226u;                                    /* 0x150DF */
+        dx = 0x00001200u;                                   /* 0x150E6 */
+    }
+    flag = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u;   /* 0x150EB..0x15100 */
+    e = actor_spawn((const u32 *)(mem + P2_DESC_HELD), DSD(rec + 0x18u) + (u32)(s32)(s16)dx,
+                    (u32)((s32)DSD(rec + 0x30u) >> 16),
+                    DSD(rec + 0x1Cu) + 0x1600u, flag);      /* 0x15105..0x15122 0x2AE14 */
+    DSD(slot + 8u) = e;                                     /* 0x15127 */
+    DSB(e + 0x59u) = 2u;                                    /* 0x1512A */
+    DSW(DSD(slot + 8u) + 0x34u) = (u16)w;                   /* 0x1512E..0x15134 */
+    DSD(DSD(slot + 8u) + 0x14u) = slot;                     /* 0x15138/0x1513B */
+    if (DSB(rec + 0x51u) == 0u) return;                     /* 0x1513E/0x15142 */
+    DSW(DSD(slot + 8u) + 0x2Eu) = (u16)(DSW(DSD(slot + 8u) + 0x2Eu) + 4u);   /* 0x15144/0x15147 */
+    DSB(DSD(slot + 8u) + 0x4Eu) = 1u;                       /* 0x1514C/0x1514F */
+}

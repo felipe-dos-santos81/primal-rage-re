@@ -873,6 +873,90 @@ static void m_229fc(const u32 *r, u32 *eax)            /* steps the slot's +0x57
     *eax = 0u;
 }
 
+/* §P2.4: the 0xD000 targets as the animation dispatcher calls them at 0x2B56D (EAX = rec), mask 0 (0x2B575
+ * overwrites EAX). */
+static void b_14ef8(const u32 *r, u32 *eax)            { fighter_14ef8(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_14f50(const u32 *r, u32 *eax)            { fighter_14f50(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_14fa8(const u32 *r, u32 *eax)            { fighter_14fa8(r[R_EAX]); *eax = 0u; }
+static void b_14ff8(const u32 *r, u32 *eax)            { fighter_14ff8(r[R_EAX]); *eax = 0u; }
+static void b_150ac(const u32 *r, u32 *eax)            { fighter_150ac(r[R_EAX]); *eax = 0u; }
+static void m_14ef8(const u32 *r, u32 *eax)            /* the frame 3.0, not 2.0 */
+{
+    u32 slot = r[R_EAX];
+    u8 r5f;
+    *eax = 0u;
+    if (DSD(slot + 8u) != 0u) return;
+    hit_anim_start_b(r[R_EDX], 0x000D2E26u, 0x40400000u);
+    DSB(slot + 0x52u) = 0x0Bu;
+    DSB(slot + 0x53u) = 6u;
+    DSB(slot + 0x54u) = 0u;
+    DSD(slot + 0x0Cu) = 0u;
+    DSD(slot + 0x18u) = 0u;
+    r5f = DSB(slot + 0x5Fu);
+    DSD(slot + 0x1Cu) = 0u;
+    DSB(slot + 0x64u) = r5f;
+    DSB(slot + 0x5Fu) = 0xFFu;
+    (void)sound_voice(0xB2u);
+}
+static void m_14f50(const u32 *r, u32 *eax)            /* 0x14EF8's stream 0xD2E26 */
+{
+    u32 slot = r[R_EAX];
+    u8 r5f;
+    *eax = 0u;
+    if (DSD(slot + 8u) != 0u) return;
+    hit_anim_start_b(r[R_EDX], 0x000D2E26u, 0x40000000u);
+    DSB(slot + 0x52u) = 0x0Bu;
+    DSB(slot + 0x53u) = 6u;
+    DSB(slot + 0x54u) = 0u;
+    DSD(slot + 0x0Cu) = 0u;
+    DSD(slot + 0x18u) = 0u;
+    r5f = DSB(slot + 0x5Fu);
+    DSD(slot + 0x1Cu) = 0u;
+    DSB(slot + 0x64u) = r5f;
+    DSB(slot + 0x5Fu) = 0xFFu;
+    (void)sound_voice(0xB2u);
+}
+static void m_14fa8(const u32 *r, u32 *eax)            /* 0x14FF8's descriptor 0xBB380 */
+{
+    u32 rec = r[R_EAX];
+    u32 e = actor_spawn((const u32 *)(mem + 0x000BB380u), 0u, 0u, 0u, (u32)(DSW(rec + 0x56u) | 0x400u));
+    DSB(e + 0x59u) = 2u;
+    if (DSB(rec + 0x51u) != 0u) {
+        DSB(e + 0x4Eu) = 1u;
+        DSW(e + 0x2Eu) = (u16)(DSW(e + 0x2Eu) + 4u);
+    }
+    DSB(rec + 0x4Bu) = DSB(e + 0x56u);
+    DSB(e + 0x60u) = 1u;
+    *eax = 0u;
+}
+static void m_held(u32 rec, u32 w1, u32 w0, int same_dx)
+{
+    u32 slot = DSD(rec + 0x14u), w, dx, flag, e;
+    if (slot == 0u) return;
+    if (fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)) != 0) { w = w1; dx = same_dx ? 0x1200u : 0xFFFFEE00u; }
+    else { w = w0; dx = 0x1200u; }
+    flag = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u;
+    e = actor_spawn((const u32 *)(mem + 0x000BB380u), DSD(rec + 0x18u) + (u32)(s32)(s16)dx,
+                    (u32)((s32)DSD(rec + 0x30u) >> 16), DSD(rec + 0x1Cu) + (same_dx ? 0x1600u : 0x1200u), flag);
+    DSD(slot + 8u) = e;
+    DSB(e + 0x59u) = 2u;
+    DSW(DSD(slot + 8u) + 0x34u) = (u16)w;
+    DSD(DSD(slot + 8u) + 0x14u) = slot;
+    if (DSB(rec + 0x51u) == 0u) return;
+    DSW(DSD(slot + 8u) + 0x2Eu) = (u16)(DSW(DSD(slot + 8u) + 0x2Eu) + 4u);
+    DSB(DSD(slot + 8u) + 0x4Eu) = 1u;
+}
+static void m_14ff8(const u32 *r, u32 *eax)            /* the x offset +0x1200 on both arms */
+{
+    m_held(r[R_EAX], 0xFFFFFEB6u, 0x14Au, 1);
+    *eax = 0u;
+}
+static void m_150ac(const u32 *r, u32 *eax)            /* the z offset 0x1200, not 0x1600 */
+{
+    m_held(r[R_EAX], 0xFFFFFDDAu, 0x226u, 0);
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -967,6 +1051,16 @@ static const binding_t k_bindings[] = {
     { "fighter_3d10c@mutant",     m_3d10c,        0x00000000u },
     { "fighter_22a00@mutant",     m_22a00,        0x00000000u },
     { "fighter_229fc@mutant",     m_229fc,        0x00000000u },
+    { "fighter_14ef8",            b_14ef8,        0x00000000u },
+    { "fighter_14f50",            b_14f50,        0x00000000u },
+    { "fighter_14fa8",            b_14fa8,        0x00000000u },
+    { "fighter_14ff8",            b_14ff8,        0x00000000u },
+    { "fighter_150ac",            b_150ac,        0x00000000u },
+    { "fighter_14ef8@mutant",     m_14ef8,        0x00000000u },
+    { "fighter_14f50@mutant",     m_14f50,        0x00000000u },
+    { "fighter_14fa8@mutant",     m_14fa8,        0x00000000u },
+    { "fighter_14ff8@mutant",     m_14ff8,        0x00000000u },
+    { "fighter_150ac@mutant",     m_150ac,        0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

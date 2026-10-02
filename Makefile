@@ -612,15 +612,16 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 # skips (exit 0), even under PR_ORACLE_REQUIRED (spec §4.3). A scenario is listed only once its
 # values are pinned (record §U8.16-§U8.22), each value's provenance in its comment. The port dump
 # is removed after its comparison unless GP_MODES_KEEP=1 (record §U8.6: 52-89 MB of /tmp each).
-# gp-u8-right-arcade (record §U8.16): measured at bc51fd0 (+ its miss set) on the capture below.
-# MIN_FIRST: first unexplained capture frame 726 (raw 3767), nearest port 526 (f=0x7B6): side 0
-# takes character 3's reaction 0x20 at f=0x7B7 (r0=20) and the original runs its move callback
-# 0x14EF8 (s0_52 = 0x0B, 0x14F16), which the port does not have (fn-miss 0x14EF8, unported, owner
-# track P batch P2); TRACE_MIN_FIRST: first differing f=0x7BA (1978) in e0 (capture 0000, port
-# 1010), the same cause; MAX_START: the window starts at capture frame 88 (raw 1745). The port's
-# script runs to X (f=0x8E1). Raise N/F when they improve.
-GP_MODES_RA_MIN_FIRST = 726
-GP_MODES_RA_TRACE_MIN_FIRST = 1978
+# gp-u8-right-arcade (record §U8.16; re-measured by track P batch 2, record 2026-10-02-reverse-p2
+# §P2.4, once 0x14EF8/0x14F50 and their streams' 0xD000 targets 0x14FA8/0x14FF8/0x150AC are ported) on
+# the capture below. MIN_FIRST: first unexplained capture frame 1072 (raw 4116): capture 1071 equals
+# port 825 (f=0x8E1, the port's last frame, 0 px), so 1072 is the next game frame, which the port never
+# ran (its script ends at the capture's X record): how far the port got, not a divergence (gp_compare's
+# row-hash "nearest port 824"). TRACE_MIN_FIRST: "0 differing through 2273", end + 1 = 2274, the exact
+# pin. Before P2 (U8, at bc51fd0) both stopped at the reaction 0x20 of f=0x7B7 (N 726, F 1978).
+# MAX_START: the window starts at capture frame 88 (raw 1745). Raise N/F when they improve.
+GP_MODES_RA_MIN_FIRST = 1072
+GP_MODES_RA_TRACE_MIN_FIRST = 2274
 GP_MODES_RA_MAX_START = 88
 GP_MODES_RA_CAPTURE_SHA256 = b72dbaa7486b651bd1acfddffe886aeb515eed3f916220d44375f0f67227906f
 GP_MODES_RA_CAPTURE_FRAMES = 1140

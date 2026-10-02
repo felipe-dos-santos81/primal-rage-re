@@ -1175,5 +1175,12 @@ void fighter_3db34(u32 slot, u32 rec, u32 side);
 void fighter_3d10c(u32 slot, u32 rec, u32 side);
 void fighter_22a00(u32 slot, u32 rec, u32 side);
 void fighter_229fc(u32 slot, u32 rec, u32 side);
+/* §P2.4: character 3's reactions 0x20 and 0x21, and the 0xD000 targets of the
+ * streams they start (EAX = rec; registered through anim_code wrappers). */
+void fighter_14ef8(u32 slot, u32 rec, u32 side);
+void fighter_14f50(u32 slot, u32 rec, u32 side);
+void fighter_14fa8(u32 rec);
+void fighter_14ff8(u32 rec);
+void fighter_150ac(u32 rec);
 
 #endif /* PRAGE_GAME_FIGHTER_H */
