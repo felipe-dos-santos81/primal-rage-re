@@ -558,15 +558,15 @@ gp-keys-oracle: build ## In-match keys: evidence + effects ratchet on gp-keys-fi
 # docs/superpowers/plans/2026-10-01-gameplay-u7-derivations.md): data/k11-captures/gp-twop, LEFT
 # PLAYER ARCADE with P2 joining in the character select and both sides pressing keys in a short
 # fight. The tool tests always run; with the capture present it must first be a two-human match
-# (tools/gp_twop.py check, record §T.1.6), then the frame and trace ratchets as gp-oracle's. Skips
+# (tools/gp_twop.py check, record §T.1.6), then the frame, trace and moves ratchets as gp-moves-oracle's. Skips
 # without the capture, even under PR_ORACLE_REQUIRED (spec §4.3). An empty pin with the capture
-# present FAILS (gp_compare: "not pinned"). Pinned by U7 Task 6 (record §T.10); the moves claim
-# (c0 c1 r0 r1 s0_43, 0 differing through 1505) is reported by gp_compare, not pinned (plan U7:
-# "U7 reports it and does not pin it").
-# MIN_FIRST: measured at f5fe895 (record §T.10): first unexplained capture frame 612 (raw 3223),
+# present FAILS (gp_compare: "not pinned"). Pinned by U7 Task 6 (record §T.10) and the final review
+# (the moves claim, below); all three ratchets are exact pins at the end of the port's script.
+# MIN_FIRST: measured at 597c78c (record §T.10): first unexplained capture frame 612 (raw 3223),
 # nearest port 463 = f=0x5E1, the port's last frame. 612 is how far the port got, not a divergence:
-# the port's script ends at the capture's X record (f=0x5E1) and capture 612-616 are the capture's
-# STOP_AT_END tail (60 frames after X) that the port never ran, like gp-u5-charsel's 516. Capture
+# the port's script ends at the capture's X record (f=0x5E1) and capture 612..679 are the capture's
+# STOP_AT_END tail (the 60 game frames after X; the report lists the first 5) that the port never
+# ran, like gp-u5-charsel's 516. Capture
 # 83..611 are all explained (the START MENU, the P2 join, both cursors and confirms, the wipes, the
 # versus screen, the fight to X). Raise it only if the port's script is lengthened.
 GP_TWOP_MIN_FIRST = 612
@@ -575,16 +575,24 @@ GP_TWOP_MIN_FIRST = 612
 # the exact pin (an N above the end fails as unreachable), so a traced difference at any compared
 # f fails it. No run-to-run bound (one capture only, Decision 3; record §G.19).
 GP_TWOP_TRACE_MIN_FIRST = 1506
+# MOVES_MIN_FIRST: the moves claim (gp_session.MOVE_FIELDS: c0 c1 r0 r1 s0_43, record gameplay-u6
+# §U6.11) has no differing frame either: gp_compare prints "moves: 0 differing through 1505"
+# (f = 0x134..0x5E1; 8 f without a snapshot not compared). N = end + 1 = 1506, the exact pin as
+# TRACE_MIN_FIRST (1507 fails as unreachable), like gp-moves-oracle's. Pinned by the final review
+# (record §T.10): the plan's "reported, not pinned" predates U6b's oracle.
+GP_TWOP_MOVES_MIN_FIRST = 1506
 # MAX_START: the window begins at capture frame 83 (raw 1742), the first capture frame that shows
 # the port's first frame (gp_compare: "window from capture 83"); it must be < MIN_FIRST.
 GP_TWOP_MAX_START = 83
 # The capture the values belong to (record §T.8): the poll.log sha256 and the frame count of
-# data/k11-captures/gp-twop; another capture FAILS until the three values are re-measured.
+# data/k11-captures/gp-twop; another capture FAILS until the four values are re-measured.
 GP_TWOP_CAPTURE_SHA256 = 9c01a73bfb04be19f794316e80b784a86b782b65f06592f2091d1544edf2e22c
 GP_TWOP_CAPTURE_FRAMES = 680
+# END: empty = the replay runs the whole port script (to X, f=0x5E1; record §T.9); a value cuts it
+# (gp_session.py port-script --end), for a replay that stalls.
 GP_TWOP_END =
-gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame and trace ratchets on data/k11-captures/gp-twop (skips without it)
-	@echo "== gameplay oracle: gp-twop (two humans; frame and trace ratchets; record U7) =="
+gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace and moves ratchets on data/k11-captures/gp-twop (skips without it)
+	@echo "== gameplay oracle: gp-twop (two humans; frame, trace and moves ratchets; record U7) =="
 	$(PYTHON) -m unittest tools.tests.test_gp_twop
 	@if [ -d $(K11_CAPTURES)/gp-twop ]; then $(PYTHON) tools/gp_twop.py check --capture $(K11_CAPTURES)/gp-twop; \
 		else echo "gp-twop-oracle: no capture at $(K11_CAPTURES)/gp-twop (skipped)"; fi
@@ -592,6 +600,7 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame and tra
 	@$(PYTHON) tools/gp_compare.py --scenario gp-twop --capture $(K11_CAPTURES)/gp-twop \
 		--port $(GP_DUMP)/gp-twop --min-first "$(GP_TWOP_MIN_FIRST)" \
 		--trace-min-first "$(GP_TWOP_TRACE_MIN_FIRST)" --max-start "$(GP_TWOP_MAX_START)" \
+		--moves-min-first "$(GP_TWOP_MOVES_MIN_FIRST)" \
 		--capture-sha256 "$(GP_TWOP_CAPTURE_SHA256)" --capture-frames "$(GP_TWOP_CAPTURE_FRAMES)"
 
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
