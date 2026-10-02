@@ -613,12 +613,13 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 # values are pinned (record §U8.16-§U8.22), each value's provenance in its comment. The port dump
 # is removed after its comparison unless GP_MODES_KEEP=1 (record §U8.6: 52-89 MB of /tmp each).
 # gp-u8-right-arcade (record §U8.16; re-measured by track P batch 2, record 2026-10-02-reverse-p2
-# §P2.4, once 0x14EF8/0x14F50 and their streams' 0xD000 targets 0x14FA8/0x14FF8/0x150AC are ported) on
-# the capture below. MIN_FIRST: first unexplained capture frame 1072 (raw 4116): capture 1071 equals
-# port 825 (f=0x8E1, the port's last frame, 0 px), so 1072 is the next game frame, which the port never
-# ran (its script ends at the capture's X record): how far the port got, not a divergence (gp_compare's
-# row-hash "nearest port 824"). TRACE_MIN_FIRST: "0 differing through 2273", end + 1 = 2274, the exact
-# pin. Before P2 (U8, at bc51fd0) both stopped at the reaction 0x20 of f=0x7B7 (N 726, F 1978).
+# §P2.4, once 0x14EF8/0x14F50 and their streams' 0xD000 targets 0x14FA8/0x14FF8/0x150AC are ported):
+# measured at 835db45 (rebased onto b16922d as dfd8367) (+ its miss set) on the capture below.
+# MIN_FIRST: first unexplained capture frame 1072 (raw 4116): capture 1071 equals port 825 (f=0x8E1,
+# the port's last frame, 0 px), so 1072 is the next game frame, which the port never ran (its script
+# ends at the capture's X record): how far the port got, not a divergence (gp_compare's row-hash
+# "nearest port 824"). TRACE_MIN_FIRST: "0 differing through 2273", end + 1 = 2274, the exact pin.
+# Before P2 (U8, at bc51fd0) both stopped at the reaction 0x20 of f=0x7B7 (N 726, F 1978).
 # MAX_START: the window starts at capture frame 88 (raw 1745). Raise N/F when they improve.
 GP_MODES_RA_MIN_FIRST = 1072
 GP_MODES_RA_TRACE_MIN_FIRST = 2274
@@ -769,40 +770,43 @@ GP_WIN_MILESTONES = 8
 GP_WIN_WIN_MIN_FIRST = 3162
 GP_WIN_CAPTURE_SHA256 = 7dcea0f16403c0fa52b6ef690edbcccb5340d9b9d1ec96c66ca4d11770708ba8
 GP_WIN_CAPTURE_FRAMES = 2521
-# gp-u10-ending (record §W.14): measured at 0ea42d0 (+ its miss set) on the capture below
-# (poll.log sha256 and its 5704 stored frames pinned together). Report lines, verbatim:
+# gp-u10-ending (record §W.14; re-measured by track P batch 2, plan reverse-p2 Task 9, record §W.16,
+# once 0x2381C is ported): measured at 20e8f4a (P2 rebased onto b16922d, + its new miss set) on the
+# capture below (poll.log sha256 and its 5704 stored frames pinned together). Report lines, verbatim:
 #   "frames: FIRST UNEXPLAINED capture 331 (raw 2831): nearest port 219, rows 0..63, x 0..319 (10336 px)"
 #   "frames: window from capture 83 (raw 1745)"
-#   "trace: first difference f=849 (2121) in rng: capture 5A8FCA6A, port A854BFB9"
-#   "path: 0 not reproduced through 29; ratchet N 0 ok (every item is explained: N = 30 is the exact pin)"
-#   "win: first difference f=1602 (5634) in b0c: capture 1, port 0"
+#   "trace: 0 differing through 9953; ratchet N 9954 ok"
+#   "path: 0 not reproduced through 29; ratchet N 30 ok"
+#   "win: 0 differing through 9953; ratchet N 9954 ok"
 # memsize: gp-u10-ending runs DOSBox-X with memsize=64 (a harness value, record §W.13); the original's
 # memory growth over the poked final is not root-caused, so memsize=64 claims nothing about the game's
 # memory need.
-# MIN_FIRST 331: a long frame at the mode-8 entry, then the catch-up, as gp-u9-win's 346
+# MIN_FIRST 331 (unchanged by P2): a long frame at the mode-8 entry, then the catch-up, as gp-u9-win's 346
 # (window.txt: capture 330 is raw 2828, 331 is raw 2831; raws 2829-2830 repeat 2828, so the
 # screen held port 216, f=0x483, the first mode-8 frame, for three capture frames, ~43 ms).
 # Capture 331 is rows 0..1 of port 216, rows 2..63 of port 218 (f=0x485) and rows 64..199 of
 # port 219 (f=0x486), 0 px each: a three-frame composite the two-adjacent-frame model cannot
 # express; not a port divergence, and not the poke's (the same at gp-idle-loss's unpoked mode-8
 # entry, record §U6.21). The next unexplained, 341/342, are partial-draw composites of ports
-# 227/228/229 and 228/229 (no pixel without a port source); the first that can be real content
-# is 1274, at the 0x2381C miss (named in §W.14). TRACE_MIN_FIRST 2121: at f=0x848 (mode 6, round 2) both
-# sides draw rng and set CHAOS's reaction 0x25, whose move callback 0x2381C the port misses
-# (f=0x848); the port then draws rng again at f=0x849, which the original does not through the
-# round-2 KO (f=0x850), and turns to reaction 0x15 (P track). WIN_MIN_FIRST 5634: the original's death-animation end 0x37EA0 sets DS_00104B0C at
-# f=0x1602 (mode 0xF), the port's at f=0x161F: its stream first runs the unported targets
-# 0x37DD4/0x29C78, and its opponent order follows the rng after f=0x849 (the two are not
-# separated; P track). MILESTONES 30: all reproduced. Raise each when it improves.
-# Re-measure: a P batch that ports 0x2381C (P2), 0x37DD4 (P6) or 0x29C78 (P7) drops its row,
-# re-measures the U10 set (the final's opponent order follows the rng, so the set can change,
-# e.g. 0x3DA50) and re-pins TRACE/WIN/MIN_FIRST: the trace and win ratchets fail only when they
-# get worse, so an improvement stays pinned low until it is re-measured.
+# 227/228/229 and 228/229 (no pixel without a port source). Since P2 the former 1274/1275 (the
+# 0x2381C miss) are explained; --report's next two, 2062 (port 1686, f=0xB9A, mode 0x12, 166 px)
+# and 3686 (port 3071, f=0x12EA, mode 0x24, 379 px), are not examined (record §W.16).
+# TRACE_MIN_FIRST 9954: 0 differing through f=0x26E1 (9953), the X record: the end of the port's
+# replay, not a divergence. Before P2 (at 0ea42d0) it stopped at f=0x849 (2121), the frame after
+# the port's 0x2381C miss (CHAOS's reaction 0x25 at f=0x848); with 0x2381C ported the rng is shared
+# to the end and the final's opponent order (1,4,3,0,6,5,2) equals the capture's.
+# WIN_MIN_FIRST 9954: 0 differing through 9953, the replay's end (before P2: 5634, f=0x1602, b0c set
+# by 0x37EA0 29 frames late in the port). The port still misses 0x37DD4/0x29C78 and b0c now agrees
+# at every frame, so that delay followed the rng and the opponent order (record §W.16).
+# MILESTONES 30: all reproduced.
+# Every pin + 1 fails (record §W.16). Raise each when it improves.
+# Re-measure: a P batch that ports 0x37DD4 (P6), 0x29C78 (P7), 0x3DA50 (P5) or 0x475EC (P3) drops
+# its row and re-measures the U10 set; TRACE/WIN are at the replay's end, so they cannot rise.
 GP_ENDING_MIN_FIRST = 331
-GP_ENDING_TRACE_MIN_FIRST = 2121
+GP_ENDING_TRACE_MIN_FIRST = 9954
 GP_ENDING_MAX_START = 83
 GP_ENDING_MILESTONES = 30
-GP_ENDING_WIN_MIN_FIRST = 5634
+GP_ENDING_WIN_MIN_FIRST = 9954
 GP_ENDING_CAPTURE_SHA256 = a88de48ad39e90df1e3d3329fbd5aa876c69a08484fa22c66db8deebd3feff38
 GP_ENDING_CAPTURE_FRAMES = 5704
 # The port dump is removed after its comparison unless GP_WIN_KEEP=1 (as gp-modes-one's
