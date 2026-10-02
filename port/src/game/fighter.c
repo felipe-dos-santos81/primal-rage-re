@@ -10083,10 +10083,11 @@ static void fighter_382c4(u32 side)
  * calls: slot = DS_001077A8[side]; with slot == 0 or DSD(slot) == 0, returns.
  * switch(slot->+0x53): 4 and 8 both bump slot->+0x56; 8 additionally clears
  * +0x43 bit 0x30; 7 sets +0x41 bit 0x80, clears +0x43 bit 0x30 and, with the
- * +0xC callback set, calls it with the raw's EAX/EDX/ECX at that point
- * (slot, DSD(slot), slot — a same-register call convention as fighter_
- * state_3531c's own case 7, except its third argument is `slot` here, not
- * `side`, because this dispatcher keeps `slot` in ECX throughout); 0xC does
+ * +0xC callback set, calls it as (slot, DSD(slot), side): EAX = slot
+ * (`mov eax,ecx` 0x384D7), EDX = DSD(slot) (0x38449, unchanged since) and
+ * EBX = side (`mov ebx,eax` 0x38438, unchanged through the call at
+ * 0x384D9), the (slot, rec, side) registers of fighter_state_3531c's case 7
+ * (0x35431); 0xC does
  * nothing; every other case (the raw's `ja` past 0xC, and the jump table's
  * remaining case values) clears +0x74, resets +0x56 to 0, runs hit_stance_
  * timer(side) and, only when DS_001088BC == side and both round flags DS_
@@ -10107,11 +10108,7 @@ static void fighter_38434(u32 side)
         DSB(slot + 0x43u) &= 0xCFu;                                  /* 0x384CA */
         fighter_slot_cb fn = (fighter_slot_cb)(void *)
             fn_resolve(DSD(slot + 0xCu));                              /* 0x384CD */
-        /* PORT: the raw's call convention here is (slot, DSD(slot), slot) —
-         * ECX (slot) survives untouched and is passed a second time where
-         * fighter_state_3531c's twin passes `side`; no registered callback
-         * exercises this path yet, so it is inert either way. */
-        if (fn) fn(slot, DSD(slot), slot);                             /* 0x384D9 */
+        if (fn) fn(slot, DSD(slot), side);                             /* 0x384D7/0x384D9 */
         return;
     }
     case 8u:
