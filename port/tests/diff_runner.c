@@ -854,6 +854,45 @@ static void m_3d10c(const u32 *r, u32 *eax)            /* the record started bef
     DSB(slot + 0x64u) = r5f;
     DSW(0x001080ACu + i * 2u) = 0x0080u;
 }
+static void m_3d10c_side(const u32 *r, u32 *eax)       /* indexes the word by side, not rec+0x51 */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u8 r5f;
+    *eax = 0u;
+    if (DSD(slot + 8u) != 0u) return;
+    (void)sound_voice(0x91u);
+    hit_anim_start_b(rec, 0x000E84C8u, 0x40400000u);
+    DSB(slot + 0x52u) = 0x0Bu;
+    DSB(slot + 0x53u) = 6u;
+    DSB(slot + 0x54u) = 0u;
+    DSD(slot + 0x0Cu) = 0u;
+    DSD(slot + 0x18u) = 0u;
+    DSD(slot + 0x1Cu) = 0u;
+    r5f = DSB(slot + 0x5Fu);
+    DSB(slot + 0x5Fu) = 0xFFu;
+    DSB(slot + 0x64u) = r5f;
+    DSW(0x001080ACu + r[R_EBX] * 2u) = 0x0080u;
+}
+static void m_3d10c_sext(const u32 *r, u32 *eax)       /* rec+0x51 sign-extended (movsx), not zero-extended */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u32 i = (u32)(s32)(s8)DSB(rec + 0x51u);
+    u8 r5f;
+    *eax = 0u;
+    if (DSD(slot + 8u) != 0u) return;
+    (void)sound_voice(0x91u);
+    hit_anim_start_b(rec, 0x000E84C8u, 0x40400000u);
+    DSB(slot + 0x52u) = 0x0Bu;
+    DSB(slot + 0x53u) = 6u;
+    DSB(slot + 0x54u) = 0u;
+    DSD(slot + 0x0Cu) = 0u;
+    DSD(slot + 0x18u) = 0u;
+    DSD(slot + 0x1Cu) = 0u;
+    r5f = DSB(slot + 0x5Fu);
+    DSB(slot + 0x5Fu) = 0xFFu;
+    DSB(slot + 0x64u) = r5f;
+    DSW(0x001080ACu + i * 2u) = 0x0080u;
+}
 static void m_22a00(const u32 *r, u32 *eax)            /* the slot stores before the 0x3C4CC call */
 {
     u32 slot = r[R_EAX];
@@ -1049,6 +1088,8 @@ static const binding_t k_bindings[] = {
     { "fighter_3dadc@mutant",     m_3dadc,        0x00000000u },
     { "fighter_3db34@mutant",     m_3db34,        0x00000000u },
     { "fighter_3d10c@mutant",     m_3d10c,        0x00000000u },
+    { "fighter_3d10c@side",       m_3d10c_side,   0x00000000u },
+    { "fighter_3d10c@sext",       m_3d10c_sext,   0x00000000u },
     { "fighter_22a00@mutant",     m_22a00,        0x00000000u },
     { "fighter_229fc@mutant",     m_229fc,        0x00000000u },
     { "fighter_14ef8",            b_14ef8,        0x00000000u },

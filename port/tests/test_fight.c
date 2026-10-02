@@ -45081,6 +45081,16 @@ static void p2_check_guarded_all(void)
     fighter_3d10c(Z_S1, Z_R1, 1u);
     CHECK_EQ_INT((int)DSW(0x001080ACu), 0xACAC);
     CHECK_EQ_INT((int)DSW(0x001080AEu), 0x0080);
+    /* the index is rec+0x51, not the side (EBX is ignored): side 0 with rec+0x51 = 1 writes the same word */
+    z_fseed();
+    DSW(0x000E84C8u) = 0x12B1u;
+    DSD(Z_S1 + 8u) = 0u;
+    DSB(Z_R1 + 0x51u) = 1u;
+    DSW(0x001080ACu) = 0xACACu;
+    DSW(0x001080AEu) = 0xAEAEu;
+    fighter_3d10c(Z_S1, Z_R1, 0u);
+    CHECK_EQ_INT((int)DSW(0x001080ACu), 0xACAC);
+    CHECK_EQ_INT((int)DSW(0x001080AEu), 0x0080);
     /* 0x229FC, the +0x0C callback 0x22A00 stores (the dword at 0x22A2D), is
      * the `ret` that ends 0x229E8: 0x3531C case 7 reaches it and nothing
      * changes. */

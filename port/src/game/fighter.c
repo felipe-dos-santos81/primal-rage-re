@@ -14782,7 +14782,7 @@ void fighter_3db34(u32 slot, u32 rec, u32 side)
  * 0x3D113, before the guard). With the slot's +8 clear: the voice 0x91, then
  * the record on 0xE84C8 at 3.0 (EDX loaded at 0x3D128, before the voice, which
  * preserves it), the slot 0xB/6/0, +0x0C = +0x18 = +0x1C = 0, +0x64 = +0x5F,
- * +0x5F = 0xFF and DS_001080AC[side] = 0x80. PORT: AL unread (§P2.2). */
+ * +0x5F = 0xFF and DS_001080AC[rec+0x51] = 0x80. PORT: AL unread (§P2.2). */
 void fighter_3d10c(u32 slot, u32 rec, u32 side)
 {
     u32 i = (u32)DSB(rec + 0x51u);                          /* 0x3D113 movzx */

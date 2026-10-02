@@ -329,6 +329,7 @@ P2_MASKS = {"fighter_237d0": 0, "fighter_2381c": 0, "fighter_3dadc": 0, "fighter
 P2_KINDS = {"fighter_237d0@mutant": {"call #0"}, "fighter_237d0@guard": {"byte", "call #0", "call #1"},
             "fighter_2381c@mutant": {"call #1"}, "fighter_3dadc@mutant": {"call #1 memory"},
             "fighter_3db34@mutant": {"call #0"}, "fighter_3d10c@mutant": {"call #0", "call #1"},
+            "fighter_3d10c@side": {"byte"}, "fighter_3d10c@sext": {"byte"},
             "fighter_22a00@mutant": {"call #0 memory"}, "fighter_229fc@mutant": {"byte"},
             "fighter_14ef8@mutant": {"call #0"}, "fighter_14f50@mutant": {"call #0"},
             "fighter_14fa8@mutant": {"call #0"}, "fighter_14ff8@mutant": {"call #1"},
@@ -528,6 +529,10 @@ class RealFunctionTests(unittest.TestCase):
         # the guard's high byte (case g0, slot+8 = 0x01000000) is the only case that tells a dword test from
         # a byte test
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_237d0@guard"].problems}), ["g0"])
+        # 0x3D10C ignores EBX: g3 (rec+0x51 = 1, side 0) alone tells an index by side, and g4 (rec+0x51 = side = 0x80, so the side index agrees there)
+        # alone a `movsx` for the `movzx` (plan P2 Task 2 review)
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_3d10c@side"].problems}), ["g3"])
+        self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_3d10c@sext"].problems}), ["g4"])
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
@@ -628,7 +633,7 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (18), the 12 without are counted apart
-        self.assertIn("diff-verify: 42/42 functions VERIFIED; 60/60 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 42/42 functions VERIFIED; 62/62 mutants detected; 1 named gaps; "
                       "2/29 rows with callees closed (13 have none).", out.getvalue())
 
 

@@ -140,7 +140,7 @@ a stubbed call were checked against these sets by running (the rows verify with 
 | `0x14EF8` | `0xD2E26` (`0x14F07`) | **2.0** | 0xB/6/0 | 0 | 0/0 | same as `0x237D0` | | `0xB2` |
 | `0x14F50` | `0xD2E56` (`0x14F5F`) | 2.0 | 0xB/6/0 | 0 | 0/0 | same | | `0xB2` |
 
-Every store precedes the voice (the memory at the voice call holds them). `0x229FC` (`c3`) does nothing.
+Every store precedes the voice (the memory at the voice call holds them) except in `0x3D10C`, where the voice comes first (the table's `first`: its voice is call #0 and the record start call #1). `0x3D10C` ignores EBX: the word index is rec+0x51 alone (the `@side` and `@sext` mutants). `0x229FC` (`c3`) does nothing.
 
 **Cases** (`p2_guarded`): `g0` slot+8 = `0x01000000` (non-zero in its high byte only: a port testing a byte runs the
 body; `fighter_237d0@guard` is caught by `g0` alone); `g1` the body, +0x5F = 0x22; `g2` the body, +0x5F = 0x80, side

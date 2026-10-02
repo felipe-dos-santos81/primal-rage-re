@@ -636,24 +636,31 @@ P2_SEED = {E3_SLOT + 0x0C: le32(0x0C0C0C0C), E3_SLOT + 0x18: le32(0x18181818), E
            E3_SLOT + 0x52: b"\x52\x53\x54\x55\x56\x57", E3_SLOT + 0x5F: b"\x22", E3_SLOT + 0x64: b"\x64"}
 
 
-def p2_guarded(name, entry, voice, mutants=("@mutant",), extra=None):
+def p2_guarded(name, entry, voice, mutants=("@mutant",), extra=None, more=()):
     """A guard-shaped move callback (record §P2.3): `cmp dword [slot+8],0; je` else AL = 0 and nothing
     written. g0: slot+8 = 0x01000000 (non-zero in its high byte only, so a byte test runs the body); g1:
     the body, +0x5F 0x22; g2: the body, +0x5F 0x80, side 1, the voice stub's AL = 0 (`mov al,1` overwrites
-    it). `extra(i)` adds pokes per case."""
+    it). `extra(i)` adds pokes per case; `more` is further body cases as (id, ebx), numbered from 3 for `extra`."""
     ex = extra or (lambda i: {})
     return Spec(name, entry, [
         Case("g0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P2_SEED, E3_SLOT + 8: le32(0x01000000), **ex(0)}),
         Case("g1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P2_SEED, E3_SLOT + 8: le32(0), **ex(1)}),
         Case("g2", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1},
              {**P2_SEED, E3_SLOT + 8: le32(0), E3_SLOT + 0x5F: b"\x80", **ex(2)}, {0x2C3FC: 0} if voice else {}),
-    ], calls=(HIT_B, VOICE) if voice else (HIT_B,), eax_mask=0, mutants=mutants)
+    ] + [Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": ebx}, {**P2_SEED, E3_SLOT + 8: le32(0), **ex(3 + k)})
+         for k, (cid, ebx) in enumerate(more)], calls=(HIT_B, VOICE) if voice else (HIT_B,), eax_mask=0, mutants=mutants)
 
 
-# 0x3D10C writes the word DS_001080AC[rec+0x51] (0x3D170): rec+0x51 is 0 in g0/g1 and 1 in g2, both words
-# seeded with sentinels.
+# 0x3D10C writes the word DS_001080AC[rec+0x51] (0x3D170) and ignores EBX (plan P2 Task 2 review): rec+0x51 is
+# 0 in g0/g1 (side 0), 1 in g2 (side 1), 1 in g3 with side 0 (a port indexing by side writes the wrong word:
+# only g3 tells), and 0x80 in g4 with side 0x80 (the `movzx` at 0x3D113 reaches 0x1081AC; a `movsx` reaches
+# 0x107FAC: only g4 tells). The words around are seeded with sentinels.
+P2_3D10C_R51 = {2: 1, 3: 1, 4: 0x80}
+
+
 def p2_3d10c_extra(i):
-    return {E3_REC + 0x51: bytes([1 if i == 2 else 0]), 0x1080AC: b"\xac\xac\xae\xae"}
+    return {E3_REC + 0x51: bytes([P2_3D10C_R51.get(i, 0)]), 0x1080AC: b"\xac\xac\xae\xae",
+            0x1081AC: b"\xb1\xb1", 0x107FAC: b"\xaf\xaf"}
 
 
 P2_SPECS = [
@@ -661,7 +668,8 @@ P2_SPECS = [
     p2_guarded("fighter_2381c", 0x2381C, True),
     p2_guarded("fighter_3dadc", 0x3DADC, True),
     p2_guarded("fighter_3db34", 0x3DB34, True),
-    p2_guarded("fighter_3d10c", 0x3D10C, True, extra=p2_3d10c_extra),
+    p2_guarded("fighter_3d10c", 0x3D10C, True, ("@mutant", "@side", "@sext"), extra=p2_3d10c_extra,
+               more=(("g3", 0), ("g4", 0x80))),
     p2_guarded("fighter_22a00", 0x22A00, False),
     # 0x229FC is the `ret` that ends 0x229E8 (0x229FC: c3), the +0x0C callback 0x22A00 stores: nothing at all.
     Spec("fighter_229fc", 0x229FC, [
