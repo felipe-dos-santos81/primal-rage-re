@@ -167,16 +167,15 @@ static const fnm_pair k_miss_gp_twop[] = {
  * capture and classified from the raw in the record.
  * gp-u8-right-arcade (START MENU row 1, b1f = 2), to its X record (f = 0x8E1):
  *   0x29D60 frontend_mode_1b_step: the bare `ret` (record §G.24);
- *   0x5D812 frontend_mode_1b_step: the runtime stub (record §G.24);
- *   0x14EF8 and 0x14F50 hit_reaction_apply: unported move callbacks (the
- *   dwords 0xA46A8 and 0xA46BC, character 3's reactions 0x20/0x21, called
- *   through [0x105BD4] at 0x2B56D; record reverse-e2 triage), owner track P
- *   (batch P2); not registered here. */
+ *   0x5D812 frontend_mode_1b_step: the runtime stub (record §G.24).
+ * The move callbacks it reaches, 0x14EF8 and 0x14F50 (the dwords 0xA46A8 and
+ * 0xA46BC, character 3's reactions 0x20/0x21, called by hit_reaction_apply at
+ * 0x35045), and their streams' 0xD000 targets 0x14FA8, 0x14FF8 and 0x150AC
+ * (anim_indirect) are ported by track P batch 2 (record
+ * 2026-10-02-reverse-p2 §P2.4), so none of them is a miss. */
 static const fnm_pair k_miss_gp_u8_right_arcade[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x14EF8u, "hit_reaction_apply" },
-    { 0x14F50u, "hit_reaction_apply" },
 };
 
 /* gp-u8-left-training (START MENU row 2, b1d = 1, b1f = 3; record §U8.17),
@@ -245,19 +244,22 @@ static const fnm_pair k_miss_gp_u9_win[] = {
 };
 
 /* gp-u10-ending (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
- * §W.14), measured on its full replay to its X record (f = 0x26E1); raw wins over the
- * plan's prediction (gp-u9-win's pairs and 0x3DA50): the two wipe hooks of §G.24
- * (0x29D60, a bare `ret`, from f = 0x286; 0x5D812, the runtime stub, from f = 0x3FE), and three
- * unported P-track targets: 0x2381C (E2 move-callback row, dword 0xA560C, CHAOS's
- * reaction 0x25) at f = 0x848 in mode 6 (round 2), and the death-animation stream's
- * targets 0x37DD4 (E2 anim-target row, dword 0xD2BCE) at f = 0x1518 and 0x29C78
- * (outside E2, record reverse-p1 §P1.2, dword 0xD2BDA) at f = 0x151B in mode 0xD. */
+ * §W.14, re-measured by plan reverse-p2 Task 9, §W.16), on its full replay to its X record
+ * (f = 0x26E1): the two wipe hooks of §G.24 (0x29D60, a bare `ret`, from f = 0x286;
+ * 0x5D812, the runtime stub, from f = 0x3FE), and four unported P-track targets: the
+ * death-animation stream's 0x37DD4 (E2 anim-target row, dword 0xD2BCE) at f = 0x14FB in
+ * mode 0xC and 0x29C78 (outside E2, record reverse-p1 §P1.2, dword 0xD2BDA) at f = 0x14FE
+ * in mode 0xD; 0x3DA50 (E2 anim-target row, dword 0xD4BEC) at f = 0x155D and 0x475EC (E2
+ * move-callback row, dword 0xA4004, character 2's reaction 0x0B) at f = 0x1594, both in
+ * mode 0xF. 0x2381C (CHAOS's reaction 0x25, f = 0x848) is ported by P2; the final's
+ * opponent order (1,4,3,0,6,5,2) now equals the capture's. */
 static const fnm_pair k_miss_gp_u10_ending[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x2381Cu, "hit_reaction_apply" },
     { 0x37DD4u, "anim_indirect" },
     { 0x29C78u, "anim_indirect" },
+    { 0x3DA50u, "anim_indirect" },
+    { 0x475ECu, "hit_reaction_apply" },
 };
 
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
@@ -468,6 +470,29 @@ static int seam_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
     s_seam_n++;
     *eax = 0x5Au;
     return s_seam_stub;
+}
+
+/* Record 2026-10-02-reverse-p2 §P2.7: registering one (address, function)
+ * pair more times than the table holds (FN_TABLE_MAX = 1300) adds it once;
+ * before the fix the 1301st call aborted the run. The skip matches on the
+ * pair, not on either half: a second function for the same address is still
+ * appended (fn_origin finds it, fn_resolve keeps the first), and the same
+ * function at a second address is too (an address-only skip drops the first,
+ * a function-only skip the second). */
+static void fnreg_probe_a(void) {}
+static void fnreg_probe_b(void) {}
+
+int test_fn_register_repeats(void)
+{
+    int before = g_failures;
+    for (int i = 0; i < 1301; i++) fn_register(0xF00F8u, fnreg_probe_a);
+    CHECK(fn_resolve(0xF00F8u) == fnreg_probe_a, "the repeated pair resolves");
+    fn_register(0xF00F8u, fnreg_probe_b);
+    CHECK(fn_resolve(0xF00F8u) == fnreg_probe_a, "the first pair for an address wins");
+    CHECK(fn_origin(fnreg_probe_b) == 0xF00F8u, "a second function for an address is appended, not skipped");
+    fn_register(0xF00FCu, fnreg_probe_a);
+    CHECK(fn_resolve(0xF00FCu) == fnreg_probe_a, "the same function at a second address is appended, not skipped");
+    return g_failures - before;
 }
 
 int test_call_seam(void)

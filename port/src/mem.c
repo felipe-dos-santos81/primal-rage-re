@@ -21,6 +21,12 @@ static u32 fn_table_len;
 
 void fn_register(u32 orig_addr, void (*fn)(void))
 {
+    /* PORT: record 2026-10-02-reverse-p2 §P2.7. A pair already in the table
+     * is not added again: every actors_init() registers its handlers again
+     * (run_tests calls it four times), and fn_resolve returns the first entry
+     * for an address, so a repeated identical pair is never the one returned. */
+    for (u32 i = 0; i < fn_table_len; i++)
+        if (fn_table[i].addr == orig_addr && fn_table[i].fn == fn) return;
     /* Unconditional, not assert-only: NDEBUG would compile an assert out and
      * let the store run past fn_table, after which fn_resolve could return a
      * garbage pointer that is then called. Fail closed in every build. */

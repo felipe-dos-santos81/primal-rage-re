@@ -96,6 +96,13 @@ extern pr_seam_fn pr_seam;
                 return;                                                     \
         }                                                                   \
     } while (0)
+#define PR_SEAM0(addr)                                                      \
+    do {                                                                    \
+        if (pr_seam) {                                                      \
+            u32 seam_e_;                                                    \
+            if (pr_seam((addr), 0u, (const u32 *)0, &seam_e_)) return;      \
+        }                                                                   \
+    } while (0)
 #define PR_SEAM_RET(addr, ...)                                              \
     do {                                                                    \
         if (pr_seam) {                                                      \

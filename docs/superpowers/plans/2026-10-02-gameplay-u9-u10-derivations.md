@@ -1254,3 +1254,85 @@ gp_win: gp-u10-ending: evidence: 30/30 milestones ok
 ```
 
 The `gp_win ... path` lines: all 8 (U9) and all 30 (U10) milestones print `capture F port F` with the same frame on both sides, and every `gp_win ... evidence` line is `ok` (log lines `gp_win: gp-u9-win: path:` and `gp_win: gp-u10-ending: path:`). The eight gp python suites (`test_gp_session test_gp_capture test_gp_compare test_gp_twop test_gp_win test_gp_keys test_gp_modes test_gp_moves`): `Ran 191 tests`, `OK`; the four of the plan's gate command (session, capture, compare, twop): `Ran 118`. `git diff --stat main -- port/src`: empty. No `FAIL` line in the log.
+
+## §W.16 The U10 re-pin after track P batch 2 (plan reverse-p2 Task 9, measured at `20e8f4a` + the new miss set)
+
+P2 (plan `2026-10-02-reverse-p2-move-callbacks.md`, record `2026-10-02-reverse-p2-derivations.md`)
+ports `0x2381C`, a row of `k_miss_gp_u10_ending` (§W.14). The branch was rebased onto main `b16922d`
+(this plan's merge) without conflicts; the measurements below are on the rebased head `20e8f4a`
+with `make gp-ending-oracle GP_DUMP=/tmp/pr_p2_gp GP_WIN_KEEP=1`, as §W.14 (Task 11's method).
+
+**The miss set (raw wins over the plan's "drop one row").** With §W.14's set unchanged, the
+replay (to `X`, `f = 0x26E1`, 2 min 50 s) prints `distinct=8`, `8 != 7`, `unexpected 0x3DA50 from
+anim_indirect` and `unexpected 0x475EC from hit_reaction_apply`; `0x2381C` is no longer recorded.
+The first frames, read as §W.12 (`lldb -b`, a breakpoint on the miss log's new-entry store, now
+`mem.c:77`, printing `orig_addr`, `ctx` and the words at `mem + 0xEF6DC` (f) and `mem + 0x104B00`
+(mode)):
+
+| pair | first f | mode | hits | classification |
+|---|---|---|---|---|
+| `0x5D812` `actor_spawn` / `set_dead` | `0x3` / `0x4` | 3 | | the known pair (§G.24) |
+| `0x29D60` `frontend_mode_1b_step` | `0x286` | `0x1B` | 1 | wipe hook (§G.24), unchanged |
+| `0x5D812` `frontend_mode_1b_step` | `0x3FE` | `0x1B` | 3 | wipe hook (§G.24), unchanged |
+| `0x37DD4` `anim_indirect` | `0x14FB` | `0xC` | 33 | E2 anim-target row `37DD4` (dword `D2BCE`), P6; was `0x1518`, mode `0xD` |
+| `0x29C78` `anim_indirect` | `0x14FE` | `0xD` | 33 | outside E2 (reverse-p1 §P1.2, dword `D2BDA`), P7; was `0x151B` |
+| `0x3DA50` `anim_indirect` | `0x155D` | `0xF` | 1 | **new**: E2 anim-target row `3DA50` (dword `D4BEC` after the opcode word `D100` at `D4BEA`), P5 |
+| `0x475EC` `hit_reaction_apply` | `0x1594` | `0xF` | 11 | **new**: E2 move-callback row `475EC` (dword `A4004`, character 2's reaction `0x0B`), P3 |
+
+Why the set moved: the opponent order of the final. From the port's trace (`c1` at each change),
+the port now fights `1,4,3,0,6,5,2` from `f = 0x14B6`, `0x14CC`, `0x14E0`, `0x14F4`, `0x1508`,
+`0x151C`, `0x1530`: the capture's order (§W.14: capture `1,4,3,0,6,5,2`, port before P2
+`4,2,1,6,5,0,3`). The last opponent is character 2, whose reaction `0x0B` is `0x475EC`'s row; both new
+targets are first reached in mode `0xF`, after the seventh KO (`0x153A`). Which fighter's stream
+reaches `0x3DA50` is not read here.
+
+`k_miss_gp_u10_ending` is now the six rows `0x29D60`, `0x5D812` (`frontend_mode_1b_step`), `0x37DD4`,
+`0x29C78`, `0x3DA50` (`anim_indirect`), `0x475EC` (`hit_reaction_apply`), in the printed order.
+Rerun: `distinct=8 dropped=0`, `all checks passed`. Mutation: the `0x475EC` row deleted, rebuilt,
+`make gp-replay scenario=gp-u10-ending`: `8 != 7`, `unexpected 0x475EC from hit_reaction_apply`,
+`FAILURES: 2`; restored and rebuilt.
+
+**The pins.** The oracle's report lines (exit 0, pins as before):
+
+```
+gp_compare: gp-u10-ending: frames: window from capture 83 (raw 1745); 239 classified: 141 clean, 96 splice, 1 transition, 1 unexplained, 10 all-black
+gp_compare: gp-u10-ending: frames: FIRST UNEXPLAINED capture 331 (raw 2831): nearest port 219, rows 0..63, x 0..319 (10336 px)
+gp_compare: gp-u10-ending: frames: first unexplained 331, ratchet N 331 ok
+gp_compare: gp-u10-ending: trace: 0 differing through 9953; ratchet N 2121 ok (every item is explained: N = 9954 is the exact pin)
+gp_compare: gp-u10-ending: path: 0 not reproduced through 29; ratchet N 30 ok
+gp_compare: gp-u10-ending: win: 0 differing through 9953; ratchet N 5634 ok (every item is explained: N = 9954 is the exact pin)
+```
+
+| pin | before (§W.14) | now | provenance |
+|---|---|---|---|
+| `GP_ENDING_MIN_FIRST` | 331 | 331 | unchanged: the mode-8 catch-up of §W.14 (a comparison-model limit) |
+| `GP_ENDING_TRACE_MIN_FIRST` | 2121 | **9954** | 0 differing through `f = 0x26E1` (9953), the `X` record: the end of the port's replay |
+| `GP_ENDING_MAX_START` | 83 | 83 | window from capture 83 (raw 1745) |
+| `GP_ENDING_MILESTONES` | 30 | 30 | all 30 reproduced at the capture's frames |
+| `GP_ENDING_WIN_MIN_FIRST` | 5634 | **9954** | 0 differing through 9953 |
+
+Each pin + 1 fails (`gp_compare.py`/`gp_win.py path` run directly on the kept dump, exit 1):
+`MIN_FIRST 332` -> `first unexplained 331 < ratchet N 332`; `TRACE 9955` -> `N 9955 > end 9954: N is
+unreachable`; `MAX_START 82` -> `window starts at capture 83 (raw 1745) > pinned start 82`;
+`MILESTONES 31` -> `N 31 > end 30: N is unreachable`; `WIN 9955` -> `N 9955 > end 9954: N is
+unreachable`. The exact pins pass (exit 0).
+
+**What this changes in §W.14's named divergences.** The trace's `f = 0x849` difference was
+`0x2381C`'s: with it ported, both sides keep `rng` and every traced field to the replay's end. The
+WIN fields' `f = 0x1602` difference (`b0c` set 29 frames late) is gone too while the port still
+misses `0x37DD4`/`0x29C78` at every death stream, so it followed the `rng` and the opponent order,
+not those two targets (§W.14 had not separated them). **The claim is narrow:** the replay still misses `0x37DD4`
+and `0x29C78` (33 hits each), `0x3DA50` and `0x475EC` (11 hits), whose effects the traced fields cannot see, so the
+clean trace to `f = 0x26E1` does not claim the death streams or the mode-`0xF` content are reproduced, and it is no
+evidence of correctness past the frame ratchet's 331. The frame ratchet is still capped at 331 by
+the mode-8 catch-up; `--report` (which stops after `REPORT_MAX` = 5 unexplained) now lists 331,
+341, 342, then **2062** (raw 4954, nearest port 1686, `f = 0xB9A`, mode `0x12`, rows 192..197,
+166 px) and **3686** (raw 7145, nearest port 3071, `f = 0x12EA`, mode `0x24`, rows 20..25, 379 px):
+§W.14's 1274/1275 (the `0x2381C` miss) are explained. 2062 and 3686 are not examined here (both
+are at mode entries; a named gap for the unit that lifts the frame ratchet past 331).
+
+**gp-u9-win.** P2 ports none of its targets. `make gp-win-oracle GP_DUMP=/tmp/pr_p2_gp`: exit 0,
+the same set (`distinct=7`, `0x29D60`, `0x5D812`, `0x400E0`, `0x21044`, `0x21084`), `frames: first
+unexplained 346, ratchet N 346 ok`, `trace: first differing 2150, ratchet N 2150 ok`, `path: 0 not
+reproduced through 7; ratchet N 8 ok`, `win: first differing 3162, ratchet N 3162 ok`, window from
+capture 100: every `GP_WIN_*` pin holds unchanged.

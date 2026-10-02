@@ -38,6 +38,18 @@ STACK_TOP = 0x7FFF0000
 SENTINEL = 0x7FFFF000         # the return address pushed for the function; emulation ends here
 DEFAULT_MAX_INSNS = 200_000
 REGS = ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp")
+
+
+def deref_arg(a):
+    """(reg, offset) for a Call argument `[reg]` or `[reg+N]` (N decimal): the dword at that address when
+    the callee is reached, for a pointer argument with no mem[] offset to compare (a caller's stack buffer;
+    record 2026-10-02-reverse-p2 §P2.7). None for any other argument."""
+    if not (a.startswith("[") and a.endswith("]")):
+        return None
+    reg, plus, off = a[1:-1].partition("+")
+    if reg not in REGS or (plus and not (off.isascii() and off.isdigit())):
+        return None
+    return reg, int(off or "0")
 # The dwords above the return address at entry: the stack arguments a `ret N` function pops
 # (record E3 §E3.5). A case sets them as regs["s0"]..regs["s3"]; a call record reads them the same way.
 STACK_ARGS = ("s0", "s1", "s2", "s3")
@@ -103,7 +115,7 @@ class Call:
     def __post_init__(self):
         if self.mode not in ("stub", "real"):
             raise ValueError("call 0x%X: mode %r is neither stub nor real" % (self.addr, self.mode))
-        bad = [a for a in self.args if a not in REGS + STACK_ARGS]
+        bad = [a for a in self.args if a not in REGS + STACK_ARGS and deref_arg(a) is None]
         if bad:
             raise ValueError("call 0x%X: unknown argument %s" % (self.addr, ", ".join(bad)))
         if self.mode == "real" and (self.writes or self.eax or self.pop or self.clobbers):
@@ -116,6 +128,9 @@ class Call:
             if len(w) != 3 or not (w[0] is None or (isinstance(w[0], int) and 0 <= w[0] < len(self.args))):
                 raise ValueError("call 0x%X: write %r needs a base that is None or an index of its %d args"
                                  % (self.addr, w, len(self.args)))
+            if w[0] is not None and deref_arg(self.args[w[0]]) is not None:
+                raise ValueError("call 0x%X: write %r is based on %s, a dereferenced value, not a pointer"
+                                 % (self.addr, w, self.args[w[0]]))
 
 
 @dataclass
@@ -215,6 +230,9 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     def arg(uc, esp, a):
         if a in STACK_ARGS:
             return int.from_bytes(uc.mem_read(esp + 4 + 4 * STACK_ARGS.index(a), 4), "little")
+        d = deref_arg(a)
+        if d is not None:
+            return int.from_bytes(uc.mem_read((uc.reg_read(names[d[0]]) + d[1]) & 0xFFFFFFFF, 4), "little")
         return uc.reg_read(names[a])
 
     def changed(uc):
@@ -502,6 +520,9 @@ RESOLVED_JUMPS = {
     0x29F78: (0x29F6D, 0x29EEC, 6),
     0x29FE5: (0x29FDA, 0x29F04, 6),
     0x2A056: (0x2A04B, 0x29F1C, 6),
+    # 0x22638 (record 2026-10-02-reverse-p2 §P2.9): cmp al,7; ja; and eax,0xff; lea edx,[eax*4]; mov eax,[esp];
+    # add eax,eax; jmp cs:[edx+0x22618]
+    0x227BC: (0x227A3, 0x22618, 8),
 }
 
 

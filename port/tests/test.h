@@ -32,6 +32,7 @@ extern int g_failures;
 #define TEST_CASES(X)   \
     X(test_mem)         \
     X(test_fn_misslog)  \
+    X(test_fn_register_repeats) \
     X(test_call_seam)   \
     X(test_le)          \
     X(test_res)         \
@@ -80,6 +81,13 @@ extern int g_failures;
     X(test_p1_finishers) \
     X(test_p1_callbacks) \
     X(test_p1_anim_targets) \
+    X(test_p2_guarded) \
+    X(test_p2_reactions_3) \
+    X(test_p2_unconditional) \
+    X(test_p2_arming) \
+    X(test_p2_hooks) \
+    X(test_p2_1c) \
+    X(test_p2_0c) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
     X(test_restart)

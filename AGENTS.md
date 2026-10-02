@@ -106,7 +106,10 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   `E.Call` in `tools/diff_verify.py`) opens with `PR_SEAM(0xADDR, args...)` (void) or
   `PR_SEAM_RET(0xADDR, args...)` (`mem.h`): the harness's call seam, inert outside `build/diffrun`.
   The arguments are the C signature's, in order (a pointer into `mem[]` as its offset); the `E.Call`
-  names the original's registers and stack slots in the same order. An allow-mode callee (run on
+  names the original's registers and stack slots in the same order. A callee with no argument opens with
+  `PR_SEAM0(0xADDR)`; a buffer on the caller's stack that the callee cannot run on both sides is passed by
+  value (its bytes as little-endian dwords, the `E.Call` naming `[reg]`, `[reg+N]`; record
+  `2026-10-02-reverse-p2-derivations.md` §P2.7). An allow-mode callee (run on
   both sides and not recorded, such as `0x33950` and `0x339AC`) has no seam. Record
   `2026-10-01-reverse-e3-derivations.md` §E3.3-§E3.5; the checklist is §E3.10.
 - SDL and file/asset I/O live **only** in `port/src/host.c` and `main.c`. New
@@ -224,18 +227,18 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   window start 83 and the `poll.log` sha256 and frame count are pinned; the moves claim is pinned too (N 1506).
   Its claim is as narrow, and it says nothing about the two-player game past the scenario's end; it skips without
   the capture.
-  `make gp-modes-oracle` (in `make verify`) applies the same two ratchets to the U8 captures `data/k11-captures/gp-u8-*` (the other START MENU rows and the attract start), each with `GP_MODES_<ID>_*` values and provenance in the Makefile and an evidence check (`tools/gp_modes.py`) that the capture reached its row; each skips without its capture. Record gameplay-u8 §U8.23 has the table of N, F and the window start per scenario and the named gaps: N and F are the end of the port's replay in six of the seven (RA diverges at f=0x7B7 on the unported `0x14EF8`/`0x14F50`, whose port drops its two miss rows and re-measures its N and F); nothing past them is covered, ENDURANCE's fight is a named gap, and the damaged-frame proof depends on the frame chosen.
+  `make gp-modes-oracle` (in `make verify`) applies the same two ratchets to the U8 captures `data/k11-captures/gp-u8-*` (the other START MENU rows and the attract start), each with `GP_MODES_<ID>_*` values and provenance in the Makefile and an evidence check (`tools/gp_modes.py`) that the capture reached its row; each skips without its capture. Record gameplay-u8 §U8.23 has the table of N, F and the window start per scenario and the named gaps: N and F are the end of the port's replay in all seven (RA reached its end once track P batch 2 ported `0x14EF8`/`0x14F50` and their streams' targets: N 726 -> 1072, F 1978 -> 2274, record 2026-10-02-reverse-p2 §P2.4; EN's end is its 300-frame team-select cut); nothing past them is covered, ENDURANCE's fight is a named gap, and the damaged-frame proof depends on the frame chosen.
   `make gp-win-oracle`/`gp-ending-oracle` (plan 2026-10-02-gameplay-u9-u10, record §W.9) reach the
   win and the ending under memory pokes (a `poke` step writes bytes in the spin; the port replays
   the capture's `W` records as `poke` lines at W.f + 1, the iteration that reads them, record §W.8). Their claim is as narrow, and what
   a poke replaced is not claimed: the KO by hits, the six earlier won matches, the final's death
-  animations. Only character 0's ending is captured. Both frame ratchets stop at round 1's mode-8 entry (f=0x48A), so nothing is compared pixel by pixel from there on (the conquered-lands screen, WORLD DOMINATION, the final, the ending in mode 0x1F, the high-score entry), and past the trace pins (U9 f=0x866, U10 f=0x849) the only claims are the WIN fields (to f=0xC5A / 0x1602) and the milestone frames, most of which are mode changes driven by replayed pokes and do not check which opponent is fought. `gp-u10-ending` runs DOSBox-X with
+  animations. Only character 0's ending is captured. Both frame ratchets stop at round 1's mode-8 entry (f=0x48A), so nothing is compared pixel by pixel from there on (the conquered-lands screen, WORLD DOMINATION, the final, the ending in mode 0x1F, the high-score entry), and past U9's trace pin (f=0x866) the only claims are the WIN fields (to f=0xC5A) and the milestone frames, most of which are mode changes driven by replayed pokes and do not check which opponent is fought; U10's trace and WIN fields agree to the replay's end (f=0x26E1) since track P batch 2 ported `0x2381C` (record §W.16), but the replay still misses `0x37DD4` and `0x29C78` (33 hits each), `0x3DA50` and `0x475EC` (11 hits), whose effects the traced fields cannot see, so the clean trace to f=0x26E1 does not claim the death streams or the mode-0xF content are reproduced and is no evidence of correctness past the frame ratchet's 331. `gp-u10-ending` runs DOSBox-X with
   `memsize=64`, a harness value (the original ran out of memory in the poked final at 16 MB,
   record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The frame ratchets of both stop at the mode-8 entry (U9 N 346, U10 N 331), where
   the screen holds one frame about 43 ms and the two-frame splice model cannot express the
   catch-up: a comparison-model limit, not a port divergence (§W.12, §W.14). A P batch that ports
   a target in a miss set re-measures and re-pins (U9: `0x400E0`/`0x21084` P4, `0x21044` P5; U10:
-  `0x2381C` P2, `0x37DD4` P6, `0x29C78` P7).
+  `0x475EC` P3, `0x3DA50` P5, `0x37DD4` P6, `0x29C78` P7; record §W.16).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two

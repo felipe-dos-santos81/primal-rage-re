@@ -1164,5 +1164,46 @@ void fighter_156d4(u32 rec);
 void fighter_23ca4(u32 rec);
 void fighter_23868(u32 rec, u32 arg);
 void fighter_3f174(u32 rec);
+/* Track P batch 2 (record 2026-10-02-reverse-p2-derivations.md §P2.3): the
+ * guard-shaped move callbacks 0x34E2C calls as (slot, rec, side), and the
+ * +0x0C callback 0x22A00 stores (0x3531C case 7, the same registers);
+ * registered in actors_init. */
+void fighter_237d0(u32 slot, u32 rec, u32 side);
+void fighter_2381c(u32 slot, u32 rec, u32 side);
+void fighter_3dadc(u32 slot, u32 rec, u32 side);
+void fighter_3db34(u32 slot, u32 rec, u32 side);
+void fighter_3d10c(u32 slot, u32 rec, u32 side);
+void fighter_22a00(u32 slot, u32 rec, u32 side);
+void fighter_229fc(u32 slot, u32 rec, u32 side);
+/* §P2.4: character 3's reactions 0x20 and 0x21, and the 0xD000 targets of the
+ * streams they start (EAX = rec; registered through anim_code wrappers). */
+void fighter_14ef8(u32 slot, u32 rec, u32 side);
+void fighter_14f50(u32 slot, u32 rec, u32 side);
+void fighter_14fa8(u32 rec);
+void fighter_14ff8(u32 rec);
+void fighter_150ac(u32 rec);
+/* §P2.5: the unconditional move callbacks (slot, rec, side). */
+void fighter_15478(u32 slot, u32 rec, u32 side);
+void fighter_3dcec(u32 slot, u32 rec, u32 side);
+void fighter_21114(u32 slot, u32 rec, u32 side);
+/* §P2.6: the move callbacks that arm the side's own slot (slot, rec, side). */
+void fighter_21374(u32 slot, u32 rec, u32 side);
+void fighter_22938(u32 slot, u32 rec, u32 side);
+/* §P2.7: the slot +0x18 hooks they store, fn(side) as 0x19020 calls them. */
+u32  fighter_2116c(u32 side);
+u32  fighter_22510(u32 side);
+/* §P2.8: the slot +0x1C callbacks they store, fn(side) as 0x193B0 calls them,
+ * and 0x22588's callee 0x22404 (side); and three callees they stub, no
+ * longer file-local so the harness's mutants can call them: 0x3C480, 0x18AF8
+ * and 0x39834. */
+void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits);
+void fighter_18af8(void);
+void fighter_39834(u32 side, s32 b);
+void fighter_22404(u32 side);
+void fighter_211f0(u32 side);
+void fighter_22588(u32 side);
+/* §P2.9: the slot +0x0C callbacks they store (slot, rec, side). */
+void fighter_212cc(u32 slot, u32 rec, u32 side);
+void fighter_22638(u32 slot, u32 rec, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

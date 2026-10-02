@@ -236,7 +236,8 @@ def verify_gap(spec, image):
     """A named gap (spec §5.2): every case must stop on exactly the instruction the spec names. The
     port is not run. A case that runs through, or stops elsewhere, is a MISMATCH: the gap is stale
     or misnamed, and the function becomes a verification target again."""
-    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True)
+    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
+                         resolved=E.RESOLVED_JUMPS)
     res = SpecResult(spec.name, spec.entry, "NAMED_GAP", len(spec.cases), 0, len(info.leaders), gap=spec.gap)
     executed = set()
     for c in spec.cases:
@@ -256,7 +257,8 @@ def verify_spec(spec, image, port_results, port_name=None):
     if got != set(sent):
         raise ValueError("%s: the port's results do not match the cases sent: missing %s, extra %s"
                          % (port_name or spec.name, sorted(set(sent) - got), sorted(got - set(sent))))
-    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True)
+    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
+                         resolved=E.RESOLVED_JUMPS)
     executed, outside, problems, blocked = set(), set(), [], []
     port_errors, diffs = [], 0
     for c in spec.cases:
@@ -625,6 +627,320 @@ P1_ANIM_SPECS = [
     ], eax_mask=0),
 ]
 
+# ---- track P batch 2: the move callbacks 0x14EF8..0x3DCEC and the callbacks they store (record
+# 2026-10-02-reverse-p2) --------------------------------------------------------------------------------
+# A move callback runs as 0x34E2C calls it at 0x35045: EAX = slot, EDX = rec, EBX = side. Mask 0: 0x34E2C
+# returns the callback's EAX to 0x352CD (whose 0x350D0 returns to 0x3531C, whose only caller 0x35803 loads
+# `mov eax,ebx`) and to 0x3CF2E (`mov al,1` at 0x3CF33; 0x3CE58's two callers read AL alone, `mov dl,al`
+# at 0x3CF84/0x3D03A): no caller reads it (record §P2.2). Every slot field the function writes carries a
+# sentinel that differs from what it writes; +0x5F (copied to +0x64) takes 0x22 and 0x80.
+P2_SEED = {E3_SLOT + 0x0C: le32(0x0C0C0C0C), E3_SLOT + 0x18: le32(0x18181818), E3_SLOT + 0x1C: le32(0x1C1C1C1C),
+           E3_SLOT + 0x52: b"\x52\x53\x54\x55\x56\x57", E3_SLOT + 0x5F: b"\x22", E3_SLOT + 0x64: b"\x64"}
+
+
+def p2_guarded(name, entry, voice, mutants=("@mutant",), extra=None, more=()):
+    """A guard-shaped move callback (record §P2.3): `cmp dword [slot+8],0; je` else AL = 0 and nothing
+    written. g0: slot+8 = 0x01000000 (non-zero in its high byte only, so a byte test runs the body); g1:
+    the body, +0x5F 0x22; g2: the body, +0x5F 0x80, side 1, the voice stub's AL = 0 (`mov al,1` overwrites
+    it). `extra(i)` adds pokes per case; `more` is further body cases as (id, ebx), numbered from 3 for `extra`."""
+    ex = extra or (lambda i: {})
+    return Spec(name, entry, [
+        Case("g0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P2_SEED, E3_SLOT + 8: le32(0x01000000), **ex(0)}),
+        Case("g1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P2_SEED, E3_SLOT + 8: le32(0), **ex(1)}),
+        Case("g2", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1},
+             {**P2_SEED, E3_SLOT + 8: le32(0), E3_SLOT + 0x5F: b"\x80", **ex(2)}, {0x2C3FC: 0} if voice else {}),
+    ] + [Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": ebx}, {**P2_SEED, E3_SLOT + 8: le32(0), **ex(3 + k)})
+         for k, (cid, ebx) in enumerate(more)], calls=(HIT_B, VOICE) if voice else (HIT_B,), eax_mask=0, mutants=mutants)
+
+
+# 0x3D10C writes the word DS_001080AC[rec+0x51] (0x3D170) and ignores EBX (plan P2 Task 2 review): rec+0x51 is
+# 0 in g0/g1 (side 0), 1 in g2 (side 1), 1 in g3 with side 0 (a port indexing by side writes the wrong word:
+# only g3 tells), and 0x80 in g4 with side 0x80 (the `movzx` at 0x3D113 reaches 0x1081AC; a `movsx` reaches
+# 0x107FAC: only g4 tells). The words around are seeded with sentinels.
+P2_3D10C_R51 = {2: 1, 3: 1, 4: 0x80}
+
+
+def p2_3d10c_extra(i):
+    return {E3_REC + 0x51: bytes([P2_3D10C_R51.get(i, 0)]), 0x1080AC: b"\xac\xac\xae\xae",
+            0x1081AC: b"\xb1\xb1", 0x107FAC: b"\xaf\xaf"}
+
+
+P2_SPECS = [
+    p2_guarded("fighter_237d0", 0x237D0, True, ("@mutant", "@guard")),
+    p2_guarded("fighter_2381c", 0x2381C, True),
+    p2_guarded("fighter_3dadc", 0x3DADC, True),
+    p2_guarded("fighter_3db34", 0x3DB34, True),
+    p2_guarded("fighter_3d10c", 0x3D10C, True, ("@mutant", "@side", "@sext"), extra=p2_3d10c_extra,
+               more=(("g3", 0), ("g4", 0x80))),
+    p2_guarded("fighter_22a00", 0x22A00, False),
+    # 0x229FC is the `ret` that ends 0x229E8 (0x229FC: c3), the +0x0C callback 0x22A00 stores: nothing at all.
+    Spec("fighter_229fc", 0x229FC, [
+        Case("r0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x57: b"\x57"}),
+    ], eax_mask=0),
+    # character 3's reactions 0x20 and 0x21: the two callbacks gp-u8-right-arcade reaches (record §P2.4)
+    p2_guarded("fighter_14ef8", 0x14EF8, True),
+    p2_guarded("fighter_14f50", 0x14F50, True),
+]
+
+
+# The 0xD000 targets (opcode 0x10, mode 0x4000) of the streams 0x14EF8 and 0x14F50 start (record §P2.4): the
+# animation dispatcher calls them at 0x2B56D with EAX = rec (`mov eax,esi` 0x2B56B; none of the three reads EDX
+# or ECX) and overwrites EAX after (`xor ecx,ecx; mov eax,ecx` 0x2B573/0x2B575): mask 0. The SPAWN stub's EAX
+# is the spawned record, a different one per case, seeded with sentinels on every field written there.
+def p2_14fa8(cid, side, sp):
+    return Case(cid, {"eax": E3_REC, "edx": 0x1234, "ecx": 0x5678},
+                {E3_REC + 0x4B: b"\x4b", E3_REC + 0x51: bytes([side]), E3_REC + 0x56: b"\x23\x01",
+                 sp + 0x2E: b"\xfe\xff", sp + 0x4E: b"\x4e", sp + 0x56: b"\x07", sp + 0x59: b"\x59",
+                 sp + 0x60: b"\x60"}, {0x2AE14: sp})
+
+
+def p2_held(cid, owner, side, al, w28, x, z, w30, sp):
+    """0x14FF8/0x150AC: owner = rec+0x14; side = rec+0x51 (0x1A570's argument and the +0x2E/+0x4E arm); al =
+    the 0x1A570 stub's AL; w28 = the word rec+0x28 (bit 14: the spawn flag); x, z = rec+0x18/+0x1C; w30 =
+    rec+0x30 (`sar 0x10`: the y argument)."""
+    return Case(cid, {"eax": E3_REC, "edx": 0x1234, "ecx": 0x5678},
+                {E3_REC + 0x14: le32(owner), E3_REC + 0x18: le32(x) + le32(z), E3_REC + 0x28: le32(w28)[:2],
+                 E3_REC + 0x30: le32(w30), E3_REC + 0x51: bytes([side]), E3_SLOT + 8: le32(0x08080808),
+                 sp + 0x14: le32(0x14141414), sp + 0x2E: b"\xfe\xff", sp + 0x34: b"\x34\x34",
+                 sp + 0x4E: b"\x4e", sp + 0x59: b"\x59"},
+                {0x2AE14: sp, 0x1A570: al})
+
+
+P2_HELD_ROWS = (("h0", 0, 0, 0, 0, 0x5000, 0x30000, 0x70000, E3_OUT),
+                ("h1", E3_SLOT, 0, 0, 0, 0x5000, 0x30000, 0x70000, E3_OUT),
+                ("h2", E3_SLOT, 1, 1, 0x4000, 0xFFFFF000, 0xFFFD8000, 0xFFFD0000, E3_REC2),
+                ("h3", E3_SLOT, 1, 0, 0xBFFF, 0x6000, 0x50000, 0x30000, E3_OUT),
+                ("h4", E3_SLOT, 0, 1, 0x4000, 0x7000, 0x10000, 0x20000, E3_REC2))
+P2_SPECS += [
+    Spec("fighter_14fa8", 0x14FA8, [p2_14fa8("f0", 0, E3_OUT), p2_14fa8("f1", 1, E3_REC2)],
+         calls=(SPAWN,), eax_mask=0),
+    Spec("fighter_14ff8", 0x14FF8, [p2_held(*r) for r in P2_HELD_ROWS], calls=(BIT15, SPAWN), eax_mask=0),
+    Spec("fighter_150ac", 0x150AC, [p2_held(*r) for r in P2_HELD_ROWS], calls=(BIT15, SPAWN), eax_mask=0),
+]
+
+# The unconditional move callbacks (record §P2.5): no guard, the record started, the slot 9/8/0 or 9/8/1.
+# 0x3DCEC reads its stream from the dword 0xC8CD4 (0xD40F2 in the image): u1 pokes another value there, so a
+# port that hard-codes the image's value differs. 0x21114 indexes DS_001077A8 by rec+0x51 (0x2111C) and
+# switches on that slot's +0x7A: 1 and 6 start a stream (`jbe`/`je`), 0, 2..5 and above 6 do not (`jb`, the
+# `jmp` at 0x21140); w0 a zero pointer (nothing stored); w5 side 2 reads 0x1077B0 (a `xor edx,edx; mov
+# dl,..` index: no `& 1`).
+P2_SEED_UNC = {E3_SLOT + 0x52: b"\x52\x53\x54"}
+
+
+def p2_21114(cid, side, ptrs, char):
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0},
+                {**P2_SEED_UNC, E3_REC + 0x51: bytes([side]), DS_SLOTS - 8: b"".join(le32(v) for v in ptrs),
+                 E3_REC2 + 0x7A: bytes([char])})
+
+
+P2_SPECS += [
+    Spec("fighter_15478", 0x15478, [
+        Case("u0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, P2_SEED_UNC),
+        Case("u1", {"eax": E3_SLOT, "edx": E3_REC2, "ebx": 1}, {E3_SLOT + 0x52: b"\x09\x09\x09"}),
+    ], calls=(HIT_B,), eax_mask=0),
+    Spec("fighter_3dcec", 0x3DCEC, [
+        Case("u0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, P2_SEED_UNC),
+        Case("u1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1}, {**P2_SEED_UNC, 0xC8CD4: le32(0x000E1234)}),
+    ], calls=(HIT_B,), eax_mask=0),
+    Spec("fighter_21114", 0x21114, [
+        p2_21114("w0", 0, (0, E3_REC2, 0, 0), 1),
+        p2_21114("w1", 0, (E3_REC2, 0, 0, 0), 1),
+        p2_21114("w2", 1, (0, E3_REC2, 0, 0), 6),
+        p2_21114("w3", 1, (0, E3_REC2, 0, 0), 0),
+        p2_21114("w4", 0, (E3_REC2, 0, 0, 0), 2),
+        p2_21114("w5", 2, (0, 0, E3_REC2, 0), 7),
+        p2_21114("w6", 0, (E3_REC2, 0, 0, 0), 5),
+    ], calls=(HIT_B,), eax_mask=0, mutants=("@mutant", "@side")),
+]
+
+# 0x34D8C (hit_flash_pair): EAX = side, a plain `ret`; it pushes EBX and EDX and pops both (record §P2.6).
+FLASH = E.Call(0x34D8C, ("eax",))
+
+
+# The context-built move callbacks (record §P2.6) read EBX (side) alone: 0x33950(side) runs on both sides
+# (allow) and they store into ctx[2], the side's own slot DS_SLOTS + side * 0x94, not the EAX slot. Both slots'
+# records are SLOT_PTRS; the two slots' characters differ (5 and 3), so a port that reads the other slot's
+# character differs; every field written carries a sentinel (+0x0C..+0x1F, +0x41/+0x42, +0x52..+0x57).
+def p2_ctx_case(cid, side, extra=None):
+    own = DS_SLOTS + side * 0x94
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_OUT, "ebx": side},
+                {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+                 own + 0x0C: b"".join(le32(v * 0x01010101) for v in (0x0C, 0x10, 0x14, 0x18, 0x1C)),
+                 own + 0x41: b"\x41\x42", own + 0x52: b"\x52\x53\x54\x55\x56\x57", **(extra or {})})
+
+
+# 0x22938: the other slot's (ctx[3]) +0x42 bit 4 refuses (t0, 0x10 alone; t1/t2 0xEF, every other bit); the
+# per-side words 0x104754/0x104758 and the floats 0x104738 (both sides' in one poke each) carry sentinels.
+P2_22938_SEED = {0x104754: b"\x54\x47\x56\x47\x58\x47\x5a\x47", 0x104738: b"\x38\x47\x00\x00\x3c\x47\x00\x00"}
+P2_SPECS += [
+    Spec("fighter_21374", 0x21374, [p2_ctx_case("s0", 0), p2_ctx_case("s1", 1)],
+         allow_calls=(0x33950,), calls=(HIT_B,), eax_mask=0),
+    Spec("fighter_22938", 0x22938, [
+        p2_ctx_case("t0", 0, {**P2_22938_SEED, DS_SLOTS + 0x94 + 0x42: b"\x10"}),
+        p2_ctx_case("t1", 0, {**P2_22938_SEED, DS_SLOTS + 0x94 + 0x42: b"\xef"}),
+        p2_ctx_case("t2", 1, {**P2_22938_SEED, DS_SLOTS + 0x42: b"\xef"}),
+    ], allow_calls=(0x33950,), calls=(HIT_B, FLASH), eax_mask=0, mutants=("@mutant", "@order")),
+]
+
+# 0x18C14 (fighter_18c14): EAX = side, EDX = the 16 flag bytes (a buffer on the caller's stack: compared by value,
+# the four dwords at EDX, record §P2.7), EBX/ECX = the two box tables; a plain `ret`; it clobbers EBX, EDX and
+# EBP (E.callee_clobbers). 0x18BD4 fills the flags (16 bytes of 2 at EAX, a leaf) and runs on both sides.
+CHECKS = E.Call(0x18C14, ("eax", "[edx]", "[edx+4]", "[edx+8]", "[edx+12]", "ebx", "ecx"),
+                clobbers=("ebx", "edx", "ebp"))
+
+
+# The slot +0x18 hooks (record §P2.7) run as 0x19020 calls them at 0x1903F: EAX = side; 0x19048 tests the whole
+# EAX (`test eax,eax`): mask 0xFFFFFFFF, and the 0x18C14 stub's EAX (returned as is) varies per case. The side's
+# slot (ctx[2]) is DS_SLOTS + side * 0x94; 0x2116C bounds its word +0x88 by the words 0xA81AC (1) and 0xA81AE
+# (3), signed (`jl`/`jle`); k4 pokes the bounds to -16 and 16 with the word -1, where an unsigned compare
+# returns 1 without the call.
+def p2_2116c(cid, side, w88, extra=None, stub=None):
+    return Case(cid, {"eax": side}, {**SLOT_PTRS, DS_SLOTS + side * 0x94 + 0x88: le32(w88)[:2], **(extra or {})},
+                {0x18C14: stub} if stub is not None else {})
+
+
+# 0x22510 bounds the side's word 0x104758 (the high half of the dword at 0x104756 + 2 * side, `sar 0x10`) by
+# 0xD..0x14 (`jg`/`jge`); both sides' words in one poke.
+def p2_22510(cid, side, w, stub=None):
+    words = [0x5858, 0x5A5A]
+    words[side] = w
+    return Case(cid, {"eax": side}, {**SLOT_PTRS, 0x104758: le32(words[0])[:2] + le32(words[1])[:2]},
+                {0x18C14: stub} if stub is not None else {})
+
+
+P2_SPECS += [
+    Spec("fighter_2116c", 0x2116C, [
+        p2_2116c("k0", 0, 4), p2_2116c("k1", 0, 3, stub=0), p2_2116c("k2", 1, 1, stub=0x12345678),
+        p2_2116c("k3", 1, 0), p2_2116c("k4", 0, 0xFFFF, {0xA81AC: b"\xf0\xff\x10\x00"}, stub=7),
+    ], allow_calls=(0x33950, 0x18BD4), calls=(CHECKS,), mutants=("@mutant", "@unsigned", "@eax")),
+    Spec("fighter_22510", 0x22510, [
+        p2_22510("j0", 0, 0x15), p2_22510("j1", 0, 0x14, 0), p2_22510("j2", 1, 0xD, 0x9ABCDEF0),
+        p2_22510("j3", 1, 0xC), p2_22510("j4", 0, 0xFFFF),
+    ], allow_calls=(0x33950, 0x18BD4), calls=(CHECKS,), mutants=("@mutant", "@ge")),
+]
+
+# The callees the slot +0x1C callbacks stub (record §P2.8), args from their bytes, clobbers from
+# E.callee_clobbers: 0x18AF8 takes nothing (`xor eax,eax; call 0x18b04`); 0x39834 EAX = side, EDX = a byte;
+# 0x39A10 EAX = rec, EDX = the word (`movsx ebx,dx`); 0x3C208 EAX = side, EDX = the distance; 0x3C358 EAX = side
+# (it pushes EDX and loads it from EAX before any read); 0x22404 EAX = side. All plain `ret`.
+# FACING over-declares: 0x18AF8 preserves EBX/ECX/EDX (0x18B04 pushes them, the epilogue at 0x18AEF pops them).
+# That is the safe direction here, but a future 0x3C208 row that stubs FACING would fail falsely, because
+# 0x3C24D tests EDX after it: declare no clobbers there.
+FACING = E.Call(0x18AF8, (), clobbers=("ebx", "ecx", "edx"))
+POSE = E.Call(0x39834, ("eax", "edx"), clobbers=("edx", "ebp"))
+TIMER = E.Call(0x39A10, ("eax", "edx"), clobbers=("edx",))
+PLACE = E.Call(0x3C208, ("eax", "edx"), clobbers=("edx",))
+HOLD = E.Call(0x3C358, ("eax",))
+ARM404 = E.Call(0x22404, ("eax",))
+
+
+# The slot +0x1C callbacks (record §P2.8) run as 0x193B0 calls them at 0x19505: EAX = side; 0x19508 loads
+# `mov eax,[esp+8]`: mask 0. The slots' bytes +0x52..+0x5F carry different sentinels (slot 0 0x52.., slot 1
+# 0xD2..: +0x5F is 0x211F0's byte for 0x39834, so a read of the other slot's differs); the characters 5 (slot 0)
+# and 3 (slot 1) differ. `dist` pokes the word 0xA82D8 + 2 * 3 (the 0xA82D6 dword's high half for character 3,
+# `sar 0x10`) negative, where a zero-extended read differs; `zext` pokes 0xA81B0 + 2 * 3 (0x211F0's word for
+# character 3, `xor edx,edx; mov dx`) to 0xF000, where a sign-extended read differs.
+def p2_1c(cid, side, dist=None, zext=None):
+    pokes = {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+             DS_SLOTS + 0x52: bytes(range(0x52, 0x60)), DS_SLOTS + 0x94 + 0x52: bytes(range(0xD2, 0xE0)),
+             DS_SLOTS + 0x10: le32(0x10101010), DS_SLOTS + 0x94 + 0x10: le32(0x10101010)}
+    if dist is not None:
+        pokes[0xA82D8 + 2 * 3] = le32(dist)[:2]
+    if zext is not None:
+        pokes[0xA81B0 + 2 * 3] = le32(zext)[:2]
+    return Case(cid, {"eax": side}, pokes)
+
+
+P2_SPECS += [
+    Spec("fighter_22404", 0x22404, [p2_1c("a0", 0), p2_1c("a1", 1), p2_1c("a2", 0, 0xF000)],
+         allow_calls=(0x33950,), calls=(ANIM_BEGIN, HIT_A, PLACE), eax_mask=0, mutants=("@mutant", "@signed")),
+    Spec("fighter_211f0", 0x211F0, [p2_1c("b0", 0), p2_1c("b1", 1), p2_1c("b2", 0, None, 0xF000)],
+         allow_calls=(0x33950,), calls=(FLASH, HIT_B, HIT_A, FACING, PLACE, POSE, HOLD, TIMER, VOICE), eax_mask=0,
+         mutants=("@mutant", "@order", "@zext", "@slot")),
+    Spec("fighter_22588", 0x22588, [p2_1c("d0", 0), p2_1c("d1", 1), p2_1c("d2", 0, 0xF000)],
+         allow_calls=(0x33950,), calls=(FACING, FLASH, ARM404, HOLD, PLACE, TIMER, VOICE), eax_mask=0,
+         mutants=("@mutant", "@order")),
+]
+
+# 0x36870 (fighter_36870): EAX = rec, a plain `ret`; it clobbers ESI, EDI and EBP (E.callee_clobbers).
+ANIM54 = E.Call(0x36870, ("eax",), clobbers=("esi", "edi", "ebp"))
+
+
+# The slot +0x0C callbacks 0x21374 and 0x22938 store (record §P2.9) run as 0x3531C case 7 calls them (0x35431:
+# EAX = slot, EDX = rec, EBX = side; `xor eax,eax` at 0x35434): mask 0. Both read EBX alone for the context.
+# 0x212CC: the own slot's +0x57 (state), word +0x88 (against 0xA81AE's 3, signed) and +0x8A; in state 1 the
+# pointer DS_001077A8[rec+0x51] (EDX's record, E3_OUT here: not ctx[4]) and its +0x7A (1, 6 or another).
+def p2_212cc(cid, st, w88=0x0100, ridx=0, ptrs=(E3_REC2, 0), char=1):
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_OUT, "ebx": 0},
+                {**SLOT_PTRS, DS_SLOTS - 8: b"".join(le32(v) for v in ptrs), E3_REC2 + 0x7A: bytes([char]),
+                 E3_OUT + 0x51: bytes([ridx]), DS_SLOTS + 0x52: bytes([0x52, 0x53, 0x54, 0x55, 0x56, st]),
+                 DS_SLOTS + 0x88: le32(w88)[:2] + b"\x8a"})
+
+
+def f32(x):
+    import struct
+    return struct.pack("<f", x)
+
+
+# 0x22638: cmd = the two sides' command words DS_001088E0 (own, other); lat/cnt = the side's words 0x104754 and
+# 0x104758 (the other side's carry sentinels); fl = the side's float 0x104738; o53/o5d/o63 = the other slot's
+# +0x53/+0x5D/+0x63 (its character 3 for side 0, whose own slot is character 5; for side 1 the other is slot 0,
+# character 5: the words 0xA82EC[3] = 4 and 0xA8300[3] = 0x78, 0xA8300[5] = 0x6E); st = the own +0x57.
+def p2_22638(cid, side, st, cmd=(0, 0), lat=0, cnt=0x200, fl=2.0, o53=0x0A, o5d=7, o63=0, stub=None):
+    own, oth = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    words = [cmd[0], cmd[1]] if side == 0 else [cmd[1], cmd[0]]
+    lw, cw = [0x5454, 0x5656], [0x5858, 0x5A5A]
+    lw[side], cw[side] = lat, cnt
+    fls = [f32(1.5), f32(2.5)]
+    fls[side] = f32(fl)
+    oth_bytes = bytearray(range(0x53, 0x64))
+    oth_bytes[0] = o53
+    oth_bytes[0x5D - 0x53] = o5d
+    oth_bytes[0x63 - 0x53] = o63
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_OUT, "ebx": side},
+                {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+                 0x1088E0: le32(words[0])[:2] + le32(words[1])[:2],
+                 0x104754: b"".join(le32(v)[:2] for v in lw + cw), 0x104738: fls[0] + fls[1],
+                 own + 0x52: bytes([0x52, 0x53, 0x54, 0x55, 0x56, st]), own + 0x8A: b"\x8a",
+                 oth + 0x53: bytes(oth_bytes)}, {} if stub is None else stub)
+
+
+P2_SPECS += [
+    # m2: the word +0x88 = -1 against 3: signed `jge` returns; unsigned it would step +0x57. m3/m4/m5: state 1
+    # with the pointer's character 1, 6 and 2; m6 a zero pointer; m9 rec+0x51 = 1 reads DS_001077AC.
+    Spec("fighter_212cc", 0x212CC, [
+        p2_212cc("m0", 0, 0x0004), p2_212cc("m1", 0, 0x0003), p2_212cc("m2", 0, 0xFFFF),
+        p2_212cc("m3", 1, char=1), p2_212cc("m4", 1, char=6), p2_212cc("m5", 1, char=2),
+        p2_212cc("m6", 1, ptrs=(0, E3_REC2)), p2_212cc("m7", 2), p2_212cc("m8", 0xFF),
+        p2_212cc("m9", 1, ridx=1, ptrs=(0, E3_REC2), char=6),
+    ], allow_calls=(0x33950,), calls=(HIT_B,), eax_mask=0, mutants=("@mutant", "@signed", "@side")),
+    # p0..p15 (record §P2.9): the frame count's step and the two bounds, the +0x5D drain (the other side's stick
+    # or its +0x63) and floor, the float's -0.7/+0.1 with the 1.0 and 3.0 clamps, the latch, and each state.
+    # p14: the count 0x8000 + 1 is negative (signed: 0x78 > it, +0x5D floored to 1); p15: +0x5D = 0x80 is 128
+    # against 4 (a signed byte would read -128 and zero it). pG: the count 0x71 lies between the own character 5's
+    # 0xA8300 word (0x6E) and the other's character 3 (0x78): only the other slot's floors +0x5D (0) to 1.
+    Spec("fighter_22638", 0x22638, [
+        p2_22638("p0", 0, 0, cnt=0x14, o5d=0, fl=2.0),
+        p2_22638("p1", 0, 0, cmd=(1, 0x10), cnt=0x13, o5d=9, fl=1.5),
+        p2_22638("p2", 0, 1, cmd=(0x0C, 0), o5d=3, o63=1, fl=2.95),
+        p2_22638("p3", 0, 2, o5d=0),
+        p2_22638("p4", 0, 2, o53=0x09),
+        p2_22638("p5", 0, 2, cmd=(1, 0), fl=2.0),
+        p2_22638("p6", 0, 2, cmd=(4, 0)),
+        p2_22638("p7", 0, 2, cmd=(2, 0)),
+        p2_22638("p8", 0, 2, cmd=(8, 0)),
+        p2_22638("p9", 0, 2),
+        p2_22638("pA", 0, 2, lat=6),
+        p2_22638("pB", 0, 3),
+        p2_22638("pC", 0, 8),
+        p2_22638("pD", 1, 2, cmd=(1, 0), fl=1.2, stub={0x2C3FC: 0}),
+        p2_22638("pE", 0, 0, cnt=0x8000, o5d=0),
+        p2_22638("pF", 1, 3, cmd=(0, 0x20), o5d=0x80),
+        p2_22638("pG", 0, 3, cnt=0x70, o5d=0),
+    ], allow_calls=(0x33950,), calls=(ANIM_BEGIN, ANIM54, VOICE), eax_mask=0,
+       mutants=("@mutant", "@signed", "@byte5d", "@char")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -667,7 +983,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------
