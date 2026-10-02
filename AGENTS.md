@@ -227,11 +227,11 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   `make gp-modes-oracle` (in `make verify`) applies the same two ratchets to the U8 captures `data/k11-captures/gp-u8-*` (the other START MENU rows and the attract start), each with `GP_MODES_<ID>_*` values and provenance in the Makefile and an evidence check (`tools/gp_modes.py`) that the capture reached its row; each skips without its capture. Record gameplay-u8 §U8.23 has the table of N, F and the window start per scenario and the named gaps: N and F are the end of the port's replay in six of the seven (RA diverges at f=0x7B7 on the unported `0x14EF8`/`0x14F50`, whose port drops its two miss rows and re-measures its N and F); nothing past them is covered, ENDURANCE's fight is a named gap, and the damaged-frame proof depends on the frame chosen.
   `make gp-win-oracle`/`gp-ending-oracle` (plan 2026-10-02-gameplay-u9-u10, record §W.9) reach the
   win and the ending under memory pokes (a `poke` step writes bytes in the spin; the port replays
-  the capture's `W` records as `poke` lines at the same frame). Their claim is as narrow, and what
+  the capture's `W` records as `poke` lines at W.f + 1, the iteration that reads them, record §W.8). Their claim is as narrow, and what
   a poke replaced is not claimed: the KO by hits, the six earlier won matches, the final's death
-  animations. Only character 0's ending is captured. `gp-u10-ending` runs DOSBox-X with
+  animations. Only character 0's ending is captured. Both frame ratchets stop at round 1's mode-8 entry (f=0x48A), so nothing is compared pixel by pixel from there on (the conquered-lands screen, WORLD DOMINATION, the final, the ending in mode 0x1F, the high-score entry), and past the trace pins (U9 f=0x866, U10 f=0x849) the only claims are the WIN fields (to f=0xC5A / 0x1602) and the milestone frames, most of which are mode changes driven by replayed pokes and do not check which opponent is fought. `gp-u10-ending` runs DOSBox-X with
   `memsize=64`, a harness value (the original ran out of memory in the poked final at 16 MB,
-  record §W.13). The frame ratchets of both stop at the mode-8 entry (U9 N 346, U10 N 331), where
+  record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The frame ratchets of both stop at the mode-8 entry (U9 N 346, U10 N 331), where
   the screen holds one frame about 43 ms and the two-frame splice model cannot express the
   catch-up: a comparison-model limit, not a port divergence (§W.12, §W.14). A P batch that ports
   a target in a miss set re-measures and re-pins (U9: `0x400E0`/`0x21084` P4, `0x21044` P5; U10:

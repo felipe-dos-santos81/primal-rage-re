@@ -729,7 +729,7 @@ gp-modes-one: build
 # record docs/superpowers/plans/2026-10-02-gameplay-u9-u10-derivations.md): the win path
 # (data/k11-captures/gp-u9-win) and the ending (data/k11-captures/gp-u10-ending), each reached
 # under memory pokes (gp_session's ('poke', ...) steps; the port replays the capture's W records
-# as `poke` lines at the same frames). The tool tests always run; with a capture present it must
+# as `poke` lines at W.f + 1, the iteration that reads them, record §W.8). The tool tests always run; with a capture present it must
 # first show the raw-derived path (tools/gp_win.py check, record §W.9), then the frame and trace
 # ratchets (gp_compare), the milestone ratchet (the leading milestones the port reaches at the
 # capture's frame) and the win-fields trace ratchet (gp_session.WIN_FIELDS). Skips without the
@@ -775,6 +775,9 @@ GP_WIN_CAPTURE_FRAMES = 2521
 #   "trace: first difference f=849 (2121) in rng: capture 5A8FCA6A, port A854BFB9"
 #   "path: 0 not reproduced through 29; ratchet N 0 ok (every item is explained: N = 30 is the exact pin)"
 #   "win: first difference f=1602 (5634) in b0c: capture 1, port 0"
+# memsize: gp-u10-ending runs DOSBox-X with memsize=64 (a harness value, record §W.13); the original's
+# memory growth over the poked final is not root-caused, so memsize=64 claims nothing about the game's
+# memory need.
 # MIN_FIRST 331: a long frame at the mode-8 entry, then the catch-up, as gp-u9-win's 346
 # (window.txt: capture 330 is raw 2828, 331 is raw 2831; raws 2829-2830 repeat 2828, so the
 # screen held port 216, f=0x483, the first mode-8 frame, for three capture frames, ~43 ms).
@@ -807,7 +810,6 @@ GP_WIN_KEEP ?=
 .PHONY: gp-win-oracle gp-ending-oracle gp-win-one
 gp-win-oracle: build ## Gameplay U9 oracle: win-path evidence, frame/trace/milestone/win ratchets on data/k11-captures/gp-u9-win (skips without it)
 	@echo "== gameplay oracle: gp-u9-win (the win path under pokes; plan U9/U10) =="
-	$(PYTHON) -m unittest tools.tests.test_gp_win
 	@$(MAKE) --no-print-directory gp-win-one scenario=gp-u9-win GP_WIN_ID=WIN
 gp-ending-oracle: build ## Gameplay U10 oracle: ending evidence, frame/trace/milestone/win ratchets on data/k11-captures/gp-u10-ending (skips without it)
 	@echo "== gameplay oracle: gp-u10-ending (the ending under pokes; plan U9/U10) =="
