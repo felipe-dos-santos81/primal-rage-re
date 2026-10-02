@@ -108,7 +108,7 @@ unless shown):
 | `VOICE` (E3) | `0x2C3FC` `sound_voice(id)` | `eax` | none |
 | `SPAWN` (E3) | `0x2AE14` `actor_spawn(desc, a2, a3, a4, a5)` | `eax edx ecx ebx s0`, `ret 4` | `ebx ecx edx` |
 | `BIT15` (P1) | `0x1A570` `fighter_actor_bit15_clear(side)` | `eax` | none |
-| `FLASH` (new) | `0x34D8C` `hit_flash_pair(side)` | `eax` (`mov ebx,eax`; pushes EBX/EDX, pops both) | none |
+| `FLASH` (new) | `0x34D8C` `hit_flash_pair(side)` | `eax` (`mov ebx,eax`; pushes EBX/EDX, pops both); its EAX is unread by every P2 caller (the next instruction loads EAX: `0x229BE` `mov eax,[esp+8]` in `0x22938`, `0x2120A` `mov eax,[esp+0x10]` in `0x211F0`, `0x225A3` `mov eax,[esp]` in `0x22588`) | none |
 | `CHECKS` (new) | `0x18C14` `fighter_18c14(side, flags, box_a, box_b)` | `eax [edx] [edx+4] [edx+8] [edx+12] ebx ecx` (§P2.7) | `ebx edx ebp` |
 | `FACING` (new) | `0x18AF8` `fighter_18af8()` | none (`xor eax,eax; call 0x18b04`) | `ebx ecx edx` |
 | `POSE` (new) | `0x39834` `fighter_39834(side, b)` | `eax edx` | `edx ebp` |
@@ -145,7 +145,10 @@ Every store precedes the voice (the memory at the voice call holds them) except 
 **Cases** (`p2_guarded`): `g0` slot+8 = `0x01000000` (non-zero in its high byte only: a port testing a byte runs the
 body; `fighter_237d0@guard` is caught by `g0` alone); `g1` the body, +0x5F = 0x22; `g2` the body, +0x5F = 0x80, side
 1, the voice stub's AL = 0 (`mov al,1` overwrites it; mask 0 anyway). Sentinels on +0x0C, +0x18, +0x1C, +0x52..+0x57,
-+0x5F, +0x64 (`P2_SEED`); `0x3D10C` also seeds both words `0x1080AC` and takes rec+0x51 = 0, 0, 1.
++0x5F, +0x64 (`P2_SEED`); `0x3D10C` also seeds both words `0x1080AC` and the words `0x1081AC`/`0x107FAC` and takes
+five cases (`P2_3D10C_R51`): rec+0x51 = 0, 0, 1 in g0..g2, 1 with side 0 in g3 (a port indexing by side writes the
+wrong word: `@side`, caught by g3 alone) and 0x80 with side 0x80 in g4 (the `movzx` at `0x3D113` reaches `0x1081AC`,
+a `movsx` `0x107FAC`: `@sext`, caught by g4 alone; Task 2 fix round 1).
 
 ## §P2.4 Character 3's reactions 0x20/0x21, their stream targets, and U8's right-arcade (Task 3)
 
@@ -350,8 +353,9 @@ Named gaps and limits:
 - **x87** (§P2.9).
 - **One stub EAX per case** (§P1.12): `0x14FF8`/`0x150AC` call `0x2AE14` once, so not affected.
 - **No capture reaches** `0x2116C 0x22510 0x211F0 0x22588 0x22404 0x212CC 0x22638 0x21374 0x22938` or the Task 2/4
-  callbacks: no gp miss set held one (§P2.11); the U8 right-arcade replay is the one capture that exercises a P2
-  member (`0x14EF8`, its stream targets).
+  callbacks other than `0x2381C`: no gp miss set held one (§P2.12). Two replays exercise a P2 member: U8's
+  right-arcade (`0x14EF8`, its stream targets) and, after the rebase onto `b16922d`, U9/U10's `gp-u10-ending`
+  (`0x2381C`, CHAOS's reaction `0x25` at f = `0x848`; record gameplay-u9-u10 §W.16).
 - E3's and P1's limits stand: seeds are hand pokes; the memory at a call is mem[] only; the callee column is one level
   deep.
 
@@ -371,33 +375,46 @@ outside E2). `0x22404` precedes `0x224EC` (P7) and is now ported.
   `0x400E0` (P4), `0x21044` (P5), `0x21084` (P4) and `0x3DA50` (P5): **none is a P2 member**. Its scenarios fight
   with characters whose reactions may reach P2 callbacks; if they do, the port now runs them where it skipped them,
   and U9/U10's measured pins (taken on its own base) must be re-measured after P2 merges, never predicted.
+  **Measured (Task 9, after the rebase onto main `b16922d`, where U9/U10 had merged):** U10's measured set (§W.14)
+  held `0x2381C`, a P2 member. Its replay now records `0x3DA50` (P5) and `0x475EC` (P3) instead (the final's
+  opponent order equals the capture's), and its trace and WIN-field pins rise to the replay's end (2121 -> 9954,
+  5634 -> 9954); frames N 331, window 83, milestones 30 unchanged. gp-u9-win's set and pins hold. Record
+  gameplay-u9-u10 §W.16 has the measurements and the +1 failures.
 
 ## §P2.13 Results
 
-The replay's per-task gates (`make diff-verify entry-triage` with scratch image paths; `PR_ORACLE_REQUIRED=1
-./build/run_tests` "all checks passed" after each; the Python suite 156 tests at the base, 157 from Task 2, 159 from
-Task 6):
+The implementation's per-task gates, as measured (`make diff-verify entry-triage` with scratch image paths;
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` "all checks passed" after each; the Python suite 156 tests at the base, 157
+from Task 2, 159 from Task 6). Commits are on `reverse-p2` before the rebase onto `b16922d` (after it, in order:
+`4406259 4f7d2e6 dfd8367 5b7acae e9aaf9e a0f74b1 09a64ac d5c0743 f48ad17 2722018 de28367 20e8f4a`). The planner's
+replay (§P2.1's prototype) measured the same E2 lines and fewer mutants (55, 60, 64, 67, 72, 78, 84): the review
+fix rounds added `fighter_3d10c@side`/`@sext` (Task 2), `fighter_211f0@zext`/`@slot` (Task 7) and `fighter_22638@char`
+(Task 8), five in all; each later row carries the earlier fixes'.
 
-| after | diff-verify counter | entry-triage |
-|---|---|---|
-| `1085402` | `30/30 functions VERIFIED; 47/47 mutants detected; 1 named gaps; 1/18 rows with callees closed (12 have none)` | `313 / 182`; supplement 28 unported; voice `40 / 75 / 19` |
-| Task 2 | `37/37 ...; 55/55 ...; 2/24 ... (13 have none)` | `307 / 188`; callbacks `16 / 55`; stubs 70; voice `35 / 80 / 19` |
-| Task 3 | `42/42 ...; 60/60 ...; 2/29 ... (13 have none)` | `302 / 193`; callbacks `14 / 57`; animation targets `54 / 58`; stubs 65; voice `33 / 82 / 19` |
-| Task 4 | `45/45 ...; 64/64 ...; 5/32 ... (13 have none)` | `299 / 196`; callbacks `11 / 60`; stubs 62 |
-| Task 5 | `47/47 ...; 67/67 ...; 6/34 ... (13 have none)` | `297 / 198`; callbacks `9 / 62`; stubs 60 |
-| Task 6 | `49/49 ...; 72/72 ...; 6/36 ... (13 have none)` | supplement 26 unported |
-| Task 7 | `52/52 ...; 78/78 ...; 6/39 ... (13 have none)` | supplement 23 unported; voice `31 / 84 / 19` |
-| Task 8 | `54/54 functions VERIFIED; 84/84 mutants detected; 1 named gaps; 7/41 rows with callees closed (13 have none)` | `297 / 198`; supplement 22 unported; voice `31 / 84 / 19` |
+| after | commit | diff-verify counter | entry-triage |
+|---|---|---|---|
+| base | `1085402` | `30/30 functions VERIFIED; 47/47 mutants detected; 1 named gaps; 1/18 rows with callees closed (12 have none)` | `313 / 182`; supplement 28 unported; voice `40 / 75 / 19` |
+| Task 2 | `46b1d2a` | `37/37 ...; 55/55 ...; 2/24 ... (13 have none)` | `307 / 188`; callbacks `16 / 55`; stubs 70; voice `35 / 80 / 19` |
+| Task 3 | `835db45` | `42/42 ...; 60/60 ...; 2/29 ... (13 have none)` | `302 / 193`; callbacks `14 / 57`; animation targets `54 / 58`; stubs 65; voice `33 / 82 / 19` |
+| Task 2 fix | `fd2b8dd` | `42/42 ...; 62/62 ...; 2/29 ... (13 have none)` | `302 / 193` |
+| Task 4 | `e40a43c`, `50cd720` | `45/45 ...; 66/66 ...; 5/32 ... (13 have none)` | `299 / 196`; callbacks `11 / 60`; stubs 62 |
+| Task 5 | `aae84c6` | `47/47 ...; 69/69 ...; 6/34 ... (13 have none)` | `297 / 198`; callbacks `9 / 62`; stubs 60 |
+| Task 6 | `b0ed9ac` (fix `8fe3347`) | `49/49 ...; 74/74 ...; 6/36 ... (13 have none)` | `297 / 198`; supplement 26 unported |
+| Task 7 | `9205986` | `52/52 ...; 80/80 ...; 6/39 ... (13 have none)` | `297 / 198`; supplement 23 unported; voice `31 / 84 / 19` |
+| Task 7 fix | `ffbbd35` | `52/52 ...; 82/82 ...; 6/39 ... (13 have none)` | unchanged |
+| Task 8 | `5362482` | `54/54 ...; 88/88 ...; 7/41 ... (13 have none)` | `297 / 198`; supplement 22 unported; voice `31 / 84 / 19` |
+| Task 8 fix | `d59b61f` | `54/54 functions VERIFIED; 89/89 mutants detected; 1 named gaps; 7/41 rows with callees closed (13 have none)` | `297 / 198`; supplement 131 (22 unported, 0 stale); voice `31 / 84 / 19` |
 
 The closed rows: `0x22A00` (Task 2: its one callee `0x3C4CC` has an E3 row), `0x15478`, `0x3DCEC`, `0x21114` (Task
 4, the same), `0x21374` (Task 5: `0x3C4CC` and the allowed `0x33950`, which has its own E3 row), `0x212CC` (Task 8,
 the same). The rows (cases, blocks hit/total), all `VERIFIED`, none with an unhit block: `237d0` 3 3/3, `2381c` 3
-3/3, `3dadc` 3 3/3, `3db34` 3 3/3, `3d10c` 3 3/3, `22a00` 3 3/3, `229fc` 1 1/1, `14ef8` 3 3/3, `14f50` 3 3/3,
+3/3, `3dadc` 3 3/3, `3db34` 3 3/3, `3d10c` 5 3/3, `22a00` 3 3/3, `229fc` 1 1/1, `14ef8` 3 3/3, `14f50` 3 3/3,
 `14fa8` 2 3/3, `14ff8` 5 9/9, `150ac` 5 9/9, `15478` 2 1/1, `3dcec` 2 1/1, `21114` 7 10/10, `21374` 2 1/1, `22938` 3
-3/3, `2116c` 5 5/5, `22510` 5 5/5, `22404` 3 1/1, `211f0` 2 1/1, `22588` 3 1/1, `212cc` 10 16/16, `22638` 16 36/36.
+3/3, `2116c` 5 5/5, `22510` 5 5/5, `22404` 3 1/1, `211f0` 3 1/1, `22588` 3 1/1, `212cc` 10 16/16, `22638` 17 36/36 (as the final gate's table prints them;
+the planner's 3, 2 and 16 predate the fix rounds' g3/g4, b2 and pG).
 What alone catches each mutant is pinned by `test_each_p2_mutant_is_caught_by_what_it_breaks` (`P2_KINDS`), and the
-cases that alone catch the boundary mutants by its case lists (`g0`, `u1`, `w0..w6`, `k4`, `j1`, `k1 k2 k4`, `a2`,
-`m2`, `pE`, `pF`). Every unit check's mutation proof (deleting a registration, changing a stored constant or a
+cases that alone catch the boundary mutants by its case lists (`g0`, `g3`, `g4`, `u1`, `w0..w6`, `k4`, `j1`, `k1 k2
+k4`, `a2`, `b2`, `b0 b1 b2`, `m2`, `pE`, `pF`, `pG`). Every unit check's mutation proof (deleting a registration, changing a stored constant or a
 bound) fails the suite; the harness mutations (the `[reg+N]` offset dropped, `esp` accepted, the `0x227BC`
 resolution removed) fail their Python tests; the `fn_register` skip removed makes the run abort (`exit -6`, `table
 full`).
@@ -414,3 +431,63 @@ gp-u5-charsel 516 / 1513, gp-u6-moves-b 1005 / 2262 / moves 2949, gp-keys-fight 
 `0x193B0`; every `call [r/m]` reading +0x0C/+0x18/+0x1C or `0x1077C8`); `callee_clobbers` of every stub (§P2.2's
 table, re-derived by `test_each_stub_declares_the_registers_its_callee_clobbers`); the image tables quoted in
 §P2.4-§P2.9; the `0x18C14` call-tree size; the stream probe of §P2.1.
+
+**The implementation's closure (Task 9).** Commit range `090b41d..` on `reverse-p2`, rebased onto main `b16922d`
+(U9/U10 merged) without a conflict; the E2 table regenerated after the rebase was byte-identical (no rebase-fix
+commit). The U10 re-pin is `7c5a483` (record gameplay-u9-u10 §W.16; §P2.12 above). The final gate, on `1ae23a2` plus
+this commit's docs (docs only), `make verify` with the plan's parallel-safe overrides including `E2_IMAGE`, log
+`/tmp/pr_p2_final.log`, 26 min 32 s (16:27:39 to 16:54:11): `EXIT=0`, the 45 oracle lines equal to
+`oracle-lines-base.txt` (`ORACLES-EQUAL`), `make audio-render` cmp-equal to `before-t2.wav` (`WAV-SAME`), no `FAIL`
+line in the log, and
+
+```
+diff-verify: 54/54 functions VERIFIED; 89/89 mutants detected; 1 named gaps; 7/41 rows with callees closed (13 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 297 unported, 198 ported; supplement 131 (22 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 31 in unported code, 84 in ported code, 19 nowhere
+771 1203 64
+731 731 100 (portable: excludes 81 host-owned/deferred and runtime >= 5D000)
+gp_compare: gp-idle-loss: frames: first unexplained 2064, ratchet N 2064 ok
+gp_compare: gp-idle-loss: trace: 0 differing through 8319; ratchet N 8320 ok
+gp_compare: gp-u5-charsel: frames: first unexplained 516, ratchet N 516 ok
+gp_compare: gp-u5-charsel: trace: 0 differing through 1512; ratchet N 1513 ok
+gp_compare: gp-u6-moves-b: frames: first unexplained 1005, ratchet N 1005 ok
+gp_compare: gp-u6-moves-b: trace: first differing 2262, ratchet N 2262 ok
+gp_compare: gp-u6-moves-b: moves: first differing 2949, ratchet N 2949 ok
+gp_keys: gp-keys-fight: effects: first not reproduced 11, ratchet N 11 ok
+gp_compare: gp-twop: frames: first unexplained 612, ratchet N 612 ok
+gp_compare: gp-twop: trace: 0 differing through 1505; ratchet N 1506 ok
+gp_compare: gp-twop: moves: 0 differing through 1505; ratchet N 1506 ok
+gp_compare: gp-u8-right-arcade: frames: first unexplained 1072, ratchet N 1072 ok
+gp_compare: gp-u8-right-arcade: trace: 0 differing through 2273; ratchet N 2274 ok
+gp_compare: gp-u8-left-training: frames: first unexplained 1076, ratchet N 1076 ok
+gp_compare: gp-u8-left-training: trace: 0 differing through 2337; ratchet N 2338 ok
+gp_compare: gp-u8-right-training: frames: first unexplained 1098, ratchet N 1098 ok
+gp_compare: gp-u8-right-training: trace: 0 differing through 2401; ratchet N 2402 ok
+gp_compare: gp-u8-tug-of-war: frames: first unexplained 1107, ratchet N 1107 ok
+gp_compare: gp-u8-tug-of-war: trace: 0 differing through 2465; ratchet N 2466 ok
+gp_compare: gp-u8-handicap: frames: first unexplained 1022, ratchet N 1022 ok
+gp_compare: gp-u8-handicap: trace: 0 differing through 2273; ratchet N 2274 ok
+gp_compare: gp-u8-endurance: frames: first unexplained 278, ratchet N 278 ok
+gp_compare: gp-u8-endurance: trace: 0 differing through 1173; ratchet N 1174 ok
+gp_compare: gp-u8-attract-start: frames: first unexplained 1087, ratchet N 1087 ok
+gp_compare: gp-u8-attract-start: trace: 0 differing through 2017; ratchet N 2018 ok
+gp_win: gp-u9-win: evidence: 8/8 milestones ok
+gp_compare: gp-u9-win: frames: first unexplained 346, ratchet N 346 ok
+gp_compare: gp-u9-win: trace: first differing 2150, ratchet N 2150 ok
+gp_compare: gp-u9-win: path: 0 not reproduced through 7; ratchet N 8 ok
+gp_compare: gp-u9-win: win: first differing 3162, ratchet N 3162 ok
+gp_win: gp-u10-ending: evidence: 30/30 milestones ok
+gp_compare: gp-u10-ending: frames: first unexplained 331, ratchet N 331 ok
+gp_compare: gp-u10-ending: trace: 0 differing through 9953; ratchet N 9954 ok
+gp_compare: gp-u10-ending: path: 0 not reproduced through 29; ratchet N 30 ok
+gp_compare: gp-u10-ending: win: 0 differing through 9953; ratchet N 9954 ok
+```
+
+`python3 tools/port_progress.py` prints `771 1203 64` / `731 731 100`, unchanged. **Deviations from the plan's
+expected output** (each a finding): the mutant counter is 89, not 84 (the five review mutants, table above); the
+case counts of `3d10c`, `211f0` and `22638` are 5, 3 and 17 (corrected in the row list above); and the gate has
+four ratchet lines per U9/U10 scenario the plan did not list, with gp-u10-ending's trace and win pins re-measured
+from 2121/5634 to 9954 (§P2.12, record gameplay-u9-u10 §W.16). Outside P2: `tools.tests.test_title_pin
+test_patches_all_sites_and_nothing_else` fails on this tree and on main (not in `make verify`; title_pin gained
+master-loop draw pins without that test's update), a named issue for the closeout.
+

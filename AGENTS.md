@@ -106,7 +106,10 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   `E.Call` in `tools/diff_verify.py`) opens with `PR_SEAM(0xADDR, args...)` (void) or
   `PR_SEAM_RET(0xADDR, args...)` (`mem.h`): the harness's call seam, inert outside `build/diffrun`.
   The arguments are the C signature's, in order (a pointer into `mem[]` as its offset); the `E.Call`
-  names the original's registers and stack slots in the same order. An allow-mode callee (run on
+  names the original's registers and stack slots in the same order. A callee with no argument opens with
+  `PR_SEAM0(0xADDR)`; a buffer on the caller's stack that the callee cannot run on both sides is passed by
+  value (its bytes as little-endian dwords, the `E.Call` naming `[reg]`, `[reg+N]`; record
+  `2026-10-02-reverse-p2-derivations.md` §P2.7). An allow-mode callee (run on
   both sides and not recorded, such as `0x33950` and `0x339AC`) has no seam. Record
   `2026-10-01-reverse-e3-derivations.md` §E3.3-§E3.5; the checklist is §E3.10.
 - SDL and file/asset I/O live **only** in `port/src/host.c` and `main.c`. New
@@ -224,7 +227,7 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   window start 83 and the `poll.log` sha256 and frame count are pinned; the moves claim is pinned too (N 1506).
   Its claim is as narrow, and it says nothing about the two-player game past the scenario's end; it skips without
   the capture.
-  `make gp-modes-oracle` (in `make verify`) applies the same two ratchets to the U8 captures `data/k11-captures/gp-u8-*` (the other START MENU rows and the attract start), each with `GP_MODES_<ID>_*` values and provenance in the Makefile and an evidence check (`tools/gp_modes.py`) that the capture reached its row; each skips without its capture. Record gameplay-u8 §U8.23 has the table of N, F and the window start per scenario and the named gaps: N and F are the end of the port's replay in six of the seven (RA diverges at f=0x7B7 on the unported `0x14EF8`/`0x14F50`, whose port drops its two miss rows and re-measures its N and F); nothing past them is covered, ENDURANCE's fight is a named gap, and the damaged-frame proof depends on the frame chosen.
+  `make gp-modes-oracle` (in `make verify`) applies the same two ratchets to the U8 captures `data/k11-captures/gp-u8-*` (the other START MENU rows and the attract start), each with `GP_MODES_<ID>_*` values and provenance in the Makefile and an evidence check (`tools/gp_modes.py`) that the capture reached its row; each skips without its capture. Record gameplay-u8 §U8.23 has the table of N, F and the window start per scenario and the named gaps: N and F are the end of the port's replay in all seven (RA reached its end once track P batch 2 ported `0x14EF8`/`0x14F50` and their streams' targets: N 726 -> 1072, F 1978 -> 2274, record 2026-10-02-reverse-p2 §P2.4; EN's end is its 300-frame team-select cut); nothing past them is covered, ENDURANCE's fight is a named gap, and the damaged-frame proof depends on the frame chosen.
   `make gp-win-oracle`/`gp-ending-oracle` (plan 2026-10-02-gameplay-u9-u10, record §W.9) reach the
   win and the ending under memory pokes (a `poke` step writes bytes in the spin; the port replays
   the capture's `W` records as `poke` lines at W.f + 1, the iteration that reads them, record §W.8). Their claim is as narrow, and what
