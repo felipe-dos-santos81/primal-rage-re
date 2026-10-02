@@ -45698,3 +45698,99 @@ static void p3_check_simple(void)
 }
 
 int test_p3_simple(void)        { return u6b_run(p3_check_simple); }
+
+/* §P3.4: 0x47720 and the three callbacks it stores, through their
+ * registrations. The image dwords are evidence lines (the bytes that make
+ * 0x34E2C, 0x3531C, 0x19020 and 0x193B0 reach each address), not port
+ * behaviour. */
+static void p3_check_47720(void)
+{
+    p2_cb_fn f;
+    p2_hook_fn h;
+    p2_side_fn g;
+    u8 fl[16];
+    u32 k, r;
+    CHECK(fn_resolve(0x47720u) == (void (*)(void))fighter_47720, "0x47720 is registered");
+    CHECK(fn_resolve(0x476FCu) == (void (*)(void))fighter_476fc, "0x476FC is registered");
+    CHECK(fn_resolve(0x47648u) == (void (*)(void))fighter_47648, "0x47648 is registered");
+    CHECK(fn_resolve(0x47688u) == (void (*)(void))fighter_47688, "0x47688 is registered");
+    CHECK_EQ_INT((int)DSD(0x000A41A8u), 0x00047720);
+    CHECK_EQ_INT((int)DSD(0x00047754u), 0x000476FC);
+    CHECK_EQ_INT((int)DSD(0x0004775Fu), 0x00047648);
+    CHECK_EQ_INT((int)DSD(0x0004776Au), 0x00047688);
+    CHECK_EQ_INT((int)DSD(0x0004770Du), 0x00047648);
+    CHECK_EQ_INT((int)DSD(0x00047714u), 0x00047688);
+
+    /* 0x47720 with side 0's record (rec+0x51 = 0) while EBX names side 1 and
+     * EAX no slot: slot 0 is armed (9/7 and the three callbacks) and its
+     * record started on 0xECE1C at 2.0; slot 1 keeps its sentinels. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x47720u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSW(0x000ECE1Cu) = 0x12B1u;
+    for (k = 0; k < 2u; k++) {
+        u32 s = k == 0u ? Z_S0 : Z_S1;
+        DSD(s + 0x0Cu) = 0x0C0C0C0Cu;
+        DSD(s + 0x18u) = 0x18181818u;
+        DSD(s + 0x1Cu) = 0x1C1C1C1Cu;
+    }
+    f(0x0A0A0A0Au, Z_R0, 1u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000ECE1C);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), 0x000476FC);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x18u), 0x00047648);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x1Cu), 0x00047688);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x0Cu), 0x0C0C0C0C);
+
+    /* 0x476FC: the record's +0x63 = 4 keeps the slot; 0x80 (128, at least 5)
+     * re-arms +0x18/+0x1C and clears +0x0C. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x476FCu);
+    if (f == NULL) return;
+    for (k = 0; k < 2u; k++) {
+        z_fseed();
+        DSB(Z_R0 + 0x63u) = k == 0u ? 4u : 0x80u;
+        DSD(Z_S0 + 0x0Cu) = 0x0C0C0C0Cu;
+        DSD(Z_S0 + 0x18u) = 0x18181818u;
+        DSD(Z_S0 + 0x1Cu) = 0x1C1C1C1Cu;
+        f(Z_S0, Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_S0 + 0x0Cu), k == 0u ? 0x0C0C0C0C : 0);
+        CHECK_EQ_INT((int)DSD(Z_S0 + 0x18u), k == 0u ? 0x18181818 : 0x00047648);
+        CHECK_EQ_INT((int)DSD(Z_S0 + 0x1Cu), k == 0u ? 0x1C1C1C1C : 0x00047688);
+    }
+
+    /* 0x47648: 0x18C14(side, flags 0 = 1, 1/8 = 0, the rest 2, 0, 0) on the
+     * same seeded state. */
+    h = (p2_hook_fn)(void *)fn_resolve(0x47648u);
+    if (h == NULL) return;
+    z_fseed();
+    r = h(1u);
+    z_fseed();
+    for (k = 0; k < 16u; k++) fl[k] = 2u;
+    fl[0] = 1u;
+    fl[1] = fl[8] = 0u;
+    CHECK_EQ_INT((int)r, fighter_18c14(1u, fl, 0u, 0u));
+
+    /* 0x47688 on side 0 (the fixture's 0x3B298(1, slot 0's +0x5F) returns
+     * 0): slot 1's +0x54 = 0x66 takes 0x3A95C(1, 0xF), which leaves slot 1 in
+     * 0x10/0xA/0 with +0x10 = 0; with +0x54 = 2, 0x39FB0(slot 1) arms the
+     * pose instead (+0x10 = 0x39CC8, +0x54 kept); both end with 0x39A10(the
+     * other record, the word 0xBEDD8 = 10): slot 1's +0x74 = 10. */
+    g = (p2_side_fn)(void *)fn_resolve(0x47688u);
+    if (g == NULL) return;
+    for (k = 0; k < 2u; k++) {
+        z_fseed();
+        if (k == 1u) DSB(Z_S1 + 0x54u) = 2u;
+        DSW(Z_S1 + 0x74u) = 0x7777u;
+        DSD(Z_S1 + 0x10u) = 0x10101010u;
+        g(0u);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 0x0A);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), k == 0u ? 0 : 2);
+        CHECK_EQ_INT((int)DSD(Z_S1 + 0x10u), k == 0u ? 0 : 0x00039CC8);
+        CHECK_EQ_INT((int)DSW(Z_S1 + 0x74u), 10);
+    }
+}
+
+int test_p3_47720(void)         { return u6b_run(p3_check_47720); }

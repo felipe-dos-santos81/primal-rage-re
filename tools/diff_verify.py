@@ -990,6 +990,67 @@ P3_SPECS = [
     p3_dirs("fighter_489a0", 0x489A0, ("@mutant",)),
 ]
 
+# The callees 0x47688 stubs (record §P3.4), args from their bytes, clobbers from E.callee_clobbers: 0x3B298 EAX =
+# side, EDX = a byte (`mov ecx,edx; ...; mov edx,eax`; it returns AL); 0x39FB0 EAX = slot (pushes EBX/ECX/EDX);
+# 0x3A95C EAX = side, EDX = a byte. All plain `ret`.
+DISPATCH = E.Call(0x3B298, ("eax", "edx"), clobbers=("edx", "edi", "ebp"))
+PIVOT = E.Call(0x39FB0, ("eax",))
+STANCE = E.Call(0x3A95C, ("eax", "edx"), clobbers=("edx",))
+
+
+# 0x47720 (record §P3.4) builds its context from the EDX record (0x339AC: ctx[0] = rec+0x51, allowed) and arms that
+# side's slot: the EAX slot and EBX are not read (EBX = the other side in every case, EDX = E3_OUT, whose +0x51 names
+# the side), and the started record is ctx[4], the slot's own (SLOT_PTRS), not EDX's.
+def p3_47720(cid, side):
+    own = DS_SLOTS + side * 0x94
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_OUT, "ebx": 1 - side},
+                {**SLOT_PTRS, E3_OUT + 0x51: bytes([side]), own + 0x0C: le32(0x0C0C0C0C), own + 0x18: le32(0x18181818),
+                 own + 0x1C: le32(0x1C1C1C1C), own + 0x52: b"\x52\x53"})
+
+
+# 0x476FC (the +0x0C callback 0x47720 stores; 0x3531C case 7, (slot, rec, side), EAX unread): the EDX record's
+# +0x63, zero-extended (`and edx,0xff`), against 5 (`jl`): c0 4 (nothing), c1 5, c2 0x80 (a signed byte would
+# refuse). The slot's own +0x63 is seeded 0 so a read of it differs.
+def p3_476fc(cid, b63):
+    return Case(cid, {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0},
+                {E3_SLOT + 0x0C: le32(0x0C0C0C0C), E3_SLOT + 0x18: le32(0x18181818), E3_SLOT + 0x1C: le32(0x1C1C1C1C),
+                 E3_SLOT + 0x63: b"\x00", E3_REC + 0x63: bytes([b63])})
+
+
+# The +0x18 hooks 0x47648 and 0x477A8 (identical bodies; 0x19020, fn(side), EAX tested whole): flags 1 and 8 = 0,
+# 0 = 1, and EBX = ECX = 0 for 0x18C14's two box tables (`xor ecx,ecx` before 0x33950 and `xor ebx,ebx` before
+# 0x18BD4, which both keep them). The stub's EAX is returned.
+def p3_hook0(cid, side, stub):
+    return Case(cid, {"eax": side}, SLOT_PTRS, {0x18C14: stub})
+
+
+# 0x47688 (the +0x1C callback 0x47720 stores; 0x193B0, fn(side)): the slots' bytes +0x52..+0x5F carry different
+# sentinels (slot 0 0x52.., slot 1 0xD2..: the own +0x5F is the byte 0x3B298 and 0x39834 take), the other slot's
+# +0x54 selects 0x39FB0 (2) or 0x3A95C; the signed word 0xBEDD8 (10 in the image, `sar 0x10` of the dword
+# 0xBEDD6) is poked negative in h4, where a zero-extended read differs.
+def p3_47688(cid, side, al, o54=None, timer=None):
+    pokes = {**SLOT_PTRS, DS_SLOTS + 0x52: bytes(range(0x52, 0x60)), DS_SLOTS + 0x94 + 0x52: bytes(range(0xD2, 0xE0))}
+    if o54 is not None:
+        pokes[DS_SLOTS + (1 - side) * 0x94 + 0x54] = bytes([o54])
+    if timer is not None:
+        pokes[0xBEDD8] = le32(timer)[:2]
+    return Case(cid, {"eax": side}, pokes, {0x3B298: al})
+
+
+P3_SPECS += [
+    Spec("fighter_47720", 0x47720, [p3_47720("e0", 0), p3_47720("e1", 1)],
+         allow_calls=(0x339AC,), calls=(HIT_B,), eax_mask=0, mutants=("@mutant", "@ebx")),
+    Spec("fighter_476fc", 0x476FC, [p3_476fc("c0", 4), p3_476fc("c1", 5), p3_476fc("c2", 0x80)],
+         eax_mask=0, mutants=("@mutant", "@sext")),
+    Spec("fighter_47648", 0x47648, [p3_hook0("k0", 0, 0), p3_hook0("k1", 1, 0x12345678)],
+         allow_calls=(0x33950, 0x18BD4), calls=(CHECKS,), mutants=("@mutant",)),
+    Spec("fighter_47688", 0x47688, [
+        p3_47688("h0", 0, 1), p3_47688("h1", 0, 0, o54=2), p3_47688("h2", 1, 0), p3_47688("h3", 1, 0x100, o54=2),
+        p3_47688("h4", 0, 0, timer=0xFFF0),
+    ], allow_calls=(0x33950,), calls=(DISPATCH, POSE, PIVOT, STANCE, TIMER), eax_mask=0,
+       mutants=("@mutant", "@pivot", "@zext")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

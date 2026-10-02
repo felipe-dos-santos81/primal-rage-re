@@ -1215,5 +1215,13 @@ void fighter_47608(u32 slot, u32 rec, u32 side);
 void fighter_47624(u32 slot, u32 rec, u32 side);
 void fighter_48964(u32 slot, u32 rec, u32 side);
 void fighter_489a0(u32 slot, u32 rec, u32 side);
+/* §P3.4: 0x47720 and its +0x0C callback (slot, rec, side), +0x18 hook
+ * fn(side) and +0x1C callback fn(side); and the callee 0x3B298 (no longer
+ * file-local, so the harness's mutants can call it). */
+int fighter_command_dispatch(u32 side, u32 edx_arg);
+void fighter_47720(u32 slot, u32 rec, u32 side);
+void fighter_476fc(u32 slot, u32 rec, u32 side);
+u32  fighter_47648(u32 side);
+void fighter_47688(u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

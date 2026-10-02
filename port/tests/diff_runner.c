@@ -1467,6 +1467,91 @@ static void m_489a0(const u32 *r, u32 *eax)            /* +0x41 bit 6 set after 
     *eax = 0u;
 }
 
+/* §P3.4: 0x47720 (0x34E2C at 0x35045) and the +0x0C callback 0x476FC (0x3531C case 7), mask 0; the +0x18 hook
+ * 0x47648 (0x19020 at 0x1903F, the whole EAX tested); the +0x1C callback 0x47688 (0x193B0 at 0x19505, mask 0). */
+static void b_47720(const u32 *r, u32 *eax)            { fighter_47720(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_476fc(const u32 *r, u32 *eax)            { fighter_476fc(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_47648(const u32 *r, u32 *eax)            { *eax = fighter_47648(r[R_EAX]); }
+static void b_47688(const u32 *r, u32 *eax)            { fighter_47688(r[R_EAX]); *eax = 0u; }
+static void m_47720_at(const u32 *r, int by_edx, int by_ebx)
+{
+    u32 ctx[6];
+    if (by_ebx) fighter_ctx_same(ctx, r[R_EBX]);
+    else hit_anim_ctx(ctx, r[R_EDX]);
+    hit_anim_start_b(by_edx ? r[R_EDX] : ctx[4], 0x000ECE1Cu, 0x40000000u);
+    DSB(ctx[2] + 0x52u) = 9u;
+    DSB(ctx[2] + 0x53u) = 7u;
+    DSD(ctx[2] + 0x0Cu) = 0x000476FCu;
+    DSD(ctx[2] + 0x18u) = 0x00047648u;
+    DSD(ctx[2] + 0x1Cu) = 0x00047688u;
+}
+static void m_47720(const u32 *r, u32 *eax)            /* the EDX record started, not the slot's own */
+{
+    m_47720_at(r, 1, 0);
+    *eax = 0u;
+}
+static void m_47720_ebx(const u32 *r, u32 *eax)        /* the context by EBX, not the record's +0x51 */
+{
+    m_47720_at(r, 0, 1);
+    *eax = 0u;
+}
+static void m_476fc_at(const u32 *r, int sext, s32 bound)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    s32 b = sext ? (s32)(s8)DSB(rec + 0x63u) : (s32)(u32)DSB(rec + 0x63u);
+    if (b < bound) return;
+    DSD(slot + 0x18u) = 0x00047648u;
+    DSD(slot + 0x1Cu) = 0x00047688u;
+    DSD(slot + 0x0Cu) = 0u;
+}
+static void m_476fc(const u32 *r, u32 *eax)            /* the bound 6 */
+{
+    m_476fc_at(r, 0, 6);
+    *eax = 0u;
+}
+static void m_476fc_sext(const u32 *r, u32 *eax)       /* +0x63 read as a signed byte */
+{
+    m_476fc_at(r, 1, 5);
+    *eax = 0u;
+}
+static void m_47648(const u32 *r, u32 *eax)            /* flag 0 left at 2 */
+{
+    u32 ctx[6], k;
+    u8 f[16];
+    fighter_ctx_same(ctx, r[R_EAX]);
+    for (k = 0; k < 16u; k++) f[k] = 2u;
+    f[1] = 0;
+    f[8] = 0;
+    *eax = (u32)fighter_18c14(ctx[0], f, 0u, 0u);
+}
+static void m_47688_at(u32 side, u32 stance, int own_pivot, int zext)
+{
+    u32 ctx[6];
+    u32 w;
+    fighter_ctx_same(ctx, side);
+    if ((u8)fighter_command_dispatch(ctx[1], (u32)DSB(ctx[2] + 0x5Fu)) != 0u) return;
+    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));
+    if (DSB(ctx[3] + 0x54u) == 2u) fighter_39fb0(own_pivot ? ctx[2] : ctx[3]);
+    else fighter_3a95c(ctx[1], stance);
+    w = DSW(0x000BEDD8u);
+    fighter_39a10(ctx[5], zext ? w : (u32)(s32)(s16)w);
+}
+static void m_47688(const u32 *r, u32 *eax)            /* 0x3A95C with 0xE */
+{
+    m_47688_at(r[R_EAX], 0x0Eu, 0, 0);
+    *eax = 0u;
+}
+static void m_47688_pivot(const u32 *r, u32 *eax)      /* 0x39FB0 on the own slot */
+{
+    m_47688_at(r[R_EAX], 0x0Fu, 1, 0);
+    *eax = 0u;
+}
+static void m_47688_zext(const u32 *r, u32 *eax)       /* the timer word zero-extended */
+{
+    m_47688_at(r[R_EAX], 0x0Fu, 0, 1);
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -1624,6 +1709,18 @@ static const binding_t k_bindings[] = {
     { "fighter_48964@mutant",     m_48964,        0x00000000u },
     { "fighter_48964@side",       m_48964_side,   0x00000000u },
     { "fighter_489a0@mutant",     m_489a0,        0x00000000u },
+    { "fighter_47720",            b_47720,        0x00000000u },
+    { "fighter_476fc",            b_476fc,        0x00000000u },
+    { "fighter_47648",            b_47648,        0xFFFFFFFFu },
+    { "fighter_47688",            b_47688,        0x00000000u },
+    { "fighter_47720@mutant",     m_47720,        0x00000000u },
+    { "fighter_47720@ebx",        m_47720_ebx,    0x00000000u },
+    { "fighter_476fc@mutant",     m_476fc,        0x00000000u },
+    { "fighter_476fc@sext",       m_476fc_sext,   0x00000000u },
+    { "fighter_47648@mutant",     m_47648,        0xFFFFFFFFu },
+    { "fighter_47688@mutant",     m_47688,        0x00000000u },
+    { "fighter_47688@pivot",      m_47688_pivot,  0x00000000u },
+    { "fighter_47688@zext",       m_47688_zext,   0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
