@@ -448,6 +448,14 @@ class TestPoke(unittest.TestCase):
         self.assertEqual(gc.apply_poke(m, BASE, log, 5, 0x48F, ((0x10789E, b'\x78'),), 1, 12, ref, moved), 1)
         self.assertIn('late=1 race=1', log.getvalue())
 
+    def test_a_frame_counter_step_between_the_snapshot_and_the_write_is_a_race(self):
+        # review of plan U9/U10 Task 3: the re-read's f alone differs (t508 unmoved)
+        m, log = _mem(), io.StringIO()
+        ref = self._ref(m)
+        stepped = lambda: dict(gc.read_snap(m, BASE), f=ref['f'] + 1)
+        self.assertEqual(gc.apply_poke(m, BASE, log, 5, 0x48F, ((0x10789E, b'\x78'),), 1, 12, ref, stepped), 1)
+        self.assertIn('late=1 race=1', log.getvalue())
+
     def test_the_poke_check(self):
         s = gs.Schedule((('after', 1, ('poke', ((0x108106, b'\x80' * 7), (0x10789E, b'\x78')))),))
         s.prev_frame = 0x100
