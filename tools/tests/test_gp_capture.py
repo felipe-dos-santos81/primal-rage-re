@@ -394,6 +394,9 @@ class TestStopAtEnd(unittest.TestCase):
         self.assertIn('gp-u6-moves', gs.STOP_AT_END)
         self.assertIn('gp-u6-moves-b', gs.STOP_AT_END)      # U6b's re-capture (user decision)
         self.assertIn('gp-twop', gs.STOP_AT_END)            # U7: nothing past its end is compared (record §T.5)
+        for name in ('gp-u8-right-arcade', 'gp-u8-left-training', 'gp-u8-right-training',
+                     'gp-u8-tug-of-war', 'gp-u8-endurance', 'gp-u8-handicap', 'gp-u8-attract-start'):
+            self.assertIn(name, gs.STOP_AT_END)             # U8 rows and the attract start: N and F sit at the replay's end (record §U8.12, §U8.14)
         for name in ('gp-pads', 'gp-idle-loss', 'gp-idle-loss-run2', 'gp-u5-charsel', 'gp-keys-fight'):
             self.assertNotIn(name, gs.STOP_AT_END)
         for name in gs.STOP_AT_END & set(gs.SCENARIOS):    # a stop needs an end frame

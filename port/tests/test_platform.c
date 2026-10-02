@@ -162,6 +162,73 @@ static const fnm_pair k_miss_gp_twop[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* Gameplay U8 (record 2026-10-01-gameplay-u8-derivations.md §U8.16): one set
+ * per U8 scenario (an exact name), each pair measured on the full replay of its
+ * capture and classified from the raw in the record.
+ * gp-u8-right-arcade (START MENU row 1, b1f = 2), to its X record (f = 0x8E1):
+ *   0x29D60 frontend_mode_1b_step: the bare `ret` (record §G.24);
+ *   0x5D812 frontend_mode_1b_step: the runtime stub (record §G.24);
+ *   0x14EF8 and 0x14F50 hit_reaction_apply: unported move callbacks (the
+ *   dwords 0xA46A8 and 0xA46BC, character 3's reactions 0x20/0x21, called
+ *   through [0x105BD4] at 0x2B56D; record reverse-e2 triage), owner track P
+ *   (batch P2); not registered here. */
+static const fnm_pair k_miss_gp_u8_right_arcade[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+    { 0x14EF8u, "hit_reaction_apply" },
+    { 0x14F50u, "hit_reaction_apply" },
+};
+
+/* gp-u8-left-training (START MENU row 2, b1d = 1, b1f = 3; record §U8.17),
+ * to its X record (f = 0x921): the two hooks of the wipes it passes, as
+ * gp-u5-charsel's: 0x29D60, the bare `ret`, and 0x5D812, the runtime stub
+ * (record §G.24), both from frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_u8_left_training[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
+/* gp-u8-right-training (START MENU row 3, b1d = 1, b1f = 3; record §U8.18),
+ * to its X record (f = 0x961): the same two wipe hooks (record §G.24), the
+ * bare `ret` 0x29D60 and the runtime stub 0x5D812, from frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_u8_right_training[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
+/* gp-u8-tug-of-war (START MENU row 4, b1d = 2, b1f = 3; record §U8.19), to
+ * its X record (f = 0x9A1): the same two wipe hooks (record §G.24), the bare
+ * `ret` 0x29D60 and the runtime stub 0x5D812, from frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_u8_tug_of_war[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
+/* gp-u8-handicap (START MENU row 6, b1d = 4, b1f = 3; record §U8.20), to its
+ * X record (f = 0x8E1): the same two wipe hooks (record §G.24), the bare `ret`
+ * 0x29D60 and the runtime stub 0x5D812, from frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_u8_handicap[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
+/* gp-u8-endurance (START MENU row 5, b1d = 3, b1f = 3; record §U8.21), to its
+ * X record (f = 0x495, 300 frames into the team select, decision D3): only the
+ * bare `ret` 0x29D60 (record §G.24) from frontend_mode_1b_step; the replay
+ * never leaves mode 0x10, as the §U8.3 preview. */
+static const fnm_pair k_miss_gp_u8_endurance[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+};
+
+/* gp-u8-attract-start (P1's F1 in mode 3, the pad arm: b1d = 0, b1f = 1;
+ * record §U8.22), to its X record (f = 0x7E1): the same two wipe hooks
+ * (record §G.24), the bare `ret` 0x29D60 and the runtime stub 0x5D812, from
+ * frontend_mode_1b_step. */
+static const fnm_pair k_miss_gp_u8_attract_start[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -207,6 +274,13 @@ static const gp_set k_gp_sets[] = {
     { "gp-u6-moves", 1, k_miss_gp_u6_moves, FNM_N(k_miss_gp_u6_moves) },
     { "gp-keys-fight", 0, k_miss_gp_keys_fight, FNM_N(k_miss_gp_keys_fight) },
     { "gp-twop", 0, k_miss_gp_twop, FNM_N(k_miss_gp_twop) },
+    { "gp-u8-right-arcade", 0, k_miss_gp_u8_right_arcade, FNM_N(k_miss_gp_u8_right_arcade) },
+    { "gp-u8-left-training", 0, k_miss_gp_u8_left_training, FNM_N(k_miss_gp_u8_left_training) },
+    { "gp-u8-right-training", 0, k_miss_gp_u8_right_training, FNM_N(k_miss_gp_u8_right_training) },
+    { "gp-u8-tug-of-war", 0, k_miss_gp_u8_tug_of_war, FNM_N(k_miss_gp_u8_tug_of_war) },
+    { "gp-u8-handicap", 0, k_miss_gp_u8_handicap, FNM_N(k_miss_gp_u8_handicap) },
+    { "gp-u8-endurance", 0, k_miss_gp_u8_endurance, FNM_N(k_miss_gp_u8_endurance) },
+    { "gp-u8-attract-start", 0, k_miss_gp_u8_attract_start, FNM_N(k_miss_gp_u8_attract_start) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a

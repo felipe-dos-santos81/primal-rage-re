@@ -59,6 +59,7 @@ chunk ?= 0
         attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle \
         entry-triage \
         gp-moves-oracle gp-keys-oracle gp-twop-oracle
+.PHONY: gp-modes-oracle gp-modes-one
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -603,6 +604,127 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 		--moves-min-first "$(GP_TWOP_MOVES_MIN_FIRST)" \
 		--capture-sha256 "$(GP_TWOP_CAPTURE_SHA256)" --capture-frames "$(GP_TWOP_CAPTURE_FRAMES)"
 
+# Gameplay U8 (plan 2026-10-01-gameplay-u8-other-modes.md, record 2026-10-01-gameplay-u8-
+# derivations.md): the other START MENU rows and the attract start, one capture each. For every
+# <ID>:<scenario> in GP_MODES_SCENARIOS whose data/k11-captures/<scenario> exists: the evidence
+# check that the capture reached its row (tools/gp_modes.py), the port replay (cut at
+# GP_MODES_<ID>_END when set) and both ratchets with the capture identity pin; an absent capture
+# skips (exit 0), even under PR_ORACLE_REQUIRED (spec §4.3). A scenario is listed only once its
+# values are pinned (record §U8.16-§U8.22), each value's provenance in its comment. The port dump
+# is removed after its comparison unless GP_MODES_KEEP=1 (record §U8.6: 52-89 MB of /tmp each).
+# gp-u8-right-arcade (record §U8.16): measured at bc51fd0 (+ its miss set) on the capture below.
+# MIN_FIRST: first unexplained capture frame 726 (raw 3767), nearest port 526 (f=0x7B6): side 0
+# takes character 3's reaction 0x20 at f=0x7B7 (r0=20) and the original runs its move callback
+# 0x14EF8 (s0_52 = 0x0B, 0x14F16), which the port does not have (fn-miss 0x14EF8, unported, owner
+# track P batch P2); TRACE_MIN_FIRST: first differing f=0x7BA (1978) in e0 (capture 0000, port
+# 1010), the same cause; MAX_START: the window starts at capture frame 88 (raw 1745). The port's
+# script runs to X (f=0x8E1). Raise N/F when they improve.
+GP_MODES_RA_MIN_FIRST = 726
+GP_MODES_RA_TRACE_MIN_FIRST = 1978
+GP_MODES_RA_MAX_START = 88
+GP_MODES_RA_CAPTURE_SHA256 = b72dbaa7486b651bd1acfddffe886aeb515eed3f916220d44375f0f67227906f
+GP_MODES_RA_CAPTURE_FRAMES = 1140
+# gp-u8-left-training (record §U8.17): measured at b7f13c6 (+ its miss set) on the capture below.
+# MIN_FIRST: first unexplained capture frame 1076 (raw 4207), nearest port 847 = f=0x921, the
+# port's last frame (the script ends at the capture's X record): how far the port got, not a
+# divergence; capture 1076.. is the STOP_AT_END tail. TRACE_MIN_FIRST: no traced difference
+# ("0 differing through 2337"), so end + 1 = 2338 is the exact pin (2339 fails as unreachable);
+# MAX_START: the window starts at capture frame 83 (raw 1735). Raise N/F when they improve.
+GP_MODES_LT_MIN_FIRST = 1076
+GP_MODES_LT_TRACE_MIN_FIRST = 2338
+GP_MODES_LT_MAX_START = 83
+GP_MODES_LT_CAPTURE_SHA256 = 90eeef83f77dab25d9ed7be30fcadf278bfd0413c068c12bd700ff183ab09917
+GP_MODES_LT_CAPTURE_FRAMES = 1141
+# gp-u8-right-training (record §U8.18): measured at 9170f5c (+ its miss set) on the capture below.
+# MIN_FIRST: first unexplained capture frame 1098 (raw 4272): capture 1097 equals port 845 (f=0x961,
+# the port's last frame, 0 px), so 1098 is the next game frame (f=0x962), which the port never ran
+# (its script ends at the capture's X record): how far the port got, not a divergence (gp_compare's
+# row-hash "nearest port 844"). TRACE_MIN_FIRST: "0 differing through 2401", end + 1 = 2402, the
+# exact pin; MAX_START: the window starts at capture frame 90 (raw 1745). Raise N/F when they improve.
+GP_MODES_RT_MIN_FIRST = 1098
+GP_MODES_RT_TRACE_MIN_FIRST = 2402
+GP_MODES_RT_MAX_START = 90
+GP_MODES_RT_CAPTURE_SHA256 = 496964928c537f3b428414e21d02f254b399af4b2f39b393d10d9855c74f1ea5
+GP_MODES_RT_CAPTURE_FRAMES = 1167
+# gp-u8-tug-of-war (record §U8.19): measured at c212a83 (+ its miss set) on the capture below.
+# MIN_FIRST: first unexplained capture frame 1107 (raw 4343): capture 1106 equals port 826 (f=0x9A1,
+# the port's last frame, 0 px), so 1107 is the next game frame, which the port never ran (its script
+# ends at the capture's X record): how far the port got, not a divergence (gp_compare's row-hash
+# "nearest port 825"). TRACE_MIN_FIRST: "0 differing through 2465", end + 1 = 2466, the exact pin;
+# MAX_START: the window starts at capture frame 104 (raw 1741). Raise N/F when they improve.
+GP_MODES_TW_MIN_FIRST = 1107
+GP_MODES_TW_TRACE_MIN_FIRST = 2466
+GP_MODES_TW_MAX_START = 104
+GP_MODES_TW_CAPTURE_SHA256 = 30cd09b8d24a51a41cc37c0ffebd433a08e5a741b248f28e8112c28ff04d1439
+GP_MODES_TW_CAPTURE_FRAMES = 1176
+# gp-u8-handicap (record §U8.20): measured at 1380841 (+ its miss set) on the capture below.
+# MIN_FIRST: first unexplained capture frame 1022 (raw 4155): capture 1021 equals port 789 (f=0x8E1,
+# the port's last frame, 0 px), so 1022 is the next game frame, which the port never ran (its script
+# ends at the capture's X record): how far the port got, not a divergence (gp_compare's row-hash
+# "nearest port 652"). TRACE_MIN_FIRST: "0 differing through 2273", end + 1 = 2274, the exact pin;
+# MAX_START: the window starts at capture frame 80 (raw 1739). Raise N/F when they improve.
+GP_MODES_HC_MIN_FIRST = 1022
+GP_MODES_HC_TRACE_MIN_FIRST = 2274
+GP_MODES_HC_MAX_START = 80
+GP_MODES_HC_CAPTURE_SHA256 = 8f35fd3abd3a5c527e0f72984ed8ba419cadbcefa4e53b349d5a1ed7b69cdfa3
+GP_MODES_HC_CAPTURE_FRAMES = 1081
+# gp-u8-endurance (record §U8.21): measured at 20c379e (+ its miss set) on the capture below. The
+# scenario ends 300 frames into the team select 0x44798 (decision D3: idle, ENDURANCE never leaves
+# mode 0x10; its fight is a named gap, record §U8.9), so N is where that team-select tail ends.
+# MIN_FIRST: first unexplained capture frame 278 (raw 2759): capture 277 equals port 163 (f=0x494,
+# the port's last presented frame; the team select presents every third f), so 278 shows the next
+# present, which the port never ran (its script ends at the capture's X record, f=0x495): how far the
+# port got, not a divergence. TRACE_MIN_FIRST: "0 differing through 1173", end + 1 = 1174, the exact
+# pin; MAX_START: the window starts at capture frame 90 (raw 1744). Raise N/F when they improve.
+GP_MODES_EN_MIN_FIRST = 278
+GP_MODES_EN_TRACE_MIN_FIRST = 1174
+GP_MODES_EN_MAX_START = 90
+GP_MODES_EN_CAPTURE_SHA256 = 01c9069076ce231d652dbe1d97f0a80155d5e73bef932b0254816a79ec746204
+GP_MODES_EN_CAPTURE_FRAMES = 308
+# gp-u8-attract-start (record §U8.22): measured at 2f0eeed (+ its miss set) on the capture below
+# (the pad arm: P1's F1 in mode 3, arm frame f=0x125, mode 0x1A at f=0x126). MIN_FIRST: first
+# unexplained capture frame 1087 (raw 3854): capture 1086 equals port 823 (f=0x7E1, the port's last
+# frame, 0 px), so 1087 is the next game frame, which the port never ran (its script ends at the
+# capture's X record): how far the port got, not a divergence (gp_compare's row-hash "nearest port
+# 822"). TRACE_MIN_FIRST: "0 differing through 2017", end + 1 = 2018, the exact pin; MAX_START: the
+# window starts at capture frame 80 (raw 1742). Raise N/F when they improve.
+GP_MODES_AS_MIN_FIRST = 1087
+GP_MODES_AS_TRACE_MIN_FIRST = 2018
+GP_MODES_AS_MAX_START = 80
+GP_MODES_AS_CAPTURE_SHA256 = d6b0cf6b210992de4e7cda211f02cbe5653e21a22d3fbec3dd02e7e30e0351fd
+GP_MODES_AS_CAPTURE_FRAMES = 1156
+GP_MODES_SCENARIOS =
+GP_MODES_SCENARIOS += RA:gp-u8-right-arcade
+GP_MODES_SCENARIOS += LT:gp-u8-left-training
+GP_MODES_SCENARIOS += RT:gp-u8-right-training
+GP_MODES_SCENARIOS += TW:gp-u8-tug-of-war
+GP_MODES_SCENARIOS += HC:gp-u8-handicap
+GP_MODES_SCENARIOS += EN:gp-u8-endurance
+GP_MODES_SCENARIOS += AS:gp-u8-attract-start
+GP_MODES_KEEP ?=
+gp-modes-oracle: build ## Gameplay U8 oracle: the other START MENU rows and the attract start (each skips without its capture)
+	@echo "== gameplay U8: other modes (frame and trace ratchets; each skips without its capture) =="
+	@$(PYTHON) -m unittest tools.tests.test_gp_modes
+	@for p in $(GP_MODES_SCENARIOS); do \
+		$(MAKE) --no-print-directory gp-modes-one GP_MODES_ID=$${p%%:*} scenario=$${p#*:} || exit 1; \
+	done
+
+gp-modes-one: build
+	@if [ -d $(K11_CAPTURES)/$(scenario) ]; then \
+		$(PYTHON) tools/gp_modes.py check --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) && \
+		$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1 \
+			GP_SCRIPT_ARGS="$(if $(GP_MODES_$(GP_MODES_ID)_END),--end $(GP_MODES_$(GP_MODES_ID)_END))" && \
+		$(PYTHON) tools/gp_compare.py --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) \
+			--port $(GP_DUMP)/$(scenario) --min-first "$(GP_MODES_$(GP_MODES_ID)_MIN_FIRST)" \
+			--trace-min-first "$(GP_MODES_$(GP_MODES_ID)_TRACE_MIN_FIRST)" \
+			--max-start "$(GP_MODES_$(GP_MODES_ID)_MAX_START)" \
+			--capture-sha256 "$(GP_MODES_$(GP_MODES_ID)_CAPTURE_SHA256)" \
+			--capture-frames "$(GP_MODES_$(GP_MODES_ID)_CAPTURE_FRAMES)"; \
+		rc=$$?; [ -n "$(GP_MODES_KEEP)" ] || rm -rf $(GP_DUMP)/$(scenario); exit $$rc; \
+	else \
+		echo "gp-modes-oracle: no capture at $(K11_CAPTURES)/$(scenario), skipped"; \
+	fi
+
 gp-report: build ## Report-only gameplay comparison (scenario=gp-…): counts and first differences, no ratchet, exit 0
 	@$(MAKE) --no-print-directory gp-replay scenario=$(scenario) GP_OPTIONAL=1
 	@$(PYTHON) tools/gp_compare.py --report --scenario $(scenario) --capture $(K11_CAPTURES)/$(scenario) --port $(GP_DUMP)/$(scenario)
@@ -678,6 +800,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory gp-moves-oracle
 	@$(MAKE) --no-print-directory gp-keys-oracle
 	@$(MAKE) --no-print-directory gp-twop-oracle
+	@$(MAKE) --no-print-directory gp-modes-oracle
 	@$(MAKE) --no-print-directory diff-verify
 	@$(MAKE) --no-print-directory entry-triage
 	@echo "== k11 and gp tool unit tests =="

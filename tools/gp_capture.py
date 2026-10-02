@@ -162,8 +162,15 @@ def run_checks(name, lines, sched, n_frames, n_want):
         script_ok, why = True, ''
     except gs.ScriptError as e:
         script_ok, why = False, ' (%s)' % e
-    enter = next((i for i, x in enumerate(recs) if x['kind'] == 'I' and x.get('press') == 'enter'), None)
-    first27 = next((i for i, x in enumerate(recs) if x['kind'] in ('S', 'P') and x.get('mode') == 0x27), None)
+    if gs.SCENARIOS.get(name, {}).get('arm', 'enter') == 'pad':      # record gameplay-u8 §U8.3
+        arm_label = 'mode left 3 after the pad arm'
+        enter = next((i for i, x in enumerate(recs) if x['kind'] == 'I' and 'press' in x), None)
+        first27 = next((i for i, x in enumerate(recs) if enter is not None and i > enter
+                        and x['kind'] in ('S', 'P') and x.get('mode') not in (None, 3)), None)
+    else:
+        arm_label = 'mode 0x27 after the Enter'
+        enter = next((i for i, x in enumerate(recs) if x['kind'] == 'I' and x.get('press') == 'enter'), None)
+        first27 = next((i for i, x in enumerate(recs) if x['kind'] in ('S', 'P') and x.get('mode') == 0x27), None)
     ordered = (enter is not None and first27 is not None and first27 > enter
                and recs[first27]['f'] >= recs[enter]['f'])
     snap = gs.snapshots(lines)
@@ -171,7 +178,7 @@ def run_checks(name, lines, sched, n_frames, n_want):
     return [('base', any(x['kind'] == 'B' for x in recs)),
             ('steps fired %d/%d' % (sched.fired, sched.total), sched.fired == sched.total),
             ('end frame reached', any(x['kind'] == 'X' for x in recs)),
-            ('mode 0x27 after the Enter', ordered),
+            (arm_label, ordered),
             ('snapshots kb == raw (%d differ)' % kbraw, kbraw == 0),
             ('frames written %d/%d' % (n_frames, n_want), n_frames == n_want),
             ('port script v2%s' % why, script_ok),
