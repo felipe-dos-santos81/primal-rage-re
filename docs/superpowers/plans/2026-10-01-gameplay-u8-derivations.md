@@ -402,3 +402,53 @@ it in the 0x60 bytes before. `wipescan.py`: every `e8 rel32` whose target is
 `poll.log` up to `f = 0x2A0`. `seg.py`: frames and MB of
 `data/k11-captures/gp-idle-loss` between two `f` values (`raw = ms·0.0700866`,
 `window.txt`, the `frame_*.raw.gz` sizes). Outputs are quoted above.
+
+## §U8.10 Baseline (Task 0)
+
+Base: branch `gameplay-u8` at
+`git rev-parse HEAD` = `e4d03a74db706a153f9a5ee5e82c8e5366404566` (main after U5, U6a, E2, U6b, capture-hygiene,
+U11, E3 and U7). Per the controller's speed-up ruling the baseline is not a full
+`make verify` (main is U7's fully verified head plus its merge): it is the five gp
+oracles, `diff-verify`, the tool unit tests, `entry-triage` and
+`port_progress.py`, each run from the worktree root with the plan's `/tmp/pr_u8_*`
+overrides. Logs in `/tmp/gameplay-u8/` (`t0_gp.txt` 183 lines, `t0_diff.txt` 146,
+`t0_tooltests.txt` 11, `t0_e2.txt` 22); there is no `t0_verify.txt`, so the
+brief's `grep -c . $S/t0_verify.txt` has no value on this base.
+
+The four gate results:
+
+1. `make gp-oracle gp-charsel-oracle gp-moves-oracle gp-keys-oracle gp-twop-oracle GP_DUMP=/tmp/pr_u8_gp`: exit 0; every replay `all checks passed` and `fn-miss PR_GP_DUMP distinct=4 dropped=0` (pairs `0x5D812 actor_spawn`, `0x5D812 set_dead`, `0x29D60 frontend_mode_1b_step`, `0x5D812 frontend_mode_1b_step` in each of the five).
+2. `make diff-verify DIFF_IMAGE=/tmp/pr_u8_diffimg DIFF_TABLE=/tmp/pr_u8_diff.md`: exit 0, `diff-verify: 13/13 functions VERIFIED; 17/17 mutants detected; 1 named gaps; 0/5 rows with callees closed (8 have none).`
+3. Tool unit tests (`verify`'s k11/gp line: `test_k11_fields test_k11_session test_k11_capture test_k11_compare test_gp_session test_gp_capture test_gp_compare test_gp_moves test_gp_keys`, `PR_ORACLE_REQUIRED=1`): `Ran 171 tests`, `OK`. `make entry-triage E2_IMAGE=/tmp/pr_u8_e2img`: exit 0 (`Ran 44 tests`, `OK`; the committed table equals a fresh run; `579 candidates`, `targets 323 unported, 172 ported`).
+4. `python3 tools/port_progress.py`: `771 1203 64` and `731 731 100 (portable: excludes 81 host-owned/deferred and runtime >= 5D000)` (unchanged from `8eaf25a`).
+
+The gp ratchet lines (the base's own; every later gate compares against these):
+
+```
+gp_compare: gp-idle-loss: frames: first unexplained 2064, ratchet N 2064 ok
+gp_compare: gp-idle-loss: trace: 0 differing through 8319; ratchet N 8320 ok
+gp_compare: gp-u5-charsel: frames: first unexplained 516, ratchet N 516 ok
+gp_compare: gp-u5-charsel: trace: 0 differing through 1512; ratchet N 1513 ok
+gp_compare: gp-u6-moves-b: frames: first unexplained 1005, ratchet N 1005 ok
+gp_compare: gp-u6-moves-b: trace: first differing 2262, ratchet N 2262 ok
+gp_compare: gp-u6-moves-b: moves: first differing 2949, ratchet N 2949 ok
+gp_keys: gp-keys-fight: evidence: 11 of 11 events ok
+gp_keys: gp-keys-fight: effects: first not reproduced 11, ratchet N 11 ok
+gp_twop: gp-twop: two-human match: ok
+gp_compare: gp-twop: frames: first unexplained 612, ratchet N 612 ok
+gp_compare: gp-twop: trace: 0 differing through 1505; ratchet N 1506 ok
+gp_compare: gp-twop: moves: 0 differing through 1505; ratchet N 1506 ok
+```
+
+`fnm_known`'s parameter list on this base (`grep -n 'static int fnm_known' port/tests/test_platform.c`):
+
+```
+199:static int fnm_known(u32 addr, const char *ctx, int frontend, int idle_loss, int charsel, int moves,
+200-                     int keys_fight, int twop)
+```
+
+Eight parameters. The controller's "refactor first" ruling replaces them, in its
+own commit after this one, with `fnm_known(u32 addr, const char *ctx, int
+frontend, const gp_set *sc)` and a name-keyed table `k_gp_sets` (`{ name, prefix,
+rows, n }`); U8's scenario sets are then added as table entries (the plan's
+"scenario-table clause"), never as parameters.
