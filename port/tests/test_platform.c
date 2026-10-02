@@ -162,6 +162,23 @@ static const fnm_pair k_miss_gp_twop[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
 };
 
+/* Gameplay U8 (record 2026-10-01-gameplay-u8-derivations.md §U8.16): one set
+ * per U8 scenario (an exact name), each pair measured on the full replay of its
+ * capture and classified from the raw in the record.
+ * gp-u8-right-arcade (START MENU row 1, b1f = 2), to its X record (f = 0x8E1):
+ *   0x29D60 frontend_mode_1b_step: the bare `ret` (record §G.24);
+ *   0x5D812 frontend_mode_1b_step: the runtime stub (record §G.24);
+ *   0x14EF8 and 0x14F50 hit_reaction_apply: unported move callbacks (the
+ *   dwords 0xA46A8 and 0xA46BC, character 3's reactions 0x20/0x21, called
+ *   through [0x105BD4] at 0x2B56D; record reverse-e2 triage), owner track P
+ *   (batch P2); not registered here. */
+static const fnm_pair k_miss_gp_u8_right_arcade[] = {
+    { 0x29D60u, "frontend_mode_1b_step" },
+    { 0x5D812u, "frontend_mode_1b_step" },
+    { 0x14EF8u, "hit_reaction_apply" },
+    { 0x14F50u, "hit_reaction_apply" },
+};
+
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
  * scenario <name>[ (cut at N)]"), and whether the script was cut (--end): a
  * cut replay ends before some misses, so it may record a subset. */
@@ -207,6 +224,7 @@ static const gp_set k_gp_sets[] = {
     { "gp-u6-moves", 1, k_miss_gp_u6_moves, FNM_N(k_miss_gp_u6_moves) },
     { "gp-keys-fight", 0, k_miss_gp_keys_fight, FNM_N(k_miss_gp_keys_fight) },
     { "gp-twop", 0, k_miss_gp_twop, FNM_N(k_miss_gp_twop) },
+    { "gp-u8-right-arcade", 0, k_miss_gp_u8_right_arcade, FNM_N(k_miss_gp_u8_right_arcade) },
 };
 
 /* The one entry of k_gp_sets that matches the scenario name, or NULL (a

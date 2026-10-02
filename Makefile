@@ -612,7 +612,20 @@ gp-twop-oracle: build ## Gameplay U7 oracle: two-human check, then frame, trace 
 # skips (exit 0), even under PR_ORACLE_REQUIRED (spec §4.3). A scenario is listed only once its
 # values are pinned (record §U8.16-§U8.22), each value's provenance in its comment. The port dump
 # is removed after its comparison unless GP_MODES_KEEP=1 (record §U8.6: 52-89 MB of /tmp each).
+# gp-u8-right-arcade (record §U8.16): measured at bc51fd0 (+ its miss set) on the capture below.
+# MIN_FIRST: first unexplained capture frame 726 (raw 3767), nearest port 526 (f=0x7B6): side 0
+# takes character 3's reaction 0x20 at f=0x7B7 (r0=20) and the original runs its move callback
+# 0x14EF8 (s0_52 = 0x0B, 0x14F16), which the port does not have (fn-miss 0x14EF8, unported, owner
+# track P batch P2); TRACE_MIN_FIRST: first differing f=0x7BA (1978) in e0 (capture 0000, port
+# 1010), the same cause; MAX_START: the window starts at capture frame 88 (raw 1745). The port's
+# script runs to X (f=0x8E1). Raise N/F when they improve.
+GP_MODES_RA_MIN_FIRST = 726
+GP_MODES_RA_TRACE_MIN_FIRST = 1978
+GP_MODES_RA_MAX_START = 88
+GP_MODES_RA_CAPTURE_SHA256 = b72dbaa7486b651bd1acfddffe886aeb515eed3f916220d44375f0f67227906f
+GP_MODES_RA_CAPTURE_FRAMES = 1140
 GP_MODES_SCENARIOS =
+GP_MODES_SCENARIOS += RA:gp-u8-right-arcade
 GP_MODES_KEEP ?=
 gp-modes-oracle: build ## Gameplay U8 oracle: the other START MENU rows and the attract start (each skips without its capture)
 	@echo "== gameplay U8: other modes (frame and trace ratchets; each skips without its capture) =="
