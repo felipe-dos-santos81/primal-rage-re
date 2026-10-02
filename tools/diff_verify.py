@@ -941,6 +941,55 @@ P2_SPECS += [
        mutants=("@mutant", "@signed", "@byte5d", "@char")),
 ]
 
+# ---- track P batch 3: the move callbacks 0x475EC..0x489A0 and the callbacks they store (record
+# 2026-10-03-reverse-p3) --------------------------------------------------------------------------------
+# Every member is character 2's: a move callback (the move-table dwords 0xA4004..0xA42AC) or a callback one of them
+# stores. A move callback runs as 0x34E2C calls it at 0x35045 (EAX = slot, EDX = rec, EBX = side), mask 0 (record
+# 2026-10-02-reverse-p2 §P2.2).
+# 0x35838 (fighter_state_35838): EAX = slot, EDX = rec, EBX = the direction bits (`mov edx,ebx` at 0x3583D); a
+# plain `ret`; it clobbers EBX and EDX (E.callee_clobbers).
+DIRS = E.Call(0x35838, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+
+
+# 0x475EC/0x47608 (record §P3.3) write the EDX record's +0x43 and word +0x34, the word negated when 0x1A570, whose AL
+# they test, returns 1. 0x1A570's argument is EBX = side (`mov eax,ebx`), not rec+0x51: every case has rec+0x51 = 1,
+# and s0/s2 run side 0. The stub's AL varies per case.
+P3_REC_SEED = {E3_REC + 0x34: b"\x34\x34", E3_REC + 0x43: b"\x43", E3_REC + 0x51: b"\x01"}
+
+
+def p3_speed(name, entry, mutants=("@mutant",)):
+    return Spec(name, entry, [
+        Case("s0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, P3_REC_SEED, {0x1A570: 0}),
+        Case("s1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1}, P3_REC_SEED, {0x1A570: 1}),
+        Case("s2", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, P3_REC_SEED, {0x1A570: 1}),
+    ], calls=(BIT15,), eax_mask=0, mutants=mutants)
+
+
+# 0x48964/0x489A0 (record §P3.3): the slot's +0x41 bit 6 refuses (q0: 0x40 alone; q1/q2 0xBF, every other bit);
+# else the bit is set and 0x35838(slot, rec, 0x2000 or 0x1000 by 0x1A570(rec+0x51)'s AL). EBX is not read (`mov
+# bl,[ecx+0x41]` overwrites it): q2 runs side 0 with rec+0x51 = 1.
+def p3_dirs(name, entry, mutants):
+    return Spec(name, entry, [
+        Case("q0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x41: b"\x40", E3_REC + 0x51: b"\x00"}),
+        Case("q1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x41: b"\xbf", E3_REC + 0x51: b"\x00"},
+             {0x1A570: 0}),
+        Case("q2", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x41: b"\xbf", E3_REC + 0x51: b"\x01"},
+             {0x1A570: 1}),
+    ], calls=(BIT15, DIRS), eax_mask=0, mutants=mutants)
+
+
+P3_SPECS = [
+    p3_speed("fighter_475ec", 0x475EC, ("@mutant", "@side")),
+    p3_speed("fighter_47608", 0x47608),
+    # 0x47624: 0x2BC30(rec, 0xED79A, 4.0), then the slot 9/8/0 (each seeded otherwise).
+    Spec("fighter_47624", 0x47624, [
+        Case("n0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {E3_SLOT + 0x52: b"\x52\x53\x54"}),
+        Case("n1", {"eax": E3_SLOT, "edx": E3_REC2, "ebx": 1}, {E3_SLOT + 0x52: b"\x52\x53\x54"}),
+    ], calls=(ANIM_BEGIN,), eax_mask=0),
+    p3_dirs("fighter_48964", 0x48964, ("@mutant", "@side")),
+    p3_dirs("fighter_489a0", 0x489A0, ("@mutant",)),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -983,7 +1032,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

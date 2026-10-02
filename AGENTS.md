@@ -238,7 +238,8 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   the screen holds one frame about 43 ms and the two-frame splice model cannot express the
   catch-up: a comparison-model limit, not a port divergence (§W.12, §W.14). A P batch that ports
   a target in a miss set re-measures and re-pins (U9: `0x400E0`/`0x21084` P4, `0x21044` P5; U10:
-  `0x475EC` P3, `0x3DA50` P5, `0x37DD4` P6, `0x29C78` P7; record §W.16).
+  `0x3DA50` P5, `0x37DD4` P6, `0x29C78` P7; record §W.16; track P batch 3 ported `0x475EC`, record
+  2026-10-03-reverse-p3 §P3.9).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two

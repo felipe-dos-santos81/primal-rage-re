@@ -803,8 +803,10 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # not claim the death streams or the mode-0xF content are reproduced, and is no evidence of
 # correctness past the frame ratchet's 331.
 # Every pin + 1 fails (record §W.16). Raise each when it improves.
-# Re-measure: a P batch that ports 0x37DD4 (P6), 0x29C78 (P7), 0x3DA50 (P5) or 0x475EC (P3) drops
-# its row and re-measures the U10 set; TRACE/WIN are at the replay's end, so they cannot rise.
+# Re-measured by track P batch 3 (record 2026-10-03-reverse-p3 §P3.9) once 0x475EC is ported: the
+# set loses that row alone and every pin above is unchanged (each + 1 fails).
+# Re-measure: a P batch that ports 0x37DD4 (P6), 0x29C78 (P7) or 0x3DA50 (P5) drops its row and
+# re-measures the U10 set; TRACE/WIN are at the replay's end, so they cannot rise.
 GP_ENDING_MIN_FIRST = 331
 GP_ENDING_TRACE_MIN_FIRST = 9954
 GP_ENDING_MAX_START = 83

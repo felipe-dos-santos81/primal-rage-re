@@ -1595,8 +1595,9 @@ static int fighter_state_365c8(u32 slot, u32 rec, u32 side)
 
 /* 0x35838. The command's direction bits (EBX = cmd & 0xF000) select a fresh
  * animation and set slot+0x52 = 0xE. */
-static void fighter_state_35838(u32 slot, u32 rec, u32 dirbits)
+void fighter_state_35838(u32 slot, u32 rec, u32 dirbits)
 {
+    PR_SEAM(0x35838u, slot, rec, dirbits);
     DSD(slot + 0x40u) &= 0xFCFF7FFFu;                   /* 0x3583F */
     DSB(slot + 0x41u) |= 0x80u;                         /* 0x35846 */
     if ((DSW(rec + 0x28u) >> 8 & 0x40u) == 0u) {        /* 0x35859 */
@@ -15388,4 +15389,80 @@ void fighter_22638(u32 slot, u32 rec, u32 side)
     default:                                                /* 3..7 (0x22930), above 7 (`ja` 0x227A5) */
         return;
     }
+}
+
+/* ---- track P batch 3: the move callbacks 0x475EC..0x489A0 and the callbacks
+ * they store ------------------------------------------------------------------
+ * Record 2026-10-03-reverse-p3-derivations.md. Every member is character 2's:
+ * a move callback (its move-table dwords 0xA4004..0xA42AC) or a callback one
+ * of them stores. 0x34E2C calls a move callback at 0x35045 as (EAX = slot,
+ * EDX = rec, EBX = side); no caller reads the AL it returns (record
+ * 2026-10-02-reverse-p2 §P2.2), so the port's callbacks return nothing. */
+#define P3_ANIM_47624 0x000ED79Au  /* 0x47629 */
+
+/* 0x475EC — record §P3.3. Character 2's reaction-0x0B callback (the dword at
+ * 0xA4004): the EDX record's +0x43 = 0x28 and word +0x34 = 0x258, the word
+ * negated when 0x1A570(side) (EBX: `mov eax,ebx`) sets AL. PORT: AL = 1
+ * (0x47605) unread (§P2.2). */
+void fighter_475ec(u32 slot, u32 rec, u32 side)
+{
+    (void)slot;
+    DSB(rec + 0x43u) = 0x28u;                               /* 0x475EE */
+    DSW(rec + 0x34u) = 0x0258u;                             /* 0x475F2 */
+    if (fighter_actor_bit15_clear(side) != 0)               /* 0x475EC/0x475F8 0x1A570, 0x475FD */
+        DSW(rec + 0x34u) = (u16)(0u - DSW(rec + 0x34u));    /* 0x47601 */
+}
+
+/* 0x47608 — record §P3.3. Character 2's reaction-0x15 callback (the dword at
+ * 0xA40CC): 0x475EC's shape with +0x43 = 0x22 and the word 0x2EE. PORT: AL
+ * unread (§P2.2). */
+void fighter_47608(u32 slot, u32 rec, u32 side)
+{
+    (void)slot;
+    DSB(rec + 0x43u) = 0x22u;                               /* 0x4760A */
+    DSW(rec + 0x34u) = 0x02EEu;                             /* 0x4760E */
+    if (fighter_actor_bit15_clear(side) != 0)               /* 0x47608/0x47614 0x1A570, 0x47619 */
+        DSW(rec + 0x34u) = (u16)(0u - DSW(rec + 0x34u));    /* 0x4761D */
+}
+
+/* 0x47624 — record §P3.3. Character 2's reaction-0x2D callback (the dword at
+ * 0xA42AC): the record on 0xED79A at 4.0 (0x2BC30), then the slot 9/8/0.
+ * PORT: AL unread (§P2.2). */
+void fighter_47624(u32 slot, u32 rec, u32 side)
+{
+    (void)side;
+    actors_anim_begin(rec, P3_ANIM_47624, 0x40800000u);     /* 0x47625..0x47633 0x2BC30 */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x47638 */
+    DSB(slot + 0x53u) = 8u;                                 /* 0x4763C */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x47642 */
+}
+
+/* 0x48964 — record §P3.3. Character 2's reaction-0x24 callback (the dword at
+ * 0xA41F8). With the slot's +0x41 bit 6 set nothing happens; else the bit is
+ * set and 0x35838(slot, rec, 0x2000 when 0x1A570(rec+0x51) sets AL, else
+ * 0x1000). EBX is not read (0x4896D overwrites it). PORT: AL = 0 (0x4899B)
+ * or 1 (0x48997) unread (§P2.2). */
+void fighter_48964(u32 slot, u32 rec, u32 side)
+{
+    u32 dir;
+    (void)side;
+    if ((DSB(slot + 0x41u) & 0x40u) != 0u) return;          /* 0x48967/0x4896B */
+    DSB(slot + 0x41u) = (u8)(DSB(slot + 0x41u) | 0x40u);    /* 0x4896D..0x48975 */
+    dir = fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)) != 0
+        ? 0x2000u : 0x1000u;                                /* 0x48973..0x4898B 0x1A570 */
+    fighter_state_35838(slot, rec, dir);                    /* 0x48990/0x48992 */
+}
+
+/* 0x489A0 — record §P3.3. Character 2's reaction-0x25 callback (the dword at
+ * 0xA420C): 0x48964 with the two directions swapped (0x1000 when AL is
+ * set). PORT: AL unread (§P2.2). */
+void fighter_489a0(u32 slot, u32 rec, u32 side)
+{
+    u32 dir;
+    (void)side;
+    if ((DSB(slot + 0x41u) & 0x40u) != 0u) return;          /* 0x489A3/0x489A7 */
+    DSB(slot + 0x41u) = (u8)(DSB(slot + 0x41u) | 0x40u);    /* 0x489A9..0x489B1 */
+    dir = fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)) != 0
+        ? 0x1000u : 0x2000u;                                /* 0x489AF..0x489C7 0x1A570 */
+    fighter_state_35838(slot, rec, dir);                    /* 0x489CC/0x489CE */
 }

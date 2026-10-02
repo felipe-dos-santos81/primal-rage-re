@@ -45595,3 +45595,106 @@ static void p2_check_0c(void)
 }
 
 int test_p2_0c(void)            { return u6b_run(p2_check_0c); }
+
+/* ---- track P batch 3 (record 2026-10-03-reverse-p3-derivations.md) ----------
+ * The move callbacks 0x475EC..0x489A0 (character 2's) and the callbacks they
+ * store. Differential verification (tools/diff_verify.py, P3_SPECS) is the
+ * behavioural oracle; these checks pin what it does not see: the
+ * registrations and the image dwords that make 0x34E2C, 0x3531C, 0x19020,
+ * 0x193B0 and the +0x14 callers reach each function, and one seeded run
+ * through each registration with sentinels on every store. */
+
+/* The side's actor word (0x1A570 returns 1 while its bit 15 is clear). */
+static u32 p3_actor(u32 side)
+{
+    u32 rec = DSD(DS_001077B0 + side * 0x94u);
+    return DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
+}
+
+static void p3_set_bit15(u32 side, int set)
+{
+    u32 a = p3_actor(side);
+    DSW(a) = (u16)(set ? (DSW(a) | 0x8000u) : (DSW(a) & 0x7FFFu));
+}
+
+/* §P3.3: the five move callbacks with no context, through their
+ * registrations as 0x34E2C calls them (slot 0, its record, side 0). */
+static void p3_check_simple(void)
+{
+    static const u32 addr[5] = { 0x475ECu, 0x47608u, 0x47624u, 0x48964u, 0x489A0u };
+    static const u32 dw[5] = { 0x000A4004u, 0x000A40CCu, 0x000A42ACu, 0x000A41F8u, 0x000A420Cu };
+    void (*const fn[5])(void) = { (void (*)(void))fighter_475ec, (void (*)(void))fighter_47608,
+                                  (void (*)(void))fighter_47624, (void (*)(void))fighter_48964,
+                                  (void (*)(void))fighter_489a0 };
+    p2_cb_fn f;
+    u32 k, set, c;
+    for (k = 0; k < 5u; k++) {
+        CHECK(fn_resolve(addr[k]) == fn[k], "the move callback is registered");
+        CHECK_EQ_INT((int)DSD(dw[k]), (int)addr[k]);
+    }
+
+    /* 0x475EC / 0x47608: the record's +0x43 = 0x28 / 0x22 and word +0x34 =
+     * 0x258 / 0x2EE, negated while side 0's actor word has bit 15 clear. */
+    for (k = 0; k < 2u; k++) {
+        f = (p2_cb_fn)(void *)fn_resolve(addr[k]);
+        if (f == NULL) return;
+        for (set = 0; set < 2u; set++) {
+            z_fseed();
+            DSB(Z_R0 + 0x43u) = 0x43u;
+            DSW(Z_R0 + 0x34u) = 0x3434u;
+            p3_set_bit15(0u, (int)set);
+            f(Z_S0, Z_R0, 0u);
+            CHECK_EQ_INT((int)DSB(Z_R0 + 0x43u), k == 0u ? 0x28 : 0x22);
+            CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), k == 0u ? (set ? 0x0258 : 0xFDA8) : (set ? 0x02EE : 0xFD12));
+        }
+    }
+
+    /* 0x47624: the record on 0xED79A at 4.0, the slot 9/8/0. */
+    f = (p2_cb_fn)(void *)fn_resolve(0x47624u);
+    if (f == NULL) return;
+    z_fseed();
+    DSW(0x000ED79Au) = 0x12B1u;
+    DSB(Z_S0 + 0x54u) = 0x44u;
+    f(Z_S0, Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), 0x000ED79A);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40800000);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 8);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+
+    /* 0x48964 / 0x489A0: refused while the slot's +0x41 has bit 6; else the
+     * bit is set and 0x35838 runs with 0x2000 / 0x1000 while the record's
+     * side (rec+0x51 = 0) has its actor bit 15 clear, the other way round
+     * when it is set: 0x2000 starts 0xC8A40[char] (+0x43 bit 1), 0x1000
+     * 0xC8AB8[char] (+0x43 bit 0) in mode 3 with the record's +0x28 bit 14
+     * clear; both end with +0x52 = 0xE and +0x41 bit 7. */
+    for (k = 3; k < 5u; k++) {
+        f = (p2_cb_fn)(void *)fn_resolve(addr[k]);
+        if (f == NULL) return;
+        z_fseed();
+        DSB(Z_S0 + 0x41u) = 0x40u;
+        f(Z_S0, Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x41u), 0x40);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 0x55);
+        for (set = 0; set < 2u; set++) {
+            int hi;
+            z_fseed();
+            c = (u32)DSB(Z_S0 + 0x7Au);
+            DSW(DSD(0x000C8A40u + c * 4u)) = 0x12B1u;
+            DSW(DSD(0x000C8AB8u + c * 4u)) = 0x12B2u;
+            DSB(Z_R0 + 0x51u) = 0u;
+            DSW(Z_R0 + 0x28u) = 0u;
+            DSB(Z_S0 + 0x41u) = 0u;
+            DSB(Z_S0 + 0x43u) = 0u;
+            p3_set_bit15(0u, (int)set);
+            f(Z_S0, Z_R0, 0u);
+            hi = (k == 3u) == (set == 0u);
+            CHECK_EQ_INT((int)DSB(Z_S0 + 0x41u), 0xC0);
+            CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 0x0E);
+            CHECK_EQ_INT((int)DSB(Z_S0 + 0x43u), hi ? 2 : 1);
+            CHECK_EQ_INT((int)DSD(Z_R0 + 8u), (int)DSD((hi ? 0x000C8A40u : 0x000C8AB8u) + c * 4u));
+        }
+    }
+}
+
+int test_p3_simple(void)        { return u6b_run(p3_check_simple); }

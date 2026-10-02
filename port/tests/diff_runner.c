@@ -1396,6 +1396,77 @@ static void m_22638_byte5d(const u32 *r, u32 *eax)     /* the drain compares +0x
     *eax = 0u;
 }
 
+/* Track P batch 3 (record 2026-10-03-reverse-p3 §P3.3): character 2's move callbacks with no context, as 0x34E2C
+ * calls them at 0x35045 (EAX = slot, EDX = rec, EBX = side). Mask 0 (record 2026-10-02-reverse-p2 §P2.2). */
+static void b_475ec(const u32 *r, u32 *eax)            { fighter_475ec(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_47608(const u32 *r, u32 *eax)            { fighter_47608(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_47624(const u32 *r, u32 *eax)            { fighter_47624(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_48964(const u32 *r, u32 *eax)            { fighter_48964(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_489a0(const u32 *r, u32 *eax)            { fighter_489a0(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void m_475ec_at(const u32 *r, u32 by_rec, u32 b43, u32 w34, int late)
+{
+    u32 rec = r[R_EDX];
+    int al;
+    if (!late) {
+        DSB(rec + 0x43u) = (u8)b43;
+        DSW(rec + 0x34u) = (u16)w34;
+    }
+    al = fighter_actor_bit15_clear(by_rec ? (u32)DSB(rec + 0x51u) : r[R_EBX]);
+    if (late) {
+        DSB(rec + 0x43u) = (u8)b43;
+        DSW(rec + 0x34u) = (u16)w34;
+    }
+    if (al != 0) DSW(rec + 0x34u) = (u16)(0u - DSW(rec + 0x34u));
+}
+static void m_475ec(const u32 *r, u32 *eax)            /* the two stores after the 0x1A570 call */
+{
+    m_475ec_at(r, 0u, 0x28u, 0x0258u, 1);
+    *eax = 0u;
+}
+static void m_475ec_side(const u32 *r, u32 *eax)       /* 0x1A570 on rec+0x51, not EBX */
+{
+    m_475ec_at(r, 1u, 0x28u, 0x0258u, 0);
+    *eax = 0u;
+}
+static void m_47608(const u32 *r, u32 *eax)            /* the two stores after the 0x1A570 call */
+{
+    m_475ec_at(r, 0u, 0x22u, 0x02EEu, 1);
+    *eax = 0u;
+}
+static void m_47624(const u32 *r, u32 *eax)            /* the slot stores before the 0x2BC30 call */
+{
+    DSB(r[R_EAX] + 0x52u) = 9u;
+    DSB(r[R_EAX] + 0x53u) = 8u;
+    DSB(r[R_EAX] + 0x54u) = 0u;
+    actors_anim_begin(r[R_EDX], 0x000ED79Au, 0x40800000u);
+    *eax = 0u;
+}
+static void m_48964_at(const u32 *r, u32 when_al, u32 other, int by_side, int late41)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    int al;
+    if ((DSB(slot + 0x41u) & 0x40u) != 0u) return;
+    if (!late41) DSB(slot + 0x41u) = (u8)(DSB(slot + 0x41u) | 0x40u);
+    al = fighter_actor_bit15_clear(by_side ? r[R_EBX] : (u32)DSB(rec + 0x51u));
+    if (late41) DSB(slot + 0x41u) = (u8)(DSB(slot + 0x41u) | 0x40u);
+    fighter_state_35838(slot, rec, al != 0 ? when_al : other);
+}
+static void m_48964(const u32 *r, u32 *eax)            /* the directions swapped */
+{
+    m_48964_at(r, 0x1000u, 0x2000u, 0, 0);
+    *eax = 0u;
+}
+static void m_48964_side(const u32 *r, u32 *eax)       /* 0x1A570 on EBX, not rec+0x51 */
+{
+    m_48964_at(r, 0x2000u, 0x1000u, 1, 0);
+    *eax = 0u;
+}
+static void m_489a0(const u32 *r, u32 *eax)            /* +0x41 bit 6 set after the 0x1A570 call */
+{
+    m_48964_at(r, 0x1000u, 0x2000u, 0, 1);
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -1541,6 +1612,18 @@ static const binding_t k_bindings[] = {
     { "fighter_22638@signed",     m_22638_signed, 0x00000000u },
     { "fighter_22638@byte5d",     m_22638_byte5d, 0x00000000u },
     { "fighter_22638@char",       m_22638_char,   0x00000000u },
+    { "fighter_475ec",            b_475ec,        0x00000000u },
+    { "fighter_47608",            b_47608,        0x00000000u },
+    { "fighter_47624",            b_47624,        0x00000000u },
+    { "fighter_48964",            b_48964,        0x00000000u },
+    { "fighter_489a0",            b_489a0,        0x00000000u },
+    { "fighter_475ec@mutant",     m_475ec,        0x00000000u },
+    { "fighter_475ec@side",       m_475ec_side,   0x00000000u },
+    { "fighter_47608@mutant",     m_47608,        0x00000000u },
+    { "fighter_47624@mutant",     m_47624,        0x00000000u },
+    { "fighter_48964@mutant",     m_48964,        0x00000000u },
+    { "fighter_48964@side",       m_48964_side,   0x00000000u },
+    { "fighter_489a0@mutant",     m_489a0,        0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

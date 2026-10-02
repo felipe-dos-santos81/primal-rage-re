@@ -88,6 +88,7 @@ extern int g_failures;
     X(test_p2_hooks) \
     X(test_p2_1c) \
     X(test_p2_0c) \
+    X(test_p3_simple) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
     X(test_restart)

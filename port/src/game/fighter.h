@@ -1205,5 +1205,15 @@ void fighter_22588(u32 side);
 /* §P2.9: the slot +0x0C callbacks they store (slot, rec, side). */
 void fighter_212cc(u32 slot, u32 rec, u32 side);
 void fighter_22638(u32 slot, u32 rec, u32 side);
+/* Track P batch 3 (record 2026-10-03-reverse-p3-derivations.md §P3.3): the
+ * move callbacks 0x34E2C calls as (slot, rec, side), registered in
+ * actors_init; and the callee 0x35838 they stub (no longer file-local, so
+ * the harness's mutants can call it). */
+void fighter_state_35838(u32 slot, u32 rec, u32 dirbits);
+void fighter_475ec(u32 slot, u32 rec, u32 side);
+void fighter_47608(u32 slot, u32 rec, u32 side);
+void fighter_47624(u32 slot, u32 rec, u32 side);
+void fighter_48964(u32 slot, u32 rec, u32 side);
+void fighter_489a0(u32 slot, u32 rec, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */
