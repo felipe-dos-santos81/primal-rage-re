@@ -413,14 +413,14 @@ P1_SEED_CB = {DS_SLOTS + 0x7A: b"\x05", DS_SLOTS + 0x94 + 0x7A: b"\x03", DS_SLOT
               E3_REC2 + 0x29: b"\x29", E3_REC2 + 0x34: b"\x34\x34"}
 
 
-def p1_cb(name, entry, rows, calls, stub_eax=None):
+def p1_cb(name, entry, rows, calls, stub_eax=None, mutants=("@mutant",)):
     """A +0x0C callback's cases: (index, the slot's +0x57, side, extra pokes)."""
     return Spec(name, entry, [
         Case("c%d" % i, {"eax": E3_SLOT, "edx": E3_REC, "ebx": side},
              {**SLOT_PTRS, **P1_SEED_CB, E3_SLOT + 0x52: bytes([0x52, 0x53, 0x54, 0x55, 0x56, st]), **extra},
              (stub_eax or {}).get(i, {}))
         for i, st, side, extra in rows
-    ], allow_calls=(0x33950,), calls=calls, eax_mask=0)
+    ], allow_calls=(0x33950,), calls=calls, eax_mask=0, mutants=mutants)
 
 
 def p1_23d38(cid, st, x, ox, w28):
@@ -468,29 +468,40 @@ P1_SPECS = [
         for side in (0, 1)
     ], allow_calls=(0x339AC,), calls=(HIT_B,), eax_mask=0xFF),
     # 0x15584 and 0x1579C (record §P1.8): 0x33950 runs on both sides (allow); with side 0 the other slot is
-    # slot 1 (character 3), with side 1 slot 0 (character 5); the own slot's character differs (6, 1) so the
-    # mutant's wrong index shows. ctx[3]+4 points at E3_OUT, the record whose word +0x2C case 3 copies to.
+    # slot 1 (character 3), with side 1 slot 0 (character 5); the side's own slot (ctx[2]: slot 0 for side 0,
+    # character 5) has the other character, so the mutant's wrong index shows. ctx[3]+4 points at E3_OUT, the
+    # record whose word +0x2C case 3 copies to. 0x15584's c9 and 0x1579C's c7: the word 0x440 is exactly 0x400
+    # after the subtract, where `jg` (0x15638, 0x15850) does not jump: only they tell `jg` from `jge` (@ge).
     p1_cb("fighter_15584", 0x15584, [(0, 0, 0, {}), (1, 1, 0, {}), (2, 2, 1, {}),
                                       (3, 3, 0, {E3_REC2 + 0x2C: b"\x00\x05"}),
                                       (4, 3, 0, {E3_REC2 + 0x2C: b"\x20\x04"}),
                                       (5, 3, 0, {E3_REC2 + 0x2C: b"\x10\x00"}),
-                                      (6, 4, 0, {}), (7, 5, 0, {}), (8, 6, 0, {})],
-          calls=(ANIM_BEGIN, VOICE), stub_eax={1: {0x2C3FC: 0}}),
+                                      (6, 4, 0, {}), (7, 5, 0, {}), (8, 6, 0, {}),
+                                      (9, 3, 0, {E3_REC2 + 0x2C: b"\x40\x04"})],
+          calls=(ANIM_BEGIN, VOICE), stub_eax={1: {0x2C3FC: 0}}, mutants=("@mutant", "@ge")),
     p1_cb("fighter_1579c", 0x1579C, [(0, 0, 0, {}), (1, 1, 0, {}), (2, 2, 1, {}),
                                       (3, 3, 0, {E3_REC2 + 0x2C: b"\x00\x05"}),
                                       (4, 3, 0, {E3_REC2 + 0x2C: b"\x20\x04", E3_REC2 + 0x28: b"\x00\x40"}),
                                       (5, 3, 1, {E3_REC + 0x28: b"\xff\xbf\x00\x00\x20\x04"}),
-                                      (6, 4, 0, {})],
-          calls=(ANIM_BEGIN, PALETTE, VOICE)),
-    # 0x23D38 (record §P1.8): DS_000F0AF0 = 0x10000; the record at slot+8 is E3_REC2.
+                                      (6, 4, 0, {}), (7, 3, 0, {E3_REC2 + 0x2C: b"\x40\x04"})],
+          calls=(ANIM_BEGIN, PALETTE, VOICE), mutants=("@mutant", "@ge")),
+    # 0x23D38 (record §P1.8): DS_000F0AF0 = 0x10000; the record at slot+8 is E3_REC2. Case 0's boundaries
+    # and signedness (Task 4 review): gE/gF put x exactly at the bound (0x13000 with bit 14 of the word +0x28
+    # set, 0xD000 with it clear; `jge` 0x23D79 and `jle` 0x23DA5 return, @ge does not); gG/gH a negative x
+    # (signed compares; @unsigned flips both); gJ the word 0xBFFF (bit 14 clear, every other bit set: `and
+    # dh,0x40` 0x23D60, not a test of the whole word, @bit). Case 1: gI puts F0AF0 - x at 0x80000000, which
+    # `neg` (0x23DC1) leaves negative so `jg` passes (@unsigned returns); gK at 0x80000001 (|d| 0x7FFFFFFF).
     Spec("fighter_23d38", 0x23D38, [
         p1_23d38(cid, st, x, ox, w28) for cid, st, x, ox, w28 in (
             ("g0", 0, 0x12000, 0, 0x4000), ("g1", 0, 0x14000, 0, 0x4000), ("g2", 0, 0xE000, 0, 0),
             ("g3", 0, 0xC000, 0, 0), ("g4", 1, 0xDFFF, 0, 0), ("g5", 1, 0x12000, 0, 0),
             ("g6", 2, 0x5000, 0x6001, 0), ("g7", 2, 0x7000, 0x6000, 0), ("g8", 3, 0x5000, 0x5B01, 0x4000),
             ("g9", 3, 0x5000, 0x4500, 0x4000), ("gA", 3, 0x5000, 0x5000, 0), ("gB", 4, 0, 0, 0),
-            ("gC", 5, 0, 0, 0), ("gD", 6, 0, 0, 0))
-    ], calls=(ANIM_BEGIN, VOICE), eax_mask=0),
+            ("gC", 5, 0, 0, 0), ("gD", 6, 0, 0, 0),
+            ("gE", 0, 0x13000, 0, 0x4000), ("gF", 0, 0xD000, 0, 0), ("gG", 0, 0xFFFFF000, 0, 0x4000),
+            ("gH", 0, 0xFFFFF000, 0, 0), ("gI", 1, 0x80010000, 0, 0), ("gJ", 0, 0xC000, 0, 0xBFFF),
+            ("gK", 1, 0x8000FFFF, 0, 0))
+    ], calls=(ANIM_BEGIN, VOICE), eax_mask=0, mutants=("@mutant", "@ge", "@unsigned", "@bit")),
 ]
 
 SPECS = [

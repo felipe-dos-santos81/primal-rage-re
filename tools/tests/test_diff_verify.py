@@ -303,7 +303,10 @@ P1_KINDS = {"fighter_1567c@mutant": {"call #0"}, "fighter_15908@mutant": {"call 
             "fighter_23bf8@zero": {"eax"}, "fighter_23bf8@ne": {"call #1"},
             "fighter_402fc@mutant": {"call #0 memory"},
             "fighter_15584@mutant": {"call #1"}, "fighter_1579c@mutant": {"call #1"},
-            "fighter_23d38@mutant": {"call #0", "call #1"}}
+            "fighter_23d38@mutant": {"call #0", "call #1"},
+            "fighter_23d38@ge": {"byte"}, "fighter_23d38@unsigned": {"byte", "call #0"},
+            "fighter_23d38@bit": {"byte"}, "fighter_15584@ge": {"byte"},
+            "fighter_1579c@ge": {"call #0", "call #1", "call #2", "byte"}}
 
 
 @needs_unicorn
@@ -472,6 +475,12 @@ class RealFunctionTests(unittest.TestCase):
             self.assertEqual(got, want, name)
         # x above the threshold with AL set (case a6) is the only case that tells `<` from `!=`
         self.assertEqual(sorted({p.split(":")[0] for p in self.mut["fighter_23bf8@ne"].problems}), ["a6"])
+        # Task 4 review: the boundaries and signedness only the added cases reach (0x23D38 case 0 x at the
+        # bound, a negative x and F0AF0 - x = 0x80000000, the word 0xBFFF; the word 0x440 in case 3)
+        for name, ids in (("fighter_23d38@ge", ["gE", "gF"]), ("fighter_23d38@unsigned", ["gG", "gH", "gI"]),
+                          ("fighter_23d38@bit", ["gJ"]), ("fighter_15584@ge", ["c9"]),
+                          ("fighter_1579c@ge", ["c7"])):
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
@@ -571,7 +580,7 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (14), the 9 without are counted apart
-        self.assertIn("diff-verify: 23/23 functions VERIFIED; 29/29 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 23/23 functions VERIFIED; 34/34 mutants detected; 1 named gaps; "
                       "1/14 rows with callees closed (9 have none).", out.getvalue())
 
 

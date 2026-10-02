@@ -457,6 +457,94 @@ static void m_23d38(const u32 *r, u32 *eax)            /* case 3 starts the held
     *eax = 0u;
 }
 
+/* Task 4 review fold-in: the boundaries and signedness only the cases gE..gJ, 0x15584's c9 and 0x1579C's c7
+ * reach. */
+static void m_23d38_ge(const u32 *r, u32 *eax)         /* case 0: `jg`/`jl` where the raw has `jge`/`jle` */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    if (DSB(slot + 0x57u) == 0u) {
+        if ((DSW(rec + 0x28u) & 0x4000u) != 0u) {
+            if ((s32)(DSD(DS_000F0AF0) + 0x3000u) > (s32)DSD(rec + 0x18u)) { *eax = 0u; return; }
+            DSD(rec + 0x18u) = DSD(DS_000F0AF0) - 0x3000u;
+        } else {
+            if ((s32)(DSD(DS_000F0AF0) - 0x3000u) < (s32)DSD(rec + 0x18u)) { *eax = 0u; return; }
+            DSD(rec + 0x18u) = DSD(DS_000F0AF0) + 0x3000u;
+        }
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+    } else {
+        fighter_23d38(slot, rec, r[R_EBX]);
+    }
+    *eax = 0u;
+}
+static void m_23d38_unsigned(const u32 *r, u32 *eax)   /* cases 0 and 1 compared unsigned */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], st = DSB(slot + 0x57u);
+    if (st == 0u) {
+        if ((DSW(rec + 0x28u) & 0x4000u) != 0u) {
+            if (DSD(DS_000F0AF0) + 0x3000u >= DSD(rec + 0x18u)) { *eax = 0u; return; }
+            DSD(rec + 0x18u) = DSD(DS_000F0AF0) - 0x3000u;
+        } else {
+            if (DSD(DS_000F0AF0) - 0x3000u <= DSD(rec + 0x18u)) { *eax = 0u; return; }
+            DSD(rec + 0x18u) = DSD(DS_000F0AF0) + 0x3000u;
+        }
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+    } else if (st == 1u) {
+        u32 d = DSD(DS_000F0AF0) - DSD(rec + 0x18u);
+        if ((s32)d < 0) d = 0u - d;
+        if (d > 0x2000u) { *eax = 0u; return; }
+        actors_anim_begin(rec, 0x000E1BAEu, 0x40400000u);
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+    } else {
+        fighter_23d38(slot, rec, r[R_EBX]);
+    }
+    *eax = 0u;
+}
+static void m_23d38_bit(const u32 *r, u32 *eax)        /* case 0 tests the whole word +0x28, not bit 14 */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    if (DSB(slot + 0x57u) == 0u) {
+        if (DSW(rec + 0x28u) != 0u) {
+            if ((s32)(DSD(DS_000F0AF0) + 0x3000u) >= (s32)DSD(rec + 0x18u)) { *eax = 0u; return; }
+            DSD(rec + 0x18u) = DSD(DS_000F0AF0) - 0x3000u;
+        } else {
+            if ((s32)(DSD(DS_000F0AF0) - 0x3000u) <= (s32)DSD(rec + 0x18u)) { *eax = 0u; return; }
+            DSD(rec + 0x18u) = DSD(DS_000F0AF0) + 0x3000u;
+        }
+        DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+    } else {
+        fighter_23d38(slot, rec, r[R_EBX]);
+    }
+    *eax = 0u;
+}
+static void m_15584_ge(const u32 *r, u32 *eax)         /* case 3 clamps below 0x400 only (`jge` for `jg`) */
+{
+    u32 ctx[6], slot = r[R_EAX];
+    fighter_ctx_same(ctx, r[R_EBX]);
+    if (DSB(slot + 0x57u) == 3u) {
+        DSW(ctx[5] + 0x2Cu) = (u16)(DSW(ctx[5] + 0x2Cu) - 0x40u);
+        if (DSW(ctx[5] + 0x2Cu) < 0x400u) {
+            DSW(ctx[5] + 0x2Cu) = 0x400u;
+            DSB(slot + 0x57u) = (u8)(DSB(slot + 0x57u) + 1u);
+        }
+        DSW(DSD(ctx[3] + 4u) + 0x2Cu) = DSW(ctx[5] + 0x2Cu);
+    } else {
+        fighter_15584(slot, r[R_EDX], r[R_EBX]);
+    }
+    *eax = 0u;
+}
+static void m_1579c_ge(const u32 *r, u32 *eax)         /* case 3 copies at 0x400 too (`jge` for `jg`) */
+{
+    u32 ctx[6], slot = r[R_EAX];
+    fighter_ctx_same(ctx, r[R_EBX]);
+    if (DSB(slot + 0x57u) == 3u && (u16)(DSW(ctx[5] + 0x2Cu) - 0x40u) == 0x400u) {
+        DSW(ctx[5] + 0x2Cu) = 0x400u;
+        DSW(DSD(ctx[3] + 4u) + 0x2Cu) = 0x400u;
+    } else {
+        fighter_1579c(slot, r[R_EDX], r[R_EBX]);
+    }
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -511,6 +599,11 @@ static const binding_t k_bindings[] = {
     { "fighter_15584@mutant",     m_15584,        0x00000000u },
     { "fighter_1579c@mutant",     m_1579c,        0x00000000u },
     { "fighter_23d38@mutant",     m_23d38,        0x00000000u },
+    { "fighter_23d38@ge",         m_23d38_ge,     0x00000000u },
+    { "fighter_23d38@unsigned",   m_23d38_unsigned, 0x00000000u },
+    { "fighter_23d38@bit",        m_23d38_bit,    0x00000000u },
+    { "fighter_15584@ge",         m_15584_ge,     0x00000000u },
+    { "fighter_1579c@ge",         m_1579c_ge,     0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
