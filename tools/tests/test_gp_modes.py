@@ -164,5 +164,61 @@ class TestScenarios(unittest.TestCase):
         self.assertEqual((s.end_frame, s.fired, s.total), (0x875 + 300, 7, 7))
 
 
+def _arm_log():
+    """The attract start: mode 3, F1 pressed (boot step, its BIOS word 3B00),
+    sampled from f 0x110 (raw bit 24), the word consumed at 0x112, the wipe."""
+    L = ['B ms=0 base=00266000 ptr=0000FE20']
+    L += [_s(f, 3, st=4) for f in range(0x100, 0x110)]
+    L.append('I ms=1 f=010F step=0 press=p1.start scan=3B lin=0001008F old=FF bios=3B00 ring=1 late=0')
+    L += [_s(0x110, 3, st=4, raw=0x01000000), _s(0x111, 3, st=4, raw=0x01000000)]
+    L.append('H ms=2 f=0112 head=0020')
+    L.append('P ms=2 f=0112 mode=001A st=0004 tick=00000000')
+    L += [_s(0x112, 0x1A, cred=4, b1f=1, raw=0x01000000), _s(0x113, 0x1A, cred=4, b1f=1, raw=0x01000000)]
+    L = [l.replace('head=001E', 'head=0020') if l.startswith('S ') and gs.parse(l)['f'] >= 0x112 else l for l in L]
+    L.append('I ms=3 f=0113 step=0 release=p1.start lin=0001008F')
+    L += [_s(f, 0x1A, cred=4, b1f=1).replace('head=001E', 'head=0020') for f in range(0x114, 0x118)]
+    L.append('X ms=4 f=0117 step=1 end')
+    return L
+
+
+class TestPadArm(unittest.TestCase):
+    def test_the_attract_start_scenario(self):
+        sc = gs.SCENARIOS['gp-u8-attract-start']
+        self.assertEqual(sc.get('arm'), 'pad')
+        self.assertEqual(sc['steps'], (('boot', gs.ENTER_WAIT, ('pad', ('p1.start',), 4)), ('until_mode', 6, 300)))
+        self.assertEqual(gm.ROWS['gp-u8-attract-start']['reach'], 6)
+
+    def test_the_script_arms_on_the_press(self):
+        text = gs.port_script('gp-u8-attract-start', _arm_log())
+        self.assertEqual(text.splitlines()[1:], ['arm pad', 'enter_frame 272', 'enter_state 0004',
+                                                 'bits 272 0100', 'key 274 3B 00', 'bits 276 0000', 'end 279'])
+
+    def test_the_arm_must_be_pinned_in_mode_3(self):
+        L = [l for l in _arm_log() if not (l.startswith('S ') and gs.parse(l)['f'] == 0x10F)]
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('gp-u8-attract-start', L)
+        L = [l.replace('raw=01000000', 'raw=00000000') for l in _arm_log()]
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('gp-u8-attract-start', L)
+        L = [l.replace('mode=0003', 'mode=0027') if l.startswith('S ') and gs.parse(l)['f'] in (0x10F, 0x110) else l
+             for l in _arm_log()]                       # 0x11D04 runs in mode 3 only (0x25238)
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('gp-u8-attract-start', L)
+
+    def test_an_enter_scenario_still_needs_mode_0x27(self):
+        with self.assertRaises(gs.ScriptError):
+            gs.port_script('gp-u8-right-arcade', _arm_log())
+
+    def test_the_capture_check_follows_the_arm(self):
+        import gp_capture as gc
+        s = gs.Schedule(())
+        res = dict((n.split(' (')[0], ok) for n, ok in gc.run_checks('gp-u8-attract-start', _arm_log(), s, 3, 3))
+        self.assertTrue(res['mode left 3 after the pad arm'])
+        self.assertTrue(res['port script v2'])
+        bad = [l for l in _arm_log() if not (l.startswith('P ') or (l.startswith('S ') and gs.parse(l)['mode'] == 0x1A))]
+        res = dict((n.split(' (')[0], ok) for n, ok in gc.run_checks('gp-u8-attract-start', bad, s, 3, 3))
+        self.assertFalse(res['mode left 3 after the pad arm'])
+
+
 if __name__ == '__main__':
     unittest.main()
