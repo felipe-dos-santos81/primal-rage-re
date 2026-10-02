@@ -12240,7 +12240,7 @@ static int gp_parse(const char *path)
         /* plan U9/U10: `poke <f> <addr hex8> <bytes hex>`, inside the data object
          * 0x80000..0x10B0CF (AGENTS.md). */
         else if (sscanf(line, "poke %u %x %39s", &a, &b, hex) == 3 && gp_poke_bytes(hex, s->d, &c)
-                 && b >= 0x80000u && b + c <= 0x10B0D0u) { s->op = 'p'; gp_npokes++; }
+                 && b >= 0x80000u && b <= 0x10B0D0u - c) { s->op = 'p'; gp_npokes++; }
         else if (sscanf(line, "end %u", &a) == 1) { s->op = 'e'; gp_end = a; }
         else { ok = 0; break; }
         if (a < last_f) { ok = 0; break; }        /* the generator sorts by frame */
@@ -12533,7 +12533,7 @@ int test_gp_poke_script(void)
     CHECK_EQ_INT((int)DSB(0x10810Du), 0x22);
     CHECK_EQ_INT((int)gp_pokes_applied, 2);
     CHECK_EQ_INT((int)gp_missed, 0);
-    CHECK_EQ_INT((int)gp_next, 3);               /* stops at `end` */
+    CHECK_EQ_INT((int)gp_next, 3);               /* stops before the `end` step (f=13): not yet due */
     DSB(0x10789Eu) = keep[8];
     for (u32 i = 0; i < 8u; i++) DSB(0x108106u + i) = keep[i];
     fclose(gp_log);
@@ -12546,6 +12546,7 @@ int test_gp_poke_script(void)
     CHECK_EQ_INT(gp_poke_parses(path, "poke 12 0010789E 787\n"), 0);
     CHECK_EQ_INT(gp_poke_parses(path, "poke 12 00108106 0102030405060708090A0B0C0D0E0F1011\n"), 0);
     CHECK_EQ_INT(gp_poke_parses(path, "poke 12 0010789E zz\n"), 0);
+    CHECK_EQ_INT(gp_poke_parses(path, "poke 12 FFFFFFF0 0102030405060708090A0B0C0D0E0F10\n"), 0);   /* b + c wraps */
     CHECK_EQ_INT(gp_poke_parses(path, "poke 12 0010B0CF 78\n"), 1);   /* the last byte of the object */
     remove(path);
     return g_failures - before;
