@@ -166,6 +166,15 @@ rec+0x51 = 0, AL 0), `q2` (0xBF, rec+0x51 = 1 with side 0, AL 1): `fighter_48964
 memory`), `0x47624@mutant` the slot stores first (`call #0 memory`), `0x48964@mutant` the directions swapped (`call
 #1`), `0x489A0@mutant` +0x41 set after the call (`call #0 memory`).
 
+**Fix round 1 (Task 2 review, `9a4cda5`).** `0x48964`/`0x489A0` read rec+0x51 zero-extended (`xor eax,eax; mov
+al,[edx+0x51]`), which rec+0x51 0/1 cannot tell: case `q3` (+0x41 = 0xBF, rec+0x51 = 0x80, AL 1). The two functions now
+carry the same four mutants: the directions swapped (`0x48964@mutant`, `0x489A0@swap`, `call #1`), +0x41 set after the
+call (`0x48964@late`, `0x489A0@mutant`, `call #0 memory`), `0x1A570` on EBX (`@side`, `call #0`, caught by `q2` and
+`q3`) and a sign-extended rec+0x51 (`@sext`, `call #0`, `q3` alone). The unit check runs `0x475EC`/`0x47608` with
+side 1 and rec+0x51 = 0, `0x48964`/`0x489A0` with side 0 and rec+0x51 = 1, the two actors at opposite bit 15: an index
+by the wrong one fails it (each mutation proved). The U10 claim was corrected in the same commit: `0x3DA50` has 1 hit,
+`0x475EC` the 11 (§W.14's table).
+
 ## §P3.4 Task 3: `0x47720` and the three callbacks it stores
 
 **`0x47720`** (r 0x20): `mov eax,esp; call 0x339AC` (the context from the EDX record: ctx[0] = rec+0x51; the EAX
@@ -344,17 +353,22 @@ arithmetic.
 **`0x48608`** (r 0x27; ECX = the slot, ESI = the record, EBX = rec+0x51 via `xor ebx,ebx; mov bl,[edx+0x51]`):
 `0x3C4CC(rec, 0xED834, 2.0)`; `0x3C190(EBX, 0x78)`; the record's +0x42 = 0x1E; the slot +0x52 = 9, +0x53 = 7, +0x54 =
 0, +0x57 = 0, +0x0C = `0x4844C`, the word `0x10838C[EBX]` = 0, +0x18 = `0x48054`, +0x1C = `0x480B4` (EBX survives both
-calls). Cases `r0`/`r1` (rec+0x51 0/1, EBX the other); `@mutant` (0x80) `call #1`, `@order` (the stores before
-`0x3C190`) `call #1 memory`, `@side` (the word by EBX) `byte`.
+calls). Cases `r0`/`r1` (rec+0x51 0/1, EBX the other) and `r2` (rec+0x51 = 0x80, its word at `0x10838C + 0x100`
+seeded 0x9090: a sign-extended read passes `0xFFFFFF80` to `0x3C190` and clears another word); `@mutant` (0x80) `call
+#1`, `@order` (the stores before `0x3C190`) `call #1 memory`, `@side` (the word by EBX) `byte`.
 
 **`0x48054`** (+0x18; ECX = `0xC949C` and EBX = `0xC9492` before the allowed calls): flags 1, 8, 4, 0xD = 0, 5 and 9 =
-1; r = `0x18C14(ctx[0], flags, 0xC9492, 0xC949C)`; with ctx[2]'s +0x57 non-zero, 1. Cases `n0`, `n1` (side 1,
-`0x12345678`), `n2` (+0x57 = 3); `@mutant` (flag 9) `call #0`, `@eax` (`n2` alone).
+1; r = `0x18C14(ctx[0], flags, 0xC9492, 0xC949C)`; with ctx[2]'s +0x57 non-zero, 1. The other slot's +0x57 is seeded
+the opposite of the own (a read of either slot alone, or of the other, changes the result in some case). Cases `n0`,
+`n1` (side 1, `0x12345678`), `n2` (+0x57 = 3), `n3` (side 1, +0x57 = 3, `0x0F0F0F0F`); `@mutant` (flag 9) `call #0`,
+`@eax` (`0x18C14`'s result even with +0x57 set) `n2` and `n3`.
 
 **`0x480B4`** (+0x1C): ctx; `0x3B298(ctx[1], ctx[2].+0x5F)` (AL unread: the next instruction loads EDX); `0x39A10(ctx[4],
 0x309)`; `0x39A10(ctx[5], 0x309)`; `0x48170(ctx[0])`; `0x3C208(ctx[1], the signed word 0xC94A6[ctx[3].+0x7A])` (image
-words 0xFC0 0xD40 0x1180 0x1080 0x1680 0xE80 0xE80). Cases `x0`, `x1`, `x2` (character 3's word `0xF000`); `@mutant`
-(`0x3C208` on ctx[0]), `@signed` (`x2` alone), `@char` (the own character), each `call #4`.
+words 0xFC0 0xD40 0x1180 0x1080 0x1680 0xE80 0xE80). Both characters' words are seeded and differ (slot 0 is character
+5, slot 1 character 3), so the other slot's character is told from the own and from a fixed one on both sides. Cases
+`x0`, `x1`, `x2` (side 0, character 3's word `0xF000`), `x3` (side 1, character 5's word `0xF456`, AL set);
+`@mutant` (`0x3C208` on ctx[0]), `@signed` (`x2` and `x3`), `@char` (the own character), each `call #4`.
 
 **`0x48170`** (EAX = side; ECX = side, ESI = 1 - side; EDI = the own slot, EBX = the other, computed as `0x1077B0 +
 0x94 * n`): ctx; the word `0x108388[side]` = 0; `0x3C148(side)`, `0x3C148(1 - side)`; `0x3C480([EDI], 0xED850,
@@ -362,16 +376,32 @@ words 0xFC0 0xD40 0x1180 0x1080 0x1680 0xE80 0xE80). Cases `x0`, `x1`, `x2` (cha
 after the push = ctx[3], then `mov esi,[esi+0x2c]`, **before** the next call); `0x3C480([EBX], [0xC90F8 + 4 * EBX's
 +0x7A], 3.0)`; `0x188DC(ctx[1], ESI)`; EBX's +0x52 = 0x10, +0x53 = 0xA, +0x54 = 0, +0x10 = `0x4811C`, +0x58 = 0; the
 byte `0x108392[side]` = `setne` of EBX's +0x43 & 0x30. Cases `g0` (AL 0, +0x43 0x10), `g1` (side 1, AL 1, 0x20),
-`g2` (AL 0, 0xCF); `@mutant` (the own slot's +0x2C) `call #5`/`#6` (the index depends on whether `0x36D98` ran),
-`@order` (+0x57 after `0x468D8`) `call #3/#4 memory`, `@reset` (`0x36D98` on the own slot) `g1` alone. The unit run
+`g2` (AL 0, 0xCF), `g3` (side 0, AL 1, 0x30) and `g4` (side 1, stub EAX `0x100`, 0x10: AL 0 with the upper bits set,
+so `test al,al` at `0x481F0` skips `0x36D98`; Task 6 review, `639c532`); `@mutant` (the own slot's +0x2C) `call
+#5`/`#6` (the index depends on whether `0x36D98` ran), `@order` (+0x57 after `0x468D8`) `call #3/#4 memory`, `@reset`
+(`0x36D98` on the own slot) `call #4`, `g1` and `g3` (the cases whose AL is set, one per side), `@al` (`0x468D8`'s whole
+EAX tested) `call #4`..`#6`, `g4` alone (without `g4` it survives; a port that tests the whole EAX fails `g4` alone,
+both measured). The unit run
 through `0x480B4` finds the byte 0: the real `0x3B298(1, ...)` has cleared slot 1's +0x43 by the time `0x48170` reads
 it (measured), so the byte is checked on `0x48170` alone as well.
 
 **`0x4811C`** (+0x10; ECX = the slot, ESI = EDX = the record, EBX = side): `mov dl,[eax+0x58]; cmp dl,1; jb` returns;
 `jbe` (equal): the word `0x108380[side]` = 0 (`lea eax,[ebx*2]` between keeps the flags), +0x58 = 2; `cmp dl,2; je`:
 `inc word [eax+0x108380]`, then `[eax+0x10837E] sar 16` (the signed word) above 0xF: +0x54 = 0, `0x36870(ESI)`;
-above 2 nothing. Cases `i0`..`i5`; `@mutant` (`0x36870` on the slot) `call #0`, `@signed` (`i5`: 0x7FFF + 1) alone,
-`@order` (+0x54 after the call) `call #0 memory`.
+above 2 nothing. Cases `i0`..`i5` and `i6` (side 1 over the threshold: a compare on side 0's word at side 1 survived
+`i3`); `@mutant` (`0x36870` on the slot) `call #0`, `@signed` (`i5`: 0x7FFF + 1) alone, `@order` (+0x54 after the
+call) `call #0 memory`.
+
+**The unit checks (Task 6).** `0x48054` runs on side 1 too (side 1's actor bit 15 set so `0x189FC` holds and
+`0x18C14` returns 0: the +0x57 replacement is observable; slot 0's +0x57 alone must not count); `0x480B4` observes
+`0x39A10` on both records (+0x74 = 0x309 over sentinels); `0x48170` alone observes `0x3C148` on both sides
+(+0x34/+0x42/+0x43 sentinels), both `0x3C480` starts (rec+8) and `0x468D8` -> `0x36D98` (`0x1078F2/3` and +0x5D, both
+true and false); `0x4811C` observes `0x36870` (+0x10 and +0x68 cleared only when +0x54 = 0 was stored first, which
+also catches a wrong record from the case-10 adapter). Nineteen mutations, each failing the suite. **Not observable in
+the unit check, covered by the rows only:** `0x480B4`'s `0x3B298` and `0x3C208` calls (`0x48170`'s `0x3C148` already
+zeroes what `0x3C208` zeroes; the `0x1883C` placement is not seeded; the rows compare the arguments, `x0`..`x3`) and
+`0x48170`'s `0x188DC` (it re-anchors the other record's +0x18 with the x the preceding `0x3C480` set; the row records it
+as `call #5`/`#6`).
 
 ## §P3.8 Task 7: `0x4844C`
 
@@ -491,6 +521,20 @@ Named gaps and limits:
   that state does not consult is covered by the row's by-value comparison only (the mutation proofs use a flag the
   state consults: flag 0 for `0x47648`/`0x477A8`, flag 5 for `0x47CB0`; for `0x48054` the +0x57 replacement, with
   the state chosen so that `0x18C14` returns 0).
+- **The x87 control word's named limits** (§P3.6): no DOSBox-X reading of the word was taken, so a control-word
+  change made at run time by code outside the code object (DOS/4GW, the sound drivers) is not excluded; nor is a
+  caller outside the object of the `fnsave`/`frstor` pair at `0x6B94C`/`0x6B950` (no instruction of the object reads
+  the pointers stored to `0xF09B8`/`0xF09BC`). The harness seeds `0x127F` (`5ce9b2c`, `X87ControlWordTests`).
+- **Mutations no case or unit check can observe, named and not claimed:** §P3.8's (`0x4844C`'s voice read as `DSD(e) >>
+  16`, the same bits; a word clear of `+0x54` and the order of `0x3C148`/`0x3C16C` in the unit check, which the row
+  catches; the state byte as a signed `char`), §P3.7's unit-level ones (`0x480B4`'s `0x3B298`/`0x3C208` and `0x48170`'s
+  `0x188DC`, covered by the rows only) and §P3.6's (`0x47CB0`'s word sign).
+- **Parked review minors (carried, not changed):** the image dwords the unit checks assert are evidence lines on the
+  image, not tests of the port, and each check's header comment says so (P2's lesson); `0x47720`'s unit check runs
+  side 0 only (the rows `e0`/`e1` cover both sides).
+- **Outside P3:** `python3 -m unittest tools.tests.test_title_pin` fails `test_patches_all_sites_and_nothing_else` on
+  this tree (re-run at Task 8: 1 of 10) as on `main` (record P2 §P2.13: `title_pin` gained master-loop draw pins without that
+  test's update); it is not in `make verify`. A named issue for the closeout.
 - E3's, P1's and P2's limits stand: seeds are hand pokes; the memory at a call is mem[] only; the callee column is
   one level deep.
 
@@ -501,34 +545,45 @@ P3 **24** as listed (no change in membership); C1 gains the eleven stubs above; 
 
 ## §P3.12 Results
 
-The replay's per-task gates (`make diff-verify entry-triage` with scratch image paths; `PR_ORACLE_REQUIRED=1
-./build/run_tests` "all checks passed" after each; the diff-verify Python suite 160 tests at the base, 161 from Task 2;
-the E2 suite 44):
+The per-commit gates (`make diff-verify entry-triage` with scratch image paths; `PR_ORACLE_REQUIRED=1
+./build/run_tests` "all checks passed" after each; the diff-verify Python suite 160 tests at the base, 161 from Task 2,
+162 from `5ce9b2c`; the E2 suite 44). **Reconciled with the implementation (Task 8):** each diff-verify counter below
+is the one the commit's own `test_the_self_check_counts_functions_mutants_gaps_and_closed_rows` asserts (and its
+`make diff-verify` printed, per the task reports), each E2 column is read from the commit's committed table. The
+planner's replay had 114, 127, 141 and 147 mutants after Tasks 4-7: each task added the plan's mutants
+(+7, +8, +10, +13, +14, +6) and the reviews added 10 more (Task 2's fix 5, Task 3's extra 1, Task 4's fix 3, Task 6's `@al` 1, added
+in Task 8), so every count from Task 4 on is above the plan's; the rows below carry each from the commit that added it.
 
 | after | diff-verify counter | entry-triage |
 |---|---|---|
-| `8d4cdf4` | `54/54 functions VERIFIED; 89/89 mutants detected; 1 named gaps; 7/41 rows with callees closed (13 have none)` | `297 / 198`; callbacks `9 / 62`; supplement 22 unported; stubs 60; voice `31 / 84 / 19` |
-| Task 2 | `59/59 ...; 96/96 ...; 9/46 ... (13 have none)` | `292 / 203`; callbacks `4 / 67`; supplement 22; stubs 57; voice `31 / 84 / 19` |
-| Task 3 | `63/63 ...; 104/104 ...; 10/49 ... (14 have none)` | `291 / 204`; callbacks `3 / 68`; supplement 19; stubs 56; voice `31 / 84 / 19` |
-| Task 4 | `68/68 ...; 114/114 ...; 10/54 ... (14 have none)` | `290 / 205`; callbacks `2 / 69`; supplement 15; stubs 55; voice `29 / 86 / 19` |
-| Task 5 | `72/72 ...; 127/127 ...; 11/58 ... (14 have none)` | `289 / 206`; callbacks `1 / 70`; supplement 13; stubs 54; voice `28 / 87 / 19` |
-| Task 6 | `77/77 ...; 141/141 ...; 11/63 ... (14 have none)` | `288 / 207`; callbacks `0 / 71`; supplement 9; stubs 53; voice `28 / 87 / 19` |
-| Task 7 | `78/78 functions VERIFIED; 156/156 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` | unchanged (`0x4844C` is outside E2's universe) |
+| `577b23f` (base: `main` `f540010`, P2's `8d4cdf4` plus docs) | `54/54 functions VERIFIED; 89/89 mutants detected; 1 named gaps; 7/41 rows with callees closed (13 have none)` | `297 / 198`; callbacks `9 / 62`; supplement 22 unported; stubs 60; voice `31 / 84 / 19` |
+| `5aa4c56` Task 2 | `59/59 ...; 96/96 ...; 9/46 ... (13 have none)` | `292 / 203`; callbacks `4 / 67`; supplement 22; stubs 57; voice `31 / 84 / 19` |
+| `1844e02` Task 3 | `63/63 ...; 104/104 ...; 10/49 ... (14 have none)` | `291 / 204`; callbacks `3 / 68`; supplement 19; stubs 56; voice `31 / 84 / 19` |
+| `9a4cda5` Task 2 fix | `63/63 ...; 109/109 ...; 10/49 ... (14 have none)` | unchanged |
+| `05c19ce` Task 4 | `68/68 ...; 119/119 ...; 10/54 ... (14 have none)` | `290 / 205`; callbacks `2 / 69`; supplement 15; stubs 55; voice `29 / 86 / 19` |
+| `9461c6b` Task 5 | `72/72 ...; 132/132 ...; 11/58 ... (14 have none)` | `289 / 206`; callbacks `1 / 70`; supplement 13; stubs 54; voice `28 / 87 / 19` |
+| `67c8ac9` Task 3 extras | `72/72 ...; 133/133 ...; 11/58 ... (14 have none)` | unchanged |
+| `ad5e0fd` Task 4 fix | `72/72 ...; 136/136 ...; 11/58 ... (14 have none)` | unchanged |
+| `5ce9b2c` x87 control word | `72/72 ...; 136/136 ...; 11/58 ... (14 have none)` (no mutant added; every row re-run at `0x127F`) | unchanged |
+| `147ec5a` Task 6 | `77/77 ...; 150/150 ...; 11/63 ... (14 have none)` | `288 / 207`; callbacks `0 / 71`; supplement 9; stubs 53; voice `28 / 87 / 19` |
+| `693c380` Task 7 | `78/78 ...; 156/156 ...; 11/64 ... (14 have none)` | unchanged (`0x4844C` is outside E2's universe) |
+| `639c532` Task 6 minor | `78/78 functions VERIFIED; 157/157 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` | unchanged |
 
 The closed rows added: `0x475EC`, `0x47608` (Task 2: `0x1A570` has P1's row), `0x47720` (Task 3: `0x3C4CC` and the
-allowed `0x339AC`), `0x47FCC` (Task 5: `0x3C4CC` and `0x33950`). The rows (cases, blocks hit/total), all `VERIFIED`:
-`475ec` 3 3/3, `47608` 3 3/3, `47624` 2 1/1, `48964` 3 6/6, `489a0` 3 6/6, `47720` 2 1/1, `476fc` 3 3/3, `47648` 2 1/1,
-`47688` 5 6/6, `47874` 2 1/1, `47830` 5 3/3, `47798` 2 1/1, `477a8` 2 1/1, `477e8` 2 1/1, `47fcc` 2 1/1, `47cb0` 5 5/5,
-`47d24` 3 1/1, `47e9c` 16 17/17, `48608` 2 1/1, `48054` 3 3/3, `480b4` 3 1/1, `48170` 3 3/3, `4811c` 6 8/8, `4844c` 28
-23/23. What alone catches each mutant is pinned by `test_each_p3_mutant_is_caught_by_what_it_breaks` (`P3_KINDS`) and
-its case lists. **A store sweep** (scratch: every non-stack store instruction of each row, `fstp` included, must be
+allowed `0x339AC`), `0x47FCC` (Task 5: `0x3C4CC` and `0x33950`). The rows (cases, blocks hit/total), all `VERIFIED`,
+as the final table prints them: `475ec` 3 3/3, `47608` 3 3/3, `47624` 2 1/1, `48964` 4 6/6, `489a0` 4 6/6, `47720` 2
+1/1, `476fc` 3 3/3, `47648` 2 1/1, `47688` 6 6/6, `47874` 3 1/1, `47830` 6 3/3, `47798` 2 1/1, `477a8` 2 1/1, `477e8` 2
+1/1, `47fcc` 2 1/1, `47cb0` 5 5/5, `47d24` 3 1/1, `47e9c` 16 17/17, `48608` 3 1/1, `48054` 4 3/3, `480b4` 4 1/1,
+`48170` 5 3/3, `4811c` 7 8/8, `4844c` 28 23/23 (the planner's counts were 3, 3, 5, 2, 5, 2, 3, 3, 3, 6 for the rows the
+reviews extended). P3's 68 mutants: what alone catches each is pinned by `test_each_p3_mutant_is_caught_by_what_it_breaks`
+(`P3_KINDS`) and its case lists. **A store sweep** (the planner's; scratch: every non-stack store instruction of each row, `fstp` included, must be
 the last writer of a byte that differs from the case's start at the end or at a recorded call, in some case) finds
 every store of the 24 rows observable (81 store instructions; the hooks' stores are their stack flags, compared by
 value). Every unit check's mutation proof (a deleted registration, a changed constant, index, bound or table) fails
 the suite. `port_progress.py` stays `771 1203 64` / `731 731 100` (none of the 24 is a Ghidra `FN_` function) and
 README does not move.
 
-**The final gate** (the prototype's final state; `make verify` with the parallel-safe overrides): `EXIT=0` in 28 min 39 s on a host shared with
+**The planner's final gate** (the prototype's final state; `make verify` with the parallel-safe overrides): `EXIT=0` in 28 min 39 s on a host shared with
 two other runs; the 45 oracle lines equal to `oracle-lines-base.txt`; `make audio-render` cmp-equal to `before-t2.wav`;
 `symbols.h` regenerated byte-identical; `PR_ORACLE_REQUIRED=1 ./build/run_tests` all checks passed; `771 1203 64` /
 `731 731 100`; the Task 7 counter and E2 lines above; no driver recorded an unexpected miss; and every gameplay ratchet
@@ -540,3 +595,30 @@ gp-u10-ending 331 / 9954 / path 30 / win 9954. Facts also run: the image sha1; t
 the callers of §P3.2 (`0x354DA..0x354E5`, `0x1952F`, `0x35144`, `0x350B0`); `callee_clobbers` of every stub (§P3.2's
 table, re-derived by `test_each_stub_declares_the_registers_its_callee_clobbers`); the image tables quoted in
 §P3.3-§P3.8; the stream probe of §P3.1; the lldb first frames of §P3.9; the x87 midpoint check of §P3.6.
+
+**The implementation's closure (Task 8).** Commits `5aa4c56..639c532` on `reverse-p3` (rebased onto `main` `f540010`;
+the plan `577b23f`): the six ports (`5aa4c56 1844e02 05c19ce 9461c6b 147ec5a 693c380`), the review fixes (`9a4cda5
+67c8ac9 ad5e0fd 639c532`) and the x87 control-word harness change (`5ce9b2c`), then this docs commit. Task 1's
+baseline was ruled P2's own full gate at `8d4cdf4` (ledger), the code `main` holds. **The final gate**: one `make
+verify` with the parallel-safe overrides (`T=p3`, `E2_IMAGE` included) on `639c532` (the docs of this commit, which
+no gate step reads, were being written meanwhile): `EXIT=0` in 25 min 35 s (20:48:08-21:13:43, a host shared with a
+reviewer's mutation runs); the 45 oracle lines equal to `oracle-lines-base.txt` (`ORACLES-EQUAL`); `make
+audio-render` cmp-equal to `before-t2.wav` (`WAV-SAME`); `symbols.h` regenerated byte-identical; every `run_tests`
+pass "all checks passed"; the Python suites 13, 16, 18, 162 (diff-verify), 44 (E2), 184, 10 and 33 tests OK; no
+`unexpected` miss line (the gp drivers' sets: one of 2, one of 3, eleven of 4, two of 7: U9's `0x29D60 0x5D812 0x400E0
+0x21044 0x21084` and U10's `0x29D60 0x5D812 0x37DD4 0x29C78 0x3DA50`, without `0x475EC`); `771 1203 64` / `731 731 100`;
+and
+
+```
+diff-verify: 78/78 functions VERIFIED; 157/157 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 288 unported, 207 ported; supplement 131 (9 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 28 in unported code, 87 in ported code, 19 nowhere
+```
+
+with every gameplay ratchet line identical to the baseline's and the plan's (the 33 lines of Task 8 Step 1, each
+`ok`: RA 1072 / 2274, U9 346 / 2150 / 8 / 3162, U10 331 / 9954 / 30 / 9954 among them). **Deviations from the plan's
+expected output** (each a finding, recorded above): the mutant counter is 157, not 147 (the reviews' ten, table
+above); the case counts of ten rows grew (the row list above); the harness now runs the original at the game's x87
+control word `0x127F`, not unicorn's reset `0x0000` (§P3.6; raw `0x72A83`/`0xF09B4`), with every row unchanged;
+`0x48170` gained `g4`/`@al` (`test al,al` at `0x481F0`). Every other line is the plan's.
+
