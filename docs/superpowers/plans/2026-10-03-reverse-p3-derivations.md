@@ -462,9 +462,23 @@ each is closed:
 - *Arguments the raw ignores.* The unit helpers call the callback with EAX/EDX swapped to the other side's slot and
   record: a port that read the slot or record argument instead of the context fails.
 Not distinguishable and not claimed: the table's voice read as `DSD(e) >> 16` against `DSW(e + 2)` (the same bits);
-a word clear of `+0x54` and the order of `0x3C148`/`0x3C16C` in the unit check (the row compares both: the call order,
-and the word's `+0x55` neighbour, which `0x36870` overwrites afterwards in a unit run); the state byte as a signed
-`char` (every value above 4 goes the same way). The diff rows poke at most 16 words of at most 64 bytes, so the slots and
+the order of `0x3C148`/`0x3C16C` (covered by the row's call order only: the unit check sees the two independent
+stores); the state byte as a signed `char` (every value above 4 goes the same way). (The word clear of `+0x54` is
+observable, contrary to what this paragraph first said: state 3's ending seeds and asserts `+0x55`, and the mutation
+fails; only state 0's end is blind to it, where `0x36870` overwrites `+0x55`.)
+
+**Fix round 1 (neighbour bytes).** Width mutants survived the row and the unit check because the neighbours of what
+`0x4844C` reads and writes narrower than they sit were unseeded (zero). Both now seed them nonzero and different on the
+two slots and records: `+0x55` (beside the byte `+0x54`), `+0x58..+0x5A` (beside the byte `+0x57`), `+0x76/+0x77`
+(beside the word `+0x74`), `+0x7B` (beside the byte `+0x7A`), the record's `+0x29` (beside the byte `+0x28`: 0x91/0x92,
+bit 3 clear, since `0x2BC30` masks the word with 0xF7EB); the row's slot buffer is 0x28 bytes (`+0x54..+0x7B`). The unit
+helpers assert them (`p3_4844c_nb`/`p3_4844c_nb_check`, in state 2, the idle states, state 3 and state 0 when it does
+not end). Each fails: `DSD` for the `+0x74` clear (row; unit 0 != 119), `DSW` and `DSD` for the `+0x57 = 4` store (row;
+unit 0 != 89), `switch (DSW/DSD(+0x57))` (row; unit 66 != 0), `DSW` for the `+0x7A` index of `0xBD884` (row; unit),
+of `0xC8B58` (row; the suite crashes, exit -10, reading far outside the stream table), `DSW(rec+0x28) = (u16)(DSB | 0x20)`
+(row; unit 0 != 146) and `DSW` for state 3's `+0x54` clear (row; unit 0 != 86). The row gained the mutant
+`fighter_4844c@width` (`DSD` for the `+0x74` clear), caught by the five state-3 cases `a9 aA aB aO aP` (`byte` and
+`call #0..#4 memory`). The diff rows poke at most 16 words of at most 64 bytes, so the slots and
 records are composed as buffers (`p3_4844c`).
 
 ## §P3.9 The gp scenarios: only gp-u10-ending holds a P3 member
@@ -526,8 +540,8 @@ Named gaps and limits:
   caller outside the object of the `fnsave`/`frstor` pair at `0x6B94C`/`0x6B950` (no instruction of the object reads
   the pointers stored to `0xF09B8`/`0xF09BC`). The harness seeds `0x127F` (`5ce9b2c`, `X87ControlWordTests`).
 - **Mutations no case or unit check can observe, named and not claimed:** §P3.8's (`0x4844C`'s voice read as `DSD(e) >>
-  16`, the same bits; a word clear of `+0x54` and the order of `0x3C148`/`0x3C16C` in the unit check, which the row
-  catches; the state byte as a signed `char`), §P3.7's unit-level ones (`0x480B4`'s `0x3B298`/`0x3C208` and `0x48170`'s
+  16`, the same bits; the order of `0x3C148`/`0x3C16C`, which only the row's call order catches; the state byte as a
+  signed `char`), §P3.7's unit-level ones (`0x480B4`'s `0x3B298`/`0x3C208` and `0x48170`'s
   `0x188DC`, covered by the rows only) and §P3.6's (`0x47CB0`'s word sign).
 - **Parked review minors (carried, not changed):** the image dwords the unit checks assert are evidence lines on the
   image, not tests of the port, and each check's header comment says so (P2's lesson); `0x47720`'s unit check runs
@@ -568,6 +582,7 @@ in Task 8), so every count from Task 4 on is above the plan's; the rows below ca
 | `147ec5a` Task 6 | `77/77 ...; 150/150 ...; 11/63 ... (14 have none)` | `288 / 207`; callbacks `0 / 71`; supplement 9; stubs 53; voice `28 / 87 / 19` |
 | `693c380` Task 7 | `78/78 ...; 156/156 ...; 11/64 ... (14 have none)` | unchanged (`0x4844C` is outside E2's universe) |
 | `639c532` Task 6 minor | `78/78 functions VERIFIED; 157/157 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` | unchanged |
+| Task 7 fix round 1 | `78/78 functions VERIFIED; 158/158 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` (`@width`) | unchanged |
 
 The closed rows added: `0x475EC`, `0x47608` (Task 2: `0x1A570` has P1's row), `0x47720` (Task 3: `0x3C4CC` and the
 allowed `0x339AC`), `0x47FCC` (Task 5: `0x3C4CC` and `0x33950`). The rows (cases, blocks hit/total), all `VERIFIED`,
@@ -618,7 +633,7 @@ entry-triage: voice sites outside Ghidra 134: 28 in unported code, 87 in ported 
 with every gameplay ratchet line identical to the baseline's and the plan's (the 33 lines of Task 8 Step 1, each
 `ok`: RA 1072 / 2274, U9 346 / 2150 / 8 / 3162, U10 331 / 9954 / 30 / 9954 among them). **Deviations from the plan's
 expected output** (each a finding, recorded above): the mutant counter is 157, not 147 (the reviews' ten, table
-above); the case counts of ten rows grew (the row list above); the harness now runs the original at the game's x87
+above; 158 after Task 7's fix round 1, which re-ran `make diff-verify entry-triage` and the unit suite only); the case counts of ten rows grew (the row list above); the harness now runs the original at the game's x87
 control word `0x127F`, not unicorn's reset `0x0000` (§P3.6; raw `0x72A83`/`0xF09B4`), with every row unchanged;
 `0x48170` gained `g4`/`@al` (`test al,al` at `0x481F0`). Every other line is the plan's.
 

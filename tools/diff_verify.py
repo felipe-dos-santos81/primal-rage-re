@@ -1305,15 +1305,21 @@ def p3_4844c(cid, side, st, w34=0x100, cnt=(0x10, 0x10), o43=0, x2c=0x2C2C2C2C, 
     pokes = {0x108384: b"".join(le32(v)[:2] for v in w84 + w88 + w8c)}
     for k, (rec, ch) in enumerate(((E3_REC, 5), (E3_REC2, 3))):
         own = k == side
-        mid, hi, r = bytearray(0x18), bytearray(0x27), bytearray(0x2C)
+        mid, hi, r = bytearray(0x18), bytearray(0x28), bytearray(0x2C)
         mid[0:8] = le32(x2c) + le32(x30) if own else bytes(8)     # the other slot's +0x2C/+0x30 stay zero
         # the own slot's +0x43 is the opposite of the voice table's key (the other slot's +0x43 & 0x30 is the one read)
         mid[0x17] = o43 if not own else (0x00 if o43 & 0x30 else 0x30)
         hi[0:4] = bytes([0x54, 0x55, 0x56, st]) if own else bytes([0x64, 0x65, 0x66, 0x67])
+        # the neighbours of the bytes and words it reads and writes are live state in play (+0x58..+0x5A beside the
+        # byte +0x57, +0x76/+0x77 beside the word +0x74, +0x7B beside the character +0x7A, record +0x29 beside +0x28):
+        # a width mutant (DSW/DSD for the byte, DSD for the word) must see them
+        hi[4:7] = bytes([0x58, 0x59, 0x5A]) if own else bytes([0x68, 0x69, 0x6A])
         hi[0x20:0x22] = b"\x74\x74" if own else b"\x75\x75"
+        hi[0x22:0x24] = b"\x76\x77" if own else b"\x78\x79"
         hi[0x26] = ch
+        hi[0x27] = 0x7B if own else 0x7C
         r[0:4] = le32(0x18181818 if own else 0x19191919)
-        r[0x10] = 0x08 if own else 0x04
+        r[0x10:0x12] = b"\x08\x91" if own else b"\x04\x92"
         r[0x1C:0x1E] = le32(w34)[:2] if own else b"\x00\x02"
         r[0x2A] = 0x42 if own else 0x43
         r[0x2B] = 0x4B if own else 0x4C
@@ -1370,7 +1376,7 @@ P3_SPECS += [
         p3_4844c("aQ", 0, 2, cnt=(0xFFFD, 0), o43=0x10, tbl={0xC94CE: b"\xFE\xFF\x7B\x00"}),
         p3_4844c("aR", 1, 2, cnt=(1, 0), o43=0x00, tbl={0xC94BE: b"\x02\x00\x6A\x00"}),
     ], allow_calls=(0x33950,), calls=(ANIM54, VOICE, CLEAR34, CLEAR36, ANCHOR, ANIM_BEGIN, ANCHORX), eax_mask=0,
-       mutants=("@mutant", "@signed", "@abs", "@order", "@bound", "@zext")),
+       mutants=("@mutant", "@signed", "@abs", "@order", "@bound", "@zext", "@width")),
 ]
 
 SPECS = [

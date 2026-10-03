@@ -401,7 +401,8 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
             "fighter_4844c@mutant": {"call #0", "call #1"}, "fighter_4844c@signed": {"byte", "call #0"},
             "fighter_4844c@abs": {"byte"}, "fighter_4844c@order": {"call #0 memory"},
             "fighter_4844c@bound": {"byte", "call #0", "call #1", "call #2", "call #3", "call #4"},
-            "fighter_4844c@zext": {"call #4"}}
+            "fighter_4844c@zext": {"call #4"}, "fighter_4844c@width": {"byte", "call #0 memory", "call #1 memory", "call #2 memory",
+                                    "call #3 memory", "call #4 memory"}}
 
 
 @needs_unicorn
@@ -667,7 +668,9 @@ class RealFunctionTests(unittest.TestCase):
                           # 0x4844C: the count signed (a3 alone), |+0x34| (a2's -0x15F alone), the bound signed
                           # (aB's -1 alone), 0x188DC's word signed (aA's 0xF000 alone)
                           ("fighter_4844c@signed", ["a3"]), ("fighter_4844c@abs", ["a2"]),
-                          ("fighter_4844c@bound", ["aB"]), ("fighter_4844c@zext", ["aA"])):
+                          ("fighter_4844c@bound", ["aB"]), ("fighter_4844c@zext", ["aA"]),
+                          # the word +0x74's clear as a dword reaches +0x76/+0x77 (live in play, seeded): every state-3 case
+                          ("fighter_4844c@width", ["a9", "aA", "aB", "aO", "aP"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
@@ -777,7 +780,7 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (64), the 14 without are counted apart
-        self.assertIn("diff-verify: 78/78 functions VERIFIED; 157/157 mutants detected; 1 named gaps; "
+        self.assertIn("diff-verify: 78/78 functions VERIFIED; 158/158 mutants detected; 1 named gaps; "
                       "11/64 rows with callees closed (14 have none).", out.getvalue())
 
 

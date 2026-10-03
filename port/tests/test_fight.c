@@ -46334,6 +46334,42 @@ int test_p3_48608(void)         { return u6b_run(p3_check_48608); }
 #define P3_S(side)  ((side) == 0u ? Z_S0 : Z_S1)
 #define P3_R(side)  ((side) == 0u ? Z_R0 : Z_R1)
 
+/* The live neighbours of what 0x4844C reads and writes narrower than they sit:
+ * +0x55 (the word +0x54 clear), +0x58..+0x5A (the byte +0x57: a word or dword
+ * switch or store), +0x76/+0x77 (the word +0x74), +0x7B (the byte +0x7A), the
+ * record's +0x29 (the byte +0x28); different on the two slots and records. */
+static void p3_4844c_nb(void)
+{
+    u32 k;
+    for (k = 0; k < 2u; k++) {
+        u32 s = P3_S(k), r = P3_R(k);
+        DSB(s + 0x55u) = (u8)(0x55u + k);
+        DSB(s + 0x58u) = (u8)(0x58u + k);
+        DSB(s + 0x59u) = (u8)(0x59u + k);
+        DSB(s + 0x5Au) = (u8)(0x5Au + k);
+        DSB(s + 0x76u) = (u8)(0x76u + k);
+        DSB(s + 0x77u) = (u8)(0x77u + k);
+        DSB(s + 0x7Bu) = (u8)(0x7Bu + k);
+        DSB(r + 0x29u) = (u8)(0x91u + k);
+    }
+}
+
+static void p3_4844c_nb_check(void)
+{
+    u32 k;
+    for (k = 0; k < 2u; k++) {
+        u32 s = P3_S(k), r = P3_R(k);
+        CHECK_EQ_INT((int)DSB(s + 0x55u), (int)(0x55u + k));
+        CHECK_EQ_INT((int)DSB(s + 0x58u), (int)(0x58u + k));
+        CHECK_EQ_INT((int)DSB(s + 0x59u), (int)(0x59u + k));
+        CHECK_EQ_INT((int)DSB(s + 0x5Au), (int)(0x5Au + k));
+        CHECK_EQ_INT((int)DSB(s + 0x76u), (int)(0x76u + k));
+        CHECK_EQ_INT((int)DSB(s + 0x77u), (int)(0x77u + k));
+        CHECK_EQ_INT((int)DSB(s + 0x7Bu), (int)(0x7Bu + k));
+        CHECK_EQ_INT((int)DSB(r + 0x29u), (int)(0x91u + k));
+    }
+}
+
 /* state 0: the record's word +0x34 (w34), the side's count 0x10838C + 1
  * (cnt + 1: end = it exceeds 0x1E, signed); the record's +0x42 clears when
  * |w34| exceeds 0x15E; the end clears +0x54 and runs 0x36870(the record),
@@ -46342,6 +46378,7 @@ static void p3_4844c_state0(p2_cb_fn f, u32 side, u32 w34, u32 cnt, int clear42,
 {
     u32 s = P3_S(side), o = P3_S(1u - side), r = P3_R(side), orec = P3_R(1u - side);
     z_fseed();
+    p3_4844c_nb();
     DSB(s + 0x57u) = 0u;
     DSB(s + 0x54u) = 0x44u;
     DSB(o + 0x54u) = 0x66u;
@@ -46373,6 +46410,7 @@ static void p3_4844c_state0(p2_cb_fn f, u32 side, u32 w34, u32 cnt, int clear42,
     CHECK_EQ_INT((int)DSB(o + 0x54u), 0x66);
     CHECK_EQ_INT((int)DSW(DS_00100CE0 + (1u - side) * 2u), end ? 0 : (int)(0x0CE0u + 2u * (1u - side)));
     CHECK_EQ_INT((int)DSW(DS_00100CE0 + side * 2u), (int)(0x0CE0u + 2u * side));
+    if (!end) p3_4844c_nb_check();
 }
 
 /* state 2: the side's count 0x108388 = key - 1 steps to key; the other slot's
@@ -46384,6 +46422,7 @@ static void p3_4844c_state2(p2_cb_fn f, u32 side, u32 key, u32 o43, u32 want, u3
     u32 s = P3_S(side), o = P3_S(1u - side);
     u32 oc = key == 2u ? 0x18u : 1u;
     z_fseed();
+    p3_4844c_nb();
     DSB(s + 0x57u) = 2u;
     DSB(o + 0x43u) = (u8)o43;
     DSB(s + 0x43u) = (o43 & 0x30u) != 0u ? 0x00u : 0x30u;
@@ -46397,6 +46436,7 @@ static void p3_4844c_state2(p2_cb_fn f, u32 side, u32 key, u32 o43, u32 want, u3
     CHECK_EQ_INT((int)DSW(0x00108388u + side * 2u), (int)(key & 0xFFFFu));
     CHECK_EQ_INT((int)DSW(0x00108388u + (1u - side) * 2u), (int)oc);
     CHECK_EQ_INT((int)DSB(s + 0x57u), 2);
+    p3_4844c_nb_check();
     sound_voice_log_reset();
 }
 
@@ -46405,6 +46445,7 @@ static void p3_4844c_idle(p2_cb_fn f, u32 side, u32 st)
 {
     u32 s = P3_S(side), r = P3_R(side);
     z_fseed();
+    p3_4844c_nb();
     DSB(s + 0x57u) = (u8)st;
     DSB(s + 0x54u) = 0x44u;
     DSW(s + 0x74u) = 0x7474u;
@@ -46423,6 +46464,7 @@ static void p3_4844c_idle(p2_cb_fn f, u32 side, u32 st)
     CHECK_EQ_INT((int)DSW(0x0010838Cu + side * 2u), 0x1F);
     CHECK_EQ_INT((int)DSW(0x00108388u + side * 2u), 2);
     CHECK_EQ_INT((int)sound_voice_log_count(), 0);
+    p3_4844c_nb_check();
     sound_voice_log_reset();
 }
 
@@ -46434,6 +46476,7 @@ static void p3_4844c_state3(p2_cb_fn f, u32 bd, u32 x30, int ends)
 {
     u32 s = Z_S1, o = Z_S0, r = Z_R1, orec = Z_R0, c;
     z_fseed();
+    p3_4844c_nb();
     c = (u32)DSB(s + 0x7Au);
     DSW(0x000BD884u + c * 2u) = (u16)bd;
     DSW(DSD(0x000C8B58u + c * 4u)) = 0x12B1u;
@@ -46476,6 +46519,7 @@ static void p3_4844c_state3(p2_cb_fn f, u32 bd, u32 x30, int ends)
     CHECK_EQ_INT((int)DSW(0x0010838Au), 0x8A8B);
     CHECK_EQ_INT((int)DSD(orec + 0x20u), 0x21212121);
     CHECK_EQ_INT((int)DSD(orec + 0x24u), 0x25252525);
+    p3_4844c_nb_check();
     CHECK_EQ_INT((int)DSW(s + 0x74u), 0);
     CHECK_EQ_INT((int)DSB(r + 0x28u), 0x28);
     CHECK_EQ_INT((int)DSW(0x00108386u), 0xE000);
@@ -46545,6 +46589,7 @@ static void p3_check_4844c(void)
      * side-0 counts step, side 1's do not. */
     for (k = 0; k < 2u; k++) {
         z_fseed();
+    p3_4844c_nb();
         DSB(Z_S0 + 0x57u) = 0u;
         DSB(Z_S0 + 0x54u) = 0x44u;
         DSW(Z_R0 + 0x34u) = 0xFE00u;
@@ -46565,6 +46610,7 @@ static void p3_check_4844c(void)
      * 0x68 without (0xC94BA). */
     for (k = 0; k < 3u; k++) {
         z_fseed();
+    p3_4844c_nb();
         DSB(Z_S0 + 0x57u) = 2u;
         DSB(Z_S1 + 0x43u) = k == 2u ? 0x00u : 0x10u;
         DSW(0x00108388u) = k == 0u ? 1u : 0x18u;
@@ -46580,6 +46626,7 @@ static void p3_check_4844c(void)
      * the move ends: the record on 0xC8B58[the character] at 3.0, 0x188DC puts
      * the signed word back in the slot's +0x2C (0xFFFFF000), +0x57 = 4. */
     z_fseed();
+    p3_4844c_nb();
     c = (u32)DSB(Z_S0 + 0x7Au);
     DSW(DSD(0x000C8B58u + c * 4u)) = 0x12B1u;
     DSB(Z_S0 + 0x57u) = 3u;

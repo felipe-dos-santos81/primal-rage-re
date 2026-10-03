@@ -2055,7 +2055,7 @@ static void m_4811c_order(const u32 *r, u32 *eax)      /* +0x54 = 0 after the 0x
 
 /* §P3.8: the +0x0C callback 0x4844C (0x3531C case 7), mask 0. */
 static void b_4844c(const u32 *r, u32 *eax)            { fighter_4844c(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
-static void m_4844c_at(u32 side, int swap, int uns, int noabs, int late54, int ubound, int zext)
+static void m_4844c_at(u32 side, int swap, int uns, int noabs, int late54, int ubound, int zext, int wide)
 {
     u32 ctx[6];
     fighter_ctx_same(ctx, side);
@@ -2083,7 +2083,7 @@ static void m_4844c_at(u32 side, int swap, int uns, int noabs, int late54, int u
     case 3u: {
         s32 w;
         u16 x;
-        DSW(ctx[2] + 0x74u) = 0u;
+        if (wide) DSD(ctx[2] + 0x74u) = 0u; else DSW(ctx[2] + 0x74u) = 0u;
         DSB(ctx[4] + 0x28u) = (u8)(DSB(ctx[4] + 0x28u) | 0x20u);
         DSW(0x00108384u + ctx[0] * 2u) = DSW(ctx[2] + 0x2Cu);
         w = (s32)(s16)DSW(0x000BD884u + (u32)DSB(ctx[2] + 0x7Au) * 2u);
@@ -2105,32 +2105,37 @@ static void m_4844c_at(u32 side, int swap, int uns, int noabs, int late54, int u
 }
 static void m_4844c(const u32 *r, u32 *eax)            /* the two voice tables swapped */
 {
-    m_4844c_at(r[R_EBX], 1, 0, 0, 0, 0, 0);
+    m_4844c_at(r[R_EBX], 1, 0, 0, 0, 0, 0, 0);
     *eax = 0u;
 }
 static void m_4844c_signed(const u32 *r, u32 *eax)     /* the count 0x10838C compared unsigned */
 {
-    m_4844c_at(r[R_EBX], 0, 1, 0, 0, 0, 0);
+    m_4844c_at(r[R_EBX], 0, 1, 0, 0, 0, 0, 0);
     *eax = 0u;
 }
 static void m_4844c_abs(const u32 *r, u32 *eax)        /* +0x34 compared without its absolute value */
 {
-    m_4844c_at(r[R_EBX], 0, 0, 1, 0, 0, 0);
+    m_4844c_at(r[R_EBX], 0, 0, 1, 0, 0, 0, 0);
     *eax = 0u;
 }
 static void m_4844c_order(const u32 *r, u32 *eax)      /* +0x54 = 0 after 0x3C148 */
 {
-    m_4844c_at(r[R_EBX], 0, 0, 0, 1, 0, 0);
+    m_4844c_at(r[R_EBX], 0, 0, 0, 1, 0, 0, 0);
     *eax = 0u;
 }
 static void m_4844c_bound(const u32 *r, u32 *eax)      /* the slot's +0x30 compared unsigned */
 {
-    m_4844c_at(r[R_EBX], 0, 0, 0, 0, 1, 0);
+    m_4844c_at(r[R_EBX], 0, 0, 0, 0, 1, 0, 0);
     *eax = 0u;
 }
 static void m_4844c_zext(const u32 *r, u32 *eax)       /* 0x188DC's word zero-extended */
 {
-    m_4844c_at(r[R_EBX], 0, 0, 0, 0, 0, 1);
+    m_4844c_at(r[R_EBX], 0, 0, 0, 0, 0, 1, 0);
+    *eax = 0u;
+}
+static void m_4844c_width(const u32 *r, u32 *eax)      /* the word +0x74 cleared as a dword (+0x76/+0x77 too) */
+{
+    m_4844c_at(r[R_EBX], 0, 0, 0, 0, 0, 0, 1);
     *eax = 0u;
 }
 
@@ -2371,6 +2376,7 @@ static const binding_t k_bindings[] = {
     { "fighter_4844c@order",      m_4844c_order,  0x00000000u },
     { "fighter_4844c@bound",      m_4844c_bound,  0x00000000u },
     { "fighter_4844c@zext",       m_4844c_zext,   0x00000000u },
+    { "fighter_4844c@width",      m_4844c_width,  0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
