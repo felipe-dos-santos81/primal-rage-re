@@ -523,7 +523,7 @@ Named gaps and limits:
 - **The stream targets of P3's streams** (§P3.1): `0x47E04 0x47E30 0x482E4 0x48374` (P6) and `0x48254` (P7);
   unported, reached by no capture; in play those effects are missing (as before P3).
 - **The callee rows** (D3): the new stubs `0x35838 0x3B298 0x39FB0 0x3A95C 0x3C190 0x3B714 0x3C148 0x468D8 0x36D98
-  0x188DC 0x3C16C` join C1 with P2's eight and E3's four; `0x48170` has its own row here. After P3 the counter reads
+  0x188DC 0x3C16C` join C1 with P2's eight and E3's four, plus `0x18BD4` (allow-unverified; it keeps the `47648`, `477a8`, `47cb0` and `48054` rows open) and P1's `0x188AC` (stubbed by the `4844c` row) and `0x2A17C`: 26 distinct unverified callees in the final table; `0x48170` has its own row here. After P3 the counter reads
   `11/64 rows with callees closed (14 have none)`.
 - **x87** (§P3.6): the image's runtime control word `0x127F` (53-bit, nearest) makes the raw's sum the port's;
   equal stored floats also proved at 64- and 24-bit precision for every float of [1.0, 6.0] (the reachable
@@ -565,8 +565,8 @@ The per-commit gates (`make diff-verify entry-triage` with scratch image paths; 
 is the one the commit's own `test_the_self_check_counts_functions_mutants_gaps_and_closed_rows` asserts (and its
 `make diff-verify` printed, per the task reports), each E2 column is read from the commit's committed table. The
 planner's replay had 114, 127, 141 and 147 mutants after Tasks 4-7: each task added the plan's mutants
-(+7, +8, +10, +13, +14, +6) and the reviews added 10 more (Task 2's fix 5, Task 3's extra 1, Task 4's fix 3, Task 6's `@al` 1, added
-in Task 8), so every count from Task 4 on is above the plan's; the rows below carry each from the commit that added it.
+(+7, +8, +10, +13, +14, +6) and the reviews added 11 more (Task 2's fix 5, Task 3's extra 1, Task 4's fix 3, Task 6's `@al` 1, added
+in Task 8, Task 7's `@width` 1 in its fix round), so every count from Task 4 on is above the plan's; the rows below carry each from the commit that added it.
 
 | after | diff-verify counter | entry-triage |
 |---|---|---|
@@ -582,7 +582,7 @@ in Task 8), so every count from Task 4 on is above the plan's; the rows below ca
 | `147ec5a` Task 6 | `77/77 ...; 150/150 ...; 11/63 ... (14 have none)` | `288 / 207`; callbacks `0 / 71`; supplement 9; stubs 53; voice `28 / 87 / 19` |
 | `693c380` Task 7 | `78/78 ...; 156/156 ...; 11/64 ... (14 have none)` | unchanged (`0x4844C` is outside E2's universe) |
 | `639c532` Task 6 minor | `78/78 functions VERIFIED; 157/157 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` | unchanged |
-| Task 7 fix round 1 | `78/78 functions VERIFIED; 158/158 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` (`@width`) | unchanged |
+| `da98076` Task 7 fix round 1 | `78/78 functions VERIFIED; 158/158 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` (`@width`) | unchanged |
 
 The closed rows added: `0x475EC`, `0x47608` (Task 2: `0x1A570` has P1's row), `0x47720` (Task 3: `0x3C4CC` and the
 allowed `0x339AC`), `0x47FCC` (Task 5: `0x3C4CC` and `0x33950`). The rows (cases, blocks hit/total), all `VERIFIED`,
@@ -590,7 +590,7 @@ as the final table prints them: `475ec` 3 3/3, `47608` 3 3/3, `47624` 2 1/1, `48
 1/1, `476fc` 3 3/3, `47648` 2 1/1, `47688` 6 6/6, `47874` 3 1/1, `47830` 6 3/3, `47798` 2 1/1, `477a8` 2 1/1, `477e8` 2
 1/1, `47fcc` 2 1/1, `47cb0` 5 5/5, `47d24` 3 1/1, `47e9c` 16 17/17, `48608` 3 1/1, `48054` 4 3/3, `480b4` 4 1/1,
 `48170` 5 3/3, `4811c` 7 8/8, `4844c` 28 23/23 (the planner's counts were 3, 3, 5, 2, 5, 2, 3, 3, 3, 6 for the rows the
-reviews extended). P3's 68 mutants: what alone catches each is pinned by `test_each_p3_mutant_is_caught_by_what_it_breaks`
+reviews extended). P3's 69 mutants: what alone catches each is pinned by `test_each_p3_mutant_is_caught_by_what_it_breaks`
 (`P3_KINDS`) and its case lists. **A store sweep** (the planner's; scratch: every non-stack store instruction of each row, `fstp` included, must be
 the last writer of a byte that differs from the case's start at the end or at a recorded call, in some case) finds
 every store of the 24 rows observable (81 store instructions; the hooks' stores are their stack flags, compared by
@@ -611,9 +611,9 @@ the callers of §P3.2 (`0x354DA..0x354E5`, `0x1952F`, `0x35144`, `0x350B0`); `ca
 table, re-derived by `test_each_stub_declares_the_registers_its_callee_clobbers`); the image tables quoted in
 §P3.3-§P3.8; the stream probe of §P3.1; the lldb first frames of §P3.9; the x87 midpoint check of §P3.6.
 
-**The implementation's closure (Task 8).** Commits `5aa4c56..639c532` on `reverse-p3` (rebased onto `main` `f540010`;
+**The implementation's closure (Task 8).** Commits `5aa4c56..da98076` on `reverse-p3` (rebased onto `main` `f540010`;
 the plan `577b23f`): the six ports (`5aa4c56 1844e02 05c19ce 9461c6b 147ec5a 693c380`), the review fixes (`9a4cda5
-67c8ac9 ad5e0fd 639c532`) and the x87 control-word harness change (`5ce9b2c`), then this docs commit. Task 1's
+67c8ac9 ad5e0fd 639c532 da98076`) and the x87 control-word harness change (`5ce9b2c`), then this docs commit. Task 1's
 baseline was ruled P2's own full gate at `8d4cdf4` (ledger), the code `main` holds. **The final gate**: one `make
 verify` with the parallel-safe overrides (`T=p3`, `E2_IMAGE` included) on `639c532` (the docs of this commit, which
 no gate step reads, were being written meanwhile): `EXIT=0` in 25 min 35 s (20:48:08-21:13:43, a host shared with a
@@ -632,8 +632,8 @@ entry-triage: voice sites outside Ghidra 134: 28 in unported code, 87 in ported 
 
 with every gameplay ratchet line identical to the baseline's and the plan's (the 33 lines of Task 8 Step 1, each
 `ok`: RA 1072 / 2274, U9 346 / 2150 / 8 / 3162, U10 331 / 9954 / 30 / 9954 among them). **Deviations from the plan's
-expected output** (each a finding, recorded above): the mutant counter is 157, not 147 (the reviews' ten, table
+expected output** (each a finding, recorded above): the mutant counter is 157, not 147 (the reviews' eleven with Task 7's fix round, table
 above; 158 after Task 7's fix round 1, which re-ran `make diff-verify entry-triage` and the unit suite only); the case counts of ten rows grew (the row list above); the harness now runs the original at the game's x87
-control word `0x127F`, not unicorn's reset `0x0000` (§P3.6; raw `0x72A83`/`0xF09B4`), with every row unchanged;
+control word `0x127F`, not unicorn's reset `0x0000` (§P3.6; raw `0x72A83`/`0xF09B4`), with every row unchanged; the `test_title_pin` failure (pre-existing, outside `make verify`) is owned by the closeout;
 `0x48170` gained `g4`/`@al` (`test al,al` at `0x481F0`). Every other line is the plan's.
 
