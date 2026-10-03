@@ -244,22 +244,20 @@ static const fnm_pair k_miss_gp_u9_win[] = {
 };
 
 /* gp-u10-ending (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
- * §W.14, re-measured by plan reverse-p2 Task 9, §W.16), on its full replay to its X record
- * (f = 0x26E1): the two wipe hooks of §G.24 (0x29D60, a bare `ret`, from f = 0x286;
- * 0x5D812, the runtime stub, from f = 0x3FE), and four unported P-track targets: the
- * death-animation stream's 0x37DD4 (E2 anim-target row, dword 0xD2BCE) at f = 0x14FB in
- * mode 0xC and 0x29C78 (outside E2, record reverse-p1 §P1.2, dword 0xD2BDA) at f = 0x14FE
- * in mode 0xD; 0x3DA50 (E2 anim-target row, dword 0xD4BEC) at f = 0x155D and 0x475EC (E2
- * move-callback row, dword 0xA4004, character 2's reaction 0x0B) at f = 0x1594, both in
- * mode 0xF. 0x2381C (CHAOS's reaction 0x25, f = 0x848) is ported by P2; the final's
- * opponent order (1,4,3,0,6,5,2) now equals the capture's. */
+ * §W.14), measured on its full replay to its X record (f = 0x26E1): the two wipe hooks of
+ * §G.24 (0x29D60, a bare `ret`, from f = 0x286; 0x5D812, the runtime stub, from f = 0x3FE),
+ * the death-animation stream's targets 0x37DD4 (E2 anim-target row, dword 0xD2BCE) at
+ * f = 0x14FB in mode 0xC and 0x29C78 (outside E2, record reverse-p1 §P1.2, dword 0xD2BDA)
+ * at f = 0x14FE in mode 0xD, and 0x3DA50 (E2 anim-target row, dword 0xD4BEC) at f = 0x155D
+ * in mode 0xF. CHAOS's reaction-0x25 callback 0x2381C (track P batch 2) and character 2's
+ * reaction-0x0B callback 0x475EC (the dword 0xA4004, from f = 0x1594 in mode 0xF; track P
+ * batch 3, record 2026-10-03-reverse-p3 §P3.9) are ported, so neither is a miss. */
 static const fnm_pair k_miss_gp_u10_ending[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
     { 0x37DD4u, "anim_indirect" },
     { 0x29C78u, "anim_indirect" },
     { 0x3DA50u, "anim_indirect" },
-    { 0x475ECu, "hit_reaction_apply" },
 };
 
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:

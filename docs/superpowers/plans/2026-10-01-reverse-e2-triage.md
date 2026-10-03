@@ -27,7 +27,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 
 | batch | unported | ported |
 |---|---|---|
-| callbacks | 9 | 62 |
+| callbacks | 0 | 71 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
 | animation-targets | 54 | 58 |
@@ -38,9 +38,9 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 
 | readiness | rows |
 |---|---|
-| allow-list | 6 |
+| allow-list | 4 |
 | leaf | 231 |
-| stubs | 60 |
+| stubs | 53 |
 
 ## Rows
 
@@ -353,23 +353,23 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 46C40 | 56 | data | memory operand of the instruction at 46CA8 | yes | - | no | - | - | - |
 | 46DB8 | 28 | data | memory operand of the instruction at 46DF9 | yes | - | no | - | - | - |
 | 46F30 | 28 | data | memory operand of the instruction at 46F75 | yes | - | no | - | - | - |
-| 475EC | 28 | move-callback | dword A4004 (char 2, reaction 0x0B) | yes | - | no | callbacks | allow-list | - |
-| 47608 | 28 | move-callback | dword A40CC (char 2, reaction 0x15) | yes | - | no | callbacks | allow-list | - |
-| 47624 | 252 | move-callback | dword A42AC (char 2, reaction 0x2D) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
-| 47720 | 340 | move-callback | dword A41A8 (char 2, reaction 0x20) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
-| 47874 | 396 | move-callback | dword A41BC (char 2, reaction 0x21) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | 478C7 |
+| 475EC | 28 | move-callback | dword A4004 (char 2, reaction 0x0B) | yes | - | yes | callbacks | allow-list | - |
+| 47608 | 28 | move-callback | dword A40CC (char 2, reaction 0x15) | yes | - | yes | callbacks | allow-list | - |
+| 47624 | 252 | move-callback | dword A42AC (char 2, reaction 0x2D) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 47720 | 340 | move-callback | dword A41A8 (char 2, reaction 0x20) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 47874 | 396 | move-callback | dword A41BC (char 2, reaction 0x21) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 478C7 |
 | 47AEC | 24 | data | memory operand of the instruction at 47B42 | yes | - | no | - | - | - |
 | 47BFC | 520 | move-callback | dword A4220 (char 2, reaction 0x26) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 47E04 | 44 | anim-target | dword ED9FC after the opcode word D000 at ED9FA | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 47E1B |
 | 47E30 | 412 | anim-target | dword EDA26 after the opcode word D500 at EDA24 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
-| 47FCC | 648 | move-callback | dword A41E4 (char 2, reaction 0x23) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 47FCC | 648 | move-callback | dword A41E4 (char 2, reaction 0x23) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 48254 | 144 | anim-target | dword ED872 after the opcode word D500 at ED870 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 482E4 | 144 | anim-target | dword ED8A8 after the opcode word D500 at ED8A6 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 48374 | 660 | anim-target | dword ED8EA after the opcode word D500 at ED8E8 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
-| 48608 | 688 | move-callback | dword A4234 (char 2, reaction 0x27) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 48608 | 688 | move-callback | dword A4234 (char 2, reaction 0x27) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 488B8 | 172 | move-callback | dword A41D0 (char 2, reaction 0x22) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 48957 |
-| 48964 | 60 | move-callback | dword A41F8 (char 2, reaction 0x24) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
-| 489A0 | 60 | move-callback | dword A420C (char 2, reaction 0x25) | yes | - | no | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 48964 | 60 | move-callback | dword A41F8 (char 2, reaction 0x24) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
+| 489A0 | 60 | move-callback | dword A420C (char 2, reaction 0x25) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 489DC | 68 | anim-target | dword EDAF6 after the opcode word D000 at EDAF4 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 48A20 | 140 | anim-target | dword EDB34 after the opcode word D100 at EDB32 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 48BE0 | 108 | finisher | dword BDAEC | yes | - | yes | finishers | stubs (indirect at 2B56D in 2B2A0) | 48C40 |
@@ -741,21 +741,21 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 459F4 | immediate at 45AFE | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 45A34 | immediate at 45B05 | entry | yes | stubs (indirect at 2B56D in 2B2A0) | - |
 | 45A70 | immediate at 45AF7 | - | yes | stubs (indirect at 2B56D in 2B2A0) | - |
-| 47648 | immediate at 4770A | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 47688 | immediate at 47711 | - | no | stubs (indirect at 62006 in 62003) | - |
-| 476FC | immediate at 47751 | - | no | leaf | - |
-| 47798 | immediate at 478AC | - | no | stubs (indirect at 6811A in 680F0) | 4779D |
-| 477A8 | immediate at 4789E | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 477E8 | immediate at 478A5 | entry | no | stubs (indirect at 2B56D in 2B2A0) | - |
-| 47830 | immediate at 47897 | - | no | stubs (indirect at 2B56D in 2B2A0) | - |
+| 47648 | immediate at 4770A | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 47688 | immediate at 47711 | - | yes | stubs (indirect at 62006 in 62003) | - |
+| 476FC | immediate at 47751 | - | yes | leaf | - |
+| 47798 | immediate at 478AC | - | yes | stubs (indirect at 6811A in 680F0) | 4779D |
+| 477A8 | immediate at 4789E | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 477E8 | immediate at 478A5 | entry | yes | stubs (indirect at 2B56D in 2B2A0) | - |
+| 47830 | immediate at 47897 | - | yes | stubs (indirect at 2B56D in 2B2A0) | - |
 | 478D4 | immediate at 47C5A | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 47984 | immediate at 47C63 | - | yes | stubs (indirect at 18384 in 18350) | - |
-| 47CB0 | immediate at 4802C | - | no | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 47D24 | immediate at 48037 | - | no | stubs (indirect at 2B56D in 2B2A0) | 47DF7 |
-| 48054 | immediate at 48655 | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 480B4 | immediate at 4865E | - | no | stubs (indirect at 62006 in 62003) | - |
-| 4811C | immediate at 48231 | - | no | stubs (indirect at 379E8 in 379C4) | - |
-| 48170 | called at 480F6 | entry | no | stubs (indirect at 18384 in 18350) | - |
+| 47CB0 | immediate at 4802C | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 47D24 | immediate at 48037 | - | yes | stubs (indirect at 2B56D in 2B2A0) | 47DF7 |
+| 48054 | immediate at 48655 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 480B4 | immediate at 4865E | - | yes | stubs (indirect at 62006 in 62003) | - |
+| 4811C | immediate at 48231 | - | yes | stubs (indirect at 379E8 in 379C4) | - |
+| 48170 | called at 480F6 | entry | yes | stubs (indirect at 18384 in 18350) | - |
 | 48668 | immediate at 488E1 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 486F8 | immediate at 488F7 | - | yes | stubs (indirect at 62006 in 62003) | - |
 | 5D004 | slot 8130C of table 81110, read by `call` at 521AE | - | no | leaf | - |
@@ -921,9 +921,9 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 45F8C | - | - | no |
 | 4612C | 45FE8 | row | yes |
 | 475D9 | - | - | no |
-| 4779D | 47798 | supplement | no |
-| 478C7 | 47874 | row | no |
-| 47DF7 | 47D24 | supplement | no |
+| 4779D | 47798 | supplement | yes |
+| 478C7 | 47874 | row | yes |
+| 47DF7 | 47D24 | supplement | yes |
 | 47E1B | 47E04 | row | no |
 | 48518 | - | - | no |
 | 48548 | - | - | no |

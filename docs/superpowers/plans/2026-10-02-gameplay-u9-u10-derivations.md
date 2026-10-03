@@ -1322,7 +1322,7 @@ unreachable`. The exact pins pass (exit 0).
 WIN fields' `f = 0x1602` difference (`b0c` set 29 frames late) is gone too while the port still
 misses `0x37DD4`/`0x29C78` at every death stream, so it followed the `rng` and the opponent order,
 not those two targets (§W.14 had not separated them). **The claim is narrow:** the replay still misses `0x37DD4`
-and `0x29C78` (33 hits each), `0x3DA50` and `0x475EC` (11 hits), whose effects the traced fields cannot see, so the
+and `0x29C78` (33 hits each), `0x3DA50` (1 hit) and `0x475EC` (11 hits; ported by track P batch 3), whose effects the traced fields cannot see, so the
 clean trace to `f = 0x26E1` does not claim the death streams or the mode-`0xF` content are reproduced, and it is no
 evidence of correctness past the frame ratchet's 331. The frame ratchet is still capped at 331 by
 the mode-8 catch-up; `--report` (which stops after `REPORT_MAX` = 5 unexplained) now lists 331,
@@ -1336,3 +1336,10 @@ the same set (`distinct=7`, `0x29D60`, `0x5D812`, `0x400E0`, `0x21044`, `0x21084
 unexplained 346, ratchet N 346 ok`, `trace: first differing 2150, ratchet N 2150 ok`, `path: 0 not
 reproduced through 7; ratchet N 8 ok`, `win: first differing 3162, ratchet N 3162 ok`, window from
 capture 100: every `GP_WIN_*` pin holds unchanged.
+
+## §W.17 Track P batch 3 drops `0x475EC` (plan reverse-p3 Task 2)
+
+With `0x475EC` ported (record `2026-10-03-reverse-p3-derivations.md` §P3.9), the `gp-u10-ending` replay records §W.16's
+set less that row (`distinct=7`): no other target appears. `make gp-ending-oracle` holds every pin of §W.16 (frames
+331, trace 9954, milestones 30, WIN 9954), each + 1 failing; MAX_START stays 83. The re-measure list is now
+`0x3DA50` (P5), `0x37DD4` (P6), `0x29C78` (P7).

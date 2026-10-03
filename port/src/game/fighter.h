@@ -1205,5 +1205,52 @@ void fighter_22588(u32 side);
 /* §P2.9: the slot +0x0C callbacks they store (slot, rec, side). */
 void fighter_212cc(u32 slot, u32 rec, u32 side);
 void fighter_22638(u32 slot, u32 rec, u32 side);
+/* Track P batch 3 (record 2026-10-03-reverse-p3-derivations.md §P3.3): the
+ * move callbacks 0x34E2C calls as (slot, rec, side), registered in
+ * actors_init; and the callee 0x35838 they stub (no longer file-local, so
+ * the harness's mutants can call it). */
+void fighter_state_35838(u32 slot, u32 rec, u32 dirbits);
+void fighter_475ec(u32 slot, u32 rec, u32 side);
+void fighter_47608(u32 slot, u32 rec, u32 side);
+void fighter_47624(u32 slot, u32 rec, u32 side);
+void fighter_48964(u32 slot, u32 rec, u32 side);
+void fighter_489a0(u32 slot, u32 rec, u32 side);
+/* §P3.4: 0x47720 and its +0x0C callback (slot, rec, side), +0x18 hook
+ * fn(side) and +0x1C callback fn(side); and the callee 0x3B298 (no longer
+ * file-local, so the harness's mutants can call it). */
+int fighter_command_dispatch(u32 side, u32 edx_arg);
+void fighter_47720(u32 slot, u32 rec, u32 side);
+void fighter_476fc(u32 slot, u32 rec, u32 side);
+u32  fighter_47648(u32 side);
+void fighter_47688(u32 side);
+/* §P3.5: 0x47874 and its +0x0C callback (slot, rec, side), +0x14 callback
+ * fn(slot), +0x18 hook fn(side) and +0x1C callback fn(side); and the callee
+ * 0x3C190 (no longer file-local, so the harness's mutants can call it). */
+void fighter_3c190(u32 side, u32 v);
+void fighter_47874(u32 slot, u32 rec, u32 side);
+void fighter_47830(u32 slot, u32 rec, u32 side);
+u32  fighter_47798(u32 slot);
+u32  fighter_477a8(u32 side);
+void fighter_477e8(u32 side);
+/* §P3.6: 0x47FCC and its +0x0C callback (slot, rec, side), +0x18 hook
+ * fn(side) and +0x1C callback fn(side). */
+void fighter_47fcc(u32 slot, u32 rec, u32 side);
+u32  fighter_47cb0(u32 side);
+void fighter_47d24(u32 side);
+void fighter_47e9c(u32 slot, u32 rec, u32 side);
+/* §P3.7: 0x48608 (slot, rec, side), its +0x18 hook fn(side) and +0x1C
+ * callback fn(side), the +0x1C callback's callee 0x48170(side), and the
+ * +0x10 handler 0x4811C (slot, rec, side) with its case-10 adapter; and the
+ * callee 0x36D98 (no longer file-local, so the harness's mutants can call
+ * it). */
+void fighter_36d98(u32 slot);
+void fighter_48608(u32 slot, u32 rec, u32 side);
+u32  fighter_48054(u32 side);
+void fighter_48170(u32 side);
+void fighter_480b4(u32 side);
+void fighter_4811c(u32 slot, u32 rec, u32 side);
+void fighter_4811c_case10(u32 slot, u32 side);
+/* §P3.8: 0x48608's +0x0C callback (slot, rec, side). */
+void fighter_4844c(u32 slot, u32 rec, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

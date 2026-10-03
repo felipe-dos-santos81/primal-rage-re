@@ -757,6 +757,56 @@ int actors_init(void)
      * case 7, (slot, rec, side)). */
     fn_register(0x212CCu, (void (*)(void))fighter_212cc);
     fn_register(0x22638u, (void (*)(void))fighter_22638);
+    /* PORT: record 2026-10-03-reverse-p3 §P3.3. Character 2's move callbacks
+     * with no context (the move-table dwords 0xA4004, 0xA40CC, 0xA42AC,
+     * 0xA41F8 and 0xA420C; 0x34E2C at 0x35045, (slot, rec, side)). */
+    fn_register(0x475ECu, (void (*)(void))fighter_475ec);
+    fn_register(0x47608u, (void (*)(void))fighter_47608);
+    fn_register(0x47624u, (void (*)(void))fighter_47624);
+    fn_register(0x48964u, (void (*)(void))fighter_48964);
+    fn_register(0x489A0u, (void (*)(void))fighter_489a0);
+    /* PORT: record 2026-10-03-reverse-p3 §P3.4. Character 2's reaction-0x20
+     * callback 0x47720 (the dword at 0xA41A8) and the three callbacks it
+     * stores (+0x0C 0x476FC, 0x3531C case 7, (slot, rec, side); +0x18 0x47648,
+     * 0x19020, fn(side) with EAX returned; +0x1C 0x47688, 0x193B0's 0x19505,
+     * fn(side)); 0x476FC stores the last two again. */
+    fn_register(0x47720u, (void (*)(void))fighter_47720);
+    fn_register(0x476FCu, (void (*)(void))fighter_476fc);
+    fn_register(0x47648u, (void (*)(void))fighter_47648);
+    fn_register(0x47688u, (void (*)(void))fighter_47688);
+    /* PORT: record 2026-10-03-reverse-p3 §P3.5. Character 2's reaction-0x21
+     * callback 0x47874 (the dword at 0xA41BC) and the four callbacks it
+     * stores (+0x0C 0x47830, 0x3531C case 7, (slot, rec, side); +0x14 0x47798,
+     * fn(slot) with EAX returned; +0x18 0x477A8, 0x19020, fn(side) with EAX
+     * returned; +0x1C 0x477E8, 0x193B0's 0x19505, fn(side)). */
+    fn_register(0x47874u, (void (*)(void))fighter_47874);
+    fn_register(0x47830u, (void (*)(void))fighter_47830);
+    fn_register(0x47798u, (void (*)(void))fighter_47798);
+    fn_register(0x477A8u, (void (*)(void))fighter_477a8);
+    fn_register(0x477E8u, (void (*)(void))fighter_477e8);
+    /* PORT: record 2026-10-03-reverse-p3 §P3.6. Character 2's reaction-0x23
+     * callback 0x47FCC (the dword at 0xA41E4) and the three callbacks it
+     * stores (+0x0C 0x47E9C, after its own jump table 0x47E8C, 0x3531C case 7,
+     * (slot, rec, side); +0x18 0x47CB0, 0x19020, fn(side) with EAX returned;
+     * +0x1C 0x47D24, 0x193B0's 0x19505, fn(side)). */
+    fn_register(0x47FCCu, (void (*)(void))fighter_47fcc);
+    fn_register(0x47CB0u, (void (*)(void))fighter_47cb0);
+    fn_register(0x47D24u, (void (*)(void))fighter_47d24);
+    fn_register(0x47E9Cu, (void (*)(void))fighter_47e9c);
+    /* PORT: record 2026-10-03-reverse-p3 §P3.7. Character 2's reaction-0x27
+     * callback 0x48608 (the dword at 0xA4234), its +0x18 hook 0x48054
+     * (0x19020, fn(side) with EAX returned) and +0x1C callback 0x480B4
+     * (0x193B0's 0x19505, fn(side)), and the +0x10 handler 0x4811C that
+     * 0x480B4's callee 0x48170 stores in the other slot (0x3531C case 10,
+     * (slot, side): the adapter supplies the record). */
+    fn_register(0x48608u, (void (*)(void))fighter_48608);
+    fn_register(0x48054u, (void (*)(void))fighter_48054);
+    fn_register(0x480B4u, (void (*)(void))fighter_480b4);
+    fn_register(0x4811Cu, (void (*)(void))fighter_4811c_case10);
+    /* PORT: record 2026-10-03-reverse-p3 §P3.8. 0x48608's +0x0C callback
+     * 0x4844C (after its own jump table 0x48438; 0x3531C case 7, (slot, rec,
+     * side)). */
+    fn_register(0x4844Cu, (void (*)(void))fighter_4844c);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)

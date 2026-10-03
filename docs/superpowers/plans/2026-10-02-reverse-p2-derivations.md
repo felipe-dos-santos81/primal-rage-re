@@ -322,9 +322,17 @@ equal entry 3's target `0x22930` and no case selects them separately: pB (+0x57 
 (0xA82EC):** `0xA82EC[c]` is 4 for every character, so its character index and the word's sign extension are not
 observable with the game's data; the cases do not poke another value there.
 
-**Named limit (x87).** The raw adds in x87 registers (precision control as the runtime leaves it; unicorn starts with
-FCW `0x37F`, extended) and compares the +0.1 sum before it is rounded to the float; the port adds in double
-(`/* PORT: */` in the C). For a float x in 1.0..3.0 (the only values this code stores: `0x22938` sets 3.0 and the
+**Named limit (x87).** The raw adds in x87 registers and compares the +0.1 sum before it is rounded to the float;
+the port adds in double (`/* PORT: */` in the C). **Corrected by plan P3 (record 2026-10-03-reverse-p3 §P3.6):** this
+paragraph said unicorn starts with FCW `0x37F` (extended). It starts at `0x0000` (measured: `fnstcw` reads 0; 24-bit
+precision, every exception unmasked), and the harness now seeds the game's `0x127F` (53-bit precision, round to
+nearest; `fldcw` at `0x72A83` of the word `0xF09B4`, which `0x6B70D` also loads). Under `0x127F` the in-register sum
+(`fadd` at `0x22752`, `fst` at `0x2275A`, `fcomp` at `0x22760`) is the exact sum rounded to 53 bits, the port's
+double, so the port's `s > 3.0` is the raw's compare exactly. The stored value does not depend on the precision of
+that compare: rounding is monotonic and 3.0 is a float, so a sum above 3.0 stores 3.0 and any other sum stores its
+rounded float, at most 3.0; where precisions disagree on the compare the sum is within an ulp of 3.0 and both
+paths store 3.0. The analysis below (written for extended precision) stands for the other precisions. For a float
+x in 1.0..3.0 (the only values this code stores: `0x22938` sets 3.0 and the
 clamps keep it there) the two agree. The comparison: the double sum and the extended sum can fall on different sides
 of 3.0 only when the exact sum x + 0.1 lies within one double ulp (2^-51) of 3.0, that is x within about 2^-51 of
 2.9 - 5.5·10^-18; the floats of [2, 4) are 2^-22 apart and the nearest to 2.9 is 9.5·10^-8 from it. The stored float:
