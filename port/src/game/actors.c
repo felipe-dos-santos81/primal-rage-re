@@ -218,6 +218,11 @@ static void anim_code_40434(u32 rec, u32 arg);
 static void anim_code_37EA0(u32 rec, u32 arg);
 static void anim_code_24078(u32 rec, u32 arg);
 static void anim_code_45D58(u32 rec, u32 arg);
+static void anim_code_2BDA0(u32 rec, u32 arg);
+static void anim_code_241F4(u32 rec, u32 arg);
+static void anim_code_47E04(u32 rec, u32 arg);
+static void anim_code_40148(u32 rec, u32 arg);
+static void anim_code_40170(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -988,6 +993,13 @@ int actors_init(void)
     fn_register(0x37EA0u, (void (*)(void))anim_code_37EA0);
     fn_register(0x24078u, (void (*)(void))anim_code_24078);
     fn_register(0x45D58u, (void (*)(void))anim_code_45D58);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.3. Track P batch 6's first
+     * animation targets (anim_indirect, EAX = rec, EDX = the operand). */
+    fn_register(0x2BDA0u, (void (*)(void))anim_code_2BDA0);
+    fn_register(0x241F4u, (void (*)(void))anim_code_241F4);
+    fn_register(0x47E04u, (void (*)(void))anim_code_47E04);
+    fn_register(0x40148u, (void (*)(void))anim_code_40148);
+    fn_register(0x40170u, (void (*)(void))anim_code_40170);
     return 1;
 }
 
@@ -4403,4 +4415,45 @@ static void anim_code_24508(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_24508(rec);
+}
+
+/* 0x2BDA0 — record §P6.3. The D100 target at the dword 0xE8B90: EAX = rec,
+ * EDX = the operand (rng_next's range); the record's +0x53 = 1 when
+ * rng_next((u16)arg) returns 0. */
+static void anim_code_2BDA0(u32 rec, u32 arg)
+{
+    DSB(rec + 0x53u) = (u8)(rng_next(arg & 0xFFFFu) == 0u ? 1u : 0u);   /* 0x2BDA5/0x2BDA8, 0x2BDAF/0x2BDB2 */
+}
+
+
+/* 0x241F4 — the D100 target at the dword 0xE505E. anim_indirect passes EAX =
+ * rec; the operand is not read. */
+static void anim_code_241F4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_241f4(rec);
+}
+
+
+/* 0x47E04 — the D000 target at the dword 0xED9FC (opcode 0x10). */
+static void anim_code_47E04(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_47e04(rec);
+}
+
+
+/* 0x40148 — the D100 target at the dword 0xE8716. */
+static void anim_code_40148(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40148(rec);
+}
+
+
+/* 0x40170 — the D100 target at the dword 0xE86EE. */
+static void anim_code_40170(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40170(rec);
 }

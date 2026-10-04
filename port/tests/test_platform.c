@@ -230,16 +230,17 @@ static const fnm_pair k_miss_gp_u8_attract_start[] = {
 
 /* gp-u9-win (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
  * §W.12), re-measured by track P batches 4+5 (record 2026-10-03-reverse-p4-p5 §P4.7)
- * once 0x400E0/0x21044/0x21084 are ported: the two wipe hooks of §G.24 (0x29D60, a
- * bare `ret`, from f = 0x28D; 0x5D812, the runtime stub, from f = 0x405) and the
- * anim_indirect targets the replay then reaches: 0x213F0 (first = 0x8ED, 1 hit),
- * 0x213F4 (first = 0x91F, 1 hit) and 0x2BDA0 (first = 0xD0C, 10 hits). */
+ * once 0x400E0/0x21044/0x21084 are ported and by track P batch 6 (record
+ * 2026-10-03-reverse-p6 §P6.12) once 0x2BDA0 is ported: the two wipe hooks of §G.24
+ * (0x29D60, a bare `ret`, from f = 0x28D; 0x5D812, the runtime stub, from f = 0x405)
+ * and the anim_indirect targets the replay then reaches, 0x213F0 (first = 0x8ED,
+ * 1 hit) and 0x213F4 (first = 0x91F, 1 hit). The replay no longer misses 0x2BDA0
+ * (first = 0xD0C, 10 hits before P6 ported it). */
 static const fnm_pair k_miss_gp_u9_win[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
     { 0x213F0u, "anim_indirect" },
     { 0x213F4u, "anim_indirect" },
-    { 0x2BDA0u, "anim_indirect" },
 };
 
 /* gp-u10-ending (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md

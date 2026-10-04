@@ -1299,5 +1299,11 @@ void fighter_48a20(u32 rec);
 void fighter_24508(u32 rec);
 void fighter_24454(u32 slot, u32 rec);
 void fighter_24454_case10(u32 slot, u32 side);
+/* Track P batch 6 (record 2026-10-03-reverse-p6-derivations.md): the animation
+ * targets C. */
+void fighter_241f4(u32 rec);
+void fighter_47e04(u32 rec);
+void fighter_40148(u32 rec);
+void fighter_40170(u32 rec);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

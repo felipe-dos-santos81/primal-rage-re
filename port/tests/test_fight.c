@@ -47115,3 +47115,103 @@ static void p45_check_handler(void)
     }
 }
 int test_p45_handler(void)      { return u6b_run(p45_check_handler); }
+
+/* ---- track P batch 6 (record 2026-10-03-reverse-p6-derivations.md) ----------
+ * The animation targets C. Differential verification (tools/diff_verify.py,
+ * P6_SPECS) is the behavioural oracle; these checks pin what it does not see:
+ * the registrations and the image dwords that make anim_indirect reach each
+ * function, and one seeded run through each registration with sentinels on
+ * every store. */
+static void p6_check_simple(void)
+{
+    static const u32 addr[5] = { 0x2BDA0u, 0x241F4u, 0x47E04u, 0x40148u, 0x40170u };
+    static const u32 dw[5] = { 0x000E8B90u, 0x000E505Eu, 0x000ED9FCu, 0x000E8716u, 0x000E86EEu };
+    p1_anim_fn f;
+    u32 k;
+
+    for (k = 0; k < 5u; k++) {
+        CHECK(fn_resolve(addr[k]) != NULL, "the animation target is registered");
+        CHECK_EQ_INT((int)DSD(dw[k]), (int)addr[k]);
+    }
+
+    /* 0x2BDA0: rng_next(1) with the seed 0 is 0 (the +0x53 = 1); rng_next(0xFFFF)
+     * is 0x38CD (0). The call's range is the masked operand: 0x12340001 -> 1. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x2BDA0u);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(DS_000EF6D8) = 0;
+    DSB(Z_R0 + 0x53u) = 0x53u;
+    f(Z_R0, 1u);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x53u), 1);
+    z_fseed();
+    DSD(DS_000EF6D8) = 0;
+    DSB(Z_R0 + 0x53u) = 0x53u;
+    f(Z_R0, 0xFFFFu);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x53u), 0);
+    z_fseed();
+    DSD(DS_000EF6D8) = 0;
+    DSB(Z_R0 + 0x53u) = 0x53u;
+    f(Z_R0, 0x12340001u);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x53u), 1);
+
+    /* 0x241F4 with side 0's record: stance(ctx[1] = side 1, 0xA) writes slot 1's
+     * +0x52/+0x53/+0x54/+0x10 and +0x7E = 0xBECF8 + 0xA; voice 0x66 is a no-op
+     * here (the SDL path), so the slot 1 state is the observation. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x241F4u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_S1 + 0x53u) = 0x33u;
+    DSB(Z_S1 + 0x7Eu) = 0x77u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x7Eu), (int)(u8)(DSB(DS_000BECF8) + 0x0Au));
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 0x55);
+
+    /* 0x47E04: voice first then stance(ctx[1] = side 1, 0xF). */
+    f = (p1_anim_fn)(void *)fn_resolve(0x47E04u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_S1 + 0x7Eu) = 0x77u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x7Eu), (int)(u8)(DSB(DS_000BECF8) + 0x0Fu));
+
+    /* 0x40148: with the other slot (Z_S1) set, 0x37D18(Z_S1, Z_R1) sets its
+     * +0x52..+0x54 and clears 0x104AE9 bit 2; without it nothing. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x40148u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(DS_00104AE9) = 0xFFu;
+    DSB(Z_S1 + 0x52u) = 0x55u;
+    DSD(DS_001077A8 + 4u) = 0u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 0x55);
+    CHECK_EQ_INT((int)DSB(DS_00104AE9), 0xFF);
+    DSD(DS_001077A8 + 4u) = Z_S1;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(DS_00104AE9), 0xFB);
+
+    /* 0x40170: with the other slot set and the record's +0x28 bit 14, the other
+     * record's +0x29 bit 6 clears (else sets) and 0x3C208 runs on rec+0x51 with
+     * word 0xC759C[other char]. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x40170u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_S1 + 0x7Au) = 3u;
+    DSW(0x000C759Cu + 6u) = 0x1234u;
+    DSW(DS_00104B00) = 0x22u;      /* the facing flag 0x18B16's early return keeps the store */
+    DSW(Z_R0 + 0x28u) = 0x4000u;
+    DSB(Z_R1 + 0x29u) = 0x69u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_R1 + 0x29u), 0x29);
+    DSW(Z_R0 + 0x28u) = 0x0000u;
+    DSB(Z_R1 + 0x29u) = 0x00u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_R1 + 0x29u), 0x40);
+}
+int test_p6_simple(void)        { return u6b_run(p6_check_simple); }

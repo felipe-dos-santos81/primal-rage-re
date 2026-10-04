@@ -1380,6 +1380,80 @@ P3_SPECS += [
 ]
 
 
+# ---- track P batch 6: animation targets C (record 2026-10-03-reverse-p6) -----
+# Every member is an animation target (EAX = rec, EDX = the stream opcode's operand; only 0x2BDA0
+# reads the operand) except 0x24220, the slot +0x10 handler 0x24338 stores (EAX = slot, EDX = its
+# record, EBX = side). The callees the batch stubs, args in the port's C order and clobbers from
+# E.callee_clobbers (record §P6.2); 0x39F40 is the only `ret 4`.
+P6_39280 = E.Call(0x39280, ("eax",))
+P6_39F40 = E.Call(0x39F40, ("eax", "edx", "ebx", "ecx", "s0"), pop=4, clobbers=("ebx", "edx"))
+P6_13244 = E.Call(0x13244, ())
+P6_2A148 = E.Call(0x2A148, ("eax", "edx"), clobbers=("edx",))
+P6_2BCF4 = E.Call(0x2BCF4, ("eax", "edx"), clobbers=("edx",))
+P6_1890C = E.Call(0x1890C, ("eax", "edx"), clobbers=("edx",))
+P6_RNG   = E.Call(0x5D7DC, ("eax",), mode="real")
+P6_29BC8 = E.Call(0x29BC8, ("eax", "ebx", "edx"), clobbers=("ebx", "edx"))
+P6_37D18 = E.Call(0x37D18, ("eax", "edx"), clobbers=("edx",))
+P6_13C70 = E.Call(0x13C70, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+P6_3AA54 = E.Call(0x3AA54, ("eax",))
+P6_29C08 = E.Call(0x29C08, ("eax", "edx"), clobbers=("edx",))
+
+# The slot-pointer table 0x1077A8 the functions that do not build the ctx read (it normally holds the
+# slot array addresses; record §P6.2).
+P6_PTRS = {DS_SLOTS - 8: le32(DS_SLOTS) + le32(DS_SLOTS + 0x94)}
+DS_104AE9 = 0x104AE9           # DS_00104AE9: 0x40148 clears bit 2
+
+
+P6_SPECS = [
+    Spec("anim_2bda0", 0x2BDA0, [
+        Case("r0", {"eax": E3_REC, "edx": 1}, {DS_RNG: le32(0), E3_REC + 0x53: b"\x53"}),
+        Case("r1", {"eax": E3_REC, "edx": 0xFFFF}, {DS_RNG: le32(0), E3_REC + 0x53: b"\x53"}),
+        Case("r2", {"eax": E3_REC, "edx": 0x12340001}, {DS_RNG: le32(0), E3_REC + 0x53: b"\x53"}),
+        Case("r3", {"eax": E3_REC, "edx": 0}, {DS_RNG: le32(0x12345678), E3_REC + 0x53: b"\x53"}),
+    ], calls=(P6_RNG,), eax_mask=0, mutants=("@mutant", "@mask")),
+    Spec("fighter_241f4", 0x241F4, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, E3_REC + 0x51: b"\x00",
+                                                     E3_REC2 + 0x51: b"\x01"}),
+        Case("s1", {"eax": E3_REC2, "edx": 0x5678}, {**SLOT_PTRS, E3_REC + 0x51: b"\x00",
+                                                      E3_REC2 + 0x51: b"\x01"}),
+    ], allow_calls=(0x339AC,), calls=(STANCE, VOICE), eax_mask=0,
+       mutants=("@mutant", "@side", "@voice")),
+    Spec("fighter_47e04", 0x47E04, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, E3_REC + 0x51: b"\x00",
+                                                     E3_REC2 + 0x51: b"\x01"}),
+        Case("s1", {"eax": E3_REC2, "edx": 0x5678}, {**SLOT_PTRS, E3_REC + 0x51: b"\x00",
+                                                      E3_REC2 + 0x51: b"\x01"}),
+    ], allow_calls=(0x339AC,), calls=(VOICE, STANCE), eax_mask=0,
+       mutants=("@mutant", "@side", "@order")),
+    Spec("fighter_40148", 0x40148, [
+        Case("o0", {"eax": E3_REC, "edx": 0x55}, {DS_SLOTS - 8: le32(DS_SLOTS) + le32(0),
+                                                   E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+                                                   DS_104AE9: b"\xff\x5a\x5b"}),
+        Case("o1", {"eax": E3_REC, "edx": 0x55}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                   E3_REC2 + 0x51: b"\x01", DS_104AE9: b"\xff\x5a\x5b"}),
+        Case("o2", {"eax": E3_REC2, "edx": 0x55}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                    E3_REC2 + 0x51: b"\x01", DS_104AE9: b"\xff\x5a\x5b"}),
+    ], calls=(P6_37D18,), eax_mask=0, mutants=("@mutant", "@side", "@bit")),
+    Spec("fighter_40170", 0x40170, [
+        Case("p0", {"eax": E3_REC, "edx": 0x55}, {DS_SLOTS - 8: le32(DS_SLOTS) + le32(0),
+                                                   E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+                                                   E3_REC + 0x28: b"\x00\x40"}),
+        Case("p1", {"eax": E3_REC, "edx": 0x55}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                   E3_REC2 + 0x51: b"\x01", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+                                                   E3_REC + 0x28: b"\x00\x40", E3_REC2 + 0x29: b"\x29",
+                                                   0xC759C + 6: b"\x34\x12", 0xC759C + 8: b"\x78\x56"}),
+        Case("p2", {"eax": E3_REC, "edx": 0x55}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                   E3_REC2 + 0x51: b"\x01", DS_SLOTS + 0x94 + 0x7A: b"\x04",
+                                                   E3_REC + 0x28: b"\x00\x00", E3_REC2 + 0x29: b"\x00",
+                                                   0xC759C + 8: b"\x78\x56"}),
+        Case("p3", {"eax": E3_REC2, "edx": 0x55}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                    E3_REC2 + 0x51: b"\x01", DS_SLOTS + 0x7A: b"\x02",
+                                                    E3_REC2 + 0x28: b"\x00\x40", E3_REC + 0x29: b"\x29",
+                                                    0xC759C + 4: b"\xCD\xAB"}),
+    ], calls=(FLASH, PLACE), eax_mask=0, mutants=("@mutant", "@side", "@set", "@char")),
+]
+
+
 # ---- track P batches 4 and 5: the animation targets A and B (record 2026-10-03-reverse-p4-p5) ------
 # A stream target runs as 0x2B2A0's opcodes 0x10 (0xD000), 0x11 (0xD100) and 0x15 (0xD500) call it
 # through DS_00105BD4 with EAX = rec; none of the 33 reads the operand or ECX, and the dispatcher
@@ -2265,7 +2339,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P45_SPECS + C1_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

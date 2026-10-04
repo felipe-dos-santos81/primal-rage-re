@@ -2639,6 +2639,7 @@ static int fighter_state_36bc8(u32 slot, u32 rec)
  * bits 0x801000. EAX = slot, EDX = rec. */
 void fighter_37d18(u32 slot, u32 rec)
 {
+    PR_SEAM(0x37D18u, slot, rec);
     DSB(slot + 0x52u) = 9u;                                 /* 0x37D1E */
     DSB(slot + 0x53u) = 3u;                                 /* 0x37D22 */
     DSB(slot + 0x54u) = 3u;                                 /* 0x37D26 */
@@ -16667,4 +16668,62 @@ void fighter_24454_case10(u32 slot, u32 side)
 {
     (void)side;
     fighter_24454(slot, DSD(slot));                         /* 0x35396, 0x354E2 */
+}
+
+/* 0x241F4 — record §P6.4. The D100 target at the dword 0xE505E. ctx; stance
+ * 0xA on the other side; voice 0x66. */
+void fighter_241f4(u32 rec)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                                 /* 0x241FC */
+    fighter_3a95c(ctx[1], 0x0Au);                           /* 0x24201..0x2420A */
+    (void)sound_voice(0x66u);                               /* 0x2420F/0x24214 */
+}
+
+
+/* 0x47E04 — record §P6.4. The D000 target at the dword 0xED9FC. ctx; voice
+ * 0x66; stance 0xF on the other side. */
+void fighter_47e04(u32 rec)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                                 /* 0x47E0C */
+    (void)sound_voice(0x66u);                               /* 0x47E11/0x47E1B */
+    fighter_3a95c(ctx[1], 0x0Fu);                           /* 0x47E16/0x47E20/0x47E24 */
+}
+
+
+/* 0x40148 — record §P6.8. The D100 target at the dword 0xE8716. With the other
+ * side's slot set (rec+0x51 ^ 1): 0x37D18(that slot, its record); then 0x104AE9
+ * bit 2 clear. */
+void fighter_40148(u32 rec)
+{
+    u32 other = DSD(DS_001077A8 + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 4u);   /* 0x40149..0x40153 */
+    if (other == 0u) return;                                /* 0x4015C */
+    fighter_37d18(other, DSD(other));                       /* 0x4015E/0x40160 */
+    DSB(DS_00104AE9) &= 0xFBu;                              /* 0x40165 */
+}
+
+
+/* PORT: the [char] u16 table at 0x401B6 has no symbols.h name (the same table
+ * as FIGHT_DIST_3E244). */
+#define P6_WORD_C759C     0x000C759Cu
+
+/* 0x40170 — record §P6.8. The D100 target at the dword 0xE86EE. With the other
+ * side's slot set: the record's +0x28 bit 14 clears (else sets) the other
+ * record's +0x29 bit 6; 0x34D8C(rec+0x51); 0x3C208(rec+0x51, word
+ * 0xC759C[other char]). */
+void fighter_40170(u32 rec)
+{
+    u32 other = DSD(DS_001077A8 + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 4u);   /* 0x40174..0x4017E */
+    u32 orec;
+    if (other == 0u) return;                                /* 0x40187 */
+    orec = DSD(other);                                      /* 0x40199/0x401A1 */
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u)                 /* 0x40189..0x40197 */
+        DSB(orec + 0x29u) &= 0xBFu;                         /* 0x4019B */
+    else
+        DSB(orec + 0x29u) |= 0x40u;                         /* 0x401A3 */
+    (void)hit_flash_pair((u32)DSB(rec + 0x51u));             /* 0x401A7..0x401AC */
+    (void)fighter_3c208((u32)DSB(rec + 0x51u),
+                        (u32)(u16)DSW(P6_WORD_C759C
+                                      + (u32)DSB(other + 0x7Au) * 2u));   /* 0x401B3..0x401CC */
 }

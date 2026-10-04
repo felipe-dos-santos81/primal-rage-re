@@ -765,6 +765,11 @@ gp-modes-one: build
 # then reaches (0x213F0 P7 at f=0x8ED, 0x213F4 P7 at f=0x91F, 0x2BDA0 P6 at f=0xD0C, all skipped
 # by anim_indirect), and TRACE_MIN_FIRST rises 2150 -> 2364 (the first trace difference; the WIN
 # ratchet stays 3162, MIN_FIRST 346 and MAX_START 100).
+# Re-measured by track P batch 6 (record 2026-10-03-reverse-p6 §P6.12) once 0x2BDA0 is ported:
+# the set loses that row alone (the replay still reaches f=0xDAE and now runs the target, so
+# fn-miss PR_GP_DUMP distinct=6 dropped=0) and every pin above is unchanged and exact, because the
+# trace's first difference at f=0x93C precedes 0x2BDA0's first frame 0xD0C: every pin is exact
+# (frames +1 347, trace +1 2365, win +1 3163, path +1 9 unreachable, max-start -1 99 fail).
 GP_WIN_MIN_FIRST = 346
 GP_WIN_TRACE_MIN_FIRST = 2364
 GP_WIN_MAX_START = 100
