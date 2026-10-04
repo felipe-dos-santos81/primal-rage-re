@@ -16,6 +16,7 @@
 /* 0x33A10. Fill the six-dword side context: out[0]=1-side, out[1]=side,
  * out[2]=&slot[1-side], out[3]=&slot[side], out[4]=rec_other, out[5]=rec_self. */
 void fighter_ctx_swap(u32 out[6], u32 side);
+void fighter_pose_start(u32 side, u32 edx, u32 ebx, u32 ecx, u32 frame);
 
 /* 0x33950. The mirror of fighter_ctx_swap: out[0]=side, out[1]=1-side,
  * out[2]=&slot[side], out[3]=&slot[1-side], out[4]=rec_self, out[5]=rec_other. */
@@ -484,6 +485,7 @@ void fighter_3e328(u32 slot, u32 rec, u32 side);
  * check, 0 returns 1 when it holds, 1 when it fails; flag 0 is inverted and
  * rewritten to 4/3), EBX/ECX = two box tables (0 selects 0xA1818/0xA1822).
  * Returns 0 only when every check passes. */
+void fighter_18bd4(u8 flags[16]);                        /* 0x18BD4 */
 int fighter_18c14(u32 side, u8 flags[16], u32 box_a, u32 box_b);
 
 /* 0x19020. 0x1958C's per-slot hook call (0x195B6): with the side's slot +0x18
@@ -586,6 +588,12 @@ void fighter_3c208(u32 side, s32 dist);
 /* 0x3B90C. The side's slot+0x2C plus `delta`, clamped to +/-DS_000BE018 (the
  * arena wall). EAX = side, EDX = delta; 0x3C208's two calls only. */
 s32 fighter_3b90c(u32 side, s32 delta);
+s32 ai_distance(void);
+void fighter_18b44(u32 slot);
+int fighter_189fc(u32 side);
+int fighter_18a4c(u32 side);
+void fighter_1883c(u32 side, u32 a, u32 b);
+int fighter_3b8d8(u32 side, s32 delta);
 
 /* 0x14CC4. The +0x18 hook 0x14E44 stores: 1 while the record's +0x61 is
  * clear; else the 0x18C14 checks and the 0x187FC range 0x1900..0x3200 decide

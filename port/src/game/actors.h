@@ -111,6 +111,8 @@ void palette_reflow(u32 descriptor, u32 handle);
  * following word or uses it to index a table. The returned bit 0x8000 is the
  * stream's bit XOR the record's `rec+0x28 >> 8 & 0x40` flip. */
 u32  anim_next_sprite_id(u32 rec, u32 pset);
+u32  spawn_anim_opcode(u32 rec, u32 index, u32 flag);
+void palette_release(u32 entry);
 /* 0x29F34. Read an animation variable: `op & 0x7F` selects the 0x40-word ring
  * at DS_00105B4C (< 0x40), the record's own bytes (0x40..0x45), the parent
  * rec+0x4A's bytes (0x46..0x4B) or the child rec+0x4B's bytes (0x4C..0x51). */

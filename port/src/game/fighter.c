@@ -47,11 +47,11 @@ static void fighter_164e8(u32 side);                     /* 0x164E8 */
 static void hit_stance_timer(u32 side);                  /* 0x1922C */
 static int fighter_3962c(u32 side, u32 param_2);         /* 0x3962C */
 static int fighter_396ac(u32 side, u32 param_2);         /* 0x396AC */
-static void fighter_18b44(u32 slot);                     /* 0x18B44 */
+void fighter_18b44(u32 slot);                           /* 0x18B44 */
 static void fighter_39278(u32 v);                        /* 0x39278 */
 static u32 fighter_36d20(u32 slot);                      /* 0x36D20 */
 static void fighter_2bd44_by_index(u32 rec);             /* 0x3B4D4 = 0x3B844 */
-static void fighter_18bd4(u8 flags[16]);                 /* 0x18BD4 */
+void fighter_18bd4(u8 flags[16]);                        /* 0x18BD4 */
 static u8 hit_3d004(u32 side);                            /* 0x3D004 */
 
 /* PORT: the register shape of the slot callbacks 0x34E2C (0x35045) and
@@ -249,6 +249,7 @@ static void fighter_18350(u32 side, u32 anchor)
 /* 0x186D0. The slot position latch (the game_frame tail's 0x25438 call). */
 void fighter_slot_latch(u32 side)
 {
+    PR_SEAM(0x186D0u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 rec = DSD(slot);                            /* 0x186F3/0x18702 */
     if ((DSB(slot + 0x42u) & 0x08u) == 0) {         /* 0x186E6 */
@@ -777,8 +778,9 @@ static u32 fighter_input_mask(u32 side)
 
 /* 0x39F40. Arm a pose: seed the four per-side pose words, set the slot's state
  * bytes and its +0x10 handler, and zero the record's +0x24. */
-static void fighter_pose_start(u32 side, u32 edx, u32 ebx, u32 ecx, u32 frame)
+void fighter_pose_start(u32 side, u32 edx, u32 ebx, u32 ecx, u32 frame)
 {
+    PR_SEAM(0x39F40u, side, edx, ebx, ecx, frame);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                /* 0x39F4A */
     u32 s = ctx[1];
@@ -1047,8 +1049,9 @@ static u32 ai_b(u32 side)
 
 /* 0x187FC. The two slots latched, then slot0+0x2C - slot1+0x2C. 0x46DD4 calls
  * it once for the sign and once for the value, so the port keeps both calls. */
-static s32 ai_distance(void)
+s32 ai_distance(void)
 {
+    PR_SEAM_RET0(0x187FCu);
     fighter_slot_latch(0u);                             /* 0x18800 */
     fighter_slot_latch(1u);                             /* 0x18808 */
     return (s32)DSD(0x001077DCu) - (s32)DSD(0x00107870u);   /* 0x1880D */
@@ -1545,6 +1548,7 @@ void fighter_command_block(void)
  * 0x38154 on the record's +0x51 and returns 0 (record §48-K). */
 int fighter_state_36638(u32 slot, u32 rec)
 {
+    PR_SEAM_RET(0x36638u, slot, rec);
     if (DSB(slot + 0x54u) == 3u) {                      /* 0x3663E */
         DSB(slot + 0x43u) &= 0xBFu;
         return 0;
@@ -2053,7 +2057,7 @@ void fighter_state_364fc(u32 slot, u32 rec, u32 side)
 
 static void fighter_state_35b7c(u32 slot, u32 rec);         /* 0x35B7C */
 void fighter_state_35d20(u32 slot, u32 rec);                /* 0x35D20 */
-static void fighter_1883c(u32 side, u32 a, u32 b);          /* 0x1883C */
+void fighter_1883c(u32 side, u32 a, u32 b);                  /* 0x1883C */
 static void fighter_36e78(u32 slot);                        /* 0x36E78 */
 static u32  hit_record_y(u32 side);                         /* 0x18788 */
 
@@ -2164,8 +2168,9 @@ static void fighter_state_35b7c(u32 slot, u32 rec)
 
 /* 0x1883C. Re-latch both slots, add (a, b) to this side's +0x2C/+0x30, then
  * re-derive the record's +0x18/+0x1C through 0x18714/0x18788. */
-static void fighter_1883c(u32 side, u32 a, u32 b)
+void fighter_1883c(u32 side, u32 a, u32 b)
 {
+    PR_SEAM(0x1883Cu, side, a, b);
     u32 slot = DS_001077B0 + side * 0x94u;
     fighter_slot_latch(0u);                             /* 0x18846 */
     fighter_slot_latch(1u);                             /* 0x18852 */
@@ -3964,6 +3969,7 @@ static s32 hit_vert_distance(void)
  * `table` is 0xA7B44[char(side)] and `idx` is 0xA7A70. §6.7. */
 int hit_geometry(u32 side, u32 table, u32 idx)
 {
+    PR_SEAM_RET(0x1DDF4u, side, table, idx);
     u32 ch = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au);
     u32 thr1 = (u32)DSB(table + ch) << 6;
     u32 thr2 = (u32)DSB(idx + ch) << 6;
@@ -4045,6 +4051,7 @@ void hit_anchor_set(u32 side, u32 x, u32 y)
  * and returns slot+0x2C minus DS_00100AB0[side]. */
 u32 hit_record_x(u32 side)
 {
+    PR_SEAM_RET(0x18714u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     if ((DSB(slot + 0x42u) & 0x08u) != 0u)
         return DSD(DSD(slot) + 0x18u);                  /* 0x18738 */
@@ -4140,7 +4147,7 @@ static void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits)
 /* 0x18B04. The attacker/defender facing flag: when mode != 0x22 and
  * self+0x2C < other+0x2C set self_rec+0x29 bit 0x40 (else clear it), then
  * slot+0x2C = self+0x2C and rec+0x18 = 0x18714(side). */
-void hit_facing_flag(u32 side)
+static void hit_facing_flag_body(u32 side)
 {
     u32 ctx[6];
     if (DSW(DS_00104B00) == 0x22u) return;              /* 0x18B16 */
@@ -4151,6 +4158,14 @@ void hit_facing_flag(u32 side)
         DSB(ctx[4] + 0x29u) &= 0xBFu;                   /* 0x18AAE */
     DSD(ctx[2] + 0x2Cu) = DSD(ctx[2] + 0x2Cu);          /* 0x18AC7: self -> self */
     DSD(ctx[4] + 0x18u) = hit_record_x(side);           /* 0x18AEC */
+}
+
+/* 0x18B04's entry as a call: the seam records it; 0x18AF8's second entry (0x18AFF's
+ * fall-through) runs the body without a call record. */
+void hit_facing_flag(u32 side)
+{
+    PR_SEAM(0x18B04u, side);
+    hit_facing_flag_body(side);
 }
 
 /* 0x1922C. The stance timer: when DS_00100B5A[side] > 0 and the record's +0x24
@@ -4780,7 +4795,7 @@ void fighter_3e328(u32 slot, u32 rec, u32 side)
 #define FIGHT_9AFE4        0x0009AFE4u  /* 0x1484C: the 0x3C4CC hold (0x40200000) */
 #define FIGHT_FD108        0x000FD108u  /* 0x148E2: a dword per side, 0x2000/0x1000 */
 
-static int fighter_189fc(u32 side);                      /* 0x189FC */
+int fighter_189fc(u32 side);                            /* 0x189FC */
 
 /* 0x14590. The gate the 0x1490C family shares. EAX = side. With 0x33950's
  * ctx[3] (the other slot) in the knockback pose (+0x10 == 0x39CC8) or in
@@ -7555,6 +7570,7 @@ int fighter_3b038(u32 side)
  * +0x10 == 0x39CC8, +0x58 == 4). 0x3B714's early-out gate. */
 int fighter_39efc(u32 side)
 {
+    PR_SEAM_RET(0x39EFCu, side);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                            /* 0x39F04 */
     u32 slot = ctx[3];
@@ -7832,8 +7848,9 @@ static int fighter_396ac(u32 side, u32 param_2)
  * not when the slot's +0x63 is 1, spawn the two dust actors (descriptor
  * 0xA1804/0xA17DC then 0xA17F0) at the 0xA17D4/0xA17D6-derived position, layers
  * 0xFE/0xFF. EAX is the slot; the raw's EDX (0x29A) is overwritten before use. */
-static void fighter_18b44(u32 slot)
+void fighter_18b44(u32 slot)
 {
+    PR_SEAM(0x18B44u, slot);
     u32 desc;
     if (DSB(slot + 0x63u) == 1u) return;                    /* 0x18B52 */
     if (DSB(DS_00100C1D) != 0u) return;                     /* 0x18B5B */
@@ -7856,8 +7873,9 @@ static void fighter_18b44(u32 slot)
 /* 0x189FC. The facing test on 0x33A10's context for EAX = side: with ctx[0]'s
  * actor bit 15 clear, 1 when ctx[3]'s x (+0x2C) is below ctx[2]'s, else 1
  * when it is above (signed); 0 otherwise. */
-static int fighter_189fc(u32 side)
+int fighter_189fc(u32 side)
 {
+    PR_SEAM_RET(0x189FCu, side);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                            /* 0x18A04 0x33A10 */
     if (fighter_actor_bit15_clear(ctx[0]))                  /* 0x18A0C 0x1A570 */
@@ -7869,8 +7887,9 @@ static int fighter_189fc(u32 side)
 
 /* 0x18A4C. 1 when 0x189FC(ctx[1]) holds and ctx[1]'s actor bit 15 differs
  * from ctx[0]'s (0x33950 context for EAX = side), else 0. */
-static int fighter_18a4c(u32 side)
+int fighter_18a4c(u32 side)
 {
+    PR_SEAM_RET(0x18A4Cu, side);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                            /* 0x18A54 0x33950 */
     if (fighter_actor_bit15_clear(ctx[0])) {                /* 0x18A5C 0x1A570 */
@@ -7884,7 +7903,7 @@ static int fighter_18a4c(u32 side)
 }
 
 /* 0x18BD4. Fill the 16 check flags with 2 ("skip"). EAX = the flag bytes. */
-static void fighter_18bd4(u8 flags[16])
+void fighter_18bd4(u8 flags[16])
 {
     for (u32 i = 0; i < 16u; i++) flags[i] = 2u;            /* 0x18BD4..0x18C0F */
 }
@@ -8397,8 +8416,9 @@ void fighter_winner_body(u32 side)
 
 /* 0x3B8D8. 1 when the side's slot+0x2C moved by `delta` reaches the arena
  * wall: x >= DS_000BE018 or x <= -DS_000BE018. EAX = side, EDX = delta. */
-static int fighter_3b8d8(u32 side, s32 delta)
+int fighter_3b8d8(u32 side, s32 delta)
 {
+    PR_SEAM_RET(0x3B8D8u, side, delta);
     s32 x = (s32)DSD(DS_001077B0 + side * 0x94u + 0x2Cu) + delta;  /* 0x3B8E7/0x3B8F4 */
     s32 wall = (s32)DSD(DS_000BE018);                   /* 0x3B8EE */
     if (x >= wall) return 1;                            /* 0x3B8F6 */
@@ -8412,6 +8432,7 @@ static int fighter_3b8d8(u32 side, s32 delta)
  * 0x3C208's 0x3C2CC/0x3C2FC. */
 s32 fighter_3b90c(u32 side, s32 delta)
 {
+    PR_SEAM_RET(0x3B90Cu, side, delta);
     s32 x = (s32)(DSD(DS_001077B0 + side * 0x94u + 0x2Cu)
                   + (u32)delta);                        /* 0x3B91B/0x3B928 */
     s32 wall = (s32)DSD(DS_000BE018);                   /* 0x3B922 */
@@ -8427,7 +8448,7 @@ void fighter_18af8(void)
 {
     PR_SEAM0(0x18AF8u);
     hit_facing_flag(0u);                                /* 0x18AF8/0x18AFA */
-    hit_facing_flag(1u);                                /* 0x18AFF, fall-through */
+    hit_facing_flag_body(1u);                           /* 0x18AFF, fall-through into 0x18B04 */
 }
 
 /* 0x3C208. Put the other side `dist` (its magnitude) away from the side.
