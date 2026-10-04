@@ -101,6 +101,14 @@ extern int g_failures;
     X(test_p45_p5_records) \
     X(test_p45_p5_spawns) \
     X(test_p45_handler) \
+    X(test_p6_simple) \
+    X(test_p6_22494) \
+    X(test_p6_47e30) \
+    X(test_p6_24338) \
+    X(test_p6_23f10) \
+    X(test_p6_37dd4) \
+    X(test_p6_22338) \
+    X(test_p6_24220) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
     X(test_restart)

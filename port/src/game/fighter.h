@@ -1299,5 +1299,31 @@ void fighter_48a20(u32 rec);
 void fighter_24508(u32 rec);
 void fighter_24454(u32 slot, u32 rec);
 void fighter_24454_case10(u32 slot, u32 side);
+/* Track P batch 6 (record 2026-10-03-reverse-p6-derivations.md): the animation
+ * targets C. */
+void fighter_241f4(u32 rec);
+void fighter_47e04(u32 rec);
+void fighter_40148(u32 rec);
+void fighter_40170(u32 rec);
+void fighter_22494(u32 rec);
+void fighter_2400c(u32 rec);
+void fighter_482e4(u32 rec);
+void fighter_22a40(u32 rec);
+void fighter_47e30(u32 rec);
+void fighter_24338(u32 rec);
+void fighter_3e160(u32 rec);
+/* §P6.5: the two seams this batch's functions call (0x3AA54's slot and
+ * 0x13244's no argument). */
+u32 fighter_3aa54(u32 slot);
+void fighter_13244(void);
+void fighter_23f10(u32 rec);
+void fighter_45c98(u32 rec);
+void fighter_37dd4(u32 rec);
+void fighter_22338(u32 rec);
+void fighter_48374(u32 rec);
+/* §P6.10: the slot +0x10 handler and the 0x3531C case-10 adapter that
+ * supplies rec = DSD(slot) (EAX = slot, EDX = rec, EBX = side). */
+void fighter_24220(u32 slot, u32 rec, u32 side);
+void fighter_24220_case10(u32 slot, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

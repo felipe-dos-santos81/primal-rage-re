@@ -218,6 +218,23 @@ static void anim_code_40434(u32 rec, u32 arg);
 static void anim_code_37EA0(u32 rec, u32 arg);
 static void anim_code_24078(u32 rec, u32 arg);
 static void anim_code_45D58(u32 rec, u32 arg);
+static void anim_code_2BDA0(u32 rec, u32 arg);
+static void anim_code_241F4(u32 rec, u32 arg);
+static void anim_code_47E04(u32 rec, u32 arg);
+static void anim_code_40148(u32 rec, u32 arg);
+static void anim_code_40170(u32 rec, u32 arg);
+static void anim_code_22494(u32 rec, u32 arg);
+static void anim_code_2400C(u32 rec, u32 arg);
+static void anim_code_482E4(u32 rec, u32 arg);
+static void anim_code_22A40(u32 rec, u32 arg);
+static void anim_code_47E30(u32 rec, u32 arg);
+static void anim_code_24338(u32 rec, u32 arg);
+static void anim_code_3E160(u32 rec, u32 arg);
+static void anim_code_23F10(u32 rec, u32 arg);
+static void anim_code_45C98(u32 rec, u32 arg);
+static void anim_code_37DD4(u32 rec, u32 arg);
+static void anim_code_22338(u32 rec, u32 arg);
+static void anim_code_48374(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -988,6 +1005,39 @@ int actors_init(void)
     fn_register(0x37EA0u, (void (*)(void))anim_code_37EA0);
     fn_register(0x24078u, (void (*)(void))anim_code_24078);
     fn_register(0x45D58u, (void (*)(void))anim_code_45D58);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.3. Track P batch 6's first
+     * animation targets (anim_indirect, EAX = rec, EDX = the operand). */
+    fn_register(0x2BDA0u, (void (*)(void))anim_code_2BDA0);
+    fn_register(0x241F4u, (void (*)(void))anim_code_241F4);
+    fn_register(0x47E04u, (void (*)(void))anim_code_47E04);
+    fn_register(0x40148u, (void (*)(void))anim_code_40148);
+    fn_register(0x40170u, (void (*)(void))anim_code_40170);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.4. Track P batch 6's Task 3
+     * animation targets. */
+    fn_register(0x22494u, (void (*)(void))anim_code_22494);
+    fn_register(0x2400Cu, (void (*)(void))anim_code_2400C);
+    fn_register(0x482E4u, (void (*)(void))anim_code_482E4);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.5. Track P batch 6's Task 4
+     * animation targets. */
+    fn_register(0x22A40u, (void (*)(void))anim_code_22A40);
+    fn_register(0x47E30u, (void (*)(void))anim_code_47E30);
+    fn_register(0x24338u, (void (*)(void))anim_code_24338);
+    fn_register(0x3E160u, (void (*)(void))anim_code_3E160);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.7. Track P batch 6's Task 6
+     * animation targets. */
+    fn_register(0x23F10u, (void (*)(void))anim_code_23F10);
+    fn_register(0x45C98u, (void (*)(void))anim_code_45C98);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.8. Track P batch 6's Task 7
+     * animation target. */
+    fn_register(0x37DD4u, (void (*)(void))anim_code_37DD4);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.9. Track P batch 6's Task 8
+     * animation targets. */
+    fn_register(0x22338u, (void (*)(void))anim_code_22338);
+    fn_register(0x48374u, (void (*)(void))anim_code_48374);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.10. Track P batch 6's Task 9
+     * target: the slot +0x10 handler 0x24338 stores, reached through 0x3531C
+     * case 10's adapter (slot, side). */
+    fn_register(0x24220u, (void (*)(void))fighter_24220_case10);
     return 1;
 }
 
@@ -2545,6 +2595,7 @@ void actors_anim_begin(u32 rec, u32 stream, u32 frame_bits)
 /* 0x2BCF4. Point a record at `stream` and load its first sprite id. */
 void actors_anim_seek(u32 rec, u32 stream)
 {
+    PR_SEAM(0x2BCF4u, rec, stream);
     DSD(rec + 8) = stream;
     DSB(rec + 0x28) &= (u8)~0x14u;
     u32 pset = DSD(DS_001014EC) + (u32)DSW(rec + 0x56) * PSET_SIZE;
@@ -2900,6 +2951,7 @@ void palette_release(u32 entry)
  * (0x2A165 tests the stored byte). Callers 0x22EF6, 0x23F4D, 0x40A4E. */
 void actor_pset_flag_5f(u32 rec, u8 flag)
 {
+    PR_SEAM(0x2A148u, rec, flag);
     DSB(rec + 0x5Fu) = flag;                                /* 0x2A14A */
     DSW(actor_pset(rec) + 0x02u) = (u16)(DSW(rec + 0x2Eu)
         | (DSB(rec + 0x5Fu) != 0 ? 0x800u : 0u));          /* 0x2A14D..0x2A174 */
@@ -4403,4 +4455,141 @@ static void anim_code_24508(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_24508(rec);
+}
+
+/* 0x2BDA0 — record §P6.3. The D100 target at the dword 0xE8B90: EAX = rec,
+ * EDX = the operand (rng_next's range); the record's +0x53 = 1 when
+ * rng_next((u16)arg) returns 0. */
+static void anim_code_2BDA0(u32 rec, u32 arg)
+{
+    DSB(rec + 0x53u) = (u8)(rng_next(arg & 0xFFFFu) == 0u ? 1u : 0u);   /* 0x2BDA5/0x2BDA8, 0x2BDAF/0x2BDB2 */
+}
+
+
+/* 0x241F4 — the D100 target at the dword 0xE505E. anim_indirect passes EAX =
+ * rec; the operand is not read. */
+static void anim_code_241F4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_241f4(rec);
+}
+
+
+/* 0x47E04 — the D000 target at the dword 0xED9FC (opcode 0x10). */
+static void anim_code_47E04(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_47e04(rec);
+}
+
+
+/* 0x40148 — the D100 target at the dword 0xE8716. */
+static void anim_code_40148(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40148(rec);
+}
+
+
+/* 0x40170 — the D100 target at the dword 0xE86EE. */
+static void anim_code_40170(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40170(rec);
+}
+
+
+/* 0x22494 — the D500 target at the dword 0xE4E1A. */
+static void anim_code_22494(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_22494(rec);
+}
+
+
+/* 0x2400C — the D100 target at the dword 0xE4FF4. */
+static void anim_code_2400C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_2400c(rec);
+}
+
+
+/* 0x482E4 — the D500 target at the dword 0xED8A8. */
+static void anim_code_482E4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_482e4(rec);
+}
+
+
+/* 0x22A40 — the D100 target at the dword 0xE154A. */
+static void anim_code_22A40(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_22a40(rec);
+}
+
+
+/* 0x47E30 — the D500 target at the dword 0xEDA26. */
+static void anim_code_47E30(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_47e30(rec);
+}
+
+
+/* 0x24338 — the D100 target at the dword 0xE50B8. */
+static void anim_code_24338(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_24338(rec);
+}
+
+
+/* 0x3E160 — the D100 target at the dword 0xE86E0. */
+static void anim_code_3E160(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3e160(rec);
+}
+
+
+/* 0x23F10 — the D100 target at the dword 0xE4FE0. */
+static void anim_code_23F10(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_23f10(rec);
+}
+
+
+/* 0x45C98 — the D100 target at the dword 0xEB80A. */
+static void anim_code_45C98(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_45c98(rec);
+}
+
+
+/* 0x37DD4 — the D100 target at the dword 0xD2BCE. */
+static void anim_code_37DD4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_37dd4(rec);
+}
+
+
+/* 0x22338 — the D500 target at the dword 0xE4E46. */
+static void anim_code_22338(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_22338(rec);
+}
+
+
+/* 0x48374 — the D500 target at the dword 0xED8EA. */
+static void anim_code_48374(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_48374(rec);
 }
