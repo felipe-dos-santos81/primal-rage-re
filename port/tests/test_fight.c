@@ -47277,3 +47277,28 @@ static void p6_check_22494(void)
     CHECK_EQ_INT((int)DSD(Z_R1 + 8u), (int)DSD(0x000C8F40u + 12u));
 }
 int test_p6_22494(void)         { return u6b_run(p6_check_22494); }
+
+/* §P6.5: 0x22A40 (registration and evidence only; its spawn needs the actor
+ * pool) and 0x47E30 through its registration. */
+static void p6_check_47e30(void)
+{
+    p1_anim_fn f;
+    CHECK(fn_resolve(0x22A40u) != NULL, "0x22A40 is registered");
+    CHECK(fn_resolve(0x47E30u) != NULL, "0x47E30 is registered");
+    CHECK_EQ_INT((int)DSD(0x000E154Au), 0x00022A40);
+    CHECK_EQ_INT((int)DSD(0x000EDA26u), 0x00047E30);
+
+    /* 0x47E30: the byte 0x108394[side] 0 starts the own record on 0xED9FA; 1
+     * on 0xEDA2A and then 0x3AA54(the other slot) sets its +0x52 = 0x11. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x47E30u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(0x00108394u) = 0u;
+    DSB(0x00108395u) = 0x5Au;
+    f(Z_R0, 0u);                                   /* the else branch: 0xED9FA (row-covered) */
+    DSB(0x00108394u) = 1u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 0x11);    /* the if branch ran 0x3AA54 on ctx[3] */
+}
+int test_p6_47e30(void)         { return u6b_run(p6_check_47e30); }
