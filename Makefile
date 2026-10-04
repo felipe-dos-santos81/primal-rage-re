@@ -815,8 +815,10 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # Re-measured by track P batches 4+5 (record 2026-10-03-reverse-p4-p5 §P5.7) once 0x3DA50 is
 # ported: the set loses that row alone, the replay reaches no new target and every pin above is
 # unchanged (each + 1 fails).
-# Re-measure: a P batch that ports 0x37DD4 (P6) or 0x29C78 (P7) drops its row and re-measures the
-# U10 set; TRACE/WIN are at the replay's end, so they cannot rise.
+# Re-measured by track P batch 6 (record 2026-10-03-reverse-p6 §P6.12) once 0x37DD4 is
+# ported: the set loses that row alone and every pin above is unchanged (each + 1 fails).
+# Re-measure: a P batch that ports 0x29C78 (P7) drops its row and re-measures the U10 set;
+# TRACE/WIN are at the replay's end, so they cannot rise.
 GP_ENDING_MIN_FIRST = 331
 GP_ENDING_TRACE_MIN_FIRST = 9954
 GP_ENDING_MAX_START = 83

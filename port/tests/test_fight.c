@@ -47349,3 +47349,50 @@ static void p6_check_23f10(void)
     CHECK_EQ_INT((int)DSD(0x000EB80Au), 0x00045C98);
 }
 int test_p6_23f10(void)         { return u6b_run(p6_check_23f10); }
+
+/* §P6.8: 0x37DD4 through its registration. A pool record and crafted palette
+ * tables make the real 0x2A17C/0x29BC8 observable: the handle acquired into
+ * pset+0x18 shows the side's slot char (side 0 -> slot 0's char 3 -> 0x1234;
+ * side 1 -> slot 1's char 2 -> 0, so nothing is acquired). The record's +2
+ * word ends 0 either way: 0x29BC8's own 0x2A17C(word 0) overwrites 0x37DD4's
+ * palette word, which only the row's call #0 can pin. */
+static void p6_check_37dd4(void)
+{
+    p1_anim_fn f;
+    u32 rec, pset;
+    CHECK(fn_resolve(0x37DD4u) != NULL, "0x37DD4 is registered");
+    CHECK_EQ_INT((int)DSD(0x000D2BCEu), 0x00037DD4);
+
+    f = (p1_anim_fn)(void *)fn_resolve(0x37DD4u);
+    if (f == NULL) return;
+    z_fseed();
+    rec = m5_rec();
+    CHECK(rec != 0u, "a pool record for 0x37DD4");
+    if (rec == 0u) return;
+    pset = actor_pset(rec);
+    mem_fill(DS_00107618, 0, 0x180u);               /* an empty palette entry table */
+    DSB(DS_00105B34) = 0u;                          /* the per-side table index */
+    DSB(DS_00105B34 + 1u) = 0u;
+    DSB(Z_S0 + 0x7Au) = 3u;                         /* side 0's slot char */
+    DSB(Z_S1 + 0x7Au) = 2u;                         /* side 1's slot char */
+    DSD(0x000A8A98u + 3u * 4u) = 0x3F51000u;        /* char 3 -> handle 0x1234 */
+    DSD(0x000A8A98u + 2u * 4u) = 0x3F52000u;        /* char 2 -> handle 0 */
+    DSD(0x3F51000u) = 0x1234u;
+    DSD(0x3F52000u) = 0u;
+
+    DSB(rec + 0x51u) = 0u;
+    DSW(pset + 2u) = 0x1234u;                       /* the palette-word sentinel */
+    DSD(pset + 0x18u) = 0u;
+    f(rec, 0u);
+    CHECK_EQ_INT((int)DSW(pset + 2u), 0);
+    CHECK_EQ_INT((int)DSD(pset + 0x18u), (int)DS_00107618);
+    CHECK_EQ_INT((int)DSD(DS_00107618), 0x1234);
+
+    DSB(rec + 0x51u) = 1u;
+    DSW(pset + 2u) = 0x1234u;
+    DSD(pset + 0x18u) = 0xDEADu;
+    f(rec, 0u);
+    CHECK_EQ_INT((int)DSW(pset + 2u), 0);
+    CHECK_EQ_INT((int)DSD(pset + 0x18u), 0xDEAD);   /* handle 0: nothing acquired */
+}
+int test_p6_37dd4(void)         { return u6b_run(p6_check_37dd4); }

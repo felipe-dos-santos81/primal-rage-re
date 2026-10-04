@@ -1661,6 +1661,14 @@ P6_SPECS = [
                                                       P6_PSET + 2 * 0x20 + 0x18: le32(0x0010A800)}),
     ], calls=(ANIM_BEGIN, P6_13C70, VOICE), eax_mask=0,
        mutants=("@mutant", "@stream", "@fx", "@side", "@voice")),
+    Spec("fighter_37dd4", 0x37DD4, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234}, {E3_REC + 0x51: b"\x00", DS_SLOTS + 0x7A: b"\x03",
+                                                     DS_PSET_BASE: le32(P6_PSET)}),
+        Case("s1", {"eax": E3_REC2, "edx": 0x1234}, {E3_REC2 + 0x51: b"\x01", DS_SLOTS + 0x94 + 0x7A: b"\x05",
+                                                      DS_PSET_BASE: le32(P6_PSET)}),
+        Case("s2", {"eax": E3_REC, "edx": 0x1234}, {E3_REC + 0x51: b"\x02", DS_SLOTS + 0x7A: b"\x03",
+                                                     DS_PSET_BASE: le32(P6_PSET)}),
+    ], calls=(PALETTE, P6_29BC8), eax_mask=0, mutants=("@mutant", "@word", "@side")),
 ]
 
 

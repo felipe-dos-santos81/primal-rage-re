@@ -2065,6 +2065,7 @@ static u32  hit_record_y(u32 side);                         /* 0x18788 */
  * pset at it (0x2A17C with word 0). */
 void fighter_29bc8(u32 side, u32 rec, u32 ch)
 {
+    PR_SEAM(0x29BC8u, side, rec, ch);
     u32 tbl = DSD(DS_000A8A98 + ch * 4u);               /* 0x29BCD */
     u32 handle = DSD(tbl + (u32)DSB(DS_00105B34 + side) * 4u);
     actor_pset_palette(rec, 0u, handle);                /* 0x29BE1 */
@@ -16962,4 +16963,15 @@ void fighter_45c98(u32 rec)
     pset = DSD(DS_001014EC) + (u32)DSW(orec + 0x56u) * 0x20u;
     (void)effects_spawn(DSD(pset + 0x18u), 4u, P6_FX_HANDLE);   /* 0x45CD1..0x45CF3 */
     (void)sound_voice((u32)(u16)DSW(P6_VOICE_C75AA + ch * 2u));   /* 0x45CF8..0x45D0A */
+}
+
+
+/* 0x37DD4 — record §P6.8. The D100 target at the dword 0xD2BCE. The record's
+ * pset palette word 4 when its +0x51 is non-zero else 0 (0x2A17C, handle 0),
+ * then 0x29BC8(rec+0x51, rec, the side's char 0x10782A + side*0x94). */
+void fighter_37dd4(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x37DDA/0x37DF8 */
+    actor_pset_palette(rec, DSB(rec + 0x51u) != 0u ? 4u : 0u, 0u);  /* 0x37DDD..0x37DF3 */
+    fighter_29bc8(side, rec, (u32)DSB(DS_0010782A + side * 0x94u));  /* 0x37E10..0x37E19 */
 }

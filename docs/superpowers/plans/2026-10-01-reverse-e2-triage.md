@@ -30,7 +30,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | callbacks | 0 | 71 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
-| animation-targets | 9 | 103 |
+| animation-targets | 8 | 104 |
 | span-writers | 231 | 0 |
 | other | 3 | 54 |
 
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 1 |
 | leaf | 228 |
-| stubs | 14 |
+| stubs | 13 |
 
 ## Rows
 
@@ -239,7 +239,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 37CD4 | 40 | anim-target | dword D2EB0 after the opcode word D100 at D2EAE | yes | - | yes | animation-targets | leaf | - |
 | 37CFC | 28 | anim-target | dword D3192 after the opcode word D100 at D3190 | yes | - | yes | animation-targets | stubs (indirect at 2B185 in 2B150) | - |
 | 37DCC | 8 | anim-target | dword D2B98 after the opcode word D100 at D2B96 | yes | - | yes | animation-targets | leaf | - |
-| 37DD4 | 568 | anim-target | dword D2BCE after the opcode word D100 at D2BCC | yes | - | no | animation-targets | stubs (indirect at 62006 in 62003) | - |
+| 37DD4 | 568 | anim-target | dword D2BCE after the opcode word D100 at D2BCC | yes | - | yes | animation-targets | stubs (indirect at 62006 in 62003) | - |
 | 3800C | 184 | data-pointer | aligned dword A8668 | yes | - | yes | other | leaf | - |
 | 38400 | 52 | data | memory operand of the instruction at 3845F | yes | - | no | - | - | - |
 | 39A34 | 148 | anim-target | dword D2684 after the opcode word D100 at D2682 | yes | - | yes | animation-targets | leaf | - |

@@ -4799,6 +4799,31 @@ static void m_45c98_voice(const u32 *r, u32 *eax)      /* the voice from the own
                                     + (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au) * 2u));
     *eax = 0u;
 }
+static void b_37dd4(const u32 *r, u32 *eax)            { b_anim(0x37DD4u, r, eax); }
+static void m_37dd4(const u32 *r, u32 *eax)            /* the palette word always 4 */
+{
+    u32 rec = r[R_EAX];
+    u32 side = (u32)DSB(rec + 0x51u);
+    actor_pset_palette(rec, 4u, 0u);
+    fighter_29bc8(side, rec, (u32)DSB(DS_0010782A + side * 0x94u));
+    *eax = 0u;
+}
+static void m_37dd4_word(const u32 *r, u32 *eax)       /* the palette word when the side is 1 */
+{
+    u32 rec = r[R_EAX];
+    u32 side = (u32)DSB(rec + 0x51u);
+    actor_pset_palette(rec, side == 1u ? 4u : 0u, 0u);
+    fighter_29bc8(side, rec, (u32)DSB(DS_0010782A + side * 0x94u));
+    *eax = 0u;
+}
+static void m_37dd4_side(const u32 *r, u32 *eax)       /* the char of the other side */
+{
+    u32 rec = r[R_EAX];
+    u32 side = (u32)DSB(rec + 0x51u);
+    actor_pset_palette(rec, DSB(rec + 0x51u) != 0u ? 4u : 0u, 0u);
+    fighter_29bc8(side, rec, (u32)DSB(DS_0010782A + (side ^ 1u) * 0x94u));
+    *eax = 0u;
+}
 
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -5319,6 +5344,10 @@ static const binding_t k_bindings[] = {
     { "fighter_45c98@fx",         m_45c98_fx,     0x00000000u },
     { "fighter_45c98@side",       m_45c98_side,   0x00000000u },
     { "fighter_45c98@voice",      m_45c98_voice,  0x00000000u },
+    { "fighter_37dd4",            b_37dd4,        0x00000000u },
+    { "fighter_37dd4@mutant",     m_37dd4,        0x00000000u },
+    { "fighter_37dd4@word",       m_37dd4_word,   0x00000000u },
+    { "fighter_37dd4@side",       m_37dd4_side,   0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
