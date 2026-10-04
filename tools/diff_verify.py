@@ -1409,6 +1409,16 @@ DS_108378 = 0x108378           # DS_00108378: [side] float, 0x47E30's frame
 P6_CHILD = 0x10A900            # zero BSS of the image: the 0x22A40 spawn's child
 
 
+def _p6_fill(size, patches, fill=0xA5):
+    """A `size`-byte buffer of `fill` with `patches` (offset -> bytes): a record
+    region with sentinels in the gaps, so a too-wide read or write shows against
+    the fill (record §P6.2)."""
+    buf = bytearray([fill]) * size
+    for off, data in patches.items():
+        buf[off:off + len(data)] = data
+    return bytes(buf)
+
+
 P6_SPECS = [
     Spec("anim_2bda0", 0x2BDA0, [
         Case("r0", {"eax": E3_REC, "edx": 1}, {DS_RNG: le32(0), E3_REC + 0x53: b"\x53"}),
@@ -1551,6 +1561,42 @@ P6_SPECS = [
                                                       DS_108378: le32(0x40400000), DS_108378 + 4: le32(0x40A00000)}),
     ], allow_calls=(0x339AC,), calls=(ANIM_BEGIN, P6_3AA54), eax_mask=0,
        mutants=("@mutant", "@flag", "@side")),
+    Spec("fighter_24338", 0x24338, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, E3_REC + 0x51: b"\x00",
+                                                     E3_REC2 + 0x51: b"\x01",
+                                                     DS_SLOTS + 0x7A: b"\x02", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+                                                     0xBED60 + 8: le32(0x000ED222) + le32(0x000ED111),
+                                                     0xBD884 + 4: b"\x11\x11\x00\x20",
+                                                     0xBE008 + 4: b"\x66\x00\x77\x00",
+                                                     E3_REC2 + 0x10: _p6_fill(0x40, {0x00: le32(0x10101010), 0x19: b"\x29", 0x26: b"\x36\x36"}),
+                                                     E3_REC2 + 0x50: b"\xa5\xa5\xa5\xa5\xa5\xa5\xa5\xa5\x58",
+                                                     0xF0AFE: b"\xfe\xff"}),
+        Case("s1", {"eax": E3_REC2, "edx": 0x1234}, {**SLOT_PTRS, E3_REC + 0x51: b"\x00",
+                                                      E3_REC2 + 0x51: b"\x01",
+                                                      DS_SLOTS + 0x7A: b"\x02", DS_SLOTS + 0x94 + 0x7A: b"\x04",
+                                                      0xBED60 + 8: le32(0x000ED222) + le32(0x000ED333),
+                                                      0xBD884 + 6: b"\x11\x11\x34\x12",
+                                                      0xBE008 + 6: b"\x66\x00\x55\x00",
+                                                      E3_REC + 0x10: _p6_fill(0x40, {0x00: le32(0x10101010), 0x19: b"\x29", 0x26: b"\x36\x36"}),
+                                                      E3_REC + 0x50: b"\xa5\xa5\xa5\xa5\xa5\xa5\xa5\xa5\x58",
+                                                      0xF0AFE: b"\xfe\xff"}),
+    ], allow_calls=(0x339AC,), calls=(ANIM_BEGIN, P6_1890C, VOICE), eax_mask=0,
+       mutants=("@mutant", "@other", "@slot", "@af", "@voice")),
+    Spec("fighter_3e160", 0x3E160, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234}, {E3_REC + 0x51: b"\x00", DS_SLOTS + 0x7A: b"\x02",
+                                                     E3_REC + 0x56: b"\x00\x11",
+                                                     P6_CHILD + 0x56: b"\x77", P6_CHILD + 0x60: b"\x00",
+                                                     0xBB420 + 0x10: le32(0x10101010),
+                                                     0xBB420 + 0x14: le32(0x14141414)},
+             {0x2AE14: P6_CHILD}),
+        Case("s1", {"eax": E3_REC2, "edx": 0x1234}, {E3_REC2 + 0x51: b"\x01", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+                                                      E3_REC2 + 0x56: b"\x00\x22",
+                                                     P6_CHILD + 0x56: b"\x77", P6_CHILD + 0x60: b"\x00",
+                                                     0xBB434 + 0x10: le32(0x20202020),
+                                                     0xBB434 + 0x14: le32(0x24242424)},
+             {0x2AE14: P6_CHILD}),
+    ], calls=(P6_29C08, SPAWN), eax_mask=0,
+       mutants=("@mutant", "@side", "@a5", "@child")),
 ]
 
 

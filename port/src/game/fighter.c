@@ -4095,6 +4095,7 @@ void hit_anchor_x(u32 side, u32 x)
 /* 0x1890C. Re-latch, then rec+0x1C += (y - slot+0x30), then re-latch. */
 void hit_anchor_y(u32 side, u32 y)
 {
+    PR_SEAM(0x1890Cu, side, y);
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 rec;
     fighter_slot_latch(side);                           /* 0x18916 */
@@ -16844,4 +16845,57 @@ void fighter_47e30(u32 rec)
         actors_anim_begin(ctx[4], P6_ANIM_47E30_B,
                           DSD(P6_FRAME_108378 + ctx[0] * 4u));   /* 0x47E70..0x47E7F */
     }
+}
+
+
+/* The Task 5 targets' tables and globals (record §P6.6). The effective word
+ * base 0xBD884 is the high half of the dword the raw loads at 0xBD882 + 2c. */
+#define P6_STREAMS_BED60 0x000BED60u  /* 0x24355: [other char] stream */
+#define P6_WORD_BD884    0x000BD884u  /* 0x24372: [other char] word, the anchor y */
+#define P6_VOICE_BE008   0x000BE008u  /* 0x243E0: [other char] voice */
+#define P6_DESC_C7614    0x000C7614u  /* 0x3E190/0x3E1B2: [side] the spawn descriptor */
+
+/* 0x24338 — record §P6.6. The D100 target at the dword 0xE50B8. ctx; the other
+ * record on 0xBED60[other char] at 4.0; 0x1890C(the other side, word
+ * 0xBD884[other char]); the other slot +0x52/0x53/0x54 = 0x10/0xA/2, its +0x10
+ * = 0x24220 and +0x58 = 0; the other record's +0x36 = 0x600; 0xF0AFE = 0 and
+ * 0xF0AFF = the record's +0x51; voice 0x73; voice 0xBE008[other char]. */
+void fighter_24338(u32 rec)
+{
+    u32 ctx[6];
+    u32 ch;
+    hit_anim_ctx(ctx, rec);                                 /* 0x24343 */
+    ch = (u32)DSB(ctx[3] + 0x7Au);                          /* 0x2434E */
+    actors_anim_begin(ctx[5], DSD(P6_STREAMS_BED60 + ch * 4u), 0x40800000u);  /* 0x24351..0x24361 */
+    ch = (u32)DSB(ctx[3] + 0x7Au);                          /* 0x2436D */
+    hit_anchor_y(ctx[1], (u32)(s32)(s16)DSW(P6_WORD_BD884 + ch * 2u));   /* 0x24372..0x24380 */
+    DSB(ctx[3] + 0x52u) = 0x10u;                            /* 0x24389 */
+    DSB(ctx[3] + 0x53u) = 0x0Au;                            /* 0x24391 */
+    DSB(ctx[3] + 0x54u) = 2u;                               /* 0x24399 */
+    DSD(ctx[3] + 0x10u) = 0x00024220u;                      /* 0x243A1 */
+    DSB(ctx[3] + 0x58u) = 0u;                               /* 0x243AC */
+    DSW(ctx[5] + 0x36u) = 0x0600u;                          /* 0x243B4 */
+    DSB(DS_000F0AFE) = 0u;                                  /* 0x243BA/0x243BC */
+    DSB(DS_000F0AFF) = DSB(rec + 0x51u);                    /* 0x243C2/0x243C5 */
+    (void)sound_voice(0x73u);                               /* 0x243CA/0x243CF */
+    ch = (u32)DSB(ctx[3] + 0x7Au);                          /* 0x243DB */
+    (void)sound_voice((u32)(u16)DSW(P6_VOICE_BE008 + ch * 2u));   /* 0x243E0..0x243ED */
+}
+
+
+/* 0x3E160 — record §P6.6. The D100 target at the dword 0xE86E0. 0x29C08
+ * (rec+0x51, the side's char) into the side's 0xC7614 descriptor's +0x10, then
+ * spawn that descriptor at 0/0/0 with a5 = the record's +0x56 | 0x400; the
+ * record's +0x4B = the child's +0x56 and the child's +0x60 = 1. */
+void fighter_3e160(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x3E168 */
+    u32 pal = fighter_29c08(side, (u32)DSB(DS_0010782A + side * 0x94u));  /* 0x3E17D/0x3E186 */
+    u32 child;
+    DSD(DSD(P6_DESC_C7614 + side * 4u) + 0x10u) = pal;      /* 0x3E18B..0x3E197 */
+    child = actor_spawn((const u32 *)(mem + DSD(P6_DESC_C7614 + side * 4u)),
+                        0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));  /* 0x3E19A..0x3E1B9 */
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);                  /* 0x3E1BE/0x3E1C1 */
+    DSB(child + 0x60u) = 1u;                                /* 0x3E1C4 */
 }

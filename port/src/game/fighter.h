@@ -1310,6 +1310,8 @@ void fighter_2400c(u32 rec);
 void fighter_482e4(u32 rec);
 void fighter_22a40(u32 rec);
 void fighter_47e30(u32 rec);
+void fighter_24338(u32 rec);
+void fighter_3e160(u32 rec);
 /* §P6.5: the two seams this batch's functions call (0x3AA54's slot and
  * 0x13244's no argument). */
 u32 fighter_3aa54(u32 slot);

@@ -47302,3 +47302,39 @@ static void p6_check_47e30(void)
     CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 0x11);    /* the if branch ran 0x3AA54 on ctx[3] */
 }
 int test_p6_47e30(void)         { return u6b_run(p6_check_47e30); }
+
+/* §P6.6: 0x24338 and 0x3E160 (registration and evidence only; 0x3E160's
+ * spawn needs the actor pool) through their registrations. */
+static void p6_check_24338(void)
+{
+    p1_anim_fn f;
+    CHECK(fn_resolve(0x24338u) != NULL, "0x24338 is registered");
+    CHECK(fn_resolve(0x3E160u) != NULL, "0x3E160 is registered");
+    CHECK_EQ_INT((int)DSD(0x000E50B8u), 0x00024338);
+    CHECK_EQ_INT((int)DSD(0x000E86E0u), 0x0003E160);
+
+    /* 0x24338 with side 0's record: the other slot's +0x52/0x53/0x54/+0x10/
+     * +0x58, the other record's +0x36, 0xF0AFE/0xF0AFF. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x24338u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_S1 + 0x7Au) = 3u;
+    DSB(Z_S1 + 0x52u) = 0x55u;
+    DSB(Z_S1 + 0x54u) = 0x55u;
+    DSB(Z_S1 + 0x58u) = 0x58u;
+    DSD(Z_S1 + 0x10u) = 0x10101010u;
+    DSW(Z_R1 + 0x36u) = 0x3636u;
+    DSB(DS_000F0AFE) = 0xFEu;
+    DSB(DS_000F0AFF) = 0xFFu;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 0x10);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x10u), 0x00024220);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x58u), 0);
+    CHECK_EQ_INT((int)DSW(Z_R1 + 0x36u), 0x0600);
+    CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0);
+    CHECK_EQ_INT((int)DSB(DS_000F0AFF), 0);
+}
+int test_p6_24338(void)         { return u6b_run(p6_check_24338); }

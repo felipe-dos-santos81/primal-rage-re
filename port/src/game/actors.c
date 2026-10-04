@@ -228,6 +228,8 @@ static void anim_code_2400C(u32 rec, u32 arg);
 static void anim_code_482E4(u32 rec, u32 arg);
 static void anim_code_22A40(u32 rec, u32 arg);
 static void anim_code_47E30(u32 rec, u32 arg);
+static void anim_code_24338(u32 rec, u32 arg);
+static void anim_code_3E160(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -1014,6 +1016,8 @@ int actors_init(void)
      * animation targets. */
     fn_register(0x22A40u, (void (*)(void))anim_code_22A40);
     fn_register(0x47E30u, (void (*)(void))anim_code_47E30);
+    fn_register(0x24338u, (void (*)(void))anim_code_24338);
+    fn_register(0x3E160u, (void (*)(void))anim_code_3E160);
     return 1;
 }
 
@@ -4511,4 +4515,20 @@ static void anim_code_47E30(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_47e30(rec);
+}
+
+
+/* 0x24338 — the D100 target at the dword 0xE50B8. */
+static void anim_code_24338(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_24338(rec);
+}
+
+
+/* 0x3E160 — the D100 target at the dword 0xE86E0. */
+static void anim_code_3E160(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3e160(rec);
 }
