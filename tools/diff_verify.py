@@ -1398,7 +1398,9 @@ C1_PTRS = dict(SLOT_PTRS)
 
 
 def c1_slots(seed0, seed1):
-    return {DS_SLOTS + 0x42: seed0, DS_SLOTS + 0x94 + 0x42: seed1}
+    return {DS_SLOTS + 0x42: seed0[0:3], DS_SLOTS + 0x52: seed0[3:6], DS_SLOTS + 0x5C: seed0[6:9],
+            DS_SLOTS + 0x94 + 0x42: seed1[0:3], DS_SLOTS + 0x94 + 0x52: seed1[3:6],
+            DS_SLOTS + 0x94 + 0x5C: seed1[6:9]}
 
 
 C1_SLOT_SEED0 = b"\x42\xff\x44\x52\x53\x54\x5c\x5d\x5e"       # +0x42..+0x44, +0x52..+0x54, +0x5c..+0x5e
@@ -1604,7 +1606,9 @@ C1_SPECS = [
         Case("f0", {}, {**C1_PTRS, E3_REC2 + 0x29: b"\x29", E3_REC2 + 0x16: b"\x26\x27\x28\x29\x2a\x2b",
                         DS_SLOTS + 0x2C: le32(0x22222222), DS_SLOTS + 0x94 + 0x2C: le32(0x11111111)},
              {0x18B04: 0, 0x18714: 0x33333333}),
-        Case("f1", {}, {**C1_PTRS, E3_REC2 + 0x29: b"\x29", E3_REC2 + 0x16: b"\x26\x27\x28\x29\x2a\x2b",
+        # f1 takes the `and 0xBF` arm (equal +0x2C values), so its +0x29 seed has bit 6 set:
+        # the clear is observable (f0's `<` arm keeps the `or 0x40` and its seed bit 6 clear).
+        Case("f1", {}, {**C1_PTRS, E3_REC2 + 0x29: b"\x69", E3_REC2 + 0x16: b"\x26\x27\x28\x29\x2a\x2b",
                         DS_SLOTS + 0x2C: le32(0x11111111), DS_SLOTS + 0x94 + 0x2C: le32(0x11111111)},
              {0x18B04: 1, 0x18714: 0x44444444}),
     ], allow_calls=(0x33950,), calls=(C1_FACING, C1_RECORD_X), eax_mask=0,
@@ -1651,18 +1655,20 @@ C1_SPECS = [
     ], allow_calls=(0x33A10,), calls=(C1_FACING, C1_POSE), eax_mask=0,
        mutants=("@mutant", "@side", "@order")),
     # 0x3A95C: EAX = side, EDX = b; 0x33A10 runs on both sides (allow); 0x188AC(ctx[1],
-    # ctx[5].+0x18, 0); the other slot 0x10/0x0A/0/0x10=0; 0x2BC30(ctx[5], the char
+    # ctx[5].+0x18, 0); the own slot (ctx[3]) 0x10/0x0A/0/0x10=0; 0x2BC30(ctx[5], the char
     # stream, 3.0); ctx[3].+0x7E = byte[0xBECF8] + b.
     Spec("fighter_3a95c", 0x3A95C, [
         Case("c0", {"eax": 0, "edx": 0x21},
              {**C1_PTRS, E3_REC2 + 0x18: le32(0x18181818), E3_REC + 0x18: le32(0x28282828),
+              DS_SLOTS + 0x10: b"\x20\x20\x20\x20",
               DS_SLOTS + 0x52: b"\x52\x53\x54\x55", DS_SLOTS + 0x94 + 0x52: b"\x62\x63\x64\x65",
               DS_SLOTS + 0x94 + 0x10: b"\x10\x10\x10\x10", DS_SLOTS + 0x94 + 0x7A: b"\x00",
               DS_SLOTS + 0x94 + 0x7E: b"\x7e\x7f"}),
         Case("c1", {"eax": 1, "edx": 0x42},
              {**C1_PTRS, E3_REC2 + 0x18: le32(0x18181818), E3_REC + 0x18: le32(0x28282828),
               DS_SLOTS + 0x52: b"\x52\x53\x54\x55", DS_SLOTS + 0x94 + 0x52: b"\x62\x63\x64\x65",
-              DS_SLOTS + 0x10: b"\x20\x20\x20\x20", DS_SLOTS + 0x7A: b"\x01",
+              DS_SLOTS + 0x10: b"\x20\x20\x20\x20", DS_SLOTS + 0x94 + 0x10: b"\x10\x10\x10\x10",
+              DS_SLOTS + 0x7A: b"\x01",
               DS_SLOTS + 0x7E: b"\x6e\x6f"}),
     ], allow_calls=(0x33A10,), calls=(ANCHOR, ANIM_BEGIN), eax_mask=0,
        mutants=("@mutant", "@side", "@arg")),
