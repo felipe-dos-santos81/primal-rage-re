@@ -1286,5 +1286,10 @@ void fighter_3dc3c(u32 rec);
 void fighter_403a0(u32 rec);
 void fighter_40fbc(u32 rec);
 void fighter_48a20(u32 rec);
+/* §P5.5: the +0x10 handler 0x24508 stores (0x3531C case 10) and the case-10
+ * adapter the port registers under 0x24454. */
+void fighter_24508(u32 rec);
+void fighter_24454(u32 slot, u32 rec);
+void fighter_24454_case10(u32 slot, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

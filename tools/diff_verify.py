@@ -1791,6 +1791,72 @@ Spec("fighter_48a20", 0x48A20, [
     ], calls=(SPAWN,), eax_mask=0, mutants=("@mutant", "@walk", "@a2")),
 ]
 
+def p45_24508(cid, side):
+    # §P5.5: the 0x339AC context's other slot (ctx[3]); the own slot (ctx[2]) is
+    # seeded too, so the @side mutant's wrong-slot stores show as bytes. The two
+    # slots' characters differ (5 and 3), so the @stream mutant's index reads the
+    # other 0xA85F8 entry (two distinct sentinels) and the recorded 0x2BC30 call
+    # differs.
+    own = DS_SLOTS + side * 0x94
+    oth = DS_SLOTS + (1 - side) * 0x94
+    seeds = {}
+    for s in (own, oth):
+        seeds[s + 0x52] = b"\x52\x53"
+        seeds[s + 0x10] = le32(0x10101010)
+        seeds[s + 0x58] = b"\x58"
+    return Case(cid, {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+                {**P45_PTRS, **P45_CHARS, E3_REC + 0x51: bytes([side]), **seeds,
+                 0xA85F8 + 12: le32(0x5B5B5B5B), 0xA85F8 + 20: le32(0x5A5A5A5A)})
+
+
+P45_SPECS += [
+Spec("fighter_24508", 0x24508, [p45_24508("s0", 0), p45_24508("s1", 1)],
+         allow_calls=(0x339AC,), calls=(ANIM_BEGIN, VOICE), eax_mask=0,
+         mutants=("@mutant", "@side", "@stream")),
+    # 0x24454: t1's record +0x24 = 0x80000000 passes the 0x7FFFFFFF mask (a whole-dword test
+    # refuses); t6's release pset is 0x1014EC + 0x1234 * 0x20; t5/t7 the state-1 guard.
+    Spec("fighter_24454", 0x24454, [
+        Case("t0", {"eax": E3_SLOT, "edx": E3_REC, "ecx": 0},
+             {E3_SLOT + 0x58: b"\x02", E3_SLOT + 0x7A: b"\x05", E3_REC + 0x24: le32(0),
+              E3_REC + 0x56: b"\x23\x01"}),
+        Case("t1", {"eax": E3_SLOT, "edx": E3_REC, "ecx": 0},
+             {E3_SLOT + 0x58: b"\x00", E3_SLOT + 0x7A: b"\x05", E3_REC + 0x18: le32(0x18181818),
+              E3_REC + 0x1C: le32(0x1C1C1C1C), E3_REC + 0x24: le32(0x80000000),
+              E3_REC + 0x28: b"\x00\x40", E3_REC + 0x30: le32(0xFFFD8000), E3_REC + 0x56: b"\x23\x01",
+              0xA85DC + 20: le32(0x000A85DC), E3_OUT + 0x36: b"\x36\x36", E3_OUT + 0x56: b"\x07\x00",
+              0x104740: le32(0x47474747)}, {0x2AE14: E3_OUT}),
+        Case("t2", {"eax": E3_SLOT, "edx": E3_REC, "ecx": 0},
+             {E3_SLOT + 0x58: b"\x00", E3_SLOT + 0x7A: b"\x05", E3_REC + 0x24: le32(1),
+              E3_REC + 0x56: b"\x23\x01", 0x104740: le32(0x47474747)}),
+        Case("t3", {"eax": E3_SLOT, "edx": E3_REC, "ecx": 0},
+             {E3_SLOT + 0x58: b"\x00", E3_SLOT + 0x7A: b"\x05", E3_REC + 0x18: le32(0x18181818),
+              E3_REC + 0x1C: le32(0x1C1C1C1C), E3_REC + 0x24: le32(0), E3_REC + 0x28: b"\x00\x00",
+              E3_REC + 0x30: le32(0x00030000), E3_REC + 0x56: b"\x23\x01",
+              0xA85DC + 20: le32(0x000A85DC), E3_OUT + 0x36: b"\x36\x36", E3_OUT + 0x56: b"\x07\x00",
+              0x104740: le32(0x47474747)}, {0x2AE14: E3_OUT}),
+        Case("t4", {"eax": E3_SLOT, "edx": E3_REC, "ecx": 0},
+             {E3_SLOT + 0x58: b"\x01", E3_REC + 0x51: b"\x00", E3_REC + 0x24: le32(0),
+              0x104740: le32(E3_OUT), E3_OUT + 0x1C: le32(0x00002FFF), E3_OUT + 0x56: b"\x34\x12"}),
+        Case("t5", {"eax": E3_SLOT, "edx": E3_REC, "ecx": 0},
+             {E3_SLOT + 0x58: b"\x01", E3_SLOT + 0x52: b"\x52\x53", E3_REC + 0x51: b"\x00",
+              0x104740: le32(E3_OUT), E3_OUT + 0x1C: le32(0x00003000), E3_OUT + 0x56: b"\x34\x12",
+              0x1014EC: le32(P45_PSET), 0x1077AC: le32(0)}),
+        Case("t6", {"eax": E3_SLOT, "edx": E3_REC, "ecx": 0},
+             {E3_SLOT + 0x58: b"\x01", E3_SLOT + 0x52: b"\x52\x53", E3_REC + 0x51: b"\x00",
+              0x104740: le32(E3_OUT), E3_OUT + 0x1C: le32(0x00003000), E3_OUT + 0x56: b"\x34\x12",
+              0x1014EC: le32(P45_PSET), **P45_PTRS, **P45_CHARS, 0xE5100: le32(0xE5100)}),
+        Case("t7", {"eax": E3_SLOT, "edx": E3_REC, "ecx": 0},
+             {E3_SLOT + 0x58: b"\x01", E3_SLOT + 0x52: b"\x52\x53", E3_REC + 0x51: b"\x01",
+              0x104740: le32(E3_REC2), E3_REC2 + 0x1C: le32(0x00003001), E3_REC2 + 0x56: b"\x34\x12",
+              0x1014EC: le32(P45_PSET), **P45_PTRS, **P45_CHARS}),
+        Case("t8", {"eax": E3_SLOT, "edx": E3_REC, "ecx": 0},
+             {E3_SLOT + 0x58: b"\x01", E3_SLOT + 0x52: b"\x52\x53", E3_REC + 0x51: b"\x02",
+              0x104740: le32(E3_REC2), E3_REC2 + 0x1C: le32(0x00003001), E3_REC2 + 0x56: b"\x34\x12",
+              0x1014EC: le32(P45_PSET), **P45_PTRS, 0x1077B4: le32(P45_SLOT3), **P45_CHARS}),
+    ], calls=(SPAWN, RELEASE, ANIM_BEGIN), eax_mask=0,
+         mutants=("@mutant", "@guard", "@st1", "@pset", "@release", "@side", "@desc", "@a5")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

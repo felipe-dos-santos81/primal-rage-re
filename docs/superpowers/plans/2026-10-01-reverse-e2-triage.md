@@ -30,7 +30,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | callbacks | 0 | 71 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
-| animation-targets | 24 | 88 |
+| animation-targets | 23 | 89 |
 | span-writers | 231 | 0 |
 | other | 3 | 54 |
 
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 2 |
 | leaf | 228 |
-| stubs | 28 |
+| stubs | 27 |
 
 ## Rows
 
@@ -154,7 +154,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 241F4 | 324 | anim-target | dword E505E after the opcode word D100 at E505C | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 24214 |
 | 24338 | 192 | anim-target | dword E50B8 after the opcode word D100 at E50B6 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 243CF 243ED |
 | 243F8 | 272 | anim-target | dword E503C after the opcode word D100 at E503A | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
-| 24508 | 96 | anim-target | dword E50E2 after the opcode word D100 at E50E0 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 2455E |
+| 24508 | 96 | anim-target | dword E50E2 after the opcode word D100 at E50E0 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 2455E |
 | 24568 | 364 | call-table | dword A862C = table A8628[1], read by `call` at 25F27 | yes | - | yes | voice | stubs (indirect at 2B0E9 in 2AE14) | 24684 |
 | 246D4 | 128 | anim-target | dword E4544 after the opcode word D500 at E4542 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 24804 | 352 | call-table | dword A8640 = table A8628[6], read by `call` at 25F27 | yes | - | yes | other | stubs (indirect at 2B0E9 in 2AE14) | - |
@@ -671,7 +671,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 23960 | called at 23AB7 | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 23B68 | immediate at 23C72 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | 23BD8 |
 | 24220 | immediate at 243A1 | - | no | stubs (indirect at 2B0E9 in 2AE14) | 242DA 24317 |
-| 24454 | immediate at 24529 | - | no | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 24454 | immediate at 24529 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 26998 | immediate at 2697B | - | yes | stubs (indirect at 412DD in 412A0) | 26A2C |
 | 270BC | immediate at 2713A | - | yes | stubs (indirect at 412DD in 412A0) | 270F9 |
 | 2BDB8 | called at 21432 | entry | no | leaf | - |
@@ -849,7 +849,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 24317 | 24220 | supplement | no |
 | 243CF | 24338 | row | no |
 | 243ED | 24338 | row | no |
-| 2455E | 24508 | row | no |
+| 2455E | 24508 | row | yes |
 | 24684 | 24568 | row | yes |
 | 26A2C | 26998 | supplement | yes |
 | 270F9 | 270BC | supplement | yes |

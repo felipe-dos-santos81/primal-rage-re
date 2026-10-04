@@ -2796,6 +2796,285 @@ static void m_48a20_a2(const u32 *r, u32 *eax)
     DSB(esi + 0x4Bu) = DSB(child + 0x56u);
     *eax = 0u;
 }
+static void b_24508(const u32 *r, u32 *eax)      { fighter_24508(r[R_EAX]); *eax = 0u; }
+static void b_24454(const u32 *r, u32 *eax)      { fighter_24454(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void m_24508(const u32 *r, u32 *eax)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    DSB(ctx[3] + 0x52u) = 0x10u; DSB(ctx[3] + 0x53u) = 0x0Au;
+    DSD(ctx[3] + 0x10u) = 0x00024454u; DSB(ctx[3] + 0x58u) = 0u;
+    actors_anim_begin(ctx[5], DSD(0x000A85F8u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x3F800000u);
+    sound_voice(0xEAu);
+    *eax = 0u;
+}
+static void m_24508_side(const u32 *r, u32 *eax)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    DSB(ctx[2] + 0x52u) = 0x10u; DSB(ctx[2] + 0x53u) = 0x0Au;
+    DSD(ctx[2] + 0x10u) = 0x00024454u; DSB(ctx[2] + 0x58u) = 0u;
+    actors_anim_begin(ctx[5], DSD(0x000A85F8u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x3F800000u);
+    sound_voice(0xEBu);
+    *eax = 0u;
+}
+static void m_24508_stream(const u32 *r, u32 *eax)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    DSB(ctx[3] + 0x52u) = 0x10u; DSB(ctx[3] + 0x53u) = 0x0Au;
+    DSD(ctx[3] + 0x10u) = 0x00024454u; DSB(ctx[3] + 0x58u) = 0u;
+    actors_anim_begin(ctx[5], DSD(0x000A85F8u + (u32)DSB(ctx[2] + 0x7Au) * 4u), 0x3F800000u);
+    sound_voice(0xEBu);
+    *eax = 0u;
+}
+static void m_24454(const u32 *r, u32 *eax)      /* forgets the child's +0x36 = 0x40 */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u8 st = DSB(slot + 0x58u);
+    u32 child;
+    if (st > 1u) { *eax = 0u; return; }
+    if (st == 0u) {
+        if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) != 0u) { *eax = 0u; return; }
+        child = actor_spawn((const u32 *)(mem + DSD(0x000A85DCu + (u32)DSB(slot + 0x7Au) * 4u)),
+                            DSD(rec + 0x18u), (u32)((s32)DSD(rec + 0x30u) >> 16),
+                            DSD(rec + 0x1Cu),
+                            (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u);
+        DSD(0x00104740u) = child;
+        DSB(slot + 0x58u) = (u8)(st + 1u);
+        *eax = 0u;
+        return;
+    }
+    child = DSD(0x00104740u);
+    if ((s32)DSD(child + 0x1Cu) < 0x3000) { *eax = 0u; return; }
+    actor_release(child, DSD(0x001014ECu) + (u32)DSW(child + 0x56u) * 0x20u);
+    {
+        u32 other = (u32)DSB(rec + 0x51u) ^ 1u;
+        u32 oslot = DSD(0x001077A8u + other * 4u);
+        if (oslot == 0u) { *eax = 0u; return; }
+        actors_anim_begin(DSD(oslot), 0x000E5100u, 0x40400000u);
+    }
+    DSB(slot + 0x53u) = 3u;
+    DSB(slot + 0x52u) = 9u;
+    *eax = 0u;
+}
+static void m_24454_guard(const u32 *r, u32 *eax)   /* whole-dword test for the 0x7FFFFFFF mask */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u8 st = DSB(slot + 0x58u);
+    u32 child;
+    if (st > 1u) { *eax = 0u; return; }
+    if (st == 0u) {
+        if ((s32)DSD(rec + 0x24u) != 0) { *eax = 0u; return; }
+        child = actor_spawn((const u32 *)(mem + DSD(0x000A85DCu + (u32)DSB(slot + 0x7Au) * 4u)),
+                            DSD(rec + 0x18u), (u32)((s32)DSD(rec + 0x30u) >> 16),
+                            DSD(rec + 0x1Cu),
+                            (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u);
+        DSW(child + 0x36u) = 0x0040u;
+        DSD(0x00104740u) = child;
+        DSB(slot + 0x58u) = (u8)(st + 1u);
+        *eax = 0u;
+        return;
+    }
+    child = DSD(0x00104740u);
+    if ((s32)DSD(child + 0x1Cu) < 0x3000) { *eax = 0u; return; }
+    actor_release(child, DSD(0x001014ECu) + (u32)DSW(child + 0x56u) * 0x20u);
+    {
+        u32 other = (u32)DSB(rec + 0x51u) ^ 1u;
+        u32 oslot = DSD(0x001077A8u + other * 4u);
+        if (oslot == 0u) { *eax = 0u; return; }
+        actors_anim_begin(DSD(oslot), 0x000E5100u, 0x40400000u);
+    }
+    DSB(slot + 0x53u) = 3u;
+    DSB(slot + 0x52u) = 9u;
+    *eax = 0u;
+}
+static void m_24454_st1(const u32 *r, u32 *eax)     /* jle for the state-1 0x3000 bound */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u8 st = DSB(slot + 0x58u);
+    u32 child;
+    if (st > 1u) { *eax = 0u; return; }
+    if (st == 0u) {
+        if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) != 0u) { *eax = 0u; return; }
+        child = actor_spawn((const u32 *)(mem + DSD(0x000A85DCu + (u32)DSB(slot + 0x7Au) * 4u)),
+                            DSD(rec + 0x18u), (u32)((s32)DSD(rec + 0x30u) >> 16),
+                            DSD(rec + 0x1Cu),
+                            (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u);
+        DSW(child + 0x36u) = 0x0040u;
+        DSD(0x00104740u) = child;
+        DSB(slot + 0x58u) = (u8)(st + 1u);
+        *eax = 0u;
+        return;
+    }
+    child = DSD(0x00104740u);
+    if ((s32)DSD(child + 0x1Cu) <= 0x3000) { *eax = 0u; return; }
+    actor_release(child, DSD(0x001014ECu) + (u32)DSW(child + 0x56u) * 0x20u);
+    {
+        u32 other = (u32)DSB(rec + 0x51u) ^ 1u;
+        u32 oslot = DSD(0x001077A8u + other * 4u);
+        if (oslot == 0u) { *eax = 0u; return; }
+        actors_anim_begin(DSD(oslot), 0x000E5100u, 0x40400000u);
+    }
+    DSB(slot + 0x53u) = 3u;
+    DSB(slot + 0x52u) = 9u;
+    *eax = 0u;
+}
+static void m_24454_pset(const u32 *r, u32 *eax)    /* pset = the global's address, not its value */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u8 st = DSB(slot + 0x58u);
+    u32 child;
+    if (st > 1u) { *eax = 0u; return; }
+    if (st == 0u) {
+        if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) != 0u) { *eax = 0u; return; }
+        child = actor_spawn((const u32 *)(mem + DSD(0x000A85DCu + (u32)DSB(slot + 0x7Au) * 4u)),
+                            DSD(rec + 0x18u), (u32)((s32)DSD(rec + 0x30u) >> 16),
+                            DSD(rec + 0x1Cu),
+                            (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u);
+        DSW(child + 0x36u) = 0x0040u;
+        DSD(0x00104740u) = child;
+        DSB(slot + 0x58u) = (u8)(st + 1u);
+        *eax = 0u;
+        return;
+    }
+    child = DSD(0x00104740u);
+    if ((s32)DSD(child + 0x1Cu) < 0x3000) { *eax = 0u; return; }
+    actor_release(child, 0x001014ECu + (u32)DSW(child + 0x56u) * 0x20u);
+    {
+        u32 other = (u32)DSB(rec + 0x51u) ^ 1u;
+        u32 oslot = DSD(0x001077A8u + other * 4u);
+        if (oslot == 0u) { *eax = 0u; return; }
+        actors_anim_begin(DSD(oslot), 0x000E5100u, 0x40400000u);
+    }
+    DSB(slot + 0x53u) = 3u;
+    DSB(slot + 0x52u) = 9u;
+    *eax = 0u;
+}
+static void m_24454_release(const u32 *r, u32 *eax) /* releases the record, not the child */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u8 st = DSB(slot + 0x58u);
+    u32 child;
+    if (st > 1u) { *eax = 0u; return; }
+    if (st == 0u) {
+        if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) != 0u) { *eax = 0u; return; }
+        child = actor_spawn((const u32 *)(mem + DSD(0x000A85DCu + (u32)DSB(slot + 0x7Au) * 4u)),
+                            DSD(rec + 0x18u), (u32)((s32)DSD(rec + 0x30u) >> 16),
+                            DSD(rec + 0x1Cu),
+                            (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u);
+        DSW(child + 0x36u) = 0x0040u;
+        DSD(0x00104740u) = child;
+        DSB(slot + 0x58u) = (u8)(st + 1u);
+        *eax = 0u;
+        return;
+    }
+    child = DSD(0x00104740u);
+    if ((s32)DSD(child + 0x1Cu) < 0x3000) { *eax = 0u; return; }
+    actor_release(rec, DSD(0x001014ECu) + (u32)DSW(child + 0x56u) * 0x20u);
+    {
+        u32 other = (u32)DSB(rec + 0x51u) ^ 1u;
+        u32 oslot = DSD(0x001077A8u + other * 4u);
+        if (oslot == 0u) { *eax = 0u; return; }
+        actors_anim_begin(DSD(oslot), 0x000E5100u, 0x40400000u);
+    }
+    DSB(slot + 0x53u) = 3u;
+    DSB(slot + 0x52u) = 9u;
+    *eax = 0u;
+}
+static void m_24454_side(const u32 *r, u32 *eax)    /* masks the other-side index with & 1 */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u8 st = DSB(slot + 0x58u);
+    u32 child;
+    if (st > 1u) { *eax = 0u; return; }
+    if (st == 0u) {
+        if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) != 0u) { *eax = 0u; return; }
+        child = actor_spawn((const u32 *)(mem + DSD(0x000A85DCu + (u32)DSB(slot + 0x7Au) * 4u)),
+                            DSD(rec + 0x18u), (u32)((s32)DSD(rec + 0x30u) >> 16),
+                            DSD(rec + 0x1Cu),
+                            (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u);
+        DSW(child + 0x36u) = 0x0040u;
+        DSD(0x00104740u) = child;
+        DSB(slot + 0x58u) = (u8)(st + 1u);
+        *eax = 0u;
+        return;
+    }
+    child = DSD(0x00104740u);
+    if ((s32)DSD(child + 0x1Cu) < 0x3000) { *eax = 0u; return; }
+    actor_release(child, DSD(0x001014ECu) + (u32)DSW(child + 0x56u) * 0x20u);
+    {
+        u32 other = ((u32)DSB(rec + 0x51u) & 1u) ^ 1u;
+        u32 oslot = DSD(0x001077A8u + other * 4u);
+        if (oslot == 0u) { *eax = 0u; return; }
+        actors_anim_begin(DSD(oslot), 0x000E5100u, 0x40400000u);
+    }
+    DSB(slot + 0x53u) = 3u;
+    DSB(slot + 0x52u) = 9u;
+    *eax = 0u;
+}
+static void m_24454_desc(const u32 *r, u32 *eax)    /* indexes the descriptor table by bytes */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u8 st = DSB(slot + 0x58u);
+    u32 child;
+    if (st > 1u) { *eax = 0u; return; }
+    if (st == 0u) {
+        if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) != 0u) { *eax = 0u; return; }
+        child = actor_spawn((const u32 *)(mem + DSD(0x000A85DCu + (u32)DSB(slot + 0x7Au))),
+                            DSD(rec + 0x18u), (u32)((s32)DSD(rec + 0x30u) >> 16),
+                            DSD(rec + 0x1Cu),
+                            (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u);
+        DSW(child + 0x36u) = 0x0040u;
+        DSD(0x00104740u) = child;
+        DSB(slot + 0x58u) = (u8)(st + 1u);
+        *eax = 0u;
+        return;
+    }
+    child = DSD(0x00104740u);
+    if ((s32)DSD(child + 0x1Cu) < 0x3000) { *eax = 0u; return; }
+    actor_release(child, DSD(0x001014ECu) + (u32)DSW(child + 0x56u) * 0x20u);
+    {
+        u32 other = (u32)DSB(rec + 0x51u) ^ 1u;
+        u32 oslot = DSD(0x001077A8u + other * 4u);
+        if (oslot == 0u) { *eax = 0u; return; }
+        actors_anim_begin(DSD(oslot), 0x000E5100u, 0x40400000u);
+    }
+    DSB(slot + 0x53u) = 3u;
+    DSB(slot + 0x52u) = 9u;
+    *eax = 0u;
+}
+static void m_24454_a5(const u32 *r, u32 *eax)      /* tests bit 6, not bit 14, for a5 */
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u8 st = DSB(slot + 0x58u);
+    u32 child;
+    if (st > 1u) { *eax = 0u; return; }
+    if (st == 0u) {
+        if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) != 0u) { *eax = 0u; return; }
+        child = actor_spawn((const u32 *)(mem + DSD(0x000A85DCu + (u32)DSB(slot + 0x7Au) * 4u)),
+                            DSD(rec + 0x18u), (u32)((s32)DSD(rec + 0x30u) >> 16),
+                            DSD(rec + 0x1Cu),
+                            (DSW(rec + 0x28u) & 0x0040u) != 0u ? 0x4000u : 0u);
+        DSW(child + 0x36u) = 0x0040u;
+        DSD(0x00104740u) = child;
+        DSB(slot + 0x58u) = (u8)(st + 1u);
+        *eax = 0u;
+        return;
+    }
+    child = DSD(0x00104740u);
+    if ((s32)DSD(child + 0x1Cu) < 0x3000) { *eax = 0u; return; }
+    actor_release(child, DSD(0x001014ECu) + (u32)DSW(child + 0x56u) * 0x20u);
+    {
+        u32 other = (u32)DSB(rec + 0x51u) ^ 1u;
+        u32 oslot = DSD(0x001077A8u + other * 4u);
+        if (oslot == 0u) { *eax = 0u; return; }
+        actors_anim_begin(DSD(oslot), 0x000E5100u, 0x40400000u);
+    }
+    DSB(slot + 0x53u) = 3u;
+    DSB(slot + 0x52u) = 9u;
+    *eax = 0u;
+}
 
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -3150,6 +3429,19 @@ static const binding_t k_bindings[] = {
     { "fighter_48a20@mutant",   m_48a20,         0x00000000u },
     { "fighter_48a20@walk",     m_48a20_walk,    0x00000000u },
     { "fighter_48a20@a2",       m_48a20_a2,      0x00000000u },
+    { "fighter_24508",          b_24508,         0x00000000u },
+    { "fighter_24508@mutant",   m_24508,         0x00000000u },
+    { "fighter_24508@side",     m_24508_side,    0x00000000u },
+    { "fighter_24508@stream",   m_24508_stream,  0x00000000u },
+    { "fighter_24454",          b_24454,         0x00000000u },
+    { "fighter_24454@mutant",   m_24454,         0x00000000u },
+    { "fighter_24454@guard",    m_24454_guard,   0x00000000u },
+    { "fighter_24454@st1",      m_24454_st1,     0x00000000u },
+    { "fighter_24454@pset",     m_24454_pset,    0x00000000u },
+    { "fighter_24454@release",  m_24454_release, 0x00000000u },
+    { "fighter_24454@side",     m_24454_side,    0x00000000u },
+    { "fighter_24454@desc",     m_24454_desc,    0x00000000u },
+    { "fighter_24454@a5",       m_24454_a5,      0x00000000u },
 
 
 

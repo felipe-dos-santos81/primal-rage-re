@@ -199,6 +199,7 @@ static void anim_code_3DC3C(u32 rec, u32 arg);
 static void anim_code_403A0(u32 rec, u32 arg);
 static void anim_code_40FBC(u32 rec, u32 arg);
 static void anim_code_48A20(u32 rec, u32 arg);
+static void anim_code_24508(u32 rec, u32 arg);
 static void anim_code_46138(u32 rec, u32 arg);
 static void anim_code_40E14(u32 rec, u32 arg);
 static void anim_code_24964(u32 rec, u32 arg);
@@ -875,6 +876,11 @@ int actors_init(void)
     fn_register(0x403A0u, (void (*)(void))anim_code_403A0);
     fn_register(0x40FBCu, (void (*)(void))anim_code_40FBC);
     fn_register(0x48A20u, (void (*)(void))anim_code_48A20);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P5.5. The +0x10 handler 0x24508
+     * stores in the other slot (0x3531C case 10 reaches it through
+     * fn_resolve) and the case-10 adapter that supplies the slot's record. */
+    fn_register(0x24508u, (void (*)(void))anim_code_24508);
+    fn_register(0x24454u, (void (*)(void))fighter_24454_case10);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
@@ -3539,6 +3545,7 @@ void actor_type_49444(u32 rec)
  * return the record to the free list and zero its pset. */
 static void release_record(u32 rec, u32 pset)
 {
+    PR_SEAM(0x2AD40u, rec, pset);
     if (!in_pool(rec)) return;                  /* PORT: spec §7 invariant */
     if ((DSW(rec + 0x2a) & 8u) != 0) return;
     if (DSB(rec + 0x4f) != 0) return;
@@ -4387,4 +4394,9 @@ static void anim_code_48A20(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_48a20(rec);
+}
+static void anim_code_24508(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_24508(rec);
 }

@@ -16580,3 +16580,70 @@ void fighter_48a20(u32 rec)
                         DSD(rec + 0x1Cu) + 0x800u, a5);     /* 0x48A75..0x48A92 */
     DSB(esi + 0x4Bu) = DSB(child + 0x56u);                  /* 0x48A9A/0x48AA0 */
 }
+
+/* 0x24508 — record §P5.5. The context 0x339AC(rec); the other slot (ctx[3])
+ * 0x10/0x0A/0 with its +0x10 handler 0x24454 (0x3531C case 10) and +0x58 = 0;
+ * the other record on its character's 0xA85F8 stream at 1.0 (0x2BC30); the
+ * voice 0xEB. */
+void fighter_24508(u32 rec)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                                 /* 0x2450C..0x24510 0x339AC */
+    DSB(ctx[3] + 0x52u) = 0x10u;                            /* 0x24515/0x24519 */
+    DSB(ctx[3] + 0x53u) = 0x0Au;                            /* 0x2451D/0x24521 */
+    DSD(ctx[3] + 0x10u) = 0x00024454u;                      /* 0x24525/0x24529 */
+    DSB(ctx[3] + 0x58u) = 0u;                               /* 0x24530/0x24534 */
+    actors_anim_begin(ctx[5], DSD(P5_STREAMS_A85F8 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                      0x3F800000u);                         /* 0x24538..0x24554 0x2BC30 */
+    sound_voice(0xEBu);                                     /* 0x24559/0x2455E */
+}
+
+/* 0x24454 — record §P5.5. The other slot's +0x10 handler 0x24508 stores
+ * (0x3531C case 10: EAX = the slot, EDX = the slot's record, EBX = side; the
+ * function reads EAX and EDX). By the slot's +0x58: above 1 nothing; 0 with
+ * the record's +0x24 (mask 0x7FFFFFFF) non-zero nothing, else a child from the
+ * slot's character's 0xA85DC descriptor with a2 = the record's +0x18, a3 = its
+ * +0x30 >> 16, a4 = its +0x1C, a5 = 0x4000 (bit 14 of its +0x28) or 0, the
+ * child's word +0x36 = 0x40, 0x104740 = the child and the slot's +0x58 = 1;
+ * 1 with the child's +0x1C below 0x3000 nothing, else the child released
+ * (0x2AD40, its pset 0x1014EC + pool index * 0x20), the other side's slot
+ * (rec+0x51 ^ 1) when non-zero: its record on 0xE5100 at 3.0 and the slot
+ * +0x53 = 3, +0x52 = 9. */
+void fighter_24454(u32 slot, u32 rec)
+{
+    u8 st = DSB(slot + 0x58u);                              /* 0x2445A */
+    u32 child;
+    if (st > 1u) return;                                    /* 0x2445D..0x24467 */
+    if (st == 0u) {
+        if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) != 0u) return; /* 0x24468/0x2446F */
+        child = actor_spawn((const u32 *)(mem + DSD(P5_DESC_A85DC + (u32)DSB(slot + 0x7Au) * 4u)),
+                            DSD(rec + 0x18u), (u32)((s32)DSD(rec + 0x30u) >> 16),
+                            DSD(rec + 0x1Cu),
+                            (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u);   /* 0x24475..0x2449C */
+        DSW(child + 0x36u) = 0x0040u;                       /* 0x244A1 */
+        DSD(P5_104740) = child;                             /* 0x244A7 */
+        DSB(slot + 0x58u) = (u8)(st + 1u);                  /* 0x244AC */
+        return;
+    }
+    child = DSD(P5_104740);                                 /* 0x244B2 */
+    if ((s32)DSD(child + 0x1Cu) < 0x3000) return;           /* 0x244B7..0x244BE */
+    actor_release(child, DSD(DS_001014EC) + (u32)DSW(child + 0x56u) * 0x20u);   /* 0x244C0..0x244D1 0x2AD40 */
+    {
+        u32 other = (u32)DSB(rec + 0x51u) ^ 1u;             /* 0x244D6..0x244DB */
+        u32 oslot = DSD(DS_001077A8 + other * 4u);          /* 0x244E0 */
+        if (oslot == 0u) return;                            /* 0x244E7/0x244E9 */
+        actors_anim_begin(DSD(oslot), P5_STREAM_24454, 0x40400000u);   /* 0x244EB..0x244F7 */
+    }
+    DSB(slot + 0x53u) = 3u;                                 /* 0x244FC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x24500 */
+}
+
+/* PORT: the case-10 call 0x354E2 in the port's fighter_state_3531c passes
+ * only (slot, side); the raw reaches 0x24454 there with EDX = the slot's
+ * record (`mov edx,[ecx]` at 0x35396) and EBX = side, which 0x24454 does not
+ * read, so this adapter supplies rec = DSD(slot). */
+void fighter_24454_case10(u32 slot, u32 side)
+{
+    (void)side;
+    fighter_24454(slot, DSD(slot));                         /* 0x35396, 0x354E2 */
+}

@@ -47071,3 +47071,47 @@ static void p45_check_p5_spawns(void)
 
 }
 int test_p45_p5_spawns(void)    { return u6b_run(p45_check_p5_spawns); }
+
+/* §P5.5: 0x24508 stores the +0x10 handler 0x24454 in the other slot; the
+ * adapter resolves 0x24454 and passes the slot's record. */
+static void p45_check_handler(void)
+{
+    p45_anim_fn f;
+    f = (p45_anim_fn)(void *)fn_resolve(0x24508u);
+    CHECK(f != NULL, "0x24508 is registered");
+    CHECK(fn_resolve(0x24454u) == (void (*)(void))fighter_24454_case10, "0x24454 is the case-10 adapter");
+    if (f != NULL) {
+        z_fseed();
+        c4r_pool();
+        DSB(Z_R0 + 0x51u) = 0u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_S1 + 0x10u), 0x00024454);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 0x10);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 0x0A);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x58u), 0);
+    }
+    /* the case-10 adapter supplies the slot's record: with slot 1's +0x58 = 0
+     * and its record's +0x24 = 0, 0x24454 spawns from the slot's char with
+     * a2 = the record's +0x18 (a port that passed 0 would take a2 = 0). */
+    {
+        static u32 before[0x80];
+        u32 n, child, x;
+        void (*h)(u32, u32) = (void (*)(u32, u32))(void *)fn_resolve(0x24454u);
+        CHECK(h == (void (*)(u32, u32))fighter_24454_case10, "the adapter is the handler");
+        if (h != NULL) {
+            z_fseed();
+            c4r_pool();
+            DSD(Z_S1) = Z_R1;
+            DSD(Z_R1 + 0x18u) = 0x18181818u;
+            DSD(Z_R1 + 0x24u) = 0u;
+            DSB(Z_S1 + 0x58u) = 0u;
+            DSB(Z_S1 + 0x7Au) = 2u;
+            n = u6b_list(before, 0x80u);
+            h(Z_S1, 0u);
+            child = p45_new_child(before, n, &x);
+            CHECK_EQ_INT((int)x, 1);
+            if (x == 1u) CHECK_EQ_INT((int)DSD(child + 0x18u), 0x18181818);
+        }
+    }
+}
+int test_p45_handler(void)      { return u6b_run(p45_check_handler); }
