@@ -241,9 +241,10 @@ Named gaps and limits:
   fields); the stream argument itself is the row's claim.
 - **The 16-poke diffrun limit:** the composed record buffers (`_p6_fill`) put 0xA5 in the gaps; the
   functions' neighbours are seeded, so width mutants show.
-- **The callee rows** (D3): the 12 new stubs join C2 with P1-P3's; `0x5D7DC` is real and has its own row.
-  After P6 the counter reads `41/126 rows with callees closed (23 have none)` — only `anim_2bda0`'s row
-  closes (rng_next is VERIFIED); every other P6 row stubs a callee without a row.
+- **The callee rows** (D3): the 11 new stubs join C2 with P1-P3's; `0x5D7DC` is real and has its own row
+  (12 seams, one real). After P6 the counter reads `41/126 rows with callees closed (23 have none)` —
+  the `anim_2bda0` and `fighter_40170` rows close (`rng_next` is VERIFIED; `0x34D8C`/`0x3C208` have their
+  own VERIFIED rows); every other P6 row stubs a callee without a row.
 - E3's, P1's and P2's limits stand: seeds are hand pokes; the memory at a call is mem[] only; the callee
   column is one level deep.
 - **Outside P6:** the `title_pin` unittest failure on this tree is pre-existing (P2 §P2.13) and outside
@@ -305,7 +306,7 @@ f=0x93C precedes the target's first frame 0xD0C). No other gp scenario's miss se
 
 ## §P6.13 The roadmap after P6
 
-P6 **18** as listed; C2 gains the twelve stubs above; P7 keeps `0x48254` and the unported direct callees;
+P6 **18** as listed; C2 gains the eleven stubs above; P7 keeps `0x48254` and the unported direct callees;
 P8 unchanged. The U10 re-measure list (AGENTS.md, Makefile) loses `0x37DD4`.
 
 **Fix rounds during the planner's prototype** (each caught by the gates, recorded here because the plan
