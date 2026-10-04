@@ -16727,3 +16727,69 @@ void fighter_40170(u32 rec)
                         (u32)(u16)DSW(P6_WORD_C759C
                                       + (u32)DSB(other + 0x7Au) * 2u));   /* 0x401B3..0x401CC */
 }
+
+
+/* The Task 3 targets' tables and globals (record §P6.4). The effective word
+ * base 0xA83FA is the high half of the dword the raw loads at 0xA83F8 + 2c. */
+#define P6_ANIM_22494    0x000E4E1Eu  /* 0x224A4: the D500 target's stream */
+#define P6_FRAME_104738  0x00104738u  /* 0x224A9: [side] float, the record's frame */
+#define P6_WORD_A83FA    0x000A83FAu  /* 0x2402B: [char] word */
+#define P6_STREAMS_A8408 0x000A8408u  /* 0x24042: [char] stream */
+#define P6_REC_104748    0x00104748u  /* 0x24055/0x2405E: the record pointer */
+#define P6_ANIM_482E4    0x000ED8BCu  /* 0x4830C: the D500 target's stream */
+#define P6_108392        0x00108392u  /* 0x4831F: [side] byte */
+#define P6_STREAMS_C8F40 0x000C8F40u  /* 0x4832F: [char] stream */
+
+/* 0x22494 — record §P6.4. The D500 target at the dword 0xE4E1A. ctx; the own
+ * record on 0xE4E1E at the side's 0x104738 frame; stance 0xA on the other
+ * side; pose the own slot's +0x5F; voice 0x66. */
+void fighter_22494(u32 rec)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                                 /* 0x2249C */
+    actors_anim_begin(ctx[4], P6_ANIM_22494,
+                      DSD(P6_FRAME_104738 + ctx[0] * 4u));  /* 0x224A1..0x224B4 */
+    fighter_3a95c(ctx[1], 0x0Au);                           /* 0x224B9..0x224C2 */
+    fighter_39834(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));        /* 0x224C7..0x224D8 */
+    (void)sound_voice(0x66u);                               /* 0x224DD/0x224E2 */
+}
+
+
+/* 0x2400C — record §P6.4. The D100 target at the dword 0xE4FF4. The other
+ * slot's record: its +0x1C -= word 0xA83F8[other char]; the record on
+ * 0xA8408[other char] at 3.0; 0x104748's record +0x29 bit 3; 0x2BCF4(that
+ * record, 0x741); voice 0x67. */
+void fighter_2400c(u32 rec)
+{
+    u32 other = DSD(DS_001077A8 + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 4u);   /* 0x2400F..0x24019 */
+    u32 orec, ch;
+    if (other == 0u) return;                                /* 0x24022 */
+    ch = (u32)DSB(other + 0x7Au);                           /* 0x24026 */
+    orec = DSD(other);                                      /* 0x24029 */
+    DSD(orec + 0x1Cu) -= (u32)(s32)(s16)DSW(P6_WORD_A83FA + ch * 2u);   /* 0x2402B..0x2403A */
+    actors_anim_begin(orec, DSD(P6_STREAMS_A8408 + ch * 4u), 0x40400000u);  /* 0x2403D..0x24050 */
+    DSB(DSD(P6_REC_104748) + 0x29u) |= 8u;                  /* 0x24055/0x2405A */
+    actors_anim_seek(DSD(P6_REC_104748), 0x741u);           /* 0x2405E/0x24063 */
+    (void)sound_voice(0x67u);                               /* 0x24068/0x2406D */
+}
+
+
+/* 0x482E4 — record §P6.4. The D500 target at the dword 0xED8A8. The record on
+ * 0xED8BC at 3.0; when 0x108392[own side] is non-zero the other record on
+ * 0xC8F40[other char] at 5.0, else stance 0xF and pose the own slot's +0x5F
+ * on the other side. */
+void fighter_482e4(u32 rec)
+{
+    u32 own = (u32)DSB(rec + 0x51u);                        /* 0x482F0 */
+    u32 other_side = 1u - own;                              /* 0x482F4 */
+    u32 oslot = DS_001077B0 + other_side * 0x94u;           /* 0x48304..0x48311 */
+    actors_anim_begin(rec, P6_ANIM_482E4, 0x40400000u);     /* 0x4830C..0x4831A */
+    if (DSB(P6_108392 + own) != 0u) {                     /* 0x4831F/0x48326 */
+        u32 ch = (u32)DSB(oslot + 0x7Au);                   /* 0x4832A */
+        actors_anim_begin(DSD(oslot), DSD(P6_STREAMS_C8F40 + ch * 4u),
+                          0x40A00000u);                     /* 0x4832D..0x4833B */
+    } else {
+        fighter_3a95c(other_side, 0x0Fu);                   /* 0x48342..0x48349 */
+        fighter_39834(other_side, (u32)DSB(DS_0010780F + own * 0x94u));  /* 0x4834E..0x48367 */
+    }
+}

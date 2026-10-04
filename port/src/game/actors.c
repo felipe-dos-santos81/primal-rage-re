@@ -223,6 +223,9 @@ static void anim_code_241F4(u32 rec, u32 arg);
 static void anim_code_47E04(u32 rec, u32 arg);
 static void anim_code_40148(u32 rec, u32 arg);
 static void anim_code_40170(u32 rec, u32 arg);
+static void anim_code_22494(u32 rec, u32 arg);
+static void anim_code_2400C(u32 rec, u32 arg);
+static void anim_code_482E4(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -1000,6 +1003,11 @@ int actors_init(void)
     fn_register(0x47E04u, (void (*)(void))anim_code_47E04);
     fn_register(0x40148u, (void (*)(void))anim_code_40148);
     fn_register(0x40170u, (void (*)(void))anim_code_40170);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.4. Track P batch 6's Task 3
+     * animation targets. */
+    fn_register(0x22494u, (void (*)(void))anim_code_22494);
+    fn_register(0x2400Cu, (void (*)(void))anim_code_2400C);
+    fn_register(0x482E4u, (void (*)(void))anim_code_482E4);
     return 1;
 }
 
@@ -2557,6 +2565,7 @@ void actors_anim_begin(u32 rec, u32 stream, u32 frame_bits)
 /* 0x2BCF4. Point a record at `stream` and load its first sprite id. */
 void actors_anim_seek(u32 rec, u32 stream)
 {
+    PR_SEAM(0x2BCF4u, rec, stream);
     DSD(rec + 8) = stream;
     DSB(rec + 0x28) &= (u8)~0x14u;
     u32 pset = DSD(DS_001014EC) + (u32)DSW(rec + 0x56) * PSET_SIZE;
@@ -4456,4 +4465,28 @@ static void anim_code_40170(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_40170(rec);
+}
+
+
+/* 0x22494 — the D500 target at the dword 0xE4E1A. */
+static void anim_code_22494(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_22494(rec);
+}
+
+
+/* 0x2400C — the D100 target at the dword 0xE4FF4. */
+static void anim_code_2400C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_2400c(rec);
+}
+
+
+/* 0x482E4 — the D500 target at the dword 0xED8A8. */
+static void anim_code_482E4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_482e4(rec);
 }

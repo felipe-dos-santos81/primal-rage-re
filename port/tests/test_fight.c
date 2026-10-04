@@ -47215,3 +47215,65 @@ static void p6_check_simple(void)
     CHECK_EQ_INT((int)DSB(Z_R1 + 0x29u), 0x40);
 }
 int test_p6_simple(void)        { return u6b_run(p6_check_simple); }
+
+/* §P6.4: 0x22494, 0x2400C and 0x482E4 through their registrations. */
+static void p6_check_22494(void)
+{
+    p1_anim_fn f;
+    CHECK(fn_resolve(0x22494u) != NULL, "0x22494 is registered");
+    CHECK(fn_resolve(0x2400Cu) != NULL, "0x2400C is registered");
+    CHECK(fn_resolve(0x482E4u) != NULL, "0x482E4 is registered");
+    CHECK_EQ_INT((int)DSD(0x000E4E1Au), 0x00022494);
+    CHECK_EQ_INT((int)DSD(0x000E4FF4u), 0x0002400C);
+    CHECK_EQ_INT((int)DSD(0x000ED8A8u), 0x000482E4);
+
+    /* 0x22494 with side 0's record: the frame 0x104738[0] and the own slot's
+     * +0x5F; stance(ctx[1] = 1, 0xA). */
+    f = (p1_anim_fn)(void *)fn_resolve(0x22494u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSD(0x00104738u) = 0x40400000u;
+    DSD(0x0010473Cu) = 0x40A00000u;
+    DSB(Z_S0 + 0x5Fu) = 0x5Fu;
+    DSB(Z_S1 + 0x5Fu) = 0x9Fu;
+    DSB(Z_S1 + 0x7Eu) = 0x77u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x7Eu), (int)(u8)(DSB(DS_000BECF8) + 0x0Au));
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x5Fu), 0x5F);
+
+    /* 0x2400C with the other slot set: the record on 0xA8408[3] (poked), its
+     * +0x1C -= 0xA83F8[3] (-16), 0x104748's record +0x29 bit 3. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x2400Cu);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_S1 + 0x7Au) = 3u;
+    DSW(0x000A83FAu + 6u) = 0xFFF0u;
+    DSD(Z_R1 + 0x1Cu) = 0x1000u;
+    DSD(0x00104748u) = Z_R1 + 0x800u;
+    DSB(Z_R1 + 0x829u) = 0x29u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R1 + 0x1Cu), 0x1010);
+    CHECK_EQ_INT((int)DSB(Z_R1 + 0x829u), 0x29);
+
+    /* 0x482E4: the record on 0xED8BC at 3.0; the byte 0x108392[side] 0 takes
+     * stance(ctx[1] = 1, 0xF) and the pose of the own slot's +0x5F; 1 takes the
+     * other record on 0xC8F40[3] (poked) at 5.0. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x482E4u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_S1 + 0x5Fu) = 0x9Fu;
+    DSB(0x00108392u) = 0u;
+    DSB(0x00108393u) = 0x5Au;
+    DSB(Z_S1 + 0x7Eu) = 0x77u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(Z_S1 + 0x7Eu), (int)(u8)(DSB(DS_000BECF8) + 0x0Fu));
+    DSB(0x00108392u) = 1u;
+    DSB(Z_S1 + 0x7Au) = 3u;
+    DSD(Z_R1 + 8u) = 0x9999u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(Z_R1 + 8u), (int)DSD(0x000C8F40u + 12u));
+}
+int test_p6_22494(void)         { return u6b_run(p6_check_22494); }

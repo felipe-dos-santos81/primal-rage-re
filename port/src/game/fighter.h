@@ -1305,5 +1305,8 @@ void fighter_241f4(u32 rec);
 void fighter_47e04(u32 rec);
 void fighter_40148(u32 rec);
 void fighter_40170(u32 rec);
+void fighter_22494(u32 rec);
+void fighter_2400c(u32 rec);
+void fighter_482e4(u32 rec);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

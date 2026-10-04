@@ -1402,6 +1402,8 @@ P6_29C08 = E.Call(0x29C08, ("eax", "edx"), clobbers=("edx",))
 # slot array addresses; record §P6.2).
 P6_PTRS = {DS_SLOTS - 8: le32(DS_SLOTS) + le32(DS_SLOTS + 0x94)}
 DS_104AE9 = 0x104AE9           # DS_00104AE9: 0x40148 clears bit 2
+DS_104738 = 0x104738           # DS_00104738: [side] float, the 0x22494 frame
+DS_104748 = 0x104748           # DS_00104748: the record pointer 0x2400C's +0x29 and seek use
 
 
 P6_SPECS = [
@@ -1451,6 +1453,65 @@ P6_SPECS = [
                                                     E3_REC2 + 0x28: b"\x00\x40", E3_REC + 0x29: b"\x29",
                                                     0xC759C + 4: b"\xCD\xAB"}),
     ], calls=(FLASH, PLACE), eax_mask=0, mutants=("@mutant", "@side", "@set", "@char")),
+    Spec("fighter_22494", 0x22494, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                     E3_REC2 + 0x51: b"\x01",
+                                                     DS_104738: le32(0x40400000), DS_104738 + 4: le32(0x40A00000),
+                                                     DS_SLOTS + 0x5F: b"\x5f", DS_SLOTS + 0x94 + 0x5F: b"\x9f"}),
+        Case("s1", {"eax": E3_REC2, "edx": 0x5678}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                      E3_REC2 + 0x51: b"\x01",
+                                                      DS_104738: le32(0x40400000), DS_104738 + 4: le32(0x40A00000),
+                                                      DS_SLOTS + 0x5F: b"\x5f", DS_SLOTS + 0x94 + 0x5F: b"\x9f"}),
+    ], allow_calls=(0x339AC,), calls=(ANIM_BEGIN, STANCE, POSE, VOICE), eax_mask=0,
+       mutants=("@mutant", "@side", "@frame", "@pose")),
+    Spec("fighter_2400c", 0x2400C, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+                                                     DS_SLOTS + 0x7A: b"\x02", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+                                                     E3_REC2 + 0x1C: le32(0x1000),
+                                                     0xA83FA + 6: b"\xf0\xff", 0xA83FA + 4: b"\x11\x11",
+                                                     0xA8408 + 12: le32(0x000ED111), 0xA8408 + 8: le32(0x000ED222),
+                                                     DS_104748: le32(E3_OUT), E3_OUT + 0x29: b"\x29"}),
+        Case("s1", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+                                                     DS_SLOTS + 0x7A: b"\x02", DS_SLOTS + 0x94 + 0x7A: b"\x04",
+                                                     E3_REC2 + 0x1C: le32(0x1000),
+                                                     0xA83FA + 8: b"\x34\x12", 0xA83FA + 6: b"\x11\x11",
+                                                     0xA8408 + 16: le32(0x000ED333), 0xA8408 + 12: le32(0x000ED222),
+                                                     DS_104748: le32(E3_OUT), E3_OUT + 0x29: b"\x29"}),
+        Case("s2", {"eax": E3_REC2, "edx": 0x1234}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+                                                      DS_SLOTS + 0x7A: b"\x02", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+                                                      E3_REC + 0x1C: le32(0x2000),
+                                                      0xA83FA + 6: b"\xf0\xff", 0xA83FA + 4: b"\x11\x11",
+                                                      0xA8408 + 12: le32(0x000ED111), 0xA8408 + 8: le32(0x000ED222),
+                                                      DS_104748: le32(E3_OUT), E3_OUT + 0x29: b"\x29"}),
+    ], calls=(ANIM_BEGIN, P6_2BCF4, VOICE), eax_mask=0,
+       mutants=("@mutant", "@word", "@char", "@seek", "@other")),
+    Spec("fighter_482e4", 0x482E4, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                     E3_REC2 + 0x51: b"\x01",
+                                                     0x108392: b"\x00\x5a",
+                                                     DS_SLOTS + 0x5F: b"\x5f", DS_SLOTS + 0x94 + 0x5F: b"\x9f",
+                                                     DS_SLOTS + 0x94 + 0x7A: b"\x03", DS_SLOTS + 0x7A: b"\x02",
+                                                     0xC8F40 + 12: le32(0x000ED111), 0xC8F40 + 8: le32(0x000ED222)}),
+        Case("s1", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                     E3_REC2 + 0x51: b"\x01",
+                                                     0x108392: b"\x01\x00",
+                                                     DS_SLOTS + 0x5F: b"\x5f", DS_SLOTS + 0x94 + 0x5F: b"\x9f",
+                                                     DS_SLOTS + 0x94 + 0x7A: b"\x03", DS_SLOTS + 0x7A: b"\x02",
+                                                     0xC8F40 + 12: le32(0x000ED111), 0xC8F40 + 8: le32(0x000ED222)}),
+        Case("s2", {"eax": E3_REC2, "edx": 0x1234}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                      E3_REC2 + 0x51: b"\x01",
+                                                      0x108392: b"\x00\x00",
+                                                      DS_SLOTS + 0x5F: b"\x5f", DS_SLOTS + 0x94 + 0x5F: b"\x9f",
+                                                      DS_SLOTS + 0x94 + 0x7A: b"\x03", DS_SLOTS + 0x7A: b"\x02",
+                                                      0xC8F40 + 12: le32(0x000ED111), 0xC8F40 + 8: le32(0x000ED222)}),
+        Case("s3", {"eax": E3_REC2, "edx": 0x1234}, {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00",
+                                                      E3_REC2 + 0x51: b"\x01",
+                                                      0x108392: b"\x00\x01",
+                                                      DS_SLOTS + 0x5F: b"\x5f", DS_SLOTS + 0x94 + 0x5F: b"\x9f",
+                                                      DS_SLOTS + 0x94 + 0x7A: b"\x03", DS_SLOTS + 0x7A: b"\x02",
+                                                      0xC8F40 + 12: le32(0x000ED111), 0xC8F40 + 8: le32(0x000ED222)}),
+    ], calls=(ANIM_BEGIN, STANCE, POSE), eax_mask=0,
+       mutants=("@mutant", "@side", "@byte", "@pose")),
 ]
 
 
