@@ -47449,3 +47449,70 @@ static void p6_check_22338(void)
     CHECK_EQ_INT((int)DSD(0x00107A70u + 4u), 0x14);
 }
 int test_p6_22338(void)         { return u6b_run(p6_check_22338); }
+
+/* §P6.10: 0x24220, the slot +0x10 handler, through its case-10 adapter: the
+ * state byte walks and the spawn/anim/voice block on the fixture. */
+static void p6_check_24220(void)
+{
+    void (*g)(u32, u32);
+    u32 slot = Z_S0, rec = Z_R0;
+    CHECK(fn_resolve(0x24220u) == (void (*)(void))fighter_24220_case10, "0x24220 is registered");
+    CHECK_EQ_INT((int)DSD(0x000243A4u), 0x00024220);
+
+    g = (void (*)(u32, u32))(void *)fn_resolve(0x24220u);
+    if (g == NULL) return;
+
+    /* State 0 with the record's +0x1C below 0x6400: only the slot+4 record's
+     * +0x2C word decrements. */
+    z_fseed();
+    DSD(slot + 4u) = Z_R1;
+    DSW(Z_R1 + 0x2Cu) = 0x2C2Cu;
+    DSB(slot + 0x58u) = 0u;
+    DSD(rec + 0x1Cu) = 0x63FFu;
+    g(slot, 0u);
+    CHECK_EQ_INT((int)DSW(Z_R1 + 0x2Cu), 0x2BAC);
+
+    /* State 0 at/above 0x6400: the block runs, then the same decrement. */
+    z_fseed();
+    DSD(slot + 4u) = Z_R1;
+    DSW(Z_R1 + 0x2Cu) = 0x2C2Cu;
+    DSB(slot + 0x58u) = 0u;
+    DSB(slot + 0x7Au) = 3u;
+    DSD(rec + 0x1Cu) = 0x6400u;
+    DSW(rec + 0x36u) = 0x3636u;
+    DSW(rec + 0x44u) = 0x4444u;
+    DSW(rec + 0x32u) = 0x3232u;
+    DSB(slot + 0x41u) = 0x41u;
+    DSW(DS_00104AFC) = 2u;
+    DSW(0x000A852Cu + 4u) = 0x8899u;
+    g(slot, 0u);
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0x0200);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x44u), 1);
+    CHECK_EQ_INT((int)DSW(rec + 0x32u), 0x8899);
+    CHECK_EQ_INT((int)DSB(slot + 0x41u), 0x61);
+    CHECK_EQ_INT((int)DSB(slot + 0x58u), 1);
+    CHECK_EQ_INT((int)DSW(0x00104768u), 0x78);
+    CHECK_EQ_INT((int)DSW(Z_R1 + 0x2Cu), 0x2BAC);
+
+    /* State 1 with the countdown 1: the voice 0x5A and +0x58 = 2, then the
+     * state-2 block (the record's +0x1C = 0) sets +0x52/+0x53 and 0xF0AFE. */
+    z_fseed();
+    DSD(slot + 4u) = Z_R1;
+    DSW(Z_R1 + 0x2Cu) = 0x2C2Cu;
+    DSB(slot + 0x58u) = 1u;
+    DSW(0x00104768u) = 1u;
+    DSD(rec + 0x1Cu) = 0u;
+    DSB(slot + 0x52u) = 0x52u;
+    DSB(slot + 0x53u) = 0x53u;
+    DSB(DS_000F0AFE) = 0xFEu;
+    DSB(DS_001078FC) = 0xFCu;
+    g(slot, 0u);
+    CHECK_EQ_INT((int)DSW(0x00104768u), 0);
+    CHECK_EQ_INT((int)DSB(slot + 0x58u), 2);
+    CHECK_EQ_INT((int)DSB(slot + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(slot + 0x53u), 3);
+    CHECK_EQ_INT((int)DSB(DS_000F0AFE), 4);
+    CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
+}
+int test_p6_24220(void)         { return u6b_run(p6_check_24220); }

@@ -1321,5 +1321,9 @@ void fighter_45c98(u32 rec);
 void fighter_37dd4(u32 rec);
 void fighter_22338(u32 rec);
 void fighter_48374(u32 rec);
+/* §P6.10: the slot +0x10 handler and the 0x3531C case-10 adapter that
+ * supplies rec = DSD(slot) (EAX = slot, EDX = rec, EBX = side). */
+void fighter_24220(u32 slot, u32 rec, u32 side);
+void fighter_24220_case10(u32 slot, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

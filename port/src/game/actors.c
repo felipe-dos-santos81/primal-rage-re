@@ -1034,6 +1034,10 @@ int actors_init(void)
      * animation targets. */
     fn_register(0x22338u, (void (*)(void))anim_code_22338);
     fn_register(0x48374u, (void (*)(void))anim_code_48374);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.10. Track P batch 6's Task 9
+     * target: the slot +0x10 handler 0x24338 stores, reached through 0x3531C
+     * case 10's adapter (slot, side). */
+    fn_register(0x24220u, (void (*)(void))fighter_24220_case10);
     return 1;
 }
 

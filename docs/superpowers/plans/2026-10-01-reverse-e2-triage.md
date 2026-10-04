@@ -670,7 +670,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 232B4 | immediate at 2356F | entry | yes | stubs (indirect at 62006 in 62003) | 23328 |
 | 23960 | called at 23AB7 | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 23B68 | immediate at 23C72 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | 23BD8 |
-| 24220 | immediate at 243A1 | - | no | stubs (indirect at 2B0E9 in 2AE14) | 242DA 24317 |
+| 24220 | immediate at 243A1 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | 242DA 24317 |
 | 24454 | immediate at 24529 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 26998 | immediate at 2697B | - | yes | stubs (indirect at 412DD in 412A0) | 26A2C |
 | 270BC | immediate at 2713A | - | yes | stubs (indirect at 412DD in 412A0) | 270F9 |
@@ -845,8 +845,8 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 240B8 | 24078 | row | yes |
 | 240CF | 24078 | row | yes |
 | 24214 | 241F4 | row | yes |
-| 242DA | 24220 | supplement | no |
-| 24317 | 24220 | supplement | no |
+| 242DA | 24220 | supplement | yes |
+| 24317 | 24220 | supplement | yes |
 | 243CF | 24338 | row | yes |
 | 243ED | 24338 | row | yes |
 | 2455E | 24508 | row | yes |

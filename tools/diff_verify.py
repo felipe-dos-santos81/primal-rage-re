@@ -1420,6 +1420,16 @@ def _p6_fill(size, patches, fill=0xA5):
     return bytes(buf)
 
 
+# The 0x24220 slot fixture (record §P6.10): state 0; the slot's +4 and +8 records
+# (the state-0 decrement's target and the @plus4 mutant's, both inside the image);
+# the anchor x (distinct from the record's +0x2C, so @anchor shows); +0x41 bit 5
+# clear with other bits set (so the |= is observable); char 3 (the 0xA8510 stream
+# index). P6_SLOT_SEED_EXTRA flips the countdown cases to state 1.
+P6_SLOT_SEED = {E3_SLOT + 4: le32(E3_REC2), E3_SLOT + 8: le32(E3_OUT),
+                E3_SLOT + 0x2C: le32(0x00001234), E3_SLOT + 0x41: b"\x41",
+                E3_SLOT + 0x58: b"\x00", E3_SLOT + 0x7A: b"\x03"}
+P6_SLOT_SEED_EXTRA = {E3_SLOT + 0x58: b"\x01"}
+
 P6_SPECS = [
     Spec("anim_2bda0", 0x2BDA0, [
         Case("r0", {"eax": E3_REC, "edx": 1}, {DS_RNG: le32(0), E3_REC + 0x53: b"\x53"}),
@@ -1742,6 +1752,19 @@ P6_SPECS = [
                                                       0xC8F40 + 12: le32(0x000ED111), 0xC8F40 + 8: le32(0x000ED222)}),
     ], allow_calls=(0x339AC,), calls=(SPEED, ANIM_BEGIN, POSE, P6_39F40), eax_mask=0,
        mutants=("@mutant", "@speed", "@stream", "@frame", "@side", "@pose")),
+    Spec("fighter_24220", 0x24220, [
+        Case("m0", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P6_SLOT_SEED, E3_REC + 0x1C: le32(0x63FF)}),
+        Case("m1", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P6_SLOT_SEED, E3_REC + 0x1C: le32(0x6400)}),
+        Case("m2", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P6_SLOT_SEED, 0x104768: b"\x02\x00", E3_REC + 0x1C: le32(0),
+                     **P6_SLOT_SEED_EXTRA, P6_CHILD: b"\x99" * 0x20}, {0x2AE14: P6_CHILD}),
+        Case("m3", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P6_SLOT_SEED, 0x104768: b"\x01\x00", E3_REC + 0x1C: le32(5),
+                     **P6_SLOT_SEED_EXTRA, P6_CHILD: b"\x99" * 0x20}, {0x2AE14: P6_CHILD}),
+        Case("m4", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P6_SLOT_SEED, E3_SLOT + 0x58: b"\x02", E3_REC + 0x1C: le32(0),
+                     P6_CHILD: b"\x99" * 0x20}, {0x2AE14: P6_CHILD}),
+        Case("m5", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 0}, {**P6_SLOT_SEED, E3_SLOT + 0x58: b"\x03", E3_REC + 0x1C: le32(0)}),
+        Case("m6", {"eax": E3_SLOT, "edx": E3_REC, "ebx": 1}, {**P6_SLOT_SEED, E3_REC + 0x1C: le32(0x6400)}),
+    ], calls=(ANCHORX, ANIM_BEGIN, SPAWN, VOICE), eax_mask=0,
+       mutants=("@mutant", "@st", "@bound", "@anchor", "@desc", "@voice", "@plus4", "@decr")),
 ]
 
 
