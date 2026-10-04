@@ -4028,12 +4028,12 @@ static void m_40148(const u32 *r, u32 *eax)            /* the other slot without
     DSB(DS_00104AE9) &= 0xFBu;
     *eax = 0u;
 }
-static void m_40148_side(const u32 *r, u32 *eax)       /* 0x37D18 on the record's own side */
+static void m_40148_side(const u32 *r, u32 *eax)       /* the pointer table indexed with the slot stride 0x94 */
 {
     u32 rec = r[R_EAX];
-    u32 own = DSD(DS_001077A8 + ((u32)DSB(rec + 0x51u) & 0xFFu) * 4u);
-    if (own == 0u) { *eax = 0u; return; }
-    fighter_37d18(own, DSD(own));
+    u32 other = DSD(DS_001077A8 + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 0x94u);
+    if (other == 0u) { *eax = 0u; return; }
+    fighter_37d18(other, DSD(other));
     DSB(DS_00104AE9) &= 0xFBu;
     *eax = 0u;
 }
@@ -4085,7 +4085,7 @@ static void m_40170_set(const u32 *r, u32 *eax)        /* the clear as a set */
     if ((DSW(rec + 0x28u) & 0x4000u) != 0u)
         DSB(orec + 0x29u) |= 0x40u;
     else
-        DSB(orec + 0x29u) |= 0x40u;
+        DSB(orec + 0x29u) &= 0xBFu;
     (void)hit_flash_pair((u32)DSB(rec + 0x51u));
     (void)fighter_3c208((u32)DSB(rec + 0x51u),
                         (u32)(u16)DSW(0x000C759Cu + (u32)DSB(other + 0x7Au) * 2u));
