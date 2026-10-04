@@ -2545,6 +2545,258 @@ static void m_37b70_sext(const u32 *r, u32 *eax)
 }
 
 
+/* 0x3D328 / 0x3DA50: the spawn-family mutants. */
+static void m_3d328_at(const u32 *r, u32 desc, int a2_mode, u32 a4, int no_side, u32 voice)
+{
+    u32 rec = r[R_EAX], held = DSD(rec + 0x14u), child;
+    s32 a2;
+    if (held == 0u) return;
+    a2 = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 8 : -8;
+    if (a2_mode == 1) a2 = -8;
+    if (a2_mode == 2) a2 = 8;
+    child = actor_spawn((const u32 *)(mem + desc), (u32)a2, 0u, a4,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));
+    DSD(child + 0x14u) = held;
+    if (DSB(rec + 0x51u) != 0u || no_side) {
+        u16 w = DSW(child + 0x2Eu);
+        DSB(child + 0x4Eu) = 1u;
+        DSW(child + 0x2Eu) = (u16)(w + 4u);
+        sound_voice(voice);
+    }
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);
+    DSB(child + 0x60u) = 1u;
+}
+
+/* 0x3DB8C / 0x3DC3C: the child's +0x34 word and a2/a3/a4. */
+static void m_3db8c_at(const u32 *r, u32 desc, u16 w14, int no_x18, u16 w0, int word_a4, int no_side)
+{
+    u32 rec = r[R_EAX], held = DSD(rec + 0x14u), child;
+    s32 a2;
+    u32 a5, a4;
+    if (held == 0u) return;
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u) { a2 = 0x1000; a5 = 0x4000u; }
+    else { a2 = -0x1000; a5 = 0u; }
+    a4 = word_a4 ? (u32)(u16)(DSD(rec + 0x1Cu) + 0x1300u) : DSD(rec + 0x1Cu) + 0x1300u;
+    child = actor_spawn((const u32 *)(mem + desc),
+                        (u32)(no_x18 ? a2 : a2 + (s32)DSD(rec + 0x18u)),
+                        (u32)((s32)DSD(rec + 0x30u) >> 16), a4, a5);
+    DSD(held + 8u) = child;
+    DSW(child + 0x34u) = (DSW(rec + 0x28u) & 0x4000u) != 0u ? w14 : w0;
+    DSD(child + 0x14u) = held;
+    if (DSB(rec + 0x51u) != 0u || no_side) {
+        DSW(child + 0x2Eu) = (u16)(DSW(child + 0x2Eu) + 4u);
+        DSB(child + 0x4Eu) = 1u;
+    }
+}
+
+static void b_3d328(const u32 *r, u32 *eax)      { fighter_3d328(r[R_EAX]); *eax = 0u; }
+static void b_3da50(const u32 *r, u32 *eax)      { fighter_3da50(r[R_EAX]); *eax = 0u; }
+static void b_3db8c(const u32 *r, u32 *eax)      { fighter_3db8c(r[R_EAX]); *eax = 0u; }
+static void b_3dc3c(const u32 *r, u32 *eax)      { fighter_3dc3c(r[R_EAX]); *eax = 0u; }
+static void b_403a0(const u32 *r, u32 *eax)      { fighter_403a0(r[R_EAX]); *eax = 0u; }
+static void b_40fbc(const u32 *r, u32 *eax)      { fighter_40fbc(r[R_EAX]); *eax = 0u; }
+static void b_48a20(const u32 *r, u32 *eax)      { fighter_48a20(r[R_EAX]); *eax = 0u; }
+static void m_3d328(const u32 *r, u32 *eax)      { m_3d328_at(r, 0x000BB2BCu, 0, 4u, 0, 0x4Eu); *eax = 0u; }
+static void m_3d328_a2(const u32 *r, u32 *eax)   { m_3d328_at(r, 0x000BB2B8u, 1, 4u, 0, 0x4Eu); *eax = 0u; }
+static void m_3d328_a4(const u32 *r, u32 *eax)   { m_3d328_at(r, 0x000BB2B8u, 0, 0u, 0, 0x4Eu); *eax = 0u; }
+static void m_3d328_side(const u32 *r, u32 *eax) { m_3d328_at(r, 0x000BB2B8u, 0, 4u, 1, 0x4Eu); *eax = 0u; }
+static void m_3d328_voice(const u32 *r, u32 *eax) { m_3d328_at(r, 0x000BB2B8u, 0, 4u, 0, 0x4Fu); *eax = 0u; }
+static void m_3da50(const u32 *r, u32 *eax)      { m_3d328_at(r, 0x000BB2E4u, 2, 0x20u, 0, 0x4Eu); *eax = 0u; }
+static void m_3da50_a2(const u32 *r, u32 *eax)   { m_3d328_at(r, 0x000BB2E0u, 2, 0x20u, 0, 0x4Eu); *eax = 0u; }
+static void m_3da50_a4(const u32 *r, u32 *eax)   { m_3d328_at(r, 0x000BB2E0u, 0, 4u, 0, 0x4Eu); *eax = 0u; }
+static void m_3da50_side(const u32 *r, u32 *eax) { m_3d328_at(r, 0x000BB2E0u, 0, 0x20u, 1, 0x4Eu); *eax = 0u; }
+static void m_3db8c(const u32 *r, u32 *eax)      { m_3db8c_at(r, 0x000BB2C8u, 0x00E0u, 0, 0xFF20u, 0, 0); *eax = 0u; }
+static void m_3db8c_a2(const u32 *r, u32 *eax)   { m_3db8c_at(r, 0x000BB2CCu, 0x00E0u, 1, 0xFF20u, 0, 0); *eax = 0u; }
+static void m_3db8c_w34(const u32 *r, u32 *eax)  { m_3db8c_at(r, 0x000BB2CCu, 0x00E1u, 0, 0xFF20u, 0, 0); *eax = 0u; }
+static void m_3db8c_a4(const u32 *r, u32 *eax)   { m_3db8c_at(r, 0x000BB2CCu, 0x00E0u, 0, 0xFF20u, 1, 0); *eax = 0u; }
+static void m_3db8c_side(const u32 *r, u32 *eax) { m_3db8c_at(r, 0x000BB2CCu, 0x00E0u, 0, 0xFF20u, 0, 1); *eax = 0u; }
+static void m_3dc3c(const u32 *r, u32 *eax)      { m_3db8c_at(r, 0x000BB2C8u, 0x01A0u, 0, 0xFF60u, 0, 0); *eax = 0u; }
+static void m_3dc3c_a2(const u32 *r, u32 *eax)   { m_3db8c_at(r, 0x000BB2CCu, 0x01A0u, 1, 0xFF60u, 0, 0); *eax = 0u; }
+static void m_3dc3c_w34(const u32 *r, u32 *eax)  { m_3db8c_at(r, 0x000BB2CCu, 0x01A1u, 0, 0xFF60u, 0, 0); *eax = 0u; }
+static void m_3dc3c_side(const u32 *r, u32 *eax) { m_3db8c_at(r, 0x000BB2CCu, 0x01A0u, 0, 0xFF60u, 0, 1); *eax = 0u; }
+static void m_403a0(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], held = DSD(rec + 0x14u), other, slot, srec, child, ch;
+    s32 a2;
+    if (held == 0u) return;
+    other = (u32)DSB(rec + 0x51u) ^ 1u;
+    slot = DSD(0x001077A8u + other * 4u);
+    if (slot == 0u) return;
+    srec = DSD(slot); ch = (u32)DSB(slot + 0x7Au);
+    a2 = (s32)(s16)DSW(0x000C7780u + ch * 2u);
+    if ((DSW(srec + 0x28u) & 0x4000u) != 0u) a2 = (s32)(s16)(u16)(0u - (u32)(u16)a2);
+    child = actor_spawn((const u32 *)(mem + 0x000C7770u), (u32)a2, 0u,
+                        (u32)(s32)(s16)DSW(0x000C778Cu + ch * 2u + 2u),
+                        (u32)(u16)(DSW(srec + 0x56u) | 0x0400u));
+    DSD(child + 0x14u) = held;
+    DSB(child + 0x51u) = DSB(rec + 0x51u);
+    DSB(child + 0x59u) = (u8)(DSB(rec + 0x59u) - 1u);
+    *eax = 0u;
+}
+static void m_403a0_side(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], held = DSD(rec + 0x14u), other, slot, srec, child, ch;
+    s32 a2;
+    if (held == 0u) return;
+    other = ((u32)DSB(rec + 0x51u) & 1u) ^ 1u;
+    slot = DSD(0x001077A8u + other * 4u);
+    if (slot == 0u) return;
+    srec = DSD(slot); ch = (u32)DSB(slot + 0x7Au);
+    a2 = (s32)(s16)DSW(0x000C7780u + ch * 2u);
+    if ((DSW(srec + 0x28u) & 0x4000u) != 0u) a2 = (s32)(s16)(u16)(0u - (u32)(u16)a2);
+    child = actor_spawn((const u32 *)(mem + 0x000C776Cu), (u32)a2, 0u,
+                        (u32)(s32)(s16)DSW(0x000C778Cu + ch * 2u + 2u),
+                        (u32)(u16)(DSW(srec + 0x56u) | 0x0400u));
+    DSD(child + 0x14u) = held;
+    DSB(child + 0x51u) = DSB(rec + 0x51u);
+    DSB(child + 0x59u) = (u8)(DSB(rec + 0x59u) - 1u);
+    *eax = 0u;
+}
+static void m_403a0_signed(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], held = DSD(rec + 0x14u), other, slot, srec, child, ch;
+    s32 a2;
+    if (held == 0u) return;
+    other = (u32)DSB(rec + 0x51u) ^ 1u;
+    slot = DSD(0x001077A8u + other * 4u);
+    if (slot == 0u) return;
+    srec = DSD(slot); ch = (u32)DSB(slot + 0x7Au);
+    a2 = (s32)(s16)DSW(0x000C7780u + ch * 2u);
+    if ((DSW(srec + 0x28u) & 0x4000u) != 0u) a2 = (s32)(s16)(u16)(0u - (u32)(u16)a2);
+    child = actor_spawn((const u32 *)(mem + 0x000C776Cu), (u32)a2, 0u,
+                        (u32)DSW(0x000C778Cu + ch * 2u + 2u),
+                        (u32)(u16)(DSW(srec + 0x56u) | 0x0400u));
+    DSD(child + 0x14u) = held;
+    DSB(child + 0x51u) = DSB(rec + 0x51u);
+    DSB(child + 0x59u) = (u8)(DSB(rec + 0x59u) - 1u);
+    *eax = 0u;
+}
+static void m_403a0_neg(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], held = DSD(rec + 0x14u), other, slot, srec, child, ch;
+    s32 a2;
+    if (held == 0u) return;
+    other = (u32)DSB(rec + 0x51u) ^ 1u;
+    slot = DSD(0x001077A8u + other * 4u);
+    if (slot == 0u) return;
+    srec = DSD(slot); ch = (u32)DSB(slot + 0x7Au);
+    a2 = (s32)(s16)DSW(0x000C7780u + ch * 2u);
+    child = actor_spawn((const u32 *)(mem + 0x000C776Cu), (u32)a2, 0u,
+                        (u32)(s32)(s16)DSW(0x000C778Cu + ch * 2u + 2u),
+                        (u32)(u16)(DSW(srec + 0x56u) | 0x0400u));
+    DSD(child + 0x14u) = held;
+    DSB(child + 0x51u) = DSB(rec + 0x51u);
+    DSB(child + 0x59u) = (u8)(DSB(rec + 0x59u) - 1u);
+    *eax = 0u;
+}
+static void m_403a0_a5(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], held = DSD(rec + 0x14u), other, slot, srec, child, ch;
+    s32 a2;
+    if (held == 0u) return;
+    other = (u32)DSB(rec + 0x51u) ^ 1u;
+    slot = DSD(0x001077A8u + other * 4u);
+    if (slot == 0u) return;
+    srec = DSD(slot); ch = (u32)DSB(slot + 0x7Au);
+    a2 = (s32)(s16)DSW(0x000C7780u + ch * 2u);
+    if ((DSW(srec + 0x28u) & 0x4000u) != 0u) a2 = (s32)(s16)(u16)(0u - (u32)(u16)a2);
+    child = actor_spawn((const u32 *)(mem + 0x000C776Cu), (u32)a2, 0u,
+                        (u32)(s32)(s16)DSW(0x000C778Cu + ch * 2u + 2u),
+                        (u32)(u16)DSW(srec + 0x56u));
+    DSD(child + 0x14u) = held;
+    DSB(child + 0x51u) = DSB(rec + 0x51u);
+    DSB(child + 0x59u) = (u8)(DSB(rec + 0x59u) - 1u);
+    *eax = 0u;
+}
+static void m_403a0_r59(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], held = DSD(rec + 0x14u), other, slot, srec, child, ch;
+    s32 a2;
+    if (held == 0u) return;
+    other = (u32)DSB(rec + 0x51u) ^ 1u;
+    slot = DSD(0x001077A8u + other * 4u);
+    if (slot == 0u) return;
+    srec = DSD(slot); ch = (u32)DSB(slot + 0x7Au);
+    a2 = (s32)(s16)DSW(0x000C7780u + ch * 2u);
+    if ((DSW(srec + 0x28u) & 0x4000u) != 0u) a2 = (s32)(s16)(u16)(0u - (u32)(u16)a2);
+    child = actor_spawn((const u32 *)(mem + 0x000C776Cu), (u32)a2, 0u,
+                        (u32)(s32)(s16)DSW(0x000C778Cu + ch * 2u + 2u),
+                        (u32)(u16)(DSW(srec + 0x56u) | 0x0400u));
+    DSD(child + 0x14u) = held;
+    DSB(child + 0x51u) = DSB(rec + 0x51u);
+    DSB(child + 0x59u) = DSB(rec + 0x59u);
+    *eax = 0u;
+}
+static void m_40fbc(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], child;
+    s32 a2 = fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)) != 0 ? 8 : -8;
+    child = actor_spawn((const u32 *)(mem + 0x000C77D8u), (u32)a2, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));
+    DSB(child + 0x59u) = 2u;
+    DSD(child + 0x24u) = DSD(rec + 0x24u);
+    DSD(child + 0x20u) = DSD(rec + 0x20u);
+    if (DSB(rec + 0x51u) != 0u) actor_pset_palette(child, 0x0Du, 0u);
+    *eax = 0u;
+}
+static void m_40fbc_pal(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], child;
+    s32 a2 = fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)) != 0 ? 8 : -8;
+    child = actor_spawn((const u32 *)(mem + 0x000C77D8u), (u32)a2, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));
+    DSB(child + 0x59u) = 2u;
+    DSD(child + 0x24u) = DSD(rec + 0x24u);
+    DSD(child + 0x20u) = DSD(rec + 0x20u);
+    actor_pset_palette(child, 0x0Cu, 0u);
+    *eax = 0u;
+}
+static void m_40fbc_a2(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], child;
+    child = actor_spawn((const u32 *)(mem + 0x000C77D8u), 8u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));
+    DSB(child + 0x59u) = 2u;
+    DSD(child + 0x24u) = DSD(rec + 0x24u);
+    DSD(child + 0x20u) = DSD(rec + 0x20u);
+    if (DSB(rec + 0x51u) != 0u) actor_pset_palette(child, 0x0Cu, 0u);
+    *eax = 0u;
+}
+static void m_48a20(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], base = DSD(0x001014F4u), esi = rec, a2, a5, child;
+    while (DSB(esi + 0x4Bu) != 0u) esi = base + (u32)DSB(esi + 0x4Bu) * 0x68u;
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u) { a2 = DSD(rec + 0x18u) + 0xC40u; a5 = 0x4000u; }
+    else { a2 = DSD(rec + 0x18u) - 0xC40u; a5 = 0u; }
+    DSD(0x001014F4u) = base;
+    child = actor_spawn((const u32 *)(mem + 0x000C94FCu), a2,
+                        (u32)((s32)DSD(rec + 0x30u) >> 16), DSD(rec + 0x1Cu) + 0x800u, a5);
+    DSB(esi + 0x4Bu) = DSB(child + 0x56u);
+    *eax = 0u;
+}
+static void m_48a20_walk(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], base = DSD(0x001014F4u), a2, a5, child;
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u) { a2 = DSD(rec + 0x18u) + 0xC40u; a5 = 0x4000u; }
+    else { a2 = DSD(rec + 0x18u) - 0xC40u; a5 = 0u; }
+    DSD(0x001014F4u) = base;
+    child = actor_spawn((const u32 *)(mem + 0x000C94F8u), a2,
+                        (u32)((s32)DSD(rec + 0x30u) >> 16), DSD(rec + 0x1Cu) + 0x800u, a5);
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);
+    *eax = 0u;
+}
+static void m_48a20_a2(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], base = DSD(0x001014F4u), esi = rec, a5, child;
+    while (DSB(esi + 0x4Bu) != 0u) esi = base + (u32)DSB(esi + 0x4Bu) * 0x68u;
+    a5 = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u;
+    DSD(0x001014F4u) = base;
+    child = actor_spawn((const u32 *)(mem + 0x000C94F8u), DSD(rec + 0x18u) + 0xC40u,
+                        (u32)((s32)DSD(rec + 0x30u) >> 16), DSD(rec + 0x1Cu) + 0x800u, a5);
+    DSB(esi + 0x4Bu) = DSB(child + 0x56u);
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -2861,6 +3113,43 @@ static const binding_t k_bindings[] = {
     { "fighter_37b70@neg",      m_37b70_neg,     0x00000000u },
     { "fighter_37b70@hrec",     m_37b70_hrec,    0x00000000u },
     { "fighter_37b70@sext",     m_37b70_sext,    0x00000000u },
+    { "fighter_3d328",          b_3d328,         0x00000000u },
+    { "fighter_3d328@mutant",   m_3d328,         0x00000000u },
+    { "fighter_3d328@a2",       m_3d328_a2,      0x00000000u },
+    { "fighter_3d328@a4",       m_3d328_a4,      0x00000000u },
+    { "fighter_3d328@side",     m_3d328_side,    0x00000000u },
+    { "fighter_3d328@voice",    m_3d328_voice,   0x00000000u },
+    { "fighter_3da50",          b_3da50,         0x00000000u },
+    { "fighter_3da50@mutant",   m_3da50,         0x00000000u },
+    { "fighter_3da50@a2",       m_3da50_a2,      0x00000000u },
+    { "fighter_3da50@a4",       m_3da50_a4,      0x00000000u },
+    { "fighter_3da50@side",     m_3da50_side,    0x00000000u },
+    { "fighter_3db8c",          b_3db8c,         0x00000000u },
+    { "fighter_3db8c@mutant",   m_3db8c,         0x00000000u },
+    { "fighter_3db8c@a2",       m_3db8c_a2,      0x00000000u },
+    { "fighter_3db8c@w34",      m_3db8c_w34,     0x00000000u },
+    { "fighter_3db8c@a4",       m_3db8c_a4,      0x00000000u },
+    { "fighter_3db8c@side",     m_3db8c_side,    0x00000000u },
+    { "fighter_3dc3c",          b_3dc3c,         0x00000000u },
+    { "fighter_3dc3c@mutant",   m_3dc3c,         0x00000000u },
+    { "fighter_3dc3c@a2",       m_3dc3c_a2,      0x00000000u },
+    { "fighter_3dc3c@w34",      m_3dc3c_w34,     0x00000000u },
+    { "fighter_3dc3c@side",     m_3dc3c_side,    0x00000000u },
+    { "fighter_403a0",          b_403a0,         0x00000000u },
+    { "fighter_403a0@mutant",   m_403a0,         0x00000000u },
+    { "fighter_403a0@side",     m_403a0_side,    0x00000000u },
+    { "fighter_403a0@signed",   m_403a0_signed,  0x00000000u },
+    { "fighter_403a0@neg",      m_403a0_neg,     0x00000000u },
+    { "fighter_403a0@a5",       m_403a0_a5,      0x00000000u },
+    { "fighter_403a0@r59",      m_403a0_r59,     0x00000000u },
+    { "fighter_40fbc",          b_40fbc,         0x00000000u },
+    { "fighter_40fbc@mutant",   m_40fbc,         0x00000000u },
+    { "fighter_40fbc@pal",      m_40fbc_pal,     0x00000000u },
+    { "fighter_40fbc@a2",       m_40fbc_a2,      0x00000000u },
+    { "fighter_48a20",          b_48a20,         0x00000000u },
+    { "fighter_48a20@mutant",   m_48a20,         0x00000000u },
+    { "fighter_48a20@walk",     m_48a20_walk,    0x00000000u },
+    { "fighter_48a20@a2",       m_48a20_a2,      0x00000000u },
 
 
 

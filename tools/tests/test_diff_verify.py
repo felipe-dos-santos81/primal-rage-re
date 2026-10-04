@@ -412,7 +412,9 @@ P45_MASKS = {"fighter_18bc8": 0, "fighter_21084": 0, "fighter_400e0": 0, "fighte
              "fighter_489dc": 0, "fighter_400ec": 0,
              "fighter_3427c": 0, "fighter_34308": 0, "fighter_3438c": 0, "fighter_34418": 0,
              "fighter_344a4": 0, "fighter_34530": 0, "fighter_345bc": 0,
-             "fighter_156e0": 0, "fighter_22ab8": 0, "fighter_37b70": 0}
+             "fighter_156e0": 0, "fighter_22ab8": 0, "fighter_37b70": 0,
+             "fighter_3d328": 0, "fighter_3da50": 0, "fighter_3db8c": 0, "fighter_3dc3c": 0,
+             "fighter_403a0": 0, "fighter_40fbc": 0, "fighter_48a20": 0}
 P45_KINDS = {"fighter_18bc8@mutant": {"byte"},
              "fighter_21084@mutant": {"byte"}, "fighter_21084@byte14": {"byte"},
              "fighter_400e0@mutant": {"byte"},
@@ -464,7 +466,35 @@ P45_KINDS = {"fighter_18bc8@mutant": {"byte"},
              "fighter_37b70@path": {"byte", "call #0"},
              "fighter_37b70@neg": {"call #0"},
              "fighter_37b70@hrec": {"byte"},
-             "fighter_37b70@sext": {"byte", "call #0"}}
+             "fighter_37b70@sext": {"byte", "call #0"},
+             # track P batch 4+5 Task 6: the spawn family and the +0x10 handler. @mutant is the
+             # descriptor (or a4 = 4 for 37b70), @a2 the sign branch, @a4 the a4 argument, @side the
+             # +0x4E/+0x2E arm (the byte and the memory at the second call), @voice the voice;
+             # 3db8c/3dc3c's @w34 the child's +0x34 word, @a4 the +0x1300 step; 403a0's @signed the
+             # zero-extended word, @neg the bit-14 negation, @a5 the 0x400 flag, @r59 the -1;
+             # 40fbc's @pal the palette word, @a2 the sign branch; 48a20's @walk the chain walk and
+             # @a2 the +0xC40/-0xC40 step.
+             "fighter_3d328@mutant": {"call #0", "call #1"},
+             "fighter_3d328@a2": {"call #0", "call #1"},
+             "fighter_3d328@a4": {"call #0", "call #1"},
+             "fighter_3d328@side": {"byte", "call #1 memory"},
+             "fighter_3d328@voice": {"call #1"},
+             "fighter_3da50@mutant": {"byte", "call #0", "call #1", "call #1 memory"},
+             "fighter_3da50@a2": {"byte", "call #0", "call #1", "call #1 memory"},
+             "fighter_3da50@a4": {"byte", "call #0", "call #1", "call #1 memory"},
+             "fighter_3da50@side": {"byte", "call #0", "call #1 memory"},
+             "fighter_3db8c@mutant": {"call #0"}, "fighter_3db8c@a2": {"call #0"},
+             "fighter_3db8c@w34": {"byte"}, "fighter_3db8c@a4": {"call #0"},
+             "fighter_3db8c@side": {"byte"},
+             "fighter_3dc3c@mutant": {"byte", "call #0"}, "fighter_3dc3c@a2": {"byte", "call #0"},
+             "fighter_3dc3c@w34": {"byte"}, "fighter_3dc3c@side": {"byte"},
+             "fighter_403a0@mutant": {"call #0"}, "fighter_403a0@side": {"byte", "call #0"},
+             "fighter_403a0@signed": {"call #0"}, "fighter_403a0@neg": {"call #0"},
+             "fighter_403a0@a5": {"call #0"}, "fighter_403a0@r59": {"byte"},
+             "fighter_40fbc@mutant": {"call #2"}, "fighter_40fbc@pal": {"call #2"},
+             "fighter_40fbc@a2": {"call #0", "call #1", "call #1 memory", "call #2"},
+             "fighter_48a20@mutant": {"call #0"}, "fighter_48a20@walk": {"byte"},
+             "fighter_48a20@a2": {"call #0"}}
 
 
 # The s2 case (side 0x80) makes every one of the seven read the slot at DS_001077B0 + 0x80*0x94 =
@@ -768,7 +798,10 @@ class RealFunctionTests(unittest.TestCase):
                           ("fighter_156e0@side", ["s2"]), ("fighter_156e0@signed", ["s0"]),
                           ("fighter_22ab8@sext", ["h3"]), ("fighter_22ab8@side", ["h2", "h3"]),
                           ("fighter_37b70@neg", ["r3"]), ("fighter_37b70@hrec", ["r4", "r5", "r6"]),
-                          ("fighter_37b70@sext", ["r3", "r4", "r5", "r6"])):
+                          ("fighter_37b70@sext", ["r3", "r4", "r5", "r6"]),
+                          # track P batch 4+5 Task 6: the bit-14 negation of 0x403A0's a2 (h3 is
+                          # the only case that reaches the spawn with the flag set)
+                          ("fighter_403a0@neg", ["h3"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
@@ -877,9 +910,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (85), the 17 without are counted apart
-        self.assertIn("diff-verify: 102/102 functions VERIFIED; 211/211 mutants detected; 1 named gaps; "
-                      "13/85 rows with callees closed (17 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (92), the 17 without are counted apart
+        self.assertIn("diff-verify: 109/109 functions VERIFIED; 241/241 mutants detected; 1 named gaps; "
+                      "13/92 rows with callees closed (17 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

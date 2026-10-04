@@ -16392,3 +16392,191 @@ void fighter_37b70(u32 rec)
     }
     DSB(child + 0x59u) = 1u;                                /* 0x37C1A */
 }
+
+/* 0x3D328 — record §P5.4. The record's +0x14 pointer; when non-zero a child
+ * from 0xBB2B8 with a2 = 8 (bit 14 of the record's +0x28 set) or -8, a4 = 4,
+ * a5 = the record's +0x56 | 0x400; the child's +0x14 is the held record; on
+ * the record's side: its +0x2E += 4, its +0x4E = 1 and the voice 0x4E; then
+ * the record's +0x4B its pool index and the child's +0x60 = 1. */
+void fighter_3d328(u32 rec)
+{
+    u32 held = DSD(rec + 0x14u);                            /* 0x3D32E */
+    u32 child;
+    s32 a2;
+    if (held == 0u) return;                                 /* 0x3D332 */
+    a2 = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 8 : -8;       /* 0x3D334..0x3D34B */
+    child = actor_spawn((const u32 *)(mem + P5_DESC_BB2B8), (u32)a2, 0u, 4u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x3D350..0x3D36D */
+    DSD(child + 0x14u) = held;                              /* 0x3D372/0x3D375 */
+    if (DSB(rec + 0x51u) != 0u) {                           /* 0x3D378..0x3D37F */
+        u16 w = DSW(child + 0x2Eu);                         /* 0x3D381 */
+        DSB(child + 0x4Eu) = 1u;                            /* 0x3D385 */
+        DSW(child + 0x2Eu) = (u16)(w + 4u);                 /* 0x3D389/0x3D38C */
+    }
+    sound_voice(0x4Eu);                                     /* 0x3D390/0x3D395 */
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);                  /* 0x3D39A/0x3D39D */
+    DSB(child + 0x60u) = 1u;                                /* 0x3D3A0 */
+}
+
+/* 0x3DA50 — record §P5.4. 0x3D328's shape with a2 = 0x8C / -0x8C, the child
+ * from 0xBB2E0 with a4 = 0x20 and its +0x59 = 2. */
+void fighter_3da50(u32 rec)
+{
+    u32 held = DSD(rec + 0x14u);                            /* 0x3DA56 */
+    u32 child;
+    s32 a2;
+    if (held == 0u) return;                                 /* 0x3DA5A */
+    a2 = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x8C : -0x8C;   /* 0x3DA60..0x3DA77 */
+    child = actor_spawn((const u32 *)(mem + P5_DESC_BB2E0), (u32)a2, 0u, 0x20u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x3DA7C..0x3DA99 */
+    DSB(child + 0x59u) = 2u;                                /* 0x3DAA1 */
+    DSD(child + 0x14u) = held;                              /* 0x3DA9E/0x3DAA5 */
+    if (DSB(rec + 0x51u) != 0u) {                           /* 0x3DAA8..0x3DAAF */
+        u16 w = DSW(child + 0x2Eu);                         /* 0x3DAB1 */
+        DSB(child + 0x4Eu) = 1u;                            /* 0x3DAB5 */
+        DSW(child + 0x2Eu) = (u16)(w + 4u);                 /* 0x3DAB9/0x3DABC */
+    }
+    sound_voice(0x4Eu);                                     /* 0x3DAC0/0x3DAC5 */
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);                  /* 0x3DACA/0x3DACD */
+    DSB(child + 0x60u) = 1u;                                /* 0x3DAD0 */
+}
+
+/* 0x3DB8C — record §P5.4. The record's +0x14 pointer; when non-zero a child
+ * from 0xBB2CC with a2 = 0x1000 (bit 14 set) or -0x1000 plus the record's
+ * +0x18, a3 = the record's +0x30 >> 16, a4 = its +0x1C + 0x1300, a5 = 0x4000
+ * (bit 14) or 0; the held record's +8 the child, the child's word +0x34 =
+ * 0x00E0 (bit 14) or 0xFF20, its +0x14 the held record; on the record's side
+ * its +0x2E += 4 and +0x4E = 1. */
+void fighter_3db8c(u32 rec)
+{
+    u32 held = DSD(rec + 0x14u);                            /* 0x3DB97 */
+    u32 child;
+    s32 a2;
+    u32 a5;
+    u16 w34;
+    if (held == 0u) return;                                 /* 0x3DB9A/0x3DB9C */
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u) {               /* 0x3DBA2..0x3DBB0 */
+        a2 = 0x1000;                                        /* 0x3DBC6 */
+        w34 = 0x00E0u;                                      /* 0x3DBC1 */
+        a5 = 0x4000u;                                       /* 0x3DBDF */
+    } else {
+        a2 = -0x1000;                                       /* 0x3DBB7 */
+        w34 = 0xFF20u;                                      /* 0x3DBB2 */
+        a5 = 0u;                                            /* 0x3DBE4 */
+    }
+    child = actor_spawn((const u32 *)(mem + P5_DESC_BB2CC),
+                        (u32)(a2 + (s32)DSD(rec + 0x18u)),
+                        (u32)((s32)DSD(rec + 0x30u) >> 16),
+                        DSD(rec + 0x1Cu) + 0x1300u, a5);    /* 0x3DBEA..0x3DC07 */
+    DSD(held + 8u) = child;                                 /* 0x3DC0F */
+    DSW(child + 0x34u) = w34;                               /* 0x3DC12 */
+    DSD(child + 0x14u) = held;                              /* 0x3DC16/0x3DC19 */
+    if (DSB(rec + 0x51u) != 0u) {                           /* 0x3DC1C/0x3DC20 */
+        DSW(child + 0x2Eu) = (u16)(DSW(child + 0x2Eu) + 4u);   /* 0x3DC25 */
+        DSB(child + 0x4Eu) = 1u;                            /* 0x3DC2D */
+    }
+}
+
+/* 0x3DC3C — record §P5.4. 0x3DB8C's shape with the child's word +0x34 =
+ * 0x01A0 (bit 14) or 0xFE60. */
+void fighter_3dc3c(u32 rec)
+{
+    u32 held = DSD(rec + 0x14u);                            /* 0x3DC47 */
+    u32 child;
+    s32 a2;
+    u32 a5;
+    u16 w34;
+    if (held == 0u) return;                                 /* 0x3DC4A/0x3DC4C */
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u) {               /* 0x3DC52..0x3DC60 */
+        a2 = 0x1000;                                        /* 0x3DC76 */
+        w34 = 0x01A0u;                                      /* 0x3DC71 */
+        a5 = 0x4000u;                                       /* 0x3DC8F */
+    } else {
+        a2 = -0x1000;                                       /* 0x3DC67 */
+        w34 = 0xFE60u;                                      /* 0x3DC62 */
+        a5 = 0u;                                            /* 0x3DC94 */
+    }
+    child = actor_spawn((const u32 *)(mem + P5_DESC_BB2CC),
+                        (u32)(a2 + (s32)DSD(rec + 0x18u)),
+                        (u32)((s32)DSD(rec + 0x30u) >> 16),
+                        DSD(rec + 0x1Cu) + 0x1300u, a5);    /* 0x3DC9A..0x3DCB7 */
+    DSD(held + 8u) = child;                                 /* 0x3DCBF */
+    DSW(child + 0x34u) = w34;                               /* 0x3DCC2 */
+    DSD(child + 0x14u) = held;                              /* 0x3DCC6/0x3DCC9 */
+    if (DSB(rec + 0x51u) != 0u) {                           /* 0x3DCCC/0x3DCD0 */
+        DSW(child + 0x2Eu) = (u16)(DSW(child + 0x2Eu) + 4u);   /* 0x3DCD5 */
+        DSB(child + 0x4Eu) = 1u;                            /* 0x3DCDD */
+    }
+}
+
+/* 0x403A0 — record §P5.4. The record's +0x14 pointer; when non-zero and the
+ * other side's slot (rec+0x51 ^ 1) non-zero: the word 0xC7780[its character]
+ * (negated, 16-bit, when that slot's record's +0x28 bit 14 is set) as a2, the
+ * signed word 0xC778C[its character] as a4, a5 = that record's +0x56 | 0x400,
+ * a child from 0xC776C; the child's +0x14 the held record, its +0x51 the
+ * record's side, its +0x59 the record's +0x59 - 1. */
+void fighter_403a0(u32 rec)
+{
+    u32 held = DSD(rec + 0x14u);                            /* 0x403A6 */
+    u32 other, slot, srec, child;
+    u32 ch;
+    s32 a2;
+    if (held == 0u) return;                                 /* 0x403AA */
+    other = (u32)DSB(rec + 0x51u) ^ 1u;                     /* 0x403B0..0x403B5 */
+    slot = DSD(DS_001077A8 + other * 4u);                   /* 0x403BA */
+    if (slot == 0u) return;                                 /* 0x403C1/0x403C3 */
+    srec = DSD(slot);                                       /* 0x403C5 */
+    ch = (u32)DSB(slot + 0x7Au);                            /* 0x403CD */
+    a2 = (s32)(s16)DSW(P5_C7780 + ch * 2u);                 /* 0x403D2 */
+    if ((DSW(srec + 0x28u) & 0x4000u) != 0u)                /* 0x403C9..0x403E3 */
+        a2 = (s32)(s16)(u16)(0u - (u32)(u16)a2);            /* 0x403E5 */
+    child = actor_spawn((const u32 *)(mem + P5_DESC_C776C), (u32)a2, 0u,
+                        (u32)(s32)(s16)DSW(P5_C778C + ch * 2u + 2u),
+                        (u32)(u16)(DSW(srec + 0x56u) | 0x0400u));   /* 0x403E7..0x40413 */
+    DSD(child + 0x14u) = held;                              /* 0x40418/0x4041B */
+    DSB(child + 0x51u) = DSB(rec + 0x51u);                  /* 0x4041E/0x40421 */
+    DSB(child + 0x59u) = (u8)(DSB(rec + 0x59u) - 1u);       /* 0x40424..0x40429 */
+}
+
+/* 0x40FBC — record §P5.4. A child from 0xC77D8 with a2 = 8 when
+ * 0x1A570(rec+0x51) sets AL else -8, a5 = the record's +0x56 | 0x400; its
+ * +0x59 = 2, its +0x24 and +0x20 the record's, and on the record's side the
+ * child's palette (0x2A17C, word 0x0C, handle 0). */
+void fighter_40fbc(u32 rec)
+{
+    s32 a2 = fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)) != 0 ? 8 : -8;   /* 0x40FC2..0x40FDC */
+    u32 child = actor_spawn((const u32 *)(mem + P5_DESC_C77D8), (u32)a2, 0u, 0u,
+                            (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x40FE9..0x40FF6 */
+    DSB(child + 0x59u) = 2u;                                /* 0x40FFB */
+    DSD(child + 0x24u) = DSD(rec + 0x24u);                  /* 0x40FFF/0x41002 */
+    DSD(child + 0x20u) = DSD(rec + 0x20u);                  /* 0x41005/0x41008 */
+    if (DSB(rec + 0x51u) != 0u)                             /* 0x4100B/0x4100F */
+        actor_pset_palette(child, 0x0Cu, 0u);               /* 0x41011..0x41018 0x2A17C */
+}
+
+/* 0x48A20 — record §P5.4. Walks the 0x1014F4 chain from the record while its
+ * +0x4B is non-zero (esi = base + byte * 0x68), then spawns from 0xC94F8
+ * with a2 = the record's +0x18 + 0xC40 (bit 14 of its +0x28 set) or - 0xC40,
+ * a3 = its +0x30 >> 16, a4 = its +0x1C + 0x800, a5 = 0x4000 or 0; the walked
+ * record's +0x4B takes the child's pool index. The raw stores 0x1014F4 back
+ * (the same value) before the spawn and reloads it after (dead). */
+void fighter_48a20(u32 rec)
+{
+    u32 base = DSD(P5_1014F4);                              /* 0x48A25 */
+    u32 esi = rec;                                          /* 0x48A2D/0x48A2F */
+    u32 a2, a5, child;
+    while (DSB(esi + 0x4Bu) != 0u)                          /* 0x48A2F..0x48A44 */
+        esi = base + (u32)DSB(esi + 0x4Bu) * 0x68u;
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u) {               /* 0x48A46..0x48A54 */
+        a2 = DSD(rec + 0x18u) + 0xC40u;                     /* 0x48A56..0x48A5E */
+        a5 = 0x4000u;                                       /* 0x48A59 */
+    } else {
+        a2 = DSD(rec + 0x18u) - 0xC40u;                     /* 0x48A65..0x48A6A */
+        a5 = 0u;                                            /* 0x48A68 */
+    }
+    DSD(P5_1014F4) = base;                                  /* 0x48A8C */
+    child = actor_spawn((const u32 *)(mem + P5_DESC_C94F8), a2,
+                        (u32)((s32)DSD(rec + 0x30u) >> 16),
+                        DSD(rec + 0x1Cu) + 0x800u, a5);     /* 0x48A75..0x48A92 */
+    DSB(esi + 0x4Bu) = DSB(child + 0x56u);                  /* 0x48A9A/0x48AA0 */
+}

@@ -46981,3 +46981,93 @@ static void p45_check_p5_records(void)
     }
 }
 int test_p45_p5_records(void)   { return u6b_run(p45_check_p5_records); }
+
+/* §P5.4/§P5.5: the spawn family and the +0x10 handler, through the real pool. */
+static void p45_check_p5_spawns(void)
+{
+    static u32 before[0x80];
+    p45_anim_fn f;
+    u32 n, child, x, k;
+    /* 0x37B70: char 1 (the second path) takes a2 = 0 and stores the held
+     * record's +0x4B; char 0 (the first path) stores none. */
+    for (k = 0; k < 2u; k++) {
+        f = (p45_anim_fn)(void *)fn_resolve(0x37B70u);
+        CHECK(f != NULL, "0x37B70 is registered");
+        if (f == NULL) return;
+        z_fseed();
+        c4r_pool();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSD(Z_S0) = Z_R1;
+        DSB(Z_R1 + 0x4Bu) = 0x4Bu;
+        DSB(Z_S0 + 0x7Au) = (u8)k;              /* char 0 or 1 */
+        DSB(Z_R0 + 0x56u) = 0x23u;
+        DSB(Z_R0 + 0x57u) = 0x01u;
+        DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+        n = u6b_list(before, 0x80u);
+        f(Z_R0, 0u);
+        child = p45_new_child(before, n, &x);
+        CHECK_EQ_INT((int)x, 1);
+        if (x == 1u) {
+            CHECK_EQ_INT((int)DSB(child + 0x59u), 1);
+            if (k == 1u) CHECK_EQ_INT((int)DSB(Z_R1 + 0x4Bu), (int)DSB(child + 0x56u));
+            if (k == 0u) CHECK_EQ_INT((int)DSB(Z_R1 + 0x4Bu), 0x4B);
+        }
+    }
+    /* The other spawn targets, one real child each. */
+    {
+        static const u32 addr[7] = { 0x3D328u, 0x3DA50u, 0x3DB8Cu, 0x3DC3Cu, 0x403A0u, 0x40FBCu, 0x48A20u };
+        for (k = 0; k < 7u; k++) {
+            f = (p45_anim_fn)(void *)fn_resolve(addr[k]);
+            CHECK(f != NULL, "the spawn target is registered");
+            if (f == NULL) return;
+            z_fseed();
+            c4r_pool();
+            DSD(Z_R0 + 0x14u) = Z_S0;
+            DSD(Z_R0 + 0x18u) = 0x00001818u;
+            DSD(Z_R0 + 0x1Cu) = 0x00001C1Cu;
+            DSD(Z_R0 + 0x30u) = 0x00030000u;
+            DSB(Z_R0 + 0x51u) = 1u;
+            DSB(Z_R0 + 0x56u) = 0x23u;
+            DSB(Z_R0 + 0x57u) = 0x01u;
+            DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+            DSD(Z_R0 + 0x20u) = 0x20202020u;
+            DSD(Z_R0 + 0x24u) = 0x24242424u;
+            if (addr[k] == 0x48A20u) {
+                DSD(0x001014F4u) = Z_R1;
+                DSB(Z_R0 + 0x4Bu) = 0u;
+            }
+            if (addr[k] == 0x403A0u) {
+                DSD(Z_R0 + 0x59u) = 0x59u;
+                DSB(Z_S0 + 0x7Au) = 3u;         /* the other slot's char */
+            }
+            n = u6b_list(before, 0x80u);
+            f(Z_R0, 0u);
+            child = p45_new_child(before, n, &x);
+            CHECK_EQ_INT((int)x, 1);
+            if (x != 1u) continue;
+            if (addr[k] == 0x48A20u) {
+                CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(child + 0x56u));
+            } else if (addr[k] == 0x40FBCu) {
+                CHECK_EQ_INT((int)DSB(child + 0x59u), 2);
+                CHECK_EQ_INT((int)DSD(child + 0x24u), 0x24242424);
+                CHECK_EQ_INT((int)DSD(child + 0x20u), 0x20202020);
+            } else if (addr[k] == 0x403A0u) {
+                CHECK_EQ_INT((int)DSD(child + 0x14u), (int)Z_S0);
+                CHECK_EQ_INT((int)DSB(child + 0x51u), 1);
+                CHECK_EQ_INT((int)DSB(child + 0x59u), 0x58);
+            } else if (addr[k] == 0x3D328u || addr[k] == 0x3DA50u) {
+                CHECK_EQ_INT((int)DSD(child + 0x14u), (int)Z_S0);
+                CHECK_EQ_INT((int)DSB(child + 0x4Eu), 1);
+                CHECK_EQ_INT((int)DSB(child + 0x60u), 1);
+            } else {                            /* 0x3DB8C/0x3DC3C */
+                CHECK_EQ_INT((int)DSD(child + 0x14u), (int)Z_S0);
+                CHECK_EQ_INT((int)DSB(child + 0x4Eu), 1);
+                CHECK_EQ_INT((int)DSD(Z_S0 + 8u), (int)child);
+                CHECK(DSW(child + 0x34u) == 0xFF20u || DSW(child + 0x34u) == 0xFE60u,
+                      "the child's +0x34 is the bit-14-clear word");
+            }
+        }
+    }
+
+}
+int test_p45_p5_spawns(void)    { return u6b_run(p45_check_p5_spawns); }

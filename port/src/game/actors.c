@@ -192,6 +192,13 @@ static void anim_code_345BC(u32 rec, u32 arg);
 static void anim_code_156E0(u32 rec, u32 arg);
 static void anim_code_22AB8(u32 rec, u32 arg);
 static void anim_code_37B70(u32 rec, u32 arg);
+static void anim_code_3D328(u32 rec, u32 arg);
+static void anim_code_3DA50(u32 rec, u32 arg);
+static void anim_code_3DB8C(u32 rec, u32 arg);
+static void anim_code_3DC3C(u32 rec, u32 arg);
+static void anim_code_403A0(u32 rec, u32 arg);
+static void anim_code_40FBC(u32 rec, u32 arg);
+static void anim_code_48A20(u32 rec, u32 arg);
 static void anim_code_46138(u32 rec, u32 arg);
 static void anim_code_40E14(u32 rec, u32 arg);
 static void anim_code_24964(u32 rec, u32 arg);
@@ -860,6 +867,14 @@ int actors_init(void)
     fn_register(0x156E0u, (void (*)(void))anim_code_156E0);
     fn_register(0x22AB8u, (void (*)(void))anim_code_22AB8);
     fn_register(0x37B70u, (void (*)(void))anim_code_37B70);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P5.4. The spawn family. */
+    fn_register(0x3D328u, (void (*)(void))anim_code_3D328);
+    fn_register(0x3DA50u, (void (*)(void))anim_code_3DA50);
+    fn_register(0x3DB8Cu, (void (*)(void))anim_code_3DB8C);
+    fn_register(0x3DC3Cu, (void (*)(void))anim_code_3DC3C);
+    fn_register(0x403A0u, (void (*)(void))anim_code_403A0);
+    fn_register(0x40FBCu, (void (*)(void))anim_code_40FBC);
+    fn_register(0x48A20u, (void (*)(void))anim_code_48A20);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
@@ -4336,4 +4351,40 @@ static void anim_code_37B70(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_37b70(rec);
+}
+
+static void anim_code_3D328(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3d328(rec);
+}
+static void anim_code_3DA50(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3da50(rec);
+}
+static void anim_code_3DB8C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3db8c(rec);
+}
+static void anim_code_3DC3C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3dc3c(rec);
+}
+static void anim_code_403A0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_403a0(rec);
+}
+static void anim_code_40FBC(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40fbc(rec);
+}
+static void anim_code_48A20(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_48a20(rec);
 }

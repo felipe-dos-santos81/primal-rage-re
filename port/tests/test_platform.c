@@ -256,7 +256,6 @@ static const fnm_pair k_miss_gp_u10_ending[] = {
     { 0x5D812u, "frontend_mode_1b_step" },
     { 0x37DD4u, "anim_indirect" },
     { 0x29C78u, "anim_indirect" },
-    { 0x3DA50u, "anim_indirect" },
 };
 
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:
