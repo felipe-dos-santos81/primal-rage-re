@@ -142,13 +142,25 @@ source-only changes: no new `FN_` address, no `fn_register`, so the E2 table is 
    byte (flags[0] = 4/3) in the EDX buffer, which is mem[]: the binding copies the local flags back to
    `mem[EDX]` after the call.
 
+Task 3's review sweep (325c4af) closed four stores the prototype's seeds left unobservable and corrected a
+fifth raw-over-plan wording. Each hole was a store writing 0 over an unseeded 0, confirmed by poking the
+field nonzero in a scratch run and watching the original write 0 there: `c1_slots` now seeds
+`+0x42..+0x44`, `+0x52..+0x54` and `+0x5C..+0x5E` of both slots (the ranges its comment always claimed);
+`0x3A95C`'s c0/c1 seed the own slot's `+0x10`; `0x18AF8`'s f1 seed `E3_REC2+0x29` is 0x69 (bit 6 set) so
+the `and 0xBF` arm is observable. No mutant's pinned case set moved; the counters stayed 98/98, 219/219,
+34/78. The fifth store survivor, `0x18AC7`, is a raw self-assignment (a named limit, §C1.6). The wording:
+**`0x3A95C`'s spec comment said `ctx[3]` was "the other slot"; it is the own slot** (`0x33A10` stores
+`out[3] = &slot[side]` at 0x33A56; the seeded scratch runs wrote 0x1077C0 for c0 side 0 and 0x107854 for
+c1 side 1). Corrected in `tools/diff_verify.py` (Task 3) and in the plan's embedded patch (Task 4). Item
+4's ctx[3] is the other slot: `0x18C14` runs `0x33950`'s `ctx_same`, not `ctx_swap`.
+
 Two dead blocks are named, not covered: `0x2A17C`'s 0x2A1F5 (`EBX == 0` already returned at 0x2A1AC, so
 0x2A1E6's test cannot be reached with EBX zero) and `0x2BC30`'s 0x2BC6D (`xor eax,eax` at 0x2BC61 makes
 0x2BC66's `je` always taken; the `fild` block is dead in the image).
 
 ## §C1.3 The mutants
 
-62 mutants, all detected (`--self-check`); what alone catches each is pinned by
+61 mutants, all detected (`--self-check`); what alone catches each is pinned by
 `test_each_c1_mutant_is_caught_by_what_it_breaks` (the `C1_KINDS` loop) and its measured case-set table.
 The kinds (measured):
 
@@ -179,10 +191,10 @@ fighter_3c480@mutant call#2          fighter_3a95c@arg    call#1
 fighter_3c480@order  call#0 call#1   fighter_35838@mutant call#0
 fighter_3c480@side   call#0 call#2   fighter_35838@side   call#0
 fighter_468d8@mutant eax             fighter_35838@order  call#0 memory
-fighter_468d8@eq     eax             fighter_3c208@mutant call#6 call#7 call#9
-fighter_468d8@side   eax             fighter_3c208@abs    call#4..#9
-fighter_18c14@mutant eax             fighter_3c208@arg    call#6
-fighter_18c14@store  byte            fighter_3c208@early  call#3..#9 memory
+fighter_468d8@eq     eax             fighter_3c208@mutant call#8 call#9 call#11
+fighter_468d8@side   eax             fighter_3c208@abs    call#6..#11
+fighter_18c14@mutant eax             fighter_3c208@arg    call#8
+fighter_18c14@store  byte            fighter_3c208@early  call#5..#11 memory
 fighter_18c14@live   byte call#0 call#1 eax
 ```
 
@@ -209,10 +221,12 @@ C1b adds them, the base's 64 rows all close and the counter reads `64 + 3` close
 
 `make entry-triage` is byte-identical (no ported function, no `fn_register`); `PR_ORACLE_REQUIRED=1
 ./build/run_tests` prints `all checks passed`; `python3 -m unittest tools.tests.test_diff_verify` runs 98
-tests OK; `python3 tools/port_progress.py` stays `771 1203 64` / `731 731 100` (none of the 20 is a Ghidra
-`FN_` function). The full `make verify` was not run (the brief's task-scoped gates only); the oracle lines
-cannot move (no rendering, timing or RNG path changed; `port/src` changes are seams, one wrapper split and
-`static` removals).
+tests OK; `python3 tools/port_progress.py` stays `771 1203 64` / `731 731 100`. Seven of the 20 are Ghidra
+`FN_` functions (`0x18BD4 0x18C14 0x35838 0x39FB0 0x3A95C 0x3C208 0x468D8`, named in `symbols.h`) and were
+already counted in the base's 771; C1 adds no `/* 0xADDR` header and no `fn_register`, so the count cannot
+move. The full `make verify` was not run by the planner (the brief's task-scoped gates only); Task 4 ran it
+as the final gate (§C1.7) and the oracle lines did not move (no rendering, timing or RNG path changed;
+`port/src` changes are seams, one wrapper split and `static` removals).
 
 ## §C1.5 The six deferred rows (C1b) and their evidence
 
@@ -247,6 +261,15 @@ Named gaps and limits:
 - **`0x18C14`'s per-comparison mutants**: the 64 cases cover the arms; three mutants pin the return, the
   store and the flag-1 boundary; the rest is a named limit.
 - **`0x2A17C` and `0x2BC30` dead blocks** (§C1.2): named in `unhit_named`, not covered.
+- **`0x18AF8`'s `0x18AC7` store is a raw self-assignment** (`mov [eax*4+0x1077dc], ebx` after 0x18B29
+  loaded `slot[side]+0x2C` into EBX), so no seed or case can observe it; Task 3's store sweep names it
+  and the row keeps it. A dead store in the original, reproduced faithfully.
+- **The four Task-3 seed fields have no committed regression pin**: the fields are `+0x42..+0x44`,
+  `+0x52..+0x54` and `+0x5C..+0x5E` of both slots (`c1_slots`), `0x3A95C` c0/c1's own-slot `+0x10`, and
+  `0x18AF8` f1's `+0x29` bit 6. The sweep that found them is scratch (git-ignored
+  `.superpowers/sdd/2026-10-03-reverse-c1-callee-rows/task-3-sweep.py`); pinning them in
+  `tools/tests/test_diff_verify.py` would add a 99th case to the recorded 98-test suite in a docs-only
+  closure task, so the pin is a named deferral, not silently absent.
 - **The clobber derivation over-approximates `0x18AF8`** (`E.callee_clobbers` reads (ebx, ecx, edx) where
   the real function preserves them): the P2 rows keep the over-declaration (safe); `0x3C208` runs it real.
   The exact-set test's entry is the image's.
@@ -264,3 +287,12 @@ Named gaps and limits:
   counter of §C1.4); `make entry-triage` (byte-identical); `PR_ORACLE_REQUIRED=1 ./build/run_tests`
   (all checks passed). Then `git checkout -- port tools`, leaving only this record and the plan.
 - The prototype's diff (1888 lines, the exact files the plan's Task 2 applies) is embedded in the plan.
+- Task 4, the final gate on this worktree at 325c4af (its docs commit follows): the brief's Step 1 gates —
+  `make diff-verify` (the §C1.4 counter), `make entry-triage E2_IMAGE=/tmp/pr_c1_final_e2.bin` (byte-identical:
+  `targets 288 unported, 207 ported; supplement 131 (9 unported, 0 stale); untrusted 30`; voice
+  `28 / 87 / 19`), `PR_ORACLE_REQUIRED=1 ./build/run_tests` (`all checks passed`), `python3
+  tools/port_progress.py` (`771 1203 64` / `731 731 100`) — and the full `make verify` with the
+  parallel-safe dump overrides (EXIT 0; the 45 oracle lines extracted by the K7-K12 gate's `grep -E`
+  are byte-identical to `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`; `make
+  audio-render AUDIO_WAV=/tmp/pr_c1.wav` matches `before-t2.wav`). The committed E2 table is untouched
+  (`git diff --stat` names no `2026-10-01-reverse-e2-triage.md`).

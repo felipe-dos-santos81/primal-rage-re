@@ -1682,7 +1682,7 @@ index 3caa04f..679ba5a 100644
 +    ], allow_calls=(0x33A10,), calls=(C1_FACING, C1_POSE), eax_mask=0,
 +       mutants=("@mutant", "@side", "@order")),
 +    # 0x3A95C: EAX = side, EDX = b; 0x33A10 runs on both sides (allow); 0x188AC(ctx[1],
-+    # ctx[5].+0x18, 0); the other slot 0x10/0x0A/0/0x10=0; 0x2BC30(ctx[5], the char
++    # ctx[5].+0x18, 0); the own slot (ctx[3]) 0x10/0x0A/0/0x10=0; 0x2BC30(ctx[5], the char
 +    # stream, 3.0); ctx[3].+0x7E = byte[0xBECF8] + b.
 +    Spec("fighter_3a95c", 0x3A95C, [
 +        Case("c0", {"eax": 0, "edx": 0x21},
