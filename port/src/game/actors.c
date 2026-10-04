@@ -168,6 +168,14 @@ static void anim_code_246D4(u32 rec, u32 arg);
 static void anim_code_40C34(u32 rec, u32 arg);
 static void anim_code_492A8(u32 rec, u32 arg);
 static void anim_code_159A8(u32 rec, u32 arg);
+static void anim_code_18BC8(u32 rec, u32 arg);
+static void anim_code_21084(u32 rec, u32 arg);
+static void anim_code_400E0(u32 rec, u32 arg);
+static void anim_code_21044(u32 rec, u32 arg);
+static void anim_code_1549C(u32 rec, u32 arg);
+static void anim_code_154E8(u32 rec, u32 arg);
+static void anim_code_229E8(u32 rec, u32 arg);
+static void anim_code_243F8(u32 rec, u32 arg);
 static void anim_code_46138(u32 rec, u32 arg);
 static void anim_code_40E14(u32 rec, u32 arg);
 static void anim_code_24964(u32 rec, u32 arg);
@@ -807,6 +815,16 @@ int actors_init(void)
      * 0x4844C (after its own jump table 0x48438; 0x3531C case 7, (slot, rec,
      * side)). */
     fn_register(0x4844Cu, (void (*)(void))fighter_4844c);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P4.4. Track P batches 4+5's first
+     * animation targets (anim_indirect, EAX = rec). */
+    fn_register(0x18BC8u, (void (*)(void))anim_code_18BC8);
+    fn_register(0x21084u, (void (*)(void))anim_code_21084);
+    fn_register(0x400E0u, (void (*)(void))anim_code_400E0);
+    fn_register(0x21044u, (void (*)(void))anim_code_21044);
+    fn_register(0x1549Cu, (void (*)(void))anim_code_1549C);
+    fn_register(0x154E8u, (void (*)(void))anim_code_154E8);
+    fn_register(0x229E8u, (void (*)(void))anim_code_229E8);
+    fn_register(0x243F8u, (void (*)(void))anim_code_243F8);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
@@ -4156,4 +4174,50 @@ void text_number_draw_font2(s32 col, s32 row, s32 value, s32 width, u32 pad,
     (void)text_number_format(value, buf, width, pad);       /* 0x2F54D 0x2EFD4 */
     text_cursor_set(col, row, buf, mode | 2u);              /* 0x2F55A 0x2F198 */
     DSD(DS_00105F34) = save;                                /* 0x2F563 */
+}
+
+/* ---- track P batches 4 and 5: the animation targets A and B (record 2026-10-03-reverse-p4-p5).
+ * PORT: anim_indirect calls every code pointer as (rec, arg); the raw reads EAX = rec alone
+ * (the operand's EDX and ECX are overwritten before any read in every one), so these
+ * wrappers drop the operand. 0x24454 is not a stream target: it is the +0x10 handler
+ * 0x24508 stores, reached by 0x3531C case 10, and is registered as its adapter. */
+static void anim_code_18BC8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_18bc8(rec);
+}
+static void anim_code_21084(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_21084(rec);
+}
+static void anim_code_400E0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_400e0(rec);
+}
+static void anim_code_21044(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_21044(rec);
+}
+static void anim_code_1549C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_1549c(rec);
+}
+static void anim_code_154E8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_154e8(rec);
+}
+static void anim_code_229E8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_229e8(rec);
+}
+static void anim_code_243F8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_243f8(rec);
 }

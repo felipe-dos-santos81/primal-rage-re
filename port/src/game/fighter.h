@@ -1252,5 +1252,15 @@ void fighter_4811c(u32 slot, u32 rec, u32 side);
 void fighter_4811c_case10(u32 slot, u32 side);
 /* §P3.8: 0x48608's +0x0C callback (slot, rec, side). */
 void fighter_4844c(u32 slot, u32 rec, u32 side);
+/* Track P batches 4 and 5 (record 2026-10-03-reverse-p4-p5-derivations.md): the
+ * animation targets A and B. */
+void fighter_18bc8(u32 rec);
+void fighter_21084(u32 rec);
+void fighter_400e0(u32 rec);
+void fighter_21044(u32 rec);
+void fighter_1549c(u32 rec);
+void fighter_154e8(u32 rec);
+void fighter_229e8(u32 rec);
+void fighter_243f8(u32 rec);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

@@ -229,18 +229,17 @@ static const fnm_pair k_miss_gp_u8_attract_start[] = {
 };
 
 /* gp-u9-win (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
- * §W.12), measured on its full replay to its X record (f = 0xDAE): the two wipe hooks
- * of §G.24 (0x29D60, a bare `ret`, from f = 0x28D; 0x5D812, the runtime stub, from
- * f = 0x405), and the E2 animation targets the CPU's CHAOS reaches after the poked KOs
- * (unported P-track rows of reverse-e2-triage.md, anim-target class): 0x400E0 (dword 0xD2816) at
- * f = 0x59C in mode 8, 0x21044 (dword 0xE1606) at f = 0x860 and 0x21084 (dword
- * 0xE162C) at f = 0x874 in mode 9. */
+ * §W.12), re-measured by track P batches 4+5 (record 2026-10-03-reverse-p4-p5 §P4.7)
+ * once 0x400E0/0x21044/0x21084 are ported: the two wipe hooks of §G.24 (0x29D60, a
+ * bare `ret`, from f = 0x28D; 0x5D812, the runtime stub, from f = 0x405) and the
+ * anim_indirect targets the replay then reaches: 0x213F0 (first = 0x8ED, 1 hit),
+ * 0x213F4 (first = 0x91F, 1 hit) and 0x2BDA0 (first = 0xD0C, 10 hits). */
 static const fnm_pair k_miss_gp_u9_win[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x400E0u, "anim_indirect" },
-    { 0x21044u, "anim_indirect" },
-    { 0x21084u, "anim_indirect" },
+    { 0x213F0u, "anim_indirect" },
+    { 0x213F4u, "anim_indirect" },
+    { 0x2BDA0u, "anim_indirect" },
 };
 
 /* gp-u10-ending (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md

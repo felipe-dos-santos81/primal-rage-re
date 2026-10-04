@@ -760,11 +760,13 @@ gp-modes-one: build
 # draws rng at f=0x866 in mode 9, 6 frames after the port's miss of the unported animation
 # target 0x21044 (f=0x860; P track). WIN_MIN_FIRST 3162: match 2's stage, 0x25848's rng pick,
 # follows that rng. MILESTONES 8: all reproduced. Raise each when it improves.
-# Re-measure: a P batch that ports 0x400E0 or 0x21084 (P4) or 0x21044 (P5) drops its row,
-# re-measures the U9 set (match 2's stage follows the rng, so the set can change) and re-pins
-# TRACE/WIN/MIN_FIRST: the trace and win ratchets fail only when they get worse.
+# Re-measured by track P batches 4+5 (record 2026-10-03-reverse-p4-p5 §P4.7/§P5.7) once 0x400E0,
+# 0x21044 and 0x21084 are ported: the set loses those three rows and gains the targets the replay
+# then reaches (0x213F0 P7 at f=0x8ED, 0x213F4 P7 at f=0x91F, 0x2BDA0 P6 at f=0xD0C, all skipped
+# by anim_indirect), and TRACE_MIN_FIRST rises 2150 -> 2364 (the first trace difference; the WIN
+# ratchet stays 3162, MIN_FIRST 346 and MAX_START 100).
 GP_WIN_MIN_FIRST = 346
-GP_WIN_TRACE_MIN_FIRST = 2150
+GP_WIN_TRACE_MIN_FIRST = 2364
 GP_WIN_MAX_START = 100
 GP_WIN_MILESTONES = 8
 GP_WIN_WIN_MIN_FIRST = 3162

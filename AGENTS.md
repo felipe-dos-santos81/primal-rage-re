@@ -237,9 +237,11 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   record §W.13; the memory growth is not root-caused, and `memsize=64` claims nothing about the game's memory need). The frame ratchets of both stop at the mode-8 entry (U9 N 346, U10 N 331), where
   the screen holds one frame about 43 ms and the two-frame splice model cannot express the
   catch-up: a comparison-model limit, not a port divergence (§W.12, §W.14). A P batch that ports
-  a target in a miss set re-measures and re-pins (U9: `0x400E0`/`0x21084` P4, `0x21044` P5; U10:
-  `0x3DA50` P5, `0x37DD4` P6, `0x29C78` P7; record §W.16; track P batch 3 ported `0x475EC`, record
-  2026-10-03-reverse-p3 §P3.9).
+  a target in a miss set re-measures and re-pins (U10: `0x37DD4` P6, `0x29C78` P7; record §W.16;
+  track P batch 3 ported `0x475EC`, record 2026-10-03-reverse-p3 §P3.9; batches 4+5 ported
+  `0x400E0`/`0x21084` P4, `0x21044` P5 and `0x3DA50` P5: U9's set gains `0x213F0`/`0x213F4` P7 and
+  `0x2BDA0` P6 (first frames 0x8ED, 0x91F, 0xD0C) and its TRACE pin rises 2150 -> 2364; U10's pins
+  are unchanged; record 2026-10-03-reverse-p4-p5 §P4.7/§P5.7).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two

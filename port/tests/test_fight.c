@@ -46722,3 +46722,103 @@ static void p3_check_4844c(void)
 }
 
 int test_p3_4844c(void)         { return u6b_run(p3_check_4844c); }
+typedef void (*p45_anim_fn)(u32 rec, u32 arg);
+
+/* §P4.3/§P4.4: the leaves 0x18BC8, 0x21084, 0x400E0 and the other-slot 0x154E8. */
+static void p45_check_leaves(void)
+{
+    p45_anim_fn f;
+    f = (p45_anim_fn)(void *)fn_resolve(0x18BC8u);
+    CHECK(f != NULL, "0x18BC8 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(0x00100C1Du) = 0x5Au;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(0x00100C1Du), 0);
+    }
+
+    f = (p45_anim_fn)(void *)fn_resolve(0x21084u);
+    CHECK(f != NULL, "0x21084 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSD(Z_R0 + 0x1Cu) = 0x1C1C1C1Cu;
+        DSW(Z_R0 + 0x34u) = 0x3434u;
+        DSB(Z_S0 + 0x54u) = 0x54u;
+        DSB(Z_S0 + 0x57u) = 0x57u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x1Cu), 0);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 2);
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = 0u;
+        DSD(Z_R0 + 0x1Cu) = 0x1C1C1C1Cu;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x1Cu), 0x1C1C1C1C);
+    }
+
+    f = (p45_anim_fn)(void *)fn_resolve(0x400E0u);
+    CHECK(f != NULL, "0x400E0 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSB(Z_S0 + 0x42u) = 0xFFu;
+        DSB(Z_S0 + 0x43u) = 0x43u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x42u), 0xFB);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x43u), 0x43);
+    }
+
+    /* 0x154E8: the other side's record +0x24 = 6.0f; the 0x80 index reads the
+     * 0x81 entry of DS_001077A8 (a &1 port reads slot 1), which is null here. */
+    f = (p45_anim_fn)(void *)fn_resolve(0x154E8u);
+    CHECK(f != NULL, "0x154E8 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSD(Z_R1 + 0x24u) = 0x24242424u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x24u), 0x40C00000);
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0x80u;
+        DSD(0x001079ACu) = 0u;
+        DSD(Z_R1 + 0x24u) = 0x24242424u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x24u), 0x24242424);
+    }
+}
+
+/* §P5.3: 0x21044's stores (track P batch 4+5 Task 2). */
+static void p45_check_21044(void)
+{
+    p45_anim_fn f;
+    f = (p45_anim_fn)(void *)fn_resolve(0x21044u);
+    CHECK(f != NULL, "0x21044 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSW(Z_R0 + 0x34u) = 0x3434u;
+        DSW(Z_R0 + 0x36u) = 0x3636u;
+        DSB(Z_R0 + 0x42u) = 0x42u;
+        DSB(Z_R0 + 0x43u) = 0x43u;
+        DSW(Z_R0 + 0x44u) = 0x4444u;
+        DSB(Z_S0 + 0x57u) = 0x57u;
+        f(Z_R0, 0u);
+        /* the plain seed's actor word 0x0F35 has bit 15 clear: AL set, the word negated */
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0xFDA8);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0x0096);
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x43u), 0x0F);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x44u), 0x000F);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSW(Z_R0 + 0x34u) = 0x3434u;
+        DSW(FIGHT_ACTORS + 0x20u) |= 0x8000u;   /* the record's actor word: AL clear */
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0x0258);
+    }
+}
+
+int test_p45_leaves(void)       { return u6b_run(p45_check_leaves); }
+int test_p45_21044(void)        { return u6b_run(p45_check_21044); }

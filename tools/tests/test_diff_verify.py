@@ -404,6 +404,20 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
             "fighter_4844c@zext": {"call #4"}, "fighter_4844c@width": {"byte", "call #0 memory", "call #1 memory", "call #2 memory",
                                     "call #3 memory", "call #4 memory"}}
 
+# Track P batches 4 and 5 (record 2026-10-03-reverse-p4-p5): its rows with their EAX masks, and what alone
+# catches each of its mutants.
+P45_MASKS = {"fighter_18bc8": 0, "fighter_21084": 0, "fighter_400e0": 0, "fighter_21044": 0,
+             "fighter_1549c": 0, "fighter_154e8": 0, "fighter_229e8": 0, "fighter_243f8": 0}
+P45_KINDS = {"fighter_18bc8@mutant": {"byte"},
+             "fighter_21084@mutant": {"byte"}, "fighter_21084@byte14": {"byte"},
+             "fighter_400e0@mutant": {"byte"},
+             "fighter_21044@mutant": {"byte", "call #0"}, "fighter_21044@neg": {"byte", "call #0"},
+             "fighter_1549c@mutant": {"call #2"}, "fighter_1549c@side": {"call #0", "call #1"},
+             "fighter_154e8@mutant": {"byte", "call #0 memory"},
+             "fighter_154e8@side": {"byte", "call #0 memory"},
+             "fighter_229e8@mutant": {"call #0"},
+             "fighter_243f8@mutant": {"call #0"}, "fighter_243f8@slot": {"byte"}}
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
@@ -428,7 +442,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_37dcc", "fighter_45878", "fighter_ctx_same",
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
-                                            + list(P3_MASKS)))
+                                            + list(P3_MASKS) + list(P45_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
@@ -442,7 +456,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_23130@novoice", "fighter_23130@reorder", "fighter_23130@voice", "fighter_3640c@mutant", "fighter_37dcc@mutant",
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
-            + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS)))
+            + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -507,7 +521,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
-            **P1_MASKS, **P2_MASKS, **P3_MASKS})
+            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)
@@ -673,6 +687,23 @@ class RealFunctionTests(unittest.TestCase):
                           ("fighter_4844c@width", ["a9", "aA", "aB", "aO", "aP"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
+    def test_each_p45_mutant_is_caught_by_what_it_breaks(self):
+        # track P batches 4 and 5 (record 2026-10-03-reverse-p4-p5): what alone catches each mutant
+        for name, want in P45_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        # the index byte 0x80 alone tells the zero-extended `^ 1` index from `(& 1) ^ 1` (s2 reads
+        # the fake third entry 0x1079AC, s3 the fake 0x1077B4: a masked index reads the other slot);
+        # the byte test of the record's +0x14 pointer (n1, whose low byte is 0) skips where the
+        # original runs; 0x21044's negation needs a case that reaches it (h1's stub AL clear and
+        # h2's AL set); the own slot against the other (both z0 and z1) tells 0x243F8's ctx[3] from
+        # its ctx[2]
+        for name, ids in (("fighter_1549c@side", ["s2"]), ("fighter_154e8@side", ["s3"]),
+                          ("fighter_21084@byte14", ["n1"]), ("fighter_21044@neg", ["h1", "h2"]),
+                          ("fighter_243f8@slot", ["z0", "z1"])):
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
+
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
@@ -779,9 +810,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (64), the 14 without are counted apart
-        self.assertIn("diff-verify: 78/78 functions VERIFIED; 158/158 mutants detected; 1 named gaps; "
-                      "11/64 rows with callees closed (14 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (69), the 17 without are counted apart
+        self.assertIn("diff-verify: 86/86 functions VERIFIED; 171/171 mutants detected; 1 named gaps; "
+                      "12/69 rows with callees closed (17 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
