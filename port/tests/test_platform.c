@@ -247,10 +247,11 @@ static const fnm_pair k_miss_gp_u9_win[] = {
  * §G.24 (0x29D60, a bare `ret`, from f = 0x286; 0x5D812, the runtime stub, from f = 0x3FE),
  * the death-animation stream's targets 0x37DD4 (E2 anim-target row, dword 0xD2BCE) at
  * f = 0x14FB in mode 0xC and 0x29C78 (outside E2, record reverse-p1 §P1.2, dword 0xD2BDA)
- * at f = 0x14FE in mode 0xD, and 0x3DA50 (E2 anim-target row, dword 0xD4BEC) at f = 0x155D
- * in mode 0xF. CHAOS's reaction-0x25 callback 0x2381C (track P batch 2) and character 2's
- * reaction-0x0B callback 0x475EC (the dword 0xA4004, from f = 0x1594 in mode 0xF; track P
- * batch 3, record 2026-10-03-reverse-p3 §P3.9) are ported, so neither is a miss. */
+ * at f = 0x14FE in mode 0xD. CHAOS's reaction-0x25 callback 0x2381C (track P batch 2),
+ * character 2's reaction-0x0B callback 0x475EC (the dword 0xA4004, from f = 0x1594 in
+ * mode 0xF; track P batch 3, record 2026-10-03-reverse-p3 §P3.9) and 0x3DA50 (E2
+ * anim-target row, dword 0xD4BEC, at f = 0x155D in mode 0xF; track P batches 4+5,
+ * record 2026-10-03-reverse-p4-p5 §P5.7) are ported, so none is a miss. */
 static const fnm_pair k_miss_gp_u10_ending[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },

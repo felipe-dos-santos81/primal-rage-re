@@ -1002,7 +1002,8 @@ CALLS: 0x2bc30 0x2c3fc
 Port (`fighter.c`):
 
 ```c
-/* 0x3438C — record §P4.5. The same slot record on 0xED354 at 1.0, after the voice 0xA6. */
+/* 0x3438C — record §P4.5. The same slot record on 0xED354 at 1.0; the voice 0xA6 runs
+ * after the stream here (0x34403 then 0x3440D, unlike the others). */
 void fighter_3438c(u32 rec)
 {
     u32 side = (u32)DSB(rec + 0x51u);                       /* 0x34390..0x34398 */
@@ -2496,15 +2497,15 @@ No other gp scenario's set holds a P4/P5 member (every set was read before the b
 
 ## §P4.8 Decisions, named gaps and limits
 
-**No decision is left to the user.** The member list is the roadmap's; `0x24454` is the code-immediate handler with its case-10 adapter; the two new callees are seamed, their rows C1's.
+**No decision is left to the user.** The member list is the roadmap's; `0x24454` is the code-immediate handler with its case-10 adapter; the two new callees are seamed, their differential rows the callee-row batch's (still open, below).
 
 Named gaps and limits:
 - **Stream targets left open:** the P6/P7 rows the members' streams reach (`0x47E04 0x47E30 0x482E4 0x48374`, `0x48254`, and the U9 replay's `0x213F0 0x213F4 0x2BDA0`); unported, skipped by `anim_indirect`.
-- **The callee rows** (D3): `0x29C08` and `0x2AD40` join C1; their seams are inert outside `build/diffrun`.
+- **The callee rows** (D3): `0x29C08` and `0x2AD40` join the callee-row batch; C1's 20 rows (merged at `eb8a0b5`) do not include them, so both remain unverified stubs in the merged table (named gap). Their seams are inert outside `build/diffrun`.
 - **Unit-check limits:** `0x1549C`, `0x229E8` and `0x243F8` have no unit check (their calls' effects need a real stream/palette); their rows cover them. The unit tests' line numbers move with `test_fight.c`.
 - **The side-0x80 cases read the slot at 0x10C1B0, just past the image** (both sides read the same zeros; `P45_OUTSIDE` names the seven rows).
 - The `title_pin` unittest failure on this tree is pre-existing and outside `make verify`.
 
 ## §P4.9 Results
 
-The per-commit gates: `make diff-verify entry-triage` with scratch paths and the per-task counters (plan Tasks 2-7); `PR_ORACLE_REQUIRED=1 ./build/run_tests` `all checks passed` after each; the gp oracles re-pinned in Tasks 2 and 6; the full `make verify` on the final state (Task 8): `ORACLES-EQUAL`, `WAV-SAME`, `771 1203 64` / `731 731 100`, `diff-verify: 111/111 functions VERIFIED; 252/252 mutants detected; 1 named gaps; 13/94 rows with callees closed (17 have none)`, `entry-triage: targets 257 unported, 238 ported; supplement 131 (8 unported, 0 stale)`, `voice sites outside Ghidra 134: 13 in unported code, 102 in ported code, 19 nowhere`, the diff-verify Python suite 163 tests, the E2 suite 44, every gp ratchet at its pin. The 33 members' rows and mutants are in the plan's tasks; the measured table lines are in each §P4/§P5 section above.
+The per-commit gates: `make diff-verify entry-triage` with scratch paths and the per-task counters (plan Tasks 2-7); `PR_ORACLE_REQUIRED=1 ./build/run_tests` `all checks passed` after each; the gp oracles re-pinned in Tasks 2 and 6; the full `make verify` on the final state (Task 8), after merging main's C1 callee rows (`eb8a0b5`): `ORACLES-EQUAL` (the 45 oracle lines), `WAV-SAME`, `771 1203 64` / `731 731 100`, `diff-verify: 131/131 functions VERIFIED; 313/313 mutants detected; 1 named gaps; 39/108 rows with callees closed (23 have none)`, `entry-triage: targets 257 unported, 238 ported; supplement 131 (8 unported, 0 stale); untrusted entries 30`, `voice sites outside Ghidra 134: 13 in unported code, 102 in ported code, 19 nowhere`, the diff-verify Python suite 164 tests, the E2 suite 44, every gp ratchet at its pin (gp-u9-win: frames 346, trace 2364, path 8, win 3162, start 100; gp-u10-ending: frames 331, trace and win 9954, milestones 30, start 83). The C1 merge adds its 20 callee rows: the pre-integration P45 line was `111/111; 252/252; 1 named gaps; 13/94 rows with callees closed (17 have none)` and C1 alone `98/98; 219/219; 1 named gaps; 34/78 (20 have none)`; merged, C1's verified callees close P45 rows that stub them (`0x2BC30` in `fighter_229e8` and `fighter_243f8`; the P45 rows stubbing `0x2A17C` keep a C1b stub), while `0x29C08` and `0x2AD40` stay unverified (§P4.8). The 33 members' rows and mutants are in the plan's tasks; the measured table lines are in each §P4/§P5 section above.
