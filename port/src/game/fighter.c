@@ -4712,8 +4712,9 @@ void fighter_3e3a8(u32 slot, u32 rec, u32 side)
 }
 
 /* 0x29C08. The palette handle for (side, char): DSD(DSD(0xA8A98 + char*4) +
- * DSB(0x105B34 + side)*4). EAX = side, EDX = char; a plain `ret`, it clobbers
- * nothing. No longer file-local: track P batch 4's 0x15510 stubs it. */
+ * DSB(0x105B34 + side)*4). EAX = side, EDX = char; it clobbers EDX (the raw's
+ * `mov edx,[edx*4+0xa8a98]`). No longer file-local: track P batch 4's 0x15510
+ * stubs it. */
 u32 fighter_29c08(u32 side, u32 ch)
 {
     u32 row;
