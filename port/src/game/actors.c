@@ -189,6 +189,9 @@ static void anim_code_34418(u32 rec, u32 arg);
 static void anim_code_344A4(u32 rec, u32 arg);
 static void anim_code_34530(u32 rec, u32 arg);
 static void anim_code_345BC(u32 rec, u32 arg);
+static void anim_code_156E0(u32 rec, u32 arg);
+static void anim_code_22AB8(u32 rec, u32 arg);
+static void anim_code_37B70(u32 rec, u32 arg);
 static void anim_code_46138(u32 rec, u32 arg);
 static void anim_code_40E14(u32 rec, u32 arg);
 static void anim_code_24964(u32 rec, u32 arg);
@@ -853,6 +856,10 @@ int actors_init(void)
     fn_register(0x344A4u, (void (*)(void))anim_code_344A4);
     fn_register(0x34530u, (void (*)(void))anim_code_34530);
     fn_register(0x345BCu, (void (*)(void))anim_code_345BC);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P5.3. The record-shifting targets. */
+    fn_register(0x156E0u, (void (*)(void))anim_code_156E0);
+    fn_register(0x22AB8u, (void (*)(void))anim_code_22AB8);
+    fn_register(0x37B70u, (void (*)(void))anim_code_37B70);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
@@ -4313,4 +4320,20 @@ static void anim_code_345BC(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_345bc(rec);
+}
+
+static void anim_code_156E0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_156e0(rec);
+}
+static void anim_code_22AB8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_22ab8(rec);
+}
+static void anim_code_37B70(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_37b70(rec);
 }

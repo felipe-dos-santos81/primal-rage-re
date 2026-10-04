@@ -16293,3 +16293,102 @@ void fighter_345bc(u32 rec)
     sound_voice(0x9Bu);                                     /* 0x34625..0x3462F */
     actors_anim_begin(DSD(own), P4_STREAM_345BC, 0x40400000u);   /* 0x34634..0x3463D */
 }
+
+
+#define P5_DESC_BB2B8    0x000BB2B8u  /* 0x3D368 */
+#define P5_DESC_BB2E0    0x000BB2E0u  /* 0x3DA94 */
+#define P5_DESC_BB2CC    0x000BB2CCu  /* 0x3DC00/0x3DCB0 */
+#define P5_C7780         0x000C7780u  /* 0x403D2: [char] word */
+#define P5_C778C         0x000C778Cu  /* 0x40404: [char] dword, sar 16 */
+#define P5_DESC_C776C    0x000C776Cu  /* 0x4040B */
+#define P5_DESC_C77D8    0x000C77D8u  /* 0x40FF1 */
+#define P5_DESC_C94F8    0x000C94F8u  /* 0x48A87 */
+#define P5_1014F4        0x001014F4u  /* 0x48A25/0x48A8C/0x48A9A */
+#define P5_104730        0x00104730u  /* 0x22AD0: [side] record pointer */
+
+
+/* 0x156E0 — record §P5.3. The other side's slot (rec+0x51 ^ 1); when non-zero,
+ * its record's +0x18 shifted by the signed byte 0xC9786 * 0x40 (the raw's
+ * `mov eax,[0xC9783]; sar eax,0x18`, whose argument is the record's own side:
+ * 0x1A570(rec+0x51)) and its +0x1C by the signed byte 0xC9787 * 0x40; then
+ * that record on its character's 0x9B038 stream at 0.0 (0x2BC30), the record's
+ * +0x4B its pool index, 0xF0AFE = 0, 0xF0AFF = the side, and the voice 0xD6. */
+void fighter_156e0(u32 rec)
+{
+    u32 other = (u32)DSB(rec + 0x51u) ^ 1u;                 /* 0x156E6..0x156EB */
+    u32 slot = DSD(DS_001077A8 + other * 4u);               /* 0x156F0 */
+    u32 srec;
+    if (slot == 0u) return;                                 /* 0x156F7/0x156F9 */
+    srec = DSD(slot);                                       /* 0x156FF..0x15704 (0x1A570's rec) */
+    if (fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)) != 0) {   /* 0x15704..0x1570B 0x1A570 */
+        DSD(srec + 0x18u) = DSD(rec + 0x18u) - (u32)((s32)DSD(P5_C9783) >> 24) * 0x40u;   /* 0x1570D..0x1571F */
+    } else {
+        DSD(srec + 0x18u) = DSD(rec + 0x18u) + (u32)((s32)DSD(P5_C9783) >> 24) * 0x40u;   /* 0x15724..0x15736 */
+    }
+    DSD(srec + 0x1Cu) = DSD(rec + 0x1Cu) + (u32)((s32)DSD(P5_C9784) >> 24) * 0x40u;       /* 0x15739..0x1574B */
+    actors_anim_begin(srec, DSD(P5_STREAMS_9B038 + (u32)DSB(slot + 0x7Au) * 4u), 0u);     /* 0x1574E..0x1575E */
+    DSB(rec + 0x4Bu) = DSB(srec + 0x56u);                   /* 0x15763..0x15768 */
+    DSB(0xF0AFEu) = 0u;                                     /* 0x1576B/0x1576D */
+    DSB(0xF0AFFu) = DSB(rec + 0x51u);                       /* 0x15773/0x15776 */
+    sound_voice(0xD6u);                                     /* 0x1577B/0x15780 */
+}
+
+/* 0x22AB8 — record §P5.3. The record's +0x14 pointer; when non-zero its +8
+ * is the 0x104730 table entry of the pointed record's side, the record's
+ * +0x1C += 0x1A00, and by 0x1A570(that side): the record's word +0x34 =
+ * 0xFF6A with its +0x18 -= 0x400, else word +0x34 = 0x96 with +0x18 += 0x400;
+ * either way word +0x36 = 0xFFF0. */
+void fighter_22ab8(u32 rec)
+{
+    u32 held = DSD(rec + 0x14u);                            /* 0x22ABE */
+    u32 hrec;
+    if (held == 0u) return;                                 /* 0x22AC1/0x22AC3 */
+    hrec = DSD(held);                                       /* 0x22AC5 */
+    DSD(held + 8u) = DSD(P5_104730 + (u32)DSB(hrec + 0x51u) * 4u);   /* 0x22AC7..0x22AD7 */
+    DSD(rec + 0x1Cu) += 0x1A00u;                            /* 0x22ADA */
+    if (fighter_actor_bit15_clear((u32)DSB(hrec + 0x51u)) != 0) {   /* 0x22AE1..0x22AF2 */
+        DSW(rec + 0x34u) = 0xFF6Au;                         /* 0x22AF7 */
+        DSD(rec + 0x18u) -= 0x400u;                         /* 0x22AF4..0x22B03 */
+    } else {
+        DSW(rec + 0x34u) = 0x0096u;                         /* 0x22B0B */
+        DSD(rec + 0x18u) += 0x400u;                         /* 0x22B08..0x22B17 */
+    }
+    DSW(rec + 0x36u) = 0xFFF0u;                             /* 0x22B1A */
+}
+
+/* 0x37B70 — record §P5.3. The record's +0x14 pointer; when non-zero, the
+ * word 0xBDC64[its character] (negated, 16-bit, when the record's +0x28 bit
+ * 14 is set, and the spawn flag a5 = 0x4000) and its character's 0xBDC48
+ * descriptor; when the descriptor is non-zero and the character is 0 or 5 the
+ * child takes the word as a2, otherwise a2 = 0 and the pointed record's +0x4B
+ * takes the child's pool index; either way a5 = the record's +0x56 | 0x400 and
+ * the child's +0x59 = 1. */
+void fighter_37b70(u32 rec)
+{
+    u32 held = DSD(rec + 0x14u);                            /* 0x37B77 */
+    u32 hrec, desc, child;
+    u32 ch;
+    s32 di;
+    u32 a5;
+    if (held == 0u) return;                                 /* 0x37B7A/0x37B7C */
+    ch = (u32)DSB(held + 0x7Au);                            /* 0x37B82..0x37B8B */
+    di = (s32)(s16)DSW(P5_BDC64 + ch * 2u);                 /* 0x37B92..0x37B97 */
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u) {               /* 0x37B82..0x37B90 */
+        di = (s32)(s16)(u16)(0u - (u32)(u16)di);            /* 0x37BA4 */
+        a5 = 0x4000u;                                       /* 0x37B9F */
+    } else {
+        a5 = 0u;                                            /* 0x37BAB */
+    }
+    desc = DSD(P5_DESC_BDC48 + ch * 4u);                    /* 0x37BB5..0x37BBA */
+    if (desc == 0u) return;                                 /* 0x37BC1/0x37BC3 */
+    if (ch == 0u || ch == 5u) {                             /* 0x37BC8..0x37BCF `jbe`/`jne` */
+        child = actor_spawn((const u32 *)(mem + desc), (u32)di, 0u, 0u,
+                            (u32)(u16)(DSW(rec + 0x56u) | 0x0400u) | a5);   /* 0x37BD1..0x37BEC */
+    } else {
+        child = actor_spawn((const u32 *)(mem + desc), 0u, 0u, 0u,
+                            (u32)(u16)(DSW(rec + 0x56u) | 0x0400u) | a5);   /* 0x37BF3..0x37C0D */
+        hrec = DSD(held);                                   /* 0x37C12 */
+        DSB(hrec + 0x4Bu) = DSB(child + 0x56u);             /* 0x37C14/0x37C17 */
+    }
+    DSB(child + 0x59u) = 1u;                                /* 0x37C1A */
+}

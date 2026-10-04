@@ -46934,3 +46934,50 @@ static void p45_check_side_anim(void)
     }
 }
 int test_p45_side_anim(void)    { return u6b_run(p45_check_side_anim); }
+
+/* §P5.3: 0x156E0's shifted records and 0x22AB8's table (Task 5). */
+static void p45_check_p5_records(void)
+{
+    p45_anim_fn f;
+    f = (p45_anim_fn)(void *)fn_resolve(0x156E0u);
+    CHECK(f != NULL, "0x156E0 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSD(Z_R0 + 0x18u) = 0x00001818u;
+        DSD(Z_R0 + 0x1Cu) = 0x00001C1Cu;
+        DSB(0x000C9786u) = 0x80u;            /* the dword 0xC9783's high byte (-128) */
+        DSB(0x000C9787u) = 0x01u;            /* the dword 0xC9784's high byte (1) */
+        DSD(Z_R1 + 0x18u) = 0x22222222u;
+        DSD(Z_R1 + 0x1Cu) = 0x33333333u;
+        f(Z_R0, 0u);
+        /* AL set (side 0's actor bit 15 clear) subtracts -128 * 0x40 = -0x2000 */
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x18u), (int)(0x00001818u + 0x2000u));
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x1Cu), (int)(0x00001C1Cu + 0x40u));
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(Z_R1 + 0x56u));
+        CHECK_EQ_INT((int)DSB(0x000F0AFEu), 0);
+    }
+
+    f = (p45_anim_fn)(void *)fn_resolve(0x22AB8u);
+    CHECK(f != NULL, "0x22AB8 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSD(Z_S0) = Z_R1;
+        DSB(Z_R1 + 0x51u) = 1u;
+        DSD(Z_R0 + 0x18u) = 0x00001818u;
+        DSD(Z_R0 + 0x1Cu) = 0x00001C1Cu;
+        DSW(Z_R0 + 0x34u) = 0x3434u;
+        DSW(Z_R0 + 0x36u) = 0x3636u;
+        DSD(Z_S0 + 8u) = 0x08080808u;
+        DSD(0x00104734u) = 0x000A2222u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_S0 + 8u), 0x000A2222);
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x1Cu), (int)(0x00001C1Cu + 0x1A00u));
+        /* the plain seed's actor word 0x0F35 has bit 15 clear: AL set, -0x400 and 0xFF6A */
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x18u), (int)(0x00001818u - 0x400u));
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0xFF6A);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0xFFF0);
+    }
+}
+int test_p45_p5_records(void)   { return u6b_run(p45_check_p5_records); }
