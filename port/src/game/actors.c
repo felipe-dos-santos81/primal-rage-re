@@ -168,6 +168,38 @@ static void anim_code_246D4(u32 rec, u32 arg);
 static void anim_code_40C34(u32 rec, u32 arg);
 static void anim_code_492A8(u32 rec, u32 arg);
 static void anim_code_159A8(u32 rec, u32 arg);
+static void anim_code_18BC8(u32 rec, u32 arg);
+static void anim_code_21084(u32 rec, u32 arg);
+static void anim_code_400E0(u32 rec, u32 arg);
+static void anim_code_21044(u32 rec, u32 arg);
+static void anim_code_1549C(u32 rec, u32 arg);
+static void anim_code_154E8(u32 rec, u32 arg);
+static void anim_code_229E8(u32 rec, u32 arg);
+static void anim_code_243F8(u32 rec, u32 arg);
+static void anim_code_15510(u32 rec, u32 arg);
+static void anim_code_241A8(u32 rec, u32 arg);
+static void anim_code_40358(u32 rec, u32 arg);
+static void anim_code_45C54(u32 rec, u32 arg);
+static void anim_code_489DC(u32 rec, u32 arg);
+static void anim_code_400EC(u32 rec, u32 arg);
+static void anim_code_3427C(u32 rec, u32 arg);
+static void anim_code_34308(u32 rec, u32 arg);
+static void anim_code_3438C(u32 rec, u32 arg);
+static void anim_code_34418(u32 rec, u32 arg);
+static void anim_code_344A4(u32 rec, u32 arg);
+static void anim_code_34530(u32 rec, u32 arg);
+static void anim_code_345BC(u32 rec, u32 arg);
+static void anim_code_156E0(u32 rec, u32 arg);
+static void anim_code_22AB8(u32 rec, u32 arg);
+static void anim_code_37B70(u32 rec, u32 arg);
+static void anim_code_3D328(u32 rec, u32 arg);
+static void anim_code_3DA50(u32 rec, u32 arg);
+static void anim_code_3DB8C(u32 rec, u32 arg);
+static void anim_code_3DC3C(u32 rec, u32 arg);
+static void anim_code_403A0(u32 rec, u32 arg);
+static void anim_code_40FBC(u32 rec, u32 arg);
+static void anim_code_48A20(u32 rec, u32 arg);
+static void anim_code_24508(u32 rec, u32 arg);
 static void anim_code_46138(u32 rec, u32 arg);
 static void anim_code_40E14(u32 rec, u32 arg);
 static void anim_code_24964(u32 rec, u32 arg);
@@ -807,6 +839,48 @@ int actors_init(void)
      * 0x4844C (after its own jump table 0x48438; 0x3531C case 7, (slot, rec,
      * side)). */
     fn_register(0x4844Cu, (void (*)(void))fighter_4844c);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P4.4. Track P batches 4+5's first
+     * animation targets (anim_indirect, EAX = rec). */
+    fn_register(0x18BC8u, (void (*)(void))anim_code_18BC8);
+    fn_register(0x21084u, (void (*)(void))anim_code_21084);
+    fn_register(0x400E0u, (void (*)(void))anim_code_400E0);
+    fn_register(0x21044u, (void (*)(void))anim_code_21044);
+    fn_register(0x1549Cu, (void (*)(void))anim_code_1549C);
+    fn_register(0x154E8u, (void (*)(void))anim_code_154E8);
+    fn_register(0x229E8u, (void (*)(void))anim_code_229E8);
+    fn_register(0x243F8u, (void (*)(void))anim_code_243F8);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P4.4. The held-record spawns. */
+    fn_register(0x15510u, (void (*)(void))anim_code_15510);
+    fn_register(0x241A8u, (void (*)(void))anim_code_241A8);
+    fn_register(0x40358u, (void (*)(void))anim_code_40358);
+    fn_register(0x45C54u, (void (*)(void))anim_code_45C54);
+    fn_register(0x489DCu, (void (*)(void))anim_code_489DC);
+    fn_register(0x400ECu, (void (*)(void))anim_code_400EC);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P4.5. The seven 0xD500 side-record targets. */
+    fn_register(0x3427Cu, (void (*)(void))anim_code_3427C);
+    fn_register(0x34308u, (void (*)(void))anim_code_34308);
+    fn_register(0x3438Cu, (void (*)(void))anim_code_3438C);
+    fn_register(0x34418u, (void (*)(void))anim_code_34418);
+    fn_register(0x344A4u, (void (*)(void))anim_code_344A4);
+    fn_register(0x34530u, (void (*)(void))anim_code_34530);
+    fn_register(0x345BCu, (void (*)(void))anim_code_345BC);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P5.3. The record-shifting targets. */
+    fn_register(0x156E0u, (void (*)(void))anim_code_156E0);
+    fn_register(0x22AB8u, (void (*)(void))anim_code_22AB8);
+    fn_register(0x37B70u, (void (*)(void))anim_code_37B70);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P5.4. The spawn family. */
+    fn_register(0x3D328u, (void (*)(void))anim_code_3D328);
+    fn_register(0x3DA50u, (void (*)(void))anim_code_3DA50);
+    fn_register(0x3DB8Cu, (void (*)(void))anim_code_3DB8C);
+    fn_register(0x3DC3Cu, (void (*)(void))anim_code_3DC3C);
+    fn_register(0x403A0u, (void (*)(void))anim_code_403A0);
+    fn_register(0x40FBCu, (void (*)(void))anim_code_40FBC);
+    fn_register(0x48A20u, (void (*)(void))anim_code_48A20);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P5.5. The +0x10 handler 0x24508
+     * stores in the other slot (0x3531C case 10 reaches it through
+     * fn_resolve) and the case-10 adapter that supplies the slot's record. */
+    fn_register(0x24508u, (void (*)(void))anim_code_24508);
+    fn_register(0x24454u, (void (*)(void))fighter_24454_case10);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
@@ -3475,6 +3549,7 @@ void actor_type_49444(u32 rec)
  * return the record to the free list and zero its pset. */
 static void release_record(u32 rec, u32 pset)
 {
+    PR_SEAM(0x2AD40u, rec, pset);
     if (!in_pool(rec)) return;                  /* PORT: spec §7 invariant */
     if ((DSW(rec + 0x2a) & 8u) != 0) return;
     if (DSB(rec + 0x4f) != 0) return;
@@ -4160,4 +4235,172 @@ void text_number_draw_font2(s32 col, s32 row, s32 value, s32 width, u32 pad,
     (void)text_number_format(value, buf, width, pad);       /* 0x2F54D 0x2EFD4 */
     text_cursor_set(col, row, buf, mode | 2u);              /* 0x2F55A 0x2F198 */
     DSD(DS_00105F34) = save;                                /* 0x2F563 */
+}
+
+/* ---- track P batches 4 and 5: the animation targets A and B (record 2026-10-03-reverse-p4-p5).
+ * PORT: anim_indirect calls every code pointer as (rec, arg); the raw reads EAX = rec alone
+ * (the operand's EDX and ECX are overwritten before any read in every one), so these
+ * wrappers drop the operand. 0x24454 is not a stream target: it is the +0x10 handler
+ * 0x24508 stores, reached by 0x3531C case 10, and is registered as its adapter. */
+static void anim_code_18BC8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_18bc8(rec);
+}
+static void anim_code_21084(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_21084(rec);
+}
+static void anim_code_400E0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_400e0(rec);
+}
+static void anim_code_21044(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_21044(rec);
+}
+static void anim_code_1549C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_1549c(rec);
+}
+static void anim_code_154E8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_154e8(rec);
+}
+static void anim_code_229E8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_229e8(rec);
+}
+static void anim_code_243F8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_243f8(rec);
+}
+static void anim_code_15510(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_15510(rec);
+}
+static void anim_code_241A8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_241a8(rec);
+}
+static void anim_code_40358(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40358(rec);
+}
+static void anim_code_45C54(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_45c54(rec);
+}
+static void anim_code_489DC(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_489dc(rec);
+}
+static void anim_code_400EC(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_400ec(rec);
+}
+static void anim_code_3427C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3427c(rec);
+}
+static void anim_code_34308(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_34308(rec);
+}
+static void anim_code_3438C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3438c(rec);
+}
+static void anim_code_34418(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_34418(rec);
+}
+static void anim_code_344A4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_344a4(rec);
+}
+static void anim_code_34530(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_34530(rec);
+}
+static void anim_code_345BC(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_345bc(rec);
+}
+
+static void anim_code_156E0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_156e0(rec);
+}
+static void anim_code_22AB8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_22ab8(rec);
+}
+static void anim_code_37B70(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_37b70(rec);
+}
+
+static void anim_code_3D328(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3d328(rec);
+}
+static void anim_code_3DA50(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3da50(rec);
+}
+static void anim_code_3DB8C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3db8c(rec);
+}
+static void anim_code_3DC3C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3dc3c(rec);
+}
+static void anim_code_403A0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_403a0(rec);
+}
+static void anim_code_40FBC(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40fbc(rec);
+}
+static void anim_code_48A20(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_48a20(rec);
+}
+static void anim_code_24508(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_24508(rec);
 }

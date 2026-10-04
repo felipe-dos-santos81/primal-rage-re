@@ -1260,5 +1260,44 @@ void fighter_4811c(u32 slot, u32 rec, u32 side);
 void fighter_4811c_case10(u32 slot, u32 side);
 /* §P3.8: 0x48608's +0x0C callback (slot, rec, side). */
 void fighter_4844c(u32 slot, u32 rec, u32 side);
+/* Track P batches 4 and 5 (record 2026-10-03-reverse-p4-p5-derivations.md): the
+ * animation targets A and B. */
+void fighter_18bc8(u32 rec);
+void fighter_21084(u32 rec);
+void fighter_400e0(u32 rec);
+void fighter_21044(u32 rec);
+void fighter_1549c(u32 rec);
+void fighter_154e8(u32 rec);
+void fighter_229e8(u32 rec);
+void fighter_243f8(u32 rec);
+u32  fighter_29c08(u32 side, u32 ch);
+void fighter_15510(u32 rec);
+void fighter_241a8(u32 rec);
+void fighter_40358(u32 rec);
+void fighter_45c54(u32 rec);
+void fighter_489dc(u32 rec);
+void fighter_400ec(u32 rec);
+void fighter_3427c(u32 rec);
+void fighter_34308(u32 rec);
+void fighter_3438c(u32 rec);
+void fighter_34418(u32 rec);
+void fighter_344a4(u32 rec);
+void fighter_34530(u32 rec);
+void fighter_345bc(u32 rec);
+void fighter_156e0(u32 rec);
+void fighter_22ab8(u32 rec);
+void fighter_37b70(u32 rec);
+void fighter_3d328(u32 rec);
+void fighter_3da50(u32 rec);
+void fighter_3db8c(u32 rec);
+void fighter_3dc3c(u32 rec);
+void fighter_403a0(u32 rec);
+void fighter_40fbc(u32 rec);
+void fighter_48a20(u32 rec);
+/* §P5.5: the +0x10 handler 0x24508 stores (0x3531C case 10) and the case-10
+ * adapter the port registers under 0x24454. */
+void fighter_24508(u32 rec);
+void fighter_24454(u32 slot, u32 rec);
+void fighter_24454_case10(u32 slot, u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

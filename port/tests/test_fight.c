@@ -46722,3 +46722,396 @@ static void p3_check_4844c(void)
 }
 
 int test_p3_4844c(void)         { return u6b_run(p3_check_4844c); }
+typedef void (*p45_anim_fn)(u32 rec, u32 arg);
+
+/* §P4.3/§P4.4: the leaves 0x18BC8, 0x21084, 0x400E0 and the other-slot 0x154E8. */
+static void p45_check_leaves(void)
+{
+    p45_anim_fn f;
+    f = (p45_anim_fn)(void *)fn_resolve(0x18BC8u);
+    CHECK(f != NULL, "0x18BC8 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(0x00100C1Du) = 0x5Au;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(0x00100C1Du), 0);
+    }
+
+    f = (p45_anim_fn)(void *)fn_resolve(0x21084u);
+    CHECK(f != NULL, "0x21084 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSD(Z_R0 + 0x1Cu) = 0x1C1C1C1Cu;
+        DSW(Z_R0 + 0x34u) = 0x3434u;
+        DSB(Z_S0 + 0x54u) = 0x54u;
+        DSB(Z_S0 + 0x57u) = 0x57u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x1Cu), 0);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 2);
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = 0u;
+        DSD(Z_R0 + 0x1Cu) = 0x1C1C1C1Cu;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x1Cu), 0x1C1C1C1C);
+    }
+
+    f = (p45_anim_fn)(void *)fn_resolve(0x400E0u);
+    CHECK(f != NULL, "0x400E0 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSB(Z_S0 + 0x42u) = 0xFFu;
+        DSB(Z_S0 + 0x43u) = 0x43u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x42u), 0xFB);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x43u), 0x43);
+    }
+
+    /* 0x154E8: the other side's record +0x24 = 6.0f; the 0x80 index reads the
+     * 0x81 entry of DS_001077A8 (a &1 port reads slot 1), which is null here. */
+    f = (p45_anim_fn)(void *)fn_resolve(0x154E8u);
+    CHECK(f != NULL, "0x154E8 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSD(Z_R1 + 0x24u) = 0x24242424u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x24u), 0x40C00000);
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0x80u;
+        DSD(0x001079ACu) = 0u;
+        DSD(Z_R1 + 0x24u) = 0x24242424u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x24u), 0x24242424);
+    }
+}
+
+/* §P5.3: 0x21044's stores (track P batch 4+5 Task 2). */
+static void p45_check_21044(void)
+{
+    p45_anim_fn f;
+    f = (p45_anim_fn)(void *)fn_resolve(0x21044u);
+    CHECK(f != NULL, "0x21044 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSW(Z_R0 + 0x34u) = 0x3434u;
+        DSW(Z_R0 + 0x36u) = 0x3636u;
+        DSB(Z_R0 + 0x42u) = 0x42u;
+        DSB(Z_R0 + 0x43u) = 0x43u;
+        DSW(Z_R0 + 0x44u) = 0x4444u;
+        DSB(Z_S0 + 0x57u) = 0x57u;
+        f(Z_R0, 0u);
+        /* the plain seed's actor word 0x0F35 has bit 15 clear: AL set, the word negated */
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0xFDA8);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0x0096);
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x43u), 0x0F);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x44u), 0x000F);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 1);
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSW(Z_R0 + 0x34u) = 0x3434u;
+        DSW(FIGHT_ACTORS + 0x20u) |= 0x8000u;   /* the record's actor word: AL clear */
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0x0258);
+    }
+}
+
+int test_p45_leaves(void)       { return u6b_run(p45_check_leaves); }
+int test_p45_21044(void)        { return u6b_run(p45_check_21044); }
+
+/* The one child a spawn added; *x = 1 when there is exactly one. */
+static u32 p45_new_child(const u32 *before, u32 n, u32 *x)
+{
+    u32 r = u6b_new_record(before, n);
+    *x = r != 0u ? 1u : 0u;
+    return r;
+}
+
+/* §P4.4: 0x15510's palette handle and child; the held-record spawns. */
+static void p45_check_p4_spawns(void)
+{
+    static u32 before[0x80];
+    p45_anim_fn f;
+    u32 n, child, x;
+    f = (p45_anim_fn)(void *)fn_resolve(0x15510u);
+    CHECK(f != NULL, "0x15510 is registered");
+    if (f == NULL) return;
+    z_fseed();
+    c4r_pool();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_R0 + 0x56u) = 0x23u;
+    DSB(Z_R0 + 0x57u) = 0x01u;
+    DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+    DSD(0x0009B08Cu) = 0x9B8C8C8Cu;
+    n = u6b_list(before, 0x80u);
+    f(Z_R0, 0u);
+    CHECK(DSD(0x0009B08Cu) != 0x9B8C8C8Cu, "0x9B08C holds the palette handle");
+    child = p45_new_child(before, n, &x);
+    CHECK_EQ_INT((int)x, 1);
+    if (x == 1u) {
+        CHECK_EQ_INT((int)DSB(child + 0x59u), 2);
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(child + 0x56u));
+    }
+
+    /* 0x241A8: the side's slot char selects the descriptor. */
+    f = (p45_anim_fn)(void *)fn_resolve(0x241A8u);
+    CHECK(f != NULL, "0x241A8 is registered");
+    if (f == NULL) return;
+    z_fseed();
+    c4r_pool();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_R0 + 0x56u) = 0x23u;
+    DSB(Z_R0 + 0x57u) = 0x01u;
+    DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+    n = u6b_list(before, 0x80u);
+    f(Z_R0, 0u);
+    child = p45_new_child(before, n, &x);
+    CHECK_EQ_INT((int)x, 1);
+    if (x == 1u)
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(child + 0x56u));
+
+    /* 0x40358: the child's +0x14 is the held record and its +0x51 the side;
+     * 0x45C54: its +0x59 = 2 and +0x14 the held record; 0x489DC: the held
+     * record's +0x4B takes the child's index. */
+    {
+        static const u32 addr[3] = { 0x40358u, 0x45C54u, 0x489DCu };
+        u32 k;
+        for (k = 0; k < 3u; k++) {
+            f = (p45_anim_fn)(void *)fn_resolve(addr[k]);
+            CHECK(f != NULL, "the held-record spawn is registered");
+            if (f == NULL) return;
+            z_fseed();
+            c4r_pool();
+            DSD(Z_R0 + 0x14u) = Z_S0;
+            DSB(Z_R0 + 0x51u) = 1u;
+            DSB(Z_R0 + 0x56u) = 0x23u;
+            DSB(Z_R0 + 0x57u) = 0x01u;
+            DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+            DSD(Z_S0) = Z_R1;
+            DSB(Z_R1 + 0x4Bu) = 0u;
+            n = u6b_list(before, 0x80u);
+            f(Z_R0, 0u);
+            child = p45_new_child(before, n, &x);
+            CHECK_EQ_INT((int)x, 1);
+            if (x != 1u) continue;
+            if (k == 0u) CHECK_EQ_INT((int)DSB(child + 0x51u), 1);
+            if (k == 1u) CHECK_EQ_INT((int)DSB(child + 0x59u), 2);
+            if (k < 2u) CHECK_EQ_INT((int)DSD(child + 0x14u), (int)Z_S0);
+            if (k == 2u) CHECK_EQ_INT((int)DSB(Z_R1 + 0x4Bu), (int)DSB(child + 0x56u));
+        }
+    }
+}
+
+int test_p45_p4_spawns(void)    { return u6b_run(p45_check_p4_spawns); }
+
+/* §P4.5: the seven 0xD500 side-record targets, each through its registration:
+ * the side's own slot record starts a real stream (its +8 changes from the
+ * sentinel), and the other slot's record keeps its +8 sentinel. */
+static void p45_check_side_anim(void)
+{
+    static const u32 addr[7] = { 0x3427Cu, 0x34308u, 0x3438Cu, 0x34418u, 0x344A4u, 0x34530u, 0x345BCu };
+    p45_anim_fn f;
+    u32 k, side;
+    for (k = 0; k < 7u; k++) {
+        f = (p45_anim_fn)(void *)fn_resolve(addr[k]);
+        CHECK(f != NULL, "the 0xD500 target is registered");
+        if (f == NULL) return;
+        for (side = 0; side < 2u; side++) {
+            u32 own = side == 0u ? Z_R0 : Z_R1, oth = side == 0u ? Z_R1 : Z_R0;
+            z_fseed();
+            c4r_pool();
+            DSB(Z_R0 + 0x51u) = (u8)side;
+            DSD(own + 8u) = 0x08080808u;
+            DSD(oth + 8u) = 0x18181818u;
+            f(Z_R0, 0u);
+            CHECK(DSD(own + 8u) != 0x08080808u, "the side's record started a stream");
+            CHECK_EQ_INT((int)DSD(oth + 8u), 0x18181818);
+        }
+    }
+}
+int test_p45_side_anim(void)    { return u6b_run(p45_check_side_anim); }
+
+/* §P5.3: 0x156E0's shifted records and 0x22AB8's table (Task 5). */
+static void p45_check_p5_records(void)
+{
+    p45_anim_fn f;
+    f = (p45_anim_fn)(void *)fn_resolve(0x156E0u);
+    CHECK(f != NULL, "0x156E0 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSD(Z_R0 + 0x18u) = 0x00001818u;
+        DSD(Z_R0 + 0x1Cu) = 0x00001C1Cu;
+        DSB(0x000C9786u) = 0x80u;            /* the dword 0xC9783's high byte (-128) */
+        DSB(0x000C9787u) = 0x01u;            /* the dword 0xC9784's high byte (1) */
+        DSD(Z_R1 + 0x18u) = 0x22222222u;
+        DSD(Z_R1 + 0x1Cu) = 0x33333333u;
+        f(Z_R0, 0u);
+        /* AL set (side 0's actor bit 15 clear) subtracts -128 * 0x40 = -0x2000 */
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x18u), (int)(0x00001818u + 0x2000u));
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x1Cu), (int)(0x00001C1Cu + 0x40u));
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(Z_R1 + 0x56u));
+        CHECK_EQ_INT((int)DSB(0x000F0AFEu), 0);
+    }
+
+    f = (p45_anim_fn)(void *)fn_resolve(0x22AB8u);
+    CHECK(f != NULL, "0x22AB8 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSD(Z_S0) = Z_R1;
+        DSB(Z_R1 + 0x51u) = 1u;
+        DSD(Z_R0 + 0x18u) = 0x00001818u;
+        DSD(Z_R0 + 0x1Cu) = 0x00001C1Cu;
+        DSW(Z_R0 + 0x34u) = 0x3434u;
+        DSW(Z_R0 + 0x36u) = 0x3636u;
+        DSD(Z_S0 + 8u) = 0x08080808u;
+        DSD(0x00104734u) = 0x000A2222u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_S0 + 8u), 0x000A2222);
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x1Cu), (int)(0x00001C1Cu + 0x1A00u));
+        /* the plain seed's actor word 0x0F35 has bit 15 clear: AL set, -0x400 and 0xFF6A */
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x18u), (int)(0x00001818u - 0x400u));
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0xFF6A);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0xFFF0);
+    }
+}
+int test_p45_p5_records(void)   { return u6b_run(p45_check_p5_records); }
+
+/* §P5.4/§P5.5: the spawn family and the +0x10 handler, through the real pool. */
+static void p45_check_p5_spawns(void)
+{
+    static u32 before[0x80];
+    p45_anim_fn f;
+    u32 n, child, x, k;
+    /* 0x37B70: char 1 (the second path) takes a2 = 0 and stores the held
+     * record's +0x4B; char 0 (the first path) stores none. */
+    for (k = 0; k < 2u; k++) {
+        f = (p45_anim_fn)(void *)fn_resolve(0x37B70u);
+        CHECK(f != NULL, "0x37B70 is registered");
+        if (f == NULL) return;
+        z_fseed();
+        c4r_pool();
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSD(Z_S0) = Z_R1;
+        DSB(Z_R1 + 0x4Bu) = 0x4Bu;
+        DSB(Z_S0 + 0x7Au) = (u8)k;              /* char 0 or 1 */
+        DSB(Z_R0 + 0x56u) = 0x23u;
+        DSB(Z_R0 + 0x57u) = 0x01u;
+        DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+        n = u6b_list(before, 0x80u);
+        f(Z_R0, 0u);
+        child = p45_new_child(before, n, &x);
+        CHECK_EQ_INT((int)x, 1);
+        if (x == 1u) {
+            CHECK_EQ_INT((int)DSB(child + 0x59u), 1);
+            if (k == 1u) CHECK_EQ_INT((int)DSB(Z_R1 + 0x4Bu), (int)DSB(child + 0x56u));
+            if (k == 0u) CHECK_EQ_INT((int)DSB(Z_R1 + 0x4Bu), 0x4B);
+        }
+    }
+    /* The other spawn targets, one real child each. */
+    {
+        static const u32 addr[7] = { 0x3D328u, 0x3DA50u, 0x3DB8Cu, 0x3DC3Cu, 0x403A0u, 0x40FBCu, 0x48A20u };
+        for (k = 0; k < 7u; k++) {
+            f = (p45_anim_fn)(void *)fn_resolve(addr[k]);
+            CHECK(f != NULL, "the spawn target is registered");
+            if (f == NULL) return;
+            z_fseed();
+            c4r_pool();
+            DSD(Z_R0 + 0x14u) = Z_S0;
+            DSD(Z_R0 + 0x18u) = 0x00001818u;
+            DSD(Z_R0 + 0x1Cu) = 0x00001C1Cu;
+            DSD(Z_R0 + 0x30u) = 0x00030000u;
+            DSB(Z_R0 + 0x51u) = 1u;
+            DSB(Z_R0 + 0x56u) = 0x23u;
+            DSB(Z_R0 + 0x57u) = 0x01u;
+            DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+            DSD(Z_R0 + 0x20u) = 0x20202020u;
+            DSD(Z_R0 + 0x24u) = 0x24242424u;
+            if (addr[k] == 0x48A20u) {
+                DSD(0x001014F4u) = Z_R1;
+                DSB(Z_R0 + 0x4Bu) = 0u;
+            }
+            if (addr[k] == 0x403A0u) {
+                DSD(Z_R0 + 0x59u) = 0x59u;
+                DSB(Z_S0 + 0x7Au) = 3u;         /* the other slot's char */
+            }
+            n = u6b_list(before, 0x80u);
+            f(Z_R0, 0u);
+            child = p45_new_child(before, n, &x);
+            CHECK_EQ_INT((int)x, 1);
+            if (x != 1u) continue;
+            if (addr[k] == 0x48A20u) {
+                CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(child + 0x56u));
+            } else if (addr[k] == 0x40FBCu) {
+                CHECK_EQ_INT((int)DSB(child + 0x59u), 2);
+                CHECK_EQ_INT((int)DSD(child + 0x24u), 0x24242424);
+                CHECK_EQ_INT((int)DSD(child + 0x20u), 0x20202020);
+            } else if (addr[k] == 0x403A0u) {
+                CHECK_EQ_INT((int)DSD(child + 0x14u), (int)Z_S0);
+                CHECK_EQ_INT((int)DSB(child + 0x51u), 1);
+                CHECK_EQ_INT((int)DSB(child + 0x59u), 0x58);
+            } else if (addr[k] == 0x3D328u || addr[k] == 0x3DA50u) {
+                CHECK_EQ_INT((int)DSD(child + 0x14u), (int)Z_S0);
+                CHECK_EQ_INT((int)DSB(child + 0x4Eu), 1);
+                CHECK_EQ_INT((int)DSB(child + 0x60u), 1);
+            } else {                            /* 0x3DB8C/0x3DC3C */
+                CHECK_EQ_INT((int)DSD(child + 0x14u), (int)Z_S0);
+                CHECK_EQ_INT((int)DSB(child + 0x4Eu), 1);
+                CHECK_EQ_INT((int)DSD(Z_S0 + 8u), (int)child);
+                CHECK(DSW(child + 0x34u) == 0xFF20u || DSW(child + 0x34u) == 0xFE60u,
+                      "the child's +0x34 is the bit-14-clear word");
+            }
+        }
+    }
+
+}
+int test_p45_p5_spawns(void)    { return u6b_run(p45_check_p5_spawns); }
+
+/* §P5.5: 0x24508 stores the +0x10 handler 0x24454 in the other slot; the
+ * adapter resolves 0x24454 and passes the slot's record. */
+static void p45_check_handler(void)
+{
+    p45_anim_fn f;
+    f = (p45_anim_fn)(void *)fn_resolve(0x24508u);
+    CHECK(f != NULL, "0x24508 is registered");
+    CHECK(fn_resolve(0x24454u) == (void (*)(void))fighter_24454_case10, "0x24454 is the case-10 adapter");
+    if (f != NULL) {
+        z_fseed();
+        c4r_pool();
+        DSB(Z_R0 + 0x51u) = 0u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_S1 + 0x10u), 0x00024454);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 0x10);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x53u), 0x0A);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x58u), 0);
+    }
+    /* the case-10 adapter supplies the slot's record: with slot 1's +0x58 = 0
+     * and its record's +0x24 = 0, 0x24454 spawns from the slot's char with
+     * a2 = the record's +0x18 (a port that passed 0 would take a2 = 0). */
+    {
+        static u32 before[0x80];
+        u32 n, child, x;
+        void (*h)(u32, u32) = (void (*)(u32, u32))(void *)fn_resolve(0x24454u);
+        CHECK(h == (void (*)(u32, u32))fighter_24454_case10, "the adapter is the handler");
+        if (h != NULL) {
+            z_fseed();
+            c4r_pool();
+            DSD(Z_S1) = Z_R1;
+            DSD(Z_R1 + 0x18u) = 0x18181818u;
+            DSD(Z_R1 + 0x24u) = 0u;
+            DSB(Z_S1 + 0x58u) = 0u;
+            DSB(Z_S1 + 0x7Au) = 2u;
+            n = u6b_list(before, 0x80u);
+            h(Z_S1, 0u);
+            child = p45_new_child(before, n, &x);
+            CHECK_EQ_INT((int)x, 1);
+            if (x == 1u) CHECK_EQ_INT((int)DSD(child + 0x18u), 0x18181818);
+        }
+    }
+}
+int test_p45_handler(void)      { return u6b_run(p45_check_handler); }

@@ -404,6 +404,118 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
             "fighter_4844c@zext": {"call #4"}, "fighter_4844c@width": {"byte", "call #0 memory", "call #1 memory", "call #2 memory",
                                     "call #3 memory", "call #4 memory"}}
 
+# Track P batches 4 and 5 (record 2026-10-03-reverse-p4-p5): its rows with their EAX masks, and what alone
+# catches each of its mutants.
+P45_MASKS = {"fighter_18bc8": 0, "fighter_21084": 0, "fighter_400e0": 0, "fighter_21044": 0,
+             "fighter_1549c": 0, "fighter_154e8": 0, "fighter_229e8": 0, "fighter_243f8": 0,
+             "fighter_15510": 0, "fighter_241a8": 0, "fighter_40358": 0, "fighter_45c54": 0,
+             "fighter_489dc": 0, "fighter_400ec": 0,
+             "fighter_3427c": 0, "fighter_34308": 0, "fighter_3438c": 0, "fighter_34418": 0,
+             "fighter_344a4": 0, "fighter_34530": 0, "fighter_345bc": 0,
+             "fighter_156e0": 0, "fighter_22ab8": 0, "fighter_37b70": 0,
+             "fighter_3d328": 0, "fighter_3da50": 0, "fighter_3db8c": 0, "fighter_3dc3c": 0,
+             "fighter_403a0": 0, "fighter_40fbc": 0, "fighter_48a20": 0,
+             "fighter_24508": 0, "fighter_24454": 0}
+P45_KINDS = {"fighter_18bc8@mutant": {"byte"},
+             "fighter_21084@mutant": {"byte"}, "fighter_21084@byte14": {"byte"},
+             "fighter_400e0@mutant": {"byte"},
+             "fighter_21044@mutant": {"byte", "call #0"}, "fighter_21044@neg": {"byte", "call #0"},
+             "fighter_1549c@mutant": {"call #2"}, "fighter_1549c@side": {"call #0", "call #1"},
+             "fighter_154e8@mutant": {"byte", "call #0 memory"},
+             "fighter_154e8@side": {"byte", "call #0 memory"},
+             "fighter_229e8@mutant": {"call #0"},
+             "fighter_243f8@mutant": {"call #0"}, "fighter_243f8@slot": {"byte"},
+             # track P batch 4+5 Task 3: the descriptor address (@mutant), the side index, the
+             # palette store (0x9B090 vs 0x9B08C, also the call #1 memory) and the a5 flag.
+             "fighter_15510@mutant": {"call #1"}, "fighter_15510@side": {"call #0"},
+             "fighter_15510@pal": {"byte", "call #1 memory"}, "fighter_15510@a5": {"call #1"},
+             "fighter_241a8@mutant": {"call #0"}, "fighter_241a8@sext": {"call #0"},
+             "fighter_40358@mutant": {"call #0"},
+             "fighter_45c54@mutant": {"call #1"},
+             "fighter_489dc@mutant": {"byte"},
+             "fighter_400ec@mutant": {"call #2"}, "fighter_400ec@side": {"call #0", "call #1"},
+             # track P batch 4+5 Task 4: the seven 0xD500 side-record targets. @mutant is the
+             # stream (3438C's body is voice-first, so it differs at both calls), @side the 0x80
+             # index (s2 alone reads the zero record at 0x10C1B0), @voice the voice; 34418@side
+             # carries the wrong voice too (call #0) plus the masked index (call #1).
+             "fighter_3427c@mutant": {"call #1"}, "fighter_3427c@side": {"call #1"},
+             "fighter_3427c@voice": {"call #0"},
+             "fighter_34308@mutant": {"call #0"}, "fighter_34308@side": {"call #0"},
+             "fighter_3438c@mutant": {"call #0", "call #1"},
+             "fighter_3438c@side": {"call #0", "call #1"},
+             "fighter_34418@mutant": {"call #0"}, "fighter_34418@side": {"call #0", "call #1"},
+             "fighter_344a4@mutant": {"call #1"}, "fighter_344a4@side": {"call #1"},
+             "fighter_34530@mutant": {"call #0"}, "fighter_34530@side": {"call #1"},
+             "fighter_345bc@mutant": {"call #1"}, "fighter_345bc@side": {"call #1"},
+             # track P batch 4+5 Task 5: the record-shifting targets. @mutant (156e0) is the voice,
+             # @side the 0x80 slot index (s2 alone reads the fake third entry), @signed the unsigned
+             # shift (s0's byte 0x80), @plus the sign branch; 22ab8's @side swaps the table index's
+             # side (h2/h3), @sext sign-extends it (h3's 0x80), @add swaps the +0x18 step and @table
+             # hard-codes the second entry; 37b70's @mutant is a4 = 4, @path the character test,
+             # @neg the bit-14 negation (r3), @hrec the pool-index destination, @sext the
+             # sign-extended character (r6's 0x80).
+             "fighter_156e0@mutant": {"call #2"},
+             "fighter_156e0@side": {"byte", "call #1", "call #1 memory", "call #2 memory"},
+             "fighter_156e0@signed": {"byte", "call #1 memory", "call #2 memory"},
+             "fighter_156e0@plus": {"byte", "call #1 memory", "call #2 memory"},
+             "fighter_22ab8@mutant": {"byte", "call #0"},
+             "fighter_22ab8@side": {"byte", "call #0 memory"},
+             "fighter_22ab8@sext": {"byte", "call #0 memory"},
+             "fighter_22ab8@add": {"byte", "call #0"},
+             "fighter_22ab8@table": {"byte", "call #0"},
+             "fighter_37b70@mutant": {"call #0"},
+             "fighter_37b70@path": {"byte", "call #0"},
+             "fighter_37b70@neg": {"call #0"},
+             "fighter_37b70@hrec": {"byte"},
+             "fighter_37b70@sext": {"byte", "call #0"},
+             # track P batch 4+5 Task 6: the spawn family and the +0x10 handler. @mutant is the
+             # descriptor (or a4 = 4 for 37b70), @a2 the sign branch, @a4 the a4 argument, @side the
+             # +0x4E/+0x2E arm (the byte and the memory at the second call), @voice the voice;
+             # 3db8c/3dc3c's @w34 the child's +0x34 word, @a4 the +0x1300 step; 403a0's @signed the
+             # zero-extended word, @neg the bit-14 negation, @a5 the 0x400 flag, @r59 the -1;
+             # 40fbc's @pal the palette word, @a2 the sign branch; 48a20's @walk the chain walk and
+             # @a2 the +0xC40/-0xC40 step.
+             "fighter_3d328@mutant": {"call #0", "call #1"},
+             "fighter_3d328@a2": {"call #0", "call #1"},
+             "fighter_3d328@a4": {"call #0", "call #1"},
+             "fighter_3d328@side": {"byte", "call #1 memory"},
+             "fighter_3d328@voice": {"call #1"},
+             "fighter_3da50@mutant": {"byte", "call #0", "call #1", "call #1 memory"},
+             "fighter_3da50@a2": {"byte", "call #0", "call #1", "call #1 memory"},
+             "fighter_3da50@a4": {"byte", "call #0", "call #1", "call #1 memory"},
+             "fighter_3da50@side": {"byte", "call #0", "call #1 memory"},
+             "fighter_3db8c@mutant": {"call #0"}, "fighter_3db8c@a2": {"call #0"},
+             "fighter_3db8c@w34": {"byte"}, "fighter_3db8c@a4": {"call #0"},
+             "fighter_3db8c@side": {"byte"},
+             "fighter_3dc3c@mutant": {"byte", "call #0"}, "fighter_3dc3c@a2": {"byte", "call #0"},
+             "fighter_3dc3c@w34": {"byte"}, "fighter_3dc3c@side": {"byte"},
+             "fighter_403a0@mutant": {"call #0"}, "fighter_403a0@side": {"byte", "call #0"},
+             "fighter_403a0@signed": {"call #0"}, "fighter_403a0@neg": {"call #0"},
+             "fighter_403a0@a5": {"call #0"}, "fighter_403a0@r59": {"byte"},
+             "fighter_40fbc@mutant": {"call #2"}, "fighter_40fbc@pal": {"call #2"},
+             "fighter_40fbc@a2": {"call #0", "call #1", "call #1 memory", "call #2"},
+             "fighter_48a20@mutant": {"call #0"}, "fighter_48a20@walk": {"byte"},
+             "fighter_48a20@a2": {"call #0"},
+             # track P batch 4+5 Task 7: the +0x10 handler and its case-10 adapter. @mutant is
+             # the voice; @side the own/other slot swap (the memory at both calls and the
+             # wrong slot's bytes); @stream the character index's table entry (the recorded
+             # stream argument alone). 0x24454: @mutant the child's +0x36 store (byte alone),
+             # @guard the 0x7FFFFFFF mask (t1's 0x80000000), @st1 the 0x3000 bound (t5/t6),
+             # @pset the deref of 0x1014EC, @release the released record, @side the other-side
+             # index (t8's rec+0x51 = 2), @desc the descriptor index's scale, @a5 bit 14.
+             "fighter_24508@mutant": {"call #1"}, "fighter_24508@side": {"byte", "call #0 memory", "call #1 memory"},
+             "fighter_24508@stream": {"call #0"},
+             "fighter_24454@mutant": {"byte"}, "fighter_24454@guard": {"byte", "call #0"},
+             "fighter_24454@st1": {"byte", "call #0", "call #1"}, "fighter_24454@pset": {"call #0"},
+             "fighter_24454@release": {"call #0"}, "fighter_24454@side": {"call #1"},
+             "fighter_24454@desc": {"call #0"}, "fighter_24454@a5": {"call #0"}}
+
+
+# The s2 case (side 0x80) makes every one of the seven read the slot at DS_001077B0 + 0x80*0x94 =
+# 0x10C1B0 (outside the image; the record there is zero, so a `& 1` index would read E3_REC's).
+P45_OUTSIDE = {name: [(0x10C1B0, 4)] for name in (
+    "fighter_3427c", "fighter_34308", "fighter_3438c", "fighter_34418",
+    "fighter_344a4", "fighter_34530", "fighter_345bc")}
 # Track P batch C1 (record 2026-10-03-reverse-c1): the callee rows with their EAX masks, and what
 # alone catches each of their mutants.
 C1_MASKS = {"fighter_3c148": 0, "fighter_3c16c": 0, "fighter_39a10": 0, "fighter_36d98": 0,
@@ -499,13 +611,13 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_37dcc", "fighter_45878", "fighter_ctx_same",
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
-                                            + list(P3_MASKS) + list(C1_MASKS)))
+                                            + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
             self.assertEqual((r.verdict, r.problems, r.unhit), ("VERIFIED", [], []), name)
             self.assertLessEqual(r.hit, r.total, name)
-            self.assertEqual(r.outside, [], name)
+            self.assertEqual(r.outside, P45_OUTSIDE.get(name, []), name)
 
     def test_every_mutant_is_reported_as_a_mismatch(self):
         self.assertEqual(sorted(self.mut), sorted([
@@ -514,7 +626,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_23130@novoice", "fighter_23130@reorder", "fighter_23130@voice", "fighter_3640c@mutant", "fighter_37dcc@mutant",
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
-            + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(C1_KINDS)))
+            + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -579,7 +691,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
-            **P1_MASKS, **P2_MASKS, **P3_MASKS, **C1_MASKS})
+            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)
@@ -745,6 +857,51 @@ class RealFunctionTests(unittest.TestCase):
                           ("fighter_4844c@width", ["a9", "aA", "aB", "aO", "aP"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
+    def test_each_p45_mutant_is_caught_by_what_it_breaks(self):
+        # track P batches 4 and 5 (record 2026-10-03-reverse-p4-p5): what alone catches each mutant
+        for name, want in P45_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        # the index byte 0x80 alone tells the zero-extended `^ 1` index from `(& 1) ^ 1` (s2 reads
+        # the fake third entry 0x1079AC, s3 the fake 0x1077B4: a masked index reads the other slot);
+        # the byte test of the record's +0x14 pointer (n1, whose low byte is 0) skips where the
+        # original runs; 0x21044's negation needs a case that reaches it (h1's stub AL clear and
+        # h2's AL set); the own slot against the other (both z0 and z1) tells 0x243F8's ctx[3] from
+        # its ctx[2]
+        for name, ids in (("fighter_1549c@side", ["s2"]), ("fighter_154e8@side", ["s3"]),
+                          ("fighter_21084@byte14", ["n1"]), ("fighter_21044@neg", ["h1", "h2"]),
+                          ("fighter_243f8@slot", ["z0", "z1"]),
+                          # the 0x80/0x81 index reads the fake third entry (a masked index reads
+                          # the other slot): 0x15510's s2, 0x241A8's n3 and 0x400EC's s2 alone
+                          ("fighter_15510@side", ["s2"]), ("fighter_241a8@sext", ["n3"]),
+                          ("fighter_400ec@side", ["s2"]),
+                          # track P batch 4+5 Task 5: the 0x80 slot index (156e0's s2), the signed
+                          # byte 0xC9786 (156e0's s0), 22ab8's side-indexed table (h3's 0x80), the
+                          # bit-14 negation and the pool-index destination (37b70's r3/r4-r6), and
+                          # 37b70's sign-extended character (r6's 0x80)
+                          ("fighter_156e0@side", ["s2"]), ("fighter_156e0@signed", ["s0"]),
+                          ("fighter_22ab8@sext", ["h3"]), ("fighter_22ab8@side", ["h2", "h3"]),
+                          ("fighter_37b70@neg", ["r3"]), ("fighter_37b70@hrec", ["r4", "r5", "r6"]),
+                          ("fighter_37b70@sext", ["r3", "r4", "r5", "r6"]),
+                          # track P batch 4+5 Task 6: the bit-14 negation of 0x403A0's a2 (h3 is
+                          # the only case that reaches the spawn with the flag set)
+                          ("fighter_403a0@neg", ["h3"]),
+                          # track P batch 4+5 Task 7: both 0x24508 cases catch the voice, the
+                          # own/other swap and the stream index; the +0x24 mask (t1), the
+                          # 0x3000 bound (t5/t6), the 0x1014EC deref and the released record
+                          # (t5-t8), the other-side index (t8's rec+0x51 = 2), the descriptor
+                          # index (t1/t3), bit 14 (t1) and the child's +0x36 store (t1/t3)
+                          ("fighter_24508@mutant", ["s0", "s1"]), ("fighter_24508@side", ["s0", "s1"]),
+                          ("fighter_24508@stream", ["s0", "s1"]),
+                          ("fighter_24454@mutant", ["t1", "t3"]), ("fighter_24454@guard", ["t1"]),
+                          ("fighter_24454@st1", ["t5", "t6"]),
+                          ("fighter_24454@pset", ["t5", "t6", "t7", "t8"]),
+                          ("fighter_24454@release", ["t5", "t6", "t7", "t8"]),
+                          ("fighter_24454@side", ["t8"]), ("fighter_24454@desc", ["t1", "t3"]),
+                          ("fighter_24454@a5", ["t1"])):
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
+
     def test_each_c1_mutant_is_caught_by_what_it_breaks(self):
         # track P batch C1 (record 2026-10-03-reverse-c1): what alone catches each mutant; every row
         # with a callee has one that only the call list or the memory at a call catches
@@ -823,7 +980,7 @@ class RealFunctionTests(unittest.TestCase):
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
         stubs = {k.addr: k.clobbers for s in V.SPECS for k in s.calls if k.mode == "stub"}
         self.assertEqual(stubs, {0x2C3FC: (), 0x2BC30: ("edx",), 0x3C4CC: ("edx",), 0x3C480: ("edx",),
-                                 0x2AE14: ("ebx", "ecx", "edx"), 0x1A570: (), 0x2A17C: ("edx",),
+                                 0x2AE14: ("ebx", "ecx", "edx"), 0x29C08: ("edx",), 0x1A570: (), 0x2A17C: ("edx",),
                                  0x188AC: ("edx",), 0x38034: (), 0x34D8C: (),
                                  0x18C14: ("ebx", "edx", "ebp"), 0x18AF8: ("ebx", "ecx", "edx"),
                                  0x39834: ("edx", "ebp"), 0x39A10: ("edx",), 0x3C208: ("edx",), 0x3C358: (),
@@ -835,7 +992,8 @@ class RealFunctionTests(unittest.TestCase):
                                  0x189FC: (), 0x18A4C: (), 0x18B04: (), 0x18B44: (),
                                  0x1DDF4: ("ebx", "edx"), 0x2A408: ("edx",), 0x2B2A0: ("ebx", "edx"),
                                  0x33754: (), 0x33864: (), 0x36638: ("edx",), 0x39EFC: (),
-                                 0x39F40: ("ebx", "edx"), 0x3B8D8: ("edx",), 0x3B90C: ("edx",)})
+                                 0x39F40: ("ebx", "edx"), 0x3B8D8: ("edx",), 0x3B90C: ("edx",),
+                                 0x2AD40: ("edx", "edi", "ebp")})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -929,9 +1087,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (64), the 14 without are counted apart
-        self.assertIn("diff-verify: 98/98 functions VERIFIED; 219/219 mutants detected; 1 named gaps; "
-                      "34/78 rows with callees closed (20 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (108), the 23 without are counted apart
+        self.assertIn("diff-verify: 131/131 functions VERIFIED; 313/313 mutants detected; 1 named gaps; "
+                      "39/108 rows with callees closed (23 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
