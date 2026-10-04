@@ -16218,3 +16218,78 @@ void fighter_400ec(u32 rec)
     sound_voice(0x59u);                                     /* 0x40132/0x40137 */
     DSB(P4_104AE9) |= 0x04u;                                /* 0x4013C */
 }
+
+
+#define P4_STREAM_3427C  0x000E76B2u  /* 0x342EA */
+#define P4_STREAM_34308  0x000E436Au  /* 0x3436D */
+#define P4_STREAM_3438C  0x000ED354u  /* 0x343F1 */
+#define P4_STREAM_34418  0x000EAF66u  /* 0x34486 */
+#define P4_STREAM_344A4  0x000D461Cu  /* 0x34512 */
+#define P4_STREAM_34530  0x000D299Cu  /* 0x3459E */
+#define P4_STREAM_345BC  0x000E0F62u  /* 0x3462A */
+
+
+/* 0x3427C — record §P4.5. The side's own slot record (DS_001077B0 +
+ * (rec+0x51) * 0x94, the byte zero-extended) on 0xE76B2 at 3.0, after the
+ * voice 0x8C. The raw builds the two slot pointers inline (no 0x33950 call). */
+void fighter_3427c(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x34280..0x34288 */
+    u32 own = DS_001077B0 + side * 0x94u;                   /* 0x34299..0x342B1 */
+    sound_voice(0x8Cu);                                     /* 0x342E5..0x342EF */
+    actors_anim_begin(DSD(own), P4_STREAM_3427C, 0x40400000u);   /* 0x342F4..0x342FD */
+}
+
+/* 0x34308 — record §P4.5. The same slot record on 0xE436A at 3.0, no voice. */
+void fighter_34308(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x3430C..0x34314 */
+    u32 own = DS_001077B0 + side * 0x94u;                   /* 0x34325..0x3433D */
+    actors_anim_begin(DSD(own), P4_STREAM_34308, 0x40400000u);   /* 0x34376..0x3437F */
+}
+
+/* 0x3438C — record §P4.5. The same slot record on 0xED354 at 1.0; the voice 0xA6 runs
+ * after the stream here (0x34403 then 0x3440D, unlike the others). */
+void fighter_3438c(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x34390..0x34398 */
+    u32 own = DS_001077B0 + side * 0x94u;                   /* 0x343A9..0x343C1 */
+    actors_anim_begin(DSD(own), P4_STREAM_3438C, 0x3F800000u);   /* 0x343FE..0x34403 */
+    sound_voice(0xA6u);                                     /* 0x34408..0x3440D */
+}
+
+/* 0x34418 — record §P4.5. The same slot record on 0xEAF66 at 3.0, after the voice 0x84. */
+void fighter_34418(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x3441C..0x34424 */
+    u32 own = DS_001077B0 + side * 0x94u;                   /* 0x34435..0x3444D */
+    sound_voice(0x84u);                                     /* 0x34481..0x3448B */
+    actors_anim_begin(DSD(own), P4_STREAM_34418, 0x40400000u);   /* 0x34490..0x34499 */
+}
+
+/* 0x344A4 — record §P4.5. The same slot record on 0xD461C at 3.0, after the voice 0x86. */
+void fighter_344a4(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x344A8..0x344B0 */
+    u32 own = DS_001077B0 + side * 0x94u;                   /* 0x344C1..0x344D9 */
+    sound_voice(0x86u);                                     /* 0x3450D..0x34517 */
+    actors_anim_begin(DSD(own), P4_STREAM_344A4, 0x40400000u);   /* 0x3451C..0x34525 */
+}
+
+/* 0x34530 — record §P4.5. The same slot record on 0xD299C at 3.0, after the voice 0x9C. */
+void fighter_34530(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x34534..0x3453C */
+    u32 own = DS_001077B0 + side * 0x94u;                   /* 0x3454D..0x34565 */
+    sound_voice(0x9Cu);                                     /* 0x34599..0x345A3 */
+    actors_anim_begin(DSD(own), P4_STREAM_34530, 0x40400000u);   /* 0x345A8..0x345B1 */
+}
+
+/* 0x345BC — record §P4.5. The same slot record on 0xE0F62 at 3.0, after the voice 0x9B. */
+void fighter_345bc(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x345C0..0x345C8 */
+    u32 own = DS_001077B0 + side * 0x94u;                   /* 0x345D9..0x345F1 */
+    sound_voice(0x9Bu);                                     /* 0x34625..0x3462F */
+    actors_anim_begin(DSD(own), P4_STREAM_345BC, 0x40400000u);   /* 0x34634..0x3463D */
+}

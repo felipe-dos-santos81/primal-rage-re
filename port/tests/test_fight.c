@@ -46907,3 +46907,30 @@ static void p45_check_p4_spawns(void)
 }
 
 int test_p45_p4_spawns(void)    { return u6b_run(p45_check_p4_spawns); }
+
+/* §P4.5: the seven 0xD500 side-record targets, each through its registration:
+ * the side's own slot record starts a real stream (its +8 changes from the
+ * sentinel), and the other slot's record keeps its +8 sentinel. */
+static void p45_check_side_anim(void)
+{
+    static const u32 addr[7] = { 0x3427Cu, 0x34308u, 0x3438Cu, 0x34418u, 0x344A4u, 0x34530u, 0x345BCu };
+    p45_anim_fn f;
+    u32 k, side;
+    for (k = 0; k < 7u; k++) {
+        f = (p45_anim_fn)(void *)fn_resolve(addr[k]);
+        CHECK(f != NULL, "the 0xD500 target is registered");
+        if (f == NULL) return;
+        for (side = 0; side < 2u; side++) {
+            u32 own = side == 0u ? Z_R0 : Z_R1, oth = side == 0u ? Z_R1 : Z_R0;
+            z_fseed();
+            c4r_pool();
+            DSB(Z_R0 + 0x51u) = (u8)side;
+            DSD(own + 8u) = 0x08080808u;
+            DSD(oth + 8u) = 0x18181818u;
+            f(Z_R0, 0u);
+            CHECK(DSD(own + 8u) != 0x08080808u, "the side's record started a stream");
+            CHECK_EQ_INT((int)DSD(oth + 8u), 0x18181818);
+        }
+    }
+}
+int test_p45_side_anim(void)    { return u6b_run(p45_check_side_anim); }

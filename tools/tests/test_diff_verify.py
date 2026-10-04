@@ -409,7 +409,9 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
 P45_MASKS = {"fighter_18bc8": 0, "fighter_21084": 0, "fighter_400e0": 0, "fighter_21044": 0,
              "fighter_1549c": 0, "fighter_154e8": 0, "fighter_229e8": 0, "fighter_243f8": 0,
              "fighter_15510": 0, "fighter_241a8": 0, "fighter_40358": 0, "fighter_45c54": 0,
-             "fighter_489dc": 0, "fighter_400ec": 0}
+             "fighter_489dc": 0, "fighter_400ec": 0,
+             "fighter_3427c": 0, "fighter_34308": 0, "fighter_3438c": 0, "fighter_34418": 0,
+             "fighter_344a4": 0, "fighter_34530": 0, "fighter_345bc": 0}
 P45_KINDS = {"fighter_18bc8@mutant": {"byte"},
              "fighter_21084@mutant": {"byte"}, "fighter_21084@byte14": {"byte"},
              "fighter_400e0@mutant": {"byte"},
@@ -427,7 +429,27 @@ P45_KINDS = {"fighter_18bc8@mutant": {"byte"},
              "fighter_40358@mutant": {"call #0"},
              "fighter_45c54@mutant": {"call #1"},
              "fighter_489dc@mutant": {"byte"},
-             "fighter_400ec@mutant": {"call #2"}, "fighter_400ec@side": {"call #0", "call #1"}}
+             "fighter_400ec@mutant": {"call #2"}, "fighter_400ec@side": {"call #0", "call #1"},
+             # track P batch 4+5 Task 4: the seven 0xD500 side-record targets. @mutant is the
+             # stream (3438C's body is voice-first, so it differs at both calls), @side the 0x80
+             # index (s2 alone reads the zero record at 0x10C1B0), @voice the voice; 34418@side
+             # carries the wrong voice too (call #0) plus the masked index (call #1).
+             "fighter_3427c@mutant": {"call #1"}, "fighter_3427c@side": {"call #1"},
+             "fighter_3427c@voice": {"call #0"},
+             "fighter_34308@mutant": {"call #0"}, "fighter_34308@side": {"call #0"},
+             "fighter_3438c@mutant": {"call #0", "call #1"},
+             "fighter_3438c@side": {"call #0", "call #1"},
+             "fighter_34418@mutant": {"call #0"}, "fighter_34418@side": {"call #0", "call #1"},
+             "fighter_344a4@mutant": {"call #1"}, "fighter_344a4@side": {"call #1"},
+             "fighter_34530@mutant": {"call #0"}, "fighter_34530@side": {"call #1"},
+             "fighter_345bc@mutant": {"call #1"}, "fighter_345bc@side": {"call #1"}}
+
+
+# The s2 case (side 0x80) makes every one of the seven read the slot at DS_001077B0 + 0x80*0x94 =
+# 0x10C1B0 (outside the image; the record there is zero, so a `& 1` index would read E3_REC's).
+P45_OUTSIDE = {name: [(0x10C1B0, 4)] for name in (
+    "fighter_3427c", "fighter_34308", "fighter_3438c", "fighter_34418",
+    "fighter_344a4", "fighter_34530", "fighter_345bc")}
 
 
 @needs_unicorn
@@ -458,7 +480,7 @@ class RealFunctionTests(unittest.TestCase):
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
             self.assertEqual((r.verdict, r.problems, r.unhit, r.hit), ("VERIFIED", [], [], r.total), name)
-            self.assertEqual(r.outside, [], name)
+            self.assertEqual(r.outside, P45_OUTSIDE.get(name, []), name)
 
     def test_every_mutant_is_reported_as_a_mismatch(self):
         self.assertEqual(sorted(self.mut), sorted([
@@ -825,9 +847,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (75), the 17 without are counted apart
-        self.assertIn("diff-verify: 92/92 functions VERIFIED; 182/182 mutants detected; 1 named gaps; "
-                      "12/75 rows with callees closed (17 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (82), the 17 without are counted apart
+        self.assertIn("diff-verify: 99/99 functions VERIFIED; 197/197 mutants detected; 1 named gaps; "
+                      "12/82 rows with callees closed (17 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

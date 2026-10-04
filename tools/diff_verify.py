@@ -1559,6 +1559,34 @@ Spec("fighter_400ec", 0x400EC, [
 ]
 
 
+# The seven 0xD500 side-record targets 0x3427C..0x345BC: s0 the own slot 0's record (E3_REC), s1
+# slot 1's (E3_REC2), s2 side 0x80 (the slot at DS_001077B0 + 0x80 * 0x94 = 0x10C1B0, whose record
+# is zero: a `&1` port reads E3_REC). The voice (when the function has one) runs before the stream,
+# except 0x3438C (anim_begin 0x34403, voice 0x3440D).
+def p45_own_anim(name, entry, stream, frame, voice, mutants=("@mutant", "@side")):
+    return Spec(name, entry, [
+        Case("s0", {"eax": E3_OUT, "edx": 0x1234, "ecx": 0}, {**SLOT_PTRS, E3_OUT + 0x51: b"\x00"}),
+        Case("s1", {"eax": E3_OUT, "edx": 0x1234, "ecx": 0}, {**SLOT_PTRS, E3_OUT + 0x51: b"\x01"}),
+        Case("s2", {"eax": E3_OUT, "edx": 0x1234, "ecx": 0}, {**SLOT_PTRS, E3_OUT + 0x51: b"\x80"}),
+    ], calls=(ANIM_BEGIN, VOICE) if voice else (ANIM_BEGIN,), eax_mask=0, mutants=mutants)
+
+P45_SPECS += [
+p45_own_anim("fighter_3427c", 0x3427C, 0xE76B2, 0x40400000, 0x8C, ("@mutant", "@side", "@voice")),
+
+p45_own_anim("fighter_34308", 0x34308, 0xE436A, 0x40400000, None),
+
+p45_own_anim("fighter_3438c", 0x3438C, 0xED354, 0x3F800000, 0xA6),
+
+p45_own_anim("fighter_34418", 0x34418, 0xEAF66, 0x40400000, 0x84),
+
+p45_own_anim("fighter_344a4", 0x344A4, 0xD461C, 0x40400000, 0x86),
+
+p45_own_anim("fighter_34530", 0x34530, 0xD299C, 0x40400000, 0x9C),
+
+p45_own_anim("fighter_345bc", 0x345BC, 0xE0F62, 0x40400000, 0x9B),
+]
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

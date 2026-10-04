@@ -30,7 +30,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | callbacks | 0 | 71 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
-| animation-targets | 41 | 71 |
+| animation-targets | 34 | 78 |
 | span-writers | 231 | 0 |
 | other | 3 | 54 |
 
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 3 |
 | leaf | 228 |
-| stubs | 44 |
+| stubs | 37 |
 
 ## Rows
 
@@ -209,13 +209,13 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 32E00 | 2240 | interior | an instruction of the scan from 32BDC, which only the rel32 at 33571 (untrusted bytes) reaches | yes | - | no | - | - | - |
 | 33C5C | 28 | data | memory operand of the instruction at 33E61 | yes | - | no | - | - | - |
 | 33EEC | 28 | data | memory operand of the instruction at 33F31 | yes | - | no | - | - | - |
-| 3427C | 140 | anim-target | dword E766E after the opcode word D500 at E766C | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 342EF |
-| 34308 | 132 | anim-target | dword E4326 after the opcode word D500 at E4324 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
-| 3438C | 140 | anim-target | dword ED332 after the opcode word D500 at ED330 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 3440D |
-| 34418 | 140 | anim-target | dword EAF3E after the opcode word D500 at EAF3C | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 3448B |
-| 344A4 | 140 | anim-target | dword D45E8 after the opcode word D500 at D45E6 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 34517 |
-| 34530 | 140 | anim-target | dword D2958 after the opcode word D500 at D2956 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 345A3 |
-| 345BC | 140 | anim-target | dword E0F24 after the opcode word D500 at E0F22 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 3462F |
+| 3427C | 140 | anim-target | dword E766E after the opcode word D500 at E766C | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 342EF |
+| 34308 | 132 | anim-target | dword E4326 after the opcode word D500 at E4324 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
+| 3438C | 140 | anim-target | dword ED332 after the opcode word D500 at ED330 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 3440D |
+| 34418 | 140 | anim-target | dword EAF3E after the opcode word D500 at EAF3C | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 3448B |
+| 344A4 | 140 | anim-target | dword D45E8 after the opcode word D500 at D45E6 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 34517 |
+| 34530 | 140 | anim-target | dword D2958 after the opcode word D500 at D2956 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 345A3 |
+| 345BC | 140 | anim-target | dword E0F24 after the opcode word D500 at E0F22 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 3462F |
 | 34648 | 176 | data-pointer | aligned dword A8664 | yes | - | yes | other | stubs (indirect at 62006 in 62003) | - |
 | 346F8 | 640 | anim-target | dword D2914 after the opcode word D500 at D2912 | yes | - | yes | animation-targets | stubs (indirect at 379E8 in 379C4) | - |
 | 34B14 | 88 | data | memory operand of the instruction at 34C00 | yes | - | no | - | - | - |
@@ -864,12 +864,12 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 30E44 | 30864 | row | yes |
 | 30E59 | 30864 | row | yes |
 | 30F47 | 30EB4 | row | yes |
-| 342EF | 3427C | row | no |
-| 3440D | 3438C | row | no |
-| 3448B | 34418 | row | no |
-| 34517 | 344A4 | row | no |
-| 345A3 | 34530 | row | no |
-| 3462F | 345BC | row | no |
+| 342EF | 3427C | row | yes |
+| 3440D | 3438C | row | yes |
+| 3448B | 34418 | row | yes |
+| 34517 | 344A4 | row | yes |
+| 345A3 | 34530 | row | yes |
+| 3462F | 345BC | row | yes |
 | 35E38 | 35E04 | row | yes |
 | 362E5 | 36280 | row | yes |
 | 37687 | 37640 | row | yes |

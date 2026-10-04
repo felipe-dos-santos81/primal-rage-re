@@ -2357,6 +2357,39 @@ static void m_400ec_side(const u32 *r, u32 *eax)
 }
 static void b_29c08(const u32 *r, u32 *eax)      { *eax = fighter_29c08(r[R_EAX], r[R_EDX]); }
 
+/* The seven 0xD500 side-record targets: one wrong variant each (the stream, the index mask or the
+ * voice), through a shared deliberately-wrong body. */
+static void m45_own_anim(u32 rec, u32 stream, u32 frame, u32 voice, int has_voice, int side_mask)
+{
+    u32 side = (u32)DSB(rec + 0x51u);
+    if (side_mask) side &= 1u;
+    if (has_voice) sound_voice(voice);
+    actors_anim_begin(DSD(0x001077B0u + side * 0x94u), stream, frame);
+}
+
+static void b_3427c(const u32 *r, u32 *eax)      { fighter_3427c(r[R_EAX]); *eax = 0u; }
+static void b_34308(const u32 *r, u32 *eax)      { fighter_34308(r[R_EAX]); *eax = 0u; }
+static void b_3438c(const u32 *r, u32 *eax)      { fighter_3438c(r[R_EAX]); *eax = 0u; }
+static void b_34418(const u32 *r, u32 *eax)      { fighter_34418(r[R_EAX]); *eax = 0u; }
+static void b_344a4(const u32 *r, u32 *eax)      { fighter_344a4(r[R_EAX]); *eax = 0u; }
+static void b_34530(const u32 *r, u32 *eax)      { fighter_34530(r[R_EAX]); *eax = 0u; }
+static void b_345bc(const u32 *r, u32 *eax)      { fighter_345bc(r[R_EAX]); *eax = 0u; }
+static void m_3427c(const u32 *r, u32 *eax)      { m45_own_anim(r[R_EAX], 0x000E76B0u, 0x40400000u, 0x8Cu, 1, 0); *eax = 0u; }
+static void m_3427c_side(const u32 *r, u32 *eax) { m45_own_anim(r[R_EAX], 0x000E76B2u, 0x40400000u, 0x8Cu, 1, 1); *eax = 0u; }
+static void m_3427c_voice(const u32 *r, u32 *eax) { m45_own_anim(r[R_EAX], 0x000E76B2u, 0x40400000u, 0x8Du, 1, 0); *eax = 0u; }
+static void m_34308(const u32 *r, u32 *eax)      { m45_own_anim(r[R_EAX], 0x000E4368u, 0x40400000u, 0u, 0, 0); *eax = 0u; }
+static void m_34308_side(const u32 *r, u32 *eax) { m45_own_anim(r[R_EAX], 0x000E436Au, 0x40400000u, 0u, 0, 1); *eax = 0u; }
+static void m_3438c(const u32 *r, u32 *eax)      { m45_own_anim(r[R_EAX], 0x000ED354u, 0x3F800000u, 0xA6u, 1, 0); *eax = 0u; }
+static void m_3438c_side(const u32 *r, u32 *eax) { m45_own_anim(r[R_EAX], 0x000ED354u, 0x3F800000u, 0xA6u, 1, 1); *eax = 0u; }
+static void m_34418(const u32 *r, u32 *eax)      { m45_own_anim(r[R_EAX], 0x000EAF66u, 0x40400000u, 0x85u, 1, 0); *eax = 0u; }
+static void m_34418_side(const u32 *r, u32 *eax) { m45_own_anim(r[R_EAX], 0x000EAF66u, 0x40400000u, 0x85u, 1, 1); *eax = 0u; }
+static void m_344a4(const u32 *r, u32 *eax)      { m45_own_anim(r[R_EAX], 0x000D4618u, 0x40400000u, 0x86u, 1, 0); *eax = 0u; }
+static void m_344a4_side(const u32 *r, u32 *eax) { m45_own_anim(r[R_EAX], 0x000D461Cu, 0x40400000u, 0x86u, 1, 1); *eax = 0u; }
+static void m_34530(const u32 *r, u32 *eax)      { m45_own_anim(r[R_EAX], 0x000D299Cu, 0x40400000u, 0x9Du, 1, 0); *eax = 0u; }
+static void m_34530_side(const u32 *r, u32 *eax) { m45_own_anim(r[R_EAX], 0x000D299Cu, 0x40400000u, 0x9Cu, 1, 1); *eax = 0u; }
+static void m_345bc(const u32 *r, u32 *eax)      { m45_own_anim(r[R_EAX], 0x000E0F62u, 0x3F800000u, 0x9Bu, 1, 0); *eax = 0u; }
+static void m_345bc_side(const u32 *r, u32 *eax) { m45_own_anim(r[R_EAX], 0x000E0F62u, 0x40400000u, 0x9Bu, 1, 1); *eax = 0u; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -2634,6 +2667,29 @@ static const binding_t k_bindings[] = {
     { "fighter_400ec",          b_400ec,         0x00000000u },
     { "fighter_400ec@mutant",   m_400ec,         0x00000000u },
     { "fighter_400ec@side",     m_400ec_side,    0x00000000u },
+    { "fighter_3427c",          b_3427c,         0x00000000u },
+    { "fighter_3427c@mutant",   m_3427c,         0x00000000u },
+    { "fighter_3427c@side",     m_3427c_side,    0x00000000u },
+    { "fighter_3427c@voice",    m_3427c_voice,   0x00000000u },
+    { "fighter_34308",          b_34308,         0x00000000u },
+    { "fighter_34308@mutant",   m_34308,         0x00000000u },
+    { "fighter_34308@side",     m_34308_side,    0x00000000u },
+    { "fighter_3438c",          b_3438c,         0x00000000u },
+    { "fighter_3438c@mutant",   m_3438c,         0x00000000u },
+    { "fighter_3438c@side",     m_3438c_side,    0x00000000u },
+    { "fighter_34418",          b_34418,         0x00000000u },
+    { "fighter_34418@mutant",   m_34418,         0x00000000u },
+    { "fighter_34418@side",     m_34418_side,    0x00000000u },
+    { "fighter_344a4",          b_344a4,         0x00000000u },
+    { "fighter_344a4@mutant",   m_344a4,         0x00000000u },
+    { "fighter_344a4@side",     m_344a4_side,    0x00000000u },
+    { "fighter_34530",          b_34530,         0x00000000u },
+    { "fighter_34530@mutant",   m_34530,         0x00000000u },
+    { "fighter_34530@side",     m_34530_side,    0x00000000u },
+    { "fighter_345bc",          b_345bc,         0x00000000u },
+    { "fighter_345bc@mutant",   m_345bc,         0x00000000u },
+    { "fighter_345bc@side",     m_345bc_side,    0x00000000u },
+
 
 
 };
