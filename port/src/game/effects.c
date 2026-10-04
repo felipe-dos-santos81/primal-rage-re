@@ -132,6 +132,7 @@ static u32 effect_take_free(void)
 /* 0x13C70. */
 u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
 {
+    PR_SEAM_RET(0x13C70u, source_rec, byte_arg, handle);
     u32 rec = effect_take_free();
     if (rec == 0) return 0;
 

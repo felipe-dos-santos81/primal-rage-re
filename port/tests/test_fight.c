@@ -47338,3 +47338,14 @@ static void p6_check_24338(void)
     CHECK_EQ_INT((int)DSB(DS_000F0AFF), 0);
 }
 int test_p6_24338(void)         { return u6b_run(p6_check_24338); }
+
+/* §P6.7: 0x23F10 and 0x45C98 (registration and evidence only; both spawn
+ * and would need the actor pool) through their registrations. */
+static void p6_check_23f10(void)
+{
+    CHECK(fn_resolve(0x23F10u) != NULL, "0x23F10 is registered");
+    CHECK(fn_resolve(0x45C98u) != NULL, "0x45C98 is registered");
+    CHECK_EQ_INT((int)DSD(0x000E4FE0u), 0x00023F10);
+    CHECK_EQ_INT((int)DSD(0x000EB80Au), 0x00045C98);
+}
+int test_p6_23f10(void)         { return u6b_run(p6_check_23f10); }

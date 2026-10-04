@@ -1316,5 +1316,7 @@ void fighter_3e160(u32 rec);
  * 0x13244's no argument). */
 u32 fighter_3aa54(u32 slot);
 void fighter_13244(void);
+void fighter_23f10(u32 rec);
+void fighter_45c98(u32 rec);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

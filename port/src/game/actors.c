@@ -230,6 +230,8 @@ static void anim_code_22A40(u32 rec, u32 arg);
 static void anim_code_47E30(u32 rec, u32 arg);
 static void anim_code_24338(u32 rec, u32 arg);
 static void anim_code_3E160(u32 rec, u32 arg);
+static void anim_code_23F10(u32 rec, u32 arg);
+static void anim_code_45C98(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -1018,6 +1020,10 @@ int actors_init(void)
     fn_register(0x47E30u, (void (*)(void))anim_code_47E30);
     fn_register(0x24338u, (void (*)(void))anim_code_24338);
     fn_register(0x3E160u, (void (*)(void))anim_code_3E160);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.7. Track P batch 6's Task 6
+     * animation targets. */
+    fn_register(0x23F10u, (void (*)(void))anim_code_23F10);
+    fn_register(0x45C98u, (void (*)(void))anim_code_45C98);
     return 1;
 }
 
@@ -2931,6 +2937,7 @@ void palette_release(u32 entry)
  * (0x2A165 tests the stored byte). Callers 0x22EF6, 0x23F4D, 0x40A4E. */
 void actor_pset_flag_5f(u32 rec, u8 flag)
 {
+    PR_SEAM(0x2A148u, rec, flag);
     DSB(rec + 0x5Fu) = flag;                                /* 0x2A14A */
     DSW(actor_pset(rec) + 0x02u) = (u16)(DSW(rec + 0x2Eu)
         | (DSB(rec + 0x5Fu) != 0 ? 0x800u : 0u));          /* 0x2A14D..0x2A174 */
@@ -4531,4 +4538,20 @@ static void anim_code_3E160(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_3e160(rec);
+}
+
+
+/* 0x23F10 — the D100 target at the dword 0xE4FE0. */
+static void anim_code_23F10(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_23f10(rec);
+}
+
+
+/* 0x45C98 — the D100 target at the dword 0xEB80A. */
+static void anim_code_45C98(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_45c98(rec);
 }

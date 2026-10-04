@@ -16899,3 +16899,67 @@ void fighter_3e160(u32 rec)
     DSB(rec + 0x4Bu) = DSB(child + 0x56u);                  /* 0x3E1BE/0x3E1C1 */
     DSB(child + 0x60u) = 1u;                                /* 0x3E1C4 */
 }
+
+
+/* The Task 6 targets' tables and globals (record §P6.7). The effective word
+ * base 0xA83EC is the high half of the dword the raw loads at 0xA83EA + 2c. */
+#define P6_WORD_A83EC     0x000A83ECu  /* 0x23F3A/0x23F43: [other char] word, the +0x1C step */
+#define P6_STREAMS_A8408  0x000A8408u  /* 0x23F59: [other char] stream */
+#define P6_DESC_A84CC     0x000A84CCu  /* 0x23F76: the spawn descriptor */
+#define P6_REC_104748     0x00104748u  /* 0x23F87/0x23FAC: the first child */
+#define P6_STREAMS_C90F8  0x000C90F8u  /* 0x45CC0: [other char] stream */
+#define P6_FX_HANDLE      0x00105FC30u /* 0x45CE5: the effects handle */
+#define P6_VOICE_C75AA    0x000C75AAu  /* 0x45CFD: [other char] voice */
+
+/* 0x23F10 — record §P6.7. The D100 target at the dword 0xE4FE0. The other
+ * slot: its +0x41 bit 5; its record's +0x1C -= word 0xA83EC[other char];
+ * 0x2A148(that record, 0); the record on 0xA8408[other char] at 3.0; a 0xA84CC
+ * child at the record's x/y; its +0x59 = 2 into 0x104748; three more 0xA84CC
+ * children at x 0/+0x14/-0x14 with a4 = 0xF and a5 = the first child's +0x56 |
+ * 0x400; voice 0x64. */
+void fighter_23f10(u32 rec)
+{
+    u32 other = DSD(DS_001077A8 + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 4u);  /* 0x23F13..0x23F1D */
+    u32 orec, ch, child, a5;
+    if (other == 0u) return;                                /* 0x23F26 */
+    DSB(other + 0x41u) |= 0x20u;                            /* 0x23F2C..0x23F37 */
+    ch = (u32)DSB(other + 0x7Au);                           /* 0x23F34 */
+    orec = DSD(other);                                      /* 0x23F41 */
+    DSD(orec + 0x1Cu) -= (u32)(s32)(s16)DSW(P6_WORD_A83EC + ch * 2u);   /* 0x23F3A..0x23F46 */
+    actor_pset_flag_5f(orec, 0u);                           /* 0x23F49..0x23F4D */
+    actors_anim_begin(orec, DSD(P6_STREAMS_A8408 + ch * 4u), 0x40400000u);  /* 0x23F52..0x23F65 */
+    child = actor_spawn((const u32 *)(mem + P6_DESC_A84CC),
+                        DSD(orec + 0x18u),
+                        (u32)((s32)DSD(orec + 0x30u) >> 16),
+                        0u, 0u);                            /* 0x23F6A..0x23F7E */
+    DSB(child + 0x59u) = 2u;                                /* 0x23F83 */
+    DSD(P6_REC_104748) = child;                             /* 0x23F87 */
+    a5 = (u32)(u16)(DSW(child + 0x56u) | 0x0400u);          /* 0x23F8C..0x23F98 */
+    (void)actor_spawn((const u32 *)(mem + P6_DESC_A84CC), 0u, 0u, 0xFu, a5);  /* 0x23F9D..0x23FA7 */
+    a5 = (u32)(u16)(DSW(DSD(P6_REC_104748) + 0x56u) | 0x0400u);   /* 0x23FAC..0x23FBD */
+    (void)actor_spawn((const u32 *)(mem + P6_DESC_A84CC), 0x14u, 0u, 0xFu, a5);  /* 0x23FC2..0x23FCF */
+    a5 = (u32)(u16)(DSW(DSD(P6_REC_104748) + 0x56u) | 0x0400u);   /* 0x23FD4..0x23FE5 */
+    (void)actor_spawn((const u32 *)(mem + P6_DESC_A84CC), 0xFFFFFFECu, 0u, 0xFu, a5);  /* 0x23FEA..0x23FF7 */
+    (void)sound_voice(0x64u);                               /* 0x23FFC/0x24001 */
+}
+
+
+/* 0x45C98 — record §P6.7. The D100 target at the dword 0xEB80A. With the
+ * record's +0x14 slot and the other side's slot: the other record on
+ * 0xC90F8[other char] at 2.0; 0x13C70(pset[other rec+0x56].+0x18, 4,
+ * 0x105FC30); voice 0xC75AA[other char]. */
+void fighter_45c98(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                            /* 0x45C9B */
+    u32 side, other, orec, ch, pset;
+    if (slot == 0u) return;                                 /* 0x45CA0 */
+    side = (u32)DSB(DSD(slot) + 0x51u);                     /* 0x45CA2..0x45CA7 */
+    other = DSD(DS_001077A8 + ((side ^ 1u) & 0xFFu) * 4u);  /* 0x45CAE */
+    if (other == 0u) return;                                /* 0x45CB7 */
+    ch = (u32)DSB(other + 0x7Au);                           /* 0x45CBB */
+    orec = DSD(other);                                      /* 0x45CBE */
+    actors_anim_begin(orec, DSD(P6_STREAMS_C90F8 + ch * 4u), 0x40000000u);  /* 0x45CC0..0x45CCC */
+    pset = DSD(DS_001014EC) + (u32)DSW(orec + 0x56u) * 0x20u;
+    (void)effects_spawn(DSD(pset + 0x18u), 4u, P6_FX_HANDLE);   /* 0x45CD1..0x45CF3 */
+    (void)sound_voice((u32)(u16)DSW(P6_VOICE_C75AA + ch * 2u));   /* 0x45CF8..0x45D0A */
+}
