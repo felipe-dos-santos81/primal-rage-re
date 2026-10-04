@@ -47396,3 +47396,56 @@ static void p6_check_37dd4(void)
     CHECK_EQ_INT((int)DSD(pset + 0x18u), 0xDEAD);   /* handle 0: nothing acquired */
 }
 int test_p6_37dd4(void)         { return u6b_run(p6_check_37dd4); }
+
+/* §P6.9: 0x22338 and 0x48374 through their registrations, with the real
+ * 0x39280/0x39834/0x39F40 running on the fixture (their own rows cover
+ * the arguments). */
+static void p6_check_22338(void)
+{
+    p1_anim_fn f;
+    CHECK(fn_resolve(0x22338u) != NULL, "0x22338 is registered");
+    CHECK(fn_resolve(0x48374u) != NULL, "0x48374 is registered");
+    CHECK_EQ_INT((int)DSD(0x000E4E46u), 0x00022338);
+    CHECK_EQ_INT((int)DSD(0x000ED8EAu), 0x00048374);
+
+    /* 0x22338 with side 0's record: the own slot's +0x57 = 6 selects the
+     * 0x39F40 pose, which writes the side's pose words 0x107A60..0x107A7C. The
+     * other slot's +0x74 is seeded so the write is observable (and the own
+     * slot's proves the target slot). */
+    f = (p1_anim_fn)(void *)fn_resolve(0x22338u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_S0 + 0x57u) = 6u;
+    DSW(Z_S0 + 0x74u) = 0x7474u;
+    DSW(Z_S1 + 0x74u) = 0x8484u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSD(0x00107A68u + 4u), (int)0xFFFFFED4u);
+    CHECK_EQ_INT((int)DSD(0x00107A78u + 4u), 0x8C);
+    CHECK_EQ_INT((int)DSD(0x00107A60u + 4u), 0x0F);
+    CHECK_EQ_INT((int)DSD(0x00107A70u + 4u), 0x0D);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
+    CHECK_EQ_INT((int)DSW(Z_S0 + 0x74u), 0x7474);
+    CHECK_EQ_INT((int)DSW(Z_S1 + 0x74u), 0);
+
+    /* 0x48374 with side 0's record and the byte 0x108392[0] = 0: the speed, the
+     * own record's +0x36/+0x44, the own slot's +0x57/+0x54 and the 0x39F40 pose. */
+    f = (p1_anim_fn)(void *)fn_resolve(0x48374u);
+    if (f == NULL) return;
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(0x00108392u) = 0u;
+    DSB(0x00108393u) = 0x5Au;
+    DSW(Z_R0 + 0x36u) = 0x3636u;
+    DSW(Z_R0 + 0x44u) = 0x4444u;
+    DSB(Z_S0 + 0x57u) = 0x57u;
+    DSB(Z_S0 + 0x54u) = 0x54u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0x02EE);
+    CHECK_EQ_INT((int)DSW(Z_R0 + 0x44u), 0x0028);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 3);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSD(0x00107A68u + 4u), (int)0xFFFFFF9Cu);
+    CHECK_EQ_INT((int)DSD(0x00107A70u + 4u), 0x14);
+}
+int test_p6_22338(void)         { return u6b_run(p6_check_22338); }

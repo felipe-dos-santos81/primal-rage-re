@@ -2497,6 +2497,7 @@ int fighter_pass_flag(u32 bit, u32 side)
  * flag). Called by 0x350D0's +0x41 bit 2 arm and its DS_001078F2 block. */
 void fighter_state_39280(u32 side)
 {
+    PR_SEAM(0x39280u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     DSB(slot + 0x5Du) = 0;                                  /* 0x3928F */
     DSB(slot + 0x43u) &= 0xFBu;                             /* 0x39296 */
@@ -16974,4 +16975,65 @@ void fighter_37dd4(u32 rec)
     u32 side = (u32)DSB(rec + 0x51u);                       /* 0x37DDA/0x37DF8 */
     actor_pset_palette(rec, DSB(rec + 0x51u) != 0u ? 4u : 0u, 0u);  /* 0x37DDD..0x37DF3 */
     fighter_29bc8(side, rec, (u32)DSB(DS_0010782A + side * 0x94u));  /* 0x37E10..0x37E19 */
+}
+
+
+/* The Task 8 targets' tables and globals (record §P6.9). */
+#define P6_ANIM_22338    0x000E4EACu  /* 0x22347: the D500 target's stream */
+#define P6_ANIM_48374    0x000ED8FEu  /* 0x483B2: the D500 target's stream */
+
+/* 0x22338 — record §P6.9. The D500 target at the dword 0xE4E46. ctx; the own
+ * record on 0xE4EAC at 3.0; pose 0x10 on the other side; voice 0x6B; 0x39280
+ * (the other side); the other slot's +0x74 = 0; by the own slot's +0x57: 6
+ * takes the 0x39F40 pose (-300, 0x8C, 0xF, 0xD), 7 takes (-70, 0x118, 0x13,
+ * 0x1E), every other state (-100, 0x78, 0xF, 0x10); then voice
+ * 0xBE008[other char] and the own +0x57 = 3. */
+void fighter_22338(u32 rec)
+{
+    u32 ctx[6];
+    u8 st;
+    hit_anim_ctx(ctx, rec);                                 /* 0x22342 */
+    actors_anim_begin(ctx[4], P6_ANIM_22338, 0x40400000u);  /* 0x22347..0x22355 */
+    fighter_39834(ctx[1], 0x10u);                           /* 0x2235A/0x22363 */
+    (void)sound_voice(0x6Bu);                               /* 0x22368/0x2236D */
+    fighter_state_39280(ctx[1]);                            /* 0x22372/0x22376 */
+    DSW(ctx[3] + 0x74u) = 0u;                               /* 0x2237B/0x2237F */
+    st = DSB(ctx[2] + 0x57u);                               /* 0x22389 */
+    if (st == 6u)                                           /* 0x2238E `jbe` */
+        fighter_pose_start(ctx[1], 0xFFFFFED4u, 0x8Cu, 0x0Fu, 0x0Du);
+    else if (st == 7u)                                      /* 0x22392/0x22394 */
+        fighter_pose_start(ctx[1], 0xFFFFFFBAu, 0x118u, 0x13u, 0x1Eu);
+    else                                                    /* 0x22396 */
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x78u, 0x0Fu, 0x10u);
+    (void)sound_voice((u32)(u16)DSW(P6_VOICE_BE008
+                                    + (u32)DSB(ctx[3] + 0x7Au) * 2u));   /* 0x223D6..0x223EF */
+    DSB(ctx[2] + 0x57u) = 3u;                               /* 0x223F4/0x223F8 */
+}
+
+
+/* 0x48374 — record §P6.9. The D500 target at the dword 0xED8EA. ctx; the
+ * side's speed -0x200; the own record's +0x36 = 0x2EE and +0x44 = 0x28; the own
+ * slot's +0x57 = 3 and +0x54 = 2; the record on 0xED8FE at 4.0; when
+ * 0x108392[side] is non-zero the other record on 0xC8F40[other char] at 5.0
+ * and the other slot's +0x58 = 1, else pose the own slot's +0x5F and the
+ * 0x39F40 pose (-100, 0x64, 0xF, 0x14). */
+void fighter_48374(u32 rec)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                                 /* 0x48380 */
+    fighter_3c190(ctx[0], 0xFFFFFF38u);                     /* 0x48385..0x4838D */
+    DSW(ctx[4] + 0x36u) = 0x02EEu;                          /* 0x48392/0x48396 */
+    DSW(ctx[4] + 0x44u) = 0x0028u;                          /* 0x4839C/0x483A0 */
+    DSB(ctx[2] + 0x57u) = 3u;                               /* 0x483A6/0x483AA */
+    DSB(ctx[2] + 0x54u) = 2u;                               /* 0x483AE/0x483B2 */
+    actors_anim_begin(rec, P6_ANIM_48374, 0x40400000u);     /* 0x483BD/0x483C2 */
+    if (DSB(P6_108392 + ctx[0]) != 0u) {                    /* 0x483CA/0x483D1 */
+        u32 ch = (u32)DSB(ctx[3] + 0x7Au);                  /* 0x483DC/0x483DF */
+        actors_anim_begin(ctx[5], DSD(P6_STREAMS_C8F40 + ch * 4u),
+                          0x40A00000u);                     /* 0x483E4..0x483EF */
+        DSB(ctx[3] + 0x58u) = 1u;                           /* 0x483F8 */
+    } else {
+        fighter_39834(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));    /* 0x483FE..0x48419 */
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x64u, 0x0Fu, 0x14u);   /* 0x4841E..0x48429 */
+    }
 }

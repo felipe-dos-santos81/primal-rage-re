@@ -30,7 +30,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | callbacks | 0 | 71 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
-| animation-targets | 8 | 104 |
+| animation-targets | 6 | 106 |
 | span-writers | 231 | 0 |
 | other | 3 | 54 |
 
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 1 |
 | leaf | 228 |
-| stubs | 13 |
+| stubs | 11 |
 
 ## Rows
 
@@ -121,7 +121,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 21D10 | 544 | move-callback | dword A3CF8 (char 1, reaction 0x24) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 2201C | 632 | move-callback | dword A55D0 (char 6, reaction 0x22) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 22294 | 164 | move-callback | dword A5634 (char 6, reaction 0x27) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
-| 22338 | 348 | anim-target | dword E4E46 after the opcode word D500 at E4E44 | yes | entry | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 2236D 223EF |
+| 22338 | 348 | anim-target | dword E4E46 after the opcode word D500 at E4E44 | yes | entry | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 2236D 223EF |
 | 22494 | 88 | anim-target | dword E4E1A after the opcode word D500 at E4E18 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 224E2 |
 | 224EC | 1100 | anim-target | dword E4E30 after the opcode word D500 at E4E2E | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 22938 | 176 | move-callback | dword A3CD0 (char 1, reaction 0x22) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
@@ -365,7 +365,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 47FCC | 648 | move-callback | dword A41E4 (char 2, reaction 0x23) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 48254 | 144 | anim-target | dword ED872 after the opcode word D500 at ED870 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 482E4 | 144 | anim-target | dword ED8A8 after the opcode word D500 at ED8A6 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
-| 48374 | 660 | anim-target | dword ED8EA after the opcode word D500 at ED8E8 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
+| 48374 | 660 | anim-target | dword ED8EA after the opcode word D500 at ED8E8 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 48608 | 688 | move-callback | dword A4234 (char 2, reaction 0x27) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
 | 488B8 | 172 | move-callback | dword A41D0 (char 2, reaction 0x22) | yes | entry | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 48957 |
 | 48964 | 60 | move-callback | dword A41F8 (char 2, reaction 0x24) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
@@ -821,8 +821,8 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 15A22 | 159A8 | row | yes |
 | 15B80 | 15A34 | row | yes |
 | 212AF | 211F0 | supplement | yes |
-| 2236D | 22338 | row | no |
-| 223EF | 22338 | row | no |
+| 2236D | 22338 | row | yes |
+| 223EF | 22338 | row | yes |
 | 224E2 | 22494 | row | yes |
 | 2260E | 22588 | supplement | yes |
 | 228EF | - | - | no |

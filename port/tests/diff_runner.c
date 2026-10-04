@@ -4824,6 +4824,252 @@ static void m_37dd4_side(const u32 *r, u32 *eax)       /* the char of the other 
     fighter_29bc8(side, rec, (u32)DSB(DS_0010782A + (side ^ 1u) * 0x94u));
     *eax = 0u;
 }
+static void b_22338(const u32 *r, u32 *eax)            { b_anim(0x22338u, r, eax); }
+static void m_22338(const u32 *r, u32 *eax)            /* the state-6 pose args of the default */
+{
+    u32 ctx[6];
+    u8 st;
+    hit_anim_ctx(ctx, r[R_EAX]);
+    actors_anim_begin(ctx[4], 0x000E4EACu, 0x40400000u);
+    fighter_39834(ctx[1], 0x10u);
+    (void)sound_voice(0x6Bu);
+    fighter_state_39280(ctx[1]);
+    DSW(ctx[3] + 0x74u) = 0u;
+    st = DSB(ctx[2] + 0x57u);
+    if (st == 6u)
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x78u, 0x0Fu, 0x10u);
+    else if (st == 7u)
+        fighter_pose_start(ctx[1], 0xFFFFFFBAu, 0x118u, 0x13u, 0x1Eu);
+    else
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x78u, 0x0Fu, 0x10u);
+    (void)sound_voice((u32)(u16)DSW(0x000BE008u + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+    DSB(ctx[2] + 0x57u) = 3u;
+    *eax = 0u;
+}
+static void m_22338_state(const u32 *r, u32 *eax)      /* 6 also takes the default pose */
+{
+    u32 ctx[6];
+    u8 st;
+    hit_anim_ctx(ctx, r[R_EAX]);
+    actors_anim_begin(ctx[4], 0x000E4EACu, 0x40400000u);
+    fighter_39834(ctx[1], 0x10u);
+    (void)sound_voice(0x6Bu);
+    fighter_state_39280(ctx[1]);
+    DSW(ctx[3] + 0x74u) = 0u;
+    st = DSB(ctx[2] + 0x57u);
+    if (st == 7u)
+        fighter_pose_start(ctx[1], 0xFFFFFFBAu, 0x118u, 0x13u, 0x1Eu);
+    else
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x78u, 0x0Fu, 0x10u);
+    (void)sound_voice((u32)(u16)DSW(0x000BE008u + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+    DSB(ctx[2] + 0x57u) = 3u;
+    *eax = 0u;
+}
+static void m_22338_args(const u32 *r, u32 *eax)       /* the state-7 frame 0x1D */
+{
+    u32 ctx[6];
+    u8 st;
+    hit_anim_ctx(ctx, r[R_EAX]);
+    actors_anim_begin(ctx[4], 0x000E4EACu, 0x40400000u);
+    fighter_39834(ctx[1], 0x10u);
+    (void)sound_voice(0x6Bu);
+    fighter_state_39280(ctx[1]);
+    DSW(ctx[3] + 0x74u) = 0u;
+    st = DSB(ctx[2] + 0x57u);
+    if (st == 6u)
+        fighter_pose_start(ctx[1], 0xFFFFFED4u, 0x8Cu, 0x0Fu, 0x0Du);
+    else if (st == 7u)
+        fighter_pose_start(ctx[1], 0xFFFFFFBAu, 0x118u, 0x13u, 0x1Du);
+    else
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x78u, 0x0Fu, 0x10u);
+    (void)sound_voice((u32)(u16)DSW(0x000BE008u + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+    DSB(ctx[2] + 0x57u) = 3u;
+    *eax = 0u;
+}
+static void m_22338_side(const u32 *r, u32 *eax)       /* 0x39280 on the own side */
+{
+    u32 ctx[6];
+    u8 st;
+    hit_anim_ctx(ctx, r[R_EAX]);
+    actors_anim_begin(ctx[4], 0x000E4EACu, 0x40400000u);
+    fighter_39834(ctx[1], 0x10u);
+    (void)sound_voice(0x6Bu);
+    fighter_state_39280(ctx[0]);
+    DSW(ctx[3] + 0x74u) = 0u;
+    st = DSB(ctx[2] + 0x57u);
+    if (st == 6u)
+        fighter_pose_start(ctx[1], 0xFFFFFED4u, 0x8Cu, 0x0Fu, 0x0Du);
+    else if (st == 7u)
+        fighter_pose_start(ctx[1], 0xFFFFFFBAu, 0x118u, 0x13u, 0x1Eu);
+    else
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x78u, 0x0Fu, 0x10u);
+    (void)sound_voice((u32)(u16)DSW(0x000BE008u + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+    DSB(ctx[2] + 0x57u) = 3u;
+    *eax = 0u;
+}
+static void m_22338_word(const u32 *r, u32 *eax)       /* the second voice from the own char */
+{
+    u32 ctx[6];
+    u8 st;
+    hit_anim_ctx(ctx, r[R_EAX]);
+    actors_anim_begin(ctx[4], 0x000E4EACu, 0x40400000u);
+    fighter_39834(ctx[1], 0x10u);
+    (void)sound_voice(0x6Bu);
+    fighter_state_39280(ctx[1]);
+    DSW(ctx[3] + 0x74u) = 0u;
+    st = DSB(ctx[2] + 0x57u);
+    if (st == 6u)
+        fighter_pose_start(ctx[1], 0xFFFFFED4u, 0x8Cu, 0x0Fu, 0x0Du);
+    else if (st == 7u)
+        fighter_pose_start(ctx[1], 0xFFFFFFBAu, 0x118u, 0x13u, 0x1Eu);
+    else
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x78u, 0x0Fu, 0x10u);
+    (void)sound_voice((u32)(u16)DSW(0x000BE008u + (u32)DSB(ctx[2] + 0x7Au) * 2u));
+    DSB(ctx[2] + 0x57u) = 3u;
+    *eax = 0u;
+}
+static void m_22338_state3(const u32 *r, u32 *eax)     /* the final +0x57 = 2 */
+{
+    u32 ctx[6];
+    u8 st;
+    hit_anim_ctx(ctx, r[R_EAX]);
+    actors_anim_begin(ctx[4], 0x000E4EACu, 0x40400000u);
+    fighter_39834(ctx[1], 0x10u);
+    (void)sound_voice(0x6Bu);
+    fighter_state_39280(ctx[1]);
+    DSW(ctx[3] + 0x74u) = 0u;
+    st = DSB(ctx[2] + 0x57u);
+    if (st == 6u)
+        fighter_pose_start(ctx[1], 0xFFFFFED4u, 0x8Cu, 0x0Fu, 0x0Du);
+    else if (st == 7u)
+        fighter_pose_start(ctx[1], 0xFFFFFFBAu, 0x118u, 0x13u, 0x1Eu);
+    else
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x78u, 0x0Fu, 0x10u);
+    (void)sound_voice((u32)(u16)DSW(0x000BE008u + (u32)DSB(ctx[3] + 0x7Au) * 2u));
+    DSB(ctx[2] + 0x57u) = 2u;
+    *eax = 0u;
+}
+static void b_48374(const u32 *r, u32 *eax)            { b_anim(0x48374u, r, eax); }
+static void m_48374(const u32 *r, u32 *eax)            /* the speed on the other side */
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    fighter_3c190(ctx[1], 0xFFFFFF38u);
+    DSW(ctx[4] + 0x36u) = 0x02EEu;
+    DSW(ctx[4] + 0x44u) = 0x0028u;
+    DSB(ctx[2] + 0x57u) = 3u;
+    DSB(ctx[2] + 0x54u) = 2u;
+    actors_anim_begin(r[R_EAX], 0x000ED8FEu, 0x40400000u);
+    if (DSB(0x00108392u + ctx[0]) != 0u) {
+        u32 ch = (u32)DSB(ctx[3] + 0x7Au);
+        actors_anim_begin(ctx[5], DSD(0x000C8F40u + ch * 4u), 0x40A00000u);
+        DSB(ctx[3] + 0x58u) = 1u;
+    } else {
+        fighter_39834(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x64u, 0x0Fu, 0x14u);
+    }
+    *eax = 0u;
+}
+static void m_48374_speed(const u32 *r, u32 *eax)      /* the speed -0x1FF */
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    fighter_3c190(ctx[0], 0xFFFFFE01u);
+    DSW(ctx[4] + 0x36u) = 0x02EEu;
+    DSW(ctx[4] + 0x44u) = 0x0028u;
+    DSB(ctx[2] + 0x57u) = 3u;
+    DSB(ctx[2] + 0x54u) = 2u;
+    actors_anim_begin(r[R_EAX], 0x000ED8FEu, 0x40400000u);
+    if (DSB(0x00108392u + ctx[0]) != 0u) {
+        u32 ch = (u32)DSB(ctx[3] + 0x7Au);
+        actors_anim_begin(ctx[5], DSD(0x000C8F40u + ch * 4u), 0x40A00000u);
+        DSB(ctx[3] + 0x58u) = 1u;
+    } else {
+        fighter_39834(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x64u, 0x0Fu, 0x14u);
+    }
+    *eax = 0u;
+}
+static void m_48374_stream(const u32 *r, u32 *eax)     /* the first stream 0xED8BC */
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    fighter_3c190(ctx[0], 0xFFFFFF38u);
+    DSW(ctx[4] + 0x36u) = 0x02EEu;
+    DSW(ctx[4] + 0x44u) = 0x0028u;
+    DSB(ctx[2] + 0x57u) = 3u;
+    DSB(ctx[2] + 0x54u) = 2u;
+    actors_anim_begin(r[R_EAX], 0x000ED8BCu, 0x40400000u);
+    if (DSB(0x00108392u + ctx[0]) != 0u) {
+        u32 ch = (u32)DSB(ctx[3] + 0x7Au);
+        actors_anim_begin(ctx[5], DSD(0x000C8F40u + ch * 4u), 0x40A00000u);
+        DSB(ctx[3] + 0x58u) = 1u;
+    } else {
+        fighter_39834(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x64u, 0x0Fu, 0x14u);
+    }
+    *eax = 0u;
+}
+static void m_48374_frame(const u32 *r, u32 *eax)      /* the second frame 4.0 */
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    fighter_3c190(ctx[0], 0xFFFFFF38u);
+    DSW(ctx[4] + 0x36u) = 0x02EEu;
+    DSW(ctx[4] + 0x44u) = 0x0028u;
+    DSB(ctx[2] + 0x57u) = 3u;
+    DSB(ctx[2] + 0x54u) = 2u;
+    actors_anim_begin(r[R_EAX], 0x000ED8FEu, 0x40400000u);
+    if (DSB(0x00108392u + ctx[0]) != 0u) {
+        u32 ch = (u32)DSB(ctx[3] + 0x7Au);
+        actors_anim_begin(ctx[5], DSD(0x000C8F40u + ch * 4u), 0x40400000u);
+        DSB(ctx[3] + 0x58u) = 1u;
+    } else {
+        fighter_39834(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x64u, 0x0Fu, 0x14u);
+    }
+    *eax = 0u;
+}
+static void m_48374_side(const u32 *r, u32 *eax)       /* the branch byte from the other side */
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    fighter_3c190(ctx[0], 0xFFFFFF38u);
+    DSW(ctx[4] + 0x36u) = 0x02EEu;
+    DSW(ctx[4] + 0x44u) = 0x0028u;
+    DSB(ctx[2] + 0x57u) = 3u;
+    DSB(ctx[2] + 0x54u) = 2u;
+    actors_anim_begin(r[R_EAX], 0x000ED8FEu, 0x40400000u);
+    if (DSB(0x00108392u + (1u - ctx[0])) != 0u) {
+        u32 ch = (u32)DSB(ctx[3] + 0x7Au);
+        actors_anim_begin(ctx[5], DSD(0x000C8F40u + ch * 4u), 0x40A00000u);
+        DSB(ctx[3] + 0x58u) = 1u;
+    } else {
+        fighter_39834(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x64u, 0x0Fu, 0x14u);
+    }
+    *eax = 0u;
+}
+static void m_48374_pose(const u32 *r, u32 *eax)       /* the pose frame 0x15 */
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, r[R_EAX]);
+    fighter_3c190(ctx[0], 0xFFFFFF38u);
+    DSW(ctx[4] + 0x36u) = 0x02EEu;
+    DSW(ctx[4] + 0x44u) = 0x0028u;
+    DSB(ctx[2] + 0x57u) = 3u;
+    DSB(ctx[2] + 0x54u) = 2u;
+    actors_anim_begin(r[R_EAX], 0x000ED8FEu, 0x40400000u);
+    if (DSB(0x00108392u + ctx[0]) != 0u) {
+        u32 ch = (u32)DSB(ctx[3] + 0x7Au);
+        actors_anim_begin(ctx[5], DSD(0x000C8F40u + ch * 4u), 0x40A00000u);
+        DSB(ctx[3] + 0x58u) = 1u;
+    } else {
+        fighter_39834(ctx[1], (u32)DSB(ctx[2] + 0x5Fu));
+        fighter_pose_start(ctx[1], 0xFFFFFF9Cu, 0x64u, 0x0Fu, 0x15u);
+    }
+    *eax = 0u;
+}
 
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -5348,6 +5594,20 @@ static const binding_t k_bindings[] = {
     { "fighter_37dd4@mutant",     m_37dd4,        0x00000000u },
     { "fighter_37dd4@word",       m_37dd4_word,   0x00000000u },
     { "fighter_37dd4@side",       m_37dd4_side,   0x00000000u },
+    { "fighter_22338",            b_22338,        0x00000000u },
+    { "fighter_48374",            b_48374,        0x00000000u },
+    { "fighter_22338@mutant",     m_22338,        0x00000000u },
+    { "fighter_22338@state",      m_22338_state,  0x00000000u },
+    { "fighter_22338@args",       m_22338_args,   0x00000000u },
+    { "fighter_22338@side",       m_22338_side,   0x00000000u },
+    { "fighter_22338@word",       m_22338_word,   0x00000000u },
+    { "fighter_22338@state3",     m_22338_state3, 0x00000000u },
+    { "fighter_48374@mutant",     m_48374,        0x00000000u },
+    { "fighter_48374@speed",      m_48374_speed,  0x00000000u },
+    { "fighter_48374@stream",     m_48374_stream, 0x00000000u },
+    { "fighter_48374@frame",      m_48374_frame,  0x00000000u },
+    { "fighter_48374@side",       m_48374_side,   0x00000000u },
+    { "fighter_48374@pose",       m_48374_pose,   0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
