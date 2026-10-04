@@ -407,7 +407,9 @@ P3_KINDS = {"fighter_475ec@mutant": {"call #0 memory"}, "fighter_475ec@side": {"
 # Track P batches 4 and 5 (record 2026-10-03-reverse-p4-p5): its rows with their EAX masks, and what alone
 # catches each of its mutants.
 P45_MASKS = {"fighter_18bc8": 0, "fighter_21084": 0, "fighter_400e0": 0, "fighter_21044": 0,
-             "fighter_1549c": 0, "fighter_154e8": 0, "fighter_229e8": 0, "fighter_243f8": 0}
+             "fighter_1549c": 0, "fighter_154e8": 0, "fighter_229e8": 0, "fighter_243f8": 0,
+             "fighter_15510": 0, "fighter_241a8": 0, "fighter_40358": 0, "fighter_45c54": 0,
+             "fighter_489dc": 0, "fighter_400ec": 0}
 P45_KINDS = {"fighter_18bc8@mutant": {"byte"},
              "fighter_21084@mutant": {"byte"}, "fighter_21084@byte14": {"byte"},
              "fighter_400e0@mutant": {"byte"},
@@ -416,7 +418,16 @@ P45_KINDS = {"fighter_18bc8@mutant": {"byte"},
              "fighter_154e8@mutant": {"byte", "call #0 memory"},
              "fighter_154e8@side": {"byte", "call #0 memory"},
              "fighter_229e8@mutant": {"call #0"},
-             "fighter_243f8@mutant": {"call #0"}, "fighter_243f8@slot": {"byte"}}
+             "fighter_243f8@mutant": {"call #0"}, "fighter_243f8@slot": {"byte"},
+             # track P batch 4+5 Task 3: the descriptor address (@mutant), the side index, the
+             # palette store (0x9B090 vs 0x9B08C, also the call #1 memory) and the a5 flag.
+             "fighter_15510@mutant": {"call #1"}, "fighter_15510@side": {"call #0"},
+             "fighter_15510@pal": {"byte", "call #1 memory"}, "fighter_15510@a5": {"call #1"},
+             "fighter_241a8@mutant": {"call #0"}, "fighter_241a8@sext": {"call #0"},
+             "fighter_40358@mutant": {"call #0"},
+             "fighter_45c54@mutant": {"call #1"},
+             "fighter_489dc@mutant": {"byte"},
+             "fighter_400ec@mutant": {"call #2"}, "fighter_400ec@side": {"call #0", "call #1"}}
 
 
 @needs_unicorn
@@ -701,7 +712,11 @@ class RealFunctionTests(unittest.TestCase):
         # its ctx[2]
         for name, ids in (("fighter_1549c@side", ["s2"]), ("fighter_154e8@side", ["s3"]),
                           ("fighter_21084@byte14", ["n1"]), ("fighter_21044@neg", ["h1", "h2"]),
-                          ("fighter_243f8@slot", ["z0", "z1"])):
+                          ("fighter_243f8@slot", ["z0", "z1"]),
+                          # the 0x80/0x81 index reads the fake third entry (a masked index reads
+                          # the other slot): 0x15510's s2, 0x241A8's n3 and 0x400EC's s2 alone
+                          ("fighter_15510@side", ["s2"]), ("fighter_241a8@sext", ["n3"]),
+                          ("fighter_400ec@side", ["s2"])):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
@@ -709,7 +724,7 @@ class RealFunctionTests(unittest.TestCase):
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
         stubs = {k.addr: k.clobbers for s in V.SPECS for k in s.calls if k.mode == "stub"}
         self.assertEqual(stubs, {0x2C3FC: (), 0x2BC30: ("edx",), 0x3C4CC: ("edx",), 0x3C480: ("edx",),
-                                 0x2AE14: ("ebx", "ecx", "edx"), 0x1A570: (), 0x2A17C: ("edx",),
+                                 0x2AE14: ("ebx", "ecx", "edx"), 0x29C08: ("edx",), 0x1A570: (), 0x2A17C: ("edx",),
                                  0x188AC: ("edx",), 0x38034: (), 0x34D8C: (),
                                  0x18C14: ("ebx", "edx", "ebp"), 0x18AF8: ("ebx", "ecx", "edx"),
                                  0x39834: ("edx", "ebp"), 0x39A10: ("edx",), 0x3C208: ("edx",), 0x3C358: (),
@@ -810,9 +825,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (69), the 17 without are counted apart
-        self.assertIn("diff-verify: 86/86 functions VERIFIED; 171/171 mutants detected; 1 named gaps; "
-                      "12/69 rows with callees closed (17 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (75), the 17 without are counted apart
+        self.assertIn("diff-verify: 92/92 functions VERIFIED; 182/182 mutants detected; 1 named gaps; "
+                      "12/75 rows with callees closed (17 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

@@ -46822,3 +46822,88 @@ static void p45_check_21044(void)
 
 int test_p45_leaves(void)       { return u6b_run(p45_check_leaves); }
 int test_p45_21044(void)        { return u6b_run(p45_check_21044); }
+
+/* The one child a spawn added; *x = 1 when there is exactly one. */
+static u32 p45_new_child(const u32 *before, u32 n, u32 *x)
+{
+    u32 r = u6b_new_record(before, n);
+    *x = r != 0u ? 1u : 0u;
+    return r;
+}
+
+/* §P4.4: 0x15510's palette handle and child; the held-record spawns. */
+static void p45_check_p4_spawns(void)
+{
+    static u32 before[0x80];
+    p45_anim_fn f;
+    u32 n, child, x;
+    f = (p45_anim_fn)(void *)fn_resolve(0x15510u);
+    CHECK(f != NULL, "0x15510 is registered");
+    if (f == NULL) return;
+    z_fseed();
+    c4r_pool();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_R0 + 0x56u) = 0x23u;
+    DSB(Z_R0 + 0x57u) = 0x01u;
+    DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+    DSD(0x0009B08Cu) = 0x9B8C8C8Cu;
+    n = u6b_list(before, 0x80u);
+    f(Z_R0, 0u);
+    CHECK(DSD(0x0009B08Cu) != 0x9B8C8C8Cu, "0x9B08C holds the palette handle");
+    child = p45_new_child(before, n, &x);
+    CHECK_EQ_INT((int)x, 1);
+    if (x == 1u) {
+        CHECK_EQ_INT((int)DSB(child + 0x59u), 2);
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(child + 0x56u));
+    }
+
+    /* 0x241A8: the side's slot char selects the descriptor. */
+    f = (p45_anim_fn)(void *)fn_resolve(0x241A8u);
+    CHECK(f != NULL, "0x241A8 is registered");
+    if (f == NULL) return;
+    z_fseed();
+    c4r_pool();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSB(Z_R0 + 0x56u) = 0x23u;
+    DSB(Z_R0 + 0x57u) = 0x01u;
+    DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+    n = u6b_list(before, 0x80u);
+    f(Z_R0, 0u);
+    child = p45_new_child(before, n, &x);
+    CHECK_EQ_INT((int)x, 1);
+    if (x == 1u)
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(child + 0x56u));
+
+    /* 0x40358: the child's +0x14 is the held record and its +0x51 the side;
+     * 0x45C54: its +0x59 = 2 and +0x14 the held record; 0x489DC: the held
+     * record's +0x4B takes the child's index. */
+    {
+        static const u32 addr[3] = { 0x40358u, 0x45C54u, 0x489DCu };
+        u32 k;
+        for (k = 0; k < 3u; k++) {
+            f = (p45_anim_fn)(void *)fn_resolve(addr[k]);
+            CHECK(f != NULL, "the held-record spawn is registered");
+            if (f == NULL) return;
+            z_fseed();
+            c4r_pool();
+            DSD(Z_R0 + 0x14u) = Z_S0;
+            DSB(Z_R0 + 0x51u) = 1u;
+            DSB(Z_R0 + 0x56u) = 0x23u;
+            DSB(Z_R0 + 0x57u) = 0x01u;
+            DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+            DSD(Z_S0) = Z_R1;
+            DSB(Z_R1 + 0x4Bu) = 0u;
+            n = u6b_list(before, 0x80u);
+            f(Z_R0, 0u);
+            child = p45_new_child(before, n, &x);
+            CHECK_EQ_INT((int)x, 1);
+            if (x != 1u) continue;
+            if (k == 0u) CHECK_EQ_INT((int)DSB(child + 0x51u), 1);
+            if (k == 1u) CHECK_EQ_INT((int)DSB(child + 0x59u), 2);
+            if (k < 2u) CHECK_EQ_INT((int)DSD(child + 0x14u), (int)Z_S0);
+            if (k == 2u) CHECK_EQ_INT((int)DSB(Z_R1 + 0x4Bu), (int)DSB(child + 0x56u));
+        }
+    }
+}
+
+int test_p45_p4_spawns(void)    { return u6b_run(p45_check_p4_spawns); }

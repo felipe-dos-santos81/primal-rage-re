@@ -176,6 +176,12 @@ static void anim_code_1549C(u32 rec, u32 arg);
 static void anim_code_154E8(u32 rec, u32 arg);
 static void anim_code_229E8(u32 rec, u32 arg);
 static void anim_code_243F8(u32 rec, u32 arg);
+static void anim_code_15510(u32 rec, u32 arg);
+static void anim_code_241A8(u32 rec, u32 arg);
+static void anim_code_40358(u32 rec, u32 arg);
+static void anim_code_45C54(u32 rec, u32 arg);
+static void anim_code_489DC(u32 rec, u32 arg);
+static void anim_code_400EC(u32 rec, u32 arg);
 static void anim_code_46138(u32 rec, u32 arg);
 static void anim_code_40E14(u32 rec, u32 arg);
 static void anim_code_24964(u32 rec, u32 arg);
@@ -825,6 +831,13 @@ int actors_init(void)
     fn_register(0x154E8u, (void (*)(void))anim_code_154E8);
     fn_register(0x229E8u, (void (*)(void))anim_code_229E8);
     fn_register(0x243F8u, (void (*)(void))anim_code_243F8);
+    /* PORT: record 2026-10-03-reverse-p4-p5 §P4.4. The held-record spawns. */
+    fn_register(0x15510u, (void (*)(void))anim_code_15510);
+    fn_register(0x241A8u, (void (*)(void))anim_code_241A8);
+    fn_register(0x40358u, (void (*)(void))anim_code_40358);
+    fn_register(0x45C54u, (void (*)(void))anim_code_45C54);
+    fn_register(0x489DCu, (void (*)(void))anim_code_489DC);
+    fn_register(0x400ECu, (void (*)(void))anim_code_400EC);
     /* PORT: record gameplay-u0 §U0.8. Character 2's reaction-0x26 callback
      * 0x47BFC (the dword at 0xA4220; 0x34E2C, (slot, rec, side)) and the
      * hooks it stores: +0x18 0x478D4 (0x19020, fn(side) with EAX returned)
@@ -4220,4 +4233,34 @@ static void anim_code_243F8(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_243f8(rec);
+}
+static void anim_code_15510(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_15510(rec);
+}
+static void anim_code_241A8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_241a8(rec);
+}
+static void anim_code_40358(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40358(rec);
+}
+static void anim_code_45C54(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_45c54(rec);
+}
+static void anim_code_489DC(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_489dc(rec);
+}
+static void anim_code_400EC(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_400ec(rec);
 }

@@ -1476,6 +1476,89 @@ P45_SPECS = [
 ]
 
 
+P45_SPECS += [
+Spec("fighter_15510", 0x15510, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {**P45_CHARS, E3_REC + 0x51: b"\x00", E3_REC + 0x56: b"\x23\x01", E3_REC + 0x4B: b"\x4b",
+              0x9B08C: le32(0x9B8C8C8C), E3_OUT + 0x56: b"\x07\x00", E3_OUT + 0x59: b"\x59"},
+             {0x29C08: 0x11111111, 0x2AE14: E3_OUT}),
+        Case("s1", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {**P45_CHARS, E3_REC + 0x51: b"\x01", E3_REC + 0x56: b"\x23\x01", E3_REC + 0x4B: b"\x4b",
+              0x9B08C: le32(0x9B8C8C8C), E3_REC2 + 0x56: b"\x07\x00", E3_REC2 + 0x59: b"\x59"},
+             {0x29C08: 0x22222222, 0x2AE14: E3_REC2}),
+        Case("s2", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {**P45_CHARS, 0x107952: b"\x77", E3_REC + 0x51: b"\x02", E3_REC + 0x56: b"\x23\x01",
+              E3_REC + 0x4B: b"\x4b", 0x9B08C: le32(0x9B8C8C8C), E3_OUT + 0x56: b"\x07\x00",
+              E3_OUT + 0x59: b"\x59"},
+             {0x29C08: 0x33333333, 0x2AE14: E3_OUT}),
+    ], calls=(CALL29C08, SPAWN), eax_mask=0, mutants=("@mutant", "@side", "@pal", "@a5")),
+
+Spec("fighter_241a8", 0x241A8, [
+        Case("n0", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {**P45_PTRS, 0x1077A8: le32(0), **P45_CHARS}),
+        Case("n1", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {**P45_PTRS, **P45_CHARS, 0xA84E0 + 20: le32(0x000A1111), E3_REC + 0x56: b"\x23\x01",
+              E3_REC + 0x4B: b"\x4b", E3_OUT + 0x56: b"\x07\x00"},
+             {0x2AE14: E3_OUT}),
+        Case("n2", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {**P45_PTRS, **P45_CHARS, 0xA84E0 + 12: le32(0x000A2222), E3_REC + 0x56: b"\x23\x01",
+              E3_REC + 0x4B: b"\x4b", E3_REC2 + 0x56: b"\x07\x00"},
+             {0x2AE14: E3_REC2}),
+        Case("n3", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {**P45_PTRS, **P45_CHARS, 0x1079A8: le32(P45_SLOT3), 0x1075A8: le32(E3_REC2),
+              P45_SLOT3 + 0x7A: b"\x81", 0xA84E0 + 0x204: le32(0x000A3333), E3_REC + 0x51: b"\x80",
+              E3_REC + 0x56: b"\x23\x01",
+              E3_REC + 0x4B: b"\x4b", E3_OUT + 0x56: b"\x07\x00"},
+             {0x2AE14: E3_OUT}),
+    ], calls=(SPAWN,), eax_mask=0, mutants=("@mutant", "@sext")),
+
+Spec("fighter_40358", 0x40358, [
+        Case("h0", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {E3_REC + 0x14: le32(0), E3_REC + 0x56: b"\x23\x01", E3_REC + 0x4B: b"\x4b"}),
+        Case("h1", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {E3_REC + 0x14: le32(E3_SLOT), E3_REC + 0x51: b"\x01", E3_REC + 0x56: b"\x23\x01",
+              E3_REC + 0x4B: b"\x4b", E3_OUT + 0x14: le32(0x14141414), E3_OUT + 0x51: b"\x51",
+              E3_OUT + 0x56: b"\x07\x00"},
+             {0x2AE14: E3_OUT}),
+    ], calls=(SPAWN,), eax_mask=0, mutants=("@mutant",)),
+
+Spec("fighter_45c54", 0x45C54, [
+        Case("h0", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {E3_REC + 0x14: le32(0), E3_REC + 0x56: b"\x23\x01"}),
+        Case("h1", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {E3_REC + 0x14: le32(E3_SLOT), E3_REC + 0x56: b"\x23\x01", E3_OUT + 0x14: le32(0x14141414),
+              E3_OUT + 0x59: b"\x59"},
+             {0x2AE14: E3_OUT}),
+    ], calls=(SPAWN, VOICE), eax_mask=0, mutants=("@mutant",)),
+
+Spec("fighter_489dc", 0x489DC, [
+        Case("h0", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {E3_REC + 0x14: le32(0), E3_REC + 0x56: b"\x23\x01"}),
+        Case("h1", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {E3_REC + 0x14: le32(E3_SLOT), E3_SLOT: le32(E3_OUT), E3_OUT + 0x4B: b"\x4b",
+              E3_REC + 0x56: b"\x23\x01", E3_OUT + 0x56: b"\x07\x00"}),
+        Case("h2", {"eax": E3_REC, "edx": 0x1234, "ecx": 0},
+             {E3_REC + 0x14: le32(E3_SLOT), E3_SLOT: le32(E3_OUT), E3_OUT + 0x4B: b"\x00",
+              E3_REC + 0x56: b"\x23\x01", E3_OUT + 0x56: b"\x07\x00"},
+             {0x2AE14: E3_OUT}),
+    ], calls=(SPAWN,), eax_mask=0, mutants=("@mutant",)),
+
+Spec("fighter_400ec", 0x400EC, [
+        Case("s0", {"eax": E3_OUT, "edx": 0x1234, "ecx": 0},
+             {**P45_PTRS, **P45_CHARS, E3_OUT + 0x51: b"\x00", 0xC90F8 + 20: le32(0xAAAAAAAA),
+              0xC90F8 + 12: le32(0xBBBBBBBB), 0xC75AA + 10: b"\x60\x00", 0xC75AA + 6: b"\x61\x00",
+              0x104AE9: b"\xa9\xaa"}),
+        Case("s1", {"eax": E3_OUT, "edx": 0x1234, "ecx": 0},
+             {**P45_PTRS, **P45_CHARS, E3_OUT + 0x51: b"\x01", 0xC90F8 + 20: le32(0xAAAAAAAA),
+              0xC90F8 + 12: le32(0xBBBBBBBB), 0xC75AA + 10: b"\x60\x00", 0xC75AA + 6: b"\x61\x00",
+              0x104AE9: b"\xa9\xaa"}),
+        Case("s2", {"eax": E3_OUT, "edx": 0x1234, "ecx": 0},
+             {**P45_PTRS, **P45_CHARS, **P45_FAKE, E3_OUT + 0x51: b"\x80",
+              0xC90F8 + 0x204: le32(0xCCCCCCCC), 0xC75AA + 0x102: b"\x62\x00", 0x104AE9: b"\xa9\xaa"}),
+    ], calls=(ANIM_BEGIN, VOICE), eax_mask=0, mutants=("@mutant", "@side")),
+]
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
