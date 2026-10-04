@@ -803,9 +803,10 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # the port's 0x2381C miss (CHAOS's reaction 0x25 at f=0x848); with 0x2381C ported the rng is shared
 # to the end and the final's opponent order (1,4,3,0,6,5,2) equals the capture's.
 # WIN_MIN_FIRST 9954: 0 differing through 9953, the replay's end (before P2: 5634, f=0x1602, b0c set
-# by 0x37EA0 29 frames late in the port). The port still misses 0x37DD4/0x29C78 and b0c now agrees
-# at every frame, so that delay followed the rng and the opponent order (record §W.16).
-# MILESTONES 30: all reproduced. The replay still misses 0x37DD4 and 0x29C78 (33 hits each),
+# by 0x37EA0 29 frames late in the port). The port then still missed 0x37DD4/0x29C78 (batch 6 drops
+# 0x37DD4, below) and b0c now agrees at every frame, so that delay followed the rng and the opponent
+# order (record §W.16).
+# MILESTONES 30: all reproduced. The replay still misses 0x29C78 (33 hits; batch 6 dropped 0x37DD4),
 # whose effects the traced fields cannot see: the clean trace to f=0x26E1 does
 # not claim the death streams or the mode-0xF content are reproduced, and is no evidence of
 # correctness past the frame ratchet's 331.

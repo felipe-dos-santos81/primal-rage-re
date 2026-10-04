@@ -16675,7 +16675,7 @@ void fighter_24454_case10(u32 slot, u32 side)
     fighter_24454(slot, DSD(slot));                         /* 0x35396, 0x354E2 */
 }
 
-/* 0x241F4 — record §P6.4. The D100 target at the dword 0xE505E. ctx; stance
+/* 0x241F4 — record §P6.3. The D100 target at the dword 0xE505E. ctx; stance
  * 0xA on the other side; voice 0x66. */
 void fighter_241f4(u32 rec)
 {
@@ -16686,7 +16686,7 @@ void fighter_241f4(u32 rec)
 }
 
 
-/* 0x47E04 — record §P6.4. The D000 target at the dword 0xED9FC. ctx; voice
+/* 0x47E04 — record §P6.3. The D000 target at the dword 0xED9FC. ctx; voice
  * 0x66; stance 0xF on the other side. */
 void fighter_47e04(u32 rec)
 {
@@ -16697,7 +16697,7 @@ void fighter_47e04(u32 rec)
 }
 
 
-/* 0x40148 — record §P6.8. The D100 target at the dword 0xE8716. With the other
+/* 0x40148 — record §P6.3. The D100 target at the dword 0xE8716. With the other
  * side's slot set (rec+0x51 ^ 1): 0x37D18(that slot, its record); then 0x104AE9
  * bit 2 clear. */
 void fighter_40148(u32 rec)
@@ -16713,7 +16713,7 @@ void fighter_40148(u32 rec)
  * as FIGHT_DIST_3E244). */
 #define P6_WORD_C759C     0x000C759Cu
 
-/* 0x40170 — record §P6.8. The D100 target at the dword 0xE86EE. With the other
+/* 0x40170 — record §P6.3. The D100 target at the dword 0xE86EE. With the other
  * side's slot set: the record's +0x28 bit 14 clears (else sets) the other
  * record's +0x29 bit 6; 0x34D8C(rec+0x51); 0x3C208(rec+0x51, word
  * 0xC759C[other char]). */

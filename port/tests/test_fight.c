@@ -47228,19 +47228,20 @@ static void p6_check_22494(void)
     CHECK_EQ_INT((int)DSD(0x000ED8A8u), 0x000482E4);
 
     /* 0x22494 with side 0's record: the frame 0x104738[0] and the own slot's
-     * +0x5F; stance(ctx[1] = 1, 0xA). */
+     * +0x5F (0x39834 stores its pose argument at 0x107D28); stance(ctx[1] = 1, 0xA). */
     f = (p1_anim_fn)(void *)fn_resolve(0x22494u);
     if (f == NULL) return;
     z_fseed();
     DSB(Z_R0 + 0x51u) = 0u;
     DSD(0x00104738u) = 0x40400000u;
     DSD(0x0010473Cu) = 0x40A00000u;
-    DSB(Z_S0 + 0x5Fu) = 0x5Fu;
+    DSB(Z_S0 + 0x5Fu) = 0x57u;
     DSB(Z_S1 + 0x5Fu) = 0x9Fu;
     DSB(Z_S1 + 0x7Eu) = 0x77u;
+    DSD(DS_00107D28) = 0x5A5A5A5Au;    /* the pose argument's sentinel (0x39953) */
     f(Z_R0, 0u);
     CHECK_EQ_INT((int)DSB(Z_S1 + 0x7Eu), (int)(u8)(DSB(DS_000BECF8) + 0x0Au));
-    CHECK_EQ_INT((int)DSB(Z_S0 + 0x5Fu), 0x5F);
+    CHECK_EQ_INT((int)DSD(DS_00107D28), 0x57);
 
     /* 0x2400C with the other slot set: the record on 0xA8408[3] (poked), its
      * +0x1C -= 0xA83F8[3] (-16), 0x104748's record +0x29 bit 3. */
@@ -47252,7 +47253,7 @@ static void p6_check_22494(void)
     DSW(0x000A83FAu + 6u) = 0xFFF0u;
     DSD(Z_R1 + 0x1Cu) = 0x1000u;
     DSD(0x00104748u) = Z_R1 + 0x800u;
-    DSB(Z_R1 + 0x829u) = 0x29u;
+    DSB(Z_R1 + 0x829u) = 0x21u;
     f(Z_R0, 0u);
     CHECK_EQ_INT((int)DSD(Z_R1 + 0x1Cu), 0x1010);
     CHECK_EQ_INT((int)DSB(Z_R1 + 0x829u), 0x29);

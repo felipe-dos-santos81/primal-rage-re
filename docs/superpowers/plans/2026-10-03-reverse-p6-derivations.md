@@ -188,8 +188,9 @@ The `0x2BDA0` row's `rng_next` runs real, so the row needs `P6_RNG`'s `real` mod
   `fighter_29bc8(rec+0x51, rec, DSB(0x10782A + side*0x94))` (the side's slot's char). The palette word
   is 4 for **any** non-zero side (the raw's `test ah,ah`); s2 (side 2) pins it.
 - **gp-u10-ending**: the set loses the `0x37DD4` row (it was `anim_indirect`, 33 hits at f=0x14FB in mode
-  0xC; record §W.14). `make gp-ending-oracle` passes on P3's pins with the set at 4 rows
-  (`fn-miss PR_GP_DUMP distinct=6 dropped=0`) and every pin is exact and unchanged: 331 (`--min-first
+  0xC; record §W.14). `make gp-ending-oracle` passes on P3's pins with the set at 3 distinct addresses
+  (`fn-miss PR_GP_DUMP distinct=5 dropped=0`: `0x5D812` x2 sites, `0x29D60`, `0x29C78` P7) and every pin
+  is exact and unchanged: 331 (`--min-first
   332` fails), trace/win 9954 (`9955` is unreachable), path 30 (`31` unreachable), MAX_START 83. The
   Makefile's `GP_ENDING_*` provenance and AGENTS.md's re-measure list name this batch.
 
@@ -241,7 +242,7 @@ Named gaps and limits:
 - **The 16-poke diffrun limit:** the composed record buffers (`_p6_fill`) put 0xA5 in the gaps; the
   functions' neighbours are seeded, so width mutants show.
 - **The callee rows** (D3): the 12 new stubs join C2 with P1-P3's; `0x5D7DC` is real and has its own row.
-  After P6 the counter reads `12/82 rows with callees closed (14 have none)` — only `anim_2bda0`'s row
+  After P6 the counter reads `41/126 rows with callees closed (23 have none)` — only `anim_2bda0`'s row
   closes (rng_next is VERIFIED); every other P6 row stubs a callee without a row.
 - E3's, P1's and P2's limits stand: seeds are hand pokes; the memory at a call is mem[] only; the callee
   column is one level deep.
@@ -251,37 +252,56 @@ Named gaps and limits:
 ## §P6.12 Results
 
 Per-task gates (the harness self-check, the unit suite, `make entry-triage` with the regenerated table,
-and the gp oracle a task touches). The counter after each task (measured at Task 2, then the arithmetic
-of the counter code for Tasks 3-9; each is the plan's expected line):
+and the gp oracle a task touches). The counter after each task, measured on this branch (the plan's
+`f5b5556` base is not the branch's: C1 and P4+P5 were merged before P6, so the plan's prototype table
+`78/78; 158/158; 11/64` -> `96/96; 236/236; 12/82` is superseded; the lines below are the commits' own
+measurements, Task 2 `31f4ed8` .. Task 9 `c7ce9d3`):
 
-| after | diff-verify counter |
+| after | diff-verify counter (measured on the branch) |
 |---|---|
-| Task 1 (base `f5b5556`) | `78/78 functions VERIFIED; 158/158 mutants detected; 1 named gaps; 11/64 rows with callees closed (14 have none)` |
-| Task 2 | `83/83 ...; 173/173 ...; 12/69 ...` |
-| Task 3 | `86/86 ...; 186/186 ...; 12/72 ...` |
-| Task 4 | `88/88 ...; 193/193 ...; 12/74 ...` |
-| Task 5 | `90/90 ...; 202/202 ...; 12/76 ...` |
-| Task 6 | `92/92 ...; 213/213 ...; 12/78 ...` |
-| Task 7 | `93/93 ...; 216/216 ...; 12/79 ...` |
-| Task 8 | `95/95 ...; 228/228 ...; 12/81 ...` |
-| Task 9 | `96/96 functions VERIFIED; 236/236 mutants detected; 1 named gaps; 12/82 rows with callees closed (14 have none)` |
+| Task 2 | `136/136 functions VERIFIED; 328/328 mutants detected; 1 named gaps; 41/113 rows with callees closed (23 have none)` |
+| Task 3 | `139/139 ...; 341/341 ...; 41/116 ...` |
+| Task 4 | `141/141 ...; 348/348 ...; 41/118 ...` |
+| Task 5 | `143/143 ...; 357/357 ...; 41/120 ...` |
+| Task 6 | `145/145 ...; 368/368 ...; 41/122 ...` |
+| Task 7 | `146/146 ...; 371/371 ...; 41/123 ...` |
+| Task 8 | `148/148 ...; 383/383 ...; 41/125 ...` |
+| Task 9 | `149/149 functions VERIFIED; 391/391 mutants detected; 1 named gaps; 41/126 rows with callees closed (23 have none)` |
 
-The final `make diff-verify entry-triage` on the prototype: 163 Python tests OK, the counter above, and
-`entry-triage: targets 271 unported, 224 ported; supplement 131 (8 unported, 0 stale); untrusted entries
-30` / `voice sites outside Ghidra 134: 15 in unported code, 100 in ported code, 19 nowhere`; the E2
-classes `callbacks 0/71`, `finishers 0/9`, `animation-targets 37/75`, `stubs 37`. `PR_ORACLE_REQUIRED=1
-./build/run_tests`: all checks passed. The 18 rows, all VERIFIED, as the final table prints them:
+The final full gate on the branch (`make verify`, `EXIT=0`): the 45 oracle lines equal the k7-k12
+baseline (`ORACLES-EQUAL`), the audio WAV byte-identical (`WAV-SAME`), `PR_ORACLE_REQUIRED=1
+./build/run_tests` `all checks passed`, the diff-verify Python suite 165 tests OK and the E2 suite 44,
+and `entry-triage: targets 240 unported, 255 ported; supplement 131 (7 unported, 0 stale); untrusted
+entries 30` / `voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere`; the
+E2 P-track classes `callbacks 0/71`, `finishers 0/9`, `voice 0/15`, `animation-targets 6/106`,
+`span-writers 231/0`, `other 3/54` and the E1 readiness `leaf 228`, `stubs 11`, `allow-list 1`. The 18
+rows, all VERIFIED, as the final table prints them:
 `anim_2bda0` 4 1/1, `fighter_241f4` 2 1/1, `fighter_47e04` 2 1/1, `fighter_40148` 3 3/3, `fighter_40170`
 4 6/6, `fighter_22494` 2 1/1, `fighter_2400c` 3 3/3, `fighter_482e4` 4 4/4, `fighter_22a40` 4 5/5,
 `fighter_47e30` 3 4/4, `fighter_24338` 2 1/1, `fighter_3e160` 2 1/1, `fighter_23f10` 2 1/1, `fighter_45c98`
-4 4/4, `fighter_37dd4` 3 1/1, `fighter_22338` 5 7/7, `fighter_48374` 4 4/4, `fighter_24220` 7 13/13.
-P6's 78 mutants: what alone catches each is pinned by `P6_KINDS` in `tools/tests/test_diff_verify.py`.
-`port_progress.py` stays `771 1203 64` / `731 731 100` (none of the 18 is a Ghidra `FN_`) and README does
-not move.
+4 4/4, `fighter_37dd4` 3 4/4, `fighter_22338` 5 7/7, `fighter_48374` 4 4/4, `fighter_24220` 7 13/13
+(the plan's `fighter_37dd4` `1/1` was the prototype's; the branch measures 4/4).
+P6's 78 mutants: what alone catches each is pinned by `P6_KINDS` in `tools/tests/test_diff_verify.py`;
+the five expectation tests the plan deferred are green (the exact sets, the stub-clobber table with the
+nine new stubs, the counter). `port_progress.py` stays `771 1203 64` / `731 731 100` (none of the 18 is
+a Ghidra `FN_`) and README does not move.
 
-**gp.** `make gp-ending-oracle` on the prototype: `fn-miss PR_GP_DUMP distinct=6 dropped=0`, frames
-331 ok, trace 9954 ok, path 30 ok, win 9954 ok; every pin +1 fails (332, 9955, 31, 9955). No other gp
-scenario's miss set holds a P6 member (checked from `k_gp_sets`; only gp-u10-ending held `0x37DD4`).
+**Named limit (the row's "every store observable" claim):** `0x22A40`'s store of the child into the
+slot's `+8` is overwritten by the following `slot+8 = 0` before the row's next recorded call, so the
+memory-at-call comparison sees only the net value (`@order` still catches the two stores' order at
+`call #1 memory`); no unit check runs the spawn (it needs the actor pool). Review fixes folded in: the four
+Task 2 headers that cited the wrong record sections now cite §P6.3, and the two weak unit assertions
+(`test_fight.c` 0x22494's own-slot `+0x5F` and 0x2400C's `+0x29 |= 8`) now seed a value that differs
+from the post-condition and observe the store's effect — each fails under its mutation (0x9F vs 0x57;
+0x21 vs 0x29).
+
+**gp.** `make gp-ending-oracle` on the branch: `fn-miss PR_GP_DUMP distinct=5 dropped=0` — the set is
+3 distinct addresses (`0x5D812` x2 sites, `0x29D60`, `0x29C78` P7), losing `0x37DD4` alone — frames
+331 ok, trace 9954 ok, path 30 ok, win 9954 ok, window start 83; every pin +1 fails (332, 9955, 31,
+9955). `make gp-win-oracle` loses `0x2BDA0` alone (`distinct=6 dropped=0`) and every pin is exact and
+unchanged: frames 346, trace 2364, path 8, win 3162, window start 100 (the trace's first difference
+f=0x93C precedes the target's first frame 0xD0C). No other gp scenario's miss set holds a P6 member
+(checked from `k_gp_sets`; only gp-u9-win and gp-u10-ending did).
 
 ## §P6.13 The roadmap after P6
 
