@@ -1379,6 +1379,373 @@ P3_SPECS += [
        mutants=("@mutant", "@signed", "@abs", "@order", "@bound", "@zext", "@width")),
 ]
 
+# ---- track P batch C1: the callee rows (record 2026-10-03-reverse-c1) -----------------------------
+# The ported callees the P1-P3 rows stub, each with its own row so the dependent rows close (P3
+# record §P3.10). Every field a row writes carries a sentinel that differs from what it writes and
+# every neighbour byte is seeded (the P-track checklist); the two records E3_REC/E3_REC2 and the
+# two slots DS_SLOTS/DS_SLOTS+0x94 are the E3 fixtures.
+
+# Both records seeded slot-distinct: the low record A (0x32..) and B (0x62..); every byte of
+# +0x32..+0x39, +0x41..+0x47 and +0x0C/+0x1C/+0x2C/+0x34/+0x42/+0x43/+0x59/+0x74 sentinels.
+def c1_rec(rec, base):
+    return {rec + 0x32: bytes(range(base, base + 8)),           # +0x32..+0x39
+            rec + 0x41: bytes(range(base + 0x0F, base + 0x16))}  # +0x41..+0x47
+
+
+C1_A = c1_rec(E3_REC, 0x32)
+C1_B = c1_rec(E3_REC2, 0x62)
+C1_PTRS = dict(SLOT_PTRS)
+
+
+def c1_slots(seed0, seed1):
+    return {DS_SLOTS + 0x42: seed0[0:3], DS_SLOTS + 0x52: seed0[3:6], DS_SLOTS + 0x5C: seed0[6:9],
+            DS_SLOTS + 0x94 + 0x42: seed1[0:3], DS_SLOTS + 0x94 + 0x52: seed1[3:6],
+            DS_SLOTS + 0x94 + 0x5C: seed1[6:9]}
+
+
+C1_SLOT_SEED0 = b"\x42\xff\x44\x52\x53\x54\x5c\x5d\x5e"       # +0x42..+0x44, +0x52..+0x54, +0x5c..+0x5e
+C1_SLOT_SEED1 = b"\x62\xef\x64\x72\x73\x74\x7c\x7d\x7e"
+C1_PSET = 0x10A800                # the pset base 0x1014EC points at (32-byte entries)
+C1_STR = 0x10A700                 # the animation-stream words the 0x2BC30 cases walk
+C1_18 = {E3_REC + 0x16: b"\x16\x17\x18\x19\x1a\x1b", E3_REC + 0x1C: b"\x1c\x1c\x1c\x1c",
+         E3_REC2 + 0x16: b"\x26\x27\x28\x29\x2a\x2b", E3_REC2 + 0x1C: b"\x2c\x2c\x2c\x2c"}
+
+# The callee declarations C1's rows stub (record §C1.2). Clobbers are E.callee_clobbers over the
+# image (re-derived by test_each_stub_declares_the_registers_its_callee_clobbers).
+C1_SLOT_LATCH = E.Call(0x186D0, ("eax",))
+C1_RECORD_X = E.Call(0x18714, ("eax",))
+C1_FACING = E.Call(0x18B04, ("eax",))
+C1_FACING0 = E.Call(0x18AF8, (), mode="real")
+C1_PAL_REL = E.Call(0x33864, ("eax",))
+C1_PAL_ACQ = E.Call(0x33754, ("eax",))
+C1_ANIM_OPCODE = E.Call(0x2B2A0, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+C1_SPRITE_ID = E.Call(0x2A408, ("eax", "edx"), clobbers=("edx",))
+C1_POSE = E.Call(0x39F40, ("eax", "edx", "ebx", "ecx", "s0"), pop=4, clobbers=("ebx", "edx"))
+C1_36638 = E.Call(0x36638, ("eax", "edx"), clobbers=("edx",))
+C1_AI_DIST = E.Call(0x187FC, ())
+C1_1883C = E.Call(0x1883C, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+C1_3B8D8 = E.Call(0x3B8D8, ("eax", "edx"), clobbers=("edx",))
+C1_3B90C = E.Call(0x3B90C, ("eax", "edx"), clobbers=("edx",))
+C1_GEOM = E.Call(0x1DDF4, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+C1_18B44 = E.Call(0x18B44, ("eax",))
+C1_189FC = E.Call(0x189FC, ("eax",))
+C1_18A4C = E.Call(0x18A4C, ("eax",))
+C1_39EFC = E.Call(0x39EFC, ("eax",))
+C1_FLAGS = 0x10A600                # the 16 flag bytes the 0x18C14 cases poke
+C1_18C14_SEED = {
+    DS_SLOTS + 0x42: b"\x40\x41\x42\x43", DS_SLOTS + 0x52: b"\x52\x53\x54\x55",
+    DS_SLOTS + 0x5F: b"\x5f\x60\x61\x62\x63", DS_SLOTS + 0x8A: b"\x8a",
+    DS_SLOTS + 0x94 + 0x42: b"\x50\x51\x52\x53", DS_SLOTS + 0x94 + 0x52: b"\x62\x63\x64\x65",
+    DS_SLOTS + 0x94 + 0x5F: b"\x6f\x70\x71\x72\x73", DS_SLOTS + 0x94 + 0x74: b"\x74\x75\x76\x77",
+    E3_REC + 0x61: b"\x61", 0x100AF8: b"\x00\x00\x00\x00",
+}
+
+
+def c1_18c14(cid, flag, val, hit, stubs=None, extra=None):
+    flags = [2] * 16
+    flags[flag] = val
+    pokes = {**C1_PTRS, **C1_18C14_SEED, C1_FLAGS: bytes(flags)}
+    pokes.update(extra or {})
+    return Case(cid, {"eax": 0, "edx": C1_FLAGS, "ebx": 0, "ecx": 0}, pokes, stubs or {})
+
+
+def c1_18c14_cases():
+    out = []
+    for flag in range(16):
+        for val in (0, 1):
+            for hit in (False, True):
+                cid = "g%X%s%s" % (flag, val, "h" if hit else "n")
+                stubs, extra = {}, {}
+                if flag == 0:
+                    le = (val == 1) if hit else (val == 0)
+                    extra[0x100AF8] = le32(0 if le else 1)
+                elif flag == 1:
+                    if val == 0:
+                        extra[DS_SLOTS + 0x94 + 0x74] = b"\x01\x00" if hit else b"\x00\x00"
+                        extra[DS_SLOTS + 0x94 + 0x76] = b"\x00\x00" if hit else b"\x01\x00"
+                    else:
+                        extra[DS_SLOTS + 0x94 + 0x74] = b"\x01\x00" if hit else b"\x01\x00"
+                        extra[DS_SLOTS + 0x94 + 0x76] = b"\x00\x00" if hit else b"\x02\x00"
+                elif flag == 0xF:
+                    extra[DS_SLOTS + 0x43] = b"\x04" if hit == (val == 0) else b"\x00"
+                elif flag in (2, 3, 6, 4):
+                    v = {2: (0, 1), 3: (1, 0), 6: (7, 0), 4: (2, 0)}[flag][0 if hit == (val == 0) else 1]
+                    extra[DS_SLOTS + 0x94 + 0x54] = bytes([v])
+                elif flag in (5, 9, 0xA, 0xD, 0xE):
+                    addr = {5: 0x1DDF4, 9: 0x189FC, 0xA: 0x18A4C, 0xD: 0x39EFC, 0xE: 0x3B298}[flag]
+                    stubs[addr] = 1 if hit == (val == 0) else 0
+                elif flag == 7:
+                    extra[DS_SLOTS + 0x94 + 0x62] = b"\x01" if hit == (val == 0) else b"\x00"
+                elif flag == 8:
+                    extra[DS_SLOTS + 0x94 + 0x42] = b"\x08" if hit == (val == 0) else b"\x00"
+                elif flag == 0xB:
+                    extra[E3_REC + 0x61] = b"\x01" if hit == (val == 0) else b"\x00"
+                elif flag == 0xC:
+                    extra[DS_SLOTS + 0x94 + 0x53] = b"\x0a" if hit == (val == 0) else b"\x0b"
+                out.append(c1_18c14(cid, flag, val, hit, stubs, extra))
+    return out
+
+
+
+C1_2BC30_SEED = {
+    E3_REC + 0x08: le32(0x08080808), E3_REC + 0x0C: b"\x0c" * 8, E3_REC + 0x20: b"\x20" * 8,
+    E3_REC + 0x28: b"\xff\xff\xff\xff", E3_REC + 0x50: b"\x50\x51\x52\x53",
+    E3_REC + 0x54: b"\x54\x55\x00\x00\x58\x59", E3_REC + 0x5F: b"\x5f\x60\x61\x62",
+    0x1014EC: le32(C1_PSET), C1_PSET: b"\x00\x00\x02\x02",
+}
+C1_35838_SEED = {
+    **C1_PTRS, DS_SLOTS + 0x40: b"\x40\x41\x42\x43\x44\x45\x46\x47", DS_SLOTS + 0x4C: b"\x4c\x4d\x4e\x4f\x50\x51\x52\x53",
+    DS_SLOTS + 0x7A: b"\x01", 0x104B00: b"\x11\x00",
+}
+C1_468D8_SEED = {
+    **C1_PTRS, DS_SLOTS + 0x10: le32(0), DS_SLOTS + 0x52: b"\x52", DS_SLOTS + 0x54: b"\x54",
+    E3_REC + 0x24: le32(0x24242424),
+    DS_SLOTS + 0x94 + 0x10: le32(0), DS_SLOTS + 0x94 + 0x52: b"\x62", DS_SLOTS + 0x94 + 0x54: b"\x64",
+    E3_REC2 + 0x24: le32(0x34343434),
+}
+
+
+C1_SPECS = [
+    # 0x3C148/0x3C16C (record §48-C): clear the side's record fields; EAX = side, mask 0.
+    Spec("fighter_3c148", 0x3C148, [
+        Case("c0", {"eax": 0}, {**C1_PTRS, **C1_A, **C1_B}),
+        Case("c1", {"eax": 1}, {**C1_PTRS, **C1_A, **C1_B}),
+    ], eax_mask=0, mutants=("@mutant", "@side", "@width")),
+    Spec("fighter_3c16c", 0x3C16C, [
+        Case("c0", {"eax": 0}, {**C1_PTRS, **C1_A, **C1_B}),
+        Case("c1", {"eax": 1}, {**C1_PTRS, **C1_A, **C1_B}),
+    ], eax_mask=0, mutants=("@mutant", "@side", "@width")),
+    # 0x39A10: EAX = rec, EDX = value; the side is rec+0x51, zero-extended (`and eax,0xff` at
+    # 0x39A14); the store is the word +0x74 of the side's slot (0x107824 = 0x1077B0 + 0x74).
+    Spec("fighter_39a10", 0x39A10, [
+        Case("t0", {"eax": E3_REC, "edx": 0x12345678},
+             {**C1_PTRS, E3_REC + 0x51: b"\x00", DS_SLOTS + 0x72: b"\x72\x73\x74\x75\x76\x77",
+              DS_SLOTS + 0x94 + 0x72: b"\x82\x83\x84\x85\x86\x87"}),
+        Case("t1", {"eax": E3_REC2, "edx": 0xFFFF},
+             {**C1_PTRS, E3_REC2 + 0x51: b"\x01", DS_SLOTS + 0x72: b"\x72\x73\x74\x75\x76\x77",
+              DS_SLOTS + 0x94 + 0x72: b"\x82\x83\x84\x85\x86\x87"}),
+    ], eax_mask=0, mutants=("@mutant", "@side")),
+    # 0x36D98: EAX = the slot (DS_001077B0 + side*0x94); the side is its record's +0x51.
+    Spec("fighter_36d98", 0x36D98, [
+        Case("r0", {"eax": DS_SLOTS},
+             {**C1_PTRS, E3_REC + 0x51: b"\x00", **c1_slots(C1_SLOT_SEED0, C1_SLOT_SEED1),
+              0x1078F2: b"\x11\x22"}),
+        Case("r1", {"eax": DS_SLOTS + 0x94},
+             {**C1_PTRS, E3_REC2 + 0x51: b"\x01", **c1_slots(C1_SLOT_SEED0, C1_SLOT_SEED1),
+              0x1078F2: b"\x11\x22"}),
+    ], eax_mask=0, mutants=("@mutant", "@side", "@and")),
+    # 0x18BD4: EAX = the 16 flag bytes; fill them with 2 (`mov byte [eax+7]` last, 0x18C0B).
+    Spec("fighter_18bd4", 0x18BD4, [
+        Case("b0", {"eax": E3_OUT}, {E3_OUT: b"\xaa" * 16 + b"\xbb"}),
+        Case("b1", {"eax": E3_SLOT + 0x60}, {E3_SLOT + 0x60: b"\xcc" * 16 + b"\xdd"}),
+    ], eax_mask=0, mutants=("@mutant", "@val", "@off")),
+    # 0x34D8C: the +0x59 palette-flash pair, only when byte 0x1078FA == 2 (`xor eax,eax; mov
+    # al,[0x1078fa]; cmp eax,2` 0x34D90..0x34D9A). EAX = side.
+    Spec("fighter_34d8c", 0x34D8C, [
+        Case("f0", {"eax": 0}, {**C1_PTRS, **C1_A, **C1_B, 0x1078FA: b"\x01"}),
+        Case("f1", {"eax": 0}, {**C1_PTRS, **C1_A, **C1_B, 0x1078FA: b"\x02"}),
+        Case("f2", {"eax": 1}, {**C1_PTRS, **C1_A, **C1_B, 0x1078FA: b"\x02"}),
+    ], eax_mask=0, mutants=("@mutant", "@side")),
+    # 0x3C358: EAX = side; 0x33950 runs on both sides (allow); every field seeded on both slots
+    # and both records (the +0x0C and +0x1C dwords included).
+    Spec("fighter_3c358", 0x3C358, [
+        Case("s0", {"eax": 0},
+             {**C1_PTRS, **c1_slots(C1_SLOT_SEED0, C1_SLOT_SEED1),
+              DS_SLOTS + 0x0C: le32(0x0C0C0C0C), DS_SLOTS + 0x94 + 0x0C: le32(0x1C1C1C1C),
+              **C1_A, **C1_B, E3_REC + 0x1C: le32(0x1C1C1C1C), E3_REC2 + 0x1C: le32(0x2C2C2C2C)}),
+        Case("s1", {"eax": 1},
+             {**C1_PTRS, **c1_slots(C1_SLOT_SEED0, C1_SLOT_SEED1),
+              DS_SLOTS + 0x0C: le32(0x0C0C0C0C), DS_SLOTS + 0x94 + 0x0C: le32(0x1C1C1C1C),
+              **C1_A, **C1_B, E3_REC + 0x1C: le32(0x1C1C1C1C), E3_REC2 + 0x1C: le32(0x2C2C2C2C)}),
+    ], allow_calls=(0x33950,), eax_mask=0, mutants=("@mutant", "@side", "@42")),
+    # 0x3C190: EAX = side, EDX = v; 0x1A570(side)'s AL negates v; the word +0x34 of the side's
+    # slot takes the low 16 bits.
+    Spec("fighter_3c190", 0x3C190, [
+        Case("v0", {"eax": 0, "edx": 0x1234}, {**C1_PTRS, **C1_A, **C1_B}, {0x1A570: 0}),
+        Case("v1", {"eax": 0, "edx": 0x1234}, {**C1_PTRS, **C1_A, **C1_B}, {0x1A570: 1}),
+        Case("v2", {"eax": 1, "edx": 0xFFFF8000}, {**C1_PTRS, **C1_A, **C1_B}, {0x1A570: 1}),
+    ], calls=(BIT15,), eax_mask=0, mutants=("@mutant", "@arg", "@width")),
+    # 0x3C480: EAX = rec, EDX = stream, s0 = frame bits; 0x339AC runs on both sides (allow), the
+    # anchor pair and 0x2BC30 are stubbed (the caller reads none of their effects).
+    Spec("fighter_3c480", 0x3C480, [
+        Case("a0", {"eax": E3_REC, "edx": 0xE1234, "s0": 0x40000000},
+             {**C1_PTRS, E3_REC + 0x51: b"\x00", E3_REC + 0x18: le32(0x18181818),
+              DS_SLOTS + 0x2C: le32(0x2C2C2C2C), DS_SLOTS + 0x94 + 0x2C: le32(0x3C3C3C3C),
+              E3_REC2 + 0x18: le32(0x28282828)}),
+        Case("a1", {"eax": E3_REC2, "edx": 0xE5678, "s0": 0x3F800000},
+             {**C1_PTRS, E3_REC2 + 0x51: b"\x01", E3_REC + 0x18: le32(0x18181818),
+              DS_SLOTS + 0x2C: le32(0x2C2C2C2C), DS_SLOTS + 0x94 + 0x2C: le32(0x3C3C3C3C),
+              E3_REC2 + 0x18: le32(0x28282828)}),
+    ], allow_calls=(0x339AC,), calls=(ANCHOR, ANIM_BEGIN, ANCHORX), eax_mask=0,
+       mutants=("@mutant", "@order", "@side")),
+    # 0x188AC (P1's ANCHOR): EAX = side, EDX = x, EBX = y; the record's +0x18/+0x1C
+    # take x/y, then 0x186D0(side) re-latches the slot.
+    Spec("fighter_188ac", 0x188AC, [
+        Case("a0", {"eax": 0, "edx": 0x11223344, "ebx": 0x55667788},
+             {**C1_PTRS, E3_REC + 0x16: b"\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f",
+              E3_REC2 + 0x16: b"\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f"}),
+        Case("a1", {"eax": 1, "edx": 0x99AABBCC, "ebx": 0xDDEEFF00},
+             {**C1_PTRS, E3_REC + 0x16: b"\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f",
+              E3_REC2 + 0x16: b"\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f"}),
+    ], calls=(C1_SLOT_LATCH,), eax_mask=0, mutants=("@mutant", "@side", "@latch")),
+    # 0x188DC (P3's ANCHORX): EAX = side, EDX = x; the slot's +0x2C takes x, then
+    # the record's +0x18 takes 0x18714(side)'s result.
+    Spec("fighter_188dc", 0x188DC, [
+        Case("d0", {"eax": 0, "edx": 0x11223344},
+             {**C1_PTRS, **C1_18, DS_SLOTS + 0x2A: b"\x2a\x2b\x2c\x2c\x2e\x2f",
+              DS_SLOTS + 0x94 + 0x2A: b"\x3a\x3b\x3c\x3c\x3e\x3f"}, {0x18714: 0x11111111}),
+        Case("d1", {"eax": 1, "edx": 0x99AABBCC},
+             {**C1_PTRS, **C1_18, DS_SLOTS + 0x2A: b"\x2a\x2b\x2c\x2c\x2e\x2f",
+              DS_SLOTS + 0x94 + 0x2A: b"\x3a\x3b\x3c\x3c\x3e\x3f"}, {0x18714: 0x22222222}),
+    ], calls=(C1_RECORD_X,), eax_mask=0, mutants=("@mutant", "@side", "@arg", "@eax")),
+    # 0x18AF8: `xor eax,eax; call 0x18B04` (recorded, stubbed) then `mov eax,1` falls
+    # through into 0x18B04's body with EAX = 1 (no second call). The body runs on both
+    # sides: 0x33950 allow, then 0x18714(side) into the record's +0x18 and the +0x29
+    # bit 0x40 by the two slots' +0x2C comparison (side 1 only: the fall-through's EAX).
+    Spec("fighter_18af8", 0x18AF8, [
+        Case("f0", {}, {**C1_PTRS, E3_REC2 + 0x29: b"\x29", E3_REC2 + 0x16: b"\x26\x27\x28\x29\x2a\x2b",
+                        DS_SLOTS + 0x2C: le32(0x22222222), DS_SLOTS + 0x94 + 0x2C: le32(0x11111111)},
+             {0x18B04: 0, 0x18714: 0x33333333}),
+        # f1 takes the `and 0xBF` arm (equal +0x2C values), so its +0x29 seed has bit 6 set:
+        # the clear is observable (f0's `<` arm keeps the `or 0x40` and its seed bit 6 clear).
+        Case("f1", {}, {**C1_PTRS, E3_REC2 + 0x29: b"\x69", E3_REC2 + 0x16: b"\x26\x27\x28\x29\x2a\x2b",
+                        DS_SLOTS + 0x2C: le32(0x11111111), DS_SLOTS + 0x94 + 0x2C: le32(0x11111111)},
+             {0x18B04: 1, 0x18714: 0x44444444}),
+    ], allow_calls=(0x33950,), calls=(C1_FACING, C1_RECORD_X), eax_mask=0,
+       mutants=("@mutant", "@once", "@le")),
+    # 0x2A17C (P1's PALETTE): EAX = rec, EDX = word, EBX = handle; pset+2 takes the word
+    # with 0x800 when rec+0x5F is set; a zero handle returns; else the old pset+0x18 is
+    # released (0x33864) and 0x33754(handle) is stored.
+    Spec("fighter_2a17c", 0x2A17C, [
+        Case("p0", {"eax": E3_REC, "edx": 0x1234, "ebx": 0},
+             {**C1_PTRS, 0x1014EC: le32(C1_PSET), 0x1014F4: le32(E3_REC), E3_REC + 0x56: b"\x00\x00",
+              E3_REC + 0x5F: b"\x00", C1_PSET + 0x02: b"\x02\x02", C1_PSET + 0x18: le32(0)}),
+        Case("p1", {"eax": E3_REC, "edx": 0x5678, "ebx": 0x77},
+             {**C1_PTRS, 0x1014EC: le32(C1_PSET), 0x1014F4: le32(E3_REC), E3_REC + 0x56: b"\x00\x00",
+              E3_REC + 0x5F: b"\x01", C1_PSET + 0x02: b"\x02\x02", C1_PSET + 0x18: le32(0)},
+             {0x33754: 0xAABBCCDD}),
+        Case("p2", {"eax": E3_REC, "edx": 0x9ABC, "ebx": 0x88},
+             {**C1_PTRS, 0x1014EC: le32(C1_PSET), 0x1014F4: le32(E3_REC), E3_REC + 0x56: b"\x00\x00",
+              E3_REC + 0x5F: b"\x00", C1_PSET + 0x02: b"\x02\x02", C1_PSET + 0x18: le32(0x1234)},
+             {0x33754: 0x11223344}),
+    ], calls=(C1_PAL_REL, C1_PAL_ACQ), eax_mask=0, mutants=("@mutant", "@order", "@arg", "@early"),
+       # 0x2A1AC's EBX==0 return runs before 0x2A1E6's test, so the 0x2A1F5 store is dead
+       unhit_named={0x2A1F5: "dead: EBX == 0 already returned at 0x2A1AC"}),
+    # 0x2BC30 (E3's ANIM_BEGIN): EAX = rec, EDX = stream, s0 = frame bits; the stream
+    # opcode walk calls 0x2B2A0 (stub EAX 0 continues, 1 stops, 2 stops after +2) and
+    # the pset word takes 0x2A408's low word.
+    Spec("fighter_2bc30", 0x2BC30, [
+        Case("n0", {"eax": E3_REC, "edx": C1_STR, "s0": 0x40000000},
+             {**C1_2BC30_SEED, C1_STR: b"\x00\x00\x00\x00"}, {0x2A408: 0x1234}),
+        Case("n1", {"eax": E3_REC, "edx": C1_STR, "s0": 0x40000000},
+             {**C1_2BC30_SEED, C1_STR: b"\x00\x80\x00\x00"}, {0x2A408: 0x2345, 0x2B2A0: 1}),
+        Case("n2", {"eax": E3_REC, "edx": C1_STR, "s0": 0x40000000},
+             {**C1_2BC30_SEED, C1_STR: b"\x00\x80\x00\x00"}, {0x2A408: 0x3456, 0x2B2A0: 2}),
+        Case("n3", {"eax": E3_REC, "edx": C1_STR, "s0": 0x40000000},
+             {**C1_2BC30_SEED, C1_STR: b"\x00\x80\x00\x80\x00\x00\x00\x00"},
+             {0x2A408: 0x4567, 0x2B2A0: 0}),
+    ], calls=(C1_ANIM_OPCODE, C1_SPRITE_ID), eax_mask=0, mutants=("@mutant", "@order", "@frame"),
+       # 0x2BC61 `xor eax,eax` makes the 0x2BC66 test always take the jump: the fild block is dead
+       unhit_named={0x2BC6D: "dead: EAX is 0 at 0x2BC66 (`xor eax,eax` at 0x2BC61)"}),
+    # 0x39FB0: EAX = slot; the side is its record's +0x51; 0x33A10 runs on both sides
+    # (allow); 0x18B04(ctx[1]) then the 0x39F40 pose with (ctx[1], -0x50, 0x64, 0xF, 0x14).
+    Spec("fighter_39fb0", 0x39FB0, [
+        Case("g0", {"eax": DS_SLOTS}, {**C1_PTRS, E3_REC + 0x51: b"\x00"}),
+        Case("g1", {"eax": DS_SLOTS + 0x94}, {**C1_PTRS, E3_REC2 + 0x51: b"\x01"}),
+    ], allow_calls=(0x33A10,), calls=(C1_FACING, C1_POSE), eax_mask=0,
+       mutants=("@mutant", "@side", "@order")),
+    # 0x3A95C: EAX = side, EDX = b; 0x33A10 runs on both sides (allow); 0x188AC(ctx[1],
+    # ctx[5].+0x18, 0); the own slot (ctx[3]) 0x10/0x0A/0/0x10=0; 0x2BC30(ctx[5], the char
+    # stream, 3.0); ctx[3].+0x7E = byte[0xBECF8] + b.
+    Spec("fighter_3a95c", 0x3A95C, [
+        Case("c0", {"eax": 0, "edx": 0x21},
+             {**C1_PTRS, E3_REC2 + 0x18: le32(0x18181818), E3_REC + 0x18: le32(0x28282828),
+              DS_SLOTS + 0x10: b"\x20\x20\x20\x20",
+              DS_SLOTS + 0x52: b"\x52\x53\x54\x55", DS_SLOTS + 0x94 + 0x52: b"\x62\x63\x64\x65",
+              DS_SLOTS + 0x94 + 0x10: b"\x10\x10\x10\x10", DS_SLOTS + 0x94 + 0x7A: b"\x00",
+              DS_SLOTS + 0x94 + 0x7E: b"\x7e\x7f"}),
+        Case("c1", {"eax": 1, "edx": 0x42},
+             {**C1_PTRS, E3_REC2 + 0x18: le32(0x18181818), E3_REC + 0x18: le32(0x28282828),
+              DS_SLOTS + 0x52: b"\x52\x53\x54\x55", DS_SLOTS + 0x94 + 0x52: b"\x62\x63\x64\x65",
+              DS_SLOTS + 0x10: b"\x20\x20\x20\x20", DS_SLOTS + 0x94 + 0x10: b"\x10\x10\x10\x10",
+              DS_SLOTS + 0x7A: b"\x01",
+              DS_SLOTS + 0x7E: b"\x6e\x6f"}),
+    ], allow_calls=(0x33A10,), calls=(ANCHOR, ANIM_BEGIN), eax_mask=0,
+       mutants=("@mutant", "@side", "@arg")),
+    # 0x35838 (P3's DIRS): EAX = slot, EDX = rec, EBX = dirbits; the rec+0x28 bit
+    # 0x4000 gate and dirbits 0x2000/0x1000 select the two animation streams (or
+    # 0x36638 when mode 0x104B00 == 0x22).
+    Spec("fighter_35838", 0x35838, [
+        Case("s0", {"eax": DS_SLOTS, "edx": E3_REC, "ebx": 0},
+             {**C1_35838_SEED, E3_REC + 0x28: b"\x00\x00"}),
+        Case("s1", {"eax": DS_SLOTS, "edx": E3_REC, "ebx": 0x2000},
+             {**C1_35838_SEED, E3_REC + 0x28: b"\x00\x00"}),
+        Case("s2", {"eax": DS_SLOTS, "edx": E3_REC, "ebx": 0},
+             {**C1_35838_SEED, E3_REC + 0x28: b"\x00\x00", 0x104B00: b"\x22\x00"}),
+        Case("s3", {"eax": DS_SLOTS, "edx": E3_REC, "ebx": 0x1000},
+             {**C1_35838_SEED, E3_REC + 0x28: b"\x00\x40"}),
+        Case("s4", {"eax": DS_SLOTS, "edx": E3_REC, "ebx": 0},
+             {**C1_35838_SEED, E3_REC + 0x28: b"\x00\x40", 0x104B00: b"\x22\x00"}),
+        Case("s5", {"eax": DS_SLOTS, "edx": E3_REC, "ebx": 0},
+             {**C1_35838_SEED, E3_REC + 0x28: b"\x00\x40"}),
+    ], calls=(ANIM_BEGIN, C1_36638), eax_mask=0, mutants=("@mutant", "@side", "@order")),
+    # 0x468D8 (P3's PRED): EAX = side; 0x33A10 runs on both sides (allow); 1 when the
+    # side slot's +0x10 handler is 0x22BEC, its record's +0x24 low 31 bits are clear and
+    # +0x54 is not 2; else 1 when +0x52 is 7.
+    Spec("fighter_468d8", 0x468D8, [
+        Case("h0", {"eax": 0}, {**C1_468D8_SEED, DS_SLOTS + 0x10: le32(0x22BEC), E3_REC + 0x24: le32(0)}),
+        Case("h1", {"eax": 0}, {**C1_468D8_SEED, DS_SLOTS + 0x10: le32(0x1234), DS_SLOTS + 0x52: b"\x07"}),
+        Case("h2", {"eax": 0}, {**C1_468D8_SEED, DS_SLOTS + 0x10: le32(0x22BEC),
+                                E3_REC + 0x24: le32(0x80000000)}),
+        Case("h3", {"eax": 0}, {**C1_468D8_SEED, DS_SLOTS + 0x10: le32(0x22BEC), E3_REC + 0x24: le32(0),
+                                DS_SLOTS + 0x54: b"\x02"}),
+        Case("h4", {"eax": 0}, {**C1_468D8_SEED, DS_SLOTS + 0x10: le32(0x22BEC), E3_REC + 0x24: le32(0),
+                                DS_SLOTS + 0x52: b"\x07"}),
+        Case("h5", {"eax": 0}, {**C1_468D8_SEED, DS_SLOTS + 0x10: le32(0x1234)}),
+        Case("h6", {"eax": 1}, {**C1_468D8_SEED, DS_SLOTS + 0x94 + 0x10: le32(0x22BEC),
+                                E3_REC2 + 0x24: le32(0)}),
+    ], allow_calls=(0x33A10,), eax_mask=0xFF, mutants=("@mutant", "@eq", "@side")),
+    # 0x3C208 (P2's PLACE): EAX = side, EDX = dist; both slots latch, 0x18AF8 sets the
+    # facing flags, both records clear +0x34/+0x43/+0x42; then 0x187FC's |d| against
+    # |dist|: farther, 0x1883C(other, ±gap, 0) by 0x1A570; closer, 0x3B8D8(other, ±gap)
+    # then 0x1883C or 0x3B90C and the two anchors (slot[other]+0x2C ± want).
+    Spec("fighter_3c208", 0x3C208, [
+        Case("c0", {"eax": 0, "edx": 0x100},
+             {**C1_PTRS, **C1_A, **C1_B, DS_SLOTS + 0x2C: le32(0x1234), DS_SLOTS + 0x94 + 0x2C: le32(0x5678)},
+             {0x187FC: 0x200, 0x1A570: 0}),
+        Case("c1", {"eax": 0, "edx": 0x100},
+             {**C1_PTRS, **C1_A, **C1_B, DS_SLOTS + 0x2C: le32(0x1234), DS_SLOTS + 0x94 + 0x2C: le32(0x5678)},
+             {0x187FC: 0x200, 0x1A570: 1}),
+        Case("c2", {"eax": 0, "edx": 0xFFFFFF00},
+             {**C1_PTRS, **C1_A, **C1_B, DS_SLOTS + 0x2C: le32(0x1234), DS_SLOTS + 0x94 + 0x2C: le32(0x5678)},
+             {0x187FC: 0x200, 0x1A570: 0}),
+        Case("c3", {"eax": 0, "edx": 0x100},
+             {**C1_PTRS, **C1_A, **C1_B, DS_SLOTS + 0x2C: le32(0x1234), DS_SLOTS + 0x94 + 0x2C: le32(0x5678)},
+             {0x187FC: 0x50, 0x1A570: 0, 0x3B8D8: 0}),
+        Case("c4", {"eax": 0, "edx": 0x100},
+             {**C1_PTRS, **C1_A, **C1_B, DS_SLOTS + 0x2C: le32(0x1234), DS_SLOTS + 0x94 + 0x2C: le32(0x5678)},
+             {0x187FC: 0x50, 0x1A570: 0, 0x3B8D8: 1, 0x3B90C: 0x777}),
+        Case("c5", {"eax": 0, "edx": 0x100},
+             {**C1_PTRS, **C1_A, **C1_B, DS_SLOTS + 0x2C: le32(0x1234), DS_SLOTS + 0x94 + 0x2C: le32(0x5678)},
+             {0x187FC: 0x50, 0x1A570: 1, 0x3B8D8: 0}),
+        Case("c6", {"eax": 0, "edx": 0x100},
+             {**C1_PTRS, **C1_A, **C1_B, DS_SLOTS + 0x2C: le32(0x1234), DS_SLOTS + 0x94 + 0x2C: le32(0x5678)},
+             {0x187FC: 0x50, 0x1A570: 1, 0x3B8D8: 1, 0x3B90C: 0x888}),
+        Case("c7", {"eax": 0, "edx": 0x100},
+             {**C1_PTRS, **C1_A, **C1_B, DS_SLOTS + 0x2C: le32(0x1234), DS_SLOTS + 0x94 + 0x2C: le32(0x5678)},
+             {0x187FC: 0xFFFFFFF0, 0x1A570: 0, 0x3B8D8: 0}),
+    ], allow_calls=(0x33950,),
+       calls=(C1_SLOT_LATCH, C1_FACING0, C1_FACING, C1_RECORD_X, C1_AI_DIST, BIT15, C1_1883C, C1_3B8D8, C1_3B90C, ANCHORX),
+       eax_mask=0, mutants=("@mutant", "@abs", "@arg", "@early")),
+    # 0x18C14 (P2's CHECKS): EAX = side, EDX = the 16 flag bytes (poked; the binding reads
+    # mem[EDX]); 0x33950 allow; each flag 2 skips, 0/1 tests (flag 0 rewrites to 4/3); flags
+    # 7/0xD/0xE store ctx[2]+0x8A and 7/0xD call 0x18B44; returns 0 only when every check
+    # passes. The 64 cases: every flag, value 0/1, condition holding and not.
+    Spec("fighter_18c14", 0x18C14, c1_18c14_cases(),
+       allow_calls=(0x33950,), calls=(C1_GEOM, C1_18B44, C1_189FC, C1_18A4C, C1_39EFC, DISPATCH),
+       eax_mask=0xFF, mutants=("@mutant", "@store", "@live")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -1421,7 +1788,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + C1_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

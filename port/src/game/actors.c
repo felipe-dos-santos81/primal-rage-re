@@ -1075,6 +1075,7 @@ u32 actor_pset(u32 rec)
  * full table is a fatal error; the port returns 0 rather than exiting. */
 u32 palette_acquire(u32 handle)
 {
+    PR_SEAM_RET(0x33754u, handle);
     const u32 *res = res_resolve(handle);           /* 0x1B544 */
     u32 count = res ? *res : 0;
     u32 e = DS_00107618;
@@ -1300,6 +1301,7 @@ static u32 anim_operand(u32 rec)
  * 0x2A4A7 (`mov cx,[edx]`), which is the keep-current-id arm. */
 u32 anim_next_sprite_id(u32 rec, u32 pset)
 {
+    PR_SEAM_RET(0x2A408u, rec, pset);
     u32 res;
     if ((DSW(rec + 0x28) >> 8 & 8u) != 0) {
         res = DSW(rec + 8);
@@ -2168,8 +2170,9 @@ void actors_pin_anim_tick_zero(int on) { anim_tick_zero = on; }
  * that anim_operand stores back into DS_00105BE4. `flag` is the original's EBX
  * on entry: 0x2AE14 passes 1, 0x2AA70 and 0x2BC30 pass 0; only opcode 0 reads
  * it. Returns 0 to keep walking, 1 to stop (opcode 0x0D) and 2 for death. */
-static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
+u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
 {
+    PR_SEAM_RET(0x2B2A0u, rec, index, flag);
     u32 p = DSD(rec + 8);
     DSW(DS_00105BE4) = (u16)((DSW(p) >> 8) & 0x1fu);
     if ((u8)DSW(DS_00105BE4) == 0x0du) return 1;
@@ -2810,8 +2813,9 @@ stream_walk:;
 }
 
 /* 0x33864: drop a palette-table reference; clear the handle at 0 at zero. */
-static void palette_release(u32 entry)
+void palette_release(u32 entry)
 {
+    PR_SEAM(0x33864u, entry);
     u32 ref = DSD(entry + 4);
     DSD(entry + 4) = ref - 1;
     if (ref - 1 == 0) DSD(entry) = 0;
