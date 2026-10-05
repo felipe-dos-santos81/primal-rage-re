@@ -2611,6 +2611,485 @@ C1_SPECS = [
        eax_mask=0xFF, mutants=("@mutant", "@store", "@live")),
 ]
 
+# ---- track P batch C2: the verification-only callee rows (record 2026-10-04-reverse-c2) ----------
+# The ported callees the P/C1 rows stub that still have no row (record §C2.1). Every field a row
+# writes carries a sentinel that differs from what it writes and every neighbour byte is seeded (the
+# P-track checklist 1-2). A row's callee is stubbed through its seam on BOTH sides (the port's C
+# returns at its PR_SEAM), so the callee's own behaviour is its own row's claim while this row's
+# call list, its arguments and the memory at each call are compared (E3 §E3.10, §E3.12).
+DS_1088C2 = 0x1088C2           # DS_001088C2: the byte 0x13244 sets
+DS_1014EC = 0x1014EC           # DS_001014EC: the pset pool base
+DS_1014F4 = 0x1014F4           # DS_001014F4: the actor pool base (the port's in_pool check)
+DS_A8A98 = 0x000A8A98          # DS_000A8A98: the per-character palette-row pointer table
+DS_105B34 = 0x00105B34         # DS_00105B34: the per-side palette index byte table
+DS_BE018 = 0x000BE018          # DS_000BE018: the arena wall
+DS_104B00 = 0x00104B00         # DS_00104B00: the fight mode word
+DS_100C1D = 0x00100C1D         # DS_00100C1D: the once-per-fight dust latch
+C2_PSET = 0x10A600             # zero BSS: a pset base for DS_001014EC
+C2_POOL = 0x10A2B8             # 0x68-aligned zero BSS: an actor-pool record base
+C2_REC = 0x10A2B8
+C2_ROW0 = 0x10A6C0             # zero BSS: two palette rows for 0x29C08/0x29BC8
+C2_STR = 0x10A700              # zero BSS: animation-stream words for 0x2A408
+C2_ROW1 = 0x10A6E0
+C2_ENTRY = 0x10A800            # zero BSS: a palette-table entry {handle; refcount; ...}
+DS_104529 = 0x00104529         # DS_00104529: the dust descriptor selector bit
+FIGHTER_A17D4 = 0x000A17D4     # the dust spawn x word pair
+FIGHTER_A17D6 = 0x000A17D6     # the dust spawn y word pair
+C2_LATCH = E.Call(0x186D0, ("eax",))
+
+C2_SPECS = [
+    # 0x39280 (record §48-C): EAX = side; clear the side slot's +0x5D and +0x43 bit 2. Mask 0: both
+    # callers overwrite EAX at once (0x350D0's +0x41 bit-2 arm and its DS_001078F2 block).
+    Spec("fighter_state_39280", 0x39280, [
+        Case("s0", {"eax": 0}, {DS_SLOTS + 0x42: b"\x42", DS_SLOTS + 0x43: b"\x07", DS_SLOTS + 0x44: b"\x44",
+                                DS_SLOTS + 0x5C: b"\x5c", DS_SLOTS + 0x5D: b"\x5d", DS_SLOTS + 0x5E: b"\x5e",
+                                DS_SLOTS + 0x94 + 0x42: b"\x52", DS_SLOTS + 0x94 + 0x43: b"\x06",
+                                DS_SLOTS + 0x94 + 0x44: b"\x54", DS_SLOTS + 0x94 + 0x5C: b"\x6c",
+                                DS_SLOTS + 0x94 + 0x5D: b"\x6d", DS_SLOTS + 0x94 + 0x5E: b"\x6e"}),
+        Case("s1", {"eax": 1}, {DS_SLOTS + 0x42: b"\x42", DS_SLOTS + 0x43: b"\x07", DS_SLOTS + 0x44: b"\x44",
+                                DS_SLOTS + 0x5C: b"\x5c", DS_SLOTS + 0x5D: b"\x5d", DS_SLOTS + 0x5E: b"\x5e",
+                                DS_SLOTS + 0x94 + 0x42: b"\x52", DS_SLOTS + 0x94 + 0x43: b"\x06",
+                                DS_SLOTS + 0x94 + 0x44: b"\x54", DS_SLOTS + 0x94 + 0x5C: b"\x6c",
+                                DS_SLOTS + 0x94 + 0x5D: b"\x6d", DS_SLOTS + 0x94 + 0x5E: b"\x6e"}),
+    ], eax_mask=0, mutants=("@mutant", "@side", "@width")),
+    # 0x33864 (record §C1.2): EAX = the 0x10-byte palette-table entry; refcount-- and clear the
+    # handle at zero. Mask 0: its only caller 0x2A1C8 stores over EAX at once (0x2A1D1).
+    Spec("palette_release", 0x33864, [
+        Case("r0", {"eax": C2_ENTRY}, {C2_ENTRY: le32(0x11223344), C2_ENTRY + 4: le32(1), C2_ENTRY + 8: le32(0x88888888)}),
+        Case("r1", {"eax": C2_ENTRY}, {C2_ENTRY: le32(0x11223344), C2_ENTRY + 4: le32(2), C2_ENTRY + 8: le32(0x88888888)}),
+        Case("r2", {"eax": C2_ENTRY}, {C2_ENTRY: le32(0x11223344), C2_ENTRY + 4: le32(0x100),
+                                       C2_ENTRY + 8: le32(0x88888888)}),
+    ], eax_mask=0, mutants=("@mutant", "@width", "@off")),
+    # 0x13244 (record §48-P): DS_001088C2 = 1; no argument, no callee. Mask 0 (the caller 0x3F34C
+    # falls through into the spawn tail and overwrites EAX).
+    Spec("fighter_13244", 0x13244, [
+        Case("c0", {}, {DS_1088C2: b"\x00"}),
+        Case("c1", {}, {DS_1088C2: b"\xa5"}),
+    ], eax_mask=0, mutants=("@mutant", "@addr", "@val")),
+    # 0x29C08 (record §P4.5): EAX = side, EDX = char; the handle is DSD(DSD(0xA8A98+ch*4) +
+    # DSB(0x105B34+side)*4). Mask full: 0x3E160 stores the result in a descriptor's +0x10.
+    Spec("fighter_29c08", 0x29C08, [
+        Case("c0", {"eax": 0, "edx": 0}, {DS_A8A98: le32(C2_ROW0), DS_A8A98 + 4: le32(C2_ROW1),
+                                          DS_105B34: b"\x00\x01",
+                                          C2_ROW0: le32(0x11111111), C2_ROW0 + 4: le32(0x22222222),
+                                          C2_ROW1: le32(0x33333333), C2_ROW1 + 4: le32(0x44444444)}),
+        Case("c1", {"eax": 1, "edx": 0}, {DS_A8A98: le32(C2_ROW0), DS_A8A98 + 4: le32(C2_ROW1),
+                                          DS_105B34: b"\x00\x01",
+                                          C2_ROW0: le32(0x11111111), C2_ROW0 + 4: le32(0x22222222),
+                                          C2_ROW1: le32(0x33333333), C2_ROW1 + 4: le32(0x44444444)}),
+        Case("c2", {"eax": 0, "edx": 1}, {DS_A8A98: le32(C2_ROW0), DS_A8A98 + 4: le32(C2_ROW1),
+                                          DS_105B34: b"\x00\x01",
+                                          C2_ROW0: le32(0x11111111), C2_ROW0 + 4: le32(0x22222222),
+                                          C2_ROW1: le32(0x33333333), C2_ROW1 + 4: le32(0x44444444)}),
+        Case("c3", {"eax": 0x80, "edx": 0}, {DS_A8A98: le32(C2_ROW0), DS_105B34 + 0x80: b"\xff",
+                                             C2_ROW0 + 0x3FC: le32(0xAABBCCDD), C2_ROW0 - 4: le32(0xDEADBEEF)}),
+    ], eax_mask=0xFFFFFFFF, mutants=("@side", "@char", "@sext")),
+    # 0x2A148 (record §42-A): EAX = rec, DL = flag; rec+0x5F = flag and the pset's +2 word =
+    # rec+0x2E | 0x800 when the stored flag is non-zero. Mask 0 (the callers ignore EAX; the raw
+    # leaves its 0x800 scratch there). The port's actor_pset checks the pool: DS_001014F4 = C2_REC.
+    Spec("actor_pset_flag_5f", 0x2A148, [
+        Case("f0", {"eax": C2_REC, "edx": 0}, {DS_1014EC: le32(C2_PSET), DS_1014F4: le32(C2_POOL),
+                                               C2_REC + 0x56: b"\x01\x00", C2_REC + 0x2E: b"\x26\x26",
+                                               C2_REC + 0x5F: b"\x5f", C2_PSET + 0x22: b"\x02\x02",
+                                               C2_PSET + 0x2C: b"\x2c\x2c"}),
+        Case("f1", {"eax": C2_REC, "edx": 1}, {DS_1014EC: le32(C2_PSET), DS_1014F4: le32(C2_POOL),
+                                               C2_REC + 0x56: b"\x01\x00", C2_REC + 0x2E: b"\x26\x26",
+                                               C2_REC + 0x5F: b"\x00", C2_PSET + 0x22: b"\x02\x02",
+                                               C2_PSET + 0x2C: b"\x2c\x2c"}),
+        Case("f2", {"eax": C2_REC, "edx": 0x100}, {DS_1014EC: le32(C2_PSET), DS_1014F4: le32(C2_POOL),
+                                                   C2_REC + 0x56: b"\x01\x00", C2_REC + 0x2E: b"\x26\x26",
+                                                   C2_REC + 0x5F: b"\x5f", C2_PSET + 0x22: b"\x02\x02",
+                                                   C2_PSET + 0x2C: b"\x2c\x2c"}),
+    ], eax_mask=0, mutants=("@mutant", "@word", "@pset")),
+    # 0x29BC8 (record §P6.2): EAX = side, EBX = rec, EDX = char; resolve the palette handle and
+    # 0x2A17C(rec, 0, handle). The callee is stubbed through its seam on both sides.
+    Spec("fighter_29bc8", 0x29BC8, [
+        Case("c0", {"eax": 0, "ebx": C2_REC, "edx": 0}, {DS_A8A98: le32(C2_ROW0), DS_A8A98 + 4: le32(C2_ROW1),
+                                                         DS_105B34: b"\x00\x01",
+                                                         C2_ROW0: le32(0x11111111), C2_ROW1: le32(0x22222222)}),
+        Case("c1", {"eax": 1, "ebx": C2_REC, "edx": 1}, {DS_A8A98: le32(C2_ROW0), DS_A8A98 + 4: le32(C2_ROW1),
+                                                         DS_105B34: b"\x00\x01",
+                                                         C2_ROW0: le32(0x11111111), C2_ROW1: le32(0x22222222)}),
+    ], calls=(PALETTE,), eax_mask=0, mutants=("@side", "@rec")),
+    # 0x1890C (record §P6.2): EAX = side, EDX = y; rec+0x1C += y - slot+0x30, latched twice. The
+    # latch is stubbed on both sides, so the case's slot/record bytes survive.
+    Spec("hit_anchor_y", 0x1890C, [
+        Case("y0", {"eax": 0, "edx": 0x100}, {**SLOT_PTRS, DS_SLOTS + 0x30: le32(0x50),
+                                              E3_REC + 0x1C: le32(0x1000), DS_SLOTS + 0x94 + 0x30: le32(0x60),
+                                              E3_REC2 + 0x1C: le32(0x2000)}),
+        Case("y1", {"eax": 0, "edx": 0xFFFFFF00}, {**SLOT_PTRS, DS_SLOTS + 0x30: le32(0x50),
+                                                   E3_REC + 0x1C: le32(0x1000), DS_SLOTS + 0x94 + 0x30: le32(0x60),
+                                                   E3_REC2 + 0x1C: le32(0x2000)}),
+        Case("y2", {"eax": 1, "edx": 0x200}, {**SLOT_PTRS, DS_SLOTS + 0x30: le32(0x50),
+                                              E3_REC + 0x1C: le32(0x1000), DS_SLOTS + 0x94 + 0x30: le32(0x60),
+                                              E3_REC2 + 0x1C: le32(0x2000)}),
+    ], calls=(C2_LATCH,), eax_mask=0, mutants=("@mutant", "@side", "@field")),
+    # 0x187FC (record §C1.2): latch both slots, return slot0+0x2C - slot1+0x2C. Mask full.
+    Spec("ai_distance", 0x187FC, [
+        Case("d0", {}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x1000), DS_SLOTS + 0x94 + 0x2C: le32(0x800)}),
+        Case("d1", {}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x800), DS_SLOTS + 0x94 + 0x2C: le32(0x1000)}),
+    ], calls=(C2_LATCH,), eax_mask=0xFFFFFFFF, mutants=("@mutant", "@order")),
+]
+
+# 0x18540/0x18350: the latch's own callees (record §48-V.5); stubbed in 0x186D0/0x18714's rows and
+# seamed in port/src/game/fighter.c. 0x18540 saves and restores everything; 0x18350 clobbers EDX.
+C2_18540 = E.Call(0x18540, ("eax",))
+C2_18350 = E.Call(0x18350, ("eax", "edx"), clobbers=("edx",))
+C2_189FC = E.Call(0x189FC, ("eax",))
+C2_18A4C = E.Call(0x18A4C, ("eax",))
+C2_39EFC = E.Call(0x39EFC, ("eax",))
+C2_3B8D8 = E.Call(0x3B8D8, ("eax", "edx"), clobbers=("edx",))
+C2_3B90C = E.Call(0x3B90C, ("eax", "edx"), clobbers=("edx",))
+C2_ACTOR = 0x1014EC              # DS_001014EC: the pset pool base (1A570's actor word)
+C2_ANCHOR = 0x100AF0             # DS_00100AF0: the per-side screen anchor
+C2_OFFS = 0x100AB0               # DS_00100AB0/AB4: the per-side screen offset pair
+
+C2_SPECS += [
+    # 0x186D0 (record §C1.2): EAX = side; with slot+0x42 bit 3 the record's +0x18/+0x1C latch into
+    # +0x2C/+0x30, else 0x18540(side) runs, the +0x20 anchor is refreshed (0x18350) and the offset
+    # pair is added; +0x41 bit 7 copies +0x2C into +0x34. Mask 0 (every caller ignores EAX).
+    Spec("fighter_slot_latch", 0x186D0, [
+        Case("l0", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x20: le32(0x24242424), DS_SLOTS + 0x41: b"\x80",
+                                DS_SLOTS + 0x42: b"\x08", DS_SLOTS + 0x2C: le32(0x2C2C2C2C),
+                                DS_SLOTS + 0x30: le32(0x30303030), DS_SLOTS + 0x34: le32(0x34343434),
+                                E3_REC + 0x18: le32(0x18181818), E3_REC + 0x1C: le32(0x1C1C1C1C),
+                                C2_ANCHOR: le32(0x1111) + le32(0x2222), C2_OFFS: le32(0x64) + le32(0x65)}),
+        Case("l1", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x20: le32(0x1111), DS_SLOTS + 0x24: le32(0x24242424),
+                                DS_SLOTS + 0x41: b"\x80", DS_SLOTS + 0x42: b"\x00",
+                                DS_SLOTS + 0x2C: le32(0x2C2C2C2C), DS_SLOTS + 0x30: le32(0x30303030),
+                                DS_SLOTS + 0x34: le32(0x34343434), E3_REC + 0x18: le32(0x18181818),
+                                E3_REC + 0x1C: le32(0x1C1C1C1C), C2_ANCHOR: le32(0x1111) + le32(0x2222),
+                                C2_OFFS: le32(0x64) + le32(0x65)}),
+        Case("l2", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x20: le32(0x9999), DS_SLOTS + 0x24: le32(0x24242424),
+                                DS_SLOTS + 0x41: b"\x00", DS_SLOTS + 0x42: b"\x00",
+                                DS_SLOTS + 0x2C: le32(0x2C2C2C2C), DS_SLOTS + 0x30: le32(0x30303030),
+                                DS_SLOTS + 0x34: le32(0x34343434), E3_REC + 0x18: le32(0x18181818),
+                                E3_REC + 0x1C: le32(0x1C1C1C1C), C2_ANCHOR: le32(0x1111) + le32(0x2222),
+                                C2_OFFS: le32(0x64) + le32(0x65)}),
+        Case("l3", {"eax": 1}, {**SLOT_PTRS, DS_SLOTS + 0x94 + 0x20: le32(0x24242424),
+                                DS_SLOTS + 0x94 + 0x41: b"\x80", DS_SLOTS + 0x94 + 0x42: b"\x08",
+                                DS_SLOTS + 0x94 + 0x2C: le32(0x3C3C3C3C), DS_SLOTS + 0x94 + 0x30: le32(0x40404040),
+                                DS_SLOTS + 0x94 + 0x34: le32(0x44444444), E3_REC2 + 0x18: le32(0x28282828),
+                                E3_REC2 + 0x1C: le32(0x2C2C2C2C), C2_ANCHOR: le32(0x1111) + le32(0x2222),
+                                C2_OFFS: le32(0x64) + le32(0x65)}),
+    ], calls=(C2_18540, C2_18350), eax_mask=0, mutants=("@mutant", "@side", "@anchor")),
+    # 0x18714 (record §C1.2): EAX = side; the record-x: bit 3 set takes rec+0x18, else the latch
+    # path returns slot+0x2C - DS_00100AB0[side*8]. Mask full (0x188DC stores the result).
+    Spec("hit_record_x", 0x18714, [
+        Case("x0", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x20: le32(0x9999), DS_SLOTS + 0x41: b"\x00",
+                                DS_SLOTS + 0x42: b"\x08", DS_SLOTS + 0x2C: le32(0x2C2C2C2C),
+                                E3_REC + 0x18: le32(0x18181818), E3_REC + 0x1C: le32(0x1C1C1C1C),
+                                C2_ANCHOR: le32(0x1111) + le32(0x2222), C2_OFFS: le32(0x64) + le32(0x65)}),
+        Case("x1", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x20: le32(0x1111), DS_SLOTS + 0x24: le32(0x24242424),
+                                DS_SLOTS + 0x41: b"\x00", DS_SLOTS + 0x42: b"\x00",
+                                DS_SLOTS + 0x2C: le32(0x2C2C2C2C), E3_REC + 0x18: le32(0x18181818),
+                                E3_REC + 0x1C: le32(0x1C1C1C1C), C2_ANCHOR: le32(0x1111) + le32(0x2222),
+                                C2_OFFS: le32(0x64) + le32(0x65)}),
+        Case("x2", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x20: le32(0x9999), DS_SLOTS + 0x24: le32(0x24242424),
+                                DS_SLOTS + 0x41: b"\x00", DS_SLOTS + 0x42: b"\x00",
+                                DS_SLOTS + 0x2C: le32(0x2C2C2C2C), E3_REC + 0x18: le32(0x18181818),
+                                E3_REC + 0x1C: le32(0x1C1C1C1C), C2_ANCHOR: le32(0x1111) + le32(0x2222),
+                                C2_OFFS: le32(0x64) + le32(0x65)}),
+        Case("x3", {"eax": 1}, {**SLOT_PTRS, DS_SLOTS + 0x94 + 0x20: le32(0x9999), DS_SLOTS + 0x94 + 0x42: b"\x08",
+                                DS_SLOTS + 0x94 + 0x2C: le32(0x3C3C3C3C), E3_REC2 + 0x18: le32(0x28282828),
+                                E3_REC2 + 0x1C: le32(0x2C2C2C2C), C2_ANCHOR: le32(0x1111) + le32(0x2222),
+                                C2_OFFS: le32(0x64) + le32(0x65)}),
+    ], calls=(C2_18540, C2_18350), eax_mask=0xFFFFFFFF, mutants=("@mutant", "@side", "@anchor")),
+    # 0x189FC (record §C1.2): EAX = side; 0x33A10 builds the context (allow), 0x1A570's AL picks the
+    # comparison: clear -> slot[side]+0x2C < slot[other]+0x2C, set -> >. Mask 0xFF (`test al,al`).
+    Spec("fighter_189fc", 0x189FC, [
+        Case("z0", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x100), DS_SLOTS + 0x94 + 0x2C: le32(0x200)},
+             {0x1A570: 1}),
+        Case("z1", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x200), DS_SLOTS + 0x94 + 0x2C: le32(0x200)},
+             {0x1A570: 1}),
+        Case("z2", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x300), DS_SLOTS + 0x94 + 0x2C: le32(0x200)},
+             {0x1A570: 1}),
+        Case("z3", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x300), DS_SLOTS + 0x94 + 0x2C: le32(0x200)},
+             {0x1A570: 0}),
+        Case("z4", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x100), DS_SLOTS + 0x94 + 0x2C: le32(0x200)},
+             {0x1A570: 0}),
+        Case("z5", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x300), DS_SLOTS + 0x94 + 0x2C: le32(0x200)},
+             {0x1A570: 0x101}),
+        Case("z6", {"eax": 1}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x300), DS_SLOTS + 0x94 + 0x2C: le32(0x100)},
+             {0x1A570: 1}),
+    ], allow_calls=(0x33A10,), calls=(BIT15,), eax_mask=0xFF, mutants=("@mutant", "@side", "@bit", "@al")),
+    # 0x18A4C (record §C1.2): EAX = side; 0x33950's context (allow); 0x1A570 runs real (its own
+    # row) so its two calls can disagree; 0x189FC is stubbed with a per-case AL. Mask 0xFF.
+    Spec("fighter_18a4c", 0x18A4C, [
+        Case("a0", {"eax": 0}, {**SLOT_PTRS, C2_ACTOR: le32(C2_PSET), E3_REC + 0x56: b"\x00\x00",
+                                E3_REC2 + 0x56: b"\x01\x00", C2_PSET: b"\x00\x80", C2_PSET + 0x20: b"\x00\x00"},
+             {0x189FC: 1}),
+        Case("a1", {"eax": 0}, {**SLOT_PTRS, C2_ACTOR: le32(C2_PSET), E3_REC + 0x56: b"\x00\x00",
+                                E3_REC2 + 0x56: b"\x01\x00", C2_PSET: b"\x00\x80", C2_PSET + 0x20: b"\x00\x80"},
+             {0x189FC: 1}),
+        Case("a2", {"eax": 0}, {**SLOT_PTRS, C2_ACTOR: le32(C2_PSET), E3_REC + 0x56: b"\x00\x00",
+                                E3_REC2 + 0x56: b"\x01\x00", C2_PSET: b"\x00\x80", C2_PSET + 0x20: b"\x00\x00"},
+             {0x189FC: 0}),
+        Case("a3", {"eax": 0}, {**SLOT_PTRS, C2_ACTOR: le32(C2_PSET), E3_REC + 0x56: b"\x00\x00",
+                                E3_REC2 + 0x56: b"\x01\x00", C2_PSET: b"\x00\x00", C2_PSET + 0x20: b"\x00\x80"},
+             {0x189FC: 1}),
+        Case("a4", {"eax": 0}, {**SLOT_PTRS, C2_ACTOR: le32(C2_PSET), E3_REC + 0x56: b"\x00\x00",
+                                E3_REC2 + 0x56: b"\x01\x00", C2_PSET: b"\x00\x00", C2_PSET + 0x20: b"\x00\x00"},
+             {0x189FC: 1}),
+        Case("a5", {"eax": 1}, {**SLOT_PTRS, C2_ACTOR: le32(C2_PSET), E3_REC + 0x56: b"\x00\x00",
+                                E3_REC2 + 0x56: b"\x01\x00", C2_PSET: b"\x00\x00", C2_PSET + 0x20: b"\x00\x80"},
+             {0x189FC: 1}),
+    ], allow_calls=(0x33950,), calls=(C2_189FC, E.Call(0x1A570, ("eax",), mode="real")),
+       eax_mask=0xFF, mutants=("@mutant", "@side", "@arg")),
+    # 0x39EFC (record §P6.2): EAX = side; 0x33A10 allow; 1 only when the side's slot +0x53 == 0x0A,
+    # +0x10 == 0x39CC8 and +0x58 == 4. Mask 0xFF (`test al,al` at 0x3B797).
+    Spec("fighter_39efc", 0x39EFC, [
+        Case("e0", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x53: b"\x0a", DS_SLOTS + 0x10: le32(0x39CC8),
+                                DS_SLOTS + 0x58: b"\x04"}),
+        Case("e1", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x53: b"\x0b", DS_SLOTS + 0x10: le32(0x39CC8),
+                                DS_SLOTS + 0x58: b"\x04"}),
+        Case("e2", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x53: b"\x0a", DS_SLOTS + 0x10: le32(0x39CC0),
+                                DS_SLOTS + 0x58: b"\x04"}),
+        Case("e3", {"eax": 0}, {**SLOT_PTRS, DS_SLOTS + 0x53: b"\x0a", DS_SLOTS + 0x10: le32(0x39CC8),
+                                DS_SLOTS + 0x58: b"\x05"}),
+        Case("e4", {"eax": 1}, {**SLOT_PTRS, DS_SLOTS + 0x94 + 0x53: b"\x0a", DS_SLOTS + 0x94 + 0x10: le32(0x39CC8),
+                                DS_SLOTS + 0x94 + 0x58: b"\x04"}),
+    ], allow_calls=(0x33A10,), eax_mask=0xFF, mutants=("@mutant", "@val", "@side")),
+    # 0x3B8D8 (record §C1.2): EAX = side, EDX = delta; 1 when slot+0x2C + delta >= wall or <= -wall.
+    # Mask 0xFF (`test al,al` at 0x3C2BF/0x3C2EF).
+    Spec("fighter_3b8d8", 0x3B8D8, [
+        Case("b0", {"eax": 0, "edx": 0x100}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x1000), DS_BE018: le32(0x2000)}),
+        Case("b1", {"eax": 0, "edx": 0x100}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x1F00), DS_BE018: le32(0x2000)}),
+        Case("b2", {"eax": 0, "edx": 0xFFFFE000}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x1000), DS_BE018: le32(0x2000)}),
+        Case("b3", {"eax": 0, "edx": 0xFFFFD000}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x1000), DS_BE018: le32(0x2000)}),
+        Case("b4", {"eax": 1, "edx": 0x100}, {**SLOT_PTRS, DS_SLOTS + 0x94 + 0x2C: le32(0x1F00), DS_BE018: le32(0x2000)}),
+        Case("b5", {"eax": 0, "edx": 0}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0), DS_BE018: le32(0x80000000)}),
+    ], eax_mask=0xFF, mutants=("@mutant", "@side", "@bound")),
+    # 0x3B90C (record §C1.2): EAX = side, EDX = delta; the sum clamped to +/-wall. Mask full
+    # (0x188DC stores the result as x).
+    Spec("fighter_3b90c", 0x3B90C, [
+        Case("c0", {"eax": 0, "edx": 0x100}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x1000), DS_BE018: le32(0x2000)}),
+        Case("c1", {"eax": 0, "edx": 0x100}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x1F00), DS_BE018: le32(0x2000)}),
+        Case("c2", {"eax": 0, "edx": 0xFFFFD000}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x1000), DS_BE018: le32(0x2000)}),
+        Case("c3", {"eax": 0, "edx": 0xFFFFE000}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x1000), DS_BE018: le32(0x2000)}),
+        Case("c4", {"eax": 1, "edx": 0x100}, {**SLOT_PTRS, DS_SLOTS + 0x94 + 0x2C: le32(0x1000), DS_BE018: le32(0x2000)}),
+        Case("c5", {"eax": 0, "edx": 0}, {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x80000000), DS_BE018: le32(0x80000000)}),
+    ], eax_mask=0xFFFFFFFF, mutants=("@mutant", "@side", "@bound")),
+    # 0x33A10 (record §E3.6): EAX = the six-dword out buffer, EDX = side; out[0]=1-side, out[1]=side,
+    # out[2]=&slot[1-side], out[3]=&slot[side], out[4]=rec_other, out[5]=rec_self. Mask 0.
+    Spec("fighter_ctx_swap", 0x33A10, [
+        Case("w0", {"eax": E3_OUT, "edx": 0}, {**SLOT_PTRS, E3_OUT: b"\xaa" * 24}),
+        Case("w1", {"eax": E3_OUT, "edx": 1}, {**SLOT_PTRS, E3_OUT: b"\xaa" * 24}),
+    ], eax_mask=0, mutants=("@mutant", "@slot", "@rec")),
+    # 0x1883C (record §C1.2): EAX = side, EDX = a, EBX = b; latch both slots, add (a, b) to the
+    # side's +0x2C/+0x30, then rec+0x18/+0x1C from 0x18714/0x18788 (stubbed with a per-case EAX).
+    Spec("fighter_1883c", 0x1883C, [
+        Case("c0", {"eax": 0, "edx": 0x10, "ebx": 0x20},
+             {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x100), DS_SLOTS + 0x30: le32(0x200),
+              DS_SLOTS + 0x94 + 0x2C: le32(0x300), DS_SLOTS + 0x94 + 0x30: le32(0x400),
+              E3_REC + 0x18: le32(0x18181818), E3_REC + 0x1C: le32(0x1C1C1C1C)},
+             {0x18714: 0x1111, 0x18788: 0x2222}),
+        Case("c1", {"eax": 1, "edx": 0x10, "ebx": 0x20},
+             {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x100), DS_SLOTS + 0x30: le32(0x200),
+              DS_SLOTS + 0x94 + 0x2C: le32(0x300), DS_SLOTS + 0x94 + 0x30: le32(0x400),
+              E3_REC2 + 0x18: le32(0x28282828), E3_REC2 + 0x1C: le32(0x2C2C2C2C)},
+             {0x18714: 0x3333, 0x18788: 0x4444}),
+        Case("c2", {"eax": 0, "edx": 0xFFFFFFF0, "ebx": 0xFFFFFFE0},
+             {**SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x100), DS_SLOTS + 0x30: le32(0x200),
+              DS_SLOTS + 0x94 + 0x2C: le32(0x300), DS_SLOTS + 0x94 + 0x30: le32(0x400),
+              E3_REC + 0x18: le32(0x18181818), E3_REC + 0x1C: le32(0x1C1C1C1C)},
+             {0x18714: 0x5555, 0x18788: 0x6666}),
+    ], calls=(C2_LATCH, E.Call(0x18714, ("eax",)), E.Call(0x18788, ("eax",))),
+       eax_mask=0, mutants=("@mutant", "@side", "@latch", "@arg")),
+    # 0x18B04 (record §C1.2): EAX = side; mode 0x104B00 == 0x22 returns; else the +0x29 bit 0x40
+    # by the two slots' +0x2C, then rec+0x18 = 0x18714(side) (stubbed). Mask 0.
+    Spec("hit_facing_flag", 0x18B04, [
+        Case("m0", {"eax": 0}, {DS_104B00: b"\x22\x00", **SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x100),
+                               DS_SLOTS + 0x94 + 0x2C: le32(0x200), E3_REC + 0x29: b"\x29",
+                               E3_REC + 0x18: le32(0x18181818)}, {0x18714: 0x1111}),
+        Case("m1", {"eax": 0}, {DS_104B00: b"\x00\x00", **SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x100),
+                               DS_SLOTS + 0x94 + 0x2C: le32(0x200), E3_REC + 0x29: b"\x00",
+                               E3_REC + 0x18: le32(0x18181818)}, {0x18714: 0x2222}),
+        Case("m2", {"eax": 0}, {DS_104B00: b"\x00\x00", **SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x200),
+                               DS_SLOTS + 0x94 + 0x2C: le32(0x200), E3_REC + 0x29: b"\xff",
+                               E3_REC + 0x18: le32(0x18181818)}, {0x18714: 0x3333}),
+        Case("m3", {"eax": 1}, {DS_104B00: b"\x00\x00", **SLOT_PTRS, DS_SLOTS + 0x2C: le32(0x100),
+                               DS_SLOTS + 0x94 + 0x2C: le32(0x200), E3_REC2 + 0x29: b"\x00",
+                               E3_REC2 + 0x18: le32(0x28282828)}, {0x18714: 0x4444}),
+    ], allow_calls=(0x33950,), calls=(E.Call(0x18714, ("eax",)),), eax_mask=0,
+       mutants=("@mutant", "@mode", "@side", "@store")),
+    # 0x18B44 (record §P6.2): EAX = slot; once per fight (DS_00100C1D) and not when +0x63 == 1,
+    # the two dust spawns (0x2AE14 stub) at the 0xA17D4/0xA17D6-derived x/y, layers 0xFE/0xFF.
+    Spec("fighter_18b44", 0x18B44, [
+        Case("d0", {"eax": E3_SLOT}, {E3_SLOT + 0x63: b"\x01", DS_100C1D: b"\x00", DS_104529: b"\x02",
+                                      FIGHTER_A17D4: le32(0x00110022), FIGHTER_A17D6: le32(0x00330044)}),
+        Case("d1", {"eax": E3_SLOT}, {E3_SLOT + 0x63: b"\x00", DS_100C1D: b"\xff", DS_104529: b"\x02",
+                                      FIGHTER_A17D4: le32(0x00110022), FIGHTER_A17D6: le32(0x00330044)}),
+        Case("d2", {"eax": E3_SLOT}, {E3_SLOT + 0x63: b"\x00", DS_100C1D: b"\x00", DS_104529: b"\x02",
+                                      FIGHTER_A17D4: le32(0x00110022), FIGHTER_A17D6: le32(0x00330044)}),
+        Case("d3", {"eax": E3_SLOT}, {E3_SLOT + 0x63: b"\x00", DS_100C1D: b"\x00", DS_104529: b"\x01",
+                                      FIGHTER_A17D4: le32(0x00110022), FIGHTER_A17D6: le32(0x00330044)}),
+    ], calls=(SPAWN,), eax_mask=0, mutants=("@mutant", "@latch", "@layer")),
+    # 0x1DDF4 (record §6.7): EAX = side, EDX = table, EBX = idx; |0x187FC| <= DSB(table+char)<<6
+    # and |0x1881C| <= DSB(idx+char)<<6 (both stubbed with per-case EAX). Mask 0xFF (`test al,al`).
+    Spec("hit_geometry", 0x1DDF4, [
+        Case("g0", {"eax": 0, "edx": C2_ROW0, "ebx": C2_ROW1},
+             {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x01", C2_ROW0 + 1: b"\x10", C2_ROW1 + 1: b"\x20"},
+             {0x187FC: 0x300, 0x1881C: 0x700}),
+        Case("g1", {"eax": 0, "edx": C2_ROW0, "ebx": C2_ROW1},
+             {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x01", C2_ROW0 + 1: b"\x10", C2_ROW1 + 1: b"\x20"},
+             {0x187FC: 0x500, 0x1881C: 0x700}),
+        Case("g2", {"eax": 0, "edx": C2_ROW0, "ebx": C2_ROW1},
+             {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x01", C2_ROW0 + 1: b"\x10", C2_ROW1 + 1: b"\x20"},
+             {0x187FC: 0x300, 0x1881C: 0x900}),
+        Case("g3", {"eax": 0, "edx": C2_ROW0, "ebx": C2_ROW1},
+             {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x01", C2_ROW0 + 1: b"\x10", C2_ROW1 + 1: b"\x20"},
+             {0x187FC: 0xFFFFFB00, 0x1881C: 0x700}),
+        Case("g4", {"eax": 0, "edx": C2_ROW0, "ebx": C2_ROW1},
+             {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x01", C2_ROW0 + 1: b"\x10", C2_ROW1 + 1: b"\x20"},
+             {0x187FC: 0x400, 0x1881C: 0x800}),
+        Case("g5", {"eax": 1, "edx": C2_ROW0, "ebx": C2_ROW1},
+             {**SLOT_PTRS, DS_SLOTS + 0x94 + 0x7A: b"\x03", C2_ROW0 + 3: b"\x40", C2_ROW1 + 3: b"\x10"},
+             {0x187FC: 0x1000, 0x1881C: 0x400}),
+        Case("g6", {"eax": 0, "edx": C2_ROW0, "ebx": C2_ROW1},
+             {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x01", C2_ROW0 + 1: b"\x10", C2_ROW1 + 1: b"\x20"},
+             {0x187FC: 0x300, 0x1881C: 0xFFFFF900}),
+    ], calls=(E.Call(0x187FC, ()), E.Call(0x1881C, ())), eax_mask=0xFF,
+       mutants=("@mutant", "@side", "@abs", "@table")),
+    # 0x39F40 (record §P6.2): EAX = side, EDX/EBX/ECX/s0 = the four pose words; 0x33A10 allow;
+    # seeds DS_00107A60/68/70/78[side], the slot's +0x52/53/54/10/58 and the record's +0x24.
+    Spec("fighter_pose_start", 0x39F40, [
+        Case("p0", {"eax": 0, "edx": 0x11111111, "ebx": 0x22222222, "ecx": 0x33333333, "s0": 0x44444444},
+             {**SLOT_PTRS, DS_SLOTS + 0x10: le32(0x10101010), DS_SLOTS + 0x52: b"\x52\x53\x54\x55",
+              DS_SLOTS + 0x58: b"\x58", E3_REC + 0x24: le32(0x24242424), E3_REC2 + 0x24: le32(0x34343434),
+              0x107A60: bytes(range(0x60, 0x80))}),
+        Case("p1", {"eax": 1, "edx": 0x55555555, "ebx": 0x66666666, "ecx": 0x77777777, "s0": 0x88888888},
+             {**SLOT_PTRS, DS_SLOTS + 0x94 + 0x10: le32(0x20202020),
+              DS_SLOTS + 0x94 + 0x52: b"\x62\x63\x64\x65", DS_SLOTS + 0x94 + 0x58: b"\x68",
+              E3_REC + 0x24: le32(0x24242424), E3_REC2 + 0x24: le32(0x34343434),
+              0x107A60: bytes(range(0x60, 0x80))}),
+    ], allow_calls=(0x33A10,), eax_mask=0, mutants=("@mutant", "@side", "@arg", "@field")),
+    # 0x2BCF4 (record §P6.2): EAX = rec, EDX = stream; rec+8 = stream, rec+0x28 &= ~0x14, the pset
+    # word = 0x2A408(rec, pset)'s low word (stubbed with a per-case EAX). Mask 0.
+    Spec("actors_anim_seek", 0x2BCF4, [
+        Case("n0", {"eax": E3_REC, "edx": 0x10A700}, {DS_1014EC: le32(C2_PSET), E3_REC + 8: le32(0x08080808),
+                                                      E3_REC + 0x28: b"\xff\xff", E3_REC + 0x56: b"\x01\x00",
+                                                      C2_PSET + 0x20: b"\x02\x02", C2_PSET + 0x22: b"\x03\x03"},
+             {0x2A408: 0x1234}),
+        Case("n1", {"eax": E3_REC, "edx": 0x10A700}, {DS_1014EC: le32(C2_PSET), E3_REC + 8: le32(0x08080808),
+                                                      E3_REC + 0x28: b"\x00\x00", E3_REC + 0x56: b"\x00\x00",
+                                                      C2_PSET: b"\x02\x02", C2_PSET + 2: b"\x03\x03"},
+             {0x2A408: 0x5678}),
+    ], calls=(C1_SPRITE_ID,), eax_mask=0, mutants=("@mutant", "@char", "@width")),
+    # 0x37D18 (record §P6.2): EAX = slot, EDX = rec; the dispatch state, the 0xC9238[char]
+    # animation, 0x39A10(rec, 0x309), the 0xBDAD4[char] voice, the 0x1078DC approach pointer and
+    # the other slot's actor +0x59/+0x40. Mask 0.
+    Spec("fighter_37d18", 0x37D18, [
+        Case("r0", {"eax": DS_SLOTS, "edx": E3_REC}, {**P6_PTRS, **SLOT_PTRS, DS_SLOTS + 0x42: b"\x42",
+             DS_SLOTS + 0x7A: b"\x01", E3_REC + 0x51: b"\x00", 0x000C9238 + 4: le32(0x000E1234),
+             0x000BDAD4 + 2: b"\x55\x66", DS_SLOTS + 0x94 + 0x40: b"\x40\x41\x42\x43",
+             E3_REC2 + 0x59: b"\x59", 0x1078DC: b"\xdc\xdc\xdc\xdc"}),
+        Case("r1", {"eax": DS_SLOTS, "edx": E3_REC2}, {DS_SLOTS - 8: le32(DS_SLOTS + 0x94) + le32(0),
+             **SLOT_PTRS, DS_SLOTS + 0x94 + 0x42: b"\x52", DS_SLOTS + 0x94 + 0x7A: b"\x03",
+             E3_REC2 + 0x51: b"\x01", 0x000C9238 + 12: le32(0x000E5678), 0x000BDAD4 + 6: b"\x77\x88",
+             DS_SLOTS + 0x40: b"\x60\x61\x62\x63", E3_REC + 0x59: b"\x69", 0x1078DC: b"\xdc\xdc\xdc\xdc"}),
+    ], calls=(ANIM_BEGIN, E.Call(0x39A10, ("eax", "edx"), clobbers=("edx",)), VOICE), eax_mask=0,
+       mutants=("@mutant", "@state", "@order")),
+    # 0x3AA54 (record §P6.2): EAX = slot; the reaction-0x11 pose seed from the 0xBEC88/0xBECA4/
+    # 0xBECC0/0xBECDC[char] tables, slot+0x52 = 0x11, then 0x1A5AC(rec+0x51) (stubbed) negates
+    # rec+0x34 when 0. Mask 0 (the callers ignore the returned 0x11).
+    Spec("fighter_3aa54", 0x3AA54, [
+        Case("a0", {"eax": DS_SLOTS}, {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x01", E3_REC + 0x24: le32(0x24242424),
+             E3_REC + 0x28: b"\x28\x28", E3_REC + 0x34: b"\x34\x34", E3_REC + 0x51: b"\x00",
+             E3_REC + 0x43: b"\x43", DS_SLOTS + 0x10: le32(0x10101010), DS_SLOTS + 0x41: b"\x41",
+             DS_SLOTS + 0x52: b"\x52\x53\x54\x55", DS_SLOTS + 0x58: b"\x58", 0xBEC88 + 4: b"\x88\x88",
+             0xBECA4 + 4: b"\xa4\xa4", 0xBECC0 + 4: b"\xc0\xc0", 0xBECDC + 4: b"\xdc"}, {0x1A5AC: 0}),
+        Case("a1", {"eax": DS_SLOTS}, {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x01", E3_REC + 0x24: le32(0x24242424),
+             E3_REC + 0x28: b"\x28\x28", E3_REC + 0x34: b"\x34\x34", E3_REC + 0x51: b"\x00",
+             E3_REC + 0x43: b"\x43", DS_SLOTS + 0x10: le32(0x10101010), DS_SLOTS + 0x41: b"\x41",
+             DS_SLOTS + 0x52: b"\x52\x53\x54\x55", DS_SLOTS + 0x58: b"\x58", 0xBEC88 + 4: b"\x88\x88",
+             0xBECA4 + 4: b"\xa4\xa4", 0xBECC0 + 4: b"\xc0\xc0", 0xBECDC + 4: b"\xdc"}, {0x1A5AC: 1}),
+        Case("a2", {"eax": DS_SLOTS}, {**SLOT_PTRS, DS_SLOTS + 0x7A: b"\x02", E3_REC + 0x24: le32(0x24242424),
+             E3_REC + 0x28: b"\x28\x28", E3_REC + 0x34: b"\x34\x34", E3_REC + 0x51: b"\x01",
+             E3_REC + 0x43: b"\x43", DS_SLOTS + 0x10: le32(0x10101010), DS_SLOTS + 0x41: b"\x41",
+             DS_SLOTS + 0x52: b"\x52\x53\x54\x55", DS_SLOTS + 0x58: b"\x58", 0xBEC88 + 8: b"\x99\x99",
+             0xBECA4 + 8: b"\xb5\xb5", 0xBECC0 + 8: b"\xd1\xd1", 0xBECDC + 8: b"\xdd"}, {0x1A5AC: 0}),
+    ], calls=(E.Call(0x1A5AC, ("eax",)),), eax_mask=0, mutants=("@mutant", "@char", "@field")),
+    # 0x2AD40 (record §P4.5): EAX = rec, EDX = pset; the child's dead bit + 0x2B150(child), the
+    # parent refcount, 0x249D0/0x249B0, the pset reset and 0x2B150(rec). 0x2EA30 is the interrupt
+    # lock the port drops as inert (record §47-C): allowed, and 0xBCD60 = 0 makes it a no-op.
+    Spec("release_record", 0x2AD40, [
+        Case("r0", {"eax": C2_REC, "edx": C2_PSET}, {DS_1014F4: le32(C2_POOL), C2_REC: le32(0x105B3C) + le32(0x105B3C), C2_REC + 0x2A: b"\x00\x00",
+             C2_REC + 0x4F: b"\x00", C2_REC + 0x4B: b"\x01", C2_REC + 0x4A: b"\x02",
+             C2_REC + 0x28: b"\x28\x04", C2_REC + 0x68 + 0x2A: b"\xff", C2_PSET + 4: le32(0x04040404),
+             C2_PSET + 8: le32(0x08080808), C2_PSET + 0x0C: b"\x0c\x0c\x0e\x0e",
+             0x105B3C: le32(0x105B3C), 0xBCD60: b"\x00"}),
+        Case("r1", {"eax": C2_REC, "edx": C2_PSET}, {DS_1014F4: le32(C2_POOL), C2_REC + 0x2A: b"\x00\x00",
+             C2_REC + 0x4F: b"\x00", C2_REC + 0x4B: b"\x00", C2_REC + 0x4A: b"\x02",
+             C2_REC + 0x28: b"\x28\x04", C2_PSET + 4: le32(0x04040404), C2_PSET + 8: le32(0x08080808),
+             C2_PSET + 0x0C: b"\x0c\x0c\x0e\x0e", 0x105B3C: le32(0x105B3C), 0xBCD60: b"\x00"}),
+        Case("r2", {"eax": C2_REC, "edx": C2_PSET}, {DS_1014F4: le32(C2_POOL), C2_REC + 0x2A: b"\x08\x00",
+             C2_REC + 0x4F: b"\x00", C2_REC + 0x4B: b"\x01", C2_REC + 0x4A: b"\x02",
+             C2_REC + 0x28: b"\x28\x04", C2_REC + 0x68 + 0x2A: b"\xff", C2_PSET + 4: le32(0x04040404),
+             C2_PSET + 8: le32(0x08080808), C2_PSET + 0x0C: b"\x0c\x0c\x0e\x0e",
+             0x105B3C: le32(0x105B3C), 0xBCD60: b"\x00"}),
+        Case("r3", {"eax": C2_REC, "edx": C2_PSET}, {DS_1014F4: le32(C2_POOL), C2_REC + 0x2A: b"\x00\x00",
+             C2_REC + 0x4F: b"\x01", C2_REC + 0x4B: b"\x01", C2_REC + 0x4A: b"\x02",
+             C2_REC + 0x28: b"\x28\x04", C2_REC + 0x68 + 0x2A: b"\xff", C2_PSET + 4: le32(0x04040404),
+             C2_PSET + 8: le32(0x08080808), C2_PSET + 0x0C: b"\x0c\x0c\x0e\x0e",
+             0x105B3C: le32(0x105B3C), 0xBCD60: b"\x00"}),
+    ], allow_calls=(0x2EA30,), calls=(E.Call(0x2B150, ("eax",), clobbers=("esi", "edi", "ebp")), E.Call(0x249D0, ("eax",)),
+                                     E.Call(0x249B0, ("eax", "edx"))),
+       eax_mask=0, mutants=("@mutant", "@field", "@latch")),
+    # 0x2A408 (record §P6.2): EAX = rec, EDX = pset; the sprite-id reader: +0x28 bit 8 keeps
+    # DSW(rec+8), else the stream word's bit 15/op 0xD00 arms, then the bit-0x8000 flip by +0x28
+    # bit 6. 0x29F34 (stub, per-case EAX) supplies the variable. Mask 0xFFFF (the callers store AX).
+    Spec("anim_next_sprite_id", 0x2A408, [
+        Case("s0", {"eax": E3_REC, "edx": C2_PSET}, {E3_REC + 8: le32(0x00109234), E3_REC + 0x28: b"\x00\x08",
+                                                     C2_PSET: b"\x34\x92"}, {0x29F34: 0}),
+        Case("s1", {"eax": E3_REC, "edx": C2_PSET}, {E3_REC + 8: le32(C2_STR), E3_REC + 0x28: b"\x00\x40",
+                                                     C2_STR: b"\x34\x12", C2_PSET: b"\x34\x92"}, {0x29F34: 0}),
+        Case("s2", {"eax": E3_REC, "edx": C2_PSET}, {E3_REC + 8: le32(C2_STR), E3_REC + 0x28: b"\x00\x00",
+                                                     C2_STR: b"\x05\x80", C2_PSET: b"\x34\x92"}, {0x29F34: 0}),
+        Case("s3", {"eax": E3_REC, "edx": C2_PSET}, {E3_REC + 8: le32(C2_STR), E3_REC + 0x28: b"\x00\x00",
+                                                     C2_STR: b"\x45\xcd", C2_STR + 2: b"\x00\x01",
+                                                     C2_PSET: b"\x34\x92"}, {0x29F34: 0x10}),
+        Case("s4", {"eax": E3_REC, "edx": C2_PSET}, {E3_REC + 8: le32(C2_STR), E3_REC + 0x28: b"\x00\x40",
+                                                     C2_STR: b"\x25\xad", C2_STR + 2: le32(C2_ROW0),
+                                                     C2_ROW0 + 6: b"\x22\x02", C2_PSET: b"\x34\x92"}, {0x29F34: 3}),
+        Case("s5", {"eax": E3_REC, "edx": C2_PSET}, {E3_REC + 8: le32(0x00109234), E3_REC + 0x28: b"\x40\x08",
+                                                     C2_PSET: b"\x34\x92"}, {0x29F34: 0}),
+    ], calls=(E.Call(0x29F34, ("eax", "edx"), clobbers=("edx",)),), eax_mask=0xFFFF,
+       mutants=("@mutant", "@bit8", "@op", "@var", "@clear")),
+    # 0x36638 (record §P6.2): EAX = slot, EDX = rec; the +0x54 dispatch: 1/default restart on
+    # 0xC9210/0xC91E8[char] with +0x52 = 0x12, 4 on 0xC91E8 with +0x52 = 8/+0x57 = 2, 5 runs
+    # 0x38154(rec+0x51); +0x54 == 3 clears +0x43 bit 0x40 and returns. Mask 0xFF.
+    Spec("fighter_state_36638", 0x36638, [
+        Case("s0", {"eax": DS_SLOTS, "edx": E3_REC}, {**SLOT_PTRS, DS_SLOTS + 0x43: b"\x40",
+             DS_SLOTS + 0x54: b"\x03", DS_SLOTS + 0x7A: b"\x01", DS_SLOTS + 0x52: b"\x52",
+             DS_SLOTS + 0x53: b"\x53", DS_SLOTS + 0x57: b"\x57", DS_104B00: b"\x25\x00"}),
+        Case("s1", {"eax": DS_SLOTS, "edx": E3_REC}, {**SLOT_PTRS, DS_SLOTS + 0x43: b"\x00",
+             DS_SLOTS + 0x54: b"\x01", DS_SLOTS + 0x7A: b"\x01", DS_SLOTS + 0x52: b"\x52",
+             DS_SLOTS + 0x53: b"\x53", DS_SLOTS + 0x57: b"\x57", DS_104B00: b"\x00\x00"}),
+        Case("s2", {"eax": DS_SLOTS, "edx": E3_REC}, {**SLOT_PTRS, DS_SLOTS + 0x40: b"\x40\x41\x42\x43",
+             DS_SLOTS + 0x43: b"\x40", DS_SLOTS + 0x54: b"\x01", DS_SLOTS + 0x7A: b"\x01",
+             DS_SLOTS + 0x52: b"\x52", DS_SLOTS + 0x53: b"\x53", DS_SLOTS + 0x57: b"\x57",
+             0x000C9210 + 4: le32(0x000E1111), DS_104B00: b"\x00\x00"}),
+        Case("s3", {"eax": DS_SLOTS, "edx": E3_REC}, {**SLOT_PTRS, DS_SLOTS + 0x40: b"\x40\x41\x42\x43",
+             DS_SLOTS + 0x43: b"\x40", DS_SLOTS + 0x54: b"\x04", DS_SLOTS + 0x7A: b"\x01",
+             DS_SLOTS + 0x52: b"\x52", DS_SLOTS + 0x53: b"\x53", DS_SLOTS + 0x57: b"\x57",
+             0x000C91E8 + 4: le32(0x000E2222), DS_104B00: b"\x00\x00"}),
+        Case("s4", {"eax": DS_SLOTS, "edx": E3_REC}, {**SLOT_PTRS, DS_SLOTS + 0x40: b"\x40\x41\x42\x43",
+             DS_SLOTS + 0x43: b"\x40", DS_SLOTS + 0x54: b"\x05", DS_SLOTS + 0x7A: b"\x01",
+             DS_SLOTS + 0x52: b"\x52", DS_SLOTS + 0x53: b"\x53", DS_SLOTS + 0x57: b"\x57",
+             E3_REC + 0x51: b"\x01", DS_104B00: b"\x00\x00"}),
+        Case("s5", {"eax": DS_SLOTS, "edx": E3_REC}, {**SLOT_PTRS, DS_SLOTS + 0x40: b"\x40\x41\x42\x43",
+             DS_SLOTS + 0x43: b"\x40", DS_SLOTS + 0x54: b"\x00", DS_SLOTS + 0x7A: b"\x01",
+             DS_SLOTS + 0x52: b"\x52", DS_SLOTS + 0x53: b"\x53", DS_SLOTS + 0x57: b"\x57",
+             0x000C91E8 + 4: le32(0x000E3333), DS_104B00: b"\x00\x00"}),
+        Case("s6", {"eax": DS_SLOTS, "edx": E3_REC}, {**SLOT_PTRS, DS_SLOTS + 0x40: b"\x40\x41\x42\x43",
+             DS_SLOTS + 0x43: b"\x40", DS_SLOTS + 0x54: b"\x01", DS_SLOTS + 0x7A: b"\x01",
+             DS_SLOTS + 0x52: b"\x52", DS_SLOTS + 0x53: b"\x53", DS_SLOTS + 0x57: b"\x57",
+             0x000C9210 + 4: le32(0x000E4444), DS_104B00: b"\x25\x00"}),
+    ], calls=(ANIM_BEGIN, E.Call(0x38154, ("eax",))), eax_mask=0xFF,
+       mutants=("@mutant", "@anim", "@mode", "@side")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -2653,7 +3132,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

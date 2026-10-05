@@ -33,6 +33,7 @@
 /* 0x249B0: insert rec immediately after `at`. */
 static void list_insert_after(u32 at, u32 rec)
 {
+    PR_SEAM(0x249B0u, at, rec);
     u32 next = DSD(at);
     DSD(at) = rec;
     DSD(rec) = next;
@@ -53,6 +54,7 @@ static void list_insert_before(u32 at, u32 rec)
 /* 0x249D0: unlink rec. */
 static void list_unlink(u32 rec)
 {
+    PR_SEAM(0x249D0u, rec);
     u32 prev = DSD(rec + 4);
     DSD(DSD(rec) + 4) = prev;
     DSD(prev) = DSD(rec);
@@ -1279,9 +1281,10 @@ static void set_dead(u32 rec);
  * 0x46..0x4B the same fields on the parent at rec+0x4A; 0x4C..0x51 on the
  * child at rec+0x4B. The disassembly passes the selector in EDX's low byte
  * (0x29F38 `xor dh,dh` / `and dl,0x7f`), not the decompiler's ABI reading. */
-u32 anim_read_var(u32 rec, u8 op)
+u32 anim_read_var(u32 rec, u32 op)
 {
-    u32 o = (u32)(op & 0x7fu);
+    PR_SEAM_RET(0x29F34u, rec, op);
+    u32 o = op & 0x7fu;
     if (o < 0x40u)
         return DSW(DS_00105B4C + ((o + (u32)DSB(rec + 0x51)) & 0x3fu) * 2u);
     switch (o) {
@@ -1383,7 +1386,7 @@ static u32 anim_operand(u32 rec)
     }
     /* 0x2B96A */
     DSW(DS_00105BE8) = (u16)cx;
-    u32 v = anim_read_var(rec, (u8)cx);
+    u32 v = anim_read_var(rec, cx);
     u16 mode2 = DSW(DS_00105BE6);
     if (mode2 == 0x2000u) return v & 0xffffu;
     u32 p2 = DSD(rec + 8) + 2;
@@ -1438,11 +1441,11 @@ u32 anim_next_sprite_id(u32 rec, u32 pset)
                 u32 e = p + 2;
                 DSD(rec + 8) = e;
                 if (((word >> 8) & 0x60u) == 0x40u) {
-                    u32 rv = anim_read_var(rec, (u8)(word & 0x7fu));
+                    u32 rv = anim_read_var(rec, (u32)word);
                     res = (u32)DSW(e) + rv;
                 } else {
                     DSD(rec + 8) = p + 4;
-                    u32 rv = anim_read_var(rec, (u8)(word & 0x7fu));
+                    u32 rv = anim_read_var(rec, (u32)word);
                     u32 tab = DSD(p + 2);
                     res = DSW(tab + (rv & 0xffffu) * 2u);
                 }
@@ -2863,7 +2866,7 @@ static void frame_timer(u32 rec, u32 slot)
     if ((DSW(rec + 0x28) & 0x810u) != 0 || (DSW(rec + 0x2a) & 4u) != 0) {
         if ((DSW(rec + 0x28) >> 8 & 8u) != 0) return;
         if ((DSW(rec + 0x28) & 0x10u) != 0) {
-            if ((u16)anim_read_var(rec, (u8)DSW(DSD(rec + 8))) == 0) return;
+            if ((u16)anim_read_var(rec, (u32)DSW(DSD(rec + 8))) == 0) return;
             DSB(rec + 0x28) &= 0xef;
         }
         if ((DSW(rec + 0x2a) & 4u) != 0 &&
@@ -2984,6 +2987,7 @@ void actor_pset_palette(u32 rec, u32 word, u32 handle)
  * teardown (0x49444). */
 static void set_dead(u32 rec)
 {
+    PR_SEAM(0x2B150u, rec);
     DSB(rec + 0x28) |= 0x08;
     if ((DSW(rec + 0x2a) >> 8 & 0x40u) != 0) {
         /* 0x2B185: cb2 = DS_000BB9E0[type * 0xC], called with EAX = rec; its
@@ -3599,7 +3603,7 @@ void actor_type_49444(u32 rec)
 
 /* 0x2AD40. The release path: drop the child, decrement the parent refcount,
  * return the record to the free list and zero its pset. */
-static void release_record(u32 rec, u32 pset)
+void release_record(u32 rec, u32 pset)
 {
     PR_SEAM(0x2AD40u, rec, pset);
     if (!in_pool(rec)) return;                  /* PORT: spec §7 invariant */
