@@ -189,8 +189,9 @@ int fighter_18460(u32 side)
  * raw's 0x18460 call is effect-free in this build: its 0x18428 dispatch's
  * 0x1840C table resolves to 0x18408 (0x18350's epilogue), so it writes
  * nothing (the port's fixup-applied mem[] holds the seven 0x18408 entries). */
-static void fighter_18540(u32 side)
+void fighter_18540(u32 side)
 {
+    PR_SEAM(0x18540u, side);
     u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x18546 */
     if (slot == 0) return;                              /* 0x1854F */
     u32 ch = (u32)DSB(slot + 0x7Au);                    /* 0x18555 */
@@ -217,8 +218,9 @@ static void fighter_18540(u32 side)
  * pair at the character's anchor-indexed table (0xCEB00/0xCF399/0xCFC32/0xD033B/
  * 0xD0A44, table 0x18334), the x negated when the actor's bit 15 is set, both
  * scaled by 64. */
-static void fighter_18350(u32 side, u32 anchor)
+void fighter_18350(u32 side, u32 anchor)
 {
+    PR_SEAM(0x18350u, side, anchor);
     u32 ch = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au);   /* 0x1835F */
     u32 a;
     const u8 *p;
@@ -2059,7 +2061,7 @@ static void fighter_state_35b7c(u32 slot, u32 rec);         /* 0x35B7C */
 void fighter_state_35d20(u32 slot, u32 rec);                /* 0x35D20 */
 void fighter_1883c(u32 side, u32 a, u32 b);                  /* 0x1883C */
 static void fighter_36e78(u32 slot);                        /* 0x36E78 */
-static u32  hit_record_y(u32 side);                         /* 0x18788 */
+u32  hit_record_y(u32 side);                                /* 0x18788 */
 
 /* 0x29BC8. Resolve the character's palette handle for `side` and point `rec`'s
  * pset at it (0x2A17C with word 0). */
@@ -3959,8 +3961,9 @@ int hit_reaction_allow(u32 side, u32 reaction)
 }
 
 /* 0x1881C. The two slots latched, then slot0+0x30 - slot1+0x30. */
-static s32 hit_vert_distance(void)
+s32 hit_vert_distance(void)
 {
+    PR_SEAM_RET0(0x1881Cu);
     fighter_slot_latch(0u);                             /* 0x18820 */
     fighter_slot_latch(1u);                             /* 0x18828 */
     return (s32)DSD(DS_001077E0) - (s32)DSD(DS_001077E0 + 0x94u);
@@ -3976,12 +3979,18 @@ int hit_geometry(u32 side, u32 table, u32 idx)
     u32 ch = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au);
     u32 thr1 = (u32)DSB(table + ch) << 6;
     u32 thr2 = (u32)DSB(idx + ch) << 6;
+    /* The raw calls each distance twice on every path: once for the sign test
+     * (0x1DE1D/0x1DE3F) and once more for the value (0x1DE29/0x1DE32,
+     * 0x1DE48/0x1DE51). PORT: kept as the raw's two calls (the differential
+     * row compares the call list). */
     s32 d1 = ai_distance();
-    if (d1 < 0) d1 = -d1;
+    if (d1 < 0) d1 = -ai_distance();
+    else d1 = ai_distance();
     if (d1 > (s32)thr1) return 0;
     {
         s32 d2 = hit_vert_distance();
-        if (d2 < 0) d2 = -d2;
+        if (d2 < 0) d2 = -hit_vert_distance();
+        else d2 = hit_vert_distance();
         if (d2 > (s32)thr2) return 0;
     }
     return 1;
@@ -4072,8 +4081,9 @@ u32 hit_record_x(u32 side)
  * DS_00100AB4[side]. Its only caller, 0x1883C, latches both slots first
  * (0x186D0 stores the same anchor in slot+0x20), so the anchor path cannot
  * change anything there; it is transcribed as the raw has it. */
-static u32 hit_record_y(u32 side)
+u32 hit_record_y(u32 side)
 {
+    PR_SEAM_RET(0x18788u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     if ((DSB(slot + 0x42u) & 0x08u) != 0u)
         return DSD(DSD(slot) + 0x1Cu);                  /* 0x187AC */
@@ -5363,8 +5373,9 @@ static void fighter_ctx_rec_swap(u32 out[6], u32 rec)
 }
 
 /* 0x1A5AC. 1 when the side's record +0x28 has bit 0x4000 clear. */
-static int fighter_1a5ac(u32 side)
+int fighter_1a5ac(u32 side)
 {
+    PR_SEAM_RET(0x1A5ACu, side);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                            /* 0x1A5B4 */
     return (DSW(ctx[4] + 0x28u) & 0x4000u) == 0u;           /* 0x1A5BD..0x1A5CB */
@@ -10017,6 +10028,7 @@ void fighter_39ff4(void)
  * 0x382FA (0x382C4). */
 void fighter_38154(u32 side)
 {
+    PR_SEAM(0x38154u, side);
     u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x3815C */
     u32 rec, flag;
     s32 v, p, av;

@@ -589,6 +589,11 @@ void fighter_3c208(u32 side, s32 dist);
  * arena wall). EAX = side, EDX = delta; 0x3C208's two calls only. */
 s32 fighter_3b90c(u32 side, s32 delta);
 s32 ai_distance(void);
+void fighter_18540(u32 side);
+void fighter_18350(u32 side, u32 anchor);
+u32 hit_record_y(u32 side);
+s32 hit_vert_distance(void);
+int fighter_1a5ac(u32 side);
 void fighter_18b44(u32 slot);
 int fighter_189fc(u32 side);
 int fighter_18a4c(u32 side);

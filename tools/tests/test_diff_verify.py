@@ -587,6 +587,127 @@ C1_KINDS = {
     "fighter_18c14@live": {"byte", "call #0", "call #1", "eax"},
 }
 
+# Track P batch C2 (record 2026-10-04-reverse-c2): the verification-only callee rows with their EAX
+# masks, and what alone catches each of their mutants.
+C2_MASKS = {
+            "fighter_state_39280": 0x0,
+            "palette_release": 0x0,
+            "fighter_13244": 0x0,
+            "fighter_29c08": 0xffffffff,
+            "actor_pset_flag_5f": 0x0,
+            "fighter_29bc8": 0x0,
+            "hit_anchor_y": 0x0,
+            "ai_distance": 0xffffffff,
+            "fighter_slot_latch": 0x0,
+            "hit_record_x": 0xffffffff,
+            "fighter_189fc": 0xff,
+            "fighter_18a4c": 0xff,
+            "fighter_39efc": 0xff,
+            "fighter_3b8d8": 0xff,
+            "fighter_3b90c": 0xffffffff,
+            "fighter_ctx_swap": 0x0,
+            "fighter_1883c": 0x0,
+            "hit_facing_flag": 0x0,
+            "fighter_18b44": 0x0,
+            "hit_geometry": 0xff,
+            "fighter_pose_start": 0x0,
+            "actors_anim_seek": 0x0,
+            "fighter_37d18": 0x0,
+            "fighter_3aa54": 0x0,
+            "release_record": 0x0,
+            "anim_next_sprite_id": 0xffff,
+            "fighter_state_36638": 0xff,
+}
+C2_KINDS = {
+    "fighter_state_39280@mutant": {"byte"},
+    "fighter_state_39280@side": {"byte"},
+    "fighter_state_39280@width": {"byte"},
+    "palette_release@mutant": {"byte"},
+    "palette_release@width": {"byte"},
+    "palette_release@off": {"byte"},
+    "fighter_13244@mutant": {"byte"},
+    "fighter_13244@addr": {"byte"},
+    "fighter_13244@val": {"byte"},
+    "fighter_29c08@side": {"eax"},
+    "fighter_29c08@char": {"eax"},
+    "fighter_29c08@sext": {"eax"},
+    "actor_pset_flag_5f@mutant": {"byte"},
+    "actor_pset_flag_5f@word": {"byte"},
+    "actor_pset_flag_5f@pset": {"byte"},
+    "fighter_29bc8@side": {"call #0"},
+    "fighter_29bc8@rec": {"call #0"},
+    "hit_anchor_y@mutant": {"byte", "call #1 memory"},
+    "hit_anchor_y@side": {"byte", "call #0", "call #1", "call #1 memory"},
+    "hit_anchor_y@field": {"byte", "call #1 memory"},
+    "ai_distance@mutant": {"eax"},
+    "ai_distance@order": {"call #0", "call #1"},
+    "fighter_slot_latch@mutant": {"byte", "call #0", "call #1"},
+    "fighter_slot_latch@side": {"byte", "call #0", "call #1"},
+    "fighter_slot_latch@anchor": {"call #1"},
+    "hit_record_x@mutant": {"byte", "call #1 memory", "eax"},
+    "hit_record_x@side": {"call #0", "call #1", "eax"},
+    "hit_record_x@anchor": {"byte", "call #1", "call #1 memory"},
+    "fighter_189fc@mutant": {"eax"},
+    "fighter_189fc@side": {"call #0", "eax"},
+    "fighter_189fc@bit": {"call #0", "eax"},
+    "fighter_189fc@al": {"eax"},
+    "fighter_18a4c@mutant": {"eax"},
+    "fighter_18a4c@side": {"call #0", "call #1", "call #2"},
+    "fighter_18a4c@arg": {"call #1"},
+    "fighter_39efc@mutant": {"eax"},
+    "fighter_39efc@val": {"eax"},
+    "fighter_39efc@side": {"eax"},
+    "fighter_3b8d8@mutant": {"eax"},
+    "fighter_3b8d8@side": {"eax"},
+    "fighter_3b8d8@bound": {"eax"},
+    "fighter_3b90c@mutant": {"eax"},
+    "fighter_3b90c@side": {"eax"},
+    "fighter_3b90c@bound": {"eax"},
+    "fighter_ctx_swap@mutant": {"byte"},
+    "fighter_ctx_swap@slot": {"byte"},
+    "fighter_ctx_swap@rec": {"byte"},
+    "fighter_1883c@mutant": {"byte", "call #2 memory", "call #3 memory"},
+    "fighter_1883c@side": {"byte", "call #2", "call #2 memory", "call #3", "call #3 memory"},
+    "fighter_1883c@latch": {"call #1", "call #1 memory", "call #2", "call #2 memory", "call #3"},
+    "fighter_1883c@arg": {"call #2"},
+    "hit_facing_flag@mutant": {"byte", "call #0 memory"},
+    "hit_facing_flag@mode": {"byte", "call #0"},
+    "hit_facing_flag@side": {"byte", "call #0", "call #0 memory"},
+    "hit_facing_flag@store": {"byte", "call #0 memory"},
+    "fighter_18b44@mutant": {"call #0"},
+    "fighter_18b44@latch": {"byte", "call #0 memory", "call #1 memory"},
+    "fighter_18b44@layer": {"call #1"},
+    "hit_geometry@mutant": {"call #1", "call #2", "call #3", "eax"},
+    "hit_geometry@side": {"call #2", "call #3", "eax"},
+    "hit_geometry@abs": {"call #1", "call #2", "call #3", "eax"},
+    "hit_geometry@table": {"call #1", "call #2", "call #3", "eax"},
+    "fighter_pose_start@mutant": {"byte"},
+    "fighter_pose_start@side": {"byte"},
+    "fighter_pose_start@arg": {"byte"},
+    "fighter_pose_start@field": {"byte"},
+    "actors_anim_seek@mutant": {"byte", "call #0 memory"},
+    "actors_anim_seek@char": {"byte", "call #0"},
+    "actors_anim_seek@width": {"byte"},
+    "fighter_37d18@mutant": {"byte"},
+    "fighter_37d18@state": {"byte", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "fighter_37d18@order": {"call #2 memory"},
+    "fighter_3aa54@mutant": {"byte"},
+    "fighter_3aa54@char": {"byte", "call #0 memory"},
+    "fighter_3aa54@field": {"byte", "call #0 memory"},
+    "release_record@mutant": {"byte", "call #0", "call #0 memory", "call #1", "call #2", "call #3"},
+    "release_record@field": {"byte", "call #0", "call #0 memory", "call #1", "call #1 memory", "call #2", "call #3"},
+    "release_record@latch": {"byte", "call #0", "call #1", "call #2", "call #3"},
+    "anim_next_sprite_id@mutant": {"byte", "call #0", "eax"},
+    "anim_next_sprite_id@bit8": {"call #0", "eax"},
+    "anim_next_sprite_id@op": {"byte", "call #0", "eax"},
+    "anim_next_sprite_id@var": {"call #0"},
+    "anim_next_sprite_id@clear": {"call #0", "eax"},
+    "fighter_state_36638@mutant": {"byte", "call #0", "eax"},
+    "fighter_state_36638@anim": {"byte", "call #0", "eax"},
+    "fighter_state_36638@mode": {"byte", "call #0 memory"},
+    "fighter_state_36638@side": {"call #0"},
+}
+
 # Track P batch 6 (record 2026-10-03-reverse-p6): its rows with their EAX masks, and what alone catches
 # each of its mutants.
 P6_MASKS = {"anim_2bda0": 0, "fighter_22338": 0, "fighter_22494": 0, "fighter_22a40": 0, "fighter_23f10": 0, "fighter_2400c": 0, "fighter_241f4": 0, "fighter_24220": 0, "fighter_24338": 0, "fighter_37dd4": 0, "fighter_3e160": 0, "fighter_40148": 0, "fighter_40170": 0, "fighter_45c98": 0, "fighter_47e04": 0, "fighter_47e30": 0, "fighter_482e4": 0, "fighter_48374": 0}
@@ -696,7 +817,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
-                                            + list(P6_MASKS)))
+                                            + list(P6_MASKS) + list(C2_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
@@ -712,7 +833,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
             + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)
-            + list(P6_KINDS)))
+            + list(P6_KINDS) + list(C2_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -777,7 +898,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
-            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS})
+            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)
@@ -1068,6 +1189,105 @@ class RealFunctionTests(unittest.TestCase):
                    else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
             self.assertEqual(got, want, name)
 
+    def test_each_c2_mutant_is_caught_by_what_it_breaks(self):
+        # track P batch C2 (record 2026-10-04-reverse-c2): what alone catches each mutant; every row
+        # with a callee has one caught only by the call list or the memory at a call
+        for name, want in C2_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        # the exact case set that alone catches each mutant (measured on the prototype)
+        for name, ids in (
+        ("fighter_state_39280@mutant", ['s0', 's1']),
+        ("fighter_state_39280@side", ['s1']),
+        ("fighter_state_39280@width", ['s0', 's1']),
+        ("palette_release@mutant", ['r0', 'r1']),
+        ("palette_release@width", ['r2']),
+        ("palette_release@off", ['r0']),
+        ("fighter_13244@mutant", ['c0', 'c1']),
+        ("fighter_13244@addr", ['c0', 'c1']),
+        ("fighter_13244@val", ['c0', 'c1']),
+        ("fighter_29c08@side", ['c1', 'c3']),
+        ("fighter_29c08@char", ['c2']),
+        ("fighter_29c08@sext", ['c3']),
+        ("actor_pset_flag_5f@mutant", ['f1']),
+        ("actor_pset_flag_5f@word", ['f0', 'f1', 'f2']),
+        ("actor_pset_flag_5f@pset", ['f0', 'f1', 'f2']),
+        ("fighter_29bc8@side", ['c1']),
+        ("fighter_29bc8@rec", ['c0', 'c1']),
+        ("hit_anchor_y@mutant", ['y0', 'y1', 'y2']),
+        ("hit_anchor_y@side", ['y2']),
+        ("hit_anchor_y@field", ['y0', 'y1', 'y2']),
+        ("ai_distance@mutant", ['d0', 'd1']),
+        ("ai_distance@order", ['d0', 'd1']),
+        ("fighter_slot_latch@mutant", ['l0', 'l1', 'l2', 'l3']),
+        ("fighter_slot_latch@side", ['l3']),
+        ("fighter_slot_latch@anchor", ['l1']),
+        ("hit_record_x@mutant", ['x0', 'x2', 'x3']),
+        ("hit_record_x@side", ['x3']),
+        ("hit_record_x@anchor", ['x1', 'x2']),
+        ("fighter_189fc@mutant", ['z0', 'z2', 'z5', 'z6']),
+        ("fighter_189fc@side", ['z6']),
+        ("fighter_189fc@bit", ['z0', 'z1', 'z2', 'z3', 'z4', 'z5', 'z6']),
+        ("fighter_189fc@al", ['z5']),
+        ("fighter_18a4c@mutant", ['a0', 'a1', 'a3', 'a4', 'a5']),
+        ("fighter_18a4c@side", ['a5']),
+        ("fighter_18a4c@arg", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5']),
+        ("fighter_39efc@mutant", ['e0', 'e4']),
+        ("fighter_39efc@val", ['e0', 'e2', 'e4']),
+        ("fighter_39efc@side", ['e4']),
+        ("fighter_3b8d8@mutant", ['b3']),
+        ("fighter_3b8d8@side", ['b4']),
+        ("fighter_3b8d8@bound", ['b1', 'b3', 'b4']),
+        ("fighter_3b90c@mutant", ['c1']),
+        ("fighter_3b90c@side", ['c4']),
+        ("fighter_3b90c@bound", ['c2']),
+        ("fighter_ctx_swap@mutant", ['w0', 'w1']),
+        ("fighter_ctx_swap@slot", ['w0', 'w1']),
+        ("fighter_ctx_swap@rec", ['w0', 'w1']),
+        ("fighter_1883c@mutant", ['c0', 'c1', 'c2']),
+        ("fighter_1883c@side", ['c1']),
+        ("fighter_1883c@latch", ['c0', 'c1', 'c2']),
+        ("fighter_1883c@arg", ['c0', 'c1', 'c2']),
+        ("hit_facing_flag@mutant", ['m2']),
+        ("hit_facing_flag@mode", ['m0']),
+        ("hit_facing_flag@side", ['m3']),
+        ("hit_facing_flag@store", ['m1', 'm2']),
+        ("fighter_18b44@mutant", ['d2']),
+        ("fighter_18b44@latch", ['d2', 'd3']),
+        ("fighter_18b44@layer", ['d2', 'd3']),
+        ("hit_geometry@mutant", ['g0', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6']),
+        ("hit_geometry@side", ['g5']),
+        ("hit_geometry@abs", ['g0', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6']),
+        ("hit_geometry@table", ['g0', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6']),
+        ("fighter_pose_start@mutant", ['p0', 'p1']),
+        ("fighter_pose_start@side", ['p1']),
+        ("fighter_pose_start@arg", ['p0', 'p1']),
+        ("fighter_pose_start@field", ['p0', 'p1']),
+        ("actors_anim_seek@mutant", ['n0']),
+        ("actors_anim_seek@char", ['n0']),
+        ("actors_anim_seek@width", ['n0', 'n1']),
+        ("fighter_37d18@mutant", ['r0', 'r1']),
+        ("fighter_37d18@state", ['r0', 'r1']),
+        ("fighter_37d18@order", ['r0', 'r1']),
+        ("fighter_3aa54@mutant", ['a0', 'a1', 'a2']),
+        ("fighter_3aa54@char", ['a0', 'a1', 'a2']),
+        ("fighter_3aa54@field", ['a0', 'a1', 'a2']),
+        ("release_record@mutant", ['r0', 'r1']),
+        ("release_record@field", ['r0', 'r1']),
+        ("release_record@latch", ['r0', 'r1']),
+        ("anim_next_sprite_id@mutant", ['s3', 's4']),
+        ("anim_next_sprite_id@bit8", ['s0', 's3', 's4', 's5']),
+        ("anim_next_sprite_id@op", ['s2', 's3', 's4']),
+        ("anim_next_sprite_id@var", ['s3', 's4']),
+        ("anim_next_sprite_id@clear", ['s0', 's1', 's2', 's3', 's4', 's5']),
+        ("fighter_state_36638@mutant", ['s0']),
+        ("fighter_state_36638@anim", ['s2', 's3', 's4', 's6']),
+        ("fighter_state_36638@mode", ['s6']),
+        ("fighter_state_36638@side", ['s4']),
+        ):
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
+
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
@@ -1089,7 +1309,10 @@ class RealFunctionTests(unittest.TestCase):
                                  0x2AD40: ("edx", "edi", "ebp"),
                                  0x39280: (), 0x13244: (), 0x2A148: ("edx",), 0x2BCF4: ("edx",),
                                  0x1890C: ("edx",), 0x29BC8: ("ebx", "edx"), 0x37D18: ("edx",),
-                                 0x13C70: ("ebx", "edx"), 0x3AA54: ()})
+                                 0x13C70: ("ebx", "edx"), 0x3AA54: (),
+                                 0x18540: (), 0x18350: ("edx",), 0x18788: (), 0x1881C: (),
+                                 0x1A5AC: (), 0x38154: (), 0x249B0: (), 0x249D0: (),
+                                 0x2B150: ("esi", "edi", "ebp"), 0x29F34: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -1184,8 +1407,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (126), the 23 without are counted apart
-        self.assertIn("diff-verify: 149/149 functions VERIFIED; 391/391 mutants detected; 1 named gaps; "
-                      "41/126 rows with callees closed (23 have none).", out.getvalue())
+        self.assertIn("diff-verify: 176/176 functions VERIFIED; 478/478 mutants detected; 1 named gaps; "
+                      "61/145 rows with callees closed (31 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
