@@ -673,7 +673,7 @@ P6_KINDS = {
 
 # Track P batch 7 (record 2026-10-04-reverse-p7): its rows with their EAX masks, and what alone
 # catches each of its mutants.
-P7_MASKS = {"fighter_2bdb8": 0, "fighter_213f0": 0, "fighter_213f4": 0, "fighter_3e424": 0}
+P7_MASKS = {"fighter_2bdb8": 0, "fighter_213f0": 0, "fighter_213f4": 0, "fighter_3e424": 0, "fighter_224ec": 0, "fighter_2bde8": 0, "fighter_36114": 0}
 P7_KINDS = {
     "fighter_2bdb8@mutant": {"byte"},
     "fighter_2bdb8@and": {"byte"},
@@ -688,6 +688,18 @@ P7_KINDS = {
     "fighter_3e424@bit": {"byte", "call #1 memory", "call #2 memory"},
     "fighter_3e424@side": {"byte", "call #0", "call #1", "call #1 memory", "call #2", "call #2 memory"},
     "fighter_3e424@order": {"call #0 memory"},
+    "fighter_224ec@mutant": {"byte"},
+    "fighter_224ec@side": {"byte"},
+    "fighter_224ec@order": {"call #0 memory"},
+    "fighter_2bde8@mutant": {"byte"},
+    "fighter_2bde8@byte": {"byte"},
+    "fighter_36114@neg": {"byte", "call #0", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "fighter_36114@side": {"byte", "call #0"},
+    "fighter_36114@anchor": {"byte", "call #0"},
+    "fighter_36114@char": {"byte", "call #0", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "fighter_36114@table": {"byte", "call #0", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "fighter_36114@order": {"byte", "call #0", "call #0 memory"},
+    "fighter_36114@second": {"byte", "call #1", "call #2"},
 }
 
 
@@ -1211,8 +1223,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (126), the 23 without are counted apart
-        self.assertIn("diff-verify: 153/153 functions VERIFIED; 404/404 mutants detected; 1 named gaps; "
-                      "43/128 rows with callees closed (25 have none).", out.getvalue())
+        self.assertIn("diff-verify: 156/156 functions VERIFIED; 416/416 mutants detected; 1 named gaps; "
+                      "44/130 rows with callees closed (26 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

@@ -233,16 +233,15 @@ static const fnm_pair k_miss_gp_u8_attract_start[] = {
  * once 0x400E0/0x21044/0x21084 are ported and by track P batch 6 (record
  * 2026-10-03-reverse-p6 §P6.12) once 0x2BDA0 is ported: the two wipe hooks of §G.24
  * (0x29D60, a bare `ret`, from f = 0x28D; 0x5D812, the runtime stub, from f = 0x405).
- * Track P batch 7 (record 2026-10-04-reverse-p7 §P7.2) ports 0x213F0 and 0x213F4,
- * so the replay no longer misses them. Measured on the batch-7 task-2 tree (the
- * fn-miss line `0x36114 anim_indirect hits=1`, distinct=5): with the pair ported
- * the replay now reaches the D000 target 0x36114 (Task 3's function, dword
- * 0xD27E4), so it is a recorded miss here until Task 3 ports it and drops this
- * row; the pins were re-measured on this tree (record §P7.8). */
+ * Track P batch 7 (record 2026-10-04-reverse-p7 §P7.3/§P7.8) ports 0x213F0 and
+ * 0x213F4 (task 2) and then 0x36114 (task 3), so the replay no longer misses
+ * any of them. On the task-2 tree the pair's port made the replay reach the
+ * D000 target 0x36114 (dword 0xD27E4), recorded as a miss (distinct=5); task 3
+ * ports it, so the set loses that row too (distinct=4: 0x5D812 actor_spawn and
+ * set_dead, 0x29D60 and 0x5D812 from frontend_mode_1b_step; record §P7.8). */
 static const fnm_pair k_miss_gp_u9_win[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x36114u, "anim_indirect" },
 };
 
 /* gp-u10-ending (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md

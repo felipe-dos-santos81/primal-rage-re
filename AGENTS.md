@@ -250,10 +250,11 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   difference f=0x93C precedes the target's first frame 0xD0C — and U10's set loses `0x37DD4` alone
   (distinct=5; `0x29C78` P7 remains) with every U10 pin unchanged — record 2026-10-03-reverse-p6
   §P6.12; batch 7 ported `0x213F0`/`0x213F4` P7 (task 2): U9's set loses both rows but gains
-  `0x36114` (Task 3's D000 target, which the replay now reaches; distinct=5), TRACE rises
-  2364 -> 2377 and WIN stays 3162 on the task-2 tree (MIN_FIRST 346 and MAX_START 100 unchanged
-  and exact); once Task 3 ports `0x36114` the full batch re-measures 3503/3503 — record
-  2026-10-04-reverse-p7 §P7.8).
+  `0x36114` (task 3's D000 target, which the replay then reaches; distinct=5), TRACE rises
+  2364 -> 2377 and WIN stays 3162 on the task-2 tree; task 3 ports `0x36114`, so the set loses
+  that row too (distinct=4), and U9's
+  TRACE and WIN pins rise 2364/3162 -> 3503 (MIN_FIRST 346 and MAX_START 100 unchanged and exact)
+  — record 2026-10-04-reverse-p7 §P7.8).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two

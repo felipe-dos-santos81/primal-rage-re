@@ -2710,6 +2710,63 @@ P7_SPECS = [
               0x105BEE: b"\xee\xef", 0x105BEC: b"\xec\xed"}),
     ], calls=(ANIM_BEGIN, P7_2BDB8_R), eax_mask=0,
        mutants=("@mutant", "@bit", "@side", "@order")),
+    # 0x224EC (record §P7.3): ctx; 0x22404(ctx[0]); the own slot's +0x57 = 2. Both slots' +0x57
+    # are seeded differently, so @side (ctx[3]) shows.
+    Spec("fighter_224ec", 0x224EC, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234},
+             {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+              DS_SLOTS + 0x57: b"\x57", DS_SLOTS + 0x94 + 0x57: b"\x67"}),
+        Case("s1", {"eax": E3_REC2, "edx": 0x5678},
+             {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+              DS_SLOTS + 0x57: b"\x57", DS_SLOTS + 0x94 + 0x57: b"\x67"}),
+    ], allow_calls=(0x339AC,), calls=(P7_22404,), eax_mask=0,
+       mutants=("@mutant", "@side", "@order")),
+    # 0x2BDE8 (record §P7.3): +0x20 = +0x24 + (-1.0f, 0x809B8); +0x2B bit 1 clear. s1's +0x2B
+    # has only bit 1 set (the clear observable), s0's 0xFF and s2's 0x03.
+    Spec("fighter_2bde8", 0x2BDE8, [
+        Case("s0", {"eax": E3_REC}, {E3_REC + 0x20: le32(0x20202020), E3_REC + 0x24: le32(0x40400000),
+                                     E3_REC + 0x2B: b"\xff\x2c", E3_REC + 0x2A: b"\x2a"}),
+        Case("s1", {"eax": E3_REC2}, {E3_REC2 + 0x20: le32(0x20202020), E3_REC2 + 0x24: le32(0xC0000000),
+                                      E3_REC2 + 0x2B: b"\x02\x3c", E3_REC2 + 0x2A: b"\x3a"}),
+        Case("s2", {"eax": E3_REC}, {E3_REC + 0x20: le32(0x20202020), E3_REC + 0x24: le32(0x3F800000),
+                                     E3_REC + 0x2B: b"\x03\x2c", E3_REC + 0x2A: b"\x2a"}),
+    ], eax_mask=0, mutants=("@mutant", "@byte")),
+    # 0x36114 (record §P7.3): +0x24 = 2.0; the slot's +0x58 + 1; the signed word 0xBDA4C[char]
+    # negated unless the record's +0x28 bit 14; 0xBDA5A[char] into +0x36; 0x1883C(side, +0x34's
+    # word, +0x36's word); then 0x2BDE8 on the own and the other record (when set).
+    Spec("fighter_36114", 0x36114, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234},
+             {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+              E3_REC + 0x14: le32(DS_SLOTS), E3_REC + 0x28: b"\x00\x40",
+              E3_REC + 0x24: le32(0x24242424), E3_REC + 0x32: b"\x32\x33\x34\x35\x36\x37",
+              E3_REC + 0x20: le32(0x20202020), E3_REC + 0x2B: b"\x2b\x2c",
+              E3_REC2 + 0x20: le32(0x40404040), E3_REC2 + 0x24: le32(0x44444444),
+              E3_REC2 + 0x2B: b"\x4b\x4c", DS_SLOTS + 0x7A: b"\x03", DS_SLOTS + 0x58: b"\x58\x59"}),
+        Case("s1", {"eax": E3_REC, "edx": 0x1234},
+             {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+              E3_REC + 0x14: le32(DS_SLOTS), E3_REC + 0x28: b"\x00\x00",
+              E3_REC + 0x24: le32(0x24242424), E3_REC + 0x32: b"\x32\x33\x34\x35\x36\x37",
+              E3_REC + 0x20: le32(0x20202020), E3_REC + 0x2B: b"\x2b\x2c",
+              E3_REC2 + 0x20: le32(0x40404040), E3_REC2 + 0x24: le32(0x44444444),
+              E3_REC2 + 0x2B: b"\x4b\x4c", DS_SLOTS + 0x7A: b"\x03", DS_SLOTS + 0x58: b"\x58\x59"}),
+        Case("s2", {"eax": E3_REC2, "edx": 0x5678},
+             {**SLOT_PTRS, **P6_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+              E3_REC2 + 0x14: le32(DS_SLOTS + 0x94), E3_REC2 + 0x28: b"\x00\x40",
+              E3_REC2 + 0x24: le32(0x44444444), E3_REC2 + 0x32: b"\x42\x43\x44\x45\x46\x47",
+              E3_REC2 + 0x20: le32(0x40404040), E3_REC2 + 0x2B: b"\x4b\x4c",
+              E3_REC + 0x20: le32(0x20202020), E3_REC + 0x24: le32(0x24242424),
+              E3_REC + 0x2B: b"\x2b\x2c", DS_SLOTS + 0x94 + 0x7A: b"\x02",
+              DS_SLOTS + 0x94 + 0x58: b"\x68\x69"}),
+        Case("n0", {"eax": E3_REC, "edx": 0x1234},
+             {E3_REC + 0x14: le32(0), E3_REC + 0x24: le32(0x24242424), E3_REC + 0x2B: b"\x2b\x2c"}),
+        Case("o0", {"eax": E3_REC, "edx": 0x1234},
+             {DS_SLOTS - 8: le32(DS_SLOTS) + le32(0), E3_REC + 0x51: b"\x00",
+              E3_REC + 0x14: le32(DS_SLOTS), E3_REC + 0x28: b"\x00\x40",
+              E3_REC + 0x24: le32(0x24242424), E3_REC + 0x32: b"\x32\x33\x34\x35\x36\x37",
+              E3_REC + 0x20: le32(0x20202020), E3_REC + 0x2B: b"\x2b\x2c",
+              DS_SLOTS + 0x7A: b"\x03", DS_SLOTS + 0x58: b"\x58\x59"}),
+    ], calls=(C1_1883C, P7_2BDE8_R), eax_mask=0,
+       mutants=("@neg", "@side", "@anchor", "@char", "@table", "@order", "@second")),
 ]
 
 SPECS = [

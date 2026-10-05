@@ -17166,5 +17166,53 @@ void fighter_3e424(u32 rec)
     fighter_2bdb8(rec, 3u);                                 /* 0x3E465/0x3E46B */
     fighter_2bdb8(DSD(other), 3u);                          /* 0x3E475/0x3E477 */
 }
+/* 0x224EC — record §P7.3. The D500 target at the dword 0xE4E30: ctx;
+ * 0x22404(ctx[0]); the own slot's +0x57 = 2. */
+void fighter_224ec(u32 rec)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                                 /* 0x224F4 */
+    fighter_22404(ctx[0]);                                  /* 0x224F9/0x224FC */
+    DSB(ctx[2] + 0x57u) = 2u;                               /* 0x22501/0x22505 */
+}
+
+
+/* 0x2BDE8 — record §P7.3. EAX = rec: the record's +0x20 = its +0x24 + (-1.0f,
+ * the dword 0x809B8) and +0x2B bit 1 clear. */
+void fighter_2bde8(u32 rec)
+{
+    PR_SEAM(0x2BDE8u, rec);
+    p2_set_f32(rec + 0x20u, p2_f32(rec + 0x24u) + p2_f32(0x000809B8u));   /* 0x2BDE9..0x2BDF8 */
+    DSB(rec + 0x2Bu) &= (u8)~2u;                            /* 0x2BDEC/0x2BDF5/0x2BDFB */
+}
+
+
+/* 0x36114 — record §P7.3. The D000 target at the dword 0xD27E4. The record's
+ * +0x24 = 2.0; with its +0x14 slot set: the slot's +0x58 + 1; the signed word
+ * 0xBDA4C[char] negated unless the record's +0x28 bit 14; the word
+ * 0xBDA5A[char] into +0x36; 0x1883C(side, +0x34's word, +0x36's word); then
+ * 0x2BDE8 on the own record and, with the other side's slot set, its record. */
+void fighter_36114(u32 rec)
+{
+    u32 slot, side, other;
+    s32 dx;
+    p2_set_f32(rec + 0x24u, 2.0f);                          /* 0x3611A */
+    slot = DSD(rec + 0x14u);                                /* 0x36121 */
+    if (slot == 0u) return;                                 /* 0x36124/0x36126 */
+    DSB(slot + 0x58u) = (u8)(DSB(slot + 0x58u) + 1u);       /* 0x3612C/0x3612F/0x36135 */
+    side = (u32)DSB(rec + 0x51u);                           /* 0x36131 */
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u)                 /* 0x36138..0x36147 */
+        dx = (s32)(s16)DSW(0x000BDA4Cu + (u32)DSB(slot + 0x7Au) * 2u);   /* 0x36158..0x3615D */
+    else
+        dx = -(s32)(s16)DSW(0x000BDA4Cu + (u32)DSB(slot + 0x7Au) * 2u);  /* 0x36149..0x36156 */
+    DSW(rec + 0x34u) = (u16)dx;                             /* 0x36165 */
+    DSW(rec + 0x36u) = DSW(0x000BDA5Au + (u32)DSB(slot + 0x7Au) * 2u);   /* 0x36169..0x3617C */
+    fighter_1883c(side, (u32)((s32)DSD(rec + 0x32u) >> 16),
+                  (u32)((s32)DSD(rec + 0x34u) >> 16));      /* 0x36179..0x3618B */
+    other = DSD(DS_001077A8 + (side ^ 1u) * 4u);            /* 0x36190..0x3619A */
+    if (other == 0u) return;                                /* 0x361A1/0x361A3 */
+    fighter_2bde8(rec);                                     /* 0x361A5/0x361A7 */
+    fighter_2bde8(DSD(other));                              /* 0x361AC/0x361AE */
+}
 
 

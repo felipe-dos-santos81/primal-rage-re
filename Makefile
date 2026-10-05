@@ -777,12 +777,17 @@ gp-modes-one: build
 # anim_indirect hits=1). TRACE_MIN_FIRST rises 2364 -> 2377 (the first trace difference, f=0x949;
 # N 2378 is unreachable); WIN_MIN_FIRST stays 3162 (f=0xC5A; 3163 unreachable). MIN_FIRST stays
 # 346 (the mode-8 long frame; 347 fails), MAX_START 100 (99 fails), MILESTONES 8 (9 unreachable).
-# Once Task 3 ports 0x36114 the replay reaches the full-batch re-measure's 3503/3503 (record §P7.8).
+# Re-measured by track P batch 7 (record 2026-10-04-reverse-p7 §P7.8) once task 3 ports 0x36114: the
+# set loses that row (fn-miss PR_GP_DUMP distinct=4 dropped=0: 0x5D812 actor_spawn and set_dead,
+# 0x29D60 and 0x5D812 from frontend_mode_1b_step) and TRACE_MIN_FIRST and WIN_MIN_FIRST rise
+# 2377/3162 -> 3503 (0 differing through 3502; N 3504 is unreachable, the replay's end).
+# MIN_FIRST stays 346 (the mode-8 long frame; 347 fails), MAX_START 100 (99 fails) and
+# MILESTONES 8 (9 unreachable).
 GP_WIN_MIN_FIRST = 346
-GP_WIN_TRACE_MIN_FIRST = 2377
+GP_WIN_TRACE_MIN_FIRST = 3503
 GP_WIN_MAX_START = 100
 GP_WIN_MILESTONES = 8
-GP_WIN_WIN_MIN_FIRST = 3162
+GP_WIN_WIN_MIN_FIRST = 3503
 GP_WIN_CAPTURE_SHA256 = 7dcea0f16403c0fa52b6ef690edbcccb5340d9b9d1ec96c66ca4d11770708ba8
 GP_WIN_CAPTURE_FRAMES = 2521
 # gp-u10-ending (record §W.14; re-measured by track P batch 2, plan reverse-p2 Task 9, record §W.16,

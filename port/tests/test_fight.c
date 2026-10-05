@@ -47594,7 +47594,83 @@ static void p7_check_simple(void)
         CHECK_EQ_INT((int)DSB(Z_S1 + 0x58u), 0);
         CHECK(DSD(Z_R1 + 8u) != 0x9999u, "the other record's stream started");
     }
+
+    /* 0x224EC: the own slot's +0x57 = 2 (0x22404 runs real on the same side);
+     * the other slot's sentinel survives. */
+    f = (p7_anim_fn)(void *)fn_resolve(0x224ECu);
+    CHECK(f != NULL, "0x224EC is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSB(Z_S0 + 0x57u) = 0x57u;
+        DSB(Z_S1 + 0x57u) = 0x67u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x57u), 2);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x57u), 0x67);
+    }
 }
 int test_p7_simple(void)        { return u6b_run(p7_check_simple); }
 
 /* §P7.3: 0x2BDE8 and 0x36114 through their registrations. */
+static void p7_check_36114(void)
+{
+    p7_anim_fn f;
+    /* 0x2BDE8: +0x20 = +0x24 + (-1.0f) and +0x2B bit 1 clear. */
+    z_fseed();
+    DSD(Z_R0 + 0x24u) = 0x40400000u;
+    DSD(Z_R0 + 0x20u) = 0x20202020u;
+    DSB(Z_R0 + 0x2Bu) = 0xFFu;
+    fighter_2bde8(Z_R0);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x20u), 0x40000000);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x2Bu), 0xFD);
+    DSD(Z_R0 + 0x24u) = 0xC0000000u;
+    DSB(Z_R0 + 0x2Bu) = 0x02u;
+    fighter_2bde8(Z_R0);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x20u), (int)0xC0400000u);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x2Bu), 0x00);
+
+    /* 0x36114: bit 14 set: +0x34 = 0xBDA4C[3] = 0x180, +0x36 = 0x300, the
+     * slot's +0x58 + 1, the anchor (0x180, 0x300) on the slot's +0x2C/+0x30,
+     * 0x2BDE8 on both records; bit 14 clear: +0x34 = -0x180. */
+    f = (p7_anim_fn)(void *)fn_resolve(0x36114u);
+    CHECK(f != NULL, "0x36114 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSW(Z_R0 + 0x28u) = 0x4000u;
+        DSB(Z_S0 + 0x7Au) = 3u;
+        DSB(Z_S0 + 0x58u) = 0x10u;
+        DSD(Z_R0 + 0x24u) = 0x40400000u;
+        DSD(Z_R0 + 0x20u) = 0x20202020u;
+        DSB(Z_R0 + 0x2Bu) = 0x28u;
+        DSD(Z_R1 + 0x24u) = 0x40A00000u;
+        DSD(Z_R1 + 0x20u) = 0x40404040u;
+        DSB(Z_R1 + 0x2Bu) = 0x48u;
+        fighter_1883c(0u, 0u, 0u);      /* apply the latch the anchor's call will redo */
+        {
+            u32 b2c = DSD(Z_S0 + 0x2Cu), b30 = DSD(Z_S0 + 0x30u);
+            f(Z_R0, 0u);
+            CHECK_EQ_INT((int)DSD(Z_S0 + 0x2Cu), (int)(b2c + 0x180u));
+            CHECK_EQ_INT((int)DSD(Z_S0 + 0x30u), (int)(b30 + 0x300u));
+        }
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40000000);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0x0180);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x36u), 0x0300);
+        CHECK_EQ_INT((int)DSB(Z_S0 + 0x58u), 0x11);
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x20u), 0x3F800000);
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x20u), 0x40800000);
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x2Bu), 0x28);
+        CHECK_EQ_INT((int)DSB(Z_R1 + 0x2Bu), 0x48);
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSD(Z_R0 + 0x14u) = Z_S0;
+        DSW(Z_R0 + 0x28u) = 0x0000u;
+        DSB(Z_S0 + 0x7Au) = 3u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSW(Z_R0 + 0x34u), 0xFE80);
+    }
+}
+int test_p7_36114(void)         { return u6b_run(p7_check_36114); }
+
+/* §P7.4: the spawn pair 0x23960 and 0x23A7C. */
