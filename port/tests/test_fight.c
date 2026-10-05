@@ -47807,7 +47807,7 @@ static void p7_check_streams(void)
         z_fseed();
         DSB(Z_R0 + 0x51u) = 0u;
         DSB(Z_S1 + 0x7Au) = 3u;
-        DSB(Z_R1 + 0x29u) = 0x29u;
+        DSB(Z_R1 + 0x29u) = 0x21u;
         DSW(Z_R1 + 0x2Eu) = 0x2E2Eu;
         DSB(Z_R1 + 0x4Eu) = 0x4Eu;
         DSW(0x00105B4Cu) = 0x4C4Cu;

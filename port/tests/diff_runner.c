@@ -5996,7 +5996,7 @@ static void m_23ae0_char(const u32 *r, u32 *eax)       /* the own record's char 
         DSB(orec + 0x4Eu) = 1u;
         ch = (u32)DSB(rec + 0x7Au);
         actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
-        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        actor_pset_palette(orec, 0u, 0x00105FEBCu);
         DSW(0x00105B4Cu) = 1u;
     }
     *eax = 0u;
@@ -6012,7 +6012,7 @@ static void m_23ae0_val(const u32 *r, u32 *eax)        /* the default 0x46B9 for
         DSW(orec + 0x2Eu) = 0x0064u;
         DSB(orec + 0x4Eu) = 1u;
         actors_anim_seek(orec, 0x46B9u);
-        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        actor_pset_palette(orec, 0u, 0x00105FEBCu);
         DSW(0x00105B4Cu) = 1u;
     }
     *eax = 0u;
@@ -6031,7 +6031,7 @@ static void m_23ae0_side(const u32 *r, u32 *eax)       /* the own side's slot */
         DSB(orec + 0x4Eu) = 1u;
         ch = (u32)DSB(other + 0x7Au);
         actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
-        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        actor_pset_palette(orec, 0u, 0x00105FEBCu);
         DSW(0x00105B4Cu) = 1u;
     }
     *eax = 0u;
@@ -6069,7 +6069,7 @@ static void m_23ae0_word(const u32 *r, u32 *eax)       /* +0x2E = 0x63 */
         DSB(orec + 0x4Eu) = 1u;
         ch = (u32)DSB(other + 0x7Au);
         actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
-        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        actor_pset_palette(orec, 0u, 0x00105FEBCu);
         DSW(0x00105B4Cu) = 1u;
     }
     *eax = 0u;
@@ -6088,7 +6088,7 @@ static void m_23ae0_bit(const u32 *r, u32 *eax)        /* +0x29 set, not OR-ed *
         DSB(orec + 0x4Eu) = 1u;
         ch = (u32)DSB(other + 0x7Au);
         actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
-        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        actor_pset_palette(orec, 0u, 0x00105FEBCu);
         DSW(0x00105B4Cu) = 1u;
     }
     *eax = 0u;
@@ -6107,7 +6107,7 @@ static void m_23ae0_seek(const u32 *r, u32 *eax)       /* the seek on the record
         DSB(orec + 0x4Eu) = 1u;
         ch = (u32)DSB(other + 0x7Au);
         actors_anim_seek(rec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
-        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        actor_pset_palette(orec, 0u, 0x00105FEBCu);
         DSW(0x00105B4Cu) = 1u;
     }
     *eax = 0u;
@@ -6125,7 +6125,7 @@ static void m_23ae0_order(const u32 *r, u32 *eax)      /* the stores after the s
         DSB(orec + 0x29u) |= 8u;
         DSW(orec + 0x2Eu) = 0x0064u;
         DSB(orec + 0x4Eu) = 1u;
-        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        actor_pset_palette(orec, 0u, 0x00105FEBCu);
         DSW(0x00105B4Cu) = 1u;
     }
     *eax = 0u;
@@ -6138,7 +6138,7 @@ static void m_29c78_pal(const u32 *r, u32 *eax)        /* the palette handle 0 *
 }
 static void m_29c78_rec(const u32 *r, u32 *eax)        /* the word 0xFFFF */
 {
-    actor_pset_palette(r[R_EAX], 0xFFFFu, 0x00105FECBu);
+    actor_pset_palette(r[R_EAX], 0xFFFFu, 0x00105FEBCu);
     *eax = 0u;
 }
 static void b_4b03c(const u32 *r, u32 *eax)            { b_anim(0x4B03Cu, r, eax); }

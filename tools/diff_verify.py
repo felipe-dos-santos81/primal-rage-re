@@ -2667,7 +2667,7 @@ def p7_23ae0_case(cid, rec, char):
     return Case(cid, {"eax": rec, "edx": 0x1234},
                 {**SLOT_PTRS, **P6_PTRS,
                  rec + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
-                 DS_SLOTS + 0x94 + 0x7A: bytes([char]), E3_REC2 + 0x29: b"\x29\x2a",
+                 DS_SLOTS + 0x94 + 0x7A: bytes([char]), E3_REC2 + 0x29: b"\x21\x2a",
                  E3_REC2 + 0x2E: b"\x2e\x2f", E3_REC2 + 0x4E: b"\x4e\x4f",
                  0x105B4C: b"\x4c\x4d"})
 
