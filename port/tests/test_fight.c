@@ -47743,3 +47743,55 @@ static void p7_check_23960(void)
 int test_p7_23960(void)         { return u6b_run(p7_check_23960); }
 
 /* §P7.5: 0x3A9D8 and 0x48254 through their registrations. */
+static void p7_check_3a9d8(void)
+{
+    p7_anim_fn f;
+    /* 0x3A9D8 side 0: the own slot (ctx[3] = Z_S0) 0x10/0x0A/0/0x10 = 0 and
+     * its +0x7E = 0xBECF8 + 0x34; the side-0 record (ctx[5] = Z_R0) on
+     * 0xC9030[Z_S0's char] at 3.0; the anchor's y = 0. */
+    z_fseed();
+    DSB(Z_S0 + 0x7Au) = 3u;
+    DSB(Z_S0 + 0x52u) = 0x52u;
+    DSB(Z_S0 + 0x53u) = 0x53u;
+    DSB(Z_S0 + 0x54u) = 0x54u;
+    DSD(Z_S0 + 0x10u) = 0x10101010u;
+    DSB(Z_S0 + 0x7Eu) = 0x7Eu;
+    DSD(Z_R0 + 0x18u) = 0x18181818u;
+    DSD(Z_R0 + 0x1Cu) = 0x1C1C1C1Cu;
+    DSD(Z_R0 + 8u) = 0x9999u;
+    fighter_3a9d8(0u, 0x1234u);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x52u), 0x10);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x54u), 0x00);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x10u), 0);
+    CHECK_EQ_INT((int)DSB(Z_S0 + 0x7Eu), (int)(u8)(DSB(0x000BECF8u) + 0x34u));
+    CHECK_EQ_INT((int)DSD(Z_R0 + 8u), (int)DSD(0x000C9030u + 12u));
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x18u), 0x18181818);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x1Cu), 0);
+
+    /* 0x48254: the flag 1 starts the other record on 0xC8F40[its char] at
+     * 5.0; 0 takes 0x3A9D8(other side, 0xF), whose slot stores are visible. */
+    f = (p7_anim_fn)(void *)fn_resolve(0x48254u);
+    CHECK(f != NULL, "0x48254 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSB(Z_S1 + 0x7Au) = 2u;
+        DSB(0x00108392u) = 1u;
+        DSD(Z_R0 + 8u) = 0x9999u;
+        DSD(Z_R1 + 8u) = 0x9999u;
+        f(Z_R0, 0u);
+        CHECK(DSD(Z_R0 + 8u) != 0x9999u, "the own stream started");
+        CHECK(DSD(Z_R1 + 8u) != 0x9999u, "the other record's stream started");
+        DSB(0x00108392u) = 0u;
+        DSB(Z_S1 + 0x52u) = 0x52u;
+        DSB(Z_S0 + 0x5Fu) = 0x57u;
+        DSD(DS_00107D28) = 0x5A5A5A5Au;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 0x10);
+        CHECK_EQ_INT((int)DSD(DS_00107D28), 0x57);
+    }
+}
+int test_p7_3a9d8(void)         { return u6b_run(p7_check_3a9d8); }
+
+/* §P7.6: the after-table streams 0x23AE0 and 0x29C78. */

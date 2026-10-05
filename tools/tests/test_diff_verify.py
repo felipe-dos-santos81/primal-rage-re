@@ -673,7 +673,7 @@ P6_KINDS = {
 
 # Track P batch 7 (record 2026-10-04-reverse-p7): its rows with their EAX masks, and what alone
 # catches each of its mutants.
-P7_MASKS = {"fighter_2bdb8": 0, "fighter_213f0": 0, "fighter_213f4": 0, "fighter_3e424": 0, "fighter_224ec": 0, "fighter_2bde8": 0, "fighter_36114": 0, "fighter_23960": 0, "fighter_23a7c": 0}
+P7_MASKS = {"fighter_2bdb8": 0, "fighter_213f0": 0, "fighter_213f4": 0, "fighter_3e424": 0, "fighter_224ec": 0, "fighter_2bde8": 0, "fighter_36114": 0, "fighter_23960": 0, "fighter_23a7c": 0, "fighter_3a9d8": 0, "fighter_48254": 0}
 P7_KINDS = {
     "fighter_2bdb8@mutant": {"byte"},
     "fighter_2bdb8@and": {"byte"},
@@ -710,6 +710,18 @@ P7_KINDS = {
     "fighter_23a7c@side": {"byte", "call #1 memory"},
     "fighter_23a7c@mutant": {"byte", "call #1 memory"},
     "fighter_23a7c@order": {"call #1 memory"},
+    "fighter_3a9d8@side": {"call #0"},
+    "fighter_3a9d8@stream": {"call #1"},
+    "fighter_3a9d8@anchor": {"call #0"},
+    "fighter_3a9d8@slot": {"byte", "call #1", "call #1 memory"},
+    "fighter_3a9d8@frame": {"call #1"},
+    "fighter_3a9d8@byte": {"byte"},
+    "fighter_48254@byte": {"call #1", "call #2"},
+    "fighter_48254@side": {"call #1", "call #2"},
+    "fighter_48254@stream": {"call #0"},
+    "fighter_48254@pose": {"call #2"},
+    "fighter_48254@char": {"call #1"},
+    "fighter_48254@order": {"call #1", "call #2"},
 }
 
 
@@ -1137,6 +1149,7 @@ class RealFunctionTests(unittest.TestCase):
                                  0x39F40: ("ebx", "edx"), 0x3B8D8: ("edx",), 0x3B90C: ("edx",),
                                  0x2AD40: ("edx", "edi", "ebp"),
                                  0x23960: (),
+                                 0x3A9D8: ("edx",),
                                  0x39280: (), 0x13244: (), 0x2A148: ("edx",), 0x2BCF4: ("edx",),
                                  0x1890C: ("edx",), 0x29BC8: ("ebx", "edx"), 0x37D18: ("edx",),
                                  0x13C70: ("ebx", "edx"), 0x3AA54: ()})
@@ -1234,8 +1247,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (126), the 23 without are counted apart
-        self.assertIn("diff-verify: 158/158 functions VERIFIED; 426/426 mutants detected; 1 named gaps; "
-                      "44/132 rows with callees closed (26 have none).", out.getvalue())
+        self.assertIn("diff-verify: 160/160 functions VERIFIED; 438/438 mutants detected; 1 named gaps; "
+                      "44/134 rows with callees closed (26 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

@@ -30,7 +30,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | callbacks | 0 | 71 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
-| animation-targets | 1 | 111 |
+| animation-targets | 0 | 112 |
 | span-writers | 231 | 0 |
 | other | 3 | 54 |
 
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 1 |
 | leaf | 228 |
-| stubs | 6 |
+| stubs | 5 |
 
 ## Rows
 
@@ -363,7 +363,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 47E04 | 44 | anim-target | dword ED9FC after the opcode word D000 at ED9FA | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | 47E1B |
 | 47E30 | 412 | anim-target | dword EDA26 after the opcode word D500 at EDA24 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 47FCC | 648 | move-callback | dword A41E4 (char 2, reaction 0x23) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
-| 48254 | 144 | anim-target | dword ED872 after the opcode word D500 at ED870 | yes | - | no | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
+| 48254 | 144 | anim-target | dword ED872 after the opcode word D500 at ED870 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 482E4 | 144 | anim-target | dword ED8A8 after the opcode word D500 at ED8A6 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 48374 | 660 | anim-target | dword ED8EA after the opcode word D500 at ED8E8 | yes | - | yes | animation-targets | stubs (indirect at 2B56D in 2B2A0) | - |
 | 48608 | 688 | move-callback | dword A4234 (char 2, reaction 0x27) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | - |
@@ -679,7 +679,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 2BEF4 | called at 3F125 | entry | yes | leaf | - |
 | 35E40 | called at 210AE | entry | yes | leaf | - |
 | 38034 | called at 402A7 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 3A9D8 | called at 482B9 | entry | no | stubs (indirect at 2B56D in 2B2A0) | - |
+| 3A9D8 | called at 482B9 | entry | yes | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3BC70 | called at 35E21 | entry | yes | leaf | - |
 | 3BCE0 | called at 24704 | entry | yes | stubs (indirect at 2B56D in 2B2A0) | - |
 | 3BD8C | called at 4009C | entry | yes | leaf | - |

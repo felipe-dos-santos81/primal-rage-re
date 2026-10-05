@@ -2798,6 +2798,48 @@ P7_SPECS = [
         Case("n0", {"eax": E3_REC}, {E3_REC + 0x14: le32(0), E3_REC + 0x4B: b"\x4b"}),
     ], calls=(SPAWN, P7_23960), eax_mask=0,
        mutants=("@a5", "@slot", "@side", "@mutant", "@order")),
+    # 0x3A9D8 (record §P7.5): 0x3A95C's twin (the stream table 0xC9030). EAX = side, EDX = b.
+    # 0x33A10 runs on both sides (allow); 0x188AC(ctx[1], the other record's +0x18, 0); the own
+    # slot (ctx[3]) 0x10/0x0A/0/0x10 = 0; 0x2BC30(ctx[5], the char stream, 3.0); ctx[3].+0x7E =
+    # byte 0xBECF8 + (u8)b.
+    Spec("fighter_3a9d8", 0x3A9D8, [
+        Case("s0", {"eax": 0, "edx": 0x1234},
+             {**SLOT_PTRS, E3_REC2 + 0x18: le32(0x18181818), E3_REC + 0x18: le32(0x28282828),
+              DS_SLOTS + 0x10: b"\x20\x20\x20\x20",
+              DS_SLOTS + 0x52: b"\x52\x53\x54\x55", DS_SLOTS + 0x94 + 0x52: b"\x62\x63\x64\x65",
+              DS_SLOTS + 0x94 + 0x10: b"\x10\x10\x10\x10", DS_SLOTS + 0x7A: b"\x03",
+              DS_SLOTS + 0x94 + 0x7A: b"\x02", DS_SLOTS + 0x7E: b"\x7e\x7f",
+              DS_SLOTS + 0x94 + 0x7E: b"\x8e\x8f"}),
+        Case("s1", {"eax": 1, "edx": 0x0080},
+             {**SLOT_PTRS, E3_REC2 + 0x18: le32(0x18181818), E3_REC + 0x18: le32(0x28282828),
+              DS_SLOTS + 0x10: b"\x20\x20\x20\x20",
+              DS_SLOTS + 0x52: b"\x52\x53\x54\x55", DS_SLOTS + 0x94 + 0x52: b"\x62\x63\x64\x65",
+              DS_SLOTS + 0x94 + 0x10: b"\x10\x10\x10\x10", DS_SLOTS + 0x7A: b"\x03",
+              DS_SLOTS + 0x94 + 0x7A: b"\x02", DS_SLOTS + 0x7E: b"\x7e\x7f",
+              DS_SLOTS + 0x94 + 0x7E: b"\x8e\x8f"}),
+    ], allow_calls=(0x33A10,), calls=(ANCHOR, ANIM_BEGIN), eax_mask=0,
+       mutants=("@side", "@stream", "@anchor", "@slot", "@frame", "@byte")),
+    # 0x48254 (record §P7.5): 0x482E4's twin (the stream 0xED87A and 0x3A9D8). The flag
+    # 0x108392[own side] selects the other record on 0xC8F40[other char] at 5.0, else
+    # 0x3A9D8(other side, 0xF) and 0x39834(other side, the own slot's +0x5F).
+    Spec("fighter_48254", 0x48254, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234},
+             {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+              DS_SLOTS + 0x94 + 0x7A: b"\x02", DS_SLOTS + 0x7A: b"\x03",
+              DS_SLOTS + 0x5F: b"\x5f", DS_SLOTS + 0x94 + 0x5F: b"\x9f",
+              0x108392: b"\x01", 0x108392 + 1: b"\x00"}),
+        Case("s1", {"eax": E3_REC2, "edx": 0x5678},
+             {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+              DS_SLOTS + 0x94 + 0x7A: b"\x02", DS_SLOTS + 0x7A: b"\x03",
+              DS_SLOTS + 0x5F: b"\x5f", DS_SLOTS + 0x94 + 0x5F: b"\x9f",
+              0x108392: b"\x00", 0x108392 + 1: b"\x01"}),
+        Case("z0", {"eax": E3_REC, "edx": 0x1234},
+             {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+              DS_SLOTS + 0x94 + 0x7A: b"\x04", DS_SLOTS + 0x7A: b"\x03",
+              DS_SLOTS + 0x5F: b"\x5f", DS_SLOTS + 0x94 + 0x5F: b"\x9f",
+              0x108392: b"\x00", 0x108392 + 1: b"\x00"}),
+    ], calls=(ANIM_BEGIN, P7_3A9D8, POSE), eax_mask=0,
+       mutants=("@byte", "@side", "@stream", "@pose", "@char", "@order")),
 ]
 
 SPECS = [
