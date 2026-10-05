@@ -5475,7 +5475,7 @@ static void m_186d0_anchor(const u32 *r, u32 *eax)     /* the anchor compared at
     *eax = 0u;
 }
 static void b_18714(const u32 *r, u32 *eax)            { *eax = hit_record_x(r[R_EAX]); }
-static void m_18714(const u32 *r, u32 *eax)            /* the bit-3 arm returns +0x1C */
+static void m_18714(const u32 *r, u32 *eax)            /* bit-3 arm returns +0x1C; anchor stored at +0x20 */
 {
     u32 side = r[R_EAX], slot = DS_001077B0 + side * 0x94u, rec = DSD(slot);
     if ((DSB(slot + 0x42u) & 0x08u) != 0u) { *eax = DSD(rec + 0x1Cu); return; }
@@ -5786,7 +5786,7 @@ static void m_18b44_layer(const u32 *r, u32 *eax)      /* both layers 0xFE */
 static void b_1ddf4(const u32 *r, u32 *eax)            { *eax = (u32)hit_geometry(r[R_EAX], r[R_EDX], r[R_EBX]); }
 static void m_1ddf4(const u32 *r, u32 *eax)            /* the second test dropped */
 {
-    u32 side = r[R_EAX], table = r[R_EDX], idx = r[R_EBX];
+    u32 side = r[R_EAX], table = r[R_EDX];
     u32 ch = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au);
     s32 d1 = ai_distance();
     if (d1 < 0) d1 = -d1;
@@ -6917,7 +6917,6 @@ static const binding_t k_bindings[] = {
     { "fighter_3b8d8@mutant",     m_3b8d8,        0x000000FFu },
     { "fighter_3b8d8@side",       m_3b8d8_side,   0x000000FFu },
     { "fighter_3b8d8@bound",      m_3b8d8_bound,  0x000000FFu },
-    { "fighter_3b90c",            b_3b90c,        0xFFFFFFFFu },
     { "fighter_3b90c",            b_3b90c,        0xFFFFFFFFu },
     { "fighter_3b90c@mutant",     m_3b90c,        0xFFFFFFFFu },
     { "fighter_3b90c@side",       m_3b90c_side,   0xFFFFFFFFu },
