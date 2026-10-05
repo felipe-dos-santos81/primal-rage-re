@@ -5632,6 +5632,52 @@ void fighter_pose_3a588(u32 slot, u32 side)
     DSB(ctx[3] + 0x90u) = 2u;                               /* 0x3A642 */
 }
 
+/* PORT: 0xC9058 (the 0x3A8E8 family's per-character animation-stream table,
+ * read at 0x3A862) has no symbols.h name. */
+#define FIGHT_ANIM_3A820  0x000C9058u
+
+/* 0x3A820 — record §P8.2. The 0x3A8E8 pose family's per-frame handler
+ * 0x3531C case 10 calls through slot+0x10 (0x3A8E8 stores it at 0x3A91E, the
+ * dword at 0x3A921 its only reference). The body is 0x3A43C's with the
+ * 0xC9058 stream table, the 0x3A8E8 setter's globs (B = 0x107CFC + side*2,
+ * A = 0x107CF8 + side*2) and +0x90 = 4 at the end. Phase 0 sets +0x58 = 1;
+ * phase 1 starts the self record's 0xC9058[char] stream at 3.0, re-anchors
+ * the self record (x kept, y = 0), sets +0x58 = 2 and +0x90 = 4, and — when
+ * B[side] is neither 0 nor 5 and (u8)(+0x90 - 1) > 3 — snaps the self x to
+ * A[side] (the jump table at 0x3A810 sends 1..4 to 0x3A8D6, past the snap;
+ * every entry is 0x3A8D6). Phases above 1 return. The raw takes EAX = slot,
+ * EBX = side; the ctx swap overwrites EAX, so only the side is read.
+ * 0x2BC30 returns with RET 4 (0x2BCEF), popping the 0x3A855 push, so from
+ * 0x3A872 on the ESP offsets name ctx[1] (the side) and ctx[5] (rec_self). */
+void fighter_pose_3a820(u32 slot, u32 side)
+{
+    u32 ctx[6];
+    u8 phase;
+    (void)slot;
+    fighter_ctx_swap(ctx, side);                            /* 0x3A820/0x3A827 0x33A10 */
+    phase = DSB(ctx[3] + 0x58u);                            /* 0x3A82C/0x3A830 */
+    if (phase == 0u) {                                      /* 0x3A833/0x3A83D */
+        DSB(ctx[3] + 0x58u) = 1u;                           /* 0x3A849 */
+        return;
+    }
+    if (phase != 1u) return;                                /* 0x3A837/0x3A839 */
+    actors_anim_begin(ctx[5],                                /* 0x3A862/0x3A86D */
+                      DSD(FIGHT_ANIM_3A820
+                          + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                      0x40400000u);
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);        /* 0x3A872..0x3A87F */
+    DSB(ctx[3] + 0x58u) = 2u;                               /* 0x3A888 */
+    {
+        s32 b = (s32)(s16)DSW(DS_00107CFC + ctx[1] * 2u);   /* 0x3A890/0x3A8A0 */
+        s32 a = (s32)(s16)DSW(DS_00107CF8 + ctx[1] * 2u);   /* 0x3A897/0x3A8A3 */
+        if (b != 0 && b != 5) {                             /* 0x3A8A6/0x3A8AA */
+            if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)        /* 0x3A8B3..0x3A8BD */
+                hit_anchor_x(ctx[1], (u32)a);               /* 0x3A8CC/0x3A8D1 */
+        }
+    }
+    DSB(ctx[3] + 0x90u) = 4u;                               /* 0x3A8DA */
+}
+
 /* ---- the 0x39F40 knockback pose's handler 0x39CC8 ---------------------- */
 
 /* PORT: data-object addresses symbols.h does not name. */

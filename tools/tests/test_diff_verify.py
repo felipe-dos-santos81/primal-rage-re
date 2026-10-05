@@ -866,6 +866,17 @@ P7_KINDS = {
     "fighter_4b03c@voice": {"call #0"},
 }
 
+# Track P batch 8 (record 2026-10-04-reverse-p8): the 0x3A820 row with its EAX mask, and what alone
+# catches each of its mutants (Task 3 adds the effects_29cfc entries).
+P8_MASKS = {"fighter_pose_3a820": 0}
+P8_KINDS = {
+    "fighter_pose_3a820@side": {"byte", "call #0", "call #1", "call #2"},
+    "fighter_pose_3a820@stream": {"call #0"},
+    "fighter_pose_3a820@globs": {"call #2"},
+    "fighter_pose_3a820@end": {"byte"},
+    "fighter_pose_3a820@order": {"call #0 memory", "call #1 memory"},
+}
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
@@ -891,7 +902,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
-                                            + list(P6_MASKS) + list(C2_MASKS) + list(P7_MASKS)))
+                                            + list(P6_MASKS) + list(C2_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
@@ -907,7 +918,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
             + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)
-            + list(P6_KINDS) + list(C2_KINDS) + list(P7_KINDS)))
+            + list(P6_KINDS) + list(C2_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -973,7 +984,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
             **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS,
-            **P7_MASKS})
+            **P7_MASKS, **P8_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)
@@ -1370,6 +1381,13 @@ class RealFunctionTests(unittest.TestCase):
                    else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
             self.assertEqual(got, want, name)
 
+    def test_each_p8_mutant_is_caught_by_what_it_breaks(self):
+        # track P batch 8 (record 2026-10-04-reverse-p8): what alone catches each mutant
+        for name, want in P8_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
@@ -1492,9 +1510,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (156), the 34 without are counted apart
-        self.assertIn("diff-verify: 190/190 functions VERIFIED; 546/546 mutants detected; 1 named gaps; "
-                      "68/156 rows with callees closed (34 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (157), the 34 without are counted apart
+        self.assertIn("diff-verify: 191/191 functions VERIFIED; 551/551 mutants detected; 1 named gaps; "
+                      "69/157 rows with callees closed (34 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

@@ -7237,6 +7237,100 @@ static void m_23ae0_order(const u32 *r, u32 *eax)      /* the stores after the s
     *eax = 0u;
 }
 static void b_29c78(const u32 *r, u32 *eax)            { b_anim(0x29C78u, r, eax); }
+static void b_3a820(const u32 *r, u32 *eax)            { fighter_pose_3a820(r[R_EAX], r[R_EBX]); *eax = 0u; }
+static void m_3a820_side(const u32 *r, u32 *eax)       /* the side from EDX, not EBX */
+{
+    fighter_pose_3a820(r[R_EAX], r[R_EDX]);
+    *eax = 0u;
+}
+static void m_3a820_stream(const u32 *r, u32 *eax)     /* the 0xC8FE0 stream table */
+{
+    u32 ctx[6];
+    u8 phase;
+    fighter_ctx_swap(ctx, r[R_EBX]);
+    phase = DSB(ctx[3] + 0x58u);
+    if (phase == 0u) { DSB(ctx[3] + 0x58u) = 1u; *eax = 0u; return; }
+    if (phase != 1u) { *eax = 0u; return; }
+    actors_anim_begin(ctx[5], DSD(0x000C8FE0u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x40400000u);
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);
+    DSB(ctx[3] + 0x58u) = 2u;
+    {
+        s32 b = (s32)(s16)DSW(DS_00107CFC + ctx[1] * 2u);
+        s32 a = (s32)(s16)DSW(DS_00107CF8 + ctx[1] * 2u);
+        if (b != 0 && b != 5) {
+            if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)
+                hit_anchor_x(ctx[1], (u32)a);
+        }
+    }
+    DSB(ctx[3] + 0x90u) = 4u;
+    *eax = 0u;
+}
+static void m_3a820_globs(const u32 *r, u32 *eax)      /* the B/A globs swapped */
+{
+    u32 ctx[6];
+    u8 phase;
+    fighter_ctx_swap(ctx, r[R_EBX]);
+    phase = DSB(ctx[3] + 0x58u);
+    if (phase == 0u) { DSB(ctx[3] + 0x58u) = 1u; *eax = 0u; return; }
+    if (phase != 1u) { *eax = 0u; return; }
+    actors_anim_begin(ctx[5], DSD(0x000C9058u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x40400000u);
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);
+    DSB(ctx[3] + 0x58u) = 2u;
+    {
+        s32 b = (s32)(s16)DSW(DS_00107CF8 + ctx[1] * 2u);
+        s32 a = (s32)(s16)DSW(DS_00107CFC + ctx[1] * 2u);
+        if (b != 0 && b != 5) {
+            if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)
+                hit_anchor_x(ctx[1], (u32)a);
+        }
+    }
+    DSB(ctx[3] + 0x90u) = 4u;
+    *eax = 0u;
+}
+static void m_3a820_end(const u32 *r, u32 *eax)        /* +0x90 = 1 at the end */
+{
+    u32 ctx[6];
+    u8 phase;
+    fighter_ctx_swap(ctx, r[R_EBX]);
+    phase = DSB(ctx[3] + 0x58u);
+    if (phase == 0u) { DSB(ctx[3] + 0x58u) = 1u; *eax = 0u; return; }
+    if (phase != 1u) { *eax = 0u; return; }
+    actors_anim_begin(ctx[5], DSD(0x000C9058u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x40400000u);
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);
+    DSB(ctx[3] + 0x58u) = 2u;
+    {
+        s32 b = (s32)(s16)DSW(DS_00107CFC + ctx[1] * 2u);
+        s32 a = (s32)(s16)DSW(DS_00107CF8 + ctx[1] * 2u);
+        if (b != 0 && b != 5) {
+            if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)
+                hit_anchor_x(ctx[1], (u32)a);
+        }
+    }
+    DSB(ctx[3] + 0x90u) = 1u;
+    *eax = 0u;
+}
+static void m_3a820_order(const u32 *r, u32 *eax)      /* +0x58 = 2 before the anim call */
+{
+    u32 ctx[6];
+    u8 phase;
+    fighter_ctx_swap(ctx, r[R_EBX]);
+    phase = DSB(ctx[3] + 0x58u);
+    if (phase == 0u) { DSB(ctx[3] + 0x58u) = 1u; *eax = 0u; return; }
+    if (phase != 1u) { *eax = 0u; return; }
+    DSB(ctx[3] + 0x58u) = 2u;
+    actors_anim_begin(ctx[5], DSD(0x000C9058u + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x40400000u);
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);
+    {
+        s32 b = (s32)(s16)DSW(DS_00107CFC + ctx[1] * 2u);
+        s32 a = (s32)(s16)DSW(DS_00107CF8 + ctx[1] * 2u);
+        if (b != 0 && b != 5) {
+            if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)
+                hit_anchor_x(ctx[1], (u32)a);
+        }
+    }
+    DSB(ctx[3] + 0x90u) = 4u;
+    *eax = 0u;
+}
 static void m_29c78_pal(const u32 *r, u32 *eax)        /* the palette handle 0 */
 {
     actor_pset_palette(r[R_EAX], 0u, 0u);
@@ -8303,6 +8397,12 @@ static const binding_t k_bindings[] = {
     { "fighter_29c78",            b_29c78,        0x00000000u },
     { "fighter_29c78@pal",        m_29c78_pal,    0x00000000u },
     { "fighter_29c78@rec",        m_29c78_rec,    0x00000000u },
+    { "fighter_pose_3a820",       b_3a820,        0x00000000u },
+    { "fighter_pose_3a820@side",  m_3a820_side,   0x00000000u },
+    { "fighter_pose_3a820@stream", m_3a820_stream, 0x00000000u },
+    { "fighter_pose_3a820@globs", m_3a820_globs,  0x00000000u },
+    { "fighter_pose_3a820@end",   m_3a820_end,    0x00000000u },
+    { "fighter_pose_3a820@order", m_3a820_order,  0x00000000u },
     { "fighter_4b03c",            b_4b03c,        0x00000000u },
     { "fighter_4b03c@type",       m_4b03c_type,   0x00000000u },
     { "fighter_4b03c@val",        m_4b03c_val,    0x00000000u },
