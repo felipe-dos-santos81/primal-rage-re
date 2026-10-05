@@ -17109,3 +17109,62 @@ void fighter_24220_case10(u32 slot, u32 side)
 {
     fighter_24220(slot, DSD(slot), side);                   /* 0x35396, 0x354E2 */
 }
+
+
+/* Track P batch 7 (record 2026-10-04-reverse-p7-derivations.md): the remaining
+ * unported direct callees and the targets outside E2. */
+
+/* 0x2BDB8 — record §P7.2. EAX = rec, EDX = the byte argument: the record's
+ * +0x2B bit 1, the byte 0x105BEE = the argument, 0x105BEC = the argument - 1
+ * and the record's +0x24 = (float)(u8)the argument (the raw's `fild word` of
+ * the zero-extended DL). */
+void fighter_2bdb8(u32 rec, u32 arg)
+{
+    PR_SEAM(0x2BDB8u, rec, arg);
+    DSB(rec + 0x2Bu) |= 2u;                                 /* 0x2BDBE..0x2BDC4 */
+    DSB(0x00105BEEu) = (u8)arg;                             /* 0x2BDCB */
+    DSB(0x00105BECu) = (u8)(arg - 1u);                      /* 0x2BDD4/0x2BDD9 */
+    p2_set_f32(rec + 0x24u, (float)(arg & 0xFFu));          /* 0x2BDD1/0x2BDD6/0x2BDDF */
+}
+
+
+/* 0x213F0 — record §P7.2. A bare `ret` (the byte 0x213F0, the end of the
+ * previous function): the animation stream's target does nothing. */
+void fighter_213f0(u32 rec)
+{
+    (void)rec;
+}
+
+
+/* 0x213F4 — record §P7.2. The D000 target at the dword 0xE16BA: with the other
+ * side's slot set, its record on 0xC9148[its char] at 3.0, its +0x58 = 0 and
+ * +0x52 = 0xC, then 0x2BDB8(3) on the own and on the other record. */
+void fighter_213f4(u32 rec)
+{
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);  /* 0x213F9..0x21407 */
+    if (other == 0u) return;                                /* 0x21409 */
+    actors_anim_begin(DSD(other), DSD(0x000C9148u + (u32)DSB(other + 0x7Au) * 4u),
+                      0x40400000u);                         /* 0x2140B..0x2141E */
+    DSB(other + 0x58u) = 0u;                                /* 0x21428 */
+    DSB(other + 0x52u) = 0x0Cu;                             /* 0x2142E */
+    fighter_2bdb8(rec, 3u);                                 /* 0x2142C/0x21432 */
+    fighter_2bdb8(DSD(other), 3u);                          /* 0x2143C/0x2143E */
+}
+
+
+/* 0x3E424 — record §P7.2. The D000 target at the dword 0xE8454: 0x213F4's
+ * twin with the stream table 0xC9120 and the other slot's +0x41 bit 7. */
+void fighter_3e424(u32 rec)
+{
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);  /* 0x3E429..0x3E437 */
+    if (other == 0u) return;                                /* 0x3E439 */
+    actors_anim_begin(DSD(other), DSD(0x000C9120u + (u32)DSB(other + 0x7Au) * 4u),
+                      0x40400000u);                         /* 0x3E43B..0x3E44E */
+    DSB(other + 0x58u) = 0u;                                /* 0x3E456 */
+    DSB(other + 0x41u) |= 0x80u;                            /* 0x3E453/0x3E45A/0x3E462 */
+    DSB(other + 0x52u) = 0x0Cu;                             /* 0x3E467 */
+    fighter_2bdb8(rec, 3u);                                 /* 0x3E465/0x3E46B */
+    fighter_2bdb8(DSD(other), 3u);                          /* 0x3E475/0x3E477 */
+}
+
+

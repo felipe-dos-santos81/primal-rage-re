@@ -5262,6 +5262,161 @@ static void m_24220_decr(const u32 *r, u32 *eax)       /* the decrement 0x100 */
     *eax = 0u;
 }
 
+/* Track P batch 7 (record 2026-10-04-reverse-p7): the remaining unported direct
+ * callees and the targets outside E2. */
+static void b_2bdb8(const u32 *r, u32 *eax)            { fighter_2bdb8(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void m_2bdb8(const u32 *r, u32 *eax)            /* the float from the whole argument */
+{
+    u32 rec = r[R_EAX];
+    DSB(rec + 0x2Bu) |= 2u;
+    DSB(0x00105BEEu) = (u8)r[R_EDX];
+    DSB(0x00105BECu) = (u8)(r[R_EDX] - 1u);
+    DSD(rec + 0x24u) = (u32)(float)r[R_EDX];
+    *eax = 0u;
+}
+static void m_2bdb8_and(const u32 *r, u32 *eax)        /* the +0x2B store without the OR */
+{
+    u32 rec = r[R_EAX];
+    DSB(rec + 0x2Bu) = 2u;
+    DSB(0x00105BEEu) = (u8)r[R_EDX];
+    DSB(0x00105BECu) = (u8)(r[R_EDX] - 1u);
+    DSD(rec + 0x24u) = (u32)(float)(r[R_EDX] & 0xFFu);
+    *eax = 0u;
+}
+static void m_2bdb8_dec(const u32 *r, u32 *eax)        /* 0x105BEC = the argument, not -1 */
+{
+    u32 rec = r[R_EAX];
+    DSB(rec + 0x2Bu) |= 2u;
+    DSB(0x00105BEEu) = (u8)r[R_EDX];
+    DSB(0x00105BECu) = (u8)r[R_EDX];
+    DSD(rec + 0x24u) = (u32)(float)(r[R_EDX] & 0xFFu);
+    *eax = 0u;
+}
+static void m_2bdb8_width(const u32 *r, u32 *eax)      /* a word store of 0x105BEE */
+{
+    u32 rec = r[R_EAX];
+    DSB(rec + 0x2Bu) |= 2u;
+    DSW(0x00105BEEu) = (u16)r[R_EDX];
+    DSB(0x00105BECu) = (u8)(r[R_EDX] - 1u);
+    DSD(rec + 0x24u) = (u32)(float)(r[R_EDX] & 0xFFu);
+    *eax = 0u;
+}
+static void b_213f0(const u32 *r, u32 *eax)            { fighter_213f0(r[R_EAX]); *eax = 0u; }
+static void m_213f0(const u32 *r, u32 *eax)            /* writes where the bare ret does not */
+{
+    DSB(r[R_EAX] + 0x2Bu) |= 2u;
+    *eax = 0u;
+}
+static void b_213f4(const u32 *r, u32 *eax)            { b_anim(0x213F4u, r, eax); }
+static void m_213f4(const u32 *r, u32 *eax)            /* the own record's char for the stream */
+{
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other != 0u) {
+        actors_anim_begin(DSD(other), DSD(0x000C9148u + (u32)DSB(rec + 0x7Au) * 4u), 0x40400000u);
+        DSB(other + 0x58u) = 0u;
+        DSB(other + 0x52u) = 0x0Cu;
+        fighter_2bdb8(rec, 3u);
+        fighter_2bdb8(DSD(other), 3u);
+    }
+    *eax = 0u;
+}
+static void m_213f4_stream(const u32 *r, u32 *eax)     /* the 0xC9120 stream table */
+{
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other != 0u) {
+        actors_anim_begin(DSD(other), DSD(0x000C9120u + (u32)DSB(other + 0x7Au) * 4u), 0x40400000u);
+        DSB(other + 0x58u) = 0u;
+        DSB(other + 0x52u) = 0x0Cu;
+        fighter_2bdb8(rec, 3u);
+        fighter_2bdb8(DSD(other), 3u);
+    }
+    *eax = 0u;
+}
+static void m_213f4_side(const u32 *r, u32 *eax)       /* the own side's slot (index & 1) */
+{
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) & 1u)) * 4u);
+    if (other != 0u) {
+        actors_anim_begin(DSD(other), DSD(0x000C9148u + (u32)DSB(other + 0x7Au) * 4u), 0x40400000u);
+        DSB(other + 0x58u) = 0u;
+        DSB(other + 0x52u) = 0x0Cu;
+        fighter_2bdb8(rec, 3u);
+        fighter_2bdb8(DSD(other), 3u);
+    }
+    *eax = 0u;
+}
+static void m_213f4_order(const u32 *r, u32 *eax)      /* the stores before the 0x2BC30 call */
+{
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other != 0u) {
+        DSB(other + 0x58u) = 0u;
+        DSB(other + 0x52u) = 0x0Cu;
+        actors_anim_begin(DSD(other), DSD(0x000C9148u + (u32)DSB(other + 0x7Au) * 4u), 0x40400000u);
+        fighter_2bdb8(rec, 3u);
+        fighter_2bdb8(DSD(other), 3u);
+    }
+    *eax = 0u;
+}
+static void b_3e424(const u32 *r, u32 *eax)            { b_anim(0x3E424u, r, eax); }
+static void m_3e424(const u32 *r, u32 *eax)            /* the 0xC9148 stream table */
+{
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other != 0u) {
+        actors_anim_begin(DSD(other), DSD(0x000C9148u + (u32)DSB(other + 0x7Au) * 4u), 0x40400000u);
+        DSB(other + 0x58u) = 0u;
+        DSB(other + 0x41u) |= 0x80u;
+        DSB(other + 0x52u) = 0x0Cu;
+        fighter_2bdb8(rec, 3u);
+        fighter_2bdb8(DSD(other), 3u);
+    }
+    *eax = 0u;
+}
+static void m_3e424_bit(const u32 *r, u32 *eax)        /* +0x41 set, not OR-ed */
+{
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other != 0u) {
+        actors_anim_begin(DSD(other), DSD(0x000C9120u + (u32)DSB(other + 0x7Au) * 4u), 0x40400000u);
+        DSB(other + 0x58u) = 0u;
+        DSB(other + 0x41u) = 0x80u;
+        DSB(other + 0x52u) = 0x0Cu;
+        fighter_2bdb8(rec, 3u);
+        fighter_2bdb8(DSD(other), 3u);
+    }
+    *eax = 0u;
+}
+static void m_3e424_side(const u32 *r, u32 *eax)       /* the own side's slot */
+{
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) & 1u)) * 4u);
+    if (other != 0u) {
+        actors_anim_begin(DSD(other), DSD(0x000C9120u + (u32)DSB(other + 0x7Au) * 4u), 0x40400000u);
+        DSB(other + 0x58u) = 0u;
+        DSB(other + 0x41u) |= 0x80u;
+        DSB(other + 0x52u) = 0x0Cu;
+        fighter_2bdb8(rec, 3u);
+        fighter_2bdb8(DSD(other), 3u);
+    }
+    *eax = 0u;
+}
+static void m_3e424_order(const u32 *r, u32 *eax)      /* the stores before the 0x2BC30 call */
+{
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other != 0u) {
+        DSB(other + 0x58u) = 0u;
+        DSB(other + 0x41u) |= 0x80u;
+        DSB(other + 0x52u) = 0x0Cu;
+        actors_anim_begin(DSD(other), DSD(0x000C9120u + (u32)DSB(other + 0x7Au) * 4u), 0x40400000u);
+        fighter_2bdb8(rec, 3u);
+        fighter_2bdb8(DSD(other), 3u);
+    }
+    *eax = 0u;
+}
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -5808,6 +5963,23 @@ static const binding_t k_bindings[] = {
     { "fighter_24220@voice",      m_24220_voice,  0x00000000u },
     { "fighter_24220@plus4",      m_24220_plus4,  0x00000000u },
     { "fighter_24220@decr",       m_24220_decr,   0x00000000u },
+    { "fighter_2bdb8",            b_2bdb8,        0x00000000u },
+    { "fighter_2bdb8@mutant",     m_2bdb8,        0x00000000u },
+    { "fighter_2bdb8@and",        m_2bdb8_and,    0x00000000u },
+    { "fighter_2bdb8@dec",        m_2bdb8_dec,    0x00000000u },
+    { "fighter_2bdb8@width",      m_2bdb8_width,  0x00000000u },
+    { "fighter_213f0",            b_213f0,        0x00000000u },
+    { "fighter_213f0@mutant",     m_213f0,        0x00000000u },
+    { "fighter_213f4",            b_213f4,        0x00000000u },
+    { "fighter_213f4@mutant",     m_213f4,        0x00000000u },
+    { "fighter_213f4@stream",     m_213f4_stream, 0x00000000u },
+    { "fighter_213f4@side",       m_213f4_side,   0x00000000u },
+    { "fighter_213f4@order",      m_213f4_order,  0x00000000u },
+    { "fighter_3e424",            b_3e424,        0x00000000u },
+    { "fighter_3e424@mutant",     m_3e424,        0x00000000u },
+    { "fighter_3e424@bit",        m_3e424_bit,    0x00000000u },
+    { "fighter_3e424@side",       m_3e424_side,   0x00000000u },
+    { "fighter_3e424@order",      m_3e424_order,  0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

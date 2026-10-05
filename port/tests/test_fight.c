@@ -47517,3 +47517,84 @@ static void p6_check_24220(void)
     CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
 }
 int test_p6_24220(void)         { return u6b_run(p6_check_24220); }
+
+typedef void (*p7_anim_fn)(u32 rec, u32 arg);
+
+/* Track P batch 7 (record 2026-10-04-reverse-p7): the remaining unported
+ * direct callees and the targets outside E2. Each check seeds sentinels that
+ * differ from the post-conditions; the stores a mutation changes are asserted
+ * (the row's mutants carry the same cases). */
+static void p7_check_simple(void)
+{
+    p7_anim_fn f;
+    /* 0x2BDB8: +0x2B bit 1, 0x105BEE = the low byte, 0x105BEC = it - 1 and
+     * +0x24 = (float)(u8)arg; 0x100 pins the low byte. */
+    z_fseed();
+    DSB(Z_R0 + 0x2Bu) = 0x01u;
+    DSD(Z_R0 + 0x24u) = 0x24242424u;
+    DSB(0x00105BEEu) = 0xEEu;
+    DSB(0x00105BECu) = 0xECu;
+    fighter_2bdb8(Z_R0, 0x42u);
+    CHECK_EQ_INT((int)DSB(Z_R0 + 0x2Bu), 0x03);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x42840000);
+    CHECK_EQ_INT((int)DSB(0x00105BEEu), 0x42);
+    CHECK_EQ_INT((int)DSB(0x00105BECu), 0x41);
+    fighter_2bdb8(Z_R0, 0x100u);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x00000000);
+    CHECK_EQ_INT((int)DSB(0x00105BEEu), 0x00);
+    CHECK_EQ_INT((int)DSB(0x00105BECu), 0xFF);
+
+    /* 0x213F0: registered, and a no-op. */
+    f = (p7_anim_fn)(void *)fn_resolve(0x213F0u);
+    CHECK(f != NULL, "0x213F0 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x2Bu) = 0x28u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x2Bu), 0x28);
+    }
+
+    /* 0x213F4: the other slot's +0x58 = 0 and +0x52 = 0xC, both records on
+     * 3.0 through 0x2BDB8 and the other record on 0xC9148[its char] at 3.0. */
+    f = (p7_anim_fn)(void *)fn_resolve(0x213F4u);
+    CHECK(f != NULL, "0x213F4 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSB(Z_S1 + 0x7Au) = 3u;
+        DSB(Z_S1 + 0x58u) = 0x58u;
+        DSB(Z_S1 + 0x52u) = 0x52u;
+        DSD(Z_R0 + 0x24u) = 0x24242424u;
+        DSD(Z_R1 + 0x24u) = 0x34343434u;
+        DSB(Z_R0 + 0x2Bu) = 0x28u;
+        DSB(Z_R1 + 0x2Bu) = 0x38u;
+        DSD(Z_R1 + 8u) = 0x9999u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x58u), 0);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x52u), 0x0C);
+        CHECK_EQ_INT((int)DSD(Z_R0 + 0x24u), 0x40400000);
+        CHECK_EQ_INT((int)DSD(Z_R1 + 0x24u), 0x40400000);
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x2Bu), 0x2A);
+        CHECK_EQ_INT((int)DSB(Z_R1 + 0x2Bu), 0x3A);
+        CHECK(DSD(Z_R1 + 8u) != 0x9999u, "the other record's stream started");
+    }
+
+    /* 0x3E424: the other slot's +0x41 bit 7 and the 0xC9120 stream. */
+    f = (p7_anim_fn)(void *)fn_resolve(0x3E424u);
+    CHECK(f != NULL, "0x3E424 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSB(Z_S1 + 0x7Au) = 3u;
+        DSB(Z_S1 + 0x41u) = 0x41u;
+        DSB(Z_S1 + 0x58u) = 0x58u;
+        DSD(Z_R1 + 8u) = 0x9999u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x41u), 0xC1);
+        CHECK_EQ_INT((int)DSB(Z_S1 + 0x58u), 0);
+        CHECK(DSD(Z_R1 + 8u) != 0x9999u, "the other record's stream started");
+    }
+}
+int test_p7_simple(void)        { return u6b_run(p7_check_simple); }
+
+/* §P7.3: 0x2BDE8 and 0x36114 through their registrations. */

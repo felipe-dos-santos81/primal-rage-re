@@ -770,8 +770,16 @@ gp-modes-one: build
 # fn-miss PR_GP_DUMP distinct=6 dropped=0) and every pin above is unchanged and exact, because the
 # trace's first difference at f=0x93C precedes 0x2BDA0's first frame 0xD0C: every pin is exact
 # (frames +1 347, trace +1 2365, win +1 3163, path +1 9 unreachable, max-start -1 99 fail).
+# Re-measured by track P batch 7 (record 2026-10-04-reverse-p7 §P7.8) once 0x213F0 and 0x213F4 are
+# ported, on the batch's task-2 tree: the set loses both rows and gains 0x36114 (Task 3's D000
+# target, which the replay now reaches; fn-miss PR_GP_DUMP distinct=5 dropped=0: 0x5D812
+# actor_spawn and set_dead, 0x29D60 and 0x5D812 from frontend_mode_1b_step, 0x36114
+# anim_indirect hits=1). TRACE_MIN_FIRST rises 2364 -> 2377 (the first trace difference, f=0x949;
+# N 2378 is unreachable); WIN_MIN_FIRST stays 3162 (f=0xC5A; 3163 unreachable). MIN_FIRST stays
+# 346 (the mode-8 long frame; 347 fails), MAX_START 100 (99 fails), MILESTONES 8 (9 unreachable).
+# Once Task 3 ports 0x36114 the replay reaches the full-batch re-measure's 3503/3503 (record §P7.8).
 GP_WIN_MIN_FIRST = 346
-GP_WIN_TRACE_MIN_FIRST = 2364
+GP_WIN_TRACE_MIN_FIRST = 2377
 GP_WIN_MAX_START = 100
 GP_WIN_MILESTONES = 8
 GP_WIN_WIN_MIN_FIRST = 3162

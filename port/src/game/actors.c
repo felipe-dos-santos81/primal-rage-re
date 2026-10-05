@@ -235,6 +235,16 @@ static void anim_code_45C98(u32 rec, u32 arg);
 static void anim_code_37DD4(u32 rec, u32 arg);
 static void anim_code_22338(u32 rec, u32 arg);
 static void anim_code_48374(u32 rec, u32 arg);
+static void anim_code_213F0(u32 rec, u32 arg);
+static void anim_code_213F4(u32 rec, u32 arg);
+static void anim_code_3E424(u32 rec, u32 arg);
+static void anim_code_224EC(u32 rec, u32 arg);
+static void anim_code_36114(u32 rec, u32 arg);
+static void anim_code_23A7C(u32 rec, u32 arg);
+static void anim_code_48254(u32 rec, u32 arg);
+static void anim_code_23AE0(u32 rec, u32 arg);
+static void anim_code_29C78(u32 rec, u32 arg);
+static void anim_code_4B03C(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -1038,6 +1048,11 @@ int actors_init(void)
      * target: the slot +0x10 handler 0x24338 stores, reached through 0x3531C
      * case 10's adapter (slot, side). */
     fn_register(0x24220u, (void (*)(void))fighter_24220_case10);
+    /* PORT: record 2026-10-04-reverse-p7 §P7.2. Track P batch 7's animation
+     * targets (anim_indirect, EAX = rec, EDX = the operand). */
+    fn_register(0x213F0u, (void (*)(void))anim_code_213F0);
+    fn_register(0x213F4u, (void (*)(void))anim_code_213F4);
+    fn_register(0x3E424u, (void (*)(void))anim_code_3E424);
     return 1;
 }
 
@@ -4593,3 +4608,24 @@ static void anim_code_48374(u32 rec, u32 arg)
     (void)arg;
     fighter_48374(rec);
 }
+
+
+/* PORT: record 2026-10-04-reverse-p7 §P7.2. Track P batch 7's first animation
+ * targets (anim_indirect, EAX = rec, EDX = the operand). */
+static void anim_code_213F0(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+}
+static void anim_code_213F4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_213f4(rec);
+}
+static void anim_code_3E424(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3e424(rec);
+}
+
+

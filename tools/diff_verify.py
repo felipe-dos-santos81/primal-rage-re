@@ -2610,6 +2610,107 @@ C1_SPECS = [
        allow_calls=(0x33950,), calls=(C1_GEOM, C1_18B44, C1_189FC, C1_18A4C, C1_39EFC, DISPATCH),
        eax_mask=0xFF, mutants=("@mutant", "@store", "@live")),
 ]
+# ---- track P batch 7: the remaining unported direct callees and the targets outside E2 (record
+# 2026-10-04-reverse-p7) --------------------------------------------------------------------------------
+# The callees the batch stubs, args in the port's C order and clobbers from E.callee_clobbers.
+P7_2BDB8 = E.Call(0x2BDB8, ("eax", "edx"), clobbers=("edx",))
+P7_2BDB8_R = E.Call(0x2BDB8, ("eax", "edx"), mode="real")
+P7_2BDE8_R = E.Call(0x2BDE8, ("eax",), mode="real")
+P7_23960 = E.Call(0x23960, ("eax",))
+P7_3A9D8 = E.Call(0x3A9D8, ("eax", "edx"), clobbers=("edx",))
+P7_2B150 = E.Call(0x2B150, ("eax",), clobbers=("esi", "edi", "ebp"))
+P7_41310 = E.Call(0x41310, ("eax", "edx"))
+P7_49444 = E.Call(0x49444, ("eax",), clobbers=("edi", "ebp"))
+P7_RNG   = E.Call(0x5D7DC, ("eax",), mode="real")
+P7_22404 = E.Call(0x22404, ("eax",))
+P7_2BCF4 = E.Call(0x2BCF4, ("eax", "edx"), clobbers=("edx",))
+P7_2A17C = E.Call(0x2A17C, ("eax", "edx", "ebx"), clobbers=("edx",))
+
+# 0x2BDB8 (record §P7.2): the record's +0x2B bit 1, the byte 0x105BEE = the argument, 0x105BEC =
+# the argument - 1 and +0x24 = (float)(u8)the argument. b1 (0x100) separates the low byte from the
+# whole argument for all three stores; b2 (0x1234FF) pins 255.0f.
+P7_2BDB8_SEED = {E3_REC + 0x24: le32(0x24242424), E3_REC + 0x2B: b"\x2b\x2c",
+                 0x105BEE: b"\xee\xef", 0x105BEC: b"\xec\xed"}
+P7_2BDB8_SEED2 = {E3_REC2 + 0x24: le32(0x34343434), E3_REC2 + 0x2B: b"\x3b\x3c",
+                  0x105BEE: b"\xee\xef", 0x105BEC: b"\xec\xed"}
+
+
+# 0x213F4/0x3E424 (record §P7.2): the other side's slot by rec+0x51 ^ 1; its record on
+# 0xC9148/0xC9120[its char] at 3.0; its +0x58 = 0; 0x3E424's +0x41 |= 0x80; its +0x52 = 0xC; then
+# 0x2BDB8(3) on the own and the other record. The records and the +0x2B/0x24 stores carry sentinels.
+def p7_213f4_case(cid, rec, orec, oside, char):
+    oslot = DS_SLOTS + oside * 0x94
+    return Case(cid, {"eax": rec, "edx": 0x1234},
+                {**SLOT_PTRS, **P6_PTRS,
+                 rec + 0x51: bytes([oside ^ 1]), orec + 0x51: bytes([oside]),
+                 oslot + 0x7A: bytes([char]), oslot + 0x58: b"\x58\x59",
+                 oslot + 0x52: b"\x52\x53", oslot + 0x41: b"\x41\x42",
+                 rec + 0x24: le32(0x24242424), rec + 0x2B: b"\x2b\x2c",
+                 orec + 0x24: le32(0x34343434), orec + 0x2B: b"\x3b\x3c",
+                 0x105BEE: b"\xee\xef", 0x105BEC: b"\xec\xed"})
+
+
+# 0x23960 (record §P7.4): 0x105B4C = 0; with the other side's slot set, four 0xA839C spawns at its
+# +0x2C + 0x600/-0x600/+0x1000/-0x1000, y = the other record's +0x30 >> 16; each child's +0x24 +=
+# (float)rng_next(6) and +0x20 the same. The spawn stub returns P6_CHILD.
+P7_23960_SEED = {**SLOT_PTRS, **P6_PTRS,
+                 E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+                 DS_SLOTS + 0x94 + 0x2C: le32(0x00001000),
+                 E3_REC2 + 0x30: le32(0x12345678),
+                 P6_CHILD + 0x20: le32(0x20202020), P6_CHILD + 0x24: le32(0x40400000),
+                 0x105B4C: b"\x4c\x4d"}
+
+# 0x23AE0 (record §P7.6): the other slot's record's +0x29 bit 3, +0x2E = 0x64, +0x4E = 1; the
+# char's word from 0x23AC4 (0x46B6..0x46BA, default 0x46B9) sought on it; the palette handle
+# 0x105FEBC; the word 0x105B4C = 1.
+def p7_23ae0_case(cid, rec, char):
+    return Case(cid, {"eax": rec, "edx": 0x1234},
+                {**SLOT_PTRS, **P6_PTRS,
+                 rec + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+                 DS_SLOTS + 0x94 + 0x7A: bytes([char]), E3_REC2 + 0x29: b"\x29\x2a",
+                 E3_REC2 + 0x2E: b"\x2e\x2f", E3_REC2 + 0x4E: b"\x4e\x4f",
+                 0x105B4C: b"\x4c\x4d"})
+
+
+# 0x4B03C (record §P7.7): the byte (slot+8's record +0x48) - 0x20 selects 0x10/0xE/0x15/0xC/0xA
+# (0xD default) and the slot's +0x5A loses it to 0; voice 0xD6, voice 0xCE, the record dead,
+# 0x41310 on the slot's +0x21/+0x20 (mode 0x22/0x24 excluded), the 0x1088A4/0x1088A2 counters,
+# then 0x49444.
+P7_4B03C_SEED = {E3_REC + 0x14: le32(E3_SLOT), E3_SLOT + 8: le32(E3_OUT),
+                 E3_SLOT + 0x20: b"\x00", E3_SLOT + 0x21: b"\x01",
+                 0x10780A: b"\x5a", 0x10780A + 0x94: b"\x5b",
+                 0x10889E + 1: b"\x9e", 0x1088A4: b"\xa4", 0x1088A2 + 1: b"\xa2",
+                 0x104B00: b"\x11\x00", E3_OUT + 0x48: b"\x20"}
+
+P7_SPECS = [
+    Spec("fighter_2bdb8", 0x2BDB8, [
+        Case("b0", {"eax": E3_REC, "edx": 0x42}, P7_2BDB8_SEED),
+        Case("b1", {"eax": E3_REC, "edx": 0x100}, P7_2BDB8_SEED),
+        Case("b2", {"eax": E3_REC2, "edx": 0x1234FF}, P7_2BDB8_SEED2),
+    ], eax_mask=0, mutants=("@mutant", "@and", "@dec", "@width")),
+    # 0x213F0 (record §P7.2): a bare `ret`; the row asserts no byte changes.
+    Spec("fighter_213f0", 0x213F0, [
+        Case("r0", {"eax": E3_REC, "edx": 0x1234}, {E3_REC + 0x2B: b"\x28"}),
+    ], eax_mask=0, mutants=("@mutant",)),
+    Spec("fighter_213f4", 0x213F4, [
+        p7_213f4_case("s0", E3_REC, E3_REC2, 0, 3),
+        p7_213f4_case("s1", E3_REC2, E3_REC, 1, 2),
+        Case("o0", {"eax": E3_REC, "edx": 0x1234},
+             {DS_SLOTS - 8: le32(DS_SLOTS) + le32(0), E3_REC + 0x51: b"\x00",
+              E3_REC + 0x24: le32(0x24242424), E3_REC + 0x2B: b"\x2b\x2c",
+              0x105BEE: b"\xee\xef", 0x105BEC: b"\xec\xed"}),
+    ], calls=(ANIM_BEGIN, P7_2BDB8_R), eax_mask=0,
+       mutants=("@mutant", "@stream", "@side", "@order")),
+    Spec("fighter_3e424", 0x3E424, [
+        p7_213f4_case("s0", E3_REC, E3_REC2, 0, 3),
+        p7_213f4_case("s1", E3_REC2, E3_REC, 1, 2),
+        Case("o0", {"eax": E3_REC, "edx": 0x1234},
+             {DS_SLOTS - 8: le32(DS_SLOTS) + le32(0), E3_REC + 0x51: b"\x00",
+              E3_REC + 0x24: le32(0x24242424), E3_REC + 0x2B: b"\x2b\x2c",
+              0x105BEE: b"\xee\xef", 0x105BEC: b"\xec\xed"}),
+    ], calls=(ANIM_BEGIN, P7_2BDB8_R), eax_mask=0,
+       mutants=("@mutant", "@bit", "@side", "@order")),
+]
 
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
@@ -2653,7 +2754,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + P7_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------
