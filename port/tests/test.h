@@ -116,6 +116,7 @@ extern int g_failures;
     X(test_p7_streams) \
     X(test_p7_4b03c) \
     X(test_p8_3a820) \
+    X(test_p8_29cfc) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
     X(test_restart)

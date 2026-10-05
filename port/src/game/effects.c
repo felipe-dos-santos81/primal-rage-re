@@ -515,6 +515,7 @@ static void camera_register(void)
 /* 0x13DF0. */
 void effects_clear(void)
 {
+    PR_SEAM0(0x13DF0u);
     /* PORT: the original assumes the pool was built; without it the sentinel is
      * zeroed and the walk would start at mem[0]. A built list always has a
      * non-zero active next (itself when empty, a record otherwise). Mirror
@@ -529,6 +530,15 @@ void effects_clear(void)
     }
     DSB(DS_0009AF3D) = 0;
     DSB(DS_0009AF3C) = 0;
+}
+
+/* 0x29CFC — record §P8.3. A one-instruction tail alias: `jmp 0x13DF0`
+ * (effects_clear; the dword at 0x29CFC's only reference is the `call` at
+ * 0x4255D in 0x424E8, game_mode_13_step's case 2). Ported as the wrapper so
+ * the original's call graph and fn_resolve(0x29CFC) hold. */
+void effects_29cfc(void)
+{
+    effects_clear();
 }
 
 /* DS_0009AF3D. */

@@ -228,7 +228,7 @@ void fighter_pose_3a6d4(u32 slot, u32 side);
 void fighter_pose_3a588(u32 slot, u32 side);
 
 /* 0x3A820 (record §P8.2). The 0x3A8E8 pose family's per-frame handler:
- * 0x3A43C's body with the 0xC9058[char] stream, the 0x107CF8/0x107CFC B/A
+ * 0x3A43C's body with the 0xC9058[char] stream, the 0x107CFC/0x107CF8 B/A
  * words and +0x90 = 4. 0x3531C case 10 resolves it from slot+0x10;
  * registered in actors_init. EAX = slot (dead), EBX = side. */
 void fighter_pose_3a820(u32 slot, u32 side);

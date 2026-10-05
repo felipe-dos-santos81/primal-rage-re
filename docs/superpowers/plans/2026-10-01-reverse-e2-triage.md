@@ -32,13 +32,12 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | voice | 0 | 15 |
 | animation-targets | 0 | 112 |
 | span-writers | 231 | 0 |
-| other | 3 | 54 |
+| other | 2 | 55 |
 
 ## E1 readiness of the unported targets (record §E2.6)
 
 | readiness | rows |
 |---|---|
-| allow-list | 1 |
 | leaf | 228 |
 | stubs | 5 |
 
@@ -177,7 +176,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 2901C | 180 | data-pointer | aligned dword BBA54 | yes | - | yes | other | allow-list | - |
 | 290D0 | 476 | data-pointer | aligned dword BBA58 BBB0C | yes | - | yes | other | allow-list | - |
 | 29318 | 16 | data | memory operand of the instruction at 29346 | yes | - | no | - | - | - |
-| 29CFC | 100 | direct | `call` at 4255D | yes | entry | no | other | allow-list | - |
+| 29CFC | 100 | direct | `call` at 4255D | yes | entry | yes | other | allow-list | - |
 | 29D70 | 72 | data | memory operand of the instruction at 29DFE | yes | - | no | - | - | - |
 | 29EEC | 72 | data | memory operand of the instruction at 29F78 | yes | - | no | - | - | - |
 | 2B1E4 | 188 | data | memory operand of the instruction at 2B2FC | yes | - | no | - | - | - |

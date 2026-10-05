@@ -866,10 +866,11 @@ P7_KINDS = {
     "fighter_4b03c@voice": {"call #0"},
 }
 
-# Track P batch 8 (record 2026-10-04-reverse-p8): the 0x3A820 row with its EAX mask, and what alone
-# catches each of its mutants (Task 3 adds the effects_29cfc entries).
-P8_MASKS = {"fighter_pose_3a820": 0}
+# Track P batch 8 (record 2026-10-04-reverse-p8): its two rows with their EAX masks, and what alone
+# catches each of its mutants.
+P8_MASKS = {"fighter_pose_3a820": 0, "effects_29cfc": 0}
 P8_KINDS = {
+    "effects_29cfc@mutant": {"call #0"},
     "fighter_pose_3a820@side": {"byte", "call #0", "call #1", "call #2"},
     "fighter_pose_3a820@stream": {"call #0"},
     "fighter_pose_3a820@globs": {"call #2"},
@@ -1414,7 +1415,7 @@ class RealFunctionTests(unittest.TestCase):
                                  0x39280: (), 0x13244: (), 0x2A148: ("edx",), 0x2BCF4: ("edx",),
                                  0x1890C: ("edx",), 0x29BC8: ("ebx", "edx"), 0x37D18: ("edx",),
                                  0x13C70: ("ebx", "edx"), 0x3AA54: (),
-                                 0x18540: (), 0x18350: ("edx",), 0x18788: (), 0x1881C: (),
+                                 0x13DF0: (), 0x18540: (), 0x18350: ("edx",), 0x18788: (), 0x1881C: (),
                                  0x1A5AC: (), 0x38154: (), 0x249B0: (), 0x249D0: (),
                                  0x2B150: ("esi", "edi", "ebp"), 0x29F34: ("edx",)})
         for addr, declared in stubs.items():
@@ -1510,9 +1511,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (157), the 34 without are counted apart
-        self.assertIn("diff-verify: 191/191 functions VERIFIED; 551/551 mutants detected; 1 named gaps; "
-                      "69/157 rows with callees closed (34 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (158), the 34 without are counted apart
+        self.assertIn("diff-verify: 192/192 functions VERIFIED; 552/552 mutants detected; 1 named gaps; "
+                      "69/158 rows with callees closed (34 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

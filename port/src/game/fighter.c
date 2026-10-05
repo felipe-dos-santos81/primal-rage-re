@@ -5668,8 +5668,8 @@ void fighter_pose_3a820(u32 slot, u32 side)
     hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);        /* 0x3A872..0x3A87F */
     DSB(ctx[3] + 0x58u) = 2u;                               /* 0x3A888 */
     {
-        s32 b = (s32)(s16)DSW(DS_00107CFC + ctx[1] * 2u);   /* 0x3A890/0x3A8A0 */
-        s32 a = (s32)(s16)DSW(DS_00107CF8 + ctx[1] * 2u);   /* 0x3A897/0x3A8A3 */
+        s32 b = (s32)(s16)DSW(DS_00107CFC + ctx[1] * 2u);   /* 0x3A897/0x3A8A0 */
+        s32 a = (s32)(s16)DSW(DS_00107CF8 + ctx[1] * 2u);   /* 0x3A890/0x3A8A3 */
         if (b != 0 && b != 5) {                             /* 0x3A8A6/0x3A8AA */
             if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)        /* 0x3A8B3..0x3A8BD */
                 hit_anchor_x(ctx[1], (u32)a);               /* 0x3A8CC/0x3A8D1 */

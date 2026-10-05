@@ -3352,15 +3352,20 @@ C2_SPECS += [
 
 # ---- track P batch 8: the remaining entries and the triage (record 2026-10-04-reverse-p8) ---------
 
-# 0x3A820 (record §P8.2): the 0x3A8E8 pose family's per-frame handler. EAX = slot (dead),
-# EBX = side (`mov edx,ebx` at 0x3A823); the ctx swap (0x33A10, allow) builds ctx[3] = the
-# own slot and ctx[5] = its record. Phase 0 arms +0x58; phase 1 starts the 0xC9058[char]
-# stream at 3.0 (0x40400000), re-anchors the self record and, when B[side] (0x107CFC+side*2)
-# is neither 0 nor 5 and (u8)(+0x90 - 1) > 3, snaps x to A[side] (0x107CF8+side*2); +0x90 =
-# 4 at the end. EDX is a scratch seed the raw never reads (@side catches a port that does).
-# Task 3 adds the 0x29CFC row (its binding and port arrive with it; a spec here would run
-# its cases against an unknown binding and fail the self-check, diff_runner.c:8503).
+# 0x29CFC (record §P8.3): a one-instruction tail alias, `jmp 0x13DF0` (effects_clear). The callee
+# is stubbed on both sides through its seam; the port's effects_29cfc records the arrival. Mask 0
+# (the caller, 0x424E8's case 2, overwrites EAX at once).
+P8_CLEAR = E.Call(0x13DF0)
 P8_SPECS = [
+    Spec("effects_29cfc", 0x29CFC, [
+        Case("c0", {}),
+    ], calls=(P8_CLEAR,), eax_mask=0, mutants=("@mutant",)),
+    # 0x3A820 (record §P8.2): the 0x3A8E8 pose family's per-frame handler. EAX = slot (dead),
+    # EBX = side (`mov edx,ebx` at 0x3A823); the ctx swap (0x33A10, allow) builds ctx[3] = the
+    # own slot and ctx[5] = its record. Phase 0 arms +0x58; phase 1 starts the 0xC9058[char]
+    # stream at 3.0 (0x40400000), re-anchors the self record and, when B[side] (0x107CFC+side*2)
+    # is neither 0 nor 5 and (u8)(+0x90 - 1) > 3, snaps x to A[side] (0x107CF8+side*2); +0x90 =
+    # 4 at the end. EDX is a scratch seed the raw never reads (@side catches a port that does).
     Spec("fighter_pose_3a820", 0x3A820, [
         Case("p0", {"eax": E3_SLOT, "edx": 0xDEAD, "ebx": 0},
              {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",

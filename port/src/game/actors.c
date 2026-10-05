@@ -966,6 +966,10 @@ int actors_init(void)
      * 0x4F6F1, 0x4F70D, 0x4F9AA, 0x4F9D1); the live stores and the six sites
      * are ported (flow.c), and they resolve it through this registration. */
     fn_register(0x29B74u, frontend_darken_all);
+    /* PORT: record §P8.3. The effects-clear tail alias 0x29CFC (`jmp
+     * 0x13DF0`), which game_mode_13_step's case 2 calls at 0x4255D (the
+     * dword at 0x29CFC's only reference). */
+    fn_register(0x29CFCu, (void (*)(void))effects_29cfc);
     /* PORT: record §43-B. The DS_00104AE4 hooks 0x28D68 (code immediates at
      * 0x42CF4/0x42D35/0x42D7D, stored by 0x42CB4, and 0x42FB7, stored by the
      * unreferenced stub 0x42FB0) and 0x28D80 (the immediate at 0x28E4F,

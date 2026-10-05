@@ -7237,6 +7237,12 @@ static void m_23ae0_order(const u32 *r, u32 *eax)      /* the stores after the s
     *eax = 0u;
 }
 static void b_29c78(const u32 *r, u32 *eax)            { b_anim(0x29C78u, r, eax); }
+static void b_29cfc(const u32 *r, u32 *eax)            { (void)r; effects_29cfc(); *eax = 0u; }
+static void m_29cfc(const u32 *r, u32 *eax)            /* the clear skipped */
+{
+    (void)r;
+    *eax = 0u;
+}
 static void b_3a820(const u32 *r, u32 *eax)            { fighter_pose_3a820(r[R_EAX], r[R_EBX]); *eax = 0u; }
 static void m_3a820_side(const u32 *r, u32 *eax)       /* the side from EDX, not EBX */
 {
@@ -8397,6 +8403,8 @@ static const binding_t k_bindings[] = {
     { "fighter_29c78",            b_29c78,        0x00000000u },
     { "fighter_29c78@pal",        m_29c78_pal,    0x00000000u },
     { "fighter_29c78@rec",        m_29c78_rec,    0x00000000u },
+    { "effects_29cfc",            b_29cfc,        0x00000000u },
+    { "effects_29cfc@mutant",     m_29cfc,        0x00000000u },
     { "fighter_pose_3a820",       b_3a820,        0x00000000u },
     { "fighter_pose_3a820@side",  m_3a820_side,   0x00000000u },
     { "fighter_pose_3a820@stream", m_3a820_stream, 0x00000000u },

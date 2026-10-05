@@ -48039,14 +48039,19 @@ static void p8_check_3a820(void)
     fighter_pose_3a820(s0, 0u);
     CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
 
-    /* side 1: the own record r1 and the side-1 globs 0x107CFA/0x107CFE. */
+    /* side 1: the own record r1 and the side-1 globs 0x107CFA/0x107CFE. The
+     * snap word s1+0x2C proves the B/A reads are the side-1 words: B[1] = 3
+     * opens the gate and A[1] = 0x4321 reaches hit_anchor_x (a port on the
+     * side-0 words, or without the ctx[1]*2 scaling, leaves the 0x1234 seed). */
     p8_pose_seed(s0, s1, r0, r1);
     DSB(s1 + 0x58u) = 1;                    /* the side-1 phase */
     DSB(s1 + 0x7Au) = 1;
+    DSD(s1 + 0x2Cu) = 0x1234;               /* the snap sentinel */
     DSW(0x00107CFEu) = 3;
     DSW(0x00107CFAu) = 0x4321;
     fighter_pose_3a820(s1, 1u);
     CHECK_EQ_INT((int)DSD(r1 + 8u), 0x000E401E);    /* 0xC9058[1] */
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0x4321);     /* A[1] through hit_anchor_x */
     CHECK_EQ_INT((int)DSB(s1 + 0x58u), 2);
     CHECK_EQ_INT((int)DSB(s1 + 0x90u), 4);
     CHECK_EQ_INT((int)DSB(s0 + 0x58u), 1);          /* the other slot untouched */
