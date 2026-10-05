@@ -4113,7 +4113,12 @@ int test_p8_29cfc(void)
     CHECK_EQ_INT((int)DSB(DS_0009AF3C), 0);
 
     /* The pool head zeroed: effects_clear's guard returns before touching the
-     * count bytes. A clear that ran anyway would zero the 0x5A sentinels. */
+     * count bytes. A guard-deleted port would not zero them either — it walks
+     * from the zeroed head into mem[0] (next 0) and loops on record 0 without
+     * reaching the stores below, so the mutation is caught by the walk not
+     * terminating (test_effects' uninitialised-pool clear, the same walk on an
+     * unbuilt pool, hangs first), not by these CHECKs; they pin the guard's
+     * post-condition. */
     DSD(DS_000FCCE0) = 0;
     DSB(DS_0009AF3C) = 0x5Au;
     DSB(DS_0009AF3D) = 0x5Au;

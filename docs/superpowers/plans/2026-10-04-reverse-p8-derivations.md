@@ -44,10 +44,10 @@ instruction's context. The table is the verdict; the sections that follow carry 
 | `0x37E40` | after-table end | after the 7-dword table `0x37E24` (every entry `0x37E70`, the degenerate default); the body is `0x2A17C(rec,0,0x105FEBC)`; **no reference anywhere** | dead code, not ported |
 | `0x3A3FC` | after-table end | after the 4-dword table `0x3A3EC` (every entry `0x3A423`, a `ret`); the body ends `jmp 0x188DC`; **no reference anywhere** | dead code, not ported |
 | `0x4AEC4` | after-table end | after the 6-dword table `0x4AEAC`; the switch returns 0x10/0x0E/0x15/0x0C/0x0A/0x0D by AL; **no reference anywhere** | dead code, not ported |
-| `0x1D2D0` | data | a struct at `0x1D2C0..0x1D2EF`: strings `01-01-01`/`/000`/`f ` and pointers (`+4 = 0xA2EB4`, `+8 = 0x1D2C9`, `+0xC = 0x1D2C0`); stored to `0x10740C` by `0x2FA01` in `0x2F9CC`, read at `+4` (`0x2CACC`) and `+0xC` (`0x2F98C`); the bytes at `0x1D2D0` are not an entry | data, not ported |
+| `0x1D2D0` | data | a struct at `0x1D2C0..0x1D2EF`: strings `01-01-01`/`/000`/`f ` and pointers (`+4 = 0xA2EB4`, `+8 = 0x1D2C9`, `+0xC = 0x1D2C0`); stored to `0x10740C` by `0x2FA01` in `0x2F9CC`, read at `+4` (`0x2CAD1`, after the base load `mov eax,[0x10740C]` at `0x2CACC`) and `+0xC` (`0x2F98C`); the bytes at `0x1D2D0` are not an entry | data, not ported |
 | `0x2D3FC 0x2D414 0x2D444 0x2D45C 0x2D474 0x2D48C` | data | six embedded table bases used as addends: `add ebx/esi/edi,0x2D3FC` at `0x2DB6F`/`0x2DBE3`/`0x2DCD4` (stride 8), `add ebx,0x2D414` at `0x2E94E` (stride 0x10), the base at `0x2D519`/`0x2E0DD`/`0x2E19A`/`0x2E050`, `mov ecx,0x2D45C` at `0x2DF98`, `mov edx,0x2D474` at `0x2DEA5`, `mov [esp+8],0x2D48C` at `0x2D4F7`; the bytes are word tables | data, not ported |
 | `0x1BDF4` | host-owned | the AIL 60 Hz timer callback (`push 0x1BDF4` at `0x1CFED`, register `0x5DA12`); its callees `0x1BBAC`/`0x2D62C` are host-owned (`tools/port_classification.txt`); the port models the tick in `config.c`/`host.c` | not ported (§P8.6) |
-| `0x10604` | deferred | the 250 Hz AIL timer callback (`push 0x10604` at `0x10648` in the deferred movie-audio starter `0x10610`); drives `0x102B8` (`2026-09-24-demo-pose-derivations.md`) | not ported (§P8.6) |
+| `0x10604` | deferred | the 250 Hz AIL timer callback (`push 0x10604` at `0x10647` in the deferred movie-audio starter `0x10610`); drives `0x102B8` (`2026-09-24-demo-pose-derivations.md`) | not ported (§P8.6) |
 
 **The reach scans.** Every rel32 in `0x10000..0x73B14` (all `E8`/`E9`/`0F 8x` forms) and every 4-byte
 occurrence in the whole image were scanned for each of the 16: `0x19AD4 0x19DD5 0x26163 0x26226 0x45444
@@ -173,8 +173,9 @@ the image (none exists in the DOS4GW load path the port models) is the named res
 **The two data groups.** `0x1D2D0` is the base of a struct embedded in the code object: `+4 =
 0x0A2EB4`, `+8 = 0x1D2C9` (mid-string), `+0xC = 0x1D2C0`, and the bytes `0x1D2C0..` are the strings
 `01-01-01`, `/000`, `f ` and zeros. `0x2F9CC` stores the base into `0x10740C` (`mov dword
-[0x10740C],0x1D2D0` at `0x2FA01`); the readers load it and pass `[eax+4]` to `0x33578` (`0x2CACC`
-`jmp`) and `[eax+0xC]` to `0x2F41C` (`0x2F98C`/`0x2F98F` `call`), i.e. EAX is a data pointer argument,
+[0x10740C],0x1D2D0` at `0x2FA01`); the readers load it and pass `[eax+4]` to `0x33578` (the read at
+`0x2CAD1`, after the base load at `0x2CACC`; the `jmp` at `0x2CAD4`) and `[eax+0xC]` to `0x2F41C`
+(`0x2F98C`/`0x2F98F` `call`), i.e. EAX is a data pointer argument,
 not a call target. The six `0x2D3xx` values are used only in `lea`/`add`/`mov` arithmetic as table
 bases; read as 16-bit words at `+0`, `+2`, `+4`, `+8` with shifts into indices, they are word tables
 (measured bytes: `0x2D3FC` starts `0a00 0a00 0400 0800 ...`). Both groups are **data**; E2's §E2.11
@@ -218,12 +219,13 @@ bodies (the residual doubt is a computed entry outside the image's literal scans
   host-owned". P8 adds the classification row; a differential row would have to seam two host
   infrastructure functions the harness stubs anyway, i.e. verify nothing the model relies on.
 - **`0x10604` is deferred.** `mov eax,[0x81E10]; inc dword [0x81E10]; ret` — the 250 Hz AIL timer
-  callback (`push 0x10604` at `0x10648`; `AIL_register_timer`/`set_frequency`/`start` at `0x5DA12`/
-  `0x5DA87`/`0x5DAA6`), registered by `0x10610` (103 bytes, `deferred record-§50-E`), which the
-  movie-audio unit §49-W.2 defers ("the callback drives `0x102B8`",
-  `2026-09-24-demo-pose-derivations.md`). Its counter `0x81E10` is read only by the same cluster
-  (`0x100EA`, `0x10361`, the `<< 2` helper `0x10679`), all part of the deferred unit. P8 adds the
-  classification row; it is not ported.
+  callback (`push 0x10604` at `0x10647`, its immediate at `0x10648`; `AIL_register_timer`/
+  `set_frequency`/`start` at `0x5DA12`/`0x5DA87`/`0x5DAA6`), registered by `0x10610` (103 bytes,
+  `deferred record-§50-E`), which the movie-audio unit §49-W.2 defers ("the callback drives
+  `0x102B8`", `2026-09-24-demo-pose-derivations.md`). Its counter `0x81E10` is read only by the same
+  cluster (the instruction starts `0x100E8`, `0x10360`, and the `<< 2` helper at `0x10678`), all
+  part of the deferred unit — Task 5's correction: the record's earlier `0x100EA`/`0x10361`/`0x10679`
+  are the readers' first operand bytes). P8 adds the classification row; it is not ported.
 
 ## §P8.7 Decisions, named gaps and limits
 
