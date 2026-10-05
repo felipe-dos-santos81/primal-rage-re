@@ -246,9 +246,11 @@ static const fnm_pair k_miss_gp_u9_win[] = {
 
 /* gp-u10-ending (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
  * §W.14), measured on its full replay to its X record (f = 0x26E1): the two wipe hooks of
- * §G.24 (0x29D60, a bare `ret`, from f = 0x286; 0x5D812, the runtime stub, from f = 0x3FE),
- * and the death-animation stream's target 0x29C78 (outside E2, record reverse-p1 §P1.2, dword
- * 0xD2BDA) at f = 0x14FE in mode 0xD. The stream target 0x37DD4 (E2 anim-target row, dword
+ * §G.24 (0x29D60, a bare `ret`, from f = 0x286; 0x5D812, the runtime stub, from f = 0x3FE).
+ * The death-animation stream's target 0x29C78 (outside E2, record reverse-p1 §P1.2, dword
+ * 0xD2BDA, f = 0x14FE in mode 0xD) is ported by track P batch 7 (record 2026-10-04-reverse-p7
+ * §P7.6), so the replay no longer misses it; the pins were re-measured (record §P7.8). The
+ * stream target 0x37DD4 (E2 anim-target row, dword
  * 0xD2BCE, f = 0x14FB in mode 0xC; track P batch 6, record 2026-10-03-reverse-p6 §P6.8),
  * CHAOS's reaction-0x25 callback 0x2381C (track P batch 2), character 2's reaction-0x0B
  * callback 0x475EC (the dword 0xA4004, from f = 0x1594 in mode 0xF; track P batch 3, record
@@ -258,7 +260,6 @@ static const fnm_pair k_miss_gp_u9_win[] = {
 static const fnm_pair k_miss_gp_u10_ending[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x29C78u, "anim_indirect" },
 };
 
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:

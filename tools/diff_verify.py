@@ -2840,6 +2840,21 @@ P7_SPECS = [
               0x108392: b"\x00", 0x108392 + 1: b"\x00"}),
     ], calls=(ANIM_BEGIN, P7_3A9D8, POSE), eax_mask=0,
        mutants=("@byte", "@side", "@stream", "@pose", "@char", "@order")),
+    Spec("fighter_23ae0", 0x23AE0,
+         [p7_23ae0_case("c%d" % i, E3_REC, i) for i in range(7)]
+         + [p7_23ae0_case("c7", E3_REC, 7),
+            Case("o0", {"eax": E3_REC}, {DS_SLOTS - 8: le32(DS_SLOTS) + le32(0), E3_REC + 0x51: b"\x00",
+                                         0x105B4C: b"\x4c\x4d"})],
+         calls=(P7_2BCF4, P7_2A17C), eax_mask=0,
+         mutants=("@char", "@val", "@side", "@pal", "@word", "@bit", "@seek", "@order")),
+    # 0x29C78 (record §P7.6): every entry of the table 0x29C5C is 0x29CA8, so the body is
+    # 0x2A17C(rec, 0, 0x105FEBC) alone. d0's own char 7 exercises the degenerate switch.
+    Spec("fighter_29c78", 0x29C78, [
+        Case("s0", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, E3_REC + 0x51: b"\x00"}),
+        Case("s1", {"eax": E3_REC2, "edx": 0x5678}, {**SLOT_PTRS, E3_REC2 + 0x51: b"\x01"}),
+        Case("d0", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, E3_REC + 0x51: b"\x00",
+                                                    DS_SLOTS + 0x7A: b"\x07"}),
+    ], calls=(P7_2A17C,), eax_mask=0, mutants=("@pal", "@rec")),
 ]
 
 SPECS = [

@@ -831,8 +831,11 @@ GP_WIN_CAPTURE_FRAMES = 2521
 # unchanged (each + 1 fails).
 # Re-measured by track P batch 6 (record 2026-10-03-reverse-p6 §P6.12) once 0x37DD4 is
 # ported: the set loses that row alone and every pin above is unchanged (each + 1 fails).
-# Re-measure: a P batch that ports 0x29C78 (P7) drops its row and re-measures the U10 set;
-# TRACE/WIN are at the replay's end, so they cannot rise.
+# Re-measured by track P batch 7 (record 2026-10-04-reverse-p7 §P7.8) once 0x29C78 is ported: the set
+# loses that row (fn-miss PR_GP_DUMP distinct=4 dropped=0: 0x5D812 actor_spawn and set_dead, 0x29D60
+# and 0x5D812 from frontend_mode_1b_step) and every pin above is exact and unchanged: frames 331
+# (332 fails), trace/win 9954 (9955 is unreachable, the replay's end), path 30 (31 unreachable),
+# MAX_START 83. TRACE/WIN are at the replay's end, so they cannot rise.
 GP_ENDING_MIN_FIRST = 331
 GP_ENDING_TRACE_MIN_FIRST = 9954
 GP_ENDING_MAX_START = 83

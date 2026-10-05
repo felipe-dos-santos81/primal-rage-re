@@ -17291,6 +17291,38 @@ void fighter_48254(u32 rec)
         fighter_39834(other_side, (s32)DSB(0x0010780Fu + own * 0x94u));   /* 0x482BE..0x482D7 */
     }
 }
+/* 0x23AE0 — record §P7.6. The animation target after the 7-dword table 0x23AC4
+ * (the stream dwords 0xD4FD4, 0xE1948): with the other side's slot set, its
+ * record's +0x29 bit 3, +0x2E = 0x64 and +0x4E = 1; the char's word from the
+ * table (0x46B6..0x46BA, the default 0x46B9) sought on that record; the
+ * palette handle 0x105FEBC; the word 0x105B4C = 1. */
+void fighter_23ae0(u32 rec)
+{
+    static const u16 p7_23ae0_val[7] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u, 0x46B7u, 0x46B9u, 0x46BAu };
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);  /* 0x23AE3..0x23AED */
+    u32 orec, ch, val;
+    if (other == 0u) return;                                /* 0x23AF4/0x23AF6 */
+    orec = DSD(other);                                      /* 0x23AF8 */
+    DSB(orec + 0x29u) |= 8u;                                /* 0x23AFA */
+    DSW(orec + 0x2Eu) = 0x0064u;                            /* 0x23B00 */
+    DSB(orec + 0x4Eu) = 1u;                                 /* 0x23B08 */
+    ch = (u32)DSB(other + 0x7Au);                           /* 0x23B0C */
+    val = ch <= 6u ? (u32)p7_23ae0_val[ch] : 0x46B9u;       /* 0x23B0F..0x23B3C */
+    actors_anim_seek(orec, val);                            /* 0x23B41..0x23B4D */
+    actor_pset_palette(orec, 0u, 0x00105FEBCu);             /* 0x23B52..0x23B56 */
+    DSW(0x00105B4Cu) = 1u;                                  /* 0x23B5B */
+}
+
+
+/* 0x29C78 — record §P7.6. The animation target after the 7-dword table 0x29C5C
+ * (the 14 stream dwords 0xD2BDA...). Every table entry is 0x29CA8, so the own
+ * char's switch is degenerate: the body is 0x2A17C(rec, 0, 0x105FEBC) alone. */
+void fighter_29c78(u32 rec)
+{
+    actor_pset_palette(rec, 0u, 0x00105FEBCu);              /* 0x29CA8..0x29CB1 */
+}
+
+
 
 
 

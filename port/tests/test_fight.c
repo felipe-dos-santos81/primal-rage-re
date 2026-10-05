@@ -47795,3 +47795,54 @@ static void p7_check_3a9d8(void)
 int test_p7_3a9d8(void)         { return u6b_run(p7_check_3a9d8); }
 
 /* §P7.6: the after-table streams 0x23AE0 and 0x29C78. */
+static void p7_check_streams(void)
+{
+    p7_anim_fn f;
+    /* 0x23AE0 char 3: the other record's +0x29 bit 3, +0x2E = 0x64, +0x4E = 1,
+     * the table word 0x46B6 at its +8, 0x105B4C = 1; char 7 takes the default
+     * 0x46B9. */
+    f = (p7_anim_fn)(void *)fn_resolve(0x23AE0u);
+    CHECK(f != NULL, "0x23AE0 is registered");
+    if (f != NULL) {
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSB(Z_S1 + 0x7Au) = 3u;
+        DSB(Z_R1 + 0x29u) = 0x29u;
+        DSW(Z_R1 + 0x2Eu) = 0x2E2Eu;
+        DSB(Z_R1 + 0x4Eu) = 0x4Eu;
+        DSW(0x00105B4Cu) = 0x4C4Cu;
+        DSD(Z_R1 + 8u) = 0x9999u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSB(Z_R1 + 0x29u), 0x29);
+        CHECK_EQ_INT((int)DSW(Z_R1 + 0x2Eu), 0x64);
+        CHECK_EQ_INT((int)DSB(Z_R1 + 0x4Eu), 1);
+        CHECK_EQ_INT((int)DSD(Z_R1 + 8u), 0x46B6);
+        CHECK_EQ_INT((int)DSW(0x00105B4Cu), 1);
+        DSB(Z_S1 + 0x7Au) = 7u;
+        DSD(Z_R1 + 8u) = 0x9999u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSD(Z_R1 + 8u), 0x46B9);
+    }
+
+    /* 0x29C78: the degenerate switch; 0x2A17C(rec, 0, 0x105FEBC): the record's
+     * pset word takes 0, or 0x800 with its +0x5F set. */
+    f = (p7_anim_fn)(void *)fn_resolve(0x29C78u);
+    CHECK(f != NULL, "0x29C78 is registered");
+    if (f != NULL) {
+        u32 pset;
+        z_fseed();
+        DSB(Z_R0 + 0x51u) = 0u;
+        DSB(Z_R0 + 0x5Fu) = 0u;
+        pset = actor_pset(Z_R0);
+        DSW(pset + 2u) = 0x1234u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)DSW(pset + 2u), 0);
+        DSB(Z_R0 + 0x5Fu) = 1u;
+        DSW(pset + 2u) = 0x1234u;
+        f(Z_R0, 0u);
+        CHECK_EQ_INT((int)(DSW(pset + 2u) & 0x800u), 0x800);
+    }
+}
+int test_p7_streams(void)       { return u6b_run(p7_check_streams); }
+
+/* §P7.7: 0x4B03C through its registration. */

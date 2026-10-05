@@ -5981,6 +5981,166 @@ static void m_48254_order(const u32 *r, u32 *eax)      /* the branch before the 
     }
     *eax = 0u;
 }
+static void b_23ae0(const u32 *r, u32 *eax)            { b_anim(0x23AE0u, r, eax); }
+static void m_23ae0_char(const u32 *r, u32 *eax)       /* the own record's char */
+{
+    static const u16 val[7] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u, 0x46B7u, 0x46B9u, 0x46BAu };
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other == 0u) { *eax = 0u; return; }
+    {
+        u32 orec = DSD(other);
+        u32 ch;
+        DSB(orec + 0x29u) |= 8u;
+        DSW(orec + 0x2Eu) = 0x0064u;
+        DSB(orec + 0x4Eu) = 1u;
+        ch = (u32)DSB(rec + 0x7Au);
+        actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
+        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        DSW(0x00105B4Cu) = 1u;
+    }
+    *eax = 0u;
+}
+static void m_23ae0_val(const u32 *r, u32 *eax)        /* the default 0x46B9 for every char */
+{
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other == 0u) { *eax = 0u; return; }
+    {
+        u32 orec = DSD(other);
+        DSB(orec + 0x29u) |= 8u;
+        DSW(orec + 0x2Eu) = 0x0064u;
+        DSB(orec + 0x4Eu) = 1u;
+        actors_anim_seek(orec, 0x46B9u);
+        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        DSW(0x00105B4Cu) = 1u;
+    }
+    *eax = 0u;
+}
+static void m_23ae0_side(const u32 *r, u32 *eax)       /* the own side's slot */
+{
+    static const u16 val[7] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u, 0x46B7u, 0x46B9u, 0x46BAu };
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + (((u32)DSB(rec + 0x51u)) & 1u) * 4u);
+    if (other == 0u) { *eax = 0u; return; }
+    {
+        u32 orec = DSD(other);
+        u32 ch;
+        DSB(orec + 0x29u) |= 8u;
+        DSW(orec + 0x2Eu) = 0x0064u;
+        DSB(orec + 0x4Eu) = 1u;
+        ch = (u32)DSB(other + 0x7Au);
+        actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
+        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        DSW(0x00105B4Cu) = 1u;
+    }
+    *eax = 0u;
+}
+static void m_23ae0_pal(const u32 *r, u32 *eax)        /* the palette handle 0 */
+{
+    static const u16 val[7] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u, 0x46B7u, 0x46B9u, 0x46BAu };
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other == 0u) { *eax = 0u; return; }
+    {
+        u32 orec = DSD(other);
+        u32 ch;
+        DSB(orec + 0x29u) |= 8u;
+        DSW(orec + 0x2Eu) = 0x0064u;
+        DSB(orec + 0x4Eu) = 1u;
+        ch = (u32)DSB(other + 0x7Au);
+        actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
+        actor_pset_palette(orec, 0u, 0u);
+        DSW(0x00105B4Cu) = 1u;
+    }
+    *eax = 0u;
+}
+static void m_23ae0_word(const u32 *r, u32 *eax)       /* +0x2E = 0x63 */
+{
+    static const u16 val[7] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u, 0x46B7u, 0x46B9u, 0x46BAu };
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other == 0u) { *eax = 0u; return; }
+    {
+        u32 orec = DSD(other);
+        u32 ch;
+        DSB(orec + 0x29u) |= 8u;
+        DSW(orec + 0x2Eu) = 0x0063u;
+        DSB(orec + 0x4Eu) = 1u;
+        ch = (u32)DSB(other + 0x7Au);
+        actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
+        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        DSW(0x00105B4Cu) = 1u;
+    }
+    *eax = 0u;
+}
+static void m_23ae0_bit(const u32 *r, u32 *eax)        /* +0x29 set, not OR-ed */
+{
+    static const u16 val[7] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u, 0x46B7u, 0x46B9u, 0x46BAu };
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other == 0u) { *eax = 0u; return; }
+    {
+        u32 orec = DSD(other);
+        u32 ch;
+        DSB(orec + 0x29u) = 8u;
+        DSW(orec + 0x2Eu) = 0x0064u;
+        DSB(orec + 0x4Eu) = 1u;
+        ch = (u32)DSB(other + 0x7Au);
+        actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
+        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        DSW(0x00105B4Cu) = 1u;
+    }
+    *eax = 0u;
+}
+static void m_23ae0_seek(const u32 *r, u32 *eax)       /* the seek on the record, not the slot's record */
+{
+    static const u16 val[7] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u, 0x46B7u, 0x46B9u, 0x46BAu };
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other == 0u) { *eax = 0u; return; }
+    {
+        u32 orec = DSD(other);
+        u32 ch;
+        DSB(orec + 0x29u) |= 8u;
+        DSW(orec + 0x2Eu) = 0x0064u;
+        DSB(orec + 0x4Eu) = 1u;
+        ch = (u32)DSB(other + 0x7Au);
+        actors_anim_seek(rec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
+        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        DSW(0x00105B4Cu) = 1u;
+    }
+    *eax = 0u;
+}
+static void m_23ae0_order(const u32 *r, u32 *eax)      /* the stores after the seek */
+{
+    static const u16 val[7] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u, 0x46B7u, 0x46B9u, 0x46BAu };
+    u32 rec = r[R_EAX];
+    u32 other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);
+    if (other == 0u) { *eax = 0u; return; }
+    {
+        u32 orec = DSD(other);
+        u32 ch = (u32)DSB(other + 0x7Au);
+        actors_anim_seek(orec, ch <= 6u ? (u32)val[ch] : 0x46B9u);
+        DSB(orec + 0x29u) |= 8u;
+        DSW(orec + 0x2Eu) = 0x0064u;
+        DSB(orec + 0x4Eu) = 1u;
+        actor_pset_palette(orec, 0u, 0x00105FECBu);
+        DSW(0x00105B4Cu) = 1u;
+    }
+    *eax = 0u;
+}
+static void b_29c78(const u32 *r, u32 *eax)            { b_anim(0x29C78u, r, eax); }
+static void m_29c78_pal(const u32 *r, u32 *eax)        /* the palette handle 0 */
+{
+    actor_pset_palette(r[R_EAX], 0u, 0u);
+    *eax = 0u;
+}
+static void m_29c78_rec(const u32 *r, u32 *eax)        /* the word 0xFFFF */
+{
+    actor_pset_palette(r[R_EAX], 0xFFFFu, 0x00105FECBu);
+    *eax = 0u;
+}
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -6585,6 +6745,18 @@ static const binding_t k_bindings[] = {
     { "fighter_48254@pose",       m_48254_pose,   0x00000000u },
     { "fighter_48254@char",       m_48254_char,   0x00000000u },
     { "fighter_48254@order",      m_48254_order,  0x00000000u },
+    { "fighter_23ae0",            b_23ae0,        0x00000000u },
+    { "fighter_23ae0@char",       m_23ae0_char,   0x00000000u },
+    { "fighter_23ae0@val",        m_23ae0_val,    0x00000000u },
+    { "fighter_23ae0@side",       m_23ae0_side,   0x00000000u },
+    { "fighter_23ae0@pal",        m_23ae0_pal,    0x00000000u },
+    { "fighter_23ae0@word",       m_23ae0_word,   0x00000000u },
+    { "fighter_23ae0@bit",        m_23ae0_bit,    0x00000000u },
+    { "fighter_23ae0@seek",       m_23ae0_seek,   0x00000000u },
+    { "fighter_23ae0@order",      m_23ae0_order,  0x00000000u },
+    { "fighter_29c78",            b_29c78,        0x00000000u },
+    { "fighter_29c78@pal",        m_29c78_pal,    0x00000000u },
+    { "fighter_29c78@rec",        m_29c78_rec,    0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
