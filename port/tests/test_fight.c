@@ -44189,7 +44189,8 @@ int test_u6_idle_loss_callbacks(void)
  * gameplay-u6 §U6.12): the T-rex's 0x24/0x25 entry 0x3F0A8 and the three
  * callbacks it stores, its 0x2D entry 0x3D1EC, every character's 0x3D entry
  * 0x3C048, character 1's 0x27 entry 0x231C0, and the 0xD100 targets 0x3F0F0
- * and 0x3F130 with 0x2BEF4 (§U6.17; §U6.18's 0x3A820 is not ported). Each check runs inside one
+ * and 0x3F130 with 0x2BEF4 (§U6.17; §U6.18's 0x3A820 is ported as
+ * fighter_pose_3a820, checked by §P8.2's test_p8_3a820). Each check runs inside one
  * mz_save/mz_restore and seeds sentinels that differ from every
  * post-condition. */
 

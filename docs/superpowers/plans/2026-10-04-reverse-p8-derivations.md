@@ -181,7 +181,7 @@ bases; read as 16-bit words at `+0`, `+2`, `+4`, `+8` with shifts into indices, 
 (measured bytes: `0x2D3FC` starts `0a00 0a00 0400 0800 ...`). Both groups are **data**; E2's §E2.11
 "8 unexamined immediates" therefore resolves: `3A820` ported, `1D2D0` data, the six data.
 
-## §P8.5 Task 5: the 15 voice sites with no body
+## §P8.5 Task 4: the 15 voice sites with no body (the triage companion)
 
 E2's §E2.7 lists 134 rel32 `call`/`jmp` sites to `0x2C3FC` outside the Ghidra functions; 19 had no
 owning body, and P1 resolved four (they lie in P1's after-table finishers). The remaining 15 (each
