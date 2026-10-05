@@ -2855,6 +2855,20 @@ P7_SPECS = [
         Case("d0", {"eax": E3_REC, "edx": 0x1234}, {**SLOT_PTRS, E3_REC + 0x51: b"\x00",
                                                     DS_SLOTS + 0x7A: b"\x07"}),
     ], calls=(P7_2A17C,), eax_mask=0, mutants=("@pal", "@rec")),
+    Spec("fighter_4b03c", 0x4B03C,
+         [Case("t%d" % i, {"eax": E3_REC}, {**P7_4B03C_SEED, E3_OUT + 0x48: bytes([0x20 + i])})
+          for i in range(6)]
+         + [
+             Case("t6", {"eax": E3_REC}, {**P7_4B03C_SEED, E3_OUT + 0x48: b"\x26"}),
+             Case("t7", {"eax": E3_REC}, {**P7_4B03C_SEED, E3_OUT + 0x48: b"\x1f"}),
+             Case("z0", {"eax": E3_REC}, {**P7_4B03C_SEED, E3_OUT + 0x48: b"\x20", 0x10780A: b"\x08"}),
+             Case("m0", {"eax": E3_REC}, {**P7_4B03C_SEED, E3_OUT + 0x48: b"\x20", 0x104B00: b"\x22\x00"}),
+             Case("m1", {"eax": E3_REC}, {**P7_4B03C_SEED, E3_OUT + 0x48: b"\x20", 0x104B00: b"\x24\x00"}),
+             Case("eq0", {"eax": E3_REC}, {**P7_4B03C_SEED, E3_OUT + 0x48: b"\x20", E3_SLOT + 0x21: b"\x00"}),
+             Case("o0", {"eax": E3_REC}, {E3_REC + 0x14: le32(0)}),
+         ],
+         calls=(VOICE, VOICE, P7_2B150, P7_41310, P7_49444), eax_mask=0,
+         mutants=("@type", "@val", "@sub", "@mode", "@plus", "@eq", "@dead", "@cam", "@tear", "@order", "@voice")),
 ]
 
 SPECS = [

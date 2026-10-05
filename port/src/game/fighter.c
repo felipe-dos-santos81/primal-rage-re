@@ -2542,6 +2542,7 @@ static void fighter_38bc8(u32 side)
  * by 0x25FDC/0x2604C (record §48-K). */
 void fighter_41310(u32 side, s32 delta)
 {
+    PR_SEAM(0x41310u, side, delta);
     u32 rec;
     s32 v;
     if (DSW(DS_00104B00) == 3u) return;                     /* 0x41313 */
@@ -17320,6 +17321,45 @@ void fighter_23ae0(u32 rec)
 void fighter_29c78(u32 rec)
 {
     actor_pset_palette(rec, 0u, 0x00105FEBCu);              /* 0x29CA8..0x29CB1 */
+}
+/* 0x4B03C — record §P7.7. The animation target after the 6-dword table 0x4B024
+ * (the 30 stream dwords 0xEE26E...): with the record's +0x14 slot set, the
+ * byte (slot+8's record +0x48) - 0x20 selects 0x10/0xE/0x15/0xC/0xA (0xD
+ * default) and the slot's +0x5A loses it down to 0; voice 0xD6, voice 0xCE,
+ * the record dead, 0x41310 on the slot's +0x21/-0x20 counters (mode 0x22/0x24
+ * excluded), the 0x1088A4/0x1088A2 counters, then 0x49444. */
+void fighter_4b03c(u32 rec)
+{
+    static const u8 p7_4b03c_dl[6] = { 0x10u, 0x0Eu, 0x15u, 0x0Cu, 0x0Au, 0x0Du };
+    u32 slot = DSD(rec + 0x14u);                            /* 0x4B042 */
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) return;                                 /* 0x4B045/0x4B047 */
+    {
+        u8 t = (u8)(DSB(DSD(slot + 8u) + 0x48u) - 0x20u);   /* 0x4B04D..0x4B053 */
+        dl = t <= 5u ? p7_4b03c_dl[t] : 0x0Du;              /* 0x4B057..0x4B07C */
+    }
+    esi = (u32)DSB(slot + 0x20u);                           /* 0x4B07E */
+    v = DSB(0x0010780Au + esi * 0x94u);                     /* 0x4B082..0x4B093 */
+    if (dl < v)
+        DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);      /* 0x4B09D/0x4B09F */
+    else
+        DSB(0x0010780Au + esi * 0x94u) = 0u;                /* 0x4B0A7/0x4B0A9 */
+    (void)sound_voice(0xD6u);                               /* 0x4B0AF/0x4B0B4 */
+    (void)sound_voice(0xCEu);                               /* 0x4B0B9/0x4B0BE */
+    actor_set_dead(rec);                                    /* 0x4B0C3/0x4B0C5 */
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {   /* 0x4B0CA..0x4B0DA */
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;     /* 0x4B0DC..0x4B0E1 */
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);      /* 0x4B0E8..0x4B0F2 */
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);  /* 0x4B101..0x4B10A */
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);   /* 0x4B10C..0x4B110 */
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;        /* 0x4B11A..0x4B11F */
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;    /* 0x4B12D..0x4B132 */
+    actor_type_49444(rec);                                  /* 0x4B138/0x4B13A */
 }
 
 

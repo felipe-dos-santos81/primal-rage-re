@@ -6141,6 +6141,333 @@ static void m_29c78_rec(const u32 *r, u32 *eax)        /* the word 0xFFFF */
     actor_pset_palette(r[R_EAX], 0xFFFFu, 0x00105FECBu);
     *eax = 0u;
 }
+static void b_4b03c(const u32 *r, u32 *eax)            { b_anim(0x4B03Cu, r, eax); }
+static u8 p7_4b03c_dl(u32 rec)
+{
+    static const u8 val[6] = { 0x10u, 0x0Eu, 0x15u, 0x0Cu, 0x0Au, 0x0Du };
+    u8 t = (u8)(DSB(DSD(rec + 0x14u) + 8u + 0x48u) - 0x20u);
+    return t <= 5u ? val[t] : 0x0Du;
+}
+static void m_4b03c_type(const u32 *r, u32 *eax)       /* the type from the slot's own +0x20 */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 t, dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    t = (u8)(DSB(slot + 0x20u) - 0x20u);
+    dl = t <= 5u ? (t == 0u ? 0x10u : t == 1u ? 0x0Eu : t == 2u ? 0x15u : t == 3u ? 0x0Cu :
+                    t == 4u ? 0x0Au : 0x0Du) : 0x0Du;
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+static void m_4b03c_val(const u32 *r, u32 *eax)        /* 0x0D for every type */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = 0x0Du;
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+static void m_4b03c_sub(const u32 *r, u32 *eax)        /* the +0x5A store as an add */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = p7_4b03c_dl(rec);
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    DSB(0x0010780Au + esi * 0x94u) = (u8)(v + dl);
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+static void m_4b03c_mode(const u32 *r, u32 *eax)       /* the 0x24 check dropped */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = p7_4b03c_dl(rec);
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+static void m_4b03c_plus(const u32 *r, u32 *eax)       /* the +0x1088A4 index from +0x21 */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = p7_4b03c_dl(rec);
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x21u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+static void m_4b03c_eq(const u32 *r, u32 *eax)         /* the equality branch inverted */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = p7_4b03c_dl(rec);
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) != DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+static void m_4b03c_dead(const u32 *r, u32 *eax)       /* 0x2B150 on the slot's +8 record */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = p7_4b03c_dl(rec);
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(DSD(slot + 8u));
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+static void m_4b03c_cam(const u32 *r, u32 *eax)        /* the 0x41310 side from +0x20 */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = p7_4b03c_dl(rec);
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x20u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+static void m_4b03c_tear(const u32 *r, u32 *eax)       /* 0x49444 skipped */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = p7_4b03c_dl(rec);
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    *eax = 0u;
+}
+static void m_4b03c_order(const u32 *r, u32 *eax)      /* the +0x1088A4 increment before the voices */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = p7_4b03c_dl(rec);
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    (void)sound_voice(0xD6u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+static void m_4b03c_voice(const u32 *r, u32 *eax)      /* voice 0xD5 */
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u);
+    u8 dl, v;
+    u32 esi;
+    if (slot == 0u) { *eax = 0u; return; }
+    dl = p7_4b03c_dl(rec);
+    esi = (u32)DSB(slot + 0x20u);
+    v = DSB(0x0010780Au + esi * 0x94u);
+    if (dl < v) DSB(0x0010780Au + esi * 0x94u) = (u8)(v - dl);
+    else DSB(0x0010780Au + esi * 0x94u) = 0u;
+    (void)sound_voice(0xD5u);
+    (void)sound_voice(0xCEu);
+    actor_set_dead(rec);
+    if (DSW(DS_00104B00) != 0x22u && DSW(DS_00104B00) != 0x24u) {
+        DSB(0x0010889Eu + (u32)DSB(slot + 0x21u)) = 1u;
+        fighter_41310((u32)DSB(slot + 0x21u), -10000);
+        if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+            fighter_41310((u32)DSB(slot + 0x20u), -30000);
+        else
+            fighter_41310((u32)DSB(slot + 0x20u), 10000);
+    }
+    DSB(0x001088A4u + (u32)DSB(slot + 0x20u)) += 1u;
+    if (DSB(slot + 0x21u) == DSB(slot + 0x20u))
+        DSB(0x001088A2u + (u32)DSB(slot + 0x21u)) += 1u;
+    actor_type_49444(rec);
+    *eax = 0u;
+}
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -6757,6 +7084,18 @@ static const binding_t k_bindings[] = {
     { "fighter_29c78",            b_29c78,        0x00000000u },
     { "fighter_29c78@pal",        m_29c78_pal,    0x00000000u },
     { "fighter_29c78@rec",        m_29c78_rec,    0x00000000u },
+    { "fighter_4b03c",            b_4b03c,        0x00000000u },
+    { "fighter_4b03c@type",       m_4b03c_type,   0x00000000u },
+    { "fighter_4b03c@val",        m_4b03c_val,    0x00000000u },
+    { "fighter_4b03c@sub",        m_4b03c_sub,    0x00000000u },
+    { "fighter_4b03c@mode",       m_4b03c_mode,   0x00000000u },
+    { "fighter_4b03c@plus",       m_4b03c_plus,   0x00000000u },
+    { "fighter_4b03c@eq",         m_4b03c_eq,     0x00000000u },
+    { "fighter_4b03c@dead",       m_4b03c_dead,   0x00000000u },
+    { "fighter_4b03c@cam",        m_4b03c_cam,    0x00000000u },
+    { "fighter_4b03c@tear",       m_4b03c_tear,   0x00000000u },
+    { "fighter_4b03c@order",      m_4b03c_order,  0x00000000u },
+    { "fighter_4b03c@voice",      m_4b03c_voice,  0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -1067,6 +1067,9 @@ int actors_init(void)
      * animation targets (outside E2). */
     fn_register(0x23AE0u, (void (*)(void))anim_code_23AE0);
     fn_register(0x29C78u, (void (*)(void))anim_code_29C78);
+    /* PORT: record 2026-10-04-reverse-p7 §P7.7. Track P batch 7's Task 7
+     * animation target (outside E2). */
+    fn_register(0x4B03Cu, (void (*)(void))anim_code_4B03C);
     return 1;
 }
 
@@ -3013,6 +3016,7 @@ void actor_pset_palette(u32 rec, u32 word, u32 handle)
  * teardown (0x49444). */
 static void set_dead(u32 rec)
 {
+    PR_SEAM(0x2B150u, rec);
     DSB(rec + 0x28) |= 0x08;
     if ((DSW(rec + 0x2a) >> 8 & 0x40u) != 0) {
         /* 0x2B185: cb2 = DS_000BB9E0[type * 0xC], called with EAX = rec; its
@@ -3612,6 +3616,7 @@ static u8 actor_type_412FC(u32 rec, u32 slot)
  * address (0x4E8EE), not through fn_resolve. */
 void actor_type_49444(u32 rec)
 {
+    PR_SEAM(0x49444u, rec);
     u32 rec2 = DSD(rec + 0x14);
     if (rec2 == 0) return;
     if ((DSW(rec2 + 0x1c) & 2u) != 0)
@@ -4684,6 +4689,15 @@ static void anim_code_29C78(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_29c78(rec);
+}
+
+
+/* PORT: record 2026-10-04-reverse-p7 §P7.7. Track P batch 7's Task 7
+ * animation target (outside E2). */
+static void anim_code_4B03C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_4b03c(rec);
 }
 
 

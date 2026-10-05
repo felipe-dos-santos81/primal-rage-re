@@ -673,7 +673,7 @@ P6_KINDS = {
 
 # Track P batch 7 (record 2026-10-04-reverse-p7): its rows with their EAX masks, and what alone
 # catches each of its mutants.
-P7_MASKS = {"fighter_2bdb8": 0, "fighter_213f0": 0, "fighter_213f4": 0, "fighter_3e424": 0, "fighter_224ec": 0, "fighter_2bde8": 0, "fighter_36114": 0, "fighter_23960": 0, "fighter_23a7c": 0, "fighter_3a9d8": 0, "fighter_48254": 0, "fighter_23ae0": 0, "fighter_29c78": 0}
+P7_MASKS = {"fighter_2bdb8": 0, "fighter_213f0": 0, "fighter_213f4": 0, "fighter_3e424": 0, "fighter_224ec": 0, "fighter_2bde8": 0, "fighter_36114": 0, "fighter_23960": 0, "fighter_23a7c": 0, "fighter_3a9d8": 0, "fighter_48254": 0, "fighter_23ae0": 0, "fighter_29c78": 0, "fighter_4b03c": 0}
 P7_KINDS = {
     "fighter_2bdb8@mutant": {"byte"},
     "fighter_2bdb8@and": {"byte"},
@@ -732,6 +732,17 @@ P7_KINDS = {
     "fighter_23ae0@order": {"call #0 memory", "call #1"},
     "fighter_29c78@pal": {"call #0"},
     "fighter_29c78@rec": {"call #0"},
+    "fighter_4b03c@type": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@val": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@sub": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@mode": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3", "call #3 memory", "call #4", "call #4 memory", "call #5", "call #5 memory"},
+    "fighter_4b03c@plus": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@eq": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@dead": {"byte", "call #0 memory", "call #1 memory", "call #2", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@cam": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@tear": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3", "call #3 memory", "call #4 memory", "call #5"},
+    "fighter_4b03c@order": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@voice": {"byte", "call #0", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
 }
 
 
@@ -1160,6 +1171,8 @@ class RealFunctionTests(unittest.TestCase):
                                  0x2AD40: ("edx", "edi", "ebp"),
                                  0x23960: (),
                                  0x3A9D8: ("edx",),
+                                 0x2B150: ("esi", "edi", "ebp"),
+                                 0x41310: (), 0x49444: ("edi", "ebp"),
                                  0x39280: (), 0x13244: (), 0x2A148: ("edx",), 0x2BCF4: ("edx",),
                                  0x1890C: ("edx",), 0x29BC8: ("ebx", "edx"), 0x37D18: ("edx",),
                                  0x13C70: ("ebx", "edx"), 0x3AA54: ()})
@@ -1257,8 +1270,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (126), the 23 without are counted apart
-        self.assertIn("diff-verify: 162/162 functions VERIFIED; 448/448 mutants detected; 1 named gaps; "
-                      "45/136 rows with callees closed (26 have none).", out.getvalue())
+        self.assertIn("diff-verify: 163/163 functions VERIFIED; 459/459 mutants detected; 1 named gaps; "
+                      "45/137 rows with callees closed (26 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

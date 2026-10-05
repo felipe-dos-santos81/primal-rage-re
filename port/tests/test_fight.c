@@ -47846,3 +47846,94 @@ static void p7_check_streams(void)
 int test_p7_streams(void)       { return u6b_run(p7_check_streams); }
 
 /* §P7.7: 0x4B03C through its registration. */
+static void p7_check_4b03c(void)
+{
+    p7_anim_fn f;
+    CHECK(fn_resolve(0x4B03Cu) != NULL, "0x4B03C is registered");
+    f = (p7_anim_fn)(void *)fn_resolve(0x4B03Cu);
+    if (f == NULL) return;
+    z_fseed();
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSD(Z_S0 + 8u) = Z_R1;
+    DSB(Z_R1 + 0x48u) = 0x20u;      /* type 0: the delta 0x10 */
+    DSB(Z_S0 + 0x20u) = 0u;
+    DSB(Z_S0 + 0x21u) = 1u;
+    DSB(0x0010780Au) = 0x5Au;       /* slot 0's +0x5A */
+    DSB(0x0010780Au + 0x94u) = 0x5Bu;
+    DSB(0x0010889Eu + 1u) = 0x9Eu;
+    DSB(0x001088A4u) = 0xA4u;
+    DSB(0x001088A2u + 1u) = 0xA2u;
+    DSW(DS_00104B00) = 0x11u;
+    DSD(Z_S1 + 0x3Cu) = 0x10000u;
+    DSD(Z_S0 + 0x3Cu) = 0x2000u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(0x0010780Au), 0x4A);              /* 0x5A - 0x10 */
+    CHECK_EQ_INT((int)DSB(0x0010780Au + 0x94u), 0x5B);
+    CHECK_EQ_INT((int)DSB(0x0010889Eu + 1u), 1);
+    CHECK_EQ_INT((int)DSB(0x001088A4u), 0xA5);
+    CHECK_EQ_INT((int)DSB(0x001088A2u + 1u), 0xA2);
+    CHECK((DSW(Z_R0 + 0x28u) & 8u) != 0u, "the record is dead");
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x3Cu), 0xD8F0);           /* 0x10000 - 10000 */
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x3Cu), 0x4710);           /* 0x2000 + 10000 */
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x14u), 0);                /* 0x49444 unlinks */
+
+    /* type 1 (0x21): the delta 0x0E; the slot's +0x5A 0x08 < 0x0E -> 0. */
+    z_fseed();
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSD(Z_S0 + 8u) = Z_R1;
+    DSB(Z_R1 + 0x48u) = 0x21u;
+    DSB(Z_S0 + 0x20u) = 0u;
+    DSB(Z_S0 + 0x21u) = 1u;
+    DSB(0x0010780Au) = 0x08u;
+    DSW(DS_00104B00) = 0x11u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(0x0010780Au), 0);
+
+    /* type 7 (0x27, above the table): the default 0x0D. */
+    z_fseed();
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSD(Z_S0 + 8u) = Z_R1;
+    DSB(Z_R1 + 0x48u) = 0x27u;
+    DSB(Z_S0 + 0x20u) = 0u;
+    DSB(Z_S0 + 0x21u) = 1u;
+    DSB(0x0010780Au) = 0x5Au;
+    DSW(DS_00104B00) = 0x11u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(0x0010780Au), 0x4D);              /* 0x5A - 0x0D */
+
+    /* mode 0x22: the 0x41310 block is skipped, the counters still run. */
+    z_fseed();
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSD(Z_S0 + 8u) = Z_R1;
+    DSB(Z_R1 + 0x48u) = 0x20u;
+    DSB(Z_S0 + 0x20u) = 0u;
+    DSB(Z_S0 + 0x21u) = 1u;
+    DSB(0x0010780Au) = 0x5Au;
+    DSB(0x001088A4u) = 0xA4u;
+    DSB(0x0010889Eu + 1u) = 0x9Eu;
+    DSW(DS_00104B00) = 0x22u;
+    DSD(Z_S1 + 0x3Cu) = 0x10000u;
+    DSD(Z_S0 + 0x3Cu) = 0x2000u;
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(0x0010780Au), 0x4A);
+    CHECK_EQ_INT((int)DSB(0x001088A4u), 0xA5);
+    CHECK_EQ_INT((int)DSB(0x0010889Eu + 1u), 0x9E);
+    CHECK_EQ_INT((int)DSD(Z_S1 + 0x3Cu), 0x10000);
+    CHECK_EQ_INT((int)DSD(Z_S0 + 0x3Cu), 0x2000);
+
+    /* equal counters: the -30000 branch and the 0x1088A2 increment. */
+    z_fseed();
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSD(Z_S0 + 8u) = Z_R1;
+    DSB(Z_R1 + 0x48u) = 0x20u;
+    DSB(Z_S0 + 0x20u) = 2u;
+    DSB(Z_S0 + 0x21u) = 2u;
+    DSB(0x0010780Au + 0x94 * 2u) = 0x5Au;
+    DSB(0x001088A2u + 2u) = 0xA2u;
+    DSW(DS_00104B00) = 0x11u;
+    DSD(Z_R0 + 0x3Cu) = 0x10000u;   /* side 2 reads the slot array's first dword (Z_R0) */
+    f(Z_R0, 0u);
+    CHECK_EQ_INT((int)DSB(0x001088A2u + 2u), 0xA3);
+    CHECK_EQ_INT((int)DSD(Z_R0 + 0x3Cu), 0x63C0);   /* 0x10000 - 10000 - 30000 */
+}
+int test_p7_4b03c(void)         { return u6b_run(p7_check_4b03c); }
