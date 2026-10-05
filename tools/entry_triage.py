@@ -622,8 +622,9 @@ def render_table(t, rows, supp, voice):
            "(record `2026-10-01-reverse-e2-derivations.md`). Do not edit by hand: `make entry-triage` "
            "fails when this file differs from a fresh run.", "",
            "Universe: %d candidates, of which U0's rule admits %d (column `u0`)." % (len(rows), u0), "",
-           "Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (functions after "
-           "inline data, reached only by an immediate in Ghidra code; track P takes them as follow-up input).",
+           "Outside this list, the §E2.11 immediates and the voice sites that have no body are resolved by",
+           "track P batch 8 (record `2026-10-04-reverse-p8-derivations.md` §P8.4-§P8.5 and the 'Track P",
+           "batch 8 resolutions' section below).",
            "",
            "## Counts by class", "", "| class | rows | of them U0's |", "|---|---|---|"]
     out += ["| %s | %d | %d |" % (c, by_cls[c], sum(1 for r in rows if r["cls"] == c and r["u0"]))
@@ -655,6 +656,30 @@ def render_table(t, rows, supp, voice):
     for v in voice:
         out.append("| %05X | %s | %s | %s |" % (v["site"], "%05X" % v["entry"] if v["entry"] else "-",
                                                v["kind"], "yes" if v["ported"] else "no"))
+    out += ["", "## Track P batch 8 resolutions (record `2026-10-04-reverse-p8-derivations.md` §P8.4-§P8.5)", "",
+            "The §E2.11 immediates, the untrusted entries and the voice sites with no body are resolved by",
+            "track P's last batch. The verdicts below are documentation: the table's classes and counts stay",
+            "the tool's mechanical ones (a block of a ported function is not a port at that address).", "",
+            "| candidate | verdict | evidence (record §P8.4/§P8.5) |",
+            "|---|---|---|",
+            "| 3A820 | ported | the 0x3A8E8 pose family's +0x10 handler (stored at 0x3A91E); row `fighter_pose_3a820` |",
+            "| 1D2D0 | data | a struct of strings/pointers at 0x1D2C0..0x1D2EF stored to 0x10740C by 0x2F9CC (0x2FA01), read at +4 (0x2CACC) and +0xC (0x2F98C); the bytes there are not code |",
+            "| 2D3FC | data | an embedded word-table base: `add ebx/esi/edi,0x2d3fc` at 0x2DB6F/0x2DBE3/0x2DCD4 (stride 8) |",
+            "| 2D414 | data | `add ebx,0x2d414` at 0x2E94E (stride 0x10) |",
+            "| 2D444 | data | the base at 0x2D519/0x2E0DD/0x2E19A/0x2E050 |",
+            "| 2D45C | data | `mov ecx,0x2d45c` at 0x2DF98 |",
+            "| 2D474 | data | `mov edx,0x2d474` at 0x2DEA5 |",
+            "| 2D48C | data | `mov [esp+8],0x2d48c` at 0x2D4F7 |",
+            "| 19AD4 | block of 19B90 | `jbe 0x19ad4` at 0x19C09 in the ported debris walker |",
+            "| 19DD5 | block of 19D34 | the `ja` default arm at 0x19D37 of the ported service-menu getter |",
+            "| 26163 26226 | blocks of 260BC 26194 | the state-2 arms (`je` at 0x260CC / 0x261A4) of the ported bonus-card steps |",
+            "| 34962 | block of the 348xx health sync | the char > 6 / char 1 shared tail (`ja` at 0x3486D/0x348CB; table 0x3479C) |",
+            "| 45444 | block of 452E4 | the `ja` default arm at 0x452FC of the ported mode handler |",
+            "| 49078 | block of 48F98 | the phase-1 arm (`jbe` at 0x48FB7) of the ported actor_type_2d_update |",
+            "| 2EE3C 37E40 3A3FC 4AEC4 | dead code | after-table entries with no rel32 and no dword anywhere in the image (and no Ghidra function); not ported |",
+            "| 228EF 2292B 39EDA 45F8C 48518 48548 4B0B4 4B0BE | voiced by ported bodies | the site sits in a ported function's body (record §P8.5) |",
+            "| 11A3D 11C38 1599B 295FD 3D730 41880 475D9 | dead code (named gap) | the site's body (0x11A30, 0x11BF8, 0x15960, 0x295C0, 0x3D6E0, 0x41878, 0x475C0) has no reference anywhere; not ported |",
+            ""]
     return "\n".join(out) + "\n"
 
 
