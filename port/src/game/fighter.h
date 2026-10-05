@@ -1330,5 +1330,21 @@ void fighter_48374(u32 rec);
  * supplies rec = DSD(slot) (EAX = slot, EDX = rec, EBX = side). */
 void fighter_24220(u32 slot, u32 rec, u32 side);
 void fighter_24220_case10(u32 slot, u32 side);
+/* Track P batch 7 (record 2026-10-04-reverse-p7-derivations.md): the remaining
+ * unported direct callees and the targets outside E2. */
+void fighter_2bdb8(u32 rec, u32 arg);
+void fighter_213f0(u32 rec);
+void fighter_213f4(u32 rec);
+void fighter_3e424(u32 rec);
+void fighter_224ec(u32 rec);
+void fighter_2bde8(u32 rec);
+void fighter_36114(u32 rec);
+void fighter_23960(u32 rec);
+void fighter_23a7c(u32 rec);
+void fighter_3a9d8(u32 side, u32 b);
+void fighter_48254(u32 rec);
+void fighter_23ae0(u32 rec);
+void fighter_29c78(u32 rec);
+void fighter_4b03c(u32 rec);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

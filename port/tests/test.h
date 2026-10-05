@@ -109,6 +109,12 @@ extern int g_failures;
     X(test_p6_37dd4) \
     X(test_p6_22338) \
     X(test_p6_24220) \
+    X(test_p7_simple) \
+    X(test_p7_36114) \
+    X(test_p7_23960) \
+    X(test_p7_3a9d8) \
+    X(test_p7_streams) \
+    X(test_p7_4b03c) \
     X(test_virtual_clock) \
     X(test_gp_poke_script) \
     X(test_restart)

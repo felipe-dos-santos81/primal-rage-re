@@ -232,22 +232,25 @@ static const fnm_pair k_miss_gp_u8_attract_start[] = {
  * §W.12), re-measured by track P batches 4+5 (record 2026-10-03-reverse-p4-p5 §P4.7)
  * once 0x400E0/0x21044/0x21084 are ported and by track P batch 6 (record
  * 2026-10-03-reverse-p6 §P6.12) once 0x2BDA0 is ported: the two wipe hooks of §G.24
- * (0x29D60, a bare `ret`, from f = 0x28D; 0x5D812, the runtime stub, from f = 0x405)
- * and the anim_indirect targets the replay then reaches, 0x213F0 (first = 0x8ED,
- * 1 hit) and 0x213F4 (first = 0x91F, 1 hit). The replay no longer misses 0x2BDA0
- * (first = 0xD0C, 10 hits before P6 ported it). */
+ * (0x29D60, a bare `ret`, from f = 0x28D; 0x5D812, the runtime stub, from f = 0x405).
+ * Track P batch 7 (record 2026-10-04-reverse-p7 §P7.3/§P7.8) ports 0x213F0 and
+ * 0x213F4 (task 2) and then 0x36114 (task 3), so the replay no longer misses
+ * any of them. On the task-2 tree the pair's port made the replay reach the
+ * D000 target 0x36114 (dword 0xD27E4), recorded as a miss (distinct=5); task 3
+ * ports it, so the set loses that row too (distinct=4: 0x5D812 actor_spawn and
+ * set_dead, 0x29D60 and 0x5D812 from frontend_mode_1b_step; record §P7.8). */
 static const fnm_pair k_miss_gp_u9_win[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x213F0u, "anim_indirect" },
-    { 0x213F4u, "anim_indirect" },
 };
 
 /* gp-u10-ending (plan gameplay-u9-u10, record 2026-10-02-gameplay-u9-u10-derivations.md
  * §W.14), measured on its full replay to its X record (f = 0x26E1): the two wipe hooks of
- * §G.24 (0x29D60, a bare `ret`, from f = 0x286; 0x5D812, the runtime stub, from f = 0x3FE),
- * and the death-animation stream's target 0x29C78 (outside E2, record reverse-p1 §P1.2, dword
- * 0xD2BDA) at f = 0x14FE in mode 0xD. The stream target 0x37DD4 (E2 anim-target row, dword
+ * §G.24 (0x29D60, a bare `ret`, from f = 0x286; 0x5D812, the runtime stub, from f = 0x3FE).
+ * The death-animation stream's target 0x29C78 (outside E2, record reverse-p1 §P1.2, dword
+ * 0xD2BDA, f = 0x14FE in mode 0xD) is ported by track P batch 7 (record 2026-10-04-reverse-p7
+ * §P7.6), so the replay no longer misses it; the pins were re-measured (record §P7.8). The
+ * stream target 0x37DD4 (E2 anim-target row, dword
  * 0xD2BCE, f = 0x14FB in mode 0xC; track P batch 6, record 2026-10-03-reverse-p6 §P6.8),
  * CHAOS's reaction-0x25 callback 0x2381C (track P batch 2), character 2's reaction-0x0B
  * callback 0x475EC (the dword 0xA4004, from f = 0x1594 in mode 0xF; track P batch 3, record
@@ -257,7 +260,6 @@ static const fnm_pair k_miss_gp_u9_win[] = {
 static const fnm_pair k_miss_gp_u10_ending[] = {
     { 0x29D60u, "frontend_mode_1b_step" },
     { 0x5D812u, "frontend_mode_1b_step" },
-    { 0x29C78u, "anim_indirect" },
 };
 
 /* The scenario named by the first line of PR_GP_SCRIPT ("# gp port script v2:

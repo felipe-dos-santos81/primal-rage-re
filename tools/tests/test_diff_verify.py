@@ -792,6 +792,80 @@ P6_KINDS = {
     "fighter_48374@stream": {"call #1"},
 }
 
+# Track P batch 7 (record 2026-10-04-reverse-p7): its rows with their EAX masks, and what alone
+# catches each of its mutants.
+P7_MASKS = {"fighter_2bdb8": 0, "fighter_213f0": 0, "fighter_213f4": 0, "fighter_3e424": 0, "fighter_224ec": 0, "fighter_2bde8": 0, "fighter_36114": 0, "fighter_23960": 0, "fighter_23a7c": 0, "fighter_3a9d8": 0, "fighter_48254": 0, "fighter_23ae0": 0, "fighter_29c78": 0, "fighter_4b03c": 0}
+P7_KINDS = {
+    "fighter_2bdb8@mutant": {"byte"},
+    "fighter_2bdb8@and": {"byte"},
+    "fighter_2bdb8@dec": {"byte"},
+    "fighter_2bdb8@width": {"byte"},
+    "fighter_213f0@mutant": {"byte"},
+    "fighter_213f4@mutant": {"call #0"},
+    "fighter_213f4@stream": {"call #0"},
+    "fighter_213f4@side": {"byte", "call #0", "call #1", "call #1 memory", "call #2", "call #2 memory"},
+    "fighter_213f4@order": {"call #0 memory"},
+    "fighter_3e424@mutant": {"call #0"},
+    "fighter_3e424@bit": {"byte", "call #1 memory", "call #2 memory"},
+    "fighter_3e424@side": {"byte", "call #0", "call #1", "call #1 memory", "call #2", "call #2 memory"},
+    "fighter_3e424@order": {"call #0 memory"},
+    "fighter_224ec@mutant": {"byte"},
+    "fighter_224ec@side": {"byte"},
+    "fighter_224ec@order": {"call #0 memory"},
+    "fighter_2bde8@mutant": {"byte"},
+    "fighter_2bde8@byte": {"byte"},
+    "fighter_36114@neg": {"byte", "call #0", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "fighter_36114@side": {"byte", "call #0"},
+    "fighter_36114@anchor": {"byte", "call #0"},
+    "fighter_36114@char": {"byte", "call #0", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "fighter_36114@table": {"byte", "call #0", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "fighter_36114@order": {"byte", "call #0", "call #0 memory"},
+    "fighter_36114@second": {"byte", "call #1", "call #2"},
+    "fighter_23960@off": {"call #2", "call #4", "call #6"},
+    "fighter_23960@y": {"call #0", "call #2", "call #4", "call #6"},
+    "fighter_23960@desc": {"call #0", "call #2", "call #4", "call #6"},
+    "fighter_23960@float": {"byte", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory", "call #6 memory", "call #7 memory"},
+    "fighter_23960@x": {"call #0", "call #2", "call #4", "call #6"},
+    "fighter_23a7c@a5": {"call #0"},
+    "fighter_23a7c@slot": {"byte", "call #1 memory"},
+    "fighter_23a7c@side": {"byte", "call #1 memory"},
+    "fighter_23a7c@mutant": {"byte", "call #1 memory"},
+    "fighter_23a7c@order": {"call #1 memory"},
+    "fighter_3a9d8@side": {"call #0"},
+    "fighter_3a9d8@stream": {"call #1"},
+    "fighter_3a9d8@anchor": {"call #0"},
+    "fighter_3a9d8@slot": {"byte", "call #1", "call #1 memory"},
+    "fighter_3a9d8@frame": {"call #1"},
+    "fighter_3a9d8@byte": {"byte"},
+    "fighter_48254@byte": {"call #1", "call #2"},
+    "fighter_48254@side": {"call #1", "call #2"},
+    "fighter_48254@stream": {"call #0"},
+    "fighter_48254@pose": {"call #2"},
+    "fighter_48254@char": {"call #1"},
+    "fighter_48254@order": {"call #1", "call #2"},
+    "fighter_23ae0@char": {"call #0"},
+    "fighter_23ae0@val": {"call #0"},
+    "fighter_23ae0@side": {"byte", "call #0", "call #0 memory", "call #1", "call #1 memory"},
+    "fighter_23ae0@pal": {"call #1"},
+    "fighter_23ae0@word": {"byte", "call #0 memory", "call #1 memory"},
+    "fighter_23ae0@bit": {"byte", "call #0 memory", "call #1 memory"},
+    "fighter_23ae0@seek": {"call #0"},
+    "fighter_23ae0@order": {"call #0 memory"},
+    "fighter_29c78@pal": {"call #0"},
+    "fighter_29c78@rec": {"call #0"},
+    "fighter_4b03c@type": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@val": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@sub": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@mode": {"byte", "call #3", "call #3 memory", "call #4", "call #5"},
+    "fighter_4b03c@plus": {"byte", "call #3 memory", "call #5 memory"},
+    "fighter_4b03c@eq": {"call #4"},
+    "fighter_4b03c@dead": {"call #2"},
+    "fighter_4b03c@cam": {"call #3"},
+    "fighter_4b03c@tear": {"call #3", "call #5"},
+    "fighter_4b03c@order": {"call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory"},
+    "fighter_4b03c@voice": {"call #0"},
+}
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
@@ -817,7 +891,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
-                                            + list(P6_MASKS) + list(C2_MASKS)))
+                                            + list(P6_MASKS) + list(C2_MASKS) + list(P7_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
@@ -833,7 +907,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
             + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)
-            + list(P6_KINDS) + list(C2_KINDS)))
+            + list(P6_KINDS) + list(C2_KINDS) + list(P7_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -898,7 +972,8 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
-            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS})
+            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS,
+            **P7_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
                                    eax_mask=0xFFFFFFFF)
@@ -1288,6 +1363,13 @@ class RealFunctionTests(unittest.TestCase):
         ):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
+    def test_each_p7_mutant_is_caught_by_what_it_breaks(self):
+        # track P batch 7 (record 2026-10-04-reverse-p7): what alone catches each mutant
+        for name, want in P7_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
@@ -1307,6 +1389,10 @@ class RealFunctionTests(unittest.TestCase):
                                  0x33754: (), 0x33864: (), 0x36638: ("edx",), 0x39EFC: (),
                                  0x39F40: ("ebx", "edx"), 0x3B8D8: ("edx",), 0x3B90C: ("edx",),
                                  0x2AD40: ("edx", "edi", "ebp"),
+                                 0x23960: (),
+                                 0x3A9D8: ("edx",),
+                                 0x2B150: ("esi", "edi", "ebp"),
+                                 0x41310: (), 0x49444: ("edi", "ebp"),
                                  0x39280: (), 0x13244: (), 0x2A148: ("edx",), 0x2BCF4: ("edx",),
                                  0x1890C: ("edx",), 0x29BC8: ("ebx", "edx"), 0x37D18: ("edx",),
                                  0x13C70: ("ebx", "edx"), 0x3AA54: (),
@@ -1406,9 +1492,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (126), the 23 without are counted apart
-        self.assertIn("diff-verify: 176/176 functions VERIFIED; 478/478 mutants detected; 1 named gaps; "
-                      "61/145 rows with callees closed (31 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (156), the 34 without are counted apart
+        self.assertIn("diff-verify: 190/190 functions VERIFIED; 546/546 mutants detected; 1 named gaps; "
+                      "68/156 rows with callees closed (34 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --

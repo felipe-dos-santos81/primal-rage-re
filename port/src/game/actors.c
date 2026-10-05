@@ -237,6 +237,16 @@ static void anim_code_45C98(u32 rec, u32 arg);
 static void anim_code_37DD4(u32 rec, u32 arg);
 static void anim_code_22338(u32 rec, u32 arg);
 static void anim_code_48374(u32 rec, u32 arg);
+static void anim_code_213F0(u32 rec, u32 arg);
+static void anim_code_213F4(u32 rec, u32 arg);
+static void anim_code_3E424(u32 rec, u32 arg);
+static void anim_code_224EC(u32 rec, u32 arg);
+static void anim_code_36114(u32 rec, u32 arg);
+static void anim_code_23A7C(u32 rec, u32 arg);
+static void anim_code_48254(u32 rec, u32 arg);
+static void anim_code_23AE0(u32 rec, u32 arg);
+static void anim_code_29C78(u32 rec, u32 arg);
+static void anim_code_4B03C(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -1040,6 +1050,28 @@ int actors_init(void)
      * target: the slot +0x10 handler 0x24338 stores, reached through 0x3531C
      * case 10's adapter (slot, side). */
     fn_register(0x24220u, (void (*)(void))fighter_24220_case10);
+    /* PORT: record 2026-10-04-reverse-p7 §P7.2. Track P batch 7's animation
+     * targets (anim_indirect, EAX = rec, EDX = the operand). */
+    fn_register(0x213F0u, (void (*)(void))anim_code_213F0);
+    fn_register(0x213F4u, (void (*)(void))anim_code_213F4);
+    fn_register(0x3E424u, (void (*)(void))anim_code_3E424);
+    /* PORT: record 2026-10-04-reverse-p7 §P7.3. Track P batch 7's Task 3
+     * animation targets. */
+    fn_register(0x224ECu, (void (*)(void))anim_code_224EC);
+    fn_register(0x36114u, (void (*)(void))anim_code_36114);
+    /* PORT: record 2026-10-04-reverse-p7 §P7.4. Track P batch 7's Task 4
+     * animation target. */
+    fn_register(0x23A7Cu, (void (*)(void))anim_code_23A7C);
+    /* PORT: record 2026-10-04-reverse-p7 §P7.5. Track P batch 7's Task 5
+     * animation target. */
+    fn_register(0x48254u, (void (*)(void))anim_code_48254);
+    /* PORT: record 2026-10-04-reverse-p7 §P7.6. Track P batch 7's Task 6
+     * animation targets (outside E2). */
+    fn_register(0x23AE0u, (void (*)(void))anim_code_23AE0);
+    fn_register(0x29C78u, (void (*)(void))anim_code_29C78);
+    /* PORT: record 2026-10-04-reverse-p7 §P7.7. Track P batch 7's Task 7
+     * animation target (outside E2). */
+    fn_register(0x4B03Cu, (void (*)(void))anim_code_4B03C);
     return 1;
 }
 
@@ -3587,6 +3619,7 @@ static u8 actor_type_412FC(u32 rec, u32 slot)
  * address (0x4E8EE), not through fn_resolve. */
 void actor_type_49444(u32 rec)
 {
+    PR_SEAM(0x49444u, rec);
     u32 rec2 = DSD(rec + 0x14);
     if (rec2 == 0) return;
     if ((DSW(rec2 + 0x1c) & 2u) != 0)
@@ -4597,3 +4630,77 @@ static void anim_code_48374(u32 rec, u32 arg)
     (void)arg;
     fighter_48374(rec);
 }
+
+
+/* PORT: record 2026-10-04-reverse-p7 §P7.2. Track P batch 7's first animation
+ * targets (anim_indirect, EAX = rec, EDX = the operand). */
+static void anim_code_213F0(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+}
+static void anim_code_213F4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_213f4(rec);
+}
+static void anim_code_3E424(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3e424(rec);
+}
+/* PORT: record 2026-10-04-reverse-p7 §P7.3. Track P batch 7's Task 3
+ * animation targets. */
+static void anim_code_224EC(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_224ec(rec);
+}
+static void anim_code_36114(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_36114(rec);
+}
+
+
+/* PORT: record 2026-10-04-reverse-p7 §P7.4. Track P batch 7's Task 4
+ * animation target. */
+static void anim_code_23A7C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_23a7c(rec);
+}
+
+
+/* PORT: record 2026-10-04-reverse-p7 §P7.5. Track P batch 7's Task 5
+ * animation target. */
+static void anim_code_48254(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_48254(rec);
+}
+
+
+/* PORT: record 2026-10-04-reverse-p7 §P7.6. Track P batch 7's Task 6
+ * animation targets (outside E2). */
+static void anim_code_23AE0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_23ae0(rec);
+}
+static void anim_code_29C78(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_29c78(rec);
+}
+
+
+/* PORT: record 2026-10-04-reverse-p7 §P7.7. Track P batch 7's Task 7
+ * animation target (outside E2). */
+static void anim_code_4B03C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_4b03c(rec);
+}
+
+
