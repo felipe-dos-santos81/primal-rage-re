@@ -283,6 +283,17 @@ Named gaps and limits:
 - **`0x2A408`'s `s0`/`s5` pointer fixture**: `rec+8` must be a valid pointer for the mutants too; a
   non-pointer bit-15 word makes the `@bit8` mutant fault rather than mismatch.
 - **`0x29C08`'s `@side`/`@char`/`@sext`** are EAX-only; the row has no callee.
+- **`hit_facing_flag`'s `0x18AC7` store is a raw self-assignment**: `mov [eax*4+0x1077dc], ebx` after
+  `0x18B29` loaded `slot[side]+0x2C` into EBX, in the shared tail block C1 §C1.6 already names for
+  `0x18AF8`. Task 3's store sweep finds it the 27 rows' only survivor (81 store sites; every other
+  store is observable) because the value written is read from the address written; no seed or case
+  can observe it. A dead store in the original, reproduced faithfully; the row keeps it.
+- **The 27 rows' Task-3 store sweep has no committed regression pin**: the sweep that shows every
+  other store observable is scratch
+  (`.superpowers/sdd/2026-10-04-reverse-c2-callee-rows/task-3-scratch/sweep.py`); pinning it in
+  `tools/tests/test_diff_verify.py` would add cases to the recorded suite in a docs-only closure
+  task, so the pin is a named deferral, not silently absent (the same deferral as C1's four seed
+  fields, §C1.6).
 - E3's, P1's and P2's limits stand: seeds are hand pokes; the memory at a call is mem[] only; the
   callee column is one level deep.
 - The `title_pin` unittest failure on this tree is pre-existing and outside `make verify`.
@@ -303,6 +314,17 @@ Named gaps and limits:
 - The full `make verify` (~25 min) was not run by the planner: the brief's task-scoped gates are
   the ones above, and no rendering/timing/RNG path changed (the `port/src` changes are seams, two
   raw-fidelity corrections and `static` removals). Task 5 runs it on the final state.
+- Task 5, the final gate on this worktree (base `e5e67a2` plus the review-nits `tests:` commit; its
+  docs commit follows): the four task gates
+  above (`make diff-verify` -> the §C2.4 counter, unchanged after the three review nits; `make
+  entry-triage` byte-identical; `PR_ORACLE_REQUIRED=1 ./build/run_tests` -> `all checks passed`;
+  `port_progress.py` -> `771 1203 64` / `731 731 100`) and the full `make verify` with the
+  parallel-safe dump overrides: `EXIT=0`; the 45 oracle lines extracted by the K7-K12 gate's
+  `grep -E` are byte-identical to `.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`
+  (`ORACLES-EQUAL`); `make audio-render` is byte-identical to `before-t2.wav` (sha256
+  `4194254de1155a2dda0ee0dd69f638d92cf9eea0`). The three review nits folded in before the run
+  (duplicate `fighter_3b90c` binding dropped, `m_1ddf4`'s unused `idx` dropped, `m_18714`'s comment
+  now names both deviations) change no counter or oracle line.
 
 ## §C2.8 The new frontier
 
