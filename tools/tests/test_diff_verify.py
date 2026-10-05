@@ -735,14 +735,14 @@ P7_KINDS = {
     "fighter_4b03c@type": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
     "fighter_4b03c@val": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
     "fighter_4b03c@sub": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
-    "fighter_4b03c@mode": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3", "call #3 memory", "call #4", "call #4 memory", "call #5", "call #5 memory"},
-    "fighter_4b03c@plus": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
-    "fighter_4b03c@eq": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4", "call #4 memory", "call #5 memory"},
-    "fighter_4b03c@dead": {"byte", "call #0 memory", "call #1 memory", "call #2", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
-    "fighter_4b03c@cam": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3", "call #3 memory", "call #4 memory", "call #5 memory"},
-    "fighter_4b03c@tear": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3", "call #3 memory", "call #4 memory", "call #5"},
-    "fighter_4b03c@order": {"byte", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
-    "fighter_4b03c@voice": {"byte", "call #0", "call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_4b03c@mode": {"byte", "call #3", "call #3 memory", "call #4", "call #5"},
+    "fighter_4b03c@plus": {"byte", "call #3 memory", "call #5 memory"},
+    "fighter_4b03c@eq": {"call #4"},
+    "fighter_4b03c@dead": {"call #2"},
+    "fighter_4b03c@cam": {"call #3"},
+    "fighter_4b03c@tear": {"call #3", "call #5"},
+    "fighter_4b03c@order": {"call #0 memory", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory"},
+    "fighter_4b03c@voice": {"call #0"},
 }
 
 

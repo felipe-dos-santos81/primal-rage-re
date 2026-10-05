@@ -6145,7 +6145,7 @@ static void b_4b03c(const u32 *r, u32 *eax)            { b_anim(0x4B03Cu, r, eax
 static u8 p7_4b03c_dl(u32 rec)
 {
     static const u8 val[6] = { 0x10u, 0x0Eu, 0x15u, 0x0Cu, 0x0Au, 0x0Du };
-    u8 t = (u8)(DSB(DSD(rec + 0x14u) + 8u + 0x48u) - 0x20u);
+    u8 t = (u8)(DSB(DSD(DSD(rec + 0x14u) + 8u) + 0x48u) - 0x20u);
     return t <= 5u ? val[t] : 0x0Du;
 }
 static void m_4b03c_type(const u32 *r, u32 *eax)       /* the type from the slot's own +0x20 */
