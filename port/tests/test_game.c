@@ -4091,6 +4091,53 @@ static void check_hiscore_rank(void)
     memcpy(mem + DS_00105D88, sreg, sizeof sreg);
 }
 
+/* §P8.3: 0x29CFC is the `jmp 0x13DF0` tail alias effects_clear (the dword at
+ * 0x29CFC's only reference is game_mode_13_step's 0x4255D call). On a built,
+ * empty pool the clear sets and clears the guard bytes; on the unbuilt pool
+ * effects_clear's guard returns and the sentinels survive. Both seeds differ
+ * from the post-conditions. */
+int test_p8_29cfc(void)
+{
+    int before = g_failures;
+    u32 sv_head = DSD(DS_000FCCE0);
+    u32 sv_head4 = DSD(DS_000FCCE4);
+    u8 sv_3c = DSB(DS_0009AF3C);
+    u8 sv_3d = DSB(DS_0009AF3D);
+
+    DSD(DS_000FCCE0) = DS_000FCCE0;          /* a built, empty list */
+    DSD(DS_000FCCE4) = DS_000FCCE0;
+    DSB(DS_0009AF3C) = 0x5Au;
+    DSB(DS_0009AF3D) = 0x5Au;
+    effects_29cfc();
+    CHECK_EQ_INT((int)DSB(DS_0009AF3D), 0);
+    CHECK_EQ_INT((int)DSB(DS_0009AF3C), 0);
+
+    /* The pool head zeroed: effects_clear's guard returns before touching the
+     * count bytes. A guard-deleted port would not zero them either — it walks
+     * from the zeroed head into mem[0] (next 0) and loops on record 0 without
+     * reaching the stores below, so the mutation is caught by the walk not
+     * terminating (test_effects' uninitialised-pool clear, the same walk on an
+     * unbuilt pool, hangs first), not by these CHECKs; they pin the guard's
+     * post-condition. */
+    DSD(DS_000FCCE0) = 0;
+    DSB(DS_0009AF3C) = 0x5Au;
+    DSB(DS_0009AF3D) = 0x5Au;
+    effects_29cfc();
+    CHECK_EQ_INT((int)DSB(DS_0009AF3C), 0x5A);
+    CHECK_EQ_INT((int)DSB(DS_0009AF3D), 0x5A);
+
+    CHECK(fn_resolve(0x29CFCu) == (void (*)(void))effects_29cfc,
+          "actors_init registered 0x29CFC as effects_29cfc");
+    if (fn_resolve(0x29CFCu) == NULL)
+        fn_register(0x29CFCu, (void (*)(void))effects_29cfc);
+
+    DSD(DS_000FCCE0) = sv_head;
+    DSD(DS_000FCCE4) = sv_head4;
+    DSB(DS_0009AF3C) = sv_3c;
+    DSB(DS_0009AF3D) = sv_3d;
+    return g_failures - before;
+}
+
 /* ---- test_config.c ---- */
 
 /* The descriptor table lives in the loaded image (obj-0 VA 0x2D300). These tests

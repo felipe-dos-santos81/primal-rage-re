@@ -44189,7 +44189,8 @@ int test_u6_idle_loss_callbacks(void)
  * gameplay-u6 §U6.12): the T-rex's 0x24/0x25 entry 0x3F0A8 and the three
  * callbacks it stores, its 0x2D entry 0x3D1EC, every character's 0x3D entry
  * 0x3C048, character 1's 0x27 entry 0x231C0, and the 0xD100 targets 0x3F0F0
- * and 0x3F130 with 0x2BEF4 (§U6.17; §U6.18's 0x3A820 is not ported). Each check runs inside one
+ * and 0x3F130 with 0x2BEF4 (§U6.17; §U6.18's 0x3A820 is ported as
+ * fighter_pose_3a820, checked by §P8.2's test_p8_3a820). Each check runs inside one
  * mz_save/mz_restore and seeds sentinels that differ from every
  * post-condition. */
 
@@ -47937,3 +47938,140 @@ static void p7_check_4b03c(void)
     CHECK_EQ_INT((int)DSD(Z_R0 + 0x3Cu), 0x63C0);   /* 0x10000 - 10000 - 30000 */
 }
 int test_p7_4b03c(void)         { return u6b_run(p7_check_4b03c); }
+
+/* ---- §P8.2: the 0x3A8E8 family's pose handler 0x3A820 ------------------- */
+
+/* pose_handler_seed with the 0x3A8E8 family's fields: char 0 (0xC9058[0] =
+ * 0xE7398), the B/A globs at 0x107CF8/0x107CFC (the setter's latch) and the
+ * +0x90 = 4 target. Every seeded value differs from its post-condition. */
+static void p8_pose_seed(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    pose_chain_setup(s0, s1, r0, r1);
+
+    DSB(s0 + 0x58u) = 1;                     /* phase 1 */
+    DSB(s0 + 0x7Au) = 0;                     /* char 0: the 0xC9058 table */
+    DSB(s0 + 0x90u) = 0;                     /* (u8)(0 - 1) > 3: the snap arm */
+    DSD(s0 + 0x2Cu) = 0x1234;
+    DSW(r0 + 0x56u) = 0;                     /* the pset index */
+    DSD(r0 + 8u) = 0xDEADBEEFu;              /* the stream sentinel */
+    DSB(r0 + 0x52u) = 0x7F;                  /* the animation variable */
+    DSD(r0 + 0x24u) = 0xDEADBEEFu;           /* the frame-hold sentinel */
+    DSD(r0 + 0x18u) = 0x5678;                /* the snap's x sentinel */
+    DSW(FIGHT_ACTORS) = 0xFFFFu;             /* the pset id sentinel */
+    DSD(r0 + 0x1Cu) = 0xDEADBEEFu;           /* hit_anchor_set's y sentinel */
+    DSD(r1 + 0x1Cu) = 0xDEADBEEFu;           /* the other record: untouched */
+    DSB(s1 + 0x52u) = 0x07;
+    DSW(0x00107CF8u) = 0;                    /* A[0] */
+    DSW(0x00107CFCu) = 0;                    /* B[0] = 0: the gate closed */
+}
+
+static void p8_check_3a820(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u16 sv_78f6 = DSW(DS_001078F6);
+
+    /* phase 0 arms +0x58 (the seed's 0 differs from the post-condition 1). */
+    p8_pose_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x58u) = 0;
+    fighter_pose_3a820(s0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 1);
+
+    /* any +0x58 above 1 returns before touching anything (seeded sentinels). */
+    p8_pose_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x58u) = 3;
+    DSD(r0 + 8u) = 0xCAFEF00Du;
+    DSB(s0 + 0x90u) = 0x55;
+    fighter_pose_3a820(s0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 3);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)0xCAFEF00Du);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 0x55);
+
+    /* phase 1 starts the char-0 stream, re-anchors the self record, sets
+     * +0x58 = 2 and +0x90 = 4; B[0] = 0 closes the snap. */
+    p8_pose_seed(s0, s1, r0, r1);
+    fighter_pose_3a820(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000E7398);    /* 0xC9058[0] */
+    CHECK_EQ_INT((int)DSD(r0 + 0x20u), 0x40400000); /* 3.0f */
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSB(r0 + 0x52u), 0);
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS), 0x1099);   /* the stream's first id */
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 2);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 4);
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), 0);          /* hit_anchor_set */
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);     /* B[0] = 0: no snap */
+
+    /* B[0] = 3, A[0] = 0x4321 and +0x90 = 0 open the snap; DS_001077A8[0] = 0
+     * and DS_00100AF0[0] = s0+0x20 make the record-x path's calls inert, as in
+     * the 0x3A43C check. */
+    p8_pose_seed(s0, s1, r0, r1);
+    DSD(DS_001077A8) = 0;
+    DSD(DS_00100AF0) = DSD(s0 + 0x20u);
+    DSD(DS_00100AB0) = 0x1000;
+    DSW(0x00107CFCu) = 3;
+    DSW(0x00107CF8u) = 0x4321;
+    fighter_pose_3a820(s0, 0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x4321);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x4321 - 0x1000);
+
+    /* +0x90 in 1..4 is the table arm (all entries 0x3A8D6): no snap. */
+    p8_pose_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x90u) = 4;
+    DSW(0x00107CFCu) = 3;
+    DSW(0x00107CF8u) = 0x4321;
+    fighter_pose_3a820(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+
+    /* B[0] = 5 closes the snap. */
+    p8_pose_seed(s0, s1, r0, r1);
+    DSW(0x00107CFCu) = 5;
+    DSW(0x00107CF8u) = 0x4321;
+    fighter_pose_3a820(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+
+    /* the B/A words are the self side's: B[1] = 3 with A[1] = 0x4321 leaves
+     * the gate closed (B[0] = 0). */
+    p8_pose_seed(s0, s1, r0, r1);
+    DSW(0x00107CFEu) = 3;
+    DSW(0x00107CFAu) = 0x4321;
+    fighter_pose_3a820(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+
+    /* side 1: the own record r1 and the side-1 globs 0x107CFA/0x107CFE. The
+     * snap word s1+0x2C proves the B/A reads are the side-1 words: B[1] = 3
+     * opens the gate and A[1] = 0x4321 reaches hit_anchor_x (a port on the
+     * side-0 words, or without the ctx[1]*2 scaling, leaves the 0x1234 seed). */
+    p8_pose_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 1;                    /* the side-1 phase */
+    DSB(s1 + 0x7Au) = 1;
+    DSD(s1 + 0x2Cu) = 0x1234;               /* the snap sentinel */
+    DSW(0x00107CFEu) = 3;
+    DSW(0x00107CFAu) = 0x4321;
+    fighter_pose_3a820(s1, 1u);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x000E401E);    /* 0xC9058[1] */
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0x4321);     /* A[1] through hit_anchor_x */
+    CHECK_EQ_INT((int)DSB(s1 + 0x58u), 2);
+    CHECK_EQ_INT((int)DSB(s1 + 0x90u), 4);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 1);          /* the other slot untouched */
+
+    /* the wiring: 0x3531C case 10 resolves slot+0x10 and calls it with the
+     * raw's (EAX = slot, EBX = side). */
+    CHECK(fn_resolve(0x3A820u) == (void (*)(void))fighter_pose_3a820,
+          "actors_init registered 0x3A820 as fighter_pose_3a820");
+    if (fn_resolve(0x3A820u) == NULL)
+        fn_register(0x3A820u, (void (*)(void))fighter_pose_3a820);
+    p8_pose_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x53u) = 0x0A;
+    DSD(s0 + 0x10u) = 0x0003A820u;
+    DSW(DS_001078F6) = 0;
+    fighter_state_3531c(0u);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000E7398);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 2);
+
+    DSW(DS_001078F6) = sv_78f6;
+}
+
+int test_p8_3a820(void)         { return u6b_run(p8_check_3a820); }

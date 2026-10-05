@@ -9,6 +9,7 @@
 100DC deferred record-§50-E
 10510 deferred record-§50-E
 10570 deferred record-§50-E
+10604 deferred record-§50-E (the 250 Hz callback 0x10610 registers)
 10610 deferred record-§50-E
 10678 deferred record-§50-E
 10684 deferred record-§50-E
@@ -43,6 +44,7 @@
 1B8DC host-owned record-§50-C
 1B908 host-owned record-§50-C
 1BBAC host-owned record-§50-C
+1BDF4 host-owned record-§K9.5 (tick model config.c; callees 1BBAC §50-C and 2D62C §K9.5 host-owned)
 1C308 host-owned record-§50-D
 1C320 host-owned record-§50-D
 1C884 host-owned record-§50-D

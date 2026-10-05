@@ -3676,7 +3676,7 @@ void game_mode_13_step(void)
         break;                                          /* 0x42558 */
     case 2u: {
         u32 e;
-        effects_clear();                                /* 0x4255D 0x29CFC -> 0x13DF0 */
+        effects_29cfc();                                /* 0x4255D 0x29CFC -> 0x13DF0 */
         flow_scroll_reset(DSW(DS_00104AFC));            /* 0x42562..0x4256A 0x20E90 */
         flow_challenge_fighters();                      /* 0x4256F 0x42724 */
         fight_challenge_crowd();                        /* 0x42574 0x4B9AC */

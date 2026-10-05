@@ -302,6 +302,10 @@ int actors_init(void)
      * 0x3A650 setter stores in slot+0x10 at 0x3A686 (the dword at 0x3A689 is
      * its only reference). */
     fn_register(0x3A588u, (void (*)(void))fighter_pose_3a588);
+    /* PORT: record §P8.2. Their sibling 0x3A820, which the 0x3A8E8 setter
+     * stores in slot+0x10 at 0x3A91E (the dword at 0x3A921 its only
+     * reference). */
+    fn_register(0x3A820u, (void (*)(void))fighter_pose_3a820);
     /* PORT: the knockback pose's handler 0x39CC8, which the setter 0x39F40
      * stores in slot+0x10 at 0x39F8F; same case-10 shape as 0x3A43C. */
     fn_register(0x39CC8u, (void (*)(void))fighter_39cc8);
@@ -962,6 +966,10 @@ int actors_init(void)
      * 0x4F6F1, 0x4F70D, 0x4F9AA, 0x4F9D1); the live stores and the six sites
      * are ported (flow.c), and they resolve it through this registration. */
     fn_register(0x29B74u, frontend_darken_all);
+    /* PORT: record §P8.3. The effects-clear tail alias 0x29CFC (`jmp
+     * 0x13DF0`), which game_mode_13_step's case 2 calls at 0x4255D (the
+     * dword at 0x29CFC's only reference). */
+    fn_register(0x29CFCu, (void (*)(void))effects_29cfc);
     /* PORT: record §43-B. The DS_00104AE4 hooks 0x28D68 (code immediates at
      * 0x42CF4/0x42D35/0x42D7D, stored by 0x42CB4, and 0x42FB7, stored by the
      * unreferenced stub 0x42FB0) and 0x28D80 (the immediate at 0x28E4F,

@@ -65,6 +65,9 @@ void effects_step(void);
  * and the lock. A no-op when the pool was never initialised (the zeroed active
  * sentinel). */
 void effects_clear(void);
+/* 0x29CFC (record §P8.3): the `jmp 0x13DF0` tail alias game_mode_13_step's
+ * case 2 calls. */
+void effects_29cfc(void);
 
 /* DS_0009AF3D, the active-record count. */
 int effects_active(void);
