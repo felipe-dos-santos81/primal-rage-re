@@ -47674,3 +47674,72 @@ static void p7_check_36114(void)
 int test_p7_36114(void)         { return u6b_run(p7_check_36114); }
 
 /* §P7.4: the spawn pair 0x23960 and 0x23A7C. */
+static void p7_check_23960(void)
+{
+    static u32 before[0x80];
+    u32 seed = 0x2468ACE0u;
+    u32 n, k, r, found, kids[8], nk;
+    float base;
+    /* 0x23960: 0x105B4C = 0; four 0xA839C children at the other slot's
+     * +0x2C ± 0x600/0x1000; each child's +0x24 and +0x20 take the spawn's
+     * +0x24 + (float)rng_next(6). */
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSD(Z_S1 + 0x2Cu) = 0x1000u;
+    DSD(Z_R1 + 0x30u) = 0x12345678u;
+    DSW(0x00105B4Cu) = 0x4C4Cu;
+    DSD(0x000EF6D8u) = seed;
+    base = (float)DSB(0x000A839Cu + 5u);
+    n = u6b_list(before, 0x80u);
+    fighter_23960(Z_R0);
+    CHECK_EQ_INT((int)DSW(0x00105B4Cu), 0);
+    CHECK_EQ_INT((int)u6b_list(before, 0x80u), (int)(n + 4u));
+    nk = 0u;
+    for (r = actor_list_head(); r != 0 && nk < 8u; r = actor_next(r)) {
+        for (k = 0; k < n && before[k] != r; k++) {}
+        if (k == n) kids[nk++] = r;
+    }
+    CHECK_EQ_INT((int)nk, 4);
+    found = 0u;
+    for (k = 0; k < nk; k++) {
+        union { float f; u32 u; } c;
+        c.u = DSD(kids[k] + 0x24u);
+        CHECK_EQ_INT((int)DSD(kids[k] + 0x24u), (int)DSD(kids[k] + 0x20u));
+        CHECK(c.f >= base && c.f <= base + 5.0f,
+              "the child's +0x24 is the spawn value + rng_next(6)");
+        if (c.f != base) found = 1u;
+    }
+    CHECK(found != 0u, "at least one child's rng draw was non-zero");
+
+    /* 0x23A7C: one 0xA8388 child, its +0x14 = the record's slot, +0x51 = the
+     * record's side and the record's +0x4B = the child's +0x56; then
+     * 0x23960(child) spawns four more (the child's other slot is set). */
+    n = u6b_list(before, 0x80u);
+    DSB(Z_R0 + 0x14u) = 0u;     /* reset the +0x14 field the previous run's 49444-style paths may have touched */
+    z_fseed();
+    DSB(Z_R0 + 0x51u) = 0u;
+    DSD(Z_R0 + 0x14u) = Z_S0;
+    DSB(Z_R0 + 0x56u) = 0x34u;
+    DSB(Z_R0 + 0x4Bu) = 0x4Bu;
+    n = u6b_list(before, 0x80u);
+    {
+        p7_anim_fn f = (p7_anim_fn)(void *)fn_resolve(0x23A7Cu);
+        CHECK(f != NULL, "0x23A7C is registered");
+        if (f == NULL) return;
+        f(Z_R0, 0u);
+    }
+    CHECK_EQ_INT((int)u6b_list(before, 0x80u), (int)(n + 5u));
+    found = 0u;
+    for (r = actor_list_head(); r != 0; r = actor_next(r)) {
+        for (k = 0; k < n && before[k] != r; k++) {}
+        if (k == n && DSD(r + 0x14u) == Z_S0) {
+            found = r;
+            CHECK_EQ_INT((int)DSB(r + 0x51u), 0);
+            CHECK_EQ_INT((int)DSB(Z_R0 + 0x4Bu), (int)DSB(r + 0x56u));
+        }
+    }
+    CHECK(found != 0u, "the 0x23A7C child holds the record's slot");
+}
+int test_p7_23960(void)         { return u6b_run(p7_check_23960); }
+
+/* §P7.5: 0x3A9D8 and 0x48254 through their registrations. */

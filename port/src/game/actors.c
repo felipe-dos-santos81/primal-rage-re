@@ -1057,6 +1057,9 @@ int actors_init(void)
      * animation targets. */
     fn_register(0x224ECu, (void (*)(void))anim_code_224EC);
     fn_register(0x36114u, (void (*)(void))anim_code_36114);
+    /* PORT: record 2026-10-04-reverse-p7 §P7.4. Track P batch 7's Task 4
+     * animation target. */
+    fn_register(0x23A7Cu, (void (*)(void))anim_code_23A7C);
     return 1;
 }
 
@@ -4642,6 +4645,15 @@ static void anim_code_36114(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_36114(rec);
+}
+
+
+/* PORT: record 2026-10-04-reverse-p7 §P7.4. Track P batch 7's Task 4
+ * animation target. */
+static void anim_code_23A7C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_23a7c(rec);
 }
 
 

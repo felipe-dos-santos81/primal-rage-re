@@ -2767,6 +2767,37 @@ P7_SPECS = [
               DS_SLOTS + 0x7A: b"\x03", DS_SLOTS + 0x58: b"\x58\x59"}),
     ], calls=(C1_1883C, P7_2BDE8_R), eax_mask=0,
        mutants=("@neg", "@side", "@anchor", "@char", "@table", "@order", "@second")),
+    Spec("fighter_23960", 0x23960, [
+        Case("s0", {"eax": E3_REC}, P7_23960_SEED, {0x2AE14: P6_CHILD}),
+        Case("s1", {"eax": E3_REC2},
+             {**SLOT_PTRS, **P6_PTRS,
+              E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
+              DS_SLOTS + 0x2C: le32(0xFFFFF000),
+              E3_REC + 0x30: le32(0x00008000),
+              P6_CHILD + 0x20: le32(0x20202020), P6_CHILD + 0x24: le32(0x40400000),
+              0x105B4C: b"\x4c\x4d"}, {0x2AE14: P6_CHILD}),
+        Case("o0", {"eax": E3_REC}, {DS_SLOTS - 8: le32(DS_SLOTS) + le32(0), E3_REC + 0x51: b"\x00",
+                                     0x105B4C: b"\x4c\x4d"}),
+    ], calls=(SPAWN, P7_RNG), eax_mask=0,
+       mutants=("@off", "@y", "@desc", "@float", "@x")),
+    # 0x23A7C (record §P7.4): the D100 target at 0xE18C4. With the record's +0x14 slot set: a
+    # 0xA8388 spawn with a5 = word +0x56 | 0x400; the child's +0x14 = the slot, +0x51 = the side;
+    # the record's +0x4B = the child's +0x56; then 0x23960(child).
+    Spec("fighter_23a7c", 0x23A7C, [
+        Case("s0", {"eax": E3_REC}, {E3_REC + 0x14: le32(E3_SLOT), E3_REC + 0x51: b"\x00",
+                                     E3_REC + 0x56: b"\x34\x12", E3_REC + 0x4B: b"\x4b",
+                                     E3_SLOT + 0x14: le32(0x14141414), E3_SLOT + 0x51: b"\x51",
+                                     P6_CHILD + 0x56: b"\x5a", P6_CHILD + 0x14: le32(0x14141414)},
+             {0x2AE14: P6_CHILD}),
+        Case("s1", {"eax": E3_REC2}, {E3_REC2 + 0x14: le32(E3_SLOT + 0x94), E3_REC2 + 0x51: b"\x01",
+                                      E3_REC2 + 0x56: b"\x78\x56", E3_REC2 + 0x4B: b"\x4b",
+                                      E3_SLOT + 0x94 + 0x14: le32(0x24242424),
+                                      E3_SLOT + 0x94 + 0x51: b"\x61",
+                                      P6_CHILD + 0x56: b"\x5a", P6_CHILD + 0x14: le32(0x24242424)},
+             {0x2AE14: P6_CHILD}),
+        Case("n0", {"eax": E3_REC}, {E3_REC + 0x14: le32(0), E3_REC + 0x4B: b"\x4b"}),
+    ], calls=(SPAWN, P7_23960), eax_mask=0,
+       mutants=("@a5", "@slot", "@side", "@mutant", "@order")),
 ]
 
 SPECS = [

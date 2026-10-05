@@ -17214,5 +17214,44 @@ void fighter_36114(u32 rec)
     fighter_2bde8(rec);                                     /* 0x361A5/0x361A7 */
     fighter_2bde8(DSD(other));                              /* 0x361AC/0x361AE */
 }
+/* 0x23960 — record §P7.4. EAX = rec. The word 0x105B4C = 0; with the other
+ * side's slot set: four 0xA839C spawns, x = the other slot's +0x2C + 0x600,
+ * -0x600, +0x1000, -0x1000, y = the other record's +0x30 >> 16, z 0 and a5 0;
+ * each child's +0x24 += (float)rng_next(6) and +0x20 takes the same value. */
+void fighter_23960(u32 rec)
+{
+    PR_SEAM(0x23960u, rec);
+    static const s32 p7_off[4] = { 0x600, -0x600, 0x1000, -0x1000 };
+    u32 other;
+    DSW(0x00105B4Cu) = 0u;                                  /* 0x2396C */
+    other = DSD(DS_001077A8 + ((((u32)DSB(rec + 0x51u)) ^ 1u) & 0xFFu) * 4u);   /* 0x23967..0x2397A */
+    if (other == 0u) return;                                /* 0x23981/0x23983 */
+    for (int i = 0; i < 4; i++) {
+        u32 child = actor_spawn((const u32 *)(mem + 0x000A839Cu),          /* 0x2398B */
+                                DSD(other + 0x2Cu) + (u32)p7_off[i],       /* 0x23992/0x2399A */
+                                (u32)((s32)DSD(DSD(other) + 0x30u) >> 16), /* 0x23990/0x23997/0x239A0 */
+                                0u, 0u);                            /* 0x23995/0x23989 */
+        float v = p2_f32(child + 0x24u) + (float)rng_next(6u); /* 0x239AA..0x239BF */
+        p2_set_f32(child + 0x24u, v);                       /* 0x239C1 */
+        p2_set_f32(child + 0x20u, v);                       /* 0x239C4 */
+    }
+}
+
+
+/* 0x23A7C — record §P7.4. The D100 target at the dword 0xE18C4. With the
+ * record's +0x14 slot set: a 0xA8388 spawn with a5 = word +0x56 | 0x400; the
+ * child's +0x14 = the slot, its +0x51 = the side; the record's +0x4B = the
+ * child's +0x56; then 0x23960(child). */
+void fighter_23a7c(u32 rec)
+{
+    u32 child;
+    if (DSD(rec + 0x14u) == 0u) return;                     /* 0x23A82/0x23A86 */
+    child = actor_spawn((const u32 *)(mem + 0x000A8388u), 0u, 0u, 0u,
+                        (u32)(DSW(rec + 0x56u) | 0x400u));  /* 0x23A88..0x23AA0 */
+    DSD(child + 0x14u) = DSD(rec + 0x14u);                  /* 0x23AA5/0x23AA8 */
+    DSB(child + 0x51u) = DSB(rec + 0x51u);                  /* 0x23AAB/0x23AAE */
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);                  /* 0x23AB1/0x23AB4 */
+    fighter_23960(child);                                   /* 0x23AB7 */
+}
 
 

@@ -30,7 +30,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | callbacks | 0 | 71 |
 | finishers | 0 | 9 |
 | voice | 0 | 15 |
-| animation-targets | 2 | 110 |
+| animation-targets | 1 | 111 |
 | span-writers | 231 | 0 |
 | other | 3 | 54 |
 
@@ -40,7 +40,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 |---|---|
 | allow-list | 1 |
 | leaf | 228 |
-| stubs | 7 |
+| stubs | 6 |
 
 ## Rows
 
@@ -142,7 +142,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 237D0 | 76 | move-callback | dword A5620 (char 6, reaction 0x26) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 23810 |
 | 2381C | 76 | move-callback | dword A560C (char 6, reaction 0x25) | yes | - | yes | callbacks | stubs (indirect at 2B56D in 2B2A0) | 2385C |
 | 23868 | 532 | anim-target | dword E14E6 after the opcode word D100 at E14E4 | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
-| 23A7C | 380 | anim-target | dword E18C4 after the opcode word D100 at E18C2 | yes | - | no | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 23A7C | 380 | anim-target | dword E18C4 after the opcode word D100 at E18C2 | yes | - | yes | animation-targets | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 23BF8 | 172 | finisher | dword BDAFC | yes | - | yes | finishers | stubs (indirect at 2B56D in 2B2A0) | - |
 | 23CA4 | 540 | anim-target | dword E1A4E after the opcode word D100 at E1A4C | yes | - | yes | animation-targets | leaf | - |
 | 23EC0 | 80 | finisher | dword BDB18 | yes | - | yes | finishers | stubs (indirect at 2B56D in 2B2A0) | 23F05 |
@@ -668,7 +668,7 @@ Outside this list, a named gap: the 8 unexamined immediates of record §E2.11 (f
 | 22F14 | immediate at 22F9A | - | yes | stubs (indirect at 62006 in 62003) | - |
 | 23250 | immediate at 23568 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 232B4 | immediate at 2356F | entry | yes | stubs (indirect at 62006 in 62003) | 23328 |
-| 23960 | called at 23AB7 | entry | no | stubs (indirect at 2B0E9 in 2AE14) | - |
+| 23960 | called at 23AB7 | entry | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
 | 23B68 | immediate at 23C72 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | 23BD8 |
 | 24220 | immediate at 243A1 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | 242DA 24317 |
 | 24454 | immediate at 24529 | - | yes | stubs (indirect at 2B0E9 in 2AE14) | - |
