@@ -17215,6 +17215,7 @@ void fighter_36114(u32 rec)
     fighter_2bde8(rec);                                     /* 0x361A5/0x361A7 */
     fighter_2bde8(DSD(other));                              /* 0x361AC/0x361AE */
 }
+
 /* 0x23960 — record §P7.4. EAX = rec. The word 0x105B4C = 0; with the other
  * side's slot set: four 0xA839C spawns, x = the other slot's +0x2C + 0x600,
  * -0x600, +0x1000, -0x1000, y = the other record's +0x30 >> 16, z 0 and a5 0;
@@ -17255,8 +17256,8 @@ void fighter_23a7c(u32 rec)
     fighter_23960(child);                                   /* 0x23AB7 */
 }
 /* 0x3A9D8 — record §P7.5. EAX = side, EDX = b. 0x3A95C's twin (the stream
- * table 0xC9030): the swapped ctx; 0x188AC(ctx[1], the other record's +0x18,
- * 0); the own slot's +0x52/0x53/0x54 = 0x10/0xA/0 and +0x10 = 0; the other
+ * table 0xC9030): the swapped ctx; 0x188AC(ctx[1], the own record's +0x18,
+ * 0); the own slot's +0x52/0x53/0x54 = 0x10/0xA/0 and +0x10 = 0; the own
  * record on 0xC9030[the own slot's char] at 3.0; the own slot's +0x7E = the
  * byte 0xBECF8 + b. */
 void fighter_3a9d8(u32 side, u32 b)
@@ -17271,7 +17272,7 @@ void fighter_3a9d8(u32 side, u32 b)
     DSD(ctx[3] + 0x10u) = 0u;                               /* 0x3AA12/0x3AA16 */
     actors_anim_begin(ctx[5], DSD(0x000C9030u + (u32)DSB(ctx[3] + 0x7Au) * 4u),
                       0x40400000u);                         /* 0x3AA1D..0x3AA39 */
-    DSB(ctx[3] + 0x7Eu) = (u8)(DSB(0x000BECF8u) + (u8)b);   /* 0x3AA3E..0x3AA49 */
+    DSB(ctx[3] + 0x7Eu) = (u8)(DSB(DS_000BECF8) + (u8)b);   /* 0x3AA3E..0x3AA49 */
 }
 
 
@@ -17289,7 +17290,7 @@ void fighter_48254(u32 rec)
                           0x40A00000u);                     /* 0x4829D..0x482AB */
     } else {
         fighter_3a9d8(other_side, 0x0Fu);                   /* 0x482B2..0x482B9 */
-        fighter_39834(other_side, (s32)DSB(0x0010780Fu + own * 0x94u));   /* 0x482BE..0x482D7 */
+        fighter_39834(other_side, (s32)DSB(DS_0010780F + own * 0x94u));   /* 0x482BE..0x482D7 */
     }
 }
 /* 0x23AE0 — record §P7.6. The animation target after the 7-dword table 0x23AC4
