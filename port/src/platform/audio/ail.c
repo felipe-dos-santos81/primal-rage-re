@@ -15,6 +15,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#include "mem.h"
+
 #include "ail.h"
 #include "mixer.h"
 #include "samples.h"
@@ -248,6 +250,7 @@ void AIL_release_sample_handle(HSAMPLE sample)
 /* 0x5dc0f — spec audio.md "AIL surface" (row 12). */
 void AIL_init_sample(HSAMPLE sample)
 {
+    PR_SEAM0(0x5DC0Fu);
     if (sample == NULL || !sample->used)
         return;
     sample->state = 2;
@@ -313,6 +316,7 @@ void AIL_start_sample(HSAMPLE sample)
 /* 0x5dc8b — spec audio.md "AIL surface" (row 16). */
 void AIL_stop_sample(HSAMPLE sample)
 {
+    PR_SEAM0(0x5DC8Bu);
     if (sample == NULL || !sample->used)
         return;
     sample->state = 2;
@@ -361,6 +365,7 @@ s32 AIL_sample_volume(HSAMPLE sample)
 /* 0x5dd03 — spec audio.md "AIL surface" (row 20). */
 s32 AIL_sample_status(HSAMPLE sample)
 {
+    PR_SEAM_RET0(0x5DD03u);
     if (sample == NULL || !sample->used)
         return 0;
     /* Record k7-k12 §0.7.6: the DIG service 0x6F120 marks a sample done at
@@ -471,6 +476,7 @@ void AIL_start_sequence(HSEQUENCE sequence)
 /* 0x5deaf — spec audio.md "AIL surface" (row 29). */
 void AIL_stop_sequence(HSEQUENCE sequence)
 {
+    PR_SEAM0(0x5DEAFu);
     if (sequence == NULL || !sequence->used)
         return;
     seq_stop();

@@ -24,6 +24,10 @@ def le32(v):
     return (v & 0xFFFFFFFF).to_bytes(4, "little")
 
 
+def le16(v):
+    return (v & 0xFFFF).to_bytes(2, "little")
+
+
 @dataclass
 class Case:
     id: str
@@ -4552,6 +4556,674 @@ C3_SPECS = [
        eax_mask=0xFFFFFFFF, mutants=("@flag", "@unlink", "@tail", "@empty", "@ret")),
 ]
 
+# ---- track P batch C3b (record 2026-10-05-reverse-c3b): the frontier rows, part 2 ----------------
+#
+# 0x29F34 anim_read_var (record §C3b.1): EAX = rec, EDX = op; the low word selects (`xor dh,dh` /
+# `and dl,0x7f` at 0x29F38/0x29F3C). o = op & 0x7F: < 0x40 the ring word at 0x105B4C indexed by
+# (o + rec+0x51) & 0x3F; 0x40..0x45 the record's own fields (0x40..0x43 and 0x45 sign-extended
+# bytes, 0x44 the +0x56 word); 0x46..0x4B / 0x4C..0x51 the same fields on the record at
+# [0x1014F4] + rec[0x4A]/rec[0x4B] * 0x68; above 0x51 zero. The ring/record arms zero EAX first
+# (0x29F3A/0x29F63/0x29F73 `xor eax,eax`); the pool arms write only AX (`66 0f be`/`66 8b`,
+# 0x29FED..0x2A014) on the full 32-bit base built at 0x29FBC..0x29FD8, so a pool arm returns EAX
+# with the base's high word above the 16-bit field. The callers read 16 bits — `and eax,0xffff` at
+# 0x2A49C; 0x2A480 `add ecx,eax`, whose low word alone survives (0x2A4C4 `mov eax,ecx` /
+# 0x2A4D1 `and eax,0xffff`); the `mov ax,cx` returns 0x2A4E4/0x2A4F1; 0x2AAD1 `test ax,ax` — so
+# eax_mask=0xFFFF is load-bearing: a full mask compares the base's high word (a8: 0x100033 vs 0x33).
+C3B_A_REC = 0x10A800          # C3b zero BSS: 0x29F34's record
+C3B_A_ACT = 0x10A900          # its parent/child actor pair (index 0 / 1 at +0x68)
+C3B_A_RING = 0x105B4C         # DS_00105B4C: the 0x40-word ring
+
+def c3b_a_pokes(idx=0):
+    return {C3B_A_REC + 0x51: bytes([idx]),
+            C3B_A_REC + 0x52: b"\x81", C3B_A_REC + 0x53: b"\x7f",
+            C3B_A_REC + 0x54: b"\x80", C3B_A_REC + 0x55: b"\xff",
+            C3B_A_REC + 0x56: b"\xef\xbe", C3B_A_REC + 0x58: b"\x80",
+            C3B_A_REC + 0x4a: b"\x00", C3B_A_REC + 0x4b: b"\x01",
+            0x001014F4: le32(C3B_A_ACT),
+            C3B_A_RING: b"\x11\x11", C3B_A_RING + 2: b"\x22\x22",
+            C3B_A_RING + 0x80: b"\x77\x77"}
+
+# 0x18350 fighter_18350 (record §C3b.1): EAX = side, EDX = anchor. ch = 0x1077B0[side*0x94]+0x7A
+# selects the per-character table (0x18334; >6 0xCEB00), p = table + anchor*2 (the u32 wrap the
+# port keeps), x/y = sx(p[0])/sx(p[1]), the x negated when 0x1A570 reports the actor's bit 15 set,
+# both <<6 into 0x100AB0/AB4[side*8]. Callers ignore EAX (mask 0).
+C3B_B_REC = 0x10AB00          # the side's record for 0x1A570
+C3B_B_ACT = 0x10AB40          # its actor table ([0x1014EC])
+C3B_B_TABLES = {0: 0xCEB00, 1: 0xCF399, 2: 0xCFC32, 3: 0xD033B, 4: 0xD0A44, 5: 0xCEB00,
+                6: 0xCF399}
+
+def c3b_b_case(side, ch, anchor, tbl, tblbytes, idx=0, actor=0x0000, actor0=0x0000):
+    slot = 0x1077B0 + side * 0x94
+    out = 0x100AB0 + side * 8
+    p = {slot + 0x7A: bytes([ch]), slot: le32(C3B_B_REC),
+         C3B_B_REC + 0x56: (idx & 0xFFFF).to_bytes(2, "little"),
+         0x001014EC: le32(C3B_B_ACT), C3B_B_ACT: (actor0 & 0xFFFF).to_bytes(2, "little"),
+         C3B_B_ACT + idx * 0x20: (actor & 0xFFFF).to_bytes(2, "little"),
+         out: le32(0xA5A5A5A5), out + 4: le32(0x5A5A5A5A)}
+    p[tbl + anchor * 2] = tblbytes
+    return p
+
+# 0x18540 fighter_18540 (record §C3b.1): EAX = side. slot = 0x1077A8[side]; null returns. ch =
+# slot+0x7A selects the per-character camera word (0x18524; ch 0 and >6 the 0xE6DD0 default), then
+# 0x18460 runs (allow: effect-free, its 0x18428 dispatch is a bare RET per character). sprite =
+# (word at [0x1014EC] + word[DSD(slot)+0x56] * 0x20) & 0x7FFF; anchor = sprite - cam into
+# 0x100AF0[side], zeroed when negative or at/over 0xE6DB4[ch]. Callers ignore EAX (mask 0).
+C3B_C_SLOT = 0x10AC00
+C3B_C_REC = 0x10AC40
+C3B_C_ACT = 0x10AC80
+
+def c3b_c_case(side, ch, cam, limit, sprite, idx=0, live=True, extra=None):
+    slot = 0x1077B0 + side * 0x94
+    p = {0x100AF0 + side * 4: le32(0xA5A5A5A5),
+         0xE6DB4 + ch * 4: le32(limit)}
+    if live:
+        p.update({0x1077A8 + side * 4: le32(slot),
+                  slot + 0x7A: bytes([ch]),
+                  slot: le32(C3B_C_REC),
+                  C3B_C_REC + 0x56: (idx & 0xFFFF).to_bytes(2, "little"),
+                  0x001014EC: le32(C3B_C_ACT),
+                  C3B_C_ACT: (0x0000 if idx else sprite & 0xFFFF).to_bytes(2, "little"),
+                  C3B_C_ACT + idx * 0x20: (sprite & 0xFFFF).to_bytes(2, "little")})
+    else:
+        p[0x1077A8 + side * 4] = le32(0)
+    cams = {1: 0xE39D0, 2: 0xECBD8, 3: 0xD2134, 4: 0xEA604, 5: 0xD3E08, 6: 0xE061C}
+    p[cams.get(ch, 0xE6DD0)] = (cam & 0xFFFF).to_bytes(2, "little")
+    if extra:
+        p.update(extra)
+    return p
+
+# 0x18788 hit_record_y (record §C3b.1): EAX = side; slot+0x42 bit 3 takes the record's +0x1C;
+# otherwise 0x18540 re-latches, 0x18350 re-runs when the anchor differs from slot+0x20, and the
+# result is slot+0x30 - 0x100AB4[side]. Full mask (the only caller 0x1883C reads EAX).
+C3B_Y_REC = 0x10AD00
+
+def c3b_y_pokes(side, bit42, anchor=None, slot30=0, ab4=0, cam=0x0100, sprite=0x0140, extra=None):
+    slot = 0x1077B0 + side * 0x94
+    p = {slot: le32(C3B_Y_REC), slot + 0x42: bytes([bit42]),
+         C3B_Y_REC + 0x1C: le32(0x11223344), C3B_Y_REC + 0x18: le32(0x55667788),
+         0x100AB4 + side * 8: le32(ab4)}
+    if anchor is not None:
+        p.update({0x1077A8 + side * 4: le32(slot), slot + 0x7A: b"\x00",
+                  C3B_Y_REC + 0x56: b"\x00\x00",
+                  0x001014EC: le32(C3B_C_ACT), C3B_C_ACT: (sprite & 0xFFFF).to_bytes(2, "little"),
+                  slot + 0x20: le32(anchor), slot + 0x30: le32(slot30),
+                  0xE6DD0: (cam & 0xFFFF).to_bytes(2, "little")})
+    if extra:
+        p.update(extra)
+    return p
+
+C3B_D_REC = 0x10AE00
+
+# The voice rows' state (record C3b §C3b.1): the port's DS_ symbols, not in symbols.h's Python side.
+DS_001028C0, DS_001028C8 = 0x001028C0, 0x001028C8
+DS_001028CC, DS_001028D4, DS_001028D9 = 0x001028CC, 0x001028D4, 0x001028D9
+DS_001028DB = 0x001028DB
+
+
+def c3b_v_case(driver, cur, queued=None, extra=None):
+    p = {DS_001028C8: le32(driver)}
+    for k in range(4):
+        p[0x00102860 + k * 0x18] = le32(0x10C000 + k * 0x18)
+        p[0x0010286C + k * 0x18] = le32(cur[k])
+        if queued is not None:
+            p[0x00102864 + k * 0x18] = le32(queued)
+    if extra:
+        p.update(extra)
+    return p
+
+
+def c3b_d_case(side, bd, s884, p, x, bit14, slot53=1, slot54=0, mode4b=0, live=True, recnull=False):
+    slot = 0x1077B0 + side * 0x94
+    p2 = {0x1077A8 + side * 4: le32(slot), slot: le32(0 if recnull else C3B_D_REC),
+          slot + 0x7A: b"\x00",
+          C3B_D_REC + 0x3C: le32(p), C3B_D_REC + 0x18: le32(x),
+          C3B_D_REC + 0x28: (0x4000 if bit14 else 0).to_bytes(2, "little"),
+          0x1088BD: bytes([bd]), 0x108884: le32(s884), 0x104B00: le16(mode4b),
+          slot + 0x53: bytes([slot53]), slot + 0x54: bytes([slot54]),
+          # +0x43 bit 6 clear (distinct nonzero neighbours 0x40..0x42): the 0x38221 OR 0x40
+          # must change the byte, or a dropped store at 0x38214..0x38221 passes (C3b sweep).
+          slot + 0x40: b"\x40\x41\x42\x00", 0x1078F0 + side: b"\xA5",
+          0x10AE4C: b"\xAA\xBB", slot + 0x55: b"\xCC", slot + 0x5F: b"\xDD"}
+    if not live:
+        p2[0x1077A8 + side * 4] = le32(0)
+    return p2
+
+def c3b_q_slots():
+    out = bytearray()
+    for k in range(4):
+        out += le32(0x10C000 + k * 0x18) + le32(0x11111111) + b"\x22" + le32(0x99999999) \
+             + le32(0x33333333) + le32(0x44444444)
+    return bytes(out)
+
+C3B_Q_T = 0x00102874
+C3B_Q_BUF = 0x00102870
+C3B_Q_QUEUED = 0x00102864
+
+# 0x13420 effect_teardown (record §C3b.1): EAX = rec. The interrupt lock DS_0009AF3C is set to 1,
+# 0x249D0 unlinks rec from the active list, the lock is restored, then the record's type
+# (rec+0xC, an unsigned byte: `mov al`/`cmp al,5`/`ja`) dispatches through the table 0x13408:
+# type 1 -> palette_record(rec+0x10, DSD(src+8)+DSB(rec+0xF), 1, 0); type 4 -> palette_record(
+# 0xFCCF0, DSD(src+8), DSD(src+0xC), 0); types 0/2/3/5 -> palette_record_flagged(DSD(src),
+# DSD(src+8), DSD(src+0xC)); anything else (6..0xFF) -> nothing. Then 0x249B0 inserts rec after
+# the free-list sentinel DS_000FCCE8. The two palette writers and the two list calls run as
+# allows (the effects.c copies carry no seam: C3's actor_alloc mutant route depends on their
+# calls staying unrecorded; the final bytes are the comparison). Mask 0.
+C3B_E_REC = 0x10A800
+C3B_E_SRC = 0x10A900
+C3B_E_SENTINEL = 0x000FCCE8
+
+
+def c3b_e_pokes(typ, extra=None):
+    # rec, the sentinel and the two neighbour nodes A/B are interlinked so the unlink and the
+    # insert-after both move bytes (a self-linked sentinel would make them idempotent and the
+    # @unlink/@tail mutants unobservable).
+    p = {C3B_E_REC: le32(0x10AC00) + le32(0x10AC40) + le32(C3B_E_SRC),
+         C3B_E_REC + 0xC: bytes([typ, 0x00, 0x00, 0x44]) + b"\x77\x77\x77\x77",
+         C3B_E_SRC: le32(0x11111111) + b"\x00" * 4 + le32(0x22222222) + le32(0x33333333),
+         C3B_E_SENTINEL: le32(0x10AC00) + le32(0x10AC40),
+         0x10AC00: le32(0x10AC40) + le32(C3B_E_SENTINEL),
+         0x10AC40: le32(C3B_E_SENTINEL) + le32(0x10AC00),
+         0x0009AF3C: b"\x5A", 0x00107798: le32(0x00107498)}
+    if extra:
+        p.update(extra)
+    return p
+
+# 0x49444 actor_type_49444 (record §C3b.1): EAX = rec. node = DSD(rec+0x14); null returns.
+# node+0x1C bit 1 (loaded as a word but only AL bit 1 read: `mov ax,[..]; xor ah,ah; and al,2`)
+# clears the entry DSD(0x10839C + (signed DSD(node+0x18)>>16)*4); a non-zero node+0x10 is
+# retired with 0x2B150 (stubbed: its own row proves it) and zeroed; then 0x249D0 unlinks the
+# node and 0x249B0 re-inserts it after the 0x1083C4 sentinel, and rec+0x14 is zeroed. Mask 0.
+C3B_F_REC = 0x10A800
+C3B_F_NODE = 0x10A900
+C3B_F_SENTINEL = 0x001083C4
+
+
+def c3b_f_pokes(q=0x00030000, flags=2, child=0, rec14=None, extra=None):
+    p = {C3B_F_REC + 0x14: le32(C3B_F_NODE if rec14 is None else rec14),
+         C3B_F_NODE: le32(C3B_F_SENTINEL), C3B_F_NODE + 4: le32(C3B_F_SENTINEL),
+         C3B_F_NODE + 0x10: le32(child), C3B_F_NODE + 0x18: le32(q),
+         C3B_F_NODE + 0x1C: le16(flags),
+         C3B_F_SENTINEL: le32(C3B_F_SENTINEL), C3B_F_SENTINEL + 4: le32(C3B_F_SENTINEL),
+         0x0010839C: le32(0xDEADBEEF), 0x001083A0: le32(0xDEADBEEF),
+         0x001083A4: le32(0xDEADBEEF), 0x001083A8: le32(0xDEADBEEF),
+         0x00108398: le32(0xDEADBEEF)}
+    if extra:
+        p.update(extra)
+    return p
+
+# 0x2B150 set_dead (record §C3b.1): EAX = rec. rec+0x28 |= 8 (a byte store); when rec+0x2b
+# bit 6 is set, the type callback DSD(0xBB9E0 + DSB(rec+0x48)*0xC) is called with EAX = rec
+# (an indirect call: the 0x5D812 entries are the `xor eax,eax; ret` stub, the others are the
+# registered port callbacks) and rec+0x2b bit 6 is cleared; then pset = DSD(0x1014EC) +
+# DSW(rec+0x56)*0x20, and when pset+0x18 is non-zero 0x33864 releases it and it is zeroed;
+# finally 0x1C458 finds the render-list node whose +4 is the pset and 0x1C3D0 unlinks it to
+# the free head (the port runs both as one render_list_remove). The palette release is
+# stubbed; the render pair and the callback targets are allowed. Mask 0.
+C3B_S_REC = 0x10A068           # in-pool at DS_001014F4 = 0x10A000, stride 0x68
+C3B_S_POOL = 0x10A000
+C3B_S_PSET = 0x10A800          # DS_001014EC: the pset table, stride 0x20
+C3B_S_NODE = 0x10A900          # the type callback's rec+0x14 node
+C3B_S_LAND = 0x000F0A78        # 0x12800's destination sentinel
+C3B_S_RNODE = 0x0010153C       # the first render-pool node
+C3B_S_RFREE = 0x0010275C       # the render free-list head
+C3B_S_RHEAD = 0x00105B44       # the render list head
+
+
+# 0x29DB8 anim_write_var (record §C3b.1): EAX = rec, EDX = op, EBX = value. The pool record the
+# parent/child forms write is DS_001014F4 + DSB(rec+0x4A|0x4B) * 0x68.
+C3B_W_REC = 0x10A800
+C3B_W_POOL = 0x10A000
+C3B_W_RING = 0x00105B4C
+C3B_W_BE8 = 0x00105BE8
+
+
+def c3b_w_pokes(i51=0, i4a=0, i4b=1, be8=0x5A, ring=None, extra=None):
+    p = {0x001014F4: le32(C3B_W_POOL),
+         C3B_W_REC + 0x4A: bytes([i4a, i4b]),
+         C3B_W_REC + 0x51: bytes([i51, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27]),
+         C3B_W_BE8: le16(be8),
+         C3B_W_POOL + 0x52: b"\xA5" * 8,
+         C3B_W_POOL + 0x68 + 0x52: b"\xB5" * 8}
+    for i, b in (ring or {}).items():
+        p[C3B_W_RING + i * 2] = b
+    if extra:
+        p.update(extra)
+    return p
+
+
+# 0x2B8F8 anim_operand (record §C3b.1): EAX = rec; the stream pointer DSD(rec+8) walks the
+# image words at C3B_O_P, the byte/deref forms index from DSD(rec+0x0C) = C3B_O_BASE.
+C3B_O_REC = 0x10A800
+C3B_O_P = 0x10B000
+C3B_O_BASE = 0x10A900
+
+
+def c3b_o_pokes(op=0, cw=0, w2=0, w4=0, extra=None):
+    p = {C3B_O_REC + 8: le32(C3B_O_P), C3B_O_REC + 0x0C: le32(C3B_O_BASE),
+         C3B_O_P: le16(cw), C3B_O_P + 2: le16(w2), C3B_O_P + 4: le16(w4),
+         0x00105BE4: le16(op), 0x00105BE6: le16(0), 0x00105BE8: le16(0xA5A5),
+         0x00105BD4: le32(0xA5A5A5A5),
+         C3B_O_BASE: bytes([0x00, 0xFF, 0xEE, 0x42, 0x7F, 0x5A, 0x00, 0x5A]),
+         C3B_O_BASE + 8: le16(0x5A5A), C3B_O_BASE + 0x0A: le16(0x6B6B)}
+    if extra:
+        p.update(extra)
+    return p
+
+
+# 0x3AFC4 fighter_anim_triple (record §C3b.1): EAX = slot_char, EDX = the frame byte, EBX = the
+# 3-dword output. The per-character byte at DS_0010782A + slot_char*0x94 is shifted left 6 and
+# added to EDX, giving c; the output is 0xDE114 + c*11, 0xA3528 + c*20 and 0xA6728 + c*6. EDX
+# outside [0,0x40) is the raw's 0x62003 fatal (the port zeroes the triple: the named gap).
+C3B_T_OUT = 0x10A800
+C3B_T_TBL = 0x0010782A
+
+
+def c3b_t_pokes(sc=0, edx=0, tbl=None, extra=None):
+    p = {C3B_T_OUT: b"\xA5" * 12}
+    if tbl is not None:
+        p[C3B_T_TBL + sc * 0x94] = bytes([tbl])
+    if extra:
+        p.update(extra)
+    return p
+
+
+def c3b_s_pokes(typ=0, cb=False, pset18=0, idx=0, node=0, rnode=False, extra=None):
+    p = {0x001014F4: le32(C3B_S_POOL), 0x001014EC: le32(C3B_S_PSET),
+         C3B_S_REC + 0x14: le32(node),
+         C3B_S_REC + 0x28: b"\xA5", C3B_S_REC + 0x2A: b"\x00",
+         C3B_S_REC + 0x2B: (b"\x40" if cb else b"\x00"),
+         C3B_S_REC + 0x48: bytes([typ]), C3B_S_REC + 0x56: le16(idx),
+         C3B_S_PSET + idx * 0x20 + 0x18: le32(pset18),
+         C3B_S_RHEAD: le32(0), C3B_S_RFREE: le32(0),
+         C3B_S_LAND: le32(C3B_S_LAND), C3B_S_LAND + 4: le32(C3B_S_LAND)}
+    if rnode:
+        p[C3B_S_RHEAD] = le32(C3B_S_RNODE)
+        p[C3B_S_RNODE] = le32(0)
+        p[C3B_S_RNODE + 4] = le32(C3B_S_PSET + idx * 0x20)
+    if node:
+        p[C3B_S_NODE] = le32(C3B_S_LAND)
+        p[C3B_S_NODE + 4] = le32(C3B_S_LAND)
+    if extra:
+        p.update(extra)
+    return p
+
+def c3b_q_case(driver=1, db=0, size=0x6001, overrides=None):
+    slots = c3b_q_slots()
+    p = {0x00102860: slots[:0x30], 0x00102890: slots[0x30:],
+         DS_001028C8: le32(driver), DS_001028DB: bytes([db]), 0x00101500: le32(0x1000)}
+    p.update(c2b_res(0x800001, size))
+    p.update(overrides or {})
+    return p
+
+
+C3B_SPECS = [
+    Spec("anim_read_var", 0x29F34, [
+        Case("a0", {"eax": C3B_A_REC, "edx": 0x00}, c3b_a_pokes(0)),          # ring[0]
+        Case("a1", {"eax": C3B_A_REC, "edx": 0x3F}, c3b_a_pokes(1)),          # (0x3F+1)&0x3F = 0
+        Case("a2", {"eax": C3B_A_REC, "edx": 0x40}, c3b_a_pokes()),           # sx(+0x52) = -0x7F
+        Case("a3", {"eax": C3B_A_REC, "edx": 0x41}, c3b_a_pokes()),           # sx(+0x53) = +0x7F
+        Case("a4", {"eax": C3B_A_REC, "edx": 0x42}, c3b_a_pokes()),           # sx(+0x54)
+        Case("a5", {"eax": C3B_A_REC, "edx": 0x43}, c3b_a_pokes()),           # sx(+0x55)
+        Case("a6", {"eax": C3B_A_REC, "edx": 0x44}, c3b_a_pokes()),           # word +0x56
+        Case("a7", {"eax": C3B_A_REC, "edx": 0x45}, c3b_a_pokes()),           # sx(+0x58)
+        Case("a8", {"eax": C3B_A_REC, "edx": 0x46},
+             {**c3b_a_pokes(), C3B_A_ACT + 0x52: b"\x33"}),                   # parent +0x52
+        Case("a9", {"eax": C3B_A_REC, "edx": 0x4B},
+             {**c3b_a_pokes(), C3B_A_ACT + 0x58: b"\x42"}),                   # parent +0x58
+        Case("a10", {"eax": C3B_A_REC, "edx": 0x4C},
+             {**c3b_a_pokes(), C3B_A_ACT + 0x68 + 0x52: b"\x55"}),            # child +0x52
+        Case("a11", {"eax": C3B_A_REC, "edx": 0x51},
+             {**c3b_a_pokes(), C3B_A_ACT + 0x68 + 0x58: b"\x61"}),            # child +0x58
+        Case("a12", {"eax": C3B_A_REC, "edx": 0x52}, c3b_a_pokes()),          # above 0x51: 0
+        Case("a13", {"eax": C3B_A_REC, "edx": 0xFF40}, c3b_a_pokes()),        # dx = 0x40
+        Case("a14", {"eax": C3B_A_REC, "edx": 0x80}, c3b_a_pokes(0)),         # dl&0x7F = 0
+        Case("a15", {"eax": C3B_A_REC, "edx": 0x3F}, c3b_a_pokes(0x80)),      # ring index 0x3F
+        Case("a16", {"eax": C3B_A_REC, "edx": 0x49},
+             {**c3b_a_pokes(), C3B_A_ACT + 0x55: b"\x66"}),                   # parent +0x55
+        Case("a17", {"eax": C3B_A_REC, "edx": 0x4A},
+             {**c3b_a_pokes(), C3B_A_ACT + 0x56: b"\x77\x76"}),               # parent word
+        Case("a18", {"eax": C3B_A_REC, "edx": 0x48},
+             {**c3b_a_pokes(), C3B_A_ACT + 0x54: b"\x88"}),                   # parent +0x54
+        Case("a19", {"eax": C3B_A_REC, "edx": 0x47},
+             {**c3b_a_pokes(), C3B_A_ACT + 0x53: b"\x99"}),                   # parent +0x53
+    ], eax_mask=0xFFFF, mutants=("@ring", "@sx", "@pswap", "@cswap", "@w58", "@a45", "@ret", "@opff")),
+    Spec("fighter_18350", 0x18350, [
+        Case("b0", {"eax": 0, "edx": 0}, c3b_b_case(0, 0, 0, 0xCEB00, b"\x01\x02")),
+        Case("b1", {"eax": 1, "edx": 0}, c3b_b_case(1, 1, 0, 0xCF399, b"\x03\x04", 1, 0x8000)),
+        Case("b2", {"eax": 0, "edx": 0}, c3b_b_case(0, 2, 0, 0xCFC32, b"\x05\x06")),
+        Case("b3", {"eax": 0, "edx": 1}, c3b_b_case(0, 3, 1, 0xD033B, b"\x7f\x80")),
+        Case("b4", {"eax": 0, "edx": 0}, c3b_b_case(0, 4, 0, 0xD0A44, b"\x09\x0a")),
+        Case("b5", {"eax": 1, "edx": 0}, c3b_b_case(1, 5, 0, 0xCEB00, b"\x01\x02")),
+        Case("b6", {"eax": 0, "edx": 0}, c3b_b_case(0, 6, 0, 0xCF399, b"\x03\x04")),
+        Case("b7", {"eax": 0, "edx": 0}, c3b_b_case(0, 7, 0, 0xCEB00, b"\x01\x02")),
+        Case("b8", {"eax": 1, "edx": 0}, c3b_b_case(1, 0x20, 0, 0xCEB00, b"\x01\x02")),
+        Case("b9", {"eax": 0, "edx": 0}, c3b_b_case(0, 0, 0, 0xCEB00, b"\x01\x02", 0, 0x8000)),
+    ], calls=(E.Call(0x1A570, ("eax",), mode="real"),), eax_mask=0,
+       mutants=("@tab", "@anchor", "@neg", "@bit", "@side")),
+    Spec("fighter_18540", 0x18540, [
+        Case("c0", {"eax": 0}, c3b_c_case(0, 0, 0x0100, 0x0FFF, 0x1234)),
+        Case("c1", {"eax": 1}, c3b_c_case(1, 1, 0x0200, 0xFFFF, 0x1000)),
+        Case("c2", {"eax": 0}, c3b_c_case(0, 2, 0x0300, 0x0FFF, 0x1000)),
+        Case("c3", {"eax": 0}, c3b_c_case(0, 3, 0x0400, 0x0FFF, 0x1000)),
+        Case("c4", {"eax": 0}, c3b_c_case(0, 4, 0x0500, 0x0FFF, 0x1000)),
+        Case("c5", {"eax": 0}, c3b_c_case(0, 5, 0x0600, 0x0FFF, 0x1000)),
+        Case("c6", {"eax": 0}, c3b_c_case(0, 6, 0x0700, 0x0FFF, 0x1000)),
+        Case("c7", {"eax": 0}, c3b_c_case(0, 7, 0x0800, 0x0FFF, 0x1000)),
+        Case("c8", {"eax": 0}, c3b_c_case(0, 0, 0x0200, 0x0FFF, 0x0100)),    # negative: 0
+        Case("c9", {"eax": 0}, c3b_c_case(0, 0, 0x0100, 0x2000, 0x2100)),    # == limit: 0
+        Case("c10", {"eax": 0}, c3b_c_case(0, 0, 0x0100, 0x2000, 0x20FF)),   # limit-1 kept
+        Case("c11", {"eax": 0}, c3b_c_case(0, 0, 0, 0, 0, live=False)),      # slot null: no write
+        Case("c12", {"eax": 0}, c3b_c_case(0, 0, 0x0000, 0x0FFF, 0x8010, 1)),  # mask 0x7FFF, *0x20
+    ], allow_calls=(0x18460, 0x18428), eax_mask=0,
+       mutants=("@default", "@noclamp", "@gt", "@mask", "@idx", "@side")),
+    Spec("hit_record_y", 0x18788, [
+        Case("y0", {"eax": 0}, c3b_y_pokes(0, 0x08)),
+        Case("y1", {"eax": 0}, c3b_y_pokes(0, 0x00, anchor=0x40, slot30=0x00020010,
+                                           ab4=0x00010000)),
+        Case("y2", {"eax": 0}, c3b_y_pokes(0, 0x00, anchor=0x40, slot30=0x00020000,
+                                           ab4=0x00010000,
+                                           extra={0xCEB80: b"\x01\x02", 0x1077B0 + 0x20: le32(0x41)})),
+        Case("y3", {"eax": 1}, c3b_y_pokes(1, 0x00, anchor=0x40, slot30=0x00030020,
+                                           ab4=0x00020000)),
+    ], allow_calls=(0x18460, 0x18428),
+       calls=(E.Call(0x18540, ("eax",), mode="real"),
+              E.Call(0x18350, ("eax", "edx"), mode="real"),
+              E.Call(0x1A570, ("eax",), mode="real")),
+       eax_mask=0xFFFFFFFF, mutants=("@bit", "@rec", "@call", "@always", "@add")),
+    # 0x38154 fighter_38154 (record §C3b.1): EAX = side. slot = DSD(0x1077A8[side]), rec = DSD(slot);
+    # either null returns. v: DS_001088BD == 8 && side == 1 gives 0x1500 - rec+0x3C when rec+0x3C is
+    # in [0, 0x5D00], otherwise DS_00108884 - 0x1500 - rec+0x18; every other side gives
+    # (0x4900 - side*0x200) - rec+0x3C in range, otherwise (0x1F00 - side*0x200) + DS_00108884 -
+    # rec+0x18. With rec+0x28 bit 14: |v| > 0x200 and v >= 0 runs 0x35838(slot, rec, 0x1000), flag 0;
+    # else slot+0x43 |= 0x40 and, when the zero-extended DS_001088BD >= 8, flag 1, else
+    # 0x36638(slot, rec) and flag 0. Without the bit: |v| <= 0x200 gives flag 1, else
+    # 0x35838(slot, rec, v < 0 ? 0x2000 : 0x1000) and flag 0. The flag is DS_001078F0[side]; with it
+    # set and slot+0x53 != 0, 0x367DC(slot, rec) (allow) runs and slot+0x52 = 9; with it clear,
+    # slot+0x53 = 0xC. The 0x36638 and 0x35838 paths are declared real; their own anim calls are the
+    # ANIM_BEGIN stub; slot+0x54 = 5 is never used (its 0x36638 arm recurses into 0x38154). Mask 0.
+    Spec("fighter_38154", 0x38154, [
+        Case("d0", {"eax": 0}, c3b_d_case(0, 8, 0, 0x1000, 0, 0)),        # V3 far v>=0: 0x35838 0x1000
+        Case("d1", {"eax": 0}, c3b_d_case(0, 8, 0, 0x1000, 0, 1, 0, 4)),  # bit14 far v>=0: 0x35838
+        Case("d2", {"eax": 0}, c3b_d_case(0, 8, 0, 0x5000, 0, 1, 0, 4)),  # bit14 far v<0: 0x35838
+        Case("d3", {"eax": 0}, c3b_d_case(0, 8, 0, 0x4800, 0, 1)),        # bit14 near, bd>=8: flag 1
+        Case("d4", {"eax": 0}, c3b_d_case(0, 0, 0, 0x4800, 0, 1, 0, 1)),  # bit14 near, bd<8: 0x36638
+        Case("d5", {"eax": 1}, c3b_d_case(1, 8, 0, 0x4700, 0, 1)),        # side1 V3, near: flag 1
+        Case("d6", {"eax": 0}, c3b_d_case(0, 0, 0, 0x4800, 0, 0, 0)),     # near, slot53 0: no 0x367DC
+        Case("d7", {"eax": 0}, c3b_d_case(0, 8, 0x2000, 0x8000, 0x0B00, 0)),  # V2 near: flag 1
+        Case("d8", {"eax": 0}, c3b_d_case(0, 0, 0x1000, 0x8000, 0x2000, 1, 0, 4)),  # V4 far: 0x35838
+        Case("d9", {"eax": 0}, c3b_d_case(0, 0, 0, 0, 0, 0, live=False)),  # slot null: return
+        Case("d10", {"eax": 0}, c3b_d_case(0, 0, 0, 0, 0, 0, recnull=True)),  # rec null: return
+        Case("d11", {"eax": 1}, c3b_d_case(1, 8, 0, 0x1000, 0, 0)),       # side1 V1: v = 0x500
+        Case("d12", {"eax": 1}, c3b_d_case(1, 8, 0x2000, 0x8000, 0x0B00, 0)),  # side1 V2 near
+        Case("d13", {"eax": 1}, c3b_d_case(1, 8, 0, 0x1400, 0, 0)),       # side1 V1 near: flag 1
+        Case("d14", {"eax": 0}, c3b_d_case(0, 0, 0, 0x5000, 0, 0)),       # v<0, bit14 clear: abs
+        Case("d15", {"eax": 0}, c3b_d_case(0, 9, 0, 0x4800, 0, 1)),       # bd=9 still >= 8: flag 1
+        Case("d16", {"eax": 0}, c3b_d_case(0, 0x88, 0, 0x4800, 0, 1, 0, 1)),  # bd 0x88 zero-extended >= 8 -> flag 1; kills the ==8 mutant and a sign-extended read
+    ], allow_calls=(0x367DC,),
+       calls=(ANIM_BEGIN,
+              E.Call(0x36638, ("eax", "edx"), mode="real"),
+              E.Call(0x35838, ("eax", "edx", "ebx"), mode="real")),
+       eax_mask=0, mutants=("@mode8", "@range", "@abs", "@bit", "@bd", "@flag", "@call", "@dir")),
+    # The voice remainder (record §C3b.1): the four DIG functions whose only callees are the AIL
+    # runtime calls. The runtime addresses are stubbed, with the port's host wrappers carrying the
+    # seams (ail.c AIL_sample_status/AIL_stop_sample/AIL_init_sample/AIL_stop_sequence, flow.c
+    # snd_music_playing): every wrapper passes no arguments, so the E.Call entries record none (the
+    # original's mem[] handle and the port's host pointer cannot be compared). EAX is AL everywhere
+    # (the raw's `mov al,1`/`xor al,al`); the callee clobbers are E.callee_clobbers over the image.
+    Spec("snd_music_stop", 0x1CA6C, [
+        Case("m0", {}, {DS_001028C0: le32(0), DS_001028D4: le32(0xA5A5A5A5),
+                        DS_001028D9: b"\xAA", DS_001028CC: le32(0xBBBBBBBB)}),      # no sequence: 0
+        Case("m1", {}, {DS_001028C0: le32(0x10B000), DS_001028D4: le32(0xA5A5A5A5),
+                        DS_001028D9: b"\xAA", DS_001028CC: le32(0xBBBBBBBB)}, {0x1CA40: 0}),
+        Case("m2", {}, {DS_001028C0: le32(0x10B000), DS_001028D4: le32(0xA5A5A5A5),
+                        DS_001028D9: b"\xAA", DS_001028CC: le32(0xBBBBBBBB)}, {0x1CA40: 1}),
+    ], calls=(E.Call(0x1CA40, (), eax=0), E.Call(0x5DEAF, (), clobbers=("ebx", "ecx", "edx"))),
+       eax_mask=0xFF,
+       mutants=("@gate", "@play", "@stop", "@zero", "@al", "@cc")),
+    # 0x1CE70 (record §C3b.1): EAX = the resource handle. The +0x0C dword of each 0x18-stride DIG
+    # slot is compared; on a match 0x5DD03 (+0x00's AIL handle) status 4 returns 1, any other clears
+    # the slot's +0x0C and the scan goes on. AL = 0 without a DIG driver.
+    Spec("snd_sample_playing", 0x1CE70, [
+        Case("q0", {"eax": 0x1234}, c3b_v_case(0, (0x1234, 0x99999999, 0x99999999, 0x99999999)),
+             {0x5DD03: 4}),
+        Case("q1", {"eax": 0x1234}, c3b_v_case(1, (0x99999999, 0x99999999, 0x99999999, 0x99999999)),
+             {0x5DD03: 4}),
+        Case("q2", {"eax": 0x1234}, c3b_v_case(1, (0x1234, 0x99999999, 0x99999999, 0x99999999)),
+             {0x5DD03: 4}),
+        Case("q3", {"eax": 0x1234}, c3b_v_case(1, (0x99999999, 0x1234, 0x99999999, 0x99999999)),
+             {0x5DD03: 0}),
+        Case("q4", {"eax": 0x1234}, c3b_v_case(1, (0x99999999, 0x99999999, 0x99999999, 0x1234)),
+             {0x5DD03: 4}),
+        Case("q5", {"eax": 0x1234}, c3b_v_case(1, (0x1234, 0x99999999, 0x99999999, 0x1234)),
+             {0x5DD03: 0}),
+        Case("q6", {"eax": 0x1234}, c3b_v_case(1, (0xAB001234, 0x99999999, 0x99999999, 0x99999999)),
+             {0x5DD03: 4}),
+    ], calls=(E.Call(0x5DD03, (), eax=0),), eax_mask=0xFF,
+       mutants=("@driver", "@status", "@clear", "@scan", "@wide", "@al")),
+    # 0x1CD9C (record §C3b.1): without a DIG driver AL = 0. Otherwise every slot's +0x04 and +0x0C
+    # are cleared and a slot whose 0x5DD03 status is not 2 is stopped/re-inited; AL = 1.
+    Spec("snd_samples_stop_all", 0x1CD9C, [
+        Case("r0", {}, c3b_v_case(0, (0x99999999, 0x99999999, 0x99999999, 0x99999999),
+                                  queued=0x11111111), {0x5DD03: 2}),
+        Case("r1", {}, c3b_v_case(1, (0x99999999, 0x99999999, 0x99999999, 0x99999999),
+                                  queued=0x11111111), {0x5DD03: 2}),
+        Case("r2", {}, c3b_v_case(1, (0x99999999, 0x99999999, 0x99999999, 0x99999999),
+                                  queued=0x11111111), {0x5DD03: 0}),
+    ], calls=(E.Call(0x5DD03, (), eax=0), E.Call(0x5DC8B, (), clobbers=("ebx", "ecx", "edx")),
+              E.Call(0x5DC0F, (), clobbers=("ebx", "ecx", "edx"))),
+       eax_mask=0xFF, mutants=("@driver", "@skip2", "@clr4", "@clrc", "@al", "@order")),
+    # 0x1CE04 (record §C3b.1): EAX = the handle. The first 0x18-stride slot whose +0x0C is the
+    # handle and whose 0x5DD03 status is not 2 is stopped/re-inited, its +0x0C cleared, AL = 1.
+    Spec("snd_sample_stop", 0x1CE04, [
+        Case("t0", {"eax": 0x1234}, c3b_v_case(0, (0x1234, 0x99999999, 0x99999999, 0x99999999)),
+             {0x5DD03: 4}),
+        Case("t1", {"eax": 0x1234}, c3b_v_case(1, (0x99999999, 0x99999999, 0x99999999, 0x99999999)),
+             {0x5DD03: 4}),
+        Case("t2", {"eax": 0x1234}, c3b_v_case(1, (0x1234, 0x99999999, 0x99999999, 0x99999999)),
+             {0x5DD03: 2}),
+        Case("t3", {"eax": 0x1234}, c3b_v_case(1, (0x1234, 0x99999999, 0x99999999, 0x99999999)),
+             {0x5DD03: 0}),
+        Case("t4", {"eax": 0x1234}, c3b_v_case(1, (0x99999999, 0x99999999, 0x1234, 0x99999999)),
+             {0x5DD03: 4}),
+        Case("t5", {"eax": 0x1234}, c3b_v_case(1, (0x1234, 0x1234, 0x99999999, 0x99999999)),
+             {0x5DD03: 0}),
+        Case("t6", {"eax": 0x1234}, c3b_v_case(1, (0xAB001234, 0x99999999, 0x99999999, 0x99999999)),
+             {0x5DD03: 4}),
+    ], calls=(E.Call(0x5DD03, (), eax=0), E.Call(0x5DC8B, (), clobbers=("ebx", "ecx", "edx")),
+              E.Call(0x5DC0F, (), clobbers=("ebx", "ecx", "edx"))),
+       eax_mask=0xFF, mutants=("@driver", "@eq2", "@clear", "@nolimit", "@al", "@calls")),
+    # 0x1CC28 snd_sample_queue (record §C3b.1): EAX = handle h, DL = the loop byte. Without a DIG
+    # driver, while the sample pause byte DS_001028DB is set, or when the handle does not resolve
+    # (0x1B544 allow; the 0x500BB allow reads the same DS_00101500), the queue does nothing. A
+    # payload above 0x6000 bytes tries only slot 0: buffer +0x10 set, +0x04 free and 0x5DD03 status
+    # not 4 queue there; otherwise the tail. A payload at or below 0x6000 scans slots 3..0 for a
+    # free arm (+0x10 set, +0x04 clear, status != 4) and otherwise takes the tail's candidate, the
+    # slot with the smallest +0x14 time strictly below the 0x500BB now (slot 0 on a tie). The tail
+    # stops and re-inits the handle's AIL sample (0x5DC8B/0x5DC0F), stores h/+0x08/now and AL = 1.
+    # The slot fields are seeded by one 0x60-byte poke (queued 0x11111111, loop 0x22, current
+    # 0x99999999, buffer 0x33333333, time 0x44444444), overridden per case.
+    # 0x249C0 list_insert_before (record §C3b.1): EAX = `at`, EDX = `rec`. prev = [at+4];
+    # [at+4] = rec; [rec] = at; [rec+4] = prev; [prev] = rec. Straight-line, no callees; the row
+    # binds the effects.c copy (the actors.c copy is the same body, as in C3's list rows). Mask 0.
+    Spec("list_insert_before", 0x249C0, [
+        Case("v0", {"eax": 0x10A200, "edx": 0x10A240},
+             {0x10A204: le32(0x10A260), 0x10A260: le32(0xA5A5A5A5),
+              0x10A240: le32(0x11111111), 0x10A244: le32(0x22222222)}),
+        Case("v1", {"eax": 0x10A200, "edx": 0x10A240},
+             {0x10A204: le32(0x10A200), 0x10A240: le32(0x33333333), 0x10A244: le32(0x44444444)}),
+        Case("v2", {"eax": 0x10A200, "edx": 0x10A240},
+             {0x10A204: le32(0x10A240), 0x10A240: le32(0x55555555), 0x10A244: le32(0x66666666)}),
+    ], eax_mask=0, mutants=("@prev", "@link", "@back", "@head", "@forward")),
+    Spec("snd_sample_queue", 0x1CC28, [
+        Case("z0", {"eax": 0x800001, "edx": 0x37}, c3b_q_case(driver=0), {0x5DD03: 0}),
+        Case("z1", {"eax": 0x800001, "edx": 0x37}, c3b_q_case(db=1), {0x5DD03: 0}),
+        # size > 0x6000: slot 0's arm queues (buf set, +0x04 clear, status 0).
+        Case("z2", {"eax": 0x800001, "edx": 0x37}, c3b_q_case(overrides={C3B_Q_QUEUED: le32(0)}),
+             {0x5DD03: 0}),
+        # size > 0x6000: slot 0 has no buffer, the tail queues slot 0.
+        Case("z3", {"eax": 0x800001, "edx": 0x37},
+             c3b_q_case(overrides={C3B_Q_QUEUED: le32(0), C3B_Q_BUF: le32(0)}), {0x5DD03: 0}),
+        # size > 0x6000: slot 0 is occupied (+0x04 set), the tail queues it.
+        Case("z4", {"eax": 0x800001, "edx": 0x37}, c3b_q_case(), {0x5DD03: 0}),
+        # size > 0x6000: slot 0 plays (status 4), the tail queues it.
+        Case("z5", {"eax": 0x800001, "edx": 0x37}, c3b_q_case(overrides={C3B_Q_QUEUED: le32(0)}),
+             {0x5DD03: 4}),
+        # size <= 0x6000: every arm fails differently; the smallest time is slot 1's.
+        Case("z6", {"eax": 0x800001, "edx": 0x37},
+             c3b_q_case(size=0x100, overrides={
+                 C3B_Q_T: le32(0x400), C3B_Q_T + 0x18: le32(0x100), C3B_Q_T + 0x30: le32(0x200),
+                 C3B_Q_T + 0x48: le32(0x300), C3B_Q_QUEUED: le32(0), C3B_Q_BUF + 0x18: le32(0)}),
+             {0x5DD03: 4}),
+        # size <= 0x6000: slot 2's arm queues before any candidate scan.
+        Case("z7", {"eax": 0x800001, "edx": 0x37},
+             c3b_q_case(size=0x100, overrides={C3B_Q_BUF + 0x48: le32(0), C3B_Q_QUEUED + 0x30: le32(0)}),
+             {0x5DD03: 0}),
+        # size <= 0x6000: slots 1 and 0 tie on the smallest time; the strict compare keeps 2.
+        Case("z8", {"eax": 0x800001, "edx": 0x37},
+             c3b_q_case(size=0x100, overrides={
+                 C3B_Q_T: le32(0x100), C3B_Q_T + 0x18: le32(0x200), C3B_Q_T + 0x30: le32(0x100),
+                 C3B_Q_T + 0x48: le32(0x200), C3B_Q_QUEUED: le32(0)}), {0x5DD03: 4}),
+        # size <= 0x6000: slots 3 and 0 are both free; the 3..0 scan queues slot 3.
+        Case("z9", {"eax": 0x800001, "edx": 0x37},
+             c3b_q_case(size=0x100, overrides={C3B_Q_QUEUED + 0x48: le32(0), C3B_Q_QUEUED: le32(0)}),
+             {0x5DD03: 0}),
+    ], allow_calls=(0x500BB, 0x1B544),
+       calls=(E.Call(0x5DD03, (), eax=0), E.Call(0x5DC8B, (), clobbers=("ebx", "ecx", "edx")),
+              E.Call(0x5DC0F, (), clobbers=("ebx", "ecx", "edx"))),
+       eax_mask=0xFF, mutants=("@driver", "@pause", "@size", "@armbuf", "@armq", "@armst",
+                               "@order", "@candcmp", "@candmin", "@tailret", "@tailstop",
+                               "@tailorder", "@loopbyte")),
+    Spec("effect_teardown", 0x13420, [
+        Case("e0", {"eax": C3B_E_REC}, c3b_e_pokes(0)),
+        Case("e1", {"eax": C3B_E_REC}, c3b_e_pokes(1)),
+        Case("e2", {"eax": C3B_E_REC}, c3b_e_pokes(2)),
+        Case("e3", {"eax": C3B_E_REC}, c3b_e_pokes(3)),
+        Case("e4", {"eax": C3B_E_REC}, c3b_e_pokes(4)),
+        Case("e5", {"eax": C3B_E_REC}, c3b_e_pokes(5)),
+        Case("e6", {"eax": C3B_E_REC}, c3b_e_pokes(6)),
+        Case("e7", {"eax": C3B_E_REC}, c3b_e_pokes(0x80)),
+    ], allow_calls=(0x249D0, 0x249B0, 0x33734, 0x33714),
+       eax_mask=0, mutants=("@unlink", "@restore", "@type1", "@flag", "@buf", "@tail")),
+    Spec("actor_type_49444", 0x49444, [
+        Case("a0", {"eax": C3B_F_REC}, c3b_f_pokes(rec14=0)),                 # rec+0x14 null
+        Case("a1", {"eax": C3B_F_REC}, c3b_f_pokes()),                        # bit1, idx 3
+        Case("a2", {"eax": C3B_F_REC}, c3b_f_pokes(flags=0)),                 # bit1 clear
+        Case("a3", {"eax": C3B_F_REC}, c3b_f_pokes(child=0x10AB00)),          # child retired
+        Case("a4", {"eax": C3B_F_REC}, c3b_f_pokes(q=0xFFFF0000)),            # idx -1
+        Case("a5", {"eax": C3B_F_REC}, c3b_f_pokes(flags=0x22)),              # bit5 too
+        Case("a6", {"eax": C3B_F_REC}, c3b_f_pokes(flags=1)),                 # bit0 only
+        Case("a7", {"eax": C3B_F_REC}, c3b_f_pokes(q=0x00020000, child=0x10AB00)),  # idx 2, child
+    ], calls=(E.Call(0x2B150, ("eax",)),
+              E.Call(0x249D0, ("eax",), mode="real"),
+              E.Call(0x249B0, ("eax", "edx"), mode="real")),
+       eax_mask=0, mutants=("@bit", "@idx", "@sign", "@child", "@link", "@reclr")),
+    # 0x2B150 (record §C3b.1). The callback targets 0x5D812 (a stub) and 0x12800 (the port's
+    # actor_type_12800; the callback's own 0x249D0/0x249B0 calls are in the call set) are
+    # allowed; the render pair 0x1C458+0x1C3D0 is allowed as the raw's two calls (the port's
+    # render_list_remove is the same body).
+    Spec("set_dead", 0x2B150, [
+        Case("s0", {"eax": C3B_S_REC}, c3b_s_pokes()),
+        Case("s1", {"eax": C3B_S_REC}, c3b_s_pokes(pset18=0x10AB00)),
+        Case("s2", {"eax": C3B_S_REC}, c3b_s_pokes(rnode=True)),
+        Case("s3", {"eax": C3B_S_REC}, c3b_s_pokes(typ=0, cb=True)),
+        Case("s4", {"eax": C3B_S_REC}, c3b_s_pokes(typ=1, cb=True, node=C3B_S_NODE)),
+        Case("s5", {"eax": C3B_S_REC}, c3b_s_pokes(typ=1, cb=True)),
+        Case("s6", {"eax": C3B_S_REC}, c3b_s_pokes(pset18=0x10AB00, idx=1)),
+        Case("s7", {"eax": C3B_S_REC},
+             c3b_s_pokes(typ=1, cb=True, node=C3B_S_NODE, pset18=0x10AB00)),
+    ], allow_calls=(0x1C458, 0x1C3D0, 0x5D812, 0x12800),
+       calls=(E.Call(0x33864, ("eax",)),
+              E.Call(0x249D0, ("eax",), mode="real"),
+              E.Call(0x249B0, ("eax", "edx"), mode="real")),
+       eax_mask=0, mutants=("@bit", "@gate", "@clear", "@table", "@pset", "@pal", "@render")),
+    # 0x29DB8 anim_write_var (record §C3b.1): EAX = rec, EDX = op, EBX = value (0x29DBC
+    # `mov eax,ebx`). o = (EDX & 0xFF) & 0x7F: below 0x40 the ring word at 0x105B4C indexed by
+    # (o + rec+0x51) & 0x3F takes (u16)value; 0x40..0x45 the record's own +0x52..+0x55/+0x58
+    # bytes and the +0x56 word (low byte only), all (u8)value or (u16)value&0xFF; 0x46..0x4B and
+    # 0x4C..0x51 the same fields on the pool record named by rec+0x4A / rec+0x4B (the byte forms
+    # store DS_00105BE8, not value); above 0x51 nothing. Mask 0.
+    Spec("anim_write_var", 0x29DB8, [
+        Case("w0", {"eax": C3B_W_REC, "edx": 0, "ebx": 0x1234},
+             c3b_w_pokes(i51=0x3F, ring={0: b"\xBB\xBB", 0x3E: b"\xAA\xAA"})),
+        Case("w1", {"eax": C3B_W_REC, "edx": 1, "ebx": 0x5678},
+             c3b_w_pokes(i51=0x3F, ring={0: b"\xBB\xBB", 0x3F: b"\xAA\xAA"})),
+        Case("w2", {"eax": C3B_W_REC, "edx": 2, "ebx": 0x9ABC},
+             c3b_w_pokes(i51=0x3E, ring={0: b"\xBB\xBB", 0x3F: b"\xAA\xAA"})),
+        Case("w3", {"eax": C3B_W_REC, "edx": 0x40, "ebx": 0x11223344}, c3b_w_pokes()),
+        Case("w4", {"eax": C3B_W_REC, "edx": 0x41, "ebx": 0x5566}, c3b_w_pokes()),
+        Case("w5", {"eax": C3B_W_REC, "edx": 0x42, "ebx": 0x7788}, c3b_w_pokes()),
+        Case("w6", {"eax": C3B_W_REC, "edx": 0x43, "ebx": 0x99AA}, c3b_w_pokes()),
+        Case("w7", {"eax": C3B_W_REC, "edx": 0x44, "ebx": 0x1234}, c3b_w_pokes()),
+        Case("w8", {"eax": C3B_W_REC, "edx": 0x45, "ebx": 0x5566}, c3b_w_pokes()),
+        Case("w9", {"eax": C3B_W_REC, "edx": 0x46, "ebx": 0x99}, c3b_w_pokes(i4a=0, be8=0x5A)),
+        Case("w10", {"eax": C3B_W_REC, "edx": 0x4A, "ebx": 0x1234}, c3b_w_pokes(i4a=0)),
+        Case("w11", {"eax": C3B_W_REC, "edx": 0x4B, "ebx": 0x7788}, c3b_w_pokes(i4a=0)),
+        Case("w12", {"eax": C3B_W_REC, "edx": 0x4C, "ebx": 0x99}, c3b_w_pokes(i4a=0, i4b=1, be8=0x6B)),
+        Case("w13", {"eax": C3B_W_REC, "edx": 0x50, "ebx": 0x1234}, c3b_w_pokes(i4a=0, i4b=1)),
+        Case("w14", {"eax": C3B_W_REC, "edx": 0x51, "ebx": 0x99}, c3b_w_pokes(i4a=0, i4b=1)),
+        Case("w15", {"eax": C3B_W_REC, "edx": 0x52, "ebx": 0x99}, c3b_w_pokes()),
+        Case("w16", {"eax": C3B_W_REC, "edx": 0xFF, "ebx": 0x99}, c3b_w_pokes()),
+        Case("w17", {"eax": C3B_W_REC, "edx": 0xBF, "ebx": 0x4321},
+             c3b_w_pokes(i51=0, ring={0x3F: b"\xAA\xAA"})),
+        Case("w18", {"eax": C3B_W_REC, "edx": 0xC0, "ebx": 0xABCD}, c3b_w_pokes()),
+        Case("w19", {"eax": C3B_W_REC, "edx": 0x47, "ebx": 0x99}, c3b_w_pokes(i4a=0, be8=0x61)),
+        Case("w20", {"eax": C3B_W_REC, "edx": 0x48, "ebx": 0x99}, c3b_w_pokes(i4a=0, be8=0x62)),
+        Case("w21", {"eax": C3B_W_REC, "edx": 0x49, "ebx": 0x99}, c3b_w_pokes(i4a=0, be8=0x63)),
+    ], eax_mask=0,
+       mutants=("@mask", "@ringm", "@radio", "@w44", "@swap", "@bep", "@child", "@high")),
+    # 0x2B8F8 anim_operand (record §C3b.1): EAX = rec. cw = DSW(DSD(rec+8)); mode = cw & 0x6000
+    # is stored at DS_00105BE6. When the previous op DS_00105BE4 is 0x1F, p advances by 2 and the
+    # next word is the operand (cx); when not, cx = cw & 0xFF and the mode-0 arm returns cx
+    # zero/sign-extended and stores it at DS_00105BE8. Otherwise 0x29F34 reads the variable
+    # (stubbed here: its own row proves it) and the mode selects: 0x2000 the read word; 0x4000
+    # the read word with DS_00105BD4 = DSD(rec+8 + 2) and return; otherwise DS_00105BD4 =
+    # DSD(rec+0x0C) and the next word's 0xF000: 0x1000 v*2, 0x2000 v*2+1, 0x4000/0x5000/0x6000
+    # a word at base + v*2 / v*4 / v*4+2 (DS_00105BD4 = that address), anything else the byte at
+    # base + v (sign-extended to 0xFFxx when above 0x7F). EAX is masked to 16 bits on every return.
+    Spec("anim_operand", 0x2B8F8, [
+        Case("o0", {"eax": C3B_O_REC}, c3b_o_pokes(op=0x1F, cw=0x0001, w2=0x1234)),
+        Case("o1", {"eax": C3B_O_REC}, c3b_o_pokes(op=0x1F, cw=0x2002, w2=0x002A),
+             stub_eax={0x29F34: 0x7777}),
+        Case("o2", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x0005)),
+        Case("o3", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x0085)),
+        Case("o4", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x2007), stub_eax={0x29F34: 0x1234}),
+        Case("o5", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x4008, w2=0xB100, w4=0x0010),
+             stub_eax={0x29F34: 0x9ABC}),
+        Case("o6", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x6009, w4=0x1000),
+             stub_eax={0x29F34: 3}),
+        Case("o7", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x600A, w4=0x2000),
+             stub_eax={0x29F34: 3}),
+        Case("o8", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x600B, w4=0x4000),
+             stub_eax={0x29F34: 2}),
+        Case("o9", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x600C, w4=0x5000),
+             stub_eax={0x29F34: 2}),
+        Case("o10", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x600D, w4=0x6000),
+             stub_eax={0x29F34: 2}),
+        Case("o11", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x600E, w4=0),
+             stub_eax={0x29F34: 2}),
+        Case("o12", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x600F, w4=0),
+             stub_eax={0x29F34: 3}),
+        Case("o13", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x6010, w4=0x3000),
+             stub_eax={0x29F34: 4}),
+        Case("o14", {"eax": C3B_O_REC}, c3b_o_pokes(op=0x1F, cw=0x0003, w2=0xFFFF)),
+        Case("o15", {"eax": C3B_O_REC}, c3b_o_pokes(cw=0x6011, w4=0x7000),
+             stub_eax={0x29F34: 5}),
+    ], calls=(E.Call(0x29F34, ("eax", "edx"), clobbers=("edx",)),),
+       eax_mask=0xFFFF,
+       mutants=("@op", "@mask", "@adv", "@be8", "@sel", "@scale", "@deref", "@byte")),
+    # 0x3AFC4 fighter_anim_triple (record §C3b.1). The 0x3AFCE block is the raw's 0x62003 fatal
+    # path (EDX outside [0,0x40)); the port zeroes the triple there, and no case can stop the
+    # original on a fatal, so the block is named unhit. Mask 0 (every port caller ignores EAX).
+    Spec("fighter_anim_triple", 0x3AFC4, [
+        Case("t0", {"eax": 0, "edx": 0, "ebx": C3B_T_OUT}, c3b_t_pokes(sc=0, tbl=0x03)),
+        Case("t1", {"eax": 0, "edx": 0x3F, "ebx": C3B_T_OUT}, c3b_t_pokes(sc=0, tbl=0x03)),
+        Case("t2", {"eax": 1, "edx": 0x20, "ebx": C3B_T_OUT}, c3b_t_pokes(sc=1, tbl=0x01)),
+        Case("t3", {"eax": 1, "edx": 0, "ebx": C3B_T_OUT}, c3b_t_pokes(sc=1, tbl=0x01)),
+        Case("t4", {"eax": 2, "edx": 0x11, "ebx": C3B_T_OUT}, c3b_t_pokes(sc=2, tbl=0xFF)),
+    ], unhit_named={0x3AFCE: "the raw's 0x62003 fatal for edx outside [0,0x40)"},
+       eax_mask=0, mutants=("@idx", "@shift", "@add", "@o0", "@o1", "@o2")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -4594,7 +5266,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + P7_SPECS + P8_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

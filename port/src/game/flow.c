@@ -6170,8 +6170,9 @@ u32 snd_music_request(u32 song, u32 b)
 /* 0x1CA40. AL = 1 when the sequence DS_001028C0 plays (0x5DEED status 4).
  * PORT: the sequence handle is s_sequence; DS_001028C0 is 0 in the port, so
  * the status arm runs only when a caller has stored one. */
-static u32 snd_music_playing(void)
+u32 snd_music_playing(void)
 {
+    PR_SEAM_RET0(0x1CA40u);
     if (DSD(DS_001028C0) == 0u) return 0;                  /* 0x1CA40 */
     return AIL_sequence_status(s_sequence) == 4 ? 1u : 0u; /* 0x5DEED */
 }

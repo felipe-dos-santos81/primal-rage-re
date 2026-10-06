@@ -65,8 +65,11 @@ void actor_pset_palette(u32 rec, u32 word, u32 handle);
  * with the 0x800 sprite bit while that byte is non-zero. */
 void actor_pset_flag_5f(u32 rec, u8 flag);
 /* 0x2B150. Mark `rec` dead (rec+0x28 |= 8), release its pset palette and unlink
- * the pset from the render list. 0x121A0's phase 1 calls it on the logo and the
- * second object when DS_000F0A66 <= 0x10. */
+ * the pset from the render list. Exported for its own C3b row; the port's other
+ * callers go through actor_set_dead below. */
+void set_dead(u32 rec);
+/* 0x2B150. The wrapper the port's non-actor modules call: 0x121A0's phase 1
+ * uses it on the logo and the second object when DS_000F0A66 <= 0x10. */
 void actor_set_dead(u32 rec);
 /* 0x49444 (record §49-P). Types 0x20..0x25's teardown: clear the 0x10839C
  * entry named by the node's 16.16 +0x18 when its +0x1C bit 1 is set, retire

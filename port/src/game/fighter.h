@@ -182,6 +182,8 @@ void fighter_385b0(u32 rec);                             /* 0x385B0 */
 /* 0x36638. Reset the slot's +0x43 bit 0x40 and restart the fighter's animation
  * per slot+0x54. Called by 0x349C8, 0x35838 and the 0x34B6C position branch. */
 int fighter_state_36638(u32 slot, u32 rec);
+/* 0x367DC (C3b): the +0x53 reset, exported for 0x38154's row mutants. */
+void fighter_state_367dc(u32 slot, u32 rec);
 
 /* 0x35D7C. The +0x52 == 3 handler: clear slot+0x53/+0x54, then, when the
  * 0x3CF38 hit chain reports no hit, arm slot+0x54 = 2, slot+0x53 = 4. */
