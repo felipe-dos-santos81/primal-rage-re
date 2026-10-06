@@ -47710,12 +47710,12 @@ static void p7_check_23960(void)
               "the child's +0x24 is the spawn value + rng_next(6)");
         if (c.f != base) found = 1u;
     }
+    /* Anti-degenerate: the [base, base + 5] range check alone passes with every draw 0. */
     CHECK(found != 0u, "at least one child's rng draw was non-zero");
 
     /* 0x23A7C: one 0xA8388 child, its +0x14 = the record's slot, +0x51 = the
      * record's side and the record's +0x4B = the child's +0x56; then
      * 0x23960(child) spawns four more (the child's other slot is set). */
-    n = u6b_list(before, 0x80u);
     DSB(Z_R0 + 0x14u) = 0u;     /* reset the +0x14 field the previous run's 49444-style paths may have touched */
     z_fseed();
     DSB(Z_R0 + 0x51u) = 0u;

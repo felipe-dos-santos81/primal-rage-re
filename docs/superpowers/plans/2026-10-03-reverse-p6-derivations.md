@@ -30,7 +30,8 @@ consulted.
 
 `diff_emu.static_scan(..., switches=True, resolved=E.RESOLVED_JUMPS)` from each roadmap member, every
 direct callee, every code immediate, and the E2 evidence column (`docs/superpowers/plans/
-2026-10-01-reverse-e2-triage.md`; all 18 are `animation-targets` rows):
+2026-10-01-reverse-e2-triage.md`; 17 are `animation-targets` rows and `0x24220` is the
+supplement's `immediate at 243A1` row):
 
 | member | insns / blocks | direct callees | reachable as |
 |---|---|---|---|

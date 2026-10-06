@@ -1041,6 +1041,8 @@ int actors_init(void)
      * animation targets. */
     fn_register(0x22A40u, (void (*)(void))anim_code_22A40);
     fn_register(0x47E30u, (void (*)(void))anim_code_47E30);
+    /* PORT: record 2026-10-03-reverse-p6 §P6.6. Track P batch 6's Task 5
+     * animation targets. */
     fn_register(0x24338u, (void (*)(void))anim_code_24338);
     fn_register(0x3E160u, (void (*)(void))anim_code_3E160);
     /* PORT: record 2026-10-03-reverse-p6 §P6.7. Track P batch 6's Task 6

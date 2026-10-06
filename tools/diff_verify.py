@@ -2613,7 +2613,6 @@ C1_SPECS = [
 # ---- track P batch 7: the remaining unported direct callees and the targets outside E2 (record
 # 2026-10-04-reverse-p7) --------------------------------------------------------------------------------
 # The callees the batch stubs, args in the port's C order and clobbers from E.callee_clobbers.
-P7_2BDB8 = E.Call(0x2BDB8, ("eax", "edx"), clobbers=("edx",))
 P7_2BDB8_R = E.Call(0x2BDB8, ("eax", "edx"), mode="real")
 P7_2BDE8_R = E.Call(0x2BDE8, ("eax",), mode="real")
 P7_23960 = E.Call(0x23960, ("eax",))

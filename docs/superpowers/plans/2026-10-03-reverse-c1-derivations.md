@@ -136,7 +136,7 @@ source-only changes: no new `FN_` address, no `fn_register`, so the E2 table is 
    clobber table's `0x18AF8` entry is the image's.
 3. **`0x39A10`'s `rec+0x51` zero-extension is unobservable in-image.** Side 0x80 reads the slot table at
    0x10C1B0 (outside the image, zero) and writes at 0x10C224; `run_original` reports the outside write and
-   the suite forbids outside accesses, so the case and the `@sext` mutant were dropped. Named limit (§C1.5).
+   the suite forbids outside accesses, so the case and the `@sext` mutant were dropped. Named limit (§C1.6).
 4. **`0x18C14`'s flag 7 reads ctx[3] (the other slot's) `+0x62`**, not ctx[2]'s; the first case set poked
    the own slot and left block 0x18DE3 unhit. Corrected in the generator. The raw also rewrites the flag
    byte (flags[0] = 4/3) in the EDX buffer, which is mem[]: the binding copies the local flags back to

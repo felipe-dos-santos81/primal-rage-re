@@ -116,7 +116,8 @@ source-only changes: no new `FN_` address, no `fn_register`, so the E2 table is 
    of the plan's review focus).
 2. **`E.callee_clobbers` over-approximates the Watcom callee-saved registers through the call
    tree** for three stubs, and their callers keep the registers live across the call:
-   `0x2B150` (its caller `0x2B30D` reads ESI after the call; the bytes derive esi/edi/ebp),
+   `0x2B150` (its caller's ESI is read at `0x2B30D`, before the call, and used at `0x2B314` after;
+   the bytes derive esi/edi/ebp),
    `0x2BD44` (the caller `0x3B877`/`0x3B8C8` reads ESI; the bytes derive edx/esi/edi/ebp) and
    `0x3B298` (the caller reads EDI at `0x3B82E` — `mov eax,edi` — feeding the `0x3B834` call into
    `0x3AE9C`; the bytes derive edx/edi/ebp). A poisoned register a
@@ -357,7 +358,8 @@ The rows as executed (cases / blocks hit-total / mutants):
 §C2b.5 above carries the prefix evidence. The three unhit blocks are the named ones (the two
 `0x62003` fatal paths plus the dead `0x2B071`).
 
-**Task 3's store sweep** (the review focus: every field a row writes carries a sentinel) found **12
+**Task 3's store sweep** (a scratch script in `.superpowers/sdd/2026-10-01-plans/c2b-scratch/`, not
+a repo tool; the review focus: every field a row writes carries a sentinel) found **12
 store instructions the fixtures could not observe** at `297000c` — the store wrote its own pre-state
 in every case that ran it, so a dropped or wrong-width store would have passed:
 
