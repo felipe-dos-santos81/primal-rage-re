@@ -453,7 +453,11 @@ Named gaps and limits:
 - **Masks** (`C3B_MASKS` in the test): `fighter_18350`, `fighter_18540`, `fighter_38154`,
   `list_insert_before`, `effect_teardown`, `actor_type_49444`, `set_dead`, `anim_write_var` and
   `fighter_anim_triple` 0 (their callers ignore EAX); the five `snd_*` rows and `snd_sample_queue`
-  0xFF (AL); `anim_read_var` and `anim_operand` 0xFFFF (the raw's `and eax,0xffff` returns);
+  0xFF (AL); `anim_operand` 0xFFFF (its own returns mask `and eax,0xffff`, 0x2B9BC/0x2BAE1);
+  `anim_read_var` 0xFFFF (the callers read 16 bits — `and eax,0xffff` at 0x2A49C, `add ecx,eax` at
+  0x2A480 with only ECX's low word surviving, the `mov ax,cx` returns 0x2A4E4/0x2A4F1 and `test
+  ax,ax` at 0x2AAD1 — while its pool arms write only AX on the 32-bit base of 0x29FBC..0x29FD8,
+  keeping the base's high word in EAX);
   `hit_record_y` full (the only caller reads the dword).
 - **`0x2EA30` and the host/bare names**: never rowed (the interrupt-lock counter has no C function;
   `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64` are host/bare; `0x500BB` and

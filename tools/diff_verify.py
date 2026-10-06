@@ -4562,8 +4562,13 @@ C3_SPECS = [
 # `and dl,0x7f` at 0x29F38/0x29F3C). o = op & 0x7F: < 0x40 the ring word at 0x105B4C indexed by
 # (o + rec+0x51) & 0x3F; 0x40..0x45 the record's own fields (0x40..0x43 and 0x45 sign-extended
 # bytes, 0x44 the +0x56 word); 0x46..0x4B / 0x4C..0x51 the same fields on the record at
-# [0x1014F4] + rec[0x4A]/rec[0x4B] * 0x68; above 0x51 zero. EAX is zero-extended on every path
-# (0x29F3A/0x29F63/0x29FB2 `xor eax,eax`) and the port returns u32, so the mask is full.
+# [0x1014F4] + rec[0x4A]/rec[0x4B] * 0x68; above 0x51 zero. The ring/record arms zero EAX first
+# (0x29F3A/0x29F63/0x29F73 `xor eax,eax`); the pool arms write only AX (`66 0f be`/`66 8b`,
+# 0x29FED..0x2A014) on the full 32-bit base built at 0x29FBC..0x29FD8, so a pool arm returns EAX
+# with the base's high word above the 16-bit field. The callers read 16 bits — `and eax,0xffff` at
+# 0x2A49C; 0x2A480 `add ecx,eax`, whose low word alone survives (0x2A4C4 `mov eax,ecx` /
+# 0x2A4D1 `and eax,0xffff`); the `mov ax,cx` returns 0x2A4E4/0x2A4F1; 0x2AAD1 `test ax,ax` — so
+# eax_mask=0xFFFF is load-bearing: a full mask compares the base's high word (a8: 0x100033 vs 0x33).
 C3B_A_REC = 0x10A800          # C3b zero BSS: 0x29F34's record
 C3B_A_ACT = 0x10A900          # its parent/child actor pair (index 0 / 1 at +0x68)
 C3B_A_RING = 0x105B4C         # DS_00105B4C: the 0x40-word ring
