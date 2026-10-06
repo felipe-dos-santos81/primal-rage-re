@@ -32,6 +32,14 @@ void fighter_anim_triple(u32 out[3], u32 slot_char, s32 edx);
  * <= 1 (unsigned bytes). */
 int fighter_state_ok(u32 side);
 
+/* 0x46460. One word of player `side`'s 0x28-stride input-history ring. The
+ * seam (C2b) records it for 0x3B298's row; the harness reads it too. */
+u32 fighter_input_read(u32 side, s32 index);
+
+/* 0x1AB5C. The facing word: the seven ring reads ORed with the side's command
+ * word, then the 0x1000/0x2000/0x3000 base. The seam (C2b) records it. */
+u32 fighter_input_mask(u32 side);
+
 /* 0x1A570. The "actor bit 15 clear" predicate:
  * (word[actor] & 0x8000) == 0 for slot[side]'s actor record. */
 int fighter_actor_bit15_clear(u32 side);
@@ -207,6 +215,10 @@ int fighter_1a640(u32 side);
  * dispatch on the two reaction animation words and slot+0x54. EAX = slot, the
  * stack argument = the reaction byte. */
 void fighter_reaction_apply(u32 slot, u32 reaction);
+
+/* 0x2BD44. Copy param_2's +0x4B into param_1 and re-arm param_2; the C2b seam
+ * records 0x3B714's call. */
+void fighter_2bd44(u32 param_1, u32 param_2);
 
 /* 0x3A43C. The 0x3A504 pose family's per-frame handler: phase 0 arms +0x58;
  * phase 1 starts the self record's 0xC8FE0[char] stream at 3.0, re-anchors the
@@ -391,6 +403,14 @@ void fighter_38fec(u32 side);
 /* 0x39040. The per-side combo pass; its tail clears the +0x107D2C/
  * 0x107D20/0x107D24 words and the 0x107A80 table. */
 void fighter_39040(u32 side);
+
+/* 0x379C4 / 0x164E8 / 0x365C8 / 0x36BC8 / 0x3C520 (C2b): the 0x36870
+ * machine's callees, exported for its differential row's mutants. */
+void fighter_379c4(u32 slot);
+void fighter_164e8(u32 side);
+int fighter_state_365c8(u32 slot, u32 rec, u32 side);
+int fighter_state_36bc8(u32 slot, u32 rec);
+void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits);
 
 /* 0x1DE64. The reaction picker: map the side's command word (or, with slot+0x63
  * clear, the 0x46460/0x4649C input scan, record §49-B) through 0x1DDF4 to a
@@ -1112,6 +1132,16 @@ void fighter_19820(void);
 /* 0x392A0. The winner-pose driver (see its header comment in fighter.c);
  * exported for 0x28C38 (record §48-B). EAX = slot, EDX = v, EBX = w. */
 void fighter_392a0(u32 slot, s32 v, s32 w);
+
+/* 0x39738. The reaction damage/knockback scaler 0x39834 runs; the C2b
+ * seams record its call and 0x36CE4/0x4F434's. */
+s32 fighter_39738(u32 side, s32 b);
+
+/* 0x36CE4. Set slot+0x43 bit 2 (and restart the side's record off modes 3/0x22). */
+void fighter_36ce4(u32 slot);
+
+/* 0x4F434. The AI difficulty nudge 0x39834's tail runs. */
+void fighter_4f434(void);
 
 /* Record §49-Z. 0x39FB0: the pose 0x39F40 (-0x50, 0x64, 0xF, 0x14) on the
  * slot record's side after 0x18B04. EAX = slot. */

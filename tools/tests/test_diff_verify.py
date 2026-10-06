@@ -879,6 +879,70 @@ P8_KINDS = {
 }
 
 
+# Track P batch C2b (record 2026-10-05-reverse-c2b): the nine deferred callee rows with their EAX
+# masks, and what alone catches each of their mutants.
+C2B_MASKS = {
+            "palette_acquire": 0xffffffff,
+            "effects_spawn": 0x0,
+            "fighter_command_dispatch": 0xff,
+            "fighter_reaction": 0x0,
+            "fighter_39834": 0x0,
+            "fighter_36870": 0x0,
+            "actor_spawn": 0xffffffff,
+            "sound_voice": 0xff,
+            "spawn_anim_opcode": 0xff,
+}
+C2B_KINDS = {
+    "palette_acquire@mutant": {"byte", "eax"},
+    "palette_acquire@new": {"byte", "eax"},
+    "palette_acquire@inc": {"byte"},
+    "palette_acquire@start": {"byte"},
+    "palette_acquire@reflow": {"byte"},
+    "palette_acquire@count": {"byte"},
+    "effects_spawn@mutant": {"byte"},
+    "effects_spawn@count": {"byte"},
+    "effects_spawn@copy": {"byte"},
+    "effects_spawn@lock": {"byte"},
+    "effects_spawn@free": {"byte"},
+    "fighter_command_dispatch@mutant": {"byte", "call #1 memory", "call #2 memory", "call #3 memory"},
+    "fighter_command_dispatch@copy": {"byte", "call #1 memory", "call #2 memory", "call #3 memory"},
+    "fighter_command_dispatch@early": {"call #1", "call #2"},
+    "fighter_command_dispatch@scan": {"byte", "eax", "call #3"},
+    "fighter_command_dispatch@b2": {"byte", "eax", "call #3", "call #3 memory"},
+    "fighter_command_dispatch@force": {"byte", "eax", "call #2"},
+    "fighter_command_dispatch@arm": {"byte", "call #2 memory", "call #3 memory"},
+    "fighter_reaction@mutant": {"byte"},
+    "fighter_reaction@hold": {"call #3", "call #3 memory", "call #4", "call #5", "call #6"},
+    "fighter_reaction@swap": {"byte", "call #0", "call #1", "call #2", "call #2 memory", "call #3",
+                              "call #3 memory", "call #4", "call #4 memory", "call #5", "call #5 memory",
+                              "call #6", "call #6 memory"},
+    "fighter_reaction@early": {"byte", "call #1", "call #2", "call #3", "call #4", "call #5"},
+    "fighter_reaction@efc": {"byte", "call #2", "call #3", "call #4", "call #5", "call #6"},
+    "fighter_reaction@branch": {"byte", "call #3", "call #4", "call #4 memory", "call #5", "call #5 memory", "call #6"},
+    "fighter_39834@mutant": {"call #1"},
+    "fighter_39834@ai": {"byte", "call #3", "call #3 memory", "call #4"},
+    "fighter_39834@arm": {"byte", "call #3", "call #3 memory", "call #4"},
+    "fighter_39834@thr": {"byte"},
+    "fighter_39834@tail": {"call #4"},
+    "fighter_36870@mutant": {"byte", "call #0", "call #0 memory", "call #1", "call #2", "call #3", "call #4", "call #5"},
+    "fighter_36870@arm": {"byte", "call #3", "call #4", "call #5"},
+    "fighter_36870@so": {"byte", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "fighter_36870@case": {"call #4"},
+    "fighter_36870@mask": {"byte", "call #1 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory"},
+    "actor_spawn@mutant": {"byte", "call #2", "call #2 memory", "call #3", "call #3 memory", "call #4"},
+    "actor_spawn@minus": {"byte", "call #1", "call #1 memory", "call #2", "call #2 memory", "call #3", "call #3 memory", "call #4"},
+    "actor_spawn@pal": {"byte", "call #2", "call #2 memory", "call #3", "call #3 memory", "call #4"},
+    "actor_spawn@type": {"byte"},
+    "sound_voice@mutant": {"byte", "eax", "call #0", "call #1"},
+    "sound_voice@queue": {"call #1"},
+    "sound_voice@case5": {"call #0"},
+    "sound_voice@stop": {"eax", "call #1"},
+    "spawn_anim_opcode@mutant": {"byte"},
+    "spawn_anim_opcode@indirect": {"eax"},
+    "spawn_anim_opcode@child": {"call #0"},
+    "spawn_anim_opcode@skip": {"byte"},
+}
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -903,7 +967,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
-                                            + list(P6_MASKS) + list(C2_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
+                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
@@ -919,7 +983,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
             + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)
-            + list(P6_KINDS) + list(C2_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
+            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -984,7 +1048,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
-            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS,
+            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS,
             **P7_MASKS, **P8_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
@@ -1375,6 +1439,64 @@ class RealFunctionTests(unittest.TestCase):
         ):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
+    def test_each_c2b_mutant_is_caught_by_what_it_breaks(self):
+        # track P batch C2b (record 2026-10-05-reverse-c2b): what alone catches each mutant; the
+        # rows with callees have mutants caught only by the call list or the memory at a call
+        for name, want in C2B_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        # the exact case set that alone catches each mutant (measured on the prototype)
+        for name, ids in (
+        ("palette_acquire@mutant", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6']),
+        ("palette_acquire@new", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6']),
+        ("palette_acquire@inc", ['p1', 'p4']),
+        ("palette_acquire@start", ['p0', 'p2', 'p3', 'p5', 'p6']),
+        ("palette_acquire@reflow", ['p2']),
+        ("palette_acquire@count", ['p0', 'p2', 'p3', 'p5', 'p6']),
+        ("effects_spawn@mutant", ['f0', 'f1', 'f2', 'f4']),
+        ("effects_spawn@count", ['f2', 'f4']),
+        ("effects_spawn@copy", ['f0', 'f4']),
+        ("effects_spawn@lock", ['f0', 'f1', 'f2', 'f4']),
+        ("effects_spawn@free", ['f0', 'f1', 'f2', 'f4']),
+        ("fighter_command_dispatch@mutant", ['c0', 'c1', 'c10', 'c11', 'c12', 'c13', 'c14', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
+        ("fighter_command_dispatch@copy", ['c0', 'c1', 'c10', 'c11', 'c12', 'c13', 'c14', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
+        ("fighter_command_dispatch@early", ['c4', 'c5']),
+        ("fighter_command_dispatch@scan", ['c14']),
+        ("fighter_command_dispatch@b2", ['c13', 'c2', 'c5']),
+        ("fighter_command_dispatch@force", ['c8']),
+        ("fighter_command_dispatch@arm", ['c2', 'c3', 'c6', 'c7', 'c8']),
+        ("fighter_reaction@mutant", ['r4']),
+        ("fighter_reaction@hold", ['r3', 'r4', 'r5', 'r6', 'r7', 'r8']),
+        ("fighter_reaction@swap", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8']),
+        ("fighter_reaction@early", ['r1', 'r3', 'r8']),
+        ("fighter_reaction@efc", ['r2', 'r4', 'r5', 'r6', 'r7']),
+        ("fighter_reaction@branch", ['r3', 'r4', 'r5', 'r6', 'r7', 'r8']),
+        ("fighter_39834@mutant", ['f1', 'f2', 'f5']),
+        ("fighter_39834@ai", ['f3']),
+        ("fighter_39834@arm", ['f2']),
+        ("fighter_39834@thr", ['f5']),
+        ("fighter_39834@tail", ['f5']),
+        ("fighter_36870@mutant", ['f0']),
+        ("fighter_36870@arm", ['f2']),
+        ("fighter_36870@so", ['f1', 'f10', 'f11', 'f2', 'f2b', 'f3', 'f4', 'f5', 'f6', 'f6b', 'f7', 'f8', 'f9']),
+        ("fighter_36870@case", ['f6']),
+        ("fighter_36870@mask", ['f1', 'f10', 'f11', 'f2', 'f2b', 'f3', 'f4', 'f5', 'f6', 'f6b', 'f7', 'f8', 'f9']),
+        ("actor_spawn@mutant", ['g4']),
+        ("actor_spawn@minus", ['g2', 'g3', 'g4']),
+        ("actor_spawn@pal", ['g1', 'g10', 'g11', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8']),
+        ("actor_spawn@type", ['g7']),
+        ("sound_voice@mutant", ['v100', 'v100b']),
+        ("sound_voice@queue", ['t2b']),
+        ("sound_voice@case5", ['t5_3f_0']),
+        ("sound_voice@stop", ['t2a', 't2b']),
+        ("spawn_anim_opcode@mutant", ['o06a']),
+        ("spawn_anim_opcode@indirect", ['o15']),
+        ("spawn_anim_opcode@child", ['o0ca', 'o0cb']),
+        ("spawn_anim_opcode@skip", ['o2db']),
+        ):
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
+
     def test_each_p7_mutant_is_caught_by_what_it_breaks(self):
         # track P batch 7 (record 2026-10-04-reverse-p7): what alone catches each mutant
         for name, want in P7_KINDS.items():
@@ -1393,31 +1515,37 @@ class RealFunctionTests(unittest.TestCase):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
         stubs = {k.addr: k.clobbers for s in V.SPECS for k in s.calls if k.mode == "stub"}
-        self.assertEqual(stubs, {0x2C3FC: (), 0x2BC30: ("edx",), 0x3C4CC: ("edx",), 0x3C480: ("edx",),
-                                 0x2AE14: ("ebx", "ecx", "edx"), 0x29C08: ("edx",), 0x1A570: (), 0x2A17C: ("edx",),
-                                 0x188AC: ("edx",), 0x38034: (), 0x34D8C: (),
-                                 0x18C14: ("ebx", "edx", "ebp"), 0x18AF8: ("ebx", "ecx", "edx"),
-                                 0x39834: ("edx", "ebp"), 0x39A10: ("edx",), 0x3C208: ("edx",), 0x3C358: (),
-                                 0x22404: (), 0x36870: ("esi", "edi", "ebp"), 0x35838: ("ebx", "edx"),
-                                 0x3B298: ("edx", "edi", "ebp"), 0x39FB0: (), 0x3A95C: ("edx",),
-                                 0x3C190: ("edx",), 0x3B714: ("edx",), 0x48170: (), 0x3C148: (), 0x468D8: (),
-                                 0x36D98: (), 0x188DC: ("edx",), 0x3C16C: (),
-                                 0x186D0: (), 0x18714: (), 0x187FC: (), 0x1883C: ("ebx", "edx"),
-                                 0x189FC: (), 0x18A4C: (), 0x18B04: (), 0x18B44: (),
-                                 0x1DDF4: ("ebx", "edx"), 0x2A408: ("edx",), 0x2B2A0: ("ebx", "edx"),
-                                 0x33754: (), 0x33864: (), 0x36638: ("edx",), 0x39EFC: (),
-                                 0x39F40: ("ebx", "edx"), 0x3B8D8: ("edx",), 0x3B90C: ("edx",),
-                                 0x2AD40: ("edx", "edi", "ebp"),
-                                 0x23960: (),
-                                 0x3A9D8: ("edx",),
-                                 0x2B150: ("esi", "edi", "ebp"),
-                                 0x41310: (), 0x49444: ("edi", "ebp"),
-                                 0x39280: (), 0x13244: (), 0x2A148: ("edx",), 0x2BCF4: ("edx",),
-                                 0x1890C: ("edx",), 0x29BC8: ("ebx", "edx"), 0x37D18: ("edx",),
-                                 0x13C70: ("ebx", "edx"), 0x3AA54: (),
-                                 0x13DF0: (), 0x18540: (), 0x18350: ("edx",), 0x18788: (), 0x1881C: (),
-                                 0x1A5AC: (), 0x38154: (), 0x249B0: (), 0x249D0: (),
-                                 0x2B150: ("esi", "edi", "ebp"), 0x29F34: ("edx",)})
+        # 0x2B150/0x2BD44/0x3B298 carry the caller-observed sets (record §C2b.3): the byte-derived
+        # transitive scan over-approximates the Watcom callee-saved registers their callers keep
+        # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
+        self.assertEqual(stubs, {0x13244: (), 0x13C70: ("ebx", "edx"), 0x13DF0: (), 0x164E8: (),
+                                 0x18350: ("edx",), 0x18540: (), 0x186D0: (), 0x18714: (), 0x18788: (),
+                                 0x187FC: (), 0x1881C: (), 0x1883C: ("ebx", "edx"), 0x188AC: ("edx",),
+                                 0x188DC: ("edx",), 0x1890C: ("edx",), 0x189FC: (), 0x18A4C: (),
+                                 0x18AF8: ("ebx", "ecx", "edx"), 0x18B04: (), 0x18B44: (),
+                                 0x18C14: ("ebx", "edx", "ebp"), 0x1A570: (), 0x1A5AC: (), 0x1A734: (),
+                                 0x1AB5C: ("ebp",), 0x1CA14: ("edx",), 0x1CA6C: (), 0x1CC28: ("edx",),
+                                 0x1CD9C: (), 0x1CE04: (), 0x1CE70: (), 0x1D238: (), 0x1D244: (),
+                                 0x1DDF4: ("ebx", "edx"), 0x22404: (), 0x23960: (), 0x249B0: (), 0x249D0: (),
+                                 0x29BC8: ("ebx", "edx"), 0x29C08: ("edx",), 0x29DB8: ("ebx", "edx"),
+                                 0x29F34: ("edx",), 0x2A148: ("edx",), 0x2A17C: ("edx",), 0x2A408: ("edx",),
+                                 0x2A620: ("edx",), 0x2A820: ("edx",), 0x2AC80: (), 0x2AD40: ("edx", "edi", "ebp"),
+                                 0x2AE14: ("ebx", "ecx", "edx"), 0x2B150: (), 0x2B2A0: ("ebx", "edx"),
+                                 0x2BC30: ("edx",), 0x2BCF4: ("edx",), 0x2BD44: ("edx",), 0x2C3FC: (),
+                                 0x33754: (), 0x33864: (), 0x34D8C: (), 0x35838: ("ebx", "edx"),
+                                 0x365C8: ("ebx", "edx"), 0x36638: ("edx",), 0x36870: ("esi", "edi", "ebp"),
+                                 0x36BC8: ("edx",), 0x36CE4: (), 0x36D98: (), 0x379C4: ("ecx", "esi", "edi", "ebp"),
+                                 0x37D18: ("edx",), 0x38034: (), 0x38154: (), 0x385B0: (), 0x39040: (),
+                                 0x39280: (), 0x392A0: ("ebx", "edx"), 0x39738: ("edx",),
+                                 0x39834: ("edx", "ebp"), 0x39A10: ("edx",), 0x39EFC: (), 0x39F40: ("ebx", "edx"),
+                                 0x39FB0: (), 0x3A95C: ("edx",), 0x3A9D8: ("edx",), 0x3AA54: (),
+                                 0x3AAFC: ("ebx", "ecx", "edx", "edi", "ebp"), 0x3AD98: ("edx",), 0x3AE9C: ("edx",),
+                                 0x3B080: ("ebx", "ecx", "edx"), 0x3B134: ("ebx", "edx", "edi", "ebp"),
+                                 0x3B298: ("edx",), 0x3B6C4: (), 0x3B714: ("edx",), 0x3B8D8: ("edx",),
+                                 0x3B90C: ("edx",), 0x3C148: (), 0x3C16C: (), 0x3C190: ("edx",),
+                                 0x3C208: ("edx",), 0x3C358: (), 0x3C480: ("edx",), 0x3C4CC: ("edx",),
+                                 0x3C520: ("edx",), 0x3C59C: ("edx",), 0x41310: (), 0x46460: ("edx",),
+                                 0x468D8: (), 0x48170: (), 0x49444: ("edi", "ebp"), 0x4F434: (), 0x5D7DC: ()})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -1512,8 +1640,8 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (158), the 34 without are counted apart
-        self.assertIn("diff-verify: 192/192 functions VERIFIED; 552/552 mutants detected; 1 named gaps; "
-                      "69/158 rows with callees closed (34 have none).", out.getvalue())
+        self.assertIn("diff-verify: 201/201 functions VERIFIED; 598/598 mutants detected; 1 named gaps; "
+                      "148/167 rows with callees closed (34 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
