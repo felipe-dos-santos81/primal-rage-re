@@ -627,7 +627,15 @@ def callee_clobbers(image, addr, resolved=None):
             c -= saved
             if c != clob[f]:
                 clob[f], moved = c, True
-    return tuple(r for r in REGS if r != "eax" and r in clob[addr])
+    result = tuple(r for r in REGS if r != "eax" and r in clob[addr])
+    # Hand corrections where the transitive scan over-approximates the Watcom callee-saved registers
+    # (record §C2b.3): the callers of 0x2B150, 0x2BD44 and 0x3B298 keep ESI/EDI/EBP live across the
+    # call (0x2B30D reads ESI after 0x2B150; 0x3B877/0x3B8C8 read ESI after 0x2BD44; the EDI read
+    # before the 0x3B834 call into 0x3AE9C is `mov eax,edi` at 0x3B82E), so those callees preserve
+    # them.
+    return _CALLEE_CLOBBER_FIXES.get(addr, result)
+
+_CALLEE_CLOBBER_FIXES = {0x2B150: (), 0x2BD44: ("edx",), 0x3B298: ("edx",)}
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --

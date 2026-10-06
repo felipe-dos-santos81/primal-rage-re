@@ -2033,6 +2033,7 @@ static int fight_attack_ready(u32 side)
 
 void fight_command_map(u32 side, u32 edx_arg, u32 override)
 {
+    PR_SEAM(0x3B134u, side, edx_arg, override);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                             /* 0x3B149 */
     u32 anim[3];

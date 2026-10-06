@@ -6139,14 +6139,16 @@ int game_music_notes_seen(void) { return s_music_notes; }
 #define SND_VOICE_REC   0x0Cu
 
 /* 0x1D238. Clears the music pause byte DS_001028DA (0x1D23A). */
-static void snd_music_unpause(void)
+void snd_music_unpause(void)
 {
+    PR_SEAM0(0x1D238u);
     DSB(DS_001028DA) = 0;                                  /* 0x1D23A */
 }
 
 /* 0x1D244. Clears the sample pause byte DS_001028DB (0x1D246). */
-static void snd_sample_unpause(void)
+void snd_sample_unpause(void)
 {
+    PR_SEAM0(0x1D244u);
     DSB(DS_001028DB) = 0;                                  /* 0x1D246 */
 }
 
@@ -6154,8 +6156,9 @@ static void snd_sample_unpause(void)
  * song (DS_001028D4/DS_001028D9); unless the music is paused (DS_001028DA ==
  * 1) or there is no sequence handle (DS_001028C0), it becomes the pending
  * song DS_001028CC and AL = 1. */
-static u32 snd_music_request(u32 song, u32 b)
+u32 snd_music_request(u32 song, u32 b)
 {
+    PR_SEAM_RET(0x1CA14u, song, b);
     DSB(DS_001028D9) = (u8)b;                              /* 0x1CA14 */
     DSD(DS_001028D4) = song;                               /* 0x1CA22 */
     if (DSB(DS_001028DA) == 1u) return 0;                  /* 0x1CA27 */
@@ -6176,8 +6179,9 @@ static u32 snd_music_playing(void)
 /* 0x1CA6C. Clears the current song (DS_001028D4 = 0, DS_001028D9 = 0); when
  * the sequence plays, the pending song DS_001028CC = 0 and 0x5DEAF stops it
  * (AL = 1). The caller's EAX/EDX are passed to 0x1CA40, which reads neither. */
-static u32 snd_music_stop(void)
+u32 snd_music_stop(void)
 {
+    PR_SEAM_RET0(0x1CA6Cu);
     DSD(DS_001028D4) = 0;                                  /* 0x1CA7A */
     DSB(DS_001028D9) = 0;                                  /* 0x1CA80 */
     if (DSD(DS_001028C0) == 0u) return 0;                  /* 0x1CA86 */
@@ -6201,8 +6205,9 @@ static s32 snd_slot_status(u32 off)
 /* 0x1CE70. AL = 1 when a slot plays the resource handle `h` (its +0x0C is
  * `h` and 0x5DD03 reports 4); a slot whose +0x0C is `h` but has stopped gets
  * +0x0C = 0 and the scan goes on. AL = 0 without a DIG driver. */
-static u32 snd_sample_playing(u32 h)
+u32 snd_sample_playing(u32 h)
 {
+    PR_SEAM_RET(0x1CE70u, h);
     if (DSD(DS_001028C8) == 0u) return 0;                  /* 0x1CE78 */
     for (u32 off = 0; off < SND_SLOT_END; off += SND_SLOT_STRIDE) {
         if (DSD(DS_0010286C + off) != h) continue;         /* 0x1CE83 */
@@ -6215,8 +6220,9 @@ static u32 snd_sample_playing(u32 h)
 /* 0x1CE04. Stops the first slot playing `h`: a slot whose +0x0C is `h` and
  * whose 0x5DD03 status is not 2 is ended (0x5DC8B) and re-inited (0x5DC0F),
  * its +0x0C = 0, AL = 1. AL = 0 when none (or no DIG driver). */
-static u32 snd_sample_stop(u32 h)
+u32 snd_sample_stop(u32 h)
 {
+    PR_SEAM_RET(0x1CE04u, h);
     if (DSD(DS_001028C8) == 0u) return 0;                  /* 0x1CE0C */
     for (u32 off = 0; off < SND_SLOT_END; off += SND_SLOT_STRIDE) {
         if (DSD(DS_0010286C + off) != h) continue;         /* 0x1CE17 */
@@ -6232,8 +6238,9 @@ static u32 snd_sample_stop(u32 h)
 /* 0x1CD9C. Without a DIG driver AL = 0. Otherwise every slot's +0x04 and
  * +0x0C are cleared and a slot whose status is not 2 is ended and re-inited;
  * AL = 1. */
-static u32 snd_samples_stop_all(void)
+u32 snd_samples_stop_all(void)
 {
+    PR_SEAM_RET0(0x1CD9Cu);
     if (DSD(DS_001028C8) == 0u) return 0;                  /* 0x1CDA2 */
     for (u32 off = 0; off < SND_SLOT_END; off += SND_SLOT_STRIDE) {
         DSD(DS_00102864 + off) = 0;                        /* 0x1CDB5 */
@@ -6375,8 +6382,9 @@ void sound_resume(void)
  * first free of slots 3..0, else the one whose queue time +0x14 is the
  * smallest below now (unsigned; slot 0 when none is). A forced slot is ended
  * and re-inited. Queueing stores +0x04, +0x08 and +0x14; AL = 1. */
-static u32 snd_sample_queue(u32 h, u32 loop)
+u32 snd_sample_queue(u32 h, u32 loop)
 {
+    PR_SEAM_RET(0x1CC28u, h, loop);
     if (DSD(DS_001028C8) == 0u) return 0;                  /* 0x1CC37 */
     if (DSB(DS_001028DB) != 0u) return 0;                  /* 0x1CC44 */
     u32 now = DSD(DS_00101500);                            /* 0x1CC51 0x500BB */

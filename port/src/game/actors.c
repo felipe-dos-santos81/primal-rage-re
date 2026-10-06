@@ -1168,6 +1168,7 @@ void actors_reset(void)
  * arg 5 (`0x2AE37 mov ax, [esp+0x28]`), so actor_spawn threads a5 here. */
 u32 actor_alloc(u32 flag)
 {
+    PR_SEAM_RET(0x2AC80u, flag);
     if (list_head(DS_00105B3C) == 0) return 0;
     u32 rec = DSD(DS_00105B3C);
     list_unlink(rec);
@@ -1359,6 +1360,7 @@ u32 anim_read_var(u32 rec, u32 op)
  * (0x29E6A/0x29E75); 0x4A/0x4B/0x50/0x51 take the value. */
 void anim_write_var(u32 rec, u8 op, u32 value)
 {
+    PR_SEAM(0x29DB8u, rec, (u32)op, value);
     u32 o = (u32)(op & 0x7fu);
     if (o < 0x40u) {
         DSW(DS_00105B4C + ((o + (u32)DSB(rec + 0x51)) & 0x3fu) * 2u) = (u16)value;
@@ -1397,8 +1399,9 @@ void anim_write_var(u32 rec, u8 op, u32 value)
  * scaled by the next word's high nibble and dereferenced against rec+0x0C.
  * The decompiler drops the `*2`/`*4` scalings (0x2BA78/0x2BAA3/0x2BAC9); this
  * transcribes the raw arithmetic. */
-static u32 anim_operand(u32 rec)
+u32 anim_operand(u32 rec)
 {
+    PR_SEAM_RET(0x2B8F8u, rec);
     u32 p = DSD(rec + 8);
     u16 cw = DSW(p);
     u16 mode = (u16)(cw & 0x6000u);
@@ -2583,11 +2586,13 @@ u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
          * compared value is the sign-extended word at pset+0x0C. */
         s32 pv = (s32)(s16)DSW(DSD(DS_001014EC)
                                + index * PSET_SIZE + 0x0c);
+        /* 0x2B8AB `cmp edx,eax; jl 0x2B8C2`: pv below ax takes the +4 arm; pv >= ax jumps the
+         * stream through the dword at rec+8 (record C2b §C2b.3, a raw-over-port correction). */
         if (pv < (s32)ax) {
+            DSD(rec + 8) += 4u;
+        } else {
             DSD(rec + 8) += 2u;
             DSD(rec + 8) = DSD(DSD(rec + 8)) - 2u;
-        } else {
-            DSD(rec + 8) += 4u;
         }
         return 0;
     }
@@ -2663,8 +2668,9 @@ static void set_dead(u32 rec);
 
 /* 0x2A620. The mode-1 shear cursor: derive rec+0x64 from the current y, or
  * from pset+0x14 (the previous frame's x) when rec+0x1c is zero. */
-static void mode1_cursor(u32 rec, u32 pset)
+void mode1_cursor(u32 rec, u32 pset)
 {
+    PR_SEAM(0x2A620u, rec, pset);
     s32 v;
     if (DSD(rec + 0x1c) == 0)
         v = (s32)DSD(pset + 0x14);
@@ -2768,8 +2774,9 @@ void actor_mode1_pset(u32 rec)
 
 /* 0x2A820. The pset position/layer writer: 0x2A690 for a free record, the
  * parent-relative form for a child, and the on-screen visibility test. */
-static void pset_write(u32 rec, u32 pset)
+void pset_write(u32 rec, u32 pset)
 {
+    PR_SEAM(0x2A820u, rec, pset);
     if ((DSW(rec + 0x28) >> 8 & 0x20u) == 0) {
         if ((DSW(rec + 0x28) >> 8 & 0x04u) == 0) {
             actor_pset_point(rec);

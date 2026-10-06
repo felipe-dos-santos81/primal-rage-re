@@ -197,6 +197,17 @@ void game_isr_word_reset(void);
  * sample in cases 2/3 or an unlisted case-3 id. */
 u32 sound_voice(u32 id);
 
+/* 0x1CA14/0x1CA6C/0x1CC28/0x1CD9C/0x1CE04/0x1CE70/0x1D238/0x1D244 (C2b):
+ * the voice dispatcher's audio callees, exported for its differential row's mutants. */
+u32 snd_music_request(u32 song, u32 b);
+u32 snd_music_stop(void);
+u32 snd_sample_queue(u32 h, u32 loop);
+u32 snd_samples_stop_all(void);
+u32 snd_sample_playing(u32 h);
+u32 snd_sample_stop(u32 h);
+void snd_music_unpause(void);
+void snd_sample_unpause(void);
+
 /* PORT: test seam (record k7-k12 §4), not original state. sound_voice logs
  * the id of every entry, the first SOUND_VOICE_LOG_CAP of them, since the
  * last reset. sound_voice_log_count is the number of entries since the reset

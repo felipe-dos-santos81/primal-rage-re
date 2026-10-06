@@ -24,6 +24,15 @@ void actor_cursor_reset(void);
  * selects the tail insert (0x249C0) over the head insert (0x249B0). 0x2AE14
  * supplies the low 16 bits of its arg 5. */
 u32  actor_alloc(u32 flag);
+
+/* 0x2A820 / 0x2A620 (C2b): 0x2AE14's pset writer and mode-1 cursor, exported
+ * for its differential row's mutants. */
+void pset_write(u32 rec, u32 pset);
+
+/* 0x2B8F8 (C2b): the operand fetch 0x2B2A0 calls, exported for its row's
+ * mutants (0x29DB8 is already declared above the actors_init section). */
+u32 anim_operand(u32 rec);
+void mode1_cursor(u32 rec, u32 pset);
 /* 0x2AE14. `desc` points at a descriptor in mem[]; the four register arguments
  * are a2=EDX, a3=ECX, a4=EBX and a5=the stack word, pinned by disassembly in
  * docs/superpowers/plans/2026-09-17-actor-system-args.md. Returns the record's
