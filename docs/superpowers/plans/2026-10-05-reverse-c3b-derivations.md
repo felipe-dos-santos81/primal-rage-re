@@ -449,7 +449,14 @@ Named gaps and limits:
   pointer, not a `mem[]` offset); the stub's effect is the return value and the poisoned clobbers.
 - **`snd_sample_queue`'s `0x500BB` and `0x1B544` are allows**: the DPMI clock read and the host
   resource resolve; the row compares the port's `DS_00101500` seed against the original's read (the
-  fixture pins it) and the resolver's preloaded result.
+  fixture pins it) and the resolver's preloaded result. **The raw's clock reads are not
+  one-for-one**: the raw calls `0x500BB` at four sites — `0x1CC51` (the entry `now`, the candidate
+  scan's base) and the store arms `0x1CCA7`, `0x1CD06`, `0x1CD79` (two calls in any one run: the
+  entry read plus one arm), so the stored `+0x14` can hold a tick later than the `now` it compares
+  against; the port reads the per-frame `DS_00101500` word at the same four sites, and the allow's
+  body is the raw `mov eax,[0x81500]; ret` at `0x500BB` over the fixture's word, which cannot
+  advance mid-run — both sides store the value they scanned, so the shape is unobservable in the
+  harness.
 - **Masks** (`C3B_MASKS` in the test): `fighter_18350`, `fighter_18540`, `fighter_38154`,
   `list_insert_before`, `effect_teardown`, `actor_type_49444`, `set_dead`, `anim_write_var` and
   `fighter_anim_triple` 0 (their callers ignore EAX); the five `snd_*` rows and `snd_sample_queue`
@@ -533,3 +540,53 @@ The recommended C3c order (dependency-first):
 `make k11-oracle`-style gates do not apply: this batch touches no gameplay path (only `port/src`
 seam/export changes), so the gp miss sets are untouched; Task 1's `PR_GP_DUMP` pinned sets are the
 executor's check that they stay so.
+
+## §C3b.8 Results (the executed tree)
+
+The plan's Tasks 2-4 were executed on `reverse-c3b` at the base `main` `2cf874b`: the plan+record
+commit `e7ce2da`, Task 2 `2ec8522` (the seventeen rows, the exports, the four AIL seams and 115
+mutants), Task 3 `d5d2016` (the review sweep: the `fighter_38154` `+0x43` sentinel and the
+`fighter_38154@bit` re-pin) and the fix wave `c55c758` (the `anim_read_var` mask prose), then this
+closure commit. Every row was re-measured in the tree; the planner's prototype values held.
+
+The counters on the final tree equal §C3b.4's prototype row:
+
+| state | diff-verify counter | E2 |
+|---|---|---|
+| base `2cf874b` | `217/217 functions VERIFIED; 664/664 mutants detected; 1 named gaps; 154/172 rows with callees closed (45 have none)` | `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30`; voice `0 / 115 / 19` |
+| final (`c55c758` + this closure commit) | `234/234 functions VERIFIED; 779/779 mutants detected; 1 named gaps; 165/185 rows with callees closed (49 have none)` | byte-identical |
+
+The batch's task gates, measured on this tree (Task 1's baseline in `verify-base.log`; Task 2's and
+the fix wave's re-measures in the ledger directory):
+
+```
+diff-verify: 234/234 functions VERIFIED; 779/779 mutants detected; 1 named gaps; 165/185 rows with callees closed (49 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+```
+
+`make entry-triage` is byte-identical (no ported function, no `fn_register`); `python3 -m unittest
+tools.tests.test_diff_verify` 106 tests OK (the clobber re-derivation, the C3b case-set test, the
+counter line); `PR_ORACLE_REQUIRED=1 ./build/run_tests` `all checks passed`; `python3
+tools/port_progress.py` stays `771 1203 64` / `731 731 100`; `symbols.h` regeneration is
+byte-identical; README untouched.
+
+Task 3's measured change after §C3b.3's table: the fixed fixture seeds `slot+0x40..0x43 = 40 41 42
+00`, so the `0x38221 mov byte [esi+0x43],bl` store is observed in all six cases that reach it and
+`fighter_38154@bit` is alone caught by `['d0','d1','d11','d15','d16','d2','d3','d4','d5','d7','d8']`
+(§C3b.3's copy shows the pre-fix set; the committed test carries the re-pin). The fix wave's
+`anim_read_var` correction is in §C3b.5's masks bullet.
+
+**The full gate** on this closure commit (the plan's parallel-safe overrides, log
+`/tmp/pr_c3b_final.log`): the run's lines are recorded in the batch report
+`.superpowers/sdd/2026-10-05-reverse-c3b-frontier-rows-2/task-4-report.md`; the plan's expected
+values are `EXIT=0`, the 45 oracle lines equal to the k7-k12 baseline (`ORACLES-EQUAL`), `make
+audio-render` `cmp`-equal to `before-t2.wav` (`WAV-SAME`; both sha256
+`df74acfb65d345fb72cb214102089f2a0ab8d4b271ddc17e2a5f5c4f1a380844`) and every gp ratchet at its pin
+(Task 1's list verbatim).
+
+**The C3c deferral is the next batch**: §C3b.7's 21 remaining candidates, this batch's nine new
+frontier items (`0x367DC` `0x1CA40` `0x33714` `0x33734` `0x1C458` `0x1C3D0` `0x12800`
+`0x18428`/`0x18460`) and the named non-rows (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`,
+`0x500BB` and the four AIL wrappers), in §C3b.7's dependency-first order; nothing else is left open
+by C3b.
