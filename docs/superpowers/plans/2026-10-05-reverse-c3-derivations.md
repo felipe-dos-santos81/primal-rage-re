@@ -301,9 +301,14 @@ Named gaps and limits:
   are C3b items (§C3.7). The row's tail-insert path is reached by cases a1/a3 and both blocks are
   hit.
 - **The list rows bind the effects.c copies** (`effects_list_insert_after`/`effects_list_unlink`),
-  while `actor_alloc`'s real calls exercise the actors.c static copies of the same bodies; both
-  copies are compared (the real calls' memory and the final bytes), but the *row claim* is on the
-  bound copy.
+  while `actor_alloc`'s real calls exercise the actors.c static copies of the same bodies (the
+  seams are on the actors.c copies); both copies are compared (the real calls' memory and the final
+  bytes), but the *row claim* is on the bound copy. The `m_2ac80_*` mutants call the same seam-less
+  effects.c copies rather than the entry's seamed actors.c ones, so they emit no recorded call at
+  `0x249D0`/`0x249B0`: on a0 (flag 0, the head insert) `@flag`'s byte outcome agrees with the
+  original and the missing call is what catches it, and the pinned a0 case sets rest on that mutant
+  route. The entry's own route is covered by the real calls' memory and the final bytes, not by the
+  mutants.
 - **`fighter_1a5ac`'s raw returns `0x4000` on the bit-set path** (`and eax,0xffff` leaves AH bit
   0x40, then `sete al` leaves it), while the port's C returns 0; the caller 0x3AADC tests
   `test al,al`, so the row's mask is 0xFF and the difference in bits 8+ is a named limit (it is
@@ -314,7 +319,9 @@ Named gaps and limits:
   callers read the whole dword), the void rows 0.
 - E3's, P1-P8's and C2/C2b's limits stand: seeds are hand pokes; the memory at a call is mem[]
   only; the callee column is one level deep.
-- The `title_pin` unittest failure on this tree is pre-existing and outside `make verify`.
+- The earlier records' `title_pin` unittest failure is fixed on this base (the closeout, `6da0128`):
+  `python3 -m unittest tools.tests.test_title_pin` runs 10 tests OK; the suite is outside
+  `make verify`.
 
 ## §C3.6 What the planner ran
 
@@ -347,7 +354,7 @@ Named gaps and limits:
 
 This session measured sixteen of the 53 candidates. The remaining **36 candidate addresses** —
 plus the two new frontier items this batch creates (`0x13420`, `0x249C0`) and the named non-row
-`0x2EA30` — are C3b's scope, same recipe. The deferral is a session-budget split, not a
+`0x2EA30` — are **the next batch (C3b)**, same recipe. The deferral is a session-budget split, not a
 correctness judgement: every address below is ported and its direct callees are the port's own
 helpers, measured from the final table (the sizes are `port/decomp/prage.functions.csv` bytes;
 the callers are the raw's n_callers):
@@ -385,3 +392,46 @@ The recommended C3b order (dependency-first, all evidence measured this session)
 `make k11-oracle`-style gates do not apply: this batch touches no gameplay path (only `port/src`
 seam/export changes), so the gp miss sets are untouched; Task 1's `PR_GP_DUMP` pinned sets are the
 executor's check that they stay so.
+
+## §C3.8 Results (the executed tree)
+
+The plan's Tasks 2-4 were executed on `reverse-c3` at the base `main` `6da0128`: the plan+record
+commit `7392029`, Task 2 `17a2b61` (the sixteen rows, the seam and the mutants), Task 3 `4c6b239`
+(the store sweep: every site already observable bar the one dead in both, and the two harness
+nits) and the review-nits commit `ee57860` (the C3 cross-refs and the `snd_music_unpause` comment),
+then this closure commit. Every row was re-measured in the tree; the planner's prototype values
+held.
+
+The counters on the final tree equal §C3.4's prototype row:
+
+| state | diff-verify counter | E2 |
+|---|---|---|
+| base `6da0128` | `201/201 functions VERIFIED; 598/598 mutants detected; 1 named gaps; 148/167 rows with callees closed (34 have none)` | `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30`; voice `0 / 115 / 19` |
+| final (`ee57860`, the closure tree) | `217/217 functions VERIFIED; 664/664 mutants detected; 1 named gaps; 154/172 rows with callees closed (45 have none)` | byte-identical |
+
+`make entry-triage` is byte-identical (no ported function, no `fn_register`); `PR_ORACLE_REQUIRED=1
+./build/run_tests` `all checks passed`; `python3 tools/port_progress.py` stays `771 1203 64` / `731
+731 100` (neither frontier item is a Ghidra `FN_`); README untouched.
+
+**The full gate** on the closed tree (the plan's parallel-safe overrides, log `/tmp/pr_c3_final.log`):
+
+```
+EXIT=0
+diff-verify: 217/217 functions VERIFIED; 664/664 mutants detected; 1 named gaps; 154/172 rows with callees closed (45 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+```
+
+`EXIT=0` (the log's last line); the 45 oracle lines (`grep -E '^(oracle C-vs-Python|capture
+oracle|smk_compare|title_compare|attract_compare|== demo-fight)'`) diff clean against
+`.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt` (`ORACLES-EQUAL`); `make
+audio-render AUDIO_WAV=/tmp/pr_c3.wav` `cmp`-equal to `before-t2.wav` (`WAV-SAME`; both sha256
+`df74acfb65d345fb72cb214102089f2a0ab8d4b271ddc17e2a5f5c4f1a380844`); all 33 gp ratchet lines are
+`ok` with measured == pin (Task 1's list verbatim); `symbols.h` regenerated byte-identically. The
+only `port/src` change of the batch (the `effect_teardown` seam and its `static` removal) is inert
+outside `build/diffrun`, and the full ladder is the proof: no oracle line, WAV byte, gp ratchet or
+goldens moved.
+
+**The C3b deferral is the next batch**: §C3.7's 36 remaining candidates, this batch's two new
+frontier items (`0x13420`, `0x249C0`) and the named non-row `0x2EA30`, in §C3.7's dependency-first
+order; nothing else is left open by C3.
