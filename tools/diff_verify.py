@@ -3438,6 +3438,7 @@ def c2b_res(handle, count):
 # its fast path and res_resolve agree byte for byte. The full-table fatal 0x3384E is unhit and named.
 C2B_PAL_TABLE, C2B_PAL_END = 0x107618, 0x107798
 C2B_DIRTY = 0x107500              # a valid dirty-list head (0x107498..0x107618)
+C2B_DIRTY_HI = 0x1075F0           # p0's head: its 0x337DA bump (head+0x10) carries into byte 1
 C2B_PAL_TAIL = 0x00107798         # DS_00107798: the dirty-list head variable
 
 def c2b_pal_entry(i, handle, start, count):
@@ -3491,7 +3492,9 @@ def c2b_3b714(side, char, r24, bits=0, a02=0x22, a03=0x33, efc=0, p1_52=0, p1_54
     s2 = bytearray(64); s2[0x52 - 0x40] = p2_52; s2[0x5F - 0x40] = r24
     s1 = bytearray(64)
     s1[0x41 - 0x41] = 0x41; s1[0x52 - 0x41] = p1_52; s1[0x54 - 0x41] = p1_54
-    s1[0x4E - 0x41] = 0x4E; s1[0x65 - 0x41] = 0x65
+    # +0x4E/+0x4F: the 0x3B7D0 `mov word [esi+0x4e], ax` (AX = 0) observes both bytes only if the
+    # high byte is seeded nonzero.
+    s1[0x4E - 0x41] = 0x4E; s1[0x4F - 0x41] = 0xAA; s1[0x65 - 0x41] = 0x65
     p = {**SLOT_PTRS, rec4 + 0x34: bytes(r4), rec5 + 0x34: bytes(r5),
          p2 + 0x40: bytes(s2), p1 + 0x41: bytes(s1),
          0x0010782A + side * 0x94: bytes([char]),
@@ -3551,8 +3554,9 @@ def c2b_36870(side, mode=0, s54=0, s41=0x41, s42=0x42, s43=0x43, s40=0x40404040,
     word and the three dword globals the resets clear. r365/r366 are the 0x365C8/0x36638 stub
     values; char selects the per-character anim pointers DSD(0xC8950/0xC89A0/0xC89F0 + char*4).
     The seeds cover the resets the sweep found writing their own pre-state: the slot's +0x0C..+0x1F
-    run (its +0x0C/+0x10/+0x18/+0x1C dword zeros), both slots' +0x66 (the other slot's zero) and
-    the record's +0x1C dword (its zero)."""
+    run (its +0x0C/+0x10/+0x18/+0x1C dword zeros), both slots' +0x66 (the other slot's zero), the
+    record's +0x1C dword (its zero) and the record's +0x34/+0x36/+0x44 word zeros (their high bytes
+    +0x35/+0x37/+0x45 seeded)."""
     s = DS_SLOTS + side * 0x94
     so = DS_SLOTS + (1 - side) * 0x94
     rec = E3_REC if side == 0 else E3_REC2
@@ -3565,11 +3569,13 @@ def c2b_36870(side, mode=0, s54=0, s41=0x41, s42=0x42, s43=0x43, s40=0x40404040,
     b1[0x74 - 0x40:0x74 - 0x40 + 2] = (0x7474).to_bytes(2, "little")
     b1[0x7A - 0x40] = char
     b2 = bytearray(17)
-    b2[0x84 - 0x80:0x84 - 0x80 + 2] = (0x8484).to_bytes(2, "little")
+    # 0x84FF so the +0x84 word's increment (0x3694D `inc ebx` / 0x3694E store, and the side-1
+    # sibling) carries into the high byte; both bytes then differ from the pre-state.
+    b2[0x84 - 0x80:0x84 - 0x80 + 2] = (0x84FF).to_bytes(2, "little")
     b2[0x8A - 0x80] = 0x8A; b2[0x90 - 0x80] = 0x90
     rb = bytearray(0x40)
     rb[0:4] = le32(0x1C1C1C1C); rb[0x28 - 0x1C:0x2A - 0x1C] = s28.to_bytes(2, "little")
-    for off in (0x34, 0x36, 0x42, 0x43, 0x44, 0x4C, 0x4D):
+    for off in (0x34, 0x35, 0x36, 0x37, 0x42, 0x43, 0x44, 0x45, 0x4C, 0x4D):
         rb[off - 0x1C] = off
     rb[0x51 - 0x1C] = side
     p = {**SLOT_PTRS, rec + 0x51: bytes([side]), rec + 0x1C: bytes(rb), s + 0x40: bytes(b1),
@@ -3578,7 +3584,7 @@ def c2b_36870(side, mode=0, s54=0, s41=0x41, s42=0x42, s43=0x43, s40=0x40404040,
                     + le32(0x1C1C1C1C)),
          s + 0x66: b"\x66", so + 0x66: b"\x66",
          0x00104B00: mode.to_bytes(2, "little"),
-         0x00100CE0 + (1 - side) * 2: (0xCE00 + 1 - side).to_bytes(2, "little"),
+         0x00100CE0 + (1 - side) * 2: (0xCE01).to_bytes(2, "little"),
          0x00100AF8 + side * 4: le32(0xAF8AF8F8),
          0x000FD148 + side * 4: le32(0xD148D148)}
     return p
@@ -3657,7 +3663,9 @@ def c2b_op(op, value=0x10, low=None, r8=None, word_extra=b"", r28=0x2828, r18=0x
          rec + 0x4E: bytes([r4e]) + le32(r4f) + bytes([r50]) + bytes([0x51]),
          rec + 0x59: bytes([r59]) + b"\xa5" * 7 + bytes([r61]),
          0x00105BE4: p5e6.to_bytes(2, "little") + p5e8.to_bytes(2, "little"),
-         0x00105BD4: le32(p5d4) + le32(0x5D8),
+         # 0x105BD8's high byte is seeded 0xAA: the op-0x0C store (0x2B4B1 `mov [0x105BD8],esi`)
+         # writes an image pointer whose top byte is 0, so the byte changes only from a nonzero pre.
+         0x00105BD4: le32(p5d4) + le32(0xAA0005D8),
          0x001014EC: le32(C2B_OP_PSET),
          C2B_OP_PSET + 0x20 + 0x0C: pset0c.to_bytes(2, "little"),
          0x000EF6DC: le32(0xEF6DC) + le32(0)}
@@ -3667,12 +3675,16 @@ def c2b_op(op, value=0x10, low=None, r8=None, word_extra=b"", r28=0x2828, r18=0x
 
 C2B_VOICE_BASE = 0x000BBDC8      # the 0x0C-stride voice table
 
-def c2b_voice(vid, vtype, h=0x1111, b=0x22, cur=0, playing=0):
+def c2b_voice(vid, vtype, h=0x1111, b=0x22, cur=0, playing=0, cur_hi=None):
     """One 0x2C3FC case: the id's voice record {type, h, b} and the current-song dword; the playing
-    stub (0x1CE70) is set where the type-2/3/4 or the case-5 sub-ids test it."""
+    stub (0x1CE70) is set where the type-2/3/4 or the case-5 sub-ids test it. `cur_hi` seeds the
+    high two bytes of the 0x105D5C dword the type-1 arm writes (0x2C447 `mov [0x105D5C],eax`), so
+    the store's bytes 2/3 change instead of reproducing the pre-state."""
     rec = C2B_VOICE_BASE + vid * 0xC
     pokes = {rec: bytes([vtype]) + b"\x00\x00\x00" + le32(h) + bytes([b, 0, 0]),
              0x00105D5C: le32(cur)}
+    if cur_hi is not None:
+        pokes[0x00105D5E] = cur_hi
     stubs = {0x1CE70: playing} if vtype in (2, 3, 4) or vtype == 5 else {}
     return {"eax": vid}, pokes, stubs
 
@@ -3686,7 +3698,9 @@ C2B_VOICE_CASES = [
     Case("v100", {"eax": 0x100}, {C2B_VOICE_BASE: bytes([1]) + b"\x00\x00\x00" + le32(0x9999)
                                  + bytes([9, 0, 0]), 0x00105D5C: le32(0)}),  # id 0x100 -> record 0
     Case("t0", *c2b_voice(1, 0)),                              # type 0: return 1
-    Case("t1", *c2b_voice(2, 1, h=0x1234, b=5, cur=0x30)),      # type 1: music request
+    Case("t1", *c2b_voice(2, 1, h=0x1234, b=5, cur=0x30,
+                          cur_hi=b"\xDE\xAD")),                 # type 1: music request (the DE/AD seed
+                                                                # observes the write's high bytes)
     Case("t2a", *c2b_voice(3, 2, h=0x77, playing=1)),           # type 2, playing: return 0
     Case("t2b", *c2b_voice(4, 2, h=0x78, b=3, playing=0)),      # type 2, free: queue
     Case("t3a", *c2b_voice(0x46, 3, h=1, playing=1)),           # id 0x46, playing
@@ -3723,15 +3737,15 @@ C2B_OP_CASES = [
     # 0x5D7DC rng; 0x2AE14 the child record; 0x29DB8/0x2C3FC void.
     *[Case(cid, {"eax": C2B_OP_REC, "edx": 1, "ebx": flag},
            {**c2b_op(op, value=value, word_extra=we, **{k: v for k, v in kw.items()
-                                                       if k in ("r28", "r2a", "p5e6", "p5e8", "p5d4",
-                                                                "pset0c", "prefix")})},
+                                                       if k in ("r28", "r2a", "r18", "r1c", "p5e6",
+                                                                "p5e8", "p5d4", "pset0c", "prefix")})},
            ({0x2B150: 0} if op == 0 else {})
            | ({0x5D7DC: C2B_OP_RNG} if op == 0x08 else {})
            | ({0x2AE14: C2B_OP_CHILD} if op == 0x0C else {})
            | ({0x29DB8: 0} if op in (0x0D, 0x0E, 0x0F, 0x17, 0x18, 0x19) else {})
            | ({0x2C3FC: 0} if op == 0x2E else {}))
       for (cid, op, value, flag, we, kw) in [
-        ("o00a", 0x00, 0x11, 1, b"", {}),
+        ("o00a", 0x00, 0x11, 1, b"", {"p5e6": 0xAA00}),   # the 0x105BE4 write's high byte seeded
         ("o00b", 0x00, 0x12, 0, b"", {}),
         ("o01", 0x01, 0x13, 0, b"", {}),
         ("o02", 0x02, 0x2B, 0, b"", {}),
@@ -3772,10 +3786,13 @@ C2B_OP_CASES = [
         ("o1d", 0x1D, 0x25, 0, b"", {}),
         ("o1e", 0x1E, 0x26, 0, b"", {"r2a": 0x2E2A}),
         ("o1f", 0x1F, 0x02, 0, b"", {"r28": 0x2828}),
-        ("o20a", 0x20, 0x02, 0, b"", {"r28": 0x2828}),
+        # o20a/o21: value 0x403 (ax*64 = 0x100C0) and rec+0x18/+0x1C =(0xAAFFFF50) so the add
+        # carries through all four bytes of the 0x2B7A9/0x2B7C3 stores (0xAAFFFF50+0x100C0 =
+        # 0xAB010010).
+        ("o20a", 0x20, 0x403, 0, b"", {"r28": 0x2828, "r18": 0xAAFFFF50}),
         ("o20b", 0x20, 0x02, 0, b"", {"r28": 0x6828}),
-        ("o21", 0x21, 0x03, 0, b"", {}),
-        ("o22", 0x22, 0x03, 0, b"", {}),
+        ("o21", 0x21, 0x403, 0, b"", {"r1c": 0xAAFFFF50}),
+        ("o22", 0x22, 0x07, 0, b"", {}),                  # value<<6 = 0x1C0 carries into +0x32's high byte
         ("o23", 0x23, 0x00, 0, b"", {}),
         ("o24", 0x24, 0x00, 0, b"", {}),
         ("o25", 0x25, 0x04, 0, b"", {}),
@@ -3796,34 +3813,43 @@ C2B_OP_CASES = [
 C2B_SPECS = [
     Spec("palette_acquire", 0x33754, [
         # p0: empty table; entry 0 is the first free; sentinels on its fields and a seeded dirty area.
-        Case("p0", {"eax": 0x800040}, {**c2b_res(0x800040, 3), C2B_PAL_TAIL: le32(C2B_DIRTY),
+        # The 0x800540 handle's byte 1 (0x05) differs from the free entry's 0, so the handle store
+        # (0x337BA) changes bytes 0/1/2 (byte 3 is 0 for every valid handle: the inherent limit); the
+        # head at 0x1075F0 makes the 0x337DA bump (head+0x10) carry into byte 1.
+        Case("p0", {"eax": 0x800540}, {**c2b_res(0x800540, 3), C2B_PAL_TAIL: le32(C2B_DIRTY_HI),
              C2B_PAL_TABLE + 4: b"\xa5\xa5\xa5\xa5", C2B_PAL_TABLE + 8: b"\xa5\xa5\xa5\xa5",
-             C2B_PAL_TABLE + 0x0C: b"\xa5\xa5\xa5\xa5", C2B_DIRTY: b"\xa5" * 0x20}),
+             C2B_PAL_TABLE + 0x0C: b"\xa5\xa5\xa5\xa5", C2B_DIRTY_HI: b"\xa5" * 0x20}),
         # p1: the handle already owns entry 0: refcount 7 -> 8, nothing else moves.
         Case("p1", {"eax": 0x800040}, {**c2b_res(0x800040, 3), C2B_PAL_TAIL: le32(C2B_DIRTY),
              **c2b_pal_entry(0, 0x800040, 0x1111, 0x2222), C2B_DIRTY: b"\xa5" * 0x20}),
         # p2: entry 1 is free and entry 0 is occupied (start 5, len 4): the new entry starts at 9;
-        # the reflow skips free entry 1 and 3, moves entry 2 (0x20 -> 12), and entry 4 (14) stops it.
-        Case("p2", {"eax": 0x800040}, {**c2b_res(0x800040, 3), C2B_PAL_TAIL: le32(C2B_DIRTY),
-             **c2b_pal_entry(0, 0x800001, 5, 4), **c2b_pal_entry(2, 0x800002, 0x20, 2),
+        # the reflow skips free entry 1 and 3, moves entry 2 (0xA5A5A520 -> 12; the seeded high
+        # bytes make the 0x337FF start store observe all four bytes, and 12 != 0xA5A5A520 fails
+        # the break exactly as 12 != 0x20 did), and entry 4 (14) stops it. Entry 1's +4..+0xF
+        # carry sentinels (a free entry is found by its zero handle dword only).
+        Case("p2", {"eax": 0x800540}, {**c2b_res(0x800540, 3), C2B_PAL_TAIL: le32(C2B_DIRTY),
+             **c2b_pal_entry(0, 0x800001, 5, 4), **c2b_pal_entry(2, 0x800002, 0xA5A5A520, 2),
              **c2b_pal_entry(4, 0x800004, 14, 4), C2B_PAL_TABLE + 0x10: b"\x00\x00\x00\x00",
+             C2B_PAL_TABLE + 0x14: b"\xa5" * 12,
              C2B_DIRTY: b"\xa5" * 0x40}),
         # p3: entries 0..22 occupied, slot 23 free: the new entry lands on the last slot, start is the
         # accumulated end 0x170 and the reflow loop does not run (the next slot is the table end).
-        Case("p3", {"eax": 0x800040}, {**c2b_res(0x800040, 3), C2B_PAL_TAIL: le32(C2B_DIRTY),
+        # Entry 23's +4..+0xF carry sentinels (its zero handle marks it free).
+        Case("p3", {"eax": 0x800540}, {**c2b_res(0x800540, 3), C2B_PAL_TAIL: le32(C2B_DIRTY),
              **c2b_pal_run(23, 0x800100, 0, 0x10),
-             C2B_PAL_TABLE + 23 * 0x10: b"\x00\x00\x00\x00", C2B_PAL_TABLE + 23 * 0x10 + 4: b"\xa5" * 4,
+             C2B_PAL_TABLE + 23 * 0x10: b"\x00\x00\x00\x00",
+             C2B_PAL_TABLE + 23 * 0x10 + 4: b"\xa5" * 12,
              C2B_DIRTY: b"\xa5" * 0x20}),
         # p4: the handle owns the last slot. The search walks all 24 entries.
         Case("p4", {"eax": 0x800040}, {**c2b_res(0x800040, 3), C2B_PAL_TAIL: le32(C2B_DIRTY),
              **c2b_pal_entry(23, 0x800040, 0x1111, 0x2222), C2B_DIRTY: b"\xa5" * 0x20}),
         # p5: the resolved count is 0.
-        Case("p5", {"eax": 0x800040}, {**c2b_res(0x800040, 0), C2B_PAL_TAIL: le32(C2B_DIRTY),
+        Case("p5", {"eax": 0x800540}, {**c2b_res(0x800540, 0), C2B_PAL_TAIL: le32(C2B_DIRTY),
              C2B_PAL_TABLE + 4: b"\xa5\xa5\xa5\xa5", C2B_PAL_TABLE + 8: b"\xa5\xa5\xa5\xa5",
              C2B_PAL_TABLE + 0x0C: b"\xa5\xa5\xa5\xa5", C2B_DIRTY: b"\xa5" * 0x20}),
         # p6: a nonzero low-23 offset: the count comes from payload+0x40 and the record stores the
         # full handle.
-        Case("p6", {"eax": 0x800043}, {**c2b_res(0x800043, 5), C2B_PAL_TAIL: le32(C2B_DIRTY),
+        Case("p6", {"eax": 0x800543}, {**c2b_res(0x800543, 5), C2B_PAL_TAIL: le32(C2B_DIRTY),
              C2B_PAL_TABLE + 4: b"\xa5\xa5\xa5\xa5", C2B_PAL_TABLE + 8: b"\xa5\xa5\xa5\xa5",
              C2B_PAL_TABLE + 0x0C: b"\xa5\xa5\xa5\xa5", C2B_DIRTY: b"\xa5" * 0x20}),
     ], allow_calls=(0x1B544,), eax_mask=0xFFFFFFFF,
@@ -4005,14 +4031,16 @@ C2B_SPECS = [
     # the +0x107D2C/+0x107D20 word counters are DSW(0x107D2C + ctx0*2)/DSW(0x107D20 + ctx0*2).
     Spec("fighter_39834", 0x39834, [
         # f0: k = 1 (the table arm): ebx = 250*0x40/100 = 0xA0; r = 7 with the 0x468D8 predicate
-        # true: 0x36D98 runs; the tail gates are open (4f434).
+        # true: 0x36D98 runs; the tail gates are open (4f434). m2c = 0x01F9 so the +0x107D22 word
+        # counter (m2c + r = 0x0200) carries into its high byte.
         Case("f0", {"eax": 0, "edx": 5}, {**c2b_39834(0, 5, 3, k=1, a1=0x40, tbl=250, r=7, ai=1,
-             s5d=0x10, p_104abc=1, p_104b14=0)},
+             s5d=0x10, p_104abc=1, p_104b14=0, m2c=0x01F9)},
              {0x39738: 7, 0x392A0: 0, 0x36CE4: 0, 0x2C3FC: 0, 0x4F434: 0}),
-        # f1: k = 0xC (the divide arm): ebx = 0x40/16 = 4; the predicate false and +0x5D >= 0x44
+        # f1: k = 0xFF (the divide arm): ebx = 0x40/16 = 4; the predicate false and +0x5D >= 0x44
         # with 0x1078F2+side set: the zero arm (no 0x36CE4). The +0x43 seed has bit 2 set, so the
-        # 0x39917 `and cl,0xFB` clear is observable.
-        Case("f1", {"eax": 0, "edx": 1}, {**c2b_39834(0, 1, 3, k=0xC, a1=0x40, r=0, ai=0, s5d=0x50,
+        # 0x39917 `and cl,0xFB` clear is observable. k's low byte 0xFF makes the +0x107D2E word
+        # counter (k + 1 = 0x0100) carry into its high byte.
+        Case("f1", {"eax": 0, "edx": 1}, {**c2b_39834(0, 1, 3, k=0xFF, a1=0x40, r=0, ai=0, s5d=0x50,
              f2=1, p_104abc=0, s43=0x47)},
              {0x39738: 0, 0x392A0: 0, 0x36CE4: 0, 0x2C3FC: 0, 0x4F434: 0}),
         # f2: the same but 0x1078F2 clear: 0x36CE4 runs.
@@ -4032,9 +4060,10 @@ C2B_SPECS = [
              p_104abc=1, p_104b14=1)},
              {0x39738: 0, 0x392A0: 0, 0x36CE4: 0, 0x2C3FC: 0, 0x4F434: 0}),
         # f6: side 1 with its own character byte (the 0x1078BE byte) and the k dword at
-        # 0x107D2A; the predicate true via +0x52 == 7.
-        Case("f6", {"eax": 1, "edx": 6}, {**c2b_39834(1, 6, 4, k=1, a1=0x40, tbl=100, r=3, ai=1,
-             s52=7, s5d=0x10, p_104abc=1, p_104b14=0)},
+        # 0x107D2A; the predicate true via +0x52 == 7. k = 0xFF (divide) and m2c = 0x01FF make
+        # both side-1 words carry into their high bytes (k + 1 = 0x0100, m2c + r = 0x0202).
+        Case("f6", {"eax": 1, "edx": 6}, {**c2b_39834(1, 6, 4, k=0xFF, a1=0x40, r=3, ai=1,
+             s52=7, s5d=0x10, p_104abc=1, p_104b14=0, m2c=0x01FF)},
              {0x39738: 3, 0x392A0: 0, 0x36CE4: 0, 0x2C3FC: 0, 0x4F434: 0}),
     ], allow_calls=(0x33A10, 0x3AFC4),
        calls=(E.Call(0x39738, ("eax", "edx"), clobbers=("edx",)),
@@ -4053,8 +4082,10 @@ C2B_SPECS = [
     Spec("fighter_36870", 0x36870, [
         # f0: mode 0x25: the 0x385B0 reset runs and returns.
         Case("f0", {"eax": E3_REC}, {**c2b_36870(0, mode=0x25)}),
-        # f1: +0x54 = 0 with +0x42 bit 5: 0x37D18 and return.
-        Case("f1", {"eax": E3_REC}, {**c2b_36870(0, s54=0, s42=0x22, s43=0x43)}),
+        # f1: +0x54 = 0 with +0x42 bit 5: 0x37D18 and return. The +0x40 byte-0 seed (0xC0) is
+        # cleared to 0x40 by the case-0 `& 0x7F7F`, and +0x42 bit 2 (0x26) is cleared by the
+        # `& 0xCCF3BFFF`, so both dword bytes change.
+        Case("f1", {"eax": E3_REC}, {**c2b_36870(0, s54=0, s40=0x404040C0, s42=0x26, s43=0x43)}),
         # f2: +0x43 bit 2 runs 0x36BC8 after the 0x365C8 hit sets bit 0x40 (the +0x41 bit-2 mask
         # clears +0x43 bit 2 when it runs, so the two are separate cases).
         Case("f2", {"eax": E3_REC}, {**c2b_36870(0, s54=0, s41=0x41, s42=0x42, s43=0x04,
@@ -4087,8 +4118,10 @@ C2B_SPECS = [
         Case("f9", {"eax": E3_REC}, {**c2b_36870(0, s54=3)}),
         # f10: +0x54 = 5: the default arm.
         Case("f10", {"eax": E3_REC}, {**c2b_36870(0, s54=5)}),
-        # f11: side 1 (the record's +0x51 byte selects its own slot): the +0x42 bit-5 arm again.
-        Case("f11", {"eax": E3_REC2}, {**c2b_36870(1, s54=0, s42=0x22, s43=0x43, char=2)}),
+        # f11: side 1 (the record's +0x51 byte selects its own slot): the +0x42 bit-5 arm again,
+        # with the side-1 siblings of f1's +0x40/+0x42 seeds (0x107884/0x107886).
+        Case("f11", {"eax": E3_REC2}, {**c2b_36870(1, s54=0, s40=0x404040C0, s42=0x26, s43=0x43,
+             char=2)}),
     ], calls=(E.Call(0x385B0, ("eax",)),
               E.Call(0x39280, ("eax",)),
               E.Call(0x164E8, ("eax",)),

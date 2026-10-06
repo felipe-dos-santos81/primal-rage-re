@@ -363,7 +363,7 @@ in every case that ran it, so a dropped or wrong-width store would have passed:
 
 | row | original store | port statement |
 |---|---|---|
-| `fighter_39834` | `0x39917 and cl,0xFB` | `DSB(ctx[3]+0x43) &= 0xFB` |
+| `fighter_39834` | `0x39914 and cl,0xFB` (stored by `0x39917 mov [ebx*4+0x1077F3],cl`) | `DSB(ctx[3]+0x43) &= 0xFB` |
 | `fighter_36870` | `0x36993` | `DSD(s+0x0C)=0` |
 | `fighter_36870` | `0x36996` | `DSD(s+0x10)=0` |
 | `fighter_36870` | `0x36999` | `DSD(s+0x18)=0` |
@@ -381,12 +381,40 @@ All twelve were seeded (one case per store whose pre-state the write must change
 fighter_command_dispatch 3, fighter_reaction 5, fighter_39834 6, fighter_36870 37, actor_spawn 41,
 sound_voice 2, spawn_anim_opcode 47). Two temporary port mutations (dropping `DSD(s+0x1Cu)=0`;
 dropping `DSD(pset+0x14)=DSD(pset+0x08)`) made their rows MISMATCH, so the seeds are load-bearing.
-55 residual **per-byte** sites remain — bytes whose written value equals the pre-state in every case
-while their store instruction is observed through another byte (high zero bytes of word/dword value
-writes, the palette free-entry handle's byte 3, the dirty-head siblings). That is the harness's
-narrow changed-bytes claim, not a missing sentinel: the instruction is observed, a narrower store
-leaves an observable pre-state. No seed changed a mutant's catching mechanism or case set (0
-mismatches over all 46). This closes the plan's Review Focus 1, which read as if it already held.
+That run left 55 residual **per-byte** sites (palette 26 + fighter_reaction 1 + fighter_39834 4 +
+fighter_36870 13 + sound_voice 2 + spawn_anim_opcode 9); its prose called them "the harness's
+narrow changed-bytes claim, not a fixable seed".
+
+**Fix wave 2 (the review of that disposition)** proved the prose wrong and extended the seeds until
+only bytes no pre-state can make the store change remain. The extensions (a case seed or a fixture
+sentinel each; all nine rows re-measured VERIFIED with the same store counts): `sound_voice` t1
+pre-seeds `0x105D5E/F = DE/AD` (the `0x2C447 mov [0x105D5C],eax` dword's bytes 2/3); `fighter_36870`
+seeds the record's `+0x35/+0x37/+0x45` (the `+0x34/+0x36/+0x44` word resets), the `+0x100CE0` word's
+low byte, the `+0x84` increment carry (`0x84FF`) and f1/f11's `+0x40` byte 0 = 0xC0 and `+0x42`
+bit 2 = 0x26 (the `0x36961/0x36A08` mask stores, both sides); `fighter_reaction` seeds the other
+slot's `+0x4F` (the `0x3B7D0 mov [esi+0x4e],ax` word's high byte); `fighter_39834` seeds the
+counters through their carries (f0 `m2c=0x01F9`, f1/f6 `k=0xFF`, f6 `m2c=0x01FF`); `spawn_anim_opcode`
+seeds the `0x105BE4` high byte, `0x105BD8` byte 3, and the `+0x18/+0x1C/+0x32` addends' carries
+(`0xAAFFFF50 + 0x100C0`); `palette_acquire` seeds the p2/p3 free entries' `+4..+0xF`, uses handles
+whose byte 1 is nonzero (`0x800540`/`0x800543`: the `0x337BA` handle store changes bytes 0/1/2),
+seeds p2's moved entry 2 start (`0xA5A5A520`: `12 != 0xA5A5A520` fails the reflow break exactly as
+`12 != 0x20` did, and entry 4 still stops it) and p0's head at `0x1075F0` (its `+0x10` bump carries
+into byte 1). After the sweep: **0 unobserved store instructions** (the same 165 per row) and **6
+residual per-byte sites**, each a byte the instruction's operation preserves under every pre-state:
+
+| residual byte | instruction | why no pre-state can change it |
+|---|---|---|
+| `0x10761B`, `0x10762B`, `0x10778B` | palette_acquire `0x337BA mov [ebx],ecx` | a free entry's handle dword is 0 (the search's free test) and a valid handle's top byte is 0 (`0x800000 \| offset`), so the written byte 3 is 0 = pre |
+| `0x10779A`, `0x10779B` | palette_acquire `0x337DA mov [0x107798],eax` | the written head is `old+0x10` (`0x337C8`) and the port's `palette_record` keeps the head in `0x107498..0x107608`, so byte 2 is 0x10 and byte 3 is 0 = pre |
+| `0x10AA13` | spawn_anim_opcode `0x2B519 mov [eax+0x2a],bx` | `BX = old \| ((word[0xEF6DC]&1)\|4)` (`0x2B510..0x2B517`) has a zero high byte, so the written byte 1 is the pre's |
+
+The task-3 report's `0x1077F3` residual claim was wrong: f1's `s43=0x47` seed already observes it
+(the `0x39914 and cl,0xFB` clears it to 0x43 before the `0x39917` store). One measured pin moved:
+`fighter_39834@mutant` is now caught by `f1, f2, f5, f6` (f6's k is 0xFF), re-pinned in
+`test_diff_verify.py`; the other 45 mutants' kinds and case sets are unchanged and the diff-verify
+counter stays `201/201 functions VERIFIED; 598/598 mutants detected; 1 named gaps; 148/167 rows
+with callees closed (34 have none)`. This closes the plan's Review Focus 1, which read as if it
+already held.
 
 Counters, measured on the final tree (base re-measured in Task 1, `verify-base.log`):
 

@@ -1472,7 +1472,7 @@ class RealFunctionTests(unittest.TestCase):
         ("fighter_reaction@early", ['r1', 'r3', 'r8']),
         ("fighter_reaction@efc", ['r2', 'r4', 'r5', 'r6', 'r7']),
         ("fighter_reaction@branch", ['r3', 'r4', 'r5', 'r6', 'r7', 'r8']),
-        ("fighter_39834@mutant", ['f1', 'f2', 'f5']),
+        ("fighter_39834@mutant", ['f1', 'f2', 'f5', 'f6']),
         ("fighter_39834@ai", ['f3']),
         ("fighter_39834@arm", ['f2']),
         ("fighter_39834@thr", ['f5']),
