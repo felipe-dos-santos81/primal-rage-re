@@ -209,9 +209,14 @@ KINDS = {
 The arithmetic: +9 functions, +46 mutants, rows with callees 158 -> 167 (the nine new rows all have
 callees), no-callee 34 unchanged, closed 69 -> 148. The 79 rows that close are the base rows whose
 callee set is now a subset of the verified rows. The nine new rows themselves stay open: every one
-has an allowed callee without its own row (`0x1B544`, `0x249B0`, `0x249D0`, `0x5D812`, `0x127C0`,
-`0x1C390`, `0x1C3A0`, `0x29D60`, `0x2EA64`, `0x2B8F8`, `0x29F34`, `0x33A10`, `0x3AFC4`), which the
-one-level-deep closure rule counts unverified by construction (the same shape as C1/C2).
+has an allowed or stubbed callee without its own row (`0x1B544`, `0x249B0`, `0x249D0`, `0x5D812`,
+`0x127C0`, `0x1C390`, `0x1C3A0`, `0x29D60`, `0x2EA64`, `0x2B8F8`, `0x29F34`, `0x3AFC4`), which the
+one-level-deep closure rule counts unverified by construction (the same shape as C1/C2). The
+execution's re-measurement removed `0x33A10` from the first draft of that list: it is
+`fighter_ctx_swap`, with its own row (`fighter_ctx_swap | 0x33A10 | 2 | 1/1 | VERIFIED` in both the
+Task 1 baseline and the final table), so the callee column prints `33A10 allow VERIFIED`. The list
+also said "allowed callee" alone; the re-measurement shows `fighter_36870`'s unverified callees are
+all stubs (it has no allow-mode callee), hence "allowed or stubbed".
 
 `make entry-triage` is byte-identical (no ported function, no `fn_register`);
 `PR_ORACLE_REQUIRED=1 ./build/run_tests` prints `all checks passed`; the Python suite
@@ -295,6 +300,14 @@ C2's §C2.8 named 11 row-less stubs (`0x18540 0x18350 0x18788 0x1881C 0x1A5AC 0x
 stubs**, the next callee-row batch's (C3) scope. Measured from the final table, the ported callees
 the C2b rows stub or allow that still have no row:
 
+- **`0x13DF0` (`effects_clear`), the P8 row's row-less stub**: P8's `effects_29cfc` row (the
+  `jmp 0x13DF0` tail alias) declares it a stub (`tools/diff_verify.py`: `P8_CLEAR = E.Call(0x13DF0)`,
+  so the table prints `13DF0 stub unverified`) and `effects_clear` carries `PR_SEAM0(0x13DF0u)`
+  (`port/src/game/effects.c:518`). It is absent from the previously-open eleven because C2's §C2.5
+  scope was C2's own callee set and P8 created this stub after C2; P8 §P8.9 already assigns it to
+  C2b's list ("the callee rows the P batches left open, `0x13DF0` among them"), and C3 takes it with
+  the rest. (Task 1's baseline table, `effects_29cfc | 0x29CFC | … | 13DF0 stub unverified`, is the
+  row-less evidence.) This closes Task 1's note; no value moved, so no other doc changes.
 - the previously open eleven: `0x18540 0x18350 0x18788 0x1881C 0x1A5AC 0x249B0 0x249D0 0x2B150
   0x29F34 0x38154` (+`0x2EA30` allow);
 - the type family's new stubs: `0x164E8 0x1A734 0x1AB5C 0x2A620 0x2A820 0x2AC80 0x2BD44 0x365C8
@@ -302,10 +315,110 @@ the C2b rows stub or allow that still have no row:
   0x3B134 0x3B6C4 0x3C520 0x3C59C 0x46460 0x4F434`;
 - the voice dispatcher's eight audio stubs: `0x1CA14 0x1CA6C 0x1CC28 0x1CD9C 0x1CE04 0x1CE70
   0x1D238 0x1D244`;
-- the allowed tree members without rows: `0x29DB8` (its operands), `0x2B8F8` (allowed), `0x41310`,
-  `0x49444` (P7's row-less), `0x127C0` (a type callback), `0x1C390`/`0x1C3A0` (the port combines
-  them), `0x1B544` (host-owned), `0x5D812`/`0x29D60`/`0x2EA64` (bare stubs/rets).
+- the allowed tree members without rows: `0x29DB8` (its operands), `0x2B8F8` (allowed), `0x3AFC4`
+  (the anim triple, allowed by the three fighter rows `0x3B298`/`0x3B714`/`0x39834`; the final table
+  prints `3AFC4 allow unverified`), `0x41310`, `0x49444` (P7's row-less), `0x127C0` (a type
+  callback), `0x1C390`/`0x1C3A0` (the port combines them), `0x1B544` (host-owned),
+  `0x5D812`/`0x29D60`/`0x2EA64` (bare stubs/rets).
+
+Measured on the final table: its callee column prints **57 distinct unverified callees** across all
+rows (the nine new ones included); 53 are C3 row candidates, the four non-row members being the
+host-owned `0x1B544` and the bare stubs/rets `0x5D812`/`0x29D60`/`0x2EA64`. `0x13DF0` and `0x3AFC4`
+were the two the planner's first enumeration missed: `0x13DF0` because P8 created its stub after
+C2's list was measured (Task 1's note), `0x3AFC4` because C2b's fighter rows are its first users.
 
 Their rows are the next callee-row batch (C3) with the same recipe; every one is ported and its
 direct callees are the port's own helpers (the C1/C2/C2b seams are in place). The host-owned
 `0x1B544` and the runtime fatal `0x62003` are not rows; they stay named limits.
+
+## §C2b.8 Results (the executed tree)
+
+The plan's Tasks 2-4 were executed on `reverse-c2b` at the base `main` `e43712f`: Task 2 `ab9011d`
+(the nine rows, 35 seams, the op-0x2D correction), the review fix wave `297000c` (the `0x2B52F`
+prefix case, the `0x29DB8` u8 note, the a5/EDI/static-count wording, the `sound_voice@play` rename),
+Task 3 `228303d` (the store-sentinel sweep) and the closure commit. Every row was re-measured in the
+tree; the planner's prototype values held.
+
+The rows as executed (cases / blocks hit-total / mutants):
+
+| row | entry | cases | blocks | mutants | named unhit |
+|---|---|---|---|---|---|
+| `palette_acquire` | 0x33754 | 7 | 14/15 | 6/6 | 0x3384E |
+| `effects_spawn` | 0x13C70 | 5 | 12/12 | 5/5 | — |
+| `fighter_command_dispatch` | 0x3B298 | 15 | 28/28 | 7/7 | — |
+| `fighter_reaction` | 0x3B714 | 9 | 22/23 | 6/6 | 0x3B75D |
+| `fighter_39834` | 0x39834 | 7 | 16/16 | 5/5 | — |
+| `fighter_36870` | 0x36870 | 14 | 31/31 | 5/5 | — |
+| `actor_spawn` | 0x2AE14 | 11 | 32/33 | 4/4 | 0x2B071 (dead) |
+| `sound_voice` | 0x2C3FC | 62 | 100/100 | 4/4 | — |
+| `spawn_anim_opcode` | 0x2B2A0 | 60 | 85/85 | 4/4 | — |
+
+`spawn_anim_opcode`'s 60/85 is the fix wave's: at Task 2 it was 59 cases with `0x2B52F` named dead;
+§C2b.5 above carries the prefix evidence. The three unhit blocks are the named ones (the two
+`0x62003` fatal paths plus the dead `0x2B071`).
+
+**Task 3's store sweep** (the review focus: every field a row writes carries a sentinel) found **12
+store instructions the fixtures could not observe** at `297000c` — the store wrote its own pre-state
+in every case that ran it, so a dropped or wrong-width store would have passed:
+
+| row | original store | port statement |
+|---|---|---|
+| `fighter_39834` | `0x39917 and cl,0xFB` | `DSB(ctx[3]+0x43) &= 0xFB` |
+| `fighter_36870` | `0x36993` | `DSD(s+0x0C)=0` |
+| `fighter_36870` | `0x36996` | `DSD(s+0x10)=0` |
+| `fighter_36870` | `0x36999` | `DSD(s+0x18)=0` |
+| `fighter_36870` | `0x3699C` | `DSD(s+0x1C)=0` |
+| `fighter_36870` | `0x369A7` | `DSB(so+0x66)=0` |
+| `fighter_36870` | `0x369E1` | `DSD(rec_s+0x1C)=0` |
+| `actor_spawn` | `0x2AED5` | `DSW(rec+0x38)=0` |
+| `actor_spawn` | `0x2B0CA` | `DSD(pset+0x14)=DSD(pset+0x08)` |
+| `actor_spawn` | `0x2B135` | the node link `node+4 = pset` |
+| `spawn_anim_opcode` | `0x2B602` | `DSB(rec+0x29) &= ~0x02` |
+| `spawn_anim_opcode` | `0x2B764` | `DSB(rec+0x2B) &= ~0x04` |
+
+All twelve were seeded (one case per store whose pre-state the write must change); after the sweep
+**0 unobserved store instructions** remain (165/165 per row: palette_acquire 15, effects_spawn 9,
+fighter_command_dispatch 3, fighter_reaction 5, fighter_39834 6, fighter_36870 37, actor_spawn 41,
+sound_voice 2, spawn_anim_opcode 47). Two temporary port mutations (dropping `DSD(s+0x1Cu)=0`;
+dropping `DSD(pset+0x14)=DSD(pset+0x08)`) made their rows MISMATCH, so the seeds are load-bearing.
+55 residual **per-byte** sites remain — bytes whose written value equals the pre-state in every case
+while their store instruction is observed through another byte (high zero bytes of word/dword value
+writes, the palette free-entry handle's byte 3, the dirty-head siblings). That is the harness's
+narrow changed-bytes claim, not a missing sentinel: the instruction is observed, a narrower store
+leaves an observable pre-state. No seed changed a mutant's catching mechanism or case set (0
+mismatches over all 46). This closes the plan's Review Focus 1, which read as if it already held.
+
+Counters, measured on the final tree (base re-measured in Task 1, `verify-base.log`):
+
+| state | diff-verify counter | E2 |
+|---|---|---|
+| base `e43712f` | `192/192 functions VERIFIED; 552/552 mutants detected; 1 named gaps; 69/158 rows with callees closed (34 have none)` | `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30`; voice `0 / 115 / 19` |
+| final (`ab9011d` + `297000c` + `228303d`) | `201/201 functions VERIFIED; 598/598 mutants detected; 1 named gaps; 148/167 rows with callees closed (34 have none)` | byte-identical |
+
+`make entry-triage` byte-identical (no ported function, no `fn_register`, so the committed E2 table
+was not regenerated); `python3 -m unittest tools.tests.test_diff_verify` 104 tests OK (the clobber
+re-derivation, the case-set and mask exact-sets, the counter line); `PR_ORACLE_REQUIRED=1
+./build/run_tests` `all checks passed`; `python3 tools/port_progress.py` stays `771 1203 64` / `731
+731 100`; README untouched.
+
+**The full gate** on the closed tree (the plan's parallel-safe overrides, log `/tmp/pr_c2b_final.log`):
+
+```
+EXIT=0
+diff-verify: 201/201 functions VERIFIED; 598/598 mutants detected; 1 named gaps; 148/167 rows with callees closed (34 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+```
+
+`EXIT=0` (the log's last line); the 45 oracle lines (`grep -E '^(oracle C-vs-Python|capture
+oracle|smk_compare|title_compare|attract_compare|== demo-fight)'`) diff clean against
+`.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt` (`ORACLES-EQUAL`); `make
+audio-render AUDIO_WAV=/tmp/pr_c2b.wav` `cmp`-equal to `before-t2.wav` (`WAV-SAME`; both sha256
+`df74acfb65d345fb72cb214102089f2a0ab8d4b271ddc17e2a5f5c4f1a380844`); the 33 gp ratchet lines are
+the Task 1 list verbatim (gp-idle-loss 2064/8320, gp-u5-charsel 516/1513, gp-u6-moves-b
+1005/2262/moves 2949, gp-keys 11, gp-twop 612/1506/1506, the seven U8 as at base, U9
+346/3503/path 8/win 3503, U10 331/9954/path 30/win 9954); `symbols.h` regenerated byte-identically;
+the Python diff-verify suite (test_diff_emu + test_diff_verify) 169 tests OK and the E2 suite 44, the
+k11/gp/title/gra suites 184/10/33; 25 `all checks passed` in the log. The only behavioral change in
+`port/src` (the op-0x2D arms) is outside every oracle-visible path, and the full ladder is the proof:
+no oracle line, WAV byte, gp ratchet or goldens moved.
