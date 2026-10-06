@@ -285,9 +285,9 @@ the test's table):
         ("anim_operand@scale", ['o7']),
         ("anim_operand@sel", ['o10', 'o6', 'o7', 'o8', 'o9']),
         ("anim_read_var@a45", ['a7']),
-        ("anim_read_var@cswap", ['a10']),
+        ("anim_read_var@cswap", ['a10', 'a11']),
         ("anim_read_var@opff", ['a14']),
-        ("anim_read_var@pswap", ['a16', 'a17', 'a18', 'a19', 'a8']),
+        ("anim_read_var@pswap", ['a16', 'a17', 'a18', 'a19', 'a8', 'a9']),
         ("anim_read_var@ret", ['a12']),
         ("anim_read_var@ring", ['a1']),
         ("anim_read_var@sx", ['a13', 'a2']),
@@ -319,7 +319,7 @@ the test's table):
         ("fighter_18540@side", ['c1']),
         ("fighter_38154@abs", ['d0', 'd11', 'd14', 'd7']),
         ("fighter_38154@bd", ['d0', 'd11', 'd15', 'd16', 'd7']),
-        ("fighter_38154@bit", ['d0', 'd1', 'd11', 'd2', 'd4', 'd5', 'd7', 'd8']),
+        ("fighter_38154@bit", ['d0', 'd1', 'd11', 'd15', 'd16', 'd2', 'd3', 'd4', 'd5', 'd7', 'd8']),
         ("fighter_38154@call", ['d0', 'd1', 'd11', 'd14', 'd7', 'd8']),
         ("fighter_38154@dir", ['d1', 'd14', 'd8']),
         ("fighter_38154@flag", ['d0', 'd11', 'd12', 'd13', 'd5', 'd7']),
@@ -454,9 +454,17 @@ Named gaps and limits:
   scan's base) and the store arms `0x1CCA7`, `0x1CD06`, `0x1CD79` (two calls in any one run: the
   entry read plus one arm), so the stored `+0x14` can hold a tick later than the `now` it compares
   against; the port reads the per-frame `DS_00101500` word at the same four sites, and the allow's
-  body is the raw `mov eax,[0x81500]; ret` at `0x500BB` over the fixture's word, which cannot
+  body is the raw `mov eax,[0x00101500]; ret` at `0x500BB` over the fixture's word, which cannot
   advance mid-run — both sides store the value they scanned, so the shape is unobservable in the
   harness.
+- **`anim_operand`'s four return-tail re-stores are raw dead stores**: `0x2B9C1`, `0x2BA5F`,
+  `0x2BA8A` and `0x2BAB6` (`mov word [0x105BE8],cx`) each re-store the CX that `0x2B96E` already
+  stored at the entry (the raw re-stores it on each return tail; CX survives the stubbed `0x29F34`
+  call per `E.callee_clobbers`), so no fixture pre-state can make the re-store change a byte and
+  a dropped re-store changes no final byte or call-point memory. Task 3's store sweep finds them
+  the batch's only survivors (78 sites, 73 image-executed, 69 observed; cases o5/o11/o8/o9), the
+  same class as C2's `0x18AC7` self-assignment (C2 record §C2.6): dead stores reproduced
+  faithfully, kept. The `@be8` mutant keeps the field's value path covered (cases o0/o14).
 - **Masks** (`C3B_MASKS` in the test): `fighter_18350`, `fighter_18540`, `fighter_38154`,
   `list_insert_before`, `effect_teardown`, `actor_type_49444`, `set_dead`, `anim_write_var` and
   `fighter_anim_triple` 0 (their callers ignore EAX); the five `snd_*` rows and `snd_sample_queue`
@@ -574,8 +582,9 @@ byte-identical; README untouched.
 Task 3's measured change after §C3b.3's table: the fixed fixture seeds `slot+0x40..0x43 = 40 41 42
 00`, so the `0x38221 mov byte [esi+0x43],bl` store is observed in all six cases that reach it and
 `fighter_38154@bit` is alone caught by `['d0','d1','d11','d15','d16','d2','d3','d4','d5','d7','d8']`
-(§C3b.3's copy shows the pre-fix set; the committed test carries the re-pin). The fix wave's
-`anim_read_var` correction is in §C3b.5's masks bullet.
+(§C3b.3 carries the committed set; the pre-sweep 8-set was
+`['d0','d1','d11','d2','d4','d5','d7','d8']`). The fix wave's `anim_read_var` correction is in
+§C3b.5's masks bullet.
 
 **The full gate** on this closure commit (the plan's parallel-safe overrides, log
 `/tmp/pr_c3b_final.log`): the run's lines are recorded in the batch report

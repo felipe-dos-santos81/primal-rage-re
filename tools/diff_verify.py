@@ -4869,11 +4869,11 @@ C3B_SPECS = [
         Case("a8", {"eax": C3B_A_REC, "edx": 0x46},
              {**c3b_a_pokes(), C3B_A_ACT + 0x52: b"\x33"}),                   # parent +0x52
         Case("a9", {"eax": C3B_A_REC, "edx": 0x4B},
-             {**c3b_a_pokes(), C3B_A_ACT + 0x56: b"\x42\x41"}),               # parent word
+             {**c3b_a_pokes(), C3B_A_ACT + 0x58: b"\x42"}),                   # parent +0x58
         Case("a10", {"eax": C3B_A_REC, "edx": 0x4C},
              {**c3b_a_pokes(), C3B_A_ACT + 0x68 + 0x52: b"\x55"}),            # child +0x52
         Case("a11", {"eax": C3B_A_REC, "edx": 0x51},
-             {**c3b_a_pokes(), C3B_A_ACT + 0x68 + 0x56: b"\x62\x61"}),        # child word
+             {**c3b_a_pokes(), C3B_A_ACT + 0x68 + 0x58: b"\x61"}),            # child +0x58
         Case("a12", {"eax": C3B_A_REC, "edx": 0x52}, c3b_a_pokes()),          # above 0x51: 0
         Case("a13", {"eax": C3B_A_REC, "edx": 0xFF40}, c3b_a_pokes()),        # dx = 0x40
         Case("a14", {"eax": C3B_A_REC, "edx": 0x80}, c3b_a_pokes(0)),         # dl&0x7F = 0
@@ -4958,7 +4958,7 @@ C3B_SPECS = [
         Case("d13", {"eax": 1}, c3b_d_case(1, 8, 0, 0x1400, 0, 0)),       # side1 V1 near: flag 1
         Case("d14", {"eax": 0}, c3b_d_case(0, 0, 0, 0x5000, 0, 0)),       # v<0, bit14 clear: abs
         Case("d15", {"eax": 0}, c3b_d_case(0, 9, 0, 0x4800, 0, 1)),       # bd=9 still >= 8: flag 1
-        Case("d16", {"eax": 0}, c3b_d_case(0, 0x88, 0, 0x4800, 0, 1, 0, 1)),  # bd 0x88 signed < 8
+        Case("d16", {"eax": 0}, c3b_d_case(0, 0x88, 0, 0x4800, 0, 1, 0, 1)),  # bd 0x88 zero-extended >= 8 -> flag 1; kills the ==8 mutant and a sign-extended read
     ], allow_calls=(0x367DC,),
        calls=(ANIM_BEGIN,
               E.Call(0x36638, ("eax", "edx"), mode="real"),
