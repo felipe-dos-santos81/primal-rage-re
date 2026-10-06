@@ -1860,7 +1860,7 @@ class RealFunctionTests(unittest.TestCase):
         ("fighter_18540@side", ['c1']),
         ("fighter_38154@abs", ['d0', 'd11', 'd14', 'd7']),
         ("fighter_38154@bd", ['d0', 'd11', 'd15', 'd16', 'd7']),
-        ("fighter_38154@bit", ['d0', 'd1', 'd11', 'd2', 'd4', 'd5', 'd7', 'd8']),
+        ("fighter_38154@bit", ['d0', 'd1', 'd11', 'd15', 'd16', 'd2', 'd3', 'd4', 'd5', 'd7', 'd8']),
         ("fighter_38154@call", ['d0', 'd1', 'd11', 'd14', 'd7', 'd8']),
         ("fighter_38154@dir", ['d1', 'd14', 'd8']),
         ("fighter_38154@flag", ['d0', 'd11', 'd12', 'd13', 'd5', 'd7']),

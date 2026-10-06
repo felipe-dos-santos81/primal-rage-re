@@ -4675,7 +4675,9 @@ def c3b_d_case(side, bd, s884, p, x, bit14, slot53=1, slot54=0, mode4b=0, live=T
           C3B_D_REC + 0x28: (0x4000 if bit14 else 0).to_bytes(2, "little"),
           0x1088BD: bytes([bd]), 0x108884: le32(s884), 0x104B00: le16(mode4b),
           slot + 0x53: bytes([slot53]), slot + 0x54: bytes([slot54]),
-          slot + 0x40: le32(0xFFFFFFFF), 0x1078F0 + side: b"\xA5",
+          # +0x43 bit 6 clear (distinct nonzero neighbours 0x40..0x42): the 0x38221 OR 0x40
+          # must change the byte, or a dropped store at 0x38214..0x38221 passes (C3b sweep).
+          slot + 0x40: b"\x40\x41\x42\x00", 0x1078F0 + side: b"\xA5",
           0x10AE4C: b"\xAA\xBB", slot + 0x55: b"\xCC", slot + 0x5F: b"\xDD"}
     if not live:
         p2[0x1077A8 + side * 4] = le32(0)
