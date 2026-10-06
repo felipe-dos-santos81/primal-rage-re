@@ -79,7 +79,7 @@ int effects_active(void);
  * dispatcher) is ported in camera.c. */
 void camera_shake_decay(void);
 
-/* 0x13420 (record C3 §C3.4): unlinks `rec` and runs its type dispatch. Exposed
+/* 0x13420 (record C3 §C3.2): unlinks `rec` and runs its type dispatch. Exposed
  * for the 0x13DF0 row's mutants; its own row is C3b (the 13DF0 row stubs it). */
 void effect_teardown(u32 rec);
 

@@ -8861,7 +8861,7 @@ static void m_2a620_pset(const u32 *r, u32 *eax)
 /* always the current-y path. */
 static void m_2a620_y(const u32 *r, u32 *eax)
 {
-    u32 rec = r[R_EAX], pset = r[R_EDX];
+    u32 rec = r[R_EAX];
     s32 v = (s32)DSD(DS_000F0AEC) + 0x3bc0 - ((s32)DSD(rec + 0x30u) >> 16);
     v >>= 6;
     if ((u16)v < DSW(DS_00107A4C)) { DSB(rec + 0x64u) = 0xff; return; }
@@ -9228,7 +9228,6 @@ static void m_36ce4_mode22(const u32 *r, u32 *eax)
 static void m_36ce4_rec(const u32 *r, u32 *eax)
 {
     u32 slot = r[R_EAX];
-    u32 rec = DSD(slot);
     DSB(slot + 0x43u) |= 4u;
     if (DSW(DS_00104B00) == 3u || DSW(DS_00104B00) == 0x22u) { *eax = 0u; return; }
     actors_anim_begin(DSD(DS_00102900), 0x000E906Eu, 0x40400000u);
