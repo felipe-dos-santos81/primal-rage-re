@@ -4246,8 +4246,8 @@ C3_SPECS = [
              {0x10A200: le32(0x10A280), 0x10A250: le32(0x10A260),
               0x10A240: le32(0xA5A5A5A5), 0x10A244: le32(0xA5A5A5A5),
               0x10A284: le32(0xA5A5A5A5)}),
-        # l1: at's next is at itself (a one-element ring): the [at] and [at+4] stores land on the
-        # same word, so the last one wins; rec's two links land on it.
+        # l1: at's next is at itself (a one-element ring), so next == at: the four stores land on
+        # four distinct words (0x10A200, 0x10A204, 0x10A240, 0x10A244), none overwritten.
         Case("l1", {"eax": 0x10A200, "edx": 0x10A240},
              {0x10A200: le32(0x10A200), 0x10A204: le32(0xA5A5A5A5),
               0x10A240: le32(0x11111111), 0x10A244: le32(0x22222222)}),

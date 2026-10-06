@@ -262,10 +262,11 @@ callees: `fighter_1a5ac`, `effects_clear`, `hit_vert_distance`, `fighter_36ce4`,
 other eleven have none), no-callee 34 -> 45 (+11). Closed 148 -> 154 (+6): the three new
 with-callee rows whose callees are all verified (`fighter_1a5ac`, `hit_vert_distance`,
 `fighter_36ce4`), the three dependents the batch closes (`effects_29cfc` by `0x13DF0`,
-`fighter_3aa54` by `0x1A5AC`, `hit_geometry` by `0x1881C`), and no regression. The five open rows
-of the batch are accounted: `effects_clear` (stubbed `0x13420` has no row), `actor_alloc` (the
-`0x249C0`/`0x2EA30` allows have none — both enter the C3b list), and the eleven no-callee rows
-count in the 45.
+`fighter_3aa54` by `0x1A5AC`, `hit_geometry` by `0x1881C`), and no regression. The batch's sixteen
+rows account as 3 closed + 2 open + 11 no-callee: the three closed with-callee rows are named
+above; the two still open are `effects_clear` (stubbed `0x13420` has no row) and `actor_alloc`
+(the `0x249C0`/`0x2EA30` allows have none — both enter the C3b list); and the eleven no-callee
+rows count in the 45.
 
 `make entry-triage` is byte-identical (no ported function, no `fn_register`);
 `PR_ORACLE_REQUIRED=1 ./build/run_tests` prints `all checks passed`; the Python suite
