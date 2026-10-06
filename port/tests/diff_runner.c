@@ -9515,7 +9515,7 @@ static const binding_t k_bindings[] = {
     { "sound_voice@mutant",                m_2c3fc,        0x000000FFu },
     { "sound_voice@queue",                 m_2c3fc_queue,  0x000000FFu },
     { "sound_voice@case5",                 m_2c3fc_case5,  0x000000FFu },
-    { "sound_voice@stop",                  m_2c3fc_play,   0x000000FFu },
+    { "sound_voice@play",                  m_2c3fc_play,   0x000000FFu },
     { "spawn_anim_opcode",                 b_2b2a0,        0x000000FFu },
     { "spawn_anim_opcode@mutant",          m_2b2a0,        0x000000FFu },
     { "spawn_anim_opcode@indirect",        m_2b2a0_indirect, 0x000000FFu },

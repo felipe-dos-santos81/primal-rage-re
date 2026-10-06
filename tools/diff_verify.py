@@ -3621,14 +3621,15 @@ def c2b_op(op, value=0x10, low=None, r8=None, word_extra=b"", r28=0x2828, r18=0x
            r1c=0x1C1C1C1C, r20=0x20202020, r24=0x24242424, r50=0x50, r2a=0x2A2A,
            r2c=0x2C2C, r2e=0x2E2E, r30=0x3030, r32=0x3232, r34=0x3434, r36=0x3636,
            r38=0x3838, r4e=0x4E, r4f=0x4F4F4F4F, r59=0x59, r61=0x61, p5e6=0, p5e8=0,
-           p5d4=C2B_OP_DESC, pset0c=0x0C0C):
+           p5d4=C2B_OP_DESC, pset0c=0x0C0C, prefix=False):
     """One 0x2B2A0 case: the command word (op<<8 | low) at C2B_OP_STR, the record's fields, the
     0x105BE4/6/8 words, the stream base 0x105BD4 and the pset's +0x0C word. `value` is the 0x2B8F8
-    stub EAX (the operand); `word_extra` are the bytes after the command word (bounded ops)."""
+    stub EAX (the operand); `word_extra` are the bytes after the command word (bounded ops).
+    `prefix` forces the 0x1F prefix encoding for an op the direct form would short-circuit."""
     rec, str_ = C2B_OP_REC, C2B_OP_STR
     if r8 is None:
         r8 = str_
-    if op >= 0x20 or op == 0x1F:
+    if op >= 0x20 or op == 0x1F or prefix:
         # the 0x1F prefix: anim_operand stores the low byte as the opcode and returns the next word.
         data = (((0x1F << 8) | op).to_bytes(2, "little")
                 + (value & 0xFFFF).to_bytes(2, "little") + word_extra)
@@ -3705,11 +3706,14 @@ C2B_VOICE_CASES = [
 C2B_OP_CASES = [
     # One case per opcode: the command word is (op<<8 | value) for the 5-bit ops and the 0x1F prefix
     # (0x1F<op>) plus the operand word for op >= 0x20, so the real anim_operand (allowed) selects the
-    # opcode. The stub EAX values: set_dead/sample are void; 0x5D7DC rng; 0x2AE14 the child record;
-    # 0x29DB8/0x2C3FC void.
+    # opcode. `o0dp` is the 0x1F prefix carrying op 0x0D: the direct 0x0D test at 0x2B2CA runs before
+    # anim_operand, but the prefix stores the low byte back (`mov [0x105BE4],cx` at 0x2B932) and the
+    # table dispatch at 0x2B2FC then reaches 0x2B52F. The stub EAX values: set_dead/sample are void;
+    # 0x5D7DC rng; 0x2AE14 the child record; 0x29DB8/0x2C3FC void.
     *[Case(cid, {"eax": C2B_OP_REC, "edx": 1, "ebx": flag},
            {**c2b_op(op, value=value, word_extra=we, **{k: v for k, v in kw.items()
-                                                       if k in ("r28", "p5e6", "p5e8", "p5d4", "pset0c")})},
+                                                       if k in ("r28", "p5e6", "p5e8", "p5d4",
+                                                                "pset0c", "prefix")})},
            ({0x2B150: 0} if op == 0 else {})
            | ({0x5D7DC: C2B_OP_RNG} if op == 0x08 else {})
            | ({0x2AE14: C2B_OP_CHILD} if op == 0x0C else {})
@@ -3735,6 +3739,7 @@ C2B_OP_CASES = [
         ("o0ca", 0x0C, 0x01, 0, b"\x02\x00\x03\x00", {"p5e8": 1}),
         ("o0cb", 0x0C, 0x02, 0, b"\x02\x00\x03\x00", {"p5e8": 0}),
         ("o0d", 0x0D, 0x1A, 0, b"", {}),
+        ("o0dp", 0x0D, 7, 0, b"", {"prefix": True}),
         ("o0e", 0x0E, 0x1B, 0, b"", {}),
         ("o0fa", 0x0F, 0x1C, 0, b"", {"p5e6": 0}),
         ("o0fb", 0x0F, 0x1C, 0, b"", {"p5e6": 1}),
@@ -4090,7 +4095,8 @@ C2B_SPECS = [
     # cursor (0x2A620 stub, rec+0x28 bit 0x10), the type-callback indirect at 0x2B0E9 (0x5D812
     # allow for the visible arm; 0x127C0 allow, whose empty-list path is self-contained, for the
     # invisible one) and 0x1C390/0x1C3A0 (allow: the port's render_list_insert performs both). The
-    # raw's 0x2AE3C overwrites a5's high word with a2; the cases keep them 0, so both sides agree.
+    # raw's 0x2AE3C zeroes a5's high word (EDX is cleared at 0x2AE35); the cases keep a5's high word
+    # 0, so both sides agree.
     Spec("actor_spawn", 0x2AE14, [
         # g0: the alloc fails: return 0.
         Case("g0", {"eax": C2B_2AE14_DESC, "edx": 2, "ecx": 3, "ebx": 4, "s0": 0},
@@ -4166,7 +4172,7 @@ C2B_SPECS = [
               E.Call(0x1CE70, ("eax",)),
               E.Call(0x1D238, ()),
               E.Call(0x1D244, ())),
-       eax_mask=0xFF, mutants=("@mutant", "@queue", "@case5", "@stop")),
+       eax_mask=0xFF, mutants=("@mutant", "@queue", "@case5", "@play")),
     # 0x2B2A0 (record §C2b): EAX = rec, EDX = index, EBX = flag. The animation-opcode dispatcher.
     # 0x2B8F8 (the operand), 0x2B150 (set_dead), 0x5D7DC (rng), 0x2AE14 (the opcode-0x0C child),
     # 0x29DB8 (the variable write) and 0x2C3FC (the opcode-0x2E voice) are stubbed through their
@@ -4180,9 +4186,7 @@ C2B_SPECS = [
                      clobbers=("ebx", "ecx", "edx")),
               E.Call(0x29DB8, ("eax", "edx", "ebx"), clobbers=("ebx", "edx")),
               E.Call(0x2C3FC, ("eax",))),
-       eax_mask=0xFF, mutants=("@mutant", "@indirect", "@child", "@skip"),
-       unhit_named={0x2B52F: "the 0x0D jump-table entry: the early 0x0D test at 0x2B2CA returns "
-                           "before the table, so the raw's 0x0D target is dead"}),
+       eax_mask=0xFF, mutants=("@mutant", "@indirect", "@child", "@skip")),
 ]
 
 SPECS = [

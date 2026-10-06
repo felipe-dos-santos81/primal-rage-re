@@ -25,7 +25,7 @@ the port's call sites. It is exact, except where noted in §C2b.2. The rows and 
 
 | callee | blocks (insns) | the raw's direct callees | row design |
 |---|---|---|---|
-| `0x2B2A0` | 85 (682) | `2B8F8` (operand), `2EA64` (ret), `2B150` (set_dead), `5D7DC` (rng), `2AE14` (spawn), `29DB8` (write_var), three indirect (`0x2B56D/0x2B594/0x2B5EA`) and `2C3FC` (voice) | `2B8F8`/`29F34` allowed (so the 0x1F prefix selects ops >= 0x20; see §C2b.5), `2EA64`/`29D60` allowed, the rest stubbed |
+| `0x2B2A0` | 85 (682) | `2B8F8` (operand), `2EA64` (ret), `2B150` (set_dead), `5D7DC` (rng), `2AE14` (spawn), `29DB8` (write_var), three indirect (`0x2B56D/0x2B594/0x2B5EA`) and `2C3FC` (voice) | `2B8F8`/`29F34` allowed (so the 0x1F prefix selects ops >= 0x20 and the 0x0D table entry `0x2B52F`; see §C2b.5), `2EA64`/`29D60` allowed, the rest stubbed |
 | `0x33754` | 15 (94) | `1B544` (host resolve), `62003` (fatal) | `1B544` allowed against a preloaded fixture; the fatal block named |
 | `0x13C70` | 12 (73) | `249D0`, `1B544`, `249B0` | all allowed: the port's effects.c keeps its own copies of the list primitives and its `res_resolve` writes the same bytes |
 | `0x2C3FC` | 100 (395) | `1CA14` `1CA6C` `1CC28` `1CD9C` `1CE04` `1CE70` `1D238` `1D244` | all stubbed |
@@ -56,7 +56,7 @@ the counter line). The measured rows:
 | `fighter_36870` | 0x36870 | 14 | 31/31 | 5/5 | all eleven stub |
 | `actor_spawn` | 0x2AE14 | 11 | 32/33 (0x2B071 named dead) | 4/4 | `2AC80`, `2B2A0`, `2A408`, `33754`, `2A820`, `2A620` stub; `1C390`, `1C3A0`, `127C0`, `5D812` allow |
 | `sound_voice` | 0x2C3FC | 62 | 100/100 | 4/4 | eight audio stubs |
-| `spawn_anim_opcode` | 0x2B2A0 | 59 | 84/85 (0x2B52F named dead) | 4/4 | `2B150`, `5D7DC`, `2AE14`, `29DB8`, `2C3FC` stub; `2EA64`, `29D60`, `2B8F8`, `29F34` allow |
+| `spawn_anim_opcode` | 0x2B2A0 | 60 | 85/85 | 4/4 | `2B150`, `5D7DC`, `2AE14`, `29DB8`, `2C3FC` stub; `2EA64`, `29D60`, `2B8F8`, `29F34` allow |
 
 **New seams added to `port/src`** (each is a first statement; `E.callee_clobbers` re-derives every
 declared clobber, with the three §C2b.2 corrections):
@@ -101,8 +101,9 @@ declared clobber, with the three §C2b.2 corrections):
 
 `fighter_input_read`, `fighter_input_mask`, `fighter_state_365c8`, `fighter_state_36bc8`,
 `hit_anim_start_c`, `fighter_379c4`, `fighter_164e8`, `fighter_36ce4`, `fighter_39738`,
-`anim_operand`, `pset_write`, `mode1_cursor`, `fighter_2bd44` and the eight `snd_*` lost `static`
-(declared in `fighter.h` / `actors.h` / `flow.h`) so the mutant cores can call them. All are
+`anim_operand`, `pset_write`, `mode1_cursor`, `fighter_2bd44`, `fighter_4f434` and the eight
+`snd_*` lost `static` (22 functions; the diff has 25 `-static` lines, three of them forward
+declarations), declared in `fighter.h` / `actors.h` / `flow.h`, so the mutant cores can call them. All are
 source-only changes: no new `FN_` address, no `fn_register`, so the E2 table is byte-identical
 (§C2b.4) and `port_progress.py` stays `771 1203 64` / `731 731 100`.
 
@@ -117,7 +118,8 @@ source-only changes: no new `FN_` address, no `fn_register`, so the E2 table is 
    tree** for three stubs, and their callers keep the registers live across the call:
    `0x2B150` (its caller `0x2B30D` reads ESI after the call; the bytes derive esi/edi/ebp),
    `0x2BD44` (the caller `0x3B877`/`0x3B8C8` reads ESI; the bytes derive edx/esi/edi/ebp) and
-   `0x3B298` (the caller `0x3B834` reads EDI; the bytes derive edx/edi/ebp). A poisoned register a
+   `0x3B298` (the caller reads EDI at `0x3B82E` — `mov eax,edi` — feeding the `0x3B834` call into
+   `0x3AE9C`; the bytes derive edx/edi/ebp). A poisoned register a
    caller relies on made the original side fault/split, so the declarations are the caller-observed
    sets and `diff_emu.callee_clobbers` applies `_CALLEE_CLOBBER_FIXES` (`0x2B150: ()`,
    `0x2BD44: ("edx",)`, `0x3B298: ("edx",)`). The P3 `DISPATCH` and P7 `P7_2B150` declarations were
@@ -132,8 +134,10 @@ source-only changes: no new `FN_` address, no `fn_register`, so the E2 table is 
 
 **Named deviations the rows do not exercise (see §C2b.5):** `0x33754`'s fatal `0x3384E`; `0x3B714`'s
 `local_24 == 0xFF` fatal `0x3B75D`; `0x2AE14`'s pset+2 zero arm `0x2B071` (dead: `rec+0x5F` is
-always 1 at `0x2AF31`); `0x2B2A0`'s 0x0D jump-table entry `0x2B52F` (dead: the early 0x0D test at
-`0x2B2CA` returns first).
+always 1 at `0x2AF31`). `0x2B2A0`'s 0x0D jump-table entry `0x2B52F` is **not** dead: the `o0dp`
+prefix case (word `0x1F0D`) reaches it — the direct 0x0D test at `0x2B2CA` runs before
+`anim_operand`, and the prefix store `mov word [0x105BE4],cx` at `0x2B932` then dispatches
+`table[0x0D]` at `0x2B2FC`.
 
 ## §C2b.3 The mutants
 
@@ -188,7 +192,7 @@ KINDS = {
     "sound_voice@case5": {'call #0'},
     "sound_voice@mutant": {'call #1', 'call #0', 'byte', 'eax'},
     "sound_voice@queue": {'call #1'},
-    "sound_voice@stop": {'call #1', 'eax'},
+    "sound_voice@play": {'call #1', 'eax'},
     "spawn_anim_opcode@child": {'call #0'},
     "spawn_anim_opcode@indirect": {'eax'},
     "spawn_anim_opcode@mutant": {'byte'},
@@ -227,20 +231,29 @@ Named gaps and limits:
 
 - **The nine rows' unhit blocks** are named with their evidence: `0x3384E` (the palette table-full
   fatal; the port returns 0), `0x3B75D` (the `0x3B714` `0xFF` fatal; the port returns), `0x2B071`
-  (dead: `rec+0x5F` is set to 1), `0x2B52F` (dead: the early 0x0D test).
+  (dead: `rec+0x5F` is set to 1). `0x2B2A0` is 85/85: `0x2B52F` is **not** dead — the `o0dp` prefix
+  case (word `0x1F0D`) reaches it, because the direct 0x0D test at `0x2B2CA` runs before
+  `anim_operand`, whose prefix arm stores the word's low byte back (`mov word [0x105BE4],cx` at
+  `0x2B932`) before the table dispatch at `0x2B2FC` (`table[0x0D] = 0x2B52F` at `0x2B218`).
 - **The `0x2B2A0` row allows `0x2B8F8` and `0x29F34`** (the real operand fetch) so the 0x1F prefix
-  can select opcodes >= 0x20; `0x2EA64`/`0x29D60` are allowed `ret` targets the port does not
-  implement. The row's claim is equivalence on the exercised opcodes with those callees allowed.
+  can select opcodes >= 0x20 and the 0x0D table entry (`o0dp`, above); `0x2EA64`/`0x29D60` are
+  allowed `ret` targets the port does not implement. The row's claim is equivalence on the exercised
+  opcodes with those callees allowed.
 - **The `0x1B544` fixture claims only the preloaded fast path**; the lazy-load presentation path is
   not exercised (it would enter the loader).
 - **`0x13C70`'s raw returns EAX = 0xFCCE0 at `0x13D5A`** (the active-list sentinel), not the record;
   the port returns the record. Every caller discards the return, so the row's mask is 0 and the
   difference is a named limit, not a claim.
-- **`0x2AE14`'s `a5` high word**: the raw overwrites `[esp+0x2A]` (a5's high word) with DX (a2) at
-  `0x2AE3C`; the port keeps a5. The only a5 high-word reads (`a5 >> 0x10` at `0x2AE27` and `a5 >> 8`
-  for the 0x40/0x44 bits) happen before the overwrite or on unaffected bytes, and the cases keep
-  a2's low word 0 so both sides agree. The row does not claim the overwrite's effects on a5 bits
-  16+.
+- **`0x2AE14`'s `a5` high word**: the raw zeroes `[esp+0x2A]` (a5's high word) at `0x2AE3C`
+  (`xor edx,edx` at `0x2AE35`, so DX = 0; the store is not a2); the port keeps a5. The only a5
+  high-word reads (`a5 >> 0x10` at `0x2AE27` and `a5 >> 8` for the 0x40/0x44 bits) happen before the
+  overwrite or on unaffected bytes, and the cases keep a5's high word 0 so both sides agree. The row
+  does not claim the zeroed overwrite's effects on a5 bits 16+.
+- **The `0x29DB8` seam narrows the selector to u8**: the port's `anim_write_var` takes `op` as `u8`,
+  so the original's 16-bit DX selector is truncated at the seam; the raw itself clears DH (`xor
+  dh,dh` at `0x29DBE`) and masks `dl,0x7f` (`0x29DC2`), so the narrowing is behavior-equivalent. No
+  case seeds EDX > 0xFF because bits 8+ never reach either side's selector; the u8 interface is a
+  named limit, not a claim on the discarded bits.
 - **`0x2C3FC`'s case-5 binary search**: the 0x100 remap reaches the `edx == 0` arm with record 0's
   type 5 (`v100b`); the unmatched sub-ids of each range are covered by `t5_tail_*`.
 - **`0x2AE14`'s type callback**: the visible arm uses the `0x5D812` allow (the port's identity test
