@@ -1724,7 +1724,7 @@ void fighter_state_35d7c(u32 side)
  * Ghidra decompilation + disassembly (register args resolved from each
  * prologue). The dispatch table is 0x34B14; the entries are in fight.c. */
 
-static void fighter_state_367dc(u32 slot, u32 rec);         /* 0x367DC */
+void fighter_state_367dc(u32 slot, u32 rec);                /* 0x367DC */
 static void hit_stance_timer(u32 side);                     /* 0x1922C */
 void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits); /* 0x3C520 */
 
@@ -2581,7 +2581,7 @@ void fighter_4f944(u32 v)
  * 3/0x22/0x24 a second animation on the side's 0x102900 record with the fixed
  * 0xE906A stream (raw 0x36843 EDX = 0xE906A, 0x36848 EAX = 0x102900[side];
  * 0x2BC30 stores EDX to rec+8 at 0x2BC52, so EDX is the stream). */
-static void fighter_state_367dc(u32 slot, u32 rec)
+void fighter_state_367dc(u32 slot, u32 rec)
 {
     actors_anim_begin(rec, DSD(FIGHT_ANIM_367DC
                                + (u32)DSB(slot + 0x7Au) * 4u),

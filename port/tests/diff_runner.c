@@ -15,6 +15,7 @@
 #include "game/flow.h"
 #include "game/rng.h"
 #include "game/svcmenu.h"
+#include "platform/audio/ail.h"
 #include "platform/res.h"
 #include "platform/render.h"
 #include "platform/gfx.h"
@@ -9305,6 +9306,998 @@ static void m_2ac80_ret(const u32 *r, u32 *eax)
     *eax = 0u;
 }
 
+/* Track P batch C3b (record 2026-10-05-reverse-c3b): the frontier rows, part 2. */
+
+/* 0x29F34's mutants: one re-implementation with a mutation selector. */
+#define C3B_A_RING  0x01u   /* the ring index is not masked to 0x3F */
+#define C3B_A_SX    0x02u   /* case 0x40 returns the byte zero-extended */
+#define C3B_A_PSWAP 0x04u   /* 0x46..0x4B reads the child index */
+#define C3B_A_CSWAP 0x08u   /* 0x4C..0x51 reads the parent index */
+#define C3B_A_W58   0x10u   /* 0x44 reads the +0x58 word */
+#define C3B_A_A45   0x20u   /* 0x45 reads rec+0x57 */
+#define C3B_A_RET   0x40u   /* above 0x51 returns the ring word */
+#define C3B_A_OPFF  0x80u   /* the op mask is 0xFF, not 0x7F */
+static u32 c3b_a_core(const u32 *r, u32 mut)
+{
+    u32 rec = r[R_EAX];
+    u32 o = r[R_EDX] & ((mut & C3B_A_OPFF) ? 0xFFu : 0x7Fu);
+    if (o < 0x40u) {
+        u32 ix = o + (u32)DSB(rec + 0x51u);
+        if (!(mut & C3B_A_RING)) ix &= 0x3Fu;
+        return (u32)DSW(DS_00105B4C + ix * 2u);
+    }
+    switch (o) {
+    case 0x40: return (mut & C3B_A_SX) ? (u32)DSB(rec + 0x52u)
+                                       : (u32)(u16)(s8)DSB(rec + 0x52u);
+    case 0x41: return (u32)(u16)(s8)DSB(rec + 0x53u);
+    case 0x42: return (u32)(u16)(s8)DSB(rec + 0x54u);
+    case 0x43: return (u32)(u16)(s8)DSB(rec + 0x55u);
+    case 0x44: return (mut & C3B_A_W58) ? (u32)DSW(rec + 0x58u) : (u32)DSW(rec + 0x56u);
+    case 0x45: return (u32)(u16)(s8)DSB((mut & C3B_A_A45) ? rec + 0x57u : rec + 0x58u);
+    default: break;
+    }
+    u32 base;
+    if (o <= 0x4bu)
+        base = DSD(DS_001014F4)
+             + (u32)DSB(rec + ((mut & C3B_A_PSWAP) ? 0x4bu : 0x4au)) * ACTOR_REC_SIZE;
+    else if (o <= 0x51u)
+        base = DSD(DS_001014F4)
+             + (u32)DSB(rec + ((mut & C3B_A_CSWAP) ? 0x4au : 0x4bu)) * ACTOR_REC_SIZE;
+    else
+        return (mut & C3B_A_RET) ? (u32)DSW(DS_00105B4C) : 0u;
+    switch (o) {
+    case 0x46: case 0x4c: return (u32)(u16)(s8)DSB(base + 0x52u);
+    case 0x47: case 0x4d: return (u32)(u16)(s8)DSB(base + 0x53u);
+    case 0x48: case 0x4e: return (u32)(u16)(s8)DSB(base + 0x54u);
+    case 0x49: case 0x4f: return (u32)(u16)(s8)DSB(base + 0x55u);
+    case 0x4a: case 0x50: return (u32)DSW(base + 0x56u);
+    default:              return (u32)(u16)(s8)DSB(base + 0x58u);
+    }
+}
+static void b_c3b_anim_read_var(const u32 *r, u32 *eax)
+{ *eax = anim_read_var(r[R_EAX], r[R_EDX]); }
+static void m_c3b_a_ring(const u32 *r, u32 *eax)  { *eax = c3b_a_core(r, C3B_A_RING); }
+static void m_c3b_a_sx(const u32 *r, u32 *eax)    { *eax = c3b_a_core(r, C3B_A_SX); }
+static void m_c3b_a_pswap(const u32 *r, u32 *eax) { *eax = c3b_a_core(r, C3B_A_PSWAP); }
+static void m_c3b_a_cswap(const u32 *r, u32 *eax) { *eax = c3b_a_core(r, C3B_A_CSWAP); }
+static void m_c3b_a_w58(const u32 *r, u32 *eax)   { *eax = c3b_a_core(r, C3B_A_W58); }
+static void m_c3b_a_a45(const u32 *r, u32 *eax)   { *eax = c3b_a_core(r, C3B_A_A45); }
+static void m_c3b_a_ret(const u32 *r, u32 *eax)   { *eax = c3b_a_core(r, C3B_A_RET); }
+static void m_c3b_a_opff(const u32 *r, u32 *eax)  { *eax = c3b_a_core(r, C3B_A_OPFF); }
+
+/* 0x18350's mutants. */
+#define C3B_B_TAB    0x01u   /* the table is always 0xCEB00 */
+#define C3B_B_ANCHOR 0x02u   /* the anchor is not scaled by 2 */
+#define C3B_B_NEG    0x04u   /* the bit-15 negation is skipped */
+#define C3B_B_BIT    0x08u   /* the actor index is not scaled by 0x20 */
+#define C3B_B_SIDE   0x10u   /* side 0's char is always read */
+static void c3b_b_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], anchor = r[R_EDX];
+    u32 ch = (u32)DSB(DS_001077B0 + ((mut & C3B_B_SIDE) ? 0u : side) * 0x94u + 0x7Au);
+    u32 a;
+    switch ((mut & C3B_B_TAB) ? 0u : ch) {
+    case 0u: a = 0x000CEB00u; break;
+    case 1u: a = 0x000CF399u; break;
+    case 2u: a = 0x000CFC32u; break;
+    case 3u: a = 0x000D033Bu; break;
+    case 4u: a = 0x000D0A44u; break;
+    case 5u: a = 0x000CEB00u; break;
+    case 6u: a = 0x000CF399u; break;
+    default: a = 0x000CEB00u; break;
+    }
+    a += (mut & C3B_B_ANCHOR) ? anchor : anchor * 2u;
+    const u8 *p = mem + a;
+    DSD(0x00100AB0u + side * 8u) = (u32)(s32)(s8)p[0];
+    DSD(0x00100AB4u + side * 8u) = (u32)(s32)(s8)p[1];
+    if (!(mut & C3B_B_NEG)) {
+        int clear = fighter_actor_bit15_clear(side);
+        if (mut & C3B_B_BIT) {
+            u32 rec = DSD(DS_001077B0 + side * 0x94u);
+            u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u);
+            clear = (DSW(actor) & 0x8000u) == 0u;
+        }
+        if (!clear)
+            DSD(0x00100AB0u + side * 8u) = (u32)(-(s32)DSD(0x00100AB0u + side * 8u));
+    }
+    DSD(0x00100AB0u + side * 8u) <<= 6;
+    DSD(0x00100AB4u + side * 8u) <<= 6;
+}
+static void b_c3b_18350(const u32 *r, u32 *eax)
+{ fighter_18350(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void m_c3b_b_tab(const u32 *r, u32 *eax)    { c3b_b_core(r, C3B_B_TAB); *eax = 0u; }
+static void m_c3b_b_anchor(const u32 *r, u32 *eax) { c3b_b_core(r, C3B_B_ANCHOR); *eax = 0u; }
+static void m_c3b_b_neg(const u32 *r, u32 *eax)    { c3b_b_core(r, C3B_B_NEG); *eax = 0u; }
+static void m_c3b_b_bit(const u32 *r, u32 *eax)    { c3b_b_core(r, C3B_B_BIT); *eax = 0u; }
+static void m_c3b_b_side(const u32 *r, u32 *eax)   { c3b_b_core(r, C3B_B_SIDE); *eax = 0u; }
+
+/* 0x18540's mutants. */
+#define C3B_C_DEFAULT 0x01u  /* every character's camera is 0xE6DD0 */
+#define C3B_C_NOCLAMP 0x02u  /* the negative/limit clamp is skipped */
+#define C3B_C_GT      0x04u  /* the limit compare is >, not >= */
+#define C3B_C_MASK    0x08u  /* the sprite mask is 0xFFFF */
+#define C3B_C_IDX     0x10u  /* the actor index is not scaled by 0x20 */
+#define C3B_C_SIDE    0x20u  /* side 0 is always used */
+static void c3b_c_core(const u32 *r, u32 mut)
+{
+    u32 side = (mut & C3B_C_SIDE) ? 0u : r[R_EAX];
+    u32 slot = DSD(DS_001077A8 + side * 4u);
+    if (slot == 0u) return;
+    u32 ch = (u32)DSB(slot + 0x7Au);
+    u32 cam;
+    switch ((mut & C3B_C_DEFAULT) ? 0u : ch) {
+    case 1u: cam = (u32)DSW(0x000E39D0u); break;
+    case 2u: cam = (u32)DSW(0x000ECBD8u); break;
+    case 3u: cam = (u32)DSW(0x000D2134u); break;
+    case 4u: cam = (u32)DSW(0x000EA604u); break;
+    case 5u: cam = (u32)DSW(0x000D3E08u); break;
+    case 6u: cam = (u32)DSW(0x000E061Cu); break;
+    default: cam = (u32)DSW(0x000E6DD0u); break;
+    }
+    u32 idx = (u32)DSW(DSD(slot) + 0x56u);
+    u32 sprite = (u32)DSW(DSD(DS_001014EC) + ((mut & C3B_C_IDX) ? idx : idx * 0x20u));
+    sprite &= (mut & C3B_C_MASK) ? 0xFFFFu : 0x7FFFu;
+    s32 anchor = (s32)sprite - (s32)cam;
+    DSD(0x00100AF0u + side * 4u) = (u32)anchor;
+    if (!(mut & C3B_C_NOCLAMP)) {
+        u32 lim = DSD(0x000E6DB4u + ch * 4u);
+        if (anchor < 0 || ((mut & C3B_C_GT) ? ((u32)anchor > lim) : ((u32)anchor >= lim)))
+            DSD(0x00100AF0u + side * 4u) = 0u;
+    }
+}
+static void b_c3b_18540(const u32 *r, u32 *eax)
+{ fighter_18540(r[R_EAX]); *eax = 0u; }
+static void m_c3b_c_default(const u32 *r, u32 *eax) { c3b_c_core(r, C3B_C_DEFAULT); *eax = 0u; }
+static void m_c3b_c_noclamp(const u32 *r, u32 *eax) { c3b_c_core(r, C3B_C_NOCLAMP); *eax = 0u; }
+static void m_c3b_c_gt(const u32 *r, u32 *eax)      { c3b_c_core(r, C3B_C_GT); *eax = 0u; }
+static void m_c3b_c_mask(const u32 *r, u32 *eax)    { c3b_c_core(r, C3B_C_MASK); *eax = 0u; }
+static void m_c3b_c_idx(const u32 *r, u32 *eax)     { c3b_c_core(r, C3B_C_IDX); *eax = 0u; }
+static void m_c3b_c_side(const u32 *r, u32 *eax)    { c3b_c_core(r, C3B_C_SIDE); *eax = 0u; }
+
+/* 0x18788's mutants. */
+#define C3B_Y_BIT    0x01u   /* the +0x42 test is bit 2 */
+#define C3B_Y_REC    0x02u   /* the record offset is +0x18 */
+#define C3B_Y_CALL   0x04u   /* the 0x18540 re-latch is skipped */
+#define C3B_Y_ALWAYS 0x08u   /* the anchor test always re-runs 0x18350 */
+#define C3B_Y_ADD    0x10u   /* the two terms are added */
+static u32 c3b_y_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if ((DSB(slot + 0x42u) & ((mut & C3B_Y_BIT) ? 0x04u : 0x08u)) != 0u)
+        return DSD(DSD(slot) + ((mut & C3B_Y_REC) ? 0x18u : 0x1Cu));
+    if (!(mut & C3B_Y_CALL)) fighter_18540(side);
+    {
+        u32 anchor = DSD(DS_00100AF0 + side * 4u);
+        if ((mut & C3B_Y_ALWAYS) || anchor != DSD(slot + 0x20u))
+            fighter_18350(side, anchor);
+    }
+    if (mut & C3B_Y_ADD) return DSD(slot + 0x30u) + DSD(DS_00100AB4 + side * 8u);
+    return DSD(slot + 0x30u) - DSD(DS_00100AB4 + side * 8u);
+}
+static void b_c3b_hit_record_y(const u32 *r, u32 *eax) { *eax = hit_record_y(r[R_EAX]); }
+static void m_c3b_y_bit(const u32 *r, u32 *eax)    { *eax = c3b_y_core(r, C3B_Y_BIT); }
+static void m_c3b_y_rec(const u32 *r, u32 *eax)    { *eax = c3b_y_core(r, C3B_Y_REC); }
+static void m_c3b_y_call(const u32 *r, u32 *eax)   { *eax = c3b_y_core(r, C3B_Y_CALL); }
+static void m_c3b_y_always(const u32 *r, u32 *eax) { *eax = c3b_y_core(r, C3B_Y_ALWAYS); }
+static void m_c3b_y_add(const u32 *r, u32 *eax)    { *eax = c3b_y_core(r, C3B_Y_ADD); }
+
+/* 0x38154's mutants. */
+#define C3B_D_MODE8 0x01u   /* DS_001088BD == 8 alone selects the special v */
+#define C3B_D_RANGE 0x02u   /* the p range test is dropped (always in range) */
+#define C3B_D_ABS   0x04u   /* |v| is v */
+#define C3B_D_BIT   0x08u   /* the +0x28 test is bit 6, not bit 14 */
+#define C3B_D_BD    0x10u   /* the >= 8 test is == 8 */
+#define C3B_D_FLAG  0x20u   /* the flag is written to side 0 */
+#define C3B_D_CALL  0x40u   /* the 0x35838 call is skipped */
+#define C3B_D_DIR   0x80u   /* the 0x35838 dirbits are swapped */
+static void c3b_d_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    u32 slot = DSD(DS_001077A8 + side * 4u);
+    if (slot == 0u) return;
+    u32 rec = DSD(slot);
+    if (rec == 0u) return;
+    s32 v;
+    s32 p = (s32)DSD(rec + 0x3Cu);
+    if (DSB(DS_001088BD) == 8u && ((mut & C3B_D_MODE8) || side == 1u)) {
+        if (p >= 0 && ((mut & C3B_D_RANGE) || p <= 0x5D00))
+            v = (s32)(0x1500u - (u32)p);
+        else
+            v = (s32)(DSD(DS_00108884) - 0x1500u - DSD(rec + 0x18u));
+    } else {
+        if (p >= 0 && ((mut & C3B_D_RANGE) || p <= 0x5D00))
+            v = (s32)(0x4900u - (side << 9) - DSD(rec + 0x3Cu));
+        else
+            v = (s32)(0x1F00u - (side << 9) + DSD(DS_00108884) - DSD(rec + 0x18u));
+    }
+    s32 av = (mut & C3B_D_ABS) ? v : (v < 0 ? (s32)(0u - (u32)v) : v);
+    u32 flag;
+    if ((DSW(rec + 0x28u) & ((mut & C3B_D_BIT) ? 0x0040u : 0x4000u)) != 0u) {
+        if (av > 0x200 && v >= 0) {
+            if (!(mut & C3B_D_CALL))
+                fighter_state_35838(slot, rec, (mut & C3B_D_DIR) ? 0x2000u : 0x1000u);
+            flag = 0u;
+        } else {
+            DSB(slot + 0x43u) |= 0x40u;
+            int big = (mut & C3B_D_BD) ? ((u32)DSB(DS_001088BD) == 8u)
+                                       : ((u32)DSB(DS_001088BD) >= 8u);
+            if (big) {
+                flag = 1u;
+            } else {
+                fighter_state_36638(slot, rec);
+                flag = 0u;
+            }
+        }
+    } else if (av <= 0x200) {
+        flag = 1u;
+    } else {
+        if (!(mut & C3B_D_CALL))
+            fighter_state_35838(slot, rec, (mut & C3B_D_DIR) ? 0x1000u : 0x2000u);
+        flag = 0u;
+    }
+    DSB(DS_001078F0 + ((mut & C3B_D_FLAG) ? 0u : side)) = (u8)flag;
+    if (DSB(DS_001078F0 + side) != 0u && DSB(slot + 0x53u) != 0u) {
+        fighter_state_367dc(slot, rec);
+        DSB(slot + 0x52u) = 9u;
+        return;
+    }
+    if (DSB(DS_001078F0 + side) == 0u)
+        DSB(slot + 0x53u) = 0x0Cu;
+}
+static void b_c3b_fighter_38154(const u32 *r, u32 *eax)
+{ fighter_38154(r[R_EAX]); *eax = 0u; }
+static void m_c3b_d_mode8(const u32 *r, u32 *eax) { c3b_d_core(r, C3B_D_MODE8); *eax = 0u; }
+static void m_c3b_d_range(const u32 *r, u32 *eax) { c3b_d_core(r, C3B_D_RANGE); *eax = 0u; }
+static void m_c3b_d_abs(const u32 *r, u32 *eax)   { c3b_d_core(r, C3B_D_ABS); *eax = 0u; }
+static void m_c3b_d_bit(const u32 *r, u32 *eax)   { c3b_d_core(r, C3B_D_BIT); *eax = 0u; }
+static void m_c3b_d_bd(const u32 *r, u32 *eax)    { c3b_d_core(r, C3B_D_BD); *eax = 0u; }
+static void m_c3b_d_flag(const u32 *r, u32 *eax)  { c3b_d_core(r, C3B_D_FLAG); *eax = 0u; }
+static void m_c3b_d_call(const u32 *r, u32 *eax)  { c3b_d_core(r, C3B_D_CALL); *eax = 0u; }
+static void m_c3b_d_dir(const u32 *r, u32 *eax)   { c3b_d_core(r, C3B_D_DIR); *eax = 0u; }
+
+/* The voice rows' mutants (record 2026-10-05-reverse-c3b): the AIL runtime calls go through the
+ * port's host wrappers (AIL_sample_status/AIL_stop_sample/AIL_init_sample/AIL_stop_sequence and
+ * flow.c's snd_music_playing), whose first-statement seams record them; the mutants call the same
+ * wrappers (via sound_slot_handle, the exported s_samples accessor), so only the mutation differs. */
+#define C3B_M_GATE 0x01u    /* the sequence-handle gate is dropped */
+#define C3B_M_PLAY 0x02u    /* the playing predicate is not consulted */
+#define C3B_M_STOP 0x04u    /* the 0x5DEAF stop is skipped */
+#define C3B_M_ZERO 0x08u    /* the current song/pause bytes are not cleared */
+#define C3B_M_AL   0x10u    /* AL = 0 on the stop path */
+#define C3B_M_CC   0x20u    /* the pending song is not cleared */
+static u32 c3b_music_stop_core(u32 mut)
+{
+    u32 seq = DSD(DS_001028C0);
+    if (!(mut & C3B_M_ZERO)) {
+        DSD(DS_001028D4) = 0;
+        DSB(DS_001028D9) = 0;
+    }
+    if (seq == 0u && !(mut & C3B_M_GATE)) return 0;
+    if (snd_music_playing() == 0u && !(mut & C3B_M_PLAY)) return 0;
+    if (!(mut & C3B_M_CC)) DSD(DS_001028CC) = 0;
+    if (!(mut & C3B_M_STOP)) AIL_stop_sequence(NULL);
+    return (mut & C3B_M_AL) ? 0u : 1u;
+}
+static void b_c3b_snd_music_stop(const u32 *r, u32 *eax)
+{ (void)r; *eax = snd_music_stop(); }
+static void m_c3b_m_gate(const u32 *r, u32 *eax) { (void)r; *eax = c3b_music_stop_core(C3B_M_GATE); }
+static void m_c3b_m_play(const u32 *r, u32 *eax) { (void)r; *eax = c3b_music_stop_core(C3B_M_PLAY); }
+static void m_c3b_m_stop(const u32 *r, u32 *eax) { (void)r; *eax = c3b_music_stop_core(C3B_M_STOP); }
+static void m_c3b_m_zero(const u32 *r, u32 *eax) { (void)r; *eax = c3b_music_stop_core(C3B_M_ZERO); }
+static void m_c3b_m_al(const u32 *r, u32 *eax)   { (void)r; *eax = c3b_music_stop_core(C3B_M_AL); }
+static void m_c3b_m_cc(const u32 *r, u32 *eax)   { (void)r; *eax = c3b_music_stop_core(C3B_M_CC); }
+
+#define C3B_P_DRIVER 0x01u  /* the DIG-driver gate is dropped */
+#define C3B_P_STATUS 0x02u  /* the playing status is 2, not 4 */
+#define C3B_P_CLEAR  0x04u  /* a stopped slot's +0x0C is not cleared */
+#define C3B_P_SCAN   0x08u  /* the scan stops at the first stopped match */
+#define C3B_P_WIDE   0x10u  /* the +0x0C compare is a word */
+#define C3B_P_AL     0x20u  /* any match returns 1 */
+static u32 c3b_sample_playing_core(const u32 *r, u32 mut)
+{
+    u32 h = r[R_EAX];
+    if (DSD(DS_001028C8) == 0u && !(mut & C3B_P_DRIVER)) return 0;
+    for (u32 k = 0; k < 4u; k++) {
+        u32 off = k * 0x18u;
+        u32 cur = (mut & C3B_P_WIDE) ? (u32)DSW(DS_0010286C + off)
+                                     : DSD(DS_0010286C + off);
+        if (cur != h) continue;
+        s32 st = AIL_sample_status(sound_slot_handle(k));
+        if ((mut & C3B_P_AL) || ((mut & C3B_P_STATUS) ? st == 2 : st == 4)) return 1;
+        if (!(mut & C3B_P_CLEAR)) DSD(DS_0010286C + off) = 0;
+        if (mut & C3B_P_SCAN) return 0;
+    }
+    return 0;
+}
+static void b_c3b_snd_sample_playing(const u32 *r, u32 *eax)
+{ *eax = snd_sample_playing(r[R_EAX]); }
+static void m_c3b_p_driver(const u32 *r, u32 *eax) { *eax = c3b_sample_playing_core(r, C3B_P_DRIVER); }
+static void m_c3b_p_status(const u32 *r, u32 *eax) { *eax = c3b_sample_playing_core(r, C3B_P_STATUS); }
+static void m_c3b_p_clear(const u32 *r, u32 *eax)  { *eax = c3b_sample_playing_core(r, C3B_P_CLEAR); }
+static void m_c3b_p_scan(const u32 *r, u32 *eax)   { *eax = c3b_sample_playing_core(r, C3B_P_SCAN); }
+static void m_c3b_p_wide(const u32 *r, u32 *eax)   { *eax = c3b_sample_playing_core(r, C3B_P_WIDE); }
+static void m_c3b_p_al(const u32 *r, u32 *eax)     { *eax = c3b_sample_playing_core(r, C3B_P_AL); }
+
+#define C3B_A_DRIVER 0x01u  /* the DIG-driver gate is dropped */
+#define C3B_A_SKIP2  0x02u  /* the status-2 skip is dropped */
+#define C3B_A_CLR4   0x04u  /* the +0x04 queued handle is not cleared */
+#define C3B_A_CLRC   0x08u  /* the +0x0C current handle is not cleared */
+#define C3B_A_AL     0x10u  /* AL = 0 */
+#define C3B_A_ORDER  0x20u  /* the stop/init pair is swapped */
+static u32 c3b_stop_all_core(u32 mut)
+{
+    if (DSD(DS_001028C8) == 0u && !(mut & C3B_A_DRIVER)) return 0;
+    for (u32 k = 0; k < 4u; k++) {
+        u32 off = k * 0x18u;
+        if (!(mut & C3B_A_CLR4)) DSD(DS_00102864 + off) = 0;
+        if (!(mut & C3B_A_CLRC)) DSD(DS_0010286C + off) = 0;
+        s32 st = AIL_sample_status(sound_slot_handle(k));
+        if (st == 2 && !(mut & C3B_A_SKIP2)) continue;
+        if (mut & C3B_A_ORDER) {
+            AIL_init_sample(sound_slot_handle(k));
+            AIL_stop_sample(sound_slot_handle(k));
+        } else {
+            AIL_stop_sample(sound_slot_handle(k));
+            AIL_init_sample(sound_slot_handle(k));
+        }
+    }
+    return (mut & C3B_A_AL) ? 0u : 1u;
+}
+static void b_c3b_snd_samples_stop_all(const u32 *r, u32 *eax)
+{ (void)r; *eax = snd_samples_stop_all(); }
+static void m_c3b_a_driver(const u32 *r, u32 *eax) { (void)r; *eax = c3b_stop_all_core(C3B_A_DRIVER); }
+static void m_c3b_a_skip2(const u32 *r, u32 *eax)  { (void)r; *eax = c3b_stop_all_core(C3B_A_SKIP2); }
+static void m_c3b_a_clr4(const u32 *r, u32 *eax)   { (void)r; *eax = c3b_stop_all_core(C3B_A_CLR4); }
+static void m_c3b_a_clrc(const u32 *r, u32 *eax)   { (void)r; *eax = c3b_stop_all_core(C3B_A_CLRC); }
+static void m_c3b_a_al(const u32 *r, u32 *eax)     { (void)r; *eax = c3b_stop_all_core(C3B_A_AL); }
+static void m_c3b_a_order(const u32 *r, u32 *eax)  { (void)r; *eax = c3b_stop_all_core(C3B_A_ORDER); }
+
+#define C3B_S_DRIVER  0x01u /* the DIG-driver gate is dropped */
+#define C3B_S_EQ2     0x02u /* the stop condition is status == 2 */
+#define C3B_S_CLEAR   0x04u /* the matched +0x0C is not cleared */
+#define C3B_S_NOLIMIT 0x08u /* the scan does not stop at the first match */
+#define C3B_S_AL      0x10u /* AL = 0 after a stop */
+#define C3B_S_CALLS   0x20u /* the stop/init calls are skipped */
+static u32 c3b_sample_stop_core(const u32 *r, u32 mut)
+{
+    u32 h = r[R_EAX];
+    if (DSD(DS_001028C8) == 0u && !(mut & C3B_S_DRIVER)) return 0;
+    for (u32 k = 0; k < 4u; k++) {
+        u32 off = k * 0x18u;
+        if (DSD(DS_0010286C + off) != h) continue;
+        s32 st = AIL_sample_status(sound_slot_handle(k));
+        int stop = (mut & C3B_S_EQ2) ? (st == 2) : (st != 2);
+        if (!stop) continue;
+        if (!(mut & C3B_S_CALLS)) {
+            AIL_stop_sample(sound_slot_handle(k));
+            AIL_init_sample(sound_slot_handle(k));
+        }
+        if (!(mut & C3B_S_CLEAR)) DSD(DS_0010286C + off) = 0;
+        if (!(mut & C3B_S_NOLIMIT)) return (mut & C3B_S_AL) ? 0u : 1u;
+    }
+    return 0;
+}
+static void b_c3b_snd_sample_stop(const u32 *r, u32 *eax)
+{ *eax = snd_sample_stop(r[R_EAX]); }
+static void m_c3b_s_driver(const u32 *r, u32 *eax)  { *eax = c3b_sample_stop_core(r, C3B_S_DRIVER); }
+static void m_c3b_s_eq2(const u32 *r, u32 *eax)     { *eax = c3b_sample_stop_core(r, C3B_S_EQ2); }
+static void m_c3b_s_clear(const u32 *r, u32 *eax)   { *eax = c3b_sample_stop_core(r, C3B_S_CLEAR); }
+static void m_c3b_s_nolimit(const u32 *r, u32 *eax) { *eax = c3b_sample_stop_core(r, C3B_S_NOLIMIT); }
+static void m_c3b_s_al(const u32 *r, u32 *eax)      { *eax = c3b_sample_stop_core(r, C3B_S_AL); }
+static void m_c3b_s_calls(const u32 *r, u32 *eax)   { *eax = c3b_sample_stop_core(r, C3B_S_CALLS); }
+
+/* 0x1CC28's mutants. */
+#define C3B_Q_DRIVER    0x0001u  /* the DIG-driver gate is dropped */
+#define C3B_Q_PAUSE     0x0002u  /* the sample-pause gate is dropped */
+#define C3B_Q_SIZE      0x0004u  /* the >0x6000 size selector is flipped */
+#define C3B_Q_ARMBUF    0x0008u  /* the arm's buffer test is forced true */
+#define C3B_Q_ARMQ      0x0010u  /* the arm's +0x04 test is forced true */
+#define C3B_Q_ARMST     0x0020u  /* the arm's status test is forced true */
+#define C3B_Q_ORDER     0x0040u  /* the scan runs 0..3, not 3..0 */
+#define C3B_Q_CANDCMP   0x0080u  /* the candidate compare is >=, not > */
+#define C3B_Q_CANDMIN   0x0100u  /* the candidate minimum is not updated */
+#define C3B_Q_TAILRET   0x0200u  /* the tail returns 0 */
+#define C3B_Q_TAILSTOP  0x0400u  /* the tail's stop/init is skipped */
+#define C3B_Q_TAILORDER 0x0800u  /* the tail's stop/init is swapped */
+#define C3B_Q_LOOPBYTE  0x1000u  /* the loop byte is the handle's low byte */
+static void c3b_q_store(u32 off, u32 h, u32 loop, u32 now)
+{
+    DSD(DS_00102864 + off) = h;
+    DSB(DS_00102868 + off) = (u8)loop;
+    DSD(DS_00102874 + off) = now;
+}
+static u32 c3b_queue_core(const u32 *r, u32 mut)
+{
+    u32 h = r[R_EAX], loop = r[R_EDX] & 0xFFu;
+    if (DSD(DS_001028C8) == 0u && !(mut & C3B_Q_DRIVER)) return 0u;
+    if (DSB(DS_001028DB) != 0u && !(mut & C3B_Q_PAUSE)) return 0u;
+    u32 now = DSD(DS_00101500);
+    const u8 *p = (const u8 *)res_resolve(h);
+    if (p == NULL) return 1u;
+    u32 size = DSD((u32)(p - mem));
+    u32 cand = 0u;
+    int fast = size > 0x6000u;
+    if (mut & C3B_Q_SIZE) fast = !fast;
+    if (fast) {
+        int buf = DSD(DS_00102870) != 0u;
+        int freeq = DSD(DS_00102864) == 0u;
+        if (mut & C3B_Q_ARMBUF) buf = 1;
+        if (mut & C3B_Q_ARMQ) freeq = 1;
+        if (buf && freeq) {
+            s32 st = AIL_sample_status(sound_slot_handle(0u));
+            if (st != 4 || (mut & C3B_Q_ARMST)) {
+                c3b_q_store(0u, h, (mut & C3B_Q_LOOPBYTE) ? h : loop, now);
+                return 1u;
+            }
+        }
+    } else {
+        u32 min = now;
+        for (u32 i = 0; i < 4u; i++) {
+            u32 k = (mut & C3B_Q_ORDER) ? i : 3u - i;
+            u32 off = k * 0x18u;
+            int buf = DSD(DS_00102870 + off) != 0u;
+            int freeq = DSD(DS_00102864 + off) == 0u;
+            if (mut & C3B_Q_ARMBUF) buf = 1;
+            if (mut & C3B_Q_ARMQ) freeq = 1;
+            if (buf && freeq) {
+                s32 st = AIL_sample_status(sound_slot_handle(k));
+                if (st != 4 || (mut & C3B_Q_ARMST)) {
+                    c3b_q_store(off, h, (mut & C3B_Q_LOOPBYTE) ? h : loop, now);
+                    return 1u;
+                }
+            }
+            u32 t = DSD(DS_00102874 + off);
+            int better = (mut & C3B_Q_CANDCMP) ? min >= t : min > t;
+            if (better) {
+                cand = k;
+                if (!(mut & C3B_Q_CANDMIN)) min = t;
+            }
+        }
+    }
+    {
+        u32 off = cand * 0x18u;
+        if (!(mut & C3B_Q_TAILSTOP)) {
+            if (mut & C3B_Q_TAILORDER) {
+                AIL_init_sample(sound_slot_handle(cand));
+                AIL_stop_sample(sound_slot_handle(cand));
+            } else {
+                AIL_stop_sample(sound_slot_handle(cand));
+                AIL_init_sample(sound_slot_handle(cand));
+            }
+        }
+        c3b_q_store(off, h, (mut & C3B_Q_LOOPBYTE) ? h : loop, now);
+    }
+    return (mut & C3B_Q_TAILRET) ? 0u : 1u;
+}
+static void b_c3b_snd_sample_queue(const u32 *r, u32 *eax)
+{ *eax = snd_sample_queue(r[R_EAX], r[R_EDX]); }
+static void m_c3b_q_driver(const u32 *r, u32 *eax)    { *eax = c3b_queue_core(r, C3B_Q_DRIVER); }
+static void m_c3b_q_pause(const u32 *r, u32 *eax)     { *eax = c3b_queue_core(r, C3B_Q_PAUSE); }
+static void m_c3b_q_size(const u32 *r, u32 *eax)      { *eax = c3b_queue_core(r, C3B_Q_SIZE); }
+static void m_c3b_q_armbuf(const u32 *r, u32 *eax)    { *eax = c3b_queue_core(r, C3B_Q_ARMBUF); }
+static void m_c3b_q_armq(const u32 *r, u32 *eax)      { *eax = c3b_queue_core(r, C3B_Q_ARMQ); }
+static void m_c3b_q_armst(const u32 *r, u32 *eax)     { *eax = c3b_queue_core(r, C3B_Q_ARMST); }
+static void m_c3b_q_order(const u32 *r, u32 *eax)     { *eax = c3b_queue_core(r, C3B_Q_ORDER); }
+static void m_c3b_q_candcmp(const u32 *r, u32 *eax)   { *eax = c3b_queue_core(r, C3B_Q_CANDCMP); }
+static void m_c3b_q_candmin(const u32 *r, u32 *eax)   { *eax = c3b_queue_core(r, C3B_Q_CANDMIN); }
+static void m_c3b_q_tailret(const u32 *r, u32 *eax)   { *eax = c3b_queue_core(r, C3B_Q_TAILRET); }
+static void m_c3b_q_tailstop(const u32 *r, u32 *eax)  { *eax = c3b_queue_core(r, C3B_Q_TAILSTOP); }
+static void m_c3b_q_tailorder(const u32 *r, u32 *eax) { *eax = c3b_queue_core(r, C3B_Q_TAILORDER); }
+static void m_c3b_q_loopbyte(const u32 *r, u32 *eax)  { *eax = c3b_queue_core(r, C3B_Q_LOOPBYTE); }
+
+/* 0x249C0's mutants. */
+static void b_c3b_list_insert_before(const u32 *r, u32 *eax)
+{ effects_list_insert_before(r[R_EAX], r[R_EDX]); *eax = 0u; }
+/* prev is read from [at], not [at+4]. */
+static void m_c3b_lb_prev(const u32 *r, u32 *eax)
+{
+    u32 at = r[R_EAX], rec = r[R_EDX];
+    u32 prev = DSD(at);
+    DSD(at + 4u) = rec; DSD(rec) = at; DSD(rec + 4u) = prev; DSD(prev) = rec;
+    *eax = 0u;
+}
+/* the [prev] back link is not written. */
+static void m_c3b_lb_link(const u32 *r, u32 *eax)
+{
+    u32 at = r[R_EAX], rec = r[R_EDX];
+    u32 prev = DSD(at + 4u);
+    DSD(at + 4u) = rec; DSD(rec) = at; DSD(rec + 4u) = prev;
+    *eax = 0u;
+}
+/* rec's back link points at `at`, not prev. */
+static void m_c3b_lb_back(const u32 *r, u32 *eax)
+{
+    u32 at = r[R_EAX], rec = r[R_EDX];
+    u32 prev = DSD(at + 4u);
+    DSD(at + 4u) = rec; DSD(rec) = at; DSD(rec + 4u) = at; DSD(prev) = rec;
+    *eax = 0u;
+}
+/* the at back link is left alone: nothing is inserted. */
+static void m_c3b_lb_head(const u32 *r, u32 *eax)
+{
+    u32 at = r[R_EAX], rec = r[R_EDX];
+    u32 prev = DSD(at + 4u);
+    DSD(rec) = at; DSD(rec + 4u) = prev; DSD(prev) = rec;
+    *eax = 0u;
+}
+/* rec's forward link points at prev, not at. */
+static void m_c3b_lb_forward(const u32 *r, u32 *eax)
+{
+    u32 at = r[R_EAX], rec = r[R_EDX];
+    u32 prev = DSD(at + 4u);
+    DSD(at + 4u) = rec; DSD(rec) = prev; DSD(rec + 4u) = prev; DSD(prev) = rec;
+    *eax = 0u;
+}
+
+/* 0x13420's mutants: the port body with one store or call moved. */
+static void b_13420(const u32 *r, u32 *eax)            { effect_teardown(r[R_EAX]); *eax = 0u; }
+/* the active-list unlink is skipped. */
+static void m_13420_unlink(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX];
+    u8 saved = DSB(DS_0009AF3C);
+    DSB(DS_0009AF3C) = 1;
+    DSB(DS_0009AF3C) = saved;
+    u32 src = DSD(rec + 8);
+    switch (DSB(rec + 0x0cu)) {
+    case 0: case 2: case 3: case 5:
+        palette_record_flagged(DSD(src), DSD(src + 8), DSD(src + 0x0cu)); break;
+    case 1:
+        palette_record(rec + 0x10u, DSD(src + 8) + (u32)DSB(rec + 0x0fu), 1, 0); break;
+    case 4:
+        palette_record(0x000FCCF0u, DSD(src + 8), DSD(src + 0x0cu), 0); break;
+    default: break;
+    }
+    effects_list_insert_after(DS_000FCCE8, rec);
+    *eax = 0u;
+}
+/* the lock is not restored after the walk. */
+static void m_13420_restore(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX];
+    DSB(DS_0009AF3C) = 1;
+    effects_list_unlink(rec);
+    u32 src = DSD(rec + 8);
+    switch (DSB(rec + 0x0cu)) {
+    case 0: case 2: case 3: case 5:
+        palette_record_flagged(DSD(src), DSD(src + 8), DSD(src + 0x0cu)); break;
+    case 1:
+        palette_record(rec + 0x10u, DSD(src + 8) + (u32)DSB(rec + 0x0fu), 1, 0); break;
+    case 4:
+        palette_record(0x000FCCF0u, DSD(src + 8), DSD(src + 0x0cu), 0); break;
+    default: break;
+    }
+    effects_list_insert_after(DS_000FCCE8, rec);
+    *eax = 0u;
+}
+/* type 1 takes the no-op default. */
+static void m_13420_type1(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX];
+    u8 saved = DSB(DS_0009AF3C);
+    DSB(DS_0009AF3C) = 1;
+    effects_list_unlink(rec);
+    DSB(DS_0009AF3C) = saved;
+    u32 src = DSD(rec + 8);
+    switch (DSB(rec + 0x0cu)) {
+    case 0: case 2: case 3: case 5:
+        palette_record_flagged(DSD(src), DSD(src + 8), DSD(src + 0x0cu)); break;
+    case 4:
+        palette_record(0x000FCCF0u, DSD(src + 8), DSD(src + 0x0cu), 0); break;
+    default: break;
+    }
+    effects_list_insert_after(DS_000FCCE8, rec);
+    *eax = 0u;
+}
+/* the flagged path stores flag 0. */
+static void m_13420_flag(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX];
+    u8 saved = DSB(DS_0009AF3C);
+    DSB(DS_0009AF3C) = 1;
+    effects_list_unlink(rec);
+    DSB(DS_0009AF3C) = saved;
+    u32 src = DSD(rec + 8);
+    switch (DSB(rec + 0x0cu)) {
+    case 0: case 2: case 3: case 5:
+        palette_record(DSD(src), DSD(src + 8), DSD(src + 0x0cu), 0); break;
+    case 1:
+        palette_record(rec + 0x10u, DSD(src + 8) + (u32)DSB(rec + 0x0fu), 1, 0); break;
+    case 4:
+        palette_record(0x000FCCF0u, DSD(src + 8), DSD(src + 0x0cu), 0); break;
+    default: break;
+    }
+    effects_list_insert_after(DS_000FCCE8, rec);
+    *eax = 0u;
+}
+/* type 4 enqueues from the record's +0x10 block. */
+static void m_13420_buf(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX];
+    u8 saved = DSB(DS_0009AF3C);
+    DSB(DS_0009AF3C) = 1;
+    effects_list_unlink(rec);
+    DSB(DS_0009AF3C) = saved;
+    u32 src = DSD(rec + 8);
+    switch (DSB(rec + 0x0cu)) {
+    case 0: case 2: case 3: case 5:
+        palette_record_flagged(DSD(src), DSD(src + 8), DSD(src + 0x0cu)); break;
+    case 1:
+        palette_record(rec + 0x10u, DSD(src + 8) + (u32)DSB(rec + 0x0fu), 1, 0); break;
+    case 4:
+        palette_record(rec + 0x10u, DSD(src + 8), DSD(src + 0x0cu), 0); break;
+    default: break;
+    }
+    effects_list_insert_after(DS_000FCCE8, rec);
+    *eax = 0u;
+}
+/* the tail insert is an insert-before. */
+static void m_13420_tail(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX];
+    u8 saved = DSB(DS_0009AF3C);
+    DSB(DS_0009AF3C) = 1;
+    effects_list_unlink(rec);
+    DSB(DS_0009AF3C) = saved;
+    u32 src = DSD(rec + 8);
+    switch (DSB(rec + 0x0cu)) {
+    case 0: case 2: case 3: case 5:
+        palette_record_flagged(DSD(src), DSD(src + 8), DSD(src + 0x0cu)); break;
+    case 1:
+        palette_record(rec + 0x10u, DSD(src + 8) + (u32)DSB(rec + 0x0fu), 1, 0); break;
+    case 4:
+        palette_record(0x000FCCF0u, DSD(src + 8), DSD(src + 0x0cu), 0); break;
+    default: break;
+    }
+    effects_list_insert_before(DS_000FCCE8, rec);
+    *eax = 0u;
+}
+
+/* 0x49444's mutants: the port body with one test, index or call moved. */
+static void b_49444(const u32 *r, u32 *eax)            { actor_type_49444(r[R_EAX]); *eax = 0u; }
+/* the +0x1C test reads bit 5, not bit 1. */
+static void m_49444_bit(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], node = DSD(rec + 0x14u);
+    if (node == 0u) { *eax = 0u; return; }
+    if ((DSB(node + 0x1cu) & 0x20u) != 0u)
+        DSD(0x0010839Cu + (u32)((s32)DSD(node + 0x18u) >> 16) * 4u) = 0u;
+    if (DSD(node + 0x10u) != 0u) { actor_set_dead(DSD(node + 0x10u)); DSD(node + 0x10u) = 0u; }
+    effects_list_unlink(node);
+    effects_list_insert_after(0x001083C4u, node);
+    DSD(rec + 0x14u) = 0u;
+    *eax = 0u;
+}
+/* the entry is cleared one byte wide, not 4. */
+static void m_49444_idx(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], node = DSD(rec + 0x14u);
+    if (node == 0u) { *eax = 0u; return; }
+    if ((DSB(node + 0x1cu) & 2u) != 0u)
+        DSB(0x0010839Cu + (u32)((s32)DSD(node + 0x18u) >> 16)) = 0u;
+    if (DSD(node + 0x10u) != 0u) { actor_set_dead(DSD(node + 0x10u)); DSD(node + 0x10u) = 0u; }
+    effects_list_unlink(node);
+    effects_list_insert_after(0x001083C4u, node);
+    DSD(rec + 0x14u) = 0u;
+    *eax = 0u;
+}
+/* the node's +0x18 index is zero-extended, not sign-extended. */
+static void m_49444_sign(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], node = DSD(rec + 0x14u);
+    if (node == 0u) { *eax = 0u; return; }
+    if ((DSB(node + 0x1cu) & 2u) != 0u)
+        DSD(0x0010839Cu + (u32)(DSD(node + 0x18u) >> 16) * 4u) = 0u;
+    if (DSD(node + 0x10u) != 0u) { actor_set_dead(DSD(node + 0x10u)); DSD(node + 0x10u) = 0u; }
+    effects_list_unlink(node);
+    effects_list_insert_after(0x001083C4u, node);
+    DSD(rec + 0x14u) = 0u;
+    *eax = 0u;
+}
+/* the +0x10 child is not retired. */
+static void m_49444_child(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], node = DSD(rec + 0x14u);
+    if (node == 0u) { *eax = 0u; return; }
+    if ((DSB(node + 0x1cu) & 2u) != 0u)
+        DSD(0x0010839Cu + (u32)((s32)DSD(node + 0x18u) >> 16) * 4u) = 0u;
+    effects_list_unlink(node);
+    effects_list_insert_after(0x001083C4u, node);
+    DSD(rec + 0x14u) = 0u;
+    *eax = 0u;
+}
+/* the node is re-inserted before the sentinel. */
+static void m_49444_link(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], node = DSD(rec + 0x14u);
+    if (node == 0u) { *eax = 0u; return; }
+    if ((DSB(node + 0x1cu) & 2u) != 0u)
+        DSD(0x0010839Cu + (u32)((s32)DSD(node + 0x18u) >> 16) * 4u) = 0u;
+    if (DSD(node + 0x10u) != 0u) { actor_set_dead(DSD(node + 0x10u)); DSD(node + 0x10u) = 0u; }
+    effects_list_unlink(node);
+    effects_list_insert_before(0x001083C4u, node);
+    DSD(rec + 0x14u) = 0u;
+    *eax = 0u;
+}
+/* rec's +0x14 is left set. */
+static void m_49444_reclr(const u32 *r, u32 *eax)
+{
+    u32 rec = r[R_EAX], node = DSD(rec + 0x14u);
+    if (node == 0u) { *eax = 0u; return; }
+    if ((DSB(node + 0x1cu) & 2u) != 0u)
+        DSD(0x0010839Cu + (u32)((s32)DSD(node + 0x18u) >> 16) * 4u) = 0u;
+    if (DSD(node + 0x10u) != 0u) { actor_set_dead(DSD(node + 0x10u)); DSD(node + 0x10u) = 0u; }
+    effects_list_unlink(node);
+    effects_list_insert_after(0x001083C4u, node);
+    *eax = 0u;
+}
+
+/* 0x2B150's mutants: one re-implementation with a mutation selector. */
+typedef void (*c3b_s_cb2)(u32 rec);
+#define C3B_S_BIT    0x01u   /* the dead bit is set at +0x29 */
+#define C3B_S_GATE   0x02u   /* the callback gate tests the low byte of +0x2A */
+#define C3B_S_CLEAR  0x04u   /* rec+0x2B bit 6 is not cleared */
+#define C3B_S_TABLE  0x08u   /* the callback reads the cb1 table entry */
+#define C3B_S_PSET   0x10u   /* the pset stride is 0x10 */
+#define C3B_S_PAL    0x20u   /* the palette release is not called */
+#define C3B_S_RENDER 0x40u   /* the render unlist is skipped */
+static void c3b_s_core(const u32 *r, u32 *eax, u32 mut)
+{
+    u32 rec = r[R_EAX];
+    if (mut & C3B_S_BIT) DSB(rec + 0x29u) |= 8u;
+    else DSB(rec + 0x28u) |= 8u;
+    if (((mut & C3B_S_GATE) ? (DSW(rec + 0x2au) & 0x40u)
+                            : (DSW(rec + 0x2au) >> 8 & 0x40u)) != 0u) {
+        c3b_s_cb2 cb = (c3b_s_cb2)(void *)fn_resolve(
+            DSD(((mut & C3B_S_TABLE) ? 0x000BB9DCu : 0x000BB9E0u)
+                + (u32)DSB(rec + 0x48u) * 0xCu));
+        if (cb) cb(rec);
+        if (!(mut & C3B_S_CLEAR)) DSB(rec + 0x2bu) &= (u8)~0x40u;
+    }
+    u32 pset = DSD(0x001014ECu) + (u32)DSW(rec + 0x56u) * ((mut & C3B_S_PSET) ? 0x10u : 0x20u);
+    if (DSD(pset + 0x18u) != 0u) {
+        if (!(mut & C3B_S_PAL)) palette_release(DSD(pset + 0x18u));
+        DSD(pset + 0x18u) = 0u;
+    }
+    if (!(mut & C3B_S_RENDER)) render_list_remove(pset);
+    *eax = 0u;
+}
+static void b_2b150(const u32 *r, u32 *eax)            { set_dead(r[R_EAX]); *eax = 0u; }
+static void m_2b150_bit(const u32 *r, u32 *eax)        { c3b_s_core(r, eax, C3B_S_BIT); }
+static void m_2b150_gate(const u32 *r, u32 *eax)       { c3b_s_core(r, eax, C3B_S_GATE); }
+static void m_2b150_clear(const u32 *r, u32 *eax)      { c3b_s_core(r, eax, C3B_S_CLEAR); }
+static void m_2b150_table(const u32 *r, u32 *eax)      { c3b_s_core(r, eax, C3B_S_TABLE); }
+static void m_2b150_pset(const u32 *r, u32 *eax)       { c3b_s_core(r, eax, C3B_S_PSET); }
+static void m_2b150_pal(const u32 *r, u32 *eax)        { c3b_s_core(r, eax, C3B_S_PAL); }
+static void m_2b150_render(const u32 *r, u32 *eax)     { c3b_s_core(r, eax, C3B_S_RENDER); }
+
+/* 0x29DB8's mutants: one re-implementation with a mutation selector. */
+#define C3B_W_MASK  0x01u   /* the op byte is not masked to 0x7F */
+#define C3B_W_RINGM 0x02u   /* the ring index is not masked to 0x3F */
+#define C3B_W_RADIO 0x04u   /* the ring base reads +0x52, not +0x51 */
+#define C3B_W_W44   0x08u   /* the word stores keep the high byte */
+#define C3B_W_SWAP  0x10u   /* the parent form reads the child index +0x4B */
+#define C3B_W_BEP   0x20u   /* the parent byte stores use value, not DS_00105BE8 */
+#define C3B_W_CHILD 0x40u   /* the child form reads the parent index +0x4A */
+#define C3B_W_HIGH  0x80u   /* above 0x51 the ring takes the value */
+static void c3b_w_core(const u32 *r, u32 *eax, u32 mut)
+{
+    u32 rec = r[R_EAX], value = r[R_EBX];
+    u32 op = (u32)(u8)r[R_EDX];
+    u32 o = (mut & C3B_W_MASK) ? op : (op & 0x7fu);
+    if (o < 0x40u) {
+        u32 bi = (mut & C3B_W_RADIO) ? (u32)DSB(rec + 0x52u) : (u32)DSB(rec + 0x51u);
+        u32 idx = o + bi;
+        if (!(mut & C3B_W_RINGM)) idx &= 0x3Fu;
+        DSW(0x00105B4Cu + idx * 2u) = (u16)value;
+        *eax = 0u;
+        return;
+    }
+    switch (o) {
+    case 0x40: DSB(rec + 0x52u) = (u8)value; *eax = 0u; return;
+    case 0x41: DSB(rec + 0x53u) = (u8)value; *eax = 0u; return;
+    case 0x42: DSB(rec + 0x54u) = (u8)value; *eax = 0u; return;
+    case 0x43: DSB(rec + 0x55u) = (u8)value; *eax = 0u; return;
+    case 0x44:
+        DSW(rec + 0x56u) = (mut & C3B_W_W44) ? (u16)value : (u16)(value & 0xffu);
+        *eax = 0u;
+        return;
+    case 0x45: DSB(rec + 0x58u) = (u8)value; *eax = 0u; return;
+    default: break;
+    }
+    u32 base;
+    if (o <= 0x4bu)
+        base = DSD(0x001014F4u) + (u32)DSB(rec + ((mut & C3B_W_SWAP) ? 0x4bu : 0x4au)) * 0x68u;
+    else if (o <= 0x51u)
+        base = DSD(0x001014F4u) + (u32)DSB(rec + ((mut & C3B_W_CHILD) ? 0x4au : 0x4bu)) * 0x68u;
+    else if (mut & C3B_W_HIGH) {
+        DSW(0x00105B4Cu + ((o + (u32)DSB(rec + 0x51u)) & 0x3fu) * 2u) = (u16)value;
+        *eax = 0u;
+        return;
+    } else {
+        *eax = 0u;
+        return;
+    }
+    u8 sv = (mut & C3B_W_BEP) ? (u8)value : DSB(0x00105BE8u);
+    switch (o) {
+    case 0x46: case 0x4c: DSB(base + 0x52u) = sv; *eax = 0u; return;
+    case 0x47: case 0x4d: DSB(base + 0x53u) = sv; *eax = 0u; return;
+    case 0x48: case 0x4e: DSB(base + 0x54u) = sv; *eax = 0u; return;
+    case 0x49: case 0x4f: DSB(base + 0x55u) = sv; *eax = 0u; return;
+    case 0x4a: case 0x50:
+        DSW(base + 0x56u) = (mut & C3B_W_W44) ? (u16)value : (u16)(value & 0xffu);
+        *eax = 0u;
+        return;
+    default: DSB(base + 0x58u) = (u8)value; *eax = 0u; return;
+    }
+}
+static void b_29db8(const u32 *r, u32 *eax)
+{
+    anim_write_var(r[R_EAX], (u8)r[R_EDX], r[R_EBX]);
+    *eax = 0u;
+}
+
+/* 0x2B8F8's mutants: one re-implementation with a mutation selector. */
+#define C3B_O_OP    0x01u   /* the previous-op compare is against 0x1E */
+#define C3B_O_MASK  0x02u   /* the mode-0 byte return is zero-extended */
+#define C3B_O_ADV   0x04u   /* the 0x1F arm does not advance rec+8 */
+#define C3B_O_BE8   0x08u   /* the 0x1F arm stores the command byte, not the next word */
+#define C3B_O_SEL   0x10u   /* the selector uses 0x0F00 */
+#define C3B_O_SCALE 0x20u   /* the 0x1000/0x2000 arms scale by 4 */
+#define C3B_O_DEREF 0x40u   /* the 0x4000 arm stores the post-advance pointer */
+#define C3B_O_BYTE  0x80u   /* the byte return is zero-extended */
+static u32 c3b_o_core(u32 rec, u32 mut)
+{
+    u32 p = DSD(rec + 8);
+    u16 cw = DSW(p);
+    u16 mode = (u16)(cw & 0x6000u);
+    DSW(0x00105BE6u) = mode;
+    u8 op = (u8)DSW(0x00105BE4u);
+    u8 ob = (u8)(cw & 0xffu);
+    u32 cx;
+    if (op == (u16)((mut & C3B_O_OP) ? 0x1Eu : 0x1Fu)) {
+        u32 np = p + 2;
+        if (!(mut & C3B_O_ADV)) DSD(rec + 8) = np;
+        DSW(0x00105BE4u) = ob;
+        cx = DSW(np);
+        if (mode == 0) {
+            DSW(0x00105BE8u) = (u16)((mut & C3B_O_BE8) ? cw : cx);
+            return cx;
+        }
+    } else {
+        DSW(0x00105BE8u) = ob;
+        if (mode == 0) {
+            if (mut & C3B_O_MASK) return ob;
+            return ob > 0x7fu ? (0xff00u | (u32)ob) : (u32)ob;
+        }
+        cx = ob;
+    }
+    DSW(0x00105BE8u) = (u16)cx;
+    u32 v = anim_read_var(rec, cx);
+    u16 mode2 = DSW(0x00105BE6u);
+    if (mode2 == 0x2000u) return v & 0xffffu;
+    u32 p2 = DSD(rec + 8) + 2;
+    u32 np = p2 + 2;
+    DSD(rec + 8) = np;
+    if (mode2 == 0x4000u) {
+        DSD(0x00105BD4u) = (mut & C3B_O_DEREF) ? DSD(np) : DSD(p2);
+        return v & 0xffffu;
+    }
+    u32 base = DSD(rec + 0x0cu);
+    DSD(0x00105BD4u) = base;
+    u16 sel = (u16)(DSW(np) & (u16)((mut & C3B_O_SEL) ? 0x0f00u : 0xf000u));
+    u32 sc = (mut & C3B_O_SCALE) ? 4u : 2u;
+    if (sel == 0x1000u) {
+        v = (v & 0xffffu) * sc;
+    } else if (sel == 0x2000u) {
+        v = (v & 0xffffu) * sc + 1u;
+    } else if (sel == 0x4000u) {
+        base += (v & 0xffffu) * 2u;
+        DSD(0x00105BD4u) = base;
+        return DSW(base);
+    } else if (sel == 0x5000u) {
+        base += (v & 0xffffu) * 4u;
+        DSD(0x00105BD4u) = base;
+        return DSW(base);
+    } else if (sel == 0x6000u) {
+        base += (v & 0xffffu) * 4u + 2u;
+        DSD(0x00105BD4u) = base;
+        return DSW(base);
+    } else {
+        v &= 0xffffu;
+    }
+    u8 b = DSB(base + v);
+    if (mut & C3B_O_BYTE) return (u32)b;
+    return b > 0x7fu ? ((0xff00u | (u32)b) & 0xffffu) : (u32)b;
+}
+static void b_2b8f8(const u32 *r, u32 *eax)            { *eax = anim_operand(r[R_EAX]); }
+/* 0x3AFC4's mutants: one triple builder with a mutation selector. */
+#define C3B_T_IDX   0x01u   /* the table stride is 0x20 */
+#define C3B_T_SHIFT 0x02u   /* the table byte shifts left 5 */
+#define C3B_T_ADD   0x04u   /* EDX is not added to the shifted byte */
+#define C3B_T_O0    0x08u   /* the first word's stride is 12 */
+#define C3B_T_O1    0x10u   /* the second word's stride is 16 */
+#define C3B_T_O2    0x20u   /* the third word's stride is 4 */
+static void c3b_t_core(u32 out[3], u32 slot_char, s32 edx, u32 mut)
+{
+    if (edx < 0 || edx >= 0x40) {
+        out[0] = out[1] = out[2] = 0u;
+        return;
+    }
+    u32 c = ((u32)DSB(0x0010782Au + slot_char * ((mut & C3B_T_IDX) ? 0x20u : 0x94u))
+             << ((mut & C3B_T_SHIFT) ? 5u : 6u));
+    if (!(mut & C3B_T_ADD)) c += (u32)edx;
+    out[0] = 0x000DE114u + c * ((mut & C3B_T_O0) ? 12u : 11u);
+    out[1] = 0x000A3528u + c * ((mut & C3B_T_O1) ? 16u : 20u);
+    out[2] = 0x000A6728u + c * ((mut & C3B_T_O2) ? 4u : 6u);
+}
+static void b_3afc4(const u32 *r, u32 *eax)
+{
+    u32 out[3];
+    fighter_anim_triple(out, r[R_EAX], (s32)r[R_EDX]);
+    memcpy(mem + r[R_EBX], out, sizeof out);
+    *eax = 0u;
+}
+static void m_3afc4_idx(const u32 *r, u32 *eax)
+{
+    u32 out[3];
+    c3b_t_core(out, r[R_EAX], (s32)r[R_EDX], C3B_T_IDX);
+    memcpy(mem + r[R_EBX], out, sizeof out);
+    *eax = 0u;
+}
+static void m_3afc4_shift(const u32 *r, u32 *eax)
+{
+    u32 out[3];
+    c3b_t_core(out, r[R_EAX], (s32)r[R_EDX], C3B_T_SHIFT);
+    memcpy(mem + r[R_EBX], out, sizeof out);
+    *eax = 0u;
+}
+static void m_3afc4_add(const u32 *r, u32 *eax)
+{
+    u32 out[3];
+    c3b_t_core(out, r[R_EAX], (s32)r[R_EDX], C3B_T_ADD);
+    memcpy(mem + r[R_EBX], out, sizeof out);
+    *eax = 0u;
+}
+static void m_3afc4_o0(const u32 *r, u32 *eax)
+{
+    u32 out[3];
+    c3b_t_core(out, r[R_EAX], (s32)r[R_EDX], C3B_T_O0);
+    memcpy(mem + r[R_EBX], out, sizeof out);
+    *eax = 0u;
+}
+static void m_3afc4_o1(const u32 *r, u32 *eax)
+{
+    u32 out[3];
+    c3b_t_core(out, r[R_EAX], (s32)r[R_EDX], C3B_T_O1);
+    memcpy(mem + r[R_EBX], out, sizeof out);
+    *eax = 0u;
+}
+static void m_3afc4_o2(const u32 *r, u32 *eax)
+{
+    u32 out[3];
+    c3b_t_core(out, r[R_EAX], (s32)r[R_EDX], C3B_T_O2);
+    memcpy(mem + r[R_EBX], out, sizeof out);
+    *eax = 0u;
+}
+static void m_2b8f8_op(const u32 *r, u32 *eax)         { *eax = c3b_o_core(r[R_EAX], C3B_O_OP); }
+static void m_2b8f8_mask(const u32 *r, u32 *eax)       { *eax = c3b_o_core(r[R_EAX], C3B_O_MASK); }
+static void m_2b8f8_adv(const u32 *r, u32 *eax)        { *eax = c3b_o_core(r[R_EAX], C3B_O_ADV); }
+static void m_2b8f8_be8(const u32 *r, u32 *eax)        { *eax = c3b_o_core(r[R_EAX], C3B_O_BE8); }
+static void m_2b8f8_sel(const u32 *r, u32 *eax)        { *eax = c3b_o_core(r[R_EAX], C3B_O_SEL); }
+static void m_2b8f8_scale(const u32 *r, u32 *eax)      { *eax = c3b_o_core(r[R_EAX], C3B_O_SCALE); }
+static void m_2b8f8_deref(const u32 *r, u32 *eax)      { *eax = c3b_o_core(r[R_EAX], C3B_O_DEREF); }
+static void m_2b8f8_byte(const u32 *r, u32 *eax)       { *eax = c3b_o_core(r[R_EAX], C3B_O_BYTE); }
+static void m_29db8_mask(const u32 *r, u32 *eax)       { c3b_w_core(r, eax, C3B_W_MASK); }
+static void m_29db8_ringm(const u32 *r, u32 *eax)      { c3b_w_core(r, eax, C3B_W_RINGM); }
+static void m_29db8_radio(const u32 *r, u32 *eax)      { c3b_w_core(r, eax, C3B_W_RADIO); }
+static void m_29db8_w44(const u32 *r, u32 *eax)        { c3b_w_core(r, eax, C3B_W_W44); }
+static void m_29db8_swap(const u32 *r, u32 *eax)       { c3b_w_core(r, eax, C3B_W_SWAP); }
+static void m_29db8_bep(const u32 *r, u32 *eax)        { c3b_w_core(r, eax, C3B_W_BEP); }
+static void m_29db8_child(const u32 *r, u32 *eax)      { c3b_w_core(r, eax, C3B_W_CHILD); }
+static void m_29db8_high(const u32 *r, u32 *eax)       { c3b_w_core(r, eax, C3B_W_HIGH); }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -10192,6 +11185,138 @@ static const binding_t k_bindings[] = {
     { "actor_alloc@tail",                  m_2ac80_tail,   0xFFFFFFFFu },
     { "actor_alloc@empty",                 m_2ac80_empty,  0xFFFFFFFFu },
     { "actor_alloc@ret",                   m_2ac80_ret,    0xFFFFFFFFu },
+    { "anim_read_var",                     b_c3b_anim_read_var, 0x0000FFFFu },
+    { "anim_read_var@ring",                m_c3b_a_ring,   0x0000FFFFu },
+    { "anim_read_var@sx",                  m_c3b_a_sx,     0x0000FFFFu },
+    { "anim_read_var@pswap",               m_c3b_a_pswap,  0x0000FFFFu },
+    { "anim_read_var@cswap",               m_c3b_a_cswap,  0x0000FFFFu },
+    { "anim_read_var@w58",                 m_c3b_a_w58,    0x0000FFFFu },
+    { "anim_read_var@a45",                 m_c3b_a_a45,    0x0000FFFFu },
+    { "anim_read_var@ret",                 m_c3b_a_ret,    0x0000FFFFu },
+    { "anim_read_var@opff",                m_c3b_a_opff,   0x0000FFFFu },
+    { "fighter_18350",                     b_c3b_18350,    0x00000000u },
+    { "fighter_18350@tab",                 m_c3b_b_tab,    0x00000000u },
+    { "fighter_18350@anchor",              m_c3b_b_anchor, 0x00000000u },
+    { "fighter_18350@neg",                 m_c3b_b_neg,    0x00000000u },
+    { "fighter_18350@bit",                 m_c3b_b_bit,    0x00000000u },
+    { "fighter_18350@side",                m_c3b_b_side,   0x00000000u },
+    { "fighter_18540",                     b_c3b_18540,    0x00000000u },
+    { "fighter_18540@default",             m_c3b_c_default, 0x00000000u },
+    { "fighter_18540@noclamp",             m_c3b_c_noclamp, 0x00000000u },
+    { "fighter_18540@gt",                  m_c3b_c_gt,     0x00000000u },
+    { "fighter_18540@mask",                m_c3b_c_mask,   0x00000000u },
+    { "fighter_18540@idx",                 m_c3b_c_idx,    0x00000000u },
+    { "fighter_18540@side",                m_c3b_c_side,   0x00000000u },
+    { "hit_record_y",                      b_c3b_hit_record_y, 0xFFFFFFFFu },
+    { "hit_record_y@bit",                  m_c3b_y_bit,    0xFFFFFFFFu },
+    { "hit_record_y@rec",                  m_c3b_y_rec,    0xFFFFFFFFu },
+    { "hit_record_y@call",                 m_c3b_y_call,   0xFFFFFFFFu },
+    { "hit_record_y@always",               m_c3b_y_always, 0xFFFFFFFFu },
+    { "hit_record_y@add",                  m_c3b_y_add,    0xFFFFFFFFu },
+    { "fighter_38154",                     b_c3b_fighter_38154, 0x00000000u },
+    { "fighter_38154@mode8",               m_c3b_d_mode8,  0x00000000u },
+    { "fighter_38154@range",               m_c3b_d_range,  0x00000000u },
+    { "fighter_38154@abs",                 m_c3b_d_abs,    0x00000000u },
+    { "fighter_38154@bit",                 m_c3b_d_bit,    0x00000000u },
+    { "fighter_38154@bd",                  m_c3b_d_bd,     0x00000000u },
+    { "fighter_38154@flag",                m_c3b_d_flag,   0x00000000u },
+    { "fighter_38154@call",                m_c3b_d_call,   0x00000000u },
+    { "fighter_38154@dir",                 m_c3b_d_dir,    0x00000000u },
+    { "snd_music_stop",                    b_c3b_snd_music_stop, 0x000000FFu },
+    { "snd_music_stop@gate",               m_c3b_m_gate,   0x000000FFu },
+    { "snd_music_stop@play",               m_c3b_m_play,   0x000000FFu },
+    { "snd_music_stop@stop",               m_c3b_m_stop,   0x000000FFu },
+    { "snd_music_stop@zero",               m_c3b_m_zero,   0x000000FFu },
+    { "snd_music_stop@al",                 m_c3b_m_al,     0x000000FFu },
+    { "snd_music_stop@cc",                 m_c3b_m_cc,     0x000000FFu },
+    { "snd_sample_playing",                b_c3b_snd_sample_playing, 0x000000FFu },
+    { "snd_sample_playing@driver",         m_c3b_p_driver, 0x000000FFu },
+    { "snd_sample_playing@status",         m_c3b_p_status, 0x000000FFu },
+    { "snd_sample_playing@clear",          m_c3b_p_clear,  0x000000FFu },
+    { "snd_sample_playing@scan",           m_c3b_p_scan,   0x000000FFu },
+    { "snd_sample_playing@wide",           m_c3b_p_wide,   0x000000FFu },
+    { "snd_sample_playing@al",             m_c3b_p_al,     0x000000FFu },
+    { "snd_samples_stop_all",              b_c3b_snd_samples_stop_all, 0x000000FFu },
+    { "snd_samples_stop_all@driver",       m_c3b_a_driver, 0x000000FFu },
+    { "snd_samples_stop_all@skip2",        m_c3b_a_skip2,  0x000000FFu },
+    { "snd_samples_stop_all@clr4",         m_c3b_a_clr4,   0x000000FFu },
+    { "snd_samples_stop_all@clrc",         m_c3b_a_clrc,   0x000000FFu },
+    { "snd_samples_stop_all@al",           m_c3b_a_al,     0x000000FFu },
+    { "snd_samples_stop_all@order",        m_c3b_a_order,  0x000000FFu },
+    { "snd_sample_stop",                   b_c3b_snd_sample_stop, 0x000000FFu },
+    { "snd_sample_stop@driver",            m_c3b_s_driver, 0x000000FFu },
+    { "snd_sample_stop@eq2",               m_c3b_s_eq2,    0x000000FFu },
+    { "snd_sample_stop@clear",             m_c3b_s_clear,  0x000000FFu },
+    { "snd_sample_stop@nolimit",           m_c3b_s_nolimit, 0x000000FFu },
+    { "snd_sample_stop@al",                m_c3b_s_al,     0x000000FFu },
+    { "snd_sample_stop@calls",             m_c3b_s_calls,  0x000000FFu },
+    { "snd_sample_queue",                  b_c3b_snd_sample_queue, 0x000000FFu },
+    { "snd_sample_queue@driver",           m_c3b_q_driver, 0x000000FFu },
+    { "snd_sample_queue@pause",            m_c3b_q_pause,  0x000000FFu },
+    { "snd_sample_queue@size",             m_c3b_q_size,   0x000000FFu },
+    { "snd_sample_queue@armbuf",           m_c3b_q_armbuf, 0x000000FFu },
+    { "snd_sample_queue@armq",             m_c3b_q_armq,   0x000000FFu },
+    { "snd_sample_queue@armst",            m_c3b_q_armst,  0x000000FFu },
+    { "snd_sample_queue@order",            m_c3b_q_order,  0x000000FFu },
+    { "snd_sample_queue@candcmp",          m_c3b_q_candcmp, 0x000000FFu },
+    { "snd_sample_queue@candmin",          m_c3b_q_candmin, 0x000000FFu },
+    { "snd_sample_queue@tailret",          m_c3b_q_tailret, 0x000000FFu },
+    { "snd_sample_queue@tailstop",         m_c3b_q_tailstop, 0x000000FFu },
+    { "snd_sample_queue@tailorder",        m_c3b_q_tailorder, 0x000000FFu },
+    { "snd_sample_queue@loopbyte",         m_c3b_q_loopbyte, 0x000000FFu },
+    { "list_insert_before",                b_c3b_list_insert_before, 0x00000000u },
+    { "list_insert_before@prev",           m_c3b_lb_prev,   0x00000000u },
+    { "list_insert_before@link",           m_c3b_lb_link,   0x00000000u },
+    { "list_insert_before@back",           m_c3b_lb_back,   0x00000000u },
+    { "list_insert_before@head",           m_c3b_lb_head,   0x00000000u },
+    { "list_insert_before@forward",        m_c3b_lb_forward, 0x00000000u },
+    { "effect_teardown",                   b_13420,        0x00000000u },
+    { "effect_teardown@unlink",            m_13420_unlink, 0x00000000u },
+    { "effect_teardown@restore",           m_13420_restore, 0x00000000u },
+    { "effect_teardown@type1",             m_13420_type1,  0x00000000u },
+    { "effect_teardown@flag",              m_13420_flag,   0x00000000u },
+    { "effect_teardown@buf",               m_13420_buf,    0x00000000u },
+    { "effect_teardown@tail",              m_13420_tail,   0x00000000u },
+    { "actor_type_49444",                  b_49444,        0x00000000u },
+    { "actor_type_49444@bit",              m_49444_bit,    0x00000000u },
+    { "actor_type_49444@idx",              m_49444_idx,    0x00000000u },
+    { "actor_type_49444@sign",             m_49444_sign,   0x00000000u },
+    { "actor_type_49444@child",            m_49444_child,  0x00000000u },
+    { "actor_type_49444@link",             m_49444_link,   0x00000000u },
+    { "actor_type_49444@reclr",            m_49444_reclr,  0x00000000u },
+    { "set_dead",                          b_2b150,        0x00000000u },
+    { "set_dead@bit",                      m_2b150_bit,    0x00000000u },
+    { "set_dead@gate",                     m_2b150_gate,   0x00000000u },
+    { "set_dead@clear",                    m_2b150_clear,  0x00000000u },
+    { "set_dead@table",                    m_2b150_table,  0x00000000u },
+    { "set_dead@pset",                     m_2b150_pset,   0x00000000u },
+    { "set_dead@pal",                      m_2b150_pal,    0x00000000u },
+    { "set_dead@render",                   m_2b150_render, 0x00000000u },
+    { "anim_write_var",                    b_29db8,        0x00000000u },
+    { "anim_write_var@mask",               m_29db8_mask,   0x00000000u },
+    { "anim_write_var@ringm",              m_29db8_ringm,  0x00000000u },
+    { "anim_write_var@radio",              m_29db8_radio,  0x00000000u },
+    { "anim_write_var@w44",                m_29db8_w44,    0x00000000u },
+    { "anim_write_var@swap",               m_29db8_swap,   0x00000000u },
+    { "anim_write_var@bep",                m_29db8_bep,    0x00000000u },
+    { "anim_write_var@child",              m_29db8_child,  0x00000000u },
+    { "anim_write_var@high",               m_29db8_high,   0x00000000u },
+    { "anim_operand",                      b_2b8f8,        0x0000FFFFu },
+    { "anim_operand@op",                   m_2b8f8_op,     0x0000FFFFu },
+    { "anim_operand@mask",                 m_2b8f8_mask,   0x0000FFFFu },
+    { "anim_operand@adv",                  m_2b8f8_adv,    0x0000FFFFu },
+    { "anim_operand@be8",                  m_2b8f8_be8,    0x0000FFFFu },
+    { "anim_operand@sel",                  m_2b8f8_sel,    0x0000FFFFu },
+    { "anim_operand@scale",                m_2b8f8_scale,  0x0000FFFFu },
+    { "anim_operand@deref",                m_2b8f8_deref,  0x0000FFFFu },
+    { "anim_operand@byte",                 m_2b8f8_byte,   0x0000FFFFu },
+    { "fighter_anim_triple",               b_3afc4,        0x00000000u },
+    { "fighter_anim_triple@idx",           m_3afc4_idx,    0x00000000u },
+    { "fighter_anim_triple@shift",         m_3afc4_shift,  0x00000000u },
+    { "fighter_anim_triple@add",           m_3afc4_add,    0x00000000u },
+    { "fighter_anim_triple@o0",            m_3afc4_o0,     0x00000000u },
+    { "fighter_anim_triple@o1",            m_3afc4_o1,     0x00000000u },
+    { "fighter_anim_triple@o2",            m_3afc4_o2,     0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -200,6 +200,8 @@ u32 sound_voice(u32 id);
 /* 0x1CA14/0x1CA6C/0x1CC28/0x1CD9C/0x1CE04/0x1CE70/0x1D238/0x1D244 (C2b):
  * the voice dispatcher's audio callees, exported for its differential row's mutants. */
 u32 snd_music_request(u32 song, u32 b);
+/* 0x1CA40 (C3b): the sequence-playing predicate, exported for the voice rows. */
+u32 snd_music_playing(void);
 u32 snd_music_stop(void);
 u32 snd_sample_queue(u32 h, u32 loop);
 u32 snd_samples_stop_all(void);

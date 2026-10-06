@@ -1316,7 +1316,7 @@ void palette_reflow(u32 descriptor, u32 handle)
 
 /* ---- animation-stream interpreter (0x29F34/0x29DB8/0x2A408/0x2B8F8/0x2B2A0) */
 
-static void set_dead(u32 rec);
+void set_dead(u32 rec);
 
 /* 0x29F34. Read one animation variable. `op & 0x7F` selects: < 0x40 the
  * 0x40-word ring at DS_00105B4C indexed by rec+0x51; 0x40..0x45 the record's
@@ -2666,7 +2666,7 @@ u32 actors_link_held(u32 rec, u32 v)
 
 /* ---- pset sync (0x2A31C -> 0x2A1FC -> 0x2A820) -------------------------- */
 
-static void set_dead(u32 rec);
+void set_dead(u32 rec);
 
 /* 0x2A620. The mode-1 shear cursor: derive rec+0x64 from the current y, or
  * from pset+0x14 (the previous frame's x) when rec+0x1c is zero. */
@@ -3033,8 +3033,8 @@ void actor_pset_palette(u32 rec, u32 word, u32 handle)
 /* 0x2B150. Set the dead bit (0x28 0x08), release the pset palette and unlink
  * the pset from the render list. 63 callers in the original; the port reaches
  * it from the sync path (0x2A1FC's release_record) and from the type-0x20..0x25
- * teardown (0x49444). */
-static void set_dead(u32 rec)
+ * teardown (0x49444). Exported for its own C3b row's binding. */
+void set_dead(u32 rec)
 {
     PR_SEAM(0x2B150u, rec);
     DSB(rec + 0x28) |= 0x08;

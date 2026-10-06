@@ -1032,6 +1032,145 @@ C3_KINDS = {
     "snd_sample_unpause@one": {"byte"},
 }
 
+# Track P batch C3b (record 2026-10-05-reverse-c3b): the frontier rows, part 2, with their EAX
+# masks, and what alone catches each of their mutants.
+C3B_MASKS = {
+            "anim_read_var": 0xffff,
+            "fighter_18350": 0x0,
+            "fighter_18540": 0x0,
+            "hit_record_y": 0xffffffff,
+            "fighter_38154": 0x0,
+            "snd_music_stop": 0xff,
+            "snd_sample_playing": 0xff,
+            "snd_samples_stop_all": 0xff,
+            "snd_sample_stop": 0xff,
+            "list_insert_before": 0x0,
+            "snd_sample_queue": 0xff,
+            "effect_teardown": 0x0,
+            "actor_type_49444": 0x0,
+            "set_dead": 0x0,
+            "anim_write_var": 0x0,
+            "anim_operand": 0xffff,
+            "fighter_anim_triple": 0x0,
+}
+C3B_KINDS = {
+    "actor_type_49444@bit": {"byte", "call #0", "call #0 memory", "call #1", "call #2"},
+    "actor_type_49444@child": {"byte", "call #0", "call #1", "call #2"},
+    "actor_type_49444@idx": {"byte", "call #0", "call #0 memory", "call #1", "call #2"},
+    "actor_type_49444@link": {"call #0", "call #1", "call #2"},
+    "actor_type_49444@reclr": {"byte", "call #0", "call #1", "call #2"},
+    "actor_type_49444@sign": {"byte", "call #0", "call #1", "call #2"},
+    "anim_operand@adv": {"byte", "call #0 memory"},
+    "anim_operand@be8": {"byte"},
+    "anim_operand@byte": {"eax"},
+    "anim_operand@deref": {"byte"},
+    "anim_operand@mask": {"eax"},
+    "anim_operand@op": {"byte", "call #0", "call #0 memory", "eax"},
+    "anim_operand@scale": {"eax"},
+    "anim_operand@sel": {"byte", "eax"},
+    "anim_read_var@a45": {"eax"},
+    "anim_read_var@cswap": {"eax"},
+    "anim_read_var@opff": {"eax"},
+    "anim_read_var@pswap": {"eax"},
+    "anim_read_var@ret": {"eax"},
+    "anim_read_var@ring": {"eax"},
+    "anim_read_var@sx": {"eax"},
+    "anim_read_var@w58": {"eax"},
+    "anim_write_var@bep": {"byte"},
+    "anim_write_var@child": {"byte"},
+    "anim_write_var@high": {"byte"},
+    "anim_write_var@mask": {"byte"},
+    "anim_write_var@radio": {"byte"},
+    "anim_write_var@ringm": {"byte"},
+    "anim_write_var@swap": {"byte"},
+    "anim_write_var@w44": {"byte"},
+    "effect_teardown@buf": {"byte"},
+    "effect_teardown@flag": {"byte"},
+    "effect_teardown@restore": {"byte"},
+    "effect_teardown@tail": {"byte"},
+    "effect_teardown@type1": {"byte"},
+    "effect_teardown@unlink": {"byte"},
+    "fighter_18350@anchor": {"byte", "call #0 memory"},
+    "fighter_18350@bit": {"byte"},
+    "fighter_18350@neg": {"byte", "call #0"},
+    "fighter_18350@side": {"byte", "call #0 memory"},
+    "fighter_18350@tab": {"byte", "call #0 memory"},
+    "fighter_18540@default": {"byte"},
+    "fighter_18540@gt": {"byte"},
+    "fighter_18540@idx": {"byte"},
+    "fighter_18540@mask": {"byte"},
+    "fighter_18540@noclamp": {"byte"},
+    "fighter_18540@side": {"byte"},
+    "fighter_38154@abs": {"byte", "call #0", "call #0 memory", "call #1", "call #1 memory"},
+    "fighter_38154@bd": {"byte", "call #0", "call #0 memory", "call #1", "call #1 memory"},
+    "fighter_38154@bit": {"byte", "call #0", "call #0 memory", "call #1", "call #1 memory"},
+    "fighter_38154@call": {"byte", "call #0", "call #1"},
+    "fighter_38154@dir": {"byte", "call #0", "call #1"},
+    "fighter_38154@flag": {"byte", "call #0", "call #0 memory", "call #1", "call #1 memory"},
+    "fighter_38154@mode8": {"byte", "call #0", "call #0 memory", "call #1", "call #1 memory"},
+    "fighter_38154@range": {"byte", "call #0", "call #0 memory", "call #1", "call #1 memory"},
+    "fighter_anim_triple@add": {"byte"},
+    "fighter_anim_triple@idx": {"byte"},
+    "fighter_anim_triple@o0": {"byte"},
+    "fighter_anim_triple@o1": {"byte"},
+    "fighter_anim_triple@o2": {"byte"},
+    "fighter_anim_triple@shift": {"byte"},
+    "hit_record_y@add": {"eax"},
+    "hit_record_y@always": {"byte", "call #1", "call #2", "eax"},
+    "hit_record_y@bit": {"call #0", "eax"},
+    "hit_record_y@call": {"byte", "call #0", "call #1", "call #1 memory", "call #2", "eax"},
+    "hit_record_y@rec": {"eax"},
+    "list_insert_before@back": {"byte"},
+    "list_insert_before@forward": {"byte"},
+    "list_insert_before@head": {"byte"},
+    "list_insert_before@link": {"byte"},
+    "list_insert_before@prev": {"byte"},
+    "set_dead@bit": {"byte", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "set_dead@clear": {"byte", "call #2 memory"},
+    "set_dead@gate": {"byte", "call #0", "call #1", "call #2"},
+    "set_dead@pal": {"call #0", "call #2"},
+    "set_dead@pset": {"byte", "call #0"},
+    "set_dead@render": {"byte"},
+    "set_dead@table": {"byte", "call #0", "call #0 memory", "call #1", "call #2"},
+    "snd_music_stop@al": {"eax"},
+    "snd_music_stop@cc": {"byte", "call #1 memory"},
+    "snd_music_stop@gate": {"call #0"},
+    "snd_music_stop@play": {"byte", "call #1", "eax"},
+    "snd_music_stop@stop": {"call #1"},
+    "snd_music_stop@zero": {"byte", "call #0 memory", "call #1 memory"},
+    "snd_sample_playing@al": {"byte", "call #1", "eax"},
+    "snd_sample_playing@clear": {"byte", "call #1 memory"},
+    "snd_sample_playing@driver": {"call #0", "eax"},
+    "snd_sample_playing@scan": {"byte", "call #1"},
+    "snd_sample_playing@status": {"byte", "eax"},
+    "snd_sample_playing@wide": {"call #0", "eax"},
+    "snd_sample_queue@armbuf": {"byte", "call #0", "call #1"},
+    "snd_sample_queue@armq": {"byte", "call #0", "call #1", "call #2", "call #3", "call #4"},
+    "snd_sample_queue@armst": {"byte", "call #1", "call #2"},
+    "snd_sample_queue@candcmp": {"byte"},
+    "snd_sample_queue@candmin": {"byte"},
+    "snd_sample_queue@driver": {"byte", "call #0", "call #1", "eax"},
+    "snd_sample_queue@loopbyte": {"byte"},
+    "snd_sample_queue@order": {"byte"},
+    "snd_sample_queue@pause": {"byte", "call #0", "call #1", "eax"},
+    "snd_sample_queue@size": {"byte", "call #0", "call #1"},
+    "snd_sample_queue@tailorder": {"call #0", "call #1", "call #2"},
+    "snd_sample_queue@tailret": {"eax"},
+    "snd_sample_queue@tailstop": {"call #0", "call #1", "call #2"},
+    "snd_sample_stop@al": {"eax"},
+    "snd_sample_stop@calls": {"call #1", "call #2"},
+    "snd_sample_stop@clear": {"byte"},
+    "snd_sample_stop@driver": {"byte", "call #0", "call #1", "call #2", "eax"},
+    "snd_sample_stop@eq2": {"byte", "call #1", "call #2", "eax"},
+    "snd_sample_stop@nolimit": {"byte", "call #3", "call #4", "call #5", "eax"},
+    "snd_samples_stop_all@al": {"eax"},
+    "snd_samples_stop_all@clr4": {"byte", "call #0 memory", "call #1 memory", "call #10 memory", "call #11 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory", "call #6 memory", "call #7 memory", "call #8 memory", "call #9 memory"},
+    "snd_samples_stop_all@clrc": {"byte", "call #0 memory", "call #1 memory", "call #10 memory", "call #11 memory", "call #2 memory", "call #3 memory", "call #4 memory", "call #5 memory", "call #6 memory", "call #7 memory", "call #8 memory", "call #9 memory"},
+    "snd_samples_stop_all@driver": {"byte", "call #0", "call #1", "call #2", "call #3", "eax"},
+    "snd_samples_stop_all@order": {"call #1", "call #10", "call #11", "call #2", "call #4", "call #5", "call #7", "call #8"},
+    "snd_samples_stop_all@skip2": {"call #1", "call #1 memory", "call #10", "call #11", "call #2", "call #2 memory", "call #3 memory", "call #4", "call #5", "call #6", "call #7", "call #8", "call #9"},
+}
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -1056,7 +1195,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
-                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
+                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
@@ -1072,7 +1211,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
             + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)
-            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
+            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(C3B_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -1137,7 +1276,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
-            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS, **C3_MASKS,
+            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS, **C3_MASKS, **C3B_MASKS,
             **P7_MASKS, **P8_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
@@ -1664,6 +1803,132 @@ class RealFunctionTests(unittest.TestCase):
         ):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
+    def test_each_c3b_mutant_is_caught_by_what_it_breaks(self):
+        # track P batch C3b (record 2026-10-05-reverse-c3b): what alone catches each mutant
+        for name, want in C3B_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        # the exact case set that alone catches each mutant (measured on the prototype)
+        for name, ids in (
+        ("actor_type_49444@bit", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+        ("actor_type_49444@child", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+        ("actor_type_49444@idx", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+        ("actor_type_49444@link", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+        ("actor_type_49444@reclr", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+        ("actor_type_49444@sign", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+        ("anim_operand@adv", ['o0', 'o1', 'o14']),
+        ("anim_operand@be8", ['o0', 'o14']),
+        ("anim_operand@byte", ['o11']),
+        ("anim_operand@deref", ['o5']),
+        ("anim_operand@mask", ['o3']),
+        ("anim_operand@op", ['o0', 'o1', 'o14']),
+        ("anim_operand@scale", ['o7']),
+        ("anim_operand@sel", ['o10', 'o6', 'o7', 'o8', 'o9']),
+        ("anim_read_var@a45", ['a7']),
+        ("anim_read_var@cswap", ['a10']),
+        ("anim_read_var@opff", ['a14']),
+        ("anim_read_var@pswap", ['a16', 'a17', 'a18', 'a19', 'a8']),
+        ("anim_read_var@ret", ['a12']),
+        ("anim_read_var@ring", ['a1']),
+        ("anim_read_var@sx", ['a13', 'a2']),
+        ("anim_read_var@w58", ['a6']),
+        ("anim_write_var@bep", ['w12', 'w19', 'w20', 'w21', 'w9']),
+        ("anim_write_var@child", ['w12', 'w13', 'w14']),
+        ("anim_write_var@high", ['w15', 'w16']),
+        ("anim_write_var@mask", ['w17', 'w18']),
+        ("anim_write_var@radio", ['w0', 'w1', 'w17', 'w2']),
+        ("anim_write_var@ringm", ['w1', 'w2']),
+        ("anim_write_var@swap", ['w10', 'w11', 'w19', 'w20', 'w21', 'w9']),
+        ("anim_write_var@w44", ['w10', 'w13', 'w7']),
+        ("effect_teardown@buf", ['e4']),
+        ("effect_teardown@flag", ['e0', 'e2', 'e3', 'e5']),
+        ("effect_teardown@restore", ['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']),
+        ("effect_teardown@tail", ['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']),
+        ("effect_teardown@type1", ['e1']),
+        ("effect_teardown@unlink", ['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']),
+        ("fighter_18350@anchor", ['b3']),
+        ("fighter_18350@bit", ['b1']),
+        ("fighter_18350@neg", ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9']),
+        ("fighter_18350@side", ['b1']),
+        ("fighter_18350@tab", ['b1', 'b2', 'b3', 'b4', 'b6']),
+        ("fighter_18540@default", ['c1', 'c2', 'c3', 'c4', 'c5', 'c6']),
+        ("fighter_18540@gt", ['c9']),
+        ("fighter_18540@idx", ['c12']),
+        ("fighter_18540@mask", ['c12']),
+        ("fighter_18540@noclamp", ['c0', 'c8', 'c9']),
+        ("fighter_18540@side", ['c1']),
+        ("fighter_38154@abs", ['d0', 'd11', 'd14', 'd7']),
+        ("fighter_38154@bd", ['d0', 'd11', 'd15', 'd16', 'd7']),
+        ("fighter_38154@bit", ['d0', 'd1', 'd11', 'd2', 'd4', 'd5', 'd7', 'd8']),
+        ("fighter_38154@call", ['d0', 'd1', 'd11', 'd14', 'd7', 'd8']),
+        ("fighter_38154@dir", ['d1', 'd14', 'd8']),
+        ("fighter_38154@flag", ['d0', 'd11', 'd12', 'd13', 'd5', 'd7']),
+        ("fighter_38154@mode8", ['d0', 'd11', 'd7']),
+        ("fighter_38154@range", ['d0', 'd11', 'd12', 'd7', 'd8']),
+        ("fighter_anim_triple@add", ['t1', 't2', 't4']),
+        ("fighter_anim_triple@idx", ['t2', 't3', 't4']),
+        ("fighter_anim_triple@o0", ['t0', 't1', 't2', 't3', 't4']),
+        ("fighter_anim_triple@o1", ['t0', 't1', 't2', 't3', 't4']),
+        ("fighter_anim_triple@o2", ['t0', 't1', 't2', 't3', 't4']),
+        ("fighter_anim_triple@shift", ['t0', 't1', 't2', 't3', 't4']),
+        ("hit_record_y@add", ['y1', 'y2', 'y3']),
+        ("hit_record_y@always", ['y1', 'y3']),
+        ("hit_record_y@bit", ['y0']),
+        ("hit_record_y@call", ['y1', 'y2', 'y3']),
+        ("hit_record_y@rec", ['y0']),
+        ("list_insert_before@back", ['v0', 'v2']),
+        ("list_insert_before@forward", ['v0']),
+        ("list_insert_before@head", ['v0', 'v1']),
+        ("list_insert_before@link", ['v0', 'v1', 'v2']),
+        ("list_insert_before@prev", ['v0', 'v1', 'v2']),
+        ("set_dead@bit", ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7']),
+        ("set_dead@clear", ['s3', 's4', 's5', 's7']),
+        ("set_dead@gate", ['s3', 's4', 's5', 's7']),
+        ("set_dead@pal", ['s1', 's6', 's7']),
+        ("set_dead@pset", ['s6']),
+        ("set_dead@render", ['s2']),
+        ("set_dead@table", ['s4', 's7']),
+        ("snd_music_stop@al", ['m2']),
+        ("snd_music_stop@cc", ['m2']),
+        ("snd_music_stop@gate", ['m0']),
+        ("snd_music_stop@play", ['m1']),
+        ("snd_music_stop@stop", ['m2']),
+        ("snd_music_stop@zero", ['m0', 'm1', 'm2']),
+        ("snd_sample_playing@al", ['q3', 'q5']),
+        ("snd_sample_playing@clear", ['q3', 'q5']),
+        ("snd_sample_playing@driver", ['q0']),
+        ("snd_sample_playing@scan", ['q5']),
+        ("snd_sample_playing@status", ['q2', 'q4']),
+        ("snd_sample_playing@wide", ['q6']),
+        ("snd_sample_queue@armbuf", ['z3', 'z9']),
+        ("snd_sample_queue@armq", ['z4', 'z6', 'z8', 'z9']),
+        ("snd_sample_queue@armst", ['z5', 'z6', 'z8']),
+        ("snd_sample_queue@candcmp", ['z8']),
+        ("snd_sample_queue@candmin", ['z6', 'z8']),
+        ("snd_sample_queue@driver", ['z0']),
+        ("snd_sample_queue@loopbyte", ['z2', 'z3', 'z4', 'z5', 'z6', 'z7', 'z8', 'z9']),
+        ("snd_sample_queue@order", ['z8']),
+        ("snd_sample_queue@pause", ['z1']),
+        ("snd_sample_queue@size", ['z3', 'z4', 'z5', 'z6', 'z7', 'z8']),
+        ("snd_sample_queue@tailorder", ['z3', 'z4', 'z5', 'z6', 'z8']),
+        ("snd_sample_queue@tailret", ['z3', 'z4', 'z5', 'z6', 'z8']),
+        ("snd_sample_queue@tailstop", ['z3', 'z4', 'z5', 'z6', 'z8']),
+        ("snd_sample_stop@al", ['t3', 't4', 't5']),
+        ("snd_sample_stop@calls", ['t3', 't4', 't5']),
+        ("snd_sample_stop@clear", ['t3', 't4', 't5']),
+        ("snd_sample_stop@driver", ['t0']),
+        ("snd_sample_stop@eq2", ['t2', 't3', 't4', 't5']),
+        ("snd_sample_stop@nolimit", ['t3', 't4', 't5']),
+        ("snd_samples_stop_all@al", ['r1', 'r2']),
+        ("snd_samples_stop_all@clr4", ['r1', 'r2']),
+        ("snd_samples_stop_all@clrc", ['r1', 'r2']),
+        ("snd_samples_stop_all@driver", ['r0']),
+        ("snd_samples_stop_all@order", ['r2']),
+        ("snd_samples_stop_all@skip2", ['r1']),
+        ):
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
+
     def test_each_p7_mutant_is_caught_by_what_it_breaks(self):
         # track P batch 7 (record 2026-10-04-reverse-p7): what alone catches each mutant
         for name, want in P7_KINDS.items():
@@ -1691,7 +1956,7 @@ class RealFunctionTests(unittest.TestCase):
                                  0x188DC: ("edx",), 0x1890C: ("edx",), 0x189FC: (), 0x18A4C: (),
                                  0x18AF8: ("ebx", "ecx", "edx"), 0x18B04: (), 0x18B44: (),
                                  0x18C14: ("ebx", "edx", "ebp"), 0x1A570: (), 0x1A5AC: (), 0x1A734: (),
-                                 0x1AB5C: ("ebp",), 0x1CA14: ("edx",), 0x1CA6C: (), 0x1CC28: ("edx",),
+                                 0x1AB5C: ("ebp",), 0x1CA14: ("edx",), 0x1CA40: (), 0x1CA6C: (), 0x1CC28: ("edx",),
                                  0x1CD9C: (), 0x1CE04: (), 0x1CE70: (), 0x1D238: (), 0x1D244: (),
                                  0x1DDF4: ("ebx", "edx"), 0x22404: (), 0x23960: (), 0x249B0: (), 0x249D0: (),
                                  0x29BC8: ("ebx", "edx"), 0x29C08: ("edx",), 0x29DB8: ("ebx", "edx"),
@@ -1712,7 +1977,9 @@ class RealFunctionTests(unittest.TestCase):
                                  0x3B90C: ("edx",), 0x3C148: (), 0x3C16C: (), 0x3C190: ("edx",),
                                  0x3C208: ("edx",), 0x3C358: (), 0x3C480: ("edx",), 0x3C4CC: ("edx",),
                                  0x3C520: ("edx",), 0x3C59C: ("edx",), 0x41310: (), 0x46460: ("edx",),
-                                 0x468D8: (), 0x48170: (), 0x49444: ("edi", "ebp"), 0x4F434: (), 0x5D7DC: ()})
+                                 0x468D8: (), 0x48170: (), 0x49444: ("edi", "ebp"), 0x4F434: (), 0x5D7DC: (), 0x5DC0F: ("ebx", "ecx", "edx"),
+                                 0x5DC8B: ("ebx", "ecx", "edx"), 0x5DD03: (),
+                                 0x5DEAF: ("ebx", "ecx", "edx")})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -1806,9 +2073,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (172), the 45 without are counted apart
-        self.assertIn("diff-verify: 217/217 functions VERIFIED; 664/664 mutants detected; 1 named gaps; "
-                      "154/172 rows with callees closed (45 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (185), the 49 without are counted apart
+        self.assertIn("diff-verify: 234/234 functions VERIFIED; 779/779 mutants detected; 1 named gaps; "
+                      "165/185 rows with callees closed (49 have none).", out.getvalue())
 
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
