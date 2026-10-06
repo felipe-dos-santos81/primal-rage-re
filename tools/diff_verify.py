@@ -3508,12 +3508,13 @@ def c2b_3b714(side, char, r24, bits=0, a02=0x22, a03=0x33, efc=0, p1_52=0, p1_54
     return p
 
 def c2b_39834(side, b, char, k=0, a0=0x10, a1=0x40, a8=0x08, tbl=100, r=0, ai=0, s5d=0, f2=0,
-              s52=0, s54=1, p_104abc=0, p_104b14=0, m2c=0x0101, m28=0x28282828):
+              s52=0, s54=1, p_104abc=0, p_104b14=0, m2c=0x0101, m28=0x28282828, s43=0x43):
     """The 0x39834 fixture: the side's slot and the inverted side's char byte select the anim triple
     (char<<6 | b); the 0x107D2A+ctx0*2 dword's high word is k (and its low word the +0x107D2C/D2A
     counter); a0/a0+1/a0+8 are the anim[0] bytes; tbl the per-level table entry for k <= 0xB;
     r the 0x39738 stub value; ai the 0x468D8 inputs (slot+0x10 == 0x22BEC, rec+0x24 clear, +0x54
-    != 2, or +0x52 == 7); s5d/s52/s54/f2/p_104abc/p_104b14 the tail gates. Blocks: the record's
+    != 2, or +0x52 == 7); s5d/s52/s54/f2/p_104abc/p_104b14 the tail gates; s43 the +0x43 seed (0x47
+    in f1 so the 0x39917 `and cl,0xFB` store is observable). Blocks: the record's
     +0x24..+0x63, the slot's +0x41..+0x80 and the 0x107D20..+0x5F run (the counters and 0x107D28
     plus the per-side k dword), so a case stays inside the 16-poke limit."""
     ctx0 = 1 - side
@@ -3526,7 +3527,7 @@ def c2b_39834(side, b, char, k=0, a0=0x10, a1=0x40, a8=0x08, tbl=100, r=0, ai=0,
     if ai == 0:
         rb[0:4] = le32(0x80000000)
     sb = bytearray(64)
-    sb[0x43 - 0x41] = 0x43; sb[0x52 - 0x41] = s52; sb[0x54 - 0x41] = s54; sb[0x5D - 0x41] = s5d
+    sb[0x43 - 0x41] = s43; sb[0x52 - 0x41] = s52; sb[0x54 - 0x41] = s54; sb[0x5D - 0x41] = s5d
     sb[0x53 - 0x41] = 0x53; sb[0x5E - 0x41] = 0x5E
     tb = bytearray(64)
     tb[0x00107D28 - 0x00107D20:0x00107D28 - 0x00107D20 + 4] = le32(m28)
@@ -3548,7 +3549,10 @@ def c2b_36870(side, mode=0, s54=0, s41=0x41, s42=0x42, s43=0x43, s40=0x40404040,
     """The 0x36870 fixture: rec+0x51 = side, the slot pair, the slot's +0x40 dword and +0x41..+0x7F
     run (one block), its +0x84..+0x90 run, the record's +0x1C..+0x5B run and +0x7A char, the mode
     word and the three dword globals the resets clear. r365/r366 are the 0x365C8/0x36638 stub
-    values; char selects the per-character anim pointers DSD(0xC8950/0xC89A0/0xC89F0 + char*4)."""
+    values; char selects the per-character anim pointers DSD(0xC8950/0xC89A0/0xC89F0 + char*4).
+    The seeds cover the resets the sweep found writing their own pre-state: the slot's +0x0C..+0x1F
+    run (its +0x0C/+0x10/+0x18/+0x1C dword zeros), both slots' +0x66 (the other slot's zero) and
+    the record's +0x1C dword (its zero)."""
     s = DS_SLOTS + side * 0x94
     so = DS_SLOTS + (1 - side) * 0x94
     rec = E3_REC if side == 0 else E3_REC2
@@ -3564,12 +3568,15 @@ def c2b_36870(side, mode=0, s54=0, s41=0x41, s42=0x42, s43=0x43, s40=0x40404040,
     b2[0x84 - 0x80:0x84 - 0x80 + 2] = (0x8484).to_bytes(2, "little")
     b2[0x8A - 0x80] = 0x8A; b2[0x90 - 0x80] = 0x90
     rb = bytearray(0x40)
-    rb[0x28 - 0x1C:0x2A - 0x1C] = s28.to_bytes(2, "little")
+    rb[0:4] = le32(0x1C1C1C1C); rb[0x28 - 0x1C:0x2A - 0x1C] = s28.to_bytes(2, "little")
     for off in (0x34, 0x36, 0x42, 0x43, 0x44, 0x4C, 0x4D):
         rb[off - 0x1C] = off
     rb[0x51 - 0x1C] = side
     p = {**SLOT_PTRS, rec + 0x51: bytes([side]), rec + 0x1C: bytes(rb), s + 0x40: bytes(b1),
          s + 0x80: bytes(b2), rec + 0x7A: bytes([char]),
+         s + 0x0C: (le32(0x0C0C0C0C) + le32(0x10101010) + le32(0x14141414) + le32(0x18181818)
+                    + le32(0x1C1C1C1C)),
+         s + 0x66: b"\x66", so + 0x66: b"\x66",
          0x00104B00: mode.to_bytes(2, "little"),
          0x00100CE0 + (1 - side) * 2: (0xCE00 + 1 - side).to_bytes(2, "little"),
          0x00100AF8 + side * 4: le32(0xAF8AF8F8),
@@ -3588,7 +3595,9 @@ def c2b_2ae14(a2=0, a3=0, a4=0, a5=0, frame=0, hdl=0, type21=1, dp8=0, dp0=C2B_2
     """The 0x2AE14 fixture: the descriptor (stream dword, type, frame, the word fields and the
     palette handle), the actor pool and pset bases, the returned record (pool+0x68), the render
     free node and list head, the 0xBB9DC type-table entry (type 1 -> 0xBB9E8) and the stream's first
-    two words. free=0 empties the render free list."""
+    two words. free=0 empties the render free list. The sentinels cover the sweep's hidden stores:
+    pset+0x14 differs from pset+0x08 (the g6 copy source) and the node's +4 differs from the pset
+    the insert writes there."""
     rec = C2B_2AE14_REC
     pset = C2B_2AE14_PSET + 0x20
     dp = (le32(dp0) + bytes([type21, frame]) + word_a.to_bytes(2, "little")
@@ -3598,14 +3607,16 @@ def c2b_2ae14(a2=0, a3=0, a4=0, a5=0, frame=0, hdl=0, type21=1, dp8=0, dp0=C2B_2
     for i in range(32):
         psb[i] = 0xA5
     psb[0x0E] = 0x2E; psb[0x0F] = 0x2E
+    psb[0x14:0x18] = b"\x5a" * 4
     p = {0x001014EC: le32(C2B_2AE14_PSET), 0x001014F4: le32(C2B_2AE14_POOL),
          C2B_2AE14_DESC: dp + b"\xa5" * (0x14 - len(dp)),
          0x000BB9E8: le32(cb), C2B_2AE14_STR: word1.to_bytes(2, "little") + word2.to_bytes(2, "little"),
          pset: bytes(psb), 0x00105B44: le32(0), 0x0010275C: le32(C2B_2AE14_NODE) if free else le32(0),
          0x000F0A78: le32(0x000F0A78),
-         C2B_2AE14_NODE: le32(0) + le32(pset)}
-    # seed the record with sentinels: the spawn overwrites most fields.
-    p[rec + 0x08] = b"\xa5" * 48
+         C2B_2AE14_NODE: le32(0) + le32(0x5A5A5A5A)}
+    # seed the record with sentinels: the spawn overwrites most fields. The +0x38 word is distinct
+    # (DSW(rec+0x38) = 0 must change it); the run continues 0xA5 to +0x3F.
+    p[rec + 0x08] = b"\xa5" * 48 + b"\x38\x38" + b"\xa5" * 6
     p[rec + 0x40] = b"\xa5" * 40
     return p
 
@@ -3712,7 +3723,7 @@ C2B_OP_CASES = [
     # 0x5D7DC rng; 0x2AE14 the child record; 0x29DB8/0x2C3FC void.
     *[Case(cid, {"eax": C2B_OP_REC, "edx": 1, "ebx": flag},
            {**c2b_op(op, value=value, word_extra=we, **{k: v for k, v in kw.items()
-                                                       if k in ("r28", "p5e6", "p5e8", "p5d4",
+                                                       if k in ("r28", "r2a", "p5e6", "p5e8", "p5d4",
                                                                 "pset0c", "prefix")})},
            ({0x2B150: 0} if op == 0 else {})
            | ({0x5D7DC: C2B_OP_RNG} if op == 0x08 else {})
@@ -3749,7 +3760,7 @@ C2B_OP_CASES = [
         ("o13", 0x13, 0x1E, 0, b"", {}),
         ("o14", 0x14, 0x1F, 0, b"", {}),
         ("o15", 0x15, 0x29D60, 0, b"", {"p5d4": 0x29D60}),
-        ("o16", 0x16, 0x20, 0, b"", {}),
+        ("o16", 0x16, 0x20, 0, b"", {"r28": 0x2A28}),
         ("o17", 0x17, 0x21, 0, b"", {"p5e8": 3}),
         ("o18a", 0x18, 0x01, 0, b"\x04\x00", {"p5e8": 2}),
         ("o18b", 0x18, 0x01, 0, b"\x01\x00", {"p5e8": 2}),
@@ -3759,7 +3770,7 @@ C2B_OP_CASES = [
         ("o1b", 0x1B, 0x23, 0, b"", {}),
         ("o1c", 0x1C, 0x24, 0, b"", {}),
         ("o1d", 0x1D, 0x25, 0, b"", {}),
-        ("o1e", 0x1E, 0x26, 0, b"", {}),
+        ("o1e", 0x1E, 0x26, 0, b"", {"r2a": 0x2E2A}),
         ("o1f", 0x1F, 0x02, 0, b"", {"r28": 0x2828}),
         ("o20a", 0x20, 0x02, 0, b"", {"r28": 0x2828}),
         ("o20b", 0x20, 0x02, 0, b"", {"r28": 0x6828}),
@@ -3999,9 +4010,10 @@ C2B_SPECS = [
              s5d=0x10, p_104abc=1, p_104b14=0)},
              {0x39738: 7, 0x392A0: 0, 0x36CE4: 0, 0x2C3FC: 0, 0x4F434: 0}),
         # f1: k = 0xC (the divide arm): ebx = 0x40/16 = 4; the predicate false and +0x5D >= 0x44
-        # with 0x1078F2+side set: the zero arm (no 0x36CE4).
+        # with 0x1078F2+side set: the zero arm (no 0x36CE4). The +0x43 seed has bit 2 set, so the
+        # 0x39917 `and cl,0xFB` clear is observable.
         Case("f1", {"eax": 0, "edx": 1}, {**c2b_39834(0, 1, 3, k=0xC, a1=0x40, r=0, ai=0, s5d=0x50,
-             f2=1, p_104abc=0)},
+             f2=1, p_104abc=0, s43=0x47)},
              {0x39738: 0, 0x392A0: 0, 0x36CE4: 0, 0x2C3FC: 0, 0x4F434: 0}),
         # f2: the same but 0x1078F2 clear: 0x36CE4 runs.
         Case("f2", {"eax": 0, "edx": 2}, {**c2b_39834(0, 2, 3, k=0xC, a1=0x40, r=0, ai=0, s5d=0x50,
