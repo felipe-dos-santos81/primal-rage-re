@@ -4235,7 +4235,7 @@ C2B_SPECS = [
 
 # ---- track P batch C3 (record 2026-10-05-reverse-c3): the frontier callee rows ------------------
 #
-# 0x249B0 (record C3 §C3.1): EAX = `at`, EDX = `rec`. The splice insert: next = [at]; [at] = rec;
+# 0x249B0 (record C3 §C3.2): EAX = `at`, EDX = `rec`. The splice insert: next = [at]; [at] = rec;
 # [rec] = next; [rec+4] = at; [next+4] = rec. Straight-line (record §C3.1); every store observed by
 # the distinct sentinels. The port's effects.c copy carries the row (the actors.c copy is the same
 # body, named in §C3.5).
@@ -4255,7 +4255,7 @@ C3_SPECS = [
         Case("l2", {"eax": 0x10A200, "edx": 0x10A280},
              {0x10A200: le32(0x10A280), 0x10A280: le32(0x33333333), 0x10A284: le32(0x44444444)}),
     ], eax_mask=0, mutants=("@next", "@skip", "@back", "@head")),
-    # 0x249D0 (record C3 §C3.1): EAX = `rec`. next = [rec]; prev = [rec+4]; [next+4] = prev;
+    # 0x249D0 (record C3 §C3.2): EAX = `rec`. next = [rec]; prev = [rec+4]; [next+4] = prev;
     # [prev] = next; [rec+4] = 0; [rec] = 0.
     Spec("list_unlink", 0x249D0, [
         # u0: distinct neighbours; every neighbour field seeded differently from what is written.
@@ -4271,16 +4271,16 @@ C3_SPECS = [
              {0x10A240: le32(0x10A280), 0x10A244: le32(0x10A280),
               0x10A284: le32(0x55555555)}),
     ], eax_mask=0, mutants=("@prev", "@link", "@one", "@swap")),
-    # 0x164E8 (record C3 §C3.1): EAX = side. One dword store of 0 at 0xFD148 + side*4. The raw
+    # 0x164E8 (record C3 §C3.2): EAX = side. One dword store of 0 at 0xFD148 + side*4. The raw
     # leaves EAX = side; every caller ignores it (mask 0).
     Spec("fighter_164e8", 0x164E8, [
         Case("s0", {"eax": 0}, {0x000FD148: le32(0xA5A5A5A5), 0x000FD144: le32(0x12345678)}),
         Case("s1", {"eax": 1}, {0x000FD14C: le32(0xA5A5A5A5), 0x000FD150: le32(0x12345678)}),
         Case("s2", {"eax": 2}, {0x000FD150: le32(0xA5A5A5A5), 0x000FD14C: le32(0x12345678)}),
     ], eax_mask=0, mutants=("@noside", "@byte", "@side")),
-    # 0x1D238 (record C3 §C3.2): clear the music pause byte DS_001028DA. `xor ah,ah` clears AH and
-    # writes AL's high byte... no: it writes AH=0 while the store's source is AH alone (0x1028DA is
-    # one byte). Callers ignore EAX (mask 0).
+    # 0x1D238 (record C3 §C3.2): clear the music pause byte DS_001028DA. `xor ah,ah` (0x1D238); then
+    # `mov byte [0x1028DA],ah` (0x1D23A): one byte store of AH, and DS_001028DB is untouched.
+    # Callers ignore EAX (mask 0).
     Spec("snd_music_unpause", 0x1D238, [
         Case("p1", {}, {0x001028DA: b"\x01", 0x001028DB: b"\xA5"}),
         Case("p2", {}, {0x001028DA: b"\xA5", 0x001028DB: b"\x00"}),
@@ -4309,7 +4309,7 @@ C3_SPECS = [
              {0x001028D9: b"\x5A", 0x001028D4: le32(0xDEADBEEF), 0x001028DA: b"\x00",
               0x001028C0: le32(1), 0x001028CC: le32(0xA5A5A5A5)}),
     ], eax_mask=0xFF, mutants=("@d9", "@pause", "@seq", "@cc", "@al")),
-    # 0x2A620 (record C3 §C3.3): EAX = rec, EDX = pset. The mode-1 shear cursor. rec+0x1C == 0 ->
+    # 0x2A620 (record C3 §C3.2): EAX = rec, EDX = pset. The mode-1 shear cursor. rec+0x1C == 0 ->
     # v = pset+0x14; else v = [0xF0AEC] + 0x3BC0 - (rec+0x30 >> 16). v >>= 6 (arithmetic); the
     # unsigned word v < [0x107A4C] -> 0xFF; else rec+0x64 = (u8)v - (u8)[0x107A4C]; rec+0x61's top
     # byte >= 0x80 -> 0x7F.
@@ -4345,8 +4345,8 @@ C3_SPECS = [
     ], eax_mask=0, mutants=("@pset", "@y", "@cmp", "@sub", "@shl"),
        unhit_named={0x2A66D: "the 0x7F clamp store is dead in both: sar edx,0x18 yields "
                             "[-0x80,0x7F], so cmp edx,0x80 / jl at 0x2A665/0x2A66B always takes "
-                            "the jump (the port's >= 0x80 is never true; record C3 §C3.3)"}),
-    # 0x3C59C (record C3 §C3.3): EAX = bit (AL), EDX = side. Test-and-set bit (bit & 0x1F) of
+                            "the jump (the port's >= 0x80 is never true; record C3 §C3.5)"}),
+    # 0x3C59C (record C3 §C3.2): EAX = bit (AL), EDX = side. Test-and-set bit (bit & 0x1F) of
     # DSD(0x107D50 + side*4): AL = 1 when already set, else the bit is set and AL = 0. Mask 0xFF.
     Spec("fighter_pass_flag", 0x3C59C, [
         Case("f0", {"eax": 0, "edx": 0}, {0x00107D50: le32(0)}),
@@ -4357,7 +4357,7 @@ C3_SPECS = [
         Case("f5", {"eax": 5, "edx": 0}, {0x00107D50: le32(0x22)}),
         Case("f6", {"eax": 0, "edx": 0}, {0x00107D50: le32(0x80000000)}),
     ], eax_mask=0xFF, mutants=("@eq", "@set", "@side", "@shift")),
-    # 0x46460 (record C3 §C3.3): EAX = side, EDX = index (signed). Word of the 0x28-stride ring at
+    # 0x46460 (record C3 §C3.2): EAX = side, EDX = index (signed). Word of the 0x28-stride ring at
     # 0x108270, `index` steps behind the position DSD(0x1082D2) >> 16 (wrapping modulo 0x14). Mask
     # 0xFFFF: the raw sets AX alone, so the high half is scratch.
     Spec("fighter_input_read", 0x46460, [
@@ -4374,7 +4374,7 @@ C3_SPECS = [
         Case("i5", {"eax": 0, "edx": 0x14}, {0x001082D2: le32(0),
              0x00108270: b"\x00\x10", 0x00108296: b"\x77\x77"}),
     ], eax_mask=0xFFFF, mutants=("@side", "@wrap", "@sign", "@pos")),
-    # 0x41310 (record C3 §C3.3): EAX = side, EDX = delta (signed). Add delta to the side's
+    # 0x41310 (record C3 §C3.2): EAX = side, EDX = delta (signed). Add delta to the side's
     # camera-target record +0x3C unless [0x104B00] == 3; a negative delta whose sum < 1 clamps the
     # field to 0. Mask 0.
     Spec("fighter_41310", 0x41310, [
@@ -4400,7 +4400,7 @@ C3_SPECS = [
              {0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680),
               0x00104B00: b"\x00\x00", 0x10A600 + 0x3C: le32(0x7FFFFFFF), 0x10A680 + 0x3C: le32(200)}),
     ], eax_mask=0, mutants=("@mode", "@clamp", "@eq", "@add", "@side")),
-    # 0x365C8 (record C3 §C3.3): EAX = slot, EDX = rec, EBX = side. 1 when this slot is behind the
+    # 0x365C8 (record C3 §C3.2): EAX = slot, EDX = rec, EBX = side. 1 when this slot is behind the
     # other's +0x2C in the facing direction and the other slot's +0x43 bit 0x80 is set. Mask 0xFF.
     Spec("fighter_state_365c8", 0x365C8, [
         # s0: the slot's +0x42 bit 0x10.
@@ -4454,7 +4454,7 @@ C3_SPECS = [
              {0x10A642: b"\x00", 0x10A6C3: b"\x00", 0x10A6C2: b"\x80", 0x10A62C: le32(5),
               0x10A6AC: le32(10), 0x10A728: b"\x00\x00", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
     ], eax_mask=0xFF, mutants=("@bit", "@other", "@signed", "@f43")),
-    # 0x1A5AC (record C3 §C3.3): EAX = side. 1 when the side's slot record (ctx[4]) +0x28 has bit
+    # 0x1A5AC (record C3 §C3.2): EAX = side. 1 when the side's slot record (ctx[4]) +0x28 has bit
     # 0x4000 clear. 0x33950 runs on both sides (allow). Mask 0xFF (the caller's `test al,al`).
     Spec("fighter_1a5ac", 0x1A5AC, [
         Case("a0", {"eax": 0},
@@ -4476,9 +4476,10 @@ C3_SPECS = [
              {0x001077B0: le32(0x10A600), 0x001077B0 + 0x94: le32(0x10A680),
               0x10A628: b"\x00\xC0", 0x10A680 + 0x28: b"\x00\x00"}),
     ], allow_calls=(0x33950,), eax_mask=0xFF, mutants=("@slot", "@side", "@bit")),
-    # 0x13DF0 (record C3 §C3.4): walk the active list from the sentinel DS_000FCCE0, tear each node
+    # 0x13DF0 (record C3 §C3.2): walk the active list from the sentinel DS_000FCCE0, tear each node
     # down (0x13420, stubbed: its own row is C3b), then zero the active counter and the lock. The
-    # port's zero-sentinel guard is a PORT deviation: the cases keep the head non-zero.
+    # port's zero-sentinel guard is a PORT deviation (record §C3.5): the cases keep the head
+    # non-zero.
     Spec("effects_clear", 0x13DF0, [
         # e0: the empty list (the sentinel points at itself): no call, both bytes written.
         Case("e0", {}, {0x000FCCE0: le32(0x000FCCE0), 0x0009AF3C: b"\x5A", 0x0009AF3D: b"\xA5"}),
@@ -4491,10 +4492,10 @@ C3_SPECS = [
                         0x0009AF3C: b"\x5A", 0x0009AF3D: b"\xA5"}),
     ], calls=(E.Call(0x13420, ("eax",)),), eax_mask=0,
        mutants=("@walk", "@count", "@lock", "@set", "@one")),
-    # 0x1881C (record C3 §C3.5): latch slot 0 then slot 1 (0x186D0, a stubbed call: its own row
+    # 0x1881C (record C3 §C3.2): latch slot 0 then slot 1 (0x186D0, a stubbed call: its own row
     # pins it), then return slot0+0x30 - slot1+0x30 at 0x1077E0 and 0x1077E0+0x94. The stub writes
-    # nothing, so the difference is read from the seeded memory; the call list pins the order and
-    # the two side arguments. Mask full (the caller reads the signed difference).
+    # nothing (record §C3.5), so the difference is read from the seeded memory; the call list pins
+    # the order and the two side arguments. Mask full (the caller reads the signed difference).
     Spec("hit_vert_distance", 0x1881C, [
         Case("v0", {}, {0x001077E0: le32(100), 0x00107874: le32(40)}),
         Case("v1", {}, {0x001077E0: le32(0), 0x00107874: le32(0xFFFFFFFF)}),
@@ -4502,7 +4503,7 @@ C3_SPECS = [
         Case("v3", {}, {0x001077E0: le32(0), 0x00107874: le32(0)}),
     ], calls=(E.Call(0x186D0, ("eax",)),), eax_mask=0xFFFFFFFF,
        mutants=("@one", "@order", "@side", "@diff")),
-    # 0x36CE4 (record C3 §C3.5): EAX = slot. Set slot+0x43 bit 2; in modes other than 3/0x22
+    # 0x36CE4 (record C3 §C3.2): EAX = slot. Set slot+0x43 bit 2; in modes other than 3/0x22
     # restart the side's DS_00102900 record on the 0xE906E stream at 3.0 (0x2BC30, a stubbed call
     # with its own row). Mask 0.
     Spec("fighter_36ce4", 0x36CE4, [
@@ -4524,12 +4525,12 @@ C3_SPECS = [
              0x00102900: le32(0x10A700), 0x00102904: le32(0x10A780)}),
     ], calls=(ANIM_BEGIN,), eax_mask=0,
        mutants=("@bit", "@mode", "@mode22", "@rec", "@stream", "@side")),
-    # 0x2AC80 (record C3 §C3.6): EAX = flag. When the free list is not the empty sentinel, pop its
+    # 0x2AC80 (record C3 §C3.2): EAX = flag. When the free list is not the empty sentinel, pop its
     # head (0x249D0, a real call: its own row proves it) and insert it at the active list's head
     # (0x249B0 real) or, when the flag's 0x400 bit (CH bit 2) is set, at the tail (0x249C0, not in
     # the call set: it has no row, and both bounds read its final bytes). The two 0x2EA30
-    # interrupt-lock calls run on the original side only (allow); with the lock byte zero their net
-    # write is zero, so the memory at the recorded calls agrees.
+    # interrupt-lock calls run on the original side only (allow, record §C3.5); with the lock byte
+    # zero their net write is zero, so the memory at the recorded calls agrees.
     Spec("actor_alloc", 0x2AC80, [
         Case("a0", {"eax": 0}, {0x000BCD60: b"\x00", 0x00105B3C: le32(0x10A600), 0x10A600: le32(0x00105B3C),
              0x10A604: le32(0x00105B3C), 0x00105B40: le32(0x5A5A5A5A),
