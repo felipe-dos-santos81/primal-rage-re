@@ -16789,14 +16789,11 @@ void fighter_40148(u32 rec)
 }
 
 
-/* PORT: the [char] u16 table at 0x401B6 has no symbols.h name (the same table
- * as FIGHT_DIST_3E244). */
-#define P6_WORD_C759C     0x000C759Cu
-
 /* 0x40170 — record §P6.3. The D100 target at the dword 0xE86EE. With the other
  * side's slot set: the record's +0x28 bit 14 clears (else sets) the other
  * record's +0x29 bit 6; 0x34D8C(rec+0x51); 0x3C208(rec+0x51, word
- * 0xC759C[other char]). */
+ * FIGHT_DIST_3E244[other char] -- the 0xC759C table 0x401B6 loads, with no
+ * symbols.h name). */
 void fighter_40170(u32 rec)
 {
     u32 other = DSD(DS_001077A8 + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 4u);   /* 0x40174..0x4017E */
@@ -16809,7 +16806,7 @@ void fighter_40170(u32 rec)
         DSB(orec + 0x29u) |= 0x40u;                         /* 0x401A3 */
     (void)hit_flash_pair((u32)DSB(rec + 0x51u));             /* 0x401A7..0x401AC */
     (void)fighter_3c208((u32)DSB(rec + 0x51u),
-                        (u32)(u16)DSW(P6_WORD_C759C
+                        (u32)(u16)DSW(FIGHT_DIST_3E244
                                       + (u32)DSB(other + 0x7Au) * 2u));   /* 0x401B3..0x401CC */
 }
 
@@ -16841,7 +16838,7 @@ void fighter_22494(u32 rec)
 
 
 /* 0x2400C — record §P6.4. The D100 target at the dword 0xE4FF4. The other
- * slot's record: its +0x1C -= word 0xA83F8[other char]; the record on
+ * slot's record: its +0x1C -= word 0xA83FA[other char]; the record on
  * 0xA8408[other char] at 3.0; 0x104748's record +0x29 bit 3; 0x2BCF4(that
  * record, 0x741); voice 0x67. */
 void fighter_2400c(u32 rec)

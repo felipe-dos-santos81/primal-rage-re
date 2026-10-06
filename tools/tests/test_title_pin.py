@@ -7,7 +7,10 @@ EXE = os.path.join(ROOT, "data", "game", "C", "PRAGE.EXE")
 
 # Format reference A2. The three title draws carry the ranges the port's LCG
 # must reproduce; the opcode-8 site is the in-window consumer (value 0 both
-# sides).
+# sides) and the two master-loop draws (0x256B1 at file 0x78505, 0x256D6 at
+# file 0x7852A, both rng(0x7FFF), EBP = 0x7FFF at 0x255E4) are pinned to a
+# non-advancing 0 so the reference's stream stays in step with the port's
+# (tools/title_pin.py; port/spec/game_flow.md).
 DRAW_SITES = [
     (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000"), 0x5A),
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000"), 0x7E),
@@ -15,6 +18,8 @@ DRAW_SITES = [
 ]
 PATCH_SITES = DRAW_SITES + [
     (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000"), None),
+    (0x78505, bytes.fromhex("e826810300"), bytes.fromhex("b800000000"), None),
+    (0x7852A, bytes.fromhex("e801810300"), bytes.fromhex("b800000000"), None),
 ]
 
 def lcg_draws():
