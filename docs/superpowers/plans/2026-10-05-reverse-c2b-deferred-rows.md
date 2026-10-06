@@ -3021,3 +3021,9 @@ index d385e36..0b3e67e 100644
  
  # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
 ```
+
+**Applied-tree note (closeout, 2026-10-06).** The embedded diff quotes the prototype's
+`tools/diff_emu.py` hand-correction wording ("0x3B834 reads EDI after 0x3B298"). The review fix wave
+`297000c` corrected the applied comment: the EDI read is *before* the `0x3B834` call into `0x3AE9C`
+— `mov eax,edi` at `0x3B82E` (record §C2b.8; `tools/diff_emu.py` carries the final text). The diff
+otherwise applies as written.
