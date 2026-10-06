@@ -63,8 +63,9 @@ void effects_list_unlink(u32 rec)
  * record's own fields through 0x33714 (flag 1, palette_record_flagged), type 1
  * the record's +0x10 block through 0x33734, type 4 the raw 0xFCCF0 buffer
  * (jump table 0x13408). */
-static void effect_teardown(u32 rec)
+void effect_teardown(u32 rec)
 {
+    PR_SEAM(0x13420u, rec);
     u8 saved = DSB(DS_0009AF3C);
     DSB(DS_0009AF3C) = 1;
     effects_list_unlink(rec);

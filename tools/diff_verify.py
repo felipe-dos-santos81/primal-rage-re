@@ -4233,6 +4233,324 @@ C2B_SPECS = [
        eax_mask=0xFF, mutants=("@mutant", "@indirect", "@child", "@skip")),
 ]
 
+# ---- track P batch C3 (record 2026-10-05-reverse-c3): the frontier callee rows ------------------
+#
+# 0x249B0 (record C3 §C3.1): EAX = `at`, EDX = `rec`. The splice insert: next = [at]; [at] = rec;
+# [rec] = next; [rec+4] = at; [next+4] = rec. Straight-line (record §C3.1); every store observed by
+# the distinct sentinels. The port's effects.c copy carries the row (the actors.c copy is the same
+# body, named in §C3.5).
+C3_SPECS = [
+    Spec("list_insert_after", 0x249B0, [
+        # l0: distinct at/rec/next; rec's links and next's back link carry sentinels.
+        Case("l0", {"eax": 0x10A200, "edx": 0x10A240},
+             {0x10A200: le32(0x10A280), 0x10A250: le32(0x10A260),
+              0x10A240: le32(0xA5A5A5A5), 0x10A244: le32(0xA5A5A5A5),
+              0x10A284: le32(0xA5A5A5A5)}),
+        # l1: at's next is at itself (a one-element ring): the [at] and [at+4] stores land on the
+        # same word, so the last one wins; rec's two links land on it.
+        Case("l1", {"eax": 0x10A200, "edx": 0x10A240},
+             {0x10A200: le32(0x10A200), 0x10A204: le32(0xA5A5A5A5),
+              0x10A240: le32(0x11111111), 0x10A244: le32(0x22222222)}),
+        # l2: next == rec (re-inserting a detached node): [rec] is written twice.
+        Case("l2", {"eax": 0x10A200, "edx": 0x10A280},
+             {0x10A200: le32(0x10A280), 0x10A280: le32(0x33333333), 0x10A284: le32(0x44444444)}),
+    ], eax_mask=0, mutants=("@next", "@skip", "@back", "@head")),
+    # 0x249D0 (record C3 §C3.1): EAX = `rec`. next = [rec]; prev = [rec+4]; [next+4] = prev;
+    # [prev] = next; [rec+4] = 0; [rec] = 0.
+    Spec("list_unlink", 0x249D0, [
+        # u0: distinct neighbours; every neighbour field seeded differently from what is written.
+        Case("u0", {"eax": 0x10A240},
+             {0x10A240: le32(0x10A280), 0x10A244: le32(0x10A260),
+              0x10A284: le32(0xA5A5A5A5), 0x10A260: le32(0xA5A5A5A5)}),
+        # u1: a self-linked rec: next == prev == rec, so [next+4] and [prev] hit rec's own fields
+        # and are then zeroed.
+        Case("u1", {"eax": 0x10A240},
+             {0x10A240: le32(0x10A240), 0x10A244: le32(0x10A240), 0x10A248: le32(0xDEADBEEF)}),
+        # u2: next == prev (a two-element ring): [next+4] and [prev] are the same word.
+        Case("u2", {"eax": 0x10A240},
+             {0x10A240: le32(0x10A280), 0x10A244: le32(0x10A280),
+              0x10A284: le32(0x55555555)}),
+    ], eax_mask=0, mutants=("@prev", "@link", "@one", "@swap")),
+    # 0x164E8 (record C3 §C3.1): EAX = side. One dword store of 0 at 0xFD148 + side*4. The raw
+    # leaves EAX = side; every caller ignores it (mask 0).
+    Spec("fighter_164e8", 0x164E8, [
+        Case("s0", {"eax": 0}, {0x000FD148: le32(0xA5A5A5A5), 0x000FD144: le32(0x12345678)}),
+        Case("s1", {"eax": 1}, {0x000FD14C: le32(0xA5A5A5A5), 0x000FD150: le32(0x12345678)}),
+        Case("s2", {"eax": 2}, {0x000FD150: le32(0xA5A5A5A5), 0x000FD14C: le32(0x12345678)}),
+    ], eax_mask=0, mutants=("@noside", "@byte", "@side")),
+    # 0x1D238 (record C3 §C3.2): clear the music pause byte DS_001028DA. `xor ah,ah` clears AH and
+    # writes AL's high byte... no: it writes AH=0 while the store's source is AH alone (0x1028DA is
+    # one byte). Callers ignore EAX (mask 0).
+    Spec("snd_music_unpause", 0x1D238, [
+        Case("p1", {}, {0x001028DA: b"\x01", 0x001028DB: b"\xA5"}),
+        Case("p2", {}, {0x001028DA: b"\xA5", 0x001028DB: b"\x00"}),
+        Case("p3", {}, {0x001028DA: b"\x00", 0x001028D9: b"\x5A"}),
+    ], eax_mask=0, mutants=("@db", "@one", "@word")),
+    # 0x1D244 (record C3 §C3.2): clear the sample pause byte DS_001028DB.
+    Spec("snd_sample_unpause", 0x1D244, [
+        Case("p1", {}, {0x001028DB: b"\x01", 0x001028DA: b"\xA5"}),
+        Case("p2", {}, {0x001028DB: b"\xA5", 0x001028DA: b"\x00"}),
+        Case("p3", {}, {0x001028DB: b"\x00", 0x001028DC: b"\x5A"}),
+    ], eax_mask=0, mutants=("@da", "@one")),
+    # 0x1CA14 (record C3 §C3.2): EAX = song, DL = b. Store b at DS_001028D9 and song at
+    # DS_001028D4; when not paused (DS_001028DA != 1) and a sequence handle exists (DS_001028C0 !=
+    # 0), DS_001028CC = song and AL = 1, else AL = 0. Mask 0xFF (AL).
+    Spec("snd_music_request", 0x1CA14, [
+        Case("r0", {"eax": 0x2803E640, "edx": 0x12},
+             {0x001028D9: b"\xA5", 0x001028D4: le32(0), 0x001028DA: b"\x00",
+              0x001028C0: le32(0x11111111), 0x001028CC: le32(0xA5A5A5A5)}),
+        Case("r1", {"eax": 0x2803E640, "edx": 0x12},
+             {0x001028D9: b"\xA5", 0x001028D4: le32(0), 0x001028DA: b"\x01",
+              0x001028C0: le32(0x11111111), 0x001028CC: le32(0xA5A5A5A5)}),
+        Case("r2", {"eax": 0x2803E640, "edx": 0x12},
+             {0x001028D9: b"\xA5", 0x001028D4: le32(0), 0x001028DA: b"\x00",
+              0x001028C0: le32(0), 0x001028CC: le32(0xA5A5A5A5)}),
+        Case("r3", {"eax": 0, "edx": 0x1FF},
+             {0x001028D9: b"\x5A", 0x001028D4: le32(0xDEADBEEF), 0x001028DA: b"\x00",
+              0x001028C0: le32(1), 0x001028CC: le32(0xA5A5A5A5)}),
+    ], eax_mask=0xFF, mutants=("@d9", "@pause", "@seq", "@cc", "@al")),
+    # 0x2A620 (record C3 §C3.3): EAX = rec, EDX = pset. The mode-1 shear cursor. rec+0x1C == 0 ->
+    # v = pset+0x14; else v = [0xF0AEC] + 0x3BC0 - (rec+0x30 >> 16). v >>= 6 (arithmetic); the
+    # unsigned word v < [0x107A4C] -> 0xFF; else rec+0x64 = (u8)v - (u8)[0x107A4C]; rec+0x61's top
+    # byte >= 0x80 -> 0x7F.
+    Spec("mode1_cursor", 0x2A620, [
+        # y0: the pset path, v below the threshold.
+        Case("y0", {"eax": 0x10A600, "edx": 0x10A700},
+             {0x10A61C: le32(0), 0x10A700 + 0x14: le32(0x1000), 0x107A4C: b"\x50\x00",
+              0x10A600 + 0x64: b"\x5A", 0x10A661: le32(0)}),
+        # y1: v == the threshold: not below (stores 0, no clamp).
+        Case("y1", {"eax": 0x10A600, "edx": 0x10A700},
+             {0x10A61C: le32(0), 0x10A700 + 0x14: le32(0x1400), 0x107A4C: b"\x50\x00",
+              0x10A600 + 0x64: b"\x5A", 0x10A661: le32(0)}),
+        # y2: above the threshold, no clamp.
+        Case("y2", {"eax": 0x10A600, "edx": 0x10A700},
+             {0x10A61C: le32(0), 0x10A700 + 0x14: le32(0x2000), 0x107A4C: b"\x50\x00",
+              0x10A600 + 0x64: b"\x5A", 0x10A661: le32(0)}),
+        # y3: the y path and the 0x7F clamp (rec+0x61's top byte 0x80).
+        Case("y3", {"eax": 0x10A600, "edx": 0x10A700},
+             {0x10A61C: le32(1), 0x10A630: le32(0), 0x000F0AEC: le32(0), 0x107A4C: b"\x10\x00",
+              0x10A600 + 0x64: b"\x5A", 0x10A661: le32(0x80000000)}),
+        # y4: the y path, the (u8) subtraction with a threshold whose low byte is 0.
+        Case("y4", {"eax": 0x10A600, "edx": 0x10A700},
+             {0x10A61C: le32(1), 0x10A630: le32(0x10000), 0x000F0AEC: le32(0x1000),
+              0x107A4C: b"\x00\x01", 0x10A600 + 0x64: b"\x5A", 0x10A661: le32(0)}),
+        # y5: a negative v: the arithmetic shift keeps -1 and the unsigned word compare is high.
+        Case("y5", {"eax": 0x10A600, "edx": 0x10A700},
+             {0x10A61C: le32(1), 0x10A630: le32(0x3BC10000), 0x000F0AEC: le32(0),
+              0x107A4C: b"\x10\x00", 0x10A600 + 0x64: b"\x5A", 0x10A661: le32(0)}),
+        # y6: the pset path with the clamp.
+        Case("y6", {"eax": 0x10A600, "edx": 0x10A700},
+             {0x10A61C: le32(0), 0x10A700 + 0x14: le32(0x2000), 0x107A4C: b"\x50\x00",
+              0x10A600 + 0x64: b"\x5A", 0x10A661: le32(0xFF000000)}),
+    ], eax_mask=0, mutants=("@pset", "@y", "@cmp", "@sub", "@shl"),
+       unhit_named={0x2A66D: "the 0x7F clamp store is dead in both: sar edx,0x18 yields "
+                            "[-0x80,0x7F], so cmp edx,0x80 / jl at 0x2A665/0x2A66B always takes "
+                            "the jump (the port's >= 0x80 is never true; record C3 §C3.3)"}),
+    # 0x3C59C (record C3 §C3.3): EAX = bit (AL), EDX = side. Test-and-set bit (bit & 0x1F) of
+    # DSD(0x107D50 + side*4): AL = 1 when already set, else the bit is set and AL = 0. Mask 0xFF.
+    Spec("fighter_pass_flag", 0x3C59C, [
+        Case("f0", {"eax": 0, "edx": 0}, {0x00107D50: le32(0)}),
+        Case("f1", {"eax": 0, "edx": 1}, {0x00107D54: le32(1)}),
+        Case("f2", {"eax": 0x1F, "edx": 0}, {0x00107D50: le32(0)}),
+        Case("f3", {"eax": 0x20, "edx": 0}, {0x00107D50: le32(1)}),
+        Case("f4", {"eax": 3, "edx": 2}, {0x00107D58: le32(8)}),
+        Case("f5", {"eax": 5, "edx": 0}, {0x00107D50: le32(0x22)}),
+        Case("f6", {"eax": 0, "edx": 0}, {0x00107D50: le32(0x80000000)}),
+    ], eax_mask=0xFF, mutants=("@eq", "@set", "@side", "@shift")),
+    # 0x46460 (record C3 §C3.3): EAX = side, EDX = index (signed). Word of the 0x28-stride ring at
+    # 0x108270, `index` steps behind the position DSD(0x1082D2) >> 16 (wrapping modulo 0x14). Mask
+    # 0xFFFF: the raw sets AX alone, so the high half is scratch.
+    Spec("fighter_input_read", 0x46460, [
+        Case("i0", {"eax": 0, "edx": 0}, {0x001082D2: le32(5 << 16),
+             0x0010827A: b"\x05\x10", 0x00108278: b"\x04\x10"}),
+        Case("i1", {"eax": 0, "edx": 3}, {0x001082D2: le32(5 << 16),
+             0x00108274: b"\x02\x10", 0x00108272: b"\x01\x10"}),
+        Case("i2", {"eax": 0, "edx": 5}, {0x001082D2: le32(1 << 16),
+             0x00108290: b"\x10\x10", 0x00108268: b"\x77\x77"}),
+        Case("i3", {"eax": 0, "edx": 0xFFFFFFFF}, {0x001082D2: le32(4 << 16),
+             0x00108278: b"\x04\x10"}),
+        Case("i4", {"eax": 1, "edx": 1}, {0x001082D2: le32(2 << 16),
+             0x0010829A: b"\x01\x20", 0x00108292: b"\x77\x77"}),
+        Case("i5", {"eax": 0, "edx": 0x14}, {0x001082D2: le32(0),
+             0x00108270: b"\x00\x10", 0x00108296: b"\x77\x77"}),
+    ], eax_mask=0xFFFF, mutants=("@side", "@wrap", "@sign", "@pos")),
+    # 0x41310 (record C3 §C3.3): EAX = side, EDX = delta (signed). Add delta to the side's
+    # camera-target record +0x3C unless [0x104B00] == 3; a negative delta whose sum < 1 clamps the
+    # field to 0. Mask 0.
+    Spec("fighter_41310", 0x41310, [
+        Case("g0", {"eax": 0, "edx": 25},
+             {0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680),
+              0x00104B00: b"\x03\x00", 0x10A600 + 0x3C: le32(100), 0x10A680 + 0x3C: le32(200)}),
+        Case("g1", {"eax": 0, "edx": 25},
+             {0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680),
+              0x00104B00: b"\x00\x00", 0x10A600 + 0x3C: le32(100), 0x10A680 + 0x3C: le32(200)}),
+        Case("g2", {"eax": 0, "edx": 0},
+             {0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680),
+              0x00104B00: b"\x00\x00", 0x10A600 + 0x3C: le32(100), 0x10A680 + 0x3C: le32(200)}),
+        Case("g3", {"eax": 0, "edx": 0xFFFFFFE7},
+             {0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680),
+              0x00104B00: b"\x00\x00", 0x10A600 + 0x3C: le32(10), 0x10A680 + 0x3C: le32(200)}),
+        Case("g4", {"eax": 1, "edx": 0xFFFFFFF6},
+             {0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680),
+              0x00104B00: b"\x00\x00", 0x10A600 + 0x3C: le32(100), 0x10A680 + 0x3C: le32(10)}),
+        Case("g5", {"eax": 0, "edx": 0xFFFFFFF7},
+             {0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680),
+              0x00104B00: b"\x00\x00", 0x10A600 + 0x3C: le32(10), 0x10A680 + 0x3C: le32(200)}),
+        Case("g6", {"eax": 0, "edx": 1},
+             {0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680),
+              0x00104B00: b"\x00\x00", 0x10A600 + 0x3C: le32(0x7FFFFFFF), 0x10A680 + 0x3C: le32(200)}),
+    ], eax_mask=0, mutants=("@mode", "@clamp", "@eq", "@add", "@side")),
+    # 0x365C8 (record C3 §C3.3): EAX = slot, EDX = rec, EBX = side. 1 when this slot is behind the
+    # other's +0x2C in the facing direction and the other slot's +0x43 bit 0x80 is set. Mask 0xFF.
+    Spec("fighter_state_365c8", 0x365C8, [
+        # s0: the slot's +0x42 bit 0x10.
+        Case("s0", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x10", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s1: the other slot's record pointer is null.
+        Case("s1", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0)}),
+        # s2: the slot's +0x42 bit 0x08.
+        Case("s2", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x08", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s3: the other's +0x43 bit 0x80 clear.
+        Case("s3", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x00", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s4: the other's +0x42 bit 0x08.
+        Case("s4", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x80", 0x10A6C2: b"\x08",
+              0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s5: bit 0x4000 clear, slot+0x2C <= other+0x2C: 1.
+        Case("s5", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x80", 0x10A6C2: b"\x00", 0x10A62C: le32(5),
+              0x10A6AC: le32(10), 0x10A728: b"\x00\x00", 0x10A600 + 0x43: b"\x00",
+              0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s6: the same with slot+0x2C > other+0x2C: 0.
+        Case("s6", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x80", 0x10A6C2: b"\x00", 0x10A62C: le32(10),
+              0x10A6AC: le32(5), 0x10A728: b"\x00\x00", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s7: bit 0x4000 set, other+0x2C < slot+0x2C: 1.
+        Case("s7", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x80", 0x10A6C2: b"\x00", 0x10A62C: le32(10),
+              0x10A6AC: le32(5), 0x10A728: b"\x00\x40", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s8: bit 0x4000 set, other+0x2C >= slot+0x2C: 0.
+        Case("s8", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x80", 0x10A6C2: b"\x00", 0x10A62C: le32(5),
+              0x10A6AC: le32(10), 0x10A728: b"\x00\x40", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s9: the signed <=: -1 <= 1.
+        Case("s9", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x80", 0x10A6C2: b"\x00", 0x10A62C: le32(0xFFFFFFFF),
+              0x10A6AC: le32(1), 0x10A728: b"\x00\x00", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s10: the signed <: -1 < 1.
+        Case("s10", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x80", 0x10A6C2: b"\x00", 0x10A62C: le32(1),
+              0x10A6AC: le32(0xFFFFFFFF), 0x10A728: b"\x00\x40",
+              0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s11: rec+0x28's low byte 0x40: the bit is 0x4000, so the first arm applies (1).
+        Case("s11", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x80", 0x10A6C2: b"\x00", 0x10A62C: le32(5),
+              0x10A6AC: le32(10), 0x10A728: b"\x40\x00", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+        # s12: the other's +0x42 bit 0x80 set but +0x43 clear: 0.
+        Case("s12", {"eax": 0x10A600, "edx": 0x10A700, "ebx": 0},
+             {0x10A642: b"\x00", 0x10A6C3: b"\x00", 0x10A6C2: b"\x80", 0x10A62C: le32(5),
+              0x10A6AC: le32(10), 0x10A728: b"\x00\x00", 0x001077A8: le32(0x10A600), 0x001077AC: le32(0x10A680)}),
+    ], eax_mask=0xFF, mutants=("@bit", "@other", "@signed", "@f43")),
+    # 0x1A5AC (record C3 §C3.3): EAX = side. 1 when the side's slot record (ctx[4]) +0x28 has bit
+    # 0x4000 clear. 0x33950 runs on both sides (allow). Mask 0xFF (the caller's `test al,al`).
+    Spec("fighter_1a5ac", 0x1A5AC, [
+        Case("a0", {"eax": 0},
+             {0x001077B0: le32(0x10A600), 0x001077B0 + 0x94: le32(0x10A680),
+              0x10A628: b"\x00\x00", 0x10A680 + 0x28: b"\x00\x40"}),
+        Case("a1", {"eax": 0},
+             {0x001077B0: le32(0x10A600), 0x001077B0 + 0x94: le32(0x10A680),
+              0x10A628: b"\x00\x40", 0x10A680 + 0x28: b"\x00\x00"}),
+        Case("a2", {"eax": 1},
+             {0x001077B0: le32(0x10A600), 0x001077B0 + 0x94: le32(0x10A680),
+              0x10A628: b"\x00\x40", 0x10A680 + 0x28: b"\x00\x00"}),
+        Case("a3", {"eax": 0},
+             {0x001077B0: le32(0x10A600), 0x001077B0 + 0x94: le32(0x10A680),
+              0x10A628: b"\x00\x80", 0x10A680 + 0x28: b"\x00\x40"}),
+        Case("a4", {"eax": 0},
+             {0x001077B0: le32(0x10A600), 0x001077B0 + 0x94: le32(0x10A680),
+              0x10A628: b"\x40\x00", 0x10A680 + 0x28: b"\x00\x40"}),
+        Case("a5", {"eax": 0},
+             {0x001077B0: le32(0x10A600), 0x001077B0 + 0x94: le32(0x10A680),
+              0x10A628: b"\x00\xC0", 0x10A680 + 0x28: b"\x00\x00"}),
+    ], allow_calls=(0x33950,), eax_mask=0xFF, mutants=("@slot", "@side", "@bit")),
+    # 0x13DF0 (record C3 §C3.4): walk the active list from the sentinel DS_000FCCE0, tear each node
+    # down (0x13420, stubbed: its own row is C3b), then zero the active counter and the lock. The
+    # port's zero-sentinel guard is a PORT deviation: the cases keep the head non-zero.
+    Spec("effects_clear", 0x13DF0, [
+        # e0: the empty list (the sentinel points at itself): no call, both bytes written.
+        Case("e0", {}, {0x000FCCE0: le32(0x000FCCE0), 0x0009AF3C: b"\x5A", 0x0009AF3D: b"\xA5"}),
+        # e1: one node.
+        Case("e1", {}, {0x000FCCE0: le32(0x10A600), 0x10A600: le32(0x000FCCE0),
+                        0x0009AF3C: b"\x5A", 0x0009AF3D: b"\xA5"}),
+        # e2: three nodes; the walk order is pinned by the recorded calls.
+        Case("e2", {}, {0x000FCCE0: le32(0x10A600), 0x10A600: le32(0x10A620),
+                        0x10A620: le32(0x10A640), 0x10A640: le32(0x000FCCE0),
+                        0x0009AF3C: b"\x5A", 0x0009AF3D: b"\xA5"}),
+    ], calls=(E.Call(0x13420, ("eax",)),), eax_mask=0,
+       mutants=("@walk", "@count", "@lock", "@set", "@one")),
+    # 0x1881C (record C3 §C3.5): latch slot 0 then slot 1 (0x186D0, a stubbed call: its own row
+    # pins it), then return slot0+0x30 - slot1+0x30 at 0x1077E0 and 0x1077E0+0x94. The stub writes
+    # nothing, so the difference is read from the seeded memory; the call list pins the order and
+    # the two side arguments. Mask full (the caller reads the signed difference).
+    Spec("hit_vert_distance", 0x1881C, [
+        Case("v0", {}, {0x001077E0: le32(100), 0x00107874: le32(40)}),
+        Case("v1", {}, {0x001077E0: le32(0), 0x00107874: le32(0xFFFFFFFF)}),
+        Case("v2", {}, {0x001077E0: le32(0x80000000), 0x00107874: le32(1)}),
+        Case("v3", {}, {0x001077E0: le32(0), 0x00107874: le32(0)}),
+    ], calls=(E.Call(0x186D0, ("eax",)),), eax_mask=0xFFFFFFFF,
+       mutants=("@one", "@order", "@side", "@diff")),
+    # 0x36CE4 (record C3 §C3.5): EAX = slot. Set slot+0x43 bit 2; in modes other than 3/0x22
+    # restart the side's DS_00102900 record on the 0xE906E stream at 3.0 (0x2BC30, a stubbed call
+    # with its own row). Mask 0.
+    Spec("fighter_36ce4", 0x36CE4, [
+        # c0: mode 3: only the bit is set.
+        Case("c0", {"eax": 0x10A600}, {0x10A600: le32(0x10A700), 0x10A643: b"\x00",
+             0x00104B00: b"\x03\x00", 0x10A751: b"\x00", 0x00102900: le32(0x10A700),
+             0x00102904: le32(0x10A780)}),
+        # c1: mode 0x22: only the bit.
+        Case("c1", {"eax": 0x10A600}, {0x10A600: le32(0x10A700), 0x10A643: b"\x00",
+             0x00104B00: b"\x22\x00", 0x10A751: b"\x00", 0x00102900: le32(0x10A700),
+             0x00102904: le32(0x10A780)}),
+        # c2: mode 0, side 0: the animation call.
+        Case("c2", {"eax": 0x10A600}, {0x10A600: le32(0x10A700), 0x10A643: b"\x00",
+             0x00104B00: b"\x00\x00", 0x10A750: b"\x01", 0x10A751: b"\x00",
+             0x00102900: le32(0x10A700), 0x00102904: le32(0x10A780)}),
+        # c3: mode 0, side 1: the other record; rec+0x50 differs from rec+0x51.
+        Case("c3", {"eax": 0x10A600}, {0x10A600: le32(0x10A700), 0x10A643: b"\x00",
+             0x00104B00: b"\x00\x00", 0x10A750: b"\x00", 0x10A751: b"\x01",
+             0x00102900: le32(0x10A700), 0x00102904: le32(0x10A780)}),
+    ], calls=(ANIM_BEGIN,), eax_mask=0,
+       mutants=("@bit", "@mode", "@mode22", "@rec", "@stream", "@side")),
+    # 0x2AC80 (record C3 §C3.6): EAX = flag. When the free list is not the empty sentinel, pop its
+    # head (0x249D0, a real call: its own row proves it) and insert it at the active list's head
+    # (0x249B0 real) or, when the flag's 0x400 bit (CH bit 2) is set, at the tail (0x249C0, not in
+    # the call set: it has no row, and both bounds read its final bytes). The two 0x2EA30
+    # interrupt-lock calls run on the original side only (allow); with the lock byte zero their net
+    # write is zero, so the memory at the recorded calls agrees.
+    Spec("actor_alloc", 0x2AC80, [
+        Case("a0", {"eax": 0}, {0x000BCD60: b"\x00", 0x00105B3C: le32(0x10A600), 0x10A600: le32(0x00105B3C),
+             0x10A604: le32(0x00105B3C), 0x00105B40: le32(0x5A5A5A5A),
+             0x00105BCC: le32(0x00105BCC), 0x00105BD0: le32(0x00105BCC)}),
+        Case("a1", {"eax": 0x400}, {0x000BCD60: b"\x00", 0x00105B3C: le32(0x10A600), 0x10A600: le32(0x00105B3C),
+             0x10A604: le32(0x00105B3C), 0x00105B40: le32(0x5A5A5A5A),
+             0x00105BCC: le32(0x00105BCC), 0x00105BD0: le32(0x00105BCC)}),
+        Case("a2", {"eax": 0}, {0x000BCD60: b"\x00", 0x00105B3C: le32(0x00105B3C), 0x00105BCC: le32(0x00105BCC),
+             0x00105BD0: le32(0x12345678)}),
+        Case("a3", {"eax": 0xFFFFFFFF}, {0x000BCD60: b"\x00", 0x00105B3C: le32(0x10A600), 0x10A600: le32(0x00105B3C),
+             0x10A604: le32(0x00105B3C), 0x00105B40: le32(0x5A5A5A5A),
+             0x00105BCC: le32(0x00105BCC), 0x00105BD0: le32(0x00105BCC)}),
+        Case("a4", {"eax": 1}, {0x000BCD60: b"\x00", 0x00105B3C: le32(0x10A600), 0x10A600: le32(0x00105B3C),
+             0x10A604: le32(0x00105B3C), 0x00105B40: le32(0x5A5A5A5A),
+             0x00105BCC: le32(0x00105BCC), 0x00105BD0: le32(0x00105BCC)}),
+    ], allow_calls=(0x2EA30, 0x249C0),
+       calls=(E.Call(0x249D0, ("eax",), mode="real"),
+              E.Call(0x249B0, ("eax", "edx"), mode="real")),
+       eax_mask=0xFFFFFFFF, mutants=("@flag", "@unlink", "@tail", "@empty", "@ret")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -4275,7 +4593,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + P7_SPECS + P8_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + P7_SPECS + P8_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------
