@@ -151,7 +151,9 @@ void fighter_18428(u32 side, u32 sprite, u32 a0, u32 a1)
  * follow. The id inside [lo, hi) (unsigned, 0x184EF JC / 0x184F4 JC) or equal to
  * 0x1E1 (0x184FE) returns; otherwise 0x18428 is called (0x18513). Returns 1
  * when the call is made. PORT: the return value is port-only, so a test can
- * observe the decision; the raw returns nothing, and 0x18428 has no effect.
+ * observe the decision; the raw has no defined return (EAX is a leftover of
+ * the slot/character reads; the sole caller 0x18540 overwrites EAX at 0x185BB,
+ * and the row masks EAX = 0), and 0x18428 has no effect.
  * PORT: for a character above 6 the raw jumps to 0x184BD with EBX/EDI as the
  * caller left them, so its [lo, hi) test reads caller registers; the port
  * takes it as not in range. Record §28 of

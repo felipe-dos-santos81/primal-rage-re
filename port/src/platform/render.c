@@ -79,8 +79,10 @@ void render_list_init(void)
 }
 
 /* 0x1C390 — record §50-D. Pops the free-list head: returns it and advances the
- * head to its next. The raw dereferences the new head unconditionally; the
- * port's render_list_insert keeps its pool-exhausted guard at the call site. */
+ * head to its next. The raw dereferences the new head unconditionally, so an
+ * exhausted pool reads address 0 and writes that to the head; the port does the
+ * same, before render_list_insert's guard turns the rest of the insert into a
+ * no-op. Equivalent while mem[0..3] is zero. */
 u32 render_pop_free(void)
 {
     u32 node = DSD(RENDER_FREE_HEAD);
@@ -90,7 +92,7 @@ u32 render_pop_free(void)
 
 int render_list_insert(u32 pset_off)
 {
-    u32 node = render_pop_free();               /* 0x1C390 */
+    u32 node = render_pop_free();               /* 0x1C390 (its head write already ran) */
     if (node == 0) return 0;                    /* PORT: pool exhausted guard */
     DSD(node + 4) = pset_off;
     render_splice((u32 *)(mem + RENDER_LIST_HEAD), node);

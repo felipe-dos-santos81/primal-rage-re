@@ -531,6 +531,71 @@ Notes for C3d:
 
 ## §C3c.8 Results (the executed tree)
 
-To be appended by the executor after the plan's Tasks 2-4: the commit shas, the measured counters
-on the executed tree (expected equal to §C3c.4's prototype row), the task-gate log lines, the
-sweep's findings, and the full `make verify` result with the plan's parallel-safe overrides.
+The plan's Tasks 2-4 were executed on `reverse-c3c` at the base `main` `bb14036`: the plan+record
+commit `fcc0177`, Task 2 `5f210e5` (the seventeen rows, the four-way render split, the five
+exports, two seams and 95 mutants), Task 3 `8cb1dfc` (the review sweep: the palette flag store's
+sentinel) and this closure commit. Every row was re-measured in the tree; the planner's prototype
+values held. The closure commit's `port/src` delta from `8cb1dfc` is comment-precision only (Task
+2's review nits): `fighter_18460`'s "no defined return" (its sole caller `0x18540` overwrites EAX
+at `0x185BB`; the row masks EAX = 0) and `render_pop_free`'s unconditional head write before the
+`render_list_insert` guard (state-equivalent while `mem[0..3]` is zero, faithful to `0x1C390`).
+
+The counters on the final tree equal §C3c.4's prototype row:
+
+| state | diff-verify counter | E2 |
+|---|---|---|
+| base `bb14036` | `234/234 functions VERIFIED; 779/779 mutants detected; 1 named gaps; 165/185 rows with callees closed (49 have none)` | `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30`; voice `0 / 115 / 19` |
+| final (`8cb1dfc` + this closure commit) | `251/251 functions VERIFIED; 874/874 mutants detected; 1 named gaps; 178/195 rows with callees closed (56 have none)` | byte-identical |
+
+The batch's task gates, measured on this tree (Task 1's baseline in `verify-base.log`; Task 2's and
+Task 3's re-measures in the ledger directory):
+
+```
+diff-verify: 251/251 functions VERIFIED; 874/874 mutants detected; 1 named gaps; 178/195 rows with callees closed (56 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+```
+
+`make entry-triage` is byte-identical (no ported function, no `fn_register`); `python3 -m unittest
+tools.tests.test_diff_verify` 107 tests OK (the clobber re-derivation, the C3c case-set test, the
+counter line; Task 3's `make diff-verify` phase ran the module pair, 172 tests OK);
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` `all checks passed`; `python3 tools/port_progress.py`
+stays `771 1203 64` / `731 731 100`; `symbols.h` regeneration is byte-identical; README untouched.
+
+**The closure-value accounting.** Closed 165 -> 178 (+13): the nine new with-callee rows whose
+callees are all verified (`actor_type_127C0`, `actor_type_12800`, `fighter_18460`,
+`fighter_state_367dc`, `fighter_2bd44`, `fighter_3b6c4`, `hit_anim_start_c`, `fighter_block_hit`,
+`fighter_39738`) plus four dependents (`fighter_18540` and `hit_record_y` by `0x18428`+`0x18460`,
+`fighter_38154` by `0x367DC`, `effect_teardown` by `0x33714`+`0x33734`). The one new row left open
+is `snd_music_playing`, blocked only by the named non-row `0x5DEED`; the seven no-callee rows count
+apart (56 have none). The four frontier dependents the C3d deferral gates (`fighter_36870`,
+`fighter_39834`, `fighter_command_dispatch`, `fighter_reaction`) stay open.
+
+Task 3's measured change after §C3c.5's list: the sweep found one unobserved store, `palette_record`
+(`0x33734`)'s flag byte `0x3373F mov byte ptr [eax-4],0` (both cases left `head+0x0C` unseeded and
+the row's flag is 0, so the store changed nothing); the four palette cases now seed the record
+pre-state with distinct nonzero bytes and `v1`/`w1` a head whose `+0x10` advance carries into byte
+1, so every palette store is observable (0 unobserved) and the ten palette mutants' catch sets are
+unchanged. The sweep's residual per-byte sites are named in the task report (47 structural, four
+address-placement byte-1 sites); the one found hole is load-bearing (dropping the flag store
+verifies pre-fix and `MISMATCH`es post-fix).
+
+**The `0x39738` correction's neutrality.** The batch's one behavioral change is the `0x39738`
+raw-over-port correction (§C3c.2 correction 1); its only in-port caller `fighter_39834` is a stub
+in every current differential row, and the closure ladder's oracle/gp line set is the
+one-caller-path neutrality proof the Task 2 review asked for: the 45 oracle lines equal to the
+k7-k12 baseline, every gp ratchet at its pin and the `make audio-render` WAV `cmp`-equal to
+`before-t2.wav`.
+
+**The full gate** on this closure commit (the plan's parallel-safe overrides, log
+`/tmp/pr_c3c_final.log`): the run's lines are recorded in the batch report
+`.superpowers/sdd/2026-10-05-reverse-c3c-frontier-rows-3/task-4-report.md`; the plan's expected
+values are `EXIT=0`, the 45 oracle lines equal to the k7-k12 baseline (`ORACLES-EQUAL`), the WAV
+`cmp`-equal to `before-t2.wav` (`WAV-SAME`; sha256
+`df74acfb65d345fb72cb214102089f2a0ab8d4b271ddc17e2a5f5c4f1a380844`) and every gp ratchet at its
+pin (Task 1's list verbatim).
+
+**The C3d deferral is the next batch**: §C3c.7's 13 remaining type-family rows and the 23 frontier
+addresses they name (`0x46534` first after `0x4F434`), in §C3c.7's dependency-first order
+(`0x392A0` before `0x3AD98`; `0x385B0`/`0x3AE9C` close immediately once rowed). Nothing else is
+left open by C3c beyond C3b's standing named non-rows.
