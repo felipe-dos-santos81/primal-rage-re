@@ -172,7 +172,7 @@ patch's additions at the same anchors; never merge the E2 table by hand.
 
 | File | Responsibility |
 |---|---|
-| `port/src/game/fighter.c`/`.h` | the two corrections, the eight exports and their declarations |
+| `port/src/game/fighter.c`/`.h` | the two corrections, the nine exports and their declarations |
 | `port/src/game/config.c` | the `0x2D974`/`0x2CAA8` seams |
 | `port/tests/diff_runner.c` | the seventeen bindings and 86 mutants, the `c3e_*` cores |
 | `tools/diff_verify.py` | `C3E_SPECS` (the seventeen rows and their fixtures) |

@@ -395,6 +395,13 @@ regeneration is byte-identical; `python3 tools/port_progress.py` stays `771 1203
   `fighter_36ce4`. The row keeps the call unrecorded (allow) so the comparison sees the same call
   list; the two are equivalent on the exercised cases, but the row does not compare the port's
   internal call.
+- **`0x39040`'s inlined `0x38BB0`.** The raw inlines `0x38BB0`'s clear at the function's tail
+  (`0x3925C shl ebx,6`; `0x39264..0x3926F` the 0x40-byte store loop over `0x107A80 + side*0x40`),
+  and the port calls the ported `fighter_38bb0` (`fighter.c:3377`, cited `0x3925C`); the two write
+  the same bytes in the same order, so the row is behaviorally exact. The spec keeps the call out
+  of the call set (the raw has none) — the same shape as `0x36D20`'s inlined `0x36CE4`. Task 3's
+  sweep observed the clear's stores in 16 cases, so the C3d §C3d.5 note (the `0x38BB0` clear
+  invisible to `fighter_state_36bc8`'s fixture) is covered by this row.
 - **`0x3A0FC`'s 0x105B3A jump table.** Entries 0..2 all point at the spawn block and entry 3 at
   the skip block; the port's `DSB(0x105B3A) < 3` is equivalent, and the cases exercise 0..4.
 - **`0x46190`'s config pair.** `0x2D974`/`0x2CAA8` run `mode="real"` in `fighter_46190`'s row (their
@@ -494,5 +501,79 @@ after each wave. The three rows' own entries need no further port change.
 
 ## §C3e.8 Results (the executed tree)
 
-_Pending the executor's Task 4: the commit shas, the executed tree's counters and the gate log
-lines, mirroring C3d's §C3d.8._
+The plan's Tasks 2-4 were executed on `reverse-c3e` at the base `main` `c28e522`: the plan+record
+commit `fc378ad`, Task 2 `572697e` (the seventeen rows, the two corrections, the nine exports and the
+two config seams), Task 3 `b7e28f6` (the review sweep: the `fighter_36e78` `0x104AE9` seed) and this
+closure commit (its sha is in the batch report named below). Every row was re-measured in the tree; the
+planner's prototype values held.
+
+| state | diff-verify counter | E2 |
+|---|---|---|
+| base `c28e522` | `261/261 functions VERIFIED; 945/945 mutants detected; 1 named gaps; 181/205 rows with callees closed (56 have none)` | `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30`; voice `0 / 115 / 19` |
+| final (`b7e28f6` + this closure commit) | `278/278 functions VERIFIED; 1031/1031 mutants detected; 1 named gaps; 196/217 rows with callees closed (61 have none)` | byte-identical |
+
+The batch's task gates, measured on this tree (Task 1's baseline in `verify-base.log`; Task 2's and
+Task 3's re-measures in the ledger directory):
+
+```
+diff-verify: 278/278 functions VERIFIED; 1031/1031 mutants detected; 1 named gaps; 196/217 rows with callees closed (61 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+771 1203 64
+731 731 100 (portable: excludes 81 host-owned/deferred and runtime >= 5D000)
+```
+
+`make entry-triage` is byte-identical (no ported function, no `fn_register`); `python3 -m unittest
+tools.tests.test_diff_verify` 109 tests OK (Task 2's and Task 3's standalone runs; the only added
+method is `test_each_c3e_mutant_is_caught_by_what_it_breaks`); `PR_ORACLE_REQUIRED=1
+./build/run_tests` `all checks passed`; `symbols.h` regeneration is byte-identical; `python3
+tools/port_progress.py` stays `771 1203 64` / `731 731 100`; README untouched.
+
+**The closure-value accounting.** +17 functions (the seventeen rows), +86 mutants
+(11+11+12+2+4+3+4+3+4+5+3+5+3+3+3+3+7); rows with callees 205 -> 217 (twelve of the seventeen have
+callees), no-callee 56 -> 61, closed 181 -> 196 (+15): the eleven new rows with callees that close
+(`392a0`, `reaction_apply`, `36e78`, `468d8`, `46190`, `36d20`, the four pose setters, `3a0fc`) and
+the four dependents the three rows now verify — `fighter_3ad98` (only on `0x392A0`),
+`fighter_39834` (only on `0x392A0`), `fighter_reaction` (only on `0x3AAFC`) and `fighter_36870`
+(only on `0x39040`). `fighter_39040` stays open on `0x38D90`/`0x38FEC` alone.
+
+**Task 3's measured change.** The store sweep found one store the fixtures left unobserved —
+`fighter_36e78`'s `0x36F05 and byte [0x104AE9], 0xFE` (the image pre is 0, so a dropped port store
+was invisible) — and `c3e_6e_case` now seeds `0x104AE9 = 0xFF`; with the port's store temporarily
+dropped the row reads `0/1` (`fighter_36e78: b1: byte 0x104AE9: original 0xFE, port unchanged`) and
+the restored tree `1/1`. All 279 executed store sites of the seventeen rows are observed after the
+fix; no mutant's pinned catch set moved (`gate-unittest.log`, `OK`).
+
+**The review fixes folded into this closure commit** (each verified against the tree/raw): this
+section and the `0x39040`/`0x38BB0` factoring note (§C3e.5); the plan's file table now says "nine
+exports" (it read "eight"; the commit adds nine); and the baseline WAV's sha256 below. No behavior
+change: `port/src` is the Task 2 tree, `fighter.c` sha1
+`73923b25c4ca71f3bf0eb96a4f74821affaa7c3b` (the Task 2/3 reports said "sha256"; it is the SHA-1).
+
+**The WAV.** The C3e baseline's `make audio-render` WAV is `before-t2.wav`, sha256
+`df74acfb65d345fb72cb214102089f2a0ab8d4b271ddc17e2a5f5c4f1a380844` (the Task 1 report's
+`4194254d…` is that file's SHA-1, misquoted as sha256; re-verified independently). The closure gate
+re-renders it and `cmp`s it equal to the baseline (`WAV-SAME`).
+
+**The two corrections' neutrality.** The batch's behavioral changes are the `0x3AAFC` second-triple
+frame (§C3e.2 correction 1) and the `0x3A280` cast removal (correction 2); the full closure ladder —
+the 45 oracle lines equal to the k7-k12 baseline, every gp ratchet at its pin (gp-idle-loss N 2064 /
+trace 8320) and the WAV `cmp`-equal — is the evidence that no oracle/gp-visible path moved, not that
+no driver path reaches them.
+
+**The tail-verdict re-measure (Task 4 Step 2).** On the final tree none of §C3e.7's 32 frontier
+addresses has a row (the final `tools/diff_verify.py`'s 251 `Spec` entries scanned against the
+list): `0x38D90`/`0x38FEC` and their 17-address tree, the other seven rows' ten first-wave
+addresses and the three wave-2 leaves all remain C3f. The list stands unchanged.
+
+**The full gate** on this closure commit (the plan's parallel-safe overrides, log
+`/tmp/pr_c3e_final.log`): the run's lines are recorded in the batch report
+`.superpowers/sdd/2026-10-05-reverse-c3e-frontier-rows-5/task-4-report.md`; the plan's expected
+values are `EXIT=0`, the 45 oracle lines equal to the k7-k12 baseline (`ORACLES-EQUAL`), the WAV
+`cmp`-equal to `before-t2.wav` (`WAV-SAME`, the sha256 above) and every gp ratchet at its pin
+(Task 1's list verbatim; the planner's gp-oracle N 2064 / trace 8320).
+
+**The C3f tail is the next batch**: §C3e.7's 32 addresses (the `0x38D90`/`0x38FEC` trees
+dependency-first, then the ten first-wave addresses and the three wave-2 leaves) with the measured
+sizes, dependency order and seam notes; nothing else is left open by C3e beyond the standing named
+non-rows and the earlier batches' gaps.
