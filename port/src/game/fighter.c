@@ -2535,7 +2535,8 @@ int fighter_34e20(u32 reaction)
     return reaction < 0x18u;
 }
 
-/* PORT: exported for the C3d mutant cores only (the seams stay the only observers). */
+/* 0x38BB0. Clear the 0x40-byte per-side table at 0x107A80 + side*0x40.
+ * PORT: exported for the C3d mutant cores only (the seams stay the only observers). */
 void fighter_38bb0(u32 side)
 {
     u32 base = FIGHT_STUN_BASE + side * 0x40u;

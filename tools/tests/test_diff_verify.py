@@ -2359,7 +2359,7 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (185), the 49 without are counted apart
+        # the closed-row count is over the rows that have callees (205), the 56 without are counted apart
         self.assertIn("diff-verify: 261/261 functions VERIFIED; 945/945 mutants detected; 1 named gaps; "
                       "181/205 rows with callees closed (56 have none).", out.getvalue())
 

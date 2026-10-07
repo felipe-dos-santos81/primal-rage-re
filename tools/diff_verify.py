@@ -5929,7 +5929,7 @@ C3D_SPECS = [
               E.Call(0x1A7CC, ("eax",), mode="stub", clobbers=("esi", "edi", "ebp"))),
        eax_mask=0xFFFFFFFF, mutants=("@loop", "@word", "@ok", "@face", "@eq", "@bl", "@arm",
                                      "@s54", "@call")),
-    # 0x3B134 fight_command_map: EAX = side, EDX = edx_arg, ECX = override. 0x33A10/0x3AFC4/
+    # 0x3B134 fight_command_map: EAX = side, EDX = edx_arg, EBX = override. 0x33A10/0x3AFC4/
     # 0x1AB10 are allows; the rng, the readiness gate and the consumer are stubs.
     Spec("fight_command_map", 0x3B134, [
         Case("m0", {"eax": 0, "edx": 0, "ecx": 0}, c3d_cm_case(0, 0, 0, 0, 5, 3, 0x00, 0x00, 0, 50, 0), {0x5D7DC: 100}),

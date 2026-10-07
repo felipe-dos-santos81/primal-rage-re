@@ -43,7 +43,7 @@ image sha1 `ff3b8cb14e00f1c282de7b7e15dcd7c230766947`, the E2/E3/P1-P8/C1-C3c im
 was measured with `--function NAME --self-check` until VERIFIED with every mutant detected, then
 the full `python3 tools/diff_verify.py --self-check` (`261/261 functions VERIFIED; 945/945 mutants
 detected; 1 named gaps; 181/205 rows with callees closed (56 have none)`), `python3 -m unittest
-tools.tests.test_diff_verify` (107 tests with the extended exact-set tables), `make entry-triage`
+tools.tests.test_diff_verify` (108 tests with the extended exact-set tables), `make entry-triage`
 (byte-identical: `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted
 30`; voice `0 / 115 / 19`), `PR_ORACLE_REQUIRED=1 ./build/run_tests` (all checks passed) and
 `python3 tools/port_progress.py` (`771 1203 64` / `731 731 100`). One raw-over-port correction was
@@ -240,7 +240,7 @@ python3 tools/port_progress.py
 ```
 
 Expected: `261/261 functions VERIFIED; 945/945 mutants detected; 1 named gaps; 181/205 rows with
-callees closed (56 have none)`; `OK` (107 tests, the extended exact sets); E2 byte-identical;
+callees closed (56 have none)`; `OK` (108 tests, the extended exact sets); E2 byte-identical;
 `all checks passed`; `symbols.h` regeneration byte-identical; `771 1203 64` / `731 731 100`.
 
 - [ ] **Step 4: commit.**

@@ -17,8 +17,8 @@ those, so it cannot close in this batch. One raw-over-port correction (`0x3AD98`
 ten rows (every gate run, then reverted). The image is `build/diffrun --exe
 data/game/C/PRAGE.EXE --image-out FILE`, sha1 `ff3b8cb14e00f1c282de7b7e15dcd7c230766947` (E2's,
 E3's, P1-P8's, C1-C3c's). Every address below is capstone 5.0.7 over that image (fixups applied);
-`unicorn` 2.1.4 runs the original side. Ghidra was not consulted. The prototype diff (1447 lines,
-1184 insertions over eight files) is embedded in the plan; the prototype was reverted
+`unicorn` 2.1.4 runs the original side. Ghidra was not consulted. The prototype diff (1564 lines,
+1270 insertions over eight files) is embedded in the plan; the prototype was reverted
 (`git checkout -- port tools`), leaving only this record and the plan.
 
 ---
@@ -84,7 +84,7 @@ the counter line). The measured rows:
 | `fighter_3ae9c` | 0x3AE9C | 9 | 23/23 | 7/7 | `1A570` real VERIFIED, `33950` allow VERIFIED | 0x0 |
 | `fighter_3b080` | 0x3B080 | 5 | 7/7 | 6/6 | `1A570` real VERIFIED, `3C148` stub VERIFIED, `3B038` allow unverified | 0x0 |
 | `fighter_state_36bc8` | 0x36BC8 | 6 | 9/9 | 6/6 | `38BC8` stub unverified, `38BB0` allow unverified, `2BC30` stub VERIFIED, `188AC` stub VERIFIED | 0x0 |
-| `fighter_379c4` | 0x379C4 | 6 | 10/10 | 7/7 | `37178` stub unverified, `2BC30` stub VERIFIED, `45D14`/`5D812` allow unverified | 0x0 |
+| `fighter_379c4` | 0x379C4 | 6 | 10/10 | 7/7 | `37178` stub unverified, `2BC30` stub VERIFIED, `45D14` allow VERIFIED, `5D812` allow unverified | 0x0 |
 | `fighter_3ad98` | 0x3AD98 | 8 | 15/15 | 8/8 | `2C3FC` stub VERIFIED, `2AE14` stub VERIFIED, `2BC30` stub VERIFIED, `392A0` stub unverified, `33A10` allow VERIFIED | 0x0 |
 | `fighter_input_mask` | 0x1AB5C | 9 | 24/24 | 9/9 | `46460` stub VERIFIED, `18B04` stub VERIFIED, `1A7CC` stub unverified, `1AB10`/`33A10` allow unverified | 0xFFFFFFFF |
 | `fight_command_map` | 0x3B134 | 12 | 19/19 | 9/9 | `5D7DC` stub VERIFIED, `3BDB0` stub unverified, `3BDDC` stub unverified, `3AFC4`/`1AB10`/`33A10` allow unverified | 0x0 |
@@ -132,10 +132,11 @@ counter (`251/251; 874/874; 178/195 (56)`), so no existing row moved.
    `sum >= 0x78` replaces it with the clamped `0x77 - slot+0x5A` (or 0).
 2. **`fight_command_map`'s third argument is EBX, not ECX.** The raw stores `bl` to `[esp+0x24]` at
    entry (`0x3B13D`) and tests that byte at `0x3B1B1`; the existing rows' call set already names
-   `E.Call(0x3B134, ("eax", "edx", "ebx"))`. The row's binding/core read `R_EBX`; the `m7`/`m11`
-   cases set `ebx`. Evidence: before the fix `m11` (EBX=1, draw 100 > thr 50) mismatched (original
-   proceeded, port returned at the gate) and `@ov` was undetected; after, 19/19 blocks and 9/9
-   mutants.
+   `E.Call(0x3B134, ("eax", "edx", "ebx"))`. The row's binding/core read `R_EBX`; the `m11` case
+   sets `ebx` (m7 takes the gate with draw 10 <= thr 50 and does not exercise the override).
+   Evidence: before the fix `m11` (EBX=1, draw 100 > thr 50) mismatched (original proceeded, port
+   returned at the gate), while `@ov` stayed detected (9/9) because the mutant core differs from
+   the original on `m11` anyway; after, 19/19 blocks and 9/9 mutants.
 3. **`pset_write`'s `0x2A9CE` is a dead clamp.** The child arm's layer is an 8-bit add
    (`0x2A9B5 mov al,[esi+0xe]; 0x2A9B8 add al,[ebx+0x59]`), so it cannot exceed 0xFF and the
    `> 0xff` clamp cannot fire; the block is named unhit with that reason.
@@ -350,7 +351,7 @@ heavy rows stay open on the tail: `fighter_3ad98` on `0x392A0`, `fighter_4f434` 
 `make entry-triage` is byte-identical (`targets 233 unported, 262 ported; supplement 131 (3
 unported, 0 stale); untrusted entries 30`; voice `0 / 115 / 19`); `python3
 tools/port_progress.py` stays `771 1203 64` / `731 731 100`; `PR_ORACLE_REQUIRED=1 ./build/run_tests`
-prints `all checks passed`; `python3 -m unittest tools.tests.test_diff_verify` is `107 tests OK`
+prints `all checks passed`; `python3 -m unittest tools.tests.test_diff_verify` is `108 tests OK`
 (the extended exact sets).
 
 ## §C3d.5 Decisions, named gaps and limits
@@ -380,6 +381,17 @@ Named gaps and limits:
 - **A stub call can be recorded even when the stub is in an allowed callee's body** (`fighter_379c4`
   k4: the allowed `0x45D14` calls `0x2BC30`, which is in the row's call set): the original and port
   records agree because the seam intercepts on both sides.
+- **Task 3's store sweep found two stores the prototype fixtures could not observe** (both write
+  their own pre-state): `fighter_385b0`'s slot `+0x1C` dword (`0x38693 mov dword ptr [ebx+0x1c],
+  0`, ebx = `0x1077B0 + side*0x94`), whose seed range stopped at `+0x18`, and `pset_write`'s
+  child-arm `rec+0x2C` copy (`0x2A8A3`/`0x2A8A7`), whose parent field is the image's zero. The
+  fixtures now seed `+0x1C` (`0x77777777`) and the p3 case `rec2c = 0x1234`; with the stores
+  temporarily dropped the rows still read VERIFIED pre-fix and MISMATCH post-fix (`0x107862`,
+  `0x10AF2C`), and no mutant's pinned catch set moved (71 unchanged of 71).
+- **The `0x38BB0` allow's clear stays invisible to `c3d_6b_case`**: `fighter_state_36bc8`'s
+  `0x38BC8`/`0x38BB0` arm clears the 0x40-byte table at `0x107A80 + side*0x40`, which the fixture
+  leaves at the image's zeros; `0x38BB0` has no own row (C3e's tail, §C3d.7), so this sweep did
+  not seed it — named here for C3e (or `0x38BB0`'s own row) to cover.
 - E3's, P1-P8's and C1-C3c's limits stand: seeds are hand pokes; the memory at a call is `mem[]`
   only; the callee column is one level deep.
 
@@ -392,7 +404,7 @@ Named gaps and limits:
   at the base counter), then the ten rows family by family. Each row was measured with
   `python3 tools/diff_verify.py --function NAME --self-check` until VERIFIED with every mutant
   detected, then the full `python3 tools/diff_verify.py --self-check` (§C3d.4 counter), the
-  `python3 -m unittest tools.tests.test_diff_verify` suite (107 tests OK, including the new
+  `python3 -m unittest tools.tests.test_diff_verify` suite (108 tests OK, including the new
   `test_each_c3d_mutant_is_caught_by_what_it_breaks` and the extended exact-set, clobber and counter
   assertions), `make entry-triage` (byte-identical), `PR_ORACLE_REQUIRED=1 ./build/run_tests` (all
   checks passed) and a `symbols.h` regeneration (byte-identical). Then `git checkout -- port tools`,
@@ -465,3 +477,77 @@ are already 23 more addresses — one session cannot measure that under this bat
 **What C3e must not redo.** The seams for the 23 are largely in place (this batch added 16; the
 allows need none), and the three rows' entries need none; C3e's Task 1 can reuse this record's
 per-address modes (the "mode in this batch" column, §C3d.1) for the callees this batch stubbed.
+
+## §C3d.8 Results (the executed tree)
+
+The plan's Tasks 2-4 were executed on `reverse-c3d` at the base `main` `0bda4fa`: the plan+record
+commit `ee8e044`, Task 2 `1ef0320` (the ten rows, the sixteen seams, the three exports and the
+`0x3AD98` correction), Task 3 `aee457a` (the review sweep: the `fighter_385b0` `+0x1C` and
+`pset_write` `rec+0x2C` seeds) and this closure commit. Every row was re-measured in the tree; the
+planner's prototype values held.
+
+| state | diff-verify counter | E2 |
+|---|---|---|
+| base `0bda4fa` | `251/251 functions VERIFIED; 874/874 mutants detected; 1 named gaps; 178/195 rows with callees closed (56 have none)` | `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30`; voice `0 / 115 / 19` |
+| final (`aee457a` + this closure commit) | `261/261 functions VERIFIED; 945/945 mutants detected; 1 named gaps; 181/205 rows with callees closed (56 have none)` | byte-identical |
+
+The batch's task gates, measured on this tree (Task 1's baseline in `verify-base.log`; Task 2's and
+Task 3's re-measures in the ledger directory):
+
+```
+diff-verify: 261/261 functions VERIFIED; 945/945 mutants detected; 1 named gaps; 181/205 rows with callees closed (56 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+771 1203 64
+731 731 100 (portable: excludes 81 host-owned/deferred and runtime >= 5D000)
+```
+
+`make entry-triage` is byte-identical (no ported function, no `fn_register`); `python3 -m unittest
+tools.tests.test_diff_verify` 108 tests OK (the record's 107 corrected: the only added method is
+`test_each_c3d_mutant_is_caught_by_what_it_breaks`); `PR_ORACLE_REQUIRED=1 ./build/run_tests` `all
+checks passed`; `symbols.h` regeneration is byte-identical; `python3 tools/port_progress.py` stays
+`771 1203 64` / `731 731 100`; README untouched.
+
+**The closure-value accounting.** +10 functions (the ten rows), +71 mutants (6+6+7+6+6+7+8+9+9+7);
+rows with callees 195 -> 205 (all ten have callees), no-callee 56 unchanged; closed 178 -> 181
+(+3): `fighter_385b0` and `fighter_3ae9c` (their callees all VERIFIED) and the dependent
+`fighter_command_dispatch` (0x3B298: `0x1A734`/`0x1AB5C`/`0x3B134` all VERIFIED). The batch's
+heavy rows stay open on C3e's: `fighter_3ad98` on `0x392A0`, `fighter_4f434` on `0x46534`,
+`fighter_3b080` on `0x3B038`, `fighter_state_36bc8` on `0x38BC8`/`0x38BB0`, `fighter_input_mask` on
+`0x1A7CC`/`0x1AB10`, `fight_command_map` on `0x3BDB0`/`0x3BDDC`, `fighter_379c4` on `0x37178`/the
+callback allows, `pset_write` on `0x2A690`.
+
+**Task 3's measured change after §C3d.5's list**: the sweep found two stores the fixtures left
+unobserved — `fighter_385b0`'s slot `+0x1C` and `pset_write`'s child-arm `rec+0x2C` copy (both
+write their own pre-state) — and seeded each (0 unobserved after); the temporary drop probes
+MISMATCH the two rows (`0x107862`, `0x10AF2C`) and no mutant's pinned catch set moved. The
+`0x38BB0` allow's `0x107A80` clear remains invisible to `c3d_6b_case` and is named for C3e
+(§C3d.5).
+
+**The review fixes folded into this closure commit** (each verified against the tree/raw):
+`tools/diff_verify.py`'s `fight_command_map` Spec comment `ECX` -> `EBX` (the raw stores `bl` at
+`0x3B13D` and tests it at `0x3B1B1`; only the `m11` case sets `ebx`); `fighter_38bb0`'s
+`/* 0x38BB0 … */` function header restored above the `/* PORT:` note; the closed-row comment in
+`tools/tests/test_diff_verify.py` `(185), the 49` -> `(205), the 56`; and the record corrections
+below. No behavior change: the `port/src` delta is one comment.
+
+**The `0x3AD98` correction's neutrality.** The batch's one behavioral change is the `0x3AD98`
+raw-over-port correction (§C3d.2 correction 1); the full closure ladder is its neutrality proof
+(the function is reached only through the reaction path no driver exercises at this base): the 45
+oracle lines equal to the k7-k12 baseline, every gp ratchet at its pin and the `make audio-render`
+WAV `cmp`-equal to `before-t2.wav`.
+
+**The full gate** on this closure commit (the plan's parallel-safe overrides, log
+`/tmp/pr_c3d_final.log`): the run's lines are recorded in the batch report
+`.superpowers/sdd/2026-10-05-reverse-c3d-frontier-rows-4/task-4-report.md`; the plan's expected
+values are `EXIT=0`, the 45 oracle lines equal to the k7-k12 baseline (`ORACLES-EQUAL`), the WAV
+`cmp`-equal to `before-t2.wav` (`WAV-SAME`; sha256
+`df74acfb65d345fb72cb214102089f2a0ab8d4b271ddc17e2a5f5c4f1a380844`) and every gp ratchet at its
+pin (Task 1's list verbatim).
+
+**The C3e deferral is the next batch**: §C3d.7's three remaining type rows — `0x39040`, `0x392A0`,
+`0x3AAFC` — plus the 23-address tail they name and its second wave (11 further unrowed callees) and
+third wave (12 more), rowed dependency-first (`0x392A0` before `0x3AD98` can close; `0x39040`
+before `fighter_36870`; `0x3AAFC` before `fighter_reaction`). The dependence map, sizes/insns and
+the deferral's measurement are §C3d.7; nothing else is left open by C3d beyond the earlier
+batches' standing named non-rows.
