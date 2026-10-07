@@ -50,6 +50,10 @@ void fight_stance_pass(u32 side);
  * 0x3B298 calls it. */
 void fight_command_map(u32 side, u32 edx_arg, u32 override);
 
+/* 0x3BDB0 (C3d). EAX = side: the attack-readiness gate (slot +0x53 == 0 and
+ * +0x54 != 2); exported for the mapper's row, whose mutant cores call it. */
+int fight_attack_ready(u32 side);
+
 /* 0x49C78. The scene/effects pass: the list walk with its per-entry prelude
  * (the side and entry counts, and 0x4B69C, the trample, demo-pose record
  * §29), every type of the 0x49C2C jump table — 0/>0xE (0x4AAD0), 1..7, 8

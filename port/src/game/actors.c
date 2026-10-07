@@ -2694,6 +2694,7 @@ void mode1_cursor(u32 rec, u32 pset)
  * into rec+0x3C. Exported for the game_frame tail's per-fighter sync (0x25443). */
 void actor_pset_point(u32 rec)
 {
+    PR_SEAM(0x2A690u, rec);
     u32 pset = actor_pset(rec);
     u32 x;
     if ((DSW(rec + 0x28) >> 8 & 0x10u) == 0) {

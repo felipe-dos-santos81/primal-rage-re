@@ -420,6 +420,11 @@ int fighter_state_365c8(u32 slot, u32 rec, u32 side);
 int fighter_state_36bc8(u32 slot, u32 rec);
 void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits);
 
+/* 0x38BB0 / 0x38BC8 (C3d): the side's 0x107A80 stun-table clear and its
+ * 0x107D24-adding sibling; exported for their differential rows' mutants. */
+void fighter_38bb0(u32 side);
+void fighter_38bc8(u32 side);
+
 /* 0x1DE64. The reaction picker: map the side's command word (or, with slot+0x63
  * clear, the 0x46460/0x4649C input scan, record §49-B) through 0x1DDF4 to a
  * reaction code; 0xFF when nothing maps. */
