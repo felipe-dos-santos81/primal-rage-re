@@ -159,6 +159,12 @@ No seam on `fighter_39738`'s `0x33950`, `hit_anim_start_c`'s `0x339AC`, `fighter
    - `palette_record_flagged`/`palette_record`'s first draft seeded the flag byte's neighbours
      (`+13..15`) at the next record's addresses, so `@wide` (a dword store of the flag) agreed;
      the seeds moved to `head+0xA5..0xA7` (v0/w0) and `head+0x545..0x547` (v1/w1) → 5/5 each.
+     Task 3's sweep then found `palette_record`'s flag store (`0x3373F mov byte ptr [eax-4],0`)
+     unobserved: its twin at `0x3371F` (flag 1) passed only because 1 ≠ 0, and both cases left
+     `head+0x0C` unseeded (the image byte is 0) while the row's flag is 0, so a dropped flag
+     store passed. The final fixture seeds the whole record pre-state — flag pre `0x9D` (v0/w0) /
+     `0xBD` (v1/w1) — and v1/w1's head `0x1075F8 -> 0x107608`, whose `+0x10` carry changes byte 1
+     of the head-advance store; every palette store is observable → 5/5 each (§C3c.8).
    - `actor_type_127C0` t2 and `actor_type_12800` t1/t2's first drafts used the same address for a
      node and its list sentinel (self-unlink, an unobservable no-op); the sentinels moved to the
      other scratch nodes → 6/6 and 5/5.

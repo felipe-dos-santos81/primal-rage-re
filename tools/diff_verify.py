@@ -5485,9 +5485,11 @@ C3C_SPECS = [
     # 0x33714 palette_record_flagged (EBX = ptr, EAX = first, EDX = count): append the record
     # { ptr; first; count; flag = 1 } at the head [0x107798] and advance it by 0x10. The pre-state
     # seeds every record byte with a distinct nonzero value, and v1's head carries the +0x10 bump
-    # into its byte 1 (0x1075F8 -> 0x107608), so every store changes all four of its bytes (the
-    # C3c sweep: the flag byte's own pre was 0, so the flag store at 0x3371F/0x3373F changed
-    # nothing and a dropped flag store passed both palette rows).
+    # into its byte 1 (0x1075F8 -> 0x107608): every store is observable — the flag stores are
+    # single-byte writes to head+0x0C, the ptr/first/count dword stores change record bytes, and
+    # the head-advance dword store changes bytes 0-1 through the carry (the C3c sweep: the flag
+    # byte's own pre was 0, so the flag store at 0x3371F/0x3373F changed nothing and a dropped
+    # flag store passed both palette rows).
     Spec("palette_record_flagged", 0x33714, [
         Case("v0", {"eax": 0x00001234, "edx": 0x00005678, "ebx": 0x00009ABC},
              {0x00107798: le32(0x00107498),
