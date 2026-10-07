@@ -20,6 +20,7 @@
  * trailing byte from DS_00105DAF + (descriptor & 0x3f). */
 u32 config_field_get(u32 field)
 {
+    PR_SEAM_RET(0x2D974u, field);
     if (field > 0x3Eu) return 0xFFFFFFFFu;
 
     u32 d = DSD(DS_0002D300 + field * 4u);
@@ -371,6 +372,7 @@ u32 hiscore_rank_probe(u32 value, u32 table)
 /* 0x2CAA8. `cmp byte [0x85d60],0; sete al; and eax,0xff`. */
 u32 config_not_free_play(void)
 {
+    PR_SEAM_RET0(0x2CAA8u);
     return DSB(DS_00105D60) == 0u ? 1u : 0u;
 }
 
