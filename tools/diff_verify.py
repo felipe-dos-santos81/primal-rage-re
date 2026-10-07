@@ -5224,6 +5224,375 @@ C3B_SPECS = [
        eax_mask=0, mutants=("@idx", "@shift", "@add", "@o0", "@o1", "@o2")),
 ]
 
+# ---- track P batch C3c (record 2026-10-05-reverse-c3c): the frontier rows, part 3 ----------------
+#
+# The render-list halves (0x1C390/0x1C3A0/0x1C458/0x1C3D0), the type-0x01 callbacks
+# (0x127C0/0x12800) and the new frontier items (0x18428/0x18460/0x367DC/0x1CA40/0x33714/0x33734).
+# The four render rows share this scratch: nodes are { next; pset } and the layer is pset+0x0E.
+C3C_R_FREE = 0x0010275C         # the render free-list head
+C3C_R_LIST = 0x00105B44         # the render list head
+C3C_R_HEAD = 0x10AF00           # a scratch list head for the splice/find/unlink rows
+C3C_R_N1, C3C_R_N2, C3C_R_N3, C3C_R_N4 = 0x10AF40, 0x10AF80, 0x10AFC0, 0x10B000
+C3C_R_P1, C3C_R_P2, C3C_R_P3, C3C_R_P4 = 0x10B040, 0x10B080, 0x10B0A0, 0x10B0B0
+C3C_MP_HUB = 0x10AF00           # the type-callback hub scratch
+
+
+def c3c_r_node(nxt, pset, layer):
+    return {nxt[0]: le32(nxt[1]), nxt[0] + 4: le32(pset), pset + 0x0E: le16(layer)}
+
+
+def c3c_r_list(head, items):
+    """Pokes linking `items` = [(node, pset, layer)] from [head]; the last next is 0."""
+    p = {head: le32(items[0][0] if items else 0)}
+    for i, (n, ps, ly) in enumerate(items):
+        p[n] = le32(items[i + 1][0] if i + 1 < len(items) else 0)
+        p[n + 4] = le32(ps)
+        p[ps + 0x0E] = le16(ly)
+    return p
+
+
+def c3c_b6_case(side, s53, s54, o54, bit15_0, bit15_1):
+    """0x3B6C4's slots: the side's +0x53/+0x54, the other's +0x54 and the two actor bit-15 words."""
+    rec0, rec1 = 0x10AF00, 0x10AF40
+    p = {0x001077B0: le32(rec0), 0x001077B0 + 0x94: le32(rec1),
+         rec0 + 0x56: le16(1), rec1 + 0x56: le16(2),
+         0x001014EC: le32(0x10B000),
+         0x10B020: le16(bit15_0 << 15), 0x10B040: le16(bit15_1 << 15),
+         0x001077B0 + side * 0x94 + 0x53: bytes([s53]),
+         0x001077B0 + side * 0x94 + 0x54: bytes([s54]),
+         0x001077B0 + (1 - side) * 0x94 + 0x54: bytes([o54])}
+    return p
+
+
+def c3c_k_case(side, b60, b62, b43, ch):
+    """0x1A734's side slot and its record (EAX = side; ch selects the 0xC8F40/0xC8F90 stream)."""
+    slot = 0x001077B0 + side * 0x94
+    rec = 0x10AF00 + side * 0x40
+    return {slot: le32(rec), slot + 0x60: bytes([b60]), slot + 0x62: bytes([b62]),
+            slot + 0x43: bytes([b43]), slot + 0x54: b"\xAA", slot + 0x7A: bytes([ch])}
+
+
+def c3c_97_case(side, self8c, other8c, k, b, k2=0, s63=0, diff=0x5678, d=1):
+    """0x39738's state: the per-side 0x8C words, the slot+0x63 gate, the two k words, the two
+    12-entry per-character tables (0xBEC28/0xBEC58; their entries 11 are the raw's >0xB fallbacks
+    0xBEC54/0xBEC84) and the difficulty table entry 0xBEBD8[d]. Only the entries a case (or a
+    mutant) reads are poked: the harness caps a case at 16 pokes."""
+    s = 0x001077B0 + side * 0x94
+    o = 0x001077B0 + (1 - side) * 0x94
+    kk, k2c = min(k, 11), min(k2, 11)
+    p = {s + 0x8C: le16(self8c), o + 0x8C: le16(other8c), s + 0x63: bytes([s63]),
+         0x00107D2A + side * 2: le32(k << 16), 0x00107D1E + side * 2: le32(k2 << 16),
+         0x001082C8 + side * 4: le32(d), 0x000BEBD8: le32(0x5555),
+         0x000BEBD8 + d * 4: le32(diff)}
+    if self8c:
+        p[0x000BEC58 + kk * 4] = le32(0x2000 + kk)
+        if k2c != kk:
+            p[0x000BEC58 + k2c * 4] = le32(0x2000 + k2c)
+        p[0x000BEC58 + 44] = le32(0x200B)
+        p[0x000BEC58 + 48] = le32(0x200C)
+    else:
+        p[0x000BEC28 + kk * 4] = le32(0x1000 + kk)
+        if k2c != kk:
+            p[0x000BEC28 + k2c * 4] = le32(0x1000 + k2c)
+        p[0x000BEC28 + 44] = le32(0x100B)
+    return p
+
+
+def c3c_46_case(ch, id0, id1=0x0015, lo=0x0010, hi=0x0020):
+    """0x18460's state: slot0/slot1 + their records + the ch range pair + the actor words.
+    idx0 = 1 and idx1 = 2, so a0 = 1 and a1 = 2 on every call."""
+    s0, s1, r0, r1 = 0x10AF00, 0x10AF80, 0x10AF40, 0x10AFC0
+    return {0x001077A8: le32(s0), 0x001077AC: le32(s1), s0: le32(r0), s1: le32(r1),
+            s0 + 0x7A: bytes([ch & 0xFF]), s1 + 0x7A: b"\x00",
+            r0 + 0x56: le16(1), r1 + 0x56: le16(2),
+            0x001014EC: le32(0x10B000),
+            0x10B000 + 1 * 0x20: le16(id0), 0x10B000 + 2 * 0x20: le16(id1),
+            0x000A1774 + ch * 14: le16(lo), 0x000A1776 + ch * 14: le16(hi)}
+
+
+C3C_SPECS = [
+    # 0x1C390 render_pop_free: pop the free-list head [0x10275C]; EAX = the popped node. The raw
+    # dereferences the new head unconditionally (no empty-list case; the port's caller guards it).
+    Spec("render_pop_free", 0x1C390, [
+        Case("p0", {}, {C3C_R_FREE: le32(C3C_R_N1), C3C_R_N1: le32(C3C_R_N2), C3C_R_N2: le32(0)}),
+        Case("p1", {}, {C3C_R_FREE: le32(C3C_R_N3), C3C_R_N3: le32(0)}),
+        Case("p2", {}, {C3C_R_FREE: le32(C3C_R_N1), C3C_R_N1: le32(C3C_R_N2),
+                        C3C_R_N2: le32(C3C_R_N3), C3C_R_N3: le32(0),
+                        C3C_R_N1 + 4: le32(0x5A5A5A5A)}),
+    ], eax_mask=0xFFFFFFFF, mutants=("@head", "@ret", "@next")),
+    # 0x1C3A0 render_splice: EAX = headp, EDX = node; insert node before the first node whose
+    # pset+0x0E layer is greater (stable <=). Void.
+    Spec("render_splice", 0x1C3A0, [
+        Case("s0", {"eax": C3C_R_HEAD, "edx": C3C_R_N1},
+             {C3C_R_HEAD: le32(0), C3C_R_N1: le32(0xDEADBEEF), C3C_R_N1 + 4: le32(C3C_R_P1),
+              C3C_R_P1 + 0x0E: le16(0x10)}),
+        Case("s1", {"eax": C3C_R_HEAD, "edx": C3C_R_N1},
+             {**c3c_r_list(C3C_R_HEAD, [(C3C_R_N2, C3C_R_P2, 0x30)]),
+              C3C_R_N1: le32(0xDEADBEEF), C3C_R_N1 + 4: le32(C3C_R_P1), C3C_R_P1 + 0x0E: le16(0x10)}),
+        Case("s2", {"eax": C3C_R_HEAD, "edx": C3C_R_N1},
+             {**c3c_r_list(C3C_R_HEAD, [(C3C_R_N2, C3C_R_P2, 0x10), (C3C_R_N3, C3C_R_P3, 0x30)]),
+              C3C_R_N1: le32(0xDEADBEEF), C3C_R_N1 + 4: le32(C3C_R_P1), C3C_R_P1 + 0x0E: le16(0x20)}),
+        Case("s3", {"eax": C3C_R_HEAD, "edx": C3C_R_N1},
+             {**c3c_r_list(C3C_R_HEAD, [(C3C_R_N2, C3C_R_P2, 0x10), (C3C_R_N3, C3C_R_P3, 0x20)]),
+              C3C_R_N1: le32(0xDEADBEEF), C3C_R_N1 + 4: le32(C3C_R_P1), C3C_R_P1 + 0x0E: le16(0x30)}),
+        Case("s4", {"eax": C3C_R_HEAD, "edx": C3C_R_N1},
+             {**c3c_r_list(C3C_R_HEAD, [(C3C_R_N2, C3C_R_P2, 0x20)]),
+              C3C_R_N1: le32(0xDEADBEEF), C3C_R_N1 + 4: le32(C3C_R_P1), C3C_R_P1 + 0x0E: le16(0x20)}),
+        Case("s5", {"eax": C3C_R_HEAD, "edx": C3C_R_N1},
+             {**c3c_r_list(C3C_R_HEAD, [(C3C_R_N2, C3C_R_P2, 0x20), (C3C_R_N3, C3C_R_P3, 0x20)]),
+              C3C_R_N1: le32(0xDEADBEEF), C3C_R_N1 + 4: le32(C3C_R_P1), C3C_R_P1 + 0x0E: le16(0x20)}),
+    ], eax_mask=0, mutants=("@lt", "@next", "@head", "@prev", "@first")),
+    # 0x1C458 render_find: EAX = headp, EDX = pset_off; EAX = the node whose +4 matches, or 0.
+    Spec("render_find", 0x1C458, [
+        Case("f0", {"eax": C3C_R_HEAD, "edx": 0x10B040},
+             {C3C_R_HEAD: le32(C3C_R_N1), C3C_R_N1: le32(0), C3C_R_N1 + 4: le32(0x10B040)}),
+        Case("f1", {"eax": C3C_R_HEAD, "edx": 0x10B080},
+             {C3C_R_HEAD: le32(C3C_R_N1), C3C_R_N1: le32(C3C_R_N2), C3C_R_N1 + 4: le32(0x10B040),
+              C3C_R_N2: le32(0), C3C_R_N2 + 4: le32(0x10B080)}),
+        Case("f2", {"eax": C3C_R_HEAD, "edx": 0x10B0A0},
+             {C3C_R_HEAD: le32(C3C_R_N1), C3C_R_N1: le32(C3C_R_N2), C3C_R_N1 + 4: le32(0x10B040),
+              C3C_R_N2: le32(0), C3C_R_N2 + 4: le32(0x10B080)}),
+        Case("f3", {"eax": C3C_R_HEAD, "edx": 0x10B040}, {C3C_R_HEAD: le32(0)}),
+    ], eax_mask=0xFFFFFFFF, mutants=("@cmp", "@skip", "@last", "@null")),
+    # 0x1C3D0 render_unlink: EAX = headp, EDX = node; unlink node (no-op when absent) and push it
+    # on the free-list head. Void.
+    Spec("render_unlink", 0x1C3D0, [
+        Case("u0", {"eax": C3C_R_HEAD, "edx": C3C_R_N2},
+             {**c3c_r_list(C3C_R_HEAD, [(C3C_R_N1, C3C_R_P1, 0x10), (C3C_R_N2, C3C_R_P2, 0x20),
+                                        (C3C_R_N3, C3C_R_P3, 0x30)]),
+              C3C_R_N2: le32(C3C_R_N3), C3C_R_FREE: le32(C3C_R_N4), C3C_R_N4: le32(0xF0F0F0F0)}),
+        Case("u1", {"eax": C3C_R_HEAD, "edx": C3C_R_N1},
+             {**c3c_r_list(C3C_R_HEAD, [(C3C_R_N1, C3C_R_P1, 0x10), (C3C_R_N2, C3C_R_P2, 0x20)]),
+              C3C_R_FREE: le32(0), C3C_R_N1: le32(C3C_R_N2)}),
+        Case("u2", {"eax": C3C_R_HEAD, "edx": C3C_R_N3},
+             {**c3c_r_list(C3C_R_HEAD, [(C3C_R_N1, C3C_R_P1, 0x10), (C3C_R_N2, C3C_R_P2, 0x20),
+                                        (C3C_R_N3, C3C_R_P3, 0x30)]),
+              C3C_R_FREE: le32(C3C_R_N1), C3C_R_N3: le32(0x01020304)}),
+        Case("u3", {"eax": C3C_R_HEAD, "edx": C3C_R_N4},
+             {**c3c_r_list(C3C_R_HEAD, [(C3C_R_N1, C3C_R_P1, 0x10), (C3C_R_N2, C3C_R_P2, 0x20)]),
+              C3C_R_FREE: le32(C3C_R_N4)}),
+        Case("u4", {"eax": C3C_R_HEAD, "edx": C3C_R_N1},
+             {C3C_R_HEAD: le32(0), C3C_R_FREE: le32(C3C_R_N1)}),
+    ], eax_mask=0, mutants=("@head", "@free", "@chain", "@prev", "@noop")),
+    # 0x127C0 actor_type_127C0 (the type-0x01 cb1): EAX = rec, EDX = slot (unread). Pop the 0xF0A78
+    # head; empty (the sentinel points to itself) -> EAX 0xFF, else link the node at rec+0x14 and
+    # insert it after 0xF0AE0, return 0. The 0x249D0/0x249B0 calls run as real on both sides.
+    Spec("actor_type_127C0", 0x127C0, [
+        Case("t0", {"eax": C3C_MP_HUB, "edx": 0x10AF40},
+             {0x000F0A78: le32(0x000F0A78), 0x000F0A78 + 4: le32(0x000F0A78),
+              C3C_MP_HUB + 0x14: le32(0x11111111)}),
+        Case("t1", {"eax": C3C_MP_HUB, "edx": 0x10AF40},
+             {0x000F0A78: le32(C3C_R_N1), C3C_R_N1: le32(0x000F0A78),
+              C3C_R_N1 + 4: le32(0x000F0A78), C3C_R_N1 + 8: le32(0xF0F0F0F0),
+              0x000F0AE0: le32(0x000F0AE0), 0x000F0AE0 + 4: le32(0x000F0AE0),
+              C3C_MP_HUB + 0x14: le32(0x11111111)}),
+        Case("t2", {"eax": C3C_R_N4, "edx": C3C_R_P4},
+             {0x000F0A78: le32(C3C_R_N2), C3C_R_N2: le32(0x000F0A78),
+              C3C_R_N2 + 4: le32(0x000F0A78), C3C_R_N2 + 8: le32(0xF0F0F0F0),
+              0x000F0AE0: le32(C3C_R_N3), C3C_R_N3: le32(0x000F0AE0),
+              C3C_R_N3 + 4: le32(0x000F0AE0), 0x000F0AE0 + 4: le32(C3C_R_N3),
+              C3C_R_N4 + 0x14: le32(0x11111111)}),
+    ], calls=(E.Call(0x249D0, ("eax",), mode="real"),
+              E.Call(0x249B0, ("eax", "edx"), mode="real")),
+       eax_mask=0xFF, mutants=("@empty", "@ret", "@link", "@rec", "@at", "@unlink")),
+    # 0x12800 actor_type_12800 (the type-0x01 cb2): EAX = rec. Return the rec+0x14 node to 0xF0A78
+    # and clear rec+0x14; a null node returns with nothing done.
+    Spec("actor_type_12800", 0x12800, [
+        Case("t0", {"eax": C3C_MP_HUB}, {C3C_MP_HUB + 0x14: le32(0)}),
+        Case("t1", {"eax": C3C_MP_HUB},
+             {C3C_MP_HUB + 0x14: le32(C3C_R_N1), 0x10AF80: le32(C3C_R_N1),
+              C3C_R_N1: le32(0x10AF80), C3C_R_N1 + 4: le32(0x10AF80),
+              0x000F0A78: le32(0x000F0A78), 0x000F0A78 + 4: le32(0x000F0A78)}),
+        Case("t2", {"eax": C3C_MP_HUB},
+             {C3C_MP_HUB + 0x14: le32(C3C_R_N2), 0x10AF40: le32(C3C_R_N2),
+              C3C_R_N2: le32(0x10AF40), C3C_R_N2 + 4: le32(0x10AF40),
+              0x000F0A78: le32(C3C_R_N3), C3C_R_N3: le32(0x000F0A78),
+              C3C_R_N3 + 4: le32(0x000F0A78), 0x000F0A78 + 4: le32(C3C_R_N3)}),
+    ], calls=(E.Call(0x249D0, ("eax",), mode="real"),
+              E.Call(0x249B0, ("eax", "edx"), mode="real")),
+       eax_mask=0, mutants=("@zero", "@clear", "@at", "@unlink", "@node")),
+    # 0x18428 fighter_18428: EAX = side. Reads slot[side]+0x7A and (for a character 0..6) jumps
+    # through the all-RET table 0x1840C. Effect-free: reads only, so no case can catch a read-only
+    # mutation and the row carries no mutants (a named limit, record §C3c).
+    Spec("fighter_18428", 0x18428, [
+        Case("h0", {"eax": 0}, {0x1077A8: le32(C3C_R_N1), C3C_R_N1 + 0x7A: b"\x03"}),
+        Case("h1", {"eax": 1}, {0x1077A8: le32(C3C_R_N1), 0x1077AC: le32(C3C_R_N2),
+                                C3C_R_N1 + 0x7A: b"\x00", C3C_R_N2 + 0x7A: b"\x06"}),
+        Case("h2", {"eax": 0}, {0x1077A8: le32(C3C_R_N2), C3C_R_N2 + 0x7A: b"\x07"}),
+        Case("h3", {"eax": 1}, {0x1077A8: le32(0), 0x1077AC: le32(0)}),
+    ], eax_mask=0, mutants=()),
+    # 0x18460 fighter_18460: EAX = side. Both slot pointers must be live; the side's character
+    # 0..6 reads {lo,hi} = 0xA1774/76 + ch*14, the sprite id is the actor word & 0x7FFF, and
+    # 0x18428 runs when the id is outside [lo,hi) and not 0x1E1. Returns 1 when the call is made
+    # (the return is port-only; mask 0). 0x18428 runs real: the row compares its call and args.
+    Spec("fighter_18460", 0x18460, [
+        Case("h0", {"eax": 0}, {0x1077A8: le32(0), 0x1077AC: le32(0x10AF80)}),
+        Case("h1", {"eax": 0}, {0x1077A8: le32(0x10AF00), 0x1077AC: le32(0)}),
+        Case("h2", {"eax": 0}, c3c_46_case(0, 0x0015)),
+        Case("h3", {"eax": 0}, c3c_46_case(0, 0x0030)),
+        Case("h4", {"eax": 0}, c3c_46_case(7, 0x0100, lo=0x0001, hi=0x7FFF)),
+        Case("h5", {"eax": 0}, c3c_46_case(0, 0x01E1)),
+        Case("h6", {"eax": 1}, c3c_46_case(0, 0x0000, id1=0x0060)),
+        Case("h7", {"eax": 0}, c3c_46_case(0, 0x0010)),
+        Case("h8", {"eax": 0}, c3c_46_case(0, 0x0020)),
+        Case("h9", {"eax": 0}, c3c_46_case(0, 0x0005)),
+        Case("ha", {"eax": 0}, c3c_46_case(0, 0x8123, lo=0x2000, hi=0x3000)),
+    ], calls=(E.Call(0x18428, ("eax", "edx", "ebx", "ecx"), mode="real"),),
+       eax_mask=0, mutants=("@null", "@null2", "@lo", "@hi", "@range", "@e1", "@call", "@id")),
+    # 0x367DC fighter_state_367dc: EAX = slot, EDX = rec. Restart the record's animation at
+    # 0xC8950[slot+0x7A] (float 3.0), clear the slot/record fields, mask slot+0x40, then in modes
+    # other than 3/0x22/0x24 a second animation (0x102900[rec+0x51], 0xE906A, 1.0). Void.
+    Spec("fighter_state_367dc", 0x367DC, [
+        Case("d0", {"eax": C3C_R_N1, "edx": C3C_R_N2},
+             {C3C_R_N1 + 0x7A: b"\x02", C3C_R_N2 + 0x4C: b"\xAA", C3C_R_N2 + 0x4D: b"\xBB",
+              C3C_R_N1 + 0x52: b"\x01", C3C_R_N1 + 0x53: b"\x02", C3C_R_N1 + 0x5F: b"\x01",
+              C3C_R_N1 + 0x55: b"\x02", C3C_R_N1 + 0x54: b"\x03",
+              C3C_R_N1 + 0x40: le32(0xFFFFFFFF), 0x104B00: le16(3)}),
+        Case("d1", {"eax": C3C_R_N1, "edx": C3C_R_N2},
+             {C3C_R_N1 + 0x7A: b"\x02", C3C_R_N2 + 0x4C: b"\xAA", C3C_R_N2 + 0x4D: b"\xBB",
+              C3C_R_N1 + 0x52: b"\x01", C3C_R_N1 + 0x53: b"\x02", C3C_R_N1 + 0x5F: b"\x01",
+              C3C_R_N1 + 0x55: b"\x02", C3C_R_N1 + 0x54: b"\x03",
+              C3C_R_N1 + 0x40: le32(0xFFFFFFFF), 0x104B00: le16(0x22)}),
+        Case("d2", {"eax": C3C_R_N1, "edx": C3C_R_N2},
+             {C3C_R_N1 + 0x7A: b"\x02", C3C_R_N2 + 0x4C: b"\xAA", C3C_R_N2 + 0x4D: b"\xBB",
+              C3C_R_N1 + 0x52: b"\x01", C3C_R_N1 + 0x53: b"\x02", C3C_R_N1 + 0x5F: b"\x01",
+              C3C_R_N1 + 0x55: b"\x02", C3C_R_N1 + 0x54: b"\x03",
+              C3C_R_N1 + 0x40: le32(0xFFFFFFFF), 0x104B00: le16(0x24)}),
+        Case("d3", {"eax": C3C_R_N1, "edx": C3C_R_N2},
+             {C3C_R_N1 + 0x7A: b"\x05", C3C_R_N2 + 0x4C: b"\xAA", C3C_R_N2 + 0x4D: b"\xBB",
+              C3C_R_N1 + 0x52: b"\x01", C3C_R_N1 + 0x53: b"\x02", C3C_R_N1 + 0x5F: b"\x01",
+              C3C_R_N1 + 0x55: b"\x02", C3C_R_N1 + 0x54: b"\x03",
+              C3C_R_N1 + 0x40: le32(0xFFFFFFFF), 0x104B00: le16(0),
+              C3C_R_N2 + 0x51: b"\x01", 0x102900: le32(0x10B0A0), 0x102904: le32(0x10B0B0)}),
+        Case("d4", {"eax": C3C_R_N1, "edx": C3C_R_N2},
+             {C3C_R_N1 + 0x7A: b"\x05", C3C_R_N2 + 0x4C: b"\xAA", C3C_R_N2 + 0x4D: b"\xBB",
+              C3C_R_N1 + 0x52: b"\x01", C3C_R_N1 + 0x53: b"\x02", C3C_R_N1 + 0x5F: b"\x01",
+              C3C_R_N1 + 0x55: b"\x02", C3C_R_N1 + 0x54: b"\x03",
+              C3C_R_N1 + 0x40: le32(0xFFFFFFFF), 0x104B00: le16(0x23),
+              C3C_R_N2 + 0x51: b"\x00", 0x102900: le32(0x10B0A0), 0x102904: le32(0x10B0B0)}),
+    ], calls=(E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4, clobbers=("edx",)),),
+       eax_mask=0, mutants=("@mode", "@stream", "@ch", "@clr4c", "@clr53", "@ff", "@mask", "@call")),
+    # 0x1CA40 snd_music_playing: no args; AL = 1 when [0x1028C0] (the sequence handle) is non-zero
+    # and 0x5DEED (the AIL status, stubbed through the port's seam) returns 4; [0x1028C0] == 0
+    # returns 0 without the call. The raw masks the result to AL (`and eax,0xff`).
+    Spec("snd_music_playing", 0x1CA40, [
+        Case("m0", {}, {0x001028C0: le32(0)}, {0x5DEED: 4}),
+        Case("m1", {}, {0x001028C0: le32(0x10B0C0)}, {0x5DEED: 4}),
+        Case("m2", {}, {0x001028C0: le32(0x10B0C0)}, {0x5DEED: 3}),
+        Case("m3", {}, {0x001028C0: le32(0x10B0C0)}, {0x5DEED: 0x104}),
+    ], calls=(E.Call(0x5DEED, (), mode="stub"),),
+       eax_mask=0xFF, mutants=("@zero", "@one", "@gate", "@eq3", "@call", "@eax")),
+    # 0x33714 palette_record_flagged (EBX = ptr, EAX = first, EDX = count): append the record
+    # { ptr; first; count; flag = 1 } at the head [0x107798] and advance it by 0x10. The pre-state
+    # seeds every record byte with a distinct nonzero value, and v1's head carries the +0x10 bump
+    # into its byte 1 (0x1075F8 -> 0x107608): every store is observable — the flag stores are
+    # single-byte writes to head+0x0C, the ptr/first/count dword stores change record bytes, and
+    # the head-advance dword store changes bytes 0-1 through the carry (the C3c sweep: the flag
+    # byte's own pre was 0, so the flag store at 0x3371F/0x3373F changed nothing and a dropped
+    # flag store passed both palette rows).
+    Spec("palette_record_flagged", 0x33714, [
+        Case("v0", {"eax": 0x00001234, "edx": 0x00005678, "ebx": 0x00009ABC},
+             {0x00107798: le32(0x00107498),
+              0x00107498: b"\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9A\x9B\x9C\x9D\x9E\x9F\xA0",
+              0x001074A8: le32(0x11111111)}),
+        Case("v1", {"eax": 0xDEADBEEF, "edx": 0x00000002, "ebx": 0x00107798},
+             {0x00107798: le32(0x001075F8),
+              0x001075F8: b"\xB1\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xBB\xBC\xBD\xBE\xBF\xC0",
+              0x00107608: le32(0x44444444)}),
+    ], eax_mask=0, mutants=("@flag", "@order", "@adv", "@wide", "@swap")),
+    # 0x33734 palette_record (EBX = ptr, EAX = first, EDX = count): the same append with flag 0.
+    Spec("palette_record", 0x33734, [
+        Case("w0", {"eax": 0x00001234, "edx": 0x00005678, "ebx": 0x00009ABC},
+             {0x00107798: le32(0x00107498),
+              0x00107498: b"\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9A\x9B\x9C\x9D\x9E\x9F\xA0",
+              0x001074A8: le32(0x11111111)}),
+        Case("w1", {"eax": 0xDEADBEEF, "edx": 0x00000002, "ebx": 0x00107798},
+             {0x00107798: le32(0x001075F8),
+              0x001075F8: b"\xB1\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xBB\xBC\xBD\xBE\xBF\xC0",
+              0x00107608: le32(0x44444444)}),
+    ], eax_mask=0, mutants=("@flag", "@order", "@adv", "@wide", "@swap")),
+    # 0x2BD44 fighter_2bd44: EAX = param_1 (the fighter record), EDX = param_2 (the 0x1014F4 row).
+    # Copy param_2's +0x4B into param_1, re-arm param_2 (clear +0x24, +0x2A bit 3, +0x28 bits 2/4;
+    # set +0x29 bit 3; +8 = 0x1E1), load its sprite id through 0x2A408 (stub, per-case EAX) into its
+    # actor word, then 0x2B150 (stub). Void.
+    Spec("fighter_2bd44", 0x2BD44, [
+        Case("m0", {"eax": 0x10AF00, "edx": 0x10B000},
+             {0x10AF00 + 0x4B: b"\x11", 0x10B000 + 0x4B: b"\xA7", 0x10B000 + 0x24: le32(0xDEADBEEF),
+              0x10B000 + 0x2A: b"\xFF", 0x10B000 + 0x29: b"\x00", 0x10B000 + 0x28: b"\xFF",
+              0x10B000 + 8: le32(0x99999999), 0x10B000 + 0x56: le16(3),
+              0x001014EC: le32(0x10AF80), 0x10AFF0: le16(0x5A5A)}, {0x2A408: 0xBEEF}),
+        Case("m1", {"eax": 0x10AF00, "edx": 0x10B000},
+             {0x10AF00 + 0x4B: b"\x00", 0x10B000 + 0x4B: b"\x3C", 0x10B000 + 0x24: le32(0x00000000),
+              0x10B000 + 0x2A: b"\x08", 0x10B000 + 0x29: b"\xFF", 0x10B000 + 0x28: b"\x00",
+              0x10B000 + 8: le32(0x11111111), 0x10B000 + 0x56: le16(0),
+              0x001014EC: le32(0x10AF80), 0x10AF80: le16(0x7FFF)}, {0x2A408: 0x1234}),
+    ], calls=(E.Call(0x2A408, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x2B150, ("eax",), mode="stub")),
+       eax_mask=0, mutants=("@src", "@clr24", "@a2a", "@o29", "@a28", "@id", "@idx")),
+    # 0x3B6C4 fighter_3b6c4: EAX = side. 1 when the side's slot +0x53 == 8 and +0x54 == 2, the
+    # other slot's +0x54 != 2, and both sides' 0x1A570 actor-bit-15 predicates agree. The 0x33950
+    # ctx builder and the 0x1A570 calls are the row's; AL only (`mov al,1`/`xor al,al`).
+    Spec("fighter_3b6c4", 0x3B6C4, [
+        Case("b0", {"eax": 0}, c3c_b6_case(0, 8, 2, 0, 0, 0)),
+        Case("b1", {"eax": 0}, c3c_b6_case(0, 7, 2, 0, 0, 0)),
+        Case("b2", {"eax": 0}, c3c_b6_case(0, 8, 3, 0, 0, 0)),
+        Case("b3", {"eax": 0}, c3c_b6_case(0, 8, 2, 2, 0, 0)),
+        Case("b4", {"eax": 0}, c3c_b6_case(0, 8, 2, 0, 1, 0)),
+        Case("b5", {"eax": 1}, c3c_b6_case(1, 8, 2, 0, 1, 1)),
+    ], allow_calls=(0x33950,),
+       calls=(E.Call(0x1A570, ("eax",), mode="real"),),
+       eax_mask=0xFF, mutants=("@s53", "@s54", "@o54", "@cmp", "@ret", "@side")),
+    # 0x3C520 hit_anim_start_c: EAX = rec, EDX = stream, s0 = frame bits. The ctx (0x339AC) gives
+    # the side's slot; 0x2BC30 (stub) starts the animation; 0x188DC/0x1890C (stubs) take the slot's
+    # +0x2C/+0x30 as x/y. Void.
+    Spec("hit_anim_start_c", 0x3C520, [
+        Case("c0", {"eax": 0x10AF00, "edx": 0x00E12345, "s0": 0x3F800000},
+             {0x10AF00 + 0x51: b"\x00", 0x001077B0 + 0x2C: le32(0x11111111),
+              0x001077B0 + 0x30: le32(0x22222222)}),
+        Case("c1", {"eax": 0x10AF40, "edx": 0x00E56789, "s0": 0x40400000},
+             {0x10AF40 + 0x51: b"\x01", 0x001077B0 + 0x94 + 0x2C: le32(0x33333333),
+              0x001077B0 + 0x94 + 0x30: le32(0x44444444)}),
+        Case("c2", {"eax": 0x10AF80, "edx": 0x80000000, "s0": 0x00000000},
+             {0x10AF80 + 0x51: b"\x00", 0x001077B0 + 0x2C: le32(0xFFFF8000),
+              0x001077B0 + 0x30: le32(0x00008000)}),
+    ], allow_calls=(0x339AC,),
+       calls=(E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4, clobbers=("edx",)),
+              E.Call(0x188DC, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x1890C, ("eax", "edx"), mode="stub", clobbers=("edx",))),
+       eax_mask=0, mutants=("@side", "@xy", "@begin", "@bits", "@anchor", "@stream")),
+    # 0x1A734 fighter_block_hit: EAX = side. The ctx (0x33A10) gives the side's slot; +0x61 = 0x0C,
+    # lowered to +0x60 when greater and +0x62 set; +0x43 bit 0x20 picks the +0x54 = 0 arm with the
+    # 0xC8F40[ch] stream, bit 0x10 the +0x54 = 1 arm with 0xC8F90[ch]; both end in 0x3C480(rec,
+    # stream, 3.0). 0x18B04 and 0x3C480 are stubs (the latter pops its stack arg). Void.
+    Spec("fighter_block_hit", 0x1A734, [
+        Case("k0", {"eax": 0}, c3c_k_case(0, 0x05, 0x01, 0x20, 0x02)),
+        Case("k1", {"eax": 0}, c3c_k_case(0, 0x20, 0x01, 0x10, 0x02)),
+        Case("k2", {"eax": 0}, c3c_k_case(0, 0x20, 0x01, 0x00, 0x02)),
+        Case("k3", {"eax": 1}, c3c_k_case(1, 0x05, 0x01, 0x20, 0x05)),
+        Case("k4", {"eax": 0}, c3c_k_case(0, 0x00, 0x00, 0x20, 0x02)),
+        Case("k5", {"eax": 0}, c3c_k_case(0, 0x05, 0x01, 0x30, 0x02)),
+    ], allow_calls=(0x33A10,),
+       calls=(E.Call(0x18B04, ("eax",), mode="stub"),
+              E.Call(0x3C480, ("eax", "edx", "s0"), pop=4, clobbers=("edx",))),
+       eax_mask=0, mutants=("@c61", "@clamp", "@b62", "@u", "@arm", "@s54", "@call", "@tab")),
+    # 0x39738 fighter_39738: EAX = side, EDX = b. The 0x33950 ctx gives the side's and the other's
+    # slots. When the side's slot+0x8C is non-zero the per-character base is 0xBEC58[0x107D2A[side]]
+    # (0xBEC84 above 0xB) * b / 100, else 0xBEC28[k] * b / 100, or with k > 0xB: b/4 when
+    # 0x107D1E[side] > 0x46, else 0xBEC54 * b / 100. Then the other slot's +0x8C cuts 15% and a
+    # non-zero side slot+0x63 adds 0xBEBD8[0x1082C8[side]] * v / 100. Full EAX (the dword result).
+    Spec("fighter_39738", 0x39738, [
+        Case("r0", {"eax": 0, "edx": 100}, c3c_97_case(0, 1, 0, 5, 100)),
+        Case("r1", {"eax": 0, "edx": 100}, c3c_97_case(0, 1, 0, 11, 100)),
+        Case("r2", {"eax": 0, "edx": 100}, c3c_97_case(0, 1, 0, 12, 100)),
+        Case("r3", {"eax": 0, "edx": 200}, c3c_97_case(0, 0, 0, 5, 200)),
+        Case("r4", {"eax": 0, "edx": 200}, c3c_97_case(0, 0, 0, 12, 200, k2=0x46)),
+        Case("r5", {"eax": 0, "edx": 0xFFFFFF9B}, c3c_97_case(0, 0, 0, 12, 0xFFFFFF9B, k2=0x47)),
+        Case("r6", {"eax": 1, "edx": 0xFFFFFF9C}, c3c_97_case(1, 1, 1, 12, 0xFFFFFF9C, k2=0x47, s63=1, d=2)),
+        Case("r7", {"eax": 1, "edx": 101}, c3c_97_case(1, 0, 1, 3, 101, s63=1, d=2)),
+    ], allow_calls=(0x33950,), eax_mask=0xFFFFFFFF,
+       mutants=("@chan", "@k", "@tab", "@k2", "@div", "@cut", "@diff", "@idx")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -5266,7 +5635,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

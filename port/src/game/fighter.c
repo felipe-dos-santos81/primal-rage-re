@@ -132,8 +132,9 @@ int fighter_actor_bit15_clear(u32 side)
  * and otherwise jumps through the seven-entry table 0x1840C, whose every entry
  * is 0x18408, a bare RET (the fixup-applied dwords `08 84 01 00` x 7). The
  * dispatch therefore has no effect for any character. */
-static void fighter_18428(u32 side, u32 sprite, u32 a0, u32 a1)
+void fighter_18428(u32 side, u32 sprite, u32 a0, u32 a1)
 {
+    PR_SEAM(0x18428u, side, sprite, a0, a1);
     u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x18428 */
     u32 ch = (u32)DSB(slot + 0x7Au);                    /* 0x1842F */
     (void)sprite; (void)a0; (void)a1;
@@ -150,7 +151,9 @@ static void fighter_18428(u32 side, u32 sprite, u32 a0, u32 a1)
  * follow. The id inside [lo, hi) (unsigned, 0x184EF JC / 0x184F4 JC) or equal to
  * 0x1E1 (0x184FE) returns; otherwise 0x18428 is called (0x18513). Returns 1
  * when the call is made. PORT: the return value is port-only, so a test can
- * observe the decision; the raw returns nothing, and 0x18428 has no effect.
+ * observe the decision; the raw has no defined return (EAX is a leftover of
+ * the slot/character reads; the sole caller 0x18540 overwrites EAX at 0x185BB,
+ * and the row masks EAX = 0), and 0x18428 has no effect.
  * PORT: for a character above 6 the raw jumps to 0x184BD with EBX/EDI as the
  * caller left them, so its [lo, hi) test reads caller registers; the port
  * takes it as not in range. Record §28 of
@@ -6057,8 +6060,12 @@ u32 fighter_3aa54(u32 slot)
 }
 
 /* 0x39738. The reaction damage/knockback scaler: pick the per-character base
- * from the 0xBECxx tables scaled by 100, apply the +0x8C guards and (when
- * slot+0x63 != 0) the DS_001082C8 difficulty multiplier. */
+ * from the 0xBECxx tables scaled by 100, and in the slot+0x8C == 0 path apply
+ * the other slot's 15% cut and (when slot+0x63 != 0) the DS_001082C8 difficulty
+ * multiplier.
+ * PORT: the raw's first path returns at 0x39789 (`jmp 0x3982C`), before both
+ * later adjustments; the port as first written fell through them (the C3c row
+ * corrected it, record §C3c). */
 s32 fighter_39738(u32 side, s32 b)
 {
     PR_SEAM_RET(0x39738u, side, (u32)b);
@@ -6069,8 +6076,9 @@ s32 fighter_39738(u32 side, s32 b)
         s32 k = (s32)DSD(DS_00107D2A + side * 2u) >> 16;    /* 0x3975D/0x39763 */
         v = (k > 0xB) ? (s32)DSD(DS_000BEC84)               /* 0x39774 */
                       : (s32)DSD(DS_000BEC58 + (u32)k * 4u); /* 0x3976B */
-        v = (s32)((u32)v * (u32)b) / 100;                   /* 0x3977A/0x39787 */
-    } else {
+        return (s32)((u32)v * (u32)b) / 100;                /* 0x3977A/0x39787/0x39789 */
+    }
+    {
         s32 k = (s32)DSD(DS_00107D2A + side * 2u) >> 16;    /* 0x3978E/0x39794 */
         if (k > 0xB) {                                      /* 0x39797 */
             s32 k2 = (s32)DSD(DS_00107D1E + side * 2u) >> 16;   /* 0x397A5/0x397AB */

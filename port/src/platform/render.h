@@ -13,14 +13,26 @@
  * display list (head = 0). */
 void render_list_init(void);
 
-/* PORT: 0x1C390 (pop the free-list head) + 0x1C3A0 (splice before the first
- * node with a greater layer, stable). Returns 1 when pset_off was added and 0
- * when the pool is exhausted -- the original would dereference a null free
- * head, so the port guards it; nothing is corrupted either way. */
+/* 0x1C390. Pops and returns the free-list head (its next becomes the head). */
+u32 render_pop_free(void);
+
+/* 0x1C3A0. Splices `node` into the list rooted at *headp before the first node
+ * with a greater layer (stable for equal layers). */
+void render_splice(u32 *headp, u32 node);
+
+/* PORT: 0x1C390 + 0x1C3A0. Returns 1 when pset_off was added and 0 when the
+ * pool is exhausted -- the original would dereference a null free head, so the
+ * port guards it; nothing is corrupted either way. */
 int render_list_insert(u32 pset_off);
 
-/* PORT: 0x1C458 (find the node whose pset is pset_off) + 0x1C3D0 (unlink it and
- * return it to the free-list head). A pset_off not in the list is a no-op. */
+/* 0x1C458. The node whose +4 is pset_off in the list rooted at *headp, or 0. */
+u32 render_find(u32 *headp, u32 pset_off);
+
+/* 0x1C3D0. Unlinks `node` from the list rooted at *headp and pushes it on the
+ * free-list head (a no-op when `node` is not in the list). */
+void render_unlink(u32 *headp, u32 node);
+
+/* PORT: 0x1C458 + 0x1C3D0. A pset_off not in the list is a no-op. */
 void render_list_remove(u32 pset_off);
 
 /* PORT: 0x1C3FC. Restores ascending-by-layer order (stable) by detaching every

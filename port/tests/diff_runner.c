@@ -10298,6 +10298,514 @@ static void m_29db8_bep(const u32 *r, u32 *eax)        { c3b_w_core(r, eax, C3B_
 static void m_29db8_child(const u32 *r, u32 *eax)      { c3b_w_core(r, eax, C3B_W_CHILD); }
 static void m_29db8_high(const u32 *r, u32 *eax)       { c3b_w_core(r, eax, C3B_W_HIGH); }
 
+/* Track P batch C3c (record 2026-10-05-reverse-c3c): the frontier rows, part 3. */
+
+/* 0x1C390's mutants. */
+#define C3C_POP_HEAD 0x01u   /* the head is not advanced */
+#define C3C_POP_RET  0x02u   /* the new head is returned, not the popped node */
+#define C3C_POP_NEXT 0x04u   /* the next comes from node+4 */
+static u32 c3c_pop_core(u32 mut)
+{
+    u32 node = DSD(0x0010275Cu);
+    if (!(mut & C3C_POP_HEAD))
+        DSD(0x0010275Cu) = (mut & C3C_POP_NEXT) ? DSD(node + 4u) : DSD(node);
+    return (mut & C3C_POP_RET) ? DSD(0x0010275Cu) : node;
+}
+static void b_c3c_pop(const u32 *r, u32 *eax)      { (void)r; *eax = render_pop_free(); }
+static void m_c3c_pop_head(const u32 *r, u32 *eax) { (void)r; *eax = c3c_pop_core(C3C_POP_HEAD); }
+static void m_c3c_pop_ret(const u32 *r, u32 *eax)  { (void)r; *eax = c3c_pop_core(C3C_POP_RET); }
+static void m_c3c_pop_next(const u32 *r, u32 *eax) { (void)r; *eax = c3c_pop_core(C3C_POP_NEXT); }
+
+/* 0x1C3A0's mutants. */
+#define C3C_SP_LT    0x01u   /* the walk stops at the first equal layer */
+#define C3C_SP_NEXT  0x02u   /* node->next is not written */
+#define C3C_SP_HEAD  0x04u   /* *headp is not written on the head insert */
+#define C3C_SP_PREV  0x08u   /* prev->next is not written */
+#define C3C_SP_FIRST 0x10u   /* the node is always inserted at the head */
+static void c3c_splice_core(const u32 *r, u32 mut)
+{
+    u32 *headp = (u32 *)(mem + r[R_EAX]);
+    u32 node = r[R_EDX];
+    u32 layer = (u32)DSW(DSD(node + 4u) + 0x0Eu);
+    u32 prev = 0, cur;
+    if (mut & C3C_SP_FIRST) {
+        DSD(node) = *headp;
+        *headp = node;
+        return;
+    }
+    cur = *headp;
+    while (cur != 0) {
+        u32 cl = (u32)DSW(DSD(cur + 4u) + 0x0Eu);
+        if ((mut & C3C_SP_LT) ? (cl < layer) : (cl <= layer)) { prev = cur; cur = DSD(cur); }
+        else break;
+    }
+    if (!(mut & C3C_SP_NEXT)) DSD(node) = cur;
+    if (prev == 0) { if (!(mut & C3C_SP_HEAD)) *headp = node; }
+    else if (!(mut & C3C_SP_PREV)) DSD(prev) = node;
+}
+static void b_c3c_splice(const u32 *r, u32 *eax)
+{ render_splice((u32 *)(mem + r[R_EAX]), r[R_EDX]); *eax = 0u; }
+static void m_c3c_sp_lt(const u32 *r, u32 *eax)     { c3c_splice_core(r, C3C_SP_LT); *eax = 0u; }
+static void m_c3c_sp_next(const u32 *r, u32 *eax)   { c3c_splice_core(r, C3C_SP_NEXT); *eax = 0u; }
+static void m_c3c_sp_head(const u32 *r, u32 *eax)   { c3c_splice_core(r, C3C_SP_HEAD); *eax = 0u; }
+static void m_c3c_sp_prev(const u32 *r, u32 *eax)   { c3c_splice_core(r, C3C_SP_PREV); *eax = 0u; }
+static void m_c3c_sp_first(const u32 *r, u32 *eax)  { c3c_splice_core(r, C3C_SP_FIRST); *eax = 0u; }
+
+/* 0x1C458's mutants. */
+#define C3C_FIND_CMP  0x01u  /* the compare reads node+0 */
+#define C3C_FIND_SKIP 0x02u  /* the head is returned without scanning */
+#define C3C_FIND_LAST 0x04u  /* a match is not returned */
+#define C3C_FIND_NULL 0x08u  /* always returns 0 */
+static u32 c3c_find_core(const u32 *r, u32 mut)
+{
+    u32 *headp = (u32 *)(mem + r[R_EAX]);
+    u32 pset = r[R_EDX];
+    u32 cur;
+    if (mut & C3C_FIND_NULL) return 0u;
+    cur = *headp;
+    if (mut & C3C_FIND_SKIP) return cur;
+    while (cur != 0) {
+        u32 f = (mut & C3C_FIND_CMP) ? DSD(cur) : DSD(cur + 4u);
+        if (f == pset && !(mut & C3C_FIND_LAST)) return cur;
+        cur = DSD(cur);
+    }
+    return 0u;
+}
+static void b_c3c_find(const u32 *r, u32 *eax)
+{ *eax = render_find((u32 *)(mem + r[R_EAX]), r[R_EDX]); }
+static void m_c3c_find_cmp(const u32 *r, u32 *eax)  { *eax = c3c_find_core(r, C3C_FIND_CMP); }
+static void m_c3c_find_skip(const u32 *r, u32 *eax) { *eax = c3c_find_core(r, C3C_FIND_SKIP); }
+static void m_c3c_find_last(const u32 *r, u32 *eax) { *eax = c3c_find_core(r, C3C_FIND_LAST); }
+static void m_c3c_find_null(const u32 *r, u32 *eax) { *eax = c3c_find_core(r, C3C_FIND_NULL); }
+
+/* 0x1C3D0's mutants. */
+#define C3C_UNL_HEAD  0x01u  /* the head link is updated for every unlink */
+#define C3C_UNL_FREE  0x02u  /* the free-list push is skipped */
+#define C3C_UNL_CHAIN 0x04u  /* node->next is not chained to the old free head */
+#define C3C_UNL_PREV  0x08u  /* the previous node is not tracked */
+#define C3C_UNL_NOOP  0x10u  /* nothing is done */
+static void c3c_unlink_core(const u32 *r, u32 mut)
+{
+    u32 *headp = (u32 *)(mem + r[R_EAX]);
+    u32 node = r[R_EDX];
+    u32 prev = 0, cur;
+    if (mut & C3C_UNL_NOOP) return;
+    cur = *headp;
+    while (cur != 0 && cur != node) {
+        if (!(mut & C3C_UNL_PREV)) prev = cur;
+        cur = DSD(cur);
+    }
+    if (cur == 0) return;
+    if (prev == 0 || (mut & C3C_UNL_HEAD)) *headp = DSD(cur);
+    else DSD(prev) = DSD(cur);
+    if (!(mut & C3C_UNL_FREE)) {
+        if (!(mut & C3C_UNL_CHAIN)) DSD(cur) = DSD(0x0010275Cu);
+        DSD(0x0010275Cu) = cur;
+    }
+}
+static void b_c3c_unlink(const u32 *r, u32 *eax)
+{ render_unlink((u32 *)(mem + r[R_EAX]), r[R_EDX]); *eax = 0u; }
+static void m_c3c_unl_head(const u32 *r, u32 *eax)  { c3c_unlink_core(r, C3C_UNL_HEAD); *eax = 0u; }
+static void m_c3c_unl_free(const u32 *r, u32 *eax)  { c3c_unlink_core(r, C3C_UNL_FREE); *eax = 0u; }
+static void m_c3c_unl_chain(const u32 *r, u32 *eax) { c3c_unlink_core(r, C3C_UNL_CHAIN); *eax = 0u; }
+static void m_c3c_unl_prev(const u32 *r, u32 *eax)  { c3c_unlink_core(r, C3C_UNL_PREV); *eax = 0u; }
+static void m_c3c_unl_noop(const u32 *r, u32 *eax)  { c3c_unlink_core(r, C3C_UNL_NOOP); *eax = 0u; }
+
+/* 0x127C0's mutants. The list calls go through the exported actors.c helpers, so the seams record
+ * them exactly as the port function's own calls do. */
+#define C3C_T01_EMPTY  0x01u  /* the sentinel-self check is dropped */
+#define C3C_T01_RET    0x02u  /* the empty path returns 0 */
+#define C3C_T01_LINK   0x04u  /* node+8 is not set */
+#define C3C_T01_REC    0x08u  /* rec+0x14 is not set */
+#define C3C_T01_AT     0x10u  /* the node is re-inserted at 0xF0A78, not 0xF0AE0 */
+#define C3C_T01_UNLINK 0x20u  /* the pop's unlink is skipped */
+static u32 c3c_t01_core(const u32 *r, u32 mut)
+{
+    u32 rec = r[R_EAX];
+    u32 node = DSD(0x000F0A78u);
+    if (!(mut & C3C_T01_EMPTY) && node == 0x000F0A78u) node = 0u;
+    if (node == 0u) return (mut & C3C_T01_RET) ? 0u : 0xFFu;
+    if (!(mut & C3C_T01_UNLINK)) list_unlink(node);
+    if (!(mut & C3C_T01_LINK)) DSD(node + 8u) = rec;
+    if (!(mut & C3C_T01_REC)) DSD(rec + 0x14u) = node;
+    list_insert_after((mut & C3C_T01_AT) ? 0x000F0A78u : 0x000F0AE0u, node);
+    return 0u;
+}
+static void b_c3c_type127c0(const u32 *r, u32 *eax)
+{ *eax = actor_type_127C0(r[R_EAX], r[R_EDX]); }
+static void m_c3c_t01_empty(const u32 *r, u32 *eax)  { *eax = c3c_t01_core(r, C3C_T01_EMPTY); }
+static void m_c3c_t01_ret(const u32 *r, u32 *eax)    { *eax = c3c_t01_core(r, C3C_T01_RET); }
+static void m_c3c_t01_link(const u32 *r, u32 *eax)   { *eax = c3c_t01_core(r, C3C_T01_LINK); }
+static void m_c3c_t01_rec(const u32 *r, u32 *eax)    { *eax = c3c_t01_core(r, C3C_T01_REC); }
+static void m_c3c_t01_at(const u32 *r, u32 *eax)     { *eax = c3c_t01_core(r, C3C_T01_AT); }
+static void m_c3c_t01_unlink(const u32 *r, u32 *eax) { *eax = c3c_t01_core(r, C3C_T01_UNLINK); }
+
+/* 0x12800's mutants. */
+#define C3C_T02_ZERO   0x01u  /* the null-node check is dropped */
+#define C3C_T02_CLEAR  0x02u  /* rec+0x14 is not cleared */
+#define C3C_T02_AT     0x04u  /* the node goes to 0xF0AE0, not 0xF0A78 */
+#define C3C_T02_UNLINK 0x08u  /* the unlink is skipped */
+#define C3C_T02_NODE   0x10u  /* the node comes from rec+0x18 */
+static void c3c_t02_core(const u32 *r, u32 mut)
+{
+    u32 rec = r[R_EAX];
+    u32 node = DSD(rec + ((mut & C3C_T02_NODE) ? 0x18u : 0x14u));
+    if (node == 0u && !(mut & C3C_T02_ZERO)) return;
+    if (!(mut & C3C_T02_UNLINK)) list_unlink(node);
+    list_insert_after((mut & C3C_T02_AT) ? 0x000F0AE0u : 0x000F0A78u, DSD(rec + 0x14u));
+    if (!(mut & C3C_T02_CLEAR)) DSD(rec + 0x14u) = 0u;
+}
+static void b_c3c_type12800(const u32 *r, u32 *eax)
+{ actor_type_12800(r[R_EAX]); *eax = 0u; }
+static void m_c3c_t02_zero(const u32 *r, u32 *eax)   { c3c_t02_core(r, C3C_T02_ZERO); *eax = 0u; }
+static void m_c3c_t02_clear(const u32 *r, u32 *eax)  { c3c_t02_core(r, C3C_T02_CLEAR); *eax = 0u; }
+static void m_c3c_t02_at(const u32 *r, u32 *eax)     { c3c_t02_core(r, C3C_T02_AT); *eax = 0u; }
+static void m_c3c_t02_unlink(const u32 *r, u32 *eax) { c3c_t02_core(r, C3C_T02_UNLINK); *eax = 0u; }
+static void m_c3c_t02_node(const u32 *r, u32 *eax)   { c3c_t02_core(r, C3C_T02_NODE); *eax = 0u; }
+
+/* 0x18460's mutants. The row has no return-value observers (mask 0), so every mutant is caught by
+ * the recorded 0x18428 call (its presence or its arguments). */
+#define C3C_46_NULL   0x01u  /* the slot-0 null check is dropped */
+#define C3C_46_NULL2  0x02u  /* the slot-1 null check is dropped */
+#define C3C_46_LO     0x04u  /* lo reads the hi word */
+#define C3C_46_HI     0x08u  /* hi reads the lo word */
+#define C3C_46_RANGE  0x10u  /* every character is range-tested */
+#define C3C_46_E1     0x20u  /* the 0x1E1 special id is not excluded */
+#define C3C_46_CALL   0x40u  /* the 0x18428 call is skipped */
+#define C3C_46_ID     0x80u  /* the sprite id is not masked with 0x7FFF */
+static void c3c_46_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    u32 slot, ch, idx, lo = 0u, hi = 0u, id;
+    int ranged = 0;
+    u8 a0, a1;
+    if (!(mut & C3C_46_NULL) && DSD(0x001077A8u) == 0u) return;
+    if (!(mut & C3C_46_NULL2) && DSD(0x001077ACu) == 0u) return;
+    slot = DSD(0x001077A8u + side * 4u);
+    ch = (u32)DSB(slot + 0x7Au);
+    if ((mut & C3C_46_RANGE) || ch <= 6u) {
+        lo = (u32)DSW(((mut & C3C_46_LO) ? 0x000A1776u : 0x000A1774u) + ch * 14u);
+        hi = (u32)DSW(((mut & C3C_46_HI) ? 0x000A1774u : 0x000A1776u) + ch * 14u);
+        ranged = 1;
+    }
+    a0 = DSB(DSD(DSD(0x001077A8u)) + 0x56u);
+    a1 = DSB(DSD(DSD(0x001077ACu)) + 0x56u);
+    idx = (u32)DSW(DSD(slot) + 0x56u);
+    id = (u32)DSW(DSD(0x001014ECu) + idx * 0x20u) & ((mut & C3C_46_ID) ? 0xFFFFu : 0x7FFFu);
+    if (ranged && id >= lo && id < hi) return;
+    if (id == 0x1E1u && !(mut & C3C_46_E1)) return;
+    if (mut & C3C_46_CALL) return;
+    fighter_18428(side, id, (u32)a0, (u32)a1);
+}
+static void b_c3c_18428(const u32 *r, u32 *eax)
+{ fighter_18428(r[R_EAX], r[R_EDX], r[R_EBX], r[R_ECX]); *eax = 0u; }
+static void b_c3c_18460(const u32 *r, u32 *eax) { *eax = (u32)fighter_18460(r[R_EAX]); }
+static void m_c3c_46_null(const u32 *r, u32 *eax)   { c3c_46_core(r, C3C_46_NULL); *eax = 0u; }
+static void m_c3c_46_null2(const u32 *r, u32 *eax)  { c3c_46_core(r, C3C_46_NULL2); *eax = 0u; }
+static void m_c3c_46_lo(const u32 *r, u32 *eax)     { c3c_46_core(r, C3C_46_LO); *eax = 0u; }
+static void m_c3c_46_hi(const u32 *r, u32 *eax)     { c3c_46_core(r, C3C_46_HI); *eax = 0u; }
+static void m_c3c_46_range(const u32 *r, u32 *eax)  { c3c_46_core(r, C3C_46_RANGE); *eax = 0u; }
+static void m_c3c_46_e1(const u32 *r, u32 *eax)     { c3c_46_core(r, C3C_46_E1); *eax = 0u; }
+static void m_c3c_46_call(const u32 *r, u32 *eax)   { c3c_46_core(r, C3C_46_CALL); *eax = 0u; }
+static void m_c3c_46_id(const u32 *r, u32 *eax)     { c3c_46_core(r, C3C_46_ID); *eax = 0u; }
+
+/* 0x367DC's mutants. */
+#define C3C_D_MODE   0x01u  /* the mode test is dropped (the second call always runs) */
+#define C3C_D_STREAM 0x02u  /* the first stream comes from 0xC8A18 */
+#define C3C_D_CH     0x04u  /* the first stream indexes by rec+0x51 */
+#define C3C_D_CLR4C 0x08u   /* rec+0x4C is not cleared */
+#define C3C_D_CLR53 0x10u   /* slot+0x53 is not cleared */
+#define C3C_D_FF     0x20u   /* the 0xFF stores become 0x0F */
+#define C3C_D_MASK   0x40u   /* the slot+0x40 mask is 0xFFFFFF00 */
+#define C3C_D_CALL   0x80u   /* the first call's stream is off by one */
+static void c3c_367dc_core(const u32 *r, u32 mut)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u32 ch = (mut & C3C_D_CH) ? (u32)DSB(rec + 0x51u) : (u32)DSB(slot + 0x7Au);
+    u32 stream = DSD(((mut & C3C_D_STREAM) ? 0x000C8A18u : 0x000C8950u) + ch * 4u);
+    if (mut & C3C_D_CALL) stream += 1u;
+    actors_anim_begin(rec, stream, 0x40400000u);
+    if (!(mut & C3C_D_CLR4C)) DSB(rec + 0x4Cu) = 0;
+    DSB(rec + 0x4Du) = 0x1Eu;
+    DSB(slot + 0x52u) = 0;
+    if (!(mut & C3C_D_CLR53)) DSB(slot + 0x53u) = 0;
+    DSB(slot + 0x5Fu) = (mut & C3C_D_FF) ? 0x0Fu : 0xFFu;
+    DSB(slot + 0x55u) = (mut & C3C_D_FF) ? 0x0Fu : 0xFFu;
+    DSB(slot + 0x54u) = 0;
+    DSD(slot + 0x40u) &= (mut & C3C_D_MASK) ? 0xFFFFFF00u : 0xCCF7BFFFu;
+    if ((mut & C3C_D_MODE) || (DSW(0x00104B00u) != 3u && DSW(0x00104B00u) != 0x22u
+                              && DSW(0x00104B00u) != 0x24u)) {
+        actors_anim_begin(DSD(0x00102900u + (u32)DSB(rec + 0x51u) * 4u), 0x000E906Au, 0x3F800000u);
+    }
+}
+static void b_c3c_367dc(const u32 *r, u32 *eax)
+{ fighter_state_367dc(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void m_c3c_d_mode(const u32 *r, u32 *eax)   { c3c_367dc_core(r, C3C_D_MODE); *eax = 0u; }
+static void m_c3c_d_stream(const u32 *r, u32 *eax) { c3c_367dc_core(r, C3C_D_STREAM); *eax = 0u; }
+static void m_c3c_d_ch(const u32 *r, u32 *eax)     { c3c_367dc_core(r, C3C_D_CH); *eax = 0u; }
+static void m_c3c_d_clr4c(const u32 *r, u32 *eax)  { c3c_367dc_core(r, C3C_D_CLR4C); *eax = 0u; }
+static void m_c3c_d_clr53(const u32 *r, u32 *eax)  { c3c_367dc_core(r, C3C_D_CLR53); *eax = 0u; }
+static void m_c3c_d_ff(const u32 *r, u32 *eax)     { c3c_367dc_core(r, C3C_D_FF); *eax = 0u; }
+static void m_c3c_d_mask(const u32 *r, u32 *eax)   { c3c_367dc_core(r, C3C_D_MASK); *eax = 0u; }
+static void m_c3c_d_call(const u32 *r, u32 *eax)   { c3c_367dc_core(r, C3C_D_CALL); *eax = 0u; }
+
+/* 0x1CA40's mutants. */
+#define C3C_MP_ZERO 0x01u  /* always 0 */
+#define C3C_MP_ONE  0x02u  /* always 1 */
+#define C3C_MP_GATE 0x04u  /* the zero-handle gate is dropped */
+#define C3C_MP_EQ3  0x08u  /* the playing status is 3, not 4 */
+#define C3C_MP_CALL 0x10u  /* the status call is skipped */
+#define C3C_MP_EAX  0x20u  /* the compare is on AL, not EAX */
+static u32 c3c_mp_core(u32 mut)
+{
+    if (mut & C3C_MP_ZERO) return 0u;
+    if (mut & C3C_MP_ONE) return 1u;
+    if (DSD(0x001028C0u) == 0u && !(mut & C3C_MP_GATE)) return 0u;
+    if (mut & C3C_MP_CALL) return 0u;
+    {
+        s32 st = AIL_sequence_status(NULL);
+        if (mut & C3C_MP_EAX) return ((u8)st == 4u) ? 1u : 0u;
+        return (st == ((mut & C3C_MP_EQ3) ? 3 : 4)) ? 1u : 0u;
+    }
+}
+static void b_c3c_music_playing(const u32 *r, u32 *eax) { (void)r; *eax = snd_music_playing(); }
+static void m_c3c_mp_zero(const u32 *r, u32 *eax) { (void)r; *eax = c3c_mp_core(C3C_MP_ZERO); }
+static void m_c3c_mp_one(const u32 *r, u32 *eax)  { (void)r; *eax = c3c_mp_core(C3C_MP_ONE); }
+static void m_c3c_mp_gate(const u32 *r, u32 *eax) { (void)r; *eax = c3c_mp_core(C3C_MP_GATE); }
+static void m_c3c_mp_eq3(const u32 *r, u32 *eax)  { (void)r; *eax = c3c_mp_core(C3C_MP_EQ3); }
+static void m_c3c_mp_call(const u32 *r, u32 *eax) { (void)r; *eax = c3c_mp_core(C3C_MP_CALL); }
+static void m_c3c_mp_eax(const u32 *r, u32 *eax)  { (void)r; *eax = c3c_mp_core(C3C_MP_EAX); }
+
+/* 0x33714/0x33734's mutants (the append with the record's flag byte). */
+#define C3C_PR_FLAG  0x01u  /* the flag byte is wrong */
+#define C3C_PR_ORDER 0x02u  /* first and count are swapped */
+#define C3C_PR_ADV   0x04u  /* the head is not advanced */
+#define C3C_PR_WIDE  0x08u  /* the flag is a dword store */
+#define C3C_PR_SWAP  0x10u  /* EAX and EDX are swapped */
+static void c3c_pr_impl(const u32 *r, u32 *eax, u32 flag, u32 mut)
+{
+    u32 head = DSD(0x00107798u);
+    u32 first = (mut & C3C_PR_SWAP) ? r[R_EDX] : r[R_EAX];
+    u32 count = (mut & C3C_PR_SWAP) ? r[R_EAX] : r[R_EDX];
+    if (mut & C3C_PR_FLAG) flag ^= 1u;
+    DSD(head + 0u) = r[R_EBX];
+    DSD(head + 4u) = (mut & C3C_PR_ORDER) ? count : first;
+    DSD(head + 8u) = (mut & C3C_PR_ORDER) ? first : count;
+    if (mut & C3C_PR_WIDE) DSD(head + 12u) = flag & 0xFFFFFFFFu;
+    else DSB(head + 12u) = (u8)flag;
+    if (!(mut & C3C_PR_ADV)) DSD(0x00107798u) = head + 16u;
+    *eax = 0u;
+}
+static void b_c3c_prf(const u32 *r, u32 *eax)
+{ palette_record_flagged(r[R_EBX], r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void b_c3c_pr(const u32 *r, u32 *eax)
+{ palette_record(r[R_EBX], r[R_EAX], r[R_EDX], 0u); *eax = 0u; }
+static void m_c3c_prf_flag(const u32 *r, u32 *eax)  { c3c_pr_impl(r, eax, 1u, C3C_PR_FLAG); }
+static void m_c3c_prf_order(const u32 *r, u32 *eax) { c3c_pr_impl(r, eax, 1u, C3C_PR_ORDER); }
+static void m_c3c_prf_adv(const u32 *r, u32 *eax)   { c3c_pr_impl(r, eax, 1u, C3C_PR_ADV); }
+static void m_c3c_prf_wide(const u32 *r, u32 *eax)  { c3c_pr_impl(r, eax, 1u, C3C_PR_WIDE); }
+static void m_c3c_prf_swap(const u32 *r, u32 *eax)  { c3c_pr_impl(r, eax, 1u, C3C_PR_SWAP); }
+static void m_c3c_pr_flag(const u32 *r, u32 *eax)   { c3c_pr_impl(r, eax, 0u, C3C_PR_FLAG); }
+static void m_c3c_pr_order(const u32 *r, u32 *eax)  { c3c_pr_impl(r, eax, 0u, C3C_PR_ORDER); }
+static void m_c3c_pr_adv(const u32 *r, u32 *eax)    { c3c_pr_impl(r, eax, 0u, C3C_PR_ADV); }
+static void m_c3c_pr_wide(const u32 *r, u32 *eax)   { c3c_pr_impl(r, eax, 0u, C3C_PR_WIDE); }
+static void m_c3c_pr_swap(const u32 *r, u32 *eax)   { c3c_pr_impl(r, eax, 0u, C3C_PR_SWAP); }
+
+/* 0x2BD44's mutants. */
+#define C3C_BD_SRC   0x01u  /* the copied byte comes from param_1 */
+#define C3C_BD_CLR24 0x02u  /* param_2+0x24 is not cleared */
+#define C3C_BD_A2A   0x04u  /* the +0x2A mask is 0xEF */
+#define C3C_BD_O29   0x08u  /* param_2+0x29 bit 3 is not set */
+#define C3C_BD_A28   0x10u  /* the +0x28 mask is 0xC7 */
+#define C3C_BD_ID    0x20u  /* the +8 id is a word store */
+#define C3C_BD_IDX   0x40u  /* the actor index scales by 0x10 */
+static void c3c_2bd44_core(const u32 *r, u32 mut)
+{
+    u32 p1 = r[R_EAX], p2 = r[R_EDX];
+    u32 actor;
+    DSB(p1 + 0x4Bu) = DSB(((mut & C3C_BD_SRC) ? p1 : p2) + 0x4Bu);
+    if (!(mut & C3C_BD_CLR24)) DSD(p2 + 0x24u) = 0u;
+    DSB(p2 + 0x2Au) &= (mut & C3C_BD_A2A) ? 0xEFu : 0xF7u;
+    if (!(mut & C3C_BD_O29)) DSB(p2 + 0x29u) |= 8u;
+    DSB(p2 + 0x28u) &= (mut & C3C_BD_A28) ? 0xC7u : 0xEBu;
+    if (mut & C3C_BD_ID) DSW(p2 + 0x08u) = 0x01E1u;
+    else DSD(p2 + 0x08u) = 0x1E1u;
+    actor = DSD(0x001014ECu) + (u32)DSW(p2 + 0x56u) * ((mut & C3C_BD_IDX) ? 0x10u : 0x20u);
+    DSW(actor) = (u16)anim_next_sprite_id(p2, actor);
+    actor_set_dead(p2);
+}
+static void b_c3c_2bd44(const u32 *r, u32 *eax)
+{ fighter_2bd44(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void m_c3c_bd_src(const u32 *r, u32 *eax)   { c3c_2bd44_core(r, C3C_BD_SRC); *eax = 0u; }
+static void m_c3c_bd_clr24(const u32 *r, u32 *eax) { c3c_2bd44_core(r, C3C_BD_CLR24); *eax = 0u; }
+static void m_c3c_bd_a2a(const u32 *r, u32 *eax)   { c3c_2bd44_core(r, C3C_BD_A2A); *eax = 0u; }
+static void m_c3c_bd_o29(const u32 *r, u32 *eax)   { c3c_2bd44_core(r, C3C_BD_O29); *eax = 0u; }
+static void m_c3c_bd_a28(const u32 *r, u32 *eax)   { c3c_2bd44_core(r, C3C_BD_A28); *eax = 0u; }
+static void m_c3c_bd_id(const u32 *r, u32 *eax)    { c3c_2bd44_core(r, C3C_BD_ID); *eax = 0u; }
+static void m_c3c_bd_idx(const u32 *r, u32 *eax)   { c3c_2bd44_core(r, C3C_BD_IDX); *eax = 0u; }
+
+/* 0x3B6C4's mutants. The 0x1A570 calls go through the port's exported predicate, so the seams
+ * record them exactly as the port function's own calls do. */
+#define C3C_B6_S53  0x01u  /* the +0x53 compare is 9 */
+#define C3C_B6_S54  0x02u  /* the +0x54 compare is 3 */
+#define C3C_B6_O54  0x04u  /* the other +0x54 == 2 gate is dropped */
+#define C3C_B6_CMP  0x08u  /* the two predicates must differ instead of agree */
+#define C3C_B6_RET  0x10u  /* the predicate always returns 0 */
+#define C3C_B6_SIDE 0x20u  /* both predicates read side 0 */
+static u32 c3c_3b6c4_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    u32 s2 = 0x001077B0u + side * 0x94u;
+    u32 s3 = 0x001077B0u + (1u - side) * 0x94u;
+    if (DSB(s2 + 0x53u) != ((mut & C3C_B6_S53) ? 9u : 8u)) return 0u;
+    if (DSB(s2 + 0x54u) != ((mut & C3C_B6_S54) ? 3u : 2u)) return 0u;
+    if (!(mut & C3C_B6_O54) && DSB(s3 + 0x54u) == 2u) return 0u;
+    {
+        u32 a = (mut & C3C_B6_SIDE) ? 0u : side;
+        u32 b = (mut & C3C_B6_SIDE) ? 0u : 1u - side;
+        int ca = fighter_actor_bit15_clear(a);
+        int cb = fighter_actor_bit15_clear(b);
+        if ((mut & C3C_B6_CMP) ? (ca == cb) : (ca != cb)) return 0u;
+    }
+    return (mut & C3C_B6_RET) ? 0u : 1u;
+}
+static void b_c3c_3b6c4(const u32 *r, u32 *eax) { *eax = (u32)fighter_3b6c4(r[R_EAX]); }
+static void m_c3c_b6_s53(const u32 *r, u32 *eax)  { *eax = c3c_3b6c4_core(r, C3C_B6_S53); }
+static void m_c3c_b6_s54(const u32 *r, u32 *eax)  { *eax = c3c_3b6c4_core(r, C3C_B6_S54); }
+static void m_c3c_b6_o54(const u32 *r, u32 *eax)  { *eax = c3c_3b6c4_core(r, C3C_B6_O54); }
+static void m_c3c_b6_cmp(const u32 *r, u32 *eax)  { *eax = c3c_3b6c4_core(r, C3C_B6_CMP); }
+static void m_c3c_b6_ret(const u32 *r, u32 *eax)  { *eax = c3c_3b6c4_core(r, C3C_B6_RET); }
+static void m_c3c_b6_side(const u32 *r, u32 *eax) { *eax = c3c_3b6c4_core(r, C3C_B6_SIDE); }
+
+/* 0x3C520's mutants. */
+#define C3C_C5_SIDE   0x01u  /* the anchors use side 0 */
+#define C3C_C5_XY     0x02u  /* the slot's x and y are swapped */
+#define C3C_C5_BEGIN  0x04u  /* the animation start is skipped */
+#define C3C_C5_BITS   0x08u  /* the frame bits are 3.0 */
+#define C3C_C5_ANCH   0x10u  /* the anchor pair is skipped */
+#define C3C_C5_STREAM 0x20u  /* the stream is off by one */
+static void c3c_3c520_core(const u32 *r, u32 mut)
+{
+    u32 rec = r[R_EAX], stream = r[R_EDX], bits = r[R_S0];
+    u32 ctx[6];
+    u32 slot, x, y, side;
+    hit_anim_ctx(ctx, rec);
+    side = (mut & C3C_C5_SIDE) ? 0u : ctx[0];
+    slot = 0x001077B0u + side * 0x94u;
+    x = DSD(slot + ((mut & C3C_C5_XY) ? 0x30u : 0x2Cu));
+    y = DSD(slot + ((mut & C3C_C5_XY) ? 0x2Cu : 0x30u));
+    if (!(mut & C3C_C5_BEGIN))
+        actors_anim_begin(rec, (mut & C3C_C5_STREAM) ? stream + 1u : stream,
+                          (mut & C3C_C5_BITS) ? 0x40400000u : bits);
+    if (!(mut & C3C_C5_ANCH)) {
+        hit_anchor_x(side, x);
+        hit_anchor_y(side, y);
+    }
+}
+static void b_c3c_3c520(const u32 *r, u32 *eax)
+{ hit_anim_start_c(r[R_EAX], r[R_EDX], r[R_S0]); *eax = 0u; }
+static void m_c3c_c5_side(const u32 *r, u32 *eax)   { c3c_3c520_core(r, C3C_C5_SIDE); *eax = 0u; }
+static void m_c3c_c5_xy(const u32 *r, u32 *eax)     { c3c_3c520_core(r, C3C_C5_XY); *eax = 0u; }
+static void m_c3c_c5_begin(const u32 *r, u32 *eax)  { c3c_3c520_core(r, C3C_C5_BEGIN); *eax = 0u; }
+static void m_c3c_c5_bits(const u32 *r, u32 *eax)   { c3c_3c520_core(r, C3C_C5_BITS); *eax = 0u; }
+static void m_c3c_c5_anch(const u32 *r, u32 *eax)   { c3c_3c520_core(r, C3C_C5_ANCH); *eax = 0u; }
+static void m_c3c_c5_stream(const u32 *r, u32 *eax) { c3c_3c520_core(r, C3C_C5_STREAM); *eax = 0u; }
+
+/* 0x1A734's mutants. */
+#define C3C_K_C61   0x01u  /* the +0x61 seed is 0x0B */
+#define C3C_K_CLAMP 0x02u  /* the clamp is skipped */
+#define C3C_K_B62   0x04u  /* the +0x62 gate is dropped */
+#define C3C_K_U     0x08u  /* the +0x60 compare is unsigned */
+#define C3C_K_ARM   0x10u  /* the bit tests are swapped */
+#define C3C_K_S54   0x20u  /* the first arm stores 1 */
+#define C3C_K_CALL  0x40u  /* the 0x3C480 call is skipped */
+#define C3C_K_TAB   0x80u  /* the two stream tables are swapped */
+static void c3c_1a734_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    u32 slot = 0x001077B0u + side * 0x94u;
+    u32 rec = DSD(slot);
+    DSB(slot + 0x61u) = (mut & C3C_K_C61) ? 0x0Bu : 0x0Cu;
+    if (!(mut & C3C_K_CLAMP)) {
+        int over = (mut & C3C_K_U)
+            ? (u32)DSB(slot + 0x61u) > (u32)DSB(slot + 0x60u)
+            : (s32)(s8)DSB(slot + 0x61u) > (s32)(s8)DSB(slot + 0x60u);
+        if (over && ((mut & C3C_K_B62) || DSB(slot + 0x62u) != 0u))
+            DSB(slot + 0x61u) = DSB(slot + 0x60u);
+    }
+    if ((DSB(slot + 0x43u) & ((mut & C3C_K_ARM) ? 0x10u : 0x20u)) != 0u) {
+        DSB(slot + 0x54u) = (mut & C3C_K_S54) ? 1u : 0u;
+        if (!(mut & C3C_K_CALL))
+            hit_anim_start_a(rec, DSD(((mut & C3C_K_TAB) ? 0x000C8F90u : 0x000C8F40u)
+                                      + (u32)DSB(slot + 0x7Au) * 4u), 0x40400000u);
+    } else if ((DSB(slot + 0x43u) & 0x10u) != 0u) {
+        DSB(slot + 0x54u) = 1u;
+        if (!(mut & C3C_K_CALL))
+            hit_anim_start_a(rec, DSD(((mut & C3C_K_TAB) ? 0x000C8F40u : 0x000C8F90u)
+                                      + (u32)DSB(slot + 0x7Au) * 4u), 0x40400000u);
+    }
+}
+static void b_c3c_1a734(const u32 *r, u32 *eax) { fighter_block_hit(r[R_EAX]); *eax = 0u; }
+static void m_c3c_k_c61(const u32 *r, u32 *eax)   { c3c_1a734_core(r, C3C_K_C61); *eax = 0u; }
+static void m_c3c_k_clamp(const u32 *r, u32 *eax) { c3c_1a734_core(r, C3C_K_CLAMP); *eax = 0u; }
+static void m_c3c_k_b62(const u32 *r, u32 *eax)   { c3c_1a734_core(r, C3C_K_B62); *eax = 0u; }
+static void m_c3c_k_u(const u32 *r, u32 *eax)     { c3c_1a734_core(r, C3C_K_U); *eax = 0u; }
+static void m_c3c_k_arm(const u32 *r, u32 *eax)   { c3c_1a734_core(r, C3C_K_ARM); *eax = 0u; }
+static void m_c3c_k_s54(const u32 *r, u32 *eax)   { c3c_1a734_core(r, C3C_K_S54); *eax = 0u; }
+static void m_c3c_k_call(const u32 *r, u32 *eax)  { c3c_1a734_core(r, C3C_K_CALL); *eax = 0u; }
+static void m_c3c_k_tab(const u32 *r, u32 *eax)   { c3c_1a734_core(r, C3C_K_TAB); *eax = 0u; }
+
+/* 0x39738's mutants. */
+#define C3C_97_CHAN 0x01u  /* the side slot+0x8C gate is dropped */
+#define C3C_97_K    0x02u  /* k comes from 0x107D1E */
+#define C3C_97_TAB  0x04u  /* the tables are cross-read */
+#define C3C_97_K2   0x08u  /* the k2 compare is > 0x45 */
+#define C3C_97_DIV  0x10u  /* b/4 is a shift */
+#define C3C_97_CUT  0x20u  /* the other slot's 15% cut is skipped */
+#define C3C_97_DIFF 0x40u  /* the difficulty multiplier is skipped */
+#define C3C_97_IDX  0x80u  /* the difficulty index uses 1-side */
+static s32 c3c_39738_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    s32 b = (s32)r[R_EDX];
+    u32 s = 0x001077B0u + side * 0x94u;
+    u32 o = 0x001077B0u + (1u - side) * 0x94u;
+    s32 k = (mut & C3C_97_K) ? ((s32)DSD(0x00107D1Eu + side * 2u) >> 16)
+                             : ((s32)DSD(0x00107D2Au + side * 2u) >> 16);
+    s32 v;
+    if ((mut & C3C_97_CHAN) || DSW(s + 0x8Cu) != 0u) {
+        v = (k > 0xB) ? (s32)DSD((mut & C3C_97_TAB) ? (0x000BEC58u + (u32)k * 4u)
+                                                    : 0x000BEC84u)
+                      : (s32)DSD(0x000BEC58u + (u32)k * 4u);
+        return (s32)((u32)v * (u32)b) / 100;    /* 0x39789 jmp 0x3982C */
+    }
+    v = (s32)((u32)DSD(0x000BEC28u + (u32)k * 4u) * (u32)b) / 100;
+    if (k > 0xB) {
+        s32 k2 = (s32)DSD(0x00107D1Eu + side * 2u) >> 16;
+        if (k2 > ((mut & C3C_97_K2) ? 0x45 : 0x46))
+            v = (mut & C3C_97_DIV) ? (s32)((u32)b >> 2) : (b / 4);
+        else
+            v = (s32)((u32)DSD((mut & C3C_97_TAB) ? (0x000BEC28u + (u32)k * 4u)
+                                                  : 0x000BEC54u) * (u32)b) / 100;
+    }
+    if (!(mut & C3C_97_CUT) && DSW(o + 0x8Cu) != 0u)
+        v -= (s32)((u32)v * 15u) / 100;
+    if (!(mut & C3C_97_DIFF) && DSB(s + 0x63u) != 0u) {
+        u32 d = DSD(0x001082C8u + ((mut & C3C_97_IDX) ? (1u - side) : side) * 4u);
+        v += (s32)((u32)DSD(0x000BEBD8u + d * 4u) * (u32)v) / 100;
+    }
+    return v;
+}
+static void b_c3c_39738(const u32 *r, u32 *eax) { *eax = (u32)fighter_39738(r[R_EAX], (s32)r[R_EDX]); }
+static void m_c3c_97_chan(const u32 *r, u32 *eax) { *eax = (u32)c3c_39738_core(r, C3C_97_CHAN); }
+static void m_c3c_97_k(const u32 *r, u32 *eax)    { *eax = (u32)c3c_39738_core(r, C3C_97_K); }
+static void m_c3c_97_tab(const u32 *r, u32 *eax)  { *eax = (u32)c3c_39738_core(r, C3C_97_TAB); }
+static void m_c3c_97_k2(const u32 *r, u32 *eax)   { *eax = (u32)c3c_39738_core(r, C3C_97_K2); }
+static void m_c3c_97_div(const u32 *r, u32 *eax)  { *eax = (u32)c3c_39738_core(r, C3C_97_DIV); }
+static void m_c3c_97_cut(const u32 *r, u32 *eax)  { *eax = (u32)c3c_39738_core(r, C3C_97_CUT); }
+static void m_c3c_97_diff(const u32 *r, u32 *eax) { *eax = (u32)c3c_39738_core(r, C3C_97_DIFF); }
+static void m_c3c_97_idx(const u32 *r, u32 *eax)  { *eax = (u32)c3c_39738_core(r, C3C_97_IDX); }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -11317,6 +11825,118 @@ static const binding_t k_bindings[] = {
     { "fighter_anim_triple@o0",            m_3afc4_o0,     0x00000000u },
     { "fighter_anim_triple@o1",            m_3afc4_o1,     0x00000000u },
     { "fighter_anim_triple@o2",            m_3afc4_o2,     0x00000000u },
+    { "render_pop_free",                   b_c3c_pop,      0xFFFFFFFFu },
+    { "render_pop_free@head",              m_c3c_pop_head, 0xFFFFFFFFu },
+    { "render_pop_free@ret",               m_c3c_pop_ret,  0xFFFFFFFFu },
+    { "render_pop_free@next",              m_c3c_pop_next, 0xFFFFFFFFu },
+    { "render_splice",                     b_c3c_splice,   0x00000000u },
+    { "render_splice@lt",                  m_c3c_sp_lt,    0x00000000u },
+    { "render_splice@next",                m_c3c_sp_next,  0x00000000u },
+    { "render_splice@head",                m_c3c_sp_head,  0x00000000u },
+    { "render_splice@prev",                m_c3c_sp_prev,  0x00000000u },
+    { "render_splice@first",               m_c3c_sp_first, 0x00000000u },
+    { "render_find",                       b_c3c_find,     0xFFFFFFFFu },
+    { "render_find@cmp",                   m_c3c_find_cmp, 0xFFFFFFFFu },
+    { "render_find@skip",                  m_c3c_find_skip, 0xFFFFFFFFu },
+    { "render_find@last",                  m_c3c_find_last, 0xFFFFFFFFu },
+    { "render_find@null",                  m_c3c_find_null, 0xFFFFFFFFu },
+    { "render_unlink",                     b_c3c_unlink,   0x00000000u },
+    { "render_unlink@head",                m_c3c_unl_head, 0x00000000u },
+    { "render_unlink@free",                m_c3c_unl_free, 0x00000000u },
+    { "render_unlink@chain",               m_c3c_unl_chain, 0x00000000u },
+    { "render_unlink@prev",                m_c3c_unl_prev, 0x00000000u },
+    { "render_unlink@noop",                m_c3c_unl_noop, 0x00000000u },
+    { "actor_type_127C0",                  b_c3c_type127c0, 0x000000FFu },
+    { "actor_type_127C0@empty",            m_c3c_t01_empty, 0x000000FFu },
+    { "actor_type_127C0@ret",              m_c3c_t01_ret,  0x000000FFu },
+    { "actor_type_127C0@link",             m_c3c_t01_link, 0x000000FFu },
+    { "actor_type_127C0@rec",              m_c3c_t01_rec,  0x000000FFu },
+    { "actor_type_127C0@at",               m_c3c_t01_at,   0x000000FFu },
+    { "actor_type_127C0@unlink",           m_c3c_t01_unlink, 0x000000FFu },
+    { "actor_type_12800",                  b_c3c_type12800, 0x00000000u },
+    { "actor_type_12800@zero",             m_c3c_t02_zero, 0x00000000u },
+    { "actor_type_12800@clear",            m_c3c_t02_clear, 0x00000000u },
+    { "actor_type_12800@at",               m_c3c_t02_at,   0x00000000u },
+    { "actor_type_12800@unlink",           m_c3c_t02_unlink, 0x00000000u },
+    { "actor_type_12800@node",             m_c3c_t02_node, 0x00000000u },
+    { "fighter_18428",                     b_c3c_18428,    0x00000000u },
+    { "fighter_18460",                     b_c3c_18460,    0x00000000u },
+    { "fighter_18460@null",                m_c3c_46_null,  0x00000000u },
+    { "fighter_18460@null2",               m_c3c_46_null2, 0x00000000u },
+    { "fighter_18460@lo",                  m_c3c_46_lo,    0x00000000u },
+    { "fighter_18460@hi",                  m_c3c_46_hi,    0x00000000u },
+    { "fighter_18460@range",               m_c3c_46_range, 0x00000000u },
+    { "fighter_18460@e1",                  m_c3c_46_e1,    0x00000000u },
+    { "fighter_18460@call",                m_c3c_46_call,  0x00000000u },
+    { "fighter_18460@id",                  m_c3c_46_id,    0x00000000u },
+    { "fighter_state_367dc",               b_c3c_367dc,    0x00000000u },
+    { "fighter_state_367dc@mode",          m_c3c_d_mode,   0x00000000u },
+    { "fighter_state_367dc@stream",        m_c3c_d_stream, 0x00000000u },
+    { "fighter_state_367dc@ch",            m_c3c_d_ch,     0x00000000u },
+    { "fighter_state_367dc@clr4c",         m_c3c_d_clr4c,  0x00000000u },
+    { "fighter_state_367dc@clr53",         m_c3c_d_clr53,  0x00000000u },
+    { "fighter_state_367dc@ff",            m_c3c_d_ff,     0x00000000u },
+    { "fighter_state_367dc@mask",          m_c3c_d_mask,   0x00000000u },
+    { "fighter_state_367dc@call",          m_c3c_d_call,   0x00000000u },
+    { "snd_music_playing",                 b_c3c_music_playing, 0x000000FFu },
+    { "snd_music_playing@zero",            m_c3c_mp_zero,  0x000000FFu },
+    { "snd_music_playing@one",             m_c3c_mp_one,   0x000000FFu },
+    { "snd_music_playing@gate",            m_c3c_mp_gate,  0x000000FFu },
+    { "snd_music_playing@eq3",             m_c3c_mp_eq3,   0x000000FFu },
+    { "snd_music_playing@call",            m_c3c_mp_call,  0x000000FFu },
+    { "snd_music_playing@eax",             m_c3c_mp_eax,   0x000000FFu },
+    { "palette_record_flagged",            b_c3c_prf,      0x00000000u },
+    { "palette_record_flagged@flag",       m_c3c_prf_flag, 0x00000000u },
+    { "palette_record_flagged@order",      m_c3c_prf_order, 0x00000000u },
+    { "palette_record_flagged@adv",        m_c3c_prf_adv,  0x00000000u },
+    { "palette_record_flagged@wide",       m_c3c_prf_wide, 0x00000000u },
+    { "palette_record_flagged@swap",       m_c3c_prf_swap, 0x00000000u },
+    { "palette_record",                    b_c3c_pr,       0x00000000u },
+    { "palette_record@flag",               m_c3c_pr_flag,  0x00000000u },
+    { "palette_record@order",              m_c3c_pr_order, 0x00000000u },
+    { "palette_record@adv",                m_c3c_pr_adv,   0x00000000u },
+    { "palette_record@wide",               m_c3c_pr_wide,  0x00000000u },
+    { "palette_record@swap",               m_c3c_pr_swap,  0x00000000u },
+    { "fighter_2bd44",                     b_c3c_2bd44,    0x00000000u },
+    { "fighter_2bd44@src",                 m_c3c_bd_src,   0x00000000u },
+    { "fighter_2bd44@clr24",               m_c3c_bd_clr24, 0x00000000u },
+    { "fighter_2bd44@a2a",                 m_c3c_bd_a2a,   0x00000000u },
+    { "fighter_2bd44@o29",                 m_c3c_bd_o29,   0x00000000u },
+    { "fighter_2bd44@a28",                 m_c3c_bd_a28,   0x00000000u },
+    { "fighter_2bd44@id",                  m_c3c_bd_id,    0x00000000u },
+    { "fighter_2bd44@idx",                 m_c3c_bd_idx,   0x00000000u },
+    { "fighter_3b6c4",                     b_c3c_3b6c4,    0x000000FFu },
+    { "fighter_3b6c4@s53",                 m_c3c_b6_s53,   0x000000FFu },
+    { "fighter_3b6c4@s54",                 m_c3c_b6_s54,   0x000000FFu },
+    { "fighter_3b6c4@o54",                 m_c3c_b6_o54,   0x000000FFu },
+    { "fighter_3b6c4@cmp",                 m_c3c_b6_cmp,   0x000000FFu },
+    { "fighter_3b6c4@ret",                 m_c3c_b6_ret,   0x000000FFu },
+    { "fighter_3b6c4@side",                m_c3c_b6_side,  0x000000FFu },
+    { "hit_anim_start_c",                  b_c3c_3c520,    0x00000000u },
+    { "hit_anim_start_c@side",             m_c3c_c5_side,  0x00000000u },
+    { "hit_anim_start_c@xy",               m_c3c_c5_xy,    0x00000000u },
+    { "hit_anim_start_c@begin",            m_c3c_c5_begin, 0x00000000u },
+    { "hit_anim_start_c@bits",             m_c3c_c5_bits,  0x00000000u },
+    { "hit_anim_start_c@anchor",           m_c3c_c5_anch,  0x00000000u },
+    { "hit_anim_start_c@stream",           m_c3c_c5_stream, 0x00000000u },
+    { "fighter_block_hit",                 b_c3c_1a734,    0x00000000u },
+    { "fighter_block_hit@c61",             m_c3c_k_c61,    0x00000000u },
+    { "fighter_block_hit@clamp",           m_c3c_k_clamp,  0x00000000u },
+    { "fighter_block_hit@b62",             m_c3c_k_b62,    0x00000000u },
+    { "fighter_block_hit@u",               m_c3c_k_u,      0x00000000u },
+    { "fighter_block_hit@arm",             m_c3c_k_arm,    0x00000000u },
+    { "fighter_block_hit@s54",             m_c3c_k_s54,    0x00000000u },
+    { "fighter_block_hit@call",            m_c3c_k_call,   0x00000000u },
+    { "fighter_block_hit@tab",             m_c3c_k_tab,    0x00000000u },
+    { "fighter_39738",                     b_c3c_39738,    0xFFFFFFFFu },
+    { "fighter_39738@chan",                m_c3c_97_chan,  0xFFFFFFFFu },
+    { "fighter_39738@k",                   m_c3c_97_k,     0xFFFFFFFFu },
+    { "fighter_39738@tab",                 m_c3c_97_tab,   0xFFFFFFFFu },
+    { "fighter_39738@k2",                  m_c3c_97_k2,    0xFFFFFFFFu },
+    { "fighter_39738@div",                 m_c3c_97_div,   0xFFFFFFFFu },
+    { "fighter_39738@cut",                 m_c3c_97_cut,   0xFFFFFFFFu },
+    { "fighter_39738@diff",                m_c3c_97_diff,  0xFFFFFFFFu },
+    { "fighter_39738@idx",                 m_c3c_97_idx,   0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

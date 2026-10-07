@@ -76,6 +76,17 @@ void actor_set_dead(u32 rec);
  * the node's +0x10 child, then return the node to 0x1083C4. Exported for
  * fight_4e67c's direct call (0x4E8EE, not a stored callback). */
 void actor_type_49444(u32 rec);
+/* 0x249B0 / 0x249D0 (C3c). The actors.c list splice helpers, exported for the
+ * type-callback rows' mutant cores; the seams record their calls. */
+void list_insert_after(u32 at, u32 rec);
+void list_unlink(u32 rec);
+/* 0x127C0 (C3c). The type-0x01 cb1: pop the 0xF0A78 head and insert it at the
+ * 0xF0AE0 head, returning 0; 0xFF when the list is empty. Exported for its own
+ * row's binding. */
+u8 actor_type_127C0(u32 rec, u32 slot);
+/* 0x12800 (C3c). The type-0x01 cb2: return the rec+0x14 node to 0xF0A78.
+ * Exported for its own row's binding. */
+void actor_type_12800(u32 rec);
 /* 0x10D70. Clear rec+0x28 bit 2 and write `word` to the record's pset +0, its
  * bit 15 taken from rec+0x28 bit 14. The wipe steps 0x4F9E4/0x4FA88 call it
  * (record §43-B), and so do 0x1D2F0/0x1D464 (fight.c, record §48-U) and

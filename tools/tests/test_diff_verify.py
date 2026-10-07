@@ -516,6 +516,9 @@ P45_KINDS = {"fighter_18bc8@mutant": {"byte"},
 P45_OUTSIDE = {name: [(0x10C1B0, 4)] for name in (
     "fighter_3427c", "fighter_34308", "fighter_3438c", "fighter_34418",
     "fighter_344a4", "fighter_34530", "fighter_345bc")}
+# C3c: fighter_18428 h3's null slot makes the raw read 0x007A (outside the image: the emulator's
+# zero page); the port reads mem[0x7A] the same way.
+P45_OUTSIDE["fighter_18428"] = [(122, 1)]
 # Track P batch C1 (record 2026-10-03-reverse-c1): the callee rows with their EAX masks, and what
 # alone catches each of their mutants.
 C1_MASKS = {"fighter_3c148": 0, "fighter_3c16c": 0, "fighter_39a10": 0, "fighter_36d98": 0,
@@ -1171,6 +1174,125 @@ C3B_KINDS = {
     "snd_samples_stop_all@skip2": {"call #1", "call #1 memory", "call #10", "call #11", "call #2", "call #2 memory", "call #3 memory", "call #4", "call #5", "call #6", "call #7", "call #8", "call #9"},
 }
 
+# Track P batch C3c (record 2026-10-05-reverse-c3c): the frontier rows, part 3, with their
+# EAX masks and what alone catches each of their mutants.
+C3C_MASKS = {
+            "render_pop_free": 0xffffffff,
+            "render_splice": 0x0,
+            "render_find": 0xffffffff,
+            "render_unlink": 0x0,
+            "actor_type_127C0": 0xff,
+            "actor_type_12800": 0x0,
+            "fighter_18428": 0x0,
+            "fighter_18460": 0x0,
+            "fighter_state_367dc": 0x0,
+            "snd_music_playing": 0xff,
+            "palette_record_flagged": 0x0,
+            "palette_record": 0x0,
+            "fighter_2bd44": 0x0,
+            "fighter_3b6c4": 0xff,
+            "hit_anim_start_c": 0x0,
+            "fighter_block_hit": 0x0,
+            "fighter_39738": 0xffffffff,
+}
+C3C_KINDS = {
+    "actor_type_127C0@at": {'call #1', 'byte'},
+    "actor_type_127C0@empty": {'call #1', 'byte', 'call #0', 'eax'},
+    "actor_type_127C0@link": {'byte', 'call #1 memory'},
+    "actor_type_127C0@rec": {'byte', 'call #1 memory'},
+    "actor_type_127C0@ret": {'eax'},
+    "actor_type_127C0@unlink": {'call #1', 'call #0 memory', 'byte', 'call #0'},
+    "actor_type_12800@at": {'call #1', 'byte'},
+    "actor_type_12800@clear": {'byte'},
+    "actor_type_12800@node": {'call #1', 'byte', 'call #0'},
+    "actor_type_12800@unlink": {'call #1', 'byte', 'call #0'},
+    "actor_type_12800@zero": {'call #1', 'call #0'},
+    "fighter_18460@call": {'call #0'},
+    "fighter_18460@e1": {'call #0'},
+    "fighter_18460@hi": {'call #0'},
+    "fighter_18460@id": {'call #0'},
+    "fighter_18460@lo": {'call #0'},
+    "fighter_18460@null": {'call #0'},
+    "fighter_18460@null2": {'call #0'},
+    "fighter_18460@range": {'call #0'},
+    "fighter_2bd44@a28": {'call #0 memory', 'byte', 'call #1 memory'},
+    "fighter_2bd44@a2a": {'call #0 memory', 'byte', 'call #1 memory'},
+    "fighter_2bd44@clr24": {'call #0 memory', 'byte', 'call #1 memory'},
+    "fighter_2bd44@id": {'call #0 memory', 'byte', 'call #1 memory'},
+    "fighter_2bd44@idx": {'byte', 'call #1 memory', 'call #0'},
+    "fighter_2bd44@o29": {'call #0 memory', 'byte', 'call #1 memory'},
+    "fighter_2bd44@src": {'call #0 memory', 'byte', 'call #1 memory'},
+    "fighter_39738@chan": {'eax'},
+    "fighter_39738@cut": {'eax'},
+    "fighter_39738@diff": {'eax'},
+    "fighter_39738@div": {'eax'},
+    "fighter_39738@idx": {'eax'},
+    "fighter_39738@k": {'eax'},
+    "fighter_39738@k2": {'eax'},
+    "fighter_39738@tab": {'eax'},
+    "fighter_3b6c4@cmp": {'eax'},
+    "fighter_3b6c4@o54": {'call #1', 'call #0', 'eax'},
+    "fighter_3b6c4@ret": {'eax'},
+    "fighter_3b6c4@s53": {'call #1', 'call #0', 'eax'},
+    "fighter_3b6c4@s54": {'call #1', 'call #0', 'eax'},
+    "fighter_3b6c4@side": {'call #1', 'call #0', 'eax'},
+    "fighter_block_hit@arm": {'call #1', 'call #0 memory', 'byte', 'call #0'},
+    "fighter_block_hit@b62": {'call #1', 'call #0 memory', 'byte', 'call #0'},
+    "fighter_block_hit@c61": {'call #1', 'call #0 memory', 'byte', 'call #0'},
+    "fighter_block_hit@call": {'call #1', 'call #0'},
+    "fighter_block_hit@clamp": {'call #1', 'call #0 memory', 'byte', 'call #0'},
+    "fighter_block_hit@s54": {'call #1', 'call #0 memory', 'byte', 'call #0'},
+    "fighter_block_hit@tab": {'call #1', 'call #0 memory', 'call #0'},
+    "fighter_block_hit@u": {'call #1', 'call #0 memory', 'call #0'},
+    "fighter_state_367dc@call": {'call #0'},
+    "fighter_state_367dc@ch": {'call #0'},
+    "fighter_state_367dc@clr4c": {'byte', 'call #1 memory'},
+    "fighter_state_367dc@clr53": {'byte', 'call #1 memory'},
+    "fighter_state_367dc@ff": {'byte', 'call #1 memory'},
+    "fighter_state_367dc@mask": {'byte', 'call #1 memory'},
+    "fighter_state_367dc@mode": {'call #1'},
+    "fighter_state_367dc@stream": {'call #0'},
+    "hit_anim_start_c@anchor": {'call #1', 'call #2'},
+    "hit_anim_start_c@begin": {'call #1', 'call #2', 'call #0'},
+    "hit_anim_start_c@bits": {'call #0'},
+    "hit_anim_start_c@side": {'call #1', 'call #2'},
+    "hit_anim_start_c@stream": {'call #0'},
+    "hit_anim_start_c@xy": {'call #1', 'call #2'},
+    "palette_record@adv": {'byte'},
+    "palette_record@flag": {'byte'},
+    "palette_record@order": {'byte'},
+    "palette_record@swap": {'byte'},
+    "palette_record@wide": {'byte'},
+    "palette_record_flagged@adv": {'byte'},
+    "palette_record_flagged@flag": {'byte'},
+    "palette_record_flagged@order": {'byte'},
+    "palette_record_flagged@swap": {'byte'},
+    "palette_record_flagged@wide": {'byte'},
+    "render_find@cmp": {'eax'},
+    "render_find@last": {'eax'},
+    "render_find@null": {'eax'},
+    "render_find@skip": {'eax'},
+    "render_pop_free@head": {'byte'},
+    "render_pop_free@next": {'byte'},
+    "render_pop_free@ret": {'eax'},
+    "render_splice@first": {'byte'},
+    "render_splice@head": {'byte'},
+    "render_splice@lt": {'byte'},
+    "render_splice@next": {'byte'},
+    "render_splice@prev": {'byte'},
+    "render_unlink@chain": {'byte'},
+    "render_unlink@free": {'byte'},
+    "render_unlink@head": {'byte'},
+    "render_unlink@noop": {'byte'},
+    "render_unlink@prev": {'byte'},
+    "snd_music_playing@call": {'eax', 'call #0'},
+    "snd_music_playing@eax": {'eax'},
+    "snd_music_playing@eq3": {'eax'},
+    "snd_music_playing@gate": {'eax', 'call #0'},
+    "snd_music_playing@one": {'eax', 'call #0'},
+    "snd_music_playing@zero": {'eax', 'call #0'},
+}
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -1195,7 +1317,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
-                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
+                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(C3C_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
@@ -1211,7 +1333,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
             + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)
-            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(C3B_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
+            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(C3B_KINDS) + list(C3C_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -1276,7 +1398,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
-            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS, **C3_MASKS, **C3B_MASKS,
+            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS, **C3_MASKS, **C3B_MASKS, **C3C_MASKS,
             **P7_MASKS, **P8_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
@@ -1979,7 +2101,7 @@ class RealFunctionTests(unittest.TestCase):
                                  0x3C520: ("edx",), 0x3C59C: ("edx",), 0x41310: (), 0x46460: ("edx",),
                                  0x468D8: (), 0x48170: (), 0x49444: ("edi", "ebp"), 0x4F434: (), 0x5D7DC: (), 0x5DC0F: ("ebx", "ecx", "edx"),
                                  0x5DC8B: ("ebx", "ecx", "edx"), 0x5DD03: (),
-                                 0x5DEAF: ("ebx", "ecx", "edx")})
+                                 0x5DEAF: ("ebx", "ecx", "edx"), 0x5DEED: ()})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
 
@@ -2074,9 +2196,116 @@ class RealFunctionTests(unittest.TestCase):
                          "--self-check"])
         self.assertEqual(rc, 0)
         # the closed-row count is over the rows that have callees (185), the 49 without are counted apart
-        self.assertIn("diff-verify: 234/234 functions VERIFIED; 779/779 mutants detected; 1 named gaps; "
-                      "165/185 rows with callees closed (49 have none).", out.getvalue())
+        self.assertIn("diff-verify: 251/251 functions VERIFIED; 874/874 mutants detected; 1 named gaps; "
+                      "178/195 rows with callees closed (56 have none).", out.getvalue())
 
+
+    def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
+        # track P batch C3c (record 2026-10-05-reverse-c3c): what alone catches each mutant
+        for name, want in C3C_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        # the exact case set that alone catches each mutant (measured on the prototype)
+        for name, ids in (
+
+        ("actor_type_127C0@at", ['t1', 't2']),
+        ("actor_type_127C0@empty", ['t0']),
+        ("actor_type_127C0@link", ['t1', 't2']),
+        ("actor_type_127C0@rec", ['t1', 't2']),
+        ("actor_type_127C0@ret", ['t0']),
+        ("actor_type_127C0@unlink", ['t1', 't2']),
+        ("actor_type_12800@at", ['t1', 't2']),
+        ("actor_type_12800@clear", ['t1', 't2']),
+        ("actor_type_12800@node", ['t1', 't2']),
+        ("actor_type_12800@unlink", ['t1', 't2']),
+        ("actor_type_12800@zero", ['t0']),
+        ("fighter_18460@call", ['h3', 'h4', 'h6', 'h8', 'h9', 'ha']),
+        ("fighter_18460@e1", ['h5']),
+        ("fighter_18460@hi", ['h2', 'h7']),
+        ("fighter_18460@id", ['ha']),
+        ("fighter_18460@lo", ['h2', 'h7']),
+        ("fighter_18460@null", ['h0']),
+        ("fighter_18460@null2", ['h1']),
+        ("fighter_18460@range", ['h4']),
+        ("fighter_2bd44@a28", ['m0']),
+        ("fighter_2bd44@a2a", ['m0', 'm1']),
+        ("fighter_2bd44@clr24", ['m0']),
+        ("fighter_2bd44@id", ['m0', 'm1']),
+        ("fighter_2bd44@idx", ['m0']),
+        ("fighter_2bd44@o29", ['m0']),
+        ("fighter_2bd44@src", ['m0', 'm1']),
+        ("fighter_39738@chan", ['r3', 'r4', 'r5', 'r7']),
+        ("fighter_39738@cut", ['r7']),
+        ("fighter_39738@diff", ['r7']),
+        ("fighter_39738@div", ['r5']),
+        ("fighter_39738@idx", ['r7']),
+        ("fighter_39738@k", ['r0', 'r1', 'r2', 'r3', 'r7']),
+        ("fighter_39738@k2", ['r4']),
+        ("fighter_39738@tab", ['r2', 'r4', 'r6']),
+        ("fighter_3b6c4@cmp", ['b0', 'b4', 'b5']),
+        ("fighter_3b6c4@o54", ['b3']),
+        ("fighter_3b6c4@ret", ['b0', 'b5']),
+        ("fighter_3b6c4@s53", ['b0', 'b4', 'b5']),
+        ("fighter_3b6c4@s54", ['b0', 'b2', 'b4', 'b5']),
+        ("fighter_3b6c4@side", ['b0', 'b4', 'b5']),
+        ("fighter_block_hit@arm", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
+        ("fighter_block_hit@b62", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
+        ("fighter_block_hit@c61", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
+        ("fighter_block_hit@call", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
+        ("fighter_block_hit@clamp", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
+        ("fighter_block_hit@s54", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
+        ("fighter_block_hit@tab", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
+        ("fighter_block_hit@u", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
+        ("fighter_state_367dc@call", ['d0', 'd1', 'd2', 'd3', 'd4']),
+        ("fighter_state_367dc@ch", ['d0', 'd1', 'd2', 'd3', 'd4']),
+        ("fighter_state_367dc@clr4c", ['d0', 'd1', 'd2', 'd3', 'd4']),
+        ("fighter_state_367dc@clr53", ['d0', 'd1', 'd2', 'd3', 'd4']),
+        ("fighter_state_367dc@ff", ['d0', 'd1', 'd2', 'd3', 'd4']),
+        ("fighter_state_367dc@mask", ['d0', 'd1', 'd2', 'd3', 'd4']),
+        ("fighter_state_367dc@mode", ['d0', 'd1', 'd2']),
+        ("fighter_state_367dc@stream", ['d0', 'd1', 'd2', 'd3', 'd4']),
+        ("hit_anim_start_c@anchor", ['c0', 'c1', 'c2']),
+        ("hit_anim_start_c@begin", ['c0', 'c1', 'c2']),
+        ("hit_anim_start_c@bits", ['c0', 'c2']),
+        ("hit_anim_start_c@side", ['c1']),
+        ("hit_anim_start_c@stream", ['c0', 'c1', 'c2']),
+        ("hit_anim_start_c@xy", ['c0', 'c1', 'c2']),
+        ("palette_record@adv", ['w0', 'w1']),
+        ("palette_record@flag", ['w0', 'w1']),
+        ("palette_record@order", ['w0', 'w1']),
+        ("palette_record@swap", ['w0', 'w1']),
+        ("palette_record@wide", ['w0', 'w1']),
+        ("palette_record_flagged@adv", ['v0', 'v1']),
+        ("palette_record_flagged@flag", ['v0', 'v1']),
+        ("palette_record_flagged@order", ['v0', 'v1']),
+        ("palette_record_flagged@swap", ['v0', 'v1']),
+        ("palette_record_flagged@wide", ['v0', 'v1']),
+        ("render_find@cmp", ['f0', 'f1']),
+        ("render_find@last", ['f0', 'f1']),
+        ("render_find@null", ['f0', 'f1']),
+        ("render_find@skip", ['f1', 'f2']),
+        ("render_pop_free@head", ['p0', 'p1', 'p2']),
+        ("render_pop_free@next", ['p0', 'p2']),
+        ("render_pop_free@ret", ['p0', 'p1', 'p2']),
+        ("render_splice@first", ['s2', 's3', 's4', 's5']),
+        ("render_splice@head", ['s0', 's1']),
+        ("render_splice@lt", ['s4', 's5']),
+        ("render_splice@next", ['s0', 's1', 's2', 's3', 's4', 's5']),
+        ("render_splice@prev", ['s2', 's3', 's4', 's5']),
+        ("render_unlink@chain", ['u0', 'u1', 'u2']),
+        ("render_unlink@free", ['u0', 'u1', 'u2']),
+        ("render_unlink@head", ['u0', 'u2']),
+        ("render_unlink@noop", ['u0', 'u1', 'u2']),
+        ("render_unlink@prev", ['u0', 'u2']),
+        ("snd_music_playing@call", ['m1', 'm2', 'm3']),
+        ("snd_music_playing@eax", ['m3']),
+        ("snd_music_playing@eq3", ['m1', 'm2']),
+        ("snd_music_playing@gate", ['m0']),
+        ("snd_music_playing@one", ['m0', 'm1', 'm2', 'm3']),
+        ("snd_music_playing@zero", ['m1', 'm2', 'm3']),
+        ):
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
 # ---- E3: the call list, named gaps, the callee column (record 2026-10-01-reverse-e3 §E3.4, §E3.8) --
 

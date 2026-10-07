@@ -494,9 +494,12 @@ void AIL_set_sequence_volume(HSEQUENCE sequence, s32 volume, u32 fade_ms)
     seq_fade_sequence_volume(volume, (s32)fade_ms);
 }
 
-/* 0x5deed — spec audio.md "AIL surface" (row 31). */
+/* 0x5deed — spec audio.md "AIL surface" (row 31). The seam (C3c) records
+ * snd_music_playing's call; the handle is a host pointer, so the stub takes no
+ * mem[] argument (record C3b §C3b.5's AIL treatment). */
 s32 AIL_sequence_status(HSEQUENCE sequence)
 {
+    PR_SEAM_RET0(0x5DEEDu);
     if (sequence == NULL || !sequence->used)
         return 0;
     return seq_playing() ? 4 : 2;
