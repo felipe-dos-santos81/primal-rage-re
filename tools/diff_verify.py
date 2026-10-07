@@ -5483,23 +5483,31 @@ C3C_SPECS = [
     ], calls=(E.Call(0x5DEED, (), mode="stub"),),
        eax_mask=0xFF, mutants=("@zero", "@one", "@gate", "@eq3", "@call", "@eax")),
     # 0x33714 palette_record_flagged (EBX = ptr, EAX = first, EDX = count): append the record
-    # { ptr; first; count; flag = 1 } at the head [0x107798] and advance it by 0x10.
+    # { ptr; first; count; flag = 1 } at the head [0x107798] and advance it by 0x10. The pre-state
+    # seeds every record byte with a distinct nonzero value, and v1's head carries the +0x10 bump
+    # into its byte 1 (0x1075F8 -> 0x107608), so every store changes all four of its bytes (the
+    # C3c sweep: the flag byte's own pre was 0, so the flag store at 0x3371F/0x3373F changed
+    # nothing and a dropped flag store passed both palette rows).
     Spec("palette_record_flagged", 0x33714, [
         Case("v0", {"eax": 0x00001234, "edx": 0x00005678, "ebx": 0x00009ABC},
-             {0x00107798: le32(0x00107498), 0x001074A5: b"\xA5", 0x001074A6: b"\xA6",
-              0x001074A7: b"\xA7", 0x001074A8: le32(0x11111111)}),
+             {0x00107798: le32(0x00107498),
+              0x00107498: b"\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9A\x9B\x9C\x9D\x9E\x9F\xA0",
+              0x001074A8: le32(0x11111111)}),
         Case("v1", {"eax": 0xDEADBEEF, "edx": 0x00000002, "ebx": 0x00107798},
-             {0x00107798: le32(0x00107538), 0x00107545: b"\xB5", 0x00107546: b"\xB6",
-              0x00107547: b"\xB7", 0x00107548: le32(0x44444444)}),
+             {0x00107798: le32(0x001075F8),
+              0x001075F8: b"\xB1\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xBB\xBC\xBD\xBE\xBF\xC0",
+              0x00107608: le32(0x44444444)}),
     ], eax_mask=0, mutants=("@flag", "@order", "@adv", "@wide", "@swap")),
     # 0x33734 palette_record (EBX = ptr, EAX = first, EDX = count): the same append with flag 0.
     Spec("palette_record", 0x33734, [
         Case("w0", {"eax": 0x00001234, "edx": 0x00005678, "ebx": 0x00009ABC},
-             {0x00107798: le32(0x00107498), 0x001074A5: b"\xA5", 0x001074A6: b"\xA6",
-              0x001074A7: b"\xA7", 0x001074A8: le32(0x11111111)}),
+             {0x00107798: le32(0x00107498),
+              0x00107498: b"\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9A\x9B\x9C\x9D\x9E\x9F\xA0",
+              0x001074A8: le32(0x11111111)}),
         Case("w1", {"eax": 0xDEADBEEF, "edx": 0x00000002, "ebx": 0x00107798},
-             {0x00107798: le32(0x00107538), 0x00107545: b"\xB5", 0x00107546: b"\xB6",
-              0x00107547: b"\xB7", 0x00107548: le32(0x44444444)}),
+             {0x00107798: le32(0x001075F8),
+              0x001075F8: b"\xB1\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xBB\xBC\xBD\xBE\xBF\xC0",
+              0x00107608: le32(0x44444444)}),
     ], eax_mask=0, mutants=("@flag", "@order", "@adv", "@wide", "@swap")),
     # 0x2BD44 fighter_2bd44: EAX = param_1 (the fighter record), EDX = param_2 (the 0x1014F4 row).
     # Copy param_2's +0x4B into param_1, re-arm param_2 (clear +0x24, +0x2A bit 3, +0x28 bits 2/4;
