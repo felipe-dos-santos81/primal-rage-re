@@ -52,7 +52,7 @@ static u16 node_layer(u32 node)
  * so equal layers keep their relative order (stable). This is the one place the
  * ordering rule lives: render_list_insert and render_list_sort both go through
  * it. `node` must be detached -- its next field is overwritten here. */
-static void render_splice(u32 *headp, u32 node)
+void render_splice(u32 *headp, u32 node)
 {
     u16 layer = node_layer(node);
     u32 prev = 0;
@@ -78,35 +78,58 @@ void render_list_init(void)
     render_count = 0;
 }
 
-int render_list_insert(u32 pset_off)
+/* 0x1C390 — record §50-D. Pops the free-list head: returns it and advances the
+ * head to its next. The raw dereferences the new head unconditionally; the
+ * port's render_list_insert keeps its pool-exhausted guard at the call site. */
+u32 render_pop_free(void)
 {
     u32 node = DSD(RENDER_FREE_HEAD);
-    if (node == 0) return 0;                    /* PORT: pool exhausted guard */
     DSD(RENDER_FREE_HEAD) = DSD(node);
+    return node;
+}
+
+int render_list_insert(u32 pset_off)
+{
+    u32 node = render_pop_free();               /* 0x1C390 */
+    if (node == 0) return 0;                    /* PORT: pool exhausted guard */
     DSD(node + 4) = pset_off;
     render_splice((u32 *)(mem + RENDER_LIST_HEAD), node);
     render_count++;
     return 1;
 }
 
-/* 0x1C458 — record §50-D. Searches the list for the node whose +4 is
- * `pset_off`; the port runs 0x1C3D0 in the same body. */
-/* 0x1C3D0 — record §50-D. The unlink half (EAX = the list head, EDX = the
- * node): splices the node out (0x1C3DD 0x1C3DF) and pushes it on the free list
- * DS_0010275C (0x1C3E1 0x1C3E7 0x1C3EC). */
-void render_list_remove(u32 pset_off)
+/* 0x1C458 — record §50-D. Finds the node whose +4 is `pset_off` in the list
+ * rooted at *headp; 0 when it is not there. */
+u32 render_find(u32 *headp, u32 pset_off)
+{
+    u32 cur = *headp;
+    while (cur != 0 && DSD(cur + 4) != pset_off) cur = DSD(cur);
+    return cur;
+}
+
+/* 0x1C3D0 — record §50-D. Unlinks `node` from the list rooted at *headp (a
+ * no-op when it is not there) and pushes it on the free-list head. */
+void render_unlink(u32 *headp, u32 node)
 {
     u32 prev = 0;
-    u32 cur  = DSD(RENDER_LIST_HEAD);
-    while (cur != 0 && DSD(cur + 4) != pset_off) {
+    u32 cur  = *headp;
+    while (cur != 0 && cur != node) {
         prev = cur;
         cur = DSD(cur);
     }
-    if (cur == 0) return;                       /* PORT: 0x1C458 returns null */
-    if (prev == 0) DSD(RENDER_LIST_HEAD) = DSD(cur);
+    if (cur == 0) return;
+    if (prev == 0) *headp = DSD(cur);
     else DSD(prev) = DSD(cur);
     DSD(cur) = DSD(RENDER_FREE_HEAD);
     DSD(RENDER_FREE_HEAD) = cur;
+}
+
+void render_list_remove(u32 pset_off)
+{
+    u32 *headp = (u32 *)(mem + RENDER_LIST_HEAD);
+    u32 node = render_find(headp, pset_off);    /* 0x1C458 */
+    if (node == 0) return;
+    render_unlink(headp, node);                 /* 0x1C3D0 */
     render_count--;
 }
 

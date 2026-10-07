@@ -30,8 +30,9 @@
 
 /* ---- the two splice lists (0x249B0/0x249C0/0x249D0) -------------------- */
 
-/* 0x249B0: insert rec immediately after `at`. */
-static void list_insert_after(u32 at, u32 rec)
+/* 0x249B0: insert rec immediately after `at`. Exported for the C3c type-callback
+ * rows' mutant cores (the seams stay the only observers). */
+void list_insert_after(u32 at, u32 rec)
 {
     PR_SEAM(0x249B0u, at, rec);
     u32 next = DSD(at);
@@ -51,8 +52,8 @@ static void list_insert_before(u32 at, u32 rec)
     DSD(prev) = rec;
 }
 
-/* 0x249D0: unlink rec. */
-static void list_unlink(u32 rec)
+/* 0x249D0: unlink rec. Exported for the C3c type-callback rows' mutant cores. */
+void list_unlink(u32 rec)
 {
     PR_SEAM(0x249D0u, rec);
     u32 prev = DSD(rec + 4);
@@ -133,14 +134,14 @@ static void anim_code_150AC(u32 rec, u32 arg);
 typedef u8 (*actor_type_cb1)(u32 rec, u32 slot);
 typedef void (*actor_type_cb2)(u32 rec);
 
-static u8   actor_type_127C0(u32 rec, u32 slot);
+u8   actor_type_127C0(u32 rec, u32 slot);
 static u8   actor_type_198E8(u32 rec, u32 slot);
 static u8   actor_type_28F64(u32 rec, u32 slot);
 static u8   actor_type_2901C(u32 rec, u32 slot);
 static u8   actor_type_48CD8(u32 rec, u32 slot);
 static u8   actor_type_412F0(u32 rec, u32 slot);
 static u8   actor_type_412FC(u32 rec, u32 slot);
-static void actor_type_12800(u32 rec);
+void actor_type_12800(u32 rec);
 static void actor_type_19928(u32 rec);
 static void debris_update(void);
 static void actor_type_290D0(u32 rec);
@@ -3088,8 +3089,9 @@ void actor_pset_word_set(u32 rec, u32 word)
  * is empty, else they link the popped node at rec+0x14 and re-insert it at
  * the destination's head (0x249B0 insert-after; 0x249C0 is insert-before). */
 
-/* 0x127C0. Type 0x01: pop the 0xF0A78 head, insert it at the 0xF0AE0 head. */
-static u8 actor_type_127C0(u32 rec, u32 slot)
+/* 0x127C0. Type 0x01: pop the 0xF0A78 head, insert it at the 0xF0AE0 head.
+ * Exported for its own C3c row's binding. */
+u8 actor_type_127C0(u32 rec, u32 slot)
 {
     (void)slot;
     u32 rec2 = list_head(DS_000F0A78);
@@ -3101,8 +3103,9 @@ static u8 actor_type_127C0(u32 rec, u32 slot)
     return 0;
 }
 
-/* 0x12800. Type 0x01's teardown: return the rec+0x14 node to 0xF0A78. */
-static void actor_type_12800(u32 rec)
+/* 0x12800. Type 0x01's teardown: return the rec+0x14 node to 0xF0A78.
+ * Exported for its own C3c row's binding. */
+void actor_type_12800(u32 rec)
 {
     u32 rec2 = DSD(rec + 0x14);
     if (rec2 == 0) return;

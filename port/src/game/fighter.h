@@ -49,6 +49,12 @@ int fighter_actor_bit15_clear(u32 side);
  * the side's sprite id lies in the character's range or is 0x1E1. */
 int fighter_18460(u32 side);
 
+/* 0x18428 (C3c). The effect-free per-character dispatch 0x18460 ends in: read
+ * the side's slot character and, at most, jump through the seven-entry table
+ * 0x1840C whose entries are all the RET at 0x18408. Seamed and exported for
+ * its own row; the raw writes nothing. */
+void fighter_18428(u32 side, u32 sprite, u32 a0, u32 a1);
+
 /* 0x3C570. Test-and-set bit `bit` of DS_00107EE0: 1 when it was already set,
  * else set it and return 0. The camera page tails test bits 0..3 and
  * fighter_pass_b bit 5; fight_slot_clear (0x3C5CC) clears the word per frame. */
