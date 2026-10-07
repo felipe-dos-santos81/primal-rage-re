@@ -99,7 +99,7 @@ clobber; a stub's call is declared with those clobbers in `C3D_SPECS`):
 
 | function | address | change | conformance |
 |---|---|---|---|
-| `fighter_block_start` | `0x1A7CC` | gains `PR_SEAM`; declared in `fighter.h`? (already exported) | clobbers `esi`,`edi`,`ebp` |
+| `fighter_block_start` | `0x1A7CC` | gains `PR_SEAM`; declared in `fighter.h` (already exported) | clobbers `esi`,`edi`,`ebp` |
 | `actor_pset_point` | `0x2A690` | gains `PR_SEAM` | no clobbers |
 | `fighter_38bc8` | `0x38BC8` | gains `PR_SEAM`; loses `static` (mutant cores call it) | no clobbers |
 | `fighter_38bb0` | `0x38BB0` | loses `static`; declared in `fighter.h` | no clobbers |
@@ -365,13 +365,15 @@ Named gaps and limits:
 - **`pset_write`'s `0x2A9CE` is a named unhit block**: the child arm's layer is an 8-bit add
   (`0x2A9B5`/`0x2A9B8`), so the `> 0xff` clamp there cannot fire; the port's u16 arithmetic agrees
   on every reachable input.
-- **The `0x3AD98` correction's neutrality.** The function's only in-port callers (`fighter_reaction`
-  0x3B714 through the `0x3AD98` branch) are reached only when the command dispatch returns non-zero;
-  no driver path reaches it at this base, and Task 4's full `make verify` is the oracle/gp evidence.
+- **The `0x3AD98` correction's neutrality.** Every in-port call site of `fighter_3ad98` —
+  `fighter_think_side` 0x3B464, `fighter_reaction` 0x3B714, `fighter_3a2a0` 0x3A2A0,
+  `fighter_3d4dc` 0x3D4DC and `fighter_3d8ac` 0x3D8AC — sits behind the command dispatch's
+  non-zero gate; Task 4's full `make verify` (its oracle and gp lines unchanged) is the evidence
+  that no oracle/gp-visible behavior changes — not that no driver path reaches it.
 - **The allows stay open by design**: `0x1AB10`, `0x33A68`, `0x38BB0`, `0x3A280`, `0x3B038`,
-  `0x46534` (and from earlier batches `0x33950`/`0x339AC`/`0x33A10`) run on both sides but have no
-  own row, so the rows that call them cannot close until C3e rows them; the same for the stubbed
-  missing callees.
+  `0x46534` run on both sides but have no own row, so the rows that call them cannot close until
+  C3e rows them; the same for the stubbed missing callees. (The earlier batches' allow-mode
+  `0x33950`/`0x339AC`/`0x33A10` each have their own row, so their callers do close.)
 - **`fighter_379c4`'s callback path** uses the named non-row `0x5D812` (`xor eax,eax; ret`) through
   the port's `fn_resolve` NULL guard and the registered `0x45D14` (returns 1) as the two arms: both
   sides take the same branch (allow, unrecorded). `0x5D812` is already a named non-row.
@@ -433,10 +435,11 @@ same scans, with a callee "rowed" when the base table (plus this batch's ten) ha
 
 Their dependencies on this batch: `0x3AD98` (row VERIFIED here) stays open only on `0x392A0`;
 `fighter_36870` only on `0x39040`; `fighter_reaction` only on `0x3AAFC`; `fighter_39834` only on
-`0x392A0`. The 16 seams this batch added cover all but four of the three rows' missing callees:
-`0x38D90`, `0x38FEC`, `0x46190`, `0x36E78`, `0x3A0FC`, `0x36D20`, the four pose setters, `0x3BDB0`,
-`0x3BDDC`, `0x1A7CC`, `0x2A690`, `0x38BC8`, `0x37178` now have seams; `0x4F944`, `0x3A280`,
-`0x33A68`, `0x46534`, `0x3B038`, `0x1AB10`, `0x38BB0` are leaf/allow candidates with no seam. So
+`0x392A0`. The 16 seams this batch added (`0x38D90`, `0x38FEC`, `0x46190`, `0x36E78`, `0x3A0FC`,
+`0x36D20`, the four pose setters, `0x3BDB0`, `0x3BDDC`, `0x1A7CC`, `0x2A690`, `0x38BC8`, `0x37178`)
+cover 10 of the three rows' 13 missing callees; `0x4F944`, `0x3A280` and `0x33A68` are their only
+missing callees with no seam (`0x46534`, `0x3B038`, `0x1AB10`, `0x38BB0` are no-seam allows not
+named by these rows). So
 rowing the three in C3e is the same shape as this batch's work.
 
 **The tail the ten rows' callees name.** The 23 frontier addresses §C3c.7 lists (all ported, none
