@@ -6091,6 +6091,9 @@ def c3e_6e_case(side, s5b, live=True):
     p[0x001078FF] = b"\x02"
     p[0x001077B0 + 2 * 0x94] = le32(0x10A400)
     p[0x001077B0 + 2 * 0x94 + 0x7A] = b"\x03"
+    p[0x00104AE9] = b"\xFF"       # The +0xFE mask store (0x36F05, b1 only): the image pre is 0,
+                                  # so the bit-0 clear changed nothing (the Task 3 sweep);
+                                  # 0xFF leaves 0xFE, distinguishing the store from a drop.
     return p
 
 
