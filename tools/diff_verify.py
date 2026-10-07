@@ -5626,7 +5626,11 @@ def c3d_85_case(side, s54):
     p = c3d_slot_pokes()
     so = 0x001077B0 + side * 0x94
     rec = C3D_REC0 + side * 0x40
-    p[so + 0x0C] = le32(0x33333333) + le32(0x44444444) + le32(0x55555555) + le32(0x66666666)
+    p[so + 0x0C] = le32(0x33333333) + le32(0x44444444) + le32(0x55555555) + le32(0x66666666) \
+        + le32(0x77777777)                    # +0x0C..+0x1F: every dword the body zeroes is
+                                              # sentinelled; +0x14 is the surviving neighbour
+                                              # (the Task 3 sweep: +0x1C's pre was the image's 0,
+                                              # so the 0x38693 store changed nothing)
     p[so + 0x40] = le32(0xFFFFFFFF)
     sb = bytearray(0x17)                      # slot +0x52 .. +0x68
     sb[0x00] = 0x11; sb[0x01] = 0x22; sb[0x02] = s54; sb[0x03] = 0x55
@@ -5951,7 +5955,10 @@ C3D_SPECS = [
         Case("p0", {"eax": 0x10AF00, "edx": 0x10AA00}, c3d_28_case(0x0000)),
         Case("p1", {"eax": 0x10AF00, "edx": 0x10AA00}, c3d_28_case(0x0400)),
         Case("p2", {"eax": 0x10AF00, "edx": 0x10AA00}, c3d_28_case(0x2000)),
-        Case("p3", {"eax": 0x10AF00, "edx": 0x10AA00}, c3d_28_case(0x2400)),
+        Case("p3", {"eax": 0x10AF00, "edx": 0x10AA00}, c3d_28_case(0x2400, rec2c=0x1234)),
+        # ^ the child arm's `rec+0x2C = parent+0x2C` copy (0x2A8A3/0x2A8A7): the real parent
+        # (index 1, 0x10A868) is the image's zeros, so rec2c must be the sentinel or the
+        # store changes nothing (the Task 3 sweep)
         Case("p4", {"eax": 0x10AF00, "edx": 0x10AA00}, c3d_28_case(0x0100, rec2c=5, bdc=0x100, be0=0x200)),
         Case("p5", {"eax": 0x10AF00, "edx": 0x10AA00},
              c3d_28_case(0x0000, rec2c=5, rec40=0x1000, bdc=0x5000, be0=0x2000)),
