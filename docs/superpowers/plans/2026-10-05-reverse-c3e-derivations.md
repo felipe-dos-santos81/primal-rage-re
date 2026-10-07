@@ -573,6 +573,14 @@ values are `EXIT=0`, the 45 oracle lines equal to the k7-k12 baseline (`ORACLES-
 `cmp`-equal to `before-t2.wav` (`WAV-SAME`, the sha256 above) and every gp ratchet at its pin
 (Task 1's list verbatim; the planner's gp-oracle N 2064 / trace 8320).
 
+**The gp-u6-moves-b re-pin (the closure fix wave).** The closure kept Task 1's conservative
+gp-u6-moves-b pins (1005/2262/2949) although the measured first unexplained frame was 2139 and the
+trace and moves claims had 0 differing through 3247; the fix wave raises `GP_MOVES_MIN_FIRST`,
+`GP_MOVES_TRACE_MIN_FIRST` and `GP_MOVES_MOVES_MIN_FIRST` to 2139/3248/3248; the measured lines are
+`/tmp/pr_c3e_final.log` 335/338/340 and the fix wave's `make gp-moves-oracle` prints
+`ratchet N 2139 ok`, `ratchet N 3248 ok` and `ratchet N 3248 ok` (log
+`/tmp/c3e_fixwave_gp_moves.log`).
+
 **The C3f tail is the next batch**: §C3e.7's 32 addresses (the `0x38D90`/`0x38FEC` trees
 dependency-first, then the ten first-wave addresses and the three wave-2 leaves) with the measured
 sizes, dependency order and seam notes; nothing else is left open by C3e beyond the standing named

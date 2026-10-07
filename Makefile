@@ -506,19 +506,24 @@ gp-charsel-oracle: build ## Gameplay oracle: gp-u5-charsel frame and trace ratch
 # record §U6.11); the window start; the capture identity (a re-capture fails: re-measure, then
 # re-pin). Skips without data/k11-captures/gp-u6-moves-b, like gp-oracle.
 # Provenance (U6b Task 15, `make gp-report scenario=gp-u6-moves-b` on 9fa9ce1 plus the test
-# comment fold-ins; record §U6.22):
-#   MIN_FIRST: "frames: FIRST UNEXPLAINED capture 1005 (raw 4113): nearest port 759, rows 6..26,
-#     x 119..199 (27 px)" (the health-bar rows; consistent with the trace difference below).
-#   TRACE_MIN_FIRST: "trace: first difference f=8D6 (2262) in s1_5a: capture 16, port 2D", six
-#     frames after P1's 0x24 move at f=0x8D0; the replay has no unregistered callback left
-#     (distinct=4), so the cause is not a miss and is not isolated (a named gap, record §U6.22).
-#   MOVES_MIN_FIRST: "moves: first difference f=B85 (2949) in r1: capture 0, port 15".
+# comment fold-ins; record §U6.22; re-measured at the C3e closure, log /tmp/pr_c3e_final.log):
+#   MIN_FIRST: "frames: FIRST UNEXPLAINED capture 2139 (raw 5260): nearest port 1737, rows
+#     64..197, x 1..319 (4279 px)"; U6b Task 15 measured 1005 (the health-bar rows) and the pin
+#     had stayed there while the port's replay advanced the first unexplained frame.
+#   TRACE_MIN_FIRST: "trace: 0 differing through 3247; ratchet N 2262 ok (every item is
+#     explained: N = 3248 is the exact pin)"; U6b Task 15's first difference was f=8D6 (2262) in
+#     s1_5a: capture 16, port 2D, six frames after P1's 0x24 move at f=0x8D0, with no
+#     unregistered callback left (distinct=4), so the cause was not a miss (a named gap, record
+#     §U6.22); the replay now matches the field through the compared range's end.
+#   MOVES_MIN_FIRST: "moves: 0 differing through 3247; ratchet N 2949 ok (every item is
+#     explained: N = 3248 is the exact pin)"; U6b Task 15's first difference was f=B85 (2949) in
+#     r1: capture 0, port 15; the replay now matches those bytes through the compared range's end.
 #   MAX_START: "frames: window from capture 88 (raw 1741)".
 #   CAPTURE_SHA256/FRAMES: data/k11-captures/gp-u6-moves-b/poll.log and its frame_*.raw.gz count
 #     (U6b Task 6 re-run, re-checked on disk at Task 15).
-GP_MOVES_MIN_FIRST = 1005
-GP_MOVES_TRACE_MIN_FIRST = 2262
-GP_MOVES_MOVES_MIN_FIRST = 2949
+GP_MOVES_MIN_FIRST = 2139
+GP_MOVES_TRACE_MIN_FIRST = 3248
+GP_MOVES_MOVES_MIN_FIRST = 3248
 GP_MOVES_MAX_START = 88
 GP_MOVES_CAPTURE_SHA256 = dcf242da915c41f4b4e381babdabdc30cd04ce89ed83e25f5178601e4878b2e3
 GP_MOVES_CAPTURE_FRAMES = 2205
