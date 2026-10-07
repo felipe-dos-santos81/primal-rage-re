@@ -5975,6 +5975,518 @@ C3D_SPECS = [
        eax_mask=0, mutants=("@pool", "@x", "@lay", "@vis", "@ext", "@dead", "@call")),
 ]
 
+# ---- track P batch C3e (record 2026-10-05-reverse-c3e): the last type rows, part 5 -------------
+
+
+def c3e_90_case(side, rnd, q=0x20, divisor=2, s81=0x30, cc=8, cb=0x20, s7b=0x11, s63=1,
+                a=0x23, d1c=0x1111, r3=0x30):
+    """0x39040: the per-side gate word 0x107D2C (the high half of the raw's 0x107D2A dword read),
+    the 0x107D20 counter, the slot's +0x3C/+0x81/+0x7B/+0x63, the 0xC9520 divisor, the
+    0x1088CB/CC/BF/A8 band bytes, the 0x4F944 target globals and the 0x40-byte table at
+    0x107A80 + side*0x40."""
+    so = 0x001077B0 + side * 0x94
+    d = bytearray([0x7E]) * 0x1C                       # 0x107D18 .. 0x107D33
+    d[0x107D18 - 0x107D18 + side * 2:0x107D1A - 0x107D18 + side * 2] = le16(0x3333)
+    d[0x107D1C - 0x107D18 + side * 2:0x107D1E - 0x107D18 + side * 2] = le16(d1c)
+    d[0x107D20 - 0x107D18 + side * 2:0x107D22 - 0x107D18 + side * 2] = le16(a)
+    d[0x107D24 - 0x107D18 + side * 2:0x107D26 - 0x107D18 + side * 2] = le16(0x2222)
+    d[0x107D2A - 0x107D18 + side * 2:0x107D2C - 0x107D18 + side * 2] = le16(0x5A5A)
+    d[0x107D2C - 0x107D18 + side * 2:0x107D2E - 0x107D18 + side * 2] = le16(rnd)
+    b = bytearray([0x7E]) * (0x1088CE - 0x1088A8)      # 0x1088A8 .. 0x1088CD
+    b[0x1088A8 - 0x1088A8 + side] = r3
+    b[0x1088B6 - 0x1088A8 + side] = 0x77
+    b[0x1088BF - 0x1088A8] = 0x66
+    b[0x1088CB - 0x1088A8] = cb
+    b[0x1088CC - 0x1088A8] = cc
+    e = bytearray(10)                                  # 0x1088E8 .. 0x1088F1
+    e[0:2] = le16(0xAAAA)
+    e[2:4] = le16(0xBBBB)
+    e[8] = 0x99
+    return {
+        0x00107D18: bytes(d),
+        0x00107A80 + side * 0x40: bytes([0xEE]) * 0x40,
+        0x001088A8: bytes(b),
+        0x001088E8: bytes(e),
+        0x00104AE9: b"\x01",
+        0x000C9520: le32(divisor),
+        so + 0x3C: le32(q),
+        so + 0x7B: bytes([s7b]),
+        so + 0x63: bytes([s63]),
+        so + 0x81: bytes([s81]),
+    }
+
+
+def c3e_92_base(side, s53=0, s54=0, s41=0x10, s5a=0x10, s5d=0x10, o63=0):
+    """0x392A0: the side's slot +0x53/+0x54/+0x41/+0x5A/+0x5D, its record's +0x51, the other
+    slot's +0x63 and the mode-2 `so` record's +0x5A (DSD(0x1077A8 + other*4) is REC1 for side 0
+    and REC0 for side 1, both seeded by c3d_slot_pokes)."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    rec = C3D_REC0 + side * 0x40
+    p[so + 0x53] = bytes([s53])
+    p[so + 0x54] = bytes([s54])
+    p[so + 0x41] = bytes([s41])
+    p[so + 0x5A] = bytes([s5a])
+    p[so + 0x5D] = bytes([s5d])
+    p[rec + 0x51] = bytes([side])
+    p[0x001077B0 + (1 - side) * 0x94 + 0x63] = bytes([o63])
+    p[C3D_REC0 + (1 - side) * 0x40 + 0x5A] = b"\x22"
+    return p
+
+
+def c3e_aa_base(side, s5f=0, s53=0, s54=0, s52=0, s42=0, s90=0, o5f=0, o42=0, o6c=0,
+                ch0=0, ch1=0):
+    """0x3AAFC: the side's slot +0x5F/+0x53/+0x54/+0x52/+0x42/+0x90/+0x7A, the other slot's
+    +0x5F/+0x42/+0x6C and both slots' +0x7A character bytes (the anim-triple index)."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    oo = 0x001077B0 + (1 - side) * 0x94
+    rec = C3D_REC0 + side * 0x40
+    a = bytearray([0x7E]) * 0x3C                       # so+0x40 .. so+0x7B
+    a[0x42 - 0x40] = s42
+    a[0x52 - 0x40] = s52
+    a[0x53 - 0x40] = s53
+    a[0x54 - 0x40] = s54
+    a[0x5F - 0x40] = s5f
+    a[0x7A - 0x40] = ch1 if side else ch0
+    c = bytearray([0x7D]) * 0x3C                       # oo+0x40 .. oo+0x7B
+    c[0x42 - 0x40] = o42
+    c[0x5F - 0x40] = o5f
+    c[0x6C - 0x40:0x6E - 0x40] = le16(o6c)
+    c[0x7A - 0x40] = ch0 if side else ch1
+    p[rec + 0x51] = bytes([side])
+    p[so + 0x40] = bytes(a)
+    p[so + 0x90] = bytes([s90])
+    p[oo + 0x40] = bytes(c)
+    return p
+
+
+def c3e_4f_case():
+    """0x4F944: the four globals its clamp/arming body writes, seeded off their written values."""
+    return {0x001088F0: b"\x55", 0x001088E8: le16(0xAAAA), 0x001088EA: le16(0xBBBB),
+            0x00104AE9: b"\x01"}
+
+
+def c3e_33_case(out, rec, rec51):
+    """0x33A68: the out buffer, rec+0x51 and the two slot record pointers through 0x1077B0."""
+    return {rec + 0x51: bytes([rec51]), out: b"\xAA" * 24,
+            0x001077B0: le32(0x10A200), 0x001077B0 + 0x94: le32(0x10A240),
+            0x10A200: le32(0x10A280), 0x10A240: le32(0x10A2C0)}
+
+
+def c3e_6e_case(side, s5b, live=True):
+    """0x36E78: the +0x5B/else arms' slot fields, the other record's +0x43/+0x5D through
+    0x1077A8 and the 0x1078FF character's slot record for the 0x29BC8 stub."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    orec = 0x10A300
+    p[so + 0x5B] = bytes([s5b])
+    p[so + 0x41] = b"\x11"
+    p[so + 0x5A] = b"\x77"
+    p[so + 0x5D] = b"\x44"
+    p[so + 0x40] = le32(0x404040C0)
+    p[0x001077A8 + (1 - side) * 4] = le32(orec if live else 0)
+    p[orec + 0x43] = b"\x44"
+    p[orec + 0x5D] = b"\x66"
+    p[0x001078FF] = b"\x02"
+    p[0x001077B0 + 2 * 0x94] = le32(0x10A400)
+    p[0x001077B0 + 2 * 0x94 + 0x7A] = b"\x03"
+    p[0x00104AE9] = b"\xFF"       # The +0xFE mask store (0x36F05, b1 only): the image pre is 0,
+                                  # so the bit-0 clear changed nothing (the Task 3 sweep);
+                                  # 0xFF leaves 0xFE, distinguishing the store from a drop.
+    return p
+
+
+def c3e_8d_case(side, s10, r24, s54, s52):
+    """0x468D8: the side slot's +0x10/+0x54/+0x52 and its record's +0x24."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    rec = C3D_REC0 + side * 0x40
+    p[so + 0x10] = le32(s10)
+    p[so + 0x54] = bytes([s54])
+    p[so + 0x52] = bytes([s52])
+    p[rec + 0x24] = le32(r24)
+    p[rec + 0x51] = bytes([side])
+    return p
+
+
+def c3e_cf_case(field, desc, base=None, extra=None):
+    """0x2D974: the descriptor table 0x2D300[field] and (optionally) the packed config bytes
+    0x105DE1.. and the trailing byte 0x105DAF+trail."""
+    p = {0x0002D300 + field * 4: le32(desc)}
+    if base is not None:
+        p[0x00105DE1] = base
+    trail = desc & 0x3F
+    if trail:
+        p[0x00105DAF + trail] = b"\x3E"
+    if extra:
+        p.update(extra)
+    return p
+
+
+def c3e_90b_case(desc, free, base):
+    """0x46190: the 0x29 descriptor, the packed config bytes and the free-play byte."""
+    return {0x0002D300 + 0x29 * 4: le32(desc), 0x00105D60: bytes([free]),
+            0x00105DE1: base}
+
+
+def c3e_36d_case(side, s54, s52, s43=0x11, mode=0, rec34=0x11223344):
+    """0x36D20: the slot's +0x54/+0x52/+0x43, the mode word, the record's +0x34 and the side's
+    0x102900 animation record."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    rec = C3D_REC0 + side * 0x40
+    p[so + 0x54] = bytes([s54])
+    p[so + 0x52] = bytes([s52])
+    p[so + 0x43] = bytes([s43])
+    p[rec + 0x34] = le32(rec34)
+    p[rec + 0x51] = bytes([side])
+    p[0x00104B00] = le16(mode)
+    p[0x00102900 + side * 4] = le32(0x10A600 + side * 0x40)
+    return p
+
+
+def c3e_pose_case(side, edx, ga, gb, s52=0x33, s2c=0x1122, rec24=0x99999999):
+    """The four 0x3A5xx/0x3A6xx/0x3A8xx pose setters: the self slot's +0x52 band (the raw reads
+    the caller's BX from it), +0x2C (the latched word), +0x58/+0x7E, the record's +0x24 and the
+    setter's glob pair."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    rec = C3D_REC0 + side * 0x40
+    p[so + 0x10] = le32(0xA5A5A5A5)
+    p[so + 0x2C] = le16(s2c)
+    p[so + 0x52] = bytes([s52, 0x44, 0x55, 0x66])
+    p[so + 0x58] = b"\x88"
+    p[so + 0x7E] = b"\x77"
+    p[rec + 0x24] = le32(rec24)
+    p[rec + 0x51] = bytes([side])
+    p[0x000BECF8] = b"\x0A"
+    p[ga + side * 2] = le16(0xAAAA)
+    p[gb + side * 2] = le16(0xBBBB)
+    return p
+
+
+def c3e_0fc_case(side, frame, char=0, stream=0x1234, key=1, b5b3a=0,
+                 layer=0, f0aec=0, f100ad8=0, s28=0, other2c=0x11223344):
+    """0x3A0FC: the triple frame char/frame, the effect stream at anim[1]+8 and the key word at
+    anim[2], the 0x105B3A gate, the 0xF0AEC/0x100AD8 offset, the layer from the other record's
+    +0x30 and the other slot's +0x2C."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    oo = 0x001077B0 + (1 - side) * 0x94
+    recs = C3D_REC0 + side * 0x40
+    reco = C3D_REC0 + (1 - side) * 0x40
+    c = (char << 6) + frame
+    p[so + 0x7A] = bytes([char])
+    p[so + 0x5F] = bytes([frame])
+    p[so + 0x52] = b"\x20"
+    p[recs + 0x51] = bytes([side])
+    p[reco + 0x51] = bytes([1 - side])
+    p[recs + 0x28] = le16(s28)
+    p[reco + 0x30] = le32(layer << 16)
+    p[oo + 0x2C] = le32(other2c)
+    p[0x000A3528 + 20 * c + 8] = le32(stream)
+    p[0x000A6728 + 6 * c] = le16(key)
+    p[0x00105B3A] = bytes([b5b3a])
+    p[0x000F0AEC] = le32(f0aec)
+    p[0x00100AD8 + side * 4] = le32(f100ad8)
+    return p
+
+
+C3E_SPECS = [
+    # 0x39040 fighter_39040: the per-side combo pass. EAX = side. The gate is the 0x107D2C word
+    # (the high half of the raw's 0x107D2A dword read); 0x38D90/0x38FEC/0x41310/rng (0x5D7DC)/
+    # voice (0x2C3FC) are stubs, 0x4F944 is a leaf allow (its writes are the observation).
+    Spec("fighter_39040", 0x39040, [
+        Case("g0", {"eax": 0}, c3e_90_case(0, 1)),                    # the gate: (s16)word <= 1
+        Case("g1", {"eax": 0}, c3e_90_case(0, 2, q=0x10)),            # q <= lim, s63 != 0
+        Case("g2", {"eax": 0}, c3e_90_case(0, 2, q=0x30, s81=0x20, cc=0x10)),  # q > lim, no clamp
+        Case("g3", {"eax": 0}, c3e_90_case(0, 2, q=0x40, s81=0x20, cc=0x10)),  # q >= cap: clamp
+        Case("g4", {"eax": 0}, c3e_90_case(0, 2, s63=0, a=0x50)),     # round == 2: 0x3E8
+        Case("g5", {"eax": 0}, c3e_90_case(0, 3, s63=0, a=0x23),
+             {0x5D7DC: 0}),                                           # delta 0x7D0; voice 0xCD
+        Case("g6", {"eax": 0}, c3e_90_case(0, 4, s63=0, a=0x23), {0x5D7DC: 0}),   # 0x4F944 runs
+        Case("g7", {"eax": 0}, c3e_90_case(0, 5, s63=0, a=0x41), {0x5D7DC: 0}),   # +BF = 1
+        Case("g8", {"eax": 0}, c3e_90_case(0, 5, s63=0, a=0x41), {0x5D7DC: 1}),   # +BF = 2
+        Case("g9", {"eax": 0}, c3e_90_case(0, 0x10, s63=0, a=0x10, r3=0x50),
+             {0x5D7DC: 1}),                                           # 0x4E20; voice 0xDA
+        Case("g10", {"eax": 0}, c3e_90_case(0, 4, s63=0, a=0x10, r3=0x50),
+             {0x5D7DC: 0}),                                           # voice 0xDB
+        Case("g11", {"eax": 0}, c3e_90_case(0, 4, s63=0, a=0x10, r3=0x30),
+             {0x5D7DC: 1}),                                           # voice 0xCE
+        Case("g12", {"eax": 0}, c3e_90_case(0, 4, s63=0, a=0x10, r3=0x30),
+             {0x5D7DC: 2}),                                           # voice 0xCF
+        Case("g13", {"eax": 1}, c3e_90_case(1, 4, s63=0, a=0x10, r3=0x30, q=0x42, s81=0x21, cc=0x11),
+             {0x5D7DC: 2}),                                           # the other side
+        Case("g14", {"eax": 0}, c3e_90_case(0, 3, s63=0, a=0x30), {0x5D7DC: 0}),  # a > 0x23: tail
+        Case("g15", {"eax": 0}, c3e_90_case(0, 4, s63=0, a=0x41), {0x5D7DC: 0}),  # round < 5: tail
+        Case("g16", {"eax": 0}, c3e_90_case(0, 0xC, s63=0, a=0x23), {0x5D7DC: 0}),  # the 0xC edge
+    ], allow_calls=(0x4F944,),
+       calls=(E.Call(0x38D90, ("eax",), mode="stub"),
+              E.Call(0x38FEC, ("eax",), mode="stub"),
+              E.Call(0x41310, ("eax", "edx"), mode="stub"),
+              E.Call(0x5D7DC, ("eax",), mode="stub"),
+              VOICE),
+       eax_mask=0,
+       mutants=("@gate", "@lim", "@b4", "@delta", "@a23", "@a41", "@id", "@rng2", "@voice",
+                "@clear", "@inc")),
+    # 0x392A0 fighter_392a0: EAX = slot, EDX = v, EBX = w. 0x33A68 is a leaf allow (its ctx out
+    # buffer is the caller's); 0x46190 (the per-case predicate, stub EAX 0/1), 0x41310, 0x36E78
+    # and rng are stubs.
+    Spec("fighter_392a0", 0x392A0, [
+        Case("m0", {"eax": 0x001077B0, "edx": 0x55, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10, s5d=0x10), 0x00100CE2: le16(1),
+              0x000BEBCA: le16(0x64), 0x00104B1D: b"\x00"}),           # mode 0: 5A += A
+        Case("m1", {"eax": 0x001077B0, "edx": 0x40, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x70, s5d=0x10), 0x00100CE2: le16(1),
+              0x00104B1D: b"\x00", 0x00105B36: b"\x00", 0x00104B00: le16(0)}),  # 5A clamp to 0x78
+        Case("m2", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10), 0x00100CE2: le16(1), 0x00104B1D: b"\x02",
+              0x00104B00: le16(3), C3D_REC1 + 0x5A: b"\x40"}),         # mode 2: so 5A -= A
+        Case("m3", {"eax": 0x001077B0, "edx": 0x40, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10), 0x00100CE2: le16(1), 0x00104B1D: b"\x02",
+              0x00104B00: le16(3), C3D_REC1 + 0x5A: b"\x05"}),         # mode 2: 5A += A - y
+        Case("m4", {"eax": 0x001077B0, "edx": 0x40, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x70), 0x00100CE2: le16(1), 0x00104B1D: b"\x02",
+              0x00104B00: le16(3), C3D_REC1 + 0x5A: b"\x05"}),         # mode 2 x > 0x78
+        Case("m5", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10), 0x00100CE2: le16(1), 0x00104B1D: b"\x02",
+              0x001077A8 + 4: le32(0), 0x00104B00: le16(3)}),          # so == 0: early return
+        Case("m6", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10), 0x00100CE2: le16(1), 0x00104B1D: b"\x02",
+              0x00105B38: b"\x01", 0x00104B00: le16(3)}),              # 5B38 != 0: L5E7
+        Case("m7", {"eax": 0x001077B0, "edx": 0x20, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x70, s5d=0x10), 0x00100CE2: le16(1), 0x00104B1D: b"\x04",
+              0x00104B1F: b"\x03", 0x00107468: le32(50), 0x00104B00: le16(3)}),  # mode 4 E scale
+        Case("m8", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10, s5d=0x10), 0x00100CE2: le16(1), 0x00104B1D: b"\x04",
+              0x00104B1F: b"\x00", 0x00104B00: le16(3)}),              # mode 4: E = A
+        Case("m9", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x78, s5d=0x10, o63=1), 0x00100CE2: le16(1),
+              0x00107813: b"\x55", 0x001078A7: b"\xAA", 0x00104B00: le16(0)},
+             {0x46190: 1}),                                            # 46190 zeroing
+        Case("m10", {"eax": 0x001077B0, "edx": 1, "ebx": 0x60},
+             {**c3e_92_base(0, s53=1, s5a=0x10, s5d=0x10), 0x00100CE2: le16(1),
+              0x000BEBCA: le16(0x64), 0x00104B1D: b"\x00"}),           # +0x53 == 1: B clamped
+        Case("m11", {"eax": 0x001077B0, "edx": 0x20, "ebx": 0x40},
+             {**c3e_92_base(0, s41=0x11, s5a=0x10, s5d=0x10), 0x00100CE2: le16(1),
+              0x000BEBCA: le16(0x64), 0x00104B1D: b"\x00"}),           # +0x41 bit 1: A halved
+        Case("m12", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10, s5d=0x10), 0x00100CE2: le16(5),
+              0x000BEBCA + 10: le16(0x100), 0x000BEBCA + 12: le16(0x20),
+              0x00104B1D: b"\x00"}),                          # the k table arm
+        Case("m13", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10, s5d=0x10), 0x00100CE2: le16(7),
+              0x00104B1D: b"\x00"}),                                   # k >= 6: 40 arm
+        Case("m14", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10, s5d=0x10), 0x00100CE2: le16(0xFF9C),
+              0x00104B1D: b"\x00"}),                                   # the word < 0: 40 arm
+        Case("m15", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10, s5d=0x40), 0x00100CE2: le16(1),
+              0x00104B1D: b"\x00"}),                                   # 5D clamp to 0x44
+        Case("m16", {"eax": 0x001077B0, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(0, s5a=0x10, s5d=0x10), 0x00100CE2: le16(1),
+              0x00104B1D: b"\x00"}),                                   # 5D + B <= 0x44
+        Case("m17", {"eax": 0x001077B0 + 0x94, "edx": 1, "ebx": 0x40},
+             {**c3e_92_base(1, s5a=0x10, s5d=0x10), 0x00100CE0: le16(1),
+              0x00104B1D: b"\x00"}),                                   # the other side
+    ], allow_calls=(0x33A68,),
+       calls=(E.Call(0x46190, (), mode="stub"),
+              E.Call(0x41310, ("eax", "edx"), mode="stub"),
+              E.Call(0x36E78, ("eax",), mode="stub"),
+              E.Call(0x5D7DC, ("eax",), mode="stub")),
+       eax_mask=0,
+       mutants=("@a", "@b", "@clamp", "@half", "@k", "@t", "@zero", "@mode2", "@so", "@clamp44",
+                "@tail")),
+    # 0x3AAFC fighter_reaction_apply: EAX = slot, the reaction is the stack argument s0. 0x33A10,
+    # 0x3AFC4 and 0x3A280 are leaf allows; 0x18B04, 0x39F40, 0x39834, rng, voice, 0x3A0FC,
+    # 0x3AA54, 0x36D20 and the four pose setters are stubs (each has its own row or is in
+    # progress).
+    Spec("fighter_reaction_apply", 0x3AAFC, [
+        # The anim word addresses: the first/third triple (ctx[0] = 1-side) at 0xA672A+6*c1 with
+        # c1 = (char[1-side] << 6) + reaction; the second (ctx[1] = side, frame DSB(self+0x5F))
+        # at 0xA672A+6*c2 with c2 = (char[side] << 6) + DSB(self+0x5F).
+        Case("a0", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0), 0x000A672A: le16(0x44), 0x000A6730: le16(0)}),  # uvar2 bit 6
+        Case("a1", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0)}),                                   # 5F == 0xFF: uvar2 0
+        Case("a2", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF, s53=6, ch0=1), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0)}),                                   # +0x53 == 6, char == 1
+        Case("a3", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF, s54=2), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0)}),                                   # +0x54 == 2
+        Case("a4", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0x100)},
+             {0x3AA54: 0x42}),                                        # ecx bit 8: 0x3AA54
+        Case("a5", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0x2000)},
+             {0x36D20: 0x55}),                                        # ecx bit 0x2000: 0x36D20
+        Case("a6", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF, s54=1), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0), 0x000DE125: b"\x03"}),             # st == 1: 0x3A8E8
+        Case("a7", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF, s54=3), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0), 0x000DE125: b"\x03"}),             # st == 3: return
+        Case("a8", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0x04), 0x000DE125: b"\x03"}),          # ecx bit 4: 0x3A650
+        Case("a9", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0x08), 0x000DE125: b"\x03"}),          # ecx bit 8: 0x3A79C
+        Case("a10", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0), 0x000DE125: b"\x03"}),             # default: 0x3A504
+        Case("a11", {"eax": 0x001077B0, "s0": 1},
+             {**c3e_aa_base(0, s5f=0xFF, o5f=0x10), 0x000A672A: le16(0x44),
+              0x000A6730: le16(0), 0x000DE125: b"\x03",
+              0x000BE008: le16(0x1234)}),                             # the 0x3A280 voice arm
+        Case("a12", {"eax": 0x001077B0 + 0x94, "s0": 2},
+             {**c3e_aa_base(1, s5f=0), 0x000A672A: le16(0),
+              0x000A6736: le16(0x200)}),                               # side 1, c1 = 2
+    ], allow_calls=(0x33A10, 0x3AFC4, 0x3A280),
+       calls=(E.Call(0x18B04, ("eax",), mode="stub"),
+              P6_39F40,
+              POSE,
+              E.Call(0x2C3FC, ("eax",), mode="stub", eax=1),
+              E.Call(0x3A0FC, ("eax",), mode="stub", clobbers=("ebp",)),
+              E.Call(0x3AA54, ("eax",), mode="stub"),
+              E.Call(0x36D20, ("eax",), mode="stub"),
+              E.Call(0x3A504, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x3A650, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x3A79C, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x3A8E8, ("eax", "edx"), mode="stub", clobbers=("edx",))),
+       eax_mask=0,
+       mutants=("@u2", "@s5f", "@s6", "@s54", "@e200", "@e100", "@e2000", "@st", "@s42", "@inc",
+                "@voice", "@call0fc")),
+    # 0x3A280 fighter_3a280: EAX = code (the callers read AL): 1 for 0x20..0x3F and, on the raw's
+    # full EAX, 0x10..0x17. The 0x100010/0x100020 cases pin the raw's full-width compares.
+    Spec("fighter_3a280", 0x3A280, [
+        Case("r%d" % n, {"eax": v})
+        for n, v in enumerate((0x0F, 0x10, 0x17, 0x18, 0x1F, 0x20, 0x3F, 0x40, 0x100010, 0x100020))
+    ], eax_mask=0xFF, mutants=("@lo", "@cast")),
+    # 0x4F944 fighter_4f944: EAX = v. The clamp is signed (0x2000000A > 0x14 but negative values
+    # are kept); the byte, the two words and the 0x104AE9 bit are the observation. No calls.
+    Spec("fighter_4f944", 0x4F944, [
+        Case("v%d" % n, {"eax": v}, c3e_4f_case())
+        for n, v in enumerate((0, 5, 0x14, 0x15, 0xFFFFFFFF, 0x80000000, 0x12345678))
+    ], eax_mask=0, mutants=("@cmp", "@f0", "@e8", "@ae9")),
+    # 0x33A68 fighter_ctx_rec_swap: EAX = the six-dword out buffer, EDX = rec; the side is
+    # rec+0x51 (masked) and the slot records come from 0x1077B0.
+    Spec("fighter_ctx_rec_swap", 0x33A68, [
+        Case("s0", {"eax": 0x10A000, "edx": 0x10A100}, c3e_33_case(0x10A000, 0x10A100, 0)),
+        Case("s1", {"eax": 0x10A000, "edx": 0x10A100}, c3e_33_case(0x10A000, 0x10A100, 1)),
+        Case("s2", {"eax": 0x10A000, "edx": 0x10A100}, c3e_33_case(0x10A000, 0x10A100, 2)),
+        Case("s3", {"eax": 0x10A030, "edx": 0x10A100}, c3e_33_case(0x10A030, 0x10A100, 1)),
+    ], eax_mask=0, mutants=("@side", "@stride", "@rec")),
+    # 0x36E78 fighter_36e78: EAX = slot. The +0x5B != 0 arm (clear it, +0x5A = 0x78 - b, +0x41
+    # bit 3), else the +0x40 mask, +0x5D = 0, the other record's reset and the 0x29BC8 palette
+    # call (stub).
+    Spec("fighter_36e78", 0x36E78, [
+        Case("b0", {"eax": 0x001077B0}, c3e_6e_case(0, 0x30)),
+        Case("b1", {"eax": 0x001077B0}, c3e_6e_case(0, 0x00)),
+        Case("b2", {"eax": 0x001077B0}, c3e_6e_case(0, 0x00, live=False)),
+        Case("b3", {"eax": 0x001077B0 + 0x94}, c3e_6e_case(1, 0x30)),
+        Case("b4", {"eax": 0x001077B0 + 0x94}, c3e_6e_case(1, 0x00)),
+    ], calls=(P6_29BC8,), eax_mask=0, mutants=("@f5b", "@f40", "@other", "@pal")),
+    # 0x2CAA8 config_not_free_play: `sete al` on DSB(0x105D60) (AL is what the caller reads).
+    Spec("config_not_free_play", 0x2CAA8, [
+        Case("f0", {}, {0x00105D60: b"\x00"}),
+        Case("f1", {}, {0x00105D60: b"\x01"}),
+        Case("f2", {}, {0x00105D60: b"\xFF"}),
+    ], eax_mask=0xFF, mutants=("@eq", "@byte", "@zero")),
+    # 0x468D8 ai_pred_468d8: EAX = side; 1 when the slot's +0x10 == 0x22BEC, the record's +0x24
+    # low 31 bits clear and +0x54 != 2, else +0x52 == 7. 0x33A10 runs on both sides.
+    Spec("ai_pred_468d8", 0x468D8, [
+        Case("p0", {"eax": 0}, c3e_8d_case(0, 0x22BEC, 0, 2, 0)),
+        Case("p1", {"eax": 0}, c3e_8d_case(0, 0x22BEC, 0, 1, 0)),
+        Case("p2", {"eax": 0}, c3e_8d_case(0, 0x22BEC, 1, 0, 0)),
+        Case("p3", {"eax": 0}, c3e_8d_case(0, 0x22BEC, 0, 2, 7)),
+        Case("p4", {"eax": 0}, c3e_8d_case(0, 0x1234, 0, 0, 7)),
+        Case("p5", {"eax": 0}, c3e_8d_case(0, 0x1234, 0, 0, 0)),
+        Case("p6", {"eax": 1}, c3e_8d_case(1, 0x22BEC, 0, 1, 0)),
+    ], allow_calls=(0x33A10,), eax_mask=0xFF,
+       mutants=("@hand", "@low", "@byte", "@side")),
+    # 0x2D974 config_field_get: EAX = field; 0xFFFFFFFF above 0x3E, else the packed nibble/byte
+    # walk of 0x2D300[field]'s descriptor over 0x105DE1 and the 0x105DAF trailer.
+    Spec("config_field_get", 0x2D974, [
+        Case("c0", {"eax": 6}, c3e_cf_case(6, 0x0000, b"\xAB\x3C")),
+        Case("c1", {"eax": 7}, c3e_cf_case(7, 0x4000, b"\xAB\xCD")),
+        Case("c2", {"eax": 8}, c3e_cf_case(8, 0x8040, b"\xAB\xAB\xCD")),
+        Case("c3", {"eax": 9}, c3e_cf_case(9, 0xC000, b"\xAB\xAB\xCD")),
+        Case("c4", {"eax": 0x0A}, c3e_cf_case(0x0A, 0x20000, b"\x06\x05\x04\x03\x21")),
+        Case("c5", {"eax": 0x0B}, c3e_cf_case(0x0B, 0x0005, b"\x0C\x00")),
+        Case("c6", {"eax": 0x3F}, c3e_cf_case(0x3F, 0)),
+        Case("c7", {"eax": 0x3E}, c3e_cf_case(0x3E, 0x0040, b"\x5A")),
+        Case("c8", {"eax": 0x0C}, c3e_cf_case(0x0C, 0x14040, b"\x5A\x11\x22\x33")),
+    ], eax_mask=0xFFFFFFFF, mutants=("@odd", "@width", "@trail", "@field", "@hi")),
+    # 0x46190 fighter_46190: DIP field 0x29 bit 0x800 and free play; 0x2D974/0x2CAA8 run real
+    # (each has its own row). Mask 0xFF (AL).
+    Spec("fighter_46190", 0x46190, [
+        Case("q0", {}, c3e_90b_case(0x3C000, 0, b"\x00\x08")),
+        Case("q1", {}, c3e_90b_case(0x3C000, 0, b"\x00\x07")),
+        Case("q2", {}, c3e_90b_case(0x3C000, 1, b"\x00\x08")),
+        Case("q3", {}, c3e_90b_case(0x3C000, 0xFF, b"\x00\x08")),
+        Case("q4", {}, c3e_90b_case(0x0000, 0, b"\x80")),
+    ], calls=(E.Call(0x2D974, ("eax",), mode="real"),
+              E.Call(0x2CAA8, (), mode="real")),
+       eax_mask=0xFF, mutants=("@bit", "@notfree", "@field")),
+    # 0x36D20 fighter_36d20: EAX = slot. 0x468D8 (stub, per-case EAX) gates; +0x54 == 2 runs the
+    # inlined 0x36CE4 body (the port factors it into a call, unrecorded), else rec+0x34 = 0 and
+    # 0x36BC8 (stub); the anim runs through 0x2BC30.
+    Spec("fighter_36d20", 0x36D20, [
+        Case("d0", {"eax": 0x001077B0}, c3e_36d_case(0, 0, 0x33), {0x468D8: 1}),
+        Case("d1", {"eax": 0x001077B0}, c3e_36d_case(0, 2, 0x33, mode=3), {0x468D8: 0}),
+        Case("d2", {"eax": 0x001077B0}, c3e_36d_case(0, 2, 0x33, mode=0), {0x468D8: 0}),
+        Case("d3", {"eax": 0x001077B0}, c3e_36d_case(0, 2, 0x33, mode=0x22), {0x468D8: 0}),
+        Case("d4", {"eax": 0x001077B0}, c3e_36d_case(0, 0, 0x33), {0x468D8: 0}),
+        Case("d5", {"eax": 0x001077B0 + 0x94}, c3e_36d_case(1, 1, 0x44, mode=0), {0x468D8: 0}),
+    ], calls=(E.Call(0x468D8, ("eax",), mode="stub"),
+              E.Call(0x36BC8, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              ANIM_BEGIN),
+       eax_mask=0xFF, mutants=("@pred", "@s54", "@anim", "@rec", "@ret")),
+    # The four 0x3A5xx/0x3A6xx/0x3A8xx pose setters: EAX = side, EDX = the frame delta; each
+    # shares the 0x3A50E..0x3A56B body with its own callback and glob pair. 0x33A10 runs on both
+    # sides (allow).
+    Spec("fighter_pose_3a504", 0x3A504, [
+        Case("p0", {"eax": 0, "edx": 0x10, "ebx": 0x33}, c3e_pose_case(0, 0x10, 0x107D14, 0x107D10)),
+        Case("p1", {"eax": 1, "edx": 0x80, "ebx": 0x33}, c3e_pose_case(1, 0x80, 0x107D14, 0x107D10)),
+    ], allow_calls=(0x33A10,), eax_mask=0, mutants=("@s52", "@cb", "@glob")),
+    Spec("fighter_pose_3a650", 0x3A650, [
+        Case("p0", {"eax": 0, "edx": 0x10, "ebx": 0x33}, c3e_pose_case(0, 0x10, 0x107D0C, 0x107D00)),
+        Case("p1", {"eax": 1, "edx": 0x80, "ebx": 0x33}, c3e_pose_case(1, 0x80, 0x107D0C, 0x107D00)),
+    ], allow_calls=(0x33A10,), eax_mask=0, mutants=("@s52", "@cb", "@glob")),
+    Spec("fighter_pose_3a79c", 0x3A79C, [
+        Case("p0", {"eax": 0, "edx": 0x10, "ebx": 0x33}, c3e_pose_case(0, 0x10, 0x107D08, 0x107D04)),
+        Case("p1", {"eax": 1, "edx": 0x80, "ebx": 0x33}, c3e_pose_case(1, 0x80, 0x107D08, 0x107D04)),
+    ], allow_calls=(0x33A10,), eax_mask=0, mutants=("@s52", "@cb", "@glob")),
+    Spec("fighter_pose_3a8e8", 0x3A8E8, [
+        Case("p0", {"eax": 0, "edx": 0x10, "ebx": 0x33}, c3e_pose_case(0, 0x10, 0x107CF8, 0x107CFC)),
+        Case("p1", {"eax": 1, "edx": 0x80, "ebx": 0x33}, c3e_pose_case(1, 0x80, 0x107CF8, 0x107CFC)),
+    ], allow_calls=(0x33A10,), eax_mask=0, mutants=("@s52", "@cb", "@glob")),
+    # 0x3A0FC fighter_3a0fc: EAX = side. 0x33950/0x3AFC4 are allows; the two effect spawns
+    # (0x2AE14, per-case stub EAX) and their 0x2BC30 animates are stubs. The 0x105B3A jump table
+    # (entries 0..2 spawn, 3 skips) and the per-side stream tables are the branches.
+    Spec("fighter_3a0fc", 0x3A0FC, [
+        Case("f0", {"eax": 0}, c3e_0fc_case(0, 5, stream=0x1234, key=1, f0aec=0x1000,
+             f100ad8=2, layer=3, other2c=0x55667788), {0x2AE14: 0x10A480}),
+        Case("f1", {"eax": 1}, c3e_0fc_case(1, 0, stream=0x2222, key=1, f0aec=0x2000,
+             f100ad8=1, layer=5, other2c=0x99AABBCC), {0x2AE14: 0x10A480}),
+        Case("f2", {"eax": 0}, c3e_0fc_case(0, 5, stream=0, key=2, f0aec=0x1000), {0x2AE14: 0x10A480}),
+        Case("f3", {"eax": 0}, c3e_0fc_case(0, 5, stream=0x1234, key=3, b5b3a=4), {0x2AE14: 0x10A480}),
+        Case("f4", {"eax": 0}, c3e_0fc_case(0, 5, stream=0x1234, key=0, s28=0x4000), {}),
+        Case("f5", {"eax": 1}, c3e_0fc_case(1, 2, stream=0x3333, key=2, s28=0x4000,
+             f0aec=0x3000), {0x2AE14: 0x10A480}),
+        Case("f6", {"eax": 1}, c3e_0fc_case(1, 2, stream=0x3333, key=3), {0x2AE14: 0x10A480}),
+        Case("f7", {"eax": 0}, c3e_0fc_case(0, 3, stream=0x4444, key=9, b5b3a=3), {}),
+        Case("f8", {"eax": 1}, c3e_0fc_case(1, 2, stream=0, key=4, b5b3a=4), {}),
+    ], allow_calls=(0x33950, 0x3AFC4), calls=(SPAWN, ANIM_BEGIN), eax_mask=0,
+       mutants=("@frame", "@face", "@off", "@layer", "@stream", "@key", "@s59")),
+]
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -6017,7 +6529,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------

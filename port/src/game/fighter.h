@@ -425,6 +425,18 @@ void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits);
 void fighter_38bb0(u32 side);
 void fighter_38bc8(u32 side);
 
+/* C3e: the 0x392A0/0x3AAFC callees and 0x33A68's own row the differential
+ * rows call (each already carries its seam). */
+void fighter_ctx_rec_swap(u32 out[6], u32 rec);
+int  fighter_46190(void);
+void fighter_36e78(u32 slot);
+u32  fighter_36d20(u32 slot);
+void fighter_3a0fc(u32 side);
+void fighter_pose_3a504(u32 side, u32 edx);
+void fighter_pose_3a650(u32 side, u32 edx);
+void fighter_pose_3a79c(u32 side, u32 edx);
+void fighter_pose_3a8e8(u32 side, u32 edx);
+
 /* 0x1DE64. The reaction picker: map the side's command word (or, with slot+0x63
  * clear, the 0x46460/0x4649C input scan, record §49-B) through 0x1DDF4 to a
  * reaction code; 0xFF when nothing maps. */

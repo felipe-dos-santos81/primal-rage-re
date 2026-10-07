@@ -49,7 +49,7 @@ static int fighter_3962c(u32 side, u32 param_2);         /* 0x3962C */
 static int fighter_396ac(u32 side, u32 param_2);         /* 0x396AC */
 void fighter_18b44(u32 slot);                           /* 0x18B44 */
 static void fighter_39278(u32 v);                        /* 0x39278 */
-static u32 fighter_36d20(u32 slot);                      /* 0x36D20 */
+u32 fighter_36d20(u32 slot);                             /* 0x36D20 */
 static void fighter_2bd44_by_index(u32 rec);             /* 0x3B4D4 = 0x3B844 */
 void fighter_18bd4(u8 flags[16]);                        /* 0x18BD4 */
 static u8 hit_3d004(u32 side);                            /* 0x3D004 */
@@ -632,7 +632,7 @@ static int fighter_input_scan(u32 side, s32 n1, s32 n2, u32 mask)
 #define FIGHT_BLOCK_END0   0x000C8F68u  /* 0x1A8F4: per-char stream */
 #define FIGHT_BLOCK_END1   0x000C8FB8u  /* 0x1A8F4: per-char stream, +0x54 1 */
 
-static void fighter_ctx_rec_swap(u32 out[6], u32 rec);           /* 0x33A68 */
+void fighter_ctx_rec_swap(u32 out[6], u32 rec);                  /* 0x33A68 */
 
 /* 0x1A6AC — record §38. */
 void fighter_block_anim(u32 slot, u32 rec)
@@ -2068,7 +2068,7 @@ void fighter_state_364fc(u32 slot, u32 rec, u32 side)
 static void fighter_state_35b7c(u32 slot, u32 rec);         /* 0x35B7C */
 void fighter_state_35d20(u32 slot, u32 rec);                /* 0x35D20 */
 void fighter_1883c(u32 side, u32 a, u32 b);                  /* 0x1883C */
-static void fighter_36e78(u32 slot);                        /* 0x36E78 */
+void fighter_36e78(u32 slot);                              /* 0x36E78 */
 u32  hit_record_y(u32 side);                                /* 0x18788 */
 
 /* 0x29BC8. Resolve the character's palette handle for `side` and point `rec`'s
@@ -2257,7 +2257,7 @@ void fighter_wall_clamp(u32 side)
 /* 0x36E78. The +0x5B/landing reset: when +0x5B is set, arm +0x5A = 0x78 - +0x5B
  * and clear +0x5B; otherwise clear +0x5D, set +0x40 bits 0x1000/0x100000, reset
  * the other slot's +0x5D/+0x43 and the DS_001078FF character's palette. */
-static void fighter_36e78(u32 slot)
+void fighter_36e78(u32 slot)
 {
     PR_SEAM(0x36E78u, slot);
     u8 b = DSB(slot + 0x5Bu);                           /* 0x36E7B */
@@ -5382,7 +5382,7 @@ void fighter_4660c(u32 v)
 
 /* 0x46190. 1 when the DIP field 0x29 has bit 0x800 set and the machine is in
  * free play. */
-static int fighter_46190(void)
+int fighter_46190(void)
 {
     PR_SEAM_RET0(0x46190u);
     u32 r = config_field_get(0x29u);                        /* 0x46190/0x46195 */
@@ -5391,7 +5391,7 @@ static int fighter_46190(void)
 }
 
 /* 0x33A68. fighter_ctx_swap from a record pointer: side = rec+0x51. */
-static void fighter_ctx_rec_swap(u32 out[6], u32 rec)
+void fighter_ctx_rec_swap(u32 out[6], u32 rec)
 {
     fighter_ctx_swap(out, (u32)DSB(rec + 0x51u));           /* 0x33A69 */
 }
@@ -5405,14 +5405,15 @@ int fighter_1a5ac(u32 side)
     return (DSW(ctx[4] + 0x28u) & 0x4000u) == 0u;           /* 0x1A5BD..0x1A5CB */
 }
 
-/* 0x3A280. The reaction predicate: 1 when the byte is in 0x10..0x17 or
+/* 0x3A280. The reaction predicate: 1 when `code` is in 0x10..0x17 or
  * 0x20..0x3F. The raw's 0x3A260 jump table maps all eight 0x10..0x17 entries
  * to the `return 1` at 0x3A28A. */
+/* PORT: C3e's row removed the u8 cast this function had: the raw compares the
+ * full EAX (its r9 case, 0x100020, separates the two). */
 int fighter_3a280(u32 code)
 {
-    u8 a = (u8)code;
-    if (a >= 0x20u && a <= 0x3Fu) return 1;                 /* 0x3A280/0x3A28A */
-    if (a >= 0x10u && a <= 0x17u) return 1;                 /* 0x3A295/0x3A28A */
+    if (code >= 0x20u && code <= 0x3Fu) return 1;           /* 0x3A280/0x3A28A */
+    if (code >= 0x10u && code <= 0x17u) return 1;           /* 0x3A295/0x3A28A */
     return 0;                                               /* 0x3A29D */
 }
 
@@ -5500,28 +5501,28 @@ static void fighter_pose_commit(u32 side, u32 edx, u32 callback,
 
 /* 0x3A504. The pose setter with the 0x3A43C callback and the 0x107D14/0x107D10
  * pair. */
-static void fighter_pose_3a504(u32 side, u32 edx)
+void fighter_pose_3a504(u32 side, u32 edx)
 {
     PR_SEAM(0x3A504u, side, edx);
     fighter_pose_commit(side, edx, 0x0003A43Cu, DS_00107D14, DS_00107D10);
 }
 
 /* 0x3A650. The pose setter with the 0x3A588 callback and 0x107D0C/0x107D00. */
-static void fighter_pose_3a650(u32 side, u32 edx)
+void fighter_pose_3a650(u32 side, u32 edx)
 {
     PR_SEAM(0x3A650u, side, edx);
     fighter_pose_commit(side, edx, 0x0003A588u, DS_00107D0C, DS_00107D00);
 }
 
 /* 0x3A79C. The pose setter with the 0x3A6D4 callback and 0x107D08/0x107D04. */
-static void fighter_pose_3a79c(u32 side, u32 edx)
+void fighter_pose_3a79c(u32 side, u32 edx)
 {
     PR_SEAM(0x3A79Cu, side, edx);
     fighter_pose_commit(side, edx, 0x0003A6D4u, DS_00107D08, DS_00107D04);
 }
 
 /* 0x3A8E8. The pose setter with the 0x3A820 callback and 0x107CF8/0x107CFC. */
-static void fighter_pose_3a8e8(u32 side, u32 edx)
+void fighter_pose_3a8e8(u32 side, u32 edx)
 {
     PR_SEAM(0x3A8E8u, side, edx);
     fighter_pose_commit(side, edx, 0x0003A820u, DS_00107CF8, DS_00107CFC);
@@ -6118,7 +6119,7 @@ s32 fighter_39738(u32 side, s32 b)
 /* 0x36D20. The pose dispatcher's ECX&0x2000 arm: when 0x468D8(side) is 0,
  * either zero rec+0x34 and run 0x36BC8 (slot+0x54 != 2) or run the 0x36CE4
  * stance restart; return slot+0x52. */
-static u32 fighter_36d20(u32 slot)
+u32 fighter_36d20(u32 slot)
 {
     PR_SEAM_RET(0x36D20u, slot);
     u32 rec = DSD(slot);                                    /* 0x36D24 */
@@ -6151,7 +6152,7 @@ static void fighter_spawn_reaction_effect(const u32 ctx[6], u32 off, u32 stream)
 /* 0x3A0FC. The winner's effect spawn: build the reaction animation triple,
  * spawn the 0xBB09C/0xBB0B0 effect actors at the 0xF0AEC-derived offset and
  * start the per-side 0xE8Dxx effect stream. EAX = 1-side from 0x3AAFC. */
-static void fighter_3a0fc(u32 side)
+void fighter_3a0fc(u32 side)
 {
     PR_SEAM(0x3A0FCu, side);
     u32 ctx[6];
@@ -7575,7 +7576,10 @@ void fighter_reaction_apply(u32 slot, u32 reaction)
     if ((u8)DSB(self + 0x5Fu) == 0xFFu) {                   /* 0x3AB3F/0x3AB48 */
         uvar2 = 0u;                                         /* 0x3AB70 */
     } else {
-        fighter_anim_triple(anim2, ctx[1], (s32)reaction);  /* 0x3AB58 */
+        /* PORT: the raw's second triple takes DSB(self+0x5F) as the frame (0x3AB3F
+         * `mov dl,[edx+0x5f]` survives into 0x3AB58), not the reaction byte; the
+         * gate above excludes 0xFF (C3e correction). */
+        fighter_anim_triple(anim2, ctx[1], (s32)DSB(self + 0x5Fu));  /* 0x3AB58 */
         uvar2 = (u32)DSW(anim2[2] + 2u);                    /* 0x3AB61 */
     }
     fighter_39834(side, (s32)reaction);                     /* 0x3AB7C */
