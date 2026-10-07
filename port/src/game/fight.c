@@ -2021,8 +2021,9 @@ void fight_stance_pass(u32 side)
  * same-side context (0x3BDB8 0x33950), then AL = 1 when the slot's +0x53 == 0
  * (0x3BDC1) and +0x54 != 2 (0x3BDC7), else AL = 0. Only AL is defined; the
  * caller 0x3B27F tests `test al,al`. */
-static int fight_attack_ready(u32 side)
+int fight_attack_ready(u32 side)
 {
+    PR_SEAM_RET(0x3BDB0u, side);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                /* 0x3BDB8 0x33950 */
     u32 self = ctx[2];

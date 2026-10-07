@@ -658,6 +658,7 @@ void fighter_block_anim(u32 slot, u32 rec)
 /* 0x1A7CC — record §38. */
 void fighter_block_start(u32 side)
 {
+    PR_SEAM(0x1A7CCu, side);
     u32 ctx[6], tri[3];
     fighter_ctx_swap(ctx, side);                        /* 0x1A7D5 0x33A10 */
     DSB(ctx[3] + 0x43u) &= 0xFDu;                       /* 0x1A7DE */
@@ -2258,6 +2259,7 @@ void fighter_wall_clamp(u32 side)
  * the other slot's +0x5D/+0x43 and the DS_001078FF character's palette. */
 static void fighter_36e78(u32 slot)
 {
+    PR_SEAM(0x36E78u, slot);
     u8 b = DSB(slot + 0x5Bu);                           /* 0x36E7B */
     if (b != 0u) {
         DSB(slot + 0x5Bu) = 0u;                         /* 0x36E82 */
@@ -2533,16 +2535,18 @@ int fighter_34e20(u32 reaction)
     return reaction < 0x18u;
 }
 
-/* 0x38BB0. Clear the 0x40-byte per-side table at 0x107A80 + side*0x40. */
-static void fighter_38bb0(u32 side)
+/* 0x38BB0. Clear the 0x40-byte per-side table at 0x107A80 + side*0x40.
+ * PORT: exported for the C3d mutant cores only (the seams stay the only observers). */
+void fighter_38bb0(u32 side)
 {
     u32 base = FIGHT_STUN_BASE + side * 0x40u;
     for (u32 i = 0; i < 0x40u; i++) DSB(base + i) = 0;      /* 0x38BBB */
 }
 
 /* 0x38BC8. 0x38BB0 plus DSW(0x107D24 + side*2) = 0. */
-static void fighter_38bc8(u32 side)
+void fighter_38bc8(u32 side)
 {
+    PR_SEAM(0x38BC8u, side);
     DSW(FIGHT_D24_BASE + side * 2u) = 0;                    /* 0x38BCC */
     fighter_38bb0(side);                                    /* 0x38BDA */
 }
@@ -3104,6 +3108,7 @@ void fighter_36870(u32 rec)
  * the far arm mirrors with S+0x57 = 1. EAX = slot. */
 void fighter_37178(u32 slot)
 {
+    PR_SEAM(0x37178u, slot);
     u32 rec = DSD(slot);                                    /* 0x37180 */
     u32 side = (u32)DSB(rec + 0x51u);                       /* 0x37188 */
     u32 other = 1u - side;                                  /* 0x37195 */
@@ -3231,6 +3236,7 @@ void fighter_38d24(u32 side)
  * 0x38E5C/0x38E89/0x38E8E feed no branch: both arms pass col EDI - 2. */
 void fighter_38d90(u32 side)
 {
+    PR_SEAM(0x38D90u, side);
     s32 c = (s32)side * 0x25;
     fighter_38c5c(side);                                        /* 0x38D98 */
     text_cursor_hold(-1, 6, game_string_get(0xe5u), 0x3000u);   /* 0x38DAC/0x38DB8 */
@@ -3290,6 +3296,7 @@ u8 fighter_38ed0(u32 side, u32 rec)
  * word at 0xBEBB8 + char*2. */
 void fighter_38fec(u32 side)
 {
+    PR_SEAM(0x38FECu, side);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                                /* 0x38FF7 0x33950 */
     u32 ch = DSB(ctx[2] + 0x7au);                               /* 0x39000 */
@@ -3627,6 +3634,7 @@ void fighter_state_3531c(u32 side)
  * rejects. */
 int fighter_attack_consume(u32 side)
 {
+    PR_SEAM_RET(0x3BDDCu, side);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                        /* 0x3BDEA */
     u32 self = ctx[2];                                  /* &slot[side] */
@@ -5376,6 +5384,7 @@ void fighter_4660c(u32 v)
  * free play. */
 static int fighter_46190(void)
 {
+    PR_SEAM_RET0(0x46190u);
     u32 r = config_field_get(0x29u);                        /* 0x46190/0x46195 */
     if ((r & 0x800u) == 0u) return 0;                       /* 0x4619A/0x4619F */
     return config_not_free_play() == 0u;                    /* 0x461A2/0x461AE */
@@ -5493,24 +5502,28 @@ static void fighter_pose_commit(u32 side, u32 edx, u32 callback,
  * pair. */
 static void fighter_pose_3a504(u32 side, u32 edx)
 {
+    PR_SEAM(0x3A504u, side, edx);
     fighter_pose_commit(side, edx, 0x0003A43Cu, DS_00107D14, DS_00107D10);
 }
 
 /* 0x3A650. The pose setter with the 0x3A588 callback and 0x107D0C/0x107D00. */
 static void fighter_pose_3a650(u32 side, u32 edx)
 {
+    PR_SEAM(0x3A650u, side, edx);
     fighter_pose_commit(side, edx, 0x0003A588u, DS_00107D0C, DS_00107D00);
 }
 
 /* 0x3A79C. The pose setter with the 0x3A6D4 callback and 0x107D08/0x107D04. */
 static void fighter_pose_3a79c(u32 side, u32 edx)
 {
+    PR_SEAM(0x3A79Cu, side, edx);
     fighter_pose_commit(side, edx, 0x0003A6D4u, DS_00107D08, DS_00107D04);
 }
 
 /* 0x3A8E8. The pose setter with the 0x3A820 callback and 0x107CF8/0x107CFC. */
 static void fighter_pose_3a8e8(u32 side, u32 edx)
 {
+    PR_SEAM(0x3A8E8u, side, edx);
     fighter_pose_commit(side, edx, 0x0003A820u, DS_00107CF8, DS_00107CFC);
 }
 
@@ -6107,6 +6120,7 @@ s32 fighter_39738(u32 side, s32 b)
  * stance restart; return slot+0x52. */
 static u32 fighter_36d20(u32 slot)
 {
+    PR_SEAM_RET(0x36D20u, slot);
     u32 rec = DSD(slot);                                    /* 0x36D24 */
     u32 side = (u32)DSB(rec + 0x51u);                       /* 0x36D26 */
     if (ai_pred_468d8(side) != 0) return 0u;                /* 0x36D2E/0x36D37 */
@@ -6139,6 +6153,7 @@ static void fighter_spawn_reaction_effect(const u32 ctx[6], u32 off, u32 stream)
  * start the per-side 0xE8Dxx effect stream. EAX = 1-side from 0x3AAFC. */
 static void fighter_3a0fc(u32 side)
 {
+    PR_SEAM(0x3A0FCu, side);
     u32 ctx[6];
     u32 anim[3];
     u32 facing;
@@ -7811,13 +7826,18 @@ void fighter_3ad98(u32 side, const u32 anim[3])
     if (stream != 0u)                                       /* 0x3AE20/0x3AE22 */
         fighter_spawn_reaction_effect(ctx, off, stream);    /* 0x3AE3C */
     {
-        u32 d = (u32)DSB(ctx[3] + 0x5Au)
-              + (u32)DSB(anim[0] + 4u);                     /* 0x3AE55..0x3AE6D */
-        if (d >= 0x78u) {                                   /* 0x3AE70/0x3AE73 */
-            d = 0x77u - (u32)DSB(ctx[3] + 0x5Au);           /* 0x3AE75/0x3AE7A */
-            if (d < 1u) d = 0u;                             /* 0x3AE7C/0x3AE81 */
+        /* 0x3AE55: EDX = the anim[0]+4 byte; 0x3AE6D's LEA puts the sum in ECX and
+         * only the 0x3AE75 clamp path replaces EDX (0x3AE83 is reached with EDX
+         * unchanged when the sum is below 0x78). The port passed the sum before
+         * the C3d correction (record §C3d.2). */
+        u32 v = (u32)DSB(anim[0] + 4u);                     /* 0x3AE55 */
+        s32 sum = (s32)DSB(ctx[3] + 0x5Au) + (s32)v;        /* 0x3AE6D */
+        if (sum >= 0x78) {                                  /* 0x3AE70/0x3AE73 */
+            s32 d = 0x77 - (s32)DSB(ctx[3] + 0x5Au);        /* 0x3AE75/0x3AE7A */
+            if (d < 1) d = 0;                               /* 0x3AE7C/0x3AE81 */
+            v = (u32)d;
         }
-        fighter_392a0(ctx[3], (s32)d, (s32)DSB(anim[0] + 5u));  /* 0x3AE87 */
+        fighter_392a0(ctx[3], (s32)v, (s32)DSB(anim[0] + 5u));  /* 0x3AE87 */
     }
     DSB(ctx[3] + 0x41u) |= 0x80u;                           /* 0x3AE90 */
 }
