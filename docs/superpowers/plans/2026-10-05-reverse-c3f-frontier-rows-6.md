@@ -340,6 +340,11 @@ git commit -m "docs: C3f closure: the thirteen rows measured and the C3g tail ve
 
 ### The patch
 
+> **Pointer (C3g final-review nit):** this patch is the prototype **as first measured**. The C3f
+> fix wave (record §C3f.8) later changed `host_memset`'s pointer form, made the `string_decode`
+> outlen compare signed, grew `0x2EFD4`'s format buffer to `0x14` and fixed the `c3f_unlock_case`
+> seed — so the patch's text at those four places is pre-fix; apply with record §C3f.2/§C3f.8.
+
 ```diff
 diff --git a/port/src/game/actors.c b/port/src/game/actors.c
 index 152c4d3..92a52bf 100644
