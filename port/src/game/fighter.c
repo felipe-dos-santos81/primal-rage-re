@@ -606,7 +606,7 @@ u32 fighter_input_read(u32 side, s32 index)
 
 /* 0x4649C. Skip `n1` ring entries, then scan the next `n2` for a word whose low
  * 16 bits overlap `mask`; 1 on the first hit, 0 otherwise. */
-static int fighter_input_scan(u32 side, s32 n1, s32 n2, u32 mask)
+int fighter_input_scan(u32 side, s32 n1, s32 n2, u32 mask)
 {
     s32 pos = (s32)DSD(DS_001082D2) >> 16;      /* 0x464A5/0x464AC */
     if (n1 > 0) {
@@ -637,6 +637,7 @@ void fighter_ctx_rec_swap(u32 out[6], u32 rec);                  /* 0x33A68 */
 /* 0x1A6AC — record §38. */
 void fighter_block_anim(u32 slot, u32 rec)
 {
+    PR_SEAM(0x1A6ACu, slot, rec);
     u32 ctx[6];
     fighter_ctx_rec_swap(ctx, rec);                     /* 0x1A6B7 0x33A68 */
     hit_facing_flag(ctx[1]);                            /* 0x1A6C0 0x18B04 */
@@ -3201,6 +3202,7 @@ void fighter_37178(u32 slot)
  * strlen mode for 0x2F280; 0x2F314 ignores its ECX. */
 void fighter_38c5c(u32 side)
 {
+    PR_SEAM(0x38C5Cu, side);
     s32 c = (s32)side * 0x25;                                   /* 0x38C64..0x38C70 */
     text_cells_release(c + 2, 8, mem + FIGHT_TXT_2SP, 0x2000u); /* 0x38C8B 0x2F280 */
     text_cells_release_vertical(c + 2, 9, mem + FIGHT_TXT_6SP); /* 0x38CA1 0x2F314 */
@@ -3261,6 +3263,7 @@ void fighter_38d90(u32 side)
  * threshold met, or 0x14 ids with no terminator, returns 0. */
 u8 fighter_38ed0(u32 side, u32 rec)
 {
+    PR_SEAM_RET(0x38ED0u, side, rec);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                                /* 0x38EDF 0x33950 */
     for (u32 i = 0; i < 0x14u; i++) {                           /* 0x38FD9 */
@@ -3766,6 +3769,7 @@ u32 hit_frame_desc(u32 side, u32 i)
  * accumulator = 0, and the stun countdown = the frame's word at +0xC. */
 void hit_slot_seed(u32 side, u32 value, u32 i)
 {
+    PR_SEAM(0x3C6A8u, side, value, i);
     u32 desc = hit_frame_desc(side, i);
     u32 off = side * 0x40u + i * 2u;
     DSW(DS_00107D58 + off) = (u16)value;
@@ -3910,6 +3914,7 @@ int hit_stance_ok(u32 side, u32 i)
  * stance is valid, or -1. */
 s32 hit_scan(u32 side)
 {
+    PR_SEAM_RET(0x3CD44u, side);
     for (u32 i = 0; i < 0x20u; i++) {
         if ((s16)DSW(DS_00107D58 + side * 0x40u + i * 2u) == 8
                 && hit_stance_ok(side, i))
@@ -4232,6 +4237,7 @@ static void hit_stance_timer(u32 side)
  * entirely (slot+0x63 != 0). Correction to record §3.6/§7.11 (raw wins). */
 void hit_sound(u32 ch)
 {
+    PR_SEAM(0x32BACu, ch);
     (void)ch;
 }
 
@@ -5293,6 +5299,7 @@ void fighter_14c98(u32 slot, u32 rec, u32 side)
  * and 0x34E2C. */
 int hit_reaction_drive(u32 side, u32 i)
 {
+    PR_SEAM_RET(0x3CE58u, side, i);
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 reaction;
     if (!hit_gate(side, i)) return 0;                   /* 0x3CE5E */
@@ -5313,6 +5320,7 @@ int hit_reaction_drive(u32 side, u32 i)
 /* 0x3CF38. The hit wrapper. */
 int hit_chain_resolve(u32 side)
 {
+    PR_SEAM_RET(0x3CF38u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     s32 i = hit_scan(side);                             /* 0x3CF54 */
     if (i == -1) return 0;                              /* 0x3CF5E */

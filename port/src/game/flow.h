@@ -302,6 +302,9 @@ void game_attract_dump_frame(void);
  * a unit test; 0x121A0 uses it for string 0x15 ("THE FUTURE..."). */
 void game_string_table_load(const char *dir);
 const u8 *game_string_get(u32 id);
+u32  string_lock(u32 handle);                    /* 0x1E75C */
+void string_unlock(u32 handle);                  /* 0x1E808 */
+u32  string_decode(u32 id, u8 *out, u32 outlen); /* 0x474E4 */
 
 /* 0x4F1D0. Zeroes the two origin words DS_00107A3A/DS_00107A38. Distinct from
  * 0x4F1E4 (frontend_input_reset). Exposed so attract.c (0x11000 phase 0/1) and

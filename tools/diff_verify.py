@@ -6487,6 +6487,294 @@ C3E_SPECS = [
        mutants=("@frame", "@face", "@off", "@layer", "@stream", "@key", "@s59")),
 ]
 
+# ---- track P batch C3f (record 2026-10-05-reverse-c3f): the tail's tail --------------------------
+#
+# List B/C and the text-tree leaves first; the 0x38D90/0x38FEC tree follows (the batch's prototype
+# order is the record's §C3f dependency order).
+
+
+def c3f_38b_case():
+    """0x38BB0/0x38BC8: the three 0x40-byte 0x107A80 tables and the 0x107D24 word (each poke at
+    most 0x40 bytes: the driver's per-poke cap)."""
+    return {0x00107A40: bytes([0x5A]) * 0x40, 0x00107A80: bytes([0x5B]) * 0x40,
+            0x00107AC0: bytes([0x5C]) * 0x40, 0x00107D24: le16(0x1234)}
+
+
+def c3f_b038_case(side, base, k, x):
+    """0x3B038: the 0xBE018 base, the 0xBEDEE window word (high 16) and the side slot's +0x2C."""
+    return {0x000BE018: le32(base), 0x000BEDEE: le32(k << 16),
+            0x001077B0 + side * 0x94 + 0x2C: le32(x)}
+
+
+def c3f_46534_case(side, v, floor, capidx=0, cap=0x40):
+    """0x46534: the per-side accumulator 0x1082C8 (seed pre-delta), the 0x1082D0 floor, the
+    0x10452C index byte and the 0xC9408 cap table entry."""
+    return {0x001082C8 + side * 4: le32(v), 0x001082D0: le32(floor),
+            0x0010452C: bytes([capidx]), 0x000C9408 + capidx: bytes([cap])}
+
+
+def c3f_ready_case(side, s53, s54):
+    """0x3BDB0: the side slot's +0x53/+0x54."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    p[so + 0x53] = bytes([s53])
+    p[so + 0x54] = bytes([s54])
+    return p
+
+
+def c3f_scan_case(side, pos, values):
+    """0x4649C: the side's 0x14-word input ring at 0x108270 and the 0x1082D2 read position
+    (the raw reads the dword's high 16 as the word index). `values` maps ring index -> word."""
+    p = {0x00108270 + side * 0x28: le16(0x1111) * 0x14, 0x001082D2: le32(pos << 16)}
+    for i, v in values.items():
+        p[0x00108270 + side * 0x28 + i * 2] = le16(v)
+    return p
+
+
+def c3f_ok_case(side, s54, s53):
+    """0x1AB10: the side slot's +0x54/+0x53."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    p[so + 0x54] = bytes([s54])
+    p[so + 0x53] = bytes([s53])
+    return p
+
+
+def c3f_lock_case(flags, ln, base=0x0010A000):
+    """0x1E75C: the handle at 0x10AA00 (base +8, len +0xC, bits +0x15) with its neighbours."""
+    return {0x0010AA00: b"\x11" * 8 + le32(base) + le32(ln) + b"\x22\x33\x44\x55\x66"
+            + bytes([flags]) + b"\x99\x77"}
+
+
+def c3f_unlock_case(flags, clock=0x11223344):
+    """0x1E808: the handle at 0x10AA00 and the DPMI clock shadow 0x101500."""
+    return {0x00101500: le32(clock),
+            0x0010AA00: b"\x11" * 8 + le32(0x0010A000) + le32(0x40) + le32(0x77777777)
+            + b"\x88\x66" + bytes([flags]) + b"\x99\x77"}
+
+
+def c3f_anim_case(side, s54, s43, ch, rec=C3D_REC1):
+    """0x1A6AC: the slot's +0x54/+0x43/+0x7A, the stream tables 0xC8F40/0xC8F90 and the rec
+    argument's +0x51 (fighter_ctx_rec_swap's side)."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    p[so + 0x54] = bytes([s54])
+    p[so + 0x43] = bytes([s43])
+    p[so + 0x7A] = bytes([ch])
+    p[rec + 0x51] = bytes([side])
+    p[0x000C8F40 + ch * 4] = le32(0x11111111)
+    p[0x000C8F90 + ch * 4] = le32(0x22222222)
+    return p
+
+
+def c3f_chain_case(side, s5f, s53, s63, s7c=0, s55=0, ch=0):
+    """0x3CF38: the side slot's +0x5F/+0x53/+0x63/+0x7C/+0x55/+0x7A."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    p[so + 0x5F] = bytes([s5f])
+    p[so + 0x53] = bytes([s53])
+    p[so + 0x63] = bytes([s63])
+    p[so + 0x7C] = bytes([s7c])
+    p[so + 0x55] = bytes([s55])
+    p[so + 0x7A] = bytes([ch])
+    return p
+
+
+def c3f_str_case(groups, outlen=0x100, base=0x0010B000, handle=0x0010AA00):
+    """0x474E4: the localisation table at `base`. `groups` is a list of lists of plaintext
+    entries; group i>0 sits at an 8-byte block (its chain link at +4) and every entry is a length
+    byte followed by its bytes XORed with that length. The handle names base; the out buffer at
+    0x10A200 is seeded 0x5A so a dropped or short write is visible."""
+    buf = bytearray(8)                                  # base+0..+7 (group 0's entries at +8)
+    offs = []
+    for gi, g in enumerate(groups):
+        if gi > 0:
+            offs.append(len(buf))
+            buf.extend(b"\x00" * 8)
+        for e in g:
+            buf.append(len(e) & 0xFF)
+            buf.extend(bytes(b ^ (len(e) & 0xFF) for b in e))
+    for i in range(1, len(offs)):
+        buf[offs[i] + 4:offs[i] + 8] = le32(offs[i + 1] if i + 1 < len(offs) else 0)
+    if offs:
+        buf[4:8] = le32(offs[0])
+    return {0x001082DC: le32(handle),
+            handle: b"\x00" * 8 + le32(base) + le32(0x400) + b"\x00\x00\x00\x00\x00"
+            + b"\x00\x00\x00",
+            base: bytes(buf), 0x0010A200: bytes([0x5A]) * 0x40}
+
+
+C3F_SPECS = [
+    # 0x38BB0 fighter_38bb0: EAX = side; clear 0x107A80 + side*0x40 .. +0x3F. EAX is dead.
+    Spec("fighter_38bb0", 0x38BB0, [
+        Case("b0", {"eax": 0}, c3f_38b_case()),
+        Case("b1", {"eax": 1}, c3f_38b_case()),
+    ], eax_mask=0, mutants=("@stride", "@len", "@off")),
+    # 0x38BC8 fighter_38bc8: EAX = side; 0x38BB0 plus DSW(0x107D24 + side*2) = 0.
+    Spec("fighter_38bc8", 0x38BC8, [
+        Case("b0", {"eax": 0}, c3f_38b_case()),
+        Case("b1", {"eax": 1}, c3f_38b_case()),
+    ], allow_calls=(0x38BB0,), eax_mask=0, mutants=("@word", "@off", "@clear")),
+    # 0x3B038 fighter_3b038: EAX = side; 1 when slot+0x2C is in the window about 0xBE018.
+    Spec("fighter_3b038", 0x3B038, [
+        Case("w0", {"eax": 0}, c3f_b038_case(0, 0, 0xFF00, 0xFFFFFF00)),   # arm 2 boundary
+        Case("w1", {"eax": 0}, c3f_b038_case(0, 0, 0xFF00, 0xFFFFFF01)),   # arm 2 only
+        Case("w2", {"eax": 0}, c3f_b038_case(0, 0, 0xFF00, 0x00000000)),   # both miss
+        Case("w3", {"eax": 0}, c3f_b038_case(0, 0, 0xFF00, 0x00000100)),   # arm 1 boundary
+        Case("w4", {"eax": 0}, c3f_b038_case(0, 0, 0xFF00, 0x00000101)),   # arm 1
+        Case("w5", {"eax": 0}, c3f_b038_case(0, 0x1000, 0x40, 0x0FBF)),    # positive k: miss
+        Case("w6", {"eax": 1}, c3f_b038_case(1, 0, 0xFF00, 0x00000000)),   # side 1: both miss
+        Case("w7", {"eax": 1}, c3f_b038_case(1, 0, 0xFF00, 0x00000100)),   # side 1: arm 1
+    ], eax_mask=0xFF, mutants=("@s1", "@s2", "@sum")),
+    # 0x46534 fighter_46534: EAX = side, EDX = delta; add to 0x1082C8[side], clamp to the
+    # 0xC9408 cap down, to 0 up, then to the 0x1082D0 floor. EAX is dead.
+    Spec("fighter_46534", 0x46534, [
+        Case("v0", {"eax": 0, "edx": 5}, c3f_46534_case(0, 0x10, 0)),      # 0x15
+        Case("v1", {"eax": 0, "edx": 0x30}, c3f_46534_case(0, 0x10, 0)),   # cap 0x40: 0x40
+        Case("v2", {"eax": 0, "edx": 0xFFFFFFF6}, c3f_46534_case(0, 0x10, 0)),  # -10 -> 6
+        Case("v3", {"eax": 0, "edx": 0xFFFFFFEF}, c3f_46534_case(0, 0x10, 0)),  # -17 -> 0
+        Case("v4", {"eax": 0, "edx": 5}, c3f_46534_case(0, 0x10, 0x30)),   # floor 0x30
+        Case("v5", {"eax": 0, "edx": 0x20}, c3f_46534_case(0, 0x3E, 0)),   # cap 0x40: 0x40
+        Case("v6", {"eax": 0, "edx": 2}, c3f_46534_case(0, 0x10, 0, capidx=3, cap=0x20)),
+        Case("v7", {"eax": 1, "edx": 5}, c3f_46534_case(1, 0x10, 0)),      # the other side
+        Case("v8", {"eax": 0, "edx": 0}, c3f_46534_case(0, 0x10, 0x50)),   # floor > cap
+        Case("v9", {"eax": 0, "edx": 0xFFFFFFE0}, c3f_46534_case(0, 0x10, 0)),  # negative
+    ], eax_mask=0, mutants=("@cap", "@sign", "@floor", "@order")),
+    # 0x3BDB0 fight_attack_ready: EAX = side; AL = 1 when slot+0x53 == 0 and +0x54 != 2.
+    Spec("fight_attack_ready", 0x3BDB0, [
+        Case("r0", {"eax": 0}, c3f_ready_case(0, 0, 0)),
+        Case("r1", {"eax": 0}, c3f_ready_case(0, 0, 2)),
+        Case("r2", {"eax": 0}, c3f_ready_case(0, 1, 0)),
+        Case("r3", {"eax": 0}, c3f_ready_case(0, 0, 3)),
+        Case("r4", {"eax": 0}, c3f_ready_case(0, 0x80, 1)),
+        Case("r5", {"eax": 1}, c3f_ready_case(1, 0, 2)),
+        Case("r6", {"eax": 1}, c3f_ready_case(1, 0, 0)),
+    ], allow_calls=(0x33950,), eax_mask=0xFF, mutants=("@s53", "@s54", "@side")),
+    # 0x4649C fighter_input_scan: EAX = side, EDX = n1, EBX = n2, ECX = mask; skip n1 ring
+    # entries, scan n2 from there, 1 on the first word whose low 16 bits overlap the mask.
+    Spec("fighter_input_scan", 0x4649C, [
+        Case("s0", {"eax": 0, "edx": 0, "ebx": 0, "ecx": 0xFFFF}, c3f_scan_case(0, 3, {})),
+        Case("s1", {"eax": 0, "edx": 0, "ebx": 1, "ecx": 0x0001},
+             c3f_scan_case(0, 3, {3: 0x0001})),                            # the first word hits
+        Case("s2", {"eax": 0, "edx": 0, "ebx": 1, "ecx": 0x0002},
+             c3f_scan_case(0, 3, {3: 0x0001})),                            # the mask misses
+        Case("s3", {"eax": 0, "edx": 2, "ebx": 2, "ecx": 0x0004},
+             c3f_scan_case(0, 3, {3: 0x0008, 2: 0x0004})),                 # hit after the skip
+        Case("s4", {"eax": 0, "edx": 2, "ebx": 2, "ecx": 0x0010},
+             c3f_scan_case(0, 3, {3: 0x0008, 2: 0x0004})),                 # miss
+        Case("s5", {"eax": 0, "edx": 2, "ebx": 1, "ecx": 0x0004},
+             c3f_scan_case(0, 0, {0x12: 0x0004, 0x13: 0x0000})),           # skip wraps 0 -> 0x13
+        Case("s6", {"eax": 0, "edx": 0, "ebx": 2, "ecx": 0x0008},
+             c3f_scan_case(0, 0, {0x13: 0x0008})),                         # scan wraps 0 -> 0x13
+        Case("s7", {"eax": 0, "edx": 1, "ebx": 3, "ecx": 0x0100},
+             c3f_scan_case(0, 1, {0: 0x0100})),                            # second word hits
+        Case("s8", {"eax": 1, "edx": 0, "ebx": 2, "ecx": 0x0001},
+             c3f_scan_case(1, 2, {2: 0x0001})),
+        Case("s9", {"eax": 1, "edx": 0, "ebx": 1, "ecx": 0x8000},
+             c3f_scan_case(1, 0x13, {0x13: 0x8000})),
+    ], eax_mask=0xFF, mutants=("@n1", "@n2", "@mask", "@wrap")),
+    # 0x1AB10 fighter_state_ok: EAX = side; 1 when the side slot's +0x54 and +0x53 are both <= 1
+    # (unsigned, `test al,al`/`jbe`). 0x33A10 is an allow (leaf).
+    Spec("fighter_state_ok", 0x1AB10, [
+        Case("o0", {"eax": 0}, c3f_ok_case(0, 0, 0)),
+        Case("o1", {"eax": 0}, c3f_ok_case(0, 1, 1)),
+        Case("o2", {"eax": 0}, c3f_ok_case(0, 2, 0)),
+        Case("o3", {"eax": 0}, c3f_ok_case(0, 0, 2)),
+        Case("o4", {"eax": 0}, c3f_ok_case(0, 0x80, 0)),
+        Case("o5", {"eax": 0}, c3f_ok_case(0, 0, 0xFF)),
+        Case("o6", {"eax": 1}, c3f_ok_case(1, 0, 0)),
+        Case("o7", {"eax": 1}, c3f_ok_case(1, 2, 0)),
+    ], allow_calls=(0x33A10,), eax_mask=0xFF, mutants=("@s54", "@s53", "@sign")),
+    # 0x1E75C string_lock: EAX = the handle; returns its +8 base when +0x15 bit 0 is clear and
+    # +0xC != 0 (setting bit 1), else 0.
+    Spec("string_lock", 0x1E75C, [
+        Case("l0", {"eax": 0x10AA00}, c3f_lock_case(0x00, 0x40)),
+        Case("l1", {"eax": 0x10AA00}, c3f_lock_case(0x01, 0x40)),
+        Case("l2", {"eax": 0x10AA00}, c3f_lock_case(0x00, 0)),
+        Case("l3", {"eax": 0x10AA00}, c3f_lock_case(0xFE, 0x40)),
+        Case("l4", {"eax": 0x10AA00}, c3f_lock_case(0x80, 0x40)),
+    ], eax_mask=0xFFFFFFFF, mutants=("@bit", "@len", "@base", "@or")),
+    # 0x1E808 string_unlock: EAX = the handle; clears +0x15 bit 1, then the 0x500BB clock read
+    # stored at +0x10 (the raw `mov eax,[0x101500]; ret` body is an allow).
+    Spec("string_unlock", 0x1E808, [
+        Case("u0", {"eax": 0x10AA00}, c3f_unlock_case(0xFF)),
+        Case("u1", {"eax": 0x10AA00}, c3f_unlock_case(0x00)),
+        Case("u2", {"eax": 0x10AA00}, c3f_unlock_case(0x02, clock=0xDEADBEEF)),
+    ], allow_calls=(0x500BB,), eax_mask=0, mutants=("@and", "@off", "@store", "@clock")),
+    # 0x474E4 string_decode: EAX = id, EDX = out, EBX = outlen. The handle at 0x1082DC names the
+    # table base; 0x1E75C/0x1E808 are stubs, so each case chooses the base through the lock stub.
+    Spec("string_decode", 0x474E4, [
+        Case("n0", {"eax": 0, "edx": 0x10A200, "ebx": 0x100},
+             c3f_str_case([[b"HELLO"]]), {0x1E75C: 0x0010B000}),          # len 5, ret 6
+        Case("n1", {"eax": 3, "edx": 0x10A200, "ebx": 0x100},
+             c3f_str_case([[b"aa", b"bbb", b"c", b"ABCD"]]), {0x1E75C: 0x0010B000}),
+        Case("n2", {"eax": 0x40, "edx": 0x10A200, "ebx": 0x100},
+             c3f_str_case([[b"first"], [b"WORLD"]]), {0x1E75C: 0x0010B000}),
+        Case("n3", {"eax": 0x41, "edx": 0x10A200, "ebx": 0x100},
+             c3f_str_case([[b"first"], [b"aa", b"WORLD"]]), {0x1E75C: 0x0010B000}),
+        Case("n4", {"eax": 0, "edx": 0x10A200, "ebx": 4},
+             c3f_str_case([[b"HELLO"]]), {0x1E75C: 0x0010B000}),          # truncated: ret 4
+        Case("n4b", {"eax": 0, "edx": 0x10A200, "ebx": 5},
+             c3f_str_case([[b"HELLO"]]), {0x1E75C: 0x0010B000}),          # len == outlen
+        Case("n5", {"eax": 0, "edx": 0x10A200, "ebx": 0x100},
+             c3f_str_case([[b""]]), {0x1E75C: 0x0010B000}),               # len 0: ret 0
+        Case("n6", {"eax": 0x80, "edx": 0x10A200, "ebx": 0x100},
+             c3f_str_case([[b"g0"], [b"g1"], [b"THIRD"]]), {0x1E75C: 0x0010B000}),
+    ], calls=(E.Call(0x1E75C, ("eax",), mode="stub"), E.Call(0x1E808, ("eax",), mode="stub")),
+       eax_mask=0xFFFFFFFF, mutants=("@xor", "@trunc", "@term", "@skip", "@off", "@ret", "@link")),
+    # 0x1C500 game_string_get: EAX = id; calls 0x474E4(EDX = 0x102760, EBX = 0x100) and zeroes the
+    # buffer's first byte when the return is 0; returns the buffer address (EAX always 0x102760).
+    Spec("game_string_get", 0x1C500, [
+        Case("c0", {"eax": 0}, c3f_str_case([]), {0x474E4: 6}),
+        Case("c1", {"eax": 7}, c3f_str_case([]), {0x474E4: 0}),
+        Case("c2", {"eax": 0x40}, c3f_str_case([]), {0x474E4: 0x100}),
+    ], calls=(E.Call(0x474E4, ("eax", "edx", "ebx"), mode="stub",
+                     clobbers=("ebx", "edx"), writes=((1, 0, b"HELLO\x00"),)),),
+       eax_mask=0xFFFFFFFF, mutants=("@zero", "@id", "@ret", "@call")),
+    # 0x1A6AC fighter_block_anim: EAX = slot, EDX = rec. 0x33A68 runs on both sides (allow, the
+    # port's ctx builder); 0x18B04 (the facing flag) and 0x3C480 (the animation start) are stubs.
+    Spec("fighter_block_anim", 0x1A6AC, [
+        Case("a0", {"eax": 0x001077B0, "edx": C3D_REC1}, c3f_anim_case(0, 0, 0x00, 3)),
+        Case("a1", {"eax": 0x001077B0, "edx": C3D_REC1}, c3f_anim_case(0, 0, 0x20, 3)),
+        Case("a2", {"eax": 0x001077B0, "edx": C3D_REC1}, c3f_anim_case(0, 1, 0x00, 3)),
+        Case("a3", {"eax": 0x001077B0, "edx": C3D_REC1}, c3f_anim_case(0, 1, 0x10, 3)),
+        Case("a4", {"eax": 0x001077B0, "edx": C3D_REC1}, c3f_anim_case(0, 2, 0x00, 3)),
+        Case("a5", {"eax": 0x001077B0, "edx": C3D_REC1}, c3f_anim_case(0, 0xFF, 0x00, 3)),
+        Case("a6", {"eax": 0x001077B0, "edx": C3D_REC1}, c3f_anim_case(0, 0x80, 0x00, 3)),
+        Case("a7", {"eax": 0x001077B0 + 0x94, "edx": C3D_REC1}, c3f_anim_case(1, 0, 0x00, 5)),
+        Case("a8", {"eax": 0x001077B0 + 0x94, "edx": C3D_REC1}, c3f_anim_case(1, 1, 0x10, 5)),
+        Case("a9", {"eax": 0x001077B0, "edx": C3D_REC1}, c3f_anim_case(0, 0, 0x40, 3)),
+        Case("a10", {"eax": 0x001077B0, "edx": C3D_REC1}, c3f_anim_case(0, 0, 0x80, 3)),
+    ], allow_calls=(0x33A68,),
+       calls=(E.Call(0x18B04, ("eax",), mode="stub"),
+              E.Call(0x3C480, ("eax", "edx", "s0"), mode="stub", pop=4, clobbers=("edx",))),
+       eax_mask=0, mutants=("@s54", "@bit", "@mask", "@stream", "@call", "@rec")),
+    # 0x3CF38 hit_chain_resolve: EAX = side. 0x3CD44 (scan), 0x3CE58 (drive) and 0x3C6A8 (seed)
+    # are stubs; 0x32BAC is a one-byte RET the port's hit_sound no-ops (allow).
+    Spec("hit_chain_resolve", 0x3CF38, [
+        Case("h0", {"eax": 0}, c3f_chain_case(0, 0, 0, 0), {0x3CD44: 0xFFFFFFFF}),  # scan -1
+        Case("h1", {"eax": 0}, c3f_chain_case(0, 0, 1, 0), {0x3CD44: 5, 0x3CE58: 0},),
+        Case("h2", {"eax": 0}, c3f_chain_case(0, 0, 0, 0), {0x3CD44: 5, 0x3CE58: 0},),
+        Case("h3", {"eax": 0}, c3f_chain_case(0, 0, 0, 0), {0x3CD44: 5, 0x3CE58: 1},),
+        Case("h4", {"eax": 0}, c3f_chain_case(0, 0, 0, 1), {0x3CD44: 5, 0x3CE58: 1},),
+        Case("h5", {"eax": 0}, c3f_chain_case(0, 0x10, 0, 0), {0x3CD44: 0x1C, 0x3CE58: 1},),
+        Case("h6", {"eax": 0}, c3f_chain_case(0, 0x10, 0, 0), {0x3CD44: 0x1B, 0x3CE58: 1},),
+        Case("h7", {"eax": 0}, c3f_chain_case(0, 0x17, 0, 0), {0x3CD44: 0x1C, 0x3CE58: 1},),
+        Case("h8", {"eax": 0}, c3f_chain_case(0, 0x18, 0, 0), {0x3CD44: 0x1C, 0x3CE58: 1},),
+        Case("h9", {"eax": 1}, c3f_chain_case(1, 0, 0, 0, s7c=7, s55=9, ch=2),
+             {0x3CD44: 3, 0x3CE58: 1},),
+        Case("h10", {"eax": 1}, c3f_chain_case(1, 0, 0, 0),
+             {0x3CD44: 3, 0x3CE58: 0},),
+    ],
+       calls=(E.Call(0x3CD44, ("eax",), mode="stub"),
+              E.Call(0x3CE58, ("eax", "edx"), mode="stub", clobbers=("edx", "edi", "ebp")),
+              E.Call(0x3C6A8, ("eax", "edx", "ebx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x32BAC, ("eax",), mode="stub")),
+       eax_mask=0xFF, mutants=("@guard", "@drive", "@seed", "@sound", "@s5f", "@s55", "@inc",
+                               "@ret")),
+]
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -6529,7 +6817,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------
