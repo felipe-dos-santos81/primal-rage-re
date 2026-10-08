@@ -445,11 +445,12 @@ addresses in total**, with `0x32BAC` named.
 addresses above. The named non-rows stay: `0x2EA30` (the inert interrupt lock), `0x1B544` (host
 `res_resolve`), `0x5D812`/`0x29D60`/`0x2EA64`/`0x32BAC` (bare stubs/rets), `0x500BB` (the DPMI
 clock), `0x5DEED` and the AIL wrappers `0x5DC0F`/`0x5DC8B`/`0x5DD03`/`0x5DEAF`. Everything else the
-scan reaches is runtime (`>= 0x5D000`). The rows that stay open on them: `string_unlock`
-(`0x500BB`), `hit_chain_resolve` (`0x32BAC` plus the C3g tree), and the seven rows the deferred
-first wave blocks (`fighter_input_mask`, `pset_write`, `fighter_379c4`, `fighter_39040`,
-`fight_command_map`, and the two this batch closed — `fighter_state_36bc8`, `fighter_3b080`,
-`fighter_4f434` are now closed).
+scan reaches is runtime (`>= 0x5D000`). The rows that stay open on them, seven in all:
+`string_unlock` (`0x500BB`), `hit_chain_resolve` (`0x32BAC` plus the C3g tree) and the five the
+deferred first wave blocks (`fighter_input_mask`, `pset_write`, `fighter_379c4`, `fighter_39040`,
+`fight_command_map`); the three rows this batch closed (`fighter_state_36bc8`, `fighter_3b080`,
+`fighter_4f434`) no longer count. (The final-review nit: the earlier text said "seven rows the
+deferred first wave blocks" and "the two this batch closed" while listing five and three.)
 
 **What a C3g would need, precisely:** (a) the rows for the 31 ported addresses above, each with a
 `Spec`, binding, mutants and exact-set pins, exactly as this batch's rows, in the wave order (a row
@@ -521,8 +522,9 @@ driver path reaches them.
 
 **The tail-verdict re-measure (Task 4 Step 2).** On the final tree none of §C3f.7's 31 frontier
 addresses (the nineteen deferred C3f — the fifteen List A/tree plus the four List B — and the
-twelve the `0x3CF38` row exposes) has a `Spec`: the final `tools/diff_verify.py`'s 265 `Spec`
-entries were scanned against the list; the thirteen rows' unrowed callees and every row's frontier
+twelve the `0x3CF38` row exposes) has a `Spec`: the final `tools/diff_verify.py`'s 292 `Spec`
+entries (291 addresses plus the `0x468d8` alias; the final-review nit corrected the earlier 265)
+were scanned against the list; the thirteen rows' unrowed callees and every row's frontier
 addresses are those §C3f.7 names. `0x32BAC` stays the named non-row (a one-byte RET cannot have a
 row). The list stands unchanged.
 

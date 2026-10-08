@@ -458,6 +458,10 @@ int fighter_attack_consume(u32 side);
  * side. */
 void hit_facing_flag(u32 side);
 
+/* 0x1922C. The stance timer (see its header comment in fighter.c); exported
+ * for 0x34E2C's row's mutant bindings (record C3g). EAX = side. */
+void hit_stance_timer(u32 side);
+
 /* 0x35E04. The animation-opcode 0x10 target in the characters' 0xC8B30
  * attack streams: with rec+0x14 set, hold 3.0f into rec+0x20/+0x24 and launch
  * the side through 0x3BC70 (state 4/0/2; gravity, vertical and signed

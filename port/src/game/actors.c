@@ -3916,6 +3916,7 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
  * (DS 0x3D048 / 0x3D1EC). */
 int text_width(const u8 *s, u32 mode)
 {
+    PR_SEAM_RET(0x2F0F0u, (u32)(s - mem), mode);
     mode &= 3u;
     const u32 table = (mode == 2u) ? 0xbd048u : 0xbd1ecu;
     if (mode != 2u && mode != 3u)
@@ -4103,7 +4104,7 @@ s32 text_render(const u8 *s, u32 mode, s32 row, s32 col, u32 vertical)
     for (;;) {
         u8 ch = *s;
         if (ch == 0) return count;                         /* 0x2F8E4 */
-        if (text_glyph_emit((s32)ch, &col, &row, mode, vertical) != 0)
+        if (text_glyph_emit((s8)ch, &col, &row, mode, vertical) != 0)
             return 0;                                      /* 0x2F903 */
         count++;
         s++;
@@ -4282,14 +4283,16 @@ void text_cells_release_vertical(s32 col, s32 row, const u8 *s)
  * enters 0x65490), so the rows run them mode="stub" and the port's calls must be interceptable.
  * Both are inert outside build/diffrun. Each seam records its pointer arguments as mem[] offsets
  * (0x65546's dest included); the P2.7 by-value dword form is for the text rows' own seams, whose
- * buffers are register-passed (record §P2.7). */
+ * buffers are register-passed (record §P2.7). `host_memset` is exported (Task 4) for the 0x2EFD4
+ * mutant core, which mirrors its call sites; `host_sprintf` stays internal, reached through
+ * `text_number_core`. */
 static s32 host_sprintf(u8 *dest, const u8 *fmt, s32 value)
 {
     PR_SEAM_RET(0x65546u, (u32)(dest - mem), (u32)(fmt - mem), value);
     return (s32)snprintf((char *)dest, 0x14u, (const char *)fmt, (int)value);
 }
 
-static void host_memset(u8 *dest, u32 fill, u32 len)
+void host_memset(u8 *dest, u32 fill, u32 len)
 {
     PR_SEAM(0x61A70u, (u32)(dest - mem), fill, len);
     memset(dest, (int)fill, (size_t)len);
