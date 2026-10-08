@@ -3916,6 +3916,7 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
  * (DS 0x3D048 / 0x3D1EC). */
 int text_width(const u8 *s, u32 mode)
 {
+    PR_SEAM_RET(0x2F0F0u, (u32)(s - mem), mode);
     mode &= 3u;
     const u32 table = (mode == 2u) ? 0xbd048u : 0xbd1ecu;
     if (mode != 2u && mode != 3u)

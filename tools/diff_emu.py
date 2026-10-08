@@ -635,7 +635,11 @@ def callee_clobbers(image, addr, resolved=None):
     # so those callees preserve them.
     return _CALLEE_CLOBBER_FIXES.get(addr, result)
 
-_CALLEE_CLOBBER_FIXES = {0x2B150: (), 0x2BD44: ("edx",), 0x3B298: ("edx",)}
+# C3g: 0x3CF38's body pushes and pops ESI only (0x3CF3B/0x3CFD1, 0x3CFFE) and never writes
+# EDI or EBP, so it preserves them; the scan above over-approximates through the indirect
+# reaction callback. The raw caller 0x3BDDC depends on DI across the call (set at 0x3BDFD,
+# read at 0x3BF14), which the poison would break.
+_CALLEE_CLOBBER_FIXES = {0x2B150: (), 0x2BD44: ("edx",), 0x3B298: ("edx",), 0x3CF38: ()}
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --
