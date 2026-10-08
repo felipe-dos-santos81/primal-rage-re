@@ -13019,7 +13019,7 @@ static void m_c3g_vert_sext(const u32 *r, u32 *eax)   { *eax = c3g_2f20c_core(r,
 
 /* 0x38ED0's mutants. The correct form is the port's: the id at +0x1B (0xFF-terminated), the
  * unsigned +0x2F need check against the side's 0x107A80 table, then the three +0x18 thresholds as
- * ZERO-extended bytes against the signed 0x107D2C word (@signed is the old sign-extending port). */
+ * ZERO-extended bytes against the signed 0x107D2C word (@signed is the sign-extending mutant). */
 static u32 c3g_38ed0_core(const u32 *r, u32 mut)
 {
     u32 side = r[R_EAX], rec = r[R_EDX];
@@ -13128,6 +13128,8 @@ static u32 c3g_34e2c_core(const u32 *r, u32 mut)
         }
     }
     if (callback != 0u) {
+        (void)sound_voice((u32)DSW(0x000E9308u
+                          + (u32)DSB(anim[0] + 7u) * 2u));
         if (!(mut & 131072u))                                           /* @cbstore */
             DSB(slot + 0x5Fu) = (u8)reaction;
         {

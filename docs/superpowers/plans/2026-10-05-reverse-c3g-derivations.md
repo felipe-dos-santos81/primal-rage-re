@@ -173,6 +173,15 @@ clobber; a stub's call is declared with those clobbers in `C3G_SPECS`):
 7. **`fighter_38c5c`'s row is the call list.** The function has no reads and no branches; its two
    cases (side 0/1) carry the four text calls' arguments (`@c`'s side-1 case is what separates the
    `0x25` stride from `0x94`).
+8. **`0x38ED0`'s calls are `0x2F4BC`, not the plan's by-value `0x2F198` (Task 3).** The raw calls
+   `text_cursor_hold` at 0x38F40/0x38F60/0x38F7E/0x38F9D with EAX=-1, EDX=row, EBX=the 0x1C500
+   buffer, ECX=0x3000 (`mov eax,0xffffffff` at 0x38F3B; `call 0x2f4bc` at 0x38F40); `0x2F198` is
+   inside `0x2F4BC`, outside this row, so no by-value buffer is involved (raw wins).
+9. **`0x1922C` had no seam; its row runs it as an allow (Task 3).** It was `static` in `fighter.c`
+   where the plan's "calls are the existing seams" expected one; the `0x34E2C` row runs it as an
+   **allow** (real, unrecorded) and its mutant cores call it, so `hit_stance_timer` is now
+   non-static with a `fighter.h` declaration — Task 3's one interface change, no `PR_SEAM` added
+   (Task 4's work). `0x3AFC4` likewise has no seam by design and is an allow.
 
 **Fixtures.** The rows reuse `c3d_slot_pokes` (C3d) and the slot records; the new helpers are
 `c3g_stance_case` (the 0xC619C entry's `d`/`e` flags and the sentinel bytes), `c3g_gate_case` (the
