@@ -6494,10 +6494,13 @@ C3E_SPECS = [
 
 
 def c3f_38b_case():
-    """0x38BB0/0x38BC8: the three 0x40-byte 0x107A80 tables and the 0x107D24 word (each poke at
-    most 0x40 bytes: the driver's per-poke cap)."""
+    """0x38BB0/0x38BC8: the three 0x40-byte 0x107A80 tables and the two 0x107D24 words (each poke at
+    most 0x40 bytes: the driver's per-poke cap). The 0x107D24 word for both sides is seeded
+    different from the 0 the 0x38BCC store writes (side 1's image byte is 0), with the 0x107D28
+    neighbour nonzero so a too-wide store changes it (the Task 3 sweep)."""
     return {0x00107A40: bytes([0x5A]) * 0x40, 0x00107A80: bytes([0x5B]) * 0x40,
-            0x00107AC0: bytes([0x5C]) * 0x40, 0x00107D24: le16(0x1234)}
+            0x00107AC0: bytes([0x5C]) * 0x40,
+            0x00107D24: le16(0x1234) + le16(0x5678) + le16(0x9ABC)}
 
 
 def c3f_b038_case(side, base, k, x):

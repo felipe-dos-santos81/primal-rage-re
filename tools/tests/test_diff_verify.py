@@ -2530,7 +2530,7 @@ class RealFunctionTests(unittest.TestCase):
         ("fighter_38bb0@stride", ['b1']),
         ("fighter_38bc8@clear", ['b0', 'b1']),
         ("fighter_38bc8@off", ['b1']),
-        ("fighter_38bc8@word", ['b0']),
+        ("fighter_38bc8@word", ['b0', 'b1']),
         ("fighter_3b038@s1", ['w3', 'w7']),
         ("fighter_3b038@s2", ['w1', 'w2', 'w5', 'w6']),
         ("fighter_3b038@sum", ['w1', 'w2', 'w6']),
