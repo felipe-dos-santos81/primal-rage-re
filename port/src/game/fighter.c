@@ -44,7 +44,7 @@ void fighter_164e8(u32 side);                           /* 0x164E8 */
 
 /* The winner-body helpers the think chain 0x1975C/0x3B464 shares; defined with
  * the 0x193B0 and 0x3B714 blocks below. */
-static void hit_stance_timer(u32 side);                  /* 0x1922C */
+void hit_stance_timer(u32 side);                  /* 0x1922C */
 static int fighter_3962c(u32 side, u32 param_2);         /* 0x3962C */
 static int fighter_396ac(u32 side, u32 param_2);         /* 0x396AC */
 void fighter_18b44(u32 slot);                           /* 0x18B44 */
@@ -1731,7 +1731,7 @@ void fighter_state_35d7c(u32 side)
  * prologue). The dispatch table is 0x34B14; the entries are in fight.c. */
 
 void fighter_state_367dc(u32 slot, u32 rec);                /* 0x367DC */
-static void hit_stance_timer(u32 side);                     /* 0x1922C */
+void hit_stance_timer(u32 side);                     /* 0x1922C */
 void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits); /* 0x3C520 */
 
 /* PORT: data-object addresses symbols.h does not name. */
@@ -3276,8 +3276,10 @@ u8 fighter_38ed0(u32 side, u32 rec)
             continue;
         }
         for (u32 j = 0; j < 3u; j++) {                          /* 0x38FAE */
-            if ((s16)DSB(rec + 0x18u + j)
-                > (s16)DSW(FIGHT_D2C_BASE + ctx[0] * 2u))       /* 0x38F12 */
+            if ((s32)DSB(rec + 0x18u + j)
+                > (s32)(s16)DSW(FIGHT_D2C_BASE + ctx[0] * 2u))  /* 0x38F12: dx is the
+                                                                   zero-extended byte (`xor
+                                                                   edx,edx; mov dl,..`) */
                 continue;
             if (DSB(ctx[2] + 0x63u) == 0u) {                    /* 0x38F1F */
                 text_cursor_hold(-1, 6, game_string_get(0xe5u), 0x3000u); /* 0x38F40 */
@@ -4223,7 +4225,7 @@ void hit_facing_flag(u32 side)
  * float is clear, seed it from the signed byte DS_00100B5C[side], zero +0x20,
  * and clamp a value outside [1.0, DS_0008058C] to 3.0. Then clear B5A (only on
  * the taken arm) and B5E. */
-static void hit_stance_timer(u32 side)
+void hit_stance_timer(u32 side)
 {
     if ((s8)DSB(DS_00100B5A + side) > 0) {              /* 0x19244 */
         u32 rec = DSD(DS_001077B0 + side * 0x94u);

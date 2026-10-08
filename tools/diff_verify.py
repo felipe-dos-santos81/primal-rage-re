@@ -7087,6 +7087,101 @@ def c3g_gate_case(side, s56):
     return p
 
 
+C3G_38ED0_REC = 0x0010A600           # 0x38ED0's 0x44-byte combo record scratch
+# The six string ids the pair pokes use (0x38ED0's +4*j/+0xC+4*j dwords). `c3f_str_case` seeds a
+# real table so the two 0x1C500 decodes differ per id and the @pair mutant is visible in the
+# decoded buffer at each 0x2F4BC call (the recorded call args alone cannot see a string swap).
+C3G_38ED0_PAIR = ((0, 1), (2, 3), (4, 5))
+C3G_38ED0_STRINGS = [[b"A", b"BB", b"CCC", b"DDDD", b"EEEEE", b"FFFFFF"]]
+
+
+def c3g_38ed0_case(side, ids, needs=(), thr=(0, 0, 0), hit=5, hit_other=5, s63=0, s62=0,
+                   pair=C3G_38ED0_PAIR, table=(), table_other=(), rec=C3G_38ED0_REC):
+    """0x38ED0: the record's +0x1B id list (`ids`, the exact bytes), the +0x2F needs and the three
+    +0x18 threshold bytes; the +4*j/+0xC+4*j string id pairs; the slot's +0x62/+0x63; the side's
+    0x107A80 need table (`table` as (id, byte) pairs) and both 0x107D2C hit words. The record's
+    spare bytes are 0xA5 sentinels (so a shifted id read is visible); +0x2E is 0x00 for the @need
+    mutant. The string table makes every pair id decode to distinct text."""
+    p = c3d_slot_pokes()
+    p.update(c3f_str_case(C3G_38ED0_STRINGS))
+    so = 0x001077B0 + side * 0x94
+    p[0x001077B0] = le32(rec)
+    p[so + 0x62] = bytes([s62])
+    p[so + 0x63] = bytes([s63])
+    lo = bytearray(b"\xA5" * 0x18)
+    for j, (r6, r7) in enumerate(pair):
+        lo[j * 4:j * 4 + 4] = le32(r6)
+        lo[0xC + j * 4:0xC + j * 4 + 4] = le32(r7)
+    hi = bytearray(b"\xA5" * 0x2C)          # rec+0x18 .. rec+0x43
+    hi[0x16] = 0x00                         # the byte before the needs (@need's wrong offset)
+    for j in range(3):
+        hi[j] = thr[j] & 0xFF
+    for i, b in enumerate(ids):
+        hi[3 + i] = b & 0xFF
+    for i, b in enumerate(needs):
+        hi[0x17 + i] = b & 0xFF
+    p[rec] = bytes(lo)
+    p[rec + 0x18] = bytes(hi)
+    p[0x00107D2C + side * 2] = le16(hit)
+    p[0x00107D2C + (1 - side) * 2] = le16(hit_other)
+    for i, b in table:
+        p[0x00107A80 + side * 0x40 + i] = bytes([b])
+    for i, b in table_other:
+        p[0x00107A80 + (1 - side) * 0x40 + i] = bytes([b])
+    return p
+
+
+C3G_APPLY_REC0 = 0x0010A600          # 0x34E2C's slot 0 record
+C3G_APPLY_REC1 = 0x0010A680          # 0x34E2C's slot 1 record
+C3G_APPLY_STREAM = 0x0010A800        # the pointer the triple's [anim[1]+4] points to
+C3G_APPLY_CB = 0x00029D60            # the allowed bare `ret` the callback arm calls (fn_resolve skips)
+C3G_APPLY_C = 0x12                   # char 0, reaction 0x12: the triple entry every case uses
+
+
+def c3g_apply_case(side, reaction, ch=0, s54=0, s52=0, s53=0, s6a=0, s41=0, s84=0, s5f=0,
+                   fa=0, cb=0, stream=0, bx=0, voice=0, s62=0, st5a=0, st5c=0, d24=0):
+    """0x34E2C: both slots' records, the side slot's +0x41/+0x52/+0x53/+0x54/+0x5F/+0x62/+0x6A/+0x7A/
+    +0x84, the 0x1078F8[side] sentinel, the 0x1078FA gate, the (ch, reaction) triple's three entries
+    (0xDE114's +7 voice byte, 0xA3528's +0 callback and +4 stream pointer over the stream dword at
+    C3G_APPLY_STREAM, 0xA6728's +2 word) and the stance timer's 0x100B5A/0x100B5C seeds. The
+    records' +0x20/+0x24/+0x59/+0x62/+0x63 carry sentinels."""
+    p = c3d_slot_pokes()
+    s = 0x001077B0 + side * 0x94
+    p[0x001077B0] = le32(C3G_APPLY_REC0)
+    p[0x001077B0 + 0x94] = le32(C3G_APPLY_REC1)
+    p[s + 0x41] = bytes([s41])
+    p[s + 0x52] = bytes([s52])
+    p[s + 0x53] = bytes([s53])
+    p[s + 0x54] = bytes([s54])
+    p[s + 0x5F] = bytes([s5f])
+    p[s + 0x62] = bytes([s62])
+    p[s + 0x6A] = le16(s6a)
+    p[s + 0x7A] = bytes([ch])
+    p[s + 0x84] = le16(s84)
+    p[0x001078F8] = b"\xA5\xA5"
+    p[0x001078FA] = bytes([fa])
+    rec = C3G_APPLY_REC0 if side == 0 else C3G_APPLY_REC1
+    for r in (C3G_APPLY_REC0, C3G_APPLY_REC1):
+        p[r + 0x20] = le32(0x20202020)
+        p[r + 0x24] = le32(0x24242424)
+        p[r + 0x59] = b"\x59"
+        p[r + 0x62] = b"\x62"
+        p[r + 0x63] = b"\x63"
+    p[rec + 0x24] = le32(d24)
+    c = ch * 0x40 + reaction
+    a0, a1, a2 = 0x000DE114 + c * 11, 0x000A3528 + c * 20, 0x000A6728 + c * 6
+    p[a0 + 7] = bytes([voice])
+    p[a1] = le32(cb)
+    p[a1 + 4] = le32(C3G_APPLY_STREAM if stream else 0)
+    p[C3G_APPLY_STREAM] = le32(stream)
+    p[a2] = le16(0x0000)                # the @bx mutant's wrong word (bit 12 clear)
+    p[a2 + 2] = le16(bx)
+    p[0x00100B5A + side] = bytes([st5a])
+    p[0x00100B5C + side] = bytes([st5c])
+    p[0x00100B5E] = b"\xA5\xA5"         # both sides' clear word, so @stance's side is visible
+    return p
+
+
 C3G_SPECS = [
     # 0x3C6A8 hit_slot_seed: EAX = side, EDX = value, EBX = i. 0x3C600 (desc) is a stub.
     Spec("hit_slot_seed", 0x3C6A8, [
@@ -7421,6 +7516,66 @@ C3G_SPECS = [
        # read nothing, so the mask is 0.
        eax_mask=0,
        mutants=("@reload", "@neg", "@wargs", "@skip", "@vert", "@mode", "@ext", "@row", "@sext")),
+    # 0x38ED0 fighter_38ed0: EAX = side, EDX = the 0x44-byte combo record. 0x33950 (ctx), 0x1C500
+    # (the string, with its 0x474E4/0x1E75C/0x1E808/0x500BB tree) run real; 0x2F4BC is a stub. The
+    # +0x2F need bytes compare unsigned; the +0x18 thresholds are ZERO-extended bytes against the
+    # signed 0x107D2C word (the raw's `xor edx,edx; mov dl,..; cmp dx,cx; jg` at 0x38F06..0x38F15);
+    # every return is AL (`xor al,al` / `mov al,1`), so the mask is 0xFF.
+    Spec("fighter_38ed0", 0x38ED0, [
+        Case("e0", {"eax": 0, "edx": C3G_38ED0_REC},
+             c3g_38ed0_case(0, [0xFF], thr=(2, 3, 4), hit=5, hit_other=0, s63=0)),
+        Case("e1", {"eax": 0, "edx": C3G_38ED0_REC},
+             c3g_38ed0_case(0, [3, 0xFF], needs=[1], thr=(9, 2, 3), hit=5, s63=1,
+                            table=[(3, 0x05)], table_other=[(3, 0x00)])),
+        Case("e2", {"eax": 0, "edx": C3G_38ED0_REC},
+             c3g_38ed0_case(0, [3, 0xFF], needs=[9], thr=(2, 3, 4), hit=5, s63=0,
+                            table=[(3, 0x05)])),
+        Case("e3", {"eax": 0, "edx": C3G_38ED0_REC},
+             c3g_38ed0_case(0, [0xFF], thr=(9, 8, 7), hit=5, s63=1)),
+        Case("e4", {"eax": 0, "edx": C3G_38ED0_REC},
+             c3g_38ed0_case(0, [0xFF], thr=(9, 8, 7), hit=8, s63=1)),
+        Case("e5", {"eax": 0, "edx": C3G_38ED0_REC},
+             c3g_38ed0_case(0, [1] * 0x14, needs=[0] * 0x14, hit=5, s63=1, table=[(1, 0x01)])),
+        Case("e6", {"eax": 0, "edx": C3G_38ED0_REC},
+             c3g_38ed0_case(0, [1] * 19 + [0xFF], needs=[0] * 19, thr=(0, 9, 9), hit=5, s63=1,
+                            table=[(1, 0x01)])),
+        Case("e7", {"eax": 1, "edx": C3G_38ED0_REC},
+             c3g_38ed0_case(1, [0xFF], thr=(0x80, 0x40, 0x20), hit=0x64, hit_other=0x30, s63=0)),
+    ], allow_calls=(0x33950, 0x1C500, 0x474E4, 0x1E75C, 0x1E808, 0x500BB),
+       calls=(E.Call(0x2F4BC, ("eax", "edx", "ebx", "ecx"), mode="stub",
+                     clobbers=("ebx", "ecx", "edx")),),
+       eax_mask=0xFF,
+       mutants=("@bound", "@id", "@term", "@side", "@need", "@signed", "@s63", "@text", "@pair",
+                "@hit")),
+    # 0x34E2C hit_reaction_apply: EAX = side, EDX = reaction. 0x18B04/0x3C4CC/0x3C520/0x2C3FC are
+    # stubs; 0x3AFC4 (the triple) runs real, 0x1922C (Task 4's row) and the bare-ret 0x29D60
+    # callback run real through fn_resolve (the port skips the unregistered 0x29D60, the original's
+    # allowed `ret` does nothing). Mask 0: a void function.
+    Spec("hit_reaction_apply", 0x34E2C, [
+        Case("h0", {"eax": 0, "edx": 0xFF}, c3g_apply_case(0, 0xFF, s54=2, fa=2, cb=C3G_APPLY_CB)),
+        Case("h1", {"eax": 0, "edx": 0x12},
+             c3g_apply_case(0, 0x12, s54=0, s84=0xFFFF)),
+        Case("h2", {"eax": 0, "edx": 0x12},
+             c3g_apply_case(0, 0x12, s54=2, fa=2, s62=0x62)),
+        Case("h3", {"eax": 0, "edx": 0x12},
+             c3g_apply_case(0, 0x12, s54=0, s52=0, s6a=5, stream=0x0010, bx=0x1000, voice=3)),
+        Case("h4", {"eax": 0, "edx": 0x12},
+             c3g_apply_case(0, 0x12, s54=2, s52=4, stream=0x0020, bx=0, voice=4)),
+        Case("h5", {"eax": 0, "edx": 0x12},
+             c3g_apply_case(0, 0x12, s54=0, cb=C3G_APPLY_CB)),
+        Case("h6", {"eax": 0, "edx": 0x12},
+             c3g_apply_case(0, 0x12, s54=0, stream=0x0030, bx=0x1000, voice=5, cb=C3G_APPLY_CB)),
+        Case("h7", {"eax": 1, "edx": 0x12}, c3g_apply_case(1, 0x12, s54=0, fa=2)),
+        Case("h8", {"eax": 0, "edx": 0x12},
+             c3g_apply_case(0, 0x12, s54=0, st5a=5, st5c=0xFE, d24=0)),
+    ], allow_calls=(0x33950, 0x1922C, 0x3AFC4, 0x29D60),
+       calls=(E.Call(0x18B04, ("eax",), mode="stub"),
+              E.Call(0x3C4CC, ("eax", "edx", "s0"), mode="stub", pop=4, clobbers=("edx",)),
+              E.Call(0x3C520, ("eax", "edx", "s0"), mode="stub", pop=4, clobbers=("edx",)),
+              E.Call(0x2C3FC, ("eax",), mode="stub")),
+       eax_mask=0,
+       mutants=("@ff", "@f88", "@gate", "@pair", "@facing", "@stance", "@s63", "@cnt", "@hi",
+                "@anim", "@stream", "@bx", "@start", "@s52", "@cb", "@cbstore")),
 ]
 
 

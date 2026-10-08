@@ -1580,6 +1580,8 @@ C3G_MASKS = {
     "text_cursor_hold": 0x0,
     "text_number_draw": 0x0,
     "text_vertical_set": 0x0,
+    "fighter_38ed0": 0xff,
+    "hit_reaction_apply": 0x0,
 }
 C3G_KINDS = {
     "actor_pset_point@bdc": {'byte'},
@@ -1737,6 +1739,39 @@ C3G_KINDS = {
     "text_vertical_set@ext": {'byte'},
     "text_vertical_set@row": {'byte'},
     "text_vertical_set@sext": {'call #0'},
+    "fighter_38ed0@bound": {'eax'},
+    "fighter_38ed0@hit": {'byte', 'call #0', 'call #1', 'call #2', 'call #2 memory', 'call #3',
+                          'call #3 memory', 'eax'},
+    "fighter_38ed0@id": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'eax'},
+    "fighter_38ed0@need": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'eax'},
+    "fighter_38ed0@pair": {'byte', 'call #2 memory', 'call #3 memory'},
+    "fighter_38ed0@s63": {'byte', 'call #0', 'call #1', 'call #2', 'call #3'},
+    "fighter_38ed0@side": {'byte', 'call #0', 'call #1', 'call #2', 'call #2 memory', 'call #3',
+                           'call #3 memory', 'eax'},
+    "fighter_38ed0@signed": {'byte', 'call #2 memory', 'call #3 memory'},
+    "fighter_38ed0@term": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'eax'},
+    "fighter_38ed0@text": {'call #0 memory', 'call #1 memory', 'call #2', 'call #3'},
+    "hit_reaction_apply@anim": {'byte', 'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #3'},
+    "hit_reaction_apply@bx": {'byte', 'call #1', 'call #3'},
+    "hit_reaction_apply@cb": {'byte', 'call #1', 'call #3'},
+    "hit_reaction_apply@cbstore": {'byte', 'call #1', 'call #3'},
+    "hit_reaction_apply@cnt": {'byte', 'call #0 memory', 'call #1', 'call #1 memory',
+                               'call #2 memory', 'call #3'},
+    "hit_reaction_apply@f88": {'byte', 'call #0 memory', 'call #1', 'call #1 memory', 'call #3'},
+    "hit_reaction_apply@facing": {'call #0', 'call #0 memory', 'call #1', 'call #2', 'call #3'},
+    "hit_reaction_apply@ff": {'byte', 'call #1', 'call #3'},
+    "hit_reaction_apply@gate": {'byte', 'call #0 memory', 'call #1', 'call #1 memory',
+                                'call #2 memory', 'call #3'},
+    "hit_reaction_apply@hi": {'byte', 'call #0 memory', 'call #1', 'call #1 memory',
+                              'call #2 memory', 'call #3'},
+    "hit_reaction_apply@pair": {'byte', 'call #1', 'call #3'},
+    "hit_reaction_apply@s52": {'byte', 'call #1', 'call #3'},
+    "hit_reaction_apply@s63": {'byte', 'call #0 memory', 'call #1', 'call #1 memory',
+                               'call #2 memory', 'call #3'},
+    "hit_reaction_apply@stance": {'byte', 'call #0 memory', 'call #1', 'call #1 memory',
+                                  'call #2 memory', 'call #3'},
+    "hit_reaction_apply@start": {'call #1', 'call #3'},
+    "hit_reaction_apply@stream": {'call #1', 'call #2', 'call #3'},
 }
 C3G_CASES = [
         ("actor_pset_point@bdc", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7']),
@@ -1894,6 +1929,32 @@ C3G_CASES = [
         ("text_vertical_set@ext", ['v0', 'v1', 'v2', 'v3', 'v5']),
         ("text_vertical_set@row", ['v0', 'v1', 'v2', 'v3', 'v4', 'v5']),
         ("text_vertical_set@sext", ['v5']),
+        ("fighter_38ed0@bound", ['e6']),
+        ("fighter_38ed0@id", ['e0', 'e2', 'e4', 'e7']),
+        ("fighter_38ed0@term", ['e0', 'e1', 'e4', 'e6', 'e7']),
+        ("fighter_38ed0@side", ['e0', 'e1', 'e4', 'e7']),
+        ("fighter_38ed0@need", ['e2', 'e6']),
+        ("fighter_38ed0@signed", ['e7']),
+        ("fighter_38ed0@s63", ['e1', 'e4', 'e6']),
+        ("fighter_38ed0@text", ['e0', 'e7']),
+        ("fighter_38ed0@pair", ['e0', 'e7']),
+        ("fighter_38ed0@hit", ['e0', 'e4', 'e7']),
+        ("hit_reaction_apply@ff", ['h0', 'h5', 'h6']),
+        ("hit_reaction_apply@f88", ['h2', 'h4', 'h5', 'h6']),
+        ("hit_reaction_apply@gate", ['h1', 'h3', 'h4', 'h5', 'h6', 'h8']),
+        ("hit_reaction_apply@pair", ['h2', 'h5', 'h6', 'h7']),
+        ("hit_reaction_apply@facing", ['h1', 'h3', 'h5', 'h6', 'h7', 'h8']),
+        ("hit_reaction_apply@stance", ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8']),
+        ("hit_reaction_apply@s63", ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8']),
+        ("hit_reaction_apply@cnt", ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8']),
+        ("hit_reaction_apply@hi", ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8']),
+        ("hit_reaction_apply@anim", ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8']),
+        ("hit_reaction_apply@stream", ['h3', 'h4', 'h5', 'h6']),
+        ("hit_reaction_apply@bx", ['h3', 'h5', 'h6']),
+        ("hit_reaction_apply@start", ['h4', 'h5', 'h6']),
+        ("hit_reaction_apply@s52", ['h4', 'h5', 'h6']),
+        ("hit_reaction_apply@cb", ['h5', 'h6']),
+        ("hit_reaction_apply@cbstore", ['h5', 'h6']),
 ]
 
 
@@ -3061,9 +3122,10 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (225), the 66 without are counted apart
-        self.assertIn("diff-verify: 310/310 functions VERIFIED; 1242/1242 mutants detected; 1 named gaps; "
-                      "217/241 rows with callees closed (69 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (243 after C3g wave 2's two rows),
+        # the 69 without are counted apart
+        self.assertIn("diff-verify: 312/312 functions VERIFIED; 1268/1268 mutants detected; 1 named gaps; "
+                      "219/243 rows with callees closed (69 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

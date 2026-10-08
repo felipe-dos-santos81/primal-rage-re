@@ -13017,6 +13017,146 @@ static void m_c3g_vert_row(const u32 *r, u32 *eax)    { *eax = c3g_2f20c_core(r,
 static void m_c3g_vert_ext(const u32 *r, u32 *eax)    { *eax = c3g_2f20c_core(r, 128u); }
 static void m_c3g_vert_sext(const u32 *r, u32 *eax)   { *eax = c3g_2f20c_core(r, 256u); }
 
+/* 0x38ED0's mutants. The correct form is the port's: the id at +0x1B (0xFF-terminated), the
+ * unsigned +0x2F need check against the side's 0x107A80 table, then the three +0x18 thresholds as
+ * ZERO-extended bytes against the signed 0x107D2C word (@signed is the old sign-extending port). */
+static u32 c3g_38ed0_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], rec = r[R_EDX];
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);
+    u32 tside = (mut & 64u) ? (1u - ctx[0]) : ctx[0];
+    u32 hside = (mut & (64u | 1024u)) ? (1u - ctx[0]) : ctx[0];
+    for (u32 i = 0; i < ((mut & 1u) ? 0x13u : 0x14u); i++) {                /* @bound */
+        u32 id = (u32)DSB(rec + ((mut & 2u) ? 0x1Cu : 0x1Bu) + i);          /* @id */
+        if (id != ((mut & 4u) ? 0xFEu : 0xFFu)) {                           /* @term */
+            u32 base = (u32)DSB(0x00107A80u + tside * 0x40u + id);
+            u32 need = (u32)DSB(rec + ((mut & 8u) ? 0x2Eu : 0x2Fu) + i);    /* @need */
+            if (base < need) return 0u;
+            continue;
+        }
+        for (u32 j = 0; j < 3u; j++) {
+            s32 thr = (mut & 16u) ? (s32)(s8)DSB(rec + 0x18u + j)
+                                  : (s32)DSB(rec + 0x18u + j);              /* @signed */
+            s32 hit = (s32)(s16)DSW(0x00107D2Cu + hside * 2u);              /* @hit */
+            if (thr > hit) continue;
+            if ((u32)DSB((mut & 32u) ? (ctx[2] + 0x62u) : (ctx[2] + 0x63u)) == 0u) {  /* @s63 */
+                u32 k = (mut & 256u) ? 0xCu : 0u;                           /* @pair */
+                if (!(mut & 128u)) {                                        /* @text */
+                    text_cursor_hold(-1, 6, game_string_get(0xE5u), 0x3000u);
+                    text_cursor_hold(-1, 7, game_string_get(0xE5u), 0x3000u);
+                }
+                text_cursor_hold(-1, 6, game_string_get(DSD(rec + k + j * 4u)), 0x3000u);
+                text_cursor_hold(-1, 7,
+                                 game_string_get(DSD(rec + (k ^ 0xCu) + j * 4u)), 0x3000u);
+            }
+            return 1u;
+        }
+        return 0u;
+    }
+    return 0u;
+}
+static void b_c3g_38ed0(const u32 *r, u32 *eax) { *eax = (u32)fighter_38ed0(r[R_EAX], r[R_EDX]); }
+static void m_c3g_38ed0_bound(const u32 *r, u32 *eax)  { *eax = c3g_38ed0_core(r, 1u); }
+static void m_c3g_38ed0_id(const u32 *r, u32 *eax)     { *eax = c3g_38ed0_core(r, 2u); }
+static void m_c3g_38ed0_term(const u32 *r, u32 *eax)   { *eax = c3g_38ed0_core(r, 4u); }
+static void m_c3g_38ed0_need(const u32 *r, u32 *eax)   { *eax = c3g_38ed0_core(r, 8u); }
+static void m_c3g_38ed0_signed(const u32 *r, u32 *eax) { *eax = c3g_38ed0_core(r, 16u); }
+static void m_c3g_38ed0_s63(const u32 *r, u32 *eax)    { *eax = c3g_38ed0_core(r, 32u); }
+static void m_c3g_38ed0_side(const u32 *r, u32 *eax)   { *eax = c3g_38ed0_core(r, 64u); }
+static void m_c3g_38ed0_text(const u32 *r, u32 *eax)   { *eax = c3g_38ed0_core(r, 128u); }
+static void m_c3g_38ed0_pair(const u32 *r, u32 *eax)   { *eax = c3g_38ed0_core(r, 256u); }
+static void m_c3g_38ed0_hit(const u32 *r, u32 *eax)    { *eax = c3g_38ed0_core(r, 1024u); }
+
+/* 0x34E2C's mutants. The correct form is the port's; @hi stores the reaction's high byte (@ff the
+ * early-return test), @anim swaps the triple's two arguments, @stream keeps the pointer instead of
+ * its dword, @cb reads the callback from the +4 slot, @cbstore drops the callback arm's +0x5F. */
+static u32 c3g_34e2c_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], reaction = r[R_EDX];
+    u32 slot = 0x001077B0u + side * 0x94u;
+    u32 other = 0x001077B0u + (1u - side) * 0x94u;
+    u32 rec = DSD(slot);
+    u32 orec = DSD(other);
+    u32 anim[3];
+    u32 stream = 0;
+    u32 callback;
+
+    if (!(mut & 1u) && reaction == 0xFFu) return 0u;                    /* @ff */
+    DSW(slot + 0x88u) = 0;
+    DSB(slot + 0x8Au) = 1;
+    if (DSB(slot + 0x54u) == 2u)
+        DSB(0x001078F8u + ((mut & 2u) ? (1u - side) : side)) = 0;       /* @f88 */
+    else if (!(mut & 16u))                                              /* @facing */
+        hit_facing_flag(side);
+    hit_stance_timer((mut & 32u) ? (1u - side) : side);                 /* @stance */
+    if (!(mut & 128u))                                                  /* @cnt */
+        DSW(slot + 0x84u) = (u16)(DSW(slot + 0x84u) + 1u);
+    DSB(slot + 0x5Fu) = (u8)((mut & 256u) ? (reaction >> 8) : reaction);   /* @hi */
+    DSB(0x001088A8u + side) = (u8)((mut & 256u) ? (reaction >> 8) : reaction);
+    DSB((mut & 512u) ? (rec + 0x62u) : (rec + 0x63u)) = 0;              /* @s63 */
+    if ((mut & 4u) ? 1 : (DSB(0x001078FAu) == 2u)) {                    /* @gate */
+        DSB(rec + 0x59u) = (u8)((mut & 8u) ? 0xFFu : 1u);               /* @pair */
+        DSB(orec + 0x59u) = (u8)((mut & 8u) ? 1u : 0xFFu);
+    }
+    if (mut & 2048u)                                                    /* @anim */
+        fighter_anim_triple(anim, reaction, (s32)side);
+    else
+        fighter_anim_triple(anim, side, (s32)reaction);
+    {
+        u32 p = DSD(anim[1] + 4u);
+        stream = (mut & 4096u) ? p : (p != 0u ? DSD(p) : 0u);           /* @stream */
+    }
+    callback = DSD(anim[1] + ((mut & 8192u) ? 4u : 0u));                /* @cb */
+    {
+        u16 bx = DSW(anim[2] + ((mut & 16384u) ? 0u : 2u));             /* @bx */
+        if (stream != 0u) {
+            (void)sound_voice((u32)DSW(0x000E9308u
+                              + (u32)DSB(anim[0] + 7u) * 2u));
+            if ((mut & 32768u) || DSB(slot + 0x54u) != 2u)              /* @start */
+                hit_anim_start_b(rec, stream, 0x40000000u);
+            else
+                hit_anim_start_c(rec, stream, 0x40000000u);
+            if ((mut & 65536u) || DSB(slot + 0x52u) != 4u)              /* @s52 */
+                DSB(slot + 0x52u) = 9u;
+            DSB(slot + 0x53u) = 8u;
+            DSW(slot + 0x6Au) = (u16)(DSW(slot + 0x6Au) + 1u);
+            if (((bx >> 8) & 0x10u) != 0u)
+                DSB(slot + 0x41u) |= 0x80u;
+        } else {
+            DSB(slot + 0x5Fu) = 0xFFu;
+        }
+    }
+    if (callback != 0u) {
+        if (!(mut & 131072u))                                           /* @cbstore */
+            DSB(slot + 0x5Fu) = (u8)reaction;
+        {
+            void (*fn)(u32, u32, u32) =
+                (void (*)(u32, u32, u32))(void *)fn_resolve(callback);
+            if (fn) fn(slot, rec, side);
+        }
+    }
+    return 0u;
+}
+static void b_c3g_apply(const u32 *r, u32 *eax)
+{ hit_reaction_apply(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void m_c3g_apply_ff(const u32 *r, u32 *eax)      { *eax = c3g_34e2c_core(r, 1u); }
+static void m_c3g_apply_f88(const u32 *r, u32 *eax)     { *eax = c3g_34e2c_core(r, 2u); }
+static void m_c3g_apply_gate(const u32 *r, u32 *eax)    { *eax = c3g_34e2c_core(r, 4u); }
+static void m_c3g_apply_pair(const u32 *r, u32 *eax)    { *eax = c3g_34e2c_core(r, 8u); }
+static void m_c3g_apply_facing(const u32 *r, u32 *eax)  { *eax = c3g_34e2c_core(r, 16u); }
+static void m_c3g_apply_stance(const u32 *r, u32 *eax)  { *eax = c3g_34e2c_core(r, 32u); }
+static void m_c3g_apply_cnt(const u32 *r, u32 *eax)     { *eax = c3g_34e2c_core(r, 128u); }
+static void m_c3g_apply_hi(const u32 *r, u32 *eax)      { *eax = c3g_34e2c_core(r, 256u); }
+static void m_c3g_apply_s63(const u32 *r, u32 *eax)     { *eax = c3g_34e2c_core(r, 512u); }
+static void m_c3g_apply_anim(const u32 *r, u32 *eax)    { *eax = c3g_34e2c_core(r, 2048u); }
+static void m_c3g_apply_stream(const u32 *r, u32 *eax)  { *eax = c3g_34e2c_core(r, 4096u); }
+static void m_c3g_apply_cb(const u32 *r, u32 *eax)      { *eax = c3g_34e2c_core(r, 8192u); }
+static void m_c3g_apply_bx(const u32 *r, u32 *eax)      { *eax = c3g_34e2c_core(r, 16384u); }
+static void m_c3g_apply_start(const u32 *r, u32 *eax)   { *eax = c3g_34e2c_core(r, 32768u); }
+static void m_c3g_apply_s52(const u32 *r, u32 *eax)     { *eax = c3g_34e2c_core(r, 65536u); }
+static void m_c3g_apply_cbstore(const u32 *r, u32 *eax) { *eax = c3g_34e2c_core(r, 131072u); }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -14575,6 +14715,34 @@ static const binding_t k_bindings[] = {
     { "text_vertical_set@row",             m_c3g_vert_row,   0x00000000u },
     { "text_vertical_set@ext",             m_c3g_vert_ext,   0x00000000u },
     { "text_vertical_set@sext",            m_c3g_vert_sext,  0x00000000u },
+    { "fighter_38ed0",                     b_c3g_38ed0,     0x000000FFu },
+    { "fighter_38ed0@bound",               m_c3g_38ed0_bound, 0x000000FFu },
+    { "fighter_38ed0@id",                  m_c3g_38ed0_id,  0x000000FFu },
+    { "fighter_38ed0@term",                m_c3g_38ed0_term, 0x000000FFu },
+    { "fighter_38ed0@need",                m_c3g_38ed0_need, 0x000000FFu },
+    { "fighter_38ed0@signed",              m_c3g_38ed0_signed, 0x000000FFu },
+    { "fighter_38ed0@s63",                 m_c3g_38ed0_s63, 0x000000FFu },
+    { "fighter_38ed0@side",                m_c3g_38ed0_side, 0x000000FFu },
+    { "fighter_38ed0@text",                m_c3g_38ed0_text, 0x000000FFu },
+    { "fighter_38ed0@pair",                m_c3g_38ed0_pair, 0x000000FFu },
+    { "fighter_38ed0@hit",                 m_c3g_38ed0_hit, 0x000000FFu },
+    { "hit_reaction_apply",                b_c3g_apply,     0x00000000u },
+    { "hit_reaction_apply@ff",             m_c3g_apply_ff,  0x00000000u },
+    { "hit_reaction_apply@f88",            m_c3g_apply_f88, 0x00000000u },
+    { "hit_reaction_apply@gate",           m_c3g_apply_gate, 0x00000000u },
+    { "hit_reaction_apply@pair",           m_c3g_apply_pair, 0x00000000u },
+    { "hit_reaction_apply@facing",         m_c3g_apply_facing, 0x00000000u },
+    { "hit_reaction_apply@stance",         m_c3g_apply_stance, 0x00000000u },
+    { "hit_reaction_apply@cnt",            m_c3g_apply_cnt, 0x00000000u },
+    { "hit_reaction_apply@hi",             m_c3g_apply_hi,  0x00000000u },
+    { "hit_reaction_apply@s63",            m_c3g_apply_s63, 0x00000000u },
+    { "hit_reaction_apply@anim",           m_c3g_apply_anim, 0x00000000u },
+    { "hit_reaction_apply@stream",         m_c3g_apply_stream, 0x00000000u },
+    { "hit_reaction_apply@cb",             m_c3g_apply_cb,  0x00000000u },
+    { "hit_reaction_apply@bx",             m_c3g_apply_bx,  0x00000000u },
+    { "hit_reaction_apply@start",          m_c3g_apply_start, 0x00000000u },
+    { "hit_reaction_apply@s52",            m_c3g_apply_s52, 0x00000000u },
+    { "hit_reaction_apply@cbstore",        m_c3g_apply_cbstore, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
