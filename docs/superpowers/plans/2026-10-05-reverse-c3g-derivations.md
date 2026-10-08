@@ -503,7 +503,11 @@ but it stays open on the named `0x500BB` allow).
   NAME --self-check --image ...` until VERIFIED with every mutant detected; the
   `hit_reaction_b` correction was found by its first run. Then the full `python3
   tools/diff_verify.py --self-check` (§C3g.4's final counter), `make entry-triage`
-  (byte-identical), `python3 tools/port_progress.py` (unchanged) and the per-row pin dumps.
+  (byte-identical), `python3 tools/port_progress.py` (unchanged) and the per-row pin dumps. The
+  `python3 -m unittest tools.tests.test_diff_verify` run then failed once — the hardcoded
+  stub-clobber dict lacked the three stubs the new text rows introduced (`0x2EFD4`, `0x2F0F0`,
+  `0x2F830`) — and after the three entries were added the full suite is **111 tests, OK**, the C3g
+  exact sets included.
 - The **unmeasured twelve** (`0x38ED0`, `0x34E2C`, `0x2EFD4`, `0x2F0F0`, `0x2F198`, `0x2F280`,
   `0x2F314`, `0x2F830`, `0x1922C`, `0x3CD94`, `0x2EF24`, `0x2F5A0`) carry C3f §C3f.7's
   sizes/callers; `0x3CD94` and `0x2F0F0` gained their seams here (their rows would need them
