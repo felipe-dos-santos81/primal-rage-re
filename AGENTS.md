@@ -158,6 +158,66 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   tests, and never assert an unseeded BSS-zero (it cannot distinguish "wrote
   zero" from "never touched it"). This repo has shipped several such defects.
 
+## Unit testing: write fewer, better tests
+
+Every test is code someone has to read, maintain, and wait on in `make verify`.
+A test earns its place only if it can fail for a reason no other test already
+covers. Optimize for distinct behaviors verified, not for test count or
+coverage numbers. This section is how to choose what to write; the bullets above
+stay binding (the mutation proof of a new assertion, the seeded sentinels, the
+consolidation gate).
+
+### Before writing any test
+
+1. Read the existing tests for the code you're touching. If a behavior is
+   already covered, do not cover it again. Extend or adjust the existing test
+   instead of adding a new one beside it.
+2. List the distinct behaviors you need to verify (one line each). If two items
+   on the list would fail for the same underlying bug, merge them.
+3. For each remaining item, ask: "If I deleted this test, what bug could slip
+   through that the other tests would miss?" If you can't name one, don't
+   write it.
+
+### What counts as redundant
+
+- Multiple inputs from the same equivalence class (e.g. testing 3, 5, and 7
+  when any positive integer exercises the same path). Pick one representative
+  plus the boundaries.
+- The same logic tested at several layers. Test it once at the lowest layer
+  that owns it; higher layers only test their own wiring and logic.
+- Tests that differ only in input and expected values. Collapse them into one
+  table-driven/parameterized test.
+- A new test that is a strict subset of an existing, broader one.
+
+### What not to test at all
+
+- Trivial code with no logic: getters, setters, plain constructors, constants,
+  simple delegation.
+- The language, standard library, framework, or third-party dependencies.
+- Implementation details: private helpers, internal call order, or mock
+  interactions that merely restate the implementation. Test observable behavior
+  through the public interface.
+- Scenarios that the type system or compiler already makes impossible.
+
+### What you should still test
+
+- Each distinct branch or behavior of the public contract, once.
+- Boundaries and edge cases (empty, zero, max, nil/null, off-by-one).
+- Error paths that have distinct handling.
+- A regression test for each bug you fix, targeting that specific bug.
+
+### When changing existing code
+
+- Update the tests that cover the changed behavior rather than adding parallel
+  ones. Delete tests made obsolete by the change.
+- Don't add tests for code you didn't change unless asked.
+
+### Reporting
+
+- When you finish, state briefly which behaviors you tested and any you
+  deliberately skipped as redundant or trivial, so the reviewer can disagree
+  if needed.
+
 ## Evidence discipline (non-negotiable here)
 
 - **Never ship a fitted constant.** Every value is derived from the raw bytes or
@@ -260,6 +320,16 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
   adjacent port frames rather than a 1:1 match.
+- **The differential frontier is closed** (record
+  `docs/superpowers/plans/2026-10-05-reverse-c3g-derivations.md` §C3g.7): every
+  address the callee scan reaches is a row, runtime (>= 0x5D000), or a named
+  non-row (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`,
+  `0x500BB`, `0x5DEED`, the AIL wrappers); the rows that stay open do so solely
+  on those. `make diff-verify`'s counter on the closed tree is
+  `322/322 functions VERIFIED; 1353/1353 mutants detected; 1 named gaps;
+  229/251 rows with callees closed (71 have none)`. A change that ports a
+  function or touches a row's callees must keep that counter and every pin
+  intact, or re-measure and record why they moved.
 
 ## Workflow and docs
 
@@ -276,7 +346,7 @@ make entry-triage          # E2: triage of the non-Ghidra entry candidates; the 
   Update the README title and its "N% of the original's D real functions"
   line after any merge that adds or removes a ported function.
   It also prints the adjusted (portable) figure; the README title keeps the raw
-  percentage. As of 2026-09-30 the two lines read `771 1203 64` and
+  percentage. As of 2026-10-05 the two lines read `771 1203 64` and
   `731 731 100`:
   - **Raw:** 771 ported of 1203 real functions (64%). The 432 unported functions
     are not porting targets: 81 are host-owned or deferred (the rows of

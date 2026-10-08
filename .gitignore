@@ -1,21 +1,31 @@
+# Build output
 build/
 *.o
 *.a
-/tmp/
+
+# Generated frames, extracted art and dumps
+frames/
+extracted/
 *.mem
 *.ppm
 *.pal
 *.idx
 *.dro
-extracted/
-frames/
+
+# The installed game (untracked, read-only) — includes its captures
+# (data/smk-captures, data/title-captures, data/k11-captures)
 data/
-data/smk-captures/
-data/title-captures/
-_tools/ghidra_proj/
+
+# Deliberately untracked copies of the game's own bytes
 port/tests/ghidra_data.bin
 port/tests/title_screen_ref.ppm
-.superpowers/
-.DS_Store
+
+# Tooling state
+_tools/ghidra_proj/
 __pycache__/
+.pytest_cache/
 .worktrees/
+.superpowers/
+
+# macOS
+.DS_Store
