@@ -2092,7 +2092,7 @@ index e6625db..254ddbb 100644
  
  # ---- driver -------------------------------------------------------------------------------------
 diff --git a/tools/tests/test_diff_verify.py b/tools/tests/test_diff_verify.py
-index 662f0a0..556e825 100644
+index 662f0a0..6d7d47d 100644
 --- a/tools/tests/test_diff_verify.py
 +++ b/tools/tests/test_diff_verify.py
 @@ -1560,6 +1560,343 @@ C3F_KINDS = {
@@ -2483,7 +2483,7 @@ index 662f0a0..556e825 100644
      def test_each_stub_declares_the_registers_its_callee_clobbers(self):
          # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
          img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
-@@ -2611,9 +2958,15 @@ class RealFunctionTests(unittest.TestCase):
+@@ -2611,9 +2958,16 @@ class RealFunctionTests(unittest.TestCase):
          0x3B080: ("ebx", "ecx", "edx"), 0x3B134: ("ebx", "edx", "edi", "ebp"), 0x3B298: ("edx",), 0x3B6C4: (),
          0x3B714: ("edx",), 0x3B8D8: ("edx",), 0x3B90C: ("edx",), 0x3BDB0: (), 0x3BDDC: ("ebp",), 0x3C148: (),
          0x3C16C: (), 0x3C190: ("edx",), 0x3C208: ("edx",), 0x3C358: (), 0x3C480: ("edx",), 0x3C4CC: ("edx",),
@@ -2497,11 +2497,12 @@ index 662f0a0..556e825 100644
 -        0x5DC8B: ("ebx", "ecx", "edx"), 0x5DD03: (), 0x5DEAF: ("ebx", "ecx", "edx"), 0x5DEED: ()})
 +        0x5DC8B: ("ebx", "ecx", "edx"), 0x5DD03: (), 0x5DEAF: ("ebx", "ecx", "edx"), 0x5DEED: (),
 +        0x3CD94: ("edx",), 0x2F198: ("ebx", "ecx", "edx"), 0x2F280: ("ebx", "ecx", "edx"),
-+        0x2F314: ("ebx", "ecx", "edx")})
++        0x2F314: ("ebx", "ecx", "edx"), 0x2EFD4: ("ebx", "ecx", "edx"), 0x2F0F0: ("edx",),
++        0x2F830: ("ebx", "ecx", "edx")})
          for addr, declared in stubs.items():
              self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
  
-@@ -2708,8 +3061,8 @@ class RealFunctionTests(unittest.TestCase):
+@@ -2708,8 +3062,8 @@ class RealFunctionTests(unittest.TestCase):
                           "--self-check"])
          self.assertEqual(rc, 0)
          # the closed-row count is over the rows that have callees (225), the 66 without are counted apart
