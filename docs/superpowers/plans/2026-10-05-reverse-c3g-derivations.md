@@ -209,6 +209,55 @@ clobber; a stub's call is declared with those clobbers in `C3G_SPECS`):
     `c3g_2f830_core` mirror in `diff_runner.c` follows. The same wave fixed the `0x3CD94` `@bound`
     comment: the mutation is the bound `0x40 -> 0x80`, not a "dropped" `jl` — the raw's
     `test edx,edx` / `jl` at `0x3CDBC` is dead because EDX is a zero-extended byte.
+13. **The `0x34E2C` core's callback arm omitted `sound_voice` (fix wave 1, `a454514`).** The raw's
+    callback arm loads `anim[0]+7`, reads the voice word at `0xE9308[.]` and calls `0x2C3FC`
+    *before* the `+0x5F` store and the callback (`0x35019`–`0x35032`; store `0x35042`
+    `mov [eax+0x5f],cl`; callback `0x35045` `call [esp+0x24]`); the port (`fighter.c`) does the
+    same. The mutant core went straight to the store, so every callback-arm case (h5/h6) carried a
+    spurious `call #N: original 0x2C3FC(…), port none` difference. The call was inserted in the
+    stream arm's exact form (voice, store, `fn_resolve`) and the row's pins re-measured: 14 of 16
+    moved, the dropped `call #1`/`call #3` components and h5/h6 cases being that artifact
+    (`@cbstore` is now `{'byte'}`/`['h5']` — caught by its own store byte `0x10780F` — `@ff`
+    `{'byte'}`/`['h0']`, `@pair` `{'byte'}`/`['h2','h7']`, `@s52` `{'byte'}`/`['h4']`, `@start`
+    `{'call #1'}`/`['h4']`; full table in the fix-wave report). The row stays VERIFIED 16/16 and
+    the counter is unmoved; the reverted-fix probe restores the spurious calls and fails the
+    committed pin.
+14. **The Task 5 store sweep's two sentinels (`d4dcd04`).** (a) `hit_reaction_apply`'s
+    `word [slot+0x88] = 0` (raw `0x34E9E`; port `fighter.c`) wrote its own pre-state: the image
+    word is 0 and `c3g_apply_case` poked `+0x84` only. The fixture now seeds `slot+0x84..+0x8B`
+    (`le16(s84) + 0xA5A5 + le16(0x1234) + 0x5A5A`), and dropping the store MISMATCHes `h8`
+    (`0x107838: original 0x00, port unchanged`) and the slot-1 twin `0x1078CC` in `h7`.
+    (b) `fighter_37178`'s `and dword [slot+0x40], 0xFFBFFFBF` (raw `0x371EC`) was invisible for the
+    same reason — the fixture had poked `rec_s`/`rec_o`, the records, not the slots: the five pokes
+    were relocated to the slots (`+0x40 = le32(0x00400011)`, `+0x43 = 0x15`, `+0x52 = 0x11`,
+    `+0x54 = 0x22`, other `+0x42 = 0x73`; the first seed `+0x43 = 0x55` had bit 6 set and was
+    corrected), and dropping the AND MISMATCHes `r11` (`0x1077F2: original 0x00, port unchanged`).
+    `pins moved: 0` (measured against the committed pins) and the sweep's core-fidelity pass read
+    all 30 `c3g_*_core`s against their port bodies call-for-call with no remaining divergence (the
+    voice call of correction 13 included).
+15. **Three commit messages understate their content (history not rewritten; the record carries
+    the correction).** `8eb63f3`'s message names the nine wave-1 rows, but the commit lands the
+    planner's full nineteen-row prototype, the `0xA7ACC` correction and every seam (Task 2 report
+    correction 3; the commit's own counter pin is `310/310 … 217/241 (69)`). `065426e`'s
+    plan-named message ("wave 2: the `0x3CF38` tree, the text cinq and the `hit_reaction_b`
+    correction") describes content `8eb63f3` already held, so the truthful `the 0x38ED0 and
+    0x34E2C rows` was used (Task 3 report correction 4). `d4dcd04`'s plan message ("the store
+    sentinels and the case-set pins") named a re-pin the measurement refuted; the truthful
+    `the +0x88 and +0x40 store sentinels` was used (Task 5 report).
+16. **The plan's counters are stale where measured.** Task 2's expected `300/300; 1169/1169; 1;
+    213/234 (66 have none)` is the wave-1-only mid-batch prototype; the embedded patch lands the
+    nineteen-row prototype, whose measured counter is `310/310; 1242/1242; 1; 217/241 (69 have
+    none)` (Task 2 report correction 1; the patch's own committed assertion pins it). The plan's
+    re-baseline increments (`+247 mutants, rows with callees +24, no-callee +7`) measure `+266`
+    (1087 -> 1353), `+26` (225 -> 251) and `+5` (66 -> 71). The executed states after that: Task 3
+    `312/312; 1268/1268; 219/243 (69)` and Task 4 `322/322; 1353/1353; 229/251 (71)` (§C3g.8).
+    The plan's Task 3 "`0x38ED0`'s `0x2F198` calls are by-value" is the correction 8 conflict.
+17. **The baseline WAV's hashes.** The Task 1 report quotes `make audio-render`'s WAV "sha256" as
+    `4194254de1155a2dda0ee0dd69f638d92cf9eea0`; that is the file's SHA-1 (the C3e record §C3e.8
+    corrected the same report label). The WAV's sha256 is
+    `df74acfb65d345fb72cb214102089f2a0ab8d4b271ddc17e2a5f5c4f1a380844`. The gate's authority is the
+    byte compare (`cmp … before-t2.wav` -> `WAV-SAME`), not either hash; §C3g.8 quotes both
+    correctly.
 
 **Fixtures.** The rows reuse `c3d_slot_pokes` (C3d) and the slot records; the new helpers are
 `c3g_stance_case` (the 0xC619C entry's `d`/`e` flags and the sentinel bytes), `c3g_gate_case` (the
@@ -580,3 +629,119 @@ addresses above, all rowwable (seam notes in §C3g.6), so **no C3h is provably n
 Tasks 3-4 close them and the residual after C3g is the named non-rows and the four rows that stay
 open solely on them. If a later session finds any of the twelve not rowwable, that address — with
 its evidence — is the C3h list's start, not a new standing gap.
+
+**Re-measured on the final tree (Task 6 Step 2).** The final `tools/diff_verify.py`'s `SPECS` is
+**323 entries** the C3f-final 292 (291 addresses plus the `0x468d8` alias) plus this batch's 31,
+**322 distinct addresses** (the alias is the only duplicate). Every one of §C3g.1's 31 addresses
+has a `Spec`; **none of the named non-rows has one** (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`,
+`0x2EA64`, `0x32BAC`, `0x500BB`, `0x5DEED`, the AIL wrappers `0x5DC0F`/`0x5DC8B`/`0x5DD03`/
+`0x5DEAF` — scanned by entry address). The final run's table has **20 rows that stay open solely
+on a named non-row** (by missing callee): `0x500BB` — `string_unlock`, `fighter_38d90`,
+`fighter_38ed0`, `snd_sample_queue`; `0x5D812` — `actor_spawn`, `set_dead`, `fighter_379c4`,
+`text_glyph_emit`; `0x29D60` — `spawn_anim_opcode`, `hit_reaction_apply`; `0x2EA30` —
+`release_record`, `actor_alloc`, `text_glyph_emit`; `0x2EA64` — `spawn_anim_opcode`; `0x1B544` —
+`palette_acquire`, `effects_spawn`, `snd_sample_queue`; `0x32BAC` — `hit_chain_resolve`; `0x5DEED`
+— `snd_music_playing`; `0x5DEAF` — `snd_music_stop`; `0x5DC0F`/`0x5DC8B`/`0x5DD03` —
+`snd_samples_stop_all`, `snd_sample_stop`, `snd_sample_queue`, `snd_sample_playing`. Two further
+rows stay open solely on the runtime host wrappers (`text_number_core` on `0x65546`,
+`text_number_format` on `0x61A70`; both `>= 0x5D000`, host-libc per AGENTS.md, not porting
+targets). No row is open on any address outside that set: **no genuine residual, no C3h**.
+
+## §C3g.8 Results (the executed tree)
+
+The plan's Tasks 2-5 were executed on `reverse-c3g` at the base `main` `87443cf` (the planner's
+docs-only commits `89eda2c` plan+record, `ee94434` plan pin fix, `10889f6` record pins; Task 1
+re-baselined on `10889f6`, image sha1 `ff3b8cb14e00f1c282de7b7e15dcd7c230766947`): Task 2
+`8eb63f3` (the embedded patch: the nineteen measured rows, the `0xA7ACC` correction and all its
+seams), Task 3 `065426e` (the two remaining wave-2 rows `0x38ED0`/`0x34E2C`), Task 4 `f532e9d`
+(waves 3+4's ten rows), the Task 3-review fix wave `a454514` (the `0x34E2C` core's voice call),
+the Task 4-review fix wave `27f5c5c` (the `i7` seed and the three minors) and the review sweep
+`d4dcd04`; this closure commit's sha is in the batch report named below. Every row was re-measured
+in the tree; the planner's prototype values held.
+
+| state | diff-verify counter | E2 |
+|---|---|---|
+| base `10889f6` (Task 1) | `291/291 functions VERIFIED; 1087/1087 mutants detected; 1 named gaps; 205/225 rows with callees closed (66 have none)` | `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30`; voice `0 / 115 / 19` |
+| Task 2 `8eb63f3` (the nineteen-row patch) | `310/310 functions VERIFIED; 1242/1242 mutants detected; 1 named gaps; 217/241 rows with callees closed (69 have none)` | byte-identical |
+| Task 3 `065426e` (+2 rows) | `312/312 functions VERIFIED; 1268/1268 mutants detected; 1 named gaps; 219/243 rows with callees closed (69 have none)` | byte-identical |
+| Task 4 `f532e9d` (+10 rows) | `322/322 functions VERIFIED; 1353/1353 mutants detected; 1 named gaps; 229/251 rows with callees closed (71 have none)` | byte-identical |
+| final (`d4dcd04` + this closure commit) | the same `322/322 … 229/251 (71 have none)` (the sweep moved only fixtures) | byte-identical |
+
+The task gates, measured on this tree (Task 1's baseline; Tasks 3/4's and the fix waves' and the
+sweep's re-measures in the ledger directory):
+
+```
+diff-verify: 322/322 functions VERIFIED; 1353/1353 mutants detected; 1 named gaps; 229/251 rows with callees closed (71 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+771 1203 64
+731 731 100 (portable: excludes 81 host-owned/deferred and runtime >= 5D000)
+```
+
+`make entry-triage` is byte-identical (no ported function, no `fn_register`); `python3 -m unittest
+tools.tests.test_diff_verify` 111 tests OK on the final tree (the `make diff-verify` phase-1
+invocation runs 176 across `test_diff_emu` + `test_diff_verify`); `PR_ORACLE_REQUIRED=1
+./build/run_tests` `all checks passed`; `symbols.h` regeneration is byte-identical; `python3
+tools/port_progress.py` stays `771 1203 64` / `731 731 100`; README untouched; AGENTS.md and the
+Makefile unchanged (no value moved).
+
+**The three waves' content.** Task 3's two rows: `fighter_38ed0` (8 cases, 12/12 blocks, 10/10
+mutants) and `hit_reaction_apply` (9, 22/22, 16/16), plus `hit_stance_timer`'s export (correction
+9). Task 4's ten: `text_width` 6/10-10/10/6, `text_cursor_set` 6/6-6/6/7, `text_cells_release`
+8/12-12/12/10, `text_cells_release_vertical` 6/7-7/7/7, `text_render` 11/24-24/24/10,
+`text_number_core` 3/1-1/1/4, `text_number_format` 11/9-9/9/8, `text_glyph_emit` 30/54-54/59/16
+(five dead arms named), `hit_immunity` 12/10-10/10/8, `hit_stance_timer` 13/7-7/7/9 — 110 cases,
+85 mutants. **The Tasks 3-4 corrections carried here so the record is self-contained** (measured
+in the task reports): `_CALLEE_CLOBBER_FIXES[0x2AD40] = ("edx",)` is raw-derived, not the plan's
+set — `0x2AD40` pushes only ebx/ecx/esi while the raw callers `0x2F280` (uses EDI at `0x2F2ED`)
+and `0x2F314` (EBP at `0x2F37A`) read them across the call, and the pre-existing `RELEASE`
+constant was updated to the same caller-observed set; `text_number_core`'s planned `@fmt` mutant
+is not expressible (the fmt pointer is a constant inside the callee) and became `@val`;
+`text_number_format`'s `@copy` is the copy count (a source-offset mutation is unobservable through
+the `0x2EFD4` stub's all-zero buffer, the P2.7 stall); `text_glyph_emit`'s spawn runs `0x2AE14`
+real with its exercised tree allowed (`0x33754`/`0x2A820` stubbed), and its dead arms are five
+(`0x2F647`/`0x2F660`/`0x2F684` by the `and eax,0xf000` at `0x2F5BB`; `0x2F6D8`/`0x2F6E0` by the
+ESI mask at `0x2F5AC`); `hit_stance_timer` needs no seam — its only row caller runs it as an
+allow and the mutant cores call the port (the plan's "Task 4 still adds its `PR_SEAM`" and §C3g.7's
+"except `0x1922C`" are stale); `c3g_glyph_case`'s `mode` parameter is documentation only.
+
+**The review sweep and the fix waves.** The sweep (Task 5, `d4dcd04`) found the two invisible
+stores of correction 14 and proved each caught once seeded (drop-store probes: `0/1` VERIFIED,
+then `1/1` restored); `pins moved: 0`. Its core-fidelity pass read all 30 `c3g_*_core`s against
+their port bodies call-for-call: no divergence remained after the fix waves. The Task 3-review fix
+wave (`a454514`) restored the `0x34E2C` core's `sound_voice` call (correction 13) and re-measured
+14 of its 16 pins; the Task 4-review fix wave (`27f5c5c`) re-seeded `hit_immunity`'s `i7` to slot
+5 (correction 10), made `host_sprintf` static again (correction 11) and fixed the `text_render`
+cast and the `@bound` comment (correction 12).
+
+**The closure-value accounting.** +31 functions (the 31 rows), +266 mutants (1087 -> 1353; 155 for
+the nineteen-row patch, +26 for Task 3's two, +85 for Task 4's ten), rows with callees 225 -> 251
+(+26: +16 the patch, +2 Task 3, +8 Task 4), no-callee 66 -> 71 (+5: +3 the patch, +2 Task 4),
+closed 205 -> 229 (+24). Every wave-1/2 row that was open on a Task 3-4 address closes:
+`fighter_38fec`/`hit_reaction_drive` (Task 3's two), `hit_gate`, `fighter_38c5c`,
+`text_cursor_hold`, `text_number_draw`, `text_vertical_set` (Task 4's five); Task 4's new rows
+that close are `text_cursor_set`, `text_cells_release`, `text_cells_release_vertical`,
+`text_render` and `hit_stance_timer` (the other three stay open: `text_number_core`/
+`text_number_format` on the runtime wrappers, `text_glyph_emit` on `0x2EA30`/`0x5D812`), and
+Task 3's two rows stay open (`fighter_38ed0` on `0x500BB`, `hit_reaction_apply` on `0x29D60`).
+
+**The terminal verdict re-measure** is §C3g.7's closing paragraph (this task): all 31 rowed, no
+named non-row rowed, 20 rows open solely on named non-rows plus two on the runtime wrappers, no
+genuine residual, **no C3h**.
+
+**The full gate** on this closure commit (the plan's parallel-safe overrides, `T=c3g`; log
+`/tmp/pr_c3g_final.log`): the run's exact lines (`EXIT=0`, `ORACLES-EQUAL`, `WAV-SAME`, the gp
+ratchets, the counter above) are recorded in the batch report
+`.superpowers/sdd/2026-10-05-reverse-c3g-frontier-rows-7/task-6-report.md`. The plan's expected
+values: the 45 oracle lines equal to the k7-k12 baseline (`ORACLES-EQUAL`), the `make audio-render`
+WAV `cmp`-equal to `before-t2.wav` (`WAV-SAME`; sha1
+`4194254de1155a2dda0ee0dd69f638d92cf9eea0`, sha256
+`df74acfb65d345fb72cb214102089f2a0ab8d4b271ddc17e2a5f5c4f1a380844`), every gp ratchet at its pin
+(gp-idle-loss 2064/8320; gp-u5-charsel 516/1513; gp-u6-moves-b 2139/3248/3248; gp-keys 11 effects;
+gp-twop 612/1506/1506; U8 RA 1072/2274, LT 1076/2338, RT 1098/2402, TW 1107/2466, HC 1022/2274,
+EN 278/1174, AS 1087/2018; gp-u9-win 346/3503, path 8, win 3503; gp-u10-ending 331/9954, path 30,
+win 9954) and `symbols.h` idempotent. The batch's behavioral changes — the `0xA7ACC` correction
+and the AL normalizations — are the paths the ladder proves oracle-invisible.
+
+**The C3 chain ends here**: after C3g the frontier is exactly the named non-rows and the rows
+open solely on them; any later track-P work starts from this record's §C3g.7.
