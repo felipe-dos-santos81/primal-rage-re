@@ -7982,7 +7982,7 @@ C3G_SPECS = [
         Case("i4", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 3, lo=0xFFFFFFF7)),
         Case("i5", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 0x23, hi=0x00000008)),
         Case("i6", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 0x23, hi=0xFFFFFFF7)),
-        Case("i7", {"eax": 5, "edx": 2}, c3g_imm_case(0, 2, 5, 5, 3, lo=0x00000008)),
+        Case("i7", {"eax": 5, "edx": 2}, c3g_imm_case(5, 2, 5, 5, 3, lo=0x00000008)),
         Case("i8", {"eax": 1, "edx": 2}, c3g_imm_case(1, 2, 5, 6, 3, lo=0x00000008, ch2=0)),
         Case("i9", {"eax": 0, "edx": 9}, c3g_imm_case(0, 9, 5, 1, 0x1F, lo=0x80000000)),
         Case("i10", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 0xFFFF, lo=0x80000000)),

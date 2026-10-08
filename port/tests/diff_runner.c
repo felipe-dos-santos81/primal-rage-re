@@ -13336,8 +13336,8 @@ static u32 c3g_2f830_core(const u32 *r, u32 mut)
         u8 ch = *s;
         if (ch == 0u) return (mut & 256u) ? 0u : (u32)count;       /* @cnt */
         u8 ab;
-        if (mut & 64u) ab = text_glyph_emit((s32)ch, &row, &col, mode, vertical);   /* @emit */
-        else ab = text_glyph_emit((s32)ch, &col, &row, mode, vertical);
+        if (mut & 64u) ab = text_glyph_emit((s8)ch, &row, &col, mode, vertical);   /* @emit */
+        else ab = text_glyph_emit((s8)ch, &col, &row, mode, vertical);
         if (ab != 0u && !(mut & 128u)) return 0u;                  /* @stop */
         count++;
         s += (mut & 512u) ? 2 : 1;                                 /* @adv */
@@ -13518,7 +13518,7 @@ static u32 c3g_3cd94_core(const u32 *r, u32 mut)
     u32 slot = 0x001077B0u + side * 0x94u;
     u32 r_ = (u32)DSB(slot + 0x5Fu);
     if (!(mut & 1u) && r_ == 0xFFu) return 1u;                     /* @ff */
-    if ((mut & 2u) ? (r_ >= 0x80u) : (r_ >= 0x40u)) return 0u;     /* @bound: the signed jl dropped */
+    if ((mut & 2u) ? (r_ >= 0x80u) : (r_ >= 0x40u)) return 0u;     /* @bound: 0x40 -> 0x80 (0x3CDBC's `test edx,edx`/`jl` is dead: EDX is a zero-extended byte) */
     u32 ch = (u32)DSB(slot + ((mut & 8u) ? 0x7Bu : 0x7Au));        /* @char */
     u32 entry = (mut & 16u) ? (ch + i * 0x20u) : (ch * 0x20u + i); /* @entry */
     s32 c = (s16)DSW(0x000C619Cu + entry * 8u + 4u);

@@ -182,6 +182,33 @@ clobber; a stub's call is declared with those clobbers in `C3G_SPECS`):
    **allow** (real, unrecorded) and its mutant cores call it, so `hit_stance_timer` is now
    non-static with a `fighter.h` declaration — Task 3's one interface change, no `PR_SEAM` added
    (Task 4's work). `0x3AFC4` likewise has no seam by design and is an allow.
+10. **`hit_immunity`'s `i7` poked the wrong slot (fix wave 2, Task 4 review).** The case runs
+    `{"eax": 5, "edx": 2}` but `c3g_imm_case(0, 2, ...)` poked slot 0, so its pokes were dead: the
+    raw and the port read slot 5's bytes (`r = [0x107AF3] = 0` by `0x3CDA9`, `ch = [0x107B0E] = 0`
+    by `0x3CDC5`), the candidate word at the (0,2) entry (`0x26` at `0xC61B0`) and the char-0 row-0
+    mask (`0xA182C` = `0xFF0000`, `0xA1830` = `0x7FFFFFFF`); `i7`'s `@hi` catch came from that
+    image `c = 0x26` selecting the high arm (`0x3CDEE` `cmp ecx,0x20` / `jge 0x3CE03`), not the
+    fixture. The call is now `c3g_imm_case(5, 2, 5, 5, 3, lo=8)`; the live reads are r=5, ch=5,
+    entry (5,2) `c=3` and base `0xA2254` lo=8/hi=0 — the low arm, so `@hi` (which mutates the high
+    arm's `[eax+4]` at `0x3CE0B` to `[eax]`) is caught by `i5` alone. The reviewer's "with the fix
+    `i7` must keep catching `@hi` on the seeded bytes" is refuted by measurement; `i7` instead
+    gains the `@entry` catch (the transposed word at `0xC63C8` zeroed vs the seeded `c=3` at
+    `0xC66B0`), which is the liveness proof — the old wrong-slot seed shows no `i7` in `@entry`.
+    Re-pinned: `@hi` `['i5']`, `@entry` `['i10','i3','i4','i5','i7','i8','i9']`; every other
+    `hit_immunity` pin unmoved.
+11. **`host_sprintf` is internal again (fix wave 2, Task 4 review).** Task 4's report correction 3
+    exported both host wrappers "for the mutant cores"; only `host_memset` is called directly by a
+    core (`diff_runner.c`'s `@fill`/`@m2`), the `0x2EF24` core calls `text_number_core` and never
+    `host_sprintf`, so the export was dead surface. It is `static` in `actors.c` again, gone from
+    `actors.h`; the `0x65546` seam and its stub row are untouched (the real `text_number_core` still
+    reaches it).
+12. **`text_render` sign-extends its char (fix wave 2, Task 4 review).** The raw's `movsx eax,bl`
+    at `0x2F8F5` passes a sign-extended char to `0x2F5A0`; the port passed `(s32)ch`
+    (zero-extended) — behaviourally identical (`0x2F5A0` masks) but a divergent stub-call EAX
+    record for chars >= 0x80 (no case covers one). `actors.c`'s call is `(s8)ch` again, and the
+    `c3g_2f830_core` mirror in `diff_runner.c` follows. The same wave fixed the `0x3CD94` `@bound`
+    comment: the mutation is the bound `0x40 -> 0x80`, not a "dropped" `jl` — the raw's
+    `test edx,edx` / `jl` at `0x3CDBC` is dead because EDX is a zero-extended byte.
 
 **Fixtures.** The rows reuse `c3d_slot_pokes` (C3d) and the slot records; the new helpers are
 `c3g_stance_case` (the 0xC619C entry's `d`/`e` flags and the sentinel bytes), `c3g_gate_case` (the
