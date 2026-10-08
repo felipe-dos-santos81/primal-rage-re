@@ -2,6 +2,11 @@
 # Two pipelines:
 #   RE   info → gra → symbols → cluster → decompile → analyse → oracle → original
 #   PORT build → test → check → run → verify
+#
+# The pin constants below (DEMO_FIGHT_MIN_FIRST, ATTRACT2_MIN_FIRST, GP_*) hold
+# measured ratchets: each N is the first unexplained/differing frame with its
+# provenance in the comment above it, and is raised (never lowered) when the
+# port improves. Their evidence is load-bearing (AGENTS.md) — do not "tidy" it.
 SERVICE = Primal Rage (DOS)
 
 # Variables
@@ -52,14 +57,16 @@ verify_frames ?= 820
 gra ?= S16TITLE.GRA
 chunk ?= 0
 
-.PHONY: help deps build test verify check smk-oracle run clean \
+.PHONY: help deps build test verify check run clean audio-render \
+        smk-oracle title-pin title-capture title-oracle attract-oracle \
+        frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
+        attract2-oracle attract2-compare k11-capture k11-oracle k11-report \
+        gp-capture gp-replay gp-oracle gp-report gp-charsel-oracle \
+        gp-moves-oracle gp-keys-oracle gp-twop-oracle gp-modes-oracle gp-modes-one \
+        gp-win-oracle gp-ending-oracle gp-win-one \
+        diff-verify entry-triage \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
-        re-decompile re-analyze re-oracle re-original title-pin title-capture \
-        title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
-        attract2-oracle attract2-compare k11-capture k11-oracle k11-report gp-capture gp-replay gp-oracle gp-report diff-verify gp-charsel-oracle \
-        entry-triage \
-        gp-moves-oracle gp-keys-oracle gp-twop-oracle
-.PHONY: gp-modes-oracle gp-modes-one
+        re-decompile re-analyze re-oracle re-original
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -851,7 +858,6 @@ GP_ENDING_CAPTURE_FRAMES = 5704
 # The port dump is removed after its comparison unless GP_WIN_KEEP=1 (as gp-modes-one's
 # GP_MODES_KEEP; record §W.10: 129 MB and 302 MB of /tmp).
 GP_WIN_KEEP ?=
-.PHONY: gp-win-oracle gp-ending-oracle gp-win-one
 gp-win-oracle: build ## Gameplay U9 oracle: win-path evidence, frame/trace/milestone/win ratchets on data/k11-captures/gp-u9-win (skips without it)
 	@echo "== gameplay oracle: gp-u9-win (the win path under pokes; plan U9/U10) =="
 	@$(MAKE) --no-print-directory gp-win-one scenario=gp-u9-win GP_WIN_ID=WIN
@@ -919,7 +925,7 @@ audio-render: build ## Render the title FM music headlessly to a WAV (AUDIO_WAV,
 # The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
 # from the CWD, so the ladder has to produce them (frames >= 25) before the suite
 # consumes them — otherwise that four-frame comparison never runs.
-verify: build ## Full ladder: --check frames, oracle-required tests, front-end + demo-fight + attract cycle-2 ratchet oracles, K11 oracle, symbols.h idempotence
+verify: build ## Full ladder: --check frames, oracle-required tests, every pixel and ratchet oracle, differential verification, E2 triage, symbols.h idempotence
 	@echo "== headless frames (must precede the tests that read frames/frame_*.idx) =="
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames)
 	@echo "== tests (oracles required; consume the captured frames) =="
