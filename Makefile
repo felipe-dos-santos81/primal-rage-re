@@ -399,7 +399,7 @@ k11-report: build ## Report-only K11 comparison of the evidence captures (idle, 
 # pinned original under DOSBox-X with frame-keyed injection and a per-frame
 # snapshot log. Writes only data/k11-captures/gp-<scenario>/ (gp_capture.guard_gp).
 GP_ARGS ?=
-gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-pads|gp-idle-loss; writes data/k11-captures/)
+gp-capture: title-pin ## Capture a gameplay scenario (scenario=gp-…; writes data/k11-captures/)
 	$(PYTHON) tools/gp_capture.py --scenario $(scenario) --out $(K11_CAPTURES)/$(scenario) --exe $(TITLE_PIN_DIR)/PRAGE.EXE $(GP_ARGS)
 
 # Gameplay replay (spec 2026-09-30-gameplay-ground-truth-design.md §4.2): the

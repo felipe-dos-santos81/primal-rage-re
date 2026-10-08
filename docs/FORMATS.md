@@ -49,16 +49,19 @@ struct IndexEntry {       // 20 bytes, on disk
 ```
 
 * `size` (low 24 bits) equals the on-disk file size of the named file.
-* `flags` byte observed as `0x01` and `0x02` (meaning TBD).
+* `flags` byte: `0x01` = preload (`RES_FLAG_PRELOAD`; the two entries
+  `s16fonts.gra` and `s16statu.gra`), `0x02` = the rest. The loader adds
+  `0x20000000` (`RES_FLAG_LOADED`) at runtime (`0x1B47A`).
 * The shipped `C/INDEX` has **69 entries** (`s16*.gra`, plus `*.txt`).
 
-Runtime model (from the decompilation):
+Runtime model (from the decompilation; port names in `port/src/platform/res.c`):
 
-* `FUN_0001B120` reads the whole file, computes `count = filesize / 0x14` and
-  keeps a 20-byte entry per resource. It tests `entry.flags & 0x1000000`
-  (bit 24), uses `entry.size` (`& 0xFFFFFF`) for sizing, and fills
-  `entry+0x10` with the loaded data pointer.
-* `FUN_0001B544` resolves a *resource handle* into a pointer:
+* `0x1B120` (the loader's walk, replicated by `res_load_index`) reads the whole
+  file, computes `count = filesize / 0x14` and keeps a 20-byte entry per
+  resource. It tests `entry.flags & 0x1000000` (`RES_FLAG_PRELOAD`), uses
+  `entry.size` (`& 0xFFFFFF`) for sizing, and fills `entry+0x10` with the loaded
+  data pointer.
+* `0x1B544` (`res_resolve`) resolves a *resource handle* into a pointer:
   `entry = table + (handle >> 23) * 0x14; pointer = entry.data + (handle & 0x7FFFFF)`.
   I.e. a handle packs a resource index (high bits) and a byte offset (low 23 bits).
 * File/memory helpers live around `0x61C60`–`0x62xxx`.
@@ -117,8 +120,9 @@ struct GraFrame {        // on disk, 12 bytes
 `s16rad.gra` chunk 6 is 468 B = 39 records; record 0 is
 `{122, 107, 122, 0, 0x0F80028A}` — width 122, height 107, pixel offset
 `0x28A` into chunk 2 of resource index 31 (`s16rad.gra`). The in-game consumer
-is `FUN_0001c528` (`port/decomp/prage.c`), which resolves the handle and reads
-`[0]`..`[2]`; the static table `DAT_000a8b30` is a list of **18,443
+is `0x1C528` (the port's `sprite_node_build`, byte-for-byte shared with
+`0x14268`; record `2026-09-29-k1-k9-derivations.md` §K1.5), which resolves the
+handle and reads `[0]`..`[2]`; the static table `DAT_000a8b30` is a list of **18,443
 consecutive resource handles before the first non-handle**, 18,442 of which
 point into a chunk-6 body and **every one of those is 12-byte aligned** (scan
 the data object at offset `0xA8B30 - 0x80000`). The `x`/`y` anchor reading is
@@ -143,7 +147,8 @@ transparent run:
 | `b & 0x80 != 0 && b & 0x40 == 0` | repeat run of `b & 0x3F` pixels, one colour byte follows |
 | `b & 0x80 != 0 && b & 0x40 != 0` | transparent run of `b & 0x3F` pixels, no data |
 
-The in-game decoder is `FUN_00041030` (0x41030): its first pass measures each
+The in-game decoder is `0x41030` (ported as `rle_decode`,
+`port/src/platform/gra.c`): its first pass measures each
 row (`iVar9 -= bVar2 & 0x7f` / `& 0x3f`, skipping `1+count` bytes for literals
 and `2` for repeats — i.e. the literal payload *is* the per-pixel colour), and
 its second pass rasterises the same tokens into a fixed 1 bpp opacity mask
@@ -157,10 +162,10 @@ above), so the "delta relative to the previous frame" note in the brief is
 Concatenated `{ u32 count; count × u32 colour }` records, no outer count:
 parse until the body ends (the parse consumes the whole body exactly —
 `S16FONTS` 27 colours / 144 B, `S16TITLE` 720 / 2928 B, `S16BEACH` 90 / 368 B).
-The in-game consumer is `FUN_00033754`, which resolves a handle and reads
-`count = *ptr` to build a palette record, and `FUN_0001c470` (0x1c470), the
-VBlank-gated DAC flush, which for a handle takes `FUN_0001b544() + 4` and emits
-`count` colours with
+The in-game consumer is `0x33754` (`palette_acquire`), which resolves a handle and reads
+`count = *ptr` to build a palette record, and `0x1C470` (the port's
+`gfx_flush_palette`), the VBlank-gated DAC flush, which for a handle takes
+`0x1B544` (`res_resolve`) `+ 4` and emits `count` colours with
 
 ```c
 r = (word >> 2)  & 0xFF;   // bits  2.. 9
@@ -372,8 +377,8 @@ data: 19327 bytes   (8-bit unsigned mono; byte 128 is centre)
 ```
 
 `verified` (cmd: the full RIFF/WAVE scan is in `port/spec/audio.md` "Samples").
-The rate matches the AIL preference the game sets at init (`FUN_0005d87e(1,0x2b11)` in
-`FUN_0001cf40`). The declared RIFF size is **19432** because a trailing
+The rate matches the AIL preference the game sets at init (`0x5D87E(1,0x2b11)` in
+`0x1CF40`). The declared RIFF size is **19432** because a trailing
 `LIST`/`INFO` (and `fact`) chunk follows the PCM, so the container size field
 must not be trusted; the port's parser walks chunks and bounds each against the
 buffer. The conversion from 8-bit unsigned to the mixer's s16 exists exactly

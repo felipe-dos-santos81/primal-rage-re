@@ -91,7 +91,7 @@ in `port/spec/game_flow.md`.
 
 ```bash
 export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-25.jdk/Contents/Home
-G=/Users/felipe.dos.santos/ghidra_12.2_DEV/support/analyzeHeadless
+G="$HOME/ghidra_12.2_DEV/support/analyzeHeadless"
 
 # one-shot import + analysis (the loader auto-detects the LE)
 $G _tools/ghidra_proj prage -import data/game/C/PRAGE.EXE -overwrite \
