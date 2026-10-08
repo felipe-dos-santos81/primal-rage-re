@@ -6975,11 +6975,16 @@ def c3g_37178_case(rec_s, rec_o, side=None, s51=None, x18_s=0x1000, x18_o=0x1200
     p[0x001077B0 + (1 - sd) * 0x94 + 0x7A] = bytes([ch_o])
     p[rec_s + 0x56] = le16(idx_s)
     p[rec_o + 0x56] = le16(idx_o)
-    p[rec_s + 0x40] = bytes([0x11, 0x22, 0x33, 0x44])
-    p[rec_s + 0x52] = bytes([0x11])
-    p[rec_s + 0x54] = bytes([0x22])
-    p[rec_s + 0x43] = bytes([0x55])
-    p[rec_o + 0x42] = bytes([0x77])
+    # The slot fields the body writes/reads (the Task 5 sweep: these were poked at rec_s/rec_o,
+    # the records, so the slot +0x40 dword AND wrote its own pre-state 0 and was invisible). The
+    # +0x40 sentinel has bit 0x400000 set, which the AND clears, and bit 6 clear, which the OR
+    # sets; +0x43 has bit 6 clear for its OR 0x40; the other slot's +0x42 has bit 2 clear for its
+    # OR 4.
+    p[0x001077B0 + sd * 0x94 + 0x40] = le32(0x00400011)
+    p[0x001077B0 + sd * 0x94 + 0x52] = bytes([0x11])
+    p[0x001077B0 + sd * 0x94 + 0x54] = bytes([0x22])
+    p[0x001077B0 + sd * 0x94 + 0x43] = bytes([0x15])
+    p[0x001077B0 + (1 - sd) * 0x94 + 0x42] = bytes([0x73])
     p[0x001078FE] = bytes([0x88])
     p[0x001078DC] = le32(tbl)
     p[tbl + ch_s * 14 + ch_o * 2] = le16(word)
@@ -7157,7 +7162,10 @@ def c3g_apply_case(side, reaction, ch=0, s54=0, s52=0, s53=0, s6a=0, s41=0, s84=
     p[s + 0x62] = bytes([s62])
     p[s + 0x6A] = le16(s6a)
     p[s + 0x7A] = bytes([ch])
-    p[s + 0x84] = le16(s84)
+    # +0x84 and the +0x86..+0x8B neighbours: the +0x88 word store (raw 0x34E9E) writes 0, so
+    # its pre-state must not be 0 (the Task 5 sweep); the nonzero neighbours catch a too-wide
+    # store at +0x88.
+    p[s + 0x84] = le16(s84) + b"\xA5\xA5" + le16(0x1234) + b"\x5A\x5A"
     p[0x001078F8] = b"\xA5\xA5"
     p[0x001078FA] = bytes([fa])
     rec = C3G_APPLY_REC0 if side == 0 else C3G_APPLY_REC1
