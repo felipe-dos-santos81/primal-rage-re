@@ -274,7 +274,7 @@ u32 string_decode(u32 id, u8 *out, u32 outlen)
     u32 len = DSB(p);                           /* 0x4754D */
     u32 ret;
     p += 1u;
-    if (len < outlen) {
+    if ((s32)len < (s32)outlen) {
         for (u32 i = 0; i < len; i++)
             out[i] = (u8)(DSB(p + i) ^ (u8)len);   /* 0x47564 */
         out[len] = 0;                              /* 0x47572 */

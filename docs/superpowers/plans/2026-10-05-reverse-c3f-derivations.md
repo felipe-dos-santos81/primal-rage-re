@@ -141,9 +141,16 @@ clobber; a stub's call is declared with those clobbers in `C3F_SPECS`):
    failure path now runs the raw's off-zero reads, which the port's zeroed low memory makes
    harmless).
 3. **The host-libc wrappers were a session decision, not a port behavior change.** The WATCOM
-   bodies at `0x65546` (sprintf) and `0x61A70` (memset) cannot run under unicorn: the `0x65546`
-   chain reaches `hlt at 0xFF3C` (probed this session), and `0x61A70` calls `0x65490`
-   (unmodeled). Any row whose original calls them must stub them, but the port's C calls the host
+   bodies at `0x65546` (sprintf) and `0x61A70` (memset) cannot run under unicorn. Reproducible
+   probe (fix wave 2026-10-05; `tools/diff_emu.run_original`, image from `build/diffrun --exe
+   data/game/C/PRAGE.EXE --image-out`): with its seven direct callees `{0x6C8EB, 0x6CB6C, 0x6CC9F,
+   0x6CE84, 0x72D20, 0x72CD6, 0x6CCFA}` allowed, `run_original(image, 0x65546, regs={"s0":
+   0x10A200, "s1": 0x80B40, "s2": 42}, allow_calls=...)` leaves the image for the zero low memory
+   (EIP reaches 0 and walks up in two-byte steps; 0xFF3C is one of them) and stops `unmodeled:
+   undecodable bytes at 0xFF56`; with no allows the first stop is `call 0x6C8EB from 0x65562`, and
+   `0x61A70`'s first stop is `call 0x65490 from 0x61A80`. The earlier note's "`hlt` at `0xFF3C`"
+   was not reproducible: `0xFF3C` executes there as a zero byte, not `hlt`. Any row whose original
+   calls them must stub them, but the port's C calls the host
    libc directly and could not be intercepted: `host_sprintf`/`host_memset` are the seam wrappers
    (inert outside `build/diffrun`); `text_number_core` (the `0x2EF24` port) is the new function
    `text_number_format` calls. Recorded because the pattern is new for this repo (runtime callees
@@ -153,7 +160,11 @@ clobber; a stub's call is declared with those clobbers in `C3F_SPECS`):
    and the `E.Call` names `[ebx]`/`[edx]` (record §P2.7); `0x2F5A0`'s `col`/`row` pointers are
    dereferenced the same way (`[edx]`/`[ebx]`), because the callee's advance writes back through
    them. Both sides seed the buffers zero, so the recorded dwords agree and the call's stall
-   (a stub cannot write the caller's stack) is symmetric.
+   (a stub cannot write the caller's stack) is symmetric. Fix wave 2026-10-05: `0x2EFD4`'s own
+   format buffer is `0x14` bytes in the port too (it was `0x10`, with `host_sprintf` capped at
+   `0x10`), matching the raw's `sub esp,0x14` at `0x2EFD7` and the `0x14` of every caller; the
+   four-dword seams are unchanged (they record the `dest` argument, not this buffer) and `%i`'s
+   12-byte maximum makes the old size unobservable.
 5. **`hit_sound` gained a seam.** `0x32BAC` is a one-byte RET (the recorded orphaned-body
    correction at `fighter.c:4229`); the port's `hit_sound` no-ops it. The `0x3CF38` row stubs it so
    the `@sound` mutant (the wrong +0x63 condition) is visible in the call list; the address is a
@@ -290,7 +301,7 @@ C3F_CASES = [
         ("string_lock@bit", ['l0', 'l3', 'l4']),
         ("string_lock@len", ['l1', 'l3']),
         ("string_lock@or", ['l0', 'l4']),
-        ("string_unlock@and", ['u0', 'u1', 'u2']),
+        ("string_unlock@and", ['u0', 'u2']),
         ("string_unlock@clock", ['u0', 'u1', 'u2']),
         ("string_unlock@off", ['u0', 'u1', 'u2']),
         ("string_unlock@store", ['u0', 'u1', 'u2']),
@@ -300,7 +311,10 @@ C3F_CASES = [
 The mutants whose catch includes a call or call-memory kind: `fighter_block_anim` at `0x18B04`/
 `0x3C480`, `game_string_get` at `0x474E4`, `hit_chain_resolve` at `0x3CE58`/`0x3C6A8`/`0x32BAC`.
 The string pair's mutants are caught on EAX or bytes alone (their callees are stubs whose effects
-the lock/unlock fixtures fix).
+the lock/unlock fixtures fix). Fix wave 2026-10-05: `c3f_unlock_case`'s `flags` byte now lands at
+`+0x15`, the byte the clear reads (it was at `+0x16`, inert); only `string_unlock@and`'s set
+re-measured, to `['u0', 'u2']` (`u1`'s `flags=0x00` makes the clear — and the wrong-mask mutant —
+a no-op), every other set and all kinds unchanged.
 
 ## §C3f.4 Counters, measured
 
@@ -322,9 +336,10 @@ existing rows the new leaves close — `fighter_state_36bc8` (on `0x38BB0`/`0x38
 ## §C3f.5 Named gaps and limits
 
 - **The runtime stubs.** `0x65546`/`0x61A70` are stubbed in the rows that call them (the WATCOM
-  bodies trap under unicorn: `hlt` at 0xFF3C through the sprintf chain, `0x65490` under memset);
-  their own effects are not compared by any row. The same applies to `0x500BB` (allow: it is the
-  shadow read the port models).
+  bodies cannot run under unicorn; §C3f.2 correction 3 has the reproducible probe — the `0x65546`
+  chain stops `undecodable bytes at 0xFF56` once its direct callees are followed, `0x61A70`'s
+  first stop is `call 0x65490 from 0x61A80`); their own effects are not compared by any row. The
+  same applies to `0x500BB` (allow: it is the shadow read the port models).
 - **`0x32BAC` is a named non-row** (a one-byte RET; the port's `hit_sound` no-ops it). The
   `0x3CF38` row stubs it; the row is VERIFIED but not closed until the C3g tree is.
 - **The P2.7 by-value seams.** The recorded dwords of a stack buffer are what both sides held at

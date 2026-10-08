@@ -4277,20 +4277,22 @@ void text_cells_release_vertical(s32 col, s32 row, const u8 *s)
 }
 
 /* PORT: the harness seam for the host-libc pair the C3f text rows stub (record §C3f.2): the WATCOM
- * bodies at 0x65546/0x61A70 trap under unicorn (the sprintf chain reaches `hlt` at 0xFF3C), so the
- * rows run them mode="stub" and the port's calls must be interceptable. Both are inert outside
- * build/diffrun. 0x65546's dest is the caller's buffer; for a stack buffer the seam passes its
- * four dwords by value (record §P2.7). */
+ * bodies at 0x65546/0x61A70 cannot run under unicorn (0x65546's chain leaves the image and stops
+ * `undecodable bytes at 0xFF56` once its direct callees are followed, §C3f.2 correction 3; 0x61A70
+ * enters 0x65490), so the rows run them mode="stub" and the port's calls must be interceptable.
+ * Both are inert outside build/diffrun. Each seam records its pointer arguments as mem[] offsets
+ * (0x65546's dest included); the P2.7 by-value dword form is for the text rows' own seams, whose
+ * buffers are register-passed (record §P2.7). */
 static s32 host_sprintf(u8 *dest, const u8 *fmt, s32 value)
 {
     PR_SEAM_RET(0x65546u, (u32)(dest - mem), (u32)(fmt - mem), value);
-    return (s32)snprintf((char *)dest, 0x10u, (const char *)fmt, (int)value);
+    return (s32)snprintf((char *)dest, 0x14u, (const char *)fmt, (int)value);
 }
 
-static void host_memset(u32 dest, u32 fill, u32 len)
+static void host_memset(u8 *dest, u32 fill, u32 len)
 {
-    PR_SEAM(0x61A70u, dest, fill, len);
-    memset(mem + dest, (int)fill, (size_t)len);
+    PR_SEAM(0x61A70u, (u32)(dest - mem), fill, len);
+    memset(dest, (int)fill, (size_t)len);
 }
 
 /* 0x2EF24. EAX = value, EDX = dest. Formats the value with the libc
@@ -4318,8 +4320,8 @@ s32 text_number_format(s32 value, u8 *dest, s32 width, u32 pad)
 {
     PR_SEAM_RET(0x2EFD4u, value, C3F_PTR_DW(dest, 0), C3F_PTR_DW(dest, 4),
                 C3F_PTR_DW(dest, 8), C3F_PTR_DW(dest, 12), width, pad);
-    char buf[0x10] = {0};
-    s32 len = text_number_core(value, (u8 *)buf);           /* 0x2EFE2 0x2EF24 */
+    u8 buf[0x14] = {0};
+    s32 len = text_number_core(value, buf);                 /* 0x2EFE2 0x2EF24 */
     s32 gap = width - len;                                  /* 0x2EFE9 */
     s32 end = width;
     if (gap <= 0) {
@@ -4330,12 +4332,12 @@ s32 text_number_format(s32 value, u8 *dest, s32 width, u32 pad)
         case 0u:
         case 1u:
             memcpy(dest + gap, buf, (size_t)len);           /* 0x2F026/0x2F059 */
-            host_memset((u32)(dest - mem), pad == 0u ? 0x30u : 0x20u,
+            host_memset(dest, pad == 0u ? 0x30u : 0x20u,
                         (u32)gap);                          /* 0x2F041/0x2F074 0x61A70 */
             break;
         case 2u:
             memcpy(dest, buf, (size_t)len);                 /* 0x2F08C..0x2F0A1 */
-            host_memset((u32)(dest - mem) + (u32)len, 0x20u, (u32)gap); /* 0x2F0AA */
+            host_memset(dest + len, 0x20u, (u32)gap);       /* 0x2F0AA */
             break;
         default:
             memcpy(dest, buf, (size_t)len);                 /* 0x2F0C2..0x2F0D7 */

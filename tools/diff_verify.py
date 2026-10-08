@@ -6550,10 +6550,12 @@ def c3f_lock_case(flags, ln, base=0x0010A000):
 
 
 def c3f_unlock_case(flags, clock=0x11223344):
-    """0x1E808: the handle at 0x10AA00 and the DPMI clock shadow 0x101500."""
+    """0x1E808: the handle at 0x10AA00 and the DPMI clock shadow 0x101500. `flags` sits at +0x15,
+    the byte the clear reads; +0x14 is 0x02 (bit 1 set) so the @off mutant's wrong-offset clear is
+    visible even when flags' bit 1 is already clear."""
     return {0x00101500: le32(clock),
             0x0010AA00: b"\x11" * 8 + le32(0x0010A000) + le32(0x40) + le32(0x77777777)
-            + b"\x88\x66" + bytes([flags]) + b"\x99\x77"}
+            + b"\x02" + bytes([flags]) + b"\x99\x77"}
 
 
 def c3f_anim_case(side, s54, s43, ch, rec=C3D_REC1):

@@ -2574,7 +2574,7 @@ class RealFunctionTests(unittest.TestCase):
         ("string_lock@bit", ['l0', 'l3', 'l4']),
         ("string_lock@len", ['l1', 'l3']),
         ("string_lock@or", ['l0', 'l4']),
-        ("string_unlock@and", ['u0', 'u1', 'u2']),
+        ("string_unlock@and", ['u0', 'u2']),
         ("string_unlock@clock", ['u0', 'u1', 'u2']),
         ("string_unlock@off", ['u0', 'u1', 'u2']),
         ("string_unlock@store", ['u0', 'u1', 'u2']),
