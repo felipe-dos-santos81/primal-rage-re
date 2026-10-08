@@ -196,6 +196,7 @@ void text_cells_release_vertical(s32 col, s32 row, const u8 *s);
 /* 0x2EFD4 (with 0x2EF24). "%i" of `value` into `dest`, fitted to `width` by
  * `pad` (0 '0'-left, 1 ' '-left, 2 ' '-right, 3 none); returns the digit
  * count. */
+s32 text_number_core(s32 value, u8 *dest);                       /* 0x2EF24 */
 s32 text_number_format(s32 value, u8 *dest, s32 width, u32 pad);
 /* 0x2F4D0. EAX = col, EDX = row, EBX = value, ECX = width, stack pad and mode:
  * 0x2EFD4 then 0x2F198 with the cursor saved and restored. */

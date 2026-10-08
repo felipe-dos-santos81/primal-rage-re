@@ -424,6 +424,7 @@ void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits);
  * 0x107D24-adding sibling; exported for their differential rows' mutants. */
 void fighter_38bb0(u32 side);
 void fighter_38bc8(u32 side);
+int  fighter_input_scan(u32 side, s32 n1, s32 n2, u32 mask);     /* 0x4649C */
 
 /* C3e: the 0x392A0/0x3AAFC callees and 0x33A68's own row the differential
  * rows call (each already carries its seam). */

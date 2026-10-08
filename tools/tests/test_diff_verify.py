@@ -1486,6 +1486,80 @@ C3E_KINDS = {
     "fighter_reaction_apply@u2": {'byte', 'call #3', 'call #4'},
     "fighter_reaction_apply@voice": {'call #2', 'call #3', 'call #3 memory', 'call #4'},
 }
+C3F_MASKS = {
+    "fighter_38bb0": 0x0,
+    "fighter_38bc8": 0x0,
+    "fighter_3b038": 0xff,
+    "fighter_46534": 0x0,
+    "fight_attack_ready": 0xff,
+    "fighter_input_scan": 0xff,
+    "fighter_state_ok": 0xff,
+    "string_lock": 0xffffffff,
+    "string_unlock": 0x0,
+    "string_decode": 0xffffffff,
+    "game_string_get": 0xffffffff,
+    "fighter_block_anim": 0x0,
+    "hit_chain_resolve": 0xff,
+}
+C3F_KINDS = {
+    "fight_attack_ready@s53": {'eax'},
+    "fight_attack_ready@s54": {'eax'},
+    "fight_attack_ready@side": {'eax'},
+    "fighter_38bb0@len": {'byte'},
+    "fighter_38bb0@off": {'byte'},
+    "fighter_38bb0@stride": {'byte'},
+    "fighter_38bc8@clear": {'byte'},
+    "fighter_38bc8@off": {'byte'},
+    "fighter_38bc8@word": {'byte'},
+    "fighter_3b038@s1": {'eax'},
+    "fighter_3b038@s2": {'eax'},
+    "fighter_3b038@sum": {'eax'},
+    "fighter_46534@cap": {'byte'},
+    "fighter_46534@floor": {'byte'},
+    "fighter_46534@order": {'byte'},
+    "fighter_46534@sign": {'byte'},
+    "fighter_block_anim@bit": {'call #1'},
+    "fighter_block_anim@call": {'call #1'},
+    "fighter_block_anim@mask": {'byte'},
+    "fighter_block_anim@rec": {'call #1'},
+    "fighter_block_anim@s54": {'byte', 'call #1'},
+    "fighter_block_anim@stream": {'call #1'},
+    "fighter_input_scan@mask": {'eax'},
+    "fighter_input_scan@n1": {'eax'},
+    "fighter_input_scan@n2": {'eax'},
+    "fighter_input_scan@wrap": {'eax'},
+    "fighter_state_ok@s53": {'eax'},
+    "fighter_state_ok@s54": {'eax'},
+    "fighter_state_ok@sign": {'eax'},
+    "game_string_get@call": {'byte', 'call #0'},
+    "game_string_get@id": {'call #0'},
+    "game_string_get@ret": {'eax'},
+    "game_string_get@zero": {'byte'},
+    "hit_chain_resolve@drive": {'byte', 'call #2', 'call #3', 'eax'},
+    "hit_chain_resolve@guard": {'byte', 'call #1', 'call #2', 'call #3', 'eax'},
+    "hit_chain_resolve@inc": {'byte', 'call #2 memory', 'call #3 memory'},
+    "hit_chain_resolve@ret": {'eax'},
+    "hit_chain_resolve@s55": {'byte'},
+    "hit_chain_resolve@s5f": {'byte'},
+    "hit_chain_resolve@seed": {'call #2', 'call #3'},
+    "hit_chain_resolve@sound": {'call #3'},
+    "string_decode@link": {'byte', 'call #1 memory', 'eax'},
+    "string_decode@off": {'byte', 'call #1 memory', 'eax'},
+    "string_decode@ret": {'eax'},
+    "string_decode@skip": {'byte', 'call #1 memory', 'eax'},
+    "string_decode@term": {'byte', 'call #1 memory'},
+    "string_decode@trunc": {'byte', 'call #1 memory', 'eax'},
+    "string_decode@xor": {'byte', 'call #1 memory'},
+    "string_lock@base": {'byte', 'eax'},
+    "string_lock@bit": {'byte', 'eax'},
+    "string_lock@len": {'byte', 'eax'},
+    "string_lock@or": {'byte'},
+    "string_unlock@and": {'byte'},
+    "string_unlock@clock": {'byte'},
+    "string_unlock@off": {'byte'},
+    "string_unlock@store": {'byte'},
+}
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
@@ -1511,7 +1585,7 @@ class RealFunctionTests(unittest.TestCase):
                                              "fighter_slot_flag", "hit_anim_ctx", "hit_anim_start_b",
                                              "host_1b890", "rng_next"] + list(P1_MASKS) + list(P2_MASKS)
                                             + list(P3_MASKS) + list(P45_MASKS) + list(C1_MASKS)
-                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(C3C_MASKS) + list(C3D_MASKS) + list(C3E_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
+                                            + list(P6_MASKS) + list(C2_MASKS) + list(C2B_MASKS) + list(C3_MASKS) + list(C3B_MASKS) + list(C3C_MASKS) + list(C3D_MASKS) + list(C3E_MASKS) + list(C3F_MASKS) + list(P7_MASKS) + list(P8_MASKS)))
         for name, r in self.real.items():
             if name == "host_1b890":       # the named gap (record E3 §E3.8), tested on its own below
                 continue
@@ -1527,7 +1601,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_45878@mutant", "fighter_ctx_same@mutant", "fighter_slot_flag@mutant",
             "hit_anim_ctx@mutant", "hit_anim_start_b@mutant", "hit_anim_start_b@set", "rng_next@mutant"]
             + list(P1_KINDS) + list(P2_KINDS) + list(P3_KINDS) + list(P45_KINDS) + list(C1_KINDS)
-            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(C3B_KINDS) + list(C3C_KINDS) + list(C3D_KINDS) + list(C3E_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
+            + list(P6_KINDS) + list(C2_KINDS) + list(C2B_KINDS) + list(C3_KINDS) + list(C3B_KINDS) + list(C3C_KINDS) + list(C3D_KINDS) + list(C3E_KINDS) + list(C3F_KINDS) + list(P7_KINDS) + list(P8_KINDS)))
         for name, r in self.mut.items():
             self.assertEqual(r.verdict, "MISMATCH", name)
 
@@ -1592,7 +1666,7 @@ class RealFunctionTests(unittest.TestCase):
             "fighter_3640c": 0, "fighter_37dcc": 0,
             "fighter_23130": 0xFF, "fighter_45878": 0, "anim_10fa8": 0, "anim_3e4e4": 0,
             "fighter_ctx_same": 0, "hit_anim_ctx": 0, "hit_anim_start_b": 0, "host_1b890": 0xFFFFFFFF,
-            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS, **C3_MASKS, **C3B_MASKS, **C3C_MASKS, **C3D_MASKS, **C3E_MASKS,
+            **P1_MASKS, **P2_MASKS, **P3_MASKS, **P45_MASKS, **C1_MASKS, **P6_MASKS, **C2_MASKS, **C2B_MASKS, **C3_MASKS, **C3B_MASKS, **C3C_MASKS, **C3D_MASKS, **C3E_MASKS, **C3F_MASKS,
             **P7_MASKS, **P8_MASKS})
         # with the full mask the slot-flag original's scratch bits (case f9: EAX = 0x201) differ
         spec = dataclasses.replace([s for s in V.SPECS if s.name == "fighter_slot_flag"][0],
@@ -2439,6 +2513,74 @@ class RealFunctionTests(unittest.TestCase):
                    else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
             self.assertEqual(got, want, name)
 
+
+    def test_each_c3f_mutant_is_caught_by_what_it_breaks(self):
+        # track P batch C3f (record 2026-10-05-reverse-c3f): what alone catches each mutant
+        for name, want in C3F_KINDS.items():
+            got = {p.split(": ", 1)[1].split(":")[0] if p.split(": ", 1)[1].startswith("call #")
+                   else p.split(": ", 1)[1].split(" ")[0] for p in self.mut[name].problems}
+            self.assertEqual(got, want, name)
+        # the exact case set that alone catches each mutant (measured on the prototype)
+        for name, ids in (
+        ("fight_attack_ready@s53", ['r2', 'r3']),
+        ("fight_attack_ready@s54", ['r0', 'r1', 'r3', 'r5', 'r6']),
+        ("fight_attack_ready@side", ['r1', 'r2', 'r4', 'r5']),
+        ("fighter_38bb0@len", ['b0', 'b1']),
+        ("fighter_38bb0@off", ['b0', 'b1']),
+        ("fighter_38bb0@stride", ['b1']),
+        ("fighter_38bc8@clear", ['b0', 'b1']),
+        ("fighter_38bc8@off", ['b1']),
+        ("fighter_38bc8@word", ['b0', 'b1']),
+        ("fighter_3b038@s1", ['w3', 'w7']),
+        ("fighter_3b038@s2", ['w1', 'w2', 'w5', 'w6']),
+        ("fighter_3b038@sum", ['w1', 'w2', 'w6']),
+        ("fighter_46534@cap", ['v0', 'v1', 'v2', 'v5', 'v6', 'v7']),
+        ("fighter_46534@floor", ['v4', 'v8']),
+        ("fighter_46534@order", ['v8']),
+        ("fighter_46534@sign", ['v3', 'v9']),
+        ("fighter_block_anim@bit", ['a1']),
+        ("fighter_block_anim@call", ['a0', 'a10', 'a2', 'a7', 'a9']),
+        ("fighter_block_anim@mask", ['a10', 'a9']),
+        ("fighter_block_anim@rec", ['a0', 'a10', 'a9']),
+        ("fighter_block_anim@s54", ['a2', 'a3', 'a4', 'a5', 'a6', 'a8']),
+        ("fighter_block_anim@stream", ['a0', 'a10', 'a7', 'a9']),
+        ("fighter_input_scan@mask", ['s1', 's4', 's5', 's6', 's7', 's8', 's9']),
+        ("fighter_input_scan@n1", ['s5']),
+        ("fighter_input_scan@n2", ['s6']),
+        ("fighter_input_scan@wrap", ['s6']),
+        ("fighter_state_ok@s53", ['o3', 'o5']),
+        ("fighter_state_ok@s54", ['o2', 'o4', 'o7']),
+        ("fighter_state_ok@sign", ['o4', 'o5']),
+        ("game_string_get@call", ['c0', 'c1', 'c2']),
+        ("game_string_get@id", ['c0', 'c1', 'c2']),
+        ("game_string_get@ret", ['c0', 'c1', 'c2']),
+        ("game_string_get@zero", ['c1']),
+        ("hit_chain_resolve@drive", ['h1', 'h10', 'h2', 'h3', 'h4', 'h6', 'h8', 'h9']),
+        ("hit_chain_resolve@guard", ['h5', 'h7']),
+        ("hit_chain_resolve@inc", ['h3', 'h4', 'h6', 'h8', 'h9']),
+        ("hit_chain_resolve@ret", ['h1', 'h10', 'h2']),
+        ("hit_chain_resolve@s55", ['h1', 'h10', 'h2']),
+        ("hit_chain_resolve@s5f", ['h10', 'h2']),
+        ("hit_chain_resolve@seed", ['h3', 'h4', 'h6', 'h8', 'h9']),
+        ("hit_chain_resolve@sound", ['h3', 'h4', 'h6', 'h8', 'h9']),
+        ("string_decode@link", ['n2', 'n3']),
+        ("string_decode@off", ['n0', 'n1', 'n2', 'n3', 'n4', 'n4b', 'n6']),
+        ("string_decode@ret", ['n0', 'n1', 'n2', 'n3', 'n6']),
+        ("string_decode@skip", ['n1', 'n3']),
+        ("string_decode@term", ['n0', 'n1', 'n2', 'n3', 'n5', 'n6']),
+        ("string_decode@trunc", ['n4b']),
+        ("string_decode@xor", ['n0', 'n1', 'n2', 'n3', 'n6']),
+        ("string_lock@base", ['l0', 'l2', 'l3', 'l4']),
+        ("string_lock@bit", ['l0', 'l3', 'l4']),
+        ("string_lock@len", ['l1', 'l3']),
+        ("string_lock@or", ['l0', 'l4']),
+        ("string_unlock@and", ['u0', 'u2']),
+        ("string_unlock@clock", ['u0', 'u1', 'u2']),
+        ("string_unlock@off", ['u0', 'u1', 'u2']),
+        ("string_unlock@store", ['u0', 'u1', 'u2']),
+        ):
+            self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
+
     def test_each_stub_declares_the_registers_its_callee_clobbers(self):
         # Call.clobbers, re-derived from the bytes (record §E3.5's table, §E3.12)
         img = E.Image.load(os.path.join(self.tmp.name, "image.bin"))
@@ -2452,7 +2594,7 @@ class RealFunctionTests(unittest.TestCase):
         0x188AC: ("edx",), 0x188DC: ("edx",), 0x1890C: ("edx",), 0x189FC: (), 0x18A4C: (),
         0x18AF8: ("ebx", "ecx", "edx"), 0x18B04: (), 0x18B44: (), 0x18C14: ("ebx", "edx", "ebp"), 0x1A570: (),
         0x1A5AC: (), 0x1A734: (), 0x1A7CC: ("esi", "edi", "ebp"), 0x1AB5C: ("ebp",), 0x1CA14: ("edx",),
-        0x1CA40: (), 0x1CA6C: (), 0x1CC28: ("edx",), 0x1CD9C: (), 0x1CE04: (), 0x1CE70: (), 0x1D238: (),
+        0x1CA40: (), 0x1CA6C: (), 0x1CC28: ("edx",), 0x1CD9C: (), 0x1CE04: (), 0x1CE70: (), 0x1D238: (), 0x1E75C: (), 0x1E808: (),
         0x1D244: (), 0x1DDF4: ("ebx", "edx"), 0x22404: (), 0x23960: (), 0x249B0: (), 0x249D0: (),
         0x29BC8: ("ebx", "edx"), 0x29C08: ("edx",), 0x29DB8: ("ebx", "edx"), 0x29F34: ("edx",),
         0x2A148: ("edx",), 0x2A17C: ("edx",), 0x2A408: ("edx",), 0x2A620: ("edx",), 0x2A690: (),
@@ -2469,7 +2611,7 @@ class RealFunctionTests(unittest.TestCase):
         0x3B080: ("ebx", "ecx", "edx"), 0x3B134: ("ebx", "edx", "edi", "ebp"), 0x3B298: ("edx",), 0x3B6C4: (),
         0x3B714: ("edx",), 0x3B8D8: ("edx",), 0x3B90C: ("edx",), 0x3BDB0: (), 0x3BDDC: ("ebp",), 0x3C148: (),
         0x3C16C: (), 0x3C190: ("edx",), 0x3C208: ("edx",), 0x3C358: (), 0x3C480: ("edx",), 0x3C4CC: ("edx",),
-        0x3C520: ("edx",), 0x3C59C: ("edx",), 0x41310: (), 0x46190: (), 0x46460: ("edx",), 0x468D8: (), 0x48170: (),
+        0x3C520: ("edx",), 0x3C59C: ("edx",), 0x32BAC: (), 0x3C6A8: ("edx",), 0x3CD44: (), 0x3CE58: ("edx", "edi", "ebp"), 0x41310: (), 0x46190: (), 0x46460: ("edx",), 0x468D8: (), 0x474E4: ("ebx", "edx"), 0x48170: (),
         0x49444: ("edi", "ebp"), 0x4F434: (), 0x5D7DC: (), 0x5DC0F: ("ebx", "ecx", "edx"),
         0x5DC8B: ("ebx", "ecx", "edx"), 0x5DD03: (), 0x5DEAF: ("ebx", "ecx", "edx"), 0x5DEED: ()})
         for addr, declared in stubs.items():
@@ -2565,9 +2707,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (217), the 61 without are counted apart
-        self.assertIn("diff-verify: 278/278 functions VERIFIED; 1031/1031 mutants detected; 1 named gaps; "
-                      "196/217 rows with callees closed (61 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (225), the 66 without are counted apart
+        self.assertIn("diff-verify: 291/291 functions VERIFIED; 1087/1087 mutants detected; 1 named gaps; "
+                      "205/225 rows with callees closed (66 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

@@ -3882,6 +3882,12 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
     return rec;
 }
 
+/* PORT: the C3f text rows pass a caller's string/buffer by value, four little-endian dwords
+ * (record §P2.7): 0x2F198's string and 0x2EFD4/0x2EF24's buffers are on the caller's stack, whose
+ * address has no comparable mem[] offset. */
+#define C3F_PTR_DW(f, k) ((u32)(f)[k] | (u32)(f)[(k) + 1u] << 8 | (u32)(f)[(k) + 2u] << 16 \
+                          | (u32)(f)[(k) + 3u] << 24)
+
 /* ---- text renderer and record grid -------------------------------------
  * (0x2F0F0, 0x2F198, 0x2F280, 0x2F4BC, 0x2F5A0, 0x2F830)
  *
@@ -3933,6 +3939,9 @@ int text_width(const u8 *s, u32 mode)
  * therefore produced by the actor renderer (0x1C390), not written here. */
 u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical)
 {
+    /* PORT: the harness seam passes &col/&row by value (record §P2.7): the raw's EDX/EBX are
+     * pointers into its caller's stack (0x2F830's locals), which have no mem[] offset. */
+    PR_SEAM_RET(0x2F5A0u, ch, (u32)*col, (u32)*row, mode, vertical);
     u32 c = (u32)ch & 0xffu;
     u32 cls = mode & 3u;
     u32 mhi = mode & 0xf000u;
@@ -4067,6 +4076,7 @@ void text_blit_string(const u8 *s, s32 x, s32 y)
  * limit (0x2A for horizontal, 0x1E for vertical). */
 s32 text_render(const u8 *s, u32 mode, s32 row, s32 col, u32 vertical)
 {
+    PR_SEAM_RET(0x2F830u, (u32)(s - mem), mode, row, col, vertical);
     u8 *m = (u8 *)s;   /* 0x2F830 writes the terminator into param_1 */
 
     if (*s == 0) return 0;                                 /* 0x2F849 */
@@ -4106,6 +4116,10 @@ s32 text_render(const u8 *s, u32 mode, s32 row, s32 col, u32 vertical)
  * (0x1223F) passes EAX=-1, EDX=4, EBX=0x1C500's result, ECX=0x1000. */
 void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode)
 {
+    /* PORT: the string passes by value, four little-endian dwords (record §P2.7): 0x2F4D0's
+     * buffer is on its caller's stack, so the address itself has no comparable value. */
+    PR_SEAM(0x2F198u, col, row, C3F_PTR_DW(s, 0), C3F_PTR_DW(s, 4), C3F_PTR_DW(s, 8),
+            C3F_PTR_DW(s, 12), mode);
     if (row == -1) {
         /* 0x2F1B4/0x2F1BA: reload both cursor words and sign-extend them. */
         col = (s16)DSW(DS_00105F34 + 2);
@@ -4134,6 +4148,7 @@ void text_cursor_next_line(const u8 *s, u32 mode)
  * next row, and releases every non-empty record through 0x2AD40. */
 void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode)
 {
+    PR_SEAM(0x2F280u, col, row, (u32)(s - mem), mode);
     s32 count = text_width(s, mode);
     if (col < 0) {
         col = (0x2b - count) >> 1;
@@ -4197,6 +4212,7 @@ void text_cells_release_count(s32 col, s32 row, s32 count)
  * this cycle, so the port takes the arguments explicitly. */
 void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
 {
+    PR_SEAM(0x2F4BCu, col, row, (u32)(s - mem), mode);
     u32 save = DSD(DS_00105F34);
     text_cursor_set(col, row, s, mode);
     DSD(DS_00105F34) = save;
@@ -4222,6 +4238,7 @@ void text_cursor_hold_font2(s32 col, s32 row, const u8 *s, u32 mode)
  * which sits in no Ghidra function; only 0x38D90's is ported. */
 void text_vertical_set(s32 col, s32 row, const u8 *s, u32 mode)
 {
+    PR_SEAM(0x2F20Cu, col, row, (u32)(s - mem), mode);
     if (row == -1) {
         col = (s16)DSW(DS_00105F34 + 2);                /* 0x2F228/0x2F234 */
         row = (s16)DSW(DS_00105F34);                    /* 0x2F22E/0x2F237 */
@@ -4244,6 +4261,7 @@ void text_vertical_set(s32 col, s32 row, const u8 *s, u32 mode)
  * sits in no Ghidra function; only 0x38C5C's is ported. */
 void text_cells_release_vertical(s32 col, s32 row, const u8 *s)
 {
+    PR_SEAM(0x2F314u, col, row, (u32)(s - mem));
     s32 count = (s32)strlen((const char *)s);           /* 0x2F31F..0x2F328 */
     u32 idx = (u32)row * 0xacu + (u32)col * 4u;         /* 0x2F335..0x2F341 */
     for (s32 i = 0; i < count; i++) {                   /* 0x2F331/0x2F37A */
@@ -4258,9 +4276,39 @@ void text_cells_release_vertical(s32 col, s32 row, const u8 *s)
     }
 }
 
+/* PORT: the harness seam for the host-libc pair the C3f text rows stub (record §C3f.2): the WATCOM
+ * bodies at 0x65546/0x61A70 cannot run under unicorn (0x65546's chain leaves the image and stops
+ * `undecodable bytes at 0xFF56` once its direct callees are followed, §C3f.2 correction 3; 0x61A70
+ * enters 0x65490), so the rows run them mode="stub" and the port's calls must be interceptable.
+ * Both are inert outside build/diffrun. Each seam records its pointer arguments as mem[] offsets
+ * (0x65546's dest included); the P2.7 by-value dword form is for the text rows' own seams, whose
+ * buffers are register-passed (record §P2.7). */
+static s32 host_sprintf(u8 *dest, const u8 *fmt, s32 value)
+{
+    PR_SEAM_RET(0x65546u, (u32)(dest - mem), (u32)(fmt - mem), value);
+    return (s32)snprintf((char *)dest, 0x14u, (const char *)fmt, (int)value);
+}
+
+static void host_memset(u8 *dest, u32 fill, u32 len)
+{
+    PR_SEAM(0x61A70u, (u32)(dest - mem), fill, len);
+    memset(dest, (int)fill, (size_t)len);
+}
+
+/* 0x2EF24. EAX = value, EDX = dest. Formats the value with the libc
+ * sprintf 0x65546 and the format "%i" at 0x80B40 into dest and returns its
+ * length (the `repne scasb` strlen). */
+s32 text_number_core(s32 value, u8 *dest)
+{
+    PR_SEAM_RET(0x2EF24u, value, C3F_PTR_DW(dest, 0), C3F_PTR_DW(dest, 4),
+                C3F_PTR_DW(dest, 8), C3F_PTR_DW(dest, 12));
+    host_sprintf(dest, mem + 0x80B40u, value);              /* 0x2EF2D 0x65546 */
+    return (s32)strlen((const char *)dest);
+}
+
 /* 0x2EFD4 (with 0x2EF24). EAX = value, EDX = dest, EBX = width, ECX = pad.
  * 0x2EF24 formats the value with the libc sprintf 0x65546 and the format
- * "%i" at 0x80B40 into a 0x0C-byte stack buffer and returns its length L.
+ * "%i" at 0x80B40 into a 0x14-byte stack buffer and returns its length L.
  * When width <= L (0x2EFEF `jg`) the last `width` characters are copied
  * (0x2EFF3..0x2F00A). Otherwise pad selects the jump table at 0x2EFC4:
  * 0 right-justifies with '0' (0x2F026, 0x61A70 = memset), 1 right-justifies
@@ -4270,8 +4318,10 @@ void text_cells_release_vertical(s32 col, s32 row, const u8 *s)
  * (0x2F0D8). Returns L. */
 s32 text_number_format(s32 value, u8 *dest, s32 width, u32 pad)
 {
-    char buf[16];
-    s32 len = (s32)snprintf(buf, sizeof buf, "%i", (int)value); /* 0x2EF24 */
+    PR_SEAM_RET(0x2EFD4u, value, C3F_PTR_DW(dest, 0), C3F_PTR_DW(dest, 4),
+                C3F_PTR_DW(dest, 8), C3F_PTR_DW(dest, 12), width, pad);
+    u8 buf[0x14] = {0};
+    s32 len = text_number_core(value, buf);                 /* 0x2EFE2 0x2EF24 */
     s32 gap = width - len;                                  /* 0x2EFE9 */
     s32 end = width;
     if (gap <= 0) {
@@ -4282,11 +4332,12 @@ s32 text_number_format(s32 value, u8 *dest, s32 width, u32 pad)
         case 0u:
         case 1u:
             memcpy(dest + gap, buf, (size_t)len);           /* 0x2F026/0x2F059 */
-            memset(dest, pad == 0u ? 0x30 : 0x20, (size_t)gap); /* 0x2F041/0x2F074 */
+            host_memset(dest, pad == 0u ? 0x30u : 0x20u,
+                        (u32)gap);                          /* 0x2F041/0x2F074 0x61A70 */
             break;
         case 2u:
             memcpy(dest, buf, (size_t)len);                 /* 0x2F08C..0x2F0A1 */
-            memset(dest + len, 0x20, (size_t)gap);          /* 0x2F0AA */
+            host_memset(dest + len, 0x20u, (u32)gap);       /* 0x2F0AA */
             break;
         default:
             memcpy(dest, buf, (size_t)len);                 /* 0x2F0C2..0x2F0D7 */
@@ -4304,6 +4355,7 @@ s32 text_number_format(s32 value, u8 *dest, s32 width, u32 pad)
  * with 0x2F198, the cursor saved (0x2F4E4) and restored (0x2F4FE). */
 void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
 {
+    PR_SEAM(0x2F4D0u, col, row, value, width, pad, mode);
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
      * which only a pad above 3 (no caller) could observe. */
     u8 buf[0x14] = {0};

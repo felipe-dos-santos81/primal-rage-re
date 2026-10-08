@@ -231,8 +231,9 @@ static void title_origin_reset(u32 idx)
  * when it is locked or empty. The handle is {base @+8; len @+0xc; flags @+0x15}
  * (0x1E6D8/0x1E75C/0x1E808's block header); the port builds it in mem[] and the
  * "lock" is an inert single-threaded flag. */
-static u32 string_lock(u32 handle)
+u32 string_lock(u32 handle)
 {
+    PR_SEAM_RET(0x1E75Cu, handle);
     if ((DSB(handle + 0x15) & 1u) == 0 && DSD(handle + 0xc) != 0) {
         DSB(handle + 0x15) |= 2u;
         return DSD(handle + 8);
@@ -240,23 +241,30 @@ static u32 string_lock(u32 handle)
     return 0;
 }
 
-/* 0x1E808 — record §50-D. PORT: clear the lock bit. Its second argument feeds 0x500BB (a DPMI
- * page-map query) and a write to [arg+0x10] that the string reader never reads;
- * the port omits both, which is the arm 0x474E4 reaches. */
-static void string_unlock(u32 handle) { DSB(handle + 0x15) &= 0xFDu; }
-
-/* 0x474E4 — record §49-Z. Decode string `id` from the localisation table at
- * `base` into `out` (capacity `outlen`). The table's +4 holds a linked list of
- * group offsets relative to `base`; each group is a run of one-byte-length-
- * prefixed entries and an entry's bytes are XORed with its plaintext length
- * byte. Returns the decoded length + 1 (0 for an empty entry) or `outlen` when
- * truncated. PORT: the original locks the DS_001082DC handle itself (0x474F2
- * 0x1E75C) and unlocks it at 0x475A5 (0x1E808); the port's only caller,
- * game_string_get, does both around this body, so `base` arrives locked. The
- * `outlen` compare is signed (0x47556 JGE) and the ids are the callers'
- * constants. */
-static u32 string_decode(u32 base, u32 id, u8 *out, u32 outlen)
+/* 0x1E808 — record §50-D. Clear the lock bit, then the 0x500BB DPMI clock read and its store:
+ * `call 0x500BB; mov [edx+0x10],eax` at 0x1E814/0x1E819, i.e. the clock shadow DS_00101500
+ * (0x500BB is `mov eax,[0x101500]; ret`). */
+void string_unlock(u32 handle)
 {
+    PR_SEAM(0x1E808u, handle);
+    DSB(handle + 0x15) &= 0xFDu;
+    DSD(handle + 0x10u) = DSD(DS_00101500);                 /* 0x1E814/0x1E819 0x500BB */
+}
+
+/* 0x474E4 — record §49-Z. Decode string `id` from the localisation table into
+ * `out` (capacity `outlen`). The table's +4 holds a linked list of group
+ * offsets relative to the base the DS_001082DC handle names; each group is a
+ * run of one-byte-length-prefixed entries and an entry's bytes are XORed with
+ * its plaintext length byte. Returns the decoded length + 1 (0 for an empty
+ * entry) or `outlen` when truncated. The function owns the lock: 0x474F2
+ * loads the handle and calls 0x1E75C, 0x475A5 calls 0x1E808 (both always,
+ * even when the lock fails). The `outlen` compare is signed (0x47556 JGE) and
+ * the ids are the callers' constants. */
+u32 string_decode(u32 id, u8 *out, u32 outlen)
+{
+    PR_SEAM_RET(0x474E4u, id, (u32)(out - mem), outlen);
+    u32 handle = DSD(DS_001082DC);                          /* 0x474F2 */
+    u32 base = string_lock(handle);                         /* 0x474F7 0x1E75C */
     u32 off = 0;
     for (u32 g = id / 0x40u; g != 0; g--)
         off = DSD(base + off + 4u);             /* 0x4752F */
@@ -264,17 +272,21 @@ static u32 string_decode(u32 base, u32 id, u8 *out, u32 outlen)
     for (u32 i = id % 0x40u; i != 0; i--)
         p += (u32)DSB(p) + 1u;                  /* 0x47544 */
     u32 len = DSB(p);                           /* 0x4754D */
+    u32 ret;
     p += 1u;
-    if (len < outlen) {
+    if ((s32)len < (s32)outlen) {
         for (u32 i = 0; i < len; i++)
             out[i] = (u8)(DSB(p + i) ^ (u8)len);   /* 0x47564 */
         out[len] = 0;                              /* 0x47572 */
-        return len != 0 ? len + 1u : 0u;
+        ret = len != 0 ? len + 1u : 0u;
+    } else {
+        for (u32 i = 0; i + 1u < outlen; i++)
+            out[i] = (u8)(DSB(p + i) ^ (u8)len);   /* 0x47591 */
+        out[outlen - 1u] = 0;                      /* 0x4759E */
+        ret = outlen;
     }
-    for (u32 i = 0; i + 1u < outlen; i++)
-        out[i] = (u8)(DSB(p + i) ^ (u8)len);       /* 0x47591 */
-    out[outlen - 1u] = 0;                          /* 0x4759E */
-    return outlen;
+    string_unlock(handle);                         /* 0x475A5 0x1E808 */
+    return ret;
 }
 
 /* PORT: 0x47370. The original loads the loaded-config language file (index 0 =
@@ -306,18 +318,13 @@ void game_string_table_load(const char *dir)
     DSD(DS_001082D8) = (u32)n;                  /* 0x473A3 */
 }
 
-/* PORT: 0x1C500 + 0x474E4. The original's EAX = string id, EDX = DS_00102760,
- * EBX = 0x100; 0x1C500 zeroes the first byte when 0x474E4 reports no string. */
+/* PORT: 0x1C500. EAX = string id, EDX = DS_00102760, EBX = 0x100; it calls
+ * 0x474E4 and zeroes the first byte when the return is 0. */
 const u8 *game_string_get(u32 id)
 {
-    u32 base = string_lock(DSD(DS_001082DC));
-    if (base != 0) {
-        string_decode(base, id, mem + DS_00102760, 0x100u);
-        string_unlock(DSD(DS_001082DC));
-    } else {
-        DSB(DS_00102760) = 0;                   /* 0x1C517 */
-    }
-    return (const u8 *)(mem + DS_00102760);
+    if (string_decode(id, mem + DS_00102760, 0x100u) == 0)  /* 0x1C50C/0x1C511 */
+        DSB(DS_00102760) = 0;                               /* 0x1C515/0x1C517 */
+    return (const u8 *)(mem + DS_00102760);                 /* 0x1C51D */
 }
 
 /* 0x1C500(0x15) -> 0x2F198: the title's caption. */
