@@ -2,12 +2,20 @@
 
 The detailed, running status of the reverse engineering and port: what's been
 decoded, what's been ported and verified, and the named gaps left at each
-step. This grows with every task; `README.md` stays a short pointer here.
+step; `README.md` summarises the current counts and points here.
 
 Each paragraph corresponds to a stretch of work, generally cross-referencing
-a derivation record section (`§NN-X`) in
-`docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`, which holds the
-underlying raw-byte evidence.
+a derivation record (`docs/superpowers/plans/<date>-…-derivations.md`), which
+holds the underlying raw-byte evidence.
+
+**Current state (2026-10-05).** The port is complete and the verification
+frontier is closed: `python3 tools/port_progress.py` reads `771 1203 64` (raw)
+and `731 731 100` (portable), and `make diff-verify` reads
+`322/322 functions VERIFIED; 1353/1353 mutants detected; 1 named gaps;
+229/251 rows with callees closed (71 have none)`. Every address the callee
+scan reaches is a row, runtime (`>= 0x5D000`), or a named non-row (record
+`2026-10-05-reverse-c3g-derivations.md` §C3g.7). The paragraphs below are the
+chronological log; a named gap stands until a later paragraph closes it.
 
 **Reverse engineering.** `PRAGE.EXE` loads and analyses cleanly: **~1350
 functions**, 0 failures. LE layout and `INDEX` verified; `S16*.GRA` chunk types
