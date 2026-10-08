@@ -1788,7 +1788,7 @@ P45_IDX = {0x1077A8: le32(DS_SLOTS) + le32(DS_SLOTS + 0x94)}
 P45_PTRS = {**SLOT_PTRS, **P45_IDX}
 P45_FAKE = {0x1079AC: le32(P45_SLOT3), P45_SLOT3: le32(E3_REC)}
 CALL29C08 = E.Call(0x29C08, ("eax", "edx"), clobbers=("edx",))       # returns the palette handle
-RELEASE = E.Call(0x2AD40, ("eax", "edx"), clobbers=("edx", "edi", "ebp"))   # void (the seam on release_record)
+RELEASE = E.Call(0x2AD40, ("eax", "edx"), clobbers=("edx",))   # void (the seam on release_record)
 
 
 # 0x18BC8: the byte 0x100C1D = 0.
@@ -7182,6 +7182,109 @@ def c3g_apply_case(side, reaction, ch=0, s54=0, s52=0, s53=0, s6a=0, s41=0, s84=
     return p
 
 
+# ---- waves 3+4: the text tree's roots, 0x3CD94 and 0x1922C (record §C3g.5, plan Task 4) --------
+# The scratch addresses (all inside the data object): the glyph row's col/row pair (the raw's EDX/
+# EBX point at them), the text rows' EBX string, 0x2EF24/0x2EFD4's EDX dest, a released cell's
+# record and the pset array 0x1014EC points at, the actor pool/free record and the render node the
+# allowed 0x2AE14's real body needs (its alloc/palette/render paths are poked valid so no case
+# reads outside the image).
+C3G_T_COLROW = 0x0010A200
+C3G_T_STR = 0x0010A210
+C3G_T_DEST = 0x0010A280
+C3G_T_PSET = 0x0010A380          # DS_001014EC (the pset array; below the pool)
+C3G_T_POOL = 0x0010A400          # DS_001014F4 and the free-list head's record (index 0)
+C3G_T_CELL = 0x0010A468          # the grid records (pool index 1; in_pool for actor_pset)
+C3G_T_NODE = 0x0010A700          # the render free node (0x10275C)
+
+
+def c3g_tstr_case(text, extra=None):
+    """The text rows' EBX string at C3G_T_STR (NUL-terminated)."""
+    p = {C3G_T_STR: bytes(text) + b"\x00"}
+    if extra:
+        p.update(extra)
+    return p
+
+
+def c3g_tw_case(text, mode, cls=(), wid=(), nbr=()):
+    """0x2F0F0: the string, the class bytes at 0xBD390+c (`nbr` the +1 neighbours the @coff mutant
+    reads) and the width tables' +2 bytes at table + cls*4 + 2."""
+    p = {C3G_T_STR: bytes(text) + b"\x00"}
+    for c, v in cls:
+        p[0x000BD390 + c] = bytes([v])
+    for c, v in nbr:
+        p[0x000BD391 + c] = bytes([v])
+    for table, k, v in wid:
+        p[table + k * 4 + 2] = bytes([v])
+    return p
+
+
+def c3g_cell_case(cells, cur=None, pset=C3G_T_PSET):
+    """0x2F280/0x2F314: the 0x1014EC pset pointer, the pool base 0x1014F4, the cursor when `cur`,
+    and per (idx, pset index) a record at C3G_T_CELL+k*0x68 stored into the grid word
+    0x105F38+idx with +0x56 the pset index."""
+    p = {0x001014EC: le32(pset), 0x001014F4: le32(C3G_T_POOL)}
+    if cur is not None:
+        p[0x00105F34] = le32(cur)
+    for k, (idx, pi) in enumerate(cells):
+        rec = C3G_T_CELL + k * 0x68
+        p[0x00105F38 + idx] = le32(rec)
+        p[rec + 0x56] = le16(pi)
+    return p
+
+
+def c3g_imm_case(side, i, r, ch, c, lo=0, hi=0, ch2=None):
+    """0x3CD94: the slot's +0x5F reaction byte and +0x7A char (its +0x7B neighbour `ch2` feeds the
+    @char mutant), the (ch*0x20+i)*8 entry's +4 word (the signed candidate) and the two dwords of
+    0xA182C + ch*0x200 + r*8."""
+    p = c3d_slot_pokes()
+    so = 0x001077B0 + side * 0x94
+    p[so + 0x5F] = bytes([r])
+    p[so + 0x7A] = bytes([ch]) if ch2 is None else bytes([ch, ch2])
+    entry = ch * 0x20 + i
+    p[0x000C619C + entry * 8 + 4] = le16(c & 0xFFFF)
+    entry2 = ch + i * 0x20
+    if entry2 != entry:
+        p[0x000C619C + entry2 * 8 + 4] = le16(0)
+    p[0x000A182C + ch * 0x200 + r * 8] = le32(lo)
+    p[0x000A182C + ch * 0x200 + r * 8 + 4] = le32(hi)
+    return p
+
+
+def c3g_timer_case(side, b5a, b5c, x24, x20=0x5A5A5A5A):
+    """0x1922C: the slot's record pointer (C3D_REC0/1), DS_00100B5A/B5C/B5E[side] and the record's
+    +0x24/+0x20. B5E is seeded 0x99 so the unconditional clear is visible."""
+    p = c3d_slot_pokes()
+    p[0x001077B0 + side * 0x94] = le32(C3D_REC0 + side * 0x40)
+    p[0x00100B5A + side] = bytes([b5a])
+    p[0x00100B5C + side] = bytes([b5c])
+    p[0x00100B5E + side] = b"\x99"
+    p[C3D_REC0 + side * 0x40 + 0x24] = le32(x24)
+    p[C3D_REC0 + side * 0x40 + 0x20] = le32(x20)
+    return p
+
+
+def c3g_glyph_case(ch, col, row, mode, vertical=0, cell=0, free=True, pset_idx=0):
+    """0x2F5A0: the col/row pair at C3G_T_COLROW (the raw's EDX/EBX scratch), the grid cell at
+    row*0xac + col*4 (`cell` a record pointer at C3G_T_CELL), the actor pool 0x1014F4 and pset
+    0x1014EC, the 0x105B3C free ring (one record at C3G_T_POOL; `free` False is the self-sentinel
+    empty list, so the allowed 0x2AE14's alloc fails) and the render free node 0x10275C."""
+    p = {C3G_T_COLROW: le32(col), C3G_T_COLROW + 4: le32(row)}
+    if cell:
+        p[0x00105F38 + (row & 0xFFFF) * 0xac + (col & 0xFFFF) * 4] = le32(cell)
+        p[cell + 0x56] = le16(pset_idx)
+    p[0x001014F4] = le32(C3G_T_POOL)
+    p[0x001014EC] = le32(C3G_T_PSET)
+    p[0x00105B3C] = le32(C3G_T_POOL if free else 0x00105B3C)
+    if free:
+        p[C3G_T_POOL] = le32(0x00105B3C)
+        p[C3G_T_POOL + 4] = le32(0x00105B3C)
+    p[0x00105BCC] = le32(0x00105BCC)
+    p[0x00105BD0] = le32(0x00105BCC)
+    p[0x0010275C] = le32(C3G_T_NODE)
+    p[0x00105B44] = le32(0)
+    return p
+
+
 C3G_SPECS = [
     # 0x3C6A8 hit_slot_seed: EAX = side, EDX = value, EBX = i. 0x3C600 (desc) is a stub.
     Spec("hit_slot_seed", 0x3C6A8, [
@@ -7576,6 +7679,335 @@ C3G_SPECS = [
        eax_mask=0,
        mutants=("@ff", "@f88", "@gate", "@pair", "@facing", "@stance", "@s63", "@cnt", "@hi",
                 "@anim", "@stream", "@bx", "@start", "@s52", "@cb", "@cbstore")),
+    # ---- waves 3+4: the text tree's roots, 0x3CD94 and 0x1922C ---------------------------------
+    # 0x2F0F0 text_width: EAX = string, EDX = mode; no callees (the strlen path is inline). Mode &
+    # 3 in {0,1} is strlen; 2/3 sum 1 when the signed class table's entry width byte is 8, else 2.
+    # Mask 0xFFFFFFFF: the centring callers use the return as a length.
+    Spec("text_width", 0x2F0F0, [
+        Case("w0", {"eax": C3G_T_STR, "edx": 0}, c3g_tw_case(b"ABCDE", 0)),
+        Case("w1", {"eax": C3G_T_STR, "edx": 1}, c3g_tw_case(b"", 1)),
+        Case("w2", {"eax": C3G_T_STR, "edx": 2},
+             c3g_tw_case(b"AQ", 2, cls=[(0x41, 2), (0x51, 0xFF)], nbr=[(0x41, 0x11)],
+                         wid=[(0xBD048, 2, 8)])),
+        Case("w3", {"eax": C3G_T_STR, "edx": 2},
+             c3g_tw_case(b"AR", 2, cls=[(0x41, 3), (0x52, 4)], nbr=[(0x41, 0x33)],
+                         wid=[(0xBD048, 3, 8), (0xBD048, 4, 8)])),
+        Case("w3b", {"eax": C3G_T_STR, "edx": 2},
+             c3g_tw_case(b"RS", 2, cls=[(0x52, 4), (0x53, 5)],
+                         wid=[(0xBD048, 4, 7), (0xBD048, 5, 7)])),
+        Case("w4", {"eax": C3G_T_STR, "edx": 3},
+             c3g_tw_case(b"AQ", 3, cls=[(0x41, 2), (0x51, 0xFF)], nbr=[(0x41, 0x22)],
+                         wid=[(0xBD1EC, 2, 8)])),
+        Case("w5", {"eax": C3G_T_STR, "edx": 0x1002},
+             c3g_tw_case(b"AQ", 0x1002, cls=[(0x41, 2), (0x51, 0xFF)], nbr=[(0x41, 0x44)],
+                         wid=[(0xBD048, 2, 8)])),
+        Case("w6", {"eax": C3G_T_STR, "edx": 4}, c3g_tw_case(b"XYZ", 4)),
+        Case("w7", {"eax": C3G_T_STR, "edx": 2},
+             c3g_tw_case(b"", 2, cls=[(0x41, 2)], wid=[(0xBD048, 2, 8)])),
+        Case("w8", {"eax": C3G_T_STR, "edx": 2},
+             c3g_tw_case(b"\x80\x41", 2, cls=[(0x80, 5), (0x41, 2)], nbr=[(0x80, 0x55)],
+                         wid=[(0xBD048, 5, 7), (0xBD048, 2, 8)])),
+    ], eax_mask=0xFFFFFFFF, mutants=("@mask", "@table", "@cls", "@coff", "@wid", "@len")),
+    # 0x2F198 text_cursor_set: EAX = col (-1 centres), EDX = row (-1 reloads the cursor), EBX =
+    # string, ECX = mode. 0x2F0F0 (the centring width) and 0x2F830 (the render) are stubs; the
+    # cursor at 0x105F34 takes {row, col + extent}. A void function.
+    Spec("text_cursor_set", 0x2F198, [
+        Case("t0", {"eax": 7, "edx": 4, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_tstr_case(b"AB"), {0x2F830: 3}),
+        Case("t1", {"eax": 9, "edx": 0xFFFFFFFF, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_tstr_case(b"AB", {0x00105F34: le32(0x00060005)}), {0x2F830: 2}),
+        Case("t2", {"eax": 9, "edx": 0xFFFFFFFF, "ebx": C3G_T_STR, "ecx": 0x2000},
+             c3g_tstr_case(b"AB", {0x00105F34: le32(0xFFFBFFFE)}), {0x2F830: 1}),
+        Case("t3", {"eax": 0xFFFFFFFF, "edx": 3, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_tstr_case(b"AB"), {0x2F0F0: 0x20, 0x2F830: 4}),
+        Case("t4", {"eax": 0xFFFFFFFF, "edx": 3, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_tstr_case(b"AB"), {0x2F0F0: 0x30, 0x2F830: 2}),
+        Case("t5", {"eax": 0xFFFFFFFF, "edx": 3, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_tstr_case(b"AB"), {0x2F0F0: 0x2B, 0x2F830: 1}),
+    ], calls=(E.Call(0x2F0F0, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x2F830, ("eax", "edx", "ecx", "ebx", "s0"), mode="stub", pop=4,
+                     clobbers=("ebx", "ecx", "edx"))),
+       eax_mask=0, mutants=("@reload", "@sext", "@wargs", "@neg", "@mode", "@row", "@ext")),
+    # 0x2F280 text_cells_release: EAX = col (-1 centres), EDX = row, EBX = string, ECX = mode.
+    # 0x2F0F0's return is the count (a stub); each non-empty grid word is released through 0x2AD40
+    # (stub) and zeroed. A void function.
+    Spec("text_cells_release", 0x2F280, [
+        Case("c0", {"eax": 2, "edx": 1, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_tstr_case(b"AB"), {0x2F0F0: 4}),
+        Case("c0b", {"eax": 2, "edx": 1, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_cell_case([(1 * 0xac + 2 * 4, 0), (1 * 0xac + 5 * 4, 3)], cur=0), {0x2F0F0: 4}),
+        Case("c1", {"eax": 0xFFFFFFFF, "edx": 1, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_cell_case([(1 * 0xac + 20 * 4, 1)], cur=0x5A5A5A5A), {0x2F0F0: 0x0C}),
+        Case("c2", {"eax": 0xFFFFFFFF, "edx": 1, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_cell_case([(1 * 0xac, 2), (1 * 0xac + 0x2A * 4, 1)]), {0x2F0F0: 0x30}),
+        Case("c3", {"eax": 0x2A, "edx": 1, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_cell_case([(1 * 0xac + 0x2A * 4, 0), (2 * 0xac, 1), (2 * 0xac + 4, 2),
+                            (2 * 0xac + 8, 3)]),
+             {0x2F0F0: 4}),
+        Case("c4", {"eax": 0x2B, "edx": 1, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_cell_case([(2 * 0xac, 2)]), {0x2F0F0: 2}),
+        Case("c5", {"eax": 5, "edx": 2, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_cell_case([(2 * 0xac + 5 * 4, 0)]), {0x2F0F0: 0}),
+        Case("c6", {"eax": 0xFFFFFFFF, "edx": 2, "ebx": C3G_T_STR, "ecx": 0x1000},
+             c3g_cell_case([(2 * 0xac + 0x15 * 4, 0)]), {0x2F0F0: 0}),
+    ], calls=(E.Call(0x2F0F0, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x2AD40, ("eax", "edx"), mode="stub", clobbers=("edx",))),
+       eax_mask=0,
+       mutants=("@neg", "@force", "@cmp", "@stride", "@rowbase", "@zero", "@rel", "@pset",
+                "@rec0", "@wm")),
+    # 0x2F314 text_cells_release_vertical: EAX = col, EDX = row, EBX = string (the count is
+    # strlen; ECX is ignored). The walk goes one row per cell and stops after a row above 0x1E.
+    Spec("text_cells_release_vertical", 0x2F314, [
+        Case("v0", {"eax": 2, "edx": 1, "ebx": C3G_T_STR},
+             {**c3g_cell_case([(1 * 0xac + 2 * 4, 0), (2 * 0xac + 2 * 4, 1),
+                               (3 * 0xac + 2 * 4, 2)]),
+              **c3g_tstr_case(b"AB")}),
+        Case("v1", {"eax": 3, "edx": 0x1E, "ebx": C3G_T_STR},
+             {**c3g_cell_case([(0x1E * 0xac + 3 * 4, 2), (0x1F * 0xac + 3 * 4, 0),
+                               (0x20 * 0xac + 3 * 4, 1)]),
+              **c3g_tstr_case(b"ABC")}),
+        Case("v2", {"eax": 3, "edx": 0x1F, "ebx": C3G_T_STR},
+             {**c3g_cell_case([(0x1F * 0xac + 3 * 4, 1)]), **c3g_tstr_case(b"AB")}),
+        Case("v3", {"eax": 5, "edx": 2, "ebx": C3G_T_STR},
+             {**c3g_cell_case([(2 * 0xac + 5 * 4, 3)]), **c3g_tstr_case(b"A")}),
+        Case("v4", {"eax": 5, "edx": 2, "ebx": C3G_T_STR},
+             {**c3g_cell_case([]), **c3g_tstr_case(b"")}),
+        Case("v5", {"eax": 2, "edx": 1, "ebx": C3G_T_STR},
+             {**c3g_cell_case([(1 * 0xac + 2 * 4, 0)]), **c3g_tstr_case(b"ABCD")}),
+    ], calls=(E.Call(0x2AD40, ("eax", "edx"), mode="stub", clobbers=("edx",)),),
+       eax_mask=0, mutants=("@len", "@stride", "@stop", "@zero", "@rel", "@col", "@inc")),
+    # 0x2F830 text_render: EAX = string, EDX = mode, EBX = col, ECX = row, [esp+4] = vertical.
+    # 0x2F280 (the all-spaces clear), 0x2F0F0 (the width) and 0x2F5A0 (the glyph; its col/row
+    # pointers are dereferenced by the call record) are stubs. The string is truncated in place
+    # (0x2A/0x1E), so the case's pokes see the writes. Mask 0xFFFFFFFF: the count is returned.
+    Spec("text_render", 0x2F830, [
+        Case("r0", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 5, "ecx": 4, "s0": 0},
+             c3g_tstr_case(b"")),
+        Case("r1", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 5, "ecx": 4, "s0": 0},
+             c3g_tstr_case(b"   ")),
+        Case("r2", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 5, "ecx": 4, "s0": 0},
+             c3g_tstr_case(b"AB"), {0x2F0F0: 4}),
+        Case("r2b", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 5, "ecx": 4, "s0": 0},
+             c3g_tstr_case(b"  A"), {0x2F0F0: 3}),
+        Case("r3", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 0, "ecx": 0, "s0": 0},
+             c3g_tstr_case(b"C" * 0x30), {0x2F0F0: 0x30}),
+        Case("r4", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 0x20, "ecx": 0, "s0": 0},
+             c3g_tstr_case(b"C" * 0x10), {0x2F0F0: 0x10}),
+        Case("r5", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 5, "ecx": 0x18, "s0": 1},
+             c3g_tstr_case(b"C" * 0x10), {0x2F0F0: 0x10}),
+        Case("r6", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 5, "ecx": 4, "s0": 1},
+             c3g_tstr_case(b"C" * 0x28), {0x2F0F0: 0x28}),
+        Case("r7", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 5, "ecx": 4, "s0": 0},
+             c3g_tstr_case(b"AB"), {0x2F0F0: 4, 0x2F5A0: 1}),
+        Case("r8", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 5, "ecx": 4, "s0": 0},
+             c3g_tstr_case(b"AB"), {0x2F0F0: 4, 0x2F5A0: 0x100}),
+        Case("r9", {"eax": C3G_T_STR, "edx": 0x1000, "ebx": 0, "ecx": 0, "s0": 0},
+             c3g_tstr_case(b"C" * 0x2B), {0x2F0F0: 0x2A}),
+    ], calls=(E.Call(0x2F280, ("eax", "edx", "ebx", "ecx"), mode="stub",
+                     clobbers=("ebx", "ecx", "edx")),
+              E.Call(0x2F0F0, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x2F5A0, ("eax", "[edx]", "[ebx]", "ecx", "s0"), mode="stub", pop=4,
+                     clobbers=("ebx", "ecx", "edx"))),
+       eax_mask=0xFFFFFFFF,
+       mutants=("@empty", "@spaces", "@rel", "@wargs", "@t30", "@t1e", "@emit", "@stop", "@cnt",
+                "@adv")),
+    # 0x2EF24 text_number_core: EAX = value, EDX = dest. 0x65546 (the libc sprintf wrapper) is a
+    # stub that writes the case's digits; the return is the strlen the raw computes itself.
+    Spec("text_number_core", 0x2EF24, [
+        Case("n0", {"eax": 42, "edx": C3G_T_DEST},
+             {C3G_T_DEST: b"\xA5" * 8}),
+        Case("n1", {"eax": 42, "edx": C3G_T_DEST + 0x20},
+             {C3G_T_DEST + 0x20: b"\xA5" * 8}),
+        Case("n2", {"eax": 42, "edx": C3G_T_DEST + 0x40},
+             {C3G_T_DEST + 0x40: b"\xA5" * 8}),
+    ], calls=(E.Call(0x65546, ("s0", "s1", "s2"), mode="stub",
+                     writes=((0, 0, b"42\x00"),)),),
+       eax_mask=0xFFFFFFFF, mutants=("@val", "@dest", "@call", "@len")),
+    # 0x2EFD4 text_number_format: EAX = value, EDX = dest, EBX = width, ECX = pad. 0x2EF24 (the
+    # core; its buffer is the raw's zero stack, by value) and 0x61A70 (the libc memset wrapper,
+    # EAX/EDX/EBX = dest/fill/len) are stubs; the digits copy and the terminator stay observable.
+    Spec("text_number_format", 0x2EFD4, [
+        Case("f0", {"eax": 42, "edx": C3G_T_DEST, "ebx": 5, "ecx": 0},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 2}),
+        Case("f1", {"eax": 42, "edx": C3G_T_DEST, "ebx": 5, "ecx": 1},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 2}),
+        Case("f2", {"eax": 42, "edx": C3G_T_DEST, "ebx": 5, "ecx": 2},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 2}),
+        Case("f3", {"eax": 42, "edx": C3G_T_DEST, "ebx": 5, "ecx": 3},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 2}),
+        Case("f4", {"eax": 42, "edx": C3G_T_DEST, "ebx": 5, "ecx": 4},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 2}),
+        Case("f5", {"eax": 42, "edx": C3G_T_DEST, "ebx": 2, "ecx": 0},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 5}),
+        Case("f6", {"eax": 42, "edx": C3G_T_DEST, "ebx": 3, "ecx": 1},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 3}),
+        Case("f7", {"eax": 42, "edx": C3G_T_DEST, "ebx": 4, "ecx": 0},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 0}),
+        Case("f8", {"eax": 42, "edx": C3G_T_DEST, "ebx": 2, "ecx": 3},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 0x10}),
+        Case("f9", {"eax": 42, "edx": C3G_T_DEST, "ebx": 0, "ecx": 2},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 2}),
+        Case("f10", {"eax": 42, "edx": C3G_T_DEST, "ebx": 1, "ecx": 3},
+             {C3G_T_DEST: b"\xA5" * 8}, {0x2EF24: 0x14}),
+    ], calls=(E.Call(0x2EF24, ("eax", "[edx]", "[edx+4]", "[edx+8]", "[edx+12]"), mode="stub"),
+              E.Call(0x61A70, ("eax", "edx", "ebx"), mode="stub", clobbers=("edx",))),
+       eax_mask=0xFFFFFFFF,
+       mutants=("@gap", "@copy", "@pad", "@fill", "@end", "@ret", "@n", "@m2")),
+    # 0x2F5A0 text_glyph_emit: EAX = char, EDX = &col, EBX = &row, ECX = mode, [esp+4] =
+    # vertical. 0x2AD40 is a stub; 0x2AE14 runs real (allowed) with its exercised tree:
+    # 0x2AC80/0x249D0/0x249B0 (the list splice), 0x2EA30 (the inert lock), 0x2A408 (the literal
+    # sprite id), 0x5D812 (the type table's bare ret), 0x1C390/0x1C3A0 (the render merge), and
+    # 0x33754 (palette acquire) and 0x2A820 (pset write) are stubs. Mask 0xFF (AL = failure).
+    Spec("text_glyph_emit", 0x2F5A0, [
+        Case("g0", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x0000,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x0000), {0x33754: 0x11111111}),
+        Case("g1", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x1000,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x1000), {0x33754: 0x22222222}),
+        Case("g2", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x2000,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x2000), {0x33754: 0x33333333}),
+        Case("g3", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x3000,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x3000), {0x33754: 0x44444444}),
+        Case("g4", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x4000,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x4000), {0x33754: 0x55555555}),
+        Case("g5", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x5000,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x5000), {0x33754: 0x66666666}),
+        Case("g6", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x6000,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x6000), {0x33754: 0x77777777}),
+        Case("g7", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x8000,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x8000), {0x33754: 0x88888888}),
+        Case("g8", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x8800,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x8800), {0x33754: 0x99999999}),
+        Case("g9", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x9000,
+                    "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x9000), {0x33754: 0xAAAAAAAA}),
+        Case("g10", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x9800,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x9800), {0x33754: 0xBBBBBBBB}),
+        Case("g11", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0xA000,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0xA000), {0x33754: 0xCCCCCCCC}),
+        Case("g12", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0xA800,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0xA800), {0x33754: 0xDDDDDDDD}),
+        Case("g13", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0xB000,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0xB000), {0x33754: 0xEEEEEEEE}),
+        Case("g14", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0xB800,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0xB800), {0x33754: 0x01020304}),
+        Case("g15", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0xC000,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0xC000), {0x33754: 0x05060708}),
+        Case("g16", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0xC800,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0xC800), {0x33754: 0x090A0B0C}),
+        Case("g17", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0xD000,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0xD000), {0x33754: 0x0D0E0F10}),
+        Case("g18", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0xE000,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0xE000), {0x33754: 0x11121314}),
+        Case("g19", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0xF000,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0xF000), {0x33754: 0x15161718}),
+        Case("g20", {"eax": 0x20, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x1000,
+                     "s0": 0},
+             c3g_glyph_case(0x20, 2, 3, 0x1000), {0x33754: 0x191A1B1C}),
+        Case("g21", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 2, "s0": 0},
+             {**c3g_glyph_case(0x41, 2, 3, 2),
+              0x000BD390 + 0x41: b"\xFF"}),
+        Case("g22", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 3, "s0": 0},
+             {**c3g_glyph_case(0x41, 2, 3, 3),
+              0x000BD390 + 0x41: b"\x00", 0x000BD1EC: b"\x44\x3F\x02\x02",
+              0x000BD048: b"\x99\x3E\x03\x03"},
+             {0x33754: 0x1D1E1F20}),
+        Case("g23", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x1000,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x1000, cell=C3G_T_CELL, pset_idx=3),
+             {0x33754: 0x21222324}),
+        Case("g24", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x1000,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x1000, free=False), {0x33754: 0x25262728}),
+        Case("g25", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x1000,
+                     "s0": 1},
+             c3g_glyph_case(0x41, 2, 3, 0x1000, vertical=1), {0x33754: 0x292A2B2C}),
+        Case("g26", {"eax": 0x141, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x1000,
+                     "s0": 0},
+             c3g_glyph_case(0x41, 2, 3, 0x1000), {0x33754: 0x2D2E2F30}),
+        Case("g27", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 6, "s0": 0},
+             {**c3g_glyph_case(0x41, 2, 3, 6),
+              0x000BD390 + 0x41: b"\x00", 0x000BD048: b"\x77\x3F\x10\x10",
+              0x000BD1EC: b"\x99\x3E\x03\x03"},
+             {0x33754: 0x31323334}),
+        Case("g28", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x3002,
+                     "s0": 0},
+             {**c3g_glyph_case(0x41, 2, 3, 0x3002),
+              0x000BD390 + 0x41: b"\x00", 0x000BD048: b"\x77\x3F\x10\x10"},
+             {0x33754: 0x35363738}),
+        Case("g29", {"eax": 0x41, "edx": C3G_T_COLROW, "ebx": C3G_T_COLROW + 4, "ecx": 0x3002,
+                     "s0": 1},
+             {**c3g_glyph_case(0x41, 2, 3, 0x3002, vertical=1),
+              0x000BD390 + 0x41: b"\x00", 0x000BD048: b"\x77\x3F\x10\x10"},
+             {0x33754: 0x393A3B3C}),
+    ], allow_calls=(0x2AE14, 0x2AC80, 0x249D0, 0x249B0, 0x2EA30, 0x2A408, 0x5D812,
+                    0x1C390, 0x1C3A0),
+       calls=(E.Call(0x2AD40, ("eax", "edx"), mode="stub", clobbers=("edx",)),
+              E.Call(0x33754, ("eax",), mode="stub"),
+              E.Call(0x2A820, ("eax", "edx"), mode="stub", clobbers=("edx",))),
+       eax_mask=0xFF,
+       unhit_named={0x2F647: "dead: `and eax,0xf000` at 0x2F5BB limits the mhi switch to multiples of 0x1000, so no value falls in (0xB000,0xC000)",
+                    0x2F660: "dead: the same mask, no value falls in (0x9000,0xA000)",
+                    0x2F684: "dead: the same mask, no value falls in (0x3000,0x4000)",
+                    0x2F6D8: "dead: ESI was masked to 0xFF at 0x2F5AC, so the 0x2EB5..0x2EC5 arm cannot be entered",
+                    0x2F6E0: "dead: the same 0x2EB5..0x2EC5 arm's body (reached only through 0x2F6D8)"},
+       mutants=("@cls", "@tab", "@pal0", "@pal1", "@pal2", "@pal3", "@pal4", "@class", "@rel",
+                "@sp", "@desc", "@spawn", "@fail", "@store", "@adv", "@ch")),
+    # 0x3CD94 hit_immunity: EAX = side, EDX = i. No callees. A fresh reaction 0xFF is immune; a
+    # reaction 0..0x3F tests the per-character mask's bit for the candidate reaction (0xC619C's
+    # +4 word); the two dwords at 0xA182C + ch*0x200 + r*8 split at 0x20. Mask 0xFF (AL tested).
+    Spec("hit_immunity", 0x3CD94, [
+        Case("i0", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 0xFF, 1, 5)),
+        Case("i1", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 0x40, 1, 0, lo=1)),
+        Case("i2", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 0x80, 1, 5)),
+        Case("i3", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 3, lo=0x00000008)),
+        Case("i4", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 3, lo=0xFFFFFFF7)),
+        Case("i5", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 0x23, hi=0x00000008)),
+        Case("i6", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 0x23, hi=0xFFFFFFF7)),
+        Case("i7", {"eax": 5, "edx": 2}, c3g_imm_case(0, 2, 5, 5, 3, lo=0x00000008)),
+        Case("i8", {"eax": 1, "edx": 2}, c3g_imm_case(1, 2, 5, 6, 3, lo=0x00000008, ch2=0)),
+        Case("i9", {"eax": 0, "edx": 9}, c3g_imm_case(0, 9, 5, 1, 0x1F, lo=0x80000000)),
+        Case("i10", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 0xFFFF, lo=0x80000000)),
+        Case("i11", {"eax": 0, "edx": 0}, c3g_imm_case(0, 0, 5, 1, 0, lo=0x00000001)),
+    ], eax_mask=0xFF,
+       mutants=("@ff", "@bound", "@cmp", "@char", "@entry", "@rmul", "@hi", "@inv")),
+    # 0x1922C hit_stance_timer: EAX = side. 0x33950 runs real (allowed; the port reads the record
+    # directly). B5A > 0 (signed) and rec+0x24's magnitude zero seed the float from B5C and clamp
+    # outside [1.0, 0x8058C]; then B5A (taken arm only) and B5E clear. A void function.
+    Spec("hit_stance_timer", 0x1922C, [
+        Case("s0", {"eax": 0}, c3g_timer_case(0, 5, 100, 0)),
+        Case("s1", {"eax": 0}, c3g_timer_case(0, 5, 5, 0)),
+        Case("s2", {"eax": 0}, c3g_timer_case(0, 5, 0, 0)),
+        Case("s3", {"eax": 0}, c3g_timer_case(0, 5, 0xFB, 0)),
+        Case("s4", {"eax": 0}, c3g_timer_case(0, 5, 10, 0)),
+        Case("s5", {"eax": 0}, c3g_timer_case(0, 5, 1, 0)),
+        Case("s6", {"eax": 0}, c3g_timer_case(0, 0, 7, 0)),
+        Case("s7", {"eax": 0}, c3g_timer_case(0, 0x80, 7, 0)),
+        Case("s8", {"eax": 0}, c3g_timer_case(0, 5, 7, 0x80000000)),
+        Case("s9", {"eax": 1}, c3g_timer_case(1, 5, 5, 0)),
+        Case("s10", {"eax": 0}, c3g_timer_case(0, 5, 7, 0x3F800000)),
+        Case("s11", {"eax": 1}, c3g_timer_case(1, 1, 0xFB, 0x3F800000)),
+        Case("s12", {"eax": 0}, c3g_timer_case(0, 5, 11, 0)),
+    ], allow_calls=(0x33950,), eax_mask=0,
+       mutants=("@clear", "@sign", "@mag", "@seed", "@clamp", "@limit", "@val", "@eclear", "@side")),
 ]
 
 

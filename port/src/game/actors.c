@@ -4283,14 +4283,15 @@ void text_cells_release_vertical(s32 col, s32 row, const u8 *s)
  * enters 0x65490), so the rows run them mode="stub" and the port's calls must be interceptable.
  * Both are inert outside build/diffrun. Each seam records its pointer arguments as mem[] offsets
  * (0x65546's dest included); the P2.7 by-value dword form is for the text rows' own seams, whose
- * buffers are register-passed (record §P2.7). */
-static s32 host_sprintf(u8 *dest, const u8 *fmt, s32 value)
+ * buffers are register-passed (record §P2.7). Exported (Task 4) for the 0x2EF24/0x2EFD4 mutant
+ * cores, which mirror the two bodies' call sites. */
+s32 host_sprintf(u8 *dest, const u8 *fmt, s32 value)
 {
     PR_SEAM_RET(0x65546u, (u32)(dest - mem), (u32)(fmt - mem), value);
     return (s32)snprintf((char *)dest, 0x14u, (const char *)fmt, (int)value);
 }
 
-static void host_memset(u8 *dest, u32 fill, u32 len)
+void host_memset(u8 *dest, u32 fill, u32 len)
 {
     PR_SEAM(0x61A70u, (u32)(dest - mem), fill, len);
     memset(dest, (int)fill, (size_t)len);

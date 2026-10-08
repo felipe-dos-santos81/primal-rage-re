@@ -222,6 +222,10 @@ u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical);
 /* 0x2F174 (record §48-Z). 0x2F5A0 at a fixed (col, row); the glyph advance is
  * discarded. */
 void text_glyph_at(s32 col, s32 ch, s32 row, u32 mode);
+/* PORT: the 0x65546/0x61A70 host wrappers, exported for the 0x2EF24/0x2EFD4
+ * rows' mutant cores. EAX = dest, EDX = fmt / fill, EBX = value / len. */
+s32 host_sprintf(u8 *dest, const u8 *fmt, s32 value);
+void host_memset(u8 *dest, u32 fill, u32 len);
 /* 0x1C65C. EAX = the string, EDX = the x seed, EBX = the y seed (12-bit fixed
  * point, truncating /0x1000 after +0x800). Blits each glyph directly through
  * 0x1C5E8 (the font table 0xBCD7C, no glyph actor) and flushes the palette
