@@ -139,7 +139,10 @@ clobber; a stub's call is declared with those clobbers in `C3F_SPECS`):
    now `(id, out, outlen)` with the lock/unlock inside, and `game_string_get` is `(id)` with the
    tail. Behavior outside the row is unchanged (the extra +0x10 store is correction 1; the lock
    failure path now runs the raw's off-zero reads, which the port's zeroed low memory makes
-   harmless).
+   harmless). Fix wave 2026-10-05: the port's `outlen` compare is now the raw's signed form
+   (`(s32)len < (s32)outlen`, the `0x47556 JGE`; the code compared `u32`); `len` is a byte and
+   `outlen` the caller's `0x100`, so the domain is unchanged and the `string_decode` row stays
+   VERIFIED, 7/7.
 3. **The host-libc wrappers were a session decision, not a port behavior change.** The WATCOM
    bodies at `0x65546` (sprintf) and `0x61A70` (memset) cannot run under unicorn. Reproducible
    probe (fix wave 2026-10-05; `tools/diff_emu.run_original`, image from `build/diffrun --exe
@@ -154,7 +157,19 @@ clobber; a stub's call is declared with those clobbers in `C3F_SPECS`):
    libc directly and could not be intercepted: `host_sprintf`/`host_memset` are the seam wrappers
    (inert outside `build/diffrun`); `text_number_core` (the `0x2EF24` port) is the new function
    `text_number_format` calls. Recorded because the pattern is new for this repo (runtime callees
-   as call-set stubs).
+   as call-set stubs). Fix wave 2026-10-05: `host_memset` takes the `u8 *dest` its body memsets
+   (it was a `u32` offset the body re-derived as `mem + dest` — a round-trip that happened to
+   reconstruct the pointer on this host); the seam keeps the exact three recorded args
+   `(u32)(dest - mem), fill, len` (the raw's EAX/EDX/EBX at `0x61A70`), so no row's semantics
+   changed (no row records `0x61A70` today). Codegen proof (arm64 `-O2`; object
+   `build/CMakeFiles/prage_core.dir/src/game/actors.c.o`): `nm` shows the wrapper out of line
+   (`_host_memset` at `0xd7ac`); its only callers are `0xd6f8`/`0xd728` (both in
+   `_text_number_format`, passing `dest` and `dest + len`); the production path ends in
+   `___memset_chk` at `0xd864` with x0 the incoming pointer, and the `(u32)(dest - mem)` subtract
+   survives only on the seam path (`0xd800`, taken when `pr_seam != NULL`). The same fix wave
+   corrected the `actors.c` comment's claim that `0x65546`'s stack-passed `dest` could use the
+   P2.7 by-value form: each seam records its pointer arguments as mem[] offsets; the by-value
+   dwords are the text rows' own register-passed buffers.
 4. **The P2.7 by-value seams.** `0x2F198`'s string and `0x2EFD4`/`0x2EF24`'s buffers are on their
    caller's stack (0x2F4D0's `buf[0x14]`), so the seam passes their bytes as little-endian dwords
    and the `E.Call` names `[ebx]`/`[edx]` (record §P2.7); `0x2F5A0`'s `col`/`row` pointers are
@@ -257,7 +272,7 @@ C3F_CASES = [
         ("fighter_38bb0@stride", ['b1']),
         ("fighter_38bc8@clear", ['b0', 'b1']),
         ("fighter_38bc8@off", ['b1']),
-        ("fighter_38bc8@word", ['b0']),
+        ("fighter_38bc8@word", ['b0', 'b1']),
         ("fighter_3b038@s1", ['w3', 'w7']),
         ("fighter_3b038@s2", ['w1', 'w2', 'w5', 'w6']),
         ("fighter_3b038@sum", ['w1', 'w2', 'w6']),
@@ -312,9 +327,10 @@ The mutants whose catch includes a call or call-memory kind: `fighter_block_anim
 `0x3C480`, `game_string_get` at `0x474E4`, `hit_chain_resolve` at `0x3CE58`/`0x3C6A8`/`0x32BAC`.
 The string pair's mutants are caught on EAX or bytes alone (their callees are stubs whose effects
 the lock/unlock fixtures fix). Fix wave 2026-10-05: `c3f_unlock_case`'s `flags` byte now lands at
-`+0x15`, the byte the clear reads (it was at `+0x16`, inert); only `string_unlock@and`'s set
-re-measured, to `['u0', 'u2']` (`u1`'s `flags=0x00` makes the clear — and the wrong-mask mutant —
-a no-op), every other set and all kinds unchanged.
+`+0x15`, the byte the clear reads (it was at `+0x16`, inert), and the `+0x14` byte is seeded `0x02`
+(bit 1 already set, so the `@off` mutant's wrong-offset clear is visible even when `flags` is
+`0x00`); only `string_unlock@and`'s set re-measured, to `['u0', 'u2']` (`u1`'s `flags=0x00` makes
+the clear — and the wrong-mask mutant — a no-op), every other set and all kinds unchanged.
 
 ## §C3f.4 Counters, measured
 
@@ -339,7 +355,10 @@ existing rows the new leaves close — `fighter_state_36bc8` (on `0x38BB0`/`0x38
   bodies cannot run under unicorn; §C3f.2 correction 3 has the reproducible probe — the `0x65546`
   chain stops `undecodable bytes at 0xFF56` once its direct callees are followed, `0x61A70`'s
   first stop is `call 0x65490 from 0x61A80`); their own effects are not compared by any row. The
-  same applies to `0x500BB` (allow: it is the shadow read the port models).
+  same applies to `0x500BB` (allow: it is the shadow read the port models). A C3g text row would
+  intercept them through these seams; the recorded form for `0x65546`'s stack-passed `dest` is
+  still an open row-design question (`0x61A70`'s pointer form is settled by correction 3's codegen
+  proof).
 - **`0x32BAC` is a named non-row** (a one-byte RET; the port's `hit_sound` no-ops it). The
   `0x3CF38` row stubs it; the row is VERIFIED but not closed until the C3g tree is.
 - **The P2.7 by-value seams.** The recorded dwords of a stack buffer are what both sides held at
@@ -441,5 +460,83 @@ tree's `0x3C600`/`0x3CBC4`/`0x3CC58`/`0x3CE24`/`0x4CE70`/`0x1922C`/`0x3CD94` nee
 
 ## §C3f.8 Results (the executed tree)
 
-Appended by the executor at closure (the C3e record's §C3e.8 shape): the executed counters, the
-commit shas and the gate log lines. The planner measured the prototype values in §C3f.4.
+The plan's Tasks 2-4 were executed on `reverse-c3f` at the base `main` `0aa5eff` (= C3e merged):
+the plan+record commit `ca789bd`, Task 2 `b6dd747` (the thirteen rows, the two corrections, the
+seams/exports and the host-libc wrappers), Task 3 `3de0fa0` (the review sweep: the `c3f_38b_case`
+sentinel and the `fighter_38bc8@word` case-set re-pin), the fix wave `96f5d99` (the `host_memset`
+pointer, the signed `outlen` compare, the `0x14` buffer, the `c3f_unlock_case` seed) and this
+closure commit (its sha is in the batch report named below). Every row was re-measured in the tree;
+the planner's prototype values held.
+
+| state | diff-verify counter | E2 |
+|---|---|---|
+| base `0aa5eff` | `278/278 functions VERIFIED; 1031/1031 mutants detected; 1 named gaps; 196/217 rows with callees closed (61 have none)` | `targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30`; voice `0 / 115 / 19` |
+| final (`96f5d99` + this closure commit) | `291/291 functions VERIFIED; 1087/1087 mutants detected; 1 named gaps; 205/225 rows with callees closed (66 have none)` | byte-identical |
+
+The task gates, measured on this tree (Task 1's baseline in `verify-base.log`; Task 2's, Task 3's
+and the fix wave's re-measures in the ledger directory):
+
+```
+diff-verify: 291/291 functions VERIFIED; 1087/1087 mutants detected; 1 named gaps; 205/225 rows with callees closed (66 have none). Claim: equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
+entry-triage: targets 233 unported, 262 ported; supplement 131 (3 unported, 0 stale); untrusted entries 30
+entry-triage: voice sites outside Ghidra 134: 0 in unported code, 115 in ported code, 19 nowhere
+771 1203 64
+731 731 100 (portable: excludes 81 host-owned/deferred and runtime >= 5D000)
+```
+
+`make entry-triage` is byte-identical (no ported function, no `fn_register`); `python3 -m unittest
+tools.tests.test_diff_verify` 110 tests OK on the final tree (the `make diff-verify` phase-1
+invocation runs 175 across `test_diff_emu` + `test_diff_verify`); `PR_ORACLE_REQUIRED=1
+./build/run_tests` `all checks passed`; `symbols.h` regeneration is byte-identical; `python3
+tools/port_progress.py` stays `771 1203 64` / `731 731 100`; README untouched.
+
+**The closure-value accounting.** +13 functions (the thirteen rows), +56 mutants
+(3+3+3+4+3+4+3+4+4+7+4+6+8); rows with callees 217 -> 225 (the eight with-callee rows `38bc8`,
+`fight_attack_ready`, `fighter_state_ok`, `string_unlock`, `string_decode`, `game_string_get`,
+`fighter_block_anim`, `hit_chain_resolve`), no-callee 61 -> 66 (the five: `38bb0`, `3b038`,
+`46534`, `fighter_input_scan`, `string_lock`), closed 196 -> 205 (+9): the six new rows that close
+(`38bc8`, `fight_attack_ready`, `fighter_state_ok`, `string_decode`, `game_string_get`,
+`fighter_block_anim`) and the three existing rows the new leaves close — `fighter_state_36bc8` (on
+`0x38BB0`/`0x38BC8`), `fighter_3b080` (on `0x3B038`) and `fighter_4f434` (on `0x46534`).
+`string_unlock` and `hit_chain_resolve` stay open on the named `0x500BB` and the C3g tree
+respectively.
+
+**The review sweep and the fix wave.** Task 3's store sweep found one store its fixtures could not
+observe — `fighter_38bc8`'s side-1 word at `0x38BCC` (`0x107D26/0x107D27`, pre/post `00 00`) — and
+`c3f_38b_case` now seeds `0x107D24..28 = 1234 5678 9ABC` (the C3b pattern), so a dropped or
+too-wide side-1 store fails the row; the measured catch set of `fighter_38bc8@word` moved `['b0']`
+-> `['b0', 'b1']` (`@off` `['b1']`, `@clear` `['b0','b1']` and all kinds unchanged; the §C3f.3
+copy is synced by this closure commit). The fix wave then (a) made `host_memset` take its
+`u8 *dest` (seam args unchanged; codegen proof in §C3f.2 correction 3), (b) made the
+`string_decode` outlen compare the raw's signed `(s32)len < (s32)outlen` (`0x47556`), (c) grew
+`0x2EFD4`'s format buffer to `0x14` (the raw's `sub esp,0x14` at `0x2EFD7`), (d) fixed
+`c3f_unlock_case`'s seed (`+0x15 = flags`, `+0x14 = 0x02`) and (e) replaced the unreproducible
+`hlt`-at-`0xFF3C` note with the probe §C3f.2 correction 3 carries and §C3f.5 cites.
+
+**The corrections' neutrality.** The batch's behavioral changes are the `0x1E808` +0x10 store
+(§C3f.2 correction 1) and the `0x474E4`/`0x1C500` restructuring (correction 2); the full closure
+ladder — the 45 oracle lines equal to the k7-k12 baseline, every gp ratchet at its pin and the WAV
+`cmp`-equal to `before-t2.wav` — is the evidence that no oracle/gp-visible path moved, not that no
+driver path reaches them.
+
+**The tail-verdict re-measure (Task 4 Step 2).** On the final tree none of §C3f.7's 31 frontier
+addresses (the nineteen deferred C3f — the fifteen List A/tree plus the four List B — and the
+twelve the `0x3CF38` row exposes) has a `Spec`: the final `tools/diff_verify.py`'s 265 `Spec`
+entries were scanned against the list; the thirteen rows' unrowed callees and every row's frontier
+addresses are those §C3f.7 names. `0x32BAC` stays the named non-row (a one-byte RET cannot have a
+row). The list stands unchanged.
+
+**The full gate** on this closure commit (the plan's parallel-safe overrides, `T=c3f`; log
+`/tmp/pr_c3f_final.log`): the run's exact lines are recorded in the batch report
+`.superpowers/sdd/2026-10-05-reverse-c3f-frontier-rows-6/task-4-report.md`. The plan's expected
+values are `EXIT=0`, the 45 oracle lines equal to the k7-k12 baseline (`ORACLES-EQUAL`), the WAV
+`cmp`-equal to `before-t2.wav` (`WAV-SAME`; sha256
+`df74acfb65d345fb72cb214102089f2a0ab8d4b271ddc17e2a5f5c4f1a380844`), every gp ratchet at its pin
+(gp-idle-loss 2064/8320; gp-u5-charsel 516/1513; gp-u6-moves-b 2139/3248/3248; gp-keys 11 effects;
+gp-twop 612/1506/1506; U8 RA 1072/2274, LT 1076/2338, RT 1098/2402, TW 1107/2466, HC 1022/2274,
+EN 278/1174, AS 1087/2018; gp-u9-win 346/3503, path 8, win 3503; gp-u10-ending 331/9954, path 30,
+win 9954) and `symbols.h` idempotent.
+
+**The C3g tail is the next batch**: §C3f.7's 31 addresses with the measured sizes, dependency order
+and seam notes; `0x32BAC` stays named and nothing else is open after C3f beyond the standing named
+non-rows and the earlier batches' gaps.
