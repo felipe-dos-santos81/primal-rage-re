@@ -8388,6 +8388,48 @@ def d1a_default_case(side, s42, cmd=0, s53=0, rec51=None, slot=True, other=True,
     return p
 
 
+D1A_FSLOT, D1A_FREC = 0x0010A000, 0x0010A100   # 0x35C1C/0x35D20: a scratch slot and its record
+D1A_SEEK_A, D1A_SEEK_B = 0x0010A300, 0x0010A500   # 0x35C1C: the two frame-word tables of the char
+
+
+def d1a_frame_case(ch, mx, frame, step, s43, x29=0x51, x28=0x52):
+    """0x35C1C: the slot's +0x43/+0x7A, the record's +0x28/+0x29 (bits 4 and 8 clear) with the
+    words around them, +0x4F..+0x52 (the dword the raw shifts) and +0x58, the 0xBDA3E word of `ch`
+    (max in its low byte; the byte the unscaled index reads is max ^ 0x55) and the two frame-word
+    tables: A[i] = 0x1100 + i, B[i] = 0x2200 + i for the 16 frames around 0 (i = -8..7)."""
+    p = {D1A_FSLOT + 0x43: bytes([s43]), D1A_FSLOT + 0x7A: bytes([ch]),
+         D1A_FREC + 0x26: le16(0x2626) + bytes([x28, x29]) + le16(0x2A2A),
+         D1A_FREC + 0x4F: bytes([0x4F, 0x50, 0x51, frame, 0x53]), D1A_FREC + 0x58: bytes([step]),
+         0x000BDA3E + ch * 2: bytes([mx, 0xEE]),
+         0x000C8A68 + ch * 4: le32(D1A_SEEK_A), 0x000C8AE0 + ch * 4: le32(D1A_SEEK_B),
+         D1A_SEEK_A - 16: b"".join(le16(0x1100 + (i & 0xFF)) for i in range(-8, 8)),
+         D1A_SEEK_B - 16: b"".join(le16(0x2200 + (i & 0xFF)) for i in range(-8, 8))}
+    if ch:
+        p[0x000BDA3E + ch] = bytes([mx ^ 0x55])
+    return p
+
+
+def d1a_land_case(ch, s43, s53, s54, fe=0x77):
+    """0x35D20: the slot's +0x43, +0x52..+0x54 and +0x7A, DS_001078FE with its neighbours, and the
+    two stream tables' dwords of `ch`."""
+    return {D1A_FSLOT + 0x42: bytes([0x42, s43, 0x44]), D1A_FSLOT + 0x51: bytes([0x51, 0x11, s53, s54, 0x55]),
+            D1A_FSLOT + 0x7A: bytes([ch]), 0x001078FD: bytes([0xFD, fe, 0xFF]),
+            0x000C8A90 + ch * 4: le32(0x000E4000 + ch), 0x000C8B08 + ch * 4: le32(0x000E5000 + ch)}
+
+
+D1A_TSLOT = 0x0010A200           # 0x35D7C: what the DS_001077A8 entry points at (not the slot)
+
+
+def d1a_arm_case(side, table):
+    """0x35D7C: both slots' +0x52..+0x55 seeded slot-distinct, the DS_001077A8 pointer pair
+    (`table`: 0, or D1A_TSLOT, a scratch block seeded the same way) and that block's bytes."""
+    p = {0x001077A8: le32(table if side == 0 else 0x0010A280) + le32(table if side == 1 else 0x0010A280),
+         D1A_TSLOT + 0x52: bytes([0x92, 0x93, 0x94, 0x95]), 0x0010A280 + 0x52: bytes([0xA2, 0xA3, 0xA4, 0xA5])}
+    for k in (0, 1):
+        p[D1A_SLOT + k * 0x94 + 0x52] = bytes([0x52 + k * 0x10, 0x53 + k * 0x10, 0x54 + k * 0x10, 0x55 + k * 0x10])
+    return p
+
+
 D1A_SPECS = [
     # 0x14590 fighter_14590: EAX = side. 0x33950 runs real (allowed; it fills the stack ctx). AL only:
     # `mov al,1` 0x145BE / `xor al,al` 0x145C5, and all six callers test AL (0x14669, 0x14707,
@@ -8680,6 +8722,44 @@ D1A_SPECS = [
               D1A_CONSUME, ANIM_BEGIN, DIRS), eax_mask=0,
        mutants=("@b6", "@o51", "@mask", "@d18", "@s53", "@al365", "@al366", "@gate", "@al3b",
                 "@reread", "@frame", "@s52", "@s54", "@s53z", "@dir")),
+    # 0x35C1C fighter_state_35c1c: EAX = slot, EDX = rec. The whole EAX is the clamp flag (`mov eax,
+    # ecx` 0x35CAE) and three callers test it whole (`test eax,eax` 0x34C2F, 0x35C05, 0x35D0F).
+    # 0x2BCF4 (the seek) is a stub.
+    Spec("fighter_state_35c1c", 0x35C1C, [
+        Case("x0", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_frame_case(2, 6, 2, 1, 0x00)),
+        Case("x1", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_frame_case(2, 6, 5, 1, 0x02)),
+        Case("x2", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_frame_case(3, 6, 0, 0xFF, 0xFD)),
+        Case("x3", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_frame_case(0, 7, 0x7F, 1, 0xFF)),
+        Case("x4", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_frame_case(5, 0x80, 3, 0, 0x00)),
+        Case("x5", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_frame_case(1, 6, 4, 1, 0x02, x29=0xFF, x28=0xFF)),
+        Case("x6", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_frame_case(6, 0, 0, 0xFF, 0x00)),
+        Case("x7", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_frame_case(4, 6, 6, 1, 0x00)),
+    ], calls=(P6_2BCF4,), eax_mask=0xFFFFFFFF,
+       mutants=("@max", "@step", "@neg", "@cmp", "@ucmp", "@r", "@b29", "@tab", "@idx", "@b28",
+                "@order", "@seekb")),
+    # 0x35D20 fighter_state_35d20: EAX = slot, EDX = rec. 0x2BC30 is the ANIM_BEGIN stub (1.0
+    # pushed). Mask 0: the three callers return at once (0x34C40..0x34C45, 0x35C12..0x35C19,
+    # 0x35D1C..0x35D1E; record §1 names what is above them).
+    Spec("fighter_state_35d20", 0x35D20, [
+        Case("y0", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_land_case(2, 0xFF, 0x05, 0x04)),
+        Case("y1", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_land_case(3, 0xFD, 0x0D, 0x03)),
+        Case("y2", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_land_case(0, 0x03, 0x04, 0x0D, fe=0x01)),
+        Case("y3", {"eax": D1A_FSLOT, "edx": D1A_FREC}, d1a_land_case(6, 0x00, 0x0D, 0x04, fe=0x00)),
+    ], calls=(ANIM_BEGIN,), eax_mask=0,
+       mutants=("@tab", "@rec", "@frame", "@s52", "@and", "@s54", "@order", "@keep")),
+    # 0x35D7C fighter_state_35d7c: EDX = side (EAX is overwritten at 0x35D80). The slot is computed
+    # from the side (0x35D8E..0x35DA6), not read from DS_001077A8, and there is no null test: the
+    # cases point the table entry elsewhere, or at nothing. 0x3CF38 is a stub whose AL the raw
+    # tests (0x35DED). Mask 0: the caller returns at once (0x34C4D..0x34C52) and the dispatcher's
+    # one call site overwrites EAX (0x357FC).
+    Spec("fighter_state_35d7c", 0x35D7C, [
+        Case("a0", {"eax": D1A_TSLOT, "edx": 0}, d1a_arm_case(0, D1A_TSLOT), {0x3CF38: 0}),
+        Case("a1", {"eax": D1A_TSLOT, "edx": 1}, d1a_arm_case(1, D1A_TSLOT), {0x3CF38: 1}),
+        Case("a2", {"eax": D1A_TSLOT, "edx": 0}, d1a_arm_case(0, 0), {0x3CF38: 0x100}),
+        Case("a3", {"eax": D1A_TSLOT, "edx": 1}, d1a_arm_case(1, 0), {0x3CF38: 0xFFFFFF00}),
+        Case("a4", {"eax": D1A_TSLOT, "edx": 0}, d1a_arm_case(0, D1A_SLOT), {0x3CF38: 0x80}),
+    ], calls=(E.Call(0x3CF38, ("eax",), mode="stub"),), eax_mask=0,
+       mutants=("@table", "@c54", "@c53", "@al", "@s53", "@order", "@arg")),
 ]
 D1_SPECS += D1A_SPECS
 
