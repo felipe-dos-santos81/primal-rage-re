@@ -333,16 +333,18 @@ static const u8 *title_string(void) { return game_string_get(0x15u); }
 /* PORT: 0x38B18 spawns `desc` into the first free slot of the 7-entry table at
  * DS_00107A1C as actor_spawn(desc, a2 << 3, 2, a3 << 3, 0); the argument
  * binding is pinned by disassembly (docs/superpowers/plans/2026-09-17-actor-system-args.md §2).
- * The original writes at index -1 when the table is already full; the port
- * skips instead of touching the word before the table. Shared by the title
- * state, the 0x11F6C selector and the 0x11000 attract machine. */
+ * With all seven slots taken the raw still spawns: EDI keeps the -1 of 0x38B1F
+ * (the scan leaves at 0x38B3D `jge`) and 0x38B62 `mov [edi*4+0x107a1c],eax`
+ * stores the record in the dword before the table, DS_00107A1C - 4 (the
+ * seventh dword of the DS_00107A00 array); record 2026-10-11-reverse-d1d §3.
+ * Shared by the title state, the 0x11F6C selector and the 0x11000 attract
+ * machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3)
 {
-    int slot = 0;
-    while (slot < 7 && DSD(DS_00107A1C + (u32)slot * 4u) != 0) slot++;
-    if (slot >= 7) return;
-    DSD(DS_00107A1C + (u32)slot * 4u) =
-        actor_spawn(desc, a2 << 3, 2u, a3 << 3, 0u);   /* 0x38B5D */
+    u32 slot = 0;
+    while (slot < 7u && DSD(DS_00107A1C + slot * 4u) != 0) slot++;
+    u32 at = slot < 7u ? DS_00107A1C + slot * 4u : DS_00107A1C - 4u;   /* 0x38B1F, 0x38B32 */
+    DSD(at) = actor_spawn(desc, a2 << 3, 2u, a3 << 3, 0u);   /* 0x38B5D, 0x38B62 */
 }
 
 /* PORT: 0x33904. Iterate the fixed 0x10-stride table at
