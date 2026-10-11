@@ -8143,6 +8143,94 @@ def d1h_last_case(side, f24, f20, other=(9.0, 9.0), const=None):
     return p
 
 
+# 0x16734: (character, sprite id) for every id the raw's compare chains name and each range's two
+# outer neighbours; characters 7 and 0xFF take the `ja` to the miss.
+D1H_CODE_IDS = (
+    [(0, u) for u in (0xF97, 0xF98, 0xF9B, 0xF9C, 0xF9D, 0xF9E, 0xF9F, 0xFA0, 0xFA1, 0xFA2, 0xFA3)]
+    + [(1, u) for u in range(0x134E, 0x135A)]
+    + [(2, u) for u in (0xC47, 0xC48, 0xC49, 0xC4A, 0xC50, 0xC51)]
+    + [(3, u) for u in (0x1744, 0x1745, 0x1746, 0x1747, 0x1748, 0x174E, 0x174F, 0x1750, 0x1751, 0x1752, 0x1753)]
+    + [(4, u) for u in range(0x2023, 0x202D)]
+    + [(5, u) for u in (0xF97, 0xF98, 0xF9B, 0xF9C, 0xF9F, 0xFA0, 0xFA1, 0xFA2, 0xFA3)]
+    + [(6, u) for u in range(0x134E, 0x135A)]
+    + [(7, 0xF9F), (0xFF, 0x134F)])
+D1H_POOL = 0x0010A800
+
+
+def d1h_code_case(side, ch, uid, bit15):
+    """0x16734: both slots' record pointers and +0x78..+0x7B (the character at +0x7A, another valid
+    one at +0x7B), each record's +0x54..+0x57 (the actor index at +0x56, another at +0x54), the
+    pool pointer and four actors: the side's (index 4) holds the id, the others 0x7777."""
+    p = {0x001014EC: le32(D1H_POOL)}
+    for i in (0, 1):
+        slot, rec = 0x001077B0 + i * 0x94, 0x0010A000 + i * 0x80
+        mine = i == side
+        p[slot] = le32(rec)
+        p[slot + 0x78] = bytes([0x78, 0x79, ch if mine else (ch + 2) % 7, (ch + 1) % 7])
+        p[rec + 0x54] = le16(6) + le16(4 if mine else 8)
+    for idx in (2, 4, 6, 8):
+        w = (uid | (0x8000 if bit15 else 0)) if idx == 4 else 0x7777
+        p[D1H_POOL + idx * 0x20] = le16(w) + le16(0xA5A5)
+    return p
+
+
+D1H_BUF = 0x0010A040
+
+
+def d1h_rect_case(a, b, alias=False):
+    """0x14080: (regs, pokes). a at D1H_BUF, b at +0x20, out at +0x40 (0xEE-seeded) or, when
+    `alias`, out == a as the raw caller passes it; a sentinel dword after each rectangle."""
+    pokes = {D1H_BUF: b"".join(le32(v) for v in a) + le32(0xA1A1A1A1),
+             D1H_BUF + 0x20: b"".join(le32(v) for v in b) + le32(0xB1B1B1B1),
+             D1H_BUF + 0x40: b"\xee" * 0x14}
+    return {"eax": D1H_BUF if alias else D1H_BUF + 0x40, "edx": D1H_BUF, "ebx": D1H_BUF + 0x20}, pokes
+
+
+def d1h_buf_case(seed):
+    """0x60 bytes at D1H_BUF - 0x10, every byte different from its neighbours and from zero."""
+    return {D1H_BUF - 0x10 + o: bytes(((i * 37 + seed * 11) & 0xFF) | 1 for i in range(o, o + 0x30))
+            for o in (0, 0x30)}
+
+
+def d1h_row_case(row, seed):
+    """0x1638C: 0x40 bytes of both row tables at `row` (different patterns) and the 0xEE-seeded
+    destination."""
+    return {0x000FD160 + row * 0x26: bytes((i * 7 + seed * 13 + 1) & 0xFF for i in range(0x40)),
+            0x000FEDE0 + row * 0x26: bytes((i * 5 + seed * 17 + 0x80) & 0xFF for i in range(0x40)),
+            D1H_BUF: b"\xee" * 0x40}
+
+
+D1H_VIS_SEED = {D1H_BUF: b"".join(le32(0xEEEEEE00 + i) for i in range(10))}
+
+
+def d1h_vis_regs(p1, p2, p3):
+    """0x181D0: the three values and the five out pointers (p4 = +0, p5 = +8, p6 = +0x10,
+    p7 = +0x18, p8 = +0x20 of D1H_BUF, a sentinel dword between each)."""
+    return {"eax": p1 & 0xFFFFFFFF, "edx": p2 & 0xFFFFFFFF, "ebx": p3 & 0xFFFFFFFF, "ecx": D1H_BUF,
+            "s0": D1H_BUF + 8, "s1": D1H_BUF + 0x10, "s2": D1H_BUF + 0x18, "s3": D1H_BUF + 0x20}
+
+
+# 0x15FD4/0x1617C: (bit, rows, arg5).
+D1H_SHIFT_ARGS = ((0, 5, 5), (3, 5, 5), (8, 5, 5), (13, 5, 5), (40, 5, 5), (41, 5, 5), (0xFFFFFFFF, 5, 5),
+                  (0, 0, 0), (3, 5, 0), (3, 5, 6), (3, 5, 0xFFFFFFFB), (3, 1, 1), (7, 0x25, 0x25),
+                  (0x128, 0x25, 0x25), (0x127, 0x25, 0x25), (16, 2, 2), (9, 2, 2), (0, 1, 1), (1, 3, 3),
+                  (20, 4, 4))
+D1H_DST = 0x0010A0C0
+
+
+def d1h_shift_regs(bit, rows, a5):
+    return {"eax": bit, "edx": D1H_BUF, "ebx": rows, "ecx": D1H_DST, "s0": a5}
+
+
+def d1h_shift_case(seed):
+    """The source buffer (d1h_buf_case, 0x10A030..0x10A08F) and the destination's 0x60 bytes from
+    0x10A090, every byte with its top bit set and different from its neighbours."""
+    p = d1h_buf_case(seed)
+    for o in (0, 0x30):
+        p[0x0010A090 + o] = bytes(((i * 29 + seed * 5 + 7) & 0xFF) | 0x80 for i in range(o, o + 0x30))
+    return p
+
+
 D1H_SPECS = [
     # 0x10F28 attract_voice_tick: no register argument. 0x2C3FC (voice) and 0x5D7DC (rng) are stubs;
     # the rng stub's EAX is the pick (`test eax,eax` 0x10F7B) and both reloads (`add eax,..; mov
@@ -8351,6 +8439,86 @@ D1H_SPECS = [
         Case("f9", {"eax": 0}, d1h_last_case(0, float("nan"), 2.0)),
         Case("f10", {"eax": 1}, d1h_last_case(1, 3.0, float("nan"))),
     ], eax_mask=0xFF, mutants=("@side", "@swap", "@const", "@float", "@ge", "@nan")),
+    # 0x16734 camera_sprite_code: EAX = side. 0x33A10 (the context) runs on both sides; the actor's
+    # sprite id is word[[0x1014EC] + word[rec+0x56]*0x20] & 0x7FFF (`and ah,0x7f` 0x1675D), the
+    # character the slot's +0x7A (`cmp dl,6; ja` 0x1676C, jump table 0x16718). One case per id of
+    # every chain and per range edge; the sides and bit 15 alternate. Every exit loads the whole
+    # EAX (the caller compares it with -1, 0x16B0F): full mask.
+    Spec("camera_sprite_code", 0x16734, [
+        Case("i%X_%04X" % (ch, uid), {"eax": n & 1}, d1h_code_case(n & 1, ch, uid, bit15=bool(uid & 1)))
+        for n, (ch, uid) in enumerate(D1H_CODE_IDS)
+    ], allow_calls=(0x33A10,), eax_mask=0xFFFFFFFF,
+       unhit_named={0x1695D: "dead: reached only by the `jne` at 0x1694F, so ZF is clear and the `jne` at 0x1695B is taken",
+                    0x1696D: "dead: the same flags reach the `jne` at 0x16967, always taken"},
+       mutants=("@side", "@field", "@stride", "@mask", "@ch", "@bound", "@range", "@code", "@miss")),
+    # 0x14080 camera_rect_clip: EAX = out, EDX = a, EBX = b (four signed dwords each); EAX = 1 when
+    # the intersection is non-empty (`mov eax,1` / `xor eax,eax`: full mask). r0 is the raw caller's
+    # shape, out == a (0x1424E/0x14256).
+    Spec("camera_rect_clip", 0x14080, [
+        Case("r0", *d1h_rect_case((10, 20, 100, 200), (50, 60, 150, 250), alias=True)),
+        Case("r1", *d1h_rect_case((50, 60, 150, 250), (10, 20, 100, 200))),
+        Case("r2", *d1h_rect_case((0, 0, 10, 10), (20, 0, 30, 10))),
+        Case("r3", *d1h_rect_case((0, 0, 10, 10), (0, 20, 10, 30))),
+        Case("r4", *d1h_rect_case((0, 0, 10, 10), (10, 0, 20, 10))),
+        Case("r5", *d1h_rect_case((0, 0, 10, 10), (0, 10, 10, 20), alias=True)),
+        Case("r6", *d1h_rect_case((-10, -10, 10, 10), (5, 5, 20, 20))),
+        Case("r7", *d1h_rect_case((5, 5, 20, 20), (-10, -10, 10, -1))),
+        Case("r8", *d1h_rect_case((3, 4, 5, 6), (3, 4, 5, 6), alias=True)),
+        Case("r9", *d1h_rect_case((0, 0, 10, 10), (11, 0, 20, 10))),
+    ], eax_mask=0xFFFFFFFF, mutants=("@unsigned", "@min", "@top", "@strict", "@y", "@input")),
+    # 0x15EC0 camera_bitrev: EAX = len (signed: `sar`, `jle` 0x15EDD, `idiv` 0x15F0D), EDX = buf.
+    # The table 0xA1432 is the image's.
+    Spec("camera_bitrev", 0x15EC0, [
+        Case("v%d" % i, {"eax": n, "edx": D1H_BUF}, d1h_buf_case(i))
+        for i, n in enumerate((0, 1, 2, 5, 8, 0x25, 0x26, 0xFFFFFFFF, 0xFFFFFFFE, 0xFFFFFFFD))
+    ], eax_mask=0, mutants=("@off", "@half", "@table", "@noswap", "@mid")),
+    # 0x1638C camera_sprite_row: EAX = side (zero or not, `test eax,eax; jne` 0x163A5), EDX = dst,
+    # EBX = count, ECX = row; the copy is `shr ecx,2; rep movsd; and cl,3; rep movsb` (the F2 prefix).
+    Spec("camera_sprite_row", 0x1638C, [
+        Case("w%d" % i, {"eax": side, "edx": D1H_BUF, "ebx": n, "ecx": row}, d1h_row_case(row, i))
+        for i, (side, row, n) in enumerate(((0, 0, 0x25), (1, 3, 0x26), (2, 1, 5), (0, 2, 0), (0, 5, 1),
+                                            (1, 0, 3), (0, 1, 4), (0xFFFFFFFF, 2, 7), (0, 191, 0x26)))
+    ], eax_mask=0, mutants=("@side", "@base", "@row", "@stride", "@count")),
+    # 0x15F48 camera_bitplane_pixel: EAX = bit (signed), EDX = rows (`shl edx,3`), EBX = dst, CL =
+    # value. 0x61A70 (the libc memset wrapper) and its body 0x65490/0x654C7 run on the original side;
+    # the mask byte is 0xA1420[bit % 8].
+    Spec("camera_bitplane_pixel", 0x15F48, [
+        Case("x%d" % i, {"eax": bit, "edx": rows, "ebx": D1H_BUF, "ecx": ecx}, d1h_buf_case(i))
+        for i, (bit, rows, ecx) in enumerate((
+            (0, 0x25, 0xFF), (8, 0x25, 0xFF), (13, 0x25, 0xFF), (7, 0x25, 0x00), (0x128, 0x25, 0xFF),
+            (0x129, 0x25, 0xFF), (0xFFFFFFF8, 0x25, 0xFF), (0x127, 0x25, 0x123456A5), (16, 2, 0x11),
+            (17, 2, 0x11), (9, 0x20000001, 0x77), (8, 0x20000001, 0x77), (0x23, 5, 0xC3)))
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7), eax_mask=0,
+       mutants=("@value", "@rows", "@bound", "@mask", "@fill", "@idx", "@aligned")),
+    # 0x181D0 camera_sync_visible: EAX = p1 (the item's extent), EDX = p2 (the container's), EBX = p3
+    # (the item's start, signed), ECX = p4 and the four stack dwords p5..p8 are out pointers
+    # (`ret 0x10`). AL only (`mov al,N` / `xor al,al`; every caller `and eax,0xff`).
+    Spec("camera_sync_visible", 0x181D0, [
+        Case("z%d" % i, d1h_vis_regs(p1, p2, p3), D1H_VIS_SEED)
+        for i, (p1, p2, p3) in enumerate((
+            (0, 5, 0), (5, 0, 0), (-3, 5, 0), (5, -1, 0), (5, 9, -5), (5, 9, -4), (10, 5, -2),
+            (10, 20, 30), (10, 8, 3), (10, 20, 3), (10, 8, 8), (4, 4, 0), (1, 1, 0), (10, 13, 3),
+            (10, 8, -2), (10, 20, -2), (5, 9, -6), (10, 9, 8)))
+    ], eax_mask=0xFF, mutants=("@p57", "@p68", "@p1", "@code", "@neg", "@gt", "@rest", "@vis", "@ret")),
+    # 0x15FD4 camera_bitplane_shift: EAX = bit, EDX = src, EBX = rows, ECX = dst, one stack dword
+    # (arg5, `ret 4`), AL = 1 when done. bit == 0x128 leaves the bit index [esp+0x14] unset in the raw
+    # (0x1603B..0x1604A); with rows = 0x25 the byte shift 0x25 then zeroes every dst byte whatever it
+    # held, so that one case is defined; rows > 0x25 at bit 0x128 is not cased (named in the record).
+    # Both raw callers shift in place (EDX = ECX = 0x100BD3, 0x173DA/0x173E4 and 0x17A53/0x17A5D) with
+    # a byte bit count (`xor eax,eax; mov al,..`): the p cases are that shape, dst == src.
+    Spec("camera_bitplane_shift", 0x15FD4, [
+        Case("j%d" % i, d1h_shift_regs(bit, rows, a5), d1h_shift_case(i))
+        for i, (bit, rows, a5) in enumerate(D1H_SHIFT_ARGS)
+    ] + [
+        Case("p%d" % i, {**d1h_shift_regs(bit, rows, rows), "ecx": D1H_BUF}, d1h_shift_case(i + 0x20))
+        for i, (bit, rows) in enumerate(((0, 5), (3, 5), (8, 5), (13, 5), (0x23, 5), (0xFF, 0x25), (7, 1)))
+    ], eax_mask=0xFF, mutants=("@bound", "@arg5", "@mask", "@shift", "@edge", "@tail", "@zero", "@dir")),
+    # 0x1617C camera_bitplane_merge: the left twin, same registers; bit == 0x128 sets the bit index to
+    # 0 explicitly (0x161E2/0x161E8), so rows = 0x26 at bit 0x128 is cased here.
+    Spec("camera_bitplane_merge", 0x1617C, [
+        Case("m%d" % i, d1h_shift_regs(bit, rows, a5), d1h_shift_case(i))
+        for i, (bit, rows, a5) in enumerate(D1H_SHIFT_ARGS + ((0x128, 0x26, 0x26),))
+    ], eax_mask=0xFF, mutants=("@bound", "@arg5", "@mask", "@shift", "@edge", "@tail", "@zero", "@dir")),
 ]
 D1_SPECS += D1H_SPECS
 
