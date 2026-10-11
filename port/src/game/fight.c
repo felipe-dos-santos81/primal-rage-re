@@ -1218,7 +1218,7 @@ void fight_hook_4367c(void)
  * and a5 = the +0x56 word of DS_001080F4's record | 0x400 (reloaded each
  * pass, `or ah,4; and eax,0xffff`), stored at DS_001080C0[i] (`mov
  * [esi+0x1080bc],eax` after the add). */
-static void fight_413c8(void)
+void fight_413c8(void)
 {
     DSD(DS_001080F4) = actor_spawn((const u32 *)(mem + DS_000C86DC),
                                    0x2A00u, 0xE0u, 0x1B00u, 0u);  /* 0x413E3/0x413EA */
@@ -1294,7 +1294,7 @@ static u32 fight_dust_pick(u32 side)
 /* 0x29CDC. The value written into the picked descriptor's +0x10: the per-side
  * table DS_000A8AF8 (when DS_00105B34[side] == 0) or DS_000A8B14, indexed by
  * the slot's character byte. */
-static u32 fight_dust_value(u32 side, u32 ch)
+u32 fight_dust_value(u32 side, u32 ch)
 {
     if (DSB(DS_00105B34 + side) == 0u) return DSD(DS_000A8AF8 + ch * 4u);
     return DSD(DS_000A8B14 + ch * 4u);
@@ -1543,7 +1543,7 @@ void fight_hud_bar2_set(s32 v, u32 side)
  * (a signed compare, 0x1D4F9 `jle`): > 0x3D column 0 (0x1D4FE), > 0x2F column 1
  * (0x1D50B), > 0x22 column 2 (0x1D520), else column 3 (0x1D530). The slot is
  * 0x33A10's out[3] (0x1D4D8). Caller: 0x1D563 (0x1D540). */
-static u32 fight_hud_rate(u32 side)
+u32 fight_hud_rate(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                                /* 0x1D4D8 0x33A10 */
@@ -1559,7 +1559,7 @@ static u32 fight_hud_rate(u32 side)
  * command word DS_001088E0[side] has bit 4 or bit 5 set (0x1D756 `and al,0x30`;
  * the ah clear at 0x1D754 and `and eax,0xffff` at 0x1D75D leave ZF from that
  * byte alone, `setnz`). Caller: 0x1D5FF (0x1D540). */
-static u32 fight_cmd_bits_30(u32 side)
+u32 fight_cmd_bits_30(u32 side)
 {
     return (DSW(DS_001088E0 + side * 2u) & 0x30u) != 0u;        /* 0x1D74C..0x1D760 */
 }
@@ -1847,7 +1847,7 @@ void fight_hud_bar_step(void)
  * 0x107D18, 0x107D1C and 0x107D24 [side] = 0 (BX), then the 64 bytes
  * 0x107A80 + side * 0x40 .. + 0x3F = 0 (0x38C22 `inc eax` before the store at
  * [eax + 0x107A7F]). EBX/EDX are pushed and popped. Only caller: 0x20F07. */
-static void fight_side_scratch_clear(u32 side)
+void fight_side_scratch_clear(u32 side)
 {
     DSW(DS_00107D2C + side * 2u) = 0u;                  /* 0x38BF5 */
     DSW(DS_00107D20 + side * 2u) = 0u;                  /* 0x38BFD */
@@ -2090,7 +2090,7 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override)
  * and the 0x34BF4 +0x52 table: 1 when the slot's +0x63 is armable and
  * (DS_00104B1D == 3 || DS_00104B14 == 0 || slot+0x63 != 0), +0x42 bit 0x10 is
  * set, +0x52 is one of {0,1,5,6,7} and +0x54 <= 1. */
-static int fight_position_gate(u32 rec)
+int fight_position_gate(u32 rec)
 {
     u8 st;
     if (!(DSB(DS_00104B1D) == 3u || DSB(DS_00104B14) == 0u
@@ -2285,7 +2285,7 @@ void fight_hud_pass(u32 side)
 
 /* 0x2BE00. The actor's +4 field for a fighter record (a raw position term the
  * effect bodies use as a sign test). */
-static s32 fight_2be00(u32 rec)
+s32 fight_2be00(u32 rec)
 {
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
     return (s32)DSD(actor + 4u);
@@ -2321,7 +2321,7 @@ static u32 fight_case_rec(void)
 #define DS_000C9754 0x000C9754u
 
 /* 0x2BE1C. The difference of two fighter records' 0x2BE00 position terms. */
-static s32 fight_2be1c(u32 rec_a, u32 rec_b)
+s32 fight_2be1c(u32 rec_a, u32 rec_b)
 {
     return fight_2be00(rec_a) - fight_2be00(rec_b);
 }
@@ -2346,7 +2346,7 @@ u32 fight_4a868(u32 entry)
 }
 
 /* 0x2BE4C. `(rec+0x44 >> 16) * 2 + value - 0x2A00` (0x2BE4C..0x2BE5B). */
-static s32 fight_2be4c(u32 rec, s32 value)
+s32 fight_2be4c(u32 rec, s32 value)
 {
     return (((s32)DSD(rec + 0x44u) >> 16) * 2) + value - 0x2A00;
 }
@@ -2802,7 +2802,7 @@ static int fight_4b788(u32 hit, u32 entry, u32 index)
 /* 0x13134 — demo-pose record §42-C. 1 when both fighter records' x (+0x18 of
  * DS_001077B0's and DS_00107844's record) are below -0x3300, or both above
  * 0x3300 (signed); else 0. Its only caller is 0x4BD98 (0x4BDBA). */
-static int fight_13134(void)
+int fight_13134(void)
 {
     s32 x0 = (s32)DSD(DSD(DS_001077B0) + 0x18u);
     s32 x1 = (s32)DSD(DSD(DS_00107844) + 0x18u);

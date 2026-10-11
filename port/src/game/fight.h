@@ -120,6 +120,21 @@ void fight_4ac80(u32 rec);
  * exposed because 0x3C570's bit test reads DS_00107EE0 and a test may seed it. */
 void fight_slot_clear(void);
 
+/* 0x13134 / 0x1D4D0 / 0x1D74C / 0x29CDC / 0x2BE00 / 0x2BE1C / 0x2BE4C /
+ * 0x36E2C / 0x38BEC / 0x413C8 (D1 d1e): leaf predicates, value readers and
+ * two setup bodies of fight.c, exported for their differential rows (the
+ * definitions carry each function's derivation). */
+int  fight_13134(void);
+u32  fight_hud_rate(u32 side);
+u32  fight_cmd_bits_30(u32 side);
+u32  fight_dust_value(u32 side, u32 ch);
+s32  fight_2be00(u32 rec);
+s32  fight_2be1c(u32 rec_a, u32 rec_b);
+s32  fight_2be4c(u32 rec, s32 value);
+int  fight_position_gate(u32 rec);
+void fight_side_scratch_clear(u32 side);
+void fight_413c8(void);
+
 /* 0x49300. State 6's fight-effect list init: self-links the DS_001083C4 and
  * DS_0010884C sentinels and seeds DS_001088CC/CB from DS_00104AFC. Called by
  * 0x20DF4 (game_fight_reset, flow.c) at 0x20E38; 0x49C78's list walk needs
