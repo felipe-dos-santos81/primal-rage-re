@@ -97,14 +97,18 @@ static u32 camera_resolve_sprite(u32 side, u32 index)
 
 /* 0x164C0 — pose/freeze record §11. 1 iff (rec+0x24) + (-1.0f) == rec+0x20 for
  * slot[side]'s record. The raw loads the float at 0x80580 (`00 00 80 BF` =
- * -1.0), adds it and FCOMPs against +0x20. */
+ * -1.0), adds it and FCOMPs against +0x20. The sum stays on the x87 stack
+ * (0x164D4 `fld`, 0x164D7 `fadd`) at the game's 53-bit control word 0x127F,
+ * which a double holds exactly, and is not rounded to a float before the
+ * compare. `sete al` (0x164E3) reads ZF after `fnstsw ax; sahf`, which an
+ * unordered compare (a NaN operand) sets as well, so that returns 1 too. */
 int camera_frame_last(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
-    float a = *(const float *)(mem + rec + 0x24u)
-              + *(const float *)(mem + CAMERA_NEG_ONE);
-    float b = *(const float *)(mem + rec + 0x20u);
-    return a == b;
+    double a = (double)*(const float *)(mem + rec + 0x24u)
+               + (double)*(const float *)(mem + CAMERA_NEG_ONE);
+    double b = (double)*(const float *)(mem + rec + 0x20u);
+    return !(a < b || a > b);
 }
 
 /* 0x16734 — pose/freeze record §11. The per-character sprite-id map: switch on
