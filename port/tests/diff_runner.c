@@ -14251,6 +14251,33 @@ D1G_RELN_MUT(neg, 1u)    D1G_RELN_MUT(force, 2u)  D1G_RELN_MUT(cmp, 4u)    D1G_R
 D1G_RELN_MUT(rowbase, 16u) D1G_RELN_MUT(zero, 32u) D1G_RELN_MUT(rel, 64u)  D1G_RELN_MUT(pset, 128u)
 D1G_RELN_MUT(rec0, 256u) D1G_RELN_MUT(centre, 512u) D1G_RELN_MUT(count, 1024u)
 
+/* 0x1C350's mutants. No argument: the free head 0x10275C, 579 nodes {next; 0} from 0x10153C and
+ * the two dwords at 0x102754 (the 580th node, the free list's end). */
+static u32 d1g_1c350_core(const u32 *r, u32 mut)
+{
+    u32 n = (mut & 1u) ? 578u : 579u;                                          /* @count */
+    (void)r;
+    for (u32 i = 0; i < n; i++) {
+        u32 node = 0x0010153Cu + i * 8u;
+        DSD(node) = node + ((mut & 2u) ? 0x10u : 8u);                          /* @stride */
+        if (!(mut & 4u)) DSD(node + 4u) = 0u;                                  /* @ptr4 */
+    }
+    if (mut & 1u) DSD(0x0010153Cu + 578u * 8u) = 0u;       /* @count: the list ends one node early */
+    DSD(0x0010275Cu) = (mut & 8u) ? 0x00101544u : 0x0010153Cu;                 /* @free */
+    if (!(mut & 16u)) DSD(0x00102754u) = 0u;                                   /* @last */
+    if (!(mut & 32u)) DSD(0x00102758u) = 0u;                                   /* @l58 */
+    if (mut & 64u) DSD(0x00105B44u) = 0u;              /* @head: the port before the correction */
+    return 0u;
+}
+static void b_d1g_1c350(const u32 *r, u32 *eax)     { (void)r; render_list_init(); *eax = 0u; }
+static void m_d1g_rl_count(const u32 *r, u32 *eax)  { *eax = d1g_1c350_core(r, 1u); }
+static void m_d1g_rl_stride(const u32 *r, u32 *eax) { *eax = d1g_1c350_core(r, 2u); }
+static void m_d1g_rl_ptr4(const u32 *r, u32 *eax)   { *eax = d1g_1c350_core(r, 4u); }
+static void m_d1g_rl_free(const u32 *r, u32 *eax)   { *eax = d1g_1c350_core(r, 8u); }
+static void m_d1g_rl_last(const u32 *r, u32 *eax)   { *eax = d1g_1c350_core(r, 16u); }
+static void m_d1g_rl_l58(const u32 *r, u32 *eax)    { *eax = d1g_1c350_core(r, 32u); }
+static void m_d1g_rl_head(const u32 *r, u32 *eax)   { *eax = d1g_1c350_core(r, 64u); }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -16177,6 +16204,14 @@ static const binding_t k_bindings[] = {
     { "text_cells_release_count@rec0",     m_d1g_rn_rec0,   0x00000000u },
     { "text_cells_release_count@centre",   m_d1g_rn_centre, 0x00000000u },
     { "text_cells_release_count@count",    m_d1g_rn_count,  0x00000000u },
+    { "render_list_init",                  b_d1g_1c350,     0x00000000u },
+    { "render_list_init@count",            m_d1g_rl_count,  0x00000000u },
+    { "render_list_init@stride",           m_d1g_rl_stride, 0x00000000u },
+    { "render_list_init@ptr4",             m_d1g_rl_ptr4,   0x00000000u },
+    { "render_list_init@free",             m_d1g_rl_free,   0x00000000u },
+    { "render_list_init@last",             m_d1g_rl_last,   0x00000000u },
+    { "render_list_init@l58",              m_d1g_rl_l58,    0x00000000u },
+    { "render_list_init@head",             m_d1g_rl_head,   0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

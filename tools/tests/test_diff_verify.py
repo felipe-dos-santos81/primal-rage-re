@@ -2167,6 +2167,7 @@ D1G_MASKS = {
     "text_number_draw_font2": 0x0,
     "text_glyph_at": 0x0,
     "text_cells_release_count": 0x0,
+    "render_list_init": 0x0,
 }
 D1G_KINDS = {
     "actor_pset_word_set@base": {'byte'},
@@ -2393,6 +2394,13 @@ D1G_KINDS = {
     "text_cells_release_count@rec0": {'call #1', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #2', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #26', 'call #27', 'call #28', 'call #29', 'call #3', 'call #30', 'call #31', 'call #32', 'call #33', 'call #34', 'call #35', 'call #36', 'call #37', 'call #38', 'call #39', 'call #4', 'call #40', 'call #41', 'call #42', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
     "text_cells_release_count@centre": {'byte', 'call #1'},
     "text_cells_release_count@count": {'byte', 'call #0'},
+    "render_list_init@count": {'byte'},
+    "render_list_init@stride": {'byte'},
+    "render_list_init@ptr4": {'byte'},
+    "render_list_init@free": {'byte'},
+    "render_list_init@last": {'byte'},
+    "render_list_init@l58": {'byte'},
+    "render_list_init@head": {'byte'},
 }
 D1G_CASES = [
     ("actor_pset_word_set@base", ['w0', 'w1', 'w2', 'w3']),
@@ -2619,6 +2627,13 @@ D1G_CASES = [
     ("text_cells_release_count@rec0", ['e0', 'e1', 'e2', 'e3', 'e4', 'e7']),
     ("text_cells_release_count@centre", ['e7']),
     ("text_cells_release_count@count", ['e5', 'e6']),
+    ("render_list_init@count", ['x0', 'x1']),
+    ("render_list_init@stride", ['x0', 'x1']),
+    ("render_list_init@ptr4", ['x0', 'x1']),
+    ("render_list_init@free", ['x0', 'x1']),
+    ("render_list_init@last", ['x0', 'x1']),
+    ("render_list_init@l58", ['x0', 'x1']),
+    ("render_list_init@head", ['x0', 'x1']),
 ]
 D1_MASKS.update(D1G_MASKS)
 D1_KINDS.update(D1G_KINDS)

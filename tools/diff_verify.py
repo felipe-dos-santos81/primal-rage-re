@@ -8220,6 +8220,17 @@ D1G_STR_A, D1G_STR_B = 0x0010A200, 0x0010A210       # two scratch strings (0x10A
 D1G_STRS = {D1G_STR_A: b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff\x01",
             D1G_STR_B: b"\x91\x82\x73\x64\x55\x46\x37\x28\x19\x0a\xfb\xec\xdd\xce\xbf\x02"}
 
+def d1g_rl_case(fill):
+    """0x1C350: the dword pair below the node pool, the first and a middle window of nodes, the
+    last nodes through the free head 0x10275C and a pair above it, and the list head 0x105B44 (the
+    raw leaves it alone), all non-zero."""
+    def run(n, k): return bytes(((fill + k + i) & 0x7F) | 0x80 for i in range(n))
+    return {0x00101534: run(8, 0) + run(0x38, 8),                # 0x101534..0x101573
+            0x00101D3C: run(0x40, 0x20),                         # nodes 256..263
+            0x00102724: run(0x40, 0x40),                         # 0x102724..0x102763
+            0x00105B40: run(12, 0x60)}                           # 0x105B40..0x105B4B
+
+
 D1G_CURSOR = E.Call(0x2A620, ("eax", "edx"), mode="real")   # mode1_cursor: its own row (C3)
 
 D1G_SPECS = [
@@ -8504,6 +8515,13 @@ D1G_SPECS = [
     ], calls=(RELEASE,), eax_mask=0,
        mutants=("@neg", "@force", "@cmp", "@stride", "@rowbase", "@zero", "@rel", "@pset", "@rec0",
                 "@centre", "@count")),
+    # 0x1C350 render_list_init: no argument. The list head 0x105B44 is seeded and must survive:
+    # the correction this row found (`@head` is the port before it). Mask 0: its one caller
+    # (0x2BBD5) calls 0x38B70 next, which loads EAX (`mov eax,0x107a1c` 0x38B79) before any read.
+    Spec("render_list_init", 0x1C350, [
+        Case("x0", {}, d1g_rl_case(0x11)),
+        Case("x1", {"eax": 0x5A5A5A5A, "ebx": 0x12345678, "edx": 0x9ABCDEF0}, d1g_rl_case(0x57)),
+    ], eax_mask=0, mutants=("@count", "@stride", "@ptr4", "@free", "@last", "@l58", "@head")),
 ]
 D1_SPECS += D1G_SPECS
 
