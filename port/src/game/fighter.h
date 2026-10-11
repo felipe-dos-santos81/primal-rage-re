@@ -444,6 +444,11 @@ void fighter_380c4(u32 side);                            /* 0x380C4 */
 void fighter_39278(u32 v);                               /* 0x39278 */
 int fighter_3962c(u32 side, u32 param_2);                /* 0x3962C */
 int fighter_396ac(u32 side, u32 param_2);                /* 0x396AC */
+s32 fighter_39ac8(s32 a, s32 n);                         /* 0x39AC8 */
+s32 fighter_39b14(s32 a, s32 b);                         /* 0x39B14 */
+void fighter_3b9d8(u32 side, s32 pen);                   /* 0x3B9D8 */
+void fighter_3c1c8(u32 side, u32 v);                     /* 0x3C1C8 */
+s32 fighter_3f6f4(u32 side, s32 n);                      /* 0x3F6F4 */
 
 /* 0x1DE64. The reaction picker: map the side's command word (or, with slot+0x63
  * clear, the 0x46460/0x4649C input scan, record §49-B) through 0x1DDF4 to a

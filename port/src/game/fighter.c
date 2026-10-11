@@ -5758,7 +5758,7 @@ static u32 fighter_hold_ratio(s32 num, s32 den)
 /* 0x39AC8. The gravity that covers `a` in `n` frames: q = (a * 128) / (n * n)
  * on the sign-extended words (IDIV truncates), then q when q + 0.5 (the double
  * at 0x80BFA) is below (s16)q + 1 (FCOMPP, JC), else q + 1. */
-static s32 fighter_39ac8(s32 a, s32 n)
+s32 fighter_39ac8(s32 a, s32 n)
 {
     s32 nn = (s32)((u32)(s32)(s16)n * (u32)(s32)(s16)n);  /* 0x39ACC..0x39AD1 */
     s32 q = ((s32)(s16)a * 128) / nn;                   /* 0x39AD4..0x39ADF */
@@ -5768,7 +5768,7 @@ static s32 fighter_39ac8(s32 a, s32 n)
 }
 
 /* 0x39B14. IMUL EAX, EDX. */
-static s32 fighter_39b14(s32 a, s32 b)
+s32 fighter_39b14(s32 a, s32 b)
 {
     return (s32)((u32)a * (u32)b);                      /* 0x39B14 */
 }
@@ -8736,7 +8736,7 @@ void fighter_3e244(u32 side)
  * slot's word +0x4C instead and DS_00107D30 is raised. Otherwise the side
  * moves away (0x3B8D8 wall test), or, at the wall, the other side is moved.
  * With the side's +0x54 == 2 a record speed toward the other is zeroed. */
-static void fighter_3b9d8(u32 side, s32 pen)
+void fighter_3b9d8(u32 side, s32 pen)
 {
     u32 ctx[6];
     s32 half;
@@ -9262,7 +9262,7 @@ static void fighter_3c0ec(u32 side, u32 v)
 /* 0x3C1C8 — record §48-R. EAX = side, EDX = v; the context is 0x33950(side).
  * ctx[4]'s horizontal speed +0x34 = -v while ctx[2]'s x (+0x2C) is below
  * ctx[3]'s (signed), else v. Its one caller is 0x45410. */
-static void fighter_3c1c8(u32 side, u32 v)
+void fighter_3c1c8(u32 side, u32 v)
 {
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                            /* 0x3C1CE..0x3C1D2 0x33950 */
@@ -9275,7 +9275,7 @@ static void fighter_3c1c8(u32 side, u32 v)
 /* 0x3F6F4 — record §48-R. EAX = side, EDX = n; the context is 0x33950(side).
  * n minus ctx[2]'s +0x86 >> 16 (signed), or 0 when that is negative (0x3F718
  * `xor eax,ebx` on equal registers). */
-static s32 fighter_3f6f4(u32 side, s32 n)
+s32 fighter_3f6f4(u32 side, s32 n)
 {
     u32 ctx[6];
     s32 v;
