@@ -6344,7 +6344,7 @@ void sound_music_pause_toggle(void)
         DSD(DS_001028CC) = song;                           /* 0x1D1E7 */
         return;
     }
-    if (DSD(DS_001028C0) != 0u && snd_music_playing() != 0u)   /* 0x1D1F2 0x1D1FB 0x1D202 */
+    if (DSD(DS_001028C0) != 0u && (u8)snd_music_playing() != 0u)   /* 0x1D1F2 0x1D1FB 0x1D200 `test al,al` */
         AIL_stop_sequence(s_sequence);                     /* 0x1D20B 0x5DEAF */
     DSB(DS_001028DA) = 1;                                  /* 0x1D213 */
 }
