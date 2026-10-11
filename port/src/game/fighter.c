@@ -8749,15 +8749,16 @@ void fighter_3b9d8(u32 side, s32 pen)
         DSB(DS_00107D30) = 1u;                          /* 0x3BA1E */
         return;
     }
+    pen = (s32)(s16)pen;                                /* 0x3BA39/0x3BA6E: movsx ebx,cx */
     if ((s32)DSD(ctx[2] + 0x2Cu) >= (s32)DSD(ctx[3] + 0x2Cu)) {       /* 0x3BA34 */
         half = pen / 2;                                 /* 0x3BA3C..0x3BA45 */
-        if (fighter_3b8d8(ctx[0], half) != 0)           /* 0x3BA4E */
+        if ((u8)fighter_3b8d8(ctx[0], half) != 0u)      /* 0x3BA4E, 0x3BA53: test al,al */
             fighter_1883c(ctx[1], (u32)(-pen / 2), 0u); /* 0x3BA57..0x3BAAA */
         else
             fighter_1883c(ctx[0], (u32)half, 0u);       /* 0x3BAA3/0x3BAAA */
     } else {
         half = -pen / 2;                                /* 0x3BA71..0x3BA7C */
-        if (fighter_3b8d8(ctx[0], half) != 0)           /* 0x3BA85 */
+        if ((u8)fighter_3b8d8(ctx[0], half) != 0u)      /* 0x3BA85, 0x3BA8A: test al,al */
             fighter_1883c(ctx[1], (u32)(pen / 2), 0u);  /* 0x3BA8E..0x3BAAA */
         else
             fighter_1883c(ctx[0], (u32)half, 0u);       /* 0x3BAA3/0x3BAAA */
