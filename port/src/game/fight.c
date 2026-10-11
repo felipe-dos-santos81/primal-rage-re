@@ -2876,7 +2876,7 @@ void fight_4cb18(u32 entry, u32 index, u32 flag, u32 side)
     if (d < 0) d = (s32)(0u - (u32)d);                          /* 0x4CB6B */
     if (d > 0x3F00) d = 0x3F00;                                 /* 0x4CB75 */
     s32 h = (s32)(0x3BC0u - DSD(DSD(entry + 8u) + 0x1Cu));      /* 0x4CB84/0x4CB90 */
-    if (fighter_actor_bit15_clear(side) != 0)                   /* 0x4CB8B 0x1A570 */
+    if ((u8)fighter_actor_bit15_clear(side) != 0u)              /* 0x4CB8B 0x1A570, 0x4CB92 `test al,al` */
         d = (s32)(0u - (u32)d);                                 /* 0x4CB9A/0x4CBA3 */
     DSW(DSD(entry + 8u) + 0x34u) =
         (u16)(d / (flag != 0u ? 0x38 : 0x70));                  /* 0x4CBB5/0x4CBCC */
