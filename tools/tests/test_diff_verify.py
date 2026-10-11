@@ -2144,6 +2144,85 @@ D1_KINDS = {}
 D1_CASES = []
 
 
+# ---- track D1 batch d1h (record 2026-10-11-reverse-d1h): measured pins ----
+D1H_MASKS = {
+    "attract_voice_tick": 0x0,
+    "camera_dust_list_init": 0x0,
+    "camera_dust_spawn": 0x0,
+    "effects_init": 0x0,
+}
+D1H_KINDS = {
+    "attract_voice_tick@signed": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #4'},
+    "attract_voice_tick@zero": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #4'},
+    "attract_voice_tick@novoice": {'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #3', 'call #4'},
+    "attract_voice_tick@reload": {'byte', 'call #1', 'call #2', 'call #2 memory', 'call #3 memory', 'call #4', 'call #4 memory'},
+    "attract_voice_tick@early": {'call #0 memory'},
+    "attract_voice_tick@al": {'call #1'},
+    "attract_voice_tick@pick": {'call #1', 'call #3'},
+    "attract_voice_tick@store": {'byte'},
+    "camera_dust_list_init@bound": {'byte', 'call #7'},
+    "camera_dust_list_init@stride": {'byte', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #7'},
+    "camera_dust_list_init@after": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7'},
+    "camera_dust_list_init@sentinel": {'byte', 'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory'},
+    "camera_dust_list_init@inuse": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "camera_dust_list_init@late": {'byte'},
+    "camera_dust_spawn@gate": {'byte', 'call #0', 'call #1', 'call #2', 'call #3'},
+    "camera_dust_spawn@draw": {'byte', 'call #1', 'call #2', 'call #3'},
+    "camera_dust_spawn@arm": {'byte', 'call #3'},
+    "camera_dust_spawn@flag": {'call #3'},
+    "camera_dust_spawn@order": {'call #1', 'call #2', 'call #3'},
+    "camera_dust_spawn@cam": {'call #3'},
+    "camera_dust_spawn@r1": {'call #3'},
+    "camera_dust_spawn@a4": {'call #3'},
+    "camera_dust_spawn@desc": {'call #3'},
+    "camera_dust_spawn@width": {'byte'},
+    "camera_dust_spawn@field": {'byte'},
+    "effects_init@bound": {'byte', 'call #23'},
+    "effects_init@stride": {'byte', 'call #1', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #2 memory', 'call #20', 'call #20 memory', 'call #21', 'call #21 memory', 'call #22', 'call #22 memory', 'call #23', 'call #23 memory', 'call #24', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "effects_init@after": {'byte', 'call #0', 'call #1', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #2', 'call #20', 'call #21', 'call #22', 'call #23', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "effects_init@sentinel": {'byte', 'call #0', 'call #1', 'call #1 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #2 memory', 'call #20', 'call #20 memory', 'call #21', 'call #21 memory', 'call #22', 'call #22 memory', 'call #23', 'call #23 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "effects_init@active": {'byte', 'call #0 memory', 'call #1 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #2 memory', 'call #20 memory', 'call #21 memory', 'call #22 memory', 'call #23 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "effects_init@unlock": {'byte'},
+    "effects_init@flag": {'call #0 memory', 'call #1 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #2 memory', 'call #20 memory', 'call #21 memory', 'call #22 memory', 'call #23 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+}
+D1H_CASES = [
+    ("attract_voice_tick@signed", ['a4', 'a5']),
+    ("attract_voice_tick@zero", ['a1', 'a2']),
+    ("attract_voice_tick@novoice", ['a1', 'a2', 'a4', 'a5']),
+    ("attract_voice_tick@reload", ['a1', 'a2', 'a3', 'a4', 'a5']),
+    ("attract_voice_tick@early", ['a1', 'a2', 'a4', 'a5']),
+    ("attract_voice_tick@al", ['a3']),
+    ("attract_voice_tick@pick", ['a1', 'a2', 'a3', 'a5']),
+    ("attract_voice_tick@store", ['a0', 'a4']),
+    ("camera_dust_list_init@bound", ['l0', 'l1']),
+    ("camera_dust_list_init@stride", ['l0', 'l1']),
+    ("camera_dust_list_init@after", ['l0', 'l1']),
+    ("camera_dust_list_init@sentinel", ['l0', 'l1']),
+    ("camera_dust_list_init@inuse", ['l0', 'l1']),
+    ("camera_dust_list_init@late", ['l0', 'l1']),
+    ("camera_dust_spawn@gate", ['p8']),
+    ("camera_dust_spawn@draw", ['p5', 'p6']),
+    ("camera_dust_spawn@arm", ['p0', 'p1', 'p2', 'p3']),
+    ("camera_dust_spawn@flag", ['p1', 'p3']),
+    ("camera_dust_spawn@order", ['p0', 'p1', 'p2', 'p3']),
+    ("camera_dust_spawn@cam", ['p0', 'p2', 'p3']),
+    ("camera_dust_spawn@r1", ['p0', 'p1', 'p2', 'p3']),
+    ("camera_dust_spawn@a4", ['p0', 'p1', 'p2', 'p3']),
+    ("camera_dust_spawn@desc", ['p0', 'p1', 'p2', 'p3']),
+    ("camera_dust_spawn@width", ['p0', 'p1', 'p2', 'p3']),
+    ("camera_dust_spawn@field", ['p0', 'p1', 'p2', 'p3']),
+    ("effects_init@bound", ['e0', 'e1']),
+    ("effects_init@stride", ['e0', 'e1']),
+    ("effects_init@after", ['e0', 'e1']),
+    ("effects_init@sentinel", ['e0', 'e1']),
+    ("effects_init@active", ['e0', 'e1']),
+    ("effects_init@unlock", ['e0', 'e1']),
+    ("effects_init@flag", ['e0']),
+]
+D1_MASKS.update(D1H_MASKS)
+D1_KINDS.update(D1H_KINDS)
+D1_CASES.extend(D1H_CASES)
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,

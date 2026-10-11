@@ -8024,6 +8024,86 @@ C3G_SPECS = [
 D1_SPECS = []
 
 
+# ---- track D1 batch d1h (record 2026-10-11-reverse-d1h): attract.c, camera.c, effects.c ----------
+
+D1H_RNG = E.Call(0x5D7DC, ("eax",), mode="stub")
+D1H_RNG_REAL = E.Call(0x5D7DC, ("eax",), mode="real")
+D1H_INSERT_BEFORE = E.Call(0x249C0, ("eax", "edx"), mode="real")
+D1H_REC = 0x0010A000           # zero BSS of the image: a record a stubbed spawn returns
+
+
+def d1h_fill(addr, n, byte):
+    """`n` bytes of `byte` from `addr`, as pokes of at most 0x40 bytes."""
+    return {addr + o: bytes([byte]) * min(0x40, n - o) for o in range(0, n, 0x40)}
+
+
+def d1h_dust_case(tick, seed, cam):
+    """0x1282C: the 0xEF6DC tick word, the rng seed, the camera x and the two records' +0x30..+0x3B."""
+    return {0x000EF6DC: le16(tick), DS_RNG: le32(seed), 0x000F0AF0: le32(cam),
+            D1H_REC + 0x30: bytes(range(0x30, 0x3C)), D1H_REC + 0xB0: bytes(range(0xB0, 0xBC))}
+
+
+def d1h_effects_case(lock, fill):
+    """0x13ADC: the lock byte, the two sentinels and each record's first 12 bytes (its two links
+    and the dword after them)."""
+    p = {0x0009AF3C: bytes([lock, 0x11, 0x22, 0x33]), 0x000FCCE0: bytes([fill]) * 0x10}
+    for rec in range(0x000F0B00, 0x000FCCE0, 0x814):
+        p[rec] = bytes([fill]) * 12
+    return p
+
+
+def d1h_vt_case(c1, c2):
+    """0x10F28: the two countdown words 0xF0A60/0xF0A62 with sentinel words on both sides."""
+    return {0x000F0A5C: le32(0xA5A6A7A8) + le16(c1) + le16(c2) + le32(0x5A5B5C5D)}
+
+
+D1H_SPECS = [
+    # 0x10F28 attract_voice_tick: no register argument. 0x2C3FC (voice) and 0x5D7DC (rng) are stubs;
+    # the rng stub's EAX is the pick (`test eax,eax` 0x10F7B) and both reloads (`add eax,..; mov
+    # word,ax`), so it varies per case: 0, 1, 0x100 (AL = 0, EAX != 0) and 0x12345 (the word store).
+    Spec("attract_voice_tick", 0x10F28, [
+        Case("a0", {"eax": 0x11223344}, d1h_vt_case(5, 7), {0x5D7DC: 1}),
+        Case("a1", {}, d1h_vt_case(1, 1), {0x5D7DC: 0}),
+        Case("a2", {}, d1h_vt_case(1, 1), {0x5D7DC: 1, 0x2C3FC: 0}),
+        Case("a3", {}, d1h_vt_case(0x8000, 0), {0x5D7DC: 0x100}),
+        Case("a4", {}, d1h_vt_case(0, 2), {0x5D7DC: 0x12345}),
+        Case("a5", {}, d1h_vt_case(0x8001, 0x8001), {0x5D7DC: 0}),
+    ], calls=(VOICE, D1H_RNG), eax_mask=0,
+       mutants=("@signed", "@zero", "@novoice", "@reload", "@early", "@al", "@pick", "@store")),
+    # 0x12750 camera_dust_list_init: no argument, no read of prior state; 0x249C0 runs on both sides
+    # and is recorded (its eight (0xF0A78, node) calls and the memory at each). The cases differ only
+    # in the garbage the lists hold before.
+    Spec("camera_dust_list_init", 0x12750, [
+        Case("l0", {"eax": 0x55667788}, d1h_fill(0x000F0A70, 0x80, 0xA5)),
+        Case("l1", {}, d1h_fill(0x000F0A70, 0x80, 0x00)),
+    ], calls=(D1H_INSERT_BEFORE,), eax_mask=0,
+       mutants=("@bound", "@stride", "@after", "@sentinel", "@inuse", "@late")),
+    # 0x1282C camera_dust_spawn: no argument. The rng runs on both sides (three draws from the
+    # case's seed); 0x2AE14 is a stub returning the record whose +0x34 word the raw stores.
+    Spec("camera_dust_spawn", 0x1282C, [
+        Case("p0", {}, d1h_dust_case(0xFFC0, 2, 0x12345678), {0x2AE14: D1H_REC}),       # draw 4
+        Case("p1", {}, d1h_dust_case(0x0000, 4, 0xFFFFF000), {0x2AE14: D1H_REC + 0x80}),  # draw 0
+        Case("p2", {}, d1h_dust_case(0x0040, 0xD, 0x00008000), {0x2AE14: D1H_REC}),     # draw 4
+        Case("p3", {}, d1h_dust_case(0x0000, 8, 0x7FFFF000), {0x2AE14: D1H_REC}),       # draw 0
+        Case("p4", {}, d1h_dust_case(0x0000, 7, 0), {0x2AE14: D1H_REC}),                # draw 1
+        Case("p5", {}, d1h_dust_case(0x0000, 3, 0), {0x2AE14: D1H_REC}),                # draw 2
+        Case("p6", {}, d1h_dust_case(0x0000, 1, 0), {0x2AE14: D1H_REC}),                # draw 6
+        Case("p7", {}, d1h_dust_case(0x0001, 2, 0), {0x2AE14: D1H_REC}),                # gate
+        Case("p8", {}, d1h_dust_case(0x0020, 2, 0), {0x2AE14: D1H_REC}),                # gate, bit 5
+    ], calls=(SPAWN, D1H_RNG_REAL), eax_mask=0,
+       mutants=("@gate", "@draw", "@arm", "@flag", "@order", "@cam", "@r1", "@a4", "@desc",
+                "@width", "@field")),
+    # 0x13ADC effects_init: no argument. The lock byte 0x9AF3C is 1 during the build (seen in the
+    # memory at each recorded 0x249C0 call) and 0 after; the image holds 1 there, so e0 pokes 0.
+    Spec("effects_init", 0x13ADC, [
+        Case("e0", {"eax": 0x99887766}, d1h_effects_case(0x00, 0xA5)),
+        Case("e1", {}, d1h_effects_case(0x01, 0x3C)),
+    ], calls=(D1H_INSERT_BEFORE,), eax_mask=0,
+       mutants=("@bound", "@stride", "@after", "@sentinel", "@active", "@unlock", "@flag")),
+]
+D1_SPECS += D1H_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

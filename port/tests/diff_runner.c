@@ -13583,6 +13583,142 @@ static void m_c3g_stm_val(const u32 *r, u32 *eax)    { *eax = c3g_1922c_core(r, 
 static void m_c3g_stm_eclear(const u32 *r, u32 *eax) { *eax = c3g_1922c_core(r, 128u); }
 static void m_c3g_stm_side(const u32 *r, u32 *eax)   { *eax = c3g_1922c_core(r, 256u); }
 
+/* ---- D1h (record 2026-10-11-reverse-d1h): attract.c, camera.c, effects.c rows ----------------- */
+#include "game/camera.h"
+
+/* 0x10F28's mutants. EAX is not an argument (the raw reads no register) and no caller reads the
+ * return (0x11559's `pop`s and `ret`, then every 0x11000 caller loads EAX), so the mask is 0. */
+static u32 d1h_10f28_core(u32 mut)
+{
+    u16 c = (u16)(DSW(DS_000F0A60) - 1u);
+    if (!(mut & 16u)) DSW(DS_000F0A60) = c;             /* @early: the store after the voice call */
+    if ((mut & 1u) ? c == 0u : ((mut & 2u) ? (s16)c < 0 : (s16)c <= 0)) {   /* @signed, @zero */
+        if (!(mut & 4u)) (void)sound_voice(0xBDu);      /* @novoice */
+        if (mut & 16u) DSW(DS_000F0A60) = c;
+        DSW(DS_000F0A60) = (u16)(rng_next((mut & 8u) ? 0x3Cu : 0x2Du) + ((mut & 8u) ? 0x3Cu : 0x2Du));  /* @reload */
+    } else if (mut & 16u) DSW(DS_000F0A60) = c;
+    c = (u16)(DSW(DS_000F0A62) - 1u);
+    if (!(mut & 128u) || (s16)c <= 0) DSW(DS_000F0A62) = c;   /* @store: no store unless it expires */
+    if ((s16)c <= 0) {
+        u32 pick = rng_next(2u);
+        if (mut & 32u) pick &= 0xFFu;                   /* @al */
+        if (mut & 64u) pick = !pick;                    /* @pick */
+        (void)sound_voice(pick != 0u ? 0xBEu : 0xBFu);
+        DSW(DS_000F0A62) = (u16)(rng_next((mut & 8u) ? 0x2Du : 0x3Cu) + ((mut & 8u) ? 0x2Du : 0x3Cu));
+    }
+    return 0u;
+}
+static void b_d1h_10f28(const u32 *r, u32 *eax)        { (void)r; attract_voice_tick(); *eax = 0u; }
+static void m_d1h_vt_signed(const u32 *r, u32 *eax)    { (void)r; *eax = d1h_10f28_core(1u); }
+static void m_d1h_vt_zero(const u32 *r, u32 *eax)      { (void)r; *eax = d1h_10f28_core(2u); }
+static void m_d1h_vt_novoice(const u32 *r, u32 *eax)   { (void)r; *eax = d1h_10f28_core(4u); }
+static void m_d1h_vt_reload(const u32 *r, u32 *eax)    { (void)r; *eax = d1h_10f28_core(8u); }
+static void m_d1h_vt_early(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_10f28_core(16u); }
+static void m_d1h_vt_al(const u32 *r, u32 *eax)        { (void)r; *eax = d1h_10f28_core(32u); }
+static void m_d1h_vt_pick(const u32 *r, u32 *eax)      { (void)r; *eax = d1h_10f28_core(64u); }
+static void m_d1h_vt_store(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_10f28_core(128u); }
+
+/* 0x12750's mutants: the two self-linked sentinels and the eight 12-byte nodes appended to the
+ * free list through 0x249C0 (run on both sides, recorded). */
+static u32 d1h_12750_core(u32 mut)
+{
+    u32 freel = (mut & 8u) ? DS_000F0AE0 : DS_000F0A78;         /* @sentinel */
+    if (!(mut & 16u)) {                                         /* @inuse */
+        DSD(DS_000F0AE4) = DS_000F0AE0;
+        DSD(DS_000F0AE0) = DS_000F0AE0;
+    }
+    DSD(DS_000F0A7C) = DS_000F0A78;
+    DSD(DS_000F0A78) = DS_000F0A78;
+    for (u32 node = DS_000F0A80; node < ((mut & 1u) ? DS_000F0AE0 - 0xCu : DS_000F0AE0);    /* @bound */
+         node += (mut & 2u) ? 0x10u : 0xCu) {                   /* @stride */
+        if (mut & 4u) effects_list_insert_after(freel, node);   /* @after */
+        else effects_list_insert_before(freel, node);
+    }
+    if (mut & 32u) {                                            /* @late: the free sentinel linked last */
+        DSD(DS_000F0A7C) = DS_000F0A78;
+        DSD(DS_000F0A78) = DS_000F0A78;
+    }
+    return 0u;
+}
+static void b_d1h_12750(const u32 *r, u32 *eax)        { (void)r; camera_dust_list_init(); *eax = 0u; }
+static void m_d1h_dl_bound(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_12750_core(1u); }
+static void m_d1h_dl_stride(const u32 *r, u32 *eax)    { (void)r; *eax = d1h_12750_core(2u); }
+static void m_d1h_dl_after(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_12750_core(4u); }
+static void m_d1h_dl_sentinel(const u32 *r, u32 *eax)  { (void)r; *eax = d1h_12750_core(8u); }
+static void m_d1h_dl_inuse(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_12750_core(16u); }
+static void m_d1h_dl_late(const u32 *r, u32 *eax)      { (void)r; *eax = d1h_12750_core(32u); }
+
+/* 0x13ADC's mutants: the 0x9AF3C lock byte around the build, the two sentinels and the 24
+ * 0x814-byte records appended to the free list 0xFCCE8. */
+static u32 d1h_13adc_core(u32 mut)
+{
+    u32 freel = (mut & 8u) ? DS_000FCCE0 : DS_000FCCE8;         /* @sentinel */
+    if (!(mut & 64u)) DSB(DS_0009AF3C) = 1;                     /* @flag */
+    if (!(mut & 16u)) {                                         /* @active */
+        DSD(DS_000FCCE4) = DS_000FCCE0;
+        DSD(DS_000FCCE0) = DS_000FCCE0;
+    }
+    DSD(DS_000FCCEC) = DS_000FCCE8;
+    DSD(DS_000FCCE8) = DS_000FCCE8;
+    for (u32 rec = DS_000F0B00; rec < ((mut & 1u) ? DS_000FCCE0 - 0x814u : DS_000FCCE0);    /* @bound */
+         rec += (mut & 2u) ? 0x810u : 0x814u) {                 /* @stride */
+        if (mut & 4u) effects_list_insert_after(freel, rec);    /* @after */
+        else effects_list_insert_before(freel, rec);
+    }
+    if (!(mut & 32u)) DSB(DS_0009AF3C) = 0;                     /* @unlock */
+    return 0u;
+}
+static void b_d1h_13adc(const u32 *r, u32 *eax)        { (void)r; effects_init(); *eax = 0u; }
+static void m_d1h_ei_bound(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_13adc_core(1u); }
+static void m_d1h_ei_stride(const u32 *r, u32 *eax)    { (void)r; *eax = d1h_13adc_core(2u); }
+static void m_d1h_ei_after(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_13adc_core(4u); }
+static void m_d1h_ei_sentinel(const u32 *r, u32 *eax)  { (void)r; *eax = d1h_13adc_core(8u); }
+static void m_d1h_ei_active(const u32 *r, u32 *eax)    { (void)r; *eax = d1h_13adc_core(16u); }
+static void m_d1h_ei_unlock(const u32 *r, u32 *eax)    { (void)r; *eax = d1h_13adc_core(32u); }
+static void m_d1h_ei_flag(const u32 *r, u32 *eax)      { (void)r; *eax = d1h_13adc_core(64u); }
+
+/* 0x1282C's mutants. The rng runs on both sides (0x5D7DC real), the spawn is a stub whose EAX is
+ * the record the raw stores the y velocity into (0x128C5). */
+static u32 d1h_1282c_core(u32 mut)
+{
+    if ((DSW(DS_000EF6DC) & ((mut & 1u) ? 0x1Fu : 0x3Fu)) != 0) return 0u;   /* @gate */
+    u32 draw = rng_next(7u);
+    if ((draw & ((mut & 2u) ? 1u : 3u)) != 0) return 0u;                    /* @draw */
+    s32 off; s32 yvel; u32 flag5;
+    if (((draw & 4u) != 0) != ((mut & 4u) != 0)) {                          /* @arm */
+        off = 0x2800; yvel = (s32)0xFFFFFF80; flag5 = 0u;
+    } else {
+        off = (s32)0xFFFFD800; yvel = 0x80; flag5 = 0x4000u;
+    }
+    if (mut & 8u) flag5 = 0u;                                               /* @flag */
+    s32 r1, r2;
+    if (mut & 16u) { r2 = (s32)rng_next(0x2000u); r1 = (s32)rng_next(0x1300u); }   /* @order */
+    else { r1 = (s32)rng_next(0x1300u); r2 = (s32)rng_next(0x2000u); }
+    s32 a2 = ((mut & 32u) ? (s32)(s16)DSW(DS_000F0AF0) : (s32)DSD(DS_000F0AF0)) + off;   /* @cam */
+    s32 a3 = (s16)((mut & 64u) ? r2 : r1);                                  /* @r1 */
+    s32 a4 = (s16)((0x1300 - r1) + ((mut & 128u) ? 0 : r2));                /* @a4 */
+    u32 rec = actor_spawn((const u32 *)(mem + 0x000BB254u + ((mut & 256u) ? 4u : 0u)), (u32)a2,   /* @desc */
+                          (u32)a3, (u32)a4, flag5);
+    if (rec != 0) {
+        if (mut & 512u) DSD(rec + 0x34u) = (u32)(u16)yvel;                  /* @width */
+        else if (mut & 1024u) DSW(rec + 0x36u) = (u16)yvel;                 /* @field */
+        else DSW(rec + 0x34u) = (u16)yvel;
+    }
+    return 0u;
+}
+static void b_d1h_1282c(const u32 *r, u32 *eax)        { (void)r; camera_dust_spawn(); *eax = 0u; }
+static void m_d1h_ds_gate(const u32 *r, u32 *eax)      { (void)r; *eax = d1h_1282c_core(1u); }
+static void m_d1h_ds_draw(const u32 *r, u32 *eax)      { (void)r; *eax = d1h_1282c_core(2u); }
+static void m_d1h_ds_arm(const u32 *r, u32 *eax)       { (void)r; *eax = d1h_1282c_core(4u); }
+static void m_d1h_ds_flag(const u32 *r, u32 *eax)      { (void)r; *eax = d1h_1282c_core(8u); }
+static void m_d1h_ds_order(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_1282c_core(16u); }
+static void m_d1h_ds_cam(const u32 *r, u32 *eax)       { (void)r; *eax = d1h_1282c_core(32u); }
+static void m_d1h_ds_r1(const u32 *r, u32 *eax)        { (void)r; *eax = d1h_1282c_core(64u); }
+static void m_d1h_ds_a4(const u32 *r, u32 *eax)        { (void)r; *eax = d1h_1282c_core(128u); }
+static void m_d1h_ds_desc(const u32 *r, u32 *eax)      { (void)r; *eax = d1h_1282c_core(256u); }
+static void m_d1h_ds_width(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_1282c_core(512u); }
+static void m_d1h_ds_field(const u32 *r, u32 *eax)     { (void)r; *eax = d1h_1282c_core(1024u); }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -15264,6 +15400,43 @@ static const binding_t k_bindings[] = {
     { "hit_stance_timer@val",              m_c3g_stm_val,   0x00000000u },
     { "hit_stance_timer@eclear",           m_c3g_stm_eclear, 0x00000000u },
     { "hit_stance_timer@side",             m_c3g_stm_side,  0x00000000u },
+    /* D1h (record 2026-10-11-reverse-d1h) */
+    { "attract_voice_tick",                b_d1h_10f28,      0x00000000u },
+    { "attract_voice_tick@signed",         m_d1h_vt_signed,  0x00000000u },
+    { "attract_voice_tick@zero",           m_d1h_vt_zero,    0x00000000u },
+    { "attract_voice_tick@novoice",        m_d1h_vt_novoice, 0x00000000u },
+    { "attract_voice_tick@reload",         m_d1h_vt_reload,  0x00000000u },
+    { "attract_voice_tick@early",          m_d1h_vt_early,   0x00000000u },
+    { "attract_voice_tick@al",             m_d1h_vt_al,      0x00000000u },
+    { "attract_voice_tick@pick",           m_d1h_vt_pick,    0x00000000u },
+    { "attract_voice_tick@store",          m_d1h_vt_store,   0x00000000u },
+    { "camera_dust_list_init",               b_d1h_12750,       0x00000000u },
+    { "camera_dust_list_init@bound",         m_d1h_dl_bound,    0x00000000u },
+    { "camera_dust_list_init@stride",        m_d1h_dl_stride,   0x00000000u },
+    { "camera_dust_list_init@after",         m_d1h_dl_after,    0x00000000u },
+    { "camera_dust_list_init@sentinel",      m_d1h_dl_sentinel, 0x00000000u },
+    { "camera_dust_list_init@inuse",         m_d1h_dl_inuse,    0x00000000u },
+    { "camera_dust_list_init@late",          m_d1h_dl_late,     0x00000000u },
+    { "camera_dust_spawn",                   b_d1h_1282c,       0x00000000u },
+    { "camera_dust_spawn@gate",              m_d1h_ds_gate,     0x00000000u },
+    { "camera_dust_spawn@draw",              m_d1h_ds_draw,     0x00000000u },
+    { "camera_dust_spawn@arm",               m_d1h_ds_arm,      0x00000000u },
+    { "camera_dust_spawn@flag",              m_d1h_ds_flag,     0x00000000u },
+    { "camera_dust_spawn@order",             m_d1h_ds_order,    0x00000000u },
+    { "camera_dust_spawn@cam",               m_d1h_ds_cam,      0x00000000u },
+    { "camera_dust_spawn@r1",                m_d1h_ds_r1,       0x00000000u },
+    { "camera_dust_spawn@a4",                m_d1h_ds_a4,       0x00000000u },
+    { "camera_dust_spawn@desc",              m_d1h_ds_desc,     0x00000000u },
+    { "camera_dust_spawn@width",             m_d1h_ds_width,    0x00000000u },
+    { "camera_dust_spawn@field",             m_d1h_ds_field,    0x00000000u },
+    { "effects_init",                        b_d1h_13adc,       0x00000000u },
+    { "effects_init@bound",                  m_d1h_ei_bound,    0x00000000u },
+    { "effects_init@stride",                 m_d1h_ei_stride,   0x00000000u },
+    { "effects_init@after",                  m_d1h_ei_after,    0x00000000u },
+    { "effects_init@sentinel",               m_d1h_ei_sentinel, 0x00000000u },
+    { "effects_init@active",                 m_d1h_ei_active,   0x00000000u },
+    { "effects_init@unlock",                 m_d1h_ei_unlock,   0x00000000u },
+    { "effects_init@flag",                   m_d1h_ei_flag,     0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
