@@ -13583,6 +13583,652 @@ static void m_c3g_stm_val(const u32 *r, u32 *eax)    { *eax = c3g_1922c_core(r, 
 static void m_c3g_stm_eclear(const u32 *r, u32 *eax) { *eax = c3g_1922c_core(r, 128u); }
 static void m_c3g_stm_side(const u32 *r, u32 *eax)   { *eax = c3g_1922c_core(r, 256u); }
 
+/* ---- D1 batch d1i (record 2026-10-11-reverse-d1i) -------------------------------------------- */
+#include "game/menu.h"
+#include "game/nameentry.h"
+#include "platform/input.h"
+
+/* 0x13F68 name_filter_word: EAX = word, EDX = str. Its callers read AL (0x13F2F `or ah,al`) or
+ * nothing (the recursive site 0x1403E, `mov eax,1` at 0x14043). The mutants run a copy of the
+ * port's transliteration with one choice changed. */
+static u32 d1i_13f68_core(u32 eax, u32 edx, u32 mut)
+{
+    u16 bx = DSW(0x000FD0F2u);
+    u32 edi = DSD(0x000FD0F4u);
+    u8 cl, ch;
+    u32 esi;
+L_79:
+    cl = DSB(edx);
+    if (!(mut & 0x400u)) DSD(0x000FD0F8u) = eax;                    /* @word */
+    if (cl == 0u) goto L_fail;
+L_98:
+    cl = DSB(edx);
+    ch = DSB(eax);
+    if (cl == ch) goto L_AA;
+    ch = DSB(edx + 1u);
+    edx++;
+    if (ch == 0u) goto L_fail;
+    goto L_98;
+L_fail:
+    if (mut & 0x1000u) DSB(0x000FD0F2u) = (u8)bx;                   /* @bxb */
+    else DSW(0x000FD0F2u) = bx;
+    if (!(mut & 0x800u)) DSD(0x000FD0F4u) = edi;                    /* @save */
+    return 0u;
+L_AA:
+    cl = DSB(edx);
+    edi = edx;
+    if (cl == ch) {
+        do {
+            cl = DSB(edx + 1u);
+            ch = DSB(eax);
+            edx++;
+        } while (cl == ch && !(mut & 0x20u));                       /* @strrep: one letter, no collapse */
+    }
+L_BC:
+    cl = DSB(eax);
+    if (cl != 0u && cl == DSB(eax + 1u) && !(mut & 0x40u)) {        /* @wordrep */
+        eax++;
+        goto L_BC;
+    }
+L_CA:
+    {
+        u8 nx = DSB(eax + 1u);
+        eax++;
+        if (nx == 0x20u && !(mut & 0x80u)) goto L_CA;               /* @wspace */
+    }
+    if (DSB(eax) == 0u) goto L_22;
+    bx = (mut & 1u) ? DSW(0x000FD0F0u) : DSB(0x000FD0F0u);          /* @tolw */
+L_E1:
+    {
+        u8 c = DSB(edx);
+        esi = edx + 1u;
+        if (c == 0x20u && !(mut & 0x100u)) {                        /* @sspace */
+            edx = esi;
+            goto L_E1;
+        }
+    }
+    cl = DSB(edx);
+    if (cl == DSB(eax)) goto L_11;
+    if ((cl == 0u && !(mut & 0x2000u)) || bx == 0u) {               /* @nul */
+        eax = DSD(0x000FD0F8u);
+        edx = edi + ((mut & 4u) ? 2u : 1u);                         /* @restart */
+        goto L_79;
+    }
+    edx = esi;
+    if (!(mut & 2u)) bx--;                                          /* @nodec */
+    goto L_E1;
+L_11:
+    cl = DSB(edx + 1u);
+    ch = DSB(eax);
+    edx++;
+    if (cl != ch) goto L_CA;
+    if (cl != DSB(eax + 1u) || (mut & 0x4000u)) goto L_11;          /* @rep2 */
+    goto L_CA;
+L_22:
+    for (;;) {
+        DSW(0x000FD0F2u) = bx;
+        DSD(0x000FD0F4u) = edi;
+        if ((mut & 0x200u) ? edi > edx : edi >= edx) break;         /* @star */
+        DSB(edi) = 0x2Au;
+        edi++;
+    }
+    if (mut & 8u) return 1u;                                        /* @norec */
+    {
+        u32 rec = d1i_13f68_core(DSD(0x000FD0F8u), edx, mut);
+        return (mut & 0x10u) ? rec : 1u;                            /* @ret */
+    }
+}
+static void b_d1i_13f68(const u32 *r, u32 *eax)        { *eax = name_filter_word(r[R_EAX], r[R_EDX]); }
+static void m_d1i_nfw_tolw(const u32 *r, u32 *eax)     { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 1u); }
+static void m_d1i_nfw_nodec(const u32 *r, u32 *eax)    { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 2u); }
+static void m_d1i_nfw_restart(const u32 *r, u32 *eax)  { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 4u); }
+static void m_d1i_nfw_norec(const u32 *r, u32 *eax)    { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 8u); }
+static void m_d1i_nfw_ret(const u32 *r, u32 *eax)      { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x10u); }
+static void m_d1i_nfw_strrep(const u32 *r, u32 *eax)   { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x20u); }
+static void m_d1i_nfw_wordrep(const u32 *r, u32 *eax)  { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x40u); }
+static void m_d1i_nfw_wspace(const u32 *r, u32 *eax)   { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x80u); }
+static void m_d1i_nfw_sspace(const u32 *r, u32 *eax)   { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x100u); }
+static void m_d1i_nfw_star(const u32 *r, u32 *eax)     { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x200u); }
+static void m_d1i_nfw_word(const u32 *r, u32 *eax)     { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x400u); }
+static void m_d1i_nfw_save(const u32 *r, u32 *eax)     { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x800u); }
+static void m_d1i_nfw_bxb(const u32 *r, u32 *eax)      { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x1000u); }
+static void m_d1i_nfw_nul(const u32 *r, u32 *eax)      { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x2000u); }
+static void m_d1i_nfw_rep2(const u32 *r, u32 *eax)     { *eax = d1i_13f68_core(r[R_EAX], r[R_EDX], 0x4000u); }
+
+/* 0x1AE28 config_keys_apply (EAX = rec), 0x1AE20 its default-record entry, 0x1AEE0
+ * config_keys_pack (EAX = rec) and 0x1AF64 config_keys_load (EAX = rec). No caller reads EAX:
+ * 0x1A556/0x3234C `xor eax,eax`, 0x313F5 calls 0x2EA74 (`xor eax,eax`), 0x2CB55 `mov eax,0xb4`;
+ * 0x19E07 `mov eax,0x17`, 0x20CF7 `mov eax,esp`, 0x31158 `xor eax,eax`, 0x31F5D/0x32407 load AX
+ * and 0x31F8A/0x32436 `xor eax,eax` before any 32-bit read; 0x20CFE `xor eax,eax`. */
+static u32 d1i_keys_apply_core(u32 rec, u32 mut)
+{
+    u32 bios = DSD(0x00101514u);
+    u32 d1 = (mut & 4u) ? 0x12u : 0u, d2 = (mut & 4u) ? 0u : 0x12u;      /* @dev: the devices swapped */
+    DSW(bios + 0x2D4u) = (mut & 1u) ? DSW(rec + d1) : (mut & 2u) ? (u16)(s16)(s8)DSB(rec + d1) : DSB(rec + d1);
+    if (!(mut & 0x400u)) DSB(0x001014ACu) = DSB(rec + d1);              /* @mirror */
+    DSW(bios + 0x2D6u) = DSB(rec + d2);
+    DSB(0x001014BEu) = DSB(rec + d2);
+    for (u32 i = 0u; i < ((mut & 0x20u) ? 7u : 8u); i++) {              /* @count */
+        u16 w = DSW(rec + 2u + 2u * i);
+        u8 lo = (u8)w, hi = (u8)(w >> 8);
+        DSB(0x001014AEu + 1u + 2u * i) = (mut & 8u) ? hi : lo;          /* @swap */
+        DSB(0x001014AEu + 2u * i) = (mut & 8u) ? lo : hi;
+        DSB(bios + 0x2DEu + i) = (mut & 0x10u) ? lo : hi;               /* @bioslo */
+    }
+    if (!(mut & 0x800u)) bios = DSD(0x00101514u);                       /* @reread: the port before D1 */
+    for (u32 i = 0u; i < 8u; i++) {
+        u16 w = DSW(rec + ((mut & 0x40u) ? 0x12u : 0x14u) + 2u * i);    /* @keys2 */
+        DSB(0x001014C0u + 1u + 2u * i) = (u8)w;
+        DSB(0x001014C0u + 2u * i) = (u8)(w >> 8);
+        DSB(bios + 0x2E6u + i) = (u8)(w >> 8);
+    }
+    if (mut & 0x80u) DSW(0x001014D0u) = DSW(rec + 0x24u);               /* @w24: a word store */
+    else DSB(0x001014D0u) = DSB(rec + 0x24u);
+    if (!(mut & 0x100u)) DSB(0x001014D2u) = DSB(rec + 0x26u);           /* @w26 */
+    return 0u;
+}
+static void b_d1i_1ae28(const u32 *r, u32 *eax)        { config_keys_apply(r[R_EAX]); *eax = 0u; }
+static void m_d1i_ka_devw(const u32 *r, u32 *eax)      { *eax = d1i_keys_apply_core(r[R_EAX], 1u); }
+static void m_d1i_ka_sext(const u32 *r, u32 *eax)      { *eax = d1i_keys_apply_core(r[R_EAX], 2u); }
+static void m_d1i_ka_dev(const u32 *r, u32 *eax)       { *eax = d1i_keys_apply_core(r[R_EAX], 4u); }
+static void m_d1i_ka_swap(const u32 *r, u32 *eax)      { *eax = d1i_keys_apply_core(r[R_EAX], 8u); }
+static void m_d1i_ka_bioslo(const u32 *r, u32 *eax)    { *eax = d1i_keys_apply_core(r[R_EAX], 0x10u); }
+static void m_d1i_ka_count(const u32 *r, u32 *eax)     { *eax = d1i_keys_apply_core(r[R_EAX], 0x20u); }
+static void m_d1i_ka_keys2(const u32 *r, u32 *eax)     { *eax = d1i_keys_apply_core(r[R_EAX], 0x40u); }
+static void m_d1i_ka_w24(const u32 *r, u32 *eax)       { *eax = d1i_keys_apply_core(r[R_EAX], 0x80u); }
+static void m_d1i_ka_w26(const u32 *r, u32 *eax)       { *eax = d1i_keys_apply_core(r[R_EAX], 0x100u); }
+static void m_d1i_ka_mirror(const u32 *r, u32 *eax)    { *eax = d1i_keys_apply_core(r[R_EAX], 0x400u); }
+static void m_d1i_ka_reread(const u32 *r, u32 *eax)    { *eax = d1i_keys_apply_core(r[R_EAX], 0x800u); }
+static void b_d1i_1ae20(const u32 *r, u32 *eax)        { (void)r; config_keys_apply_defaults(); *eax = 0u; }
+static void m_d1i_kd_rec(const u32 *r, u32 *eax)       { (void)r; config_keys_apply(0x000A2C64u); *eax = 0u; }
+static void m_d1i_kd_eax(const u32 *r, u32 *eax)       { config_keys_apply(r[R_EAX]); *eax = 0u; }
+
+static u32 d1i_keys_pack_core(u32 rec, u32 mut)
+{
+    DSW(rec) = (mut & 1u) ? DSW(0x001014ACu) : DSB(0x001014ACu);        /* @devw */
+    DSW(rec + ((mut & 2u) ? 0x10u : 0x12u)) = DSB(0x001014BEu);         /* @dev2 */
+    for (u32 i = 0u; i < ((mut & 8u) ? 7u : 8u); i++) {                 /* @count */
+        u32 hi = DSB(0x001014AEu + 2u * i), lo = DSB(0x001014AEu + 1u + 2u * i);
+        DSW(rec + 2u + 2u * i) = (u16)((mut & 4u) ? (lo << 8) | hi : (hi << 8) | lo);   /* @order */
+    }
+    for (u32 i = 0u; i < 8u; i++) {
+        u32 src = (mut & 0x10u) ? 0x001014AEu : 0x001014C0u;            /* @keys2 */
+        DSW(rec + 0x14u + 2u * i) = (u16)(((u32)DSB(src + 2u * i) << 8) | DSB(src + 1u + 2u * i));
+    }
+    DSW(rec + 0x24u) = (mut & 0x20u) ? DSW(0x001014D0u) : DSB(0x001014D0u);   /* @w24w */
+    if (mut & 0x40u) DSB(rec + 0x26u) = DSB(0x001014D2u);               /* @w26b: a byte store */
+    else DSW(rec + 0x26u) = DSB(0x001014D2u);
+    return 0u;
+}
+static void b_d1i_1aee0(const u32 *r, u32 *eax)        { config_keys_pack(r[R_EAX]); *eax = 0u; }
+static void m_d1i_kp_devw(const u32 *r, u32 *eax)      { *eax = d1i_keys_pack_core(r[R_EAX], 1u); }
+static void m_d1i_kp_dev2(const u32 *r, u32 *eax)      { *eax = d1i_keys_pack_core(r[R_EAX], 2u); }
+static void m_d1i_kp_order(const u32 *r, u32 *eax)     { *eax = d1i_keys_pack_core(r[R_EAX], 4u); }
+static void m_d1i_kp_count(const u32 *r, u32 *eax)     { *eax = d1i_keys_pack_core(r[R_EAX], 8u); }
+static void m_d1i_kp_keys2(const u32 *r, u32 *eax)     { *eax = d1i_keys_pack_core(r[R_EAX], 0x10u); }
+static void m_d1i_kp_w24w(const u32 *r, u32 *eax)      { *eax = d1i_keys_pack_core(r[R_EAX], 0x20u); }
+static void m_d1i_kp_w26b(const u32 *r, u32 *eax)      { *eax = d1i_keys_pack_core(r[R_EAX], 0x40u); }
+
+static u32 d1i_keys_load_core(u32 rec, u32 mut)
+{
+    u32 bios = DSD(0x00101514u);
+    DSW(bios + 0x2D4u) = (mut & 1u) ? DSW(rec) : DSB(rec);              /* @devw */
+    DSW(bios + 0x2D6u) = DSB(rec + ((mut & 2u) ? 0x10u : 0x12u));       /* @dev2 */
+    for (u32 i = 0u; i < ((mut & 8u) ? 7u : 8u); i++)                   /* @count */
+        DSB(bios + 0x2DEu + i) = (u8)(DSW(rec + 2u + 2u * i) >> ((mut & 4u) ? 0 : 8));   /* @lo */
+    if (!(mut & 0x10u)) bios = DSD(0x00101514u);                        /* @reread */
+    for (u32 i = 0u; i < 8u; i++)
+        DSB(bios + 0x2E6u + i) = (u8)(DSW(rec + ((mut & 0x20u) ? 0x12u : 0x14u) + 2u * i) >> 8);   /* @keys2 */
+    return 0u;
+}
+static void b_d1i_1af64(const u32 *r, u32 *eax)        { config_keys_load(r[R_EAX]); *eax = 0u; }
+static void m_d1i_kl_devw(const u32 *r, u32 *eax)      { *eax = d1i_keys_load_core(r[R_EAX], 1u); }
+static void m_d1i_kl_dev2(const u32 *r, u32 *eax)      { *eax = d1i_keys_load_core(r[R_EAX], 2u); }
+static void m_d1i_kl_lo(const u32 *r, u32 *eax)        { *eax = d1i_keys_load_core(r[R_EAX], 4u); }
+static void m_d1i_kl_count(const u32 *r, u32 *eax)     { *eax = d1i_keys_load_core(r[R_EAX], 8u); }
+static void m_d1i_kl_reread(const u32 *r, u32 *eax)    { *eax = d1i_keys_load_core(r[R_EAX], 0x10u); }
+static void m_d1i_kl_keys2(const u32 *r, u32 *eax)     { *eax = d1i_keys_load_core(r[R_EAX], 0x20u); }
+
+/* 0x1C3FC render_list_sort: EAX = the list head pointer, the constant 0x105B44 at both call sites
+ * (0x2564B and 0x2EA90 `mov eax,0x105b44`), which the port's function hard-wires; the binding
+ * ignores EAX and every case passes that constant. The raw leaves only on EAX == 0 (0x1C420,
+ * 0x1C449), so the full register is compared against 0. */
+static u32 d1i_sort_core(u32 mut)
+{
+    u32 off = (mut & 0x10u) ? 0x0Cu : 0x0Eu;                            /* @off */
+    u32 head = DSD(0x00105B44u);
+    if (head == 0) return 0u;
+    u32 prev = head, cur = DSD(head);
+    while (cur != 0) {
+        u32 next = DSD(cur);
+        u32 lc = DSW(DSD(cur + 4u) + off), lp = DSW(DSD(prev + 4u) + off);
+        if (mut & 8u) { lc &= 0xFFu; lp &= 0xFFu; }                     /* @byte */
+        if ((mut & 1u) ? (s16)lc < (s16)lp : lc < lp) {                 /* @signed */
+            if (!(mut & 2u)) DSD(prev) = next;                          /* @unlink */
+            render_splice((u32 *)(mem + 0x00105B44u), cur);
+            if (mut & 4u) prev = cur;                                   /* @prev */
+        } else {
+            prev = cur;
+        }
+        cur = next;
+    }
+    return (mut & 0x20u) ? head : 0u;                                   /* @ret */
+}
+static void b_d1i_1c3fc(const u32 *r, u32 *eax)        { (void)r; render_list_sort(); *eax = 0u; }
+static void m_d1i_sort_signed(const u32 *r, u32 *eax)  { (void)r; *eax = d1i_sort_core(1u); }
+static void m_d1i_sort_unlink(const u32 *r, u32 *eax)  { (void)r; *eax = d1i_sort_core(2u); }
+static void m_d1i_sort_prev(const u32 *r, u32 *eax)    { (void)r; *eax = d1i_sort_core(4u); }
+static void m_d1i_sort_byte(const u32 *r, u32 *eax)    { (void)r; *eax = d1i_sort_core(8u); }
+static void m_d1i_sort_off(const u32 *r, u32 *eax)     { (void)r; *eax = d1i_sort_core(0x10u); }
+static void m_d1i_sort_ret(const u32 *r, u32 *eax)     { (void)r; *eax = d1i_sort_core(0x20u); }
+
+/* 0x20860 nameentry_key: EAX = the key's ascii byte (a full 32-bit compare in the raw). Its one
+ * caller ignores EAX: 0x24D6C jumps to 0x24D08 `mov ah,1; ...; int 0x16`, after which only AX is
+ * read (0x24D1B `mov bx,ax`) or EAX is cleared (0x24D19 `sub eax,eax`, 0x24D26 `xor eax,eax`). */
+static u32 d1i_key_core(u32 c, u32 mut)
+{
+    u32 edx = c;
+    u32 wr = DSD(0x001044BCu) + 1u;
+    if (((mut & 1u) ? wr : (wr & 0xFu)) != DSD(0x001044C8u)) {          /* @full */
+        if (edx == 8u) {
+            edx = (mut & 2u) ? 0x1Cu : 0x1Bu;                           /* @bs */
+        } else if (edx == 0xDu) {
+            edx = (mut & 4u) ? 0x1Bu : 0x1Cu;                           /* @enter */
+        } else if (edx == 0x20u) {
+            edx = (mut & 8u) ? 0x20u : 0x1Au;                           /* @space */
+        } else {
+            u32 idx = (u8)(edx + ((mut & 0x10u) ? 0u : 1u));            /* @idx */
+            s32 cls = (s32)DSD(0x00081C81u + idx) >> 24;
+            if ((cls & ((mut & 0x20u) ? 0x80 : 0xC0)) == 0)             /* @class */
+                return 0u;
+            s32 up = (s32)edx;
+            if (!(mut & 0x40u) && up >= 0x61 && up <= 0x7A) up -= 0x20; /* @upper */
+            if ((mut & 0x1000u) && (u8)up >= 0x61u && (u8)up <= 0x7Au) up -= 0x20;   /* @up8 */
+            edx = (u32)(up - ((mut & 0x80u) ? 0x40 : 0x41));            /* @base */
+        }
+        u32 w = DSD(0x001044BCu) + 1u;
+        DSD(0x00104458u + ((mut & 0x100u) ? (w & 0xFu) : w) * 4u) = edx;   /* @mask */
+        DSD(0x001044BCu) = (mut & 0x200u) ? w : (w & 0xFu);             /* @wstore */
+    } else if (mut & 0x400u) {
+        return 0u;                                                      /* @fullflag */
+    }
+    if (mut & 0x800u) DSD(0x001044D8u) = 1u;                            /* @flagw */
+    else DSB(0x001044D8u) = 1u;
+    return 0u;
+}
+static void b_d1i_20860(const u32 *r, u32 *eax)        { nameentry_key(r[R_EAX]); *eax = 0u; }
+static void m_d1i_key_full(const u32 *r, u32 *eax)     { *eax = d1i_key_core(r[R_EAX], 1u); }
+static void m_d1i_key_bs(const u32 *r, u32 *eax)       { *eax = d1i_key_core(r[R_EAX], 2u); }
+static void m_d1i_key_enter(const u32 *r, u32 *eax)    { *eax = d1i_key_core(r[R_EAX], 4u); }
+static void m_d1i_key_space(const u32 *r, u32 *eax)    { *eax = d1i_key_core(r[R_EAX], 8u); }
+static void m_d1i_key_idx(const u32 *r, u32 *eax)      { *eax = d1i_key_core(r[R_EAX], 0x10u); }
+static void m_d1i_key_class(const u32 *r, u32 *eax)    { *eax = d1i_key_core(r[R_EAX], 0x20u); }
+static void m_d1i_key_upper(const u32 *r, u32 *eax)    { *eax = d1i_key_core(r[R_EAX], 0x40u); }
+static void m_d1i_key_base(const u32 *r, u32 *eax)     { *eax = d1i_key_core(r[R_EAX], 0x80u); }
+static void m_d1i_key_mask(const u32 *r, u32 *eax)     { *eax = d1i_key_core(r[R_EAX], 0x100u); }
+static void m_d1i_key_wstore(const u32 *r, u32 *eax)   { *eax = d1i_key_core(r[R_EAX], 0x200u); }
+static void m_d1i_key_fullflag(const u32 *r, u32 *eax) { *eax = d1i_key_core(r[R_EAX], 0x400u); }
+static void m_d1i_key_flagw(const u32 *r, u32 *eax)    { *eax = d1i_key_core(r[R_EAX], 0x800u); }
+static void m_d1i_key_up8(const u32 *r, u32 *eax)      { *eax = d1i_key_core(r[R_EAX], 0x1040u); }
+static void m_d1i_key_byte(const u32 *r, u32 *eax)     { *eax = d1i_key_core((u8)r[R_EAX], 0u); }
+
+/* The credit layer's leaves. 0x2BF00 `mov byte [0x105c05],0x1d; ret` leaves EAX as it came and its
+ * one caller reloads it (0x20CD1 `xor eax,eax`): mask 0. 0x2CA2C, 0x2CA48 and 0x2CA78 set the
+ * whole register (`and eax,0xff`, `mov eax,1`, `xor eax,eax`), as does 0x2D2F0 (`xor eax,eax`).
+ * 0x2C304 returns the dword it stores (`mov [0x105c00],eax; ret`) and the port's function is void:
+ * its binding reports the stored dword, so the EAX comparison adds nothing to the byte comparison
+ * and says nothing about a caller (0x2CBB9 `mov eax,edx` reloads it; 0x10E80 returns it to its own
+ * callers, which were not followed: record §4). */
+static void b_d1i_2bf00(const u32 *r, u32 *eax)        { (void)r; config_set_credit_row_init(); *eax = 0u; }
+static void m_d1i_row_val(const u32 *r, u32 *eax)      { (void)r; DSB(0x00105C05u) = 0x1Cu; *eax = 0u; }
+static void m_d1i_row_width(const u32 *r, u32 *eax)    { (void)r; DSW(0x00105C05u) = 0x1Du; *eax = 0u; }
+static void m_d1i_row_addr(const u32 *r, u32 *eax)     { (void)r; DSB(0x00105C04u) = 0x1Du; *eax = 0u; }
+static u32 d1i_2c304_core(u32 mut)
+{
+    u32 v = config_field_get((mut & 1u) ? 0x2Au : 0x29u);              /* @field */
+    v = (v & ((mut & 2u) ? 0xFF0000u : 0xF0000u)) >> ((mut & 4u) ? 12 : 16);   /* @mask, @shift */
+    if (!(mut & 8u)) v += 1u;                                           /* @inc */
+    if (mut & 0x10u) DSW(0x00105C00u) = (u16)v;                         /* @width */
+    else DSD(0x00105C00u) = v;
+    return DSD(0x00105C00u);
+}
+static void b_d1i_2c304(const u32 *r, u32 *eax)        { (void)r; config_credits_init(); *eax = DSD(0x00105C00u); }
+static void m_d1i_ci_field(const u32 *r, u32 *eax)     { (void)r; *eax = d1i_2c304_core(1u); }
+static void m_d1i_ci_mask(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_2c304_core(2u); }
+static void m_d1i_ci_shift(const u32 *r, u32 *eax)     { (void)r; *eax = d1i_2c304_core(4u); }
+static void m_d1i_ci_inc(const u32 *r, u32 *eax)       { (void)r; *eax = d1i_2c304_core(8u); }
+static void m_d1i_ci_width(const u32 *r, u32 *eax)     { (void)r; *eax = d1i_2c304_core(0x10u); }
+static void b_d1i_2ca2c(const u32 *r, u32 *eax)        { (void)r; *eax = config_has_credit(); }
+static void m_d1i_hc_fpw(const u32 *r, u32 *eax)       { (void)r; *eax = (DSD(0x00105D60u) | DSD(0x00105C00u)) != 0u; }
+static void m_d1i_hc_crb(const u32 *r, u32 *eax)       { (void)r; *eax = (DSB(0x00105D60u) | DSB(0x00105C00u)) != 0u; }
+static void m_d1i_hc_and(const u32 *r, u32 *eax)       { (void)r; *eax = DSB(0x00105D60u) != 0u && DSD(0x00105C00u) != 0u; }
+static void m_d1i_hc_val(const u32 *r, u32 *eax)       { (void)r; *eax = DSB(0x00105D60u) | DSD(0x00105C00u); }
+static u32 d1i_2ca48_core(u32 mut)
+{
+    if ((mut & 0x10u) && DSD(0x00105C00u) == 0u) return 0u;             /* @order */
+    if (((mut & 1u) ? DSD(0x00105D60u) : DSB(0x00105D60u)) != 0u) return 1u;   /* @fpw */
+    if (((mut & 2u) ? DSB(0x00105C00u) : DSD(0x00105C00u)) == 0u) return 0u;   /* @crb */
+    if ((mut & 4u) || ((mut & 0x20u) ? DSD(0x00104B1Fu) : DSB(0x00104B1Fu)) == 0u) {   /* @nodebit, @ndw */
+        if (mut & 8u) DSB(0x00105C00u) = (u8)(DSB(0x00105C00u) - 1u);   /* @decb */
+        else DSD(0x00105C00u)--;
+    }
+    return 1u;
+}
+static void b_d1i_2ca48(const u32 *r, u32 *eax)        { (void)r; *eax = config_credit_take(); }
+static void m_d1i_ct_fpw(const u32 *r, u32 *eax)       { (void)r; *eax = d1i_2ca48_core(1u); }
+static void m_d1i_ct_crb(const u32 *r, u32 *eax)       { (void)r; *eax = d1i_2ca48_core(2u); }
+static void m_d1i_ct_nodebit(const u32 *r, u32 *eax)   { (void)r; *eax = d1i_2ca48_core(4u); }
+static void m_d1i_ct_decb(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_2ca48_core(8u); }
+static void m_d1i_ct_order(const u32 *r, u32 *eax)     { (void)r; *eax = d1i_2ca48_core(0x10u); }
+static void m_d1i_ct_ndw(const u32 *r, u32 *eax)       { (void)r; *eax = d1i_2ca48_core(0x20u); }
+static void b_d1i_2ca78(const u32 *r, u32 *eax)        { (void)r; *eax = config_credit_zero(); }
+static void m_d1i_cz_keep(const u32 *r, u32 *eax)      { *eax = r[R_EAX]; }
+static void m_d1i_cz_al(const u32 *r, u32 *eax)        { *eax = r[R_EAX] & 0xFFFFFF00u; }
+static void b_d1i_2d2f0(const u32 *r, u32 *eax)        { *eax = input_joystick_device(r[R_EAX]); }
+static void m_d1i_jd_keep(const u32 *r, u32 *eax)      { *eax = r[R_EAX]; }
+static void m_d1i_jd_al(const u32 *r, u32 *eax)        { *eax = r[R_EAX] & 0xFFFFFF00u; }
+
+/* 0x2CCD0 config_menu_default_bits: EAX = the table. Its three callers read the whole register
+ * (0x2CB02 `mov edx,eax`, 0x335CA `mov edi,eax`, 0x3368C `mov ebx,eax`). */
+static u32 d1i_2ccd0_core(u32 table, u32 mut)
+{
+    u32 bits = 0u, rec = table;
+    while (((mut & 1u) ? DSB(rec) : DSD(rec)) != 0u) {                  /* @presb */
+        u32 shift = DSB(rec + 4u) & ((mut & 2u) ? 0x0Fu : 0x1Fu);       /* @shift */
+        u32 ent = DSD(rec + 0x10u), edx = 0u, found = 0u;
+        for (;;) {
+            s32 ebx = (s32)(s16)edx;
+            if ((mut & 4u) ? edx >= DSD(rec + 8u) : ebx >= (s32)DSD(rec + 8u)) break;   /* @unsigned: the port before D1 */
+            if (found && !(mut & 8u)) break;                            /* @all */
+            if (DSB(DSD(ent)) == ((mut & 0x10u) ? 0x2Bu : 0x2Au)) {     /* @star */
+                found = 1u;
+                bits |= (u32)(ebx + ((mut & 0x20u) ? 1 : 0)) << shift;  /* @idx1 */
+            }
+            edx++;
+            ent += (mut & 0x40u) ? 4u : 8u;                             /* @estride */
+        }
+        rec += (mut & 0x80u) ? 0x28u : 0x14u;                           /* @stride: every other record */
+    }
+    return bits;
+}
+static void b_d1i_2ccd0(const u32 *r, u32 *eax)        { *eax = config_menu_default_bits(r[R_EAX]); }
+static void m_d1i_mb_presb(const u32 *r, u32 *eax)     { *eax = d1i_2ccd0_core(r[R_EAX], 1u); }
+static void m_d1i_mb_shift(const u32 *r, u32 *eax)     { *eax = d1i_2ccd0_core(r[R_EAX], 2u); }
+static void m_d1i_mb_unsigned(const u32 *r, u32 *eax)  { *eax = d1i_2ccd0_core(r[R_EAX], 4u); }
+static void m_d1i_mb_all(const u32 *r, u32 *eax)       { *eax = d1i_2ccd0_core(r[R_EAX], 8u); }
+static void m_d1i_mb_star(const u32 *r, u32 *eax)      { *eax = d1i_2ccd0_core(r[R_EAX], 0x10u); }
+static void m_d1i_mb_idx1(const u32 *r, u32 *eax)      { *eax = d1i_2ccd0_core(r[R_EAX], 0x20u); }
+static void m_d1i_mb_estride(const u32 *r, u32 *eax)   { *eax = d1i_2ccd0_core(r[R_EAX], 0x40u); }
+static void m_d1i_mb_stride(const u32 *r, u32 *eax)    { *eax = d1i_2ccd0_core(r[R_EAX], 0x80u); }
+
+/* 0x2DB58 hiscore_locate: EAX = rec, EDX = table, EBX = left_out, ECX = size_out (each a pointer or
+ * 0). Its four callers read the whole register (`mov ebx,eax; test eax,eax` at 0x2DBD6 and the
+ * like at 0x2DCC0, 0x2DE01, 0x2DEC6). A non-zero out pointer is a mem[] offset here. */
+static u32 d1i_2db58_core(const u32 *r, u32 mut)
+{
+    u32 rec = r[R_EAX], table = r[R_EDX];
+    u32 lo = (mut & 0x40u) ? r[R_ECX] : r[R_EBX], so = (mut & 0x40u) ? r[R_EBX] : r[R_ECX];   /* @swap */
+    if ((mut & 1u) ? table >= 4u : (mut & 2u) ? (s32)table >= 3 : table >= 3u) return 0u;     /* @bound, @tsigned */
+    u32 desc = 0x0002D3FCu + table * 8u;
+    u32 count = (mut & 0x100u) ? DSD(desc) : DSW(desc);                 /* @countw */
+    if ((mut & 4u) ? (s32)rec >= (s32)count : rec >= count) return 0u;  /* @rsigned */
+    u32 size = (u32)DSW(desc + 4u) + ((mut & 8u) ? 0u : (u32)DSW(desc + 6u));   /* @size */
+    if (lo != 0u) DSD(lo) = ((mut & 0x10u) ? count : count - rec) * size;       /* @left */
+    if (so != 0u) DSD(so) = size;
+    return rec * size + DSD(0x0002D478u + table * ((mut & 0x20u) ? 4u : 8u));   /* @base */
+}
+static void b_d1i_2db58(const u32 *r, u32 *eax)
+{
+    *eax = hiscore_locate(r[R_EAX], r[R_EDX], r[R_EBX] ? (u32 *)(mem + r[R_EBX]) : NULL,
+                          r[R_ECX] ? (u32 *)(mem + r[R_ECX]) : NULL);
+}
+static void m_d1i_hl_bound(const u32 *r, u32 *eax)     { *eax = d1i_2db58_core(r, 1u); }
+static void m_d1i_hl_tsigned(const u32 *r, u32 *eax)   { *eax = d1i_2db58_core(r, 2u); }
+static void m_d1i_hl_rsigned(const u32 *r, u32 *eax)   { *eax = d1i_2db58_core(r, 4u); }
+static void m_d1i_hl_size(const u32 *r, u32 *eax)      { *eax = d1i_2db58_core(r, 8u); }
+static void m_d1i_hl_left(const u32 *r, u32 *eax)      { *eax = d1i_2db58_core(r, 0x10u); }
+static void m_d1i_hl_base(const u32 *r, u32 *eax)      { *eax = d1i_2db58_core(r, 0x20u); }
+static void m_d1i_hl_swap(const u32 *r, u32 *eax)      { *eax = d1i_2db58_core(r, 0x40u); }
+static void m_d1i_hl_countw(const u32 *r, u32 *eax)    { *eax = d1i_2db58_core(r, 0x100u); }
+
+/* 0x2F464 text_number_cont: EAX = value, EDX = width, EBX = pad, ECX = mode. 0x2EFD4 and 0x2F198
+ * are stubs with the stack buffer by value. No caller reads EAX: 0x30A17 `mov
+ * eax,[0xbd44c]`, 0x30D62 `mov eax,[esp]`, 0x328F9 `mov eax,edx`; 0x32918 returns from 0x328B8 to
+ * 0x33052, whose `ret` (as 0x33025's `je 0x33052`) returns from 0x32F98 to 0x331C2 `mov
+ * eax,0x209`; 0x33027 `mov eax,0x8b`. */
+static u32 d1i_2f464_core(const u32 *r, u32 mut)
+{
+    u8 buf[0x14] = {0};
+    s32 value = (s32)r[R_EAX] + ((mut & 1u) ? 1 : 0);                   /* @val */
+    s32 width = (s32)((mut & 2u) ? r[R_EBX] : r[R_EDX]);                /* @swap: width and pad */
+    u32 pad = (mut & 2u) ? r[R_EDX] : r[R_EBX];
+    if (!(mut & 4u)) (void)text_number_format(value, buf, width, pad);  /* @fmt */
+    text_cursor_set((mut & 8u) ? 1 : 0, (mut & 0x10u) ? 0 : -1, buf,    /* @col, @row */
+                    (mut & 0x40u) ? r[R_EBX] : r[R_ECX]);               /* @mode */
+    return 0u;
+}
+static void b_d1i_2f464(const u32 *r, u32 *eax)
+{ text_number_cont((s32)r[R_EAX], (s32)r[R_EDX], r[R_EBX], r[R_ECX]); *eax = 0u; }
+static void m_d1i_tn_val(const u32 *r, u32 *eax)       { *eax = d1i_2f464_core(r, 1u); }
+static void m_d1i_tn_swap(const u32 *r, u32 *eax)      { *eax = d1i_2f464_core(r, 2u); }
+static void m_d1i_tn_fmt(const u32 *r, u32 *eax)       { *eax = d1i_2f464_core(r, 4u); }
+static void m_d1i_tn_col(const u32 *r, u32 *eax)       { *eax = d1i_2f464_core(r, 8u); }
+static void m_d1i_tn_row(const u32 *r, u32 *eax)       { *eax = d1i_2f464_core(r, 0x10u); }
+static void m_d1i_tn_mode(const u32 *r, u32 *eax)      { *eax = d1i_2f464_core(r, 0x40u); }
+
+/* 0x2FE40 menu_entry_find: EAX = base, EDX = stride, EBX = idx (signed). Its callers read the whole
+ * register (0x30557/0x305BE `mov [0x107434],eax`). 0x1C500 runs real on both sides. */
+static u32 d1i_2fe40_core(const u32 *r, u32 mut)
+{
+    u32 entry = r[R_EAX], stride = (mut & 8u) ? 4u : r[R_EDX];          /* @stride */
+    s32 idx = (s32)r[R_EBX];
+    if (idx < 0 && !(mut & 1u)) return 0u;                              /* @neg */
+    for (s32 n = 0; n < idx + ((mut & 0x80u) ? 1 : 0); n++) {           /* @off */
+        if (!(mut & 2u) && ((mut & 4u) ? DSB(entry) : DSD(entry)) == 0u) return 0u;   /* @hole, @holeb */
+        entry += stride;
+    }
+    u32 id = DSD(entry);
+    if (id == 0u && !(mut & 0x40u)) return 0u;                          /* @empty */
+    const u8 *str = game_string_get(id);
+    if (!(mut & 0x10u) && *str == ((mut & 0x20u) ? 0x3Eu : 0x3Fu)) return 0u;   /* @q, @qchar */
+    return entry;
+}
+static void b_d1i_2fe40(const u32 *r, u32 *eax)
+{ *eax = menu_entry_find(r[R_EAX], r[R_EDX], (s32)r[R_EBX]); }
+static void m_d1i_ef_neg(const u32 *r, u32 *eax)       { *eax = d1i_2fe40_core(r, 1u); }
+static void m_d1i_ef_hole(const u32 *r, u32 *eax)      { *eax = d1i_2fe40_core(r, 2u); }
+static void m_d1i_ef_holeb(const u32 *r, u32 *eax)     { *eax = d1i_2fe40_core(r, 4u); }
+static void m_d1i_ef_stride(const u32 *r, u32 *eax)    { *eax = d1i_2fe40_core(r, 8u); }
+static void m_d1i_ef_q(const u32 *r, u32 *eax)         { *eax = d1i_2fe40_core(r, 0x10u); }
+static void m_d1i_ef_qchar(const u32 *r, u32 *eax)     { *eax = d1i_2fe40_core(r, 0x20u); }
+static void m_d1i_ef_empty(const u32 *r, u32 *eax)     { *eax = d1i_2fe40_core(r, 0x40u); }
+static void m_d1i_ef_off(const u32 *r, u32 *eax)       { *eax = d1i_2fe40_core(r, 0x80u); }
+
+/* 0x4F228 render_projection_reset: AL = the byte for 0x107A55. No caller reads EAX: 0x20C4E and
+ * 0x43827 `mov eax,1`; 0x2BBC9 stores ECX twice and calls 0x1C350, whose 0x1C357 `mov eax,1`
+ * precedes any read. */
+static u32 d1i_4f228_core(u32 in, u32 mut)
+{
+    DSB(0x00107A54u) = (mut & 1u) ? (u8)(in >> 8) : 0u;                 /* @ah */
+    if (mut & 2u) DSW(0x00107A55u) = (u8)in;                            /* @w55 */
+    else DSB(0x00107A55u) = (mut & 4u) ? 0u : (u8)in;                   /* @al */
+    if (!(mut & 8u)) DSW(0x00107A3Au) = 0u;                             /* @a3a */
+    if (!(mut & 0x10u)) DSW(0x00107A38u) = 0u;                          /* @a38 */
+    return 0u;
+}
+static void b_d1i_4f228(const u32 *r, u32 *eax)        { render_projection_reset((u8)r[R_EAX]); *eax = 0u; }
+static void m_d1i_pr_ah(const u32 *r, u32 *eax)        { *eax = d1i_4f228_core(r[R_EAX], 1u); }
+static void m_d1i_pr_w55(const u32 *r, u32 *eax)       { *eax = d1i_4f228_core(r[R_EAX], 2u); }
+static void m_d1i_pr_al(const u32 *r, u32 *eax)        { *eax = d1i_4f228_core(r[R_EAX], 4u); }
+static void m_d1i_pr_a3a(const u32 *r, u32 *eax)       { *eax = d1i_4f228_core(r[R_EAX], 8u); }
+static void m_d1i_pr_a38(const u32 *r, u32 *eax)       { *eax = d1i_4f228_core(r[R_EAX], 0x10u); }
+
+/* 0x38990 render_scroll_track. No caller reads EAX: 0x24CC8 calls 0x38990 again, which loads AX
+ * (0x38991) and then EAX (0x3899F) before reading either; after 0x24CCD the paths reach 0x24CED
+ * `mov eax,edx` or 0x24D08 `mov ah,1; int 0x16` (0x24D19 `sub eax,eax`, 0x24D1B `mov bx,ax`,
+ * 0x24D26 `xor eax,eax`). */
+static u32 d1i_38990_core(u32 mut)
+{
+    u32 w = DSW(0x000F0AECu);
+    DSW(0x00107A3Cu) = (u16)((mut & 1u) ? (w & 0xC0C0u) : (mut & 2u) ? w : (w & 0xFFC0u));   /* @mask, @nomask */
+    s32 v = (mut & 4u) ? (s32)(u32)DSW(0x000F0AECu) : (s32)DSD(0x000F0AECu);                 /* @lo */
+    s32 q = (mut & 8u) ? (v >> 6) : (v / 64);                           /* @shift */
+    if (!(mut & 0x10u)) q += (s32)DSW(0x00107A4Eu);                     /* @add */
+    if (mut & 0x20u) DSD(0x00107A4Au) = (u32)q;                         /* @wide */
+    else DSW(0x00107A4Au) = (u16)q;
+    return 0u;
+}
+static void b_d1i_38990(const u32 *r, u32 *eax)        { (void)r; render_scroll_track(); *eax = 0u; }
+static void m_d1i_st_mask(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_38990_core(1u); }
+static void m_d1i_st_nomask(const u32 *r, u32 *eax)    { (void)r; *eax = d1i_38990_core(2u); }
+static void m_d1i_st_lo(const u32 *r, u32 *eax)        { (void)r; *eax = d1i_38990_core(4u); }
+static void m_d1i_st_shift(const u32 *r, u32 *eax)     { (void)r; *eax = d1i_38990_core(8u); }
+static void m_d1i_st_add(const u32 *r, u32 *eax)       { (void)r; *eax = d1i_38990_core(0x10u); }
+static void m_d1i_st_wide(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_38990_core(0x20u); }
+
+/* 0x336C0 palette_list_init. 0x61A70 (the runtime memset) and 0x33734 (palette_record, its own
+ * row) run real on both sides. The raw returns 0x33734's EAX, the new list head it has just stored
+ * at 0x107798 (0x3374C), and 0x1C0AC's path can test it (0x5004A -> 0x4FC05 `in al,dx`, 0x50065
+ * `test eax,eax`); the port's function is void, so the binding reports the stored head: the EAX
+ * comparison adds nothing to the byte comparison (record §4). */
+static u32 d1i_336c0_core(u32 mut)
+{
+    if (!(mut & 1u)) mem_fill(0x00107618u, 0, (mut & 2u) ? 0x170u : 0x180u);   /* @fill, @len */
+    if (!(mut & 4u)) DSD(0x00107798u) = 0x00107498u;                    /* @head */
+    for (u32 i = 0; i < ((mut & 0x10u) ? 0x170u : 0x180u); i += 0x10u)  /* @count */
+        DSD(((mut & 8u) ? 0x00107498u : 0x0010749Cu) + i) = 0xFFFFFFFFu; /* @ff */
+    if (!(mut & 0x20u)) DSD(0x000BD470u) = 0u;                          /* @bd */
+    if (!(mut & 0x40u))                                                 /* @enq */
+        palette_record(0x000BD470u, (mut & 0x80u) ? 1u : 0u, (mut & 0x80u) ? 0u : 1u, 0u);   /* @args */
+    return DSD(0x00107798u);
+}
+static void b_d1i_336c0(const u32 *r, u32 *eax)        { (void)r; palette_list_init(); *eax = DSD(0x00107798u); }
+static void m_d1i_pl_fill(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_336c0_core(1u); }
+static void m_d1i_pl_len(const u32 *r, u32 *eax)       { (void)r; *eax = d1i_336c0_core(2u); }
+static void m_d1i_pl_head(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_336c0_core(4u); }
+static void m_d1i_pl_ff(const u32 *r, u32 *eax)        { (void)r; *eax = d1i_336c0_core(8u); }
+static void m_d1i_pl_count(const u32 *r, u32 *eax)     { (void)r; *eax = d1i_336c0_core(0x10u); }
+static void m_d1i_pl_bd(const u32 *r, u32 *eax)        { (void)r; *eax = d1i_336c0_core(0x20u); }
+static void m_d1i_pl_enq(const u32 *r, u32 *eax)       { (void)r; *eax = d1i_336c0_core(0x40u); }
+static void m_d1i_pl_args(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_336c0_core(0x80u); }
+
+/* 0x500C4 input_pump (EAX = the debounced level, 0x5013E), 0x50146 input_repeat_set (EAX = mask,
+ * DX = first, BX = next; EAX is not touched and every caller reloads it: 0x251DF.. `mov eax,0xbcbdc`,
+ * 0x2CFFC `lea eax,[edx*4]`, 0x30B45/0x31290 call 0x2EA74 `xor eax,eax`) and 0x50161
+ * input_select_bits (EAX = mask in, the selected bits out). */
+static u32 d1i_500c4_core(u32 mut)
+{
+    u32 k = DSD(0x00101514u);
+    u32 a = DSB(k + ((mut & 1u) ? 0x2D9u : 0x2D8u)), b = DSB(k + ((mut & 1u) ? 0x2D8u : 0x2D9u));   /* @k */
+    u32 cur = (a << 24) | (b << 8);
+    u32 changed = DSD(0x000E1C30u) ^ cur;
+    if (!(mut & 2u)) DSD(0x000E1C30u) = cur;                            /* @prev */
+    u32 level = DSD(0x000E1C34u);
+    u32 newlevel = (mut & 4u) ? cur : ((~changed & cur) | (changed & level));   /* @debounce */
+    DSD(0x000E1C34u) = newlevel;
+    if (!(mut & 8u)) DSD(0x000E1C38u) &= newlevel;                      /* @latch */
+    u32 rpt = DSD(0x000E1C3Cu);
+    if ((!(mut & 0x10u) && (changed & level & rpt) != 0u)               /* @rpt1 */
+            || (!(mut & 0x20u) && (newlevel & rpt) == 0u)) {            /* @rpt2 */
+        DSW(0x000E1C40u) = DSW(0x000E1C42u);
+    } else {
+        u32 z;
+        if (mut & 0x40u) { DSB(0x000E1C40u) = (u8)(DSB(0x000E1C40u) - 1u); z = DSB(0x000E1C40u) == 0u; }   /* @decb */
+        else { DSW(0x000E1C40u) = (u16)(DSW(0x000E1C40u) - 1u); z = DSW(0x000E1C40u) == 0u; }
+        if (z) {
+            DSW(0x000E1C40u) = DSW((mut & 0x80u) ? 0x000E1C42u : 0x000E1C44u);   /* @next */
+            if (!(mut & 0x100u)) DSD(0x000E1C38u) &= ~rpt;              /* @clr */
+        }
+    }
+    return (mut & 0x200u) ? cur : DSD(0x000E1C34u);                     /* @ret */
+}
+static void b_d1i_500c4(const u32 *r, u32 *eax)        { (void)r; *eax = input_pump(); }
+static void m_d1i_ip_k(const u32 *r, u32 *eax)         { (void)r; *eax = d1i_500c4_core(1u); }
+static void m_d1i_ip_prev(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_500c4_core(2u); }
+static void m_d1i_ip_debounce(const u32 *r, u32 *eax)  { (void)r; *eax = d1i_500c4_core(4u); }
+static void m_d1i_ip_latch(const u32 *r, u32 *eax)     { (void)r; *eax = d1i_500c4_core(8u); }
+static void m_d1i_ip_rpt1(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_500c4_core(0x10u); }
+static void m_d1i_ip_rpt2(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_500c4_core(0x20u); }
+static void m_d1i_ip_decb(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_500c4_core(0x40u); }
+static void m_d1i_ip_next(const u32 *r, u32 *eax)      { (void)r; *eax = d1i_500c4_core(0x80u); }
+static void m_d1i_ip_clr(const u32 *r, u32 *eax)       { (void)r; *eax = d1i_500c4_core(0x100u); }
+static void m_d1i_ip_ret(const u32 *r, u32 *eax)       { (void)r; *eax = d1i_500c4_core(0x200u); }
+static u32 d1i_50146_core(const u32 *r, u32 mut)
+{
+    if (!(mut & 1u)) DSD(0x000E1C3Cu) = r[R_EAX];                       /* @mask */
+    DSW(0x000E1C42u) = (u16)((mut & 2u) ? r[R_EBX] : r[R_EDX]);         /* @first */
+    if (!(mut & 4u)) DSW(0x000E1C40u) = (u16)r[R_EDX];                  /* @count */
+    if (mut & 0x10u) DSD(0x000E1C44u) = r[R_EBX];                       /* @wide */
+    else DSW(0x000E1C44u) = (u16)((mut & 8u) ? r[R_EDX] : r[R_EBX]);    /* @next */
+    return 0u;
+}
+static void b_d1i_50146(const u32 *r, u32 *eax)        { input_repeat_set(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void m_d1i_rs_mask(const u32 *r, u32 *eax)      { *eax = d1i_50146_core(r, 1u); }
+static void m_d1i_rs_first(const u32 *r, u32 *eax)     { *eax = d1i_50146_core(r, 2u); }
+static void m_d1i_rs_count(const u32 *r, u32 *eax)     { *eax = d1i_50146_core(r, 4u); }
+static void m_d1i_rs_next(const u32 *r, u32 *eax)      { *eax = d1i_50146_core(r, 8u); }
+static void m_d1i_rs_wide(const u32 *r, u32 *eax)      { *eax = d1i_50146_core(r, 0x10u); }
+static u32 d1i_50161_core(u32 mask, u32 mut)
+{
+    u32 level = DSD(0x000E1C34u);
+    if (mask != 0u) {
+        u32 latch = DSD(0x000E1C38u);
+        u32 edge = ((mut & 1u) ? level : (latch ^ level)) & mask;       /* @xor */
+        if (!(mut & 2u)) DSD(0x000E1C38u) = latch | edge;               /* @latch */
+        level = (mut & 4u) ? (level & ~mask) : (mut & 8u) ? ((level & mask) | edge)   /* @keep, @inv */
+                           : ((level & ~mask) | edge);
+    }
+    return level;
+}
+static void b_d1i_50161(const u32 *r, u32 *eax)        { *eax = input_select_bits(r[R_EAX]); }
+static void m_d1i_sb_xor(const u32 *r, u32 *eax)       { *eax = d1i_50161_core(r[R_EAX], 1u); }
+static void m_d1i_sb_latch(const u32 *r, u32 *eax)     { *eax = d1i_50161_core(r[R_EAX], 2u); }
+static void m_d1i_sb_keep(const u32 *r, u32 *eax)      { *eax = d1i_50161_core(r[R_EAX], 4u); }
+static void m_d1i_sb_inv(const u32 *r, u32 *eax)       { *eax = d1i_50161_core(r[R_EAX], 8u); }
+
+/* 0x51F72 gfx_fill_screen: EAX = addr, EDX = value. The raw leaves EAX advanced by 0xFA00 (0x520F7,
+ * 0xC8 passes); the port's function is void, so the binding states that value and the EAX
+ * comparison documents the raw, not the port (0x5211E reloads EAX and 0x5213D clears it; 0x52156
+ * returns 0xAFA00 from 0x52106, whose callers were not followed: record §4). */
+static u32 d1i_51f72_core(const u32 *r, u32 mut)
+{
+    u32 eax = r[R_EAX];
+    for (u32 cl = (mut & 1u) ? 0xC7u : 0xC8u; cl != 0u; cl--) {         /* @count */
+        for (u32 k = 0; k < ((mut & 2u) ? 0x13Cu : 0x140u); k += 4u)    /* @row */
+            DSD(eax + k) = (mut & 8u) ? (r[R_EDX] & 0xFFu) * 0x01010101u : r[R_EDX];   /* @byte */
+        eax += (mut & 4u) ? 0x13Cu : 0x140u;                            /* @step */
+    }
+    return r[R_EAX] + 0xFA00u;
+}
+static void b_d1i_51f72(const u32 *r, u32 *eax)        { gfx_fill_screen(r[R_EAX], r[R_EDX]); *eax = r[R_EAX] + 0xFA00u; }
+static void m_d1i_fs_count(const u32 *r, u32 *eax)     { *eax = d1i_51f72_core(r, 1u); }
+static void m_d1i_fs_row(const u32 *r, u32 *eax)       { *eax = d1i_51f72_core(r, 2u); }
+static void m_d1i_fs_step(const u32 *r, u32 *eax)      { *eax = d1i_51f72_core(r, 4u); }
+static void m_d1i_fs_byte(const u32 *r, u32 *eax)      { *eax = d1i_51f72_core(r, 8u); }
+
+/* 0x32B00 config_play_time_snap and 0x32B4C config_play_time_snap_b (EAX = idx, EDX = arm) and
+ * 0x32A3C config_play_time_close (EAX = mode, EDX = flag): only the arms that do not reach the
+ * deferred audit layer (0x2E934, 0x2DAE4) are exercised (record §4). On those arms the raw leaves
+ * EAX = idx << 2 (0x32B08/0x32B54 `shl eax,2`, not rewritten) and EAX = 0x107488 (0x32A2D in the
+ * run clock 0x32970); the port's functions are void, so the bindings state those values and the
+ * EAX comparison documents the raw, not the port (0x25EF8, 0x28E44, 0x27E02.. reload EAX;
+ * 0x25F6B returns it from 0x25C88, not followed). */
+static void b_d1i_32b00(const u32 *r, u32 *eax)        { config_play_time_snap(r[R_EAX], r[R_EDX]); *eax = r[R_EAX] << 2; }
+static void m_d1i_ps_idx(const u32 *r, u32 *eax)       { DSD(0x00107478u) = DSD(0x0010746Cu + r[R_EAX]); *eax = r[R_EAX] << 2; }
+static void m_d1i_ps_dst(const u32 *r, u32 *eax)       { DSD(0x00107480u) = DSD(0x0010746Cu + r[R_EAX] * 4u); *eax = r[R_EAX] << 2; }
+static void m_d1i_ps_wide(const u32 *r, u32 *eax)      { DSW(0x00107478u) = DSW(0x0010746Cu + r[R_EAX] * 4u); *eax = r[R_EAX] << 2; }
+static void m_d1i_ps_arm(const u32 *r, u32 *eax)       { config_play_time_snap(r[R_EAX], r[R_EDX] & 0xFFu); *eax = r[R_EAX] << 2; }
+static void b_d1i_32b4c(const u32 *r, u32 *eax)        { config_play_time_snap_b(r[R_EAX], r[R_EDX]); *eax = r[R_EAX] << 2; }
+static void m_d1i_pb_idx(const u32 *r, u32 *eax)       { DSD(0x00107480u) = DSD(0x0010746Cu + r[R_EAX]); *eax = r[R_EAX] << 2; }
+static void m_d1i_pb_dst(const u32 *r, u32 *eax)       { DSD(0x00107478u) = DSD(0x0010746Cu + r[R_EAX] * 4u); *eax = r[R_EAX] << 2; }
+static void m_d1i_pb_wide(const u32 *r, u32 *eax)      { DSW(0x00107480u) = DSW(0x0010746Cu + r[R_EAX] * 4u); *eax = r[R_EAX] << 2; }
+static void m_d1i_pb_arm(const u32 *r, u32 *eax)       { config_play_time_snap_b(r[R_EAX], r[R_EDX] & 0xFFu); *eax = r[R_EAX] << 2; }
+static void b_d1i_32a3c(const u32 *r, u32 *eax)        { config_play_time_close(r[R_EAX], r[R_EDX]); *eax = 0x00107488u; }
+static void m_d1i_pc_idx(const u32 *r, u32 *eax)       { DSD(0x0010746Cu + (r[R_EAX] & 7u) * 4u) = 0u; *eax = 0x00107488u; }
+static void m_d1i_pc_drop(const u32 *r, u32 *eax)      { (void)r; *eax = 0x00107488u; }
+static void m_d1i_pc_wide(const u32 *r, u32 *eax)      { DSW(0x0010746Cu + (r[R_EAX] & 3u) * 4u) = 0u; *eax = 0x00107488u; }
+/* ---- end of D1 batch d1i ---------------------------------------------------------------------- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -15264,6 +15910,199 @@ static const binding_t k_bindings[] = {
     { "hit_stance_timer@val",              m_c3g_stm_val,   0x00000000u },
     { "hit_stance_timer@eclear",           m_c3g_stm_eclear, 0x00000000u },
     { "hit_stance_timer@side",             m_c3g_stm_side,  0x00000000u },
+    /* D1 batch d1i */
+    { "name_filter_word",                  b_d1i_13f68,        0x000000FFu },
+    { "name_filter_word@tolw",             m_d1i_nfw_tolw,     0x000000FFu },
+    { "name_filter_word@nodec",            m_d1i_nfw_nodec,    0x000000FFu },
+    { "name_filter_word@restart",          m_d1i_nfw_restart,  0x000000FFu },
+    { "name_filter_word@norec",            m_d1i_nfw_norec,    0x000000FFu },
+    { "name_filter_word@ret",              m_d1i_nfw_ret,      0x000000FFu },
+    { "name_filter_word@strrep",           m_d1i_nfw_strrep,   0x000000FFu },
+    { "name_filter_word@wordrep",          m_d1i_nfw_wordrep,  0x000000FFu },
+    { "name_filter_word@wspace",           m_d1i_nfw_wspace,   0x000000FFu },
+    { "name_filter_word@sspace",           m_d1i_nfw_sspace,   0x000000FFu },
+    { "name_filter_word@star",             m_d1i_nfw_star,     0x000000FFu },
+    { "name_filter_word@word",             m_d1i_nfw_word,     0x000000FFu },
+    { "name_filter_word@save",             m_d1i_nfw_save,     0x000000FFu },
+    { "name_filter_word@bxb",              m_d1i_nfw_bxb,      0x000000FFu },
+    { "name_filter_word@nul",              m_d1i_nfw_nul,      0x000000FFu },
+    { "name_filter_word@rep2",             m_d1i_nfw_rep2,     0x000000FFu },
+    { "config_keys_apply",                 b_d1i_1ae28,        0x00000000u },
+    { "config_keys_apply@devw",            m_d1i_ka_devw,      0x00000000u },
+    { "config_keys_apply@sext",            m_d1i_ka_sext,      0x00000000u },
+    { "config_keys_apply@dev",             m_d1i_ka_dev,       0x00000000u },
+    { "config_keys_apply@swap",            m_d1i_ka_swap,      0x00000000u },
+    { "config_keys_apply@bioslo",          m_d1i_ka_bioslo,    0x00000000u },
+    { "config_keys_apply@count",           m_d1i_ka_count,     0x00000000u },
+    { "config_keys_apply@keys2",           m_d1i_ka_keys2,     0x00000000u },
+    { "config_keys_apply@w24",             m_d1i_ka_w24,       0x00000000u },
+    { "config_keys_apply@w26",             m_d1i_ka_w26,       0x00000000u },
+    { "config_keys_apply@mirror",          m_d1i_ka_mirror,    0x00000000u },
+    { "config_keys_apply@reread",          m_d1i_ka_reread,    0x00000000u },
+    { "config_keys_apply_defaults",        b_d1i_1ae20,        0x00000000u },
+    { "config_keys_apply_defaults@rec",    m_d1i_kd_rec,       0x00000000u },
+    { "config_keys_apply_defaults@eax",    m_d1i_kd_eax,       0x00000000u },
+    { "config_keys_pack",                  b_d1i_1aee0,        0x00000000u },
+    { "config_keys_pack@devw",             m_d1i_kp_devw,      0x00000000u },
+    { "config_keys_pack@dev2",             m_d1i_kp_dev2,      0x00000000u },
+    { "config_keys_pack@order",            m_d1i_kp_order,     0x00000000u },
+    { "config_keys_pack@count",            m_d1i_kp_count,     0x00000000u },
+    { "config_keys_pack@keys2",            m_d1i_kp_keys2,     0x00000000u },
+    { "config_keys_pack@w24w",             m_d1i_kp_w24w,      0x00000000u },
+    { "config_keys_pack@w26b",             m_d1i_kp_w26b,      0x00000000u },
+    { "config_keys_load",                  b_d1i_1af64,        0x00000000u },
+    { "config_keys_load@devw",             m_d1i_kl_devw,      0x00000000u },
+    { "config_keys_load@dev2",             m_d1i_kl_dev2,      0x00000000u },
+    { "config_keys_load@lo",               m_d1i_kl_lo,        0x00000000u },
+    { "config_keys_load@count",            m_d1i_kl_count,     0x00000000u },
+    { "config_keys_load@reread",           m_d1i_kl_reread,    0x00000000u },
+    { "config_keys_load@keys2",            m_d1i_kl_keys2,     0x00000000u },
+    { "render_list_sort",                  b_d1i_1c3fc,        0xFFFFFFFFu },
+    { "render_list_sort@signed",           m_d1i_sort_signed,  0xFFFFFFFFu },
+    { "render_list_sort@unlink",           m_d1i_sort_unlink,  0xFFFFFFFFu },
+    { "render_list_sort@prev",             m_d1i_sort_prev,    0xFFFFFFFFu },
+    { "render_list_sort@byte",             m_d1i_sort_byte,    0xFFFFFFFFu },
+    { "render_list_sort@off",              m_d1i_sort_off,     0xFFFFFFFFu },
+    { "render_list_sort@ret",              m_d1i_sort_ret,     0xFFFFFFFFu },
+    { "nameentry_key",                     b_d1i_20860,        0x00000000u },
+    { "nameentry_key@full",                m_d1i_key_full,     0x00000000u },
+    { "nameentry_key@bs",                  m_d1i_key_bs,       0x00000000u },
+    { "nameentry_key@enter",               m_d1i_key_enter,    0x00000000u },
+    { "nameentry_key@space",               m_d1i_key_space,    0x00000000u },
+    { "nameentry_key@idx",                 m_d1i_key_idx,      0x00000000u },
+    { "nameentry_key@class",               m_d1i_key_class,    0x00000000u },
+    { "nameentry_key@upper",               m_d1i_key_upper,    0x00000000u },
+    { "nameentry_key@base",                m_d1i_key_base,     0x00000000u },
+    { "nameentry_key@mask",                m_d1i_key_mask,     0x00000000u },
+    { "nameentry_key@wstore",              m_d1i_key_wstore,   0x00000000u },
+    { "nameentry_key@fullflag",            m_d1i_key_fullflag, 0x00000000u },
+    { "nameentry_key@flagw",               m_d1i_key_flagw,    0x00000000u },
+    { "nameentry_key@up8",                 m_d1i_key_up8,      0x00000000u },
+    { "nameentry_key@byte",                m_d1i_key_byte,     0x00000000u },
+    { "config_set_credit_row_init",        b_d1i_2bf00,        0x00000000u },
+    { "config_set_credit_row_init@val",    m_d1i_row_val,      0x00000000u },
+    { "config_set_credit_row_init@width",  m_d1i_row_width,    0x00000000u },
+    { "config_set_credit_row_init@addr",   m_d1i_row_addr,     0x00000000u },
+    { "config_credits_init",               b_d1i_2c304,        0xFFFFFFFFu },
+    { "config_credits_init@field",         m_d1i_ci_field,     0xFFFFFFFFu },
+    { "config_credits_init@mask",          m_d1i_ci_mask,      0xFFFFFFFFu },
+    { "config_credits_init@shift",         m_d1i_ci_shift,     0xFFFFFFFFu },
+    { "config_credits_init@inc",           m_d1i_ci_inc,       0xFFFFFFFFu },
+    { "config_credits_init@width",         m_d1i_ci_width,     0xFFFFFFFFu },
+    { "config_has_credit",                 b_d1i_2ca2c,        0xFFFFFFFFu },
+    { "config_has_credit@fpw",             m_d1i_hc_fpw,       0xFFFFFFFFu },
+    { "config_has_credit@crb",             m_d1i_hc_crb,       0xFFFFFFFFu },
+    { "config_has_credit@and",             m_d1i_hc_and,       0xFFFFFFFFu },
+    { "config_has_credit@val",             m_d1i_hc_val,       0xFFFFFFFFu },
+    { "config_credit_take",                b_d1i_2ca48,        0xFFFFFFFFu },
+    { "config_credit_take@fpw",            m_d1i_ct_fpw,       0xFFFFFFFFu },
+    { "config_credit_take@crb",            m_d1i_ct_crb,       0xFFFFFFFFu },
+    { "config_credit_take@nodebit",        m_d1i_ct_nodebit,   0xFFFFFFFFu },
+    { "config_credit_take@decb",           m_d1i_ct_decb,      0xFFFFFFFFu },
+    { "config_credit_take@order",          m_d1i_ct_order,     0xFFFFFFFFu },
+    { "config_credit_take@ndw",            m_d1i_ct_ndw,       0xFFFFFFFFu },
+    { "config_credit_zero",                b_d1i_2ca78,        0xFFFFFFFFu },
+    { "config_credit_zero@keep",           m_d1i_cz_keep,      0xFFFFFFFFu },
+    { "config_credit_zero@al",             m_d1i_cz_al,        0xFFFFFFFFu },
+    { "input_joystick_device",             b_d1i_2d2f0,        0xFFFFFFFFu },
+    { "input_joystick_device@keep",        m_d1i_jd_keep,      0xFFFFFFFFu },
+    { "input_joystick_device@al",          m_d1i_jd_al,        0xFFFFFFFFu },
+    { "config_menu_default_bits",          b_d1i_2ccd0,        0xFFFFFFFFu },
+    { "config_menu_default_bits@presb",    m_d1i_mb_presb,     0xFFFFFFFFu },
+    { "config_menu_default_bits@shift",    m_d1i_mb_shift,     0xFFFFFFFFu },
+    { "config_menu_default_bits@unsigned", m_d1i_mb_unsigned,  0xFFFFFFFFu },
+    { "config_menu_default_bits@all",      m_d1i_mb_all,       0xFFFFFFFFu },
+    { "config_menu_default_bits@star",     m_d1i_mb_star,      0xFFFFFFFFu },
+    { "config_menu_default_bits@idx1",     m_d1i_mb_idx1,      0xFFFFFFFFu },
+    { "config_menu_default_bits@estride",  m_d1i_mb_estride,   0xFFFFFFFFu },
+    { "config_menu_default_bits@stride",   m_d1i_mb_stride,    0xFFFFFFFFu },
+    { "hiscore_locate",                    b_d1i_2db58,        0xFFFFFFFFu },
+    { "hiscore_locate@bound",              m_d1i_hl_bound,     0xFFFFFFFFu },
+    { "hiscore_locate@tsigned",            m_d1i_hl_tsigned,   0xFFFFFFFFu },
+    { "hiscore_locate@rsigned",            m_d1i_hl_rsigned,   0xFFFFFFFFu },
+    { "hiscore_locate@size",               m_d1i_hl_size,      0xFFFFFFFFu },
+    { "hiscore_locate@left",               m_d1i_hl_left,      0xFFFFFFFFu },
+    { "hiscore_locate@base",               m_d1i_hl_base,      0xFFFFFFFFu },
+    { "hiscore_locate@swap",               m_d1i_hl_swap,      0xFFFFFFFFu },
+    { "hiscore_locate@countw",             m_d1i_hl_countw,    0xFFFFFFFFu },
+    { "text_number_cont",                  b_d1i_2f464,        0x00000000u },
+    { "text_number_cont@val",              m_d1i_tn_val,       0x00000000u },
+    { "text_number_cont@swap",             m_d1i_tn_swap,      0x00000000u },
+    { "text_number_cont@fmt",              m_d1i_tn_fmt,       0x00000000u },
+    { "text_number_cont@col",              m_d1i_tn_col,       0x00000000u },
+    { "text_number_cont@row",              m_d1i_tn_row,       0x00000000u },
+    { "text_number_cont@mode",             m_d1i_tn_mode,      0x00000000u },
+    { "menu_entry_find",                   b_d1i_2fe40,        0xFFFFFFFFu },
+    { "menu_entry_find@neg",               m_d1i_ef_neg,       0xFFFFFFFFu },
+    { "menu_entry_find@hole",              m_d1i_ef_hole,      0xFFFFFFFFu },
+    { "menu_entry_find@holeb",             m_d1i_ef_holeb,     0xFFFFFFFFu },
+    { "menu_entry_find@stride",            m_d1i_ef_stride,    0xFFFFFFFFu },
+    { "menu_entry_find@q",                 m_d1i_ef_q,         0xFFFFFFFFu },
+    { "menu_entry_find@qchar",             m_d1i_ef_qchar,     0xFFFFFFFFu },
+    { "menu_entry_find@empty",             m_d1i_ef_empty,     0xFFFFFFFFu },
+    { "menu_entry_find@off",               m_d1i_ef_off,       0xFFFFFFFFu },    { "render_projection_reset",             b_d1i_4f228,        0x00000000u },
+    { "render_projection_reset@ah",          m_d1i_pr_ah,        0x00000000u },
+    { "render_projection_reset@w55",         m_d1i_pr_w55,       0x00000000u },
+    { "render_projection_reset@al",          m_d1i_pr_al,        0x00000000u },
+    { "render_projection_reset@a3a",         m_d1i_pr_a3a,       0x00000000u },
+    { "render_projection_reset@a38",         m_d1i_pr_a38,       0x00000000u },
+    { "render_scroll_track",                 b_d1i_38990,        0x00000000u },
+    { "render_scroll_track@mask",            m_d1i_st_mask,      0x00000000u },
+    { "render_scroll_track@nomask",          m_d1i_st_nomask,    0x00000000u },
+    { "render_scroll_track@lo",              m_d1i_st_lo,        0x00000000u },
+    { "render_scroll_track@shift",           m_d1i_st_shift,     0x00000000u },
+    { "render_scroll_track@add",             m_d1i_st_add,       0x00000000u },
+    { "render_scroll_track@wide",            m_d1i_st_wide,      0x00000000u },
+    { "palette_list_init",                   b_d1i_336c0,        0xFFFFFFFFu },
+    { "palette_list_init@fill",              m_d1i_pl_fill,      0xFFFFFFFFu },
+    { "palette_list_init@len",               m_d1i_pl_len,       0xFFFFFFFFu },
+    { "palette_list_init@head",              m_d1i_pl_head,      0xFFFFFFFFu },
+    { "palette_list_init@ff",                m_d1i_pl_ff,        0xFFFFFFFFu },
+    { "palette_list_init@count",             m_d1i_pl_count,     0xFFFFFFFFu },
+    { "palette_list_init@bd",                m_d1i_pl_bd,        0xFFFFFFFFu },
+    { "palette_list_init@enq",               m_d1i_pl_enq,       0xFFFFFFFFu },
+    { "palette_list_init@args",              m_d1i_pl_args,      0xFFFFFFFFu },
+    { "input_pump",                          b_d1i_500c4,        0xFFFFFFFFu },
+    { "input_pump@k",                        m_d1i_ip_k,         0xFFFFFFFFu },
+    { "input_pump@prev",                     m_d1i_ip_prev,      0xFFFFFFFFu },
+    { "input_pump@debounce",                 m_d1i_ip_debounce,  0xFFFFFFFFu },
+    { "input_pump@latch",                    m_d1i_ip_latch,     0xFFFFFFFFu },
+    { "input_pump@rpt1",                     m_d1i_ip_rpt1,      0xFFFFFFFFu },
+    { "input_pump@rpt2",                     m_d1i_ip_rpt2,      0xFFFFFFFFu },
+    { "input_pump@decb",                     m_d1i_ip_decb,      0xFFFFFFFFu },
+    { "input_pump@next",                     m_d1i_ip_next,      0xFFFFFFFFu },
+    { "input_pump@clr",                      m_d1i_ip_clr,       0xFFFFFFFFu },
+    { "input_pump@ret",                      m_d1i_ip_ret,       0xFFFFFFFFu },
+    { "input_repeat_set",                    b_d1i_50146,        0x00000000u },
+    { "input_repeat_set@mask",               m_d1i_rs_mask,      0x00000000u },
+    { "input_repeat_set@first",              m_d1i_rs_first,     0x00000000u },
+    { "input_repeat_set@count",              m_d1i_rs_count,     0x00000000u },
+    { "input_repeat_set@next",               m_d1i_rs_next,      0x00000000u },
+    { "input_repeat_set@wide",               m_d1i_rs_wide,      0x00000000u },
+    { "input_select_bits",                   b_d1i_50161,        0xFFFFFFFFu },
+    { "input_select_bits@xor",               m_d1i_sb_xor,       0xFFFFFFFFu },
+    { "input_select_bits@latch",             m_d1i_sb_latch,     0xFFFFFFFFu },
+    { "input_select_bits@keep",              m_d1i_sb_keep,      0xFFFFFFFFu },
+    { "input_select_bits@inv",               m_d1i_sb_inv,       0xFFFFFFFFu },
+    { "gfx_fill_screen",                     b_d1i_51f72,        0xFFFFFFFFu },
+    { "gfx_fill_screen@count",               m_d1i_fs_count,     0xFFFFFFFFu },
+    { "gfx_fill_screen@row",                 m_d1i_fs_row,       0xFFFFFFFFu },
+    { "gfx_fill_screen@step",                m_d1i_fs_step,      0xFFFFFFFFu },
+    { "gfx_fill_screen@byte",                m_d1i_fs_byte,      0xFFFFFFFFu },
+    { "config_play_time_snap",             b_d1i_32b00,        0xFFFFFFFFu },
+    { "config_play_time_snap@idx",         m_d1i_ps_idx,       0xFFFFFFFFu },
+    { "config_play_time_snap@dst",         m_d1i_ps_dst,       0xFFFFFFFFu },
+    { "config_play_time_snap@wide",        m_d1i_ps_wide,      0xFFFFFFFFu },
+    { "config_play_time_snap@arm",         m_d1i_ps_arm,       0xFFFFFFFFu },
+    { "config_play_time_snap_b",           b_d1i_32b4c,        0xFFFFFFFFu },
+    { "config_play_time_snap_b@idx",       m_d1i_pb_idx,       0xFFFFFFFFu },
+    { "config_play_time_snap_b@dst",       m_d1i_pb_dst,       0xFFFFFFFFu },
+    { "config_play_time_snap_b@wide",      m_d1i_pb_wide,      0xFFFFFFFFu },
+    { "config_play_time_snap_b@arm",       m_d1i_pb_arm,       0xFFFFFFFFu },
+    { "config_play_time_close",            b_d1i_32a3c,        0xFFFFFFFFu },
+    { "config_play_time_close@idx",        m_d1i_pc_idx,       0xFFFFFFFFu },
+    { "config_play_time_close@drop",       m_d1i_pc_drop,      0xFFFFFFFFu },
+    { "config_play_time_close@wide",       m_d1i_pc_wide,      0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)
