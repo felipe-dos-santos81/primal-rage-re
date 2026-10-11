@@ -13583,6 +13583,313 @@ static void m_c3g_stm_val(const u32 *r, u32 *eax)    { *eax = c3g_1922c_core(r, 
 static void m_c3g_stm_eclear(const u32 *r, u32 *eax) { *eax = c3g_1922c_core(r, 128u); }
 static void m_c3g_stm_side(const u32 *r, u32 *eax)   { *eax = c3g_1922c_core(r, 256u); }
 
+/* ---- track D1 batch d1c (record 2026-10-11-reverse-d1c): game/flow.c's first half ------------- */
+
+/* 0x134C0's mutants: the step with one choice changed. */
+enum { D1C_FX_NONE, D1C_FX_LOCK, D1C_FX_TYPE0, D1C_FX_DEC, D1C_FX_RELOAD, D1C_FX_DEFAULT,
+       D1C_FX_T1MASK, D1C_FX_T1DELTA, D1C_FX_T1FIRST, D1C_FX_T1SEXT, D1C_FX_ROTDIR, D1C_FX_ROTSUB,
+       D1C_FX_OFFCACHE, D1C_FX_NCACHE, D1C_FX_T3FLAG, D1C_FX_T6FLAG, D1C_FX_PTR, D1C_FX_PALCOUNT,
+       D1C_FX_NOPAL, D1C_FX_EQ, D1C_FX_STEP, D1C_FX_CLAMP, D1C_FX_TOP, D1C_FX_FLOOR, D1C_FX_COUNT,
+       D1C_FX_T4ZERO, D1C_FX_T6TO, D1C_FX_T5FLAG, D1C_FX_T5DEC, D1C_FX_T5BASE, D1C_FX_T5TGT,
+       D1C_FX_T5ZEXT, D1C_FX_T5REMOVE, D1C_FX_REMOVE, D1C_FX_FREE, D1C_FX_STOP };
+static u32 d1c_fx_up(u32 cur, u32 tgt, u32 mut)        /* each channel +8, capped at the target's */
+{
+    u32 v = 0;
+    for (u32 sh = 0; sh < 24u; sh += 8u) {
+        u32 c = ((cur >> sh) & 0xFFu) + ((mut == D1C_FX_STEP) ? 7u : 8u), t = (tgt >> sh) & 0xFFu;
+        if (c > t && mut != D1C_FX_CLAMP) c = t;
+        v |= (c & 0xFFu) << sh;
+    }
+    return (mut == D1C_FX_TOP) ? (v | (cur & 0xFF000000u)) : v;
+}
+static u32 d1c_fx_down(u32 cur, u32 tgt, u32 mut)      /* each channel -8, floored at the target's */
+{
+    u32 v = 0;
+    for (u32 sh = 0; sh < 24u; sh += 8u) {
+        s32 c = (s32)((cur >> sh) & 0xFFu) - ((mut == D1C_FX_STEP) ? 7 : 8);
+        s32 t = (s32)((tgt >> sh) & 0xFFu);
+        if (c < t && mut != D1C_FX_FLOOR) c = t;
+        v |= ((u32)c & 0xFFu) << sh;
+    }
+    return v;
+}
+static void d1c_fx_core(u32 mut)
+{
+    if (DSB(DS_0009AF3C) != 0 && mut != D1C_FX_LOCK) return;
+    u32 rec = DSD(DS_000FCCE0);
+    while (rec != DS_000FCCE0) {
+        u32 src = DSD(rec + 8u);
+        s32 count = (s32)DSD(src + ((mut == D1C_FX_COUNT) ? 8u : 0x0Cu));
+        u8 type = DSB(rec + 0x0Cu);
+        int removed = 0, anim = 1;
+        if (type == 0) {
+            if (DSB(rec + 0x0Eu) == 0 || mut == D1C_FX_TYPE0) { rec = DSD(rec); continue; }
+            DSB(rec + 0x0Eu) = 0;
+            type = 2;
+        } else {
+            u8 st = (u8)(DSB(rec + 0x0Eu) - 1u);
+            if (mut != D1C_FX_DEC || st == 0) DSB(rec + 0x0Eu) = st;
+            if (st != 0) { rec = DSD(rec); continue; }
+            if (mut != D1C_FX_RELOAD) DSB(rec + 0x0Eu) = DSB(rec + 0x0Du);
+            if (type > 6) {
+                if (mut == D1C_FX_DEFAULT) { rec = DSD(rec); continue; }
+                type = 6;
+            }
+        }
+        switch (type) {
+        case 1: {
+            u32 a = DSD(rec + 0x14u), d = (mut == D1C_FX_T1DELTA) ? 0u : 2u;
+            u32 b = (a & 0xFFu) + (u32)(s32)(s16)DSW(rec + 0x18u + d);
+            u32 g = ((a >> 8) & 0xFFu) + (u32)(s32)(s16)DSW(rec + 0x1Au + d);
+            u32 c = ((a >> 16) & 0xFFu) + (u32)(s32)(s16)DSW(rec + 0x1Cu + d);
+            u32 n = (mut == D1C_FX_T1SEXT) ? (u32)(s32)(s8)DSB(rec + 0x0Fu) : (u32)DSB(rec + 0x0Fu);
+            DSD(rec + 0x14u) = (b & 0xFFu) | ((g & ((mut == D1C_FX_T1MASK) ? 0xFFu : 0xFFFFu)) << 8)
+                             | ((c & 0xFFu) << 16);
+            palette_record(rec + 0x14u, DSD(src + 8u) + ((mut == D1C_FX_T1FIRST) ? 0u : n), 1u, 0u);
+            break;
+        }
+        case 2: {
+            s32 off0 = (s32)(s8)DSB(rec + 0x10u);
+            u32 n0 = DSB(rec + 0x0Fu);
+            int neg = (mut == D1C_FX_ROTDIR) ? 0 : off0 < 0;
+            u32 d = rec + 0x14u, s = neg ? rec + 0x10u : rec + 0x18u, tmp = DSD(d);
+            for (u32 i = 1; i < (u32)DSB(rec + 0x0Fu); i++) {
+                u32 v = DSD(s);
+                if (neg) { d -= 4u; s -= 4u; DSD(d + 4u) = v; }
+                else     { d += 4u; s += 4u; DSD(d - 4u) = v; }
+            }
+            DSD(d) = tmp;
+            s32 off = (mut == D1C_FX_OFFCACHE) ? off0 : (s32)(s8)DSB(rec + 0x10u);
+            u32 n = (mut == D1C_FX_NCACHE) ? n0 : (u32)DSB(rec + 0x0Fu);
+            palette_record(rec + 0x14u,
+                           (u32)((s32)DSD(src + 8u) + ((neg && mut != D1C_FX_ROTSUB) ? -off : off)), n, 0u);
+            break;
+        }
+        case 3: case 6:
+            if (DSB(rec + 0x0Fu) != 0) {
+                palette_record(rec + ((mut == D1C_FX_PTR) ? 0x14u : 0x10u), DSD(src + 8u),
+                               (mut == D1C_FX_PALCOUNT) ? (u32)DSB(rec + 0x0Fu) : (u32)count, 0u);
+                if (!(mut == D1C_FX_T3FLAG && type == 3) && !(mut == D1C_FX_T6FLAG && type == 6))
+                    DSB(rec + 0x0Fu) = 0;
+                break;
+            }
+            for (s32 i = 0; i < count; i++) {
+                u32 at = rec + 0x10u + (u32)i * 4u, cur = DSD(at), tgt = DSD(at + 0x400u);
+                if ((mut == D1C_FX_EQ) ? ((cur ^ tgt) & 0xFFFFFFu) == 0 : cur == tgt) continue;
+                DSD(at) = (type == 3) ? d1c_fx_up(cur, tgt, mut)
+                                      : d1c_fx_down(cur, (mut == D1C_FX_T6TO) ? 0u : tgt, mut);
+                anim = 0;
+            }
+            if (anim) removed = 1;
+            else if (mut != D1C_FX_NOPAL) palette_record(rec + 0x10u, DSD(src + 8u), (u32)count, 0u);
+            break;
+        case 4:
+            for (s32 i = 0; i < count; i++) {
+                u32 at = rec + 0x10u + (u32)i * 4u, cur = DSD(at);
+                if (cur != 0) { DSD(at) = d1c_fx_down(cur, 0u, mut); anim = 0; }
+                else if (mut == D1C_FX_T4ZERO) anim = 0;
+            }
+            if (anim) removed = 1;
+            else if (mut != D1C_FX_NOPAL) palette_record(rec + 0x10u, DSD(src + 8u), (u32)count, 0u);
+            break;
+        default: {                                       /* 5 */
+            u32 n = DSB(rec + 0x0Fu), base = rec + ((mut == D1C_FX_T5BASE) ? 0x10u : 0x14u);
+            int dark = DSB(rec + 0x11u) != 0;
+            if (mut == D1C_FX_T5FLAG) dark = !dark;
+            for (u32 i = 0; i < n; i++) {
+                u32 at = base + i * 4u, cur = DSD(at);
+                u32 tgt = dark ? 0u : DSD(rec + ((mut == D1C_FX_T5TGT) ? 0x410u : 0x414u) + i * 4u);
+                if (cur == tgt) continue;
+                DSD(at) = dark ? d1c_fx_down(cur, 0u, mut) : d1c_fx_up(cur, tgt, mut);
+                anim = 0;
+            }
+            if (anim) {
+                if (mut != D1C_FX_T5DEC) DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) - 1u);
+                DSB(rec + 0x11u) = dark ? 0u : 1u;
+                if (mut == D1C_FX_T5REMOVE) removed = 1;
+            }
+            palette_record(rec + 0x14u, DSD(src + 8u) + ((mut == D1C_FX_T5ZEXT)
+                               ? (u32)DSB(rec + 0x10u) : (u32)(s32)(s8)DSB(rec + 0x10u)), n, 0u);
+            break;
+        }
+        }
+        if (removed) {
+            u32 back = DSD(rec + 4u);
+            effects_list_unlink(rec);
+            if (mut == D1C_FX_FREE) effects_list_insert_before(DS_000FCCE8, rec);
+            else                    effects_list_insert_after(DS_000FCCE8, rec);
+            if (mut != D1C_FX_REMOVE) DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) - 1u);
+            if (mut == D1C_FX_STOP) return;
+            rec = DSD(back);
+        } else {
+            rec = DSD(rec);
+        }
+    }
+}
+static void b_d1c_134c0(const u32 *r, u32 *eax) { (void)r; effects_step(); *eax = 0u; }
+#define D1C_FX_MUT(name, m) \
+    static void m_d1c_fx_##name(const u32 *r, u32 *eax) { (void)r; d1c_fx_core(m); *eax = 0u; }
+D1C_FX_MUT(lock, D1C_FX_LOCK)         D1C_FX_MUT(type0, D1C_FX_TYPE0)
+D1C_FX_MUT(dec, D1C_FX_DEC)           D1C_FX_MUT(reload, D1C_FX_RELOAD)
+D1C_FX_MUT(default, D1C_FX_DEFAULT)   D1C_FX_MUT(t1mask, D1C_FX_T1MASK)
+D1C_FX_MUT(t1delta, D1C_FX_T1DELTA)   D1C_FX_MUT(t1first, D1C_FX_T1FIRST)
+D1C_FX_MUT(t1sext, D1C_FX_T1SEXT)     D1C_FX_MUT(rotdir, D1C_FX_ROTDIR)
+D1C_FX_MUT(rotsub, D1C_FX_ROTSUB)     D1C_FX_MUT(offcache, D1C_FX_OFFCACHE)
+D1C_FX_MUT(ncache, D1C_FX_NCACHE)     D1C_FX_MUT(t3flag, D1C_FX_T3FLAG)
+D1C_FX_MUT(t6flag, D1C_FX_T6FLAG)     D1C_FX_MUT(ptr, D1C_FX_PTR)
+D1C_FX_MUT(palcount, D1C_FX_PALCOUNT) D1C_FX_MUT(nopal, D1C_FX_NOPAL)
+D1C_FX_MUT(eq, D1C_FX_EQ)             D1C_FX_MUT(step, D1C_FX_STEP)
+D1C_FX_MUT(clamp, D1C_FX_CLAMP)       D1C_FX_MUT(top, D1C_FX_TOP)
+D1C_FX_MUT(floor, D1C_FX_FLOOR)       D1C_FX_MUT(count, D1C_FX_COUNT)
+D1C_FX_MUT(t4zero, D1C_FX_T4ZERO)     D1C_FX_MUT(t6to, D1C_FX_T6TO)
+D1C_FX_MUT(t5flag, D1C_FX_T5FLAG)     D1C_FX_MUT(t5dec, D1C_FX_T5DEC)
+D1C_FX_MUT(t5base, D1C_FX_T5BASE)     D1C_FX_MUT(t5tgt, D1C_FX_T5TGT)
+D1C_FX_MUT(t5zext, D1C_FX_T5ZEXT)     D1C_FX_MUT(t5remove, D1C_FX_T5REMOVE)
+D1C_FX_MUT(remove, D1C_FX_REMOVE)     D1C_FX_MUT(free, D1C_FX_FREE)
+D1C_FX_MUT(stop, D1C_FX_STOP)
+
+/* 0x1C6D4: EAX = rec. The mutants take the nine constants as a table with one choice changed. */
+static const u32 d1c_known[9] = { 0x0080995Cu, 0x0080997Cu, 0x00809984u, 0x0080998Cu, 0x00809994u,
+                                  0x0080999Cu, 0x008099A4u, 0x008099ACu, 0x008099CCu };
+static u32 d1c_known_core(u32 v, u32 mask, int drop)
+{
+    for (int i = 0; i < 9; i++)
+        if (i != drop && (v & mask) == (d1c_known[i] & mask)) return 1u;
+    return 0u;
+}
+static void b_d1c_1c6d4(const u32 *r, u32 *eax) { *eax = frontend_resource_known(r[R_EAX]); }
+static void m_d1c_kn_deref(const u32 *r, u32 *eax) { *eax = d1c_known_core(r[R_EAX], 0xFFFFFFFFu, -1); }
+static void m_d1c_kn_low16(const u32 *r, u32 *eax) { *eax = d1c_known_core(DSD(r[R_EAX]), 0xFFFFu, -1); }
+static void m_d1c_kn_next(const u32 *r, u32 *eax)  { *eax = d1c_known_core(DSD(r[R_EAX] + 4u), 0xFFFFFFFFu, -1); }
+static void m_d1c_kn_range(const u32 *r, u32 *eax)
+{ u32 v = DSD(r[R_EAX]); *eax = (v >= 0x0080995Cu && v <= 0x008099CCu) ? 1u : 0u; }
+#define D1C_KN_DROP(i) \
+    static void m_d1c_kn_c##i(const u32 *r, u32 *eax) { *eax = d1c_known_core(DSD(r[R_EAX]), 0xFFFFFFFFu, i); }
+D1C_KN_DROP(0) D1C_KN_DROP(1) D1C_KN_DROP(2) D1C_KN_DROP(3) D1C_KN_DROP(4)
+D1C_KN_DROP(5) D1C_KN_DROP(6) D1C_KN_DROP(7) D1C_KN_DROP(8)
+
+/* 0x1D220: no argument. */
+static void b_d1c_1d220(const u32 *r, u32 *eax) { (void)r; sound_sample_pause_toggle(); *eax = 0u; }
+static void d1c_1d220_core(u32 mut)
+{
+    u32 at = (mut == 5u) ? 0x001028DAu : 0x001028DBu;              /* @byte: the music byte */
+    if (mut == 4u && (DSB(at) ^ 1u) == 1u) (void)snd_samples_stop_all();   /* @order: before the flip */
+    DSB(at) = (mut == 1u) ? 1u : (u8)(DSB(at) ^ 1u);               /* @set */
+    if (mut == 3u || mut == 4u) return;                             /* @nocall */
+    if ((mut == 2u) ? DSB(at) != 0u : DSB(at) == 1u) (void)snd_samples_stop_all();   /* @nz */
+}
+static void m_d1c_spt_set(const u32 *r, u32 *eax)    { (void)r; d1c_1d220_core(1u); *eax = 0u; }
+static void m_d1c_spt_nz(const u32 *r, u32 *eax)     { (void)r; d1c_1d220_core(2u); *eax = 0u; }
+static void m_d1c_spt_nocall(const u32 *r, u32 *eax) { (void)r; d1c_1d220_core(3u); *eax = 0u; }
+static void m_d1c_spt_order(const u32 *r, u32 *eax)  { (void)r; d1c_1d220_core(4u); *eax = 0u; }
+static void m_d1c_spt_byte(const u32 *r, u32 *eax)   { (void)r; d1c_1d220_core(5u); *eax = 0u; }
+
+/* 0x1D1B0: no argument. AIL_stop_sequence's seam fires before it reads its handle. */
+static void b_d1c_1d1b0(const u32 *r, u32 *eax) { (void)r; sound_music_pause_toggle(); *eax = 0u; }
+enum { D1C_MP_NONE, D1C_MP_CLEAR, D1C_MP_D9, D1C_MP_SONG, D1C_MP_SEQ, D1C_MP_CC, D1C_MP_EQ,
+       D1C_MP_GATE, D1C_MP_AL, D1C_MP_NOSTOP, D1C_MP_SET, D1C_MP_ORDER };
+static void d1c_1d1b0_core(u32 mut)
+{
+    if ((mut == D1C_MP_EQ) ? DSB(0x001028DAu) != 0u : DSB(0x001028DAu) == 1u) {
+        if (mut != D1C_MP_CLEAR) DSB(0x001028DAu) = 0u;
+        if (DSB(0x001028D9u) == 0u && mut != D1C_MP_D9) return;
+        u32 song = DSD(0x001028D4u);
+        if (song == 0u && mut != D1C_MP_SONG) return;
+        if (DSD(0x001028C0u) == 0u && mut != D1C_MP_SEQ) return;
+        DSD(0x001028CCu) = (mut == D1C_MP_CC) ? 0u : song;
+        return;
+    }
+    if (mut == D1C_MP_ORDER) DSB(0x001028DAu) = 1u;
+    if (DSD(0x001028C0u) != 0u || mut == D1C_MP_GATE) {
+        u32 playing = snd_music_playing();
+        if (((mut == D1C_MP_AL) ? playing : (u32)(u8)playing) != 0u && mut != D1C_MP_NOSTOP)
+            AIL_stop_sequence(NULL);
+    }
+    if (mut != D1C_MP_SET) DSB(0x001028DAu) = 1u;
+}
+#define D1C_MP_MUT(name, m) \
+    static void m_d1c_mp_##name(const u32 *r, u32 *eax) { (void)r; d1c_1d1b0_core(m); *eax = 0u; }
+D1C_MP_MUT(clear, D1C_MP_CLEAR)   D1C_MP_MUT(d9, D1C_MP_D9)     D1C_MP_MUT(song, D1C_MP_SONG)
+D1C_MP_MUT(seq, D1C_MP_SEQ)       D1C_MP_MUT(cc, D1C_MP_CC)     D1C_MP_MUT(eq, D1C_MP_EQ)
+D1C_MP_MUT(gate, D1C_MP_GATE)     D1C_MP_MUT(al, D1C_MP_AL)     D1C_MP_MUT(nostop, D1C_MP_NOSTOP)
+D1C_MP_MUT(set, D1C_MP_SET)       D1C_MP_MUT(order, D1C_MP_ORDER)
+
+/* 0x1E988: no argument; AL. */
+static void b_d1c_1e988(const u32 *r, u32 *eax) { (void)r; *eax = hiscore_audit_reset_due(); }
+static u32 d1c_1e988_core(u32 mut)
+{
+    u32 fa = (mut == 5u) ? 0x26u : 0x27u, fb = (mut == 5u) ? 0x27u : 0x26u;      /* @swap */
+    u32 a = config_field_get(fa);
+    if ((mut == 3u) ? a < 0x7D0u : (s32)a < ((mut == 1u) ? 0x7D1 : 0x7D0)) return 0u;   /* @u27 / @t27 */
+    if (mut == 6u) return 1u;                                                     /* @one */
+    u32 b = config_field_get(fb);
+    if ((mut == 4u) ? b < 0xC8u : (s32)b < ((mut == 2u) ? 0xC9 : 0xC8)) return 0u;      /* @u26 / @t26 */
+    return 1u;
+}
+static void m_d1c_au_t27(const u32 *r, u32 *eax)  { (void)r; *eax = d1c_1e988_core(1u); }
+static void m_d1c_au_t26(const u32 *r, u32 *eax)  { (void)r; *eax = d1c_1e988_core(2u); }
+static void m_d1c_au_u27(const u32 *r, u32 *eax)  { (void)r; *eax = d1c_1e988_core(3u); }
+static void m_d1c_au_u26(const u32 *r, u32 *eax)  { (void)r; *eax = d1c_1e988_core(4u); }
+static void m_d1c_au_swap(const u32 *r, u32 *eax) { (void)r; *eax = d1c_1e988_core(5u); }
+static void m_d1c_au_one(const u32 *r, u32 *eax)  { (void)r; *eax = d1c_1e988_core(6u); }
+
+/* 0x29B70 and 0x32968: a bare `ret` each; the mutant writes where neither does. */
+static void b_d1c_29b70(const u32 *r, u32 *eax) { (void)r; game_null_step(); *eax = 0u; }
+static void b_d1c_32968(const u32 *r, u32 *eax) { (void)r; game_init_null(); *eax = 0u; }
+static void m_d1c_null(const u32 *r, u32 *eax)  { (void)r; DSB(0x0010A000u) = 1u; *eax = 0u; }
+
+/* 0x29CBC: EAX = side, EDX = the character. */
+static void b_d1c_29cbc(const u32 *r, u32 *eax) { *eax = flow_challenge_handle(r[R_EAX], r[R_EDX]); }
+static u32 d1c_29cbc_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], ch = r[R_EDX];
+    u8 f = DSB(0x00105B34u + ((mut == 1u) ? 1u - side : side));                   /* @side */
+    int alt = (mut == 5u) ? f == 1u : f != 0u;                                    /* @one */
+    if (mut == 2u) alt = !alt;                                                    /* @tbl */
+    return DSD((alt ? 0x000A8ADCu : 0x000A8AC0u)
+               + ((mut == 4u) ? side : ch) * ((mut == 3u) ? 2u : 4u));            /* @char / @scale */
+}
+static void m_d1c_ch_side(const u32 *r, u32 *eax)  { *eax = d1c_29cbc_core(r, 1u); }
+static void m_d1c_ch_tbl(const u32 *r, u32 *eax)   { *eax = d1c_29cbc_core(r, 2u); }
+static void m_d1c_ch_scale(const u32 *r, u32 *eax) { *eax = d1c_29cbc_core(r, 3u); }
+static void m_d1c_ch_char(const u32 *r, u32 *eax)  { *eax = d1c_29cbc_core(r, 4u); }
+static void m_d1c_ch_one(const u32 *r, u32 *eax)   { *eax = d1c_29cbc_core(r, 5u); }
+
+/* 0x2C06C: AL into the byte 0x105C05. */
+static void b_d1c_2c06c(const u32 *r, u32 *eax) { config_set_credit_row((u8)r[R_EAX]); *eax = 0u; }
+static void m_d1c_row_width(const u32 *r, u32 *eax) { DSW(0x00105C05u) = (u16)r[R_EAX]; *eax = 0u; }
+static void m_d1c_row_off(const u32 *r, u32 *eax)   { DSB(0x00105C04u) = (u8)r[R_EAX]; *eax = 0u; }
+
+/* 0x2C074: the two dwords cleared. */
+static void b_d1c_2c074(const u32 *r, u32 *eax) { (void)r; flow_105bf0_clear(); *eax = 0u; }
+static void m_d1c_bf_f0(const u32 *r, u32 *eax)    { (void)r; DSD(0x00105BF4u) = 0u; *eax = 0u; }
+static void m_d1c_bf_f4(const u32 *r, u32 *eax)    { (void)r; DSD(0x00105BF0u) = 0u; *eax = 0u; }
+static void m_d1c_bf_width(const u32 *r, u32 *eax)
+{ (void)r; DSW(0x00105BF4u) = 0u; DSW(0x00105BF0u) = 0u; *eax = 0u; }
+
+/* 0x2C390: the two sentinels and the sixteen nodes. */
+static void b_d1c_2c390(const u32 *r, u32 *eax) { (void)r; flow_list_105c0c_init(); *eax = 0u; }
+static void d1c_2c390_core(u32 mut)
+{
+    if (mut != 4u) {                                                              /* @sent */
+        DSD(0x00105C10u) = 0x00105C0Cu;
+        DSD(0x00105C0Cu) = 0x00105C0Cu;
+    }
+    DSD(0x00105C18u) = 0x00105C14u;
+    DSD(0x00105C14u) = 0x00105C14u;
+    for (u32 node = (mut == 5u) ? 0x00105C30u : 0x00105C1Cu;                      /* @first */
+         node < ((mut == 1u) ? 0x00105D48u : 0x00105D5Cu);                        /* @count */
+         node += (mut == 3u) ? 0x10u : 0x14u) {                                   /* @stride */
+        if (mut == 2u) effects_list_insert_after(0x00105C14u, node);              /* @head */
+        else           effects_list_insert_before(0x00105C14u, node);
+    }
+}
+static void m_d1c_li_count(const u32 *r, u32 *eax)  { (void)r; d1c_2c390_core(1u); *eax = 0u; }
+static void m_d1c_li_head(const u32 *r, u32 *eax)   { (void)r; d1c_2c390_core(2u); *eax = 0u; }
+static void m_d1c_li_stride(const u32 *r, u32 *eax) { (void)r; d1c_2c390_core(3u); *eax = 0u; }
+static void m_d1c_li_sent(const u32 *r, u32 *eax)   { (void)r; d1c_2c390_core(4u); *eax = 0u; }
+static void m_d1c_li_first(const u32 *r, u32 *eax)  { (void)r; d1c_2c390_core(5u); *eax = 0u; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -15264,6 +15571,104 @@ static const binding_t k_bindings[] = {
     { "hit_stance_timer@val",              m_c3g_stm_val,   0x00000000u },
     { "hit_stance_timer@eclear",           m_c3g_stm_eclear, 0x00000000u },
     { "hit_stance_timer@side",             m_c3g_stm_side,  0x00000000u },
+    { "effects_step",                      b_d1c_134c0,     0x00000000u },
+    { "effects_step@lock",                   m_d1c_fx_lock, 0x00000000u },
+    { "effects_step@type0",                  m_d1c_fx_type0, 0x00000000u },
+    { "effects_step@dec",                    m_d1c_fx_dec, 0x00000000u },
+    { "effects_step@reload",                 m_d1c_fx_reload, 0x00000000u },
+    { "effects_step@default",                m_d1c_fx_default, 0x00000000u },
+    { "effects_step@t1mask",                 m_d1c_fx_t1mask, 0x00000000u },
+    { "effects_step@t1delta",                m_d1c_fx_t1delta, 0x00000000u },
+    { "effects_step@t1first",                m_d1c_fx_t1first, 0x00000000u },
+    { "effects_step@t1sext",                 m_d1c_fx_t1sext, 0x00000000u },
+    { "effects_step@rotdir",                 m_d1c_fx_rotdir, 0x00000000u },
+    { "effects_step@rotsub",                 m_d1c_fx_rotsub, 0x00000000u },
+    { "effects_step@offcache",               m_d1c_fx_offcache, 0x00000000u },
+    { "effects_step@ncache",                 m_d1c_fx_ncache, 0x00000000u },
+    { "effects_step@t3flag",                 m_d1c_fx_t3flag, 0x00000000u },
+    { "effects_step@t6flag",                 m_d1c_fx_t6flag, 0x00000000u },
+    { "effects_step@ptr",                    m_d1c_fx_ptr, 0x00000000u },
+    { "effects_step@palcount",               m_d1c_fx_palcount, 0x00000000u },
+    { "effects_step@nopal",                  m_d1c_fx_nopal, 0x00000000u },
+    { "effects_step@eq",                     m_d1c_fx_eq, 0x00000000u },
+    { "effects_step@step",                   m_d1c_fx_step, 0x00000000u },
+    { "effects_step@clamp",                  m_d1c_fx_clamp, 0x00000000u },
+    { "effects_step@top",                    m_d1c_fx_top, 0x00000000u },
+    { "effects_step@floor",                  m_d1c_fx_floor, 0x00000000u },
+    { "effects_step@count",                  m_d1c_fx_count, 0x00000000u },
+    { "effects_step@t4zero",                 m_d1c_fx_t4zero, 0x00000000u },
+    { "effects_step@t6to",                   m_d1c_fx_t6to, 0x00000000u },
+    { "effects_step@t5flag",                 m_d1c_fx_t5flag, 0x00000000u },
+    { "effects_step@t5dec",                  m_d1c_fx_t5dec, 0x00000000u },
+    { "effects_step@t5base",                 m_d1c_fx_t5base, 0x00000000u },
+    { "effects_step@t5tgt",                  m_d1c_fx_t5tgt, 0x00000000u },
+    { "effects_step@t5zext",                 m_d1c_fx_t5zext, 0x00000000u },
+    { "effects_step@t5remove",               m_d1c_fx_t5remove, 0x00000000u },
+    { "effects_step@remove",                 m_d1c_fx_remove, 0x00000000u },
+    { "effects_step@free",                   m_d1c_fx_free, 0x00000000u },
+    { "effects_step@stop",                   m_d1c_fx_stop, 0x00000000u },
+    { "frontend_resource_known",            b_d1c_1c6d4, 0x000000FFu },
+    { "frontend_resource_known@deref",      m_d1c_kn_deref, 0x000000FFu },
+    { "frontend_resource_known@low16",      m_d1c_kn_low16, 0x000000FFu },
+    { "frontend_resource_known@range",      m_d1c_kn_range, 0x000000FFu },
+    { "frontend_resource_known@next",       m_d1c_kn_next, 0x000000FFu },
+    { "frontend_resource_known@c0",         m_d1c_kn_c0, 0x000000FFu },
+    { "frontend_resource_known@c1",         m_d1c_kn_c1, 0x000000FFu },
+    { "frontend_resource_known@c2",         m_d1c_kn_c2, 0x000000FFu },
+    { "frontend_resource_known@c3",         m_d1c_kn_c3, 0x000000FFu },
+    { "frontend_resource_known@c4",         m_d1c_kn_c4, 0x000000FFu },
+    { "frontend_resource_known@c5",         m_d1c_kn_c5, 0x000000FFu },
+    { "frontend_resource_known@c6",         m_d1c_kn_c6, 0x000000FFu },
+    { "frontend_resource_known@c7",         m_d1c_kn_c7, 0x000000FFu },
+    { "frontend_resource_known@c8",         m_d1c_kn_c8, 0x000000FFu },
+    { "sound_sample_pause_toggle",          b_d1c_1d220, 0x00000000u },
+    { "sound_sample_pause_toggle@set",      m_d1c_spt_set, 0x00000000u },
+    { "sound_sample_pause_toggle@nz",       m_d1c_spt_nz, 0x00000000u },
+    { "sound_sample_pause_toggle@nocall",   m_d1c_spt_nocall, 0x00000000u },
+    { "sound_sample_pause_toggle@order",    m_d1c_spt_order, 0x00000000u },
+    { "sound_sample_pause_toggle@byte",     m_d1c_spt_byte, 0x00000000u },
+    { "sound_music_pause_toggle",           b_d1c_1d1b0, 0x00000000u },
+    { "sound_music_pause_toggle@clear",     m_d1c_mp_clear, 0x00000000u },
+    { "sound_music_pause_toggle@d9",        m_d1c_mp_d9, 0x00000000u },
+    { "sound_music_pause_toggle@song",      m_d1c_mp_song, 0x00000000u },
+    { "sound_music_pause_toggle@seq",       m_d1c_mp_seq, 0x00000000u },
+    { "sound_music_pause_toggle@cc",        m_d1c_mp_cc, 0x00000000u },
+    { "sound_music_pause_toggle@eq",        m_d1c_mp_eq, 0x00000000u },
+    { "sound_music_pause_toggle@gate",      m_d1c_mp_gate, 0x00000000u },
+    { "sound_music_pause_toggle@al",        m_d1c_mp_al, 0x00000000u },
+    { "sound_music_pause_toggle@nostop",    m_d1c_mp_nostop, 0x00000000u },
+    { "sound_music_pause_toggle@set",       m_d1c_mp_set, 0x00000000u },
+    { "sound_music_pause_toggle@order",     m_d1c_mp_order, 0x00000000u },
+    { "hiscore_audit_reset_due",            b_d1c_1e988, 0x000000FFu },
+    { "hiscore_audit_reset_due@t27",        m_d1c_au_t27, 0x000000FFu },
+    { "hiscore_audit_reset_due@t26",        m_d1c_au_t26, 0x000000FFu },
+    { "hiscore_audit_reset_due@u27",        m_d1c_au_u27, 0x000000FFu },
+    { "hiscore_audit_reset_due@u26",        m_d1c_au_u26, 0x000000FFu },
+    { "hiscore_audit_reset_due@swap",       m_d1c_au_swap, 0x000000FFu },
+    { "hiscore_audit_reset_due@one",        m_d1c_au_one, 0x000000FFu },
+    { "game_null_step",                     b_d1c_29b70, 0x00000000u },
+    { "game_null_step@mutant",              m_d1c_null, 0x00000000u },
+    { "game_init_null",                     b_d1c_32968, 0x00000000u },
+    { "game_init_null@mutant",              m_d1c_null, 0x00000000u },
+    { "flow_challenge_handle",              b_d1c_29cbc, 0xFFFFFFFFu },
+    { "flow_challenge_handle@side",         m_d1c_ch_side, 0xFFFFFFFFu },
+    { "flow_challenge_handle@tbl",          m_d1c_ch_tbl, 0xFFFFFFFFu },
+    { "flow_challenge_handle@scale",        m_d1c_ch_scale, 0xFFFFFFFFu },
+    { "flow_challenge_handle@char",         m_d1c_ch_char, 0xFFFFFFFFu },
+    { "flow_challenge_handle@one",          m_d1c_ch_one, 0xFFFFFFFFu },
+    { "config_set_credit_row",              b_d1c_2c06c, 0x00000000u },
+    { "config_set_credit_row@width",        m_d1c_row_width, 0x00000000u },
+    { "config_set_credit_row@off",          m_d1c_row_off, 0x00000000u },
+    { "flow_105bf0_clear",                  b_d1c_2c074, 0x00000000u },
+    { "flow_105bf0_clear@f0",               m_d1c_bf_f0, 0x00000000u },
+    { "flow_105bf0_clear@f4",               m_d1c_bf_f4, 0x00000000u },
+    { "flow_105bf0_clear@width",            m_d1c_bf_width, 0x00000000u },
+    { "flow_list_105c0c_init",              b_d1c_2c390, 0x00000000u },
+    { "flow_list_105c0c_init@count",        m_d1c_li_count, 0x00000000u },
+    { "flow_list_105c0c_init@head",         m_d1c_li_head, 0x00000000u },
+    { "flow_list_105c0c_init@stride",       m_d1c_li_stride, 0x00000000u },
+    { "flow_list_105c0c_init@sent",         m_d1c_li_sent, 0x00000000u },
+    { "flow_list_105c0c_init@first",        m_d1c_li_first, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

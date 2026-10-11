@@ -8024,6 +8024,246 @@ C3G_SPECS = [
 D1_SPECS = []
 
 
+# ---- track D1 batch d1c (record 2026-10-11-reverse-d1c): game/flow.c's first half ----------------
+D1C_FX_RECS = (0x000F0B00, 0x000F1314, 0x000F1B28)   # the effect pool's first three records (stride 0x814)
+D1C_FX_FREE = 0x000F233C                              # the fourth: the one record on the free list
+D1C_FX_SRC = 0x0010A100                               # the source records, 0x20 apart (zero BSS)
+D1C_FX_PAL = 0x00107498                               # the palette dirty list's base (0x33734's head)
+
+
+def d1c_dw(*vals):
+    return b"".join(le32(v) for v in vals)
+
+
+def d1c_fx_rec(t, state, n=0, reload=7, body=b"", tgt=b"", first=0x20, count=2):
+    """One active effect record: +0xC type, +0xD reload, +0xE state, +0xF n, `body` from +0x10,
+    `tgt` from +0x410, and its source record's +8 (palette first) and +0xC (count)."""
+    return (t, state, n, reload, bytes(body), bytes(tgt), first, count)
+
+
+def d1c_fx_case(recs, lock=0, counter=0x40):
+    """0x134C0: the active list 0xFCCE0 -> recs -> 0xFCCE0, one record on the free list 0xFCCE8, the
+    lock 0x9AF3C, the active counter 0x9AF3D and the dirty-list head on a 0xA5-seeded list. The
+    bytes of a record past `body`/`tgt` are 0x5A/0x6B, so a loop one entry too long changes them."""
+    p = {0x0009AF3C: bytes([lock]), 0x0009AF3D: bytes([counter]),
+         0x00107798: le32(D1C_FX_PAL), D1C_FX_PAL: b"\xa5" * 0x40,
+         0x000FCCE8: le32(D1C_FX_FREE) * 2, D1C_FX_FREE: le32(0x000FCCE8) * 2}
+    chain = [0x000FCCE0] + list(D1C_FX_RECS[:len(recs)]) + [0x000FCCE0]
+    p[0x000FCCE0] = le32(chain[1]) + le32(chain[-2])
+    for i, (t, state, n, reload, body, tgt, first, count) in enumerate(recs):
+        src = D1C_FX_SRC + i * 0x20
+        head = le32(chain[i + 2]) + le32(chain[i]) + le32(src) + bytes([t, reload, state, n])
+        p[chain[i + 1]] = (head + body).ljust(0x40, b"\x5a")
+        p[chain[i + 1] + 0x410] = tgt.ljust(0x40, b"\x6b")
+        p[src] = le32(0x00800040 + i) + le32(0x5A5A5A5A) + le32(first) + le32(count)
+    return p
+
+
+# 0x1C6D4: the nine dwords the tree accepts, and values around and between them (one per
+# rejecting block: below 0x80995C, between the constants, above 0x8099CC, a low-16 alias).
+D1C_KNOWN = (0x0080995C, 0x0080997C, 0x00809984, 0x0080998C, 0x00809994, 0x0080999C, 0x008099A4,
+             0x008099AC, 0x008099CC)
+D1C_UNKNOWN = (0x0080995B, 0x00809960, 0x00809980, 0x00809988, 0x00809990, 0x00809998, 0x008099A8,
+               0x008099B0, 0x008099D0, 0x0090995C, 0, 0xFFFFFFFF)
+
+
+def d1c_pause_case(d8=0x11, d9=0x22, da=0x33, db=0x44, seq=0x0010B000, song=0x00801234):
+    """0x1D1B0/0x1D220: the four pause bytes 0x1028D8..DB (prompt, song byte, music, sample), the
+    sequence handle 0x1028C0, the current song 0x1028D4 and the pending song 0x1028CC."""
+    return {0x001028D8: bytes([d8, d9, da, db]), 0x001028DC: b"\x55",
+            0x001028C0: le32(seq), 0x001028D4: le32(song), 0x001028CC: le32(0xBBBBBBBB)}
+
+
+def d1c_audit_case(f27, f26):
+    """0x1E988: fields 0x27 and 0x26 as full 32-bit values: descriptor 0x1C000 is 8 nibbles ending
+    at byte 4 of 0x105DE1, 0x1C200 the next 8 (0x2D974's walk, most significant byte last)."""
+    return {0x0002D300 + 0x27 * 4: le32(0x0001C000), 0x0002D300 + 0x26 * 4: le32(0x0001C200),
+            0x00105DE1: le32(f27) + le32(f26)}
+
+
+def d1c_chal_case(f0, f1):
+    """0x29CBC: the two side bytes 0x105B34/35 and the two adjacent 7-dword tables, every entry
+    distinct."""
+    return {0x00105B34: bytes([f0, f1]),
+            0x000A8AC0: d1c_dw(*[0x00C00000 + k for k in range(7)]),
+            0x000A8ADC: d1c_dw(*[0x00D00000 + k for k in range(7)])}
+
+
+D1C_SPECS = [
+    # 0x134C0 effects_step: no register argument. The walk of the active list 0xFCCE0 under the
+    # lock 0x9AF3C; per record the +0xE countdown, the type dispatch (jump table 0x134A8, six
+    # entries, resolved by hand below) and the seven bodies. 0x33734 (the dirty-list append) and
+    # the two list primitives 0x249D0/0x249B0 run real on both sides (leaves; effects.c keeps its
+    # own unseamed copies of the primitives, as the 0x13C70 row states). Mask 0: the one caller
+    # (0x25639) reloads EAX at 0x2563E (`mov eax,[0x10150c]`).
+    Spec("effects_step", 0x134C0, [
+        Case("k0", {}, d1c_fx_case([d1c_fx_rec(4, 1, body=d1c_dw(0x00101010, 0))], lock=1)),
+        Case("k1", {}, d1c_fx_case([])),
+        Case("z0", {}, d1c_fx_case([d1c_fx_rec(0, 0, n=2, body=d1c_dw(3, 0x11, 0x22, 0x33))])),
+        Case("z1", {}, d1c_fx_case([d1c_fx_rec(0, 5, n=2, body=d1c_dw(3, 0x11111111, 0x22222222,
+                                                                      0x33333333))])),
+        Case("a0", {}, d1c_fx_case([d1c_fx_rec(1, 2, n=0x90, body=d1c_dw(0x5A5A5A5A, 0x00102030))])),
+        # a1: b 0xFE+5 wraps to 0x03; g 0xF8+0x110 = 0x208 spills 0x02 into r (the 0xffff mask at
+        # 0x13573); r 0xF0-0x10 = 0xE0; the deltas are the words at +0x1A/+0x1C/+0x1E (the dwords
+        # +0x18/+0x1A/+0x1C `sar 16`); +0xF = 0x90 is added zero-extended.
+        Case("a1", {}, d1c_fx_case([d1c_fx_rec(1, 1, n=0x90, body=d1c_dw(0x5A5A5A5A, 0x7FF0F8FE)
+                                               + le16(0x7777) + le16(0x0005) + le16(0x0110)
+                                               + le16(0xFFF0))])),
+        Case("a2", {}, d1c_fx_case([d1c_fx_rec(1, 1, n=1, body=d1c_dw(0x5A5A5A5A, 0x00100020)
+                                               + le16(0x0101) + le16(0xFFD0) + le16(0xFFFF)
+                                               + le16(0x0000))])),
+        Case("s0", {}, d1c_fx_case([d1c_fx_rec(2, 1, n=1, body=d1c_dw(0x111111FE, 0x22222222,
+                                                                      0x33333333))])),
+        # s1: the descending rotate overwrites the offset byte (+0x10) with the old +0x14's low
+        # byte 5 before 0x135D6 reads it: the palette first is src+8 - 5, not + 0x10.
+        Case("s1", {}, d1c_fx_case([d1c_fx_rec(2, 1, n=2, body=d1c_dw(0x111111F0, 0x22222205,
+                                                                      0x33333333))])),
+        Case("s2", {}, d1c_fx_case([d1c_fx_rec(2, 1, n=4, body=d1c_dw(3, 0xA1, 0xA2, 0xA3, 0xA4,
+                                                                      0xA5))])),
+        Case("s3", {}, d1c_fx_case([d1c_fx_rec(2, 1, n=0, body=d1c_dw(0x1111117F, 0x22222222))])),
+        # s4: n = 3 descending: the third store lands on the record's own +0xC dword (type,
+        # reload, state, n), and 0x135E7 reads the new n = 2 for the palette count.
+        Case("s4", {}, d1c_fx_case([d1c_fx_rec(2, 1, n=3, body=d1c_dw(0x444444FF, 0x02010905,
+                                                                      0x66666666))])),
+        Case("l0", {}, d1c_fx_case([d1c_fx_rec(3, 1, n=9, count=3, body=d1c_dw(1, 2, 3, 4))])),
+        # l1: entry 0 equal (skipped); 1 clamps b/g/r at 0xF9/0xFA/0xFF; 2 differs in the top
+        # byte only (rewritten, top byte cleared); 3 has g exactly at the target (0x40+8 = 0x48).
+        Case("l1", {}, d1c_fx_case([d1c_fx_rec(3, 1, count=4,
+                                               body=d1c_dw(0x00101010, 0x00F8F8F8, 0xAA303030,
+                                                           0x00404040),
+                                               tgt=d1c_dw(0x00101010, 0x00FFFAF9, 0xBB303030,
+                                                          0x00804844))])),
+        Case("l2", {}, d1c_fx_case([d1c_fx_rec(3, 1, count=2, body=d1c_dw(0x00111111, 0x00222222),
+                                               tgt=d1c_dw(0x00111111, 0x00222222)),
+                                    d1c_fx_rec(4, 1, count=2, body=d1c_dw(0x00101010, 0))])),
+        Case("l3", {}, d1c_fx_case([d1c_fx_rec(3, 1, count=0, body=d1c_dw(1), tgt=d1c_dw(2))])),
+        Case("l4", {}, d1c_fx_case([d1c_fx_rec(3, 1, count=0xFFFFFFFF, body=d1c_dw(1),
+                                               tgt=d1c_dw(2))])),
+        Case("d0", {}, d1c_fx_case([d1c_fx_rec(4, 1, count=3, body=d1c_dw(0x7F050310, 0,
+                                                                          0x00FFFF07))])),
+        Case("d1", {}, d1c_fx_case([d1c_fx_rec(4, 1, count=2, body=d1c_dw(0, 0))])),
+        Case("p0", {}, d1c_fx_case([d1c_fx_rec(5, 1, n=3, body=b"\xf0\x01\x5a\x5a"
+                                               + d1c_dw(0x00101010, 0, 0x00050607))])),
+        Case("p1", {}, d1c_fx_case([d1c_fx_rec(5, 1, n=2, body=b"\x04\x03\x5a\x5a" + d1c_dw(0, 0))])),
+        Case("p2", {}, d1c_fx_case([d1c_fx_rec(5, 1, n=3, body=b"\x04\x00\x5a\x5a"
+                                               + d1c_dw(0x00101010, 0x00202020, 0x00303030),
+                                               tgt=d1c_dw(0x6B6B6B6B, 0x00181410, 0x00202020,
+                                                          0x00323C40))])),
+        Case("p3", {}, d1c_fx_case([d1c_fx_rec(5, 1, n=2, body=b"\x04\x00\x5a\x5a"
+                                               + d1c_dw(0x00101010, 0x00202020),
+                                               tgt=d1c_dw(0x6B6B6B6B, 0x00101010, 0x00202020))])),
+        Case("p4", {}, d1c_fx_case([d1c_fx_rec(5, 1, n=0, body=b"\x04\x00\x5a\x5a")])),
+        Case("q0", {}, d1c_fx_case([d1c_fx_rec(6, 1, n=1, count=2, body=d1c_dw(1, 2, 3))])),
+        # q1: entry 0 floors b exactly at the target (0x40-8 = 0x38), g at 0x3C, r stays 0x38;
+        # 1 equal; 2 differs in the top byte only.
+        Case("q1", {}, d1c_fx_case([d1c_fx_rec(6, 1, count=3,
+                                               body=d1c_dw(0x00404040, 0x00101010, 0xCC202020),
+                                               tgt=d1c_dw(0x00303C38, 0x00101010, 0xDD202020))])),
+        Case("q2", {}, d1c_fx_case([d1c_fx_rec(6, 1, count=1, body=d1c_dw(0x00123456),
+                                               tgt=d1c_dw(0x00123456))])),
+        Case("t0", {}, d1c_fx_case([d1c_fx_rec(0x87, 1, count=1, body=d1c_dw(0x00404040),
+                                               tgt=d1c_dw(0))])),
+        Case("m0", {}, d1c_fx_case([d1c_fx_rec(1, 1, n=2, body=d1c_dw(0x5A5A5A5A, 0x00010203)
+                                               + le16(0) + le16(1) + le16(2) + le16(3)),
+                                    d1c_fx_rec(4, 1, count=1, body=d1c_dw(0)),
+                                    d1c_fx_rec(2, 1, n=2, body=d1c_dw(1, 0xB1, 0xB2, 0xB3))])),
+    ], allow_calls=(0x33734, 0x249B0, 0x249D0), eax_mask=0,
+       mutants=("@lock", "@type0", "@dec", "@reload", "@default", "@t1mask", "@t1delta",
+                "@t1first", "@t1sext", "@rotdir", "@rotsub", "@offcache", "@ncache", "@t3flag",
+                "@t6flag", "@ptr", "@palcount", "@nopal", "@eq", "@step", "@clamp", "@top",
+                "@floor", "@count", "@t4zero", "@t6to", "@t5flag", "@t5dec", "@t5base", "@t5tgt",
+                "@t5zext", "@t5remove", "@remove", "@free", "@stop")),
+    # 0x1C6D4 frontend_resource_known: EAX = rec; the dword at rec against the nine constants of
+    # the cmp/jb/jbe tree. Mask 0xFF: `mov al,1`/`xor al,al`, and the three callers test AL
+    # (0x1203D, 0x126F1, 0x42599 `test al,al`).
+    Spec("frontend_resource_known", 0x1C6D4,
+         [Case("y%d" % i, {"eax": 0x0010A000}, {0x0010A000: le32(v), 0x0010A004: le32(0x0080995C)})
+          for i, v in enumerate(D1C_KNOWN)]
+         + [Case("n%d" % i, {"eax": 0x0010A000}, {0x0010A000: le32(v), 0x0010A004: le32(0x0080995C)})
+            for i, v in enumerate(D1C_UNKNOWN)],
+         eax_mask=0xFF,
+         mutants=("@deref", "@low16", "@range", "@next") + tuple("@c%d" % i for i in range(9))),
+    # 0x1D220 sound_sample_pause_toggle: no argument. The byte 0x1028DB ^= 1; when it is now 1
+    # (zero-extended, `cmp eax,1`) the tail jump 0x1D231 reaches 0x1CD9C (stub). Mask 0: the one
+    # caller (0x24DC9) jumps to 0x24D08, which loads AH and calls int 16h (AH = 1 reads no AL).
+    Spec("sound_sample_pause_toggle", 0x1D220, [
+        Case("t0", {}, d1c_pause_case(db=0)),
+        Case("t1", {}, d1c_pause_case(db=1)),
+        Case("t2", {}, d1c_pause_case(db=3)),
+        Case("t3", {}, d1c_pause_case(db=2)),
+    ], calls=(E.Call(0x1CD9C, ()),), eax_mask=0,
+       mutants=("@set", "@nz", "@nocall", "@order", "@byte")),
+    # 0x1D1B0 sound_music_pause_toggle: no argument. Paused (0x1028DA == 1): the byte clears and,
+    # with a song byte, a song and a sequence, the song is pending again (0x1028CC). Otherwise a
+    # sequence that plays (0x1CA40, AL tested at 0x1D200) is stopped (0x5DEAF) and the byte is
+    # set. Mask 0: record §1 (0x1D261, 0x1D281, 0x24DC4).
+    Spec("sound_music_pause_toggle", 0x1D1B0, [
+        Case("r0", {}, d1c_pause_case(da=1, d9=0)),
+        Case("r1", {}, d1c_pause_case(da=1, d9=1, song=0)),
+        Case("r2", {}, d1c_pause_case(da=1, d9=0x80, seq=0)),
+        Case("r3", {}, d1c_pause_case(da=1, d9=1)),
+        Case("r4", {}, d1c_pause_case(da=0, seq=0)),
+        Case("r5", {}, d1c_pause_case(da=0), {0x1CA40: 0}),
+        Case("r6", {}, d1c_pause_case(da=0), {0x1CA40: 1}),
+        Case("r7", {}, d1c_pause_case(da=2), {0x1CA40: 0x100}),
+        Case("r8", {}, d1c_pause_case(da=0x81), {0x1CA40: 0x101}),
+    ], calls=(E.Call(0x1CA40, (), eax=0), E.Call(0x5DEAF, (), clobbers=("ebx", "ecx", "edx"))),
+       eax_mask=0,
+       mutants=("@clear", "@d9", "@song", "@seq", "@cc", "@eq", "@gate", "@al", "@nostop", "@set",
+                "@order")),
+    # 0x1E988 hiscore_audit_reset_due: no argument. Config field 0x27 >= 2000 and field 0x26 >=
+    # 200, both signed (`jl`); 0x2D974 runs real on both sides and is recorded (its own row). The
+    # two descriptors are poked to full 32-bit fields so a negative value exists. Mask 0xFF: the
+    # one caller masks it (0x1E884 `and eax,0xff`).
+    Spec("hiscore_audit_reset_due", 0x1E988, [
+        Case("h0", {}, d1c_audit_case(1999, 500)),
+        Case("h1", {}, d1c_audit_case(2000, 199)),
+        Case("h2", {}, d1c_audit_case(2000, 200)),
+        Case("h3", {}, d1c_audit_case(0x80000000, 500)),
+        Case("h4", {}, d1c_audit_case(5000, 0xFFFFFFFF)),
+        Case("h5", {}, d1c_audit_case(0x7FFFFFFF, 0x7FFFFFFF)),
+    ], calls=(E.Call(0x2D974, ("eax",), mode="real"),), eax_mask=0xFF,
+       mutants=("@t27", "@t26", "@u27", "@u26", "@swap", "@one")),
+    # 0x29B70 game_null_step and 0x32968 game_init_null: a bare `ret` each; the rows assert that
+    # no byte changes. Mask 0: neither writes EAX.
+    Spec("game_null_step", 0x29B70, [Case("z0", {"eax": 0x1234})], eax_mask=0, mutants=("@mutant",)),
+    Spec("game_init_null", 0x32968, [Case("z0", {"eax": 0x1234})], eax_mask=0, mutants=("@mutant",)),
+    # 0x29CBC flow_challenge_handle: EAX = side, EDX = the character. The dword 0xA8ADC[ch] when
+    # the byte 0x105B34[side] is non-zero, else 0xA8AC0[ch]. Full mask: the four callers store
+    # EAX (0x42984, 0x42A1E, 0x42AB8, 0x42AEE `mov [0xc83c4],eax`).
+    Spec("flow_challenge_handle", 0x29CBC, [
+        Case("c0", {"eax": 0, "edx": 0}, d1c_chal_case(0, 0)),
+        Case("c1", {"eax": 0, "edx": 3}, d1c_chal_case(1, 0)),
+        Case("c2", {"eax": 1, "edx": 6}, d1c_chal_case(1, 0)),
+        Case("c3", {"eax": 1, "edx": 2}, d1c_chal_case(0, 0x80)),
+        Case("c4", {"eax": 0, "edx": 5}, d1c_chal_case(2, 0)),
+    ], eax_mask=0xFFFFFFFF, mutants=("@side", "@tbl", "@scale", "@char", "@one")),
+    # 0x2C06C config_set_credit_row: the byte 0x105C05 = AL. Mask 0: EAX is not written.
+    Spec("config_set_credit_row", 0x2C06C, [
+        Case("w0", {"eax": 0x1D}, {0x00105C04: b"\x61\x62\x63\x64"}),
+        Case("w1", {"eax": 0x12345601}, {0x00105C04: b"\x61\x62\x63\x64"}),
+        Case("w2", {"eax": 0xFFFFFF00}, {0x00105C04: b"\x61\x62\x63\x64"}),
+    ], eax_mask=0, mutants=("@width", "@off")),
+    # 0x2C074 flow_105bf0_clear: the dwords 0x105BF4 and 0x105BF0 = 0. Mask 0: EAX is not written.
+    Spec("flow_105bf0_clear", 0x2C074, [
+        Case("x0", {"eax": 0x1234, "edx": 0x5678},
+             {0x00105BEC: b"\x71\x72\x73\x74" + b"\x81\x82\x83\x84" + b"\x91\x92\x93\x94"
+                          + b"\xa1\xa2\xa3\xa4"}),
+    ], eax_mask=0, mutants=("@f0", "@f4", "@width")),
+    # 0x2C390 flow_list_105c0c_init: the two sentinels 0x105C0C and 0x105C14 self-linked, then the
+    # sixteen 0x14-byte nodes 0x105C1C..0x105D48 appended to the 0x105C14 list through 0x249C0
+    # (real on both sides: effects.c's unseamed copy). Mask 0: EAX = 0x105C14 at return (0x2C3C2)
+    # and both callers call 0x12750 next (0x20E33, 0x20EDA), which loads its registers itself.
+    Spec("flow_list_105c0c_init", 0x2C390, [
+        Case("i0", {}, {0x00105C0C + k: b"\xa5" * 0x40 for k in range(0, 0x180, 0x40)}),
+        Case("i1", {}, {0x00105C0C + k: bytes((0x11 + j + k) & 0xFF for j in range(0x40))
+                        for k in range(0, 0x180, 0x40)}),
+    ], allow_calls=(0x249C0,), eax_mask=0,
+       mutants=("@count", "@head", "@stride", "@sent", "@first")),
+]
+D1_SPECS += D1C_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

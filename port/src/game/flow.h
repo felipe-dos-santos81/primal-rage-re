@@ -333,6 +333,11 @@ void game_fight_reset(u32 stage, u32 full);
 void game_null_step(void);
 /* Record §K2.2, 0x32968: a bare `ret`. Called by game_init (0x20CC7). */
 void game_init_null(void);
+/* 0x29CBC, 0x2C074 and 0x2C390: exposed for the differential rows (record
+ * 2026-10-11-reverse-d1c). */
+u32 flow_challenge_handle(u32 side, u32 ch);
+void flow_105bf0_clear(void);
+void flow_list_105c0c_init(void);
 /* 0x4F200: DS_00107A55 = (u8)v, DS_00107A54 = 0, 0x4F1D0, 0x2BAF4(1). */
 void flow_screen_reset(u32 v);
 /* 0x25848: picks the stage word DS_00104AFC (on DS_00104B17). */
