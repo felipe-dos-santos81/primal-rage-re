@@ -4886,7 +4886,7 @@ void fighter_3f720(u32 side, s32 n)
     else
         d = (s32)(0u - (u32)ai_distance());                 /* 0x3F742..0x3F749 */
     v = d / n;                                              /* 0x3F754..0x3F759 idiv */
-    if (!fighter_189fc(ctx[1])) v = 0x64;                   /* 0x3F761..0x3F76A */
+    if ((u8)fighter_189fc(ctx[1]) == 0u) v = 0x64;          /* 0x3F761..0x3F76A, 0x3F766: test al,al */
     fighter_3c190(ctx[0], (u32)v);                          /* 0x3F772 */
 }
 
