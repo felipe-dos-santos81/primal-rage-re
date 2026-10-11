@@ -733,12 +733,14 @@ int camera_box_overlap(u32 actor0, u32 actor1)
 
 /* 0x15EC0. Reverse the bits of each byte of buf[0..len) in place, through the
  * 0xA1432 table. The raw's return is the half length or a table byte and is
- * ignored by the only caller (0x16DA4). */
+ * ignored by the only caller (0x16DA4). The half length is the signed len / 2
+ * (0x15ECE..0x15ED5) and the swap loop is skipped when it is not positive
+ * (0x15EDB `test eax,eax`, 0x15EDD `jle`), so a negative len swaps nothing. */
 void camera_bitrev(u32 buf, u32 len)
 {
-    u32 half = (u32)((s32)len >> 1);
+    s32 half = (s32)len / 2;
     u32 lo = buf, hi = buf + len - 1u;
-    for (u32 i = 0; i < half; i++) {
+    for (s32 i = 0; i < half; i++) {
         u8 a = DSB(lo);
         u8 b = DSB(hi);
         DSB(lo) = DSB(CAMERA_BITREV + b);
