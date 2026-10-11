@@ -8206,6 +8206,20 @@ def d1g_hook_case(side, s61, slot_fill=0x50):
     return p
 
 
+# The text wrappers' stubs, as the C3g text rows declare them: 0x2F198 by value (the string's first
+# 16 bytes) and writing the cursor 0x105F34 (so a save/restore, or its absence, is observable),
+# 0x2EFD4 by value, 0x2F5A0 with the two cells dereferenced.
+D1G_TXT198 = E.Call(0x2F198, ("eax", "edx", "[ebx]", "[ebx+4]", "[ebx+8]", "[ebx+12]", "ecx"),
+                    mode="stub", clobbers=("ebx", "ecx", "edx"),
+                    writes=((None, 0x00105F34, b"\x5A\x5A\x5A\x5A"),))
+D1G_TXTFMT = E.Call(0x2EFD4, ("eax", "[edx]", "[edx+4]", "[edx+8]", "[edx+12]", "ebx", "ecx"),
+                    mode="stub", clobbers=("ebx", "ecx", "edx"))
+D1G_GLYPH = E.Call(0x2F5A0, ("eax", "[edx]", "[ebx]", "ecx", "s0"), mode="stub", pop=4,
+                   clobbers=("ebx", "ecx", "edx"))
+D1G_STR_A, D1G_STR_B = 0x0010A200, 0x0010A210       # two scratch strings (0x10A000 is zero)
+D1G_STRS = {D1G_STR_A: b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff\x01",
+            D1G_STR_B: b"\x91\x82\x73\x64\x55\x46\x37\x28\x19\x0a\xfb\xec\xdd\xce\xbf\x02"}
+
 D1G_CURSOR = E.Call(0x2A620, ("eax", "edx"), mode="real")   # mode1_cursor: its own row (C3)
 
 D1G_SPECS = [
@@ -8426,6 +8440,70 @@ D1G_SPECS = [
     ], allow_calls=(0x33950, 0x18BD4), calls=(CHECKS, ANIM54),
        mutants=("@gate", "@f5", "@f1", "@f8", "@f4", "@fe", "@f7", "@boxes", "@al", "@s8a",
                 "@s52", "@s53", "@r61", "@anim", "@late", "@s57", "@ret")),
+    # The six text wrappers below return whatever their last callee left in EAX (none writes it
+    # after the call); the port's are void, as 0x2F198's own row is (C3g). Mask 0 rests on the
+    # caller scan of record d1g §1 (tool-assisted, its limits named there).
+    # 0x2F41C text_cursor_next_line: EAX = string, EDX = mode: 0x2F198(0, -1, string, mode).
+    Spec("text_cursor_next_line", 0x2F41C, [
+        Case("t0", {"eax": D1G_STR_A, "edx": 0x5000}, {**D1G_STRS, 0x00105F34: le32(0x11223344)}),
+        Case("t1", {"eax": D1G_STR_B, "edx": 0x1002, "ebx": 0x77, "ecx": 0x88},
+             {**D1G_STRS, 0x00105F34: le32(0xAABBCCDD)}),
+    ], calls=(D1G_TXT198,), eax_mask=0, mutants=("@col", "@row", "@str", "@mode")),
+    # 0x2F510 text_cursor_hold_font2: EAX = col, EDX = row, EBX = string, ECX = mode (`or cl,2`
+    # 0x2F511); the cursor dword is saved (0x2F514) and restored (0x2F51F) around 0x2F198.
+    Spec("text_cursor_hold_font2", 0x2F510, [
+        Case("u0", {"eax": 3, "edx": 4, "ebx": D1G_STR_A, "ecx": 0x1000},
+             {**D1G_STRS, 0x00105F34: le32(0x11223344)}),
+        Case("u1", {"eax": 0xFFFFFFFF, "edx": 0xFFFFFFFF, "ebx": D1G_STR_B, "ecx": 0x2003},
+             {**D1G_STRS, 0x00105F34: le32(0xAABBCCDD)}),
+        Case("u2", {"eax": 7, "edx": 9, "ebx": D1G_STR_B, "ecx": 0x4001},
+             {**D1G_STRS, 0x00105F34: le32(0x01020304)}),
+    ], calls=(D1G_TXT198,), eax_mask=0, mutants=("@or", "@or1", "@args", "@str", "@save")),
+    # 0x2F434 text_number_set: EAX = col, EDX = row, EBX = value, ECX = width, [esp+4] = pad,
+    # [esp+8] = mode; `ret 8`. 0x2EFD4 then 0x2F198, the cursor not held (`@save` holds it).
+    Spec("text_number_set", 0x2F434, [
+        Case("p0", {"eax": 5, "edx": 6, "ebx": 0xFFFFFFD6, "ecx": 3, "s0": 0, "s1": 0x1000},
+             {0x00105F34: le32(0x11223344)}),
+        Case("p1", {"eax": 0, "edx": 9, "ebx": 12345, "ecx": 5, "s0": 2, "s1": 0x2002},
+             {0x00105F34: le32(0xAABBCCDD)}),
+    ], calls=(D1G_TXTFMT, D1G_TXT198), eax_mask=0,
+       mutants=("@val", "@pad", "@mode", "@save", "@fmt", "@col", "@row")),
+    # 0x2F528 text_number_draw_font2: the same registers and stack; the mode ORed with 2 (`or
+    # ebp,2` 0x2F54A) and the cursor held (0x2F53A/0x2F544, 0x2F55F/0x2F563).
+    Spec("text_number_draw_font2", 0x2F528, [
+        Case("q0", {"eax": 5, "edx": 6, "ebx": 0xFFFFFFD6, "ecx": 3, "s0": 0, "s1": 0x1000},
+             {0x00105F34: le32(0x11223344)}),
+        Case("q1", {"eax": 0, "edx": 9, "ebx": 12345, "ecx": 5, "s0": 2, "s1": 0x2001},
+             {0x00105F34: le32(0xAABBCCDD)}),
+    ], calls=(D1G_TXTFMT, D1G_TXT198), eax_mask=0,
+       mutants=("@val", "@pad", "@mode", "@save", "@fmt", "@col", "@row")),
+    # 0x2F174 text_glyph_at: EAX = col, EBX = ch, EDX = row, ECX = mode: 0x2F5A0(ch, &col, &row,
+    # mode, 0) on stack copies of the two cells (0x2F182/0x2F18A), the advance discarded.
+    Spec("text_glyph_at", 0x2F174, [
+        Case("y0", {"eax": 5, "ebx": 0x41, "edx": 6, "ecx": 0x2000}, {}, {0x2F5A0: 0}),
+        Case("y1", {"eax": 0x2A, "ebx": 0x80, "edx": 0x13, "ecx": 0x1002}, {}, {0x2F5A0: 1}),
+    ], calls=(D1G_GLYPH,), eax_mask=0, mutants=("@swap", "@ch", "@mode", "@vert")),
+    # 0x2F388 text_cells_release_count: EAX = col (negative centres), EDX = row, EBX = the cell
+    # count. 0x2AD40 is the RELEASE stub (records in the pool: the port's actor_pset guard, a
+    # PORT deviation, record d1g §4).
+    Spec("text_cells_release_count", 0x2F388, [
+        Case("e0", {"eax": 2, "edx": 1, "ebx": 4},
+             c3g_cell_case([(1 * 0xac + 2 * 4, 0), (1 * 0xac + 5 * 4, 3)])),
+        Case("e1", {"eax": 0xFFFFFFFF, "edx": 1, "ebx": 0x0C},
+             c3g_cell_case([(1 * 0xac + 15 * 4, 1), (1 * 0xac + 26 * 4, 2), (1 * 0xac + 27 * 4, 3)])),
+        Case("e2", {"eax": 0xFFFFFFFE, "edx": 1, "ebx": 0x30},
+             c3g_cell_case([(1 * 0xac, 2), (1 * 0xac + 0x29 * 4, 1), (1 * 0xac + 0x2A * 4, 3)])),
+        Case("e3", {"eax": 0x2A, "edx": 1, "ebx": 4},
+             c3g_cell_case([(1 * 0xac + 0x2A * 4, 0), (2 * 0xac, 1), (2 * 0xac + 4, 2),
+                            (2 * 0xac + 8, 3)])),
+        Case("e4", {"eax": 0x2B, "edx": 1, "ebx": 2}, c3g_cell_case([(2 * 0xac, 2)])),
+        Case("e5", {"eax": 5, "edx": 2, "ebx": 0}, c3g_cell_case([(2 * 0xac + 5 * 4, 0)])),
+        Case("e6", {"eax": 5, "edx": 2, "ebx": 0xFFFFFFFF}, c3g_cell_case([(2 * 0xac + 5 * 4, 0)])),
+        Case("e7", {"eax": 0xFFFFFFFF, "edx": 0, "ebx": 0x2B},
+             c3g_cell_case([(0, 1), (0x2A * 4, 2), (0x2B * 4, 3)])),
+    ], calls=(RELEASE,), eax_mask=0,
+       mutants=("@neg", "@force", "@cmp", "@stride", "@rowbase", "@zero", "@rel", "@pset", "@rec0",
+                "@centre", "@count")),
 ]
 D1_SPECS += D1G_SPECS
 

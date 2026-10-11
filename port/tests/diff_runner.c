@@ -14131,6 +14131,126 @@ D1G_HOOK_MUT(al, 256u)   D1G_HOOK_MUT(s8a, 512u)  D1G_HOOK_MUT(s52, 1024u)  D1G_
 D1G_HOOK_MUT(r61, 4096u) D1G_HOOK_MUT(anim, 8192u) D1G_HOOK_MUT(late, 16384u) D1G_HOOK_MUT(s57, 32768u)
 D1G_HOOK_MUT(ret, 65536u)
 
+/* The text wrappers (0x2F41C, 0x2F510, 0x2F434, 0x2F528, 0x2F174, 0x2F388). A string argument is
+ * a mem[] offset, as in the C3g text rows. */
+#define D1G_STR(v) (mem + ((v) & 0x3FFFFFFFu))
+
+/* 0x2F41C's mutants. EAX = string, EDX = mode: 0x2F198(0, -1, string, mode). */
+static u32 d1g_2f41c_core(const u32 *r, u32 mut)
+{
+    text_cursor_set((mut & 1u) ? -1 : 0, (mut & 2u) ? 0 : -1,                           /* @col / @row */
+                    (mut & 4u) ? mem + 0x0010A000u : D1G_STR(r[R_EAX]),                 /* @str */
+                    (mut & 8u) ? 0x1000u : r[R_EDX]);                                   /* @mode */
+    return 0u;
+}
+static void b_d1g_2f41c(const u32 *r, u32 *eax)     { text_cursor_next_line(D1G_STR(r[R_EAX]), r[R_EDX]); *eax = 0u; }
+static void m_d1g_nl_col(const u32 *r, u32 *eax)    { *eax = d1g_2f41c_core(r, 1u); }
+static void m_d1g_nl_row(const u32 *r, u32 *eax)    { *eax = d1g_2f41c_core(r, 2u); }
+static void m_d1g_nl_str(const u32 *r, u32 *eax)    { *eax = d1g_2f41c_core(r, 4u); }
+static void m_d1g_nl_mode(const u32 *r, u32 *eax)   { *eax = d1g_2f41c_core(r, 8u); }
+
+/* 0x2F510's mutants. EAX = col, EDX = row, EBX = string, ECX = mode (`or cl,2`). */
+static u32 d1g_2f510_core(const u32 *r, u32 mut)
+{
+    u32 save = DSD(0x00105F34u);
+    u32 mode = (mut & 1u) ? r[R_ECX] : (mut & 2u) ? (r[R_ECX] | 1u) : (r[R_ECX] | 2u);  /* @or / @or1 */
+    text_cursor_set((s32)r[R_EAX], (mut & 4u) ? (s32)r[R_EAX] : (s32)r[R_EDX],          /* @args */
+                    (mut & 8u) ? mem + 0x0010A000u : D1G_STR(r[R_EBX]), mode);          /* @str */
+    if (!(mut & 16u)) DSD(0x00105F34u) = save;                                          /* @save */
+    else if (mut & 32u) DSD(0x00105F34u) = save;
+    return 0u;
+}
+static void b_d1g_2f510(const u32 *r, u32 *eax)
+{ text_cursor_hold_font2((s32)r[R_EAX], (s32)r[R_EDX], D1G_STR(r[R_EBX]), r[R_ECX]); *eax = 0u; }
+static void m_d1g_hf_or(const u32 *r, u32 *eax)     { *eax = d1g_2f510_core(r, 1u); }
+static void m_d1g_hf_or1(const u32 *r, u32 *eax)    { *eax = d1g_2f510_core(r, 2u); }
+static void m_d1g_hf_args(const u32 *r, u32 *eax)   { *eax = d1g_2f510_core(r, 4u); }
+static void m_d1g_hf_str(const u32 *r, u32 *eax)    { *eax = d1g_2f510_core(r, 8u); }
+static void m_d1g_hf_save(const u32 *r, u32 *eax)   { *eax = d1g_2f510_core(r, 16u); }
+
+/* 0x2F434 and 0x2F528's mutants: EAX = col, EDX = row, EBX = value, ECX = width, [esp+4] = pad,
+ * [esp+8] = mode (`ret 8`). `font2` is 0x2F528: the mode ORed with 2 and the cursor held. */
+static u32 d1g_number_core(const u32 *r, u32 font2, u32 mut)
+{
+    s32 col = (mut & 64u) ? (s32)r[R_EDX] : (s32)r[R_EAX];                              /* @col */
+    s32 row = (mut & 128u) ? (s32)r[R_EAX] : (s32)r[R_EDX];                             /* @row */
+    u32 save = DSD(0x00105F34u);
+    u8 buf[0x14] = {0};
+    u32 mode = (mut & 4u) ? (font2 ? r[R_S1] : (r[R_S1] | 2u)) : (font2 ? (r[R_S1] | 2u) : r[R_S1]);   /* @mode */
+    if (!(mut & 32u))                                                                   /* @fmt */
+        (void)text_number_format((s32)((mut & 1u) ? r[R_ECX] : r[R_EBX]), buf,          /* @val */
+                                 (s32)r[R_ECX], (mut & 2u) ? r[R_S1] : r[R_S0]);        /* @pad */
+    text_cursor_set(col, row, buf, mode);
+    if ((font2 != 0u) != ((mut & 8u) != 0u)) DSD(0x00105F34u) = save;                   /* @save */
+    return 0u;
+}
+static void b_d1g_2f434(const u32 *r, u32 *eax)
+{ text_number_set((s32)r[R_EAX], (s32)r[R_EDX], (s32)r[R_EBX], (s32)r[R_ECX], r[R_S0], r[R_S1]); *eax = 0u; }
+static void b_d1g_2f528(const u32 *r, u32 *eax)
+{ text_number_draw_font2((s32)r[R_EAX], (s32)r[R_EDX], (s32)r[R_EBX], (s32)r[R_ECX], r[R_S0], r[R_S1]); *eax = 0u; }
+#define D1G_NUM_MUT(tag, font2, name, bit) \
+    static void m_d1g_##tag##_##name(const u32 *r, u32 *eax) { *eax = d1g_number_core(r, font2, bit); }
+D1G_NUM_MUT(ns, 0u, val, 1u)  D1G_NUM_MUT(ns, 0u, pad, 2u)  D1G_NUM_MUT(ns, 0u, mode, 4u)
+D1G_NUM_MUT(ns, 0u, save, 8u) D1G_NUM_MUT(ns, 0u, fmt, 32u) D1G_NUM_MUT(ns, 0u, col, 64u)
+D1G_NUM_MUT(ns, 0u, row, 128u)
+D1G_NUM_MUT(nf, 1u, val, 1u)  D1G_NUM_MUT(nf, 1u, pad, 2u)  D1G_NUM_MUT(nf, 1u, mode, 4u)
+D1G_NUM_MUT(nf, 1u, save, 8u) D1G_NUM_MUT(nf, 1u, fmt, 32u) D1G_NUM_MUT(nf, 1u, col, 64u)
+D1G_NUM_MUT(nf, 1u, row, 128u)
+
+/* 0x2F174's mutants. EAX = col, EBX = ch, EDX = row, ECX = mode: 0x2F5A0(ch, &col, &row, mode, 0). */
+static u32 d1g_2f174_core(const u32 *r, u32 mut)
+{
+    s32 c = (mut & 1u) ? (s32)r[R_EDX] : (s32)r[R_EAX];                                 /* @swap */
+    s32 w = (mut & 1u) ? (s32)r[R_EAX] : (s32)r[R_EDX];
+    (void)text_glyph_emit((s32)((mut & 2u) ? r[R_EAX] : r[R_EBX]), &c, &w,              /* @ch */
+                          (mut & 4u) ? 0x1000u : r[R_ECX], (mut & 8u) ? 1u : 0u);       /* @mode / @vert */
+    return 0u;
+}
+static void b_d1g_2f174(const u32 *r, u32 *eax)
+{ text_glyph_at((s32)r[R_EAX], (s32)r[R_EBX], (s32)r[R_EDX], r[R_ECX]); *eax = 0u; }
+static void m_d1g_ga_swap(const u32 *r, u32 *eax)   { *eax = d1g_2f174_core(r, 1u); }
+static void m_d1g_ga_ch(const u32 *r, u32 *eax)     { *eax = d1g_2f174_core(r, 2u); }
+static void m_d1g_ga_mode(const u32 *r, u32 *eax)   { *eax = d1g_2f174_core(r, 4u); }
+static void m_d1g_ga_vert(const u32 *r, u32 *eax)   { *eax = d1g_2f174_core(r, 8u); }
+
+/* 0x2F388's mutants. EAX = col (negative centres), EDX = row, EBX = the cell count. */
+static u32 d1g_2f388_core(const u32 *r, u32 mut)
+{
+    s32 col = (s32)r[R_EAX], row = (s32)r[R_EDX], count = (s32)r[R_EBX];
+    if (col < 0) {
+        col = ((mut & 512u) ? 0x2a : 0x2b) - count;                                     /* @centre */
+        col >>= 1;
+        if (col < 0 && !(mut & 1u)) {                                                   /* @neg */
+            col = 0;
+            count = (mut & 2u) ? 0x2b : 0x2a;                                           /* @force */
+        }
+    }
+    if (count <= 0 && !(mut & 1024u)) return 0u;       /* @count: the raw's do-while without its `jle` guard */
+    {
+        u32 rowbase = (u32)row * ((mut & 16u) ? 0xb0u : 0xacu);                         /* @rowbase */
+        s32 i = 0;
+        do {
+            u32 idx = (u32)col * ((mut & 8u) ? 8u : 4u) + rowbase;                      /* @stride */
+            u32 rec = DSD(0x00105F38u + idx);
+            if (rec != 0u || (mut & 256u)) {                                            /* @rec0 */
+                if (!(mut & 64u))                                                       /* @rel */
+                    release_record(rec, (mut & 128u) ? DSD(0x001014ECu) : actor_pset(rec));   /* @pset */
+                if (!(mut & 32u)) DSD(0x00105F38u + idx) = 0;                           /* @zero */
+            }
+            if (col < ((mut & 4u) ? 42 : 43)) col++;                                    /* @cmp */
+            else { rowbase += 0xacu; col = 0; }
+        } while (++i < count);
+    }
+    return 0u;
+}
+static void b_d1g_2f388(const u32 *r, u32 *eax)
+{ text_cells_release_count((s32)r[R_EAX], (s32)r[R_EDX], (s32)r[R_EBX]); *eax = 0u; }
+#define D1G_RELN_MUT(name, bit) \
+    static void m_d1g_rn_##name(const u32 *r, u32 *eax) { *eax = d1g_2f388_core(r, bit); }
+D1G_RELN_MUT(neg, 1u)    D1G_RELN_MUT(force, 2u)  D1G_RELN_MUT(cmp, 4u)    D1G_RELN_MUT(stride, 8u)
+D1G_RELN_MUT(rowbase, 16u) D1G_RELN_MUT(zero, 32u) D1G_RELN_MUT(rel, 64u)  D1G_RELN_MUT(pset, 128u)
+D1G_RELN_MUT(rec0, 256u) D1G_RELN_MUT(centre, 512u) D1G_RELN_MUT(count, 1024u)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -16013,6 +16133,50 @@ static const binding_t k_bindings[] = {
     { "fighter_3fd30@late",                m_d1g_hk_late,   0xFFFFFFFFu },
     { "fighter_3fd30@s57",                 m_d1g_hk_s57,    0xFFFFFFFFu },
     { "fighter_3fd30@ret",                 m_d1g_hk_ret,    0xFFFFFFFFu },
+    { "text_cursor_next_line",             b_d1g_2f41c,     0x00000000u },
+    { "text_cursor_next_line@col",         m_d1g_nl_col,    0x00000000u },
+    { "text_cursor_next_line@row",         m_d1g_nl_row,    0x00000000u },
+    { "text_cursor_next_line@str",         m_d1g_nl_str,    0x00000000u },
+    { "text_cursor_next_line@mode",        m_d1g_nl_mode,   0x00000000u },
+    { "text_cursor_hold_font2",            b_d1g_2f510,     0x00000000u },
+    { "text_cursor_hold_font2@or",         m_d1g_hf_or,     0x00000000u },
+    { "text_cursor_hold_font2@or1",        m_d1g_hf_or1,    0x00000000u },
+    { "text_cursor_hold_font2@args",       m_d1g_hf_args,   0x00000000u },
+    { "text_cursor_hold_font2@str",        m_d1g_hf_str,    0x00000000u },
+    { "text_cursor_hold_font2@save",       m_d1g_hf_save,   0x00000000u },
+    { "text_number_set",                   b_d1g_2f434,     0x00000000u },
+    { "text_number_set@val",               m_d1g_ns_val,    0x00000000u },
+    { "text_number_set@pad",               m_d1g_ns_pad,    0x00000000u },
+    { "text_number_set@mode",              m_d1g_ns_mode,   0x00000000u },
+    { "text_number_set@save",              m_d1g_ns_save,   0x00000000u },
+    { "text_number_set@fmt",               m_d1g_ns_fmt,    0x00000000u },
+    { "text_number_set@col",               m_d1g_ns_col,    0x00000000u },
+    { "text_number_set@row",               m_d1g_ns_row,    0x00000000u },
+    { "text_number_draw_font2",            b_d1g_2f528,     0x00000000u },
+    { "text_number_draw_font2@val",        m_d1g_nf_val,    0x00000000u },
+    { "text_number_draw_font2@pad",        m_d1g_nf_pad,    0x00000000u },
+    { "text_number_draw_font2@mode",       m_d1g_nf_mode,   0x00000000u },
+    { "text_number_draw_font2@save",       m_d1g_nf_save,   0x00000000u },
+    { "text_number_draw_font2@fmt",        m_d1g_nf_fmt,    0x00000000u },
+    { "text_number_draw_font2@col",        m_d1g_nf_col,    0x00000000u },
+    { "text_number_draw_font2@row",        m_d1g_nf_row,    0x00000000u },
+    { "text_glyph_at",                     b_d1g_2f174,     0x00000000u },
+    { "text_glyph_at@swap",                m_d1g_ga_swap,   0x00000000u },
+    { "text_glyph_at@ch",                  m_d1g_ga_ch,     0x00000000u },
+    { "text_glyph_at@mode",                m_d1g_ga_mode,   0x00000000u },
+    { "text_glyph_at@vert",                m_d1g_ga_vert,   0x00000000u },
+    { "text_cells_release_count",          b_d1g_2f388,     0x00000000u },
+    { "text_cells_release_count@neg",      m_d1g_rn_neg,    0x00000000u },
+    { "text_cells_release_count@force",    m_d1g_rn_force,  0x00000000u },
+    { "text_cells_release_count@cmp",      m_d1g_rn_cmp,    0x00000000u },
+    { "text_cells_release_count@stride",   m_d1g_rn_stride, 0x00000000u },
+    { "text_cells_release_count@rowbase",  m_d1g_rn_rowbase, 0x00000000u },
+    { "text_cells_release_count@zero",     m_d1g_rn_zero,   0x00000000u },
+    { "text_cells_release_count@rel",      m_d1g_rn_rel,    0x00000000u },
+    { "text_cells_release_count@pset",     m_d1g_rn_pset,   0x00000000u },
+    { "text_cells_release_count@rec0",     m_d1g_rn_rec0,   0x00000000u },
+    { "text_cells_release_count@centre",   m_d1g_rn_centre, 0x00000000u },
+    { "text_cells_release_count@count",    m_d1g_rn_count,  0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
