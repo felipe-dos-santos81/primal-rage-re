@@ -8175,6 +8175,56 @@ def d1e_reset_case(side):
     return p
 
 
+D1E_HB_CONST = {1: 0x000E39D0, 2: 0x000ECBD8, 3: 0x000D2134, 4: 0x000EA604, 5: 0x000D3E08,
+                6: 0x000E061C}                  # 0x33EEC's seven targets; 0 and > 6 read 0xE6DD0
+D1E_HB_K = {0: 0x0EE4, 1: 0x12A2, 2: 0x0BD4, 3: 0x16B5, 4: 0x1F9E, 5: 0x2F19, 6: 0x32D7}   # the image's words
+
+
+def d1e_hb_side(side, ch, s, bit15=0, f41=0, bar=0x1234, p29=0x00, idx_f=None, idx_s=None,
+                const=None, raw=None, bar_s=None):
+    """One side of 0x33F08: the slot record (0x1077A8[side]) with its fighter, its bar actor
+    and the bar's word table. The fighter's pset word is the character constant + s (| bit 15),
+    or `raw`; `const` pokes the character's constant word; `bar_s` is the bar table index that
+    holds `bar` (default s, when it is in 0..0x4B0)."""
+    rec = 0x0010A300 + side * 0x100
+    fighter = 0x0010A500 + side * 0x80
+    actor = 0x0010A600 + side * 0x80
+    bars = 0x00108800 + side * 0xC00
+    idx_f = 3 + side if idx_f is None else idx_f
+    idx_s = 9 + side if idx_s is None else idx_s
+    k = D1E_HB_K[ch if ch <= 6 else 0] if const is None else const
+    aw = (((k + s) & 0x7FFF) | (0x8000 if bit15 else 0)) if raw is None else raw
+    p = {rec: le32(fighter) + le32(actor), rec + 0x20: le32(bars + 0x10) + le32(bars),
+         rec + 0x41: bytes([f41]), rec + 0x7A: bytes([ch, (ch + 1) % 7]),
+         fighter + 0x54: le16(idx_f + 0x10) + le16(idx_f),
+         actor + 8: le32(0x5A5A5A5A) + le32(0x6B6B6B6B), actor + 0x28: bytes([0x28, p29, 0x2A]),
+         actor + 0x54: le16(0x0077) + le16(idx_s),
+         D1E_PSET + idx_f * 0x20: le16(aw) + le16(0xF00F),
+         D1E_PSET + (idx_f + 0x10) * 0x20: le16(aw ^ 0x8040) + le16(0xF11F),
+         D1E_PSET + idx_s * 0x20: le16(0x7777) + le16(0x8888)}
+    if const is not None:
+        p[D1E_HB_CONST.get(ch, 0x000E6DD0)] = le16(const)
+    bar_s = (s if 0 <= s <= 0x4B0 else None) if bar_s is None else bar_s
+    if bar_s is not None:
+        if bar_s:
+            p[bars + bar_s * 2 - 2] = le16(0x0B0B) + le16(bar) + le16(0x0D0D)
+        else:
+            p[bars] = le16(bar) + le16(0x0D0D)
+        p[bars + 0x10 + bar_s * 2] = le16(bar ^ 0x0101)
+    return p
+
+
+def d1e_hb_case(s0=None, s1=None):
+    """0x33F08: the pset table base, the two slot pointers (0 = that side has no slot) and each
+    side's fixture."""
+    p = {0x001014EC: le32(D1E_PSET),
+         0x001077A8: le32(0x0010A300 if s0 else 0) + le32(0x0010A400 if s1 else 0)}
+    for side, kw in ((0, s0), (1, s1)):
+        if kw:
+            p.update(d1e_hb_side(side, **kw))
+    return p
+
+
 D1E_SPECS = [
     # 0x13134 fight_13134: no argument; EAX = 1/0 (`mov eax,1` 0x13150/0x13172, `xor eax,eax`
     # 0x13178), read whole by its caller (`test eax,eax` at 0x4BDBF).
@@ -8356,6 +8406,34 @@ D1E_SPECS = [
     ], eax_mask=0,
        mutants=("@side", "@stride", "@s7f", "@s80", "@s3c", "@s82", "@s5b", "@w", "@wscale",
                 "@val", "@wbyte", "@s3cw", "@s81")),
+    # 0x33F08 fight_health_bars: no argument. Per side with a slot record at 0x1077A8[side]:
+    # the fighter's pset word less the character constant (0x33EEC's seven targets), in 16
+    # bits (`test dx,dx` 0x33F98, `movsx ecx,dx` 0x33F9D); the bar's +8 from the slot's +0x24
+    # table or 0x1E1; +0x29 bit 6 from the pset word's bit 15; then 0x2A408 (C1_SPRITE_ID stub)
+    # into the bar's pset word. The stub models 0x2A408 as leaving DS_001014EC alone (the raw
+    # reloads EDI from it at 0x34015). Void: 0x2545C rewrites AX only; 0x11C49/0x25545/0x2558B/
+    # 0x255C5 return and 0x10DB0/0x425EF do not touch EAX at once (open).
+    Spec("fight_health_bars", 0x33F08, [
+        Case("a0", {}, d1e_hb_case(dict(ch=1, s=0, bar=0x8001), dict(ch=2, s=0x4B0, bit15=1, bar=0x7FFE)),
+             {0x2A408: 0x1234ABCD}),
+        Case("a1", {}, d1e_hb_case(dict(ch=3, s=-1, p29=0xFF), dict(ch=4, s=0x4B1, bit15=1, p29=0x40)),
+             {0x2A408: 0xFFFF0001}),
+        Case("a2", {}, d1e_hb_case(dict(ch=5, s=0x20, f41=0x20, bit15=1, p29=0xBF),
+                                   dict(ch=6, s=5, f41=0xDF, p29=0xFF)),
+             {0x2A408: 0x00008000}),
+        Case("a3", {}, d1e_hb_case(None, dict(ch=0, s=7, bar=0x0102)), {0x2A408: 0x0000BEEF}),
+        Case("a4", {}, d1e_hb_case(dict(ch=7, s=0x100, bit15=1, bar=0xFFFF), None),
+             {0x2A408: 0x00000042}),
+        Case("a5", {}, d1e_hb_case(dict(ch=0xFF, s=1, bar=0x0001), dict(ch=1, s=0x4AF, bar=0x4AF0)),
+             {0x2A408: 0x00010002}),
+        Case("a6", {}, d1e_hb_case(None, None)),
+        Case("a7", {}, d1e_hb_case(dict(ch=6, s=0, const=0xFB60, raw=0x0010, bar=0x0B60, bar_s=0x4B0),
+                                   dict(ch=2, s=0, const=0x8000, raw=0x7FFF, bit15=0, bar=0x0C70)),
+             {0x2A408: 0x00000007}),
+    ], calls=(C1_SPRITE_ID,), eax_mask=0,
+       mutants=("@one", "@idxf", "@ch", "@mask", "@flag", "@lo", "@hi", "@sext", "@e1", "@pset8",
+                "@inv", "@bit", "@nobit", "@spset", "@word", "@nocall", "@args", "@bar", "@no8", "@nospr",
+                "@wide")),
 ]
 D1_SPECS += D1E_SPECS
 

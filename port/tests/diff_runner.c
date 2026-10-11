@@ -13937,6 +13937,89 @@ static void m_d1e_rst_wbyte(const u32 *r, u32 *eax)    { *eax = d1e_33c18_core(r
 static void m_d1e_rst_s3cw(const u32 *r, u32 *eax)     { *eax = d1e_33c18_core(r, 2048u); }
 static void m_d1e_rst_s81(const u32 *r, u32 *eax)      { *eax = d1e_33c18_core(r, 4096u); }
 
+/* 0x33F08's mutants: no argument; per side the health bar's pset from the fighter's pset word. */
+#define D1E_HB_ONE    0x00001u
+#define D1E_HB_IDXF   0x00002u
+#define D1E_HB_CH     0x00004u
+#define D1E_HB_WIDE   0x00008u
+#define D1E_HB_MASK   0x00010u
+#define D1E_HB_FLAG   0x00020u
+#define D1E_HB_LO     0x00040u
+#define D1E_HB_HI     0x00080u
+#define D1E_HB_SEXT   0x00100u
+#define D1E_HB_E1     0x00200u
+#define D1E_HB_PSET8  0x00400u
+#define D1E_HB_INV    0x00800u
+#define D1E_HB_BIT    0x01000u
+#define D1E_HB_NOBIT  0x02000u
+#define D1E_HB_SPSET  0x04000u
+#define D1E_HB_WORD   0x08000u
+#define D1E_HB_NOCALL 0x10000u
+#define D1E_HB_ARGS   0x20000u
+#define D1E_HB_BAR    0x40000u
+#define D1E_HB_NO8    0x80000u
+#define D1E_HB_NOSPR  0x100000u
+static u32 d1e_33f08_core(u32 mut)
+{
+    u32 table = DSD(0x001014ECu);
+    for (u32 side = 0; side < ((mut & D1E_HB_ONE) ? 1u : 2u); side++) {
+        u32 rec = DSD(0x001077A8u + side * 4u);
+        u32 fighter, aw, c, pset, o8, spset, id;
+        u8 bit = (mut & D1E_HB_BIT) ? 0x20u : 0x40u;
+        s32 s;
+        if (rec == 0u) continue;
+        fighter = DSD(rec);
+        aw = DSW(table + (u32)DSW(fighter + ((mut & D1E_HB_IDXF) ? 0x54u : 0x56u)) * 0x20u);
+        c = camera_char_const(DSB(rec + ((mut & D1E_HB_CH) ? 0x7Bu : 0x7Au)));
+        if (mut & D1E_HB_WIDE) s = (s32)(aw & 0x7FFFu) - (s32)c;
+        else s = (s32)(s16)(u16)(((mut & D1E_HB_MASK) ? aw : (aw & 0x7FFFu)) - c);
+        pset = DSD(rec + 4u);
+        o8 = (mut & D1E_HB_PSET8) ? 0xCu : 8u;
+        if ((DSB(rec + 0x41u) & ((mut & D1E_HB_FLAG) ? 0x10u : 0x20u)) == 0u
+                && ((mut & D1E_HB_LO) ? s > 0 : s >= 0)
+                && ((mut & D1E_HB_HI) ? s < 0x4B0 : s <= 0x4B0)) {
+            u16 w = DSW(DSD(rec + ((mut & D1E_HB_BAR) ? 0x20u : 0x24u)) + (u32)s * 2u);
+            if (!(mut & D1E_HB_NO8)) DSD(pset + o8) = (mut & D1E_HB_SEXT) ? (u32)(s32)(s16)w : (u32)w;
+        } else if (!(mut & D1E_HB_NO8)) {
+            DSD(pset + o8) = (mut & D1E_HB_E1) ? 0x1E0u : 0x1E1u;
+        }
+        if (!(mut & D1E_HB_NOBIT)) {
+            if (((aw & 0x8000u) != 0u) != ((mut & D1E_HB_INV) != 0u)) DSB(pset + 0x29u) |= bit;
+            else DSB(pset + 0x29u) &= (u8)~bit;
+        }
+        spset = table + (u32)DSW(((mut & D1E_HB_SPSET) ? fighter : pset) + 0x56u) * 0x20u;
+        if (mut & D1E_HB_NOCALL) continue;
+        id = (u32)anim_next_sprite_id((mut & D1E_HB_ARGS) ? fighter : pset, spset);
+        if (mut & D1E_HB_WORD) DSD(spset) = id;
+        else if (!(mut & D1E_HB_NOSPR)) DSW(spset) = (u16)id;
+    }
+    return 0u;
+}
+static void b_d1e_33f08(const u32 *r, u32 *eax)        { (void)r; fight_health_bars(); *eax = 0u; }
+#define D1E_HB_MUT(name, bits) \
+    static void m_d1e_hb_##name(const u32 *r, u32 *eax) { (void)r; *eax = d1e_33f08_core(bits); }
+D1E_HB_MUT(one, D1E_HB_ONE)
+D1E_HB_MUT(idxf, D1E_HB_IDXF)
+D1E_HB_MUT(ch, D1E_HB_CH)
+D1E_HB_MUT(wide, D1E_HB_WIDE)
+D1E_HB_MUT(mask, D1E_HB_MASK)
+D1E_HB_MUT(flag, D1E_HB_FLAG)
+D1E_HB_MUT(lo, D1E_HB_LO)
+D1E_HB_MUT(hi, D1E_HB_HI)
+D1E_HB_MUT(sext, D1E_HB_SEXT)
+D1E_HB_MUT(e1, D1E_HB_E1)
+D1E_HB_MUT(pset8, D1E_HB_PSET8)
+D1E_HB_MUT(inv, D1E_HB_INV)
+D1E_HB_MUT(bit, D1E_HB_BIT)
+D1E_HB_MUT(nobit, D1E_HB_NOBIT)
+D1E_HB_MUT(spset, D1E_HB_SPSET)
+D1E_HB_MUT(word, D1E_HB_WORD)
+D1E_HB_MUT(nocall, D1E_HB_NOCALL)
+D1E_HB_MUT(args, D1E_HB_ARGS)
+D1E_HB_MUT(bar, D1E_HB_BAR)
+D1E_HB_MUT(no8, D1E_HB_NO8)
+D1E_HB_MUT(nospr, D1E_HB_NOSPR)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -15761,6 +15844,28 @@ static const binding_t k_bindings[] = {
     { "fight_char_reset@wbyte",            m_d1e_rst_wbyte,    0x00000000u },
     { "fight_char_reset@s3cw",             m_d1e_rst_s3cw,     0x00000000u },
     { "fight_char_reset@s81",              m_d1e_rst_s81,      0x00000000u },
+    { "fight_health_bars",                 b_d1e_33f08,        0x00000000u },
+    { "fight_health_bars@one",             m_d1e_hb_one,       0x00000000u },
+    { "fight_health_bars@idxf",            m_d1e_hb_idxf,      0x00000000u },
+    { "fight_health_bars@ch",              m_d1e_hb_ch,        0x00000000u },
+    { "fight_health_bars@wide",            m_d1e_hb_wide,      0x00000000u },
+    { "fight_health_bars@mask",            m_d1e_hb_mask,      0x00000000u },
+    { "fight_health_bars@flag",            m_d1e_hb_flag,      0x00000000u },
+    { "fight_health_bars@lo",              m_d1e_hb_lo,        0x00000000u },
+    { "fight_health_bars@hi",              m_d1e_hb_hi,        0x00000000u },
+    { "fight_health_bars@sext",            m_d1e_hb_sext,      0x00000000u },
+    { "fight_health_bars@e1",              m_d1e_hb_e1,        0x00000000u },
+    { "fight_health_bars@pset8",           m_d1e_hb_pset8,     0x00000000u },
+    { "fight_health_bars@inv",             m_d1e_hb_inv,       0x00000000u },
+    { "fight_health_bars@bit",             m_d1e_hb_bit,       0x00000000u },
+    { "fight_health_bars@nobit",           m_d1e_hb_nobit,     0x00000000u },
+    { "fight_health_bars@spset",           m_d1e_hb_spset,     0x00000000u },
+    { "fight_health_bars@word",            m_d1e_hb_word,      0x00000000u },
+    { "fight_health_bars@nocall",          m_d1e_hb_nocall,    0x00000000u },
+    { "fight_health_bars@args",            m_d1e_hb_args,      0x00000000u },
+    { "fight_health_bars@bar",             m_d1e_hb_bar,       0x00000000u },
+    { "fight_health_bars@no8",             m_d1e_hb_no8,       0x00000000u },
+    { "fight_health_bars@nospr",           m_d1e_hb_nospr,     0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
