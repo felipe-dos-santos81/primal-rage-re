@@ -13793,7 +13793,8 @@ static u32 d1g_2a39c_core(const u32 *r, u32 mut)
 {
     u32 rec = r[R_EAX], slot = r[R_EDX], id, pset;
     if (!(mut & (1u | 2u))) DSB(rec + 0x28u) &= 0xFBu;                         /* @clear / @order */
-    pset = DSD(0x001014ECu) + ((mut & 4u) ? (slot & 0xFFu) : (slot & 0xFFFFu)) * 0x20u;   /* @idxb */
+    pset = DSD(0x001014ECu) + ((mut & 4u) ? (slot & 0xFFu)                    /* @idxb */
+                             : (mut & 1024u) ? slot : (slot & 0xFFFFu)) * 0x20u;   /* @idxw: the port before the correction */
     id = anim_next_sprite_id(rec, (mut & 8u) ? DSD(0x001014ECu) : pset);       /* @arg */
     if (mut & 2u) DSB(rec + 0x28u) &= 0xFBu;
     if (DSB(rec + 0x4Au) != 0u && !(mut & 16u)) {                              /* @nopar */
@@ -13813,6 +13814,7 @@ static void b_d1g_2a39c(const u32 *r, u32 *eax)      { anim_id_path(r[R_EAX], r[
 static void m_d1g_aid_clear(const u32 *r, u32 *eax)  { *eax = d1g_2a39c_core(r, 1u); }
 static void m_d1g_aid_order(const u32 *r, u32 *eax)  { *eax = d1g_2a39c_core(r, 2u); }
 static void m_d1g_aid_idxb(const u32 *r, u32 *eax)   { *eax = d1g_2a39c_core(r, 4u); }
+static void m_d1g_aid_idxw(const u32 *r, u32 *eax)   { *eax = d1g_2a39c_core(r, 1024u); }
 static void m_d1g_aid_arg(const u32 *r, u32 *eax)    { *eax = d1g_2a39c_core(r, 8u); }
 static void m_d1g_aid_nopar(const u32 *r, u32 *eax)  { *eax = d1g_2a39c_core(r, 16u); }
 static void m_d1g_aid_k(const u32 *r, u32 *eax)      { *eax = d1g_2a39c_core(r, 32u); }
@@ -15647,6 +15649,7 @@ static const binding_t k_bindings[] = {
     { "anim_id_path",                      b_d1g_2a39c,     0x00000000u },
     { "anim_id_path@clear",                m_d1g_aid_clear, 0x00000000u },
     { "anim_id_path@order",                m_d1g_aid_order, 0x00000000u },
+    { "anim_id_path@idxw",                m_d1g_aid_idxw,  0x00000000u },
     { "anim_id_path@idxb",                 m_d1g_aid_idxb,  0x00000000u },
     { "anim_id_path@arg",                  m_d1g_aid_arg,   0x00000000u },
     { "anim_id_path@nopar",                m_d1g_aid_nopar, 0x00000000u },

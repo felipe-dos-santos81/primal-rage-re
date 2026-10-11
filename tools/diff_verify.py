@@ -8213,6 +8213,24 @@ D1G_SPECS = [
     ], calls=(D1G_CURSOR,), eax_mask=0,
        mutants=("@y", "@sar", "@bit", "@x14", "@cursor", "@early", "@ramp", "@x46", "@x2", "@zext",
                 "@else", "@clr", "@clrlo")),
+    # 0x2A39C anim_id_path: EAX = rec, DX = the pset index (`mov cx,dx` 0x2A3A2; a4's EDX has
+    # high bits: the correction this row found, `@idxw` is the port before it). 0x2A408 is the
+    # C1_SPRITE_ID stub (EDX clobbered; `mov edx,eax` 0x2A3C1 reloads it). Mask 0: after 0x2A272
+    # AL is reloaded (0x2A277) and AX at 0x2A289 before the only store of it, and 0x2A1FC's
+    # callers load EAX (0x2A38E, 0x35818); after 0x2ABE6 `mov ax,[ecx+0x2a]` .. `and eax,0xffff`
+    # (0x2ABEB..0x2ABF4).
+    Spec("anim_id_path", 0x2A39C, [
+        Case("a0", {"eax": D1G_REC, "edx": 1}, d1g_aid_case(0), {0x2A408: 0x8123}),
+        Case("a1", {"eax": D1G_REC, "edx": 1}, d1g_aid_case(2, 0x4000), {0x2A408: 0x0123}),
+        Case("a2", {"eax": D1G_REC, "edx": 2}, d1g_aid_case(2, 0xBFFF, idx=2), {0x2A408: 0xFFFF8123}),
+        Case("a3", {"eax": D1G_REC, "edx": 1}, d1g_aid_case(0x80, 0x4040, pool=0x00107000),
+             {0x2A408: 0x0001}),
+        Case("a4", {"eax": D1G_REC, "edx": 0x00030001}, d1g_aid_case(0), {0x2A408: 0x7777}),
+        Case("a5", {"eax": D1G_REC, "edx": 0x101}, d1g_aid_case(0, idx=0x101, base=0x00108000),
+             {0x2A408: 0x0456}),
+    ], calls=(C1_SPRITE_ID,), eax_mask=0,
+       mutants=("@clear", "@order", "@idxw", "@idxb", "@arg", "@nopar", "@k", "@pbase", "@pbit", "@keep",
+                "@width")),
     # 0x2A4FC motion_step: EAX = rec. 0x2B150 (set_dead) is the P7_2B150 stub. Mask 0: after
     # 0x2A2E2 the caller 0x2A1FC returns to callers that load EAX (0x2A38E, 0x35818); after
     # 0x38572 `mov eax,ecx` (0x38582, 0x3859B) or 0x186C4's `xor eax,eax`.
