@@ -939,6 +939,7 @@ void config_keys_apply(u32 rec)
         DSB(KEYCFG_DS_KEYS1 + 2u * i) = (u8)(w >> 8);       /* 0x1AE7C */
         DSB(bios + 0x2DEu + i) = (u8)(w >> 8);              /* 0x1AE85 */
     }
+    bios = DSD(DS_00101514);                                /* 0x1AE8D */
     for (u32 i = 0u; i < 8u; i++) {                         /* 0x1AEC6 */
         u16 w = DSW(rec + 0x14u + 2u * i);                  /* 0x1AE9E */
         DSB(KEYCFG_DS_KEYS2 + 1u + 2u * i) = (u8)w;         /* 0x1AEAA */
