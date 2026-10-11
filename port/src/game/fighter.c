@@ -5774,7 +5774,7 @@ static s32 fighter_39b14(s32 a, s32 b)
  * slot and zero the field when it returns non-zero. The spawn zeroes +0x14 at
  * 0x33DFE; the ported non-zero writers are 0x22B28 (0x22B6F) and 0x22BEC
  * (0x22CD7), both storing 0x29D04 (record §41-C). */
-static void fighter_35050(u32 side)
+void fighter_35050(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x35062..0x35078 */
     if (DSD(slot + 0x14u) != 0u) {                      /* 0x350B0 */
