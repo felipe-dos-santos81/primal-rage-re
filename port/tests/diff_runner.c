@@ -14192,6 +14192,83 @@ D1C_IC_MUT(mid, D1C_IC_MID)     D1C_IC_MUT(mode, D1C_IC_MODE) D1C_IC_MUT(c06, D1
 D1C_IC_MUT(c07, D1C_IC_C07)     D1C_IC_MUT(swap, D1C_IC_SWAP) D1C_IC_MUT(len, D1C_IC_LEN)
 D1C_IC_MUT(cnt, D1C_IC_CNT)     D1C_IC_MUT(relpos, D1C_IC_RELPOS)
 
+/* 0x2BF08: no argument. The credits arm is not entered by any case (record §4) and is left out. */
+static void b_d1c_2bf08(const u32 *r, u32 *eax) { (void)r; game_overlay_step(); *eax = 0u; }
+enum { D1C_OV_NONE, D1C_OV_ATTRACT, D1C_OV_FREE, D1C_OV_ID45, D1C_OV_ID47, D1C_OV_P20, D1C_OV_HOLD,
+       D1C_OV_COL, D1C_OV_COLF, D1C_OV_GATE, D1C_OV_C04, D1C_OV_CLR, D1C_OV_SEXT, D1C_OV_ORDER };
+static void d1c_2bf08_draw(s32 col, u32 id, u32 mut)
+{
+    s32 row = (mut == D1C_OV_SEXT) ? (s32)(s8)DSB(0x00105C05u) : (s32)DSB(0x00105C05u);
+    const u8 *s = game_string_get(id);
+    int on = (DSB(0x000EF6DCu) & ((mut == D1C_OV_P20) ? 0x10u : 0x20u)) != 0u;
+    if (mut == D1C_OV_ORDER) DSB(0x00105C04u) = 0u;
+    if (on != (mut == D1C_OV_HOLD)) text_cursor_hold(col, row, s, 0u);
+    else                            text_cells_release(col, row, s, 0u);
+    if (mut != D1C_OV_CLR) DSB(0x00105C04u) = 0u;
+}
+static void d1c_2bf08_core(u32 mut)
+{
+    if (DSB(0x0009AD58u) != 0u && mut != D1C_OV_ATTRACT) return;
+    if ((DSB(0x00105D60u) != 0u) != (mut == D1C_OV_FREE)) {
+        d1c_2bf08_draw((mut == D1C_OV_COLF) ? 0xD : -1, (mut == D1C_OV_ID45) ? 0x46u : 0x45u, mut);
+        return;
+    }
+    if (DSD(0x00105C00u) != 0u) return;
+    if ((DSB(0x000EF6DCu) & ((mut == D1C_OV_GATE) ? 0x3Fu : 0x1Fu)) != 0u
+            && (DSB(0x00105C04u) == 0u || mut == D1C_OV_C04)) {
+        DSB(0x00105C04u) = 0u;
+        return;
+    }
+    d1c_2bf08_draw((mut == D1C_OV_COL) ? -1 : 0xD, (mut == D1C_OV_ID47) ? 0x46u : 0x47u, mut);
+}
+#define D1C_OV_MUT(name, m) \
+    static void m_d1c_ov_##name(const u32 *r, u32 *eax) { (void)r; d1c_2bf08_core(m); *eax = 0u; }
+D1C_OV_MUT(attract, D1C_OV_ATTRACT) D1C_OV_MUT(free, D1C_OV_FREE) D1C_OV_MUT(id45, D1C_OV_ID45)
+D1C_OV_MUT(id47, D1C_OV_ID47)       D1C_OV_MUT(p20, D1C_OV_P20)   D1C_OV_MUT(hold, D1C_OV_HOLD)
+D1C_OV_MUT(col, D1C_OV_COL)         D1C_OV_MUT(colf, D1C_OV_COLF) D1C_OV_MUT(gate, D1C_OV_GATE)
+D1C_OV_MUT(c04, D1C_OV_C04)         D1C_OV_MUT(clr, D1C_OV_CLR)   D1C_OV_MUT(sext, D1C_OV_SEXT)
+D1C_OV_MUT(order, D1C_OV_ORDER)
+
+/* 0x1D0BC: no argument; AL. The two failure arms are not entered by any case (record §4). */
+static void b_d1c_1d0bc(const u32 *r, u32 *eax) { (void)r; *eax = sound_buffers_alloc(); }
+enum { D1C_BA_NONE, D1C_BA_ONCE, D1C_BA_C4, D1C_BA_C0, D1C_BA_D0, D1C_BA_SIZE, D1C_BA_ZERO,
+       D1C_BA_LEN, D1C_BA_C8, D1C_BA_FIRST, D1C_BA_REST, D1C_BA_STRIDE, D1C_BA_FOUR, D1C_BA_STOP,
+       D1C_BA_SET, D1C_BA_RET };
+static u32 d1c_1d0bc_core(u32 mut)
+{
+    if (DSB(0x000A2CB0u) != 0u && mut != D1C_BA_ONCE) return 0u;
+    if ((DSD(0x001028C4u) != 0u || mut == D1C_BA_C4) && (DSD(0x001028C0u) != 0u || mut == D1C_BA_C0)
+            && (DSD(0x001028D0u) == 0u || mut == D1C_BA_D0)) {
+        u32 b = res_block_alloc((mut == D1C_BA_SIZE) ? 0x5000u : 0x5100u);
+        DSD(0x001028D0u) = b;
+        if (b != 0u && mut != D1C_BA_ZERO) memset(mem + b, 0, (mut == D1C_BA_LEN) ? 0x5000u : 0x5100u);
+    }
+    if (DSD(0x001028C8u) != 0u || mut == D1C_BA_C8) {
+        u32 stride = (mut == D1C_BA_STRIDE) ? 0x14u : 0x18u, i = 0;
+        if (DSD(0x00102870u) == 0u) {
+            do {
+                u32 first = (mut == D1C_BA_FIRST) ? 0x6000u : 0x8C00u;
+                u32 rest = (mut == D1C_BA_REST) ? 0x8C00u : 0x6000u;
+                u32 b = res_block_alloc(i == 0u ? first : rest);
+                DSD(0x00102870u + i * stride) = b;
+                if (b == 0u) break;
+                i++;
+            } while (i < ((mut == D1C_BA_FOUR) ? 3u : 4u)
+                     && (DSD(0x00102870u + i * stride) == 0u || mut == D1C_BA_STOP));
+        }
+        if (i == 0u) DSD(0x001028C8u) = 0u;
+    }
+    if (mut != D1C_BA_SET) DSB(0x000A2CB0u) = 1u;
+    return (mut == D1C_BA_RET) ? 0u : 1u;
+}
+#define D1C_BA_MUT(name, m) \
+    static void m_d1c_ba_##name(const u32 *r, u32 *eax) { (void)r; *eax = d1c_1d0bc_core(m); }
+D1C_BA_MUT(once, D1C_BA_ONCE)     D1C_BA_MUT(c4, D1C_BA_C4)       D1C_BA_MUT(c0, D1C_BA_C0)
+D1C_BA_MUT(d0, D1C_BA_D0)         D1C_BA_MUT(size, D1C_BA_SIZE)   D1C_BA_MUT(zero, D1C_BA_ZERO)
+D1C_BA_MUT(len, D1C_BA_LEN)       D1C_BA_MUT(c8, D1C_BA_C8)       D1C_BA_MUT(first, D1C_BA_FIRST)
+D1C_BA_MUT(rest, D1C_BA_REST)     D1C_BA_MUT(stride, D1C_BA_STRIDE) D1C_BA_MUT(four, D1C_BA_FOUR)
+D1C_BA_MUT(stop, D1C_BA_STOP)     D1C_BA_MUT(set, D1C_BA_SET)     D1C_BA_MUT(ret, D1C_BA_RET)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -16090,6 +16167,36 @@ static const binding_t k_bindings[] = {
     { "prompt_insert_coin_blink@len",       m_d1c_ic_len, 0x00000000u },
     { "prompt_insert_coin_blink@cnt",       m_d1c_ic_cnt, 0x00000000u },
     { "prompt_insert_coin_blink@relpos",    m_d1c_ic_relpos, 0x00000000u },
+    { "game_overlay_step",                  b_d1c_2bf08, 0x00000000u },
+    { "game_overlay_step@attract",          m_d1c_ov_attract, 0x00000000u },
+    { "game_overlay_step@free",             m_d1c_ov_free, 0x00000000u },
+    { "game_overlay_step@id45",             m_d1c_ov_id45, 0x00000000u },
+    { "game_overlay_step@id47",             m_d1c_ov_id47, 0x00000000u },
+    { "game_overlay_step@p20",              m_d1c_ov_p20, 0x00000000u },
+    { "game_overlay_step@hold",             m_d1c_ov_hold, 0x00000000u },
+    { "game_overlay_step@col",              m_d1c_ov_col, 0x00000000u },
+    { "game_overlay_step@colf",             m_d1c_ov_colf, 0x00000000u },
+    { "game_overlay_step@gate",             m_d1c_ov_gate, 0x00000000u },
+    { "game_overlay_step@c04",              m_d1c_ov_c04, 0x00000000u },
+    { "game_overlay_step@clr",              m_d1c_ov_clr, 0x00000000u },
+    { "game_overlay_step@sext",             m_d1c_ov_sext, 0x00000000u },
+    { "game_overlay_step@order",            m_d1c_ov_order, 0x00000000u },
+    { "sound_buffers_alloc",                b_d1c_1d0bc, 0x000000FFu },
+    { "sound_buffers_alloc@once",           m_d1c_ba_once, 0x000000FFu },
+    { "sound_buffers_alloc@c4",             m_d1c_ba_c4, 0x000000FFu },
+    { "sound_buffers_alloc@c0",             m_d1c_ba_c0, 0x000000FFu },
+    { "sound_buffers_alloc@d0",             m_d1c_ba_d0, 0x000000FFu },
+    { "sound_buffers_alloc@size",           m_d1c_ba_size, 0x000000FFu },
+    { "sound_buffers_alloc@zero",           m_d1c_ba_zero, 0x000000FFu },
+    { "sound_buffers_alloc@len",            m_d1c_ba_len, 0x000000FFu },
+    { "sound_buffers_alloc@c8",             m_d1c_ba_c8, 0x000000FFu },
+    { "sound_buffers_alloc@first",          m_d1c_ba_first, 0x000000FFu },
+    { "sound_buffers_alloc@rest",           m_d1c_ba_rest, 0x000000FFu },
+    { "sound_buffers_alloc@stride",         m_d1c_ba_stride, 0x000000FFu },
+    { "sound_buffers_alloc@four",           m_d1c_ba_four, 0x000000FFu },
+    { "sound_buffers_alloc@stop",           m_d1c_ba_stop, 0x000000FFu },
+    { "sound_buffers_alloc@set",            m_d1c_ba_set, 0x000000FFu },
+    { "sound_buffers_alloc@ret",            m_d1c_ba_ret, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)

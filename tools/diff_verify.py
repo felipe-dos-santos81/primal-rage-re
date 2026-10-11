@@ -8171,6 +8171,26 @@ def d1c_coin_case(phase, mid=b"1\x00", bf8=0x5A5A5A5A):
             0x00105C04: b"\x61\x62\x63\x64\x65", 0x00102760: b"\x5a" * 0x10}
 
 
+def d1c_ovl_case(attract=0, free=0, credits=0, phase=0, c04=0x61, row=0x21):
+    """0x2BF08: the attract byte 0x9AD58, the free-play byte 0x105D60, the credits dword, the
+    phase word, the blink byte 0x105C04 and the row byte 0x105C05 with a neighbour, and the
+    string buffer."""
+    return {0x0009AD58: bytes([attract]), 0x00105D60: bytes([free]), 0x00105C00: le32(credits),
+            0x000EF6DC: le16(phase), 0x00105C04: bytes([c04, row, 0x63]),
+            0x00102760: b"\x5a" * 0x10}
+
+
+def d1c_buf_case(once=0, c0=0x0010B000, c4=0x0010B010, c8=1, d0=0, slots=(0, 0, 0, 0)):
+    """0x1D0BC: the once byte 0xA2CB0 (and the enable byte after it), the handles 0x1028C0 (sequence),
+    C4 (MDI), C8 (DIG), CC (pending song) and the MIDI buffer D0, and each slot's +0x10 buffer
+    dword between two sentinels."""
+    p = {0x000A2CB0: bytes([once, 0x6C]),
+         0x001028C0: le32(c0) + le32(c4) + le32(c8) + le32(0xBBBBBBBB) + le32(d0)}
+    for i, v in enumerate(slots):
+        p[0x0010286C + i * 0x18] = le32(0x5A5A5A5A) + le32(v) + le32(0x6B6B6B6B)
+    return p
+
+
 D1C_SPECS = [
     # 0x134C0 effects_step: no register argument. The walk of the active list 0xFCCE0 under the
     # lock 0x9AF3C; per record the +0xE countdown, the type dispatch (jump table 0x134A8, six
@@ -8517,6 +8537,58 @@ D1C_SPECS = [
               E.Call(0x2F388, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))), eax_mask=0,
        mutants=("@phase", "@p18", "@order", "@mid", "@mode", "@c06", "@c07", "@swap", "@len",
                 "@cnt", "@relpos")),
+    # 0x2BF08 game_overlay_step: no argument. Off in the attract (0x9AD58). Free play (0x2CAA8
+    # returns 0; real on both sides, the port tests 0x105D60 inline): string 0x45 held (phase
+    # 0xEF6DC & 0x20) or released at col -1. No credits: on a phase & 0x1F with the byte 0x105C04
+    # clear nothing is drawn; else string 0x47 held or released at col 0xD. The row is the byte
+    # 0x105C05 (zero-extended), the mode 0 and 0x105C04 = 0 at each drawing exit. 0x1C500 runs
+    # real over the stubbed 0x474E4. The credits arm 0x2BF87 formats through the runtime's
+    # sprintf 0x65546, which the harness cannot run (record §4): no case enters it.
+    # Mask 0: record §1.
+    Spec("game_overlay_step", 0x2BF08, [
+        Case("o0", {}, d1c_ovl_case(attract=1, free=1, phase=0x20)),
+        Case("o1", {}, d1c_ovl_case(free=1, phase=0x0020)),
+        Case("o2", {}, d1c_ovl_case(free=1, phase=0xFFDF, row=0x91)),
+        Case("o3", {}, d1c_ovl_case(free=0x80, phase=0x0020, credits=3)),
+        Case("o4", {}, d1c_ovl_case(phase=0x0021, c04=0)),
+        Case("o5", {}, d1c_ovl_case(phase=0x0021, c04=1)),
+        Case("o6", {}, d1c_ovl_case(phase=0x0100, c04=0, row=0x91)),
+        Case("o7", {}, d1c_ovl_case(phase=0x0020, c04=0)),
+        Case("o8", {}, d1c_ovl_case(phase=0x0001, c04=5)),
+    ], allow_calls=(0x1C500, 0x2CAA8),
+       calls=(D1C_STR,
+              E.Call(0x2F4BC, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx")),
+              D1C_RELEASE), eax_mask=0,
+       unhit_named={0x2BF87: "the credits arm: 0x2BFA7 calls the runtime's sprintf 0x65546, whose "
+                             "0x6C8EB core leaves the flat model under the harness (it writes "
+                             "0xFF30.. and stops on an int3 at 0x10000); the port formats with "
+                             "snprintf and has no seam there (record §4)"},
+       mutants=("@attract", "@free", "@id45", "@id47", "@p20", "@hold", "@col", "@colf", "@gate",
+                "@c04", "@clr", "@sext", "@order")),
+    # 0x1D0BC sound_buffers_alloc: no argument. Once (the byte 0xA2CB0): with a sequence and an
+    # MDI handle and no MIDI buffer, 0x5100 zeroed bytes into 0x1028D0; with a DIG driver, slot
+    # i's +0x10 = 0x8C00 (i = 0) or 0x6000 bytes while the slot is empty. The allocator 0x1C308
+    # is a stub (EDX = the size is compared; its EAX = 0x41 tag has no C counterpart) whose EAX
+    # is the block for every call of a case, inside the image so the runtime's memset (0x61A70
+    # and its 0x65490/0x654C7, real on the raw side against the port's libc memset) is diffed. The two
+    # failure arms end in the runtime's printf 0x62734, which the harness cannot run and the
+    # port does not call (record §4): no case enters them. Mask 0xFF: `mov al,dl` / `xor al,al`.
+    Spec("sound_buffers_alloc", 0x1D0BC, [
+        Case("q0", {}, d1c_buf_case(once=1)),
+        Case("q1", {}, d1c_buf_case()),
+        Case("q2", {}, d1c_buf_case(c4=0, c8=0)),
+        Case("q3", {}, d1c_buf_case(c0=0, slots=(0, 0, 0x000C8000, 0))),
+        Case("q4", {}, d1c_buf_case(d0=0x000C8000, slots=(0, 0x000C8000, 0, 0))),
+        Case("q5", {}, d1c_buf_case(c4=0, slots=(0, 0, 0, 0x000C8000))),
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7),
+       calls=(E.Call(0x1C308, ("edx",), eax=0x000C0000, clobbers=("edx",)),), eax_mask=0xFF,
+       unhit_named={0x1D10E: "the MIDI buffer's failure arm: it ends in the runtime's printf "
+                             "0x62734 (0x1D12A), which the harness cannot run and the port does "
+                             "not call (record §4)",
+                    0x1D183: "the no-slot-0-buffer arm: the same printf (0x1D18D), then "
+                             "0x1028C8 = 0 (record §4)"},
+       mutants=("@once", "@c4", "@c0", "@d0", "@size", "@zero", "@len", "@c8", "@first", "@rest",
+                "@stride", "@four", "@stop", "@set", "@ret")),
 ]
 D1_SPECS += D1C_SPECS
 
