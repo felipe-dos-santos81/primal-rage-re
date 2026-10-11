@@ -1688,16 +1688,16 @@ void fighter_state_default(u32 side)
         }
         return;
     }
-    if (fighter_state_365c8(slot, rec, side) != 0)      /* 0x34A3E */
+    if ((u8)fighter_state_365c8(slot, rec, side) != 0)  /* 0x34A3E, 0x34A43 `test al,al` */
         DSB(slot + 0x43u) |= 0x40u;
     else
         DSB(slot + 0x43u) &= 0xBFu;
-    if (fighter_state_36638(slot, rec) != 0) return;    /* 0x34A55 */
+    if ((u8)fighter_state_36638(slot, rec) != 0) return;    /* 0x34A55, 0x34A5A `test al,al` */
     {
         u16 cmd = DSW(DS_001088E0 + side * 2u);         /* 0x34A62 */
         int bvar2 = ((cmd >> 8) & 3u) != 0u && ((cmd >> 8) & 0xCu) != 0u;
         if (bvar2) return;                              /* 0x34A8D jne 0x34B0B */
-        if (fighter_attack_consume(side) != 0) return;  /* 0x34A9F */
+        if ((u8)fighter_attack_consume(side) != 0) return;  /* 0x34A9F, 0x34AA7 `test al,al` */
         if ((cmd & 0x4000u) != 0u) {                    /* 0x34AB5 */
             actors_anim_begin(rec,
                 DSD(0x000C8978u + (u32)DSB(slot + 0x7Au) * 4u), 0x40000000u);
