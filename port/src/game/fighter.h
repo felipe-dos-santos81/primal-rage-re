@@ -459,6 +459,9 @@ int ai_pred_4673c(u32 side);                             /* 0x4673C */
 int ai_pred_46794(u32 side);                             /* 0x46794 */
 int ai_pred_46898(u32 side);                             /* 0x46898 */
 int ai_ready(u32 side);                                  /* 0x46958 */
+u32 fighter_4fb20(void);                                 /* 0x4FB20 */
+void ai_weight(u32 side, u32 id);                        /* 0x46BBC */
+void ai_band(u32 side);                                  /* 0x46DD4 */
 
 /* 0x1DE64. The reaction picker: map the side's command word (or, with slot+0x63
  * clear, the 0x46460/0x4649C input scan, record §49-B) through 0x1DDF4 to a

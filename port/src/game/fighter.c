@@ -1116,7 +1116,7 @@ static void ai_band_tables(u32 ch, u32 *ids, u32 *aux)
 
 /* 0x46BBC. Store the weight id (+0x2C) and select this side's band table
  * (+0x14) and aux table (+0x34) from the char-pair index. */
-static void ai_weight(u32 side, u32 id)
+void ai_weight(u32 side, u32 id)
 {
     u32 b = ai_b(side);
     u32 idx = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au) * 10u
@@ -1166,7 +1166,7 @@ static void ai_state_setup(u32 side)
 
 /* 0x46DD4. Pick the range band from the two-fighter distance (>>6, clamped to
  * 0xFF) and select the move-id table (+0x18) and aux table (+0x38). */
-static void ai_band(u32 side)
+void ai_band(u32 side)
 {
     u32 b = ai_b(side);
     u32 ids, aux;
@@ -8800,7 +8800,7 @@ static void fighter_3baec(s32 pen)
  * distance exceeds it, else the octagonal estimate max + min/4 + min/8 (both
  * shifts arithmetic, the second on the first's result), and 0 unless it is
  * below the width sum. Writes the signed and absolute axis distances. */
-static u32 fighter_4fb20(void)
+u32 fighter_4fb20(void)
 {
     s32 w = (s32)DSW(DS_000D33A8);                      /* 0x4FB25 */
     s32 dx = (s32)(DSD(DS_000D3388) - DSD(DS_000D3390));    /* 0x4FB2C/0x4FB31 */
