@@ -8024,6 +8024,187 @@ C3G_SPECS = [
 D1_SPECS = []
 
 
+# ---- track D1 batch d1e (record 2026-10-11-reverse-d1e): game/fight.c, first half ----------------
+#
+# Every poke stays inside the image; the scratch records sit in its zero BSS (0x10A000..0x10B0CF).
+
+D1E_REC0, D1E_REC1 = 0x0010A300, 0x0010A400       # the two fighter records (E3_REC/E3_REC2)
+
+
+def d1e_x_case(x0, x1):
+    """0x13134: the two slots' record pointers and each record's +0x14..+0x1F: the x at +0x18
+    between two neighbours that would give the other verdict if read instead."""
+    n0 = 0x3301 if not (x0 > 0x3300 and x1 > 0x3300) else 0
+    return {**SLOT_PTRS,
+            D1E_REC0 + 0x14: le32(n0) + le32(x0) + le32(n0),
+            D1E_REC1 + 0x14: le32(n0) + le32(x1) + le32(n0)}
+
+
+def d1e_rate_case(side, ch, v, o_ch=1, o_v=0x40):
+    """0x1D4D0: the side slot's +0x7A/+0x7B and +0x5C/+0x5D, the other slot's seeded apart, and
+    the 0xA769C rows made distinct (the image's seven rows are all 02 04 08 0C, which cannot
+    prove the row index): row c = (c*0x10+1 .. c*0x10+4), the half-stride row at ch*2 included."""
+    so, oo = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    p = {**SLOT_PTRS,
+         so + 0x7A: bytes([ch, (ch + 3) & 0x7F]), so + 0x5C: bytes([(v + 0x20) & 0xFF, v]),
+         oo + 0x7A: bytes([o_ch, 5]), oo + 0x5C: bytes([0x11, o_v]),
+         0x000A769C: bytes((c * 0x10 + k + 1) & 0xFF for c in range(8) for k in range(4))}
+    for c in {ch, o_ch, (ch + 3) & 0x7F}:
+        if c >= 8:
+            p[0x000A769C + c * 4] = bytes([0xE1, 0xE2, 0xE3, 0xE4])
+            p[0x000A769C + c * 2] = bytes([0xD1, 0xD2, 0xD3, 0xD4])
+    return p
+
+
+def d1e_bits_case(side, w, other=None):
+    """0x1D74C: the four words at 0x1088E0 (the side's, the other side's with the opposite
+    verdict, and the two a side*4 index would reach)."""
+    o = (0x0000 if (w & 0x30) else 0x0030) if other is None else other
+    words = [0, 0, o, o]
+    words[side], words[1 - side] = w, o
+    return {0x001088E0: b"".join(le16(x) for x in words)}
+
+
+# marker and HUD records: never dereferenced (0x2B150/0x2BC30 are stubs), every byte non-zero so a
+# narrow store shows, and below MEM_SIZE
+D1E_MK0, D1E_MK1, D1E_MK2 = 0x01A50511, 0x02A64522, 0x03A78533
+
+
+def d1e_marker_case(r0, r1, r2=D1E_MK2, far=None):
+    """0x1D810/0x1D7B8/0x1D838: the marker slots DS_001028E0[0..1] between two seeded
+    neighbours (0x1028DC before, 0x1028E8 after: where a side*8 index, or side 2, lands); `far`
+    seeds the slot of side 0x100 (0x102CE0), for the full-register side test."""
+    p = {0x001028DC: le32(0xDCDCDCDC) + le32(r0) + le32(r1) + le32(r2) + le32(0xECECECEC)}
+    if far is not None:
+        p[0x00102CDC] = le32(0xCDCDCDCD) + le32(far) + le32(0xCECECECE)
+    return p
+
+
+def d1e_pulse_case(w0, w1, b0=0x10, b1=0x21):
+    """0x1DA08: the two countdown words at 0x102908 between seeded neighbours (0x102906 before,
+    0x10290C after), the two DS_001028F8 records between theirs, and each slot's +0x59..+0x5B
+    (the +0x5A byte the reload reads, its neighbours seeded apart)."""
+    return {0x00102906: le16(0x0607) + le16(w0) + le16(w1) + le16(0x0C0D),
+            0x001028F4: le32(0xF4F4F4F4) + le32(D1E_MK0) + le32(D1E_MK1) + le32(0x00F0F0F0),
+            DS_SLOTS + 0x59: bytes([0x7F, b0, 0x02]),
+            DS_SLOTS + 0x94 + 0x59: bytes([0x7E, b1, 0x04])}
+
+
+D1E_SPECS = [
+    # 0x13134 fight_13134: no argument; EAX = 1/0 (`mov eax,1` 0x13150/0x13172, `xor eax,eax`
+    # 0x13178), read whole by its caller (`test eax,eax` at 0x4BDBF).
+    Spec("fight_13134", 0x13134, [
+        Case("x0", {}, d1e_x_case(-0x3301, -0x3301)),
+        Case("x1", {}, d1e_x_case(-0x3301, -0x3300)),
+        Case("x2", {}, d1e_x_case(-0x3300, -0x3301)),
+        Case("x3", {}, d1e_x_case(0x3301, 0x3301)),
+        Case("x4", {}, d1e_x_case(0x3301, 0x3300)),
+        Case("x5", {}, d1e_x_case(0x3300, 0x3301)),
+        Case("x6", {}, d1e_x_case(-0x3301, 0x3301)),
+        Case("x7", {}, d1e_x_case(0x3301, -0x3301)),
+        Case("x8", {}, d1e_x_case(-0x80000000, -0x80000000)),
+        Case("x9", {}, d1e_x_case(0x7FFFFFFF, 0x7FFFFFFF)),
+        Case("x10", {}, d1e_x_case(-1, -1)),
+        Case("x11", {}, d1e_x_case(0, 0)),
+    ], eax_mask=0xFFFFFFFF, mutants=("@lt", "@gt", "@unsigned", "@field", "@rec1", "@rec0", "@or")),
+    # 0x1D4D0 fight_hud_rate: EAX = side; 0x33A10 (allow) gives the side's slot (out[3]). The
+    # result is `and eax,0xff` (0x1D511/0x1D526/0x1D536), read whole (`mov edi,eax` at 0x1D568).
+    Spec("fight_hud_rate", 0x1D4D0, [
+        Case("r0", {"eax": 0}, d1e_rate_case(0, 2, 0x3E)),
+        Case("r1", {"eax": 0}, d1e_rate_case(0, 2, 0x3D)),
+        Case("r2", {"eax": 0}, d1e_rate_case(0, 3, 0x30)),
+        Case("r3", {"eax": 0}, d1e_rate_case(0, 3, 0x2F)),
+        Case("r4", {"eax": 1}, d1e_rate_case(1, 4, 0x23, o_ch=2, o_v=0x10)),
+        Case("r5", {"eax": 1}, d1e_rate_case(1, 4, 0x22, o_ch=2, o_v=0x40)),
+        Case("r6", {"eax": 0}, d1e_rate_case(0, 0, 0x00)),
+        Case("r7", {"eax": 0}, d1e_rate_case(0, 6, 0x80)),
+        Case("r8", {"eax": 1}, d1e_rate_case(1, 6, 0xFF, o_ch=0, o_v=0)),
+        Case("r9", {"eax": 0}, d1e_rate_case(0, 0x80, 0x30)),
+    ], allow_calls=(0x33A10,), eax_mask=0xFFFFFFFF,
+       mutants=("@side", "@ch", "@chsext", "@scale", "@field", "@sext", "@b0", "@b1", "@b2", "@col")),
+    # 0x1D74C fight_cmd_bits_30: EAX = side; `and eax,0xffff; setne al` leaves EAX = 0/1 (the
+    # caller tests AL, 0x1D604; the whole register is compared).
+    Spec("fight_cmd_bits_30", 0x1D74C, [
+        Case("b0", {"eax": 0}, d1e_bits_case(0, 0x0000)),
+        Case("b1", {"eax": 0}, d1e_bits_case(0, 0x0010)),
+        Case("b2", {"eax": 0}, d1e_bits_case(0, 0x0020)),
+        Case("b3", {"eax": 1}, d1e_bits_case(1, 0x0030)),
+        Case("b4", {"eax": 1}, d1e_bits_case(1, 0xFFCF)),
+        Case("b5", {"eax": 0}, d1e_bits_case(0, 0x3000)),
+        Case("b6", {"eax": 1}, d1e_bits_case(1, 0x0010, other=0x0020)),
+    ], eax_mask=0xFFFFFFFF, mutants=("@side", "@scale", "@b4", "@b5", "@word", "@ret")),
+    # 0x1D810 fight_select_marker_release: EAX = side. 0x2B150 (stub, no register clobbered) is
+    # reached with the slot still holding the record (the zero store is after it, 0x1D82D). Void:
+    # EAX at return is the side or 0x2B150's; every caller rewrites EAX before reading it
+    # (0x4376C/0x444FC `mov eax,1`; 0x20EF8 at 0x20F05, 0x43818 at 0x4381B).
+    Spec("fight_select_marker_release", 0x1D810, [
+        Case("k0", {"eax": 0}, d1e_marker_case(D1E_MK0, D1E_MK1)),
+        Case("k1", {"eax": 1}, d1e_marker_case(D1E_MK0, D1E_MK1)),
+        Case("k2", {"eax": 0}, d1e_marker_case(0, D1E_MK1)),
+        Case("k3", {"eax": 1}, d1e_marker_case(D1E_MK0, 0)),
+    ], calls=(P7_2B150,), eax_mask=0,
+       mutants=("@side", "@scale", "@nozero", "@width", "@order", "@nocall", "@arg", "@always")),
+    # 0x1D7B8 fight_select_marker_spawn: EAX = side, EDX = class, EBX = y (never written: it is
+    # 0x2AE14's a4). The release (0x2B150 stub) and its zero store precede the spawn (SPAWN stub,
+    # its EAX stored at DS_001028E0[side]); `test esi,esi; jne` picks a2 (any non-zero side,
+    # the whole register: case m5).
+    # Void: 0x43A89 reloads EAX; at 0x44035/0x4432D only AX is rewritten before those functions
+    # return (the upper word flows to the callers of 0x43EA0/0x4418C: open, their rows).
+    Spec("fight_select_marker_spawn", 0x1D7B8, [
+        Case("m0", {"eax": 0, "edx": 0, "ebx": 0x1800}, d1e_marker_case(0, D1E_MK1),
+             {0x2AE14: 0x02B6C7D8}),
+        Case("m1", {"eax": 0, "edx": 1, "ebx": 0x1800}, d1e_marker_case(D1E_MK0, D1E_MK1),
+             {0x2AE14: 0x02B6C7D9, 0x2B150: 0x5A5A5A5A}),
+        Case("m2", {"eax": 1, "edx": 6, "ebx": 0x0980}, d1e_marker_case(D1E_MK0, 0),
+             {0x2AE14: 0x03B7C8D9}),
+        Case("m3", {"eax": 1, "edx": 3, "ebx": 0xFFFF1234}, d1e_marker_case(D1E_MK0, D1E_MK1),
+             {0x2AE14: 0}),
+        Case("m4", {"eax": 2, "edx": 2, "ebx": 0x0001}, d1e_marker_case(D1E_MK0, D1E_MK1, 0),
+             {0x2AE14: 0x01B8C9DA}),
+        Case("m5", {"eax": 0x100, "edx": 4, "ebx": 0x0002},
+             d1e_marker_case(D1E_MK0, D1E_MK1, far=D1E_MK2), {0x2AE14: 0x02B6C7D8}),
+    ], calls=(P7_2B150, SPAWN), eax_mask=0,
+       mutants=("@slot", "@nocall", "@nozero", "@scale", "@a2", "@a3", "@y", "@a5", "@store",
+                "@width", "@eq1", "@side8", "@table")),
+    # 0x1D838 fight_hud_badge_spawn: as 0x1D7B8 with the 0xA7760 descriptor table. Void: 0x2777E
+    # rewrites EAX; 0x25F4E/0x298F8 rewrite AL only and 0x1D9DA/0x1DDC4/0x1DBFF never touch it
+    # before their function returns or loops (EAX flows on: open, those callers' rows).
+    Spec("fight_hud_badge_spawn", 0x1D838, [
+        Case("h0", {"eax": 0, "edx": 0, "ebx": 0x0980}, d1e_marker_case(0, D1E_MK1),
+             {0x2AE14: 0x02B6C7D8}),
+        Case("h1", {"eax": 0, "edx": 1, "ebx": 0x0980}, d1e_marker_case(D1E_MK0, D1E_MK1),
+             {0x2AE14: 0x02B6C7D9, 0x2B150: 0x5A5A5A5A}),
+        Case("h2", {"eax": 1, "edx": 6, "ebx": 0x1800}, d1e_marker_case(D1E_MK0, 0),
+             {0x2AE14: 0x03B7C8D9}),
+        Case("h3", {"eax": 1, "edx": 3, "ebx": 0xFFFF1234}, d1e_marker_case(D1E_MK0, D1E_MK1),
+             {0x2AE14: 0}),
+        Case("h4", {"eax": 2, "edx": 2, "ebx": 0x0001}, d1e_marker_case(D1E_MK0, D1E_MK1, 0),
+             {0x2AE14: 0x01B8C9DA}),
+        Case("h5", {"eax": 0x100, "edx": 4, "ebx": 0x0002},
+             d1e_marker_case(D1E_MK0, D1E_MK1, far=D1E_MK2), {0x2AE14: 0x02B6C7D8}),
+    ], calls=(P7_2B150, SPAWN), eax_mask=0,
+       mutants=("@slot", "@nocall", "@nozero", "@scale", "@a2", "@a3", "@y", "@a5", "@store",
+                "@width", "@eq1", "@side8", "@table")),
+    # 0x1DA08 fight_hud_pulse: no argument. Per side the word 0x102908[side] is decremented and,
+    # when it is not above 0 (signed), the DS_001028F8[side] record begins 0xE9050 at 4.0
+    # (ANIM_BEGIN stub; EDX is reloaded after it, 0x1DA3D) and the word becomes (0x78 - the
+    # slot's +0x5A byte) >> 1, raised to 0xC. Void: 0x27FA8 (0x27FAC), 0x272DC (0x272E6) and
+    # 0x29970 (0x29972) rewrite EAX; at 0x2686F only AX is rewritten (`mov ax,[0xef6dc]`).
+    Spec("fight_hud_pulse", 0x1DA08, [
+        Case("p0", {}, d1e_pulse_case(2, 1)),
+        Case("p1", {}, d1e_pulse_case(1, 2, b0=0x60)),
+        Case("p2", {}, d1e_pulse_case(1, 1, b0=0x62, b1=0x5E)),
+        Case("p3", {}, d1e_pulse_case(0, 0x8001, b0=0xF8, b1=0x79)),
+        Case("p4", {}, d1e_pulse_case(0x8000, 0x7FFF, b0=0x00, b1=0x11)),
+        Case("p5", {}, d1e_pulse_case(3, 0x0100)),
+        Case("p6", {}, d1e_pulse_case(1, 0, b0=0x78, b1=0x80)),
+    ], calls=(ANIM_BEGIN,), eax_mask=0,
+       mutants=("@gt", "@u", "@rec", "@stream", "@frame", "@sext", "@w16", "@clamp", "@order",
+                "@byte", "@side", "@nostore", "@decb", "@relb", "@one", "@k78", "@norel", "@noclamp")),
+]
+D1_SPECS += D1E_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
