@@ -159,7 +159,7 @@ _Noreturn void game_restart_longjmp(void)
 
 /* 0x51F45: binds the two offscreen buffers and builds the 200-entry scanline
  * offset table (0, 0x140, 0x280, ...). */
-static void surface_setup(void)
+void surface_setup(void)
 {
     DSD(DS_000E87A0) = DSD(DS_001014E4);
     DSD(DS_000E87A4) = DSD(DS_001014E8);
@@ -167,7 +167,7 @@ static void surface_setup(void)
 }
 
 /* 0x50188: swaps the front/back offscreen buffers. */
-static void swap_buffers(void)
+void swap_buffers(void)
 {
     u32 t = DSD(DS_000E87A0);
     DSD(DS_000E87A0) = DSD(DS_000E87A4);
@@ -459,7 +459,7 @@ void frontend_darken_marked(void)
  * table DS_000C8610), and reset its pset palette. EBX/ECX/EDX/ESI pushed and
  * popped. Callers: state 1's scan (0x41D13) and state 4 (0x42096), both in
  * 0x41C28. */
-static void frontend_portrait_flash(u32 i)
+void frontend_portrait_flash(u32 i)
 {
     u32 flags = DSB(DS_00108106 + i);                       /* 0x414B8/0x414C5 */
     u32 cls = flags & 0xFu;                                 /* 0x414C0/0x414C3 */
@@ -479,7 +479,7 @@ static void frontend_portrait_flash(u32 i)
  * DS_000C85E6[char*2] and reset its pset palette to DS_000C8648[char].
  * EBX/ECX/EDX pushed and popped. Only caller: state 5's DS_0010810E < 8 arm,
  * 0x42159 (0x41C28). */
-static void frontend_portrait_reveal(u32 slot)
+void frontend_portrait_reveal(u32 slot)
 {
     u32 ch = DSB(DS_000C8664 + slot);                       /* 0x4152D */
     u32 rec = DSD(DS_001080C0 + ch * 4u);                   /* 0x4153A/0x41552 */
@@ -497,7 +497,7 @@ static void frontend_portrait_reveal(u32 slot)
  * DS_00104B11 > 1, clamped to >= 0. EBX/ECX/EDX pushed and popped. Only
  * caller: 0x416D4 (0x41780's 0x41778, and 0x41760's 0x41778 wait — actually
  * called from 0x416D4 at 0x416EC and from 0x41760 at 0x41778). */
-static void flow_1082d0_from_column(u32 col)
+void flow_1082d0_from_column(u32 col)
 {
     u32 count = DSB(DS_00104B11);                           /* 0x46613 */
     u32 b = DSB(DS_0010452C);                                /* 0x46620/0x46644 */
@@ -515,7 +515,7 @@ static void flow_1082d0_from_column(u32 col)
  * select-cycle field DS_00107832[r*0x94] and schedule state 8
  * (DS_00104B25 = 8). Callers: 0x416D4 (0x4174D) and state 5's
  * DS_00108104[r] == 7 arm, 0x4212C (0x41C28). */
-static void frontend_mode12_advance(void)
+void frontend_mode12_advance(void)
 {
     if ((DSB(DS_00104529) & 2u) != 0u) {                    /* 0x4160F/0x41616 */
         (void)actor_spawn((const u32 *)(mem + DS_000C8704), DSW(DS_000C8718),
@@ -585,7 +585,7 @@ static void frontend_mode12_challenge_continue(void)
  * DS_000C8718's word (mode 0x1E00). Then arm the hook game_hook_26978, mode
  * 0x17 and a 0xB4-frame (180) countdown. EBX/ECX/EDX pushed and popped.
  * Only caller: state 7's DS_00105B3A == 0 arm, 0x42439 (0x41C28). */
-static void flow_no_continue_screen(void)
+void flow_no_continue_screen(void)
 {
     if ((DSB(DS_00104529) & 2u) != 0u) {                    /* 0x417C7/0x417CE */
         (void)actor_spawn((const u32 *)(mem + DS_000C871C), DSW(DS_000C8718),
@@ -1263,7 +1263,7 @@ void flow_screen_reset(u32 v)
 /* 0x46504 — record §46-B. DS_001082C0 = DS_001082C8 and DS_001082C4 =
  * DS_001082CC (two dword copies through EAX). Callers: 0x25C0E (0x25BBC) and
  * 0x26A31 (0x26998). */
-static void flow_1082c8_latch(void)
+void flow_1082c8_latch(void)
 {
     DSD(DS_001082C0) = DSD(DS_001082C8);                /* 0x46504/0x46509 */
     DSD(DS_001082C4) = DSD(DS_001082CC);                /* 0x4650E/0x46513 */
