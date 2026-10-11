@@ -1976,8 +1976,9 @@ void fighter_state_36710(u32 slot, u32 rec)
 }
 
 /* 0x399CC. The +0x52 == 7 handler: 0x33A10's self slot gets +0x41 bit 2 and
- * +0x74 = 0, then, when the side's slot pointer is live and its +0x5D is clear,
- * 0x367DC(slot, *slot). */
+ * +0x74 = 0, then, when the side's slot pointer s = [0x1077A8 + side*4] is
+ * live and its +0x5D is clear, 0x367DC(s, *s) (EAX is still s at 0x39A02 and
+ * EDX = [s] from 0x399FC). */
 void fighter_state_399cc(u32 side)
 {
     u32 ctx[6];
@@ -1989,7 +1990,7 @@ void fighter_state_399cc(u32 side)
     {
         u32 s = DSD(DS_001077A8 + side * 4u);           /* 0x399EE */
         if (s != 0u && DSB(s + 0x5Du) == 0u)
-            fighter_state_367dc(slot, DSD(slot));       /* 0x367DC */
+            fighter_state_367dc(s, DSD(s));             /* 0x399FC, 0x39A02 0x367DC */
     }
 }
 
