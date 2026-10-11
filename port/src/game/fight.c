@@ -1282,12 +1282,12 @@ static u32 fight_dust_pick(u32 side)
     u32 range = (DSW(DS_00104B00) == 3u)
               ? 0x64u
               : (u32)DSW(DS_00108860 + side * 2u);
-    u32 v = rng_next(range);                    /* 0x493AB */
-    if (v < 0x1eu) return 4;
-    if (v < 0x32u) return 3;
-    if (v < 0x46u) return 5;
-    if (v < 0x55u) return 1;
-    if (v < 0x5fu) return 0;
+    s32 v = (s32)rng_next(range);               /* 0x493AB */
+    if (v < 0x1e) return 4;                     /* 0x493B0 `cmp eax,0x1e` / 0x493B3 `jge` (signed) */
+    if (v < 0x32) return 3;                     /* 0x493BC/0x493BF */
+    if (v < 0x46) return 5;                     /* 0x493C8/0x493CB */
+    if (v < 0x55) return 1;                     /* 0x493D4/0x493D7 */
+    if (v < 0x5f) return 0;                     /* 0x493E0/0x493E3 */
     return 2;
 }
 
