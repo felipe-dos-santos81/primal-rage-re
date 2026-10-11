@@ -8359,6 +8359,35 @@ def d1a_cb14_case(side, hook_s, hook_o, busy, ch=2, idx=1):
     return p
 
 
+# 0x349C8's consume stub zeroes both command words: the raw loaded DX before the call (0x34A93) and
+# masks that copy after it (0x34AA4), so a port that re-reads the word after 0x3BDDC sees 0.
+D1A_CONSUME = E.Call(0x3BDDC, ("eax",), clobbers=("ebp",), writes=((None, 0x001088E0, b"\x00" * 4),))
+
+
+def d1a_default_case(side, s42, cmd=0, s53=0, rec51=None, slot=True, other=True, o40=0x08200000,
+                     ch=2):
+    """0x349C8: the DS_001077A8 slot-pointer pair (0 = no slot), the side slot's record pointer,
+    +0x42, +0x43 (0xB5: bit 6 clear, the rest mixed), +0x52..+0x54 and +0x7A, the record's +0x51
+    (default the side; the table entry a 0x80 names is poked too), the other slot's +0x40 dword and
+    record pointer, both command words (the other's is the complement) and the 0xC8978 stream of
+    `ch`."""
+    so, oo = D1A_SLOT + side * 0x94, D1A_SLOT + (1 - side) * 0x94
+    rs, ro = (C3D_REC0, C3D_REC1)[side], (C3D_REC0, C3D_REC1)[1 - side]
+    ptrs = [0, 0]
+    ptrs[side] = so if slot else 0
+    ptrs[1 - side] = oo if other else 0
+    words = [0, 0]
+    words[side], words[1 - side] = cmd, cmd ^ 0xFFFF
+    r51 = side if rec51 is None else rec51
+    p = {0x001077A8: le32(ptrs[0]) + le32(ptrs[1]), so: le32(rs), oo: le32(ro),
+         so + 0x42: bytes([s42, 0xB5]), so + 0x52: bytes([0x11, s53, 0x33]), so + 0x7A: bytes([ch]),
+         rs + 0x51: bytes([r51]), oo + 0x40: le32(o40), 0x001088E0: le16(words[0]) + le16(words[1]),
+         0x000C8978 + ch * 4: le32(0x000E3000 + ch)}
+    if r51 > 1:
+        p[0x001077A8 + (r51 ^ 1) * 4] = le32(oo)
+    return p
+
+
 D1A_SPECS = [
     # 0x14590 fighter_14590: EAX = side. 0x33950 runs real (allowed; it fills the stack ctx). AL only:
     # `mov al,1` 0x145BE / `xor al,al` 0x145C5, and all six callers test AL (0x14669, 0x14707,
@@ -8618,6 +8647,39 @@ D1A_SPECS = [
         Case("q3", {"eax": 0}, d1a_cb14_case(0, 0x00029D04, 0x00029D04, 0, idx=0)),
     ], allow_calls=(0x00029D04,), calls=(PALETTE,), eax_mask=0,
        mutants=("@side", "@arg", "@keep", "@inv", "@field")),
+    # 0x349C8 fighter_state_default: EAX = side. Seven stubs; 0x365C8, 0x36638 and 0x3BDDC return
+    # the AL the raw tests (0x34A43, 0x34A5A, 0x34AA7 `test al,al`). Mask 0: the one caller returns
+    # at once (0x34C0F..0x34C14) and the dispatcher's one call site overwrites EAX (0x357FC).
+    Spec("fighter_state_default", 0x349C8, [
+        Case("w0", {"eax": 0}, d1a_default_case(0, 0x40, slot=False)),
+        Case("w1", {"eax": 1}, d1a_default_case(1, 0x40)),
+        Case("w2", {"eax": 0}, d1a_default_case(0, 0xA0, o40=0x7FFFFFFF)),
+        Case("w3", {"eax": 0}, d1a_default_case(0, 0x80, other=False)),
+        Case("w4", {"eax": 1}, d1a_default_case(1, 0x80, o40=0x08000000)),
+        Case("w5", {"eax": 1}, d1a_default_case(1, 0x80, rec51=0x80, o40=0x08200000)),
+        Case("w6", {"eax": 0}, d1a_default_case(0, 0x80, rec51=1, o40=0x08200000)),
+        Case("w7", {"eax": 0}, d1a_default_case(0, 0x00, cmd=0x5000), {0x365C8: 1, 0x36638: 1}),
+        Case("w8", {"eax": 1}, d1a_default_case(1, 0x3F, cmd=0x4500),
+             {0x365C8: 0x100, 0x36638: 0x100}),
+        Case("w9", {"eax": 0}, d1a_default_case(0, 0x00, cmd=0x41FF, ch=5),
+             {0x365C8: 0, 0x36638: 0, 0x3BDDC: 0x100}),
+        Case("w10", {"eax": 1}, d1a_default_case(1, 0x00, cmd=0x4000),
+             {0x365C8: 1, 0x36638: 0, 0x3BDDC: 1}),
+        Case("w11", {"eax": 0}, d1a_default_case(0, 0x00, cmd=0x1000, s53=0),
+             {0x365C8: 0, 0x36638: 0x100, 0x3BDDC: 0}),
+        Case("w12", {"eax": 1}, d1a_default_case(1, 0x00, cmd=0x14FF, s53=1),
+             {0x365C8: 0, 0x36638: 0, 0x3BDDC: 0}),
+        Case("w13", {"eax": 0}, d1a_default_case(0, 0x00, cmd=0xB0AB, s53=1),
+             {0x365C8: 0, 0x36638: 0, 0x3BDDC: 0}),
+        Case("w14", {"eax": 0}, d1a_default_case(0, 0x00, cmd=0x8CFF, s53=0),
+             {0x365C8: 0, 0x36638: 0, 0x3BDDC: 0}),
+        Case("w15", {"eax": 1}, d1a_default_case(1, 0x00, cmd=0x1300, s53=0),
+             {0x365C8: 0, 0x36638: 0, 0x3BDDC: 0}),
+    ], calls=(E.Call(0x37178, ("eax",), clobbers=("esi", "edi", "ebp")), P6_37D18,
+              E.Call(0x365C8, ("eax", "edx", "ebx"), clobbers=("ebx", "edx")), C1_36638,
+              D1A_CONSUME, ANIM_BEGIN, DIRS), eax_mask=0,
+       mutants=("@b6", "@o51", "@mask", "@d18", "@s53", "@al365", "@al366", "@gate", "@al3b",
+                "@reread", "@frame", "@s52", "@s54", "@s53z", "@dir")),
 ]
 D1_SPECS += D1A_SPECS
 

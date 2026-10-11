@@ -2167,6 +2167,7 @@ D1A_MASKS = {
     "fighter_34ddc": 0xff,
     "fighter_34e20": 0xff,
     "fighter_35050": 0x0,
+    "fighter_state_default": 0x0,
 }
 D1A_KINDS = {
     "fighter_14590@slot": {'eax'},
@@ -2330,6 +2331,21 @@ D1A_KINDS = {
     "fighter_35050@keep": {'byte'},
     "fighter_35050@inv": {'byte'},
     "fighter_35050@field": {'byte'},
+    "fighter_state_default@b6": {'byte', 'call #0', 'call #1', 'call #2'},
+    "fighter_state_default@o51": {'byte', 'call #0'},
+    "fighter_state_default@mask": {'byte', 'call #0'},
+    "fighter_state_default@d18": {'call #0'},
+    "fighter_state_default@s53": {'byte'},
+    "fighter_state_default@al365": {'byte', 'call #1 memory'},
+    "fighter_state_default@al366": {'byte', 'call #2', 'call #3'},
+    "fighter_state_default@gate": {'byte', 'call #2', 'call #3'},
+    "fighter_state_default@al3b": {'byte', 'call #3'},
+    "fighter_state_default@reread": {'byte', 'call #3'},
+    "fighter_state_default@frame": {'call #3'},
+    "fighter_state_default@s52": {'byte'},
+    "fighter_state_default@s54": {'byte'},
+    "fighter_state_default@s53z": {'call #3'},
+    "fighter_state_default@dir": {'call #3'},
 }
 D1A_CASES = [
     ("fighter_14590@slot", ['g0', 'g1', 'g2', 'g6']),
@@ -2493,6 +2509,21 @@ D1A_CASES = [
     ("fighter_35050@keep", ['q2', 'q3']),
     ("fighter_35050@inv", ['q1', 'q2', 'q3']),
     ("fighter_35050@field", ['q2', 'q3']),
+    ("fighter_state_default@b6", ['w1', 'w2', 'w8']),
+    ("fighter_state_default@o51", ['w6']),
+    ("fighter_state_default@mask", ['w4']),
+    ("fighter_state_default@d18", ['w2', 'w5']),
+    ("fighter_state_default@s53", ['w2', 'w5']),
+    ("fighter_state_default@al365", ['w8']),
+    ("fighter_state_default@al366", ['w11']),
+    ("fighter_state_default@gate", ['w15', 'w9']),
+    ("fighter_state_default@al3b", ['w9']),
+    ("fighter_state_default@reread", ['w11', 'w13', 'w15', 'w9']),
+    ("fighter_state_default@frame", ['w9']),
+    ("fighter_state_default@s52", ['w9']),
+    ("fighter_state_default@s54", ['w9']),
+    ("fighter_state_default@s53z", ['w12']),
+    ("fighter_state_default@dir", ['w13', 'w15']),
 ]
 D1_MASKS.update(D1A_MASKS)
 D1_KINDS.update(D1A_KINDS)
