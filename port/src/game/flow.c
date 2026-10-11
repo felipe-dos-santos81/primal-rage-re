@@ -425,7 +425,7 @@ void frontend_darken_marked(void)
 
 #define DS_00104529 0x00104529u   /* no symbols.h name: DS_00104528's second byte */
 #define FN_000259CC 0x000259CCu   /* no symbols.h name: mode 0x11's hook */
-#define DS_000C8704 0x000C8704u   /* no symbols.h name: state 0's sprite prompt */
+#define DS_000C8704 0x000C8704u   /* no symbols.h name: 0x4160c's sprite prompt (0x41626) */
 #define DS_000C8718 0x000C8718u   /* no symbols.h name: shared prompt-row word */
 #define DS_000C871C 0x000C871Cu   /* no symbols.h name: 0x417C4's sprite prompt */
 #define DS_000C876C 0x000C876Cu   /* no symbols.h name: 0x4160c's sprite prompt */
@@ -508,7 +508,7 @@ static void flow_1082d0_from_column(u32 col)
 }
 
 /* 0x4160c — record §48-Z. Draw the round-transition prompt (sprite
- * DS_000C876C at DS_000C8718's word when the sprite flag DS_00104529 bit 1
+ * DS_000C8704 at DS_000C8718's word when the sprite flag DS_00104529 bit 1
  * is set, else the strings 0xDD/0xDC erased and drawn at row 2), clear the
  * seven bytes DS_00108106..DS_0010810C, DS_00108111 = 0, DS_00104B23 = 6, a
  * 30-frame countdown (DS_00104AFE = 0x1E), increment the current side's
@@ -518,7 +518,7 @@ static void flow_1082d0_from_column(u32 col)
 static void frontend_mode12_advance(void)
 {
     if ((DSB(DS_00104529) & 2u) != 0u) {                    /* 0x4160F/0x41616 */
-        (void)actor_spawn((const u32 *)(mem + DS_000C876C), DSW(DS_000C8718),
+        (void)actor_spawn((const u32 *)(mem + DS_000C8704), DSW(DS_000C8718),
                           0xFFu, 0x1200u, 0u);               /* 0x41618..0x41632 0x2AE14 */
     } else {
         text_cells_release(0, 2, game_string_get(0xDDu), 0x4000u);   /* 0x41639..0x41651 0x1C500, 0x2F280 */
