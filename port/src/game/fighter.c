@@ -285,7 +285,7 @@ void fighter_slot_latch_both(void)
 /* 0x1CEBC. The audio gate the spawn tail tests: 1 when the DIG driver handle
  * DS_001028C8 is set (game_audio_init stores the port's stand-in, record
  * §45-A) and the sample pause byte DS_001028DB is clear. */
-static int fighter_spawn_audio_gate(void)
+int fighter_spawn_audio_gate(void)
 {
     if (DSD(DS_001028C8) == 0) return 0;            /* 0x1CEC3 */
     if (DSB(DS_001028DB) != 0) return 0;            /* 0x1CECC */
@@ -1248,7 +1248,7 @@ static void ai_pick(u32 side)
 
 /* 0x1A5D4. 0x2000 when the other side's facing bit 0x4000 is clear and the
  * command's 0x2000 is set; 0x1000 in the mirror; else 0. */
-static u32 ai_facing_cmd(u32 side)
+u32 ai_facing_cmd(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x1A5E0 */
     u16 cmd = DSW(DS_001088E0 + side * 2u);
@@ -8458,7 +8458,7 @@ void fighter_151a0(u32 side)
  * 5.0)), B5C[side] = 2 when rec+0x24 is outside (0, 17) else its truncation,
  * rec+0x24 = 0, and B58[side] = slot+0x5F. The 0x61A4C runtime rounds toward
  * zero (frontend-chain record §…), so C's (s32) cast is the same truncation. */
-static void fighter_19164(u32 side)
+void fighter_19164(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);              /* 0x19175 */
     union { float f; u32 u; } fu;
