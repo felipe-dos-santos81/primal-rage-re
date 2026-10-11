@@ -8231,6 +8231,24 @@ def d1g_rl_case(fill):
             0x00105B40: run(12, 0x60)}                           # 0x105B40..0x105B4B
 
 
+def d1g_cb_case(side, st, w=0x5A5A, ch=3, extra=None, rec=D1G_REC):
+    """0x45B50: both slots' record pointers (C3D_REC0/1), the EAX slot's +0x52..+0x57 (state
+    `st`), the two slots' +0x7A (the other side's = ch, the own = ch ^ 1), the countdown word
+    0x1081EC between sentinels, 0xF0AFE, and +0x24 of the EDX record and both slot records."""
+    p = c3d_slot_pokes()
+    own, oth = 0x001077B0 + side * 0x94, 0x001077B0 + (1 - side) * 0x94
+    p[own + 0x52] = bytes([0x52, 0x53, 0x54, 0x55, 0x56, st, 0x58])
+    p[own + 0x79] = bytes([0x79, ch ^ 1, 0x7B])
+    p[oth + 0x79] = bytes([0x79, ch, 0x7B])
+    p[0x001081EA] = b"\xea\xeb" + le16(w) + b"\xee\xef"
+    p[0x000F0AFD] = b"\xfd\xfe\xff"
+    p[rec + 0x24] = le32(0x24242424)
+    p[C3D_REC0 + 0x24] = le32(0x11111111)
+    p[C3D_REC1 + 0x24] = le32(0x22222222)
+    p.update(extra or {})
+    return p
+
+
 D1G_CURSOR = E.Call(0x2A620, ("eax", "edx"), mode="real")   # mode1_cursor: its own row (C3)
 
 D1G_SPECS = [
@@ -8522,6 +8540,26 @@ D1G_SPECS = [
         Case("x0", {}, d1g_rl_case(0x11)),
         Case("x1", {"eax": 0x5A5A5A5A, "ebx": 0x12345678, "edx": 0x9ABCDEF0}, d1g_rl_case(0x57)),
     ], eax_mask=0, mutants=("@count", "@stride", "@ptr4", "@free", "@last", "@l58", "@head")),
+    # 0x45B50 fighter_45b50: the slot +0x0C callback (0x35431, then `xor eax,eax` 0x35434: mask
+    # 0). EAX = slot, EDX = rec, EBX = side. 0x33950 runs on both sides; 0x2BC30, 0x2A17C and
+    # 0x2C3FC are the ANIM_BEGIN, PALETTE and VOICE stubs (EBX, the handle loaded at 0x45B94,
+    # survives 0x2BC30: its clobber set is EDX).
+    Spec("fighter_45b50", 0x45B50, [
+        Case("c0", {"eax": 0x001077B0, "edx": D1G_REC, "ebx": 0}, d1g_cb_case(0, 0)),
+        Case("c1", {"eax": 0x001077B0, "edx": D1G_REC, "ebx": 0}, d1g_cb_case(0, 1)),
+        Case("c2", {"eax": 0x001077B0 + 0x94, "edx": D1G_REC, "ebx": 1},
+             d1g_cb_case(1, 1, ch=0x80, extra={0x0009B01C + 0x80 * 4: le32(0x000E1234),
+                                              0x0009B01C - 0x80 * 4: le32(0x000E5678)})),
+        Case("c3", {"eax": 0x001077B0, "edx": D1G_REC, "ebx": 0}, d1g_cb_case(0, 2, w=5)),
+        Case("c4", {"eax": 0x001077B0, "edx": D1G_REC, "ebx": 0}, d1g_cb_case(0, 2, w=1)),
+        Case("c5", {"eax": 0x001077B0 + 0x94, "edx": D1G_REC, "ebx": 1},
+             d1g_cb_case(1, 2, w=0x8001)),
+        Case("c6", {"eax": 0x001077B0, "edx": D1G_REC, "ebx": 0}, d1g_cb_case(0, 3, w=1)),
+        Case("c7", {"eax": 0x001077B0, "edx": D1G_REC, "ebx": 0}, d1g_cb_case(0, 2, w=0)),
+    ], allow_calls=(0x33950,), calls=(ANIM_BEGIN, PALETTE, VOICE), eax_mask=0,
+       mutants=("@st1", "@rec", "@char", "@sextc", "@frame", "@pal", "@palrec", "@v50", "@w",
+                "@inc", "@dec", "@order", "@jg", "@ge", "@r24", "@o24", "@vd2", "@s53", "@s52",
+                "@afe")),
 ]
 D1_SPECS += D1G_SPECS
 

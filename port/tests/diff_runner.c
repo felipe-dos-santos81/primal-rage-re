@@ -14278,6 +14278,46 @@ static void m_d1g_rl_last(const u32 *r, u32 *eax)   { *eax = d1g_1c350_core(r, 1
 static void m_d1g_rl_l58(const u32 *r, u32 *eax)    { *eax = d1g_1c350_core(r, 32u); }
 static void m_d1g_rl_head(const u32 *r, u32 *eax)   { *eax = d1g_1c350_core(r, 64u); }
 
+/* 0x45B50's mutants. EAX = slot, EDX = rec, EBX = side (the slot +0x0C callback). */
+static u32 d1g_45b50_core(const u32 *r, u32 mut)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], ctx[6];
+    u8 st;
+    fighter_ctx_same(ctx, r[R_EBX]);
+    st = DSB(slot + 0x57u);
+    if (st == ((mut & 1u) ? 0u : 1u)) {                                                 /* @st1 */
+        u32 c = (mut & 4u) ? (u32)DSB(ctx[2] + 0x7Au)                                   /* @char */
+              : (mut & 8u) ? (u32)(s32)(s8)DSB(ctx[3] + 0x7Au) : (u32)DSB(ctx[3] + 0x7Au);   /* @sextc */
+        if (mut & 2048u) DSW(0x001081ECu) = 0x1Eu;                                      /* @order */
+        actors_anim_begin((mut & 2u) ? ctx[4] : ctx[5], DSD(0x0009B01Cu + c * 4u),      /* @rec */
+                          (mut & 16u) ? 0x40000000u : 0x3F800000u);                     /* @frame */
+        actor_pset_palette((mut & 64u) ? ctx[4] : ctx[5], (mut & 32u) ? 1u : 0u,        /* @palrec / @pal */
+                           0x1F874610u);
+        (void)sound_voice((mut & 128u) ? 0x51u : 0x50u);                                /* @v50 */
+        DSW(0x001081ECu) = (mut & 256u) ? 0x1Fu : 0x1Eu;                                /* @w */
+        if (!(mut & 512u)) DSB(slot + 0x57u) = (u8)(st + 1u);                           /* @inc */
+    } else if (st == 2u) {
+        u16 w = (u16)(DSW(0x001081ECu) - 1u);
+        if (!(mut & 1024u)) DSW(0x001081ECu) = w;                                       /* @dec */
+        if ((mut & 4096u) ? (w != 0u) : (mut & 8192u) ? ((s16)w >= 0) : ((s16)w > 0)) return 0u;   /* @jg / @ge */
+        DSD(((mut & 16384u) ? ctx[4] : rec) + 0x24u) = 0x40400000u;                     /* @r24 */
+        if (!(mut & 32768u)) DSD(ctx[5] + 0x24u) = 0x40C00000u;                         /* @o24 */
+        (void)sound_voice((mut & 65536u) ? 0xD3u : 0xD2u);                              /* @vd2 */
+        if (!(mut & 131072u)) DSB(slot + 0x53u) = 3u;                                   /* @s53 */
+        if (!(mut & 262144u)) DSB(slot + 0x52u) = 9u;                                   /* @s52 */
+        if (!(mut & 524288u)) DSB(0x000F0AFEu) = 4u;                                    /* @afe */
+    }
+    return 0u;
+}
+static void b_d1g_45b50(const u32 *r, u32 *eax) { fighter_45b50(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+#define D1G_CB_MUT(name, bit) \
+    static void m_d1g_cb_##name(const u32 *r, u32 *eax) { *eax = d1g_45b50_core(r, bit); }
+D1G_CB_MUT(st1, 1u)     D1G_CB_MUT(rec, 2u)      D1G_CB_MUT(char, 4u)     D1G_CB_MUT(sextc, 8u)
+D1G_CB_MUT(frame, 16u)  D1G_CB_MUT(pal, 32u)     D1G_CB_MUT(palrec, 64u)  D1G_CB_MUT(v50, 128u)
+D1G_CB_MUT(w, 256u)     D1G_CB_MUT(inc, 512u)    D1G_CB_MUT(dec, 1024u)   D1G_CB_MUT(order, 2048u)
+D1G_CB_MUT(jg, 4096u)   D1G_CB_MUT(ge, 8192u)    D1G_CB_MUT(r24, 16384u)  D1G_CB_MUT(o24, 32768u)
+D1G_CB_MUT(vd2, 65536u) D1G_CB_MUT(s53, 131072u) D1G_CB_MUT(s52, 262144u) D1G_CB_MUT(afe, 524288u)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -16212,6 +16252,27 @@ static const binding_t k_bindings[] = {
     { "render_list_init@last",             m_d1g_rl_last,   0x00000000u },
     { "render_list_init@l58",              m_d1g_rl_l58,    0x00000000u },
     { "render_list_init@head",             m_d1g_rl_head,   0x00000000u },
+    { "fighter_45b50",                     b_d1g_45b50,     0x00000000u },
+    { "fighter_45b50@st1",                 m_d1g_cb_st1,    0x00000000u },
+    { "fighter_45b50@rec",                 m_d1g_cb_rec,    0x00000000u },
+    { "fighter_45b50@char",                m_d1g_cb_char,   0x00000000u },
+    { "fighter_45b50@sextc",               m_d1g_cb_sextc,  0x00000000u },
+    { "fighter_45b50@frame",               m_d1g_cb_frame,  0x00000000u },
+    { "fighter_45b50@pal",                 m_d1g_cb_pal,    0x00000000u },
+    { "fighter_45b50@palrec",              m_d1g_cb_palrec, 0x00000000u },
+    { "fighter_45b50@v50",                 m_d1g_cb_v50,    0x00000000u },
+    { "fighter_45b50@w",                   m_d1g_cb_w,      0x00000000u },
+    { "fighter_45b50@inc",                 m_d1g_cb_inc,    0x00000000u },
+    { "fighter_45b50@dec",                 m_d1g_cb_dec,    0x00000000u },
+    { "fighter_45b50@order",               m_d1g_cb_order,  0x00000000u },
+    { "fighter_45b50@jg",                  m_d1g_cb_jg,     0x00000000u },
+    { "fighter_45b50@ge",                  m_d1g_cb_ge,     0x00000000u },
+    { "fighter_45b50@r24",                 m_d1g_cb_r24,    0x00000000u },
+    { "fighter_45b50@o24",                 m_d1g_cb_o24,    0x00000000u },
+    { "fighter_45b50@vd2",                 m_d1g_cb_vd2,    0x00000000u },
+    { "fighter_45b50@s53",                 m_d1g_cb_s53,    0x00000000u },
+    { "fighter_45b50@s52",                 m_d1g_cb_s52,    0x00000000u },
+    { "fighter_45b50@afe",                 m_d1g_cb_afe,    0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
