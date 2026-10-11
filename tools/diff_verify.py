@@ -8314,6 +8314,119 @@ D1F_SPECS += [
                 "@neg", "@fl8", "@div", "@w36", "@div16", "@type", "@order", "@bit7")),
 ]
 
+# The character-select portrait and team-tag rows (0x43B24's and 0x4434C's helpers).
+D1F_PANEL0, D1F_PANEL1 = 0x0010A300, 0x0010A340    # DS_0010815C[side]: passed on, never read here
+D1F_PSET, D1F_POOL, D1F_NODE = 0x0010A380, 0x0010A400, 0x0010A700
+D1F_TAGS = 0x00108114                                 # DS_00108114[side * 4 + slot]
+
+
+def d1f_port_case(cur, gate=(0, 0), e28=(0x00, 0xFB), entries=(D1F_ENT, D1F_ENT2)):
+    """0x43EA0 / 0x4418C: the two entry pointers DS_00108154 and panel pointers DS_0010815C, the
+    two cursors DS_00108166, the two bytes DS_00108170, and per entry the +8 dword, the +0x18 and
+    +0x1C dwords (seeded with every byte set, so a 16-bit store shows) and the +0x28 byte between
+    +0x27 and +0x29."""
+    p = {0x00108154: le32(entries[0]) + le32(entries[1]) + le32(D1F_PANEL0) + le32(D1F_PANEL1),
+         0x00108165: bytes([0x65, cur[0], cur[1], 0x68]),
+         0x0010816F: bytes([0x6F, gate[0], gate[1], 0x72])}
+    for i, e in enumerate((D1F_ENT, D1F_ENT2)):
+        p[e + 0x08] = le32(0x0BAD0008 + i)
+        p[e + 0x18] = le32(0xFFFFFFFF) + le32(0xEEEEEEEE)
+        p[e + 0x27] = bytes([0x27, e28[i], 0x29])
+    return p
+
+
+def d1f_drop_case(side, slot, rec, idx=3, pset=D1F_PSET):
+    """0x44054: the eight tag slots (each a different record pointer; `rec` in the addressed one,
+    0 for the empty arm), the record's +0x54/+0x56 words and the pset base DS_001014EC."""
+    slots = [0x0010A200 + 0x10 * k for k in range(8)]
+    slots[side * 4 + slot] = rec
+    p = {D1F_TAGS: b"".join(le32(v) for v in slots), 0x001014EC: le32(pset)}
+    if rec:
+        p[rec + 0x54] = le16(0x0007) + le16(idx) + le16(0x0009)
+    return p
+
+
+def d1f_tag_case(side, slot, cur, held=0, free=True):
+    """0x4408C: the eight tag slots (0 but for `held` in the addressed one and a sentinel in each
+    neighbour), the two cursors, and what the allowed 0x2AE14 needs: the actor pool 0x1014F4 and
+    pset 0x1014EC, the 0x105B3C free ring (one record at D1F_POOL; `free` False is the
+    self-sentinel empty ring, so the alloc fails), the active-list sentinel 0x105BCC and the render
+    free node 0x10275C."""
+    slots = [0x0BAD0100 + k for k in range(8)]
+    slots[side * 4 + slot] = held
+    p = {D1F_TAGS: b"".join(le32(v) for v in slots),
+         0x00108165: bytes([0x65, cur[0], cur[1], 0x68]),
+         0x001014F4: le32(D1F_POOL), 0x001014EC: le32(D1F_PSET),
+         0x00105B3C: le32(D1F_POOL if free else 0x00105B3C),
+         0x00105BCC: le32(0x00105BCC), 0x00105BD0: le32(0x00105BCC),
+         0x0010275C: le32(D1F_NODE), 0x00105B44: le32(0),
+         D1F_POOL + 0x08: bytes(range(0x48, 0x48 + 0x38)), D1F_POOL + 0x40: bytes(range(0x90, 0x90 + 0x28)),
+         D1F_PSET: bytes(range(0xC0, 0xC0 + 0x20))}
+    p[D1F_POOL] = le32(0x00105B3C) + le32(0x00105B3C) if free else le32(0x0BAD0000) + le32(0x0BAD0004)
+    return p
+
+
+D1F_PORT_MUTANTS = ("@eq", "@hl", "@oth", "@obit", "@ne", "@zext", "@x", "@w18", "@bit", "@seek",
+                    "@pal", "@voice", "@order", "@panel")
+
+D1F_SPECS += [
+    # 0x43EA0 fight_char_portrait: EAX = side. 0x2BCF4, 0x2A17C and 0x2C3FC are stubs. EAX dies
+    # unread (0x43CA6 `mov eax,edx`): mask 0.
+    Spec("fight_char_portrait", 0x43EA0, [
+        Case("v0", {"eax": 0}, d1f_port_case((2, 2), gate=(0x77, 1))),
+        Case("v1", {"eax": 0}, d1f_port_case((2, 3), gate=(0, 1), e28=(0xFB, 0x00))),
+        Case("v2", {"eax": 0}, d1f_port_case((4, 4), gate=(1, 0))),
+        Case("v3", {"eax": 1}, d1f_port_case((5, 5), gate=(1, 0), e28=(0xFB, 0x00))),
+        Case("v4", {"eax": 1}, d1f_port_case((1, 6), gate=(1, 0x77))),
+        Case("v5", {"eax": 0}, d1f_port_case((6, 6), gate=(0, 2))),
+        Case("v6", {"eax": 0}, d1f_port_case((0xFF, 0), gate=(1, 0))),
+        Case("v7", {"eax": 1}, d1f_port_case((3, 0xFE), gate=(1, 0), e28=(0x04, 0x04))),
+    ], calls=(P6_2BCF4, PALETTE, VOICE), eax_mask=0,
+       mutants=("@gate", "@one") + D1F_PORT_MUTANTS),
+    # 0x4418C fight_char_team_portrait: EAX = side. The same without the 0x108170 test, and nothing
+    # when the side's entry is 0 (0x4419F). EAX dies unread (0x448ED `mov eax,edx`): mask 0.
+    Spec("fight_char_team_portrait", 0x4418C, [
+        Case("w0", {"eax": 0}, d1f_port_case((2, 2))),
+        Case("w1", {"eax": 0}, d1f_port_case((2, 3), e28=(0xFB, 0x00))),
+        Case("w2", {"eax": 1}, d1f_port_case((5, 5), e28=(0xFB, 0x00))),
+        Case("w3", {"eax": 1}, d1f_port_case((1, 6))),
+        Case("w4", {"eax": 0}, d1f_port_case((4, 4), entries=(0, D1F_ENT2))),
+        Case("w5", {"eax": 1}, d1f_port_case((4, 0), entries=(D1F_ENT, 0))),
+        Case("w6", {"eax": 0}, d1f_port_case((0xFF, 0))),
+        Case("w7", {"eax": 1}, d1f_port_case((3, 0xFE), e28=(0x04, 0x04))),
+    ], calls=(P6_2BCF4, PALETTE, VOICE), eax_mask=0,
+       mutants=D1F_PORT_MUTANTS + ("@null",)),
+    # 0x44054 fight_char_team_tag_drop: EAX = side, EDX = slot. 0x2AD40 is the RELEASE stub; the
+    # slot is zeroed after it (0x44083, ECX = 0 across the call). EAX dies unread (0x4445A `lea
+    # eax,[ecx*8]`): mask 0.
+    Spec("fight_char_team_tag_drop", 0x44054, [
+        Case("d0", {"eax": 0, "edx": 0}, d1f_drop_case(0, 0, D1F_ENT)),
+        Case("d1", {"eax": 1, "edx": 3}, d1f_drop_case(1, 3, D1F_ENT, idx=0xFFFF)),
+        Case("d2", {"eax": 0, "edx": 2}, d1f_drop_case(0, 2, 0)),
+        Case("d3", {"eax": 1, "edx": 0}, d1f_drop_case(1, 0, D1F_ENT2, idx=0, pset=0x0010A3A0)),
+        Case("d4", {"eax": 0, "edx": 3}, d1f_drop_case(0, 3, D1F_ENT, idx=0x8001)),
+    ], calls=(RELEASE,), eax_mask=0,
+       mutants=("@stride", "@swap", "@w56", "@sext", "@pset", "@keep", "@order", "@nocall")),
+    # 0x4408C fight_char_team_tag_add: EAX = side, EDX = slot. The descriptor is on the stack, so
+    # 0x2AE14 is not stubbed (record E3 §E3.8): it runs on both sides (allowed) with its exercised
+    # tree (0x2AC80, 0x249D0, 0x249B0, 0x2EA30, 0x2A408, 0x5D812, 0x1C390, 0x1C3A0), and the record
+    # and pset it fills carry the descriptor. 0x33754 (the palette handle, +0x10) and 0x2A820 are
+    # stubs. EAX dies unread (0x44414 `xor eax,eax`): mask 0.
+    Spec("fight_char_team_tag_add", 0x4408C, [
+        Case("g0", {"eax": 0, "edx": 0}, d1f_tag_case(0, 0, (2, 5)), {0x33754: 0x11111111}),
+        Case("g1", {"eax": 1, "edx": 3}, d1f_tag_case(1, 3, (2, 5)), {0x33754: 0x22222222}),
+        Case("g2", {"eax": 0, "edx": 1}, d1f_tag_case(0, 1, (2, 5), held=0x0010A200)),
+        Case("g3", {"eax": 1, "edx": 2}, d1f_tag_case(1, 2, (2, 5), free=False)),
+        Case("g4", {"eax": 0, "edx": 2}, d1f_tag_case(0, 2, (0xFF, 3)), {0x33754: 0x33333333}),
+        Case("g5", {"eax": 1, "edx": 1}, d1f_tag_case(1, 1, (0, 6)), {0x33754: 0x44444444}),
+    ], allow_calls=(0x2AE14, 0x2AC80, 0x249D0, 0x249B0, 0x2EA30, 0x2A408, 0x5D812, 0x1C390, 0x1C3A0),
+       calls=(E.Call(0x33754, ("eax",), mode="stub"),
+              E.Call(0x2A820, ("eax", "edx"), mode="stub", clobbers=("edx",))),
+       eax_mask=0,
+       mutants=("@stride", "@gate", "@spr", "@w6", "@w8", "@wa", "@wc", "@pal", "@zext", "@xoff",
+                "@xy", "@layer", "@slot")),
+]
+
 D1_SPECS += D1F_SPECS
 
 SPECS = [
