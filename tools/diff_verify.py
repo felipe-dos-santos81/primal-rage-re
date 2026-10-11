@@ -8068,6 +8068,75 @@ def d1g_cur_case(fill):
             0x001079FC: bytes((fill + 0x40 + i) & 0xFF or 1 for i in range(0x40))}
 
 
+def d1g_lists_case(inuse, free, first, end, seed, extra=None):
+    """0x28E98/0x48C4C: every node byte of [first, end) non-zero (so the nodes' +8..+0xF must
+    survive), and the two sentinels' {next; prev} pointing into the scratch BSS (a mutant that
+    skips a self-link then follows them inside the image)."""
+    p = {}
+    data = bytes(((seed + i) & 0x7F) | 0x80 for i in range(end - first))
+    for off in range(0, len(data), 0x40):
+        p[first + off] = data[off:off + 0x40]
+    p[inuse] = le32(0x0010A030) + le32(0x0010A010)
+    p[free] = le32(0x0010A040) + le32(0x0010A020)
+    p.update(extra or {})
+    return p
+
+
+D1G_POOL, D1G_PREC = 0x0010A000, 0x0010A068         # the actor pool and its record 1 (in_pool)
+
+
+def d1g_m1_case(w28, pset4=0x5000, pset8=0x100, y30=0, f0aec=0, f0af0=0x1000, thr=0xEA, ramp=(),
+                s64=2, rec=D1G_PREC):
+    """0x2BE5C: a pool record (pset index 1, every byte seeded), its pset, the two camera
+    globals, 0x2A620's threshold word 0x107A4C and the 0x107900 ramp entries in `ramp`."""
+    buf = bytearray(0x80 | (i & 0x7F) for i in range(0x68))
+    def w32(o, v): buf[o:o + 4] = le32(v)
+    def w16(o, v): buf[o:o + 2] = le16(v)
+    w32(0x18, 0x18181818)
+    w32(0x1C, 0x1C1C1C1C)
+    w16(0x28, w28)
+    w32(0x30, y30)
+    w32(0x44, 0x46460044)                # the +0x46 word the ramp entry replaces
+    w16(0x56, 1)
+    w32(0x61, 0x00616263)
+    buf[0x64] = s64
+    ps = bytearray(0xA0 | (i & 0x1F) for i in range(0x20))
+    ps[4:8] = le32(pset4)
+    ps[8:12] = le32(pset8)
+    p = {0x001014F4: le32(D1G_POOL), 0x001014EC: le32(D1G_PSET),
+         rec: bytes(buf[:0x40]), rec + 0x40: bytes(buf[0x40:]),
+         D1G_PSET + 0x20: bytes(ps),
+         0x000F0AEC: le32(f0aec), 0x000F0AF0: le32(f0af0), 0x00107A4C: le16(thr)}
+    for i, v in ramp:
+        p[0x00107900 + i * 2] = le16(v)
+    return p
+
+
+def d1g_aid_case(k, pw28=0, idx=1, pool=D1G_POOL, base=D1G_PSET, rec=D1G_REC):
+    """0x2A39C: rec+0x26..+0x2B (the +0x28 byte 0xFF), rec+0x4A = k, the parent pool record's
+    +0x28 word between sentinels, both bases and the pset slot's first eight bytes."""
+    p = {0x001014EC: le32(base), 0x001014F4: le32(pool),
+         rec + 0x26: b"\x26\x27\xff\x29\x2a\x2b",
+         rec + 0x49: bytes([0x49, k, 0x4B]),
+         base + idx * 0x20: b"\x5a\x5b\x5c\x5d\x5e\x5f\x60\x61"}
+    if k:
+        p[pool + k * 0x68 + 0x26] = b"\x26\x27" + le16(pw28) + b"\x2a\x2b"
+    return p
+
+
+def d1g_mot_case(w2a=0x8000, x=0x1000, y=0x2000, w32=0, w34=0, w36=0, w38=0, b42=0, b43=0,
+                 w44=0, w28=0, rec=D1G_REC):
+    """0x2A4FC: the record's +0x18..+0x47 as one buffer (unnamed bytes are sentinels)."""
+    buf = bytearray(0x80 | (i & 0x7F) for i in range(0x18, 0x48))
+    def put(o, b): buf[o - 0x18:o - 0x18 + len(b)] = b
+    put(0x18, le32(x)); put(0x1C, le32(y)); put(0x28, le16(w28)); put(0x2A, le16(w2a))
+    put(0x32, le16(w32)); put(0x34, le16(w34)); put(0x36, le16(w36)); put(0x38, le16(w38))
+    put(0x42, bytes([b42, b43])); put(0x44, le16(w44))
+    return {rec + 0x18: bytes(buf)}
+
+
+D1G_CURSOR = E.Call(0x2A620, ("eax", "edx"), mode="real")   # mode1_cursor: its own row (C3)
+
 D1G_SPECS = [
     # 0x10D70 actor_pset_word_set: EAX = the word, [esp+4] = rec (`ret 4`). Mask 0: 0x4FA7E and
     # 0x4FB19 `xor eax,eax`; the other five sites return through 0x1D2F0/0x1D464/0x1DA84, whose
@@ -8106,6 +8175,64 @@ D1G_SPECS = [
         Case("z1", {"eax": 0x12345678, "edx": 0x9ABCDEF0, "ecx": 0x55}, d1g_cur_case(0xC0)),
     ], allow_calls=(0x654C7,), eax_mask=0,
        mutants=("@bc", "@c0", "@c4", "@rows", "@bytes", "@over", "@latch", "@short")),
+    # 0x28E98 actor_type_0a19_list_init: no argument; 0x249C0 (list_insert_before, its own C3b
+    # row) runs on both sides. Mask 0: both callers (0x20E3D, 0x20EE4) call 0x34978 next, which
+    # loads EAX (`mov eax,0x1077a8` 0x3497F) before reading it.
+    Spec("actor_type_0a19_list_init", 0x28E98, [
+        Case("i0", {}, d1g_lists_case(0x00104880, 0x00104888, 0x00104780, 0x00104880, 0x11)),
+        Case("i1", {"eax": 0x5A5A5A5A}, d1g_lists_case(0x00104880, 0x00104888, 0x00104780,
+                                                       0x00104880, 0x47)),
+    ], allow_calls=(0x249C0,), eax_mask=0,
+       mutants=("@inuse", "@self", "@first", "@count", "@list", "@order")),
+    # 0x48C4C actor_type_2d_list_init: no argument; 0x249C0 runs on both sides, the voice 0xEF
+    # (0x2C3FC) is the VOICE stub. Mask 0: its one caller 0x48DBF returns through the slot +0x0C
+    # callback 0x48D94 (`xor eax,eax` 0x35434 after 0x35431).
+    Spec("actor_type_2d_list_init", 0x48C4C, [
+        Case("j0", {}, d1g_lists_case(0x00108368, 0x001082E0, 0x001082E8, 0x00108368, 0x21,
+                                      {0x00108395: b"\x95\x96\x97\x98\x99"})),
+        Case("j1", {"eax": 0x5A5A5A5A}, d1g_lists_case(0x00108368, 0x001082E0, 0x001082E8,
+                                                       0x00108368, 0x63,
+                                                       {0x00108395: b"\x15\x16\x17\x18\x19"}),
+             {0x2C3FC: 0}),
+    ], allow_calls=(0x249C0,), calls=(VOICE,), eax_mask=0,
+       mutants=("@inuse", "@self", "@first", "@count", "@list", "@order", "@b98", "@b97", "@b96",
+                "@b95", "@novoice", "@voice", "@early")),
+    # 0x2BE5C actor_mode1_pset: EAX = rec (a pool record: the port's actor_pset guard, a PORT
+    # deviation the raw does not have). 0x2A620 runs real and is recorded: it reads the rec+0x1C
+    # and pset+0x14 this function has just stored and writes the rec+0x64 the ramp index is.
+    # Mask 0: the three callers load EAX next (0x28FBA, 0x29072, 0x37FD4).
+    Spec("actor_mode1_pset", 0x2BE5C, [
+        Case("m0", {"eax": D1G_PREC}, d1g_m1_case(0xEFFF, y30=0x00030000, f0aec=0x40)),
+        Case("m1", {"eax": D1G_PREC}, d1g_m1_case(0x3000, ramp=((5, 0x0123), (2, 0x0222)))),
+        Case("m2", {"eax": D1G_PREC}, d1g_m1_case(0x1000, thr=0x100,
+                                                  ramp=((-1, 0x0040), (0xFF, 0x0999), (2, 0x0222)))),
+        Case("m3", {"eax": D1G_PREC}, d1g_m1_case(0x1000, pset8=0x3BC0, thr=0xE8,
+                                                  ramp=((7, 0x8001), (2, 0x0222)))),
+        Case("m4", {"eax": D1G_PREC}, d1g_m1_case(0x0010, y30=0xFFFF8000, f0aec=0x100,
+                                                  f0af0=0xFFFFF000)),
+    ], calls=(D1G_CURSOR,), eax_mask=0,
+       mutants=("@y", "@sar", "@bit", "@x14", "@cursor", "@early", "@ramp", "@x46", "@x2", "@zext",
+                "@else", "@clr", "@clrlo")),
+    # 0x2A4FC motion_step: EAX = rec. 0x2B150 (set_dead) is the P7_2B150 stub. Mask 0: after
+    # 0x2A2E2 the caller 0x2A1FC returns to callers that load EAX (0x2A38E, 0x35818); after
+    # 0x38572 `mov eax,ecx` (0x38582, 0x3859B) or 0x186C4's `xor eax,eax`.
+    Spec("motion_step", 0x2A4FC, [
+        Case("s0", {"eax": D1G_REC}, d1g_mot_case(w2a=0x7FFF, w34=0x100, w36=5, w44=3)),
+        Case("s1", {"eax": D1G_REC}, d1g_mot_case(w32=0xFFF0, w38=0x20, w34=0x100, w36=5, b42=5)),
+        Case("s2", {"eax": D1G_REC}, d1g_mot_case(y=0, w34=0xFF00, w36=0xFFFF, b42=5, b43=3, w44=4,
+                                                  w28=0x20)),
+        Case("s3", {"eax": D1G_REC}, d1g_mot_case(w34=0, w36=5, b42=9, b43=7, w44=4, w28=0xFF5F)),
+        Case("s4", {"eax": D1G_REC}, d1g_mot_case(y=0x10, w34=0x10, w36=0xFFFF, b43=3, w44=2)),
+        Case("s5", {"eax": D1G_REC}, d1g_mot_case(y=1, w34=2, w36=0xFFFF, b42=1, b43=3, w44=3,
+                                                  w28=0x80)),
+        Case("s6", {"eax": D1G_REC}, d1g_mot_case(y=0xFFFFFFFB, w36=0xFFFE, w44=6, w28=0x08)),
+        Case("s7", {"eax": D1G_REC}, d1g_mot_case(w34=1, b42=0x80)),
+        Case("s8", {"eax": D1G_REC}, d1g_mot_case(y=0xFFFFFFFF, w34=0x90, w36=0, b43=0x80, w44=1)),
+        Case("s9", {"eax": D1G_REC}, d1g_mot_case(w34=0xFFE0, b43=0x30)),
+    ], calls=(P7_2B150,), eax_mask=0,
+       mutants=("@gate", "@x", "@y", "@frac", "@b42", "@zero", "@b43", "@abs", "@fr", "@dir",
+                "@stop", "@clr43", "@g20", "@ge", "@y0", "@sub", "@dead", "@nodead", "@v36",
+                "@g44", "@land")),
 ]
 D1_SPECS += D1G_SPECS
 

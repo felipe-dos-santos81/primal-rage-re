@@ -2845,8 +2845,9 @@ dead:
     set_dead(rec);
 }
 
-/* 0x2A4FC. Integrate the record's velocity and gravity. */
-static void motion_step(u32 rec)
+/* 0x2A4FC. Integrate the record's velocity and gravity. Exported for its own
+ * D1 row's binding. */
+void motion_step(u32 rec)
 {
     if ((DSW(rec + 0x2a) >> 8 & 0x80u) == 0) return;
     /* PORT: the original integrates the x velocity as `sar dword [eax+0x32],16`
@@ -2894,8 +2895,8 @@ static void motion_step(u32 rec)
 }
 
 /* 0x2A39C. Clear the +0x28 0x04 bit and write pset+0 from the reader, or-ing
- * the parent's hflip into bit 0x8000. */
-static void anim_id_path(u32 rec, u32 slot)
+ * the parent's hflip into bit 0x8000. Exported for its own D1 row's binding. */
+void anim_id_path(u32 rec, u32 slot)
 {
     DSB(rec + 0x28) &= 0xfb;
     u32 pset = DSD(DS_001014EC) + slot * PSET_SIZE;
