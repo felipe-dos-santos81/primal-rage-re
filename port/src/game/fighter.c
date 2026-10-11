@@ -7505,7 +7505,7 @@ void fighter_24754(u32 side)
     u32 x, e;
     u16 speed;
     fighter_ctx_same(ctx, side);                        /* 0x2475B..0x2475F 0x33950 */
-    if (fighter_actor_bit15_clear(ctx[0]) != 0) {       /* 0x24764..0x2476E 0x1A570 */
+    if ((u8)fighter_actor_bit15_clear(ctx[0]) != 0) {   /* 0x24764..0x2476E 0x1A570, `test al,al` */
         x = DSD(ctx[5] + 0x18u) - DSD(ctx[5] + 0x3Cu);  /* 0x24770..0x2477B */
         speed = 0x0096u;                                /* 0x2477E */
     } else {
