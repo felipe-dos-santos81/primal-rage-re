@@ -428,7 +428,7 @@ void frontend_darken_marked(void)
 #define DS_000C8704 0x000C8704u   /* no symbols.h name: 0x4160c's sprite prompt (0x41626) */
 #define DS_000C8718 0x000C8718u   /* no symbols.h name: shared prompt-row word */
 #define DS_000C871C 0x000C871Cu   /* no symbols.h name: 0x417C4's sprite prompt */
-#define DS_000C876C 0x000C876Cu   /* no symbols.h name: 0x4160c's sprite prompt */
+#define DS_000C876C 0x000C876Cu   /* no symbols.h name: state 0's sprite prompt (0x41C7F) */
 #define DS_0000A7760 0x0000A7760u /* no symbols.h name: state 3's per-char actor table */
 #define DS_0000A7808 0x0000A7808u /* no symbols.h name: 0x418F4's per-char actor table */
 #define DS_000C8780 0x000C8780u   /* no symbols.h name: state 3's centre sprite */
@@ -716,7 +716,7 @@ void game_mode_12_step(void)
     case 0u:                                                 /* 0x41C68 */
         if ((DSB(DS_00104529) & 2u) != 0u) {                 /* 0x41C68/0x41C6F */
             DSD(DS_001080BC) =
-                actor_spawn((const u32 *)(mem + DS_000C8704), DSW(DS_000C8718),
+                actor_spawn((const u32 *)(mem + DS_000C876C), DSW(DS_000C8718),
                            0xFFu, 0x3600u, 0u);               /* 0x41C71..0x41C90 0x2AE14 */
         } else {
             text_cursor_set(-1, 0x1Bu, game_string_get(0x4Fu), 0x4003u);   /* 0x41C97..0x41CB2 0x1C500, 0x2F198 */
