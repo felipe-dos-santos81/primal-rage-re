@@ -1120,7 +1120,7 @@ void ai_weight(u32 side, u32 id)
 {
     u32 b = ai_b(side);
     u32 idx = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au) * 10u
-            + (u32)DSB(DS_001077B0 + (side ^ 1u) * 0x94u + 0x7Au);
+            + (u32)DSB(DS_001077B0 + (1u - side) * 0x94u + 0x7Au);     /* 0x46BE4/0x46BE9: 1 - side */
     u32 p1 = DSD(0x00095CA8u + idx * 4u);               /* 0x46BD3 */
     u32 p2 = DSD(0x00095E38u + idx * 4u);
     DSB(b + 0x2Cu) = (u8)id;                            /* 0x46BE8 */
