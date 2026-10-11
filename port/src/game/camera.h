@@ -70,6 +70,37 @@ void camera_pair_hold(u32 track);
  * fight reset) is its only caller (0x20E6A). */
 void camera_step_seed(void);
 
+/* 0x12C7C, 0x12DF0, 0x13290, 0x1333C (D1h). The camera-x commit (EAX = the
+ * target x) and 0x12D48's mode 0, 2 and 3 bodies, exported for their own
+ * differential rows' bindings. */
+void camera_x_commit(s32 arg);
+void camera_mode_track_player(void);
+void camera_mode_center_two(void);
+void camera_mode_center_one(void);
+
+/* 0x164C0 (D1h). 1 iff slot[side]'s record +0x24, plus the -1.0f at 0x80580,
+ * equals its +0x20; exported for its own differential row's binding. */
+int camera_frame_last(u32 side);
+
+/* 0x14080, 0x15EC0, 0x1638C, 0x15F48, 0x181D0 (D1h). The rectangle intersect
+ * (EAX = out, EDX = a, EBX = b), the in-place bit reversal (EAX = len, EDX =
+ * buf), the row copy (EAX = side, EDX = dst, EBX = count, ECX = row), the
+ * bit-plane fill (EAX = bit, EDX = rows, EBX = dst, CL = value) and the
+ * visible-extent clip (EAX, EDX, EBX, ECX and four stack pointers), exported
+ * for their own differential rows' bindings. */
+int camera_rect_clip(int *out, const int *a, const int *b);
+void camera_bitrev(u32 buf, u32 len);
+void camera_sprite_row(u32 side, u32 dst, u32 count, u32 row);
+void camera_bitplane_pixel(u32 bit, u32 rows, u32 dst, u8 value);
+int camera_sync_visible(u32 p1, u32 p2, s32 p3, u32 p4,
+                        u32 p5, u32 p6, u32 p7, u32 p8);
+
+/* 0x15FD4, 0x1617C (D1h). The bit-plane row shifts, right and left (EAX = bit,
+ * EDX = src, EBX = rows, ECX = dst, one stack dword = arg5), exported for
+ * their own differential rows' bindings. */
+int camera_bitplane_shift(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5);
+int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5);
+
 /* 0x17580. The per-frame projection decay: four word countdowns, three globals
  * zeroed, four signed truncating multiplies by 0xF3D/0xD56, then the 0x140E4
  * box-overlap gate: when the boxes overlap, 0x170A0(0)/0x170A0(1) run for the
