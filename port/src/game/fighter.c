@@ -1953,7 +1953,9 @@ void fighter_state_36300(u32 slot, u32 rec)
 
 /* 0x36710. The +0x52 == 17 handler: step slot+0x58 0 -> 1 -> 2; at 2 with
  * rec+0x36 == 0 and rec+0x1C == 0 write rec+0x43 = byte[0xBD89A], slot+0x52 = 9
- * and call 0x2C3FC(0x6E) (the voice, record k7-k12 §7). */
+ * and call 0x2C3FC(0x6E) (the voice, record k7-k12 §7). The 0x3C480 call's
+ * record and character are those of the slot of rec+0x51's side (`mov eax,
+ * [ebx]` 0x3676E, `mov dl,[ebx+0x7a]` 0x36793), not EDX's and EAX's. */
 void fighter_state_36710(u32 slot, u32 rec)
 {
     u32 side = DSB(rec + 0x51u);
@@ -1961,9 +1963,10 @@ void fighter_state_36710(u32 slot, u32 rec)
     if (f == 0u) {
         DSB(FIGHT_36710_FLAG + side * 0x94u) = 1u;      /* 0x3672C */
     } else if (f < 2u) {
-        hit_anim_start_a(rec, DSD(FIGHT_ANIM_36710
-                                  + (u32)DSB(slot + 0x7Au) * 4u),
-                         0x40400000u);                  /* 0x367A6 */
+        u32 ss = DS_001077B0 + side * 0x94u;            /* 0x3675A..0x36762 */
+        hit_anim_start_a(DSD(ss), DSD(FIGHT_ANIM_36710
+                                      + (u32)DSB(ss + 0x7Au) * 4u),
+                         0x40400000u);                  /* 0x3676E, 0x36793, 0x367A6 */
         DSB(FIGHT_36710_FLAG + side * 0x94u) = 2u;      /* 0x367AB */
     } else if (f == 2u && (s16)DSW(rec + 0x36u) == 0 && DSD(rec + 0x1Cu) == 0) {
         DSB(rec + 0x43u) = DSB(FIGHT_36710_43);         /* 0x367C3 */
