@@ -105,6 +105,9 @@ void motion_step(u32 rec);
  * 15 taken from the parent's +0x28 bit 14. Exported for its own D1 row's
  * binding. */
 void anim_id_path(u32 rec, u32 slot);
+/* 0x19958 (record §50-E). The round-end debris spawner 0x19B90 calls once per
+ * frame. Exported for its own D1 row's binding. */
+void debris_spawn(void);
 /* 0x28E98. Self-link the type-0x0A/0x19 sentinels 0x104880 (in use) and
  * 0x104888 (free) and append the sixteen nodes 0x104780..0x104870 to the free
  * list in address order. State 6's reset 0x20DF4 calls it at 0x20E3D; without

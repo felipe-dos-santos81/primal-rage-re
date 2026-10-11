@@ -13894,6 +13894,243 @@ static void m_d1g_mot_v36(const u32 *r, u32 *eax)    { *eax = d1g_2a4fc_core(r, 
 static void m_d1g_mot_g44(const u32 *r, u32 *eax)    { *eax = d1g_2a4fc_core(r, 524288u); }
 static void m_d1g_mot_land(const u32 *r, u32 *eax)   { *eax = d1g_2a4fc_core(r, 1048576u); }
 
+/* 0x19958's mutants. No argument; 0x5D7DC runs real (recorded), 0x2AE14 is the SPAWN stub. */
+static u32 d1g_19958_core(const u32 *r, u32 mut)
+{
+    u32 n, x, desc, mode;
+    u16 w8, w0;
+    (void)r;
+    if ((rng_next((u32)DSB(0x00100CA8u)) != 0u) != ((mut & 1u) != 0u)) return 0u;       /* @gate */
+    x = DSD(0x000F0AF0u) - ((mut & 2u) ? 0u : 0x3000u);                                 /* @x */
+    x += rng_next((mut & 4u) ? 0x300u : 0x3000u);                                       /* @xr */
+    n = rng_next(0xA00u);
+    w8 = (u16)((n & 0xFFu) | ((((n >> 8) + 6u) & 0xFFu) << 8));
+    w0 = (mut & 8u) ? (u16)(0x3C00u + (u32)w8) : (u16)(0x3C00u - (u32)w8);              /* @w0 */
+    mode = DSW(0x00104AFCu);
+    if (mode == 4u) {
+        desc = (mut & 16u) ? 0x000BB4E8u : 0x000BB4FCu;                                 /* @d4 */
+    } else if (mode == 5u) {
+        if ((DSB(0x00100CA9u) == 0u) != ((mut & 32u) != 0u)) {                          /* @ca9 */
+            desc = 0x000BB4E8u;
+        } else {
+            desc = 0x000BB510u;
+            n = rng_next(0x200u);
+            w8 = (u16)((n & 0xFFu) | ((((n >> 8) + ((mut & 64u) ? 6u : 0xEu)) & 0xFFu) << 8));   /* @redraw */
+            if (mut & 128u) w0 = (u16)(0x3C00u - (u32)w8);                              /* @w0r */
+        }
+    } else {
+        desc = ((rng_next(2u) != 0u) != ((mut & 256u) != 0u)) ? 0x000BB448u : 0x000BB45Cu;   /* @rng2 */
+    }
+    {
+        u32 a3 = (u32)(s32)(s16)w8, a4 = (u32)(s32)(s16)w0;
+        u32 rec = (mut & 512u) ? actor_spawn((const u32 *)(mem + desc), x, a4, a3, 0u)  /* @args */
+                               : actor_spawn((const u32 *)(mem + desc), x, a3, a4,
+                                             (mut & 1024u) ? 1u : 0u);                  /* @s0 */
+        if (rec == 0u && !(mut & 2048u)) return 0u;                                     /* @null */
+        if (mode == 4u) {
+            DSW(rec + 0x34u) = 0x100u;
+            DSW(rec + 0x36u) = (mut & 4096u) ? 0xFD00u : 0xFE80u;                       /* @v4 */
+        } else if (mode == 5u && !(mut & 8192u)                                         /* @mode5 */
+                   && DSB(rec + ((mut & 16384u) ? 0x49u : 0x48u)) == 0x28u) {           /* @t28 */
+            DSW(rec + 0x34u) = 0x80u;
+            DSW(rec + 0x36u) = 0u;
+            if (!(mut & 32768u)) DSW(rec + 0x44u) = 8u;                                 /* @g8 */
+        } else {
+            DSW(rec + 0x34u) = 0x100u;
+            DSW(rec + 0x36u) = 0xFD00u;
+        }
+    }
+    return 0u;
+}
+static void b_d1g_19958(const u32 *r, u32 *eax)      { (void)r; debris_spawn(); *eax = 0u; }
+static void m_d1g_deb_gate(const u32 *r, u32 *eax)   { *eax = d1g_19958_core(r, 1u); }
+static void m_d1g_deb_x(const u32 *r, u32 *eax)      { *eax = d1g_19958_core(r, 2u); }
+static void m_d1g_deb_xr(const u32 *r, u32 *eax)     { *eax = d1g_19958_core(r, 4u); }
+static void m_d1g_deb_w0(const u32 *r, u32 *eax)     { *eax = d1g_19958_core(r, 8u); }
+static void m_d1g_deb_d4(const u32 *r, u32 *eax)     { *eax = d1g_19958_core(r, 16u); }
+static void m_d1g_deb_ca9(const u32 *r, u32 *eax)    { *eax = d1g_19958_core(r, 32u); }
+static void m_d1g_deb_redraw(const u32 *r, u32 *eax) { *eax = d1g_19958_core(r, 64u); }
+static void m_d1g_deb_w0r(const u32 *r, u32 *eax)    { *eax = d1g_19958_core(r, 128u); }
+static void m_d1g_deb_rng2(const u32 *r, u32 *eax)   { *eax = d1g_19958_core(r, 256u); }
+static void m_d1g_deb_args(const u32 *r, u32 *eax)   { *eax = d1g_19958_core(r, 512u); }
+static void m_d1g_deb_s0(const u32 *r, u32 *eax)     { *eax = d1g_19958_core(r, 1024u); }
+static void m_d1g_deb_null(const u32 *r, u32 *eax)   { *eax = d1g_19958_core(r, 2048u); }
+static void m_d1g_deb_v4(const u32 *r, u32 *eax)     { *eax = d1g_19958_core(r, 4096u); }
+static void m_d1g_deb_mode5(const u32 *r, u32 *eax)  { *eax = d1g_19958_core(r, 8192u); }
+static void m_d1g_deb_t28(const u32 *r, u32 *eax)    { *eax = d1g_19958_core(r, 16384u); }
+static void m_d1g_deb_g8(const u32 *r, u32 *eax)     { *eax = d1g_19958_core(r, 32768u); }
+
+/* 0x2372C's mutants. EAX = rec (the 0xD100 target shape; EDX is not read). */
+static u32 d1g_2372c_core(const u32 *r, u32 mut)
+{
+    u32 rec = r[R_EAX];
+    u32 slot = DSD(rec + 0x14u), frec, a5, p, a3, a4;
+    u32 own, fb;
+    if (slot == 0u) return 0u;
+    frec = DSD(slot);
+    own = DSW(rec + 0x28u) & 0x4000u;
+    fb = DSW(frec + 0x28u) & 0x4000u;
+    a5 = ((mut & 2u) ? own : fb) != 0u ? 0x4000u : 0u;                                  /* @a5 */
+    if (mut & 1u) own = fb;                                                             /* @sign */
+    a3 = (mut & 16u) ? (u32)(s32)(s16)DSW(frec + 0x30u) : (u32)((s32)DSD(frec + 0x30u) >> 16);   /* @sar */
+    a4 = DSD(frec + 0x1Cu) + ((mut & 8u) ? 0u : 0x1480u);                               /* @y */
+    p = actor_spawn((const u32 *)(mem + ((mut & 4096u) ? 0x000BB3E4u : 0x000BB3D0u)),   /* @desc */
+                    DSD(frec + 0x18u) + (u32)(own ? 1 : -1) * ((mut & 4u) ? 0xC0u : 0xC00u),   /* @off */
+                    (mut & 32u) ? a4 : a3, (mut & 32u) ? a3 : a4, a5);                  /* @args */
+    if (!(mut & 64u)) DSD(slot + 0x08u) = p;                                            /* @s8 */
+    if (!(mut & 128u)) DSW(p + 0x34u) = own ? 0x0113u : 0xFEEDu;                        /* @v34 */
+    DSD(p + 0x14u) = (mut & 256u) ? rec : slot;                                         /* @p14 */
+    if (DSB(((mut & 512u) ? rec : frec) + 0x51u) != 0u) {                               /* @side */
+        if (!(mut & 1024u)) DSW(p + 0x2Eu) = (u16)(DSW(p + 0x2Eu) + 4u);                /* @p2e */
+        if (!(mut & 2048u)) DSB(p + 0x4Eu) = 1u;                                        /* @p4e */
+    }
+    return 0u;
+}
+static void b_d1g_2372c(const u32 *r, u32 *eax)      { b_anim(0x2372Cu, r, eax); }
+static void m_d1g_prj_sign(const u32 *r, u32 *eax)   { *eax = d1g_2372c_core(r, 1u); }
+static void m_d1g_prj_a5(const u32 *r, u32 *eax)     { *eax = d1g_2372c_core(r, 2u); }
+static void m_d1g_prj_off(const u32 *r, u32 *eax)    { *eax = d1g_2372c_core(r, 4u); }
+static void m_d1g_prj_y(const u32 *r, u32 *eax)      { *eax = d1g_2372c_core(r, 8u); }
+static void m_d1g_prj_sar(const u32 *r, u32 *eax)    { *eax = d1g_2372c_core(r, 16u); }
+static void m_d1g_prj_args(const u32 *r, u32 *eax)   { *eax = d1g_2372c_core(r, 32u); }
+static void m_d1g_prj_s8(const u32 *r, u32 *eax)     { *eax = d1g_2372c_core(r, 64u); }
+static void m_d1g_prj_v34(const u32 *r, u32 *eax)    { *eax = d1g_2372c_core(r, 128u); }
+static void m_d1g_prj_p14(const u32 *r, u32 *eax)    { *eax = d1g_2372c_core(r, 256u); }
+static void m_d1g_prj_side(const u32 *r, u32 *eax)   { *eax = d1g_2372c_core(r, 512u); }
+static void m_d1g_prj_p2e(const u32 *r, u32 *eax)    { *eax = d1g_2372c_core(r, 1024u); }
+static void m_d1g_prj_p4e(const u32 *r, u32 *eax)    { *eax = d1g_2372c_core(r, 2048u); }
+static void m_d1g_prj_desc(const u32 *r, u32 *eax)   { *eax = d1g_2372c_core(r, 4096u); }
+
+/* 0x370F0's mutants. EAX = rec. */
+static u32 d1g_370f0_core(const u32 *r, u32 mut)
+{
+    u32 rec = r[R_EAX];
+    u32 b = (u32)DSB(rec + 0x51u);
+    u32 self = DSD(0x001077A8u + ((mut & 1u) ? ((b ^ 1u) & 0xFFu) : b) * 4u);           /* @swap */
+    u32 other;
+    if (self == 0u) return 0u;
+    other = DSD(0x001077A8u + ((mut & 1u) ? b : ((b ^ 1u) & 0xFFu)) * 4u);
+    if (other == 0u) return 0u;
+    if (!(mut & 2u)) DSB(self + 0x54u) = 3u;                                            /* @s54 */
+    DSB(self + 0x42u) = (mut & 4u) ? 4u : (u8)(DSB(self + 0x42u) | 4u);                 /* @or4 */
+    if (mut & 4096u)                                                                    /* @early */
+        actors_anim_begin(rec, DSD(0x000BDC2Cu + (u32)DSB(self + 0x7Au) * 4u), 0x3F800000u);
+    if (!(mut & 8u)) DSB(self + 0x52u) = 0x0Au;                                         /* @s52 */
+    if (mut & 4096u) return 0u;
+    if ((DSB(0x00104B14u) != 0u) != ((mut & 16u) != 0u)) {                              /* @gate */
+        u32 c = (mut & 32u) ? (u32)DSB(other + 0x7Au)                                   /* @char */
+              : (mut & 64u) ? (u32)(s32)(s8)DSB(self + 0x7Au) : (u32)DSB(self + 0x7Au); /* @sextc */
+        actors_anim_begin((mut & 256u) ? DSD(self) : rec, DSD(0x000BDC2Cu + c * 4u),    /* @rec */
+                          (mut & 128u) ? 0x40000000u : 0x3F800000u);                    /* @frame */
+        return 0u;
+    }
+    if (mut & 512u) DSB(self + 0x42u) |= 0x40u;                                         /* @o42 */
+    else DSB(other + 0x42u) |= 0x40u;
+    if (!(mut & 1024u)) DSB(rec + 0x53u) = 0u;                                          /* @r53 */
+    if (!(mut & 2048u)) DSB(0x000F0AFEu) = 2u;                                          /* @afe */
+    return 0u;
+}
+static void b_d1g_370f0(const u32 *r, u32 *eax)      { b_anim(0x370F0u, r, eax); }
+static void m_d1g_fin_swap(const u32 *r, u32 *eax)   { *eax = d1g_370f0_core(r, 1u); }
+static void m_d1g_fin_s54(const u32 *r, u32 *eax)    { *eax = d1g_370f0_core(r, 2u); }
+static void m_d1g_fin_or4(const u32 *r, u32 *eax)    { *eax = d1g_370f0_core(r, 4u); }
+static void m_d1g_fin_s52(const u32 *r, u32 *eax)    { *eax = d1g_370f0_core(r, 8u); }
+static void m_d1g_fin_gate(const u32 *r, u32 *eax)   { *eax = d1g_370f0_core(r, 16u); }
+static void m_d1g_fin_char(const u32 *r, u32 *eax)   { *eax = d1g_370f0_core(r, 32u); }
+static void m_d1g_fin_sextc(const u32 *r, u32 *eax)  { *eax = d1g_370f0_core(r, 64u); }
+static void m_d1g_fin_frame(const u32 *r, u32 *eax)  { *eax = d1g_370f0_core(r, 128u); }
+static void m_d1g_fin_rec(const u32 *r, u32 *eax)    { *eax = d1g_370f0_core(r, 256u); }
+static void m_d1g_fin_o42(const u32 *r, u32 *eax)    { *eax = d1g_370f0_core(r, 512u); }
+static void m_d1g_fin_r53(const u32 *r, u32 *eax)    { *eax = d1g_370f0_core(r, 1024u); }
+static void m_d1g_fin_afe(const u32 *r, u32 *eax)    { *eax = d1g_370f0_core(r, 2048u); }
+static void m_d1g_fin_early(const u32 *r, u32 *eax)  { *eax = d1g_370f0_core(r, 4096u); }
+
+/* 0x3FF08 and 0x40BBC's mutants: the 0x1078E8-shaped setups. EAX = slot, EDX = rec; AL returned.
+ * `which` 0 is 0x3FF08 (two gates, rec+0x53, three callbacks), 1 is 0x40BBC (one gate, +0x54). */
+static u32 d1g_setup_core(const u32 *r, u32 which, u32 mut)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u32 side = (u32)DSB(rec + 0x51u);
+    u32 own;
+    u8 ch;
+    if (which == 0u && !(mut & 1u)                                                      /* @other */
+            && DSD(0x001077A8u + ((side ^ 1u) & 0xFFu) * 4u) == 0u)
+        return (mut & 2u) ? 1u : 0u;                                                    /* @retn */
+    own = DSD(0x001077A8u + ((mut & 4u) ? ((side ^ 1u) & 0xFFu) : side) * 4u);          /* @xor */
+    if (own == 0u) return (mut & 2u) ? 1u : 0u;
+    ch = DSB(own + ((mut & 8u) ? 0x7Bu : 0x7Au));                                       /* @chf */
+    if (mut & 16u) {                                                                    /* @late */
+        DSB(slot + 0x52u) = 9u;
+    }
+    if (ch == 0u)
+        hit_anim_start_b((mut & 32u) ? DSD(slot) : rec,                                 /* @hrec */
+                         (which ? 0x000E7C40u : 0x000E7F2Eu) + ((mut & 64u) ? 2u : 0u), /* @ch0 */
+                         (mut & 128u) ? 0x40000000u : 0x40400000u);                     /* @frame */
+    else if (ch == ((mut & 256u) ? 4u : 5u))                                            /* @ch5 */
+        hit_anim_start_b(rec, which ? 0x000D4DAAu : 0x000D4C66u, 0x40400000u);
+    if (which == 0u && !(mut & 512u)) DSB(rec + 0x53u) = 1u;                            /* @r53 */
+    DSB(slot + 0x52u) = (mut & 1024u) ? 7u : 9u;                                        /* @s52 */
+    DSB(slot + 0x53u) = (mut & 1024u) ? 9u : 7u;
+    if (which == 1u && !(mut & 512u)) DSB(slot + 0x54u) = 2u;                           /* @s54 */
+    if (!(mut & 2048u)) DSB(slot + 0x57u) = 0u;                                         /* @s57 */
+    DSD(slot + 0x0Cu) = (which ? 0x00040954u : 0x0003FEF8u) + ((mut & 4096u) ? 4u : 0u);    /* @cb0c */
+    if (!(mut & 8192u)) DSD(slot + 0x18u) = which ? 0u : 0x0003FD30u;                   /* @cb18 */
+    if (!(mut & 16384u)) DSD(slot + 0x1Cu) = which ? 0u : 0x0003FDD8u;                  /* @cb1c */
+    return (mut & 32768u) ? 0u : 1u;                                                    /* @ret */
+}
+static void b_d1g_3ff08(const u32 *r, u32 *eax)      { *eax = (u32)fighter_3ff08(r[R_EAX], r[R_EDX]); }
+static void b_d1g_40bbc(const u32 *r, u32 *eax)      { *eax = (u32)fighter_40bbc(r[R_EAX], r[R_EDX]); }
+#define D1G_SETUP_MUT(tag, which, name, bit) \
+    static void m_d1g_##tag##_##name(const u32 *r, u32 *eax) { *eax = d1g_setup_core(r, which, bit); }
+D1G_SETUP_MUT(s08, 0u, other, 1u)   D1G_SETUP_MUT(s08, 0u, retn, 2u)    D1G_SETUP_MUT(s08, 0u, xor, 4u)
+D1G_SETUP_MUT(s08, 0u, chf, 8u)     D1G_SETUP_MUT(s08, 0u, late, 16u)   D1G_SETUP_MUT(s08, 0u, hrec, 32u)
+D1G_SETUP_MUT(s08, 0u, ch0, 64u)    D1G_SETUP_MUT(s08, 0u, frame, 128u) D1G_SETUP_MUT(s08, 0u, ch5, 256u)
+D1G_SETUP_MUT(s08, 0u, r53, 512u)   D1G_SETUP_MUT(s08, 0u, s52, 1024u)  D1G_SETUP_MUT(s08, 0u, s57, 2048u)
+D1G_SETUP_MUT(s08, 0u, cb0c, 4096u) D1G_SETUP_MUT(s08, 0u, cb18, 8192u) D1G_SETUP_MUT(s08, 0u, cb1c, 16384u)
+D1G_SETUP_MUT(s08, 0u, ret, 32768u)
+D1G_SETUP_MUT(sbc, 1u, retn, 2u)    D1G_SETUP_MUT(sbc, 1u, xor, 4u)     D1G_SETUP_MUT(sbc, 1u, chf, 8u)
+D1G_SETUP_MUT(sbc, 1u, late, 16u)   D1G_SETUP_MUT(sbc, 1u, hrec, 32u)   D1G_SETUP_MUT(sbc, 1u, ch0, 64u)
+D1G_SETUP_MUT(sbc, 1u, frame, 128u) D1G_SETUP_MUT(sbc, 1u, ch5, 256u)   D1G_SETUP_MUT(sbc, 1u, s54, 512u)
+D1G_SETUP_MUT(sbc, 1u, s52, 1024u)  D1G_SETUP_MUT(sbc, 1u, s57, 2048u)  D1G_SETUP_MUT(sbc, 1u, cb0c, 4096u)
+D1G_SETUP_MUT(sbc, 1u, cb18, 8192u) D1G_SETUP_MUT(sbc, 1u, cb1c, 16384u) D1G_SETUP_MUT(sbc, 1u, ret, 32768u)
+
+/* 0x3FD30's mutants. EAX = side (the slot +0x18 hook; EAX returned whole). */
+static u32 d1g_3fd30_core(const u32 *r, u32 mut)
+{
+    u32 ctx[6], res;
+    u8 flags[16];
+    fighter_ctx_same(ctx, r[R_EAX]);
+    if (DSB(ctx[4] + ((mut & 1u) ? 0x60u : 0x61u)) == 0u) return 1u;                    /* @gate */
+    fighter_18bd4(flags);
+    if (!(mut & 2u)) flags[5] = 1u;                                                     /* @f5 */
+    if (!(mut & 4u)) flags[1] = 0u;                                                     /* @f1 */
+    if (!(mut & 8u)) flags[8] = 0u;                                                     /* @f8 */
+    if (!(mut & 16u)) flags[4] = 0u;                                                    /* @f4 */
+    if (!(mut & 32u)) flags[0xE] = 0u;                                                  /* @fe */
+    if (!(mut & 64u)) flags[7] = 0u;                                                    /* @f7 */
+    res = (mut & 128u) ? (u32)fighter_18c14(ctx[0], flags, 0x000C774Cu, 0x000C7742u)    /* @boxes */
+                       : (u32)fighter_18c14(ctx[0], flags, 0x000C7742u, 0x000C774Cu);
+    if ((mut & 256u) ? ((u8)res == 1u) : (res == 1u)) {                                 /* @al */
+        if (mut & 16384u) fighter_36870(ctx[4]);                                        /* @late */
+        if (!(mut & 512u)) DSB(ctx[2] + 0x8Au) = 0u;                                    /* @s8a */
+        DSB(ctx[2] + 0x52u) = (mut & 1024u) ? 3u : 4u;                                  /* @s52 */
+        DSB(ctx[2] + 0x53u) = (mut & 2048u) ? 3u : 4u;                                  /* @s53 */
+        if (!(mut & 4096u)) DSB(ctx[4] + 0x61u) = 0u;                                   /* @r61 */
+        if (!(mut & (8192u | 16384u))) fighter_36870(ctx[4]);                           /* @anim */
+    }
+    if ((mut & 256u) ? ((u8)res == 0u) : (res == 0u))
+        if (!(mut & 32768u)) DSB(ctx[2] + 0x57u) = 1u;                                  /* @s57 */
+    return (mut & 65536u) ? (res != 0u) : res;                                          /* @ret */
+}
+static void b_d1g_3fd30(const u32 *r, u32 *eax)      { *eax = fighter_3fd30(r[R_EAX]); }
+#define D1G_HOOK_MUT(name, bit) \
+    static void m_d1g_hk_##name(const u32 *r, u32 *eax) { *eax = d1g_3fd30_core(r, bit); }
+D1G_HOOK_MUT(gate, 1u)   D1G_HOOK_MUT(f5, 2u)     D1G_HOOK_MUT(f1, 4u)      D1G_HOOK_MUT(f8, 8u)
+D1G_HOOK_MUT(f4, 16u)    D1G_HOOK_MUT(fe, 32u)    D1G_HOOK_MUT(f7, 64u)     D1G_HOOK_MUT(boxes, 128u)
+D1G_HOOK_MUT(al, 256u)   D1G_HOOK_MUT(s8a, 512u)  D1G_HOOK_MUT(s52, 1024u)  D1G_HOOK_MUT(s53, 2048u)
+D1G_HOOK_MUT(r61, 4096u) D1G_HOOK_MUT(anim, 8192u) D1G_HOOK_MUT(late, 16384u) D1G_HOOK_MUT(s57, 32768u)
+D1G_HOOK_MUT(ret, 65536u)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -15680,6 +15917,102 @@ static const binding_t k_bindings[] = {
     { "motion_step@v36",                   m_d1g_mot_v36,   0x00000000u },
     { "motion_step@g44",                   m_d1g_mot_g44,   0x00000000u },
     { "motion_step@land",                  m_d1g_mot_land,  0x00000000u },
+    { "debris_spawn",                      b_d1g_19958,     0x00000000u },
+    { "debris_spawn@gate",                 m_d1g_deb_gate,  0x00000000u },
+    { "debris_spawn@x",                    m_d1g_deb_x,     0x00000000u },
+    { "debris_spawn@xr",                   m_d1g_deb_xr,    0x00000000u },
+    { "debris_spawn@w0",                   m_d1g_deb_w0,    0x00000000u },
+    { "debris_spawn@d4",                   m_d1g_deb_d4,    0x00000000u },
+    { "debris_spawn@ca9",                  m_d1g_deb_ca9,   0x00000000u },
+    { "debris_spawn@redraw",               m_d1g_deb_redraw, 0x00000000u },
+    { "debris_spawn@w0r",                  m_d1g_deb_w0r,   0x00000000u },
+    { "debris_spawn@rng2",                 m_d1g_deb_rng2,  0x00000000u },
+    { "debris_spawn@args",                 m_d1g_deb_args,  0x00000000u },
+    { "debris_spawn@s0",                   m_d1g_deb_s0,    0x00000000u },
+    { "debris_spawn@null",                 m_d1g_deb_null,  0x00000000u },
+    { "debris_spawn@v4",                   m_d1g_deb_v4,    0x00000000u },
+    { "debris_spawn@mode5",                m_d1g_deb_mode5, 0x00000000u },
+    { "debris_spawn@t28",                  m_d1g_deb_t28,   0x00000000u },
+    { "debris_spawn@g8",                   m_d1g_deb_g8,    0x00000000u },
+    { "anim_2372c",                        b_d1g_2372c,     0x00000000u },
+    { "anim_2372c@sign",                   m_d1g_prj_sign,  0x00000000u },
+    { "anim_2372c@a5",                     m_d1g_prj_a5,    0x00000000u },
+    { "anim_2372c@off",                    m_d1g_prj_off,   0x00000000u },
+    { "anim_2372c@y",                      m_d1g_prj_y,     0x00000000u },
+    { "anim_2372c@sar",                    m_d1g_prj_sar,   0x00000000u },
+    { "anim_2372c@args",                   m_d1g_prj_args,  0x00000000u },
+    { "anim_2372c@s8",                     m_d1g_prj_s8,    0x00000000u },
+    { "anim_2372c@v34",                    m_d1g_prj_v34,   0x00000000u },
+    { "anim_2372c@p14",                    m_d1g_prj_p14,   0x00000000u },
+    { "anim_2372c@side",                   m_d1g_prj_side,  0x00000000u },
+    { "anim_2372c@p2e",                    m_d1g_prj_p2e,   0x00000000u },
+    { "anim_2372c@p4e",                    m_d1g_prj_p4e,   0x00000000u },
+    { "anim_2372c@desc",                   m_d1g_prj_desc,  0x00000000u },
+    { "anim_370f0",                        b_d1g_370f0,     0x00000000u },
+    { "anim_370f0@swap",                   m_d1g_fin_swap,  0x00000000u },
+    { "anim_370f0@s54",                    m_d1g_fin_s54,   0x00000000u },
+    { "anim_370f0@or4",                    m_d1g_fin_or4,   0x00000000u },
+    { "anim_370f0@s52",                    m_d1g_fin_s52,   0x00000000u },
+    { "anim_370f0@gate",                   m_d1g_fin_gate,  0x00000000u },
+    { "anim_370f0@char",                   m_d1g_fin_char,  0x00000000u },
+    { "anim_370f0@sextc",                  m_d1g_fin_sextc, 0x00000000u },
+    { "anim_370f0@frame",                  m_d1g_fin_frame, 0x00000000u },
+    { "anim_370f0@rec",                    m_d1g_fin_rec,   0x00000000u },
+    { "anim_370f0@o42",                    m_d1g_fin_o42,   0x00000000u },
+    { "anim_370f0@r53",                    m_d1g_fin_r53,   0x00000000u },
+    { "anim_370f0@afe",                    m_d1g_fin_afe,   0x00000000u },
+    { "anim_370f0@early",                  m_d1g_fin_early, 0x00000000u },
+    { "fighter_3ff08",                     b_d1g_3ff08,     0x000000FFu },
+    { "fighter_3ff08@other",               m_d1g_s08_other, 0x000000FFu },
+    { "fighter_3ff08@retn",                m_d1g_s08_retn,  0x000000FFu },
+    { "fighter_3ff08@xor",                 m_d1g_s08_xor,   0x000000FFu },
+    { "fighter_3ff08@chf",                 m_d1g_s08_chf,   0x000000FFu },
+    { "fighter_3ff08@late",                m_d1g_s08_late,  0x000000FFu },
+    { "fighter_3ff08@hrec",                m_d1g_s08_hrec,  0x000000FFu },
+    { "fighter_3ff08@ch0",                 m_d1g_s08_ch0,   0x000000FFu },
+    { "fighter_3ff08@frame",               m_d1g_s08_frame, 0x000000FFu },
+    { "fighter_3ff08@ch5",                 m_d1g_s08_ch5,   0x000000FFu },
+    { "fighter_3ff08@r53",                 m_d1g_s08_r53,   0x000000FFu },
+    { "fighter_3ff08@s52",                 m_d1g_s08_s52,   0x000000FFu },
+    { "fighter_3ff08@s57",                 m_d1g_s08_s57,   0x000000FFu },
+    { "fighter_3ff08@cb0c",                m_d1g_s08_cb0c,  0x000000FFu },
+    { "fighter_3ff08@cb18",                m_d1g_s08_cb18,  0x000000FFu },
+    { "fighter_3ff08@cb1c",                m_d1g_s08_cb1c,  0x000000FFu },
+    { "fighter_3ff08@ret",                 m_d1g_s08_ret,   0x000000FFu },
+    { "fighter_40bbc",                     b_d1g_40bbc,     0x000000FFu },
+    { "fighter_40bbc@retn",                m_d1g_sbc_retn,  0x000000FFu },
+    { "fighter_40bbc@xor",                 m_d1g_sbc_xor,   0x000000FFu },
+    { "fighter_40bbc@chf",                 m_d1g_sbc_chf,   0x000000FFu },
+    { "fighter_40bbc@late",                m_d1g_sbc_late,  0x000000FFu },
+    { "fighter_40bbc@hrec",                m_d1g_sbc_hrec,  0x000000FFu },
+    { "fighter_40bbc@ch0",                 m_d1g_sbc_ch0,   0x000000FFu },
+    { "fighter_40bbc@frame",               m_d1g_sbc_frame, 0x000000FFu },
+    { "fighter_40bbc@ch5",                 m_d1g_sbc_ch5,   0x000000FFu },
+    { "fighter_40bbc@s54",                 m_d1g_sbc_s54,   0x000000FFu },
+    { "fighter_40bbc@s52",                 m_d1g_sbc_s52,   0x000000FFu },
+    { "fighter_40bbc@s57",                 m_d1g_sbc_s57,   0x000000FFu },
+    { "fighter_40bbc@cb0c",                m_d1g_sbc_cb0c,  0x000000FFu },
+    { "fighter_40bbc@cb18",                m_d1g_sbc_cb18,  0x000000FFu },
+    { "fighter_40bbc@cb1c",                m_d1g_sbc_cb1c,  0x000000FFu },
+    { "fighter_40bbc@ret",                 m_d1g_sbc_ret,   0x000000FFu },
+    { "fighter_3fd30",                     b_d1g_3fd30,     0xFFFFFFFFu },
+    { "fighter_3fd30@gate",                m_d1g_hk_gate,   0xFFFFFFFFu },
+    { "fighter_3fd30@f5",                  m_d1g_hk_f5,     0xFFFFFFFFu },
+    { "fighter_3fd30@f1",                  m_d1g_hk_f1,     0xFFFFFFFFu },
+    { "fighter_3fd30@f8",                  m_d1g_hk_f8,     0xFFFFFFFFu },
+    { "fighter_3fd30@f4",                  m_d1g_hk_f4,     0xFFFFFFFFu },
+    { "fighter_3fd30@fe",                  m_d1g_hk_fe,     0xFFFFFFFFu },
+    { "fighter_3fd30@f7",                  m_d1g_hk_f7,     0xFFFFFFFFu },
+    { "fighter_3fd30@boxes",               m_d1g_hk_boxes,  0xFFFFFFFFu },
+    { "fighter_3fd30@al",                  m_d1g_hk_al,     0xFFFFFFFFu },
+    { "fighter_3fd30@s8a",                 m_d1g_hk_s8a,    0xFFFFFFFFu },
+    { "fighter_3fd30@s52",                 m_d1g_hk_s52,    0xFFFFFFFFu },
+    { "fighter_3fd30@s53",                 m_d1g_hk_s53,    0xFFFFFFFFu },
+    { "fighter_3fd30@r61",                 m_d1g_hk_r61,    0xFFFFFFFFu },
+    { "fighter_3fd30@anim",                m_d1g_hk_anim,   0xFFFFFFFFu },
+    { "fighter_3fd30@late",                m_d1g_hk_late,   0xFFFFFFFFu },
+    { "fighter_3fd30@s57",                 m_d1g_hk_s57,    0xFFFFFFFFu },
+    { "fighter_3fd30@ret",                 m_d1g_hk_ret,    0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

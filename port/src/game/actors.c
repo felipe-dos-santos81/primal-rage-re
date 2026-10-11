@@ -3153,8 +3153,9 @@ static void actor_type_19928(u32 rec)
  * sign-extended, EBX = w0 sign-extended, stack 0): the two `sar 16` of the
  * dwords at [esp+0xA] and [esp+2] read the words above the pushed 0 and the
  * count, which are zero (0x19A42..0x19A51). A spawned record then gets its
- * +0x34/+0x36 (and +0x44) by mode (0x19A5F..0x19AB6). */
-static void debris_spawn(void)
+ * +0x34/+0x36 (and +0x44) by mode (0x19A5F..0x19AB6). Exported for its own D1
+ * row's binding. */
+void debris_spawn(void)
 {
     u32 r, x, desc;
     u16 w8, w0, mode;
