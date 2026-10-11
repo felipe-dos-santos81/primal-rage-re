@@ -7953,7 +7953,7 @@ int fighter_3962c(u32 side, u32 param_2)
     u32 anim[3];
     u8 b;
     fighter_ctx_same(ctx, side);                            /* 0x39636 */
-    b = (param_2 != 0u) ? (u8)DSB(ctx[2] + 0x64u) : (u8)DSB(ctx[2] + 0x5Fu);
+    b = ((u8)param_2 != 0u) ? (u8)DSB(ctx[2] + 0x64u) : (u8)DSB(ctx[2] + 0x5Fu);   /* 0x39630/0x3963B: DL */
     fighter_anim_triple(anim, ctx[0], (s32)b);              /* 0x3965C */
     if ((DSW(anim[2] + 2u) & 0x10u) == 0u) return 0;        /* 0x39672 */
     DSW(DS_00107D24 + side * 2u) =
@@ -7973,7 +7973,7 @@ int fighter_396ac(u32 side, u32 param_2)
     u32 idx;
     u8 b, v;
     fighter_ctx_same(ctx, side);                            /* 0x396B7 */
-    b = (param_2 != 0u) ? (u8)DSB(ctx[2] + 0x64u) : (u8)DSB(ctx[2] + 0x5Fu);
+    b = ((u8)param_2 != 0u) ? (u8)DSB(ctx[2] + 0x64u) : (u8)DSB(ctx[2] + 0x5Fu);   /* 0x396B1/0x396BC: DL */
     if (b >= 0x40u) return 0;                               /* 0x396DD */
     fighter_anim_triple(anim, ctx[0], (s32)b);              /* 0x396E8 */
     idx = (u32)b + side * 0x40u;                            /* 0x396F3 */
