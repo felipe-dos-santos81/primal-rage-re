@@ -410,4 +410,45 @@ void fight_slot_5b_add(u32 slot, s32 amount);
  * cleared. */
 void fight_hud_bar_step(void);
 
+/* 0x46670 — record §48-U. The 0x1081F0/0x108230 pair clear (no argument);
+ * exported for its differential row (track D1 d1f). */
+void fight_1081f0_clear(void);
+
+/* 0x496AC — the dust y clamp, EAX = y (signed); exported for its differential
+ * row (track D1 d1f). */
+u16 fight_dust_clamp(s32 v);
+
+/* 0x4A7D4 — demo-pose record §42-D. EAX = entry: the type-11 arrival test;
+ * exported for its differential row (track D1 d1f). */
+int fight_4a7d4(u32 entry);
+
+/* 0x4A808 — record §49-P. EAX = node: mode 0x25's arrival test; exported for
+ * its differential row (track D1 d1f). */
+u8 fight_4a808(u32 node);
+
+/* 0x4AF04 — demo-pose record §42-C. EAX = side (AL): whether the fighter
+ * still plays its grab hold; exported for its differential row (track D1
+ * d1f). */
+int fight_4af04(u32 side);
+
+/* 0x4AC38 — the arrival. EAX = entry, EDX = index; exported for its
+ * differential row (track D1 d1f). */
+void fight_4ac38(u32 entry, u32 index);
+
+/* 0x4B3F0 — the 0xC955C stream start. EAX = entry, EDX = index, EBX = the
+ * +0x55 flag; exported for its differential row (track D1 d1f). */
+int fight_4b3f0(u32 entry, u32 index, u32 flag);
+
+/* 0x4B430 — 0x4B3F0 over the 0xC958C table; exported for its differential
+ * row (track D1 d1f). */
+int fight_4b430(u32 entry, u32 index, u32 flag);
+
+/* 0x4BD4C — the 0xC9754 stream start. EAX = entry, EDX = index; exported for
+ * its differential row (track D1 d1f). */
+int fight_4bd4c(u32 entry, u32 index);
+
+/* 0x4D108 — demo-pose record §43-A. EAX = entry, EDX = si: the one-in-0x3C
+ * rise; exported for its differential row (track D1 d1f). */
+int fight_4d108(u32 entry, u32 index);
+
 #endif /* PRAGE_GAME_FIGHT_H */
