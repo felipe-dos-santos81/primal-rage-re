@@ -2144,6 +2144,85 @@ D1_KINDS = {}
 D1_CASES = []
 
 
+# ---- track D1 batch d1g (record 2026-10-11-reverse-d1g): measured pins -------------------------
+D1G_MASKS = {
+    "actor_pset_word_set": 0x0,
+    "actors_link_held": 0xffffffff,
+    "fighter_37b54": 0x0,
+    "actor_cursor_reset": 0x0,
+}
+D1G_KINDS = {
+    "actor_pset_word_set@base": {'byte'},
+    "actor_pset_word_set@idxw": {'byte'},
+    "actor_pset_word_set@scale": {'byte'},
+    "actor_pset_word_set@clrhi": {'byte'},
+    "actor_pset_word_set@clear": {'byte'},
+    "actor_pset_word_set@bit": {'byte'},
+    "actor_pset_word_set@keep": {'byte'},
+    "actor_pset_word_set@width": {'byte'},
+    "actors_link_held@sext": {'byte'},
+    "actors_link_held@index": {'byte'},
+    "actors_link_held@base": {'byte'},
+    "actors_link_held@stride": {'byte'},
+    "actors_link_held@field": {'byte'},
+    "actors_link_held@width": {'byte'},
+    "actors_link_held@ret": {'eax'},
+    "fighter_37b54@field": {'byte'},
+    "fighter_37b54@xor": {'byte'},
+    "fighter_37b54@not": {'byte'},
+    "fighter_37b54@sext": {'byte'},
+    "fighter_37b54@base": {'byte'},
+    "fighter_37b54@null": {'byte'},
+    "fighter_37b54@deref": {'byte'},
+    "fighter_37b54@off": {'byte'},
+    "fighter_37b54@val": {'byte'},
+    "actor_cursor_reset@bc": {'byte'},
+    "actor_cursor_reset@c0": {'byte'},
+    "actor_cursor_reset@c4": {'byte'},
+    "actor_cursor_reset@rows": {'byte'},
+    "actor_cursor_reset@bytes": {'byte'},
+    "actor_cursor_reset@over": {'byte'},
+    "actor_cursor_reset@latch": {'byte'},
+    "actor_cursor_reset@short": {'byte'},
+}
+D1G_CASES = [
+    ("actor_pset_word_set@base", ['w0', 'w1', 'w2', 'w3']),
+    ("actor_pset_word_set@idxw", ['w3']),
+    ("actor_pset_word_set@scale", ['w0', 'w1', 'w3']),
+    ("actor_pset_word_set@clrhi", ['w0', 'w1']),
+    ("actor_pset_word_set@clear", ['w0', 'w1']),
+    ("actor_pset_word_set@bit", ['w0', 'w1', 'w2', 'w3']),
+    ("actor_pset_word_set@keep", ['w0', 'w2']),
+    ("actor_pset_word_set@width", ['w0', 'w1', 'w2', 'w3']),
+    ("actors_link_held@sext", ['l2']),
+    ("actors_link_held@index", ['l0', 'l1', 'l2']),
+    ("actors_link_held@base", ['l0', 'l1', 'l2']),
+    ("actors_link_held@stride", ['l0', 'l2']),
+    ("actors_link_held@field", ['l0', 'l1', 'l2']),
+    ("actors_link_held@width", ['l0', 'l1', 'l2']),
+    ("actors_link_held@ret", ['l0', 'l1', 'l2']),
+    ("fighter_37b54@field", ['o0', 'o1', 'o2', 'o3', 'o4']),
+    ("fighter_37b54@xor", ['o0', 'o1', 'o2', 'o3', 'o4']),
+    ("fighter_37b54@not", ['o2', 'o4']),
+    ("fighter_37b54@sext", ['o2']),
+    ("fighter_37b54@base", ['o0', 'o1', 'o2', 'o3', 'o4']),
+    ("fighter_37b54@null", ['o3']),
+    ("fighter_37b54@deref", ['o0', 'o1', 'o2', 'o4']),
+    ("fighter_37b54@off", ['o0', 'o1', 'o2', 'o4']),
+    ("fighter_37b54@val", ['o0', 'o1', 'o2', 'o4']),
+    ("actor_cursor_reset@bc", ['z0', 'z1']),
+    ("actor_cursor_reset@c0", ['z0', 'z1']),
+    ("actor_cursor_reset@c4", ['z0', 'z1']),
+    ("actor_cursor_reset@rows", ['z0', 'z1']),
+    ("actor_cursor_reset@bytes", ['z0', 'z1']),
+    ("actor_cursor_reset@over", ['z0', 'z1']),
+    ("actor_cursor_reset@latch", ['z0', 'z1']),
+    ("actor_cursor_reset@short", ['z0', 'z1']),
+]
+D1_MASKS.update(D1G_MASKS)
+D1_KINDS.update(D1G_KINDS)
+D1_CASES.extend(D1G_CASES)
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
