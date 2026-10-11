@@ -8193,6 +8193,112 @@ def d1a_end_case(side, s54, ch, own_rec=None):
     return p
 
 
+def d1a_spawn21_case(side, f28, z30, x=0x00123456, y=0x00ABCDEF):
+    """0x21F30: the slot's record (C3D_REC0/1) with +0x18 x, +0x1C y, +0x28 and +0x30."""
+    rec = (C3D_REC0, C3D_REC1)[side]
+    p = c3d_slot_pokes()
+    p[rec + 0x18] = le32(x) + le32(y)
+    p[rec + 0x28] = le16(f28)
+    p[rec + 0x30] = le32(z30)
+    return p
+
+
+D1A_CTX, D1A_PSET = 0x0010A000, 0x00108000   # 0x22B28: the context buffer and the pset pool base
+D1A_SA, D1A_SB, D1A_RC = 0x0010A100, 0x0010A200, 0x0010A300   # its ctx[2], ctx[3] and ctx[5]
+
+
+def d1a_freeze_case(side, idx, s53, src=0x00C0FFEE):
+    """0x22B28: a free-form context (ctx[0] = 1 - side, ctx[1] = side, ctx[2]/[3]/[5] three scratch
+    blocks, ctx[4] unused), the side slot's record (C3D_REC0/1, not ctx[5]) with the pset word
+    +0x56 (ctx[5]'s +0x56 names another entry), the pset entries' +0x18 dwords (the word's, the low
+    byte's and ctx[5]'s), and every byte the function writes seeded with its neighbours."""
+    p = c3d_slot_pokes()
+    rec = (C3D_REC0, C3D_REC1)[side]
+    p[D1A_CTX] = le32(1 - side) + le32(side) + le32(D1A_SA) + le32(D1A_SB) + le32(0x0010A400) + le32(D1A_RC)
+    p[0x001014EC] = le32(D1A_PSET)
+    p[rec + 0x56] = le16(idx)
+    p[D1A_RC + 0x56] = le16(5)
+    p[D1A_PSET + 5 * 0x20 + 0x18] = le32(0x0BADBAD5)
+    if idx & 0xFF != idx:
+        p[D1A_PSET + (idx & 0xFF) * 0x20 + 0x18] = le32(0x0BADBAD1)
+    p[D1A_PSET + idx * 0x20 + 0x18] = le32(src)
+    p[D1A_SB + 0x14] = le32(0x11111111)
+    p[D1A_SB + 0x43] = b"\xFF"
+    p[D1A_SB + 0x53] = bytes([0x0A if s53 != 0x0A else 0x0B])
+    p[D1A_SB + 0x57] = b"\x56\x55\x5A"
+    p[D1A_SA + 0x53] = bytes([s53])
+    p[D1A_RC + 0x20] = le32(0x20202020) + le32(0x3F800000) + le32(0x28282828)
+    p[0x0010474C] = le16(0x7777) * 2
+    p[0x0010476C] = b"\x99\x99"
+    return p
+
+
+def d1a_proj_case(side, x18, x3c, z30):
+    """0x24754: both records' +0x18/+0x3C/+0x30 (the other record's are the ones read; the own
+    record's differ), the side slot's +8 seeded, and the spawned actor block at 0x10A300 with the
+    written fields and their neighbours seeded."""
+    p = c3d_slot_pokes()
+    ro = (C3D_REC0, C3D_REC1)[1 - side]
+    rs = (C3D_REC0, C3D_REC1)[side]
+    p[ro + 0x18] = le32(x18)
+    p[ro + 0x3C] = le32(x3c)
+    p[ro + 0x30] = le32(z30)
+    p[rs + 0x18] = le32(0x00000700)
+    p[rs + 0x3C] = le32(0x00000033)
+    p[rs + 0x30] = le32(0x00090000)
+    p[D1A_SLOT + side * 0x94 + 0x08] = le32(0x08080808)
+    p[0x0010A300 + 0x14] = le32(0x14141414)
+    p[0x0010A300 + 0x34] = le16(0x3434) + le16(0x3636) + le16(0x3838)
+    p[0x0010A300 + 0x58] = b"\x58\x59\x5A"
+    return p
+
+
+D1A_HROW = 0x0010A600            # 0x29C20: the character's handle row
+
+
+def d1a_handle_case(ch, side, idx):
+    """0x29C20: the row pointer of `ch` (and, at the unscaled index @row reads, a row of other
+    handles), DS_001078FF = side, DS_00105B34[side] = idx (the other entries hold another index),
+    and the row's handles: [0], [1], [idx] and [idx sign-extended], all distinct."""
+    p = {0x000A8A98 + ch * 4: le32(D1A_HROW), 0x001078FF: bytes([side])}
+    if ch:
+        p[0x000A8A98 + ch] = le32(D1A_HROW + 0x400)
+    other = 0 if idx else 1
+    for s in sorted({0, 1, side, (side ^ 0x80) - 0x80}):
+        p[0x00105B34 + s] = bytes([idx if s == side else other])
+    for i in sorted({0, 1, idx, (idx ^ 0x80) - 0x80}):
+        p[D1A_HROW + i * 4] = le32(0x11110000 + (i & 0xFFFF))
+        p[D1A_HROW + 0x400 + i * 4] = le32(0x22220000 + (i & 0xFFFF))
+    return p
+
+
+D1A_SNAP, D1A_SNAP2 = 0x0010A000, 0x0010A100   # 0x33ACC: the two destinations
+D1A_SREC = (0x0010A200, 0x0010A280)            # ... and the two slots' records
+
+
+def d1a_snap_case():
+    """0x33ACC: both slots' 0x94 bytes (the record pointer, then slot-distinct bytes) and both
+    records' 0x68 bytes distinct, the two destinations filled with 0xEE through four bytes past
+    their ends (0x98 and 0x6C bytes), and four distinct bytes after each source."""
+    p = {}
+    for side in (0, 1):
+        slot = bytes((0x40 + side * 0x80 + i) & 0xFF for i in range(0x94))
+        slot = le32(D1A_SREC[side]) + slot[4:]
+        so = D1A_SLOT + side * 0x94
+        for off in range(0, 0x94, 0x40):
+            p[so + off] = slot[off:off + 0x40]
+        rec = bytes((0x10 + side * 0x60 + i * 3) & 0xFF for i in range(0x6C))
+        p[D1A_SREC[side]] = rec[:0x40]
+        p[D1A_SREC[side] + 0x40] = rec[0x40:]
+    p[D1A_SLOT + 2 * 0x94] = b"\xA1\xA2\xA3\xA4"
+    p[D1A_SNAP] = b"\xEE" * 0x40
+    p[D1A_SNAP + 0x40] = b"\xEE" * 0x40
+    p[D1A_SNAP + 0x80] = b"\xEE" * 0x18
+    p[D1A_SNAP2] = b"\xEE" * 0x40
+    p[D1A_SNAP2 + 0x40] = b"\xEE" * 0x2C
+    return p
+
+
 D1A_SPECS = [
     # 0x14590 fighter_14590: EAX = side. 0x33950 runs real (allowed; it fills the stack ctx). AL only:
     # `mov al,1` 0x145BE / `xor al,al` 0x145C5, and all six callers test AL (0x14669, 0x14707,
@@ -8342,6 +8448,65 @@ D1A_SPECS = [
         Case("a3", {"eax": 0x12345600}, {0x001028C8: le32(0x00010000), 0x001028DB: b"\x00\x00"}),
         Case("a4", {"eax": 0x12345600}, {0x001028C8: le32(0), 0x001028DB: b"\x80\x00"}),
     ], eax_mask=0xFF, mutants=("@handle", "@pause", "@w", "@pw")),
+    # 0x21F30 fighter_21f30: EAX = slot. Four stubs: the voice 0x6C, the 0xBB308 spawn (x, +0x30
+    # SAR 16, y, a5 = 0x4000 with +0x28 bit 14), 0x13244 and the voice 0x72. Mask 0: each of the
+    # three callers overwrites EAX at once (0x214DE, 0x21DC3, 0x220AB `mov eax,[..]`).
+    Spec("fighter_21f30", 0x21F30, [
+        Case("v0", {"eax": D1A_SLOT}, d1a_spawn21_case(0, 0x4000, 0x00078000), {0x2C3FC: 0, 0x2AE14: 0}),
+        Case("v1", {"eax": D1A_SLOT}, d1a_spawn21_case(0, 0xBFFF, 0xFFF80000),
+             {0x2C3FC: 1, 0x2AE14: 0x0010A300}),
+        Case("v2", {"eax": D1A_SLOT + 0x94}, d1a_spawn21_case(1, 0xFFFF, 0x7FFF0000, x=0xFFFFFF00, y=5),
+             {0x2C3FC: 1, 0x2AE14: 0x0010A300}),
+    ], calls=(VOICE, SPAWN, P6_13244), eax_mask=0,
+       mutants=("@v1", "@voice", "@a5", "@xy", "@shift", "@no13244", "@order")),
+    # 0x22B28 fighter_22b28: EAX = the six-dword context (ECX keeps it; every field is re-read
+    # from it after each call). 0x13C70, 0x3C16C, 0x3C148 and 0x2C3FC are stubs. Mask 0: both
+    # callers return (0x22D8A, 0x2365A) and their one call site each overwrites EAX (0x22E64,
+    # 0x3B65E; record §1).
+    Spec("fighter_22b28", 0x22B28, [
+        Case("z0", {"eax": D1A_CTX}, d1a_freeze_case(0, 3, 0x0A)),
+        Case("z1", {"eax": D1A_CTX}, d1a_freeze_case(1, 0x0102, 0x0B)),
+        Case("z2", {"eax": D1A_CTX}, d1a_freeze_case(1, 0, 0x0A, src=0x12345678), {0x2C3FC: 0}),
+        Case("z3", {"eax": D1A_CTX}, d1a_freeze_case(0, 7, 0x00)),
+    ], calls=(P6_13C70, CLEAR36, CLEAR34, VOICE), eax_mask=0,
+       mutants=("@rec", "@idxb", "@one", "@cb", "@tickb", "@order", "@x24", "@s58", "@s43",
+                "@slot2", "@six", "@voice")),
+    # 0x24754 fighter_24754: EAX = side. 0x33950 runs real; 0x1A570 is a stub whose AL the raw
+    # tests (0x2476C `test al,al`), 0x2AE14 a stub whose EAX is the new actor (stored at slot+8 and
+    # written through), 0x2C3FC the voice. Mask 0: the one caller overwrites EAX (0x24917 `lea eax,
+    # [esi*8]`).
+    Spec("fighter_24754", 0x24754, [
+        Case("j0", {"eax": 0}, d1a_proj_case(0, 0x00012000, 0x00000400, 0x00070000),
+             {0x1A570: 1, 0x2AE14: 0x0010A300}),
+        Case("j1", {"eax": 1}, d1a_proj_case(1, 0x00012000, 0x00000400, 0xFFF90000),
+             {0x1A570: 0, 0x2AE14: 0x0010A300}),
+        Case("j2", {"eax": 0}, d1a_proj_case(0, 0xFFFF0000, 0x00000100, 0x00030000),
+             {0x1A570: 0x100, 0x2AE14: 0x0010A300}),
+        Case("j3", {"eax": 1}, d1a_proj_case(1, 0x00000010, 0xFFFFFF00, 0x00010000),
+             {0x1A570: 0xFFFFFF01, 0x2AE14: 0x0010A300}),
+    ], allow_calls=(0x33950,), calls=(BIT15, SPAWN, VOICE), eax_mask=0,
+       # A dword store of the speed at +0x34 is an equivalent mutation: the +0x36 word store at
+       # 0x247EA follows and rewrites its upper half.
+       mutants=("@al", "@rec", "@x", "@speed", "@shift", "@layer", "@slot8", "@e14", "@e59",
+                "@e36", "@voice")),
+    # 0x29C20 fighter_29c20: EAX = char, DL = flag. The whole EAX is the handle and the one caller
+    # keeps it (0x346BA `mov ebx,eax`).
+    Spec("fighter_29c20", 0x29C20, [
+        Case("t0", {"eax": 0, "edx": 1}, d1a_handle_case(0, 0, 0)),
+        Case("t1", {"eax": 3, "edx": 1}, d1a_handle_case(3, 1, 1)),
+        Case("t2", {"eax": 3, "edx": 0}, d1a_handle_case(3, 1, 0)),
+        Case("t3", {"eax": 2, "edx": 0}, d1a_handle_case(2, 0, 1)),
+        Case("t4", {"eax": 2, "edx": 0x100}, d1a_handle_case(2, 0, 2)),
+        Case("t5", {"eax": 1, "edx": 0xFFFFFF01}, d1a_handle_case(1, 1, 0x80)),
+        Case("t6", {"eax": 6, "edx": 1}, d1a_handle_case(6, 0x80, 1)),
+        Case("t7", {"eax": 5, "edx": 0}, d1a_handle_case(5, 1, 0x80)),
+    ], eax_mask=0xFFFFFFFF, mutants=("@dl", "@inv", "@side", "@isext", "@row", "@ssext")),
+    # 0x33ACC fighter_33acc: EAX = side, EDX = the slot copy, EBX = the record copy (`rep movsd`
+    # 0x25 and 0x1A dwords). Mask 0: the three callers overwrite EAX (0x22D32.., 0x2360F.., 0x27277).
+    Spec("fighter_33acc", 0x33ACC, [
+        Case("m0", {"eax": 0, "edx": D1A_SNAP, "ebx": D1A_SNAP2}, d1a_snap_case()),
+        Case("m1", {"eax": 1, "edx": D1A_SNAP, "ebx": D1A_SNAP2}, d1a_snap_case()),
+    ], eax_mask=0, mutants=("@len1", "@len2", "@over", "@swap", "@side", "@rec", "@over2")),
 ]
 D1_SPECS += D1A_SPECS
 

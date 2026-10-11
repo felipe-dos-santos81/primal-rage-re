@@ -6411,7 +6411,7 @@ void fighter_33acc(u32 side, u32 dst, u32 dst2)
  * 0x10474C tick at 0, the record's motion cleared (0x3C16C, 0x3C148, +0x24
  * hold 0), +0x58 = 1, +0x43 bit 1 cleared, and 0x10476C[side] = (the other
  * slot's +0x53 == 0x0A). */
-static void fighter_22b28(const u32 ctx[6])
+void fighter_22b28(const u32 ctx[6])
 {
     u32 rec = DSD(DS_001077B0 + ctx[1] * 0x94u);        /* 0x22B2D..0x22B3E */
     u32 src = DSD(DSD(DS_001014EC)
@@ -10508,7 +10508,7 @@ void fighter_3f308(u32 slot)
  * is set (else 0); the actor 0x2AE14 returns is not read. Then 0x13244.
  * Callers 0x214D9 (0x21458), 0x21DBE (0x21DA4) and 0x220A6 (0x2208C); the last
  * two are record gameplay-u0 §U0.10's. */
-static void fighter_21f30(u32 slot)
+void fighter_21f30(u32 slot)
 {
     u32 rec, a5;
     (void)sound_voice(0x6Cu);                               /* 0x21F35/0x21F3A 0x2C3FC */
