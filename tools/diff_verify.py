@@ -8303,6 +8303,68 @@ def d1b_46898_case(side, s10, r24, s54, o=(0, 1, 9)):
             D1B_REC2 + 0x20: le32(0x30303030) + le32(o[1]) + le32(0x38383838)}
 
 
+def d1b_4fb20_case(x1, y1, x2, y2, w):
+    """0x4FB20: the two latched points 0xD3388/0xD338C and 0xD3390/0xD3394, the four output
+    dwords 0xD3398..0xD33A7 (sentinels) and the width word 0xD33A8 with its neighbour."""
+    return {0x000D3388: le32(x1) + le32(y1) + le32(x2) + le32(y2),
+            0x000D3398: le32(0x98989898) + le32(0x9C9C9C9C) + le32(0xA0A0A0A0) + le32(0xA4A4A4A4),
+            0x000D33A8: le16(w) + le16(0xAAAA)}
+
+
+D1B_AI_P1, D1B_AI_P2 = 0x10A600, 0x10AB00   # zero BSS: the two per-pair tables 0x46BBC indexes
+
+
+def d1b_46bbc_case(side, sc, oc, ident, xc=5):
+    """0x46BBC: the side's and the other's (1 - side) character bytes 0x10782A, another character
+    (`xc`) at the slot `side ^ 1` when that is a different slot (side 2), the two pair-table
+    entries pointing at scratch tables whose `ident` entries hold sentinels, and the side's AI
+    block fields +0x14, +0x2C, +0x34 (and the other block's) with neighbours."""
+    idx = sc * 10 + oc
+    b, ob = 0x001081F0 + side * 0x40, 0x001081F0 + (1 - side) * 0x40
+    p = {0x0010782A + side * 0x94: bytes([sc]), 0x0010782A + (1 - side) * 0x94: bytes([oc]),
+         0x00095CA8 + idx * 4: le32(D1B_AI_P1), 0x00095E38 + idx * 4: le32(D1B_AI_P2),
+         D1B_AI_P1 + ident * 4: le32(0x11000000 + ident), D1B_AI_P2 + ident * 4: le32(0x22000000 + ident),
+         D1B_AI_P1 + (ident & 0xFF) * 4 + (0x200 if ident < 0x100 else 0): le32(0x33333333),
+         b + 0x10: le32(0x10101010) + le32(0x14141414) + le32(0x18181818),
+         b + 0x2B: b"\x2b\x2c\x2d", b + 0x30: le32(0x30303030) + le32(0x34343434) + le32(0x38383838),
+         ob + 0x10: le32(0x50505050) + le32(0x54545454) + le32(0x58585858),
+         ob + 0x2B: b"\x6b\x6c\x6d", ob + 0x30: le32(0x70707070) + le32(0x74747474) + le32(0x78787878)}
+    if (side ^ 1) != ((1 - side) & 0xFFFFFFFF):
+        p[0x0010782A + (side ^ 1) * 0x94] = bytes([xc])
+    return p
+
+
+D1B_BAND_T = 0x10A600                       # zero BSS: the 0x14-entry band table b+0x14 points at
+D1B_BAND_IDS = (0x8C238, 0x83E70, 0x91F0C, 0x94B8C, 0x8F0E4, 0x893E0, 0x86A34)
+D1B_BAND_AUX = (0x8A4A4, 0x81E28, 0x90158, 0x92FA0, 0x8D300, 0x87B20, 0x84F7C)
+
+
+def d1b_46dd4_case(side, ch, gap=False, och=None):
+    """0x46DD4: the side's character (the other side holds another), the AI block's +0x14 band
+    table pointer and +0x18/+0x2C..+0x2F/+0x38 sentinels (both sides), a 0x14-entry band table
+    {id 0x10+i, sub 0x40+i, lo 10*i, hi 10*i+9} whose last entry ends at 0xFF (with `gap`, entry
+    3 starts at 35), and the character's two id-indexed tables for ids 0x10..0x23."""
+    och = (ch + 1) % 7 if och is None else och
+    b, ob = 0x001081F0 + side * 0x40, 0x001081F0 + (1 - side) * 0x40
+    tbl = bytearray()
+    for i in range(0x14):
+        lo, hi = 10 * i, (10 * i + 9 if i < 0x13 else 0xFF)
+        if gap and i == 3:
+            lo = 35
+        tbl += bytes([0x10 + i, 0x40 + i, lo, hi])
+    p = {0x0010782A + side * 0x94: bytes([ch]), 0x0010782A + (1 - side) * 0x94: bytes([och]),
+         b + 0x14: le32(D1B_BAND_T) + le32(0x0010A700), b + 0x2C: b"\x2c\x2d\x2e\x2f\x30",
+         b + 0x38: le32(0x38383838),
+         ob + 0x14: le32(0x0010A700) + le32(0x0010A700), ob + 0x2C: b"\x6c\x6d\x6e\x6f\x70",
+         ob + 0x38: le32(0x78787878),
+         D1B_BAND_T: bytes(tbl[:0x28]), D1B_BAND_T + 0x28: bytes(tbl[0x28:])}
+    for base, tag in ((D1B_BAND_IDS[ch], 0xA1000000), (D1B_BAND_AUX[ch], 0xA2000000)):
+        vals = b"".join(le32(tag + i) for i in range(0x10, 0x24))
+        p[base + 0x40] = vals[:0x28]
+        p[base + 0x68] = vals[0x28:]
+    return p
+
+
 D1B_SPECS = [
     # 0x36300 fighter_state_36300: EAX = slot, EDX = rec; the +0x52 == 13 handler. slot+0x41 gets
     # bit 7, then slot+0x58 picks an arm through the table 0x362F0 (0 and above 3: nothing; 1: the
@@ -8621,7 +8683,7 @@ D1B_SPECS = [
     # stub's EAX is the function's EAX at return and is not compared. Mask 0: every direct
     # caller reloads EAX (0x146B7, 0x14A23, 0x233F4, 0x23448, 0x3FBE9, 0x457DA, 0x4581D, 0x48824,
     # 0x48877); 0x3FA80's return leaves 0x3F9C8, a slot +0x0C callback (`mov dword [ebx+0xc],
-    # 0x3f9c8` 0x3FBBD), whose two `call [ecx+0xc]` sites drop EAX (`xor eax,eax` 0x35434;
+    # 0x3f9c8` 0x3FBC1), whose two `call [ecx+0xc]` sites drop EAX (`xor eax,eax` 0x35434;
     # 0x384D9 returns through 0x38434 to `mov eax,esi` 0x38570).
     Spec("fighter_3f720", 0x3F720, [
         Case("d0", {"eax": 0, "edx": 4}, {}, {0x187FC: 100, 0x189FC: 1, 0x3C190: 0x11}),
@@ -8722,6 +8784,62 @@ D1B_SPECS = [
         Case("r5", {"eax": 0}, d1b_state_case(0, 0x00, 0x54, 9, 0x52)),
         Case("r6", {"eax": 1}, d1b_state_case(1, 0x7F, 0x54, 9, 0x52, o=(0x10, 9, 7, 9))),
     ], eax_mask=0xFF, mutants=("@side", "@no8", "@no7", "@bound", "@s8")),
+    # 0x4FB20 fighter_4fb20: no argument. The two axis distances of the latched points are
+    # stored signed and absolute; 0 when either exceeds the zero-extended width word 0xD33A8
+    # (`jg`: equal passes), else max + (min >> 2) + ((min >> 2) >> 1), returned when the width is
+    # above it (`jg` 0x4FB8B), else 0. The y pair is not written when the x test fails. The y
+    # test's boundary is not observable (|dy| == width makes the estimate >= width, so 0 either
+    # way, after the same stores). Full mask.
+    Spec("fighter_4fb20", 0x4FB20, [
+        Case("o0", {}, d1b_4fb20_case(100, 50, 40, 30, 200)),
+        Case("o1", {}, d1b_4fb20_case(40, 30, 100, 50, 200)),
+        Case("o2", {}, d1b_4fb20_case(60, 0, 40, 60, 200)),
+        Case("o3", {}, d1b_4fb20_case(301, 5, 100, 0, 200)),
+        Case("o4", {}, d1b_4fb20_case(300, 5, 100, 5, 200)),
+        Case("o5", {}, d1b_4fb20_case(10, 0, 0, 201, 200)),
+        Case("o6", {}, d1b_4fb20_case(10, 200, 0, 0, 200)),
+        Case("o7", {}, d1b_4fb20_case(100, 7, 0, 0, 102)),
+        Case("o8", {}, d1b_4fb20_case(100, 7, 0, 0, 101)),
+        Case("o9", {}, d1b_4fb20_case(0x9000, 0, 0, 0x100, 0xFFFF)),
+        Case("o10", {}, d1b_4fb20_case(0x80000000, 5, 0, 0, 0x7000)),
+        Case("o11", {}, d1b_4fb20_case(0, 0, 0, 0x80000000, 0x7000)),
+    ], mutants=("@wsext", "@sdx", "@noabsx", "@sadx", "@early", "@gex", "@sdy", "@noabsy",
+                "@sady", "@max", "@shift", "@noq2", "@ret")),
+    # 0x46BBC ai_weight: EAX = side, EDX = the weight id. The pair index is the side's character
+    # * 10 + the character of side 1 - side (`mov edx,1; sub edx,ebx` 0x46BE4/0x46BE9: j3 is
+    # side 2, where 1 - side and side ^ 1 are different slots); the id's low byte goes to the
+    # side's AI block +0x2C and the id-indexed dwords of the two pair tables 0x95CA8/0x95E38 to
+    # +0x14/+0x34, the id whole as the index (`mov eax,[esp]` 0x46C1C: j2). Mask 0: every call
+    # site (all in 0x46C78) reaches `mov eax,[ebx+0x108218]` 0x46DA4 with no read of EAX before it.
+    Spec("ai_weight", 0x46BBC, [
+        Case("j0", {"eax": 0, "edx": 0x05}, d1b_46bbc_case(0, 2, 4, 0x05)),
+        Case("j1", {"eax": 1, "edx": 0x8A}, d1b_46bbc_case(1, 6, 1, 0x8A)),
+        Case("j2", {"eax": 0, "edx": 0x105}, d1b_46bbc_case(0, 3, 0, 0x105)),
+        Case("j3", {"eax": 2, "edx": 0x07}, d1b_46bbc_case(2, 1, 3, 0x07)),
+    ], eax_mask=0,
+       mutants=("@oside", "@idx", "@bside", "@idb", "@idw", "@s2c", "@s14", "@s34", "@p12")),
+    # 0x46DD4 ai_band: EAX = side. The character (0..6, the switch 0x46DB8; above 6 the raw
+    # leaves EBP/EDI as its caller had them, which the port cannot reproduce: not exercised)
+    # picks the id-indexed tables; the band is |0x187FC()| / 64 (the `sbb` idiom 0x46E79..
+    # 0x46E83 truncates toward zero) clamped to 0xFF, signed (`jle` 0x46E9C: k9's 0x80000000
+    # stays negative and matches no band), searched in the 0x14-entry table b+0x14 (first entry
+    # with lo <= band <= hi, bytes zero-extended; entry 0 when none). 0x187FC is called twice.
+    # Mask 0: its one caller 0x46FEC goes on to `lea eax,[edx*4]` 0x46FF1 with no read of EAX.
+    Spec("ai_band", 0x46DD4, [
+        Case("k0", {"eax": 0}, d1b_46dd4_case(0, 0), {0x187FC: 320}),
+        Case("k1", {"eax": 1}, d1b_46dd4_case(1, 1), {0x187FC: 0xFFFFF9C0}),
+        Case("k2", {"eax": 0}, d1b_46dd4_case(0, 2), {0x187FC: 64 * 199 + 63}),
+        Case("k3", {"eax": 1}, d1b_46dd4_case(1, 3), {0x187FC: 64 * 300}),
+        Case("k4", {"eax": 0}, d1b_46dd4_case(0, 4), {0x187FC: 64 * 10}),
+        Case("k5", {"eax": 1}, d1b_46dd4_case(1, 5), {0x187FC: 64 * 9 + 63}),
+        Case("k6", {"eax": 0}, d1b_46dd4_case(0, 6), {0x187FC: 64 * 19}),
+        Case("k7", {"eax": 0}, d1b_46dd4_case(0, 2, gap=True), {0x187FC: 64 * 32}),
+        Case("k8", {"eax": 1}, d1b_46dd4_case(1, 4, gap=True), {0x187FC: 64 * 35}),
+        Case("k9", {"eax": 0}, d1b_46dd4_case(0, 5), {0x187FC: 0x80000000}),
+        Case("k10", {"eax": 1}, d1b_46dd4_case(1, 0), {0x187FC: 64 * 189 + 1}),
+    ], calls=(E.Call(0x187FC, ()),), eax_mask=0,
+       mutants=("@side", "@bside", "@once", "@noabs", "@uclamp", "@clamp", "@lo", "@hi", "@bsext",
+                "@n14", "@fall", "@s2d", "@s2ftab", "@tabswap", "@s18", "@s38", "@tbl14")),
 ]
 D1_SPECS += D1B_SPECS
 

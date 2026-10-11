@@ -14316,6 +14316,111 @@ static void b_d1b_46958(const u32 *r, u32 *eax) { *eax = (u32)ai_ready(r[R_EAX])
 D1B_46958_MUT(side, 1u)  D1B_46958_MUT(no8, 2u)  D1B_46958_MUT(no7, 4u)
 D1B_46958_MUT(bound, 8u) D1B_46958_MUT(s8, 0x10u)
 
+/* 0x4FB20's mutants. No argument; EAX = the estimate. */
+static u32 d1b_4fb20_core(u32 mut)
+{
+    s32 w = (mut & 1u) ? (s32)(s16)DSW(0x000D33A8u) : (s32)(u32)DSW(0x000D33A8u);   /* @wsext */
+    s32 dx = (s32)(DSD(0x000D3388u) - DSD(0x000D3390u));
+    s32 dy = (s32)(DSD(0x000D338Cu) - DSD(0x000D3394u));
+    s32 adx, ady, q, d, mn, mx;
+    if (!(mut & 2u)) DSD(0x000D33A0u) = (u32)dx;                        /* @sdx */
+    adx = (dx < 0 && !(mut & 4u)) ? (s32)(0u - (u32)dx) : dx;           /* @noabsx */
+    if (!(mut & 8u)) DSD(0x000D3398u) = (u32)adx;                       /* @sadx */
+    if (mut & 0x10u) DSD(0x000D33A4u) = (u32)dy;                        /* @early */
+    if ((mut & 0x20u) ? (adx >= w) : (adx > w)) return 0u;              /* @gex */
+    if (!(mut & 0x40u)) DSD(0x000D33A4u) = (u32)dy;                     /* @sdy */
+    ady = (dy < 0 && !(mut & 0x80u)) ? (s32)(0u - (u32)dy) : dy;        /* @noabsy */
+    if (!(mut & 0x100u)) DSD(0x000D339Cu) = (u32)ady;                   /* @sady */
+    if (ady > w) return 0u;
+    mn = (ady <= adx) ? ady : adx;
+    mx = (ady <= adx) ? adx : ady;
+    if (mut & 0x400u) { s32 t = mn; mn = mx; mx = t; }                  /* @max */
+    q = mn >> ((mut & 0x800u) ? 3 : 2);                                 /* @shift */
+    d = (s32)((u32)q + ((mut & 0x1000u) ? 0u : (u32)(q >> 1)) + (u32)mx);       /* @noq2 */
+    if ((mut & 0x2000u) ? (w >= d) : (w > d)) return (u32)d;            /* @ret */
+    return 0u;
+}
+static void b_d1b_4fb20(const u32 *r, u32 *eax) { (void)r; *eax = fighter_4fb20(); }
+#define D1B_4FB20_MUT(name, bit) \
+    static void m_d1b_4fb20_##name(const u32 *r, u32 *eax) { (void)r; *eax = d1b_4fb20_core(bit); }
+D1B_4FB20_MUT(wsext, 1u)    D1B_4FB20_MUT(sdx, 2u)      D1B_4FB20_MUT(noabsx, 4u)
+D1B_4FB20_MUT(sadx, 8u)     D1B_4FB20_MUT(early, 0x10u) D1B_4FB20_MUT(gex, 0x20u)
+D1B_4FB20_MUT(sdy, 0x40u)   D1B_4FB20_MUT(noabsy, 0x80u) D1B_4FB20_MUT(sady, 0x100u)
+D1B_4FB20_MUT(max, 0x400u)  D1B_4FB20_MUT(shift, 0x800u)
+D1B_4FB20_MUT(noq2, 0x1000u) D1B_4FB20_MUT(ret, 0x2000u)
+
+/* 0x46BBC's mutants. EAX = side, EDX = the weight id. */
+static void d1b_46bbc_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], id = r[R_EDX];
+    u32 o = (mut & 1u) ? (side ^ 1u) : (1u - side);                     /* @oside */
+    u32 sc = (u32)DSB(0x0010782Au + side * 0x94u), oc = (u32)DSB(0x0010782Au + o * 0x94u);
+    u32 idx = (mut & 2u) ? oc * 10u + sc : sc * 10u + oc;               /* @idx */
+    u32 p1 = DSD(0x00095CA8u + idx * 4u), p2 = DSD(0x00095E38u + idx * 4u);
+    u32 b = 0x001081F0u + ((mut & 4u) ? o : side) * 0x40u;              /* @bside */
+    u32 k = (mut & 8u) ? (id & 0xFFu) : id;                             /* @idb */
+    if (mut & 0x10u) DSW(b + 0x2Cu) = (u16)id;                          /* @idw */
+    else if (!(mut & 0x20u)) DSB(b + 0x2Cu) = (u8)id;                   /* @s2c */
+    if (mut & 0x100u) { u32 t = p1; p1 = p2; p2 = t; }                  /* @p12 */
+    if (!(mut & 0x40u)) DSD(b + 0x14u) = DSD(p1 + k * 4u);              /* @s14 */
+    if (!(mut & 0x80u)) DSD(b + 0x34u) = DSD(p2 + k * 4u);              /* @s34 */
+}
+static void b_d1b_46bbc(const u32 *r, u32 *eax) { ai_weight(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D1B_46BBC_MUT(name, bit) \
+    static void m_d1b_46bbc_##name(const u32 *r, u32 *eax) { d1b_46bbc_core(r, bit); *eax = 0u; }
+D1B_46BBC_MUT(oside, 1u)  D1B_46BBC_MUT(idx, 2u)    D1B_46BBC_MUT(bside, 4u)
+D1B_46BBC_MUT(idb, 8u)    D1B_46BBC_MUT(idw, 0x10u) D1B_46BBC_MUT(s2c, 0x20u)
+D1B_46BBC_MUT(s14, 0x40u) D1B_46BBC_MUT(s34, 0x80u) D1B_46BBC_MUT(p12, 0x100u)
+
+/* 0x46DD4's mutants. EAX = side. */
+static void d1b_46dd4_core(const u32 *r, u32 mut)
+{
+    static const u32 k_ids[7] = { 0x0008C238u, 0x00083E70u, 0x00091F0Cu, 0x00094B8Cu,
+                                  0x0008F0E4u, 0x000893E0u, 0x00086A34u };
+    static const u32 k_aux[7] = { 0x0008A4A4u, 0x00081E28u, 0x00090158u, 0x00092FA0u,
+                                  0x0008D300u, 0x00087B20u, 0x00084F7Cu };
+    u32 side = r[R_EAX];
+    u32 b = 0x001081F0u + ((mut & 2u) ? 1u - side : side) * 0x40u;      /* @bside */
+    u32 ch = (u32)DSB(0x0010782Au + ((mut & 1u) ? 1u - side : side) * 0x94u);   /* @side */
+    u32 ids = k_ids[ch > 6u ? 6u : ch], aux = k_aux[ch > 6u ? 6u : ch];
+    s32 sign = ai_distance(), v = (mut & 4u) ? sign : ai_distance();    /* @once */
+    s32 mag = (sign < 0 && !(mut & 8u)) ? (s32)(0u - (u32)v) : v;       /* @noabs */
+    u32 table = DSD(b + ((mut & 0x10000u) ? 0x18u : 0x14u)), entry = table, i = 0;   /* @tbl14 */
+    s32 m;
+    mag = mag / 64;
+    m = (mut & 0x10u) ? (((u32)mag > 0xFFu) ? 0xFF : mag)               /* @uclamp */
+      : (mut & 0x20u) ? mag : (mag > 0xFF ? 0xFF : mag);                /* @clamp */
+    for (;;) {
+        s32 lo = (mut & 0x100u) ? (s32)(s8)DSB(entry + 2u) : (s32)(u32)DSB(entry + 2u);  /* @bsext */
+        s32 hi = (mut & 0x100u) ? (s32)(s8)DSB(entry + 3u) : (s32)(u32)DSB(entry + 3u);
+        if (((mut & 0x40u) ? (lo < m) : (lo <= m))                      /* @lo */
+                && ((mut & 0x80u) ? (m < hi) : (m <= hi))) break;       /* @hi */
+        i++;
+        entry += 4u;
+        if (i >= ((mut & 0x200u) ? 0x13u : 0x14u)) {                    /* @n14 */
+            entry = (mut & 0x400u) ? entry - 4u : table;                /* @fall */
+            break;
+        }
+    }
+    if (!(mut & 0x800u)) DSB(b + 0x2Du) = DSB(entry);                   /* @s2d */
+    DSB(b + 0x2Fu) = DSB(((mut & 0x1000u) ? table : entry) + 1u);       /* @s2ftab */
+    {
+        u32 id = (u32)DSB(b + 0x2Du);
+        if (mut & 0x2000u) { u32 t = ids; ids = aux; aux = t; }         /* @tabswap */
+        if (!(mut & 0x4000u)) DSD(b + 0x18u) = DSD(ids + id * 4u);      /* @s18 */
+        if (!(mut & 0x8000u)) DSD(b + 0x38u) = DSD(aux + id * 4u);      /* @s38 */
+    }
+}
+static void b_d1b_46dd4(const u32 *r, u32 *eax) { ai_band(r[R_EAX]); *eax = 0u; }
+#define D1B_46DD4_MUT(name, bit) \
+    static void m_d1b_46dd4_##name(const u32 *r, u32 *eax) { d1b_46dd4_core(r, bit); *eax = 0u; }
+D1B_46DD4_MUT(side, 1u)       D1B_46DD4_MUT(bside, 2u)      D1B_46DD4_MUT(once, 4u)
+D1B_46DD4_MUT(noabs, 8u)      D1B_46DD4_MUT(uclamp, 0x10u)  D1B_46DD4_MUT(clamp, 0x20u)
+D1B_46DD4_MUT(lo, 0x40u)      D1B_46DD4_MUT(hi, 0x80u)      D1B_46DD4_MUT(bsext, 0x100u)
+D1B_46DD4_MUT(n14, 0x200u)    D1B_46DD4_MUT(fall, 0x400u)   D1B_46DD4_MUT(s2d, 0x800u)
+D1B_46DD4_MUT(s2ftab, 0x1000u) D1B_46DD4_MUT(tabswap, 0x2000u) D1B_46DD4_MUT(s18, 0x4000u)
+D1B_46DD4_MUT(s38, 0x8000u)   D1B_46DD4_MUT(tbl14, 0x10000u)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -16325,6 +16430,48 @@ static const binding_t k_bindings[] = {
     { "ai_ready@no7",                        m_d1b_46958_no7, 0x000000FFu },
     { "ai_ready@bound",                      m_d1b_46958_bound, 0x000000FFu },
     { "ai_ready@s8",                         m_d1b_46958_s8, 0x000000FFu },
+    { "fighter_4fb20",                       b_d1b_4fb20, 0xFFFFFFFFu },
+    { "fighter_4fb20@wsext",                 m_d1b_4fb20_wsext, 0xFFFFFFFFu },
+    { "fighter_4fb20@sdx",                   m_d1b_4fb20_sdx, 0xFFFFFFFFu },
+    { "fighter_4fb20@noabsx",                m_d1b_4fb20_noabsx, 0xFFFFFFFFu },
+    { "fighter_4fb20@sadx",                  m_d1b_4fb20_sadx, 0xFFFFFFFFu },
+    { "fighter_4fb20@early",                 m_d1b_4fb20_early, 0xFFFFFFFFu },
+    { "fighter_4fb20@gex",                   m_d1b_4fb20_gex, 0xFFFFFFFFu },
+    { "fighter_4fb20@sdy",                   m_d1b_4fb20_sdy, 0xFFFFFFFFu },
+    { "fighter_4fb20@noabsy",                m_d1b_4fb20_noabsy, 0xFFFFFFFFu },
+    { "fighter_4fb20@sady",                  m_d1b_4fb20_sady, 0xFFFFFFFFu },
+    { "fighter_4fb20@max",                   m_d1b_4fb20_max, 0xFFFFFFFFu },
+    { "fighter_4fb20@shift",                 m_d1b_4fb20_shift, 0xFFFFFFFFu },
+    { "fighter_4fb20@noq2",                  m_d1b_4fb20_noq2, 0xFFFFFFFFu },
+    { "fighter_4fb20@ret",                   m_d1b_4fb20_ret, 0xFFFFFFFFu },
+    { "ai_weight",                           b_d1b_46bbc, 0x00000000u },
+    { "ai_weight@oside",                     m_d1b_46bbc_oside, 0x00000000u },
+    { "ai_weight@idx",                       m_d1b_46bbc_idx, 0x00000000u },
+    { "ai_weight@bside",                     m_d1b_46bbc_bside, 0x00000000u },
+    { "ai_weight@idb",                       m_d1b_46bbc_idb, 0x00000000u },
+    { "ai_weight@idw",                       m_d1b_46bbc_idw, 0x00000000u },
+    { "ai_weight@s2c",                       m_d1b_46bbc_s2c, 0x00000000u },
+    { "ai_weight@s14",                       m_d1b_46bbc_s14, 0x00000000u },
+    { "ai_weight@s34",                       m_d1b_46bbc_s34, 0x00000000u },
+    { "ai_weight@p12",                       m_d1b_46bbc_p12, 0x00000000u },
+    { "ai_band",                             b_d1b_46dd4, 0x00000000u },
+    { "ai_band@side",                        m_d1b_46dd4_side, 0x00000000u },
+    { "ai_band@bside",                       m_d1b_46dd4_bside, 0x00000000u },
+    { "ai_band@once",                        m_d1b_46dd4_once, 0x00000000u },
+    { "ai_band@noabs",                       m_d1b_46dd4_noabs, 0x00000000u },
+    { "ai_band@uclamp",                      m_d1b_46dd4_uclamp, 0x00000000u },
+    { "ai_band@clamp",                       m_d1b_46dd4_clamp, 0x00000000u },
+    { "ai_band@lo",                          m_d1b_46dd4_lo, 0x00000000u },
+    { "ai_band@hi",                          m_d1b_46dd4_hi, 0x00000000u },
+    { "ai_band@bsext",                       m_d1b_46dd4_bsext, 0x00000000u },
+    { "ai_band@n14",                         m_d1b_46dd4_n14, 0x00000000u },
+    { "ai_band@fall",                        m_d1b_46dd4_fall, 0x00000000u },
+    { "ai_band@s2d",                         m_d1b_46dd4_s2d, 0x00000000u },
+    { "ai_band@s2ftab",                      m_d1b_46dd4_s2ftab, 0x00000000u },
+    { "ai_band@tabswap",                     m_d1b_46dd4_tabswap, 0x00000000u },
+    { "ai_band@s18",                         m_d1b_46dd4_s18, 0x00000000u },
+    { "ai_band@s38",                         m_d1b_46dd4_s38, 0x00000000u },
+    { "ai_band@tbl14",                       m_d1b_46dd4_tbl14, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
