@@ -2899,7 +2899,7 @@ void motion_step(u32 rec)
 void anim_id_path(u32 rec, u32 slot)
 {
     DSB(rec + 0x28) &= 0xfb;
-    u32 pset = DSD(DS_001014EC) + slot * PSET_SIZE;
+    u32 pset = DSD(DS_001014EC) + (slot & 0xffffu) * PSET_SIZE;   /* 0x2A3A0/0x2A3A2 `xor ecx,ecx; mov cx,dx` */
     u32 id = anim_next_sprite_id(rec, pset);
     if (DSB(rec + 0x4a) != 0) {
         u32 parent = DSD(DS_001014F4)
