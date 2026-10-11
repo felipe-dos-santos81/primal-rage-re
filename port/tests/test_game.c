@@ -5094,6 +5094,10 @@ int test_frontend(void)
         DSB(DS_00105D60) = 0;          /* not free play */
         DSD(DS_00105C00) = 5u;
         DSD(DS_001082DC) = 0;          /* no localisation table: empty strings */
+        /* Handle 0 decodes "" only over a zeroed header and entry run: 0x1E75C reads +0xc/+0x15,
+         * 0x474E4 walks DSD(base+4) and up to 0x3F length bytes from base+8. Earlier cases leave
+         * null-record residue there, which sent the walk outside mem[] (a host bus error). */
+        memset(mem, 0, 0x50u);
 
         /* Reject: no newly-pressed bit -> no debit, state 9's countdown runs. */
         DSD(DS_00104B00) = 3u;
@@ -5157,6 +5161,7 @@ int test_frontend(void)
         DSB(DS_00105D60) = 0;
         DSD(DS_00105C00) = 5u;
         DSD(DS_001082DC) = 0;
+        memset(mem, 0, 0x50u);         /* as above: handle 0 over a zeroed header */
         DSD(DS_000E87A0) = cw_src;
         DSD(DS_000E87A4) = cw_dst;
         DSD(DS_001088E4) = 0u;
