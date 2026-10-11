@@ -1071,7 +1071,7 @@ s32 ai_distance(void)
 /* 0x3C6E8. Map a move step's input bitfield to the command word: the four
  * 0x10000/0x20000/0x40000/0x80000 gates OR 0x10/0x20/0x1000/0x2000 in the
  * order `facing` selects (the raw's EAX/EBX/ECX/EDI/ESI). */
-static u16 fighter_cmd_facing(u32 facing, u32 input)
+u16 fighter_cmd_facing(u32 facing, u32 input)
 {
     u32 eax = input;
     u32 a, b, c, d;
@@ -1261,7 +1261,7 @@ static u32 ai_facing_cmd(u32 side)
 }
 
 /* 0x46958. slot+0x53 in {7,8} and slot+0x5F < 0x40. */
-static int ai_ready(u32 side)
+int ai_ready(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     u8 st = DSB(slot + 0x53u);
@@ -1272,7 +1272,7 @@ static int ai_ready(u32 side)
 }
 
 /* 0x46698. slot+0x40 bit 7 set, then the +0x2C ordering and rec_self+0x34. */
-static int ai_pred_46698(u32 side)
+int ai_pred_46698(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                        /* 0x466A0 */
@@ -1283,7 +1283,7 @@ static int ai_pred_46698(u32 side)
 }
 
 /* 0x466F4. Idle: +0x5F == 0xFF, +0x54 == 0, +0x53 == 0, +0x52 == 0. */
-static int ai_pred_466f4(u32 side)
+int ai_pred_466f4(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x5Fu) != 0xFFu) return 0;
@@ -1293,7 +1293,7 @@ static int ai_pred_466f4(u32 side)
 }
 
 /* 0x4673C. +0x54 == 1 and +0x52 in {5,0x15}. */
-static int ai_pred_4673c(u32 side)
+int ai_pred_4673c(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x5Fu) != 0xFFu) return 0;
@@ -1303,7 +1303,7 @@ static int ai_pred_4673c(u32 side)
 }
 
 /* 0x46794. +0x54 == 2 and +0x52 == 4. */
-static int ai_pred_46794(u32 side)
+int ai_pred_46794(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x5Fu) != 0xFFu) return 0;
@@ -1341,7 +1341,7 @@ int ai_pred_4682c(u32 side)
  * (= ctx[3] = &slot[side], the slot's 0x22BEC code pointer), the +0x24 dword
  * from [ESP+0x14] (= ctx[5] = rec_self); 0x46898 wants slot+0x54 == 2, 0x468D8
  * wants slot+0x54 != 2 or slot+0x52 == 7. */
-static int ai_pred_46898(u32 side)
+int ai_pred_46898(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x468A0 */
@@ -4874,7 +4874,7 @@ static int fighter_14590(u32 side)
  * 1. The speed is |0x187FC()| / n (the raw calls 0x187FC once for the sign
  * and once for the value), or 100 when 0x189FC(ctx[1]) is 0; 0x3C190 applies
  * it to ctx[0]. */
-static void fighter_3f720(u32 side, s32 n)
+void fighter_3f720(u32 side, s32 n)
 {
     u32 ctx[6];
     s32 d;
@@ -12729,7 +12729,7 @@ static void fighter_3c12c(u32 side, s32 dx)
 /* 0x3D0C0 — record §50-A. EAX = side. The slot goes to +0x52 = 0xF, +0x53 = 5,
  * +0x54 = 0, +0x5C = 0, and its record's words +0x44, +0x36 and +0x34 and
  * bytes +0x43 and +0x42 to 0. Its only caller is 0x3FE04 (in 0x3FDD8). */
-static void fighter_3d0c0(u32 side)
+void fighter_3d0c0(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;                  /* 0x3D0C1..0x3D0D0 */
     DSB(slot + 0x52u) = 0x0Fu;                              /* 0x3D0D5 */
@@ -12748,7 +12748,7 @@ static void fighter_3d0c0(u32 side)
  * +0x18, +0x30 >> 16 and +0x1C with the record's +0x28 bit 14 (0x4000) as the
  * flag word, and its handle kept in DS_00108094. Callers 0x40A22 (in
  * 0x40954). */
-static void fighter_408e8(u32 slot)
+void fighter_408e8(u32 slot)
 {
     u32 rec, flags, h;
     (void)sound_voice(0x6Cu);                               /* 0x408ED/0x408F2 0x2C3FC */
