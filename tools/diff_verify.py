@@ -8024,6 +8024,175 @@ C3G_SPECS = [
 D1_SPECS = []
 
 
+# ---- track D1 batch d1a (record 2026-10-11-reverse-d1a): game/fighter.c, first half --------------
+#
+# Every index a case passes (side, state, character) keeps base + index * size inside the image for
+# the binding and for each mutant (the brief's mem[] rule); a mutant's wrong read is seeded with the
+# opposite answer, never left to whatever the image holds.
+
+D1A_SLOT = 0x001077B0            # DS_001077B0: the two 0x94-byte fighter slots
+D1A_ROW, D1A_ROW2 = 0x0010A500, 0x0010A900   # 0x18950: the pair row and the wrong-index row (zero BSS)
+D1A_HOOK = 0x0003E484            # a registered slot +0x18 hook (fighter_3e484, actors.c fn_register)
+
+
+def d1a_gate_case(side, pose_o, st_o, word_s, word_o, pose_s=0x00011111, st_s=0x00, nxt=0):
+    """0x14590: the other slot's +0x10 dword and +0x52/+0x53 bytes, the own slot's (what @slot
+    reads), the two 0x107D2C words and the word after them (the high half of @wide's side-1 read)."""
+    other = 1 - side
+    so, ss = D1A_SLOT + other * 0x94, D1A_SLOT + side * 0x94
+    words = [0, 0]
+    words[side], words[other] = word_s, word_o
+    return {so + 0x10: le32(pose_o), so + 0x52: bytes([st_o, 0x77]),
+            ss + 0x10: le32(pose_s), ss + 0x52: bytes([st_s, 0x66]),
+            0x00107D2C: le16(words[0]) + le16(words[1]) + le16(nxt)}
+
+
+def d1a_latch_case(bit3, o41, anchor_same):
+    """0x186C4: per side the +0x42 bit 3, the +0x41 bit 7 and whether the +0x20 anchor already
+    equals DS_00100AF0[side]; the records' +0x18/+0x1C, the offset pairs and the three latched
+    dwords are slot-distinct sentinels."""
+    p = dict(SLOT_PTRS)
+    p[C2_ANCHOR] = le32(0x1111) + le32(0x2222)
+    p[C2_OFFS] = le32(0x64) + le32(0x65) + le32(0x74) + le32(0x75)
+    for side in (0, 1):
+        so = DS_SLOTS + side * 0x94
+        rec = (E3_REC, E3_REC2)[side]
+        anchor = (0x1111, 0x2222)[side]
+        p[so + 0x20] = le32(anchor if anchor_same[side] else 0x24242424 + side) + le32(0x99999999)
+        p[so + 0x2C] = le32(0x2C2C2C2C + side) + le32(0x30303030 + side) + le32(0x34343434 + side)
+        p[so + 0x41] = bytes([o41[side], 0x08 if bit3[side] else 0x00])
+        p[rec + 0x18] = le32(0x18181818 + side * 0x01010101) + le32(0x1C1C1C1C + side * 0x01010101)
+    return p
+
+
+def d1a_conn_case(p1, p2, st1, st2, ch1, ch2, want):
+    """0x18950: both slots' +0x5F and +0x7A, the pair-table dword of (ch1, ch2) pointing at D1A_ROW
+    and the tested dword pair at D1A_ROW + st1*8 holding exactly the answer `want` (the tested bit
+    alone, or every bit but it). Every wrong read a mutant makes holds the opposite answer: the
+    swapped pair index and the sign-extended character index point at D1A_ROW2 (all bits = not
+    want), and D1A_ROW's other dword pairs (the swapped state roles, st1 sign-extended) are filled
+    with not want."""
+    s1, s2 = D1A_SLOT + p1 * 0x94, D1A_SLOT + p2 * 0x94
+    bit = 1 << (st2 & 0x1F)
+    hi = st2 >= 0x20
+    yes, no = (bit, 0) if want else (~bit & 0xFFFFFFFF, 0xFFFFFFFF)
+    other = le32(0 if want else 0xFFFFFFFF)
+    p = {s1 + 0x5F: bytes([st1]), s1 + 0x7A: bytes([ch1]),
+         0x000A1290 + (ch2 + ch1 * 10) * 4: le32(D1A_ROW)}
+    if p2 != p1:
+        p[s2 + 0x5F] = bytes([st2])
+        p[s2 + 0x7A] = bytes([ch2])
+    for a in {(ch1 + ch2 * 10) * 4, (ch2 + ((ch1 ^ 0x80) - 0x80) * 10) * 4} - {(ch2 + ch1 * 10) * 4}:
+        p[0x000A1290 + a] = le32(D1A_ROW2)
+    for a in {st2 * 8, ((st1 ^ 0x80) - 0x80) * 8} - {st1 * 8}:
+        p[D1A_ROW + a] = other * 2
+    p[D1A_ROW2 + st1 * 8] = other * 2
+    p[D1A_ROW2 + st2 * 8] = other * 2
+    p[D1A_ROW2 + ((st1 ^ 0x80) - 0x80) * 8] = other * 2
+    p[D1A_ROW + st1 * 8] = le32(no if hi else yes) + le32(yes if hi else no)
+    return p
+
+
+def d1a_hook_case(side, hook_s, hook_o):
+    """0x19020: the side slot's +0x18 hook and the other's (what @side reads), and both
+    DS_00100AF8 dwords seeded 0x5A5A5A5A (neither 0 nor 1)."""
+    return {**SLOT_PTRS, D1A_SLOT + side * 0x94 + 0x18: le32(hook_s),
+            D1A_SLOT + (1 - side) * 0x94 + 0x18: le32(hook_o),
+            0x00100AF8: le32(0x5A5A5A5A) * 2}
+
+
+def d1a_passb_case(st, b58, b5a, b5c, b5e, x24=(0, 0), s52=(0, 0), flags=0):
+    """0x19068: per side the slot's +0x52, +0x55..+0x57 (seeded 0x65 0x66 0x67) and +0x5F, the latched DS_00100B58,
+    the timers B5A/B5C/B5E, the record's +0x20 (seeded) and +0x24; and the 0x107EE0 flag word."""
+    p = c3d_slot_pokes()
+    p[0x00100B58] = bytes([b58[0], b58[1], b5a[0], b5a[1], b5c[0], b5c[1], b5e[0], b5e[1]])
+    p[0x00107EE0] = le32(flags)
+    for side in (0, 1):
+        so = D1A_SLOT + side * 0x94
+        rec = (C3D_REC0, C3D_REC1)[side]
+        p[so + 0x52] = bytes([s52[side]])
+        p[so + 0x55] = bytes([0x65, 0x66, 0x67])
+        p[so + 0x5F] = bytes([st[side]])
+        p[rec + 0x20] = le32(0x5A5A5A50 + side) + le32(x24[side])
+    return p
+
+
+D1A_SPECS = [
+    # 0x14590 fighter_14590: EAX = side. 0x33950 runs real (allowed; it fills the stack ctx). AL only:
+    # `mov al,1` 0x145BE / `xor al,al` 0x145C5, and all six callers test AL (0x14669, 0x14707,
+    # 0x14872, 0x149D5, 0x14A73, 0x14BEC: `test al,al`).
+    Spec("fighter_14590", 0x14590, [
+        Case("g0", {"eax": 0}, d1a_gate_case(0, 0x00039CC8, 0x00, 1, 0)),
+        Case("g1", {"eax": 1}, d1a_gate_case(1, 0x12349CC8, 0x11, 0x7FFF, 0)),
+        Case("g2", {"eax": 0}, d1a_gate_case(0, 0x12349CC8, 0x10, 5, 5, pose_s=0x00039CC8, st_s=0x11)),
+        Case("g3", {"eax": 0}, d1a_gate_case(0, 0x00039CC8, 0x00, 0, 5)),
+        Case("g4", {"eax": 0}, d1a_gate_case(0, 0x00039CC8, 0x00, 0x8000, 0)),
+        Case("g5", {"eax": 1}, d1a_gate_case(1, 0x00039CC8, 0x11, 0xFFFF, 1)),
+        Case("g6", {"eax": 1}, d1a_gate_case(1, 0x00039CC8, 0x00, 1, 0xFFFF)),
+        Case("g7", {"eax": 1}, d1a_gate_case(1, 0x00039CC8, 0x00, 0, 0, nxt=5)),
+    ], allow_calls=(0x33950,), eax_mask=0xFF,
+       mutants=("@slot", "@word", "@sign", "@pose", "@and", "@sw", "@wide")),
+    # 0x186C4 fighter_slot_latch_both: `xor eax,eax; call 0x186d0; mov eax,1` falling into 0x186D0,
+    # so 0x186D0 cannot be a stub (the second pass is not a call): it runs real on both sides and its
+    # blocks are this row's (the scan follows the fall-through). 0x18540/0x18350 are its stubs.
+    # Mask 0: the two callers return at once (0x3582E..0x35835, 0x385AA..0x385AE) and no call site
+    # of theirs (0x35658, 0x384F8) reads EAX before writing it (record §1).
+    Spec("fighter_slot_latch_both", 0x186C4, [
+        Case("b0", {}, d1a_latch_case((True, True), (0x80, 0x00), (False, False))),
+        Case("b1", {}, d1a_latch_case((False, False), (0x00, 0x80), (False, False))),
+        Case("b2", {}, d1a_latch_case((False, True), (0x80, 0x80), (True, False))),
+        Case("b3", {}, d1a_latch_case((True, False), (0x00, 0x00), (False, True))),
+    ], allow_calls=(0x186D0,), calls=(C2_18540, C2_18350), eax_mask=0,
+       mutants=("@one0", "@one1", "@order", "@twice")),
+    # 0x18950 fighter_connect_query: EAX = param_1, EDX = param_2 (slot indices). AL only: `mov al,1`
+    # 0x189C5/0x189DC, `xor al,al` 0x189E2; the callers read AL (0x19658 `mov bl,al`, 0x19696 and
+    # 0x196A7 `test al,al`).
+    Spec("fighter_connect_query", 0x18950, [
+        Case("c0", {"eax": 0, "edx": 1}, d1a_conn_case(0, 1, 2, 3, 1, 2, True)),
+        Case("c1", {"eax": 0, "edx": 1}, d1a_conn_case(0, 1, 2, 3, 1, 2, False)),
+        Case("c2", {"eax": 0, "edx": 1}, d1a_conn_case(0, 1, 4, 0x20, 3, 0, True)),
+        Case("c3", {"eax": 0, "edx": 1}, d1a_conn_case(0, 1, 4, 0x1F, 3, 0, True)),
+        Case("c4", {"eax": 1, "edx": 0}, d1a_conn_case(1, 0, 6, 0x3F, 0, 6, False)),
+        Case("c5", {"eax": 1, "edx": 0}, d1a_conn_case(1, 0, 0x80, 5, 0, 6, True)),
+        Case("c6", {"eax": 0, "edx": 1}, d1a_conn_case(0, 1, 1, 7, 0x80, 2, True)),
+        Case("c7", {"eax": 0, "edx": 1}, d1a_conn_case(0, 1, 9, 0x40, 2, 1, True)),
+        Case("c8", {"eax": 1, "edx": 0}, d1a_conn_case(1, 0, 3, 0x21, 5, 4, False)),
+    ], eax_mask=0xFF, mutants=("@swap", "@state", "@hi", "@bound", "@ssext", "@csext")),
+    # 0x19020 fighter_19020: EAX = side. The hook is the registered 0x3E484 (run real on both sides,
+    # with 0x33950/0x18BD4), whose 0x18C14 call is the stub whose EAX comes back; 0x19048 tests the
+    # whole EAX. Mask 0: the one caller overwrites EAX (0x195CC `mov eax,[esp+8]`, on both arms).
+    Spec("fighter_19020", 0x19020, [
+        Case("h0", {"eax": 0}, d1a_hook_case(0, 0, D1A_HOOK)),
+        Case("h1", {"eax": 0}, d1a_hook_case(0, D1A_HOOK, 0), {0x18C14: 0}),
+        Case("h2", {"eax": 1}, d1a_hook_case(1, D1A_HOOK, 0), {0x18C14: 1}),
+        Case("h3", {"eax": 0}, d1a_hook_case(0, D1A_HOOK, 0), {0x18C14: 0x100}),
+        Case("h4", {"eax": 1}, d1a_hook_case(1, D1A_HOOK, D1A_HOOK), {0x18C14: 0}),
+    ], allow_calls=(D1A_HOOK, 0x33950, 0x18BD4), calls=(CHECKS,), eax_mask=0,
+       mutants=("@al", "@inv", "@side", "@idx", "@byte", "@arg")),
+    # 0x19068 fighter_pass_b: AL = arg. 0x3C570 and 0x1922C (with its 0x33950) run real; 0x3CF38 is
+    # a stub whose EAX the raw overwrites (0x190F6 `mov eax,[edx+0x100b57]`). Mask 0: every call site
+    # writes EAX before reading it (record §1).
+    Spec("fighter_pass_b", 0x19068, [
+        Case("p0", {"eax": 1}, d1a_passb_case((1, 1), (1, 1), (5, 5), (7, 7), (3, 3), s52=(0x13, 0))),
+        Case("p1", {"eax": 1}, d1a_passb_case((1, 1), (1, 1), (5, 5), (7, 7), (3, 3), s52=(0, 0x13))),
+        Case("p2", {"eax": 0}, d1a_passb_case((1, 1), (1, 1), (5, 5), (7, 7), (3, 3), flags=0x20)),
+        Case("p3", {"eax": 0}, d1a_passb_case((2, 1), (1, 1), (0, 5), (7, 7), (9, 3), flags=0x10),
+             {0x3CF38: 1}),
+        Case("p4", {"eax": 1}, d1a_passb_case((0xFF, 4), (0xFF, 4), (0, 1), (7, 0xFB), (9, 1),
+                                              flags=0x20)),
+        Case("p5", {"eax": 0x100}, d1a_passb_case((3, 3), (3, 3), (1, 1), (7, 9), (0x81, 0),
+                                                  x24=(0x80000000, 0x3F800000))),
+        Case("p6", {"eax": 1}, d1a_passb_case((3, 3), (3, 3), (0, 0x80), (7, 9), (1, 2))),
+        Case("p7", {"eax": 1}, d1a_passb_case((3, 0), (3, 0), (2, 0x7F), (7, 9), (0x7F, 0))),
+        Case("p8", {"eax": 1}, d1a_passb_case((3, 5), (5, 3), (4, 0), (0x10, 9), (9, 9))),
+    ], allow_calls=(0x3C570, 0x1922C, 0x33950), calls=(E.Call(0x3CF38, ("eax",), mode="stub"),),
+       eax_mask=0,
+       mutants=("@s52a", "@s52b", "@al", "@flag", "@ff", "@b58", "@sign", "@s56", "@order", "@call",
+                "@clr", "@b5a", "@one", "@mag", "@seed", "@x20", "@a", "@e")),
+]
+D1_SPECS += D1A_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

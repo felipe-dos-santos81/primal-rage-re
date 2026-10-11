@@ -4856,7 +4856,7 @@ int fighter_189fc(u32 side);                            /* 0x189FC */
  * ctx[3] (the other slot) in the knockback pose (+0x10 == 0x39CC8) or in
  * +0x52 state 0x11, 1 when the side's 0x107D2C word is positive (signed),
  * else 0. AL returned. */
-static int fighter_14590(u32 side)
+int fighter_14590(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                            /* 0x14598 0x33950 */

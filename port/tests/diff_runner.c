@@ -13583,6 +13583,155 @@ static void m_c3g_stm_val(const u32 *r, u32 *eax)    { *eax = c3g_1922c_core(r, 
 static void m_c3g_stm_eclear(const u32 *r, u32 *eax) { *eax = c3g_1922c_core(r, 128u); }
 static void m_c3g_stm_side(const u32 *r, u32 *eax)   { *eax = c3g_1922c_core(r, 256u); }
 
+/* ---- track D1 batch d1a (record 2026-10-11-reverse-d1a): game/fighter.c, first half ----------
+ * Each core re-states its function with one mutation per bit; bit set 0 is the port's logic and
+ * is never bound (the row's binding calls the port function itself). */
+
+/* 0x14590: EAX = side; AL. */
+static u32 d1a_14590_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], other = 1u - side;
+    u32 slot = 0x001077B0u + ((mut & 1u) ? side : other) * 0x94u;      /* @slot: ctx[2], not ctx[3] */
+    int pose = (mut & 8u) ? (DSW(slot + 0x10u) == 0x9CC8u)              /* @pose: a word compare */
+                          : (DSD(slot + 0x10u) == 0x00039CC8u);
+    int st = (mut & 32u) ? (DSW(slot + 0x52u) == 0x11u)                 /* @sw: a word compare */
+                         : (DSB(slot + 0x52u) == 0x11u);
+    if ((mut & 16u) ? !(pose && st) : !(pose || st)) return 0u;         /* @and */
+    u32 w = 0x00107D2Cu + ((mut & 2u) ? other : side) * 2u;             /* @word: the other side's */
+    if (mut & 4u) return DSW(w) != 0u;                                  /* @sign: unsigned */
+    if (mut & 64u) return (s32)DSD(w) > 0;                              /* @wide: a dword read */
+    return (s16)DSW(w) > 0;
+}
+static void b_d1a_14590(const u32 *r, u32 *eax)      { *eax = (u32)fighter_14590(r[R_EAX]); }
+static void m_d1a_14590_slot(const u32 *r, u32 *eax) { *eax = d1a_14590_core(r, 1u); }
+static void m_d1a_14590_word(const u32 *r, u32 *eax) { *eax = d1a_14590_core(r, 2u); }
+static void m_d1a_14590_sign(const u32 *r, u32 *eax) { *eax = d1a_14590_core(r, 4u); }
+static void m_d1a_14590_pose(const u32 *r, u32 *eax) { *eax = d1a_14590_core(r, 8u); }
+static void m_d1a_14590_and(const u32 *r, u32 *eax)  { *eax = d1a_14590_core(r, 16u); }
+static void m_d1a_14590_sw(const u32 *r, u32 *eax)   { *eax = d1a_14590_core(r, 32u); }
+static void m_d1a_14590_wide(const u32 *r, u32 *eax) { *eax = d1a_14590_core(r, 64u); }
+
+/* 0x186C4: no argument; 0x186D0(0) by call, then 0x186D0(1) by falling into it. */
+static void b_d1a_186c4(const u32 *r, u32 *eax)       { (void)r; fighter_slot_latch_both(); *eax = 0u; }
+static void m_d1a_186c4_one0(const u32 *r, u32 *eax)  { (void)r; fighter_slot_latch(0u); *eax = 0u; }
+static void m_d1a_186c4_one1(const u32 *r, u32 *eax)  { (void)r; fighter_slot_latch(1u); *eax = 0u; }
+static void m_d1a_186c4_order(const u32 *r, u32 *eax)
+{ (void)r; fighter_slot_latch(1u); fighter_slot_latch(0u); *eax = 0u; }
+static void m_d1a_186c4_twice(const u32 *r, u32 *eax)
+{ (void)r; fighter_slot_latch(0u); fighter_slot_latch(0u); *eax = 0u; }
+
+/* 0x18950: EAX = param_1, EDX = param_2; AL. */
+static u32 d1a_18950_core(const u32 *r, u32 mut)
+{
+    u32 slot_1 = 0x001077B0u + r[R_EAX] * 0x94u, slot_2 = 0x001077B0u + r[R_EDX] * 0x94u;
+    u32 state_1 = (u32)DSB(slot_1 + 0x5Fu), state_2 = (u32)DSB(slot_2 + 0x5Fu);
+    u32 char_1 = (u32)DSB(slot_1 + 0x7Au), char_2 = (u32)DSB(slot_2 + 0x7Au);
+    if (mut & 2u) { u32 t = state_1; state_1 = state_2; state_2 = t; }  /* @state: the roles swapped */
+    if (mut & 16u) state_1 = (u32)(s32)(s8)state_1;                     /* @ssext: movsx for movzx */
+    if (mut & 32u) char_1 = (u32)(s32)(s8)char_1;                       /* @csext: movsx for the and */
+    u32 row = DSD(0x000A1290u + ((mut & 1u) ? (char_1 + char_2 * 10u)   /* @swap: the pair index */
+                                            : (char_2 + char_1 * 10u)) * 4u);
+    int hi = (mut & 8u) ? (state_2 > 0x20u) : (state_2 >= 0x20u);       /* @bound */
+    if (mut & 4u) hi = 0;                                               /* @hi: always the low dword */
+    u32 word = DSD(row + state_1 * 8u + (hi ? 4u : 0u));
+    return (word & (1u << (state_2 & 0x1Fu))) != 0u;
+}
+static void b_d1a_18950(const u32 *r, u32 *eax)       { *eax = (u32)fighter_connect_query(r[R_EAX], r[R_EDX]); }
+static void m_d1a_18950_swap(const u32 *r, u32 *eax)  { *eax = d1a_18950_core(r, 1u); }
+static void m_d1a_18950_state(const u32 *r, u32 *eax) { *eax = d1a_18950_core(r, 2u); }
+static void m_d1a_18950_hi(const u32 *r, u32 *eax)    { *eax = d1a_18950_core(r, 4u); }
+static void m_d1a_18950_bound(const u32 *r, u32 *eax) { *eax = d1a_18950_core(r, 8u); }
+static void m_d1a_18950_ssext(const u32 *r, u32 *eax) { *eax = d1a_18950_core(r, 16u); }
+static void m_d1a_18950_csext(const u32 *r, u32 *eax) { *eax = d1a_18950_core(r, 32u); }
+
+/* 0x19020: EAX = side; the slot +0x18 hook through fn_resolve, as the port calls it. */
+typedef u32 (*d1a_hook_cb)(u32 side);
+static void d1a_19020_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], other = 1u - side;
+    u32 slot = 0x001077B0u + ((mut & 4u) ? other : side) * 0x94u;       /* @side: the other slot's hook */
+    if (DSD(slot + 0x18u) == 0u) return;
+    d1a_hook_cb fn = (d1a_hook_cb)(void *)fn_resolve(DSD(slot + 0x18u));
+    if (fn == NULL) return;
+    u32 v = fn((mut & 32u) ? other : side);                             /* @arg */
+    if (mut & 1u) v &= 0xFFu;                                           /* @al: AL for `test eax,eax` */
+    u32 flag = (mut & 2u) ? (v != 0u) : (v == 0u);                      /* @inv */
+    u32 at = 0x00100AF8u + ((mut & 8u) ? other : side) * 4u;            /* @idx */
+    if (mut & 16u) DSB(at) = (u8)flag;                                  /* @byte: a byte store */
+    else DSD(at) = flag;
+}
+static void b_d1a_19020(const u32 *r, u32 *eax)      { fighter_19020(r[R_EAX]); *eax = 0u; }
+static void m_d1a_19020_al(const u32 *r, u32 *eax)   { d1a_19020_core(r, 1u); *eax = 0u; }
+static void m_d1a_19020_inv(const u32 *r, u32 *eax)  { d1a_19020_core(r, 2u); *eax = 0u; }
+static void m_d1a_19020_side(const u32 *r, u32 *eax) { d1a_19020_core(r, 4u); *eax = 0u; }
+static void m_d1a_19020_idx(const u32 *r, u32 *eax)  { d1a_19020_core(r, 8u); *eax = 0u; }
+static void m_d1a_19020_byte(const u32 *r, u32 *eax) { d1a_19020_core(r, 16u); *eax = 0u; }
+static void m_d1a_19020_arg(const u32 *r, u32 *eax)  { d1a_19020_core(r, 32u); *eax = 0u; }
+
+/* 0x19068: AL = arg. */
+static void d1a_19068_core(const u32 *r, u32 mut)
+{
+    u32 arg = r[R_EAX];
+    if (!(mut & 1u) && DSB(0x00107802u) == 0x13u) return;               /* @s52a */
+    if (!(mut & 2u) && DSB(0x00107896u) == 0x13u) return;               /* @s52b */
+    if ((mut & 4u) ? (arg == 0u) : ((arg & 0xFFu) == 0u)) {             /* @al: the whole EAX */
+        if (fighter_slot_flag((mut & 8u) ? 4u : 5u) != 0) return;       /* @flag */
+    }
+    for (u32 side = 0; side < 2u; side++) {
+        u32 slot = 0x001077B0u + side * 0x94u;
+        u8 st = DSB(slot + 0x5Fu);
+        u8 b58 = DSB(0x00100B58u + ((mut & 32u) ? 1u - side : side));   /* @b58: the other side's latch */
+        if (st != b58 || (!(mut & 16u) && st == 0xFFu)) {               /* @ff */
+            hit_stance_timer(side);
+            continue;
+        }
+        u8 ch = (u8)(DSB(0x00100B5Eu + side) - 1u);
+        DSB(0x00100B5Eu + side) = ch;
+        if ((mut & 64u) ? (ch != 0u) : ((s8)ch > 0)) {                  /* @sign: unsigned */
+            if (mut & 256u) (void)hit_chain_resolve(side);              /* @order: the call first */
+            if (!(mut & 128u)) DSB(slot + 0x56u) = 0u;                  /* @s56 */
+            if (!(mut & 256u))
+                (void)hit_chain_resolve((mut & 512u) ? 1u - side : side);   /* @call */
+        } else if (!(mut & 1024u)) {
+            DSB(0x00100B5Eu + side) = 0u;                               /* @clr */
+        }
+        s32 v = (mut & 2048u) ? (s32)DSB(0x00100B5Au + side)            /* @b5a: zero-extended */
+                              : (s32)(s8)DSB(0x00100B5Au + side);
+        if (v > 1) { DSB(0x00100B5Au + side) = (u8)(DSB(0x00100B5Au + side) - 1u); continue; }
+        if (!(mut & 4096u) && v != 1) continue;                         /* @one */
+        u32 rec = DSD(slot);
+        if ((mut & 8192u) ? (DSD(rec + 0x24u) == 0u)
+                          : ((DSD(rec + 0x24u) & 0x7FFFFFFFu) == 0u)) { /* @mag */
+            union { float f; u32 u; } fu;
+            fu.f = (mut & 16384u) ? (float)DSB(0x00100B5Cu + side)      /* @seed: zero-extended */
+                                  : (float)(s16)(s8)DSB(0x00100B5Cu + side);
+            DSD(rec + 0x24u) = fu.u;
+            if (!(mut & 32768u)) DSD(rec + 0x20u) = 0u;                 /* @x20 */
+        }
+        if (!(mut & 65536u)) DSB(0x00100B5Au + side) = 0u;              /* @a */
+        DSB(0x00100B5Eu + side) = (mut & 131072u) ? 0x0Bu : 0x0Au;      /* @e */
+    }
+}
+static void b_d1a_19068(const u32 *r, u32 *eax)       { fighter_pass_b(r[R_EAX]); *eax = 0u; }
+static void m_d1a_19068_s52a(const u32 *r, u32 *eax)  { d1a_19068_core(r, 1u); *eax = 0u; }
+static void m_d1a_19068_s52b(const u32 *r, u32 *eax)  { d1a_19068_core(r, 2u); *eax = 0u; }
+static void m_d1a_19068_al(const u32 *r, u32 *eax)    { d1a_19068_core(r, 4u); *eax = 0u; }
+static void m_d1a_19068_flag(const u32 *r, u32 *eax)  { d1a_19068_core(r, 8u); *eax = 0u; }
+static void m_d1a_19068_ff(const u32 *r, u32 *eax)    { d1a_19068_core(r, 16u); *eax = 0u; }
+static void m_d1a_19068_b58(const u32 *r, u32 *eax)   { d1a_19068_core(r, 32u); *eax = 0u; }
+static void m_d1a_19068_sign(const u32 *r, u32 *eax)  { d1a_19068_core(r, 64u); *eax = 0u; }
+static void m_d1a_19068_s56(const u32 *r, u32 *eax)   { d1a_19068_core(r, 128u); *eax = 0u; }
+static void m_d1a_19068_order(const u32 *r, u32 *eax) { d1a_19068_core(r, 256u); *eax = 0u; }
+static void m_d1a_19068_call(const u32 *r, u32 *eax)  { d1a_19068_core(r, 512u); *eax = 0u; }
+static void m_d1a_19068_clr(const u32 *r, u32 *eax)   { d1a_19068_core(r, 1024u); *eax = 0u; }
+static void m_d1a_19068_b5a(const u32 *r, u32 *eax)   { d1a_19068_core(r, 2048u); *eax = 0u; }
+static void m_d1a_19068_one(const u32 *r, u32 *eax)   { d1a_19068_core(r, 4096u); *eax = 0u; }
+static void m_d1a_19068_mag(const u32 *r, u32 *eax)   { d1a_19068_core(r, 8192u); *eax = 0u; }
+static void m_d1a_19068_seed(const u32 *r, u32 *eax)  { d1a_19068_core(r, 16384u); *eax = 0u; }
+static void m_d1a_19068_x20(const u32 *r, u32 *eax)   { d1a_19068_core(r, 32768u); *eax = 0u; }
+static void m_d1a_19068_a(const u32 *r, u32 *eax)     { d1a_19068_core(r, 65536u); *eax = 0u; }
+static void m_d1a_19068_e(const u32 *r, u32 *eax)     { d1a_19068_core(r, 131072u); *eax = 0u; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -15264,6 +15413,52 @@ static const binding_t k_bindings[] = {
     { "hit_stance_timer@val",              m_c3g_stm_val,   0x00000000u },
     { "hit_stance_timer@eclear",           m_c3g_stm_eclear, 0x00000000u },
     { "hit_stance_timer@side",             m_c3g_stm_side,  0x00000000u },
+    { "fighter_14590",                     b_d1a_14590,      0x000000FFu },
+    { "fighter_14590@slot",                m_d1a_14590_slot, 0x000000FFu },
+    { "fighter_14590@word",                m_d1a_14590_word, 0x000000FFu },
+    { "fighter_14590@sign",                m_d1a_14590_sign, 0x000000FFu },
+    { "fighter_14590@pose",                m_d1a_14590_pose, 0x000000FFu },
+    { "fighter_14590@and",                 m_d1a_14590_and,  0x000000FFu },
+    { "fighter_14590@sw",                  m_d1a_14590_sw,   0x000000FFu },
+    { "fighter_14590@wide",                m_d1a_14590_wide, 0x000000FFu },
+    { "fighter_slot_latch_both",           b_d1a_186c4,       0x00000000u },
+    { "fighter_slot_latch_both@one0",      m_d1a_186c4_one0,  0x00000000u },
+    { "fighter_slot_latch_both@one1",      m_d1a_186c4_one1,  0x00000000u },
+    { "fighter_slot_latch_both@order",     m_d1a_186c4_order, 0x00000000u },
+    { "fighter_slot_latch_both@twice",     m_d1a_186c4_twice, 0x00000000u },
+    { "fighter_connect_query",             b_d1a_18950,       0x000000FFu },
+    { "fighter_connect_query@swap",        m_d1a_18950_swap,  0x000000FFu },
+    { "fighter_connect_query@state",       m_d1a_18950_state, 0x000000FFu },
+    { "fighter_connect_query@hi",          m_d1a_18950_hi,    0x000000FFu },
+    { "fighter_connect_query@bound",       m_d1a_18950_bound, 0x000000FFu },
+    { "fighter_connect_query@ssext",       m_d1a_18950_ssext, 0x000000FFu },
+    { "fighter_connect_query@csext",       m_d1a_18950_csext, 0x000000FFu },
+    { "fighter_19020",                     b_d1a_19020,      0x00000000u },
+    { "fighter_19020@al",                  m_d1a_19020_al,   0x00000000u },
+    { "fighter_19020@inv",                 m_d1a_19020_inv,  0x00000000u },
+    { "fighter_19020@side",                m_d1a_19020_side, 0x00000000u },
+    { "fighter_19020@idx",                 m_d1a_19020_idx,  0x00000000u },
+    { "fighter_19020@byte",                m_d1a_19020_byte, 0x00000000u },
+    { "fighter_19020@arg",                 m_d1a_19020_arg,  0x00000000u },
+    { "fighter_pass_b",                    b_d1a_19068,       0x00000000u },
+    { "fighter_pass_b@s52a",               m_d1a_19068_s52a,  0x00000000u },
+    { "fighter_pass_b@s52b",               m_d1a_19068_s52b,  0x00000000u },
+    { "fighter_pass_b@al",                 m_d1a_19068_al,    0x00000000u },
+    { "fighter_pass_b@flag",               m_d1a_19068_flag,  0x00000000u },
+    { "fighter_pass_b@ff",                 m_d1a_19068_ff,    0x00000000u },
+    { "fighter_pass_b@b58",                m_d1a_19068_b58,   0x00000000u },
+    { "fighter_pass_b@sign",               m_d1a_19068_sign,  0x00000000u },
+    { "fighter_pass_b@s56",                m_d1a_19068_s56,   0x00000000u },
+    { "fighter_pass_b@order",              m_d1a_19068_order, 0x00000000u },
+    { "fighter_pass_b@call",               m_d1a_19068_call,  0x00000000u },
+    { "fighter_pass_b@clr",                m_d1a_19068_clr,   0x00000000u },
+    { "fighter_pass_b@b5a",                m_d1a_19068_b5a,   0x00000000u },
+    { "fighter_pass_b@one",                m_d1a_19068_one,   0x00000000u },
+    { "fighter_pass_b@mag",                m_d1a_19068_mag,   0x00000000u },
+    { "fighter_pass_b@seed",               m_d1a_19068_seed,  0x00000000u },
+    { "fighter_pass_b@x20",                m_d1a_19068_x20,   0x00000000u },
+    { "fighter_pass_b@a",                  m_d1a_19068_a,     0x00000000u },
+    { "fighter_pass_b@e",                  m_d1a_19068_e,     0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

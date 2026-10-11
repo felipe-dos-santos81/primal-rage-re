@@ -68,6 +68,10 @@ int fighter_slot_flag(u32 bit);
  * 0xA1290). */
 int fighter_connect_query(u32 param_1, u32 param_2);
 
+/* PORT: exported for the D1 d1a differential rows (linkage only; record
+ * 2026-10-11-reverse-d1a). */
+int  fighter_14590(u32 side);                           /* 0x14590 */
+
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then
  * picks a winner from the two 0x18950 reachabilities and, on an exact tie,
