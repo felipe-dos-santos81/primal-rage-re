@@ -8090,6 +8090,91 @@ def d1e_pulse_case(w0, w1, b0=0x10, b1=0x21):
             DS_SLOTS + 0x94 + 0x59: bytes([0x7E, b1, 0x04])}
 
 
+# a pset table base and a decoy for DS_001014F4 (0x10 out of phase, so no entry overlaps): the
+# largest index used, 0x202, ends at 0x10804C, inside the image
+D1E_PSET, D1E_POOL = 0x00104000, 0x00105010
+
+
+def d1e_dust_case(side, f, other=None):
+    """0x29CDC: DS_00105B34[side] between seeded neighbours, the other side's flag opposite."""
+    o = (0 if f else 1) if other is None else other
+    b = [0x33, 0, 0, 0x36]
+    b[1 + side], b[2 - side] = f, o
+    return {0x00105B33: bytes(b)}
+
+
+def d1e_term_pokes(rec, idx, val, hi=0x0001):
+    """One fighter record for 0x2BE00: +0x54 a decoy index, +0x56 the pset index word, +0x58 a
+    small non-zero word (a dword read of +0x56 stays inside mem[]), and the pset entry's
+    +0/+4/+8 (val at +4), with the entries a byte-wide, half-stride or decoy index reaches."""
+    p = {rec + 0x54: le16(idx ^ 3) + le16(idx) + le16(hi),
+         D1E_PSET + idx * 0x20: le32(0x11110000 | idx) + le32(val) + le32(0x88880000 | idx)}
+    for other in {idx & 0xFF, idx ^ 3}:
+        if other != idx:
+            p[D1E_PSET + other * 0x20] = le32(0x22220000 | other) + le32(0x44440000 | other) \
+                + le32(0x66660000 | other)
+    if idx * 0x10 % 0x20:           # the half-stride entry falls between two entries
+        p[D1E_PSET + idx * 0x10] = le32(0x33330000 | idx) + le32(0x55550000 | idx) + le32(0x77770000 | idx)
+    p[D1E_POOL + idx * 0x20] = le32(0x99990000 | idx) + le32(0xAAAA0000 | idx) + le32(0xBBBB0000 | idx)
+    return p
+
+
+def d1e_term_case(*recs):
+    """0x2BE00/0x2BE1C: the pset base DS_001014EC (and the pool pointer DS_001014F4, a decoy),
+    then each (rec, idx, val)."""
+    p = {0x001014EC: le32(D1E_PSET), 0x001014F4: le32(D1E_POOL)}
+    for rec, idx, val in recs:
+        p.update(d1e_term_pokes(rec, idx, val))
+    return p
+
+
+def d1e_x4c_case(x44):
+    """0x2BE4C: the record's +0x40..+0x4B, the dword at +0x44 between two decoys."""
+    return {D1E_REC0 + 0x40: le32(0x00070000) + le32(x44) + le32(0x00090000)}
+
+
+D1E_CROWD = 0x0010A800                          # a crowd table in the zero BSS
+
+
+def d1e_crowd_case(scene, entries, n=None, stride=0xC):
+    """0x2C320: the scene's count word (0xBBD98) and table pointer (0xBBDA8), both between
+    decoys a wrong index scale reaches, the DS_00105C08 sentinel, and the 12-byte records
+    (a2 dword, a4 word, a3 word, a5 low word, descriptor index byte, a5 high byte)."""
+    n = len(entries) if n is None else n
+    p = {0x00105C08: le32(0x5C5C5C5C)}
+    # the count and pointer rows of every scene 0..7: only `scene` holds this case's values. The
+    # scenes used are even, and each decoy pointer is an in-image address with a low word <= 0x20:
+    # a mutant that takes the count from scene*4 (it lands in the pointer row from scene 4 up) or
+    # the pointer from scene*2 then walks a short in-image table.
+    counts = [0 if n else 1] * 8
+    ptrs = [0x00100004 + 4 * k for k in range(8)]
+    counts[scene] = n
+    ptrs[scene] = D1E_CROWD
+    p[0x000BBD98] = b"".join(le16(c) for c in counts)
+    p[0x000BBDA8] = b"".join(le32(x) for x in ptrs)
+    buf = b""
+    for a2, a4, a3, lo, idx, hi in entries:
+        buf += le32(a2) + le16(a4) + le16(a3) + le16(lo) + bytes([idx, hi])
+    buf += le32(0x0E0E0E0E) + le16(0x0E0E) + le16(0x0E0E) + le16(0x0E0E) + bytes([0, 0x0E])   # one past the end
+    for off in range(0, len(buf), 0x40):
+        p[D1E_CROWD + off] = buf[off:off + 0x40]
+    return p
+
+
+def d1e_reset_case(side):
+    """0x33C18: both slots' fields seeded non-zero with their neighbours (+0x3B..+0x40,
+    +0x5A..+0x5C, +0x7E..+0x83), and the 0x10885E..0x108865 words (the two sides' 0x108860
+    words between decoys)."""
+    p = {0x0010885E: le16(0x5E5E) + le16(0x6A6A) + le16(0x6B6B) + le16(0x6C6C)}
+    for k in (0, 1):
+        so = DS_SLOTS + k * 0x94
+        t = 0x10 * (k + 1)
+        p[so + 0x3B] = bytes([t + 1]) + le32(0x3C3C3C3C + k) + bytes([t + 2])
+        p[so + 0x5A] = bytes([t + 3, t + 4, t + 5])
+        p[so + 0x7E] = bytes([t + 6, t + 7, t + 8, t + 9, t + 10, t + 11])
+    return p
+
+
 D1E_SPECS = [
     # 0x13134 fight_13134: no argument; EAX = 1/0 (`mov eax,1` 0x13150/0x13172, `xor eax,eax`
     # 0x13178), read whole by its caller (`test eax,eax` at 0x4BDBF).
@@ -8201,6 +8286,76 @@ D1E_SPECS = [
     ], calls=(ANIM_BEGIN,), eax_mask=0,
        mutants=("@gt", "@u", "@rec", "@stream", "@frame", "@sext", "@w16", "@clamp", "@order",
                 "@byte", "@side", "@nostore", "@decb", "@relb", "@one", "@k78", "@norel", "@noclamp")),
+    # 0x29CDC fight_dust_value: EAX = side, EDX = the character (`shl edx,2`, never masked).
+    # `test bl,bl` on DS_00105B34[side]: zero picks 0xA8AF8, non-zero 0xA8B14 (the image's two
+    # tables differ in every row). The dword is returned whole (stored at +0x10 by each caller).
+    Spec("fight_dust_value", 0x29CDC, [
+        Case("d0", {"eax": 0, "edx": 0}, d1e_dust_case(0, 0)),
+        Case("d1", {"eax": 0, "edx": 3}, d1e_dust_case(0, 1)),
+        Case("d2", {"eax": 1, "edx": 6}, d1e_dust_case(1, 0)),
+        Case("d3", {"eax": 1, "edx": 1}, d1e_dust_case(1, 1)),
+        Case("d4", {"eax": 0, "edx": 5}, d1e_dust_case(0, 0x80, other=0x80)),
+        Case("d5", {"eax": 1, "edx": 2}, d1e_dust_case(1, 2, other=0)),
+    ], eax_mask=0xFFFFFFFF, mutants=("@side", "@scale", "@one", "@inv", "@always0")),
+    # 0x2BE00 fight_2be00: EAX = the record; the pset entry of its +0x56 word (`and
+    # edx,0xffff`), the dword at +4. Unhit input, named: an index >= 0x8000 would tell zero-
+    # from sign-extension, but index * 0x20 >= 0x100000 leaves the image from any base in it.
+    Spec("fight_2be00", 0x2BE00, [
+        Case("t0", {"eax": D1E_REC0}, d1e_term_case((D1E_REC0, 0, 0x12345678))),
+        Case("t1", {"eax": D1E_REC0}, d1e_term_case((D1E_REC0, 1, 0xFFFF8001))),
+        Case("t2", {"eax": D1E_REC1}, d1e_term_case((D1E_REC0, 1, 0x0BAD0BAD),
+                                                    (D1E_REC1, 0x0102, 0x80000000))),
+        Case("t3", {"eax": D1E_REC0}, d1e_term_case((D1E_REC0, 0x7F, 0x7FFFFFFF))),
+    ], eax_mask=0xFFFFFFFF, mutants=("@byte", "@dword", "@field", "@off", "@scale", "@base")),
+    # 0x2BE1C fight_2be1c: EAX = record a, EDX = record b; a's 0x2BE00 term minus b's
+    # (`sub eax,[edx+4]`), whole.
+    Spec("fight_2be1c", 0x2BE1C, [
+        Case("e0", {"eax": D1E_REC0, "edx": D1E_REC1},
+             d1e_term_case((D1E_REC0, 2, 0x00005000), (D1E_REC1, 5, 0x00001234))),
+        Case("e1", {"eax": D1E_REC1, "edx": D1E_REC0},
+             d1e_term_case((D1E_REC0, 2, 0x00005000), (D1E_REC1, 5, 0x00001234))),
+        Case("e2", {"eax": D1E_REC0, "edx": D1E_REC1},
+             d1e_term_case((D1E_REC0, 0x0102, 0x80000000), (D1E_REC1, 0x0201, 0x7FFFFFFF))),
+        Case("e3", {"eax": D1E_REC0, "edx": D1E_REC0},
+             d1e_term_case((D1E_REC0, 7, 0x00000777), (D1E_REC1, 9, 0x00000999))),
+    ], eax_mask=0xFFFFFFFF, mutants=("@same", "@swap", "@add", "@abyte", "@bbyte", "@adword",
+                                     "@bdword", "@aoff", "@boff")),
+    # 0x2BE4C fight_2be4c: EAX = the record, EDX = the value; ([rec+0x44] sar 0x10) * 2 + value
+    # - 0x2A00, whole.
+    Spec("fight_2be4c", 0x2BE4C, [
+        Case("v0", {"eax": D1E_REC0, "edx": 0x2A00}, d1e_x4c_case(0x00010000)),
+        Case("v1", {"eax": D1E_REC0, "edx": 0x1234}, d1e_x4c_case(0xFFFF0000)),
+        Case("v2", {"eax": D1E_REC0, "edx": 0xFFFFA880}, d1e_x4c_case(0x00018000)),
+        Case("v3", {"eax": D1E_REC0, "edx": 0}, d1e_x4c_case(0x8000FFFF)),
+        Case("v4", {"eax": D1E_REC0, "edx": 0x7FFFFFFF}, d1e_x4c_case(0x7FFF0001)),
+    ], eax_mask=0xFFFFFFFF, mutants=("@shr", "@sh15", "@const", "@sub", "@field", "@nodbl")),
+    # 0x2C320 fight_scene_crowd: EAX = the scene. `dec edi; cmp di,-1` runs the count word's
+    # records (a count >= 0x8000 is not exercised: 32768 recorded spawns); each spawns
+    # 0x2AE14 (SPAWN stub) with a3/a4 `sar 0x10` of the dwords at +4/+2 and a5 = (byte +0xB
+    # << 16) + word +8. Void: its caller 0x412D8 goes on to `call [edi*4+0xc7f58]` (open).
+    Spec("fight_scene_crowd", 0x2C320, [
+        Case("c0", {"eax": 0}, d1e_crowd_case(0, [], n=0)),
+        Case("c1", {"eax": 2}, d1e_crowd_case(2, [(0x12345678, 0xFFFF, 0x8000, 0xFFFF, 0, 0x80)]),
+             {0x2AE14: 0x01B6C7D8}),
+        Case("c2", {"eax": 4}, d1e_crowd_case(4, [(0x00000200, 0x0010, 0x00E0, 0x0001, 3, 0x00),
+                                                  (0x00004200, 0x7FFF, 0xFF20, 0x8000, 0x80, 0x01),
+                                                  (0xFFFFFFFF, 0x8001, 0x0001, 0x0100, 9, 0x7F)])),
+        Case("c3", {"eax": 6}, d1e_crowd_case(6, [(0x00010000, 0x0000, 0x0000, 0x0000, 6, 0xFF),
+                                                  (0x00020000, 0x0001, 0x0002, 0x0003, 1, 0x04)]),
+             {0x2AE14: 0}),
+    ], calls=(SPAWN,), eax_mask=0,
+       mutants=("@nscale", "@tscale", "@store", "@stride", "@late", "@one", "@hisext", "@a5hi",
+                "@a5w", "@idxsext", "@idx", "@a3zext", "@a4zext", "@swap", "@a2")),
+    # 0x33C18 fight_char_reset: EAX = side; slot +0x7F/+0x80/+0x82/+0x5B bytes and the +0x3C
+    # dword cleared, the word 0x108860[side] = 100. Void (EAX = the slot address at return):
+    # 0x257EB/0x25AA1/0x27176/0x27722/0x28E17/0x29893/0x43E4E/0x44496 rewrite EAX; 0x292DC
+    # rewrites AH only, 0x257F7 (0x46594) and 0x41359 branch before any access (open).
+    Spec("fight_char_reset", 0x33C18, [
+        Case("z0", {"eax": 0}, d1e_reset_case(0)),
+        Case("z1", {"eax": 1}, d1e_reset_case(1)),
+    ], eax_mask=0,
+       mutants=("@side", "@stride", "@s7f", "@s80", "@s3c", "@s82", "@s5b", "@w", "@wscale",
+                "@val", "@wbyte", "@s3cw", "@s81")),
 ]
 D1_SPECS += D1E_SPECS
 
