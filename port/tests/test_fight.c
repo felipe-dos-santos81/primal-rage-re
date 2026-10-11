@@ -8870,17 +8870,22 @@ static void check_state_dispatch(void)
     /* D: +0x52 == 3 (the demo's other entered state) must take its own handler
      * 0x35D7C, which clears slot+0x53/+0x54 and then, when the 0x3CF38 chain
      * reports no hit (no armed hitbox), re-arms slot+0x54 = 2, slot+0x53 = 4.
-     * The default handler leaves them. Seeded 0xAA differs from both. */
+     * The default handler leaves them. Seeded 0xAA differs from both. 0x35D7C
+     * computes its slot from the side (0x35D8E..0x35DA6: DS_001077B0 + side *
+     * 0x94, which the game's table entry always names, 0x33CA0), so the bytes
+     * it writes are the real slot 0's, not this fixture's p0. */
     fight_reset_slots();           /* no armed hitbox */
     DSB(p0 + 0x42u) = 0;
     DSB(p0 + 0x52u) = 3;
-    DSB(p0 + 0x53u) = 0xAAu;
-    DSB(p0 + 0x54u) = 0xAAu;
+    DSB(DS_001077B0 + 0x53u) = 0xAAu;
+    DSB(DS_001077B0 + 0x54u) = 0xAAu;
     DSW(DS_001088E0) = 0;
     fight_hud_pass(0u);
-    CHECK_EQ_INT((int)DSB(p0 + 0x53u), 4);      /* 0x35D7C's no-hit re-arm */
-    CHECK_EQ_INT((int)DSB(p0 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x53u), 4);     /* 0x35D7C's no-hit re-arm */
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x54u), 2);
     CHECK_EQ_INT((int)DSB(p0 + 0x52u), 3);      /* 0x35D7C does not re-state */
+    DSB(DS_001077B0 + 0x53u) = 0;
+    DSB(DS_001077B0 + 0x54u) = 0;
 
     /* E: +0x52 == 4 dispatches to 0x35F84 (the table's 0x34C53 entry), which
      * writes +0x52 = 0x14 through the landing gate. The seeded 0x52 = 4

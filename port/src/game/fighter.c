@@ -1715,11 +1715,10 @@ void fighter_state_default(u32 side)
  * when 0x3CF38 reports no hit, arms slot+0x54 = 2 and slot+0x53 = 4. */
 void fighter_state_35d7c(u32 side)
 {
-    u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x35DF1 */
-    if (slot == 0u) return;
+    u32 slot = DS_001077B0 + side * 0x94u;              /* 0x35D8E..0x35DA6 */
     DSB(slot + 0x54u) = 0;                              /* 0x35DDA */
     DSB(slot + 0x53u) = 0;                              /* 0x35DDE */
-    if (hit_chain_resolve(side) == 0) {                 /* 0x35DE8 0x3CF38 */
+    if ((u8)hit_chain_resolve(side) == 0) {             /* 0x35DE8 0x3CF38, 0x35DED `test al,al` */
         DSB(slot + 0x54u) = 2u;                         /* 0x35DF5 */
         DSB(slot + 0x53u) = 4u;
     }
