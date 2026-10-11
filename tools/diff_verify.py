@@ -8267,8 +8267,9 @@ D1A_SPECS = [
                 "@clr", "@b5a", "@one", "@mag", "@seed", "@x20", "@a", "@e")),
     # 0x19164 fighter_19164: EAX = side. x87: `fld 5.0; fcomp [rec+0x20]; jbe` 0x1917C..0x19188,
     # 0x61A4C (frndint under RC = chop, runtime, run real) then `fistp`, the low byte stored.
-    # Domain: finite values whose truncation fits a dword (record §4 names NaN and the overflow).
-    # Mask 0: the one caller overwrites EAX (0x19481 `mov eax,[esp+8]`).
+    # n0..n5 leave the domain a C cast shares: NaN at +0x20 is kept by the unordered `jbe` and, like
+    # a truncation outside the dword, stored as the integer indefinite's low byte 0 (record §3: the
+    # port's correction). Mask 0: the one caller overwrites EAX (0x19481 `mov eax,[esp+8]`).
     Spec("fighter_19164", 0x19164, [
         Case("s0", {"eax": 0}, d1a_seed_case(0, d1a_f32(3.0), d1a_f32(0.0))),
         Case("s1", {"eax": 0}, d1a_seed_case(0, d1a_f32(5.0), d1a_f32(16.99))),
@@ -8278,8 +8279,15 @@ D1A_SPECS = [
         Case("s5", {"eax": 0}, d1a_seed_case(0, 0x80000000, d1a_f32(1.0))),
         Case("s6", {"eax": 1}, d1a_seed_case(1, d1a_f32(4.999), d1a_f32(16.5))),
         Case("s7", {"eax": 0}, d1a_seed_case(0, d1a_f32(17.5), 0x80000000)),
+        Case("n0", {"eax": 0}, d1a_seed_case(0, 0x7FC00000, d1a_f32(1.0))),
+        Case("n1", {"eax": 1}, d1a_seed_case(1, d1a_f32(3e9), d1a_f32(16.0))),
+        Case("n2", {"eax": 0}, d1a_seed_case(0, d1a_f32(6.0), 0x7FC00000)),
+        Case("n3", {"eax": 0}, d1a_seed_case(0, 0x7F800000, d1a_f32(1.0))),
+        Case("n4", {"eax": 1}, d1a_seed_case(1, d1a_f32(-3e9), d1a_f32(1.0))),
+        Case("n5", {"eax": 0}, d1a_seed_case(0, d1a_f32(2147483520.0), d1a_f32(1.0))),
     ], allow_calls=(0x61A4C,), eax_mask=0,
-       mutants=("@rec", "@floor", "@round", "@b5a", "@lo", "@hi", "@x24", "@b58", "@src")),
+       mutants=("@rec", "@floor", "@round", "@b5a", "@lo", "@hi", "@x24", "@b58", "@src", "@nan",
+                "@ovf")),
     # 0x19820 fighter_19820: no argument. 0x249C0 (the list splice, a leaf) runs real. Mask 0: a
     # void initialiser; its one caller writes AX at once (0x27F3F `mov ah,0x1e`, 0x27F4D `mov al,
     # [0x10780a]`) and never reads the upper half (record §1 names the untraced returns above).

@@ -13732,22 +13732,34 @@ static void m_d1a_19068_x20(const u32 *r, u32 *eax)   { d1a_19068_core(r, 32768u
 static void m_d1a_19068_a(const u32 *r, u32 *eax)     { d1a_19068_core(r, 65536u); *eax = 0u; }
 static void m_d1a_19068_e(const u32 *r, u32 *eax)     { d1a_19068_core(r, 131072u); *eax = 0u; }
 
-/* 0x19164: EAX = side. The 0x61A4C runtime (frndint under RC = chop) then `fistp` is the C cast. */
+/* 0x19164: EAX = side. The 0x61A4C runtime (frndint under RC = chop) then `fistp`: the integer
+ * indefinite 0x80000000 for NaN or a value outside the dword. `sat` is the saturating cast the
+ * port made before its correction (what an arm64 host gives the undefined C cast). */
+static s32 d1a_fistp(float f, u32 sat)
+{
+    if (!(f >= -2147483648.0f && f < 2147483648.0f)) {
+        if (!sat) return (s32)0x80000000u;
+        return (f != f) ? 0 : (f > 0.0f ? 0x7FFFFFFF : (s32)0x80000000u);
+    }
+    return (s32)f;
+}
 static void d1a_19164_core(const u32 *r, u32 mut)
 {
     u32 side = r[R_EAX], other = 1u - side;
     u32 rec = DSD(0x001077B0u + ((mut & 1u) ? other : side) * 0x94u);  /* @rec */
     union { float f; u32 u; } fu;
+    float k = (mut & 2u) ? 17.0f : 5.0f;                               /* @floor: 0x80588 */
     fu.u = DSD(rec + 0x20u);
-    float a = (fu.f >= ((mut & 2u) ? 17.0f : 5.0f)) ? fu.f : ((mut & 2u) ? 17.0f : 5.0f);   /* @floor: 0x80588 */
+    float a = (mut & 512u) ? ((fu.f >= k) ? fu.f : k)                  /* @nan: the old ordered select */
+                           : (!(k > fu.f) ? fu.f : k);
     DSB(0x00100B5Au + ((mut & 8u) ? other : side)) =                   /* @b5a */
-        (u8)((mut & 4u) ? (s32)(a + 0.5f) : (s32)a);                   /* @round */
+        (u8)d1a_fistp((mut & 4u) ? a + 0.5f : a, mut & 1024u);         /* @round, @ovf */
     fu.u = DSD(rec + 0x24u);
     if (((mut & 16u) ? (fu.f < 0.0f) : (fu.f <= 0.0f))                 /* @lo */
             || ((mut & 32u) ? (fu.f > 17.0f) : (fu.f >= 17.0f)))       /* @hi */
         DSB(0x00100B5Cu + side) = 2u;
     else
-        DSB(0x00100B5Cu + side) = (u8)((mut & 4u) ? (s32)(fu.f + 0.5f) : (s32)fu.f);
+        DSB(0x00100B5Cu + side) = (u8)d1a_fistp((mut & 4u) ? fu.f + 0.5f : fu.f, mut & 1024u);
     if (!(mut & 64u)) DSD(rec + 0x24u) = 0u;                           /* @x24 */
     if (!(mut & 128u))                                                 /* @b58 */
         DSB(0x00100B58u + side) =
@@ -13763,6 +13775,8 @@ static void m_d1a_19164_hi(const u32 *r, u32 *eax)    { d1a_19164_core(r, 32u); 
 static void m_d1a_19164_x24(const u32 *r, u32 *eax)   { d1a_19164_core(r, 64u); *eax = 0u; }
 static void m_d1a_19164_b58(const u32 *r, u32 *eax)   { d1a_19164_core(r, 128u); *eax = 0u; }
 static void m_d1a_19164_src(const u32 *r, u32 *eax)   { d1a_19164_core(r, 256u); *eax = 0u; }
+static void m_d1a_19164_nan(const u32 *r, u32 *eax)   { d1a_19164_core(r, 512u); *eax = 0u; }
+static void m_d1a_19164_ovf(const u32 *r, u32 *eax)   { d1a_19164_core(r, 1024u); *eax = 0u; }
 
 /* 0x19820: no argument. */
 static void d1a_19820_core(u32 mut)
@@ -15617,6 +15631,8 @@ static const binding_t k_bindings[] = {
     { "fighter_19164@x24",                 m_d1a_19164_x24,   0x00000000u },
     { "fighter_19164@b58",                 m_d1a_19164_b58,   0x00000000u },
     { "fighter_19164@src",                 m_d1a_19164_src,   0x00000000u },
+    { "fighter_19164@nan",                 m_d1a_19164_nan,   0x00000000u },
+    { "fighter_19164@ovf",                 m_d1a_19164_ovf,   0x00000000u },
     { "fighter_19820",                     b_d1a_19820,       0x00000000u },
     { "fighter_19820@s28",                 m_d1a_19820_s28,   0x00000000u },
     { "fighter_19820@cnt",                 m_d1a_19820_cnt,   0x00000000u },

@@ -8454,6 +8454,15 @@ void fighter_151a0(u32 side)
     fighter_reaction(ctx[3], ctx[2]);                       /* 0x151AD..0x151B5 0x3B714 */
 }
 
+/* PORT: the dword `fistp` of a value 0x61A4C has truncated (frndint under
+ * RC = chop): the integer indefinite 0x80000000 for NaN and for a value whose
+ * truncation does not fit a dword, where a C cast is undefined. */
+static s32 fighter_x87_fistp(float f)
+{
+    if (!(f >= -2147483648.0f && f < 2147483648.0f)) return (s32)0x80000000u;
+    return (s32)f;
+}
+
 /* 0x19164. The winner's stance-timer seed: B5A[side] = truncate(max(rec+0x20,
  * 5.0)), B5C[side] = 2 when rec+0x24 is outside (0, 17) else its truncation,
  * rec+0x24 = 0, and B58[side] = slot+0x5F. The 0x61A4C runtime rounds toward
@@ -8463,13 +8472,16 @@ void fighter_19164(u32 side)
     u32 rec = DSD(DS_001077B0 + side * 0x94u);              /* 0x19175 */
     union { float f; u32 u; } fu;
     fu.u = DSD(rec + 0x20u);                                /* 0x19193/0x19196 */
+    /* PORT: `fld 5.0; fcomp [rec+0x20]; jbe` (0x1917C..0x19188) keeps rec+0x20
+     * when the compare is unordered too, and `fistp` (0x191A1/0x191E4) stores
+     * the integer indefinite for NaN or a value outside the dword. */
     DSB(DS_00100B5A + side) =
-        (u8)(s32)((fu.f >= 5.0f) ? fu.f : 5.0f);            /* 0x191A9 */
+        (u8)fighter_x87_fistp(!(5.0f > fu.f) ? fu.f : 5.0f);    /* 0x191A9 */
     fu.u = DSD(rec + 0x24u);                                /* 0x191BD */
     if (fu.f <= 0.0f || fu.f >= 17.0f)                      /* 0x191CC/0x191DA */
         DSB(DS_00100B5C + side) = 2u;                       /* 0x191F4 */
     else
-        DSB(DS_00100B5C + side) = (u8)(s32)fu.f;            /* 0x191EC */
+        DSB(DS_00100B5C + side) = (u8)fighter_x87_fistp(fu.f);  /* 0x191EC */
     DSD(rec + 0x24u) = 0;                                   /* 0x19210 */
     DSB(DS_00100B58 + side) = DSB(DS_0010780F + side * 0x94u);  /* 0x1921E */
 }
