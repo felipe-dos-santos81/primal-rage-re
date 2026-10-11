@@ -8024,6 +8024,108 @@ C3G_SPECS = [
 D1_SPECS = []
 
 
+# ---- D1 d1b (record 2026-10-11-reverse-d1b): game/fighter.c, second half ------------------------
+D1B_SLOT, D1B_REC = 0x10A200, 0x10A300      # zero BSS of the image: a slot and its record
+
+
+def d1b_36300_case(st, ch=2, w36=0x1234, r1c=0, s5c=5, w34=0, thr=None, step=None):
+    """0x36300: the slot's +0x41/+0x52/+0x58/+0x5C/+0x7A with their neighbours, the record's
+    +0x1C/+0x34/+0x36, and (when given) this character's 0xBDA76 word and 0xBDA84 byte. +0x7B
+    holds another character (5) and +0x5D another decrement, for the index mutants."""
+    p = {D1B_SLOT + 0x40: bytes([0x40, 0x41, 0x42]),
+         D1B_SLOT + 0x51: bytes([0x51, 0x52, 0x53]),
+         D1B_SLOT + 0x57: bytes([0x57, st, 0x59]),
+         D1B_SLOT + 0x5B: bytes([0x5B, s5c, 0x77]),
+         D1B_SLOT + 0x79: bytes([0x79, ch, 5]),
+         D1B_REC + 0x1C: le32(r1c),
+         D1B_REC + 0x30: b"\x30\x31\x32\x33" + le16(w34) + le16(w36) + b"\x38\x39\x3a\x3b"}
+    if thr is not None:
+        p[0x000BDA76 + ch * 2] = le16(thr)
+    if step is not None:
+        p[0x000BDA84 + ch] = bytes([step])
+    return p
+
+
+D1B_REC2, D1B_REC3 = 0x10A400, 0x10A480     # the side slot's record and the other side's
+
+
+def d1b_36710_case(side, flag, ch=2, w36=0, r1c=0, oflag=3):
+    """0x36710: the EAX slot (D1B_SLOT) is NOT the side's slot, and the EDX record (D1B_REC) is
+    not the side slot's record (D1B_REC2), so each operand's source is told apart. The side slot
+    holds the flag and the character; the EAX slot holds another flag (3: no arm) and character
+    (5), the other side's slot another flag and character (6)."""
+    ss, os_ = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    return {ss: le32(D1B_REC2), ss + 0x51: bytes([0x61, 0x62, 0x63]),
+            ss + 0x57: bytes([0x67, flag, 0x69]), ss + 0x79: bytes([0x79, ch, 0x7B]),
+            os_: le32(D1B_REC3), os_ + 0x51: bytes([0x71, 0x72, 0x73]),
+            os_ + 0x57: bytes([0x77, oflag, 0x79]), os_ + 0x79: bytes([0x79, 6, 0x7B]),
+            D1B_SLOT + 0x51: bytes([0x51, 0x52, 0x53]), D1B_SLOT + 0x57: bytes([0x57, 3, 0x59]),
+            D1B_SLOT + 0x79: bytes([0x79, 5, 0x7B]),
+            D1B_REC + 0x1C: le32(r1c), D1B_REC + 0x34: b"\x34\x35" + le16(w36) + b"\x38\x39",
+            D1B_REC + 0x42: bytes([0x42, 0x43, 0x44]), D1B_REC + 0x50: bytes([0x50, side, 0x52]),
+            D1B_REC2 + 0x42: bytes([0x62, 0x63, 0x64]), D1B_REC3 + 0x42: bytes([0x72, 0x73, 0x74])}
+
+
+D1B_SPECS = [
+    # 0x36300 fighter_state_36300: EAX = slot, EDX = rec; the +0x52 == 13 handler. slot+0x41 gets
+    # bit 7, then slot+0x58 picks an arm through the table 0x362F0 (0 and above 3: nothing; 1: the
+    # threshold test, then the 0x2BC30 restart or the decrement; 2: the decrement; 3: the rec+0x34
+    # decay). Mask 0: its one caller 0x34CAD pops and returns (0x34CB2..0x34CB7) into 0x34B6C's
+    # one caller, which reloads EAX at once (`mov eax,esi` 0x35801).
+    Spec("fighter_state_36300", 0x36300, [
+        Case("d0", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(0)),
+        Case("d4", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(4)),
+        Case("d5", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(5)),
+        Case("dff", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(0xFF, w34=0x0040)),
+        Case("a1", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(1, w36=0, r1c=0x50)),
+        Case("a2", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(1, w36=0x8000, r1c=0x801)),
+        Case("a3", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(1, w36=0xFFFF, r1c=0x800)),
+        Case("a4", {"eax": D1B_SLOT, "edx": D1B_REC},
+             d1b_36300_case(1, w36=0xFFFF, r1c=0x100, thr=0x9000)),
+        Case("a5", {"eax": D1B_SLOT, "edx": D1B_REC},
+             d1b_36300_case(1, w36=0xFFFF, r1c=0x80000000)),
+        Case("a6", {"eax": D1B_SLOT, "edx": D1B_REC},
+             d1b_36300_case(1, ch=6, w36=0xFFFF, r1c=0, step=0x90)),
+        Case("b1", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(2, w36=3, s5c=0xFF)),
+        Case("b2", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(2, w36=0x8000, s5c=1)),
+        Case("c1", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(3, w34=0xFFF0)),
+        Case("c2", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(3, w34=0x0010)),
+        Case("c3", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(3, w34=0x0011)),
+        Case("c4", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(3, w34=0xFFEF)),
+        Case("c5", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(3, w34=0x8000)),
+        Case("c6", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36300_case(3, w34=0x7FFF)),
+    ], calls=(ANIM_BEGIN,), eax_mask=0,
+       mutants=("@or", "@mask", "@case0", "@sign36", "@thrsext", "@thridx", "@thrcmp", "@uns",
+                "@inc", "@order", "@stepsext", "@char", "@stream", "@frame", "@arg0", "@sub2",
+                "@subsext", "@suboff", "@subwide", "@abs", "@le", "@no52", "@zero", "@updown",
+                "@step")),
+    # 0x36710 fighter_state_36710: EAX = slot, EDX = rec; the +0x52 == 17 handler. The flag
+    # (+0x58), the character (+0x7A) and the record handed to 0x3C480 are those of the slot of
+    # rec+0x51's side (`mov ebx,0x1077b0; add ebx,eax` 0x3675A..0x36762; `mov eax,[ebx]` 0x3676E;
+    # `mov dl,[ebx+0x7a]` 0x36793); only the +0x43 store goes to EDX and the +0x52 store to EAX
+    # (0x367C3, 0x367CB). rec+0x51 stays in 0..2: 0x80 would index a slot past the image's end.
+    # The voice stub's EAX is not read (the function returns after the call, 0x367D4). Mask 0:
+    # 0x34CBC pops and returns (0x34CC1..0x34CC6) into 0x34B6C's caller, `mov eax,esi` 0x35801.
+    Spec("fighter_state_36710", 0x36710, [
+        Case("f0", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(0, 0)),
+        Case("f1", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(1, 0)),
+        Case("f2", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(2, 0)),
+        Case("g0", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(0, 1)),
+        Case("g1", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(1, 1, ch=4)),
+        Case("h0", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(0, 2)),
+        Case("h1", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(1, 2), {0x2C3FC: 0}),
+        Case("h2", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(0, 2, w36=0x0100)),
+        Case("h3", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(0, 2, r1c=0x00010000)),
+        Case("h4", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(0, 3, oflag=2)),
+        Case("h5", {"eax": D1B_SLOT, "edx": D1B_REC}, d1b_36710_case(1, 0xFF, oflag=0)),
+    ], calls=(HIT_A, VOICE), eax_mask=0,
+       mutants=("@side", "@side01", "@slotarg", "@set1", "@char", "@rec", "@stream", "@frame",
+                "@order", "@set2", "@w36", "@r1c", "@no43", "@rec43", "@s52", "@vorder", "@src43",
+                "@novoice", "@voice")),
+]
+D1_SPECS += D1B_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

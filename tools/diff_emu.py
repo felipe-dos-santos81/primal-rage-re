@@ -528,6 +528,8 @@ RESOLVED_JUMPS = {
     # 0x22638 (record 2026-10-02-reverse-p2 §P2.9): cmp al,7; ja; and eax,0xff; lea edx,[eax*4]; mov eax,[esp];
     # add eax,eax; jmp cs:[edx+0x22618]
     0x227BC: (0x227A3, 0x22618, 8),
+    # 0x36300 (record 2026-10-11-reverse-d1b §4): cmp dl,3; ja; xor ecx,ecx; mov cl,dl; jmp cs:[ecx*4+0x362f0]
+    0x3631D: (0x36310, 0x362F0, 4),
 }
 
 
