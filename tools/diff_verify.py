@@ -3370,40 +3370,40 @@ P8_SPECS = [
     # is neither 0 nor 5 and (u8)(+0x90 - 1) > 3, snaps x to A[side] (0x107CF8+side*2); +0x90 =
     # 4 at the end. EDX is a scratch seed the raw never reads (@side catches a port that does).
     Spec("fighter_pose_3a820", 0x3A820, [
-        Case("p0", {"eax": E3_SLOT, "edx": 0xDEAD, "ebx": 0},
+        Case("p0", {"eax": E3_SLOT, "edx": 1, "ebx": 0},
              {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
               DS_SLOTS + 0x58: b"\x00", DS_SLOTS + 0x59: b"\x59", DS_SLOTS + 0x7A: b"\x7a",
               DS_SLOTS + 0x7B: b"\x7b", DS_SLOTS + 0x90: b"\x90", DS_SLOTS + 0x91: b"\x91",
               DS_SLOTS + 0x94 + 0x58: b"\x58", DS_SLOTS + 0x94 + 0x7A: b"\x6a",
               DS_SLOTS + 0x94 + 0x90: b"\x70", 0x00107CF8: le32(0x43214321),
               0x00107CFC: le32(0x00030003)}),
-        Case("p2", {"eax": E3_SLOT, "edx": 0xDEAD, "ebx": 1},
+        Case("p2", {"eax": E3_SLOT, "edx": 0, "ebx": 1},
              {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
               E3_REC + 0x18: le32(0x18181818), E3_REC + 0x1C: le32(0x1C1C1C1C),
               DS_SLOTS + 0x58: b"\x58", DS_SLOTS + 0x7A: b"\x7a", DS_SLOTS + 0x90: b"\x90",
               DS_SLOTS + 0x94 + 0x58: b"\x02", DS_SLOTS + 0x94 + 0x59: b"\x59",
               DS_SLOTS + 0x94 + 0x7A: b"\x6a", DS_SLOTS + 0x94 + 0x90: b"\x70",
               0x00107CF8: le32(0x43214321), 0x00107CFC: le32(0x00030003)}),
-        Case("s0", {"eax": E3_SLOT, "edx": 0xDEAD, "ebx": 0},
+        Case("s0", {"eax": E3_SLOT, "edx": 1, "ebx": 0},
              {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
               E3_REC + 0x18: le32(0x18181818), E3_REC + 0x1C: le32(0x1C1C1C1C),
               DS_SLOTS + 0x58: b"\x01", DS_SLOTS + 0x7A: b"\x00", DS_SLOTS + 0x90: b"\x00",
               DS_SLOTS + 0x94 + 0x58: b"\x58", DS_SLOTS + 0x94 + 0x7A: b"\x6a",
               DS_SLOTS + 0x94 + 0x90: b"\x70", 0x00107CF8: le32(0x00004321),
               0x00107CFC: le32(0x00000003)}),
-        Case("s1", {"eax": E3_SLOT, "edx": 0xDEAD, "ebx": 1},
+        Case("s1", {"eax": E3_SLOT, "edx": 0, "ebx": 1},
              {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
               E3_REC2 + 0x18: le32(0x28282828), E3_REC2 + 0x1C: le32(0x2C2C2C2C),
               DS_SLOTS + 0x58: b"\x58", DS_SLOTS + 0x7A: b"\x7a", DS_SLOTS + 0x90: b"\x90",
               DS_SLOTS + 0x94 + 0x58: b"\x01", DS_SLOTS + 0x94 + 0x7A: b"\x01",
               DS_SLOTS + 0x94 + 0x90: b"\x04", DS_SLOTS + 0x94 + 0x91: b"\x91",
               0x00107CFA: le32(0x00004322), 0x00107CFE: le32(0x00000003)}),
-        Case("q0", {"eax": E3_SLOT, "edx": 0xDEAD, "ebx": 0},
+        Case("q0", {"eax": E3_SLOT, "edx": 1, "ebx": 0},
              {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
               E3_REC + 0x18: le32(0x18181818), E3_REC + 0x1C: le32(0x1C1C1C1C),
               DS_SLOTS + 0x58: b"\x01", DS_SLOTS + 0x7A: b"\x00", DS_SLOTS + 0x90: b"\x00",
               0x00107CF8: le32(0x00004321), 0x00107CFC: le32(0x00000000)}),
-        Case("q5", {"eax": E3_SLOT, "edx": 0xDEAD, "ebx": 0},
+        Case("q5", {"eax": E3_SLOT, "edx": 1, "ebx": 0},
              {**SLOT_PTRS, E3_REC + 0x51: b"\x00", E3_REC2 + 0x51: b"\x01",
               E3_REC + 0x18: le32(0x18181818), E3_REC + 0x1C: le32(0x1C1C1C1C),
               DS_SLOTS + 0x58: b"\x01", DS_SLOTS + 0x7A: b"\x00", DS_SLOTS + 0x90: b"\x00",
@@ -8019,6 +8019,11 @@ C3G_SPECS = [
 ]
 
 
+# ---- track D1 (record 2026-10-11-reverse-d1): rows for the ported functions the callee scan never
+# reached. Each batch's block goes between this list and SPECS and ends with `D1_SPECS += D1x_SPECS`.
+D1_SPECS = []
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
@@ -8061,7 +8066,7 @@ SPECS = [
         Case("d0", {}, {DS_1078FC: b"\x00"}),
         Case("d1", {"eax": U6_REC}, {DS_1078FC: b"\x5a"}),
     ], eax_mask=0),
-] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS
+] + E3_SPECS + P1_SPECS + P1_ANIM_SPECS + P2_SPECS + P3_SPECS + P6_SPECS + P45_SPECS + C1_SPECS + C2_SPECS + C2B_SPECS + C3_SPECS + C3B_SPECS + P7_SPECS + P8_SPECS + C3C_SPECS + C3D_SPECS + C3E_SPECS + C3F_SPECS + C3G_SPECS + D1_SPECS
 
 
 # ---- driver -------------------------------------------------------------------------------------
