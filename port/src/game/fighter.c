@@ -1183,8 +1183,9 @@ void ai_band(u32 side)
             /* PORT: 0x46E96. The raw re-clamps d to 0xFF inside the loop
              * (0x46E94 starts EBX=0, 0x46E9C `jle`); it is constant, kept
              * verbatim. */
-            u32 m = ((u32)mag > 0xFFu) ? 0xFFu : (u32)mag;
-            if ((u32)DSB(entry + 2u) <= m && m <= (u32)DSB(entry + 3u)) break;
+            s32 m = (mag > 0xFF) ? 0xFF : mag;          /* 0x46E96/0x46E9C: jle, signed */
+            if ((s32)(u32)DSB(entry + 2u) <= m          /* 0x46EA8: jl */
+                    && m <= (s32)(u32)DSB(entry + 3u)) break;   /* 0x46EB1: jg */
             i++;
             entry += 4u;
             if (i >= 0x14u) { entry = table; break; }   /* 0x46EC5 fallthrough */
