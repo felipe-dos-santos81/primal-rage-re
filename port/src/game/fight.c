@@ -1915,8 +1915,8 @@ void fight_health_bars(void)
         u32 fighter = DSD(rec);                             /* 0x33F76 */
         u32 actorword = DSW(table
             + (u32)(u16)DSW(fighter + 0x56u) * 0x20u);      /* 0x33F87 */
-        s32 s = (s32)(actorword & 0x7FFFu)
-              - (s32)camera_char_const(DSB(rec + 0x7Au));   /* 0x33F8E */
+        s32 s = (s32)(s16)(u16)((actorword & 0x7FFFu)
+              - camera_char_const(DSB(rec + 0x7Au)));       /* 0x33F8E; DX: 0x33F98, 0x33F9D */
         u32 pset = DSD(rec + 4u);                           /* 0x33FA8 */
         if ((DSB(rec + 0x41u) & 0x20u) == 0 && s >= 0 && s < 0x4B1) {
             DSD(pset + 8u) = (u32)DSW(DSD(rec + 0x24u) + (u32)s * 2u);  /* 0x33FC4 */
