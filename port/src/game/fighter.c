@@ -45,10 +45,10 @@ void fighter_164e8(u32 side);                           /* 0x164E8 */
 /* The winner-body helpers the think chain 0x1975C/0x3B464 shares; defined with
  * the 0x193B0 and 0x3B714 blocks below. */
 void hit_stance_timer(u32 side);                  /* 0x1922C */
-static int fighter_3962c(u32 side, u32 param_2);         /* 0x3962C */
-static int fighter_396ac(u32 side, u32 param_2);         /* 0x396AC */
+int fighter_3962c(u32 side, u32 param_2);         /* 0x3962C */
+int fighter_396ac(u32 side, u32 param_2);         /* 0x396AC */
 void fighter_18b44(u32 slot);                           /* 0x18B44 */
-static void fighter_39278(u32 v);                        /* 0x39278 */
+void fighter_39278(u32 v);                        /* 0x39278 */
 u32 fighter_36d20(u32 slot);                             /* 0x36D20 */
 static void fighter_2bd44_by_index(u32 rec);             /* 0x3B4D4 = 0x3B844 */
 void fighter_18bd4(u8 flags[16]);                        /* 0x18BD4 */
@@ -7938,7 +7938,7 @@ void fighter_reaction(u32 param_1, u32 param_2)
 
 /* 0x39278. Store `v + 1` into the DS_001088EC word (the 0x192DC pose-hold
  * tick's only output). */
-static void fighter_39278(u32 v)
+void fighter_39278(u32 v)
 {
     DSW(DS_001088EC) = (u16)(v + 1u);                       /* 0x39278/0x39279 */
 }
@@ -7947,7 +7947,7 @@ static void fighter_39278(u32 v)
  * set, the per-side 0x107D24 counter (bumped on entry) passes 1 and the
  * 0x107D2C word is at least 1. EDX (param_2) selects the slot's +0x64 byte over
  * the +0x5F stance byte; 0x193B0 passes 0. */
-static int fighter_3962c(u32 side, u32 param_2)
+int fighter_3962c(u32 side, u32 param_2)
 {
     u32 ctx[6];
     u32 anim[3];
@@ -7966,7 +7966,7 @@ static int fighter_3962c(u32 side, u32 param_2)
 /* 0x396AC. 1 when the side's stance byte is below 0x40, the 0x107A80
  * [side*0x40 + b] counter (bumped here) passes the animation descriptor's high
  * word, and the 0x107D2C word is at least 1. EDX selects +0x64 over +0x5F. */
-static int fighter_396ac(u32 side, u32 param_2)
+int fighter_396ac(u32 side, u32 param_2)
 {
     u32 ctx[6];
     u32 anim[3];
@@ -8866,7 +8866,7 @@ u32 fighter_body_push(void)
  * spawned at (0, 0, 0) with a5 = the record's word +0x56 | 0x400 | (its word
  * +0x28 & 0x4000), and the spawn's +0x59 = 1. The raw does not test the
  * spawn for 0 (0x3814C). */
-static void fighter_380c4(u32 side)
+void fighter_380c4(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x380C9..0x380D1 */
     u32 rec = DSD(slot);                                /* 0x380D5 */
