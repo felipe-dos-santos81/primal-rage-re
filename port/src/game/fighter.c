@@ -13264,6 +13264,7 @@ void fighter_36f10(u32 slot)
         u32 s = (u32)DSB(DS_001078FD);                      /* 0x3708D */
         actors_anim_begin(DSD(DS_001028F8 + s * 4u), FSET_E905A,
                           0x40800000u);                     /* 0x37092..0x370A3 0x2BC30 */
+        s = (u32)DSB(DS_001078FD);                          /* 0x370AA: read again after the call */
         actors_anim_begin(DSD(DS_00102900 + s * 4u), FSET_E908A,
                           0x40800000u);                     /* 0x370AA..0x370C0 0x2BC30 */
     }
