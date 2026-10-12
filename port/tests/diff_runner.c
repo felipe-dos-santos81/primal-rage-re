@@ -27147,6 +27147,56 @@ D3B_EN(stride, 41) D3B_EN(base, 42) D3B_EN(sidearg, 43) D3B_EN(no38154, 44) D3B_
 D3B_EN(row, 47) D3B_EN(tmode, 48) D3B_EN(col, 49) D3B_EN(notext, 50) D3B_EN(spawnarg, 51) D3B_EN(nospawn, 52)
 D3B_EN(sorder, 53)
 #undef D3B_EN
+
+/* 0x3CB68's mutants. No argument. */
+static void d3b_3cb68_core(u32 mut)
+{
+    u32 n = DSD(0x00107ED8u);
+    if (!(mut & 1u)) DSD(0x00107EDCu) = 0u;                                   /* @edc0 */
+    u32 lside = 0u;
+    for (;;) {
+        u32 side = (mut & 0x200u) ? lside : DSD(0x00107EDCu);                 /* @cs */
+        if (!(mut & 2u)) DSD(0x00107ED8u) = n;                                /* @pre */
+        if (!(mut & 0x800u)) {                                                /* @order */
+            u32 b = (u32)fighter_actor_bit15_clear((mut & 4u) ? 1u - side : side);   /* @side */
+            if (mut & 0x10u) DSW(0x00107EE4u) = (u16)b;                       /* @ee4w: a word */
+            else if (!(mut & 8u)) DSB(0x00107EE4u) = (u8)b;                   /* @ee4 */
+        }
+        n = 0u;
+        u32 ln = 0u;
+        do {
+            if (!(mut & 0x40u)) DSD(0x00107ED8u) = (mut & 0x100u) ? ln : n;   /* @i, @cn */
+            hit_slot_step();
+            ln++;
+            n = (mut & 0x100u) ? ln : DSD(0x00107ED8u) + 1u;
+            if (mut & 0x40u) n = ln;
+        } while ((s32)n < ((mut & 0x20u) ? 0x1F : 0x20));                     /* @n1f */
+        if (mut & 0x800u) DSB(0x00107EE4u) = (u8)fighter_actor_bit15_clear(side);
+        lside++;
+        side = (mut & 0x200u) ? lside : DSD(0x00107EDCu) + 1u;
+        if (!(mut & 0x80u)) DSD(0x00107EDCu) = side;                          /* @edcinc */
+        if ((s32)((mut & 0x80u) ? lside : side) >= 2) break;
+    }
+    if (mut & 0x80u) DSD(0x00107EDCu) = 2u;
+    if (!(mut & 0x400u)) DSD(0x00107ED8u) = n;                                /* @final */
+}
+static void b_d3b_3cb68(const u32 *r, u32 *eax) { (void)r; fight_slot_pass(); *eax = 0u; }
+#define D3B_SP(name, mut) \
+    static void m_d3b_sp_##name(const u32 *r, u32 *eax) { (void)r; d3b_3cb68_core(mut); *eax = 0u; }
+D3B_SP(edc0, 1u)
+D3B_SP(pre, 2u)
+D3B_SP(side, 4u)
+D3B_SP(ee4, 8u)
+D3B_SP(ee4w, 0x10u)
+D3B_SP(n1f, 0x20u)
+D3B_SP(i, 0x40u)
+D3B_SP(edcinc, 0x80u)
+D3B_SP(cn, 0x100u)
+D3B_SP(cs, 0x200u)
+D3B_SP(final, 0x400u)
+D3B_SP(order, 0x800u)
+D3B_SP(old, 0x302u)
+#undef D3B_SP
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -34027,6 +34077,21 @@ static const binding_t k_bindings[] = {
     { "fight_mode25_enter@spawnarg", m_d3b_en_spawnarg, 0x00000000u },
     { "fight_mode25_enter@nospawn", m_d3b_en_nospawn, 0x00000000u },
     { "fight_mode25_enter@sorder", m_d3b_en_sorder, 0x00000000u },
+    { "fight_slot_pass", b_d3b_3cb68, 0x00000000u },
+    { "fight_slot_pass@edc0", m_d3b_sp_edc0, 0x00000000u },
+    { "fight_slot_pass@pre", m_d3b_sp_pre, 0x00000000u },
+    { "fight_slot_pass@side", m_d3b_sp_side, 0x00000000u },
+    { "fight_slot_pass@ee4", m_d3b_sp_ee4, 0x00000000u },
+    { "fight_slot_pass@ee4w", m_d3b_sp_ee4w, 0x00000000u },
+    { "fight_slot_pass@n1f", m_d3b_sp_n1f, 0x00000000u },
+    { "fight_slot_pass@i", m_d3b_sp_i, 0x00000000u },
+    { "fight_slot_pass@edcinc", m_d3b_sp_edcinc, 0x00000000u },
+    { "fight_slot_pass@final", m_d3b_sp_final, 0x00000000u },
+    { "fight_slot_pass@order", m_d3b_sp_order, 0x00000000u },
+    { "fight_slot_pass_rr", b_d3b_3cb68, 0x00000000u },
+    { "fight_slot_pass_rr@cn", m_d3b_sp_cn, 0x00000000u },
+    { "fight_slot_pass_rr@cs", m_d3b_sp_cs, 0x00000000u },
+    { "fight_slot_pass_rr@old", m_d3b_sp_old, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -11272,6 +11272,8 @@ D3B_MASKS = {
     "fight_4d224_rr": 0x0,
     "fight_effects_idle_pass": 0x0,
     "fight_mode25_enter": 0x0,
+    "fight_slot_pass": 0x0,
+    "fight_slot_pass_rr": 0x0,
 }
 D3B_KINDS = {
     "fight_hud_side_reset@side": {'byte', 'call #0 memory', 'call #1 memory'},
@@ -11819,6 +11821,19 @@ D3B_KINDS = {
     "fight_mode25_enter@spawnarg": {'call #4'},
     "fight_mode25_enter@nospawn": {'call #4'},
     "fight_mode25_enter@sorder": {'call #3', 'call #3 memory', 'call #4'},
+    "fight_slot_pass@edc0": {'byte', 'call #0', 'call #0 memory', 'call #1 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #2 memory', 'call #20 memory', 'call #21 memory', 'call #22 memory', 'call #23 memory', 'call #24 memory', 'call #25 memory', 'call #26 memory', 'call #27 memory', 'call #28 memory', 'call #29 memory', 'call #3 memory', 'call #30 memory', 'call #31 memory', 'call #32 memory', 'call #33', 'call #34', 'call #35', 'call #36', 'call #37', 'call #38', 'call #39', 'call #4 memory', 'call #40', 'call #41', 'call #42', 'call #43', 'call #44', 'call #45', 'call #46', 'call #47', 'call #48', 'call #49', 'call #5 memory', 'call #50', 'call #51', 'call #52', 'call #53', 'call #54', 'call #55', 'call #56', 'call #57', 'call #58', 'call #59', 'call #6 memory', 'call #60', 'call #61', 'call #62', 'call #63', 'call #64', 'call #65', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fight_slot_pass@pre": {'call #33 memory'},
+    "fight_slot_pass@side": {'call #0', 'call #33'},
+    "fight_slot_pass@ee4": {'byte', 'call #1 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #2 memory', 'call #20 memory', 'call #21 memory', 'call #22 memory', 'call #23 memory', 'call #24 memory', 'call #25 memory', 'call #26 memory', 'call #27 memory', 'call #28 memory', 'call #29 memory', 'call #3 memory', 'call #30 memory', 'call #31 memory', 'call #32 memory', 'call #33 memory', 'call #34 memory', 'call #35 memory', 'call #36 memory', 'call #37 memory', 'call #38 memory', 'call #39 memory', 'call #4 memory', 'call #40 memory', 'call #41 memory', 'call #42 memory', 'call #43 memory', 'call #44 memory', 'call #45 memory', 'call #46 memory', 'call #47 memory', 'call #48 memory', 'call #49 memory', 'call #5 memory', 'call #50 memory', 'call #51 memory', 'call #52 memory', 'call #53 memory', 'call #54 memory', 'call #55 memory', 'call #56 memory', 'call #57 memory', 'call #58 memory', 'call #59 memory', 'call #6 memory', 'call #60 memory', 'call #61 memory', 'call #62 memory', 'call #63 memory', 'call #64 memory', 'call #65 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fight_slot_pass@ee4w": {'byte', 'call #1 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #2 memory', 'call #20 memory', 'call #21 memory', 'call #22 memory', 'call #23 memory', 'call #24 memory', 'call #25 memory', 'call #26 memory', 'call #27 memory', 'call #28 memory', 'call #29 memory', 'call #3 memory', 'call #30 memory', 'call #31 memory', 'call #32 memory', 'call #33 memory', 'call #34 memory', 'call #35 memory', 'call #36 memory', 'call #37 memory', 'call #38 memory', 'call #39 memory', 'call #4 memory', 'call #40 memory', 'call #41 memory', 'call #42 memory', 'call #43 memory', 'call #44 memory', 'call #45 memory', 'call #46 memory', 'call #47 memory', 'call #48 memory', 'call #49 memory', 'call #5 memory', 'call #50 memory', 'call #51 memory', 'call #52 memory', 'call #53 memory', 'call #54 memory', 'call #55 memory', 'call #56 memory', 'call #57 memory', 'call #58 memory', 'call #59 memory', 'call #6 memory', 'call #60 memory', 'call #61 memory', 'call #62 memory', 'call #63 memory', 'call #64 memory', 'call #65 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fight_slot_pass@n1f": {'byte', 'call #32', 'call #32 memory', 'call #33', 'call #33 memory', 'call #34 memory', 'call #35 memory', 'call #36 memory', 'call #37 memory', 'call #38 memory', 'call #39 memory', 'call #40 memory', 'call #41 memory', 'call #42 memory', 'call #43 memory', 'call #44 memory', 'call #45 memory', 'call #46 memory', 'call #47 memory', 'call #48 memory', 'call #49 memory', 'call #50 memory', 'call #51 memory', 'call #52 memory', 'call #53 memory', 'call #54 memory', 'call #55 memory', 'call #56 memory', 'call #57 memory', 'call #58 memory', 'call #59 memory', 'call #60 memory', 'call #61 memory', 'call #62 memory', 'call #63 memory', 'call #64', 'call #65'},
+    "fight_slot_pass@i": {'call #1 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #2 memory', 'call #20 memory', 'call #21 memory', 'call #22 memory', 'call #23 memory', 'call #24 memory', 'call #25 memory', 'call #26 memory', 'call #27 memory', 'call #28 memory', 'call #29 memory', 'call #3 memory', 'call #30 memory', 'call #31 memory', 'call #32 memory', 'call #34 memory', 'call #35 memory', 'call #36 memory', 'call #37 memory', 'call #38 memory', 'call #39 memory', 'call #4 memory', 'call #40 memory', 'call #41 memory', 'call #42 memory', 'call #43 memory', 'call #44 memory', 'call #45 memory', 'call #46 memory', 'call #47 memory', 'call #48 memory', 'call #49 memory', 'call #5 memory', 'call #50 memory', 'call #51 memory', 'call #52 memory', 'call #53 memory', 'call #54 memory', 'call #55 memory', 'call #56 memory', 'call #57 memory', 'call #58 memory', 'call #59 memory', 'call #6 memory', 'call #60 memory', 'call #61 memory', 'call #62 memory', 'call #63 memory', 'call #64 memory', 'call #65 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fight_slot_pass@edcinc": {'call #33', 'call #33 memory', 'call #34 memory', 'call #35 memory', 'call #36 memory', 'call #37 memory', 'call #38 memory', 'call #39 memory', 'call #40 memory', 'call #41 memory', 'call #42 memory', 'call #43 memory', 'call #44 memory', 'call #45 memory', 'call #46 memory', 'call #47 memory', 'call #48 memory', 'call #49 memory', 'call #50 memory', 'call #51 memory', 'call #52 memory', 'call #53 memory', 'call #54 memory', 'call #55 memory', 'call #56 memory', 'call #57 memory', 'call #58 memory', 'call #59 memory', 'call #60 memory', 'call #61 memory', 'call #62 memory', 'call #63 memory', 'call #64 memory', 'call #65 memory'},
+    "fight_slot_pass@final": {'byte'},
+    "fight_slot_pass@order": {'call #0', 'call #0 memory', 'call #1 memory', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #13 memory', 'call #14 memory', 'call #15 memory', 'call #16 memory', 'call #17 memory', 'call #18 memory', 'call #19 memory', 'call #2 memory', 'call #20 memory', 'call #21 memory', 'call #22 memory', 'call #23 memory', 'call #24 memory', 'call #25 memory', 'call #26 memory', 'call #27 memory', 'call #28 memory', 'call #29 memory', 'call #3 memory', 'call #30 memory', 'call #31 memory', 'call #32', 'call #32 memory', 'call #33', 'call #33 memory', 'call #34 memory', 'call #35 memory', 'call #36 memory', 'call #37 memory', 'call #38 memory', 'call #39 memory', 'call #4 memory', 'call #40 memory', 'call #41 memory', 'call #42 memory', 'call #43 memory', 'call #44 memory', 'call #45 memory', 'call #46 memory', 'call #47 memory', 'call #48 memory', 'call #49 memory', 'call #5 memory', 'call #50 memory', 'call #51 memory', 'call #52 memory', 'call #53 memory', 'call #54 memory', 'call #55 memory', 'call #56 memory', 'call #57 memory', 'call #58 memory', 'call #59 memory', 'call #6 memory', 'call #60 memory', 'call #61 memory', 'call #62 memory', 'call #63 memory', 'call #64 memory', 'call #65', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fight_slot_pass_rr@cn": {'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #2', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #26', 'call #27', 'call #28', 'call #29', 'call #3', 'call #30', 'call #31', 'call #32', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "fight_slot_pass_rr@cs": {'call #2', 'call #3'},
+    "fight_slot_pass_rr@old": {'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #2', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #26', 'call #27', 'call #28', 'call #29', 'call #3', 'call #30', 'call #31', 'call #32', 'call #33', 'call #34', 'call #35', 'call #36', 'call #37', 'call #38', 'call #39', 'call #4', 'call #40', 'call #41', 'call #42', 'call #43', 'call #44', 'call #45', 'call #46', 'call #47', 'call #48', 'call #49', 'call #5', 'call #50', 'call #51', 'call #52', 'call #53', 'call #54', 'call #55', 'call #56', 'call #57', 'call #58', 'call #59', 'call #6', 'call #60', 'call #61', 'call #62', 'call #63', 'call #64', 'call #65', 'call #7', 'call #8', 'call #9'},
 }
 D3B_CASES = [
     ("fight_hud_side_reset@side", ['r0', 'r1', 'r2', 'r3']),
@@ -12366,6 +12381,19 @@ D3B_CASES = [
     ("fight_mode25_enter@spawnarg", ['m10', 'm11', 'm9']),
     ("fight_mode25_enter@nospawn", ['m10', 'm11', 'm9']),
     ("fight_mode25_enter@sorder", ['m10', 'm11', 'm9']),
+    ("fight_slot_pass@edc0", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass@pre", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass@side", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass@ee4", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass@ee4w", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass@n1f", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass@i", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass@edcinc", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass@final", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass@order", ['p0', 'p1', 'p2']),
+    ("fight_slot_pass_rr@cn", ['q0']),
+    ("fight_slot_pass_rr@cs", ['q0']),
+    ("fight_slot_pass_rr@old", ['q0']),
 ]
 D1_MASKS.update(D3B_MASKS)
 D1_KINDS.update(D3B_KINDS)
@@ -13423,7 +13451,7 @@ class RealFunctionTests(unittest.TestCase):
         0x1D2F0: ("edx",), 0x1D464: ("edx",), 0x1D838: ("ebx", "edx"), 0x1DA84: ("edx",), 0x4CF20: (),
         0x4B144: ("edx",), 0x4BD4C: ("edx",), 0x4B5A8: ("edx",), 0x2BE1C: ("edx",),
         0x4BD98: (), 0x4CB18: ("ebx", "ecx", "edx"), 0x4CC0C: (),
-        0x4D108: ("edx",), 0x4D150: ("edx",), 0x4A868: (), 0x4E350: (),
+        0x4D108: ("edx",), 0x4D150: ("edx",), 0x4A868: (), 0x4E350: (), 0x3C88C: (),
         # D2 d2b (record 2026-10-11-reverse-d2b): the stubs its rows add
         0x10D70: ("ebx", "ecx", "edx"), 0x1A8F4: ("edx",), 0x38BEC: (), 0x46670: (),
         0x2C320: (), 0x33C18: (), 0x2C088: ("ebx", "edx", "edi", "ebp"), 0x1D7B8: ("ebx", "edx"),

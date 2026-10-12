@@ -19005,6 +19005,36 @@ D3B_SPECS += [
            "stride base sidearg no38154 lorder txt row tmode col notext spawnarg nospawn sorder").split())),
 ]
 
+D3B_STEP = E.Call(0x3C88C, ())
+# the _rr spec's step stub rewrites both loop counters (harness writes: 0x3C88C's own body only reads
+# them): DS_00107ED8 = 0x1F ends the inner loop, DS_00107EDC = 1 the outer one, because the raw
+# reloads both from memory after the call (0x3CB9B, 0x3CBA7)
+D3B_STEP_W = dataclasses.replace(D3B_STEP, writes=((None, 0x00107ED8, le32(0x1F)), (None, 0x00107EDC, le32(1))))
+
+
+def d3b_sp_case(ed8=0x00000055, edc=0x00000077, ee4=0xE4):
+    """0x3CB68: the two counters DS_00107ED8 / DS_00107EDC between seeded dwords and the byte
+    DS_00107EE4 between seeded bytes."""
+    return {0x00107ED4: le32(0x0BAD7ED4) + le32(ed8) + le32(edc) + bytes([0xE0, 0xE1, 0xE2, 0xE3, ee4, 0xE5])}
+
+
+D3B_SPECS += [
+    # 0x3CB68 fight_slot_pass: no argument. 0x1A570 (one EAX per case; its AL is stored) and 0x3C88C
+    # (no argument: it reads the two counters) are stubs: 2 + 64 calls, the memory at each carrying
+    # the counters. EAX dies unread at its thirteen call sites (the walk, record d3b §1): mask 0.
+    Spec("fight_slot_pass", 0x3CB68, [
+        Case("p0", {}, d3b_sp_case(), {0x1A570: 1}),
+        Case("p1", {}, d3b_sp_case(0x00000020, 0x00000002, 0x01), {0x1A570: 0x8000}),
+        Case("p2", {}, d3b_sp_case(0xFFFFFFFF, 0x00000001, 0x00), {0x1A570: 0xFFFFFF7F}),
+    ], calls=(BIT15, D3B_STEP), eax_mask=0,
+       mutants=("@edc0", "@pre", "@side", "@ee4", "@ee4w", "@n1f", "@i", "@edcinc", "@final", "@order")),
+    # the same entry with the step stub that rewrites the counters: one step, one side
+    Spec("fight_slot_pass_rr", 0x3CB68, [
+        Case("q0", {}, d3b_sp_case(), {0x1A570: 1}),
+    ], calls=(BIT15, D3B_STEP_W), eax_mask=0,
+       mutants=("@cn", "@cs", "@old")),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
