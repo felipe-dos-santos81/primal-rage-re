@@ -20185,9 +20185,9 @@ static void d2c_side_char_core(u32 side, u32 ch, int set, u32 mut)
     DSB(0x0010810Du) = (u8)((mut == D2C_SC_b10d) ? side : side ^ 1u);
 }
 #define D2C_SC_MUT(name) \
-    static void m_d2c_sr_##name(const u32 *r, u32 *eax) \
+    __attribute__((unused)) static void m_d2c_sr_##name(const u32 *r, u32 *eax) \
     { d2c_side_char_core(r[R_EAX], 0u, 0, D2C_SC_##name); *eax = 0u; } \
-    static void m_d2c_ss_##name(const u32 *r, u32 *eax) \
+    __attribute__((unused)) static void m_d2c_ss_##name(const u32 *r, u32 *eax) \
     { d2c_side_char_core(r[R_EAX], r[R_EDX], 1, D2C_SC_##name); *eax = 0u; }
 D2C_SC_MUT(bit)  D2C_SC_MUT(noretry) D2C_SC_MUT(noset) D2C_SC_MUT(set)  D2C_SC_MUT(range) D2C_SC_MUT(char)
 D2C_SC_MUT(zero) D2C_SC_MUT(other)   D2C_SC_MUT(b34)   D2C_SC_MUT(dup)  D2C_SC_MUT(one)   D2C_SC_MUT(b12)
@@ -20459,6 +20459,52 @@ static void d2c_2c2b0_core(const u32 *r, u32 mut)
 D2C_SE_MUT(bit)  D2C_SE_MUT(noclear) D2C_SE_MUT(clrside) D2C_SE_MUT(norel1) D2C_SE_MUT(swap) D2C_SE_MUT(sext)
 D2C_SE_MUT(cnt)  D2C_SE_MUT(col2)    D2C_SE_MUT(row2)    D2C_SE_MUT(order)  D2C_SE_MUT(one)  D2C_SE_MUT(colsext)
 
+
+/* 0x2C8F0 is two port functions: EAX = -1 (the unscaled arm, EAX = field 0x35 as read) and
+ * EAX = -2 (the arm scaled by field 0x2A & 3). One core serves both rows. */
+static void b_d2c_2c8f0_u(const u32 *r, u32 *eax) { (void)r; *eax = attract_config_volumes_unscaled(); }
+static void b_d2c_2c8f0_s(const u32 *r, u32 *eax) { (void)r; attract_config_volumes(); *eax = 0u; }
+enum { D2C_VO_NONE, D2C_VO_m8, D2C_VO_s10, D2C_VO_shr, D2C_VO_noshift, D2C_VO_f35, D2C_VO_f37, D2C_VO_swap,
+       D2C_VO_ret, D2C_VO_rethalf, D2C_VO_order, D2C_VO_mask, D2C_VO_f2a, D2C_VO_udiv, D2C_VO_div,
+       D2C_VO_sraw, D2C_VO_early };
+#define D2C_VO(x) (mut == D2C_VO_##x)
+static u32 d2c_2c8f0_vol(u32 v, u32 scale, int scaled, u32 dflt, u32 mut)
+{
+    if (v == 0xFFFFFFFFu) return dflt;
+    s32 x = (s32)v;
+    if (scaled) {
+        if (D2C_VO(udiv)) x = (s32)((v * scale) / 3u);
+        else x = (s32)(v * scale) / (D2C_VO(div) ? 2 : 3);
+    }
+    if (D2C_VO(noshift)) return (u32)x;
+    return D2C_VO(shr) ? (u32)x >> 1 : (u32)(x >> 1);
+}
+static u32 d2c_2c8f0_core(int scaled, u32 mut)
+{
+    u32 scale = scaled ? config_field_get(D2C_VO(f2a) ? 0x2Bu : 0x2Au) & (D2C_VO(mask) ? 7u : 3u) : 0u;
+    u32 m = config_field_get(D2C_VO(f35) ? 0x36u : 0x35u), s = 0u;
+    u32 mv = d2c_2c8f0_vol(m, scale, scaled, D2C_VO(m8) ? 9u : 8u, mut);
+    if (D2C_VO(order) || D2C_VO(swap)) {
+        s = config_field_get(D2C_VO(f37) ? 0x36u : 0x37u);
+        u32 sv = d2c_2c8f0_vol(s, scale, scaled, D2C_VO(s10) ? 0x11u : 0x10u, mut);
+        if (D2C_VO(swap)) { sound_music_volume(sv); sound_sfx_volume(mv); }
+        else { sound_sfx_volume(sv); sound_music_volume(mv); }
+    } else {
+        if (D2C_VO(early)) s = config_field_get(0x37u);
+        sound_music_volume(mv);
+        if (!D2C_VO(early)) s = config_field_get(D2C_VO(f37) ? 0x36u : 0x37u);
+        sound_sfx_volume(d2c_2c8f0_vol(s, D2C_VO(sraw) ? 1u : scale, scaled, D2C_VO(s10) ? 0x11u : 0x10u, mut));
+    }
+    return D2C_VO(ret) ? s : D2C_VO(rethalf) ? mv : m;
+}
+#define D2C_VO_MUT(name) \
+    __attribute__((unused)) static void m_d2c_vu_##name(const u32 *r, u32 *eax) \
+    { (void)r; *eax = d2c_2c8f0_core(0, D2C_VO_##name); } \
+    __attribute__((unused)) static void m_d2c_vs_##name(const u32 *r, u32 *eax) \
+    { (void)r; (void)d2c_2c8f0_core(1, D2C_VO_##name); *eax = 0u; }
+D2C_VO_MUT(m8)  D2C_VO_MUT(s10) D2C_VO_MUT(shr)     D2C_VO_MUT(noshift) D2C_VO_MUT(f35)  D2C_VO_MUT(f37)
+D2C_VO_MUT(swap) D2C_VO_MUT(ret) D2C_VO_MUT(rethalf) D2C_VO_MUT(order)   D2C_VO_MUT(mask) D2C_VO_MUT(f2a)
+D2C_VO_MUT(udiv) D2C_VO_MUT(div) D2C_VO_MUT(sraw) D2C_VO_MUT(early)
 /* ---- end of track D2 batch d2c bindings ---- */
 
 static const binding_t k_bindings[] = {
@@ -24622,6 +24668,32 @@ static const binding_t k_bindings[] = {
     { "prompt_side_erase@order", m_d2c_se_order, 0x00000000u },
     { "prompt_side_erase@one", m_d2c_se_one, 0x00000000u },
     { "prompt_side_erase@colsext", m_d2c_se_colsext, 0x00000000u },
+    { "attract_config_volumes_unscaled", b_d2c_2c8f0_u, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@m8", m_d2c_vu_m8, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@s10", m_d2c_vu_s10, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@shr", m_d2c_vu_shr, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@noshift", m_d2c_vu_noshift, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@f35", m_d2c_vu_f35, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@f37", m_d2c_vu_f37, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@swap", m_d2c_vu_swap, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@ret", m_d2c_vu_ret, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@rethalf", m_d2c_vu_rethalf, 0xFFFFFFFFu },
+    { "attract_config_volumes_unscaled@order", m_d2c_vu_order, 0xFFFFFFFFu },
+    { "attract_config_volumes", b_d2c_2c8f0_s, 0x00000000u },
+    { "attract_config_volumes@m8", m_d2c_vs_m8, 0x00000000u },
+    { "attract_config_volumes@s10", m_d2c_vs_s10, 0x00000000u },
+    { "attract_config_volumes@shr", m_d2c_vs_shr, 0x00000000u },
+    { "attract_config_volumes@noshift", m_d2c_vs_noshift, 0x00000000u },
+    { "attract_config_volumes@f35", m_d2c_vs_f35, 0x00000000u },
+    { "attract_config_volumes@f37", m_d2c_vs_f37, 0x00000000u },
+    { "attract_config_volumes@swap", m_d2c_vs_swap, 0x00000000u },
+    { "attract_config_volumes@order", m_d2c_vs_order, 0x00000000u },
+    { "attract_config_volumes@mask", m_d2c_vs_mask, 0x00000000u },
+    { "attract_config_volumes@f2a", m_d2c_vs_f2a, 0x00000000u },
+    { "attract_config_volumes@udiv", m_d2c_vs_udiv, 0x00000000u },
+    { "attract_config_volumes@div", m_d2c_vs_div, 0x00000000u },
+    { "attract_config_volumes@sraw", m_d2c_vs_sraw, 0x00000000u },
+    { "attract_config_volumes@early", m_d2c_vs_early, 0x00000000u },
     /* ---- end of track D2 batch d2c entries ---- */
 };
 

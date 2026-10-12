@@ -13490,6 +13490,26 @@ def d2c_coin_case(phase, cols, mid=b"1\x00", bf8=0x5A5A5A5A):
     return p
 
 
+def d2c_volcfg_case(scale, m, s, sfx=0x21, mus=0x22):
+    """0x2C8F0: config fields 0x2A, 0x35 and 0x37 as full 32-bit values (their descriptors poked
+    to 8 nibbles at byte 0, 4 and 8 of 0x105DE1, the form of d1c_audit_case; the fields 0x2B and
+    0x36 a mutant reads at byte 12 and 16) and the two volumes with the sequence handle
+    (d1c_vol_case)."""
+    p = d1c_vol_case(sfx=sfx, mus=mus)
+    for k, f in enumerate((0x2A, 0x35, 0x37, 0x2B, 0x36)):
+        p[0x0002D300 + f * 4] = le32(0x0001C000 + 0x200 * k)
+    p[0x00105DE1] = le32(scale) + le32(m) + le32(s) + le32(0x00000005) + le32(0x00000123)
+    return p
+
+
+D2C_VOL_CALLS = (E.Call(0x2D974, ("eax",), mode="real"), E.Call(0x5DEED, (), eax=4),
+                 E.Call(0x5DECA, ("s1", "s2"), clobbers=("ebx", "ecx", "edx")),
+                 E.Call(0x5DD03, (), eax=4), E.Call(0x5DCC5, ("s1",), clobbers=("ebx", "ecx", "edx")))
+D2C_VOL_S_ARM = "the EAX = -2 arm: the port's attract_config_volumes, row attract_config_volumes"
+D2C_VOL_U_ARM = ("the EAX = -1 arm: the port's attract_config_volumes_unscaled, row "
+                 "attract_config_volumes_unscaled")
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -13810,6 +13830,41 @@ D2C_SPECS = [
     ], allow_calls=(0x1C500, 0x2C088), calls=(D1C_STR, D2C_DEAD, D1C_RELEASE, D2C_RELCNT), eax_mask=0,
        mutants=("@bit", "@noclear", "@clrside", "@norel1", "@swap", "@sext", "@cnt", "@col2", "@row2",
                 "@order", "@one", "@colsext")),
+    # 0x2C8F0 is two port functions, one per value of EAX its seven call sites pass (-1 at
+    # 0x20C2B, 0x2FA2D, 0x308C1, 0x43750, 0x444E0; -2 at 0x110B0, 0x2FA37), and two rows; each
+    # names the other arm's blocks. Any other EAX returns at once (0x2C93C `jne 0x2c9b3`): no
+    # port function, no case. 0x2D974 runs real and is recorded (three fields poked to full
+    # dwords); 0x1CAB8 and 0x1CED4 run real on both sides (their own d1c rows) over the AIL
+    # stubs, whose status 4 makes each new volume a recorded 0x5DECA/0x5DCC5 call.
+    # -1: field 0x35 halved (`sar eax,1`) or 8 when it reads -1 into 0x1CAB8, field 0x37 halved
+    # or 0x10 into 0x1CED4; EAX = field 0x35 as read (EDX across both calls, 0x2C9B1 `mov
+    # eax,edx`). Full mask: 0x308C6 `mov edx,eax` / `test eax,eax` reads it.
+    Spec("attract_config_volumes_unscaled", 0x2C8F0, [
+        Case("u0", {"eax": 0xFFFFFFFF, "edx": 0xABCD1234}, d2c_volcfg_case(3, 0x40, 0x60)),
+        Case("u1", {"eax": 0xFFFFFFFF, "edx": 0xABCD1234}, d2c_volcfg_case(3, 0xFFFFFFFF, 0xFFFFFFFF)),
+        Case("u2", {"eax": 0xFFFFFFFF, "edx": 0xABCD1234}, d2c_volcfg_case(2, 0x80000001, 0x7FFFFFFF)),
+        Case("u3", {"eax": 0xFFFFFFFF, "edx": 0}, d2c_volcfg_case(0, 0x11, 0x21)),
+        Case("u4", {"eax": 0xFFFFFFFF, "edx": 0}, d2c_volcfg_case(1, 0xFFFFFFFE, 0xFFFFFFFD)),
+    ], allow_calls=(0x1CAB8, 0x1CED4), calls=D2C_VOL_CALLS, eax_mask=0xFFFFFFFF,
+       unhit_named={a: D2C_VOL_S_ARM for a in (0x2C939, 0x2C942, 0x2C960, 0x2C967, 0x2C97C, 0x2C990,
+                                               0x2C997, 0x2C9AC)},
+       mutants=("@m8", "@s10", "@shr", "@noshift", "@f35", "@f37", "@swap", "@ret", "@rethalf",
+                "@order")),
+    # -2: scale = field 0x2A & 3; each of fields 0x35 and 0x37 times the scale (`imul`), divided
+    # by 3 (`idiv`, truncating) and halved (`sar`), or 8 / 0x10 when it reads -1. Mask 0: the
+    # two -2 sites reload EAX (0x110B5 `mov eax,4`; 0x2FA37 traced to 0x20C1A, record §1).
+    Spec("attract_config_volumes", 0x2C8F0, [
+        Case("v0", {"eax": 0xFFFFFFFE, "edx": 0xABCD1234}, d2c_volcfg_case(3, 0x40, 0x60)),
+        Case("v1", {"eax": 0xFFFFFFFE, "edx": 0xABCD1234}, d2c_volcfg_case(0xFFFFFFFE, 0x41, 0x7F)),
+        Case("v2", {"eax": 0xFFFFFFFE, "edx": 0xABCD1234}, d2c_volcfg_case(1, 0xFFFFFFFF, 0xFFFFFFFF)),
+        Case("v3", {"eax": 0xFFFFFFFE, "edx": 0}, d2c_volcfg_case(1, 0xFFFFFFFD, 0xFFFFFFF9)),
+        Case("v4", {"eax": 0xFFFFFFFE, "edx": 0}, d2c_volcfg_case(4, 0x40, 0x60)),
+        Case("v5", {"eax": 0xFFFFFFFE, "edx": 0}, d2c_volcfg_case(7, 0x46, 0xFFFFFFFF)),
+    ], allow_calls=(0x1CAB8, 0x1CED4), calls=D2C_VOL_CALLS, eax_mask=0,
+       unhit_named={a: D2C_VOL_U_ARM for a in (0x2C8F8, 0x2C909, 0x2C910, 0x2C912, 0x2C926, 0x2C92D,
+                                               0x2C92F)},
+       mutants=("@m8", "@s10", "@shr", "@noshift", "@f35", "@f37", "@swap", "@order", "@mask",
+                "@f2a", "@udiv", "@div", "@sraw", "@early")),
 ]
 D1_SPECS += D2C_SPECS
 
