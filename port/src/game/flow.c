@@ -3063,7 +3063,10 @@ void flow_round_end_check(void)
     fighter_39ff4();                                    /* 0x28064 0x39FF4 */
     if ((u32)DSB(DS_00104B1E) == DSD(DS_00104ADC)       /* 0x28069..0x28078 */
             && DSW(DS_00104B00) != 0x0Bu) {             /* 0x2807A..0x28085 */
-        u32 d = a >= b ? a - b : b - a;                 /* 0x28087..0x2809C */
+        u32 d;
+        a = DSB(DS_0010780A);                           /* 0x2808B: re-read after the voice and 0x39FF4 */
+        b = DSB(DS_0010789E);                           /* 0x28090 */
+        d = a >= b ? a - b : b - a;                     /* 0x28096..0x2809C */
         if (DSB(DS_00104AF3) == DSB(DS_00104AF2) && (d & 0xFFu) <= 3u) {  /* 0x2809E..0x280B8 */
             flow_round_over();                          /* 0x280BA 0x27ED8 */
             return;
