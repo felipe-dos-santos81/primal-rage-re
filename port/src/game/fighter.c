@@ -1530,11 +1530,11 @@ void fighter_input_ring_update(void)
         }
     }
     {
-        u32 pos = ((DSD(DS_001082D2) >> 16) + 1u);      /* 0x46420 */
-        if (pos >= 0x14u) pos = 0u;
-        DSW(DS_00108270 + pos * 2u) = loc[0];           /* 0x4643C */
+        s32 pos = ((s32)DSD(DS_001082D2) >> 16) + 1;    /* 0x46420, 0x46425: sar eax,0x10 */
+        if (pos >= 0x14) pos = 0;                       /* 0x46429/0x4642C: jl */
+        DSW(DS_00108270 + (u32)pos * 2u) = loc[0];      /* 0x4643C */
         DSW(0x001082D4u) = (u16)pos;                    /* 0x46447 */
-        DSW(0x00108298 + pos * 2u) = loc[1];            /* 0x4644E */
+        DSW(0x00108298 + (u32)pos * 2u) = loc[1];       /* 0x4644E */
     }
 }
 
