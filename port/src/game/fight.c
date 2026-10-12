@@ -5727,7 +5727,7 @@ void fight_4e99c(u32 count)
  * After the list: `stalled` == 10 sets DS_001088BE = 1; with DS_001088B9,
  * fight_4e99c(`processed`) then fight_mode25_scorecard(), and DS_001088BD
  * even also clears DS_001088BE. Finally, with DS_001088B8 and both round
- * flags DS_001078F0/F1 set, and (DS_001088BD even, or `processed` != 0),
+ * flags DS_001078F0/F1 set, and (DS_001088BD even, or `processed` == 0),
  * fight_mode25_spawn(0) and DS_001088B8 = 0. EBX..EDI pushed and popped.
  * Only caller: 0x2685A (0x266AC). */
 void fight_4e67c(void)
@@ -5824,7 +5824,7 @@ void fight_4e67c(void)
     }
     if (DSB(DS_001088B8) != 0u                                                                                                                             /* 0x4E952 */
             && DSB(DS_001078F0) != 0u && DSB(DS_001078F1) != 0u                                                                                             /* 0x4E95B/0x4E964 */
-            && ((DSB(DS_001088BD) & 1u) == 0u || processed != 0u)) {                                                                                        /* 0x4E97C/0x4E981 */
+            && ((DSB(DS_001088BD) & 1u) == 0u || (u16)processed == 0u)) {                                                                                   /* 0x4E97C `je` (even), 0x4E97E `test si,si`/0x4E981 `jne` (odd: only with none processed) */
         fight_mode25_spawn(0u);                                                                                                                                /* 0x4E987 */
         DSB(DS_001088B8) = 0u;                                                                                                                                  /* 0x4E98C */
     }
