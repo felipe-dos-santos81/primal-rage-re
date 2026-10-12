@@ -26549,6 +26549,65 @@ D3D_3EA24_MUT(c2nos57, 49u) D3D_3EA24_MUT(c2early, 50u) D3D_3EA24_MUT(c2late54, 
 D3D_3EA24_MUT(c4sign, 53u) D3D_3EA24_MUT(c4and, 54u) D3D_3EA24_MUT(c4ge, 55u) D3D_3EA24_MUT(c4uns, 56u)
 D3D_3EA24_MUT(c4zext, 57u) D3D_3EA24_MUT(c4rec, 58u) D3D_3EA24_MUT(c4no, 59u) D3D_3EA24_MUT(c4s57, 60u)
 D3D_3EA24_MUT(slotarg, 61u) D3D_3EA24_MUT(hi5, 62u)
+/* 0x47B04's mutants (mutant n in the order of the table's entries; 0 = the port's shape). EAX = slot,
+ * EDX = rec, EBX = side. 0x33950 runs on both sides; 0x36870, 0x47A00, 0x39834 and 0x39FB0 are stubs. */
+static u32 d3d_47b04_core(const u32 *r, u32 mut)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], side = r[R_EBX];
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);
+    u32 other = (mut == 2u) ? ctx[3]
+              : DSD(DS_001077A8 + ((mut == 1u) ? side : (side ^ 1u)) * 4u);
+    if (other == 0u && mut != 3u) return 0u;
+    u32 state = DSB(((mut == 4u) ? ctx[2] : slot) + 0x57u);
+    if (mut == 5u && state > 5u) state &= 3u;
+    if (state == 0u) {
+        u8 b = DSB(((mut == 8u) ? ctx[4] : rec) + 0x63u);
+        if (b == ((mut == 6u) ? 0x10u : 7u)) fighter_47a00((mut == 7u) ? 1u - side : side);
+    } else if (state == 1u) {
+        if (DSB(rec + 0x63u) != ((mut == 9u) ? 7u : 0x10u)) return 0u;
+        if (mut != 10u && mut != 23u) DSB(((mut == 11u) ? ctx[3] : other) + 0x54u) = 0;
+        if (mut == 22u) DSB(slot + 0x57u) = 3u;
+        u32 src = (mut == 14u) ? slot : (mut == 16u) ? DS_001077B0 + (side ^ 1u) * 0x94u
+                : DS_001077B0 + side * 0x94u;
+        s32 v = (mut == 15u) ? (s32)(s8)DSB(src + 0x5Fu) : (s32)(u32)DSB(src + 0x5Fu);
+        u32 os = (mut == 12u) ? side : (mut == 13u) ? (side ^ 1u) : 1u - side;
+        if (mut == 19u) fighter_39fb0(other);
+        fighter_39834(os, v);
+        if (mut != 17u && mut != 19u) fighter_39fb0((mut == 18u) ? ctx[3] : other);
+        if (mut == 23u) DSB(other + 0x54u) = 0;
+        if (mut != 20u && mut != 22u) DSB(((mut == 21u) ? ctx[2] : slot) + 0x57u) = 3u;
+    } else if (state == 2u) {
+        if (mut == 35u) DSB(slot + 0x57u) = 3u;
+        if (mut != 36u) fighter_36870((mut == 33u) ? ctx[4] : rec);
+        if (mut != 34u && mut != 35u) DSB(slot + 0x57u) = 3u;
+    } else if (state == 4u) {
+        if (DSB(rec + 0x63u) != ((mut == 24u) ? 7u : 0x10u)) return 0u;
+        if (mut != 37u && mut != 40u) DSB(other + 0x54u) = 0;
+        fighter_36870((mut == 38u) ? ctx[5] : DSD(other));
+        if (mut == 40u) DSB(other + 0x54u) = 0;
+        if (mut != 39u) DSB(slot + 0x57u) = 3u;
+    } else if (state == 5u) {
+        u32 q = (mut == 27u) ? slot : ctx[2];
+        s32 w = (mut == 32u) ? (s32)(s16)DSW(q + 0x86u) : (s32)DSD(q + 0x86u) >> 16;
+        if (!((mut == 25u) ? w >= 0xA : (mut == 26u) ? (u32)(u16)w > 0xAu : w > 0xA)) return 0u;
+        if (mut != 28u) DSB(((mut == 29u) ? slot : ctx[2]) + 0x54u) = 0;
+        fighter_36870((mut == 30u) ? rec : ctx[4]);
+        if (mut == 31u) DSB(slot + 0x57u) = 3u;
+    }
+    return 0u;
+}
+static void b_d3d_47b04(const u32 *r, u32 *eax) { fighter_47b04(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+#define D3D_47B04_MUT(name, n) \
+    static void m_d3d_47b04_##name(const u32 *r, u32 *eax) { *eax = d3d_47b04_core(r, n); }
+D3D_47B04_MUT(otheridx, 1u) D3D_47B04_MUT(otherctx, 2u) D3D_47B04_MUT(nonull, 3u) D3D_47B04_MUT(statectx, 4u)
+D3D_47B04_MUT(mask, 5u) D3D_47B04_MUT(c0val, 6u) D3D_47B04_MUT(c0side, 7u) D3D_47B04_MUT(c0rec, 8u)
+D3D_47B04_MUT(c1val, 9u) D3D_47B04_MUT(c1no54, 10u) D3D_47B04_MUT(c154ctx, 11u) D3D_47B04_MUT(c1poseside, 12u)
+D3D_47B04_MUT(xor, 13u) D3D_47B04_MUT(slot5f, 14u) D3D_47B04_MUT(c15fsext, 15u) D3D_47B04_MUT(c15fother, 16u)
+D3D_47B04_MUT(c1nopivot, 17u) D3D_47B04_MUT(c1pivotctx, 18u) D3D_47B04_MUT(c1order, 19u) D3D_47B04_MUT(c1nos57, 20u)
+D3D_47B04_MUT(c1s57ctx, 21u) D3D_47B04_MUT(c1early, 22u) D3D_47B04_MUT(c1late54, 23u) D3D_47B04_MUT(c4val, 24u)
+D3D_47B04_MUT(c5ge, 25u) D3D_47B04_MUT(c5uns, 26u) D3D_47B04_MUT(c5slot, 27u) D3D_47B04_MUT(c5no54, 28u)
+D3D_47B04_MUT(c554slot, 29u) D3D_47B04_MUT(c5rec, 30u) D3D_47B04_MUT(c5s57, 31u) D3D_47B04_MUT(c5w, 32u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33223,6 +33282,39 @@ static const binding_t k_bindings[] = {
     { "fighter_3ea24@c4s57",                 m_d3d_3ea24_c4s57, 0x00000000u },
     { "fighter_3ea24@slotarg",               m_d3d_3ea24_slotarg, 0x00000000u },
     { "fighter_3ea24@hi5",                   m_d3d_3ea24_hi5, 0x00000000u },
+    { "fighter_47b04",                       b_d3d_47b04, 0x00000000u },
+    { "fighter_47b04@otheridx",              m_d3d_47b04_otheridx, 0x00000000u },
+    { "fighter_47b04@otherctx",              m_d3d_47b04_otherctx, 0x00000000u },
+    { "fighter_47b04@nonull",                m_d3d_47b04_nonull, 0x00000000u },
+    { "fighter_47b04@statectx",              m_d3d_47b04_statectx, 0x00000000u },
+    { "fighter_47b04@mask",                  m_d3d_47b04_mask, 0x00000000u },
+    { "fighter_47b04@c0val",                 m_d3d_47b04_c0val, 0x00000000u },
+    { "fighter_47b04@c0side",                m_d3d_47b04_c0side, 0x00000000u },
+    { "fighter_47b04@c0rec",                 m_d3d_47b04_c0rec, 0x00000000u },
+    { "fighter_47b04@c1val",                 m_d3d_47b04_c1val, 0x00000000u },
+    { "fighter_47b04@c1no54",                m_d3d_47b04_c1no54, 0x00000000u },
+    { "fighter_47b04@c154ctx",               m_d3d_47b04_c154ctx, 0x00000000u },
+    { "fighter_47b04@c1poseside",            m_d3d_47b04_c1poseside, 0x00000000u },
+    { "fighter_47b04@xor",                   m_d3d_47b04_xor, 0x00000000u },
+    { "fighter_47b04@slot5f",                m_d3d_47b04_slot5f, 0x00000000u },
+    { "fighter_47b04@c15fsext",              m_d3d_47b04_c15fsext, 0x00000000u },
+    { "fighter_47b04@c15fother",             m_d3d_47b04_c15fother, 0x00000000u },
+    { "fighter_47b04@c1nopivot",             m_d3d_47b04_c1nopivot, 0x00000000u },
+    { "fighter_47b04@c1pivotctx",            m_d3d_47b04_c1pivotctx, 0x00000000u },
+    { "fighter_47b04@c1order",               m_d3d_47b04_c1order, 0x00000000u },
+    { "fighter_47b04@c1nos57",               m_d3d_47b04_c1nos57, 0x00000000u },
+    { "fighter_47b04@c1s57ctx",              m_d3d_47b04_c1s57ctx, 0x00000000u },
+    { "fighter_47b04@c1early",               m_d3d_47b04_c1early, 0x00000000u },
+    { "fighter_47b04@c1late54",              m_d3d_47b04_c1late54, 0x00000000u },
+    { "fighter_47b04@c4val",                 m_d3d_47b04_c4val, 0x00000000u },
+    { "fighter_47b04@c5ge",                  m_d3d_47b04_c5ge, 0x00000000u },
+    { "fighter_47b04@c5uns",                 m_d3d_47b04_c5uns, 0x00000000u },
+    { "fighter_47b04@c5slot",                m_d3d_47b04_c5slot, 0x00000000u },
+    { "fighter_47b04@c5no54",                m_d3d_47b04_c5no54, 0x00000000u },
+    { "fighter_47b04@c554slot",              m_d3d_47b04_c554slot, 0x00000000u },
+    { "fighter_47b04@c5rec",                 m_d3d_47b04_c5rec, 0x00000000u },
+    { "fighter_47b04@c5s57",                 m_d3d_47b04_c5s57, 0x00000000u },
+    { "fighter_47b04@c5w",                   m_d3d_47b04_c5w, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

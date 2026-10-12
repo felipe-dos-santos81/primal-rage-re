@@ -12543,6 +12543,7 @@ void fighter_45b50(u32 slot, u32 rec, u32 side)
 void fighter_47a00(u32 side)
 {
     u32 ctx[6];
+    PR_SEAM(0x47A00u, side);
     fighter_ctx_same(ctx, side);                            /* 0x47A0E 0x33950 */
     if ((u32)DSB(DS_00105B3A) <= 1u) {                      /* 0x47A13..0x47A21 */
         u32 a = actor_spawn((const u32 *)(mem + DS_000BB128), 0u, 0u, 0u,

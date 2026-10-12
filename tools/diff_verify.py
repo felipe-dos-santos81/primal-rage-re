@@ -18711,6 +18711,85 @@ D3D_SPECS += [
                   "@c2late54", "@c4char", "@c4sign", "@c4and", "@c4ge", "@c4uns", "@c4zext", "@c4rec", "@c4no",
                   "@c4s57", "@slotarg", "@hi5")),
 ]
+D3D_47A00 = E.Call(0x47A00, ("eax",), clobbers=("ebp",))
+D3D_OT = (0x0010A000, 0x0010A080, 0x0010A700)      # the structures the 0x1077A8 pointers (and 0x1077B4) name
+D3D_S2REC = 0x0010A680                              # the record of the third slot (0x1078D8)
+
+
+def d3d_47b04_case(side, slot, state, r63=0x10, s5f=0x21, w88=0x000B, null=False):
+    """0x47B04: the pointer pair 0x1077A8 to two structures that are NOT the fighters' slots (each
+    with its own record pointer at +0 and +0x52..+0x56 seeded; `null` zeroes the one index
+    side ^ 1 selects) and the dword 0x1077B4 (index 3, inside slot 0) to a third; the fighters'
+    slots seeded whole (the side's +0x5F = `s5f` and its +0x86 dword with `w88` in the high half)
+    and, for side 2, the third slot 0x1078D8; the scratch slot D3D_SLOTX (another +0x5F, a +0x88
+    on the other side of 10); the +0x57 byte of the EAX slot = `state` (the side's own slot holds
+    another state when it is not the EAX slot); the EDX record's +0x62..+0x64 (+0x63 = `r63`) and
+    the fighters' records' (another value)."""
+    def w32(buf, o, v): buf[o:o + 4] = le32(v)
+    sel = (side ^ 1) & 3
+    ptrs = [0 if (null and i == sel) else t for i, t in enumerate(D3D_OT[:2])]
+    p = {0x001077A8: le32(ptrs[0]) + le32(ptrs[1]),
+         D3D_REC + 0x62: bytes([0x62, r63, 0x64]), D3D_S2REC + 0x62: bytes([0x62, r63 ^ 0x17, 0x64])}
+    for i, t in enumerate(D3D_OT):
+        p[t] = le32(0x0010A100 + 0x40 * i) + le32(0x04040404)
+        p[t + 0x52] = bytes([0x52, 0x53, 0x54 + i, 0x55, 0x56])
+    for i in (0, 1, 2):
+        if i == 2 and side != 2:
+            continue
+        buf = bytearray((0x80 | (j & 0x3F) | (i << 6)) & 0xFF for j in range(0x94))
+        w32(buf, 0, (D3D_F0, D3D_F1, D3D_S2REC)[i])
+        if i == 0:
+            w32(buf, 4, D3D_OT[2])
+        if i == side:
+            buf[0x5F] = s5f
+            buf[0x86:0x8A] = le16(0x8687) + le16(w88)
+            buf[0x57] = state if slot == DS_SLOTS + i * 0x94 else (state + 1) % 6
+        p.update(d1d_chunks(DS_SLOTS + i * 0x94, buf))
+        if i < 2:
+            p[(D3D_F0, D3D_F1)[i] + 0x62] = bytes([0x62, r63 ^ 0x17, 0x64])
+    if slot == D3D_SLOTX:
+        buf = bytearray(0x40 | (j & 0x3F) for j in range(0x94))
+        buf[0x57], buf[0x5F] = state, s5f ^ 0x55
+        buf[0x86:0x8A] = le16(0x8687) + le16(0x7FFF if w88 <= 0x000A or w88 >= 0x8000 else 0x0001)
+        p.update(d1d_chunks(D3D_SLOTX, buf))
+    return p
+
+
+def d3d_47b04_cases():
+    X = D3D_SLOTX
+    R = lambda s, slot: {"eax": slot, "edx": D3D_REC, "ebx": s}
+    C = lambda cid, s, slot, state, **kw: Case(cid, R(s, slot), d3d_47b04_case(s, slot, state, **kw))
+    return [
+        C("z0", 0, X, 0, r63=7), C("z1", 1, X, 0, r63=6), C("z2", 0, DS_SLOTS, 0, r63=0x10),
+        C("o0", 0, X, 1), C("o1", 1, DS_SLOTS + 0x94, 1, s5f=0x80), C("o2", 0, X, 1, r63=0x0F),
+        C("o3", 2, X, 1, s5f=0x33), C("o4", 1, X, 1, r63=7),
+        C("n0", 0, X, 3), C("n1", 1, X, 6, r63=7), C("n2", 0, X, 0xFF),
+        C("f1", 0, DS_SLOTS, 4, r63=7),
+        C("v0", 0, X, 5, w88=0x000B), C("v1", 1, X, 5, w88=0x000A), C("v2", 0, X, 5, w88=0x8000),
+        C("v3", 1, DS_SLOTS + 0x94, 5, w88=0x7FFF),
+        C("q0", 0, X, 2, null=True), C("q1", 1, X, 0, r63=7, null=True),
+    ]
+
+
+D3D_SPECS += [
+    # 0x47B04 fighter_47b04: EAX = slot (its +0x57 is the state, its +0x57 = 3 the result), EDX =
+    # rec (its +0x63), EBX = side (the slot +0x0C callback: the dword at 0x47C56). Nothing while the
+    # pointer 0x1077A8[side ^ 1] (`xor al,1` 0x47B1A) is null. Table 0x47AEC: 0x47B79 0x47B92
+    # 0x47BC7 0x47BF3 0x47BDA 0x47B4A. State 1 hands 0x39834 EBP = 1 - side (0x47B1C/0x47B28: o3 is
+    # side 2) and the +0x5F byte of the SIDE's slot (`[eax*4+0x10780f]`, EAX = side*37, 0x47BB0:
+    # the cases pass a scratch slot in EAX); state 5 reads ctx[2] and ctx[4] of 0x33950, which
+    # runs on both sides. 0x36870, 0x47A00, 0x39834 and 0x39FB0 are stubs. Mask 0: `xor eax,eax`
+    # 0x35434.
+    Spec("fighter_47b04", 0x47B04, d3d_47b04_cases(),
+         allow_calls=(0x33950,), calls=(ANIM54, D3D_47A00, POSE, PIVOT), eax_mask=0,
+         unhit_named={0x47BC7: "state 2 stores EDI's +0x57 after its 0x36870 call (0x47BCE): the stub's declared "
+                               "clobbers (esi, edi, ebp) poison EDI; record d3d section 4",
+                      0x47BE4: "state 4's body, the same after its 0x36870 call (0x47BEF)"},
+         mutants=("@otheridx", "@otherctx", "@nonull", "@statectx", "@mask", "@c0val", "@c0side", "@c0rec", "@c1val",
+                  "@c1no54", "@c154ctx", "@c1poseside", "@xor", "@slot5f", "@c15fsext", "@c15fother", "@c1nopivot",
+                  "@c1pivotctx", "@c1order", "@c1nos57", "@c1s57ctx", "@c1early", "@c1late54", "@c4val", "@c5ge",
+                  "@c5uns", "@c5slot", "@c5no54", "@c554slot", "@c5rec", "@c5s57", "@c5w")),
+]
 D1_SPECS += D3D_SPECS
 
 

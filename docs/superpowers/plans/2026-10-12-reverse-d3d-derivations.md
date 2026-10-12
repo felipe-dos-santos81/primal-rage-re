@@ -22,6 +22,7 @@ the callees stubbed or run as stated.
 | `0x2A1FC` | `actor_sync` (actors.c) | 288 | Two callers: `0x2A389` (in `0x2A31C`), which returns to `mov eax,edx` (`0x2A38E`), and `0x35813`, which returns to `mov eax,[esp+4]` (`0x35818`). No stored pointer. Mask 0. |
 | `0x2A31C` | `actors_update` (actors.c) | 127 | Two callers: `0x2EA8B`, which returns to `mov eax,0x105b44` (`0x2EA90`), and `0x2540F` in the `0x24C5C` tail: `cmp byte [0x104b15],0; je 0x2545c` then `call 0x3bb90` (`xor ah,ah; mov [0x107d30],ah; xor eax,eax` `0x3BB93..0x3BB9B`) or the mode switch `0x2545C` (`mov ax,[0x104b00]` and compares of AX alone; its arms reach `call 0x3bb90`, `call 0x12d48` + `xor eax,eax` `0x25550`, `xor eax,eax` `0x25591`, the mode-0xC arm's `lea eax,[edx*8]` `0x25499`, or the `ret` `0x255CA`). `0x24C5C`'s one caller `0x2560B` then reaches `mov eax,ebx` (`0x25621`) or `call 0x134c0` and `mov eax,[0x10150c]` (`0x2563E`), as for `0x1D540`. Mask 0. |
 | `0x3EA24` | `fighter_3ea24` (fighter.c; registered in actors.c) | 508 | No direct caller; two stored pointers, `C7 43 0C` / `C7 40 0C` + `0x3EA24` (`mov dword [reg+0xc],imm`; the immediates at `0x3EC4E`, `0x3ED42`). Called at `0x35431`, returning to `xor eax,eax` (`0x35434`). Mask 0. |
+| `0x47B04` | `fighter_47b04` (fighter.c; registered in actors.c) | 247 | No direct caller; one stored pointer, `C7 41 0C` + `0x47B04` (`mov dword [ecx+0xc],imm`, the immediate at `0x47C56`). Called at `0x35431`, returning to `xor eax,eax` (`0x35434`). Mask 0. |
 
 ## §2 The rows
 
@@ -37,6 +38,7 @@ the callees stubbed or run as stated.
 | `actor_sync_chain` | `0x2A1FC` | 4 | 19/26 (7 named: the first row's) | 5/5 | 0 | The same function with stubs that write what the real callees can: `0x2AA70` sets the record's flag byte to 4, `0x2A39C` the hold counter to 1, `0x2A4FC` the flag byte to 8. Every flag test after a call reads the record again (`0x2A256`, `0x2A277`, `0x2A2BF`, `0x2A2E7`, `0x2A2FF`): `c0` runs timer -> id path -> hold -> step -> release with no pset write, `c3` starts with bit 3 set and ends in the pset write. One mutant per re-read (`@stale28`, `@stale4e`, `@stalegate`, `@stale2`, `@stalerel`); none of them shows in the first row, whose stubs write nothing. |
 | `actors_update` | `0x2A31C` | 7 | 11/11 | 15/15 | 0 | No argument. `0x104B24` non-zero returns at once (`u0`, `u6` = `0x80`); with `0x104B26` zero the byte `0x105BEC` is decremented and, when it wraps to `0xFF`, reloaded with `0x105BEE` - 1 (`u3`: 7 -> 6; `u4`: 0 -> `0xFF`; `u5`: 1 -> 0, no reload). The walk from `[0x105BCC]` to the list head itself: bit 1 of `+0x28` skips, bit 0 is cleared in place (`and byte [eax+0x28],0xfe`), else `0x2A1FC` (a stub, seamed by this row, that rewrites the record's `+0` to `0x105BCC`: the walk continues from the next pointer read before the call, `mov edx,[eax]` `0x2A365`; `u5` links the records out of address order). |
 | `fighter_3ea24` | `0x3EA24` | 25 | 19/19 | 62/62 | 0 | `0x216EC`'s sibling; EAX and EDX are not read (`mov edx,ebx` `0x3EA29`), EBX = side. The counter word is `0x1080A8[side]` (read back through `0x1080A6`); the table `0x3EA10` has five entries (`cmp dl,4; ja`): `0x3EA5C 0x3EB31 0x3EB51 0x3EC1A 0x3EBD6` (`n1..n3`: states 5, 6, `0xFF`). State 0 stores through ctx[4]/ctx[5] (`+0x34/+0x36/+0x44` = `0x96/0xA/0xA` and `0xFF6A/0xFE0C/0xA`; `@c0twin` is `0x216EC`'s `0x258/0x28`), then **AL of `0x1A570`** (`test al,al; jne` `0x3EB01`: `s3` returns `0x100`, `s6` `0xFFFFFF80`). State 2 is `0x216EC`'s (the table by the character). State 4 calls `0x36870(ctx[4])` on the same condition as `0x216EC`'s (the table **by the side**, `c > 7`) and stores nothing (`@c4s57`). The cases are `0x216EC`'s minus its target-slot arm. |
+| `fighter_47b04` | `0x47B04` | 18 | 12/14 (2 named, §4) | 32/32 | 0 | EAX = slot (EDI: its `+0x57` is the state and takes the 3), EDX = rec (ECX: its `+0x63`), EBX = side. Nothing while `0x1077A8[side ^ 1]` is null (`xor al,1` `0x47B1A`; `q0`, `q1`); the cases point that table at structures that are not the fighters' slots, so the table pointer (ESI) and ctx[3] differ. Table `0x47AEC` = `0x47B79 0x47B92 0x47BC7 0x47BF3 0x47BDA 0x47B4A`. State 0: `+0x63 == 7` -> `0x47A00(side)` (seamed by this row). State 1: `+0x63 == 0x10` -> the other structure's `+0x54` = 0, `0x39834(1 - side, the side's slot's +0x5F zero-extended)`, `0x39FB0(the table pointer)`, EAX slot's `+0x57` = 3 (`o3`: side 2; `o1`: `+0x5F` = `0x80`). State 5: ctx[2]'s `+0x88` word signed above 10 (`v1`: 10; `v2`: `0x8000`) -> ctx[2]'s `+0x54` = 0 and `0x36870(ctx[4])`. State 4's `+0x63` test is hit (`f1`), its body and state 2 are not (§4). |
 
 ## §3 Corrections
 
@@ -49,6 +51,8 @@ Each is its own commit with a mutant that reproduces the old port.
 | `fight_hud_meter_step` (`0x1D540`) | `0x1D5F5` and `0x1D6BB`, both `test al,al` (then `je 0x1d6b4` / `je 0x1d6fd`), after `call 0x468d8` at `0x1D5F0` and `0x1D6B6` | `if (ai_pred_468d8(side) != 0u)` -> `if ((u8)ai_pred_468d8(side) != 0u)` at both sites | Not reached: `0x468D8` returns AL = 0 or 1 and its port 0 or 1. Case `e0` (stub EAX `0x100`); mutants `@eax1`, `@eax2`. |
 | `fighter_216ec` (`0x216EC`) | `0x217D6` `test al,al` / `0x217D8` `jne 0x2198a`, after `call 0x1a570` at `0x217D1` | `if (fighter_actor_bit15_clear(ctx[0]) != 0) return;` -> `if ((u8)fighter_actor_bit15_clear(ctx[0]) != 0u) return;` | Not reached: `0x1A570` ends `sete al` (`0x1A5A4`) or `xor al,al` (`0x1A59A`) and its port returns 0 or 1. Case `s3` (stub EAX `0x100`); mutant `@eax`. |
 | `fighter_3ea24` (`0x3EA24`) | `0x3EB01` `test al,al` / `0x3EB03` `jne 0x3ec1a`, after `call 0x1a570` at `0x3EAFC` | `if (fighter_actor_bit15_clear(ctx[0]) == 0)` -> `if ((u8)fighter_actor_bit15_clear(ctx[0]) == 0u)` | Not reached, as for `0x216EC`. Case `s3`; mutant `@eax`. |
+| `fighter_47b04` (`0x47B04`) | `0x47B9C..0x47BA8` `lea eax,[ebx*8]; add eax,ebx; shl eax,2; add eax,ebx` (EAX = side*37), `0x47BB0` `mov dl,[eax*4+0x10780f]` | state 1's `0x39834` value: `DSB(slot + 0x5F)` (the EAX slot) -> `DSB(0x1077B0 + side*0x94 + 0x5F)` (the side's slot) | Equal whenever the callback's EAX is the side's own slot. `0x3531C` calls it with `mov eax,ecx` (`0x3542F`); that ECX is `0x1077B0 + EBX*0x94` there was not traced (unverified), so "no change in play" is not claimed. Case `o0` (scratch EAX slot); mutant `@slot5f`. |
+| `fighter_47b04` (`0x47B04`) | `0x47B1C` `mov ebp,1`, `0x47B28` `sub ebp,ebx`, `0x47BB7` `mov eax,ebp` before `call 0x39834` (`0x47BB9`) | state 1's `0x39834` side: `side ^ 1` -> `1 - side` | Not reached: equal for side 0 and 1. Case `o3` (side 2: `0xFFFFFFFF` against 3); mutant `@xor`. |
 
 Seen, not changed (not this batch's rows): `fighter_146f0` (`0x14707`), `fighter_14a5c` (`0x14A73`),
 `fighter_14814` (`0x14872`) and `fighter_14b90` (`0x14BEC`) test the whole return value of `fighter_14590`
@@ -71,6 +75,19 @@ where the raw has `test al,al`; their rows run `0x14590` real (allowed) and name
   the raw follows any pointer. The cases link pool records only.
 - **`actor_sync_chain`'s seven unhit blocks** (`0x2A21D`, `0x2A244`, `0x2A293`, `0x2A2A4`, `0x2A2B0`, `0x2A2B7`,
   `0x2A2B9`) are the `actor_sync` row's (`g0/g1`, `t1..t3`, `e1/e3/e4`): the chain row exists for the re-reads.
+- **`fighter_47b04`: state 2 (`0x47BC7`) and state 4's body (`0x47BE4`) are not exercised.** Both call
+  `0x36870` and then store through EDI (`mov byte [edi+0x57],3` at `0x47BCE` and `0x47BEF`, EDI = the slot
+  since `0x47B0B`). The shared stub `ANIM54` declares the clobbers `(esi, edi, ebp)`, which is what
+  `E.callee_clobbers` derives: `0x36870` saves EBX/ECX/EDX itself and inherits the rest from `0x379C4`, whose
+  indirect hook call `call [0x1078e8]` (`0x379E8`) makes the scan assume every register written. With that set
+  the original side faults on the poisoned EDI (`Invalid memory write`), so the four cases that reach those
+  blocks (`+0x57` = 2; `+0x57` = 4 with `+0x63` = `0x10`) cannot run. `0x47B04`'s own bytes show `0x36870`
+  preserves EDI (the caller-observed argument C3g used for `0x3CF38` and `0x2AD40`), so the fix is a
+  `_CALLEE_CLOBBER_FIXES[0x36870]` entry and the matching change of `ANIM54`, of the inline
+  `E.Call(0x36870, …)` of another batch's row and of the expected-clobber dictionary: existing lines outside
+  this batch's blocks. The row therefore names the two blocks; the follow-up commit `tools: D3 d3d: 0x36870
+  preserves EDI …` (if present on the branch) applies that fix and adds the cases and mutants, and can be
+  reverted alone.
 
 ## §5 Store-sweep findings
 
@@ -113,6 +130,10 @@ where the raw has `test al,al`; their rows run `0x14590` real (allowed) and name
   into `0x105BED`: `u3`, `u4`); each record's `+0..+0x2F` is seeded (`@clrbit1`, `@noclr`).
 - `fighter_3ea24`: the `0x216EC` fixture with the counter block `0x1080A0..0x1080AF`; each of its 15 stores
   has a dropping mutant, the widths `@incd`/`@incb`/`@negdw`, the order `@c0late`/`@c2early`/`@c2late54`.
+- `fighter_47b04`: the slots, the scratch slot and the three pointed-to structures' `+0x52..+0x56` are
+  seeded. Its stores on the exercised paths (`other+0x54`, EAX slot `+0x57`, ctx[2] `+0x54`) have dropping
+  mutants (`@c1no54`, `@c1nos57`, `@c5no54`), wrong-structure mutants (`@c154ctx`, `@c1s57ctx`, `@c554slot`) and
+  order mutants (`@c1early`, `@c1late54`: the memory at the stub calls).
 
 ## §6 Queue entries not done
 
