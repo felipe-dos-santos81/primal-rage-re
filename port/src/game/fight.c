@@ -3744,7 +3744,7 @@ int fight_4d108(u32 entry, u32 index)
  * +0x34 = 0x80 with the hflip cleared when the target is right of the
  * actor's x (signed), else -0x80 with it set, and the 0xC95D4[si] stream at
  * 3.0; returns 1. Else 0. */
-static int fight_4d150(u32 entry, u32 index)
+int fight_4d150(u32 entry, u32 index)
 {
     if (rng_next(0x3Cu) != 0u) return 0;                        /* 0x4D15C/0x4D163 */
     u32 off;
@@ -4217,7 +4217,7 @@ void fight_4c60c(u32 entry, u32 index)
  * (text_cursor_hold_font2, mode 0x4000), then both worshipper actors
  * DS_00108868/DS_0010886C die (actor_set_dead). EBX/ECX/EDX pushed and
  * popped. */
-static void fight_4cd98(void)
+void fight_4cd98(void)
 {
     DSW(DS_00104B00) = 6u;                                        /* 0x4CD9B/0x4CDA8 */
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 1u);               /* 0x4CDA0..0x4CDCA */
@@ -5276,6 +5276,7 @@ void fight_arena_frame(void)
  * (0x4E350 with AL != 0). */
 void fight_mode25_face(void)
 {
+    PR_SEAM0(0x4E27Cu);
     u32 node = DSD(DS_0010884C);                        /* 0x4E27F */
     if (node == DS_0010884C) return;                    /* 0x4E284/0x4E289 */
     do {

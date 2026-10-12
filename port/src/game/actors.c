@@ -4230,6 +4230,7 @@ void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
  * scan); each ported one carries its raw address at the call. */
 void text_cursor_hold_font2(s32 col, s32 row, const u8 *s, u32 mode)
 {
+    PR_SEAM(0x2F510u, (u32)col, (u32)row, (u32)(s - mem), mode);
     mode |= 2u;                                         /* 0x2F511 */
     u32 save = DSD(DS_00105F34);                        /* 0x2F514 */
     text_cursor_set(col, row, s, mode);                 /* 0x2F51A 0x2F198 */

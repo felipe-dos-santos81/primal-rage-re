@@ -37,13 +37,30 @@ the whole image for a stored pointer to it (none found for any member below).
 | 0x4B5A8 | `fight_4b5a8` | 241 | 0x4AB45 | 0x4AB4A `test al,al`; walk on AH and the high word: dead | 0xFF |
 | 0x4B788 | `fight_4b788` | 547 | 0x4B705 | 0x4B70A `test eax,eax` | 0xFFFFFFFF |
 | 0x4BD98 | `fight_4bd98` | 346 | 0x4B590 | walk, dead on every path | 0 |
+| 0x4B9AC | `fight_challenge_crowd` | 925 | 0x42574 | walk, dead on every path | 0 |
+| 0x4CC0C | `fight_4cc0c` | 393 | 0x4C356, 0x4C429, 0x4C90D | walk, dead on every path | 0 |
+| 0x4CD98 | `fight_4cd98` | 187 | 0x4C3BA | walk, dead on every path | 0 |
+| 0x4CF20 | `fight_4cf20` | 487 | 0x494C6 | walk, dead on every path | 0 |
+| 0x4D150 | `fight_4d150` | 209 | 0x4D254 | 0x4D259 `test eax,eax` | 0xFFFFFFFF |
+| 0x4D898 | `fight_4d898` | 796 | 0x4D80B | 0x4D810 `test eax,eax` | 0xFFFFFFFF |
+| 0x4E350 | `fight_mode25_spawn` | 481 | 0x4E271, 0x4E987 | walk, dead on every path (0x4E987: 0x4E98C `mov [0x1088b8],ch`, the pops, `ret` from 0x4E67C, then its callers) | 0 |
 
-"walk" is `eaxwalk.py`'s rule, the one record d1f §1 states: from the return site the code is followed
-(both arms of every conditional, into direct callees to depth 4, out through `ret` into the callers of
-the containing function to depth 7) tracking which parts of EAX (AL, AH, the high word) still hold the
-function's value, until every part is overwritten; any read of a live part (a copy included) would set
-the mask. It sees direct calls only: a function reached through a pointer is reported and followed by
-hand, as 0x1DC0C and 0x4367C above.
+"walk" is the rule record d1f §1 states: from the return site the code is followed (both arms of every
+conditional, into direct callees to depth 4, out through `ret` into the callers of the containing
+function to depth 7) tracking which parts of EAX (AL, AH, the high word) still hold the function's
+value, until every part is overwritten; any read of a live part (a copy included) would set the mask.
+It sees direct calls only: a function reached through a pointer is reported and followed by hand, as
+0x1DC0C and 0x4367C above.
+
+How the walk finds call sites matters, and the first version got it wrong: it took every `E8 rel32`
+byte pattern in the code object as a call, and the `E8` at 0x4E6DF is the ModRM byte of 0x4E6DE `sub
+eax,0xe0` (`81 E8 E0 00 00 00`), which made a false function 0x4E7C4 and a false caller; on 0x4E350's
+site 0x4E987 it reported a read of AX at 0x4E6E8 that no path reaches. The walk now takes call sites
+from a recursive-descent scan of every known entry (the Ghidra export, the E2 live list and triage
+entries, closed over call targets), adds a byte-pattern site only where it lies outside every scanned
+instruction (switch-case code the descent does not reach), and takes "the containing function" from
+the Ghidra bodies. Every mask of this record was re-walked with it: all unchanged, including the six
+`call [0x104ae4]` return sites and the 0xA86C4 table return site 0x25629.
 
 ## §2 The measured rows
 
@@ -73,8 +90,15 @@ hand, as 0x1DC0C and 0x4367C above.
 | `fight_4b2ac` | 0x4B2AC | 12 | 23/23 | 25/25 | 0 | 0x5D7DC, 0x2BE4C and 0x2BC30 stubs |
 | `fight_4b788` | 0x4B788 | 13 | 21/21 | 34/34 | 0xFFFFFFFF | 0x2B150, 0x2BC30, 0x2BD20 and 0x2C3FC stubs; 0x496AC runs on both sides (allowed) |
 | `fight_4bd98` | 0x4BD98 | 10 | 8/8 | 33/33 | 0 | 0x13134, 0x2AE14 and 0x2BC30 stubs; the 0x2BC30 stub rewrites DS_00108868 to a second record (a harness write), so the two +0x36 stores land on different records |
+| `fight_challenge_crowd` | 0x4B9AC | 10 | 48/49 | 38/38 | 0 | 0x5D7DC runs on both sides, recorded (seeded draws); 0x29CDC, 0x2AE14 and 0x2BC30 stubs; 0x249D0, 0x249B0 and 0x496AC run on both sides (allowed); one block named unhit (0x4BB7E) |
+| `fight_4cc0c` | 0x4CC0C | 5 | 7/7 | 16/16 | 0 | 0x2F510 and 0x2F4BC stubs; the string path runs on both sides (allowed), the decoded buffer in the memory at each text call |
+| `fight_4cd98` | 0x4CD98 | 4 | 4/4 | 18/18 | 0 | 0x2F510 and 0x2B150 stubs; the string path runs on both sides (allowed) |
+| `fight_4cf20` | 0x4CF20 | 8 | 17/18 | 32/32 | 0 | 0x49388, 0x29CDC, 0x5D7DC and 0x2AE14 stubs; 0x249D0, 0x249B0 and 0x496AC run on both sides (allowed); one block named unhit (0x4CF97) |
+| `fight_4d150` | 0x4D150 | 10 | 9/9 | 18/18 | 0xFFFFFFFF | 0x5D7DC runs on both sides, recorded (seeded draws); 0x2BE00, 0x2BE4C and 0x2BC30 stubs |
+| `fight_4d898` | 0x4D898 | 27 | 41/41 | 50/50 | 0xFFFFFFFF | 0x2B150, 0x2BC30, 0x2BD20 and 0x2C3FC stubs; 0x496AC runs on both sides (allowed); the six targets of the jump table 0x4D880 each hit |
+| `fight_mode25_spawn` | 0x4E350 | 6 | 37/37 | 39/39 | 0 | 0x4E27C, 0x5D7DC, 0x29CDC, 0x2AE14 and 0x2BC30 stubs; 0x249D0 and 0x249B0 run on both sides (allowed); the two jump tables 0x4E300 / 0x4E328 resolved by hand (E.RESOLVED_JUMPS), all ten entries of each walked |
 
-22 rows, 367 mutants.
+29 rows, 578 mutants.
 
 The `D2B_MASKS` / `D2B_KINDS` / `D2B_CASES` pins of `tools/tests/test_diff_verify.py` are generated from
 these measurements. Every stub the batch declares carries the clobbers `E.callee_clobbers` derives from
@@ -82,7 +106,13 @@ the bytes (checked per row). Stubs the pinned dictionary of
 `test_each_stub_declares_the_registers_its_callee_clobbers` did not have are added to it as new lines
 (no existing line changed): 0x10D70 (ebx, ecx, edx), 0x1A8F4 (edx), 0x38BEC (), 0x46670 (), 0x2C320 (), 0x33C18 (),
 0x2C088 (ebx, edx, edi, ebp), 0x1D7B8 (ebx, edx), 0x4B3F0 and 0x4B430 (ebx, edx), 0x49388 (),
-0x29CDC (edx), 0x2BE00 (), 0x2BE4C (), 0x2BD20 (edx), 0x13134 ().
+0x29CDC (edx), 0x2BE00 (), 0x2BE4C (), 0x2BD20 (edx), 0x13134 (), 0x2F510 (ebx, ecx, edx), 0x4E27C ().
+
+Each mutant's port side was run ten times with identical output before its pin was written
+(`fight_mode25_spawn`: twice at the commit that adds it; the ten-run pass is recorded below). That
+rule earned its keep once: `fight_mode25_spawn@kept` and `@ne8` first followed a seeded node byte as an
+actor pointer and crashed `diffrun` (signal 11); both were rewritten to stay inside mem[] (the mutant
+keeps the spawned record in a local) before any pin was taken.
 
 ## §3 Corrections (port/src)
 
@@ -99,12 +129,21 @@ The `port/src` edits of the batch that are not corrections:
   `0x2BE4C` `fight_2be4c` (`PR_SEAM_RET`, rec, value), `0x4B3F0` `fight_4b3f0` and `0x4B430`
   `fight_4b430` (`PR_SEAM_RET`, entry, index, flag), `0x49388` `fight_dust_pick` (`PR_SEAM_RET`, side),
   `0x29CDC` `fight_dust_value` (`PR_SEAM_RET`, side, ch), `0x2BD20` `actors_link_held` (`PR_SEAM_RET`,
-  rec, v), `0x13134` `fight_13134` (`PR_SEAM_RET0`).
+  rec, v), `0x13134` `fight_13134` (`PR_SEAM_RET0`), `0x2F510` `text_cursor_hold_font2` (`PR_SEAM`, col,
+  row, the string's mem[] offset, mode), `0x4E27C` `fight_mode25_face` (`PR_SEAM0`).
   Each callee's own row was re-run after its seam and is unchanged (VERIFIED, every mutant detected).
 - exports for a binding (each loses `static` and is declared in `fight.h`): `fight_hud_bar_set_inv`
   (0x1DA84), `fight_midpoint` (0x493F0), `fight_4aa6c` (0x4AA6C), `fight_4a8a8` (0x4A8A8),
   `fight_4b5a8` (0x4B5A8), `fight_4b144` (0x4B144), `fight_4b2ac` (0x4B2AC), `fight_4b788` (0x4B788),
-  `fight_4bd98` (0x4BD98).
+  `fight_4bd98` (0x4BD98), `fight_4cd98` (0x4CD98), `fight_4d150` (0x4D150).
+- `tools/diff_emu.py`: two `RESOLVED_JUMPS` entries for 0x4E350's jump tables, 0x4E426 (guard 0x4E409,
+  table 0x4E300, 10 entries) and 0x4E4B9 (guard 0x4E4B2, table 0x4E328, 10 entries), with their
+  `WINDOWS` lines in `tools/tests/test_diff_verify.py` (new lines inside the dictionary). Both index by
+  EDI, which the guard does not compare: EDI is 4 * the counter [esp+8] throughout the loop (0x4E36A
+  `xor edi,edi` with 0x4E37D `mov [esp+8],ebx` = 0; 0x4E587 `inc edx` / 0x4E588 `add edi,4` / 0x4E58B
+  `mov [esp+8],edx`; no other write of EDI in the function, and every callee preserves it), and the
+  guards bound the counter at 9 (0x4E409 `cmp eax,9` with EAX = [esp+8], 0x4E4B2 `cmp dword [esp+8],9`).
+  `E.callee_clobbers` is unchanged by them for 0x4E350, its callers 0x4E11C and 0x4E67C, and 0x4E27C.
 
 A note on record d1g §1: it says the 0x10D70 call at 0x1DAE0 "returns through 0x1DA84: ... 0x1DC5C
 (returns through 0x1DAE8 to 0x26AA1)". 0x1DC5C is not in 0x1DAE8 (which ends at 0x1DC09 `ret`): it is in
@@ -113,7 +152,12 @@ the table call site's walk instead.
 
 ## §4 Named gaps and unhit blocks
 
-No row has an `unhit_named` entry.
+Two rows name one unhit block each (`unhit_named`), both unreachable from the bytes:
+- `fight_challenge_crowd` 0x4BB7E `jmp 0x4bcd1`: the lane word [esp+0x2c] is 0 at each side's start
+  (0x4B9D1/0x4B9D7) and returns to 0 whenever its increment passes 2 (0x4BCEF..0x4BD04), so CX at
+  0x4BB64 is 0, 1 or 2 and the fall-through after `cmp cx,2; je` cannot execute.
+- `fight_4cf20` 0x4CF97 `mov eax,0x300`: 0x4CF45 stores 6 in the slot's +0x81 and nothing writes it
+  before 0x4CF7C reads it back, so BL is 6 at 0x4CF82 `test bl,bl`.
 
 **Named gap: 0x432EC `fight_char_text_clear` (no row).** Every path of 0x432EC calls the runtime strlen
 0x65624 (0x43325, and again at 0x433A6), and the harness can run neither side of that call:
@@ -165,6 +209,20 @@ Limits worth knowing:
 - `fight_4bd98`: the spawn stub returns one record for both spawns, so which spawn's record 0x2BC30
   takes (0x4BED0, EAX = the second) is not separated; the two midpoint arms are equal unless the
   difference wraps (cases e8, e9).
+- `fight_challenge_crowd`, `fight_4d150`: 0x5D7DC runs its own bytes from a seed, so rng(2) is 0 or 1 and
+  rng(0x3C) is below 0x3C: a `test al,al` is not separated from the raw's `test eax,eax` (0x4BC4E,
+  0x4D161, 0x4D175). The seeds of `fight_challenge_crowd` c6..c9 were searched for a second draw
+  rng(0x1D00) of 0x9A9, 0x9AA, 0x1353 and 0x1354 (each side of both lane bounds); `fight_4d150`'s for
+  each (rng(2), rng(4)) pair after an rng(0x3C) of 0. In `fight_challenge_crowd` the spawn stub returns
+  one actor for every entry of a case.
+- `fight_4cc0c`, `fight_4cd98`: the string table is a fixture; which string each text call draws is
+  carried by the decoded buffer 0x102760 in the memory at that call.
+- `fight_4cf20`: the function stores 6 in +0x81 itself, so six entries (or the pool's end) is the only
+  count; the rng stub's one value serves both draws of every iteration.
+- `fight_4d898`: the cap `sum > 0x78` and `sum >= 0x78` give the same byte at a sum of exactly 0x78
+  (0x4DB53 / 0x4DB90 `jle`), so no mutant separates them. `hit` is 1 or 2; the index stays below 7.
+- `fight_mode25_spawn`: the spawn stub returns one actor for all ten entries of a case; a kept entry's
+  actor is another record. A fresh call with a table entry already set replaces it (case f2).
 
 ## §5 Store sweep
 
@@ -183,10 +241,24 @@ Limits worth knowing:
 | `fight_4b144`, `fight_4b2ac` | entry +0x14 (and +0x1E = 1 in 0x4B144); actor +0x34, +0x29; DS_00108878 (twice) in 0x4B2AC | as above; DS_0010886C..0x108883 seeded | `@e14`, `@type`, `@dir`, `@b29`, `@b29pre`, `@stop`, `@w78`, `@order` |
 | `fight_4b788` | entry +0x1C \|= 0x40, +0x10 = 0, +0x20, +0x1E; actor +0x29, +0x18, +0x1C, +0x32, +0x2C, +0x38/+0x36/+0x34, +0x4A | every field inside seeded neighbours, both slots and records slot-distinct | `@set40`, `@z10`, `@flip`, `@ef`, `@e20`, `@mirror`, `@y1c`, `@w32`, `@clamp`, `@stop`, `@type`, `@b4a`, `@order` |
 | `fight_4bd98` | DS_00108864, entry +0x1E, +0x1C; 0x1088C1, 0x104B00, 0x1088C5, 0x1088AA, 0x1088A0, 0x108898, 0x10889D, 0x10889C, 0x104AEC, 0x1088AC, 0x108884 (twice), 0x108868, 0x10886C, both records' +0x36 | every stored byte starts non-zero inside seeded neighbours | `@w864`, `@type`, `@c1`, `@b00`, `@c5`, `@waa`, `@wa0`, `@w98`, `@b9d`, `@b9c`, `@aec`, `@wac`, `@bit5`, `@sub854`, `@w868`, `@late`, `@w86c`, `@r36a`, `@r36b`, `@v36` |
+| `fight_challenge_crowd` | per entry: the list links, desc +0x10, entry +8, +0x1E, +0x1F, +0x0C, +0x21; actor +0x2C, +0x14, +0x29 (\|= 0x40, twice), +0x55, +0x2E, +0x4E | free nodes' +8..+0x23 and the actor's fields seeded | `@d10`, `@ne8`, `@clamp`, `@a14`, `@f1e`, `@f1f`, `@fc`, `@f21`, `@arm3`, `@arm3early`, `@k1f`, `@f55`, `@k2order`, `@w2e`, `@b4e` |
+| `fight_4cc0c` | both records' +0x36 = 0xFE5C, DS_001088A0 = 0x3C | +0x34/+0x38 and the words around 0x1088A0 seeded | `@r1`, `@r2`, `@v36`, `@wa0`, `@order` |
+| `fight_4cd98` | DS_00104B00 = 6, DS_00104AEC \|= 1, 0x1088C5 / 0x10889D / 0x10889C = 0; the ball entry's +0x18 word, +0x1C bit 5, +0x1E = 4; DS_00108864 = 0 | each inside seeded neighbours | `@b00`, `@aec`, `@c5`, `@b9d`, `@b9c`, `@w18`, `@width`, `@bit5`, `@type`, `@z864` |
+| `fight_4cf20` | slot +0x81 = 6; 0x1088AE/A2/A4/B2/9E[side] = 0; per entry: the list links, desc +0x10, entry +8, +0x1E, +0x1F, +0x21, +0x0C, +0x1C word, +0x10; actor +0x14, +0x2C, +0x2E, +0x4E | the five byte pairs non-zero inside seeded bytes | `@b81`, `@bae`, `@ba2`, `@ba4`, `@bb2`, `@b9e`, `@d10`, `@ne8`, `@a14`, `@f1e`, `@f1f`, `@f21`, `@fc`, `@clamp`, `@w1c`, `@e10`, `@w2e`, `@b4e` |
+| `fight_4d150` | entry +0x14, +0x1E; actor +0x34, +0x29 | as `fight_4b144` | `@e14`, `@type`, `@dir`, `@b29`, `@order` |
+| `fight_4d898` | 0x4B788's, and the DS_00104B1A slot's +0x5B | both slots' +0x5A..+0x5C seeded with different bytes | 0x4B788's, and `@b1a`, `@capv`, `@add1`, `@t0`..`@t5`, `@tdef`, `@t120` |
+| `fight_mode25_spawn` | 0x1088B9 / 0x1088B8 = 0; per entry: the list links, desc +0x10, entry +0x1A, +8, +0x14, +0x1F, +0x21, +0x0C, +0x1C (word 0, then \|= 2), +0x10, +0x1E; actor +0x14, +0x2C, +0x29 (\|= 0x10, &= 0xBF), +0x2E, +0x4E, +0x34; DS_0010839C[i] | the table sits between seeded dwords; free and kept nodes' +8..+0x23 seeded | `@b9`, `@b8`, `@d10`, `@w1a`, `@ne8`, `@a14`, `@e14`, `@f1f`, `@f21`, `@fc`, `@w2c`, `@or10`, `@w1c`, `@e10`, `@w2e`, `@b4e`, `@and40`, `@or2`, `@type0`, `@type1`, `@w34`, `@store`, `@order` |
 
 ## §6 Queue entries not done
 
 - 0x432EC `fight_char_text_clear`: a named gap (§4), no row.
-
-Not yet reached (the queue is worked top to bottom): 0x4B9AC, 0x4CC0C, 0x4CD98, 0x4CF20, 0x4D150,
-0x4D898, 0x4DBEC, 0x4E350, 0x4EBB8.
+- 0x4DBEC (755 bytes, the winner's crowd) and 0x4EBB8 (979 bytes, the mode-0x25 round card): not
+  reached, no row. What is known of them, short of a row:
+  - both EAX masks walk to 0 (0x4DBEC's call sites 0x2766D and 0x29838, 0x4EBB8's 0x4E928 and 0x4F06E);
+  - 0x4DBEC was disassembled: 28 blocks, no indirect jump, a loop of 0x1C entries over 0x249D0 /
+    0x249B0, 0x49388, 0x29CDC, 0x2BE00, 0x2BE4C, 0x2AE14, 0x496AC, 0x2BC30 and four to six 0x5D7DC draws
+    per entry (rng(2) twice, rng(0xA00) once or twice, rng(0x200)); a row would need the seeded 0x5D7DC
+    (as `fight_challenge_crowd`) and a 28-node pool. Every one of those callees has a seam after this
+    batch (fight.c's list splice runs allowed);
+  - 0x4EBB8 was not read. Its queue line names 0x1C500, 0x2F174, 0x2F4D0 and 0x2F510; 0x2F174
+    (`text_glyph_at`) has no seam yet.

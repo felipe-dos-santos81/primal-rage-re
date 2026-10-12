@@ -514,4 +514,12 @@ int fight_4b788(u32 hit, u32 entry, u32 index);
  * exported for its differential row (track D2 d2b). */
 void fight_4bd98(u32 entry);
 
+/* 0x4CD98 — record §49-S. The volleyball match's timeout end (no argument);
+ * exported for its differential row (track D2 d2b). */
+void fight_4cd98(void);
+
+/* 0x4D150 — demo-pose record §43-A. EAX = entry, EDX = si: the one-in-0x3C
+ * walk; exported for its differential row (track D2 d2b). */
+int fight_4d150(u32 entry, u32 index);
+
 #endif /* PRAGE_GAME_FIGHT_H */
