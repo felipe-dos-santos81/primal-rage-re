@@ -13728,6 +13728,25 @@ def d2a_state_case(side, state, s5f, s8a=0, s64=0xFF, sc=2, oc=4):
     return p
 
 
+def d2a_wall_case(side, x, f40, s53, o54, w34, thr=0x0040, w36=0x3636, wall=0x00000800):
+    """0x354F0: the wall DS_000BE018, the threshold word 0xBDBEA (the word below it seeded), the
+    side slot's x, +0x40/+0x41 and +0x53/+0x54, its record's +0x32..+0x37 (`w34` between a seeded
+    word and `w36`), and the other slot's and record's same fields holding the other answer: an x
+    inside the walls, the other +0x40 bit 6, the other +0x53 verdict, a +0x54 on the other side
+    of 2 (the own slot's +0x54 is what @o54 reads) and a +0x34 of the other sign."""
+    so, oo = D2A_SLOT + side * 0x94, D2A_SLOT + (1 - side) * 0x94
+    rs, ro = (D2A_R0, D2A_R1)[side], (D2A_R0, D2A_R1)[1 - side]
+    ws = (w34 ^ 0x8000) - 0x8000
+    return {0x000BE018: le32(wall), 0x000BDBE8: le16(0x7FFF if thr >= 0x8000 else 0x8000) + le16(thr),
+            so: le32(rs), oo: le32(ro),
+            so + 0x2C: le32(x), oo + 0x2C: le32(0x00000010),
+            so + 0x40: bytes([f40, 0x41]), oo + 0x40: bytes([f40 ^ 0x40, 0x61]),
+            so + 0x53: bytes([s53, 2 if o54 != 2 else 0]),
+            oo + 0x53: bytes([0x0B if s53 == 0x0A else 0x0A, o54]),
+            rs + 0x32: le16(0x3232) + le16(w34) + le16(w36),
+            ro + 0x32: le16(0x2232) + le16(0xFFFB if ws >= 0 else 0x0005) + le16(0x2636)}
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13977,6 +13996,34 @@ D2A_SPECS = [
         0x46D97: "state 0xA or above 0xD: the raw calls the 0x62003 fatal; the port skips the weight store"},
        mutants=("@slot", "@bside", "@s8a", "@s40", "@wrap", "@s64", "@nostate", "@stbyte", "@sext", "@id2",
                 "@wside")),
+    # 0x354F0 fighter_wall_clamp: EAX = side. Five stubs. 0x187FC is called twice on the push path
+    # (0x3558E then 0x35597 or 0x355A0; 0x3560C then 0x35615 or 0x3561E): once for the sign, once
+    # for the value. Its EAX is the distance (w4, w8: negative), compared with the signed word
+    # 0xBDBEA (`sar edx,0x10` 0x355AB/0x35629: w6 is 0x8000). Mask 0: 0x35821 `mov eax,[esp]`, and
+    # 0x35829 `call 0x186c4`, whose first instruction is `xor eax,eax`.
+    Spec("fighter_wall_clamp", 0x354F0, [
+        Case("w0", {"eax": 0}, d2a_wall_case(0, 0x00000900, 0x41, 0x0A, 0, 0x0005)),
+        Case("w1", {"eax": 0}, d2a_wall_case(0, 0x00000900, 0x80, 0x0A, 0, 0x0005), {0x187FC: 0x00000010}),
+        Case("w2", {"eax": 1}, d2a_wall_case(1, 0x00000801, 0x00, 0x0B, 0, 0x0000)),
+        Case("w3", {"eax": 0}, d2a_wall_case(0, 0x7FFFFF00, 0xBF, 0x0A, 2, 0x8000)),
+        Case("w4", {"eax": 1}, d2a_wall_case(1, 0x00000900, 0x00, 0x0A, 1, 0x0001, w36=0xFFFF),
+             {0x187FC: 0xFFFFFFF0}),
+        Case("w5", {"eax": 0}, d2a_wall_case(0, 0x00000900, 0x00, 0x0A, 0, 0x0000, w36=0x0001),
+             {0x187FC: 0x00000040}),
+        Case("w6", {"eax": 1}, d2a_wall_case(1, 0x00000900, 0x00, 0x0A, 0, 0x7FFF, thr=0x8000),
+             {0x187FC: 0x00000005}),
+        Case("w7", {"eax": 0}, d2a_wall_case(0, 0x00000800, 0x00, 0x0A, 0, 0x0005), {0x187FC: 0x00000010}),
+        Case("w8", {"eax": 1}, d2a_wall_case(1, 0xFFFFF800, 0x00, 0x0A, 0, 0xFFFB), {0x187FC: 0x00000010}),
+        Case("w9", {"eax": 0}, d2a_wall_case(0, 0xFFFFF700, 0x00, 0x0A, 0, 0xFFFB), {0x187FC: 0x00000010}),
+        Case("w10", {"eax": 1}, d2a_wall_case(1, 0xFFFFF7FF, 0x00, 0x0A, 3, 0x0005), {0x187FC: 0xFFFFFFC1}),
+        Case("w11", {"eax": 0}, d2a_wall_case(0, 0x80000100, 0x00, 0x09, 0, 0x0000, w36=0x8000)),
+        Case("w12", {"eax": 1}, d2a_wall_case(1, 0xFFFFF700, 0x00, 0x0A, 2, 0x8000)),
+        Case("w13", {"eax": 0}, d2a_wall_case(0, 0xFFFFF700, 0x00, 0x0A, 0, 0x0000), {0x187FC: 0x0000003F}),
+        Case("w14", {"eax": 0}, d2a_wall_case(0, 0x00000900, 0x00, 0x0A, 0, 0x0005), {0x187FC: 0xFFFFFF00}),
+        Case("w15", {"eax": 1}, d2a_wall_case(1, 0xFFFFF700, 0x00, 0x0A, 0, 0xFFFB), {0x187FC: 0xFFFFFFC0}),
+    ], calls=(ANCHORX, C1_AI_DIST, C1_1883C, CLEAR34), eax_mask=0,
+       mutants=("@b40", "@x", "@cmp", "@ov", "@a53", "@o54", "@v54", "@one", "@abs", "@thrlo", "@thrz",
+                "@tcmp", "@pside", "@pneg", "@rec", "@w34", "@c34", "@c148", "@lret", "@lanchor", "@early")),
 ]
 D1_SPECS += D2A_SPECS
 
