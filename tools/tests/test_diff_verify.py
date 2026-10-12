@@ -7612,8 +7612,8 @@ class RealFunctionTests(unittest.TestCase):
         # the closed-row count is over the rows that have callees (251 after C3g waves 3+4's eight
         # rows with callees and the five wave-1/2 rows their rows close), the 71 without are
         # counted apart
-        self.assertIn("diff-verify: 322/322 functions VERIFIED; 1353/1353 mutants detected; 1 named gaps; "
-                      "229/251 rows with callees closed (71 have none).", out.getvalue())
+        self.assertIn("diff-verify: 538/538 functions VERIFIED; 3338/3338 mutants detected; 1 named gaps; "
+                      "329/372 rows with callees closed (166 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
