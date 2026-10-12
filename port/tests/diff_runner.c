@@ -33698,6 +33698,216 @@ D5G_1E_MUT(sahooklate, 41u) D5G_1E_MUT(sawipe, 42u) D5G_1E_MUT(fearly, 43u) D5G_
 D5G_1E_MUT(fscore, 46u)  D5G_1E_MUT(fside, 47u)   D5G_1E_MUT(dafe, 60u)    D5G_1E_MUT(d8eew, 61u)   D5G_1E_MUT(db00, 62u)
 D5G_1E_MUT(dafa, 63u)    D5G_1E_MUT(dlate, 64u)   D5G_1E_MUT(dvoice, 65u)  D5G_1E_MUT(rafe, 66u)    D5G_1E_MUT(r8ee, 67u)
 D5G_1E_MUT(rb00w, 68u)   D5G_1E_MUT(rafa, 69u)
+/* 0x1F458 nameentry_step: AL = the side (`mov [esp+4],al` 0x1F460). One frame of the name entry.
+ * 0x1FFD0, 0x2F434, 0x20710, 0x2C3FC, 0x2F510, 0x2F4BC, 0x2F4D0, 0x2AE14 and 0x2BCF4 are stubs;
+ * 0x1C500 runs on both sides. Full mask: `test eax,eax` at six call sites of 0x1EEB0. */
+static const u32 d5g_ne_grid[28][3] = {
+    {0xB, 0x6, 0x8092Cu}, {0xE, 0x6, 0x80930u}, {0x11, 0x6, 0x80918u}, {0x14, 0x6, 0x80920u},
+    {0x17, 0x6, 0x80934u}, {0x1A, 0x6, 0x80938u}, {0x1D, 0x6, 0x8093Cu}, {0xB, 0x9, 0x80924u},
+    {0xE, 0x9, 0x80940u}, {0x11, 0x9, 0x80944u}, {0x14, 0x9, 0x80910u}, {0x17, 0x9, 0x80948u},
+    {0x1A, 0x9, 0x8094Cu}, {0x1D, 0x9, 0x80950u}, {0xB, 0xC, 0x80954u}, {0xE, 0xC, 0x80958u},
+    {0x11, 0xC, 0x8095Cu}, {0x14, 0xC, 0x8090Cu}, {0x17, 0xC, 0x8091Cu}, {0x1A, 0xC, 0x80914u},
+    {0x1D, 0xC, 0x80960u}, {0xB, 0xF, 0x80964u}, {0xE, 0xF, 0x80968u}, {0x11, 0xF, 0x80928u},
+    {0x14, 0xF, 0x8096Cu}, {0x17, 0xF, 0x80970u}, {0x1A, 0xF, 0x80974u}, {0x20, 0xF, 0xA7DC8u},
+};
+#define D5G_NE_COL 0x001044D0u       /* word: the cursor column; the dword's high word is the row */
+#define D5G_NE_ROW 0x001044D2u
+#define D5G_NE_SAR(a) (((s32)DSD(a)) >> 16)
+static int d5g_ne_pad(u8 side, u8 mask, u32 mut)
+{
+    const u32 p0 = (mut == 10u) ? 0x001088E5u : 0x001088E7u, p1 = (mut == 10u) ? 0x001088E7u : 0x001088E5u;   /* @padside */
+    if ((DSB(p0) & mask) != 0u && side == 0u) return 1;
+    if ((DSB(p1) & mask) != 0u && side == 1u) return 1;
+    return 0;
+}
+static int d5g_ne_rep(u32 ctr, u32 mut)
+{
+    return ((mut == 11u) ? ctr >= 0x1Eu : ctr > 0x1Eu) && (ctr % ((mut == 12u) ? 6u : 5u)) == 0u;   /* @rep @repmod */
+}
+static u32 d5g_1f458_core(u8 side, u32 mut)
+{
+    const u32 T = 0x0010438Cu, AC = 0x001044ACu, B8 = 0x001044B8u, E0 = 0x001044E0u, DC = 0x001044DCu;
+    const u32 CNT = 0x0010431Cu, LIM = 0x0010431Du, C8 = 0x001044C8u, BC = 0x001044BCu, D6 = 0x001044D6u;
+    if (mut != 1u) nameentry_cells_step();                                   /* @nocells */
+    u16 t = (mut == 5u) ? DSB(T) : DSW(T);                                   /* @tw */
+    if (t != 0u) {
+        t = (u16)(DSW(T) - 1u);
+        if (mut != 2u) DSW(T) = t;                                           /* @tdec */
+        if (mut == 4u) text_number_set(0x1C, 0x13, (s32)((u32)t / 0x1Eu), 2, 1u, 0x4003u);   /* @tnum */
+        else text_number_set(0x13, 0x1C, (s32)((u32)t / ((mut == 3u) ? 0x1Fu : 0x1Eu)), 2, 1u, 0x4003u);   /* @tdiv */
+    }
+    if (DSW(T) == 0u && ((mut == 6u) ? DSW(AC) : DSD(AC)) == 0u) {           /* @finw */
+        nameentry_finish((u8)((mut == 7u) ? 1u - side : side));              /* @finside */
+        return (mut == 8u) ? 1u : 0u;                                        /* @finret */
+    }
+    if (DSB(0x001044D8u) == 0u || mut == 9u) {                               /* @d8 */
+        const u32 e0 = (mut == 13u) ? DC : E0, dc = (mut == 13u) ? E0 : DC;  /* @repctr */
+        if (d5g_ne_pad(side, 0x10u, mut) || d5g_ne_rep(DSD(e0), mut)) {
+            (void)sound_voice(0xE6u);
+            u32 eax = DSD(D5G_NE_COL);
+            DSW(D5G_NE_COL) = (u16)(DSW(D5G_NE_COL) + ((mut == 14u) ? 2u : 3u));   /* @rstep */
+            s32 row = (s32)eax >> 16;
+            s32 col = D5G_NE_SAR(0x001044CEu);
+            s32 lim = ((row == 0xF) == (mut != 15u)) ? 0x20 : 0x1D;          /* @rrow */
+            if ((mut == 16u) ? (u32)col > (u32)lim : col > lim) {            /* @runs */
+                DSW(D5G_NE_COL) = 0xBu;
+                (void)sound_voice((mut == 18u) ? 0x34u : 0x39u);             /* @rvoice */
+            } else {
+                (void)sound_voice((mut == 18u) ? 0x39u : 0x34u);
+            }
+            DSD(DSD(B8) + 0x18u) = ((u32)D5G_NE_SAR(0x001044CEu) << 9) + ((mut == 17u) ? 0u : 0x200u);   /* @rx */
+        } else if (d5g_ne_pad(side, 0x20u, mut) || d5g_ne_rep(DSD(dc), mut)) {
+            (void)sound_voice(0xE6u);
+            DSW(D5G_NE_COL) = (u16)(DSW(D5G_NE_COL) - ((mut == 19u) ? 2u : 3u));   /* @lstep */
+            if ((mut == 21u) ? D5G_NE_SAR(0x001044CEu) <= 0xB : D5G_NE_SAR(0x001044CEu) < 0xB) {   /* @lcmp */
+                DSW(D5G_NE_COL) = ((D5G_NE_SAR(D5G_NE_COL) == 0xF) == (mut != 20u)) ? 0x20u : 0x1Du;   /* @lrow */
+                (void)sound_voice(0x35u);
+            } else {
+                (void)sound_voice(0x38u);
+            }
+            DSD(DSD(B8) + 0x18u) = ((u32)D5G_NE_SAR(0x001044CEu) << 9) + 0x200u;
+        } else if (d5g_ne_pad(side, 0x80u, mut) || d5g_ne_rep(DSD(e0), mut)) {
+            (void)sound_voice(0xE6u);
+            DSW(D5G_NE_ROW) = (u16)(DSW(D5G_NE_ROW) - ((mut == 22u) ? 2u : 3u));   /* @ustep */
+            if ((mut == 23u) ? D5G_NE_SAR(D5G_NE_COL) <= 6 : D5G_NE_SAR(D5G_NE_COL) < 6)   /* @uwrap */
+                DSW(D5G_NE_ROW) = 0xFu;
+            if (D5G_NE_SAR(0x001044CEu) == 0x20 && mut != 24u) {             /* @ucol20 */
+                (void)sound_voice(0x39u);
+                DSW(D5G_NE_COL) = 0x1Du;
+                DSD(DSD(B8) + 0x18u) = 0x3C00u;
+            } else {
+                (void)sound_voice(0x37u);
+            }
+            DSD(DSD(B8) + ((mut == 25u) ? 0x18u : 0x1Cu)) = ((u32)D5G_NE_SAR(D5G_NE_COL) << 9) + 0x200u;   /* @uy */
+        } else if (d5g_ne_pad(side, 0x40u, mut) || d5g_ne_rep(DSD(dc), mut)) {
+            (void)sound_voice(0xE6u);
+            DSW(D5G_NE_ROW) = (u16)(DSW(D5G_NE_ROW) + ((mut == 26u) ? 2u : 3u));   /* @dstep */
+            if ((mut == 27u) ? D5G_NE_SAR(D5G_NE_COL) >= 0xF : D5G_NE_SAR(D5G_NE_COL) > 0xF)   /* @dwrap */
+                DSW(D5G_NE_ROW) = 6u;
+            if (D5G_NE_SAR(0x001044CEu) == 0x20) {
+                (void)sound_voice(0x38u);
+                if (mut != 28u) DSW(D5G_NE_COL) = 0x1Du;                     /* @dcol */
+                DSD(DSD(B8) + 0x18u) = 0x3C00u;
+            } else {
+                (void)sound_voice(0x36u);
+            }
+            DSD(DSD(B8) + 0x1Cu) = ((u32)D5G_NE_SAR(D5G_NE_COL) << 9) + 0x200u;
+        }
+    }
+    if (DSD(AC) == 0u || mut == 29u) {                                       /* @grid */
+        for (u32 g = 0u; g < ((mut == 30u) ? 27u : 28u); g++)                /* @gridn */
+            text_cursor_hold_font2((s32)d5g_ne_grid[g][0], (s32)d5g_ne_grid[g][1],
+                                   mem + d5g_ne_grid[g][2], (mut == 31u) ? 0x1000u : 0x4000u);   /* @gridmode */
+    }
+    text_cursor_hold(1, 1, game_string_get(0x18u), 0x1000u);
+    text_number_draw(1, 2, (s32)DSD(0x001077ECu + (u32)((mut == 32u) ? 1u - side : side) * 0x94u), 7, 3u, 0x4000u);   /* @score */
+    text_cursor_hold(0x23, 1, game_string_get((mut == 33u) ? 0x18u : 0x19u), 0x1000u);   /* @str19 */
+    text_number_draw(0x24, 2, (s32)DSW(D6) + ((mut == 34u) ? 0 : 1), 2, 1u, 0x4000u);   /* @rank1 */
+    if ((DSW(0x000EF6DCu) & ((mut == 35u) ? 0x0Fu : 0x1Fu)) == 0u) {         /* @blink */
+        u32 mode = ((DSW(0x000EF6DCu) & 0x20u) != 0u) == (mut != 36u) ? 0x1000u : 0x4000u;   /* @blinkmode */
+        if ((side != 0u) == (mut != 37u))                                    /* @blinkside */
+            text_cursor_hold(0x19, 0x1C, game_string_get(0x16u), mode);
+        else
+            text_cursor_hold(3, 0x1C, game_string_get(0x17u), mode);
+    }
+    {
+        const int ranked = ((mut == 38u) ? DSB(D6) : DSW(D6)) != 0u;         /* @rankw */
+        if ((DSB(0x00104529u) & ((mut == 39u) ? 4u : 2u)) != 0u) {           /* @cfg */
+            if (DSD(0x001044A8u) == 0u || mut == 40u) {                      /* @a8 */
+                u32 r = actor_spawn((const u32 *)(mem + (ranked ? 0xA7E6Cu : 0xA7E94u)),
+                                    DSW(0x000C8718u), 0xFFu, (mut == 42u) ? 0x880u : 0x400u, 0u);   /* @spawnargs */
+                if (mut != 41u) DSD(0x001044A8u) = r;                        /* @a8store */
+                (void)actor_spawn((const u32 *)(mem + (ranked ? 0xA7E80u : 0xA7EA8u)),
+                                  DSW(0x000C8718u), 0xFFu, (mut == 42u) ? 0x400u : 0x880u, 0u);
+                if (mut == 41u) DSD(0x001044A8u) = r;
+            }
+        } else {
+            text_cursor_hold(-1, 1, game_string_get(ranked ? 0x1Au : 0x1Cu), 0x2000u);
+            text_cursor_hold(-1, 3, game_string_get(ranked ? 0x1Bu : 0x1Du), 0x3000u);
+        }
+    }
+    if (!(d5g_ne_pad(side, (mut == 43u) ? 0x1Fu : 0x0Fu, mut) || (DSD(C8) != DSD(BC) && mut != 44u)))   /* @face @queue */
+        return 1u;
+    s32 letter;
+    if (DSD(C8) == DSD(BC)) {
+        s32 row = D5G_NE_SAR(D5G_NE_COL), col = D5G_NE_SAR(0x001044CEu);
+        letter = ((mut == 45u) ? 6 : 7) * ((row - 6) / 3) + (col - 0xB) / 3;   /* @letter */
+    } else {
+        u32 q = DSD(C8) + 1u;
+        letter = (s32)DSD(0x00104458u + ((mut == 46u) ? q - 1u : q) * 4u);   /* @qidx */
+        DSD(C8) = (mut == 47u) ? q : (q & 0xFu);                             /* @qmask */
+        if (letter != 0x1B && letter != 0x1C && mut != 48u) {                /* @qcur */
+            DSW(D5G_NE_COL) = (u16)(3 * (letter % 7) + 0xB);
+            DSW(D5G_NE_ROW) = (u16)(3 * (letter / 7) + 6);
+            u32 rec = DSD(B8);
+            DSD(rec + 0x18u) = ((u32)D5G_NE_SAR(0x001044CEu) << 9) + 0x200u;
+            DSD(rec + 0x1Cu) = ((u32)D5G_NE_SAR(D5G_NE_COL) << 9) + 0x200u;
+        }
+    }
+    if (letter == 0x1B) {
+        s8 n = (s8)DSB(CNT);
+        if ((mut == 49u) ? n == 0 : n <= 0) return 1u;                       /* @delcnt */
+        const u32 before = 0x00104114u + 0x14u * (u32)(s32)n;
+        DSB(CNT) = (u8)(n - 1);
+        u32 cell = (mut == 50u) ? before : 0x00104114u + 0x14u * (u32)(s32)((s32)DSD(0x00104319u) >> 24);   /* @delcell */
+        u8 old = DSB(cell + 0x12u);
+        if (mut != 52u) DSW(T) = 0x1C2u;                                     /* @deltimer */
+        if ((old != 0u) == (mut != 51u)) {                                   /* @del9 */
+            DSB(cell + 0x12u) = 9u;
+        } else {
+            DSB(cell + 0x12u) = 8u;
+            DSB(cell + 0x13u) = (u8)letter;
+        }
+        return 1u;
+    }
+    if (letter == 0x1C) {
+        DSB(((mut == 53u) ? 0x00104342u : 0x00104343u) + (u32)((s32)DSD(0x00104319u) >> 24)) = 0u;   /* @endz */
+        if (mut != 54u) DSW(T) = 0u;                                         /* @endtimer */
+        return 1u;
+    }
+    if ((mut == 55u) ? DSB(CNT) >= DSB(LIM) : (s8)DSB(CNT) >= (s8)DSB(LIM))  /* @limit */
+        return 1u;
+    DSW(T) = 0x1C2u;
+    if (letter == 0x1A && mut != 56u) {                                      /* @space */
+        actors_anim_seek(DSD(0x001044B0u), (mut == 57u) ? 0x1E0u : 0x1E1u);  /* @seekarg */
+    } else {
+        text_cursor_hold_font2(D5G_NE_SAR(0x001044CEu), D5G_NE_SAR(D5G_NE_COL), mem + 0x00080974u, 0x4000u);
+    }
+    {
+        const u32 x = ((u32)D5G_NE_SAR(0x001044CEu) << 9) + 0x200u, y = ((u32)D5G_NE_SAR(D5G_NE_COL) << 9) + 0x200u;
+        if (mut == 59u) (void)sound_voice(0xE9u);                            /* @v9 */
+        (void)actor_spawn((const u32 *)(mem + 0xA7E58u), (mut == 58u) ? y : x, 0xFFu, (mut == 58u) ? x : y, 0u);   /* @spawnxy */
+        if (mut != 59u) (void)sound_voice(0xE9u);
+    }
+    u32 cell = 0x00104114u + 0x14u * (u32)(s32)((s32)DSD(0x00104319u) >> 24);
+    DSB(cell + 0x12u) = (mut == 60u) ? 2u : 1u;                              /* @cellstate */
+    if (mut != 61u) DSB(cell + 0x13u) = (u8)letter;                          /* @cellletter */
+    u8 n = (u8)(DSB(CNT) + 1u);
+    if (mut != 62u) DSB(CNT) = n;                                            /* @cntinc */
+    if (n == DSB(LIM)) {
+        DSW(D5G_NE_COL) = 0x20u;
+        DSD(DSD(B8) + 0x18u) = (mut == 63u) ? 0x2000u : 0x4200u;             /* @fullxy */
+        DSW(D5G_NE_ROW) = 0xFu;
+        DSD(DSD(B8) + 0x1Cu) = (mut == 63u) ? 0x4200u : 0x2000u;
+    }
+    return (mut == 64u) ? 0u : 1u;                                           /* @ret */
+}
+static void b_d5g_1f458(const u32 *r, u32 *eax) { *eax = nameentry_step((u8)r[R_EAX]); }
+#define D5G_NE_MUT(name, n) \
+    static void m_d5g_1f458_##name(const u32 *r, u32 *eax) { *eax = d5g_1f458_core((u8)r[R_EAX], n); }
+D5G_NE_MUT(nocells, 1u)  D5G_NE_MUT(tdec, 2u)     D5G_NE_MUT(tdiv, 3u)     D5G_NE_MUT(tnum, 4u)     D5G_NE_MUT(tw, 5u)
+D5G_NE_MUT(finw, 6u)     D5G_NE_MUT(finside, 7u)  D5G_NE_MUT(finret, 8u)   D5G_NE_MUT(d8, 9u)       D5G_NE_MUT(padside, 10u)
+D5G_NE_MUT(rep, 11u)     D5G_NE_MUT(repmod, 12u)  D5G_NE_MUT(repctr, 13u)  D5G_NE_MUT(rstep, 14u)   D5G_NE_MUT(rrow, 15u)
+D5G_NE_MUT(runs, 16u)    D5G_NE_MUT(rx, 17u)      D5G_NE_MUT(rvoice, 18u)  D5G_NE_MUT(lstep, 19u)   D5G_NE_MUT(lrow, 20u)
+D5G_NE_MUT(lcmp, 21u)    D5G_NE_MUT(ustep, 22u)   D5G_NE_MUT(uwrap, 23u)   D5G_NE_MUT(ucol20, 24u)  D5G_NE_MUT(uy, 25u)
+D5G_NE_MUT(dstep, 26u)   D5G_NE_MUT(dwrap, 27u)   D5G_NE_MUT(dcol, 28u)    D5G_NE_MUT(grid, 29u)    D5G_NE_MUT(gridn, 30u)
+D5G_NE_MUT(gridmode, 31u) D5G_NE_MUT(score, 32u)  D5G_NE_MUT(str19, 33u)   D5G_NE_MUT(rank1, 34u)   D5G_NE_MUT(blink, 35u)
+D5G_NE_MUT(blinkmode, 36u) D5G_NE_MUT(blinkside, 37u) D5G_NE_MUT(rankw, 38u) D5G_NE_MUT(cfg, 39u)   D5G_NE_MUT(a8, 40u)
+D5G_NE_MUT(a8store, 41u) D5G_NE_MUT(spawnargs, 42u) D5G_NE_MUT(face, 43u)  D5G_NE_MUT(queue, 44u)   D5G_NE_MUT(letter, 45u)
+D5G_NE_MUT(qidx, 46u)    D5G_NE_MUT(qmask, 47u)   D5G_NE_MUT(qcur, 48u)    D5G_NE_MUT(delcnt, 49u)  D5G_NE_MUT(delcell, 50u)
+D5G_NE_MUT(del9, 51u)    D5G_NE_MUT(deltimer, 52u) D5G_NE_MUT(endz, 53u)   D5G_NE_MUT(endtimer, 54u) D5G_NE_MUT(limit, 55u)
+D5G_NE_MUT(space, 56u)   D5G_NE_MUT(seekarg, 57u) D5G_NE_MUT(spawnxy, 58u) D5G_NE_MUT(v9, 59u)      D5G_NE_MUT(cellstate, 60u)
+D5G_NE_MUT(cellletter, 61u) D5G_NE_MUT(cntinc, 62u) D5G_NE_MUT(fullxy, 63u) D5G_NE_MUT(ret, 64u)
 /* ---- d5g bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -43933,6 +44143,71 @@ static const binding_t k_bindings[] = {
     { "game_mode_1e_step@r8ee", m_d5g_1eeb0_r8ee, 0x00000000u },
     { "game_mode_1e_step@rb00w", m_d5g_1eeb0_rb00w, 0x00000000u },
     { "game_mode_1e_step@rafa", m_d5g_1eeb0_rafa, 0x00000000u },
+    { "nameentry_step", b_d5g_1f458, 0xFFFFFFFFu },
+    { "nameentry_step@nocells", m_d5g_1f458_nocells, 0xFFFFFFFFu },
+    { "nameentry_step@tdec", m_d5g_1f458_tdec, 0xFFFFFFFFu },
+    { "nameentry_step@tdiv", m_d5g_1f458_tdiv, 0xFFFFFFFFu },
+    { "nameentry_step@tnum", m_d5g_1f458_tnum, 0xFFFFFFFFu },
+    { "nameentry_step@tw", m_d5g_1f458_tw, 0xFFFFFFFFu },
+    { "nameentry_step@finw", m_d5g_1f458_finw, 0xFFFFFFFFu },
+    { "nameentry_step@finside", m_d5g_1f458_finside, 0xFFFFFFFFu },
+    { "nameentry_step@finret", m_d5g_1f458_finret, 0xFFFFFFFFu },
+    { "nameentry_step@d8", m_d5g_1f458_d8, 0xFFFFFFFFu },
+    { "nameentry_step@padside", m_d5g_1f458_padside, 0xFFFFFFFFu },
+    { "nameentry_step@rep", m_d5g_1f458_rep, 0xFFFFFFFFu },
+    { "nameentry_step@repmod", m_d5g_1f458_repmod, 0xFFFFFFFFu },
+    { "nameentry_step@repctr", m_d5g_1f458_repctr, 0xFFFFFFFFu },
+    { "nameentry_step@rstep", m_d5g_1f458_rstep, 0xFFFFFFFFu },
+    { "nameentry_step@rrow", m_d5g_1f458_rrow, 0xFFFFFFFFu },
+    { "nameentry_step@runs", m_d5g_1f458_runs, 0xFFFFFFFFu },
+    { "nameentry_step@rx", m_d5g_1f458_rx, 0xFFFFFFFFu },
+    { "nameentry_step@rvoice", m_d5g_1f458_rvoice, 0xFFFFFFFFu },
+    { "nameentry_step@lstep", m_d5g_1f458_lstep, 0xFFFFFFFFu },
+    { "nameentry_step@lrow", m_d5g_1f458_lrow, 0xFFFFFFFFu },
+    { "nameentry_step@lcmp", m_d5g_1f458_lcmp, 0xFFFFFFFFu },
+    { "nameentry_step@ustep", m_d5g_1f458_ustep, 0xFFFFFFFFu },
+    { "nameentry_step@uwrap", m_d5g_1f458_uwrap, 0xFFFFFFFFu },
+    { "nameentry_step@ucol20", m_d5g_1f458_ucol20, 0xFFFFFFFFu },
+    { "nameentry_step@uy", m_d5g_1f458_uy, 0xFFFFFFFFu },
+    { "nameentry_step@dstep", m_d5g_1f458_dstep, 0xFFFFFFFFu },
+    { "nameentry_step@dwrap", m_d5g_1f458_dwrap, 0xFFFFFFFFu },
+    { "nameentry_step@dcol", m_d5g_1f458_dcol, 0xFFFFFFFFu },
+    { "nameentry_step@grid", m_d5g_1f458_grid, 0xFFFFFFFFu },
+    { "nameentry_step@gridn", m_d5g_1f458_gridn, 0xFFFFFFFFu },
+    { "nameentry_step@gridmode", m_d5g_1f458_gridmode, 0xFFFFFFFFu },
+    { "nameentry_step@score", m_d5g_1f458_score, 0xFFFFFFFFu },
+    { "nameentry_step@str19", m_d5g_1f458_str19, 0xFFFFFFFFu },
+    { "nameentry_step@rank1", m_d5g_1f458_rank1, 0xFFFFFFFFu },
+    { "nameentry_step@blink", m_d5g_1f458_blink, 0xFFFFFFFFu },
+    { "nameentry_step@blinkmode", m_d5g_1f458_blinkmode, 0xFFFFFFFFu },
+    { "nameentry_step@blinkside", m_d5g_1f458_blinkside, 0xFFFFFFFFu },
+    { "nameentry_step@rankw", m_d5g_1f458_rankw, 0xFFFFFFFFu },
+    { "nameentry_step@cfg", m_d5g_1f458_cfg, 0xFFFFFFFFu },
+    { "nameentry_step@a8", m_d5g_1f458_a8, 0xFFFFFFFFu },
+    { "nameentry_step@a8store", m_d5g_1f458_a8store, 0xFFFFFFFFu },
+    { "nameentry_step@spawnargs", m_d5g_1f458_spawnargs, 0xFFFFFFFFu },
+    { "nameentry_step@face", m_d5g_1f458_face, 0xFFFFFFFFu },
+    { "nameentry_step@queue", m_d5g_1f458_queue, 0xFFFFFFFFu },
+    { "nameentry_step@letter", m_d5g_1f458_letter, 0xFFFFFFFFu },
+    { "nameentry_step@qidx", m_d5g_1f458_qidx, 0xFFFFFFFFu },
+    { "nameentry_step@qmask", m_d5g_1f458_qmask, 0xFFFFFFFFu },
+    { "nameentry_step@qcur", m_d5g_1f458_qcur, 0xFFFFFFFFu },
+    { "nameentry_step@delcnt", m_d5g_1f458_delcnt, 0xFFFFFFFFu },
+    { "nameentry_step@delcell", m_d5g_1f458_delcell, 0xFFFFFFFFu },
+    { "nameentry_step@del9", m_d5g_1f458_del9, 0xFFFFFFFFu },
+    { "nameentry_step@deltimer", m_d5g_1f458_deltimer, 0xFFFFFFFFu },
+    { "nameentry_step@endz", m_d5g_1f458_endz, 0xFFFFFFFFu },
+    { "nameentry_step@endtimer", m_d5g_1f458_endtimer, 0xFFFFFFFFu },
+    { "nameentry_step@limit", m_d5g_1f458_limit, 0xFFFFFFFFu },
+    { "nameentry_step@space", m_d5g_1f458_space, 0xFFFFFFFFu },
+    { "nameentry_step@seekarg", m_d5g_1f458_seekarg, 0xFFFFFFFFu },
+    { "nameentry_step@spawnxy", m_d5g_1f458_spawnxy, 0xFFFFFFFFu },
+    { "nameentry_step@v9", m_d5g_1f458_v9, 0xFFFFFFFFu },
+    { "nameentry_step@cellstate", m_d5g_1f458_cellstate, 0xFFFFFFFFu },
+    { "nameentry_step@cellletter", m_d5g_1f458_cellletter, 0xFFFFFFFFu },
+    { "nameentry_step@cntinc", m_d5g_1f458_cntinc, 0xFFFFFFFFu },
+    { "nameentry_step@fullxy", m_d5g_1f458_fullxy, 0xFFFFFFFFu },
+    { "nameentry_step@ret", m_d5g_1f458_ret, 0xFFFFFFFFu },
     /* d5g end */
 };
 

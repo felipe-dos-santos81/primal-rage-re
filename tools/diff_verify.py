@@ -24826,6 +24826,127 @@ D5G_SPECS += [
                 D5G_WIPEARM),
          eax_mask=0, mutants=D5G_1E_MUTANTS),
 ]
+D5G_NECELLS = E.Call(0x1FFD0, ())
+D5G_NEFINISH = E.Call(0x20710, ("eax",), clobbers=("esi", "edi", "ebp"))
+D5G_NEREC = 0x0010A500                              # zero BSS: the cursor record 0x1044B8 points at
+# the eight strings 0x1F458 draws (ids 0x16..0x1D), distinct
+D5G_NE_STR = {0x16: b"P2", 0x17: b"P1", 0x18: b"SCORE", 0x19: b"RANK", 0x1A: b"GOOD", 0x1B: b"NAME",
+              0x1C: b"BEST", 0x1D: b"TOP"}
+
+
+def d5g_ne_case(t=0x0100, ac=1, d8=0, p0=0, p1=0, e0=0, dc=0, col=0x0B, row=6, rank=0, cfg=0, frame=1,
+                a8=0x5A5A5AA8, c8=3, bc=3, cnt=0, lim=3, q=None, cells=None):
+    """0x1F458: the timer word 0x10438C; the block 0x1044A8..0x1044E3 (the spawn handle `a8`, the
+    dword 0x1044AC `ac`, the seek record 0x1044B0, the cursor record pointer 0x1044B8 = D5G_NEREC,
+    the queue's write index `bc` and read index `c8`, the cursor column and row words 0x1044D0 /
+    0x1044D2 after the seeded word 0x1044CE, the rank word 0x1044D6, the byte 0x1044D8 `d8`, the two
+    autorepeat counters 0x1044DC `dc` and 0x1044E0 `e0`); the queue's dwords 0x104458.. (`q`
+    {index: value} over seeded ones); the name's count and limit bytes 0x10431C / 0x10431D after
+    three seeded bytes; six letter cells from 0x104114 (`cells` {index: state byte}); the name
+    buffer 0x104340..0x10434F; the two pad bytes 0x1088E7 / 0x1088E5; the option byte 0x104529; the
+    frame word 0xEF6DC; the word 0xC8718; the two scores; the cursor record's +0x10..+0x23."""
+    blk = (le32(a8) + le32(ac) + le32(0x0010B0B0) + le32(0xB4B5B6B7) + le32(D5G_NEREC) + le32(bc)
+           + le32(0xC0C1C2C3) + le32(0xC4C5C6C7) + le32(c8) + le16(0xCCCD) + le16(0xCECF) + le16(col)
+           + le16(row) + le16(0xD4D5) + le16(rank) + bytes([d8, 0xD9, 0xDA, 0xDB]) + le32(dc) + le32(e0))
+    qv = {i: 0x5A000000 + i for i in range(17)}
+    qv.update(q or {})
+    cb = bytearray()
+    for i in range(6):
+        cb += bytes(0x60 + i * 0x10 + k for k in range(0x12)) + bytes([(cells or {}).get(i, 0), 0x77 + i])
+    p = d1d_str_pokes(D5G_NE_STR)
+    p.update(d1d_chunks(0x001044A8, blk))
+    p.update(d1d_chunks(0x00104458, b"".join(le32(qv[i]) for i in range(17))))
+    p.update(d1d_chunks(0x00104114, bytes(cb)))
+    p.update({0x00104388: le32(0x88898A8B) + le16(t) + le16(0x8E8F),
+              0x00104318: bytes([0x18, 0x19, 0x1A, 0x1B, cnt, lim, 0x1E, 0x1F]),
+              0x00104340: bytes(0x40 + i for i in range(0x10)),
+              0x001088E4: bytes([0xE4, p1, 0xE6, p0]),
+              0x00104528: bytes([0x28, cfg, 0x2A, 0x2B]),
+              0x000EF6DC: le16(frame),
+              0x000C8718: le16(0x8718),
+              0x001077E8: le32(0xE8E9EAEB) + le32(0x00012345) + le32(0xF0F1F2F3),
+              0x0010787C: le32(0x7C7D7E7F) + le32(0x00067890) + le32(0x84858687),
+              D5G_NEREC + 0x10: bytes(0x30 + i for i in range(0x14))})
+    return p
+
+
+D5G_NE = lambda cid, side, stubs=None, **kw: Case(cid, {"eax": side}, d5g_ne_case(**kw), stubs or {})
+D5G_NE_CASES = [
+    # the timer word (f3: only its high byte; f5: 0xFFFF), the finish at 0 with the dword 0x1044AC
+    # 0 (f2: only its top byte)
+    D5G_NE("f0", 0, t=0, ac=0), D5G_NE("f1", 1, t=1, ac=0), D5G_NE("f2", 0x100, t=0, ac=0x01000000),
+    D5G_NE("f3", 0, t=0x0100), D5G_NE("f4", 1, t=0x01C2), D5G_NE("f5", 0, t=0xFFFF),
+    # the letter grid, drawn while the dword 0x1044AC is 0
+    D5G_NE("g0", 0, t=5, ac=0), D5G_NE("g1", 1, t=5, ac=0, rank=2, frame=0x40),
+    # the cursor moves, gated by the byte 0x1044D8: right (pad bit 0x10, or the counter 0x1044E0
+    # above 0x1E and a multiple of 5), left (0x20, the counter 0x1044DC), up (0x80), down (0x40)
+    D5G_NE("h0", 0, d8=1, p0=0xF0), D5G_NE("h1", 2, p0=0xF0, p1=0xF0),
+    D5G_NE("r0", 0, p0=0x10), D5G_NE("r1", 1, p1=0x10, col=0x1D), D5G_NE("r2", 0, p0=0x10, col=0x1D, row=0xF),
+    D5G_NE("r3", 0xFFFFFF00, p0=0x10, col=0x20, row=0xF), D5G_NE("r4", 0, p1=0x10, e0=0x23, col=0x14),
+    D5G_NE("r5", 0, e0=0x1E, dc=0x1E), D5G_NE("r6", 1, e0=0x24, dc=0x24, p0=0xF0),
+    D5G_NE("r7", 0, p0=0x10, col=0xFFF0), D5G_NE("r8", 1, p1=0x30, col=0x11, row=9),
+    D5G_NE("l0", 0, p0=0x20, col=0x0E), D5G_NE("l1", 0, p0=0x20), D5G_NE("l2", 1, p1=0x20, row=0xF),
+    D5G_NE("l3", 1, p0=0x10, dc=0x28, col=0x17), D5G_NE("l4", 0, p0=0xA0, col=0x0B, row=9),
+    D5G_NE("u0", 0, p0=0x80, row=9), D5G_NE("u1", 1, p1=0x80), D5G_NE("u2", 0, p0=0x80, col=0x20, row=0xF),
+    D5G_NE("u3", 0, p0=0xC0, row=6, col=0x1D),
+    D5G_NE("w0", 0, p0=0x40), D5G_NE("w1", 1, p1=0x40, row=0xF, col=0x1D), D5G_NE("w2", 0, p0=0x40, row=0xC, col=0x20),
+    D5G_NE("w3", 0, p0=0x40, row=0xF, col=0x20),
+    # the blinking prompt by the frame word's low byte, the side's string and column
+    D5G_NE("b0", 0, frame=0x0020), D5G_NE("b1", 1, frame=0x0040), D5G_NE("b2", 1, frame=0x0120),
+    D5G_NE("b3", 0, frame=0xFF00), D5G_NE("b4", 0, frame=0x0010),
+    # the rank word and option bit 1: the two strings, or the two banner actors once
+    D5G_NE("k0", 0), D5G_NE("k1", 0, rank=5), D5G_NE("k2", 0, {0x2AE14: 0x0010B200}, cfg=2, a8=0),
+    D5G_NE("k3", 1, {0x2AE14: 0x0010B300}, rank=1, cfg=0xFF, a8=0), D5G_NE("k4", 0, cfg=2),
+    D5G_NE("k5", 0, rank=0x0100, cfg=0xFD),
+    # a letter: a face button of the side (0x0F), the cursor's cell
+    D5G_NE("t0", 0, p0=0x01, col=0x11, row=9, cnt=1),
+    D5G_NE("t1", 1, p1=0x08, col=0x1A, row=0xF, cnt=2),
+    D5G_NE("t2", 0, p0=0x02, col=0x1D, row=0xF, cnt=2, cells={1: 4}),
+    D5G_NE("t3", 0, p0=0x04, col=0x1D, row=0xF, cnt=3),
+    D5G_NE("t4", 0, p0=0x0F, col=0x1D, row=0xF, cnt=0),
+    D5G_NE("t5", 0, p0=0x01, col=0x1D, row=0xF, cnt=0x80),
+    D5G_NE("t6", 1, p1=0x01, col=0x20, row=0xF, cnt=2),
+    D5G_NE("t7", 0, p0=0x01, col=0x0E, cnt=3),
+    D5G_NE("t8", 0, p0=0x01, col=0x0E, cnt=0x80, lim=5),
+    D5G_NE("t9", 0, p1=0x0F, p0=0xF0, d8=1),
+    D5G_NE("ta", 1, p1=0x02, col=0x14, row=0xC, cnt=0, lim=1),
+    # a queued letter (read index != write index): the cursor jumps to it; DEL and END do not move it
+    D5G_NE("q0", 0, c8=3, bc=5, q={4: 0x10}, cnt=1),
+    D5G_NE("q1", 1, c8=0xF, bc=2, q={16: 0x1B}, cnt=2, cells={1: 0}),
+    D5G_NE("q2", 0, c8=0, bc=1, q={1: 0x1C}, cnt=4),
+    D5G_NE("q3", 0, c8=7, bc=9, q={8: 0x1A}, p0=0x01, cnt=0),
+    D5G_NE("q4", 0, c8=2, bc=3, q={3: 0xFFFFFFF9}, cnt=1),
+    D5G_NE("q5", 1, c8=5, bc=4, q={6: 0x06}, cnt=3, lim=3),
+]
+D5G_NE_MUTANTS = ("@nocells", "@tdec", "@tdiv", "@tnum", "@tw", "@finw", "@finside", "@finret", "@d8", "@padside",
+                  "@rep", "@repmod", "@repctr", "@rstep", "@rrow", "@runs", "@rx", "@rvoice", "@lstep", "@lrow",
+                  "@lcmp", "@ustep", "@uwrap", "@ucol20", "@uy", "@dstep", "@dwrap", "@dcol", "@grid", "@gridn",
+                  "@gridmode", "@score", "@str19", "@rank1", "@blink", "@blinkmode", "@blinkside", "@rankw", "@cfg",
+                  "@a8", "@a8store", "@spawnargs", "@face", "@queue", "@letter", "@qidx", "@qmask", "@qcur",
+                  "@delcnt", "@delcell", "@del9", "@deltimer", "@endz", "@endtimer", "@limit", "@space", "@seekarg",
+                  "@spawnxy", "@v9", "@cellstate", "@cellletter", "@cntinc", "@fullxy", "@ret")
+D5G_SPECS += [
+    # 0x1F458 nameentry_step: AL = the side (`mov [esp+4],al` 0x1F460: f2 has EAX = 0x100, r3
+    # 0xFFFFFF00, h1 the side 2, which is neither pad's). 0x1FFD0 (a stub); the timer word 0x10438C
+    # stepped down and drawn as its thirtieth (0x2F434(0x13, 0x1C, t / 0x1E, 2, 1, 0x4003)); at 0
+    # with the dword 0x1044AC 0, 0x20710(the side) and EAX = 0. Else, with the byte 0x1044D8 0, one
+    # cursor move (right, left, up, down, in that order; each by the side's pad bit or its
+    # autorepeat counter) with its two voices and the cursor record's +0x18 / +0x1C; the 28-cell
+    # grid (0x2F510, the dword 0x1044AC 0); the score and rank lines; the prompt every 32nd frame;
+    # the rank's two strings, or with option bit 1 the two banner actors once (0x2AE14, the handle
+    # kept at 0x1044A8 between the two calls: the memory at the second). Then a letter, from a
+    # face button of the side (the cursor's cell: 7 * ((row - 6) / 3) + (col - 0xB) / 3) or the
+    # queue 0x104458 (the entry after the read index, which is masked 0xF; the cursor follows a
+    # letter, not DEL 0x1B or END 0x1C): DEL steps the count back (signed: t5) and marks its cell,
+    # END terminates the name, a letter under the limit (signed bytes: t8) spawns its actor
+    # (0x2BCF4(the record 0x1044B0, 0x1E1) for the space 0x1A, else a blank cell), 0x2C3FC(0xE9),
+    # the cell's state and letter, and at the limit parks the cursor on END. 0x1C500 runs on both
+    # sides; the other nine callees are stubs. Full mask: `test eax,eax` after six of its eight
+    # call sites (0x1EF4B, 0x1EFDD, 0x1F03E, 0x1F0C8, 0x1F208, 0x1F32B).
+    Spec("nameentry_step", 0x1F458, D5G_NE_CASES, allow_calls=D1D_STR_ALLOW,
+         calls=(D5G_NECELLS, D2C_NUMSET, D5G_NEFINISH, VOICE, D2B_FONT2, D1B_HOLD, D4C_NUMDRAW, SPAWN, P6_2BCF4),
+         eax_mask=0xFFFFFFFF, mutants=D5G_NE_MUTANTS),
+]
 D1_SPECS += D5G_SPECS
 # ---- d5g end ----
 SPECS = [

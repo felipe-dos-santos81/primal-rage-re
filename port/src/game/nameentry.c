@@ -179,6 +179,7 @@ void nameentry_reset(void)
 /* 0x1FFD0 — record §49-T. */
 void nameentry_cells_step(void)
 {
+    PR_SEAM0(0x1FFD0u);
     u8 tmp[2];
     tmp[0] = (u8)DSW(DS_0001E820);                          /* 0x1FFD9/0x1FFE5 */
     tmp[1] = (u8)(DSW(DS_0001E820) >> 8);
@@ -406,6 +407,7 @@ void nameentry_arm(u32 rank, u32 score)
 /* 0x20710 — record §49-T. */
 void nameentry_finish(u8 side)
 {
+    PR_SEAM(0x20710u, (u32)side);
     (void)name_filter(0x00104343u);                         /* 0x2071A 0x13EF0 */
     s32 count;
     u32 ecx = 0u;
