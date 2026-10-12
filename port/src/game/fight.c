@@ -1968,19 +1968,29 @@ void fight_health_bars(void)
 
 void fight_slot_pass(void)
 {
-    /* 0x3CB6B saves DS_00107ED8 and 0x3CB71 zeroes DS_00107EDC; the outer loop
-     * increments DS_00107EDC to 2 and the inner runs 0x20 times per side. */
-    DSD(DS_00107EDC) = 0;                       /* 0x3CB71 */
-    for (u32 side = 0; side < 2u; side++) {
-        DSB(DS_00107EE4) = (u8)fighter_actor_bit15_clear(side);   /* 0x3CB89 */
-        for (u32 i = 0; i < 0x20u; i++) {
-            DSD(DS_00107ED8) = i;               /* 0x3CB96 */
-            hit_slot_step();                    /* 0x3CB9B 0x3C88C */
-        }
-        DSD(DS_00107EDC) = side + 1u;           /* 0x3CBA8 */
+    /* 0x3CB6B loads DS_00107ED8 into EDX and 0x3CB7E stores it back before
+     * each side's 0x1A570 call (the value at entry for side 0, the 0x20 the
+     * inner loop ended on for side 1). Both counters live in memory and are
+     * loaded again after each 0x3C88C (0x3CB9B, the inner one; 0x3CBA7, the
+     * side; 0x3CB79, the side for 0x1A570), so the loops follow whatever the
+     * callee leaves in them. */
+    u32 n = DSD(DS_00107ED8);                   /* 0x3CB6B */
+    DSD(DS_00107EDC) = 0;                       /* 0x3CB71/0x3CB73 */
+    for (;;) {
+        u32 side = DSD(DS_00107EDC);            /* 0x3CB79 */
+        DSD(DS_00107ED8) = n;                   /* 0x3CB7E */
+        DSB(DS_00107EE4) = (u8)fighter_actor_bit15_clear(side);   /* 0x3CB84/0x3CB89 */
+        n = 0;                                  /* 0x3CB8E */
+        do {
+            DSD(DS_00107ED8) = n;               /* 0x3CB90 */
+            hit_slot_step();                    /* 0x3CB96 0x3C88C */
+            n = DSD(DS_00107ED8) + 1u;          /* 0x3CB9B/0x3CBA1 */
+        } while ((s32)n < 0x20);                /* 0x3CBA2/0x3CBA5 `jl` */
+        side = DSD(DS_00107EDC) + 1u;           /* 0x3CBA7/0x3CBAD */
+        DSD(DS_00107EDC) = side;                /* 0x3CBAE */
+        if ((s32)side >= 2) break;              /* 0x3CBB4/0x3CBB7 `jl` */
     }
-    DSD(DS_00107EDC) = 2;                       /* 0x3CBAE */
-    DSD(DS_00107ED8) = 0x20u;                   /* 0x3CBB9 */
+    DSD(DS_00107ED8) = n;                       /* 0x3CBB9 */
 }
 
 /* ---- 0x1A978 the stance/command pass ----------------------------------- */
