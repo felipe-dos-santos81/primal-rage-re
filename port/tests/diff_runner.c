@@ -30911,6 +30911,84 @@ D4B_PC_MUT(alsync2, 13u) D4B_PC_MUT(nosecond, 14u) D4B_PC_MUT(b1cz, 15u) D4B_PC_
 D4B_PC_MUT(nob1c, 17u) D4B_PC_MUT(b18z, 18u)  D4B_PC_MUT(b18neg, 19u) D4B_PC_MUT(nob18, 20u)
 D4B_PC_MUT(novoice, 21u) D4B_PC_MUT(voice, 22u) D4B_PC_MUT(burst, 23u) D4B_PC_MUT(order, 24u)
 D4B_PC_MUT(kill, 25u) D4B_PC_MUT(ret, 26u)
+
+/* 0x17FA0 camera_project: EAX = side, EDX = out_a, EBX = out_b, ECX = facing, [esp+4] = page_flag,
+ * [esp+8] = index_out (`ret 8`). One restatement of camera.c's body, one choice flipped per mutant
+ * number; the page tails and the bit-15 predicate go through their seamed C functions. */
+static void d4b_17fa0_anchor(u32 rec_at, u32 ch_at, u32 y_at, u32 x_at, u32 mut, int second)
+{
+    u32 r = DSD(rec_at);
+    if (r != 0u || mut == 1u) {                                              /* @nullskip */
+        u32 actor = DSD(DS_001014EC) + (u32)DSW(r + 0x56u) * 0x20u;
+        s32 adj = (s32)DSD(DS_000A174C + (u32)DSB((mut == 2u && second) ? DS_0010782A : ch_at) * 4u);   /* @anchor2 */
+        s16 w34 = (s16)DSW(r + 0x34u);
+        int neg = (mut == 3u) ? (w34 >= 0) : (mut == 4u) ? (DSW(r + 0x34u) != 0u) : (w34 > 0);   /* @adjge, @adjuns */
+        DSD(y_at) = (u32)((s32)DSD(actor + ((mut == 5u) ? 4u : 8u)) >> 6);   /* @aay */
+        if (neg) adj = -adj;
+        if (mut == 6u) adj = 0;                                               /* @noadj */
+        DSD(x_at) = (u32)((s32)DSD(actor + 4u) >> 6) + (u32)adj;
+    }
+}
+static u32 d4b_17fa0_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], out_a = r[R_EDX], out_b = r[R_EBX], facing = r[R_ECX];
+    u32 page_flag = r[R_S0], index_out = r[R_S1];
+    u32 p, actor, sprite, v;
+    d4b_17fa0_anchor(DS_001077B8, DS_0010782A, DS_00100AA0, DS_00100AA8, mut, 0);
+    d4b_17fa0_anchor(DS_0010784C, DS_001078BE, DS_00100AA4, DS_00100AAC, mut, 1);
+    p = DSD(DS_001077B0 + side * 0x94u);
+    if (mut == 7u) DSD(facing) = (u32)((DSW(p + 0x28u) & 0x4000u) != 0);     /* @facingw */
+    else DSB(facing) = (u8)((DSW(p + 0x28u) & ((mut == 8u) ? 0x8000u : 0x4000u)) != 0);   /* @facingbit */
+    if (mut != 9u) DSB(page_flag) = 0;                                        /* @noclear */
+    actor = DSD(DS_001014EC) + (u32)DSW(p + 0x56u) * 0x20u;
+    DSD(index_out) = ((u32)DSW(actor) & ((mut == 10u) ? 0xFFFFu : 0x7FFFu))   /* @index */
+        - camera_char_const(DSB(DS_0010782A + ((mut == 11u) ? 1u - side : side) * 0x94u));   /* @indexside */
+    if (mut == 12u) goto tail_b;                                              /* @order: the second tail first */
+tail_a:
+    v = (u32)camera_page_tail_a(side, DS_00100A78 + side * 4u);
+    if (((mut == 13u) ? v : (v & 0xFFu)) != 0u)                               /* @ala: the port before the fix */
+        DSD(DS_00100AC0 + side * 4u) = DSD(((mut == 14u) ? DS_00100A90 : DS_00100A78) + side * 4u);   /* @ac0src */
+    else if (mut != 15u) mem_fill(DS_00100AC0 + side * 4u, 0, 4u);            /* @ac0keep */
+    if (mut == 12u) goto rest;
+tail_b:
+    v = (u32)camera_page_tail_b(side, DS_00100A90 + side * 4u);
+    if (((mut == 16u) ? v : (v & 0xFFu)) != 0u) {                             /* @alb: the port before the fix */
+        if (mut != 17u) DSB(page_flag) = 1;                                   /* @noflag */
+        DSD(DS_00100AC8 + side * 4u) = DSD(DS_00100A90 + side * 4u);
+    } else if (mut != 18u) {                                                  /* @ac8keep */
+        mem_fill(DS_00100AC8 + side * 4u, 0, 4u);
+    }
+    if (mut == 12u) goto tail_a;
+rest:
+    DSD(out_a) = (u32)(((s32)DSD(actor + 4u) + ((mut == 19u) ? 0 : 0x20)) >> 6);   /* @outa20 */
+    DSD(out_b) = (u32)(((s32)DSD(actor + ((mut == 20u) ? 4u : 8u)) + 0x20) >> 6);  /* @outb */
+    sprite = camera_resolve_sprite(side, DSD(index_out));
+    if (sprite != 0u) {
+        s32 la = (mut == 27u) ? (s32)(DSD(sprite + 2u) >> 16) : ((s32)DSD(sprite + 2u) >> 16);   /* @originzx: the port before the fix */
+        s32 lb = (mut == 28u) ? (s32)(DSD(sprite + 4u) >> 16) : ((s32)DSD(sprite + 4u) >> 16);   /* @originzy: the port before the fix */
+        v = (u32)fighter_actor_bit15_clear(side);
+        if (((mut == 21u) ? v : (v & 0xFFu)) == 0u || mut == 22u)             /* @al15: the port before the fix; @mirrorall */
+            la = (s32)(s16)DSW(sprite) - la - ((mut == 23u) ? 0 : 1);         /* @mirror1 */
+        if (mut == 24u) { s32 t = la; la = lb; lb = t; }                      /* @subswap */
+        if (mut != 25u) DSD(out_b) = (u32)((s32)DSD(out_b) - lb);             /* @nosubb */
+        if (mut != 26u) DSD(out_a) = (u32)((s32)DSD(out_a) - la);             /* @nosuba */
+    }
+    return 0u;
+}
+static void b_d4b_17fa0(const u32 *r, u32 *eax)
+{
+    camera_project(r[R_EAX], r[R_EDX], r[R_EBX], r[R_ECX], r[R_S0], r[R_S1]);
+    *eax = 0u;
+}
+#define D4B_PJ_MUT(name, n) \
+    static void m_d4b_pj_##name(const u32 *r, u32 *eax) { *eax = d4b_17fa0_core(r, n); }
+D4B_PJ_MUT(nullskip, 1u) D4B_PJ_MUT(anchor2, 2u) D4B_PJ_MUT(adjge, 3u)  D4B_PJ_MUT(adjuns, 4u)
+D4B_PJ_MUT(aay, 5u)    D4B_PJ_MUT(noadj, 6u)   D4B_PJ_MUT(facingw, 7u)  D4B_PJ_MUT(facingbit, 8u)
+D4B_PJ_MUT(noclear, 9u) D4B_PJ_MUT(index, 10u) D4B_PJ_MUT(indexside, 11u) D4B_PJ_MUT(order, 12u)
+D4B_PJ_MUT(ala, 13u)   D4B_PJ_MUT(ac0src, 14u) D4B_PJ_MUT(ac0keep, 15u) D4B_PJ_MUT(alb, 16u)
+D4B_PJ_MUT(noflag, 17u) D4B_PJ_MUT(ac8keep, 18u) D4B_PJ_MUT(outa20, 19u) D4B_PJ_MUT(outb, 20u)
+D4B_PJ_MUT(al15, 21u)  D4B_PJ_MUT(mirrorall, 22u) D4B_PJ_MUT(mirror1, 23u) D4B_PJ_MUT(subswap, 24u)
+D4B_PJ_MUT(nosubb, 25u) D4B_PJ_MUT(nosuba, 26u) D4B_PJ_MUT(originzx, 27u) D4B_PJ_MUT(originzy, 28u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39675,6 +39753,35 @@ static const binding_t k_bindings[] = {
     { "camera_projectile_clash_sync@dxsign", m_d4b_pc_dxsign, 0x000000FFu },
     { "camera_projectile_clash_sync@dysign", m_d4b_pc_dysign, 0x000000FFu },
     { "camera_projectile_clash_sync@dydx",   m_d4b_pc_dydx, 0x000000FFu },
+    { "camera_project",                      b_d4b_17fa0, 0x00000000u },
+    { "camera_project@nullskip",             m_d4b_pj_nullskip, 0x00000000u },
+    { "camera_project@anchor2",              m_d4b_pj_anchor2, 0x00000000u },
+    { "camera_project@adjge",                m_d4b_pj_adjge, 0x00000000u },
+    { "camera_project@adjuns",               m_d4b_pj_adjuns, 0x00000000u },
+    { "camera_project@aay",                  m_d4b_pj_aay, 0x00000000u },
+    { "camera_project@noadj",                m_d4b_pj_noadj, 0x00000000u },
+    { "camera_project@facingw",              m_d4b_pj_facingw, 0x00000000u },
+    { "camera_project@facingbit",            m_d4b_pj_facingbit, 0x00000000u },
+    { "camera_project@noclear",              m_d4b_pj_noclear, 0x00000000u },
+    { "camera_project@index",                m_d4b_pj_index, 0x00000000u },
+    { "camera_project@indexside",            m_d4b_pj_indexside, 0x00000000u },
+    { "camera_project@order",                m_d4b_pj_order, 0x00000000u },
+    { "camera_project@ala",                  m_d4b_pj_ala, 0x00000000u },
+    { "camera_project@ac0src",               m_d4b_pj_ac0src, 0x00000000u },
+    { "camera_project@ac0keep",              m_d4b_pj_ac0keep, 0x00000000u },
+    { "camera_project@alb",                  m_d4b_pj_alb, 0x00000000u },
+    { "camera_project@noflag",               m_d4b_pj_noflag, 0x00000000u },
+    { "camera_project@ac8keep",              m_d4b_pj_ac8keep, 0x00000000u },
+    { "camera_project@outa20",               m_d4b_pj_outa20, 0x00000000u },
+    { "camera_project@outb",                 m_d4b_pj_outb, 0x00000000u },
+    { "camera_project@al15",                 m_d4b_pj_al15, 0x00000000u },
+    { "camera_project@mirrorall",            m_d4b_pj_mirrorall, 0x00000000u },
+    { "camera_project@mirror1",              m_d4b_pj_mirror1, 0x00000000u },
+    { "camera_project@subswap",              m_d4b_pj_subswap, 0x00000000u },
+    { "camera_project@nosubb",               m_d4b_pj_nosubb, 0x00000000u },
+    { "camera_project@nosuba",               m_d4b_pj_nosuba, 0x00000000u },
+    { "camera_project@originzx",             m_d4b_pj_originzx, 0x00000000u },
+    { "camera_project@originzy",             m_d4b_pj_originzy, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

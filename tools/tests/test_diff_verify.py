@@ -15854,6 +15854,7 @@ D4B_MASKS = {
     "camera_box_overlap": 0xff,
     "camera_projectile_clash": 0xff,
     "camera_projectile_clash_sync": 0xff,
+    "camera_project": 0x0,
 }   # D4B_MASKS end
 D4B_KINDS = {
     "camera_y_commit@modew": {'byte', 'call #0 memory'},
@@ -16008,6 +16009,34 @@ D4B_KINDS = {
     "camera_projectile_clash_sync@dxsign": {'byte', 'call #1', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
     "camera_projectile_clash_sync@dysign": {'byte', 'call #2', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
     "camera_projectile_clash_sync@dydx": {'byte', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'eax'},
+    "camera_project@nullskip": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "camera_project@anchor2": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "camera_project@adjge": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "camera_project@adjuns": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "camera_project@aay": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "camera_project@noadj": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "camera_project@facingw": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "camera_project@facingbit": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "camera_project@noclear": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "camera_project@index": {'byte', 'call #0 memory', 'call #1 memory', 'call #2'},
+    "camera_project@indexside": {'byte', 'call #0 memory', 'call #1 memory', 'call #2', 'call #2 memory'},
+    "camera_project@order": {'call #0', 'call #1', 'call #1 memory'},
+    "camera_project@ala": {'byte', 'call #1 memory', 'call #2 memory'},
+    "camera_project@ac0src": {'byte', 'call #1 memory', 'call #2 memory'},
+    "camera_project@ac0keep": {'byte', 'call #1 memory', 'call #2 memory'},
+    "camera_project@alb": {'byte', 'call #2 memory'},
+    "camera_project@noflag": {'byte', 'call #2 memory'},
+    "camera_project@ac8keep": {'byte', 'call #2 memory'},
+    "camera_project@outa20": {'byte', 'call #2 memory'},
+    "camera_project@outb": {'byte', 'call #2 memory'},
+    "camera_project@al15": {'byte'},
+    "camera_project@mirrorall": {'byte'},
+    "camera_project@mirror1": {'byte'},
+    "camera_project@subswap": {'byte'},
+    "camera_project@nosubb": {'byte'},
+    "camera_project@nosuba": {'byte'},
+    "camera_project@originzx": {'byte'},
+    "camera_project@originzy": {'byte'},
 }   # D4B_KINDS end
 D4B_CASES = [
     ("camera_y_commit@modew", ['m2', 'm3']),
@@ -16162,6 +16191,34 @@ D4B_CASES = [
     ("camera_projectile_clash_sync@dxsign", ['q0', 'q1', 'q2', 'q3', 'q4']),
     ("camera_projectile_clash_sync@dysign", ['q0', 'q2', 'q4']),
     ("camera_projectile_clash_sync@dydx", ['q0', 'q2', 'q4']),
+    ("camera_project@nullskip", ['j1', 'j3', 'j4']),
+    ("camera_project@anchor2", ['j0', 'j2', 'j4', 'j5']),
+    ("camera_project@adjge", ['j0', 'j5']),
+    ("camera_project@adjuns", ['j2', 'j3']),
+    ("camera_project@aay", ['j0', 'j2', 'j3', 'j4', 'j5']),
+    ("camera_project@noadj", ['j0', 'j2', 'j3', 'j4', 'j5']),
+    ("camera_project@facingw", ['j0', 'j1', 'j2', 'j3', 'j4', 'j5']),
+    ("camera_project@facingbit", ['j0', 'j1', 'j2', 'j3', 'j4']),
+    ("camera_project@noclear", ['j0', 'j1', 'j2', 'j3', 'j4', 'j5']),
+    ("camera_project@index", ['j1', 'j2', 'j5']),
+    ("camera_project@indexside", ['j0', 'j1', 'j2', 'j3', 'j4', 'j5']),
+    ("camera_project@order", ['j0', 'j1', 'j2', 'j3', 'j4', 'j5']),
+    ("camera_project@ala", ['j2']),
+    ("camera_project@ac0src", ['j0', 'j3', 'j4']),
+    ("camera_project@ac0keep", ['j1', 'j2', 'j5']),
+    ("camera_project@alb", ['j2']),
+    ("camera_project@noflag", ['j0', 'j3', 'j5']),
+    ("camera_project@ac8keep", ['j1', 'j2', 'j4']),
+    ("camera_project@outa20", ['j3', 'j5']),
+    ("camera_project@outb", ['j0', 'j1', 'j2', 'j3', 'j4']),
+    ("camera_project@al15", ['j2', 'j4']),
+    ("camera_project@mirrorall", ['j0', 'j3', 'j5']),
+    ("camera_project@mirror1", ['j1', 'j2', 'j4']),
+    ("camera_project@subswap", ['j0', 'j1', 'j2', 'j3', 'j4', 'j5']),
+    ("camera_project@nosubb", ['j0', 'j1', 'j2', 'j3', 'j4', 'j5']),
+    ("camera_project@nosuba", ['j0', 'j1', 'j2', 'j3', 'j4', 'j5']),
+    ("camera_project@originzx", ['j1', 'j5']),
+    ("camera_project@originzy", ['j0', 'j2', 'j3', 'j4']),
 ]   # D4B_CASES end
 D4B_OUTSIDE = {
     "camera_y_commit": [(0x10C1E0, 2)],
@@ -17293,7 +17350,7 @@ class RealFunctionTests(unittest.TestCase):
         0x46958: (), 0x46698: (), 0x466F4: (), 0x4673C: (), 0x46794: (), 0x467DC: (), 0x4682C: (), 0x46898: (),     # track D3 batch d3c
         0x350D0: ("edi", "ebp"), 0x34E20: (), 0x3D0BC: ("edx",),     # track D3 batch d3c
         0x38D24: (), 0x382C4: (), 0x38434: ("edi", "ebp"), 0x2A4FC: ("ebp",), 0x186C4: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x1922C: (), 0x3D004: ("edi", "ebp"), 0x235C4: ("ebp",),     # track D3 batch d3e
-        0x1317C: (), 0x140E4: ("edx",), 0x181D0: ("ebx", "ecx", "edx"), 0x3B938: (), 0x41030: ("ebx", "ecx", "edx"),     # track D4 batch d4b
+        0x1317C: (), 0x140E4: ("edx",), 0x164F4: ("edx",), 0x16AFC: ("edx",), 0x181D0: ("ebx", "ecx", "edx"), 0x3B938: (), 0x41030: ("ebx", "ecx", "edx"),     # track D4 batch d4b
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))

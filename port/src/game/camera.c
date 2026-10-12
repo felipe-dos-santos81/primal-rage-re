@@ -70,6 +70,7 @@ u32 camera_char_const(u32 ch)
  * (word[actor] & 0x8000) == 0 for slot[side]'s actor. */
 static int camera_actor_bit15_clear(u32 side)
 {
+    PR_SEAM_RET(0x1A570u, side);
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
     return (DSW(actor) & 0x8000u) == 0;
@@ -179,6 +180,7 @@ int camera_sprite_code(u32 side)
  * 0xFD120..0xFD138. */
 int camera_page_tail_a(u32 side, u32 out)
 {
+    PR_SEAM_RET(0x16AFCu, side, out);
     int code = camera_sprite_code(side);
     if (code != -1) {                               /* 0x16b14 */
         u32 ch = (u32)DSB(DS_0010782A + side * 0x94u);
@@ -238,6 +240,7 @@ int camera_page_tail_a(u32 side, u32 out)
  * to `out`. */
 int camera_page_tail_b(u32 side, u32 out)
 {
+    PR_SEAM_RET(0x164F4u, side, out);
     if (fighter_slot_flag(side == 0u ? 0u : 1u) == 0) {      /* 0x16500 */
         s32 v = (s32)DSD(DS_000FD148 + side * 4u) - 1;
         DSD(DS_000FD148 + side * 4u) = (u32)(v < 0 ? 0 : v);

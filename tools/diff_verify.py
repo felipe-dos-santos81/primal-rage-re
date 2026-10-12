@@ -22335,6 +22335,91 @@ D4B_SPECS += [
     ], calls=(D4B_OVERLAP, D4B_SYNC_REAL, VOICE, D4B_BURST, P7_2B150), eax_mask=0xFF,
        mutants=("@nofirst", "@nosecond", "@dxsign", "@dysign", "@dydx")),
 ]
+
+# ---- 0x17FA0: the per-frame projection of one side -------------------------------------------------
+D4B_PJ_P = (0x10A200, 0x10A280)                 # the two sides' records ([0x1077B0 + side * 0x94])
+D4B_PJ_R = (0x10A300, 0x10A380)                 # the two projectile records ([0x1077B8], [0x10784C])
+D4B_PJ_OUT = 0x10A580                           # out_a +0, out_b +0x10, facing +0x20, page_flag +0x28, index_out +0x30
+# 0x16AFC / 0x164F4 (d2d's rows; seamed here): EAX = side, EDX = the out dword; each saves EBX, ECX,
+# ESI, EDI (and EBP) and writes EDX. The stubs store a box at the out dword, as the callees do, so
+# the copy to 0x100AC0 / 0x100AC8 must read it after the call.
+D4B_TAIL_A = E.Call(0x16AFC, ("eax", "edx"), clobbers=("edx",), writes=((1, 0, bytes.fromhex("a1a2a3a4")),))
+D4B_TAIL_B = E.Call(0x164F4, ("eax", "edx"), clobbers=("edx",), writes=((1, 0, bytes.fromhex("b1b2b3b4")),))
+
+
+def d4b_project(cid, side, ch, word, pos, tails, bit15, face=0x4000, anchors=((0x0021, 5, 0x00123456, 0x00234567),
+                (0x0000, 6, 0xFFF12345, 0x00000FC0)), sprite=(0x0027, 0x0031, 0x0009, 0xFFFB), handle=0x800040):
+    """Both slots' records, characters (the other side's is (ch + 3) % 7) and +8 projectile pointers
+    (`anchors`: per slot (the +0x34 word, the pset index, x, y), or None for a null pointer), the 0xA174C
+    dwords of both characters, the side's record (+0x28 `face`, +0x56 pset index 2 + side), its pset
+    record (`word`, x, y = `pos`), the sprite header behind the handle at 0xA8B30 + (word & 0x7FFF) * 4,
+    the 0x100A78/0x100A90/0x100AC0/0x100AC8 pairs and the five out locations among seeded bytes."""
+    och = (ch + 3) % 7
+    chars = (ch, och) if side == 0 else (och, ch)
+    p = {**d4b_res(), **d1h_char_case(side, ch), 0x1014EC: le32(D4B_BOX_PSET),
+         0xA174C + chars[0] * 4: le32(0x00000031), 0xA174C + chars[1] * 4: le32(0xFFFFFFD4),
+         0x100A78: le32(0x78787878) + le32(0x7C7C7C7C), 0x100A90: le32(0x90909090) + le32(0x94949494),
+         0x100AA0: le32(0xA0A0A0A0) + le32(0xA4A4A4A4) + le32(0xA8A8A8A8) + le32(0xACACACAC),
+         0x100AC0: le32(0xC0C0C0C0) + le32(0xC4C4C4C4) + le32(0xC8C8C8C8) + le32(0xCCCCCCCC),
+         D4B_PJ_OUT: b"\x5a" * 0x38,
+         0xA8B30 + (word & 0x7FFF) * 4 - 4: le32(handle ^ 0x100) + le32(handle) + le32(handle ^ 0x200),
+         d4b_at(handle) - 2: b"\xee\xee" + b"".join(le16(v) for v in sprite) + b"\xdd\xdd"}
+    for i in (0, 1):
+        slot, rec = 0x1077B0 + i * 0x94, D4B_PJ_P[i]
+        p[slot] = le32(rec) + le32(0x04040404) + le32(D4B_PJ_R[i] if anchors[i] else 0)
+        p[rec + 0x26] = le16(0x2626) + le16(face if i == side else face ^ 0xC000) + le16(0x2A2A)
+        p[rec + 0x54] = le16(0x5454) + le16(2 + i) + le16(0x5858)
+        own = i == side
+        p[D4B_BOX_PSET + (2 + i) * 0x20] = (le16(word if own else word ^ 0x8111) + le16(0x0202)
+                                            + le32(pos[0] if own else 0x00777777) + le32(pos[1] if own else 0x00888888))
+        if anchors[i]:
+            w34, idx, x, y = anchors[i]
+            p[D4B_PJ_R[i] + 0x32] = le16(0x3232) + le16(w34) + le16(0x3636)
+            p[D4B_PJ_R[i] + 0x54] = le16(0x5454) + le16(idx) + le16(0x5858)
+            p[D4B_BOX_PSET + idx * 0x20] = le16(0x0666) + le16(0x0202) + le32(x) + le32(y)
+    return Case(cid, {"eax": side, "edx": D4B_PJ_OUT + 4, "ebx": D4B_PJ_OUT + 0x14, "ecx": D4B_PJ_OUT + 0x21,
+                      "s0": D4B_PJ_OUT + 0x29, "s1": D4B_PJ_OUT + 0x30}, p,
+                {0x16AFC: tails[0], 0x164F4: tails[1], 0x1A570: bit15})
+
+
+D4B_SPECS += [
+    # 0x17FA0 camera_project: EAX = side, EDX = out_a, EBX = out_b, ECX = facing, [esp+4] = page_flag,
+    # [esp+8] = index_out; `ret 8`. The two anchors first, each skipped on a null pointer (`test edx,edx`
+    # 0x17FBF, `test ecx,ecx` 0x18010): 0x100AA0 / 0x100AA4 = the projectile's pset y `sar 6`, 0x100AA8 /
+    # 0x100AAC = its x `sar 6` plus the 0xA174C dword of slot 0's / slot 1's character, negated when the
+    # record's +0x34 word is positive (`test bx,bx; jle` 0x17FFD, signed). Then the side's record:
+    # [facing] = bit 14 of its +0x28 word (`and ah,0x40 ... setne al` 0x18076), [page_flag] = 0, [index_out]
+    # = (its pset word & 0x7FFF) - 0x17EEC(side) (0x180A1..0x180BE). 0x16AFC(side, 0x100A78 + side * 4):
+    # AL non-zero copies that dword to 0x100AC0 + side * 4, else four zero bytes (`test al,al` 0x180CE);
+    # 0x164F4(side, 0x100A90 + side * 4) the same into 0x100AC8 + side * 4, and [page_flag] = 1 (0x1810D).
+    # [out_a] = (pset x + 0x20) `sar 6`, [out_b] = (pset y + 0x20) `sar 6` (0x1813E..0x1816D); the sprite
+    # = 0x16308(side, [index_out] read back) (run on both sides); 0x1A570(side) AL zero mirrors the x
+    # origin to width - origin - 1 (`test al,al; jne` 0x181A0); [out_b] -= the y origin, [out_a] -= the
+    # x origin (both origins are the header's +4 and +6 words sign-extended: `mov ecx,[eax+2]; sar
+    # ecx,0x10` 0x1818D/0x18193, `mov edx,[eax+4]; sar edx,0x10` 0x18190/0x18198; the port shifted them
+    # logically before this row: j0's 0xFFFB, j1's 0xFFF0, j5's 0x8000). Each predicate's stub returns
+    # 0x100 and 0xFFFFFF01 in some case. Mask 0: at 35 of the
+    # 40 call sites the next instructions rewrite EAX; the other five (0x26338, 0x264C7, 0x26624,
+    # 0x274C2, 0x29B2A) return into `call 0x1975c`, whose 0x17CB0 zeroes AH (`xor ah,ah` 0x17CC0, no
+    # read) and loads `mov eax,0x128` (0x17CCA).
+    Spec("camera_project", 0x17FA0, [
+        d4b_project("j0", 0, 2, 0x0123, (0x00012345, 0x0000ABCD), (1, 1), 1),
+        d4b_project("j1", 1, 5, 0x8123, (0xFFFE1DC0, 0xFFFF2B40), (0, 0), 0, face=0xBFFF, anchors=(None, None),
+                    sprite=(0x0027, 0x0031, 0xFFF0, 0x0006)),
+        d4b_project("j2", 0, 6, 0xFFFF, (0x0000001F, 0x00000020), (0x100, 0x100), 0x100,
+                    anchors=((0x8000, 5, 0xFFFFFFC0, 0x0000003F), (0x0001, 6, 0x00000040, 0xFFFFFFBF))),
+        d4b_project("j3", 1, 0, 0x7FFE, (0x00000020, 0x0000001F), (0xFFFFFF01, 0xFFFFFF01), 0xFFFFFF01,
+                    anchors=((0xFFFF, 5, 0x00123456, 0x00234567), None), handle=0x1000010),
+        d4b_project("j4", 0, 3, 0x0001, (0xFFFFFFDF, 0xFFFFFFE0), (1, 0), 0xFFFFFF00, face=0x4000,
+                    anchors=(None, (0x7FFF, 6, 0x00345678, 0x00456789)), sprite=(0x8001, 0x0010, 0x7FFF, 0x8000)),
+        d4b_project("j5", 1, 7, 0x8001, (0x7FFFFFFF, 0x80000000), (0, 1), 1, face=0x0000,
+                    sprite=(0x0015, 0x0031, 0x8000, 0x7FFF)),
+    ], allow_calls=(0x17EEC, 0x16308, 0x1B544), calls=(D4B_TAIL_A, D4B_TAIL_B, BIT15), eax_mask=0,
+       mutants=("@nullskip", "@anchor2", "@adjge", "@adjuns", "@aay", "@noadj", "@facingw", "@facingbit", "@noclear",
+                "@index", "@indexside", "@order", "@ala", "@ac0src", "@ac0keep", "@alb", "@noflag", "@ac8keep",
+                "@outa20", "@outb", "@al15", "@mirrorall", "@mirror1", "@subswap", "@nosubb", "@nosuba", "@originzx",
+                "@originzy")),
+]
 D1_SPECS += D4B_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
