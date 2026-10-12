@@ -13645,6 +13645,38 @@ def d2a_displace_case(side, i, phase, m4, disp, cmd, m2=0x08090A0B):
     return p
 
 
+def d2a_pred_case(side, st, f28, cmd):
+    """0x467DC/0x4682C: the side slot's +0x52..+0x55 (`st` = the +0x52, +0x53, +0x54 bytes; +0x55
+    seeded 0x55) and the other slot's (0x02 0x00 0x00 when the side's pass the three tests, else
+    0x01 0x00 0x00), both records' +0x28 word (0x1A5D4's facing bit) and the side's command word
+    (the other side's has bits 12 and 13 flipped, which flips 0x1A5D4's verdict)."""
+    so, oo = D2A_SLOT + side * 0x94, D2A_SLOT + (1 - side) * 0x94
+    words = [0, 0]
+    words[side], words[1 - side] = cmd, cmd ^ 0x3000
+    return {so: le32((D2A_R0, D2A_R1)[side]), oo: le32((D2A_R0, D2A_R1)[1 - side]),
+            so + 0x52: bytes(st) + b"\x55", oo + 0x52: bytes([2 if tuple(st) == (1, 0, 0) else 1, 0, 0, 0x55]),
+            D2A_R0 + 0x28: le16(f28), D2A_R1 + 0x28: le16(f28),
+            0x001088E0: le16(words[0]) + le16(words[1])}
+
+
+def d2a_pred_cases():
+    """The ten cases both twins take."""
+    return [
+        Case("e0", {"eax": 0}, d2a_pred_case(0, (1, 0, 0), 0x0000, 0x2000)),
+        Case("e1", {"eax": 1}, d2a_pred_case(1, (1, 0, 0), 0x4000, 0x2000)),
+        Case("e2", {"eax": 0}, d2a_pred_case(0, (1, 0, 1), 0x0000, 0x2000)),
+        Case("e3", {"eax": 1}, d2a_pred_case(1, (1, 0x80, 0), 0x4000, 0x2000)),
+        Case("e4", {"eax": 0}, d2a_pred_case(0, (2, 0, 0), 0x0000, 0x0000)),
+        Case("e5", {"eax": 1}, d2a_pred_case(1, (0, 0, 0), 0x0000, 0x2000)),
+        Case("e6", {"eax": 0}, d2a_pred_case(0, (1, 0, 0), 0x4000, 0x1000)),
+        Case("e7", {"eax": 1}, d2a_pred_case(1, (1, 0, 0), 0x0000, 0xDFFF)),
+        Case("e8", {"eax": 1}, d2a_pred_case(1, (1, 0, 1), 0x0000, 0x0000)),
+        Case("e9", {"eax": 0}, d2a_pred_case(0, (1, 1, 0), 0x0000, 0x2000)),
+    ]
+
+
+D2A_PRED_MUTANTS = ("@slot", "@s54", "@s53", "@s52", "@wide", "@fside", "@al", "@inv")
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13834,6 +13866,16 @@ D2A_SPECS = [
     ], allow_calls=(0x3C6E8,), calls=(D2A_DESC_CALL,), eax_mask=0xFF,
        mutants=("@di", "@pz", "@stride", "@f", "@cmd", "@off10", "@dlo", "@dz", "@dw", "@nostore", "@ret",
                 "@s0", "@off")),
+    # 0x467DC ai_pred_467dc: EAX = side. +0x54 == 0, +0x53 == 0, +0x52 == 1 (0x467F2, 0x467FD,
+    # 0x4680B), then 0x1A5D4 (run real; `test eax,eax` 0x4681C on its 0/0x1000/0x2000, whose AL is
+    # always 0: @al) must be zero. AL only: `mov al,cl` 0x46825 / `xor al,al`; the one caller tests
+    # AL (0x46A85 `test al,al`).
+    Spec("ai_pred_467dc", 0x467DC, d2a_pred_cases(), allow_calls=(0x1A5D4,), eax_mask=0xFF,
+         mutants=D2A_PRED_MUTANTS),
+    # 0x4682C ai_pred_4682c: the twin; 0x1A5D4 must be non-zero (0x4686E `jne`). AL only; 0x46AA5
+    # `test al,al`.
+    Spec("ai_pred_4682c", 0x4682C, d2a_pred_cases(), allow_calls=(0x1A5D4,), eax_mask=0xFF,
+         mutants=D2A_PRED_MUTANTS),
 ]
 D1_SPECS += D2A_SPECS
 

@@ -20452,6 +20452,38 @@ static void m_d2a_3c800_ret(const u32 *r, u32 *eax)     { *eax = d2a_3c800_core(
 static void m_d2a_3c800_s0(const u32 *r, u32 *eax)      { *eax = d2a_3c800_core(r, 0x800u); }
 static void m_d2a_3c800_off(const u32 *r, u32 *eax)     { *eax = d2a_3c800_core(r, 0x1000u); }
 
+/* 0x467DC and 0x4682C (twins): EAX = side; AL. `tw` 0 is 0x467DC (1 when 0x1A5D4 is zero), 1 is
+ * 0x4682C (1 when it is not). 0x1A5D4 runs real. */
+static u32 d2a_pred_core(u32 tw, const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], slot = 0x001077B0u + ((mut & 1u) ? 1u - side : side) * 0x94u, f;   /* @slot */
+    if (!(mut & 2u) && ((mut & 16u) ? (DSW(slot + 0x54u) != 0u)       /* @s54; @wide: a word compare */
+                                                : (DSB(slot + 0x54u) != 0u))) return 0u;
+    if (!(mut & 4u) && DSB(slot + 0x53u) != 0u) return 0u;                   /* @s53 */
+    if (!(mut & 8u) && DSB(slot + 0x52u) != 1u) return 0u;                   /* @s52 */
+    f = ai_facing_cmd((mut & 32u) ? 1u - side : side);                      /* @fside */
+    if (mut & 64u) f &= 0xFFu;                                                 /* @al: AL for the whole EAX */
+    return (((f == 0u) == (tw == 0u)) != ((mut & 128u) != 0u)) ? 1u : 0u;      /* @inv: the twin's sense */
+}
+static void b_d2a_467dc(const u32 *r, u32 *eax) { *eax = (u32)ai_pred_467dc(r[R_EAX]); }
+static void m_d2a_467dc_slot(const u32 *r, u32 *eax)  { *eax = d2a_pred_core(0u, r, 0x1u); }
+static void m_d2a_467dc_s54(const u32 *r, u32 *eax)   { *eax = d2a_pred_core(0u, r, 0x2u); }
+static void m_d2a_467dc_s53(const u32 *r, u32 *eax)   { *eax = d2a_pred_core(0u, r, 0x4u); }
+static void m_d2a_467dc_s52(const u32 *r, u32 *eax)   { *eax = d2a_pred_core(0u, r, 0x8u); }
+static void m_d2a_467dc_wide(const u32 *r, u32 *eax)  { *eax = d2a_pred_core(0u, r, 0x10u); }
+static void m_d2a_467dc_fside(const u32 *r, u32 *eax) { *eax = d2a_pred_core(0u, r, 0x20u); }
+static void m_d2a_467dc_al(const u32 *r, u32 *eax)    { *eax = d2a_pred_core(0u, r, 0x40u); }
+static void m_d2a_467dc_inv(const u32 *r, u32 *eax)   { *eax = d2a_pred_core(0u, r, 0x80u); }
+static void b_d2a_4682c(const u32 *r, u32 *eax) { *eax = (u32)ai_pred_4682c(r[R_EAX]); }
+static void m_d2a_4682c_slot(const u32 *r, u32 *eax)  { *eax = d2a_pred_core(1u, r, 0x1u); }
+static void m_d2a_4682c_s54(const u32 *r, u32 *eax)   { *eax = d2a_pred_core(1u, r, 0x2u); }
+static void m_d2a_4682c_s53(const u32 *r, u32 *eax)   { *eax = d2a_pred_core(1u, r, 0x4u); }
+static void m_d2a_4682c_s52(const u32 *r, u32 *eax)   { *eax = d2a_pred_core(1u, r, 0x8u); }
+static void m_d2a_4682c_wide(const u32 *r, u32 *eax)  { *eax = d2a_pred_core(1u, r, 0x10u); }
+static void m_d2a_4682c_fside(const u32 *r, u32 *eax) { *eax = d2a_pred_core(1u, r, 0x20u); }
+static void m_d2a_4682c_al(const u32 *r, u32 *eax)    { *eax = d2a_pred_core(1u, r, 0x40u); }
+static void m_d2a_4682c_inv(const u32 *r, u32 *eax)   { *eax = d2a_pred_core(1u, r, 0x80u); }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -24596,6 +24628,24 @@ static const binding_t k_bindings[] = {
     { "hit_displace@ret", m_d2a_3c800_ret, 0x000000FFu },
     { "hit_displace@s0", m_d2a_3c800_s0, 0x000000FFu },
     { "hit_displace@off", m_d2a_3c800_off, 0x000000FFu },
+    { "ai_pred_467dc", b_d2a_467dc, 0x000000FFu },
+    { "ai_pred_467dc@slot", m_d2a_467dc_slot, 0x000000FFu },
+    { "ai_pred_467dc@s54", m_d2a_467dc_s54, 0x000000FFu },
+    { "ai_pred_467dc@s53", m_d2a_467dc_s53, 0x000000FFu },
+    { "ai_pred_467dc@s52", m_d2a_467dc_s52, 0x000000FFu },
+    { "ai_pred_467dc@wide", m_d2a_467dc_wide, 0x000000FFu },
+    { "ai_pred_467dc@fside", m_d2a_467dc_fside, 0x000000FFu },
+    { "ai_pred_467dc@al", m_d2a_467dc_al, 0x000000FFu },
+    { "ai_pred_467dc@inv", m_d2a_467dc_inv, 0x000000FFu },
+    { "ai_pred_4682c", b_d2a_4682c, 0x000000FFu },
+    { "ai_pred_4682c@slot", m_d2a_4682c_slot, 0x000000FFu },
+    { "ai_pred_4682c@s54", m_d2a_4682c_s54, 0x000000FFu },
+    { "ai_pred_4682c@s53", m_d2a_4682c_s53, 0x000000FFu },
+    { "ai_pred_4682c@s52", m_d2a_4682c_s52, 0x000000FFu },
+    { "ai_pred_4682c@wide", m_d2a_4682c_wide, 0x000000FFu },
+    { "ai_pred_4682c@fside", m_d2a_4682c_fside, 0x000000FFu },
+    { "ai_pred_4682c@al", m_d2a_4682c_al, 0x000000FFu },
+    { "ai_pred_4682c@inv", m_d2a_4682c_inv, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)
