@@ -78,6 +78,7 @@ typedef void (*svc_text_fn)(s32 col, s32 row, const u8 *s, u32 mode);
 /* 0x2CB74 — record §K11.2. */
 u32 svc_start_menu(u32 entry)
 {
+    PR_SEAM_RET(0x2CB74u, entry);
     (void)entry;                                           /* EAX is reloaded at 0x2CB81 */
     return menu_step(SVC_TABLE_START, 0x10u, 0u);          /* 0x2CB77..0x2CB88 0x2FFC4 (EBX = 0xF000, unread) */
 }

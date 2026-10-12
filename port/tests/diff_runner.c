@@ -33207,6 +33207,323 @@ D5G_HI_MUT(noclr, 16u) D5G_HI_MUT(clrw, 17u)  D5G_HI_MUT(mask, 18u)  D5G_HI_MUT(
 D5G_HI_MUT(rdargs, 22u) D5G_HI_MUT(nord, 23u) D5G_HI_MUT(chk, 24u)   D5G_HI_MUT(rbyte, 25u) D5G_HI_MUT(inv, 26u)
 D5G_HI_MUT(nochk, 27u) D5G_HI_MUT(iargs, 28u) D5G_HI_MUT(isrc, 29u)  D5G_HI_MUT(order, 30u) D5G_HI_MUT(ret40, 31u)
 D5G_HI_MUT(cachetest, 32u) D5G_HI_MUT(cachestore, 33u)
+/* 0x2FFC4 menu_step: EAX = the table, EDX = the stride, ECX = the flags. One step of the per-frame
+ * menu, its state in 0x107414..0x10744F. 0x2EA74, 0x2C3FC, 0x2FE84, 0x2F280, 0x2F198, 0x2EEC8,
+ * 0x305FC and the callback 0x2CB74 are stubs; 0x500BB, 0x1C500, 0x2EB80 and 0x2FE40 run on both
+ * sides. Full mask: `test eax,eax; je; cmp eax,-5` (0x251F3) and 0x2CB74 returns it (0x2CB8D). */
+typedef u32 (*d5g_cb_fn)(u32 entry);
+static u32 d5g_menu_call(u32 addr, u32 arg)
+{
+    d5g_cb_fn fn = (d5g_cb_fn)(void *)fn_resolve(addr);
+    return fn ? fn(arg) : 0u;
+}
+/* one drawn item (the three highlighting arms share it); mutants 80.. */
+static void d5g_menu_item(u32 entry, const u8 *s, s32 row, u32 cell, u32 draw, int track, u32 mut)
+{
+    if (cell != 0u && mut != 80u) text_cells_release(4, row, s, cell);       /* @norel */
+    text_cursor_set((mut == 81u) ? 5 : 4, row, s, draw);                     /* @col */
+    if (DSD(entry + ((mut == 82u) ? 8u : 4u)) != 0u) {                       /* @second */
+        s32 col = (s32)strlen((const char *)s) + ((mut == 83u) ? 4 : 5);     /* @gap */
+        const u8 *t = game_string_get(DSD(entry + 4u));
+        if (track && mut != 84u) DSD(0x00107438u) = (u32)col;                /* @nolen */
+        if (track) DSD(0x00107420u) = (u32)(t - mem);
+        if (cell != 0u) text_cells_release(col, row, t, (mut == 85u) ? draw : cell);   /* @relmode */
+        text_cursor_set(col, (mut == 86u) ? row + 1 : row, t, draw);         /* @row2 */
+    }
+}
+static u32 d5g_2ffc4_core(u32 table, u32 stride, u32 flags, u32 mut)
+{
+    enum { ACT = 0x107414, FLG = 0x107418, ENTS = 0x10741C, STR = 0x107420, CNT = 0x107424, OLD = 0x107428,
+           CUR = 0x10742C, SEL = 0x107430, ENT = 0x107434, RDW = 0x10743C, ROW0 = 0x107440, ROW = 0x107444,
+           RES = 0x107448, CB = 0x10744C };
+    u32 title = table;
+    if ((mut == 1u) ? DSD(ACT) == 0u : DSB(ACT) == 0u) {                     /* @actw */
+        if (mut != 2u) DSD(0x00105F2Cu) = DSD(0x00101500u);                  /* @nostamp */
+        DSD(ENTS) = table + stride;
+        if (mut == 4u) (void)sound_voice(0x100u);                            /* @waitlate */
+        config_screen_wait_zero();
+        if (mut != 4u) (void)sound_voice((mut == 3u) ? 0x101u : 0x100u);     /* @voice */
+        if (mut != 5u) DSD(CUR) = 0u;                                        /* @nocur */
+        DSD(RDW) = 1u;
+        DSD(OLD) = (mut == 6u) ? (u32)-1 : (u32)-2;                          /* @old */
+        DSD(ROW0) = 5u;
+        const u8 *s = game_string_get(DSD((mut == 7u) ? table : DSD(ENTS)));  /* @hdr */
+        DSD(STR) = (u32)(s - mem);
+        if ((s8)*s == 0x3F && mut != 8u) DSD(STR) += 1u;                     /* @noq */
+        u32 p = DSD(STR);
+        if ((s8)DSB(p) == 0x0B && mut != 9u) {                               /* @no0b */
+            s32 d = (mut == 11u) ? (s32)DSB(p + 1u) : (s32)(s8)DSB(p + 1u);  /* @zext */
+            if (mut != 10u) DSD(ROW0) += (u32)(d - 0x30);                    /* @row0 */
+            DSD(STR) = p + 2u;
+        }
+        if (DSB(DSD(STR)) == 0u && mut != 12u) title = 0u;                   /* @title */
+        DSD(CB) = DSD(table + ((mut == 13u) ? 0xCu : 8u));                   /* @cb */
+        if (mut != 14u) DSD(FLG) = flags;                                    /* @flags */
+        DSD(ENTS) = table + stride;
+        if (mut != 17u) DSD(ENT) = table + stride;                           /* @ent */
+        if (mut != 15u) DSD(SEL) = 0u;                                       /* @sel0 */
+        if (mut != 16u) DSD(CNT) = 0u;                                       /* @cnt0 */
+        if (mut == 20u) DSB(ACT) = 1u;                                       /* @actearly */
+        if (mut == 18u) menu_title_draw(title, 0x1000u, 0x5000u, DSD(FLG));  /* @tdargs */
+        else menu_title_draw(title, 0x5000u, 0x1000u, (mut == 19u) ? 0u : DSD(FLG));   /* @tdflags */
+        if (mut != 21u) DSB(ACT) = 1u;                                       /* @noact */
+    }
+    if (DSD(RDW) != 0u) {
+        if (DSD(CB) != 0u && mut != 23u) (void)d5g_menu_call(DSD(CB), (mut == 22u) ? DSD(SEL) : 0u);   /* @nocb0 @cbarg */
+        DSD(ROW0) = 5u;
+        DSD(ROW) = (mut == 35u) ? 6u : 5u;                                   /* @row5 */
+        DSD(ENT) = DSD(ENTS);
+        DSD(CNT) = 0u;
+        while (DSD(OLD) != DSD(CUR)) {
+            u32 id = DSD(DSD(ENT));
+            if (id == 0u) {
+                if (mut != 33u) DSD(OLD) = DSD(CUR);                         /* @term */
+                break;
+            }
+            const u8 *str = game_string_get(id);
+            DSD(STR) = (u32)(str - mem);
+            s32 first = (s8)*str;
+            if (first == 0x3F && mut != 25u) {                               /* @nohide */
+                DSD(ENT) += stride;
+                if (mut != 26u) DSD(CNT) += 1u;                              /* @hidecnt */
+                DSD(STR) = (u32)(str + 1 - mem);
+                continue;
+            }
+            if (first == 0x0A) {
+                if (mut != 27u) DSD(ROW) += 1u;                              /* @nonl */
+                DSD(STR) = (u32)(str + 1 - mem);
+            }
+            if (mut != 28u) DSD(ROW) += DSD(DSD(ENT) + 0xCu);                /* @rowadd */
+            u32 entry = DSD(ENT);
+            const u8 *cs = mem + DSD(STR);
+            s32 row = (s32)DSD(ROW);
+            u32 idx = DSD(CNT);
+            if (idx == DSD(OLD) && idx != DSD(CUR) && mut != 32u) {          /* @unhl */
+                d5g_menu_item(entry, cs, row, 0x2000u, 0xF000u, 1, mut);
+            } else if (idx == DSD(CUR)) {
+                if (mut != 31u) DSD(SEL) = entry;                            /* @nosel */
+                if (mut == 30u) d5g_menu_item(entry, cs, row, 0x2000u, 0xF000u, 1, mut);   /* @hl */
+                else d5g_menu_item(entry, cs, row, 0xF000u, 0x2000u, 1, mut);
+            } else {
+                d5g_menu_item(entry, cs, row, 0u, 0xF000u, 1, mut);
+            }
+            DSD(ENT) = entry + ((mut == 34u) ? 0x10u : stride);              /* @stride */
+            DSD(ROW) = (u32)row + 1u;
+            DSD(CNT) = idx + 1u;
+        }
+        if (mut != 24u) DSD(RDW) = 0u;                                       /* @rdw0 */
+    }
+    u32 keys = config_input_poll_clear((mut == 36u) ? 0xC3000000u : 0xC300C000u, (mut == 37u) ? 0u : 1u);   /* @mask @pflag */
+    u32 key = config_key_latched();
+    if ((mut == 38u) ? (key & 0xFFu) == 0x1Bu : key == 0x1Bu)                /* @esckey */
+        return ((DSD(FLG) & 4u) != 0u) == (mut != 39u) ? (u32)-10 : (u32)-5; /* @escsw */
+    if (DSD(CB) != 0u) {
+        u32 r = d5g_menu_call(DSD(CB), (mut == 40u) ? 0u : DSD(SEL));        /* @cbsel */
+        if (mut != 41u) DSD(RES) = r;                                        /* @nores */
+        if ((mut == 42u) ? (r & 0xFFu) != 0u : r != 0u) return r;            /* @cbal */
+    }
+    const u32 escbit = (mut == 43u) ? 0x1000000u : 0x2000000u, entbit = (mut == 43u) ? 0x2000000u : 0x1000000u;   /* @bits */
+    if ((keys & escbit) != 0u) {
+        if (mut != 44u) DSD(RDW) = 1u;                                       /* @escrdw */
+        if ((DSD(FLG) & 4u) != 0u) {
+            DSB(ACT) = 0u;
+            return (u32)-1;
+        }
+        u32 cur = DSD(CUR), count = DSD(CNT);
+        if (mut != 45u) DSB(ACT) = 0u;                                       /* @escact */
+        return (cur == count) == (mut != 46u) ? 0u : (u32)-5;                /* @esccmp */
+    }
+    if ((keys & entbit) != 0u) {
+        if (mut != 47u) DSB(ACT) = 0u;                                       /* @entlate */
+        menu_title_draw(DSD(SEL), 0x5000u, 0x1000u, (mut == 48u) ? DSD(FLG) : 0u);   /* @entflags */
+        if (mut == 47u) DSB(ACT) = 0u;
+        u32 sel = DSD(SEL);
+        u32 r = d5g_menu_call(DSD(sel + 8u), (mut == 49u) ? 0u : sel);       /* @entarg */
+        if (mut != 50u) DSD(RES) = r;                                        /* @entres */
+        if (r == (u32)-10) return r;
+        if (r != (u32)-5) return (mut == 51u) ? r : 0u;                      /* @entret */
+        DSD(RDW) = 1u;
+        if (mut != 52u) DSD(OLD) = (u32)-2;                                  /* @entold */
+        DSB(ACT) = 0u;
+        return r;
+    }
+    if (mut != 53u) DSD(ENT) = 0u;                                           /* @ent0 */
+    if (mut != 54u) DSD(RES) = 1u;                                           /* @res1 */
+    const u32 upm = (mut == 55u) ? 0x80000000u : 0x80008000u, dnm = (mut == 56u) ? 0x40000000u : 0x40004000u;   /* @upbit @dnbit */
+    const int up = (keys & upm) != 0u, dn = (keys & dnm) != 0u;
+    if ((mut == 57u) ? (up && !dn) : up) {                                   /* @updn */
+        while (DSD(ENT) == 0u) {
+            s32 cur = (s32)DSD(CUR) - 1;
+            DSD(CUR) = (u32)cur;
+            if (cur < 0) {
+                DSD(CUR) = DSD(CNT) - ((mut == 58u) ? 2u : 1u);              /* @wrap */
+                if (mut != 59u) DSD(RES) -= 1u;                              /* @fuse */
+                if ((s32)DSD(RES) < 0) return 0u;
+            }
+            DSD(ENT) = menu_entry_find(DSD(ENTS), stride, (s32)DSD(CUR));
+        }
+        if (mut != 60u) DSD(RDW) = 1u;                                       /* @nordw */
+    } else if (dn) {
+        while (DSD(ENT) == 0u) {
+            u32 cur = DSD(CUR) + 1u;
+            DSD(CUR) = cur;
+            if (cur == DSD(CNT)) {
+                DSD(CUR) = (mut == 61u) ? 1u : DSD(ENT);                     /* @dnwrap */
+                if (mut != 59u) DSD(RES) -= 1u;
+                if ((s32)DSD(RES) < 0) return 0u;
+            }
+            DSD(ENT) = menu_entry_find(DSD(ENTS), (mut == 34u) ? 0x10u : stride, (s32)DSD(CUR));
+        }
+        if (mut != 60u) DSD(RDW) = 1u;
+    }
+    if ((DSD(FLG) & ((mut == 62u) ? 2u : 1u)) != 0u)                         /* @codebit */
+        (mut == 63u) ? config_code_row(2, 0x11) : config_code_row(0x11, 2);  /* @code */
+    return 0u;
+}
+static void b_d5g_2ffc4(const u32 *r, u32 *eax) { *eax = menu_step(r[R_EAX], r[R_EDX], r[R_ECX]); }
+#define D5G_MS_MUT(name, n) \
+    static void m_d5g_2ffc4_##name(const u32 *r, u32 *eax) { *eax = d5g_2ffc4_core(r[R_EAX], r[R_EDX], r[R_ECX], n); }
+D5G_MS_MUT(actw, 1u)     D5G_MS_MUT(nostamp, 2u)  D5G_MS_MUT(voice, 3u)    D5G_MS_MUT(waitlate, 4u) D5G_MS_MUT(nocur, 5u)
+D5G_MS_MUT(old, 6u)      D5G_MS_MUT(hdr, 7u)      D5G_MS_MUT(noq, 8u)      D5G_MS_MUT(no0b, 9u)     D5G_MS_MUT(row0, 10u)
+D5G_MS_MUT(zext, 11u)    D5G_MS_MUT(title, 12u)   D5G_MS_MUT(cb, 13u)      D5G_MS_MUT(flags, 14u)   D5G_MS_MUT(sel0, 15u)
+D5G_MS_MUT(cnt0, 16u)    D5G_MS_MUT(ent, 17u)     D5G_MS_MUT(tdargs, 18u)  D5G_MS_MUT(tdflags, 19u) D5G_MS_MUT(actearly, 20u)
+D5G_MS_MUT(noact, 21u)   D5G_MS_MUT(cbarg, 22u)   D5G_MS_MUT(nocb0, 23u)   D5G_MS_MUT(rdw0, 24u)    D5G_MS_MUT(nohide, 25u)
+D5G_MS_MUT(hidecnt, 26u) D5G_MS_MUT(nonl, 27u)    D5G_MS_MUT(rowadd, 28u)  D5G_MS_MUT(hl, 30u)      D5G_MS_MUT(nosel, 31u)
+D5G_MS_MUT(unhl, 32u)    D5G_MS_MUT(term, 33u)    D5G_MS_MUT(stride, 34u)  D5G_MS_MUT(row5, 35u)    D5G_MS_MUT(mask, 36u)
+D5G_MS_MUT(pflag, 37u)   D5G_MS_MUT(esckey, 38u)  D5G_MS_MUT(escsw, 39u)   D5G_MS_MUT(cbsel, 40u)   D5G_MS_MUT(nores, 41u)
+D5G_MS_MUT(cbal, 42u)    D5G_MS_MUT(bits, 43u)    D5G_MS_MUT(escrdw, 44u)  D5G_MS_MUT(escact, 45u)  D5G_MS_MUT(esccmp, 46u)
+D5G_MS_MUT(entlate, 47u) D5G_MS_MUT(entflags, 48u) D5G_MS_MUT(entarg, 49u) D5G_MS_MUT(entres, 50u)  D5G_MS_MUT(entret, 51u)
+D5G_MS_MUT(entold, 52u)  D5G_MS_MUT(ent0, 53u)    D5G_MS_MUT(res1, 54u)    D5G_MS_MUT(upbit, 55u)   D5G_MS_MUT(dnbit, 56u)
+D5G_MS_MUT(updn, 57u)    D5G_MS_MUT(wrap, 58u)    D5G_MS_MUT(fuse, 59u)    D5G_MS_MUT(nordw, 60u)   D5G_MS_MUT(dnwrap, 61u)
+D5G_MS_MUT(codebit, 62u) D5G_MS_MUT(code, 63u)    D5G_MS_MUT(norel, 80u)   D5G_MS_MUT(col, 81u)     D5G_MS_MUT(second, 82u)
+D5G_MS_MUT(gap, 83u)     D5G_MS_MUT(nolen, 84u)   D5G_MS_MUT(relmode, 85u) D5G_MS_MUT(row2, 86u)
+/* 0x2FA40 menu_run: EAX = the table, EDX = the stride, ECX = the flags. The blocking menu: its
+ * state is the raw's frame. 0x2EA74 and 0x2C3FC are stubs whose writes script the latched key (the
+ * first sets it 0x1B, the second 0): the first poll sees the case's pad word, the poll after the
+ * loop's wait the Esc key. 0x2FE84, 0x2F280, 0x2F198, 0x305FC and the callback 0x2CB74 are stubs;
+ * 0x2EDE0 (0x50161, 0x2EBF0, 0x2EB80, 0x500BB), 0x1C500 and 0x2FE40 run on both sides. Full mask:
+ * `mov edx,eax` (0x2CBAD) ... `mov eax,edx` (0x2CBB9), returned to the menu's callback site. */
+static u32 d5g_2fa40_core(u32 table, u32 stride, u32 flags, u32 mut)
+{
+    u32 title = table, hdr = 1u, sel = 0u, entry, base, cb;
+    s32 row0 = 5, old = -2, cur = 0, count, row;
+    if (mut == 2u) (void)sound_voice(0x100u);                                /* @waitlate */
+    config_screen_wait_zero();
+    if (mut != 2u) (void)sound_voice((mut == 3u) ? 0x101u : 0x100u);         /* @voice */
+    const u8 *s = game_string_get(DSD((mut == 4u) ? table : table + stride));    /* @hdr */
+    if ((s8)*s == 0x3F && mut != 5u) s++;                                    /* @noq */
+    if ((s8)*s == 0x0B && mut != 6u) {                                       /* @no0b */
+        if (mut != 7u) row0 += ((mut == 8u) ? (s32)s[1] : (s32)(s8)s[1]) - 0x30;   /* @row0 @zext */
+        s += 2;
+    }
+    if (*s == 0u && mut != 9u) title = 0u;                                   /* @title */
+    base = table + stride;
+    cb = DSD(((mut == 10u) ? base : table) + 8u);                            /* @cb: the first item's */
+redraw:
+    entry = base;
+    sel = 0u;
+    count = 0;
+    row = row0;
+    if (hdr != 0u) {
+        if (mut == 12u) menu_title_draw(title, 0x1000u, 0x5000u, flags);     /* @tdargs */
+        else menu_title_draw(title, 0x5000u, 0x1000u, (mut == 13u) ? 0u : flags);   /* @tdflags */
+        if (cb != 0u && mut != 15u) (void)d5g_menu_call(cb, (mut == 14u) ? base : 0u);   /* @cbarg @nocb0 */
+        hdr = 0u;
+    }
+    while (cur != old) {
+        u32 id = DSD(entry);
+        if (id == 0u) { old = cur; break; }
+        const u8 *str = game_string_get(id);
+        s32 first = (s8)*str;
+        if (first == 0x3F && mut != 16u) {                                   /* @nohide */
+            entry += stride;
+            if (mut != 17u) count++;                                         /* @hidecnt */
+            continue;
+        }
+        if (first == 0x0A) {
+            if (mut != 18u) row++;                                           /* @nonl */
+            str++;
+        }
+        if (mut != 19u) row += (s32)DSD(entry + 0xCu);                       /* @rowadd */
+        if (count == old && cur != count && mut != 20u) {                    /* @unhl */
+            d5g_menu_item(entry, str, row, 0x2000u, 0xF000u, 0, mut);
+        } else if (cur == count) {
+            if (mut != 21u) sel = entry;                                     /* @nosel */
+            if (mut == 22u) d5g_menu_item(entry, str, row, 0x2000u, 0xF000u, 0, mut);   /* @hl */
+            else d5g_menu_item(entry, str, row, 0xF000u, 0x2000u, 0, mut);
+        } else {
+            d5g_menu_item(entry, str, row, 0u, 0xF000u, 0, mut);
+        }
+        row++;
+        count++;
+        entry += (mut == 23u) ? 0x10u : stride;                              /* @stride */
+    }
+    for (;;) {
+        s32 last = count - ((mut == 24u) ? 2 : 1);                           /* @last */
+        if (cur != old) goto redraw;
+        u32 keys = config_input_poll((mut == 25u) ? 0xC3000000u : 0xC300C000u, 1u);   /* @mask */
+        if (cb != 0u) {
+            u32 r = d5g_menu_call(cb, (mut == 27u) ? 0u : sel);              /* @cbsel */
+            if ((mut == 28u) ? (r & 0xFFu) != 0u : r != 0u) return r;        /* @cbal */
+        }
+        const u32 escbit = (mut == 29u) ? 0x3000000u : 0x2000000u, entbit = (mut == 26u) ? 0x4000000u : 0x1000000u;   /* @escbit @entbit */
+        if ((keys & escbit) != 0u) {
+            if ((flags & 4u) == 0u)
+                return (mut == 30u) ? (u32)-1 : (u32)(((cur == count) ? 1 : 0) - 1);   /* @esccmp */
+            keys |= 0x40004000u;
+        } else if ((keys & entbit) != 0u) {
+            menu_title_draw(sel, 0x5000u, 0x1000u, (mut == 31u) ? flags : 0u);   /* @entflags */
+            if (mut != 32u) old = -2;                                        /* @entold */
+            (void)d5g_menu_call(DSD(sel + 8u), (mut == 33u) ? 0u : sel);     /* @entarg */
+            if (mut != 34u) hdr = 1u;                                        /* @enthdr */
+            if (mut != 35u) keys = 0u;                                       /* @entkeys */
+        }
+        {
+            s32 fuse = 1;
+            u32 found = 0u;
+            const u32 upm = (mut == 36u) ? 0x80000000u : 0x80008000u, dnm = (mut == 37u) ? 0x40000000u : 0x40004000u;   /* @upbit @dnbit */
+            const int up = (keys & upm) != 0u, dn = (keys & dnm) != 0u;
+            if ((mut == 38u) ? (up && !dn) : up) {                           /* @updn */
+                while (found == 0u) {
+                    cur--;
+                    if (cur < 0) {
+                        fuse--;
+                        cur = last;
+                        if (fuse < 0) return 0u;
+                    }
+                    found = menu_entry_find(base, stride, cur);
+                }
+            } else if (dn) {
+                while (found == 0u) {
+                    cur++;
+                    if (cur == count) {
+                        fuse--;
+                        cur = (mut == 39u) ? last : 0;                       /* @dnwrap */
+                        if (fuse < 0) return 0u;
+                    }
+                    found = menu_entry_find(base, (mut == 23u) ? 0x10u : stride, cur);
+                }
+            }
+        }
+        if (mut == 42u) config_screen_wait_zero();                           /* @waitearly */
+        if ((flags & ((mut == 40u) ? 2u : 1u)) != 0u)                        /* @codebit */
+            (mut == 41u) ? config_code_row(2, 0x11) : config_code_row(0x11, 2);   /* @code */
+        if (mut != 42u) config_screen_wait_zero();
+    }
+}
+static void b_d5g_2fa40(const u32 *r, u32 *eax) { *eax = menu_run(r[R_EAX], r[R_EDX], r[R_ECX]); }
+#define D5G_MR_MUT(name, n) \
+    static void m_d5g_2fa40_##name(const u32 *r, u32 *eax) { *eax = d5g_2fa40_core(r[R_EAX], r[R_EDX], r[R_ECX], n); }
+D5G_MR_MUT(waitlate, 2u) D5G_MR_MUT(voice, 3u)    D5G_MR_MUT(hdr, 4u)      D5G_MR_MUT(noq, 5u)
+D5G_MR_MUT(no0b, 6u)     D5G_MR_MUT(row0, 7u)     D5G_MR_MUT(zext, 8u)     D5G_MR_MUT(title, 9u)    D5G_MR_MUT(cb, 10u)
+D5G_MR_MUT(tdargs, 12u)  D5G_MR_MUT(tdflags, 13u) D5G_MR_MUT(cbarg, 14u)   D5G_MR_MUT(nocb0, 15u)
+D5G_MR_MUT(nohide, 16u)  D5G_MR_MUT(hidecnt, 17u) D5G_MR_MUT(nonl, 18u)    D5G_MR_MUT(rowadd, 19u)  D5G_MR_MUT(unhl, 20u)
+D5G_MR_MUT(nosel, 21u)   D5G_MR_MUT(hl, 22u)      D5G_MR_MUT(stride, 23u)  D5G_MR_MUT(last, 24u)    D5G_MR_MUT(mask, 25u)
+D5G_MR_MUT(entbit, 26u)  D5G_MR_MUT(cbsel, 27u)   D5G_MR_MUT(cbal, 28u)    D5G_MR_MUT(escbit, 29u)    D5G_MR_MUT(esccmp, 30u)
+D5G_MR_MUT(entflags, 31u) D5G_MR_MUT(entold, 32u) D5G_MR_MUT(entarg, 33u)  D5G_MR_MUT(enthdr, 34u)  D5G_MR_MUT(entkeys, 35u)
+D5G_MR_MUT(upbit, 36u)   D5G_MR_MUT(dnbit, 37u)   D5G_MR_MUT(updn, 38u)    D5G_MR_MUT(dnwrap, 39u)  D5G_MR_MUT(codebit, 40u)
+D5G_MR_MUT(code, 41u)    D5G_MR_MUT(waitearly, 42u)  D5G_MR_MUT(norel, 80u)   D5G_MR_MUT(col, 81u)     D5G_MR_MUT(second, 82u)
+D5G_MR_MUT(gap, 83u)     D5G_MR_MUT(relmode, 85u) D5G_MR_MUT(row2, 86u)
 /* ---- d5g bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -43267,6 +43584,123 @@ static const binding_t k_bindings[] = {
     { "hiscore_init_rr@cache", m_d5g_1e824_cache, 0x00000000u },
     { "hiscore_init_rr@cachetest", m_d5g_1e824_cachetest, 0x00000000u },
     { "hiscore_init_rr@cachestore", m_d5g_1e824_cachestore, 0x00000000u },
+    { "menu_step", b_d5g_2ffc4, 0xFFFFFFFFu },
+    { "menu_step@actw", m_d5g_2ffc4_actw, 0xFFFFFFFFu },
+    { "menu_step@nostamp", m_d5g_2ffc4_nostamp, 0xFFFFFFFFu },
+    { "menu_step@voice", m_d5g_2ffc4_voice, 0xFFFFFFFFu },
+    { "menu_step@waitlate", m_d5g_2ffc4_waitlate, 0xFFFFFFFFu },
+    { "menu_step@nocur", m_d5g_2ffc4_nocur, 0xFFFFFFFFu },
+    { "menu_step@old", m_d5g_2ffc4_old, 0xFFFFFFFFu },
+    { "menu_step@hdr", m_d5g_2ffc4_hdr, 0xFFFFFFFFu },
+    { "menu_step@noq", m_d5g_2ffc4_noq, 0xFFFFFFFFu },
+    { "menu_step@no0b", m_d5g_2ffc4_no0b, 0xFFFFFFFFu },
+    { "menu_step@row0", m_d5g_2ffc4_row0, 0xFFFFFFFFu },
+    { "menu_step@zext", m_d5g_2ffc4_zext, 0xFFFFFFFFu },
+    { "menu_step@title", m_d5g_2ffc4_title, 0xFFFFFFFFu },
+    { "menu_step@cb", m_d5g_2ffc4_cb, 0xFFFFFFFFu },
+    { "menu_step@flags", m_d5g_2ffc4_flags, 0xFFFFFFFFu },
+    { "menu_step@sel0", m_d5g_2ffc4_sel0, 0xFFFFFFFFu },
+    { "menu_step@cnt0", m_d5g_2ffc4_cnt0, 0xFFFFFFFFu },
+    { "menu_step@ent", m_d5g_2ffc4_ent, 0xFFFFFFFFu },
+    { "menu_step@tdargs", m_d5g_2ffc4_tdargs, 0xFFFFFFFFu },
+    { "menu_step@tdflags", m_d5g_2ffc4_tdflags, 0xFFFFFFFFu },
+    { "menu_step@actearly", m_d5g_2ffc4_actearly, 0xFFFFFFFFu },
+    { "menu_step@noact", m_d5g_2ffc4_noact, 0xFFFFFFFFu },
+    { "menu_step@cbarg", m_d5g_2ffc4_cbarg, 0xFFFFFFFFu },
+    { "menu_step@nocb0", m_d5g_2ffc4_nocb0, 0xFFFFFFFFu },
+    { "menu_step@rdw0", m_d5g_2ffc4_rdw0, 0xFFFFFFFFu },
+    { "menu_step@nohide", m_d5g_2ffc4_nohide, 0xFFFFFFFFu },
+    { "menu_step@hidecnt", m_d5g_2ffc4_hidecnt, 0xFFFFFFFFu },
+    { "menu_step@nonl", m_d5g_2ffc4_nonl, 0xFFFFFFFFu },
+    { "menu_step@rowadd", m_d5g_2ffc4_rowadd, 0xFFFFFFFFu },
+    { "menu_step@hl", m_d5g_2ffc4_hl, 0xFFFFFFFFu },
+    { "menu_step@nosel", m_d5g_2ffc4_nosel, 0xFFFFFFFFu },
+    { "menu_step@unhl", m_d5g_2ffc4_unhl, 0xFFFFFFFFu },
+    { "menu_step@term", m_d5g_2ffc4_term, 0xFFFFFFFFu },
+    { "menu_step@stride", m_d5g_2ffc4_stride, 0xFFFFFFFFu },
+    { "menu_step@row5", m_d5g_2ffc4_row5, 0xFFFFFFFFu },
+    { "menu_step@mask", m_d5g_2ffc4_mask, 0xFFFFFFFFu },
+    { "menu_step@pflag", m_d5g_2ffc4_pflag, 0xFFFFFFFFu },
+    { "menu_step@esckey", m_d5g_2ffc4_esckey, 0xFFFFFFFFu },
+    { "menu_step@escsw", m_d5g_2ffc4_escsw, 0xFFFFFFFFu },
+    { "menu_step@cbsel", m_d5g_2ffc4_cbsel, 0xFFFFFFFFu },
+    { "menu_step@nores", m_d5g_2ffc4_nores, 0xFFFFFFFFu },
+    { "menu_step@cbal", m_d5g_2ffc4_cbal, 0xFFFFFFFFu },
+    { "menu_step@bits", m_d5g_2ffc4_bits, 0xFFFFFFFFu },
+    { "menu_step@escrdw", m_d5g_2ffc4_escrdw, 0xFFFFFFFFu },
+    { "menu_step@escact", m_d5g_2ffc4_escact, 0xFFFFFFFFu },
+    { "menu_step@esccmp", m_d5g_2ffc4_esccmp, 0xFFFFFFFFu },
+    { "menu_step@entlate", m_d5g_2ffc4_entlate, 0xFFFFFFFFu },
+    { "menu_step@entflags", m_d5g_2ffc4_entflags, 0xFFFFFFFFu },
+    { "menu_step@entarg", m_d5g_2ffc4_entarg, 0xFFFFFFFFu },
+    { "menu_step@entres", m_d5g_2ffc4_entres, 0xFFFFFFFFu },
+    { "menu_step@entret", m_d5g_2ffc4_entret, 0xFFFFFFFFu },
+    { "menu_step@entold", m_d5g_2ffc4_entold, 0xFFFFFFFFu },
+    { "menu_step@ent0", m_d5g_2ffc4_ent0, 0xFFFFFFFFu },
+    { "menu_step@res1", m_d5g_2ffc4_res1, 0xFFFFFFFFu },
+    { "menu_step@upbit", m_d5g_2ffc4_upbit, 0xFFFFFFFFu },
+    { "menu_step@dnbit", m_d5g_2ffc4_dnbit, 0xFFFFFFFFu },
+    { "menu_step@updn", m_d5g_2ffc4_updn, 0xFFFFFFFFu },
+    { "menu_step@wrap", m_d5g_2ffc4_wrap, 0xFFFFFFFFu },
+    { "menu_step@fuse", m_d5g_2ffc4_fuse, 0xFFFFFFFFu },
+    { "menu_step@nordw", m_d5g_2ffc4_nordw, 0xFFFFFFFFu },
+    { "menu_step@dnwrap", m_d5g_2ffc4_dnwrap, 0xFFFFFFFFu },
+    { "menu_step@codebit", m_d5g_2ffc4_codebit, 0xFFFFFFFFu },
+    { "menu_step@code", m_d5g_2ffc4_code, 0xFFFFFFFFu },
+    { "menu_step@norel", m_d5g_2ffc4_norel, 0xFFFFFFFFu },
+    { "menu_step@col", m_d5g_2ffc4_col, 0xFFFFFFFFu },
+    { "menu_step@second", m_d5g_2ffc4_second, 0xFFFFFFFFu },
+    { "menu_step@gap", m_d5g_2ffc4_gap, 0xFFFFFFFFu },
+    { "menu_step@nolen", m_d5g_2ffc4_nolen, 0xFFFFFFFFu },
+    { "menu_step@relmode", m_d5g_2ffc4_relmode, 0xFFFFFFFFu },
+    { "menu_step@row2", m_d5g_2ffc4_row2, 0xFFFFFFFFu },
+    { "menu_run", b_d5g_2fa40, 0xFFFFFFFFu },
+    { "menu_run@waitlate", m_d5g_2fa40_waitlate, 0xFFFFFFFFu },
+    { "menu_run@voice", m_d5g_2fa40_voice, 0xFFFFFFFFu },
+    { "menu_run@hdr", m_d5g_2fa40_hdr, 0xFFFFFFFFu },
+    { "menu_run@noq", m_d5g_2fa40_noq, 0xFFFFFFFFu },
+    { "menu_run@no0b", m_d5g_2fa40_no0b, 0xFFFFFFFFu },
+    { "menu_run@row0", m_d5g_2fa40_row0, 0xFFFFFFFFu },
+    { "menu_run@zext", m_d5g_2fa40_zext, 0xFFFFFFFFu },
+    { "menu_run@title", m_d5g_2fa40_title, 0xFFFFFFFFu },
+    { "menu_run@cb", m_d5g_2fa40_cb, 0xFFFFFFFFu },
+    { "menu_run@tdargs", m_d5g_2fa40_tdargs, 0xFFFFFFFFu },
+    { "menu_run@tdflags", m_d5g_2fa40_tdflags, 0xFFFFFFFFu },
+    { "menu_run@cbarg", m_d5g_2fa40_cbarg, 0xFFFFFFFFu },
+    { "menu_run@nocb0", m_d5g_2fa40_nocb0, 0xFFFFFFFFu },
+    { "menu_run@nohide", m_d5g_2fa40_nohide, 0xFFFFFFFFu },
+    { "menu_run@hidecnt", m_d5g_2fa40_hidecnt, 0xFFFFFFFFu },
+    { "menu_run@nonl", m_d5g_2fa40_nonl, 0xFFFFFFFFu },
+    { "menu_run@rowadd", m_d5g_2fa40_rowadd, 0xFFFFFFFFu },
+    { "menu_run@unhl", m_d5g_2fa40_unhl, 0xFFFFFFFFu },
+    { "menu_run@nosel", m_d5g_2fa40_nosel, 0xFFFFFFFFu },
+    { "menu_run@hl", m_d5g_2fa40_hl, 0xFFFFFFFFu },
+    { "menu_run@stride", m_d5g_2fa40_stride, 0xFFFFFFFFu },
+    { "menu_run@last", m_d5g_2fa40_last, 0xFFFFFFFFu },
+    { "menu_run@mask", m_d5g_2fa40_mask, 0xFFFFFFFFu },
+    { "menu_run@entbit", m_d5g_2fa40_entbit, 0xFFFFFFFFu },
+    { "menu_run@cbsel", m_d5g_2fa40_cbsel, 0xFFFFFFFFu },
+    { "menu_run@cbal", m_d5g_2fa40_cbal, 0xFFFFFFFFu },
+    { "menu_run@escbit", m_d5g_2fa40_escbit, 0xFFFFFFFFu },
+    { "menu_run@esccmp", m_d5g_2fa40_esccmp, 0xFFFFFFFFu },
+    { "menu_run@entflags", m_d5g_2fa40_entflags, 0xFFFFFFFFu },
+    { "menu_run@entold", m_d5g_2fa40_entold, 0xFFFFFFFFu },
+    { "menu_run@entarg", m_d5g_2fa40_entarg, 0xFFFFFFFFu },
+    { "menu_run@enthdr", m_d5g_2fa40_enthdr, 0xFFFFFFFFu },
+    { "menu_run@entkeys", m_d5g_2fa40_entkeys, 0xFFFFFFFFu },
+    { "menu_run@upbit", m_d5g_2fa40_upbit, 0xFFFFFFFFu },
+    { "menu_run@dnbit", m_d5g_2fa40_dnbit, 0xFFFFFFFFu },
+    { "menu_run@updn", m_d5g_2fa40_updn, 0xFFFFFFFFu },
+    { "menu_run@dnwrap", m_d5g_2fa40_dnwrap, 0xFFFFFFFFu },
+    { "menu_run@codebit", m_d5g_2fa40_codebit, 0xFFFFFFFFu },
+    { "menu_run@code", m_d5g_2fa40_code, 0xFFFFFFFFu },
+    { "menu_run@waitearly", m_d5g_2fa40_waitearly, 0xFFFFFFFFu },
+    { "menu_run@norel", m_d5g_2fa40_norel, 0xFFFFFFFFu },
+    { "menu_run@col", m_d5g_2fa40_col, 0xFFFFFFFFu },
+    { "menu_run@second", m_d5g_2fa40_second, 0xFFFFFFFFu },
+    { "menu_run@gap", m_d5g_2fa40_gap, 0xFFFFFFFFu },
+    { "menu_run@relmode", m_d5g_2fa40_relmode, 0xFFFFFFFFu },
+    { "menu_run@row2", m_d5g_2fa40_row2, 0xFFFFFFFFu },
     /* d5g end */
 };
 
