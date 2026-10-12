@@ -19035,6 +19035,45 @@ D3B_SPECS += [
        mutants=("@cn", "@cs", "@old")),
 ]
 
+D3B_CREDIT = E.Call(0x2C060, (), clobbers=("edx",))
+D3B_PRESS = E.Call(0x2C178, ("eax", "edx"), clobbers=("edx", "ebp"))
+D3B_COIN = E.Call(0x2C1C8, ("eax", "edx"), clobbers=("ebx", "ecx", "edx", "esi", "edi"))
+D3B_POLL = E.Call(0x11F28, ("eax",))
+
+
+def d3b_join_case(f170, b1f):
+    """0x43928: the two joined bytes DS_00108170 and the byte DS_00104B1F, each between seeded
+    bytes."""
+    return {0x0010816F: bytes([0x6F, f170[0], f170[1], 0x72]), 0x00104B1E: bytes([0x1E, b1f, 0x20])}
+
+
+D3B_SPECS += [
+    # 0x432A0 fight_char_prompt: EAX = side. 0x2C060 (tested whole, 0x432AA `test eax,eax`), 0x2C178
+    # and 0x2C1C8 are stubs. EAX dies unread at its one call site 0x43B85 (the walk, record d3b §1):
+    # mask 0.
+    Spec("fight_char_prompt", 0x432A0, [
+        Case("c0", {"eax": 0}, {0x00104528: bytes([0x28, 0x02, 0x2A])}, {0x2C060: 1}),
+        Case("c1", {"eax": 1}, {0x00104528: bytes([0x28, 0xFD, 0x2A])}, {0x2C060: 1}),
+        Case("c2", {"eax": 1}, {0x00104528: bytes([0x28, 0xFB, 0x2A])}, {0x2C060: 0x100}),
+        Case("c3", {"eax": 0}, {0x00104528: bytes([0x28, 0x04, 0x2A])}, {0x2C060: 0xFFFFFF00}),
+        Case("c4", {"eax": 0}, {0x00104528: bytes([0x28, 0x02, 0x2A])}, {0x2C060: 0}),
+        Case("c5", {"eax": 1}, {0x00104528: bytes([0x28, 0x00, 0x2A])}, {0x2C060: 0}),
+    ], calls=(D3B_CREDIT, D3B_PRESS, D3B_COIN), eax_mask=0,
+       mutants=("@al", "@inv", "@bit", "@rows", "@row37", "@side", "@coinside", "@coinrow", "@always")),
+    # 0x43928 fight_char_join: no argument. 0x11F28 is a stub (tested whole, 0x4393E `test eax,eax`; one
+    # EAX per case for both sides; it preserves EBX and EDX, which carry the stored 1 and the side
+    # across it). EAX dies unread at 0x438D4, 0x438FA and 0x4494D (the walk, record d3b §1): mask 0.
+    Spec("fight_char_join", 0x43928, [
+        Case("o0", {}, d3b_join_case((0x00, 0x00), 0x10), {0x11F28: 1}),
+        Case("o1", {}, d3b_join_case((0x00, 0x00), 0x00), {0x11F28: 0x100}),
+        Case("o2", {}, d3b_join_case((0x00, 0x00), 0xFC), {0x11F28: 0}),
+        Case("o3", {}, d3b_join_case((0x01, 0x00), 0x01), {0x11F28: 1}),
+        Case("o4", {}, d3b_join_case((0x00, 0x80), 0x02), {0x11F28: 0xFFFFFF00}),
+        Case("o5", {}, d3b_join_case((0xFF, 0x02), 0x00), {0x11F28: 1}),
+    ], calls=(D3B_POLL,), eax_mask=0,
+       mutants=("@skip", "@al", "@or", "@set", "@f170", "@f170v", "@once", "@sidearg", "@order", "@idx")),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [

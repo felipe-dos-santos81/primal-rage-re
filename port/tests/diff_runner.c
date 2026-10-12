@@ -27197,6 +27197,68 @@ D3B_SP(final, 0x400u)
 D3B_SP(order, 0x800u)
 D3B_SP(old, 0x302u)
 #undef D3B_SP
+
+/* 0x432A0's mutants. EAX = side. */
+static void d3b_432a0_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], k = config_credit_ready();
+    int ready = (mut & 1u) ? ((u8)k != 0u) : (k != 0u);                       /* @al */
+    if (mut & 2u) ready = !ready;                                             /* @inv */
+    if (mut & 0x100u) ready = 1;                                              /* @always */
+    if (ready) {
+        int sprite = (DSB(0x00104529u) & ((mut & 4u) ? 4u : 2u)) != 0u;       /* @bit */
+        if (mut & 8u) sprite = !sprite;                                       /* @rows */
+        prompt_press_start((mut & 0x20u) ? 1u - side : side,                  /* @side */
+                           sprite ? ((mut & 0x10u) ? 0x3600 : 0x3700) : 0x1B);   /* @row37 */
+        return;
+    }
+    prompt_insert_coin((mut & 0x40u) ? 1u - side : side, (mut & 0x80u) ? 0x1C : 0x1B);   /* @coinside, @coinrow */
+}
+static void b_d3b_432a0(const u32 *r, u32 *eax) { fight_char_prompt(r[R_EAX]); *eax = 0u; }
+#define D3B_PR(name, mut) \
+    static void m_d3b_pr_##name(const u32 *r, u32 *eax) { d3b_432a0_core(r, mut); *eax = 0u; }
+D3B_PR(al, 1u)
+D3B_PR(inv, 2u)
+D3B_PR(bit, 4u)
+D3B_PR(rows, 8u)
+D3B_PR(row37, 0x10u)
+D3B_PR(side, 0x20u)
+D3B_PR(coinside, 0x40u)
+D3B_PR(coinrow, 0x80u)
+D3B_PR(always, 0x100u)
+#undef D3B_PR
+
+/* 0x43928's mutants. No argument. */
+static void d3b_43928_core(u32 mut)
+{
+    for (u32 side = 0; side < ((mut & 0x40u) ? 1u : 2u); side++) {            /* @once */
+        u32 fi = 0x00108170u + ((mut & 0x200u) ? 1u - side : side);           /* @idx */
+        if (DSB(fi) != 0u && !(mut & 1u)) continue;                           /* @skip */
+        if (mut & 0x100u) DSB(fi) = 1u;                                       /* @order */
+        u32 k = frontend_coin_poll((mut & 0x80u) ? 1u - side : side);         /* @sidearg */
+        if (((mut & 2u) ? (u32)(u8)k : k) == 0u) {                            /* @al */
+            if (mut & 0x100u) DSB(fi) = 0u;
+            continue;
+        }
+        if (mut & 8u) DSB(0x00104B1Fu) = (u8)(side + 1u);                     /* @set */
+        else DSB(0x00104B1Fu) = (u8)(DSB(0x00104B1Fu) | ((mut & 4u) ? side : side + 1u));   /* @or */
+        if (!(mut & 0x10u)) DSB(fi) = (mut & 0x20u) ? (u8)(side + 1u) : 1u;   /* @f170, @f170v */
+    }
+}
+static void b_d3b_43928(const u32 *r, u32 *eax) { (void)r; fight_char_join(); *eax = 0u; }
+#define D3B_JN(name, mut) \
+    static void m_d3b_jn_##name(const u32 *r, u32 *eax) { (void)r; d3b_43928_core(mut); *eax = 0u; }
+D3B_JN(skip, 1u)
+D3B_JN(al, 2u)
+D3B_JN(or, 4u)
+D3B_JN(set, 8u)
+D3B_JN(f170, 0x10u)
+D3B_JN(f170v, 0x20u)
+D3B_JN(once, 0x40u)
+D3B_JN(sidearg, 0x80u)
+D3B_JN(order, 0x100u)
+D3B_JN(idx, 0x200u)
+#undef D3B_JN
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -34092,6 +34154,27 @@ static const binding_t k_bindings[] = {
     { "fight_slot_pass_rr@cn", m_d3b_sp_cn, 0x00000000u },
     { "fight_slot_pass_rr@cs", m_d3b_sp_cs, 0x00000000u },
     { "fight_slot_pass_rr@old", m_d3b_sp_old, 0x00000000u },
+    { "fight_char_prompt", b_d3b_432a0, 0x00000000u },
+    { "fight_char_prompt@al", m_d3b_pr_al, 0x00000000u },
+    { "fight_char_prompt@inv", m_d3b_pr_inv, 0x00000000u },
+    { "fight_char_prompt@bit", m_d3b_pr_bit, 0x00000000u },
+    { "fight_char_prompt@rows", m_d3b_pr_rows, 0x00000000u },
+    { "fight_char_prompt@row37", m_d3b_pr_row37, 0x00000000u },
+    { "fight_char_prompt@side", m_d3b_pr_side, 0x00000000u },
+    { "fight_char_prompt@coinside", m_d3b_pr_coinside, 0x00000000u },
+    { "fight_char_prompt@coinrow", m_d3b_pr_coinrow, 0x00000000u },
+    { "fight_char_prompt@always", m_d3b_pr_always, 0x00000000u },
+    { "fight_char_join", b_d3b_43928, 0x00000000u },
+    { "fight_char_join@skip", m_d3b_jn_skip, 0x00000000u },
+    { "fight_char_join@al", m_d3b_jn_al, 0x00000000u },
+    { "fight_char_join@or", m_d3b_jn_or, 0x00000000u },
+    { "fight_char_join@set", m_d3b_jn_set, 0x00000000u },
+    { "fight_char_join@f170", m_d3b_jn_f170, 0x00000000u },
+    { "fight_char_join@f170v", m_d3b_jn_f170v, 0x00000000u },
+    { "fight_char_join@once", m_d3b_jn_once, 0x00000000u },
+    { "fight_char_join@sidearg", m_d3b_jn_sidearg, 0x00000000u },
+    { "fight_char_join@order", m_d3b_jn_order, 0x00000000u },
+    { "fight_char_join@idx", m_d3b_jn_idx, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

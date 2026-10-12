@@ -4817,6 +4817,7 @@ void prompt_press_start_blink(s32 col, s32 row, u32 side, u32 sprite)
  * 0xBAB58[side] (`movzx`) and ECX = 0. EBX = side in both. */
 void prompt_press_start(u32 side, s32 row)
 {
+    PR_SEAM(0x2C178u, side, (u32)row);
     if ((DSB(DS_00104529) & 2u) != 0u)                  /* 0x2C17B */
         prompt_press_start_blink((s16)DSW(DS_000BAB5A + side * 2u), row,
                                  side, 1u);             /* 0x2C184..0x2C1A4 */
@@ -4863,6 +4864,7 @@ void prompt_insert_coin_blink(s32 col, s32 row)
  * 0xBAB58[side] (`and eax,0xff`), then a `nop` falls through into 0x2C1D4. */
 void prompt_insert_coin(u32 side, s32 row)
 {
+    PR_SEAM(0x2C1C8u, side, (u32)row);
     prompt_insert_coin_blink((s32)DSB(DS_000BAB58 + side), row);  /* 0x2C1C8..0x2C1D3 */
 }
 
@@ -7600,6 +7602,7 @@ void game_frame(void)
  * and 0x43B24 (0x43B4E). */
 u32 frontend_coin_poll(u32 code)
 {
+    PR_SEAM_RET(0x11F28u, code);
     if (config_credit_ready() == 0u) return 0u;
     if ((DSD(DS_0009ACBC + code * 4u) & DSD(DS_001088E4)) == 0u) return 0u;
     (void)config_credit_spend(1u);

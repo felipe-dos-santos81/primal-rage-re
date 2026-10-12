@@ -392,6 +392,7 @@ u32 config_has_credit(void)
 /* 0x2C060. `call 0x2caa8; jmp 0x2ca2c` — the 0x2CAA8 result is discarded. */
 u32 config_credit_ready(void)
 {
+    PR_SEAM_RET0(0x2C060u);
     (void)config_not_free_play();
     return config_has_credit();
 }
