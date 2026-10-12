@@ -500,7 +500,8 @@ void fight_char_text_clear(u32 side, u32 flag)
 
 /* 0x433DC — record §48-S. EAX = side, EDX = `flag`: 0x432EC's `flag` arm,
  * then strings 0x235 and 0x236 released at the col word 0xC894C[side], rows
- * 0x1B and 0x1C, mode 0x1000. */
+ * 0x1B and 0x1C, mode 0x1000. The col word is read before each release, after
+ * that release's 0x1C500 (0x43422, 0x4343C). */
 void fight_char_opp_text_clear(u32 side, u32 flag)
 {
     PR_SEAM(0x433DCu, side, flag);
@@ -509,9 +510,10 @@ void fight_char_opp_text_clear(u32 side, u32 flag)
         if (rec != 0u) actor_set_dead(rec);             /* 0x433EF/0x433F5 0x2B150 */
         prompt_press_start_clear(0, 0, side);           /* 0x433FA..0x43400 0x2C088 */
     }
-    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x43422 */
-    text_cells_release(col, 0x1B, game_string_get(0x235u), 0x1000u);  /* 0x43405..0x4342D */
-    text_cells_release(col, 0x1C, game_string_get(0x236u), 0x1000u);  /* 0x43432..0x43457 */
+    const u8 *s = game_string_get(0x235u);              /* 0x43405..0x4340F */
+    text_cells_release((s32)DSW(DS_000C894C + side * 2u), 0x1B, s, 0x1000u);  /* 0x43422..0x4342D */
+    s = game_string_get(0x236u);                        /* 0x43432/0x43437 */
+    text_cells_release((s32)DSW(DS_000C894C + side * 2u), 0x1C, s, 0x1000u);  /* 0x4343C..0x43457 */
 }
 
 /* 0x43464 — record §48-S. EAX = side. The joined side's blinking text, on the

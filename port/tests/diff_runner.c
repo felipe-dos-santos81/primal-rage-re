@@ -30673,6 +30673,9 @@ static u32 d4e_3bddc_core(const u32 *r, u32 mut)
 }
 static void m_d4e_3bddc_eaxchain(const u32 *r, u32 *eax) { *eax = d4e_3bddc_core(r, 1u); }
 static void m_d4e_3bddc_eaxscan(const u32 *r, u32 *eax)  { *eax = d4e_3bddc_core(r, 2u); }
+/* 0x433DC under a release stub that rewrites the col words: d2b's core reads the col word once
+ * (its mutation set 0 is the port before the 0x4343C correction). */
+static void m_d4e_ot_cache(const u32 *r, u32 *eax) { d2b_433dc_core(r, 0u); *eax = 0u; }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39328,6 +39331,8 @@ static const binding_t k_bindings[] = {
     { "fighter_attack_consume_al", b_c3g_3bddc, 0x000000FFu },
     { "fighter_attack_consume_al@eaxchain", m_d4e_3bddc_eaxchain, 0x000000FFu },
     { "fighter_attack_consume_al@eaxscan", m_d4e_3bddc_eaxscan, 0x000000FFu },
+    { "fight_char_opp_text_clear_rr", b_d2b_433dc, 0x00000000u },
+    { "fight_char_opp_text_clear_rr@cache", m_d4e_ot_cache, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

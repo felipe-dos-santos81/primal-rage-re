@@ -22059,6 +22059,16 @@ D4E_SPECS += [
         {}, {}, {0x3CF38: 0xFFFFFF01}, {0x3CF38: 0x00000100}, {0x4649C: 0x00000100},
         {0x3CF38: 0xFFFFFF00, 0x4649C: 0xFFFFFF00}, {0x4649C: 0x00000080}, {0x4649C: 0xFFFFFF03}),
         mutants=("@eaxchain", "@eaxscan")),
+    # 0x433DC fight_char_opp_text_clear (d2b's row; mask 0 as there) with d3b's release stub that
+    # rewrites both col words 0xC894C (a harness write: 0x2F280 does not write them). The raw loads
+    # the col word before each release, after that release's 0x1C500: 0x43422 `mov di,[esi+0xc894c]`
+    # and 0x4343C `mov si,[esi+0xc894c]`, the second after the first 0x2F280. Twin of d3b's
+    # fight_char_text_clear_rr.
+    Spec("fight_char_opp_text_clear_rr", 0x433DC, [
+        Case("q0", {"eax": 0, "edx": 1}, d2b_ot_case(D2B_OT_STR, recs=(D2B_REC0, D2B_REC1))),
+        Case("q1", {"eax": 1, "edx": 0}, d2b_ot_case(D2B_OT_STR)),
+    ], allow_calls=D2B_STR_TREE, calls=(P7_2B150, D2B_PROMPT_CLR, D3B_RELEASE_COL), eax_mask=0,
+       mutants=("@cache",)),
 ]
 D1_SPECS += D4E_SPECS
 SPECS = [
