@@ -845,13 +845,16 @@ void fight_char_team_text_blink(u32 side)
     }
     s32 row = 0x1B;                                     /* 0x4464B */
     if ((s32)strlen((const char *)game_string_get(0x39u)) < 2) row = 0x1C;  /* 0x4469F..0x446B3 */
-    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x446C9 */
-    text_cursor_set(col, row - 2, game_string_get(0x36u), 0x1000u);  /* 0x446B8..0x446DC */
-    text_cursor_set(col, row - 1, game_string_get(0x37u), 0x1000u);  /* 0x446E1..0x44705 */
-    text_cursor_set(col, row, game_string_get(0x38u), 0x1000u);      /* 0x4470A..0x44727 */
+    const u8 *s = game_string_get(0x36u);               /* 0x446B8/0x446C4 */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row - 2, s, 0x1000u);  /* 0x446C9..0x446DC */
+    s = game_string_get(0x37u);                         /* 0x446E1/0x446ED */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row - 1, s, 0x1000u);  /* 0x446F2..0x44705 */
+    s = game_string_get(0x38u);                         /* 0x4470A/0x44714 */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row, s, 0x1000u);      /* 0x4471B..0x44727 */
     if ((s32)strlen((const char *)game_string_get(0x39u)) >= 2)      /* 0x4472C..0x4473E */
         row++;                                          /* 0x44740 */
-    text_cursor_set(col, row + 1, game_string_get(0x39u), 0x1000u);  /* 0x44741..0x44765 */
+    s = game_string_get(0x39u);                         /* 0x44741/0x44746 */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row + 1, s, 0x1000u);  /* 0x4474E..0x44765 */
 }
 
 /* 0x4418C — record §48-S. EAX = side (ECX), the other side EDX ^ 1. 0x43EA0
