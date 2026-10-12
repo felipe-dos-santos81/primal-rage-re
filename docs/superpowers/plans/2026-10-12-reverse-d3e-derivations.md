@@ -27,6 +27,7 @@ writes; `push eax` would count as a read and none occurs.)
 | `0x1317C` | `camera_y_clamp` (camera.c; *static* before this batch) | 122 | Three `call rel32` sites, no `jmp`, no pointer. `0x1321D` and `0x1323C` sit in `0x131F8` and `0x13224`, entries nothing calls and no dword of the image equals (dead). `0x12DE9` is in `0x12DA8` (`pop edx; ret` `0x12DEE`), which has 15 call sites; from each, every path writes EAX before reading it — table below. Mask 0. |
 | `0x384F8` | `fight_384f8` (fighter.c) | 183 | Two sites, both in `0x266AC`: `0x2676B` returns to `mov eax,1` (`0x26770`), `0x26775` to `xor eax,eax` (`0x2677A`). No pointer. Mask 0. |
 | `0x38434` | `fighter_38434` (fighter.c; *static* before this batch) | 195 | One site, `0x3856B` (in `0x384F8`), which returns to `mov eax,esi` (`0x38570`). No pointer. Mask 0. |
+| `0x3B464` | `fighter_think_side` (fighter.c; *static* before this batch) | 608 | One site, `0x197EF` (in `0x1975C`), which returns to `mov eax,[esp+8]` (`0x197F4`). No pointer. Mask 0. |
 
 `0x12DA8`'s call sites (the function each is in, then the instructions that write the last live part of
 EAX on its paths; "returns" = the function can return with EAX alive, and the walk continues in its caller):
@@ -65,6 +66,8 @@ on these paths is `0x14C48` = `0x000274FC`: it is the `rel32` of `call 0x3c148` 
 | `fight_384f8` | `0x384F8` | 16 | 10/10 | 30/30 | 0 | EAX = side (kept in ECX; the record in ESI). Stubs: `0x3C59C(3, side)` (**AL tested**, `test al,al` `0x3850A`: `a2` returns `0x100`, `a3` `0xFFFFFF00`, `a4` `0x1FF`), `0x38D24`, `0x382C4`, `0x38434` (the side), `0x2A4FC` (the record: `mov eax,esi; call 0x2a4fc` `0x38570/0x38572`), `0x188AC`, `0x186C4`; `0x34038(side)` runs real and is recorded (§4). AL == 0 increments the **own** slot's `+0x88` word (`inc word [eax*4+0x107838]`, EAX = side*37; `a2` wraps `0xFFFF`); `0x1078FB` = (byte `0x1088D4` bit 2 clear) + 2 (`d4` = `0xFB`, 4, `0xFF`, 0); slot = `[0x1077A8 + side*4]` and rec = `[slot]` (a scratch slot and record, not the fighters'), either null returns (`n0`, `n1`); slot`+0x28` = rec`+0x18` before the calls (the memory at the first call); the clamps: `[0xBE018]` signed against rec`+0x18` (`jg` `0x38580`: `x0` equal, `x1` one below, `x2` above, `x7` a negative threshold, `x8` x = `0x80000000`), then its negation (`jl` `0x38599`: `x3` equal, `x4` one above, `x5` below, `x6` threshold 0 and x 0: both), each `0x188AC(side, bound, rec+0x1C)`. |
 | `fight_384f8_chain` | `0x384F8` | 2 | 9/10 (1 named: the first row's) | 6/6 | 0 | The same function with stubs that write what the real callees can: `0x2A4FC` sets the record's x to `0x5000`; `0x188AC` sets it to `-0x7000`, the record's y to `0xC0FFEE` and the threshold dword to `0x6000`. The first clamp reads x after `0x2A4FC` (`0x3857D`); the second reads the threshold, x and y again (`0x3858C`, `0x38592`, `0x3859D`). `c0` runs both clamps (the second with `0xFFFFA000` and the new y); `c1` neither (x `0x6000` before the motion call, `0x5000` after, threshold `0x5001`). One mutant per re-read (`@xearly`, `@thrstale`, `@x2stale`, `@y2stale`), plus `@late28` (a byte here, the memory at a call in the first row) and `@nomotion`. |
 | `fighter_38434` | `0x38434` | 28 | 15/15 | 30/30 | 0 | EAX = side. slot = `[0x1077A8 + side*4]`, rec = `[slot]` (`p0`, `p1`: null). The slot's `+0x53` through the 13-entry table `0x38400` (`cmp al,0xc; ja 0x38467`): `0x38467` x4, `0x384BB`, `0x38467` x2, `0x384C3`, `0x384E1`, `0x38467` x3, `0x384F2`; `t0..t12` are its entries, `tD`/`t80`/`tFF` above it. 4: `inc byte [ecx+0x56]` (`t4` wraps `0xFF`). 7: `+0x41` bit 7, `+0x43 &= 0xCF`, then the `+0x0C` hook when non-null with EAX = slot, EDX = rec, EBX = side (`0x384D7/0x384D9`): `h0` the registered `0x23130` (run on both sides; its `0x3C4CC` stub call shows the record, its stores the slot), `h1` the registered `0x47E9C` (its per-side counter `0x108370` shows the side, its state byte the slot), `t7` a null hook. 8: `+0x56` + 1 and `+0x43 &= 0xCF`. `0xC`: nothing. The rest: `0x1922C(side)` (a stub; the clears come after it: the memory at the call), `+0x74` = 0 (a word), `+0x56` = 0, then with byte `0x1088BC` == side, `0x1078F0`, `0x1078F1` and `0x1088BE` all non-zero (`g0..g3` fail one each) `0x3D004(side)` (a stub, **AL tested**, `test al,al` `0x384AA`: `r0` 0, `r1` `0x100`, `r2` `0xFFFFFF00`, `r3` `0x80`) clears the byte `0x1078F0[side]`. No port change. |
+
+| `fighter_think_side` | `0x3B464` | 21 | 29/29 | 44/44 | 0 | EAX = side (kept in ECX for the `+0x48 == 8` arm, in ESI the stance). `0x33A10`, `0x3AFC4` and the `+0x14` hook `0x29D04` run on both sides; fourteen stubs. ctx = `0x33A10(side)`: ctx[0] = the thrower, ctx[1] = the side. **AL of `0x3C59C(1, ctx[1])`** (`test al,al` `0x3B484`: `k0` 1, `k1` `0x100`, `k2` `0xFFFFFF00`) and the thrower's `+0x64` == `0xFF` (`k3`) return. The triple of (ctx[0], `+0x64`), the side's `+0x67` = 1, then **AL of `0x3B298(ctx[1], +0x64)`** (`test al,al` `0x3B4CC`: `b0` 1, `b2` `0x100`, `b3` `0xFFFFFF01`) selects the block arm: the thrower's `+0x8A` = 0, `0x3B080(ctx[1], anim+3, anim+2, 0)` unless the side's `+0x54` is 2 (`b1`), `0x3AD98` with the triple by value. Else `0x2BD44(rec, row)` when the side's record's `+0x4B` row has `+0x60` set (`d0`; `d1` clear); the hook when non-null, EAX = EDX = the slot, its EAX tested whole (`test eax,eax` `0x3B51E`: `d1` returns 0, `d2`/`d3` 1 after its `0x2A17C` call: the field is cleared); the thrower's projectile `+0x48` (`cmp al,5; jb; jbe; cmp al,8; je`): 5 -> `0x36D20(slot)`, `+0x18`/`+0x1C` = 0 (`d0`); 8 -> `0x1922C(side)`, `0x235C4(side)` (`d1`); else (4, 6, 7, 9, `0xFF`) `0x39834(ctx[1], stance)` and, `+0x54` == 2, `0x18B04` and `0x39F40(ctx[1], -0x50, 0x64, 0xF, 0x14)` (`m0`, `m1`), or `0x3A95C(ctx[1], the signed byte anim+6)` (`m7`: `0x80`) and, `+0x64` neither 0 nor 5 (`m5`, `m6`) and the byte `+0x90` - 1 above 3 unsigned (the table `0x3B454`'s four entries are all `0x3B5EA`: 5 in most cases, `m2` 4, `m3` 1, `m4` 0), `0x188DC(ctx[1], +0x2C)`; `0x3B080`; `+0x18`/`+0x1C` = 0. The tail: `+0x41` bit 7, the thrower's `+0x64` = `0xFF`. |
 
 ## §3 Corrections
 
@@ -145,6 +148,22 @@ Each is its own commit with a mutant that is the old port.
 - **Ordinary play.** Not reached: `0x3C59C` ends `mov al,1` (`0x3C5B8`) or `xor al,al` (`0x3C5C7`) and
   its port returns 0 or 1.
 
+### §3.4 `fighter_think_side` (`0x3B464`): AL after `0x3C59C` and `0x3B298` (commit `1fce2b23`)
+
+- **Raw.** `0x3B47F` `call 0x3c59c`, `0x3B484` `test al,al`, `0x3B486` `jne 0x3b6bc`; `0x3B4C7` `call
+  0x3b298`, `0x3B4CC` `test al,al`, `0x3B4CE` `jne 0x3b665`. d3c saw the first without reading the bytes
+  (its §6): the raw does have `test al,al` there.
+- **Old port.** `fighter_frame_flag(1u, ctx[1]) != 0` and `fighter_command_dispatch(ctx[1], stance) != 0`
+  on the whole `int`.
+- **Measured before the fix** (47 problem lines over `k1`, `k2`, `b2`): `k1: call #1: original
+  0x3B298(0x0, 0x10), port none` (the stub returned `0x100`; the port returned at once); `b2: call #3:
+  original 0x3A95C(0x1, 0x44), port 0x3AD98(0x1, 0xDE484, 0xA3B68, 0xA6908)` (the dispatch stub returned
+  `0x100`; the port took the block arm).
+- **New port.** `(u8)... != 0u` at both.
+- **Mutants.** `@eaxflag` (`k1`, `k2`), `@eaxdisp` (`b2`).
+- **Ordinary play.** Not reached: `0x3C59C` and `0x3B298` set AL to 0 or 1 and their ports return 0 or 1.
+- **Not built alone**, as §3.2.
+
 ### Seen, not changed
 
 - **`fighter_frame_flag`** (fighter.c, the static second C body of `0x3C59C`) shifts by `bit & 0xff`;
@@ -182,6 +201,21 @@ Each is its own commit with a mutant that is the old port.
   A hook address the port has not registered resolves to no call in the port (`fn_resolve`), which the
   row does not exercise.
 
+- **`fighter_think_side`: the hook runs real.** A stub of `0x29D04` would carry the scan's clobbers
+  `(ebx, ecx, edx)` (its second `ret` has `mov eax,eax` between the pops and itself), and `0x3B464` keeps
+  the side in ECX across the hook for the `+0x48 == 8` arm; d3c's branch declares it `()` with a
+  `_CALLEE_CLOBBER_FIXES` entry. To depend on neither, the row runs `0x29D04` on both sides (its gate byte
+  `0x9AF3D` gives 0, else its `0x2A17C` call, a stub, and 1). Consequence, named: the hook's EAX is only
+  ever 0 or 1, so the raw's whole-EAX test (`0x3B51E`) is not separated from an AL test, and no other hook
+  address is exercised.
+- **`fighter_think_side`: the stubs write nothing**, so a port that kept the side's `+0x54`, the
+  thrower's `+0x64` or the `+0x90` byte from before `0x39834`/`0x3A95C` (the raw reads them again at
+  `0x3B558`, `0x3B5B2`, `0x3B5C9`, `0x3B5EE`) is not separated; the port does read them again. The first
+  triple lives in the raw's frame (`[esp+0x24]`) and in a C array in the port: it is compared only through
+  `0x3B080`'s arguments and `0x3AD98`'s by-value triple.
+- **`fighter_think_side`: a stance of `0x40` or more** takes `0x3AFC4`'s fatal `0x62003` in the raw;
+  not cased (`0xFF` returns before it).
+
 ## §5 Store-sweep findings
 
 - `camera_y_clamp`: its stores are the stepper's and the cap's dword at `0xF0AEC`. The camera block
@@ -202,6 +236,52 @@ Each is its own commit with a mutant that is the old port.
   `@no74`, `@no56`; the flag clear by `@always`/`@clrother`), the widths `@c4w` (the carry into `+0x57`:
   `t4`) and `@b74`, the order against the calls `@early` and `@c7late` (the memory at the call).
 
+- `fighter_think_side`: both slots' `+0x08`, `+0x10..+0x1F`, `+0x28..+0x33`, `+0x40..+0x7F` and
+  `+0x88..+0x93` are seeded with bytes that are none of the stored values, the thrower's with the other
+  answer for every field the function reads. Each store has a dropping mutant and a wrong-slot one where
+  the function has the choice: `+0x67` (`@no67`, `@67other`), the thrower's `+0x8A` (`@no8a`, `@8aself`),
+  `+0x14` (`@hooknoclr`, `@hookclr`), `+0x18`/`+0x1C` on both paths (`@c5no18`, `@c5no1c`, `@midno18`,
+  `@midno1c`), `+0x41` (`@no41`), the thrower's `+0x64` (`@no64`, `@64self`).
+
 ## §6 Queue entries not done
 
-(filled in at the end of the batch)
+| entry | port function | why |
+|---|---|---|
+| `0x3C88C` (d3c, 730) | `hit_slot_step` (fighter.c) | Not reached in the session; nothing read. |
+| `0x1958C` (d3c, 464) | `fighter_pass_a` (fighter.c) | Not reached; nothing read. `0x193B0` still has no seam on this branch. |
+| `0x33B00` (d3c, 279) | fighter.c | Not reached; nothing read. It calls the named non-row `0x2EA30`. |
+| `0x2BAF4` (d3d, 316) | actors.c | Not reached; nothing read. |
+| `0x31A78` (d3d, 137) | svcmenu.c | Not reached; nothing read. |
+| `0x3157C` (d3d, 1057) | `config_key_name` (config.c) | Not reached; nothing read. |
+
+Done: `0x1317C` (d3d's finding), `0x384F8` (two rows) and `0x38434` (the coordinator's item), `0x3B464`
+(d3c's queue): 5 rows, 98 cases, 135 mutants, 4 corrections in 4 commits.
+
+## §7 Counters, seams and harness lines
+
+- **The one full self-check** (`PR_DIFF_JOBS=4 python3 tools/diff_verify.py --image /tmp/pr_d3e_img.bin
+  --self-check`, on commit `33c0301f`'s tree): `rc 0`, `diff-verify: 657/657 functions VERIFIED; 5785/5785
+  mutants detected; 1 named gaps; 428/490 rows with callees closed (167 have none)` (the branch point:
+  652 rows, 5650 mutants, 428/485; + 5 rows, + 135 mutants).
+- **Seams added** (the first statement of each): fighter.c `PR_SEAM0(0x186C4u);`
+  (`fighter_slot_latch_both`), `PR_SEAM(0x38D24u, side);` (`fighter_38d24`), `PR_SEAM(0x34038u, side);`
+  (`fighter_34038`; d3c's line), `PR_SEAM(0x382C4u, side);` (`fighter_382c4`), `PR_SEAM(0x38434u, side);`
+  (`fighter_38434`), `PR_SEAM(0x1922Cu, side);` (`hit_stance_timer`; d3c's line), `PR_SEAM_RET(0x3D004u,
+  side);` (`hit_3d004`), `PR_SEAM_RET(0x3C59Cu, bit, index);` (`fighter_frame_flag`; d3c's line),
+  `PR_SEAM(0x235C4u, side);` (`fighter_235c4`); actors.c `PR_SEAM(0x2A4FCu, rec);` (`motion_step`; d3d's
+  line). The existing rows that name any of these addresses were re-run and are unchanged
+  (`hit_reaction_apply`, `hit_stance_timer`, `fighter_slot_latch_both`, `fighter_pass_b`,
+  `fighter_34038`, `fighter_38d24`, `motion_step`, `fighter_39ff4`, `fighter_state_35f84`,
+  `fighter_reaction`, `fighter_235c4`).
+- **Linkage.** `camera_y_clamp` (camera.c/.h), `fighter_382c4` and `hit_3d004` (the same line changes as
+  d3c's), `fighter_38434` and `fighter_think_side` lose `static`; the declarations are one block in
+  `fighter.h` after `fight_384f8` and one in `camera.h`.
+- **Harness lines outside the blocks.** One inserted line in the expected dictionary of
+  `test_each_stub_declares_the_registers_its_callee_clobbers`, ending `# track D3 batch d3e`: `0x38D24:
+  (), 0x382C4: (), 0x38434: ("edi", "ebp"), 0x2A4FC: ("ebp",), 0x186C4: ("ebx", "ecx", "edx", "esi",
+  "edi", "ebp"), 0x1922C: (), 0x3D004: ("edi", "ebp"), 0x235C4: ("ebp",)`. No `tools/diff_emu.py` change.
+- **Trial merges** (`git merge-tree`, nothing checked out): `port/src` merges without conflict against
+  `reverse-d3a`, `-d3b`, `-d3c` and `-d3d`; the three harness files conflict where every batch inserts at
+  the same anchor (additive).
+- **Not run by this batch:** the Python unittest, `make verify`, `make diff-verify`, any `*-oracle`
+  target, DOSBox-X. The four corrections are unproven against the oracles.
