@@ -15841,6 +15841,20 @@ D1_MASKS.update(D3E_MASKS)
 D1_KINDS.update(D3E_KINDS)
 D1_CASES.extend(D3E_CASES)
 
+# track D wave 4, batch d4e (record 2026-10-12-reverse-d4e): the second specs on rowed entries
+D4E_MASKS = {
+    "fighter_146f0_al": 0x0,
+}
+D4E_KINDS = {
+    "fighter_146f0_al@eax": {'call #1', 'call #2'},
+}
+D4E_CASES = [
+    ("fighter_146f0_al@eax", ['c2', 'c3']),
+]   # D4E_CASES end
+D1_MASKS.update(D4E_MASKS)
+D1_KINDS.update(D4E_KINDS)
+D1_CASES.extend(D4E_CASES)
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,

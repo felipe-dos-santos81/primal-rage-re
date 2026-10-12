@@ -21879,6 +21879,34 @@ D3E_SPECS += [
        mutants=("@eaxflag", "@flagbit", "@flagctx", "@nostance", "@stanceself", "@animside", "@67other", "@no67", "@dispside", "@eaxdisp", "@8aself", "@no8a", "@b54", "@swap", "@ecx", "@noad98", "@2bd44rec", "@norow60", "@nohook", "@hookslot", "@hooknoclr", "@hookclr", "@a48self", "@no5", "@36d20slot", "@c5no18", "@c5no1c", "@no8", "@c8side", "@no18b04", "@f40args", "@x28", "@a06zext", "@a06off", "@st0", "@st5", "@vnodec", "@vge", "@no3b080", "@midno18", "@midno1c", "@no41", "@64self", "@no64")),
 ]   # D3E_SPECS end
 D1_SPECS += D3E_SPECS
+
+# ---- track D wave 4, batch d4e (record 2026-10-12-reverse-d4e): follow-ups on rowed functions ------
+#
+# Second specs on entries that already have a row (the form of d3b's `_rr` specs: a `Call`'s mode and
+# `writes` are fixed per spec). `_al`: a predicate the first row runs on both sides is a stub here, so
+# its AL can be 0 under a non-zero EAX (the raw's `test al,al`). `_rr`: a stub rewrites a value the raw
+# loads again after the call.
+D4E_SPECS = []
+
+# 0x146F0 / 0x14A5C with 0x14590 a stub (d3d's D3D_14590; the first rows run it, so its AL is what the
+# state makes it). `test al,al` 0x14707 / 0x14A73: the stub returns 1, 0, 0x100, 0xFFFFFF00 (AL = 0
+# under a non-zero EAX: the false stream), 0xFFFFFF01 and 0x80. d2a's cases otherwise (the pokes that
+# steer the real 0x14590 stay and are not read).
+D4E_GATE_EAX = (1, 0, 0x00000100, 0xFFFFFF00, 0xFFFFFF01, 0x00000080)
+
+
+def d4e_step_cases(tw):
+    return [dataclasses.replace(c, stub_eax={0x14590: v})
+            for c, v in zip(d2a_step_cases(tw), D4E_GATE_EAX)]
+
+
+D4E_SPECS += [
+    # 0x146F0 fighter_146f0 (d2a's row; mask 0 as there).
+    Spec("fighter_146f0_al", 0x146F0, d4e_step_cases(D2A_STEP_146F0),
+         allow_calls=(0x339AC,), calls=D2A_STEP_CALLS + (D3D_14590,), eax_mask=0,
+         mutants=("@eax",)),
+]
+D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

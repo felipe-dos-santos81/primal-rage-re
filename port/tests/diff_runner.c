@@ -30474,6 +30474,15 @@ D3E_TS_MUT(c8side, 29u)   D3E_TS_MUT(no18b04, 30u)  D3E_TS_MUT(f40args, 31u)  D3
 D3E_TS_MUT(a06zext, 33u)  D3E_TS_MUT(a06off, 34u)   D3E_TS_MUT(st0, 35u)      D3E_TS_MUT(st5, 36u)
 D3E_TS_MUT(vnodec, 37u)   D3E_TS_MUT(vge, 38u)      D3E_TS_MUT(no3b080, 39u)  D3E_TS_MUT(midno18, 40u)
 D3E_TS_MUT(midno1c, 41u)  D3E_TS_MUT(no41, 42u)     D3E_TS_MUT(s64self, 43u)  D3E_TS_MUT(no64, 44u)
+
+/* ---- track D wave 4, batch d4e (record 2026-10-12-reverse-d4e): follow-ups on rowed functions ----
+ * Second specs on entries that already have a row: the binding is that row's, the mutants restate
+ * the reading the raw does not make (a callee's whole EAX for its AL, a value kept across a call
+ * the raw loads again after). */
+/* 0x146F0 / 0x14A5C under a stubbed 0x14590: d2a's core tests the callee's whole int, so its
+ * mutation set 0 is the port before the `test al,al` correction (0x14707 / 0x14A73). */
+static void m_d4e_146f0_eax(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_146f0, r, 0u); *eax = 0u; }
+/* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39075,6 +39084,9 @@ static const binding_t k_bindings[] = {
     { "fighter_think_side@no41",             m_d3e_ts_no41, 0x00000000u },
     { "fighter_think_side@64self",           m_d3e_ts_s64self, 0x00000000u },
     { "fighter_think_side@no64",             m_d3e_ts_no64, 0x00000000u },
+    /* d4e (record 2026-10-12-reverse-d4e) */
+    { "fighter_146f0_al", b_d2a_146f0, 0x00000000u },
+    { "fighter_146f0_al@eax", m_d4e_146f0_eax, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

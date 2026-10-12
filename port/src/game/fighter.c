@@ -4954,8 +4954,8 @@ void fighter_146f0(u32 rec)
     s32 dx;
     PR_SEAM(0x146F0u, rec);
     hit_anim_ctx(ctx, rec);                                 /* 0x146FA 0x339AC */
-    stream = (fighter_14590(ctx[0]) != 0)
-           ? FIGHT_ANIM_146F0_A : FIGHT_ANIM_146F0_B;       /* 0x14702..0x14712 */
+    stream = ((u8)fighter_14590(ctx[0]) != 0u)
+           ? FIGHT_ANIM_146F0_A : FIGHT_ANIM_146F0_B;       /* 0x14702..0x14712, 0x14707: test al,al */
     bits = (u32)DSW(DS_001088E0 + ctx[0] * 2u);             /* 0x1471A/0x14722 */
     if ((bits & 0x3000u) == 0u)                             /* 0x14728 test ch,0x30 */
         bits |= DSD(FIGHT_FD108 + ctx[0] * 4u);             /* 0x14730 */
