@@ -887,7 +887,7 @@ static void fighter_think_side(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x3B471 */
-    if (fighter_frame_flag(1u, ctx[1]) != 0) return;    /* 0x3B47F */
+    if ((u8)fighter_frame_flag(1u, ctx[1]) != 0u) return;   /* 0x3B47F, 0x3B484 `test al,al` */
     if ((s8)DSB(ctx[2] + 0x64u) == -1) return;          /* 0x3B490/0x3B49F */
 
     u32 stance = (u8)DSB(ctx[2] + 0x64u);               /* 0x3B493/0x3B4B9 */
@@ -895,7 +895,7 @@ static void fighter_think_side(u32 side)
     fighter_anim_triple(anim, ctx[0], (s32)stance);     /* 0x3B4AC */
     DSB(ctx[3] + 0x67u) = 1;                            /* 0x3B4BD */
 
-    if (fighter_command_dispatch(ctx[1], stance) != 0) { /* 0x3B4C7 */
+    if ((u8)fighter_command_dispatch(ctx[1], stance) != 0u) {   /* 0x3B4C7, 0x3B4CC `test al,al` */
         DSB(ctx[2] + 0x8Au) = 0;                        /* 0x3B669 */
         if (DSB(ctx[3] + 0x54u) != 2u)                  /* 0x3B674 */
             fighter_3b080(ctx[1], (u32)DSB(anim[0] + 3u),
