@@ -10396,7 +10396,7 @@ static u8 hit_3d004(u32 side)
  * 0x2676B/0x26775 (0x266AC, once per side). */
 void fight_384f8(u32 side)
 {
-    if (fighter_pass_flag(3u, side) == 0) {                    /* 0x3850A/0x3850C */
+    if ((u8)fighter_pass_flag(3u, side) == 0u) {               /* 0x3850A `test al,al`/0x3850C */
         u32 s = side * 0x94u;                                    /* 0x38510..0x3851C */
         DSW(DS_00107838 + s) = (u16)(DSW(DS_00107838 + s) + 1u);   /* 0x3851E */
     }
