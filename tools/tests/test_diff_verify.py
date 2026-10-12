@@ -11252,6 +11252,69 @@ D1_KINDS.update({
 })
 
 
+# ---- track D3 batch d3e (record 2026-10-12-reverse-d3e): measured with verify_all on the row's own spec ----
+D3E_MASKS = {
+    "camera_y_clamp": 0x0,
+}   # D3E_MASKS end
+D3E_KINDS = {
+    "camera_y_clamp@zext": {'byte'},
+    "camera_y_clamp@lo": {'byte'},
+    "camera_y_clamp@nogate": {'byte'},
+    "camera_y_clamp@off": {'byte'},
+    "camera_y_clamp@float": {'byte'},
+    "camera_y_clamp@mixed": {'byte'},
+    "camera_y_clamp@outer": {'byte'},
+    "camera_y_clamp@round": {'byte'},
+    "camera_y_clamp@abs": {'byte'},
+    "camera_y_clamp@step": {'byte'},
+    "camera_y_clamp@snapwide": {'byte'},
+    "camera_y_clamp@snapnarrow": {'byte'},
+    "camera_y_clamp@dir": {'byte'},
+    "camera_y_clamp@noshake": {'byte'},
+    "camera_y_clamp@shakez": {'byte'},
+    "camera_y_clamp@shakelo": {'byte'},
+    "camera_y_clamp@storew": {'byte'},
+    "camera_y_clamp@idxsext": {'byte'},
+    "camera_y_clamp@scale": {'byte'},
+    "camera_y_clamp@caplo": {'byte'},
+    "camera_y_clamp@capz": {'byte'},
+    "camera_y_clamp@capuns": {'byte'},
+    "camera_y_clamp@nocap": {'byte'},
+    "camera_y_clamp@capw": {'byte'},
+    "camera_y_clamp@capearly": {'byte'},
+}   # D3E_KINDS end
+D3E_CASES = [
+    ("camera_y_clamp@zext", ['g3', 'g4']),
+    ("camera_y_clamp@lo", ['c2', 'c6', 'f0', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'g0', 'g1', 'g2', 'g3', 'g4', 'g5', 's2', 's3', 's6', 's7', 's8', 's9']),
+    ("camera_y_clamp@nogate", ['g2', 'g3', 'g4']),
+    ("camera_y_clamp@off", ['f0', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'g1', 'g5', 's2', 's3', 's6', 's7', 's8', 's9']),
+    ("camera_y_clamp@float", ['f0', 'f1', 'f2', 'f3']),
+    ("camera_y_clamp@mixed", ['f0', 'f1', 'f4', 'f6']),
+    ("camera_y_clamp@outer", ['f3', 'f5']),
+    ("camera_y_clamp@round", ['f2', 'f3', 'f5', 'g5']),
+    ("camera_y_clamp@abs", ['s3', 's4']),
+    ("camera_y_clamp@step", ['s1', 's3', 's4', 's5']),
+    ("camera_y_clamp@snapwide", ['s1', 's3']),
+    ("camera_y_clamp@snapnarrow", ['s8', 's9']),
+    ("camera_y_clamp@dir", ['s1', 's3', 's4', 's5']),
+    ("camera_y_clamp@noshake", ['c0', 'c1', 'c2', 'c3', 'c4', 'c6', 's4', 's5', 's7']),
+    ("camera_y_clamp@shakez", ['c6', 's5', 's7']),
+    ("camera_y_clamp@shakelo", ['c0', 'c1', 'c2', 'c3', 'c4', 'c6', 'f0', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'g0', 'g1', 'g2', 'g3', 'g4', 'g5', 's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9']),
+    ("camera_y_clamp@storew", ['c6', 'g4', 's6', 's7']),
+    ("camera_y_clamp@idxsext", ['c4']),
+    ("camera_y_clamp@scale", ['c3', 'c4', 'c7']),
+    ("camera_y_clamp@caplo", ['c0', 'c3', 'c4', 'c5', 'c7', 'f1', 'f2', 'f3', 'f5', 'f6', 's4']),
+    ("camera_y_clamp@capz", ['c5']),
+    ("camera_y_clamp@capuns", ['c5', 'c6', 's5', 's7']),
+    ("camera_y_clamp@nocap", ['c0', 'c3', 'c4', 'c5', 'c7']),
+    ("camera_y_clamp@capw", ['c5']),
+    ("camera_y_clamp@capearly", ['c0', 'c3', 'c4', 'c5']),
+]   # D3E_CASES end
+D1_MASKS.update(D3E_MASKS)
+D1_KINDS.update(D3E_KINDS)
+D1_CASES.extend(D3E_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")

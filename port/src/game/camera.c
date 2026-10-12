@@ -389,7 +389,7 @@ void camera_mode_track_player(void)
 
 /* 0x1317C. Camera-y clamp: compute the target from DS_001078F2's high word and
  * step DS_000F0AEC toward it (0x12CD4), then cap at DS_0009AF28[DS_00104AFC]. */
-static void camera_y_clamp(void)
+void camera_y_clamp(void)
 {
     s32 x = (s32)DSD(DS_001078F2) >> 16;
     s32 target = 0;

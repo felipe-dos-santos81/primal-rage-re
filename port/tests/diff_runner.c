@@ -25961,6 +25961,77 @@ static void m_d2d_3e524_c1ch(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 
 static void m_d2d_3e524_c1hold(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 26u); }
 static void m_d2d_3e524_c1rec(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 27u); }
 static void m_d2d_3e524_c1s57(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 28u); }
+/* ---- track D3 batch d3e (record 2026-10-12-reverse-d3e) ---- */
+
+/* 0x1317C camera_y_clamp: no argument. x = the dword 0x1078F2 `sar 16` (0x13185); above 0x1400 the
+ * target is d * (d * C) at the x87's 53 bits (0x131AC..0x131B8), truncated by 0x61A4C; then the
+ * 0x12CD4 stepper (run on the original side, inlined in the port) and the cap `[0x9AF28 +
+ * word[0x104AFC]*2] sar 16` against the stored camera y (0x131D0..0x131EC). One restatement with
+ * one choice flipped per mutant number. */
+static u32 d3e_1317c_core(u32 mut)
+{
+    s32 x = (mut == 1u) ? (s32)(u32)DSW(DS_001078F2 + 2u)                    /* @zext */
+          : (mut == 2u) ? (s32)(s16)DSW(DS_001078F2)                         /* @lo */
+          : (s32)DSD(DS_001078F2) >> 16;
+    s32 target = 0;
+    if (x > 0x1400 || mut == 3u) {                                           /* @nogate */
+        float c = *(const float *)(mem + 0x000804A8u);
+        s32 di = x - ((mut == 4u) ? 0x1000 : 0x1400);                        /* @off */
+        double d = (double)di;
+        if (mut == 5u) { float f = (float)di; target = (s32)(f * (f * c)); } /* @float: the port before the fix */
+        else if (mut == 6u) target = (s32)(d * (double)(float)(d * (double)c));   /* @mixed */
+        else if (mut == 7u) target = (s32)(float)(d * (d * (double)c));      /* @outer */
+        else if (mut == 8u) { double v = d * (d * (double)c); target = (s32)(v + 0.5); }   /* @round */
+        else target = (s32)(d * (d * (double)c));
+    }
+    {
+        s32 cam = (s32)DSD(DS_000F0AEC);
+        s32 diff = (s32)((u32)target - (u32)cam);
+        s32 mag = (diff < 0 && mut != 9u) ? (s32)(0u - (u32)diff) : diff;    /* @abs */
+        s32 st = (mut == 10u) ? 0x80 : 0x100;                                /* @step */
+        if (mag <= ((mut == 11u) ? 0x200 : (mut == 25u) ? 0x80 : 0x100)) cam = target;   /* @snapwide, @snapnarrow */
+        else if ((mut == 12u) ? diff < 0 : diff > 0) cam += st;              /* @dir */
+        else cam -= st;
+        if (mut == 13u) { }                                                  /* @noshake */
+        else if (mut == 14u) cam += (s32)(u32)DSW(DS_000F0AF4);              /* @shakez */
+        else if (mut == 15u) cam += (s32)(s16)DSW(DS_000F0AF4 - 2u);         /* @shakelo */
+        else if (mut != 24u) cam += (s32)(s16)DSW(DS_000F0AF4);
+        if (mut == 24u) {                                                    /* @capearly: the cap before the shake */
+            s32 l = (s32)DSD(DS_0009AF28 + (u32)DSW(DS_00104AFC) * 2u) >> 16;
+            if (l < cam) cam = l;
+            cam += (s32)(s16)DSW(DS_000F0AF4);
+            DSD(DS_000F0AEC) = (u32)cam;
+            return 0u;
+        }
+        if (mut == 16u) DSW(DS_000F0AEC) = (u16)cam;                         /* @storew */
+        else DSD(DS_000F0AEC) = (u32)cam;
+    }
+    {
+        u32 idx = (mut == 17u) ? (u32)(s32)(s16)DSW(DS_00104AFC) : (u32)DSW(DS_00104AFC);   /* @idxsext */
+        s32 lim = (s32)DSD(DS_0009AF28 + idx * ((mut == 18u) ? 4u : 2u)) >> 16;             /* @scale */
+        s32 cam = (s32)DSD(DS_000F0AEC);
+        int cap;
+        if (mut == 19u) lim = (s32)(s16)DSW(DS_0009AF28 + idx * 2u);         /* @caplo */
+        if (mut == 20u) lim = (s32)(u32)DSW(DS_0009AF28 + idx * 2u + 2u);    /* @capz */
+        cap = (mut == 21u) ? ((u32)lim < (u32)cam) : (lim < cam);            /* @capuns */
+        if (mut == 22u) cap = 0;                                             /* @nocap */
+        if (cap) {
+            if (mut == 23u) DSW(DS_000F0AEC) = (u16)lim;                     /* @capw */
+            else DSD(DS_000F0AEC) = (u32)lim;
+        }
+    }
+    return 0u;
+}
+static void b_d3e_1317c(const u32 *r, u32 *eax) { (void)r; camera_y_clamp(); *eax = 0u; }
+#define D3E_CY_MUT(name, n) \
+    static void m_d3e_cy_##name(const u32 *r, u32 *eax) { (void)r; *eax = d3e_1317c_core(n); }
+D3E_CY_MUT(zext, 1u)      D3E_CY_MUT(lo, 2u)        D3E_CY_MUT(nogate, 3u)   D3E_CY_MUT(off, 4u)
+D3E_CY_MUT(float, 5u)     D3E_CY_MUT(mixed, 6u)     D3E_CY_MUT(outer, 7u)    D3E_CY_MUT(round, 8u)
+D3E_CY_MUT(abs, 9u)       D3E_CY_MUT(step, 10u)     D3E_CY_MUT(snapwide, 11u) D3E_CY_MUT(dir, 12u)
+D3E_CY_MUT(noshake, 13u)  D3E_CY_MUT(shakez, 14u)   D3E_CY_MUT(shakelo, 15u) D3E_CY_MUT(storew, 16u)
+D3E_CY_MUT(idxsext, 17u)  D3E_CY_MUT(scale, 18u)    D3E_CY_MUT(caplo, 19u)   D3E_CY_MUT(capz, 20u)
+D3E_CY_MUT(capuns, 21u)   D3E_CY_MUT(nocap, 22u)    D3E_CY_MUT(capw, 23u)    D3E_CY_MUT(capearly, 24u)
+D3E_CY_MUT(snapnarrow, 25u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32277,6 +32348,33 @@ static const binding_t k_bindings[] = {
     { "fighter_3e524@c1hold",                m_d2d_3e524_c1hold, 0x00000000u },
     { "fighter_3e524@c1rec",                 m_d2d_3e524_c1rec, 0x00000000u },
     { "fighter_3e524@c1s57",                 m_d2d_3e524_c1s57, 0x00000000u },
+    /* track D3 batch d3e */
+    { "camera_y_clamp",                      b_d3e_1317c, 0x00000000u },
+    { "camera_y_clamp@zext",                 m_d3e_cy_zext, 0x00000000u },
+    { "camera_y_clamp@lo",                   m_d3e_cy_lo, 0x00000000u },
+    { "camera_y_clamp@nogate",               m_d3e_cy_nogate, 0x00000000u },
+    { "camera_y_clamp@off",                  m_d3e_cy_off, 0x00000000u },
+    { "camera_y_clamp@float",                m_d3e_cy_float, 0x00000000u },
+    { "camera_y_clamp@mixed",                m_d3e_cy_mixed, 0x00000000u },
+    { "camera_y_clamp@outer",                m_d3e_cy_outer, 0x00000000u },
+    { "camera_y_clamp@round",                m_d3e_cy_round, 0x00000000u },
+    { "camera_y_clamp@abs",                  m_d3e_cy_abs, 0x00000000u },
+    { "camera_y_clamp@step",                 m_d3e_cy_step, 0x00000000u },
+    { "camera_y_clamp@snapwide",             m_d3e_cy_snapwide, 0x00000000u },
+    { "camera_y_clamp@snapnarrow",           m_d3e_cy_snapnarrow, 0x00000000u },
+    { "camera_y_clamp@dir",                  m_d3e_cy_dir, 0x00000000u },
+    { "camera_y_clamp@noshake",              m_d3e_cy_noshake, 0x00000000u },
+    { "camera_y_clamp@shakez",               m_d3e_cy_shakez, 0x00000000u },
+    { "camera_y_clamp@shakelo",              m_d3e_cy_shakelo, 0x00000000u },
+    { "camera_y_clamp@storew",               m_d3e_cy_storew, 0x00000000u },
+    { "camera_y_clamp@idxsext",              m_d3e_cy_idxsext, 0x00000000u },
+    { "camera_y_clamp@scale",                m_d3e_cy_scale, 0x00000000u },
+    { "camera_y_clamp@caplo",                m_d3e_cy_caplo, 0x00000000u },
+    { "camera_y_clamp@capz",                 m_d3e_cy_capz, 0x00000000u },
+    { "camera_y_clamp@capuns",               m_d3e_cy_capuns, 0x00000000u },
+    { "camera_y_clamp@nocap",                m_d3e_cy_nocap, 0x00000000u },
+    { "camera_y_clamp@capw",                 m_d3e_cy_capw, 0x00000000u },
+    { "camera_y_clamp@capearly",             m_d3e_cy_capearly, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

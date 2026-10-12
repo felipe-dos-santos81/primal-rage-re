@@ -185,4 +185,8 @@ u32 camera_dust_hit(u32 node);
  * 0xD and 0x32 (0x274FC/0x296B8, record §48-Q), which call it directly. */
 void camera_y_commit(void);
 
+/* PORT: exported for the D3 d3e differential row (linkage only; record
+ * 2026-10-12-reverse-d3e). */
+void camera_y_clamp(void);
+
 #endif /* PRAGE_GAME_CAMERA_H */

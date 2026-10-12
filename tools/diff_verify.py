@@ -18154,6 +18154,80 @@ D2D_SPECS = [
 D1_SPECS += D2D_SPECS
 
 
+# ---- track D3 batch d3e (record 2026-10-12-reverse-d3e) ----
+
+
+def d3e_cy_case(x, cam, shake=0, idx=0, lim=0x7FFF, caps=None):
+    """0x1317C: the dword 0x1078F2 (low word 0x5A5A, high word x) between sentinel words, the camera
+    block (y = cam, the shake word; the x dword's high word 0xC1C2 is what a read of 0xF0AF2's low
+    word finds), the dword before it, the index word 0x104AFC between sentinels, and the cap table:
+    the dword at 0x9AF28 + idx*2 gets the low word 0x1111 and the high word `lim`; `caps` pokes more
+    words at byte offsets from 0x9AF28 (what a wrong index or scale would read)."""
+    p = d1h_cam(y=cam, shake=shake)
+    p[0x000F0AE8] = le32(0xE8E9EAEB)
+    p[0x001078F0] = le16(0xF0F1) + le16(0x5A5A) + le16(x) + le16(0xF6F7)
+    p[0x00104AF8] = le32(0xF8F9FAFB) + le16(idx) + le16(0xFEFF)
+    words = {idx * 2: 0x1111, idx * 2 + 2: lim}
+    words.update(caps or {})
+    for off, w in words.items():
+        p[0x0009AF28 + off] = le16(w)
+    return p
+
+
+D3E_T = 1858         # the target 0x1317C computes for x = 0x3000 (d = 0x1C00), from the original's run
+
+D3E_SPECS = [
+    # 0x1317C camera_y_clamp: no argument. x = the dword 0x1078F2 `sar 16`; x <= 0x1400 (`jle`
+    # 0x1318D) gives the target 0, else `fild` d = x - 0x1400, `fstp dword` (exact: d < 2^24),
+    # `fld; fld st(0); fmul dword [0x804a8]; fmulp` = d * (d * C) at the control word's 53 bits and
+    # 0x61A4C (`frndint` under a control word whose high byte is 0x1F: chop), `fistp`. Then 0x12CD4
+    # (its one caller is 0x131CB: run on the original side, inlined in the port): snap when
+    # |target - cam| <= 0x100 (`jg` 0x12CF3), else step 0x100 toward it, plus the dword 0xF0AF2
+    # `sar 16` (the shake word 0xF0AF4, signed). Then the cap `[0x9AF28 + word[0x104AFC]*2] sar 16`
+    # (the index zero-extended, `xor eax,eax; mov ax,..` 0x131D0), stored when below the camera y
+    # read back (`jge` 0x131EA). A snap at |diff| < 0x100 is not observable: a 0x100 step from a
+    # difference of exactly 0x100 lands on the target. f0..f3 are the four x where a single-precision product truncates
+    # to another integer; f4 and f5 the x where only the inner or only the outer product in single
+    # precision does. EAX is the cap; no caller reads it (record §1).
+    Spec("camera_y_clamp", 0x1317C, [
+        Case("g0", {}, d3e_cy_case(0x1400, 0x40)),
+        Case("g1", {}, d3e_cy_case(0x1401, 0x40)),
+        Case("g2", {}, d3e_cy_case(0x1000, 0x20)),
+        Case("g3", {}, d3e_cy_case(0x8000, 0x10)),
+        Case("g4", {}, d3e_cy_case(0xFFFF, 0xFFFFFFF0)),
+        Case("g5", {}, d3e_cy_case(0x14D2, 0x08)),
+        Case("f0", {}, d3e_cy_case(12320, 1875 + 3)),
+        Case("f1", {}, d3e_cy_case(19520, 7500 - 3)),
+        Case("f2", {}, d3e_cy_case(22483, 10903 + 0x100)),
+        Case("f3", {}, d3e_cy_case(27181, 17602 + 5)),
+        Case("f4", {}, d3e_cy_case(8000, 300)),
+        Case("f5", {}, d3e_cy_case(29229, 21022)),
+        Case("f6", {}, d3e_cy_case(0x7FFF, 27646)),
+        Case("s0", {}, d3e_cy_case(0x3000, D3E_T - 0x100)),
+        Case("s1", {}, d3e_cy_case(0x3000, D3E_T - 0x101)),
+        Case("s2", {}, d3e_cy_case(0x3000, D3E_T + 0x100)),
+        Case("s3", {}, d3e_cy_case(0x3000, D3E_T + 0x101)),
+        Case("s4", {}, d3e_cy_case(0x3000, D3E_T + 0x5000, shake=0x0030)),
+        Case("s5", {}, d3e_cy_case(0x3000, D3E_T - 0x5000, shake=0xFFF0)),
+        Case("s6", {}, d3e_cy_case(0x3000, 0x80000000 + D3E_T)),
+        Case("s7", {}, d3e_cy_case(0x3000, D3E_T, shake=0x8000)),
+        Case("s8", {}, d3e_cy_case(0x3000, D3E_T - 0x90)),
+        Case("s9", {}, d3e_cy_case(0x3000, D3E_T + 0x90)),
+        Case("c0", {}, d3e_cy_case(0x1400, 0, shake=0x0200, lim=0x01FF)),
+        Case("c1", {}, d3e_cy_case(0x1400, 0, shake=0x0200, lim=0x0200)),
+        Case("c2", {}, d3e_cy_case(0x1400, 0, shake=0x0200, lim=0x0201)),
+        Case("c3", {}, d3e_cy_case(0x1400, 0, shake=0x0300, idx=1, lim=0x0123, caps={0: 0x7001, 6: 0x7002})),
+        Case("c4", {}, d3e_cy_case(0x1400, 0, shake=0x0300, idx=0x8000, lim=0x0055, caps={-0x10000 + 2: 0x7003})),
+        Case("c5", {}, d3e_cy_case(0x1400, 0, shake=0x0010, lim=0x8000)),
+        Case("c6", {}, d3e_cy_case(0x1400, 0, shake=0xFFFB, lim=0x0000)),
+        Case("c7", {}, d3e_cy_case(0x7FFF, 27646, idx=2, caps={4: 0x1100, 6: 0x1500})),
+    ], allow_calls=(0x61A4C, 0x12CD4), eax_mask=0,
+       unhit_named={0x131A6: "dead: `sar eax,0x10` (0x13185) leaves x below 0x8000, so `jl 0x131ac` (0x131A4) is always taken"},
+       mutants=("@zext", "@lo", "@nogate", "@off", "@float", "@mixed", "@outer", "@round", "@abs", "@step",
+                "@snapwide", "@snapnarrow", "@dir", "@noshake", "@shakez", "@shakelo", "@storew", "@idxsext", "@scale",
+                "@caplo", "@capz", "@capuns", "@nocap", "@capw", "@capearly")),
+]   # D3E_SPECS end
+D1_SPECS += D3E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
