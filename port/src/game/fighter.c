@@ -5035,7 +5035,7 @@ void fighter_1461c(u32 slot, u32 rec, u32 side)
     case 0u:                                                /* 0x1464A */
         if ((DSB(ctx[2] + 0x42u) & 8u) == 0u) return;       /* 0x1464E */
         DSB(ctx[2] + 0x57u) = 1u;                           /* 0x14658 */
-        if (fighter_14590(ctx[0]) != 0) {                   /* 0x1465F..0x1466B */
+        if ((u8)fighter_14590(ctx[0]) != 0u) {              /* 0x1465F..0x1466B, 0x14669: test al,al */
             DSW(DS_000FD114 + ctx[0] * 2u) = DSW(DS_0009AFDA);   /* 0x1466D/0x14673 */
             fighter_4f944(1u);                              /* 0x1467A/0x1467F */
         } else {
