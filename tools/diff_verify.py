@@ -22338,6 +22338,79 @@ D4A_SPECS += [
                               0x295B1)},
        mutants=("@preb14a", "@nohud", "@nomark")),
 ]
+# The AIL thunks 0x1CB18 calls (cdecl: the caller drops its pushes, so pop 0). s0 is the slot's AIL
+# handle, a host object in the port, and is not an argument here; the clobbers are the scan's.
+D4A_AIL_INIT = E.Call(0x5DC0F, (), clobbers=("ebx", "ecx", "edx"))
+D4A_AIL_ADDR = E.Call(0x5DC2A, ("s1", "s2"), clobbers=("edx",))
+D4A_AIL_VOL = E.Call(0x5DCC5, ("s1",), clobbers=("ebx", "ecx", "edx"))
+D4A_AIL_RATE = E.Call(0x5DCA6, ("s1",), clobbers=("edx",))
+D4A_AIL_TYPE = E.Call(0x5DC4D, ("s1", "s2"), clobbers=("ebx", "ecx", "edx"))
+D4A_AIL_LOOP = E.Call(0x5DCE4, ("s1",), clobbers=("edx",))
+D4A_AIL_START = E.Call(0x5DC70, (), clobbers=("ebx", "ecx", "edx"))
+D4A_SS_BUF = (0x0010AB00, 0x0010AB40, 0x0010AB80, 0x0010AC00)   # the slots' buffers (zero BSS); the last has 0x130 bytes
+
+
+# index entries 0, 1, 0, 0; payloads 0x40 apart, the last with room for 0x105 bytes
+D4A_SS_H0, D4A_SS_H1, D4A_SS_H2, D4A_SS_H3 = 0x00000040, 0x00800080, 0x000000C0, 0x00000100
+
+
+def d4a_ss_case(queued, loops, payload=b"", h=None, vol=0x55, extra=()):
+    """0x1CB18: the four 0x18-byte slots at 0x102860 (+0 an AIL handle, +4 `queued[k]`, +8
+    `loops[k]` under three seeded bytes, +0xC 0x99999990 + k, +0x10 a buffer, +0x14 a time), the
+    dword before them, the SFX volume 0xA2CB4 between seeded dwords, every buffer filled with
+    0x5A + k, and the resource `h` (c2b_res: its payload's first dword is the length, then
+    `payload` and two guard bytes); `extra` handles resolve to a 4-byte payload."""
+    p = {0x0010285C: le32(0x5E5E5E5E), 0x000A2CB0: le32(0x61616161) + le32(vol) + le32(0x62626262)}
+    for k in range(4):
+        p[0x00102860 + k * 0x18] = (le32(0x0010C000 + k * 0x18) + le32(queued[k])
+                                    + bytes([loops[k], 0x63, 0x64, 0x65]) + le32(0x99999990 + k)
+                                    + le32(D4A_SS_BUF[k]) + le32(0x44444440 + k))
+        p[D4A_SS_BUF[k] - 4] = bytes([0x5A + k]) * (0x130 if k == 3 else 0x30)
+    for hh, body in tuple((x, b"\x71\x72\x73\x74") for x in extra) + ((h, payload),):
+        p.update(c2b_res(hh, len(body)))
+        p[C2B_RES_DATA + (hh & 0x7FFFFF) + 4] = body + b"\x7e\x7f"
+    return {a + o: v[o:o + 0x40] for a, v in p.items() for o in range(0, max(len(v), 1), 0x40)}   # a poke holds 64 bytes
+
+
+D4A_SPECS += [
+    # 0x1CB18 sound_sample_start: EAX = the slot (0x18-byte records at 0x102860). Nothing with no
+    # queued handle (+0x04). Else the resource (0x1B544, real on both sides against the preloaded
+    # entry) gives [length][bytes]: the bytes are copied to the slot's buffer (+0x10; `rep movsd`
+    # of length / 4, `rep movsb` of length & 3), then 0x5DC0F, 0x5DC2A(buffer, length),
+    # 0x5DCC5(the dword 0xA2CB4), 0x5DCA6(0x2B11), 0x5DC4D(0, 0), 0x5DCE4(0) when the loop byte
+    # +0x08 (zero-extended) is 1, 0x5DC70; +0x0C = the queued handle and +0x04 = 0. The seven AIL
+    # thunks are stubs (five seamed here); their handle argument is not compared (record §4).
+    # s6 has no queued handle but a resolvable handle 0, s7 a length of 0, s8 one of 0x105.
+    Spec("sound_sample_start", 0x1CB18, [
+        Case("s0", {"eax": 0, "ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468,
+                    "edi": 0x2468ACE0, "ebp": 0x0F1E2D3C},
+             d4a_ss_case((D4A_SS_H0, D4A_SS_H1, 0, D4A_SS_H2), (1, 1, 1, 1), bytes(range(1, 0x24)),
+                         h=D4A_SS_H0, extra=(D4A_SS_H1, D4A_SS_H2))),
+        Case("s1", {"eax": 1}, d4a_ss_case((D4A_SS_H0, D4A_SS_H1, 0, D4A_SS_H2), (1, 0, 1, 1), b"\x11\x12\x13",
+                                           h=D4A_SS_H1, vol=0xFFFFFF80, extra=(D4A_SS_H0, D4A_SS_H2)),
+             {0x5DC0F: 0xFFFFFFFF}),
+        Case("s2", {"eax": 3}, d4a_ss_case((D4A_SS_H0, 0, 0, D4A_SS_H2), (0, 0, 0, 2), b"\x21\x22\x23\x24\x25",
+                                           h=D4A_SS_H2, vol=0, extra=(D4A_SS_H0,))),
+        Case("s3", {"eax": 2}, d4a_ss_case((D4A_SS_H0, D4A_SS_H2, D4A_SS_H1, 0), (0, 0, 1, 0), b"\x31",
+                                           h=D4A_SS_H1, extra=(D4A_SS_H0, D4A_SS_H2))),
+        Case("s4", {"eax": 0}, d4a_ss_case((D4A_SS_H2, 0, D4A_SS_H0, 0), (0x81, 1, 1, 1), b"\x41\x42\x43\x44",
+                                           h=D4A_SS_H2, extra=(D4A_SS_H0,))),
+        Case("s5", {"eax": 1}, d4a_ss_case((D4A_SS_H0, D4A_SS_H2, D4A_SS_H1, 0), (1, 0xFF, 1, 1),
+                                           bytes(range(0x50, 0x57)), h=D4A_SS_H2, extra=(D4A_SS_H0, D4A_SS_H1))),
+        Case("s6", {"eax": 2}, d4a_ss_case((D4A_SS_H0, D4A_SS_H1, 0, D4A_SS_H2), (1, 1, 1, 1), b"\x61\x62\x63\x64",
+                                           h=0x00000000, extra=(D4A_SS_H0, D4A_SS_H1, D4A_SS_H2))),
+        Case("s7", {"eax": 3}, d4a_ss_case((0, 0, 0, D4A_SS_H2), (1, 1, 1, 1), b"", h=D4A_SS_H2)),
+        Case("s8", {"eax": 3}, d4a_ss_case((D4A_SS_H0, 0, 0, D4A_SS_H3), (1, 1, 1, 0),
+                                           bytes((i * 7 + 1) & 0xFF for i in range(0x105)), h=D4A_SS_H3,
+                                           extra=(D4A_SS_H0,))),
+    ], allow_calls=(0x1B544,),
+       calls=(D4A_AIL_INIT, D4A_AIL_ADDR, D4A_AIL_VOL, D4A_AIL_RATE, D4A_AIL_TYPE, D4A_AIL_LOOP, D4A_AIL_START),
+       eax_mask=0,
+       mutants=("@stride", "@slot1", "@hoff", "@nogate", "@size1", "@sizeb", "@src", "@dst", "@nocopy", "@copylate",
+                "@noinit", "@noaddr", "@addrbuf", "@addrlen", "@vol", "@novol", "@rate", "@norate", "@type",
+                "@type2", "@notype", "@loopalways", "@loopnever", "@loopne", "@loopcnt", "@nostart", "@startearly",
+                "@order", "@cur0", "@nocur", "@curoff", "@noclr", "@clrearly", "@clrfirst")),
+]
 D1_SPECS += D4A_SPECS
 
 

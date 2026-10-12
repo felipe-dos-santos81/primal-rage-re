@@ -31189,6 +31189,59 @@ D4A_M30_MUT(fcw) D4A_M30_MUT(abc3) D4A_M30_MUT(abcbit) D4A_M30_MUT(abcb) D4A_M30
 D4A_M30_MUT(b21inv) D4A_M30_MUT(b21always) D4A_M30_MUT(noaf0) D4A_M30_MUT(noaf1) D4A_M30_MUT(af1w) D4A_M30_MUT(m31)
 D4A_M30_MUT(m31b) D4A_M30_MUT(nom31) D4A_M30_MUT(nodec) D4A_M30_MUT(decb) D4A_M30_MUT(s4old) D4A_M30_MUT(s4ge)
 D4A_M30_MUT(s4uns) D4A_M30_MUT(s4src) D4A_M30_MUT(nocopy) D4A_M30_MUT(preb14a)
+/* 0x1CB18: EAX = the slot. Mask 0: the one caller 0x1CF26 rewrites EAX in its loop (`mov eax,edx` 0x1CF23)
+ * and leaves through 0x1C930 (`mov eax,[0x1028cc]`) or its `ret` into 0x256BB `mov eax,[0x10150c]` or
+ * 0x2EB0A `jmp 0x2eaf9` (`xor eax,eax`). The AIL handle the raw pushes for each thunk (the slot's +0x00
+ * dword) has no counterpart in the port, whose handles are host objects: not compared. */
+static void b_d4a_1cb18(const u32 *r, u32 *eax) { sound_sample_start(r[R_EAX]); *eax = 0u; }
+enum { D4A_SS_NONE, D4A_SS_stride, D4A_SS_slot1, D4A_SS_hoff, D4A_SS_nogate, D4A_SS_size1, D4A_SS_sizeb, D4A_SS_src,
+       D4A_SS_dst, D4A_SS_nocopy, D4A_SS_copylate, D4A_SS_noinit, D4A_SS_noaddr, D4A_SS_addrbuf, D4A_SS_addrlen,
+       D4A_SS_vol, D4A_SS_novol, D4A_SS_rate, D4A_SS_norate, D4A_SS_type, D4A_SS_type2, D4A_SS_notype,
+       D4A_SS_loopalways, D4A_SS_loopnever, D4A_SS_loopne, D4A_SS_loopcnt, D4A_SS_nostart, D4A_SS_startearly,
+       D4A_SS_order, D4A_SS_cur0, D4A_SS_nocur, D4A_SS_curoff, D4A_SS_noclr, D4A_SS_clrearly, D4A_SS_clrfirst };
+static void d4a_1cb18_core(u32 slot, u32 mut)
+{
+    u32 off = ((mut == D4A_SS_slot1) ? slot + 1u : slot) * ((mut == D4A_SS_stride) ? 0x14u : 0x18u);
+    u32 h = DSD(0x00102864u + off + ((mut == D4A_SS_hoff) ? 8u : 0u));
+    if (h == 0u && mut != D4A_SS_nogate) return;
+    const u8 *p = (const u8 *)res_resolve(h);
+    u32 buf = DSD(0x00102870u + off);
+    if (buf == 0u || p == NULL) return;
+    u32 size = DSD((u32)(p - mem));
+    if (mut == D4A_SS_size1 && size != 0u) size -= 1u;
+    if (mut == D4A_SS_sizeb) size &= 0xFFu;
+    u32 dst = buf + ((mut == D4A_SS_dst) ? 4u : 0u);
+    const u8 *src = p + ((mut == D4A_SS_src) ? 0 : 4);
+    if (mut != D4A_SS_nocopy && mut != D4A_SS_copylate) memcpy(mem + dst, src, size);
+    if (mut != D4A_SS_noinit) AIL_init_sample(NULL);
+    if (mut == D4A_SS_copylate) memcpy(mem + dst, src, size);
+    if (mut != D4A_SS_noaddr)
+        AIL_set_sample_address(NULL, mem + buf + ((mut == D4A_SS_addrbuf) ? 4u : 0u),
+                               size + ((mut == D4A_SS_addrlen) ? 4u : 0u));
+    if (mut == D4A_SS_order) AIL_set_sample_rate(NULL, 0x2B11u);
+    if (mut != D4A_SS_novol) AIL_set_sample_volume(NULL, (s32)DSD((mut == D4A_SS_vol) ? 0x000A2CB8u : 0x000A2CB4u));
+    if (mut != D4A_SS_norate && mut != D4A_SS_order) AIL_set_sample_rate(NULL, (mut == D4A_SS_rate) ? 0x2B10u : 0x2B11u);
+    if (mut != D4A_SS_notype) AIL_set_sample_type(NULL, (mut == D4A_SS_type) ? 1 : 0, (mut == D4A_SS_type2) ? 1u : 0u);
+    if (mut == D4A_SS_startearly) AIL_start_sample(NULL);
+    u32 lp = DSB(0x00102868u + off);
+    if ((mut == D4A_SS_loopalways) ? 1 : (mut == D4A_SS_loopnever) ? 0 : (mut == D4A_SS_loopne) ? (lp != 0u) : (lp == 1u))
+        AIL_set_sample_loop_count(NULL, (mut == D4A_SS_loopcnt) ? 1u : 0u);
+    if (mut == D4A_SS_clrearly) { DSD(0x0010286Cu + off) = DSD(0x00102864u + off); DSD(0x00102864u + off) = 0u; }
+    if (mut != D4A_SS_nostart && mut != D4A_SS_startearly) AIL_start_sample(NULL);
+    if (mut == D4A_SS_clrearly) return;
+    if (mut == D4A_SS_clrfirst) DSD(0x00102864u + off) = 0u;
+    if (mut != D4A_SS_nocur)
+        DSD(0x0010286Cu + off + ((mut == D4A_SS_curoff) ? 4u : 0u)) = (mut == D4A_SS_cur0) ? 0u : DSD(0x00102864u + off);
+    if (mut != D4A_SS_noclr) DSD(0x00102864u + off) = 0u;
+}
+#define D4A_SS_MUT(name) \
+    static void m_d4a_ss_##name(const u32 *r, u32 *eax) { d4a_1cb18_core(r[R_EAX], D4A_SS_##name); *eax = 0u; }
+D4A_SS_MUT(stride) D4A_SS_MUT(slot1) D4A_SS_MUT(hoff) D4A_SS_MUT(nogate) D4A_SS_MUT(size1) D4A_SS_MUT(sizeb)
+D4A_SS_MUT(src) D4A_SS_MUT(dst) D4A_SS_MUT(nocopy) D4A_SS_MUT(copylate) D4A_SS_MUT(noinit) D4A_SS_MUT(noaddr)
+D4A_SS_MUT(addrbuf) D4A_SS_MUT(addrlen) D4A_SS_MUT(vol) D4A_SS_MUT(novol) D4A_SS_MUT(rate) D4A_SS_MUT(norate)
+D4A_SS_MUT(type) D4A_SS_MUT(type2) D4A_SS_MUT(notype) D4A_SS_MUT(loopalways) D4A_SS_MUT(loopnever)
+D4A_SS_MUT(loopne) D4A_SS_MUT(loopcnt) D4A_SS_MUT(nostart) D4A_SS_MUT(startearly) D4A_SS_MUT(order) D4A_SS_MUT(cur0)
+D4A_SS_MUT(nocur) D4A_SS_MUT(curoff) D4A_SS_MUT(noclr) D4A_SS_MUT(clrearly) D4A_SS_MUT(clrfirst)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -40247,6 +40300,41 @@ static const binding_t k_bindings[] = {
     { "game_mode_30_step_reread@preb14a", m_d4a_m30_preb14a, 0x00000000u },
     { "game_mode_30_step_reread@nohud", m_d4a_m30_nohud, 0x00000000u },
     { "game_mode_30_step_reread@nomark", m_d4a_m30_nomark, 0x00000000u },
+    { "sound_sample_start", b_d4a_1cb18, 0x00000000u },
+    { "sound_sample_start@stride", m_d4a_ss_stride, 0x00000000u },
+    { "sound_sample_start@slot1", m_d4a_ss_slot1, 0x00000000u },
+    { "sound_sample_start@hoff", m_d4a_ss_hoff, 0x00000000u },
+    { "sound_sample_start@nogate", m_d4a_ss_nogate, 0x00000000u },
+    { "sound_sample_start@size1", m_d4a_ss_size1, 0x00000000u },
+    { "sound_sample_start@sizeb", m_d4a_ss_sizeb, 0x00000000u },
+    { "sound_sample_start@src", m_d4a_ss_src, 0x00000000u },
+    { "sound_sample_start@dst", m_d4a_ss_dst, 0x00000000u },
+    { "sound_sample_start@nocopy", m_d4a_ss_nocopy, 0x00000000u },
+    { "sound_sample_start@copylate", m_d4a_ss_copylate, 0x00000000u },
+    { "sound_sample_start@noinit", m_d4a_ss_noinit, 0x00000000u },
+    { "sound_sample_start@noaddr", m_d4a_ss_noaddr, 0x00000000u },
+    { "sound_sample_start@addrbuf", m_d4a_ss_addrbuf, 0x00000000u },
+    { "sound_sample_start@addrlen", m_d4a_ss_addrlen, 0x00000000u },
+    { "sound_sample_start@vol", m_d4a_ss_vol, 0x00000000u },
+    { "sound_sample_start@novol", m_d4a_ss_novol, 0x00000000u },
+    { "sound_sample_start@rate", m_d4a_ss_rate, 0x00000000u },
+    { "sound_sample_start@norate", m_d4a_ss_norate, 0x00000000u },
+    { "sound_sample_start@type", m_d4a_ss_type, 0x00000000u },
+    { "sound_sample_start@type2", m_d4a_ss_type2, 0x00000000u },
+    { "sound_sample_start@notype", m_d4a_ss_notype, 0x00000000u },
+    { "sound_sample_start@loopalways", m_d4a_ss_loopalways, 0x00000000u },
+    { "sound_sample_start@loopnever", m_d4a_ss_loopnever, 0x00000000u },
+    { "sound_sample_start@loopne", m_d4a_ss_loopne, 0x00000000u },
+    { "sound_sample_start@loopcnt", m_d4a_ss_loopcnt, 0x00000000u },
+    { "sound_sample_start@nostart", m_d4a_ss_nostart, 0x00000000u },
+    { "sound_sample_start@startearly", m_d4a_ss_startearly, 0x00000000u },
+    { "sound_sample_start@order", m_d4a_ss_order, 0x00000000u },
+    { "sound_sample_start@cur0", m_d4a_ss_cur0, 0x00000000u },
+    { "sound_sample_start@nocur", m_d4a_ss_nocur, 0x00000000u },
+    { "sound_sample_start@curoff", m_d4a_ss_curoff, 0x00000000u },
+    { "sound_sample_start@noclr", m_d4a_ss_noclr, 0x00000000u },
+    { "sound_sample_start@clrearly", m_d4a_ss_clrearly, 0x00000000u },
+    { "sound_sample_start@clrfirst", m_d4a_ss_clrfirst, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
