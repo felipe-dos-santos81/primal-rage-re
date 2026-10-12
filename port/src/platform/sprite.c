@@ -335,6 +335,8 @@ void sprite_blit_at(SpriteNode *n, u8 *base)
 /* 0x51E5C: the renderer's span blit, compositing into the back buffer. */
 void sprite_blit(SpriteNode *n)
 {
+    PR_SEAM(0x51E5Cu, (u32)n->x, (u32)n->y, (u32)n->xorg, (u32)n->yorg, n->type, (u32)n->rows, (u32)n->width,
+            n->pal_ptr, n->pixel_handle, (u32)n->clip_l, (u32)n->clip_r, (u32)n->clip_t, (u32)n->clip_b);
     sprite_blit_at(n, mem + DSD(DS_000E87A4));
 }
 

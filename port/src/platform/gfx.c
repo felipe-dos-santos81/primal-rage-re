@@ -100,6 +100,7 @@ void palette_record_flagged(u32 ptr, u32 first, u32 count)
  * 8-bit write index (set from AL at 0x1C4AA) wraps past 0xFF. */
 void gfx_flush_palette(void)
 {
+    PR_SEAM0(0x1C470u);
     u32 rec = DS_00107498;
     u32 head = DSD(0x107798);
     /* PORT: the head is valid only inside the record region (DS_00107498 up to

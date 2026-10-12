@@ -25067,6 +25067,285 @@ D5B_SPECS += [
         d5b_decay("rr1", (0, 0, 0, 0), (0x00000011, 0x00000022, 0x00000033, 0x00000044), 1, (0, 1)),
     ], calls=(D4B_OVERLAP, D5B_UNFREEZE_W), eax_mask=0, mutants=("@b61cache",)),
 ]
+
+# ---- 0x14328: the display list walk -------------------------------------------------------------------
+D5B_RL_NODE, D5B_RL_PSET = 0x10A000, 0x10A100     # the list nodes {next, pset} and the pset records (0x20 each)
+D5B_RL_CAM = (0xA87CC, 0xA87D4)                   # the master loop's camera and clip records (0x25663, 0x2565E)
+D5B_RL_CAM2 = (0xBCD64, 0xBCD6C)                  # 0x2EA78's (0x2EA95, 0x2EA80); the same bytes in the image
+# 0x51E5C (seamed here): EAX = the node, a record in 0x14328's frame (`mov eax,esp` 0x14562), passed by
+# value: x, y, x origin, y origin, type, rows, width, palette, pixel handle (+0..+0x20) and the four clips
+# (+0x28..+0x34), the fields the C SpriteNode has. It preserves every register but EAX (its six pushes
+# 0x51E6E..0x51E73 and pops 0x51ECE..0x51ED3; diff_emu._CALLEE_CLOBBER_FIXES).
+D5B_BLIT = E.Call(0x51E5C, ("[eax]", "[eax+4]", "[eax+8]", "[eax+12]", "[eax+16]", "[eax+20]", "[eax+24]",
+                            "[eax+28]", "[eax+32]", "[eax+40]", "[eax+44]", "[eax+48]", "[eax+52]"))
+# sprite id -> (handle, (width, height, x origin, y origin), pixel handle)
+D5B_RL_SPRITES = {0x0123: (0x800040, (40, 30, 7, 5), 0x00812345),
+                  0x0124: (0x800060, (0xFFF0, 0xFFF8, 3, 2), 0x00823456),        # a raw bitmap: 16 x 8
+                  0x7FFE: (0x1000010, (100, 60, 0xFFFC, 0x0010), 0x01034567)}
+D5B_A, D5B_B, D5B_C = 0x0123, 0x0124, 0x7FFE
+
+
+def d5b_proj(v, k):
+    """The model of 0x14328's projection, used only to place a pset on a chosen pixel."""
+    v = v - (1 << 32) if v & 0x80000000 else v
+    p = (v * k + 0x800) & 0xFFFFFFFF
+    p = p - (1 << 32) if p & 0x80000000 else p
+    return (p + 0xFFF) >> 12 if p < 0 else p >> 12
+
+
+def d5b_at_px(px, k):
+    """A coordinate whose projection by `k` is the pixel `px` (the expectations are the original's)."""
+    v = (px * 4096) // k - 2
+    while d5b_proj(v & 0xFFFFFFFF, k) < px:
+        v += 1
+    assert d5b_proj(v & 0xFFFFFFFF, k) == px, (px, k)
+    return v & 0xFFFFFFFF
+
+
+def d5b_rl_item(sid, px, py, layer=0, pal=0x0010A5C0, shifted=False):
+    """One pset: the sprite id word, the position that projects to the pixel (px, py) (pre-shifted left by
+    6 with low bits set when `shifted`: a layer above 2), the layer word, the palette dword."""
+    x, y = d5b_at_px(px, 0xF3D), d5b_at_px(py, 0xD56)
+    if shifted:
+        x, y = ((x << 6) | 0x2B) & 0xFFFFFFFF, ((y << 6) | 0x15) & 0xFFFFFFFF
+    return (sid, x, y, layer, pal)
+
+
+def d5b_rl(cid, items, g38=0x0040, g3a=0x0100, g3e=0x0200, g4e=0x0030, aec=0x00001940, cam=D5B_RL_CAM,
+           sprites=None, extra=None):
+    """The list head 0x105B44 between seeded dwords, one 8-byte node and one 0x20-byte pset per item (the
+    pset seeded around the fields 0x14328 reads), the three sprites' table dwords and headers, and the
+    globals of the layer 1 and 2 rules: the words 0x107A38, 0x107A3A, 0x107A3E, 0x107A4E and the dword
+    0xF0AEC, each between seeded bytes."""
+    p = {**d4b_res(), 0x105B40: le32(0x40404040) + le32(D5B_RL_NODE if items else 0) + le32(0x48484848),
+         0x107A36: le16(0x3636) + le16(g38) + le16(g3a) + le16(0x3C3C) + le16(g3e) + le16(0x4040),
+         0x107A4C: le16(0x4C4C) + le16(g4e) + le16(0x5050),
+         0xF0AE8: le32(0xE8E8E8E8) + le32(aec) + le32(0xF0F0F0F0)}
+    for uid, (h, hdr, pix) in (sprites or D5B_RL_SPRITES).items():
+        p[0xA8B30 + uid * 4] = le32(h)
+        p[d4b_at(h) - 2] = b"\xee\xee" + b"".join(le16(v) for v in hdr) + le32(pix) + b"\xdd\xdd"
+    nodes = b""
+    for i, (sid, x, y, layer, pal) in enumerate(items):
+        nodes += le32(D5B_RL_NODE + (i + 1) * 8 if i + 1 < len(items) else 0) + le32(D5B_RL_PSET + i * 0x20)
+        p[D5B_RL_PSET + i * 0x20] = (le16(sid) + le16(0x0202) + le32(x) + le32(y) + le16(0x0C0C) + le16(layer)
+                                     + le32(0x10101010) + le32(0x14141414) + le32(pal) + le32(0x1C1C1C1C))
+    if nodes:
+        d5b_poke(p, D5B_RL_NODE, nodes)
+    p.update(extra or {})
+    return Case(cid, {"eax": 0x105B44, "edx": cam[0], "ebx": cam[1]}, p)
+
+
+D5B_SPECS += [
+    # 0x14328 render_list: EAX = the list head's address, EDX = the camera {x, y}, EBX = the clip record
+    # {left, top, right, bottom}. The port's render_list() walks the global head 0x105B44 with the fixed
+    # camera {0, 0} and clip {0, 0, 320, 200}: both call sites pass 0x105B44 and records that hold those
+    # bytes in the image (0xA87CC/0xA87D4 at 0x2565E..0x25668; 0xBCD64/0xBCD6C at 0x2EA80..0x2EA9F: l1 runs
+    # with the second pair), so every case does; another camera is not a state the row can run. Per node:
+    # 0x14268(frame node, the pset's id word) (run on both sides), the palette = the pset's +0x18 dword. A
+    # layer word (+0xE, zero-extended) above 2 shifts the pset's x and y right by 6 (`sar`) first (`cmp
+    # eax,2; jle` 0x1436A: l2 has 3, 0x8000, 4, 0x0101 and 0x0102). x = (v * 0xF3D + 0x800) `sar` 12 after
+    # the sign correction (`sar edx,0x1f; shl edx,0xc; sbb eax,edx`: truncation toward zero), y the same
+    # with 0xD56; minus the camera, minus the node's origin. Layer 1: x -= the projection of the word
+    # 0x107A3E, y = the projection of (the word 0x107A4E + [0xF0AEC] `sar` 6) minus the camera y, kept as
+    # the last layer-1 y, and the type's bit 2 set (0x14400..0x14461). Layer 2: x -= the projection of
+    # the word 0x107A3A; y -= the projection of the word 0x107A38 while no layer-1 node came before
+    # (`cmp esi,-1` 0x14498), else y = the last layer-1 y - the node's rows. A node whose width + x or
+    # rows + y is negative is skipped (0x144D0, 0x144DE). The clips: bottom = rows + y - the clip's
+    # bottom, right = width + x - its right, top = its top - y (and y = its top when not negative), left
+    # = its left - x (and x = its left), each floored at 0 (0x144E4..0x14536). All four zero: 0x51E5C(node)
+    # (`je 0x14562` 0x1454F); else left + right >= width or top + bottom >= rows skips (`jge` 0x14555,
+    # 0x1455B: l4 has each at width - 1, width, rows - 1, rows) and the type's bit 4 is set first. EAX
+    # at return is the list's terminating link, 0 (`mov eax,[eax]` 0x14574 / 0x14338): the binding
+    # returns 0 and the mask is full. Not separated: the two early skips are implied by the clip test
+    # (a node wholly left of or above the screen has left > width or top > rows). The four words are
+    # zero-extended (`xor eax,eax; mov ax,..`): l6..l9 hold 0xFFFF or 0xFFF0 in one each, which puts the
+    # node off the screen (a sign-extended read leaves it on); l10 has a negative [0xF0AEC]. No case has a zero id:
+    # 0x14268 then leaves the frame node's type as the previous node left it.
+    Spec("render_list", 0x14328, [
+        d5b_rl("l0", []),
+        d5b_rl("l1", [d5b_rl_item(D5B_A, 100, 80)], cam=D5B_RL_CAM2),
+        d5b_rl("l2", [d5b_rl_item(D5B_A | 0x8000, 150, 90, layer=3, shifted=True, pal=0x0010A5D0),
+                      d5b_rl_item(D5B_B, 40, 50, layer=0x8000, shifted=True),
+                      d5b_rl_item(D5B_C, -79, -3, layer=4, shifted=True),
+                      d5b_rl_item(D5B_A, 60, 70, layer=0x0101, shifted=True),
+                      d5b_rl_item(D5B_B | 0x8000, 200, 100, layer=0x0102, shifted=True)]),
+        d5b_rl("l3", [d5b_rl_item(D5B_A, 2, 80), d5b_rl_item(D5B_A, 307, 80), d5b_rl_item(D5B_A, 100, 2),
+                      d5b_rl_item(D5B_A, 100, 185), d5b_rl_item(D5B_C, -14, 6), d5b_rl_item(D5B_C, 246, 166),
+                      d5b_rl_item(D5B_B, 3, 2), d5b_rl_item(D5B_B, 307, 194)]),
+        d5b_rl("l4", [d5b_rl_item(D5B_A, -34, 80), d5b_rl_item(D5B_A, -33, 80), d5b_rl_item(D5B_A, -32, 80),
+                      d5b_rl_item(D5B_A, 327, 80), d5b_rl_item(D5B_A, 326, 80), d5b_rl_item(D5B_A, 100, -26),
+                      d5b_rl_item(D5B_A, 100, -25), d5b_rl_item(D5B_A, 100, -24), d5b_rl_item(D5B_A, 100, 205),
+                      d5b_rl_item(D5B_A, 100, 204)]),
+        d5b_rl("l5", [d5b_rl_item(D5B_B, 120, 130, layer=2), d5b_rl_item(D5B_A, 300, 20, layer=1),
+                      d5b_rl_item(D5B_B, 200, 10, layer=2), d5b_rl_item(D5B_B, 290, 5, layer=1),
+                      d5b_rl_item(D5B_C, 250, 190, layer=2, pal=0x0010A5E0)], g3a=0x0010, g3e=0x0020),
+        d5b_rl("l6", [d5b_rl_item(D5B_B, 120, 130, layer=2)], g38=0xFFFF, g3a=0x0010),
+        d5b_rl("l7", [d5b_rl_item(D5B_B, 120, 130, layer=2)], g3a=0xFFFF),
+        d5b_rl("l8", [d5b_rl_item(D5B_A, 300, 20, layer=1)], g3e=0xFFFF),
+        d5b_rl("l9", [d5b_rl_item(D5B_A, 100, 20, layer=1)], g3e=0x0020, g4e=0xFFF0, aec=0x00001E00),
+        d5b_rl("l10", [d5b_rl_item(D5B_A, 300, 20, layer=1), d5b_rl_item(D5B_B, 200, 10, layer=2)],
+               g3a=0x0010, g3e=0x0020, g4e=0x0010, aec=0xFFFFF840),
+    ], allow_calls=(0x14268, 0x1B544), calls=(D5B_BLIT,), eax_mask=0xFFFFFFFF,
+       mutants=("@noround", "@floor", "@nopal", "@layer8", "@layersext", "@noshift", "@kswap", "@noxorg", "@noyorg",
+                "@l1x", "@l1noaec", "@l1aecraw", "@l1last", "@l1type", "@l2x", "@l2always", "@l2rows", "@clipbneg",
+                "@cliprneg", "@ykeep", "@xkeep", "@fullle", "@noclipbit", "@xy", "@first", "@ret", "@l1xsext",
+                "@l1ysext", "@l2xsext", "@l2ysext")),
+]
+
+# ---- 0x14328 with 0x51E5C run: the span blit and the renderers it dispatches to ----------------------------
+D5B_BUF = 0xF2000                         # the back buffer ([0xE87A4]), in the image's zero BSS
+D5B_PAL = 0x10A5C0                        # the palette entry a pset names: its +8 byte is the bank
+# an 8 x 4 RLE sprite: a literal 3, a transparent 2 and a colour run 3; a colour run 8; a transparent 3 and
+# a literal 5; a literal 8. And an 8 x 4 raw bitmap.
+D5B_RLE = (bytes([0x03, 0x11, 0x12, 0x13, 0xC2, 0x83, 0x21, 0x88, 0x22, 0xC3, 0x05, 0x31, 0x32, 0x33, 0x34, 0x35, 0x08])
+           + bytes(range(0x41, 0x49)))
+D5B_RAWPIX = bytes(range(0x50, 0x70))
+D5B_BL_SPRITES = {0x0200: (0x800040, (8, 4, 0, 0), 0x00800100),
+                  0x0201: (0x800060, (0xFFF8, 0xFFFC, 0, 0), 0x00800180)}
+D5B_R, D5B_W = 0x0200, 0x0201
+D5B_BL_ROWS = {0: 0x40, 2: 0x80, 198: 0xC0}       # the 0x1088F8 row offsets the cases use (the renderers step 320)
+
+
+def d5b_bl(cid, items, off, bank=6, shear=(0x0100, 0x0120, 0x00E0, 0x0141), **kw):
+    """A d5b_rl list over the two blit sprites, the back buffer pointer, the row offsets, the palette
+    entry (bank byte `bank`), the shear table 0x107900, and the buffer seeded under the rows at `off`:
+    x 0..127 and 296..319 of four rows."""
+    extra = {0xE87A0: le32(0xA0A0A0A0) + le32(D5B_BUF) + le32(0xA8A8A8A8),
+             D5B_PAL: le32(0x11111111) + le32(0x22222222) + bytes([bank, 0x33, 0x33, 0x33]) + le32(0x44444444),
+             d4b_at(0x800100) - 4: b"\xbf" * 4 + D5B_RLE + b"\xbf" * 16,
+             d4b_at(0x800180) - 8: bytes(range(0xE0, 0xE8)) + D5B_RAWPIX + bytes(range(0xF0, 0xFC)),
+             0x107900 - 2: le16(0x7777) + b"".join(le16(v) for v in shear) + le16(0x7878)}
+    for y, o in D5B_BL_ROWS.items():
+        extra[0x1088F8 + y * 4] = le32(o)
+    for r in range(4):
+        base = D5B_BUF + off + r * 320
+        extra[base] = d5b_bytes(0x900 + r, 64)
+        extra[base + 64] = d5b_bytes(0x910 + r, 64)
+        extra[base + 296] = d5b_bytes(0x920 + r, 24)
+    return d5b_rl(cid, [d5b_rl_item(i[0], i[1], i[2], i[3], D5B_PAL, shifted=len(i) > 4) for i in items],
+                  sprites=D5B_BL_SPRITES, extra=extra, **kw)
+
+
+# 0x51E5C, the six renderers of its table 0x80C8C (and the table's `ret` 0x51E58), and the unrolled copy
+# routines those reach by `call [table]` on these cases' run lengths (measured: any other target stops the run)
+D5B_BLIT_ALLOW = (0x14268, 0x1B544, 0x51E5C, 0x51E58, 0x5D218, 0x58CBD, 0x5215C, 0x57F80, 0x5D28F, 0x57FFB,
+                  0x521F0, 0x5222C, 0x529A0, 0x529C4, 0x52A18, 0x58564, 0x58578, 0x5859C, 0x58D20, 0x58D2C, 0x58D40,
+                  0x58D4C, 0x58D90)
+
+# ---- 0x51E5C: the span blit's own entry, on the paths that leave the node as it was ----------------------
+D5B_SB_NODE = 0x10A900
+
+
+def d5b_sb(cid, typ, w=8, rows=4, x=10, y=2, clips=(0, 0, 0, 0), pix=0x00800100):
+    """A raw node in the image (x, y, origins, type, rows, width, palette, pixel handle, the descriptor
+    handle at +0x24, the four clips, +0x38 and +0x3C seeded), the palette entry, the pixel data, the back
+    buffer pointer and row offsets, and the buffer seeded under the node's rows."""
+    node = (le32(x) + le32(y) + le32(0x08080808) + le32(0x0C0C0C0C) + le32(typ) + le32(rows) + le32(w)
+            + le32(D5B_PAL) + le32(pix) + le32(0x24242424) + b"".join(le32(c) for c in clips) + le32(0x38383838)
+            + le32(0x3C3C3C3C))
+    p = {**d4b_res(), D5B_SB_NODE - 4: le32(0xFCFCFCFC), D5B_SB_NODE: node, D5B_SB_NODE + 0x40: le32(0x40404040),
+         0xE87A0: le32(0xA0A0A0A0) + le32(D5B_BUF) + le32(0xA8A8A8A8),
+         D5B_PAL: le32(0x11111111) + le32(0x22222222) + bytes([6, 0x33, 0x33, 0x33]) + le32(0x44444444),
+         d4b_at(0x800100) - 4: b"\xbf" * 4 + D5B_RLE + b"\xbf" * 16,
+         d4b_at(0x800180) - 8: bytes(range(0xE0, 0xE8)) + D5B_RAWPIX + bytes(range(0xF0, 0xFC)),
+         0x107900 - 2: le16(0x7777) + le16(0x0100) + le16(0x0120) + le16(0x00E0) + le16(0x0141) + le16(0x7878)}
+    for yy, o in D5B_BL_ROWS.items():
+        p[0x1088F8 + yy * 4] = le32(o)
+    for r in range(4):
+        p[D5B_BUF + D5B_BL_ROWS[2] + r * 320] = d5b_bytes(0x930 + r, 64)
+    return Case(cid, {"eax": D5B_SB_NODE}, p)
+
+
+D5B_SPECS += [
+    # 0x14328 render_list with 0x51E5C run on both sides: the span blit and the six renderers of its table
+    # 0x80C8C, compared on the back buffer. The node is a record in 0x14328's frame, as in the game, so
+    # the renderers' own stores into it (measured with the node in the image: the width +0x18 in the
+    # clipped raw renderer, +0x38, +0x3C) are outside the comparison, as they are outside any caller's
+    # reach (0x14328 rebuilds the node per pset; 0x51E5C restores +0x14 and +0x30, 0x51EC8/0x51ECB). The
+    # types 0x14328 can build: 1 (RLE), 2 (raw), 9 (RLE mirrored), 6 (raw, layer 1: the shear renderer
+    # 0x5215C over the table 0x107900) and their clipped forms 0x11, 0x12, 0x19, 0x16; 5, 0xA, 0xE, 0x15 and
+    # 0x1A are `ret` entries (b0, b5). b0: unclipped. b1: clipped left and right. b2: top. b3: bottom. b4:
+    # two edges at once. b5: layer 1. b6: bank byte 1 (no offset). b7: a layer above 2 and layer 2 before
+    # and after a layer-1 node. The buffer is seeded under the rows drawn (a transparent run must leave
+    # it). Domain: the bank byte 0 indexes the stale dword 0x81310 (0x0005D110), which the port does not
+    # reproduce (sprite.h): no case. Types 4 and 0x14 need a node 0x14328 does not build: no case. The
+    # copy routines reached depend on the run lengths: other lengths reach others (not allowed here).
+    Spec("render_list_blit", 0x14328, [
+        d5b_bl("b0", [(D5B_R, 10, 2, 0), (D5B_W, 40, 2, 0), (D5B_R | 0x8000, 70, 2, 0), (D5B_W | 0x8000, 100, 2, 0)], 0x80),
+        d5b_bl("b1", [(D5B_R, -3, 2, 0), (D5B_W, 316, 2, 0), (D5B_R | 0x8000, -2, 2, 0), (D5B_W, -5, 2, 0),
+                      (D5B_R | 0x8000, 317, 2, 0), (D5B_R, 315, 2, 0)], 0x80),
+        d5b_bl("b2", [(D5B_R, 10, -1, 0), (D5B_W, 40, -2, 0), (D5B_R | 0x8000, 70, -3, 0)], 0x40),
+        d5b_bl("b3", [(D5B_R, 10, 198, 0), (D5B_W, 40, 199, 0), (D5B_R | 0x8000, 70, 197, 0)], 0xC0),
+        d5b_bl("b4", [(D5B_R, -3, -1, 0), (D5B_W, 316, 198, 0), (D5B_R | 0x8000, 314, -2, 0), (D5B_R | 0x8000, -6, 199, 0)],
+               0x40),
+        d5b_bl("b5", [(D5B_W, 40, 99, 1), (D5B_R, 10, 99, 1), (D5B_W | 0x8000, 70, 99, 1), (D5B_W, -3, 99, 1),
+                      (D5B_W, 316, 99, 1)], 0x80, g3e=0, g4e=0, aec=d5b_at_px(2, 0xD56) << 6),
+        d5b_bl("b6", [(D5B_R, 10, 2, 0), (D5B_W, 40, 2, 0), (D5B_R | 0x8000, 70, 2, 0)], 0x80, bank=1),
+        d5b_bl("b7", [(D5B_R, 10, 2, 3, True), (D5B_W, 40, 2, 2), (D5B_W, 70, 99, 1), (D5B_R, 100, 99, 2)], 0x80,
+               g38=0, g3a=0, g3e=0, g4e=0, aec=d5b_at_px(2, 0xD56) << 6),
+    ], allow_calls=D5B_BLIT_ALLOW, eax_mask=0xFFFFFFFF,
+       mutants=("@bank", "@rowtab", "@clipb", "@noshear", "@t5", "@nomirror", "@t0a", "@lr", "@notop",
+                "@nomirrorclip", "@stride")),
+    # 0x51E5C sprite_blit, its own entry: EAX = the node. A zero width (+0x18) or zero rows (+0x14)
+    # returns (0x51E5C, 0x51E65: k0, k1). Else the node's +0x14 and +0x30 are pushed, the pixels resolved
+    # (0x1B544 of +0x20), the bank dword read (0x81310[byte [[+0x1C] + 8]]), the destination formed
+    # ([0x1088F8 + y * 4] + [0xE87A4] + x), +0x14 -= +0x34, and `call [(+0x10 & 0x7F) * 4 + 0x80C8C]`
+    # (0x51EBF); +0x30 and +0x14 are popped back. This row holds the table's `ret` entries only (types 0,
+    # 3, 5, 0xA, 0x15, 0x1A, 0x1F: 0x51E58), where the node is left as it was: with a live renderer the
+    # node in the image differs from the port's (the renderers store into it, see render_list_blit, which
+    # is the row that runs them). Mask 0: the one call site reloads EAX (`mov eax,[esp+0x5c]` 0x14570).
+    # Not separated: the two zero-extent returns from a blit of nothing (a zero width or zero rows draws
+    # nothing in any renderer). Domain: a type above 0x1F indexes past the table's 32 entries.
+    Spec("sprite_blit", 0x51E5C, [
+        d5b_sb("k0", 1, w=0),
+        d5b_sb("k1", 2, rows=0, pix=0x00800180),
+        d5b_sb("k2", 0x00),
+        d5b_sb("k3", 0x03),
+        d5b_sb("k4", 0x05, clips=(1, 1, 1, 1)),
+        d5b_sb("k5", 0x0A, pix=0x00800180),
+        d5b_sb("k6", 0x15, clips=(2, 1, 1, 1)),
+        d5b_sb("k7", 0x1A, clips=(2, 1, 1, 1), pix=0x00800180),
+        d5b_sb("k8", 0x1F),
+    ], allow_calls=(0x1B544, 0x51E58), eax_mask=0,
+       mutants=("@t0", "@t3", "@t5", "@t0a", "@t15", "@t1a", "@t1f")),
+]
+
+
+# ---- 0x1C65C: the loader's direct text draw ---------------------------------------------------------------
+# 0x1C5E8 (static in the port: a C SpriteNode and the VGA aperture; seamed here): AL = the character, EDX
+# and EBX = the addresses of the column and the row, two dwords in 0x1C65C's frame (`mov edx,esp` 0x1C6BA,
+# `lea ebx,[esp+4]` 0x1C6B4), passed by value. It saves ECX and ESI. A stub cannot advance the column in
+# the caller's frame (0x1C647/0x1C64C add 0xF or 8), so every character is recorded at the first column.
+D5B_GLYPH = E.Call(0x1C5E8, ("eax", "[edx]", "[ebx]"), clobbers=("ebx", "edx", "edi", "ebp"))
+# 0x1C470 (the palette flush: `in`/`out`, a named gap; seamed here): no argument.
+D5B_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+D5B_TEXT = 0x10A010
+
+
+def d5b_text(cid, text, x, y, glyph=0x10A5C0):
+    return Case(cid, {"eax": D5B_TEXT, "edx": x, "ebx": y},
+                {D5B_TEXT - 4: b"\xfc" * 4 + bytes(text) + b"\x00" + b"\xfd" * 4}, {0x1C5E8: glyph})
+
+
+D5B_SPECS += [
+    # 0x1C65C text_blit_string: EAX = the string, EDX = x, EBX = y. The column = (x * 0xF3D + 0x800) /
+    # 0x1000 and the row = (y * 0xD56 + 0x800) / 0x1000, signed and truncating (0x1C66A..0x1C69F: x3 is
+    # -1 and -0x100, x4 0x12345). An empty string returns EAX = 0 with no call (0x1C6A3: x1). Else
+    # 0x1C5E8(the byte zero-extended, the column, the row) per character (`xor eax,eax; mov al,dl`
+    # 0x1C6B2/0x1C6B8: x2 has 0x80 and 0xFF), then 0x1C470 once. Mask 0: the one outside call site reloads
+    # EAX (`mov eax,esp` 0x1B3F6 after `call 0x1c65c` 0x1B3EF). Domain: a product that overflows 32 bits
+    # wraps in the raw's `imul` and is undefined in the port's int multiply: no case (the one caller
+    # passes 0 and 0xE6).
+    Spec("text_blit_string", 0x1C65C, [
+        d5b_text("x0", b"AB", 0, 0xE6),
+        d5b_text("x1", b"", 0x40, 0x50),
+        d5b_text("x2", b"\x80a\xff", 0x00000123, 0x00000045, glyph=0x100),
+        d5b_text("x3", b"Z", 0xFFFFFFFF, 0xFFFFFF00),
+        d5b_text("x4", b"- LOADING -", 0x00012345, 0x00007FFF),
+    ], calls=(D5B_GLYPH, D5B_FLUSH), eax_mask=0,
+       mutants=("@kx", "@ky", "@noround", "@floor", "@emptyflush", "@noflush", "@chsext", "@argsxy", "@first",
+                "@unscaled", "@flushfirst")),
+]
 D1_SPECS += D5B_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

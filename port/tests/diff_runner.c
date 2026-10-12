@@ -33138,6 +33138,7 @@ D4D_KN_MUT(updown, 11u) D4D_KN_MUT(plus, 12u)  D4D_KN_MUT(f10, 13u)    D4D_KN_MU
 D4D_KN_MUT(ef, 16u)    D4D_KN_MUT(scan2, 17u)  D4D_KN_MUT(ret, 18u)    D4D_KN_MUT(ret0, 19u)  D4D_KN_MUT(nogt, 20u)
 D4D_KN_MUT(nonul, 22u)
 /* ---- track D5 batch d5b (record 2026-10-12-reverse-d5b): the overlap family of camera.c ---- */
+#include "platform/gra.h"                /* gra_sprite_pixels, for the render_list_blit mutants */
 
 /* 0x16DA4 camera_winner_height: AL = flag (`mov [esp+0x10],al` 0x16DAE: the raw keeps the byte, so
  * the binding passes AL; @flag32 passes EAX), EDX = the side's sprite index, EBX = the other's, ECX
@@ -33620,6 +33621,203 @@ D5B_DC_MUT(noafc, 9u)   D5B_DC_MUT(k08, 10u)    D5B_DC_MUT(k00, 11u)    D5B_DC_M
 D5B_DC_MUT(floor, 13u)  D5B_DC_MUT(ovargs, 14u) D5B_DC_MUT(ovsame, 15u) D5B_DC_MUT(al, 16u)
 D5B_DC_MUT(gate0, 17u)  D5B_DC_MUT(side0, 18u)  D5B_DC_MUT(b61cache, 19u) D5B_DC_MUT(noun1, 20u)
 D5B_DC_MUT(late, 21u)
+
+/* 0x14328 render_list: EAX = the list head's address, EDX = the camera, EBX = the clip record; the
+ * port's render_list() takes none (the global head, the fixed camera {0, 0} and clip {0, 0, 320, 200}).
+ * One restatement of render.c's body, one choice flipped per mutant number; 0x51E5C goes through its
+ * seamed C function. The raw's EAX at return is the list's terminating link, 0. */
+static u32 d5b_blit_mode;                  /* a render_list_blit mutant's choice; 0 = sprite_blit itself */
+/* sprite_blit_at's dispatch (sprite.c) with the back buffer as the base, one choice flipped per `bm`. */
+static void d5b_51e5c_mut(SpriteNode *n, u32 bm)
+{
+    const u8 *src = NULL;
+    u8 bank, *dst;
+    int rows, L = n->clip_l, R = n->clip_r, T = n->clip_t, w = n->width;
+    int stride = (bm == 11u) ? 321 : 320;                                    /* @stride */
+    if (n->width == 0 || n->rows == 0) return;
+    if (!gra_sprite_pixels(n->pixel_handle, &src)) return;
+    bank = (bm == 1u) ? DSB(n->pal_ptr + 8u) : (u8)sprite_bank(n->pal_ptr);  /* @bank: the byte, not the byte - 1 */
+    dst = mem + DSD(DS_000E87A4)
+          + ((bm == 2u) ? (u32)n->y * 320u : DSD(DS_001088F8 + (u32)n->y * 4u)) + (u32)n->x;   /* @rowtab */
+    rows = n->rows - ((bm == 3u) ? 0 : n->clip_b);                           /* @clipb */
+    switch (n->type & 0x1Fu) {
+    case 0x01: sprite_render_rle(src, dst, w, rows, stride, bank); break;
+    case 0x02: sprite_render_raw(src, dst, w, rows, stride, bank, 0, 0, 0); break;
+    case 0x04: case 0x06: case 0x14: case 0x16:
+        if (bm == 4u) sprite_render_raw(src, dst, w, rows, stride, bank, L, R, T);              /* @noshear */
+        else sprite_render_shear(src, dst, w, rows, stride, bank, L, R, T);
+        break;
+    case 0x00: if (bm == 12u) sprite_render_rle(src, dst, w, rows, stride, bank); break;      /* @t0: drawn */
+    case 0x03: if (bm == 13u) sprite_render_rle(src, dst, w, rows, stride, bank); break;      /* @t3: drawn */
+    case 0x15: if (bm == 14u) sprite_render_rle_clipped(src, dst, w, rows, stride, bank, L, R, T, 0); break;   /* @t15: drawn */
+    case 0x1A: if (bm == 15u) sprite_render_raw(src, dst, w, rows, stride, bank, L, R, T); break;   /* @t1a: drawn */
+    case 0x1F: if (bm == 16u) sprite_render_rle(src, dst, w, rows, stride, bank); break;      /* @t1f: drawn */
+    case 0x05: if (bm == 5u) sprite_render_rle(src, dst, w, rows, stride, bank); break;       /* @t5: drawn */
+    case 0x09: sprite_render_rle_clipped(src, dst, w, rows, stride, bank, 0, 0, 0, (bm == 6u) ? 0 : 1); break;   /* @nomirror */
+    case 0x0A: if (bm == 7u) sprite_render_raw(src, dst, w, rows, stride, bank, 0, 0, 0); break;   /* @t0a: drawn */
+    case 0x11: sprite_render_rle_clipped(src, dst, w, rows, stride, bank, (bm == 8u) ? R : L,   /* @lr */
+                                         (bm == 8u) ? L : R, T, 0); break;
+    case 0x12: sprite_render_raw(src, dst, w, rows, stride, bank, L, R, (bm == 9u) ? 0 : T); break;   /* @notop */
+    case 0x19: sprite_render_rle_clipped(src, dst, w, rows, stride, bank, L, R, T, (bm == 10u) ? 0 : 1); break;   /* @nomirrorclip */
+    default: break;
+    }
+}
+static void d5b_14328_blit(SpriteNode *n)
+{
+    if (d5b_blit_mode == 0u) sprite_blit(n);
+    else d5b_51e5c_mut(n, d5b_blit_mode);
+}
+static int d5b_14328_proj(int v, int num, u32 mut)
+{
+    int p = v * num + ((mut == 1u) ? 0 : 0x800);                             /* @noround */
+    if (p < 0 && mut != 2u) p += 0xFFF;                                      /* @floor */
+    return p >> 12;
+}
+static u32 d5b_14328_core(u32 mut)
+{
+    int last = -1;
+    for (u32 node = DSD(DS_00105B44); node != 0u; node = DSD(node)) {
+        u32 pset = DSD(node + 4u), layer;
+        SpriteNode n;
+        int px, py, x, y, W, H, t, l, sx, sy;
+        sprite_node_build(&n, DSW(pset));
+        n.pal_ptr = (mut == 3u) ? 0u : DSD(pset + 0x18u);                    /* @nopal */
+        layer = (mut == 4u) ? (u32)DSB(pset + 0x0Eu) : (u32)DSW(pset + 0x0Eu);   /* @layer8 */
+        if (((mut == 5u) ? ((s32)(s16)layer > 2) : (layer > 2u)) && mut != 6u) {   /* @layersext @noshift */
+            px = (s32)DSD(pset + 4u) >> 6;
+            py = (s32)DSD(pset + 8u) >> 6;
+        } else {
+            px = (s32)DSD(pset + 4u);
+            py = (s32)DSD(pset + 8u);
+        }
+        x = d5b_14328_proj(px, (mut == 7u) ? 3414 : 3901, mut) - ((mut == 8u) ? 0 : n.xorg);   /* @kswap @noxorg */
+        y = d5b_14328_proj(py, (mut == 7u) ? 3901 : 3414, mut) - ((mut == 9u) ? 0 : n.yorg);   /* @noyorg */
+        if (layer == 1u) {
+            x -= d5b_14328_proj((mut == 27u) ? (int)(s16)DSW(DS_00107A3E)       /* @l1xsext */
+                                : (int)DSW((mut == 10u) ? DS_00107A3A : DS_00107A3E), 3901, mut);   /* @l1x */
+            y = d5b_14328_proj(((mut == 28u) ? (int)(s16)DSW(DS_00107A4E) : (int)DSW(DS_00107A4E))   /* @l1ysext */
+                               + ((mut == 11u) ? 0 : (mut == 12u) ? (s32)DSD(DS_000F0AEC)       /* @l1noaec @l1aecraw */
+                                  : ((s32)DSD(DS_000F0AEC) >> 6)), 3414, mut);
+            if (mut != 13u) last = y;                                        /* @l1last */
+            if (mut != 14u) n.type |= 4u;                                    /* @l1type */
+        }
+        if (layer == 2u) {
+            x -= d5b_14328_proj((mut == 29u) ? (int)(s16)DSW(DS_00107A3A)       /* @l2xsext */
+                                : (int)DSW((mut == 15u) ? DS_00107A3E : DS_00107A3A), 3901, mut);   /* @l2x */
+            if (last == -1 || mut == 16u)                                    /* @l2always */
+                y -= d5b_14328_proj((mut == 30u) ? (int)(s16)DSW(DS_00107A38) : (int)DSW(DS_00107A38), 3414, mut);   /* @l2ysext */
+            else y = last - ((mut == 17u) ? 0 : n.rows);                     /* @l2rows */
+        }
+        W = n.width;
+        H = n.rows;
+        if (W + x < 0 || H + y < 0) continue;
+        n.clip_b = (H + y) - 200;
+        if (n.clip_b < 0 && mut != 18u) n.clip_b = 0;                        /* @clipbneg */
+        n.clip_r = (W + x) - 320;
+        if (n.clip_r < 0 && mut != 19u) n.clip_r = 0;                        /* @cliprneg */
+        t = 0 - y;
+        n.clip_t = (t > 0) ? t : 0;
+        if (t >= 0 && mut != 20u) y = 0;                                     /* @ykeep */
+        l = 0 - x;
+        n.clip_l = (l > 0) ? l : 0;
+        if (l >= 0 && mut != 21u) x = 0;                                     /* @xkeep */
+        sx = n.clip_l + n.clip_r;
+        sy = n.clip_t + n.clip_b;
+        if (sx + sy == 0) {
+            n.x = x; n.y = y;
+            d5b_14328_blit(&n);
+        } else if ((mut == 22u) ? (sx <= W && sy <= H) : (sx < W && sy < H)) {   /* @fullle */
+            if (mut != 23u) n.type |= 0x10u;                                 /* @noclipbit */
+            n.x = (mut == 24u) ? y : x;                                      /* @xy */
+            n.y = (mut == 24u) ? x : y;
+            d5b_14328_blit(&n);
+        }
+        if (mut == 25u) break;                                               /* @first */
+    }
+    return (mut == 26u) ? 1u : 0u;                                           /* @ret */
+}
+static void b_d5b_14328(const u32 *r, u32 *eax) { (void)r; render_list(); *eax = 0u; }
+#define D5B_RL_MUT(name, n) \
+    static void m_d5b_rl_##name(const u32 *r, u32 *eax) { (void)r; *eax = d5b_14328_core(n); }
+D5B_RL_MUT(noround, 1u) D5B_RL_MUT(floor, 2u)   D5B_RL_MUT(nopal, 3u)   D5B_RL_MUT(layer8, 4u)
+D5B_RL_MUT(layersext, 5u) D5B_RL_MUT(noshift, 6u) D5B_RL_MUT(kswap, 7u) D5B_RL_MUT(noxorg, 8u)
+D5B_RL_MUT(noyorg, 9u)  D5B_RL_MUT(l1x, 10u)    D5B_RL_MUT(l1noaec, 11u) D5B_RL_MUT(l1aecraw, 12u)
+D5B_RL_MUT(l1last, 13u) D5B_RL_MUT(l1type, 14u) D5B_RL_MUT(l2x, 15u)    D5B_RL_MUT(l2always, 16u)
+D5B_RL_MUT(l2rows, 17u) D5B_RL_MUT(clipbneg, 18u) D5B_RL_MUT(cliprneg, 19u) D5B_RL_MUT(ykeep, 20u)
+D5B_RL_MUT(xkeep, 21u)  D5B_RL_MUT(fullle, 22u) D5B_RL_MUT(noclipbit, 23u) D5B_RL_MUT(xy, 24u)
+D5B_RL_MUT(first, 25u)  D5B_RL_MUT(ret, 26u)    D5B_RL_MUT(l1xsext, 27u) D5B_RL_MUT(l1ysext, 28u)
+D5B_RL_MUT(l2xsext, 29u) D5B_RL_MUT(l2ysext, 30u)
+/* 0x51E5C sprite_blit: EAX = the raw node. The binding reads the C SpriteNode's fields from the raw
+ * offsets (+0..+0x20, then the clips at +0x28..+0x34; +0x24 is the descriptor handle, which the C node
+ * does not keep) and stores nothing back: sprite_blit leaves its node as it was. */
+static void d5b_51e5c_load(u32 at, SpriteNode *n)
+{
+    n->x = (int)DSD(at);            n->y = (int)DSD(at + 4u);
+    n->xorg = (int)DSD(at + 8u);    n->yorg = (int)DSD(at + 0x0Cu);
+    n->type = DSD(at + 0x10u);      n->rows = (int)DSD(at + 0x14u);
+    n->width = (int)DSD(at + 0x18u); n->pal_ptr = DSD(at + 0x1Cu);
+    n->pixel_handle = DSD(at + 0x20u);
+    n->clip_l = (int)DSD(at + 0x28u); n->clip_r = (int)DSD(at + 0x2Cu);
+    n->clip_t = (int)DSD(at + 0x30u); n->clip_b = (int)DSD(at + 0x34u);
+    n->stride = (int)DSD(at + 0x38u); n->row = (int)DSD(at + 0x3Cu);
+}
+static void b_d5b_51e5c(const u32 *r, u32 *eax)
+{
+    SpriteNode n;
+    d5b_51e5c_load(r[R_EAX], &n);
+    sprite_blit(&n);
+    *eax = 0u;
+}
+#define D5B_SB_MUT(name, bm) \
+    static void m_d5b_sb_##name(const u32 *r, u32 *eax) \
+    { SpriteNode n; d5b_51e5c_load(r[R_EAX], &n); d5b_51e5c_mut(&n, bm); *eax = 0u; }
+D5B_SB_MUT(t0, 12u)     D5B_SB_MUT(t3, 13u)     D5B_SB_MUT(t5, 5u)      D5B_SB_MUT(t0a, 7u)
+D5B_SB_MUT(t15, 14u)    D5B_SB_MUT(t1a, 15u)    D5B_SB_MUT(t1f, 16u)
+#define D5B_BL_MUT(name, n) \
+    static void m_d5b_bl_##name(const u32 *r, u32 *eax) \
+    { (void)r; d5b_blit_mode = n; *eax = d5b_14328_core(0u); d5b_blit_mode = 0u; }
+D5B_BL_MUT(bank, 1u)    D5B_BL_MUT(rowtab, 2u)  D5B_BL_MUT(clipb, 3u)   D5B_BL_MUT(noshear, 4u)
+D5B_BL_MUT(t5, 5u)      D5B_BL_MUT(nomirror, 6u) D5B_BL_MUT(t0a, 7u)    D5B_BL_MUT(lr, 8u)
+D5B_BL_MUT(notop, 9u)   D5B_BL_MUT(nomirrorclip, 10u) D5B_BL_MUT(stride, 11u)
+
+/* 0x1C65C text_blit_string: EAX = the string, EDX = x, EBX = y. The mutants restate actors.c's body
+ * over a seam-level stand-in of 0x1C5E8 (static there): the same PR_SEAM line, so the call list is the
+ * comparison. */
+static void d5b_1c5e8_seam(u32 ch, s32 col, s32 row)
+{
+    PR_SEAM(0x1C5E8u, ch, (u32)col, (u32)row);
+}
+static u32 d5b_1c65c_core(const u32 *r, u32 mut)
+{
+    const u8 *s = mem + r[R_EAX];
+    s32 x = (s32)r[R_EDX], y = (s32)r[R_EBX], col, row;
+    s32 px = x * ((mut == 1u) ? 0xd56 : 0xf3d) + ((mut == 3u) ? 0 : 0x800);  /* @kx @noround */
+    s32 py = y * ((mut == 2u) ? 0xf3d : 0xd56) + ((mut == 3u) ? 0 : 0x800);  /* @ky */
+    col = (mut == 4u) ? (px >> 12) : px / 0x1000;                            /* @floor */
+    row = (mut == 4u) ? (py >> 12) : py / 0x1000;
+    if (mut == 10u) { col = x; row = y; }                                    /* @unscaled */
+    if (*s == 0u) { if (mut == 5u) gfx_flush_palette(); return 0u; }         /* @emptyflush */
+    if (mut == 11u) gfx_flush_palette();                                     /* @flushfirst */
+    while (*s != 0u) {
+        u32 ch = (mut == 7u) ? (u32)(s32)(s8)*s : (u32)*s;                   /* @chsext */
+        if (mut == 8u) d5b_1c5e8_seam(ch, row, col);                         /* @argsxy */
+        else d5b_1c5e8_seam(ch, col, row);
+        s++;
+        if (mut == 9u) break;                                                /* @first */
+    }
+    if (mut != 6u && mut != 11u) gfx_flush_palette();                        /* @noflush */
+    return 0u;
+}
+static void b_d5b_1c65c(const u32 *r, u32 *eax)
+{
+    text_blit_string(mem + r[R_EAX], (s32)r[R_EDX], (s32)r[R_EBX]);
+    *eax = 0u;
+}
+#define D5B_TX_MUT(name, n) \
+    static void m_d5b_tx_##name(const u32 *r, u32 *eax) { *eax = d5b_1c65c_core(r, n); }
+D5B_TX_MUT(kx, 1u)      D5B_TX_MUT(ky, 2u)      D5B_TX_MUT(noround, 3u) D5B_TX_MUT(floor, 4u)
+D5B_TX_MUT(emptyflush, 5u) D5B_TX_MUT(noflush, 6u) D5B_TX_MUT(chsext, 7u) D5B_TX_MUT(argsxy, 8u)
+D5B_TX_MUT(first, 9u)   D5B_TX_MUT(unscaled, 10u) D5B_TX_MUT(flushfirst, 11u)
 
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -43903,6 +44101,69 @@ static const binding_t k_bindings[] = {
     { "camera_decay@late",                     m_d5b_dc_late, 0x00000000u },
     { "camera_decay_rr",                       b_d5b_17580, 0x00000000u },
     { "camera_decay_rr@b61cache",              m_d5b_dc_b61cache, 0x00000000u },
+    { "render_list",                           b_d5b_14328, 0xFFFFFFFFu },
+    { "render_list@noround",                   m_d5b_rl_noround, 0xFFFFFFFFu },
+    { "render_list@floor",                     m_d5b_rl_floor, 0xFFFFFFFFu },
+    { "render_list@nopal",                     m_d5b_rl_nopal, 0xFFFFFFFFu },
+    { "render_list@layer8",                    m_d5b_rl_layer8, 0xFFFFFFFFu },
+    { "render_list@layersext",                 m_d5b_rl_layersext, 0xFFFFFFFFu },
+    { "render_list@noshift",                   m_d5b_rl_noshift, 0xFFFFFFFFu },
+    { "render_list@kswap",                     m_d5b_rl_kswap, 0xFFFFFFFFu },
+    { "render_list@noxorg",                    m_d5b_rl_noxorg, 0xFFFFFFFFu },
+    { "render_list@noyorg",                    m_d5b_rl_noyorg, 0xFFFFFFFFu },
+    { "render_list@l1x",                       m_d5b_rl_l1x, 0xFFFFFFFFu },
+    { "render_list@l1noaec",                   m_d5b_rl_l1noaec, 0xFFFFFFFFu },
+    { "render_list@l1aecraw",                  m_d5b_rl_l1aecraw, 0xFFFFFFFFu },
+    { "render_list@l1last",                    m_d5b_rl_l1last, 0xFFFFFFFFu },
+    { "render_list@l1type",                    m_d5b_rl_l1type, 0xFFFFFFFFu },
+    { "render_list@l2x",                       m_d5b_rl_l2x, 0xFFFFFFFFu },
+    { "render_list@l2always",                  m_d5b_rl_l2always, 0xFFFFFFFFu },
+    { "render_list@l2rows",                    m_d5b_rl_l2rows, 0xFFFFFFFFu },
+    { "render_list@clipbneg",                  m_d5b_rl_clipbneg, 0xFFFFFFFFu },
+    { "render_list@cliprneg",                  m_d5b_rl_cliprneg, 0xFFFFFFFFu },
+    { "render_list@ykeep",                     m_d5b_rl_ykeep, 0xFFFFFFFFu },
+    { "render_list@xkeep",                     m_d5b_rl_xkeep, 0xFFFFFFFFu },
+    { "render_list@fullle",                    m_d5b_rl_fullle, 0xFFFFFFFFu },
+    { "render_list@noclipbit",                 m_d5b_rl_noclipbit, 0xFFFFFFFFu },
+    { "render_list@xy",                        m_d5b_rl_xy, 0xFFFFFFFFu },
+    { "render_list@first",                     m_d5b_rl_first, 0xFFFFFFFFu },
+    { "render_list@ret",                       m_d5b_rl_ret, 0xFFFFFFFFu },
+    { "render_list@l1xsext",                   m_d5b_rl_l1xsext, 0xFFFFFFFFu },
+    { "render_list@l1ysext",                   m_d5b_rl_l1ysext, 0xFFFFFFFFu },
+    { "render_list@l2xsext",                   m_d5b_rl_l2xsext, 0xFFFFFFFFu },
+    { "render_list@l2ysext",                   m_d5b_rl_l2ysext, 0xFFFFFFFFu },
+    { "render_list_blit",                      b_d5b_14328, 0xFFFFFFFFu },
+    { "render_list_blit@bank",                 m_d5b_bl_bank, 0xFFFFFFFFu },
+    { "render_list_blit@rowtab",               m_d5b_bl_rowtab, 0xFFFFFFFFu },
+    { "render_list_blit@clipb",                m_d5b_bl_clipb, 0xFFFFFFFFu },
+    { "render_list_blit@noshear",              m_d5b_bl_noshear, 0xFFFFFFFFu },
+    { "render_list_blit@t5",                   m_d5b_bl_t5, 0xFFFFFFFFu },
+    { "render_list_blit@nomirror",             m_d5b_bl_nomirror, 0xFFFFFFFFu },
+    { "render_list_blit@t0a",                  m_d5b_bl_t0a, 0xFFFFFFFFu },
+    { "render_list_blit@lr",                   m_d5b_bl_lr, 0xFFFFFFFFu },
+    { "render_list_blit@notop",                m_d5b_bl_notop, 0xFFFFFFFFu },
+    { "render_list_blit@nomirrorclip",         m_d5b_bl_nomirrorclip, 0xFFFFFFFFu },
+    { "render_list_blit@stride",               m_d5b_bl_stride, 0xFFFFFFFFu },
+    { "sprite_blit",                           b_d5b_51e5c, 0x00000000u },
+    { "sprite_blit@t0",                        m_d5b_sb_t0, 0x00000000u },
+    { "sprite_blit@t3",                        m_d5b_sb_t3, 0x00000000u },
+    { "sprite_blit@t5",                        m_d5b_sb_t5, 0x00000000u },
+    { "sprite_blit@t0a",                       m_d5b_sb_t0a, 0x00000000u },
+    { "sprite_blit@t15",                       m_d5b_sb_t15, 0x00000000u },
+    { "sprite_blit@t1a",                       m_d5b_sb_t1a, 0x00000000u },
+    { "sprite_blit@t1f",                       m_d5b_sb_t1f, 0x00000000u },
+    { "text_blit_string",                      b_d5b_1c65c, 0x00000000u },
+    { "text_blit_string@kx",                   m_d5b_tx_kx, 0x00000000u },
+    { "text_blit_string@ky",                   m_d5b_tx_ky, 0x00000000u },
+    { "text_blit_string@noround",              m_d5b_tx_noround, 0x00000000u },
+    { "text_blit_string@floor",                m_d5b_tx_floor, 0x00000000u },
+    { "text_blit_string@emptyflush",           m_d5b_tx_emptyflush, 0x00000000u },
+    { "text_blit_string@noflush",              m_d5b_tx_noflush, 0x00000000u },
+    { "text_blit_string@chsext",               m_d5b_tx_chsext, 0x00000000u },
+    { "text_blit_string@argsxy",               m_d5b_tx_argsxy, 0x00000000u },
+    { "text_blit_string@first",                m_d5b_tx_first, 0x00000000u },
+    { "text_blit_string@unscaled",             m_d5b_tx_unscaled, 0x00000000u },
+    { "text_blit_string@flushfirst",           m_d5b_tx_flushfirst, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
