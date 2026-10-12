@@ -63,6 +63,15 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `frontend_input_reset` | `0x4F1E4` | 3 | 1/1 | 4 | 0 | `0x2EA30` (the interrupt lock, a named non-row) allowed: the lock byte `0xBCD60` ends as it started for 0, 1 and `0x80` |
 | `flow_challenge_open` | `0x428B8` | 8 | 15/15 | 71 | 0 | `0x2AE14` and `0x29CBC` stubbed, each with a stub write (§4); `0x29D60` allowed. `k4`: both sides' six children; `k5..k7`: a result of 3, `0xFFFFFFFF`, `0x100` (`@r3`, `@rlow`) |
 
+**Totals (measured):** 25 rows on 23 distinct entries (`0x1ECC8` and `0x29970` are each rowed twice, once per
+callee mode), 187 cases, 601 mutants, every block of every entry hit by one of its rows. The one full
+self-check on the final tree (`PR_DIFF_JOBS=4 python3 tools/diff_verify.py --image /tmp/pr_d3a_img.bin
+--self-check | tail -1`, rc 0): `diff-verify: 677/677 functions VERIFIED; 6251/6251 mutants detected; 1 named
+gaps; 440/510 rows with callees closed (167 have none).` (before the batch: 652/652, 5650/5650, 428/485 (167)).
+Each row's pins were measured with every binding's port side run ten times (equal). Three rows read past the
+image's end by design (`D3A_OUTSIDE`, added to `P45_OUTSIDE` for `test_every_ported_function_agrees...`):
+`flow_26d4c` `0x10C1F1`/`0x10C20B`, `flow_arena_ko_check` `0x10C20A`, `game_mode_23_step` `0x10C22A`.
+
 ### §2.1 Callee stubs added by this batch
 
 | callee | args | pop | clobbers | evidence |
@@ -107,6 +116,41 @@ gives a row that allows it the flat descriptors; the tree that runs is `0x65546 
 target; `0x65533` is reached by the indirect call at `0x6CB02`). The port side has no seam there: it formats
 with `snprintf`, and the two texts meet at `0x2F198`'s by-value string window (16 bytes).
 
+### §2.3 Every change outside the three row files
+
+`port/src` (27 seams, each the first statement of its function, arguments in C-signature order; three
+`static` dropped with a `flow.h` declaration; one correction, §3.1):
+
+| file | line added |
+|---|---|
+| config.c | `PR_SEAM_RET(0x2DDE4u, value, table);` (`hiscore_rank_probe`) · `PR_SEAM_RET0(0x2C060u);` (`config_credit_ready`) · `PR_SEAM_RET0(0x2CA48u);` (`config_credit_take`) · `PR_SEAM_RET0(0x2CA78u);` (`config_credit_zero`) · `PR_SEAM_RET(0x2CA7Cu, n);` (`config_credit_spend`) · `PR_SEAM(0x32B4Cu, idx, arm);` (`config_play_time_snap_b`) |
+| fight.c | `PR_SEAM(0x1D810u, side);` (`fight_select_marker_release`) · `PR_SEAM(0x1D764u, side);` (`fight_hud_side_reset`) · `PR_SEAM(0x1D890u, enable);` (`fight_hud_spawn`) · `PR_SEAM(0x1DC6Cu, enable);` (`fight_hud_spawn_b`) · `PR_SEAM(0x1DAE8u, enable);` (`fight_hud_spawn_side`) · `PR_SEAM0(0x20EF8u);` (`fight_round_reset`) |
+| fighter.c | `PR_SEAM(0x46534u, side, (u32)delta);` (`fighter_46534`) · `PR_SEAM0(0x19820u);` (`fighter_19820`) |
+| flow.c | `PR_SEAM_RET0(0x4FA88u);` (`frontend_wipe_out`) · `PR_SEAM_RET0(0x4F790u);` (`frontend_skip_check`) · `PR_SEAM0(0x4651Cu);` (`flow_1082c8_restore`) · `PR_SEAM(0x2716Cu, side);` (`flow_side_char_random`) · `PR_SEAM0(0x27254u);` (`flow_match_snapshot`) · `PR_SEAM0(0x278B0u);` (`flow_continue_open`) · `PR_SEAM0(0x27C48u);` (`flow_round_winner`) · `PR_SEAM_RET(0x29CBCu, side, ch);` (`flow_challenge_handle`) · `PR_SEAM(0x2C0F4u, (u32)col, (u32)row, side, sprite);` (`prompt_press_start_blink`) · `PR_SEAM(0x2C178u, side, (u32)row);` (`prompt_press_start`) · `PR_SEAM(0x2C1C8u, side, (u32)row);` (`prompt_insert_coin`) · `PR_SEAM(0x2C2B0u, (u32)side, (u32)row);` (`prompt_side_erase`) · `PR_SEAM0(0x4F728u);` (`sound_voice_match_end`) |
+| flow.c / flow.h | `static` dropped and a declaration added, for the row's binding: `flow_26d4c` (0x26D4C), `flow_join_prompt_draw` (0x271E0), `frontend_mode12_challenge_continue` (0x41760; the last two already opened with `PR_SEAM0`) |
+
+Every existing row that calls a newly seamed function was re-run with `--function <row> --self-check` after
+the seam (VERIFIED, every mutant detected): `hiscore_rank_probe`, `prompt_side_erase`, `flow_side_char_random`,
+`game_mode_12_step_s7`, `game_mode_12_step_s5`, `flow_match_snapshot`, `flow_continue_open`,
+`config_play_time_snap_b`, `sound_voice_match_end`, `flow_1082c8_restore`, `fighter_46534`,
+`flow_match_streak_update`, `fighter_4f434`, `flow_round_winner`, `prompt_press_start_blink`,
+`config_credit_take`, `config_credit_zero`, `config_credit_spend`, `config_credit_ready`, `frontend_skip_check`,
+`frontend_wipe_out`, `frontend_mode_18_step`, `fight_select_marker_release`, `fight_round_reset`,
+`fighter_19820`, `prompt_insert_coin`, `prompt_press_start`, `flow_challenge_handle`; and the full self-check.
+
+`tools/diff_emu.py` (two additions, no existing line changed):
+- `FLAT_SEGMENT_CALLEES |= {0x6C8EB}` (§2.2);
+- `_CALLEE_CLOBBER_FIXES[0x2C060] = ()` (§2.1).
+
+`tools/tests/test_diff_verify.py` outside the d3a pin block: two lines inserted at the top of the expected
+dictionary of `test_each_stub_declares_the_registers_its_callee_clobbers` (`# D3 d3a ...: the stubs its rows
+add` and 28 addresses with their sets: the 27 seamed here and `0x2CAA8`, seamed before and first stubbed here); inside the block, `P45_OUTSIDE.update(D3A_OUTSIDE)`. The pinned
+counter line is untouched (the integrator re-pins it: the tree now measures 677/677, 6251/6251, 440/510 (167)).
+A static replica of the pin tests on the final tree (no emulation): every d3a spec name has its mask, every
+mutant one `D3A_KINDS` and one `D3A_CASES` entry, the stub dictionary equals the stubs of `SPECS` and every
+declared set equals `E.callee_clobbers` over the image, every binding name is in `k_bindings` once with its
+spec's mask.
+
 ## §3 Corrections
 
 ### §3.1 `flow_26d4c` drew a percent sign the original does not (`0x809AC`, `0x26EF3`/`0x26F01`)
@@ -116,8 +160,11 @@ Run from the original's bytes (§2.2) the formatter emits nothing for the bare t
 = `"DIFFICULTY "`, pct 100 and string `0x3E` = `"!ab"` the text handed to `0x2F198` is `DIFFICULTY 100!ab`.
 The port formatted `"%s%03d%%"` (its comment called that "the equivalent") and produced `DIFFICULTY 100%!ab`.
 Now `"%s%.03d"`. Mutant `@pct` is the old format (caught by `s0`, `s2`, `s3`: `call #8`). Commit `2281a5f`.
-Reached in ordinary play: the end of mode `0x22` with `0x104AC4 <= 0` and `0x104529` bit 1 clear. No unit test
-asserted the text. Unproven against the oracles until the integrator's gate.
+Reached whenever mode `0x22`'s tail runs with `0x104AC4 <= 0` and `0x104529` bit 1 clear (the text arm; with the
+bit set the two sprites and the number are drawn instead). **Not established here:** how an ordinary session
+enters mode `0x23`/`0x22` and which value the option bit has there, so "visible in ordinary play" is likely
+but unverified (the commit message of `2281a5f` states it more firmly than this record supports). No unit
+test asserted the text. Unproven against the oracles until the integrator's gate.
 
 ## §4 Named gaps and unhit blocks
 
@@ -243,4 +290,26 @@ asserted the text. Unproven against the oracles until the integrator's gate.
 
 ## §6 Queue entries not done
 
-(filled at the end)
+- `0x11BCC` (41 bytes, `xor ah,ah` .. `jmp 0x2c3fc`): **no port function to bind.** The port inlines it in
+  `game_state_step`'s state 7 (`flow.c`, the `/* 0x11BCC the timer exit. */` arm: the two byte stores, the word
+  `0xF0A64 = the word 0xF0A6C`, the voice `0x100`), as wave 1 found for `0x12CD4`, `0x2F920` and `0x1D018`.
+  Rowing it needs its own C function first, which is not a row batch's edit. Read against the bytes while
+  here: the inline arm has the raw's four effects in the raw's order and omits the bare-`ret` `0x29D60`.
+
+Every other entry of the queue (23 of 24) is rowed.
+
+## §7 What is not verified
+
+- The correction §3.1 and the 27 seams are unproven against the capture oracles: `make verify`, `make
+  diff-verify` and the `*-oracle` targets were not run (the integrator's gate). `run_tests` passed with the
+  frames regenerated after the correction (`./build/prageport --game-dir data/game/C --check 820`).
+- `python3 -m unittest tools.tests.test_diff_verify` was not run (forbidden to a batch); the pins rest on the
+  per-row measurements, the one full self-check and the static replica of §2.3.
+- The host-owned or deferred callees are compared nowhere: the run clock `0x32970` (and the mask it is handed
+  at `0x26B99`), the audit adds `0x32BB0` and `0x2DAE4`, the interrupt lock `0x2EA30`, the bare `ret`
+  `0x29D60`. Each runs in the original from a state where it changes no byte.
+- Rows that stay open on callees without a row: `flow_round_hud_init` (`0x1D890`, `0x1DC6C`),
+  `game_mode_23_step` (`0x1DAE8`), `flow_round_over` (`0x1D764`), and every row that allows a runtime or
+  host-owned address.
+- Mask 0 rests on caller traces quoted in §1; where a trace was taken over from an earlier record (the mode
+  tail `0x2540F`, `0x2C0F4`'s sites, `0x2BF08`'s sites) it was not re-derived here.
