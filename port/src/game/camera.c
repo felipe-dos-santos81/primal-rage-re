@@ -333,11 +333,11 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
          * DS_00100A78[side] into DS_00100AC0[side] (or zeroes it); 0x164F4 does
          * the same from DS_00100A90[side] into DS_00100AC8[side] and raises
          * *page_flag on success. Both read the just-written DS_00100AF0[side]. */
-        if (camera_page_tail_a(side, DS_00100A78 + side * 4u) != 0)
+        if ((u8)camera_page_tail_a(side, DS_00100A78 + side * 4u) != 0u)   /* 0x180CE `test al,al` */
             DSD(DS_00100AC0 + side * 4u) = DSD(DS_00100A78 + side * 4u);
         else
             mem_fill(DS_00100AC0 + side * 4u, 0, 4u);
-        if (camera_page_tail_b(side, DS_00100A90 + side * 4u) != 0) {
+        if ((u8)camera_page_tail_b(side, DS_00100A90 + side * 4u) != 0u) { /* 0x1810D `test al,al` */
             DSB(page_flag) = 1;
             DSD(DS_00100AC8 + side * 4u) = DSD(DS_00100A90 + side * 4u);
         } else {
