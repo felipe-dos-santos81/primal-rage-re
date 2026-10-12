@@ -2308,7 +2308,7 @@ void fight_hud_pass(u32 side)
      * test-and-set fight_slot_clear zeroes each arena frame, so it runs once
      * per side; it maintains the slot+0x88/+0x8C/+0x90/+0x92 timers and
      * slot+0x78 that 0x350D0 and 0x3531C case 8 read. */
-    if (fighter_pass_flag(3u, side) == 0) {                 /* 0x356BE */
+    if ((fighter_pass_flag(3u, side) & 0xFF) == 0) {        /* 0x356BE, 0x356C3 test al,al */
         DSW(slot + 0x88u) = (u16)(DSW(slot + 0x88u) + 1u);  /* 0x356D6 */
         {
             s16 c = (s16)DSW(slot + 0x8Cu);                 /* 0x356CF */
