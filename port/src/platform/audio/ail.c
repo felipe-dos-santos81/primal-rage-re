@@ -334,6 +334,7 @@ void AIL_set_sample_rate(HSAMPLE sample, u32 rate)
 /* 0x5dcc5 — spec audio.md "AIL surface" (row 18). */
 void AIL_set_sample_volume(HSAMPLE sample, s32 volume)
 {
+    PR_SEAM(0x5DCC5u, (u32)volume);
     if (sample == NULL || !sample->used)
         return;
     if (volume < 0)
@@ -488,6 +489,7 @@ void AIL_stop_sequence(HSEQUENCE sequence)
  * volume fades over `fade_ms` in the sequencer's 120 Hz service. */
 void AIL_set_sequence_volume(HSEQUENCE sequence, s32 volume, u32 fade_ms)
 {
+    PR_SEAM(0x5DECAu, (u32)volume, fade_ms);
     if (sequence == NULL || !sequence->used)
         return;
     sequence->volume = volume;

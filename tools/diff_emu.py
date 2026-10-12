@@ -65,6 +65,29 @@ UNMODELED_MNEMONICS = frozenset({
     "outsd", "hlt", "cli", "sti", "syscall", "sysenter", "iret", "iretd",
 })
 
+# Runtime routines that load a segment register (track D2 batch d2e, record 2026-10-11-reverse-d2e
+# §2.2): the WATCOM strlen 0x65624 runs `push es; mov eax,ds; mov es,eax ... pop es`. Unicorn starts
+# with no descriptor tables, and a segment load there recomputes the stack-size flag from an empty
+# SS cache: every later push/pop goes through a 16-bit SS:SP (the `ret` at 0x6563C pops address 0).
+# A run whose allow-list or real call set names one of these gets the flat 32-bit segments DOS/4GW
+# gives the game (one code and one data descriptor over the whole address space). Opt-in by
+# address, so no other row's emulator state changes.
+FLAT_SEGMENT_CALLEES = frozenset({0x65624})
+FLAT_GDT = STACK_LOW          # the two descriptors, at the bottom of the private stack mapping
+
+
+def flat_segments(mu):
+    """Load a three-entry GDT (null, flat code 0x08, flat data 0x10) and point CS at the code
+    descriptor and SS/DS/ES at the data descriptor."""
+    def desc(access):
+        return bytes([0xFF, 0xFF, 0, 0, 0, access, 0xCF, 0])      # base 0, limit 0xFFFFF pages, 32-bit
+    gdt = bytes(8) + desc(0x9B) + desc(0x93)
+    mu.mem_write(FLAT_GDT, gdt)
+    mu.reg_write(ux.UC_X86_REG_GDTR, (0, FLAT_GDT, len(gdt) - 1, 0))
+    for r in (ux.UC_X86_REG_SS, ux.UC_X86_REG_DS, ux.UC_X86_REG_ES):
+        mu.reg_write(r, 0x10)
+    mu.reg_write(ux.UC_X86_REG_CS, 0x08)
+
 
 def available():
     return unicorn is not None and capstone is not None
@@ -222,6 +245,8 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     # `fldcw` at 0x72A83 loads the word at 0xF09B4 = 0x127F (53-bit precision, round to nearest, every
     # exception masked); 0x6B70D loads the same word (record 2026-10-03-reverse-p3 §P3.6).
     mu.reg_write(ux.UC_X86_REG_FPCW, 0x127F)
+    if FLAT_SEGMENT_CALLEES & (set(allow_calls) | {c.addr for c in calls if c.mode == "real"}):
+        flat_segments(mu)
 
     state = {"stop": None, "prev": None}
     executed = set()
@@ -528,7 +553,37 @@ RESOLVED_JUMPS = {
     # 0x22638 (record 2026-10-02-reverse-p2 §P2.9): cmp al,7; ja; and eax,0xff; lea edx,[eax*4]; mov eax,[esp];
     # add eax,eax; jmp cs:[edx+0x22618]
     0x227BC: (0x227A3, 0x22618, 8),
+    # 0x36300 (record 2026-10-11-reverse-d1b §4): cmp dl,3; ja; xor ecx,ecx; mov cl,dl; jmp cs:[ecx*4+0x362f0]
+    0x3631D: (0x36310, 0x362F0, 4),
+    # 0x134C0 (record 2026-10-11-reverse-d1c §2): cmp al,5; ja; and eax,0xff; lea esi,[edi+0x14];
+    # lea edx,[eax*4]; lea eax,[edi+0x10]; jmp cs:[edx+0x134a8]
+    0x1353A: (0x13520, 0x134A8, 6),
+    # 0x361C8 (record 2026-10-11-reverse-d2a §4): cmp dl,3; ja; xor ecx,ecx; mov cl,dl; jmp cs:[ecx*4+0x361b8]
+    0x361E3: (0x361D6, 0x361B8, 4),
+    # 0x4E350 (record 2026-10-11-reverse-d2b §3): both tables index by EDI = 4 * the counter [esp+8], kept in
+    # step with it (0x4E36A `xor edi,edi`, 0x4E588 `add edi,4`): cmp eax,9; ja; ...; jmp cs:[edi+0x4e300]
+    0x4E426: (0x4E409, 0x4E300, 10),
+    # cmp dword [esp+8],9; ja; jmp cs:[edi+0x4e328]
+    0x4E4B9: (0x4E4B2, 0x4E328, 10),
+    # 0x1FFD0 (record 2026-10-11-reverse-d2c §2): cmp al,8; ja; mov bx,[0x1044c4]; and eax,0xff; shl ebx,9;
+    # jmp cs:[eax*4+0x1ffac]
+    0x2002E: (0x20017, 0x1FFAC, 9),
+    # 0x319B0 (record 2026-10-11-reverse-d2c §2.2): cmp dword [esp+8],3; ja; mov eax,[esp+4]; jmp cs:[eax+0x319a0].
+    # The index [esp+4] is 4 * the compared counter [esp+8]: both start 0 (0x319BE, 0x319CB) and step
+    # together (0x31A4C add edx,4 / 0x31A4F inc ebx, stored at 0x31A50/0x31A54).
+    0x319E0: (0x319D5, 0x319A0, 4),
+    # 0x31E28 (record 2026-10-11-reverse-d2d §4): cmp edi,6; ja; lea eax,[edi*4]; mov edx,[esp]; lea edi,[ebp-8];
+    # sub edx,2; jmp cs:[eax+0x31e0c]
+    0x31EBC: (0x31EA7, 0x31E0C, 7),
+    # 0x4505C (record 2026-10-11-reverse-d2d §4; d1g §6 left it for this): cmp dl,4; ja; xor eax,eax; mov al,dl;
+    # jmp cs:[eax*4+0x45048]
+    0x4507A: (0x45071, 0x45048, 5),
 }
+
+# 0x41C28 (track D2 batch d2e, record 2026-10-11-reverse-d2e §2.2): cmp al,8; ja; mov edx,[0x104ad4];
+# lea ecx,[edx*8]; add ecx,edx; shl ecx,2; and eax,0xff; add ecx,edx; lea ebx,[eax*4]; shl ecx,2;
+# jmp cs:[ebx+0x41c04] (the side's slot offset is built in ECX between the guard and the jump)
+RESOLVED_JUMPS[0x41C61] = (0x41C36, 0x41C04, 9)
 
 
 def resolved_cases(image, entry):

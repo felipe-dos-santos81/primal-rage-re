@@ -2660,6 +2660,7 @@ void actors_anim_seek(u32 rec, u32 stream)
  * and 0x4D898 (0x4DA85), which pass the held record's own +0x56 word. */
 u32 actors_link_held(u32 rec, u32 v)
 {
+    PR_SEAM_RET(0x2BD20u, rec, v);
     DSB(DSD(DS_001014F4) + (u32)DSB(rec + 0x4Au) * ACTOR_REC_SIZE + 0x4Bu) =
         (u8)v;                                          /* 0x2BD3C */
     return 0;                                           /* 0x2BD40 */
@@ -2845,8 +2846,9 @@ dead:
     set_dead(rec);
 }
 
-/* 0x2A4FC. Integrate the record's velocity and gravity. */
-static void motion_step(u32 rec)
+/* 0x2A4FC. Integrate the record's velocity and gravity. Exported for its own
+ * D1 row's binding. */
+void motion_step(u32 rec)
 {
     if ((DSW(rec + 0x2a) >> 8 & 0x80u) == 0) return;
     /* PORT: the original integrates the x velocity as `sar dword [eax+0x32],16`
@@ -2894,11 +2896,11 @@ static void motion_step(u32 rec)
 }
 
 /* 0x2A39C. Clear the +0x28 0x04 bit and write pset+0 from the reader, or-ing
- * the parent's hflip into bit 0x8000. */
-static void anim_id_path(u32 rec, u32 slot)
+ * the parent's hflip into bit 0x8000. Exported for its own D1 row's binding. */
+void anim_id_path(u32 rec, u32 slot)
 {
     DSB(rec + 0x28) &= 0xfb;
-    u32 pset = DSD(DS_001014EC) + slot * PSET_SIZE;
+    u32 pset = DSD(DS_001014EC) + (slot & 0xffffu) * PSET_SIZE;   /* 0x2A3A0/0x2A3A2 `xor ecx,ecx; mov cx,dx` */
     u32 id = anim_next_sprite_id(rec, pset);
     if (DSB(rec + 0x4a) != 0) {
         u32 parent = DSD(DS_001014F4)
@@ -2911,9 +2913,11 @@ static void anim_id_path(u32 rec, u32 slot)
 
 /* 0x2AA70. The frame timer: consume stream opcodes until the dispatcher stops,
  * then take the sprite id through 0x2A39C. The child chain is drained before
- * the walk and a dead ancestor stops it. */
-static void frame_timer(u32 rec, u32 slot)
+ * the walk and a dead ancestor stops it. Exported for its own D2 row's
+ * binding. */
+void frame_timer(u32 rec, u32 slot)
 {
+    slot &= 0xffffu;                            /* 0x2ABC4/0x2ABC8, 0x2ABDF/0x2ABE3, 0x2AC60/0x2AC62 `xor r,r; mov r16,si` */
     if ((DSW(rec + 0x28) & 0x810u) != 0 || (DSW(rec + 0x2a) & 4u) != 0) {
         if ((DSW(rec + 0x28) >> 8 & 8u) != 0) return;
         if ((DSW(rec + 0x28) & 0x10u) != 0) {
@@ -2934,7 +2938,7 @@ static void frame_timer(u32 rec, u32 slot)
     float old = fu.f;
     fu.f = old - 1.0f;
     DSD(rec + 0x20) = fu.u;
-    if (old > 0.0f) {                           /* 0x2AC47 */
+    if (!(old <= 0.0f)) {                       /* 0x2AB3C..0x2AB44 `fldz; fcomp; jb 0x2ac47`: 0 < old, or unordered */
         if ((DSW(rec + 0x2a) >> 8 & 1u) == 0) return;
         if (DSD(DS_00104AE0) != 0) return;
         DSW(DSD(DS_001014EC) + slot * PSET_SIZE) = 0x1e1;
@@ -3074,6 +3078,7 @@ void actor_set_dead(u32 rec) { set_dead(rec); }
  * kept. */
 void actor_pset_word_set(u32 rec, u32 word)
 {
+    PR_SEAM(0x10D70u, rec, word);
     u32 pset = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;  /* 0x10D74..0x10D83 */
     DSB(rec + 0x28u) &= 0xFBu;                                      /* 0x10D85 */
     if ((DSW(rec + 0x28u) & 0x4000u) != 0u)                         /* 0x10D8C..0x10D9B */
@@ -3152,8 +3157,9 @@ static void actor_type_19928(u32 rec)
  * sign-extended, EBX = w0 sign-extended, stack 0): the two `sar 16` of the
  * dwords at [esp+0xA] and [esp+2] read the words above the pushed 0 and the
  * count, which are zero (0x19A42..0x19A51). A spawned record then gets its
- * +0x34/+0x36 (and +0x44) by mode (0x19A5F..0x19AB6). */
-static void debris_spawn(void)
+ * +0x34/+0x36 (and +0x44) by mode (0x19A5F..0x19AB6). Exported for its own D1
+ * row's binding. */
+void debris_spawn(void)
 {
     u32 r, x, desc;
     u16 w8, w0, mode;
@@ -4025,6 +4031,7 @@ u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical)
  * and 5's scoreboard build (0x41A9D/0x41E5D area, record §48-Z). */
 void text_glyph_at(s32 col, s32 ch, s32 row, u32 mode)
 {
+    PR_SEAM(0x2F174u, (u32)col, (u32)ch, (u32)row, mode);
     s32 c = col, r = row;
     (void)text_glyph_emit(ch, &c, &r, mode, 0u);            /* 0x2F18E */
 }
@@ -4187,6 +4194,7 @@ void actor_release(u32 rec, u32 pset)
  * 0x2AD40 and zeroed, and the column wraps to the next row after 0x2A. */
 void text_cells_release_count(s32 col, s32 row, s32 count)
 {
+    PR_SEAM(0x2F388u, col, row, count);
     if (col < 0) {                                      /* 0x2F393 */
         col = (0x2b - count) >> 1;                      /* 0x2F397..0x2F39E */
         if (col < 0) {                                  /* 0x2F3A0 */
@@ -4219,12 +4227,24 @@ void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
     DSD(DS_00105F34) = save;
 }
 
+/* PORT: 0x2F510's string passes by value, its first four bytes as one little-endian dword
+ * (record 2026-10-11-reverse-d2c): the bytes at its mem[] offset when it lies in mem[], else
+ * (0x1FFD0's two-byte stack buffer) the bytes up to its NUL, zero after it. */
+static u32 text_str_dw0(const u8 *s)
+{
+    u32 v = 0u;
+    if (s >= mem && s < mem + MEM_SIZE - 4u) return C3F_PTR_DW(s, 0u);
+    for (u32 k = 0u; k < 4u && s[k] != 0u; k++) v |= (u32)s[k] << (8u * k);
+    return v;
+}
+
 /* 0x2F510 — demo-pose record §43-A (`push esi; or cl,0x2; mov esi,[0x105f34];
  * call 0x2F198; mov [0x105f34],esi`). 0x2F4BC with the mode ORed with 2 (the
  * class font) before the cursor save. It has 67 raw call sites (a rel32
  * scan); each ported one carries its raw address at the call. */
 void text_cursor_hold_font2(s32 col, s32 row, const u8 *s, u32 mode)
 {
+    PR_SEAM(0x2F510u, col, row, text_str_dw0(s), mode);
     mode |= 2u;                                         /* 0x2F511 */
     u32 save = DSD(DS_00105F34);                        /* 0x2F514 */
     text_cursor_set(col, row, s, mode);                 /* 0x2F51A 0x2F198 */
@@ -4379,6 +4399,7 @@ void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
  * too, the service-menu ones in svcmenu.c (K11). */
 void text_number_set(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
 {
+    PR_SEAM(0x2F434u, col, row, value, width, pad, mode);
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
      * which only a pad above 3 could observe. */
     u8 buf[0x14] = {0};
@@ -4393,6 +4414,7 @@ void text_number_set(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
 void text_number_draw_font2(s32 col, s32 row, s32 value, s32 width, u32 pad,
                             u32 mode)
 {
+    PR_SEAM(0x2F528u, col, row, value, width, pad, mode);
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
      * which only a pad above 3 could observe. */
     u8 buf[0x14] = {0};

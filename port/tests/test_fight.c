@@ -8870,21 +8870,29 @@ static void check_state_dispatch(void)
     /* D: +0x52 == 3 (the demo's other entered state) must take its own handler
      * 0x35D7C, which clears slot+0x53/+0x54 and then, when the 0x3CF38 chain
      * reports no hit (no armed hitbox), re-arms slot+0x54 = 2, slot+0x53 = 4.
-     * The default handler leaves them. Seeded 0xAA differs from both. */
+     * The default handler leaves them. Seeded 0xAA differs from both. 0x35D7C
+     * computes its slot from the side (0x35D8E..0x35DA6: DS_001077B0 + side *
+     * 0x94, which the game's table entry always names, 0x33CA0), so the bytes
+     * it writes are the real slot 0's, not this fixture's p0. */
     fight_reset_slots();           /* no armed hitbox */
     DSB(p0 + 0x42u) = 0;
     DSB(p0 + 0x52u) = 3;
-    DSB(p0 + 0x53u) = 0xAAu;
-    DSB(p0 + 0x54u) = 0xAAu;
+    DSB(DS_001077B0 + 0x53u) = 0xAAu;
+    DSB(DS_001077B0 + 0x54u) = 0xAAu;
     DSW(DS_001088E0) = 0;
     fight_hud_pass(0u);
-    CHECK_EQ_INT((int)DSB(p0 + 0x53u), 4);      /* 0x35D7C's no-hit re-arm */
-    CHECK_EQ_INT((int)DSB(p0 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x53u), 4);     /* 0x35D7C's no-hit re-arm */
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x54u), 2);
     CHECK_EQ_INT((int)DSB(p0 + 0x52u), 3);      /* 0x35D7C does not re-state */
+    DSB(DS_001077B0 + 0x53u) = 0;
+    DSB(DS_001077B0 + 0x54u) = 0;
 
     /* E: +0x52 == 4 dispatches to 0x35F84 (the table's 0x34C53 entry), which
-     * writes +0x52 = 0x14 through the landing gate. The seeded 0x52 = 4
-     * differs from the post-value, so a no-op entry fails. */
+     * writes +0x52 = 0x14 through the landing gate. Like 0x35D7C it computes
+     * the slot it stores to from the side (0x35FA1..0x35FB9, used at 0x36026),
+     * so the byte it writes is the real slot 0's, not this fixture's p0, whose
+     * +0x52 stays 4. The seeded 0xAA differs from the post-value, so a no-op
+     * entry fails. */
     mem_fill(FIGHT_RECS, 0, 0x400u);
     fight_reset_actors();
     fight_reset_slot0(p0, r0);
@@ -8896,9 +8904,13 @@ static void check_state_dispatch(void)
     DSB(p0 + 0x42u) = 0;
     DSB(p0 + 0x43u) = 0;
     DSB(p0 + 0x52u) = 4;
+    DSB(DS_001077B0 + 0x52u) = 0xAAu;
     DSW(DS_001088E0) = 0;
     fight_hud_pass(0u);
-    CHECK_EQ_INT((int)DSB(p0 + 0x52u), 0x14);   /* 0x35F84's landing state */
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x52u), 0x14);  /* 0x35F84's landing state */
+    DSB(DS_001077B0 + 0x52u) = 0;
+    DSB(DS_001077B0 + 0x53u) = 0;
+    DSW(DS_001077B0 + 0x78u) = 0;
 
     /* F: +0x52 == 12 dispatches to 0x361C8 (0x34C9A); its +0x58 == 3 case
      * writes +0x52 = 9. Seeded +0x52 = 12 differs. */
@@ -30863,8 +30875,8 @@ static void check_mode_09_b(void)
 
     /* arm B, the streak sub-case that crosses the threshold: the winner's
      * think byte == 1, the loser's streak reaches 3 and its DS_00108104 stat
-     * is below 6 -> DS_00104B17 = 1, DS_00108106[stage] and DS_00107830[loser]
-     * take the combined flag byte. */
+     * is below 6 -> DS_00104B17 = 1, DS_00108106[stage] takes the combined
+     * flag byte and DS_00107830[loser] is reset to 0. */
     {
         m09_seed();
         M09_OPEN();
@@ -30886,11 +30898,13 @@ static void check_mode_09_b(void)
         game_mode_09_step();
         CHECK_EQ_INT((int)DSB(DS_00104B17), 1);
         {
-            /* DS_00108106[stage] takes the plain flag; DS_00107830[loser]
-             * takes the same byte XOR loser (0x28A85/0x28A8D). */
+            /* DS_00108106[stage] takes the flag; DS_00107830[loser], 3 after
+             * the increment, is stored 0: 0x28A75 `mov edx,ebx` reloads EDX
+             * before 0x28A85 `xor dl,bl`, so the byte 0x28A8D stores is
+             * BL ^ BL (record 2026-10-11-reverse-d2e). */
             u8 flag = (u8)((0u << 6) | 0x80u | 4u);
             CHECK_EQ_INT((int)DSB(DS_00108106 + 3u), (int)flag);
-            CHECK_EQ_INT((int)DSB(DS_00107830 + 0x94u), (int)(flag ^ 1u));
+            CHECK_EQ_INT((int)DSB(DS_00107830 + 0x94u), 0);
         }
         CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
         CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x13);
@@ -38081,6 +38095,7 @@ static void check_49z_47a00(void)
     for (side = 0; side < 2u; side++) {
         for (k = 0; k < 6u; k++) {
             u32 self = slots[side], rec = recs[side], oth = slots[side ^ 1u];
+            u32 orec = recs[side ^ 1u];
             u32 ochar = (side == 0u) ? 2u : 3u;
             u32 a, n0, dist;
             int spawn = b3a[k] <= 1u;
@@ -38094,9 +38109,15 @@ static void check_49z_47a00(void)
             DSW(0x000C9456u + 2u * 2u) = 0x50u;
             DSW(0x000C9456u + 2u * 3u) = 0x44u;
             /* the opponent (3C208's side) faces the way that puts the
-             * placed fighter |dist| from it */
+             * placed fighter |dist| from it. 0x47A89 restarts the OTHER
+             * record (`mov eax,[esp+0x14]`), and 0x2BC30 then rewrites its
+             * pset word from the stream word and the record's flip bit
+             * (+0x28 bit 0x4000, 0x2A408), so that bit decides the facing;
+             * the pset word is seeded with the opposite one. */
             DSW(FIGHT_ACTORS + (1u + (side ^ 1u)) * 0x20u) =
-                (side == 0u) ? 0x8F35u : 0x0F35u;
+                (side == 0u) ? 0x0F35u : 0x8F35u;
+            DSW(orec + 0x28u) = (u16)((DSW(orec + 0x28u) & 0xBFFFu)
+                                      | ((side == 0u) ? 0x4000u : 0u));
             DSW(self + 0x74u) = 0x7777u;
             DSW(oth + 0x74u) = 0x7777u;
             DSB(self + 0x5Fu) = 0x21u;
@@ -38107,7 +38128,6 @@ static void check_49z_47a00(void)
             dist = (ochar == 2u) ? 0x50u : 0x44u;
             a = DSD(DS_00105B3C);
             n0 = tb_active();
-            DSW(FIGHT_ACTORS + (1u + (side ^ 1u)) * 0x20u) = (side == 0u) ? 0x8F35u : 0x0F35u;
             fighter_47a00(side);
             CHECK_EQ_INT((int)tb_active(), (int)(n0 + (spawn ? 1u : 0u)));
             if (spawn) {
@@ -38126,8 +38146,15 @@ static void check_49z_47a00(void)
             CHECK_EQ_INT((int)DSW(DS_00107D2C + side * 2u), 0x101 + 0x100 * (int)side);
             CHECK_EQ_INT((int)DSW(DS_00107D2C + (side ^ 1u) * 2u), 0x100 + 0x100 * (int)(side ^ 1u));
             CHECK_EQ_INT((int)DSD(DS_00107D28), 0x21);
-            CHECK_EQ_INT((int)DSD(rec + 8u), (int)(ochar == 2u ? Z_STF : Z_STF + 0x10u));
-            CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+            /* 0x47A89: the other record takes the stream at 3.0 and its
+             * pset word the stream word with the flip bit's facing; the
+             * side's own record keeps its seeds */
+            CHECK_EQ_INT((int)DSD(orec + 8u), (int)(ochar == 2u ? Z_STF : Z_STF + 0x10u));
+            CHECK_EQ_INT((int)DSD(orec + 0x24u), 0x40400000);
+            CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + (1u + (side ^ 1u)) * 0x20u),
+                         (int)((ochar == 2u ? 0x1234u : 0x1235u) | ((side == 0u) ? 0x8000u : 0u)));
+            CHECK_EQ_INT((int)DSD(rec + 8u), 0x00ABCDEF);
+            CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x11111111);
             CHECK_EQ_INT((int)DSB(self + 0x52u), 9);
             CHECK_EQ_INT((int)DSB(self + 0x53u), 7);
             CHECK_EQ_INT((int)DSB(oth + 0x52u), 0x10);
@@ -38220,8 +38247,10 @@ static void check_49z_47b04(void)
                 DSB(rec + 0x63u) = (g[k] == 7u) ? 0x99u : 7u;   /* not the gate */
                 fighter_47b04(self, arg, side);
                 CHECK_EQ_INT((int)DSB(self + 0x57u), fire ? 1 : 0);
-                CHECK_EQ_INT((int)DSD(rec + 8u),
+                /* 0x47A89: 0x47A00 restarts the other side's record */
+                CHECK_EQ_INT((int)DSD(recs[side ^ 1u] + 8u),
                              fire ? (int)(ochar == 2u ? Z_STF : Z_STF + 0x10u) : 0x00ABCDEF);
+                CHECK_EQ_INT((int)DSD(rec + 8u), 0x00ABCDEF);
                 CHECK_EQ_INT((int)DSB(oth + 0x57u), (int)(0x99u + (side ^ 1u)));
             }
         }

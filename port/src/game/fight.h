@@ -120,6 +120,21 @@ void fight_4ac80(u32 rec);
  * exposed because 0x3C570's bit test reads DS_00107EE0 and a test may seed it. */
 void fight_slot_clear(void);
 
+/* 0x13134 / 0x1D4D0 / 0x1D74C / 0x29CDC / 0x2BE00 / 0x2BE1C / 0x2BE4C /
+ * 0x36E2C / 0x38BEC / 0x413C8 (D1 d1e): leaf predicates, value readers and
+ * two setup bodies of fight.c, exported for their differential rows (the
+ * definitions carry each function's derivation). */
+int  fight_13134(void);
+u32  fight_hud_rate(u32 side);
+u32  fight_cmd_bits_30(u32 side);
+u32  fight_dust_value(u32 side, u32 ch);
+s32  fight_2be00(u32 rec);
+s32  fight_2be1c(u32 rec_a, u32 rec_b);
+s32  fight_2be4c(u32 rec, s32 value);
+int  fight_position_gate(u32 rec);
+void fight_side_scratch_clear(u32 side);
+void fight_413c8(void);
+
 /* 0x49300. State 6's fight-effect list init: self-links the DS_001083C4 and
  * DS_0010884C sentinels and seeds DS_001088CC/CB from DS_00104AFC. Called by
  * 0x20DF4 (game_fight_reset, flow.c) at 0x20E38; 0x49C78's list walk needs
@@ -409,5 +424,102 @@ void fight_slot_5b_add(u32 slot, s32 amount);
  * slot's +0x5B, redrawn through 0x1DA84 when it moved; DS_00104AEC bit 3
  * cleared. */
 void fight_hud_bar_step(void);
+
+/* 0x46670 — record §48-U. The 0x1081F0/0x108230 pair clear (no argument);
+ * exported for its differential row (track D1 d1f). */
+void fight_1081f0_clear(void);
+
+/* 0x496AC — the dust y clamp, EAX = y (signed); exported for its differential
+ * row (track D1 d1f). */
+u16 fight_dust_clamp(s32 v);
+
+/* 0x4A7D4 — demo-pose record §42-D. EAX = entry: the type-11 arrival test;
+ * exported for its differential row (track D1 d1f). */
+int fight_4a7d4(u32 entry);
+
+/* 0x4A808 — record §49-P. EAX = node: mode 0x25's arrival test; exported for
+ * its differential row (track D1 d1f). */
+u8 fight_4a808(u32 node);
+
+/* 0x4AF04 — demo-pose record §42-C. EAX = side (AL): whether the fighter
+ * still plays its grab hold; exported for its differential row (track D1
+ * d1f). */
+int fight_4af04(u32 side);
+
+/* 0x4AC38 — the arrival. EAX = entry, EDX = index; exported for its
+ * differential row (track D1 d1f). */
+void fight_4ac38(u32 entry, u32 index);
+
+/* 0x4B3F0 — the 0xC955C stream start. EAX = entry, EDX = index, EBX = the
+ * +0x55 flag; exported for its differential row (track D1 d1f). */
+int fight_4b3f0(u32 entry, u32 index, u32 flag);
+
+/* 0x4B430 — 0x4B3F0 over the 0xC958C table; exported for its differential
+ * row (track D1 d1f). */
+int fight_4b430(u32 entry, u32 index, u32 flag);
+
+/* 0x4BD4C — the 0xC9754 stream start. EAX = entry, EDX = index; exported for
+ * its differential row (track D1 d1f). */
+int fight_4bd4c(u32 entry, u32 index);
+
+/* 0x4D108 — demo-pose record §43-A. EAX = entry, EDX = si: the one-in-0x3C
+ * rise; exported for its differential row (track D1 d1f). */
+int fight_4d108(u32 entry, u32 index);
+
+/* 0x49388 — the dust descriptor picker. EAX = side; exported for its
+ * differential row (track D1 d1f). */
+u32 fight_dust_pick(u32 side);
+
+/* 0x4A634 — the effects pass's per-frame flag reset (no argument); exported
+ * for its differential row (track D1 d1f). */
+void fight_4a634(void);
+
+/* 0x4E99C — record §49-P. EBX (word) = the arrival count; exported for its
+ * differential row (track D1 d1f). */
+void fight_4e99c(u32 count);
+
+/* 0x1DA84 — record §49-M. EAX = v, EDX = side: the inverted health-bar word;
+ * exported for its differential row (track D2 d2b). */
+void fight_hud_bar_set_inv(s32 v, u32 side);
+
+/* 0x493F0 — the midpoint of the two fighters' 0x2BE00 values (no argument);
+ * exported for its differential row (track D2 d2b). */
+u32 fight_midpoint(void);
+
+/* 0x4AA6C — record §49-Z. EAX = the side as a signed byte (AL): the active
+ * list's mean; exported for its differential row (track D2 d2b). */
+s32 fight_4aa6c(s32 side);
+
+/* 0x4A8A8 — record §49-P. EAX = node: fight_4a808's twin against 0x2BE00;
+ * exported for its differential row (track D2 d2b). */
+u8 fight_4a8a8(u32 node);
+
+/* 0x4B5A8 — the DS_001088B6 gate of the type-0 handler. EAX = entry, EDX =
+ * index; AL = the flag; exported for its differential row (track D2 d2b). */
+int fight_4b5a8(u32 entry, u32 index);
+
+/* 0x4B144 — the type-0 entry's distance resolution. EAX = entry, EDX = index;
+ * exported for its differential row (track D2 d2b). */
+void fight_4b144(u32 entry, u32 index);
+
+/* 0x4B2AC — demo-pose record §42-D. The type-10 walk. EAX = entry, EDX = si;
+ * exported for its differential row (track D2 d2b). */
+void fight_4b2ac(u32 entry, u32 index);
+
+/* 0x4B788 — demo-pose record §29, §42-C. EAX = hit (1/2), EDX = entry, EBX =
+ * si: the grab arm; exported for its differential row (track D2 d2b). */
+int fight_4b788(u32 hit, u32 entry, u32 index);
+
+/* 0x4BD98 — demo-pose record §42-C. EAX = entry: the eighth-hit start;
+ * exported for its differential row (track D2 d2b). */
+void fight_4bd98(u32 entry);
+
+/* 0x4CD98 — record §49-S. The volleyball match's timeout end (no argument);
+ * exported for its differential row (track D2 d2b). */
+void fight_4cd98(void);
+
+/* 0x4D150 — demo-pose record §43-A. EAX = entry, EDX = si: the one-in-0x3C
+ * walk; exported for its differential row (track D2 d2b). */
+int fight_4d150(u32 entry, u32 index);
 
 #endif /* PRAGE_GAME_FIGHT_H */

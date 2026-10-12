@@ -68,6 +68,28 @@ int fighter_slot_flag(u32 bit);
  * 0xA1290). */
 int fighter_connect_query(u32 param_1, u32 param_2);
 
+/* PORT: exported for the D1 d1a differential rows (linkage only; record
+ * 2026-10-11-reverse-d1a). */
+int  fighter_14590(u32 side);                           /* 0x14590 */
+void fighter_19164(u32 side);                           /* 0x19164 */
+u32  ai_facing_cmd(u32 side);                           /* 0x1A5D4 */
+int  fighter_spawn_audio_gate(void);                    /* 0x1CEBC */
+void fighter_21f30(u32 slot);                           /* 0x21F30 */
+void fighter_22b28(const u32 ctx[6]);                   /* 0x22B28 */
+void fighter_35050(u32 side);                           /* 0x35050 */
+
+/* PORT: exported for the D2 d2a differential rows (linkage only; record
+ * 2026-10-11-reverse-d2a). */
+void fighter_146f0(u32 rec);                            /* 0x146F0 */
+void fighter_14a5c(u32 rec);                            /* 0x14A5C */
+void fighter_192dc(u32 side);                           /* 0x192DC */
+void fighter_state_35b7c(u32 slot, u32 rec);            /* 0x35B7C */
+void fighter_39b30(u32 side);                           /* 0x39B30 */
+void fighter_3baec(s32 pen);                            /* 0x3BAEC */
+u32  hit_connect(u32 side, u32 facing, u32 i, u32 *out);  /* 0x3C758 */
+u32  hit_displace(u32 side, u32 facing, u32 i, u32 *out); /* 0x3C800 */
+void ai_state_setup(u32 side);                          /* 0x46C78 */
+
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then
  * picks a winner from the two 0x18950 reachabilities and, on an exact tie,
@@ -437,6 +459,31 @@ void fighter_pose_3a504(u32 side, u32 edx);
 void fighter_pose_3a650(u32 side, u32 edx);
 void fighter_pose_3a79c(u32 side, u32 edx);
 void fighter_pose_3a8e8(u32 side, u32 edx);
+
+/* PORT: exported for the D1 d1b differential rows and their mutants (record
+ * 2026-10-11-reverse-d1b); linkage only. */
+void fighter_380c4(u32 side);                            /* 0x380C4 */
+void fighter_39278(u32 v);                               /* 0x39278 */
+int fighter_3962c(u32 side, u32 param_2);                /* 0x3962C */
+int fighter_396ac(u32 side, u32 param_2);                /* 0x396AC */
+s32 fighter_39ac8(s32 a, s32 n);                         /* 0x39AC8 */
+s32 fighter_39b14(s32 a, s32 b);                         /* 0x39B14 */
+void fighter_3b9d8(u32 side, s32 pen);                   /* 0x3B9D8 */
+void fighter_3c1c8(u32 side, u32 v);                     /* 0x3C1C8 */
+s32 fighter_3f6f4(u32 side, s32 n);                      /* 0x3F6F4 */
+u16 fighter_cmd_facing(u32 facing, u32 input);           /* 0x3C6E8 */
+void fighter_3d0c0(u32 side);                            /* 0x3D0C0 */
+void fighter_3f720(u32 side, s32 n);                     /* 0x3F720 */
+void fighter_408e8(u32 slot);                            /* 0x408E8 */
+int ai_pred_46698(u32 side);                             /* 0x46698 */
+int ai_pred_466f4(u32 side);                             /* 0x466F4 */
+int ai_pred_4673c(u32 side);                             /* 0x4673C */
+int ai_pred_46794(u32 side);                             /* 0x46794 */
+int ai_pred_46898(u32 side);                             /* 0x46898 */
+int ai_ready(u32 side);                                  /* 0x46958 */
+u32 fighter_4fb20(void);                                 /* 0x4FB20 */
+void ai_weight(u32 side, u32 id);                        /* 0x46BBC */
+void ai_band(u32 side);                                  /* 0x46DD4 */
 
 /* 0x1DE64. The reaction picker: map the side's command word (or, with slot+0x63
  * clear, the 0x46460/0x4649C input scan, record §49-B) through 0x1DDF4 to a

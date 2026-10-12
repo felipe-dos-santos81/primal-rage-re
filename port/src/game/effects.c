@@ -40,6 +40,7 @@ void effects_list_insert_after(u32 at, u32 rec)
 /* 0x249C0: insert rec immediately before `at`. */
 void effects_list_insert_before(u32 at, u32 rec)
 {
+    PR_SEAM(0x249C0u, at, rec);
     u32 prev = DSD(at + 4);
     DSD(at + 4) = rec;
     DSD(rec) = at;

@@ -324,6 +324,17 @@ void frontend_input_reset(void);
  * selector and the attract machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3);
 
+/* PORT: flow.c functions made external for their differential rows (track D1,
+ * batch d1d; build/diffrun binds them by name). No behaviour changes. */
+void frontend_portrait_flash(u32 i);     /* 0x414B4 */
+void frontend_portrait_reveal(u32 slot); /* 0x41528 */
+void frontend_mode12_advance(void);      /* 0x4160C */
+void flow_no_continue_screen(void);      /* 0x417C4 */
+void flow_1082c8_latch(void);            /* 0x46504 */
+void flow_1082d0_from_column(u32 col);   /* 0x4660C */
+void swap_buffers(void);                 /* 0x50188 */
+void surface_setup(void);                /* 0x51F45 */
+
 /* Record §46-B. 0x20DF4: the fight reset (state 6 and the three hooks
  * below). `stage` is clamped to 7 for the full branch; `full` (the raw's EDX)
  * selects 0x2BAF4/0x38730/0x412A0. */
@@ -333,6 +344,18 @@ void game_fight_reset(u32 stage, u32 full);
 void game_null_step(void);
 /* Record §K2.2, 0x32968: a bare `ret`. Called by game_init (0x20CC7). */
 void game_init_null(void);
+/* 0x29CBC, 0x2C074 and 0x2C390: exposed for the differential rows (record
+ * 2026-10-11-reverse-d1c). */
+u32 flow_challenge_handle(u32 side, u32 ch);
+void flow_105bf0_clear(void);
+void flow_list_105c0c_init(void);
+/* 0x12658, 0x286BC and 0x38910: exposed for the differential rows (record
+ * 2026-10-11-reverse-d2c). */
+void game_state_3_handoff(void);
+void flow_match_streak_update(void);
+void title_origin_reset(u32 idx);
+/* 0x418F4: exposed for the differential rows (record 2026-10-11-reverse-d2c). */
+void frontend_scoreboard_build(void);
 /* 0x4F200: DS_00107A55 = (u8)v, DS_00107A54 = 0, 0x4F1D0, 0x2BAF4(1). */
 void flow_screen_reset(u32 v);
 /* 0x25848: picks the stage word DS_00104AFC (on DS_00104B17). */
@@ -563,7 +586,8 @@ void game_mode_13_step(void);
  * into mode 0x17/return-mode 0x13 (flow_results_darken_close); a decided
  * result (0/1) whose winner's DS_00107813 think-byte is 1 bumps the loser's
  * win-streak byte and, once it reaches 3 with the loser's DS_00108104 stat
- * below 6, records a combined flag byte before the same darken/close;
+ * below 6, records a combined flag byte in the stage's DS_00108106 slot and
+ * resets that streak byte to 0 (0x28A8D) before the same darken/close;
  * otherwise (the winner's think-byte isn't 1) the stage word DS_00104AFC ==
  * 7 clears the stage marks (fight_stage_marks_clear) before the same
  * darken/close, and any other stage only installs the mode-0x12 hook

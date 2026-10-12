@@ -121,21 +121,25 @@ u32 config_field_set(u32 field, u32 value)
 /* 0x2CCD0. Records are a contiguous array of stride 0x14: [0] presence,
  * [4] shift (only cl is read; x86 masks the shift count), [8] count, [0x10]
  * entries pointer. Entries are stride 8 with [0] a char *; the inner loop stops
- * at the first '*' and sets that entry's index at the record's shift. */
+ * at the first '*' and sets that entry's index at the record's shift. The
+ * index is the counter's low word sign-extended (0x2CD0B `movsx ebx,dx`) and
+ * its bound is signed (0x2CD0E/0x2CD11 `cmp ebx,[esi+8]; jge`), so a record
+ * whose count is zero or negative is skipped. */
 u32 config_menu_default_bits(u32 table)
 {
     u32 bits = 0u;
     u32 rec = table;
     while (DSD(rec) != 0u) {
-        u32 shift   = DSD(rec + 4u) & 0x1Fu;       /* 0x2CCFA: cl only */
-        u32 count   = DSD(rec + 8u);
-        u32 entries = DSD(rec + 16u);
-        u32 found   = 0u;
-        for (u32 i = 0u; i < count && found == 0u; i++) {
-            u32 str = DSD(entries + i * 8u);
-            if (DSB(str) == (u8)'*') {             /* 0x2CCF3 */
+        u32 shift = DSD(rec + 4u) & 0x1Fu;         /* 0x2CCFA: cl only */
+        s32 count = (s32)DSD(rec + 8u);
+        u32 entry = DSD(rec + 16u);                /* 0x2CCE5 */
+        u32 found = 0u;
+        for (u32 edx = 0u; ; edx++, entry += 8u) { /* 0x2CD07/0x2CD08 */
+            s32 i = (s32)(s16)edx;                 /* 0x2CD0B */
+            if (i >= count || found != 0u) break;  /* 0x2CD11, 0x2CD13 */
+            if (DSB(DSD(entry)) == (u8)'*') {      /* 0x2CCF3 */
                 found = 1u;
-                bits |= i << shift;                /* 0x2CD00 */
+                bits |= (u32)i << shift;           /* 0x2CD00 */
             }
         }
         rec += 0x14u;                              /* 0x2CD1A: not a pointer chase */
@@ -357,7 +361,10 @@ u32 hiscore_rank_probe(u32 value, u32 table)
     for (;;) {                                                /* 0x2DE3D */
         u32 i = 0u;
         while (i < nval && buf[i] == DSB(p + i)) i++;         /* 0x2DE43..0x2DE50 */
-        if (i < nval && buf[i] > DSB(p + i)) break;           /* 0x2DE52/0x2DE5E `ja` */
+        if (i < nval && buf[i] > DSB(p + i)) {                /* 0x2DE52/0x2DE5E `ja` */
+            if ((s32)left < 0) return 0xFFFFFFFFu;            /* 0x2DE75/0x2DE7A `cmp dword [esp+8],0; jge` */
+            break;
+        }
         s32 sleft = (s32)left - (s32)size;                    /* 0x2DE69 */
         p += size;                                            /* 0x2DE6B */
         rank++;                                                /* 0x2DE68 */
@@ -441,6 +448,7 @@ void config_credits_init(void)
  * (0x32A4F/0x32A56); mode 0 stops there (0x32A5F). */
 void config_play_time_close(u32 mode, u32 flag)
 {
+    PR_SEAM(0x32A3Cu, mode, flag);
     u32 idx = mode & 3u;                                /* 0x32A43 */
     /* PORT: 0x32A4A 0x32970(EAX = 0), the run clock, is out of scope (spec
      * §7); the host clock owns wall time. Its stores, for a later port:
@@ -939,6 +947,7 @@ void config_keys_apply(u32 rec)
         DSB(KEYCFG_DS_KEYS1 + 2u * i) = (u8)(w >> 8);       /* 0x1AE7C */
         DSB(bios + 0x2DEu + i) = (u8)(w >> 8);              /* 0x1AE85 */
     }
+    bios = DSD(DS_00101514);                                /* 0x1AE8D */
     for (u32 i = 0u; i < 8u; i++) {                         /* 0x1AEC6 */
         u16 w = DSW(rec + 0x14u + 2u * i);                  /* 0x1AE9E */
         DSB(KEYCFG_DS_KEYS2 + 1u + 2u * i) = (u8)w;         /* 0x1AEAA */

@@ -97,14 +97,18 @@ static u32 camera_resolve_sprite(u32 side, u32 index)
 
 /* 0x164C0 — pose/freeze record §11. 1 iff (rec+0x24) + (-1.0f) == rec+0x20 for
  * slot[side]'s record. The raw loads the float at 0x80580 (`00 00 80 BF` =
- * -1.0), adds it and FCOMPs against +0x20. */
-static int camera_frame_last(u32 side)
+ * -1.0), adds it and FCOMPs against +0x20. The sum stays on the x87 stack
+ * (0x164D4 `fld`, 0x164D7 `fadd`) at the game's 53-bit control word 0x127F,
+ * which a double holds exactly, and is not rounded to a float before the
+ * compare. `sete al` (0x164E3) reads ZF after `fnstsw ax; sahf`, which an
+ * unordered compare (a NaN operand) sets as well, so that returns 1 too. */
+int camera_frame_last(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
-    float a = *(const float *)(mem + rec + 0x24u)
-              + *(const float *)(mem + CAMERA_NEG_ONE);
-    float b = *(const float *)(mem + rec + 0x20u);
-    return a == b;
+    double a = (double)*(const float *)(mem + rec + 0x24u)
+               + (double)*(const float *)(mem + CAMERA_NEG_ONE);
+    double b = (double)*(const float *)(mem + rec + 0x20u);
+    return !(a < b || a > b);
 }
 
 /* 0x16734 — pose/freeze record §11. The per-character sprite-id map: switch on
@@ -271,7 +275,7 @@ int camera_page_tail_b(u32 side, u32 out)
         if (DSB(DS_000FD158 + side * 4u + 2u) == 0u) return 0;
         if (DSW(0x00107834u + side * 0x94u)
             != DSW(DS_00100B44 + side * 2u)) return 0;
-        if ((s32)r63 < (s32)(u32)DSW(DS_00100B48 + side * 2u)) return 0;
+        if ((s32)r63 < (s32)(s16)DSW(DS_00100B48 + side * 2u)) return 0;   /* 0x166F3 `cmp dx,si; jl` */
         DSD(out) = DSD(DS_000FD158 + side * 4u);
         return 1;
     }
@@ -370,7 +374,7 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
 
 /* 0x12DF0. Mode 0: track one player's record x (the DS_001077A8 table selected
  * by DS_000F0AFF), within a 0x1800 dead zone. */
-static void camera_mode_track_player(void)
+void camera_mode_track_player(void)
 {
     s32 cam = (s32)DSD(DS_000F0AF0);
     u32 rec = DSD(DS_001077A8 + (u32)DSB(DS_000F0AFF) * 4u);
@@ -438,7 +442,7 @@ void camera_step_seed(void)
 
 /* 0x12C7C. The shared camera-x commit: snap when within DS_000F0AFC, else step
  * by it and reset the step to 0x400. */
-static void camera_x_commit(s32 arg)
+void camera_x_commit(s32 arg)
 {
     s32 old = (s32)DSD(DS_000F0AF0);
     s32 step = (s32)DSW(DS_000F0AFC);
@@ -459,7 +463,7 @@ static void camera_x_commit(s32 arg)
  * when +0x34 > +0x38), storing +0x34 and +0x2C, and rewrites that slot's
  * record +0x18 through 0x18714 (hit_record_x) at 0x12F02/0x12F22, so the
  * record itself stops at the split distance. */
-static void camera_mode_track_pair(void)
+void camera_mode_track_pair(void)
 {
     s32 cam = (s32)DSD(DS_000F0AF0);
     u32 a = ((s32)DSD(DS_001077E4) >= (s32)DSD(DS_00107878)) ? 1u : 0u;
@@ -504,8 +508,13 @@ static void camera_mode_track_pair(void)
     /* 0x12F44: the two locals, each folded into the 0x1800 dead zone. */
     s32 d0 = (s32)DSD(lo_off + 0x34u) - cam;
     s32 d1 = (s32)DSD(hi_off + 0x34u) - cam;
-    s32 l0 = (d0 < -0x1800) ? d0 + 0x1800 : (d0 > 0x1800 ? d0 - 0x1800 : 0);
-    s32 l1 = (d1 < -0x1800) ? d1 + 0x1800 : (d1 > 0x1800 ? d1 - 0x1800 : 0);
+    /* 0x12F56..0x12F62: the magnitude is a `neg`, which leaves INT_MIN
+     * negative, so the `jle` zeroes that local (the negation is unsigned here
+     * to stay defined in C). */
+    s32 m0 = d0 < 0 ? (s32)(0u - (u32)d0) : d0;
+    s32 m1 = d1 < 0 ? (s32)(0u - (u32)d1) : d1;
+    s32 l0 = (m0 <= 0x1800) ? 0 : (d0 <= 0 ? d0 + 0x1800 : d0 - 0x1800);   /* 0x12F5C..0x12F7E */
+    s32 l1 = (m1 <= 0x1800) ? 0 : (d1 <= 0 ? d1 + 0x1800 : d1 - 0x1800);
 
     /* 0x12F89: far apart -> midpoint; else the non-zero local. */
     s32 arg;
@@ -519,7 +528,7 @@ static void camera_mode_track_pair(void)
 
 /* 0x13290. Mode 2: center on the midpoint of the two records' +0x18, step 0x40,
  * settle to mode 4 (gated on DS_001078FE). */
-static void camera_mode_center_two(void)
+void camera_mode_center_two(void)
 {
     s32 cam = (s32)DSD(DS_000F0AF0);
     s32 p0 = (s32)DSD(DSD(DS_001077B0) + 0x18u);
@@ -542,7 +551,7 @@ static void camera_mode_center_two(void)
 
 /* 0x1333C. Mode 3: center on one indexed record's +0x18; the mode-4 settle is
  * NOT gated on DS_001078FE. */
-static void camera_mode_center_one(void)
+void camera_mode_center_one(void)
 {
     s32 cam = (s32)DSD(DS_000F0AF0);
     u32 idx = DSB(CAMERA_SLOT_INDEX3);
@@ -660,7 +669,7 @@ static s32 camera_project_axis(s32 x, u32 k)
  * min) and return 1 when the result is non-empty. The raw's caller passes
  * out == a (0x1424E LEA EAX,[ESP+0x10], 0x14256 LEA EDX,[ESP+0x10] with
  * EBX = ESP), so the intersection is computed in place. */
-static int camera_rect_clip(int *out, const int *a, const int *b)
+int camera_rect_clip(int *out, const int *a, const int *b)
 {
     out[0] = (a[0] > b[0]) ? a[0] : b[0];
     out[1] = (a[1] > b[1]) ? a[1] : b[1];
@@ -729,12 +738,14 @@ int camera_box_overlap(u32 actor0, u32 actor1)
 
 /* 0x15EC0. Reverse the bits of each byte of buf[0..len) in place, through the
  * 0xA1432 table. The raw's return is the half length or a table byte and is
- * ignored by the only caller (0x16DA4). */
-static void camera_bitrev(u32 buf, u32 len)
+ * ignored by the only caller (0x16DA4). The half length is the signed len / 2
+ * (0x15ECE..0x15ED5) and the swap loop is skipped when it is not positive
+ * (0x15EDB `test eax,eax`, 0x15EDD `jle`), so a negative len swaps nothing. */
+void camera_bitrev(u32 buf, u32 len)
 {
-    u32 half = (u32)((s32)len >> 1);
+    s32 half = (s32)len / 2;
     u32 lo = buf, hi = buf + len - 1u;
-    for (u32 i = 0; i < half; i++) {
+    for (s32 i = 0; i < half; i++) {
         u8 a = DSB(lo);
         u8 b = DSB(hi);
         DSB(lo) = DSB(CAMERA_BITREV + b);
@@ -746,7 +757,7 @@ static void camera_bitrev(u32 buf, u32 len)
 
 /* 0x1638C. Copy `count` bytes from the per-side row table (0xFD160 side 0 /
  * 0xFEDE0 side 1, stride 0x26) at row `row` to dst. */
-static void camera_sprite_row(u32 side, u32 dst, u32 count, u32 row)
+void camera_sprite_row(u32 side, u32 dst, u32 count, u32 row)
 {
     u32 src = (side == 0u ? 0x000FD160u : 0x000FEDE0u) + row * 0x26u;
     for (u32 i = 0; i < count; i++) DSB(dst + i) = DSB(src + i);
@@ -847,7 +858,7 @@ static u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count)
 /* 0x15F48. Fill the first (bit/8) bytes of dst with `value`, then set dst[bit/8]
  * to the 0xA1420 mask for bit%8 (unless the bit is byte-aligned). `bit` is the
  * raw's EAX, `rows` the EDX, dst the EBX, value the CL. */
-static void camera_bitplane_pixel(u32 bit, u32 rows, u32 dst, u8 value)
+void camera_bitplane_pixel(u32 bit, u32 rows, u32 dst, u8 value)
 {
     if ((s32)bit < 0 || (s32)bit > (s32)(rows * 8u) || bit == 0u) return;
     u32 byte_idx = (u32)((s32)bit / 8);
@@ -860,7 +871,7 @@ static void camera_bitplane_pixel(u32 bit, u32 rows, u32 dst, u8 value)
 /* 0x15FD4. Right-shift a bit-plane row buffer `src` into `dst` by `bit` bits,
  * carrying the next byte's low bits, then shift `dst` by bit/8. `rows` is the
  * byte count and must equal the raw's stack arg (arg5). */
-static int camera_bitplane_shift(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
+int camera_bitplane_shift(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 {
     if ((s32)bit < 0 || (s32)bit > (s32)(rows * 8u)) return 0;
     if ((s32)rows < 1 || (s32)arg5 < 1 || arg5 != rows) return 0;
@@ -908,7 +919,7 @@ static int camera_bitplane_shift(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 
 /* 0x1617C. Left-shift a bit-plane row buffer `src` into `dst` by `bit` bits,
  * carrying the next byte's high bits, then shift `dst` by bit/8. */
-static int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
+int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 {
     if ((s32)bit < 0 || (s32)bit > (s32)(rows * 8u)) return 0;
     if ((s32)rows < 1 || (s32)arg5 < 1 || arg5 != rows) return 0;
@@ -952,7 +963,7 @@ static int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 /* 0x15B90. Read the box palette/width pair at (0x17EEC(side) + index) from
  * 0xD5100/0xD5101 into the two out pointers, adjust chars 5/6, then mirror the
  * x out when the actor's bit 15 is clear. */
-static void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
+void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
 {
     u32 ch = DSB(DS_0010782A + side * 0x94u);
     u32 base = camera_char_const(ch) + index;
@@ -1037,8 +1048,8 @@ static void camera_box_clip(u32 side, u32 index, u8 *box)
  * the left clip to *p5, the right clip to *p6, the start to *p7, the residual
  * to *p8 and the visible extent to *p4. Returns 0 when the item is visible,
  * 1 when empty, 2/3 when either dimension is non-positive. */
-static int camera_sync_visible(u32 p1, u32 p2, s32 p3, u32 p4,
-                               u32 p5, u32 p6, u32 p7, u32 p8)
+int camera_sync_visible(u32 p1, u32 p2, s32 p3, u32 p4,
+                        u32 p5, u32 p6, u32 p7, u32 p8)
 {
     if ((s32)p1 < 1) return 2;                         /* 0x181dd */
     if ((s32)p2 < 1) return 3;                         /* 0x181e9 */
