@@ -5756,6 +5756,7 @@ void game_mode_24_step(void)
     u32 side = DSB(DS_00104B1A);                            /* 0x26F62 */
     u32 ch = DSB(DS_0010782A + side * 0x94u);                /* 0x26F7B */
     camera_screen_base((s32)side, (s32)ch);                 /* 0x26F84 0x16D58 */
+    side = DSB(DS_00104B1A);                                /* 0x26F89: read again after 0x16D58 */
     DSD(DS_001077E8 + side * 0x94u) = DSD(DS_001077E4 + side * 0x94u);  /* 0x26F9E/0x26FA5 */
     camera_project(side,
                    DS_00100B08 + side * 4u,
