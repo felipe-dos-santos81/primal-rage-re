@@ -3075,6 +3075,7 @@ void actor_set_dead(u32 rec) { set_dead(rec); }
  * kept. */
 void actor_pset_word_set(u32 rec, u32 word)
 {
+    PR_SEAM(0x10D70u, rec, word);
     u32 pset = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;  /* 0x10D74..0x10D83 */
     DSB(rec + 0x28u) &= 0xFBu;                                      /* 0x10D85 */
     if ((DSW(rec + 0x28u) & 0x4000u) != 0u)                         /* 0x10D8C..0x10D9B */

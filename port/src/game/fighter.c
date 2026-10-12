@@ -700,6 +700,7 @@ void fighter_block_start(u32 side)
 /* 0x1A8F4 — record §38. */
 void fighter_block_end(u32 rec)
 {
+    PR_SEAM(0x1A8F4u, rec);
     u32 ctx[6];
     fighter_ctx_rec_swap(ctx, rec);                     /* 0x1A8F9 0x33A68 */
     {
@@ -1774,6 +1775,7 @@ void fighter_3c16c(u32 side)
  * command's 0x1000 is set; 0x2000 in the mirror; else 0. */
 int fighter_1a640(u32 side)
 {
+    PR_SEAM_RET(0x1A640u, side);
     u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x1A64C */
     u16 cmd = DSW(DS_001088E0 + side * 2u);
     if ((DSW(rec + 0x28u) >> 8 & 0x40u) == 0u) {

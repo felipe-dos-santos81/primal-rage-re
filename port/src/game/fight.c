@@ -1771,7 +1771,7 @@ void fight_hud_spawn_b(u32 enable)
  * The EBX/ECX/EDX loads before the 0x10D70 call are dead, as 0x1D2F0's own
  * header notes for its call. Callers: 0x1DB70 (0x1DAE8) and 0x1DC5C (in
  * 0x1DC0C, which lies in no Ghidra function; record gameplay-u0 §U0.6). */
-static void fight_hud_bar_set_inv(s32 v, u32 side)
+void fight_hud_bar_set_inv(s32 v, u32 side)
 {
     u32 c = v > 0x78 ? 0x78u : (v < 0 ? 0u : (u32)v);   /* 0x1DA86..0x1DA98 */
     actor_pset_word_set(DSD(DS_001028F0 + side * 4u),
@@ -1849,6 +1849,7 @@ void fight_hud_bar_step(void)
  * [eax + 0x107A7F]). EBX/EDX are pushed and popped. Only caller: 0x20F07. */
 void fight_side_scratch_clear(u32 side)
 {
+    PR_SEAM(0x38BECu, side);
     DSW(DS_00107D2C + side * 2u) = 0u;                  /* 0x38BF5 */
     DSW(DS_00107D20 + side * 2u) = 0u;                  /* 0x38BFD */
     DSW(DS_00107D18 + side * 2u) = 0u;                  /* 0x38C05 */
@@ -1864,6 +1865,7 @@ void fight_side_scratch_clear(u32 side)
  * 0x10825E, 0x1081F0, 0x1081F4, 0x108230 and 0x108234. Only caller: 0x20F8C. */
 void fight_1081f0_clear(void)
 {
+    PR_SEAM0(0x46670u);
     for (u32 o = 0; o <= 0x40u; o += 0x40u) {           /* 0x46673..0x46691 */
         DSB(DS_0010821E + o) = 0u;                      /* 0x46678 [eax+0x1081DE] */
         DSD(DS_001081F0 + o) = 0u;                      /* 0x46680 [eax+0x1081B0] */

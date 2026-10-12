@@ -478,4 +478,8 @@ void fight_4a634(void);
  * differential row (track D1 d1f). */
 void fight_4e99c(u32 count);
 
+/* 0x1DA84 — record §49-M. EAX = v, EDX = side: the inverted health-bar word;
+ * exported for its differential row (track D2 d2b). */
+void fight_hud_bar_set_inv(s32 v, u32 side);
+
 #endif /* PRAGE_GAME_FIGHT_H */
