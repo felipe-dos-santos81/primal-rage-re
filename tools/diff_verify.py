@@ -14249,7 +14249,7 @@ D2A_SPECS = [
         0x46D97: "state 0xA or above 0xD: the raw calls the 0x62003 fatal; the port skips the weight store"},
        mutants=("@slot", "@bside", "@s8a", "@s40", "@wrap", "@s64", "@nostate", "@stbyte", "@sext", "@id2",
                 "@wside")),
-    # 0x354F0 fighter_wall_clamp: EAX = side. Five stubs. 0x187FC is called twice on the push path
+    # 0x354F0 fighter_wall_clamp: EAX = side. Four stubs. 0x187FC is called twice on the push path
     # (0x3558E then 0x35597 or 0x355A0; 0x3560C then 0x35615 or 0x3561E): once for the sign, once
     # for the value. Its EAX is the distance (w4, w8: negative), compared with the signed word
     # 0xBDBEA (`sar edx,0x10` 0x355AB/0x35629: w6 is 0x8000). Mask 0: 0x35821 `mov eax,[esp]`, and

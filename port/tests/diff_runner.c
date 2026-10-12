@@ -20619,7 +20619,7 @@ static void m_d2a_46c78_sext(const u32 *r, u32 *eax)    { d2a_46c78_core(r, 0x10
 static void m_d2a_46c78_id2(const u32 *r, u32 *eax)     { d2a_46c78_core(r, 0x200u); *eax = 0u; }
 static void m_d2a_46c78_wside(const u32 *r, u32 *eax)   { d2a_46c78_core(r, 0x400u); *eax = 0u; }
 
-/* 0x354F0: EAX = side. Five stubs; 0x187FC is called twice on the push path (once for the sign,
+/* 0x354F0: EAX = side. Four stubs; 0x187FC is called twice on the push path (once for the sign,
  * once for the value: 0x3558E and 0x35597/0x355A0; 0x3560C and 0x35615/0x3561E). */
 static void d2a_354f0_core(const u32 *r, u32 mut)
 {

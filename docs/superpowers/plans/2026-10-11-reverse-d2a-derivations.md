@@ -2,12 +2,19 @@
 
 Track D rows the ported functions the callee scan never reached. Wave 2 takes the functions whose callees
 are all rowed. Batch d2a's queue is 25 functions of `port/src/game/fighter.c`
-(`.superpowers/sdd/2026-10-11-reverse-d1/d2a-queue.txt`), the last nine of them wave-1 leftovers.
+(`.superpowers/sdd/2026-10-11-reverse-d1/d2a-queue.txt`), the last nine of them wave-1 leftovers. **24 are
+rowed here, all `VERIFIED`; one (`0x47A00`) was taken out of the batch by the coordinator (§6).** Eleven
+commits correct the port to the raw (§3): three are AL/AX width alignments (`0e42ea3`, `ac25a9f`,
+`8dbeb63`), no game effect was found for any of the other eight (each §3 entry says what was looked at),
+and each is unproven against the capture oracles until the integrator's `make verify`.
 
 **Status of the numbers.** Every figure below was measured on branch `reverse-d2a` (base `ad0c70d`) against
 the image `diffrun` dumps from `data/game/C/PRAGE.EXE` (sha1 `ff3b8cb14e00f1c282de7b7e15dcd7c230766947`),
 one row at a time with `python3 tools/diff_verify.py --image … --function <row> --self-check`. The full
-`--self-check` and the unittest were not run (the integrator runs them). The claim is the harness's:
+`--self-check` and the unittest were not run (the integrator runs them). Each row's mutants were measured
+when the row landed; on the final tree the 24 rows (and `0x39278`'s, whose callee gained a seam) were
+verified again in one pass without their mutants (25/25 `VERIFIED`, the same block counts). The claim is
+the harness's:
 equivalence on the exercised blocks and inputs only, each function with its callees stubbed or run as stated.
 
 Method notes that apply to every row:
@@ -19,11 +26,18 @@ Method notes that apply to every row:
   The cost is named per row in §4: a real callee's port returns 0 or 1, so the raw's `test al,al` after it
   is not separated from a whole-EAX test.
 - **No index leaves mem[].** Sides are 0 or 1; every wrong-side or sign-extended read a mutant makes lands
-  inside the image and is seeded with the opposite answer (the `d2a_*` fixtures of `tools/diff_verify.py`).
+  inside the image and is seeded with the opposite answer (the `d2a_*` fixtures of `tools/diff_verify.py`),
+  but for three places §4 names, which stay inside mem[] above or below the image (`hit_connect@pz` and
+  `hit_displace@pz`, `fighter_45908`'s `z8`, `fighter_45908@n14`).
   Each row's binding and every mutant were run ten times on the port side (`diffrun` alone, identical
   output each time) before the pin.
-- **Static functions.** A binding cannot call a `static` function: the members marked *static* in §1 lost
-  the keyword and gained a declaration in one block of `fighter.h` (linkage only, no behaviour).
+- **Static functions.** A binding cannot call a `static` function: the nine members marked *static* in §1
+  lost the keyword and gained a declaration in one block of `fighter.h` (linkage only, no behaviour):
+  `fighter_146f0`, `fighter_14a5c`, `fighter_192dc`, `fighter_state_35b7c`, `fighter_39b30`,
+  `fighter_3baec`, `hit_connect`, `hit_displace`, `ai_state_setup`.
+- **Harness files.** `tools/diff_verify.py`, `port/tests/diff_runner.c` and `tools/tests/test_diff_verify.py`
+  only gain lines (one block each, a second block for the binding table, and one `WINDOWS` line, §4);
+  `tools/diff_emu.py` gains one `RESOLVED_JUMPS` entry.
 
 ## §1 The members and what fixes each EAX mask
 
@@ -55,6 +69,7 @@ data pointer to it.
 | `0x3605C` | `fighter_3605c` | 184 | 0 | the three callers overwrite EAX at once (`0x2347F`, `0x23520`, `0x488AA` `mov eax,[esp+8]`) |
 | `0x361C8` | `fighter_state_361c8` | 183 | 0 | `0x34C9E` call, `0x34CA3`..`0x34CA8` (the dispatcher), then `0x35801` |
 | `0x45908` | `fighter_45908` | 197 | 0 | the one caller returns at once (`0x4586D` call, `0x45872`..`0x45876`, in the slot +0x0C callback `0x4579C`, whose address is stored at `0x458AA`); the callback's call site `0x35431` `call dword [ecx+0xc]` is followed by `0x35434` `xor eax,eax` (record d1b §6 stopped at `0x4505C`, the function Ghidra folds `0x4579C` into) |
+| `0x1DE64` | `hit_reaction_pick` | 1078 | `0xFF` | every exit loads AL (`mov al,imm8`, or `0x1E1A3` `je 0x1e291` with `0x1DDF4`'s AL = 0); the one caller reads AL (`0x352BA` call, `0x352BF` `xor edx,edx`, `0x352C1` `mov dl,al`) |
 | `0x406B4` | `fighter_406b4` | 309 | 0 | `0x4065A` returns (`0x4065F`..`0x40662`, in `0x40608`) to `0x4058A` `mov eax,[0x108098]`. `0x4081E` (in `0x407EC`, update-table entry 14, the dword at `0xA867C`): nothing reads EAX before `0x407EC` returns (`0x4084C`, `0x408A1` write it; `0x408CF` `mov ah,1`), and the table call `0x24CEF` `call dword [eax+0xa8644]` is followed by `0x24CED` `mov eax,edx` for the next entry or by `0x24D08` `mov ah,1`, `0x24D0E` `int 0x16` (the BIOS keystroke status, which takes AH alone). **Limit:** bits 16..31 past that `int 0x16` are not followed |
 
 ## §2 The rows (measured)
@@ -84,6 +99,9 @@ data pointer to it.
 | `fighter_state_361c8` | `0x361C8` | 15 | 15/15 | 21 | `0x0` | the table `0x361B8` (hand-resolved, §4); `0x2BC30` a stub |
 | `fighter_45908` | `0x45908` | 9 | 9/9 | 25 | `0x0` | `0x339AC` real; `0x3C148`, `0x3C16C`, `0x3C480`, `0x2AE14`, `0x2C3FC` stubs |
 | `fighter_406b4` | `0x406B4` | 5 | 11/11 | 24 | `0x0` | `0x249D0`, `0x249B0` real (allowed); `0x5D7DC` real and recorded; `0x2AE14`, `0x2A17C`, `0x2C3FC` stubs |
+| `hit_reaction_pick` | `0x1DE64` | 43 | 66/69 | 28 | `0xFF` | EAX = side, DL = stance. `0x33950` real; `0x46460` a stub (its EAX is the ring word); `0x4649C` real and recorded; `0x1DDF4` a stub (AL tested); three blocks named unhit (§4, §3.10) |
+
+24 rows, 249 cases, 478 mutants, every mutant detected, every block hit or named (five named, §4).
 
 The exact kinds and case sets that catch each mutant are `D2A_KINDS` and `D2A_CASES` in
 `tools/tests/test_diff_verify.py`; the mutants are the `m_d2a_*` bindings over the `d2a_*_core` functions of
@@ -222,13 +240,32 @@ run changes; the rows stub the callee with EAX = `0x100` (AL = 0). Each now read
 - **Mutants.** `@r36`, `@r24`, `@slot` (the old code): `l4`/`l5`, `l4`/`l6`, `l4`/`l6`.
 - **Game effect.** None found, as §3.8.
 
+### §3.10 `0x1DE64` `hit_reaction_pick`: AL after `0x1DDF4`, the picked word's low half (commit `8dbeb63`)
+
+- **Raw.** `test al,al` after each of the six `0x1DDF4` calls (`0x1E119`, `0x1E15E`, `0x1E1A1`, `0x1E1E4`,
+  `0x1E22B`, `0x1E275`). The picked word is the dword `0x1DF36`/`0x1DF3A` copy from `0x46460`'s EAX;
+  `0x1DF50` `xor eax,eax; mov ax,[esp+0x24]; cmp eax,0xff` and every bit test after it (`0x1DF9E`..`0x1DFBD`,
+  `0x1E050`..`0x1E052`) read its low word.
+- **Old port.** `hit_geometry(...) ? a : b` on the whole `int`; `r != 0xFFu` and the bit tests on the whole
+  dword.
+- **Measured before the fix** (cases `c1`, `c5`, `c9`: the stub returns `0x100`, `0xFFFFFF00`, `0x100`; `s9`:
+  the `0x46460` stub returns `0x000100FF`): `eax (mask 0xFF): original 0x10, port 0x12`; `original 0x0, port
+  0x4`; `original 0x2, port 0x6`; `original 0xFF, port 0x4`.
+- **Mutants.** `@geoal` (caught by `c1`, `c5`, `c9`), `@rw` (caught by `s9`).
+- **Game effect.** None: the C `hit_geometry` returns 0 or 1, and `0x46460` returns a zero-extended word
+  (`0x46484` `lea eax,[ecx*4]`, `0x4648D` `add eax,ecx`, `0x4648F` `mov ax,[..]`, with ECX the side).
+
 ## §4 Named gaps, limits and unhit blocks
 
 - **Unhit blocks, named.** `0x463FB` in `0x461DC`: the fourth toggle reads the low byte's bit 5 again
   (`0x463EC` `mov ax,[esp+ebx]`, `0x463F2` `and al,0x20`) right after `0x463E8` cleared it whenever it was
   set, so `xor byte [esp+ebx+1],0x20` cannot run; the port keeps the same dead test, and `@t4` (testing
   the bit it flips) is caught by `r2` and `r5`. `0x46D97` in `0x46C78`: state 0xA or above 0xD calls the
-  runtime fatal `0x62003`; the port skips the weight store there. Every other block of every row is hit.
+  runtime fatal `0x62003`; the port skips the weight store there. `0x1E028`, `0x1E0C1` and `0x1E0DA` in
+  `0x1DE64`: the two-bit codes `0x16`, `0x14` and `0x15` of the stance-2 and bit-14 arms need bits 0 and 1
+  (or 2 and 3) both set, and the single-bit tests before them (`0x1DFCD`/`0x1DFDB`, `0x1E060`/`0x1E074`,
+  `0x1E088`/`0x1E09B`) return first; the stance-2 arm's `mov al,0x11` (`0x1E041`) is reached only from
+  `0x1E160`. Every other block of every row is hit.
 - **Seam added.** `fighter_39278` opens with `PR_SEAM(0x39278u, v)`: `0x192DC` calls it once or twice with
   the same argument, and both leave the same `DS_001088EC` word, so only the call list tells them apart.
   `0x39278`'s own row was re-run (VERIFIED, 4/4); no other spec names `0x39278`.
@@ -260,6 +297,8 @@ run changes; the rows stub the callee with EAX = `0x100` (AL = 0). Each now read
 - **`0x3BAEC`: the pen's extension.** The raw sign-extends AX before each `0x3B9D8` call (`0x3BB37`,
   `0x3BB4C`); the port passes its `s32` on, and `0x3B9D8` (real here) truncates it again itself (`0x3BA39`),
   so a pen passed unextended is not separated in this row.
+- **`0x3C758`/`0x3C800`: `@pz` reads above the image.** With the phase `0xFFFF` zero-extended the entry is
+  `0x10A600 + 0xFFFF*0x14 = 0x24A5EC`, past the image's end and inside mem[], where the load left zeros.
 - **`0x3C758`/`0x3C800`: `0x3C600`'s result.** The stub returns a scratch descriptor; the real one's value
   (and its default arm, a `/* PORT: */` in the port) is its own row's.
 - **`0x461DC`: what is not observable.** `0x3C6E8` gets the zero-extended command word (`xor edx,edx; mov
@@ -269,6 +308,13 @@ run changes; the rows stub the callee with EAX = `0x100` (AL = 0). Each now read
 - **`0x354F0`: the sign call and the value call.** The raw takes the sign from the first `0x187FC` and the
   value from the second; the stub returns the same EAX to both, so a port using the first for both is
   only separated by the call count.
+- **`0x1DE64`: the two `0x4649C` results' width.** `mov byte [esp+0x30],al; cmp byte [esp+0x30],0` and
+  `test al,al` (`0x1DF0E`..`0x1DF22`) read AL; the port tests the two `int`s. `0x4649C` runs real here (so
+  the two probes can differ: `s4` hits mask 3 alone, `s6` mask 0xC alone, `s5`/`s7`/`s8` both, at index
+  1, 0 and 2), and its port returns 0 or 1, so the width is not separated and the port was left as it is.
+- **`0x1DE64`: the stance's width.** The raw keeps DL (`0x1DE6E` `mov [esp+0x34],dl`, `0x1DF85` `movzx
+  ebp,byte [esp+0x34]`); the port takes a `u32` its one caller fills from a byte, and the binding passes
+  DL (`a2`: EDX = `0x102`). A port caller passing more than a byte is outside the row.
 - **`0x361C8`: a hand-resolved jump table.** `jmp cs:[ecx*4+0x361b8]` at `0x361E3` (guard `0x361D6` `cmp
   dl,3; ja`, then `xor ecx,ecx; mov cl,dl`) is not a form `switch_cases` bounds, so the row was PARTIAL
   until `diff_emu.RESOLVED_JUMPS` gained `0x361E3: (0x361D6, 0x361B8, 4)`; the table's four targets are
@@ -315,7 +361,7 @@ seeded; at least one dropped or misplaced store per field is a mutant.
 | `fighter_45908` | rec+0x1C (+0x18), the +0x14 slot's +0x54, +0x57 (+0x53..+0x58), ctx[2]+0x8A and the +0x14 slot's +0x8A (+0x89, +0x8B; different blocks in `z5`, `z6`, `z8`) | `@x1c`, `@s54`, `@s57`, `@sslot`, `@a8a`, `@e8a`, `@early` |
 | `fighter_406b4` | node+8 (+0xC seeded), the actor's +0x34, +0x36, +0x38 (+0x32), +0x44 (+0x42, +0x46), +0x14; `0x104AE9` (E8, EA) | `@n8`, `@w34d`, `@r60`, `@r300`, `@r18`, `@w44`, `@x14`, `@x14a`, `@ae9` |
 
-The two predicates (`0x467DC`, `0x4682C`) write nothing.
+The two predicates (`0x467DC`, `0x4682C`) and `0x1DE64` write nothing.
 
 **Findings.** `fighter_39b30`'s first fixture put a stray word before the h pair, so the h, m and a words
 were not the ones the cases named: the row verified (both sides read the same bytes) but `@hz` and `@q32`
@@ -328,6 +374,9 @@ by the first eight cases (each gate failed only where the last test failed too);
 them.
 
 ## §6 Queue entries not done
+
+Every other entry of the queue has a row (§2); the nine wave-1 leftovers had no gap named in the d1a/d1b
+records beyond "not reached" and `0x45908`'s open EAX trace, which §1 closes.
 
 | addr | size | why |
 |---|---|---|
