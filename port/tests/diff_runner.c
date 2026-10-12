@@ -30865,6 +30865,76 @@ static void b_d4c_33eb4(const u32 *r, u32 *eax) { fighter_spawn(r[R_EAX]); *eax 
     static void m_d4c_wr_##name(const u32 *r, u32 *eax) { *eax = d4c_33eb4_core(r, n); }
 D4C_WR_MUT(a5, 1u) D4C_WR_MUT(a5al, 2u) D4C_WR_MUT(a5v, 3u) D4C_WR_MUT(xzext, 4u) D4C_WR_MUT(xlo, 5u)
 D4C_WR_MUT(xstride, 6u) D4C_WR_MUT(layerd, 7u) D4C_WR_MUT(layersext, 8u) D4C_WR_MUT(y, 9u) D4C_WR_MUT(side, 10u)
+/* 0x47208 fighter_command_generate: EAX = side. One restatement with one choice flipped per mutant
+ * number (M(n): the mutant n is not selected). */
+static u32 d4c_47208_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut != (n))
+    u32 side = r[R_EAX], o = 1u - side;
+    u32 slot = DS_001077B0 + side * 0x94u, b = 0x001081F0u + side * 0x40u, entry, e0 = 0u;
+    u32 w = DS_001088E0 + (M(30u) ? side : o) * 2u;                                  /* @cmdside */
+    int gate;
+    if (!M(20u)) ai_classify(o);                                                     /* @clsearly: before the free-play block */
+    gate = (config_field_get(M(3u) ? 0x29u : 0x28u) & (M(2u) ? 0x800u : 0x08u)) != 0u;   /* @dipfield, @dipbit */
+    if (!M(1u)) gate = 1;                                                            /* @nodip: the free-play test alone */
+    if (gate) {
+        u32 f = config_not_free_play();
+        gate = !M(4u) ? (f != 0u) : !M(5u) ? ((u8)f == 0u) : (f == 0u);              /* @freeinv, @freeal */
+    }
+    if (gate) {
+        const u8 *str = game_string_get(M(9u) ? 0x51u : 0x50u);                      /* @strid */
+        if (!M(7u)) text_cursor_hold_font2(7, 0xA, str, 0x4000u);                    /* @textargs */
+        else if (M(6u)) text_cursor_hold_font2(0xA, 7, str, M(8u) ? 0x4000u : 0x4002u);   /* @notext, @textmode */
+        if ((!M(10u) || DSB(DS_00107813) != DSB(DS_001078A7))                        /* @noxor */
+                && (!M(11u) || DSB(slot + 0x63u) != 0u) && M(13u)) {                 /* @c8noown, @noc8 */
+            if (!M(14u)) DSW(DS_001082C8 + side * 4u) = 0u;                          /* @c8w */
+            else DSD(DS_001082C8 + (M(12u) ? side : o) * 4u) = 0u;                   /* @c8side */
+        }
+    }
+    if (M(20u) && M(19u)) ai_classify(M(18u) ? o : side);                            /* @nocls, @clsside */
+    if (M(22u) && DSB((M(21u) ? slot : DS_001077B0 + o * 0x94u) + 0x63u) == 0u) return 0u;   /* @no63, @63other */
+    if (!M(24u)) DSD(w) = 0u;                                                        /* @zerod */
+    else if (M(23u)) DSW(w) = 0u;                                                    /* @nozero */
+    if (M(25u) && DSB(DS_00105B39) != 0u) return 0u;                                 /* @nob39 */
+    if (!M(28u)) e0 = DSD(b + 0x1Cu) + (u32)DSB(b + 0x30u) * 8u;                     /* @early: the entry before 0x470F8 */
+    if (M(26u)) ai_manage(M(27u) ? side : o);                                        /* @nomanage, @manageside */
+    entry = !M(28u) ? e0 : DSD(b + 0x1Cu) + (u32)DSB(b + 0x30u) * (M(41u) ? 8u : 4u);   /* @stride */
+    {
+        int f = fighter_actor_bit15_clear(M(16u) ? side : o);                        /* @facingside */
+        u32 fa = M(15u) ? (u32)(u8)f : (u32)f;                                       /* @facingeax: the port before the correction */
+        DSW(w) = M(29u) ? fighter_cmd_facing(fa, DSD(entry)) : (u16)DSD(entry);      /* @nomap */
+    }
+    if (M(31u) ? (DSD(entry) == 0xFFFFu) : (DSW(entry) == 0xFFFFu)) {                /* @termw */
+        if (M(32u)) DSD(b + 0x04u) = 0u;                                             /* @noterm04 */
+        if (M(33u)) DSW(w) = 0u;                                                     /* @notermzero */
+    } else {
+        s32 n = M(36u) ? (s32)DSB(b + 0x31u) : (s32)(s8)DSB(b + 0x31u);              /* @b31sext */
+        s32 d = M(35u) ? (s32)(s16)DSW(entry + (M(40u) ? 4u : 6u)) : (s32)DSW(entry + 4u);   /* @duruns, @duroff */
+        if (M(34u) ? (n >= d) : (n > d)) {                                           /* @durgt */
+            if (M(38u)) DSB(b + 0x31u) = 0u;                                         /* @noadv31 */
+            if (M(37u)) DSB(b + 0x30u) = (u8)(DSB(b + 0x30u) + 1u);                  /* @noadv30 */
+        }
+    }
+    if (M(39u)) DSB(b + 0x31u) = (u8)(DSB(b + 0x31u) + 1u);                          /* @noinc31 */
+    if (!M(43u)) DSW(b + 0x0Cu) = (u16)(DSW(b + 0x0Cu) + 1u);                        /* @inc0cw */
+    else if (M(42u)) DSD(b + 0x0Cu) = DSD(b + 0x0Cu) + 1u;                           /* @noinc0c */
+    return 0u;
+#undef M
+}
+static void b_d4c_47208(const u32 *r, u32 *eax) { fighter_command_generate(r[R_EAX]); *eax = 0u; }
+#define D4C_CG_MUT(name, n) \
+    static void m_d4c_cg_##name(const u32 *r, u32 *eax) { *eax = d4c_47208_core(r, n); }
+D4C_CG_MUT(nodip, 1u) D4C_CG_MUT(dipbit, 2u) D4C_CG_MUT(dipfield, 3u)
+D4C_CG_MUT(freeinv, 4u) D4C_CG_MUT(freeal, 5u) D4C_CG_MUT(notext, 6u) D4C_CG_MUT(textargs, 7u)
+D4C_CG_MUT(textmode, 8u) D4C_CG_MUT(strid, 9u) D4C_CG_MUT(noxor, 10u) D4C_CG_MUT(c8noown, 11u)
+D4C_CG_MUT(c8side, 12u) D4C_CG_MUT(noc8, 13u) D4C_CG_MUT(c8w, 14u) D4C_CG_MUT(facingeax, 15u)
+D4C_CG_MUT(facingside, 16u) D4C_CG_MUT(clsside, 18u) D4C_CG_MUT(nocls, 19u) D4C_CG_MUT(clsearly, 20u)
+D4C_CG_MUT(s63other, 21u) D4C_CG_MUT(no63, 22u) D4C_CG_MUT(nozero, 23u) D4C_CG_MUT(zerod, 24u)
+D4C_CG_MUT(nob39, 25u) D4C_CG_MUT(nomanage, 26u) D4C_CG_MUT(manageside, 27u) D4C_CG_MUT(early, 28u)
+D4C_CG_MUT(nomap, 29u) D4C_CG_MUT(cmdside, 30u) D4C_CG_MUT(termw, 31u) D4C_CG_MUT(noterm04, 32u)
+D4C_CG_MUT(notermzero, 33u) D4C_CG_MUT(durgt, 34u) D4C_CG_MUT(duruns, 35u) D4C_CG_MUT(b31sext, 36u)
+D4C_CG_MUT(noadv30, 37u) D4C_CG_MUT(noadv31, 38u) D4C_CG_MUT(noinc31, 39u) D4C_CG_MUT(duroff, 40u)
+D4C_CG_MUT(stride, 41u) D4C_CG_MUT(noinc0c, 42u) D4C_CG_MUT(inc0cw, 43u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39680,6 +39750,49 @@ static const binding_t k_bindings[] = {
     { "fighter_spawn@layersext",               m_d4c_wr_layersext, 0x00000000u },
     { "fighter_spawn@y",                       m_d4c_wr_y, 0x00000000u },
     { "fighter_spawn@side",                    m_d4c_wr_side, 0x00000000u },
+    { "fighter_command_generate",            b_d4c_47208, 0x00000000u },
+    { "fighter_command_generate@nodip",        m_d4c_cg_nodip, 0x00000000u },
+    { "fighter_command_generate@dipbit",       m_d4c_cg_dipbit, 0x00000000u },
+    { "fighter_command_generate@dipfield",     m_d4c_cg_dipfield, 0x00000000u },
+    { "fighter_command_generate@freeinv",      m_d4c_cg_freeinv, 0x00000000u },
+    { "fighter_command_generate@freeal",       m_d4c_cg_freeal, 0x00000000u },
+    { "fighter_command_generate@notext",       m_d4c_cg_notext, 0x00000000u },
+    { "fighter_command_generate@textargs",     m_d4c_cg_textargs, 0x00000000u },
+    { "fighter_command_generate@textmode",     m_d4c_cg_textmode, 0x00000000u },
+    { "fighter_command_generate@strid",        m_d4c_cg_strid, 0x00000000u },
+    { "fighter_command_generate@noxor",        m_d4c_cg_noxor, 0x00000000u },
+    { "fighter_command_generate@c8noown",      m_d4c_cg_c8noown, 0x00000000u },
+    { "fighter_command_generate@c8side",       m_d4c_cg_c8side, 0x00000000u },
+    { "fighter_command_generate@noc8",         m_d4c_cg_noc8, 0x00000000u },
+    { "fighter_command_generate@c8w",          m_d4c_cg_c8w, 0x00000000u },
+    { "fighter_command_generate@facingeax",    m_d4c_cg_facingeax, 0x00000000u },
+    { "fighter_command_generate@facingside",   m_d4c_cg_facingside, 0x00000000u },
+    { "fighter_command_generate@clsside",      m_d4c_cg_clsside, 0x00000000u },
+    { "fighter_command_generate@nocls",        m_d4c_cg_nocls, 0x00000000u },
+    { "fighter_command_generate@clsearly",     m_d4c_cg_clsearly, 0x00000000u },
+    { "fighter_command_generate@63other",      m_d4c_cg_s63other, 0x00000000u },
+    { "fighter_command_generate@no63",         m_d4c_cg_no63, 0x00000000u },
+    { "fighter_command_generate@nozero",       m_d4c_cg_nozero, 0x00000000u },
+    { "fighter_command_generate@zerod",        m_d4c_cg_zerod, 0x00000000u },
+    { "fighter_command_generate@nob39",        m_d4c_cg_nob39, 0x00000000u },
+    { "fighter_command_generate@nomanage",     m_d4c_cg_nomanage, 0x00000000u },
+    { "fighter_command_generate@manageside",   m_d4c_cg_manageside, 0x00000000u },
+    { "fighter_command_generate@early",        m_d4c_cg_early, 0x00000000u },
+    { "fighter_command_generate@nomap",        m_d4c_cg_nomap, 0x00000000u },
+    { "fighter_command_generate@cmdside",      m_d4c_cg_cmdside, 0x00000000u },
+    { "fighter_command_generate@termw",        m_d4c_cg_termw, 0x00000000u },
+    { "fighter_command_generate@noterm04",     m_d4c_cg_noterm04, 0x00000000u },
+    { "fighter_command_generate@notermzero",   m_d4c_cg_notermzero, 0x00000000u },
+    { "fighter_command_generate@durgt",        m_d4c_cg_durgt, 0x00000000u },
+    { "fighter_command_generate@duruns",       m_d4c_cg_duruns, 0x00000000u },
+    { "fighter_command_generate@b31sext",      m_d4c_cg_b31sext, 0x00000000u },
+    { "fighter_command_generate@noadv30",      m_d4c_cg_noadv30, 0x00000000u },
+    { "fighter_command_generate@noadv31",      m_d4c_cg_noadv31, 0x00000000u },
+    { "fighter_command_generate@noinc31",      m_d4c_cg_noinc31, 0x00000000u },
+    { "fighter_command_generate@duroff",       m_d4c_cg_duroff, 0x00000000u },
+    { "fighter_command_generate@stride",       m_d4c_cg_stride, 0x00000000u },
+    { "fighter_command_generate@noinc0c",      m_d4c_cg_noinc0c, 0x00000000u },
+    { "fighter_command_generate@inc0cw",       m_d4c_cg_inc0cw, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -1389,6 +1389,7 @@ int ai_pred_468d8(u32 side)
  * (ECX = 1-param); the port keeps that transpose. */
 void ai_classify(u32 param)
 {
+    PR_SEAM(0x469A8u, param);
     u32 ecx = 1u - param;
     if ((u8)fighter_frame_flag(0u, param) == 0u) {      /* 0x469BB, AL 0x469C0 */
         DSD(0x00108214u + ecx * 0x40u) = DSD(0x00108218u + ecx * 0x40u);
@@ -1429,6 +1430,7 @@ void ai_classify(u32 param)
  * fighter is idle (slot+0x53 == 0) and no move is active, pick a new move. */
 void ai_manage(u32 side)
 {
+    PR_SEAM(0x470F8u, side);
     u32 b = ai_b(side);
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 state = DSD(b + 0x28u);

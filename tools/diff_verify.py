@@ -22306,6 +22306,112 @@ D4C_SPECS += [
         d4c_wrap_case("e3", 0x100),
     ], calls=(D4C_33C78,), eax_mask=0,
        mutants=("@a5", "@a5al", "@a5v", "@xzext", "@xlo", "@xstride", "@layerd", "@layersext", "@y", "@side")),
+]
+
+D4C_MOVES, D4C_MOVES2 = 0x0010A000, 0x0010A100   # 0x47208: the side's move table (8-byte entries) and the other's
+D4C_DIP = E.Call(0x2D974, ("eax",))
+D4C_CLASSIFY = E.Call(0x469A8, ("eax",))
+# the 0x470F8 stub moves side 0's move index to 2: the raw reads the index and the table after it
+# (0x472E1..0x472E7), so a side-0 case reads entry 2 whatever its +0x30 was
+D4C_MANAGE = E.Call(0x470F8, ("eax",), writes=((None, 0x001081F0 + 0x30, b"\x02"),))
+
+
+def d4c_str_pokes(sid, text, other=b"XX"):
+    """The localisation table (the form of c3g_combo_str_case) with `text` at id `sid` and `other`
+    at the id below it, and the 0x102760 buffer seeded."""
+    g, e = sid >> 6, sid & 0x3F
+    groups = [[b"g%d" % k] for k in range(g)] + [[b""] * (e - 1) + [other, text]]
+    buf, offs = bytearray(8), []
+    for gi, grp in enumerate(groups):
+        if gi > 0:
+            offs.append(len(buf))
+            buf.extend(b"\x00" * 8)
+        for ent in grp:
+            buf.append(len(ent) & 0xFF)
+            buf.extend(bytes(c ^ (len(ent) & 0xFF) for c in ent))
+    for i, off in enumerate(offs):
+        at = 4 if i == 0 else offs[i - 1] + 4
+        buf[at:at + 4] = le32(off)
+    p = {0x001082DC: le32(0x0010AA00), 0x0010AA00: b"\x00" * 8 + le32(0x0010AB00) + le32(0x400) + b"\x00" * 15,
+         0x00102760: bytes([0x5A]) * 0x40}
+    for off in range(0, len(buf), 0x40):
+        p[0x0010AB00 + off] = bytes(buf[off:off + 0x40])
+    return p
+
+
+def d4c_cmd_case(cid, side, dip=0, free=1, s63=(1, 1), b39=0, cmd=0x00000041, dur=3, b30=0, b31=0, facing=1,
+                 b04=0x00010000, b0c=0x0001FFFF):
+    """0x47208: both slots' +0x62..+0x64, the byte 0x105B39, the two command words 0x1088E0 and
+    the two dwords 0x1082C8 between their neighbours, both AI blocks whole (the side's +0x04,
+    +0x0C, +0x1C = its move table, +0x30 the move index, +0x31 the frame count), the four move
+    entries from index 0 with `cmd`/`dur` at the index the raw reads (side 0: 2, the 0x470F8
+    stub's; side 1: `b30`) and other commands and durations around it, and the string 0x51.
+    `dip`, `free` and `facing` are the stub EAX of 0x2D974, 0x2CAA8 and 0x1A570."""
+    p = d4c_str_pokes(0x51, b"FREE")
+    p.update({0x00105B38: bytes([0x38, b39, 0x3A]),
+              0x001088DE: le16(0xDEDF) + le16(0x1111) + le16(0x2222) + le16(0xE4E5),
+              0x001082C4: le32(0xC4C4C4C4) + le32(0x11111111) + le32(0x22222222) + le32(0xD0D0D0D0)})
+    for sd in (0, 1):
+        p[DS_SLOTS + sd * 0x94 + 0x62] = bytes([0x62, s63[sd], 0x64])
+        b = bytearray(((0x21 + sd * 0x40 + k * 3) & 0xFF) | 1 for k in range(0x40))
+        b[0x1C:0x20] = le32(D4C_MOVES if sd == side else D4C_MOVES2)
+        if sd == side:
+            b[0x04:0x08], b[0x0C:0x10], b[0x30], b[0x31] = le32(b04), le32(b0c), b30, b31
+        else:
+            b[0x30], b[0x31] = 1, 0x7F
+        p[0x001081F0 + sd * 0x40] = bytes(b)
+    idx = 2 if side == 0 else b30
+    ents = [(0x00000101 + k, 0x7700 + k) for k in range(5)]
+    ents[idx] = (cmd, dur)
+    p[D4C_MOVES] = b"".join(le32(c) + le16(d) + le16(0x0E0E) for c, d in ents)
+    p[D4C_MOVES2] = b"".join(le32(0x00000808) + le16(0x0001) + le16(0x0F0F) for _ in range(5))
+    return Case(cid, {"eax": side}, p, {0x2D974: dip, 0x2CAA8: free, 0x1A570: facing})
+
+
+D4C_SPECS += [
+    # 0x47208 fighter_command_generate: EAX = side. 0x33950 runs on both sides. Bit 11 of the
+    # 0x2D974(0x29) stub's EAX (`test ah,8` 0x47225: k1, k5 set; k17 only bit 3 of AL) and a zero
+    # 0x2CAA8 (`test eax,eax` 0x47233: k5 returns 0x100) draw the string 0x51 (0x1C500 and its
+    # tree run on both sides) through 0x2F510(0xA, 7, the string, 0x4000), and, the two slots'
+    # +0x63 differing (`xor eax,edx; je` 0x47270) and the side's own non-zero, clear the dword
+    # 0x1082C8[side] (k2 equal, k3 own zero, k4 clears). Then 0x469A8(the other side), the side's
+    # +0x63 zero returns (k6), the side's command word = 0, the byte 0x105B39 set returns (k7),
+    # 0x470F8(side), the move entry [+0x1C] + [+0x30]*8 read after it, AL of 0x1A570(side) (`and
+    # eax,0xff` 0x472F2: k13 returns 0x100, k14 0xFFFFFF01) and the entry's dword through 0x3C6E8
+    # (run on both sides) into the command word; a dword of 0xFFFF (0x47314: k8; k16 0x1FFFF is
+    # not) clears +0x04 and the command word; else the zero-extended +0x31 at or above the
+    # entry's signed +4 word (`cmp dx,cx; jl` 0x47338: k9 3/3, k10 2/3, k11 -1, k12 0x80/0x10)
+    # zeroes +0x31 and increments +0x30; then +0x31 and the dword +0x0C are incremented. Void: the
+    # one caller 0x24CA1 loops on `mov eax,ebx` (0x24C9F) or reaches `call 0x461dc` (0x24CB5),
+    # which loads EAX (0x461F8, 0x46203, 0x46211) before reading it.
+    Spec("fighter_command_generate", 0x47208, [
+        d4c_cmd_case("k0", 0),
+        d4c_cmd_case("k1", 1, dip=0x0800, cmd=0x00010040),
+        d4c_cmd_case("k2", 0, dip=0xFFFF0800, free=0),
+        d4c_cmd_case("k3", 1, dip=0x0800, free=0, s63=(1, 0)),
+        d4c_cmd_case("k4", 0, dip=0x0800, free=0, s63=(1, 0)),
+        d4c_cmd_case("k5", 1, dip=0x0800, free=0x100, s63=(0, 2)),
+        d4c_cmd_case("k6", 0, s63=(0, 1)),
+        d4c_cmd_case("k7", 1, b39=1),
+        d4c_cmd_case("k8", 0, cmd=0x0000FFFF),
+        d4c_cmd_case("k9", 1, b31=3, dur=3, b30=1),
+        d4c_cmd_case("k10", 0, b31=2, dur=3),
+        d4c_cmd_case("k11", 1, dur=0xFFFF, b30=3),
+        d4c_cmd_case("k12", 0, b31=0x80, dur=0x0010),
+        d4c_cmd_case("k13", 1, facing=0x100, cmd=0x00010000),
+        d4c_cmd_case("k14", 0, facing=0xFFFFFF01, cmd=0x00020003),
+        d4c_cmd_case("k15", 1, facing=0, cmd=0x000F0000, b30=2, b31=0xFF, dur=0x0100),
+        d4c_cmd_case("k16", 0, cmd=0x0001FFFF, facing=0),
+        d4c_cmd_case("k17", 1, dip=0xFFFFF7FF, free=0, s63=(1, 0)),
+        d4c_cmd_case("k18", 1, dip=0x0800, free=0, s63=(2, 1)),
+    ], allow_calls=(0x33950, 0x3C6E8, 0x1C500, 0x474E4, 0x1E75C, 0x1E808, 0x500BB),
+       calls=(D4C_DIP, D3A_FREE, D2B_FONT2, D4C_CLASSIFY, D4C_MANAGE, BIT15), eax_mask=0,
+       mutants=("@nodip", "@dipbit", "@dipfield", "@freeinv", "@freeal", "@notext", "@textargs", "@textmode",
+                "@strid", "@noxor", "@c8noown", "@c8side", "@noc8", "@c8w", "@facingeax", "@facingside",
+                "@clsside", "@nocls", "@clsearly", "@63other", "@no63", "@nozero", "@zerod", "@nob39",
+                "@nomanage", "@manageside", "@early", "@nomap", "@cmdside", "@termw", "@noterm04",
+                "@notermzero", "@durgt", "@duruns", "@b31sext", "@noadv30", "@noadv31", "@noinc31", "@duroff",
+                "@stride", "@noinc0c", "@inc0cw")),
 ]   # D4C_SPECS end
 D1_SPECS += D4C_SPECS
 SPECS = [
