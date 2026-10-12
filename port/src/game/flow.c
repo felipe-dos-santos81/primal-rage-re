@@ -4994,7 +4994,7 @@ void game_state_6(void)
 
     u32 draw2 = rng_next(6u);                           /* 0x11AE9 (draw 2) */
     u32 p1 = draw1 + draw2;                             /* 0x11AEE */
-    if (p1 >= 7u) p1 -= 7u;                             /* 0x11AF6 (single sub 7) */
+    if ((s32)p1 >= 7) p1 -= 7u;                         /* 0x11AF1/0x11AF4 `jl`, 0x11AF6 (single sub 7) */
     fight_char_select(1u, p1);                          /* 0x11AFE 0x41350 */
     fighter_spawn(1u);                                  /* 0x11B08 0x33EB4 */
 
