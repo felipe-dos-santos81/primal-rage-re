@@ -16,6 +16,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x272DC` | `flow_arena_ko_check` | 164 | 0: the one caller `0x274EC` goes on with `or byte [0x104aec],2` (`0x274F1`), three pops and `ret` into `0x25362` `jmp 0x2540f` (the mode tail) |
 | `0x27DC8` | `flow_match_end` | 224 | 0: neither call site in `0x27FA8` reads EAX before its `ret` (`0x28012..0x2803A`/`0x28048`; `0x280E8..0x2812F`, where `0x280F3 lea eax` is the only use); `0x27FA8`'s sites `0x263AF` and `0x2669B` write AH or nothing up to their `ret` (`0x263B4 mov ah,[0x104aec]`; `0x4E11C` on one path writes AH at `0x4E121` and AL at `0x4E19D` before any read; `0x266A0..0x266AA`); then `0x25247`/`0x2529B` `jmp 0x2540f` (the mode tail) or `0x2528C call 0x28c38`, whose first EAX use is `mov eax,edx` (`0x28C4D`) |
 | `0x29970` | `flow_round_over_check` | 119 | 0: the one caller `0x29B54` goes on with `or byte [0x104aec],2` (`0x29B59`), three pops and `ret` into `0x251AD` `jmp 0x2540f` (the mode tail) |
+| `0x2C178` | `prompt_press_start` | 53 | 0: it returns `0x2C0F4`'s EAX untouched (`pop esi; pop ecx; pop ebx; ret` after the call at `0x2C1A4`), which the d2c record (§1, `0x2C0F4`) traces dead through this function's nine call sites. Seen here: `0x28D40 jmp 0x28d60` (`xor eax,eax`); the three loops at `0x42606`/`0x42665`/`0x426BE` rewrite EAX at their tops (`lea eax,[ecx+1]`, `xor eax,eax`); their exit `0x4271B` and `0x432C3`/`0x432D3` return it upward (not re-traced here) |
 
 ## §2 The row table (measured)
 
@@ -30,6 +31,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `flow_match_end` | `0x27DC8` | 5 | 11/11 | 31 | 0 | six stubs (`0x32B4C`, `0x4F728`, `0x4651C`, `0x46534` seamed here); `0x32970` and `0x32BB0` real in the original only (the port omits both, §4). `e3`: the byte `0x104B1F` = `0x83` (`@abcbit`), the handle `0x100` (`@deadlow`), the winner byte `0xFF` (`@b16sext`) |
 | `flow_round_over_check` | `0x29970` | 6 | 5/5 | 25 | 0 | `0x2C3FC` and `0x27C48` stubbed (the latter seamed here). `c0` takes both arms; `c2`/`c3` carry `0xFF` (`@sext0`, `@sext1`); the voice stub's EAX has AH set in `c0`, `c2`, `c3` (the raw stores AH after `xor ah,ah`) |
 | `flow_round_over_check_reread` | `0x29970` | 3 | 5/5 | 3 | 0 | the same entry with a `0x27C48` stub that stores `0x10` in `0x10789E`: side 1's byte is read at `0x299AD`, after side 0's call (`@pre`) |
+| `prompt_press_start` | `0x2C178` | 6 | 4/4 | 13 | 0 | `0x2C0F4` stubbed (seamed here). `k0`: x word `0x8123` (`@xzext`); `k2`: col byte `0x83` (`@colsext`); `k4`/`k5`: side 2 |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -47,6 +49,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x4651C` | none | 0 | none | one plain `ret` (`0x46530`) |
 | `0x46534` | EAX, EDX | 0 | `edx` | pushes EBX ECX EBP; one plain `ret` (`0x46590`) |
 | `0x27C48` | none | 0 | none | pushes EBX ECX EDX; four plain `ret` (`0x27D0F`, `0x27D8D`, `0x27DB2`, `0x27DC7`) |
+| `0x2C0F4` | EAX, EDX, EBX, ECX (`mov esi,eax` `0x2C0F6`, `mov edi,ebx` `0x2C0F8`, `mov eax,ecx` `0x2C0FA`; EDX is the row, the d2c row's registers) | 0 | `ebx ecx edx ebp` | pushes ESI EDI; two plain `ret` (`0x2C167`, `0x2C176`); `0x2C178` reads none of the clobbered registers after the call |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 

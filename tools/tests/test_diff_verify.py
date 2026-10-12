@@ -11263,6 +11263,7 @@ D3A_MASKS = {
     "flow_match_end": 0x0,
     "flow_round_over_check": 0x0,
     "flow_round_over_check_reread": 0x0,
+    "prompt_press_start": 0x0,
 }
 D3A_KINDS = {
     "frontend_coin_poll@nocredit": {'call #0', 'call #1', 'eax'},
@@ -11463,6 +11464,19 @@ D3A_KINDS = {
     "flow_round_over_check_reread@pre": {'byte', 'call #3', 'call #4', 'call #5'},
     "flow_round_over_check_reread@nowin0": {'byte', 'call #2', 'call #3', 'call #4'},
     "flow_round_over_check_reread@sext1": {'byte', 'call #0', 'call #1', 'call #2'},
+    "prompt_press_start@bit": {'call #0'},
+    "prompt_press_start@xzext": {'call #0'},
+    "prompt_press_start@xoff": {'call #0'},
+    "prompt_press_start@xstride": {'call #0'},
+    "prompt_press_start@xbyte": {'call #0'},
+    "prompt_press_start@colsext": {'call #0'},
+    "prompt_press_start@colstride": {'call #0'},
+    "prompt_press_start@colword": {'call #0'},
+    "prompt_press_start@spr0": {'call #0'},
+    "prompt_press_start@spr1": {'call #0'},
+    "prompt_press_start@side": {'call #0'},
+    "prompt_press_start@row": {'call #0'},
+    "prompt_press_start@swap": {'call #0'},
 }
 D3A_CASES = [
     ("frontend_coin_poll@nocredit", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
@@ -11663,6 +11677,19 @@ D3A_CASES = [
     ("flow_round_over_check_reread@pre", ['r0']),
     ("flow_round_over_check_reread@nowin0", ['r0']),
     ("flow_round_over_check_reread@sext1", ['r1']),
+    ("prompt_press_start@bit", ['k0', 'k3', 'k5']),
+    ("prompt_press_start@xzext", ['k0']),
+    ("prompt_press_start@xoff", ['k0', 'k1', 'k4']),
+    ("prompt_press_start@xstride", ['k1', 'k4']),
+    ("prompt_press_start@xbyte", ['k0', 'k1', 'k4']),
+    ("prompt_press_start@colsext", ['k2', 'k5']),
+    ("prompt_press_start@colstride", ['k3', 'k5']),
+    ("prompt_press_start@colword", ['k2', 'k3', 'k5']),
+    ("prompt_press_start@spr0", ['k0', 'k1', 'k4']),
+    ("prompt_press_start@spr1", ['k2', 'k3', 'k5']),
+    ("prompt_press_start@side", ['k1', 'k3', 'k4', 'k5']),
+    ("prompt_press_start@row", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
+    ("prompt_press_start@swap", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']),
 ]
 D1_MASKS.update(D3A_MASKS)
 D1_KINDS.update(D3A_KINDS)
@@ -12717,7 +12744,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
-        0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x2C060: (), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA7C: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (),
+        0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x2C060: (), 0x2C0F4: ("ebx", "ecx", "edx", "ebp"), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA7C: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (),
         # D2 d2b (record 2026-10-11-reverse-d2b): the stubs its rows add
         0x10D70: ("ebx", "ecx", "edx"), 0x1A8F4: ("edx",), 0x38BEC: (), 0x46670: (),
         0x2C320: (), 0x33C18: (), 0x2C088: ("ebx", "edx", "edi", "ebp"), 0x1D7B8: ("ebx", "edx"),

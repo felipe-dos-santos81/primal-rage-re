@@ -4800,6 +4800,7 @@ void prompt_press_start_clear(s32 col, s32 row, u32 side)
  * - otherwise nothing. */
 void prompt_press_start_blink(s32 col, s32 row, u32 side, u32 sprite)
 {
+    PR_SEAM(0x2C0F4u, (u32)col, (u32)row, side, sprite);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x2C0FC..0x2C108 */
     if (phase != 0u) {                                  /* 0x2C10E */
         if (phase == 0x18u)                             /* 0x2C168 */

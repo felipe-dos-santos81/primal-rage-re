@@ -18477,6 +18477,36 @@ D3A_SPECS += [
         Case("r2", {}, d3a_over_case(0x10, 0x20)),
     ], calls=(VOICE, D3A_WINNER_LOW), eax_mask=0, mutants=("@pre", "@nowin0", "@sext1")),
 ]
+D3A_BLINK = E.Call(0x2C0F4, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx", "ebp"))
+
+
+def d3a_press_case(b529, cols=(0x83, 0x18), xs=(0x8123, 0x4000, 0x7FFF)):
+    """0x2C178: the option byte 0x104529 between neighbours, the two col bytes 0xBAB58 (with the
+    byte below them) and the three x words 0xBAB5A.. (the image has two; the third is what side
+    2 indexes, and its bytes are the cols a side of 2 or 3 reads)."""
+    return {0x00104528: bytes([0x65, b529, 0x66]),
+            0x000BAB57: bytes([0x71, cols[0], cols[1]]) + b"".join(le16(x) for x in xs)}
+
+
+D3A_SPECS += [
+    # 0x2C178 prompt_press_start: EAX = side, EDX = row. With 0x104529 bit 1: 0x2C0F4(the word
+    # 0xBAB5A[side] sign-extended (`mov esi,[eax*2+0xbab58]; sar esi,0x10`), row, side, 1); else
+    # 0x2C0F4(the byte 0xBAB58[side] zero-extended (`movzx`), row, side, 0). The callee is a stub
+    # (seamed here, its own row). k4/k5 run side 2 (the third word; its low byte as a col).
+    # EBX, ECX and ESI enter dirty. Mask 0: record §1.
+    Spec("prompt_press_start", 0x2C178, [
+        Case("k0", {"eax": 0, "edx": 0x1D, "ebx": 0x11111111, "ecx": 0x22222222, "esi": 0x33333333},
+             d3a_press_case(0x02)),
+        Case("k1", {"eax": 1, "edx": 0x3600}, d3a_press_case(0xFF), {0x2C0F4: 0x12345678}),
+        Case("k2", {"eax": 0, "edx": 0x1B, "ebx": 0x11111111, "ecx": 0x22222222, "esi": 0x33333333},
+             d3a_press_case(0x00)),
+        Case("k3", {"eax": 1, "edx": 0xFFFFFFFF}, d3a_press_case(0xFD)),
+        Case("k4", {"eax": 2, "edx": 0x1D}, d3a_press_case(0x03)),
+        Case("k5", {"eax": 2, "edx": 0x1C}, d3a_press_case(0x01, xs=(0x81F0, 0x4000, 0x7FFF))),
+    ], calls=(D3A_BLINK,), eax_mask=0,
+       mutants=("@bit", "@xzext", "@xoff", "@xstride", "@xbyte", "@colsext", "@colstride", "@colword", "@spr0",
+                "@spr1", "@side", "@row", "@swap")),
+]
 D1_SPECS += D3A_SPECS
 
 

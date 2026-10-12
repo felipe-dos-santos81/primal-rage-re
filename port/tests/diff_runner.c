@@ -26281,6 +26281,33 @@ D3A_RC_MUT(swap) D3A_RC_MUT(v27a) D3A_RC_MUT(v22a) D3A_RC_MUT(v27b) D3A_RC_MUT(v
 D3A_RC_MUT(b00a) D3A_RC_MUT(b00b) D3A_RC_MUT(b00byte) D3A_RC_MUT(b09a) D3A_RC_MUT(b09b) D3A_RC_MUT(nob09)
 D3A_RC_MUT(early0) D3A_RC_MUT(early1) D3A_RC_MUT(late0) D3A_RC_MUT(late1) D3A_RC_MUT(nowin0)
 D3A_RC_MUT(nowin1) D3A_RC_MUT(else) D3A_RC_MUT(pre)
+/* 0x2C178: EAX = side, EDX = row. Mask 0: it returns 0x2C0F4's EAX untouched (three pops and `ret` after
+ * the call), which the d2c record (§1, 0x2C0F4) traces dead through this function's call sites. */
+static void b_d3a_2c178(const u32 *r, u32 *eax) { prompt_press_start(r[R_EAX], (s32)r[R_EDX]); *eax = 0u; }
+enum { D3A_PS_NONE, D3A_PS_bit, D3A_PS_xzext, D3A_PS_xoff, D3A_PS_xstride, D3A_PS_xbyte, D3A_PS_colsext,
+       D3A_PS_colstride, D3A_PS_colword, D3A_PS_spr0, D3A_PS_spr1, D3A_PS_side, D3A_PS_row, D3A_PS_swap };
+static void d3a_2c178_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX];
+    s32 row = (mut == D3A_PS_row) ? 0 : (s32)r[R_EDX], col;
+    u32 spr;
+    if ((DSB(0x00104529u) & ((mut == D3A_PS_bit) ? 1u : 2u)) != 0u) {
+        u32 a = ((mut == D3A_PS_xoff) ? 0x000BAB58u : 0x000BAB5Au) + side * ((mut == D3A_PS_xstride) ? 1u : 2u);
+        col = (mut == D3A_PS_xzext) ? (s32)DSW(a) : (mut == D3A_PS_xbyte) ? (s32)(s8)DSB(a) : (s32)(s16)DSW(a);
+        spr = (mut == D3A_PS_spr0) ? 0u : 1u;
+    } else {
+        u32 a = 0x000BAB58u + side * ((mut == D3A_PS_colstride) ? 2u : 1u);
+        col = (mut == D3A_PS_colsext) ? (s32)(s8)DSB(a) : (mut == D3A_PS_colword) ? (s32)DSW(a) : (s32)DSB(a);
+        spr = (mut == D3A_PS_spr1) ? 1u : 0u;
+    }
+    if (mut == D3A_PS_swap) prompt_press_start_blink(row, col, side, spr);
+    else prompt_press_start_blink(col, row, (mut == D3A_PS_side) ? 0u : side, spr);
+}
+#define D3A_PS_MUT(name) \
+    static void m_d3a_ps_##name(const u32 *r, u32 *eax) { d3a_2c178_core(r, D3A_PS_##name); *eax = 0u; }
+D3A_PS_MUT(bit) D3A_PS_MUT(xzext) D3A_PS_MUT(xoff) D3A_PS_MUT(xstride) D3A_PS_MUT(xbyte) D3A_PS_MUT(colsext)
+D3A_PS_MUT(colstride) D3A_PS_MUT(colword) D3A_PS_MUT(spr0) D3A_PS_MUT(spr1) D3A_PS_MUT(side) D3A_PS_MUT(row)
+D3A_PS_MUT(swap)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32805,6 +32832,20 @@ static const binding_t k_bindings[] = {
     { "flow_round_over_check_reread@pre", m_d3a_rc_pre, 0x00000000u },
     { "flow_round_over_check_reread@nowin0", m_d3a_rc_nowin0, 0x00000000u },
     { "flow_round_over_check_reread@sext1", m_d3a_rc_sext1, 0x00000000u },
+    { "prompt_press_start", b_d3a_2c178, 0x00000000u },
+    { "prompt_press_start@bit", m_d3a_ps_bit, 0x00000000u },
+    { "prompt_press_start@xzext", m_d3a_ps_xzext, 0x00000000u },
+    { "prompt_press_start@xoff", m_d3a_ps_xoff, 0x00000000u },
+    { "prompt_press_start@xstride", m_d3a_ps_xstride, 0x00000000u },
+    { "prompt_press_start@xbyte", m_d3a_ps_xbyte, 0x00000000u },
+    { "prompt_press_start@colsext", m_d3a_ps_colsext, 0x00000000u },
+    { "prompt_press_start@colstride", m_d3a_ps_colstride, 0x00000000u },
+    { "prompt_press_start@colword", m_d3a_ps_colword, 0x00000000u },
+    { "prompt_press_start@spr0", m_d3a_ps_spr0, 0x00000000u },
+    { "prompt_press_start@spr1", m_d3a_ps_spr1, 0x00000000u },
+    { "prompt_press_start@side", m_d3a_ps_side, 0x00000000u },
+    { "prompt_press_start@row", m_d3a_ps_row, 0x00000000u },
+    { "prompt_press_start@swap", m_d3a_ps_swap, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
