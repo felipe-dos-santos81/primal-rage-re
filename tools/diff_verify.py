@@ -13447,6 +13447,57 @@ def d2a_enter_case(ch, word, frame, s53, s43=0x02, s54=0x04):
             0x001078FD: bytes([0xFD, 0x77, 0xFF])}
 
 
+D2A_365C8 = E.Call(0x365C8, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+D2A_CONSUME = E.Call(0x3BDDC, ("eax",), clobbers=("ebp",))
+D2A_H_TABS = (0x000C89C8, 0x000C8F90, 0x000C8FB8)   # 0x36430/0x364FC: the three per-character stream tables
+
+
+def d2a_handler_case(side, s43, cmd, ch=2, f28=0, own43=None):
+    """0x36430/0x364FC: EAX is the side's slot, or (with `own43`) the scratch slot D2A_FS while the
+    side's own slot carries +0x43 = own43 (what the raw's bit-2 test reads). The slot's
+    +0x42..+0x44, +0x51..+0x55 and +0x7A; both records' +0x28 word (0x1A640's facing bit); the
+    side's command word (the other side's has its four high bits flipped); and the three stream
+    dwords of `ch` and of ch sign-extended, all distinct."""
+    so, oo = D2A_SLOT + side * 0x94, D2A_SLOT + (1 - side) * 0x94
+    slot = so if own43 is None else D2A_FS
+    words = [0, 0]
+    words[side], words[1 - side] = cmd, cmd ^ 0xF000
+    p = {so: le32((D2A_R0, D2A_R1)[side]), oo: le32((D2A_R0, D2A_R1)[1 - side]),
+         D2A_R0 + 0x28: le16(f28), D2A_R1 + 0x28: le16(f28),
+         slot + 0x42: bytes([0x42, s43, 0x44]), slot + 0x51: bytes([0x51, 0x11, 0x53, 0x7F, 0x55]),
+         slot + 0x7A: bytes([ch]), 0x001088E0: le16(words[0]) + le16(words[1])}
+    if own43 is not None:
+        p[so + 0x42] = bytes([0x62, own43, 0x64])
+    for i, c in enumerate(sorted({ch, (ch ^ 0x80) - 0x80})):
+        for j, t in enumerate(D2A_H_TABS):
+            p[t + c * 4] = le32(0x000E1000 + j * 0x1000 + i * 0x100 + (c & 0xFF))
+    return p
+
+
+def d2a_handler_cases():
+    """The eleven cases both twins take (EAX = slot, EDX = rec, EBX = side)."""
+    def regs(side, scratch=False):
+        return {"eax": D2A_FS if scratch else D2A_SLOT + side * 0x94, "edx": (D2A_R0, D2A_R1)[side], "ebx": side}
+    return [
+        Case("k0", regs(0), d2a_handler_case(0, 0x00, 0x0000), {0x365C8: 1, 0x36638: 1}),
+        Case("k1", regs(1), d2a_handler_case(1, 0xFF, 0x0000), {0x365C8: 0, 0x36638: 0}),
+        Case("k2", regs(0), d2a_handler_case(0, 0xFB, 0x80FF), {0x365C8: 0x100, 0x36638: 0x100, 0x3BDDC: 1}),
+        Case("k3", regs(1), d2a_handler_case(1, 0x04, 0x8000), {0x365C8: 0xFFFFFF01, 0x36638: 0}),
+        Case("k4", regs(0), d2a_handler_case(0, 0x00, 0x5000), {0x365C8: 0, 0x36638: 0}),
+        Case("k5", regs(1), d2a_handler_case(1, 0x00, 0xD000, f28=0x4000), {0x365C8: 0, 0x36638: 0}),
+        Case("k6", regs(1, True), d2a_handler_case(1, 0x04, 0x8000, own43=0xFB), {0x365C8: 0, 0x36638: 0}),
+        Case("k7", regs(0, True), d2a_handler_case(0, 0xFB, 0x8000, own43=0x04), {0x365C8: 0, 0x36638: 0}),
+        Case("k8", regs(0), d2a_handler_case(0, 0x40, 0x0000, ch=0x80), {0x365C8: 0, 0x36638: 0}),
+        Case("k9", regs(1), d2a_handler_case(1, 0x00, 0x6000, ch=0x80, f28=0x4000), {0x365C8: 0, 0x36638: 0}),
+        Case("k10", regs(0), d2a_handler_case(0, 0x00, 0x4000, ch=0x80), {0x365C8: 0, 0x36638: 0}),
+    ]
+
+
+D2A_HANDLER_CALLS = (D2A_365C8, C1_36638, D2A_CONSUME, ANIM_BEGIN)
+D2A_HANDLER_MUTANTS = ("@al365", "@al366", "@slot43", "@or", "@cmd", "@prio", "@b2", "@cside", "@tab",
+                       "@hold", "@s52a", "@s54", "@early", "@inv", "@s52b", "@late", "@csext", "@order",
+                       "@no366", "@side1a", "@holdb", "@tabb")
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13516,6 +13567,18 @@ D2A_SPECS = [
     ], allow_calls=(0x35C1C, 0x35D20), calls=(P6_2BCF4, ANIM_BEGIN), eax_mask=0,
        mutants=("@s52", "@s53a", "@s53k", "@idx", "@maxb", "@maxz", "@floor", "@fz", "@cmp", "@neg",
                 "@f2z", "@w32", "@gate", "@r", "@div")),
+    # 0x36430 fighter_state_36430: EAX = slot, EDX = rec, EBX = side. 0x1A640 runs real (no stub of
+    # any row; `test eax,eax` 0x364D7 on its 0/0x1000/0x2000); 0x365C8 and 0x36638 are stubs whose
+    # AL the raw tests (0x3643E, 0x36455: k2 returns 0x100 from both), 0x3BDDC a stub whose result
+    # is unread, 0x2BC30 the anim-begin. k6/k7 pass a scratch slot in EAX: the bit-2 test at 0x36499
+    # reads the side's own slot (0x3648B..0x36497 scale ESI). Mask 0: the caller returns at once
+    # (0x34C6D..0x34C72, the dispatcher) and its one call site overwrites EAX (0x35801).
+    Spec("fighter_state_36430", 0x36430, d2a_handler_cases(), allow_calls=(0x1A640,),
+         calls=D2A_HANDLER_CALLS, eax_mask=0, mutants=D2A_HANDLER_MUTANTS),
+    # 0x364FC fighter_state_364fc: the twin; the 0x4000 arm runs on 0x1A640 == 0 (0x365A5 `jne`),
+    # with +0x52 = 5 and the 0xC8FB8 stream at 2.0. Mask 0: 0x34D83..0x34D88, then 0x35801.
+    Spec("fighter_state_364fc", 0x364FC, d2a_handler_cases(), allow_calls=(0x1A640,),
+         calls=D2A_HANDLER_CALLS, eax_mask=0, mutants=D2A_HANDLER_MUTANTS),
 ]
 D1_SPECS += D2A_SPECS
 
