@@ -20328,6 +20328,45 @@ static void m_d2a_39ff4_p14(const u32 *r, u32 *eax)     { d2a_39ff4_core(r, 0x20
 static void m_d2a_39ff4_one(const u32 *r, u32 *eax)     { d2a_39ff4_core(r, 0x40000000u); *eax = 0u; }
 static void m_d2a_39ff4_rev(const u32 *r, u32 *eax)     { d2a_39ff4_core(r, 0x80000000u); *eax = 0u; }
 
+/* 0x3BAEC: AX = pen. 0x3B9D8 runs real (its 0x3B8D8 and 0x1883C are the stubs; the 0x1883C stub
+ * clears both slots' +0x41, so the bit-15 OR-back is observable). */
+static void d2a_3baec_core(const u32 *r, u32 mut)
+{
+    const u32 s0 = 0x001077B0u, s1 = 0x001077B0u + 0x94u;
+    u32 gm = (mut & 4u) ? 2u : 4u, km = (mut & 2048u) ? 0xFFFFu : 0x8000u;   /* @gbit; @kmask: the whole word */
+    u32 keep0, keep1, first;
+    s32 pen = (s32)r[R_EAX];
+    if (!(mut & 1u) && (DSB(s0 + 0x42u) & gm) != 0u) return;               /* @gate0 */
+    if (!(mut & 2u) && (DSB(s1 + 0x42u) & gm) != 0u) return;               /* @gate1 */
+    keep0 = DSW(s0 + 0x40u) & km;
+    keep1 = DSW(s1 + 0x40u) & km;
+    first = ((DSB(s0 + 0x43u) & 2u) != 0u
+             && ((mut & 32u) || ((DSB(s1 + 0x43u) & 2u) == 0u) != ((mut & 64u) != 0u))) ? 1u : 0u;   /* @o1, @o1inv */
+    if (mut & 8u) first = 0u;                                              /* @order: side 0 always first */
+    if (mut & 16u) first = 1u;                                             /* @rorder: side 1 always first */
+    fighter_3b9d8(first, pen);
+    if (!(mut & 4096u)) fighter_3b9d8((mut & 8192u) ? first : 1u - first, pen);   /* @one, @same */
+    if (mut & 1024u) { keep0 = DSW(s0 + 0x40u) & km; keep1 = DSW(s1 + 0x40u) & km; }   /* @klate: read after the pushes */
+    if (mut & 512u) { u32 t = keep0; keep0 = keep1; keep1 = t; }             /* @kswap */
+    if (!(mut & 128u)) DSD(s0 + 0x40u) |= keep0;                             /* @keep0 */
+    if (!(mut & 256u)) DSD(s1 + 0x40u) |= keep1;                             /* @keep1 */
+}
+static void b_d2a_3baec(const u32 *r, u32 *eax) { fighter_3baec((s32)r[R_EAX]); *eax = 0u; }
+static void m_d2a_3baec_gate0(const u32 *r, u32 *eax)  { d2a_3baec_core(r, 0x1u); *eax = 0u; }
+static void m_d2a_3baec_gate1(const u32 *r, u32 *eax)  { d2a_3baec_core(r, 0x2u); *eax = 0u; }
+static void m_d2a_3baec_gbit(const u32 *r, u32 *eax)   { d2a_3baec_core(r, 0x4u); *eax = 0u; }
+static void m_d2a_3baec_order(const u32 *r, u32 *eax)  { d2a_3baec_core(r, 0x8u); *eax = 0u; }
+static void m_d2a_3baec_rorder(const u32 *r, u32 *eax) { d2a_3baec_core(r, 0x10u); *eax = 0u; }
+static void m_d2a_3baec_o1(const u32 *r, u32 *eax)     { d2a_3baec_core(r, 0x20u); *eax = 0u; }
+static void m_d2a_3baec_o1inv(const u32 *r, u32 *eax)  { d2a_3baec_core(r, 0x40u); *eax = 0u; }
+static void m_d2a_3baec_keep0(const u32 *r, u32 *eax)  { d2a_3baec_core(r, 0x80u); *eax = 0u; }
+static void m_d2a_3baec_keep1(const u32 *r, u32 *eax)  { d2a_3baec_core(r, 0x100u); *eax = 0u; }
+static void m_d2a_3baec_kswap(const u32 *r, u32 *eax)  { d2a_3baec_core(r, 0x200u); *eax = 0u; }
+static void m_d2a_3baec_klate(const u32 *r, u32 *eax)  { d2a_3baec_core(r, 0x400u); *eax = 0u; }
+static void m_d2a_3baec_kmask(const u32 *r, u32 *eax)  { d2a_3baec_core(r, 0x800u); *eax = 0u; }
+static void m_d2a_3baec_one(const u32 *r, u32 *eax)    { d2a_3baec_core(r, 0x1000u); *eax = 0u; }
+static void m_d2a_3baec_same(const u32 *r, u32 *eax)   { d2a_3baec_core(r, 0x2000u); *eax = 0u; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -24428,6 +24467,21 @@ static const binding_t k_bindings[] = {
     { "fighter_39ff4@p14", m_d2a_39ff4_p14, 0x00000000u },
     { "fighter_39ff4@one", m_d2a_39ff4_one, 0x00000000u },
     { "fighter_39ff4@rev", m_d2a_39ff4_rev, 0x00000000u },
+    { "fighter_3baec", b_d2a_3baec, 0x00000000u },
+    { "fighter_3baec@gate0", m_d2a_3baec_gate0, 0x00000000u },
+    { "fighter_3baec@gate1", m_d2a_3baec_gate1, 0x00000000u },
+    { "fighter_3baec@gbit", m_d2a_3baec_gbit, 0x00000000u },
+    { "fighter_3baec@order", m_d2a_3baec_order, 0x00000000u },
+    { "fighter_3baec@rorder", m_d2a_3baec_rorder, 0x00000000u },
+    { "fighter_3baec@o1", m_d2a_3baec_o1, 0x00000000u },
+    { "fighter_3baec@o1inv", m_d2a_3baec_o1inv, 0x00000000u },
+    { "fighter_3baec@keep0", m_d2a_3baec_keep0, 0x00000000u },
+    { "fighter_3baec@keep1", m_d2a_3baec_keep1, 0x00000000u },
+    { "fighter_3baec@kswap", m_d2a_3baec_kswap, 0x00000000u },
+    { "fighter_3baec@klate", m_d2a_3baec_klate, 0x00000000u },
+    { "fighter_3baec@kmask", m_d2a_3baec_kmask, 0x00000000u },
+    { "fighter_3baec@one", m_d2a_3baec_one, 0x00000000u },
+    { "fighter_3baec@same", m_d2a_3baec_same, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

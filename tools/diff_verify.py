@@ -13585,6 +13585,29 @@ def d2a_freeze_case(cam, s, actors, side0, side1):
     return p
 
 
+# 0x3BAEC: the real 0x1883C re-latches the slots; this stub clears both slots' +0x41 instead, so the
+# bit 15 the raw saved before the pushes (0x3BB0A..0x3BB26) and ORs back after them is observable.
+D2A_1883C_CLR = E.Call(0x1883C, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"),
+                       writes=((None, D2A_SLOT + 0x41, b"\x00"), (None, D2A_SLOT + 0x94 + 0x41, b"\x00")))
+
+
+def d2a_push_case(f40, x, s54=(0, 0), w34=(0x1234, 0xEDCC), w4c=(0x0123, 0x8123)):
+    """0x3BAEC: per slot the +0x40 dword (+0x41 bit 7 is the kept bit, +0x42 bit 2 the gate and bit
+    5 0x3B9D8's own early return, +0x43 bit 1 the order), +0x2C x, +0x4A..+0x4D and +0x53..+0x55;
+    the records' +0x32..+0x37; and DS_00107D30 with its neighbours (what the real 0x3B9D8 reads
+    and writes)."""
+    p = {0x00107D2F: b"\x2f\x30\x31"}
+    for k in (0, 1):
+        so, rec = D2A_SLOT + k * 0x94, (D2A_R0, D2A_R1)[k]
+        p[so] = le32(rec)
+        p[so + 0x2C] = le32(x[k])
+        p[so + 0x40] = le32(f40[k])
+        p[so + 0x4A] = le16(0x4A4B + k) + le16(w4c[k])
+        p[so + 0x53] = bytes([0x53, s54[k], 0x55])
+        p[rec + 0x32] = le16(0x3233) + le16(w34[k]) + le16(0x3637)
+    return p
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13705,6 +13728,24 @@ D2A_SPECS = [
        mutants=("@child0", "@csext", "@row", "@flag", "@bd", "@c4b", "@f2a", "@x0c", "@x18", "@x1c", "@s5d",
                 "@mask1", "@mask2", "@or41", "@t", "@tb", "@t1", "@tbyte", "@no34", "@side34", "@no19",
                 "@order19", "@abs", "@k", "@div", "@noneg", "@q32", "@p64", "@p14", "@one", "@rev")),
+    # 0x3BAEC fighter_3baec: AX = pen (`movsx ebx,ax` 0x3BB37/0x3BB4C). 0x3B9D8 (with its 0x33950)
+    # runs real: it is no stub of any row, and its own row truncates the pen again, so a pen passed
+    # unextended is not separated here (record §4). Its 0x3B8D8 is a stub; its 0x1883C is the stub
+    # that clears both +0x41 bytes (D2A_1883C_CLR). Mask 0: 0x3BC61 `mov al,1` and a return from
+    # 0x3BB90, whose sites are 0x2550E `mov eax,1` and 0x25422 `call 0x12d48` (record §1).
+    Spec("fighter_3baec", 0x3BAEC, [
+        Case("g0", {"eax": 0x0011}, d2a_push_case((0x00048000, 0x0000FF00), (0x900, 0x700))),
+        Case("g1", {"eax": 0x0011}, d2a_push_case((0x00008000, 0x00048000), (0x900, 0x700))),
+        Case("g2", {"eax": 0x0011}, d2a_push_case((0x0200FF00, 0x01000000), (0x900, 0x700)), {0x3B8D8: 0}),
+        Case("g3", {"eax": 0x0011}, d2a_push_case((0x02008000, 0x02008000), (0x700, 0x900))),
+        Case("g4", {"eax": 0x0020}, d2a_push_case((0x00007F00, 0x0200FF00), (0x700, 0x900)), {0x3B8D8: 1}),
+        Case("g5", {"eax": 0xFFEF}, d2a_push_case((0x01008000, 0x00000000), (0x900, 0x700), s54=(2, 2)),
+             {0x3B8D8: 1}),
+        Case("g6", {"eax": 0x00018010}, d2a_push_case((0x00000000, 0x01008100), (0x300, 0x700)), {0x3B8D8: 0x100}),
+        Case("g7", {"eax": 0x0011}, d2a_push_case((0x00200000, 0x00208000), (0x900, 0x700))),
+    ], allow_calls=(0x3B9D8, 0x33950), calls=(D1B_3B8D8, D2A_1883C_CLR), eax_mask=0,
+       mutants=("@gate0", "@gate1", "@gbit", "@order", "@rorder", "@o1", "@o1inv", "@keep0", "@keep1",
+                "@kswap", "@klate", "@kmask", "@one", "@same")),
 ]
 D1_SPECS += D2A_SPECS
 

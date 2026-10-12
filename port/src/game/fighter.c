@@ -8789,7 +8789,7 @@ void fighter_3b9d8(u32 side, s32 pen)
  * 0x3BB4C). Nothing when either slot's +0x42 bit 2 is set. Side 1 goes first
  * when only side 0's +0x43 bit 1 is set, else side 0 first. Each slot's
  * +0x40 bit 15, read before the pushes, is ORed back afterwards. */
-static void fighter_3baec(s32 pen)
+void fighter_3baec(s32 pen)
 {
     u32 keep0, keep1;
     if ((DSB(DS_001077B0 + 0x42u) & 4u) != 0u) return;          /* 0x3BAF0 */

@@ -6443,6 +6443,7 @@ D2A_MASKS = {
     "fighter_state_364fc": 0x0,
     "fighter_39b30": 0x0,
     "fighter_39ff4": 0x0,
+    "fighter_3baec": 0x0,
 }
 D2A_KINDS = {
     "fighter_146f0@gate": {'call #0', 'call #1'},
@@ -6650,6 +6651,20 @@ D2A_KINDS = {
     "fighter_39ff4@p14": {'call #0', 'call #2', 'call #3', 'call #4', 'call #5'},
     "fighter_39ff4@one": {'byte', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
     "fighter_39ff4@rev": {'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5'},
+    "fighter_3baec@gate0": {'byte', 'call #0', 'call #1', 'call #2', 'call #3'},
+    "fighter_3baec@gate1": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "fighter_3baec@gbit": {'byte', 'call #0', 'call #1', 'call #2', 'call #3'},
+    "fighter_3baec@order": {'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory'},
+    "fighter_3baec@rorder": {'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory'},
+    "fighter_3baec@o1": {'call #0', 'call #1'},
+    "fighter_3baec@o1inv": {'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory'},
+    "fighter_3baec@keep0": {'byte'},
+    "fighter_3baec@keep1": {'byte'},
+    "fighter_3baec@kswap": {'byte'},
+    "fighter_3baec@klate": {'byte'},
+    "fighter_3baec@kmask": {'byte'},
+    "fighter_3baec@one": {'byte', 'call #1', 'call #2', 'call #3'},
+    "fighter_3baec@same": {'byte', 'call #1', 'call #2', 'call #3'},
 }
 D2A_CASES = [
     ("fighter_146f0@gate", ['c0', 'c1', 'c2', 'c3', 'c4', 'c5']),
@@ -6857,6 +6872,20 @@ D2A_CASES = [
     ("fighter_39ff4@p14", ['f0', 'f1', 'f2', 'f3']),
     ("fighter_39ff4@one", ['f0', 'f1', 'f2', 'f3']),
     ("fighter_39ff4@rev", ['f0', 'f1', 'f2', 'f3']),
+    ("fighter_3baec@gate0", ['g0']),
+    ("fighter_3baec@gate1", ['g1']),
+    ("fighter_3baec@gbit", ['g0', 'g1']),
+    ("fighter_3baec@order", ['g2']),
+    ("fighter_3baec@rorder", ['g3', 'g4', 'g5', 'g6']),
+    ("fighter_3baec@o1", ['g3']),
+    ("fighter_3baec@o1inv", ['g2', 'g3']),
+    ("fighter_3baec@keep0", ['g2', 'g3', 'g5']),
+    ("fighter_3baec@keep1", ['g3', 'g4', 'g6']),
+    ("fighter_3baec@kswap", ['g2', 'g4', 'g5', 'g6', 'g7']),
+    ("fighter_3baec@klate", ['g2', 'g3', 'g4', 'g5', 'g6']),
+    ("fighter_3baec@kmask", ['g2', 'g4', 'g6']),
+    ("fighter_3baec@one", ['g2', 'g3', 'g4', 'g5', 'g6']),
+    ("fighter_3baec@same", ['g2', 'g3', 'g4', 'g5', 'g6']),
 ]
 D1_MASKS.update(D2A_MASKS)
 D1_KINDS.update(D2A_KINDS)
