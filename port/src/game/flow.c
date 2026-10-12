@@ -5014,7 +5014,7 @@ void game_state_6(void)
 
     DSW(DS_000F0A64) = 7;                               /* 0x11BAB */
     DSW(DS_000F0A6A) = 900;                             /* 0x11BB2 */
-    DSW(DS_000F0A6C) = DSW(DS_000F0A72);                /* 0x11BB9 */
+    DSW(DS_000F0A6C) = DSB(DS_000F0A72);                /* 0x11B9F/0x11BA6/0x11BB9 (`xor ah,ah; mov al,..`) */
     DSB(DS_000F0A6F) = 0;                               /* 0x11BBF */
 }
 
