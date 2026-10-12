@@ -30489,11 +30489,13 @@ static void m_d4e_14a5c_eax(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_14a5c
  * and runs 0x3C148 / 0x3C16C. Bits 1 and 2 test a predicate's whole int (the port before the
  * `test al,al` corrections 0x14838 / 0x14872 and 0x14BB4 / 0x14BEC). */
 typedef struct { u32 a, b, c, hold, cb0c, cb18, cb1c, fd, flag; u32 twin; } d4e_react_t;
+static const d4e_react_t k_d4e_14814 = { 0x000D2E86u, 0x000D2EDCu, 0x000D2E9Au, 0x0009AFE4u, 0x0001461Cu,
+                                         0x000145CCu, 0x000145E4u, 0x000FD108u, 0x000FD11Cu, 0u };
 static const d4e_react_t k_d4e_14b90 = { 0x000D2F56u, 0x000D2FACu, 0x000D2F6Au, 0x0009AFF4u, 0x00014988u,
                                          0x00014938u, 0x00014950u, 0x000FD100u, 0x000FD11Au, 1u };
-static void d4e_react_start(const d4e_react_t *t, u32 rec, u32 stream, u32 hold, u32 mut)
+static void d4e_react_start(const d4e_react_t *t, u32 rec, u32 stream, u32 hold)
 {
-    if ((t->twin != 0u) != ((mut & 0x8000000u) != 0u)) hit_anim_start_c(rec, stream, hold);   /* @starter */
+    if (t->twin) hit_anim_start_c(rec, stream, hold);
     else hit_anim_start_b(rec, stream, hold);
 }
 static void d4e_react_core(const d4e_react_t *t, const u32 *r, u32 mut)
@@ -30508,15 +30510,15 @@ static void d4e_react_core(const d4e_react_t *t, const u32 *r, u32 mut)
         if (first) {
             DSB(slot + 0x52u) = 9u;
             DSB(slot + 0x53u) = (mut & 0x40u) ? 7u : 4u;                         /* @a53 */
-            DSB(slot + 0x54u) = t->twin ? 2u : 0u;
+            DSB(slot + 0x54u) = ((t->twin != 0u) != ((mut & 0x8000000u) != 0u)) ? 2u : 0u;   /* @a54: the twin's value */
         }
         fighter_18b44((mut & 0x80u) ? ctx[3] : ctx[2]);                          /* @b18 */
         d4e_react_start(t, rec, (mut & 0x100u) ? t->c : t->a,                    /* @astream */
-                        (mut & 0x200u) ? 0x3F800000u : DSD(t->hold), mut);       /* @ahold */
+                        (mut & 0x200u) ? 0x3F800000u : DSD(t->hold));            /* @ahold */
         if (!first) {
             DSB(slot + 0x52u) = 9u;
             DSB(slot + 0x53u) = (mut & 0x40u) ? 7u : 4u;
-            DSB(slot + 0x54u) = t->twin ? 2u : 0u;
+            DSB(slot + 0x54u) = ((t->twin != 0u) != ((mut & 0x8000000u) != 0u)) ? 2u : 0u;
         }
         return;
     }
@@ -30528,8 +30530,9 @@ static void d4e_react_core(const d4e_react_t *t, const u32 *r, u32 mut)
     } else {
         stream = (mut & 0x2000u) ? t->b : t->c;
     }
+    if (mut & 0x10000000u) slot = ctx[2];                                        /* @slotctx: not EAX */
     if (mut & 0x4000u) DSB(slot + 0x52u) = 9u;                                   /* @early */
-    d4e_react_start(t, rec, stream, 0x3F800000u, mut);
+    d4e_react_start(t, rec, stream, 0x3F800000u);
     if (!(mut & 0x8000u)) DSB(slot + 0x57u) = 0u;                                /* @s57 */
     DSB(slot + 0x52u) = 9u;
     DSB(slot + 0x53u) = (mut & 0x10000u) ? 4u : 7u;                              /* @b53 */
@@ -30554,6 +30557,17 @@ static void d4e_react_core(const d4e_react_t *t, const u32 *r, u32 mut)
 #define D4E_REACT_MUT(fn, name, bit) \
     static void m_d4e_##fn##_##name(const u32 *r, u32 *eax) { d4e_react_core(&k_d4e_##fn, r, bit); *eax = 0u; }
 D4E_REACT_MUT(14b90, eax396, 1u)   D4E_REACT_MUT(14b90, eax590, 2u)
+static void b_d4e_14814(const u32 *r, u32 *eax) { fighter_14814(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+D4E_REACT_MUT(14814, eax396, 1u)        D4E_REACT_MUT(14814, eax590, 2u)        D4E_REACT_MUT(14814, voice, 4u)
+D4E_REACT_MUT(14814, sel, 8u)           D4E_REACT_MUT(14814, gside, 0x10u)      D4E_REACT_MUT(14814, aorder, 0x20u)
+D4E_REACT_MUT(14814, a53, 0x40u)        D4E_REACT_MUT(14814, b18, 0x80u)        D4E_REACT_MUT(14814, astream, 0x100u)
+D4E_REACT_MUT(14814, ahold, 0x200u)     D4E_REACT_MUT(14814, gate, 0x400u)      D4E_REACT_MUT(14814, dec, 0x800u)
+D4E_REACT_MUT(14814, nodec, 0x1000u)    D4E_REACT_MUT(14814, bstream, 0x2000u)  D4E_REACT_MUT(14814, early, 0x4000u)
+D4E_REACT_MUT(14814, s57, 0x8000u)      D4E_REACT_MUT(14814, b53, 0x10000u)     D4E_REACT_MUT(14814, b54, 0x20000u)
+D4E_REACT_MUT(14814, cb0c, 0x40000u)    D4E_REACT_MUT(14814, cbswap, 0x80000u)  D4E_REACT_MUT(14814, orbit, 0x100000u)
+D4E_REACT_MUT(14814, r55, 0x200000u)    D4E_REACT_MUT(14814, cmpuns, 0x400000u) D4E_REACT_MUT(14814, cmpge, 0x800000u)
+D4E_REACT_MUT(14814, fdidx, 0x1000000u) D4E_REACT_MUT(14814, noflag, 0x2000000u) D4E_REACT_MUT(14814, flagside, 0x4000000u)
+D4E_REACT_MUT(14814, a54, 0x8000000u)   D4E_REACT_MUT(14814, slotctx, 0x10000000u)
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39164,6 +39178,36 @@ static const binding_t k_bindings[] = {
     { "fighter_14b90_al", b_d2d_14b90, 0x00000000u },
     { "fighter_14b90_al@eax396", m_d4e_14b90_eax396, 0x00000000u },
     { "fighter_14b90_al@eax590", m_d4e_14b90_eax590, 0x00000000u },
+    { "fighter_14814", b_d4e_14814, 0x00000000u },
+    { "fighter_14814@eax396", m_d4e_14814_eax396, 0x00000000u },
+    { "fighter_14814@eax590", m_d4e_14814_eax590, 0x00000000u },
+    { "fighter_14814@voice", m_d4e_14814_voice, 0x00000000u },
+    { "fighter_14814@sel", m_d4e_14814_sel, 0x00000000u },
+    { "fighter_14814@gside", m_d4e_14814_gside, 0x00000000u },
+    { "fighter_14814@aorder", m_d4e_14814_aorder, 0x00000000u },
+    { "fighter_14814@a53", m_d4e_14814_a53, 0x00000000u },
+    { "fighter_14814@b18", m_d4e_14814_b18, 0x00000000u },
+    { "fighter_14814@astream", m_d4e_14814_astream, 0x00000000u },
+    { "fighter_14814@ahold", m_d4e_14814_ahold, 0x00000000u },
+    { "fighter_14814@gate", m_d4e_14814_gate, 0x00000000u },
+    { "fighter_14814@dec", m_d4e_14814_dec, 0x00000000u },
+    { "fighter_14814@nodec", m_d4e_14814_nodec, 0x00000000u },
+    { "fighter_14814@bstream", m_d4e_14814_bstream, 0x00000000u },
+    { "fighter_14814@early", m_d4e_14814_early, 0x00000000u },
+    { "fighter_14814@s57", m_d4e_14814_s57, 0x00000000u },
+    { "fighter_14814@b53", m_d4e_14814_b53, 0x00000000u },
+    { "fighter_14814@b54", m_d4e_14814_b54, 0x00000000u },
+    { "fighter_14814@cb0c", m_d4e_14814_cb0c, 0x00000000u },
+    { "fighter_14814@cbswap", m_d4e_14814_cbswap, 0x00000000u },
+    { "fighter_14814@orbit", m_d4e_14814_orbit, 0x00000000u },
+    { "fighter_14814@r55", m_d4e_14814_r55, 0x00000000u },
+    { "fighter_14814@cmpuns", m_d4e_14814_cmpuns, 0x00000000u },
+    { "fighter_14814@cmpge", m_d4e_14814_cmpge, 0x00000000u },
+    { "fighter_14814@fdidx", m_d4e_14814_fdidx, 0x00000000u },
+    { "fighter_14814@noflag", m_d4e_14814_noflag, 0x00000000u },
+    { "fighter_14814@flagside", m_d4e_14814_flagside, 0x00000000u },
+    { "fighter_14814@a54", m_d4e_14814_a54, 0x00000000u },
+    { "fighter_14814@slotctx", m_d4e_14814_slotctx, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

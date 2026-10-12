@@ -21931,6 +21931,48 @@ D4E_SPECS += [
         calls=(VOICE, C1_18B44, D2A_HIT_C, CLEAR34, CLEAR36, D3C_396AC, D3D_14590),
         allow_calls=(0x339AC,), eax_mask=0, mutants=("@eax396", "@eax590")),
 ]
+
+
+def d4e_react_case(side, slot, x2c, hold):
+    """0x14814: d2d's 0x14B90 fixture (the record's +0x50..+0x56, both slots and the EAX slot seeded
+    whole) with 0x14814's own globals: the side dwords 0xFD108 / 0xFD10C (d2d seeds the first; the
+    second and the dword after it here), the bytes 0xFD11C / 0xFD11D (d2d's) and the hold dword
+    0x9AFE4. What steers the real 0x396AC and 0x14590 there is not read: both are stubs."""
+    p = d2d_react_case(side, slot, 3, 5, 1, x2c=x2c)
+    p[0x000FD10C] = le32(0xACACACAC) + le32(0xB0B0B0B0)
+    p[0x0009AFE4] = le32(hold)
+    return p
+
+
+D4E_SPECS += [
+    # 0x14814 fighter_14814: EAX = slot, EDX = rec (EBX is pushed and overwritten unread, 0x14819).
+    # The row no batch wrote: 0x14B90's twin over 0x3C4CC, the 0xD2E86 / 0xD2EDC / 0xD2E9A streams,
+    # the hold dword 0x9AFE4, the callbacks 0x1461C / 0x145CC / 0x145E4, the dwords 0xFD108 and the
+    # bytes 0xFD11C; its hold arm stores the state after the 0x3C4CC call (0x14857..0x14861) and
+    # +0x54 = 0 on both arms, and it has no 0x3C148 / 0x3C16C. 0x339AC runs on both sides; the voice,
+    # 0x18B44, 0x3C4CC, **0x396AC** (`test al,al` 0x14838) and **0x14590** (`test al,al` 0x14872)
+    # are stubs with the EAX values of fighter_14b90_al. Mask 0, as d2d's 0x14B90: `mov al,1`
+    # 0x1485F / 0x14903 on every path and the port's function is void; 0x14920 (in 0x1490C) is
+    # followed by `mov eax,[esp]` 0x14925, and the dword at 0xA46D0 (the only stored pointer to
+    # 0x14814 in the image) is a reaction callback whose AL 0x34E2C returns (record d2d §1).
+    Spec("fighter_14814", 0x14814, [
+        Case("a0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0x0BADEB00},
+             d4e_react_case(0, DS_SLOTS, (0x100, 0x200), 0x40A00000), {0x396AC: 1}),
+        Case("a1", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0x0BADEB01},
+             d4e_react_case(1, D2D_SLOTX, (0x100, 0x200), 0x3F000000), {0x396AC: 0xFFFFFF01, 0x2C3FC: 0}),
+        Case("b0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0x0BADEB02},
+             d4e_react_case(0, DS_SLOTS, (1, 0x80000000), 0x40A00000), {0x396AC: 0x00000100, 0x14590: 1}),
+        Case("b1", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0x0BADEB03},
+             d4e_react_case(1, D2D_SLOTX, (0x300, 0x300), 0x40A00000), {0x396AC: 0, 0x14590: 0x00000100}),
+        Case("c0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0x0BADEB04},
+             d4e_react_case(0, DS_SLOTS, (0x100, 0x200), 0x40A00000), {0x396AC: 0xFFFFFF00, 0x14590: 0xFFFFFF00}),
+        Case("c1", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0x0BADEB05},
+             d4e_react_case(1, D2D_SLOTX, (0x200, 0x100), 0x40A00000), {0x396AC: 0, 0x14590: 0x00000080}),
+    ], calls=(VOICE, C1_18B44, HIT_B, D3C_396AC, D3D_14590), allow_calls=(0x339AC,), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "eax396 eax590 voice sel gside aorder a53 b18 astream ahold gate dec nodec bstream early s57 b53 "
+           "b54 cb0c cbswap orbit r55 cmpuns cmpge fdidx noflag flagside a54 slotctx").split())),
+]
 D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
