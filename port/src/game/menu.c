@@ -290,6 +290,7 @@ L_poll:                                                     /* 0x2FD0C */
 /* 0x2FFC4 — record §49-X. */
 u32 menu_step(u32 table, u32 stride, u32 flags)
 {
+    PR_SEAM_RET(0x2FFC4u, table, stride, flags);
     u32 title = table;                                      /* 0x2FFC7 */
     if (DSB(MENU_ACTIVE) == 0u) {                           /* 0x2FFCD..0x2FFD4 */
         DSD(DS_00105F2C) = DSD(DS_00101500);                /* 0x2FFDA 0x500BB, 0x2FFDF */

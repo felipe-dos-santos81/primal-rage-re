@@ -29663,6 +29663,615 @@ D5G_SPECS += [
 ]
 D1_SPECS += D5G_SPECS
 # ---- d5g end ----
+# ---- track D, wave 5, batch d5h (record 2026-10-12-reverse-d5h) ----
+# game/flow.c's top of the call graph. Every poke, and every address a binding or mutant derives from
+# one, stays inside the image.
+D5H_SPECS = []
+
+# ---- 0x11D04 game_state_step (record §2): the state dispatcher ---------------------------------
+D5H_DIVERT = E.Call(0x257A4, ("eax",))
+D5H_ATTRACT = E.Call(0x11000, (), clobbers=("ebp",))
+D5H_PAUSE_TAIL, D5H_CONT_TAIL, D5H_OVERLAY = E.Call(0x10DB0, ()), E.Call(0x10E18, ()), E.Call(0x2BF08, ())
+D5H_TITLE = E.Call(0x121A0, (), clobbers=("ebp",))
+D5H_SELECT = E.Call(0x11F6C, (), clobbers=("esi", "edi", "ebp"))
+D5H_STATE3, D5H_STATE4 = E.Call(0x12484, ()), E.Call(0x11578, ())
+D5H_STATE6 = E.Call(0x11A8C, (), clobbers=("edi", "ebp"))
+D5H_MATCH, D5H_ROW = E.Call(0x1EA08, ()), E.Call(0x2C06C, ("eax",))
+D5H_ARENA = E.Call(0x263F4, (), clobbers=("edi", "ebp"))
+D5H_BARS, D5H_RESET = E.Call(0x33F08, ()), E.Call(0x10EE4, ())
+D5H_TAILS = (D5H_PAUSE_TAIL, D5H_CONT_TAIL, D5H_OVERLAY)
+# The blocks of 0x11D04 by what reaches them: the coin arm, the dispatch (every case), and each
+# jump-table target (table 0x11CDC, ten entries, diff_emu.RESOLVED_JUMPS[0x11D69]).
+D5H_SS_BLOCKS = {
+    "accept0": (0x11D1E,), "accept1": (0x11D31,), "divert": (0x11D38,),
+    0: (0x11D70,), 1: (0x11D88,), 2: (0x11DA0,), 3: (0x11DB8,), 4: (0x11DD0,), 5: (0x11DE8,), 6: (0x11E4F,),
+    7: (0x11E67, 0x11E77, 0x11E8F), 8: (0x11EAC,), 9: (0x11ED0, 0x11EE0, 0x11EF6, 0x11F0E, 0x11F13),
+}
+D5H_SS_ROWS = {"low": ("accept0", "accept1", "divert", 0, 1, 2, 3, 4, 6), "high": (5, 7, 8, 9),
+               "coin": ("accept0", "accept1", "divert", 0)}
+
+
+def d5h_ss_unhit(row):
+    """The blocks a row of 0x11D04 does not own, each named with the row that hits it."""
+    out = {}
+    for key, blocks in D5H_SS_BLOCKS.items():
+        if key in D5H_SS_ROWS[row]:
+            continue
+        owner = [r for r in ("low", "high", "coin") if key in D5H_SS_ROWS[r]][0]
+        what = "jump-table target %d (0x11CDC[%d])" % (key, key) if isinstance(key, int) else "the coin arm"
+        for b in blocks:
+            out[b] = "%s: row game_state_step_%s" % (what, owner)
+    return out
+
+
+def d5h_ss_case(st, timer=0x5A5A, gate=1, b1e=0x1E, c6c=0x0302, f71=0, f72=0x72, extra=None):
+    """0x11D04: the gate byte 0x104B1D between seeded neighbours (0x104B1E = `b1e`), the bytes 0x104B15
+    and 0x104B1B (0x15, 0x1B) between seeded neighbours, and the state block 0xF0A62..0xF0A73: the
+    state word 0xF0A64 = `st`, the timer word 0xF0A6A, the next-state word 0xF0A6C = `c6c`, the bytes
+    0xF0A6F (0x6F), 0xF0A71 = `f71` and 0xF0A72 = `f72`, every other byte seeded."""
+    p = {0x00104B14: bytes([0x14, 0x15, 0x16]),
+         0x00104B1A: bytes([0x1A, 0x1B, 0x1C, gate, b1e]),
+         0x000F0A62: (le16(0x6262) + le16(st) + le16(0x6666) + le16(0x6868) + le16(timer) + le16(c6c)
+                      + bytes([0x6E, 0x6F, 0x70, f71, f72, 0x73]))}
+    p.update(extra or {})
+    return p
+
+
+D5H_SS_LOW_CALLS = (D3B_POLL, D5H_DIVERT, D5H_ATTRACT, D5H_TITLE, D5H_SELECT, D5H_STATE3, D5H_STATE4,
+                    D5H_STATE6) + D5H_TAILS
+D5H_SS_HIGH_CALLS = (D3B_POLL, D5H_DIVERT, VOICE, D5H_MATCH, D5H_ROW, D5H_ARENA, D5H_BARS, D5H_RESET) + D5H_TAILS
+D5H_SS_COIN_CALLS = (E.Call(0x11F28, ("eax",), mode="real"), D3A_READY, D3A_SPEND, D5H_DIVERT,
+                     D5H_ATTRACT) + D5H_TAILS
+
+D5H_SPECS += [
+    # 0x11D04 game_state_step: no argument. With the byte 0x104B1D clear it polls 0x11F28(0) and
+    # 0x11F28(1) (`test eax,eax`: l1's stub EAX 0x100 is accepted); an accepted mask (bit 0, bit 1) runs
+    # the run clock 0x32970(0) and 0x257A4(mask) and returns with no tail. Otherwise the state word
+    # 0xF0A64 above 9 (unsigned, `ja`) or 0 runs 0x11000; 1..4 and 6 run 0x121A0, 0x11F6C, 0x12484,
+    # 0x11578 and 0x11A8C; every state then runs the tails 0x10DB0, 0x10E18, 0x2BF08. Every callee is a
+    # stub; 0x32970 is host-owned (the port omits it) and runs real in the original from its zero
+    # state, where it changes no byte. Mask 0: record §1.
+    Spec("game_state_step_low", 0x11D04, [
+        Case("l0", {}, d5h_ss_case(3, gate=0), {0x11F28: 1}),
+        Case("l1", D2E_DIRTY, d5h_ss_case(1, gate=0), {0x11F28: 0x100}),
+        Case("l2", {}, d5h_ss_case(0, gate=0), {0x11F28: 0}),
+        Case("l3", {}, d5h_ss_case(1, gate=1), {0x11F28: 1}),
+        Case("l4", {}, d5h_ss_case(2, gate=0, b1e=0x80), {0x11F28: 0}),
+        Case("l5", D2E_DIRTY, d5h_ss_case(3, gate=0x80), {0x11F28: 1}),
+        Case("l6", {}, d5h_ss_case(4, gate=1)),
+        Case("l7", {}, d5h_ss_case(6, gate=1)),
+        Case("l8", {}, d5h_ss_case(10, gate=1)),
+        Case("l9", {}, d5h_ss_case(0x0101, gate=1)),
+        Case("la", {}, d5h_ss_case(0xFFFF, gate=1)),
+        Case("lb", {}, d5h_ss_case(0, gate=1)),
+    ], unhit_named=d5h_ss_unhit("low"), allow_calls=(0x32970,), calls=D5H_SS_LOW_CALLS, eax_mask=0,
+       mutants=("@gate", "@gatew", "@al", "@code", "@order", "@fall", "@nodivert", "@byte", "@t0", "@t1", "@t2",
+                "@t3", "@t4", "@t6", "@hi", "@notail1", "@notail2", "@nooverlay", "@tailorder", "@overlayfirst",
+                "@one")),
+    # States 5, 7, 8 and 9. 5: voice 0x100, 0x1EA08, 0x2C06C(0x1D), the run clock, then the bytes
+    # 0xF0A6F/0xF0A72 = 0, the words 0xF0A6A = 0x12C, 0xF0A6C = 6, 0xF0A64 = 9. 7: the timer word
+    # 0xF0A6A - 1 is stored; zero-extended and below 1 (`jge`: only 0) it runs 0x11BCC (inlined in the
+    # port: the bytes 0x104B1B/0x104B15 = 0, 0xF0A64 = the word 0xF0A6C, the ret-only 0x29D60, voice
+    # 0x100 by a tail jump), else 0x263F4 and 0x33F08. 8: the run clock and 0x257A4(3), then the tails.
+    # 9: the timer the same way; at 0 the state takes the word 0xF0A6C and, with the byte 0xF0A71 set,
+    # 0x10EE4 runs (0x11EF2/0x11EF6; the port left this call out until D5, record §3). 0x11BCC, 0x29D60
+    # and 0x32970 run real in the original; the others are stubs.
+    Spec("game_state_step_high", 0x11D04, [
+        Case("h0", {}, d5h_ss_case(5)),
+        Case("h1", D2E_DIRTY, d5h_ss_case(5, gate=0), {0x11F28: 0, 0x2C3FC: 0}),
+        Case("h2", {}, d5h_ss_case(7, timer=2)),
+        Case("h3", {}, d5h_ss_case(7, timer=1)),
+        Case("h4", {}, d5h_ss_case(7, timer=0)),
+        Case("h5", {}, d5h_ss_case(7, timer=0x8001)),
+        Case("h6", D2E_DIRTY, d5h_ss_case(7, timer=0x0100), {0x2C3FC: 0}),
+        Case("h7", {}, d5h_ss_case(8)),
+        Case("h8", {}, d5h_ss_case(9, timer=5, f71=1)),
+        Case("h9", {}, d5h_ss_case(9, timer=1, f71=0)),
+        Case("ha", {}, d5h_ss_case(9, timer=1, f71=1)),
+        Case("hb", D2E_DIRTY, d5h_ss_case(9, timer=1, f71=0, f72=1)),
+        Case("hc", {}, d5h_ss_case(9, timer=0x8001, f71=1)),
+        Case("hd", {}, d5h_ss_case(9, timer=0, f71=0x80)),
+        Case("he", {}, d5h_ss_case(9, timer=1, f71=0x80, c6c=0x0006)),
+    ], unhit_named=d5h_ss_unhit("high"), allow_calls=(0x32970, 0x11BCC, 0x29D60), calls=D5H_SS_HIGH_CALLS,
+       eax_mask=0,
+       mutants=("@ge9", "@v5", "@novoice", "@nomatch", "@row", "@norow", "@order5", "@f6f", "@f72", "@t12c",
+                "@tw", "@c6", "@c6w", "@s9", "@t7nostore", "@t7ge", "@t7s", "@t7w", "@b1b", "@b15", "@n7state",
+                "@v7", "@n7voice", "@frameorder", "@nobars", "@exitframe", "@d3", "@n8tail", "@t9nostore",
+                "@t9s", "@n9state", "@n9reset", "@r9inv", "@r9order", "@r9w")),
+    # The coin arm with 0x11F28 real (its own row: frontend_coin_poll) over its stubs 0x2C060 and
+    # 0x2CA7C: the pressed dword 0x1088E4 against the image's masks 0x9ACBC (0x01000000, 0x00000100)
+    # gives each accepted mask, which the stubbed poll of _low cannot (one stub EAX serves both calls).
+    Spec("game_state_step_coin", 0x11D04, [
+        Case("c0", {}, {**d5h_ss_case(2, gate=0), **d3a_poll_case(0, 0x01000000)}, {0x2C060: 1}),
+        Case("c1", D2E_DIRTY, {**d5h_ss_case(2, gate=0), **d3a_poll_case(0, 0x00000100)}, {0x2C060: 1}),
+        Case("c2", {}, {**d5h_ss_case(2, gate=0), **d3a_poll_case(0, 0x01000100)}, {0x2C060: 1}),
+        Case("c3", {}, {**d5h_ss_case(0, gate=0), **d3a_poll_case(0x01000100, 0xFEFFFEFF)}, {0x2C060: 1}),
+        Case("c4", {}, {**d5h_ss_case(0xFFFF, gate=0), **d3a_poll_case(0, 0x01000100)}, {0x2C060: 0}),
+    ], unhit_named=d5h_ss_unhit("coin"), allow_calls=(0x32970,), calls=D5H_SS_COIN_CALLS, eax_mask=0,
+       mutants=("@bits", "@one", "@mask", "@code")),
+]
+
+# ---- 0x24C5C game_frame (record §2.2, §2.3): the per-frame update and the mode dispatcher -------
+# The BIOS keyboard call `int 0x16` (AH = 1) at 0x24D0E is replaced in every case by `cmp eax,eax`
+# (39 C0): ZF = 1, the BIOS's "no keystroke" answer, so 0x24D10..0x24D20 fall to the mode switch.
+# Unpatched, the original stops there (`unmodeled: int at 0x24D0E`, measured). The key loop
+# 0x24D26..0x24EE7 is a named gap (record §4): it needs a BIOS keyboard queue.
+D5H_NOKEY = {0x00024D0E: b"\x39\xc0"}
+D5H_INPUT, D5H_TRACK, D5H_UPDATE = E.Call(0x4F644, ()), E.Call(0x38990, ()), E.Call(0x2A31C, (), clobbers=("edi", "ebp"))
+# the runtime's longjmp: a tail jump at 0x2520B that never returns here. No case reaches it; the entry
+# keeps the static scan out of the runtime (a jump to a call-set address is not followed)
+D5H_LONGJMP = E.Call(0x65431, ("eax", "edx"), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+D5H_GF_COMMON = (D5H_INPUT, D5H_TRACK, D5H_UPDATE, D5H_LONGJMP)
+D5H_CMD, D5H_RING = E.Call(0x47208, ("eax",)), E.Call(0x461DC, ())
+D5H_T0, D5H_T6 = E.Call(0x1324C, ()), E.Call(0x25FAC, ())
+D5H_T16 = E.Call(0x26194, (), clobbers=("esi", "edi", "ebp"))
+D5H_PUSH, D5H_CAMERA, D5H_HOLD = E.Call(0x3BB90, ()), E.Call(0x12D48, ()), E.Call(0x12FD8, ("eax",))
+D5H_PSET = E.Call(0x2A690, ("eax",))
+D5H_JOINPOLL = E.Call(0x28CC8, (), clobbers=("esi", "edi", "ebp"))
+D5H_JOIN = E.Call(0x28DA4, ("eax",))
+D5H_REPEAT = E.Call(0x50146, ("eax", "edx", "ebx"))
+D5H_MENU = E.Call(0x2FFC4, ("eax", "edx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+
+
+def d5h_handler(addr, *clobbers):
+    return E.Call(addr, (), clobbers=clobbers)
+
+
+D5H_H = {   # the no-argument mode handlers, by address (clobbers: E.callee_clobbers)
+    0x29B70: (), 0x11D04: ("esi", "edi", "ebp"), 0x26254: ("esi", "edi", "ebp"), 0x25C88: ("ebp",),
+    0x282C4: ("ebp",), 0x28468: ("ebp",), 0x28788: (), 0x28BD4: ("edi", "ebp"), 0x28C38: (),
+    0x27380: ("edi", "ebp"), 0x274FC: ("esi", "edi", "ebp"), 0x27A2C: ("ebp",), 0x277C0: ("edi", "ebp"),
+    0x438B4: ("esi", "edi", "ebp"), 0x41C28: (), 0x424E8: (), 0x25AE8: (), 0x1EEB0: ("ebp",), 0x208F8: ("ebp",),
+    0x29328: ("ebp",), 0x299E8: ("edi", "ebp"), 0x296B8: ("esi", "edi", "ebp"), 0x29638: ("edi", "ebp"),
+    0x4F24C: (), 0x4F2B0: ("ecx", "esi", "edi", "ebp"), 0x4F318: ("ecx", "esi", "edi", "ebp"),
+    0x4F6E8: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x4F704: ("ebx", "ecx", "edx", "esi", "edi", "ebp"),
+    0x4F9A0: ("ebx", "ecx", "esi", "edi", "ebp"), 0x4F9C8: ("ebx", "ecx", "edx", "esi", "edi", "ebp"),
+    0x26540: ("esi", "edi", "ebp"), 0x26C8C: ("edi", "ebp"), 0x26A50: ("ebp",), 0x26F58: ("ebp",),
+    0x266AC: ("ebp",), 0x4EF8C: (), 0x4F0FC: (), 0x49C78: (),
+}
+D5H_H = {a: d5h_handler(a, *c) for a, c in D5H_H.items()}
+
+
+def d5h_hs(*addrs):
+    return tuple(D5H_H[a] for a in addrs)
+
+
+D5H_GF_P = 0x000F8000               # the pset base the mode-0xC tail's cases store at 0x1014EC (zero BSS)
+
+
+def d5h_gf_case(mode, frame=0x1233, ae8=0, b12=0, b15=0, b1a=0, b1b=0, b1d=0, b25=0, b26=0, tgt=(0, 0),
+                recs=(E3_REC, E3_REC2), f41=(0x41, 0x41), cmd=(0xE0E0, 0xE2E2), extra=None):
+    """0x24C5C: the no-key patch; the mode word 0x104B00 after the seeded words 0x104AFA..0x104AFE; the
+    hook dword 0x104AE4, the update mask 0x104AE8 = `ae8` and the render mask 0x104AEC; the bytes
+    0x104B10..0x104B27 seeded with their own low address byte except 0x104B12/15/1A/1B/1D/25/26 (the
+    arguments); the frame word 0xEF6DC between seeded words; the camera targets 0x1077A8[side] = `tgt`,
+    each slot's record pointer and its +0x41 byte between seeded bytes; the command words 0x1088E0."""
+    b = bytearray(range(0x10, 0x28))
+    for off, v in ((0x12, b12), (0x15, b15), (0x1A, b1a), (0x1B, b1b), (0x1D, b1d), (0x25, b25), (0x26, b26)):
+        b[off - 0x10] = v
+    p = dict(D5H_NOKEY)
+    p.update({
+        0x00104AE4: le32(0xE4E4E4E4) + le32(ae8) + le32(0xECECECEC),
+        0x00104AF4: le16(0xF4F4) + le16(0x5A5A),
+        0x00104AFA: le16(0xFAFA) + le16(0xFCFC) + le16(0x5E5E) + le16(mode),
+        0x00104B10: bytes(b),
+        0x000EF6DA: le16(0xDADA) + le16(frame) + le16(0xDEDE),
+        0x001077A8: le32(tgt[0]) + le32(tgt[1]) + le32(recs[0]),
+        0x001077F0: bytes([0x40, f41[0], 0x42]),
+        0x00107844: le32(recs[1]),
+        0x00107884: bytes([0x40, f41[1], 0x42]),
+        0x001088DE: le16(0xDEDE) + le16(cmd[0]) + le16(cmd[1]),
+    })
+    p.update(extra or {})
+    return p
+
+
+def d5h_gf_ctail(idx=0x0102, word=0x8123, rec=E3_REC):
+    """The mode-0xC tail's reads: the pset base 0x1014EC = D5H_GF_P, the record's +0x56 word between
+    seeded words, and the pset entry's first word between seeded words."""
+    return {0x001014EC: le32(D5H_GF_P), rec + 0x54: le16(0x5454) + le16(idx) + le16(0x5858),
+            D5H_GF_P + idx * 0x20 - 2: le16(0x6161) + le16(word) + le16(0x6262)}
+
+
+def d5h_gf_m25(bd=8, f0=1, f1=1, w9a=0x0005):
+    """Mode 0x25's reads: the byte 0x1088BD, the round flags 0x1078F0/0x1078F1 and the countdown word
+    0x10889A, each between seeded neighbours."""
+    return {0x001088BC: bytes([0xBC, bd, 0xBE]), 0x001078EF: bytes([0xEF, f0, f1, 0xF2]),
+            0x00108898: le16(0x9898) + le16(w9a) + le16(0x9C9C)}
+
+
+D5H_GF_START_SEED = {
+    0x00104524: le32(0x24242424) + le32(0x28282828) + bytes([0x2C, 0x2D, 0x2E, 0x2F]),
+    0x00105B39: bytes([0x39, 0x3A, 0x3B]),
+    0x00104AB4: le32(0xB4B4B4B4) + le32(0xB8B8B8B8) + le32(0xBCBCBCBC),
+    0x001088CC: le32(0xCCCCCCCC) + le32(0xD0D0D0D0) + le32(0xD4D4D4D4),
+    0x001088EC: le16(0xECEC) + le16(0xEEEE) + le16(0xF0F0),
+}
+
+# The blocks no row hits, and why (record §4).
+D5H_GF_KEYS = (0x24D26, 0x24D32, 0x24D39, 0x24D3B, 0x24D42, 0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73,
+               0x24D79, 0x24D7E, 0x24D84, 0x24D89, 0x24D8E, 0x24D96, 0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0,
+               0x24DB5, 0x24DBA, 0x24DBF, 0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9, 0x24DFB, 0x24E04, 0x24E09, 0x24E19,
+               0x24E50, 0x24E58, 0x24E5F, 0x24E61, 0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0, 0x24ECF, 0x24EE0)
+D5H_GF_RESTART = (0x25201,)
+D5H_GF_ROWS = ("head", "fight", "tails", "m25", "match", "front", "start", "rr")
+D5H_GF_UNHIT = {}                   # row -> the blocks it does not hit (measured), filled below
+
+
+def d5h_gf_unhit(row):
+    """The blocks a row of 0x24C5C does not hit, each with the reason: the key loop and the restart
+    are named gaps; any other block is owned by the first row (in D5H_GF_ROWS order) that hits it."""
+    out = {}
+    for b in D5H_GF_UNHIT.get(row, ()):
+        if b in D5H_GF_KEYS:
+            out[b] = ("the key loop: reached only on a keystroke from the BIOS (int 16h at 0x24D0E, 0x24D2E, "
+                      "0x24E54), which every case answers with none; a named gap (record §4)")
+        elif b in D5H_GF_RESTART:
+            out[b] = ("the soft restart: `jmp 0x65431`, the runtime's longjmp(0x1044F4, 1), does not return "
+                      "into 0x24C5C; a named gap (record §4)")
+        else:
+            owner = [r for r in D5H_GF_ROWS if b not in D5H_GF_UNHIT[r]][0]
+            out[b] = "row game_frame_%s" % owner
+    return out
+
+
+def d5h_gf_spec(row, cases, calls, mutants, allow=()):
+    return Spec("game_frame_%s" % row, 0x24C5C, cases, unhit_named=d5h_gf_unhit(row), allow_calls=allow,
+                calls=D5H_GF_COMMON + calls, eax_mask=0, mutants=mutants)
+
+
+D5H_GF_HEAD_CALLS = (D5H_CMD, D5H_RING, D5H_T0, D5H_T6, D5H_T16, D5H_PUSH, D5H_CAMERA, C1_SLOT_LATCH, D5H_PSET,
+                     D5H_BARS)
+D5H_GF_FIGHT_CALLS = d5h_hs(0x29B70, 0x11D04, 0x26254, 0x25C88, 0x282C4, 0x28468, 0x28788, 0x28BD4,
+                            0x28C38) + (D5H_JOINPOLL, D5H_JOIN)
+D5H_GF_TAILS_CALLS = d5h_hs(0x27380, 0x26540, 0x26C8C, 0x26A50) + (
+    D5H_JOINPOLL, D5H_JOIN, D5H_PUSH, D5H_CAMERA, D5H_HOLD, C1_SLOT_LATCH, D5H_PSET, D5H_BARS)
+D5H_GF_M25_CALLS = d5h_hs(0x26F58, 0x266AC, 0x4EF8C, 0x4F0FC, 0x49C78) + (D5H_PUSH, D5H_HOLD, C1_SLOT_LATCH,
+                                                                          D5H_PSET, D5H_BARS)
+D5H_GF_MATCH_CALLS = d5h_hs(0x274FC, 0x27A2C, 0x277C0, 0x438B4, 0x41C28, 0x424E8, 0x25AE8, 0x1EEB0, 0x208F8,
+                            0x29328, 0x299E8, 0x296B8)
+D5H_GF_FRONT_CALLS = d5h_hs(0x4F24C, 0x4F2B0, 0x4F318, 0x4F6E8, 0x4F704, 0x4F9A0, 0x4F9C8, 0x29638)
+D5H_GF_START_CALLS = (D4C_DIP, D5H_DIVERT, D3A_SPEND, D5H_REPEAT, D5H_MENU)
+# The re-read row's stubs rewrite what the raw reads again after them: update entry 0 stores mode 0x21,
+# mode 0x21's handler stores mode 0x22, and the slot latch stores the side byte 0x104B1A = 1.
+D5H_GF_RR_CALLS = (
+    dataclasses.replace(D5H_T0, writes=((None, 0x00104B00, le16(0x0021)),)),
+    dataclasses.replace(D5H_H[0x26540], writes=((None, 0x00104B00, le16(0x0022)),)),
+    dataclasses.replace(C1_SLOT_LATCH, writes=((None, 0x00104B1A, b"\x01"),)),
+    D5H_H[0x26C8C], D5H_CAMERA, D5H_PSET, D5H_BARS, D5H_HOLD, D5H_PUSH)
+# measured: the block leaders of 0x24C5C each row's cases do not execute (161 leaders)
+D5H_GF_UNHIT.update({
+    "head": (
+        0x24D26, 0x24D32, 0x24D39, 0x24D3B, 0x24D42, 0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73, 0x24D79,
+        0x24D7E, 0x24D84, 0x24D89, 0x24D8E, 0x24D96, 0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0, 0x24DB5, 0x24DBA,
+        0x24DBF, 0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9, 0x24DFB, 0x24E04, 0x24E09, 0x24E19, 0x24E50, 0x24E58, 0x24E5F,
+        0x24E61, 0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0, 0x24ECF, 0x24EE0, 0x24F09, 0x24F66, 0x24FC4, 0x2501E,
+        0x25071, 0x250CE, 0x2512B, 0x25187, 0x2519E, 0x251A8, 0x251B2, 0x251BC, 0x251C6, 0x251F7, 0x251FC, 0x25201,
+        0x25210, 0x2521A, 0x25224, 0x2522E, 0x25238, 0x25242, 0x2524C, 0x25256, 0x2525F, 0x25268, 0x25273, 0x2527D,
+        0x25287, 0x25296, 0x252A0, 0x252A9, 0x252AD, 0x252B2, 0x252C7, 0x252D4, 0x252E1, 0x252F1, 0x25303, 0x2530D,
+        0x25317, 0x25321, 0x2532B, 0x25335, 0x2533F, 0x25349, 0x25352, 0x2535D, 0x25367, 0x25371, 0x2537B, 0x25385,
+        0x2538F, 0x253BD, 0x253C4, 0x253CB, 0x253D2, 0x253D9, 0x253E0, 0x253E7, 0x253EE, 0x253F5, 0x253FC, 0x25403,
+        0x2540A, 0x25468, 0x2546E, 0x25478, 0x25482, 0x25491, 0x254B7, 0x254CF, 0x25509, 0x2551C, 0x2552D, 0x25534,
+        0x25540, 0x2554B, 0x2557F, 0x25591, 0x2559C, 0x255AD, 0x255B4, 0x255C0,
+    ),
+    "fight": (
+        0x24C85, 0x24C8B, 0x24C94, 0x24C9F, 0x24CA6, 0x24CB5, 0x24CC3, 0x24CE6, 0x24CE8, 0x24CED, 0x24CF5, 0x24D26,
+        0x24D32, 0x24D39, 0x24D3B, 0x24D42, 0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73, 0x24D79, 0x24D7E,
+        0x24D84, 0x24D89, 0x24D8E, 0x24D96, 0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0, 0x24DB5, 0x24DBA, 0x24DBF,
+        0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9, 0x24DFB, 0x24E04, 0x24E09, 0x24E19, 0x24E50, 0x24E58, 0x24E5F, 0x24E61,
+        0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0, 0x24ECF, 0x24EE0, 0x24F09, 0x24F66, 0x24FC4, 0x2501E, 0x25071,
+        0x250CE, 0x2512B, 0x25187, 0x2519E, 0x251A8, 0x251B2, 0x251BC, 0x251C6, 0x251F7, 0x251FC, 0x25201, 0x25210,
+        0x25296, 0x252A0, 0x252A9, 0x252AD, 0x252B2, 0x252C7, 0x252D4, 0x252E1, 0x252F1, 0x25303, 0x2530D, 0x25317,
+        0x25321, 0x2532B, 0x25349, 0x25352, 0x2535D, 0x25367, 0x25371, 0x2537B, 0x25385, 0x2538F, 0x253BD, 0x253C4,
+        0x253CB, 0x253D2, 0x253D9, 0x253E0, 0x253E7, 0x253EE, 0x253F5, 0x253FC, 0x25403, 0x2540A, 0x2541D, 0x2542D,
+        0x25436, 0x25448, 0x25457, 0x25491, 0x254B7, 0x254CF, 0x25509, 0x2551C, 0x2552D, 0x25534, 0x25540, 0x2554B,
+        0x2557F, 0x25591, 0x2559C, 0x255AD, 0x255B4, 0x255C0,
+    ),
+    "tails": (
+        0x24C85, 0x24C8B, 0x24C94, 0x24C9F, 0x24CA6, 0x24CB5, 0x24CC3, 0x24CE6, 0x24CE8, 0x24CED, 0x24CF5, 0x24D26,
+        0x24D32, 0x24D39, 0x24D3B, 0x24D42, 0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73, 0x24D79, 0x24D7E,
+        0x24D84, 0x24D89, 0x24D8E, 0x24D96, 0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0, 0x24DB5, 0x24DBA, 0x24DBF,
+        0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9, 0x24DFB, 0x24E04, 0x24E09, 0x24E19, 0x24E50, 0x24E58, 0x24E5F, 0x24E61,
+        0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0, 0x24ECF, 0x24EE0, 0x24F09, 0x24F66, 0x24FC4, 0x2501E, 0x25071,
+        0x250CE, 0x2512B, 0x25187, 0x2519E, 0x251A8, 0x251B2, 0x251BC, 0x251C6, 0x251F7, 0x251FC, 0x25201, 0x25210,
+        0x2521A, 0x25224, 0x2522E, 0x25238, 0x25242, 0x2524C, 0x25256, 0x2525F, 0x25268, 0x25273, 0x2527D, 0x25287,
+        0x252A0, 0x252A9, 0x252AD, 0x252B2, 0x252C7, 0x252D4, 0x252E1, 0x252F1, 0x25303, 0x2530D, 0x2532B, 0x25335,
+        0x2533F, 0x25367, 0x25371, 0x2537B, 0x25385, 0x2538F, 0x253BD, 0x253C4, 0x253CB, 0x253D2, 0x253D9, 0x253E0,
+        0x253E7, 0x253EE, 0x253F5, 0x253FC, 0x25403, 0x2540A, 0x2541D, 0x2542D, 0x25436, 0x25448, 0x25457, 0x25478,
+        0x25482, 0x25591, 0x2559C, 0x255AD, 0x255B4,
+    ),
+    "m25": (
+        0x24C85, 0x24C8B, 0x24C94, 0x24C9F, 0x24CA6, 0x24CB5, 0x24CC3, 0x24CE6, 0x24CE8, 0x24CED, 0x24CF5, 0x24D26,
+        0x24D32, 0x24D39, 0x24D3B, 0x24D42, 0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73, 0x24D79, 0x24D7E,
+        0x24D84, 0x24D89, 0x24D8E, 0x24D96, 0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0, 0x24DB5, 0x24DBA, 0x24DBF,
+        0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9, 0x24DFB, 0x24E04, 0x24E09, 0x24E19, 0x24E50, 0x24E58, 0x24E5F, 0x24E61,
+        0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0, 0x24ECF, 0x24EE0, 0x24F09, 0x24F66, 0x24FC4, 0x2501E, 0x25071,
+        0x250CE, 0x2512B, 0x25187, 0x2519E, 0x251A8, 0x251B2, 0x251BC, 0x251C6, 0x251F7, 0x251FC, 0x25201, 0x25210,
+        0x2521A, 0x25224, 0x2522E, 0x25238, 0x25242, 0x2524C, 0x25256, 0x2525F, 0x25268, 0x25273, 0x2527D, 0x25287,
+        0x25296, 0x25317, 0x25321, 0x25335, 0x2533F, 0x25349, 0x25352, 0x2535D, 0x25367, 0x25371, 0x2537B, 0x25385,
+        0x2538F, 0x253BD, 0x253C4, 0x253CB, 0x253D2, 0x253D9, 0x253E0, 0x253E7, 0x253EE, 0x253F5, 0x253FC, 0x25403,
+        0x2540A, 0x2541D, 0x2542D, 0x25436, 0x25448, 0x25457, 0x25487, 0x25491, 0x254B7, 0x254CF, 0x25509, 0x2551C,
+        0x2552D, 0x25534, 0x25540, 0x2554B, 0x2557F,
+    ),
+    "match": (
+        0x24C85, 0x24C8B, 0x24C94, 0x24C9F, 0x24CA6, 0x24CB5, 0x24CC3, 0x24CE6, 0x24CE8, 0x24CED, 0x24CF5, 0x24D26,
+        0x24D32, 0x24D39, 0x24D3B, 0x24D42, 0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73, 0x24D79, 0x24D7E,
+        0x24D84, 0x24D89, 0x24D8E, 0x24D96, 0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0, 0x24DB5, 0x24DBA, 0x24DBF,
+        0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9, 0x24DFB, 0x24E04, 0x24E09, 0x24E19, 0x24E50, 0x24E58, 0x24E5F, 0x24E61,
+        0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0, 0x24ECF, 0x24EE0, 0x24F09, 0x24F66, 0x24FC4, 0x2501E, 0x25071,
+        0x250CE, 0x2512B, 0x25187, 0x251BC, 0x251C6, 0x251F7, 0x251FC, 0x25201, 0x25210, 0x2521A, 0x25224, 0x2522E,
+        0x25238, 0x25242, 0x2524C, 0x25256, 0x2525F, 0x25268, 0x25273, 0x2527D, 0x25287, 0x25296, 0x252A0, 0x252A9,
+        0x252AD, 0x252B2, 0x252C7, 0x252D4, 0x252E1, 0x252F1, 0x25303, 0x2530D, 0x25317, 0x25321, 0x2532B, 0x25335,
+        0x2533F, 0x25349, 0x25352, 0x2535D, 0x2538F, 0x253E0, 0x253E7, 0x253EE, 0x253F5, 0x253FC, 0x25403, 0x2540A,
+        0x2541D, 0x2542D, 0x25436, 0x25448, 0x25457, 0x25491, 0x254B7, 0x254CF, 0x25509, 0x2551C, 0x2552D, 0x25534,
+        0x25540, 0x2554B, 0x2557F, 0x25591, 0x2559C, 0x255AD, 0x255B4, 0x255C0,
+    ),
+    "front": (
+        0x24C85, 0x24C8B, 0x24C94, 0x24C9F, 0x24CA6, 0x24CB5, 0x24CC3, 0x24CE6, 0x24CE8, 0x24CED, 0x24CF5, 0x24D26,
+        0x24D32, 0x24D39, 0x24D3B, 0x24D42, 0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73, 0x24D79, 0x24D7E,
+        0x24D84, 0x24D89, 0x24D8E, 0x24D96, 0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0, 0x24DB5, 0x24DBA, 0x24DBF,
+        0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9, 0x24DFB, 0x24E04, 0x24E09, 0x24E19, 0x24E50, 0x24E58, 0x24E5F, 0x24E61,
+        0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0, 0x24ECF, 0x24EE0, 0x24F09, 0x24F66, 0x24FC4, 0x2501E, 0x25071,
+        0x250CE, 0x2512B, 0x25187, 0x2519E, 0x251A8, 0x251B2, 0x251C6, 0x251F7, 0x251FC, 0x25201, 0x25210, 0x2521A,
+        0x25224, 0x2522E, 0x25238, 0x25242, 0x2524C, 0x25256, 0x2525F, 0x25268, 0x25273, 0x2527D, 0x25287, 0x25296,
+        0x252A0, 0x252A9, 0x252AD, 0x252B2, 0x252C7, 0x252D4, 0x252E1, 0x252F1, 0x25303, 0x2530D, 0x25317, 0x25321,
+        0x2532B, 0x25335, 0x2533F, 0x25349, 0x25352, 0x2535D, 0x25367, 0x25371, 0x2537B, 0x25385, 0x2538F, 0x253BD,
+        0x253C4, 0x253CB, 0x253D2, 0x253D9, 0x2541D, 0x2542D, 0x25436, 0x25448, 0x25457, 0x25491, 0x254B7, 0x254CF,
+        0x25509, 0x2551C, 0x2552D, 0x25534, 0x25540, 0x2554B, 0x2557F, 0x25591, 0x2559C, 0x255AD, 0x255B4, 0x255C0,
+    ),
+    "start": (
+        0x24C85, 0x24C8B, 0x24C94, 0x24C9F, 0x24CA6, 0x24CB5, 0x24CC3, 0x24CE6, 0x24CE8, 0x24CED, 0x24CF5, 0x24D26,
+        0x24D32, 0x24D39, 0x24D3B, 0x24D42, 0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73, 0x24D79, 0x24D7E,
+        0x24D84, 0x24D89, 0x24D8E, 0x24D96, 0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0, 0x24DB5, 0x24DBA, 0x24DBF,
+        0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9, 0x24DFB, 0x24E04, 0x24E09, 0x24E19, 0x24E50, 0x24E58, 0x24E5F, 0x24E61,
+        0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7, 0x24EC0, 0x24ECF, 0x24EE0, 0x2519E, 0x251A8, 0x251B2, 0x251BC, 0x25201,
+        0x2521A, 0x25224, 0x2522E, 0x25238, 0x25242, 0x2524C, 0x25256, 0x2525F, 0x25268, 0x25273, 0x2527D, 0x25287,
+        0x25296, 0x252A0, 0x252A9, 0x252AD, 0x252B2, 0x252C7, 0x252D4, 0x252E1, 0x252F1, 0x25303, 0x2530D, 0x25317,
+        0x25321, 0x2532B, 0x25335, 0x2533F, 0x25349, 0x25352, 0x2535D, 0x25367, 0x25371, 0x2537B, 0x25385, 0x253BD,
+        0x253C4, 0x253CB, 0x253D2, 0x253D9, 0x253E0, 0x253E7, 0x253EE, 0x253F5, 0x253FC, 0x25403, 0x2540A, 0x2541D,
+        0x2542D, 0x25436, 0x25448, 0x25457, 0x25491, 0x254B7, 0x254CF, 0x25509, 0x2551C, 0x2552D, 0x25534, 0x25540,
+        0x2554B, 0x2557F, 0x25591, 0x2559C, 0x255AD, 0x255B4, 0x255C0,
+    ),
+    "rr": (
+        0x24C85, 0x24C8B, 0x24C94, 0x24C9F, 0x24CA6, 0x24CB5, 0x24CC3, 0x24D26, 0x24D32, 0x24D39, 0x24D3B, 0x24D42,
+        0x24D49, 0x24D4B, 0x24D5F, 0x24D63, 0x24D6E, 0x24D73, 0x24D79, 0x24D7E, 0x24D84, 0x24D89, 0x24D8E, 0x24D96,
+        0x24D9E, 0x24DA0, 0x24DA9, 0x24DAB, 0x24DB0, 0x24DB5, 0x24DBA, 0x24DBF, 0x24DC9, 0x24DD3, 0x24DDD, 0x24DE9,
+        0x24DFB, 0x24E04, 0x24E09, 0x24E19, 0x24E50, 0x24E58, 0x24E5F, 0x24E61, 0x24E6C, 0x24E9E, 0x24EAB, 0x24EB7,
+        0x24EC0, 0x24ECF, 0x24EE0, 0x24F09, 0x24F66, 0x24FC4, 0x2501E, 0x25071, 0x250CE, 0x2512B, 0x25187, 0x2519E,
+        0x251A8, 0x251B2, 0x251BC, 0x251C6, 0x251F7, 0x251FC, 0x25201, 0x25210, 0x2521A, 0x25224, 0x2522E, 0x25238,
+        0x25242, 0x2524C, 0x25256, 0x2525F, 0x25268, 0x25273, 0x2527D, 0x25287, 0x252A9, 0x252AD, 0x252F1, 0x25303,
+        0x2530D, 0x25317, 0x25321, 0x2532B, 0x25335, 0x2533F, 0x25349, 0x25352, 0x2535D, 0x25367, 0x25371, 0x2537B,
+        0x25385, 0x2538F, 0x253BD, 0x253C4, 0x253CB, 0x253D2, 0x253D9, 0x253E0, 0x253E7, 0x253EE, 0x253F5, 0x253FC,
+        0x25403, 0x2540A, 0x2541D, 0x2542D, 0x25436, 0x25448, 0x25457, 0x25482, 0x25487, 0x25491, 0x254B7, 0x254CF,
+        0x25509, 0x2551C, 0x2552D, 0x25534, 0x25540,
+    ),
+})
+
+
+def d5h_gf_modes(modes, **kw):
+    return [Case("m%02x" % m, {}, d5h_gf_case(m, **kw)) for m in modes]
+
+
+D5H_GF_MUT = {
+    "head": ("noinput cmd26 cmd1b cmdbit cmdside cmdarg cmdzero cmdzerob cmdzeroside noring ringearly track2 track1 "
+             "notrack noframe framed frameearly nomask maskw tblorder tblonce tblearly noupdate updatelate b15 b15w "
+             "nopush nodispatch pushorder nogate gatew gateside latchside psetside nopset psetearly nobars barsearly "
+             "oneside"),
+    "fight": ("h01 h02 h03 h04 h05 h07 h08 h09 h0A h0B h20 m6gate m6gatew m6al m6dec m6both m6nojoin m6frame mbpose "
+              "mborder swb"),
+    "tails": ("h0C h21 h22 h23 mcal mcdec mcnojoin mcboth mcgate c12 cbit cframe cidx cstride csave cval ckeep cbyte "
+              "nopush21 hold21 nohold nolatch recgate nobars21 nodisp22 b1a12 latch0 nobars22 latchside psetside "
+              "oneside"),
+    "m25": ("h24 h25 tail24 sub1 subhi bd8 bdw f0 f1 norev noinc incearly nodec decb signed swap25 noexit push25 "
+            "hold25 nohold nobars21 recgate nolatch"),
+    "match": "h0D h0E h0F h10 h12 h13 h14 h1E h1F h30 h31 h32",
+    "front": "h15 h16 h17 h18 h19 h1A h1B h33 sw33 in27b",
+    "start": ("in27 fld nov b3amask b3ash b3aw b2c b2cw d0mul d0add d0w ab8v ab8x noab8 nospend spendall spendn divp "
+              "div2e late spendlate norep repmask repfirst repnext menutbl menustride menuflags m27noin m27order afe "
+              "afew ee eew hook m17"),
+    "rr": "modecache tailcache b1acache bdearly inccache",
+}
+
+
+def d5h_gf_muts(row):
+    return tuple("@" + m for m in D5H_GF_MUT[row].split())
+
+
+D5H_SPECS += [
+    # 0x24C5C game_frame, the head and the 0x25414 tail, in mode 0 (the table's 0x2540F entry). 0x4F644
+    # unless the mode word is 0x27; with the byte 0x104B26 clear and 0x104B1B set, per side the command
+    # word 0x1088E0[side] = 0 when the slot's +0x41 has bit 4, else 0x47208(side), then 0x461DC; 0x38990
+    # twice with 0x104B26 set, else once; the frame word 0xEF6DC + 1 (a word: a4 wraps 0xFFFF); the
+    # update table 0xA8644 walked over the mask dword 0x104AE8, low bit first (a5: entries 0, 6, 16; a6:
+    # the ret-only 0x5D812 at 3 and 31, which the port's fn_resolve skips, and 6); no key; 0x2A31C; and
+    # with the byte 0x104B15 set, 0x3BB90, 0x12D48, per side with a non-zero dword 0x1077A8[side]
+    # 0x186D0(side) and 0x2A690(the slot's record), then 0x33F08. Every callee is a stub.
+    d5h_gf_spec("head", [
+        Case("a0", {}, d5h_gf_case(0)),
+        Case("a1", D2E_DIRTY, d5h_gf_case(0, b1b=1, f41=(0x10, 0xEF))),
+        Case("a2", {}, d5h_gf_case(0, b1b=1, f41=(0xEF, 0x10))),
+        Case("a3", {}, d5h_gf_case(0, b1b=0x80, b26=1)),
+        Case("a4", {}, d5h_gf_case(0, b1b=1, f41=(0x00, 0x00), frame=0xFFFF)),
+        Case("a5", D2E_DIRTY, d5h_gf_case(0, ae8=0x00010041)),
+        Case("a6", {}, d5h_gf_case(0, ae8=0x80000048)),
+        Case("a7", {}, d5h_gf_case(0, b15=1, tgt=(1, 0x00000100)), {0x3BB90: 0x12345678}),
+        Case("a8", D2E_DIRTY, d5h_gf_case(0, b15=0x80, tgt=(0, 0x80000000))),
+        Case("a9", {}, d5h_gf_case(0, b15=1, tgt=(0, 0))),
+    ], D5H_GF_HEAD_CALLS, d5h_gf_muts("head"), allow=(0x5D812,)),
+    # Modes 1..0xB and 0x20: 0x29B70 (1, 2, 0x20), 0x11D04 (3), 0x26254 (4), 0x25C88 (5), 0x282C4 (7),
+    # 0x28468 (8), 0x28788 (9), 0x28BD4 (0xA), 0x26254 then 0x28C38 (0xB). Mode 6: with the byte 0x104B1D
+    # clear, 0x28CC8's non-zero result r (`test eax,eax`: j5's 0x100) joins side r - 1 through 0x28DA4;
+    # otherwise 0x26254. x0: the mode word 0x0103 is above 0x33 (a word compare): no handler.
+    d5h_gf_spec("fight", d5h_gf_modes((1, 2, 3, 4, 5, 7, 8, 9, 0xA, 0xB, 0x20)) + [
+        Case("j0", {}, d5h_gf_case(6), {0x28CC8: 0}),
+        Case("j1", D2E_DIRTY, d5h_gf_case(6), {0x28CC8: 1}),
+        Case("j2", {}, d5h_gf_case(6), {0x28CC8: 2}),
+        Case("j3", {}, d5h_gf_case(6, b1d=1), {0x28CC8: 1}),
+        Case("j5", {}, d5h_gf_case(6), {0x28CC8: 0x100}),
+        Case("x0", {}, d5h_gf_case(0x0103)),
+    ], D5H_GF_FIGHT_CALLS, d5h_gf_muts("fight")),
+    # Modes 0xC and 0x21..0x23 with their mode tails (0x2545C, on the mode word read again). 0xC:
+    # 0x28CC8 with no 0x104B1D test (c4), a non-zero result joins, else 0x27380; its tail, when the
+    # 0x104B12 slot's +0x41 has bit 0 and the new frame word has bit 1: the record's pset word (index:
+    # the record's +0x56 word, zero-extended, * 0x20 from the base 0x1014EC) is saved to 0x104AF6 and
+    # becomes 0x1E1 with its bit 15 kept. 0x21: 0x26540; tail 0x3BB90, 0x12FD8(1), per side 0x186D0 and
+    # 0x2A690 on a non-zero record, 0x33F08. 0x22/0x23: 0x26C8C/0x26A50; tail 0x12D48, 0x186D0(the byte
+    # 0x104B1A), 0x2A690 on that slot's non-zero record, 0x33F08.
+    d5h_gf_spec("tails", [
+        Case("c0", {}, d5h_gf_case(0xC, frame=0x1231, extra=d5h_gf_ctail()), {0x28CC8: 0}),
+        Case("c1", D2E_DIRTY, d5h_gf_case(0xC, frame=0x12FE, b12=1, f41=(0x40, 0x01),
+                                          extra=d5h_gf_ctail(3, 0x7FFF, E3_REC2)), {0x28CC8: 2}),
+        Case("c2", {}, d5h_gf_case(0xC, frame=0x1231, f41=(0xFE, 0x41), extra=d5h_gf_ctail()), {0x28CC8: 0x100}),
+        Case("c3", {}, d5h_gf_case(0xC, frame=0x1234, extra=d5h_gf_ctail()), {0x28CC8: 0}),
+        Case("c4", {}, d5h_gf_case(0xC, frame=0x1231, b1d=1, extra=d5h_gf_ctail(1, 0x0000)),
+             {0x28CC8: 1}),
+        Case("t21a", {}, d5h_gf_case(0x21)),
+        Case("t21b", D2E_DIRTY, d5h_gf_case(0x21, recs=(0, E3_REC2)), {0x3BB90: 0x55}),
+        Case("t22a", {}, d5h_gf_case(0x22, b1a=1)),
+        Case("t22b", {}, d5h_gf_case(0x22, b1a=0, b12=1, recs=(0, E3_REC2))),
+        Case("t23a", D2E_DIRTY, d5h_gf_case(0x23, b1a=0, b12=1)),
+        Case("t23b", {}, d5h_gf_case(0x23, b1a=1, recs=(E3_REC, 0))),
+    ], D5H_GF_TAILS_CALLS, d5h_gf_muts("tails")),
+    # Modes 0x24 and 0x25. 0x24: 0x26F58 and no mode tail (`cmp ax,0x25; je`). 0x25, on the byte
+    # 0x104B25: 0 runs 0x266AC, then with the byte 0x1088BD == 8 and both round flags 0x1078F0/0x1078F1
+    # set, 0x4EF8C and 0x104B25 + 1; 1 decrements the word 0x10889A and runs 0x49C78 while it is
+    # non-zero (unsigned: s7's 0x8000), else 0x4F0FC; anything else nothing. Its tail: 0x12FD8(0), per
+    # side 0x186D0 and 0x2A690 on a non-zero record, 0x33F08.
+    d5h_gf_spec("m25", [
+        Case("n24", {}, d5h_gf_case(0x24)),
+        Case("s0", {}, d5h_gf_case(0x25, b25=0, extra=d5h_gf_m25(8, 1, 1))),
+        Case("s1", {}, d5h_gf_case(0x25, b25=0, extra=d5h_gf_m25(7, 1, 1))),
+        Case("s2", D2E_DIRTY, d5h_gf_case(0x25, b25=0, extra=d5h_gf_m25(9, 1, 1))),
+        Case("s3", {}, d5h_gf_case(0x25, b25=0, extra=d5h_gf_m25(8, 0, 1))),
+        Case("s4", {}, d5h_gf_case(0x25, b25=0, recs=(0, E3_REC2), extra=d5h_gf_m25(8, 0x80, 0))),
+        Case("s5", {}, d5h_gf_case(0x25, b25=1, extra=d5h_gf_m25(8, 1, 1, w9a=5))),
+        Case("s6", D2E_DIRTY, d5h_gf_case(0x25, b25=1, extra=d5h_gf_m25(8, 1, 1, w9a=1))),
+        Case("s7", {}, d5h_gf_case(0x25, b25=1, extra=d5h_gf_m25(8, 1, 1, w9a=0x8001))),
+        Case("s8", {}, d5h_gf_case(0x25, b25=1, extra=d5h_gf_m25(8, 1, 1, w9a=0x0100))),
+        Case("s9", {}, d5h_gf_case(0x25, b25=2, recs=(E3_REC, 0), extra=d5h_gf_m25(8, 1, 1, w9a=5))),
+    ], D5H_GF_M25_CALLS, d5h_gf_muts("m25")),
+    # Modes 0xD..0x10, 0x12..0x14, 0x1E, 0x1F and 0x30..0x32: one handler each (0x274FC, 0x27A2C,
+    # 0x277C0, 0x438B4, 0x41C28, 0x424E8, 0x25AE8, 0x1EEB0, 0x208F8, 0x29328, 0x299E8, 0x296B8).
+    d5h_gf_spec("match", d5h_gf_modes((0xD, 0xE, 0xF, 0x10, 0x12, 0x13, 0x14, 0x1E, 0x1F, 0x30, 0x31, 0x32)),
+                D5H_GF_MATCH_CALLS, d5h_gf_muts("match")),
+    # Modes 0x15..0x1B and 0x33 (0x4F24C, 0x4F2B0, 0x4F318, 0x4F6E8, 0x4F704, 0x4F9A0, 0x4F9C8,
+    # 0x29638), and the mode words with no handler: 0x1C, 0x1D and 0x26 (table entries 0x2540F), 0x34
+    # and 0xFFFF (`ja`), and 0x0127, which is not 0x27 for the 0x4F644 gate either.
+    d5h_gf_spec("front", d5h_gf_modes((0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x33, 0x1C, 0x1D, 0x26, 0x34,
+                                       0xFFFF, 0x0127)),
+                D5H_GF_FRONT_CALLS, d5h_gf_muts("front")),
+    # Modes 0x11 and 0x27..0x2F, all inline. 0x11: the words 0x104AFE = 0xF0 and 0x1088EE = 0, the hook
+    # 0x104AE4 = 0x259CC and mode 0x17. 0x27 (no 0x4F644 at the head): 0x50146(0xC000C000, 0x1E, 0xF),
+    # 0x2FFC4(0xBCBDC, 0x10, 4) and, on the results 0, -5 and -10, 0x4F644 (any other is the restart,
+    # not exercised). 0x28..0x2F: v = 0x2D974(0x29) (not 0x2B) into the dword 0x104528, the byte
+    # 0x105B3A = (v & 0x100) >> 4, the dword 0x1088D0 = (v & 0xF) * 5 + 0x1E and the byte 0x10452C = (v &
+    # 0xF0) >> 4; the dword 0x104AB8 = 1, 2, 3, 3 in 0x28..0x2B and untouched in 0x2C..0x2F; 0x2CA7C(1)
+    # in 0x2D..0x2F; 0x257A4(3, 3, 3, 3, 3, 1, 2, 2). The port ports these eight blocks as
+    # game_mode_28_step..game_mode_2f_step.
+    d5h_gf_spec("start", [
+        Case("g11", D2E_DIRTY, d5h_gf_case(0x11, extra=D5H_GF_START_SEED)),
+        Case("g27a", {}, d5h_gf_case(0x27, extra=D5H_GF_START_SEED), {0x2FFC4: 0}),
+        Case("g27b", D2E_DIRTY, d5h_gf_case(0x27, extra=D5H_GF_START_SEED), {0x2FFC4: 0xFFFFFFFB}),
+        Case("g27c", {}, d5h_gf_case(0x27, extra=D5H_GF_START_SEED), {0x2FFC4: 0xFFFFFFF6}),
+        Case("g28", {}, d5h_gf_case(0x28, extra=D5H_GF_START_SEED), {0x2D974: 0x000001A7}),
+        Case("g29", D2E_DIRTY, d5h_gf_case(0x29, extra=D5H_GF_START_SEED), {0x2D974: 0xFFFFFE5F}),
+        Case("g2a", {}, d5h_gf_case(0x2A, extra=D5H_GF_START_SEED), {0x2D974: 0x00000190}),
+        Case("g2b", {}, d5h_gf_case(0x2B, extra=D5H_GF_START_SEED), {0x2D974: 0x000001A7}),
+        Case("g2c", {}, d5h_gf_case(0x2C, extra=D5H_GF_START_SEED), {0x2D974: 0x0000008E}),
+        Case("g2d", D2E_DIRTY, d5h_gf_case(0x2D, extra=D5H_GF_START_SEED), {0x2D974: 0x000001A7, 0x2CA7C: 0}),
+        Case("g2e", {}, d5h_gf_case(0x2E, extra=D5H_GF_START_SEED), {0x2D974: 0x00000131, 0x2CA7C: 1}),
+        Case("g2f", {}, d5h_gf_case(0x2F, extra=D5H_GF_START_SEED), {0x2D974: 0x000000F2, 0x2CA7C: 0x100}),
+    ], D5H_GF_START_CALLS, d5h_gf_muts("start")),
+    # What the raw reads again after a call (record §2.4): the mode word at the switch (0x24EEC, after
+    # the update table) and at the mode tail (0x2545C, after the handler); the side byte 0x104B1A after
+    # 0x186D0 in the 0x22/0x23 tail (0x2555E; the port read it once until D5, record §3); the byte
+    # 0x1088BD after 0x266AC (0x252B9) and the byte 0x104B25 after 0x4EF8C (0x252E6). The stubs rewrite
+    # each (D5H_GF_RR_CALLS).
+    d5h_gf_spec("rr", [
+        Case("r0", {}, d5h_gf_case(0, ae8=1, b1a=0)),
+        Case("r1", {}, d5h_gf_case(0x25, b25=0, extra=d5h_gf_m25(7, 1, 1))),
+        Case("r2", D2E_DIRTY, d5h_gf_case(0x21, b1a=1, recs=(E3_REC, 0))),
+    ], D5H_GF_RR_CALLS + (dataclasses.replace(D5H_H[0x266AC], writes=((None, 0x001088BD, b"\x08"),)),
+                          dataclasses.replace(D5H_H[0x4EF8C], writes=((None, 0x00104B25, b"\x05"),))),
+       d5h_gf_muts("rr")),
+]
+
+# ---- 0x255CC game_loop (record §2.5): the master loop ------------------------------------------
+# The project's two master-loop pins (tools/title_pin.py, PATCHES 0x78505 and 0x7852A): `call 0x5d7dc`
+# at 0x256B1 (the body draw) and 0x256D6 (the spin draw) replaced by `mov eax,0`. The port is written
+# against that pinned original (flow.c game_loop, PORT). Unpinned, with 0x5D7DC outside the call set,
+# the original stops `unmodeled: call 0x5D7DC from 0x256B1` (measured).
+D5H_LOOP_PINS = {0x000256B1: bytes.fromhex("b800000000"), 0x000256D6: bytes.fromhex("b800000000")}
+D5H_PUMP = E.Call(0x500C4, ())
+D5H_SCENE = E.Call(0x292AC, (), clobbers=("ecx", "esi", "edi", "ebp"))
+D5H_EDGE = E.Call(0x389C4, ())
+D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+# The stubs model what the loop waits on (record §2.5): render entry 0 sets the quit flag 0xA81A8, the
+# effects step arms render entries 0 and 4 for the next iteration, and the audio service steps the ISR
+# tick 0x101508 to 0x10001 (above the
+# frame count in its high word, so a word compare of the pair is caught), so the spin 0x256C6 (which waits on the timer ISR 0x1BDF4) never runs.
+D5H_RENDER0 = E.Call(0x4F4E8, (), writes=((None, 0x000A81A8, b"\x01"),))
+D5H_RENDER4 = E.Call(0x4F5C8, ())
+D5H_FX = E.Call(0x134C0, (), writes=((None, 0x00104AEC, le32(0x00000011)),))
+D5H_SORT = E.Call(0x1C3FC, ())
+D5H_LIST = E.Call(0x14328, (), clobbers=("ebx", "edx"))
+D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+D5H_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x00101508, le32(0x00010001)),))
+D5H_LOOP_CALLS = (D5H_PUMP, D5H_SCENE, D5H_EDGE, D4B_FILL, D5H_FRAME, D5H_RENDER0, D5H_RENDER4, D5H_FX, D5H_SORT,
+                  D5H_LIST, D5H_FLUSH, D5H_AUDIO)
+
+
+def d5h_loop_case(aec=0, a54=1, f4=0, af4=0xFFFF, a55=0x55, f5=0xF5):
+    """0x255CC: the pins; the tick pair 0x101508/0x10150C seeded (the prologue zeroes both); the scroll
+    gate 0x107A54 and the list gate 0x1088F4, each before a seeded byte; the render mask 0x104AEC; the
+    frame word 0x104AF4 before the seeded word 0x104AF6; the copy flag 0x1014FC clear before three
+    seeded bytes; the quit flag 0xA81A8 clear before a seeded byte; the front buffer 0xE87A0 = 0xB0000
+    and the back buffer 0xE87A4 = 0xA0000, the aperture itself, so the dirty blit 0x501A3 (real in the
+    original, host-owned) rewrites the bytes it reads."""
+    p = dict(D5H_LOOP_PINS)
+    p.update({
+        0x00101508: le32(0x11111111) + le32(0x22222222),
+        0x00107A54: bytes([a54, a55]), 0x001088F4: bytes([f4, f5]),
+        0x00104AEC: le32(aec), 0x00104AF4: le16(af4) + le16(0x5A5A),
+        0x001014FC: bytes([0x00, 0xFD, 0xFE, 0xFF]), 0x000A81A8: bytes([0x00, 0x5A]),
+        0x000E87A0: le32(0x000B0000) + le32(0x000A0000),
+    })
+    return p
+
+
+D5H_LOOP_UNHIT = {
+    0x25680: "the full copy to the VGA aperture (`mov edi,0xa0000` 0x255E9, the rep movs at 0x25693): the "
+             "port presents through gfx_present and never writes mem[0xA0000] (the aperture rule); a named "
+             "gap (record §4)",
+    0x256D4: "the spin on the ISR tick 0x101508, which the timer ISR 0x1BDF4 steps: the emulator has no "
+             "ISR (the 0x1CF20 stub steps the tick) and the port models it in the spin (game_isr_ticks); a "
+             "named gap (record §4)",
+}
+
+D5H_SPECS += [
+    # 0x255CC game_loop under the two pins: the tick pair zeroed; per iteration 0x500C4, 0x292AC, with
+    # the byte 0x107A54 set 0x389C4 and 0x38A38, 0x24C5C, the render table 0xA86C4 over the mask dword
+    # 0x104AEC (entries 0 and 4 here), the word 0x104AF4 + 1 (k0: 0xFFFF wraps and 0x104AF6 keeps its
+    # word), 0x134C0; when the frame count 0x10150C equals the tick 0x101508: 0x1C3FC, 0x14328 unless
+    # the byte 0x1088F4 is set, 0x1C470, the dirty blit 0x501A3 (the copy flag 0x1014FC clear) and the
+    # swap 0x50188; then 0x1CF20, 0x10150C + 1, and again until the quit flag 0xA81A8 is set. k0/k2/k3
+    # run two iterations (the second with the gate false and the render entries armed), k1 one. 0x501A3
+    # and 0x50188 run real; the others are stubs. The port's own additions in game_loop are not claimed:
+    # the host key fill (it writes zeros over the zero bitmap bytes [0x101514]+0x2D8/9), gfx_present and
+    # the dump hooks.
+    Spec("game_loop", 0x255CC, [
+        Case("k0", {}, d5h_loop_case()),
+        Case("k1", D2E_DIRTY, d5h_loop_case(aec=0x00000011, a54=0, f4=1)),
+        Case("k2", {}, d5h_loop_case(aec=0x00000010, a54=0x80, f4=0x80, af4=0x1233)),
+        Case("k3", {}, d5h_loop_case(aec=0x80000004, a54=0, f4=0, a55=0, f5=0)),
+    ], unhit_named=D5H_LOOP_UNHIT, allow_calls=(0x501A3, 0x50188, 0x5D812), calls=D5H_LOOP_CALLS, eax_mask=0,
+       mutants=("@no508", "@no50c", "@nopump", "@notick", "@tickorder", "@scroll", "@scrollw", "@scrollorder",
+                "@noframe", "@frameearly", "@nortbl", "@rorder", "@rearly", "@af4d", "@noaf4", "@af4late", "@nofx",
+                "@gate", "@gatew", "@nosort", "@f4", "@f4w", "@listorder", "@noflush", "@fcd", "@noswap",
+                "@swapearly", "@incearly", "@noinc", "@noaudio", "@once", "@quitw")),
+]
+D1_SPECS += D5H_SPECS
+# ---- d5h end ----
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

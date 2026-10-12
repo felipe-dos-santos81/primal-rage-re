@@ -1466,6 +1466,7 @@ void ai_manage(u32 side)
  * the side's DS_001082C8 dword. */
 void fighter_command_generate(u32 side)
 {
+    PR_SEAM(0x47208u, side);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                        /* 0x47216 */
     if ((config_field_get(0x29u) & 0x800u) != 0u        /* 0x47220, `test ah,8` 0x47225 */
@@ -1548,6 +1549,7 @@ done:
  * 0x3C6E8 and ai_ring_transform first. */
 void fighter_input_ring_update(void)
 {
+    PR_SEAM0(0x461DCu);
     u16 loc[2];
     for (u32 side = 0; side < 2u; side++) {             /* 0x461EF */
         u32 slot = DS_001077B0 + side * 0x94u;
@@ -8942,6 +8944,7 @@ u32 fighter_4fb20(void)
 /* 0x3BB90. The per-frame body push; returns the raw's AL (1 when pushed). */
 u32 fighter_body_push(void)
 {
+    PR_SEAM_RET0(0x3BB90u);
     u32 s0, s1, w0, w1, d;
     DSB(DS_00107D30) = 0u;                              /* 0x3BB95 */
     if (DSB(DS_001078FA) != 2u) return 0u;              /* 0x3BBA2 */

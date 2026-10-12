@@ -424,6 +424,7 @@ void fight_char_join(void)
  * 0x2540F tail writes EAX before reading it). */
 void fight_mode_10_step(void)
 {
+    PR_SEAM0(0x438B4u);
     u32 sub = DSB(DS_00108174);                         /* 0x438BE / 0x438E4 */
     if (DSB(DS_00104B1D) == 3u) {                       /* 0x438B5/0x438BC */
         if (sub == 0u) {                                /* 0x438C3/0x438C5 */
@@ -1982,6 +1983,7 @@ void fight_round_reset(void)
 
 void fight_health_bars(void)
 {
+    PR_SEAM0(0x33F08u);
     u32 table = DSD(DS_001014EC);                           /* 0x33F0D */
     for (u32 side = 0; side < 2u; side++) {                 /* 0x33F13 */
         u32 rec = DSD(DS_001077A8 + side * 4u);             /* 0x33F15 */
@@ -5347,6 +5349,7 @@ void fight_effects_idle_pass(void)
 
 void fight_arena_frame(void)
 {
+    PR_SEAM0(0x263F4u);
     fight_slot_clear();                                        /* 0x263F7 */
     camera_screen_base(0, (s32)DSB(DS_0010782A));              /* 0x2640B */
     camera_screen_base(1, (s32)DSB(DS_001078BE));              /* 0x26422 */
