@@ -1,9 +1,10 @@
 # Track D, wave 2, batch d2c: differential rows for game/flow.c, nameentry.c, attract.c, menu.c (record)
 
 Batch `d2c` of track D wave 2 (brief `.superpowers/sdd/2026-10-11-reverse-d1/brief-wave2.md`, queue
-`d2c-queue.txt`, 30 entries). 24 rows landed over 23 queue entries (`0x2C8F0` is two port functions
-and two rows), 7 queue entries are named non-rows (§6), five port corrections (§3), two of them
-real defects (§3.2, §3.5). Branch `reverse-d2c`, based on `reverse-d1` at `ad0c70d` (wave 1 merged).
+`d2c-queue.txt`, 30 entries). 25 rows landed over 24 queue entries (`0x2C8F0` is two port functions
+and two rows), 6 queue entries are named non-rows (§6), seven port corrections (§3), three of them
+real defects (§3.2, §3.5, §3.6), and two more defects seen in functions outside the queue and NOT
+changed (§3.8). Branch `reverse-d2c`, based on `reverse-d1` at `ad0c70d` (wave 1 merged).
 
 Every number below was measured on this branch from the image
 `./build/diffrun --exe data/game/C/PRAGE.EXE --image-out /tmp/pr_d2c_img.bin` (fixups applied) with
@@ -50,6 +51,7 @@ functions are not followed). The first kill it reports is quoted.
 | 0x4F37C | `flow_round_timer_draw` (flow.c) | 182 | `0x25E9F`: `0x25EB2 xor eax,eax`; `0x29534`: `0x29547 xor eax,eax`; `0x25AC7`: traced | 0 |
 | 0x4F0FC | `game_mode_25_exit` (flow.c) | 210 | `0x25303`: traced | 0 |
 | 0x319B0 | `svc_buttons_clear` (svcmenu.c) | 91 | `0x32207`: `0x32215 xor eax,eax` / `0x3222B mov eax,1`; `0x32248`: `0x32252 mov eax,0xa` | 0 |
+| 0x418F4 | `frontend_scoreboard_build` (flow.c) | 783 | `0x420ED`: `0x420F2 xor eax,eax` | 0 |
 
 ## §2 The rows, measured
 
@@ -83,10 +85,11 @@ functions are not followed). The first kill it reports is quoted.
 | `flow_round_timer_draw` | 0x4F37C | 6 | 7/7 | 17/17 | 0x0 | `8d6ff4e`; callees `0x2F198`, `0x2F528` (new seam) stubs |
 | `game_mode_25_exit` | 0x4F0FC | 2 | 1/1 | 14/14 | 0x0 | `66f0166`; callees `0x1C500` allow, `0x474E4`, `0x2F510`, `0x2F388` stubs; port correction §3.5 |
 | `svc_buttons_clear` | 0x319B0 | 3 | 11/11 | 11/11 | 0x0 | `040d448`; wave-1 d1i leftover; callees `0x1C500` allow, `0x474E4`, `0x2F280` stubs; jump table `0x319A0` (four targets, all hit) |
+| `frontend_scoreboard_build` | 0x418F4 | 6 | 21/21 | 34/34 | 0x0 | `5693be7`; callees `0x1C500` allow; `0x2AE14`, `0x2A17C`, `0x2F174` (new seam), `0x474E4`, `0x2F198`, `0x2F434` stubs; port corrections §3.6, §3.7; limit §4.9 |
 
-Totals: 24 rows, 145 cases, 208/223 blocks (the fifteen unhit are the other arm of each `0x2C8F0`
-row, named), 376/376 mutants detected. The table was re-measured in one pass on `040d448` (a scratch
-script runs every base row and reads the mutant counts from the pin measurements).
+Totals: 25 rows, 151 cases, 229/244 blocks (the fifteen unhit are the other arm of each `0x2C8F0`
+row, named), 410/410 mutants detected. The table was re-measured in one pass on `5693be7` (a scratch
+script runs every base row and reads the mutant counts from the pin measurements): all 25 VERIFIED.
 
 The per-row line of a `--function` run prints every callee as "unverified": that is the
 single-function run, not a finding. Whether each callee is VERIFIED by its own row, and the branch's
@@ -152,6 +155,10 @@ in sync.
   `@relrow` `@rel4` `@b00` `@b00w` `@c0` `@b15` `@aec` `@aecv` `@order`
 - `svc_buttons_clear`: `@c0col` `@c1col` `@c2row` `@c3row` `@id` `@mode` `@n3` `@order` `@off8`
   `@row8` `@regs`
+- `frontend_scoreboard_build`: `@f63` `@bit` `@chside` `@x1` `@y1` `@pal0` `@palargs` (the old port:
+  word 0 and handle 0x74, §3.6) `@nopal` `@sdiv` (the old port: the sign extension, §3.7) `@n13`
+  `@grow` `@gch` `@gmode` `@fix1` `@fixy` `@n1col` `@n1val` `@n1mode` `@tx` `@n12` `@ids` `@trow`
+  `@tmode` `@n2col` `@scol` `@sval` `@swidth` `@cnt` `@y0` `@base` `@w100` `@w102` `@step` `@cdesc`
 
 The mem[] bound: every index-like value a binding or mutant follows is a side (0/1), a cell index
 below 18, a character below 7 or 0x80 + a table inside the data object, or a record pointer the case
@@ -183,7 +190,7 @@ that loops for ever is a port error, not a detection.
   ADDED LINES (no existing line edited), immediately above the dictionary's last line:
   `0x1D1B0: (), 0x2F510: ("ebx", "ecx", "edx"), 0x2F434: ("ebx", "ecx", "edx"), 0x4F1D0: (),     # track D2 batch d2c`
   and
-  `0x4F778: (), 0x10D70: ("ebx", "ecx", "edx"), 0x2F528: ("ebx", "ecx", "edx"),     # track D2 batch d2c`.
+  `0x4F778: (), 0x10D70: ("ebx", "ecx", "edx"), 0x2F528: ("ebx", "ecx", "edx"), 0x2F174: ("ebx", "ecx", "edx"),     # track D2 batch d2c`.
   Checked without running the suite, at every commit: the pinned dictionary equals the stubs of
   `V.SPECS`, and `E.callee_clobbers` on the image returns the declared set for every stub address
   the D2C rows use.
@@ -195,10 +202,11 @@ that loops for ever is a port error, not a detection.
 
 ## §3 Port changes
 
-Five corrections, each in its own commit. §3.2 and §3.5 change what the game does; §3.1, §3.3 and
-§3.4 are fidelity fixes that only a stub can observe. `frames/` was regenerated (`--check 820`) and
-`run_tests` passed after each; NO oracle was run against any of them (the brief leaves that to the
-integrator), so all five are unproven against the oracles.
+Seven corrections, each in its own commit. §3.2, §3.5 and §3.6 change what the game does; §3.1,
+§3.3, §3.4 and §3.7 are fidelity fixes that only a stub or a poked table can observe. `frames/` was
+regenerated (`--check 820`) and `run_tests` passed after each (§3.6 and §3.7 together); NO oracle
+was run against any of them (the brief leaves that to the integrator), so all seven are unproven
+against the oracles.
 
 ### §3.1 `game_state_3_handoff` re-reads the camera dword (commit `130ad07`, fidelity)
 
@@ -287,24 +295,67 @@ Found by the row (`x0: call #4: original 0x2F388(0xE, 0x6, 0xB), port 0x2F388(0x
 released the same first column (a centred run of 0xE cells starts at `(0x2b - 0xe) >> 1` = 0xE) but
 three more cells per row (cols 25..27 of rows 6..10).
 
-The other 17 raw call sites of `0x2F388` were then compared with the port's calls by their register
-loads (a scratch scan of the instructions before each `call`): the port's arguments agree at the
-thirteen flow.c sites it has; the three svcmenu.c sites (`0x30986`, `0x30CD3`, `0x31511`) were
-compared only as far as those loads show (the constants agree; the computed row and col were not
-traced). One raw site has NO counterpart in the port and is outside this batch's queue, so it
-was NOT changed: `0x4F01A mov ebx,2` / `0x4F01F mov edx,0xb` / `0x4F024 mov eax,0xffffffff` /
-`0x4F029 call 0x2f388`, in `0x4EF8C` (`game_mode_25_reveal`, flow.c), between the node walk's exit
-(`0x4F018 jne 0x4efa8`) and the two `(-1, 5, strlen)` releases the port does have. `0x4EF8C` has no
-differential row and is in no wave-2 queue. Reported to the integrator; unverified beyond the bytes
-quoted.
+The other raw call sites of `0x2F388` were then compared with the port: §3.8.
 
-### §3.6 Seams and exports (no behaviour change)
+### §3.6 `frontend_scoreboard_build` passes word 0x74 and no handle to `0x2A17C` (commit `72b7e1d`, DEFECT)
+
+`port/src/game/flow.c`, 0x418F4, both layouts. Old: `actor_pset_palette(spawned, 0u, 0x74u)`. New:
+`actor_pset_palette(spawned, 0x74u, 0u)` (and the header comment corrected). `0x2A17C` takes EAX =
+rec, EDX = the pset word and EBX = the palette handle (`0x2A192 mov eax,edx` before the `or` into
+pset+2; `0x2A1AA test ebx,ebx` / `0x2A1AC je 0x2a1f8` returns on a zero handle; actors.c's own
+header says the same). The raw:
+
+```
+41968  test edi, edi          ; the side
+4196A  je 0x41978
+4196C  mov edx, 0x74
+41971  xor ebx, ebx
+41973  call 0x2a17c           ; and 0x41A7D..0x41A88 the same in the text layout (test esi,esi)
+```
+
+So on side 1 the raw sets the spawned character's pset word to 0x74 and acquires no palette; the
+old port set the word to 0 and ran `palette_acquire(0x74)`. Found by the row (`s0: call #25:
+original 0x2A17C(0x10A600, 0x74, 0x0), port 0x2A17C(0x10A600, 0x0, 0x74)`, and `s1`, `s2`). The
+mutant `frontend_scoreboard_build@palargs` reproduces the old arguments.
+
+### §3.7 `frontend_scoreboard_build` zero-extends the divider's x word (commit `63ad873`, fidelity)
+
+Same function, the sprite layout's dash run. Old: `(s32)(s16)DSW(DS_000C8758 + p2) / 512`. New:
+`(s32)(DSW(DS_000C8758 + p2) >> 9)`. The proving instructions: `0x4197B xor edx,edx`, `0x4197D mov
+dx,[eax+0xc8758]`, then `0x41984 mov eax,edx` / `sar edx,0x1f` / `shl edx,9` / `sbb eax,edx` / `sar
+eax,9` on that non-negative value. Found by case `s3`, which pokes the word to 0x8200 (`call #1:
+original 0x2F174(0x41, ...), port 0x2F174(0xFFFFFFC1, ...)`). The mutant
+`frontend_scoreboard_build@sdiv` reproduces the old extension. It cannot change the game with the
+image's table (the two words are 0x0200 and 0x2C00).
+
+### §3.8 Seen outside the queue, NOT changed
+
+Two more port defects showed up while the callers of a corrected callee were compared with the raw.
+Both are in functions that are in no wave-2 queue and have no differential row, so they were left
+alone and are reported to the integrator. Each rests only on the bytes quoted (no measurement).
+
+- **`0x41C28` (flow.c, mode 0x12's step), the call at `0x41F06`.** The raw: `cmp dword [0x104ad4],0`
+  / `je 0x41f0b` / `mov edx,0x74` / `xor ebx,ebx` / `0x41F06 call 0x2a17c`. The port (flow.c, the
+  line commented `0x41F06 0x2A17C`) has `actor_pset_palette(spawned, 0u, 0x74u)`: the defect of
+  §3.6, a third time. (The fourth raw site with these loads, `0x34246`, is ported as `(act, 0x74u,
+  0u)` in fighter.c.) The other 27 raw call sites of `0x2A17C` (31 in all) were listed with the instructions
+  before each; none of the rest was compared with the port line by line.
+- **`0x4EF8C` (`game_mode_25_reveal`, flow.c), the call at `0x4F029`.** The raw: `0x4F01A mov ebx,2`
+  / `0x4F01F mov edx,0xb` / `0x4F024 mov eax,0xffffffff` / `0x4F029 call 0x2f388`, between the node
+  walk's exit (`0x4F018 jne 0x4efa8`) and the two `(-1, 5, strlen)` releases. The port has no
+  `text_cells_release_count(-1, 0xB, 2)` there. The other raw call sites of `0x2F388` were compared
+  with the port's calls by their register loads: the port's arguments agree at the thirteen flow.c
+  sites it has; the three svcmenu.c sites (`0x30986`, `0x30CD3`, `0x31511`) were compared only as
+  far as those loads show (the constants agree; the computed row and col were not traced).
+
+### §3.9 Seams and exports (no behaviour change)
 
 | address | function | change |
 |---|---|---|
 | 0x12658 | `game_state_3_handoff` (flow.c) | `static` dropped, declared in flow.h (for the row's binding) |
 | 0x286BC | `flow_match_streak_update` (flow.c) | `static` dropped, declared in flow.h |
 | 0x38910 | `title_origin_reset` (flow.c) | `static` dropped, declared in flow.h |
+| 0x418F4 | `frontend_scoreboard_build` (flow.c) | `static` dropped, declared in flow.h |
 | 0x1D1B0 | `sound_music_pause_toggle` (flow.c) | `PR_SEAM0(0x1D1B0u)`; `E.Call(0x1D1B0, ())`, clobbers none |
 | 0x4F1D0 | `frontend_origin_zero` (flow.c) | `PR_SEAM0(0x4F1D0u)`; `E.Call(0x4F1D0, ())`, clobbers none (it pushes and pops EDX) |
 | 0x4F778 | `frontend_buttons_pressed` (flow.c) | `PR_SEAM_RET(0x4F778u, n)`; `E.Call` `("eax",)`, clobbers none |
@@ -312,11 +363,12 @@ quoted.
 | 0x2F434 | `text_number_set` (actors.c) | `PR_SEAM(0x2F434u, col, row, value, width, pad, mode)`; `E.Call` `("eax","edx","ebx","ecx","s0","s1")`, `pop=8` (`0x2F460 ret 8`), clobbers `ebx ecx edx` |
 | 0x2F528 | `text_number_draw_font2` (actors.c) | `PR_SEAM(0x2F528u, col, row, value, width, pad, mode)`; the same `E.Call` shape, `pop=8`, clobbers `ebx ecx edx` |
 | 0x10D70 | `actor_pset_word_set` (actors.c) | `PR_SEAM(0x10D70u, rec, word)`; `E.Call` `("s0","eax")` (the C order: rec is the stack argument), `pop=4`, clobbers `ebx ecx edx` |
+| 0x2F174 | `text_glyph_at` (actors.c) | `PR_SEAM(0x2F174u, col, ch, row, mode)`; `E.Call` `("eax","ebx","edx","ecx")` (the C order), clobbers `ebx ecx edx` |
 
 Each seamed function's own row was re-run after its seam and is unchanged: `sound_music_pause_toggle`
 (11/11 mutants), `frontend_origin_zero` (4/4), `frontend_buttons_pressed` (5/5),
 `text_cursor_hold_font2` (5/5), `text_number_set` (7/7), `text_number_draw_font2` (7/7),
-`actor_pset_word_set` (8/8). No other existing spec names any of the seven addresses (`grep` over
+`actor_pset_word_set` (8/8), `text_glyph_at` (4/4). No other existing spec names any of the eight addresses (`grep` over
 `tools/diff_verify.py`), and the hook returns 0 for an address outside the running case's call set.
 
 The `0x2F510` seam compares only the first four bytes of the string. The rest of a string that lies
@@ -359,6 +411,10 @@ seen only through those four bytes.
    function is void.
 8. **`frontend_skip_check`: the two stores to `0x1088D8`** (`0x4F7C1`, `0x4F7E6`) write back the value
    read at `0x4F794`; they change no byte in any case and cannot (the sweep reports both).
+9. **`frontend_scoreboard_build`.** One spawn EAX per case: every spawned actor of a case is the same
+   record, so which spawn `0x2A17C` is given is seen only by its place in the call list. The
+   character byte `+0x7A` stays below 7 in every case (the descriptor table `0xA7808` has seven
+   entries; a larger index would hand the spawn a pointer outside mem[] on the port side).
 
 ## §5 Store sweep (checklist items 1-2)
 
@@ -367,20 +423,20 @@ excluded; the writes of callees that run real are included) and reports, per sto
 often it ran, how often it changed a byte, and for byte and word stores whether the byte after and
 the byte before were non-zero in some case.
 
-- **Item 1.** Every store instruction of the 24 rows' own code changes a byte in at least one case,
+- **Item 1.** Every store instruction of the 25 rows' own code changes a byte in at least one case,
   with the one exception of §4.8 (`frontend_skip_check`'s two write-backs). Store instructions per
   row (own code): `game_state_3_handoff` 5, `name_filter` 2, `sound_pause` 1, `sound_resume` 1,
   `nameentry_cells_step` 46, `flow_side_char_random` 6, `flow_side_char_set` 5,
   `flow_match_snapshot` 1, `flow_continue_open` 4, `flow_round_winner` 13, `flow_match_streak_update`
   6, `prompt_press_start_blink` 2, `prompt_insert_coin` 3 (in `0x2C1D4`), `title_origin_reset` 6,
-  `frontend_wipe_out` 5, `flow_round_timer_draw` 4, `game_mode_25_exit` 4; the other rows store
-  nothing themselves.
+  `frontend_wipe_out` 5, `flow_round_timer_draw` 4, `game_mode_25_exit` 4,
+  `frontend_scoreboard_build` 2; the other rows store nothing themselves.
 - **Dropped stores.** Each storing row carries dropping mutants (`@cam` `@b1` `@b2` `@a44`; `@nul`;
   `@nostore`; `@noclear`; `@s1acc` `@s1vel` `@s1st` `@s1store` `@s5tgt` `@s5acc` `@s5x` `@s6vel`
   `@s6st` `@s8ch` `@s8nul` `@s8clr` `@s9st`; `@noset` `@char` `@zero` `@b12`; `@zero`; `@b1f` `@c04`;
   `@b13` `@b1c` `@b5b` `@s7f` `@b1cw`; `@inc` `@zero2` `@b11z` `@s80`; `@nostore` `@nolen`; `@a4a`
   `@a4c` `@a50` `@a40`; `@nostore` `@copy` `@f4` `@keep` `@inc`; `@f2b` `@f2c` `@aec`; `@c0` `@b15`
-  `@aec`), all detected. Not every store has its own dropping mutant (`nameentry_cells_step`: 46
+  `@aec`; `@w100` `@w102`), all detected. Not every store has its own dropping mutant (`nameentry_cells_step`: 46
   stores, 13 dropping mutants); the others are covered by value or order mutants or by the row's
   byte comparison alone.
 - **Item 2, neighbours.** The byte after each byte or word store is non-zero in some case, except
@@ -400,7 +456,6 @@ the byte before were non-zero in some case.
 | addr | size | port | why |
 |---|---|---|---|
 | 0x28DA4 | 244 | `flow_player_join` (flow.c) | Not comparable. It is one block, and on it the raw calls two functions the port leaves out under `/* PORT: */` comments: `0x28DAC call 0x32970` (the run clock, host-owned) and `0x28E53 call 0x2dae4` (the audit add, deferred). Neither has a C function to seam, so the recorded call lists would differ by design on every case; allowing them instead runs their bytes on the raw side only. Rowing it needs a seamed host-side function for each (the pattern AGENTS.md names for `0x1BBAC`), which is a port change beyond a seam. The rest of the function was read against the bytes and agrees (the stores, the `xor si,1` other-side store at `0x28E29`, the hook `0x28D80`); that is a reading, not a measurement. |
-| 0x418F4 | 783 | `flow.c` (state 5's scoreboard build) | Not attempted: the batch stopped before it. Its callees are all rowed or seamed now (`0x1C500`, `0x2A17C`, `0x2AE14`, `0x2F174`, `0x2F198`, `0x2F434`, the last seamed by this batch). |
 | 0x1CF40 | 215 | `game_audio_init` | LEFTOVER d1c: stays the gap that record's §6 names (host-object handles, port-only work). Not re-examined beyond reading that entry. |
 | 0x1D018 | 161 | a comment inside `game_shutdown` | LEFTOVER d1c: stays the gap that record's §6 names (no C function to bind). |
 | 0x2EA68 | 10 | `menu_fatal_error` (menu.c) | LEFTOVER d1i: stays the gap that record names (`mov eax,1; jmp 0x62003`, the runtime's fatal exit; the port's function is a declared no-op). |
@@ -412,9 +467,9 @@ the bytes bound it.
 
 ## §7 What was run, and what was not
 
-Run on `040d448` (the last row commit; this record is the only later change): the build; every
-row's `--function <name> --self-check` at its own commit, and all 24 base rows again in one pass on
-`040d448` (all VERIFIED); the pin measurement of every row (ten port-side runs each, equal); the
+Run on `5693be7` (the last row commit; this record is the only later change): the build; every
+row's `--function <name> --self-check` at its own commit, and all 25 base rows again in one pass on
+`5693be7` (all VERIFIED); the pin measurement of every row (ten port-side runs each, equal); the
 static checks of §2.2; and
 
 ```
@@ -433,7 +488,7 @@ $ python3 tools/port_progress.py
 ```
 
 `frames/` was regenerated with `./build/prageport --game-dir data/game/C --check 820` after each of
-the five corrections (last line each time: `fn-miss check distinct=2 dropped=0`), before `run_tests`.
+the corrections (six times: §3.6 and §3.7 share one; last line each time: `fn-miss check distinct=2 dropped=0`), before `run_tests`.
 
 Not run (the integrator's): the full `--self-check` (no counter line for this branch), the unittest
 suite (so the `D2C_*` pins, the two `WINDOWS` entries and the two clobber-dictionary lines were
