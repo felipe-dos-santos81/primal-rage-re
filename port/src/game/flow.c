@@ -2907,6 +2907,7 @@ void flow_match_result_set(void)
  * 0x299A6/0x299DF (0x29970, flow_round_over_check). */
 void flow_round_winner(void)
 {
+    PR_SEAM0(0x27C48u);
     u8 a, b, al;
     u32 w;
     DSB(DS_00104B13) = 1u;                              /* 0x27C4B/0x27C4F */

@@ -15,6 +15,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x271E0` | `flow_join_prompt_draw` | 115 | 0: the one caller `0x423FC` (`0x41C28` state 7) goes on with `xor edx,edx; mov eax,[0x104abc]` (`0x42401`/`0x42403`) |
 | `0x272DC` | `flow_arena_ko_check` | 164 | 0: the one caller `0x274EC` goes on with `or byte [0x104aec],2` (`0x274F1`), three pops and `ret` into `0x25362` `jmp 0x2540f` (the mode tail) |
 | `0x27DC8` | `flow_match_end` | 224 | 0: neither call site in `0x27FA8` reads EAX before its `ret` (`0x28012..0x2803A`/`0x28048`; `0x280E8..0x2812F`, where `0x280F3 lea eax` is the only use); `0x27FA8`'s sites `0x263AF` and `0x2669B` write AH or nothing up to their `ret` (`0x263B4 mov ah,[0x104aec]`; `0x4E11C` on one path writes AH at `0x4E121` and AL at `0x4E19D` before any read; `0x266A0..0x266AA`); then `0x25247`/`0x2529B` `jmp 0x2540f` (the mode tail) or `0x2528C call 0x28c38`, whose first EAX use is `mov eax,edx` (`0x28C4D`) |
+| `0x29970` | `flow_round_over_check` | 119 | 0: the one caller `0x29B54` goes on with `or byte [0x104aec],2` (`0x29B59`), three pops and `ret` into `0x251AD` `jmp 0x2540f` (the mode tail) |
 
 ## §2 The row table (measured)
 
@@ -27,6 +28,8 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `flow_join_prompt_draw` | `0x271E0` | 4 | 1/1 | 23 | 0 | `0x4660C` and `0x2716C` stubbed (the latter seamed here); the memory at each call fixes the store order (`@b11late`, `@afcearly`, `@early`). `j2`/`j3` carry upper bytes in the dword `0x104AD4` (`xor al,1` on the whole EAX: `@xorb`) |
 | `flow_arena_ko_check` | `0x272DC` | 11 | 5/5 | 25 | 0 | every callee a stub (`0x27254`, `0x278B0` seamed here). `a2`/`b2` run w = -1, `a3` w = -128, `n1` the side `0x80`; `a1`/`b1`/`b3` carry a byte of `0x80` or more (`@bsext`, `@bsext2`) |
 | `flow_match_end` | `0x27DC8` | 5 | 11/11 | 31 | 0 | six stubs (`0x32B4C`, `0x4F728`, `0x4651C`, `0x46534` seamed here); `0x32970` and `0x32BB0` real in the original only (the port omits both, §4). `e3`: the byte `0x104B1F` = `0x83` (`@abcbit`), the handle `0x100` (`@deadlow`), the winner byte `0xFF` (`@b16sext`) |
+| `flow_round_over_check` | `0x29970` | 6 | 5/5 | 25 | 0 | `0x2C3FC` and `0x27C48` stubbed (the latter seamed here). `c0` takes both arms; `c2`/`c3` carry `0xFF` (`@sext0`, `@sext1`); the voice stub's EAX has AH set in `c0`, `c2`, `c3` (the raw stores AH after `xor ah,ah`) |
+| `flow_round_over_check_reread` | `0x29970` | 3 | 5/5 | 3 | 0 | the same entry with a `0x27C48` stub that stores `0x10` in `0x10789E`: side 1's byte is read at `0x299AD`, after side 0's call (`@pre`) |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -43,6 +46,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x4F728` | none: its first EAX use is a write (`lea eax,[edx*8]` `0x4F739`, or `mov eax,0x23` `0x4F761`) | 0 | none | pushes EDX; one plain `ret` (`0x4F776`). The raw caller keeps EDX = `0x1D` across it (`0x27E46`, used at `0x27E52`) |
 | `0x4651C` | none | 0 | none | one plain `ret` (`0x46530`) |
 | `0x46534` | EAX, EDX | 0 | `edx` | pushes EBX ECX EBP; one plain `ret` (`0x46590`) |
+| `0x27C48` | none | 0 | none | pushes EBX ECX EDX; four plain `ret` (`0x27D0F`, `0x27D8D`, `0x27DB2`, `0x27DC7`) |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -108,6 +112,9 @@ asserted the text. Unproven against the oracles until the integrator's gate.
 - `flow_match_end`: three stores. The dword `0x104ABC` is stored before `0x32B4C` (`@snapearly`: `call #0
   memory`) as a dword (`@abcb`); the two flag bytes are cleared after the second `0x2C2B0` and before `0x4651C`
   (`@early`, `@late`). `e2` has both bits already clear, `e4` only the two bits set.
+- `flow_round_over_check`: per arm the word `0x104B00 = 0x32` and the byte `0x104B09 = the side`, stored after
+  the two voices and before `0x27C48` (`@early0/1`, `@late0/1` are caught only by the memory at a call). The
+  `+0x5B` bytes next to the two tested bytes are above the threshold (`@off0`, `@off1`).
 
 ## §6 Queue entries not done
 

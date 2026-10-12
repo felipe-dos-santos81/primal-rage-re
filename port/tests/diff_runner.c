@@ -26237,6 +26237,50 @@ D3A_ME_MUT(deadclr) D3A_ME_MUT(novoice) D3A_ME_MUT(vorder) D3A_ME_MUT(erow) D3A_
 D3A_ME_MUT(ae8) D3A_ME_MUT(noae8) D3A_ME_MUT(aec) D3A_ME_MUT(noaec) D3A_ME_MUT(late) D3A_ME_MUT(early)
 D3A_ME_MUT(norestore) D3A_ME_MUT(always) D3A_ME_MUT(b16sext) D3A_ME_MUT(d1) D3A_ME_MUT(d2) D3A_ME_MUT(xor)
 D3A_ME_MUT(one) D3A_ME_MUT(swap)
+/* 0x29970: no argument. Mask 0: the one caller 0x29B54 goes on with `or byte [0x104aec],2` (0x29B59), three
+ * pops and `ret` into 0x251AD `jmp 0x2540f` (the mode tail). Bound twice: the row whose 0x27C48 stub
+ * changes nothing and the row whose stub lowers side 1's byte (the second test reads it after the call). */
+static void b_d3a_29970(const u32 *r, u32 *eax) { (void)r; flow_round_over_check(); *eax = 0u; }
+enum { D3A_RC_NONE, D3A_RC_thr0, D3A_RC_thr1, D3A_RC_sext0, D3A_RC_sext1, D3A_RC_off0, D3A_RC_off1, D3A_RC_swap,
+       D3A_RC_v27a, D3A_RC_v22a, D3A_RC_v27b, D3A_RC_v22b, D3A_RC_vorder, D3A_RC_b00a, D3A_RC_b00b,
+       D3A_RC_b00byte, D3A_RC_b09a, D3A_RC_b09b, D3A_RC_nob09, D3A_RC_early0, D3A_RC_early1, D3A_RC_late0,
+       D3A_RC_late1, D3A_RC_nowin0, D3A_RC_nowin1, D3A_RC_else, D3A_RC_pre };
+static void d3a_29970_arm(u32 side, u32 mut)
+{
+    u32 early = side ? D3A_RC_early1 : D3A_RC_early0, late = side ? D3A_RC_late1 : D3A_RC_late0;
+    u32 m00 = side ? D3A_RC_b00b : D3A_RC_b00a, m09 = side ? D3A_RC_b09b : D3A_RC_b09a;
+    if (mut == early) { DSW(0x00104B00u) = 0x32u; DSB(0x00104B09u) = (u8)side; }
+    if (mut == D3A_RC_vorder) (void)sound_voice(0x22u);
+    (void)sound_voice((mut == (side ? D3A_RC_v27b : D3A_RC_v27a)) ? 0x26u : 0x27u);
+    if (mut != D3A_RC_vorder) (void)sound_voice((mut == (side ? D3A_RC_v22b : D3A_RC_v22a)) ? 0x23u : 0x22u);
+    if (mut != early && mut != late) {
+        if (mut == D3A_RC_b00byte) DSB(0x00104B00u) = 0x32u;
+        else DSW(0x00104B00u) = (mut == m00) ? 0x31u : 0x32u;
+        if (mut != D3A_RC_nob09) DSB(0x00104B09u) = (u8)((mut == m09) ? 1u - side : side);
+    }
+    if (mut != (side ? D3A_RC_nowin1 : D3A_RC_nowin0)) flow_round_winner();
+    if (mut == late) { DSW(0x00104B00u) = 0x32u; DSB(0x00104B09u) = (u8)side; }
+}
+static void d3a_29970_core(u32 mut)
+{
+    u32 a0 = 0x0010780Au + ((mut == D3A_RC_off0) ? 1u : 0u) + ((mut == D3A_RC_swap) ? 0x94u : 0u);
+    u32 a1 = 0x0010789Eu + ((mut == D3A_RC_off1) ? 1u : 0u) - ((mut == D3A_RC_swap) ? 0x94u : 0u);
+    u32 pre = DSB(a1);
+    int hit0 = (mut == D3A_RC_sext0) ? ((s32)(s8)DSB(a0) >= 0x78) : (DSB(a0) >= ((mut == D3A_RC_thr0) ? 0x79u : 0x78u));
+    if (hit0) d3a_29970_arm(0u, mut);
+    if (hit0 && mut == D3A_RC_else) return;
+    u32 b = (mut == D3A_RC_pre) ? pre : DSB(a1);
+    if ((mut == D3A_RC_sext1) ? ((s32)(s8)b >= 0x78) : (b >= ((mut == D3A_RC_thr1) ? 0x79u : 0x78u)))
+        d3a_29970_arm(1u, mut);
+}
+#define D3A_RC_MUT(name) \
+    __attribute__((unused)) static void m_d3a_rc_##name(const u32 *r, u32 *eax) \
+    { (void)r; d3a_29970_core(D3A_RC_##name); *eax = 0u; }
+D3A_RC_MUT(thr0) D3A_RC_MUT(thr1) D3A_RC_MUT(sext0) D3A_RC_MUT(sext1) D3A_RC_MUT(off0) D3A_RC_MUT(off1)
+D3A_RC_MUT(swap) D3A_RC_MUT(v27a) D3A_RC_MUT(v22a) D3A_RC_MUT(v27b) D3A_RC_MUT(v22b) D3A_RC_MUT(vorder)
+D3A_RC_MUT(b00a) D3A_RC_MUT(b00b) D3A_RC_MUT(b00byte) D3A_RC_MUT(b09a) D3A_RC_MUT(b09b) D3A_RC_MUT(nob09)
+D3A_RC_MUT(early0) D3A_RC_MUT(early1) D3A_RC_MUT(late0) D3A_RC_MUT(late1) D3A_RC_MUT(nowin0)
+D3A_RC_MUT(nowin1) D3A_RC_MUT(else) D3A_RC_MUT(pre)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32731,6 +32775,36 @@ static const binding_t k_bindings[] = {
     { "flow_match_end@xor", m_d3a_me_xor, 0x00000000u },
     { "flow_match_end@one", m_d3a_me_one, 0x00000000u },
     { "flow_match_end@swap", m_d3a_me_swap, 0x00000000u },
+    { "flow_round_over_check", b_d3a_29970, 0x00000000u },
+    { "flow_round_over_check@thr0", m_d3a_rc_thr0, 0x00000000u },
+    { "flow_round_over_check@thr1", m_d3a_rc_thr1, 0x00000000u },
+    { "flow_round_over_check@sext0", m_d3a_rc_sext0, 0x00000000u },
+    { "flow_round_over_check@sext1", m_d3a_rc_sext1, 0x00000000u },
+    { "flow_round_over_check@off0", m_d3a_rc_off0, 0x00000000u },
+    { "flow_round_over_check@off1", m_d3a_rc_off1, 0x00000000u },
+    { "flow_round_over_check@swap", m_d3a_rc_swap, 0x00000000u },
+    { "flow_round_over_check@v27a", m_d3a_rc_v27a, 0x00000000u },
+    { "flow_round_over_check@v22a", m_d3a_rc_v22a, 0x00000000u },
+    { "flow_round_over_check@v27b", m_d3a_rc_v27b, 0x00000000u },
+    { "flow_round_over_check@v22b", m_d3a_rc_v22b, 0x00000000u },
+    { "flow_round_over_check@vorder", m_d3a_rc_vorder, 0x00000000u },
+    { "flow_round_over_check@b00a", m_d3a_rc_b00a, 0x00000000u },
+    { "flow_round_over_check@b00b", m_d3a_rc_b00b, 0x00000000u },
+    { "flow_round_over_check@b00byte", m_d3a_rc_b00byte, 0x00000000u },
+    { "flow_round_over_check@b09a", m_d3a_rc_b09a, 0x00000000u },
+    { "flow_round_over_check@b09b", m_d3a_rc_b09b, 0x00000000u },
+    { "flow_round_over_check@nob09", m_d3a_rc_nob09, 0x00000000u },
+    { "flow_round_over_check@early0", m_d3a_rc_early0, 0x00000000u },
+    { "flow_round_over_check@early1", m_d3a_rc_early1, 0x00000000u },
+    { "flow_round_over_check@late0", m_d3a_rc_late0, 0x00000000u },
+    { "flow_round_over_check@late1", m_d3a_rc_late1, 0x00000000u },
+    { "flow_round_over_check@nowin0", m_d3a_rc_nowin0, 0x00000000u },
+    { "flow_round_over_check@nowin1", m_d3a_rc_nowin1, 0x00000000u },
+    { "flow_round_over_check@else", m_d3a_rc_else, 0x00000000u },
+    { "flow_round_over_check_reread", b_d3a_29970, 0x00000000u },
+    { "flow_round_over_check_reread@pre", m_d3a_rc_pre, 0x00000000u },
+    { "flow_round_over_check_reread@nowin0", m_d3a_rc_nowin0, 0x00000000u },
+    { "flow_round_over_check_reread@sext1", m_d3a_rc_sext1, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

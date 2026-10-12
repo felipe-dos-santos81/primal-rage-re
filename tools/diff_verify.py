@@ -18435,6 +18435,48 @@ D3A_SPECS += [
                 "@eone", "@ae8", "@noae8", "@aec", "@noaec", "@late", "@early", "@norestore", "@always",
                 "@b16sext", "@d1", "@d2", "@xor", "@one", "@swap")),
 ]
+D3A_WINNER = E.Call(0x27C48, ())
+# the same callee leaving side 1's +0x5A byte below the threshold: 0x29970 reads that byte after its
+# first 0x27C48 call (0x299AD)
+D3A_WINNER_LOW = E.Call(0x27C48, (), writes=((None, 0x0010789E, b"\x10"),))
+
+
+def d3a_over_case(a, b, b09=0x5A):
+    """0x29970: the two +0x5A bytes 0x10780A/0x10789E between neighbours (the +0x5B bytes are
+    0x80 and 0x90: above the threshold), the mode word 0x104B00 (0x5A5A) between seeded words
+    and the side byte 0x104B09 between neighbours."""
+    return {0x00107809: bytes([0x71, a, 0x80]), 0x0010789D: bytes([0x72, b, 0x90]),
+            0x00104AFE: le16(0x6161) + le16(0x5A5A) + le16(0x6262),
+            0x00104B08: bytes([0x63, b09, 0x64])}
+
+
+D3A_SPECS += [
+    # 0x29970 flow_round_over_check: no argument. Side 0: when the byte 0x10780A (zero-extended,
+    # signed `jl` against 0x78) is 0x78 or more, the voices 0x27 and 0x22, the mode word 0x104B00
+    # = 0x32 (DX, loaded before the second voice), the byte 0x104B09 = 0 (AH after `xor ah,ah`)
+    # and 0x27C48. Then side 1 on the byte 0x10789E the same way (BX across both voices, DL = 1).
+    # The two tests are independent: c0 takes both arms. Both callees are stubs (0x27C48 seamed
+    # here, its own row). Mask 0: the one caller 0x29B54, record §1.
+    Spec("flow_round_over_check", 0x29970, [
+        Case("c0", {"edx": 0xABCD1234, "ebx": 0x12345678}, d3a_over_case(0x78, 0x78), {0x2C3FC: 0xFFFFFFFF}),
+        Case("c1", {}, d3a_over_case(0x77, 0x77)),
+        Case("c2", {}, d3a_over_case(0xFF, 0x10), {0x2C3FC: 0x0000FF00, 0x27C48: 0x12345678}),
+        Case("c3", {}, d3a_over_case(0x10, 0xFF, b09=0x00), {0x2C3FC: 0x00005500}),
+        Case("c4", {}, d3a_over_case(0x77, 0x78, b09=0x01)),
+        Case("c5", {}, d3a_over_case(0x78, 0x77, b09=0x00)),
+    ], calls=(VOICE, D3A_WINNER), eax_mask=0,
+       mutants=("@thr0", "@thr1", "@sext0", "@sext1", "@off0", "@off1", "@swap", "@v27a", "@v22a", "@v27b",
+                "@v22b", "@vorder", "@b00a", "@b00b", "@b00byte", "@b09a", "@b09b", "@nob09", "@early0",
+                "@early1", "@late0", "@late1", "@nowin0", "@nowin1", "@else")),
+    # 0x29970 again with a 0x27C48 stub that stores 0x10 in the byte 0x10789E: the raw reads
+    # side 1's byte at 0x299AD, after side 0's 0x27C48 call, so in r0 (both bytes high at
+    # entry) only side 0's arm runs. `@pre` reads both bytes first.
+    Spec("flow_round_over_check_reread", 0x29970, [
+        Case("r0", {}, d3a_over_case(0x78, 0x78)),
+        Case("r1", {}, d3a_over_case(0x10, 0xFF)),
+        Case("r2", {}, d3a_over_case(0x10, 0x20)),
+    ], calls=(VOICE, D3A_WINNER_LOW), eax_mask=0, mutants=("@pre", "@nowin0", "@sext1")),
+]
 D1_SPECS += D3A_SPECS
 
 
