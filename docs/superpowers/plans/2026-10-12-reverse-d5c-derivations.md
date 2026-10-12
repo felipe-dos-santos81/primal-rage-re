@@ -12,9 +12,9 @@ on the exercised blocks and inputs only, with the callees stubbed or run as stat
 §3 is unproven against the capture oracles until the integrator's gate.
 
 Each mutant set is a restatement of the function in `port/tests/diff_runner.c` (`d5c_<addr>_core`) with
-one choice flipped per mutant number. The restatements were not bound unflipped and measured on their own:
-what shows a restatement is the function is that each of its mutants differs from the original on the
-cases §2 pins and on no others.
+one choice flipped per mutant number. After the last row each core was also bound unflipped (mutant number
+0) and measured `VERIFIED` on its row's cases, all 14 rows, so the restatement is the function there; those
+bindings are not kept.
 
 The full self-check on the batch's last row commit (`PR_DIFF_JOBS=4 python3 tools/diff_verify.py --image
 /tmp/pr_d5c_img.bin --self-check`) ends `rc 0` with `798/798 functions VERIFIED; 9672/9672 mutants detected;
