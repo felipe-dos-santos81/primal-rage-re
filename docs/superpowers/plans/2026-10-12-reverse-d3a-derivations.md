@@ -19,6 +19,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x2C178` | `prompt_press_start` | 53 | 0: it returns `0x2C0F4`'s EAX untouched (`pop esi; pop ecx; pop ebx; ret` after the call at `0x2C1A4`), which the d2c record (§1, `0x2C0F4`) traces dead through this function's nine call sites. Seen here: `0x28D40 jmp 0x28d60` (`xor eax,eax`); the three loops at `0x42606`/`0x42665`/`0x426BE` rewrite EAX at their tops (`lea eax,[ecx+1]`, `xor eax,eax`); their exit `0x4271B` and `0x432C3`/`0x432D3` return it upward (not re-traced here) |
 | `0x41760` | `frontend_mode12_challenge_continue` | 98 | 0: the one caller `0x4213B` (`0x41C28` state 5) goes on with `add esp,8` (`0x42140`), six pops and `ret`: the mode step's own return, whose EAX the d2e rows hold dead (mask 0, d2e §1) |
 | `0x42F60` | `flow_continue_poll` | 78 | full: `xor eax,eax` `0x42FAA`, `mov eax,1` `0x42FA3`, or the zero EAX of `0x2C060` just tested (`0x42F68`); all four callers `test eax,eax` (`0x27A3C`, `0x42CE6`, `0x42D2A`, `0x42D6F`) |
+| `0x42FE0` | `flow_challenge_join` | 221 | 0: the four call sites in `0x42CB4` drop EAX — `0x42D04..`, `0x42D8F..` and `0x42D3E mov ah,5` run to the pops and `ret` into `0x425E3 jmp 0x425ea; call 0x33f08` (first EAX use `mov eax,[ebx+0x1077a8]` `0x33F15`); after `0x42DB2` the loop reloads it (`mov eax,edx` `0x42D68`) or the tail rewrites it (`xor al,al` `0x42DC8` .. `mov eax,1`; `mov al,[0x104b1f]; and al,1; and eax,0xff` `0x42DDC..`). The fifth site `0x42FB1` is in the unreferenced stub `0x42FB0` (`mov ah,5`, `ret`) |
 
 ## §2 The row table (measured)
 
@@ -36,6 +37,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `prompt_press_start` | `0x2C178` | 6 | 4/4 | 13 | 0 | `0x2C0F4` stubbed (seamed here). `k0`: x word `0x8123` (`@xzext`); `k2`: col byte `0x83` (`@colsext`); `k4`/`k5`: side 2 |
 | `frontend_mode12_challenge_continue` | `0x41760` | 4 | 1/1 | 20 | 0 | `0x4660C`, `0x25848`, `0x41350` stubbed with d2e's constants (the `0x25848` stub stores a new stage word: `@stagepre`). `h3`: a result of `0x100` (`@xorb`); `h0`: a col byte `0x83` (`@colsext`) |
 | `flow_continue_poll` | `0x42F60` | 7 | 8/8 | 20 | `0xFFFFFFFF` | five stubs (`0x2CA48`, `0x2CA78` seamed here). The stubbed `0x2CA78` returns non-zero in `q1` and `0x100` in `q4`, so the arm its real body (`xor eax,eax; ret`) never selects is compared too |
+| `flow_challenge_join` | `0x42FE0` | 7 | 8/8 | 32 | 0 | four stubs, none new. The stubs return AH set where the raw stores AH after `xor ah,ah` (`0x43078`). `j4`: side 2, handle `0x100` (`@dclow`); `j5`: side `0x100` (`@xorb`); `j6`: handle `0x10000` (`@e0low`) |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -136,6 +138,10 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   between neighbours with a value and a width mutant.
 - `flow_continue_poll`: one store, the byte `0x105C04 = 1`, after the spend (`@early`: the memory at calls
   1..3); `q4` has the byte already 1 (`@c04` is caught where it is not), `@c04w` writes `0x105C05`.
+- `flow_challenge_join`: per arm the handle dword zeroed after its two `0x2B150` calls (`@noz0`, `@nozdc`,
+  `@z8`), the slot's `+0x7F` byte = 0 (`j6` has it already 0) and `0x104B1F |= bit` (`@b1fset`), all before
+  `0x2C2B0`; the byte `0x104B19 = 1` between `0x2C2B0` and the first `0x41310` (`@b19early`, `@b19late`: only
+  the memory at a call).
 
 ## §6 Queue entries not done
 

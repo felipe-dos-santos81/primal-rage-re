@@ -18576,6 +18576,43 @@ D3A_SPECS += [
                 "@nofree", "@notake", "@takeorder", "@spendn", "@nospend", "@c04", "@c04v", "@c04w", "@early",
                 "@ret", "@miss")),
 ]
+def d3a_cjoin_case(dc=0, e0=0, e4=0x0010A3C0, e8=0x0010A340, b1f=0, s7f=(0x5A, 0x5B)):
+    """0x42FE0: the four prompt-actor dwords 0x1080DC, 0x1080E0, 0x1080E4, 0x1080E8 and the two
+    record dwords 0x1080F8/0x1080FC, each run between seeded dwords, the bytes 0x104B19 (0x5A)
+    and 0x104B1F and the two slots' +0x7F bytes (0x10782F/0x1078C3) between neighbours."""
+    return {0x001080D8: le32(0x61616161) + le32(dc) + le32(e0) + le32(e4) + le32(e8) + le32(0x62626262),
+            0x001080F4: le32(0x63636363) + le32(0x0010A400) + le32(0x0010A480) + le32(0x64646464),
+            0x00104B18: b"\x65\x5a\x66", 0x00104B1E: bytes([0x67, b1f, 0x68]),
+            0x0010782E: bytes([0x71, s7f[0], 0x72]), 0x001078C2: bytes([0x73, s7f[1], 0x74])}
+
+
+D3A_SPECS += [
+    # 0x42FE0 flow_challenge_join: EAX = the side. Side 0 (`test eax,eax`): 0x2BC30(the dword
+    # 0x1080FC, 0xE8816, 6.0); when the dword 0x1080E0 is non-zero (all of it), 0x2B150 on it and
+    # on the dword 0x1080E8, and 0x1080E0 = 0 (EDI across both); the byte 0x10782F = 0 (DH) and
+    # 0x104B1F |= 1. Any other side: the same with 0x1080F8, 0x1080DC/0x1080E4 (ECX), the byte
+    # 0x1078C3 (AH after `xor ah,ah` on a callee's EAX: the stubs return AH set) and bit 1. Then
+    # 0x2C2B0(side, 0x1C), the byte 0x104B19 = 1 (CH across the call), 0x41310(side, 1) and
+    # 0x41310(side with bit 0 of BL flipped, 1). Every callee is a stub. j4 runs side 2 with a
+    # handle of 0x100, j5 side 0x100. Mask 0: record §1.
+    Spec("flow_challenge_join", 0x42FE0, [
+        Case("j0", {"eax": 0, "ebx": 0x11111111, "ecx": 0x22222222, "edx": 0x33333333, "esi": 0x44444444,
+                    "edi": 0x55555555}, d3a_cjoin_case(dc=0x0010A380, e0=0x0010A300),
+             {0x2BC30: 0x00005500, 0x2B150: 0xFFFFFFFF}),
+        Case("j1", {"eax": 0}, d3a_cjoin_case(dc=0x0010A380, e0=0, b1f=0xFE), {0x2BC30: 0x0000FF00}),
+        Case("j2", {"eax": 1}, d3a_cjoin_case(dc=0x0010A380, e0=0x0010A300, b1f=0x01),
+             {0x2BC30: 0x00005500, 0x2B150: 0xFFFFFFFF}),
+        Case("j3", {"eax": 1}, d3a_cjoin_case(dc=0, e0=0x0010A300, b1f=0x02), {0x2BC30: 0x0000FF00}),
+        Case("j4", {"eax": 2}, d3a_cjoin_case(dc=0x00000100, e0=0x0010A300, b1f=0x80),
+             {0x2BC30: 0x00005500, 0x2B150: 0x00007700, 0x41310: 0x12345678}),
+        Case("j5", {"eax": 0x100}, d3a_cjoin_case(dc=0, e0=0x0010A300, b1f=0x03)),
+        Case("j6", {"eax": 0}, d3a_cjoin_case(dc=0, e0=0x00010000, b1f=0x01, s7f=(0x00, 0x5B))),
+    ], calls=(ANIM_BEGIN, P7_2B150, D3A_ERASE, P7_41310), eax_mask=0,
+       mutants=("@side1", "@h0", "@h1", "@stream", "@rate", "@e0low", "@dead1", "@deadswap", "@e8", "@noz0",
+                "@z8", "@nos7f0", "@s7fside", "@bit0", "@b1fset", "@dclow", "@e4", "@nozdc", "@nos7f1", "@bit1",
+                "@erow", "@eside", "@noerase", "@b19", "@b19early", "@b19late", "@d41", "@xor", "@xorb", "@one",
+                "@swap41", "@animlate")),
+]
 D1_SPECS += D3A_SPECS
 
 

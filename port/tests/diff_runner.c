@@ -26381,6 +26381,55 @@ D3A_CN_MUT(nocredit) D3A_CN_MUT(al) D3A_CN_MUT(side) D3A_CN_MUT(stride) D3A_CN_M
 D3A_CN_MUT(zeroal) D3A_CN_MUT(nozero) D3A_CN_MUT(swaparm) D3A_CN_MUT(nofree) D3A_CN_MUT(notake)
 D3A_CN_MUT(takeorder) D3A_CN_MUT(spendn) D3A_CN_MUT(nospend) D3A_CN_MUT(c04) D3A_CN_MUT(c04v) D3A_CN_MUT(c04w)
 D3A_CN_MUT(early) D3A_CN_MUT(ret) D3A_CN_MUT(miss)
+/* 0x42FE0: EAX = the side. Mask 0: its four call sites in 0x42CB4 drop EAX (0x42D04.., 0x42D8F.. and
+ * 0x42D3E `mov ah,5` run to the pops and `ret` into 0x425E3 `jmp 0x425ea; call 0x33f08`, whose first EAX
+ * use is a load at 0x33F15; after 0x42DB2 the loop reloads it at 0x42D68 or the tail rewrites it at
+ * 0x42DC8/0x42DDC); the fifth site 0x42FB1 is the unreferenced stub 0x42FB0. Record §1. */
+static void b_d3a_42fe0(const u32 *r, u32 *eax) { flow_challenge_join(r[R_EAX]); *eax = 0u; }
+enum { D3A_CJ_NONE, D3A_CJ_side1, D3A_CJ_h0, D3A_CJ_h1, D3A_CJ_stream, D3A_CJ_rate, D3A_CJ_e0low, D3A_CJ_dead1,
+       D3A_CJ_deadswap, D3A_CJ_e8, D3A_CJ_noz0, D3A_CJ_z8, D3A_CJ_nos7f0, D3A_CJ_s7fside, D3A_CJ_bit0,
+       D3A_CJ_b1fset, D3A_CJ_dclow, D3A_CJ_e4, D3A_CJ_nozdc, D3A_CJ_nos7f1, D3A_CJ_bit1, D3A_CJ_erow,
+       D3A_CJ_eside, D3A_CJ_noerase, D3A_CJ_b19, D3A_CJ_b19early, D3A_CJ_b19late, D3A_CJ_d41, D3A_CJ_xor,
+       D3A_CJ_xorb, D3A_CJ_one, D3A_CJ_swap41, D3A_CJ_animlate };
+static void d3a_42fe0_core(u32 side, u32 mut)
+{
+    int first = (mut == D3A_CJ_side1) ? (side != 1u) : (side == 0u);
+    u32 hnd = first ? ((mut == D3A_CJ_h0) ? 0x001080F8u : 0x001080FCu) : ((mut == D3A_CJ_h1) ? 0x001080FCu : 0x001080F8u);
+    u32 a = first ? 0x001080E0u : 0x001080DCu;
+    u32 b = first ? ((mut == D3A_CJ_e8) ? 0x001080E4u : 0x001080E8u) : ((mut == D3A_CJ_e4) ? 0x001080E8u : 0x001080E4u);
+    u32 s7f = (first != (mut == D3A_CJ_s7fside)) ? 0x0010782Fu : 0x001078C3u;
+    u32 bit = first ? ((mut == D3A_CJ_bit0) ? 2u : 1u) : ((mut == D3A_CJ_bit1) ? 1u : 2u);
+    if (mut != D3A_CJ_animlate)
+        actors_anim_begin(DSD(hnd), (mut == D3A_CJ_stream) ? 0x000E8818u : 0x000E8816u,
+                          (mut == D3A_CJ_rate) ? 0x40400000u : 0x40C00000u);
+    u32 v = DSD(a);
+    if ((mut == (first ? D3A_CJ_e0low : D3A_CJ_dclow)) ? ((v & 0xFFu) != 0u) : (v != 0u)) {
+        if (mut == D3A_CJ_deadswap) actor_set_dead(DSD(b));
+        actor_set_dead(v);
+        if (mut != D3A_CJ_dead1 && mut != D3A_CJ_deadswap) actor_set_dead(DSD(b));
+        if (mut == D3A_CJ_z8) DSD(b) = 0u;
+        else if (mut != (first ? D3A_CJ_noz0 : D3A_CJ_nozdc)) DSD(a) = 0u;
+    }
+    if (mut == D3A_CJ_animlate) actors_anim_begin(DSD(hnd), 0x000E8816u, 0x40C00000u);
+    if (mut != (first ? D3A_CJ_nos7f0 : D3A_CJ_nos7f1)) DSB(s7f) = 0u;
+    DSB(0x00104B1Fu) = (mut == D3A_CJ_b1fset) ? (u8)bit : (u8)(DSB(0x00104B1Fu) | bit);
+    if (mut == D3A_CJ_b19early) DSB(0x00104B19u) = 1u;
+    if (mut != D3A_CJ_noerase) prompt_side_erase((mut == D3A_CJ_eside) ? 0 : (s32)side, (mut == D3A_CJ_erow) ? 0x1D : 0x1C);
+    if (mut != D3A_CJ_b19 && mut != D3A_CJ_b19early && mut != D3A_CJ_b19late) DSB(0x00104B19u) = 1u;
+    u32 o = (mut == D3A_CJ_xor) ? side : (mut == D3A_CJ_xorb) ? ((side ^ 1u) & 0xFFu) : (side ^ 1u);
+    if (mut == D3A_CJ_swap41) fighter_41310(o, 1);
+    fighter_41310(side, (mut == D3A_CJ_d41) ? 0 : 1);
+    if (mut == D3A_CJ_b19late) DSB(0x00104B19u) = 1u;
+    if (mut != D3A_CJ_one && mut != D3A_CJ_swap41) fighter_41310(o, 1);
+}
+#define D3A_CJ_MUT(name) \
+    static void m_d3a_cj_##name(const u32 *r, u32 *eax) { d3a_42fe0_core(r[R_EAX], D3A_CJ_##name); *eax = 0u; }
+D3A_CJ_MUT(side1) D3A_CJ_MUT(h0) D3A_CJ_MUT(h1) D3A_CJ_MUT(stream) D3A_CJ_MUT(rate) D3A_CJ_MUT(e0low)
+D3A_CJ_MUT(dead1) D3A_CJ_MUT(deadswap) D3A_CJ_MUT(e8) D3A_CJ_MUT(noz0) D3A_CJ_MUT(z8) D3A_CJ_MUT(nos7f0)
+D3A_CJ_MUT(s7fside) D3A_CJ_MUT(bit0) D3A_CJ_MUT(b1fset) D3A_CJ_MUT(dclow) D3A_CJ_MUT(e4) D3A_CJ_MUT(nozdc)
+D3A_CJ_MUT(nos7f1) D3A_CJ_MUT(bit1) D3A_CJ_MUT(erow) D3A_CJ_MUT(eside) D3A_CJ_MUT(noerase) D3A_CJ_MUT(b19)
+D3A_CJ_MUT(b19early) D3A_CJ_MUT(b19late) D3A_CJ_MUT(d41) D3A_CJ_MUT(xor) D3A_CJ_MUT(xorb) D3A_CJ_MUT(one)
+D3A_CJ_MUT(swap41) D3A_CJ_MUT(animlate)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32961,6 +33010,39 @@ static const binding_t k_bindings[] = {
     { "flow_continue_poll@early", m_d3a_cn_early, 0xFFFFFFFFu },
     { "flow_continue_poll@ret", m_d3a_cn_ret, 0xFFFFFFFFu },
     { "flow_continue_poll@miss", m_d3a_cn_miss, 0xFFFFFFFFu },
+    { "flow_challenge_join", b_d3a_42fe0, 0x00000000u },
+    { "flow_challenge_join@side1", m_d3a_cj_side1, 0x00000000u },
+    { "flow_challenge_join@h0", m_d3a_cj_h0, 0x00000000u },
+    { "flow_challenge_join@h1", m_d3a_cj_h1, 0x00000000u },
+    { "flow_challenge_join@stream", m_d3a_cj_stream, 0x00000000u },
+    { "flow_challenge_join@rate", m_d3a_cj_rate, 0x00000000u },
+    { "flow_challenge_join@e0low", m_d3a_cj_e0low, 0x00000000u },
+    { "flow_challenge_join@dead1", m_d3a_cj_dead1, 0x00000000u },
+    { "flow_challenge_join@deadswap", m_d3a_cj_deadswap, 0x00000000u },
+    { "flow_challenge_join@e8", m_d3a_cj_e8, 0x00000000u },
+    { "flow_challenge_join@noz0", m_d3a_cj_noz0, 0x00000000u },
+    { "flow_challenge_join@z8", m_d3a_cj_z8, 0x00000000u },
+    { "flow_challenge_join@nos7f0", m_d3a_cj_nos7f0, 0x00000000u },
+    { "flow_challenge_join@s7fside", m_d3a_cj_s7fside, 0x00000000u },
+    { "flow_challenge_join@bit0", m_d3a_cj_bit0, 0x00000000u },
+    { "flow_challenge_join@b1fset", m_d3a_cj_b1fset, 0x00000000u },
+    { "flow_challenge_join@dclow", m_d3a_cj_dclow, 0x00000000u },
+    { "flow_challenge_join@e4", m_d3a_cj_e4, 0x00000000u },
+    { "flow_challenge_join@nozdc", m_d3a_cj_nozdc, 0x00000000u },
+    { "flow_challenge_join@nos7f1", m_d3a_cj_nos7f1, 0x00000000u },
+    { "flow_challenge_join@bit1", m_d3a_cj_bit1, 0x00000000u },
+    { "flow_challenge_join@erow", m_d3a_cj_erow, 0x00000000u },
+    { "flow_challenge_join@eside", m_d3a_cj_eside, 0x00000000u },
+    { "flow_challenge_join@noerase", m_d3a_cj_noerase, 0x00000000u },
+    { "flow_challenge_join@b19", m_d3a_cj_b19, 0x00000000u },
+    { "flow_challenge_join@b19early", m_d3a_cj_b19early, 0x00000000u },
+    { "flow_challenge_join@b19late", m_d3a_cj_b19late, 0x00000000u },
+    { "flow_challenge_join@d41", m_d3a_cj_d41, 0x00000000u },
+    { "flow_challenge_join@xor", m_d3a_cj_xor, 0x00000000u },
+    { "flow_challenge_join@xorb", m_d3a_cj_xorb, 0x00000000u },
+    { "flow_challenge_join@one", m_d3a_cj_one, 0x00000000u },
+    { "flow_challenge_join@swap41", m_d3a_cj_swap41, 0x00000000u },
+    { "flow_challenge_join@animlate", m_d3a_cj_animlate, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
