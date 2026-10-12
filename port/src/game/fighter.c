@@ -8532,8 +8532,8 @@ void fighter_winner_body(u32 side)
     DSB(ctx[2] + 0x43u) &= 0xFCu;                           /* 0x193CA */
     DSB(ctx[3] + 0x43u) &= 0xFCu;                           /* 0x193D2 */
     hit_stance_timer(ctx[1]);                               /* 0x193DA 0x1922C */
-    if (fighter_3962c(ctx[0], 0u) != 0                       /* 0x193E4 */
-            || fighter_396ac(ctx[0], 0u) != 0) {             /* 0x19419 */
+    if ((u8)fighter_3962c(ctx[0], 0u) != 0u                  /* 0x193E4, AL 0x193E9 */
+            || (u8)fighter_396ac(ctx[0], 0u) != 0u) {        /* 0x19419, AL 0x1941E */
         DSB(ctx[2] + 0x8Au) = 0;                            /* 0x193F1/0x19426 */
         fighter_18b44(ctx[2]);                              /* 0x19401/0x19436 */
         fighter_39a10(ctx[5], 0x29Au);                      /* 0x1940A/0x1943F */
