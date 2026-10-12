@@ -1997,11 +1997,11 @@ void fighter_state_399cc(u32 side)
 /* 0x36430. The +0x52 == 5 handler. */
 void fighter_state_36430(u32 slot, u32 rec, u32 side)
 {
-    if (fighter_state_365c8(slot, rec, side) != 0)      /* 0x36439 */
+    if ((u8)fighter_state_365c8(slot, rec, side) != 0u) /* 0x36439, 0x3643E: test al,al */
         DSB(slot + 0x43u) |= 0x40u;
     else
         DSB(slot + 0x43u) &= 0xBFu;
-    if (fighter_state_36638(slot, rec) != 0) return;    /* 0x36450 */
+    if ((u8)fighter_state_36638(slot, rec) != 0u) return;   /* 0x36450, 0x36455: test al,al */
     {
         u16 cmd = DSW(DS_001088E0 + side * 2u);
         if ((cmd >> 8 & 0x40u) == 0u) {
@@ -2029,11 +2029,11 @@ void fighter_state_36430(u32 slot, u32 rec, u32 side)
 /* 0x364FC. The +0x52 == 21 handler. */
 void fighter_state_364fc(u32 slot, u32 rec, u32 side)
 {
-    if (fighter_state_365c8(slot, rec, side) != 0)      /* 0x36505 */
+    if ((u8)fighter_state_365c8(slot, rec, side) != 0u) /* 0x36505, 0x3650A: test al,al */
         DSB(slot + 0x43u) |= 0x40u;
     else
         DSB(slot + 0x43u) &= 0xBFu;
-    if (fighter_state_36638(slot, rec) != 0) return;    /* 0x3651C */
+    if ((u8)fighter_state_36638(slot, rec) != 0u) return;   /* 0x3651C, 0x36521: test al,al */
     {
         u16 cmd = DSW(DS_001088E0 + side * 2u);
         if ((cmd >> 8 & 0x40u) == 0u) {
