@@ -2212,6 +2212,7 @@ void game_mode_32_step(void)
  * (0x27C48, record §48-K) and 0x29446 (0x29328, game_mode_30_step). */
 void flow_win_markers_spawn(void)
 {
+    PR_SEAM0(0x256F4u);
     u32 k;
     for (k = 0; k < (u32)DSB(DS_00104AF2); k++) {       /* 0x2573F..0x25748 */
         if (DSD(DS_00104A88 + k * 4u) == 0u)            /* 0x25714 */
@@ -2237,6 +2238,7 @@ void flow_win_markers_spawn(void)
  * and 0x25AC7 (0x25A84, no entrance). */
 void flow_round_timer_draw(void)
 {
+    PR_SEAM0(0x4F37Cu);
     u8 b1d = DSB(DS_00104B1D);                          /* 0x4F37F */
     if (b1d == 2u) {                                    /* 0x4F385 */
         DSB(DS_001088F2) = 0x1Eu;                       /* 0x4F39B (CH) */
@@ -2264,6 +2266,7 @@ void flow_round_timer_draw(void)
  * game_mode_30_step). */
 void flow_round_hud_init(void)
 {
+    PR_SEAM0(0x25C1Cu);
     /* 0x25C1D 0x29D60 is a ret-only no-op. */
     DSD(DS_00104AD8) = 0u;                              /* 0x25C2A */
     if (DSB(DS_00104B1D) == 2u)                         /* 0x25C30 */

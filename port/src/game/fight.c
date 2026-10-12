@@ -1981,6 +1981,7 @@ void fight_health_bars(void)
 
 void fight_slot_pass(void)
 {
+    PR_SEAM0(0x3CB68u);
     /* 0x3CB6B loads DS_00107ED8 into EDX and 0x3CB7E stores it back before
      * each side's 0x1A570 call (the value at entry for side 0, the 0x20 the
      * inner loop ended on for side 1). Both counters live in memory and are
