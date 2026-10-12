@@ -2309,7 +2309,7 @@ void fighter_36e78(u32 slot)
 void fighter_state_359e0(u32 slot, u32 rec, u32 side)
 {
     u16 cmd = DSW(DS_001088E0 + side * 2u);
-    if (fighter_state_365c8(slot, rec, side) != 0) {    /* 0x359EA */
+    if ((u8)fighter_state_365c8(slot, rec, side) != 0u) {  /* 0x359EA, AL 0x359EF */
         DSB(slot + 0x43u) |= 0x40u;                     /* 0x359F8 */
         fighter_state_35b7c(slot, rec);                 /* 0x359FF */
         return;
@@ -2336,13 +2336,13 @@ void fighter_state_359e0(u32 slot, u32 rec, u32 side)
         return;
     if (ai_facing_cmd(side) != 0u) {                    /* 0x35AAD */
         s32 d = (s32)DSD(DS_000BDBEC + (u32)DSB(slot + 0x7Au) * 2u) >> 16;
-        if (fighter_actor_bit15_clear(side) != 0)       /* 0x35AB8 */
+        if ((u8)fighter_actor_bit15_clear(side) != 0u)  /* 0x35AB8, AL 0x35ABF */
             DSD(rec + 0x18u) -= (u32)d;                 /* 0x35AD7 */
         else
             DSD(rec + 0x18u) += (u32)d;                 /* 0x35AF0 */
     } else {
         s32 d = (s32)DSD(DS_000BDC00 + (u32)DSB(slot + 0x7Au) * 2u) >> 16;
-        if (fighter_actor_bit15_clear(side) != 0)       /* 0x35AF7 */
+        if ((u8)fighter_actor_bit15_clear(side) != 0u)  /* 0x35AF7, AL 0x35AFC */
             DSD(rec + 0x18u) += (u32)d;                 /* 0x35B14 */
         else
             DSD(rec + 0x18u) -= (u32)d;                 /* 0x35B2D */
