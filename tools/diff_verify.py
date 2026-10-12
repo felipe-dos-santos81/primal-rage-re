@@ -24932,6 +24932,76 @@ D5E_SPECS += [
        unhit_named={0x29A0D: D5E_RR_UNDO, 0x29A16: D5E_RR_UNDO, 0x29A44: D5E_RR_UNDO, 0x29A98: D5E_RR_BLOCK},
        mutants=("@pregate", "@prech1", "@prelat", "@preaec", "@nochk")),
 ]
+D5E_HOLDALL = E.Call(0x4A708, ())
+D5E_RTEXT = E.Call(0x28130, ())
+# the mutants of the results head modes 8 and 9 share: the prelude, one 0x17FA0 pair, 0x17580,
+# 0x1958C, (0x3CB68,) 0x35658 twice, 0x19068(1), 0x49C78, 0x12DA8, the 0x104AF8 countdown and its
+# five stores, 0x104AEC |= 2
+D5E_MUT_RHEAD = (D5E_MUT_PRE2 + D5E_MUT_PROJ2 + ("@nopr1", "@nodecay", "@nopassa", "@dorder", "@nopass")
+                 + D5E_MUT_HUD
+                 + ("@nopassb", "@passb0", "@nofx", "@noyc", "@ycearly", "@af8zero", "@nodec", "@decb", "@hne", "@hb",
+                    "@no78fe", "@fe78w", "@no78fc", "@fc78w", "@nohf41a", "@nohf41b", "@hf41set", "@hf41bit",
+                    "@noafe4", "@afe4v", "@afe4w", "@holdearly", "@aecearly", "@noaec", "@aecset", "@aecbit"))
+# 0x12DA8 leaving the countdown word 0x104AF8 = 1 (read at 0x28522 / 0x28851: it then runs out),
+# and 0x28130 leaving the byte 0x104B1D = 3 (mode 8 reads it at 0x285A8, mode 9 at 0x2890D)
+D5E_YCOMMIT_WAF8 = E.Call(0x12DA8, (), writes=((None, 0x00104AF8, le16(1)),))
+D5E_RTEXT_W = E.Call(0x28130, (), writes=((None, 0x00104B1D, b"\x03"),))
+
+
+def d5e_res_case(af8, fc=0x00, fe=0x00, fafe=0x04, b1d=0, f41=(0x01, 0x80), afc=7, extra=None, **kw):
+    """Modes 8 and 9: the countdown word 0x104AF8 inside the word run 0x104AF6..0x104B03 (0x104AFA
+    = 0x5C5C, 0x104AFC = `afc`, 0x104AFE = 0x5D5D, 0x104B00 = 0x5E5E, seeded words around), the bytes
+    0x1078FC and 0x1078FE between seeded bytes, both slots' +0x41 bytes (0x1077F1, 0x107885)
+    between seeded bytes, the byte 0xF0AFE, the byte 0x104B1D, the byte 0x104B25 (0x5F), the hook
+    dword 0x104AE4 (0x5F5F5F5F) and the word 0x1088EE (0x6161), each between seeded neighbours."""
+    return d5e_mem(d5e_base(**kw), {
+        0x00104AF6: le16(0x6A6A) + le16(af8) + le16(0x5C5C) + le16(afc) + le16(0x5D5D) + le16(0x5E5E) + le16(0x6B6B),
+        0x001078FB: bytes([0x76, fc, 0x7A, fe, 0x7B]),
+        0x001077F0: bytes([0x70, f41[0], 0x71]), 0x00107884: bytes([0x70, f41[1], 0x72]),
+        0x000F0AFD: bytes([0x7C, fafe, 0x7D]),
+        0x00104B1C: bytes([0x63, b1d, 0x64]),
+        0x00104B24: bytes([0x65, 0x5F, 0x66]),
+        0x00104AE0: le32(0x6D6D6D6D) + le32(0x5F5F5F5F) + le32(0x6E6E6E6E),
+        0x001088ED: bytes([0x7B, 0x61, 0x61, 0x7C])}, extra or {})
+
+
+D5E_08_CALLS = (D5E_CLEAR, D5E_SBASE, D5E_PROJ, D5E_DECAY, D5E_PASSA, D4A_PASS, D5E_HUD, D5E_PASSB, D5E_EFFECTS,
+                D5E_YCOMMIT, D5E_HOLDALL, D5E_RTEXT)
+D5E_SPECS += [
+    # 0x28468 game_mode_08_step: no argument. The prelude, one 0x17FA0 pair, 0x17580, 0x1958C,
+    # 0x3CB68, 0x35658(0), 0x35658(1), 0x19068(1), 0x49C78, 0x12DA8. The word 0x104AF8, when not
+    # zero, is decremented, and when it reaches zero: the bytes 0x1078FE = 0x1078FC = 1, both
+    # slots' +0x41 |= 0x10, the byte 0xF0AFE = 4. 0x104AEC |= 2. Then, with the byte 0x1078FE != 0
+    # and the byte 0xF0AFE == 4: 0x4A708, 0x28130, the words 0x104AFE = 0xF0 and 0x1088EE = 0x3C,
+    # the hook 0x104AE4 = 0x25BBC, the byte 0x104B25 = 1, the mode word 0x104B00 = 0x16 and the
+    # word 0x104AFA = 0x30 when the byte 0x104B1D (read after 0x28130) == 3, else 5. Every callee
+    # is a stub. Mask 0: the one site 0x25335 is followed by `jmp 0x2540f`.
+    Spec("game_mode_08_step", 0x28468, [
+        Case("e0", D5E_REG, d5e_res_case(0, fe=1, b1d=3)),
+        Case("e1", {}, d5e_res_case(1, fafe=0, aec=0x80, ch=(0x83, 0x85))),
+        Case("e2", {}, d5e_res_case(2, aec=0x00)),
+        Case("e3", {}, d5e_res_case(0x0100, fe=1, fafe=3, lat=(0x00010000, 0xFFFF0000))),
+        Case("e4", {}, d5e_res_case(0, fe=0x80, b1d=0x83, aec=0xBD)),
+        Case("e5", {}, d5e_res_case(0x0101, fe=1, b1d=3)),
+        Case("e6", {}, d5e_res_case(1, fafe=0, f41=(0x10, 0xFF), b1d=2)),
+        Case("e7", {}, d5e_res_case(0, fc=1, fe=0)),
+    ], calls=D5E_08_CALLS, eax_mask=0,
+       mutants=D5E_MUT_RHEAD + (
+           "@pgate", "@aeclate", "@pre78fe", "@prefafe", "@nofe", "@fenz", "@fefc", "@nofafe", "@fafe3", "@fafew",
+           "@tailearly", "@tswap", "@nohold", "@notext", "@b1d2", "@b1dall", "@b1dnone", "@noafe", "@afev", "@afeb",
+           "@noee", "@eev", "@eeb", "@noae4", "@ae4v", "@ae4w", "@nob25", "@b25v", "@b25w", "@nob00", "@b00v",
+           "@b00b", "@noafa", "@afaswap", "@afab")),
+    # 0x28468 again with stubs that write what the raw reads after them: 0x16D58 side 1's character
+    # byte and the latch sources (D5E_SBASE_W2), 0x12DA8 the countdown word = 1, 0x28130 the byte
+    # 0x104B1D = 3.
+    Spec("game_mode_08_step_rr", 0x28468, [
+        Case("r0", {}, d5e_res_case(5, fafe=0)),
+        Case("r1", {}, d5e_res_case(0, fe=1, fafe=0, b1d=2)),
+    ], calls=(D5E_CLEAR, D5E_SBASE_W2, D5E_PROJ, D5E_DECAY, D5E_PASSA, D4A_PASS, D5E_HUD, D5E_PASSB, D5E_EFFECTS,
+              D5E_YCOMMIT_WAF8, D5E_HOLDALL, D5E_RTEXT_W), eax_mask=0,
+       unhit_named={0x285EC: "the word 0x104AFA = 5: this row's 0x28130 stub leaves the byte 0x104B1D 3 (the plain row hits it)"},
+       mutants=("@prech1", "@prelat", "@preaf8", "@preb1d", "@noyc", "@notext")),
+]
 D1_SPECS += D5E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
