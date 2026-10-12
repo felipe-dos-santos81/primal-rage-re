@@ -1307,8 +1307,8 @@ void camera_decay(void)
      * actor index (0x17680/0x1768F) and slot1's (0x17685), and when the boxes
      * overlap runs 0x170A0(0) for B60 != 0 (0x176AC) and 0x170A0(1) for
      * B61 != 0 (0x176BF). */
-    if (camera_box_overlap(DSW(DSD(DS_001077B0) + 0x56u),
-                           DSW(DSD(DS_00107844) + 0x56u)) != 0) {
+    if ((u8)camera_box_overlap(DSW(DSD(DS_001077B0) + 0x56u),
+                               DSW(DSD(DS_00107844) + 0x56u)) != 0u) {   /* 0x1769D `test al,al` */
         if (DSB(DS_00100B60) != 0) camera_unfreeze(0u);    /* 0x176AC */
         if (DSB(DS_00100B61) != 0) camera_unfreeze(1u);    /* 0x176BF */
     }
