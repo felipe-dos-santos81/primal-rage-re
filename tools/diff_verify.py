@@ -24886,6 +24886,79 @@ D5I_SPECS += [
                     for a in (0x425C0, 0x425C9, 0x425E5, 0x42633, 0x4263E, 0x42690, 0x4269B, 0x426F6, 0x42701)},
        mutants=("@s0pre", "@prehandle", "@s2pre", "@preb1d", "@preab8", "@pre529", "@preb1f", "@pregate")),
 ]
+# 0x1EA08's callees. 0x4F1E4 is seamed by this batch; 0x2DBC4 runs real and is recorded (it returns the
+# one result buffer 0x105EFC, whose bytes change at every call, which a stub could not do).
+D5I_INRESET = E.Call(0x4F1E4, ())
+D5I_HSREAD = E.Call(0x2DBC4, ("eax", "edx"), mode="real")
+D5I_HS_CALLS = (D5I_INRESET, D5I_RESETAL, D5I_ROW, D5I_HSREAD, D4C_NUMDRAW, D1D_CURSOR, SPAWN, P7_2A17C)
+# the two text callees leaving what 0x1EA08 reads after each: 0x2F4D0 the result buffer's first name
+# byte 0x105F00 (the copies 0x1EA76 and 0x1EB6A) and its +0x16 byte 0x105F12 (0x1EAE2), 0x2F198 the
+# buffer's value dword 0x105EFC (0x1EAC0, 0x1EBB1), and both the row byte 0xA7B98 of record 1, which the
+# raw loads again before each of the row's four calls (0x1EB4C, 0x1EB98, 0x1EBB9, 0x1EBD4)
+D5I_HS_CALLS_W = (D5I_INRESET, D5I_RESETAL, D5I_ROW, D5I_HSREAD,
+                  d5i_w(D4C_NUMDRAW, (0x00105F00, b"Z"), (0x00105F12, b"T"), (0x000A7B98, b"\x77")),
+                  d5i_w(D1D_CURSOR, (0x00105EFC, le32(0x0BADC0DE)), (0x000A7B98, b"\x66")), SPAWN, P7_2A17C)
+D5I_HS_LAYOUT = bytes(v for i in range(10) for v in (0x21 + i * 3 if i % 2 else 0xA0 + i,
+                                                     0xB0 + i if i % 2 else 0x41 + i * 5, 0x81 + i * 7, 0xC1 - i * 3))
+
+
+def d5i_hs(sel=0x12, score=0x12345678, extra=None):
+    """0x1EA08: the three high-score tables in the scratch BSS (d2d_hs_case): table 1's record 0,
+    the champion (`score` big-endian, 36 five-bit characters, the 19th `sel`: the result
+    buffer's +0x16, which picks the figure), table 0's records 1..9 (a value and 12 characters
+    each, all distinct, record 5's value above 0x7FFFFFFF), and the layout table 0xA7B94 (ten
+    rows of row, rank col, name col, value col: distinct bytes; the name and value cols, the
+    even records' rows and the odd records' rank cols are above 0x7F)."""
+    name = [1 + (k * 7) % 26 for k in range(36)]
+    name[18] = sel
+    recs = {(1, 0): score.to_bytes(4, "big") + d2d_name(*name)}
+    for i in range(1, 10):
+        v = 0x80000000 + i if i == 5 else 0x01020304 * i
+        recs[(0, i)] = v.to_bytes(4, "big") + d2d_name(*[1 + (i * 3 + k * 5) % 26 for k in range(12)])
+    p = d2d_hs_case(records=recs)
+    p[0x000A7B94] = D5I_HS_LAYOUT
+    p.update(extra or {})
+    return p
+
+
+D5I_SPECS += [
+    # 0x1EA08 frontend_match_start: no argument. 0x4F1E4, 0x2BAF4(1), 0x38B18(0xA7B6C, 0, 0); the
+    # champion 0x2DBC4(0, 1) on row 2: 0x2F4D0(the col byte 0xA7B95, 2, 1, width 2, pad 1, 0x3000),
+    # its 0x12 name bytes copied to the frame and held by 0x2F4BC(0xA7B96, 2, mode 0x2000), its
+    # value 0x2F4D0(0xA7B97, 2, the value, 7, 1, 0x2000); the figure: the first of the ten
+    # strings 0xA7DA0[i] whose first byte is the buffer's +0x16, 0 above 6 (m3: 7) or with none
+    # (m4); records 1..9 of table 0: 0x2DBC4(i, 0), 0x2F4D0(0xA7B95[i], the row 0xA7B94[i], i + 1,
+    # 2, 1, 0x3000), three name bytes held twice by 0x2F4BC(0xA7B96[i], row, 0x3000) around
+    # 0x2F4D0(0xA7B97[i], row, the value, 7, 1, 0x3000); then 0x2AE14(the descriptor 0xA7DCC[sel],
+    # 0x2A00, 0xFF, 0x1C80, 0) and 0x2A17C(its record, 0, 0x105FD30). 0x2F4BC runs real (the
+    # names are in the raw's frame) over the stubbed 0x2F198, which takes the first sixteen
+    # bytes by value; 0x2DBC4 runs real over 0x2DB58 and the poked tables. The spawn stub
+    # returns a non-zero record in every case (the port skips 0x2A17C on 0: PORT, record §4).
+    # m5 pokes the string pointer 0xA7DB4 to entry 1's (two matches). Mask 0: record §1.
+    Spec("frontend_match_start", 0x1EA08, [
+        Case("m0", D5I_REG, d5i_hs(sel=0x12), {0x2AE14: 0x0010A700}),
+        Case("m1", {}, d5i_hs(sel=0x14, score=0x80000001), {0x2AE14: 0x00000100, 0x2F4D0: 0x12345678}),
+        Case("m2", {}, d5i_hs(sel=0x08), {0x2AE14: 0xFFFFFFFF, 0x4F1E4: 0x12345678}),
+        Case("m3", {}, d5i_hs(sel=0x18), {0x2AE14: 0x0010A700}),
+        Case("m4", {}, d5i_hs(sel=0x00), {0x2AE14: 0x0010A700}),
+        Case("m5", {}, d5i_hs(sel=0x0B, extra={0x000A7DB4: le32(0x00080910)}), {0x2AE14: 0x0010A700}),
+    ], allow_calls=(0x2F4BC, 0x2DB58), calls=D5I_HS_CALLS, eax_mask=0,
+       mutants=("@noinreset", "@resetal", "@noreset", "@norow", "@rowdesc", "@rowa2", "@rowa3", "@champlate",
+                "@champrec", "@champtable", "@rankcol", "@rankrow", "@rankval", "@rankw", "@rankpad", "@rankmode",
+                "@norank", "@namelen", "@nameoff", "@nohold0", "@namecol", "@namerow", "@namemode", "@noscore0",
+                "@scorecol", "@scorerow", "@scoresrc", "@scorew", "@scorepad", "@scoremode", "@selchar", "@selbyte",
+                "@sellast", "@clamp5", "@noclamp", "@sel0", "@rowfrom0", "@rowto9", "@rowtable", "@stride", "@rrank",
+                "@rrankcol", "@rrow", "@rrankw", "@rrankpad", "@rrankmode", "@norrank", "@colsext", "@rowsext",
+                "@rnameoff", "@rnonul", "@rlen2", "@rholdcol", "@rholdmode", "@nohold1", "@nohold2", "@hold2early",
+                "@rscorecol", "@rscoresrc", "@rscorew", "@rscoremode", "@norscore", "@descidx", "@spx", "@spa3",
+                "@spy", "@sp5", "@nospawn", "@nopal", "@palrec", "@palword", "@palhandle")),
+    # 0x1EA08 again with stubs that write what the raw reads after each call (D5I_HS_CALLS_W).
+    Spec("frontend_match_start_rr", 0x1EA08, [
+        Case("r0", {}, d5i_hs(sel=0x12), {0x2AE14: 0x0010A700}),
+    ], allow_calls=(0x2F4BC, 0x2DB58), calls=D5I_HS_CALLS_W, eax_mask=0,
+       unhit_named={0x1EB0F: "the figure index above 6: the plain row hits it (m3)"},
+       mutants=("@prename", "@prescore", "@presel", "@prerow", "@rprename", "@rprescore")),
+]
 D1_SPECS += D5I_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

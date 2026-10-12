@@ -33597,6 +33597,103 @@ static void d5i_424e8_core(u32 mut)
     }
     d5i_424e8_tail(mut, b1dpre);
 }
+/* 0x1EA08: no argument. Mask 0: five call sites, each followed by a load of EAX (0x11A47 and 0x11DFC `mov
+ * eax,0x1d`, 0x1F15A `xor eax,eax`, 0x1F3A0 `mov eax,0x12c`) or, at 0x1F278, by 0x1EEB0's return to 0x253D0
+ * `jmp 0x2540f`, the mode tail the wave-1 records trace dead. Bound twice: the row with plain stubs and the
+ * row whose stubs write what the raw reads after each call (`_rr`). */
+static void b_d5i_1ea08(const u32 *r, u32 *eax) { (void)r; frontend_match_start(); *eax = 0u; }
+#define D5I_H_LIST(X) \
+    X(noinreset) X(resetal) X(noreset) X(norow) X(rowdesc) X(rowa2) X(rowa3) X(champlate) X(champrec) \
+    X(champtable) X(rankcol) X(rankrow) X(rankval) X(rankw) X(rankpad) X(rankmode) X(norank) X(namelen) \
+    X(nameoff) X(prename) X(nohold0) X(namecol) X(namerow) X(namemode) X(noscore0) X(scorecol) X(scorerow) \
+    X(prescore) X(scoresrc) X(scorew) X(scorepad) X(scoremode) X(presel) X(selchar) X(selbyte) X(sellast) \
+    X(clamp5) X(noclamp) X(sel0) X(rowfrom0) X(rowto9) X(rowtable) X(stride) X(prerow) X(rrank) X(rrankcol) \
+    X(rrow) X(rrankw) X(rrankpad) X(rrankmode) X(norrank) X(colsext) X(rowsext) X(rnameoff) X(rnonul) X(rlen2) \
+    X(rprename) X(rholdcol) X(rholdmode) X(nohold1) X(nohold2) X(hold2early) X(rscorecol) X(rscoresrc) \
+    X(rprescore) X(rscorew) X(rscoremode) X(norscore) X(descidx) X(spx) X(spa3) X(spy) X(sp5) X(nospawn) \
+    X(nopal) X(palrec) X(palword) X(palhandle)
+enum { D5I_H_NONE,
+#define X(n) D5I_H_##n,
+       D5I_H_LIST(X)
+#undef X
+       D5I_H_COUNT };
+static void d5i_1ea08_core(u32 mut)
+{
+    u8 name[0x24] = { 0 }, pre[0x12];
+    const u32 mode = 0x3000u;
+    if (mut != D5I_H_noinreset) frontend_input_reset();
+    if (mut == D5I_H_resetal) actors_reset_al(0u);
+    else if (mut != D5I_H_noreset) actors_reset();
+    if (mut != D5I_H_norow)
+        frontend_spawn_row((const u32 *)(mem + ((mut == D5I_H_rowdesc) ? 0x000A7B80u : 0x000A7B6Cu)),
+                           (mut == D5I_H_rowa2) ? 1u : 0u, (mut == D5I_H_rowa3) ? 1u : 0u);
+    if (mut == D5I_H_champlate) text_number_draw(DSB(0x000A7B95u), 2, 1, 2, 1u, mode);
+    u32 champ = hiscore_read((mut == D5I_H_champrec) ? 1u : 0u, (mut == D5I_H_champtable) ? 0u : 1u);
+    for (u32 i = 0u; i < 0x12u; i++) pre[i] = DSB(champ + 4u + i);
+    u8 selpre = DSB(champ + 0x16u);
+    if (mut != D5I_H_champlate && mut != D5I_H_norank)
+        text_number_draw(DSB((mut == D5I_H_rankcol) ? 0x000A7B96u : 0x000A7B95u), (mut == D5I_H_rankrow) ? 3 : 2,
+                         (mut == D5I_H_rankval) ? 2 : 1, (mut == D5I_H_rankw) ? 3 : 2,
+                         (mut == D5I_H_rankpad) ? 0u : 1u, (mut == D5I_H_rankmode) ? 0x2000u : mode);
+    for (u32 i = 0u; i < ((mut == D5I_H_namelen) ? 0xFu : 0x12u); i++)
+        name[i] = (mut == D5I_H_prename) ? pre[i] : DSB(champ + ((mut == D5I_H_nameoff) ? 5u : 4u) + i);
+    name[0x12] = 0u;
+    u32 scpre = DSD(champ);
+    if (mut != D5I_H_nohold0)
+        text_cursor_hold(DSB((mut == D5I_H_namecol) ? 0x000A7B97u : 0x000A7B96u), (mut == D5I_H_namerow) ? 3 : 2,
+                         name, (mut == D5I_H_namemode) ? 0x3000u : 0x2000u);
+    if (mut != D5I_H_noscore0)
+        text_number_draw(DSB((mut == D5I_H_scorecol) ? 0x000A7B96u : 0x000A7B97u), (mut == D5I_H_scorerow) ? 3 : 2,
+                         (s32)((mut == D5I_H_prescore) ? scpre : DSD(champ + ((mut == D5I_H_scoresrc) ? 4u : 0u))),
+                         (mut == D5I_H_scorew) ? 6 : 7, (mut == D5I_H_scorepad) ? 0u : 1u,
+                         (mut == D5I_H_scoremode) ? 0x3000u : 0x2000u);
+    u32 sel = 0u;
+    for (u32 i = 0u; i < 10u; i++) {
+        u8 ch = (mut == D5I_H_presel) ? selpre : DSB(champ + ((mut == D5I_H_selchar) ? 0x15u : 0x16u));
+        if (ch == DSB(DSD(0x000A7DA0u + i * 4u) + ((mut == D5I_H_selbyte) ? 1u : 0u))) {
+            sel = i;
+            if (mut != D5I_H_sellast) break;
+        }
+    }
+    if (sel > ((mut == D5I_H_clamp5) ? 5u : 6u) && mut != D5I_H_noclamp) sel = 0u;
+    if (mut == D5I_H_sel0) sel = 0u;
+    for (u32 i = (mut == D5I_H_rowfrom0) ? 0u : 1u; i < ((mut == D5I_H_rowto9) ? 9u : 10u); i++) {
+        u32 r = hiscore_read(i, (mut == D5I_H_rowtable) ? 1u : 0u);
+        u32 at = 0x000A7B94u + i * ((mut == D5I_H_stride) ? 8u : 4u);
+        u32 rowpre = DSB(at), scp = DSD(r), rw;
+        u8 np[3] = { DSB(r + 4u), DSB(r + 5u), DSB(r + 6u) };
+#define D5I_H_ROW() ((mut == D5I_H_prerow) ? rowpre : (mut == D5I_H_rrow) ? (u32)DSB(at + 1u) \
+                     : (mut == D5I_H_rowsext) ? (u32)(s32)(s8)DSB(at) : (u32)DSB(at))
+        rw = D5I_H_ROW();
+        if (mut != D5I_H_norrank)
+            text_number_draw((mut == D5I_H_colsext) ? (s32)(s8)DSB(at + 1u) : (s32)DSB(at + ((mut == D5I_H_rrankcol) ? 2u : 1u)),
+                             (s32)rw, (s32)((mut == D5I_H_rrank) ? i : i + 1u), (mut == D5I_H_rrankw) ? 3 : 2,
+                             (mut == D5I_H_rrankpad) ? 0u : 1u, (mut == D5I_H_rrankmode) ? 0x2000u : mode);
+        for (u32 k = 0u; k < ((mut == D5I_H_rlen2) ? 2u : 3u); k++)
+            name[k] = (mut == D5I_H_rprename) ? np[k] : DSB(r + ((mut == D5I_H_rnameoff) ? 5u : 4u) + k);
+        if (mut != D5I_H_rnonul) name[3] = 0u;
+        rw = D5I_H_ROW();
+        if (mut == D5I_H_hold2early) text_cursor_hold(DSB(at + 2u), (s32)rw, name, mode);
+        if (mut != D5I_H_nohold1)
+            text_cursor_hold(DSB(at + ((mut == D5I_H_rholdcol) ? 3u : 2u)), (s32)rw, name,
+                             (mut == D5I_H_rholdmode) ? 0x2000u : mode);
+        rw = D5I_H_ROW();
+        if (mut != D5I_H_norscore)
+            text_number_draw(DSB(at + ((mut == D5I_H_rscorecol) ? 2u : 3u)), (s32)rw,
+                             (s32)((mut == D5I_H_rprescore) ? scp : DSD(r + ((mut == D5I_H_rscoresrc) ? 4u : 0u))),
+                             (mut == D5I_H_rscorew) ? 6 : 7, 1u, (mut == D5I_H_rscoremode) ? 0x2000u : mode);
+        rw = D5I_H_ROW();
+        if (mut != D5I_H_nohold2 && mut != D5I_H_hold2early) text_cursor_hold(DSB(at + 2u), (s32)rw, name, mode);
+#undef D5I_H_ROW
+    }
+    if (mut == D5I_H_nospawn) return;
+    u32 rec = actor_spawn((const u32 *)(mem + DSD(0x000A7DCCu + ((mut == D5I_H_descidx) ? sel + 1u : sel) * 4u)),
+                          (mut == D5I_H_spx) ? 0x2A01u : 0x2A00u, (mut == D5I_H_spa3) ? 0xFEu : 0xFFu,
+                          (mut == D5I_H_spy) ? 0x1C00u : 0x1C80u, (mut == D5I_H_sp5) ? 1u : 0u);
+    if (rec != 0u && mut != D5I_H_nopal)
+        actor_pset_palette((mut == D5I_H_palrec) ? 0u : rec, (mut == D5I_H_palword) ? 1u : 0u,
+                           (mut == D5I_H_palhandle) ? 0x0105FD31u : 0x0105FD30u);
+}
 /* D5I-WRAP-BEGIN */
 #define D5I_M32(n) \
     static void m_d5i_m32_##n(const u32 *r, u32 *eax) { (void)r; d5i_296b8_core(D5I_A_##n); *eax = 0u; }
@@ -33665,6 +33762,20 @@ D5I_M13(row1c) D5I_M13(nocoin) D5I_M13(coinside) D5I_M13(coinrow) D5I_M13(rev) D
 D5I_M13(b1dany) D5I_M13(asrc) D5I_M13(ainv) D5I_M13(bsrc) D5I_M13(binv) D5I_M13(gateany) D5I_M13(gateother)
 D5I_M13(gateoff) D5I_M13(nogate) D5I_M13(s0pre) D5I_M13(prehandle) D5I_M13(s2pre) D5I_M13(preb1d) D5I_M13(preab8)
 D5I_M13(pre529) D5I_M13(preb1f) D5I_M13(pregate)
+#define D5I_HS(n) \
+    static void m_d5i_hs_##n(const u32 *r, u32 *eax) { (void)r; d5i_1ea08_core(D5I_H_##n); *eax = 0u; }
+D5I_HS(noinreset) D5I_HS(resetal) D5I_HS(noreset) D5I_HS(norow) D5I_HS(rowdesc) D5I_HS(rowa2) D5I_HS(rowa3)
+D5I_HS(champlate) D5I_HS(champrec) D5I_HS(champtable) D5I_HS(rankcol) D5I_HS(rankrow) D5I_HS(rankval) D5I_HS(rankw)
+D5I_HS(rankpad) D5I_HS(rankmode) D5I_HS(norank) D5I_HS(namelen) D5I_HS(nameoff) D5I_HS(nohold0) D5I_HS(namecol)
+D5I_HS(namerow) D5I_HS(namemode) D5I_HS(noscore0) D5I_HS(scorecol) D5I_HS(scorerow) D5I_HS(scoresrc) D5I_HS(scorew)
+D5I_HS(scorepad) D5I_HS(scoremode) D5I_HS(selchar) D5I_HS(selbyte) D5I_HS(sellast) D5I_HS(clamp5) D5I_HS(noclamp)
+D5I_HS(sel0) D5I_HS(rowfrom0) D5I_HS(rowto9) D5I_HS(rowtable) D5I_HS(stride) D5I_HS(rrank) D5I_HS(rrankcol)
+D5I_HS(rrow) D5I_HS(rrankw) D5I_HS(rrankpad) D5I_HS(rrankmode) D5I_HS(norrank) D5I_HS(colsext) D5I_HS(rowsext)
+D5I_HS(rnameoff) D5I_HS(rnonul) D5I_HS(rlen2) D5I_HS(rholdcol) D5I_HS(rholdmode) D5I_HS(nohold1) D5I_HS(nohold2)
+D5I_HS(hold2early) D5I_HS(rscorecol) D5I_HS(rscoresrc) D5I_HS(rscorew) D5I_HS(rscoremode) D5I_HS(norscore)
+D5I_HS(descidx) D5I_HS(spx) D5I_HS(spa3) D5I_HS(spy) D5I_HS(sp5) D5I_HS(nospawn) D5I_HS(nopal) D5I_HS(palrec)
+D5I_HS(palword) D5I_HS(palhandle) D5I_HS(prename) D5I_HS(prescore) D5I_HS(presel) D5I_HS(prerow) D5I_HS(rprename)
+D5I_HS(rprescore)
 /* D5I-WRAP-END */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -44085,6 +44196,86 @@ static const binding_t k_bindings[] = {
     { "game_mode_13_step_rr@pre529", m_d5i_m13_pre529, 0x00000000u },
     { "game_mode_13_step_rr@preb1f", m_d5i_m13_preb1f, 0x00000000u },
     { "game_mode_13_step_rr@pregate", m_d5i_m13_pregate, 0x00000000u },
+    { "frontend_match_start", b_d5i_1ea08, 0x00000000u },
+    { "frontend_match_start_rr", b_d5i_1ea08, 0x00000000u },
+    { "frontend_match_start@noinreset", m_d5i_hs_noinreset, 0x00000000u },
+    { "frontend_match_start@resetal", m_d5i_hs_resetal, 0x00000000u },
+    { "frontend_match_start@noreset", m_d5i_hs_noreset, 0x00000000u },
+    { "frontend_match_start@norow", m_d5i_hs_norow, 0x00000000u },
+    { "frontend_match_start@rowdesc", m_d5i_hs_rowdesc, 0x00000000u },
+    { "frontend_match_start@rowa2", m_d5i_hs_rowa2, 0x00000000u },
+    { "frontend_match_start@rowa3", m_d5i_hs_rowa3, 0x00000000u },
+    { "frontend_match_start@champlate", m_d5i_hs_champlate, 0x00000000u },
+    { "frontend_match_start@champrec", m_d5i_hs_champrec, 0x00000000u },
+    { "frontend_match_start@champtable", m_d5i_hs_champtable, 0x00000000u },
+    { "frontend_match_start@rankcol", m_d5i_hs_rankcol, 0x00000000u },
+    { "frontend_match_start@rankrow", m_d5i_hs_rankrow, 0x00000000u },
+    { "frontend_match_start@rankval", m_d5i_hs_rankval, 0x00000000u },
+    { "frontend_match_start@rankw", m_d5i_hs_rankw, 0x00000000u },
+    { "frontend_match_start@rankpad", m_d5i_hs_rankpad, 0x00000000u },
+    { "frontend_match_start@rankmode", m_d5i_hs_rankmode, 0x00000000u },
+    { "frontend_match_start@norank", m_d5i_hs_norank, 0x00000000u },
+    { "frontend_match_start@namelen", m_d5i_hs_namelen, 0x00000000u },
+    { "frontend_match_start@nameoff", m_d5i_hs_nameoff, 0x00000000u },
+    { "frontend_match_start@nohold0", m_d5i_hs_nohold0, 0x00000000u },
+    { "frontend_match_start@namecol", m_d5i_hs_namecol, 0x00000000u },
+    { "frontend_match_start@namerow", m_d5i_hs_namerow, 0x00000000u },
+    { "frontend_match_start@namemode", m_d5i_hs_namemode, 0x00000000u },
+    { "frontend_match_start@noscore0", m_d5i_hs_noscore0, 0x00000000u },
+    { "frontend_match_start@scorecol", m_d5i_hs_scorecol, 0x00000000u },
+    { "frontend_match_start@scorerow", m_d5i_hs_scorerow, 0x00000000u },
+    { "frontend_match_start@scoresrc", m_d5i_hs_scoresrc, 0x00000000u },
+    { "frontend_match_start@scorew", m_d5i_hs_scorew, 0x00000000u },
+    { "frontend_match_start@scorepad", m_d5i_hs_scorepad, 0x00000000u },
+    { "frontend_match_start@scoremode", m_d5i_hs_scoremode, 0x00000000u },
+    { "frontend_match_start@selchar", m_d5i_hs_selchar, 0x00000000u },
+    { "frontend_match_start@selbyte", m_d5i_hs_selbyte, 0x00000000u },
+    { "frontend_match_start@sellast", m_d5i_hs_sellast, 0x00000000u },
+    { "frontend_match_start@clamp5", m_d5i_hs_clamp5, 0x00000000u },
+    { "frontend_match_start@noclamp", m_d5i_hs_noclamp, 0x00000000u },
+    { "frontend_match_start@sel0", m_d5i_hs_sel0, 0x00000000u },
+    { "frontend_match_start@rowfrom0", m_d5i_hs_rowfrom0, 0x00000000u },
+    { "frontend_match_start@rowto9", m_d5i_hs_rowto9, 0x00000000u },
+    { "frontend_match_start@rowtable", m_d5i_hs_rowtable, 0x00000000u },
+    { "frontend_match_start@stride", m_d5i_hs_stride, 0x00000000u },
+    { "frontend_match_start@rrank", m_d5i_hs_rrank, 0x00000000u },
+    { "frontend_match_start@rrankcol", m_d5i_hs_rrankcol, 0x00000000u },
+    { "frontend_match_start@rrow", m_d5i_hs_rrow, 0x00000000u },
+    { "frontend_match_start@rrankw", m_d5i_hs_rrankw, 0x00000000u },
+    { "frontend_match_start@rrankpad", m_d5i_hs_rrankpad, 0x00000000u },
+    { "frontend_match_start@rrankmode", m_d5i_hs_rrankmode, 0x00000000u },
+    { "frontend_match_start@norrank", m_d5i_hs_norrank, 0x00000000u },
+    { "frontend_match_start@colsext", m_d5i_hs_colsext, 0x00000000u },
+    { "frontend_match_start@rowsext", m_d5i_hs_rowsext, 0x00000000u },
+    { "frontend_match_start@rnameoff", m_d5i_hs_rnameoff, 0x00000000u },
+    { "frontend_match_start@rnonul", m_d5i_hs_rnonul, 0x00000000u },
+    { "frontend_match_start@rlen2", m_d5i_hs_rlen2, 0x00000000u },
+    { "frontend_match_start@rholdcol", m_d5i_hs_rholdcol, 0x00000000u },
+    { "frontend_match_start@rholdmode", m_d5i_hs_rholdmode, 0x00000000u },
+    { "frontend_match_start@nohold1", m_d5i_hs_nohold1, 0x00000000u },
+    { "frontend_match_start@nohold2", m_d5i_hs_nohold2, 0x00000000u },
+    { "frontend_match_start@hold2early", m_d5i_hs_hold2early, 0x00000000u },
+    { "frontend_match_start@rscorecol", m_d5i_hs_rscorecol, 0x00000000u },
+    { "frontend_match_start@rscoresrc", m_d5i_hs_rscoresrc, 0x00000000u },
+    { "frontend_match_start@rscorew", m_d5i_hs_rscorew, 0x00000000u },
+    { "frontend_match_start@rscoremode", m_d5i_hs_rscoremode, 0x00000000u },
+    { "frontend_match_start@norscore", m_d5i_hs_norscore, 0x00000000u },
+    { "frontend_match_start@descidx", m_d5i_hs_descidx, 0x00000000u },
+    { "frontend_match_start@spx", m_d5i_hs_spx, 0x00000000u },
+    { "frontend_match_start@spa3", m_d5i_hs_spa3, 0x00000000u },
+    { "frontend_match_start@spy", m_d5i_hs_spy, 0x00000000u },
+    { "frontend_match_start@sp5", m_d5i_hs_sp5, 0x00000000u },
+    { "frontend_match_start@nospawn", m_d5i_hs_nospawn, 0x00000000u },
+    { "frontend_match_start@nopal", m_d5i_hs_nopal, 0x00000000u },
+    { "frontend_match_start@palrec", m_d5i_hs_palrec, 0x00000000u },
+    { "frontend_match_start@palword", m_d5i_hs_palword, 0x00000000u },
+    { "frontend_match_start@palhandle", m_d5i_hs_palhandle, 0x00000000u },
+    { "frontend_match_start_rr@prename", m_d5i_hs_prename, 0x00000000u },
+    { "frontend_match_start_rr@prescore", m_d5i_hs_prescore, 0x00000000u },
+    { "frontend_match_start_rr@presel", m_d5i_hs_presel, 0x00000000u },
+    { "frontend_match_start_rr@prerow", m_d5i_hs_prerow, 0x00000000u },
+    { "frontend_match_start_rr@rprename", m_d5i_hs_rprename, 0x00000000u },
+    { "frontend_match_start_rr@rprescore", m_d5i_hs_rprescore, 0x00000000u },
 /* D5I-TABLE-END */
 };
 
