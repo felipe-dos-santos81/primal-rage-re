@@ -2352,6 +2352,7 @@ static u32 fight_case_rec(void)
 /* 0x2BE1C. The difference of two fighter records' 0x2BE00 position terms. */
 s32 fight_2be1c(u32 rec_a, u32 rec_b)
 {
+    PR_SEAM_RET(0x2BE1Cu, rec_a, rec_b);
     return fight_2be00(rec_a) - fight_2be00(rec_b);
 }
 
@@ -2421,6 +2422,7 @@ int fight_4b430(u32 entry, u32 index, u32 flag)
  * +0x38, point it at the stream, then set the entry's type to 8. */
 int fight_4bd4c(u32 entry, u32 index)
 {
+    PR_SEAM_RET(0x4BD4Cu, entry, index);
     u32 stream = DSD(DS_000C9754 + index * 4u);     /* 0x4BD52 */
     if (stream == 0u) return 0;                     /* 0x4BD59 */
     u32 actor = DSD(entry + 8u);
@@ -2438,6 +2440,7 @@ int fight_4bd4c(u32 entry, u32 index)
  * flag in AL; the caller tests AL only. */
 int fight_4b5a8(u32 entry, u32 index)
 {
+    PR_SEAM_RET(0x4B5A8u, entry, index);
     u32 slot = DSD(entry + 0xCu);
     u32 rec = DSD(slot);
     u8 ch = DSB(rec + 0x51u);                       /* 0x4B5B1 */
@@ -2665,7 +2668,7 @@ lab:
  * takes the 0x2BE00/0x2BE1C distance test into 0x4B144 (the four draws the
  * state-7 entry was missing). `entry` is EAX/ECX, `index` is EDX/ESI
  * (0x49D1E/0x4AAD5/0x4AAD7). */
-static void fight_4aad0(u32 entry, u32 index)
+void fight_4aad0(u32 entry, u32 index)
 {
     if (DSW(DS_00104B00) == 9u) {                   /* 0x4AAE1 */
         DSB(entry + 0x1Eu) = 9u;                    /* 0x4AAE6 */
