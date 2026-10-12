@@ -445,6 +445,7 @@ void config_credits_init(void)
  * (0x32A4F/0x32A56); mode 0 stops there (0x32A5F). */
 void config_play_time_close(u32 mode, u32 flag)
 {
+    PR_SEAM(0x32A3Cu, mode, flag);
     u32 idx = mode & 3u;                                /* 0x32A43 */
     /* PORT: 0x32A4A 0x32970(EAX = 0), the run clock, is out of scope (spec
      * §7); the host clock owns wall time. Its stores, for a later port:

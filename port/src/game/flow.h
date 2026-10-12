@@ -586,7 +586,8 @@ void game_mode_13_step(void);
  * into mode 0x17/return-mode 0x13 (flow_results_darken_close); a decided
  * result (0/1) whose winner's DS_00107813 think-byte is 1 bumps the loser's
  * win-streak byte and, once it reaches 3 with the loser's DS_00108104 stat
- * below 6, records a combined flag byte before the same darken/close;
+ * below 6, records a combined flag byte in the stage's DS_00108106 slot and
+ * resets that streak byte to 0 (0x28A8D) before the same darken/close;
  * otherwise (the winner's think-byte isn't 1) the stage word DS_00104AFC ==
  * 7 clears the stage marks (fight_stage_marks_clear) before the same
  * darken/close, and any other stage only installs the mode-0x12 hook

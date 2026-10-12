@@ -30875,8 +30875,8 @@ static void check_mode_09_b(void)
 
     /* arm B, the streak sub-case that crosses the threshold: the winner's
      * think byte == 1, the loser's streak reaches 3 and its DS_00108104 stat
-     * is below 6 -> DS_00104B17 = 1, DS_00108106[stage] and DS_00107830[loser]
-     * take the combined flag byte. */
+     * is below 6 -> DS_00104B17 = 1, DS_00108106[stage] takes the combined
+     * flag byte and DS_00107830[loser] is reset to 0. */
     {
         m09_seed();
         M09_OPEN();
@@ -30898,11 +30898,13 @@ static void check_mode_09_b(void)
         game_mode_09_step();
         CHECK_EQ_INT((int)DSB(DS_00104B17), 1);
         {
-            /* DS_00108106[stage] takes the plain flag; DS_00107830[loser]
-             * takes the same byte XOR loser (0x28A85/0x28A8D). */
+            /* DS_00108106[stage] takes the flag; DS_00107830[loser], 3 after
+             * the increment, is stored 0: 0x28A75 `mov edx,ebx` reloads EDX
+             * before 0x28A85 `xor dl,bl`, so the byte 0x28A8D stores is
+             * BL ^ BL (record 2026-10-11-reverse-d2e). */
             u8 flag = (u8)((0u << 6) | 0x80u | 4u);
             CHECK_EQ_INT((int)DSB(DS_00108106 + 3u), (int)flag);
-            CHECK_EQ_INT((int)DSB(DS_00107830 + 0x94u), (int)(flag ^ 1u));
+            CHECK_EQ_INT((int)DSB(DS_00107830 + 0x94u), 0);
         }
         CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
         CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x13);
