@@ -973,8 +973,8 @@ void fighter_think(void)
         if ((s32)DSD(DS_00100AD0 + ctx[0] * 4u) <= 2)   /* 0x19780/0x19787 */
             continue;
         hit_stance_timer(ctx[1]);                       /* 0x19791 0x1922C */
-        if (fighter_3962c(ctx[0], 1u) != 0              /* 0x1979B */
-                || fighter_396ac(ctx[0], 1u) != 0) {    /* 0x197BF */
+        if ((u8)fighter_3962c(ctx[0], 1u) != 0u         /* 0x1979B, 0x197A0: test al,al */
+                || (u8)fighter_396ac(ctx[0], 1u) != 0u) {   /* 0x197BF, 0x197C4: test al,al */
             DSB(ctx[2] + 0x8Au) = 0;                    /* 0x197A8/0x197CC */
             fighter_18b44(ctx[2]);                      /* 0x197B3/0x197D7 */
             return;                                     /* 0x197B8/0x197E3 */
