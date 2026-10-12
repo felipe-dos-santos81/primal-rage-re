@@ -5833,7 +5833,8 @@ void game_mode_25_step(void)
  * list DS_0010884C whose +0x1C bit 1 is set, node->+0x14 = DS_000F0AF0 -
  * 0x8180, its actor R's +0x34 = 0xFF80, node->+0x1C &= 0x7F, R->+0x28 |=
  * 0x4080, node->+0x1E = 8, and R begins table_C9544[(u16)(R->+0x48 - 0x20)]
- * at 3.0. Then DS_0010889A = 0xF0 (the state-1 arm's countdown), both cell-
+ * at 3.0. Then DS_0010889A = 0xF0 (the state-1 arm's countdown), two cells
+ * released at row 0xB (col -1; 0x4F01A `mov ebx,2`, `mov edx,0xb`), both cell-
  * released strings 0x3B/0x3A at row 5, fight_mode25_scorecard() and, per
  * DS_0010888C vs DS_00108891 (the two sides' final scorecard tallies), one
  * font-2 string at row 0xB mode 0x4000: 0x63 then 0x64 at row 0xE when equal;
@@ -5863,6 +5864,7 @@ void game_mode_25_reveal(void)
         node = next;                                             /* 0x4F010/0x4F012 */
     }
 
+    text_cells_release_count(-1, 0xB, 2);                          /* 0x4F01A..0x4F029 0x2F388 */
     text_cells_release_count(-1, 5,
         (s32)strlen((const char *)game_string_get(0x3Bu)));       /* 0x4F02E..0x4F049 0x2F388 */
     text_cells_release_count(-1, 5,
