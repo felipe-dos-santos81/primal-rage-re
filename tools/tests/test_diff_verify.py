@@ -6456,6 +6456,7 @@ D2C_MASKS = {
     "frontend_wipe_out": 0xffffffff,
     "flow_round_timer_draw": 0x0,
     "game_mode_25_exit": 0x0,
+    "svc_buttons_clear": 0x0,
 }
 D2C_KINDS = {
     "game_state_3_handoff@d1": {'call #0'},
@@ -6823,6 +6824,17 @@ D2C_KINDS = {
     "game_mode_25_exit@aec": {'byte'},
     "game_mode_25_exit@aecv": {'byte'},
     "game_mode_25_exit@order": {'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory'},
+    "svc_buttons_clear@c0col": {'call #1'},
+    "svc_buttons_clear@c1col": {'call #3'},
+    "svc_buttons_clear@c2row": {'call #5'},
+    "svc_buttons_clear@c3row": {'call #7'},
+    "svc_buttons_clear@id": {'call #0', 'call #2', 'call #4', 'call #6'},
+    "svc_buttons_clear@mode": {'call #1', 'call #3', 'call #5', 'call #7'},
+    "svc_buttons_clear@n3": {'call #6', 'call #7'},
+    "svc_buttons_clear@order": {'call #1', 'call #3'},
+    "svc_buttons_clear@off8": {'call #1', 'call #5'},
+    "svc_buttons_clear@row8": {'call #1', 'call #3'},
+    "svc_buttons_clear@regs": {'call #1', 'call #3', 'call #5', 'call #7'},
 }
 D2C_CASES = [
     ("game_state_3_handoff@d1", ['h0', 'h1', 'h2', 'h3']),
@@ -7190,6 +7202,17 @@ D2C_CASES = [
     ("game_mode_25_exit@aec", ['x0', 'x1']),
     ("game_mode_25_exit@aecv", ['x0', 'x1']),
     ("game_mode_25_exit@order", ['x0', 'x1']),
+    ("svc_buttons_clear@c0col", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@c1col", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@c2row", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@c3row", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@id", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@mode", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@n3", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@order", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@off8", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@row8", ['c0', 'c1', 'c2']),
+    ("svc_buttons_clear@regs", ['c0', 'c1', 'c2']),
 ]
 D1_MASKS.update(D2C_MASKS)
 D1_KINDS.update(D2C_KINDS)
@@ -8299,6 +8322,8 @@ class RealFunctionTests(unittest.TestCase):
                   "lea eax, [edi + 0x10]", "jmp dword ptr cs:[edx + 0x134a8]"],
         0x2002E: ["cmp al, 8", "ja 0x204cd", "mov bx, word ptr [0x1044c4]", "and eax, 0xff", "shl ebx, 9",
                   "jmp dword ptr cs:[eax*4 + 0x1ffac]"],
+        0x319E0: ["cmp dword ptr [esp + 8], 3", "ja 0x31a44", "mov eax, dword ptr [esp + 4]",
+                  "jmp dword ptr cs:[eax + 0x319a0]"],
     }
 
     def test_each_resolved_jump_table_matches_the_bytes(self):

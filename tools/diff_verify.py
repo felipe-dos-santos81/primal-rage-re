@@ -14017,6 +14017,21 @@ D2C_SPECS = [
     ], allow_calls=(0x1C500,), calls=(D1C_STR, D2C_HOLD2, D2C_RELCNT), eax_mask=0,
        mutants=("@id67", "@rowb", "@mode", "@col", "@rel", "@relrow", "@rel4", "@b00", "@b00w", "@c0",
                 "@b15", "@aec", "@aecv", "@order")),
+    # 0x319B0 svc_buttons_clear: EBX = col, ECX = row; EAX and EDX enter dirty and are
+    # overwritten (0x319B6 `lea eax,[ebx-5]`, 0x319B9 `xor edx,edx`). Four passes through the
+    # jump table 0x319A0 (resolved by hand: diff_emu.RESOLVED_JUMPS, the wave-1 d1i record's
+    # named gap): string 0x22C released in mode 0x4000 at (col - 8, row + 8), (col + 2, row + 8),
+    # (col - 8, row + 0xC) and (col + 2, row + 0xC). 0x1C500 runs real over the stubbed 0x474E4;
+    # 0x2F280 is a stub. Mask 0: both call sites reload EAX (0x32215 `xor eax,eax` / 0x3222B `mov
+    # eax,1` after 0x32207; 0x32252 `mov eax,0xa` after 0x32248).
+    Spec("svc_buttons_clear", 0x319B0, [
+        Case("c0", {"eax": 0x51, "edx": 0x62, "ebx": 0x10, "ecx": 5}, {0x00102760: b"\x5a" * 0x10}),
+        Case("c1", {"eax": 1, "edx": 0x0010A300, "ebx": 0, "ecx": 0xFFFFFFF8}, {0x00102760: b"\x5a" * 0x10},
+             {0x474E4: 0}),
+        Case("c2", {"eax": 0, "edx": 0, "ebx": 0x7FFFFFFF, "ecx": 0x1234}, {0x00102760: b"\x5a" * 0x10}),
+    ], allow_calls=(0x1C500,), calls=(D1C_STR, D1C_RELEASE), eax_mask=0,
+       mutants=("@c0col", "@c1col", "@c2row", "@c3row", "@id", "@mode", "@n3", "@order", "@off8", "@row8",
+                "@regs")),
 ]
 D1_SPECS += D2C_SPECS
 

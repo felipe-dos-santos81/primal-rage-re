@@ -20687,6 +20687,31 @@ static void d2c_4f0fc_core(u32 mut)
     static void m_d2c_me_##name(const u32 *r, u32 *eax) { (void)r; d2c_4f0fc_core(D2C_ME_##name); *eax = 0u; }
 D2C_ME_MUT(id67) D2C_ME_MUT(rowb) D2C_ME_MUT(mode) D2C_ME_MUT(col)  D2C_ME_MUT(rel) D2C_ME_MUT(relrow) D2C_ME_MUT(rel4)
 D2C_ME_MUT(b00)  D2C_ME_MUT(b00w) D2C_ME_MUT(c0)   D2C_ME_MUT(b15)  D2C_ME_MUT(aec) D2C_ME_MUT(aecv)   D2C_ME_MUT(order)
+
+/* 0x319B0: EBX = col, ECX = row (EAX and EDX are overwritten at 0x319B6/0x319B9). */
+static void b_d2c_319b0(const u32 *r, u32 *eax) { svc_buttons_clear((s32)r[R_EBX], (s32)r[R_ECX]); *eax = 0u; }
+enum { D2C_BC_NONE, D2C_BC_c0col, D2C_BC_c1col, D2C_BC_c2row, D2C_BC_c3row, D2C_BC_id, D2C_BC_mode, D2C_BC_n3,
+       D2C_BC_order, D2C_BC_off8, D2C_BC_row8, D2C_BC_regs };
+#define D2C_BC(x) (mut == D2C_BC_##x)
+static void d2c_319b0_core(const u32 *r, u32 mut)
+{
+    s32 col = D2C_BC(regs) ? (s32)r[R_EAX] : (s32)r[R_EBX], row = D2C_BC(regs) ? (s32)r[R_EDX] : (s32)r[R_ECX];
+    s32 l = col - (D2C_BC(off8) ? 5 : 8), rt = col + 2, top = row + (D2C_BC(row8) ? 7 : 8), bot = row + 0xC;
+    u32 id = D2C_BC(id) ? 0x22Bu : 0x22Cu, mode = D2C_BC(mode) ? 0x1000u : 0x4000u;
+    for (u32 i = 0u; i < (D2C_BC(n3) ? 3u : 4u); i++) {
+        u32 k = (D2C_BC(order) && i < 2u) ? 1u - i : i;
+        switch (k) {
+        case 0u: text_cells_release(D2C_BC(c0col) ? rt : l, top, game_string_get(id), mode); break;
+        case 1u: text_cells_release(D2C_BC(c1col) ? l : rt, top, game_string_get(id), mode); break;
+        case 2u: text_cells_release(l, D2C_BC(c2row) ? top : bot, game_string_get(id), mode); break;
+        default: text_cells_release(rt, D2C_BC(c3row) ? top : bot, game_string_get(id), mode); break;
+        }
+    }
+}
+#define D2C_BC_MUT(name) \
+    static void m_d2c_bc_##name(const u32 *r, u32 *eax) { d2c_319b0_core(r, D2C_BC_##name); *eax = 0u; }
+D2C_BC_MUT(c0col) D2C_BC_MUT(c1col) D2C_BC_MUT(c2row) D2C_BC_MUT(c3row) D2C_BC_MUT(id)   D2C_BC_MUT(mode)
+D2C_BC_MUT(n3)    D2C_BC_MUT(order) D2C_BC_MUT(off8)  D2C_BC_MUT(row8)  D2C_BC_MUT(regs)
 /* ---- end of track D2 batch d2c bindings ---- */
 
 static const binding_t k_bindings[] = {
@@ -24963,6 +24988,18 @@ static const binding_t k_bindings[] = {
     { "game_mode_25_exit@aec", m_d2c_me_aec, 0x00000000u },
     { "game_mode_25_exit@aecv", m_d2c_me_aecv, 0x00000000u },
     { "game_mode_25_exit@order", m_d2c_me_order, 0x00000000u },
+    { "svc_buttons_clear", b_d2c_319b0, 0x00000000u },
+    { "svc_buttons_clear@c0col", m_d2c_bc_c0col, 0x00000000u },
+    { "svc_buttons_clear@c1col", m_d2c_bc_c1col, 0x00000000u },
+    { "svc_buttons_clear@c2row", m_d2c_bc_c2row, 0x00000000u },
+    { "svc_buttons_clear@c3row", m_d2c_bc_c3row, 0x00000000u },
+    { "svc_buttons_clear@id", m_d2c_bc_id, 0x00000000u },
+    { "svc_buttons_clear@mode", m_d2c_bc_mode, 0x00000000u },
+    { "svc_buttons_clear@n3", m_d2c_bc_n3, 0x00000000u },
+    { "svc_buttons_clear@order", m_d2c_bc_order, 0x00000000u },
+    { "svc_buttons_clear@off8", m_d2c_bc_off8, 0x00000000u },
+    { "svc_buttons_clear@row8", m_d2c_bc_row8, 0x00000000u },
+    { "svc_buttons_clear@regs", m_d2c_bc_regs, 0x00000000u },
     /* ---- end of track D2 batch d2c entries ---- */
 };
 

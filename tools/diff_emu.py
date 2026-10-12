@@ -536,6 +536,10 @@ RESOLVED_JUMPS = {
     # 0x1FFD0 (record 2026-10-11-reverse-d2c §2): cmp al,8; ja; mov bx,[0x1044c4]; and eax,0xff; shl ebx,9;
     # jmp cs:[eax*4+0x1ffac]
     0x2002E: (0x20017, 0x1FFAC, 9),
+    # 0x319B0 (record 2026-10-11-reverse-d2c §2.2): cmp dword [esp+8],3; ja; mov eax,[esp+4]; jmp cs:[eax+0x319a0].
+    # The index [esp+4] is 4 * the compared counter [esp+8]: both start 0 (0x319BE, 0x319CB) and step
+    # together (0x31A4C add edx,4 / 0x31A4F inc ebx, stored at 0x31A50/0x31A54).
+    0x319E0: (0x319D5, 0x319A0, 4),
 }
 
 
