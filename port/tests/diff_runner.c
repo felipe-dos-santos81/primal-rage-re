@@ -30741,6 +30741,90 @@ D4A_CT_MUT(b5bearly) D4A_CT_MUT(accsext) D4A_CT_MUT(accd) D4A_CT_MUT(accpos) D4A
 D4A_CT_MUT(f41zext) D4A_CT_MUT(f41mask) D4A_CT_MUT(f41bit) D4A_CT_MUT(nof41) D4A_CT_MUT(f41off) D4A_CT_MUT(f41early)
 D4A_CT_MUT(f41clr) D4A_CT_MUT(b00) D4A_CT_MUT(b00b) D4A_CT_MUT(nob00) D4A_CT_MUT(b00early) D4A_CT_MUT(prehud)
 D4A_CT_MUT(pre5b) D4A_CT_MUT(preb0b) D4A_CT_MUT(preb12) D4A_CT_MUT(pre41)
+/* 0x28DA4: EAX = the joining side. Mask 0: both call sites (0x25269, 0x25353) are followed by `jmp
+ * 0x2540f`, the mode tail the wave-1 records trace dead (d1c §1, d1d §1). */
+static void b_d4a_28da4(const u32 *r, u32 *eax) { flow_player_join(r[R_EAX]); *eax = 0u; }
+enum { D4A_PJ_NONE, D4A_PJ_f48, D4A_PJ_nof48, D4A_PJ_f48w, D4A_PJ_noaec, D4A_PJ_aecb, D4A_PJ_noae8, D4A_PJ_ae8b,
+       D4A_PJ_late3, D4A_PJ_voice, D4A_PJ_novoice, D4A_PJ_abc, D4A_PJ_abc3, D4A_PJ_abcbit, D4A_PJ_abcb,
+       D4A_PJ_abclate, D4A_PJ_noabc, D4A_PJ_strid, D4A_PJ_col, D4A_PJ_row, D4A_PJ_mode, D4A_PJ_nohold,
+       D4A_PJ_norestore, D4A_PJ_restoreorder, D4A_PJ_resetother, D4A_PJ_noreset, D4A_PJ_c5bself, D4A_PJ_c5bearly,
+       D4A_PJ_noc5b, D4A_PJ_c5boff, D4A_PJ_c5bw, D4A_PJ_c5bval, D4A_PJ_c5blow, D4A_PJ_snapidx, D4A_PJ_snaparm,
+       D4A_PJ_nosnap, D4A_PJ_snaporder, D4A_PJ_b24, D4A_PJ_nob24, D4A_PJ_hook, D4A_PJ_nohook, D4A_PJ_hookw,
+       D4A_PJ_b00, D4A_PJ_b00b, D4A_PJ_nob00, D4A_PJ_b17, D4A_PJ_nob17, D4A_PJ_b15, D4A_PJ_nob15, D4A_PJ_afe,
+       D4A_PJ_afeb, D4A_PJ_noafe, D4A_PJ_ee, D4A_PJ_eeb, D4A_PJ_noee, D4A_PJ_tailearly };
+static void d4a_28da4_zero3(u32 mut)
+{
+    if (mut == D4A_PJ_f48w) DSW(0x000F0A48u) = 0u;
+    else if (mut != D4A_PJ_nof48) DSD(0x000F0A48u) = (mut == D4A_PJ_f48) ? 1u : 0u;
+    if (mut == D4A_PJ_aecb) DSB(0x00104AECu) = 0u;
+    else if (mut != D4A_PJ_noaec) DSD(0x00104AECu) = 0u;
+    if (mut == D4A_PJ_ae8b) DSB(0x00104AE8u) = 0u;
+    else if (mut != D4A_PJ_noae8) DSD(0x00104AE8u) = 0u;
+}
+static void d4a_28da4_abc(u32 mut)
+{
+    u32 f = DSB(0x00104B1Fu);
+    u32 v = (((mut == D4A_PJ_abcbit) ? ((f & 3u) == 3u) : (f == ((mut == D4A_PJ_abc3) ? 2u : 3u))) ? 1u : 0u)
+            + ((mut == D4A_PJ_abc) ? 0u : 1u);
+    if (mut == D4A_PJ_abcb) DSB(0x00104ABCu) = (u8)v;
+    else if (mut != D4A_PJ_noabc) DSD(0x00104ABCu) = v;
+}
+static void d4a_28da4_c5b(u32 side, u32 mut)
+{
+    u32 o = (mut == D4A_PJ_c5bself) ? side : (mut == D4A_PJ_c5blow) ? ((side ^ 1u) & 0xFFu) : (side ^ 1u);
+    u32 at = 0x0010780Bu + o * 0x94u - ((mut == D4A_PJ_c5boff) ? 1u : 0u);
+    if (mut == D4A_PJ_c5bw) DSW(at) = 0u;
+    else if (mut != D4A_PJ_noc5b) DSB(at) = (mut == D4A_PJ_c5bval) ? 1u : 0u;
+}
+static void d4a_28da4_tail(u32 mut)
+{
+    if (mut != D4A_PJ_nob24) DSB(0x00104B24u) = (mut == D4A_PJ_b24) ? 2u : 1u;
+    if (mut == D4A_PJ_hookw) DSW(0x00104AE4u) = 0x8D80u;
+    else if (mut != D4A_PJ_nohook) DSD(0x00104AE4u) = (mut == D4A_PJ_hook) ? 0x00028D68u : 0x00028D80u;
+    if (mut == D4A_PJ_b00b) DSB(0x00104B00u) = 0x17u;
+    else if (mut != D4A_PJ_nob00) DSW(0x00104B00u) = (mut == D4A_PJ_b00) ? 0x18u : 0x17u;
+    if (mut != D4A_PJ_nob17) DSB(0x00104B17u) = (mut == D4A_PJ_b17) ? 1u : 2u;
+    if (mut != D4A_PJ_nob15) DSB(0x00104B15u) = (mut == D4A_PJ_b15) ? 1u : 0u;
+    if (mut == D4A_PJ_afeb) DSB(0x00104AFEu) = 0x78u;
+    else if (mut != D4A_PJ_noafe) DSW(0x00104AFEu) = (mut == D4A_PJ_afe) ? 0x79u : 0x78u;
+    if (mut == D4A_PJ_eeb) DSB(0x001088EEu) = 0x1Eu;
+    else if (mut != D4A_PJ_noee) DSW(0x001088EEu) = (mut == D4A_PJ_ee) ? 0x1Fu : 0x1Eu;
+}
+static void d4a_28da4_core(u32 side, u32 mut)
+{
+    if (mut != D4A_PJ_late3) d4a_28da4_zero3(mut);
+    if (mut != D4A_PJ_novoice) (void)sound_voice((mut == D4A_PJ_voice) ? 0x101u : 0x100u);
+    if (mut == D4A_PJ_late3) d4a_28da4_zero3(mut);
+    if (mut != D4A_PJ_abclate) d4a_28da4_abc(mut);
+    if (mut == D4A_PJ_restoreorder) flow_1082c8_restore();
+    if (mut != D4A_PJ_nohold)
+        text_cursor_hold_font2((mut == D4A_PJ_col) ? 0 : -1, (mut == D4A_PJ_row) ? 0xB : 0xA,
+                               game_string_get((mut == D4A_PJ_strid) ? 0x45u : 0x44u),
+                               (mut == D4A_PJ_mode) ? 0x1000u : 0x4000u);
+    if (mut == D4A_PJ_abclate) d4a_28da4_abc(mut);
+    if (mut != D4A_PJ_norestore && mut != D4A_PJ_restoreorder) flow_1082c8_restore();
+    if (mut == D4A_PJ_c5bearly) d4a_28da4_c5b(side, mut);
+    if (mut == D4A_PJ_snaporder) config_play_time_snap(DSD(0x00104ABCu), 1u);
+    if (mut != D4A_PJ_noreset) fight_char_reset((mut == D4A_PJ_resetother) ? (side ^ 1u) : side);
+    if (mut != D4A_PJ_c5bearly) d4a_28da4_c5b(side, mut);
+    if (mut == D4A_PJ_tailearly) d4a_28da4_tail(mut);
+    if (mut != D4A_PJ_nosnap && mut != D4A_PJ_snaporder)
+        config_play_time_snap((mut == D4A_PJ_snapidx) ? DSB(0x00104B1Fu) : DSD(0x00104ABCu),
+                              (mut == D4A_PJ_snaparm) ? 0u : 1u);
+    if (mut != D4A_PJ_tailearly) d4a_28da4_tail(mut);
+}
+#define D4A_PJ_MUT(name) \
+    static void m_d4a_pj_##name(const u32 *r, u32 *eax) { d4a_28da4_core(r[R_EAX], D4A_PJ_##name); *eax = 0u; }
+D4A_PJ_MUT(f48) D4A_PJ_MUT(nof48) D4A_PJ_MUT(f48w) D4A_PJ_MUT(noaec) D4A_PJ_MUT(aecb) D4A_PJ_MUT(noae8)
+D4A_PJ_MUT(ae8b) D4A_PJ_MUT(late3) D4A_PJ_MUT(voice) D4A_PJ_MUT(novoice) D4A_PJ_MUT(abc) D4A_PJ_MUT(abc3)
+D4A_PJ_MUT(abcbit) D4A_PJ_MUT(abcb) D4A_PJ_MUT(abclate) D4A_PJ_MUT(noabc) D4A_PJ_MUT(strid) D4A_PJ_MUT(col)
+D4A_PJ_MUT(row) D4A_PJ_MUT(mode) D4A_PJ_MUT(nohold) D4A_PJ_MUT(norestore) D4A_PJ_MUT(restoreorder)
+D4A_PJ_MUT(resetother) D4A_PJ_MUT(noreset) D4A_PJ_MUT(c5bself) D4A_PJ_MUT(c5bearly) D4A_PJ_MUT(noc5b)
+D4A_PJ_MUT(c5boff) D4A_PJ_MUT(c5bw) D4A_PJ_MUT(c5bval) D4A_PJ_MUT(c5blow) D4A_PJ_MUT(snapidx) D4A_PJ_MUT(snaparm)
+D4A_PJ_MUT(nosnap) D4A_PJ_MUT(snaporder) D4A_PJ_MUT(b24) D4A_PJ_MUT(nob24) D4A_PJ_MUT(hook) D4A_PJ_MUT(nohook)
+D4A_PJ_MUT(hookw) D4A_PJ_MUT(b00) D4A_PJ_MUT(b00b) D4A_PJ_MUT(nob00) D4A_PJ_MUT(b17) D4A_PJ_MUT(nob17)
+D4A_PJ_MUT(b15) D4A_PJ_MUT(nob15) D4A_PJ_MUT(afe) D4A_PJ_MUT(afeb) D4A_PJ_MUT(noafe) D4A_PJ_MUT(ee) D4A_PJ_MUT(eeb)
+D4A_PJ_MUT(noee) D4A_PJ_MUT(tailearly)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39524,6 +39608,62 @@ static const binding_t k_bindings[] = {
     { "flow_continue_take_reread@nohud", m_d4a_ct_nohud, 0x00000000u },
     { "flow_continue_take_reread@noacc", m_d4a_ct_noacc, 0x00000000u },
     { "flow_continue_take_reread@nosnap", m_d4a_ct_nosnap, 0x00000000u },
+    { "flow_player_join", b_d4a_28da4, 0x00000000u },
+    { "flow_player_join@f48", m_d4a_pj_f48, 0x00000000u },
+    { "flow_player_join@nof48", m_d4a_pj_nof48, 0x00000000u },
+    { "flow_player_join@f48w", m_d4a_pj_f48w, 0x00000000u },
+    { "flow_player_join@noaec", m_d4a_pj_noaec, 0x00000000u },
+    { "flow_player_join@aecb", m_d4a_pj_aecb, 0x00000000u },
+    { "flow_player_join@noae8", m_d4a_pj_noae8, 0x00000000u },
+    { "flow_player_join@ae8b", m_d4a_pj_ae8b, 0x00000000u },
+    { "flow_player_join@late3", m_d4a_pj_late3, 0x00000000u },
+    { "flow_player_join@voice", m_d4a_pj_voice, 0x00000000u },
+    { "flow_player_join@novoice", m_d4a_pj_novoice, 0x00000000u },
+    { "flow_player_join@abc", m_d4a_pj_abc, 0x00000000u },
+    { "flow_player_join@abc3", m_d4a_pj_abc3, 0x00000000u },
+    { "flow_player_join@abcbit", m_d4a_pj_abcbit, 0x00000000u },
+    { "flow_player_join@abcb", m_d4a_pj_abcb, 0x00000000u },
+    { "flow_player_join@abclate", m_d4a_pj_abclate, 0x00000000u },
+    { "flow_player_join@noabc", m_d4a_pj_noabc, 0x00000000u },
+    { "flow_player_join@strid", m_d4a_pj_strid, 0x00000000u },
+    { "flow_player_join@col", m_d4a_pj_col, 0x00000000u },
+    { "flow_player_join@row", m_d4a_pj_row, 0x00000000u },
+    { "flow_player_join@mode", m_d4a_pj_mode, 0x00000000u },
+    { "flow_player_join@nohold", m_d4a_pj_nohold, 0x00000000u },
+    { "flow_player_join@norestore", m_d4a_pj_norestore, 0x00000000u },
+    { "flow_player_join@restoreorder", m_d4a_pj_restoreorder, 0x00000000u },
+    { "flow_player_join@resetother", m_d4a_pj_resetother, 0x00000000u },
+    { "flow_player_join@noreset", m_d4a_pj_noreset, 0x00000000u },
+    { "flow_player_join@c5bself", m_d4a_pj_c5bself, 0x00000000u },
+    { "flow_player_join@c5bearly", m_d4a_pj_c5bearly, 0x00000000u },
+    { "flow_player_join@noc5b", m_d4a_pj_noc5b, 0x00000000u },
+    { "flow_player_join@c5boff", m_d4a_pj_c5boff, 0x00000000u },
+    { "flow_player_join@c5bw", m_d4a_pj_c5bw, 0x00000000u },
+    { "flow_player_join@c5bval", m_d4a_pj_c5bval, 0x00000000u },
+    { "flow_player_join@c5blow", m_d4a_pj_c5blow, 0x00000000u },
+    { "flow_player_join@snapidx", m_d4a_pj_snapidx, 0x00000000u },
+    { "flow_player_join@snaparm", m_d4a_pj_snaparm, 0x00000000u },
+    { "flow_player_join@nosnap", m_d4a_pj_nosnap, 0x00000000u },
+    { "flow_player_join@snaporder", m_d4a_pj_snaporder, 0x00000000u },
+    { "flow_player_join@b24", m_d4a_pj_b24, 0x00000000u },
+    { "flow_player_join@nob24", m_d4a_pj_nob24, 0x00000000u },
+    { "flow_player_join@hook", m_d4a_pj_hook, 0x00000000u },
+    { "flow_player_join@nohook", m_d4a_pj_nohook, 0x00000000u },
+    { "flow_player_join@hookw", m_d4a_pj_hookw, 0x00000000u },
+    { "flow_player_join@b00", m_d4a_pj_b00, 0x00000000u },
+    { "flow_player_join@b00b", m_d4a_pj_b00b, 0x00000000u },
+    { "flow_player_join@nob00", m_d4a_pj_nob00, 0x00000000u },
+    { "flow_player_join@b17", m_d4a_pj_b17, 0x00000000u },
+    { "flow_player_join@nob17", m_d4a_pj_nob17, 0x00000000u },
+    { "flow_player_join@b15", m_d4a_pj_b15, 0x00000000u },
+    { "flow_player_join@nob15", m_d4a_pj_nob15, 0x00000000u },
+    { "flow_player_join@afe", m_d4a_pj_afe, 0x00000000u },
+    { "flow_player_join@afeb", m_d4a_pj_afeb, 0x00000000u },
+    { "flow_player_join@noafe", m_d4a_pj_noafe, 0x00000000u },
+    { "flow_player_join@ee", m_d4a_pj_ee, 0x00000000u },
+    { "flow_player_join@eeb", m_d4a_pj_eeb, 0x00000000u },
+    { "flow_player_join@noee", m_d4a_pj_noee, 0x00000000u },
+    { "flow_player_join@tailearly", m_d4a_pj_tailearly, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
