@@ -3791,7 +3791,7 @@ void hit_slot_seed(u32 side, u32 value, u32 i)
  * 2 (the third word overlaps the command), 1 (the second word, or no
  * accumulation), 0 (the accumulated mask equals the first word) or 3 (partial
  * overlap). §6.3: transcribed, not unit-pinned. */
-static u32 hit_connect(u32 side, u32 facing, u32 i, u16 *out)
+static u32 hit_connect(u32 side, u32 facing, u32 i, u32 *out)
 {
     u32 desc = hit_frame_desc(side, i);
     u32 off = side * 0x40u + i * 2u;
@@ -3803,8 +3803,8 @@ static u32 hit_connect(u32 side, u32 facing, u32 i, u16 *out)
     if ((cmd & m2) != 0u) return 2u;
     if ((cmd & m1) != 0u) return 1u;
     {
-        u32 acc = (u32)*out | (u32)(cmd & m0);
-        *out = (u16)acc;
+        u32 acc = *out | (u32)(cmd & m0);               /* 0x3C7D4/0x3C7D6: the dword */
+        *out = acc;                                     /* 0x3C7D8 */
         if ((u32)m0 == acc) return 0u;
         if (((u32)m0 & acc) != 0u) return 3u;
     }
@@ -3814,14 +3814,14 @@ static u32 hit_connect(u32 side, u32 facing, u32 i, u16 *out)
 /* 0x3C800. The displacement test. On a command overlap with the mapped word at
  * descriptor+phase*0x14+0x10 it returns 1 and writes the frame's displacement
  * (the high word of the dword at +0x0A, i.e. the word at +0x0C). §6.3. */
-static u32 hit_displace(u32 side, u32 facing, u32 i, u16 *out)
+static u32 hit_displace(u32 side, u32 facing, u32 i, u32 *out)
 {
     u32 desc = hit_frame_desc(side, i);
     u32 off = side * 0x40u + i * 2u;
     u32 phase = (u32)(s32)(s16)DSW(DS_00107D58 + off);  /* 0x3C818/0x3C81E: sar edx,0x10 */
     u16 m = fighter_cmd_facing(facing, DSD(desc + phase * 0x14u + 0x10u));
     if ((DSW(DS_001088E0 + side * 2u) & m) == 0u) return 0u;
-    *out = (u16)(DSD(desc + phase * 0x14u + 0xAu) >> 16);
+    *out = (u32)((s32)DSD(desc + phase * 0x14u + 0xAu) >> 16);  /* 0x3C85E..0x3C869: sar, a dword store */
     return 1u;
 }
 
@@ -3834,7 +3834,7 @@ void hit_slot_step(void)
     u32 off = side * 0x40u + i * 2u;
     u32 desc = hit_frame_desc(side, i);
     s32 phase = (s16)DSW(DS_00107D58 + off);
-    u16 out;
+    u32 out;
 
     if (desc == 0u) {                                   /* 0x3C8C5 */
         hit_slot_seed(side, 0u, i);
@@ -3874,14 +3874,14 @@ void hit_slot_step(void)
         hit_slot_seed(side, 0u, i);                      /* 0x3CA30 */
         phase = (s16)DSW(DS_00107D58 + off);             /* 0x3CA43 reload */
     }
-    out = DSW(DS_00107E58 + off);                        /* 0x3CA61 */
+    out = (u32)DSW(DS_00107E58 + off);                   /* 0x3CA5F/0x3CA61: xor eax,eax; mov ax */
     if (phase >= 2 && phase < 8) {                       /* 0x3CA6B */
-        u16 disp = 0;
+        u32 disp = 0;
         if (hit_displace(side, facing, i, &disp) != 0u)  /* 0x3CA94 */
-            DSW(DS_00107DD8 + off) = disp;               /* 0x3CAB3 */
+            DSW(DS_00107DD8 + off) = (u16)disp;          /* 0x3CAAF/0x3CAB3 */
     }
     {
-        u16 acc = out;
+        u32 acc = out;
         switch (hit_connect(side, facing, i, &acc)) {    /* 0x3CAD2 */
         case 0u: {                                       /* 0x3CAE8 advance */
             hit_slot_seed(side, (u32)phase + 1u, i);
@@ -3897,7 +3897,7 @@ void hit_slot_step(void)
             hit_slot_seed(side, 0u, i);
             break;
         case 3u:                                         /* 0x3CB41 */
-            DSW(DS_00107E58 + off) = acc;
+            DSW(DS_00107E58 + off) = (u16)acc;           /* 0x3CB53/0x3CB56 */
             break;
         default:
             break;
