@@ -791,7 +791,8 @@ void game_mode_12_step(void)
                 (const u32 *)(mem + DSD(DS_0000A7760 + ch * 4u)),
                 (u32)x << 6, 0xFFu, 0x200u, 0u);                /* 0x41EF1 0x2AE14 */
             if (DSD(DS_00104AD4) != 0u)                          /* 0x41EF6/0x41EFD */
-                actor_pset_palette(spawned, 0u, 0x74u);           /* 0x41F06 0x2A17C */
+                actor_pset_palette(spawned, 0x74u, 0u);           /* 0x41EFF..0x41F06 0x2A17C: EDX = the
+                                                                   * pset word 0x74, EBX = 0 (no handle) */
             x += 0x50;                                           /* 0x41F12 */
             (void)actor_spawn((const u32 *)(mem + DS_000C8780),
                               (u32)x << 6, 0xFFu, 0x400u, 0u);     /* 0x41F24 0x2AE14 */
