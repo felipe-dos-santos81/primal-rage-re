@@ -33196,6 +33196,138 @@ D5F_TH_MUT(w8a, 21u)    D5F_TH_MUT(nodust, 22u) D5F_TH_MUT(dustslot, 23u) D5F_TH
 D5F_TH_MUT(o67, 26u)    D5F_TH_MUT(v67, 27u)    D5F_TH_MUT(w67, 28u)     D5F_TH_MUT(late67, 29u) D5F_TH_MUT(cache, 30u)
 D5F_TH_MUT(cache2, 31u) D5F_TH_MUT(thside, 32u) D5F_TH_MUT(bslot, 33u)   D5F_TH_MUT(v392, 34u)   D5F_TH_MUT(order, 35u)
 D5F_TH_MUT(noburst, 36u) D5F_TH_MUT(no392, 37u) D5F_TH_MUT(nothink, 38u) D5F_TH_MUT(dustearly, 39u)
+/* 0x129FC camera_dust_hit, as the port writes it, with one deviation per `mut`. */
+static u32 d5f_dust_hit(u32 node, u32 mut)
+{
+    u32 dust = DSD(node + ((mut == 41u) ? 4u : 8u));                                  /* @o8 */
+    u32 idx = (mut == 1u) ? (u32)DSB(dust + 0x56u) : (u32)DSW(dust + 0x56u);          /* @idxb */
+    u32 ent = DSD(DS_001014EC) + idx * ((mut == 2u) ? 0x10u : 0x20u);                 /* @entsz */
+    u32 xw = DSW(ent + ((mut == 3u) ? 6u : 4u)), yw = DSW(ent + ((mut == 4u) ? 0xAu : 8u));   /* @xoff @yoff */
+    s32 x = (mut == 6u) ? (s32)xw : (s32)(s16)xw;                                     /* @xz */
+    s32 y = (mut == 7u) ? (s32)yw : (s32)(s16)yw;                                     /* @yz */
+    u32 hit, side, slot, cs, rs;
+    u8 ch, react;
+    int pass;
+    if (mut == 5u) { s32 t = x; x = y; y = t; }                                       /* @xy */
+    hit = camera_point_hit(x, y, (mut == 8u) ? 0u : 1u);                              /* @tall */
+    if ((mut == 9u) ? (u8)hit == 0u : hit == 0u) return 0u;                           /* @al */
+    if (mut == 10u) side = ((s32)hit > 1) ? 0u : hit - 1u;                            /* @gt */
+    else if (mut == 11u) side = ((s32)hit > 2) ? 1u : hit - 1u;                       /* @three */
+    else if (mut == 12u) side = (hit > 2u) ? 0u : hit - 1u;                           /* @uns */
+    else side = ((s32)hit > 2) ? 0u : hit - 1u;
+    slot = DS_001077B0 + side * 0x94u;
+    cs = (mut == 13u) ? DS_001077B0 + (1u - side) * 0x94u : slot;                     /* @chside */
+    rs = (mut == 14u) ? DS_001077B0 + (1u - side) * 0x94u : slot;                     /* @reside */
+    ch = DSB(cs + 0x7Au);
+    react = DSB(rs + 0x5Fu);
+    if (mut == 15u) { if (ch >= 6u) return 0u; }                                      /* @ch6 */
+    else if (mut == 16u) { if ((s8)ch > 6) return 0u; }                               /* @chs */
+    else if (ch > 6u) return 0u;
+    {
+        /* groups 0 and 2 accept the same nine reactions (at most 0xD with bit 1 clear is 0, 1, 4, 5,
+         * 8, 9, 0xC, 0xD), so moving a character between them changes nothing: no such mutant */
+        u32 grp = (ch == 0u || ch == 3u || ch == 5u) ? 0u : (ch == 1u || ch == 6u) ? 1u : 2u;
+        if (mut == 21u && ch == 3u) grp = 1u;                                         /* @c3 */
+        if (mut == 23u && ch == 6u) grp = 2u;                                         /* @c6 */
+        if (mut == 24u && ch == 4u) grp = 1u;                                         /* @c4 */
+        if (grp == 0u) {
+            int over = (mut == 17u) ? react > 0xCu : (mut == 19u) ? (s8)react > 0xD : react > 0xDu;   /* @g0d @g0s */
+            pass = (mut != 20u && react == 0x2Du)                                     /* @g0no2d */
+                || !(over || (react & ((mut == 18u) ? 1u : 2u)) != 0u);               /* @g0bit */
+        } else if (grp == 1u) {
+            pass = react == 0x2Du || (react == 0xBu && mut != 26u) || react == 0u || react == 1u   /* @g1m */
+                || react == 2u || react == 8u || react == 9u || react == 0xAu || react == 4u
+                || react == 6u || react == 7u || (react == 5u && mut == 27u);         /* @g1x */
+        } else {
+            pass = react == 0x2Du || react == 0u || react == 1u || react == 8u || react == 9u
+                || (react == 0xCu && mut != 28u) || react == 0xDu || react == 4u || react == 5u   /* @g2m */
+                || (react == 2u && mut == 29u);                                       /* @g2x */
+        }
+    }
+    if (!pass) return (mut == 38u) ? 1u : 0u;                                         /* @ret1 */
+    if (mut == 33u) DSB(DS_000F0AE8) = react;                                         /* @early */
+    if (mut != 30u)                                                                   /* @noburst */
+        camera_dust_burst((mut == 31u) ? 1u - side : side,                            /* @bside */
+                          (mut == 32u) ? node : (mut == 40u) ? dust : DSD(node + 8u));   /* @bnode; @cache: the port before the correction */
+    if (mut == 36u) DSW(DS_000F0AE8) = react;                                         /* @storew */
+    else if (mut != 34u && mut != 33u) DSB(DS_000F0AE8) = (mut == 35u) ? ch : react;  /* @nostore @storech */
+    return (mut == 37u) ? 0u : (mut == 39u) ? hit : 1u;                               /* @ret0 @rethit */
+}
+static void b_d5f_129fc(const u32 *r, u32 *eax) { *eax = camera_dust_hit(r[R_EAX]); }
+#define D5F_DH_MUT(name, n) \
+    static void m_d5f_129fc_##name(const u32 *r, u32 *eax) { *eax = d5f_dust_hit(r[R_EAX], n); }
+D5F_DH_MUT(idxb, 1u)   D5F_DH_MUT(entsz, 2u)  D5F_DH_MUT(xoff, 3u)   D5F_DH_MUT(yoff, 4u)   D5F_DH_MUT(xy, 5u)
+D5F_DH_MUT(xz, 6u)     D5F_DH_MUT(yz, 7u)     D5F_DH_MUT(tall, 8u)   D5F_DH_MUT(al, 9u)     D5F_DH_MUT(gt, 10u)
+D5F_DH_MUT(three, 11u) D5F_DH_MUT(uns, 12u)   D5F_DH_MUT(chside, 13u) D5F_DH_MUT(reside, 14u) D5F_DH_MUT(ch6, 15u)
+D5F_DH_MUT(chs, 16u)   D5F_DH_MUT(g0d, 17u)   D5F_DH_MUT(g0bit, 18u) D5F_DH_MUT(g0s, 19u)   D5F_DH_MUT(g0no2d, 20u)
+D5F_DH_MUT(c3, 21u)    D5F_DH_MUT(c6, 23u)    D5F_DH_MUT(c4, 24u)
+D5F_DH_MUT(g1m, 26u)   D5F_DH_MUT(g1x, 27u)   D5F_DH_MUT(g2m, 28u)   D5F_DH_MUT(g2x, 29u)   D5F_DH_MUT(noburst, 30u)
+D5F_DH_MUT(bside, 31u) D5F_DH_MUT(bnode, 32u) D5F_DH_MUT(early, 33u) D5F_DH_MUT(nostore, 34u) D5F_DH_MUT(storech, 35u)
+D5F_DH_MUT(storew, 36u) D5F_DH_MUT(ret0, 37u) D5F_DH_MUT(ret1, 38u)  D5F_DH_MUT(rethit, 39u) D5F_DH_MUT(cache, 40u)
+D5F_DH_MUT(o8, 41u)
+/* 0x128D4 camera_impact_dust_spawn, as the port writes it, with one deviation per `mut`. */
+static void d5f_dust_spawn(u32 mut)
+{
+    u32 tick = (mut == 2u) ? (u32)DSB(DS_000EF6DC + 1u) : (u32)DSB(DS_000EF6DC);     /* @gatehi */
+    if ((tick & ((mut == 1u) ? 0x3Fu : 0xFu)) == 0u) {                                /* @gate3f */
+        u32 draw = rng_next((mut == 3u) ? 8u : 7u);                                   /* @rng7 */
+        if ((draw & ((mut == 4u) ? 1u : 3u)) == 0u) {                                 /* @and3 */
+            s32 off, yvel;
+            u32 flag5, a4, rec;
+            s32 a3;
+            int up = (draw & ((mut == 5u) ? 8u : 4u)) != 0u;                          /* @bit */
+            if (mut == 6u) up = !up;                                                  /* @arm */
+            if (up) { off = 0x2800; yvel = (s32)0xFFFFFF80; flag5 = 0u; }
+            else { off = (s32)0xFFFFD800; yvel = 0x80; flag5 = 0x4000u; }
+            if (mut == 7u) off = -off;                                                /* @off */
+            if (mut == 8u) yvel = -yvel;                                              /* @yvel */
+            if (mut == 9u) flag5 ^= 0x4000u;                                          /* @flag */
+            a3 = (mut == 10u) ? (s32)DSW(DS_000BD898) : (s32)(s16)DSW(DS_000BD898);   /* @a3z */
+            a4 = rng_next((mut == 13u) ? 0x1300u : 0x2000u);                          /* @rng2 */
+            if (mut == 12u) a4 = (u32)(u16)a4;                                        /* @a4z */
+            else if (mut != 11u) a4 = (u32)(s32)(s16)a4;                              /* @a4full: the port before the correction */
+            rec = actor_spawn((const u32 *)(mem + ((mut == 15u) ? 0x000BB258u : 0x000BB254u)),   /* @desc */
+                              (mut == 14u) ? DSD(DS_000F0AF0) : (u32)((s32)DSD(DS_000F0AF0) + off),   /* @cam */
+                              (mut == 16u) ? a4 : (u32)a3, (mut == 16u) ? (u32)a3 : a4, flag5);   /* @order */
+            if (mut == 18u) { if (rec != 0u) DSD(rec + 0x34u) = (u32)(u16)yvel; }     /* @w34d */
+            else if (mut != 20u && (rec != 0u || mut == 17u))                         /* @nostore34 @noguard */
+                DSW(rec + ((mut == 19u) ? 0x36u : 0x34u)) = (u16)yvel;                /* @o34 */
+        }
+    }
+    if (mut == 21u) { if (DSB(DS_00104B00) == 0x24u) return; }                        /* @modeb */
+    else if (DSW(DS_00104B00) == ((mut == 22u) ? 0x25u : 0x24u)) return;              /* @mode25 */
+    {
+        u32 i = (mut == 23u) ? 0u : (mut == 24u) ? (u32)(s32)(s8)DSB(0x00104B1Au) : (u32)DSB(0x00104B1Au);   /* @sidez @sides */
+        u8 st = DSB(DS_001077B0 + i * 0x94u + ((mut == 25u) ? 0x53u : 0x52u));        /* @o52 */
+        if ((mut == 26u) ? st != 0u : st == 0u)                                       /* @ne */
+            { if (mut != 28u) DSB(DS_000F0AE8) = (mut == 27u) ? 0u : 0xFFu; }         /* @noreset @rv */
+    }
+    {
+        u8 gate = DSB(DS_000F0AE8);
+        u32 node = DSD(DS_000F0AE0 + ((mut == 29u) ? 4u : 0u));                       /* @head */
+        while (node != DS_000F0AE0) {
+            u32 next = DSD(node);
+            if (mut != 34u) gate = DSB(DS_000F0AE8);                                  /* @cacheb */
+            if (((mut == 33u) ? gate != 0xFFu : gate == 0xFFu) || mut == 32u) {       /* @neff @always */
+                u32 r = camera_dust_hit(node);
+                if (((mut == 30u) ? (u8)r != 0u : r != 0u) && mut != 31u) return;     /* @al @noret */
+            }
+            if (mut == 36u) return;                                                   /* @first */
+            node = (mut == 35u) ? DSD(node) : next;                                   /* @latenext */
+        }
+    }
+}
+static void b_d5f_128d4(const u32 *r, u32 *eax) { (void)r; camera_impact_dust_spawn(); *eax = 0u; }
+#define D5F_DS_MUT(name, n) \
+    static void m_d5f_128d4_##name(const u32 *r, u32 *eax) { (void)r; d5f_dust_spawn(n); *eax = 0u; }
+D5F_DS_MUT(gate3f, 1u)  D5F_DS_MUT(gatehi, 2u) D5F_DS_MUT(rng7, 3u)   D5F_DS_MUT(and3, 4u)   D5F_DS_MUT(bit, 5u)
+D5F_DS_MUT(arm, 6u)     D5F_DS_MUT(off, 7u)    D5F_DS_MUT(yvel, 8u)   D5F_DS_MUT(flag, 9u)   D5F_DS_MUT(a3z, 10u)
+D5F_DS_MUT(a4full, 11u) D5F_DS_MUT(a4z, 12u)   D5F_DS_MUT(rng2, 13u)  D5F_DS_MUT(cam, 14u)   D5F_DS_MUT(desc, 15u)
+D5F_DS_MUT(order, 16u)  D5F_DS_MUT(noguard, 17u) D5F_DS_MUT(w34d, 18u) D5F_DS_MUT(o34, 19u)  D5F_DS_MUT(nostore34, 20u)
+D5F_DS_MUT(modeb, 21u)  D5F_DS_MUT(mode25, 22u) D5F_DS_MUT(sidez, 23u) D5F_DS_MUT(sides, 24u) D5F_DS_MUT(o52, 25u)
+D5F_DS_MUT(ne, 26u)     D5F_DS_MUT(rv, 27u)    D5F_DS_MUT(noreset, 28u) D5F_DS_MUT(head, 29u) D5F_DS_MUT(al, 30u)
+D5F_DS_MUT(noret, 31u)  D5F_DS_MUT(always, 32u) D5F_DS_MUT(neff, 33u) D5F_DS_MUT(cacheb, 34u) D5F_DS_MUT(latenext, 35u)
+D5F_DS_MUT(first, 36u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43262,6 +43394,86 @@ static const binding_t k_bindings[] = {
     { "fighter_think_rr", b_d5f_1975c, 0x00000000u },
     { "fighter_think_rr@cache", m_d5f_1975c_cache, 0x00000000u },
     { "fighter_think_rr@cache2", m_d5f_1975c_cache2, 0x00000000u },
+    { "camera_dust_hit", b_d5f_129fc, 0xFFFFFFFFu },
+    { "camera_dust_hit@idxb", m_d5f_129fc_idxb, 0xFFFFFFFFu },
+    { "camera_dust_hit@entsz", m_d5f_129fc_entsz, 0xFFFFFFFFu },
+    { "camera_dust_hit@xoff", m_d5f_129fc_xoff, 0xFFFFFFFFu },
+    { "camera_dust_hit@yoff", m_d5f_129fc_yoff, 0xFFFFFFFFu },
+    { "camera_dust_hit@xy", m_d5f_129fc_xy, 0xFFFFFFFFu },
+    { "camera_dust_hit@xz", m_d5f_129fc_xz, 0xFFFFFFFFu },
+    { "camera_dust_hit@yz", m_d5f_129fc_yz, 0xFFFFFFFFu },
+    { "camera_dust_hit@tall", m_d5f_129fc_tall, 0xFFFFFFFFu },
+    { "camera_dust_hit@al", m_d5f_129fc_al, 0xFFFFFFFFu },
+    { "camera_dust_hit@gt", m_d5f_129fc_gt, 0xFFFFFFFFu },
+    { "camera_dust_hit@three", m_d5f_129fc_three, 0xFFFFFFFFu },
+    { "camera_dust_hit@uns", m_d5f_129fc_uns, 0xFFFFFFFFu },
+    { "camera_dust_hit@chside", m_d5f_129fc_chside, 0xFFFFFFFFu },
+    { "camera_dust_hit@reside", m_d5f_129fc_reside, 0xFFFFFFFFu },
+    { "camera_dust_hit@ch6", m_d5f_129fc_ch6, 0xFFFFFFFFu },
+    { "camera_dust_hit@chs", m_d5f_129fc_chs, 0xFFFFFFFFu },
+    { "camera_dust_hit@g0d", m_d5f_129fc_g0d, 0xFFFFFFFFu },
+    { "camera_dust_hit@g0bit", m_d5f_129fc_g0bit, 0xFFFFFFFFu },
+    { "camera_dust_hit@g0s", m_d5f_129fc_g0s, 0xFFFFFFFFu },
+    { "camera_dust_hit@g0no2d", m_d5f_129fc_g0no2d, 0xFFFFFFFFu },
+    { "camera_dust_hit@c3", m_d5f_129fc_c3, 0xFFFFFFFFu },
+    { "camera_dust_hit@c6", m_d5f_129fc_c6, 0xFFFFFFFFu },
+    { "camera_dust_hit@c4", m_d5f_129fc_c4, 0xFFFFFFFFu },
+    { "camera_dust_hit@g1m", m_d5f_129fc_g1m, 0xFFFFFFFFu },
+    { "camera_dust_hit@g1x", m_d5f_129fc_g1x, 0xFFFFFFFFu },
+    { "camera_dust_hit@g2m", m_d5f_129fc_g2m, 0xFFFFFFFFu },
+    { "camera_dust_hit@g2x", m_d5f_129fc_g2x, 0xFFFFFFFFu },
+    { "camera_dust_hit@noburst", m_d5f_129fc_noburst, 0xFFFFFFFFu },
+    { "camera_dust_hit@bside", m_d5f_129fc_bside, 0xFFFFFFFFu },
+    { "camera_dust_hit@bnode", m_d5f_129fc_bnode, 0xFFFFFFFFu },
+    { "camera_dust_hit@early", m_d5f_129fc_early, 0xFFFFFFFFu },
+    { "camera_dust_hit@nostore", m_d5f_129fc_nostore, 0xFFFFFFFFu },
+    { "camera_dust_hit@storech", m_d5f_129fc_storech, 0xFFFFFFFFu },
+    { "camera_dust_hit@storew", m_d5f_129fc_storew, 0xFFFFFFFFu },
+    { "camera_dust_hit@ret0", m_d5f_129fc_ret0, 0xFFFFFFFFu },
+    { "camera_dust_hit@ret1", m_d5f_129fc_ret1, 0xFFFFFFFFu },
+    { "camera_dust_hit@rethit", m_d5f_129fc_rethit, 0xFFFFFFFFu },
+    { "camera_dust_hit@o8", m_d5f_129fc_o8, 0xFFFFFFFFu },
+    { "camera_dust_hit_rr", b_d5f_129fc, 0xFFFFFFFFu },
+    { "camera_dust_hit_rr@cache", m_d5f_129fc_cache, 0xFFFFFFFFu },
+    { "camera_impact_dust_spawn", b_d5f_128d4, 0x00000000u },
+    { "camera_impact_dust_spawn@gate3f", m_d5f_128d4_gate3f, 0x00000000u },
+    { "camera_impact_dust_spawn@gatehi", m_d5f_128d4_gatehi, 0x00000000u },
+    { "camera_impact_dust_spawn@rng7", m_d5f_128d4_rng7, 0x00000000u },
+    { "camera_impact_dust_spawn@and3", m_d5f_128d4_and3, 0x00000000u },
+    { "camera_impact_dust_spawn@bit", m_d5f_128d4_bit, 0x00000000u },
+    { "camera_impact_dust_spawn@arm", m_d5f_128d4_arm, 0x00000000u },
+    { "camera_impact_dust_spawn@off", m_d5f_128d4_off, 0x00000000u },
+    { "camera_impact_dust_spawn@yvel", m_d5f_128d4_yvel, 0x00000000u },
+    { "camera_impact_dust_spawn@flag", m_d5f_128d4_flag, 0x00000000u },
+    { "camera_impact_dust_spawn@a3z", m_d5f_128d4_a3z, 0x00000000u },
+    { "camera_impact_dust_spawn@a4full", m_d5f_128d4_a4full, 0x00000000u },
+    { "camera_impact_dust_spawn@a4z", m_d5f_128d4_a4z, 0x00000000u },
+    { "camera_impact_dust_spawn@rng2", m_d5f_128d4_rng2, 0x00000000u },
+    { "camera_impact_dust_spawn@cam", m_d5f_128d4_cam, 0x00000000u },
+    { "camera_impact_dust_spawn@desc", m_d5f_128d4_desc, 0x00000000u },
+    { "camera_impact_dust_spawn@order", m_d5f_128d4_order, 0x00000000u },
+    { "camera_impact_dust_spawn@noguard", m_d5f_128d4_noguard, 0x00000000u },
+    { "camera_impact_dust_spawn@w34d", m_d5f_128d4_w34d, 0x00000000u },
+    { "camera_impact_dust_spawn@o34", m_d5f_128d4_o34, 0x00000000u },
+    { "camera_impact_dust_spawn@nostore34", m_d5f_128d4_nostore34, 0x00000000u },
+    { "camera_impact_dust_spawn@modeb", m_d5f_128d4_modeb, 0x00000000u },
+    { "camera_impact_dust_spawn@mode25", m_d5f_128d4_mode25, 0x00000000u },
+    { "camera_impact_dust_spawn@sidez", m_d5f_128d4_sidez, 0x00000000u },
+    { "camera_impact_dust_spawn@sides", m_d5f_128d4_sides, 0x00000000u },
+    { "camera_impact_dust_spawn@o52", m_d5f_128d4_o52, 0x00000000u },
+    { "camera_impact_dust_spawn@ne", m_d5f_128d4_ne, 0x00000000u },
+    { "camera_impact_dust_spawn@rv", m_d5f_128d4_rv, 0x00000000u },
+    { "camera_impact_dust_spawn@noreset", m_d5f_128d4_noreset, 0x00000000u },
+    { "camera_impact_dust_spawn@head", m_d5f_128d4_head, 0x00000000u },
+    { "camera_impact_dust_spawn@al", m_d5f_128d4_al, 0x00000000u },
+    { "camera_impact_dust_spawn@noret", m_d5f_128d4_noret, 0x00000000u },
+    { "camera_impact_dust_spawn@always", m_d5f_128d4_always, 0x00000000u },
+    { "camera_impact_dust_spawn@neff", m_d5f_128d4_neff, 0x00000000u },
+    { "camera_impact_dust_spawn@first", m_d5f_128d4_first, 0x00000000u },
+    { "camera_impact_dust_spawn_rr", b_d5f_128d4, 0x00000000u },
+    { "camera_impact_dust_spawn_rr@cacheb", m_d5f_128d4_cacheb, 0x00000000u },
+    { "camera_impact_dust_spawn_rl", b_d5f_128d4, 0x00000000u },
+    { "camera_impact_dust_spawn_rl@latenext", m_d5f_128d4_latenext, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

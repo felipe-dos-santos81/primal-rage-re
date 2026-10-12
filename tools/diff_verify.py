@@ -24513,6 +24513,191 @@ D5F_SPECS += [
        mutants=("@cache", "@cache2")),
 ]
 
+# ---- camera.c: the mode-0x22 dust (0x129FC, 0x128D4) ----
+D5F_PSET = 0x00108000            # zero BSS: the 0x20-byte pset entries DS_001014EC points at
+D5F_NODE, D5F_DUST, D5F_DUST2 = 0x0010A400, 0x0010A500, 0x0010A580   # a dust node, its actor record, another
+# 0x17D30: EAX = x, EDX = y (`movsx edx,ax` 0x17D64, `mov esi,edx` 0x17D37), BX = tall (`mov [esp+0x1c],ebx`
+# 0x17D39, `test bx,bx` 0x17D8D); 0x12BB8: EAX = side, EDX = the dust record; 0x129FC: EAX = the node.
+# All plain `ret`; clobbers E.callee_clobbers.
+D5F_17D30 = E.Call(0x17D30, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+D5F_12BB8 = E.Call(0x12BB8, ("eax", "edx"), clobbers=("edx", "edi", "ebp"))
+D5F_129FC = E.Call(0x129FC, ("eax",), clobbers=("edi", "ebp"))
+D5F_RNG = E.Call(0x5D7DC, ("eax",))
+# the re-read specs' stubs: the point test relinks the node's +8 record; the hit test rewrites the
+# gate byte 0xF0AE8, or cuts the node it was given out of the list
+D5F_17D30_W = E.Call(0x17D30, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"),
+                     writes=((None, D5F_NODE + 8, le32(D5F_DUST2)),))
+D5F_129FC_GATE = E.Call(0x129FC, ("eax",), clobbers=("edi", "ebp"), writes=((None, 0x000F0AE8, b"\x05"),))
+D5F_129FC_LINK = E.Call(0x129FC, ("eax",), clobbers=("edi", "ebp"), writes=((0, 0, le32(0x000F0AE0)),))
+
+
+def d5f_dust_pass(ch, react):
+    """Seed chooser only (never an expectation): whether 0x129FC's reaction set of character `ch`
+    holds `react`, so the slot the raw does not read can carry the opposite answer."""
+    if ch > 6:
+        return False
+    if ch in (0, 3, 5):
+        return react == 0x2D or (react <= 0xD and not react & 2)
+    if ch in (1, 6):
+        return react in (0, 1, 2, 4, 6, 7, 8, 9, 0xA, 0xB, 0x2D)
+    return react in (0, 1, 4, 5, 8, 9, 0xC, 0xD, 0x2D)
+
+
+def d5f_dust_case(ch, react, side=0, idx=0x0101, x=0x1234, y=0x8765):
+    """0x129FC: the node's +4..+0xF (+8: its actor record), the record's +0x54..+0x59 (the +0x56
+    pset index, high byte set), the entry it names with seeded words around +4 and +8, the entry
+    its low byte alone names with other words, the hit slot's +0x5E..+0x60 and +0x79..+0x7B, the
+    other slot(s) with the opposite verdict, and the byte 0xF0AE8 between two seeded bytes. `side`
+    is where the stub's EAX lands: 0, 1, or -2 (EAX = 0xFFFFFFFF: `jle` 0x12A3D keeps it, the slot
+    is 0x1077B0 - 2 * 0x94, inside the image)."""
+    p = {D5F_NODE + 4: le32(0x04040404) + le32(D5F_DUST) + le32(0x0C0C0C0C),
+         D5F_DUST + 0x54: b"\x54\x55" + le16(idx) + b"\x58\x59",
+         D5F_DUST2 + 0x54: b"\x64\x65" + le16(idx ^ 3) + b"\x68\x69",
+         0x001014EC: le32(D5F_PSET),
+         D5F_PSET + (idx & 0xFF) * 0x20: le16(0x1110) + le16(0x1312) + le16(x ^ 0x0101) + le16(0x1716)
+         + le16(y ^ 0x0101) + le16(0x1B1A),
+         D5F_PSET + idx * 0x20: le16(0x0100) + le16(0x0302) + le16(x) + le16(0x0706) + le16(y) + le16(0x0B0A),
+         0x000F0AE7: bytes([0xE7, 0xEE, 0xE9])}
+    opp = (7, 0x2D) if d5f_dust_pass(ch & 0xFF, react) else (0, 0)
+    for s in (0, 1):
+        if s != side:
+            b = D5F_SLOT + s * 0x94
+            p[b + 0x5E] = bytes([0x4E + s, opp[1], 0x40 + s])
+            p[b + 0x79] = bytes([0x69 + s, opp[0], 0x6B + s])
+    b = D5F_SLOT + side * 0x94
+    p[b + 0x5E] = bytes([0x5E, react, 0x60])
+    p[b + 0x79] = bytes([0x79, ch, 0x7B])
+    return p
+
+
+def d5f_dust_cases():
+    """Each of the four table targets (characters 0, 1, 2, 4) with every reaction 0..0xF and the
+    bytes around 0x2D, 0x81 (bit 7 set, bit 1 clear: unsigned above 0xD) and 0x82/0xFF; the other
+    characters of each target with reactions on both sides of their set; characters 7, 0x86 and
+    0xFF (`cmp al,6; ja` 0x12A65, unsigned); and the stub's EAX: 1, 2 and 3 in turn (3 = both
+    sides, counted as side 0), 0x100 (`test eax,eax` 0x12A32: a hit), 0xFFFFFFFF (signed `jle`
+    0x12A3D) and 0 (no hit)."""
+    out, n = [], 0
+    hits = ((1, 0), (2, 1), (3, 0))
+    for ch in (0, 1, 2, 4):
+        for react in list(range(0x10)) + [0x2C, 0x2D, 0x2E, 0x81, 0x82, 0xFF]:
+            hit, side = hits[n % 3]
+            n += 1
+            out.append(Case("c%d_%02X" % (ch, react), {"eax": D5F_NODE},
+                            d5f_dust_case(ch, react, side, x=0x1234 if n & 1 else 0x8234, y=0x8765 if n & 2 else 0x7765),
+                            {0x17D30: hit}))
+    for ch in (3, 5, 6):
+        for react in (0x00, 0x02, 0x05, 0x0B, 0x0D, 0x0E, 0x2D):
+            hit, side = hits[n % 3]
+            n += 1
+            out.append(Case("c%d_%02X" % (ch, react), {"eax": D5F_NODE}, d5f_dust_case(ch, react, side),
+                            {0x17D30: hit}))
+    for ch in (7, 0x86, 0xFF):
+        out.append(Case("c%02X" % ch, {"eax": D5F_NODE}, d5f_dust_case(ch, 0, 1), {0x17D30: 2}))
+    out += [Case("h100", {"eax": D5F_NODE}, d5f_dust_case(1, 0x0B, 0), {0x17D30: 0x100}),
+            Case("hneg", {"eax": D5F_NODE}, d5f_dust_case(2, 0x0C, -2), {0x17D30: 0xFFFFFFFF}),
+            Case("h0", {"eax": D5F_NODE}, d5f_dust_case(0, 0, 0), {0x17D30: 0}),
+            Case("hidx", {"eax": D5F_NODE}, d5f_dust_case(4, 0x2D, 1, idx=0x0003), {0x17D30: 2})]
+    return out
+
+
+D5F_LIST = (0x0010A600, 0x0010A640, 0x0010A680)     # three dust nodes
+D5F_LISTX = 0x0010A6C0                               # the node the dword 0xF0AE4 names (a mutant's head)
+D5F_SP = 0x0010A700                                  # the record a SPAWN stub returns
+
+
+def d5f_spawn_case(tick, mode, idx, s52, gate, n, yw=0x0123, cam=0x00020000):
+    """0x128D4: the tick word 0xEF6DC, the y word 0xBD898 and the mode word 0x104B00 between
+    seeded words, the camera x 0xF0AF0, the side byte 0x104B1A between seeded bytes with that
+    slot's +0x51..+0x53 (the other slot's +0x52 is the opposite), the gate byte 0xF0AE8 between
+    seeded bytes, the dust list 0xF0AE0 of `n` nodes (0xF0AE4 names a node of its own), and the
+    spawned record's +0x32..+0x37."""
+    p = {0x000EF6DA: b"\xda\xdb" + le16(tick) + b"\xde\xdf",
+         0x000BD896: b"\x96\x97" + le16(yw) + b"\x9a\x9b",
+         0x00104AFE: b"\xfe\xff" + le16(mode) + b"\x02\x03",
+         0x000F0AF0: le32(cam),
+         0x00104B19: bytes([0x19, idx, 0x1B]),
+         0x000F0AE7: bytes([0xE7, gate, 0xE9]),
+         D5F_SP + 0x32: bytes([0x32, 0x33, 0x34, 0x35, 0x36, 0x37]),
+         D5F_LISTX: le32(0x000F0AE0)}
+    for s in (0, 1):
+        p[D5F_SLOT + s * 0x94 + 0x51] = bytes([0x51 + s, 0x52 if s52 else 0, 0 if s52 else 0x53])
+    if idx < 2:
+        p[D5F_SLOT + idx * 0x94 + 0x51] = bytes([0x51, s52, 0 if s52 else 0x53])
+        p[D5F_SLOT + (1 - idx) * 0x94 + 0x51] = bytes([0x61, 0 if s52 else 0x62, 0x63])
+    else:    # idx 0x80: the raw's slot is above the image (zero); the sign-extended slot is seeded
+        p[D5F_SLOT + (idx - 0x100) * 0x94 + 0x52] = b"\x77"
+    chain = list(D5F_LIST[:n]) + [0x000F0AE0]
+    p[0x000F0AE0] = le32(chain[0]) + le32(D5F_LISTX)
+    for a, nxt in zip(chain, chain[1:]):
+        p[a] = le32(nxt)
+    return p
+
+# the blocks of 0x128D4's spawn half, which its two re-read specs leave to the main row
+D5F_SPAWN_HALF = {a: "the spawn half (the tick gate is closed here): the camera_impact_dust_spawn row's"
+                  for a in (0x128F1, 0x128FF, 0x12903, 0x12911, 0x12920, 0x1296B)}
+
+D5F_SPECS += [
+    # 0x129FC camera_dust_hit: EAX = the dust node. 0x17D30 (the point test) and 0x12BB8 (the
+    # burst) are stubs. EAX is the whole register: 1 (`mov eax,1`), 0 (`xor eax,eax` 0x12BB1) or the
+    # point test's own 0 (0x12A34 `je 0x12bb3`), and the one caller tests all of it (0x129C6 `test
+    # eax,eax`). The reaction byte is read before the burst and stored after it (BL, 0x12A62 ->
+    # 0x12AAD; 0x12BB8 preserves EBX).
+    Spec("camera_dust_hit", 0x129FC, d5f_dust_cases(), calls=(D5F_17D30, D5F_12BB8), eax_mask=0xFFFFFFFF,
+         mutants=tuple("@" + m for m in (
+             "idxb entsz xoff yoff xy xz yz tall al gt three uns chside reside ch6 chs g0d g0bit g0s g0no2d "
+             "c3 c6 c4 g1m g1x g2m g2x noburst bside bnode early nostore storech storew ret0 ret1 "
+             "rethit o8").split())),
+    # the same entry with a point test that relinks the node's +8: the raw loads it again for the
+    # burst (0x12A99 / 0x12AF5 / 0x12B47 / 0x12B98 `mov e?x,[ecx+8]`), after the call at 0x12A2B
+    Spec("camera_dust_hit_rr", 0x129FC, [
+        Case("r0", {"eax": D5F_NODE}, d5f_dust_case(0, 0x2D, 0), {0x17D30: 1}),
+        Case("r1", {"eax": D5F_NODE}, d5f_dust_case(1, 0x0B, 1), {0x17D30: 2}),
+        Case("r2", {"eax": D5F_NODE}, d5f_dust_case(2, 0x0D, 0), {0x17D30: 3}),
+        Case("r4", {"eax": D5F_NODE}, d5f_dust_case(4, 0x05, 1), {0x17D30: 2}),
+    ], unhit_named={a: "the reaction chains past their first members and the two refusals: the camera_dust_hit row's"
+                    for a in (0x12A83, 0x12A8C, 0x12AC5, 0x12AC9, 0x12ACE, 0x12AD3, 0x12AD8, 0x12ADD, 0x12AE2,
+                              0x12AE7, 0x12AEC, 0x12B39, 0x12B3E, 0x12BB1, 0x12BB3)},
+       calls=(D5F_17D30_W, D5F_12BB8), eax_mask=0xFFFFFFFF, mutants=("@cache",)),
+    # 0x128D4 camera_impact_dust_spawn: no argument. The rng 0x5D7DC, SPAWN and the hit test 0x129FC
+    # are stubs; one stub EAX serves both draws of a case (bits 0..1 gate the spawn, bit 2 picks the
+    # arm, and its low word, sign-extended, is the spawn's a4: `mov [esp],di` 0x12941, `mov
+    # ebx,[esp-2]` 0x12948, `sar ebx,0x10` 0x12956; s2 and s7 draw 0x18004 and 0x00020004). SPAWN's
+    # EAX is tested whole (0x12967 `test eax,eax`), as is the hit test's (0x129C6: s3 returns
+    # 0x100). Mask 0: 0x26D3B `call 0x26d4c` (its `jg` 0x26D5B arm returns with EAX untouched, the
+    # other loads it at 0x26D6B), 0x26D40..0x26D4B return to 0x25326 `jmp 0x2540f`, and from there
+    # every path loads EAX before reading it (the input_state_update row's chain, d2d).
+    Spec("camera_impact_dust_spawn", 0x128D4, [
+        Case("s0", {}, d5f_spawn_case(0x0011, 0x0024, 0, 0, 0xFF, 3)),
+        Case("s1", {}, d5f_spawn_case(0x0100, 0x0022, 0, 5, 0x05, 0), {0x5D7DC: 0x0001}),
+        Case("s2", {}, d5f_spawn_case(0x0010, 0x0124, 1, 0, 0x05, 3), {0x5D7DC: 0x00018004, 0x2AE14: D5F_SP}),
+        Case("s3", {}, d5f_spawn_case(0x0FF0, 0x0022, 0, 7, 0xFF, 3, yw=0x8001, cam=0xFFFFF000),
+             {0x5D7DC: 0x00001230, 0x2AE14: 0, 0x129FC: 0x100}),
+        Case("s4", {}, d5f_spawn_case(0x0001, 0x0022, 1, 7, 0x05, 3)),
+        Case("s5", {}, d5f_spawn_case(0x000F, 0x0000, 1, 9, 0xFF, 2), {0x129FC: 1}),
+        Case("s6", {}, d5f_spawn_case(0x0000, 0x0025, 0, 0, 0x00, 1, yw=0x7FFF),
+             {0x5D7DC: 0xFFFF7FF8, 0x2AE14: D5F_SP}),
+        Case("s7", {}, d5f_spawn_case(0x1200, 0x0022, 1, 3, 0xFF, 3), {0x5D7DC: 0x00020004, 0x2AE14: D5F_SP}),
+        Case("s8", {}, d5f_spawn_case(0x0020, 0x0022, 0x80, 0, 0x05, 1), {0x5D7DC: 0x0002}),
+        Case("s9", {}, d5f_spawn_case(0x0030, 0x2400, 0, 1, 0xFF, 0), {0x5D7DC: 0x0003}),
+    ], calls=(D5F_RNG, SPAWN, D5F_129FC), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "gate3f gatehi rng7 and3 bit arm off yvel flag a3z a4full a4z rng2 cam desc order noguard w34d "
+           "o34 nostore34 modeb mode25 sidez sides o52 ne rv noreset head al noret always neff first").split())),
+    # the same entry with a hit test that rewrites the gate byte: the raw reads 0xF0AE8 at every
+    # node (0x129B1), so only the first is offered
+    Spec("camera_impact_dust_spawn_rr", 0x128D4, [
+        Case("g0", {}, d5f_spawn_case(0x0001, 0x0022, 0, 7, 0xFF, 3)),
+        Case("g1", {}, d5f_spawn_case(0x0001, 0x0022, 1, 0, 0x05, 2)),
+    ], unhit_named=D5F_SPAWN_HALF, calls=(D5F_RNG, SPAWN, D5F_129FC_GATE), eax_mask=0, mutants=("@cacheb",)),
+    # ... and with one that cuts the node it is given out of the list: the raw loaded the node's link
+    # before the call (0x129B7 `mov edx,[eax]`), so every node is still offered
+    Spec("camera_impact_dust_spawn_rl", 0x128D4, [
+        Case("l0", {}, d5f_spawn_case(0x0001, 0x0022, 0, 7, 0xFF, 3)),
+        Case("l1", {}, d5f_spawn_case(0x0001, 0x0022, 1, 0, 0x05, 2)),
+    ], unhit_named=D5F_SPAWN_HALF, calls=(D5F_RNG, SPAWN, D5F_129FC_LINK), eax_mask=0, mutants=("@latenext",)),
+]
+
 D1_SPECS += D5F_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

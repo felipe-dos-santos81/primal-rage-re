@@ -1491,6 +1491,7 @@ static int camera_point_side(u32 side, s32 x, s32 y, u32 tall)
  * 0/1's hit. DS_00100B08/B0C/B00/B04 and the two flip bytes are restored. */
 u32 camera_point_hit(s32 x, s32 y, u32 tall)
 {
+    PR_SEAM_RET(0x17D30u, (u32)x, (u32)y, tall);
     u32 s08 = DSD(DS_00100B08), s0c = DSD(DS_00100B0C);         /* 0x17D3D..0x17D4C */
     u32 s00 = DSD(DS_00100B00), s04 = DSD(DS_00100B04);         /* 0x17D50..0x17D60 */
     s32 px = (s32)(s16)x / 64 - 0x18;                          /* 0x17D64..0x17D88 */
@@ -1585,6 +1586,7 @@ void camera_dust_spawn(void)
  * which camera_dust_hit folds into its one call. */
 void camera_dust_burst(u32 side, u32 dust)
 {
+    PR_SEAM(0x12BB8u, side, dust);
     u32 fighter = DSD(DS_001077B0 + side * 0x94u);     /* 0x12BC9 */
     u32 flag5 = ((DSW(fighter + 0x28u) & 0x4000u) != 0u)
               ? 0u : 0x4000u;                          /* 0x12BD0..0x12BE9 */
@@ -1615,6 +1617,7 @@ void camera_dust_burst(u32 side, u32 dust)
  * 1; a fail returns 0. */
 u32 camera_dust_hit(u32 node)
 {
+    PR_SEAM_RET(0x129FCu, node);
     u32 dust = DSD(node + 8u);                         /* 0x12A01 */
     u32 ent = DSD(DS_001014EC) + (u32)DSW(dust + 0x56u) * 0x20u;   /* 0x12A04..0x12A16 */
     u32 hit = camera_point_hit((s32)(s16)DSW(ent + 4u),
