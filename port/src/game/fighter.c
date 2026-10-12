@@ -3791,7 +3791,7 @@ void hit_slot_seed(u32 side, u32 value, u32 i)
  * 2 (the third word overlaps the command), 1 (the second word, or no
  * accumulation), 0 (the accumulated mask equals the first word) or 3 (partial
  * overlap). §6.3: transcribed, not unit-pinned. */
-static u32 hit_connect(u32 side, u32 facing, u32 i, u32 *out)
+u32 hit_connect(u32 side, u32 facing, u32 i, u32 *out)
 {
     u32 desc = hit_frame_desc(side, i);
     u32 off = side * 0x40u + i * 2u;
@@ -3814,7 +3814,7 @@ static u32 hit_connect(u32 side, u32 facing, u32 i, u32 *out)
 /* 0x3C800. The displacement test. On a command overlap with the mapped word at
  * descriptor+phase*0x14+0x10 it returns 1 and writes the frame's displacement
  * (the high word of the dword at +0x0A, i.e. the word at +0x0C). §6.3. */
-static u32 hit_displace(u32 side, u32 facing, u32 i, u32 *out)
+u32 hit_displace(u32 side, u32 facing, u32 i, u32 *out)
 {
     u32 desc = hit_frame_desc(side, i);
     u32 off = side * 0x40u + i * 2u;

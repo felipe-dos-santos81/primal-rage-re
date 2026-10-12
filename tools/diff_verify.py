@@ -13608,6 +13608,43 @@ def d2a_push_case(f40, x, s54=(0, 0), w34=(0x1234, 0xEDCC), w4c=(0x0123, 0x8123)
     return p
 
 
+D2A_DESC = 0x0010A600            # 0x3C758/0x3C800: the frame descriptor the 0x3C600 stub returns (0x14-byte entries)
+D2A_OUT, D2A_OUT2 = 0x0010A720, 0x0010A740   # the two stack dwords the raw's callers pass by address
+D2A_DESC_CALL = E.Call(0x3C600, ("eax", "edx"))
+
+
+def d2a_frame_pokes(side, i, phase, entry, cmd):
+    """The phase word of (side, i) at 0x107D58 + side*0x40 + i*2 between two seeded words, the
+    0x14-byte descriptor entry of `phase` (sign-extended: `sar 16`) at D2A_DESC, and the side's
+    command word (the other side's is the complement)."""
+    off = side * 0x40 + i * 2
+    ps = (phase ^ 0x8000) - 0x8000
+    words = [0, 0]
+    words[side], words[1 - side] = cmd, cmd ^ 0xFFFF
+    return {0x00107D56 + off: le16(0x5656) + le16(phase) + le16(0x5A5A),
+            D2A_DESC + ps * 0x14: entry, 0x001088E0: le16(words[0]) + le16(words[1])}
+
+
+def d2a_connect_case(side, i, phase, m, cmd, out):
+    """0x3C758: the entry's three input dwords `m` (+0x0C..+0x13 seeded) and the dword the stack
+    argument points at, between two seeded dwords."""
+    p = d2a_frame_pokes(side, i, phase, le32(m[0]) + le32(m[1]) + le32(m[2]) + le32(0x0C0C0C0C) + le32(0x10101010),
+                        cmd)
+    p[D2A_OUT - 4] = le32(0x1C1C1C1C) + le32(out) + le32(0x24242424)
+    return p
+
+
+def d2a_displace_case(side, i, phase, m4, disp, cmd, m2=0x08090A0B):
+    """0x3C800: the entry's +0x10 input dword `m4` and the word at +0x0C (`disp`: the high half of
+    the dword at +0x0A the raw shifts), the rest seeded; both stack dwords seeded with their
+    neighbours."""
+    p = d2a_frame_pokes(side, i, phase, le32(0x00010203) + le32(0x04050607) + le32(m2) + le16(disp) + le16(0x0E0F)
+                        + le32(m4), cmd)
+    p[D2A_OUT - 4] = le32(0x1C1C1C1C) + le32(0x20202020) + le32(0x24242424)
+    p[D2A_OUT2 - 4] = le32(0x3C3C3C3C) + le32(0x5A5A5A5A) + le32(0x44444444)
+    return p
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13746,6 +13783,57 @@ D2A_SPECS = [
     ], allow_calls=(0x3B9D8, 0x33950), calls=(D1B_3B8D8, D2A_1883C_CLR), eax_mask=0,
        mutants=("@gate0", "@gate1", "@gbit", "@order", "@rorder", "@o1", "@o1inv", "@keep0", "@keep1",
                 "@kswap", "@klate", "@kmask", "@one", "@same")),
+    # 0x3C758 hit_connect: EAX = side, EDX = facing, EBX = i, the one stack argument (`ret 4`) the
+    # address of the caller's accumulator dword (`mov edx,[ecx]; or edx,eax; mov [ecx],edx; cmp
+    # ebx,edx` 0x3C7D4..0x3C7DA: v7 sets its upper half). The phase is sign-extended (`sar ebx,
+    # 0x10` 0x3C774: v8 is -1). 0x3C600 is a stub returning D2A_DESC; 0x3C6E8 runs real (v9: its
+    # facing argument picks the mapped bit). Full mask: 0x3C956/0x3C9D3 `test eax,eax`, 0x3CAD7
+    # `cmp eax,3`.
+    Spec("hit_connect", 0x3C758, [
+        Case("v0", {"eax": 0, "edx": 0, "ebx": 3, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(0, 3, 0, (0x0001, 0x0002, 0x0040), 0x0040, 0), {0x3C600: D2A_DESC}),
+        Case("v1", {"eax": 1, "edx": 0, "ebx": 5, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(1, 5, 2, (0x0001, 0x0002, 0x0040), 0x0002, 0), {0x3C600: D2A_DESC}),
+        Case("v2", {"eax": 0, "edx": 0, "ebx": 0, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(0, 0, 1, (0x0001, 0x0002, 0x0040), 0x0043, 0), {0x3C600: D2A_DESC}),
+        Case("v3", {"eax": 1, "edx": 0, "ebx": 0x1F, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(1, 0x1F, 7, (0x0030, 0x0100, 0x0200), 0x0C30, 0), {0x3C600: D2A_DESC}),
+        Case("v4", {"eax": 0, "edx": 0, "ebx": 4, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(0, 4, 3, (0x0030, 0x0100, 0x0200), 0x0010, 0), {0x3C600: D2A_DESC}),
+        Case("v5", {"eax": 1, "edx": 0, "ebx": 4, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(1, 4, 3, (0x0030, 0x0100, 0x0200), 0x0010, 0x0020), {0x3C600: D2A_DESC}),
+        Case("v6", {"eax": 0, "edx": 0, "ebx": 4, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(0, 4, 3, (0x0030, 0x0100, 0x0200), 0x0C00, 0), {0x3C600: D2A_DESC}),
+        Case("v7", {"eax": 1, "edx": 0, "ebx": 4, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(1, 4, 3, (0x0030, 0x0100, 0x0200), 0x0010, 0x00010020), {0x3C600: D2A_DESC}),
+        Case("v8", {"eax": 0, "edx": 0, "ebx": 6, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(0, 6, 0xFFFF, (0x0001, 0x0002, 0x0040), 0x0040, 0), {0x3C600: D2A_DESC}),
+        Case("v9", {"eax": 1, "edx": 1, "ebx": 2, "ecx": 0x0C0C0C0C, "s0": D2A_OUT},
+             d2a_connect_case(1, 2, 4, (0x0001, 0x0002, 0x00010000), 0x0020, 0), {0x3C600: D2A_DESC}),
+    ], allow_calls=(0x3C6E8,), calls=(D2A_DESC_CALL,), eax_mask=0xFFFFFFFF,
+       mutants=("@di", "@off", "@pz", "@stride", "@f", "@m01", "@m12", "@cmd", "@order", "@ow", "@nostore",
+                "@noacc", "@eq", "@r3")),
+    # 0x3C800 hit_displace: EAX = side, EDX = facing, EBX = i, two stack arguments (`ret 8`): the
+    # second ([esp+0x10] after the two pushes) is the address the displacement goes to, a dword
+    # (`mov eax,[ecx+eax*4+0xa]; sar eax,0x10; mov [edx],eax` 0x3C85E..0x3C869: w1 is negative); the
+    # first is unread. AL only: `mov al,1` 0x3C86B / `xor al,al` 0x3C872, and the one caller tests
+    # AL (0x3CA99 `test al,al`).
+    Spec("hit_displace", 0x3C800, [
+        Case("w0", {"eax": 0, "edx": 0, "ebx": 2, "s0": D2A_OUT, "s1": D2A_OUT2},
+             d2a_displace_case(0, 2, 3, 0x0040, 0x0123, 0x0040), {0x3C600: D2A_DESC}),
+        Case("w1", {"eax": 1, "edx": 0, "ebx": 5, "s0": D2A_OUT, "s1": D2A_OUT2},
+             d2a_displace_case(1, 5, 2, 0x0300, 0x8001, 0x0100), {0x3C600: D2A_DESC}),
+        Case("w2", {"eax": 0, "edx": 0, "ebx": 0, "s0": D2A_OUT, "s1": D2A_OUT2},
+             d2a_displace_case(0, 0, 0, 0x0040, 0x0123, 0xFFBF), {0x3C600: D2A_DESC}),
+        Case("w3", {"eax": 1, "edx": 0, "ebx": 6, "s0": D2A_OUT, "s1": D2A_OUT2},
+             d2a_displace_case(1, 6, 0xFFFF, 0x0040, 0x0456, 0x0040), {0x3C600: D2A_DESC}),
+        Case("w4", {"eax": 0, "edx": 1, "ebx": 2, "s0": D2A_OUT, "s1": D2A_OUT2},
+             d2a_displace_case(0, 2, 4, 0x00010000, 0x7FFF, 0x0020), {0x3C600: D2A_DESC}),
+        Case("w5", {"eax": 1, "edx": 0, "ebx": 0x1F, "s0": D2A_OUT, "s1": D2A_OUT2},
+             d2a_displace_case(1, 0x1F, 7, 0x0040, 0x0123, 0x0000, m2=0x00400040), {0x3C600: D2A_DESC}),
+    ], allow_calls=(0x3C6E8,), calls=(D2A_DESC_CALL,), eax_mask=0xFF,
+       mutants=("@di", "@pz", "@stride", "@f", "@cmd", "@off10", "@dlo", "@dz", "@dw", "@nostore", "@ret",
+                "@s0", "@off")),
 ]
 D1_SPECS += D2A_SPECS
 
