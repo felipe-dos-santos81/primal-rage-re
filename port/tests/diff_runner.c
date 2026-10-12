@@ -30653,6 +30653,159 @@ D4B_BA_MUT(noframe, 5u) D4B_BA_MUT(skipmask, 6u) D4B_BA_MUT(skipcolour, 7u) D4B_
 D4B_BA_MUT(rows, 9u)    D4B_BA_MUT(nofill, 10u) D4B_BA_MUT(bitkeep, 11u) D4B_BA_MUT(msb, 12u)
 D4B_BA_MUT(transp, 13u) D4B_BA_MUT(colour, 14u) D4B_BA_MUT(litadv, 15u) D4B_BA_MUT(litclear, 16u)
 D4B_BA_MUT(ret, 17u)
+
+/* 0x13D4C / 0x13E28 / 0x13B3C: the three effect producers beside 0x13C70. Each pops the free head
+ * 0xFCCE8 under the lock byte 0x9AF3C (saved, set to 1, 0x249D0, restored), fills the record and
+ * inserts it after the active sentinel 0xFCCE0 with the lock at 1, then clears the lock. The two
+ * list primitives are recorded (run on both sides), so the lock's order is compared at each call.
+ * d4b_fx_take is the pop, shared by the three mutant cores. */
+static u32 d4b_fx_take(u32 mut)
+{
+    u32 rec = DSD(DS_000FCCE8);
+    u8 saved;
+    if (rec == DS_000FCCE8) return 0u;
+    saved = DSB(DS_0009AF3C);
+    if (mut != 101u) DSB(DS_0009AF3C) = 1u;                                   /* @nolock1 */
+    if (mut != 102u) effects_list_unlink(rec);                                /* @nounlink */
+    DSB(DS_0009AF3C) = saved;
+    return rec;
+}
+static void d4b_fx_link(u32 rec, u32 mut, int bump)
+{
+    if (mut != 104u) DSB(DS_0009AF3C) = 1u;                                   /* @nolock2 */
+    if (mut != 105u && mut != 106u) DSB(rec + 0x0Eu) = 1u;                    /* @noe, @elate */
+    effects_list_insert_after((mut == 107u) ? DS_000FCCE8 : DS_000FCCE0, rec);   /* @head */
+    if (mut == 106u) DSB(rec + 0x0Eu) = 1u;
+    if (bump) {
+        if (mut == 108u) DSW(DS_0009AF3D) = (u16)(DSW(DS_0009AF3D) + 1u);     /* @countw */
+        else if (mut != 109u) DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) + 1u); /* @nocount */
+    }
+    if (mut != 110u) DSB(DS_0009AF3C) = 0u;                                   /* @lockend */
+}
+static u32 d4b_13d4c_core(const u32 *r, u32 mut)
+{
+    u32 src = r[R_EAX], rec = d4b_fx_take(mut);
+    const u8 *res;
+    s32 count;
+    if (rec == 0u) return 0u;
+    res = (const u8 *)res_resolve(DSD(src));
+    DSB(rec + 0x0Fu) = (mut == 1u) ? 0x80u : 0u;                              /* @f0f */
+    DSB(rec + 0x0Cu) = (mut == 2u) ? 3u : 4u;                                 /* @type */
+    DSD(rec + 8u) = (mut == 3u) ? DSD(src) : src;                             /* @src */
+    DSB(rec + 0x0Du) = (mut == 4u) ? (u8)(r[R_EDX] >> 8) : (u8)r[R_EDX];      /* @arg */
+    count = (s32)DSD(src + 0x0Cu) + ((mut == 5u) ? 1 : 0);                    /* @extra */
+    for (s32 i = 0; i < count && res != NULL; i++)
+        DSD(rec + ((mut == 6u) ? 0x410u : 0x10u) + (u32)i * 4u)               /* @dst410 */
+            = DSD((u32)(res - mem) + ((mut == 7u) ? 0u : 4u) + (u32)i * 4u);  /* @copy0 */
+    d4b_fx_link(rec, mut, 1);
+    return rec;
+}
+static void b_d4b_13d4c(const u32 *r, u32 *eax) { (void)effects_spawn_darken(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D4B_FD_MUT(name, n) \
+    static void m_d4b_fd_##name(const u32 *r, u32 *eax) { (void)d4b_13d4c_core(r, n); *eax = 0u; }
+D4B_FD_MUT(f0f, 1u)   D4B_FD_MUT(type, 2u)   D4B_FD_MUT(src, 3u)    D4B_FD_MUT(arg, 4u)
+D4B_FD_MUT(extra, 5u) D4B_FD_MUT(dst410, 6u) D4B_FD_MUT(copy0, 7u)  D4B_FD_MUT(nolock1, 101u)
+D4B_FD_MUT(nounlink, 102u) D4B_FD_MUT(nolock2, 104u) D4B_FD_MUT(noe, 105u) D4B_FD_MUT(elate, 106u)
+D4B_FD_MUT(head, 107u) D4B_FD_MUT(countw, 108u) D4B_FD_MUT(nocount, 109u) D4B_FD_MUT(lockend, 110u)
+
+static u32 d4b_13e28_core(const u32 *r, u32 mut)
+{
+    u32 src = r[R_EAX], rec = d4b_fx_take(mut);
+    const u8 *res;
+    s32 count;
+    if (rec == 0u) return 0u;
+    res = (const u8 *)res_resolve(DSD(src));
+    DSB(rec + 0x0Fu) = (mut == 1u) ? 0u : 0x80u;                              /* @f0f */
+    DSB(rec + 0x0Cu) = (mut == 2u) ? 4u : 6u;                                 /* @type */
+    DSD(rec + 8u) = (mut == 3u) ? DSD(src) : src;                             /* @src */
+    DSB(rec + 0x0Du) = (mut == 4u) ? (u8)(r[R_EDX] >> 8) : (u8)r[R_EDX];      /* @arg */
+    count = (s32)DSD(src + 0x0Cu);
+    if (mut == 8u) {                                                          /* @merged: one loop, white last */
+        for (s32 i = 0; i < count && res != NULL; i++) {
+            DSD(rec + 0x410u + (u32)i * 4u) = DSD((u32)(res - mem) + 4u + (u32)i * 4u);
+            DSD(rec + 0x10u + (u32)i * 4u) = 0x00FFFFFFu;
+        }
+    } else {
+        for (s32 i = 0; i < count + ((mut == 5u) ? 1 : 0); i++)               /* @extra */
+            DSD(rec + 0x10u + (u32)i * 4u) = (mut == 9u) ? 0xFFFFFFFFu : 0x00FFFFFFu;   /* @white */
+        for (s32 i = 0; i < count && res != NULL && mut != 10u; i++)          /* @nocopy */
+            DSD(rec + ((mut == 6u) ? 0x40Cu : 0x410u) + (u32)i * 4u)          /* @dst40c */
+                = DSD((u32)(res - mem) + ((mut == 7u) ? 0u : 4u) + (u32)i * 4u);   /* @copy0 */
+    }
+    d4b_fx_link(rec, mut, 1);
+    return rec;
+}
+static void b_d4b_13e28(const u32 *r, u32 *eax) { (void)effects_spawn_pulse(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D4B_FP_MUT(name, n) \
+    static void m_d4b_fp_##name(const u32 *r, u32 *eax) { (void)d4b_13e28_core(r, n); *eax = 0u; }
+D4B_FP_MUT(f0f, 1u)   D4B_FP_MUT(type, 2u)   D4B_FP_MUT(src, 3u)    D4B_FP_MUT(arg, 4u)
+D4B_FP_MUT(extra, 5u) D4B_FP_MUT(dst40c, 6u) D4B_FP_MUT(copy0, 7u)  D4B_FP_MUT(merged, 8u)
+D4B_FP_MUT(white, 9u) D4B_FP_MUT(nocopy, 10u) D4B_FP_MUT(nolock1, 101u) D4B_FP_MUT(nounlink, 102u)
+D4B_FP_MUT(nolock2, 104u) D4B_FP_MUT(noe, 105u) D4B_FP_MUT(elate, 106u) D4B_FP_MUT(head, 107u)
+D4B_FP_MUT(countw, 108u) D4B_FP_MUT(nocount, 109u) D4B_FP_MUT(lockend, 110u)
+
+/* 0x13B3C effects_spawn_scroll: EAX = source, DL = offset, BL = flag, CL = count (the three bytes
+ * saved at [esp+8], [esp+4], [esp], 0x13B43..0x13B4B). It returns the record (`mov eax,esi`
+ * 0x13C68) and does not bump 0x9AF3D. */
+static u32 d4b_13b3c_core(const u32 *r, u32 mut)
+{
+    u32 src = r[R_EAX], rec = d4b_fx_take(mut), res;
+    s8 off = (s8)r[R_EDX];
+    u8 fl = (u8)((mut == 1u) ? r[R_ECX] : r[R_EBX]);                          /* @swap: flag and count exchanged */
+    u8 n = (u8)((mut == 1u) ? r[R_EBX] : r[R_ECX]);
+    const u8 *p;
+    if (rec == 0u) return 0u;
+    p = (const u8 *)res_resolve(DSD(src));
+    res = p != NULL ? (u32)(p - mem) : 0u;
+    if (res != 0u) {
+        if (off < 0 && mut != 2u) {                                           /* @fwd: no descending arm */
+            u32 sp = (off == -0x80 && mut != 3u) ? res + (u32)n * 4u          /* @no80 */
+                   : res + 4u + (u32)n * 4u - (u32)((s32)off * 4) * ((mut == 4u) ? 0xFFFFFFFFu : 1u);   /* @descsign */
+            for (s32 j = (mut == 5u) ? 1 : 0; j <= (s32)n; j++) {             /* @descn: count runs, not count + 1 */
+                u32 v = DSD(sp), idx = (u32)n - (u32)j;
+                sp -= 4u;
+                if (mut != 6u) DSD(rec + 0x14u + idx * 4u) = v;               /* @no14 */
+                if (mut != 7u) DSD(rec + 0x414u + idx * 4u) = v;              /* @no414 */
+            }
+        } else {
+            u32 sp = res + ((mut == 8u) ? 0u : 4u) + (u32)((s32)off * 4);     /* @fwdoff */
+            for (u32 i = 0; i < n; i++) {
+                u32 v = DSD(sp + i * 4u);
+                if (mut != 6u) DSD(rec + 0x14u + i * 4u) = v;
+                if (mut != 7u) DSD(rec + 0x414u + i * 4u) = v;
+            }
+        }
+    }
+    if ((mut == 9u) ? (fl != 0u) : (fl == 0u)) {                              /* @type0 */
+        DSB(rec + 0x0Cu) = 0u;
+        DSB(rec + 0x0Eu) = 0u;
+    } else {
+        DSB(rec + 0x0Cu) = 2u;
+        DSB(rec + 0x0Eu) = (mut == 10u) ? 0u : 1u;                            /* @e0 */
+    }
+    DSD(rec + 8u) = (mut == 11u) ? DSD(src) : src;                            /* @src */
+    DSB(rec + 0x0Du) = (mut == 12u) ? (u8)off : fl;                           /* @d */
+    if (mut == 13u) DSD(rec + 0x10u) = (u32)(s32)off;                         /* @off10w */
+    else DSB(rec + 0x10u) = (mut == 14u) ? fl : (u8)off;                      /* @off10 */
+    DSB(rec + 0x0Fu) = (mut == 15u) ? fl : n;                                 /* @f0f */
+    if (mut != 104u) DSB(DS_0009AF3C) = 1u;                                   /* @nolock2 */
+    effects_list_insert_after((mut == 107u) ? DS_000FCCE8 : DS_000FCCE0, rec);   /* @head */
+    if (mut == 16u) DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) + 1u);           /* @bump */
+    if (mut != 110u) DSB(DS_0009AF3C) = 0u;                                   /* @lockend */
+    return (mut == 17u) ? 0u : rec;                                           /* @ret0 */
+}
+static void b_d4b_13b3c(const u32 *r, u32 *eax)
+{
+    *eax = effects_spawn_scroll(r[R_EAX], (s32)r[R_EDX], r[R_ECX], r[R_EBX]);
+}
+#define D4B_FS_MUT(name, n) \
+    static void m_d4b_fs_##name(const u32 *r, u32 *eax) { *eax = d4b_13b3c_core(r, n); }
+D4B_FS_MUT(swap, 1u)  D4B_FS_MUT(fwd, 2u)    D4B_FS_MUT(no80, 3u)   D4B_FS_MUT(descsign, 4u)
+D4B_FS_MUT(descn, 5u) D4B_FS_MUT(no14, 6u)   D4B_FS_MUT(no414, 7u)  D4B_FS_MUT(fwdoff, 8u)
+D4B_FS_MUT(type0, 9u) D4B_FS_MUT(e0, 10u)    D4B_FS_MUT(src, 11u)   D4B_FS_MUT(d, 12u)
+D4B_FS_MUT(off10w, 13u) D4B_FS_MUT(off10, 14u) D4B_FS_MUT(f0f, 15u) D4B_FS_MUT(bump, 16u)
+D4B_FS_MUT(ret0, 17u) D4B_FS_MUT(nolock1, 101u) D4B_FS_MUT(nounlink, 102u) D4B_FS_MUT(nolock2, 104u)
+D4B_FS_MUT(head, 107u) D4B_FS_MUT(lockend, 110u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39304,6 +39457,66 @@ static const binding_t k_bindings[] = {
     { "camera_bitplane_accum@litadv",        m_d4b_ba_litadv, 0xFFFFFFFFu },
     { "camera_bitplane_accum@litclear",      m_d4b_ba_litclear, 0xFFFFFFFFu },
     { "camera_bitplane_accum@ret",           m_d4b_ba_ret, 0xFFFFFFFFu },
+    { "effects_spawn_darken",                b_d4b_13d4c, 0x00000000u },
+    { "effects_spawn_darken@f0f",            m_d4b_fd_f0f, 0x00000000u },
+    { "effects_spawn_darken@type",           m_d4b_fd_type, 0x00000000u },
+    { "effects_spawn_darken@src",            m_d4b_fd_src, 0x00000000u },
+    { "effects_spawn_darken@arg",            m_d4b_fd_arg, 0x00000000u },
+    { "effects_spawn_darken@extra",          m_d4b_fd_extra, 0x00000000u },
+    { "effects_spawn_darken@dst410",         m_d4b_fd_dst410, 0x00000000u },
+    { "effects_spawn_darken@copy0",          m_d4b_fd_copy0, 0x00000000u },
+    { "effects_spawn_darken@nolock1",        m_d4b_fd_nolock1, 0x00000000u },
+    { "effects_spawn_darken@nounlink",       m_d4b_fd_nounlink, 0x00000000u },
+    { "effects_spawn_darken@nolock2",        m_d4b_fd_nolock2, 0x00000000u },
+    { "effects_spawn_darken@noe",            m_d4b_fd_noe, 0x00000000u },
+    { "effects_spawn_darken@elate",          m_d4b_fd_elate, 0x00000000u },
+    { "effects_spawn_darken@head",           m_d4b_fd_head, 0x00000000u },
+    { "effects_spawn_darken@countw",         m_d4b_fd_countw, 0x00000000u },
+    { "effects_spawn_darken@nocount",        m_d4b_fd_nocount, 0x00000000u },
+    { "effects_spawn_darken@lockend",        m_d4b_fd_lockend, 0x00000000u },
+    { "effects_spawn_pulse",                 b_d4b_13e28, 0x00000000u },
+    { "effects_spawn_pulse@f0f",             m_d4b_fp_f0f, 0x00000000u },
+    { "effects_spawn_pulse@type",            m_d4b_fp_type, 0x00000000u },
+    { "effects_spawn_pulse@src",             m_d4b_fp_src, 0x00000000u },
+    { "effects_spawn_pulse@arg",             m_d4b_fp_arg, 0x00000000u },
+    { "effects_spawn_pulse@extra",           m_d4b_fp_extra, 0x00000000u },
+    { "effects_spawn_pulse@dst40c",          m_d4b_fp_dst40c, 0x00000000u },
+    { "effects_spawn_pulse@copy0",           m_d4b_fp_copy0, 0x00000000u },
+    { "effects_spawn_pulse@merged",          m_d4b_fp_merged, 0x00000000u },
+    { "effects_spawn_pulse@white",           m_d4b_fp_white, 0x00000000u },
+    { "effects_spawn_pulse@nocopy",          m_d4b_fp_nocopy, 0x00000000u },
+    { "effects_spawn_pulse@nolock1",         m_d4b_fp_nolock1, 0x00000000u },
+    { "effects_spawn_pulse@nounlink",        m_d4b_fp_nounlink, 0x00000000u },
+    { "effects_spawn_pulse@nolock2",         m_d4b_fp_nolock2, 0x00000000u },
+    { "effects_spawn_pulse@noe",             m_d4b_fp_noe, 0x00000000u },
+    { "effects_spawn_pulse@elate",           m_d4b_fp_elate, 0x00000000u },
+    { "effects_spawn_pulse@head",            m_d4b_fp_head, 0x00000000u },
+    { "effects_spawn_pulse@countw",          m_d4b_fp_countw, 0x00000000u },
+    { "effects_spawn_pulse@nocount",         m_d4b_fp_nocount, 0x00000000u },
+    { "effects_spawn_pulse@lockend",         m_d4b_fp_lockend, 0x00000000u },
+    { "effects_spawn_scroll",                b_d4b_13b3c, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@swap",           m_d4b_fs_swap, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@fwd",            m_d4b_fs_fwd, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@no80",           m_d4b_fs_no80, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@descsign",       m_d4b_fs_descsign, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@descn",          m_d4b_fs_descn, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@no14",           m_d4b_fs_no14, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@no414",          m_d4b_fs_no414, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@fwdoff",         m_d4b_fs_fwdoff, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@type0",          m_d4b_fs_type0, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@e0",             m_d4b_fs_e0, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@src",            m_d4b_fs_src, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@d",              m_d4b_fs_d, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@off10w",         m_d4b_fs_off10w, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@off10",          m_d4b_fs_off10, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@f0f",            m_d4b_fs_f0f, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@bump",           m_d4b_fs_bump, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@ret0",           m_d4b_fs_ret0, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@nolock1",        m_d4b_fs_nolock1, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@nounlink",       m_d4b_fs_nounlink, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@nolock2",        m_d4b_fs_nolock2, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@head",           m_d4b_fs_head, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@lockend",        m_d4b_fs_lockend, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

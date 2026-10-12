@@ -30,6 +30,7 @@
 /* 0x249B0: insert rec immediately after `at`. */
 void effects_list_insert_after(u32 at, u32 rec)
 {
+    PR_SEAM(0x249B0u, at, rec);
     u32 next = DSD(at);
     DSD(at) = rec;
     DSD(rec) = next;
@@ -51,6 +52,7 @@ void effects_list_insert_before(u32 at, u32 rec)
 /* 0x249D0: unlink rec and zero its two link fields. */
 void effects_list_unlink(u32 rec)
 {
+    PR_SEAM(0x249D0u, rec);
     u32 prev = DSD(rec + 4);
     DSD(DSD(rec) + 4) = prev;
     DSD(prev) = DSD(rec);

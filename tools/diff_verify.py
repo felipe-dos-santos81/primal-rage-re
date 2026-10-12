@@ -22050,6 +22050,120 @@ D4B_SPECS += [
        mutants=("@handle2", "@wzext", "@round", "@stride", "@noframe", "@skipmask", "@skipcolour", "@skiplit",
                 "@rows", "@nofill", "@bitkeep", "@msb", "@transp", "@colour", "@litadv", "@litclear", "@ret")),
 ]
+
+# ---- 0x13D4C / 0x13E28 / 0x13B3C: the effect producers beside 0x13C70 --------------------------------
+D4B_FX_REC, D4B_FX_SRC = 0x10A000, 0x10A100       # the free record popped and the source record
+D4B_FX_NEXT, D4B_FX_ACT = 0x10A500, 0x10A580      # the free list's second record; the active list's first
+D4B_FX_FREE, D4B_FX_HEAD = 0xFCCE8, 0xFCCE0       # the two sentinels (0x13D53 / 0x13DBE)
+D4B_FX_LOCK = 0x9AF3C                             # the lock byte; +1 is the active count
+# the two list primitives, recorded and run on both sides (their own rows: C3's list_unlink and
+# list_insert_after); this batch seams the effects.c copies
+D4B_FX_CALLS = (E.Call(0x249D0, ("eax",), mode="real"), E.Call(0x249B0, ("eax", "edx"), mode="real"))
+
+
+def d4b_fx(count, handle=0x800043, lock=0x5A, counter=0x7E, empty=False, vals=None, at=0):
+    """The free list (sentinel -> REC -> NEXT, or empty), the active list (sentinel -> ACT), the
+    record's +8..+0x2F and +0x410..+0x42F seeded, the source record {handle, .., .., count} and the
+    resolved block's dwords `vals` from index `at` (default: ten distinct dwords from index 0)."""
+    vals = [0x0A0B0C00 + 0x01010111 * i for i in range(10)] if vals is None else vals
+    blob = b"".join(le32(v) for v in vals)
+    p = {**d4b_res(),
+         D4B_FX_HEAD: le32(D4B_FX_ACT) + le32(0xE4E4E4E4)
+                      + (le32(D4B_FX_FREE) if empty else le32(D4B_FX_REC)) + le32(0xECECECEC),
+         D4B_FX_ACT: le32(0x1A1A1A1A) + le32(0x5A5A5A5A),
+         D4B_FX_LOCK - 1: bytes([0x3B, lock, counter, 0x3E]),
+         D4B_FX_REC: le32(D4B_FX_NEXT) + le32(D4B_FX_FREE) + b"\xa5" * 0x28,
+         D4B_FX_REC + 0x40C: b"\x5a" * 0x24,
+         D4B_FX_NEXT: le32(0x2B2B2B2B) + le32(0xA5A5A5A5),
+         D4B_FX_SRC: le32(handle) + le32(0x04040404) + le32(0x08080808) + le32(count)}
+    base = d4b_at(handle) + at * 4
+    p.update({base + o: blob[o:o + 64] for o in range(0, len(blob), 64)})
+    return p
+
+
+def d4b_fx_overlap():
+    """count 257: the white fill's last dword (+0x10 + 256 * 4) is the copy's first (+0x410). The
+    source, the resource table and the payload sit above the record's 0x814 bytes."""
+    src, table, data = 0x10A900, 0x10AB00, 0x10AC00
+    return {C2B_RES_PTR: le32(table), C2B_RES_N: le32(0x100),
+            table + 0x14 + 0x0C: le32(0x01000000) + le32(data),
+            D4B_FX_HEAD: le32(0x10A8C0) + le32(0xE4E4E4E4) + le32(D4B_FX_REC) + le32(0xECECECEC),
+            0x10A8C0: le32(0x1A1A1A1A) + le32(0x5A5A5A5A),
+            D4B_FX_LOCK - 1: bytes([0x3B, 0x00, 0x01, 0x3E]),
+            D4B_FX_REC: le32(0x10A880) + le32(D4B_FX_FREE) + b"\xa5" * 0x28,
+            D4B_FX_REC + 0x40C: b"\x5a" * 0x24,
+            0x10A880: le32(0x2B2B2B2B) + le32(0xA5A5A5A5),
+            src: le32(0x800000) + le32(0x04040404) + le32(0x08080808) + le32(257),
+            data: le32(0xD0D0D0D0) + le32(0x00123456) + le32(0x00234567),
+            data + 257 * 4: le32(0x00FEDCBA) + le32(0x77777777)}
+
+
+def d4b_scroll(cid, off, flag, count, **kw):
+    return Case(cid, {"eax": D4B_FX_SRC, "edx": off, "ebx": flag, "ecx": count}, d4b_fx(0x7B7B7B7B, **kw))
+
+
+D4B_SPECS += [
+    # 0x13D4C effects_spawn_darken: EAX = source, DL = the byte argument. The pop: `mov ecx,[0xfcce8];
+    # cmp ecx,0xfcce8` (0x13D53; the sentinel pointing at itself is an empty list: d3 returns with
+    # nothing written), else the lock saved in DH, set to 1, 0x249D0, restored (0x13D67..0x13D7A).
+    # 0x1B544 resolves the handle at [source] (0x13D86, run against the preloaded entry). +0xF = 0,
+    # +0xC = 4, +8 = source, +0xD = DL (0x13D8D..0x13D98; d0's EDX has 0xFF in DH). The copy runs
+    # while i < the source's +0xC, signed (`test ebp,ebp; jle` 0x13DA2: d1 is -1, d2 is 0), resolved[1
+    # + i] to +0x10 + 4i. Then lock = 1, +0xE = 1, 0x249B0(0xFCCE0, rec), the count byte 0x9AF3D + 1
+    # (a byte: d4 wraps 0xFF), lock = 0. The restore at 0x13D7A is not observable (no recorded call
+    # lies between it and the `mov [0x9af3c],dl` at 0x13DC3). Mask 0: each of the five call sites
+    # reloads EAX at once (`mov eax,ebx` 0x29B95, 0x415A7; `mov eax,0xb7` 0x3D639, 0x3D9D2, 0x3DE42).
+    # The port's guard on a zero free head (it returns 0; the raw would unlink record 0) has no case.
+    Spec("effects_spawn_darken", 0x13D4C, [
+        Case("d0", {"eax": D4B_FX_SRC, "edx": 0xFFFFFFA5}, d4b_fx(3)),
+        Case("d1", {"eax": D4B_FX_SRC, "edx": 0x00000100}, d4b_fx(0xFFFFFFFF, lock=0x00, counter=0x00)),
+        Case("d2", {"eax": D4B_FX_SRC, "edx": 0x00000001}, d4b_fx(0, lock=0x01)),
+        Case("d3", {"eax": D4B_FX_SRC, "edx": 0x00000009}, d4b_fx(3, lock=0x11, empty=True)),
+        Case("d4", {"eax": D4B_FX_SRC, "edx": 0x0000807F}, d4b_fx(1, handle=0x1000008, counter=0xFF)),
+    ], allow_calls=(0x1B544,), calls=D4B_FX_CALLS, eax_mask=0,
+       mutants=("@f0f", "@type", "@src", "@arg", "@extra", "@dst410", "@copy0", "@nolock1", "@nounlink", "@nolock2",
+                "@noe", "@elate", "@head", "@countw", "@nocount", "@lockend")),
+    # 0x13E28 effects_spawn_pulse: EAX = source, DL = the byte argument. As 0x13D4C with +0xF = 0x80
+    # and +0xC = 6 (0x13E6D), then two loops over the source's +0xC (each `jle`-guarded, 0x13E84,
+    # 0x13E9F): +0x10 + 4i = 0xFFFFFF (0x13E86), then +0x410 + 4i = resolved[1 + i] (0x13EAB). p5 is
+    # count 257, where the first loop's last dword is the second's first: the resolved value stays.
+    # Mask 0: the one call site reloads EAX (`mov eax,ebx` 0x1204D after `call 0x13e28` 0x12048).
+    Spec("effects_spawn_pulse", 0x13E28, [
+        Case("p0", {"eax": D4B_FX_SRC, "edx": 0xFFFFFFA5}, d4b_fx(3)),
+        Case("p1", {"eax": D4B_FX_SRC, "edx": 0x00000100}, d4b_fx(0xFFFFFFFF, lock=0x00, counter=0x00)),
+        Case("p2", {"eax": D4B_FX_SRC, "edx": 0x00000001}, d4b_fx(0, lock=0x01)),
+        Case("p3", {"eax": D4B_FX_SRC, "edx": 0x00000009}, d4b_fx(3, lock=0x11, empty=True)),
+        Case("p4", {"eax": D4B_FX_SRC, "edx": 0x0000807F}, d4b_fx(1, handle=0x1000008, counter=0xFF)),
+        Case("p5", {"eax": 0x10A900, "edx": 0x00000002}, d4b_fx_overlap()),
+    ], allow_calls=(0x1B544,), calls=D4B_FX_CALLS, eax_mask=0,
+       mutants=("@f0f", "@type", "@src", "@arg", "@extra", "@dst40c", "@copy0", "@merged", "@white", "@nocopy",
+                "@nolock1", "@nounlink", "@nolock2", "@noe", "@elate", "@head", "@countw", "@nocount", "@lockend")),
+    # 0x13B3C effects_spawn_scroll: EAX = source, DL = offset, BL = flag, CL = count (saved as bytes at
+    # [esp+8], [esp+4], [esp]: 0x13B43..0x13B4B; each case's register has other bits set above the
+    # byte). offset >= 0 (`test dl,dl; jge` 0x13B93; s2 is 0x7F): `count` dwords from resolved[1 +
+    # offset] to +0x14 and +0x414 (0x13C00..0x13C1B; the count zero-extended). offset < 0: the source
+    # pointer starts at resolved[count] for -0x80 (`cmp eax,-0x80` 0x13B9E: s4) and at resolved[1 +
+    # count - offset] otherwise (0x13BB2..0x13BBF: s3 -1, s5 -0x7F), and count + 1 dwords are stored
+    # downwards from index count to 0 (`dec edx; ...; test edx,edx; jl` 0x13BDA..0x13BE9; s7 is count
+    # 0: one dword). flag byte 0: +0xC = 0 and +0xE = 0, else 2 and 1 (0x13C1D..0x13C32). +8 = source,
+    # +0xD = flag, +0x10 = offset, +0xF = count; lock = 1, 0x249B0(0xFCCE0, rec), lock = 0; the count
+    # byte 0x9AF3D is not touched. EAX = the record, 0 for an empty list (`mov eax,esi` 0x13C68): mask
+    # full. No call site and no dword of the image holds 0x13B3C (dead in the shipped binary).
+    Spec("effects_spawn_scroll", 0x13B3C, [
+        d4b_scroll("s0", 0xFFFFFF00, 0x00000101, 0x00000103),
+        d4b_scroll("s1", 0x00000102, 0x0000FF00, 0x0000FF02, lock=0x00),
+        d4b_scroll("s2", 0x0000007F, 0x00000001, 0x00000001, vals=[0x00C0FFEE, 0x00BADBAD], at=0x80),
+        d4b_scroll("s3", 0x000000FF, 0x00000080, 0x00000002),
+        d4b_scroll("s4", 0x00000080, 0x00000002, 0x00000003, handle=0x1000008),
+        d4b_scroll("s5", 0x00000081, 0x00000000, 0x00000001, vals=[0x00C0FFEE, 0x00BADBAD, 0x00FACADE], at=0x7F),
+        d4b_scroll("s6", 0x00000003, 0x00000100, 0x00000100, counter=0xFF),
+        d4b_scroll("s7", 0x000000FF, 0x00000001, 0x00000000),
+        d4b_scroll("s8", 0x00000000, 0x00000001, 0x00000002, lock=0x11, empty=True),
+    ], allow_calls=(0x1B544,), calls=D4B_FX_CALLS, eax_mask=0xFFFFFFFF,
+       mutants=("@swap", "@fwd", "@no80", "@descsign", "@descn", "@no14", "@no414", "@fwdoff", "@type0", "@e0",
+                "@src", "@d", "@off10w", "@off10", "@f0f", "@bump", "@ret0", "@nolock1", "@nounlink", "@nolock2",
+                "@head", "@lockend")),
+]
 D1_SPECS += D4B_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
