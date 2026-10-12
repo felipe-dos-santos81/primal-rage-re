@@ -14617,6 +14617,9 @@ D3B_CASES = [
 D1_MASKS.update(D3B_MASKS)
 D1_KINDS.update(D3B_KINDS)
 D1_CASES.extend(D3B_CASES)
+# track D3 integration: fight_hud_spawn_side's case d5 has the side byte 0x80 (the zero-extension of
+# DS_00104B1A, as D3A_OUTSIDE's rows): slot 0x80's +0x5B and +0x7A are above the image, inside mem[]
+P45_OUTSIDE["fight_hud_spawn_side"] = [(0x10C20B, 1), (0x10C22A, 1)]
 
 
 # ---- track D wave 3, batch d3c (record 2026-10-12-reverse-d3c): game/fighter.c ----
@@ -16908,7 +16911,7 @@ class RealFunctionTests(unittest.TestCase):
         0x4B144: ("edx",), 0x4BD4C: ("edx",), 0x4B5A8: ("edx",), 0x2BE1C: ("edx",),
         0x4BD98: (), 0x4CB18: ("ebx", "ecx", "edx"), 0x4CC0C: (),
         0x4D108: ("edx",), 0x4D150: ("edx",), 0x4A868: (), 0x4E350: (), 0x3C88C: (),
-        0x2C060: ("edx",), 0x2C178: ("edx", "ebp"), 0x2C1C8: ("ebx", "ecx", "edx", "esi", "edi"), 0x11F28: (),
+        0x2C178: ("edx", "ebp"), 0x2C1C8: ("ebx", "ecx", "edx", "esi", "edi"), 0x11F28: (),
         0x432EC: ("edx",), 0x433DC: ("edx", "ebp"),
         # D3 d3d (record 2026-10-12-reverse-d3d): the stubs its rows add
         0x14590: (), 0x4F944: (), 0x3F720: ("edx",), 0x146F0: ("edx",), 0x14A5C: ("edx",), 0x2DBC4: ("edx",),

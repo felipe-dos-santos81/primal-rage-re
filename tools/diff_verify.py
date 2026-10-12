@@ -20598,7 +20598,7 @@ D3B_SPECS += [
        mutants=("@cn", "@cs", "@old")),
 ]
 
-D3B_CREDIT = E.Call(0x2C060, (), clobbers=("edx",))
+D3B_CREDIT = E.Call(0x2C060, ())
 D3B_PRESS = E.Call(0x2C178, ("eax", "edx"), clobbers=("edx", "ebp"))
 D3B_COIN = E.Call(0x2C1C8, ("eax", "edx"), clobbers=("ebx", "ecx", "edx", "esi", "edi"))
 D3B_POLL = E.Call(0x11F28, ("eax",))
