@@ -1642,7 +1642,7 @@ u32 camera_dust_hit(u32 node)
                 && react != 4u && react != 5u) return 0u;       /* 0x12B17..0x12B41 */
         break;
     }
-    camera_dust_burst(side, dust);                     /* 0x12A99..0x12AA3 */
+    camera_dust_burst(side, DSD(node + 8u));           /* 0x12A99 `mov eax,[ecx+8]` (loaded again) ..0x12AA3 */
     DSB(DS_000F0AE8) = react;                          /* 0x12AAD */
     return 1u;                                         /* 0x12AA8 */
 }
