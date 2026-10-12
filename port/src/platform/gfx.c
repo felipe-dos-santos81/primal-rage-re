@@ -208,6 +208,7 @@ u8 *gfx_aperture(void) { return g_aperture; }
  * function's incoming EAX (0x32BE5). */
 void gfx_screen_reset(u32 ticks)
 {
+    PR_SEAM(0x52106u, ticks);
     DSD(DS_00101508) = ticks;                          /* 0x52108 */
     DSD(DS_0010150C) = ticks;                          /* 0x5210D */
     gfx_fill_screen(DSD(DS_001014E8), ticks);          /* 0x52114/0x52119 0x51F72 */

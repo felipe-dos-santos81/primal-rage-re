@@ -675,6 +675,7 @@ static u32 cfg_dir_bits(u32 kb, u32 off, u32 code, u32 bits)
  * unchanged (0x2EBF5, 0x2EDD1). Callers: 0x2EDE0 (0x2EDFB), 0x2EEC8 (0x2EEE3). */
 u32 config_key_flags(u32 mask)
 {
+    PR_SEAM_RET(0x2EBF0u, mask);
     u32 kb = DSD(DS_00101514);                              /* 0x2EBF5 */
     u32 code = config_key_latched();                        /* 0x2EBFD */
     u32 out = 0u;                                           /* 0x2EC02 */

@@ -1298,6 +1298,7 @@ u32 palette_acquire(u32 handle)
  * deref. */
 void palette_reflow(u32 descriptor, u32 handle)
 {
+    PR_SEAM(0x33874u, descriptor, handle);
     const u32 *res = res_resolve(handle);           /* 0x1B544 */
     u32 count = res ? *res : 0;
     if ((s32)DSD(descriptor + 0x0Cu) < (s32)count) {        /* 0x3388B 0x3388D */

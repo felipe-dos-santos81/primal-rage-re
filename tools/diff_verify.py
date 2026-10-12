@@ -24075,6 +24075,375 @@ D4C_SPECS += [
                 "@cd10")),
 ]   # D4C_SPECS end
 D1_SPECS += D4C_SPECS
+
+# ---- track D, wave 4, batch d4d (record 2026-10-12-reverse-d4d): game/config.c, actors.c, attract.c,
+# flow.c and svcmenu.c. Every poke, and every address a binding or mutant derives from one, stays
+# inside the image.
+
+D4D_SPECS = []
+D4D_KB = 0x0010A000                                 # zero BSS: the key-config record 0x101514 points at
+D4D_P1, D4D_P2 = (0xA1, 0xA2, 0xA3, 0xA4), (0xB1, 0xB2, 0xB3, 0xB4)
+
+
+def d4d_kf_case(latch, p1=D4D_P1, p2=D4D_P2, w=(0x0101, 0x0202)):
+    """0x2EBF0: 0x2EB80's fixture (the latch dword 0x105F30 = `latch`, a key time 0x100 ticks old,
+    so a zero latch returns 0) and the key-config record: the pointer 0x101514 between seeded
+    dwords, and the record's +0x2D0..+0x2EF seeded (no byte is an arrow code, 0x0D or 0x1B) with
+    the two words +0x2D4/+0x2D6 = `w`, the first player's four key bytes +0x2DE.. = `p1` and the
+    second's +0x2E6.. = `p2`."""
+    g = bytearray(0xC0 + i for i in range(0x20))
+    g[4:6], g[6:8] = le16(w[0]), le16(w[1])
+    g[0x0E:0x12], g[0x16:0x1A] = bytes(p1), bytes(p2)
+    p = d3d_key_case(latch, 0x00009000, 0x00008F00)
+    p[0x00101510] = le32(0x10111213) + le32(D4D_KB) + le32(0x18191A1B)
+    p[D4D_KB + 0x2D0] = bytes(g)
+    return p
+
+
+def d4d_kf_arm(tag, code, n, masks):
+    """One arrow arm (`code`; key bytes +0x2DE+n and +0x2E6+n), nine cases over `masks` (each
+    reaches the arrows: 0 or a bit of 0xF300F000): neither key (words 0), the first alone with
+    its word 0 / 0x0100, the second alone with its word 0 / 0x8000, both with the second's word
+    0, the first's 0, neither 0, and every OTHER key byte equal to the code with both words 0."""
+    def K(first, second, w):
+        p1, p2 = list(D4D_P1), list(D4D_P2)
+        if first:
+            p1[n] = code
+        if second:
+            p2[n] = code
+        return d4d_kf_case(code, p1, p2, w)
+    oth = lambda base: [base[i] if i == n else code for i in range(4)]
+    rows = [K(0, 0, (0, 0)), K(1, 0, (0, 0x0202)), K(1, 0, (0x0100, 0)), K(0, 1, (0x0101, 0)),
+            K(0, 1, (0, 0x8000)), K(1, 1, (0x0101, 0)), K(1, 1, (0, 0x0202)), K(1, 1, (0x0100, 0x8000)),
+            d4d_kf_case(code, oth(D4D_P1), oth(D4D_P2), (0, 0))]
+    return [Case("%s%d" % (tag, i), {"eax": masks[i % len(masks)]}, p) for i, p in enumerate(rows)]
+
+
+D4D_SPECS += [
+    # 0x2EBF0 config_key_flags: EAX = the mask (EBX). 0x2EB80 (the latched key, whole EAX: `test
+    # eax,eax` 0x2EC04, `lea esi,[eax-0x48]; cmp esi,8; ja` 0x2EC31, `cmp edi,eax` against each
+    # zero-extended key byte) runs on both sides. The arrows are scanned for mask 0 or any bit of
+    # 0xF300F000 (0x2EC19..0x2EC2B; g0..g3 have only bit 24/25 or none of them); the nine-entry
+    # table 0x2EBCC sends 0x48, 0x4B, 0x4D and 0x50 to their arms (j0..j6 are the other entries and
+    # the two bounds). Enter needs mask 0 or bit 24, Esc mask 0 or bit 25 (e0..e9). Full mask:
+    # both callers `or edx,eax` (0x2EE00, 0x2EEE8).
+    Spec("config_key_flags", 0x2EBF0,
+         d4d_kf_arm("u", 0x48, 0, (0, 0x80000000, 0x00008000, 0x01000000))
+         + d4d_kf_arm("d", 0x50, 1, (0x40000000, 0, 0x02000000, 0x00004000))
+         + d4d_kf_arm("l", 0x4B, 2, (0x00002000, 0x20000000, 0, 0xFFFFFFFF))
+         + d4d_kf_arm("r", 0x4D, 3, (0x10000000, 0x00001000, 0xF300F000, 0)) + [
+        Case("z0", {"eax": 0}, d4d_kf_case(0, (0x48, 0x50, 0x4B, 0x4D), (0x48, 0x50, 0x4B, 0x4D))),
+        Case("z1", {"eax": 0xFFFFFFFF}, d4d_kf_case(0)),
+        Case("g0", {"eax": 0x00000FFF}, d4d_kf_case(0x48)),
+        Case("g1", {"eax": 0x0CFF0FFF}, d4d_kf_case(0x4D)),
+        Case("g2", {"eax": 0x01000000}, d4d_kf_case(0x50)),
+        Case("g3", {"eax": 0x02000000}, d4d_kf_case(0x4B)),
+        Case("j0", {"eax": 0}, d4d_kf_case(0x47)),
+        Case("j1", {"eax": 0}, d4d_kf_case(0x51)),
+        Case("j2", {"eax": 0}, d4d_kf_case(0x49)),
+        Case("j3", {"eax": 0}, d4d_kf_case(0x4A)),
+        Case("j4", {"eax": 0}, d4d_kf_case(0x4C)),
+        Case("j5", {"eax": 0}, d4d_kf_case(0x4E)),
+        Case("j6", {"eax": 0}, d4d_kf_case(0x4F)),
+        Case("j7", {"eax": 0}, d4d_kf_case(0x00010048)),
+        Case("j8", {"eax": 0x80000000}, d4d_kf_case(0x8000004D)),
+        Case("j9", {"eax": 0}, d4d_kf_case(0xA1, w=(0, 0))),
+        Case("e0", {"eax": 0}, d4d_kf_case(0x0D)),
+        Case("e1", {"eax": 0x01000000}, d4d_kf_case(0x0D)),
+        Case("e2", {"eax": 0x02000000}, d4d_kf_case(0x0D)),
+        Case("e3", {"eax": 0xFEFFFFFF}, d4d_kf_case(0x0D)),
+        Case("e4", {"eax": 0}, d4d_kf_case(0x1B)),
+        Case("e5", {"eax": 0x02000000}, d4d_kf_case(0x1B)),
+        Case("e6", {"eax": 0x01000000}, d4d_kf_case(0x1B)),
+        Case("e7", {"eax": 0xFDFFFFFF}, d4d_kf_case(0x1B)),
+        Case("e8", {"eax": 0}, d4d_kf_case(0x0000010D)),
+        Case("e9", {"eax": 0}, d4d_kf_case(0x0001001B)),
+    ], allow_calls=(0x2EB80, 0x500BB), eax_mask=0xFFFFFFFF,
+       mutants=("@nomask0", "@gate", "@off1", "@p2off", "@wswap", "@wbyte", "@k1wins", "@k2wins", "@neither0",
+                "@bits", "@lr", "@code8", "@enter0", "@enterbit", "@esc0", "@escbit", "@enter8", "@esc8", "@half")),
+]
+D4D_KEYFLAGS = E.Call(0x2EBF0, ("eax",), clobbers=("ebp",))
+
+
+def d4d_poll_case(state, latch, key=0x11223344):
+    """0x2EDE0 / 0x2EEC8: 0x50161's state dword 0xE1C34 and latch dword 0xE1C38 between seeded
+    dwords; the key block 0x105F28 (sentinel, the key time 0x5A5A0001, the latched key `key`,
+    sentinel) and the tick dword 0x101500 = 0x00C0FFEE between seeded dwords (0x500BB's)."""
+    return {0x000E1C30: le32(0x30313233) + le32(state) + le32(latch) + le32(0x3C3D3E3F),
+            0x00105F28: le32(0x28292A2B) + le32(0x5A5A0001) + le32(key) + le32(0x34353637),
+            0x001014FC: le32(0xFCFDFEFF) + le32(0x00C0FFEE) + le32(0x04050607)}
+
+
+D4D_POLL_CASES = [
+    Case("p0", {"eax": 0, "edx": 0}, d4d_poll_case(0x00000101, 0x0F0F0F0F), {0x2EBF0: 0x02000000}),
+    Case("p1", {"eax": 0xFF00FF00, "edx": 0}, d4d_poll_case(0x00000012, 0), {0x2EBF0: 0x02000000}),
+    Case("p2", {"eax": 0xF300F000, "edx": 1}, d4d_poll_case(0, 0), {0x2EBF0: 0x80008000}),
+    Case("p3", {"eax": 0x02000000, "edx": 1}, d4d_poll_case(0, 0x00000001), {0x2EBF0: 0}),
+    Case("p4", {"eax": 0, "edx": 0x00000100}, d4d_poll_case(0, 0), {0x2EBF0: 0x01000000}),
+    Case("p5", {"eax": 0x0000FF00, "edx": 0xFFFFFF80}, d4d_poll_case(0x00001200, 0x00000200), {0x2EBF0: 0}),
+    Case("p6", {"eax": 0x01000100, "edx": 0x12345601}, d4d_poll_case(0x00000100, 0), {0x2EBF0: 0x01000000}),
+    Case("p7", {"eax": 0xFFFFFFFF, "edx": 1}, d4d_poll_case(0x10001000, 0x10001000), {0x2EBF0: 0x10001000}),
+    Case("p8", {"eax": 0x00000001, "edx": 1}, d4d_poll_case(0x00000003, 0x00000001), {0x2EBF0: 0x00000003}),
+]
+D4D_POLL_MUTANTS = ("@noflag", "@flagw", "@nostamp", "@stampalways", "@stampval", "@and", "@maskarg", "@order",
+                    "@retsel", "@twin", "@stampsel")
+D4D_SPECS += [
+    # 0x2EDE0 config_input_poll: EAX = the mask (EBX), DL = the flag (`mov [esp],dl` 0x2EDE7; `cmp
+    # byte [esp],0` 0x2EDF3: p4 has EDX = 0x100, p5 DL = 0x80). 0x50161 (the pad bits; it latches
+    # into 0xE1C38) and 0x500BB (the tick dword) run on both sides; 0x2EBF0 is a stub that takes
+    # the mask again (`mov eax,ebx` 0x2EDF9) and whose whole EAX is OR-ed in (`or edx,eax`
+    # 0x2EE00). A non-zero result stamps the key time 0x105F2C (`test edx,edx` 0x2EE02). Full mask:
+    # the function returns `mov eax,edx` 0x2EE10 and its 20 call sites keep or test the whole dword
+    # (`mov edi,eax` 0x2D020, `test eax,0xc000c000` 0x2D1CA, `mov edx,eax` 0x2FD2E; record §1).
+    Spec("config_input_poll", 0x2EDE0, D4D_POLL_CASES, allow_calls=(0x50161, 0x500BB), calls=(D4D_KEYFLAGS,),
+         eax_mask=0xFFFFFFFF, mutants=D4D_POLL_MUTANTS),
+    # 0x2EEC8 config_input_poll_clear: the twin that also clears the latched key dword 0x105F30
+    # (`xor ebx,ebx; mov [0x105f30],ebx` 0x2EEEA/0x2EEEC) after the 0x2EBF0 call (the memory at the
+    # call: @clrearly) and before the stamp. Full mask: the one caller keeps the dword (`mov
+    # edx,eax` 0x303D7 after the call 0x303D2).
+    Spec("config_input_poll_clear", 0x2EEC8, D4D_POLL_CASES, allow_calls=(0x50161, 0x500BB),
+         calls=(D4D_KEYFLAGS,), eax_mask=0xFFFFFFFF, mutants=D4D_POLL_MUTANTS + ("@noclr", "@clrearly", "@clrw")),
+]
+D4D_PE = lambda i: C2B_PAL_TABLE + i * 0x10         # the i-th entry of the 24-entry palette table 0x107618
+
+
+def d4d_pal_case(handle, count, entries):
+    """0x33874: the 24-entry table seeded whole (entry i = {0x00800100 + i; 0x0A0A0A00 + i; start
+    0x1000 + i*0x100; len 0x10 + i}: no entry's end reaches the next start) with `entries`
+    {i: (handle, start, len)} over it; the resource fixture that makes `handle` resolve to a
+    payload whose first dword is `count`; the dirty-list head 0x107798 = 0x107500 followed by
+    seeded dwords (0x1077A0 is 0: an entry AT the table end would be moved) and 0x60 seeded bytes
+    at the head."""
+    t = bytearray()
+    for i in range(24):
+        h, st, ln = entries.get(i, (0x00800100 + i, 0x1000 + i * 0x100, 0x10 + i))
+        t += le32(h) + le32(0x0A0A0A00 + i) + le32(st) + le32(ln)
+    p = dict(c2b_res(handle, count))
+    p.update(d1d_chunks(C2B_PAL_TABLE, t))
+    p[C2B_PAL_TAIL] = le32(C2B_DIRTY) + le32(0x9C9D9E9F) + le32(0) + le32(0xA4A5A6A7)
+    p.update(d1d_chunks(C2B_DIRTY, b"\xa5" * 0x60))
+    return p
+
+
+D4D_H = 0x00800540                                  # the handle the cases resolve (index 1, offset 0x540)
+D4D_SPECS += [
+    # 0x33874 palette_reflow: EAX = the table entry, EDX = the handle. 0x1B544 runs on both sides
+    # against the preloaded entry (it saves EDX: `mov [ebx],edx` 0x3389B stores the handle). The
+    # entry's len against the resource's count, signed (`cmp ecx,[eax]; jl` 0x3388B/0x3388D: a3 has
+    # len 0x80000000, a4 count -1, a2 len == count). Not short: a differing handle re-points the
+    # entry and queues {handle; start; count; flag byte 1} (a0, a2, a4; a1 and a5 have the same
+    # handle). Short: the entries after it are walked to the table end 0x107798 (b3: the last
+    # entry; b4: the one before it), each start moved to the previous entry's end while that end
+    # is signed-above it (`jle` 0x338D1: b0 stops on an equal start, b5 moves a start of
+    # 0x80000000, b7 stops with the end 0xFFFFFFF2) and queued with the entry's own handle and len
+    # (b1 walks three, one with a zero handle). Mask 0: both callers `xor eax,eax` (0x4F824, 0x4F877).
+    Spec("palette_reflow", 0x33874, [
+        Case("a0", {"eax": D4D_PE(3), "edx": D4D_H}, d4d_pal_case(D4D_H, 5, {3: (0x00800001, 0x55, 7)})),
+        Case("a1", {"eax": D4D_PE(3), "edx": D4D_H}, d4d_pal_case(D4D_H, 5, {3: (D4D_H, 0x55, 7)})),
+        Case("a2", {"eax": D4D_PE(5), "edx": D4D_H}, d4d_pal_case(D4D_H, 3, {5: (0x00800002, 0x66, 3)})),
+        Case("a3", {"eax": D4D_PE(5), "edx": D4D_H},
+             d4d_pal_case(D4D_H, 3, {5: (0x00800002, 0x10, 0x80000000), 6: (0x00800003, 0x80000000, 0x16)})),
+        Case("a4", {"eax": D4D_PE(0), "edx": D4D_H}, d4d_pal_case(D4D_H, 0xFFFFFFFF, {0: (0x00800002, 0x77, 4)})),
+        Case("a5", {"eax": D4D_PE(4), "edx": D4D_H},
+             d4d_pal_case(D4D_H, 0, {4: (D4D_H, 0x2000, 0), 5: (0x00800005, 0x1500, 9)})),
+        Case("b0", {"eax": D4D_PE(2), "edx": D4D_H},
+             d4d_pal_case(D4D_H, 3, {2: (0x00800002, 5, 2), 3: (0x00800003, 6, 4), 4: (0x00800004, 11, 5)})),
+        Case("b1", {"eax": D4D_PE(2), "edx": D4D_H},
+             d4d_pal_case(D4D_H, 6, {2: (0x00800002, 5, 2), 3: (0x00800003, 6, 4), 4: (0x00800004, 10, 5),
+                                      5: (0, 3, 1)})),
+        Case("b2", {"eax": D4D_PE(2), "edx": D4D_H}, d4d_pal_case(D4D_H, 9, {2: (0x00800002, 5, 2)})),
+        Case("b3", {"eax": D4D_PE(23), "edx": D4D_H}, d4d_pal_case(D4D_H, 3, {23: (0x00800002, 5, 2)})),
+        Case("b4", {"eax": D4D_PE(22), "edx": D4D_H},
+             d4d_pal_case(D4D_H, 3, {22: (0x00800002, 5, 2), 23: (0x00800003, 6, 9)})),
+        Case("b5", {"eax": D4D_PE(2), "edx": D4D_H},
+             d4d_pal_case(D4D_H, 3, {2: (0x00800002, 5, 2), 3: (0x00800003, 0x80000000, 0x13)})),
+        Case("b7", {"eax": D4D_PE(2), "edx": D4D_H},
+             d4d_pal_case(D4D_H, 3, {2: (0x00800002, 0xFFFFFFF0, 2), 3: (0x00800003, 6, 4)})),
+    ], allow_calls=(0x1B544,), eax_mask=0,
+       mutants=("@count", "@lenoff", "@lenuns", "@lenle", "@self", "@bound", "@lt", "@uns", "@skip0", "@nostart",
+                "@rechandle", "@reccount", "@flag0", "@noprev", "@always", "@nohandle", "@startoff", "@reclen",
+                "@both", "@norec", "@prevlen")),
+]
+D4D_REFLOW = E.Call(0x33874, ("eax", "edx"), clobbers=("edx",))
+D4D_HTAB = b"".join(le32(0x03A00000 + 0x111 * i) for i in range(12))    # twelve distinct handles over 0xC98A0
+
+
+def d4d_adv_case(entry, counter, flags=0xFFFFFFFF, tab=True):
+    """0x4F7F4: the palette entry dword 0xF0A48, the counter byte 0x1088F1 and the flag dword
+    0x104AD0, each between seeded neighbours; with `tab`, twelve distinct handles over the table
+    0xC98A0 (the image repeats its ten: entries 0 and 1 are both 0x0396F128) and a sentinel at
+    entry 0x80."""
+    p = {0x000F0A44: le32(0x44454647) + le32(entry) + le32(0x4C4D4E4F),
+         0x001088F0: bytes([0xF0, counter, 0xF2, 0xF3]),
+         0x00104ACC: le32(0xCCCDCECF) + le32(flags) + le32(0xD4D5D6D7)}
+    if tab:
+        p[0x000C98A0] = D4D_HTAB
+        p[0x000C98A0 + 0x80 * 4] = le32(0x03A0B0C0)
+    return p
+
+
+D4D_SPECS += [
+    # 0x4F7F4 attract_palette_advance: no argument (entry 0 of the table 0xA8744, `call
+    # [eax+0xa8744]` 0x292C1). While the dword 0xF0A48 is non-zero (whole: v7 has only its top
+    # byte), 0x33874(the entry, 0xC98A0[the counter byte, zero-extended]) with the counter stepped
+    # before the call (the memory at the call) and re-read after it, unsigned against 10 (`jb`
+    # 0x4F82E: v3 reaches 10, v5 wraps 0xFF to 0, v6 is 0x80); else, or at 10 and above, bit 0 of
+    # the byte 0x104AD0 is cleared. 0x33874 is a stub. Mask 0: the call returns to `shr edx,1`
+    # 0x292C7, then `mov eax,ebx` 0x292BF or 0x292AC's return to 0x255F8, where 0x389C4 loads EAX
+    # (0x389D2 / 0x38A13) and 0x24C5C opens with `xor eax,eax` 0x24C61.
+    Spec("attract_palette_advance", 0x4F7F4, [
+        Case("v0", {"eax": 0x55555555}, d4d_adv_case(0, 3)),
+        Case("v1", {}, d4d_adv_case(D4D_PE(4), 0)),
+        Case("v2", {}, d4d_adv_case(D4D_PE(5), 8, flags=0x00000001)),
+        Case("v3", {}, d4d_adv_case(D4D_PE(6), 9)),
+        Case("v4", {}, d4d_adv_case(D4D_PE(7), 10, flags=0x00000001)),
+        Case("v5", {}, d4d_adv_case(D4D_PE(8), 0xFF, tab=False)),
+        Case("v6", {}, d4d_adv_case(D4D_PE(9), 0x80)),
+        Case("v7", {}, d4d_adv_case(0x01000000, 1)),
+        Case("v8", {}, d4d_adv_case(D4D_PE(1), 1, tab=False)),
+    ], calls=(D4D_REFLOW,), eax_mask=0,
+       mutants=("@nogate", "@sext", "@preinc", "@scale", "@noinc", "@late", "@swap", "@entry", "@nocall", "@stale",
+                "@le", "@signed", "@noclr", "@bit", "@wide")),
+]
+D4D_DARKEN = E.Call(0x13D4C, ("eax", "edx"), clobbers=("edx",))
+
+
+def d4d_dark_case(live):
+    """0x29B74: 0x33904's table (d1d_list_case: +4 = live[addr]; the entry AT the end bound seeded
+    live) and the three words the tail stores, each between seeded words: 0x1088EE, and the pair
+    0x104AFE/0x104B00."""
+    p = d1d_list_case(live)
+    p[0x001088EC] = le16(0xECED) + le16(0xEEEF) + le16(0xF0F1)
+    p[0x00104AFC] = le16(0xFCFD) + le16(0xFEFF) + le16(0x0A0B) + le16(0x0C0D)
+    return p
+
+
+D4D_SPECS += [
+    # 0x29B74 frontend_darken_all: no argument (EAX is not read: `call 0x13df0` then `xor eax,eax`
+    # 0x29B7C). 0x13DF0, then for every live entry of 0x33904's table (run on both sides; whole
+    # EAX tested, `test eax,eax` 0x29B85/0x29B9E) 0x13D4C(the entry, 3), then the words 0x1088EE =
+    # 0x104AFE = 0x78 and 0x104B00 = 0x15 (`mov [..],dx` / `mov [..],cx`: the memory at each stub
+    # call shows they come last). 0x13DF0 and 0x13D4C are stubs. Full mask with the binding's
+    # constant 0: the raw's EAX is 0 on every path into the tail 0x29BA2 (see the binding).
+    Spec("frontend_darken_all", 0x29B74, [
+        Case("f0", {"eax": 0x00107638}, d4d_dark_case({})),
+        Case("f1", {}, d4d_dark_case({0x00107618: 1}), {0x13D4C: 0x0010A000}),
+        Case("f2", {"eax": 0x12345678},
+             d4d_dark_case({0x00107628: 0x80000000, 0x00107708: 0x00000100, 0x00107788: 0x00010000}), {0x13D4C: 0}),
+        Case("f3", {}, d4d_dark_case({D1D_LIST + 0x10 * i: 0x100 + i for i in range(1, 25)}), {0x13D4C: 0xFFFFFFFF}),
+    ], allow_calls=(0x33904,), calls=(P8_CLEAR, D4D_DARKEN), eax_mask=0xFFFFFFFF,
+       mutants=("@noclear", "@clearlate", "@head", "@swap", "@arg", "@nodarken", "@first", "@vals", "@early",
+                "@no8ee", "@noafe", "@nob00", "@wide8ee", "@wideb00")),
+]
+D4D_PSETS, D4D_RECS = 0x00074000, 0x000F1000        # zero runs of the image: the pset pool (0x4880), the record pool (0xEBA0)
+D4D_CSRC, D4D_CDST = 0x00090000, 0x000C0000         # the copy arm's 0xFA00-byte source and destination (image data)
+D4D_EFF_INIT = E.Call(0x13ADC)
+D4D_SCREEN = E.Call(0x52106, ("eax",), clobbers=("ebx",))
+
+
+def d4d_reset_case(lock):
+    """0x2BAF4: the lock byte 0xBCD60; the four dwords it zeroes (0x104AE8, 0x104AEC, 0x100B4C,
+    0x104AD0), the word 0x105BEA and the byte 0x105BED, each seeded between seeded neighbours; the
+    two pool pointers 0x1014EC/0x1014F4 at zero runs of the image with sentinels inside each pool
+    (its first dword, a middle dword, its last dword) and in the dword past its end; the two list
+    heads 0x105B3C/0x105BCC, the pair 0x105B44/0x105B48 and the 0x80-byte ring 0x105B4C seeded;
+    sentinels at the start, the middle and the last dword of the 0x14D4 bytes at 0x105F38 and in
+    the dword past them; the bytes the callees that run rewrite (0x107A00..0x107A57 for 0x38B70
+    and 0x4F228, 0xBDFBC..0xBDFC7); the copy arm's buffer pointers 0xE87A0/0xE87A4."""
+    s = lambda v: le32(0x5A000000 | v)
+    p = {0x000BCD60: bytes([lock]),
+         0x00104AE4: s(0xAE4) + le32(0x11111111) + le32(0x22222222) + s(0xAF0),
+         0x00100B48: s(0xB48) + le32(0x33333333) + s(0xB50),
+         0x00104ACC: s(0xACC) + le32(0x44444444) + s(0xAD4),
+         0x00105BE8: bytes([0xE8, 0xE9, 0x5A, 0x5B, 0xEC, 0x77, 0xEE, 0xEF]),
+         0x001014EC: le32(D4D_PSETS), 0x001014F4: le32(D4D_RECS),
+         D4D_PSETS: s(1), D4D_PSETS + 0x2440: s(2), D4D_PSETS + 0x487C: s(3) + s(4),
+         D4D_RECS + 0x10: s(5), D4D_RECS + 0x7590: s(6), D4D_RECS + 0xEB98: s(7) + s(8) + s(9) + s(10),
+         0x00105B3C: s(0xB3C) + s(0xB40) + s(0xB44) + s(0xB48),
+         0x00105BCC: s(0xBCC) + s(0xBD0),
+         0x00105F38: s(11), 0x00106938: s(12), 0x00107408: s(13) + s(14),
+         0x000BDFBC: s(15) + s(16) + s(17),
+         0x000E879C: s(18) + le32(D4D_CSRC) + le32(D4D_CDST) + s(19)}
+    p.update(d1d_chunks(0x00105B4C, bytes(0x80 | i for i in range(0x80))))
+    p.update(d1d_chunks(0x00107A00, bytes(0x40 | (i & 0x3F) for i in range(0x58))))
+    return p
+
+
+D4D_SPECS += [
+    # 0x2BAF4 actors_reset_al: AL = the flag, saved at [esp] and tested as DL (`test dl,dl` 0x2BBE4:
+    # t1 has EAX = 0xFFFFFF00, t2 EAX = 0x00010080). The four dwords, 0x13DF0 (a stub: the memory at
+    # its call), the word 0x105BEA and the byte 0x105BED, three runtime memsets (the pset pool
+    # 0x4880 bytes, the record pool 0xEBA0, the ring 0x80), the two list heads, the 580 records
+    # appended to the free list (0x249C0, tail insert; `jb` 0x2BBB6 against the re-read pool base
+    # + 0xEBA0), 0x13ADC (a stub), 0x4F228 with AL = 0, the pair 0x105B44/0x105B48, 0x1C350,
+    # 0x38B70, 0x2F920 (the 0x14D4-byte fill, no port function: the port fills inline), then by the
+    # flag 0x52106(0) (a stub: `in`/`out`) and 0x336C0, or the 0xFA00-byte copy [0xE87A0] ->
+    # [0xE87A4]; the byte 0x105BED = 1. The lock byte 0xBCD60 is 0 or 0x80: with a 1 (the image's
+    # value) 0x2EA30 holds it at 0 across the body, which every stub call's memory shows and the
+    # port, which does not model the lock, cannot (the named non-row 0x2EA30; as release_record's
+    # row). Full mask with the binding's lock byte: see the binding.
+    Spec("actors_reset_al", 0x2BAF4, [
+        Case("t0", {"eax": 1}, d4d_reset_case(0)),
+        Case("t1", {"eax": 0xFFFFFF00}, d4d_reset_case(0x80)),
+        Case("t2", {"eax": 0x00010080}, d4d_reset_case(0x80)),
+    ], allow_calls=(0x2EA30, 0x61A70, 0x65490, 0x654C7, 0x249C0, 0x4F228, 0x1C350, 0x38B70, 0x2F920, 0x336C0, 0x33734),
+       calls=(P8_CLEAR, D4D_EFF_INIT, D4D_SCREEN), eax_mask=0xFFFFFFFF,
+       mutants=("@al32", "@noae8", "@noaec", "@nob4c", "@noad0", "@ad0w", "@clearearly", "@nobea", "@beab", "@nobed0", "@psetlen", "@reclen", "@ringlen", "@ringbase", "@noactive", "@freehead", "@bound", "@count", "@noinit", "@initearly", "@projarg", "@nob44", "@nob48", "@norl", "@nocur", "@nofill", "@filllen", "@noscreen", "@screenarg", "@nopal", "@swapcopy", "@copylen", "@nobed1", "@al1")),
+]
+D4D_NAME = 0x0010A300                               # zero BSS: the destination text
+# twelve distinct names for the string ids 0x220..0x22B, of 1 to 9 characters: the longest the raw's
+# 12-byte frame holds once wrapped ("<" + 9 + ">" + NUL)
+D4D_NAMES = {0x220: b"HOME", 0x221: b"PGUP", 0x222: b"PGDOWN", 0x223: b"UP", 0x224: b"LEFT!", 0x225: b"RIGHT",
+             0x226: b"DWN", 0x227: b"END", 0x228: b"INSERT.", 0x229: b"DELETE", 0x22A: b"BACKSPACE", 0x22B: b"T"}
+
+
+def d4d_name_case(**over):
+    """0x3157C: the string table (d1d_str_pokes) with D4D_NAMES (`over` replaces names by id) and
+    the destination seeded 0x5A."""
+    p = d1d_str_pokes({**D4D_NAMES, **{int(k[1:], 16): v for k, v in over.items()}})
+    p[D4D_NAME] = b"\x5a" * 0x20
+    return p
+
+
+def d4d_name_cases():
+    """(id, key word, EDX): the ascii class, every named scan code, every literal, and the keys
+    with no name. EDX's low byte is the raw flag (0x100 and 0xFFFFFF00 are 0; 0x01 and 0x80 are
+    not)."""
+    rows = [("c0", 0x1E41, 1), ("c1", 0x1E61, 0), ("c2", 0x007F, 0xFFFFFF01), ("c3", 0x4701, 0x100),
+            ("c4", 0x4780, 1), ("c5", 0x1C0D, 0), ("c6", 0x3920, 0), ("c7", 0x4800, 0), ("c8", 0x0200, 0),
+            ("c9", 0x0200, 0x80), ("ca", 0x0280, 0), ("cb", 0x5325, 0xFFFFFF00), ("cc", 0x0E1F, 1),
+            ("cd", 0x0E21, 1), ("ce", 0x0E0C, 1), ("cf", 0x0E0E, 1)]
+    for i, sc in enumerate((0x0E, 0x0F, 0x47, 0x48, 0x49, 0x4B, 0x4D, 0x4F, 0x50, 0x51, 0x52, 0x53)):
+        rows.append(("s%X" % sc, sc << 8, (1, 0x100, 0x80, 0)[i % 4]))
+    for i, sc in enumerate((0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x4A, 0x4E)):
+        rows.append(("l%X" % sc, (sc << 8) | (0x80 if i % 3 == 0 else 0x0D if i % 3 == 1 else 0), (1, 0)[i % 2]))
+    rows += [("l44r", 0x4400, 1), ("l4Aw", 0x4A00, 0), ("l4Er", 0x4E20, 1), ("l3Dw", 0x3D00, 0)]
+    for sc in (0x00, 0x01, 0x03, 0x0D, 0x10, 0x3C, 0x45, 0x46, 0x4C, 0x54, 0xFF):
+        rows.append(("n%X" % sc, sc << 8, 0))
+    rows += [("nw", 0x00014700, 0), ("nn", 0x80004700, 1), ("nm", 0xFFFF0200, 0)]
+    out = [Case(i, {"eax": k, "edx": d, "ebx": D4D_NAME}, d4d_name_case()) for i, k, d in rows]
+    # an empty name (the copy loop's first byte is the NUL), raw and wrapped
+    return out + [Case("e0", {"eax": 0x5300, "edx": 1, "ebx": D4D_NAME}, d4d_name_case(i229=b"")),
+                  Case("e1", {"eax": 0x4700, "edx": 0, "ebx": D4D_NAME}, d4d_name_case(i220=b""))]
+
+
+D4D_SPECS += [
+    # 0x3157C config_key_name: EAX = the key word, DL = the raw flag (`mov cl,dl` 0x31584; `test
+    # cl,cl` 0x316AC), EBX = the destination. An ascii byte 1..0x7F other than 0x0D and 0x20
+    # (0x31591..0x315A0: c2 is 0x7F, c4 0x80, c5 0x0D, c6 0x20) is class 2, formatted "%c" by the
+    # runtime's sprintf; else the class is the whole EAX `sar 8` (nw: 0x147; nn, nm: negative) and
+    # the unsigned compare tree 0x315A7..0x31687 picks a string id 0x220..0x22B (0x1C500, run on
+    # both sides), a literal at 0x80B7C..0x80BA0 (`movsw; movsb`, a dword for 0x44, a word for
+    # 0x4A and 0x4E) or returns AL = 0 with the destination untouched (the n cases). With the raw
+    # flag 0 the name is re-formatted "<%s>" in the 12-byte frame and copied back: no name here
+    # is longer than 9 (a longer one overruns the frame's saved EDI; not cased, record §4). The
+    # sprintf tree runs from the original's bytes under the flat segments; the port formats by
+    # hand. Mask 0xFF: the function sets AL alone and the one caller that reads it has `test
+    # al,al` (0x1A3F1); the others overwrite EAX (record §1).
+    Spec("config_key_name", 0x3157C, d4d_name_cases(), allow_calls=D1D_STR_ALLOW + D3A_SPRINTF, eax_mask=0xFF,
+         mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
+]
+D1_SPECS += D4D_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
