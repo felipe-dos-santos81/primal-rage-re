@@ -21879,6 +21879,136 @@ D3E_SPECS += [
        mutants=("@eaxflag", "@flagbit", "@flagctx", "@nostance", "@stanceself", "@animside", "@67other", "@no67", "@dispside", "@eaxdisp", "@8aself", "@no8a", "@b54", "@swap", "@ecx", "@noad98", "@2bd44rec", "@norow60", "@nohook", "@hookslot", "@hooknoclr", "@hookclr", "@a48self", "@no5", "@36d20slot", "@c5no18", "@c5no1c", "@no8", "@c8side", "@no18b04", "@f40args", "@x28", "@a06zext", "@a06off", "@st0", "@st5", "@vnodec", "@vge", "@no3b080", "@midno18", "@midno1c", "@no41", "@64self", "@no64")),
 ]   # D3E_SPECS end
 D1_SPECS += D3E_SPECS
+
+# ---- track D, wave 4, batch d4d (record 2026-10-12-reverse-d4d): game/config.c, actors.c, attract.c,
+# flow.c and svcmenu.c. Every poke, and every address a binding or mutant derives from one, stays
+# inside the image.
+
+D4D_SPECS = []
+D4D_KB = 0x0010A000                                 # zero BSS: the key-config record 0x101514 points at
+D4D_P1, D4D_P2 = (0xA1, 0xA2, 0xA3, 0xA4), (0xB1, 0xB2, 0xB3, 0xB4)
+
+
+def d4d_kf_case(latch, p1=D4D_P1, p2=D4D_P2, w=(0x0101, 0x0202)):
+    """0x2EBF0: 0x2EB80's fixture (the latch dword 0x105F30 = `latch`, a key time 0x100 ticks old,
+    so a zero latch returns 0) and the key-config record: the pointer 0x101514 between seeded
+    dwords, and the record's +0x2D0..+0x2EF seeded (no byte is an arrow code, 0x0D or 0x1B) with
+    the two words +0x2D4/+0x2D6 = `w`, the first player's four key bytes +0x2DE.. = `p1` and the
+    second's +0x2E6.. = `p2`."""
+    g = bytearray(0xC0 + i for i in range(0x20))
+    g[4:6], g[6:8] = le16(w[0]), le16(w[1])
+    g[0x0E:0x12], g[0x16:0x1A] = bytes(p1), bytes(p2)
+    p = d3d_key_case(latch, 0x00009000, 0x00008F00)
+    p[0x00101510] = le32(0x10111213) + le32(D4D_KB) + le32(0x18191A1B)
+    p[D4D_KB + 0x2D0] = bytes(g)
+    return p
+
+
+def d4d_kf_arm(tag, code, n, masks):
+    """One arrow arm (`code`; key bytes +0x2DE+n and +0x2E6+n), nine cases over `masks` (each
+    reaches the arrows: 0 or a bit of 0xF300F000): neither key (words 0), the first alone with
+    its word 0 / 0x0100, the second alone with its word 0 / 0x8000, both with the second's word
+    0, the first's 0, neither 0, and every OTHER key byte equal to the code with both words 0."""
+    def K(first, second, w):
+        p1, p2 = list(D4D_P1), list(D4D_P2)
+        if first:
+            p1[n] = code
+        if second:
+            p2[n] = code
+        return d4d_kf_case(code, p1, p2, w)
+    oth = lambda base: [base[i] if i == n else code for i in range(4)]
+    rows = [K(0, 0, (0, 0)), K(1, 0, (0, 0x0202)), K(1, 0, (0x0100, 0)), K(0, 1, (0x0101, 0)),
+            K(0, 1, (0, 0x8000)), K(1, 1, (0x0101, 0)), K(1, 1, (0, 0x0202)), K(1, 1, (0x0100, 0x8000)),
+            d4d_kf_case(code, oth(D4D_P1), oth(D4D_P2), (0, 0))]
+    return [Case("%s%d" % (tag, i), {"eax": masks[i % len(masks)]}, p) for i, p in enumerate(rows)]
+
+
+D4D_SPECS += [
+    # 0x2EBF0 config_key_flags: EAX = the mask (EBX). 0x2EB80 (the latched key, whole EAX: `test
+    # eax,eax` 0x2EC04, `lea esi,[eax-0x48]; cmp esi,8; ja` 0x2EC31, `cmp edi,eax` against each
+    # zero-extended key byte) runs on both sides. The arrows are scanned for mask 0 or any bit of
+    # 0xF300F000 (0x2EC19..0x2EC2B; g0..g3 have only bit 24/25 or none of them); the nine-entry
+    # table 0x2EBCC sends 0x48, 0x4B, 0x4D and 0x50 to their arms (j0..j6 are the other entries and
+    # the two bounds). Enter needs mask 0 or bit 24, Esc mask 0 or bit 25 (e0..e9). Full mask:
+    # both callers `or edx,eax` (0x2EE00, 0x2EEE8).
+    Spec("config_key_flags", 0x2EBF0,
+         d4d_kf_arm("u", 0x48, 0, (0, 0x80000000, 0x00008000, 0x01000000))
+         + d4d_kf_arm("d", 0x50, 1, (0x40000000, 0, 0x02000000, 0x00004000))
+         + d4d_kf_arm("l", 0x4B, 2, (0x00002000, 0x20000000, 0, 0xFFFFFFFF))
+         + d4d_kf_arm("r", 0x4D, 3, (0x10000000, 0x00001000, 0xF300F000, 0)) + [
+        Case("z0", {"eax": 0}, d4d_kf_case(0, (0x48, 0x50, 0x4B, 0x4D), (0x48, 0x50, 0x4B, 0x4D))),
+        Case("z1", {"eax": 0xFFFFFFFF}, d4d_kf_case(0)),
+        Case("g0", {"eax": 0x00000FFF}, d4d_kf_case(0x48)),
+        Case("g1", {"eax": 0x0CFF0FFF}, d4d_kf_case(0x4D)),
+        Case("g2", {"eax": 0x01000000}, d4d_kf_case(0x50)),
+        Case("g3", {"eax": 0x02000000}, d4d_kf_case(0x4B)),
+        Case("j0", {"eax": 0}, d4d_kf_case(0x47)),
+        Case("j1", {"eax": 0}, d4d_kf_case(0x51)),
+        Case("j2", {"eax": 0}, d4d_kf_case(0x49)),
+        Case("j3", {"eax": 0}, d4d_kf_case(0x4A)),
+        Case("j4", {"eax": 0}, d4d_kf_case(0x4C)),
+        Case("j5", {"eax": 0}, d4d_kf_case(0x4E)),
+        Case("j6", {"eax": 0}, d4d_kf_case(0x4F)),
+        Case("j7", {"eax": 0}, d4d_kf_case(0x00010048)),
+        Case("j8", {"eax": 0x80000000}, d4d_kf_case(0x8000004D)),
+        Case("j9", {"eax": 0}, d4d_kf_case(0xA1, w=(0, 0))),
+        Case("e0", {"eax": 0}, d4d_kf_case(0x0D)),
+        Case("e1", {"eax": 0x01000000}, d4d_kf_case(0x0D)),
+        Case("e2", {"eax": 0x02000000}, d4d_kf_case(0x0D)),
+        Case("e3", {"eax": 0xFEFFFFFF}, d4d_kf_case(0x0D)),
+        Case("e4", {"eax": 0}, d4d_kf_case(0x1B)),
+        Case("e5", {"eax": 0x02000000}, d4d_kf_case(0x1B)),
+        Case("e6", {"eax": 0x01000000}, d4d_kf_case(0x1B)),
+        Case("e7", {"eax": 0xFDFFFFFF}, d4d_kf_case(0x1B)),
+        Case("e8", {"eax": 0}, d4d_kf_case(0x0000010D)),
+        Case("e9", {"eax": 0}, d4d_kf_case(0x0001001B)),
+    ], allow_calls=(0x2EB80, 0x500BB), eax_mask=0xFFFFFFFF,
+       mutants=("@nomask0", "@gate", "@off1", "@p2off", "@wswap", "@wbyte", "@k1wins", "@k2wins", "@neither0",
+                "@bits", "@lr", "@code8", "@enter0", "@enterbit", "@esc0", "@escbit", "@enter8", "@esc8", "@half")),
+]
+D4D_KEYFLAGS = E.Call(0x2EBF0, ("eax",), clobbers=("ebp",))
+
+
+def d4d_poll_case(state, latch, key=0x11223344):
+    """0x2EDE0 / 0x2EEC8: 0x50161's state dword 0xE1C34 and latch dword 0xE1C38 between seeded
+    dwords; the key block 0x105F28 (sentinel, the key time 0x5A5A0001, the latched key `key`,
+    sentinel) and the tick dword 0x101500 = 0x00C0FFEE between seeded dwords (0x500BB's)."""
+    return {0x000E1C30: le32(0x30313233) + le32(state) + le32(latch) + le32(0x3C3D3E3F),
+            0x00105F28: le32(0x28292A2B) + le32(0x5A5A0001) + le32(key) + le32(0x34353637),
+            0x001014FC: le32(0xFCFDFEFF) + le32(0x00C0FFEE) + le32(0x04050607)}
+
+
+D4D_POLL_CASES = [
+    Case("p0", {"eax": 0, "edx": 0}, d4d_poll_case(0x00000101, 0x0F0F0F0F), {0x2EBF0: 0x02000000}),
+    Case("p1", {"eax": 0xFF00FF00, "edx": 0}, d4d_poll_case(0x00000012, 0), {0x2EBF0: 0x02000000}),
+    Case("p2", {"eax": 0xF300F000, "edx": 1}, d4d_poll_case(0, 0), {0x2EBF0: 0x80008000}),
+    Case("p3", {"eax": 0x02000000, "edx": 1}, d4d_poll_case(0, 0x00000001), {0x2EBF0: 0}),
+    Case("p4", {"eax": 0, "edx": 0x00000100}, d4d_poll_case(0, 0), {0x2EBF0: 0x01000000}),
+    Case("p5", {"eax": 0x0000FF00, "edx": 0xFFFFFF80}, d4d_poll_case(0x00001200, 0x00000200), {0x2EBF0: 0}),
+    Case("p6", {"eax": 0x01000100, "edx": 0x12345601}, d4d_poll_case(0x00000100, 0), {0x2EBF0: 0x01000000}),
+    Case("p7", {"eax": 0xFFFFFFFF, "edx": 1}, d4d_poll_case(0x10001000, 0x10001000), {0x2EBF0: 0x10001000}),
+    Case("p8", {"eax": 0x00000001, "edx": 1}, d4d_poll_case(0x00000003, 0x00000001), {0x2EBF0: 0x00000003}),
+]
+D4D_POLL_MUTANTS = ("@noflag", "@flagw", "@nostamp", "@stampalways", "@stampval", "@and", "@maskarg", "@order",
+                    "@retsel", "@twin", "@stampsel")
+D4D_SPECS += [
+    # 0x2EDE0 config_input_poll: EAX = the mask (EBX), DL = the flag (`mov [esp],dl` 0x2EDE7; `cmp
+    # byte [esp],0` 0x2EDF3: p4 has EDX = 0x100, p5 DL = 0x80). 0x50161 (the pad bits; it latches
+    # into 0xE1C38) and 0x500BB (the tick dword) run on both sides; 0x2EBF0 is a stub that takes
+    # the mask again (`mov eax,ebx` 0x2EDF9) and whose whole EAX is OR-ed in (`or edx,eax`
+    # 0x2EE00). A non-zero result stamps the key time 0x105F2C (`test edx,edx` 0x2EE02). Full mask:
+    # the function returns `mov eax,edx` 0x2EE10 and its 20 call sites keep or test the whole dword
+    # (`mov edi,eax` 0x2D020, `test eax,0xc000c000` 0x2D1CA, `mov edx,eax` 0x2FD2E; record §1).
+    Spec("config_input_poll", 0x2EDE0, D4D_POLL_CASES, allow_calls=(0x50161, 0x500BB), calls=(D4D_KEYFLAGS,),
+         eax_mask=0xFFFFFFFF, mutants=D4D_POLL_MUTANTS),
+    # 0x2EEC8 config_input_poll_clear: the twin that also clears the latched key dword 0x105F30
+    # (`xor ebx,ebx; mov [0x105f30],ebx` 0x2EEEA/0x2EEEC) after the 0x2EBF0 call (the memory at the
+    # call: @clrearly) and before the stamp. Full mask: the one caller keeps the dword (`mov
+    # edx,eax` 0x303D7 after the call 0x303D2).
+    Spec("config_input_poll_clear", 0x2EEC8, D4D_POLL_CASES, allow_calls=(0x50161, 0x500BB),
+         calls=(D4D_KEYFLAGS,), eax_mask=0xFFFFFFFF, mutants=D4D_POLL_MUTANTS + ("@noclr", "@clrearly", "@clrw")),
+]
+D1_SPECS += D4D_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

@@ -30474,6 +30474,84 @@ D3E_TS_MUT(c8side, 29u)   D3E_TS_MUT(no18b04, 30u)  D3E_TS_MUT(f40args, 31u)  D3
 D3E_TS_MUT(a06zext, 33u)  D3E_TS_MUT(a06off, 34u)   D3E_TS_MUT(st0, 35u)      D3E_TS_MUT(st5, 36u)
 D3E_TS_MUT(vnodec, 37u)   D3E_TS_MUT(vge, 38u)      D3E_TS_MUT(no3b080, 39u)  D3E_TS_MUT(midno18, 40u)
 D3E_TS_MUT(midno1c, 41u)  D3E_TS_MUT(no41, 42u)     D3E_TS_MUT(s64self, 43u)  D3E_TS_MUT(no64, 44u)
+/* ---- track D4 batch d4d (record 2026-10-12-reverse-d4d) ---- */
+
+/* 0x2EBF0 config_key_flags: EAX = the mask. One restatement with one choice flipped per mutant
+ * number (0 = the port's shape); 0x2EB80 runs on both sides. d4d_dir is one arrow arm: the first
+ * player's key byte at +off, the second's at +off+8, the words +0x2D4/+0x2D6. */
+static u32 d4d_dir(u32 kb, u32 off, u32 code, u32 bits, u32 mut)
+{
+    u32 k1 = DSB(kb + off + ((mut == 3u) ? 1u : 0u));                        /* @off1 */
+    u32 k2 = DSB(kb + off + ((mut == 4u) ? 7u : 8u));                        /* @p2off */
+    u32 w1 = (mut == 5u) ? DSW(kb + 0x2D6u) : (mut == 6u) ? DSB(kb + 0x2D4u) : DSW(kb + 0x2D4u);   /* @wswap @wbyte */
+    u32 w2 = (mut == 5u) ? DSW(kb + 0x2D4u) : (mut == 6u) ? DSB(kb + 0x2D6u) : DSW(kb + 0x2D6u);
+    if (k1 != code && k2 != code) return (mut == 9u) ? 0u : bits;            /* @neither0 */
+    if (k1 == code && w1 == 0u && !(mut == 8u && k2 == code && w2 != 0u)) return 0u;   /* @k2wins */
+    if (mut == 7u && k1 == code) return bits;                                /* @k1wins */
+    if (k2 == code && w2 == 0u) return 0u;
+    return bits;
+}
+static u32 d4d_2ebf0_core(u32 mask, u32 mut)
+{
+    u32 kb = DSD(DS_00101514);
+    u32 code = config_key_latched();
+    u32 out = 0u;
+    if (code == 0u) return 0u;
+    if ((mask == 0u && mut != 1u) || (mask & ((mut == 2u) ? 0xF000F000u : 0xF300F000u)) != 0u) {   /* @nomask0 @gate */
+        u32 c = (mut == 12u) ? (code & 0xFFu) : code;                        /* @code8 */
+        u32 lf = (mut == 11u) ? 0x4Du : 0x4Bu, rt = (mut == 11u) ? 0x4Bu : 0x4Du;   /* @lr */
+        if (c == 0x48u) out |= d4d_dir(kb, 0x2DEu, code, (mut == 10u) ? 0x40004000u : 0x80008000u, mut);   /* @bits */
+        else if (c == 0x50u) out |= d4d_dir(kb, 0x2DFu, code, (mut == 10u) ? 0x80008000u : 0x40004000u, mut);
+        else if (c == lf) out |= d4d_dir(kb, 0x2E0u, code, 0x20002000u, mut);
+        else if (c == rt) out |= d4d_dir(kb, 0x2E1u, code, (mut == 19u) ? 0x00001000u : 0x10001000u, mut);   /* @half */
+    }
+    {
+        u32 eb = (mut == 14u) ? 0x2000000u : 0x1000000u, sb = (mut == 16u) ? 0x1000000u : 0x2000000u;   /* @enterbit @escbit */
+        u32 ec = (mut == 17u) ? (code & 0xFFu) : code, sc = (mut == 18u) ? (code & 0xFFu) : code;       /* @enter8 @esc8 */
+        if (((mask == 0u && mut != 13u) || (mask & eb) != 0u) && ec == 0xDu) out |= 0x1000000u;         /* @enter0 */
+        if (((mask == 0u && mut != 15u) || (mask & sb) != 0u) && sc == 0x1Bu) out |= 0x2000000u;        /* @esc0 */
+    }
+    return out;
+}
+static void b_d4d_2ebf0(const u32 *r, u32 *eax) { *eax = config_key_flags(r[R_EAX]); }
+#define D4D_KF_MUT(name, n) \
+    static void m_d4d_2ebf0_##name(const u32 *r, u32 *eax) { *eax = d4d_2ebf0_core(r[R_EAX], n); }
+D4D_KF_MUT(nomask0, 1u) D4D_KF_MUT(gate, 2u)    D4D_KF_MUT(off1, 3u)     D4D_KF_MUT(p2off, 4u)   D4D_KF_MUT(wswap, 5u)
+D4D_KF_MUT(wbyte, 6u)   D4D_KF_MUT(k1wins, 7u)  D4D_KF_MUT(k2wins, 8u)   D4D_KF_MUT(neither0, 9u) D4D_KF_MUT(bits, 10u)
+D4D_KF_MUT(lr, 11u)     D4D_KF_MUT(code8, 12u)  D4D_KF_MUT(enter0, 13u)  D4D_KF_MUT(enterbit, 14u) D4D_KF_MUT(esc0, 15u)
+D4D_KF_MUT(escbit, 16u) D4D_KF_MUT(enter8, 17u) D4D_KF_MUT(esc8, 18u)    D4D_KF_MUT(half, 19u)
+/* 0x2EDE0 config_input_poll / 0x2EEC8 config_input_poll_clear: EAX = the mask, DL = the flag
+ * (`mov [esp],dl`; `cmp byte [esp],0`). 0x50161 and 0x500BB run on both sides, 0x2EBF0 is a stub.
+ * `clear` is the 0x2EEC8 twin (the latch dword 0x105F30 = 0 after the key-flags call). */
+static u32 d4d_poll_core(u32 mask, u32 edx, u32 clear, u32 mut)
+{
+    u32 r, k = 0u;
+    if (mut == 8u && (edx & 0xFFu) != 0u) k = config_key_flags(mask);        /* @order: the key flags first */
+    if (mut == 11u && clear) DSD(0x00105F30u) = 0u;                          /* @clrearly */
+    r = input_select_bits(mask);
+    const u32 sel = r;
+    if (mut != 8u && ((mut == 1u) ? 1 : (mut == 2u) ? edx != 0u : (edx & 0xFFu) != 0u))   /* @noflag @flagw */
+        k = config_key_flags((mut == 7u) ? 0u : mask);                       /* @maskarg */
+    if (mut == 6u) r &= k; else if (mut != 9u) r |= k;                       /* @and @retsel */
+    if (mut == 13u) clear = !clear;                                          /* @twin */
+    if (clear && mut != 11u && mut != 10u) {                                 /* @noclr */
+        if (mut == 12u) DSW(0x00105F30u) = 0u; else DSD(0x00105F30u) = 0u;   /* @clrw */
+    }
+    if ((mut == 4u) ? 1 : (mut == 3u) ? 0 : (mut == 9u) ? (r | k) != 0u : (mut == 14u) ? sel != 0u : r != 0u)   /* @stampalways @nostamp @stampsel */
+        DSD(0x00105F2Cu) = DSD((mut == 5u) ? 0x00101504u : 0x00101500u);     /* @stampval */
+    return r;
+}
+static void b_d4d_2ede0(const u32 *r, u32 *eax) { *eax = config_input_poll(r[R_EAX], (u8)r[R_EDX]); }
+static void b_d4d_2eec8(const u32 *r, u32 *eax) { *eax = config_input_poll_clear(r[R_EAX], (u8)r[R_EDX]); }
+#define D4D_POLL_MUT(name, n) \
+    static void m_d4d_2ede0_##name(const u32 *r, u32 *eax) { *eax = d4d_poll_core(r[R_EAX], r[R_EDX], 0u, n); } \
+    static void m_d4d_2eec8_##name(const u32 *r, u32 *eax) { *eax = d4d_poll_core(r[R_EAX], r[R_EDX], 1u, n); }
+D4D_POLL_MUT(noflag, 1u) D4D_POLL_MUT(flagw, 2u)   D4D_POLL_MUT(nostamp, 3u) D4D_POLL_MUT(stampalways, 4u)
+D4D_POLL_MUT(stampval, 5u) D4D_POLL_MUT(and, 6u)   D4D_POLL_MUT(maskarg, 7u) D4D_POLL_MUT(order, 8u)
+D4D_POLL_MUT(retsel, 9u) D4D_POLL_MUT(twin, 13u)    D4D_POLL_MUT(stampsel, 14u)
+#define D4D_POLLC_MUT(name, n) \
+    static void m_d4d_2eec8_##name(const u32 *r, u32 *eax) { *eax = d4d_poll_core(r[R_EAX], r[R_EDX], 1u, n); }
+D4D_POLLC_MUT(noclr, 10u) D4D_POLLC_MUT(clrearly, 11u) D4D_POLLC_MUT(clrw, 12u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39075,6 +39153,54 @@ static const binding_t k_bindings[] = {
     { "fighter_think_side@no41",             m_d3e_ts_no41, 0x00000000u },
     { "fighter_think_side@64self",           m_d3e_ts_s64self, 0x00000000u },
     { "fighter_think_side@no64",             m_d3e_ts_no64, 0x00000000u },
+    /* ---- track D4 batch d4d (record 2026-10-12-reverse-d4d) ---- */
+    { "config_key_flags",                      b_d4d_2ebf0, 0xFFFFFFFFu },
+    { "config_key_flags@nomask0",              m_d4d_2ebf0_nomask0, 0xFFFFFFFFu },
+    { "config_key_flags@gate",                 m_d4d_2ebf0_gate, 0xFFFFFFFFu },
+    { "config_key_flags@off1",                 m_d4d_2ebf0_off1, 0xFFFFFFFFu },
+    { "config_key_flags@p2off",                m_d4d_2ebf0_p2off, 0xFFFFFFFFu },
+    { "config_key_flags@wswap",                m_d4d_2ebf0_wswap, 0xFFFFFFFFu },
+    { "config_key_flags@wbyte",                m_d4d_2ebf0_wbyte, 0xFFFFFFFFu },
+    { "config_key_flags@k1wins",               m_d4d_2ebf0_k1wins, 0xFFFFFFFFu },
+    { "config_key_flags@k2wins",               m_d4d_2ebf0_k2wins, 0xFFFFFFFFu },
+    { "config_key_flags@neither0",             m_d4d_2ebf0_neither0, 0xFFFFFFFFu },
+    { "config_key_flags@bits",                 m_d4d_2ebf0_bits, 0xFFFFFFFFu },
+    { "config_key_flags@lr",                   m_d4d_2ebf0_lr, 0xFFFFFFFFu },
+    { "config_key_flags@code8",                m_d4d_2ebf0_code8, 0xFFFFFFFFu },
+    { "config_key_flags@enter0",               m_d4d_2ebf0_enter0, 0xFFFFFFFFu },
+    { "config_key_flags@enterbit",             m_d4d_2ebf0_enterbit, 0xFFFFFFFFu },
+    { "config_key_flags@esc0",                 m_d4d_2ebf0_esc0, 0xFFFFFFFFu },
+    { "config_key_flags@escbit",               m_d4d_2ebf0_escbit, 0xFFFFFFFFu },
+    { "config_key_flags@enter8",               m_d4d_2ebf0_enter8, 0xFFFFFFFFu },
+    { "config_key_flags@esc8",                 m_d4d_2ebf0_esc8, 0xFFFFFFFFu },
+    { "config_key_flags@half",                 m_d4d_2ebf0_half, 0xFFFFFFFFu },
+    { "config_input_poll",                     b_d4d_2ede0, 0xFFFFFFFFu },
+    { "config_input_poll@noflag",              m_d4d_2ede0_noflag, 0xFFFFFFFFu },
+    { "config_input_poll@flagw",               m_d4d_2ede0_flagw, 0xFFFFFFFFu },
+    { "config_input_poll@nostamp",             m_d4d_2ede0_nostamp, 0xFFFFFFFFu },
+    { "config_input_poll@stampalways",         m_d4d_2ede0_stampalways, 0xFFFFFFFFu },
+    { "config_input_poll@stampval",            m_d4d_2ede0_stampval, 0xFFFFFFFFu },
+    { "config_input_poll@and",                 m_d4d_2ede0_and, 0xFFFFFFFFu },
+    { "config_input_poll@maskarg",             m_d4d_2ede0_maskarg, 0xFFFFFFFFu },
+    { "config_input_poll@order",               m_d4d_2ede0_order, 0xFFFFFFFFu },
+    { "config_input_poll@retsel",              m_d4d_2ede0_retsel, 0xFFFFFFFFu },
+    { "config_input_poll@twin",                m_d4d_2ede0_twin, 0xFFFFFFFFu },
+    { "config_input_poll@stampsel",            m_d4d_2ede0_stampsel, 0xFFFFFFFFu },
+    { "config_input_poll_clear",               b_d4d_2eec8, 0xFFFFFFFFu },
+    { "config_input_poll_clear@noflag",        m_d4d_2eec8_noflag, 0xFFFFFFFFu },
+    { "config_input_poll_clear@flagw",         m_d4d_2eec8_flagw, 0xFFFFFFFFu },
+    { "config_input_poll_clear@nostamp",       m_d4d_2eec8_nostamp, 0xFFFFFFFFu },
+    { "config_input_poll_clear@stampalways",   m_d4d_2eec8_stampalways, 0xFFFFFFFFu },
+    { "config_input_poll_clear@stampval",      m_d4d_2eec8_stampval, 0xFFFFFFFFu },
+    { "config_input_poll_clear@and",           m_d4d_2eec8_and, 0xFFFFFFFFu },
+    { "config_input_poll_clear@maskarg",       m_d4d_2eec8_maskarg, 0xFFFFFFFFu },
+    { "config_input_poll_clear@order",         m_d4d_2eec8_order, 0xFFFFFFFFu },
+    { "config_input_poll_clear@retsel",        m_d4d_2eec8_retsel, 0xFFFFFFFFu },
+    { "config_input_poll_clear@twin",          m_d4d_2eec8_twin, 0xFFFFFFFFu },
+    { "config_input_poll_clear@stampsel",      m_d4d_2eec8_stampsel, 0xFFFFFFFFu },
+    { "config_input_poll_clear@noclr",         m_d4d_2eec8_noclr, 0xFFFFFFFFu },
+    { "config_input_poll_clear@clrearly",      m_d4d_2eec8_clrearly, 0xFFFFFFFFu },
+    { "config_input_poll_clear@clrw",          m_d4d_2eec8_clrw, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

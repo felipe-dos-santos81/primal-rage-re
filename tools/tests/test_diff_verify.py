@@ -15842,6 +15842,109 @@ D1_KINDS.update(D3E_KINDS)
 D1_CASES.extend(D3E_CASES)
 
 
+# ---- track D4 batch d4d (record 2026-10-12-reverse-d4d): measured with verify_all on the row's own spec ----
+D4D_MASKS = {
+    "config_key_flags": 0xFFFFFFFF,
+    "config_input_poll": 0xFFFFFFFF,
+    "config_input_poll_clear": 0xFFFFFFFF,
+}   # D4D_MASKS end
+D4D_KINDS = {
+    "config_key_flags@nomask0": {'eax'},
+    "config_key_flags@gate": {'eax'},
+    "config_key_flags@off1": {'eax'},
+    "config_key_flags@p2off": {'eax'},
+    "config_key_flags@wswap": {'eax'},
+    "config_key_flags@wbyte": {'eax'},
+    "config_key_flags@k1wins": {'eax'},
+    "config_key_flags@k2wins": {'eax'},
+    "config_key_flags@neither0": {'eax'},
+    "config_key_flags@bits": {'eax'},
+    "config_key_flags@lr": {'eax'},
+    "config_key_flags@code8": {'eax'},
+    "config_key_flags@enter0": {'eax'},
+    "config_key_flags@enterbit": {'eax'},
+    "config_key_flags@esc0": {'eax'},
+    "config_key_flags@escbit": {'eax'},
+    "config_key_flags@enter8": {'eax'},
+    "config_key_flags@esc8": {'eax'},
+    "config_key_flags@half": {'eax'},
+    "config_input_poll@noflag": {'byte', 'call #0', 'eax'},
+    "config_input_poll@flagw": {'byte', 'call #0', 'eax'},
+    "config_input_poll@nostamp": {'byte'},
+    "config_input_poll@stampalways": {'byte'},
+    "config_input_poll@stampval": {'byte'},
+    "config_input_poll@and": {'byte', 'eax'},
+    "config_input_poll@maskarg": {'call #0'},
+    "config_input_poll@order": {'call #0 memory'},
+    "config_input_poll@retsel": {'eax'},
+    "config_input_poll@twin": {'byte'},
+    "config_input_poll@stampsel": {'byte'},
+    "config_input_poll_clear@noflag": {'byte', 'call #0', 'eax'},
+    "config_input_poll_clear@flagw": {'byte', 'call #0', 'eax'},
+    "config_input_poll_clear@nostamp": {'byte'},
+    "config_input_poll_clear@stampalways": {'byte'},
+    "config_input_poll_clear@stampval": {'byte'},
+    "config_input_poll_clear@and": {'byte', 'eax'},
+    "config_input_poll_clear@maskarg": {'call #0'},
+    "config_input_poll_clear@order": {'call #0 memory'},
+    "config_input_poll_clear@retsel": {'eax'},
+    "config_input_poll_clear@twin": {'byte'},
+    "config_input_poll_clear@stampsel": {'byte'},
+    "config_input_poll_clear@noclr": {'byte'},
+    "config_input_poll_clear@clrearly": {'call #0 memory'},
+    "config_input_poll_clear@clrw": {'byte'},
+}   # D4D_KINDS end
+D4D_CASES = [
+    ("config_key_flags@nomask0", ['l2', 'r7', 'u0', 'u4', 'u8']),
+    ("config_key_flags@gate", ['d2', 'g2', 'g3', 'u7']),
+    ("config_key_flags@off1", ['d1', 'd6', 'd8', 'l1', 'l6', 'l8', 'r1', 'r6', 'u1', 'u6', 'u8']),
+    ("config_key_flags@p2off", ['d3', 'd5', 'd8', 'l3', 'l5', 'l8', 'r3', 'r5', 'r8', 'u3', 'u5']),
+    ("config_key_flags@wswap", ['d1', 'd2', 'd3', 'd4', 'l1', 'l2', 'l3', 'l4', 'r1', 'r2', 'r3', 'r4', 'u1', 'u2', 'u3', 'u4']),
+    ("config_key_flags@wbyte", ['d2', 'd4', 'd7', 'l2', 'l4', 'l7', 'r2', 'r4', 'r7', 'u2', 'u4', 'u7']),
+    ("config_key_flags@k1wins", ['d5', 'l5', 'r5', 'u5']),
+    ("config_key_flags@k2wins", ['d6', 'l6', 'r6', 'u6']),
+    ("config_key_flags@neither0", ['d0', 'd8', 'g2', 'g3', 'l0', 'l8', 'r0', 'r8', 'u0', 'u8']),
+    ("config_key_flags@bits", ['d0', 'd2', 'd4', 'd7', 'd8', 'g2', 'u0', 'u2', 'u4', 'u7', 'u8']),
+    ("config_key_flags@lr", ['g3', 'l0', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8']),
+    ("config_key_flags@code8", ['j7', 'j8']),
+    ("config_key_flags@enter0", ['e0']),
+    ("config_key_flags@enterbit", ['e1', 'e2', 'e3']),
+    ("config_key_flags@esc0", ['e4']),
+    ("config_key_flags@escbit", ['e5', 'e6', 'e7']),
+    ("config_key_flags@enter8", ['e8']),
+    ("config_key_flags@esc8", ['e9']),
+    ("config_key_flags@half", ['r0', 'r2', 'r4', 'r7', 'r8']),
+    ("config_input_poll@noflag", ['p0', 'p1', 'p4']),
+    ("config_input_poll@flagw", ['p4']),
+    ("config_input_poll@nostamp", ['p0', 'p1', 'p2', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll@stampalways", ['p3', 'p4']),
+    ("config_input_poll@stampval", ['p0', 'p1', 'p2', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll@and", ['p0', 'p1', 'p2', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll@maskarg", ['p2', 'p3', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll@order", ['p5', 'p6']),
+    ("config_input_poll@retsel", ['p2', 'p6', 'p7', 'p8']),
+    ("config_input_poll@twin", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll@stampsel", ['p2', 'p7']),
+    ("config_input_poll_clear@noflag", ['p0', 'p1', 'p4']),
+    ("config_input_poll_clear@flagw", ['p4']),
+    ("config_input_poll_clear@nostamp", ['p0', 'p1', 'p2', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll_clear@stampalways", ['p3', 'p4']),
+    ("config_input_poll_clear@stampval", ['p0', 'p1', 'p2', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll_clear@and", ['p0', 'p1', 'p2', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll_clear@maskarg", ['p2', 'p3', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll_clear@order", ['p5', 'p6']),
+    ("config_input_poll_clear@retsel", ['p2', 'p6', 'p7', 'p8']),
+    ("config_input_poll_clear@twin", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll_clear@stampsel", ['p2', 'p7']),
+    ("config_input_poll_clear@noclr", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll_clear@clrearly", ['p2', 'p3', 'p5', 'p6', 'p7', 'p8']),
+    ("config_input_poll_clear@clrw", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
+]   # D4D_CASES end
+D1_MASKS.update(D4D_MASKS)
+D1_KINDS.update(D4D_KINDS)
+D1_CASES.extend(D4D_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -16901,6 +17004,8 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # D4 d4d (record 2026-10-12-reverse-d4d): the stubs its rows add
+        0x2EBF0: ("ebp",),
         # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
         0x19820: (), 0x1D764: (), 0x1D810: ("esi", "edi", "ebp"), 0x1D890: (), 0x1DAE8: (), 0x1DC6C: (), 0x20EF8: (), 0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x29CBC: ("edx",), 0x2C060: (), 0x2C0F4: ("ebx", "ecx", "edx", "ebp"), 0x2C178: ("edx", "ebp"), 0x2C1C8: ("ebx", "ecx", "edx", "esi", "edi"), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA48: (), 0x2CA78: (), 0x2CA7C: (), 0x2CAA8: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (), 0x4F790: (), 0x4FA88: ("edi", "ebp"),
         # D3 d3b (record 2026-10-12-reverse-d3b): the stubs its rows add
