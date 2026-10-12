@@ -3905,7 +3905,10 @@ void game_mode_09_step(void)
                                 | DSB(DS_0010782A + winner * 0x94u));                    /* 0x28A54..0x28A5C */
                 DSB(DS_00108106 + DSW(DS_00104AFC)) = flag;                                /* 0x28A6F */
                 DSB(DS_00104B17) = 1u;                                                      /* 0x28A87 */
-                DSB(DS_00107830 + loser * 0x94u) = (u8)(flag ^ (u8)loser);                   /* 0x28A85/0x28A8D */
+                /* 0x28A75 `mov edx,ebx` reloads EDX (EBX = the loser) before
+                 * 0x28A85 `xor dl,bl`: the byte stored is BL ^ BL, the counter's
+                 * reset, not the flag. */
+                DSB(DS_00107830 + loser * 0x94u) = 0u;                                       /* 0x28A75..0x28A8D */
             } else {
                 DSB(DS_00104B17) = 2u;                                                        /* 0x28A96 */
             }
