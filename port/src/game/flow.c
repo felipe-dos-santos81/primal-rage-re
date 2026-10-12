@@ -5832,7 +5832,7 @@ void game_mode_25_step(void)
 /* 0x4EF8C — record §49-P. Mode 0x25's reveal: for every entry on the active
  * list DS_0010884C whose +0x1C bit 1 is set, node->+0x14 = DS_000F0AF0 -
  * 0x8180, its actor R's +0x34 = 0xFF80, node->+0x1C &= 0x7F, R->+0x28 |=
- * 0x4080, node->+0x1E = 8, and R begins table_C9544[(u16)(R->+0x48 - 0x20)]
+ * 0x4080, node->+0x1E = 8, and R begins table_C95D4[(u16)(R->+0x48 - 0x20)]
  * at 3.0. Then DS_0010889A = 0xF0 (the state-1 arm's countdown), two cells
  * released at row 0xB (col -1; 0x4F01A `mov ebx,2`, `mov edx,0xb`), both cell-
  * released strings 0x3B/0x3A at row 5, fight_mode25_scorecard() and, per
@@ -5856,10 +5856,11 @@ void game_mode_25_reveal(void)
             DSB(node + 0x1Cu) = (u8)(DSB(node + 0x1Cu) & 0x7Fu);  /* 0x4EFDB */
             DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) | 0x4080u); /* 0x4EFE2..0x4EFEF */
             DSB(node + 0x1Eu) = 8u;                             /* 0x4EFF5 */
-            actors_anim_begin(rec, DSD(0x000C9544u + idx * 4u),
-                              0x40400000u);                     /* 0x4EFFC..0x4F00B 0x2BC30, the same
-                                                                   * 0xC9544 table fight.c's DS_000C9544
-                                                                   * local #define names */
+            actors_anim_begin(rec, DSD(0x000C95D4u + idx * 4u),
+                              0x40400000u);                     /* 0x4EFFC..0x4F00B 0x2BC30, the
+                                                                   * 0xC95D4 table (0x4EFFF `mov edx,
+                                                                   * [edx*4+0xc95d4]`) fight.c's
+                                                                   * DS_000C95D4 local #define names */
         }
         node = next;                                             /* 0x4F010/0x4F012 */
     }
