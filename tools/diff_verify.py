@@ -13677,6 +13677,22 @@ def d2a_pred_cases():
 
 D2A_PRED_MUTANTS = ("@slot", "@s54", "@s53", "@s52", "@wide", "@fside", "@al", "@inv")
 
+D2A_CFG = 0x0010A000             # 0x461DC: what DS_00101514 points at (the +0x2D4/+0x2D6 selector words)
+
+
+def d2a_ring_case(sel, s63, w, pos):
+    """0x461DC: the two selector words (between two seeded words), both slots' +0x62..+0x64, the
+    two command words, the ring index word DS_001082D4 between two seeded words, and both
+    0x14-word rings 0x108270/0x108298 with the word before the first and the word after the second
+    seeded (index -1 lands on 0x10826E and 0x108296)."""
+    return {0x00101514: le32(D2A_CFG), D2A_CFG + 0x2D2: le16(0xD2D2) + le16(sel[0]) + le16(sel[1]) + le16(0xD8D8),
+            D2A_SLOT + 0x62: bytes([0x62, s63[0], 0x64]), D2A_SLOT + 0x94 + 0x62: bytes([0x72, s63[1], 0x74]),
+            0x001088DE: le16(0xDEDE) + le16(w[0]) + le16(w[1]) + le16(0xE4E4),
+            0x001082D2: le16(0xD2D2) + le16(pos) + le16(0xD6D6),
+            0x0010826E: le16(0x6E6E) + bytes(0x80 + i for i in range(0x28)),
+            0x00108298: bytes(0xC0 + i for i in range(0x28)) + le16(0xC0C0)}
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13876,6 +13892,28 @@ D2A_SPECS = [
     # `test al,al`.
     Spec("ai_pred_4682c", 0x4682C, d2a_pred_cases(), allow_calls=(0x1A5D4,), eax_mask=0xFF,
          mutants=D2A_PRED_MUTANTS),
+    # 0x461DC fighter_input_ring_update: no argument; side 0 then side 1, then the ring store. 0x1A570
+    # is a stub whose AL the raw compares with 1 (0x46238 `and eax,0xff`, 0x4623D `cmp eax,1`);
+    # 0x3C6E8 runs real and is an identity on the zero-extended word it is given, so neither its
+    # call nor the AL compare is observable (record §4). The ring index is the signed word (0x46420
+    # `mov eax,[0x1082d2]`, 0x46425 `sar eax,0x10`: r4 is -2). Mask 0: both arms after the call
+    # reach `call 0x38990` (0x24CC3/0x24CC8), whose first uses of EAX are writes (0x38991, 0x3899F).
+    Spec("fighter_input_ring_update", 0x461DC, [
+        Case("r0", {}, d2a_ring_case((4, 4), (0, 0), (0x0001, 0x0111), 0x0005), {0x1A570: 1}),
+        Case("r1", {}, d2a_ring_case((4, 4), (0, 0), (0x1001, 0x0121), 0x0013), {0x1A570: 0}),
+        Case("r2", {}, d2a_ring_case((4, 4), (0, 0), (0x2001, 0x0004), 0x0012), {0x1A570: 0x101}),
+        Case("r3", {}, d2a_ring_case((4, 4), (0, 0), (0x0414, 0x1004), 0xFFFF), {0x1A570: 2}),
+        Case("r4", {}, d2a_ring_case((4, 4), (0, 0), (0x1030, 0x0424), 0xFFFE), {0x1A570: 0x100}),
+        Case("r5", {}, d2a_ring_case((4, 4), (0, 0), (0x2004, 0x0015), 0x0000), {0x1A570: 1}),
+        Case("r6", {}, d2a_ring_case((4, 5), (1, 0), (0x0111, 0x0424), 0x0001), {0x1A570: 1}),
+        Case("r7", {}, d2a_ring_case((0x0104, 4), (0, 0x80), (0x0111, 0x0111), 0x0002), {0x1A570: 1}),
+        Case("r8", {}, d2a_ring_case((4, 0), (0, 0), (0x0111, 0x0111), 0x0003), {0x1A570: 0}),
+    ], allow_calls=(0x3C6E8,), calls=(BIT15,), eax_mask=0, unhit_named={
+        0x463FB: "the fourth toggle tests the low byte's bit 5 again (0x463EC `mov ax,[esp+ebx]`, 0x463F2 `and "
+                 "al,0x20`), which 0x463E8 has just cleared whenever it was set"},
+       mutants=("@s63", "@s63slot", "@selside", "@selb", "@t4", "@b101", "@b202", "@c2", "@c100", "@e404",
+                "@e808", "@f8", "@f400", "@flag", "@t1", "@t2", "@t3", "@prio", "@pz", "@wrap", "@d4",
+                "@swap", "@m1010")),
 ]
 D1_SPECS += D2A_SPECS
 

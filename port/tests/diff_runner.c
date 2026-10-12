@@ -20484,6 +20484,94 @@ static void m_d2a_4682c_fside(const u32 *r, u32 *eax) { *eax = d2a_pred_core(1u,
 static void m_d2a_4682c_al(const u32 *r, u32 *eax)    { *eax = d2a_pred_core(1u, r, 0x40u); }
 static void m_d2a_4682c_inv(const u32 *r, u32 *eax)   { *eax = d2a_pred_core(1u, r, 0x80u); }
 
+/* 0x461DC: no argument; both sides in turn, then the ring store. 0x1A570 is a stub, 0x3C6E8 runs
+ * real (an identity on a zero-extended word, so its call is not observable). */
+static u16 d2a_461dc_word(u16 w, u32 mut)
+{
+    u32 fl = 0u, b0 = 1u, b2 = 4u;
+    if (mut & 131072u) { if ((w & 4u) != 0u) b0 = 0u; }                          /* @prio: bit 2 before bit 0 */
+    if ((w & b0) != 0u && (w & 0x3030u) == 0u) return w;
+    if ((w & b0) != 0u && (w & ((mut & 4194304u) ? 0x0010u : 0x1010u)) != 0u) {  /* @m1010: the low bit alone */
+        if ((w & 0x0100u) != 0u && !(mut & 32u)) w ^= 0x0101u;               /* @b101 */
+        else w ^= 0x0001u;
+        if (!(mut & 64u)) w |= 0x0202u;                                      /* @b202 */
+        fl = 1u;
+    } else if ((w & b0) != 0u && (w & 0x2020u) != 0u) {
+        if (!(mut & 128u)) w |= 0x0002u;                                        /* @c2 */
+        if ((w & 0x0100u) != 0u && !(mut & 256u)) w ^= 0x0100u;               /* @c100 */
+        fl = 1u;
+    } else if ((w & b2) != 0u && (w & 0x3030u) == 0u) {
+        return w;
+    } else if ((w & b2) != 0u && (w & 0x1010u) != 0u) {
+        if ((w & 0x0400u) != 0u && !(mut & 512u)) w ^= 0x0404u;               /* @e404 */
+        else w ^= 0x0004u;
+        if (!(mut & 1024u)) w |= 0x0808u;                                      /* @e808 */
+        fl = 1u;
+    } else if ((w & b2) != 0u && (w & 0x2020u) != 0u) {
+        if (!(mut & 2048u)) w |= 0x0008u;                                        /* @f8 */
+        if ((w & 0x0400u) != 0u && !(mut & 4096u)) w ^= 0x0400u;               /* @f400 */
+        fl = 1u;
+    }
+    if (fl == 1u || (mut & 8192u)) {                                           /* @flag: the toggles always */
+        if ((w & 0x0010u) != 0u && !(mut & 16384u)) w ^= 0x0010u;                 /* @t1 */
+        if ((w & 0x1000u) != 0u && !(mut & 32768u)) w ^= 0x1000u;                 /* @t2 */
+        if ((w & 0x0020u) != 0u && !(mut & 65536u)) w ^= 0x0020u;                 /* @t3 */
+        if ((w & ((mut & 16u) ? 0x2000u : 0x0020u)) != 0u) w ^= 0x2000u;       /* @t4: tests the bit it flips */
+    }
+    return w;
+}
+static void d2a_461dc_core(const u32 *r, u32 mut)
+{
+    u16 loc[2];
+    u32 side;
+    s32 pos;
+    (void)r;
+    for (side = 0u; side < 2u; side++) {
+        u32 slot = 0x001077B0u + ((mut & 2u) ? 1u - side : side) * 0x94u;   /* @s63slot */
+        u32 sel = 2u;
+        u16 w = DSW(0x001088E0u + side * 2u);
+        if (DSB(slot + 0x63u) == 0u || (mut & 1u)) {                         /* @s63: the +0x63 test dropped */
+            sel = (u32)DSW(DSD(0x00101514u) + 0x2D4u + ((mut & 4u) ? 1u - side : side) * 2u);   /* @selside */
+            if (mut & 8u) sel &= 0xFFu;                                     /* @selb: a byte compare */
+        }
+        if (sel == 4u) {
+            if ((fighter_actor_bit15_clear(side) & 0xFFu) == 1u)
+                w = fighter_cmd_facing(side, (u32)w);
+            w = d2a_461dc_word(w, mut);
+        }
+        loc[side] = w;
+    }
+    pos = ((mut & 262144u) ? (s32)(DSD(0x001082D2u) >> 16) : ((s32)DSD(0x001082D2u) >> 16)) + 1;   /* @pz: zero-extended */
+    if ((mut & 524288u) ? (pos > 0x14) : (pos >= 0x14)) pos = 0;                 /* @wrap */
+    DSW(0x00108270u + (u32)pos * 2u) = loc[(mut & 2097152u) ? 1 : 0];             /* @swap: the two rings swapped */
+    if (!(mut & 1048576u)) DSW(0x001082D4u) = (u16)pos;                             /* @d4 */
+    DSW(0x00108298u + (u32)pos * 2u) = loc[(mut & 2097152u) ? 0 : 1];
+}
+static void b_d2a_461dc(const u32 *r, u32 *eax) { (void)r; fighter_input_ring_update(); *eax = 0u; }
+static void m_d2a_461dc_s63(const u32 *r, u32 *eax)     { d2a_461dc_core(r, 0x1u); *eax = 0u; }
+static void m_d2a_461dc_s63slot(const u32 *r, u32 *eax) { d2a_461dc_core(r, 0x2u); *eax = 0u; }
+static void m_d2a_461dc_selside(const u32 *r, u32 *eax) { d2a_461dc_core(r, 0x4u); *eax = 0u; }
+static void m_d2a_461dc_selb(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x8u); *eax = 0u; }
+static void m_d2a_461dc_t4(const u32 *r, u32 *eax)      { d2a_461dc_core(r, 0x10u); *eax = 0u; }
+static void m_d2a_461dc_b101(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x20u); *eax = 0u; }
+static void m_d2a_461dc_b202(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x40u); *eax = 0u; }
+static void m_d2a_461dc_c2(const u32 *r, u32 *eax)      { d2a_461dc_core(r, 0x80u); *eax = 0u; }
+static void m_d2a_461dc_c100(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x100u); *eax = 0u; }
+static void m_d2a_461dc_e404(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x200u); *eax = 0u; }
+static void m_d2a_461dc_e808(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x400u); *eax = 0u; }
+static void m_d2a_461dc_f8(const u32 *r, u32 *eax)      { d2a_461dc_core(r, 0x800u); *eax = 0u; }
+static void m_d2a_461dc_f400(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x1000u); *eax = 0u; }
+static void m_d2a_461dc_flag(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x2000u); *eax = 0u; }
+static void m_d2a_461dc_t1(const u32 *r, u32 *eax)      { d2a_461dc_core(r, 0x4000u); *eax = 0u; }
+static void m_d2a_461dc_t2(const u32 *r, u32 *eax)      { d2a_461dc_core(r, 0x8000u); *eax = 0u; }
+static void m_d2a_461dc_t3(const u32 *r, u32 *eax)      { d2a_461dc_core(r, 0x10000u); *eax = 0u; }
+static void m_d2a_461dc_prio(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x20000u); *eax = 0u; }
+static void m_d2a_461dc_pz(const u32 *r, u32 *eax)      { d2a_461dc_core(r, 0x40000u); *eax = 0u; }
+static void m_d2a_461dc_wrap(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x80000u); *eax = 0u; }
+static void m_d2a_461dc_d4(const u32 *r, u32 *eax)      { d2a_461dc_core(r, 0x100000u); *eax = 0u; }
+static void m_d2a_461dc_swap(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x200000u); *eax = 0u; }
+static void m_d2a_461dc_m1010(const u32 *r, u32 *eax)   { d2a_461dc_core(r, 0x400000u); *eax = 0u; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -24646,6 +24734,30 @@ static const binding_t k_bindings[] = {
     { "ai_pred_4682c@fside", m_d2a_4682c_fside, 0x000000FFu },
     { "ai_pred_4682c@al", m_d2a_4682c_al, 0x000000FFu },
     { "ai_pred_4682c@inv", m_d2a_4682c_inv, 0x000000FFu },
+    { "fighter_input_ring_update", b_d2a_461dc, 0x00000000u },
+    { "fighter_input_ring_update@s63", m_d2a_461dc_s63, 0x00000000u },
+    { "fighter_input_ring_update@s63slot", m_d2a_461dc_s63slot, 0x00000000u },
+    { "fighter_input_ring_update@selside", m_d2a_461dc_selside, 0x00000000u },
+    { "fighter_input_ring_update@selb", m_d2a_461dc_selb, 0x00000000u },
+    { "fighter_input_ring_update@t4", m_d2a_461dc_t4, 0x00000000u },
+    { "fighter_input_ring_update@b101", m_d2a_461dc_b101, 0x00000000u },
+    { "fighter_input_ring_update@b202", m_d2a_461dc_b202, 0x00000000u },
+    { "fighter_input_ring_update@c2", m_d2a_461dc_c2, 0x00000000u },
+    { "fighter_input_ring_update@c100", m_d2a_461dc_c100, 0x00000000u },
+    { "fighter_input_ring_update@e404", m_d2a_461dc_e404, 0x00000000u },
+    { "fighter_input_ring_update@e808", m_d2a_461dc_e808, 0x00000000u },
+    { "fighter_input_ring_update@f8", m_d2a_461dc_f8, 0x00000000u },
+    { "fighter_input_ring_update@f400", m_d2a_461dc_f400, 0x00000000u },
+    { "fighter_input_ring_update@flag", m_d2a_461dc_flag, 0x00000000u },
+    { "fighter_input_ring_update@t1", m_d2a_461dc_t1, 0x00000000u },
+    { "fighter_input_ring_update@t2", m_d2a_461dc_t2, 0x00000000u },
+    { "fighter_input_ring_update@t3", m_d2a_461dc_t3, 0x00000000u },
+    { "fighter_input_ring_update@prio", m_d2a_461dc_prio, 0x00000000u },
+    { "fighter_input_ring_update@pz", m_d2a_461dc_pz, 0x00000000u },
+    { "fighter_input_ring_update@wrap", m_d2a_461dc_wrap, 0x00000000u },
+    { "fighter_input_ring_update@d4", m_d2a_461dc_d4, 0x00000000u },
+    { "fighter_input_ring_update@swap", m_d2a_461dc_swap, 0x00000000u },
+    { "fighter_input_ring_update@m1010", m_d2a_461dc_m1010, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
