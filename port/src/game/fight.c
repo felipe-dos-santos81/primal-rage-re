@@ -5606,8 +5606,10 @@ static void fight_4e5a4(u32 node, u32 idx)
     s32 clamped = (hit > 2) ? 1 : hit;                               /* 0x4E5FB/0x4E5FE/0x4E600 */
     DSB(node + 0x20u) = (u8)(clamped - 1);                            /* 0x4E60C/0x4E611 */
     DSB(node + 0x1Fu) = (u8)(DSB(node + 0x1Fu) + 1u);                  /* 0x4E60E/0x4E614/0x4E616 */
+    rec = DSD(node + 8u);                                                /* 0x4E619: read again after 0x17D30 */
     actors_anim_begin(rec, DSD(DS_000C9604 + idx * 4u), 0x40400000u);   /* 0x4E61C..0x4E627 0x2BC30 */
     if (DSD(node + 0x10u) == 0u) {                                       /* 0x4E62F */
+        rec = DSD(node + 8u);                                             /* 0x4E633: read again after 0x2BC30 */
         u32 desc = DSD(DS_000BB920 + idx * 4u);                           /* 0x4E640 */
         u32 spawned = actor_spawn((const u32 *)(mem + desc),
                                   DSD(rec + 0x18u),
