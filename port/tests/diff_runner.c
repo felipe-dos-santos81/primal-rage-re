@@ -30714,6 +30714,72 @@ D4D_AR_MUT(freehead, 17u) D4D_AR_MUT(bound, 18u) D4D_AR_MUT(count, 19u) D4D_AR_M
 D4D_AR_MUT(projarg, 22u) D4D_AR_MUT(nob44, 23u)  D4D_AR_MUT(nob48, 24u) D4D_AR_MUT(norl, 25u)    D4D_AR_MUT(nocur, 26u)
 D4D_AR_MUT(nofill, 27u) D4D_AR_MUT(filllen, 28u) D4D_AR_MUT(noscreen, 29u) D4D_AR_MUT(screenarg, 30u) D4D_AR_MUT(nopal, 31u)
 D4D_AR_MUT(swapcopy, 32u) D4D_AR_MUT(copylen, 33u) D4D_AR_MUT(nobed1, 34u) D4D_AR_MUT(al1, 35u)
+/* 0x3157C config_key_name: EAX = the key word, DL = the raw flag, EBX = the destination. The
+ * string tree (0x1C500) runs on both sides; the original formats through the runtime's sprintf,
+ * the port by hand. AL alone is the result (`mov al,1` 0x316E1, `xor al,al` 0x31645/0x3168D/
+ * 0x31994). One restatement, one choice flipped per mutant number. */
+static u32 d4d_3157c_core(u32 key, u32 edx, u32 dest, u32 mut)
+{
+    const u32 ch = key & 0xFFu;
+    u32 code = (mut == 1u) ? ((key >> 8) & 0xFFu) : (u32)((s32)key >> 8);    /* @code8 */
+    const int ascii = (ch != 0u || mut == 6u)                                /* @ch0 */
+        && ((mut == 3u) ? 1 : (mut == 2u) ? ch < 0x7Fu : ch <= 0x7Fu)        /* @chany @ch7f */
+        && (ch != 0xDu || mut == 4u) && (ch != 0x20u || mut == 5u);          /* @no0d @no20 */
+    u32 id = 0u, lit = 0u, n = 0u;
+    if (ascii) code = 2u;
+    switch (code) {
+    case 2u:
+        if (mut == 17u && !ascii) return 0u;                                 /* @scan2 */
+        DSB(dest) = (u8)ch;
+        DSB(dest + 1u) = 0u;
+        break;
+    case 0x0Eu: id = (mut == 16u) ? 0x22Bu : 0x22Au; break;                  /* @ef */
+    case 0x0Fu: id = (mut == 16u) ? 0x22Au : 0x22Bu; break;
+    case 0x47u: id = 0x220u; break;
+    case 0x48u: id = (mut == 10u) ? 0x221u : 0x223u; break;                  /* @seq: the ids in scan order */
+    case 0x49u: id = (mut == 10u) ? 0x222u : 0x221u; break;
+    case 0x4Bu: id = (mut == 10u) ? 0x223u : 0x224u; break;
+    case 0x4Du: id = (mut == 10u) ? 0x224u : 0x225u; break;
+    case 0x4Fu: id = (mut == 10u) ? 0x225u : (mut == 11u) ? 0x226u : 0x227u; break;   /* @updown */
+    case 0x50u: id = (mut == 11u) ? 0x227u : 0x226u; break;
+    case 0x51u: id = (mut == 10u) ? 0x227u : 0x222u; break;
+    case 0x52u: id = 0x228u; break;
+    case 0x53u: id = 0x229u; break;
+    case 0x3Du: case 0x3Eu: case 0x3Fu: case 0x40u: case 0x41u: case 0x42u: case 0x43u:
+        lit = 0x00080B7Cu + (code - 0x3Du) * 4u; n = (mut == 14u) ? 4u : 3u; break;   /* @fwide */
+    case 0x44u: lit = 0x00080B98u; n = (mut == 13u) ? 3u : 4u; break;        /* @f10 */
+    case 0x4Au: lit = 0x00080B9Cu; n = (mut == 15u) ? 1u : 2u; break;        /* @minus */
+    case 0x4Eu: lit = (mut == 12u) ? 0x00080B9Cu : 0x00080BA0u; n = 2u; break;   /* @plus */
+    default: return (mut == 18u) ? 1u : 0u;                                  /* @ret */
+    }
+    if (id != 0u) {
+        const u8 *s = game_string_get(id);
+        u32 i = 0u;
+        while (s[i] != 0u) { DSB(dest + i) = s[i]; i++; }
+        if (mut != 22u) DSB(dest + i) = 0u;                                  /* @nonul */
+    } else {
+        for (u32 i = 0u; i < n; i++) DSB(dest + i) = DSB(lit + i);
+    }
+    if (((mut == 8u) ? edx == 0u : (mut == 7u) ? (edx & 0xFFu) != 0u : (edx & 0xFFu) == 0u)   /* @raw32 @wrapinv */
+        && !(mut == 9u && code == 2u)) {                                     /* @nowrapc */
+        u8 tmp[0x40];
+        u32 k = 0u;
+        tmp[k++] = '<';
+        for (u32 i = 0u; DSB(dest + i) != 0u && k < sizeof tmp - 2u; i++) tmp[k++] = DSB(dest + i);
+        if (mut != 20u) tmp[k++] = '>';                                      /* @nogt */
+        tmp[k] = 0u;
+        for (u32 i = 0u; i <= k; i++) DSB(dest + i) = tmp[i];
+    }
+    return (mut == 19u) ? 0u : 1u;                                           /* @ret0 */
+}
+static void b_d4d_3157c(const u32 *r, u32 *eax) { *eax = config_key_name(r[R_EAX], (u8)r[R_EDX], r[R_EBX]); }
+#define D4D_KN_MUT(name, n) \
+    static void m_d4d_3157c_##name(const u32 *r, u32 *eax) { *eax = d4d_3157c_core(r[R_EAX], r[R_EDX], r[R_EBX], n); }
+D4D_KN_MUT(code8, 1u)  D4D_KN_MUT(ch7f, 2u)    D4D_KN_MUT(chany, 3u)   D4D_KN_MUT(no0d, 4u)   D4D_KN_MUT(no20, 5u)
+D4D_KN_MUT(ch0, 6u)    D4D_KN_MUT(wrapinv, 7u) D4D_KN_MUT(raw32, 8u)   D4D_KN_MUT(nowrapc, 9u) D4D_KN_MUT(seq, 10u)
+D4D_KN_MUT(updown, 11u) D4D_KN_MUT(plus, 12u)  D4D_KN_MUT(f10, 13u)    D4D_KN_MUT(fwide, 14u) D4D_KN_MUT(minus, 15u)
+D4D_KN_MUT(ef, 16u)    D4D_KN_MUT(scan2, 17u)  D4D_KN_MUT(ret, 18u)    D4D_KN_MUT(ret0, 19u)  D4D_KN_MUT(nogt, 20u)
+D4D_KN_MUT(nonul, 22u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39451,6 +39517,28 @@ static const binding_t k_bindings[] = {
     { "actors_reset_al@copylen",               m_d4d_2baf4_copylen, 0xFFFFFFFFu },
     { "actors_reset_al@nobed1",                m_d4d_2baf4_nobed1, 0xFFFFFFFFu },
     { "actors_reset_al@al1",                   m_d4d_2baf4_al1, 0xFFFFFFFFu },
+    { "config_key_name",                       b_d4d_3157c, 0x000000FFu },
+    { "config_key_name@code8",                 m_d4d_3157c_code8, 0x000000FFu },
+    { "config_key_name@ch7f",                  m_d4d_3157c_ch7f, 0x000000FFu },
+    { "config_key_name@chany",                 m_d4d_3157c_chany, 0x000000FFu },
+    { "config_key_name@no0d",                  m_d4d_3157c_no0d, 0x000000FFu },
+    { "config_key_name@no20",                  m_d4d_3157c_no20, 0x000000FFu },
+    { "config_key_name@ch0",                   m_d4d_3157c_ch0, 0x000000FFu },
+    { "config_key_name@wrapinv",               m_d4d_3157c_wrapinv, 0x000000FFu },
+    { "config_key_name@raw32",                 m_d4d_3157c_raw32, 0x000000FFu },
+    { "config_key_name@nowrapc",               m_d4d_3157c_nowrapc, 0x000000FFu },
+    { "config_key_name@seq",                   m_d4d_3157c_seq, 0x000000FFu },
+    { "config_key_name@updown",                m_d4d_3157c_updown, 0x000000FFu },
+    { "config_key_name@plus",                  m_d4d_3157c_plus, 0x000000FFu },
+    { "config_key_name@f10",                   m_d4d_3157c_f10, 0x000000FFu },
+    { "config_key_name@fwide",                 m_d4d_3157c_fwide, 0x000000FFu },
+    { "config_key_name@minus",                 m_d4d_3157c_minus, 0x000000FFu },
+    { "config_key_name@ef",                    m_d4d_3157c_ef, 0x000000FFu },
+    { "config_key_name@scan2",                 m_d4d_3157c_scan2, 0x000000FFu },
+    { "config_key_name@ret",                   m_d4d_3157c_ret, 0x000000FFu },
+    { "config_key_name@ret0",                  m_d4d_3157c_ret0, 0x000000FFu },
+    { "config_key_name@nogt",                  m_d4d_3157c_nogt, 0x000000FFu },
+    { "config_key_name@nonul",                 m_d4d_3157c_nonul, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)

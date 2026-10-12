@@ -22194,6 +22194,59 @@ D4D_SPECS += [
        calls=(P8_CLEAR, D4D_EFF_INIT, D4D_SCREEN), eax_mask=0xFFFFFFFF,
        mutants=("@al32", "@noae8", "@noaec", "@nob4c", "@noad0", "@ad0w", "@clearearly", "@nobea", "@beab", "@nobed0", "@psetlen", "@reclen", "@ringlen", "@ringbase", "@noactive", "@freehead", "@bound", "@count", "@noinit", "@initearly", "@projarg", "@nob44", "@nob48", "@norl", "@nocur", "@nofill", "@filllen", "@noscreen", "@screenarg", "@nopal", "@swapcopy", "@copylen", "@nobed1", "@al1")),
 ]
+D4D_NAME = 0x0010A300                               # zero BSS: the destination text
+# twelve distinct names for the string ids 0x220..0x22B, of 1 to 9 characters: the longest the raw's
+# 12-byte frame holds once wrapped ("<" + 9 + ">" + NUL)
+D4D_NAMES = {0x220: b"HOME", 0x221: b"PGUP", 0x222: b"PGDOWN", 0x223: b"UP", 0x224: b"LEFT!", 0x225: b"RIGHT",
+             0x226: b"DWN", 0x227: b"END", 0x228: b"INSERT.", 0x229: b"DELETE", 0x22A: b"BACKSPACE", 0x22B: b"T"}
+
+
+def d4d_name_case(**over):
+    """0x3157C: the string table (d1d_str_pokes) with D4D_NAMES (`over` replaces names by id) and
+    the destination seeded 0x5A."""
+    p = d1d_str_pokes({**D4D_NAMES, **{int(k[1:], 16): v for k, v in over.items()}})
+    p[D4D_NAME] = b"\x5a" * 0x20
+    return p
+
+
+def d4d_name_cases():
+    """(id, key word, EDX): the ascii class, every named scan code, every literal, and the keys
+    with no name. EDX's low byte is the raw flag (0x100 and 0xFFFFFF00 are 0; 0x01 and 0x80 are
+    not)."""
+    rows = [("c0", 0x1E41, 1), ("c1", 0x1E61, 0), ("c2", 0x007F, 0xFFFFFF01), ("c3", 0x4701, 0x100),
+            ("c4", 0x4780, 1), ("c5", 0x1C0D, 0), ("c6", 0x3920, 0), ("c7", 0x4800, 0), ("c8", 0x0200, 0),
+            ("c9", 0x0200, 0x80), ("ca", 0x0280, 0), ("cb", 0x5325, 0xFFFFFF00), ("cc", 0x0E1F, 1),
+            ("cd", 0x0E21, 1), ("ce", 0x0E0C, 1), ("cf", 0x0E0E, 1)]
+    for i, sc in enumerate((0x0E, 0x0F, 0x47, 0x48, 0x49, 0x4B, 0x4D, 0x4F, 0x50, 0x51, 0x52, 0x53)):
+        rows.append(("s%X" % sc, sc << 8, (1, 0x100, 0x80, 0)[i % 4]))
+    for i, sc in enumerate((0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x4A, 0x4E)):
+        rows.append(("l%X" % sc, (sc << 8) | (0x80 if i % 3 == 0 else 0x0D if i % 3 == 1 else 0), (1, 0)[i % 2]))
+    rows += [("l44r", 0x4400, 1), ("l4Aw", 0x4A00, 0), ("l4Er", 0x4E20, 1), ("l3Dw", 0x3D00, 0)]
+    for sc in (0x00, 0x01, 0x03, 0x0D, 0x10, 0x3C, 0x45, 0x46, 0x4C, 0x54, 0xFF):
+        rows.append(("n%X" % sc, sc << 8, 0))
+    rows += [("nw", 0x00014700, 0), ("nn", 0x80004700, 1), ("nm", 0xFFFF0200, 0)]
+    out = [Case(i, {"eax": k, "edx": d, "ebx": D4D_NAME}, d4d_name_case()) for i, k, d in rows]
+    # an empty name (the copy loop's first byte is the NUL), raw and wrapped
+    return out + [Case("e0", {"eax": 0x5300, "edx": 1, "ebx": D4D_NAME}, d4d_name_case(i229=b"")),
+                  Case("e1", {"eax": 0x4700, "edx": 0, "ebx": D4D_NAME}, d4d_name_case(i220=b""))]
+
+
+D4D_SPECS += [
+    # 0x3157C config_key_name: EAX = the key word, DL = the raw flag (`mov cl,dl` 0x31584; `test
+    # cl,cl` 0x316AC), EBX = the destination. An ascii byte 1..0x7F other than 0x0D and 0x20
+    # (0x31591..0x315A0: c2 is 0x7F, c4 0x80, c5 0x0D, c6 0x20) is class 2, formatted "%c" by the
+    # runtime's sprintf; else the class is the whole EAX `sar 8` (nw: 0x147; nn, nm: negative) and
+    # the unsigned compare tree 0x315A7..0x31687 picks a string id 0x220..0x22B (0x1C500, run on
+    # both sides), a literal at 0x80B7C..0x80BA0 (`movsw; movsb`, a dword for 0x44, a word for
+    # 0x4A and 0x4E) or returns AL = 0 with the destination untouched (the n cases). With the raw
+    # flag 0 the name is re-formatted "<%s>" in the 12-byte frame and copied back: no name here
+    # is longer than 9 (a longer one overruns the frame's saved EDI; not cased, record §4). The
+    # sprintf tree runs from the original's bytes under the flat segments; the port formats by
+    # hand. Mask 0xFF: the function sets AL alone and the one caller that reads it has `test
+    # al,al` (0x1A3F1); the others overwrite EAX (record §1).
+    Spec("config_key_name", 0x3157C, d4d_name_cases(), allow_calls=D1D_STR_ALLOW + D3A_SPRINTF, eax_mask=0xFF,
+         mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
+]
 D1_SPECS += D4D_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
