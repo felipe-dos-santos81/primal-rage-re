@@ -13418,6 +13418,37 @@ D2C_NUMSET = E.Call(0x2F434, ("eax", "edx", "ebx", "ecx", "s0", "s1"), pop=8,
                     clobbers=("ebx", "ecx", "edx"))
 
 
+def d2c_win_case(a, b, f41=(0, 0), b1d=0, t=0x32, af=(0, 0), s7f=(0x21, 0x31), b529=0x02,
+                 marks=(0, 0x0010C0A1, 0, 0), b1e=2, adc=2):
+    """0x27C48: the two +0x5A bytes `a`/`b` (0x10780A/0x10789E) with the +0x5B bytes after them,
+    the two +0x41 bytes, the two +0x7F bytes, the round-win bytes 0x104AF2/F3, the bytes
+    0x104B12..0x104B1E (0x104B13, 0x104B16 and 0x104B1C seeded 0x5A; 0x104B1D = `b1d`), the dword
+    0x1088EF (its top byte `t`), and what the four callees it runs real read: the bonus state
+    (d1c_bonus_case), both marker arrays = `marks`, and 0x27BA4's 0x104ADC, 0x104B1E, 0x108860."""
+    p = d1c_bonus_case(b529, 0x01, 0x40)
+    p.update({
+        0x001077F0: bytes([0x71, f41[0], 0x72]), 0x00107809: bytes([0x73, a, 0x5A, 0x74]),
+        0x0010782E: bytes([0x75, s7f[0], 0x76]), 0x00107884: bytes([0x77, f41[1], 0x78]),
+        0x0010789D: bytes([0x79, b, 0x5A, 0x7A]), 0x001078C2: bytes([0x7B, s7f[1], 0x7C]),
+        0x00104AF1: bytes([0x69, af[0], af[1], 0x6A]),
+        0x00104B12: bytes([0x61, 0x5A, 0x62, 0x63, 0x5A, 0x64, 0x65, 0x66, 0x67, 0x68, 0x5A, b1d, b1e]),
+        0x001088EF: bytes([0x11, 0x22, 0x33, t]),
+        0x00104A88: d1c_dw(*marks), 0x00104A98: d1c_dw(*marks), 0x00104AA8: le32(0x5A5A5A5A),
+        0x00104ADC: le32(adc), 0x0010885E: le16(0x0055) + le16(0x0010) + le16(0x0020) + le16(0x0030),
+        0x00104AD4: le32(0x5A5A5A5A)})
+    return p
+
+
+def d2c_caption_case(r, b16=0x5A, c=(3, 5), f63=(0, 0), t=1):
+    """0x28130: the result dword 0x104AD4, the winner byte 0x104B16, the two characters (+0x7A:
+    0x10782A/0x1078BE) and the two +0x63 bytes (0x107813/0x1078A7) between neighbours, the dword
+    0x1088EF (its top byte `t`) and the string buffer."""
+    return {0x00104AD4: le32(r), 0x00104B15: bytes([0x61, b16, 0x62]),
+            0x00107829: bytes([0x63, c[0], 0x64]), 0x001078BD: bytes([0x65, c[1], 0x66]),
+            0x00107812: bytes([0x67, f63[0], 0x68]), 0x001078A6: bytes([0x69, f63[1], 0x6A]),
+            0x001088EF: bytes([0x11, 0x22, 0x33, t]), 0x00102760: b"\x5a" * 0x10}
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -13596,6 +13627,67 @@ D2C_SPECS = [
     ], allow_calls=(0x1C500,), calls=(D1C_STR, D1G_TXT198, D2C_NUMSET), eax_mask=0,
        mutants=("@b1f", "@b110", "@c04", "@id", "@row", "@mode", "@col", "@nrow", "@val", "@width",
                 "@pad", "@nmode", "@b00", "@b00w", "@order", "@late")),
+    # 0x27C48 flow_round_winner: no argument. 0x104B13 = 1, 0x104B1C = 0xFF; the two +0x5A bytes
+    # A and B compared unsigned: the lower side wins (its +0x5B = 0x78 - A when its +0x41 has bit
+    # 3, for either side; 0x104B16 = the side, its round-win byte and its +0x7F incremented), a
+    # tie stores 0x104B16 = 2 only. For a winner, unless 0x104B1D is 3 or 2: with its +0x5A zero
+    # 0x25FDC(side), then 0x104B1C = the side when the signed top byte of the dword 0x1088EF is
+    # at least 0x32; else with that byte at least 0x32, 0x2604C(side). Then 0x256F4 and 0x27BA4.
+    # The four callees run real on both sides (each has its own d1c row) over their stubbed
+    # 0x2AE14 and 0x41310, which are recorded: the round-win increment comes before 0x256F4
+    # reads it. Mask 0: five call sites (0x27FCD, 0x299AB `xor eax,eax`; 0x280C4, 0x280DC and
+    # 0x299DF traced, record §1).
+    Spec("flow_round_winner", 0x27C48, [
+        Case("w0", {}, d2c_win_case(0, 5, f41=(0x08, 0), b1d=1), {0x2AE14: 0x0010C200}),
+        Case("w1", {}, d2c_win_case(3, 0x80, f41=(0xF7, 0x08), af=(1, 2)), {0x2AE14: 0x0010C201}),
+        Case("w2", {}, d2c_win_case(3, 4, t=0x31, f41=(0xFF, 0xFF)), {0x2AE14: 0x0010C202}),
+        Case("w3", {}, d2c_win_case(0, 1, t=0x31), {0x2AE14: 0x0010C203}),
+        Case("w4", {}, d2c_win_case(0, 1, b1d=3, t=0x7F), {0x2AE14: 0x0010C204}),
+        Case("w5", {}, d2c_win_case(2, 9, b1d=2, t=0x7F), {0x2AE14: 0x0010C205}),
+        Case("w6", {}, d2c_win_case(5, 0, f41=(0, 0x08), b1d=0x83, t=0x7F, af=(1, 0)), {0x2AE14: 0x0010C206}),
+        Case("w7", {}, d2c_win_case(0xFF, 1, f41=(0x08, 0xF7)), {0x2AE14: 0x0010C207}),
+        Case("w8", {}, d2c_win_case(9, 0, t=0x80, f41=(0xFF, 0xFF)), {0x2AE14: 0x0010C208}),
+        Case("w9", {}, d2c_win_case(9, 0, b1d=3, t=0x7F), {0x2AE14: 0x0010C209}),
+        Case("w10", {}, d2c_win_case(9, 2, b1d=2, t=0x7F), {0x2AE14: 0x0010C20A}),
+        Case("w11", {}, d2c_win_case(7, 7, f41=(0x08, 0x08), t=0x7F), {0x2AE14: 0x0010C20B}),
+        Case("w12", {}, d2c_win_case(9, 2, f41=(0, 0x08), t=0x31), {0x2AE14: 0x0010C20C}),
+        Case("w13", {}, d2c_win_case(0, 0, t=0x7F), {0x2AE14: 0x0010C20D}),
+        Case("w14", {}, d2c_win_case(4, 0x90, t=0xFF), {0x2AE14: 0x0010C20E}),
+    ], allow_calls=(0x25FDC, 0x2604C, 0x256F4, 0x27BA4), calls=(SPAWN, P7_41310), eax_mask=0,
+       mutants=("@b13", "@b1c", "@signed", "@al78", "@bit", "@f41side", "@b5b", "@b16", "@af",
+                "@s7f", "@inc2", "@b1d3", "@b1d2", "@zero", "@thr", "@tsign", "@toff", "@b1cw",
+                "@b1cv", "@bonusb", "@side", "@tie", "@nomark", "@nores", "@order", "@early")),
+    # 0x28130 flow_match_result_text: no argument. On the dword 0x104AD4: -1 -> on the byte
+    # 0x104B16 the string 0xA89C4[slot 0's or slot 1's character] or 0x43 (above 2 none) at col
+    # -1, row 8, mode 0x4000 through 0x2F510, then the 0x24 voice; 0 or 1 -> the voice when the
+    # signed top byte of the dword 0x1088EF is below 1 or the side's +0x63 is non-zero, then
+    # 0xA89E0[c] at row 8 and 0xA89FC[c] at row 0xB; 2 -> string 0x42 and the voice; else
+    # nothing. 0x1C500 runs real over the stubbed 0x474E4 (whose recorded id is the string's);
+    # 0x2F510 and 0x2C3FC are stubs. 0x2815E `jne 0x282c0` is never taken (EDX is 0 there); its
+    # target is also the fall-through of 0x282BB. Mask 0: four call sites (0x275B4 `movsx
+    # eax,al` after 0x275A3; 0x28599, 0x288C7 and 0x297C9 traced, record §1).
+    Spec("flow_match_result_text", 0x28130, [
+        Case("m0", {}, d2c_caption_case(0xFFFFFFFF, b16=0)),
+        Case("m1", {}, d2c_caption_case(0xFFFFFFFF, b16=1, c=(0, 6))),
+        Case("m2", {}, d2c_caption_case(0xFFFFFFFF, b16=2)),
+        Case("m3", {}, d2c_caption_case(0xFFFFFFFF, b16=3)),
+        Case("m4", {}, d2c_caption_case(0xFFFFFFFF, b16=0xFF)),
+        Case("z0", {}, d2c_caption_case(0, c=(2, 4), f63=(0, 1), t=1)),
+        Case("z1", {}, d2c_caption_case(0, c=(2, 4), t=0)),
+        Case("z2", {}, d2c_caption_case(0, c=(6, 0), f63=(0x80, 0), t=0x7F)),
+        Case("z3", {}, d2c_caption_case(0, c=(1, 4), t=0x80)),
+        Case("o0", {}, d2c_caption_case(1, c=(2, 4), f63=(1, 0), t=1)),
+        Case("o1", {}, d2c_caption_case(1, c=(2, 0), t=0)),
+        Case("o2", {}, d2c_caption_case(1, c=(0, 5), f63=(0, 1), t=2)),
+        Case("o3", {}, d2c_caption_case(1, c=(1, 6), t=0xFF)),
+        Case("t0", {}, d2c_caption_case(2)),
+        Case("t1", {}, d2c_caption_case(3, b16=0)),
+        Case("t2", {}, d2c_caption_case(0x80000000, b16=1)),
+        Case("t3", {}, d2c_caption_case(0xFFFFFFFE, b16=2)),
+    ], allow_calls=(0x1C500,), calls=(D1C_STR, D2C_HOLD2, VOICE), eax_mask=0,
+       mutants=("@b16", "@t9c4", "@id43", "@row", "@novoice", "@voiceid", "@above", "@tsign", "@thr",
+                "@f63", "@f63side", "@cside", "@rows", "@tbl", "@mode", "@id42", "@r2voice", "@r3",
+                "@order", "@col")),
 ]
 D1_SPECS += D2C_SPECS
 

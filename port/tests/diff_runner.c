@@ -20247,6 +20247,105 @@ D2C_CO_MUT(b1f)  D2C_CO_MUT(b110) D2C_CO_MUT(c04)   D2C_CO_MUT(id)  D2C_CO_MUT(r
 D2C_CO_MUT(col)  D2C_CO_MUT(nrow) D2C_CO_MUT(val)   D2C_CO_MUT(width) D2C_CO_MUT(pad) D2C_CO_MUT(nmode)
 D2C_CO_MUT(b00)  D2C_CO_MUT(b00w) D2C_CO_MUT(order) D2C_CO_MUT(late)
 
+
+/* 0x27C48: no argument. */
+static void b_d2c_27c48(const u32 *r, u32 *eax) { (void)r; flow_round_winner(); *eax = 0u; }
+enum { D2C_RW_NONE, D2C_RW_b13, D2C_RW_b1c, D2C_RW_signed, D2C_RW_al78, D2C_RW_bit, D2C_RW_f41side,
+       D2C_RW_b5b, D2C_RW_b16, D2C_RW_af, D2C_RW_s7f, D2C_RW_inc2, D2C_RW_b1d3, D2C_RW_b1d2,
+       D2C_RW_zero, D2C_RW_thr, D2C_RW_tsign, D2C_RW_toff, D2C_RW_b1cw, D2C_RW_b1cv, D2C_RW_bonusb,
+       D2C_RW_side, D2C_RW_tie, D2C_RW_nomark, D2C_RW_nores, D2C_RW_order, D2C_RW_early };
+#define D2C_RW(x) (mut == D2C_RW_##x)
+static int d2c_27c48_thr(u32 mut)
+{
+    if (D2C_RW(tsign)) return (DSD(0x001088EFu) >> 24) >= 0x32u;
+    if (D2C_RW(toff)) return (s32)(s8)DSB(0x001088EFu) >= 0x32;
+    return ((s32)DSD(0x001088EFu) >> 24) >= (D2C_RW(thr) ? 0x33 : 0x32);
+}
+static void d2c_27c48_core(u32 mut)
+{
+    u32 w;
+    if (!D2C_RW(b13)) DSB(0x00104B13u) = 1u;
+    if (!D2C_RW(b1c)) DSB(0x00104B1Cu) = 0xFFu;
+    u8 a = DSB(0x0010780Au), b = DSB(0x0010789Eu);
+    if (D2C_RW(early)) flow_win_markers_spawn();
+    if (D2C_RW(signed) ? (s8)a < (s8)b : a < b) w = 0u;
+    else if (D2C_RW(signed) ? (s8)b < (s8)a : b < a) w = 1u;
+    else w = D2C_RW(tie) ? 1u : 2u;
+    if (w == 2u) {
+        DSB(0x00104B16u) = 2u;
+    } else {
+        u32 slot = 0x001077B0u + w * 0x94u, fs = 0x001077B0u + (D2C_RW(f41side) ? 1u - w : w) * 0x94u;
+        u8 al = (u8)(0x78u - ((D2C_RW(al78) && w == 1u) ? b : a));
+        if ((DSB(fs + 0x41u) & (D2C_RW(bit) ? 0x10u : 8u)) != 0u && !D2C_RW(b5b)) DSB(slot + 0x5Bu) = al;
+        DSB(0x00104B16u) = (u8)(D2C_RW(b16) ? 1u - w : w);
+        u32 cnt = 0x00104AF2u + (D2C_RW(af) ? 1u - w : w);
+        DSB(cnt) = (u8)(DSB(cnt) + (D2C_RW(inc2) ? 2u : 1u));
+        if (!D2C_RW(s7f)) DSB(slot + 0x7Fu) = (u8)(DSB(slot + 0x7Fu) + 1u);
+        u8 d = DSB(0x00104B1Du);
+        if ((d != 3u || D2C_RW(b1d3)) && (d != 2u || D2C_RW(b1d2))) {
+            u32 bs = D2C_RW(side) ? 1u - w : w;
+            if (DSB(0x0010780Au + (D2C_RW(zero) ? 1u - w : w) * 0x94u) == 0u) {
+                flow_round_bonus_a(bs);
+                if (d2c_27c48_thr(mut) && !D2C_RW(b1cw)) DSB(0x00104B1Cu) = (u8)(D2C_RW(b1cv) ? 1u - w : w);
+            } else if (d2c_27c48_thr(mut)) {
+                if (D2C_RW(bonusb)) flow_round_bonus_a(bs);
+                else flow_round_bonus_b(bs);
+            }
+        }
+    }
+    if (D2C_RW(order)) flow_match_result_set();
+    if (!D2C_RW(nomark) && !D2C_RW(early)) flow_win_markers_spawn();
+    if (!D2C_RW(nores) && !D2C_RW(order)) flow_match_result_set();
+}
+#define D2C_RW_MUT(name) \
+    static void m_d2c_rw_##name(const u32 *r, u32 *eax) { (void)r; d2c_27c48_core(D2C_RW_##name); *eax = 0u; }
+D2C_RW_MUT(b13)  D2C_RW_MUT(b1c)  D2C_RW_MUT(signed) D2C_RW_MUT(al78) D2C_RW_MUT(bit)   D2C_RW_MUT(f41side)
+D2C_RW_MUT(b5b)  D2C_RW_MUT(b16)  D2C_RW_MUT(af)     D2C_RW_MUT(s7f)  D2C_RW_MUT(inc2)  D2C_RW_MUT(b1d3)
+D2C_RW_MUT(b1d2) D2C_RW_MUT(zero) D2C_RW_MUT(thr)    D2C_RW_MUT(tsign) D2C_RW_MUT(toff) D2C_RW_MUT(b1cw)
+D2C_RW_MUT(b1cv) D2C_RW_MUT(bonusb) D2C_RW_MUT(side) D2C_RW_MUT(tie)  D2C_RW_MUT(nomark) D2C_RW_MUT(nores)
+D2C_RW_MUT(order) D2C_RW_MUT(early)
+
+/* 0x28130: no argument. */
+static void b_d2c_28130(const u32 *r, u32 *eax) { (void)r; flow_match_result_text(); *eax = 0u; }
+enum { D2C_RT_NONE, D2C_RT_b16, D2C_RT_t9c4, D2C_RT_id43, D2C_RT_row, D2C_RT_novoice, D2C_RT_voiceid,
+       D2C_RT_above, D2C_RT_tsign, D2C_RT_thr, D2C_RT_f63, D2C_RT_f63side, D2C_RT_cside, D2C_RT_rows,
+       D2C_RT_tbl, D2C_RT_mode, D2C_RT_id42, D2C_RT_r2voice, D2C_RT_r3, D2C_RT_order, D2C_RT_col };
+#define D2C_RT(x) (mut == D2C_RT_##x)
+static void d2c_28130_core(u32 mut)
+{
+    u32 r = DSD(0x00104AD4u), mode = D2C_RT(mode) ? 0x1000u : 0x4000u, voice = D2C_RT(voiceid) ? 0x25u : 0x24u;
+    s32 col = D2C_RT(col) ? 0 : -1;
+    if (r == 0xFFFFFFFFu) {
+        u32 b = DSB(0x00104B16u), id = 0xFFFFFFFFu, tbl = D2C_RT(t9c4) ? 0x000A89E0u : 0x000A89C4u;
+        if (b == 0u) id = DSD(tbl + (u32)DSB(D2C_RT(b16) ? 0x001078BEu : 0x0010782Au) * 4u);
+        else if (b == 1u) id = DSD(tbl + (u32)DSB(D2C_RT(b16) ? 0x0010782Au : 0x001078BEu) * 4u);
+        else if (b == 2u || D2C_RT(above)) id = D2C_RT(id43) ? 0x42u : 0x43u;
+        if (id != 0xFFFFFFFFu) text_cursor_hold_font2(col, D2C_RT(row) ? 0xB : 8, game_string_get(id), mode);
+        if (!D2C_RT(novoice)) (void)sound_voice(voice);
+        return;
+    }
+    if (r <= 1u) {
+        u32 c = DSB(0x0010782Au + (D2C_RT(cside) ? 1u - r : r) * 0x94u);
+        int low = D2C_RT(tsign) ? (DSB(0x001088F2u) < 1u) : ((s8)DSB(0x001088F2u) < (D2C_RT(thr) ? 2 : 1));
+        int say = low || (DSB(0x00107813u + (D2C_RT(f63side) ? 1u - r : r) * 0x94u) != 0u && !D2C_RT(f63));
+        u32 t1 = D2C_RT(tbl) ? 0x000A89FCu : 0x000A89E0u, t2 = D2C_RT(tbl) ? 0x000A89E0u : 0x000A89FCu;
+        if (say && !D2C_RT(order)) (void)sound_voice(voice);
+        text_cursor_hold_font2(col, D2C_RT(rows) ? 0xB : 8, game_string_get(DSD(t1 + c * 4u)), mode);
+        text_cursor_hold_font2(col, D2C_RT(rows) ? 8 : 0xB, game_string_get(DSD(t2 + c * 4u)), mode);
+        if (say && D2C_RT(order)) (void)sound_voice(voice);
+        return;
+    }
+    if (r == 2u || (D2C_RT(r3) && r == 3u)) {
+        text_cursor_hold_font2(col, 8, game_string_get(D2C_RT(id42) ? 0x43u : 0x42u), mode);
+        if (!D2C_RT(r2voice)) (void)sound_voice(voice);
+    }
+}
+#define D2C_RT_MUT(name) \
+    static void m_d2c_rt_##name(const u32 *r, u32 *eax) { (void)r; d2c_28130_core(D2C_RT_##name); *eax = 0u; }
+D2C_RT_MUT(b16)   D2C_RT_MUT(t9c4)  D2C_RT_MUT(id43) D2C_RT_MUT(row)     D2C_RT_MUT(novoice) D2C_RT_MUT(voiceid)
+D2C_RT_MUT(above) D2C_RT_MUT(tsign) D2C_RT_MUT(thr)  D2C_RT_MUT(f63)     D2C_RT_MUT(f63side) D2C_RT_MUT(cside)
+D2C_RT_MUT(rows)  D2C_RT_MUT(tbl)   D2C_RT_MUT(mode) D2C_RT_MUT(id42)    D2C_RT_MUT(r2voice) D2C_RT_MUT(r3)
+D2C_RT_MUT(order) D2C_RT_MUT(col)
 /* ---- end of track D2 batch d2c bindings ---- */
 
 static const binding_t k_bindings[] = {
@@ -24307,6 +24406,54 @@ static const binding_t k_bindings[] = {
     { "flow_continue_open@b00w", m_d2c_co_b00w, 0x00000000u },
     { "flow_continue_open@order", m_d2c_co_order, 0x00000000u },
     { "flow_continue_open@late", m_d2c_co_late, 0x00000000u },
+    { "flow_round_winner", b_d2c_27c48, 0x00000000u },
+    { "flow_round_winner@b13", m_d2c_rw_b13, 0x00000000u },
+    { "flow_round_winner@b1c", m_d2c_rw_b1c, 0x00000000u },
+    { "flow_round_winner@signed", m_d2c_rw_signed, 0x00000000u },
+    { "flow_round_winner@al78", m_d2c_rw_al78, 0x00000000u },
+    { "flow_round_winner@bit", m_d2c_rw_bit, 0x00000000u },
+    { "flow_round_winner@f41side", m_d2c_rw_f41side, 0x00000000u },
+    { "flow_round_winner@b5b", m_d2c_rw_b5b, 0x00000000u },
+    { "flow_round_winner@b16", m_d2c_rw_b16, 0x00000000u },
+    { "flow_round_winner@af", m_d2c_rw_af, 0x00000000u },
+    { "flow_round_winner@s7f", m_d2c_rw_s7f, 0x00000000u },
+    { "flow_round_winner@inc2", m_d2c_rw_inc2, 0x00000000u },
+    { "flow_round_winner@b1d3", m_d2c_rw_b1d3, 0x00000000u },
+    { "flow_round_winner@b1d2", m_d2c_rw_b1d2, 0x00000000u },
+    { "flow_round_winner@zero", m_d2c_rw_zero, 0x00000000u },
+    { "flow_round_winner@thr", m_d2c_rw_thr, 0x00000000u },
+    { "flow_round_winner@tsign", m_d2c_rw_tsign, 0x00000000u },
+    { "flow_round_winner@toff", m_d2c_rw_toff, 0x00000000u },
+    { "flow_round_winner@b1cw", m_d2c_rw_b1cw, 0x00000000u },
+    { "flow_round_winner@b1cv", m_d2c_rw_b1cv, 0x00000000u },
+    { "flow_round_winner@bonusb", m_d2c_rw_bonusb, 0x00000000u },
+    { "flow_round_winner@side", m_d2c_rw_side, 0x00000000u },
+    { "flow_round_winner@tie", m_d2c_rw_tie, 0x00000000u },
+    { "flow_round_winner@nomark", m_d2c_rw_nomark, 0x00000000u },
+    { "flow_round_winner@nores", m_d2c_rw_nores, 0x00000000u },
+    { "flow_round_winner@order", m_d2c_rw_order, 0x00000000u },
+    { "flow_round_winner@early", m_d2c_rw_early, 0x00000000u },
+    { "flow_match_result_text", b_d2c_28130, 0x00000000u },
+    { "flow_match_result_text@b16", m_d2c_rt_b16, 0x00000000u },
+    { "flow_match_result_text@t9c4", m_d2c_rt_t9c4, 0x00000000u },
+    { "flow_match_result_text@id43", m_d2c_rt_id43, 0x00000000u },
+    { "flow_match_result_text@row", m_d2c_rt_row, 0x00000000u },
+    { "flow_match_result_text@novoice", m_d2c_rt_novoice, 0x00000000u },
+    { "flow_match_result_text@voiceid", m_d2c_rt_voiceid, 0x00000000u },
+    { "flow_match_result_text@above", m_d2c_rt_above, 0x00000000u },
+    { "flow_match_result_text@tsign", m_d2c_rt_tsign, 0x00000000u },
+    { "flow_match_result_text@thr", m_d2c_rt_thr, 0x00000000u },
+    { "flow_match_result_text@f63", m_d2c_rt_f63, 0x00000000u },
+    { "flow_match_result_text@f63side", m_d2c_rt_f63side, 0x00000000u },
+    { "flow_match_result_text@cside", m_d2c_rt_cside, 0x00000000u },
+    { "flow_match_result_text@rows", m_d2c_rt_rows, 0x00000000u },
+    { "flow_match_result_text@tbl", m_d2c_rt_tbl, 0x00000000u },
+    { "flow_match_result_text@mode", m_d2c_rt_mode, 0x00000000u },
+    { "flow_match_result_text@id42", m_d2c_rt_id42, 0x00000000u },
+    { "flow_match_result_text@r2voice", m_d2c_rt_r2voice, 0x00000000u },
+    { "flow_match_result_text@r3", m_d2c_rt_r3, 0x00000000u },
+    { "flow_match_result_text@order", m_d2c_rt_order, 0x00000000u },
+    { "flow_match_result_text@col", m_d2c_rt_col, 0x00000000u },
     /* ---- end of track D2 batch d2c entries ---- */
 };
 
