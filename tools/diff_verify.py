@@ -13470,6 +13470,26 @@ def d2c_streak_case(r, stage=3, f63=(0, 0), ch=(3, 5), b11=0x5A, v=(2, 4), t=(0x
     return p
 
 
+def d2c_blink_case(phase, b529=0, s0=0, s1=0, c06=0x12, c07=0x0C, cols=(0x03, 0x18)):
+    """0x2C0F4/0x2C2B0: the phase word 0xEF6DC (and the word after it), the two col bytes
+    0xBAB58 with the byte below them, and 0x2C088's state (d1c_prompt_case: the option byte, the
+    two prompt sprites, the length dword 0x105BF8 = 0x5A5A5A5A, 0x105C06/07, the string buffer)."""
+    p = d1c_prompt_case(b529, s0=s0, s1=s1, c06=c06, c07=c07)
+    p.update({0x000EF6DC: le16(phase) + le16(0x7777), 0x000BAB57: bytes([0x71, cols[0], cols[1]])})
+    return p
+
+
+D2C_RELCNT = E.Call(0x2F388, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+
+
+def d2c_coin_case(phase, cols, mid=b"1\x00", bf8=0x5A5A5A5A):
+    """0x2C1C8: 0x2C1D4's state (d1c_coin_case) and the two col bytes 0xBAB58 with the byte
+    below them."""
+    p = d1c_coin_case(phase, mid=mid, bf8=bf8)
+    p[0x000BAB57] = bytes([0x71, cols[0], cols[1]])
+    return p
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -13733,6 +13753,63 @@ D2C_SPECS = [
        mutants=("@draw", "@stagew", "@f63", "@inc", "@incorder", "@arg", "@zero2", "@b11z", "@s80",
                 "@s80side", "@flag80", "@flag6", "@flagch", "@spur", "@lf63", "@lside", "@delta",
                 "@nocall")),
+    # 0x2C0F4 prompt_press_start_blink: EAX = col, EDX = row, EBX = side, ECX = sprite. On the
+    # phase word 0xEF6DC & 0x1F: 0 -> with a non-zero ECX (all of it, `test eax,eax`) the spawn
+    # 0xBAB60 at (col, 0xFF, row, a5 = the phase = 0) into 0x105BF0[side], else string 0x48
+    # through 0x2F198 at col/row, mode 0x1000; either way 0x105BF8 = strlen(string 0x48). 0x18 ->
+    # 0x2C088(col, row, side). 0x1C500 and 0x2C088 run real on both sides over the stubbed
+    # 0x474E4 (which writes a seven-character string), 0x2B150 and 0x2F280. Mask 0: both call
+    # sites traced (0x27B7C; 0x2C1A4 through 0x2C178's callers), record §1.
+    Spec("prompt_press_start_blink", 0x2C0F4, [
+        Case("b0", {"eax": 5, "edx": 9, "ebx": 0, "ecx": 1}, d2c_blink_case(0xFFE0),
+             {0x2AE14: 0x0010C300}),
+        Case("b1", {"eax": 0xFFFFFFF0, "edx": 0x3A00, "ebx": 1, "ecx": 0x100}, d2c_blink_case(0x0100),
+             {0x2AE14: 0x0010C301}),
+        Case("b2", {"eax": 0xFFFFFFFF, "edx": 0x1D, "ebx": 1, "ecx": 0}, d2c_blink_case(0x0040)),
+        Case("b3", {"eax": 7, "edx": 0x0B, "ebx": 1, "ecx": 0}, d2c_blink_case(0xFF18)),
+        Case("b4", {"eax": 7, "edx": 0x0B, "ebx": 0, "ecx": 1},
+             d2c_blink_case(0x0018, b529=0x02, s0=0x0010A300, c06=0x92, c07=0x8C)),
+        Case("b5", {"eax": 7, "edx": 0x0B, "ebx": 0, "ecx": 1}, d2c_blink_case(0x0005)),
+        Case("b6", {"eax": 9, "edx": 0x1D, "ebx": 1, "ecx": 0},
+             d2c_blink_case(0x0038, b529=0xFF, s0=0x0010A300, s1=0x0010A340)),
+        Case("b7", {"eax": 9, "edx": 0x1D, "ebx": 1, "ecx": 1}, d2c_blink_case(0x0010)),
+    ], allow_calls=(0x1C500, 0x2C088), calls=(SPAWN, D1C_STR, D1G_TXT198, D2C_DEAD, D1C_RELEASE),
+       eax_mask=0,
+       mutants=("@phase", "@p18", "@sprite", "@desc", "@a2a4", "@a3", "@a5", "@slot", "@nostore",
+                "@id", "@mode", "@len", "@nolen", "@lenid", "@clrargs", "@clrside")),
+    # 0x2C1C8 prompt_insert_coin: EAX = side, EDX = row. `mov al,[eax+0xbab58]; and eax,0xff;
+    # nop`, then it falls through into 0x2C1D4, whose body this row runs whole (its fourteen
+    # blocks, as the d1c row of 0x2C1D4 does: the two drawing cases build 15 and 19 characters
+    # for the same reason, d1c record §4.4). The col byte is zero-extended. Mask 0: five call
+    # sites (0x28D50 `xor eax,eax`; 0x42644, 0x426A4, 0x4270A and 0x432E0 traced, record §1).
+    Spec("prompt_insert_coin", 0x2C1C8, [
+        Case("i0", {"eax": 0, "edx": 0x0C}, d2c_coin_case(0xFFE0, (0x0E, 0x92))),
+        Case("i1", {"eax": 1, "edx": 0x9ABCDEF0}, d2c_coin_case(0x0100, (0x0E, 0x92), mid=b"7abcd\x00")),
+        Case("i2", {"eax": 1, "edx": 0x0C}, d2c_coin_case(0x0038, (0x0E, 0x92))),
+        Case("i3", {"eax": 0, "edx": 0x0C}, d2c_coin_case(0x0005, (0x0E, 0x92))),
+        Case("i4", {"eax": 0, "edx": 3}, d2c_coin_case(0xFF18, (0x85, 0x18), bf8=0x21)),
+    ], allow_calls=(0x1C500,),
+       calls=(D1C_STR,
+              E.Call(0x2F198, ("eax", "edx", "[ebx]", "[ebx+4]", "[ebx+8]", "[ebx+12]", "ecx"),
+                     mode="stub", clobbers=("ebx", "ecx", "edx")),
+              D2C_RELCNT), eax_mask=0,
+       mutants=("@side", "@sext", "@col", "@word", "@row")),
+    # 0x2C2B0 prompt_side_erase: EAX = side, EDX = row. With 0x104529 bit 1: 0x2C088(the col
+    # byte 0xBAB58[side], row, side) (real, over its stubbed callees), then 0x2F388 releases
+    # 0x105BF8 cells at the bytes 0x105C06/0x105C07 (zero-extended); then, either way, 0x2F388
+    # releases 0x105BF8 cells at the col byte and row. e3 passes side -1, which the bytes take
+    # whole (the byte below the col table, the dword below the sprite pair). Mask 0: seven call
+    # sites, each followed by a load of EAX (0x26DC9, 0x26DDB, 0x275D6/0x275E2, 0x27E5C, 0x4651C,
+    # 0x28D0E, 0x4309C; record §1).
+    Spec("prompt_side_erase", 0x2C2B0, [
+        Case("e0", {"eax": 0, "edx": 0x1D}, d2c_blink_case(0, b529=0xFD, s0=0x0010A300)),
+        Case("e1", {"eax": 1, "edx": 0x1D},
+             d2c_blink_case(0, b529=0x02, s1=0x0010A340, c06=0x92, c07=0x8C, cols=(0x03, 0x98))),
+        Case("e2", {"eax": 0, "edx": 0xFFFFFFFF}, d2c_blink_case(0, b529=0xFF, cols=(0x85, 0x18))),
+        Case("e3", {"eax": 0xFFFFFFFF, "edx": 5}, d2c_blink_case(0, b529=0x02, s0=0x0010A300)),
+    ], allow_calls=(0x1C500, 0x2C088), calls=(D1C_STR, D2C_DEAD, D1C_RELEASE, D2C_RELCNT), eax_mask=0,
+       mutants=("@bit", "@noclear", "@clrside", "@norel1", "@swap", "@sext", "@cnt", "@col2", "@row2",
+                "@order", "@one", "@colsext")),
 ]
 D1_SPECS += D2C_SPECS
 
