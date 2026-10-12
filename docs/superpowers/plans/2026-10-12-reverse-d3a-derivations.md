@@ -17,6 +17,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x27DC8` | `flow_match_end` | 224 | 0: neither call site in `0x27FA8` reads EAX before its `ret` (`0x28012..0x2803A`/`0x28048`; `0x280E8..0x2812F`, where `0x280F3 lea eax` is the only use); `0x27FA8`'s sites `0x263AF` and `0x2669B` write AH or nothing up to their `ret` (`0x263B4 mov ah,[0x104aec]`; `0x4E11C` on one path writes AH at `0x4E121` and AL at `0x4E19D` before any read; `0x266A0..0x266AA`); then `0x25247`/`0x2529B` `jmp 0x2540f` (the mode tail) or `0x2528C call 0x28c38`, whose first EAX use is `mov eax,edx` (`0x28C4D`) |
 | `0x29970` | `flow_round_over_check` | 119 | 0: the one caller `0x29B54` goes on with `or byte [0x104aec],2` (`0x29B59`), three pops and `ret` into `0x251AD` `jmp 0x2540f` (the mode tail) |
 | `0x2C178` | `prompt_press_start` | 53 | 0: it returns `0x2C0F4`'s EAX untouched (`pop esi; pop ecx; pop ebx; ret` after the call at `0x2C1A4`), which the d2c record (§1, `0x2C0F4`) traces dead through this function's nine call sites. Seen here: `0x28D40 jmp 0x28d60` (`xor eax,eax`); the three loops at `0x42606`/`0x42665`/`0x426BE` rewrite EAX at their tops (`lea eax,[ecx+1]`, `xor eax,eax`); their exit `0x4271B` and `0x432C3`/`0x432D3` return it upward (not re-traced here) |
+| `0x41760` | `frontend_mode12_challenge_continue` | 98 | 0: the one caller `0x4213B` (`0x41C28` state 5) goes on with `add esp,8` (`0x42140`), six pops and `ret`: the mode step's own return, whose EAX the d2e rows hold dead (mask 0, d2e §1) |
 
 ## §2 The row table (measured)
 
@@ -32,6 +33,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `flow_round_over_check` | `0x29970` | 6 | 5/5 | 25 | 0 | `0x2C3FC` and `0x27C48` stubbed (the latter seamed here). `c0` takes both arms; `c2`/`c3` carry `0xFF` (`@sext0`, `@sext1`); the voice stub's EAX has AH set in `c0`, `c2`, `c3` (the raw stores AH after `xor ah,ah`) |
 | `flow_round_over_check_reread` | `0x29970` | 3 | 5/5 | 3 | 0 | the same entry with a `0x27C48` stub that stores `0x10` in `0x10789E`: side 1's byte is read at `0x299AD`, after side 0's call (`@pre`) |
 | `prompt_press_start` | `0x2C178` | 6 | 4/4 | 13 | 0 | `0x2C0F4` stubbed (seamed here). `k0`: x word `0x8123` (`@xzext`); `k2`: col byte `0x83` (`@colsext`); `k4`/`k5`: side 2 |
+| `frontend_mode12_challenge_continue` | `0x41760` | 4 | 1/1 | 20 | 0 | `0x4660C`, `0x25848`, `0x41350` stubbed with d2e's constants (the `0x25848` stub stores a new stage word: `@stagepre`). `h3`: a result of `0x100` (`@xorb`); `h0`: a col byte `0x83` (`@colsext`) |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -93,6 +95,11 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   executed on every arm but not observable, and the audit adds for characters 0..6 — the ordinary case —
   are not compared at all. `0x4F728` takes no argument, so the stage word loaded at `0x27E40` is not
   observable either.
+- `frontend_mode12_challenge_continue`, seen, not changed: the port keeps the dword `0x104AD4` it read at entry
+  for `0x41350`'s first argument, where the raw re-reads it at `0x41784` after `0x4660C` and `0x25848`.
+  Neither callee writes it: their direct-call trees (`0x4660C`, `0x25848`, `0x5D7DC`: three functions, no
+  indirect transfer) name `0x104AD4` only in two reads of `0x25848` (`0x2595D cmp`, `0x2598F mov ecx,`). No
+  stub of the row writes it, so the row does not separate the two.
 
 ## §5 Store-sweep findings
 
@@ -118,6 +125,8 @@ asserted the text. Unproven against the oracles until the integrator's gate.
 - `flow_round_over_check`: per arm the word `0x104B00 = 0x32` and the byte `0x104B09 = the side`, stored after
   the two voices and before `0x27C48` (`@early0/1`, `@late0/1` are caught only by the memory at a call). The
   `+0x5B` bytes next to the two tested bytes are above the threshold (`@off0`, `@off1`).
+- `frontend_mode12_challenge_continue`: four stores after `0x41350` (`@early`: `call #2 memory`), each seeded
+  between neighbours with a value and a width mutant.
 
 ## §6 Queue entries not done
 

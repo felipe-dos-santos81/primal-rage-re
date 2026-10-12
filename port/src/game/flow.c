@@ -574,7 +574,7 @@ static void frontend_mode12_darken_or_tally(void)
  * current stage's character), then arm the hook game_hook_259cc, mode 0x17
  * and a 0x78-frame (120) countdown. EBX/ECX/EDX pushed and popped. Only
  * caller: state 5's DS_00108104[r] != 7 arm, 0x4213B (0x41C28). */
-static void frontend_mode12_challenge_continue(void)
+void frontend_mode12_challenge_continue(void)
 {
     PR_SEAM0(0x41760u);
     u32 r = DSD(DS_00104AD4);                                /* 0x41763 */

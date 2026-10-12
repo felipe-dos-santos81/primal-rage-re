@@ -18507,6 +18507,39 @@ D3A_SPECS += [
        mutants=("@bit", "@xzext", "@xoff", "@xstride", "@xbyte", "@colsext", "@colstride", "@colword", "@spr0",
                 "@spr1", "@side", "@row", "@swap")),
 ]
+def d3a_chal_case(r, cols=(0x83, 0x07, 0x04), far=0x33):
+    """0x41760: the result dword 0x104AD4 between seeded dwords, the three bytes 0x108104.. (what
+    a result of 0, 1 or 2 indexes) between neighbours and the byte 0x108204 (a result of 0x100),
+    the stage word 0x104AFC (0x7777: the 0x25848 stub stores 0x0104) and the words 0x104AFE
+    (0x5B5B) and 0x104B00 (0x5C5C) between seeded words, the hook dword 0x104AE4 and the word
+    0x1088EE (0x5D5D) between theirs."""
+    return {0x00104AD0: le32(0x61616161) + le32(r) + le32(0x62626262),
+            0x00108103: bytes([0x63, cols[0], cols[1], cols[2], 0x64]),
+            0x00108203: bytes([0x65, far, 0x66]),
+            0x00104AFA: le16(0x6767) + le16(0x7777) + le16(0x5B5B) + le16(0x5C5C) + le16(0x6868),
+            0x00104AE0: le32(0x69696969) + le32(0x5E5E5E5E) + le32(0x6A6A6A6A),
+            0x001088EC: le16(0x6B6B) + le16(0x5D5D) + le16(0x6C6C)}
+
+
+D3A_SPECS += [
+    # 0x41760 frontend_mode12_challenge_continue: no argument. 0x4660C(the byte 0x108104[r]
+    # zero-extended, r = the dword 0x104AD4 as a 32-bit index), 0x25848, then 0x41350(r with bit 0
+    # of AL flipped, the stage word 0x104AFC zero-extended) with both operands read after 0x25848
+    # (0x41784/0x41789: the stub stores a new stage word); then the word 0x1088EE = 0 (BX across
+    # 0x41350), the hook dword 0x104AE4 = 0x259CC, the mode word 0x104B00 = 0x17 (CX across all
+    # three calls) and the word 0x104AFE = 0x78. The three callees are stubs (d2e's constants).
+    # The port caches r where the raw re-reads the dword at 0x41784: neither 0x4660C's nor
+    # 0x25848's tree writes it (record §4), and no stub here does. Mask 0: record §1.
+    Spec("frontend_mode12_challenge_continue", 0x41760, [
+        Case("h0", {"ebx": 0x11111111, "ecx": 0x22222222, "edx": 0x33333333}, d3a_chal_case(0)),
+        Case("h1", {}, d3a_chal_case(1), {0x4660C: 0x12345678, 0x25848: 0x9ABCDEF0, 0x41350: 0xFFFFFFFF}),
+        Case("h2", {}, d3a_chal_case(2)),
+        Case("h3", {}, d3a_chal_case(0x100)),
+    ], calls=(D2E_M12_TIMER, D2E_M12_PICK, D2E_M12_SELECT), eax_mask=0,
+       mutants=("@col", "@colw", "@colsext", "@nopick", "@order", "@stagepre", "@stagew", "@xor", "@xorb",
+                "@noselect", "@sel2", "@hook", "@hookw", "@ee", "@eew", "@b00", "@b00b", "@afe", "@afeb",
+                "@early")),
+]
 D1_SPECS += D3A_SPECS
 
 

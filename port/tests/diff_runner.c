@@ -26308,6 +26308,44 @@ static void d3a_2c178_core(const u32 *r, u32 mut)
 D3A_PS_MUT(bit) D3A_PS_MUT(xzext) D3A_PS_MUT(xoff) D3A_PS_MUT(xstride) D3A_PS_MUT(xbyte) D3A_PS_MUT(colsext)
 D3A_PS_MUT(colstride) D3A_PS_MUT(colword) D3A_PS_MUT(spr0) D3A_PS_MUT(spr1) D3A_PS_MUT(side) D3A_PS_MUT(row)
 D3A_PS_MUT(swap)
+/* 0x41760: no argument. Mask 0: the one caller 0x4213B goes on with `add esp,8` and six pops (0x42140..),
+ * the epilogue of 0x41C28, whose rows (d2e) hold the mode step's EAX dead. */
+static void b_d3a_41760(const u32 *r, u32 *eax) { (void)r; frontend_mode12_challenge_continue(); *eax = 0u; }
+enum { D3A_CC_NONE, D3A_CC_col, D3A_CC_colw, D3A_CC_colsext, D3A_CC_nopick, D3A_CC_order, D3A_CC_stagepre,
+       D3A_CC_stagew, D3A_CC_xor, D3A_CC_xorb, D3A_CC_noselect, D3A_CC_sel2, D3A_CC_hook, D3A_CC_hookw,
+       D3A_CC_ee, D3A_CC_eew, D3A_CC_b00, D3A_CC_b00b, D3A_CC_afe, D3A_CC_afeb, D3A_CC_early };
+static void d3a_41760_tail(u32 mut)
+{
+    if (mut == D3A_CC_eew) DSD(0x001088EEu) = 0u;
+    else if (mut != D3A_CC_ee) DSW(0x001088EEu) = 0u;
+    if (mut == D3A_CC_hookw) DSW(0x00104AE4u) = 0x59CCu;
+    else DSD(0x00104AE4u) = (mut == D3A_CC_hook) ? 0x00027134u : 0x000259CCu;
+    if (mut == D3A_CC_b00b) DSB(0x00104B00u) = 0x17u;
+    else DSW(0x00104B00u) = (mut == D3A_CC_b00) ? 0x18u : 0x17u;
+    if (mut == D3A_CC_afeb) DSB(0x00104AFEu) = 0x78u;
+    else DSW(0x00104AFEu) = (mut == D3A_CC_afe) ? 0x77u : 0x78u;
+}
+static void d3a_41760_core(u32 mut)
+{
+    u32 v = DSD(0x00104AD4u);
+    u32 a = 0x00108104u + ((mut == D3A_CC_col) ? (v ^ 1u) : v);
+    u32 pre = DSW(0x00104AFCu);
+    if (mut == D3A_CC_order) flow_stage_pick();
+    if (mut == D3A_CC_sel2) fight_char_select(v ^ 1u, pre);
+    flow_1082d0_from_column((mut == D3A_CC_colw) ? DSW(a) : (mut == D3A_CC_colsext) ? (u32)(s32)(s8)DSB(a) : DSB(a));
+    if (mut != D3A_CC_nopick && mut != D3A_CC_order) flow_stage_pick();
+    if (mut == D3A_CC_early) d3a_41760_tail(mut);
+    if (mut != D3A_CC_noselect && mut != D3A_CC_sel2)
+        fight_char_select((mut == D3A_CC_xor) ? v : (mut == D3A_CC_xorb) ? ((v ^ 1u) & 0xFFu) : (v ^ 1u),
+                          (mut == D3A_CC_stagepre) ? pre : (mut == D3A_CC_stagew) ? DSD(0x00104AFCu) : DSW(0x00104AFCu));
+    if (mut != D3A_CC_early) d3a_41760_tail(mut);
+}
+#define D3A_CC_MUT(name) \
+    static void m_d3a_cc_##name(const u32 *r, u32 *eax) { (void)r; d3a_41760_core(D3A_CC_##name); *eax = 0u; }
+D3A_CC_MUT(col) D3A_CC_MUT(colw) D3A_CC_MUT(colsext) D3A_CC_MUT(nopick) D3A_CC_MUT(order) D3A_CC_MUT(stagepre)
+D3A_CC_MUT(stagew) D3A_CC_MUT(xor) D3A_CC_MUT(xorb) D3A_CC_MUT(noselect) D3A_CC_MUT(sel2) D3A_CC_MUT(hook)
+D3A_CC_MUT(hookw) D3A_CC_MUT(ee) D3A_CC_MUT(eew) D3A_CC_MUT(b00) D3A_CC_MUT(b00b) D3A_CC_MUT(afe)
+D3A_CC_MUT(afeb) D3A_CC_MUT(early)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32846,6 +32884,27 @@ static const binding_t k_bindings[] = {
     { "prompt_press_start@side", m_d3a_ps_side, 0x00000000u },
     { "prompt_press_start@row", m_d3a_ps_row, 0x00000000u },
     { "prompt_press_start@swap", m_d3a_ps_swap, 0x00000000u },
+    { "frontend_mode12_challenge_continue", b_d3a_41760, 0x00000000u },
+    { "frontend_mode12_challenge_continue@col", m_d3a_cc_col, 0x00000000u },
+    { "frontend_mode12_challenge_continue@colw", m_d3a_cc_colw, 0x00000000u },
+    { "frontend_mode12_challenge_continue@colsext", m_d3a_cc_colsext, 0x00000000u },
+    { "frontend_mode12_challenge_continue@nopick", m_d3a_cc_nopick, 0x00000000u },
+    { "frontend_mode12_challenge_continue@order", m_d3a_cc_order, 0x00000000u },
+    { "frontend_mode12_challenge_continue@stagepre", m_d3a_cc_stagepre, 0x00000000u },
+    { "frontend_mode12_challenge_continue@stagew", m_d3a_cc_stagew, 0x00000000u },
+    { "frontend_mode12_challenge_continue@xor", m_d3a_cc_xor, 0x00000000u },
+    { "frontend_mode12_challenge_continue@xorb", m_d3a_cc_xorb, 0x00000000u },
+    { "frontend_mode12_challenge_continue@noselect", m_d3a_cc_noselect, 0x00000000u },
+    { "frontend_mode12_challenge_continue@sel2", m_d3a_cc_sel2, 0x00000000u },
+    { "frontend_mode12_challenge_continue@hook", m_d3a_cc_hook, 0x00000000u },
+    { "frontend_mode12_challenge_continue@hookw", m_d3a_cc_hookw, 0x00000000u },
+    { "frontend_mode12_challenge_continue@ee", m_d3a_cc_ee, 0x00000000u },
+    { "frontend_mode12_challenge_continue@eew", m_d3a_cc_eew, 0x00000000u },
+    { "frontend_mode12_challenge_continue@b00", m_d3a_cc_b00, 0x00000000u },
+    { "frontend_mode12_challenge_continue@b00b", m_d3a_cc_b00b, 0x00000000u },
+    { "frontend_mode12_challenge_continue@afe", m_d3a_cc_afe, 0x00000000u },
+    { "frontend_mode12_challenge_continue@afeb", m_d3a_cc_afeb, 0x00000000u },
+    { "frontend_mode12_challenge_continue@early", m_d3a_cc_early, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

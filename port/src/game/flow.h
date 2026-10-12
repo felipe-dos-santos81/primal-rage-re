@@ -828,6 +828,9 @@ void flow_26d4c(void);
 /* 0x271E0: the join screen's reset and hook arm (record §48-Z), declared for
  * the differential row's binding. */
 void flow_join_prompt_draw(void);
+/* 0x41760: mode 0x12 state 5's "challenger takes over" branch (record §48-Z),
+ * declared for the differential row's binding. */
+void frontend_mode12_challenge_continue(void);
 
 /* 0x26A50 — record §49-M. The mode 0x23 handler: a 4-state sub-machine on
  * DS_00104B25 that arms a round card, spawns it, draws the per-character
