@@ -719,6 +719,12 @@ _CALLEE_CLOBBER_FIXES[0x29D04] = ()
 # return. Its raw caller 0x46F4C loads EBP before the call (0x46F82..0x46FD9; call 0x46FE3) and reads
 # it after (0x47084, 0x470C4).
 _CALLEE_CLOBBER_FIXES[0x46C78] = ()
+# D3 d3d (record 2026-10-12-reverse-d3d section 4): 0x36870's own body pushes and pops EBX, ECX and
+# EDX and writes no other register; the scan inherits esi/edi/ebp from 0x379C4, whose indirect hook
+# call (`call [0x1078e8]` 0x379E8) makes it assume every register written. The raw caller 0x47B04
+# keeps EDI live across the call (set at 0x47B0B, read at 0x47BCE and 0x47BEF: `mov byte
+# [edi+0x57],3`), so 0x36870 preserves EDI; ESI and EBP stay in the set (no caller shown to read them).
+_CALLEE_CLOBBER_FIXES[0x36870] = ("esi", "ebp")
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --
