@@ -200,6 +200,7 @@ static void run_process_table(u32 table, u32 mask)
  * body instead of inlining the byte store. */
 void frontend_input_reset(void)
 {
+    PR_SEAM0(0x4F1E4u);
     DSB(DS_00104B15) = 0;                       /* 0x4F1F1 */
 }
 
@@ -219,6 +220,7 @@ void frontend_origin_zero(void)
  * DS_000BDDFC. */
 void title_origin_reset(u32 idx)
 {
+    PR_SEAM(0x38910u, idx);
     frontend_origin_zero();                     /* 0x3891A 0x4F1D0 */
     DSW(DS_00107A4A) = DSW(DS_00107A4E);        /* 0x38925 */
     DSW(DS_00107A4C) = DSW(DS_00107A4E);        /* 0x3892B */
@@ -342,6 +344,7 @@ static const u8 *title_string(void) { return game_string_get(0x15u); }
  * machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3)
 {
+    PR_SEAM(0x38B18u, (u32)((const u8 *)desc - mem), a2, a3);
     u32 slot = 0;
     while (slot < 7u && DSD(DS_00107A1C + slot * 4u) != 0) slot++;
     u32 at = slot < 7u ? DS_00107A1C + slot * 4u : DS_00107A1C - 4u;   /* 0x38B1F, 0x38B32 */
@@ -958,6 +961,7 @@ void game_mode_12_step(void)
  * DS_00104B00 = 0x1A (0x4F994, a word). EDX is pushed and popped. */
 void frontend_wipe_arm(u32 ret_mode)
 {
+    PR_SEAM(0x4F980u, ret_mode);
     DSB(DS_001088F5) = 0u;                              /* 0x4F983 */
     DSW(DS_00104AFA) = (u16)ret_mode;                   /* 0x4F98E */
     DSW(DS_00104B00) = 0x1Au;                           /* 0x4F994 */
@@ -1457,6 +1461,7 @@ void game_hook_270bc(void)
  * pushed and popped; EAX (DS_001082CC) is dead at 0x257FC. */
 void flow_1082c8_init(void)
 {
+    PR_SEAM0(0x46594u);
     if (DSB(DS_00108173) != 0u) {                       /* 0x46596/0x4659D */
         DSD(DS_001082C8) = 7u;                          /* 0x465A9 */
         DSD(DS_001082CC) = 4u;                          /* 0x465AF */
@@ -4328,7 +4333,7 @@ void game_mode_0f_step(void)
  * state 3 past the sixth; phase 3 hands off. The jump table at 0x11F58 fixes
  * the boundaries: 0 -> 0x11F89, 1 -> 0x11FDA, 2 -> 0x1211C, 3 -> 0x12159,
  * 4 -> 0x1217B, default (ja) -> 0x1219A. */
-static void game_state_select(void)
+void game_state_select(void)
 {
     /* 0x487BC is a link-time offset below the data object's base; the loader
      * fixes it to mem+0xC87BC. Config row 1, phase 0 and phase 1. */
@@ -4337,7 +4342,6 @@ static void game_state_select(void)
     switch (DSB(DS_000F0A6F)) {
     case 0:
     case 1: {
-        u32 n = DSB(DS_000F0A6E);
         if (DSB(DS_000F0A6F) == 0) {
             /* 0x29D60 is a ret-only no-op. */
             actors_reset();                         /* 0x2BAF4 (eax = 1) */
@@ -4347,11 +4351,11 @@ static void game_state_select(void)
             DSB(DS_000F0A6E) = 0;
             DSD(DS_000F0A44) = 0;
             if ((DSB(DS_00104528 + 1) & 2u) != 0u) DSD(DS_000F0A40) = 0;
-            n = 0;
         }
         actors_reset();                             /* 0x2BAF4 (eax = 1) */
         frontend_origin_zero();                     /* 0x4F1D0 */
         frontend_spawn_row(desc, 0u, 0u);           /* 0x38B18 */
+        u32 n = DSB(DS_000F0A6E);                   /* 0x11FFD */
         DSD(DS_000F0A44) = actor_spawn(             /* 0x2AE14 */
             (const u32 *)(mem + DSD(0x9AEE0u + 12u * n)),   /* 0x9AEE0 */
             0u, 0xE0u + n, 0x600u, 0u);
@@ -4361,12 +4365,15 @@ static void game_state_select(void)
                 effects_spawn_pulse(node, 1u);      /* 0x13E28 (edx = 1) */
         }
         if ((DSB(DS_00104528 + 1) & 2u) != 0u) {
+            n = DSB(DS_000F0A6E);                   /* 0x1206C */
             DSD(DS_000F0A40) = actor_spawn(         /* 0x2AE14 */
                 (const u32 *)(mem + DSD(0x9AEC8u + 4u * n)),   /* 0x9AEC8 */
                 0x2A00u, 0xFFu, 0x3400u, 0u);
         } else {
+            n = DSB(DS_000F0A6E);                   /* 0x12090 */
             text_cursor_set(-1, 0x18,               /* 0x1C500 + 0x2F198 */
                 game_string_get(DSD(0x9AEE4u + 12u * n)), 0x4003u);  /* 0x9AEE4 */
+            n = DSB(DS_000F0A6E);                   /* 0x120C3 */
             u32 id2 = DSD(0x9AEE8u + 12u * n);
             if (id2 != 0)
                 text_cursor_set(-1, 0x1b,           /* 0x1C500 + 0x2F198 */
@@ -4474,7 +4481,7 @@ void game_attract_dump_frame(void)
 }
 
 /* 0x121A0: the title state. Phase counter DS_000F0A6F. */
-static void game_state_title(void)
+void game_state_title(void)
 {
     if (DSB(DS_000F0A6F) == 0) {
         (void)sound_voice(0x41u);               /* 0x121C9/0x121CE 0x2C3FC: stop 0x40's loop */
@@ -4550,12 +4557,10 @@ static void game_state_title(void)
         }
         /* 0x12402: DS_00107A50 += (rec58+0x32 >> 16) / 2, and
          * 0x12429: rec58+0x2C = 0x40000 / DS_000F0A66. */
-        u32 logo = DSD(DS_000F0A58);
-        if (logo != 0) {
-            DSW(DS_00107A50) = (u16)(DSW(DS_00107A50) +
-                                     (u16)(((s32)DSD(logo + 0x32) >> 16) / 2));
-            DSW(logo + 0x2C) = (u16)(0x40000u / (u32)DSW(DS_000F0A66));
-        }
+        u32 logo = DSD(DS_000F0A58);                        /* 0x12402 (no null test) */
+        DSW(DS_00107A50) = (u16)(DSW(DS_00107A50) +
+                                 (u16)(((s32)DSD(logo + 0x32) >> 16) / 2));    /* 0x12408..0x12423 */
+        DSW(logo + 0x2C) = (u16)(0x40000u / (u32)DSW(DS_000F0A66));            /* 0x12429..0x1243E */
     } else if (DSB(DS_000F0A6F) == 2 && DSB(DS_0009AF3D) == 0) {
         DSB(DS_000F0A6F) = 0;       /* 0x12453 (0x1244E) */
         DSW(DS_000F0A64) = 2;       /* 0x12459 */
@@ -4572,6 +4577,7 @@ static void game_state_title(void)
  * resource. Called only from game_state_3 phase 0. */
 void game_state_3_handoff(void)
 {
+    PR_SEAM0(0x12658u);
     u32 first = actor_spawn((const u32 *)(mem + 0x9AC44u),
                             0x2A00u, 0xE0u, 0x5A00u, 0u);       /* 0x12672 */
     DSW(first + 0x36u) = 0xFFC0u;                               /* 0x12677 */
@@ -4600,7 +4606,7 @@ void game_state_3_handoff(void)
  * branch (text rows or an actor through 0x2AE14) and hands off through 0x12658.
  * Phase 1 tracks the handoff actor's offset and terminates into state 9 when it
  * reaches 0x1E00. `cam` is the record 0x12658 stores at DS_000F0A58. */
-static void game_state_3(void)
+void game_state_3(void)
 {
     if (DSB(DS_000F0A6F) == 0) {
         actors_reset();                                             /* 0x2BAF4 */
@@ -4657,7 +4663,7 @@ static void game_state_3(void)
  * phase DS_000F0A74, then enters phase 4. Phase 4 counts the timer down and
  * continues when the pre-decrement value is zero. Phase 3 hands to state 9.
  * 0x2C06C is called in case 0 only, as the raw does. */
-static void game_state_4(void)
+void game_state_4(void)
 {
     switch (DSW(DS_0009AD98)) {
     case 0:
@@ -4754,6 +4760,7 @@ static void game_state_4(void)
  * 0x20ED5. EBX/ECX/EDX are pushed and popped. */
 void flow_list_105c0c_init(void)
 {
+    PR_SEAM0(0x2C390u);
     DSD(DS_00105C10) = DS_00105C0C;                     /* 0x2C3A2 */
     DSD(DS_00105C0C) = DS_00105C0C;                     /* 0x2C3A8 */
     DSD(DS_00105C18) = DS_00105C14;                     /* 0x2C3AE */
@@ -4766,6 +4773,7 @@ void flow_list_105c0c_init(void)
  * popped). Callers: 0x20E47 (in 0x20DF4) and 0x20EEE. */
 void flow_105bf0_clear(void)
 {
+    PR_SEAM0(0x2C074u);
     DSD(DS_00105BF4) = 0u;                              /* 0x2C077 */
     DSD(DS_00105BF0) = 0u;                              /* 0x2C07D */
 }
@@ -4936,6 +4944,7 @@ void game_null_step(void)
  * 0x270E0 (0x270BC) and 0x295E4. */
 void game_fight_reset(u32 stage, u32 full)
 {
+    PR_SEAM(0x20DF4u, stage, full);
     DSD(DS_000F0A48) = 0u;                              /* 0x20DFB */
     u32 s = (s32)stage < 7 ? stage : 7u;                /* 0x20DF7/0x20E01/0x20E06 */
     game_null_step();                                   /* 0x20E0B 0x29B70 */
@@ -4966,7 +4975,7 @@ void game_fight_reset(u32 stage, u32 full)
  * RNG DRAW ORDER (Task 7 pins the shared stream): draw1 = rng(7) at 0x11AAD also
  * sets DS_00104AFC and P0's character; draw2 = rng(6) at 0x11AE9 gives P1 the
  * character (draw1 + draw2) % 7. Exactly two draws, in that order. */
-static void game_state_6(void)
+void game_state_6(void)
 {
     (void)sound_voice(0x100u);                          /* 0x11A8F/0x11A94 0x2C3FC */
     /* 0x11A99 0x29D60 is a ret-only no-op. */
@@ -4976,7 +4985,7 @@ static void game_state_6(void)
     DSW(DS_00104AFC) = (u16)draw1;                      /* 0x11AB4 */
     /* 0x11ABA..0x11AC1: EAX = the zero-extended word of the draw, EDX = 1, so
      * 0x20DF4 takes its full-reset branch (record §46-B). */
-    game_fight_reset(draw1, 1u);                        /* 0x11AC4 0x20DF4 */
+    game_fight_reset((u32)(u16)draw1, 1u);              /* 0x11ABA/0x11AC1 `mov ax,bx`, 0x11AC4 0x20DF4 */
     fight_char_select(0u, draw1);                       /* 0x11ACD 0x41350 */
     fighter_spawn(0u);                                  /* 0x11AD9 0x33EB4 */
     /* 0x11AE3: EDX after 0x33EB4 is the caller's 7 — 0x33EB4 push/pops EDX and
@@ -4986,7 +4995,7 @@ static void game_state_6(void)
 
     u32 draw2 = rng_next(6u);                           /* 0x11AE9 (draw 2) */
     u32 p1 = draw1 + draw2;                             /* 0x11AEE */
-    if (p1 >= 7u) p1 -= 7u;                             /* 0x11AF6 (single sub 7) */
+    if ((s32)p1 >= 7) p1 -= 7u;                         /* 0x11AF1/0x11AF4 `jl`, 0x11AF6 (single sub 7) */
     fight_char_select(1u, p1);                          /* 0x11AFE 0x41350 */
     fighter_spawn(1u);                                  /* 0x11B08 0x33EB4 */
 
@@ -4996,7 +5005,7 @@ static void game_state_6(void)
      * push/pops EDX), so the store below is the constant 1. */
     fight_hud_spawn(0u);                                /* 0x11B1E 0x1D890 */
     DSB(DS_00104B19 + 2u) = 1u;                         /* 0x11B23 */
-    DSW(DS_001082CC) = 3u;                              /* 0x11B2F */
+    DSD(DS_001082CC) = 3u;                              /* 0x11B2F (a dword: `mov [0x1082cc],ebx`) */
 
     if ((DSB(DS_00104528 + 1u) & 2u) == 0u) {           /* 0x11B35 */
         text_cursor_set(-1, 2, game_string_get(6u), 0x2000u);   /* 0x11B49/55 */
@@ -5006,7 +5015,7 @@ static void game_state_6(void)
 
     DSW(DS_000F0A64) = 7;                               /* 0x11BAB */
     DSW(DS_000F0A6A) = 900;                             /* 0x11BB2 */
-    DSW(DS_000F0A6C) = DSW(DS_000F0A72);                /* 0x11BB9 */
+    DSW(DS_000F0A6C) = DSB(DS_000F0A72);                /* 0x11B9F/0x11BA6/0x11BB9 (`xor ah,ah; mov al,..`) */
     DSB(DS_000F0A6F) = 0;                               /* 0x11BBF */
 }
 
@@ -5459,7 +5468,7 @@ void game_mode_1f_step(void)
         u32 rec2 = actor_spawn((const u32 *)(mem + desc),
                                 0u, 0xF2u, 0u, frame_bits);      /* 0x20a00 0x2AE14 */
         DSD(DS_001044A4) = rec2;                                /* 0x20a05 */
-        DSW(rec1 + 0x36u) = 0xFFC0u;                             /* 0x20a17 */
+        DSW(DSD(DS_001044A0) + 0x36u) = 0xFFC0u;                 /* 0x20a10/0x20a17 */
         DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u);         /* 0x20a0a/0x20a1d */
         break;
     }

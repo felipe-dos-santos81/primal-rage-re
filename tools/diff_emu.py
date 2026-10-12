@@ -588,6 +588,9 @@ RESOLVED_JUMPS = {
 # lea ecx,[edx*8]; add ecx,edx; shl ecx,2; and eax,0xff; add ecx,edx; lea ebx,[eax*4]; shl ecx,2;
 # jmp cs:[ebx+0x41c04] (the side's slot offset is built in ECX between the guard and the jump)
 RESOLVED_JUMPS[0x41C61] = (0x41C36, 0x41C04, 9)
+# 0x208F8 (track D5 batch d5a, record 2026-10-12-reverse-d5a §4): cmp dl,4; ja; xor eax,eax; mov al,dl;
+# jmp cs:[eax*4+0x208e4] (the guard compares DL, the index is the EAX the next two instructions build from it)
+RESOLVED_JUMPS[0x20931] = (0x20924, 0x208E4, 5)
 
 
 def resolved_cases(image, entry):

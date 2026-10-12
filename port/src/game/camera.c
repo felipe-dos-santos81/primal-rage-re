@@ -445,6 +445,7 @@ void camera_y_clamp(void)
  * own sake. */
 void camera_step_seed(void)
 {
+    PR_SEAM0(0x12C70u);
     DSW(DS_000F0AFC) = 0x400u;                          /* 0x12C70 */
 }
 
@@ -1538,6 +1539,7 @@ void camera_screen_base(s32 side, s32 character)
  * 0x1278C `call 0x249c0`, while EBX < 0xF0AE0). */
 void camera_dust_list_init(void)
 {
+    PR_SEAM0(0x12750u);
     DSD(DS_000F0AE4) = DS_000F0AE0;                    /* 0x12762 */
     DSD(DS_000F0AE0) = DS_000F0AE0;                    /* 0x12768 */
     DSD(DS_000F0A7C) = DS_000F0A78;                    /* 0x1276E */
