@@ -2213,11 +2213,9 @@ void fighter_1883c(u32 side, u32 a, u32 b)
  * lag behind the clamp. Finally, if the clamped side's fighter record's
  * +0x34 speed word is still driving into the wall (> 0 on the right,
  * < 0 on the left), fighter_3c148 zeroes its motion (0x35647..0x3564B).
- * PORT: the raw calls the pure, side-effect-free ai_distance (0x187FC) two
- * or three times along the taken branch only to recompute the same value
- * (once for the sign test, once or twice more for the magnitude); the port
- * calls it once and takes the absolute value, which is the identical
- * result. */
+ * The raw calls 0x187FC twice on the push path, once for the sign test and
+ * once for the value it negates or keeps (0x3558E, then 0x35597 or 0x355A0;
+ * 0x3560C, then 0x35615 or 0x3561E), and so does the port. */
 void fighter_wall_clamp(u32 side)
 {
     u32 own_slot = DS_001077B0 + side * 0x94u;
@@ -2236,8 +2234,9 @@ void fighter_wall_clamp(u32 side)
         hit_anchor_x(side, (u32)wall);                      /* 0x35575 0x188DC */
         if (DSB(own_slot + 0x53u) == 0x0Au &&               /* 0x3557E/0x35582 */
             DSB(other_slot + 0x54u) != 2u) {                /* 0x35588/0x3558C */
-            s32 dist = ai_distance();                        /* 0x187FC */
-            s32 adist = (dist >= 0) ? dist : -dist;
+            s32 adist = (ai_distance() < 0)                  /* 0x3558E/0x35593 */
+                ? (s32)(0u - (u32)ai_distance())             /* 0x35597/0x3559C */
+                : ai_distance();                             /* 0x355A0 */
             if (adist < (s32)(s16)DSW(DS_000BDBE8 + 2u))    /* 0x355A5..0x355B0 */
                 fighter_1883c(1u - side, (u32)(-overshoot), 0u); /* 0x355BB */
         }
@@ -2250,8 +2249,9 @@ void fighter_wall_clamp(u32 side)
         hit_anchor_x(side, (u32)(-wall));                     /* 0x355ED 0x188DC */
         if (DSB(own_slot + 0x53u) == 0x0Au &&                /* 0x355FD/0x35600 */
             DSB(other_slot + 0x54u) != 2u) {                 /* 0x35606/0x3560A */
-            s32 dist = ai_distance();                         /* 0x187FC */
-            s32 adist = (dist >= 0) ? dist : -dist;
+            s32 adist = (ai_distance() < 0)                   /* 0x3560C/0x35611 */
+                ? (s32)(0u - (u32)ai_distance())              /* 0x35615/0x3561A */
+                : ai_distance();                              /* 0x3561E */
             if (adist < (s32)(s16)DSW(DS_000BDBE8 + 2u))     /* 0x35623..0x3562E */
                 fighter_1883c(1u - side, (u32)overshoot, 0u); /* 0x35637 */
         }
