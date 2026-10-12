@@ -5850,10 +5850,11 @@ void fight_4e67c(void)
  * 1` mode 0x3000 and seeds `acc` from the sum itself. The DS_0010888A[base]
  * twin runs the same three-way split at col 0x14/0x15 and either adds 0x1E
  * or 0xF to `acc` (the two ">= 10" arms) or draws its own sum's two digits at
- * row `acc + 1` (note: not `row0` — the raw reuses the same stack slot) and
- * accumulates the sum into `acc` (the "both < 10" arm only). With DS_
- * 001088BD > 6, `acc`'s own two digits are drawn at col 0x17/0x18, again row
- * `acc + 1`. Finally DS_0010888C[base] = (u8)acc (side 0 lands on the named
+ * row `row0 + 1` (`movzx ebp,word [esp+0xc]` at 0x4EE94 follows one `push`,
+ * so the slot is the saved EDI at [esp+8], not `acc`) and accumulates the
+ * sum into `acc` (the "both < 10" arm only). With DS_001088BD > 6, `acc`'s
+ * own two digits are drawn at col 0x17/0x18, row `row0 + 1` again (0x4EF0F,
+ * the same slot). Finally DS_0010888C[base] = (u8)acc (side 0 lands on the named
  * DS_0010888C, side 1 on DS_00108891 — DS_0010888C + 5). EBX..EBP pushed and
  * popped. Only caller: 0x4F06E (0x4EF8C, game_mode_25_reveal)
  * and, indirectly through it, 0x4E928 (0x4E67C's DS_001088B9-gated tail). */
@@ -5903,14 +5904,14 @@ void fight_mode25_scorecard(void)
             acc += 0xFu;                                                                                    /* 0x4EE59 */
         } else {
             u32 sum2 = (u32)DSB(DS_0010888A + base) + DSB(DS_0010888A + base + 1u);                           /* 0x4EE68..0x4EE74 */
-            text_number_draw(0x14, (s32)(acc + 1u), (s32)(sum2 / 10u), 1, 0u, mode_b);                          /* 0x4EEAA */
-            text_number_draw(0x15, (s32)(acc + 1u), (s32)(sum2 % 10u), 1, 0u, mode_b);                           /* 0x4EED1 */
+            text_number_draw(0x14, (s32)(row0 + 1u), (s32)(sum2 / 10u), 1, 0u, mode_b);                         /* 0x4EE94 (the saved EDI), 0x4EEAA */
+            text_number_draw(0x15, (s32)(row0 + 1u), (s32)(sum2 % 10u), 1, 0u, mode_b);                          /* 0x4EED1 */
             acc += sum2;                                                                                            /* 0x4EED6..0x4EEDE */
         }
 
         if (DSB(DS_001088BD) > 6u) {                                                                                   /* 0x4EEE5/0x4EEED */
-            text_number_draw(0x17, (s32)(acc + 1u), (s32)(acc / 10u), 1, 0u, mode_b);                                    /* 0x4EF25 */
-            text_number_draw(0x18, (s32)(acc + 1u), (s32)(acc % 10u), 1, 0u, mode_b);                                     /* 0x4EF4C */
+            text_number_draw(0x17, (s32)(row0 + 1u), (s32)(acc / 10u), 1, 0u, mode_b);                                   /* 0x4EF0F (the saved EDI), 0x4EF25 */
+            text_number_draw(0x18, (s32)(row0 + 1u), (s32)(acc % 10u), 1, 0u, mode_b);                                    /* 0x4EF4C */
         }
 
         DSB(DS_0010888C + base) = (u8)acc;                                                                                  /* 0x4EF6B */
