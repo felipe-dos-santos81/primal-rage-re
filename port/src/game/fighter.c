@@ -340,11 +340,12 @@ static void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a4, u32 a5)
     DSB(rec + 0x4Du) = 0x1Eu;                       /* 0x33D7D */
 
     /* 0x33D86..0x33DDA: slot+0x81 = DS_001088CC + min(slot+0x3C / 0xC350,
-     * DS_001088CB); the divide is unsigned (`div`). */
+     * DS_001088CB); the divide is unsigned (`div`), the compare signed
+     * (`cmp eax,edx; jl` 0x33DCC/0x33DCE). */
     {
         u32 q = DSD(slot + 0x3Cu) / DSD(DS_000C9520);
         u32 cap = (u32)DSB(DS_001088CB);
-        if (q >= cap) q = cap;                      /* 0x33DCC..0x33DD0 */
+        if ((s32)q >= (s32)cap) q = cap;            /* 0x33DCC..0x33DD0 */
         DSB(slot + 0x81u) = (u8)(DSB(DS_001088CC) + q);
     }
 
