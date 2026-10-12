@@ -613,7 +613,8 @@ void flow_no_continue_screen(void)
  * name lines are text_cursor_set directly; with it set (the "sprite layout")
  * the divider/columns come from DS_000C8758/0xC875C/0xC875E and two fixed
  * sprites DS_000C8730/0xC8744 are spawned. On the second side (i != 0) the
- * spawned character's palette resets to handle 0x74. Last, when the side's
+ * spawned character's pset word is 0x74 (0x2A17C with EDX = 0x74 and EBX =
+ * 0: no palette handle). Last, when the side's
  * select-cycle field rec+0x82 is non-zero, that many copies of the sprite
  * DS_000C85A8 scroll in through DS_00108100/0x108102, `count` steps of
  * 0x800. EBP/ESI/EDI and a four-dword local frame are the raw's loop
@@ -631,7 +632,7 @@ static void frontend_scoreboard_build(void)
             u32 ch = DSB(rec + 0x7Au);
             spawned = actor_spawn((const u32 *)(mem + DSD(DS_0000A7808 + ch * 4u)),
                                   DSW(DS_000C8758 + p2), 0xFFu, 0x2900u, 0u);   /* 0x41937..0x41963 0x2AE14 */
-            if (i != 0u) actor_pset_palette(spawned, 0u, 0x74u);   /* 0x41968..0x41973 0x2A17C */
+            if (i != 0u) actor_pset_palette(spawned, 0x74u, 0u);   /* 0x41968..0x41973 0x2A17C (EDX = 0x74, EBX = 0) */
             s32 base = (s32)(s16)DSW(DS_000C8758 + p2) / 512;      /* 0x41978..0x4198E */
             for (s32 c = base; c != base + 0x13; c++)               /* 0x41991..0x419B1 */
                 text_glyph_at(c, 0x2D, 0x16, 0x1000u);               /* 0x419AA 0x2F174 */
@@ -647,7 +648,7 @@ static void frontend_scoreboard_build(void)
             spawned = actor_spawn((const u32 *)(mem + DSD(DS_0000A7808 + ch * 4u)),
                                   (u32)((s32)DSD(DS_000C8764 + p2) >> 16), 0xFFu,
                                   0x2B00u, 0u);                 /* 0x41A4B..0x41A78 0x2AE14 */
-            if (i != 0u) actor_pset_palette(spawned, 0u, 0x74u);   /* 0x41A7D..0x41A88 0x2A17C */
+            if (i != 0u) actor_pset_palette(spawned, 0x74u, 0u);   /* 0x41A7D..0x41A88 0x2A17C (EDX = 0x74, EBX = 0) */
             s32 start = (s32)DSB(DS_000C8760 + i);              /* 0x41A91 */
             for (s32 c = start; c != start + 0xC; c++)          /* 0x41A9D..0x41AB6 */
                 text_glyph_at(c, 0x2D, 0x17, 0x1000u);           /* 0x41AAF 0x2F174 */
