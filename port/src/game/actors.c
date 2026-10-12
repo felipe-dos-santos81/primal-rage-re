@@ -2850,6 +2850,7 @@ dead:
  * D1 row's binding. */
 void motion_step(u32 rec)
 {
+    PR_SEAM(0x2A4FCu, rec);
     if ((DSW(rec + 0x2a) >> 8 & 0x80u) == 0) return;
     /* PORT: the original integrates the x velocity as `sar dword [eax+0x32],16`
      * and the y velocity as `sar dword [eax+0x34],16` — the 16.16 fixed-point

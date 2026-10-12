@@ -52,7 +52,7 @@ void fighter_39278(u32 v);                        /* 0x39278 */
 u32 fighter_36d20(u32 slot);                             /* 0x36D20 */
 static void fighter_2bd44_by_index(u32 rec);             /* 0x3B4D4 = 0x3B844 */
 void fighter_18bd4(u8 flags[16]);                        /* 0x18BD4 */
-static u8 hit_3d004(u32 side);                            /* 0x3D004 */
+u8 hit_3d004(u32 side);                                   /* 0x3D004 */
 
 /* PORT: the register shape of the slot callbacks 0x34E2C (0x35045) and
  * 0x3531C case 7 (0x35431) call: EAX = slot, EDX = rec, EBX = side. */
@@ -278,6 +278,7 @@ void fighter_slot_latch(u32 side)
  * (0x186CB). fight_hud_pass's tail (0x35829) calls it after the actor sync. */
 void fighter_slot_latch_both(void)
 {
+    PR_SEAM0(0x186C4u);
     fighter_slot_latch(0u);                         /* 0x186C4/0x186C6 */
     fighter_slot_latch(1u);                         /* 0x186CB, falls into 0x186D0 */
 }
@@ -3236,6 +3237,7 @@ void fighter_38c5c(u32 side)
  * EDX and ECX: `push edx` at 0x1C501, 0x474E4's `push ecx` at 0x474E4). */
 void fighter_38d24(u32 side)
 {
+    PR_SEAM(0x38D24u, side);
     u16 t = DSW(DS_00107D18 + side * 2u);                       /* 0x38D2E */
     if (t == 0u) return;                                        /* 0x38D35 */
     t = (u16)(t - 1u);                                          /* 0x38D3C */
@@ -4246,6 +4248,7 @@ void hit_facing_flag(u32 side)
  * the taken arm) and B5E. */
 void hit_stance_timer(u32 side)
 {
+    PR_SEAM(0x1922Cu, side);
     if ((s8)DSB(DS_00100B5A + side) > 0) {              /* 0x19244 */
         u32 rec = DSD(DS_001077B0 + side * 0x94u);
         if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) == 0u) {   /* 0x19251 */
@@ -10092,6 +10095,7 @@ void fighter_458d4(u32 rec)
  * (0x384F8). */
 void fighter_34038(u32 side)
 {
+    PR_SEAM(0x34038u, side);
     u32 s, r;
     if ((s32)DSD(DS_0010783A + side * 0x94u) >> 16 != 1) return;  /* 0x3403B..0x34054 */
     s = DSB(DS_001078FF);                               /* 0x34056/0x34058 */
@@ -10247,8 +10251,9 @@ void fighter_38154(u32 side)
  * (the raw's actual EAX at the call, not `side`), (s32)slot->+0x4A >> 16, 0);
  * 2 or above runs fighter_state_35b7c(slot, R) directly. EBX..EBP pushed and
  * popped. Only caller: 0x38564 (0x384F8). */
-static void fighter_382c4(u32 side)
+void fighter_382c4(u32 side)
 {
+    PR_SEAM(0x382C4u, side);
     u32 slot = DSD(DS_001077A8 + side * 4u);               /* 0x382CA */
     if (slot == 0u) return;                                 /* 0x382D3 */
     u32 rec = DSD(slot);                                     /* 0x382D9 */
@@ -10312,8 +10317,9 @@ static void fighter_382c4(u32 side)
  * 001078F0/F1 and the timeout flag DS_001088BE are set, hit_3d004(side)
  * clearing DS_001078F0[side] on success. EBX..EBP pushed and popped. Only
  * caller: 0x3856B (0x384F8). */
-static void fighter_38434(u32 side)
+void fighter_38434(u32 side)
 {
+    PR_SEAM(0x38434u, side);
     u32 slot = DSD(DS_001077A8 + side * 4u);               /* 0x3843A */
     if (slot == 0u || DSD(slot) == 0u) return;               /* 0x38443/0x3844D */
 
@@ -10359,8 +10365,9 @@ static void fighter_38434(u32 side)
  * the 0x94-stride record slot (side * 0x94), distinct from the DS_001077A8
  * combo-node pointer 0x38434 uses. EBX/ECX/ESI pushed and popped. Only
  * caller: 0x384A5 (0x38434, default case). */
-static u8 hit_3d004(u32 side)
+u8 hit_3d004(u32 side)
 {
+    PR_SEAM_RET(0x3D004u, side);
     if (hit_scan(side) != 0 && DSB(DS_00104B18) == 0u)      /* 0x3D00F/0x3D011, 0x3D013/0x3D01A */
         return 0u;
     DSW(DS_001088A6) = 0xB4u;                                /* 0x3D020 */
