@@ -52,7 +52,7 @@ void fighter_39278(u32 v);                        /* 0x39278 */
 u32 fighter_36d20(u32 slot);                             /* 0x36D20 */
 static void fighter_2bd44_by_index(u32 rec);             /* 0x3B4D4 = 0x3B844 */
 void fighter_18bd4(u8 flags[16]);                        /* 0x18BD4 */
-static u8 hit_3d004(u32 side);                            /* 0x3D004 */
+u8 hit_3d004(u32 side);                                   /* 0x3D004 */
 
 /* PORT: the register shape of the slot callbacks 0x34E2C (0x35045) and
  * 0x3531C case 7 (0x35431) call: EAX = slot, EDX = rec, EBX = side. */
@@ -8818,6 +8818,7 @@ void fighter_3b9d8(u32 side, s32 pen)
  * +0x40 bit 15, read before the pushes, is ORed back afterwards. */
 void fighter_3baec(s32 pen)
 {
+    PR_SEAM(0x3BAECu, (u32)pen);
     u32 keep0, keep1;
     if ((DSB(DS_001077B0 + 0x42u) & 4u) != 0u) return;          /* 0x3BAF0 */
     if ((DSB(DS_001077B0 + 0x94u + 0x42u) & 4u) != 0u) return;  /* 0x3BAFD */
@@ -8842,6 +8843,7 @@ void fighter_3baec(s32 pen)
  * below the width sum. Writes the signed and absolute axis distances. */
 u32 fighter_4fb20(void)
 {
+    PR_SEAM_RET0(0x4FB20u);
     s32 w = (s32)DSW(DS_000D33A8);                      /* 0x4FB25 */
     s32 dx = (s32)(DSD(DS_000D3388) - DSD(DS_000D3390));    /* 0x4FB2C/0x4FB31 */
     s32 dy, adx, ady, q, d;
@@ -10374,7 +10376,7 @@ static void fighter_38434(u32 side)
  * the 0x94-stride record slot (side * 0x94), distinct from the DS_001077A8
  * combo-node pointer 0x38434 uses. EBX/ECX/ESI pushed and popped. Only
  * caller: 0x384A5 (0x38434, default case). */
-static u8 hit_3d004(u32 side)
+u8 hit_3d004(u32 side)
 {
     if (hit_scan(side) != 0 && DSB(DS_00104B18) == 0u)      /* 0x3D00F/0x3D011, 0x3D013/0x3D01A */
         return 0u;
@@ -13168,6 +13170,7 @@ void fighter_40954(u32 slot, u32 rec, u32 side)
  * the pool init) and 0x4081E (in 0x407EC, the pool tick). */
 void fighter_406b4(void)
 {
+    PR_SEAM0(0x406B4u);
     u32 e = DSD(DS_00104AD4) ^ 1u;                          /* 0x406BD..0x406C3 */
     u32 slot = DS_001077B0 + e * 0x94u;                     /* 0x406C6..0x406E2 */
     u32 x = DSD(slot + 0x2Cu);                              /* 0x406D4 */

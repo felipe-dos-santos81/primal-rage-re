@@ -18610,6 +18610,127 @@ D3C_SPECS += [
                 "@sgn3a", "@cache", "@tab2", "@str2", "@w8cb", "@s8cb", "@no8c", "@hside",
                 "@late8c")),
 ]
+D3C_SUM = 0x0345                 # the width-sum word the 0x4FB20 stub leaves at DS_000D33A8
+# 0x4FB20 as a stub that rewrites the width sum: 0x3BB90 reads the word again after the call
+# (0x3BC4C), so the penetration is D3C_SUM minus the stub's AX whatever sum was stored before it
+D3C_4FB20_W = E.Call(0x4FB20, (), writes=((None, 0x000D33A8, le16(D3C_SUM)),))
+D3C_3BAEC = E.Call(0x3BAEC, ("eax",))
+
+
+def d3c_push_case(fa=2, s=(D3C_SLOT, D3C_SLOT + 0x94), b42=(0xFB, 0xFB), ch=(2, 3), w=(0x0100, 0x0080),
+                  h=(0, 0)):
+    """0x3BB90: DS_00107D30 between two seeded bytes, DS_001078FA, the DS_001077A8 pair `s` (0 = no
+    slot); per slot its +0x2C/+0x30 dwords, +0x42, +0x54 (`h`: 2 halves the width) and +0x7A; the
+    0xBEEF8 word of each character (the word after it, the entry at a two-byte stride and the
+    entry of the character sign-extended hold other words); the four latched dwords and the width
+    sum with the words around it seeded."""
+    p = {0x00107D2F: bytes([0x2F, 0x77, 0x31]), 0x001078FA: bytes([fa]),
+         0x001077A8: le32(s[0]) + le32(s[1]),
+         0x000D3388: le32(0x88888888) + le32(0x8C8C8C8C) + le32(0x90909090) + le32(0x94949494),
+         0x000D33A6: le16(0xA6A6) + le16(0xA8A8) + le16(0xAAAA)}
+    for k in (0, 1):
+        if not s[k]:
+            continue
+        p[s[k] + 0x2C] = le32(0x002C0000 + k * 0x1111) + le32(0x00300000 + k * 0x2222)
+        p[s[k] + 0x42] = bytes([b42[k]])
+        p[s[k] + 0x54] = bytes([h[k]])
+        p[s[k] + 0x7A] = bytes([ch[k]])
+        p[0x000BEEF8 + ch[k] * 4] = le16(w[k]) + le16(0x7700 + k)
+        p[0x000BEEF8 + ch[k] * 2] = le16(w[k] ^ 0x0F0F)
+        if ch[k] >= 0x80:
+            p[0x000BEEF8 + (ch[k] - 0x100) * 4] = le16(w[k] ^ 0x3333)
+    return p
+
+
+D3C_SPECS += [
+    # 0x3BB90 fighter_body_push: no argument. 0x186D0, 0x4FB20 and 0x3BAEC are stubs. 0x4FB20's AX
+    # is the distance (0x3BC45 `test ax,ax`: p5 returns 0x10000, p6 0xFFFF0005) and the stub
+    # rewrites the width sum, which the raw reads again for the penetration (0x3BC4C); the sum the
+    # function stored is in the memory at that call. 0x3BAEC reads AX alone (0x3BB37/0x3BB4C `movsx
+    # ebx,ax`) and the port passes it sign-extended, so the cases keep the difference inside a
+    # signed word (record §4). Mask 0xFF: the function's own AL (0x3BC61 `mov al,1`, 0x3BC67 `xor
+    # al,al`); neither caller reads it (0x25422 `call 0x12d48` starts `mov al,[0xf0afe]`; 0x2550E
+    # `mov eax,1`).
+    Spec("fighter_body_push", 0x3BB90, [
+        Case("p0", {}, d3c_push_case(fa=1)),
+        Case("p1", {}, d3c_push_case(s=(0, D3C_SLOT + 0x94))),
+        Case("p2", {}, d3c_push_case(s=(D3C_SLOT, 0))),
+        Case("p3", {}, d3c_push_case(b42=(0x04, 0xFB)), {0x4FB20: 5}),
+        Case("p4", {}, d3c_push_case(b42=(0xFB, 0x04)), {0x4FB20: 5}),
+        Case("p5", {}, d3c_push_case(w=(0x8001, 0x0101), h=(2, 0)), {0x4FB20: 0x00010000}),
+        Case("p6", {}, d3c_push_case(w=(0x0100, 0x0103), h=(0, 2)), {0x4FB20: 0xFFFF0005}),
+        Case("p7", {}, d3c_push_case(s=(D3C_FS, D3C_OS), ch=(0x80, 1), w=(0x0204, 0x0306), h=(2, 2)),
+             {0x4FB20: 0x00000400}),
+        Case("p8", {}, d3c_push_case(ch=(1, 0x80), w=(0xFFFF, 0x0002), h=(1, 3)), {0x4FB20: 1}),
+    ], calls=(C1_SLOT_LATCH, D3C_4FB20_W, D3C_3BAEC), eax_mask=0xFF,
+       mutants=("@no30", "@fa", "@nos1", "@lorder", "@no42a", "@no42b", "@pswap", "@xy", "@no94", "@c0sext",
+                "@c1sext", "@stride", "@nohalf0", "@sar", "@nohalf1", "@hswap", "@nosum", "@ax",
+                "@pneg", "@pend", "@ret0", "@wcache")),
+]
+D3C_249C0 = E.Call(0x249C0, ("eax", "edx"), mode="real")   # recorded and run (effects.c's seam)
+D3C_406B4 = E.Call(0x406B4, ())
+
+
+def d3c_pool_case(k, cnt):
+    """0x40608: the two sentinels' four dwords (stale links into the scratch BSS at 0x10A000.., so
+    a mutant that follows one stays inside mem[]), the 0x180 bytes of the 32 nodes and the 12
+    bytes after them (case-distinct bytes: every node's +8 dword must survive), and the countdown
+    word between two seeded words."""
+    p = {0x00107EF0: le32(0x0010A000 + k * 0x10) + le32(0x0010A100 + k * 0x10) + le32(0x0010A200 + k * 0x10)
+         + le32(0x0010A300 + k * 0x10),
+         0x001080AE: le16(0xAEAE) + le16(cnt) + le16(0xB2B2)}
+    for off in range(0, 0x18C, 0x40):
+        p[0x00107F00 + off] = bytes((0x30 + k * 0x55 + off + i) & 0xFF for i in range(min(0x40, 0x18C - off)))
+    return p
+
+
+D3C_SPECS += [
+    # 0x40608 fighter_40608: no argument. 0x249C0 runs real and is recorded (the 32 calls, in
+    # order); 0x406B4 is a stub. Mask 0: the one caller writes EAX (0x40585 call, 0x4058A `mov
+    # eax,[0x108098]`).
+    Spec("fighter_40608", 0x40608, [
+        Case("i0", {}, d3c_pool_case(0, 0xB0B0)),
+        Case("i1", {}, d3c_pool_case(1, 0xFF08)),
+    ], calls=(D3C_249C0, D3C_406B4), eax_mask=0,
+       mutants=("@noef4", "@noef0", "@noefc", "@noef8", "@xlink", "@n31", "@n33", "@stride", "@after",
+                "@live", "@nocnt", "@cntb", "@early", "@first", "@noburst", "@cnt")),
+]
+D3C_3CD44 = E.Call(0x3CD44, ("eax",))
+D3C_3CE58 = E.Call(0x3CE58, ("eax", "edx"), clobbers=("edx", "edi", "ebp"))
+D3C_3C6A8 = E.Call(0x3C6A8, ("eax", "edx", "ebx"), clobbers=("edx",))
+D3C_32BAC = E.Call(0x32BAC, ("eax",))
+
+
+def d3c_pulse_case(side, b18=0, s53=0, s63=0, ch=2, cnt=0x10):
+    """0x3D004: both slots' +0x52..+0x56, +0x5E..+0x60, +0x62..+0x64 and +0x7A..+0x7D (the other
+    slot's +0x53 and +0x63 are the other answer, its character and counter other values);
+    DS_001088A6 and DS_00104B18 between seeded neighbours."""
+    so, oo = D3C_SLOT + side * 0x94, D3C_SLOT + (1 - side) * 0x94
+    return {so + 0x52: bytes([0x52, s53, 0x54, 0x77, 0x56]), oo + 0x52: bytes([0x62, 0 if s53 else 1, 0x64, 0x67, 0x66]),
+            so + 0x5E: bytes([0x5E, 0x11, 0x60]), oo + 0x5E: bytes([0x6E, 0x21, 0x70]),
+            so + 0x62: bytes([0x62, s63, 0x64]), oo + 0x62: bytes([0x72, 0 if s63 else 1, 0x74]),
+            so + 0x7A: bytes([ch, 0x7B, cnt, 0x7D]), oo + 0x7A: bytes([(ch + 1) & 0x7F, 0x6B, cnt ^ 0x55, 0x6D]),
+            0x001088A4: le16(0xA4A4) + le16(0xA6A6) + le16(0xA8A8),
+            0x00104B17: bytes([0x17, b18, 0x19])}
+
+
+D3C_SPECS += [
+    # 0x3D004 hit_3d004: EAX = side. Four stubs. 0x3CD44's EAX is tested whole (0x3D00F `test
+    # eax,eax`: t1 returns 0x100) and 0x3CE58's AL alone (0x3D03A `mov dl,al`, 0x3D050 `test dl,dl`:
+    # t3 returns 0xFFFFFF01, t4 0x100). Mask 0xFF: `mov al,1` (0x3D087) / `xor al,al` (0x3D0B4); the
+    # one caller reads AL (0x384A5 call, 0x384AA `test al,al`).
+    Spec("hit_3d004", 0x3D004, [
+        Case("t0", {"eax": 0}, d3c_pulse_case(0), {0x3CD44: 1, 0x3CE58: 1}),
+        Case("t1", {"eax": 1}, d3c_pulse_case(1), {0x3CD44: 0x100, 0x3CE58: 1}),
+        Case("t2", {"eax": 0}, d3c_pulse_case(0, b18=1, ch=0x80, cnt=0xFF), {0x3CD44: 1, 0x3CE58: 1}),
+        Case("t3", {"eax": 1}, d3c_pulse_case(1, s63=1), {0x3CD44: 0, 0x3CE58: 0xFFFFFF01}),
+        Case("t4", {"eax": 0}, d3c_pulse_case(0), {0x3CD44: 0, 0x3CE58: 0x100}),
+        Case("t5", {"eax": 1}, d3c_pulse_case(1, s53=1), {0x3CD44: 0, 0x3CE58: 0}),
+    ], calls=(D3C_3CD44, D3C_3CE58, D3C_3C6A8, D3C_32BAC), eax_mask=0xFF,
+       mutants=("@slot", "@scanside", "@alscan", "@b18", "@noa6", "@a6b", "@no18", "@drvside", "@drvi",
+                "@eaxdrv", "@noinc", "@incw", "@no55", "@seedside", "@seedv", "@seedi", "@c63", "@chsext",
+                "@ret0", "@c53", "@no55b", "@order", "@ret1")),
+]
 D1_SPECS += D3C_SPECS
 
 
