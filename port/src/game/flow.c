@@ -633,7 +633,7 @@ static void frontend_scoreboard_build(void)
             spawned = actor_spawn((const u32 *)(mem + DSD(DS_0000A7808 + ch * 4u)),
                                   DSW(DS_000C8758 + p2), 0xFFu, 0x2900u, 0u);   /* 0x41937..0x41963 0x2AE14 */
             if (i != 0u) actor_pset_palette(spawned, 0x74u, 0u);   /* 0x41968..0x41973 0x2A17C (EDX = 0x74, EBX = 0) */
-            s32 base = (s32)(s16)DSW(DS_000C8758 + p2) / 512;      /* 0x41978..0x4198E */
+            s32 base = (s32)(DSW(DS_000C8758 + p2) >> 9);          /* 0x41978..0x4198E (`xor edx,edx; mov dx`: zero-extended) */
             for (s32 c = base; c != base + 0x13; c++)               /* 0x41991..0x419B1 */
                 text_glyph_at(c, 0x2D, 0x16, 0x1000u);               /* 0x419AA 0x2F174 */
             (void)actor_spawn((const u32 *)(mem + DS_000C8730), DSW(DS_000C8758 + p2),
