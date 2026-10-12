@@ -448,6 +448,31 @@ void fighter_pose_3a650(u32 side, u32 edx);
 void fighter_pose_3a79c(u32 side, u32 edx);
 void fighter_pose_3a8e8(u32 side, u32 edx);
 
+/* PORT: exported for the D1 d1b differential rows and their mutants (record
+ * 2026-10-11-reverse-d1b); linkage only. */
+void fighter_380c4(u32 side);                            /* 0x380C4 */
+void fighter_39278(u32 v);                               /* 0x39278 */
+int fighter_3962c(u32 side, u32 param_2);                /* 0x3962C */
+int fighter_396ac(u32 side, u32 param_2);                /* 0x396AC */
+s32 fighter_39ac8(s32 a, s32 n);                         /* 0x39AC8 */
+s32 fighter_39b14(s32 a, s32 b);                         /* 0x39B14 */
+void fighter_3b9d8(u32 side, s32 pen);                   /* 0x3B9D8 */
+void fighter_3c1c8(u32 side, u32 v);                     /* 0x3C1C8 */
+s32 fighter_3f6f4(u32 side, s32 n);                      /* 0x3F6F4 */
+u16 fighter_cmd_facing(u32 facing, u32 input);           /* 0x3C6E8 */
+void fighter_3d0c0(u32 side);                            /* 0x3D0C0 */
+void fighter_3f720(u32 side, s32 n);                     /* 0x3F720 */
+void fighter_408e8(u32 slot);                            /* 0x408E8 */
+int ai_pred_46698(u32 side);                             /* 0x46698 */
+int ai_pred_466f4(u32 side);                             /* 0x466F4 */
+int ai_pred_4673c(u32 side);                             /* 0x4673C */
+int ai_pred_46794(u32 side);                             /* 0x46794 */
+int ai_pred_46898(u32 side);                             /* 0x46898 */
+int ai_ready(u32 side);                                  /* 0x46958 */
+u32 fighter_4fb20(void);                                 /* 0x4FB20 */
+void ai_weight(u32 side, u32 id);                        /* 0x46BBC */
+void ai_band(u32 side);                                  /* 0x46DD4 */
+
 /* 0x1DE64. The reaction picker: map the side's command word (or, with slot+0x63
  * clear, the 0x46460/0x4649C input scan, record §49-B) through 0x1DDF4 to a
  * reaction code; 0xFF when nothing maps. */
