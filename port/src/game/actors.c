@@ -2936,7 +2936,7 @@ static void frame_timer(u32 rec, u32 slot)
     float old = fu.f;
     fu.f = old - 1.0f;
     DSD(rec + 0x20) = fu.u;
-    if (old > 0.0f) {                           /* 0x2AC47 */
+    if (!(old <= 0.0f)) {                       /* 0x2AB3C..0x2AB44 `fldz; fcomp; jb 0x2ac47`: 0 < old, or unordered */
         if ((DSW(rec + 0x2a) >> 8 & 1u) == 0) return;
         if (DSD(DS_00104AE0) != 0) return;
         DSW(DSD(DS_001014EC) + slot * PSET_SIZE) = 0x1e1;
