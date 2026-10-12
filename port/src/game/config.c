@@ -262,6 +262,7 @@ u32 hiscore_locate(u32 rec, u32 table, u32 *left_out, u32 *size_out)
  * or 0 when 0x2DB58 finds no record. */
 u32 hiscore_read(u32 rec, u32 table)
 {
+    PR_SEAM_RET(0x2DBC4u, rec, table);
     u32 p = hiscore_locate(rec, table, NULL, NULL);          /* 0x2DBD1 */
     if (p == 0u) return 0u;                                  /* 0x2DBDA */
     u32 desc = DS_0002D3FC + table * 8u;                     /* 0x2DBE0 */

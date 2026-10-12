@@ -18360,6 +18360,53 @@ D3D_SPECS += [
                 "@dle", "@ble", "@both", "@no5eset", "@limge", "@no5ez", "@csext", "@sub1", "@noclamp", "@vge",
                 "@vlim", "@fno5ez", "@fnodec", "@fwrap", "@nobit", "@bitval", "@oneside", "@border", "@early")),
 ]
+D3D_HSREC = 0x0010A600                              # the record a 0x2DBC4 stub returns (0x28 bytes, seeded)
+D3D_2DBC4 = E.Call(0x2DBC4, ("eax", "edx"), clobbers=("edx",))
+
+
+def d3d_arm_case(name=None, row=None):
+    """0x204F4: the name-entry block 0x104318..0x1043BF seeded whole (no byte is 0, 1, 3, 0x12 or
+    0x20) with the 0x24-byte name field 0x104367 = `name` (default: all spaces), the block
+    0x1044C0..0x1044D7 seeded, the two records the 0x2DBC4 stub returns, and `row` = (index, bytes)
+    poked over that default-name row of the 0x2C-stride table 0xA7BC0."""
+    g = bytearray(0x80 | (k & 0x7F) for k in range(0xA8))
+    g[0x4F:0x4F + 0x24] = b" " * 0x24 if name is None else name
+    p = d1d_chunks(0x00104318, g)
+    p[0x001044C0] = bytes(0xC0 + k for k in range(0x18))
+    p[D3D_HSREC] = bytes(0x60 + k for k in range(0x28))
+    p[D3D_HSREC + 0x40] = bytes(0x30 + k for k in range(0x28))
+    if row is not None:
+        p[0x000A7BC0 + row[0] * 0x2C] = row[1]
+    return p
+
+
+D3D_SPECS += [
+    # 0x204F4 nameentry_arm: EAX = rank (its low word alone: `mov ax,si`, `mov bx,si`, `test dx,dx`,
+    # `cmp si,bx`, `test si,si`), EDX = score. 0x2DBC4 is a stub: (rec, 0) for rec = rank..8 then
+    # 0..rank-1 is all the table build shows, since the ten-record table lives in the raw's 0x1C0
+    # frame, outside the comparison. The frame holds ten 0x2C records and the two saved arguments
+    # at +0x1B8/+0x1BC, so a rank above 9 overwrites them: not cased (the one caller tests
+    # rank < 10). Mask 0: `mov eax,0x26` 0x1ECAC after the one call 0x1ECA7.
+    Spec("nameentry_arm", 0x204F4, [
+        Case("a0", {"eax": 0, "edx": 0x12345678}, d3d_arm_case(), {0x2DBC4: D3D_HSREC}),
+        Case("a1", {"eax": 1, "edx": 0xFFFFFFFF}, d3d_arm_case(), {0x2DBC4: D3D_HSREC + 0x40}),
+        Case("a2", {"eax": 5, "edx": 0x00000001}, d3d_arm_case(name=b"A" + b" " * 0x23), {0x2DBC4: D3D_HSREC}),
+        Case("a3", {"eax": 9, "edx": 0x80000000}, d3d_arm_case(name=b" " * 0x23 + b"X"), {0x2DBC4: D3D_HSREC}),
+        Case("a4", {"eax": 0x00010003, "edx": 0x0A0B0C0D},
+             d3d_arm_case(row=(3, bytes(0x41 + k for k in range(0x2C)))), {0x2DBC4: D3D_HSREC}),
+        Case("a5", {"eax": 0x00010000, "edx": 0x00C0FFEE},
+             d3d_arm_case(row=(0, bytes(0x61 + k % 26 for k in range(0x23)) + b"\x00" + b"zzzz")),
+             {0x2DBC4: D3D_HSREC + 0x40}),
+        Case("a6", {"eax": 8, "edx": 0x7FFFFFFF}, d3d_arm_case(name=b" " * 5 + b"\x00" + b" " * 0x1E),
+             {0x2DBC4: D3D_HSREC}),
+        Case("a7", {"eax": 2, "edx": 0x00000000}, d3d_arm_case(row=(2, b"\x00QRS")), {0x2DBC4: D3D_HSREC}),
+    ], calls=(D3D_2DBC4,), eax_mask=0,
+       mutants=("@table", "@l1from", "@l1to", "@l2le", "@order", "@rankwloop", "@rankwzero", "@rankwname",
+                "@blank23", "@blankfirst", "@namerow", "@namestride", "@noterm", "@namemax", "@noflag",
+                "@flagalways", "@noclr1f", "@noclr43", "@nofill94", "@clrlen", "@nocount", "@scorew",
+                "@noscore", "@nosp1f", "@nod4", "@d4w", "@notimer", "@timerw", "@arms", "@nocc", "@noc4",
+                "@nolimit", "@limitw")),
+]
 D1_SPECS += D3D_SPECS
 
 

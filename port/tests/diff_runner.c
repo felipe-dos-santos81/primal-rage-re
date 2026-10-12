@@ -26165,6 +26165,72 @@ D3D_METER_MUT(no5ez, 33u) D3D_METER_MUT(csext, 34u) D3D_METER_MUT(sub1, 35u) D3D
 D3D_METER_MUT(vge, 37u) D3D_METER_MUT(vlim, 38u) D3D_METER_MUT(fno5ez, 39u) D3D_METER_MUT(fnodec, 40u)
 D3D_METER_MUT(fwrap, 41u) D3D_METER_MUT(nobit, 42u) D3D_METER_MUT(bitval, 43u) D3D_METER_MUT(oneside, 44u)
 D3D_METER_MUT(border, 45u) D3D_METER_MUT(early, 46u)
+/* 0x204F4's mutants (mutant n; 0 = the port's shape). EAX = rank, EDX = score; 0x2DBC4 is a stub. The
+ * raw's frame table is not rebuilt: nothing of it is compared. */
+static u32 d3d_204f4_core(const u32 *r, u32 mut)
+{
+    u32 rank = r[R_EAX], score = r[R_EDX];
+    u32 rw = (u32)(u16)rank;
+    u32 tab = (mut == 1u) ? 1u : 0u;                                                /* @table */
+    for (u32 pass = 0; pass < 2u; pass++) {
+        if ((pass == 0u) == (mut != 5u)) {                                          /* @order */
+            u32 from = (mut == 2u) ? rw + 1u : (mut == 6u && rank > 0xFFFFu) ? 9u : rw;   /* @l1from @rankwloop */
+            for (u32 si = from; si < ((mut == 3u) ? 10u : 9u); si++)                /* @l1to */
+                (void)hiscore_read(si, tab);
+        } else {
+            for (u32 si = 0u; (mut == 4u) ? si <= rw : si < rw; si++)               /* @l2le */
+                (void)hiscore_read(si, tab);
+        }
+    }
+    u32 blank = 1u;
+    for (u32 i = 0u; i < ((mut == 9u) ? 0x23u : (mut == 10u) ? 1u : 0x24u); i++)    /* @blank23 @blankfirst */
+        if (DSB(DS_00104367 + i) != 0x20u) blank = 0u;
+    if (blank != 0u) {
+        u32 row = DS_000A7BC0 + ((mut == 8u) ? rank : (mut == 11u) ? rw + 1u : rw)  /* @rankwname @namerow */
+                              * ((mut == 12u) ? 0x24u : 0x2Cu);                     /* @namestride */
+        u32 dl = 0u;
+        for (;;) {
+            u8 dh = DSB(row + dl);
+            if (dh == 0u || dl >= ((mut == 14u) ? 0x23u : 0x24u)) break;            /* @namemax */
+            DSB(DS_00104367 + dl) = dh;
+            dl++;
+        }
+        if (mut != 13u) DSB(DS_00104367 + dl) = 0u;                                 /* @noterm */
+        if (mut != 15u) DSB(DS_0010431E) = 1u;                                      /* @noflag */
+    } else if (mut == 16u) DSB(DS_0010431E) = 1u;                                   /* @flagalways */
+    for (u32 i = 0u; i < ((mut == 20u) ? 0x23u : 0x24u); i++) {                     /* @clrlen */
+        if (mut != 17u) DSB(DS_0010431F + i) = 0u;                                  /* @noclr1f */
+        if (mut != 18u) DSB(DS_00104343 + i) = 0u;                                  /* @noclr43 */
+        if (mut != 19u) DSB(DS_00104394 + i) = 0x20u;                               /* @nofill94 */
+    }
+    if (mut != 21u) DSB(0x0010431Cu) = 0u;                                          /* @nocount */
+    if (mut == 22u) DSW(DS_00104390) = (u16)score;                                  /* @scorew */
+    else if (mut != 23u) DSD(DS_00104390) = score;                                  /* @noscore */
+    if (mut != 24u) DSB(DS_0010431F) = 0x20u;                                       /* @nosp1f */
+    if (mut == 26u) DSD(DS_001044D4) = 0u;                                          /* @d4w */
+    else if (mut != 25u) DSB(DS_001044D4) = 0u;                                     /* @nod4 */
+    if (mut == 28u) DSD(DS_0010438C) = 0x2EEu;                                      /* @timerw */
+    else if (mut != 27u) DSW(DS_0010438C) = 0x2EEu;                                 /* @notimer */
+    u32 zero = ((mut == 7u) ? rank : rw) == 0u;                                     /* @rankwzero */
+    if (mut == 29u) zero = !zero;                                                   /* @arms */
+    if (mut != 30u) DSD(DS_001044CC) = zero ? 2u : 0x12u;                           /* @nocc */
+    if (mut != 31u) DSD(DS_001044C4) = 0x16u;                                       /* @noc4 */
+    if (mut == 33u) DSW(0x0010431Du) = zero ? 0x12u : 3u;                           /* @limitw */
+    else if (mut != 32u) DSB(0x0010431Du) = zero ? 0x12u : 3u;                      /* @nolimit */
+    return 0u;
+}
+static void b_d3d_204f4(const u32 *r, u32 *eax) { nameentry_arm(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D3D_ARM_MUT(name, n) \
+    static void m_d3d_204f4_##name(const u32 *r, u32 *eax) { *eax = d3d_204f4_core(r, n); }
+D3D_ARM_MUT(table, 1u)      D3D_ARM_MUT(l1from, 2u)     D3D_ARM_MUT(l1to, 3u)        D3D_ARM_MUT(l2le, 4u)
+D3D_ARM_MUT(order, 5u)      D3D_ARM_MUT(rankwloop, 6u)  D3D_ARM_MUT(rankwzero, 7u)   D3D_ARM_MUT(rankwname, 8u)
+D3D_ARM_MUT(blank23, 9u)    D3D_ARM_MUT(blankfirst, 10u) D3D_ARM_MUT(namerow, 11u)   D3D_ARM_MUT(namestride, 12u)
+D3D_ARM_MUT(noterm, 13u)    D3D_ARM_MUT(namemax, 14u)   D3D_ARM_MUT(noflag, 15u)     D3D_ARM_MUT(flagalways, 16u)
+D3D_ARM_MUT(noclr1f, 17u)   D3D_ARM_MUT(noclr43, 18u)   D3D_ARM_MUT(nofill94, 19u)   D3D_ARM_MUT(clrlen, 20u)
+D3D_ARM_MUT(nocount, 21u)   D3D_ARM_MUT(scorew, 22u)    D3D_ARM_MUT(noscore, 23u)    D3D_ARM_MUT(nosp1f, 24u)
+D3D_ARM_MUT(nod4, 25u)      D3D_ARM_MUT(d4w, 26u)       D3D_ARM_MUT(notimer, 27u)    D3D_ARM_MUT(timerw, 28u)
+D3D_ARM_MUT(arms, 29u)      D3D_ARM_MUT(nocc, 30u)      D3D_ARM_MUT(noc4, 31u)       D3D_ARM_MUT(nolimit, 32u)
+D3D_ARM_MUT(limitw, 33u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32609,6 +32675,40 @@ static const binding_t k_bindings[] = {
     { "fight_hud_meter_step@oneside",        m_d3d_1d540_oneside, 0x00000000u },
     { "fight_hud_meter_step@border",         m_d3d_1d540_border, 0x00000000u },
     { "fight_hud_meter_step@early",          m_d3d_1d540_early, 0x00000000u },
+    { "nameentry_arm",                       b_d3d_204f4, 0x00000000u },
+    { "nameentry_arm@table",                 m_d3d_204f4_table, 0x00000000u },
+    { "nameentry_arm@l1from",                m_d3d_204f4_l1from, 0x00000000u },
+    { "nameentry_arm@l1to",                  m_d3d_204f4_l1to, 0x00000000u },
+    { "nameentry_arm@l2le",                  m_d3d_204f4_l2le, 0x00000000u },
+    { "nameentry_arm@order",                 m_d3d_204f4_order, 0x00000000u },
+    { "nameentry_arm@rankwloop",             m_d3d_204f4_rankwloop, 0x00000000u },
+    { "nameentry_arm@rankwzero",             m_d3d_204f4_rankwzero, 0x00000000u },
+    { "nameentry_arm@rankwname",             m_d3d_204f4_rankwname, 0x00000000u },
+    { "nameentry_arm@blank23",               m_d3d_204f4_blank23, 0x00000000u },
+    { "nameentry_arm@blankfirst",            m_d3d_204f4_blankfirst, 0x00000000u },
+    { "nameentry_arm@namerow",               m_d3d_204f4_namerow, 0x00000000u },
+    { "nameentry_arm@namestride",            m_d3d_204f4_namestride, 0x00000000u },
+    { "nameentry_arm@noterm",                m_d3d_204f4_noterm, 0x00000000u },
+    { "nameentry_arm@namemax",               m_d3d_204f4_namemax, 0x00000000u },
+    { "nameentry_arm@noflag",                m_d3d_204f4_noflag, 0x00000000u },
+    { "nameentry_arm@flagalways",            m_d3d_204f4_flagalways, 0x00000000u },
+    { "nameentry_arm@noclr1f",               m_d3d_204f4_noclr1f, 0x00000000u },
+    { "nameentry_arm@noclr43",               m_d3d_204f4_noclr43, 0x00000000u },
+    { "nameentry_arm@nofill94",              m_d3d_204f4_nofill94, 0x00000000u },
+    { "nameentry_arm@clrlen",                m_d3d_204f4_clrlen, 0x00000000u },
+    { "nameentry_arm@nocount",               m_d3d_204f4_nocount, 0x00000000u },
+    { "nameentry_arm@scorew",                m_d3d_204f4_scorew, 0x00000000u },
+    { "nameentry_arm@noscore",               m_d3d_204f4_noscore, 0x00000000u },
+    { "nameentry_arm@nosp1f",                m_d3d_204f4_nosp1f, 0x00000000u },
+    { "nameentry_arm@nod4",                  m_d3d_204f4_nod4, 0x00000000u },
+    { "nameentry_arm@d4w",                   m_d3d_204f4_d4w, 0x00000000u },
+    { "nameentry_arm@notimer",               m_d3d_204f4_notimer, 0x00000000u },
+    { "nameentry_arm@timerw",                m_d3d_204f4_timerw, 0x00000000u },
+    { "nameentry_arm@arms",                  m_d3d_204f4_arms, 0x00000000u },
+    { "nameentry_arm@nocc",                  m_d3d_204f4_nocc, 0x00000000u },
+    { "nameentry_arm@noc4",                  m_d3d_204f4_noc4, 0x00000000u },
+    { "nameentry_arm@nolimit",               m_d3d_204f4_nolimit, 0x00000000u },
+    { "nameentry_arm@limitw",                m_d3d_204f4_limitw, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
