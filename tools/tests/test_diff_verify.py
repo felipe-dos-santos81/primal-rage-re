@@ -6434,6 +6434,9 @@ D1_CASES.extend(D1E_CASES)
 # ---- track D2 batch d2c (record 2026-10-11-reverse-d2c): measured, the C3G form ----
 D2C_MASKS = {
     "game_state_3_handoff": 0xffffffff,
+    "name_filter": 0xffffffff,
+    "sound_pause": 0x0,
+    "sound_resume": 0x0,
 }
 D2C_KINDS = {
     "game_state_3_handoff@d1": {'call #0'},
@@ -6460,6 +6463,32 @@ D2C_KINDS = {
     "game_state_3_handoff@handle": {'call #3', 'call #4'},
     "game_state_3_handoff@a44": {'byte'},
     "game_state_3_handoff@a44w": {'byte'},
+    "name_filter@bit": {'byte'},
+    "name_filter@tol": {'byte'},
+    "name_filter@tolw": {'byte'},
+    "name_filter@acc": {'eax'},
+    "name_filter@first": {'byte', 'eax'},
+    "name_filter@stride": {'byte', 'eax'},
+    "name_filter@str": {'byte', 'eax'},
+    "name_filter@nolead": {'byte'},
+    "name_filter@sp": {'byte'},
+    "name_filter@nul": {'byte'},
+    "name_filter@ret": {'eax'},
+    "sound_pause@gate": {'byte', 'call #0', 'call #1'},
+    "sound_pause@nostore": {'byte', 'call #1 memory'},
+    "sound_pause@val": {'byte', 'call #1 memory'},
+    "sound_pause@order": {'call #0 memory'},
+    "sound_pause@nostop": {'call #0', 'call #1'},
+    "sound_pause@notoggle": {'call #0', 'call #0 memory', 'call #1'},
+    "sound_pause@early": {'call #0', 'call #1', 'call #1 memory'},
+    "sound_pause@byte": {'byte', 'call #1 memory'},
+    "sound_resume@nz": {'byte', 'call #0'},
+    "sound_resume@bit": {'byte', 'call #0'},
+    "sound_resume@noclear": {'byte'},
+    "sound_resume@order": {'call #0 memory'},
+    "sound_resume@nocall": {'call #0'},
+    "sound_resume@byte": {'byte'},
+    "sound_resume@ah": {'byte'},
 }
 D2C_CASES = [
     ("game_state_3_handoff@d1", ['h0', 'h1', 'h2', 'h3']),
@@ -6486,6 +6515,32 @@ D2C_CASES = [
     ("game_state_3_handoff@handle", ['h1', 'h3']),
     ("game_state_3_handoff@a44", ['h0', 'h1', 'h2', 'h3']),
     ("game_state_3_handoff@a44w", ['h0', 'h1', 'h2', 'h3']),
+    ("name_filter@bit", ['n1', 'n3', 'n4', 'n8']),
+    ("name_filter@tol", ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("name_filter@tolw", ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("name_filter@acc", ['n0', 'n7', 'n8']),
+    ("name_filter@first", ['n0', 'n2', 'n3', 'n4', 'n6', 'n7', 'n8']),
+    ("name_filter@stride", ['n0', 'n1', 'n2', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("name_filter@str", ['n1', 'n6']),
+    ("name_filter@nolead", ['n0', 'n3', 'n4', 'n5', 'n7', 'n8']),
+    ("name_filter@sp", ['n0', 'n5', 'n6']),
+    ("name_filter@nul", ['n0', 'n3', 'n4', 'n5', 'n7', 'n8']),
+    ("name_filter@ret", ['n0', 'n1', 'n6', 'n7', 'n8']),
+    ("sound_pause@gate", ['p2']),
+    ("sound_pause@nostore", ['p0', 'p3']),
+    ("sound_pause@val", ['p0', 'p3']),
+    ("sound_pause@order", ['p0', 'p3']),
+    ("sound_pause@nostop", ['p0', 'p1', 'p2', 'p3']),
+    ("sound_pause@notoggle", ['p0', 'p3']),
+    ("sound_pause@early", ['p0', 'p3']),
+    ("sound_pause@byte", ['p0', 'p3']),
+    ("sound_resume@nz", ['r2', 'r3']),
+    ("sound_resume@bit", ['r2']),
+    ("sound_resume@noclear", ['r0', 'r4']),
+    ("sound_resume@order", ['r0', 'r4']),
+    ("sound_resume@nocall", ['r0', 'r4']),
+    ("sound_resume@byte", ['r0', 'r4']),
+    ("sound_resume@ah", ['r0', 'r4']),
 ]
 D1_MASKS.update(D2C_MASKS)
 D1_KINDS.update(D2C_KINDS)
@@ -7572,6 +7627,7 @@ class RealFunctionTests(unittest.TestCase):
         0x2F314: ("ebx", "ecx", "edx"), 0x2EF24: (), 0x65546: (), 0x61A70: ("edx",),
         0x2EFD4: ("ebx", "ecx", "edx"), 0x2F0F0: ("edx",),
         0x2F5A0: ("ebx", "ecx", "edx"), 0x2F830: ("ebx", "ecx", "edx"),
+        0x1D1B0: (),     # track D2 batch d2c
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))

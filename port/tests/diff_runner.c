@@ -19888,6 +19888,80 @@ D2C_HO_MUT(order, D2C_HO_ORDER) D2C_HO_MUT(b1, D2C_HO_B1)       D2C_HO_MUT(b2, D
 D2C_HO_MUT(src, D2C_HO_SRC)     D2C_HO_MUT(third, D2C_HO_THIRD) D2C_HO_MUT(skip, D2C_HO_SKIP)
 D2C_HO_MUT(known, D2C_HO_KNOWN) D2C_HO_MUT(al, D2C_HO_AL)       D2C_HO_MUT(six, D2C_HO_SIX)
 D2C_HO_MUT(handle, D2C_HO_HANDLE) D2C_HO_MUT(a44, D2C_HO_A44)   D2C_HO_MUT(a44w, D2C_HO_A44W)
+
+/* 0x13EF0: EAX = the string. The accumulated AL of 0x13F68, sign-extended (0x13F58/0x13F5C). */
+static void b_d2c_13ef0(const u32 *r, u32 *eax) { *eax = name_filter(r[R_EAX]); }
+enum { D2C_NF_NONE, D2C_NF_bit, D2C_NF_tol, D2C_NF_tolw, D2C_NF_acc, D2C_NF_first, D2C_NF_stride,
+       D2C_NF_str, D2C_NF_nolead, D2C_NF_sp, D2C_NF_nul, D2C_NF_ret };
+static u32 d2c_13ef0_core(u32 str, u32 mut)
+{
+    u8 tol = ((DSB(0x00104529u) & ((mut == D2C_NF_bit) ? 2u : 4u)) == 0u) ? 2u : 0u;
+    if (mut == D2C_NF_tol) tol = (u8)(2u - tol);
+    if (mut == D2C_NF_tolw) DSW(0x000FD0F0u) = tol;
+    else DSB(0x000FD0F0u) = tol;
+    u8 acc = 0u;
+    for (u32 t = 0x0009AF40u + ((mut == D2C_NF_first) ? 4u : 0u); DSB(DSD(t)) != 0u;
+         t += (mut == D2C_NF_stride) ? 8u : 4u) {
+        u8 al = (u8)name_filter_word(DSD(t), str + ((mut == D2C_NF_str) ? 1u : 0u));
+        acc = (mut == D2C_NF_acc) ? al : (u8)(acc | al);
+    }
+    u32 src = str, dst = str;
+    if (mut != D2C_NF_nolead) while (DSB(src) == 0x20u) src++;
+    for (;;) {
+        u8 b = DSB(src++);
+        if (mut == D2C_NF_sp && b == 0x20u) continue;
+        if (mut == D2C_NF_nul && b == 0u) break;
+        DSB(dst++) = b;
+        if (b == 0u) break;
+    }
+    return (mut == D2C_NF_ret) ? 0u : (u32)(s32)(s8)acc;
+}
+#define D2C_NF_MUT(name) \
+    static void m_d2c_nf_##name(const u32 *r, u32 *eax) { *eax = d2c_13ef0_core(r[R_EAX], D2C_NF_##name); }
+D2C_NF_MUT(bit)    D2C_NF_MUT(tol)   D2C_NF_MUT(tolw)   D2C_NF_MUT(acc) D2C_NF_MUT(first)
+D2C_NF_MUT(stride) D2C_NF_MUT(str)   D2C_NF_MUT(nolead) D2C_NF_MUT(sp)  D2C_NF_MUT(nul)
+D2C_NF_MUT(ret)
+
+/* 0x1D250: no argument. */
+static void b_d2c_1d250(const u32 *r, u32 *eax) { (void)r; sound_pause(); *eax = 0u; }
+enum { D2C_PA_NONE, D2C_PA_gate, D2C_PA_nostore, D2C_PA_val, D2C_PA_order, D2C_PA_nostop,
+       D2C_PA_notoggle, D2C_PA_early, D2C_PA_byte };
+static void d2c_1d250_core(u32 mut)
+{
+    if (mut == D2C_PA_early) (void)snd_samples_stop_all();
+    if ((mut == D2C_PA_gate) ? (DSB(0x001028DAu) != 1u) : (DSB(0x001028DAu) == 0u)) {
+        if (mut == D2C_PA_order) DSB(0x001028D8u) = 1u;
+        if (mut != D2C_PA_notoggle) sound_music_pause_toggle();
+        if (mut == D2C_PA_byte) DSB(0x001028DAu) = 1u;
+        else if (mut != D2C_PA_nostore && mut != D2C_PA_order)
+            DSB(0x001028D8u) = (mut == D2C_PA_val) ? 0u : 1u;
+    }
+    if (mut != D2C_PA_nostop && mut != D2C_PA_early) (void)snd_samples_stop_all();
+}
+#define D2C_PA_MUT(name) \
+    static void m_d2c_pa_##name(const u32 *r, u32 *eax) { (void)r; d2c_1d250_core(D2C_PA_##name); *eax = 0u; }
+D2C_PA_MUT(gate)   D2C_PA_MUT(nostore)  D2C_PA_MUT(val)   D2C_PA_MUT(order)
+D2C_PA_MUT(nostop) D2C_PA_MUT(notoggle) D2C_PA_MUT(early) D2C_PA_MUT(byte)
+
+/* 0x1D270: no argument. */
+static void b_d2c_1d270(const u32 *r, u32 *eax) { (void)r; sound_resume(); *eax = 0u; }
+enum { D2C_RS_NONE, D2C_RS_nz, D2C_RS_bit, D2C_RS_noclear, D2C_RS_order, D2C_RS_nocall, D2C_RS_byte,
+       D2C_RS_ah };
+static void d2c_1d270_core(u32 mut)
+{
+    u8 d8 = DSB(0x001028D8u);
+    if (mut == D2C_RS_nz ? d8 == 0u : mut == D2C_RS_bit ? (d8 & 1u) == 0u : d8 != 1u) return;
+    if (mut == D2C_RS_order) DSB(0x001028D8u) = 0u;
+    if (mut != D2C_RS_nocall) sound_music_pause_toggle();
+    if (mut == D2C_RS_byte) DSB(0x001028DAu) = 0u;
+    else if (mut == D2C_RS_ah) DSB(0x001028D8u) = 0xFFu;
+    else if (mut != D2C_RS_noclear && mut != D2C_RS_order) DSB(0x001028D8u) = 0u;
+}
+#define D2C_RS_MUT(name) \
+    static void m_d2c_rs_##name(const u32 *r, u32 *eax) { (void)r; d2c_1d270_core(D2C_RS_##name); *eax = 0u; }
+D2C_RS_MUT(nz) D2C_RS_MUT(bit) D2C_RS_MUT(noclear) D2C_RS_MUT(order) D2C_RS_MUT(nocall) D2C_RS_MUT(byte)
+D2C_RS_MUT(ah)
+
 /* ---- end of track D2 batch d2c bindings ---- */
 
 static const binding_t k_bindings[] = {
@@ -23801,6 +23875,35 @@ static const binding_t k_bindings[] = {
     { "game_state_3_handoff@handle", m_d2c_ho_handle, 0xFFFFFFFFu },
     { "game_state_3_handoff@a44", m_d2c_ho_a44, 0xFFFFFFFFu },
     { "game_state_3_handoff@a44w", m_d2c_ho_a44w, 0xFFFFFFFFu },
+    { "name_filter", b_d2c_13ef0, 0xFFFFFFFFu },
+    { "name_filter@bit", m_d2c_nf_bit, 0xFFFFFFFFu },
+    { "name_filter@tol", m_d2c_nf_tol, 0xFFFFFFFFu },
+    { "name_filter@tolw", m_d2c_nf_tolw, 0xFFFFFFFFu },
+    { "name_filter@acc", m_d2c_nf_acc, 0xFFFFFFFFu },
+    { "name_filter@first", m_d2c_nf_first, 0xFFFFFFFFu },
+    { "name_filter@stride", m_d2c_nf_stride, 0xFFFFFFFFu },
+    { "name_filter@str", m_d2c_nf_str, 0xFFFFFFFFu },
+    { "name_filter@nolead", m_d2c_nf_nolead, 0xFFFFFFFFu },
+    { "name_filter@sp", m_d2c_nf_sp, 0xFFFFFFFFu },
+    { "name_filter@nul", m_d2c_nf_nul, 0xFFFFFFFFu },
+    { "name_filter@ret", m_d2c_nf_ret, 0xFFFFFFFFu },
+    { "sound_pause", b_d2c_1d250, 0x00000000u },
+    { "sound_pause@gate", m_d2c_pa_gate, 0x00000000u },
+    { "sound_pause@nostore", m_d2c_pa_nostore, 0x00000000u },
+    { "sound_pause@val", m_d2c_pa_val, 0x00000000u },
+    { "sound_pause@order", m_d2c_pa_order, 0x00000000u },
+    { "sound_pause@nostop", m_d2c_pa_nostop, 0x00000000u },
+    { "sound_pause@notoggle", m_d2c_pa_notoggle, 0x00000000u },
+    { "sound_pause@early", m_d2c_pa_early, 0x00000000u },
+    { "sound_pause@byte", m_d2c_pa_byte, 0x00000000u },
+    { "sound_resume", b_d2c_1d270, 0x00000000u },
+    { "sound_resume@nz", m_d2c_rs_nz, 0x00000000u },
+    { "sound_resume@bit", m_d2c_rs_bit, 0x00000000u },
+    { "sound_resume@noclear", m_d2c_rs_noclear, 0x00000000u },
+    { "sound_resume@order", m_d2c_rs_order, 0x00000000u },
+    { "sound_resume@nocall", m_d2c_rs_nocall, 0x00000000u },
+    { "sound_resume@byte", m_d2c_rs_byte, 0x00000000u },
+    { "sound_resume@ah", m_d2c_rs_ah, 0x00000000u },
     /* ---- end of track D2 batch d2c entries ---- */
 };
 

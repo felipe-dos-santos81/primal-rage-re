@@ -13320,6 +13320,30 @@ def d2c_handoff_case(rec, w56, x56, entries):
 D2C_SPAWN_CAM = E.Call(0x2AE14, SPAWN.args, pop=4, clobbers=SPAWN.clobbers,
                        writes=((None, 0x000F0A58, le32(D2C_REC2)),))
 
+D2C_WORDS = 0x0010A380          # the poked filter words (zero BSS)
+
+
+def d2c_filter_case(cfg, text, words=None):
+    """0x13EF0: the config byte 0x104529 between two neighbours, the tolerance byte 0xFD0F0 and the
+    filter's scratch 0xFD0F1..0xFD0FB seeded, the string at D2C_REC (four 0x5A after its NUL) and,
+    when `words` is given, the pointer table 0x9AF40 re-pointed at those words at D2C_WORDS (an
+    empty one ends it); None keeps the image's 24 words."""
+    p = {0x00104528: bytes([0x61, cfg, 0x62]),
+         0x000FD0F0: b"\x5a\x6b" + le16(0x1111) + le32(0x0010A3F0) + le32(0x77777777),
+         D2C_REC: bytes(text) + b"\x00" + b"\x5a" * 4}
+    if words is not None:
+        blob, table = bytearray(), bytearray()
+        for w in list(words) + [b""]:
+            table += le32(D2C_WORDS + len(blob))
+            blob += bytes(w) + b"\x00"
+        p[D2C_WORDS] = bytes(blob)
+        p[0x0009AF40] = bytes(table)
+    return p
+
+
+D2C_TOGGLE = E.Call(0x1D1B0, ())       # sound_music_pause_toggle: its own row (d1c); clobbers nothing
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -13343,6 +13367,50 @@ D2C_SPECS = [
        mutants=("@d1", "@d2", "@d3", "@a2", "@a3", "@a4", "@a5", "@a5w", "@local", "@w36", "@off36",
                 "@cam", "@order", "@b1", "@b2", "@src", "@third", "@skip", "@known", "@al", "@six",
                 "@handle", "@a44", "@a44w")),
+    # 0x13EF0 name_filter: EAX = the string. The tolerance byte 0xFD0F0 = 2 when 0x104529 bit 2
+    # is clear, else 0; 0x13F68 (real on both sides, its own row; it calls itself) over every
+    # word of the table 0x9AF40 up to the first empty one, its ALs OR-ed; then the string is
+    # copied onto itself without its leading spaces. EAX = the OR, sign-extended (`sar eax,0x18`
+    # of the dword at esp-3). Full mask, stricter than the one caller needs (0x2071F `xor
+    # ecx,ecx`, `jmp 0x20758`, 0x2075E `xor eax,eax`). With the real 0x13F68 the OR is 0 or 1,
+    # so the sign extension is not separated from a zero extension.
+    Spec("name_filter", 0x13EF0, [
+        Case("n0", {"eax": D2C_REC}, d2c_filter_case(0x00, b"  HI CAT", (b"CAT", b"DOG"))),
+        Case("n1", {"eax": D2C_REC}, d2c_filter_case(0x04, b"DOG", (b"CAT", b"DOG"))),
+        Case("n2", {"eax": D2C_REC}, d2c_filter_case(0xFF, b"ABC", (b"CAT", b"DOG"))),
+        Case("n3", {"eax": D2C_REC}, d2c_filter_case(0xFB, b"   X", ())),
+        Case("n4", {"eax": D2C_REC}, d2c_filter_case(0x02, b"  ", (b"CAT",))),
+        Case("n5", {"eax": D2C_REC}, d2c_filter_case(0x00, b" HELLO  WORLD ")),
+        Case("n6", {"eax": D2C_REC}, d2c_filter_case(0x06, b"CAT DOG", (b"CAT", b"DOG"))),
+        Case("n7", {"eax": D2C_REC}, d2c_filter_case(0x00, b" C A TX", (b"CAT", b"DOG"))),
+        Case("n8", {"eax": D2C_REC}, d2c_filter_case(0x04, b" C A TX", (b"CAT", b"DOG"))),
+    ], allow_calls=(0x13F68,), eax_mask=0xFFFFFFFF,
+       mutants=("@bit", "@tol", "@tolw", "@acc", "@first", "@stride", "@str", "@nolead", "@sp",
+                "@nul", "@ret")),
+    # 0x1D250 sound_pause: no argument. With the music not paused (the byte 0x1028DA == 0) the
+    # toggle 0x1D1B0, then the prompt byte 0x1028D8 = DL = 1 (DL is loaded before the call and
+    # 0x1D1B0 preserves EDX); then 0x1CD9C. Both callees are stubs, so 0x1028DA itself stays.
+    # EDX enters dirty (pushed and popped). Mask 0: both callers reload EAX (0x24A10/0x24A17
+    # `mov eax,0x1ee/0x1ef`, 0x24E2B `mov eax,0x1e8`).
+    Spec("sound_pause", 0x1D250, [
+        Case("p0", {"edx": 0xABCD1234}, d1c_pause_case(d8=0x5A, da=0)),
+        Case("p1", {"edx": 0xABCD1234}, d1c_pause_case(d8=0x5A, da=1)),
+        Case("p2", {"edx": 0xABCD1234}, d1c_pause_case(d8=0x00, da=0x80)),
+        Case("p3", {"edx": 0}, d1c_pause_case(d8=0xFF, da=0), {0x1D1B0: 0x12345678, 0x1CD9C: 1}),
+    ], calls=(D2C_TOGGLE, E.Call(0x1CD9C, ())), eax_mask=0,
+       mutants=("@gate", "@nostore", "@val", "@order", "@nostop", "@notoggle", "@early", "@byte")),
+    # 0x1D270 sound_resume: no argument. Only when the prompt byte 0x1028D8 is 1 (zero-extended,
+    # `cmp eax,1`): the toggle 0x1D1B0 (stub), then the byte = AH after `xor ah,ah` (the stub's
+    # EAX carries a set AH in r0 and r4). Mask 0: liveness trace of the three call sites (record
+    # §1: 0x24A9C dies at 0x1B092 `mov eax,0xa2c5c` in 0x1B084; 0x24AF9 and 0x24E8E traced).
+    Spec("sound_resume", 0x1D270, [
+        Case("r0", {}, d1c_pause_case(d8=1), {0x1D1B0: 0xFFFFFFFF}),
+        Case("r1", {}, d1c_pause_case(d8=0)),
+        Case("r2", {}, d1c_pause_case(d8=0x81)),
+        Case("r3", {}, d1c_pause_case(d8=2)),
+        Case("r4", {}, d1c_pause_case(d8=1, da=1), {0x1D1B0: 0x00005A00}),
+    ], calls=(D2C_TOGGLE,), eax_mask=0,
+       mutants=("@nz", "@bit", "@noclear", "@order", "@nocall", "@byte", "@ah")),
 ]
 D1_SPECS += D2C_SPECS
 

@@ -6338,6 +6338,7 @@ void sound_sfx_volume(u32 v)
  * way it then sets the pause byte (0x1D213). No caller reads the result. */
 void sound_music_pause_toggle(void)
 {
+    PR_SEAM0(0x1D1B0u);
     if (DSB(DS_001028DA) == 1u) {                          /* 0x1D1BB */
         DSB(DS_001028DA) = 0;                              /* 0x1D1C2 */
         if (DSB(DS_001028D9) == 0u) return;                /* 0x1D1C8 */
