@@ -348,6 +348,7 @@ u32 hiscore_insert(u32 rec, u32 src, u32 table)
  * is headroom, not a value the port invents. */
 u32 hiscore_rank_probe(u32 value, u32 table)
 {
+    PR_SEAM_RET(0x2DDE4u, value, table);
     u32 left = 0u, size = 0u;
     u32 p = hiscore_locate(0u, table, &left, &size);          /* 0x2DDFC */
     if (p == 0u) return 0xFFFFFFFFu;                          /* 0x2DE01/0x2DE07 */

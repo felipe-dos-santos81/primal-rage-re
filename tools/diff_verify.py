@@ -18192,6 +18192,57 @@ D3A_SPECS = [
        mutants=("@nocredit", "@al", "@side", "@stride", "@held", "@eq", "@word", "@nospend", "@spendn",
                 "@ret", "@order", "@miss")),
 ]   # D3A_SPECS end
+D3A_RANK = E.Call(0x2DDE4, ("eax", "edx"), clobbers=("edx",))
+
+
+def d3a_pair_case(v0, v1, scores=None):
+    """0x1ECC8: the two score dwords 0x1077EC and 0x107880 (the slots' +0x3C) between seeded
+    dwords, the two rank words 0x1044C0/0x1044C2 (0x5A5A, 0x5B5B) between seeded words and, when
+    given, table 0 holding `scores` (d2d_rank_case)."""
+    p = d2d_rank_case(scores) if scores is not None else {}
+    p.update({0x001077E8: le32(0x71717171) + le32(v0) + le32(0x72727272),
+              0x0010787C: le32(0x73737373) + le32(v1) + le32(0x74747474),
+              0x001044BE: le16(0x6161) + le16(0x5A5A) + le16(0x5B5B) + le16(0x6262)})
+    return p
+
+
+D3A_TEN = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10]
+D3A_SPECS += [
+    # 0x1ECC8 hiscore_rank_pair: no argument; EDX enters dirty (pushed, popped). 0x1044C0 = AX of
+    # 0x2DDE4([0x1077EC], 0); AL 0 when that word is 10 or more (zero-extended, `and eax,0xffff;
+    # cmp eax,0xa; jl`), else 0x1044C2 = AX of 0x2DDE4([0x107880], 0); AL 0 when both words are 9,
+    # AL 0 when the second is 10 or more, else AL 1. This row runs 0x2DDE4 and its 0x2DB58 real
+    # (their own rows), so the two ranks differ: ten records give the ranks 0..10. With the real
+    # callee a rank has no upper word: row hiscore_rank_pair_stub separates the widths. Mask 0xFF:
+    # the one caller has `test al,al` (0x1EEE6).
+    Spec("hiscore_rank_pair", 0x1ECC8, [
+        Case("a0", {"edx": 0xABCD1234}, d3a_pair_case(105, 5, D3A_TEN)),
+        Case("a1", {}, d3a_pair_case(5, 105, D3A_TEN)),
+        Case("a2", {}, d3a_pair_case(15, 16, D3A_TEN)),
+        Case("a3", {}, d3a_pair_case(15, 25, D3A_TEN)),
+        Case("a4", {}, d3a_pair_case(25, 15, D3A_TEN)),
+        Case("a5", {}, d3a_pair_case(25, 26, D3A_TEN)),
+        Case("a6", {}, d3a_pair_case(1, 0x7FFFFFFF, [0x900, 0x700, 0x500, 0x300])),
+        Case("a7", {}, d3a_pair_case(15, 10, D3A_TEN)),
+    ], allow_calls=(0x2DDE4, 0x2DB58), eax_mask=0xFF,
+       mutants=("@side", "@tbl", "@c0w", "@c2w", "@noc0", "@noc2", "@swap", "@tie", "@tie9", "@gt", "@nor1")),
+    # 0x1ECC8 again with 0x2DDE4 stubbed: one stub EAX serves both calls of a case, so the two
+    # ranks are equal and carry an upper word. s3's 0xFFFF0000 is rank 0 (a 32-bit test bails),
+    # s4's 0x0000FFFF is 65535 (a sign-extended test goes on), s1 is the tie at 9, s2 bails after
+    # one call. The call list has the two score dwords and table 0. Not separated by either row: a
+    # 32-bit `cmp ax,dx` (the stub's two ranks are one value, the real ranks have no upper word).
+    Spec("hiscore_rank_pair_stub", 0x1ECC8, [
+        Case("s0", {"edx": 0xABCD1234}, d3a_pair_case(0x11223344, 0x55667788), {0x2DDE4: 0xABCD0003}),
+        Case("s1", {}, d3a_pair_case(0x00010002, 0x00030004), {0x2DDE4: 0x00010009}),
+        Case("s2", {}, d3a_pair_case(0x80000001, 0x7FFFFFFF), {0x2DDE4: 0x0001000A}),
+        Case("s3", {}, d3a_pair_case(0, 0xFFFFFFFF), {0x2DDE4: 0xFFFF0000}),
+        Case("s4", {}, d3a_pair_case(0xFFFFFFFF, 0), {0x2DDE4: 0x0000FFFF}),
+        Case("s5", {}, d3a_pair_case(0x12345678, 0x12345678), {0x2DDE4: 0x00000008}),
+    ], calls=(D3A_RANK,), eax_mask=0xFF,
+       unhit_named={0x1ED22: "the second rank alone at 10 or more: one stub EAX serves both calls; "
+                             "row hiscore_rank_pair hits it (a0)"},
+       mutants=("@side", "@tbl", "@c0w", "@noc0", "@noc2", "@swap", "@tie9", "@gt", "@w16", "@sext", "@val", "@second", "@order", "@r1w")),
+]
 D1_SPECS += D3A_SPECS
 
 

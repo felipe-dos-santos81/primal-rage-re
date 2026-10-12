@@ -25986,6 +25986,43 @@ static u32 d3a_11f28_core(u32 code, u32 mut)
     static void m_d3a_cp_##name(const u32 *r, u32 *eax) { *eax = d3a_11f28_core(r[R_EAX], D3A_CP_##name); }
 D3A_CP_MUT(nocredit) D3A_CP_MUT(al)      D3A_CP_MUT(side)   D3A_CP_MUT(stride) D3A_CP_MUT(held) D3A_CP_MUT(eq)
 D3A_CP_MUT(word)     D3A_CP_MUT(nospend) D3A_CP_MUT(spendn) D3A_CP_MUT(ret)    D3A_CP_MUT(order) D3A_CP_MUT(miss)
+/* 0x1ECC8: no argument. Mask 0xFF: the one caller reads AL (0x1EEE6 `test al,al`); the raw leaves
+ * the rank's second byte in EAX (`xor al,al` 0x1ECE5/0x1ED22, `mov al,1` 0x1ED26). Bound twice: the
+ * row with 0x2DDE4 real (two different ranks) and the row with it stubbed (the rank's upper word). */
+static void b_d3a_1ecc8(const u32 *r, u32 *eax) { (void)r; *eax = hiscore_rank_pair() & 0xFFu; }
+enum { D3A_RP_NONE, D3A_RP_side, D3A_RP_tbl, D3A_RP_c0w, D3A_RP_c2w, D3A_RP_noc0, D3A_RP_noc2, D3A_RP_swap,
+       D3A_RP_tie, D3A_RP_tie9, D3A_RP_gt, D3A_RP_nor1, D3A_RP_w16, D3A_RP_sext, D3A_RP_val, D3A_RP_second,
+       D3A_RP_order, D3A_RP_r1w };
+static u32 d3a_1ecc8_core(u32 mut)
+{
+    u32 a0 = (mut == D3A_RP_side) ? 0x00107880u : 0x001077ECu;
+    u32 a1 = (mut == D3A_RP_side) ? 0x001077ECu : 0x00107880u;
+    u32 t = (mut == D3A_RP_tbl) ? 1u : 0u;
+    u32 r0 = hiscore_rank_probe((mut == D3A_RP_val) ? DSW(a0) : DSD(a0), t);
+    u32 c0 = (mut == D3A_RP_swap) ? 0x001044C2u : 0x001044C0u;
+    u32 c2 = (mut == D3A_RP_swap) ? 0x001044C0u : 0x001044C2u;
+    if (mut == D3A_RP_c0w) DSD(c0) = r0;
+    else if (mut != D3A_RP_noc0 && mut != D3A_RP_order) DSW(c0) = (u16)r0;
+    u32 lim = (mut == D3A_RP_gt) ? 11u : 10u;
+    int bail = (mut == D3A_RP_w16) ? (r0 >= lim) : (mut == D3A_RP_sext) ? ((s32)(s16)r0 >= (s32)lim)
+                                                                       : ((u16)r0 >= lim);
+    if (bail && mut != D3A_RP_second) return 0u;
+    u32 r1 = hiscore_rank_probe(DSD(a1), t);
+    if (mut == D3A_RP_order) DSW(c0) = (u16)r0;
+    if (bail) return 0u;
+    if (mut == D3A_RP_c2w) DSD(c2) = r1;
+    else if (mut != D3A_RP_noc2) DSW(c2) = (u16)r1;
+    int same = (u16)r1 == (u16)r0;
+    if (mut != D3A_RP_tie9 && same && (mut == D3A_RP_tie || (u16)r0 == 9u)) return 0u;
+    if (mut != D3A_RP_nor1 && ((mut == D3A_RP_r1w) ? (r1 >= lim) : ((u16)r1 >= lim))) return 0u;
+    return 1u;
+}
+#define D3A_RP_MUT(name) \
+    __attribute__((unused)) static void m_d3a_rp_##name(const u32 *r, u32 *eax) \
+    { (void)r; *eax = d3a_1ecc8_core(D3A_RP_##name) & 0xFFu; }
+D3A_RP_MUT(side) D3A_RP_MUT(tbl)  D3A_RP_MUT(c0w)  D3A_RP_MUT(c2w)  D3A_RP_MUT(noc0)   D3A_RP_MUT(noc2)
+D3A_RP_MUT(swap) D3A_RP_MUT(tie)  D3A_RP_MUT(tie9) D3A_RP_MUT(gt)   D3A_RP_MUT(nor1)   D3A_RP_MUT(w16)
+D3A_RP_MUT(sext) D3A_RP_MUT(val)  D3A_RP_MUT(second) D3A_RP_MUT(order) D3A_RP_MUT(r1w)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32316,6 +32353,33 @@ static const binding_t k_bindings[] = {
     { "frontend_coin_poll@ret", m_d3a_cp_ret, 0xFFFFFFFFu },
     { "frontend_coin_poll@order", m_d3a_cp_order, 0xFFFFFFFFu },
     { "frontend_coin_poll@miss", m_d3a_cp_miss, 0xFFFFFFFFu },
+    { "hiscore_rank_pair", b_d3a_1ecc8, 0x000000FFu },
+    { "hiscore_rank_pair@side", m_d3a_rp_side, 0x000000FFu },
+    { "hiscore_rank_pair@tbl", m_d3a_rp_tbl, 0x000000FFu },
+    { "hiscore_rank_pair@c0w", m_d3a_rp_c0w, 0x000000FFu },
+    { "hiscore_rank_pair@c2w", m_d3a_rp_c2w, 0x000000FFu },
+    { "hiscore_rank_pair@noc0", m_d3a_rp_noc0, 0x000000FFu },
+    { "hiscore_rank_pair@noc2", m_d3a_rp_noc2, 0x000000FFu },
+    { "hiscore_rank_pair@swap", m_d3a_rp_swap, 0x000000FFu },
+    { "hiscore_rank_pair@tie", m_d3a_rp_tie, 0x000000FFu },
+    { "hiscore_rank_pair@tie9", m_d3a_rp_tie9, 0x000000FFu },
+    { "hiscore_rank_pair@gt", m_d3a_rp_gt, 0x000000FFu },
+    { "hiscore_rank_pair@nor1", m_d3a_rp_nor1, 0x000000FFu },
+    { "hiscore_rank_pair_stub", b_d3a_1ecc8, 0x000000FFu },
+    { "hiscore_rank_pair_stub@side", m_d3a_rp_side, 0x000000FFu },
+    { "hiscore_rank_pair_stub@tbl", m_d3a_rp_tbl, 0x000000FFu },
+    { "hiscore_rank_pair_stub@c0w", m_d3a_rp_c0w, 0x000000FFu },
+    { "hiscore_rank_pair_stub@noc0", m_d3a_rp_noc0, 0x000000FFu },
+    { "hiscore_rank_pair_stub@noc2", m_d3a_rp_noc2, 0x000000FFu },
+    { "hiscore_rank_pair_stub@swap", m_d3a_rp_swap, 0x000000FFu },
+    { "hiscore_rank_pair_stub@tie9", m_d3a_rp_tie9, 0x000000FFu },
+    { "hiscore_rank_pair_stub@gt", m_d3a_rp_gt, 0x000000FFu },
+    { "hiscore_rank_pair_stub@w16", m_d3a_rp_w16, 0x000000FFu },
+    { "hiscore_rank_pair_stub@sext", m_d3a_rp_sext, 0x000000FFu },
+    { "hiscore_rank_pair_stub@val", m_d3a_rp_val, 0x000000FFu },
+    { "hiscore_rank_pair_stub@second", m_d3a_rp_second, 0x000000FFu },
+    { "hiscore_rank_pair_stub@order", m_d3a_rp_order, 0x000000FFu },
+    { "hiscore_rank_pair_stub@r1w", m_d3a_rp_r1w, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)

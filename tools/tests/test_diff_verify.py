@@ -11255,6 +11255,8 @@ D1_KINDS.update({
 # ---- track D3 batch d3a (record 2026-10-12-reverse-d3a): measured, the C3G form ----
 D3A_MASKS = {
     "frontend_coin_poll": 0xffffffff,
+    "hiscore_rank_pair": 0xff,
+    "hiscore_rank_pair_stub": 0xff,
 }
 D3A_KINDS = {
     "frontend_coin_poll@nocredit": {'call #0', 'call #1', 'eax'},
@@ -11269,6 +11271,31 @@ D3A_KINDS = {
     "frontend_coin_poll@ret": {'eax'},
     "frontend_coin_poll@order": {'call #1'},
     "frontend_coin_poll@miss": {'eax'},
+    "hiscore_rank_pair@side": {'byte'},
+    "hiscore_rank_pair@tbl": {'byte', 'eax'},
+    "hiscore_rank_pair@c0w": {'byte'},
+    "hiscore_rank_pair@c2w": {'byte'},
+    "hiscore_rank_pair@noc0": {'byte'},
+    "hiscore_rank_pair@noc2": {'byte'},
+    "hiscore_rank_pair@swap": {'byte'},
+    "hiscore_rank_pair@tie": {'eax'},
+    "hiscore_rank_pair@tie9": {'eax'},
+    "hiscore_rank_pair@gt": {'byte', 'eax'},
+    "hiscore_rank_pair@nor1": {'eax'},
+    "hiscore_rank_pair_stub@side": {'call #0', 'call #1'},
+    "hiscore_rank_pair_stub@tbl": {'call #0', 'call #1'},
+    "hiscore_rank_pair_stub@c0w": {'byte', 'call #1 memory'},
+    "hiscore_rank_pair_stub@noc0": {'byte', 'call #1 memory'},
+    "hiscore_rank_pair_stub@noc2": {'byte'},
+    "hiscore_rank_pair_stub@swap": {'byte', 'call #1 memory'},
+    "hiscore_rank_pair_stub@tie9": {'eax'},
+    "hiscore_rank_pair_stub@gt": {'byte', 'call #1', 'eax'},
+    "hiscore_rank_pair_stub@w16": {'byte', 'call #1', 'eax'},
+    "hiscore_rank_pair_stub@sext": {'byte', 'call #1'},
+    "hiscore_rank_pair_stub@val": {'call #0'},
+    "hiscore_rank_pair_stub@second": {'call #1'},
+    "hiscore_rank_pair_stub@order": {'byte', 'call #1 memory'},
+    "hiscore_rank_pair_stub@r1w": {'eax'},
 }
 D3A_CASES = [
     ("frontend_coin_poll@nocredit", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
@@ -11283,6 +11310,31 @@ D3A_CASES = [
     ("frontend_coin_poll@ret", ['p0', 'p1', 'p6', 'p7']),
     ("frontend_coin_poll@order", ['p3', 'p5']),
     ("frontend_coin_poll@miss", ['p3', 'p5']),
+    ("hiscore_rank_pair@side", ['a0', 'a1', 'a3', 'a4', 'a6', 'a7']),
+    ("hiscore_rank_pair@tbl", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("hiscore_rank_pair@c0w", ['a1']),
+    ("hiscore_rank_pair@c2w", ['a0', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("hiscore_rank_pair@noc0", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("hiscore_rank_pair@noc2", ['a0', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("hiscore_rank_pair@swap", ['a0', 'a1', 'a3', 'a4', 'a6', 'a7']),
+    ("hiscore_rank_pair@tie", ['a5']),
+    ("hiscore_rank_pair@tie9", ['a2']),
+    ("hiscore_rank_pair@gt", ['a0', 'a1', 'a7']),
+    ("hiscore_rank_pair@nor1", ['a0', 'a7']),
+    ("hiscore_rank_pair_stub@side", ['s0', 's1', 's2', 's3', 's4']),
+    ("hiscore_rank_pair_stub@tbl", ['s0', 's1', 's2', 's3', 's4', 's5']),
+    ("hiscore_rank_pair_stub@c0w", ['s0', 's1', 's2', 's3', 's4', 's5']),
+    ("hiscore_rank_pair_stub@noc0", ['s0', 's1', 's2', 's3', 's4', 's5']),
+    ("hiscore_rank_pair_stub@noc2", ['s0', 's1', 's3', 's5']),
+    ("hiscore_rank_pair_stub@swap", ['s0', 's1', 's2', 's3', 's4', 's5']),
+    ("hiscore_rank_pair_stub@tie9", ['s1']),
+    ("hiscore_rank_pair_stub@gt", ['s2']),
+    ("hiscore_rank_pair_stub@w16", ['s0', 's1', 's3']),
+    ("hiscore_rank_pair_stub@sext", ['s4']),
+    ("hiscore_rank_pair_stub@val", ['s0', 's1', 's2', 's4', 's5']),
+    ("hiscore_rank_pair_stub@second", ['s2', 's4']),
+    ("hiscore_rank_pair_stub@order", ['s0', 's1', 's2', 's3', 's4', 's5']),
+    ("hiscore_rank_pair_stub@r1w", ['s0', 's3']),
 ]
 D1_MASKS.update(D3A_MASKS)
 D1_KINDS.update(D3A_KINDS)
@@ -12337,7 +12389,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
-        0x2C060: (), 0x2CA7C: (),
+        0x2C060: (), 0x2CA7C: (), 0x2DDE4: ("edx",),
         # D2 d2b (record 2026-10-11-reverse-d2b): the stubs its rows add
         0x10D70: ("ebx", "ecx", "edx"), 0x1A8F4: ("edx",), 0x38BEC: (), 0x46670: (),
         0x2C320: (), 0x33C18: (), 0x2C088: ("ebx", "edx", "edi", "ebp"), 0x1D7B8: ("ebx", "edx"),
