@@ -508,8 +508,13 @@ static void camera_mode_track_pair(void)
     /* 0x12F44: the two locals, each folded into the 0x1800 dead zone. */
     s32 d0 = (s32)DSD(lo_off + 0x34u) - cam;
     s32 d1 = (s32)DSD(hi_off + 0x34u) - cam;
-    s32 l0 = (d0 < -0x1800) ? d0 + 0x1800 : (d0 > 0x1800 ? d0 - 0x1800 : 0);
-    s32 l1 = (d1 < -0x1800) ? d1 + 0x1800 : (d1 > 0x1800 ? d1 - 0x1800 : 0);
+    /* 0x12F56..0x12F62: the magnitude is a `neg`, which leaves INT_MIN
+     * negative, so the `jle` zeroes that local (the negation is unsigned here
+     * to stay defined in C). */
+    s32 m0 = d0 < 0 ? (s32)(0u - (u32)d0) : d0;
+    s32 m1 = d1 < 0 ? (s32)(0u - (u32)d1) : d1;
+    s32 l0 = (m0 <= 0x1800) ? 0 : (d0 <= 0 ? d0 + 0x1800 : d0 - 0x1800);   /* 0x12F5C..0x12F7E */
+    s32 l1 = (m1 <= 0x1800) ? 0 : (d1 <= 0 ? d1 + 0x1800 : d1 - 0x1800);
 
     /* 0x12F89: far apart -> midpoint; else the non-zero local. */
     s32 arg;
