@@ -26185,6 +26185,73 @@ D3B_HS(second, D3B_M(30))
 D3B_HS(aecbit, D3B_M(31))
 D3B_HS(cache, D3B_M(9) | D3B_M(13) | D3B_M(18))
 #undef D3B_HS
+
+/* 0x432EC's mutants. EAX = side, EDX = flag. */
+static void d3b_432ec_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], flag = r[R_EDX], oside = side ^ 1u;
+    s32 row = (mut & 0x400u) ? 0x1A : 0x1B;                                   /* @row0 */
+    if ((mut & 1u) ? ((u8)flag != 0u) : (mut & 2u) ? 1 : (flag != 0u)) {      /* @fl8 @noflag */
+        u32 at = 0x00108144u + ((mut & 4u) ? oside : side) * 4u;              /* @recside */
+        u32 rec = DSD(at);
+        if (mut & 0x20u) prompt_press_start_clear(0, 0, side);                /* @order */
+        if (rec != 0u && !(mut & 8u)) actor_set_dead(rec);                    /* @nodead */
+        if (rec != 0u && (mut & 0x10u)) DSD(at) = 0u;                         /* @zero */
+        if (!(mut & 0x20u))
+            prompt_press_start_clear((mut & 0x80u) ? 1 : 0, 0, (mut & 0x40u) ? oside : side);   /* @clrcol @clrside */
+    }
+    s32 n = (s32)strlen((const char *)game_string_get((mut & 0x800000u) ? 0x38u : 0x39u));   /* @lenid */
+    if (!(mut & 0x1000u) && n < ((mut & 0x800u) ? 3 : 2)) row++;              /* @nolen, @lt */
+    u32 cw = 0x000C894Cu + ((mut & 0x100u) ? oside : side) * 2u;              /* @col */
+    s32 col0 = (s32)DSW(cw);
+    #define D3B_COL() ((mut & 0x200u) ? (s32)(s16)DSW(cw) : (mut & 0x1000000u) ? col0 : (s32)DSW(cw))   /* @sext, @cache */
+    const u8 *s;
+    s = game_string_get((mut & 0x2000u) ? 0x37u : 0x36u);                     /* @ids */
+    if (!(mut & 0x4000u)) text_cells_release(D3B_COL(), row - ((mut & 0x8000u) ? 1 : 2), s, 0x1000u);   /* @rel1, @rowm2 */
+    s = game_string_get((mut & 0x2000u) ? 0x36u : 0x37u);
+    if (!(mut & 0x10000u)) text_cells_release(D3B_COL(), row - ((mut & 0x20000u) ? 0 : 1), s, 0x1000u); /* @rel2, @rowm1 */
+    s = game_string_get((mut & 0x40000u) ? 0x39u : 0x38u);                    /* @id3 */
+    if (!(mut & 0x80000u))                                                    /* @rel3 */
+        text_cells_release(D3B_COL(), row + ((mut & 0x100000u) ? 1 : 0), s, (mut & 0x200000u) ? 0x2000u : 0x1000u);   /* @row3, @mode */
+    n = (s32)strlen((const char *)game_string_get(0x39u));
+    if ((mut & 0x400000u) || n >= ((mut & 0x2000000u) ? 3 : 2)) {             /* @always4, @ge */
+        s = game_string_get(0x39u);
+        text_cells_release(D3B_COL(), row + ((mut & 0x4000000u) ? 2 : 1), s, (mut & 0x8000000u) ? 0x2000u : 0x1000u);   /* @row4, @mode4 */
+    }
+    #undef D3B_COL
+}
+static void b_d3b_432ec(const u32 *r, u32 *eax) { fight_char_text_clear(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D3B_TC(name, mut) \
+    static void m_d3b_tc_##name(const u32 *r, u32 *eax) { d3b_432ec_core(r, mut); *eax = 0u; }
+D3B_TC(fl8, 1u)
+D3B_TC(noflag, 2u)
+D3B_TC(recside, 4u)
+D3B_TC(nodead, 8u)
+D3B_TC(zero, 0x10u)
+D3B_TC(order, 0x20u)
+D3B_TC(clrside, 0x40u)
+D3B_TC(clrcol, 0x80u)
+D3B_TC(col, 0x100u)
+D3B_TC(sext, 0x200u)
+D3B_TC(row0, 0x400u)
+D3B_TC(lt, 0x800u)
+D3B_TC(nolen, 0x1000u)
+D3B_TC(ids, 0x2000u)
+D3B_TC(rel1, 0x4000u)
+D3B_TC(rowm2, 0x8000u)
+D3B_TC(rel2, 0x10000u)
+D3B_TC(rowm1, 0x20000u)
+D3B_TC(id3, 0x40000u)
+D3B_TC(rel3, 0x80000u)
+D3B_TC(row3, 0x100000u)
+D3B_TC(mode, 0x200000u)
+D3B_TC(always4, 0x400000u)
+D3B_TC(lenid, 0x800000u)
+D3B_TC(cache, 0x1000000u)
+D3B_TC(ge, 0x2000000u)
+D3B_TC(row4, 0x4000000u)
+D3B_TC(mode4, 0x8000000u)
+#undef D3B_TC
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32638,6 +32705,36 @@ static const binding_t k_bindings[] = {
     { "fight_hud_spawn_side_rr@r3", m_d3b_hs_r3, 0x00000000u },
     { "fight_hud_spawn_side_rr@r5", m_d3b_hs_r5, 0x00000000u },
     { "fight_hud_spawn_side_rr@cache", m_d3b_hs_cache, 0x00000000u },
+    { "fight_char_text_clear", b_d3b_432ec, 0x00000000u },
+    { "fight_char_text_clear@fl8", m_d3b_tc_fl8, 0x00000000u },
+    { "fight_char_text_clear@noflag", m_d3b_tc_noflag, 0x00000000u },
+    { "fight_char_text_clear@recside", m_d3b_tc_recside, 0x00000000u },
+    { "fight_char_text_clear@nodead", m_d3b_tc_nodead, 0x00000000u },
+    { "fight_char_text_clear@zero", m_d3b_tc_zero, 0x00000000u },
+    { "fight_char_text_clear@order", m_d3b_tc_order, 0x00000000u },
+    { "fight_char_text_clear@clrside", m_d3b_tc_clrside, 0x00000000u },
+    { "fight_char_text_clear@clrcol", m_d3b_tc_clrcol, 0x00000000u },
+    { "fight_char_text_clear@col", m_d3b_tc_col, 0x00000000u },
+    { "fight_char_text_clear@sext", m_d3b_tc_sext, 0x00000000u },
+    { "fight_char_text_clear@row0", m_d3b_tc_row0, 0x00000000u },
+    { "fight_char_text_clear@lt", m_d3b_tc_lt, 0x00000000u },
+    { "fight_char_text_clear@nolen", m_d3b_tc_nolen, 0x00000000u },
+    { "fight_char_text_clear@ids", m_d3b_tc_ids, 0x00000000u },
+    { "fight_char_text_clear@rel1", m_d3b_tc_rel1, 0x00000000u },
+    { "fight_char_text_clear@rowm2", m_d3b_tc_rowm2, 0x00000000u },
+    { "fight_char_text_clear@rel2", m_d3b_tc_rel2, 0x00000000u },
+    { "fight_char_text_clear@rowm1", m_d3b_tc_rowm1, 0x00000000u },
+    { "fight_char_text_clear@id3", m_d3b_tc_id3, 0x00000000u },
+    { "fight_char_text_clear@rel3", m_d3b_tc_rel3, 0x00000000u },
+    { "fight_char_text_clear@row3", m_d3b_tc_row3, 0x00000000u },
+    { "fight_char_text_clear@mode", m_d3b_tc_mode, 0x00000000u },
+    { "fight_char_text_clear@always4", m_d3b_tc_always4, 0x00000000u },
+    { "fight_char_text_clear@lenid", m_d3b_tc_lenid, 0x00000000u },
+    { "fight_char_text_clear@ge", m_d3b_tc_ge, 0x00000000u },
+    { "fight_char_text_clear@row4", m_d3b_tc_row4, 0x00000000u },
+    { "fight_char_text_clear@mode4", m_d3b_tc_mode4, 0x00000000u },
+    { "fight_char_text_clear_rr", b_d3b_432ec, 0x00000000u },
+    { "fight_char_text_clear_rr@cache", m_d3b_tc_cache, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

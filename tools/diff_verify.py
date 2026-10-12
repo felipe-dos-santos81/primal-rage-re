@@ -18273,6 +18273,47 @@ D3B_SPECS += [
        mutants=("@r2", "@r3", "@r5", "@cache")),
 ]
 
+# The character-select text rows of this batch. As d2b's 0x433DC row: the string path D2B_STR_TREE
+# runs on both sides (the decoded buffer 0x102760 is in the memory at each release call) and
+# 0x2B150, 0x2C088 and 0x2F280 are stubs. The runtime strlen 0x65624 runs its own bytes on the
+# original side (E.FLAT_SEGMENT_CALLEES: it loads ES) against the host strlen on the port's.
+D3B_STR_ALLOW = D2B_STR_TREE + (0x65624,)
+# a release stub that also rewrites both col words 0xC894C (a harness write: 0x2F280 does not write
+# them), so the raw's read of the col word before each release (0x43349, 0x4336B, 0x4338C, 0x433C4)
+# is separated from one read at entry
+D3B_RELEASE_COL = dataclasses.replace(D2B_RELEASE, writes=((None, 0x000C894C, le16(0x0077) + le16(0x0088)),))
+
+
+def d3b_tc_case(s39, recs=(0, 0), cols=(0x8003, 0x0018), s38=b"READY"):
+    """0x432EC: d2b's 0x433DC fixture (the two prompt sprite slots DS_00108144 between seeded dwords,
+    the two col words 0xC894C) with the strings 0x36..0x39; `s39` is the one whose length steers
+    the row and the fourth release."""
+    return d2b_ot_case({0x36: b"CHOOSE", 0x37: b"YOUR", 0x38: s38, 0x39: s39}, recs, cols)
+
+
+D3B_SPECS += [
+    # 0x432EC fight_char_text_clear: EAX = side, EDX = flag (tested whole, 0x432F8 `test edx,edx`).
+    # EAX dies unread at its seven call sites (the walk, record d3b §1): mask 0.
+    Spec("fight_char_text_clear", 0x432EC, [
+        Case("t0", {"eax": 0, "edx": 0}, d3b_tc_case(b"NOW", (D2B_REC0, D2B_REC1))),
+        Case("t1", {"eax": 1, "edx": 0}, d3b_tc_case(b"", (D2B_REC0, D2B_REC1))),
+        Case("t2", {"eax": 0, "edx": 1}, d3b_tc_case(b"X", (D2B_REC0, 0))),
+        Case("t3", {"eax": 1, "edx": 0x200}, d3b_tc_case(b"XY", (0, D2B_REC1))),
+        Case("t4", {"eax": 0, "edx": 0x80000000}, d3b_tc_case(b"FIGHTER", (0, D2B_REC1))),
+        Case("t5", {"eax": 1, "edx": 1}, d3b_tc_case(b"Z", (D2B_REC0, 0), cols=(0x0003, 0xFFFF), s38=b"")),
+        Case("t6", {"eax": 1, "edx": 0x100}, d3b_tc_case(b"XYZ", (D2B_REC0, D2B_REC1), cols=(0x0003, 0xFFFF))),
+    ], allow_calls=D3B_STR_ALLOW, calls=(P7_2B150, D2B_PROMPT_CLR, D2B_RELEASE), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "fl8 noflag recside nodead zero order clrside clrcol col sext row0 lt nolen ids rel1 rowm2 rel2 "
+           "rowm1 id3 rel3 row3 mode always4 lenid ge row4 mode4").split())),
+    # the same entry with the release stub that rewrites the col words
+    Spec("fight_char_text_clear_rr", 0x432EC, [
+        Case("u0", {"eax": 0, "edx": 1}, d3b_tc_case(b"NOW", (D2B_REC0, D2B_REC1))),
+        Case("u1", {"eax": 1, "edx": 0}, d3b_tc_case(b"X")),
+    ], allow_calls=D3B_STR_ALLOW, calls=(P7_2B150, D2B_PROMPT_CLR, D3B_RELEASE_COL), eax_mask=0,
+       mutants=("@cache",)),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
