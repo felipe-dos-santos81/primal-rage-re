@@ -1802,8 +1802,11 @@ void fight_hud_bar_set_inv(s32 v, u32 side)
  * record, EDX kept 0 by the spawn's own `xor edx,eax` idiom), then
  * fight_hud_badge_spawn(side, DS_0010782A[side]'s class, the word
  * DS_000A76D0) and DS_00104AEC |= 8 (0x1DBFF; not fight_hud_spawn's 2).
- * EBX/ECX/EDX pushed and popped. Only caller: 0x26AA1 (0x26A50, mode 0x23's
- * state 1, EAX = 1). */
+ * EBX/ECX/EDX pushed and popped. The side byte is read again after each
+ * call (0x1DB61 after the first spawn, 0x1DB75 and 0x1DB8E after 0x1DA84,
+ * 0x1DBC0 after the second spawn), so every store and argument takes the
+ * byte as the preceding callee left it. Only caller: 0x26AA1 (0x26A50, mode
+ * 0x23's state 1, EAX = 1). */
 void fight_hud_spawn_side(u32 enable)
 {
     u32 side = DSB(DS_00104B1A);                            /* 0x1DAF1 */
@@ -1811,16 +1814,22 @@ void fight_hud_spawn_side(u32 enable)
     DSB(DS_0010780B + side * 0x94u) = 0u;                   /* 0x1DB0D */
     if ((u8)enable == 0u) return;                           /* 0x1DB14/0x1DB16 */
     u32 a = side != 0u ? 0x4000u : 0u;                      /* 0x1DB1C..0x1DB29 */
-    DSD(DS_001028F0 + side * 4u) = actor_spawn(
+    u32 rec = actor_spawn(
         (const u32 *)(mem + DSD(DS_000A767C + side * 4u)),
         DSW(DS_000A768C + side * 2u), 0xFFu,
         DSW(DS_000A7690 + side * 2u), a);                   /* 0x1DB38..0x1DB5A */
-    fight_hud_bar_set_inv(0, side);                          /* 0x1DB6E/0x1DB70 0x1DA84 */
-    DSD(DS_001028F8 + side * 4u) = actor_spawn(
+    side = DSB(DS_00104B1A);                                /* 0x1DB61 */
+    DSD(DS_001028F0 + side * 4u) = rec;                     /* 0x1DB67 */
+    fight_hud_bar_set_inv(0, side);                         /* 0x1DB6E/0x1DB70 0x1DA84 */
+    side = DSB(DS_00104B1A);                                /* 0x1DB75, 0x1DB8E */
+    a = side != 0u ? 0x4000u : 0u;                          /* 0x1DB75..0x1DB89 */
+    rec = actor_spawn(
         (const u32 *)(mem + DS_000BB664),
         DSW(DS_000A7628 + side * 2u), 0xFFu,
         DSW(DS_000A762C + side * 2u), a);                   /* 0x1DB97..0x1DBB7 */
-    DSD(DS_001028E0 + side * 4u) = 0u;                       /* 0x1DBCF */
+    side = DSB(DS_00104B1A);                                /* 0x1DBC0 */
+    DSD(DS_001028F8 + side * 4u) = rec;                     /* 0x1DBC8 */
+    DSD(DS_001028E0 + side * 4u) = 0u;                      /* 0x1DBCF */
     fight_hud_badge_spawn(side, DSB(DS_0010782A + side * 0x94u),
                           DSW(DS_000A76D0));                /* 0x1DBEA..0x1DBFA 0x1D838 */
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 8u);          /* 0x1DBFF */
