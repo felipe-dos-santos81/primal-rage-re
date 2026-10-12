@@ -5886,7 +5886,8 @@ void game_mode_25_reveal(void)
 
 /* 0x4F0FC — record §49-P. Mode 0x25's timeout exit: draws strings 0x67 (row
  * 0xB) and 0x68 (row 0xE) font-2 mode 0x4000, cell-releases text rows 6..10
- * (col -1, 0xE cells each — the round-card body 0x4EBB8 drew), then DS_
+ * (col 0xE, 0xB cells each: `mov ebx,0xb; mov edx,row; mov eax,0xe` before
+ * each 0x2F388 — the round-card body 0x4EBB8 drew), then DS_
  * 00104B00 = 6 (back to the fight-select flow), DS_001088C0 = 0, DS_00104B15
  * = 1 and DS_00104AEC |= 1. Only caller: 0x25303 (0x24C5C case
  * 0x25, DS_00104B25 == 1 arm, timer expiry). */
@@ -5894,11 +5895,11 @@ void game_mode_25_exit(void)
 {
     text_cursor_hold_font2(-1, 0xB, game_string_get(0x67u), 0x4000u); /* 0x4F0FF..0x4F11A */
     text_cursor_hold_font2(-1, 0xE, game_string_get(0x68u), 0x4000u); /* 0x4F11F..0x4F13A */
-    text_cells_release_count(-1, 6, 0xE);                            /* 0x4F13F..0x4F14E 0x2F388 */
-    text_cells_release_count(-1, 7, 0xE);                             /* 0x4F153..0x4F162 */
-    text_cells_release_count(-1, 8, 0xE);                              /* 0x4F167..0x4F176 */
-    text_cells_release_count(-1, 9, 0xE);                               /* 0x4F17B..0x4F18A */
-    text_cells_release_count(-1, 0xA, 0xE);                              /* 0x4F18F..0x4F19E */
+    text_cells_release_count(0xE, 6, 0xB);                           /* 0x4F13F..0x4F14E 0x2F388 */
+    text_cells_release_count(0xE, 7, 0xB);                            /* 0x4F153..0x4F162 */
+    text_cells_release_count(0xE, 8, 0xB);                             /* 0x4F167..0x4F176 */
+    text_cells_release_count(0xE, 9, 0xB);                              /* 0x4F17B..0x4F18A */
+    text_cells_release_count(0xE, 0xA, 0xB);                             /* 0x4F18F..0x4F19E */
     DSW(DS_00104B00) = 6u;                                                /* 0x4F1A3 */
     DSB(DS_001088C0) = 0u;                                                 /* 0x4F1B0 */
     DSB(DS_00104B15) = 1u;                                                  /* 0x4F1BE */
