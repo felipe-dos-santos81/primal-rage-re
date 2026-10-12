@@ -15845,14 +15845,19 @@ D1_CASES.extend(D3E_CASES)
 D4E_MASKS = {
     "fighter_146f0_al": 0x0,
     "fighter_14a5c_al": 0x0,
+    "fighter_14b90_al": 0x0,
 }
 D4E_KINDS = {
     "fighter_146f0_al@eax": {'call #1', 'call #2'},
     "fighter_14a5c_al@eax": {'call #1', 'call #2'},
+    "fighter_14b90_al@eax396": {'byte', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #5'},
+    "fighter_14b90_al@eax590": {'byte', 'call #3', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
 }
 D4E_CASES = [
     ("fighter_146f0_al@eax", ['c2', 'c3']),
     ("fighter_14a5c_al@eax", ['c2', 'c3']),
+    ("fighter_14b90_al@eax396", ['b0', 'c0']),
+    ("fighter_14b90_al@eax590", ['b1', 'c0']),
 ]   # D4E_CASES end
 D1_MASKS.update(D4E_MASKS)
 D1_KINDS.update(D4E_KINDS)

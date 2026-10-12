@@ -5310,7 +5310,7 @@ void fighter_14b90(u32 slot, u32 rec, u32 side)
     (void)side;
     hit_anim_ctx(ctx, rec);                                 /* 0x14B9B 0x339AC */
     (void)sound_voice(0xB0u);                               /* 0x14BA0/0x14BA5 0x2C3FC */
-    if (fighter_396ac(ctx[0], 0u) != 0) {                   /* 0x14BAA..0x14BB6 */
+    if ((u8)fighter_396ac(ctx[0], 0u) != 0u) {              /* 0x14BAA..0x14BB6, 0x14BB4: test al,al */
         DSB(slot + 0x52u) = 9u;                             /* 0x14BB8 */
         DSB(slot + 0x53u) = 4u;                             /* 0x14BBC */
         DSB(slot + 0x54u) = 2u;                             /* 0x14BC0 */
@@ -5320,7 +5320,7 @@ void fighter_14b90(u32 slot, u32 rec, u32 side)
                          DSD(FIGHT_9AFF4));                 /* 0x14BD2..0x14BDA 0x3C520 */
         return;                                             /* 0x14BDF -> 0x14C8D */
     }
-    if (fighter_14590(ctx[0]) != 0) {                       /* 0x14BE7/0x14BEC */
+    if ((u8)fighter_14590(ctx[0]) != 0u) {                  /* 0x14BE7, 0x14BEC: test al,al */
         DSB(ctx[3] + 0x68u) = (u8)(DSB(ctx[3] + 0x68u) - 1u);   /* 0x14BF9 */
         stream = FIGHT_ANIM_14B90_B;                        /* 0x14BF4 */
     } else {

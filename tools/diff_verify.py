@@ -21910,6 +21910,27 @@ D4E_SPECS += [
          allow_calls=(0x339AC,), calls=D2A_STEP_CALLS + (D3D_14590,), eax_mask=0,
          mutants=("@eax",)),
 ]
+
+
+def d4e_spec_cases(specs, name, stubs):
+    """The cases of the row `name` with each one's stub EAX extended by `stubs`' entry (in order)."""
+    cases = next(s for s in specs if s.name == name).cases
+    assert len(cases) == len(stubs), name
+    return [dataclasses.replace(c, stub_eax={**c.stub_eax, **e}) for c, e in zip(cases, stubs)]
+
+
+D4E_SPECS += [
+    # 0x14B90 fighter_14b90 (d2d's row; mask 0 as there) with 0x396AC and 0x14590 stubs (d2d runs
+    # both). `test al,al` 0x14BB4 / `je` and 0x14BEC / `jbe`: 0x396AC returns 1, 0xFFFFFF01 (the
+    # hold arm), 0x100, 0, 0xFFFFFF00 (AL = 0: on); 0x14590 returns 1 (the +0x68 decrement and
+    # 0xD2FAC), 0x100, 0xFFFFFF00 (AL = 0: 0xD2F6A) and 0x80. d2d's cases otherwise.
+    Spec("fighter_14b90_al", 0x14B90, d4e_spec_cases(D2D_SPECS, "fighter_14b90", (
+        {0x396AC: 1}, {0x396AC: 0xFFFFFF01}, {0x396AC: 0x00000100, 0x14590: 1},
+        {0x396AC: 0, 0x14590: 0x00000100}, {0x396AC: 0xFFFFFF00, 0x14590: 0xFFFFFF00},
+        {0x396AC: 0, 0x14590: 0x00000080})),
+        calls=(VOICE, C1_18B44, D2A_HIT_C, CLEAR34, CLEAR36, D3C_396AC, D3D_14590),
+        allow_calls=(0x339AC,), eax_mask=0, mutants=("@eax396", "@eax590")),
+]
 D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

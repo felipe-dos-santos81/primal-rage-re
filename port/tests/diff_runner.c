@@ -30483,6 +30483,77 @@ D3E_TS_MUT(midno1c, 41u)  D3E_TS_MUT(no41, 42u)     D3E_TS_MUT(s64self, 43u)  D3
  * mutation set 0 is the port before the `test al,al` correction (0x14707 / 0x14A73). */
 static void m_d4e_146f0_eax(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_146f0, r, 0u); *eax = 0u; }
 static void m_d4e_14a5c_eax(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_14a5c, r, 0u); *eax = 0u; }
+/* 0x14814 and its twin 0x14B90, restated with one mutation per bit: EAX = slot, EDX = rec. `t`
+ * holds the twin's addresses; 0x14814 starts its streams through 0x3C4CC, stores the hold arm's
+ * state after the call and +0x54 = 0, 0x14B90 through 0x3C520, stores before 0x18B44, +0x54 = 2,
+ * and runs 0x3C148 / 0x3C16C. Bits 1 and 2 test a predicate's whole int (the port before the
+ * `test al,al` corrections 0x14838 / 0x14872 and 0x14BB4 / 0x14BEC). */
+typedef struct { u32 a, b, c, hold, cb0c, cb18, cb1c, fd, flag; u32 twin; } d4e_react_t;
+static const d4e_react_t k_d4e_14b90 = { 0x000D2F56u, 0x000D2FACu, 0x000D2F6Au, 0x0009AFF4u, 0x00014988u,
+                                         0x00014938u, 0x00014950u, 0x000FD100u, 0x000FD11Au, 1u };
+static void d4e_react_start(const d4e_react_t *t, u32 rec, u32 stream, u32 hold, u32 mut)
+{
+    if ((t->twin != 0u) != ((mut & 0x8000000u) != 0u)) hit_anim_start_c(rec, stream, hold);   /* @starter */
+    else hit_anim_start_b(rec, stream, hold);
+}
+static void d4e_react_core(const d4e_react_t *t, const u32 *r, u32 mut)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], ctx[6], stream;
+    int g;
+    hit_anim_ctx(ctx, rec);
+    (void)sound_voice((mut & 4u) ? 0xB1u : 0xB0u);                               /* @voice */
+    g = fighter_396ac((mut & 0x10u) ? ctx[1] : ctx[0], (mut & 8u) ? 1u : 0u);    /* @gside @sel */
+    if ((mut & 1u) ? (g != 0) : ((u8)g != 0u)) {                                 /* @eax396 */
+        int first = (t->twin != 0u) != ((mut & 0x20u) != 0u);                    /* @aorder: the twin's order */
+        if (first) {
+            DSB(slot + 0x52u) = 9u;
+            DSB(slot + 0x53u) = (mut & 0x40u) ? 7u : 4u;                         /* @a53 */
+            DSB(slot + 0x54u) = t->twin ? 2u : 0u;
+        }
+        fighter_18b44((mut & 0x80u) ? ctx[3] : ctx[2]);                          /* @b18 */
+        d4e_react_start(t, rec, (mut & 0x100u) ? t->c : t->a,                    /* @astream */
+                        (mut & 0x200u) ? 0x3F800000u : DSD(t->hold), mut);       /* @ahold */
+        if (!first) {
+            DSB(slot + 0x52u) = 9u;
+            DSB(slot + 0x53u) = (mut & 0x40u) ? 7u : 4u;
+            DSB(slot + 0x54u) = t->twin ? 2u : 0u;
+        }
+        return;
+    }
+    g = fighter_14590((mut & 0x400u) ? ctx[1] : ctx[0]);                         /* @gate */
+    if ((mut & 2u) ? (g != 0) : ((u8)g != 0u)) {                                 /* @eax590 */
+        u32 at = ((mut & 0x800u) ? ctx[2] : ctx[3]) + 0x68u;                     /* @dec */
+        if (!(mut & 0x1000u)) DSB(at) = (u8)(DSB(at) - 1u);                      /* @nodec */
+        stream = (mut & 0x2000u) ? t->c : t->b;                                  /* @bstream */
+    } else {
+        stream = (mut & 0x2000u) ? t->b : t->c;
+    }
+    if (mut & 0x4000u) DSB(slot + 0x52u) = 9u;                                   /* @early */
+    d4e_react_start(t, rec, stream, 0x3F800000u, mut);
+    if (!(mut & 0x8000u)) DSB(slot + 0x57u) = 0u;                                /* @s57 */
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x53u) = (mut & 0x10000u) ? 4u : 7u;                              /* @b53 */
+    DSB(slot + 0x54u) = ((t->twin != 0u) != ((mut & 0x20000u) != 0u)) ? 2u : 0u; /* @b54: the twin's value */
+    if (!(mut & 0x40000u)) DSD(slot + 0x0Cu) = t->cb0c;                          /* @cb0c */
+    DSD(slot + 0x18u) = (mut & 0x80000u) ? t->cb1c : t->cb18;                    /* @cbswap */
+    DSD(slot + 0x1Cu) = (mut & 0x80000u) ? t->cb18 : t->cb1c;
+    DSD(slot + 0x40u) |= (mut & 0x100000u) ? 0x00040000u : 0x00048000u;          /* @orbit */
+    if (!(mut & 0x200000u)) DSB(rec + 0x55u) = 0u;                               /* @r55 */
+    if (t->twin) {
+        fighter_3c148(ctx[0]);
+        fighter_3c16c(ctx[0]);
+    }
+    {
+        u32 xa = DSD(ctx[2] + 0x2Cu), xb = DSD(ctx[3] + 0x2Cu);
+        u32 gt = (mut & 0x400000u) ? (xa > xb) : (mut & 0x800000u) ? ((s32)xa >= (s32)xb)   /* @cmpuns @cmpge */
+                                                                    : ((s32)xa > (s32)xb);
+        DSD(t->fd + ((mut & 0x1000000u) ? ctx[1] : ctx[0]) * 4u) = gt ? 0x2000u : 0x1000u;  /* @fdidx */
+    }
+    if (!(mut & 0x2000000u)) DSB(t->flag + ((mut & 0x4000000u) ? ctx[1] : ctx[0])) = 0u;    /* @noflag @flagside */
+}
+#define D4E_REACT_MUT(fn, name, bit) \
+    static void m_d4e_##fn##_##name(const u32 *r, u32 *eax) { d4e_react_core(&k_d4e_##fn, r, bit); *eax = 0u; }
+D4E_REACT_MUT(14b90, eax396, 1u)   D4E_REACT_MUT(14b90, eax590, 2u)
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39090,6 +39161,9 @@ static const binding_t k_bindings[] = {
     { "fighter_146f0_al@eax", m_d4e_146f0_eax, 0x00000000u },
     { "fighter_14a5c_al", b_d2a_14a5c, 0x00000000u },
     { "fighter_14a5c_al@eax", m_d4e_14a5c_eax, 0x00000000u },
+    { "fighter_14b90_al", b_d2d_14b90, 0x00000000u },
+    { "fighter_14b90_al@eax396", m_d4e_14b90_eax396, 0x00000000u },
+    { "fighter_14b90_al@eax590", m_d4e_14b90_eax590, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
