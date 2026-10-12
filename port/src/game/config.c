@@ -322,9 +322,8 @@ u32 hiscore_insert(u32 rec, u32 src, u32 table)
         DSB(p + 1u) = (u8)(w >> 8);                          /* 0x2DDB0 */
         p += 2u;
     }
-    /* PORT: 0x2DDCD 0x2D4EC(table + 6), run when rec is below the stored count,
-     * rewrites the storage image's check bytes; a no-op here, as in 0x2DA0C
-     * (spec §7). */
+    if ((u32)DSW(desc + 2u) > rec)                           /* 0x2DDBA..0x2DDC4 `jbe` */
+        config_storage_touch(table + 6u);                    /* 0x2DDC6..0x2DDCD 0x2D4EC */
     return 1u;                                               /* 0x2DDD2 */
 }
 
