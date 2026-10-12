@@ -47,6 +47,11 @@ data pointer to it.
 | `0x3C800` | `hit_displace` (*static*) | 121 | `0xFF` | `mov al,1` `0x3C86B` / `xor al,al` `0x3C872`; `0x3CA99` `test al,al` |
 | `0x467DC` | `ai_pred_467dc` | 78 | `0xFF` | `mov al,cl` `0x46825` / `xor al,al`; `0x46A85` `test al,al` |
 | `0x4682C` | `ai_pred_4682c` | 78 | `0xFF` | `mov al,cl` `0x46875` / `xor al,al`; `0x46AA5` `test al,al` |
+| `0x461DC` | `fighter_input_ring_update` | 642 | 0 | the one caller reaches `call 0x38990` on both arms (`0x24CB5` call, `0x24CBA` `cmp byte [0x104b26],0`, `0x24CC3`/`0x24CC8`), whose first uses of EAX are writes (`0x38991` `mov ax,[0xf0aec]`, `0x3899F` `mov eax,[0xf0aec]`) |
+| `0x46C78` | `ai_state_setup` (*static*) | 318 | 0 | the one caller overwrites EAX (`0x46FE3` call, `0x46FE8` `mov eax,edx`) |
+| `0x354F0` | `fighter_wall_clamp` | 360 | 0 | `0x3581C` is followed by `0x35821` `mov eax,[esp]`; `0x35824` by `0x35829` `call 0x186c4`, whose first instruction is `xor eax,eax` |
+| `0x35E6C` | `fighter_state_35e6c` | 279 | 0 | the one caller returns at once (`0x34D6D` call, `0x34D72`..`0x34D77`, the dispatcher), then `0x35801` |
+| `0x35F84` | `fighter_state_35f84` | 213 | 0 | `0x34C57` call, `0x34C5C`..`0x34C61` (the dispatcher), then `0x35801` |
 
 ## §2 The rows (measured)
 
@@ -66,6 +71,11 @@ data pointer to it.
 | `hit_displace` | `0x3C800` | 6 | 3/3 | 13 | `0xFF` | `ret 8` (the second stack argument is the one read) |
 | `ai_pred_467dc` | `0x467DC` | 10 | 9/9 | 8 | `0xFF` | `0x1A5D4` real |
 | `ai_pred_4682c` | `0x4682C` | 10 | 9/9 | 8 | `0xFF` | the twin |
+| `fighter_input_ring_update` | `0x461DC` | 9 | 49/50 | 23 | `0x0` | both sides per case. `0x1A570` a stub, `0x3C6E8` real; `0x463FB` named unhit (§4, §3.6) |
+| `ai_state_setup` | `0x46C78` | 18 | 18/19 | 11 | `0x0` | all 13 live targets of the table `0x46C40`; `0x33950`, `0x46BBC` real; `0x46D97` named unhit (§4) |
+| `fighter_wall_clamp` | `0x354F0` | 16 | 22/22 | 21 | `0x0` | `0x188DC`, `0x187FC`, `0x1883C`, `0x3C148` stubs; `0x187FC`'s EAX is the distance (§3.7) |
+| `fighter_state_35e6c` | `0x35E6C` | 8 | 8/8 | 23 | `0x0` | `0x2C3FC`, `0x3BDDC` (AL tested), `0x18B04`, `0x3C480`, `0x188AC` stubs (§3.3, §3.8) |
+| `fighter_state_35f84` | `0x35F84` | 9 | 7/7 | 22 | `0x0` | `0x1922C` (with `0x33950`) real; `0x3C148`, `0x3C16C` stubs (§3.9) |
 
 The exact kinds and case sets that catch each mutant are `D2A_KINDS` and `D2A_CASES` in
 `tools/tests/test_diff_verify.py`; the mutants are the `m_d2a_*` bindings over the `d2a_*_core` functions of
@@ -105,7 +115,7 @@ Each is its own commit, and each is unproven against the capture oracles until t
 - **Game effect.** None found: the dispatcher `0x34B6C` passes the side's own slot (`DS_001077A8[side]`,
   whose one non-zero store is the slot's own address; record d1a §3.2).
 
-### §3.3 AL-width alignments (behaviour-neutral in the game; commit `0e42ea3`)
+### §3.3 AL-width alignments (behaviour-neutral in the game; commits `0e42ea3`, `ac25a9f`)
 
 The raw tests AL after these calls; the port compared the whole `int`. The C callees return 0 or 1, so no
 run changes; the rows stub the callee with EAX = `0x100` (AL = 0). Each now reads `(u8)callee(...)`.
@@ -116,6 +126,7 @@ run changes; the rows stub the callee with EAX = `0x100` (AL = 0). Each now read
 | `fighter_state_36430` | `0x36638` | `0x36455` `test al,al` | `@al366`, `k2` (measured before: `call #2: original 0x3BDDC(0x0), port none`) |
 | `fighter_state_364fc` | `0x365C8` | `0x3650A` `test al,al` | `@al365`, `k2` |
 | `fighter_state_364fc` | `0x36638` | `0x36521` `test al,al` | `@al366`, `k2` |
+| `fighter_state_35e6c` | `0x3BDDC` | `0x35F1A` `test al,al` | `@al`, `b3` (measured before: `call #2: original 0x3C480(0x10A300, 0xE9002, 0x40000000), port 0x18B04(0x1)`) |
 
 ### §3.4 `0x3C758`/`0x3C800`: the phase word is sign-extended (commit `d2e7fab`)
 
@@ -149,9 +160,67 @@ run changes; the rows stub the callee with EAX = `0x100` (AL = 0). Each now read
 - **Not built alone.** Commits `d2e7fab` and `ea83dc3` were not compiled in isolation (the tree was built
   after both and the export).
 
+### §3.6 `0x461DC` `fighter_input_ring_update`: the ring index is the signed word (commit `5a7e4e9`)
+
+- **Raw.** `mov eax,[0x1082d2]; sar eax,0x10; inc eax; cmp eax,0x14; jl` (`0x46420`..`0x4642C`): the index
+  is the sign-extended word DS_001082D4 plus one, wrapped to 0 at 0x14 and above, signed.
+- **Old port.** `(DSD(DS_001082D2) >> 16) + 1u`, `if (pos >= 0x14u) pos = 0u`: a negative index wrapped to 0.
+- **Measured before the fix** (case `r4`, the word `0xFFFE`): `byte 0x10826E: original 0x30, port
+  unchanged`, `byte 0x1082D4: original 0xFF, port 0x00` (the raw stores at index -1).
+- **Mutant.** `@pz` (the old code) is caught by `r4`.
+- **Game effect.** None: `0x46447` is the only instruction that names the word as a store, and it keeps
+  it in 0..0x13.
+
+### §3.7 `0x354F0` `fighter_wall_clamp`: `0x187FC` is called twice on the push path (commit `18eb091`)
+
+- **Raw.** `call 0x187fc; test eax,eax; jge` (`0x3558E`..`0x35595`), then `call 0x187fc; neg eax`
+  (`0x35597`) or `call 0x187fc` (`0x355A0`); the left wall the same (`0x3560C`, `0x35615`, `0x3561E`).
+- **Old port.** One call and its absolute value, under a `/* PORT: */` note that called `0x187FC`
+  side-effect-free (it re-latches both slots through `0x186D0`).
+- **Measured before the fix** (with `0x187FC` a stub; case `w1`): `call #2: original 0x187FC(), port
+  0x1883C(0x1, 0xFFFFFF00, 0x0)`.
+- **Mutant.** `@one` (the old code) is caught by every case that reaches the push test.
+- **Game effect.** None expected: the port's `0x186D0` recomputes the same slot fields on a second pass
+  with nothing changed in between (not measured against a capture).
+
+### §3.8 `0x35E6C` `fighter_state_35e6c`: the side's own slot and record (commit `0d2fd6e`)
+
+- **Raw.** The side is `[edx+0x51]` (`0x35E74`); `0x35E88`..`0x35EA0` put `DS_001077B0 + side*0x94` in
+  `[esp+8]` and `0x35EC0`..`0x35EC6` its record in `[esp+0x10]`. `0x35ED0` `or byte [ebx+0x41],0x80` is the
+  only use of the EAX slot. From `0x35F2B` `mov eax,[esp+8]` the stores of +0x54, +0x52, +0x53, +0x84 and
+  +0x92 and the +0x7A read go through the side's slot; `0x35F58` hands `0x3C480` the side's record and
+  `0x35F6D`/`0x35F76` read its +0x18 for `0x188AC`.
+- **Old port.** The EAX slot and the EDX record throughout.
+- **Measured before the fix** (a scratch slot and a third record; case `b5`): `call #1: original
+  0x3C480(0x10A300, 0xE9002, 0x40000000), port 0x3C480(0x10A400, 0xE9005, 0x40000000)`, `byte 0x107896:
+  original 0x09, port unchanged`, `byte 0x10A052: original unchanged, port 0x09`.
+- **Mutants.** `@slot`, `@rec`, `@x18` (the old code), each caught by `b5`.
+- **Game effect.** None found: the dispatcher passes the side's own slot and its record.
+- The AL test after `0x3BDDC` (`0x35F1A`) is commit `ac25a9f`, in §3.3's table.
+
+### §3.9 `0x35F84` `fighter_state_35f84`: the gate's record and the stores' slot (commit `dcd9ce4`)
+
+- **Raw.** The gate reads the EAX slot's +0x7A and +0x30 and `mov eax,[ebx]; cmp word [eax+0x36],0`
+  (`0x36007`, `0x36009`): that slot's own record. The side is `[edx+0x51]` (`0x35F8D`); `[esp+8]` is the
+  side's slot (`0x35FA1`..`0x35FB9`) and `[esp+0x10]` its record (`0x35FD9`..`0x35FDF`); `0x36022`/`0x3602A`
+  zero that record's +0x24 and `0x36026`..`0x36042` store +0x52, +0x78 and +0x53 through that slot.
+- **Old port.** `rec + 0x36` and `rec + 0x24` on the EDX record, the three stores on the EAX slot.
+- **Measured before the fix** (cases `l4`, `l5`, `l6`): `call #0: original 0x3C148(0x1), port none`;
+  `call #0: original none, port 0x3C148(0x0)`; `byte 0x107802: original 0x14, port unchanged` with `byte
+  0x10A052: original unchanged, port 0x14`.
+- **Unit test.** `test_fight.c` case E drove the dispatcher with a scratch slot in the table and asserted
+  +0x52 there; it asserts it on the real slot 0 now (the same one check). Under the old port:
+  `test_fight.c:8910: 170 != 20`.
+- **Mutants.** `@r36`, `@r24`, `@slot` (the old code): `l4`/`l5`, `l4`/`l6`, `l4`/`l6`.
+- **Game effect.** None found, as §3.8.
+
 ## §4 Named gaps, limits and unhit blocks
 
-- **Unhit blocks: none** in the rows above.
+- **Unhit blocks, named.** `0x463FB` in `0x461DC`: the fourth toggle reads the low byte's bit 5 again
+  (`0x463EC` `mov ax,[esp+ebx]`, `0x463F2` `and al,0x20`) right after `0x463E8` cleared it whenever it was
+  set, so `xor byte [esp+ebx+1],0x20` cannot run; the port keeps the same dead test, and `@t4` (testing
+  the bit it flips) is caught by `r2` and `r5`. `0x46D97` in `0x46C78`: state 0xA or above 0xD calls the
+  runtime fatal `0x62003`; the port skips the weight store there. Every other block of every row is hit.
 - **Seam added.** `fighter_39278` opens with `PR_SEAM(0x39278u, v)`: `0x192DC` calls it once or twice with
   the same argument, and both leave the same `DS_001088EC` word, so only the call list tells them apart.
   `0x39278`'s own row was re-run (VERIFIED, 4/4); no other spec names `0x39278`.
@@ -185,6 +254,13 @@ run changes; the rows stub the callee with EAX = `0x100` (AL = 0). Each now read
   so a pen passed unextended is not separated in this row.
 - **`0x3C758`/`0x3C800`: `0x3C600`'s result.** The stub returns a scratch descriptor; the real one's value
   (and its default arm, a `/* PORT: */` in the port) is its own row's.
+- **`0x461DC`: what is not observable.** `0x3C6E8` gets the zero-extended command word (`xor edx,edx; mov
+  dx,[ebx+0x1088e0]` `0x46242`..`0x46246`), on which it is an identity (its gates are bits 16..19), so
+  neither its call nor the `cmp eax,1` on `0x1A570`'s AL that guards it (`0x4623D`) changes any byte. The
+  A-arm skip (bit 0 with no 0x3030 bit) dropped is equivalent too: the word then matches no later arm.
+- **`0x354F0`: the sign call and the value call.** The raw takes the sign from the first `0x187FC` and the
+  value from the second; the stub returns the same EAX to both, so a port using the first for both is
+  only separated by the call count.
 - **`0x235C4`: one block.** The row's four cases differ in the side, the pset index and the other slot's
   +0x53 (what the real `0x22B28` compares); the function itself has no branch.
 
@@ -205,12 +281,21 @@ seeded; at least one dropped or misplaced store per field is a mutant.
 | `fighter_3baec` | both slots' +0x40 dword (the kept bit 15, with other +0x41 bits set) | `@keep0`, `@keep1`, `@kswap`, `@klate`, `@kmask` |
 | `hit_connect` | the accumulator dword (the dwords before and after it seeded) | `@nostore`, `@ow`, `@noacc` |
 | `hit_displace` | the displacement dword (pre `0x5A5A5A5A`, neighbours seeded) | `@nostore`, `@dw`, `@dz`, `@dlo`, `@s0` |
+| `fighter_input_ring_update` | the two ring words (both rings seeded whole, with the word before and after), `0x1082D4` (D2, D6 beside) | `@d4`, `@swap`, `@pz`, `@wrap` |
+| `ai_state_setup` | the side block's +0x10 dword (+0x14, +0x18 beside; the other block seeded), and +0x2C/+0x14/+0x34 through the real `0x46BBC` | `@nostate`, `@stbyte`, `@wside` |
+| `fighter_wall_clamp` | none of its own | - |
+| `fighter_state_35e6c` | the EAX slot's +0x41 (+0x40, +0x42); the side slot's +0x54, +0x52, +0x53 (+0x51, +0x55), +0x84 (+0x82, +0x86), +0x92 (+0x90) | `@or41`, `@s54`, `@s52`, `@s53`, `@inc`, `@incb`, `@w92`, `@slot`, `@order` |
+| `fighter_state_35f84` | the EAX slot's +0x41; the side record's +0x24 (+0x20, +0x28); the side slot's +0x52, +0x53 (+0x51, +0x54), +0x78 (+0x76, +0x7A) | `@or41`, `@s24`, `@r24`, `@s52`, `@s53`, `@s78`, `@b78`, `@slot`, `@t19`, `@order` |
 
 The two predicates (`0x467DC`, `0x4682C`) write nothing.
 
 **Findings.** `fighter_39b30`'s first fixture put a stray word before the h pair, so the h, m and a words
 were not the ones the cases named: the row verified (both sides read the same bytes) but `@hz` and `@q32`
-were not detected, which is what exposed it. `ai_pred_467dc@s54` and `ai_pred_4682c@s53` were not detected
+were not detected, which is what exposed it. The same fixture, and `fighter_state_35f84`'s first one,
+poked each character's ground as a dword at `0xBD882 + ch*2`: two neighbouring characters' pokes
+overlapped, so `q2`'s ground was `0x8282` for the `0x8000` the case named, and `l0`'s gate failed where
+the case meant it to pass (seen as `@ycmp` and `@csext` undetected). Both now poke the ground word alone;
+`fighter_39b30`'s pins did not move. `ai_pred_467dc@s54` and `ai_pred_4682c@s53` were not detected
 by the first eight cases (each gate failed only where the last test failed too); `e8` and `e9` separate
 them.
 
