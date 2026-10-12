@@ -22420,6 +22420,78 @@ D4B_SPECS += [
                 "@outa20", "@outb", "@al15", "@mirrorall", "@mirror1", "@subswap", "@nosubb", "@nosuba", "@originzx",
                 "@originzy")),
 ]
+
+# ---- 0x15C30: a 4-byte box clipped to the side's projected sprite rect -----------------------------------
+D4B_CLIP_BOX = D4B_PJ_OUT + 4                   # the box bytes, among seeded bytes
+
+
+def d4b_clip(cid, side, ch, index, flip, pal, wh, d, box, pos=(0x00012345, 0x0000ABCD), uid=0x0123,
+             handle=0x800040):
+    """`pal` = the 0xD5100 pair (a, b) of (ch, index); `wh` = the sprite's width and height words; `d` =
+    (dx, dy), how far the rect's corner lies right of / below the palette origin: the sprite's origin
+    words are solved from it with a model of 0x15B90 and of the two scalings (the expectations are the
+    original's). `flip` is the pset word's bit 15 (it mirrors the x origin and the palette's a)."""
+    a, b = pal
+    if ch in (5, 6):
+        a, b = a + int((0x7F - a) / 8), b + int((0x5F - b) / 8)
+    if flip:
+        a = 0x100 - a
+    la = ((a * 0xF3D + 0x800) >> 12) - d[0]
+    ox = d4b_s16(wh[0]) - la - 1 if flip else la
+    oy = ((b * 0xD56 + 0x800) >> 12) - d[1]
+    assert -0x8000 <= ox < 0x8000 and -0x8000 <= oy < 0x8000, (cid, ox, oy)
+    och = (ch + 3) % 7
+    def pair(c): return 0x000D5100 + ((D2D_CHAR_CONST[c if c < 7 else 0] + index) & 0x3FFFFFFF) * 2
+    word = uid | (0x8000 if flip else 0)
+    p = {**d4b_res(), **d1h_char_case(side, ch), 0x1014EC: le32(D4B_BOX_PSET),
+         pair(och) - 1: bytes([0x91, pal[0] ^ 0x55, pal[1] ^ 0x33, 0x94]),
+         pair(ch) - 1: bytes([0x81, pal[0], pal[1], 0x84, 0x85, 0x86]),
+         0xA8B30 + uid * 4 - 4: le32(handle ^ 0x100) + le32(handle) + le32(handle ^ 0x200),
+         d4b_at(handle) - 2: b"\xee\xee" + le16(wh[0]) + le16(wh[1]) + le16(ox) + le16(oy) + b"\xdd\xdd",
+         D4B_PJ_OUT: b"\x5a" * 4 + bytes(box) + b"\x5a" * 4}
+    for i in (0, 1):
+        own = i == side
+        p[0x1077B0 + i * 0x94] = le32(D4B_PJ_P[i])
+        p[D4B_PJ_P[i] + 0x54] = le16(0x5454) + le16(2 + i) + le16(0x5858)
+        p[D4B_BOX_PSET + (2 + i) * 0x20] = (le16(word if own else word ^ 0x8000) + le16(0x0202)
+                                            + le32(pos[0] if own else 0x00777777) + le32(pos[1] if own else 0x00888888))
+    return Case(cid, {"eax": side, "edx": index, "ebx": D4B_CLIP_BOX}, p)
+
+
+D4B_SPECS += [
+    # 0x15C30 camera_box_clip: EAX = side, EDX = index, EBX = the box {x, y, width, height} (bytes). The
+    # side's rect (x1, y1, x2, y2) is 0x140E4's (0x15C47..0x15D19: the same origin, mirror and two
+    # projections). 0x15B90(side, &a, &b, index) (d2d's row; run on both sides, its outs on the raw's
+    # stack) gives dx = the x projection - (a * 0xF3D + 0x800) / 0x1000 and dy with b and 0xD56
+    # (0x15D28..0x15DA1; a and b are not shifted). The box bytes are scaled in place: `shl byte [esi],2`,
+    # `mul ah` by 3 (0x15DA3..0x15DBF). Per axis, with c = the low byte of (x1 - dx): x + dx >= x1
+    # (`jge` 0x15DD6) takes c off x; else x + dx + width >= x1 (`jge` 0x15DE3) zeroes x and takes c - x
+    # off the width; else both are zeroed. Then x + x1 > x2 (`jle` 0x15E20) zeroes both, and x + x1 +
+    # width > x2 (`jle` 0x15E34) takes the excess off the width. The y axis the same (0x15E3F..0x15EB3).
+    # Mask 0: each of the four call sites rewrites EAX (`xor eax,eax` 0x171D1, 0x1721F, 0x177C9,
+    # 0x179AD). The cases put the rect's corner `d` from the palette origin on each side of each
+    # compare: k1 x == c and width == the rect's; k2 one short on the left, one over on the right; k3
+    # the width ending on the corner; k4 one short of it; k5 x one past the far edge; k6 on it; k7 a
+    # negative c; k8 bytes that wrap when scaled; k9 a c above 255 and scaled lengths above 0x7F; k10 an
+    # empty rect. The first two compares of an axis are not observable at equality (x + dx == x1 stores
+    # x - c = 0 and the same width on either arm; x + dx + width == x1 stores 0, 0 on either arm).
+    Spec("camera_box_clip", 0x15C30, [
+        d4b_clip("k0", 0, 2, 3, False, (0x40, 0x30), (40, 40), (5, 4), (2, 2, 3, 3)),
+        d4b_clip("k1", 1, 5, 0x40, True, (0x51, 0x22), (16, 12), (8, 6), (2, 2, 4, 4), pos=(0xFFFE1DC0, 0xFFFF2B40)),
+        d4b_clip("k2", 0, 6, 1, False, (0x7A, 0x50), (14, 10), (9, 7), (2, 2, 4, 4), handle=0x1000010),
+        d4b_clip("k3", 1, 0, 0, True, (0x10, 0x60), (10, 10), (24, 18), (2, 2, 4, 4), uid=0x7FFE),
+        d4b_clip("k4", 0, 7, 2, False, (0x33, 0x44), (10, 10), (25, 19), (2, 2, 4, 4)),
+        d4b_clip("k5", 1, 3, 5, False, (0x66, 0x11), (11, 11), (0, 0), (3, 4, 2, 2)),
+        d4b_clip("k6", 0, 4, 7, True, (0x20, 0x5F), (12, 12), (0, 0), (3, 4, 2, 2)),
+        d4b_clip("k7", 1, 1, 9, False, (0x45, 0x38), (100, 100), (-7, -5), (2, 2, 1, 1)),
+        d4b_clip("k8", 0, 2, 4, True, (0x30, 0x20), (300, 300), (-0xFE, -0xFD), (0x41, 0x56, 0xC1, 0xAB)),
+        d4b_clip("k9", 1, 6, 6, False, (0x70, 0x40), (50, 20), (300, 300), (50, 70, 40, 60)),
+        d4b_clip("k10", 0, 5, 8, False, (0x48, 0x28), (0xFFFF, 0xFFFF), (0, 0), (0, 0, 5, 5)),
+    ], allow_calls=(0x1B544, 0x15B90, 0x17EEC, 0x1A570), eax_mask=0,
+       mutants=("@flip", "@wh", "@palside", "@palidx", "@dxk", "@dyk", "@outa6", "@pak", "@dyb", "@pbk", "@shl",
+                "@mul", "@b2shl", "@b3mul", "@x2y2", "@dydx", "@acc8", "@lensext", "@nozero", "@partb0", "@gt", "@rzero",
+                "@notrim", "@yacc8", "@ylensext", "@ynozero", "@ypartb0", "@ygt", "@yrzero", "@ynotrim")),
+]
 D1_SPECS += D4B_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

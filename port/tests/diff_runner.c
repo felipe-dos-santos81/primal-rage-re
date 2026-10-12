@@ -30989,6 +30989,76 @@ D4B_PJ_MUT(ala, 13u)   D4B_PJ_MUT(ac0src, 14u) D4B_PJ_MUT(ac0keep, 15u) D4B_PJ_M
 D4B_PJ_MUT(noflag, 17u) D4B_PJ_MUT(ac8keep, 18u) D4B_PJ_MUT(outa20, 19u) D4B_PJ_MUT(outb, 20u)
 D4B_PJ_MUT(al15, 21u)  D4B_PJ_MUT(mirrorall, 22u) D4B_PJ_MUT(mirror1, 23u) D4B_PJ_MUT(subswap, 24u)
 D4B_PJ_MUT(nosubb, 25u) D4B_PJ_MUT(nosuba, 26u) D4B_PJ_MUT(originzx, 27u) D4B_PJ_MUT(originzy, 28u)
+
+/* 0x15C30 camera_box_clip: EAX = side, EDX = index, EBX = the 4-byte box {x, y, width, height}. The
+ * side's actor rect as 0x140E4 builds it (x1, y1, x2, y2; 0x15C47..0x15D19), then 0x15B90(side,
+ * &a, &b, index) and dx = ((actor+4 sar 6) * 0xF3D + 0x800) / 0x1000 - (a * 0xF3D + 0x800) / 0x1000,
+ * dy the same with actor+8, b and 0xD56 (0x15D28..0x15DA1). The box is scaled in place as bytes (x
+ * and width `shl 2`, y and height `mul 3`: 0x15DA3..0x15DBF), then clipped to the rect per axis. */
+static s32 d4b_15c30_div(u32 x, u32 k) { return (s32)(x * k + 0x800u) / 0x1000; }
+static void d4b_15c30_axis(u8 *pos, u8 *len, s32 d, s32 lo, s32 hi, u32 mut, u32 base)
+{
+    u8 c = (u8)((u8)lo - (u8)d);
+    s32 acc = (mut == base) ? (s32)(u8)(*pos + (u8)d) : (s32)*pos + d;      /* @acc8 / @yacc8: the sum as a byte */
+    if (acc < lo) {
+        if (acc + ((mut == base + 1u) ? (s32)(s8)*len : (s32)*len) < lo) {   /* @lensext / @ylensext */
+            *pos = 0;
+            if (mut != base + 2u) *len = 0;                                   /* @nozero / @ynozero */
+        } else {
+            u8 b0 = *pos;
+            *pos = 0;
+            *len = (u8)(*len - (u8)(c - ((mut == base + 3u) ? 0u : b0)));     /* @partb0 / @ypartb0 */
+        }
+    } else {
+        *pos = (u8)(*pos - c);
+    }
+    if ((mut == base + 4u) ? (hi <= (s32)*pos + lo) : (hi < (s32)*pos + lo)) {   /* @gt / @ygt */
+        if (mut != base + 5u) *pos = 0;                                       /* @rzero / @yrzero */
+        *len = 0;
+    } else {
+        s32 t = (s32)*pos + lo + (s32)*len;
+        if (hi < t && mut != base + 6u) *len = (u8)(*len - (u8)(t - hi));     /* @notrim / @ynotrim */
+    }
+}
+static u32 d4b_15c30_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], index = r[R_EDX];
+    u8 *box = mem + r[R_EBX];
+    u32 rec = DSD(DS_001077B0 + side * 0x94u);
+    u32 idx = DSW(rec + 0x56u), actor = DSD(DS_001014EC) + idx * 0x20u;
+    int rect[4];
+    u32 a, b;
+    s32 px, py, dx, dy;
+    d4b_140e4_rect(idx, rect, (mut == 1u) ? 3u : (mut == 2u) ? 9u : 0u, 0);   /* @flip, @wh: the rect's own mutants */
+    camera_box_palette((mut == 3u) ? 1u - side : side, &a, &b, (mut == 4u) ? index + 1u : index);   /* @palside, @palidx */
+    px = d4b_15c30_div((u32)((s32)DSD(actor + 4u) >> 6), (mut == 5u) ? 0xD56u : 0xF3Du);   /* @dxk */
+    py = d4b_15c30_div((u32)((s32)DSD(actor + 8u) >> 6), (mut == 6u) ? 0xF3Du : 0xD56u);   /* @dyk */
+    dx = px - ((mut == 7u) ? d4b_15c30_div((u32)((s32)a >> 6), 0xF3Du) : d4b_15c30_div(a, (mut == 8u) ? 0xD56u : 0xF3Du));   /* @outa6, @pak */
+    dy = py - d4b_15c30_div((mut == 9u) ? a : b, (mut == 10u) ? 0xF3Du : 0xD56u);   /* @dyb, @pbk */
+    box[0] = (u8)(box[0] << ((mut == 11u) ? 1 : 2));                          /* @shl */
+    box[1] = (u8)(box[1] * ((mut == 12u) ? 4u : 3u));                         /* @mul */
+    if (mut != 13u) box[2] = (u8)(box[2] << 2);                               /* @b2shl */
+    if (mut != 14u) box[3] = (u8)(box[3] * 3u);                               /* @b3mul */
+    d4b_15c30_axis(&box[0], &box[2], dx, rect[0], (mut == 16u) ? rect[3] : rect[2], mut, 20u);   /* @x2y2 */
+    d4b_15c30_axis(&box[1], &box[3], (mut == 17u) ? dx : dy, rect[1], rect[3], mut, 40u);        /* @dydx */
+    return 0u;
+}
+static void b_d4b_15c30(const u32 *r, u32 *eax)
+{
+    camera_box_clip(r[R_EAX], r[R_EDX], mem + r[R_EBX]);
+    *eax = 0u;
+}
+#define D4B_BC_MUT(name, n) \
+    static void m_d4b_bc_##name(const u32 *r, u32 *eax) { *eax = d4b_15c30_core(r, n); }
+D4B_BC_MUT(flip, 1u)  D4B_BC_MUT(wh, 2u)     D4B_BC_MUT(palside, 3u) D4B_BC_MUT(palidx, 4u)
+D4B_BC_MUT(dxk, 5u)   D4B_BC_MUT(dyk, 6u)    D4B_BC_MUT(outa6, 7u)   D4B_BC_MUT(pak, 8u)
+D4B_BC_MUT(dyb, 9u)   D4B_BC_MUT(pbk, 10u)   D4B_BC_MUT(shl, 11u)    D4B_BC_MUT(mul, 12u)
+D4B_BC_MUT(b2shl, 13u) D4B_BC_MUT(b3mul, 14u) D4B_BC_MUT(x2y2, 16u)
+D4B_BC_MUT(dydx, 17u)
+D4B_BC_MUT(acc8, 20u) D4B_BC_MUT(lensext, 21u) D4B_BC_MUT(nozero, 22u) D4B_BC_MUT(partb0, 23u)
+D4B_BC_MUT(gt, 24u)   D4B_BC_MUT(rzero, 25u) D4B_BC_MUT(notrim, 26u)
+D4B_BC_MUT(yacc8, 40u) D4B_BC_MUT(ylensext, 41u) D4B_BC_MUT(ynozero, 42u) D4B_BC_MUT(ypartb0, 43u)
+D4B_BC_MUT(ygt, 44u)  D4B_BC_MUT(yrzero, 45u) D4B_BC_MUT(ynotrim, 46u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39782,6 +39852,37 @@ static const binding_t k_bindings[] = {
     { "camera_project@nosuba",               m_d4b_pj_nosuba, 0x00000000u },
     { "camera_project@originzx",             m_d4b_pj_originzx, 0x00000000u },
     { "camera_project@originzy",             m_d4b_pj_originzy, 0x00000000u },
+    { "camera_box_clip",                     b_d4b_15c30, 0x00000000u },
+    { "camera_box_clip@flip",                m_d4b_bc_flip, 0x00000000u },
+    { "camera_box_clip@wh",                  m_d4b_bc_wh, 0x00000000u },
+    { "camera_box_clip@palside",             m_d4b_bc_palside, 0x00000000u },
+    { "camera_box_clip@palidx",              m_d4b_bc_palidx, 0x00000000u },
+    { "camera_box_clip@dxk",                 m_d4b_bc_dxk, 0x00000000u },
+    { "camera_box_clip@dyk",                 m_d4b_bc_dyk, 0x00000000u },
+    { "camera_box_clip@outa6",               m_d4b_bc_outa6, 0x00000000u },
+    { "camera_box_clip@pak",                 m_d4b_bc_pak, 0x00000000u },
+    { "camera_box_clip@dyb",                 m_d4b_bc_dyb, 0x00000000u },
+    { "camera_box_clip@pbk",                 m_d4b_bc_pbk, 0x00000000u },
+    { "camera_box_clip@shl",                 m_d4b_bc_shl, 0x00000000u },
+    { "camera_box_clip@mul",                 m_d4b_bc_mul, 0x00000000u },
+    { "camera_box_clip@b2shl",               m_d4b_bc_b2shl, 0x00000000u },
+    { "camera_box_clip@b3mul",               m_d4b_bc_b3mul, 0x00000000u },
+    { "camera_box_clip@x2y2",                m_d4b_bc_x2y2, 0x00000000u },
+    { "camera_box_clip@dydx",                m_d4b_bc_dydx, 0x00000000u },
+    { "camera_box_clip@acc8",                m_d4b_bc_acc8, 0x00000000u },
+    { "camera_box_clip@lensext",             m_d4b_bc_lensext, 0x00000000u },
+    { "camera_box_clip@nozero",              m_d4b_bc_nozero, 0x00000000u },
+    { "camera_box_clip@partb0",              m_d4b_bc_partb0, 0x00000000u },
+    { "camera_box_clip@gt",                  m_d4b_bc_gt, 0x00000000u },
+    { "camera_box_clip@rzero",               m_d4b_bc_rzero, 0x00000000u },
+    { "camera_box_clip@notrim",              m_d4b_bc_notrim, 0x00000000u },
+    { "camera_box_clip@yacc8",               m_d4b_bc_yacc8, 0x00000000u },
+    { "camera_box_clip@ylensext",            m_d4b_bc_ylensext, 0x00000000u },
+    { "camera_box_clip@ynozero",             m_d4b_bc_ynozero, 0x00000000u },
+    { "camera_box_clip@ypartb0",             m_d4b_bc_ypartb0, 0x00000000u },
+    { "camera_box_clip@ygt",                 m_d4b_bc_ygt, 0x00000000u },
+    { "camera_box_clip@yrzero",              m_d4b_bc_yrzero, 0x00000000u },
+    { "camera_box_clip@ynotrim",             m_d4b_bc_ynotrim, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

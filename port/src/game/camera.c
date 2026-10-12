@@ -990,7 +990,7 @@ void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
 
 /* 0x15C30. Project the side's actor sprite rect and clip the 4-byte box at
  * `box` against it, scaled by the palette offsets 0x15B90 returns. */
-static void camera_box_clip(u32 side, u32 index, u8 *box)
+void camera_box_clip(u32 side, u32 index, u8 *box)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;

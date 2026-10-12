@@ -195,5 +195,6 @@ u32 camera_resolve_sprite(u32 side, u32 index);
 u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table);
 u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count);
 int camera_projectile_clash(void);
+void camera_box_clip(u32 side, u32 index, u8 *box);
 
 #endif /* PRAGE_GAME_CAMERA_H */
