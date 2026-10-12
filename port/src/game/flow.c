@@ -7055,7 +7055,7 @@ void game_loop(void)
              * frame. */
             if (state_before == 0) game_attract_dump_frame();
             else if (state_before == 1) game_title_dump_frame();
-            DSD(DS_001014FC) = 0;            /* 0x2569D */
+            DSB(DS_001014FC) = 0;            /* 0x2569D `mov byte` */
             swap_buffers();                  /* 0x256AA 0x50188 */
         }
         DSD(DS_0010150C)++;                  /* 0x256C0 */
