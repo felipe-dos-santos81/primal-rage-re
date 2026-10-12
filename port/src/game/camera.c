@@ -1228,7 +1228,7 @@ void camera_unfreeze(u32 side)
                                     DS_00100B1C, DS_00100B14, DS_00100B28,
                                     DS_00100B34, DS_00100B24);
         }
-        if (r != 0) return;                                 /* 0x1736c */
+        if ((u8)r != 0u) return;                            /* 0x17367 `and eax,0xff`/0x1736c */
     }
 
     /* 0x17372: build the 0x25-byte bit-plane of the side's sprite. */
@@ -1250,7 +1250,7 @@ void camera_unfreeze(u32 side)
                                     - (s32)DSD(DS_00100B08 + other * 4u),
                                     DS_00100B1C, DS_00100B14, DS_00100B28,
                                     DS_00100B34, DS_00100B24);   /* 0x1743c */
-        if (r != 0) return;                                 /* 0x17446 */
+        if ((u8)r != 0u) return;                            /* 0x17441 `and eax,0xff`/0x17446 */
     }
     {
         int r;
@@ -1267,7 +1267,7 @@ void camera_unfreeze(u32 side)
                                     DS_00100B18, DS_00100B10, DS_00100B2C,
                                     DS_00100B30, DS_00100B20);
         }
-        if (r != 0) return;                                 /* 0x174ef */
+        if ((u8)r != 0u) return;                            /* 0x174EA `and eax,0xff`/0x174ef */
     }
 
     DSD(DS_00100B10) = DSD(DS_00100B10) + sb1;             /* 0x174f9 */
