@@ -18407,6 +18407,121 @@ D3D_SPECS += [
                 "@noscore", "@nosp1f", "@nod4", "@d4w", "@notimer", "@timerw", "@arms", "@nocc", "@noc4",
                 "@nolimit", "@limitw")),
 ]
+D3D_T80 = 0x0010A700                                # the target slot the index byte 0x80 selects
+
+
+def d3d_216ec_case(side, state, cnt, ch=2, och=4, z30=0x1000, r36=0x0123, tbl=None, flag=0, r51=0,
+                   tc=(1, 6, 0), null=False):
+    """0x216EC: both fighters' slots seeded whole (record pointers; the side's +0x30 = `z30`,
+    +0x57 = `state`, +0x7A = `ch`; the other's +0x7A = `och` and another state) and the scratch
+    slot the cases pass in EAX; both records and the EDX record D3D_REC seeded whole (0x68 bytes;
+    the side's +0x36 = `r36`, the others' its sign flipped; D3D_REC's +0x51 = `r51`, the fighters'
+    another index); the counter block 0x104760..0x10476F with the side's word = `cnt` and flag
+    byte 0x10476E[side] = `flag` (the other's differ); the eight words at 0xBD884 (0x1000 + 0x100*k,
+    `tbl` overrides) and character 0x80's word and stream dword; the pointer pair 0x1077A8 and the
+    pointer 0x1079A8 (index 0x80) to three target structures whose +0x7A = `tc` (`null` zeroes the
+    selected pointer)."""
+    other = 1 - side
+    def w32(buf, o, v): buf[o:o + 4] = le32(v)
+    words = [0x1000 + 0x100 * k for k in range(8)]
+    for k, v in (tbl or {}).items():
+        if k < 8:
+            words[k] = v
+    g = bytearray(0x60 + k for k in range(0x10))
+    g[4 + side * 2:6 + side * 2] = le16(cnt)
+    g[4 + other * 2:6 + other * 2] = le16(cnt ^ 0x00FF)
+    g[0xE + side], g[0xE + other] = flag, (0 if flag else 0x55)
+    tp = [D3D_T0, D3D_T1, D3D_T80]
+    sel = {0: 0, 1: 1, 0x80: 2}[r51]
+    ptrs = [0 if (null and i == sel) else t for i, t in enumerate(tp)]
+    p = {0x00104760: bytes(g),
+         0x000BD882: le16(0x6B6B) + b"".join(le16(w) for w in words),
+         0x000BD982: le16(0x7B7B) + le16((tbl or {}).get(0x80, 0x1800)) + le16(0x7C7C),
+         0x000C8D58: le32(0x000E7080),
+         0x001077A8: le32(ptrs[0]) + le32(ptrs[1]), 0x001079A8: le32(ptrs[2])}
+    for t, c in zip(tp, tc):
+        p[t + 0x78] = bytes([0x78, 0x79, c, 0x7B])
+    for i in (0, 1):
+        buf = bytearray((0x80 | (j & 0x3F) | (i << 6)) & 0xFF for j in range(0x94))
+        w32(buf, 0, (D3D_F0, D3D_F1)[i])
+        if i == side:
+            w32(buf, 0x30, z30)
+            buf[0x57], buf[0x7A] = state, ch
+        else:
+            w32(buf, 0x30, z30 ^ 0x00FF0000)
+            buf[0x57], buf[0x7A] = (2 if state != 2 else 0), och
+        p.update(d1d_chunks(DS_SLOTS + i * 0x94, buf))
+    buf = bytearray(0x40 | (j & 0x3F) for j in range(0x94))
+    buf[0x57] = 4 if state != 4 else 1
+    p.update(d1d_chunks(D3D_SLOTX, buf))
+    for i, rec in enumerate((D3D_F0, D3D_F1, D3D_REC)):
+        buf = bytearray(0x80 | ((j + 0x11 * i) & 0x7F) for j in range(0x68))
+        w32(buf, 0x18, 0x00018000 + 0x111 * i)
+        buf[0x34:0x38] = le16(0x0234 + i) + le16(r36 if i == side else r36 ^ 0x8000)
+        buf[0x51] = r51 if i == 2 else (1 if r51 != 1 else 0)
+        p.update(d1d_chunks(rec, buf))
+    return p
+
+
+def d3d_216ec_cases():
+    R = lambda s: {"eax": D3D_SLOTX, "edx": D3D_REC, "ebx": s}
+    T = d3d_216ec_case
+    return [
+        Case("s0", R(0), T(0, 0, 0x0015)),
+        Case("s1", R(1), T(1, 0, 0x0016), {0x1A570: 1}),
+        Case("s2", R(0), T(0, 0, 0x0016), {0x1A570: 0}),
+        Case("s3", R(1), T(1, 0, 0x0030), {0x1A570: 0x00000100}),
+        Case("s4", R(0), T(0, 0, 0x7FFF)),
+        Case("s5", R(0), T(0, 0, 0xFFFF)),
+        Case("s6", R(1), T(1, 0, 0x0030), {0x1A570: 0xFFFFFF80}),
+        Case("o0", R(0), T(0, 1, 0x0018)),
+        Case("o1", R(1), T(1, 1, 0x0019)),
+        Case("l0", R(0), T(0, 2, 3, ch=2, z30=0x1200, r36=0x8000)),
+        Case("l1", R(1), T(1, 2, 3, ch=5, z30=0x14FF, r36=0x7FFF)),
+        Case("l2", R(0), T(0, 2, 3, ch=0x80, z30=0x17FF, r36=0xFFFF)),
+        Case("l3", R(1), T(1, 2, 3, ch=3, z30=0x0100, r36=0x0000, tbl={3: 0x9000})),
+        Case("l4", R(0), T(0, 2, 3, ch=6, z30=0xFFFFFFFF, r36=0x0001)),
+        Case("n0", R(0), T(0, 3, 0x0030, r36=0x8000)),
+        Case("n1", R(1), T(1, 5, 0x0030, r36=0x8000)),
+        Case("n2", R(0), T(0, 6, 0x0030, r36=0x8000)),
+        Case("n3", R(1), T(1, 0xFF, 0x0030, r36=0x8000)),
+        Case("f0", R(0), T(0, 4, 0x0000, ch=5, z30=0x0FFF, r36=0x8000, flag=0x80)),
+        Case("f1", R(1), T(1, 4, 0x0007, r36=0x0001, r51=0)),
+        Case("f2", R(0), T(0, 4, 0x0006, ch=5, z30=0x1000, r36=0x8000, flag=0x80)),
+        Case("f3", R(1), T(1, 4, 0x0007, r51=1)),
+        Case("f4", R(0), T(0, 4, 0x0020, r51=0x80)),
+        Case("f5", R(1), T(1, 4, 0x0020, r51=1, tc=(1, 7, 0))),
+        Case("f6", R(0), T(0, 4, 0x0020, r51=0, tc=(2, 6, 0))),
+        Case("f7", R(0), T(0, 4, 0x0020, r51=0, null=True)),
+        Case("f8", R(1), T(1, 4, 0x0000, z30=0x0100, r36=0x8000, tbl={1: 0x9000})),
+        Case("f9", R(0), T(0, 4, 0x7FFF, r36=0x0001, flag=0x80)),
+        Case("f10", R(1), T(1, 4, 0x0000, ch=5, z30=0x10FF, r36=0xFFFF)),
+        Case("f11", R(0), T(0, 4, 0x0000, ch=5, z30=0x0FFF, r36=0x0000, flag=0x80)),
+    ]
+
+
+D3D_SPECS += [
+    # 0x216EC fighter_216ec: EAX = slot (overwritten unread, 0x216F6), EDX = rec (kept in ECX and
+    # read only for its +0x51 in state 4, 0x2193E), EBX = side (the slot +0x0C callback: the dwords
+    # at 0x219D0, 0x21CD8, 0x21D64; `call [ecx+0xc]` 0x35431). The side's counter word 0x104764 is
+    # incremented first, whatever the state (`inc word` 0x21702, before `cmp dl,5; ja`); the table
+    # 0x216D4 is 0x21727 0x21807 0x21828 0x2198A 0x218B1 0x2198A. 0x33950 runs on both sides;
+    # 0x1A570 (AL tested, `test al,al; jne` 0x217D6: s3 returns 0x100, s6 0xFFFFFF80), 0x188AC,
+    # 0x3C148, 0x3C16C, 0x2BC30 and 0x3C4CC are stubs. State 4 indexes the 0xBD882 dwords by the
+    # side (EAX is still side*2 at 0x218C0), state 2 by the character. Mask 0: `xor eax,eax` 0x35434.
+    Spec("fighter_216ec", 0x216EC, d3d_216ec_cases(),
+         allow_calls=(0x33950,), calls=(BIT15, ANCHOR, CLEAR34, CLEAR36, ANIM_BEGIN, HIT_B), eax_mask=0,
+         mutants=("@ctrside", "@incd", "@incb", "@noinc", "@incstate", "@c0ge", "@c0uns", "@c0nos57", "@c0nor34",
+                  "@c0nor36", "@c0nor44", "@c0no4b", "@c0no24", "@c0no58", "@c0noo34", "@c0noo36", "@c0noo44",
+                  "@c0swap", "@c04bother", "@c024self", "@c058self", "@eax", "@bitside", "@bitinv", "@negone",
+                  "@negdw", "@c0late", "@c1ge", "@c1nos", "@c2sign", "@c2always", "@c2rec", "@c2ge", "@c2zext",
+                  "@c2uns", "@c2chside", "@c2chsext", "@c2no54", "@c2ancside", "@c2ancrec", "@c2ancy", "@c2no34",
+                  "@c2no36", "@c2order", "@c2stream", "@c2hold", "@c2animrec", "@c2nos57", "@c2early", "@c2late54",
+                  "@c4char", "@c4sign", "@c4and", "@c4ge", "@c4uns", "@c4zext", "@c4flagside", "@c4no53", "@c4no52",
+                  "@c4no54", "@c4no0c", "@c4no18", "@c4no1c", "@c4fall", "@c4idxsext", "@c4idxctx", "@c4nonull",
+                  "@c4swap", "@c4le6", "@c4tc0", "@c4hitrec", "@c4hold", "@c4nos57", "@c4no8a", "@c4early",
+                  "@slotarg", "@hi6")),
+]
 D1_SPECS += D3D_SPECS
 
 
