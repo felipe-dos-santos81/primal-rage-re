@@ -22701,6 +22701,57 @@ D4C_SPECS += [
                 "@stickw", "@always", "@right6", "@left0", "@leftuns", "@down4", "@clamp7", "@clampv",
                 "@noclamp", "@up4", "@upuns", "@noportrait", "@nofighter", "@pforder", "@pside", "@pickbit",
                 "@nopick", "@pickside", "@c04always", "@nocd", "@cdb", "@cdv", "@noc04clr")),
+]
+
+D4C_NUMDRAW = E.Call(0x2F4D0, ("eax", "edx", "ebx", "ecx", "s0", "s1"), pop=8, clobbers=("ebx", "ecx", "edx"))
+D4C_GRID3 = {2: 0x00, 12: 0x0E, 0x36: 0x08}      # three cells of the 0x37: the first, a middle one and the last
+
+
+def d4c_card_case(cid, s0, s1, bd=7, stage=0, grid=D4C_GRID3, extra=None):
+    """0x4EBB8: the two sides' five tally bytes 0x108888 (four inputs and the stored fifth, seeded
+    0xEE) between two bytes, the byte 0x1088BD and the stage word 0x104AFC between theirs, the
+    string 0x62, and the grid table 0xC9850 with every cell 0xFF but those of `grid` (None keeps
+    the image's 37 cells)."""
+    p = d4c_str_pokes(0x62, b"CARD")
+    p[0x00108886] = bytes([0x86, 0x87, *s0, 0xEE, *s1, 0xEE, 0x92, 0x93])
+    p[0x001088BC] = bytes([0xBC, bd, 0xBE])
+    p[0x00104AFA] = le16(0xFAFA) + le16(stage) + le16(0xFEFE)
+    if grid is not None:
+        g = bytearray([0xFF] * 0x37)
+        for k, v in grid.items():
+            g[k] = v
+        p[0x000C9850] = bytes(g)
+    p.update(extra or {})
+    return Case(cid, {}, p)
+
+
+D4C_SPECS += [
+    # 0x4EBB8 fight_mode25_scorecard: no argument. The string 0x62 through 0x2F510(-1, 6, the
+    # string, 0x4000); the 0x37 grid cells (0xC9850, 0xFF skipped) through 0x2F174(col = i % 11 +
+    # 0xE, the glyph word 0xC9BCE[id], row = i / 11 + 6, the mode: 0x2000 when the stage word
+    # 0x104AFC is 1, else 0x3000; r0 runs the image's grid); then per side, at row = 7 + 2 * side:
+    # the first byte at or above 10 (zero-extended, `cmp eax,0xa; jl`) draws the pair 0xC9BE4/
+    # 0xC9BE6 at cols 0x11/0x12 and seeds the tally with the third + fourth bytes + 10; else the
+    # first + second at or above 10 draws 0xC9BE0/0xC9BE2 and seeds it with the third + 10; else
+    # the sum's two digits through 0x2F4D0(col, row, digit, 1, 0, 0x3000) and the tally is the sum.
+    # The third byte the same way at cols 0x14/0x15: + 0x1E, + 0xF, or its sum with the fourth,
+    # whose digits are drawn at the same row (`movzx ebp,word [esp+0xc]` after one `push`: the
+    # saved EDI, 0x4EE94). A byte 0x1088BD above 6 draws the tally's digits at cols 0x17/0x18,
+    # that row again (0x4EF0F). The tally's low byte is stored in the side's fifth byte. Void:
+    # 0x4E938 `mov eax,edx`; 0x4F073 `mov al,..; mov ah,..; cmp al,ah` then `mov eax,0x63`
+    # (0x4F082) or 0x4F0A9.
+    Spec("fight_mode25_scorecard", 0x4EBB8, [
+        d4c_card_case("r0", (10, 0, 12, 3), (0xFF, 9, 10, 0), grid=None),
+        d4c_card_case("r1", (4, 6, 3, 7), (9, 1, 9, 1), bd=6, stage=1),
+        d4c_card_case("r2", (2, 3, 1, 2), (9, 0, 0, 9), bd=0x80, stage=0x0101),
+        d4c_card_case("r3", (0, 0, 0, 0), (1, 8, 4, 5), bd=7, stage=1, extra={0x000C9BE4: le16(0x8E01)}),
+        d4c_card_case("r4", (3, 4, 0xF0, 0x20), (0x0A, 0xFF, 5, 0xFF), bd=6),
+    ], allow_calls=D1D_STR_ALLOW, calls=(D2B_FONT2, D2C_GLYPHAT, D4C_NUMDRAW), eax_mask=0,
+       mutants=("@modeb", "@notitle", "@titleid", "@titlecol", "@titlemode", "@stageb", "@modeainv", "@grid36",
+                "@noskip", "@rowdiv", "@colbase", "@glyphstride", "@base4", "@a10", "@pairA", "@seedA",
+                "@ab10", "@pairBmode", "@seedB", "@digswap", "@add1e", "@addf", "@row2acc", "@noacc2",
+                "@notally", "@bd6", "@bdsext", "@row3acc", "@nostore", "@storeside", "@rowstep", "@c10",
+                "@cd10")),
 ]   # D4C_SPECS end
 D1_SPECS += D4C_SPECS
 SPECS = [

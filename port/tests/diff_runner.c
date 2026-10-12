@@ -31210,6 +31210,83 @@ D4C_TP_MUT(noclamp, 26u) D4C_TP_MUT(up4, 27u) D4C_TP_MUT(upuns, 28u) D4C_TP_MUT(
 D4C_TP_MUT(nofighter, 30u) D4C_TP_MUT(pforder, 31u) D4C_TP_MUT(pside, 32u) D4C_TP_MUT(pickbit, 33u)
 D4C_TP_MUT(nopick, 34u) D4C_TP_MUT(pickside, 35u) D4C_TP_MUT(c04always, 36u) D4C_TP_MUT(nocd, 37u)
 D4C_TP_MUT(cdb, 38u) D4C_TP_MUT(cdv, 39u) D4C_TP_MUT(noc04clr, 40u)
+/* 0x4EBB8 fight_mode25_scorecard: no argument. One restatement with one choice flipped per mutant
+ * number (M(n): the mutant n is not selected). */
+static u32 d4c_4ebb8_core(u32 mut)
+{
+#define M(n) (mut != (n))
+    const u32 T = 0x00108888u;
+    u32 mode_b = M(1u) ? 0x3000u : 0x2000u;                                          /* @modeb */
+    u32 mode_a, row0 = 6u, side, i;
+    if (M(2u)) text_cursor_hold_font2(M(4u) ? -1 : 0, 6, game_string_get(M(3u) ? 0x62u : 0x63u),   /* @notitle: the port before the correction */
+                                      M(5u) ? 0x4000u : 0x3000u);                    /* @titleid, @titlecol, @titlemode */
+    mode_a = (M(6u) ? (DSW(DS_00104AFC) == 1u) : (DSB(DS_00104AFC) == 1u)) ? 0x2000u : 0x3000u;   /* @stageb */
+    if (!M(7u)) mode_a ^= 0x1000u;                                                   /* @modeainv */
+    for (i = 0u; i < (M(8u) ? 0x37u : 0x36u); i++) {                                 /* @grid36 */
+        u8 id = DSB(0x000C9850u + i);
+        if (id == 0xFFu && M(9u)) continue;                                          /* @noskip */
+        text_glyph_at((s32)(i % 11u) + (M(11u) ? 0xE : 0xF),                         /* @colbase */
+                      (s32)DSW(0x000C9BCEu + (u32)id * (M(12u) ? 2u : 1u)),          /* @glyphstride */
+                      (s32)(i / (M(10u) ? 11u : 10u)) + 6, mode_a);                  /* @rowdiv */
+    }
+    for (side = 0u; side < 2u; side++) {
+        u32 base = side * (M(13u) ? 5u : 4u);                                        /* @base4 */
+        u32 a = DSB(T + base), b = DSB(T + base + 1u), c = DSB(T + base + 2u), d = DSB(T + base + 3u);
+        s32 r = (s32)(row0 + 1u);
+        u32 acc;
+        if (M(14u) ? (a >= 10u) : (a > 10u)) {                                       /* @a10 */
+            text_glyph_at(0x11, (s32)DSW(M(15u) ? 0x000C9BE4u : 0x000C9BE0u), r, mode_a);   /* @pairA */
+            text_glyph_at(0x12, (s32)DSW(0x000C9BE6u), r, mode_a);
+            acc = c + (M(16u) ? d : 0u) + 10u;                                       /* @seedA */
+        } else if (M(17u) ? (a + b >= 10u) : (a + b > 10u)) {                        /* @ab10 */
+            text_glyph_at(0x11, (s32)DSW(0x000C9BE0u), r, mode_a);
+            text_glyph_at(0x12, (s32)DSW(0x000C9BE2u), r, M(18u) ? mode_a : mode_b); /* @pairBmode */
+            acc = c + (M(19u) ? 10u : 0u);                                           /* @seedB */
+        } else {
+            u32 sum = a + b;
+            acc = sum;
+            text_number_draw(0x11, r, (s32)(M(20u) ? sum / 10u : sum % 10u), 1, 0u, mode_b);   /* @digswap */
+            text_number_draw(0x12, r, (s32)(M(20u) ? sum % 10u : sum / 10u), 1, 0u, mode_b);
+        }
+        if (M(32u) ? (c >= 10u) : (c > 10u)) {                                       /* @c10 */
+            text_glyph_at(0x14, (s32)DSW(0x000C9BE4u), r, mode_a);
+            text_glyph_at(0x15, (s32)DSW(0x000C9BE6u), r, mode_a);
+            acc += M(21u) ? 0x1Eu : 0xFu;                                            /* @add1e */
+        } else if (M(33u) ? (c + d >= 10u) : (c + d > 10u)) {                        /* @cd10 */
+            text_glyph_at(0x14, (s32)DSW(0x000C9BE0u), r, mode_a);
+            text_glyph_at(0x15, (s32)DSW(0x000C9BE2u), r, mode_a);
+            acc += M(22u) ? 0xFu : 0x1Eu;                                            /* @addf */
+        } else {
+            u32 sum2 = c + d;
+            s32 rr = M(23u) ? r : (s32)(acc + 1u);                                   /* @row2acc: the port before the correction */
+            text_number_draw(0x14, rr, (s32)(sum2 / 10u), 1, 0u, mode_b);
+            text_number_draw(0x15, rr, (s32)(sum2 % 10u), 1, 0u, mode_b);
+            if (M(24u)) acc += sum2;                                                 /* @noacc2 */
+        }
+        if (M(25u) && (!M(27u) ? ((s8)DSB(DS_001088BD) > 6)                          /* @notally, @bdsext */
+                               : M(26u) ? (DSB(DS_001088BD) > 6u) : (DSB(DS_001088BD) >= 6u))) {   /* @bd6 */
+            s32 rr = M(28u) ? r : (s32)(acc + 1u);                                   /* @row3acc: the port before the correction */
+            text_number_draw(0x17, rr, (s32)(acc / 10u), 1, 0u, mode_b);
+            text_number_draw(0x18, rr, (s32)(acc % 10u), 1, 0u, mode_b);
+        }
+        if (M(29u)) DSB(T + 4u + (M(30u) ? base : 5u - base)) = (u8)acc;             /* @nostore, @storeside */
+        row0 += M(31u) ? 2u : 1u;                                                    /* @rowstep */
+    }
+    return 0u;
+#undef M
+}
+static void b_d4c_4ebb8(const u32 *r, u32 *eax) { (void)r; fight_mode25_scorecard(); *eax = 0u; }
+#define D4C_SC_MUT(name, n) \
+    static void m_d4c_sc_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4c_4ebb8_core(n); }
+D4C_SC_MUT(modeb, 1u) D4C_SC_MUT(notitle, 2u) D4C_SC_MUT(titleid, 3u)
+D4C_SC_MUT(titlecol, 4u) D4C_SC_MUT(titlemode, 5u) D4C_SC_MUT(stageb, 6u) D4C_SC_MUT(modeainv, 7u)
+D4C_SC_MUT(grid36, 8u) D4C_SC_MUT(noskip, 9u) D4C_SC_MUT(rowdiv, 10u) D4C_SC_MUT(colbase, 11u)
+D4C_SC_MUT(glyphstride, 12u) D4C_SC_MUT(base4, 13u) D4C_SC_MUT(a10, 14u) D4C_SC_MUT(pairA, 15u)
+D4C_SC_MUT(seedA, 16u) D4C_SC_MUT(ab10, 17u) D4C_SC_MUT(pairBmode, 18u) D4C_SC_MUT(seedB, 19u)
+D4C_SC_MUT(digswap, 20u) D4C_SC_MUT(add1e, 21u) D4C_SC_MUT(addf, 22u) D4C_SC_MUT(row2acc, 23u)
+D4C_SC_MUT(noacc2, 24u) D4C_SC_MUT(notally, 25u) D4C_SC_MUT(bd6, 26u) D4C_SC_MUT(bdsext, 27u)
+D4C_SC_MUT(row3acc, 28u) D4C_SC_MUT(nostore, 29u) D4C_SC_MUT(storeside, 30u) D4C_SC_MUT(rowstep, 31u)
+D4C_SC_MUT(c10, 32u) D4C_SC_MUT(cd10, 33u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -40240,6 +40317,40 @@ static const binding_t k_bindings[] = {
     { "fight_char_team_pass@cdb",              m_d4c_tp_cdb, 0x00000000u },
     { "fight_char_team_pass@cdv",              m_d4c_tp_cdv, 0x00000000u },
     { "fight_char_team_pass@noc04clr",         m_d4c_tp_noc04clr, 0x00000000u },
+    { "fight_mode25_scorecard",              b_d4c_4ebb8, 0x00000000u },
+    { "fight_mode25_scorecard@modeb",          m_d4c_sc_modeb, 0x00000000u },
+    { "fight_mode25_scorecard@notitle",        m_d4c_sc_notitle, 0x00000000u },
+    { "fight_mode25_scorecard@titleid",        m_d4c_sc_titleid, 0x00000000u },
+    { "fight_mode25_scorecard@titlecol",       m_d4c_sc_titlecol, 0x00000000u },
+    { "fight_mode25_scorecard@titlemode",      m_d4c_sc_titlemode, 0x00000000u },
+    { "fight_mode25_scorecard@stageb",         m_d4c_sc_stageb, 0x00000000u },
+    { "fight_mode25_scorecard@modeainv",       m_d4c_sc_modeainv, 0x00000000u },
+    { "fight_mode25_scorecard@grid36",         m_d4c_sc_grid36, 0x00000000u },
+    { "fight_mode25_scorecard@noskip",         m_d4c_sc_noskip, 0x00000000u },
+    { "fight_mode25_scorecard@rowdiv",         m_d4c_sc_rowdiv, 0x00000000u },
+    { "fight_mode25_scorecard@colbase",        m_d4c_sc_colbase, 0x00000000u },
+    { "fight_mode25_scorecard@glyphstride",    m_d4c_sc_glyphstride, 0x00000000u },
+    { "fight_mode25_scorecard@base4",          m_d4c_sc_base4, 0x00000000u },
+    { "fight_mode25_scorecard@a10",            m_d4c_sc_a10, 0x00000000u },
+    { "fight_mode25_scorecard@pairA",          m_d4c_sc_pairA, 0x00000000u },
+    { "fight_mode25_scorecard@seedA",          m_d4c_sc_seedA, 0x00000000u },
+    { "fight_mode25_scorecard@ab10",           m_d4c_sc_ab10, 0x00000000u },
+    { "fight_mode25_scorecard@pairBmode",      m_d4c_sc_pairBmode, 0x00000000u },
+    { "fight_mode25_scorecard@seedB",          m_d4c_sc_seedB, 0x00000000u },
+    { "fight_mode25_scorecard@digswap",        m_d4c_sc_digswap, 0x00000000u },
+    { "fight_mode25_scorecard@add1e",          m_d4c_sc_add1e, 0x00000000u },
+    { "fight_mode25_scorecard@addf",           m_d4c_sc_addf, 0x00000000u },
+    { "fight_mode25_scorecard@row2acc",        m_d4c_sc_row2acc, 0x00000000u },
+    { "fight_mode25_scorecard@noacc2",         m_d4c_sc_noacc2, 0x00000000u },
+    { "fight_mode25_scorecard@notally",        m_d4c_sc_notally, 0x00000000u },
+    { "fight_mode25_scorecard@bd6",            m_d4c_sc_bd6, 0x00000000u },
+    { "fight_mode25_scorecard@bdsext",         m_d4c_sc_bdsext, 0x00000000u },
+    { "fight_mode25_scorecard@row3acc",        m_d4c_sc_row3acc, 0x00000000u },
+    { "fight_mode25_scorecard@nostore",        m_d4c_sc_nostore, 0x00000000u },
+    { "fight_mode25_scorecard@storeside",      m_d4c_sc_storeside, 0x00000000u },
+    { "fight_mode25_scorecard@rowstep",        m_d4c_sc_rowstep, 0x00000000u },
+    { "fight_mode25_scorecard@c10",            m_d4c_sc_c10, 0x00000000u },
+    { "fight_mode25_scorecard@cd10",           m_d4c_sc_cd10, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
