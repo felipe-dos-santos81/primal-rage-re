@@ -1330,10 +1330,10 @@ static void camera_projectile_hit(u32 side)
     u32 other = 1u - side;
     if (DSW(DS_00107824 + other * 0x94u) != 0u) return;       /* 0x17700 */
     if ((u32)DSW(DS_00107826 + other * 0x94u) > 1u) return;   /* 0x17712 */
-    if (camera_box_overlap(DSW(DSD(DS_001077B8 + side * 0x94u) + 0x56u),
-                           DSW(DSD(DS_001077B0 + other * 0x94u) + 0x56u))
-            == 0)
-        return;                                                /* 0x1774F */
+    if ((u8)camera_box_overlap(DSW(DSD(DS_001077B8 + side * 0x94u) + 0x56u),
+                               DSW(DSD(DS_001077B0 + other * 0x94u) + 0x56u))
+            == 0u)
+        return;                                                /* 0x1774D `test al,al`/0x1774F */
 
     u8 box[4];
     {
@@ -1348,16 +1348,16 @@ static void camera_projectile_hit(u32 side)
     u32 sp = camera_resolve_sprite(other, DSD(DS_00100AF0 + other * 4u)); /* 0x177DF..0x177ED */
     s32 dy = (s32)DSD(DS_00100B00 + other * 4u) + (s32)box[1]
              - (s32)DSD(DS_00100AA0 + side * 4u);              /* 0x1782E/0x1783C */
-    if (camera_sync_visible(0x20u, (u32)(s32)(s16)DSW(sp),
-                            (s32)DSD(DS_00100AA8 + side * 4u)
-                            - ((s32)box[0]
-                               + (s32)DSD(DS_00100B08 + other * 4u)),
-                            DS_00100B1C, DS_00100B14, DS_00100B28,
-                            DS_00100B34, DS_00100B24) != 0)    /* 0x17844 */
+    if ((u8)camera_sync_visible(0x20u, (u32)(s32)(s16)DSW(sp),
+                                (s32)DSD(DS_00100AA8 + side * 4u)
+                                - ((s32)box[0]
+                                   + (s32)DSD(DS_00100B08 + other * 4u)),
+                                DS_00100B1C, DS_00100B14, DS_00100B28,
+                                DS_00100B34, DS_00100B24) != 0u)   /* 0x17844, 0x17849 `and eax,0xff` */
         return;
-    if (camera_sync_visible(0x20u, (u32)((s32)DSD(sp) >> 16), -dy,
-                            DS_00100B18, DS_00100B10, DS_00100B2C,
-                            DS_00100B30, DS_00100B20) != 0)    /* 0x1787E */
+    if ((u8)camera_sync_visible(0x20u, (u32)((s32)DSD(sp) >> 16), -dy,
+                                DS_00100B18, DS_00100B10, DS_00100B2C,
+                                DS_00100B30, DS_00100B20) != 0u)   /* 0x1787E, 0x17883 `and eax,0xff` */
         return;
 
     u32 flag = ((s32)DSD(DS_00100B14) > (s32)DSD(DS_00100B34)) ? 1u : 0u; /* 0x17897 */
