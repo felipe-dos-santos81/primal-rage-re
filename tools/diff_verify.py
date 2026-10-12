@@ -25028,6 +25028,89 @@ D5C_SPECS += [
                               "@adb", "@delta", "@noclose", "@closemode", "@closeflag", "@noafa", "@afav",
                               "@closeearly")),
 ]
+D5C_CONT_POLL = E.Call(0x42F60, ("eax",))
+D5C_CH_JOIN = E.Call(0x42FE0, ("eax",), clobbers=("ebp",))
+D5C_BUTTONS = E.Call(0x4F778, ("eax",))
+D5C_CH_A, D5C_CH_B = 0x0010A300, 0x0010A400          # the two count actors
+
+
+def d5c_poll_case(cid, r, b1f=0, c04=0, phase=0x0001, cnt=5, b1d=0, think=(0x13, 0x13), e0=0, dc=0, cont=0,
+                  btn=0, think3=None):
+    """0x42CB4: the result dword DS_00104AD4 between two dwords; the hook DS_00104AE4 between two; the
+    word 0x1088EE between two; the words 0x104AFC..0x104B01 (the countdown 0x104AFE, the mode word
+    0x104B00), the seven bytes 0x104B02..0x104B08 (bits 6 and 7 mixed) and the byte after them; the bytes
+    0x104B1D and 0x104B1F; 0x104B24..0x104B26; the byte 0x105C04 between two; the count byte 0x108110
+    between two; the phase word 0xEF6DC with the word after it; the two slots' think gates 0x107813
+    (+0x63) with their neighbours (`think3`: the byte a result of 3 reaches); the two actor pointers
+    0x1080DC/0x1080E0 between two dwords and each actor's +0x04..+0x0F and +0x27..+0x29; the byte
+    0x104B15 that 0x4F1E4 clears, between two. `cont` and `btn` are the 0x42F60 and 0x4F778 stubs' EAX."""
+    p = {0x00104AD0: le32(0xD0D0D0D0) + le32(r) + le32(0xD8D8D8D8),
+         0x00104AE0: le32(0xE0E0E0E0) + le32(0xE4E4E4E4) + le32(0xE8E8E8E8),
+         0x001088EC: le16(0xECEC) + le16(0xEEEE) + le16(0xF0F0),
+         0x00104AFC: le16(0xFCFC) + le16(0xFEFE) + le16(0x0B0B) + bytes([0xFF, 0xC0, 0x40, 0x80, 0x7F, 0xBF, 0xC1, 0xC9]),
+         0x00104B14: bytes([0x14, 0x15, 0x16]),
+         0x00104B1D: bytes([b1d]), 0x00104B1F: bytes([b1f]), 0x00104B24: bytes([0x24, 0x25, 0x26]),
+         0x00105C03: bytes([0x03, c04, 0x05]),
+         0x0010810F: bytes([0x0F, cnt, 0x11]),
+         0x000EF6DC: le16(phase) + le16(0xDEDE),
+         0x00107812: bytes([0x62, think[0], 0x64]), 0x001078A6: bytes([0x62, think[1], 0x64]),
+         0x001080D8: le32(0xD8D8D8D8) + le32(dc) + le32(e0) + le32(0xE4E4E4E4)}
+    if think3 is not None:
+        p[0x001079CE] = bytes([0x62, think3, 0x64])
+    for a, v in ((D5C_CH_A, 0xA0), (D5C_CH_B, 0xB0)):
+        p[a + 0x04] = le32(0x04040400 | v) + le32(0x08080800 | v) + le32(0x0C0C0C00 | v)
+        p[a + 0x27] = bytes([0x27, v | 0x0B if a == D5C_CH_A else v | 0x0F, 0x29])
+    return Case(cid, {"eax": 0x5A5A5A5A, "edx": 0x99, "ebx": 0x77, "ecx": 0x88}, p, {0x42F60: cont, 0x4F778: btn})
+
+
+D5C_SPECS += [
+    # 0x42CB4 flow_challenge_poll: no argument. On the dword DS_00104AD4 (unsigned: `cmp eax,1; jb / jbe`,
+    # `cmp eax,2; je`; c14's 0x100 is "other"): 0, the whole EAX of 0x42F60(1) non-zero (`test eax,eax`
+    # 0x42CE6: c0 returns 0x100): 0x42FE0(1), the hook DS_00104AE4 = 0x28D68, the words 0x1088EE and
+    # 0x104AFE = 0x78, the byte 0x104B25 = 5, return; 1, the same with 0x42F60(0)/0x42FE0(0) (c2); 2, per
+    # side 0x42F60(side) non-zero: a non-zero byte 0x104B1F (c4 3, c15 2) is 0x42FE0(side), the stores and
+    # the return, a zero one 0x42FE0(side) and the next side (c5). Otherwise the countdown: a non-zero
+    # byte 0x105C04 stores 0xA in the count byte 0x108110, clears itself and forces a tick (c6); else bit
+    # 0 of 0x104B1F is AL of 0x4F778(1), else bit 1 is AL of 0x4F778(0) (`and eax,0xff` 0x42E06: c3
+    # returns 0x100), else no tick. With no tick and the word 0xEF6DC & 0x3F not 0 the pass returns (c1
+    # 0x20, c3). The count byte - 1: below 0 signed (`test ah,ah; jge` 0x42E35: c7, c8, c9, c11 0, c13
+    # 0x81), with the result (read again) 2 or the byte +0x63 of the slot it names 1 (c7: a result of 3;
+    # c11, c13) 0x4F1E4 (run on both sides) and 0x2BAF4(1), else 0x2C3FC(0x2D) (c8, c16); then the byte
+    # 0x104B1F == 1 clears bit 6 of the seven bytes 0x104B02 (c8), == 2 bit 7 (c7), any other value
+    # neither (c9 0, c11 3); then a non-zero byte 0x104B1D stores the hook = 0x25AE8 and the mode word
+    # 0x104B00 = 0x17 (c8, c9 0x80), a zero one the byte 0x104B25 = 0 and the mode word = 0x1E. At or
+    # above 0: the non-zero actors DS_001080E0 and DS_001080DC each take +8 = the dword 0xC82EC[the
+    # count] and +0x28 |= 4 (c5 both, c6 and c10 one, c12 none). The count is at least 0 there, so its
+    # sign extension (`sar eax,0x18` 0x42F14/0x42F3A) is not observable. Void: its one call site 0x425DE
+    # returns through 0x424E8 to 0x253C9 `jmp 0x2540f` (the 0x25210 row's note; re-used).
+    Spec("flow_challenge_poll", 0x42CB4, [
+        d5c_poll_case("c0", 0, cont=0x100),
+        d5c_poll_case("c1", 0, phase=0x0020),
+        d5c_poll_case("c2", 1, cont=1, b1f=1, btn=1),
+        d5c_poll_case("c3", 1, b1f=1, btn=0x100),
+        d5c_poll_case("c4", 2, cont=1, b1f=3),
+        d5c_poll_case("c5", 2, cont=1, phase=0x0000, cnt=5, e0=D5C_CH_A, dc=D5C_CH_B),
+        d5c_poll_case("c6", 2, c04=0x80, dc=D5C_CH_B),
+        d5c_poll_case("c7", 3, b1f=2, btn=1, cnt=0, think3=1),
+        d5c_poll_case("c8", 0, b1f=1, btn=0xFFFFFF01, cnt=0, b1d=1),
+        d5c_poll_case("c9", 2, phase=0x0040, cnt=0, b1d=0x80),
+        d5c_poll_case("c10", 1, b1f=3, btn=1, cnt=0x80, think=(0x13, 1), e0=D5C_CH_A),
+        d5c_poll_case("c11", 1, b1f=3, btn=0, phase=0x0000, cnt=0, think=(0x13, 1)),
+        d5c_poll_case("c12", 0, b1f=2, btn=0, phase=0xFF80, cnt=1),
+        d5c_poll_case("c13", 0, phase=0x0000, cnt=0x81, think=(1, 0x13), b1f=0x80),
+        d5c_poll_case("c14", 0x00000100, cont=1),
+        d5c_poll_case("c15", 2, cont=1, b1f=2),
+        d5c_poll_case("c16", 1, phase=0x0000, cnt=0, think=(1, 0x13)),
+    ], allow_calls=(0x4F1E4, 0x2EA30), calls=(D5C_CONT_POLL, D5C_CH_JOIN, D5C_BUTTONS, D5C_RESET, VOICE), eax_mask=0,
+       mutants=("@rb", "@poll0arg", "@poll1arg", "@pollal", "@join0arg", "@nojoin", "@nohook", "@hookv", "@no8ee",
+                "@8eev", "@noafe", "@no25", "@25v", "@noret", "@storeearly", "@r2one", "@r2b1f", "@r2b1fbit",
+                "@r2nojoin2", "@c04noset", "@c04v", "@noc04clr", "@c04notick", "@bit0arg", "@bit1arg", "@btneax",
+                "@bitorder", "@phase", "@phasew", "@tickand", "@nodec", "@ge", "@uns", "@gate2only", "@gateany",
+                "@gateoff", "@noreset", "@noinput", "@novoice", "@voiceid", "@voicealways", "@loop1mask",
+                "@loop2mask", "@loop6", "@loopoff", "@b1fbit", "@b1dinv", "@nohook2", "@hook2v", "@mode17v",
+                "@no25b", "@mode1ev", "@nomode", "@e0skip", "@dcskip", "@tabstride", "@tabn", "@no28or", "@28bit",
+                "@8off")),
+]
 D1_SPECS += D5C_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
