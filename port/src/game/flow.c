@@ -7705,8 +7705,11 @@ void game_state_step(void)
         case 9:
             DSW(DS_000F0A6A) = (u16)sVar1;
             if (sVar1 == 0) {
-                DSW(DS_000F0A64) = DSW(DS_000F0A6C);
-                /* PORT: 0x10EE4/0x29D60 transition helpers (menus). */
+                u8 reset = DSB(DS_000F0A71);            /* 0x11EE6, read before the store */
+                DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11EE0/0x11EEC */
+                /* PORT: 0x11F0E 0x29D60 (the clear byte's arm) is a ret-only
+                 * no-op, not called. */
+                if (reset != 0u) attract_state_reset(); /* 0x11EF2/0x11EF4, 0x11EF6 0x10EE4 */
             }
             break;
         default:
