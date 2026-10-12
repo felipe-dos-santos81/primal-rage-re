@@ -152,12 +152,15 @@ byte-identical before and after (sha256 of the concatenated `frames/*` `a53064ba
   - `input_state_update` `0x4F694` (`or [0x1088e4],[0x1088d8]`): dead with `0x2D2F0` real (`xor
     eax,eax; ret`): the byte `0x1088D4` just stored is 0, so `test byte [0x1088d4],2; je` (`0x4F68B`)
     is always taken.
-- **`0x52106` (`gfx_boot_clear`'s raw) is a named gap, not a row.** Its body reads the VGA status port
-  and programs the DAC: `mov edx,0x3da; in al,dx; test al,8; je` (`0x52129..0x52131`, the wait for
+- **`0x52106` (`gfx_screen_reset`, gfx.c) is a named gap, not a row.** Its body reads the VGA status
+  port and programs the DAC: `mov edx,0x3da; in al,dx; test al,8; je` (`0x52129..0x52131`, the wait for
   vertical retrace), `out dx,al` at `0x5213F` and `0x52145..0x52147` (256 black DAC entries). `in`/`out`
-  are in the harness's `UNMODELED_MNEMONICS`: a run stops at `0x5212E` as `unmodeled: in at 0x5212E`.
-  Not measured (no spec was written: a `gap=` spec would be a named-gap row, which changes the pinned
-  counter's gap figure and `test_every_ported_function_agrees..`'s list).
+  are in the harness's `UNMODELED_MNEMONICS`: `diff_emu.run_original(image, 0x52106, {"eax": 5},
+  allow_calls=(0x51F72,))` stops with `unmodeled`, `in at 0x5212E` (run once, by hand). The port keeps
+  the DAC in `gfx_dac` and the aperture in `g_aperture` (its `PORT:` comment), which are not in
+  `mem[]`, so the row would not see them either. No spec was written: a `gap=` spec is a named-gap row,
+  which changes the pinned counter's gap figure and the list of
+  `test_every_ported_function_agrees_with_the_original_on_every_block`.
 - **`fighter_3e6a8`: the record argument.** The port's function is `(slot, side)` and reads the record
   from the slot; the raw reads EDX for the dust's `+0x30` (`mov eax,[esi+0x30]` `0x3E760`). Every case
   passes EDX = the EAX slot's record, as the one call site does (`mov edx,[ecx]` `0x35396`, `call
