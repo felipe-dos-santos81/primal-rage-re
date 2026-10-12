@@ -519,6 +519,9 @@ P45_OUTSIDE = {name: [(0x10C1B0, 4)] for name in (
 # C3c: fighter_18428 h3's null slot makes the raw read 0x007A (outside the image: the emulator's
 # zero page); the port reads mem[0x7A] the same way.
 P45_OUTSIDE["fighter_18428"] = [(122, 1)]
+# D2 d2a: fighter_45908 z8 (rec+0x51 = 0x80) makes the raw read the same slot above the image, its
+# record pointer and its +0x8A byte (0x10C1B0 + 0x8A); the port reads mem[] there the same way.
+P45_OUTSIDE["fighter_45908"] = [(0x10C1B0, 4), (0x10C23A, 1)]
 # Track P batch C1 (record 2026-10-03-reverse-c1): the callee rows with their EAX masks, and what
 # alone catches each of their mutants.
 C1_MASKS = {"fighter_3c148": 0, "fighter_3c16c": 0, "fighter_39a10": 0, "fighter_36d98": 0,
