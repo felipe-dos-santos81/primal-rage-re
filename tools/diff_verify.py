@@ -18294,6 +18294,72 @@ D3D_SPECS += [
          allow_calls=(0x33950,), calls=(D3D_14590, D3D_4F944, D3D_3F720, D3D_14A5C), eax_mask=0,
          mutants=D3D_STEP_MUTANTS),
 ]
+
+
+def d3d_meter_case(s0, s1, b1d=0, thr=0x1B):
+    """0x1D540: per side (a dict; defaults below) the slot seeded whole with +0x41 (0x1D2F0's bit 3
+    set for side 1 only), +0x5A = `ta`, +0x5D = `tb`, +0x5E = `s5e`, +0x63 = `s63` and +0x7A = `ch`;
+    the meter bytes 0x10290C[side] = `ca` and 0x10290E[side] = `cb` between seeded bytes; the
+    command word 0x1088E0[side] = `cmd` and the index dword 0x1082C8[side] = `idx`, each pair
+    between seeded neighbours; the four HUD record pointers; the mode byte 0x104B1D and the bit
+    byte 0x104AEC (0xFF) between sentinels; the gap threshold dword 0xA76C4 (the image has 0x1B)."""
+    d = dict(ta=0x30, ca=0x30, tb=0x20, cb=0x20, s5e=3, s63=0, ch=2, cmd=0xFFCF, idx=1)
+    s = [dict(d, **s0), dict(d, **s1)]
+    p = {0x00102908: le32(0x0B0A0908) + bytes([s[0]["ca"], s[1]["ca"], s[0]["cb"], s[1]["cb"]]) + le32(0x13121110),
+         0x001028E4: le32(0x0BAD28E4) + le32(0x0010A300) + le32(0x0010A340) + le32(0x0010A380)
+         + le32(0x0010A3C0) + le32(0x0BAD28F8),
+         0x00104B1C: bytes([0x1C, b1d, 0x1E]), 0x00104AEB: b"\xeb\xff\xed",
+         0x001088DE: le16(0xDEDF) + le16(s[0]["cmd"]) + le16(s[1]["cmd"]) + le16(0xE4E5),
+         0x001082C4: le32(0xC4C5C6C7) + le32(s[0]["idx"]) + le32(s[1]["idx"]) + le32(0xD0D1D2D3),
+         0x000A76C4: le32(thr)}
+    for i in (0, 1):
+        buf = bytearray((0x80 | (j & 0x3F) | (i << 6)) & 0xFF for j in range(0x94))
+        buf[0:4] = le32((D3D_F0, D3D_F1)[i])
+        buf[0x41] = 0x08 if i else 0xF7
+        buf[0x5A], buf[0x5D], buf[0x5E], buf[0x63], buf[0x7A] = (s[i][k] for k in ("ta", "tb", "s5e", "s63", "ch"))
+        p.update(d1d_chunks(DS_SLOTS + i * 0x94, buf))
+    return p
+
+
+D3D_SPECS += [
+    # 0x1D540 fight_hud_meter_step: no argument (the render table's entry 0xA86C8, `call [eax+0xa86c4]`
+    # 0x25623). Per side: 0x33A10, 0x1D4D0 (the decay rate v, kept whole in EDI), 0x1D2F0 and 0x1D464
+    # (each reaching the 0x10D70 stub: the record and the table word show the value and the side)
+    # and 0x1D74C run on both sides; 0x468D8 is a stub, AL tested at both sites (`test al,al; je`
+    # 0x1D5F5/0x1D5F7 and 0x1D6BB/0x1D6BD: e0 returns 0x100, p3 0xFFFFFF80). Its first call takes
+    # ctx[1] (`mov eax,[esp+4]` 0x1D5EC) = the side, the second EBX. Mask 0: the call returns to
+    # `shr edx,1` 0x25629, then `mov eax,ebx` 0x25621 or `call 0x134c0` (first EAX access the load
+    # 0x13515, else its `ret` and `mov eax,[0x10150c]` 0x2563E).
+    Spec("fight_hud_meter_step", 0x1D540, [
+        Case("m0", {}, d3d_meter_case(dict(ta=0x40, ca=0x10, tb=0x30, cb=0x10, s5e=3),
+                                      dict(ta=0x10, ca=0x40, tb=0x05, cb=0x30, s5e=0x0C))),
+        Case("m1", {}, d3d_meter_case(dict(s5e=0xFF), dict(ta=0x90, ca=0x10, tb=0x90, cb=0x7F, s5e=2))),
+        Case("m2", {}, d3d_meter_case(dict(ta=0x10, ca=0x90, tb=0x10, cb=0x90, s5e=0x0B),
+                                      dict(tb=0, cb=0, s5e=0x20), b1d=2)),
+        Case("p0", {}, d3d_meter_case(dict(s5e=9), dict(s5e=10)), {0x468D8: 1}),
+        Case("p1", {}, d3d_meter_case(dict(ta=0x50, ca=0x50, tb=0x0C, cb=0x0C, cmd=0x0010),
+                                      dict(ta=0x30, ca=0x30, tb=0x1A, cb=0x1A, cmd=0x0020)), {0x468D8: 1}),
+        Case("p2", {}, d3d_meter_case(dict(ta=0x4B, ca=0x4A, tb=0x0D, cb=0x0D, cmd=0xFF30),
+                                      dict(ta=0x30, ca=0x30, s5e=0x40, cmd=0xFFCF)), {0x468D8: 1}),
+        Case("p3", {}, d3d_meter_case(dict(ta=0x4C, ca=0x4C, tb=0x1B, cb=0x1B, cmd=0x0010),
+                                      dict(ta=0x30, ca=0x30, tb=0x03, cb=0x03, cmd=0x0020)), {0x468D8: 0xFFFFFF80}),
+        Case("p4", {}, d3d_meter_case(dict(s63=1, idx=3, s5e=9), dict(tb=0x05, cb=0x05, cmd=0x0010)), {0x468D8: 1}),
+        Case("p5", {}, d3d_meter_case(dict(tb=0x05, cb=0x05, cmd=0x0020), dict(s63=0x80, idx=8, s5e=0x7F)),
+             {0x468D8: 1}),
+        Case("p6", {}, d3d_meter_case(dict(s63=1, idx=0, s5e=0x0F, tb=2, cb=2),
+                                      dict(s63=1, idx=8, s5e=0x80, tb=0x90, cb=0x90)), {0x468D8: 1}),
+        Case("p7", {}, d3d_meter_case(dict(ta=0x41, ca=0x41, tb=0x30, cb=0x30, cmd=0x0010),
+                                      dict(ta=0x30, ca=0x30, tb=0x30, cb=0x30, cmd=0x0010), thr=0x10), {0x468D8: 1}),
+        Case("e0", {}, d3d_meter_case(dict(ta=0x50, ca=0x50, tb=0x0C, cb=0x0C, cmd=0x0010, s5e=0x20),
+                                      dict(ta=0x30, ca=0x30, tb=0x1A, cb=0x1A, cmd=0x0020, s5e=0x20)),
+             {0x468D8: 0x00000100}),
+    ], calls=(PRED, D2B_PSW), allow_calls=(0x33A10, 0x1D4D0, 0x1D2F0, 0x1D464, 0x1D74C), eax_mask=0,
+       mutants=("@asigned", "@asnap", "@anocall", "@aside", "@aeq", "@asext", "@aslot", "@bsigned", "@bstep",
+                "@bnocall", "@bside", "@bsext", "@no5e", "@eax1", "@eax2", "@predside", "@pred2side", "@nocmd",
+                "@no63", "@limidx", "@limsext", "@lim5e", "@abs63", "@gapswap", "@gapge", "@gapuns", "@thrconst",
+                "@dle", "@ble", "@both", "@no5eset", "@limge", "@no5ez", "@csext", "@sub1", "@noclamp", "@vge",
+                "@vlim", "@fno5ez", "@fnodec", "@fwrap", "@nobit", "@bitval", "@oneside", "@border", "@early")),
+]
 D1_SPECS += D3D_SPECS
 
 

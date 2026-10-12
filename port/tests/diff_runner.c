@@ -26063,6 +26063,108 @@ D3D_STEP_MUT(c1new, 17u)     D3D_STEP_MUT(c1nodec, 18u)   D3D_STEP_MUT(c1late, 1
 D3D_STEP_MUT(c1le, 21u)      D3D_STEP_MUT(c1uns, 22u)     D3D_STEP_MUT(c1nos2, 23u)    D3D_STEP_MUT(c1dword, 24u)
 D3D_STEP_MUT(c2nocall, 25u)  D3D_STEP_MUT(c2arg, 26u)     D3D_STEP_MUT(c2nos3, 27u)    D3D_STEP_MUT(c2early, 28u)
 D3D_STEP_MUT(mask, 29u)      D3D_STEP_MUT(twin, 30u)
+/* 0x1D540's mutants (mutant n; 0 = the port's shape). No argument. 0x468D8 and 0x10D70 are stubs; the
+ * context builder, the rate, the two bar setters and 0x1D74C run on both sides. */
+static u32 d3d_1d540_core(u32 mut)
+{
+    for (u32 side = 0; side < ((mut == 44u) ? 1u : 2u); side++) {                   /* @oneside */
+        u32 ctx[6];
+        fighter_ctx_swap(ctx, side);
+        u32 slot = ctx[3], lim = 10u, rate = 0u;
+        u32 v = fight_hud_rate(side);
+        for (u32 pass = 0; pass < 2u; pass++) {
+            if ((pass == 0u) == (mut != 45u)) {                                     /* @border: B first */
+                u8 tgt = DSB(((mut == 7u) ? ctx[2] : slot) + 0x5Au);                /* @aslot */
+                u8 cur = DSB(DS_0010290C + side);
+                int up = (mut == 1u) ? (s8)tgt > (s8)cur : tgt > cur;               /* @asigned */
+                int down = (mut == 1u) ? (s8)tgt < (s8)cur : tgt < cur;
+                if (up || down) {
+                    cur = up ? (u8)(cur + 1u) : (mut == 2u) ? tgt : (u8)(cur - 1u); /* @asnap */
+                    DSB(DS_0010290C + side) = cur;
+                }
+                if (mut == 46u) DSB(slot + 0x5Eu) = (u8)(DSB(slot + 0x5Eu) + 1u);   /* @early */
+                if (((up || down) && mut != 3u) || mut == 5u)                       /* @anocall @aeq */
+                    fight_hud_bar_set((mut == 6u) ? (s32)(s8)cur : (s32)cur,        /* @asext */
+                                      (mut == 4u) ? 1u - side : side);              /* @aside */
+            } else {
+                u8 tgt = DSB(slot + 0x5Du);
+                u8 cur = DSB(DS_0010290E + side);
+                int up = (mut == 8u) ? (s8)tgt > (s8)cur : tgt > cur;               /* @bsigned */
+                int down = (mut == 8u) ? (s8)tgt < (s8)cur : tgt < cur;
+                if (up || down) {
+                    cur = up ? (u8)(cur + 1u) : (mut == 9u) ? (u8)(cur - 1u) : tgt; /* @bstep */
+                    DSB(DS_0010290E + side) = cur;
+                    if (mut != 10u)                                                 /* @bnocall */
+                        fight_hud_bar2_set((mut == 12u) ? (s32)(s8)cur : (s32)cur,  /* @bsext */
+                                           (mut == 11u) ? 1u - side : side);        /* @bside */
+                }
+            }
+        }
+        if (mut != 13u && mut != 46u) DSB(slot + 0x5Eu) = (u8)(DSB(slot + 0x5Eu) + 1u);   /* @no5e */
+        u32 g1 = (u32)ai_pred_468d8((mut == 16u) ? 1u - side : side);               /* @predside */
+        if ((mut == 14u) ? g1 != 0u : (u8)g1 != 0u) {                               /* @eax1 */
+            int cmd = (mut != 18u) && fight_cmd_bits_30(side) != 0u;                /* @nocmd */
+            int f63 = (mut != 19u) && DSB(slot + 0x63u) != 0u;                      /* @no63 */
+            if (cmd || f63) {
+                rate = 3u;
+                if (DSB(slot + 0x63u) != 0u) {
+                    u32 idx = (mut == 20u) ? side : DSD(DS_001082C8 + side * 4u);   /* @limidx */
+                    lim = (mut == 21u) ? (u32)(s32)(s8)DSB(DS_000A76C8 + idx) : (u32)DSB(DS_000A76C8 + idx);   /* @limsext */
+                    if (mut == 22u) DSB(slot + 0x5Eu) = (u8)(lim + 1u);             /* @lim5e */
+                } else {
+                    rate = 4u;
+                    if (DSB(DS_00107813) == 0u && (mut == 23u || DSB(DS_001078A7) == 0u)) {   /* @abs63 */
+                        s32 gap = (s32)DSB(ctx[3] + 0x5Au) - (s32)DSB(ctx[2] + 0x5Au);
+                        if (mut == 24u) gap = -gap;                                 /* @gapswap */
+                        s32 thr = (mut == 27u) ? 0x1B : (s32)DSD(DS_000A76C4);      /* @thrconst */
+                        if ((mut == 25u) ? gap >= thr : (mut == 26u) ? (u32)gap > (u32)thr : gap > thr)   /* @gapge @gapuns */
+                            rate = 6u;
+                        s32 c = (s32)DSB(slot + 0x5Du);
+                        if ((mut == 28u) ? c <= 0xD : c < 0xD) rate += 2u;          /* @dle */
+                        else if ((mut == 29u) ? c <= 0x1B : c < 0x1B) rate += 1u;   /* @ble */
+                        if (mut == 30u && c < 0xD) rate += 1u;                      /* @both */
+                    }
+                    if (mut != 31u) DSB(slot + 0x5Eu) = (u8)(lim + 1u);             /* @no5eset */
+                }
+            }
+        }
+        u32 g2 = (u32)ai_pred_468d8((mut == 17u) ? 1u - side : side);               /* @pred2side */
+        if ((mut == 15u) ? g2 != 0u : (u8)g2 != 0u) {                               /* @eax2 */
+            s32 t = (s32)DSB(slot + 0x5Eu);
+            if ((mut == 32u) ? t >= (s32)lim : t > (s32)lim) {                      /* @limge */
+                if (mut != 33u) DSB(slot + 0x5Eu) = 0;                              /* @no5ez */
+                s32 c = (mut == 34u) ? (s32)(s8)DSB(slot + 0x5Du) : (s32)DSB(slot + 0x5Du);   /* @csext */
+                if (c >= (s32)rate || mut == 36u)                                   /* @noclamp */
+                    DSB(slot + 0x5Du) = (u8)(c - ((mut == 35u) ? 1 : (s32)(u8)rate));   /* @sub1 */
+                else
+                    DSB(slot + 0x5Du) = 0;
+            }
+        } else if ((mut == 37u) ? (s32)DSB(slot + 0x5Eu) >= (s32)v
+                 : (mut == 38u) ? (s32)DSB(slot + 0x5Eu) > (s32)lim
+                 : (s32)DSB(slot + 0x5Eu) > (s32)v) {                               /* @vge @vlim */
+            u8 d = DSB(slot + 0x5Du);
+            if (mut != 39u) DSB(slot + 0x5Eu) = 0;                                  /* @fno5ez */
+            if ((d != 0u || mut == 41u) && mut != 40u) DSB(slot + 0x5Du) = (u8)(d - 1u);   /* @fnodec @fwrap */
+        }
+    }
+    if (mut != 42u) DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & ((mut == 43u) ? 0xFEu : 0xFDu));   /* @nobit @bitval */
+    return 0u;
+}
+static void b_d3d_1d540(const u32 *r, u32 *eax) { (void)r; fight_hud_meter_step(); *eax = 0u; }
+#define D3D_METER_MUT(name, n) \
+    static void m_d3d_1d540_##name(const u32 *r, u32 *eax) { (void)r; *eax = d3d_1d540_core(n); }
+D3D_METER_MUT(asigned, 1u) D3D_METER_MUT(asnap, 2u) D3D_METER_MUT(anocall, 3u) D3D_METER_MUT(aside, 4u)
+D3D_METER_MUT(aeq, 5u) D3D_METER_MUT(asext, 6u) D3D_METER_MUT(aslot, 7u) D3D_METER_MUT(bsigned, 8u)
+D3D_METER_MUT(bstep, 9u) D3D_METER_MUT(bnocall, 10u) D3D_METER_MUT(bside, 11u) D3D_METER_MUT(bsext, 12u)
+D3D_METER_MUT(no5e, 13u) D3D_METER_MUT(eax1, 14u) D3D_METER_MUT(eax2, 15u) D3D_METER_MUT(predside, 16u)
+D3D_METER_MUT(pred2side, 17u) D3D_METER_MUT(nocmd, 18u) D3D_METER_MUT(no63, 19u) D3D_METER_MUT(limidx, 20u)
+D3D_METER_MUT(limsext, 21u) D3D_METER_MUT(lim5e, 22u) D3D_METER_MUT(abs63, 23u) D3D_METER_MUT(gapswap, 24u)
+D3D_METER_MUT(gapge, 25u) D3D_METER_MUT(gapuns, 26u) D3D_METER_MUT(thrconst, 27u) D3D_METER_MUT(dle, 28u)
+D3D_METER_MUT(ble, 29u) D3D_METER_MUT(both, 30u) D3D_METER_MUT(no5eset, 31u) D3D_METER_MUT(limge, 32u)
+D3D_METER_MUT(no5ez, 33u) D3D_METER_MUT(csext, 34u) D3D_METER_MUT(sub1, 35u) D3D_METER_MUT(noclamp, 36u)
+D3D_METER_MUT(vge, 37u) D3D_METER_MUT(vlim, 38u) D3D_METER_MUT(fno5ez, 39u) D3D_METER_MUT(fnodec, 40u)
+D3D_METER_MUT(fwrap, 41u) D3D_METER_MUT(nobit, 42u) D3D_METER_MUT(bitval, 43u) D3D_METER_MUT(oneside, 44u)
+D3D_METER_MUT(border, 45u) D3D_METER_MUT(early, 46u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32460,6 +32562,53 @@ static const binding_t k_bindings[] = {
     { "fighter_14988@c2early",               m_d3d_14988_c2early, 0x00000000u },
     { "fighter_14988@mask",                  m_d3d_14988_mask, 0x00000000u },
     { "fighter_14988@twin",                  m_d3d_14988_twin, 0x00000000u },
+    { "fight_hud_meter_step",                b_d3d_1d540, 0x00000000u },
+    { "fight_hud_meter_step@asigned",        m_d3d_1d540_asigned, 0x00000000u },
+    { "fight_hud_meter_step@asnap",          m_d3d_1d540_asnap, 0x00000000u },
+    { "fight_hud_meter_step@anocall",        m_d3d_1d540_anocall, 0x00000000u },
+    { "fight_hud_meter_step@aside",          m_d3d_1d540_aside, 0x00000000u },
+    { "fight_hud_meter_step@aeq",            m_d3d_1d540_aeq, 0x00000000u },
+    { "fight_hud_meter_step@asext",          m_d3d_1d540_asext, 0x00000000u },
+    { "fight_hud_meter_step@aslot",          m_d3d_1d540_aslot, 0x00000000u },
+    { "fight_hud_meter_step@bsigned",        m_d3d_1d540_bsigned, 0x00000000u },
+    { "fight_hud_meter_step@bstep",          m_d3d_1d540_bstep, 0x00000000u },
+    { "fight_hud_meter_step@bnocall",        m_d3d_1d540_bnocall, 0x00000000u },
+    { "fight_hud_meter_step@bside",          m_d3d_1d540_bside, 0x00000000u },
+    { "fight_hud_meter_step@bsext",          m_d3d_1d540_bsext, 0x00000000u },
+    { "fight_hud_meter_step@no5e",           m_d3d_1d540_no5e, 0x00000000u },
+    { "fight_hud_meter_step@eax1",           m_d3d_1d540_eax1, 0x00000000u },
+    { "fight_hud_meter_step@eax2",           m_d3d_1d540_eax2, 0x00000000u },
+    { "fight_hud_meter_step@predside",       m_d3d_1d540_predside, 0x00000000u },
+    { "fight_hud_meter_step@pred2side",      m_d3d_1d540_pred2side, 0x00000000u },
+    { "fight_hud_meter_step@nocmd",          m_d3d_1d540_nocmd, 0x00000000u },
+    { "fight_hud_meter_step@no63",           m_d3d_1d540_no63, 0x00000000u },
+    { "fight_hud_meter_step@limidx",         m_d3d_1d540_limidx, 0x00000000u },
+    { "fight_hud_meter_step@limsext",        m_d3d_1d540_limsext, 0x00000000u },
+    { "fight_hud_meter_step@lim5e",          m_d3d_1d540_lim5e, 0x00000000u },
+    { "fight_hud_meter_step@abs63",          m_d3d_1d540_abs63, 0x00000000u },
+    { "fight_hud_meter_step@gapswap",        m_d3d_1d540_gapswap, 0x00000000u },
+    { "fight_hud_meter_step@gapge",          m_d3d_1d540_gapge, 0x00000000u },
+    { "fight_hud_meter_step@gapuns",         m_d3d_1d540_gapuns, 0x00000000u },
+    { "fight_hud_meter_step@thrconst",       m_d3d_1d540_thrconst, 0x00000000u },
+    { "fight_hud_meter_step@dle",            m_d3d_1d540_dle, 0x00000000u },
+    { "fight_hud_meter_step@ble",            m_d3d_1d540_ble, 0x00000000u },
+    { "fight_hud_meter_step@both",           m_d3d_1d540_both, 0x00000000u },
+    { "fight_hud_meter_step@no5eset",        m_d3d_1d540_no5eset, 0x00000000u },
+    { "fight_hud_meter_step@limge",          m_d3d_1d540_limge, 0x00000000u },
+    { "fight_hud_meter_step@no5ez",          m_d3d_1d540_no5ez, 0x00000000u },
+    { "fight_hud_meter_step@csext",          m_d3d_1d540_csext, 0x00000000u },
+    { "fight_hud_meter_step@sub1",           m_d3d_1d540_sub1, 0x00000000u },
+    { "fight_hud_meter_step@noclamp",        m_d3d_1d540_noclamp, 0x00000000u },
+    { "fight_hud_meter_step@vge",            m_d3d_1d540_vge, 0x00000000u },
+    { "fight_hud_meter_step@vlim",           m_d3d_1d540_vlim, 0x00000000u },
+    { "fight_hud_meter_step@fno5ez",         m_d3d_1d540_fno5ez, 0x00000000u },
+    { "fight_hud_meter_step@fnodec",         m_d3d_1d540_fnodec, 0x00000000u },
+    { "fight_hud_meter_step@fwrap",          m_d3d_1d540_fwrap, 0x00000000u },
+    { "fight_hud_meter_step@nobit",          m_d3d_1d540_nobit, 0x00000000u },
+    { "fight_hud_meter_step@bitval",         m_d3d_1d540_bitval, 0x00000000u },
+    { "fight_hud_meter_step@oneside",        m_d3d_1d540_oneside, 0x00000000u },
+    { "fight_hud_meter_step@border",         m_d3d_1d540_border, 0x00000000u },
+    { "fight_hud_meter_step@early",          m_d3d_1d540_early, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
