@@ -1654,9 +1654,10 @@ u32 camera_dust_hit(u32 node)
  * 0x1282C's (0x2800/-0x80/0 or -0x2800/0x80/0x4000). Unlike 0x1282C, a3 is
  * the fixed word DS_000BD898 (sign-extended), not rng(0x1300), and a4 is
  * rng(0x2000) alone, not (0x1300 - r1) + r2 — the raw reaches this value
- * through a convoluted partial-dword stack read (`mov eax,edx; sub eax,edx`
- * zeroes EAX, then a sign-extended low word survives an unrelated `sar
- * ebx,0x10`); the port computes it directly. Spawns one actor from 0xBB254 as
+ * through a partial-dword stack read (`mov eax,edx; sub eax,edx` zeroes EAX;
+ * the draw's low word is stored at [esp] and `mov ebx,[esp-2]; sar ebx,0x10`
+ * sign-extends it), so a4 is the draw's low word, sign-extended (the draw is
+ * below 0x2000, so the same value). Spawns one actor from 0xBB254 as
  * 0x1282C does. Both gates (0x128EB, 0x128FD) and the spawn fall to 0x1296F,
  * the tail (record §49-W): outside mode 0x24, the byte DS_000F0AE8 is reset
  * to 0xFF when the slot DS_00104B1A names has +0x52 = 0; with the in-use dust
@@ -1675,7 +1676,7 @@ void camera_impact_dust_spawn(void)
                 off = (s32)0xFFFFD800; yvel = 0x80; flag5 = 0x4000u;
             }
             s32 a3 = (s32)(s16)DSW(DS_000BD898);        /* 0x1294D */
-            u32 a4 = rng_next(0x2000u);                 /* 0x12938 */
+            u32 a4 = (u32)(s32)(s16)rng_next(0x2000u);  /* 0x12938; 0x12941 `mov [esp],di`, 0x12956 `sar ebx,0x10` */
             u32 rec = actor_spawn((const u32 *)(mem + CAMERA_DUST_DESC),
                                   (u32)((s32)DSD(DS_000F0AF0) + off),
                                   (u32)a3, a4, flag5);   /* 0x12962 */
