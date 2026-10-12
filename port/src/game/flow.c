@@ -5285,7 +5285,7 @@ void game_mode_1e_step(void)
             DSB(DS_00104B25) = 0xAu;                              /* 0x1F3CC */
             break;
         }
-        if (hiscore_rank_single(DSD(DS_00107880)) != 0u) {          /* 0x1F2C4/0x1F2C9/0x1F2CE/0x1F2D0 */
+        if ((hiscore_rank_single(DSD(DS_00107880)) & 0xFFu) != 0u) {    /* 0x1F2C4/0x1F2C9/0x1F2CE/0x1F2D0; AL alone: `test al,al` 0x1F2CE */
             u32 advance = (DSD(DS_00104AD4) != 1u)                   /* 0x1F2D6/0x1F2DC/0x1F2DF */
                        || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F2E1/0x1F2E8/0x1F2EE/0x1F2F4 */
             if (advance) {
