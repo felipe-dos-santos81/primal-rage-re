@@ -34,6 +34,10 @@ masks d2b derived by hand (0x1D2F0 0, 0x493F0 / 0x4A868 / 0x4AA6C / 0x4D150 / 0x
 | 0x1DC6C | `fight_hud_spawn_b` | 391 | 0x25AB6, 0x25C3A | 0x25ABB `jmp 0x25acc` / 0x25C3F `jmp 0x25c4b`: walk, dead on every path | 0 |
 | 0x432EC | `fight_char_text_clear` | 238 | 0x43493, 0x4359E, 0x435E8, 0x43E8C, 0x44455, 0x4466A, 0x44787 | 0x43E91 `mov eax,0x6c`; 0x4445A `lea eax,[ecx*8]`; the others: walk, dead on every path | 0 |
 | 0x494A8 | `fight_dust_build` | 515 | 0x33E43 | 0x33E48 `call 0x1cebc`, which loads EAX before any read, then 0x33E4D `test al,al` on its result: walk, dead | 0 |
+| 0x4987C | `fight_4987c` | 942 | 0x4A616, 0x4D792 | 0x4A61B.. and 0x4D797 `add esp,4` / the pops / `ret`: walk, dead on every path | 0 |
+| 0x4A928 | `fight_4a928` | 323 | 0x4A562 | 0x4A567 `cmp byte [esp+0x18],0`..: walk, dead on every path | 0 |
+| 0x4AAD0 | `fight_4aad0` | 326 | 0x49D25 | 0x49D2A `jmp 0x4a468`: walk, dead on every path | 0 |
+| 0x4B470 | `fight_4b470` | 312 | 0x4A10B, 0x4B779, 0x4D873 | 0x4A110 `jmp 0x4a468`; 0x4B77E and 0x4D878 `add esp,4` / the pops / `ret`: walk, dead on every path | 0 |
 
 ## §2 The measured rows
 
@@ -49,13 +53,18 @@ masks d2b derived by hand (0x1D2F0 0, 0x493F0 / 0x4A868 / 0x4AA6C / 0x4D150 / 0x
 | `fight_char_text_clear` | 0x432EC | 7 | 9/9 | 27/27 | 0 | 0x2B150, 0x2C088 and 0x2F280 stubs; the string path 0x1C500 / 0x474E4 / 0x1E75C / 0x1E808 / 0x500BB and the runtime strlen 0x65624 run on both sides (allowed; the port's strlen is the host's) |
 | `fight_char_text_clear_rr` | 0x432EC | 2 | 9/9 | 1/1 | 0 | the same entry; the release stub rewrites both col words 0xC894C (a harness write) |
 | `fight_dust_build` | 0x494A8 | 9 | 16/16 | 48/48 | 0 | 0x4CF20, 0x49388, 0x29CDC, 0x5D7DC and 0x2AE14 stubs; 0x249D0, 0x249B0 and 0x496AC run on both sides (allowed) |
+| `fight_4987c` | 0x4987C | 16 | 62/62 | 54/54 | 0 | 0x49388, 0x29CDC, 0x5D7DC, 0x2BE4C, 0x2AE14 and 0x4B144 stubs; 0x2BE00 runs on both sides, recorded (each record its own value); 0x249D0, 0x249B0 and 0x496AC run on both sides (allowed) |
+| `fight_4a928` | 0x4A928 | 16 | 12/12 | 28/28 | 0 | 0x4AA6C and 0x2BE00 run on both sides, recorded |
+| `fight_4aad0` | 0x4AAD0 | 32 | 27/27 | 28/28 | 0 | 0x4B430, 0x4B3F0, 0x4BD4C, 0x4B5A8, 0x2BE1C and 0x4B144 stubs; 0x2BE00 runs on both sides, recorded |
+| `fight_4aad0_rr` | 0x4AAD0 | 4 | 27/27 | 3/3 | 0 | the same entry; the 0x4B430 stub rewrites the side-0 slot's +0x54 to 4, the 0x4B3F0 stub its +0x42 to 1 and the 0x4B5A8 stub its +0x42 to 2 (harness writes) |
+| `fight_4b470` | 0x4B470 | 20 | 23/23 | 46/46 | 0 | 0x2C3FC, 0x2BC30, 0x2AE14, 0x1A570, 0x4BD98 and 0x4CB18 stubs |
 
 The `D3B_MASKS` / `D3B_KINDS` / `D3B_CASES` pins of `tools/tests/test_diff_verify.py` are generated from
 these measurements. Every stub the batch declares carries the clobbers `E.callee_clobbers` derives from
 the bytes (checked per row by a scratch script). Stubs the pinned dictionary of
 `test_each_stub_declares_the_registers_its_callee_clobbers` did not have are added to it as new lines
 (no existing line changed): 0x1D2F0 (edx), 0x1D464 (edx), 0x1D838 (ebx, edx), 0x1DA84 (edx),
-0x4CF20 ().
+0x4CF20 (), 0x4B144 (edx), 0x4BD4C (edx), 0x4B5A8 (edx), 0x2BE1C (edx), 0x4BD98 (), 0x4CB18 (ebx, ecx, edx).
 
 Two entries are rowed as two specs on one binding (the form d2e used for 0x41C28's states): a `Call`'s
 `writes` are fixed per spec, so the cases whose stubs rewrite a global the function reads again
@@ -95,6 +104,31 @@ Measured on the old port with the `_rr` spec: `u0: call #2: original 0x2F280(0x7
 Ordinary play: no difference (0xC894C is a table in the data object that neither 0x1C500 nor 0x2F280
 writes).
 
+### §3.3 `fight_4aad0` (0x4AAD0) tests AL of 0x4B5A8
+
+0x4AB45 `call 0x4b5a8` is followed by 0x4AB4A `test al,al` / 0x4AB4C `jne 0x4ac10`: only AL decides
+(0x4B5A8 sets AL alone, 0x4B689 `mov al,1` / 0x4B694 `xor al,al`; d2b rowed it with mask 0xFF). The
+other three results of the function are tested whole (0x4AB03, 0x4AB1F, 0x4AB39, 0x4AB74, 0x4AB9E
+`test eax,eax`). Old: `if (fight_4b5a8(entry, index) != 0) return;`. New: `(u8)fight_4b5a8(...) !=
+0u`. Measured on the old port: `n6: call #2: original 0x4B3F0(0x10A000, 0x6, 0x0), port none` (the
+stub returns 0x100). The mutant `@eax5a8` is the old port.
+
+Ordinary play: no difference (the port's `fight_4b5a8` returns 0 or 1).
+
+### §3.4 `fight_4b470` (0x4B470) tests AL of 0x1A570
+
+0x4B4F6 `call 0x1a570` is followed by 0x4B4FB `test al,al` / 0x4B4FD `je 0x4b504`: AL != 0 throws
+the first hit at +0x34 = 0xFF80 (0x4B525), AL = 0 at 0x0080 (0x4B507). Old:
+`fighter_actor_bit15_clear(...) != 0` on the whole int. New: `(u8)... != 0u`. The real 0x1A570
+leaves EAX = 0x8000 with AL = 0 when the bit is set (0x1A59A `xor al,al`, 0x1A59C `and ah,0x80`,
+0x1A59F `and eax,0xffff`, 0x1A5A4 `sete al`) and 1 when it is clear, so a whole-register test of the
+RAW callee would be wrong in play; the port's `fighter_actor_bit15_clear` returns 0 or 1, so the old
+port agreed in play and differs only under a stub. Measured on the old port: `k1: byte 0x10A135:
+original 0x00, port 0xFF` (stub 0x100) and `k2` the same (stub 0xFFFFFF00). The mutant `@eax` is the
+old port. The same finding as d1a's `fighter_24754`, d1f's `fight_4cb18` and d2d's `fighter_3fdd8`.
+
+Ordinary play: no difference.
+
 ### The `port/src` edits that are not corrections
 
 Seams (first statement of a callee that had none; each callee's own row re-run after it, VERIFIED with
@@ -105,6 +139,21 @@ every mutant detected, unchanged):
 - `0x1D464` `fight_hud_bar2_set`: `PR_SEAM(0x1D464u, (u32)v, side);`
 - `0x1DA84` `fight_hud_bar_set_inv`: `PR_SEAM(0x1DA84u, (u32)v, side);`
 - `0x4CF20` `fight_4cf20`: `PR_SEAM(0x4CF20u, side);`
+- `0x4B144` `fight_4b144`: `PR_SEAM(0x4B144u, entry, index);`
+- `0x4AA6C` `fight_4aa6c`: `PR_SEAM_RET(0x4AA6Cu, (u32)side);`
+- `0x4BD4C` `fight_4bd4c`: `PR_SEAM_RET(0x4BD4Cu, entry, index);`
+- `0x4B5A8` `fight_4b5a8`: `PR_SEAM_RET(0x4B5A8u, entry, index);`
+- `0x2BE1C` `fight_2be1c`: `PR_SEAM_RET(0x2BE1Cu, rec_a, rec_b);`
+- `0x4BD98` `fight_4bd98`: `PR_SEAM(0x4BD98u, entry);`
+- `0x4CB18` `fight_4cb18`: `PR_SEAM(0x4CB18u, entry, index, flag, side);`
+
+Exports for a binding (each loses `static` and is declared at the end of `fight.h`): `fight_4aad0`
+(0x4AAD0), `fight_4b470` (0x4B470).
+
+Why 0x2BE1C is a stub and not an allowed callee: the raw 0x2BE1C computes the difference inline
+(0x2BE1D..0x2BE44, no call), the port's `fight_2be1c` calls the seamed `fight_2be00` twice. Under a
+row that records 0x2BE00 the port's call list would carry two calls the original never makes
+(measured: `w11: call #3: original none, port 0x2BE00(0x10A100)`), so the 0x4AAD0 rows stub it.
 
 ## §4 Named gaps and unhit blocks
 
@@ -138,6 +187,30 @@ Limits worth knowing:
   entry's +8 (0x49635, 0x49659, 0x49661): every callee in between is a stub or pure here, so a read's
   position is not separated; in the game none of 0x49388, 0x29CDC, 0x5D7DC, 0x2AE14, 0x496AC is seen
   to write those fields (unverified for the 0x2AE14 tree). Not changed.
+- `fight_4987c`: the rng stub's one EAX per case serves rng(2) and rng(0x300); the 0x2BE4C stub
+  returns the x whatever its arguments (they are in the call list); the spawn stub returns one actor
+  per case. As in `fight_dust_build` the port takes the side's record once per iteration where the
+  raw loads `[slot]` again after each call (0x499C4, 0x499FD, 0x49A45, 0x49A5E, 0x49A94, 0x49AF1,
+  0x49B64) and uses its local for the actor where the raw re-reads the entry's +8 (0x49B4B,
+  0x49B52, 0x49B84..): not separated, not changed. The block 0x49B7E's `jne` (0x49B82) cannot be
+  taken: it re-tests the +0x51 byte 0x49B6C just found zero. A count above 2 with kind 1 or 2
+  reads 0xC953C beyond its two descriptors (cases f11, f15: the image's next dwords, stream
+  addresses, which the spawn stub only records).
+- `fight_4a928`: the two means come from one list, so both are `sum / count + 1` of real entries or
+  a record's own position; the port's `b - a >= 0x1400` and `a - b` are signed C subtractions
+  (undefined on overflow) where the raw wraps: cases s13 and s14 (0x80000000 against 0x7FFFFFFF)
+  agree on this compiler. The port keeps the two means in locals where the raw reloads
+  DS_0010885C / DS_00108858 at 0x4AA00 (it has just stored them).
+- `fight_4aad0`: 0x2BE1C is a stub, so d is whatever the case says and is not tied to the two
+  positions; `@dswap` (the arguments exchanged) is caught by the call list alone, the function using
+  only |d|. The port reads the entry's slot pointer +0xC once where the raw loads it before each
+  test (0x4AAEF, 0x4AB0B, 0x4AB52, 0x4AB7C, 0x4ABA6, 0x4ABC7): not separated. The slot bytes
+  +0x54 and +0x42 are re-read on both sides, which `_rr` separates from a cached read (`@c54`,
+  `@c42a`, `@c42b`).
+- `fight_4b470`: the spawn stub's record is not dereferenced; the raw reads the actor's +0x18 /
+  +0x30 after the 0x2BC30 call and so does the port, but the stub does not change them, so the
+  read's position is not separated. An index above 11 is not exercised (0xC9604 / 0xBB920 have
+  twelve entries by the 0x4D880 / record §42-C tables; unverified here).
 
 ## §5 Store sweep
 
@@ -148,6 +221,11 @@ Limits worth knowing:
 | `fight_hud_spawn_side` | DS_0010290C[side], slot +0x5B = 0; DS_001028F0 / F8 [side] = the spawns; DS_001028E0[side] = 0; DS_00104AEC \|= 8 | as above; bit 3 clear in every case but d5 | `@b90c`, `@b80b`, `@s1`, `@s3`, `@e0`, `@aec` (dropped), `@b80a` (the +0x5A byte instead), `@e0late`, `@aecearly`, `@aecbit` |
 | `fight_char_text_clear` | none of its own (DS_00108144[side] is NOT zeroed) | the slot pair sits between seeded dwords | `@zero` (a store the raw does not make) |
 | `fight_dust_build` | DS_001088AE / A2 / A4 / B2 / 9E / B6 [side] = 0, DS_001088A8[side] = 0xFF, DS_001088C4 / BF = 0, the word DS_00108892 = 0; per entry: the list links, desc +0x10, entry +8, +0x1E, +0x1F, +0x21, +0x0C, +0x1C word, +0x10, +0x1A word; actor +0x14, +0x2C, +0x2E (+= 4), +0x4E; DS_001088C3 / C1 = 0 | 0x108890..0x1088C5 hold 0x11.. ascending (non-zero, none 0xFF, the two sides' bytes different); the free nodes' +8..+0x23 and the actor's fields seeded | `@bae`, `@bc4`, `@ba2`, `@ba4`, `@bb2`, `@bbf`, `@ba8`, `@b9e`, `@bb6`, `@w892`, `@bc3`, `@bc1`, `@d10`, `@ne8`, `@a14`, `@f1e`, `@f1f`, `@f21`, `@fc`, `@e10`, `@w1a`, `@b4e` (dropped), `@ba8v`, `@w892b`, `@w1c` (a byte), `@w1ay`, `@clamp`, `@w2e`, `@sideidx`, `@early` (the last two stores made on the empty-pool return) |
+
+| `fight_4987c` | per entry: the list links, entry +0x1C word = 0 then bit 0 / bit 4, desc +0x10, entry +8, +0x0C, +0x21, +0x1F, +0x10, +0x1E = 7; actor +0x14, +0x2C, +0x29 (\|= 0x10, \|= 0x40), +0x2E (+= 4), +0x4E, +0x34 | the free nodes' +8..+0x23 and the actor's +0x10..+0x1B, +0x28..+0x37, +0x47..+0x49, +0x4D..+0x4F seeded; +0x29 takes 0x00 and 0xAF | `@w1c0`, `@bit0`, `@d10`, `@ne8`, `@a14`, `@fc`, `@f21`, `@f1f`, `@or10`, `@e10`, `@b4e`, `@w34`, `@or40`, `@or10e` (dropped), `@bit0all`, `@clamp`, `@w2e`, `@type`, `@or40inv`, `@v34a`, `@v34sign` |
+| `fight_4a928` | DS_001088C6 = 0 (then 1), DS_00108870 = DS_0010887C = 0 (then one of them), DS_001088C9, DS_001088C7, DS_0010885C, DS_00108858, DS_001088C8 = 1, DS_001088CA | 0x1088C5..CB = C5 66 77 88 99 AA CB; the four dwords non-zero between seeded dwords | `@c6`, `@z870`, `@z87c`, `@c7`, `@s5c`, `@fb1s`, `@c6one`, `@s58`, `@fb2s`, `@c8one`, `@cadrop` (dropped), `@c8c6`, `@ca`, `@t7c`, `@t70` |
+| `fight_4aad0` | entry +0x1E = 9 (mode 9) | +0x1D / +0x1F seeded, the type starts 0x55 | `@t9` |
+| `fight_4b470` | entry +0x10 = the shadow, actor +0x34 (0x80 / 0xFF80), +0x36 = 0x240, entry +0x1E = 6, +0x1C &= 0x7F | entry +0x0C / +0x14 and +0x1B..+0x22, actor +0x2E..+0x39 seeded; +0x1C takes 0xFF, 0x80, 0x7F | `@sstore`, `@w34`, `@w36`, `@type`, `@bit7` (dropped), `@v34`, `@v36`, `@bit7v` |
 
 ## §6 Queue entries not done
 
