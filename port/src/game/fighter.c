@@ -2595,6 +2595,7 @@ void fighter_41310(u32 side, s32 delta)
  * reload word 0x10 and DS_00104AE9 |= 8. */
 void fighter_4f944(u32 v)
 {
+    PR_SEAM(0x4F944u, v);
     if ((s32)v > 0x14) v = 0x14u;                           /* 0x4F946..0x4F94B */
     DSB(DS_001088F0) = (u8)v;                               /* 0x4F955 */
     DSW(DS_001088E8) = 0;                                   /* 0x4F95A/0x4F962 */
@@ -4878,6 +4879,7 @@ int fighter_189fc(u32 side);                            /* 0x189FC */
 int fighter_14590(u32 side)
 {
     u32 ctx[6];
+    PR_SEAM_RET(0x14590u, side);
     fighter_ctx_same(ctx, side);                            /* 0x14598 0x33950 */
     if (DSD(ctx[3] + 0x10u) != 0x00039CC8u                  /* 0x145A1 */
             && DSB(ctx[3] + 0x52u) != 0x11u)                /* 0x145AA */
@@ -4894,6 +4896,7 @@ void fighter_3f720(u32 side, s32 n)
     u32 ctx[6];
     s32 d;
     s32 v;
+    PR_SEAM(0x3F720u, side, (u32)n);
     fighter_ctx_same(ctx, side);                            /* 0x3F72A 0x33950 */
     if (n < 1) n = 1;                                       /* 0x3F72F..0x3F734 */
     if (ai_distance() >= 0)                                 /* 0x3F739/0x3F740 */
@@ -4921,6 +4924,7 @@ void fighter_146f0(u32 rec)
     u32 stream;
     u32 bits;
     s32 dx;
+    PR_SEAM(0x146F0u, rec);
     hit_anim_ctx(ctx, rec);                                 /* 0x146FA 0x339AC */
     stream = (fighter_14590(ctx[0]) != 0)
            ? FIGHT_ANIM_146F0_A : FIGHT_ANIM_146F0_B;       /* 0x14702..0x14712 */
@@ -5166,6 +5170,7 @@ void fighter_14a5c(u32 rec)
     u32 stream;
     u32 bits;
     s32 dx;
+    PR_SEAM(0x14A5Cu, rec);
     hit_anim_ctx(ctx, rec);                                 /* 0x14A66 0x339AC */
     stream = (fighter_14590(ctx[0]) != 0)
            ? FIGHT_ANIM_14A5C_A : FIGHT_ANIM_14A5C_B;       /* 0x14A6E..0x14A7E */

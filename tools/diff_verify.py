@@ -18215,6 +18215,85 @@ D3D_SPECS += [
        mutants=("@no0", "@no1", "@no2", "@no3", "@swap01", "@swap23", "@width", "@mask", "@signed", "@early",
                 "@nohi", "@nolo", "@hiuns", "@louns", "@losign", "@hibound", "@lobound")),
 ]
+D3D_F0, D3D_F1 = 0x0010A200, 0x0010A280             # the two fighters' records (zero BSS)
+D3D_REC, D3D_SLOTX = 0x0010A300, 0x0010A500         # an actor record; a slot structure that is neither fighter's
+D3D_14590 = E.Call(0x14590, ("eax",))
+D3D_4F944 = E.Call(0x4F944, ("eax",))
+D3D_3F720 = E.Call(0x3F720, ("eax", "edx"), clobbers=("edx",))
+D3D_146F0 = E.Call(0x146F0, ("edx",), clobbers=("edx",))
+D3D_14A5C = E.Call(0x14A5C, ("edx",), clobbers=("edx",))
+D3D_STEP = {"a": (0x000FD114, 0x0009AFD8), "b": (0x000FD110, 0x0009AFE8)}   # the counter words, the two reload words
+
+
+def d3d_step_case(which, side, state, b42=0x08, cnt=0x0005):
+    """0x1461C ("a") / 0x14988 ("b"): both fighters' slots seeded whole (the side's +0x57 = `state`
+    and +0x42 = `b42`; the other's +0x57 another state and +0x42 with bit 3 flipped) and the
+    scratch slot D3D_SLOTX the cases pass in EAX (a third state, +0x42 inverted); 0xFD10C..0xFD11F
+    seeded with the side's counter word = `cnt` (the other side's differs); the two reload words
+    (0x1357 else, 0x2468 hold; the image has 0x14 and 4) between sentinel words."""
+    ctr, k = D3D_STEP[which]
+    g = bytearray(0xC0 + i for i in range(0x14))
+    g[ctr - 0xFD10C + side * 2:ctr - 0xFD10C + side * 2 + 2] = le16(cnt)
+    g[ctr - 0xFD10C + (1 - side) * 2:ctr - 0xFD10C + (1 - side) * 2 + 2] = le16(cnt ^ 0x5555)
+    p = {0x000FD10C: bytes(g), k - 2: le16(0xD6D7) + le16(0x1357) + le16(0x2468) + le16(0xDCDD)}
+    for i in (0, 1):
+        buf = bytearray((0x80 | (j & 0x3F) | (i << 6)) & 0xFF for j in range(0x94))
+        buf[0:4] = le32((D3D_F0, D3D_F1)[i])
+        buf[0x57], buf[0x42] = (state, b42) if i == side else ((state + 1) & 3, b42 ^ 0x08)
+        p.update(d1d_chunks(DS_SLOTS + i * 0x94, buf))
+    buf = bytearray(0x40 | (j & 0x3F) for j in range(0x94))
+    buf[0x57], buf[0x42] = (state + 2) & 3, b42 ^ 0xFF
+    p.update(d1d_chunks(D3D_SLOTX, buf))
+    return p
+
+
+def d3d_step_cases(which):
+    """The cases the twins share. EAX = the scratch slot (the raw only hands it to 0x146F0/0x14A5C,
+    which overwrite it unread), EDX = the record, EBX = the side."""
+    R = lambda s: {"eax": D3D_SLOTX, "edx": D3D_REC + s * 0x40, "ebx": s}
+    T = lambda s, state, **kw: d3d_step_case(which, s, state, **kw)
+    return [
+        Case("z0", R(0), T(0, 0, b42=0xF7), {0x14590: 1}),
+        Case("z1", R(0), T(0, 0, b42=0x08), {0x14590: 1}),
+        Case("z2", R(1), T(1, 0, b42=0xFF), {0x14590: 0}),
+        Case("z3", R(1), T(1, 0, b42=0x08), {0x14590: 0x00000100}),
+        Case("z4", R(0), T(0, 0, b42=0x0C), {0x14590: 0xFFFFFF80}),
+        Case("z5", R(1), T(1, 0, b42=0x08), {0x14590: 0x00000001}),
+        Case("o0", R(0), T(0, 1, cnt=0x0005)),
+        Case("o1", R(1), T(1, 1, cnt=0x0002)),
+        Case("o2", R(0), T(0, 1, cnt=0x0001)),
+        Case("o3", R(1), T(1, 1, cnt=0x0000)),
+        Case("o4", R(0), T(0, 1, cnt=0x8000)),
+        Case("o5", R(1), T(1, 1, cnt=0x8001)),
+        Case("t0", R(0), T(0, 2)),
+        Case("t1", R(1), T(1, 2)),
+        Case("n0", R(0), T(0, 3)),
+        Case("n1", R(1), T(1, 4)),
+        Case("n2", R(0), T(0, 0x81)),
+        Case("n3", R(1), T(1, 0x82)),
+    ]
+
+
+D3D_STEP_MUTANTS = ("@slotarg", "@bit", "@nos1", "@late1", "@gateside", "@eax", "@gatesigned", "@swapk", "@kwidth",
+                    "@cntside", "@cntscale", "@no4f944", "@arg4f944", "@late4f944", "@else4f944", "@c1zext",
+                    "@c1new", "@c1nodec", "@c1late", "@c1side", "@c1le", "@c1uns", "@c1nos2", "@c1dword",
+                    "@c2nocall", "@c2arg", "@c2nos3", "@c2early", "@mask", "@twin")
+D3D_SPECS += [
+    # 0x1461C fighter_1461c: EAX = slot, EDX = rec, EBX = side (the slot +0x0C callback: the dword at
+    # 0x148A8, `call [ecx+0xc]` 0x35431). The four-entry table 0x1460C (`cmp al,3; ja`) switches on
+    # the +0x57 byte of ctx[2] = the side's own slot (0x33950 runs on both sides); 0x14590 (AL
+    # tested, `test al,al; jbe` 0x14669/0x1466B: z3 returns 0x100, z4 0xFFFFFF80), 0x4F944, 0x3F720
+    # (EDX = the old counter sign-extended, `movsx ecx,dx` 0x146A4) and 0x146F0 (EDX = rec; its EAX
+    # is overwritten unread at 0x146F8) are stubs. Mask 0: the call returns to `xor eax,eax` 0x35434.
+    Spec("fighter_1461c", 0x1461C, d3d_step_cases("a"),
+         allow_calls=(0x33950,), calls=(D3D_14590, D3D_4F944, D3D_3F720, D3D_146F0), eax_mask=0,
+         mutants=D3D_STEP_MUTANTS),
+    # 0x14988 fighter_14988: the twin over the 0xFD110 counters, the 0x9AFE8/0x9AFEA reload words,
+    # the table 0x14978 and 0x14A5C (the dword at 0x14C22 stores it; same call site and mask).
+    Spec("fighter_14988", 0x14988, d3d_step_cases("b"),
+         allow_calls=(0x33950,), calls=(D3D_14590, D3D_4F944, D3D_3F720, D3D_14A5C), eax_mask=0,
+         mutants=D3D_STEP_MUTANTS),
+]
 D1_SPECS += D3D_SPECS
 
 

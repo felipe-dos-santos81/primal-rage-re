@@ -26007,6 +26007,62 @@ D3D_DISP_MUT(swap01, 5u)  D3D_DISP_MUT(swap23, 6u)  D3D_DISP_MUT(width, 7u)    D
 D3D_DISP_MUT(signed, 9u)  D3D_DISP_MUT(early, 10u)  D3D_DISP_MUT(nohi, 11u)    D3D_DISP_MUT(nolo, 12u)
 D3D_DISP_MUT(hiuns, 13u)  D3D_DISP_MUT(louns, 14u)  D3D_DISP_MUT(losign, 15u)  D3D_DISP_MUT(hibound, 16u)
 D3D_DISP_MUT(lobound, 17u)
+/* 0x1461C's and (twin) 0x14988's mutants (mutant n; 0 = the port's shape). EAX = slot, EDX = rec,
+ * EBX = side. 0x33950 runs on both sides; 0x14590, 0x4F944, 0x3F720 and 0x146F0/0x14A5C are stubs. */
+static u32 d3d_step_core(const u32 *r, u32 mut, int twin)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], side = r[R_EBX];
+    u32 ctx[6];
+    if (mut == 30u) twin = !twin;                                                   /* @twin */
+    u32 ctr = twin ? DS_000FD110 : DS_000FD114;
+    u32 k = twin ? 0x0009AFE8u : DS_0009AFD8;
+    fighter_ctx_same(ctx, side);
+    u32 s = (mut == 1u) ? slot : ctx[2];                                            /* @slotarg */
+    u32 at = ctr + ((mut == 10u) ? ctx[1] : ctx[0]) * ((mut == 11u) ? 4u : 2u);     /* @cntside @cntscale */
+    u32 st = DSB(s + 0x57u);
+    if (mut == 29u) st &= 3u;                                                       /* @mask */
+    if (st == 0u) {
+        if ((DSB(s + 0x42u) & ((mut == 2u) ? 4u : 8u)) == 0u) return 0u;            /* @bit */
+        if (mut != 3u && mut != 4u) DSB(s + 0x57u) = 1u;                            /* @nos1 @late1 */
+        u32 g = (u32)fighter_14590((mut == 5u) ? ctx[1] : ctx[0]);                  /* @gateside */
+        if (mut == 4u) DSB(s + 0x57u) = 1u;
+        int hold = (mut == 6u) ? g != 0u : (mut == 7u) ? (s8)g > 0 : (u8)g != 0u;   /* @eax @gatesigned */
+        u32 kv = k + ((hold != (mut == 8u)) ? 2u : 0u);                             /* @swapk */
+        if (hold && mut == 14u) fighter_4f944(1u);                                  /* @late4f944 */
+        if (mut == 9u) DSD(at) = DSW(kv); else DSW(at) = DSW(kv);                   /* @kwidth */
+        if ((hold && mut != 12u && mut != 14u) || (!hold && mut == 15u))            /* @no4f944 @else4f944 */
+            fighter_4f944((mut == 13u) ? 0u : 1u);                                  /* @arg4f944 */
+    } else if (st == 1u) {
+        s16 n = (s16)DSW(at);
+        if (mut == 24u) DSD(at) = DSD(at) - 1u;                                     /* @c1dword */
+        else if (mut != 18u && mut != 19u) DSW(at) = (u16)(n - 1);                  /* @c1nodec @c1late */
+        s32 arg = (mut == 16u) ? (s32)(u16)n : (mut == 17u) ? (s32)(s16)(n - 1) : (s32)n;   /* @c1zext @c1new */
+        fighter_3f720((mut == 20u) ? ctx[1] : ctx[0], arg);                         /* @c1side */
+        if (mut == 19u) DSW(at) = (u16)(n - 1);
+        s32 v = (s32)DSD(at - 2u) >> 16;
+        int done = (mut == 21u) ? v <= 1 : (mut == 22u) ? (u32)(u16)v < 1u : v < 1; /* @c1le @c1uns */
+        if (done && mut != 23u) DSB(s + 0x57u) = 2u;                                /* @c1nos2 */
+    } else if (st == 2u) {
+        u32 a = (mut == 26u) ? slot : rec;                                          /* @c2arg */
+        if (mut == 28u) DSB(s + 0x57u) = 3u;                                        /* @c2early */
+        if (mut != 25u) { if (twin) fighter_14a5c(a); else fighter_146f0(a); }      /* @c2nocall */
+        if (mut != 27u && mut != 28u) DSB(s + 0x57u) = 3u;                          /* @c2nos3 */
+    }
+    return 0u;
+}
+static void b_d3d_1461c(const u32 *r, u32 *eax) { fighter_1461c(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void b_d3d_14988(const u32 *r, u32 *eax) { fighter_14988(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+#define D3D_STEP_MUT(name, n) \
+    static void m_d3d_1461c_##name(const u32 *r, u32 *eax) { *eax = d3d_step_core(r, n, 0); } \
+    static void m_d3d_14988_##name(const u32 *r, u32 *eax) { *eax = d3d_step_core(r, n, 1); }
+D3D_STEP_MUT(slotarg, 1u)    D3D_STEP_MUT(bit, 2u)        D3D_STEP_MUT(nos1, 3u)       D3D_STEP_MUT(late1, 4u)
+D3D_STEP_MUT(gateside, 5u)   D3D_STEP_MUT(eax, 6u)        D3D_STEP_MUT(gatesigned, 7u) D3D_STEP_MUT(swapk, 8u)
+D3D_STEP_MUT(kwidth, 9u)     D3D_STEP_MUT(cntside, 10u)   D3D_STEP_MUT(cntscale, 11u)  D3D_STEP_MUT(no4f944, 12u)
+D3D_STEP_MUT(arg4f944, 13u)  D3D_STEP_MUT(late4f944, 14u) D3D_STEP_MUT(else4f944, 15u) D3D_STEP_MUT(c1zext, 16u)
+D3D_STEP_MUT(c1new, 17u)     D3D_STEP_MUT(c1nodec, 18u)   D3D_STEP_MUT(c1late, 19u)    D3D_STEP_MUT(c1side, 20u)
+D3D_STEP_MUT(c1le, 21u)      D3D_STEP_MUT(c1uns, 22u)     D3D_STEP_MUT(c1nos2, 23u)    D3D_STEP_MUT(c1dword, 24u)
+D3D_STEP_MUT(c2nocall, 25u)  D3D_STEP_MUT(c2arg, 26u)     D3D_STEP_MUT(c2nos3, 27u)    D3D_STEP_MUT(c2early, 28u)
+D3D_STEP_MUT(mask, 29u)      D3D_STEP_MUT(twin, 30u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32342,6 +32398,68 @@ static const binding_t k_bindings[] = {
     { "camera_dispatch@losign",              m_d3d_disp_losign, 0x00000000u },
     { "camera_dispatch@hibound",             m_d3d_disp_hibound, 0x00000000u },
     { "camera_dispatch@lobound",             m_d3d_disp_lobound, 0x00000000u },
+    { "fighter_1461c",                       b_d3d_1461c, 0x00000000u },
+    { "fighter_1461c@slotarg",               m_d3d_1461c_slotarg, 0x00000000u },
+    { "fighter_1461c@bit",                   m_d3d_1461c_bit, 0x00000000u },
+    { "fighter_1461c@nos1",                  m_d3d_1461c_nos1, 0x00000000u },
+    { "fighter_1461c@late1",                 m_d3d_1461c_late1, 0x00000000u },
+    { "fighter_1461c@gateside",              m_d3d_1461c_gateside, 0x00000000u },
+    { "fighter_1461c@eax",                   m_d3d_1461c_eax, 0x00000000u },
+    { "fighter_1461c@gatesigned",            m_d3d_1461c_gatesigned, 0x00000000u },
+    { "fighter_1461c@swapk",                 m_d3d_1461c_swapk, 0x00000000u },
+    { "fighter_1461c@kwidth",                m_d3d_1461c_kwidth, 0x00000000u },
+    { "fighter_1461c@cntside",               m_d3d_1461c_cntside, 0x00000000u },
+    { "fighter_1461c@cntscale",              m_d3d_1461c_cntscale, 0x00000000u },
+    { "fighter_1461c@no4f944",               m_d3d_1461c_no4f944, 0x00000000u },
+    { "fighter_1461c@arg4f944",              m_d3d_1461c_arg4f944, 0x00000000u },
+    { "fighter_1461c@late4f944",             m_d3d_1461c_late4f944, 0x00000000u },
+    { "fighter_1461c@else4f944",             m_d3d_1461c_else4f944, 0x00000000u },
+    { "fighter_1461c@c1zext",                m_d3d_1461c_c1zext, 0x00000000u },
+    { "fighter_1461c@c1new",                 m_d3d_1461c_c1new, 0x00000000u },
+    { "fighter_1461c@c1nodec",               m_d3d_1461c_c1nodec, 0x00000000u },
+    { "fighter_1461c@c1late",                m_d3d_1461c_c1late, 0x00000000u },
+    { "fighter_1461c@c1side",                m_d3d_1461c_c1side, 0x00000000u },
+    { "fighter_1461c@c1le",                  m_d3d_1461c_c1le, 0x00000000u },
+    { "fighter_1461c@c1uns",                 m_d3d_1461c_c1uns, 0x00000000u },
+    { "fighter_1461c@c1nos2",                m_d3d_1461c_c1nos2, 0x00000000u },
+    { "fighter_1461c@c1dword",               m_d3d_1461c_c1dword, 0x00000000u },
+    { "fighter_1461c@c2nocall",              m_d3d_1461c_c2nocall, 0x00000000u },
+    { "fighter_1461c@c2arg",                 m_d3d_1461c_c2arg, 0x00000000u },
+    { "fighter_1461c@c2nos3",                m_d3d_1461c_c2nos3, 0x00000000u },
+    { "fighter_1461c@c2early",               m_d3d_1461c_c2early, 0x00000000u },
+    { "fighter_1461c@mask",                  m_d3d_1461c_mask, 0x00000000u },
+    { "fighter_1461c@twin",                  m_d3d_1461c_twin, 0x00000000u },
+    { "fighter_14988",                       b_d3d_14988, 0x00000000u },
+    { "fighter_14988@slotarg",               m_d3d_14988_slotarg, 0x00000000u },
+    { "fighter_14988@bit",                   m_d3d_14988_bit, 0x00000000u },
+    { "fighter_14988@nos1",                  m_d3d_14988_nos1, 0x00000000u },
+    { "fighter_14988@late1",                 m_d3d_14988_late1, 0x00000000u },
+    { "fighter_14988@gateside",              m_d3d_14988_gateside, 0x00000000u },
+    { "fighter_14988@eax",                   m_d3d_14988_eax, 0x00000000u },
+    { "fighter_14988@gatesigned",            m_d3d_14988_gatesigned, 0x00000000u },
+    { "fighter_14988@swapk",                 m_d3d_14988_swapk, 0x00000000u },
+    { "fighter_14988@kwidth",                m_d3d_14988_kwidth, 0x00000000u },
+    { "fighter_14988@cntside",               m_d3d_14988_cntside, 0x00000000u },
+    { "fighter_14988@cntscale",              m_d3d_14988_cntscale, 0x00000000u },
+    { "fighter_14988@no4f944",               m_d3d_14988_no4f944, 0x00000000u },
+    { "fighter_14988@arg4f944",              m_d3d_14988_arg4f944, 0x00000000u },
+    { "fighter_14988@late4f944",             m_d3d_14988_late4f944, 0x00000000u },
+    { "fighter_14988@else4f944",             m_d3d_14988_else4f944, 0x00000000u },
+    { "fighter_14988@c1zext",                m_d3d_14988_c1zext, 0x00000000u },
+    { "fighter_14988@c1new",                 m_d3d_14988_c1new, 0x00000000u },
+    { "fighter_14988@c1nodec",               m_d3d_14988_c1nodec, 0x00000000u },
+    { "fighter_14988@c1late",                m_d3d_14988_c1late, 0x00000000u },
+    { "fighter_14988@c1side",                m_d3d_14988_c1side, 0x00000000u },
+    { "fighter_14988@c1le",                  m_d3d_14988_c1le, 0x00000000u },
+    { "fighter_14988@c1uns",                 m_d3d_14988_c1uns, 0x00000000u },
+    { "fighter_14988@c1nos2",                m_d3d_14988_c1nos2, 0x00000000u },
+    { "fighter_14988@c1dword",               m_d3d_14988_c1dword, 0x00000000u },
+    { "fighter_14988@c2nocall",              m_d3d_14988_c2nocall, 0x00000000u },
+    { "fighter_14988@c2arg",                 m_d3d_14988_c2arg, 0x00000000u },
+    { "fighter_14988@c2nos3",                m_d3d_14988_c2nos3, 0x00000000u },
+    { "fighter_14988@c2early",               m_d3d_14988_c2early, 0x00000000u },
+    { "fighter_14988@mask",                  m_d3d_14988_mask, 0x00000000u },
+    { "fighter_14988@twin",                  m_d3d_14988_twin, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
