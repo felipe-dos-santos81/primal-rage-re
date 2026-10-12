@@ -74,6 +74,7 @@ void fight_list_init(void)
  * only caller is 0x412A0 (0x412D8). Scene 0's table is 0xBBC18 with 3 records. */
 void fight_scene_crowd(u32 scene)
 {
+    PR_SEAM(0x2C320u, scene);
     u16 n = DSW(DS_000BBD98 + scene * 2u);          /* 0x2C325 */
     if (n == 0u) return;                            /* 0x2C32D */
     u32 table = DSD(DS_000BBDA8 + scene * 4u);      /* 0x2C332 */
@@ -176,6 +177,7 @@ void fight_select_marker_release(u32 side)
  * 0x200, a3 = 0xFD, a4 = y, a5 = 0) into DS_001028E0[side]. */
 void fight_select_marker_spawn(u32 side, u32 cls, u32 y)
 {
+    PR_SEAM(0x1D7B8u, side, cls, y);
     u32 rec = DSD(DS_001028E0 + side * 4u);             /* 0x1D7C7 */
     if (rec != 0u) {                                    /* 0x1D7CD */
         actor_set_dead(rec);                            /* 0x1D7D5 0x2B150 */
@@ -1279,6 +1281,7 @@ void fight_hook_4142c(void)
  * raw's thresholds to a 0xC9524 index. */
 u32 fight_dust_pick(u32 side)
 {
+    PR_SEAM_RET(0x49388u, side);
     u32 range = (DSW(DS_00104B00) == 3u)
               ? 0x64u
               : (u32)DSW(DS_00108860 + side * 2u);
@@ -1296,6 +1299,7 @@ u32 fight_dust_pick(u32 side)
  * the slot's character byte. */
 u32 fight_dust_value(u32 side, u32 ch)
 {
+    PR_SEAM_RET(0x29CDCu, side, ch);
     if (DSB(DS_00105B34 + side) == 0u) return DSD(DS_000A8AF8 + ch * 4u);
     return DSD(DS_000A8B14 + ch * 4u);
 }
@@ -1457,6 +1461,7 @@ void fight_dust_build(u32 side)
  * 0x257F2 (0x257A4). */
 void fight_char_reset(u32 side)
 {
+    PR_SEAM(0x33C18u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     DSB(slot + 0x7Fu) = 0;                      /* 0x33C2E */
     DSB(slot + 0x80u) = 0;                      /* 0x33C32 */
@@ -1771,7 +1776,7 @@ void fight_hud_spawn_b(u32 enable)
  * The EBX/ECX/EDX loads before the 0x10D70 call are dead, as 0x1D2F0's own
  * header notes for its call. Callers: 0x1DB70 (0x1DAE8) and 0x1DC5C (in
  * 0x1DC0C, which lies in no Ghidra function; record gameplay-u0 §U0.6). */
-static void fight_hud_bar_set_inv(s32 v, u32 side)
+void fight_hud_bar_set_inv(s32 v, u32 side)
 {
     u32 c = v > 0x78 ? 0x78u : (v < 0 ? 0u : (u32)v);   /* 0x1DA86..0x1DA98 */
     actor_pset_word_set(DSD(DS_001028F0 + side * 4u),
@@ -1849,6 +1854,7 @@ void fight_hud_bar_step(void)
  * [eax + 0x107A7F]). EBX/EDX are pushed and popped. Only caller: 0x20F07. */
 void fight_side_scratch_clear(u32 side)
 {
+    PR_SEAM(0x38BECu, side);
     DSW(DS_00107D2C + side * 2u) = 0u;                  /* 0x38BF5 */
     DSW(DS_00107D20 + side * 2u) = 0u;                  /* 0x38BFD */
     DSW(DS_00107D18 + side * 2u) = 0u;                  /* 0x38C05 */
@@ -1864,6 +1870,7 @@ void fight_side_scratch_clear(u32 side)
  * 0x10825E, 0x1081F0, 0x1081F4, 0x108230 and 0x108234. Only caller: 0x20F8C. */
 void fight_1081f0_clear(void)
 {
+    PR_SEAM0(0x46670u);
     for (u32 o = 0; o <= 0x40u; o += 0x40u) {           /* 0x46673..0x46691 */
         DSB(DS_0010821E + o) = 0u;                      /* 0x46678 [eax+0x1081DE] */
         DSD(DS_001081F0 + o) = 0u;                      /* 0x46680 [eax+0x1081B0] */
@@ -2287,13 +2294,14 @@ void fight_hud_pass(u32 side)
  * effect bodies use as a sign test). */
 s32 fight_2be00(u32 rec)
 {
+    PR_SEAM_RET(0x2BE00u, rec);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
     return (s32)DSD(actor + 4u);
 }
 
 /* 0x493F0. The midpoint of the two fighters' 0x2BE00 values (arithmetic shift:
  * floor-division by two after the difference is made non-negative). */
-static u32 fight_midpoint(void)
+u32 fight_midpoint(void)
 {
     s32 a = fight_2be00(DSD(DS_001077B0));
     s32 b = fight_2be00(DSD(DS_00107844));
@@ -2348,6 +2356,7 @@ u32 fight_4a868(u32 entry)
 /* 0x2BE4C. `(rec+0x44 >> 16) * 2 + value - 0x2A00` (0x2BE4C..0x2BE5B). */
 s32 fight_2be4c(u32 rec, s32 value)
 {
+    PR_SEAM_RET(0x2BE4Cu, rec, (u32)value);
     return (((s32)DSD(rec + 0x44u) >> 16) * 2) + value - 0x2A00;
 }
 
@@ -2360,6 +2369,7 @@ s32 fight_2be4c(u32 rec, s32 value)
  * (0x4C5D1) and 0x4D27A (0x4D278). */
 int fight_4b3f0(u32 entry, u32 index, u32 flag)
 {
+    PR_SEAM_RET(0x4B3F0u, entry, index, flag);
     u32 stream = DSD(DS_000C955C + index * 4u);     /* 0x4B3F0 */
     if (stream == 0u) return 0;                     /* 0x4B3F8 */
     u32 actor = DSD(entry + 8u);
@@ -2376,6 +2386,7 @@ int fight_4b3f0(u32 entry, u32 index, u32 flag)
  * (0x4C5E5) and 0x4D2A0 (0x4D29E). */
 int fight_4b430(u32 entry, u32 index, u32 flag)
 {
+    PR_SEAM_RET(0x4B430u, entry, index, flag);
     u32 stream = DSD(DS_000C958C + index * 4u);     /* 0x4B430 */
     if (stream == 0u) return 0;                     /* 0x4B438 */
     u32 actor = DSD(entry + 8u);
@@ -2404,7 +2415,7 @@ int fight_4bd4c(u32 entry, u32 index)
  * true it retargets the actor at the 0xC95BC[index] stream, sets the entry's
  * +0x1A/+0x14 and type 3, and decrements DS_001088B6[char]. The raw returns the
  * flag in AL; the caller tests AL only. */
-static int fight_4b5a8(u32 entry, u32 index)
+int fight_4b5a8(u32 entry, u32 index)
 {
     u32 slot = DSD(entry + 0xCu);
     u32 rec = DSD(slot);
@@ -2575,7 +2586,7 @@ void fight_4ac80(u32 rec)
  * the way, then sets the entry's +0x14 and type 1 and retargets the actor at
  * the 0xC95D4[index] stream. The sign/`0x600`/`0x1800` arms are the raw's
  * 0x4B164..0x4B24D. */
-static void fight_4b144(u32 entry, u32 index)
+void fight_4b144(u32 entry, u32 index)
 {
     u32 rec = DSD(DSD(entry + 0xCu));               /* 0x4B14C */
     s32 pos = fight_2be00(rec);                     /* 0x4B151 */
@@ -2743,7 +2754,7 @@ void fight_4a634(void)
  * mirrored by the facing, << 6), stopped, type 8 on the 0xC97AC[ch][si] stream
  * at hold 0, linked to the fighter (+0x4A, 0x2BD20), and the fighter put on
  * 0xC9790[ch] at 0xC97C8[ch]. EAX = hit (1/2), EDX = entry, EBX = si. */
-static int fight_4b788(u32 hit, u32 entry, u32 index)
+int fight_4b788(u32 hit, u32 entry, u32 index)
 {
     if ((u32)DSB(DS_00105B3A) > 1u) return 1;                   /* 0x4B7A0 */
     u32 s = hit - 1u;                                           /* 0x4B7A9 */
@@ -2804,6 +2815,7 @@ static int fight_4b788(u32 hit, u32 entry, u32 index)
  * 0x3300 (signed); else 0. Its only caller is 0x4BD98 (0x4BDBA). */
 int fight_13134(void)
 {
+    PR_SEAM_RET0(0x13134u);
     s32 x0 = (s32)DSD(DSD(DS_001077B0) + 0x18u);
     s32 x1 = (s32)DSD(DSD(DS_00107844) + 0x18u);
     if (x0 < -0x3300 && x1 < -0x3300) return 1;                 /* 0x13140/0x1314E */
@@ -2820,7 +2832,7 @@ int fight_13134(void)
  * midpoint (DS_001077E4, DS_00107878) less DS_00108854, depth DS_00108880 -
  * 0x3140, layer word DS_000BD898 (into DS_00108868/DS_0010886C); the second
  * takes the 0xEF66A stream at 1.0, and both get +0x36 = 0x1A4. */
-static void fight_4bd98(u32 entry)
+void fight_4bd98(u32 entry)
 {
     if ((s32)DSD(DS_00104AD8) > 0) return;                      /* 0x4BDA7 */
     if (DSD(DS_00104ABC) < 2u) return;                          /* 0x4BDB4 */
@@ -3069,7 +3081,7 @@ void fight_496dc(u32 entry, s32 count)
  * 0x2BE00 of the entry's actor (+8). Returns sum / count + 1 (signed `idiv`,
  * 0x4AABE/0x4AAC0), 0 for no entries. The walk reads the next link (0x4AA92)
  * before the body. Callers: 0x4A97A and 0x4A9C2 (0x4A928). */
-static s32 fight_4aa6c(s32 side)
+s32 fight_4aa6c(s32 side)
 {
     s32 sum = 0;
     u32 count = 0;
@@ -3160,7 +3172,7 @@ int fight_4a7d4(u32 entry)
  * actor (+0x34 = 0). Otherwise +0x14 = 0x2BE4C(actor, target), the actor
  * faces and walks toward it at 0x80 and takes the 0xC95D4[si] stream at 3.0.
  * The 0x4B35A hflip clear precedes the distance test. */
-static void fight_4b2ac(u32 entry, u32 index)
+void fight_4b2ac(u32 entry, u32 index)
 {
     s32 s = (s32)(s8)(u8)(DSB(DS_001088C9) ^ 1u);               /* 0x4B2B5..0x4B2BC */
     u32 slot = DS_001077B0 + (u32)s * 0x94u;                    /* 0x4B2BF..0x4B2D3 */
@@ -3732,7 +3744,7 @@ int fight_4d108(u32 entry, u32 index)
  * +0x34 = 0x80 with the hflip cleared when the target is right of the
  * actor's x (signed), else -0x80 with it set, and the 0xC95D4[si] stream at
  * 3.0; returns 1. Else 0. */
-static int fight_4d150(u32 entry, u32 index)
+int fight_4d150(u32 entry, u32 index)
 {
     if (rng_next(0x3Cu) != 0u) return 0;                        /* 0x4D15C/0x4D163 */
     u32 off;
@@ -4205,7 +4217,7 @@ void fight_4c60c(u32 entry, u32 index)
  * (text_cursor_hold_font2, mode 0x4000), then both worshipper actors
  * DS_00108868/DS_0010886C die (actor_set_dead). EBX/ECX/EDX pushed and
  * popped. */
-static void fight_4cd98(void)
+void fight_4cd98(void)
 {
     DSW(DS_00104B00) = 6u;                                        /* 0x4CD9B/0x4CDA8 */
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 1u);               /* 0x4CDA0..0x4CDCA */
@@ -5264,6 +5276,7 @@ void fight_arena_frame(void)
  * (0x4E350 with AL != 0). */
 void fight_mode25_face(void)
 {
+    PR_SEAM0(0x4E27Cu);
     u32 node = DSD(DS_0010884C);                        /* 0x4E27F */
     if (node == DS_0010884C) return;                    /* 0x4E284/0x4E289 */
     do {
@@ -5481,7 +5494,7 @@ u8 fight_4a808(u32 node)
 /* 0x4A8A8 — record §49-P. EAX = node. fight_4a808's twin against the "live"
  * position fight_2be00(R) (0x2BE00) rather than the stored R->+0x18. Only
  * caller: 0x4E871 (0x4E67C, the +0x1E == 0 arm). */
-static u8 fight_4a8a8(u32 node)
+u8 fight_4a8a8(u32 node)
 {
     u32 rec = DSD(node + 8u);                                /* 0x4A8AD */
     s32 pos = fight_2be00(rec);                               /* 0x4A8B0 0x2BE00 */

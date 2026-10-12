@@ -4748,6 +4748,7 @@ void flow_105bf0_clear(void)
  * 0x1C500 pushes and pops EBX/EDX. */
 void prompt_press_start_clear(s32 col, s32 row, u32 side)
 {
+    PR_SEAM(0x2C088u, (u32)col, (u32)row, side);
     if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x2C08E */
         u32 rec = DSD(DS_00105BF0 + side * 4u);         /* 0x2C09E */
         if (rec != 0u) {                                /* 0x2C0A4 */

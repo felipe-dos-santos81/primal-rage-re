@@ -478,4 +478,48 @@ void fight_4a634(void);
  * differential row (track D1 d1f). */
 void fight_4e99c(u32 count);
 
+/* 0x1DA84 — record §49-M. EAX = v, EDX = side: the inverted health-bar word;
+ * exported for its differential row (track D2 d2b). */
+void fight_hud_bar_set_inv(s32 v, u32 side);
+
+/* 0x493F0 — the midpoint of the two fighters' 0x2BE00 values (no argument);
+ * exported for its differential row (track D2 d2b). */
+u32 fight_midpoint(void);
+
+/* 0x4AA6C — record §49-Z. EAX = the side as a signed byte (AL): the active
+ * list's mean; exported for its differential row (track D2 d2b). */
+s32 fight_4aa6c(s32 side);
+
+/* 0x4A8A8 — record §49-P. EAX = node: fight_4a808's twin against 0x2BE00;
+ * exported for its differential row (track D2 d2b). */
+u8 fight_4a8a8(u32 node);
+
+/* 0x4B5A8 — the DS_001088B6 gate of the type-0 handler. EAX = entry, EDX =
+ * index; AL = the flag; exported for its differential row (track D2 d2b). */
+int fight_4b5a8(u32 entry, u32 index);
+
+/* 0x4B144 — the type-0 entry's distance resolution. EAX = entry, EDX = index;
+ * exported for its differential row (track D2 d2b). */
+void fight_4b144(u32 entry, u32 index);
+
+/* 0x4B2AC — demo-pose record §42-D. The type-10 walk. EAX = entry, EDX = si;
+ * exported for its differential row (track D2 d2b). */
+void fight_4b2ac(u32 entry, u32 index);
+
+/* 0x4B788 — demo-pose record §29, §42-C. EAX = hit (1/2), EDX = entry, EBX =
+ * si: the grab arm; exported for its differential row (track D2 d2b). */
+int fight_4b788(u32 hit, u32 entry, u32 index);
+
+/* 0x4BD98 — demo-pose record §42-C. EAX = entry: the eighth-hit start;
+ * exported for its differential row (track D2 d2b). */
+void fight_4bd98(u32 entry);
+
+/* 0x4CD98 — record §49-S. The volleyball match's timeout end (no argument);
+ * exported for its differential row (track D2 d2b). */
+void fight_4cd98(void);
+
+/* 0x4D150 — demo-pose record §43-A. EAX = entry, EDX = si: the one-in-0x3C
+ * walk; exported for its differential row (track D2 d2b). */
+int fight_4d150(u32 entry, u32 index);
+
 #endif /* PRAGE_GAME_FIGHT_H */

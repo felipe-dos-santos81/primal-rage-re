@@ -2660,6 +2660,7 @@ void actors_anim_seek(u32 rec, u32 stream)
  * and 0x4D898 (0x4DA85), which pass the held record's own +0x56 word. */
 u32 actors_link_held(u32 rec, u32 v)
 {
+    PR_SEAM_RET(0x2BD20u, rec, v);
     DSB(DSD(DS_001014F4) + (u32)DSB(rec + 0x4Au) * ACTOR_REC_SIZE + 0x4Bu) =
         (u8)v;                                          /* 0x2BD3C */
     return 0;                                           /* 0x2BD40 */
@@ -3075,6 +3076,7 @@ void actor_set_dead(u32 rec) { set_dead(rec); }
  * kept. */
 void actor_pset_word_set(u32 rec, u32 word)
 {
+    PR_SEAM(0x10D70u, rec, word);
     u32 pset = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;  /* 0x10D74..0x10D83 */
     DSB(rec + 0x28u) &= 0xFBu;                                      /* 0x10D85 */
     if ((DSW(rec + 0x28u) & 0x4000u) != 0u)                         /* 0x10D8C..0x10D9B */
@@ -4228,6 +4230,7 @@ void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
  * scan); each ported one carries its raw address at the call. */
 void text_cursor_hold_font2(s32 col, s32 row, const u8 *s, u32 mode)
 {
+    PR_SEAM(0x2F510u, (u32)col, (u32)row, (u32)(s - mem), mode);
     mode |= 2u;                                         /* 0x2F511 */
     u32 save = DSD(DS_00105F34);                        /* 0x2F514 */
     text_cursor_set(col, row, s, mode);                 /* 0x2F51A 0x2F198 */

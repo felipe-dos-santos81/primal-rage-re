@@ -535,6 +535,11 @@ RESOLVED_JUMPS = {
     0x1353A: (0x13520, 0x134A8, 6),
     # 0x361C8 (record 2026-10-11-reverse-d2a §4): cmp dl,3; ja; xor ecx,ecx; mov cl,dl; jmp cs:[ecx*4+0x361b8]
     0x361E3: (0x361D6, 0x361B8, 4),
+    # 0x4E350 (record 2026-10-11-reverse-d2b §3): both tables index by EDI = 4 * the counter [esp+8], kept in
+    # step with it (0x4E36A `xor edi,edi`, 0x4E588 `add edi,4`): cmp eax,9; ja; ...; jmp cs:[edi+0x4e300]
+    0x4E426: (0x4E409, 0x4E300, 10),
+    # cmp dword [esp+8],9; ja; jmp cs:[edi+0x4e328]
+    0x4E4B9: (0x4E4B2, 0x4E328, 10),
 }
 
 
