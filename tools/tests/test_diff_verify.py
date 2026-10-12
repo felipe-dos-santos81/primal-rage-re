@@ -970,10 +970,10 @@ C3_MASKS = {
             "actor_alloc":               0xffffffff,
 }
 C3_KINDS = {
-    "actor_alloc@empty": {"call #0", "call #1", "eax"},
-    "actor_alloc@flag": {"call #0", "call #1"},
-    "actor_alloc@ret": {"call #0", "call #1", "eax"},
-    "actor_alloc@tail": {"call #0", "call #1"},
+    "actor_alloc@empty": {"call #1", "eax"},
+    "actor_alloc@flag": {"call #1"},
+    "actor_alloc@ret": {"eax"},
+    "actor_alloc@tail": {"call #1"},
     "actor_alloc@unlink": {"byte", "call #0", "call #1"},
     "effects_clear@count": {"byte"},
     "effects_clear@lock": {"byte"},
@@ -1060,12 +1060,12 @@ C3B_MASKS = {
             "fighter_anim_triple": 0x0,
 }
 C3B_KINDS = {
-    "actor_type_49444@bit": {"byte", "call #0", "call #0 memory", "call #1", "call #2"},
-    "actor_type_49444@child": {"byte", "call #0", "call #1", "call #2"},
-    "actor_type_49444@idx": {"byte", "call #0", "call #0 memory", "call #1", "call #2"},
-    "actor_type_49444@link": {"call #0", "call #1", "call #2"},
-    "actor_type_49444@reclr": {"byte", "call #0", "call #1", "call #2"},
-    "actor_type_49444@sign": {"byte", "call #0", "call #1", "call #2"},
+    "actor_type_49444@bit": {"byte", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "actor_type_49444@child": {"byte", "call #0", "call #1", "call #1 memory", "call #2"},
+    "actor_type_49444@idx": {"byte", "call #0 memory", "call #1 memory", "call #2 memory"},
+    "actor_type_49444@link": {"call #1", "call #2"},
+    "actor_type_49444@reclr": {"byte"},
+    "actor_type_49444@sign": {"byte", "call #0 memory", "call #1 memory"},
     "anim_operand@adv": {"byte", "call #0 memory"},
     "anim_operand@be8": {"byte"},
     "anim_operand@byte": {"eax"},
@@ -19417,6 +19417,10 @@ class RealFunctionTests(unittest.TestCase):
             self.assertEqual(sorted({p.split(":")[0] for p in self.mut[name].problems}), ids, name)
 
     def test_each_c3_mutant_is_caught_by_what_it_breaks(self):
+        # track D wave 4 re-measured actor_alloc's and actor_type_49444's mutants: they are C bodies in
+        # diff_runner.c that call effects.c's exported list helpers, which d4b seamed (0x249D0, 0x249B0),
+        # so their list calls are recorded now. Before, every case with a list call "caught" them on
+        # `original 0x249D0(..), port none`, whatever the mutant broke.
         # track P batch C3 (record 2026-10-05-reverse-c3): what alone catches each mutant; the rows
         # with callees have mutants caught only by the call list or the memory at a call
         for name, want in C3_KINDS.items():
@@ -19425,8 +19429,8 @@ class RealFunctionTests(unittest.TestCase):
             self.assertEqual(got, want, name)
         # the exact case set that alone catches each mutant (measured on the prototype)
         for name, ids in (
-        ("actor_alloc@empty", ['a0', 'a1', 'a2', 'a3', 'a4']),
-        ("actor_alloc@flag", ['a0', 'a1', 'a3', 'a4']),
+        ("actor_alloc@empty", ['a1', 'a2', 'a3']),
+        ("actor_alloc@flag", ['a1', 'a3']),
         ("actor_alloc@ret", ['a0', 'a1', 'a3', 'a4']),
         ("actor_alloc@tail", ['a0', 'a1', 'a3', 'a4']),
         ("actor_alloc@unlink", ['a0', 'a1', 'a3', 'a4']),
@@ -19502,12 +19506,12 @@ class RealFunctionTests(unittest.TestCase):
             self.assertEqual(got, want, name)
         # the exact case set that alone catches each mutant (measured on the prototype)
         for name, ids in (
-        ("actor_type_49444@bit", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
-        ("actor_type_49444@child", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
-        ("actor_type_49444@idx", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+        ("actor_type_49444@bit", ['a1', 'a3', 'a4', 'a7']),
+        ("actor_type_49444@child", ['a3', 'a7']),
+        ("actor_type_49444@idx", ['a1', 'a3', 'a4', 'a5', 'a7']),
         ("actor_type_49444@link", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
         ("actor_type_49444@reclr", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
-        ("actor_type_49444@sign", ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+        ("actor_type_49444@sign", ['a4']),
         ("anim_operand@adv", ['o0', 'o1', 'o14']),
         ("anim_operand@be8", ['o0', 'o14']),
         ("anim_operand@byte", ['o11']),
