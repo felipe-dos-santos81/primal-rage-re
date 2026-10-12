@@ -2447,12 +2447,18 @@ void fighter_state_33b00(u32 side, u32 src, u32 dst2)
     fighter_29bc8(side, DSD(slot), (u32)DSB(slot + 0x7Au));   /* 0x33C0A */
 }
 
-/* 0x35E6C. State 20: set +0x41 bit 0x80 and, unless the command's high bits or
- * 0x3BDDC veto, clear +0x54/+0x53, set +0x52 = 9, bump the +0x84 counter, zero
- * +0x92, start the +0x52 = 9 animation and re-anchor the record. */
+/* 0x35E6C. State 20: set the EAX slot's +0x41 bit 0x80 (0x35ED0, EBX) and,
+ * unless the command's high bits or 0x3BDDC veto, clear +0x54/+0x53, set
+ * +0x52 = 9, bump the +0x84 counter, zero +0x92, start the +0x52 = 9 animation
+ * and re-anchor the record. The side is the record's +0x51; from 0x35F2B on
+ * the raw works on that side's own slot (`mov eax,[esp+8]`, computed from the
+ * side at 0x35E88..0x35EA0) and on that slot's record (`[esp+0x10]`, 0x35F58
+ * and 0x35F6D), not on EAX/EDX. */
 void fighter_state_35e6c(u32 slot, u32 rec)
 {
     u32 side = (u32)DSB(rec + 0x51u);
+    u32 own = DS_001077B0 + side * 0x94u;               /* 0x35E88..0x35EA0 */
+    u32 own_rec = DSD(own);                             /* 0x35EC0..0x35EC6 */
     u16 cmd = DSW(DS_001088E0 + side * 2u);
     int bvar = ((cmd >> 8) & 3u) != 0u && ((cmd >> 8) & 0xCu) != 0u;  /* 0x35EE1 */
     DSB(slot + 0x41u) |= 0x80u;                         /* 0x35ED0 */
@@ -2461,15 +2467,15 @@ void fighter_state_35e6c(u32 slot, u32 rec)
         hit_facing_flag(side);                          /* 0x35F21 */
         return;
     }
-    DSB(slot + 0x54u) = 0u;                             /* 0x35F2F */
-    DSB(slot + 0x52u) = 9u;                             /* 0x35F33 */
-    DSB(slot + 0x53u) = 0u;                             /* 0x35F3E */
-    DSW(slot + 0x84u) = (u16)(DSW(slot + 0x84u) + 1u);  /* 0x35F43 */
-    DSW(slot + 0x92u) = 0u;                             /* 0x35F4F */
-    hit_anim_start_a(rec, DSD(FIGHT_35E6C_ANIM
-                              + (u32)DSB(slot + 0x7Au) * 4u),
-                     0x40000000u);                      /* 0x35F68 */
-    hit_anchor_set(side, DSD(rec + 0x18u), 0u);         /* 0x35F79 */
+    DSB(own + 0x54u) = 0u;                              /* 0x35F2F */
+    DSB(own + 0x52u) = 9u;                              /* 0x35F33 */
+    DSB(own + 0x53u) = 0u;                              /* 0x35F3E */
+    DSW(own + 0x84u) = (u16)(DSW(own + 0x84u) + 1u);    /* 0x35F43 */
+    DSW(own + 0x92u) = 0u;                              /* 0x35F4F */
+    hit_anim_start_a(own_rec, DSD(FIGHT_35E6C_ANIM
+                                  + (u32)DSB(own + 0x7Au) * 4u),
+                     0x40000000u);                      /* 0x35F58..0x35F68 */
+    hit_anchor_set(side, DSD(own_rec + 0x18u), 0u);     /* 0x35F6D..0x35F79 */
 }
 
 /* ---- the 0x3531C/0x350D0 +0x53 machine (fight_hud_pass's 0x35803 call) ----
