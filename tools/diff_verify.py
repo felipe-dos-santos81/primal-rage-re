@@ -22198,6 +22198,40 @@ D4E_SPECS += [
     ], calls=(D4E_TR_VOICE, D4E_TR_ANIM, D4E_TR_SPAWN, D4E_TR_BIT15, D3B_4BD98, D3B_4CB18), eax_mask=0,
        mutants=("@cv", "@ca", "@cs", "@cb", "@cache")),
 ]
+
+# 0x12E3C with a 0x18714 stub that rewrites the camera x 0xF0AF0 (= D2D_C + 0x1000) and both slots'
+# +0x34 (slot 0's = D2D_C + 0x7000, slot 1's = D2D_C - 0x7000): harness writes, 0x18714 is not seen
+# to write them.
+D4E_PAIR_X = dataclasses.replace(C1_RECORD_X, writes=(
+    (None, 0x000F0AF0, le32(D2D_C + 0x1000)), (None, DS_SLOTS + 0x34, le32(D2D_C + 0x7000)),
+    (None, DS_SLOTS + 0x94 + 0x34, le32(D2D_C - 0x7000))))
+
+D4E_SPECS += [
+    # 0x12E3C camera_mode_track_pair (d2d's row; mask 0 as there). After the split's 0x18714 calls
+    # the raw loads the camera x again (0x12F34 `mov ebx,[0xf0af0]`; it stored EBX there at
+    # 0x12EEC) and folds the two stack copies of +0x34 (0x12F4D `mov edx,[esp+eax+8]`, written at
+    # 0x12E9B / 0x12EB5 and with each latch at 0x12EFE / 0x12F1E), not the slots' fields.
+    # Where both folded copies lie outside the 0x1800 zone the midpoint is (L0 + L1) / 2 whatever the
+    # camera x, so each case keeps one of them inside the zone for one of the two camera values.
+    Spec("camera_mode_track_pair_rr", 0x12E3C, [
+        # both slots pulled back to their latches: two calls
+        Case("v0", {}, d2d_pair_case(D2D_C, (D2D_C + 0x8000, D2D_C + 0x2000), (D2D_C - 0x6000, D2D_C - 0x1900)),
+             {0x18714: 0x11111111}),
+        # the right slot alone (slot 0): the left one's stack copy is its entry +0x34
+        Case("v1", {}, d2d_pair_case(D2D_C, (D2D_C + 0x8000, D2D_C + 0x2000), (D2D_C - 0x1234, D2D_C - 0x1234)),
+             {0x18714: 0x22222222}),
+        # the left slot alone (slot 1): the right one's field then holds the stub's value, on its latch
+        Case("v2", {}, d2d_pair_case(D2D_C, (D2D_C + 0x2000, D2D_C + 0x7000), (D2D_C - 0x6000, D2D_C - 0x1900)),
+             {0x18714: 0x33333333}),
+        # slot 0 on the left: its pull, then slot 1 (the stub's value is left of its latch: no pull)
+        Case("v3", {}, d2d_pair_case(D2D_C, (D2D_C - 0x6000, D2D_C - 0x1900), (D2D_C + 0x2000, D2D_C + 0x7000)),
+             {0x18714: 0x44444444}),
+        # split, neither pulled; and no split
+        Case("v4", {}, d2d_pair_case(D2D_C, (D2D_C + 0x3000, D2D_C + 0x3000), (D2D_C - 0x3000, D2D_C - 0x3000))),
+        Case("v5", {}, d2d_pair_case(D2D_C, (D2D_C + 0x100, D2D_C), (D2D_C + 0x2100, D2D_C))),
+    ], calls=(D4E_PAIR_X,), allow_calls=(0x12C7C,), eax_mask=0,
+       mutants=("@ccam", "@m34", "@cache")),
+]
 D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

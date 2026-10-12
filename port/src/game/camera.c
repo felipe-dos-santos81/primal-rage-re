@@ -475,10 +475,7 @@ void camera_mode_track_pair(void)
     u32 sa = DS_001077B0 + a * 0x94u;
     u32 sb = DS_001077B0 + b * 0x94u;
 
-    /* esp[8+i*4] is slot[i]+0x34; a/b select which slot sits at index 0/1. */
-    u32 lo_off = (a == 0u) ? sa : sb;   /* slot[0] */
-    u32 hi_off = (a == 0u) ? sb : sa;   /* slot[1] */
-
+    /* esp[8+i*4] is the copy of slot[i]+0x34: la is slot[a]'s, lb slot[b]'s. */
     s32 la = (s32)DSD(sa + 0x34u);
     s32 lb = (s32)DSD(sb + 0x34u);
     s32 diff = (s32)((u32)la - (u32)lb);
@@ -507,11 +504,14 @@ void camera_mode_track_pair(void)
         }
         diff = (s32)((u32)la - (u32)lb);
         diffabs = diff < 0 ? (s32)(0u - (u32)diff) : diff;         /* 0x12F3E neg */
+        cam = (s32)DSD(DS_000F0AF0);                               /* 0x12F34: loaded again after the calls */
     }
 
-    /* 0x12F44: the two locals, each folded into the 0x1800 dead zone. */
-    s32 d0 = (s32)DSD(lo_off + 0x34u) - cam;
-    s32 d1 = (s32)DSD(hi_off + 0x34u) - cam;
+    /* 0x12F44: the two stack copies of +0x34 (0x12F4D `mov edx,[esp+eax+8]`:
+     * index 0 is slot 0's), each less the camera x and folded into the 0x1800
+     * dead zone. */
+    s32 d0 = (s32)((u32)(a == 0u ? la : lb) - (u32)cam);
+    s32 d1 = (s32)((u32)(a == 0u ? lb : la) - (u32)cam);
     /* 0x12F56..0x12F62: the magnitude is a `neg`, which leaves INT_MIN
      * negative, so the `jle` zeroes that local (the negation is unsigned here
      * to stay defined in C). */

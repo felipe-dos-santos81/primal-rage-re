@@ -15857,6 +15857,7 @@ D4E_MASKS = {
     "fight_4aad0_rr2": 0x0,
     "fight_4b5a8_rr": 0xFF,
     "fight_4b470_rr": 0x0,
+    "camera_mode_track_pair_rr": 0x0,
 }
 D4E_KINDS = {
     "fighter_146f0_al@eax": {'call #1', 'call #2'},
@@ -15921,6 +15922,9 @@ D4E_KINDS = {
     "fight_4b470_rr@cs": {'byte', 'call #3 memory', 'call #4 memory'},
     "fight_4b470_rr@cb": {'byte'},
     "fight_4b470_rr@cache": {'byte', 'call #1', 'call #2', 'call #3 memory', 'call #4 memory'},
+    "camera_mode_track_pair_rr@ccam": {'byte'},
+    "camera_mode_track_pair_rr@m34": {'byte'},
+    "camera_mode_track_pair_rr@cache": {'byte'},
 }
 D4E_CASES = [
     ("fighter_146f0_al@eax", ['c2', 'c3']),
@@ -15985,6 +15989,9 @@ D4E_CASES = [
     ("fight_4b470_rr@cs", ['r2', 'r4', 'r5']),
     ("fight_4b470_rr@cb", ['r0', 'r1']),
     ("fight_4b470_rr@cache", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("camera_mode_track_pair_rr@ccam", ['v0', 'v1', 'v2', 'v3']),
+    ("camera_mode_track_pair_rr@m34", ['v0', 'v1', 'v2', 'v3']),
+    ("camera_mode_track_pair_rr@cache", ['v0', 'v1', 'v2', 'v3']),
 ]   # D4E_CASES end
 D1_MASKS.update(D4E_MASKS)
 D1_KINDS.update(D4E_KINDS)

@@ -30802,6 +30802,54 @@ static void m_d4e_tr_ca(const u32 *r, u32 *eax)    { d4e_4b470_core(r, 2u); *eax
 static void m_d4e_tr_cs(const u32 *r, u32 *eax)    { d4e_4b470_core(r, 4u); *eax = 0u; }
 static void m_d4e_tr_cb(const u32 *r, u32 *eax)    { d4e_4b470_core(r, 8u); *eax = 0u; }
 static void m_d4e_tr_cache(const u32 *r, u32 *eax) { d4e_4b470_core(r, 15u); *eax = 0u; }
+/* 0x12E3C restated: bit 1 keeps the camera x across the split's 0x18714 calls (no reload at
+ * 0x12F34), bit 2 folds the slots' +0x34 fields in place of the two stack copies (0x12F4D); both
+ * together are the port before the corrections. */
+static void d4e_12e3c_core(u32 mut)
+{
+    u32 cam = DSD(DS_000F0AF0);
+    u32 a = ((s32)DSD(DS_001077E4) >= (s32)DSD(DS_00107878)) ? 1u : 0u, b = 1u - a;
+    const u32 s[2] = { DS_001077B0, DS_001077B0 + 0x94u };
+    u32 L[2], l[2], arg, diff;
+    s32 mag;
+    L[a] = DSD(s[a] + 0x34u);
+    L[b] = DSD(s[b] + 0x34u);
+    diff = L[a] - L[b];
+    mag = (s32)diff < 0 ? (s32)(0u - diff) : (s32)diff;
+    if (mag > (s32)DSW(DS_0009AF28)) {
+        s32 v = (s32)DSD(s[a] + 0x34u), latch = (s32)DSD(s[a] + 0x38u);
+        DSD(DS_000F0AF0) = cam;
+        if (v < latch) {
+            DSD(s[a] + 0x34u) = (u32)latch;
+            DSD(s[a] + 0x2Cu) = (u32)latch;
+            L[a] = (u32)latch;
+            DSD(DSD(s[a]) + 0x18u) = hit_record_x(a);
+        }
+        v = (s32)DSD(s[b] + 0x34u); latch = (s32)DSD(s[b] + 0x38u);
+        if (v > latch) {
+            DSD(s[b] + 0x34u) = (u32)latch;
+            DSD(s[b] + 0x2Cu) = (u32)latch;
+            L[b] = (u32)latch;
+            DSD(DSD(s[b]) + 0x18u) = hit_record_x(b);
+        }
+        diff = L[a] - L[b];
+        mag = (s32)diff < 0 ? (s32)(0u - diff) : (s32)diff;
+        if (!(mut & 1u)) cam = DSD(DS_000F0AF0);                             /* @ccam */
+    }
+    for (u32 i = 0; i < 2u; i++) {
+        u32 d = ((mut & 2u) ? DSD(s[i] + 0x34u) : L[i]) - cam;               /* @m34 */
+        s32 m = (s32)d < 0 ? (s32)(0u - d) : (s32)d;
+        l[i] = (m <= 0x1800) ? 0u : ((s32)d <= 0 ? d + 0x1800u : d - 0x1800u);
+    }
+    if (mag > 0x3000) arg = (u32)((s32)(l[0] + l[1]) / 2);
+    else arg = l[0] != 0u ? l[0] : l[1];
+    arg += cam;
+    DSD(DS_000F0AF0) = cam;
+    camera_x_commit((s32)arg);
+}
+static void m_d4e_pair_ccam(const u32 *r, u32 *eax)  { (void)r; d4e_12e3c_core(1u); *eax = 0u; }
+static void m_d4e_pair_m34(const u32 *r, u32 *eax)   { (void)r; d4e_12e3c_core(2u); *eax = 0u; }
+static void m_d4e_pair_cache(const u32 *r, u32 *eax) { (void)r; d4e_12e3c_core(3u); *eax = 0u; }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39481,6 +39529,10 @@ static const binding_t k_bindings[] = {
     { "fight_4b470_rr@cs", m_d4e_tr_cs, 0x00000000u },
     { "fight_4b470_rr@cb", m_d4e_tr_cb, 0x00000000u },
     { "fight_4b470_rr@cache", m_d4e_tr_cache, 0x00000000u },
+    { "camera_mode_track_pair_rr", b_d2d_12e3c, 0x00000000u },
+    { "camera_mode_track_pair_rr@ccam", m_d4e_pair_ccam, 0x00000000u },
+    { "camera_mode_track_pair_rr@m34", m_d4e_pair_m34, 0x00000000u },
+    { "camera_mode_track_pair_rr@cache", m_d4e_pair_cache, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
