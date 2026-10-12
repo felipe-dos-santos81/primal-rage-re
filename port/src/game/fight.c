@@ -45,6 +45,7 @@ void fight_slot_clear(void)
  * calls this at 0x20E38. */
 void fight_list_init(void)
 {
+    PR_SEAM0(0x49300u);
     DSD(DS_00108880) = 0x1500u;                 /* 0x49312 */
     DSD(DS_00108850) = DS_0010884C;            /* 0x49318 */
     DSD(DS_0010884C) = DS_0010884C;            /* 0x4931E */
@@ -104,6 +105,7 @@ void fight_scene_crowd(u32 scene)
  * 0xA8B30 resolves to s16beach descriptor indices 1, 0, 2, 4 (the temple), 3. */
 void fight_scene_props(u32 scene)
 {
+    PR_SEAM(0x412A0u, scene);
     u32 table = DSD(DS_000C82CC + scene * 4u);      /* 0x412A8 */
     if (DSD(table) != 0u) {                         /* 0x412B3 */
         u32 e = table;

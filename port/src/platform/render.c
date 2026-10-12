@@ -356,6 +356,7 @@ void render_scroll_scene_b(u32 i)
  * documents the same). */
 void render_scroll_setup(u32 i)
 {
+    PR_SEAM(0x38730u, i);
     DSW(DS_00107A4E) = DSW(DS_000BDE1C + i * 2u);       /* 0x38741 */
     DSW(DS_00107A42) = DSW(DS_000BDE2C + i * 2u);       /* 0x3874F */
     frontend_origin_zero();                             /* 0x38764 (0x4F1D0) */

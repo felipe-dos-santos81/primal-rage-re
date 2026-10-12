@@ -33137,6 +33137,180 @@ D4D_KN_MUT(ch0, 6u)    D4D_KN_MUT(wrapinv, 7u) D4D_KN_MUT(raw32, 8u)   D4D_KN_MU
 D4D_KN_MUT(updown, 11u) D4D_KN_MUT(plus, 12u)  D4D_KN_MUT(f10, 13u)    D4D_KN_MUT(fwide, 14u) D4D_KN_MUT(minus, 15u)
 D4D_KN_MUT(ef, 16u)    D4D_KN_MUT(scan2, 17u)  D4D_KN_MUT(ret, 18u)    D4D_KN_MUT(ret0, 19u)  D4D_KN_MUT(nogt, 20u)
 D4D_KN_MUT(nonul, 22u)
+/* ---- track D5 batch d5a (record 2026-10-12-reverse-d5a): flow.c's front-end and mode handlers ---- */
+/* 0x20E90: EAX = the stage. Mask 0: the one caller goes on with `call 0x42724` (0x4256F), which loads
+ * AL from memory (0x4272C, 0x42734) and then the whole register (0x4273D) before reading either. */
+static void b_d5a_20e90(const u32 *r, u32 *eax) { flow_scroll_reset(r[R_EAX]); *eax = 0u; }
+enum { D5A_SR_NONE, D5A_SR_noaec, D5A_SR_noaf0, D5A_SR_noafa, D5A_SR_noaf8, D5A_SR_aecw, D5A_SR_af0w, D5A_SR_afab,
+       D5A_SR_afad, D5A_SR_af8b, D5A_SR_argw, D5A_SR_arg7, D5A_SR_nocall, D5A_SR_late };
+static void d5a_20e90_core(u32 stage, u32 mut)
+{
+    if (mut == D5A_SR_late) render_scroll_setup(stage);
+    if (mut == D5A_SR_aecw) DSW(0x000F0AECu) = 0u;
+    else if (mut != D5A_SR_noaec) DSD(0x000F0AECu) = 0u;
+    if (mut == D5A_SR_af0w) DSW(0x000F0AF0u) = 0u;
+    else if (mut != D5A_SR_noaf0) DSD(0x000F0AF0u) = 0u;
+    if (mut == D5A_SR_afab) DSB(0x000F0AFAu) = 0u;
+    else if (mut == D5A_SR_afad) DSD(0x000F0AFAu) = 0u;
+    else if (mut != D5A_SR_noafa) DSW(0x000F0AFAu) = 0u;
+    if (mut == D5A_SR_af8b) DSB(0x000F0AF8u) = 0u;
+    else if (mut != D5A_SR_noaf8) DSW(0x000F0AF8u) = 0u;
+    if (mut == D5A_SR_late || mut == D5A_SR_nocall) return;
+    render_scroll_setup((mut == D5A_SR_argw) ? (u32)(u16)stage
+                        : (mut == D5A_SR_arg7) ? (((s32)stage < 7) ? stage : 7u) : stage);
+}
+#define D5A_SR_MUT(name) \
+    static void m_d5a_sr_##name(const u32 *r, u32 *eax) { d5a_20e90_core(r[R_EAX], D5A_SR_##name); *eax = 0u; }
+D5A_SR_MUT(noaec) D5A_SR_MUT(noaf0) D5A_SR_MUT(noafa) D5A_SR_MUT(noaf8) D5A_SR_MUT(aecw) D5A_SR_MUT(af0w)
+D5A_SR_MUT(afab) D5A_SR_MUT(afad) D5A_SR_MUT(af8b) D5A_SR_MUT(argw) D5A_SR_MUT(arg7) D5A_SR_MUT(nocall)
+D5A_SR_MUT(late)
+/* 0x20DF4: EAX = the stage, EDX = `full`. Mask 0: each of the six callers loads EAX before reading it
+ * (0x11ACB `xor eax,eax`, 0x25A9A `mov eax,ebx`, 0x25BEB `xor eax,eax`, 0x269CE `xor eax,eax` / 0x269DA
+ * `mov eax,1`, 0x270E5 and 0x295E9 `mov eax,[0x10810a]`). */
+static void b_d5a_20df4(const u32 *r, u32 *eax) { game_fight_reset(r[R_EAX], r[R_EDX]); *eax = 0u; }
+enum { D5A_FR_NONE, D5A_FR_nof48, D5A_FR_f48w, D5A_FR_f48late, D5A_FR_uns, D5A_FR_clamp8, D5A_FR_noclamp,
+       D5A_FR_lt6, D5A_FR_w16, D5A_FR_nob4c, D5A_FR_b4cw, D5A_FR_noae8, D5A_FR_ae8w, D5A_FR_no8ec, D5A_FR_8ecw,
+       D5A_FR_nob15, D5A_FR_b15w, D5A_FR_late1, D5A_FR_nolist, D5A_FR_nodust, D5A_FR_nofight, D5A_FR_no0a19,
+       D5A_FR_noslots, D5A_FR_nobf0, D5A_FR_swapinit, D5A_FR_noaec, D5A_FR_aecw, D5A_FR_noaf0, D5A_FR_af0w,
+       D5A_FR_noafa, D5A_FR_afab, D5A_FR_noaf8, D5A_FR_af8b, D5A_FR_early2, D5A_FR_noseed, D5A_FR_seedearly,
+       D5A_FR_fullb, D5A_FR_fullinv, D5A_FR_always, D5A_FR_noreset, D5A_FR_resetarg, D5A_FR_noscroll,
+       D5A_FR_scrollraw, D5A_FR_noprops, D5A_FR_propsraw, D5A_FR_propsfirst, D5A_FR_resetlast };
+static void d5a_20df4_g1(u32 mut)
+{
+    if (mut == D5A_FR_b4cw) DSW(0x00100B4Cu) = 0u;
+    else if (mut != D5A_FR_nob4c) DSD(0x00100B4Cu) = 0u;
+    if (mut == D5A_FR_ae8w) DSW(0x00104AE8u) = 0u;
+    else if (mut != D5A_FR_noae8) DSD(0x00104AE8u) = 0u;
+    if (mut == D5A_FR_8ecw) DSW(0x001088ECu) = 0u;
+    else if (mut != D5A_FR_no8ec) DSB(0x001088ECu) = 0u;
+    if (mut == D5A_FR_b15w) DSW(0x00104B15u) = 0u;
+    else if (mut != D5A_FR_nob15) DSB(0x00104B15u) = 0u;
+}
+static void d5a_20df4_g2(u32 mut)
+{
+    if (mut == D5A_FR_aecw) DSW(0x000F0AECu) = 0u;
+    else if (mut != D5A_FR_noaec) DSD(0x000F0AECu) = 0u;
+    if (mut == D5A_FR_af0w) DSW(0x000F0AF0u) = 0u;
+    else if (mut != D5A_FR_noaf0) DSD(0x000F0AF0u) = 0u;
+    if (mut == D5A_FR_afab) DSB(0x000F0AFAu) = 0u;
+    else if (mut != D5A_FR_noafa) DSW(0x000F0AFAu) = 0u;
+    if (mut == D5A_FR_af8b) DSB(0x000F0AF8u) = 0u;
+    else if (mut != D5A_FR_noaf8) DSW(0x000F0AF8u) = 0u;
+}
+static void d5a_20df4_f48(u32 mut)
+{
+    if (mut == D5A_FR_f48w) DSW(0x000F0A48u) = 0u;
+    else if (mut != D5A_FR_nof48) DSD(0x000F0A48u) = 0u;
+}
+static void d5a_20df4_core(u32 stage, u32 full, u32 mut)
+{
+    u32 s = ((s32)stage < 7) ? stage : 7u;
+    if (mut == D5A_FR_uns) s = (stage < 7u) ? stage : 7u;
+    if (mut == D5A_FR_clamp8) s = ((s32)stage < 8) ? stage : 8u;
+    if (mut == D5A_FR_noclamp) s = stage;
+    if (mut == D5A_FR_lt6) s = ((s32)stage < 6) ? stage : 7u;
+    if (mut == D5A_FR_w16) s = ((s16)stage < 7) ? stage : 7u;
+    if (mut != D5A_FR_f48late) d5a_20df4_f48(mut);
+    game_null_step();
+    if (mut != D5A_FR_late1) d5a_20df4_g1(mut);
+    if (mut == D5A_FR_early2) d5a_20df4_g2(mut);
+    if (mut == D5A_FR_seedearly) camera_step_seed();
+    if (mut != D5A_FR_nolist) flow_list_105c0c_init();
+    if (mut == D5A_FR_f48late) d5a_20df4_f48(mut);
+    if (mut == D5A_FR_late1) d5a_20df4_g1(mut);
+    if (mut == D5A_FR_swapinit) fight_list_init();
+    if (mut != D5A_FR_nodust) camera_dust_list_init();
+    if (mut != D5A_FR_nofight && mut != D5A_FR_swapinit) fight_list_init();
+    if (mut != D5A_FR_no0a19) actor_type_0a19_list_init();
+    if (mut != D5A_FR_noslots) fighter_slots_reset();
+    if (mut != D5A_FR_nobf0) flow_105bf0_clear();
+    if (mut != D5A_FR_early2) d5a_20df4_g2(mut);
+    if (mut != D5A_FR_noseed && mut != D5A_FR_seedearly) camera_step_seed();
+    if (mut == D5A_FR_fullb) full = (u8)full;
+    if (mut == D5A_FR_fullinv) full = (full == 0u) ? 1u : 0u;
+    if (full == 0u && mut != D5A_FR_always) return;
+    if (mut == D5A_FR_propsfirst) fight_scene_props(s);
+    if (mut != D5A_FR_noreset && mut != D5A_FR_resetlast) actors_reset_al((mut == D5A_FR_resetarg) ? 0u : 1u);
+    if (mut != D5A_FR_noscroll) render_scroll_setup((mut == D5A_FR_scrollraw) ? stage : s);
+    if (mut != D5A_FR_noprops && mut != D5A_FR_propsfirst) fight_scene_props((mut == D5A_FR_propsraw) ? stage : s);
+    if (mut == D5A_FR_resetlast) actors_reset_al(1u);
+}
+#define D5A_FR_MUT(name) \
+    static void m_d5a_fr_##name(const u32 *r, u32 *eax) { d5a_20df4_core(r[R_EAX], r[R_EDX], D5A_FR_##name); *eax = 0u; }
+D5A_FR_MUT(nof48) D5A_FR_MUT(f48w) D5A_FR_MUT(f48late) D5A_FR_MUT(uns) D5A_FR_MUT(clamp8) D5A_FR_MUT(noclamp)
+D5A_FR_MUT(lt6) D5A_FR_MUT(w16) D5A_FR_MUT(nob4c) D5A_FR_MUT(b4cw) D5A_FR_MUT(noae8) D5A_FR_MUT(ae8w)
+D5A_FR_MUT(no8ec) D5A_FR_MUT(8ecw) D5A_FR_MUT(nob15) D5A_FR_MUT(b15w) D5A_FR_MUT(late1) D5A_FR_MUT(nolist)
+D5A_FR_MUT(nodust) D5A_FR_MUT(nofight) D5A_FR_MUT(no0a19) D5A_FR_MUT(noslots) D5A_FR_MUT(nobf0)
+D5A_FR_MUT(swapinit) D5A_FR_MUT(noaec) D5A_FR_MUT(aecw) D5A_FR_MUT(noaf0) D5A_FR_MUT(af0w) D5A_FR_MUT(noafa)
+D5A_FR_MUT(afab) D5A_FR_MUT(noaf8) D5A_FR_MUT(af8b) D5A_FR_MUT(early2) D5A_FR_MUT(noseed) D5A_FR_MUT(seedearly)
+D5A_FR_MUT(fullb) D5A_FR_MUT(fullinv) D5A_FR_MUT(always) D5A_FR_MUT(noreset) D5A_FR_MUT(resetarg)
+D5A_FR_MUT(noscroll) D5A_FR_MUT(scrollraw) D5A_FR_MUT(noprops) D5A_FR_MUT(propsraw) D5A_FR_MUT(propsfirst)
+D5A_FR_MUT(resetlast)
+/* 0x257A4: EAX = `players`. Mask 0: the eight game-start call sites and 0x11D41 (through 0x11D04's
+ * return to 0x2523D) reach `jmp 0x2540f`, the mode tail the wave-1 records trace dead (d1c §1, d1d §1);
+ * 0x11EB8 goes on with `call 0x10db0`, which loads AH (0x10DB1) and whose first EAX read follows `mov
+ * eax,0x100` (0x10E01), as its twin 0x10E18 (0x10E19, 0x10E69). */
+static void b_d5a_257a4(const u32 *r, u32 *eax) { game_coin_divert(r[R_EAX]); *eax = 0u; }
+enum { D5A_CD_NONE, D5A_CD_novoice1, D5A_CD_voice1, D5A_CD_voiceswap, D5A_CD_zearly, D5A_CD_noreset,
+       D5A_CD_resetarg, D5A_CD_nob17, D5A_CD_nob19, D5A_CD_nob11, D5A_CD_nob1b, D5A_CD_nob15, D5A_CD_b17w,
+       D5A_CD_b1bw, D5A_CD_nob1f, D5A_CD_b1fw, D5A_CD_b1flate, D5A_CD_nor0, D5A_CD_nor1, D5A_CD_rswap,
+       D5A_CD_rsame, D5A_CD_noinit, D5A_CD_initearly, D5A_CD_fill6, D5A_CD_fill8, D5A_CD_fillbase,
+       D5A_CD_nofill, D5A_CD_fillval, D5A_CD_filllate, D5A_CD_hook, D5A_CD_nohook, D5A_CD_hookw,
+       D5A_CD_hooklate, D5A_CD_wipearg, D5A_CD_nowipe, D5A_CD_voice2, D5A_CD_novoice2 };
+static void d5a_257a4_zero(u32 mut)
+{
+    if (mut == D5A_CD_b17w) DSW(0x00104B17u) = 0u;
+    else if (mut != D5A_CD_nob17) DSB(0x00104B17u) = 0u;
+    if (mut != D5A_CD_nob19) DSB(0x00104B19u) = 0u;
+    if (mut != D5A_CD_nob11) DSB(0x00104B11u) = 0u;
+    if (mut == D5A_CD_b1bw) DSW(0x00104B1Bu) = 0u;
+    else if (mut != D5A_CD_nob1b) DSB(0x00104B1Bu) = 0u;
+    if (mut != D5A_CD_nob15) DSB(0x00104B15u) = 0u;
+}
+static void d5a_257a4_b1f(u32 players, u32 mut)
+{
+    if (mut == D5A_CD_b1fw) DSW(0x00104B1Fu) = (u16)players;
+    else if (mut != D5A_CD_nob1f) DSB(0x00104B1Fu) = (u8)players;
+}
+static void d5a_257a4_fill(u32 mut)
+{
+    if (mut == D5A_CD_nofill) return;
+    mem_fill((mut == D5A_CD_fillbase) ? 0x00104B01u : 0x00104B02u, (mut == D5A_CD_fillval) ? 1u : 0u,
+             (mut == D5A_CD_fill6) ? 6u : (mut == D5A_CD_fill8) ? 8u : 7u);
+}
+static void d5a_257a4_hook(u32 mut)
+{
+    if (mut == D5A_CD_hookw) DSW(0x00104AE4u) = 0x367Cu;
+    else if (mut != D5A_CD_nohook) DSD(0x00104AE4u) = (mut == D5A_CD_hook) ? 0x00043680u : 0x0004367Cu;
+}
+static void d5a_257a4_core(u32 players, u32 mut)
+{
+    if (mut != D5A_CD_novoice1) (void)sound_voice((mut == D5A_CD_voice1) ? 0x101u : (mut == D5A_CD_voiceswap) ? 0x53u : 0x100u);
+    if (mut == D5A_CD_zearly) d5a_257a4_zero(mut);
+    if (mut == D5A_CD_initearly) flow_1082c8_init();
+    if (mut != D5A_CD_noreset) actors_reset_al((mut == D5A_CD_resetarg) ? 1u : 0u);
+    if (mut != D5A_CD_zearly) d5a_257a4_zero(mut);
+    if (mut != D5A_CD_b1flate) d5a_257a4_b1f(players, mut);
+    if (mut != D5A_CD_nor0) fight_char_reset((mut == D5A_CD_rswap) ? 1u : 0u);
+    if (mut == D5A_CD_b1flate) d5a_257a4_b1f(players, mut);
+    if (mut != D5A_CD_nor1) fight_char_reset((mut == D5A_CD_rswap || mut == D5A_CD_rsame) ? 0u : 1u);
+    if (mut != D5A_CD_noinit && mut != D5A_CD_initearly) flow_1082c8_init();
+    if (mut != D5A_CD_filllate) d5a_257a4_fill(mut);
+    if (mut != D5A_CD_hooklate) d5a_257a4_hook(mut);
+    if (mut != D5A_CD_nowipe) frontend_wipe_arm((mut == D5A_CD_wipearg) ? 0x11u : 0x10u);
+    if (mut == D5A_CD_filllate) d5a_257a4_fill(mut);
+    if (mut == D5A_CD_hooklate) d5a_257a4_hook(mut);
+    if (mut != D5A_CD_novoice2) (void)sound_voice((mut == D5A_CD_voice2) ? 0x54u : (mut == D5A_CD_voiceswap) ? 0x100u : 0x53u);
+}
+#define D5A_CD_MUT(name) \
+    static void m_d5a_cd_##name(const u32 *r, u32 *eax) { d5a_257a4_core(r[R_EAX], D5A_CD_##name); *eax = 0u; }
+D5A_CD_MUT(novoice1) D5A_CD_MUT(voice1) D5A_CD_MUT(voiceswap) D5A_CD_MUT(zearly) D5A_CD_MUT(noreset)
+D5A_CD_MUT(resetarg) D5A_CD_MUT(nob17) D5A_CD_MUT(nob19) D5A_CD_MUT(nob11) D5A_CD_MUT(nob1b) D5A_CD_MUT(nob15)
+D5A_CD_MUT(b17w) D5A_CD_MUT(b1bw) D5A_CD_MUT(nob1f) D5A_CD_MUT(b1fw) D5A_CD_MUT(b1flate) D5A_CD_MUT(nor0)
+D5A_CD_MUT(nor1) D5A_CD_MUT(rswap) D5A_CD_MUT(rsame) D5A_CD_MUT(noinit) D5A_CD_MUT(initearly) D5A_CD_MUT(fill6)
+D5A_CD_MUT(fill8) D5A_CD_MUT(fillbase) D5A_CD_MUT(nofill) D5A_CD_MUT(fillval) D5A_CD_MUT(filllate)
+D5A_CD_MUT(hook) D5A_CD_MUT(nohook) D5A_CD_MUT(hookw) D5A_CD_MUT(hooklate) D5A_CD_MUT(wipearg) D5A_CD_MUT(nowipe)
+D5A_CD_MUT(voice2) D5A_CD_MUT(novoice2)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43161,6 +43335,104 @@ static const binding_t k_bindings[] = {
     { "config_key_name@ret0",                  m_d4d_3157c_ret0, 0x000000FFu },
     { "config_key_name@nogt",                  m_d4d_3157c_nogt, 0x000000FFu },
     { "config_key_name@nonul",                 m_d4d_3157c_nonul, 0x000000FFu },
+    { "flow_scroll_reset", b_d5a_20e90, 0x00000000u },
+    { "flow_scroll_reset@noaec", m_d5a_sr_noaec, 0x00000000u },
+    { "flow_scroll_reset@noaf0", m_d5a_sr_noaf0, 0x00000000u },
+    { "flow_scroll_reset@noafa", m_d5a_sr_noafa, 0x00000000u },
+    { "flow_scroll_reset@noaf8", m_d5a_sr_noaf8, 0x00000000u },
+    { "flow_scroll_reset@aecw", m_d5a_sr_aecw, 0x00000000u },
+    { "flow_scroll_reset@af0w", m_d5a_sr_af0w, 0x00000000u },
+    { "flow_scroll_reset@afab", m_d5a_sr_afab, 0x00000000u },
+    { "flow_scroll_reset@afad", m_d5a_sr_afad, 0x00000000u },
+    { "flow_scroll_reset@af8b", m_d5a_sr_af8b, 0x00000000u },
+    { "flow_scroll_reset@argw", m_d5a_sr_argw, 0x00000000u },
+    { "flow_scroll_reset@arg7", m_d5a_sr_arg7, 0x00000000u },
+    { "flow_scroll_reset@nocall", m_d5a_sr_nocall, 0x00000000u },
+    { "flow_scroll_reset@late", m_d5a_sr_late, 0x00000000u },
+    { "game_fight_reset", b_d5a_20df4, 0x00000000u },
+    { "game_fight_reset@nof48", m_d5a_fr_nof48, 0x00000000u },
+    { "game_fight_reset@f48w", m_d5a_fr_f48w, 0x00000000u },
+    { "game_fight_reset@f48late", m_d5a_fr_f48late, 0x00000000u },
+    { "game_fight_reset@uns", m_d5a_fr_uns, 0x00000000u },
+    { "game_fight_reset@clamp8", m_d5a_fr_clamp8, 0x00000000u },
+    { "game_fight_reset@noclamp", m_d5a_fr_noclamp, 0x00000000u },
+    { "game_fight_reset@lt6", m_d5a_fr_lt6, 0x00000000u },
+    { "game_fight_reset@w16", m_d5a_fr_w16, 0x00000000u },
+    { "game_fight_reset@nob4c", m_d5a_fr_nob4c, 0x00000000u },
+    { "game_fight_reset@b4cw", m_d5a_fr_b4cw, 0x00000000u },
+    { "game_fight_reset@noae8", m_d5a_fr_noae8, 0x00000000u },
+    { "game_fight_reset@ae8w", m_d5a_fr_ae8w, 0x00000000u },
+    { "game_fight_reset@no8ec", m_d5a_fr_no8ec, 0x00000000u },
+    { "game_fight_reset@8ecw", m_d5a_fr_8ecw, 0x00000000u },
+    { "game_fight_reset@nob15", m_d5a_fr_nob15, 0x00000000u },
+    { "game_fight_reset@b15w", m_d5a_fr_b15w, 0x00000000u },
+    { "game_fight_reset@late1", m_d5a_fr_late1, 0x00000000u },
+    { "game_fight_reset@nolist", m_d5a_fr_nolist, 0x00000000u },
+    { "game_fight_reset@nodust", m_d5a_fr_nodust, 0x00000000u },
+    { "game_fight_reset@nofight", m_d5a_fr_nofight, 0x00000000u },
+    { "game_fight_reset@no0a19", m_d5a_fr_no0a19, 0x00000000u },
+    { "game_fight_reset@noslots", m_d5a_fr_noslots, 0x00000000u },
+    { "game_fight_reset@nobf0", m_d5a_fr_nobf0, 0x00000000u },
+    { "game_fight_reset@swapinit", m_d5a_fr_swapinit, 0x00000000u },
+    { "game_fight_reset@noaec", m_d5a_fr_noaec, 0x00000000u },
+    { "game_fight_reset@aecw", m_d5a_fr_aecw, 0x00000000u },
+    { "game_fight_reset@noaf0", m_d5a_fr_noaf0, 0x00000000u },
+    { "game_fight_reset@af0w", m_d5a_fr_af0w, 0x00000000u },
+    { "game_fight_reset@noafa", m_d5a_fr_noafa, 0x00000000u },
+    { "game_fight_reset@afab", m_d5a_fr_afab, 0x00000000u },
+    { "game_fight_reset@noaf8", m_d5a_fr_noaf8, 0x00000000u },
+    { "game_fight_reset@af8b", m_d5a_fr_af8b, 0x00000000u },
+    { "game_fight_reset@early2", m_d5a_fr_early2, 0x00000000u },
+    { "game_fight_reset@noseed", m_d5a_fr_noseed, 0x00000000u },
+    { "game_fight_reset@seedearly", m_d5a_fr_seedearly, 0x00000000u },
+    { "game_fight_reset@fullb", m_d5a_fr_fullb, 0x00000000u },
+    { "game_fight_reset@fullinv", m_d5a_fr_fullinv, 0x00000000u },
+    { "game_fight_reset@always", m_d5a_fr_always, 0x00000000u },
+    { "game_fight_reset@noreset", m_d5a_fr_noreset, 0x00000000u },
+    { "game_fight_reset@resetarg", m_d5a_fr_resetarg, 0x00000000u },
+    { "game_fight_reset@noscroll", m_d5a_fr_noscroll, 0x00000000u },
+    { "game_fight_reset@scrollraw", m_d5a_fr_scrollraw, 0x00000000u },
+    { "game_fight_reset@noprops", m_d5a_fr_noprops, 0x00000000u },
+    { "game_fight_reset@propsraw", m_d5a_fr_propsraw, 0x00000000u },
+    { "game_fight_reset@propsfirst", m_d5a_fr_propsfirst, 0x00000000u },
+    { "game_fight_reset@resetlast", m_d5a_fr_resetlast, 0x00000000u },
+    { "game_coin_divert", b_d5a_257a4, 0x00000000u },
+    { "game_coin_divert@novoice1", m_d5a_cd_novoice1, 0x00000000u },
+    { "game_coin_divert@voice1", m_d5a_cd_voice1, 0x00000000u },
+    { "game_coin_divert@voiceswap", m_d5a_cd_voiceswap, 0x00000000u },
+    { "game_coin_divert@zearly", m_d5a_cd_zearly, 0x00000000u },
+    { "game_coin_divert@noreset", m_d5a_cd_noreset, 0x00000000u },
+    { "game_coin_divert@resetarg", m_d5a_cd_resetarg, 0x00000000u },
+    { "game_coin_divert@nob17", m_d5a_cd_nob17, 0x00000000u },
+    { "game_coin_divert@nob19", m_d5a_cd_nob19, 0x00000000u },
+    { "game_coin_divert@nob11", m_d5a_cd_nob11, 0x00000000u },
+    { "game_coin_divert@nob1b", m_d5a_cd_nob1b, 0x00000000u },
+    { "game_coin_divert@nob15", m_d5a_cd_nob15, 0x00000000u },
+    { "game_coin_divert@b17w", m_d5a_cd_b17w, 0x00000000u },
+    { "game_coin_divert@b1bw", m_d5a_cd_b1bw, 0x00000000u },
+    { "game_coin_divert@nob1f", m_d5a_cd_nob1f, 0x00000000u },
+    { "game_coin_divert@b1fw", m_d5a_cd_b1fw, 0x00000000u },
+    { "game_coin_divert@b1flate", m_d5a_cd_b1flate, 0x00000000u },
+    { "game_coin_divert@nor0", m_d5a_cd_nor0, 0x00000000u },
+    { "game_coin_divert@nor1", m_d5a_cd_nor1, 0x00000000u },
+    { "game_coin_divert@rswap", m_d5a_cd_rswap, 0x00000000u },
+    { "game_coin_divert@rsame", m_d5a_cd_rsame, 0x00000000u },
+    { "game_coin_divert@noinit", m_d5a_cd_noinit, 0x00000000u },
+    { "game_coin_divert@initearly", m_d5a_cd_initearly, 0x00000000u },
+    { "game_coin_divert@fill6", m_d5a_cd_fill6, 0x00000000u },
+    { "game_coin_divert@fill8", m_d5a_cd_fill8, 0x00000000u },
+    { "game_coin_divert@fillbase", m_d5a_cd_fillbase, 0x00000000u },
+    { "game_coin_divert@nofill", m_d5a_cd_nofill, 0x00000000u },
+    { "game_coin_divert@fillval", m_d5a_cd_fillval, 0x00000000u },
+    { "game_coin_divert@filllate", m_d5a_cd_filllate, 0x00000000u },
+    { "game_coin_divert@hook", m_d5a_cd_hook, 0x00000000u },
+    { "game_coin_divert@nohook", m_d5a_cd_nohook, 0x00000000u },
+    { "game_coin_divert@hookw", m_d5a_cd_hookw, 0x00000000u },
+    { "game_coin_divert@hooklate", m_d5a_cd_hooklate, 0x00000000u },
+    { "game_coin_divert@wipearg", m_d5a_cd_wipearg, 0x00000000u },
+    { "game_coin_divert@nowipe", m_d5a_cd_nowipe, 0x00000000u },
+    { "game_coin_divert@voice2", m_d5a_cd_voice2, 0x00000000u },
+    { "game_coin_divert@novoice2", m_d5a_cd_novoice2, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -404,6 +404,7 @@ void fighter_spawn(u32 side)
 /* 0x34978 — record §38. */
 void fighter_slots_reset(void)
 {
+    PR_SEAM0(0x34978u);
     DSD(DS_001077A8) = 0;                           /* 0x34986 0x654C7, ECX=2 */
     DSD(DS_001077A8 + 4u) = 0;
     DSW(DS_001078F6) = 0;                           /* 0x3498F */

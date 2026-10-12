@@ -958,6 +958,7 @@ void game_mode_12_step(void)
  * DS_00104B00 = 0x1A (0x4F994, a word). EDX is pushed and popped. */
 void frontend_wipe_arm(u32 ret_mode)
 {
+    PR_SEAM(0x4F980u, ret_mode);
     DSB(DS_001088F5) = 0u;                              /* 0x4F983 */
     DSW(DS_00104AFA) = (u16)ret_mode;                   /* 0x4F98E */
     DSW(DS_00104B00) = 0x1Au;                           /* 0x4F994 */
@@ -1457,6 +1458,7 @@ void game_hook_270bc(void)
  * pushed and popped; EAX (DS_001082CC) is dead at 0x257FC. */
 void flow_1082c8_init(void)
 {
+    PR_SEAM0(0x46594u);
     if (DSB(DS_00108173) != 0u) {                       /* 0x46596/0x4659D */
         DSD(DS_001082C8) = 7u;                          /* 0x465A9 */
         DSD(DS_001082CC) = 4u;                          /* 0x465AF */
@@ -4754,6 +4756,7 @@ static void game_state_4(void)
  * 0x20ED5. EBX/ECX/EDX are pushed and popped. */
 void flow_list_105c0c_init(void)
 {
+    PR_SEAM0(0x2C390u);
     DSD(DS_00105C10) = DS_00105C0C;                     /* 0x2C3A2 */
     DSD(DS_00105C0C) = DS_00105C0C;                     /* 0x2C3A8 */
     DSD(DS_00105C18) = DS_00105C14;                     /* 0x2C3AE */
@@ -4766,6 +4769,7 @@ void flow_list_105c0c_init(void)
  * popped). Callers: 0x20E47 (in 0x20DF4) and 0x20EEE. */
 void flow_105bf0_clear(void)
 {
+    PR_SEAM0(0x2C074u);
     DSD(DS_00105BF4) = 0u;                              /* 0x2C077 */
     DSD(DS_00105BF0) = 0u;                              /* 0x2C07D */
 }

@@ -24444,6 +24444,105 @@ D4D_SPECS += [
          mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
 ]
 D1_SPECS += D4D_SPECS
+
+
+# ---- track D5 batch d5a (record 2026-10-12-reverse-d5a): flow.c's front-end and mode handlers ----
+D5A_SPECS = []
+# The fight reset's callees, each rowed by an earlier batch and seamed here; the clobbers are
+# E.callee_clobbers'. 0x2BAF4 takes its flag in AL (its callers load the whole EAX).
+D5A_SCROLL = E.Call(0x38730, ("eax",), clobbers=("edi", "ebp"))
+D5A_LIST = E.Call(0x2C390, ())
+D5A_DUST = E.Call(0x12750, ())
+D5A_FIGHT = E.Call(0x49300, ())
+D5A_0A19 = E.Call(0x28E98, ())
+D5A_SLOTS = E.Call(0x34978, ())
+D5A_BF0 = E.Call(0x2C074, ())
+D5A_SEED = E.Call(0x12C70, ())
+D5A_RESET = E.Call(0x2BAF4, ("eax",))
+D5A_PROPS = E.Call(0x412A0, ("eax",), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+D5A_LATCH = E.Call(0x46594, ())
+D5A_WIPE = E.Call(0x4F980, ("eax",))
+D5A_REGS = {"ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468, "edi": 0x2468ACE0,
+            "ebp": 0x0F1E2D3C}
+# the camera block 0xF0AE8..0xF0AFF, every byte distinct and non-zero: 0x20E90 and 0x20DF4 zero the
+# dwords 0xF0AEC and 0xF0AF0 and the words 0xF0AF8 and 0xF0AFA inside it
+D5A_CAM = {0x000F0AE8: bytes(range(0x51, 0x69))}
+
+
+def d5a_fr_case():
+    """0x20DF4: the dwords 0xF0A48, 0x100B4C and 0x104AE8 and the bytes 0x1088EC and 0x104B15, each
+    between seeded neighbours, and the camera block."""
+    return {**D5A_CAM, 0x000F0A44: le32(0x41414141) + le32(0x5A5A5A5A) + le32(0x42424242),
+            0x00100B48: le32(0x43434343) + le32(0x5B5B5B5B) + le32(0x44444444),
+            0x00104AE4: le32(0x45454545) + le32(0x5C5C5C5C) + le32(0x46464646),
+            0x001088EB: bytes([0x47, 0x5D, 0x48]), 0x00104B14: bytes([0x49, 0x5E, 0x4A])}
+
+
+D5A_SPECS += [
+    # 0x20E90 flow_scroll_reset: EAX = the stage. The dwords 0xF0AEC and 0xF0AF0 and the words
+    # 0xF0AFA and 0xF0AF8 = 0, then 0x38730(EAX): the whole register, not clamped (s1, s2).
+    # 0x38730 is a stub (seamed here). Mask 0: see the binding.
+    Spec("flow_scroll_reset", 0x20E90, [
+        Case("s0", {"eax": 3, **D5A_REGS}, D5A_CAM),
+        Case("s1", {"eax": 0x00010008}, D5A_CAM, {0x38730: 0x12345678}),
+        Case("s2", {"eax": 0xFFFFFFFF}, D5A_CAM),
+    ], calls=(D5A_SCROLL,), eax_mask=0,
+       mutants=("@noaec", "@noaf0", "@noafa", "@noaf8", "@aecw", "@af0w", "@afab", "@afad", "@af8b", "@argw",
+                "@arg7", "@nocall", "@late")),
+    # 0x20DF4 game_fight_reset: EAX = the stage, EDX = `full`. The dword 0xF0A48 = 0; EBX = the stage
+    # clamped to 7 by a signed `cmp eax,7; jl` (f3 is -1, f4 0x10003, f1/f2 the two sides of 7, f0
+    # 6); 0x29B70 (a bare `ret`, run on both sides); the dwords 0x100B4C and 0x104AE8 and the bytes
+    # 0x1088EC and 0x104B15 = 0; 0x2C390, 0x12750, 0x49300, 0x28E98, 0x34978, 0x2C074; the dwords
+    # 0xF0AEC and 0xF0AF0 and the words 0xF0AFA and 0xF0AF8 = 0; 0x12C70. Then, when EDX is non-zero
+    # (`test edx,edx` 0x20E6F: f4 has 0x100, f6 0x80000000), 0x2BAF4(1), 0x38730(EBX) and
+    # 0x412A0(EBX). Every callee but 0x29B70 is a stub (ten seamed here). Mask 0: see the binding.
+    Spec("game_fight_reset", 0x20DF4, [
+        Case("f0", {**D5A_REGS, "eax": 6, "edx": 1}, d5a_fr_case()),
+        Case("f1", {"eax": 7, "edx": 1}, d5a_fr_case(), {0x2BAF4: 0x12345678, 0x38730: 0xFFFFFFFF}),
+        Case("f2", {"eax": 8, "edx": 0xFFFFFFFF}, d5a_fr_case()),
+        Case("f3", {"eax": 0xFFFFFFFF, "edx": 1}, d5a_fr_case(), {0x12C70: 0x100}),
+        Case("f4", {"eax": 0x00010003, "edx": 0x100}, d5a_fr_case()),
+        Case("f5", {**D5A_REGS, "eax": 3, "edx": 0}, d5a_fr_case(), {0x2C074: 0x12345678}),
+        Case("f6", {"eax": 0, "edx": 0x80000000}, d5a_fr_case()),
+    ], allow_calls=(0x29B70,),
+       calls=(D5A_LIST, D5A_DUST, D5A_FIGHT, D5A_0A19, D5A_SLOTS, D5A_BF0, D5A_SEED, D5A_RESET, D5A_SCROLL,
+              D5A_PROPS), eax_mask=0,
+       mutants=("@nof48", "@f48w", "@f48late", "@uns", "@clamp8", "@noclamp", "@lt6", "@w16", "@nob4c", "@b4cw",
+                "@noae8", "@ae8w", "@no8ec", "@8ecw", "@nob15", "@b15w", "@late1", "@nolist", "@nodust", "@nofight",
+                "@no0a19", "@noslots", "@nobf0", "@swapinit", "@noaec", "@aecw", "@noaf0", "@af0w", "@noafa",
+                "@afab", "@noaf8", "@af8b", "@early2", "@noseed", "@seedearly", "@fullb", "@fullinv", "@always",
+                "@noreset", "@resetarg", "@noscroll", "@scrollraw", "@noprops", "@propsraw", "@propsfirst",
+                "@resetlast")),
+]
+
+
+def d5a_cd_case():
+    """0x257A4: the bytes 0x104B00..0x104B21, every one distinct and non-zero (the seven it fills,
+    0x104B02..0x104B08, the six it stores, 0x104B11/15/17/19/1B/1F, and all their neighbours), and
+    the hook dword 0x104AE4 between seeded dwords."""
+    return {0x00104B00: bytes(range(0x61, 0x83)),
+            0x00104AE0: le32(0x45454545) + le32(0x5C5C5C5C) + le32(0x46464646)}
+
+
+D5A_SPECS += [
+    # 0x257A4 game_coin_divert: EAX = `players`, kept in EDX. The voice 0x100, 0x2BAF4(0), the bytes
+    # 0x104B17, 0x104B19, 0x104B11, 0x104B1B and 0x104B15 = 0 and the byte 0x104B1F = DL (d1 has
+    # 0x80 under set upper bits, d2 0), 0x33C18(0), 0x33C18(1), 0x46594, the runtime fill 0x65490 of
+    # the seven bytes 0x104B02..0x104B08 with 0 (EDX = 0, ECX = 7: run from the original's bytes; the
+    # port fills by hand), the hook dword 0x104AE4 = 0x4367C, 0x4F980(0x10) and the voice 0x53.
+    # 0x46594 and 0x4F980 are seamed here. Mask 0: see the binding.
+    Spec("game_coin_divert", 0x257A4, [
+        Case("d0", {**D5A_REGS, "eax": 3}, d5a_cd_case()),
+        Case("d1", {"eax": 0x12345680}, d5a_cd_case(), {0x2C3FC: 0xFFFFFFFF, 0x2BAF4: 0x1234FF00, 0x33C18: 0x100}),
+        Case("d2", {"eax": 0xFFFFFF00}, d5a_cd_case(), {0x2C3FC: 0, 0x46594: 0x12345678, 0x4F980: 0xABCD1234}),
+    ], allow_calls=(0x65490, 0x654C7), calls=(VOICE, D5A_RESET, D4C_RESET, D5A_LATCH, D5A_WIPE), eax_mask=0,
+       mutants=("@novoice1", "@voice1", "@voiceswap", "@zearly", "@noreset", "@resetarg", "@nob17", "@nob19",
+                "@nob11", "@nob1b", "@nob15", "@b17w", "@b1bw", "@nob1f", "@b1fw", "@b1flate", "@nor0", "@nor1",
+                "@rswap", "@rsame", "@noinit", "@initearly", "@fill6", "@fill8", "@fillbase", "@nofill", "@fillval",
+                "@filllate", "@hook", "@nohook", "@hookw", "@hooklate", "@wipearg", "@nowipe", "@voice2",
+                "@novoice2")),
+]
+D1_SPECS += D5A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
