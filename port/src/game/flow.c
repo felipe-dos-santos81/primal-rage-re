@@ -207,6 +207,7 @@ void frontend_input_reset(void)
  * origin zeroing only; 0x4F1E4 (title_input_reset) is a different function. */
 void frontend_origin_zero(void)
 {
+    PR_SEAM0(0x4F1D0u);
     DSW(DS_00107A3A) = 0;                       /* 0x4F1D3 */
     DSW(DS_00107A38) = 0;                       /* 0x4F1DA */
 }
@@ -216,7 +217,7 @@ void frontend_origin_zero(void)
  * DS_00107A55, is not read); the mode-1 cursor words copy DS_00107A4E; the two
  * table words come from the data object's fixed-up tables DS_000BDE0C /
  * DS_000BDDFC. */
-static void title_origin_reset(u32 idx)
+void title_origin_reset(u32 idx)
 {
     frontend_origin_zero();                     /* 0x3891A 0x4F1D0 */
     DSW(DS_00107A4A) = DSW(DS_00107A4E);        /* 0x38925 */
@@ -612,13 +613,14 @@ void flow_no_continue_screen(void)
  * name lines are text_cursor_set directly; with it set (the "sprite layout")
  * the divider/columns come from DS_000C8758/0xC875C/0xC875E and two fixed
  * sprites DS_000C8730/0xC8744 are spawned. On the second side (i != 0) the
- * spawned character's palette resets to handle 0x74. Last, when the side's
+ * spawned character's pset word is 0x74 (0x2A17C with EDX = 0x74 and EBX =
+ * 0: no palette handle). Last, when the side's
  * select-cycle field rec+0x82 is non-zero, that many copies of the sprite
  * DS_000C85A8 scroll in through DS_00108100/0x108102, `count` steps of
  * 0x800. EBP/ESI/EDI and a four-dword local frame are the raw's loop
  * scratch; i, off4 = i*4 and p2 = i*2 below play that role. Only caller:
  * state 5's top, 0x420ED (0x41C28). */
-static void frontend_scoreboard_build(void)
+void frontend_scoreboard_build(void)
 {
     for (u32 i = 0u; i < 2u; i++) {
         u32 off4 = i * 4u, p2 = i * 2u;
@@ -630,8 +632,8 @@ static void frontend_scoreboard_build(void)
             u32 ch = DSB(rec + 0x7Au);
             spawned = actor_spawn((const u32 *)(mem + DSD(DS_0000A7808 + ch * 4u)),
                                   DSW(DS_000C8758 + p2), 0xFFu, 0x2900u, 0u);   /* 0x41937..0x41963 0x2AE14 */
-            if (i != 0u) actor_pset_palette(spawned, 0u, 0x74u);   /* 0x41968..0x41973 0x2A17C */
-            s32 base = (s32)(s16)DSW(DS_000C8758 + p2) / 512;      /* 0x41978..0x4198E */
+            if (i != 0u) actor_pset_palette(spawned, 0x74u, 0u);   /* 0x41968..0x41973 0x2A17C (EDX = 0x74, EBX = 0) */
+            s32 base = (s32)(DSW(DS_000C8758 + p2) >> 9);          /* 0x41978..0x4198E (`xor edx,edx; mov dx`: zero-extended) */
             for (s32 c = base; c != base + 0x13; c++)               /* 0x41991..0x419B1 */
                 text_glyph_at(c, 0x2D, 0x16, 0x1000u);               /* 0x419AA 0x2F174 */
             (void)actor_spawn((const u32 *)(mem + DS_000C8730), DSW(DS_000C8758 + p2),
@@ -646,7 +648,7 @@ static void frontend_scoreboard_build(void)
             spawned = actor_spawn((const u32 *)(mem + DSD(DS_0000A7808 + ch * 4u)),
                                   (u32)((s32)DSD(DS_000C8764 + p2) >> 16), 0xFFu,
                                   0x2B00u, 0u);                 /* 0x41A4B..0x41A78 0x2AE14 */
-            if (i != 0u) actor_pset_palette(spawned, 0u, 0x74u);   /* 0x41A7D..0x41A88 0x2A17C */
+            if (i != 0u) actor_pset_palette(spawned, 0x74u, 0u);   /* 0x41A7D..0x41A88 0x2A17C (EDX = 0x74, EBX = 0) */
             s32 start = (s32)DSB(DS_000C8760 + i);              /* 0x41A91 */
             for (s32 c = start; c != start + 0xC; c++)          /* 0x41A9D..0x41AB6 */
                 text_glyph_at(c, 0x2D, 0x17, 0x1000u);           /* 0x41AAF 0x2F174 */
@@ -1076,6 +1078,7 @@ void frontend_mode_1b_step(void)
  * is dropped. The two masks are 0x0F000000 and 0x00000F00. */
 u32 frontend_buttons_pressed(u32 n)
 {
+    PR_SEAM_RET(0x4F778u, n);
     return (DSD(DS_000C9898 + n * 4u) & DSD(DS_001088E4)) != 0u
                ? 1u : 0u;                               /* 0x4F779..0x4F78B */
 }
@@ -1099,7 +1102,7 @@ u32 frontend_skip_check(void)
     u32 mask0 = DSD(DS_000C9898);                       /* 0x4F7BB */
     DSD(DS_001088D8) = held;                            /* 0x4F7C1 */
     u32 r = (DSD(DS_001088E4) & mask0) != 0u ? 1u : 0u; /* 0x4F7B6/0x4F7C7/0x4F7C9 */
-    if (r == 0u && frontend_buttons_pressed(1u) != 0u)  /* 0x4F7CE..0x4F7DC */
+    if (r == 0u && (u8)frontend_buttons_pressed(1u) != 0u)  /* 0x4F7CE..0x4F7DC (`test al,al`) */
         r = 1u;                                         /* 0x4F7DE */
     DSD(DS_001088D8) = DSD(DS_001088D8);                /* 0x4F7E0/0x4F7E6 */
     return r;
@@ -3784,10 +3787,10 @@ static void flow_results_darken_close(void)
  * DS_00104B11 = 0 and DS_00107830[winner] = 0 (0x28732/0x28738, the same
  * table 0x28788's own tail increments — here it is reset instead);
  * DS_00108106[stage] = (winner << 6) | 0x80 | DS_0010782A[winner]
- * (0x2873E..0x28755); DS_00107830[loser] = that byte XOR loser
- * (0x2875B..0x2876F); DS_00107813[loser] == 1 calls fighter_46534(loser, 1)
- * (0x28769..0x2877E). */
-static void flow_match_streak_update(void)
+ * (0x2873E..0x28755); DS_00107813[loser] == 1 (0x2875B..0x28778: the
+ * loser's slot offset, then the read; nothing is stored there) calls
+ * fighter_46534(loser, 1) (0x2877A..0x2877E). */
+void flow_match_streak_update(void)
 {
     u32 result = DSD(DS_00104AD4);                       /* 0x286BF */
     if (result == 2u) {                                  /* 0x286C5/0x286C8 */
@@ -3808,7 +3811,6 @@ static void flow_match_streak_update(void)
         u8 flag = (u8)(((u8)winner << 6) | 0x80u
                         | DSB(DS_0010782A + winner * 0x94u));    /* 0x2873E..0x2874A */
         DSB(DS_00108106 + DSW(DS_00104AFC)) = flag;                /* 0x2874C..0x28755 */
-        DSB(DS_00107830 + loser * 0x94u) = (u8)(flag ^ (u8)loser); /* 0x2875B..0x2876F */
     }
     if (DSB(DS_00107813 + loser * 0x94u) == 1u)                    /* 0x28769..0x28778 */
         fighter_46534(loser, 1);                                    /* 0x2877A..0x2877E */
@@ -4534,7 +4536,7 @@ static void game_state_title(void)
  * (0x126AC/0x126D2). Then it walks the front-end list and spawns a type-3
  * effect for every live entry that is neither handle 0x3E688 nor a known
  * resource. Called only from game_state_3 phase 0. */
-static void game_state_3_handoff(void)
+void game_state_3_handoff(void)
 {
     u32 first = actor_spawn((const u32 *)(mem + 0x9AC44u),
                             0x2A00u, 0xE0u, 0x5A00u, 0u);       /* 0x12672 */
@@ -4543,8 +4545,9 @@ static void game_state_3_handoff(void)
     u32 a5 = (DSW(first + 0x56u) & 0xFFFFu) | 0x400u;           /* 0x12686 */
     u32 second = actor_spawn((const u32 *)(mem + 0x9AC58u),
                              0u, 0xE2u, 0u, a5);                /* 0x1269D */
-    DSB(first + 0x4Bu) = DSB(second + 0x56u);                   /* 0x126AC */
-    a5 = (DSW(first + 0x56u) & 0xFFFFu) | 0x400u;               /* 0x126B3 */
+    u32 cam = DSD(DS_000F0A58);                                 /* 0x126A4 */
+    DSB(cam + 0x4Bu) = DSB(second + 0x56u);                     /* 0x126AC */
+    a5 = (DSW(cam + 0x56u) & 0xFFFFu) | 0x400u;                 /* 0x126B3 */
     u32 third = actor_spawn((const u32 *)(mem + 0x9AC6Cu),
                             0u, 0xE2u, 0u, a5);                 /* 0x126CA */
     DSB(second + 0x4Bu) = DSB(third + 0x56u);                   /* 0x126D2 */
@@ -5885,7 +5888,8 @@ void game_mode_25_reveal(void)
 
 /* 0x4F0FC — record §49-P. Mode 0x25's timeout exit: draws strings 0x67 (row
  * 0xB) and 0x68 (row 0xE) font-2 mode 0x4000, cell-releases text rows 6..10
- * (col -1, 0xE cells each — the round-card body 0x4EBB8 drew), then DS_
+ * (col 0xE, 0xB cells each: `mov ebx,0xb; mov edx,row; mov eax,0xe` before
+ * each 0x2F388 — the round-card body 0x4EBB8 drew), then DS_
  * 00104B00 = 6 (back to the fight-select flow), DS_001088C0 = 0, DS_00104B15
  * = 1 and DS_00104AEC |= 1. Only caller: 0x25303 (0x24C5C case
  * 0x25, DS_00104B25 == 1 arm, timer expiry). */
@@ -5893,11 +5897,11 @@ void game_mode_25_exit(void)
 {
     text_cursor_hold_font2(-1, 0xB, game_string_get(0x67u), 0x4000u); /* 0x4F0FF..0x4F11A */
     text_cursor_hold_font2(-1, 0xE, game_string_get(0x68u), 0x4000u); /* 0x4F11F..0x4F13A */
-    text_cells_release_count(-1, 6, 0xE);                            /* 0x4F13F..0x4F14E 0x2F388 */
-    text_cells_release_count(-1, 7, 0xE);                             /* 0x4F153..0x4F162 */
-    text_cells_release_count(-1, 8, 0xE);                              /* 0x4F167..0x4F176 */
-    text_cells_release_count(-1, 9, 0xE);                               /* 0x4F17B..0x4F18A */
-    text_cells_release_count(-1, 0xA, 0xE);                              /* 0x4F18F..0x4F19E */
+    text_cells_release_count(0xE, 6, 0xB);                           /* 0x4F13F..0x4F14E 0x2F388 */
+    text_cells_release_count(0xE, 7, 0xB);                            /* 0x4F153..0x4F162 */
+    text_cells_release_count(0xE, 8, 0xB);                             /* 0x4F167..0x4F176 */
+    text_cells_release_count(0xE, 9, 0xB);                              /* 0x4F17B..0x4F18A */
+    text_cells_release_count(0xE, 0xA, 0xB);                             /* 0x4F18F..0x4F19E */
     DSW(DS_00104B00) = 6u;                                                /* 0x4F1A3 */
     DSB(DS_001088C0) = 0u;                                                 /* 0x4F1B0 */
     DSB(DS_00104B15) = 1u;                                                  /* 0x4F1BE */
@@ -6338,6 +6342,7 @@ void sound_sfx_volume(u32 v)
  * way it then sets the pause byte (0x1D213). No caller reads the result. */
 void sound_music_pause_toggle(void)
 {
+    PR_SEAM0(0x1D1B0u);
     if (DSB(DS_001028DA) == 1u) {                          /* 0x1D1BB */
         DSB(DS_001028DA) = 0;                              /* 0x1D1C2 */
         if (DSB(DS_001028D9) == 0u) return;                /* 0x1D1C8 */

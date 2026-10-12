@@ -4029,6 +4029,7 @@ u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical)
  * and 5's scoreboard build (0x41A9D/0x41E5D area, record §48-Z). */
 void text_glyph_at(s32 col, s32 ch, s32 row, u32 mode)
 {
+    PR_SEAM(0x2F174u, (u32)col, (u32)ch, (u32)row, mode);
     s32 c = col, r = row;
     (void)text_glyph_emit(ch, &c, &r, mode, 0u);            /* 0x2F18E */
 }
@@ -4224,13 +4225,24 @@ void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
     DSD(DS_00105F34) = save;
 }
 
+/* PORT: 0x2F510's string passes by value, its first four bytes as one little-endian dword
+ * (record 2026-10-11-reverse-d2c): the bytes at its mem[] offset when it lies in mem[], else
+ * (0x1FFD0's two-byte stack buffer) the bytes up to its NUL, zero after it. */
+static u32 text_str_dw0(const u8 *s)
+{
+    u32 v = 0u;
+    if (s >= mem && s < mem + MEM_SIZE - 4u) return C3F_PTR_DW(s, 0u);
+    for (u32 k = 0u; k < 4u && s[k] != 0u; k++) v |= (u32)s[k] << (8u * k);
+    return v;
+}
+
 /* 0x2F510 — demo-pose record §43-A (`push esi; or cl,0x2; mov esi,[0x105f34];
  * call 0x2F198; mov [0x105f34],esi`). 0x2F4BC with the mode ORed with 2 (the
  * class font) before the cursor save. It has 67 raw call sites (a rel32
  * scan); each ported one carries its raw address at the call. */
 void text_cursor_hold_font2(s32 col, s32 row, const u8 *s, u32 mode)
 {
-    PR_SEAM(0x2F510u, (u32)col, (u32)row, (u32)(s - mem), mode);
+    PR_SEAM(0x2F510u, col, row, text_str_dw0(s), mode);
     mode |= 2u;                                         /* 0x2F511 */
     u32 save = DSD(DS_00105F34);                        /* 0x2F514 */
     text_cursor_set(col, row, s, mode);                 /* 0x2F51A 0x2F198 */
@@ -4385,6 +4397,7 @@ void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
  * too, the service-menu ones in svcmenu.c (K11). */
 void text_number_set(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
 {
+    PR_SEAM(0x2F434u, col, row, value, width, pad, mode);
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
      * which only a pad above 3 could observe. */
     u8 buf[0x14] = {0};
@@ -4399,6 +4412,7 @@ void text_number_set(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
 void text_number_draw_font2(s32 col, s32 row, s32 value, s32 width, u32 pad,
                             u32 mode)
 {
+    PR_SEAM(0x2F528u, col, row, value, width, pad, mode);
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
      * which only a pad above 3 could observe. */
     u8 buf[0x14] = {0};
