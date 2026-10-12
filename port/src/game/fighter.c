@@ -811,7 +811,7 @@ void fighter_pose_start(u32 side, u32 edx, u32 ebx, u32 ecx, u32 frame)
 static int fighter_frame_flag(u32 bit, u32 index)
 {
     PR_SEAM_RET(0x3C59Cu, bit, index);
-    u32 m = 1u << (bit & 0xffu);                /* 0x3C59E/0x3C5AC */
+    u32 m = 1u << (bit & 0x1Fu);                /* 0x3C59E, 0x3C5A3 mov cl,al / 0x3C5AC shl ebx,cl: the count modulo 32 */
     u32 addr = DS_00107D50 + index * 4u;        /* 0x3C5A5 */
     if ((DSD(addr) & m) != 0) return 1;         /* 0x3C5B4/0x3C5B8 */
     DSD(addr) |= m;                             /* 0x3C5BF/0x3C5C1 */
