@@ -105,4 +105,9 @@ void render_scroll_setup(u32 i);
  * DS_00107A3A and DS_00107A38 = 0. */
 void render_projection_reset(u8 al);
 
+/* PORT: exported for the D4 d4b differential rows (linkage only; record
+ * 2026-10-12-reverse-d4b). */
+void render_scroll_scene_a(u32 i);
+void render_scroll_scene_b(u32 i);
+
 #endif /* PR_RENDER_H */

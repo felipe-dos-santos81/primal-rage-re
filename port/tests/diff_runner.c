@@ -31256,6 +31256,768 @@ static void d4a_1cf20_core(u32 mut)
 #define D4A_AS_MUT(name) \
     static void m_d4a_as_##name(const u32 *r, u32 *eax) { (void)r; d4a_1cf20_core(D4A_AS_##name); *eax = 0u; }
 D4A_AS_MUT(three) D4A_AS_MUT(five) D4A_AS_MUT(rev) D4A_AS_MUT(from1) D4A_AS_MUT(same) D4A_AS_MUT(none)
+/* ---- track D4 batch d4b (record 2026-10-12-reverse-d4b) ---- */
+
+/* 0x12DA8 camera_y_commit: no argument. Mode byte 0xF0AFE zero (`test al,al` 0x12DAE): the word at
+ * slot[byte 0xF0AFF] + 0x30 (the index zero-extended, `xor edx,edx; mov dl,..` 0x12DB2, times 0x94),
+ * else the signed max of the dwords 0x1077E0 and 0x107874 (`cmp eax,edx; jg` 0x12DDD); its low word
+ * is stored at 0x1078F4 (0x12DE3) and 0x1317C runs (stubbed). One restatement, one choice flipped
+ * per mutant number. */
+static u32 d4b_12da8_core(u32 mut)
+{
+    s32 y;
+    int mode0 = (mut == 1u) ? (DSW(DS_000F0AFE) == 0u) : (DSB(DS_000F0AFE) == 0u);   /* @modew */
+    if (mut == 11u) camera_y_clamp();                                        /* @order: the call first */
+    if (mode0) {
+        u32 sel = (mut == 2u) ? 0u                                           /* @sel */
+                : (mut == 3u) ? (u32)(s32)(s8)DSB(DS_000F0AFF)               /* @sext */
+                : (u32)DSB(DS_000F0AFF);
+        y = (s32)(s16)DSW(DS_001077E0 + sel * 0x94u + ((mut == 4u) ? 2u : 0u));   /* @hi */
+    } else {
+        s32 a = (s32)DSD(DS_001077E0), b = (s32)DSD(DS_00107874);
+        if (mut == 5u) y = ((u32)a > (u32)b) ? a : b;                        /* @unsigned */
+        else if (mut == 6u) y = (a > b) ? b : a;                             /* @min */
+        else if (mut == 7u) y = ((s16)a > (s16)b) ? a : b;                   /* @cmpw */
+        else y = (a > b) ? a : b;
+    }
+    if (mut == 8u) DSD(DS_001078F2 + 2u) = (u32)y;                           /* @wide */
+    else if (mut == 9u) DSW(DS_001078F2) = (u16)y;                           /* @lo */
+    else DSW(DS_001078F2 + 2u) = (u16)y;
+    if (mut != 10u && mut != 11u) camera_y_clamp();                          /* @nocall */
+    return 0u;
+}
+static void b_d4b_12da8(const u32 *r, u32 *eax) { (void)r; camera_y_commit(); *eax = 0u; }
+#define D4B_YC_MUT(name, n) \
+    static void m_d4b_yc_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4b_12da8_core(n); }
+D4B_YC_MUT(modew, 1u) D4B_YC_MUT(sel, 2u)   D4B_YC_MUT(sext, 3u)   D4B_YC_MUT(hi, 4u)
+D4B_YC_MUT(unsigned, 5u) D4B_YC_MUT(min, 6u) D4B_YC_MUT(cmpw, 7u)  D4B_YC_MUT(wide, 8u)
+D4B_YC_MUT(lo, 9u)    D4B_YC_MUT(nocall, 10u) D4B_YC_MUT(order, 11u)
+
+/* 0x16308 camera_resolve_sprite: EAX = side, EDX = index. `call 0x17eec; add eax,edx; mov
+ * eax,[eax*4+0xa8b30]; jmp 0x1b544`: the handle at 0xA8B30 + (the side's character constant +
+ * index) * 4, resolved. The port returns the pointer's mem[] offset, the raw's linear address. */
+static u32 d4b_16308_core(u32 side, u32 index, u32 mut)
+{
+    u32 ch = DSB(DS_0010782A + ((mut == 1u) ? 1u - side : side) * 0x94u);        /* @side */
+    u32 k = (mut == 3u) ? 0u : (mut == 5u) ? ch : camera_char_const(ch);         /* @nochar, @rawch */
+    u32 handle = DSD(DS_000A8B30 + (k + ((mut == 2u) ? 0u : index)) * ((mut == 4u) ? 2u : 4u));   /* @noidx, @scale */
+    const u8 *p = (const u8 *)res_resolve(handle);
+    return p != NULL ? (u32)(p - mem) : 0u;
+}
+static void b_d4b_16308(const u32 *r, u32 *eax) { *eax = camera_resolve_sprite(r[R_EAX], r[R_EDX]); }
+#define D4B_RS_MUT(name, n) \
+    static void m_d4b_rs_##name(const u32 *r, u32 *eax) { *eax = d4b_16308_core(r[R_EAX], r[R_EDX], n); }
+D4B_RS_MUT(side, 1u) D4B_RS_MUT(noidx, 2u) D4B_RS_MUT(nochar, 3u) D4B_RS_MUT(scale, 4u) D4B_RS_MUT(rawch, 5u)
+
+/* 0x1631C camera_sprite_height: EAX = side, EDX = index, EBX = frame, ECX = count. The sprite's
+ * height is its first dword `sar 16` (0x1634C); frame >= height (`jl` 0x16353, signed) gives count 1
+ * and frame = height - 1; frame + count > height (`jle` 0x16368) gives count = height - frame; the
+ * table is 0xFD160 for side 0, else 0xFEDE0 (`test esi,esi` 0x1636E); then 0x41030(handle, frame,
+ * count, table), whose EAX it returns. */
+static u32 d4b_1631c_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], index = r[R_EDX], frame = r[R_EBX], count = r[R_ECX];
+    u32 handle = DSD(DS_000A8B30 + (camera_char_const(DSB(DS_0010782A + side * 0x94u)) + index) * 4u);
+    const u8 *p = (const u8 *)res_resolve(handle);
+    u32 sp = p != NULL ? (u32)(p - mem) : 0u;
+    s32 height = (mut == 1u) ? (s32)(s16)DSW(sp)                              /* @hsrc: the width word */
+               : (mut == 2u) ? (s32)(u32)DSW(sp + 2u)                         /* @hzext */
+               : (s32)DSD(sp) >> 16;
+    int over = (mut == 3u) ? ((s32)frame > height)                            /* @gt */
+             : (mut == 4u) ? (frame >= (u32)height)                           /* @uns */
+             : ((s32)frame >= height);
+    u32 table, ret;
+    if (over) {
+        if (mut != 5u) count = 1u;                                            /* @nocount1 */
+        frame = (u32)(height - ((mut == 6u) ? 0 : 1));                        /* @last */
+    }
+    if ((s32)(frame + count) > height)
+        count = (u32)(height - ((mut == 7u) ? 0 : (s32)frame));               /* @sumfull */
+    if (mut == 8u) table = (side == 0u) ? 0x000FEDE0u : 0x000FD160u;          /* @table */
+    else if (mut == 9u) table = (side == 1u) ? 0x000FEDE0u : 0x000FD160u;     /* @side1 */
+    else table = (side == 0u) ? 0x000FD160u : 0x000FEDE0u;
+    if (mut == 10u) ret = camera_bitplane_accum(handle, count, frame, table); /* @args */
+    else if (mut == 11u)                                                      /* @handle: the index dropped */
+        ret = camera_bitplane_accum(DSD(DS_000A8B30 + camera_char_const(DSB(DS_0010782A + side * 0x94u)) * 4u),
+                                    frame, count, table);
+    else ret = camera_bitplane_accum(handle, frame, count, table);
+    return (mut == 12u) ? (ret & 0xFFu) : ret;                                /* @al */
+}
+static void b_d4b_1631c(const u32 *r, u32 *eax)
+{
+    *eax = camera_sprite_height(r[R_EAX], r[R_EDX], r[R_EBX], r[R_ECX]);
+}
+#define D4B_SH_MUT(name, n) \
+    static void m_d4b_sh_##name(const u32 *r, u32 *eax) { *eax = d4b_1631c_core(r, n); }
+D4B_SH_MUT(hsrc, 1u)  D4B_SH_MUT(hzext, 2u) D4B_SH_MUT(gt, 3u)    D4B_SH_MUT(uns, 4u)
+D4B_SH_MUT(nocount1, 5u) D4B_SH_MUT(last, 6u) D4B_SH_MUT(sumfull, 7u) D4B_SH_MUT(table, 8u)
+D4B_SH_MUT(side1, 9u) D4B_SH_MUT(args, 10u) D4B_SH_MUT(handle, 11u) D4B_SH_MUT(al, 12u)
+
+/* 0x41030 camera_bitplane_accum: EAX = handle, EDX = frame, EBX = count, ECX = table. The sprite's
+ * width word (`movsx`, 0x41050) gives the byte width (width + 7) / 8 truncating (0x41053..0x41062);
+ * the stream is the handle at the sprite's +8. `frame` rows are skipped (0x4106F..0x410B6), then
+ * `count` rows decoded into table + row * 0x26: the row's byte width zeroed (0x61A70), then runs of
+ * a control byte: bit 7 set = a run of (b & 0x3F) pixels, transparent when bit 6 is set, else one
+ * colour byte follows and the pixels are set; bit 7 clear = (b & 0x7F) literal bytes, all set. One
+ * restatement, one choice flipped per mutant number. */
+static u32 d4b_41030_core(const u32 *r, u32 mut)
+{
+    u32 handle = r[R_EAX], frame = r[R_EDX], count = r[R_EBX], table = r[R_ECX];
+    const u8 *p = (const u8 *)res_resolve(handle);
+    u32 sp = p != NULL ? (u32)(p - mem) : 0u;
+    const u8 *q = (const u8 *)res_resolve(DSD(sp + ((mut == 1u) ? 4u : 8u)));    /* @handle2 */
+    u32 si = q != NULL ? (u32)(q - mem) : 0u;
+    s32 width = (s32)(s16)DSW(sp);
+    u32 byte_width = (mut == 2u) ? (((u32)DSW(sp) + 7u) / 8u)                 /* @wzext */
+                   : (mut == 3u) ? (u32)(width / 8)                           /* @round */
+                   : (u32)((width + 7) / 8);
+    u32 stride = (mut == 4u) ? 0x28u : 0x26u;                                 /* @stride */
+    u8 bit = 0x80u;
+    if (si == 0u) return 0u;
+    for (u32 k = 0; k < frame && mut != 5u; k++) {                            /* @noframe */
+        s32 ww = (s32)(s16)DSW(sp);
+        while (ww > 0) {
+            u8 b = DSB(si); si++;
+            if ((b & 0x80u) != 0) {
+                ww -= (s32)(u32)(b & ((mut == 6u) ? 0x7Fu : 0x3Fu));          /* @skipmask */
+                if ((b & 0x40u) == 0u && mut != 7u) si++;                     /* @skipcolour */
+            } else {
+                u32 rl = (u32)(b & 0x7Fu);
+                if (mut != 8u) si += rl;                                      /* @skiplit */
+                ww -= (s32)rl;
+            }
+        }
+    }
+    if ((s32)count > 0 || mut == 9u) {                                        /* @rows: no count test */
+        u32 row_off = 0, total = count * 0x26u;
+        do {
+            u32 dst = table + row_off * stride / 0x26u;
+            s32 ww = (s32)(s16)DSW(sp);
+            if (mut != 10u) mem_fill(dst, 0, byte_width);                     /* @nofill */
+            if (mut != 11u) bit = 0x80u;                                      /* @bitkeep */
+            if (mut == 12u) bit = 0x40u;                                      /* @msb */
+            while (ww > 0) {
+                u8 b = DSB(si); si++;
+                if ((b & 0x80u) != 0) {
+                    u32 rl = (u32)(b & 0x3Fu);
+                    int draw = (mut == 13u) ? ((b & 0x40u) != 0u) : ((b & 0x40u) == 0u);   /* @transp */
+                    ww -= (s32)rl;
+                    if ((b & 0x40u) == 0u && mut != 14u) si++;                /* @colour */
+                    for (u32 i = 0; i < rl; i++) {
+                        if (draw) DSB(dst) |= bit;
+                        bit >>= 1;
+                        if (bit == 0u) { bit = 0x80u; dst++; }
+                    }
+                } else {
+                    u32 rl = (u32)(b & 0x7Fu);
+                    ww -= (s32)rl;
+                    if (mut != 15u) si += rl;                                 /* @litadv */
+                    for (u32 i = 0; i < rl; i++) {
+                        if (mut != 16u) DSB(dst) |= bit;                      /* @litclear */
+                        bit >>= 1;
+                        if (bit == 0u) { bit = 0x80u; dst++; }
+                    }
+                }
+            }
+            row_off += 0x26u;
+        } while ((s32)row_off < (s32)total);
+    }
+    return (mut == 17u) ? (u32)(s32)(s16)DSW(sp) : byte_width;                /* @ret: the width, not the byte width */
+}
+static void b_d4b_41030(const u32 *r, u32 *eax)
+{
+    *eax = camera_bitplane_accum(r[R_EAX], r[R_EDX], r[R_EBX], r[R_ECX]);
+}
+#define D4B_BA_MUT(name, n) \
+    static void m_d4b_ba_##name(const u32 *r, u32 *eax) { *eax = d4b_41030_core(r, n); }
+D4B_BA_MUT(handle2, 1u) D4B_BA_MUT(wzext, 2u)  D4B_BA_MUT(round, 3u)   D4B_BA_MUT(stride, 4u)
+D4B_BA_MUT(noframe, 5u) D4B_BA_MUT(skipmask, 6u) D4B_BA_MUT(skipcolour, 7u) D4B_BA_MUT(skiplit, 8u)
+D4B_BA_MUT(rows, 9u)    D4B_BA_MUT(nofill, 10u) D4B_BA_MUT(bitkeep, 11u) D4B_BA_MUT(msb, 12u)
+D4B_BA_MUT(transp, 13u) D4B_BA_MUT(colour, 14u) D4B_BA_MUT(litadv, 15u) D4B_BA_MUT(litclear, 16u)
+D4B_BA_MUT(ret, 17u)
+
+/* 0x13D4C / 0x13E28 / 0x13B3C: the three effect producers beside 0x13C70. Each pops the free head
+ * 0xFCCE8 under the lock byte 0x9AF3C (saved, set to 1, 0x249D0, restored), fills the record and
+ * inserts it after the active sentinel 0xFCCE0 with the lock at 1, then clears the lock. The two
+ * list primitives are recorded (run on both sides), so the lock's order is compared at each call.
+ * d4b_fx_take is the pop, shared by the three mutant cores. */
+static u32 d4b_fx_take(u32 mut)
+{
+    u32 rec = DSD(DS_000FCCE8);
+    u8 saved;
+    if (rec == DS_000FCCE8) return 0u;
+    saved = DSB(DS_0009AF3C);
+    if (mut != 101u) DSB(DS_0009AF3C) = 1u;                                   /* @nolock1 */
+    if (mut != 102u) effects_list_unlink(rec);                                /* @nounlink */
+    DSB(DS_0009AF3C) = saved;
+    return rec;
+}
+static void d4b_fx_link(u32 rec, u32 mut, int bump)
+{
+    if (mut != 104u) DSB(DS_0009AF3C) = 1u;                                   /* @nolock2 */
+    if (mut != 105u && mut != 106u) DSB(rec + 0x0Eu) = 1u;                    /* @noe, @elate */
+    effects_list_insert_after((mut == 107u) ? DS_000FCCE8 : DS_000FCCE0, rec);   /* @head */
+    if (mut == 106u) DSB(rec + 0x0Eu) = 1u;
+    if (bump) {
+        if (mut == 108u) DSW(DS_0009AF3D) = (u16)(DSW(DS_0009AF3D) + 1u);     /* @countw */
+        else if (mut != 109u) DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) + 1u); /* @nocount */
+    }
+    if (mut != 110u) DSB(DS_0009AF3C) = 0u;                                   /* @lockend */
+}
+static u32 d4b_13d4c_core(const u32 *r, u32 mut)
+{
+    u32 src = r[R_EAX], rec = d4b_fx_take(mut);
+    const u8 *res;
+    s32 count;
+    if (rec == 0u) return 0u;
+    res = (const u8 *)res_resolve(DSD(src));
+    DSB(rec + 0x0Fu) = (mut == 1u) ? 0x80u : 0u;                              /* @f0f */
+    DSB(rec + 0x0Cu) = (mut == 2u) ? 3u : 4u;                                 /* @type */
+    DSD(rec + 8u) = (mut == 3u) ? DSD(src) : src;                             /* @src */
+    DSB(rec + 0x0Du) = (mut == 4u) ? (u8)(r[R_EDX] >> 8) : (u8)r[R_EDX];      /* @arg */
+    count = (s32)DSD(src + 0x0Cu) + ((mut == 5u) ? 1 : 0);                    /* @extra */
+    for (s32 i = 0; i < count && res != NULL; i++)
+        DSD(rec + ((mut == 6u) ? 0x410u : 0x10u) + (u32)i * 4u)               /* @dst410 */
+            = DSD((u32)(res - mem) + ((mut == 7u) ? 0u : 4u) + (u32)i * 4u);  /* @copy0 */
+    d4b_fx_link(rec, mut, 1);
+    return rec;
+}
+static void b_d4b_13d4c(const u32 *r, u32 *eax) { (void)effects_spawn_darken(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D4B_FD_MUT(name, n) \
+    static void m_d4b_fd_##name(const u32 *r, u32 *eax) { (void)d4b_13d4c_core(r, n); *eax = 0u; }
+D4B_FD_MUT(f0f, 1u)   D4B_FD_MUT(type, 2u)   D4B_FD_MUT(src, 3u)    D4B_FD_MUT(arg, 4u)
+D4B_FD_MUT(extra, 5u) D4B_FD_MUT(dst410, 6u) D4B_FD_MUT(copy0, 7u)  D4B_FD_MUT(nolock1, 101u)
+D4B_FD_MUT(nounlink, 102u) D4B_FD_MUT(nolock2, 104u) D4B_FD_MUT(noe, 105u) D4B_FD_MUT(elate, 106u)
+D4B_FD_MUT(head, 107u) D4B_FD_MUT(countw, 108u) D4B_FD_MUT(nocount, 109u) D4B_FD_MUT(lockend, 110u)
+
+static u32 d4b_13e28_core(const u32 *r, u32 mut)
+{
+    u32 src = r[R_EAX], rec = d4b_fx_take(mut);
+    const u8 *res;
+    s32 count;
+    if (rec == 0u) return 0u;
+    res = (const u8 *)res_resolve(DSD(src));
+    DSB(rec + 0x0Fu) = (mut == 1u) ? 0u : 0x80u;                              /* @f0f */
+    DSB(rec + 0x0Cu) = (mut == 2u) ? 4u : 6u;                                 /* @type */
+    DSD(rec + 8u) = (mut == 3u) ? DSD(src) : src;                             /* @src */
+    DSB(rec + 0x0Du) = (mut == 4u) ? (u8)(r[R_EDX] >> 8) : (u8)r[R_EDX];      /* @arg */
+    count = (s32)DSD(src + 0x0Cu);
+    if (mut == 8u) {                                                          /* @merged: one loop, white last */
+        for (s32 i = 0; i < count && res != NULL; i++) {
+            DSD(rec + 0x410u + (u32)i * 4u) = DSD((u32)(res - mem) + 4u + (u32)i * 4u);
+            DSD(rec + 0x10u + (u32)i * 4u) = 0x00FFFFFFu;
+        }
+    } else {
+        for (s32 i = 0; i < count + ((mut == 5u) ? 1 : 0); i++)               /* @extra */
+            DSD(rec + 0x10u + (u32)i * 4u) = (mut == 9u) ? 0xFFFFFFFFu : 0x00FFFFFFu;   /* @white */
+        for (s32 i = 0; i < count && res != NULL && mut != 10u; i++)          /* @nocopy */
+            DSD(rec + ((mut == 6u) ? 0x40Cu : 0x410u) + (u32)i * 4u)          /* @dst40c */
+                = DSD((u32)(res - mem) + ((mut == 7u) ? 0u : 4u) + (u32)i * 4u);   /* @copy0 */
+    }
+    d4b_fx_link(rec, mut, 1);
+    return rec;
+}
+static void b_d4b_13e28(const u32 *r, u32 *eax) { (void)effects_spawn_pulse(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D4B_FP_MUT(name, n) \
+    static void m_d4b_fp_##name(const u32 *r, u32 *eax) { (void)d4b_13e28_core(r, n); *eax = 0u; }
+D4B_FP_MUT(f0f, 1u)   D4B_FP_MUT(type, 2u)   D4B_FP_MUT(src, 3u)    D4B_FP_MUT(arg, 4u)
+D4B_FP_MUT(extra, 5u) D4B_FP_MUT(dst40c, 6u) D4B_FP_MUT(copy0, 7u)  D4B_FP_MUT(merged, 8u)
+D4B_FP_MUT(white, 9u) D4B_FP_MUT(nocopy, 10u) D4B_FP_MUT(nolock1, 101u) D4B_FP_MUT(nounlink, 102u)
+D4B_FP_MUT(nolock2, 104u) D4B_FP_MUT(noe, 105u) D4B_FP_MUT(elate, 106u) D4B_FP_MUT(head, 107u)
+D4B_FP_MUT(countw, 108u) D4B_FP_MUT(nocount, 109u) D4B_FP_MUT(lockend, 110u)
+
+/* 0x13B3C effects_spawn_scroll: EAX = source, DL = offset, BL = flag, CL = count (the three bytes
+ * saved at [esp+8], [esp+4], [esp], 0x13B43..0x13B4B). It returns the record (`mov eax,esi`
+ * 0x13C68) and does not bump 0x9AF3D. */
+static u32 d4b_13b3c_core(const u32 *r, u32 mut)
+{
+    u32 src = r[R_EAX], rec = d4b_fx_take(mut), res;
+    s8 off = (s8)r[R_EDX];
+    u8 fl = (u8)((mut == 1u) ? r[R_ECX] : r[R_EBX]);                          /* @swap: flag and count exchanged */
+    u8 n = (u8)((mut == 1u) ? r[R_EBX] : r[R_ECX]);
+    const u8 *p;
+    if (rec == 0u) return 0u;
+    p = (const u8 *)res_resolve(DSD(src));
+    res = p != NULL ? (u32)(p - mem) : 0u;
+    if (res != 0u) {
+        if (off < 0 && mut != 2u) {                                           /* @fwd: no descending arm */
+            u32 sp = (off == -0x80 && mut != 3u) ? res + (u32)n * 4u          /* @no80 */
+                   : res + 4u + (u32)n * 4u - (u32)((s32)off * 4) * ((mut == 4u) ? 0xFFFFFFFFu : 1u);   /* @descsign */
+            for (s32 j = (mut == 5u) ? 1 : 0; j <= (s32)n; j++) {             /* @descn: count runs, not count + 1 */
+                u32 v = DSD(sp), idx = (u32)n - (u32)j;
+                sp -= 4u;
+                if (mut != 6u) DSD(rec + 0x14u + idx * 4u) = v;               /* @no14 */
+                if (mut != 7u) DSD(rec + 0x414u + idx * 4u) = v;              /* @no414 */
+            }
+        } else {
+            u32 sp = res + ((mut == 8u) ? 0u : 4u) + (u32)((s32)off * 4);     /* @fwdoff */
+            for (u32 i = 0; i < n; i++) {
+                u32 v = DSD(sp + i * 4u);
+                if (mut != 6u) DSD(rec + 0x14u + i * 4u) = v;
+                if (mut != 7u) DSD(rec + 0x414u + i * 4u) = v;
+            }
+        }
+    }
+    if ((mut == 9u) ? (fl != 0u) : (fl == 0u)) {                              /* @type0 */
+        DSB(rec + 0x0Cu) = 0u;
+        DSB(rec + 0x0Eu) = 0u;
+    } else {
+        DSB(rec + 0x0Cu) = 2u;
+        DSB(rec + 0x0Eu) = (mut == 10u) ? 0u : 1u;                            /* @e0 */
+    }
+    DSD(rec + 8u) = (mut == 11u) ? DSD(src) : src;                            /* @src */
+    DSB(rec + 0x0Du) = (mut == 12u) ? (u8)off : fl;                           /* @d */
+    if (mut == 13u) DSD(rec + 0x10u) = (u32)(s32)off;                         /* @off10w */
+    else DSB(rec + 0x10u) = (mut == 14u) ? fl : (u8)off;                      /* @off10 */
+    DSB(rec + 0x0Fu) = (mut == 15u) ? fl : n;                                 /* @f0f */
+    if (mut != 104u) DSB(DS_0009AF3C) = 1u;                                   /* @nolock2 */
+    effects_list_insert_after((mut == 107u) ? DS_000FCCE8 : DS_000FCCE0, rec);   /* @head */
+    if (mut == 16u) DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) + 1u);           /* @bump */
+    if (mut != 110u) DSB(DS_0009AF3C) = 0u;                                   /* @lockend */
+    return (mut == 17u) ? 0u : rec;                                           /* @ret0 */
+}
+static void b_d4b_13b3c(const u32 *r, u32 *eax)
+{
+    *eax = effects_spawn_scroll(r[R_EAX], (s32)r[R_EDX], r[R_ECX], r[R_EBX]);
+}
+#define D4B_FS_MUT(name, n) \
+    static void m_d4b_fs_##name(const u32 *r, u32 *eax) { *eax = d4b_13b3c_core(r, n); }
+D4B_FS_MUT(swap, 1u)  D4B_FS_MUT(fwd, 2u)    D4B_FS_MUT(no80, 3u)   D4B_FS_MUT(descsign, 4u)
+D4B_FS_MUT(descn, 5u) D4B_FS_MUT(no14, 6u)   D4B_FS_MUT(no414, 7u)  D4B_FS_MUT(fwdoff, 8u)
+D4B_FS_MUT(type0, 9u) D4B_FS_MUT(e0, 10u)    D4B_FS_MUT(src, 11u)   D4B_FS_MUT(d, 12u)
+D4B_FS_MUT(off10w, 13u) D4B_FS_MUT(off10, 14u) D4B_FS_MUT(f0f, 15u) D4B_FS_MUT(bump, 16u)
+D4B_FS_MUT(ret0, 17u) D4B_FS_MUT(nolock1, 101u) D4B_FS_MUT(nounlink, 102u) D4B_FS_MUT(nolock2, 104u)
+D4B_FS_MUT(head, 107u) D4B_FS_MUT(lockend, 110u)
+
+/* 0x140E4 camera_box_overlap: EAX, EDX = the two actors' pset indices. Per actor (0x140EE..0x141A7,
+ * 0x141AB..0x14252): the sprite is the handle at 0xA8B30 + (word[actor] & 0x7FFF) * 4, resolved;
+ * its origin is the words at +4 and +6 (`mov ecx,[eax+2]; sar ecx,0x10`, `mov edi,[eax+4]; sar
+ * edi,0x10`), the x origin mirrored to width - origin - 1 when the actor word's bit 15 is set
+ * (0x1412E..0x14137); x1 = ((actor+4 >> 6) * 0xF3D + 0x800) / 0x1000 truncating, minus the origin,
+ * y1 the same with actor+8 and 0xD56; x2 = x1 + the width word (`movsx`), y2 = y1 + the height
+ * (the first dword `sar 16`). Then 0x14080 clips the first rect by the second and returns AL. */
+static void d4b_140e4_rect(u32 idx, int rect[4], u32 mut, int second)
+{
+    u32 actor = DSD(DS_001014EC) + idx * ((mut == 1u) ? 0x10u : 0x20u);      /* @stride */
+    u32 word = DSW(actor);
+    u32 id = (mut == 2u) ? word : (word & 0x7FFFu);                           /* @idmask */
+    const u8 *p = (const u8 *)res_resolve(DSD(DS_000A8B30 + id * 4u));
+    u32 off = p != NULL ? (u32)(p - mem) : 0u;
+    s32 la = 0, lb = 0, w = 0, h = 0, x, y, kx, ky;
+    int flip = (mut == 3u) ? 0 : (mut == 4u) ? 1 : ((word & 0x8000u) != 0u);  /* @noflip, @flipall */
+    if (off != 0u) {
+        la = (mut == 5u) ? (s32)(s16)DSW(off + 2u) : (s32)DSD(off + 2u) >> 16;   /* @ox */
+        lb = (mut == 6u) ? (s32)(s16)DSW(off + 4u) : (s32)DSD(off + 4u) >> 16;   /* @oy */
+        w = (mut == 7u) ? (s32)(u32)DSW(off) : (s32)(s16)DSW(off);            /* @wzext */
+        h = (mut == 8u) ? (s32)(u32)DSW(off + 2u) : (s32)DSD(off) >> 16;      /* @hzext */
+        if (mut == 9u) { s32 t = w; w = h; h = t; }                           /* @wh */
+        if (flip) la = w - la - ((mut == 10u) ? 0 : 1);                       /* @flip1 */
+    }
+    kx = (mut == 11u) ? 0xD56 : 0xF3D;                                        /* @kx */
+    ky = (mut == 12u) ? 0xF3D : 0xD56;                                        /* @ky */
+    x = (s32)DSD(actor + ((mut == 13u) ? 8u : 4u)) >> ((mut == 14u) ? 5 : 6); /* @ax, @shift */
+    y = (s32)DSD(actor + ((mut == 15u) ? 4u : 8u)) >> 6;                      /* @ay */
+    x = (s32)((u32)x * (u32)kx + ((mut == 16u) ? 0u : 0x800u));               /* @round */
+    y = (s32)((u32)y * (u32)ky + 0x800u);
+    x = (mut == 17u) ? (x >> 12) : (x / 0x1000);                              /* @floor */
+    y = (mut == 18u) ? (y >> 12) : (y / 0x1000);                              /* @floory */
+    if (mut == 19u && second) { la = 0; }                                     /* @second: the second actor's x origin dropped */
+    rect[0] = x - la;
+    rect[1] = y - lb;
+    rect[2] = rect[0] + w;
+    rect[3] = rect[1] + h;
+}
+static u32 d4b_140e4_core(const u32 *r, u32 mut)
+{
+    int a[4], b[4];
+    d4b_140e4_rect(r[R_EAX], a, mut, 0);
+    d4b_140e4_rect((mut == 20u) ? r[R_EAX] : r[R_EDX], b, mut, 1);            /* @same: the first actor twice */
+    return (u32)camera_rect_clip(a, a, b);
+}
+static void b_d4b_140e4(const u32 *r, u32 *eax) { *eax = (u32)camera_box_overlap(r[R_EAX], r[R_EDX]); }
+#define D4B_BO_MUT(name, n) \
+    static void m_d4b_bo_##name(const u32 *r, u32 *eax) { *eax = d4b_140e4_core(r, n); }
+D4B_BO_MUT(stride, 1u) D4B_BO_MUT(idmask, 2u) D4B_BO_MUT(noflip, 3u) D4B_BO_MUT(flipall, 4u)
+D4B_BO_MUT(ox, 5u)     D4B_BO_MUT(oy, 6u)     D4B_BO_MUT(wzext, 7u)  D4B_BO_MUT(hzext, 8u)
+D4B_BO_MUT(wh, 9u)     D4B_BO_MUT(flip1, 10u) D4B_BO_MUT(kx, 11u)    D4B_BO_MUT(ky, 12u)
+D4B_BO_MUT(ax, 13u)    D4B_BO_MUT(shift, 14u) D4B_BO_MUT(ay, 15u)    D4B_BO_MUT(round, 16u)
+D4B_BO_MUT(floor, 17u) D4B_BO_MUT(floory, 18u) D4B_BO_MUT(second, 19u) D4B_BO_MUT(same, 20u)
+
+/* 0x17BC8 camera_projectile_clash: no argument. 0x140E4(word[rec0+0x56], word[rec1+0x56]) with rec0 =
+ * [0x1077B8], rec1 = [0x10784C]; AL zero returns it (`test al,al; je` 0x17BEF). Then 0x181D0(0x20,
+ * 0x20, [0x100AA8] - [0x100AAC], 0x100B1C; 0x100B14, 0x100B28, 0x100B34, 0x100B24) and 0x181D0(0x20,
+ * 0x20, [0x100AA0] - [0x100AA4], 0x100B18; 0x100B10, 0x100B2C, 0x100B30, 0x100B20), each `and
+ * eax,0xff; jne` to AL = 0; then both dwords 0x100B1C and 0x100B18 must be positive (`jle` 0x17C78,
+ * 0x17C81); then the voice 0x64, 0x3B938(0x1077B0), 0x2B150([0x10784C]) and AL = 1. */
+static u32 d4b_17bc8_core(u32 mut)
+{
+    u32 r0 = DSD((mut == 1u) ? DS_0010784C : DS_001077B8);                   /* @rec0 */
+    u32 r1 = DSD((mut == 2u) ? DS_001077B8 : DS_0010784C);                   /* @rec1 */
+    u32 i0 = (mut == 3u) ? DSD(r0 + 0x56u) : (u32)DSW(r0 + 0x56u);           /* @idxw */
+    u32 i1 = (mut == 4u) ? (u32)DSW(r1 + 0x54u) : (u32)DSW(r1 + 0x56u);      /* @idxoff */
+    s32 dx, dy;
+    u32 v;
+    v = (u32)camera_box_overlap(i0, i1);
+    if (((mut == 5u) ? v : (v & 0xFFu)) == 0u) return 0u;                    /* @al140: the port before the fix */
+    dx = (s32)DSD(DS_00100AA8) - (s32)DSD(DS_00100AAC);
+    dy = (s32)DSD(DS_00100AA0) - (s32)DSD(DS_00100AA4);
+    if (mut == 6u) dx = -dx;                                                  /* @dxsign */
+    if (mut == 7u) dy = -dy;                                                  /* @dysign */
+    if (mut == 8u) v = (u32)camera_sync_visible(0x20u, 0x20u, dx, DS_00100B1C, DS_00100B28, DS_00100B14,
+                                                DS_00100B34, DS_00100B24);   /* @outs: two out pointers exchanged */
+    else v = (u32)camera_sync_visible((mut == 9u) ? 0x10u : 0x20u, 0x20u, dx, DS_00100B1C, DS_00100B14,
+                                      DS_00100B28, DS_00100B34, DS_00100B24);   /* @p1 */
+    if (((mut == 10u) ? v : (v & 0xFFu)) != 0u && mut != 11u) return 0u;     /* @alsync, @nofirst */
+    v = (u32)camera_sync_visible(0x20u, 0x20u, (mut == 12u) ? dx : dy, DS_00100B18, DS_00100B10,   /* @dydx */
+                                 DS_00100B2C, DS_00100B30, DS_00100B20);
+    if (((mut == 13u) ? v : (v & 0xFFu)) != 0u && mut != 14u) return 0u;     /* @alsync2, @nosecond */
+    if (mut == 15u) { if ((s32)DSD(DS_00100B1C) < 0) return 0u; }            /* @b1cz: zero passes */
+    else if (mut == 16u) { if (DSD(DS_00100B1C) == 0u) return 0u; }          /* @b1cneg: a negative passes */
+    else if (mut != 17u && (s32)DSD(DS_00100B1C) <= 0) return 0u;            /* @nob1c */
+    if (mut == 18u) { if ((s32)DSD(DS_00100B18) < 0) return 0u; }            /* @b18z */
+    else if (mut == 19u) { if (DSD(DS_00100B18) == 0u) return 0u; }          /* @b18neg */
+    else if (mut != 20u && (s32)DSD(DS_00100B18) <= 0) return 0u;            /* @nob18 */
+    if (mut == 24u) actor_set_dead(DSD(DS_0010784C));                        /* @order: the kill first */
+    if (mut != 21u) (void)sound_voice((mut == 22u) ? 0x65u : 0x64u);          /* @novoice, @voice */
+    fighter_3b938((mut == 23u) ? DS_001077B0 + 0x94u : DS_001077B0);          /* @burst */
+    if (mut != 24u) actor_set_dead(DSD((mut == 25u) ? DS_001077B8 : DS_0010784C));   /* @kill */
+    return (mut == 26u) ? 0u : 1u;                                            /* @ret */
+}
+static void b_d4b_17bc8(const u32 *r, u32 *eax) { (void)r; *eax = (u32)camera_projectile_clash(); }
+#define D4B_PC_MUT(name, n) \
+    static void m_d4b_pc_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4b_17bc8_core(n); }
+D4B_PC_MUT(rec0, 1u)  D4B_PC_MUT(rec1, 2u)   D4B_PC_MUT(idxw, 3u)   D4B_PC_MUT(idxoff, 4u)
+D4B_PC_MUT(al140, 5u) D4B_PC_MUT(dxsign, 6u) D4B_PC_MUT(dysign, 7u) D4B_PC_MUT(outs, 8u)
+D4B_PC_MUT(p1, 9u)    D4B_PC_MUT(alsync, 10u) D4B_PC_MUT(nofirst, 11u) D4B_PC_MUT(dydx, 12u)
+D4B_PC_MUT(alsync2, 13u) D4B_PC_MUT(nosecond, 14u) D4B_PC_MUT(b1cz, 15u) D4B_PC_MUT(b1cneg, 16u)
+D4B_PC_MUT(nob1c, 17u) D4B_PC_MUT(b18z, 18u)  D4B_PC_MUT(b18neg, 19u) D4B_PC_MUT(nob18, 20u)
+D4B_PC_MUT(novoice, 21u) D4B_PC_MUT(voice, 22u) D4B_PC_MUT(burst, 23u) D4B_PC_MUT(order, 24u)
+D4B_PC_MUT(kill, 25u) D4B_PC_MUT(ret, 26u)
+
+/* 0x17FA0 camera_project: EAX = side, EDX = out_a, EBX = out_b, ECX = facing, [esp+4] = page_flag,
+ * [esp+8] = index_out (`ret 8`). One restatement of camera.c's body, one choice flipped per mutant
+ * number; the page tails and the bit-15 predicate go through their seamed C functions. */
+static void d4b_17fa0_anchor(u32 rec_at, u32 ch_at, u32 y_at, u32 x_at, u32 mut, int second)
+{
+    u32 r = DSD(rec_at);
+    if (r != 0u || mut == 1u) {                                              /* @nullskip */
+        u32 actor = DSD(DS_001014EC) + (u32)DSW(r + 0x56u) * 0x20u;
+        s32 adj = (s32)DSD(DS_000A174C + (u32)DSB((mut == 2u && second) ? DS_0010782A : ch_at) * 4u);   /* @anchor2 */
+        s16 w34 = (s16)DSW(r + 0x34u);
+        int neg = (mut == 3u) ? (w34 >= 0) : (mut == 4u) ? (DSW(r + 0x34u) != 0u) : (w34 > 0);   /* @adjge, @adjuns */
+        DSD(y_at) = (u32)((s32)DSD(actor + ((mut == 5u) ? 4u : 8u)) >> 6);   /* @aay */
+        if (neg) adj = -adj;
+        if (mut == 6u) adj = 0;                                               /* @noadj */
+        DSD(x_at) = (u32)((s32)DSD(actor + 4u) >> 6) + (u32)adj;
+    }
+}
+static u32 d4b_17fa0_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], out_a = r[R_EDX], out_b = r[R_EBX], facing = r[R_ECX];
+    u32 page_flag = r[R_S0], index_out = r[R_S1];
+    u32 p, actor, sprite, v;
+    d4b_17fa0_anchor(DS_001077B8, DS_0010782A, DS_00100AA0, DS_00100AA8, mut, 0);
+    d4b_17fa0_anchor(DS_0010784C, DS_001078BE, DS_00100AA4, DS_00100AAC, mut, 1);
+    p = DSD(DS_001077B0 + side * 0x94u);
+    if (mut == 7u) DSD(facing) = (u32)((DSW(p + 0x28u) & 0x4000u) != 0);     /* @facingw */
+    else DSB(facing) = (u8)((DSW(p + 0x28u) & ((mut == 8u) ? 0x8000u : 0x4000u)) != 0);   /* @facingbit */
+    if (mut != 9u) DSB(page_flag) = 0;                                        /* @noclear */
+    actor = DSD(DS_001014EC) + (u32)DSW(p + 0x56u) * 0x20u;
+    DSD(index_out) = ((u32)DSW(actor) & ((mut == 10u) ? 0xFFFFu : 0x7FFFu))   /* @index */
+        - camera_char_const(DSB(DS_0010782A + ((mut == 11u) ? 1u - side : side) * 0x94u));   /* @indexside */
+    if (mut == 12u) goto tail_b;                                              /* @order: the second tail first */
+tail_a:
+    v = (u32)camera_page_tail_a(side, DS_00100A78 + side * 4u);
+    if (((mut == 13u) ? v : (v & 0xFFu)) != 0u)                               /* @ala: the port before the fix */
+        DSD(DS_00100AC0 + side * 4u) = DSD(((mut == 14u) ? DS_00100A90 : DS_00100A78) + side * 4u);   /* @ac0src */
+    else if (mut != 15u) mem_fill(DS_00100AC0 + side * 4u, 0, 4u);            /* @ac0keep */
+    if (mut == 12u) goto rest;
+tail_b:
+    v = (u32)camera_page_tail_b(side, DS_00100A90 + side * 4u);
+    if (((mut == 16u) ? v : (v & 0xFFu)) != 0u) {                             /* @alb: the port before the fix */
+        if (mut != 17u) DSB(page_flag) = 1;                                   /* @noflag */
+        DSD(DS_00100AC8 + side * 4u) = DSD(DS_00100A90 + side * 4u);
+    } else if (mut != 18u) {                                                  /* @ac8keep */
+        mem_fill(DS_00100AC8 + side * 4u, 0, 4u);
+    }
+    if (mut == 12u) goto tail_a;
+rest:
+    DSD(out_a) = (u32)(((s32)DSD(actor + 4u) + ((mut == 19u) ? 0 : 0x20)) >> 6);   /* @outa20 */
+    DSD(out_b) = (u32)(((s32)DSD(actor + ((mut == 20u) ? 4u : 8u)) + 0x20) >> 6);  /* @outb */
+    sprite = camera_resolve_sprite(side, DSD(index_out));
+    if (sprite != 0u) {
+        s32 la = (mut == 27u) ? (s32)(DSD(sprite + 2u) >> 16) : ((s32)DSD(sprite + 2u) >> 16);   /* @originzx: the port before the fix */
+        s32 lb = (mut == 28u) ? (s32)(DSD(sprite + 4u) >> 16) : ((s32)DSD(sprite + 4u) >> 16);   /* @originzy: the port before the fix */
+        v = (u32)fighter_actor_bit15_clear(side);
+        if (((mut == 21u) ? v : (v & 0xFFu)) == 0u || mut == 22u)             /* @al15: the port before the fix; @mirrorall */
+            la = (s32)(s16)DSW(sprite) - la - ((mut == 23u) ? 0 : 1);         /* @mirror1 */
+        if (mut == 24u) { s32 t = la; la = lb; lb = t; }                      /* @subswap */
+        if (mut != 25u) DSD(out_b) = (u32)((s32)DSD(out_b) - lb);             /* @nosubb */
+        if (mut != 26u) DSD(out_a) = (u32)((s32)DSD(out_a) - la);             /* @nosuba */
+    }
+    return 0u;
+}
+static void b_d4b_17fa0(const u32 *r, u32 *eax)
+{
+    camera_project(r[R_EAX], r[R_EDX], r[R_EBX], r[R_ECX], r[R_S0], r[R_S1]);
+    *eax = 0u;
+}
+#define D4B_PJ_MUT(name, n) \
+    static void m_d4b_pj_##name(const u32 *r, u32 *eax) { *eax = d4b_17fa0_core(r, n); }
+D4B_PJ_MUT(nullskip, 1u) D4B_PJ_MUT(anchor2, 2u) D4B_PJ_MUT(adjge, 3u)  D4B_PJ_MUT(adjuns, 4u)
+D4B_PJ_MUT(aay, 5u)    D4B_PJ_MUT(noadj, 6u)   D4B_PJ_MUT(facingw, 7u)  D4B_PJ_MUT(facingbit, 8u)
+D4B_PJ_MUT(noclear, 9u) D4B_PJ_MUT(index, 10u) D4B_PJ_MUT(indexside, 11u) D4B_PJ_MUT(order, 12u)
+D4B_PJ_MUT(ala, 13u)   D4B_PJ_MUT(ac0src, 14u) D4B_PJ_MUT(ac0keep, 15u) D4B_PJ_MUT(alb, 16u)
+D4B_PJ_MUT(noflag, 17u) D4B_PJ_MUT(ac8keep, 18u) D4B_PJ_MUT(outa20, 19u) D4B_PJ_MUT(outb, 20u)
+D4B_PJ_MUT(al15, 21u)  D4B_PJ_MUT(mirrorall, 22u) D4B_PJ_MUT(mirror1, 23u) D4B_PJ_MUT(subswap, 24u)
+D4B_PJ_MUT(nosubb, 25u) D4B_PJ_MUT(nosuba, 26u) D4B_PJ_MUT(originzx, 27u) D4B_PJ_MUT(originzy, 28u)
+
+/* 0x15C30 camera_box_clip: EAX = side, EDX = index, EBX = the 4-byte box {x, y, width, height}. The
+ * side's actor rect as 0x140E4 builds it (x1, y1, x2, y2; 0x15C47..0x15D19), then 0x15B90(side,
+ * &a, &b, index) and dx = ((actor+4 sar 6) * 0xF3D + 0x800) / 0x1000 - (a * 0xF3D + 0x800) / 0x1000,
+ * dy the same with actor+8, b and 0xD56 (0x15D28..0x15DA1). The box is scaled in place as bytes (x
+ * and width `shl 2`, y and height `mul 3`: 0x15DA3..0x15DBF), then clipped to the rect per axis. */
+static s32 d4b_15c30_div(u32 x, u32 k) { return (s32)(x * k + 0x800u) / 0x1000; }
+static void d4b_15c30_axis(u8 *pos, u8 *len, s32 d, s32 lo, s32 hi, u32 mut, u32 base)
+{
+    u8 c = (u8)((u8)lo - (u8)d);
+    s32 acc = (mut == base) ? (s32)(u8)(*pos + (u8)d) : (s32)*pos + d;      /* @acc8 / @yacc8: the sum as a byte */
+    if (acc < lo) {
+        if (acc + ((mut == base + 1u) ? (s32)(s8)*len : (s32)*len) < lo) {   /* @lensext / @ylensext */
+            *pos = 0;
+            if (mut != base + 2u) *len = 0;                                   /* @nozero / @ynozero */
+        } else {
+            u8 b0 = *pos;
+            *pos = 0;
+            *len = (u8)(*len - (u8)(c - ((mut == base + 3u) ? 0u : b0)));     /* @partb0 / @ypartb0 */
+        }
+    } else {
+        *pos = (u8)(*pos - c);
+    }
+    if ((mut == base + 4u) ? (hi <= (s32)*pos + lo) : (hi < (s32)*pos + lo)) {   /* @gt / @ygt */
+        if (mut != base + 5u) *pos = 0;                                       /* @rzero / @yrzero */
+        *len = 0;
+    } else {
+        s32 t = (s32)*pos + lo + (s32)*len;
+        if (hi < t && mut != base + 6u) *len = (u8)(*len - (u8)(t - hi));     /* @notrim / @ynotrim */
+    }
+}
+static u32 d4b_15c30_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], index = r[R_EDX];
+    u8 *box = mem + r[R_EBX];
+    u32 rec = DSD(DS_001077B0 + side * 0x94u);
+    u32 idx = DSW(rec + 0x56u), actor = DSD(DS_001014EC) + idx * 0x20u;
+    int rect[4];
+    u32 a, b;
+    s32 px, py, dx, dy;
+    d4b_140e4_rect(idx, rect, (mut == 1u) ? 3u : (mut == 2u) ? 9u : 0u, 0);   /* @flip, @wh: the rect's own mutants */
+    camera_box_palette((mut == 3u) ? 1u - side : side, &a, &b, (mut == 4u) ? index + 1u : index);   /* @palside, @palidx */
+    px = d4b_15c30_div((u32)((s32)DSD(actor + 4u) >> 6), (mut == 5u) ? 0xD56u : 0xF3Du);   /* @dxk */
+    py = d4b_15c30_div((u32)((s32)DSD(actor + 8u) >> 6), (mut == 6u) ? 0xF3Du : 0xD56u);   /* @dyk */
+    dx = px - ((mut == 7u) ? d4b_15c30_div((u32)((s32)a >> 6), 0xF3Du) : d4b_15c30_div(a, (mut == 8u) ? 0xD56u : 0xF3Du));   /* @outa6, @pak */
+    dy = py - d4b_15c30_div((mut == 9u) ? a : b, (mut == 10u) ? 0xF3Du : 0xD56u);   /* @dyb, @pbk */
+    box[0] = (u8)(box[0] << ((mut == 11u) ? 1 : 2));                          /* @shl */
+    box[1] = (u8)(box[1] * ((mut == 12u) ? 4u : 3u));                         /* @mul */
+    if (mut != 13u) box[2] = (u8)(box[2] << 2);                               /* @b2shl */
+    if (mut != 14u) box[3] = (u8)(box[3] * 3u);                               /* @b3mul */
+    d4b_15c30_axis(&box[0], &box[2], dx, rect[0], (mut == 16u) ? rect[3] : rect[2], mut, 20u);   /* @x2y2 */
+    d4b_15c30_axis(&box[1], &box[3], (mut == 17u) ? dx : dy, rect[1], rect[3], mut, 40u);        /* @dydx */
+    return 0u;
+}
+static void b_d4b_15c30(const u32 *r, u32 *eax)
+{
+    camera_box_clip(r[R_EAX], r[R_EDX], mem + r[R_EBX]);
+    *eax = 0u;
+}
+#define D4B_BC_MUT(name, n) \
+    static void m_d4b_bc_##name(const u32 *r, u32 *eax) { *eax = d4b_15c30_core(r, n); }
+D4B_BC_MUT(flip, 1u)  D4B_BC_MUT(wh, 2u)     D4B_BC_MUT(palside, 3u) D4B_BC_MUT(palidx, 4u)
+D4B_BC_MUT(dxk, 5u)   D4B_BC_MUT(dyk, 6u)    D4B_BC_MUT(outa6, 7u)   D4B_BC_MUT(pak, 8u)
+D4B_BC_MUT(dyb, 9u)   D4B_BC_MUT(pbk, 10u)   D4B_BC_MUT(shl, 11u)    D4B_BC_MUT(mul, 12u)
+D4B_BC_MUT(b2shl, 13u) D4B_BC_MUT(b3mul, 14u) D4B_BC_MUT(x2y2, 16u)
+D4B_BC_MUT(dydx, 17u)
+D4B_BC_MUT(acc8, 20u) D4B_BC_MUT(lensext, 21u) D4B_BC_MUT(nozero, 22u) D4B_BC_MUT(partb0, 23u)
+D4B_BC_MUT(gt, 24u)   D4B_BC_MUT(rzero, 25u) D4B_BC_MUT(notrim, 26u)
+D4B_BC_MUT(yacc8, 40u) D4B_BC_MUT(ylensext, 41u) D4B_BC_MUT(ynozero, 42u) D4B_BC_MUT(ypartb0, 43u)
+D4B_BC_MUT(ygt, 44u)  D4B_BC_MUT(yrzero, 45u) D4B_BC_MUT(ynotrim, 46u)
+
+#include "platform/sprite.h"             /* SpriteNode, for the 0x14268 / 0x1C528 / 0x51E5C rows */
+
+/* 0x14268 sprite_node_build (and its second copy 0x1C528, the same bytes but for the call's rel32):
+ * EAX = the node, DX = the sprite id. The port's node is a C struct (sprite.h): the binding loads it
+ * from the raw node's bytes at EAX, runs the C function and stores back the six fields the raw
+ * writes and the C struct has at the same offsets: +0x08 xorg, +0x0C yorg, +0x10 type, +0x14 rows,
+ * +0x18 width, +0x20 pixel handle. Not compared (record §4): the raw's +0x24 (the descriptor handle,
+ * `mov [ebx+0x24],eax` 0x14287; the C struct keeps none) and the C function's own zeroing of
+ * pal_ptr, the clip fields, stride and row (PORT, sprite.c). */
+static u32 d4b_14268_core(const u32 *r, u32 mut)
+{
+    u32 at = r[R_EAX], id = r[R_EDX] & 0xFFFFu;
+    SpriteNode n;
+    memcpy(&n, mem + at, sizeof n);
+    if (mut == 0u) {
+        sprite_node_build(&n, id);
+    } else if (id == 0u) {
+        n.rows = n.width = n.xorg = 0;
+        if (mut != 1u) n.yorg = 0;                                            /* @zero: +0x0C kept */
+        if (mut == 2u) n.type = 0u;                                           /* @zerotype */
+    } else {
+        u32 h = DSD(DS_000A8B30 + ((mut == 3u) ? id : (id & 0x7FFFu)) * 4u);  /* @mask */
+        const u8 *p = (const u8 *)res_resolve(h);
+        u32 d = p != NULL ? (u32)(p - mem) : 0u;
+        s32 height = (mut == 4u) ? (s32)(u32)DSW(d + 2u) : (s32)(s16)DSW(d + 2u);   /* @hzext */
+        s32 width = (s32)(s16)DSW(d);
+        int neg = (mut == 5u) ? (height <= 0) : (height < 0);                 /* @le: a zero height taken as raw */
+        if (neg) {
+            n.rows = -height;
+            n.width = (mut == 6u) ? width : -width;                           /* @negw */
+            n.type = (mut == 7u) ? 1u : 2u;                                   /* @type */
+        } else {
+            n.rows = height;
+            n.width = width;
+            n.type = (mut == 7u) ? 2u : 1u;
+        }
+        n.pixel_handle = DSD(d + ((mut == 8u) ? 4u : 8u));                    /* @pix */
+        n.xorg = (mut == 9u) ? (s32)(u32)DSW(d + 4u) : (s32)(s16)DSW(d + 4u); /* @xzext */
+        n.yorg = (mut == 10u) ? (s32)(s16)DSW(d + 4u) : (s32)(s16)DSW(d + 6u);   /* @yorg */
+        if ((id & 0x8000u) != 0u && mut != 11u) {                             /* @nohflip */
+            if (mut != 12u) n.type |= 8u;                                     /* @hflip8 */
+            if (mut == 13u) n.xorg = width - n.xorg - 1;                      /* @mirrorw: the header's width, not the node's */
+            else if (mut != 14u) n.xorg = n.width - n.xorg - ((mut == 15u) ? 0 : 1);   /* @nomirror, @mirror1 */
+        }
+    }
+    DSD(at + 0x08u) = (u32)n.xorg;
+    DSD(at + 0x0Cu) = (u32)n.yorg;
+    DSD(at + 0x10u) = n.type;
+    DSD(at + 0x14u) = (u32)n.rows;
+    DSD(at + 0x18u) = (u32)n.width;
+    DSD(at + 0x20u) = n.pixel_handle;
+    return 0u;
+}
+static void b_d4b_14268(const u32 *r, u32 *eax) { *eax = d4b_14268_core(r, 0u); }
+#define D4B_NB_MUT(name, n) \
+    static void m_d4b_nb_##name(const u32 *r, u32 *eax) { *eax = d4b_14268_core(r, n); }
+D4B_NB_MUT(zero, 1u)  D4B_NB_MUT(zerotype, 2u) D4B_NB_MUT(mask, 3u)  D4B_NB_MUT(hzext, 4u)
+D4B_NB_MUT(le, 5u)    D4B_NB_MUT(negw, 6u)   D4B_NB_MUT(type, 7u)    D4B_NB_MUT(pix, 8u)
+D4B_NB_MUT(xzext, 9u) D4B_NB_MUT(yorg, 10u)  D4B_NB_MUT(nohflip, 11u) D4B_NB_MUT(hflip8, 12u)
+D4B_NB_MUT(mirrorw, 13u) D4B_NB_MUT(nomirror, 14u) D4B_NB_MUT(mirror1, 15u)
+
+#define D4B_BDF7C 0x000BDF7Cu              /* the two spawn-descriptor tables (render.c's own defines) */
+#define D4B_BDF9C 0x000BDF9Cu
+
+/* 0x387F4 render_scroll_scene_a: EAX = the scene index; EBX is the caller's (0x38730 keeps the index
+ * there: `mov ebx,eax` 0x38733, `mov eax,ebx` 0x387CF) and stays the subtrahend's base when the
+ * sprite's height is not negative (`jge` 0x38820 skips `mov ebx,eax; neg ebx`). */
+static u32 d4b_387f4_core(const u32 *r, u32 mut)
+{
+    u32 i = r[R_EAX], desc, pv;
+    const u8 *p;
+    s32 v, x;
+    static const u32 pal[4] = { 0x105FF3Cu, 0x080997Cu, 0x0809984u, 0x080998Cu };
+    if (mut == 1u) DSW(DS_00107A55) = (u16)DSB(DS_000A8A18 + i);              /* @a55w */
+    else DSB(DS_00107A55) = DSB(DS_000A8A18 + ((mut == 2u) ? 0u : i));        /* @i */
+    desc = DSD(((mut == 3u) ? D4B_BDF9C : D4B_BDF7C) + i * 4u);           /* @desc */
+    p = (const u8 *)res_resolve(DSD(DS_000A8B30 + DSD(desc) * 4u));
+    pv = p != NULL ? DSD((u32)(p - mem)) : 0u;
+    v = (mut == 4u) ? (s32)(s16)pv : ((s32)pv >> 16);                         /* @hlow: the width word */
+    if (mut == 5u) x = (v < 0) ? -v : v;                                      /* @abs: the height itself when not negative */
+    else if (mut == 6u) x = (v < 0) ? v : (s32)i;                             /* @noneg */
+    else if (mut == 7u) x = (v <= 0) ? -v : (s32)i;                           /* @le */
+    else x = (v < 0) ? -v : (s32)i;
+    if (mut == 8u) DSD(DS_00107A48) = (u32)(x - (s32)DSW(DS_00107A4E)) << 6;  /* @a48d */
+    else DSW(DS_00107A48) = (u16)((u32)(x - ((mut == 9u) ? 0 : (s32)DSW(DS_00107A4E))) << ((mut == 10u) ? 5 : 6));   /* @noa4e, @shift */
+    if (mut == 11u)                                                           /* @early: the palettes before the spawn */
+        for (u32 k = 0; k < 4u && DSW(DS_00104B00) != 0x13u; k++) palette_acquire(pal[k]);
+    pv = actor_spawn((const u32 *)(mem + desc), 0u, (mut == 12u) ? 1u : 2u, 0u, 0u);   /* @layer */
+    DSD((mut == 13u) ? DS_000BDFC0 : DS_000BDFBC) = pv;                       /* @bdfbc */
+    if (mut == 11u) return 0u;
+    if ((mut == 14u) ? (DSB(DS_00104B00) != 0x13u) : (mut == 15u) ? (DSW(DS_00104B00) == 0x13u)   /* @modeb, @modeeq */
+                     : (DSW(DS_00104B00) != 0x13u)) {
+        for (u32 k = 0; k < ((mut == 16u) ? 3u : 4u); k++)                    /* @pal3 */
+            palette_acquire(pal[(mut == 17u) ? 3u - k : k]);                  /* @palorder */
+    }
+    return 0u;
+}
+static void b_d4b_387f4(const u32 *r, u32 *eax) { render_scroll_scene_a(r[R_EAX]); *eax = 0u; }
+#define D4B_SA_MUT(name, n) \
+    static void m_d4b_sa_##name(const u32 *r, u32 *eax) { *eax = d4b_387f4_core(r, n); }
+D4B_SA_MUT(a55w, 1u)  D4B_SA_MUT(i, 2u)      D4B_SA_MUT(desc, 3u)   D4B_SA_MUT(hlow, 4u)
+D4B_SA_MUT(abs, 5u)   D4B_SA_MUT(noneg, 6u)  D4B_SA_MUT(le, 7u)     D4B_SA_MUT(a48d, 8u)
+D4B_SA_MUT(noa4e, 9u) D4B_SA_MUT(shift, 10u) D4B_SA_MUT(early, 11u) D4B_SA_MUT(layer, 12u)
+D4B_SA_MUT(bdfbc, 13u) D4B_SA_MUT(modeb, 14u) D4B_SA_MUT(modeeq, 15u) D4B_SA_MUT(pal3, 16u)
+D4B_SA_MUT(palorder, 17u)
+
+/* 0x38890 render_scroll_scene_b: EAX = the scene index. */
+static u32 d4b_38890_core(const u32 *r, u32 mut)
+{
+    u32 i = r[R_EAX], desc, a4;
+    if (mut == 11u) goto spawn;                                               /* @order: the spawn before the stores */
+stores:
+    DSB((mut == 1u) ? DS_00107A55 : DS_00107A56) = DSB(DS_000A8A20 + ((mut == 2u) ? 0u : i));   /* @a56, @i */
+    if (mut == 3u) DSD(DS_00107A52) = (u32)(0xF8 - (s32)DSW(DS_00107A4E));    /* @a52d */
+    else DSW(DS_00107A52) = (u16)(((mut == 4u) ? 0xF0 : 0xF8) - (s32)DSW(DS_00107A4E));   /* @f8 */
+    if (mut == 11u) return 0u;
+spawn:
+    desc = DSD(((mut == 5u) ? D4B_BDF7C : D4B_BDF9C) + i * 4u);           /* @desc */
+    a4 = (mut == 6u) ? (u32)DSW(DS_00107A4E)                                  /* @a4 */
+       : (mut == 7u) ? (u32)(u16)(DSW(DS_00107A4E) + 0x100u)                  /* @a4w */
+       : (mut == 8u) ? (u32)((s32)(s16)DSW(DS_00107A4E) + 0x100)              /* @a4sext */
+       : (u32)DSW(DS_00107A4E) + 0x100u;
+    a4 = actor_spawn((const u32 *)(mem + desc), 0u, (mut == 9u) ? 2u : 1u, a4, 0u);   /* @layer */
+    DSD((mut == 10u) ? DS_000BDFBC : DS_000BDFC0) = a4;                       /* @bdfc0 */
+    if (mut == 11u) goto stores;
+    return 0u;
+}
+static void b_d4b_38890(const u32 *r, u32 *eax) { render_scroll_scene_b(r[R_EAX]); *eax = 0u; }
+#define D4B_SB_MUT(name, n) \
+    static void m_d4b_sb_##name(const u32 *r, u32 *eax) { *eax = d4b_38890_core(r, n); }
+D4B_SB_MUT(a56, 1u)   D4B_SB_MUT(i, 2u)      D4B_SB_MUT(a52d, 3u)   D4B_SB_MUT(f8, 4u)
+D4B_SB_MUT(desc, 5u)  D4B_SB_MUT(a4, 6u)     D4B_SB_MUT(a4w, 7u)    D4B_SB_MUT(a4sext, 8u)
+D4B_SB_MUT(layer, 9u) D4B_SB_MUT(bdfc0, 10u) D4B_SB_MUT(order, 11u)
+
+/* 0x38730 render_scroll_setup: EAX = the scene index. */
+static u32 d4b_38730_core(const u32 *r, u32 mut)
+{
+    u32 i = r[R_EAX];
+    DSW(DS_00107A4E) = DSW(((mut == 1u) ? DS_000BDE2C : DS_000BDE1C) + i * 2u);   /* @a4e */
+    DSW(DS_00107A42) = DSW(((mut == 2u) ? DS_000BDE1C : DS_000BDE2C) + i * 2u);   /* @a42 */
+    if (mut == 3u) {                                                          /* @a4astale: the table's word, not 0x107A4E read back */
+        u16 w = DSW(DS_00107A4E);
+        frontend_origin_zero();
+        DSW(DS_00107A4A) = w;
+        DSW(DS_00107A4C) = w;
+    } else {
+        if (mut != 4u) frontend_origin_zero();                                /* @noorigin */
+        if (mut != 5u) DSW(DS_00107A4A) = DSW(DS_00107A4E);                   /* @noa4a */
+        if (mut != 6u) DSW(DS_00107A4C) = DSW(DS_00107A4E);                   /* @noa4c */
+    }
+    DSW(DS_00107A50) = DSW(((mut == 7u) ? DS_000BDDFC : DS_000BDE0C) + i * 2u);   /* @a50 */
+    DSW(DS_00107A40) = DSW(((mut == 8u) ? DS_000BDE0C : DS_000BDDFC) + i * 2u);   /* @a40 */
+    DSW(DS_00107A3A) = (mut == 9u) ? (u16)((s32)(s16)DSW(DS_00107A50) / 32)   /* @a3asext */
+                     : (u16)((s32)DSW(DS_00107A50) / ((mut == 10u) ? 64 : 32));   /* @a3a */
+    if (mut != 12u)                                                           /* @a38late */
+        DSW(DS_00107A38) = (mut == 11u) ? (u16)((s32)(s16)DSW(DS_00107A48) / 64)   /* @a38sext */
+                         : (u16)((s32)DSW(DS_00107A48) / 64);
+    if (mut == 13u) DSB(DS_00107A54) = 1u;                                    /* @a54early */
+    if (mut == 14u) { render_scroll_scene_b(i); render_scroll_scene_a(i); }   /* @order */
+    else {
+        render_scroll_scene_a((mut == 15u) ? 0u : i);                         /* @scenei */
+        if (mut == 12u) DSW(DS_00107A38) = (u16)((s32)DSW(DS_00107A48) / 64);
+        render_scroll_scene_b(i);
+    }
+    if (mut != 16u) render_scroll_fill();                                     /* @nofill */
+    if (mut != 17u) DSB(DS_00107A54) = 1u;                                    /* @noa54 */
+    return 0u;
+}
+static void b_d4b_38730(const u32 *r, u32 *eax) { render_scroll_setup(r[R_EAX]); *eax = 0u; }
+#define D4B_SS_MUT(name, n) \
+    static void m_d4b_ss_##name(const u32 *r, u32 *eax) { *eax = d4b_38730_core(r, n); }
+D4B_SS_MUT(a4e, 1u)   D4B_SS_MUT(a42, 2u)    D4B_SS_MUT(a4astale, 3u) D4B_SS_MUT(noorigin, 4u)
+D4B_SS_MUT(noa4a, 5u) D4B_SS_MUT(noa4c, 6u)  D4B_SS_MUT(a50, 7u)    D4B_SS_MUT(a40, 8u)
+D4B_SS_MUT(a3asext, 9u) D4B_SS_MUT(a3a, 10u) D4B_SS_MUT(a38sext, 11u) D4B_SS_MUT(a38late, 12u)
+D4B_SS_MUT(a54early, 13u) D4B_SS_MUT(order, 14u) D4B_SS_MUT(scenei, 15u) D4B_SS_MUT(nofill, 16u)
+D4B_SS_MUT(noa54, 17u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -40356,6 +41118,309 @@ static const binding_t k_bindings[] = {
     { "game_audio_service@from1", m_d4a_as_from1, 0x00000000u },
     { "game_audio_service@same", m_d4a_as_same, 0x00000000u },
     { "game_audio_service@none", m_d4a_as_none, 0x00000000u },
+    /* ---- track D4 batch d4b (record 2026-10-12-reverse-d4b) ---- */
+    { "camera_y_commit",                     b_d4b_12da8, 0x00000000u },
+    { "camera_y_commit@modew",               m_d4b_yc_modew, 0x00000000u },
+    { "camera_y_commit@sel",                 m_d4b_yc_sel, 0x00000000u },
+    { "camera_y_commit@sext",                m_d4b_yc_sext, 0x00000000u },
+    { "camera_y_commit@hi",                  m_d4b_yc_hi, 0x00000000u },
+    { "camera_y_commit@unsigned",            m_d4b_yc_unsigned, 0x00000000u },
+    { "camera_y_commit@min",                 m_d4b_yc_min, 0x00000000u },
+    { "camera_y_commit@cmpw",                m_d4b_yc_cmpw, 0x00000000u },
+    { "camera_y_commit@wide",                m_d4b_yc_wide, 0x00000000u },
+    { "camera_y_commit@lo",                  m_d4b_yc_lo, 0x00000000u },
+    { "camera_y_commit@nocall",              m_d4b_yc_nocall, 0x00000000u },
+    { "camera_y_commit@order",               m_d4b_yc_order, 0x00000000u },
+    { "camera_resolve_sprite",               b_d4b_16308, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@side",          m_d4b_rs_side, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@noidx",         m_d4b_rs_noidx, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@nochar",        m_d4b_rs_nochar, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@scale",         m_d4b_rs_scale, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@rawch",         m_d4b_rs_rawch, 0xFFFFFFFFu },
+    { "camera_sprite_height",                b_d4b_1631c, 0xFFFFFFFFu },
+    { "camera_sprite_height@hsrc",           m_d4b_sh_hsrc, 0xFFFFFFFFu },
+    { "camera_sprite_height@hzext",          m_d4b_sh_hzext, 0xFFFFFFFFu },
+    { "camera_sprite_height@gt",             m_d4b_sh_gt, 0xFFFFFFFFu },
+    { "camera_sprite_height@uns",            m_d4b_sh_uns, 0xFFFFFFFFu },
+    { "camera_sprite_height@nocount1",       m_d4b_sh_nocount1, 0xFFFFFFFFu },
+    { "camera_sprite_height@last",           m_d4b_sh_last, 0xFFFFFFFFu },
+    { "camera_sprite_height@sumfull",        m_d4b_sh_sumfull, 0xFFFFFFFFu },
+    { "camera_sprite_height@table",          m_d4b_sh_table, 0xFFFFFFFFu },
+    { "camera_sprite_height@side1",          m_d4b_sh_side1, 0xFFFFFFFFu },
+    { "camera_sprite_height@args",           m_d4b_sh_args, 0xFFFFFFFFu },
+    { "camera_sprite_height@handle",         m_d4b_sh_handle, 0xFFFFFFFFu },
+    { "camera_sprite_height@al",             m_d4b_sh_al, 0xFFFFFFFFu },
+    { "camera_bitplane_accum",               b_d4b_41030, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@handle2",       m_d4b_ba_handle2, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@wzext",         m_d4b_ba_wzext, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@round",         m_d4b_ba_round, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@stride",        m_d4b_ba_stride, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@noframe",       m_d4b_ba_noframe, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@skipmask",      m_d4b_ba_skipmask, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@skipcolour",    m_d4b_ba_skipcolour, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@skiplit",       m_d4b_ba_skiplit, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@rows",          m_d4b_ba_rows, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@nofill",        m_d4b_ba_nofill, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@bitkeep",       m_d4b_ba_bitkeep, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@msb",           m_d4b_ba_msb, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@transp",        m_d4b_ba_transp, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@colour",        m_d4b_ba_colour, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@litadv",        m_d4b_ba_litadv, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@litclear",      m_d4b_ba_litclear, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@ret",           m_d4b_ba_ret, 0xFFFFFFFFu },
+    { "effects_spawn_darken",                b_d4b_13d4c, 0x00000000u },
+    { "effects_spawn_darken@f0f",            m_d4b_fd_f0f, 0x00000000u },
+    { "effects_spawn_darken@type",           m_d4b_fd_type, 0x00000000u },
+    { "effects_spawn_darken@src",            m_d4b_fd_src, 0x00000000u },
+    { "effects_spawn_darken@arg",            m_d4b_fd_arg, 0x00000000u },
+    { "effects_spawn_darken@extra",          m_d4b_fd_extra, 0x00000000u },
+    { "effects_spawn_darken@dst410",         m_d4b_fd_dst410, 0x00000000u },
+    { "effects_spawn_darken@copy0",          m_d4b_fd_copy0, 0x00000000u },
+    { "effects_spawn_darken@nolock1",        m_d4b_fd_nolock1, 0x00000000u },
+    { "effects_spawn_darken@nounlink",       m_d4b_fd_nounlink, 0x00000000u },
+    { "effects_spawn_darken@nolock2",        m_d4b_fd_nolock2, 0x00000000u },
+    { "effects_spawn_darken@noe",            m_d4b_fd_noe, 0x00000000u },
+    { "effects_spawn_darken@elate",          m_d4b_fd_elate, 0x00000000u },
+    { "effects_spawn_darken@head",           m_d4b_fd_head, 0x00000000u },
+    { "effects_spawn_darken@countw",         m_d4b_fd_countw, 0x00000000u },
+    { "effects_spawn_darken@nocount",        m_d4b_fd_nocount, 0x00000000u },
+    { "effects_spawn_darken@lockend",        m_d4b_fd_lockend, 0x00000000u },
+    { "effects_spawn_pulse",                 b_d4b_13e28, 0x00000000u },
+    { "effects_spawn_pulse@f0f",             m_d4b_fp_f0f, 0x00000000u },
+    { "effects_spawn_pulse@type",            m_d4b_fp_type, 0x00000000u },
+    { "effects_spawn_pulse@src",             m_d4b_fp_src, 0x00000000u },
+    { "effects_spawn_pulse@arg",             m_d4b_fp_arg, 0x00000000u },
+    { "effects_spawn_pulse@extra",           m_d4b_fp_extra, 0x00000000u },
+    { "effects_spawn_pulse@dst40c",          m_d4b_fp_dst40c, 0x00000000u },
+    { "effects_spawn_pulse@copy0",           m_d4b_fp_copy0, 0x00000000u },
+    { "effects_spawn_pulse@merged",          m_d4b_fp_merged, 0x00000000u },
+    { "effects_spawn_pulse@white",           m_d4b_fp_white, 0x00000000u },
+    { "effects_spawn_pulse@nocopy",          m_d4b_fp_nocopy, 0x00000000u },
+    { "effects_spawn_pulse@nolock1",         m_d4b_fp_nolock1, 0x00000000u },
+    { "effects_spawn_pulse@nounlink",        m_d4b_fp_nounlink, 0x00000000u },
+    { "effects_spawn_pulse@nolock2",         m_d4b_fp_nolock2, 0x00000000u },
+    { "effects_spawn_pulse@noe",             m_d4b_fp_noe, 0x00000000u },
+    { "effects_spawn_pulse@elate",           m_d4b_fp_elate, 0x00000000u },
+    { "effects_spawn_pulse@head",            m_d4b_fp_head, 0x00000000u },
+    { "effects_spawn_pulse@countw",          m_d4b_fp_countw, 0x00000000u },
+    { "effects_spawn_pulse@nocount",         m_d4b_fp_nocount, 0x00000000u },
+    { "effects_spawn_pulse@lockend",         m_d4b_fp_lockend, 0x00000000u },
+    { "effects_spawn_scroll",                b_d4b_13b3c, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@swap",           m_d4b_fs_swap, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@fwd",            m_d4b_fs_fwd, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@no80",           m_d4b_fs_no80, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@descsign",       m_d4b_fs_descsign, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@descn",          m_d4b_fs_descn, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@no14",           m_d4b_fs_no14, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@no414",          m_d4b_fs_no414, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@fwdoff",         m_d4b_fs_fwdoff, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@type0",          m_d4b_fs_type0, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@e0",             m_d4b_fs_e0, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@src",            m_d4b_fs_src, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@d",              m_d4b_fs_d, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@off10w",         m_d4b_fs_off10w, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@off10",          m_d4b_fs_off10, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@f0f",            m_d4b_fs_f0f, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@bump",           m_d4b_fs_bump, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@ret0",           m_d4b_fs_ret0, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@nolock1",        m_d4b_fs_nolock1, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@nounlink",       m_d4b_fs_nounlink, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@nolock2",        m_d4b_fs_nolock2, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@head",           m_d4b_fs_head, 0xFFFFFFFFu },
+    { "effects_spawn_scroll@lockend",        m_d4b_fs_lockend, 0xFFFFFFFFu },
+    { "camera_box_overlap",                  b_d4b_140e4, 0x000000FFu },
+    { "camera_box_overlap@stride",           m_d4b_bo_stride, 0x000000FFu },
+    { "camera_box_overlap@idmask",           m_d4b_bo_idmask, 0x000000FFu },
+    { "camera_box_overlap@noflip",           m_d4b_bo_noflip, 0x000000FFu },
+    { "camera_box_overlap@flipall",          m_d4b_bo_flipall, 0x000000FFu },
+    { "camera_box_overlap@ox",               m_d4b_bo_ox, 0x000000FFu },
+    { "camera_box_overlap@oy",               m_d4b_bo_oy, 0x000000FFu },
+    { "camera_box_overlap@wzext",            m_d4b_bo_wzext, 0x000000FFu },
+    { "camera_box_overlap@hzext",            m_d4b_bo_hzext, 0x000000FFu },
+    { "camera_box_overlap@wh",               m_d4b_bo_wh, 0x000000FFu },
+    { "camera_box_overlap@flip1",            m_d4b_bo_flip1, 0x000000FFu },
+    { "camera_box_overlap@kx",               m_d4b_bo_kx, 0x000000FFu },
+    { "camera_box_overlap@ky",               m_d4b_bo_ky, 0x000000FFu },
+    { "camera_box_overlap@ax",               m_d4b_bo_ax, 0x000000FFu },
+    { "camera_box_overlap@shift",            m_d4b_bo_shift, 0x000000FFu },
+    { "camera_box_overlap@ay",               m_d4b_bo_ay, 0x000000FFu },
+    { "camera_box_overlap@round",            m_d4b_bo_round, 0x000000FFu },
+    { "camera_box_overlap@floor",            m_d4b_bo_floor, 0x000000FFu },
+    { "camera_box_overlap@floory",           m_d4b_bo_floory, 0x000000FFu },
+    { "camera_box_overlap@second",           m_d4b_bo_second, 0x000000FFu },
+    { "camera_box_overlap@same",             m_d4b_bo_same, 0x000000FFu },
+    { "camera_projectile_clash",             b_d4b_17bc8, 0x000000FFu },
+    { "camera_projectile_clash@rec0",        m_d4b_pc_rec0, 0x000000FFu },
+    { "camera_projectile_clash@rec1",        m_d4b_pc_rec1, 0x000000FFu },
+    { "camera_projectile_clash@idxw",        m_d4b_pc_idxw, 0x000000FFu },
+    { "camera_projectile_clash@idxoff",      m_d4b_pc_idxoff, 0x000000FFu },
+    { "camera_projectile_clash@al140",       m_d4b_pc_al140, 0x000000FFu },
+    { "camera_projectile_clash@dxsign",      m_d4b_pc_dxsign, 0x000000FFu },
+    { "camera_projectile_clash@dysign",      m_d4b_pc_dysign, 0x000000FFu },
+    { "camera_projectile_clash@outs",        m_d4b_pc_outs, 0x000000FFu },
+    { "camera_projectile_clash@p1",          m_d4b_pc_p1, 0x000000FFu },
+    { "camera_projectile_clash@alsync",      m_d4b_pc_alsync, 0x000000FFu },
+    { "camera_projectile_clash@nofirst",     m_d4b_pc_nofirst, 0x000000FFu },
+    { "camera_projectile_clash@dydx",        m_d4b_pc_dydx, 0x000000FFu },
+    { "camera_projectile_clash@alsync2",     m_d4b_pc_alsync2, 0x000000FFu },
+    { "camera_projectile_clash@b1cz",        m_d4b_pc_b1cz, 0x000000FFu },
+    { "camera_projectile_clash@b1cneg",      m_d4b_pc_b1cneg, 0x000000FFu },
+    { "camera_projectile_clash@nob1c",       m_d4b_pc_nob1c, 0x000000FFu },
+    { "camera_projectile_clash@b18z",        m_d4b_pc_b18z, 0x000000FFu },
+    { "camera_projectile_clash@b18neg",      m_d4b_pc_b18neg, 0x000000FFu },
+    { "camera_projectile_clash@nob18",       m_d4b_pc_nob18, 0x000000FFu },
+    { "camera_projectile_clash@novoice",     m_d4b_pc_novoice, 0x000000FFu },
+    { "camera_projectile_clash@voice",       m_d4b_pc_voice, 0x000000FFu },
+    { "camera_projectile_clash@burst",       m_d4b_pc_burst, 0x000000FFu },
+    { "camera_projectile_clash@order",       m_d4b_pc_order, 0x000000FFu },
+    { "camera_projectile_clash@kill",        m_d4b_pc_kill, 0x000000FFu },
+    { "camera_projectile_clash@ret",         m_d4b_pc_ret, 0x000000FFu },
+    { "camera_projectile_clash_sync",        b_d4b_17bc8, 0x000000FFu },
+    { "camera_projectile_clash_sync@nofirst", m_d4b_pc_nofirst, 0x000000FFu },
+    { "camera_projectile_clash_sync@nosecond", m_d4b_pc_nosecond, 0x000000FFu },
+    { "camera_projectile_clash_sync@dxsign", m_d4b_pc_dxsign, 0x000000FFu },
+    { "camera_projectile_clash_sync@dysign", m_d4b_pc_dysign, 0x000000FFu },
+    { "camera_projectile_clash_sync@dydx",   m_d4b_pc_dydx, 0x000000FFu },
+    { "camera_project",                      b_d4b_17fa0, 0x00000000u },
+    { "camera_project@nullskip",             m_d4b_pj_nullskip, 0x00000000u },
+    { "camera_project@anchor2",              m_d4b_pj_anchor2, 0x00000000u },
+    { "camera_project@adjge",                m_d4b_pj_adjge, 0x00000000u },
+    { "camera_project@adjuns",               m_d4b_pj_adjuns, 0x00000000u },
+    { "camera_project@aay",                  m_d4b_pj_aay, 0x00000000u },
+    { "camera_project@noadj",                m_d4b_pj_noadj, 0x00000000u },
+    { "camera_project@facingw",              m_d4b_pj_facingw, 0x00000000u },
+    { "camera_project@facingbit",            m_d4b_pj_facingbit, 0x00000000u },
+    { "camera_project@noclear",              m_d4b_pj_noclear, 0x00000000u },
+    { "camera_project@index",                m_d4b_pj_index, 0x00000000u },
+    { "camera_project@indexside",            m_d4b_pj_indexside, 0x00000000u },
+    { "camera_project@order",                m_d4b_pj_order, 0x00000000u },
+    { "camera_project@ala",                  m_d4b_pj_ala, 0x00000000u },
+    { "camera_project@ac0src",               m_d4b_pj_ac0src, 0x00000000u },
+    { "camera_project@ac0keep",              m_d4b_pj_ac0keep, 0x00000000u },
+    { "camera_project@alb",                  m_d4b_pj_alb, 0x00000000u },
+    { "camera_project@noflag",               m_d4b_pj_noflag, 0x00000000u },
+    { "camera_project@ac8keep",              m_d4b_pj_ac8keep, 0x00000000u },
+    { "camera_project@outa20",               m_d4b_pj_outa20, 0x00000000u },
+    { "camera_project@outb",                 m_d4b_pj_outb, 0x00000000u },
+    { "camera_project@al15",                 m_d4b_pj_al15, 0x00000000u },
+    { "camera_project@mirrorall",            m_d4b_pj_mirrorall, 0x00000000u },
+    { "camera_project@mirror1",              m_d4b_pj_mirror1, 0x00000000u },
+    { "camera_project@subswap",              m_d4b_pj_subswap, 0x00000000u },
+    { "camera_project@nosubb",               m_d4b_pj_nosubb, 0x00000000u },
+    { "camera_project@nosuba",               m_d4b_pj_nosuba, 0x00000000u },
+    { "camera_project@originzx",             m_d4b_pj_originzx, 0x00000000u },
+    { "camera_project@originzy",             m_d4b_pj_originzy, 0x00000000u },
+    { "camera_box_clip",                     b_d4b_15c30, 0x00000000u },
+    { "camera_box_clip@flip",                m_d4b_bc_flip, 0x00000000u },
+    { "camera_box_clip@wh",                  m_d4b_bc_wh, 0x00000000u },
+    { "camera_box_clip@palside",             m_d4b_bc_palside, 0x00000000u },
+    { "camera_box_clip@palidx",              m_d4b_bc_palidx, 0x00000000u },
+    { "camera_box_clip@dxk",                 m_d4b_bc_dxk, 0x00000000u },
+    { "camera_box_clip@dyk",                 m_d4b_bc_dyk, 0x00000000u },
+    { "camera_box_clip@outa6",               m_d4b_bc_outa6, 0x00000000u },
+    { "camera_box_clip@pak",                 m_d4b_bc_pak, 0x00000000u },
+    { "camera_box_clip@dyb",                 m_d4b_bc_dyb, 0x00000000u },
+    { "camera_box_clip@pbk",                 m_d4b_bc_pbk, 0x00000000u },
+    { "camera_box_clip@shl",                 m_d4b_bc_shl, 0x00000000u },
+    { "camera_box_clip@mul",                 m_d4b_bc_mul, 0x00000000u },
+    { "camera_box_clip@b2shl",               m_d4b_bc_b2shl, 0x00000000u },
+    { "camera_box_clip@b3mul",               m_d4b_bc_b3mul, 0x00000000u },
+    { "camera_box_clip@x2y2",                m_d4b_bc_x2y2, 0x00000000u },
+    { "camera_box_clip@dydx",                m_d4b_bc_dydx, 0x00000000u },
+    { "camera_box_clip@acc8",                m_d4b_bc_acc8, 0x00000000u },
+    { "camera_box_clip@lensext",             m_d4b_bc_lensext, 0x00000000u },
+    { "camera_box_clip@nozero",              m_d4b_bc_nozero, 0x00000000u },
+    { "camera_box_clip@partb0",              m_d4b_bc_partb0, 0x00000000u },
+    { "camera_box_clip@gt",                  m_d4b_bc_gt, 0x00000000u },
+    { "camera_box_clip@rzero",               m_d4b_bc_rzero, 0x00000000u },
+    { "camera_box_clip@notrim",              m_d4b_bc_notrim, 0x00000000u },
+    { "camera_box_clip@yacc8",               m_d4b_bc_yacc8, 0x00000000u },
+    { "camera_box_clip@ylensext",            m_d4b_bc_ylensext, 0x00000000u },
+    { "camera_box_clip@ynozero",             m_d4b_bc_ynozero, 0x00000000u },
+    { "camera_box_clip@ypartb0",             m_d4b_bc_ypartb0, 0x00000000u },
+    { "camera_box_clip@ygt",                 m_d4b_bc_ygt, 0x00000000u },
+    { "camera_box_clip@yrzero",              m_d4b_bc_yrzero, 0x00000000u },
+    { "camera_box_clip@ynotrim",             m_d4b_bc_ynotrim, 0x00000000u },
+    { "sprite_node_build",                   b_d4b_14268, 0x00000000u },
+    { "sprite_node_build@zero",              m_d4b_nb_zero, 0x00000000u },
+    { "sprite_node_build@zerotype",          m_d4b_nb_zerotype, 0x00000000u },
+    { "sprite_node_build@mask",              m_d4b_nb_mask, 0x00000000u },
+    { "sprite_node_build@hzext",             m_d4b_nb_hzext, 0x00000000u },
+    { "sprite_node_build@le",                m_d4b_nb_le, 0x00000000u },
+    { "sprite_node_build@negw",              m_d4b_nb_negw, 0x00000000u },
+    { "sprite_node_build@type",              m_d4b_nb_type, 0x00000000u },
+    { "sprite_node_build@pix",               m_d4b_nb_pix, 0x00000000u },
+    { "sprite_node_build@xzext",             m_d4b_nb_xzext, 0x00000000u },
+    { "sprite_node_build@yorg",              m_d4b_nb_yorg, 0x00000000u },
+    { "sprite_node_build@nohflip",           m_d4b_nb_nohflip, 0x00000000u },
+    { "sprite_node_build@hflip8",            m_d4b_nb_hflip8, 0x00000000u },
+    { "sprite_node_build@mirrorw",           m_d4b_nb_mirrorw, 0x00000000u },
+    { "sprite_node_build@nomirror",          m_d4b_nb_nomirror, 0x00000000u },
+    { "sprite_node_build@mirror1",           m_d4b_nb_mirror1, 0x00000000u },
+    { "sprite_node_build_1c528",             b_d4b_14268, 0x00000000u },
+    { "sprite_node_build_1c528@zero",        m_d4b_nb_zero, 0x00000000u },
+    { "sprite_node_build_1c528@zerotype",    m_d4b_nb_zerotype, 0x00000000u },
+    { "sprite_node_build_1c528@mask",        m_d4b_nb_mask, 0x00000000u },
+    { "sprite_node_build_1c528@hzext",       m_d4b_nb_hzext, 0x00000000u },
+    { "sprite_node_build_1c528@le",          m_d4b_nb_le, 0x00000000u },
+    { "sprite_node_build_1c528@negw",        m_d4b_nb_negw, 0x00000000u },
+    { "sprite_node_build_1c528@type",        m_d4b_nb_type, 0x00000000u },
+    { "sprite_node_build_1c528@pix",         m_d4b_nb_pix, 0x00000000u },
+    { "sprite_node_build_1c528@xzext",       m_d4b_nb_xzext, 0x00000000u },
+    { "sprite_node_build_1c528@yorg",        m_d4b_nb_yorg, 0x00000000u },
+    { "sprite_node_build_1c528@nohflip",     m_d4b_nb_nohflip, 0x00000000u },
+    { "sprite_node_build_1c528@hflip8",      m_d4b_nb_hflip8, 0x00000000u },
+    { "sprite_node_build_1c528@mirrorw",     m_d4b_nb_mirrorw, 0x00000000u },
+    { "sprite_node_build_1c528@nomirror",    m_d4b_nb_nomirror, 0x00000000u },
+    { "sprite_node_build_1c528@mirror1",     m_d4b_nb_mirror1, 0x00000000u },
+    { "render_scroll_scene_a",               b_d4b_387f4, 0x00000000u },
+    { "render_scroll_scene_a@a55w",          m_d4b_sa_a55w, 0x00000000u },
+    { "render_scroll_scene_a@i",             m_d4b_sa_i, 0x00000000u },
+    { "render_scroll_scene_a@desc",          m_d4b_sa_desc, 0x00000000u },
+    { "render_scroll_scene_a@hlow",          m_d4b_sa_hlow, 0x00000000u },
+    { "render_scroll_scene_a@abs",           m_d4b_sa_abs, 0x00000000u },
+    { "render_scroll_scene_a@noneg",         m_d4b_sa_noneg, 0x00000000u },
+    { "render_scroll_scene_a@le",            m_d4b_sa_le, 0x00000000u },
+    { "render_scroll_scene_a@a48d",          m_d4b_sa_a48d, 0x00000000u },
+    { "render_scroll_scene_a@noa4e",         m_d4b_sa_noa4e, 0x00000000u },
+    { "render_scroll_scene_a@shift",         m_d4b_sa_shift, 0x00000000u },
+    { "render_scroll_scene_a@early",         m_d4b_sa_early, 0x00000000u },
+    { "render_scroll_scene_a@layer",         m_d4b_sa_layer, 0x00000000u },
+    { "render_scroll_scene_a@bdfbc",         m_d4b_sa_bdfbc, 0x00000000u },
+    { "render_scroll_scene_a@modeb",         m_d4b_sa_modeb, 0x00000000u },
+    { "render_scroll_scene_a@modeeq",        m_d4b_sa_modeeq, 0x00000000u },
+    { "render_scroll_scene_a@pal3",          m_d4b_sa_pal3, 0x00000000u },
+    { "render_scroll_scene_a@palorder",      m_d4b_sa_palorder, 0x00000000u },
+    { "render_scroll_scene_b",               b_d4b_38890, 0x00000000u },
+    { "render_scroll_scene_b@a56",           m_d4b_sb_a56, 0x00000000u },
+    { "render_scroll_scene_b@i",             m_d4b_sb_i, 0x00000000u },
+    { "render_scroll_scene_b@a52d",          m_d4b_sb_a52d, 0x00000000u },
+    { "render_scroll_scene_b@f8",            m_d4b_sb_f8, 0x00000000u },
+    { "render_scroll_scene_b@desc",          m_d4b_sb_desc, 0x00000000u },
+    { "render_scroll_scene_b@a4",            m_d4b_sb_a4, 0x00000000u },
+    { "render_scroll_scene_b@a4w",           m_d4b_sb_a4w, 0x00000000u },
+    { "render_scroll_scene_b@a4sext",        m_d4b_sb_a4sext, 0x00000000u },
+    { "render_scroll_scene_b@layer",         m_d4b_sb_layer, 0x00000000u },
+    { "render_scroll_scene_b@bdfc0",         m_d4b_sb_bdfc0, 0x00000000u },
+    { "render_scroll_scene_b@order",         m_d4b_sb_order, 0x00000000u },
+    { "render_scroll_setup",                 b_d4b_38730, 0x00000000u },
+    { "render_scroll_setup@a4e",             m_d4b_ss_a4e, 0x00000000u },
+    { "render_scroll_setup@a42",             m_d4b_ss_a42, 0x00000000u },
+    { "render_scroll_setup@a4astale",        m_d4b_ss_a4astale, 0x00000000u },
+    { "render_scroll_setup@noorigin",        m_d4b_ss_noorigin, 0x00000000u },
+    { "render_scroll_setup@noa4a",           m_d4b_ss_noa4a, 0x00000000u },
+    { "render_scroll_setup@noa4c",           m_d4b_ss_noa4c, 0x00000000u },
+    { "render_scroll_setup@a50",             m_d4b_ss_a50, 0x00000000u },
+    { "render_scroll_setup@a40",             m_d4b_ss_a40, 0x00000000u },
+    { "render_scroll_setup@a3asext",         m_d4b_ss_a3asext, 0x00000000u },
+    { "render_scroll_setup@a3a",             m_d4b_ss_a3a, 0x00000000u },
+    { "render_scroll_setup@a38sext",         m_d4b_ss_a38sext, 0x00000000u },
+    { "render_scroll_setup@a38late",         m_d4b_ss_a38late, 0x00000000u },
+    { "render_scroll_setup@a54early",        m_d4b_ss_a54early, 0x00000000u },
+    { "render_scroll_setup@order",           m_d4b_ss_order, 0x00000000u },
+    { "render_scroll_setup@scenei",          m_d4b_ss_scenei, 0x00000000u },
+    { "render_scroll_setup@nofill",          m_d4b_ss_nofill, 0x00000000u },
+    { "render_scroll_setup@noa54",           m_d4b_ss_noa54, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
