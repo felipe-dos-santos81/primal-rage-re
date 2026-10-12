@@ -1477,7 +1477,7 @@ void fighter_command_generate(u32 side)
         ai_manage(side);                                /* 0x472DA */
         entry = DSD(b + 0x1Cu) + (u32)DSB(b + 0x30u) * 8u;   /* 0x472E7 */
         DSW(DS_001088E0 + side * 2u) =
-            fighter_cmd_facing(fighter_actor_bit15_clear(side), DSD(entry));
+            fighter_cmd_facing((u8)fighter_actor_bit15_clear(side), DSD(entry));   /* 0x472F2: and eax,0xff */
         if (DSD(entry) == 0xFFFFu) {                    /* 0x4731C */
             DSD(b + 0x04u) = 0;
             DSW(DS_001088E0 + side * 2u) = 0;
