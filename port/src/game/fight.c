@@ -2977,7 +2977,7 @@ void fight_4b470(u32 entry, u32 index)
     }
     if (DSW(DS_00104B00) != 0x22u) {                            /* 0x4B4E5 */
         if (DSB(entry + 0x1Fu) == 1u) {                         /* 0x4B4EF */
-            if (fighter_actor_bit15_clear((u32)DSB(entry + 0x20u)) != 0) /* 0x4B4F6 */
+            if ((u8)fighter_actor_bit15_clear((u32)DSB(entry + 0x20u)) != 0u) /* 0x4B4F6, 0x4B4FB `test al,al` */
                 DSW(rec + 0x34u) = 0xFF80u;                     /* 0x4B525 */
             else
                 DSW(rec + 0x34u) = 0x0080u;                     /* 0x4B507 */
