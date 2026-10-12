@@ -21972,6 +21972,340 @@ D4C_SPECS = [
                 "@noreload", "@accsext", "@accearly", "@dispalways", "@nodisp", "@dispd", "@dispe58", "@c0val",
                 "@c0noarm", "@c0stale", "@c2none", "@c2val", "@c3none", "@c3d", "@c3stale", "@c1seed",
                 "@order")),
+]
+
+D4C_ROW01, D4C_ROW10 = 0x0010A000, 0x0010A800    # 0x1958C: the pair rows of (char 1, char 2) and (char 2, char 1)
+D4C_19020 = E.Call(0x19020, ("eax",), mode="real")   # recorded and run: a null hook returns, 0x3E484 sets the flag
+D4C_18950 = E.Call(0x18950, ("eax", "edx"), clobbers=("edx",))
+D4C_18950_REAL = E.Call(0x18950, ("eax", "edx"), mode="real")
+D4C_193B0 = E.Call(0x193B0, ("eax",), clobbers=("ebx", "esi", "edi", "ebp"))
+
+
+def d4c_passa_case(cid, gate=2, flags=(0x00010000, 0x00020000), s53=(0x53, 0x63), st=(0x40, 0x41), w76=(0, 0),
+                   a2=(0, 0), s40=(0x00, 0x00), hooks=(0, 0), w88=(0x1111, 0x1111), b5a=(0x22, 0x22),
+                   b8a=(1, 1), q=(0, 0), rng=0, chk=0, al=0):
+    """0x1958C: the gate byte 0x1078FA between two bytes; the two flag dwords 0x100AF8/0x100AFC
+    between two dwords; per side the slot's record pointer, +0x14..+0x1F (the +0x18 hook), +0x3F..
+    +0x41 (the +0x40 flags; +0x41 carries the opposite bit 7), +0x52..+0x54 (+0x53; its neighbours
+    are 0x0A when it is not), +0x59..+0x60 (+0x5A and the state +0x5F), +0x74..+0x7B (the +0x76
+    word, the character 1 + side at +0x7A) and +0x86..+0x8B (the +0x88 word, the byte +0x8A); for
+    a state below 0x40 the 6-byte anim row of (the side's character, the state) with `a2` at +2
+    and the row of (the other character, the state) with bit 15 inverted; the two pair-table
+    pointers and, in each row, the dword pair of the querying side's state: the queried dword has
+    only the other state's bit when `q` is set and every other bit when not, its twin the inverse.
+    `rng`, `chk` and `al` are the stub EAX of 0x5D7DC, 0x18C14 and (in the _al row) 0x18950."""
+    p = {0x001078F9: bytes([0xF9, gate, 0xFB]),
+         0x00100AF4: le32(0xF4F4F4F4) + le32(flags[0]) + le32(flags[1]) + le32(0x0B0B0B0B),
+         0x000A1290 + (2 + 10) * 4: le32(D4C_ROW01), 0x000A1290 + (1 + 20) * 4: le32(D4C_ROW10)}
+    recs = (E3_REC, E3_REC2)
+    for sd in (0, 1):
+        slot, o = DS_SLOTS + sd * 0x94, 1 - sd
+        na = 0x52 if s53[sd] == 0x0A else 0x0A
+        p[slot] = le32(recs[sd])
+        p[slot + 0x14] = le32(0x14141400 + sd) + le32(hooks[sd]) + le32(0x1C1C1C00 + sd)
+        p[slot + 0x3F] = bytes([0x3F, s40[sd], s40[sd] ^ 0xFF])
+        p[slot + 0x52] = bytes([na, s53[sd], na])
+        p[slot + 0x59] = bytes([b5a[sd] ^ 0xFF, b5a[sd], b5a[sd] ^ 0x81, 0x5C, 0x5D, st[sd] ^ 0x7F, st[sd], st[sd] ^ 0x40])
+        p[slot + 0x74] = le16(0x7400 + (0 if w76[sd] else 1)) + le16(w76[sd]) + le16(0x7800 + (0 if w76[sd] else 1)) \
+            + bytes([1 + sd, 0x7B])
+        p[slot + 0x86] = le16(0x8686 + sd) + le16(w88[sd]) + bytes([b8a[sd], 0x8B + sd])
+        if st[sd] < 0x40:
+            for ch, w in ((1 + sd, a2[sd]), (1 + o, a2[sd] ^ 0x8000)):
+                p[0x000A6728 + ((ch << 6) + st[sd]) * 6] = le16(w ^ 0x8000) + le16(w) + le16(w ^ 0x8000)
+        row = (D4C_ROW01, D4C_ROW10)[sd] + st[sd] * 8
+        bit = 1 << (st[o] & 0x1F)
+        want = bit if q[sd] else bit ^ 0xFFFFFFFF
+        pair = [want ^ 0xFFFFFFFF, want ^ 0xFFFFFFFF]
+        pair[1 if st[o] >= 0x20 else 0] = want
+        p[row] = le32(pair[0]) + le32(pair[1])
+    return Case(cid, {}, p, {0x5D7DC: rng, 0x18C14: chk, 0x18950: al})
+
+
+def d4c_passa_cases(stub):
+    """The cases of the two 0x1958C rows. `stub`: the _al row, where 0x18950 is a stub (one EAX per
+    case for both queries) and the cases whose two queries differ are left to the other row."""
+    al = iter([0, 1, 0x100, 0xFFFFFF00, 0x1FF, 0x80] * 8)
+    out = []
+
+    def add(cid, **kw):
+        if stub:
+            if kw.get("q", (0, 0))[0] != kw.get("q", (0, 0))[1]:
+                return
+            kw["al"] = kw.pop("al", None) or next(al)
+            kw.pop("q", None)
+        else:
+            kw.pop("al", None)
+        c = d4c_passa_case(cid, **kw)
+        if not stub:
+            del c.stub_eax[0x18950]
+        out.append(c)
+
+    add("g0", gate=1)
+    add("g1", gate=3)
+    add("l0", s53=(0x0A, 0x63))
+    add("l1", s53=(0x53, 0x0A))
+    add("l2", st=(0x3F, 0x41), w76=(1, 0), a2=(0x7FFF, 0), s40=(0x00, 0x7F))
+    add("l3", st=(0x40, 0x00), w76=(0, 0x8000), a2=(0, 0x0000), s40=(0x00, 0x00))
+    add("l4", st=(0x3F, 0x41), w76=(0, 0), a2=(0, 0), w88=(5, 6))
+    add("l5", st=(0x10, 0x41), w76=(5, 0), a2=(0x8000, 0), w88=(6, 5))
+    add("l6", st=(0x10, 0x41), w76=(5, 0), a2=(0, 0), s40=(0x00, 0x80))
+    add("l7", st=(0x80, 0x41), w76=(1, 0), w88=(5, 6))
+    add("l8", st=(0x40, 0x41), w76=(1, 0), w88=(6, 5))
+    add("l9", st=(0x41, 0x20), w76=(0, 0x0100), a2=(0, 0), s40=(0x7F, 0x00), b8a=(0, 1))
+    add("h0", flags=(0, 0x00020000), hooks=(D1A_HOOK, 0), chk=0, w88=(6, 5))
+    add("h1", hooks=(D1A_HOOK, D1A_HOOK), chk=1)
+    add("h2", flags=(0, 0x00020000), hooks=(D1A_HOOK, 0), chk=0, s53=(0x0A, 0x63))
+    add("h3", flags=(0x00010000, 0), hooks=(0, D1A_HOOK), chk=0, w88=(5, 6))
+    add("c0", q=(1, 0))
+    add("c1", q=(0, 1))
+    add("c2", q=(1, 1), w88=(5, 6))
+    add("c3", w88=(6, 5))
+    add("c4", w88=(0x8000, 0x0001))
+    add("c5", w88=(0x0001, 0xFFFF))
+    add("c6", b5a=(0x80, 0x7F))
+    add("c7", b5a=(0x01, 0xFF))
+    add("c8", rng=0)
+    add("c9", rng=1, q=(1, 1))
+    add("v0", s40=(0x80, 0x80), q=(1, 0))
+    add("v1", s40=(0x80, 0x7F), q=(1, 0))
+    add("v2", s40=(0x7F, 0x80), q=(0, 1))
+    add("v3", s40=(0xFF, 0xFF), w88=(6, 5))
+    add("v4", s40=(0x80, 0x00), al=0x100, w88=(5, 6))
+    add("v5", s40=(0x00, 0x80), al=0xFFFFFF01, w88=(6, 5))
+    add("t0", w88=(6, 5), b8a=(1, 0))
+    add("t1", w88=(5, 6), b8a=(0, 1))
+    add("t2", w88=(5, 6), b8a=(0x80, 0))
+    add("t3", w88=(6, 5), b8a=(0, 0x80))
+    if stub:
+        add("a0", al=0x100, w88=(6, 5))
+        add("a1", al=0xFFFFFF00, w88=(5, 6))
+        add("a2", al=1, w88=(5, 6))
+        add("a3", al=0xFFFFFF01, w88=(6, 5))
+    return out
+
+
+D4C_SPECS += [
+    # 0x1958C fighter_pass_a: no argument. The gate byte 0x1078FA == 2 zero-extended (0x19595..
+    # 0x1959C: g0, g1). Per side: 0x33950 (run on both sides), 0x19020(side) recorded and run (a
+    # null +0x18 hook returns; h0..h3 store the registered 0x3E484, whose 0x18C14 stub's EAX sets
+    # the side's flag), the slot's +0x53 == 0x0A clears the side's flag (l0, l1; h2 after the
+    # hook set it), then with the state +0x5F below 0x40 unsigned (`and edx,0xff; cmp edx,0x40;
+    # jge` 0x195D3: l7 0x80, l8 0x40) 0x3AFC4 (run on both sides) and, the +0x76 word non-zero
+    # (`jbe` 0x195F3: l3 0x8000, l4 0), bit 15 of the word anim[2]+2 clear (l5 set) and bit 7 of
+    # the other slot's +0x40 clear (l6 set), the flag is cleared (l2, l3, l9). Both flags non-zero
+    # (dwords: the seeds have a zero low word): the two 0x18950 queries (0, 1) -> BL and (1, 0) ->
+    # AL run real and are recorded here (c0, c1 differ), the +0x40 overrides (v0 both, v1, v2,
+    # v3), BL without AL clears flag 1 and AL without BL flag 0, else the +0x88 words signed
+    # (`cmp ax,dx; jge` 0x196C9/0x196CC, 0x196D7/0x196DA: c4 0x8000 against 1, c5 1 against
+    # 0xFFFF), the +0x5A bytes unsigned (`jbe` 0x196F3, 0x19701: c6, c7), and the 0x5D7DC(2)
+    # stub's EAX names the flag cleared (c8, c9). The tail calls 0x193B0(0) with flag 0 and the
+    # byte 0x10783A set, else 0x193B0(1) with flag 1 and 0x1078CE (t0..t3 clear or 0x80).
+    # Void: every caller writes EAX before reading it (`xor eax,eax` 0x262F3, 0x26482, 0x265DF,
+    # 0x2747D, 0x29AE5, 0x2882C; `call 0x3cb68` 0x284F8, 0x28827, which loads EAX at 0x3CB79).
+    Spec("fighter_pass_a", 0x1958C, d4c_passa_cases(False),
+         allow_calls=(0x33950, 0x3AFC4, D1A_HOOK, 0x18BD4),
+         calls=(D4C_19020, CHECKS, D4C_18950_REAL, D2B_RNG, D4C_193B0), eax_mask=0,
+         mutants=("@gatew", "@early", "@no19020", "@hookside", "@s52", "@no53", "@53other", "@53w", "@stsext",
+                  "@stle", "@animother", "@w76other", "@w76b", "@animoff", "@animbit", "@anim1", "@40self",
+                  "@40bit", "@animclrother", "@noanimclr", "@flagw", "@nogate", "@qswap", "@qorder", "@qsame",
+                  "@ovbit", "@ovnone", "@ovboth", "@ovswap", "@d1flag", "@d2flag",
+                  "@w88uns", "@w88d", "@w88swap", "@b5asgn", "@b5aswap", "@b5aoff", "@rngarg", "@rnginv",
+                  "@norng", "@t8a", "@tside", "@t8aother")),
+    # The same function with 0x18950 a stub: **AL of both queries** (`mov bl,al` 0x19658, `test
+    # bl,bl` 0x19692, `test al,al` 0x19696/0x196A7). One EAX serves both queries, so the arms that
+    # need them to differ are reached through the +0x40 overrides (v1, v2, v4, v5); a0..a3 return
+    # 0x100, 0xFFFFFF00, 1 and 0xFFFFFF01 with +0x88 words that give the other verdict than a
+    # whole-EAX test of one query.
+    Spec("fighter_pass_a_al", 0x1958C, d4c_passa_cases(True),
+         allow_calls=(0x33950, 0x3AFC4, D1A_HOOK, 0x18BD4),
+         calls=(D4C_19020, CHECKS, D4C_18950, D2B_RNG, D4C_193B0), eax_mask=0,
+         mutants=("@eaxbl", "@eaxal", "@w88uns", "@ovswap", "@ovnone")),
+]
+
+D4C_SRC, D4C_REC, D4C_DST, D4C_OLD = 0x0010A000, 0x0010A200, 0x0010A300, 0x0010A400   # 0x33B00's scratch
+D4C_36E78 = E.Call(0x36E78, ("eax",))
+
+
+def d4c_restore_case(cid, side, a, mode=0, p8=0, b=0x5D, src5a=0x15):
+    """0x33B00: the side's slot whole (its record pointer the `old` record, +0x5A = a, +0x5D = b,
+    a +0x08 and +0x64 that are not the source's), the other slot whole, the 0x94-byte source (its
+    record pointer D4C_REC, +0x08 = p8, its own +0x5A/+0x5D/+0x64, the character 3 + side at +0x7A),
+    the 0x68-byte record, the 0x68-byte record source and the old record, each with its own byte
+    pattern, and the mode word 0x104B00 between two words."""
+    def pat(n, tag):
+        return bytearray(((tag + k * 3) & 0xFF) | 1 for k in range(n))
+    slot, other = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    sb, ob, src = pat(0x94, 0x11), pat(0x94, 0x91), pat(0x94, 0x23)
+    sb[0:4], sb[8:12], sb[0x5A], sb[0x5D], sb[0x64], sb[0x7A] = le32(D4C_OLD), le32(0x08080808), a, b, 0x46, 9
+    ob[0:4] = le32(D4C_OLD + 0x80)
+    src[0:4], src[8:12], src[0x5A], src[0x5D], src[0x64], src[0x7A] = le32(D4C_REC), le32(p8), src5a, 0xD5, 0x64, 3 + side
+    p = {0x00104AFE: le16(0xFEFE) + le16(mode) + le16(0x0202)}
+    for base, blob in ((slot, sb), (other, ob), (D4C_SRC, src), (D4C_REC, pat(0x68, 0x35)),
+                       (D4C_DST, pat(0x68, 0x47)), (D4C_OLD, pat(0x68, 0x59))):
+        for j in range(0, len(blob), 0x40):
+            p[base + j] = bytes(blob[j:j + 0x40])
+    return Case(cid, {"eax": side, "edx": D4C_SRC, "ebx": D4C_DST}, p)
+
+
+D4C_SPECS += [
+    # 0x33B00 fighter_state_33b00: EAX = side, EDX = the slot source, EBX = the record source. The
+    # slot's +0x5A and +0x5D are saved (0x33B21, 0x33B2D), 0x25 dwords copied over the slot (`rep
+    # movsd` 0x33B42), the record read from the copied slot (0x33B49), its two first dwords saved,
+    # 0x1A dwords copied over it (0x33B62) and the two dwords, then +0x5A/+0x5D, put back; a
+    # non-zero +0x08 sets +0x64 = 0xFF and clears +0x08 (s1, s3, s5). The restored +0x5A zero-
+    # extended at or above 0x78 (`xor eax,eax; mov al,..; cmp eax,0x78; jl` 0x33BC0..0x33BCB: s0
+    # 0x77, s1 0x78, s2 0x80, s5 0x10 with a source +0x5A of 0x90) and the mode word 0x104B00 not 3
+    # (s3, s4) call 0x36E78(slot); then 0x29BC8(side, the record, the copied +0x7A). 0x2EA30 runs
+    # on the original side (the lock byte 0xBCD60 is 0: it stores it back unchanged; the port has
+    # no lock). Void: 0x22CB8 `mov eax,[esp+4]`, 0x279AE `mov eax,[0x10810a]` after the loop, the
+    # 0x34D53 site returns through 0x34B6C to 0x35801 `mov eax,esi`; the 0x272BF site is
+    # unreferenced code (no call, no pointer to 0x272A8).
+    Spec("fighter_state_33b00", 0x33B00, [
+        d4c_restore_case("s0", 0, 0x77),
+        d4c_restore_case("s1", 1, 0x78, p8=0x00000100),
+        d4c_restore_case("s2", 0, 0x80, mode=2),
+        d4c_restore_case("s3", 1, 0xFF, mode=3, p8=0x80000000),
+        d4c_restore_case("s4", 0, 0x78, mode=3),
+        d4c_restore_case("s5", 1, 0x10, p8=1, src5a=0x90),
+        d4c_restore_case("s6", 0, 0x79, mode=0x0103),
+    ], allow_calls=(0x2EA30,), calls=(D4C_36E78, P6_29BC8), eax_mask=0,
+       mutants=("@nocopy1", "@len1", "@recold", "@nocopy2", "@len2", "@nof0", "@nof1", "@no5a", "@no5d",
+                "@p8always", "@no64", "@v64", "@nop8", "@p8b", "@src5a", "@sgn", "@gt", "@moded", "@modeb",
+                "@nomode", "@e78rec", "@palside", "@palchar", "@order", "@palold")),
+]
+
+D4C_DUST = E.Call(0x494A8, ("eax",))
+D4C_BANKS = (0x1E005ABC, 0x1B007C54, 0x22000008, 0x1200808B, 0x2000410C, 0x1501053C, 0x18004092)   # the dwords at 0xBDB1C
+
+
+def d4c_spawn_pokes(side, ch, n=0, q3c=0x0003D095, div=None, cap=0x10, base=0x20, b14=1, dig=0, pause=0,
+                    idx=0x0123, s41=0xFF):
+    """0x33C78 (and 0x33EB4): the DS_001077A0/DS_001077A8 pairs, both slots whole (each byte its
+    own; the side's +0x3C dword is `q3c`, +0x41 `s41`), the two picked characters 0x10816A (the
+    other side's is ch ^ 1) between two bytes, the spawn count 0x1078FA and the bytes 0xF0AFE/
+    0xF0AFF between theirs, both records' +0x10..+0x17 and +0x48..+0x5B (the actor index +0x56),
+    the cap and base bytes 0x1088CB/0x1088CC, the dust gate 0x104B14, the DIG handle 0x1028C8 and
+    the pause byte 0x1028DB with their neighbours, and the INDEX entries the two handles 0x1B544
+    resolves name (preloaded: the fast path, on both sides). `div` pokes the divisor 0xC9520."""
+    def pat(nb, tag):
+        return bytearray(((tag + k * 5) & 0xFF) | 1 for k in range(nb))
+    slot, other = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    sb, ob = pat(0x94, 0x13), pat(0x94, 0x8B)
+    sb[0x3C:0x40], sb[0x41] = le32(q3c), s41
+    chars = [ch ^ 1, ch ^ 1]
+    chars[side] = ch
+    p = {0x001077A0: le32(0xA0A0A0A0) + le32(0xA4A4A4A4) + le32(0xA8A8A8A8) + le32(0xACACACAC),
+         0x00108169: bytes([0x69, chars[0], chars[1], 0x6C]),
+         0x001078F9: bytes([0xF9, n, 0xFB]), 0x000F0AFD: bytes([0x7D, 0x7E, 0x7F, 0x80]),
+         0x001088CA: bytes([0xCA, cap, base, 0xCD]), 0x00104B13: bytes([0x13, b14, 0x15]),
+         0x001028C4: le32(0xC4C4C4C4) + le32(dig) + le32(0xCCCCCCCC), 0x001028DA: bytes([0xDA, pause, 0xDC])}
+    for base_, blob in ((slot, sb), (other, ob)):
+        for j in range(0, len(blob), 0x40):
+            p[base_ + j] = bytes(blob[j:j + 0x40])
+    for k, rec in enumerate((E3_REC, E3_REC2)):
+        b = pat(0x14, 0x31 + 0x40 * k)
+        b[0x56 - 0x48:0x58 - 0x48] = le16(idx if k == 0 else idx ^ 0x0101)
+        p[rec + 0x10] = bytes(pat(8, 0x61 + 0x40 * k))
+        p[rec + 0x48] = bytes(b)
+    if div is not None:
+        p[0x000C9520] = le32(div)
+    p.update({C2B_RES_PTR: le32(C2B_RES_TABLE), C2B_RES_N: le32(0x100)})
+    for h in ((D4C_BANKS[ch],) if ch < 7 else ()) + (0x0287B2F5,):
+        entry = C2B_RES_TABLE + ((h >> 23) & 0xFF) * 0x14
+        p[entry + 0x0C] = le32(0x01000000) + le32(C2B_RES_DATA)
+    return p
+
+
+def d4c_spawn_case(cid, side, ch, x=0x0123, layer=0x0400, y=0, a5=0x4000, rec=E3_REC, **kw):
+    return Case(cid, {"eax": side, "edx": x, "ecx": layer, "ebx": y, "s0": a5}, d4c_spawn_pokes(side, ch, **kw),
+                {0x2AE14: rec})
+
+
+D4C_SPAWN_CALLS = (SPAWN, C1_SLOT_LATCH, P6_29BC8, D4C_DUST)
+
+D4C_SPECS += [
+    # 0x33C78 fighter_spawn_slot: EAX = side, EDX = x, ECX = the layer, EBX = y, one stack word
+    # (`ret 4`; zero-extended, `xor ecx,ecx; mov cx,[esp+0x14]` 0x33CBB: w0 has a non-zero high
+    # half). DS_001077A8[side] = the slot, +0x7A = the picked character 0x10816A[side], 0x2AE14 on
+    # the descriptor [0xBB7E0 + side*4 + ch*8] with EDX/ECX/EBX as given, its EAX the record; the
+    # spawn count 0x1078FA incremented (a byte) and compared with 2 (n0 1 -> 2, n1 0 -> 1, n2 0xFF
+    # -> 0): 0xF0AFE = 1, else 0xF0AFE = 0 and 0xF0AFF = the side; the child 0x2AE14 on
+    # [0xBB8D0 + ch*4] with zero EDX/ECX/EBX and the record's +0x56 word with bit 10 set (`or ah,4;
+    # and eax,0xffff` 0x33D24: i1 has bit 15); its record's +0x59 = the byte 0xBDB38; +0x24 = the
+    # dword [0xBDA8C + ch*4]; the record's +0x14 = the slot, +0x51 = the side, +0x4C = 0, +0x4D =
+    # 0x1E; the quotient +0x3C / [0xC9520] (`div`, unsigned) kept when below the cap byte 0x1088CB
+    # signed (`cmp eax,edx; jl` 0x33DCC/0x33DCE: q0 3 < 0x10, q1 0x20, q2 0x10, q3 0x10 against a
+    # cap of 0x80, d0 a quotient of 0x80000005 with the divisor poked to 1), +0x81 = the base byte
+    # 0x1088CC plus its low byte; the slot's constants; 0x186D0(side); the five hook dwords;
+    # 0x29BC8(side, the record, ch); +0x41 bit 7 cleared; DS_001077A0[side] = 0; 0x494A8(side)
+    # when the byte 0x104B14 is 0 (b0); then AL of 0x1CEBC (`test al,al` 0x33E4D; run on both
+    # sides: the DIG handle and the pause byte) opens the sound-bank tail: the character's handle
+    # through the table 0x33C5C (c0..c6; c7 above 6) and the fixed 0x287B2F5 through 0x1B544,
+    # which runs on both sides against preloaded INDEX entries and stores nothing: the row covers
+    # the original's blocks there and nothing of what the port resolves (record §4). The two
+    # 0x2AE14 stubs return one EAX per case, so the record and the child record are one address
+    # (record §4). Void: `mov eax,[..+0x1077b0]` 0x15AE4, 0x24618, 0x248B4, 0x40D63, 0x40F14,
+    # 0x46098, 0x49200; 0x33EE5 returns through 0x33EB4 (its row) and 0x357DB through 0x35658
+    # (0x3582E..0x35835), no call site of which reads EAX first (record 2026-10-11-reverse-d1a §1).
+    Spec("fighter_spawn_slot", 0x33C78, [
+        d4c_spawn_case("n0", 0, 0, n=1, b14=0),
+        d4c_spawn_case("n1", 1, 1, n=0, x=0xFFFFFF80, layer=0x0123, y=0x4C00, a5=0, rec=E3_REC2),
+        d4c_spawn_case("n2", 0, 2, n=0xFF, dig=0x00010000, pause=1),
+        d4c_spawn_case("w0", 1, 3, a5=0x12344000),
+        d4c_spawn_case("i1", 0, 4, idx=0xFBFF, s41=0x80),
+        d4c_spawn_case("q0", 1, 5, q3c=0xC350 * 3 + 5),
+        d4c_spawn_case("q1", 0, 6, q3c=0xC350 * 0x20, base=0xF8),
+        d4c_spawn_case("q2", 1, 0, q3c=0xC350 * 0x10 + 0xC34F),
+        d4c_spawn_case("q3", 0, 1, q3c=0xC350 * 0x10, cap=0x80),
+        d4c_spawn_case("d0", 1, 2, q3c=0x80000005, div=1),
+        d4c_spawn_case("d1", 0, 5, q3c=0xFFFFFFFF),
+        d4c_spawn_case("b0", 0, 3, b14=0, n=1, rec=E3_REC2),
+        d4c_spawn_case("c0", 0, 0, dig=0x00010000),
+        d4c_spawn_case("c1", 1, 1, dig=1),
+        d4c_spawn_case("c2", 0, 2, dig=0x80000000),
+        d4c_spawn_case("c3", 1, 3, dig=1),
+        d4c_spawn_case("c4", 0, 4, dig=1),
+        d4c_spawn_case("c5", 1, 5, dig=1),
+        d4c_spawn_case("c6", 0, 6, dig=1),
+        d4c_spawn_case("c7", 1, 7, dig=1),
+    ], allow_calls=(0x1CEBC, 0x1B544), calls=D4C_SPAWN_CALLS, eax_mask=0,
+       mutants=("@noa8", "@a8side", "@chside", "@no7a", "@descside", "@descstride", "@a5w", "@argswap", "@y0",
+                "@norec", "@noinc", "@no52", "@no53", "@incw", "@no5f", "@no64", "@n1", "@fe1", "@ffalways",
+                "@fe0", "@noff", "@ffside", "@idxno400", "@idxsext", "@idxoff", "@desc2stride", "@childx",
+                "@childy", "@no04", "@no59", "@59src", "@no24", "@24stride", "@no14", "@14rec", "@no51",
+                "@51side", "@no4c", "@no4d", "@4dv", "@idiv", "@capuns", "@capsext", "@capno", "@no55",
+                "@81nobase", "@no81", "@childl", "@40w", "@no40", "@no54", "@no5d", "@08w", "@no08", "@6ab",
+                "@no6a", "@no6c", "@no7b", "@no7c", "@88b", "@no88", "@latchearly", "@no20", "@nolatch",
+                "@latchside", "@no0c", "@no10", "@no14s", "@no18", "@no1c", "@1clate", "@nopal", "@palside",
+                "@palslot", "@palch", "@no41", "@41mask", "@noa0", "@a0side", "@dustearly", "@b14inv",
+                "@dustside")),
+]
+
+D4C_33C78 = E.Call(0x33C78, ("eax", "edx", "ecx", "ebx", "s0"), pop=4, clobbers=("ebx", "ecx", "edx", "ebp"))
+
+
+def d4c_wrap_case(cid, side, xs=(0x0110, 0xE800, 0x7654), layer=0x0400):
+    """0x33EB4: the word below the x table 0xBDA3A and its three first words (the dword at
+    0xBDA38 + side*2 is shifted right 16), and the layer word 0xBD898 between two words. A side of
+    0x100 reads the image's own word at 0xBDC3A."""
+    return Case(cid, {"eax": side}, {0x000BDA38: le16(0x5A5A) + b"".join(le16(x) for x in xs),
+                                     0x000BD896: le16(0x9696) + le16(layer) + le16(0x9A9A)})
+
+
+D4C_SPECS += [
+    # 0x33EB4 fighter_spawn: EAX = side, tested whole (`test eax,eax; jne` 0x33EB7: e3 is 0x100).
+    # 0x33C78(side, the x dword [0xBDA38 + side*2] `sar 16` (e1 negative), the layer word 0xBD898
+    # zero-extended (e2 has bit 15), EBX = 0, the stack word 0x4000 for side 0 and 0 otherwise) is
+    # a stub. Void: `mov eax,6` 0x11ADE; `mov ah,1; ..; xor eax,eax` 0x11B0D..0x11B1A (the AH goes
+    # to 0x104B15); `mov eax,1` 0x25AB1/0x25ABD, 0x25BF2; `xor eax,eax` 0x25BFC; `lea eax,[edx*8]`
+    # 0x269F2; `mov eax,0x25` 0x270F2, 0x295F6.
+    Spec("fighter_spawn", 0x33EB4, [
+        d4c_wrap_case("e0", 0),
+        d4c_wrap_case("e1", 1),
+        d4c_wrap_case("e2", 2, layer=0x8400),
+        d4c_wrap_case("e3", 0x100),
+    ], calls=(D4C_33C78,), eax_mask=0,
+       mutants=("@a5", "@a5al", "@a5v", "@xzext", "@xlo", "@xstride", "@layerd", "@layersext", "@y", "@side")),
 ]   # D4C_SPECS end
 D1_SPECS += D4C_SPECS
 SPECS = [

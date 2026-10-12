@@ -98,6 +98,10 @@ void ai_classify(u32 param);                            /* 0x469A8 */
 void ai_pick(u32 side);                                 /* 0x46F4C */
 void ai_manage(u32 side);                               /* 0x470F8 */
 
+/* PORT: exported for the D4 d4c differential rows (linkage only; record
+ * 2026-10-12-reverse-d4c). */
+void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a4, u32 a5);   /* 0x33C78 */
+
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then
  * picks a winner from the two 0x18950 reachabilities and, on an exact tie,

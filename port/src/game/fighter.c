@@ -295,8 +295,9 @@ int fighter_spawn_audio_gate(void)
  * layer), EBX = a4 (the y), and the stack argument = 0x4000 for side 0 / 0 for
  * side 1. The three stores that make the slot live are DS_001077A8[side]
  * (0x33CA0), slot+0x7A (0x33CB8) and slot+0x00 (0x33CD8). */
-static void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a4, u32 a5)
+void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a4, u32 a5)
 {
+    PR_SEAM(0x33C78u, side, a2, a3, a4, a5);
     u32 slot = DS_001077B0 + side * 0x94u;          /* 0x33C84..0x33C95 */
     DSD(DS_001077A8 + side * 4u) = slot;            /* 0x33CA0 */
     u32 ch = (u32)DSB(DS_0010816A + side);          /* 0x33CB2 */
@@ -426,6 +427,7 @@ int fighter_slot_flag(u32 bit)
  * row + state(param_1)*8, or its +4 twin when state(param_2) >= 0x20). */
 int fighter_connect_query(u32 param_1, u32 param_2)
 {
+    PR_SEAM_RET(0x18950u, param_1, param_2);
     u32 slot_1 = DS_001077B0 + param_1 * 0x94u;
     u32 slot_2 = DS_001077B0 + param_2 * 0x94u;
     u32 state_1 = (u32)DSB(slot_1 + 0x5Fu);         /* 0x18975 */
@@ -8274,6 +8276,7 @@ int fighter_18c14(u32 side, u8 flags[16], u32 box_a, u32 box_b)
  * result and 0 otherwise. */
 void fighter_19020(u32 side)
 {
+    PR_SEAM(0x19020u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     fighter_hook_cb fn;
     if (DSD(slot + 0x18u) == 0) return;                     /* 0x19032/0x19039 */
@@ -8570,6 +8573,7 @@ void fighter_192dc(u32 side)
 /* 0x193B0. The winner's per-frame body. EAX = side. */
 void fighter_winner_body(u32 side)
 {
+    PR_SEAM(0x193B0u, side);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                            /* 0x193B9 */
     hit_flash_pair(ctx[0]);                                 /* 0x193C1 0x34D8C */

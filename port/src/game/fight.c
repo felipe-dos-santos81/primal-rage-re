@@ -1410,6 +1410,7 @@ void fight_4cf20(u32 side)
  * it spawns is an ordinary pool actor and renders. */
 void fight_dust_build(u32 side)
 {
+    PR_SEAM(0x494A8u, side);
     if (DSW(DS_00104AFA) == 0x23u) {                    /* 0x494B7..0x494C0 */
         fight_4cf20(side);                              /* 0x494C6 (record §49-Z) */
         return;                                         /* 0x494CB */
