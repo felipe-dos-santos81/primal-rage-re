@@ -3,7 +3,9 @@
 Differential rows for the already-ported functions of the d2d queue
 (`.superpowers/sdd/2026-10-11-reverse-d1/d2d-queue.txt`, 31 entries: `game/camera.c`, `game/actors.c`
 (the fighter callbacks live in `game/fighter.c`), `game/config.c`, `platform/gfx.c`, `platform/input.c`,
-the last 9 wave-1 leftovers). Every value below is measured on this branch (`reverse-d2d`), image
+the last 9 wave-1 leftovers). **24 rows landed (578 mutants), 6 port corrections, 7 entries not done**
+(§6: three named gaps or absent functions restated, one new named gap, three not attempted). Every
+value below is measured on this branch (`reverse-d2d`), image
 `./build/diffrun --exe data/game/C/PRAGE.EXE --image-out /tmp/pr_d2d_img.bin`, fixups applied, one row
 at a time with `--function <name> --self-check`. The full `--self-check` and the full unittest were
 not run (the integrator's).
@@ -38,12 +40,16 @@ Masks: 0 = no caller reads EAX; 0xFF = AL; 0xFFFFFFFF = the whole register.
 | `0x30788` | `config_bar_draw` (config.c) | 220 | 0 | six call sites, each loads EAX before reading it: `mov eax,[esp+0x10]` (`0x30947`), `mov eax,ecx` (`0x30966`), `mov eax,5` (`0x3097E`), `mov eax,[esp+4]` (`0x30D7A`), `mov eax,ebp` (`0x30D99`); after `0x30DA3`: `mov eax,[esp]` (`0x30DAC`), `mov eax,[esp+4]` (`0x30DBD`), `mov eax,edx` (`0x30DD7`), `mov eax,0x22` (`0x30E19`), `mov eax,3` (`0x30E3D`), or `0x30B45`'s `call 0x2ea74`, which opens with `xor eax,eax` |
 | `0x31E28` | `config_option_row` (config.c) | 251 | 0 | `0x3216C`: `mov eax,1` (`0x32173`); `0x32182`: `mov eax,ebx` (`0x3218E`); `0x32190`: `xor eax,eax` (`0x3219E` / `0x321A9`); `0x32438`: `mov eax,1` (`0x3243F`); `0x32446`: `mov eax,[0x101514]` (`0x3244B`) |
 | `0x3E6A8` | `fighter_3e6a8` (fighter.c) | 344 | 0 | the slot `+0x10` callback (the dword at `0x3ECBF`), as `0x21458` |
-| `0x3F9C8` | `fighter_3f9c8` (fighter.c) | 446 | 0 | the slot `+0x0C` callback (the dword at `0x3FBC1`): `xor eax,eax` (`0x35434`) after `0x35431`; `0x384D9` returns through `0x38434` to `mov eax,esi` (`0x38570`) (record d1b, the `0x3F720` row) |
+| `0x3F9C8` | `fighter_3f9c8` (fighter.c) | 446 | 0 | the slot `+0x0C` callback (the dword at `0x3FBC4`, stored by the instruction at `0x3FBC1`): `xor eax,eax` (`0x35434`) after `0x35431`; `0x384D9` returns through `0x38434` to `mov eax,esi` (`0x38570`) (record d1b, the `0x3F720` row) |
 | `0x3FDD8` | `fighter_3fdd8` (fighter.c) | 206 | 0 | the slot `+0x1C` callback (the dword at `0x3FF81`): the one `call [edx+0x1c]` (`0x19505`) is followed by `mov eax,[esp+8]` (`0x19508`) |
 | `0x4F644` | `input_state_update` (input.c) | 162 | 0 | followed by hand, two calls deep. `0x24C6E`: `mov eax,ebx` (`0x24C9F`) or, past the loop, `0x461DC` (`mov eax,2` `0x461F8` / `mov eax,[0x101514]` `0x46203` before any read) or `0x38990` (`mov ax,[0xf0aec]` `0x38991`, `mov eax,[0xf0aec]` `0x3899F`). `0x25210`: `jmp 0x2540f`, `0x2A31C` (`mov eax,[0x105bcc]` `0x2A353`, or its early `ret`), then `mov ax,[0x104b00]` (`0x2545C`, only AX compared) or `0x3BB90` (`xor ah,ah; mov [0x107d30],ah`, `xor eax,eax` `0x3BB9B`). **Weaker evidence than the other rows': not every branch below those calls was read** |
 | `0x4F4E8` | `flow_round_timer_step` (flow.c) | 223 | 0 | the render table's bit-0 entry (the dword at `0xA86C4`): after `call [eax+0xa86c4]` (`0x25623`) the walk reloads EAX for the next entry (`mov eax,ebx` `0x25621`) or leaves for `0x134C0` (pushes, `cmp byte [0x9af3c],0`, its early exits do not read EAX) and `mov eax,[0x10150c]` (`0x2563E`) |
 | `0x48AAC` | `fighter_48aac` (fighter.c) | 306 | 0 | the slot `+0x0C` callback (the dword at `0x48C06`), as `0x3F9C8` |
-| `0x48D94` | `fighter_48d94` (fighter.c) | 446 | 0 | the slot `+0x0C` callback (stored by `0x48F54`), as `0x3F9C8` |
+| `0x48D94` | `fighter_48d94` (fighter.c) | 446 | 0 | the slot `+0x0C` callback (the dword at `0x48F77`), as `0x3F9C8` |
+| `0x40954` | `fighter_40954` (fighter.c) | 616 | 0 | the slot `+0x0C` callback (the dword at `0x40C1A`), as `0x3F9C8` |
+| `0x4505C` | `fighter_4505c` (fighter.c) | 138 | 0 | the slot `+0x0C` callback (the dword at `0x45117`), as `0x3F9C8` (a d1g leftover) |
+| `0x3EE00` | `fighter_3ee00` (fighter.c) | 321 | 0 | the slot `+0x0C` callback (the dword at `0x3EF9E`), as `0x3F9C8` (a d1g leftover) |
+| `0x3E524` | `fighter_3e524` (fighter.c) | 263 | 0 | the slot `+0x0C` callback (the dword at `0x3E672`), as `0x3F9C8` (a d1g leftover) |
 
 ## §2 The rows (measured)
 
@@ -66,10 +72,24 @@ Masks: 0 = no caller reads EAX; 0xFF = AL; 0xFFFFFFFF = the whole register.
 | `fighter_3f9c8` | 0x3F9C8 | 14 | 18/20 | 36 | 0 | stubs `0x187FC`, `0x189FC`, `0x3C190`, `0x3C148`, `0x2B150`, `0x3C16C`, `0x188AC`, `0x2BC30`, `0x188DC`; `0x33950`, `0x3F6F4`, `0x3F720` allow; two blocks named (§4) |
 | `fighter_3fdd8` | 0x3FDD8 | 4 | 4/4 | 23 | 0 | stubs `0x1A570`, `0x188DC`, `0x2BC30`, `0x39834`, `0x39A10`; `0x33950`, `0x3D0C0` allow; correction §3.6 |
 | `input_state_update` | 0x4F644 | 5 | 2/3 | 10 | 0 | `0x50161`, `0x2D2F0` allow; one block named (§4) |
+| `flow_round_timer_step` | 0x4F4E8 | 11 | 12/12 | 22 | 0 | stubs `0x2F4D0`, VOICE, `0x2EFD4`, `0x2F198`; `0x2F528` allow |
+| `fighter_48aac` | 0x48AAC | 14 | 14/14 | 29 | 0 | stubs VOICE, `0x188DC`, `0x2BC30`, `0x2AE14`, `0x3C190`; `0x33950`, `0x380C4`, `0x370F0` allow |
+| `fighter_48d94` | 0x48D94 | 14 | 14/14 | 39 | 0 | stubs VOICE, `0x29C08`, `0x2AE14`, `0x2A17C`, `0x2BC30`; `0x5D7DC` real (recorded); `0x33950`, `0x48C4C` (with `0x249C0`), `0x370F0` allow |
+| `fighter_40954` | 0x40954 | 15 | 15/15 | 48 | 0 | stubs `0x188AC`, `0x2BC30`, VOICE, `0x2AE14`, `0x3C480`, `0x2A148`, `0x2A17C`; `0x33950`, `0x408E8` allow |
+| `fighter_4505c` | 0x4505C | 10 | 10/11 | 15 | 0 | stub `0x2BC30`; `0x33950` allow; `RESOLVED_JUMPS` `0x4507A`; one block named (§4) |
+| `fighter_3ee00` | 0x3EE00 | 16 | 28/29 | 26 | 0 | stubs `0x2BC30`, VOICE; `0x33950` allow; one block named (§4) |
+| `fighter_3e524` | 0x3E524 | 11 | 10/11 | 28 | 0 | stubs `0x3C190`, `0x188AC`, `0x3C148`, `0x3C16C`, `0x3C4CC`; `0x33950` allow; one block named (§4) |
 
-Every binding and mutant of each row was run ten times on the port side with identical output and no
-`diffrun` failure: no index-like sentinel leaves `mem[]` ("other side" mutants use `side ^ 1` on sides
-0 and 1; the side-2 cases of the two tails keep `0x1077B0 + 2 * 0x94` inside the image).
+24 rows, 578 mutants. No stub address is new: every stubbed callee was already in
+`test_each_stub_declares_the_registers_its_callee_clobbers`'s table, and each `Call`'s `clobbers` equals
+`E.callee_clobbers(image, addr)` (re-derived over the 24 specs in one scratch run).
+
+Every binding and mutant was run ten times on the port side with identical output and no `diffrun`
+failure, per row when it was measured and once more over all 24 rows on the final tree (602 bindings;
+the result is in the report): no index-like sentinel leaves `mem[]` ("other side" mutants use `side ^
+1` on sides 0 and 1; the side-2 cases of the two tails keep `0x1077B0 + 2 * 0x94` inside the image;
+`fighter_48d94@nonull` and `fighter_3ee00@cnonull` follow a 0 pointer to `mem[0x34]`/`mem[0x7A]`,
+inside `mem[]`, below the image).
 
 **Exports for the bindings** (not corrections): `camera_mode_track_pair` and `camera_box_palette` lose
 `static` (declared in `camera.h`), `frame_timer` loses `static` (declared in `actors.h`). No seam was
@@ -78,12 +98,16 @@ added.
 **Harness lines outside the batch's three blocks** (additive, none edited): `tools/diff_emu.py`
 `RESOLVED_JUMPS` gains `0x31EBC: (0x31EA7, 0x31E0C, 7)` with its comment, and the `WINDOWS` dictionary
 of `test_each_resolved_jump_table_matches_the_bytes` (`tools/tests/test_diff_verify.py`) gains the
-matching `0x31EBC` window (`cmp edi, 6` .. `jmp dword ptr cs:[eax + 0x31e0c]`), re-checked from the
-image by a scratch run of the test's own loop.
+matching `0x31EBC` window (`cmp edi, 6` .. `jmp dword ptr cs:[eax + 0x31e0c]`); likewise `0x4507A:
+(0x45071, 0x45048, 5)` and its window (`cmp dl, 4` .. `jmp dword ptr cs:[eax*4 + 0x45048]`) for the
+d1g leftover `0x4505C`. Both windows were re-checked from the image by a scratch run of the test's own
+loop (the unittest itself was not run). `git diff` against the branch point shows no removed line in
+`tools/diff_verify.py`, `port/tests/diff_runner.c`, `tools/tests/test_diff_verify.py` or
+`tools/diff_emu.py`.
 
 ## §3 Corrections (raw over port, address-proved)
 
-Each is its own commit. Neither was run against the oracles; for each the 820-frame `--check` dump is
+Each is its own commit. None was run against the oracles; for each the 820-frame `--check` dump is
 byte-identical before and after (sha256 of the concatenated `frames/*` `a53064ba3444295e...`) and
 `PR_ORACLE_REQUIRED=1 ./build/run_tests` is green.
 
@@ -155,6 +179,9 @@ byte-identical before and after (sha256 of the concatenated `frames/*` `a53064ba
   - `input_state_update` `0x4F694` (`or [0x1088e4],[0x1088d8]`): dead with `0x2D2F0` real (`xor
     eax,eax; ret`): the byte `0x1088D4` just stored is 0, so `test byte [0x1088d4],2; je` (`0x4F68B`)
     is always taken.
+  - `fighter_4505c` `0x450D6` (table entry 3 and `+0x57` above 4), `fighter_3ee00` `0x3EF30` (`+0x57`
+    above 3) and `fighter_3e524` `0x3E61A` (`+0x57` above 3): each is `mov eax,1; call 0x62003`, the
+    runtime's fatal exit; the port returns there (a `PORT:` comment in each).
 - **`0x52106` (`gfx_screen_reset`, gfx.c) is a named gap, not a row.** Its body reads the VGA status
   port and programs the DAC: `mov edx,0x3da; in al,dx; test al,8; je` (`0x52129..0x52131`, the wait for
   vertical retrace), `out dx,al` at `0x5213F` and `0x52145..0x52147` (256 black DAC entries). `in`/`out`
@@ -183,6 +210,21 @@ byte-identical before and after (sha256 of the concatenated `frames/*` `a53064ba
 - **`config_credit_ready`, `config_bar_draw`, `config_option_row`: the stubs below the allowed
   wrappers.** `0x2F434`/`0x2F174`/`0x1C500` run on both sides, so the rows prove the arguments those
   wrappers hand on (`0x2EFD4`, `0x2F198`, `0x2F5A0` recorded) and rest on the wrappers' own rows (d1g).
+- **`flow_round_timer_step`: a zero divisor is not cased.** `idiv ebx` (`0x4F55A`) faults on
+  `[0x1088D0]` = 0; the port returns (a `PORT:` guard). A negative divisor is cased (`r8`).
+- **`fighter_48aac`, `fighter_48d94`, `fighter_40954`: real callees.** `0x380C4`, `0x370F0`, `0x48C4C`
+  and `0x408E8` run on both sides (not in the stub clobber table); the rows see their calls through
+  what those callees do and through the recorded stubs below them, and rest on their own rows (d1b,
+  d1g). The SPAWN stub returns one record for every spawn of a case, so `fighter_40954`'s state 2
+  stores it in both `0x108090` and (through `0x408E8`) `0x108094`; a 0 spawn there would make the raw
+  read `[0x56]` outside the image and is not cased. `fighter_48d94`'s 0 spawn is cased (`s2c`).
+- **`fighter_48d94`: the rng is real**, so each draw's value is the generator's for the case's seed
+  (the draws' ranges and order are in the recorded call list: `@speedrange`, `@yorder`, `@rng4`); the
+  16-bit sign extension of `y` (`mov ecx,[esp+0x16]; sar ecx,0x10` `0x48E67/0x48E7A`) is cased with a
+  record word of `0x8100` (`s2e`).
+- **The per-case poke limit.** `diffrun` takes at most 40 pokes a case. `d2d_fin_case` leaves the
+  scratch slot's character without the three `0x380C4`/`0x370F0` table dwords it cannot reach, and
+  `fighter_48d94`'s list-building case uses the side's own slot.
 - **`input_state_update`: the selectors' order is not observable** (the two masks `0xFF00FF00` and
   `0x00FF00FF` are disjoint, so the two turns at the latch commute; `@order` was dropped as equivalent).
 - **PORT guards not cased.** `camera_dust_burst` skips the stream start when the spawn returns 0 (the
@@ -227,10 +269,29 @@ two out dwords. Findings:
   took the fatal arm (`unmodeled: call 0x62003 from 0x3FB7B`); it now passes the side's own slot.
 - `input_state_update@e0w` (a dword store at `0x1088E0`) was first written before the `0x1088E2` word
   store, which overwrote its damage; it is now the last store.
+- Weak seeds found by an undetected mutant, then fixed: `fighter_4505c@vfield` (the record's `+0x36`
+  was the negation of `+0x34`, the same magnitude; now a slow 0x10), `fighter_48aac@distslot` (the
+  scratch slot and the side's slot held the same x; the side's is now 0x5000 further),
+  `fighter_48aac@voicesext` (overlapping sentinel pokes overwrote the other character's voice word),
+  `fighter_40954@c1ch` and `fighter_3ee00@wslot` (no case made the scratch slot's value decide: `s1e`,
+  `a7` added), `flow_round_timer_step@d0ge` (no case ran at the divisor bound 0x62: `r10` added).
+  `fighter_48aac`'s `c2` first passed a timer of `0x8000`, which counts down to a positive `0x7FFF` and
+  waits; it is now 0.
 - `frame_timer`: the four `+0x20`/`+0x24` float stores, the `+0x63` counter, the child chain's three
   byte stores and the pset word each have a mutant that drops or misplaces them (`@add`, `@no63`,
   `@late`, `@child2a`, `@child20`, `@chainclr`, `@chain2a`, `@e1w`).
 
 ## §6 Queue entries not done
 
-(filled in at the end of the batch)
+| addr | size | why |
+|---|---|---|
+| `0x52106` | 83 | **named gap** (§4): `in al,dx` at `0x5212E` and `out dx,al` at `0x5213F`/`0x52145` are unmodeled; measured once by hand (`unmodeled`, `in at 0x5212E`). No spec |
+| `0x12CD4` | 93 | leftover d1h, unchanged: the port has no function for it (its body is inlined in `camera_y_clamp`, the block commented `0x12CD4`); a row needs a C function to bind, and splitting one out is a new `/* 0x12CD4` header, which this track's limits exclude |
+| `0x2F920` | 22 | leftover d1g, unchanged: no port function (inlined as `mem_fill(DS_00105F38, 0, 0x14D4u)` in `actors_reset_al`); covered when `0x2BAF4` is rowed |
+| `0x2EA74` | 4 | leftover d1i, unchanged, a named gap: `xor eax,eax; mov eax,eax` with no `ret`, falling into `0x2EA78` (re-read here: `0x2EA78` reaches `int 0x16` at `0x2EB15`, unmodeled). The port is the one-line delegation `config_screen_wait(0)` |
+| `0x3157C` | 1057 | leftover d1i: **not attempted** (time). Its raw == 0 arm formats into a stack buffer through `0x65546`, which a stub cannot write (d1i §6) |
+| `0x216EC` | 677 | leftover d1g: **not attempted** (time) |
+| `0x3EA24` | 508 | leftover d1g: **not attempted** (time) |
+
+The other 24 queue entries are the rows of §2 (21 of the 22 wave-2 entries; `0x4505C`, `0x3EE00` and
+`0x3E524` of the 9 leftovers).
