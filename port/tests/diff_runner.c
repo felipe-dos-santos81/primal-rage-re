@@ -26513,6 +26513,49 @@ static void d3a_4f9c8_core(u32 mut)
 #define D3A_WB_MUT(name) \
     static void m_d3a_wb_##name(const u32 *r, u32 *eax) { (void)r; d3a_4f9c8_core(D3A_WB_##name); *eax = 0u; }
 D3A_WB_MUT(al) D3A_WB_MUT(inv) D3A_WB_MUT(nohook) D3A_WB_MUT(pre) D3A_WB_MUT(early) D3A_WB_MUT(nostore) D3A_WB_MUT(src) D3A_WB_MUT(b00b)
+/* 0x10DB0 and 0x10E18: no argument. Mask 0: every site is `call 0x10db0; call 0x10e18; call 0x2bf08`
+ * (0x11D75.. to 0x11E99..); 0x10E18's first EAX use is `mov ah,[0xf0a71]` (0x10E19) and it reads AH only
+ * until `mov eax,0x100` (0x10E69); 0x2BF08's first is `mov ah,[0x9ad58]`.. (record §1). */
+static void b_d3a_10db0(const u32 *r, u32 *eax) { (void)r; frontend_pause_tail(); *eax = 0u; }
+static void b_d3a_10e18(const u32 *r, u32 *eax) { (void)r; frontend_continue_tail(); *eax = 0u; }
+enum { D3A_PT_NONE, D3A_PT_a71, D3A_PT_a71set, D3A_PT_a71late, D3A_PT_dbbit, D3A_PT_d9bit, D3A_PT_dboff, D3A_PT_d9off,
+       D3A_PT_either, D3A_PT_b1bgate, D3A_PT_nob1b, D3A_PT_nob15, D3A_PT_a6c, D3A_PT_a6cb, D3A_PT_val,
+       D3A_PT_a64, D3A_PT_a64else, D3A_PT_a64b, D3A_PT_novoice, D3A_PT_vid, D3A_PT_early };
+static void d3a_pt_core(int pause, u32 mut)
+{
+    u8 mdb = pause ? 0x20u : 0x10u, md9 = pause ? 0x10u : 0x20u;
+    u16 v = pause ? 4u : 5u;
+    if (mut == D3A_PT_dbbit) mdb = (u8)(0x30u - mdb);
+    if (mut == D3A_PT_d9bit) md9 = (u8)(0x30u - md9);
+    if (mut == D3A_PT_val) v = (u16)(9u - v);
+    if (mut != D3A_PT_a71 && DSB(0x000F0A71u) != 0u) return;
+    int a = (DSB((mut == D3A_PT_dboff) ? 0x001088DAu : 0x001088DBu) & mdb) != 0u;
+    int b = (DSB((mut == D3A_PT_d9off) ? 0x001088D8u : 0x001088D9u) & md9) != 0u;
+    if ((mut == D3A_PT_either) ? !(a || b) : !(a && b)) return;
+    if (mut != D3A_PT_a71set && mut != D3A_PT_a71late) DSB(0x000F0A71u) = 1u;
+    if ((DSB(0x00104B1Bu) != 0u) != (mut == D3A_PT_b1bgate)) {
+        if (mut == D3A_PT_early) (void)sound_voice(0x100u);
+        if (mut != D3A_PT_nob1b) DSB(0x00104B1Bu) = 0u;
+        if (mut != D3A_PT_nob15) DSB(0x00104B15u) = 0u;
+        if (mut == D3A_PT_a6cb) DSB(0x000F0A6Cu) = (u8)v;
+        else if (mut != D3A_PT_a6c) DSW(0x000F0A6Cu) = v;
+        if (mut == D3A_PT_a64b) DSB(0x000F0A64u) = (u8)v;
+        else if (mut != D3A_PT_a64) DSW(0x000F0A64u) = v;
+        if (mut != D3A_PT_novoice && mut != D3A_PT_early) (void)sound_voice((mut == D3A_PT_vid) ? 0x101u : 0x100u);
+        if (mut == D3A_PT_a71late) DSB(0x000F0A71u) = 1u;
+        return;
+    }
+    if (mut == D3A_PT_a71late) DSB(0x000F0A71u) = 1u;
+    if (mut == D3A_PT_a64b) DSB(0x000F0A64u) = (u8)v;
+    else if (mut != D3A_PT_a64else) DSW(0x000F0A64u) = v;
+}
+#define D3A_PT_MUT(name) \
+    static void m_d3a_pt4_##name(const u32 *r, u32 *eax) { (void)r; d3a_pt_core(1, D3A_PT_##name); *eax = 0u; } \
+    static void m_d3a_pt5_##name(const u32 *r, u32 *eax) { (void)r; d3a_pt_core(0, D3A_PT_##name); *eax = 0u; }
+D3A_PT_MUT(a71) D3A_PT_MUT(a71set) D3A_PT_MUT(a71late) D3A_PT_MUT(dbbit) D3A_PT_MUT(d9bit) D3A_PT_MUT(dboff)
+D3A_PT_MUT(d9off) D3A_PT_MUT(either) D3A_PT_MUT(b1bgate) D3A_PT_MUT(nob1b) D3A_PT_MUT(nob15) D3A_PT_MUT(a6c)
+D3A_PT_MUT(a6cb) D3A_PT_MUT(val) D3A_PT_MUT(a64) D3A_PT_MUT(a64else) D3A_PT_MUT(a64b) D3A_PT_MUT(novoice)
+D3A_PT_MUT(vid) D3A_PT_MUT(early)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33195,6 +33238,48 @@ static const binding_t k_bindings[] = {
     { "frontend_mode_1b_step@nostore", m_d3a_wb_nostore, 0x00000000u },
     { "frontend_mode_1b_step@src", m_d3a_wb_src, 0x00000000u },
     { "frontend_mode_1b_step@b00b", m_d3a_wb_b00b, 0x00000000u },
+    { "frontend_pause_tail", b_d3a_10db0, 0x00000000u },
+    { "frontend_pause_tail@a71", m_d3a_pt4_a71, 0x00000000u },
+    { "frontend_pause_tail@a71set", m_d3a_pt4_a71set, 0x00000000u },
+    { "frontend_pause_tail@a71late", m_d3a_pt4_a71late, 0x00000000u },
+    { "frontend_pause_tail@dbbit", m_d3a_pt4_dbbit, 0x00000000u },
+    { "frontend_pause_tail@d9bit", m_d3a_pt4_d9bit, 0x00000000u },
+    { "frontend_pause_tail@dboff", m_d3a_pt4_dboff, 0x00000000u },
+    { "frontend_pause_tail@d9off", m_d3a_pt4_d9off, 0x00000000u },
+    { "frontend_pause_tail@either", m_d3a_pt4_either, 0x00000000u },
+    { "frontend_pause_tail@b1bgate", m_d3a_pt4_b1bgate, 0x00000000u },
+    { "frontend_pause_tail@nob1b", m_d3a_pt4_nob1b, 0x00000000u },
+    { "frontend_pause_tail@nob15", m_d3a_pt4_nob15, 0x00000000u },
+    { "frontend_pause_tail@a6c", m_d3a_pt4_a6c, 0x00000000u },
+    { "frontend_pause_tail@a6cb", m_d3a_pt4_a6cb, 0x00000000u },
+    { "frontend_pause_tail@val", m_d3a_pt4_val, 0x00000000u },
+    { "frontend_pause_tail@a64", m_d3a_pt4_a64, 0x00000000u },
+    { "frontend_pause_tail@a64else", m_d3a_pt4_a64else, 0x00000000u },
+    { "frontend_pause_tail@a64b", m_d3a_pt4_a64b, 0x00000000u },
+    { "frontend_pause_tail@novoice", m_d3a_pt4_novoice, 0x00000000u },
+    { "frontend_pause_tail@vid", m_d3a_pt4_vid, 0x00000000u },
+    { "frontend_pause_tail@early", m_d3a_pt4_early, 0x00000000u },
+    { "frontend_continue_tail", b_d3a_10e18, 0x00000000u },
+    { "frontend_continue_tail@a71", m_d3a_pt5_a71, 0x00000000u },
+    { "frontend_continue_tail@a71set", m_d3a_pt5_a71set, 0x00000000u },
+    { "frontend_continue_tail@a71late", m_d3a_pt5_a71late, 0x00000000u },
+    { "frontend_continue_tail@dbbit", m_d3a_pt5_dbbit, 0x00000000u },
+    { "frontend_continue_tail@d9bit", m_d3a_pt5_d9bit, 0x00000000u },
+    { "frontend_continue_tail@dboff", m_d3a_pt5_dboff, 0x00000000u },
+    { "frontend_continue_tail@d9off", m_d3a_pt5_d9off, 0x00000000u },
+    { "frontend_continue_tail@either", m_d3a_pt5_either, 0x00000000u },
+    { "frontend_continue_tail@b1bgate", m_d3a_pt5_b1bgate, 0x00000000u },
+    { "frontend_continue_tail@nob1b", m_d3a_pt5_nob1b, 0x00000000u },
+    { "frontend_continue_tail@nob15", m_d3a_pt5_nob15, 0x00000000u },
+    { "frontend_continue_tail@a6c", m_d3a_pt5_a6c, 0x00000000u },
+    { "frontend_continue_tail@a6cb", m_d3a_pt5_a6cb, 0x00000000u },
+    { "frontend_continue_tail@val", m_d3a_pt5_val, 0x00000000u },
+    { "frontend_continue_tail@a64", m_d3a_pt5_a64, 0x00000000u },
+    { "frontend_continue_tail@a64else", m_d3a_pt5_a64else, 0x00000000u },
+    { "frontend_continue_tail@a64b", m_d3a_pt5_a64b, 0x00000000u },
+    { "frontend_continue_tail@novoice", m_d3a_pt5_novoice, 0x00000000u },
+    { "frontend_continue_tail@vid", m_d3a_pt5_vid, 0x00000000u },
+    { "frontend_continue_tail@early", m_d3a_pt5_early, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

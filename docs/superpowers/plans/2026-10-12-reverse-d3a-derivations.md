@@ -24,6 +24,8 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x4F2B0` | `frontend_mode_16_step` | 103 | 0: `0x253E7 call` then `0x253EC jmp 0x2540f` |
 | `0x4F318` | `frontend_mode_17_step` | 100 | 0: `0x253EE call` then `0x253F3 jmp 0x2540f`; `0x425E5 call` then `0x425EA call 0x33f08` (first EAX use a load, `0x33F15`) |
 | `0x4F9C8` | `frontend_mode_1b_step` | 28 | 0: `0x2540A call` falls into the mode tail `0x2540F` |
+| `0x10DB0` | `frontend_pause_tail` (attract.c) | 104 | 0: every site is `call 0x10db0; call 0x10e18` (`0x11D75`.. `0x11E99`); `0x10E18`'s first EAX use is `mov ah,[0xf0a71]` (`0x10E19`), it reads AH only until `mov eax,0x100` (`0x10E69`) |
+| `0x10E18` | `frontend_continue_tail` (attract.c) | 104 | 0: every site is followed by `call 0x2bf08`, which writes AH first (`0x2BF0E`) and passes AL through on its attract arm; that row's trace (d1c §1: twelve sites, each `pop edx; pop ecx; pop ebx; ret`, traced) holds EAX dead after it |
 
 ## §2 The row table (measured)
 
@@ -46,6 +48,8 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `frontend_mode_16_step` | `0x4F2B0` | 10 | 9/9 | 20 | 0 | the same cases; on expiry the hook `[0x104AE4]`: `0x5D812` recorded on both sides (`c2`, `c6`), the registered `0x28D68` real with its `0x4F980` (`c4`, `c7`), whose store to `0x104AFA` the raw reads back (`@pre`) |
 | `frontend_mode_17_step` | `0x4F318` | 10 | 9/9 | 19 | 0 | the same cases; the word `0x1088EE = 0xFFFF` is stored before the hook call (`@late`: `call #0/#1 memory`) |
 | `frontend_mode_1b_step` | `0x4F9C8` | 4 | 3/3 | 8 | 0 | `0x4FA88` stubbed (seamed here); `w2`'s stub EAX `0x100` separates `test eax,eax` from an AL test and runs the registered hook |
+| `frontend_pause_tail` | `0x10DB0` | 8 | 7/7 | 20 | 0 | `0x2C3FC` stubbed, `0x29D60` (a bare `ret`) allowed. `t2`/`t3` hold every bit but one with the neighbouring held bytes all set (`@dboff`, `@d9off`, `@either`); `t7` holds the other tail's two bits |
+| `frontend_continue_tail` | `0x10E18` | 8 | 7/7 | 20 | 0 | the same cases with the two bits swapped and the value 5 |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -158,6 +162,9 @@ asserted the text. Unproven against the oracles until the integrator's gate.
 - The countdown family: the delay word `0x1088EE` and the countdown `0x104AFE` are stored as words (`@eeb`,
   `@afeb`, caught where the high byte changes: `0x8000`, `0x0100`, 0); the mode word `0x104B00` takes the word
   `0x104AFA` (`@b00b`, `@src`, `@nostore`). `0x4F318` stores `0x1088EE = 0xFFFF` (`@ffff`, `@ffb`).
+- The two tails: the latch byte `0xF0A71 = 1` is stored before the voice (`@a71late`: `call #0 memory`), as
+  are the bytes `0x104B1B`, `0x104B15` and the words `0xF0A6C`, `0xF0A64` (`@early`); each has a drop mutant
+  and the words a byte-store mutant (`@a6cb`, `@a64b`).
 
 ## §6 Queue entries not done
 

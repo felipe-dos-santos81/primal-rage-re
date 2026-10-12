@@ -18685,6 +18685,53 @@ D3A_SPECS += [
     ], allow_calls=D3A_HOOK_REAL, calls=(D3A_WIPE, D1D_HOOK_NOP), eax_mask=0,
        mutants=("@al", "@inv", "@nohook", "@pre", "@early", "@nostore", "@src", "@b00b")),
 ]
+def d3a_ptail_case(a71, db, d9, b1b, d8=0x00, da=0x00):
+    """0x10DB0/0x10E18: the latch byte 0xF0A71 between neighbours, the held dword 0x1088D8 (its
+    four bytes `d8`, `d9`, `da`, `db`) between seeded dwords, the bytes 0x104B15 (0x5A) and
+    0x104B1B between neighbours and the words 0xF0A64 (0x5A5A) and 0xF0A6C (0x5B5B) between
+    seeded words."""
+    return {0x000F0A70: bytes([0x61, a71, 0x62]),
+            0x001088D4: le32(0x63636363) + bytes([d8, d9, da, db]) + le32(0x64646464),
+            0x00104B14: b"\x65\x5a\x66", 0x00104B1A: bytes([0x67, b1b, 0x68]),
+            0x000F0A62: le16(0x6969) + le16(0x5A5A) + le16(0x6A6A),
+            0x000F0A6A: le16(0x6B6B) + le16(0x5B5B) + le16(0x6C6C)}
+
+
+def d3a_ptail_cases(mdb, md9):
+    """The cases the two tails share; `mdb`/`md9` are the bits each tests in the bytes 0x1088DB
+    and 0x1088D9 (the other tail's bits are the two swapped). t2/t3 hold every bit but one, with
+    the bytes a wrong offset would read all set; t7 holds only the other tail's two bits."""
+    return [
+        Case("t0", {"ebx": 0x11111111}, d3a_ptail_case(0, mdb, md9, 1), {0x2C3FC: 0x12345678}),
+        Case("t1", {}, d3a_ptail_case(1, mdb, md9, 1)),
+        Case("t2", {}, d3a_ptail_case(0, 0xFF ^ mdb, 0xFF, 1, d8=0xFF, da=0xFF)),
+        Case("t3", {}, d3a_ptail_case(0, 0xFF, 0xFF ^ md9, 1, d8=0xFF, da=0xFF)),
+        Case("t4", {}, d3a_ptail_case(0, mdb, md9, 0)),
+        Case("t5", {}, d3a_ptail_case(0x80, 0xFF, 0xFF, 1)),
+        Case("t6", {}, d3a_ptail_case(0, 0xFF, 0xFF, 0x80), {0x2C3FC: 0}),
+        Case("t7", {}, d3a_ptail_case(0, md9, mdb, 1)),
+    ]
+
+
+D3A_SPECS += [
+    # 0x10DB0 frontend_pause_tail: no argument. Nothing unless the latch byte 0xF0A71 is 0 and
+    # the held bytes 0x1088DB and 0x1088D9 have bits 0x20 and 0x10. Then the latch = 1; with the
+    # byte 0x104B1B non-zero, it and the byte 0x104B15 = 0 (AH), the words 0xF0A6C and 0xF0A64 =
+    # 4 (BX), 0x29D60 (a bare `ret`, allowed; the port does not call it) and the voice 0x100;
+    # else the word 0xF0A64 = 4 only. 0x2C3FC is a stub. Mask 0: record §1.
+    Spec("frontend_pause_tail", 0x10DB0, d3a_ptail_cases(0x20, 0x10),
+         allow_calls=(0x29D60,), calls=(VOICE,), eax_mask=0,
+         mutants=("@a71", "@a71set", "@a71late", "@dbbit", "@d9bit", "@dboff", "@d9off", "@either", "@b1bgate",
+                "@nob1b", "@nob15", "@a6c", "@a6cb", "@val", "@a64", "@a64else", "@a64b", "@novoice", "@vid",
+                "@early")),
+    # 0x10E18 frontend_continue_tail: 0x10DB0 with the two bits swapped (0x10 in 0x1088DB, 0x20
+    # in 0x1088D9) and the value 5.
+    Spec("frontend_continue_tail", 0x10E18, d3a_ptail_cases(0x10, 0x20),
+         allow_calls=(0x29D60,), calls=(VOICE,), eax_mask=0,
+         mutants=("@a71", "@a71set", "@a71late", "@dbbit", "@d9bit", "@dboff", "@d9off", "@either", "@b1bgate",
+                "@nob1b", "@nob15", "@a6c", "@a6cb", "@val", "@a64", "@a64else", "@a64b", "@novoice", "@vid",
+                "@early")),
+]
 D1_SPECS += D3A_SPECS
 
 
