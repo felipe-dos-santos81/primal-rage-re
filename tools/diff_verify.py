@@ -22270,6 +22270,74 @@ D4A_SPECS += [
                               0x25DE5, 0x25E34, 0x25F6B, 0x25F81, 0x25F95, 0x25F9F)},
        mutants=("@preb14a", "@preb14v", "@preabc", "@preb14m", "@pres", "@pre10d", "@nohud", "@nofn", "@nobadge")),
 ]
+D4A_M30_CALLS = (D4A_PASS, D4A_HUDINIT, SPAWN, D4A_MARKERS, VOICE, D2B_HOLD, P7_2B150, D4A_TIMER)
+
+
+def d4a_m30_case(state, b21=0, **kw):
+    """0x29328: d4a_m5_case plus the byte 0x104B21 (between the seeded 0x104B20 and 0x104B22) and
+    the bytes 0x104AF0/0x104AF1 (0x5A, 0x5B) between seeded neighbours."""
+    p = d4a_m5_case(state, **kw)
+    p[0x00104B21] = bytes([b21])
+    p[0x00104AEF] = bytes([0x2D, 0x5A, 0x5B, 0x2E])
+    return p
+
+
+D4A_SPECS += [
+    # 0x29328 game_mode_30_step: no argument. Mode 5's twin (0x25C88, above) on the table 0x29318:
+    # states 1 and 4 are the same code; state 2's voice is 0xD7 whatever the byte 0x104B14 holds
+    # (q0, q2 have it set), with the stores in the order word 0x104AFE, 0x104B23 (DL, loaded
+    # before the voice), 0x104B25; state 3 runs the same clean-up (0x2F4BC, 0x2B150 twice,
+    # 0x4F37C, the two bytes, the dword 0x104ABC, the run clock), takes no play-time snapshot,
+    # and only with the byte 0x104B21 == 0 stores 0x104AF0 = 0x104AF1 = 0 and the mode word 0x31.
+    # Every callee is a stub; the run clock 0x32970 runs real in the original only. Mask 0: §1.
+    Spec("game_mode_30_step", 0x29328, [
+        Case("z0", D4A_REG5B, d4a_m30_case(0, aec=0xFD)),
+        Case("z5", {}, d4a_m30_case(5, aec=0x02)),
+        Case("z8", {}, d4a_m30_case(0x81)),
+        Case("p0", D4A_REG5B, d4a_m30_case(1, b14=1, b529=0x02), {0x2AE14: 0x0010A400}),
+        Case("p1", {}, d4a_m30_case(1, b14=0x80, b529=0xFD, aec=0xFF), {0x2AE14: 0x00018000}),
+        Case("p2", {}, d4a_m30_case(1, b1e=0x80, adc=0x80, b529=0x02), {0x2AE14: 0}),
+        Case("p3", {}, d4a_m30_case(1, b1e=1, adc=5), {0x2AE14: 0x0010A400, 0x25C1C: 0x12345678}),
+        Case("p4", {}, d4a_m30_case(1, b1e=5, adc=0x105, b529=0xFF), {0x2AE14: 0x0010A400}),
+        Case("p5", {}, d4a_m30_case(1, b1e=1, adc=1), {0x2AE14: 0x0010A400}),
+        Case("p6", {}, d4a_m30_case(1, b1e=2, adc=1, b529=0x03), {0x2AE14: 0x0010A400}),
+        Case("q0", D4A_REG5B, d4a_m30_case(2, b14=1, b529=0x02), {0x2AE14: 0x0010A400}),
+        Case("q1", {}, d4a_m30_case(2, b14=0, b529=0x02, ae8=0xBF), {0x2AE14: 0x0010A480, 0x2C3FC: 0xFFFFFFFF}),
+        Case("q2", {}, d4a_m30_case(2, b14=0x80, b529=0xFD, ae8=0x40), {0x2AE14: 0}),
+        Case("q3", {}, d4a_m30_case(2, b14=0, b529=0x00, ae8=0x20), {0x2AE14: 0x0010A400}),
+        Case("v0", D4A_REG5B, d4a_m30_case(3, b1e=1, b1f=3), {0x2B150: 0x12345678}),
+        Case("v1", {}, d4a_m30_case(3, b21=1, b1f=0x83, ac=(0, 0x0010A340))),
+        Case("v2", {}, d4a_m30_case(3, b21=0x80, b1f=3, b1e=1)),
+        Case("v3", {}, d4a_m30_case(3, b1f=2, b1e=1, b14=1), {0x4F37C: 0xFFFFFFFF}),
+        Case("t0", D4A_REG5B, d4a_m30_case(4, afe=0x0002, b23=2)),
+        Case("t1", {}, d4a_m30_case(4, afe=0x0001, b23=3)),
+        Case("t2", {}, d4a_m30_case(4, afe=0x0000, b23=2)),
+        Case("t3", {}, d4a_m30_case(4, afe=0x8001, b23=0x80)),
+        Case("t4", {}, d4a_m30_case(4, afe=0x0100, b23=3)),
+        Case("t5", {}, d4a_m30_case(4, afe=0x8000, b23=2)),
+    ], allow_calls=(0x32970,), calls=D4A_M30_CALLS + (D4A_SNAPA,), eax_mask=0,
+       mutants=("@nopass", "@passlate", "@noaec", "@aecset", "@aecbit", "@st0", "@st5", "@b1b", "@nob1b", "@b15",
+                "@nob15", "@nohud", "@hudlate", "@s1early", "@b14inv", "@bitmask", "@descswap", "@i2", "@i01",
+                "@b1esext", "@adcb", "@eqlast", "@tblswap", "@stride", "@spx", "@spa3", "@spy", "@sp5", "@noac0",
+                "@ac0w", "@z7", "@z9", "@zval", "@zlate", "@nomark", "@markearly", "@s1b25", "@s1b23", "@s1afe",
+                "@s1afeb", "@nos1afe", "@s2and", "@s2desc", "@s2y", "@noacc", "@s2ae8", "@s2ae8set", "@noae8",
+                "@s2voice", "@s2novoice", "@s2vearly", "@ae8late", "@s2b25", "@s2afe", "@s2afeb", "@s2b23",
+                "@holdrow", "@holdcol", "@holdstr", "@holdmode", "@nohold", "@dead0", "@dead1", "@deadswap",
+                "@noz0", "@noz1", "@z0late", "@notimer", "@timerearly", "@nofc", "@nofe", "@fcw", "@abc3",
+                "@abcbit", "@abcb", "@noabc", "@snapa", "@b21inv", "@b21always", "@noaf0", "@noaf1", "@af1w",
+                "@m31", "@m31b", "@nom31", "@nodec", "@decb", "@s4old", "@s4ge", "@s4uns", "@s4src", "@nocopy")),
+    # 0x29328 again with a 0x25C1C stub that stores 1 in the byte 0x104B14, which state 1 reads
+    # after the call (0x29361).
+    Spec("game_mode_30_step_reread", 0x29328, [
+        Case("r1", {}, d4a_m30_case(1, b14=0, b529=0x02), {0x2AE14: 0x0010A400}),
+    ], calls=(D4A_PASS, dataclasses.replace(D4A_HUDINIT, writes=((None, 0x00104B14, b"\x01"),)), SPAWN,
+              D4A_MARKERS), eax_mask=0,
+       unhit_named={a: "not taken by this row's one case, state 1 under the writing stub (the plain row hits it)"
+                    for a in (0x2938E, 0x293A6, 0x293B7, 0x293BE, 0x293C3, 0x293C7, 0x293CC, 0x293DA, 0x293F3,
+                              0x29473, 0x2947C, 0x29485, 0x2949D, 0x294B3, 0x294FC, 0x2956E, 0x29593, 0x295A7,
+                              0x295B1)},
+       mutants=("@preb14a", "@nohud", "@nomark")),
+]
 D1_SPECS += D4A_SPECS
 
 
