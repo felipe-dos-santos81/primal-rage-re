@@ -3728,7 +3728,7 @@ void game_mode_13_step(void)
         for (e = frontend_list_next(0u); e != 0u;       /* 0x42579/0x4257B 0x33904 */
              e = frontend_list_next(e)) {               /* 0x425AB/0x425AD 0x33904, 0x425B4 */
             if (DSD(e) == 0x0003E708u) continue;        /* 0x42586..0x42590 */
-            if (frontend_resource_known(e) != 0u) continue;     /* 0x42592..0x4259B 0x1C6D4 */
+            if ((frontend_resource_known(e) & 0xFFu) != 0u) continue;   /* 0x42592 0x1C6D4, 0x42599 `test al,al` */
             (void)effects_spawn(e, 3u, DSD(e));         /* 0x4259D..0x425A6 0x13C70 */
         }
         DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u); /* 0x425B8 */
