@@ -12534,7 +12534,7 @@ void fighter_47a00(u32 side)
     DSB(DS_001077B0 + side * 0x94u + 0x57u) = 1u;           /* 0x47A58 */
     fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));   /* 0x47A60..0x47A71 */
     (void)sound_voice(0x46u);                               /* 0x47A76/0x47A7B 0x2C3FC */
-    hit_anim_start_a(ctx[4], DSD(FIGHT_ANIM_47A00
+    hit_anim_start_a(ctx[5], DSD(FIGHT_ANIM_47A00
                                  + (u32)DSB(ctx[3] + 0x7Au) * 4u),
                      0x40400000u);                          /* 0x47A80..0x47A99 0x3C480 */
     fighter_3c358(side);                                    /* 0x47A9E..0x47AA5 */

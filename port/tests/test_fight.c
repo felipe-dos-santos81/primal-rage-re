@@ -38086,6 +38086,7 @@ static void check_49z_47a00(void)
     for (side = 0; side < 2u; side++) {
         for (k = 0; k < 6u; k++) {
             u32 self = slots[side], rec = recs[side], oth = slots[side ^ 1u];
+            u32 orec = recs[side ^ 1u];
             u32 ochar = (side == 0u) ? 2u : 3u;
             u32 a, n0, dist;
             int spawn = b3a[k] <= 1u;
@@ -38099,9 +38100,15 @@ static void check_49z_47a00(void)
             DSW(0x000C9456u + 2u * 2u) = 0x50u;
             DSW(0x000C9456u + 2u * 3u) = 0x44u;
             /* the opponent (3C208's side) faces the way that puts the
-             * placed fighter |dist| from it */
+             * placed fighter |dist| from it. 0x47A89 restarts the OTHER
+             * record (`mov eax,[esp+0x14]`), and 0x2BC30 then rewrites its
+             * pset word from the stream word and the record's flip bit
+             * (+0x28 bit 0x4000, 0x2A408), so that bit decides the facing;
+             * the pset word is seeded with the opposite one. */
             DSW(FIGHT_ACTORS + (1u + (side ^ 1u)) * 0x20u) =
-                (side == 0u) ? 0x8F35u : 0x0F35u;
+                (side == 0u) ? 0x0F35u : 0x8F35u;
+            DSW(orec + 0x28u) = (u16)((DSW(orec + 0x28u) & 0xBFFFu)
+                                      | ((side == 0u) ? 0x4000u : 0u));
             DSW(self + 0x74u) = 0x7777u;
             DSW(oth + 0x74u) = 0x7777u;
             DSB(self + 0x5Fu) = 0x21u;
@@ -38112,7 +38119,6 @@ static void check_49z_47a00(void)
             dist = (ochar == 2u) ? 0x50u : 0x44u;
             a = DSD(DS_00105B3C);
             n0 = tb_active();
-            DSW(FIGHT_ACTORS + (1u + (side ^ 1u)) * 0x20u) = (side == 0u) ? 0x8F35u : 0x0F35u;
             fighter_47a00(side);
             CHECK_EQ_INT((int)tb_active(), (int)(n0 + (spawn ? 1u : 0u)));
             if (spawn) {
@@ -38131,8 +38137,15 @@ static void check_49z_47a00(void)
             CHECK_EQ_INT((int)DSW(DS_00107D2C + side * 2u), 0x101 + 0x100 * (int)side);
             CHECK_EQ_INT((int)DSW(DS_00107D2C + (side ^ 1u) * 2u), 0x100 + 0x100 * (int)(side ^ 1u));
             CHECK_EQ_INT((int)DSD(DS_00107D28), 0x21);
-            CHECK_EQ_INT((int)DSD(rec + 8u), (int)(ochar == 2u ? Z_STF : Z_STF + 0x10u));
-            CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+            /* 0x47A89: the other record takes the stream at 3.0 and its
+             * pset word the stream word with the flip bit's facing; the
+             * side's own record keeps its seeds */
+            CHECK_EQ_INT((int)DSD(orec + 8u), (int)(ochar == 2u ? Z_STF : Z_STF + 0x10u));
+            CHECK_EQ_INT((int)DSD(orec + 0x24u), 0x40400000);
+            CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + (1u + (side ^ 1u)) * 0x20u),
+                         (int)((ochar == 2u ? 0x1234u : 0x1235u) | ((side == 0u) ? 0x8000u : 0u)));
+            CHECK_EQ_INT((int)DSD(rec + 8u), 0x00ABCDEF);
+            CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x11111111);
             CHECK_EQ_INT((int)DSB(self + 0x52u), 9);
             CHECK_EQ_INT((int)DSB(self + 0x53u), 7);
             CHECK_EQ_INT((int)DSB(oth + 0x52u), 0x10);
@@ -38225,8 +38238,10 @@ static void check_49z_47b04(void)
                 DSB(rec + 0x63u) = (g[k] == 7u) ? 0x99u : 7u;   /* not the gate */
                 fighter_47b04(self, arg, side);
                 CHECK_EQ_INT((int)DSB(self + 0x57u), fire ? 1 : 0);
-                CHECK_EQ_INT((int)DSD(rec + 8u),
+                /* 0x47A89: 0x47A00 restarts the other side's record */
+                CHECK_EQ_INT((int)DSD(recs[side ^ 1u] + 8u),
                              fire ? (int)(ochar == 2u ? Z_STF : Z_STF + 0x10u) : 0x00ABCDEF);
+                CHECK_EQ_INT((int)DSD(rec + 8u), 0x00ABCDEF);
                 CHECK_EQ_INT((int)DSB(oth + 0x57u), (int)(0x99u + (side ^ 1u)));
             }
         }
