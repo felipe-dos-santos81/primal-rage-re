@@ -574,7 +574,7 @@ static void frontend_mode12_darken_or_tally(void)
  * current stage's character), then arm the hook game_hook_259cc, mode 0x17
  * and a 0x78-frame (120) countdown. EBX/ECX/EDX pushed and popped. Only
  * caller: state 5's DS_00108104[r] != 7 arm, 0x4213B (0x41C28). */
-static void frontend_mode12_challenge_continue(void)
+void frontend_mode12_challenge_continue(void)
 {
     PR_SEAM0(0x41760u);
     u32 r = DSD(DS_00104AD4);                                /* 0x41763 */
@@ -696,7 +696,7 @@ void frontend_scoreboard_build(void)
  * mode 0x17 and a 0x78-frame (120) countdown. EBX/ECX/EDX/ESI pushed and
  * popped. Only caller: state 7's DS_00105B3A != 0 arm, 0x423FC (0x41C28,
  * record §48-Z). */
-static void flow_join_prompt_draw(void)
+void flow_join_prompt_draw(void)
 {
     PR_SEAM0(0x271E0u);
     DSB(DS_00104B21) = 0u;                                   /* 0x271F4 */
@@ -1020,6 +1020,7 @@ u32 frontend_wipe_in(void)
  * and no gate store when the counter passes 0x10. */
 u32 frontend_wipe_out(void)
 {
+    PR_SEAM_RET0(0x4FA88u);
     if (DSD(DS_000C98F0) == 0u) {                       /* 0x4FA92 */
         DSD(DS_000C98F0) = actor_spawn((const u32 *)(mem + DS_000C9908),
                                        0u, 0xFFu, 0u, 0u);  /* 0x4FAA3/0x4FAA8 */
@@ -1105,6 +1106,7 @@ u32 frontend_buttons_pressed(u32 n)
  * EBX/ECX/EDX/EDI are pushed and popped. */
 u32 frontend_skip_check(void)
 {
+    PR_SEAM_RET0(0x4F790u);
     u32 held = DSD(DS_001088D8);                        /* 0x4F794 */
     for (u32 i = 0; i < 8u; i += 4u) {                  /* 0x4F79A/0x4F7AE/0x4F7B1 */
         u32 m = DSD(DS_000C9898 + i);                   /* 0x4F79E */
@@ -1516,6 +1518,7 @@ void game_coin_divert(u32 players)
  * Callers: 0x28E07 (0x28DA4) and 0x27E74 (0x27DC8, record §48-K). */
 void flow_1082c8_restore(void)
 {
+    PR_SEAM0(0x4651Cu);
     DSD(DS_001082C8) = DSD(DS_001082C0);                /* 0x4651C/0x46521 */
     DSD(DS_001082CC) = DSD(DS_001082C4);                /* 0x46526/0x4652B */
 }
@@ -1551,6 +1554,7 @@ void flow_side_char_set(u32 side, u32 ch)
  * (0x26F58), 0x2722E (0x271E0) and 0x27700 (0x274FC). */
 void flow_side_char_random(u32 side)
 {
+    PR_SEAM(0x2716Cu, side);
     u32 other = side ^ 1u;                              /* 0x271A4/0x271A6 */
     u32 c;
     fight_char_reset(side);                             /* 0x27171 0x33C18 */
@@ -1722,6 +1726,7 @@ void flow_match_result_text(void)
  * 0x2730F (0x272DC). */
 void flow_match_snapshot(void)
 {
+    PR_SEAM0(0x27254u);
     u32 c;
     for (c = 0; c < 2u; c++) {                          /* 0x27264, 0x27294..0x2729F */
         fighter_33acc(c, DS_00104890 + c * 0x94u,
@@ -1743,6 +1748,7 @@ void flow_match_snapshot(void)
  * only caller is 0x27314 (0x272DC). */
 void flow_continue_open(void)
 {
+    PR_SEAM0(0x278B0u);
     DSB(DS_00104B1F) = 0u;                              /* 0x278BC (AH) */
     DSB(DS_00108110) = 0xFu;                            /* 0x278C2 (DL) */
     DSB(DS_00105C04) = 0u;                              /* 0x278C8 (AH) */
@@ -2903,6 +2909,7 @@ void flow_match_result_set(void)
  * 0x299A6/0x299DF (0x29970, flow_round_over_check). */
 void flow_round_winner(void)
 {
+    PR_SEAM0(0x27C48u);
     u8 a, b, al;
     u32 w;
     DSB(DS_00104B13) = 1u;                              /* 0x27C4B/0x27C4F */
@@ -3255,6 +3262,7 @@ void flow_scroll_reset(u32 stage)
  * 0x42979, 0x42A13, 0x42AAD and 0x42AE3 are all in 0x428B8. */
 u32 flow_challenge_handle(u32 side, u32 ch)
 {
+    PR_SEAM_RET(0x29CBCu, side, ch);
     if (DSB(DS_00105B34 + side) != 0u)                  /* 0x29CBD..0x29CC8 */
         return DSD(DS_000A8ADC + ch * 4u);              /* 0x29CCA */
     return DSD(DS_000A8AC0 + ch * 4u);                  /* 0x29CD2 */
@@ -4795,6 +4803,7 @@ void prompt_press_start_clear(s32 col, s32 row, u32 side)
  * - otherwise nothing. */
 void prompt_press_start_blink(s32 col, s32 row, u32 side, u32 sprite)
 {
+    PR_SEAM(0x2C0F4u, (u32)col, (u32)row, side, sprite);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x2C0FC..0x2C108 */
     if (phase != 0u) {                                  /* 0x2C10E */
         if (phase == 0x18u)                             /* 0x2C168 */
@@ -4817,6 +4826,7 @@ void prompt_press_start_blink(s32 col, s32 row, u32 side, u32 sprite)
  * 0xBAB58[side] (`movzx`) and ECX = 0. EBX = side in both. */
 void prompt_press_start(u32 side, s32 row)
 {
+    PR_SEAM(0x2C178u, side, (u32)row);
     if ((DSB(DS_00104529) & 2u) != 0u)                  /* 0x2C17B */
         prompt_press_start_blink((s16)DSW(DS_000BAB5A + side * 2u), row,
                                  side, 1u);             /* 0x2C184..0x2C1A4 */
@@ -4863,6 +4873,7 @@ void prompt_insert_coin_blink(s32 col, s32 row)
  * 0xBAB58[side] (`and eax,0xff`), then a `nop` falls through into 0x2C1D4. */
 void prompt_insert_coin(u32 side, s32 row)
 {
+    PR_SEAM(0x2C1C8u, side, (u32)row);
     prompt_insert_coin_blink((s32)DSB(DS_000BAB58 + side), row);  /* 0x2C1C8..0x2C1D3 */
 }
 
@@ -4882,6 +4893,7 @@ void prompt_insert_coin(u32 side, s32 row)
  * 0x26DBF/0x26DCE (0x26D4C) and 0x43089..0x43092 (0x42FE0). */
 void prompt_side_erase(s32 side, s32 row)
 {
+    PR_SEAM(0x2C2B0u, (u32)side, (u32)row);
     if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x2C2B7/0x2C2BE */
         prompt_press_start_clear((s32)DSB(DS_000BAB58 + (u32)side), row,
                                  (u32)side);            /* 0x2C2C0..0x2C2CA 0x2C088 */
@@ -5535,15 +5547,17 @@ void game_mode_1f_step(void)
  *   text_number_set(0xF, 0xB, pct, 3, 1, 0x4003) (0x2F434), and the string
  *   path below is skipped;
  * - with the bit clear: game_string_get(0x3D), sprintf(buf, "%s%.03d%%",
- *   that string, pct) (0x65546, format read at data 0x809AC: "%s%.03d%", a
- *   bare trailing '%' the port writes as the equivalent "%s%03d%%"; the
- *   0x65546 formatter itself is not ported, as game_overlay_step's 0x2BF08
+ *   that string, pct) (0x65546, format read at data 0x809AC: "%s%.03d%";
+ *   the runtime's formatter emits nothing for the bare trailing '%', so the
+ *   text is the string and three digits with no percent sign: the port
+ *   formats "%s%.03d" (the differential row runs the original's 0x65546;
+ *   the formatter itself is not ported, as game_overlay_step's 0x2BF08
  *   already established for this codebase), then the raw's unbounded
  *   REPNE-SCASB manual strcat appends game_string_get(0x3E) to it (the port
  *   bounds it, as prompt_insert_coin_blink's 0x2C1FA already established),
  *   and text_cursor_set(-1, 3, buf, 0x2000) draws it.
  * EBX..EDI are pushed and popped. */
-static void flow_26d4c(void)
+void flow_26d4c(void)
 {
     if ((s32)DSD(DS_00104AC4) > 0) return;                  /* 0x26D54/0x26D5B */
 
@@ -5575,7 +5589,7 @@ static void flow_26d4c(void)
         text_number_set(0xF, 0xB, pct, 3, 1u, 0x4003u);     /* 0x26EDB 0x2F434 */
     } else {
         char buf[0x40];
-        snprintf(buf, sizeof buf, "%s%03d%%",
+        snprintf(buf, sizeof buf, "%s%.03d",
                 (const char *)game_string_get(0x3Du), (int)pct);   /* 0x26F01 0x65546 */
         size_t n = strlen(buf);
         snprintf(buf + n, sizeof buf - n, "%s",
@@ -6629,6 +6643,7 @@ u32 sound_voice_stage(u32 stage)
  * pushed and popped. One caller: 0x27E4B (flow_match_end). */
 void sound_voice_match_end(void)
 {
+    PR_SEAM0(0x4F728u);
     u32 r = DSD(DS_00104AD4);                                  /* 0x4F729 */
     u32 id = 0x23u;                                             /* 0x4F761 */
     if (r != 0xFFFFFFFFu && r != 3u &&                          /* 0x4F72F/0x4F734 */

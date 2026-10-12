@@ -74,6 +74,10 @@ UNMODELED_MNEMONICS = frozenset({
 # address, so no other row's emulator state changes.
 FLAT_SEGMENT_CALLEES = frozenset({0x65624})
 FLAT_GDT = STACK_LOW          # the two descriptors, at the bottom of the private stack mapping
+# D3 d3a (record 2026-10-12-reverse-d3a §2.2): the runtime's formatter core 0x6C8EB, which sprintf 0x65546
+# reaches, saves and loads ES (0x6C8ED `push es`, 0x6C94E `les edx,[ecx-8]`, 0x6CA21 `mov es,edx`, 0x6CB68
+# `pop es`). A row that allows it runs under the same flat descriptors.
+FLAT_SEGMENT_CALLEES |= {0x6C8EB}
 
 
 def flat_segments(mu):
@@ -698,6 +702,12 @@ def callee_clobbers(image, addr, resolved=None):
 # call, so the caller-observed set is edx.
 _CALLEE_CLOBBER_FIXES = {0x2B150: (), 0x2BD44: ("edx",), 0x3B298: ("edx",), 0x3CF38: (),
                          0x2AD40: ("edx",)}
+# D3 d3a (record 2026-10-12-reverse-d3a §2): 0x2C060 is `call 0x2caa8; jmp 0x2ca2c`. 0x2CAA8 writes EAX
+# only (0x2CAAF `sete al`, 0x2CAB2 `and eax,0xff`) and the tail-jump target saves EDX around its one use
+# (0x2CA2C `push edx` ... 0x2CA44 `pop edx`; `ret`), which the scan cannot credit to 0x2C060 (the push is
+# not at its entry). The raw caller 0x11F28 reads EDX across the call (0x11F29 `mov edx,eax`, 0x11F39
+# `test [edx*4+0x9acbc],eax`).
+_CALLEE_CLOBBER_FIXES[0x2C060] = ()
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --
