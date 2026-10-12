@@ -18154,6 +18154,94 @@ D2D_SPECS = [
 D1_SPECS += D2D_SPECS
 
 
+# ---- track D3 batch d3b (record 2026-10-12-reverse-d3b): game/fight.c, the wave-3 functions ----
+D3B_SPECS = []
+
+D3B_SLOTS = 0x001077B0
+# the HUD callees, stubs (each seamed by this batch; clobbers from E.callee_clobbers)
+D3B_BAR = E.Call(0x1D2F0, ("eax", "edx"), clobbers=("edx",))
+D3B_BAR2 = E.Call(0x1D464, ("eax", "edx"), clobbers=("edx",))
+D3B_BARI = E.Call(0x1DA84, ("eax", "edx"), clobbers=("edx",))
+D3B_BADGE = E.Call(0x1D838, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+
+
+def d3b_reset_case(f42=(0xFF, 0x10), recs=(0x0010A300, 0x0010A340)):
+    """0x1D764: DS_0010290C[0..1] between seeded bytes, both slots' +0x41..+0x43 and +0x59..+0x5B
+    (slot-distinct, non-zero), and the two DS_001028F8 records between seeded dwords."""
+    return {0x0010290B: bytes([0x0B, 0x5C, 0x6D, 0x0E]),
+            D3B_SLOTS + 0x41: bytes([0x41, f42[0], 0x43]),
+            D3B_SLOTS + 0x59: bytes([0x59, 0x5A, 0x5B]),
+            D3B_SLOTS + 0x94 + 0x41: bytes([0x51, f42[1], 0x53]),
+            D3B_SLOTS + 0x94 + 0x59: bytes([0x69, 0x6A, 0x6B]),
+            0x001028F4: le32(0x0BAD28F4) + le32(recs[0]) + le32(recs[1]) + le32(0x0BAD2900)}
+
+
+D3B_HUD_MUTANTS = tuple("@" + m for m in (
+    "once b80e b90c b80a b90e al a a34 a3 d1 x1 y1 s1 d2 x2 y2 s2 d3 x3 y3 s3 d4 x4 y4 s4 sw1 sext bar "
+    "barside bar2 bar2side barorder e0 e0late ch chw y bside aec aecbit aecearly desc").split())
+
+
+def d3b_hud_case(tables=None, f7a=(0x11, 0x92), aec=0x51, b1a=None):
+    """0x1D890 / 0x1DC6C / 0x1DAE8: both slots' +0x59..+0x5F (the +0x5A, +0x5B and +0x5E bytes the
+    functions zero, inside non-zero slot-distinct neighbours) and +0x79..+0x7B (the character byte);
+    DS_0010290C[2] / DS_0010290E[2] inside 0x10290B..0x102910; the ten record dwords 0x1028E0..
+    0x102907 between seeded dwords, every one non-zero; DS_00104AEC between seeded bytes. `tables`
+    pokes the descriptor dwords 0xA7674..0xA768B, the position words 0xA7628..0xA7637 and
+    0xA768C..0xA769B and the badge word 0xA76D0 to side-distinct sentinels (the image's 0xA767C[0]
+    and [1] are equal, as are four of its word pairs); None leaves the image's. `b1a` pokes
+    DS_00104B1A between seeded bytes (0x1DAE8's side)."""
+    p = {D3B_SLOTS + 0x59: bytes([0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F]),
+         D3B_SLOTS + 0x79: bytes([0x79, f7a[0], 0x7B]),
+         D3B_SLOTS + 0x94 + 0x59: bytes([0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F]),
+         D3B_SLOTS + 0x94 + 0x79: bytes([0x89, f7a[1], 0x8B]),
+         0x0010290B: bytes([0x0B, 0x1C, 0x2D, 0x3E, 0x4F, 0x10]),
+         0x001028DC: b"".join(le32(0x0BAD2800 + 0x11 * i) for i in range(11)),
+         0x00104AEB: bytes([0xEB, aec, 0xED])}
+    if tables is not None:
+        t = tables
+        p[0x000A7628] = b"".join(le16(t + 0x101 * i) for i in range(8))
+        p[0x000A7674] = b"".join(le32(0x0010A800 + 0x40 * i + (t & 0xF)) for i in range(6))
+        p[0x000A768C] = b"".join(le16((t ^ 0x8000) + 0x0203 * i) for i in range(8))
+        p[0x000A76CE] = le16(0x7ECE) + le16(t + 0x0999) + le16(0x7ED2)
+    if b1a is not None:
+        p[0x00104B19] = bytes([0x19, b1a, 0x1B])
+    return p
+
+
+D3B_SPECS += [
+    # 0x1D764 fight_hud_side_reset: EAX = side. EAX (0x2BC30's) dies unread at its four call sites
+    # (0x27752: 0x27757 `xor eax,eax`; 0x298DE: 0x298E5 `xor eax,eax`; 0x279B6: reloaded before any
+    # read; 0x27F01: 0x27F10 `mov eax,0xf`; the walk of record d3b §1): mask 0.
+    Spec("fight_hud_side_reset", 0x1D764, [
+        Case("r0", {"eax": 0}, d3b_reset_case()),
+        Case("r1", {"eax": 1}, d3b_reset_case()),
+        Case("r2", {"eax": 0}, d3b_reset_case((0xEF, 0xFF), (0x0010A380, 0x0010A3C0))),
+        Case("r3", {"eax": 1}, d3b_reset_case((0x10, 0xFF), (0x0010A380, 0x0010A3C0))),
+    ], calls=(D3B_BAR, ANIM_BEGIN), eax_mask=0,
+       mutants=("@side", "@b90c", "@idx", "@width", "@b5a", "@b42", "@bit", "@v", "@barside", "@rec",
+                "@stream", "@hold", "@order", "@corder")),
+    # 0x1D890 fight_hud_spawn: AL = enable. EAX dies unread at 0x11B1E, 0x25AC2 and 0x25C46 (the
+    # walk): mask 0. The spawn stub's EAX differs per case.
+    Spec("fight_hud_spawn", 0x1D890, [
+        Case("h0", {"eax": 1}, d3b_hud_case(), {0x2AE14: 0x0010A300}),
+        Case("h1", {"eax": 1}, d3b_hud_case(0x8101, (0x23, 0xA4), 0xFD), {0x2AE14: 0x0010A340}),
+        Case("h2", {"eax": 0}, d3b_hud_case(0x8101), {0x2AE14: 0x0010A380}),
+        Case("h3", {"eax": 0x100}, d3b_hud_case(0x7203), {0x2AE14: 0x0010A3C0}),
+        Case("h4", {"eax": 0xFFFFFF80}, d3b_hud_case(0x7203, (0xFE, 0x01), 0x02), {0x2AE14: 0x0010A400}),
+    ], calls=(SPAWN, D3B_BAR, D3B_BAR2, D3B_BADGE), eax_mask=0, mutants=D3B_HUD_MUTANTS),
+    # 0x1DC6C fight_hud_spawn_b: 0x1D890 but for the first record's descriptor on side 1 (0x1DCC8
+    # `mov eax,[ebp+0xa7674]`). EAX dies unread at 0x25AB6 and 0x25C3A (the walk): mask 0.
+    Spec("fight_hud_spawn_b", 0x1DC6C, [
+        Case("h0", {"eax": 1}, d3b_hud_case(), {0x2AE14: 0x0010A300}),
+        Case("h1", {"eax": 1}, d3b_hud_case(0x8101, (0x23, 0xA4), 0xFD), {0x2AE14: 0x0010A340}),
+        Case("h2", {"eax": 0}, d3b_hud_case(0x8101), {0x2AE14: 0x0010A380}),
+        Case("h3", {"eax": 0x100}, d3b_hud_case(0x7203), {0x2AE14: 0x0010A3C0}),
+        Case("h4", {"eax": 0xFFFFFF80}, d3b_hud_case(0x7203, (0xFE, 0x01), 0x02), {0x2AE14: 0x0010A400}),
+    ], calls=(SPAWN, D3B_BAR, D3B_BAR2, D3B_BADGE), eax_mask=0, mutants=D3B_HUD_MUTANTS),
+]
+
+D1_SPECS += D3B_SPECS
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

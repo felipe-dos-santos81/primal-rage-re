@@ -201,6 +201,7 @@ void fight_select_marker_spawn(u32 side, u32 cls, u32 y)
  * 0x25F47 (0x25C88) (record §48-U), and 0x1DBFA (0x1DAE8, record §49-M). */
 void fight_hud_badge_spawn(u32 side, u32 ch, u32 y)
 {
+    PR_SEAM(0x1D838u, side, ch, y);
     u32 rec = DSD(DS_001028E0 + side * 4u);             /* 0x1D840/0x1D847 */
     if (rec != 0u) {                                    /* 0x1D84D */
         actor_set_dead(rec);                            /* 0x1D855 0x2B150 */
@@ -1520,6 +1521,7 @@ void fight_char_select(u32 side, u32 char_index)
  * (0x1D890), 0x1DD2C (0x1DC6C), and 0x1D5A8 (0x1D540, record §49-V). */
 void fight_hud_bar_set(s32 v, u32 side)
 {
+    PR_SEAM(0x1D2F0u, (u32)v, side);
     u32 c = v > 0x78 ? 0x78u : (v < 0 ? 0u : (u32)v);  /* 0x1D2F9..0x1D309 */
     u32 flag8 = DSB(DS_001077B0 + side * 0x94u + 0x41u) & 8u;   /* 0x1D30B..0x1D319 */
     u32 table;
@@ -1538,6 +1540,7 @@ void fight_hud_bar_set(s32 v, u32 side)
  * 0x1D94A (0x1D890), 0x1DD35 (0x1DC6C) and 0x1D5E1 (0x1D540, record §49-V). */
 void fight_hud_bar2_set(s32 v, u32 side)
 {
+    PR_SEAM(0x1D464u, (u32)v, side);
     u32 c = v > 0x44 ? 0x44u : (v < 0 ? 0u : (u32)v);  /* 0x1D466..0x1D476 */
     actor_pset_word_set(DSD(DS_001028E8 + side * 4u),
                         DSW(DS_000C9B44 + c * 2u));     /* 0x1D48B/0x1D4AA, 0x1D4C6 */
@@ -1779,6 +1782,7 @@ void fight_hud_spawn_b(u32 enable)
  * 0x1DC0C, which lies in no Ghidra function; record gameplay-u0 §U0.6). */
 void fight_hud_bar_set_inv(s32 v, u32 side)
 {
+    PR_SEAM(0x1DA84u, (u32)v, side);
     u32 c = v > 0x78 ? 0x78u : (v < 0 ? 0u : (u32)v);   /* 0x1DA86..0x1DA98 */
     actor_pset_word_set(DSD(DS_001028F0 + side * 4u),
                         DSW(DS_000C9A52 + (0x78u - c) * 2u));  /* 0x1DAE0 */
