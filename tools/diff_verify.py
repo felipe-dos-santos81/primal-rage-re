@@ -24957,6 +24957,77 @@ D5C_SPECS += [
                       0x356EE, 0x356F0, 0x35746, 0x35792, 0x35798, 0x357AB, 0x357B1, 0x357B8, 0x357BA, 0x357DB)},
        mutants=("@reread",)),
 ]
+D5C_HUD = E.Call(0x35658, ("eax",), clobbers=("edi", "ebp"))
+D5C_IDLE = E.Call(0x4DEF4, ())
+D5C_CAM_Y = E.Call(0x12DA8, ())
+
+
+def d5c_end_case(cid, afe, w=0, b1f=0x02, b19=0x7B, ad4=1, aec=0x5D, voice=1):
+    """0x29638/0x277C0: the two position latches 0x1077E4 -> 0x1077E8 and 0x107878 -> 0x10787C between
+    two dwords; the hook DS_00104AE4, the dword before it, the dword 0x104AE8 and the byte 0x104AEC with
+    the three bytes after it; the words 0x104AF8..0x104B03 (the countdown 0x104AFE is `afe`; 0x104AFA
+    and 0x104B00 are stored); the bytes 0x104B18..0x104B1C (the flag 0x104B19, the stored 0x104B1B),
+    0x104B1F (bit 0 clear in every case: 0x32B94 then returns without its audit post) and
+    0x104B24..0x104B26; the winner byte 0x10810D between two bytes; both slots' +0x40..+0x42 and the
+    three bytes a winner of -1 reaches; the match result DS_00104AD4 between two dwords; and the run
+    clock in its no-elapsed-time state (d1i_pt_case)."""
+    p = d1i_pt_case()
+    p[0x001077E0] = le32(0xE0E0E0E0) + le32(0x11223344) + le32(0xE8E8E8E8) + le32(0xECECECEC)
+    p[0x00107874] = le32(0x74747474) + le32(0x55667788) + le32(0x7C7C7C7C) + le32(0x80808080)
+    p[0x00104AE0] = le32(0xE0E0E0E0) + le32(0xE4E4E4E4) + le32(0xE8E8E8E8) + bytes([aec, 0xED, 0xEE, 0xEF])
+    p[0x00104AF8] = le16(0xF8F8) + le16(0xFAFA) + le16(0xFCFC) + le16(afe) + le16(0x0B0B) + le16(0x0202)
+    p[0x00104B18] = bytes([0x18, b19, 0x1A, 0x1B, 0x1C])
+    p[0x00104B1F] = bytes([b1f])
+    p[0x00104B24] = bytes([0x24, 0x25, 0x26])
+    p[0x0010810C] = bytes([0x0C, w, 0x0E])
+    p[0x0010775C] = bytes([0x5C, 0xFF, 0x5E])
+    p[D5C_S0 + 0x40] = bytes([0x40, 0xFF, 0x42])
+    p[D5C_S1 + 0x40] = bytes([0x40, 0x3F, 0x42])
+    p[0x00104AD0] = le32(0xD0D0D0D0) + le32(ad4) + le32(0xD8D8D8D8)
+    return Case(cid, {"edx": 0x99, "ebx": 0x77, "ecx": 0x88, "esi": 0x66}, p, {0x2C3FC: voice})
+
+
+D5C_END_MUT = ("@nolatch0", "@nolatch1", "@latchrev", "@latchlate", "@nohud0", "@nohud1", "@hudswap", "@noidle",
+               "@nocam", "@idleorder", "@noaec", "@aecbit", "@aecearly", "@nodec", "@ge", "@uns", "@novoice",
+               "@voiceid", "@no25", "@nomode", "@modev", "@nohook", "@hookv")
+
+D5C_SPECS += [
+    # 0x29638 game_mode_33_step: no argument. The latches 0x1077E8 = 0x1077E4 and 0x10787C = 0x107878,
+    # 0x35658(0), 0x35658(1), 0x4DEF4, 0x12DA8 (stubs), then the byte 0x104AEC |= 2 and the word 0x104AFE
+    # - 1; at or below 0 signed (`test dx,dx; jg` 0x29687: e1 1, e2 0, e3 0x8000 -> 0x7FFF, e4 0x8001):
+    # 0x2C3FC(0x2B), the byte 0x104B25 = 0 (DL, which 0x2C3FC preserves), the mode word 0x104B00 = 0x17
+    # and the hook DS_00104AE4 = 0x25AE8. A dword store of the countdown would borrow into the word
+    # 0x104B00, which the expiry arm rewrites: its width is not observable. Void: 0x251C1 `jmp 0x2540f`,
+    # whose 0x2A31C writes EAX first (the 0x25210 row's note; re-used).
+    Spec("game_mode_33_step", 0x29638, [
+        d5c_end_case("e0", 5),
+        d5c_end_case("e1", 1, voice=0),
+        d5c_end_case("e2", 0, aec=0xFF),
+        d5c_end_case("e3", 0x8000, aec=0x00),
+        d5c_end_case("e4", 0x8001),
+    ], calls=(D5C_HUD, D5C_IDLE, D5C_CAM_Y, VOICE), eax_mask=0, mutants=D5C_END_MUT),
+    # 0x277C0 game_mode_0f_step: the same head and countdown (m1 1, m2 0, m3 0x8000, m4 0x8001, m5 2);
+    # on expiry 0x2C3FC(0x2B), the byte 0x104B1B = 0, bit 4 of the +0x41 byte of the slot the signed
+    # winner byte 0x10810D names cleared (`sar edx,0x18` 0x27832: m4 is -1), 0x41310(the dword
+    # DS_00104AD4, 0x30D40) (m2's is 0x101), 0x32A3C(1, the byte 0x104B19), then the byte 0x104B25 = 0,
+    # the words 0x104AFA = 0x1F and 0x104B00 = 0x17 and the hook = 0x29B74. Between 0x41310 and 0x32A3C
+    # the raw calls the deferred 0x32B94(the byte 0x104B1F) and the host-owned run clock 0x32970(0),
+    # which the port omits: both run on the original side, 0x32B94 with bit 0 clear (it returns without
+    # its 0x2DAE4 post) and the clock with no elapsed time (it changes no byte), so neither call nor its
+    # argument is compared. Void: 0x25380 `jmp 0x2540f` (as above).
+    Spec("game_mode_0f_step", 0x277C0, [
+        d5c_end_case("m0", 5),
+        d5c_end_case("m1", 1, w=0, ad4=1),
+        d5c_end_case("m2", 0, w=1, ad4=0x00000101, b19=0x00, b1f=0x7E, voice=0),
+        d5c_end_case("m3", 0x8000, aec=0x00),
+        d5c_end_case("m4", 0x8001, w=0xFF, ad4=0, b19=0xFF),
+        d5c_end_case("m5", 2, aec=0xFF),
+    ], allow_calls=(0x32B94, 0x32970), calls=(D5C_HUD, D5C_IDLE, D5C_CAM_Y, VOICE, P7_41310, D2E_M12_CLOSE),
+       eax_mask=0,
+       mutants=D5C_END_MUT + ("@no1b", "@wzext", "@wother", "@no41", "@41bit", "@41off", "@no41310", "@41310args",
+                              "@adb", "@delta", "@noclose", "@closemode", "@closeflag", "@noafa", "@afav",
+                              "@closeearly")),
+]
 D1_SPECS += D5C_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

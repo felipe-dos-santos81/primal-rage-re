@@ -2301,6 +2301,7 @@ void fight_health_sync(u32 side)
 
 void fight_hud_pass(u32 side)
 {
+    PR_SEAM(0x35658u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 rec;
 
@@ -5263,6 +5264,7 @@ void fight_effects_hold_all(void)
  * EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void fight_effects_idle_pass(void)
 {
+    PR_SEAM0(0x4DEF4u);
     if (DSW(DS_001088B0) == 0u && DSB(DS_001088BB) != 0u) {  /* 0x4DEF9..0x4DF0A */
         (void)sound_voice(0xCBu);                              /* 0x4DF0C/0x4DF11 0x2C3FC */
         DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);    /* 0x4DF16..0x4DF25 */
