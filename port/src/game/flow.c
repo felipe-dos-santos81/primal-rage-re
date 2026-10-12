@@ -2960,6 +2960,7 @@ void flow_round_winner(void)
  * 0x2800D and 0x280E3 (0x27FA8). */
 void flow_match_end(void)
 {
+    PR_SEAM0(0x27DC8u);
     u32 b;
     /* PORT: 0x27DCC 0x32970(EAX = 0), the run clock, is out of scope (spec
      * §7); the host clock owns wall time. */
@@ -2997,6 +2998,7 @@ void flow_match_end(void)
  * pushed and popped. Callers: 0x28003, 0x280BA and 0x280D2 (0x27FA8). */
 void flow_round_over(void)
 {
+    PR_SEAM0(0x27ED8u);
     u32 side, m, q;
     for (side = 0; side < 2u; side++) {                 /* 0x27EE6..0x27F09 */
         u32 slot = DS_001077B0 + side * 0x94u;

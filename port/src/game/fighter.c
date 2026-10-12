@@ -10163,6 +10163,7 @@ void fighter_34038(u32 side)
  * EBX..EBP are pushed and popped. Callers: 0x27FFE and 0x28064 (0x27FA8). */
 void fighter_39ff4(void)
 {
+    PR_SEAM0(0x39FF4u);
     u32 side;
     for (side = 0; side < 2u; side++) {                 /* 0x39FFA..0x3A0DC */
         u32 slot = DS_001077B0 + side * 0x94u;

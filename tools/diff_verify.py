@@ -21927,6 +21927,98 @@ D4A_SPECS = [
                 "@afeb", "@noafe", "@ee", "@eeb", "@noee", "@afa", "@afab", "@noafa", "@b00", "@b00b", "@nob00",
                 "@b25", "@nob25", "@b25w", "@early", "@mid")),
 ]   # D4A_SPECS end
+D4A_FREEZE = E.Call(0x39FF4, ())
+D4A_OVER = E.Call(0x27ED8, ())
+D4A_MEND = E.Call(0x27DC8, (), clobbers=("esi", "edi", "ebp"))
+# the same three callees leaving what 0x27FA8 reads after each call: 0x27C48 the dword 0x104AD4 = 2
+# (read at 0x27FEB and 0x280C9), 0x39FF4 the byte 0x10780A = 0x20 and the byte 0x104B1E = 0x77 (read at
+# 0x2808B and 0x28071), 0x27DC8 the dword 0x104AD4 = 3 and the byte 0x104B16 = 2 (0x28017, 0x280E8)
+D4A_WINNER_W = E.Call(0x27C48, (), writes=((None, 0x00104AD4, le32(2)),))
+D4A_FREEZE_W = E.Call(0x39FF4, (), writes=((None, 0x0010780A, b"\x20"), (None, 0x00104B1E, b"\x77")))
+D4A_MEND_W = E.Call(0x27DC8, (), writes=((None, 0x00104AD4, le32(3)), (None, 0x00104B16, b"\x02")),
+                    clobbers=("esi", "edi", "ebp"))
+
+
+def d4a_re_case(a, b, b00=5, b1e=5, adc=5, ad4=2, f2=0, af=(7, 7), b16=0, f42=(0x01, 0x42)):
+    """0x27FA8: the two +0x5A bytes (the +0x5B bytes above the threshold), the mode word 0x104B00,
+    the byte 0x104B1E, the dwords 0x104AD4 and 0x104ADC, the timer dword 0x1088EF (its top byte is
+    f2, the three below are seeded), the bytes 0x104AF2/0x104AF3, the winner byte 0x104B16 and
+    both slots' +0x42 bytes, each between seeded neighbours; and the stored fields with seeds that
+    differ from what is stored: the word 0x104AF8 (0x5A5A), the bytes 0x1078FC (0x5A), 0x1078FE
+    (0x5B) and 0xF0AFE (0x5A)."""
+    return {0x00107809: bytes([0x71, a, 0x80]), 0x0010789D: bytes([0x72, b, 0x90]),
+            0x00104AFE: le16(0x6161) + le16(b00) + le16(0x6262),
+            0x00104B1D: bytes([0x63, b1e, 0x64]),
+            0x00104AD0: le32(0x67676767) + le32(ad4) + le32(0x65656565) + le32(adc) + le32(0x66666666),
+            0x001088EF: bytes([0x11, 0x22, 0x33, f2, 0x44]),
+            0x00104AF1: bytes([0x68, af[0], af[1], 0x69]),
+            0x00104AF6: le16(0x6A6A) + le16(0x5A5A) + le16(0x6B6B),
+            0x00104B15: bytes([0x6C, b16, 0x6D]),
+            0x001077F1: bytes([0x73, f42[0], 0x74]), 0x00107885: bytes([0x75, f42[1], 0x76]),
+            0x001078FB: bytes([0x79, 0x5A, 0x7A, 0x5B, 0x7B]),
+            0x000F0AFD: bytes([0x7C, 0x5A, 0x7D])}
+
+
+D4A_REG4 = {"ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "edi": 0x13572468}
+D4A_SPECS += [
+    # 0x27FA8 flow_round_end_check: no argument. With either +0x5A byte (zero-extended) at 0x78 or
+    # more: 0x27C48; then, unless the mode word 0x104B00 is 0xB, with the byte 0x104B1E equal to
+    # the dword 0x104ADC and the dword 0x104AD4 == 2: the voice 0xD3, 0x39FF4, 0x27ED8; else
+    # 0x27DC8, the word 0x104AF8 = 0x258 and mode 9 for 0x104AD4 in 0..2 (signed), else 8. With
+    # both below and the top byte of the dword 0x1088EF (signed) below 1: the voice, 0x39FF4;
+    # then, with 0x104B1E == 0x104ADC and outside mode 0xB, 0x27ED8 when 0x104AF3 == 0x104AF2 and
+    # the low byte of |A - B| is 3 or less, else 0x27C48 and 0x27ED8 when 0x104AD4 == 2; the rest
+    # 0x27C48 (0x280DC) or nothing more (0x280E1), then 0x27DC8, the slot +0x42 of the byte
+    # 0x104B16 |= 0x80 unless it is 2, the bytes 0x1078FC = 0x1078FE = 1, 0xF0AFE = 2 and mode 7.
+    # Every callee is a stub (0x39FF4, 0x27ED8, 0x27DC8 seamed here; each has its own row). b1's
+    # winner byte 0x80 writes above the image on both sides (D4A_OUTSIDE). Mask 0: record §1.
+    Spec("flow_round_end_check", 0x27FA8, [
+        Case("a0", D4A_REG4, d4a_re_case(0x78, 0x10, b00=0x000B)),
+        Case("a1", {}, d4a_re_case(0x10, 0x78, adc=6)),
+        Case("a2", {}, d4a_re_case(0xFF, 0xFF, b1e=0x80, adc=0x80), {0x2C3FC: 0xFFFFFFFF}),
+        Case("a3", {}, d4a_re_case(0x78, 0x78, b00=0x010B)),
+        Case("a4", {}, d4a_re_case(0x77, 0x78, adc=0x105)),
+        Case("a5", {}, d4a_re_case(0x78, 0x77, ad4=3)),
+        Case("a6", {}, d4a_re_case(0x78, 0x00, ad4=0xFFFFFFFF), {0x27C48: 0x12345678, 0x27DC8: 0x100}),
+        Case("a7", {}, d4a_re_case(0x80, 0x00, ad4=1)),
+        Case("a8", {}, d4a_re_case(0x78, 0x00, b00=0x0105, ad4=0x102)),
+        Case("a9", {}, d4a_re_case(0x00, 0xFF, ad4=0)),
+        Case("n0", D4A_REG4, d4a_re_case(0x77, 0x77, f2=1)),
+        Case("n1", {}, d4a_re_case(0x10, 0x10, f2=0x7F)),
+        Case("b0", D4A_REG4, d4a_re_case(0x10, 0x20, b00=0x0105, adc=6)),
+        Case("b1", {}, d4a_re_case(0x10, 0x20, b00=0x000B, f2=0x80, b16=0x80)),
+        Case("b2", {}, d4a_re_case(0x10, 0x13, ad4=1), {0x2C3FC: 0x100}),
+        Case("b3", {}, d4a_re_case(0x13, 0x10, ad4=1)),
+        Case("b4", {}, d4a_re_case(0x10, 0x14)),
+        Case("b5", {}, d4a_re_case(0x14, 0x10, ad4=1, b16=2)),
+        Case("b6", {}, d4a_re_case(0x10, 0x10, af=(7, 8))),
+        Case("b7", {}, d4a_re_case(0x10, 0x10, af=(7, 8), ad4=0x102, b16=1)),
+        Case("b8", {}, d4a_re_case(0x00, 0x77, b00=0x010B, b1e=0x80, adc=0x80, f2=0xFF)),
+    ], calls=(D3A_WINNER, VOICE, D4A_FREEZE, D4A_OVER, D4A_MEND), eax_mask=0,
+       mutants=("@thra", "@thrb", "@asext", "@bsext", "@aonly", "@bonly", "@nowin", "@b00", "@b00b", "@b00d",
+                "@b1esext", "@adcb", "@ad4", "@ad4b", "@novoice", "@voice", "@nofreeze", "@noover", "@vorder",
+                "@overorder", "@falla", "@noend", "@af8", "@af8b", "@noaf8", "@af8early", "@m9lo", "@m9hi", "@m9",
+                "@m8", "@mb", "@tim0", "@timu", "@bnovoice", "@bvoice", "@bnofreeze", "@bvorder", "@bb1e", "@bb00",
+                "@bnoabs", "@bsigned", "@bdiff4", "@bdiff2", "@baf", "@bafoff", "@bfall", "@bnowin", "@bad4",
+                "@bfall2", "@bnowin2", "@bnoend", "@b16", "@b16none", "@noor", "@orset", "@orbit", "@oroff",
+                "@orside", "@orsext", "@orearly", "@fc", "@nofc", "@fcw", "@fe", "@nofe", "@few", "@afe1",
+                "@noafe1", "@afew", "@m7", "@m7b", "@nom7", "@early")),
+    # 0x27FA8 again with stubs that write what the raw reads after each call (D4A_*_W above): the
+    # dword 0x104AD4 after 0x27C48 (r0, r2) and after 0x27DC8 (r1), the two +0x5A bytes and the byte
+    # 0x104B1E after 0x39FF4 (r2, r3, r4, r5), the winner byte after 0x27DC8 (r4). `@pre` is the port
+    # before its correction (record §3): A and B kept from the entry.
+    Spec("flow_round_end_check_reread", 0x27FA8, [
+        Case("r0", {}, d4a_re_case(0x78, 0x10, ad4=0)),
+        Case("r1", {}, d4a_re_case(0x78, 0x10, b00=0x000B, ad4=1)),
+        Case("r2", {}, d4a_re_case(0x10, 0x10, adc=0x77, ad4=0)),
+        Case("r3", {}, d4a_re_case(0x10, 0x1E, b1e=0x77, adc=0x77, ad4=0)),
+        Case("r4", {}, d4a_re_case(0x10, 0x10, adc=5, ad4=0)),
+        Case("r5", {}, d4a_re_case(0x10, 0x22, b1e=0x77, adc=0x77, ad4=0)),
+    ], calls=(D4A_WINNER_W, VOICE, D4A_FREEZE_W, D4A_OVER, D4A_MEND_W), eax_mask=0,
+       unhit_named={0x2802D: "mode 9: this row's 0x27DC8 stub leaves the dword 0x104AD4 = 3 (the plain row hits it)",
+                    0x280F3: "the +0x42 store: this row's 0x27DC8 stub leaves the winner byte 2 (the plain row hits it)"},
+       mutants=("@pre", "@preb1e", "@pread4a", "@pread4e", "@pread4b", "@preb16", "@nowin", "@nofreeze", "@noend")),
+]
 D1_SPECS += D4A_SPECS
 
 
