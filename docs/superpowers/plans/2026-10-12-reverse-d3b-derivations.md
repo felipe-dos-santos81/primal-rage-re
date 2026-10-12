@@ -5,8 +5,11 @@ to bottom. Ground truth: the fixed-up image `build/diffrun --image-out` writes (
 disassembled with capstone. Every figure below was measured with
 `python3 tools/diff_verify.py --image <image> --function <name> --self-check`, one row at a time; each
 row's and each mutant's port side was run ten times and gave the same output each time before its pin
-was written. The unittest suite, `make verify`, `make diff-verify` and the oracles were NOT run on this
-branch (the integrator runs them on the merged tree).
+was written. The full `--self-check` was run once on the final tree (`PR_DIFF_JOBS=4`): `678/678 functions
+VERIFIED; 6289/6289 mutants detected; 1 named gaps; 442/511 rows with callees closed (167 have none)`,
+rc 0 (the base tree's 652 / 5650 plus this batch's 26 specs and 639 mutants). The unittest suite, `make
+verify`, `make diff-verify` and the oracles were NOT run on this branch (the integrator runs them on the
+merged tree), so every `port/src` correction below is unproven against the oracles.
 
 ## §1 Members and the callers that fix each EAX mask
 
@@ -42,6 +45,11 @@ masks d2b derived by hand (0x1D2F0 0, 0x493F0 / 0x4A868 / 0x4AA6C / 0x4D150 / 0x
 | 0x4D224 | `fight_4d224` | 133 | 0x4D3AB | 0x4D3B0 `jmp 0x4d747`: walk, dead on every path | 0 |
 | 0x4DEF4 | `fight_effects_idle_pass` | 552 | 0x277E9, 0x2965F | 0x277EE / 0x29664 `call 0x12da8`, then `mov ah,[0x104aec]`: walk, dead on every path | 0 |
 | 0x4E11C | `fight_mode25_enter` | 352 | 0x263EA | 0x263EF `pop edx`.. `ret`, then 0x26254's callers: walk, dead on every path | 0 |
+| 0x3CB68 | `fight_slot_pass` | 91 | 0x25C8D, 0x26385, 0x26514, 0x26671, 0x26764, 0x26D12, 0x26FDF, 0x274CC, 0x282E2, 0x284F8, 0x28827, 0x2932D, 0x29B34 | walk, dead on every path at each of the thirteen | 0 |
+| 0x432A0 | `fight_char_prompt` | 73 | 0x43B85 | walk, dead on every path | 0 |
+| 0x43464 | `fight_char_text_blink` | 326 | 0x43BB0 | walk, dead on every path | 0 |
+| 0x435AC | `fight_char_opp_text_blink` | 207 | 0x43BA7 | walk, dead on every path | 0 |
+| 0x43928 | `fight_char_join` | 59 | 0x438D4, 0x438FA, 0x4494D | walk, dead on every path | 0 |
 
 ## §2 The measured rows
 
@@ -67,6 +75,16 @@ masks d2b derived by hand (0x1D2F0 0, 0x493F0 / 0x4A868 / 0x4AA6C / 0x4D150 / 0x
 | `fight_4d224_rr` | 0x4D224 | 3 | 11/11 | 2/2 | 0 | the same entry; the 0x4D150 stub rewrites the side-0 slot's +0x42 to 2 and the 0x4B3F0 stub to 1 (harness writes) |
 | `fight_effects_idle_pass` | 0x4DEF4 | 8 | 29/29 | 38/38 | 0 | 0x2C3FC, 0x5D7DC, 0x4A868 and 0x2BC30 stubs; the five targets of the jump table 0x4DEE0 each hit |
 | `fight_mode25_enter` | 0x4E11C | 12 | 15/15 | 54/54 | 0 | 0x34D8C, 0x38154, 0x2F510 and 0x4E350 stubs; the string path runs on both sides (allowed) |
+| `fight_slot_pass` | 0x3CB68 | 3 | 5/5 | 10/10 | 0 | 0x1A570 and 0x3C88C stubs: 2 + 64 recorded calls a case |
+| `fight_slot_pass_rr` | 0x3CB68 | 1 | 5/5 | 3/3 | 0 | the same entry; the 0x3C88C stub rewrites DS_00107ED8 to 0x1F and DS_00107EDC to 1 (harness writes): 1 + 1 calls |
+| `fight_char_prompt` | 0x432A0 | 6 | 5/5 | 9/9 | 0 | 0x2C060, 0x2C178 and 0x2C1C8 stubs |
+| `fight_char_join` | 0x43928 | 6 | 6/6 | 10/10 | 0 | 0x11F28 stub (it preserves EBX and EDX, which the raw keeps live across it) |
+| `fight_char_opp_text_blink` | 0x435AC | 8 | 7/7 | 24/24 | 0 | 0x432EC, 0x433DC, 0x2AE14 and 0x2F198 stubs; the string path runs on both sides (allowed) |
+| `fight_char_opp_text_blink_rr` | 0x435AC | 4 | 7/7 | 1/1 | 0 | the same entry; the cursor stub rewrites both col words 0xC894C (a harness write) |
+| `fight_char_text_blink` | 0x43464 | 10 | 10/10 | 36/36 | 0 | 0x432EC, 0x2AE14 and 0x2F198 stubs; the string path and the runtime strlen 0x65624 run on both sides (allowed) |
+| `fight_char_text_blink_rr` | 0x43464 | 4 | 10/10 | 1/1 | 0 | the same entry; the cursor stub rewrites both col words |
+
+26 specs on 19 queue entries, 639 mutants.
 
 The `D3B_MASKS` / `D3B_KINDS` / `D3B_CASES` pins of `tools/tests/test_diff_verify.py` are generated from
 these measurements. Every stub the batch declares carries the clobbers `E.callee_clobbers` derives from
@@ -74,9 +92,12 @@ the bytes (checked per row by a scratch script). Stubs the pinned dictionary of
 `test_each_stub_declares_the_registers_its_callee_clobbers` did not have are added to it as new lines
 (no existing line changed): 0x1D2F0 (edx), 0x1D464 (edx), 0x1D838 (ebx, edx), 0x1DA84 (edx),
 0x4CF20 (), 0x4B144 (edx), 0x4BD4C (edx), 0x4B5A8 (edx), 0x2BE1C (edx), 0x4BD98 (), 0x4CB18 (ebx, ecx, edx),
-0x4CC0C (), 0x4D108 (edx), 0x4D150 (edx), 0x4A868 (), 0x4E350 ().
+0x4CC0C (), 0x4D108 (edx), 0x4D150 (edx), 0x4A868 (), 0x4E350 (), 0x3C88C (), 0x2C060 (edx), 0x2C178 (edx, ebp),
+0x2C1C8 (ebx, ecx, edx, esi, edi), 0x11F28 (), 0x432EC (edx), 0x433DC (edx, ebp). The block is the lines
+from `# D3 d3b (record 2026-10-12-reverse-d3b): the stubs its rows add` to `0x432EC: ("edx",), 0x433DC:
+("edx", "ebp"),`, inserted directly after `self.assertEqual(stubs, {`.
 
-Two entries are rowed as two specs on one binding (the form d2e used for 0x41C28's states): a `Call`'s
+Seven entries are rowed as two specs on one binding (the form d2e used for 0x41C28's states): a `Call`'s
 `writes` are fixed per spec, so the cases whose stubs rewrite a global the function reads again
 (`_rr`) cannot share a spec with the cases whose stubs write nothing.
 
@@ -150,6 +171,41 @@ port.
 
 Ordinary play: no difference (the port's `fight_4d108` returns 0 or 1).
 
+### §3.6 `fight_slot_pass` (0x3CB68) keeps its two counters in memory
+
+Two differences, one commit:
+
+1. 0x3CB6B `mov edx,[0x107ed8]` loads DS_00107ED8 at entry and 0x3CB7E `mov [0x107ed8],edx` stores EDX
+   back before each side's 0x1A570 call: the value at entry for side 0, the 0x20 the inner loop ended
+   on (0x3CBA1 `inc edx`) for side 1. The old port made no such store, so DS_00107ED8 held 0x1F during
+   the second 0x1A570 call. Measured on the old port with plain stubs, every case: `p0: call #33
+   memory: 3 bytes changed so far in the original, 3 in the port; first difference at 0x107ED8:
+   original 0x20, port 0x1F`. The mutant `@pre` reproduces it.
+2. Both counters are loaded from memory after each 0x3C88C: 0x3CB9B `mov edx,[0x107ed8]` (the inner
+   one, then `inc edx` / `cmp edx,0x20` / `jl`), 0x3CBA7 `mov ecx,[0x107edc]` (the side, then `inc`,
+   store, `cmp ecx,2` / `jl`) and 0x3CB79 `mov eax,[0x107edc]` (the side 0x1A570 gets). The old port
+   counted in locals. Measured on the old port with the `_rr` spec (the step stub leaves 0x1F and
+   1): the original makes 1 + 1 calls, the old port 2 + 64 (`q0: call #2 .. #65: original none, port
+   0x3C88C()`). The mutants `@cn`, `@cs` cache one counter each and `@old` is the old port.
+
+Ordinary play: no difference seen. 0x1A570 does not read DS_00107ED8 (its bytes, 0x1A570..0x1A5A8),
+and 0x3C88C's own body only loads the two counters (thirty-odd `mov r,[0x107ed8]` / `[0x107edc]`, no
+store); whether its callees 0x3C600, 0x3C6A8 and 0x3C758 store to them is unverified.
+
+### §3.7 `fight_char_opp_text_blink` (0x435AC) and §3.8 `fight_char_text_blink` (0x43464) read the col word before each string
+
+The same finding as §3.2, in the two functions that draw what 0x432EC / 0x433DC release. 0x435AC:
+0x43621 `mov si,[edi+0xc894c]` after the first 0x1C500 and 0x43647 the same after the second (and so
+after the first 0x2F198). 0x43464: 0x434F5 `movzx ebp,word [esi+0xc894c]`, 0x43517, 0x43538 the same
+and 0x43569 `mov si,[esi+0xc894c]`, each after that string's 0x1C500. Old: one read into a local
+before the first string. New: one read per `text_cursor_set`, after its `game_string_get`. Measured on
+the old port with the `_rr` specs (the cursor stub rewrites the col words): `z0: call #1: original
+0x2F198(0x77, 0x1C, ...), port 0x2F198(0x8003, 0x1C, ...)` and `y0: call #3: original 0x2F198(0x77,
+0x1C, ...), port 0x2F198(0x8003, 0x1C, ...)`. Each `_rr` spec's `@cache` mutant is the old port.
+
+Ordinary play: no difference (0xC894C is a table in the data object that neither 0x1C500 nor 0x2F198
+writes).
+
 ### The `port/src` edits that are not corrections
 
 Seams (first statement of a callee that had none; each callee's own row re-run after it, VERIFIED with
@@ -172,6 +228,20 @@ every mutant detected, unchanged):
 - `0x4D150` `fight_4d150`: `PR_SEAM_RET(0x4D150u, entry, index);`
 - `0x4A868` `fight_4a868`: `PR_SEAM_RET(0x4A868u, entry);`
 - `0x4E350` `fight_mode25_spawn`: `PR_SEAM(0x4E350u, fresh);`
+- `0x3C88C` `hit_slot_step` (fighter.c): `PR_SEAM0(0x3C88Cu);`
+- `0x2C060` `config_credit_ready` (config.c): `PR_SEAM_RET0(0x2C060u);`
+- `0x2C178` `prompt_press_start` (flow.c): `PR_SEAM(0x2C178u, side, (u32)row);`
+- `0x2C1C8` `prompt_insert_coin` (flow.c): `PR_SEAM(0x2C1C8u, side, (u32)row);`
+- `0x11F28` `frontend_coin_poll` (flow.c): `PR_SEAM_RET(0x11F28u, code);`
+- `0x432EC` `fight_char_text_clear`: `PR_SEAM(0x432ECu, side, flag);`
+- `0x433DC` `fight_char_opp_text_clear`: `PR_SEAM(0x433DCu, side, flag);`
+
+Every seam is in `port/src/game/fight.c` unless marked. The rows of the seamed callees that have one
+were re-run after the seam: `fight_hud_badge_spawn`, `fight_hud_bar_set`, `fight_hud_bar2_set`,
+`fight_hud_bar_set_inv`, `fight_4cf20`, `fight_4b144`, `fight_4aa6c`, `fight_2be1c`, `fight_4bd4c`,
+`fight_4b5a8`, `fight_4bd98`, `fight_4cb18`, `fight_4cc0c`, `fight_4d108`, `fight_4d150`, `fight_4a868`,
+`fight_mode25_spawn`, `prompt_insert_coin`, `config_credit_ready`, `fight_char_text_clear` (both
+specs), `fight_char_opp_text_clear`.
 
 Exports for a binding (each loses `static` and is declared at the end of `fight.h`): `fight_4aad0`
 (0x4AAD0), `fight_4b470` (0x4B470), `fight_4d224` (0x4D224).
@@ -255,6 +325,16 @@ Limits worth knowing:
   return nothing the function reads. DH carries the zero for five byte stores across the 0x34D8C
   call (0x4E200, 0x4E206) and EDX the byte offset across 0x38154: both callees preserve EDX
   (`E.callee_clobbers` = () for each), so a stub leaves them alone.
+- `fight_slot_pass`: the 0x1A570 stub has one EAX per case for both sides; DS_00107EE4 takes its
+  AL (cases store 0x01, 0x00 and 0x7F). The 0x3C88C stub writes nothing in the plain spec, so the
+  64 steps differ only by the counters the memory at each call carries.
+- `fight_char_prompt`: three calls, no store. `fight_char_join`: the poll stub has one EAX per case
+  for both sides, so "side 0 accepted, side 1 refused" is reached only through the joined bytes.
+- `fight_char_opp_text_blink`, `fight_char_text_blink`: the 0x2F198 seam passes the string by value
+  (its first sixteen bytes, d2c's form), so the strings are compared as bytes of the decoded buffer.
+  The spawn stub's record is stored, not dereferenced. As in `fight_char_text_clear`, both strlen
+  calls of 0x43464 take string 0x39. The dword DS_00104528's bit 9 is the byte DS_00104529's bit 1:
+  one poke sets both.
 
 ## §5 Store sweep
 
@@ -276,6 +356,19 @@ Limits worth knowing:
 | `fight_effects_idle_pass` | the word DS_001088B0 (re-armed, decremented), DS_001088BB = 1; per open entry: actor +0x34 = 0, +0x55 = 1 (on or above the layer), entry +0x1E = 0 | 0x1088AE..B3 and 0x1088BA..BC seeded; the actors' +0x30..+0x37 and +0x54..+0x56 seeded, +0x55 never 1 before | `@dec`, `@bb`, `@w34`, `@f55`, `@clr` (dropped), `@w34w` (a dword), `@f55lo`, `@r78`, `@order` (the flag after the 0x2BC30 call: call memory alone) |
 | `fight_mode25_enter` | the word DS_00108892 (decremented, or 0); DS_00104B25 = 0, DS_001088C4 = 1, the words DS_001088A6 = 0xB4, DS_0010889A = 0, DS_00108896 = 0, DS_00104B15 = 0, DS_001088C0 = 1, DS_00104AEC &= 0xFE, DS_001088BC / BD / BE = 0, the mode word = 0x25, DS_00108884 = DS_000F0AF0, the ten bytes 0x108888..0x108891 = 0 | 0x108880..0x1088BF hold 0x41.. ascending, 0x1088C0..C5 and the other bytes seeded non-zero; DS_00104AEC takes 0xFF, 0x01, 0xFE | `@b25`, `@c4s`, `@wa6`, `@w9a`, `@w92`, `@b15`, `@c0`, `@aec`, `@bc`, `@mode`, `@w96`, `@bd`, `@be`, `@d884` (dropped), `@decb` (a byte), `@wa6v`, `@aecbit`, `@modev`, `@d884v`, `@b5`, `@stride`, `@base`, `@order`, `@order2`, `@lorder` (call memory alone) |
 
+| `fight_slot_pass` | DS_00107EDC = 0, then + 1 per side; DS_00107ED8 (the entry value, 0..0x1F, 0x20); DS_00107EE4 = 0x1A570's AL | 0x107ED4..0x107EE5 seeded; the counters start 0x55 / 0x77, 0x20 / 2 and 0xFFFFFFFF / 1 | `@edc0`, `@ee4`, `@i`, `@edcinc`, `@final` (dropped), `@ee4w` (a word), `@pre` (the store before 0x1A570: the memory at call #33 alone) |
+| `fight_char_prompt` | none | — | — |
+| `fight_char_join` | DS_00104B1F \|= side + 1, DS_00108170[side] = 1 | 0x10816F..0x108172 and 0x104B1E..0x104B20 seeded; DS_00104B1F takes 0x10, 0x00, 0xFC, 0x01, 0x02 | `@f170` (dropped), `@f170v`, `@or`, `@set`, `@idx`, `@order` (the store before the poll: call memory) |
+| `fight_char_opp_text_blink`, `fight_char_text_blink` | DS_00108144[side] = the sprite | the slot pair starts 0x0BAD8144 / 0x0BAD8148 between seeded dwords | `@store` (dropped), `@storeside` |
+
 ## §6 Queue entries not done
 
-(updated as the batch proceeds)
+- 0x4EBB8 (979 bytes, the mode-0x25 round card): no row. Its first 0x1B0 bytes were read (the 0x62
+  title through 0x2F510, the 0x37-cell loop over 0xC9850 / 0xC9BCE through 0x2F174, the start of the
+  per-side score loop over 0x108888); the rest and the port's `fight_mode25_card` were not compared.
+  EAX mask 0 by the walk (call sites 0x4E928 and 0x4F06E). It already carries `PR_SEAM0(0x4EBB8u)`
+  (d2e stubs it). Skipped for its size against the session's remaining budget, not for a blocker.
+- 0x43D60 (319), 0x4434C (377), 0x44638 (350): not reached, not read. EAX masks 0 by the walk
+  (0x43D60: 0x43AD3, 0x43CC1; 0x4434C: 0x44908; 0x44638: 0x447BE). 0x44638 is the third twin of
+  0x43464 (`fight.c` says so in its header); by §3.2 / §3.7 / §3.8 its col word reads are worth
+  checking first. 0x43D60 and 0x4434C call 0x432EC, which now has a seam.
