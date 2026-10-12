@@ -5,6 +5,8 @@ Waves 1 and 2 (2026-10-11/12). Integration branch `reverse-d1` (off `main` `e53c
 `2026-10-11-reverse-d1{a..i}-derivations.md` (wave 1) and `2026-10-11-reverse-d2{a..e}-derivations.md`
 (wave 2). This record is the track's ledger: why, how the batches were merged, the counters, the
 corrections, the named gaps and the gate evidence.
+Wave 3 (2026-10-12, integrated on `reverse-d3int`, per-batch records
+`2026-10-12-reverse-d3{a..e}-derivations.md`) is §D.7; §D.1-§D.6 describe waves 1 and 2 as they were gated.
 
 ## §D.1 Why
 
@@ -214,3 +216,97 @@ After the review fixes (PROGRESS, "Track D review fixes") the counter reads `652
 - Audio: `make audio-render` on the pre-track tree and on this tree are `cmp`-equal, sha1
   `4194254de1155a2dda0ee0dd69f638d92cf9eea0` (the C3g closure's).
 
+## §D.7 Wave 3 (81 rows, 29 corrections)
+
+Five batches in worktrees off `7a9dfe7` (the wave-2 integration tree before its last docs commits), merged on
+`reverse-d3int` (off `review-d-fixes`) by the same additive composition (§D.5) with base `7a9dfe7` and the
+branch list review-d-fixes, d3a..d3e: no conflict in `port/src` (the seams two batches added to the same callee
+are the same lines: `0x2C060`, `0x2C178`, `0x2C1C8`, `0x3C88C`, `0x2A4FC`), no conflicting base-line change.
+d3d changed two existing harness lines and one pin, all for one fact: `0x36870` preserves EDI (its own body
+never names ESI, EDI or EBP; the scan's set came from the indirect `call [0x1078E8]` at `0x379E8`, whose ten
+table targets clobber EDX only — audit #6), and `0x47B04` stores through EDI after calling it.
+
+| batch | scope | rows | cases | mutants |
+|---|---|---|---|---|
+| d3a | flow.c, config.c, fight.c | 25 (23 addresses) | 187 | 601 |
+| d3b | fight.c, flow.c (seven `_rr` second specs) | 26 (19) | 214 | 639 |
+| d3c | fighter.c | 13 | 147 | 431 |
+| d3d | actors.c, config.c, fight.c, fighter.c | 12 (11) | 188 | 393 |
+| d3e | camera.c, fighter.c (`0x384F8` as two specs) | 5 (4) | 98 | 135 |
+| **total** | | **81** | **834** | **2199** |
+
+`make diff-verify` goes from `652/652; 5651/5651; 1; 428/485 (167)` to **`733/733 functions VERIFIED;
+7850/7850 mutants detected; 1 named gaps; 479/566 rows with callees closed (167 have none)`**. `SPECS` has 734
+entries on 713 distinct addresses; **571 of the 731** ported functions below `0x5D000` have a row and **160** do
+not (the same measure as §D.1; by call depth over unrowed callees: 43 at depth 0, 22 at 1, 29 at 2, 20 at 3,
+46 deeper; six of the 160 are named non-rows). `port_progress.py` and the E2 table are unchanged.
+
+**The corrections.** Each is its own commit `port: D3 <batch>: ...` with a mutant that reproduces the old
+behaviour. Three read-only audits (#4 d3c, #5 d3b, #6 d3a+d3d+d3e; capstone over the fixed-up image, an agent
+other than the implementer) re-derived all 29: 9 + 8 + 12 CONFIRMED, none wrong or unsure, and every seam the
+five batches added (102 lines) is the entry's first statement with the C signature's arguments in order.
+
+| batch | correction | raw |
+|---|---|---|
+| d3a | flow_26d4c formats `"%s%.03d%"`: the runtime prints nothing for the bare trailing `%` (the port drew a percent sign) | `0x26EF3`, format at `0x809AC`, formatter `0x6C929` |
+| d3b | fight_hud_spawn_side re-reads the side byte `0x104B1A` after each call | `0x1DB61/0x1DB75/0x1DBC0` |
+| d3b | fight_char_text_clear reads the column word per string, after `0x1C500` | `0x43349/0x4336B/0x4338C/0x433C4` |
+| d3b | fight_char_opp_text_blink the same | `0x43621/0x43647` |
+| d3b | fight_char_text_blink the same | `0x434F5/0x43517/0x43538/0x43569` |
+| d3b | fight_4aad0 tests AL of `0x4B5A8` | `0x4AB4A` |
+| d3b | fight_4b470 tests AL of `0x1A570` | `0x4B4FB` |
+| d3b | fight_4d224 tests AL of `0x4D108` | `0x4D24C` |
+| d3b | fight_slot_pass stores `0x107ED8` before each `0x1A570` call and reloads both counters from memory | `0x3CB7E/0x3CB9B/0x3CBA7` |
+| d3c | fighter_382c4 runs `0x35B7C` in phase 2 only | `0x382EB/0x382F1` |
+| d3c | fighter_winner_body tests AL of `0x3962C` and `0x396AC` | `0x193E9/0x1941E` |
+| d3c | fighter_state_350d0 tests AL of `0x3BDDC`, `0x34DDC`, `0x3CF38` and takes `0x1DE64`'s AL | `0x35213/0x35293/0x352AB/0x352C1` |
+| d3c | fighter_state_359e0 tests AL of `0x365C8` and `0x1A570` | `0x359EF/0x35ABF/0x35AFC` |
+| d3c | the AL tests in `0x37464`, `0x469A8` and fighter_state_3531c | d3c record §3 |
+| d3c | fighter_36f10 re-reads after its call | `0x370AA` |
+| d3c | fighter_state_3531c state 8 takes the side's own slot | `0x35483` |
+| d3d | fighter_1461c and fighter_14988 test AL of `0x14590` | `0x14669`, `0x149D5` |
+| d3d | fight_hud_meter_step tests AL of `0x468D8` | `0x1D5F5/0x1D6BB` |
+| d3d | fighter_216ec and fighter_3ea24 test AL of `0x1A570` | `0x217D6`, `0x3EB01` |
+| d3d | fighter_47b04 reads the side's slot `+0x5F` from the slot table and passes `1 - side` | `0x47BB0`, `0x47B1C/0x47B28` |
+| d3e | camera_y_clamp multiplies at the x87's 53 bits, not in `float` | `0x131AC..0x131B8` |
+| d3e | fight_384f8 calls `0x2A4FC` (motion_step) on the side's record after `0x38434` | `0x38570/0x38572` |
+| d3e | fight_384f8 tests AL of `0x3C59C` | `0x3850A` |
+| d3e | fighter_think_side tests AL of `0x3C59C` and `0x3B298` | `0x3B484/0x3B4CC` |
+
+**Which change ordinary play** (audits, by reading; the gate, by measurement below). `camera_y_clamp`: the
+`float` product differs from the original at exactly four of the 65536 input words (12320, 19520, 22483,
+27181: original 1875/7500/10903/17602, old port one off; audit #6 ran the original's bytes over all 65536
+words against the new expression, all equal), one unit of camera y for a frame. `flow_26d4c`: visible text in
+mode 0x22. `fight_384f8`'s missing `motion_step` and `fighter_382c4`'s phase gate: mode 0x25 only. The
+AL tests and the re-reads are equivalent while the C callees return 0 or 1 and do not write the
+re-read global (the audits scanned the direct stores; a store through a pointer is not excluded); their
+evidence is the stub-EAX `0x100` case and the `@eax`/`@al` mutant of each row.
+
+**Seen by the audits, not changed in wave 3** (open): whole-`int` tests where the raw has `test al,al` at
+`0x14707`, `0x14A73`, `0x14872`, `0x14BEC` (callee `0x14590`) and `0x1D604` (after `0x1D74C`);
+`fight_char_opp_text_clear` (`0x433DC`) reads the column word once where the raw re-reads it at
+`0x43422/0x4343C`; pointers cached across calls in `fight_4aad0`, `fight_4b5a8`, `fight_4b470` and
+`fighter_think_side` (`0x3B4B9`); `0x3C59C` has two C bodies whose shift masks differ (`& 0xFF` against the
+raw's modulo 32; equal for the bits passed); three stale comments (`flow_26d4c`'s and `fighter_47b04`'s
+headers, `0x36870`'s clobber note in `tools/diff_verify.py`).
+
+**Not rowed in wave 3** (the batch records' §6): `0x1C470` (`in`/`out`), `0x51ED8` (the aperture), `0x1C528`
+(a C `SpriteNode`), and not reached: `0x3C88C`, `0x1958C`, `0x33B00`, `0x2BAF4`, `0x31A78`, `0x3157C`,
+`0x4EBB8`, `0x43D60`, `0x4434C`, `0x44638`, `0x1BE30`, `0x1C740`, `0x2D4EC`.
+
+**Gate evidence.** Self-check on the merged tree `733/733; 7850/7850; 1; 479/566 (167)`, rc 0. The first
+`make verify` passed every oracle stage and stopped in the harness tests on two pins that only the whole suite
+sees (no batch ran it): d3a had derived that `0x2C060` clobbers nothing (`call 0x2caa8; jmp 0x2ca2c`, the
+tail-jump target saves EDX) while d3b's stub still declared EDX and the pinned dictionary held both keys; and
+`fight_hud_spawn_side`'s case d5 (the side byte `0x80`, zero-extended) reads slot `0x80`'s `+0x5B`/`+0x7A`
+above the image (`0x10C20B`, `0x10C22A`), now named in `P45_OUTSIDE`. A pass over all 734 specs found no other
+(303 stub clobber sets against the image, every row's outside reads against the pins). With the two fixed, an
+uninterrupted `make verify` exits 0: 178 harness tests OK, the counter above, entry-triage byte-identical,
+`symbols.h` idempotent, every oracle pin unchanged. Its 782 normalised lines before "== differential
+verification" equal the pre-wave gate's (the review-fix tree) except one, which is not a pin: the
+`gp-u10-ending` replay's `fn-miss PR_GP_DUMP 0x5D812 actor_spawn hits=65951` reads `65950`. Replay probes on
+the merged tree: with the `flow_26d4c` correction alone reverted the count is 65951 again; with the
+`camera_y_clamp` correction alone reverted it stays 65950. So that replay reaches mode 0x22's `flow_26d4c` and
+the one actor less is the percent sign's glyph — the only correction of the wave a capture run distinguishes
+(the frame ratchet stops before it, so no pixel is compared there). No trace or frame pin moved for the camera
+correction.
