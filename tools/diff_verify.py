@@ -18666,6 +18666,75 @@ D3B_SPECS += [
        mutants=("@c54", "@c42a", "@c42b")),
 ]
 
+D3B_4BD98 = E.Call(0x4BD98, ("eax",))
+D3B_4CB18 = E.Call(0x4CB18, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+
+
+def d3b_tr_case(b48=0x22, e10=0, f1c=0xFF, f1f=1, f20=0, w34=0x1111, mode=0x0005, b1d=0, afc=0, c1=0, ef=2,
+                c5=0, z864=0, x18=0x00012000, y32=0x0456, lo30=0x7777):
+    """0x4B470: one effects entry (D2B_ENT: its actor at +8, the shadow pointer +0x10 between seeded
+    dwords, the bytes +0x1C (bit 7), +0x1E (the type), +0x1F (the hit count), +0x20 (the hitter's
+    side) and +0x21 (another value) inside seeded bytes); the actor's +0x18 (x), the words +0x30
+    (seeded), +0x32 (the y), +0x34 (the throw) and +0x36, +0x1C and +0x38 seeded, and the +0x48
+    id byte; the words DS_00104AFC and DS_00104B00 between seeded words; the bytes DS_00104B1D,
+    DS_001088C1, DS_001088C5 and DS_001088F2 (the high byte of the dword 0x1088EF) and the dword
+    DS_00108864, each inside seeded neighbours."""
+    return {D2B_ENT + 0x08: le32(D2B_ACT) + le32(0x0BAD000C) + le32(e10) + le32(0x0BAD0014),
+            D2B_ENT + 0x1B: bytes([0x1B, f1c, 0x1D, 0x55, f1f, f20, f20 ^ 0x81, 0x22]),
+            D2B_ACT + 0x14: le32(0x0BAD0014) + le32(x18) + le32(x18 ^ 0x00550000),
+            D2B_ACT + 0x2E: le16(0x2E2E) + le16(lo30) + le16(y32) + le16(w34) + le16(0x3636) + le16(0x3838),
+            D2B_ACT + 0x47: bytes([0x47, b48, 0x49]),
+            0x00104AFA: le16(0x7AFA) + le16(afc) + le16(0x7AFE) + le16(mode) + le16(0x7B02),
+            0x00104B1C: bytes([0x1C, b1d, 0x1E]),
+            0x001088C0: bytes([0xC0, c1, 0xC2, 0xC3, 0xC4, c5, 0xC6]),
+            0x001088EE: bytes([0xEE, 0x7F, 0x7E, 0x7D, ef, 0xF3]),
+            0x00108860: le32(0x0BAD8860) + le32(z864) + le32(0x0BAD8868)}
+
+
+def d3b_tr_stubs(bit=0, shadow=0x0010A1C0):
+    return {0x1A570: bit, 0x2AE14: shadow}
+
+
+D3B_SPECS += [
+    # 0x4B470 fight_4b470: EAX = entry, EDX = index. 0x2C3FC, 0x2BC30, 0x2AE14, 0x1A570 (tested as
+    # AL, 0x4B4FB `test al,al`: its stub returns 0, 1, 0x100 and 0xFFFFFF00), 0x4BD98 and 0x4CB18
+    # are stubs. EAX dies unread at 0x4A10B, 0x4B779 and 0x4D873 (the walk, record d3b §1): mask 0.
+    Spec("fight_4b470", 0x4B470, [
+        # the first hit (+0x1F = 1): away from the hitter per 0x1A570's AL
+        Case("k0", {"eax": D2B_ENT, "edx": 0}, d3b_tr_case(), d3b_tr_stubs(1)),
+        Case("k1", {"eax": D2B_ENT, "edx": 5}, d3b_tr_case(b48=0x23, e10=0x0010A180, f1c=0x80, f20=1),
+             d3b_tr_stubs(0x100)),
+        Case("k2", {"eax": D2B_ENT, "edx": 2}, d3b_tr_case(b48=0x90, f20=0x80, f1c=0x7F),
+             d3b_tr_stubs(0xFFFFFF00, 0x0010A180)),
+        Case("k3", {"eax": D2B_ENT, "edx": 3}, d3b_tr_case(b48=0x10, f20=1), d3b_tr_stubs(0)),
+        # a later hit: the throw reverses (+0x34 = 0xFF80 -> 0x80, anything else -> 0xFF80)
+        Case("k4", {"eax": D2B_ENT, "edx": 1}, d3b_tr_case(f1f=2, w34=0xFF80), d3b_tr_stubs(1)),
+        Case("k5", {"eax": D2B_ENT, "edx": 4}, d3b_tr_case(f1f=0, w34=0x0080, e10=0x0010A180), d3b_tr_stubs(1)),
+        Case("k6", {"eax": D2B_ENT, "edx": 6}, d3b_tr_case(f1f=3, w34=0x1F80), d3b_tr_stubs(0)),
+        # mode 0x22: no throw; a mode word whose low byte is 0x22: the throw
+        Case("k7", {"eax": D2B_ENT, "edx": 7}, d3b_tr_case(f1f=1, mode=0x0022, w34=0x4321), d3b_tr_stubs(1)),
+        Case("k8", {"eax": D2B_ENT, "edx": 8}, d3b_tr_case(f1f=7, mode=0x0122, w34=0x4321), d3b_tr_stubs(1)),
+        # the eighth-hit tail (+0x1F = 8, every other gate open): one gate closed per case
+        Case("g0", {"eax": D2B_ENT, "edx": 9}, d3b_tr_case(f1f=8, b1d=3), d3b_tr_stubs(1)),
+        Case("g1", {"eax": D2B_ENT, "edx": 9}, d3b_tr_case(f1f=8, b1d=2), d3b_tr_stubs(1)),
+        Case("g2", {"eax": D2B_ENT, "edx": 9}, d3b_tr_case(f1f=8, afc=1), d3b_tr_stubs(1)),
+        Case("g3", {"eax": D2B_ENT, "edx": 9}, d3b_tr_case(f1f=8, afc=0x0100), d3b_tr_stubs(1)),
+        Case("g4", {"eax": D2B_ENT, "edx": 9}, d3b_tr_case(f1f=8, c1=1), d3b_tr_stubs(1)),
+        Case("g5", {"eax": D2B_ENT, "edx": 9}, d3b_tr_case(f1f=8, ef=1), d3b_tr_stubs(1)),
+        Case("g6", {"eax": D2B_ENT, "edx": 9}, d3b_tr_case(f1f=8, ef=0x80), d3b_tr_stubs(1)),
+        Case("g7", {"eax": D2B_ENT, "edx": 9}, d3b_tr_case(f1f=8, c5=1), d3b_tr_stubs(1)),
+        Case("g8", {"eax": D2B_ENT, "edx": 10}, d3b_tr_case(f1f=8, z864=0x00000100), d3b_tr_stubs(1)),
+        # every gate passes: 0x4BD98 then 0x4CB18(entry, index, 0, the +0x20 byte)
+        Case("k11", {"eax": D2B_ENT, "edx": 11}, d3b_tr_case(f1f=8, f20=1, b1d=1), d3b_tr_stubs(1)),
+        Case("k12", {"eax": D2B_ENT, "edx": 0}, d3b_tr_case(f1f=0xFF, f20=0x80, ef=0x7F, mode=0x0022, w34=0xFF80),
+             d3b_tr_stubs(0)),
+    ], calls=(VOICE, ANIM_BEGIN, SPAWN, BIT15, D3B_4BD98, D3B_4CB18), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "vsext vle vswap vidx vorder stream hold shadow noshadow sdesc sx sy sxy sstore mode f1f eax "
+           "bitinv bitside bitsext m80 w34 v34 w36 v36 type bit7 bit7v b1d3 b1d2 afc afc8 c1 ef efle efu "
+           "f1f7 c5 z864 z864b nobd98 nocb18 order cbflag cbside cbidx").split())),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
