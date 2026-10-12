@@ -82,6 +82,11 @@ void camera_mode_center_one(void);
  * row's binding. */
 void camera_mode_track_pair(void);
 
+/* 0x15B90 (D2d). The box palette pair of (side, index), exported for its own
+ * differential row's binding: EAX = side, EDX/EBX = the two out dwords,
+ * ECX = index. */
+void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index);
+
 /* 0x164C0 (D1h). 1 iff slot[side]'s record +0x24, plus the -1.0f at 0x80580,
  * equals its +0x20; exported for its own differential row's binding. */
 int camera_frame_last(u32 side);

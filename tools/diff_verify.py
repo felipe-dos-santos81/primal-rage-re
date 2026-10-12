@@ -13357,6 +13357,29 @@ def d2d_react_case(side, slot, b5f, pre, hits, pose_o=0x00011111, st_o=0x00, b68
         p[d1b_anim2(ch, b5f)] = le16(0xA0A0) + le16(0x2222) + le16(5)
         p[d1b_anim2(och, b5f)] = le16(0xA2A2) + le16(0x2323) + le16(0x7000)
     return p
+D2D_CHAR_CONST = (0x0EE4, 0x12A2, 0x0BD4, 0x16B5, 0x1F9E, 0x2F19, 0x32D7)   # 0x17EEC's seven words (the image's)
+D2D_OUT_A, D2D_OUT_B = D2D_REC + 0x10, D2D_REC + 0x20   # the two out dwords of the 0x15B90 cases
+
+
+def d2d_boxpal_case(side, ch, index, a, b, bit15, och=None):
+    """0x15B90: both slots' characters (+0x78..+0x7B) and record pointers, the records' +0x56 pset
+    index and that pset word's bit 15 (the other side's is the opposite), the table pair at
+    0xD5100 + (const(ch) + index) * 2 between sentinels (and the other character's pair, different),
+    and the two out dwords between seeded dwords."""
+    och = (ch + 3) % 7 if och is None else och
+    def pair(c): return 0x000D5100 + ((D2D_CHAR_CONST[c if c < 7 else 0] + index) & 0xFFFFFFFF) * 2
+    p = {0x001014EC: le32(D1G_PSET),
+         D2D_REC + 0x0C: le32(0x0C0C0C0C) + le32(0xEEEEEEEE) + le32(0x14141414),
+         D2D_REC + 0x1C: le32(0x1C1C1C1C) + le32(0xDDDDDDDD) + le32(0x24242424),
+         pair(och) - 1: bytes([0x91, a ^ 0x55, b ^ 0x33, 0x94]),
+         pair(ch) - 1: bytes([0x81, a, b, 0x84])}
+    for i, c, bit in ((side, ch, bit15), (1 - side, och, not bit15)):
+        slot, rec = DS_SLOTS + i * 0x94, (D2D_F0, D2D_F1)[i]
+        p[slot] = le32(rec)
+        p[slot + 0x78] = bytes([0x78, 0x79, c, 0x7B])
+        p[rec + 0x54] = le16(0x5454) + le16(1 + i) + le16(0x5858)
+        p[D1G_PSET + (1 + i) * 0x20] = le16(0x8123 if bit else 0x7FFF) + le16(0x0202)
+    return p
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -13428,6 +13451,23 @@ D2D_SPECS = [
                 "@dec", "@nodec", "@inc", "@bstream", "@slotctx", "@early", "@s57", "@b53", "@cb0c", "@cbswap",
                 "@or", "@orbit", "@r55", "@r55slot", "@no148", "@clrorder", "@clrside", "@cmpuns", "@cmpge",
                 "@cmpslot", "@fdidx", "@fd11a", "@fdside")),
+    # 0x15B90 camera_box_palette: EAX = side, EDX/EBX = the two out dwords, ECX = index. 0x17EEC
+    # (the character's word, its own row d1h) and 0x1A570 (pset bit 15, `sete`) run on both sides:
+    # camera.c reads the character and the bit through its own unseamed helpers. The /8 is the
+    # signed truncating idiom (`sar edx,0x1f; shl edx,3; sbb eax,edx; sar eax,3` 0x15BEB..0x15BF3).
+    # Mask 0: its one caller reloads EAX (`mov eax,[edi+4]` 0x15D28 after `call 0x15b90` 0x15D23).
+    Spec("camera_box_palette", 0x15B90, [
+        Case("x0", {"eax": 0, "edx": D2D_OUT_A, "ebx": D2D_OUT_B, "ecx": 3}, d2d_boxpal_case(0, 0, 3, 0x10, 0x20, True)),
+        Case("x1", {"eax": 1, "edx": D2D_OUT_A, "ebx": D2D_OUT_B, "ecx": 0x40},
+             d2d_boxpal_case(1, 5, 0x40, 0xFE, 0xFE, False)),
+        Case("x2", {"eax": 0, "edx": D2D_OUT_A, "ebx": D2D_OUT_B, "ecx": 1}, d2d_boxpal_case(0, 6, 1, 0x7A, 0x50, True)),
+        Case("x3", {"eax": 1, "edx": D2D_OUT_A, "ebx": D2D_OUT_B, "ecx": 0}, d2d_boxpal_case(1, 4, 0, 0x00, 0x80, True)),
+        Case("x4", {"eax": 0, "edx": D2D_OUT_A, "ebx": D2D_OUT_B, "ecx": 0xFFFFFFFF},
+             d2d_boxpal_case(0, 7, 0xFFFFFFFF, 0x90, 0x7F, False, och=1)),
+        Case("x5", {"eax": 1, "edx": D2D_OUT_A, "ebx": D2D_OUT_B, "ecx": 2}, d2d_boxpal_case(1, 5, 2, 0x70, 0x4F, True)),
+    ], allow_calls=(0x17EEC, 0x1A570), eax_mask=0,
+       mutants=("@side", "@idx", "@stride", "@swap", "@sext", "@adj5", "@adja", "@floor", "@mirror", "@mirrorb",
+                "@m100", "@order")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 

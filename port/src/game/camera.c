@@ -963,7 +963,7 @@ int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 /* 0x15B90. Read the box palette/width pair at (0x17EEC(side) + index) from
  * 0xD5100/0xD5101 into the two out pointers, adjust chars 5/6, then mirror the
  * x out when the actor's bit 15 is clear. */
-static void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
+void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
 {
     u32 ch = DSB(DS_0010782A + side * 0x94u);
     u32 base = camera_char_const(ch) + index;

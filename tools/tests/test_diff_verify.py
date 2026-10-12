@@ -6438,6 +6438,7 @@ D2D_MASKS = {
     "camera_dust_burst": 0x0,
     "camera_mode_track_pair": 0x0,
     "fighter_14b90": 0x0,
+    "camera_box_palette": 0x0,
 }   # D2D_MASKS end
 D2D_KINDS = {
     "camera_dust_burst@side": {'call #0'},
@@ -6510,6 +6511,18 @@ D2D_KINDS = {
     "fighter_14b90@fdidx": {'byte'},
     "fighter_14b90@fd11a": {'byte'},
     "fighter_14b90@fdside": {'byte'},
+    "camera_box_palette@side": {'byte'},
+    "camera_box_palette@idx": {'byte'},
+    "camera_box_palette@stride": {'byte'},
+    "camera_box_palette@swap": {'byte'},
+    "camera_box_palette@sext": {'byte'},
+    "camera_box_palette@adj5": {'byte'},
+    "camera_box_palette@adja": {'byte'},
+    "camera_box_palette@floor": {'byte'},
+    "camera_box_palette@mirror": {'byte'},
+    "camera_box_palette@mirrorb": {'byte'},
+    "camera_box_palette@m100": {'byte'},
+    "camera_box_palette@order": {'byte'},
 }   # D2D_KINDS end
 D2D_CASES = [
     ("camera_dust_burst@side", ['b0', 'b1', 'b2']),
@@ -6582,6 +6595,18 @@ D2D_CASES = [
     ("fighter_14b90@fdidx", ['b0', 'b1', 'c0', 'c1']),
     ("fighter_14b90@fd11a", ['b0', 'b1', 'c0', 'c1']),
     ("fighter_14b90@fdside", ['b0', 'b1', 'c0', 'c1']),
+    ("camera_box_palette@side", ['x0', 'x1', 'x2', 'x3', 'x4', 'x5']),
+    ("camera_box_palette@idx", ['x0', 'x1', 'x2', 'x4', 'x5']),
+    ("camera_box_palette@stride", ['x0', 'x1', 'x2', 'x3', 'x4', 'x5']),
+    ("camera_box_palette@swap", ['x0', 'x2', 'x3', 'x4', 'x5']),
+    ("camera_box_palette@sext", ['x1', 'x3', 'x4']),
+    ("camera_box_palette@adj5", ['x2']),
+    ("camera_box_palette@adja", ['x1', 'x2', 'x5']),
+    ("camera_box_palette@floor", ['x1']),
+    ("camera_box_palette@mirror", ['x0', 'x1', 'x2', 'x3', 'x4', 'x5']),
+    ("camera_box_palette@mirrorb", ['x0', 'x2', 'x3', 'x5']),
+    ("camera_box_palette@m100", ['x0', 'x2', 'x3', 'x5']),
+    ("camera_box_palette@order", ['x5']),
 ]   # D2D_CASES end
 D1_MASKS.update(D2D_MASKS)
 D1_KINDS.update(D2D_KINDS)

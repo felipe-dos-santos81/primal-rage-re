@@ -20033,6 +20033,51 @@ static void m_d2d_14b90_cmpslot(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(
 static void m_d2d_14b90_fdidx(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 31u); }
 static void m_d2d_14b90_fd11a(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 32u); }
 static void m_d2d_14b90_fdside(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 33u); }
+/* 0x15B90's mutants. EAX = side, EDX/EBX = the two out dwords (mem[] addresses here, the caller's
+ * stack in the raw), ECX = index. 0x17EEC and 0x1A570 run on both sides. */
+static u32 d2d_15b90_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    u32 side = r[R_EAX], pa = r[R_EDX], pb = r[R_EBX], index = r[R_ECX];
+    u32 ch = DSB(DS_0010782A + side * 0x94u);
+    u32 base = camera_char_const(M(1) ? DSB(DS_0010782A + (side ^ 1u) * 0x94u) : ch)   /* @side */
+             + (M(2) ? 0u : index);                                                 /* @idx */
+    u32 at = 0x000D5100u + base * (M(3) ? 1u : 2u);                                 /* @stride */
+    u32 a = DSB(at + (M(4) ? 1u : 0u)), b = DSB(at + (M(4) ? 0u : 1u));             /* @swap */
+    if (M(5)) { a = (u32)(s32)(s8)a; b = (u32)(s32)(s8)b; }                         /* @sext */
+    if (M(12) && !fighter_actor_bit15_clear(side)) a = 0x100u - a;                  /* @order */
+    if (ch == 5u || (ch == 6u && !M(6))) {                                          /* @adj5 */
+        s32 da = (s32)((M(7) ? 0x5Fu : 0x7Fu) - a), db = (s32)(0x5Fu - b);          /* @adja */
+        if (M(8)) { da >>= 3; db >>= 3; } else { da /= 8; db /= 8; }                /* @floor */
+        a += (u32)da;
+        b += (u32)db;
+    }
+    if (!M(12) && ((fighter_actor_bit15_clear(side) != 0) == M(9))) {               /* @mirror */
+        if (M(10)) b = 0x100u - b;                                                  /* @mirrorb */
+        else a = (M(11) ? 0xFFu : 0x100u) - a;                                      /* @m100 */
+    }
+    DSD(pa) = a;
+    DSD(pb) = b;
+#undef M
+    return 0u;
+}
+static void b_d2d_15b90(const u32 *r, u32 *eax)
+{
+    camera_box_palette(r[R_EAX], (u32 *)(void *)(mem + r[R_EDX]), (u32 *)(void *)(mem + r[R_EBX]), r[R_ECX]);
+    *eax = 0u;
+}
+static void m_d2d_15b90_side(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 1u); }
+static void m_d2d_15b90_idx(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 2u); }
+static void m_d2d_15b90_stride(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 3u); }
+static void m_d2d_15b90_swap(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 4u); }
+static void m_d2d_15b90_sext(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 5u); }
+static void m_d2d_15b90_adj5(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 6u); }
+static void m_d2d_15b90_adja(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 7u); }
+static void m_d2d_15b90_floor(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 8u); }
+static void m_d2d_15b90_mirror(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 9u); }
+static void m_d2d_15b90_mirrorb(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 10u); }
+static void m_d2d_15b90_m100(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 11u); }
+static void m_d2d_15b90_order(const u32 *r, u32 *eax) { *eax = d2d_15b90_core(r, 12u); }
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -23992,6 +24037,19 @@ static const binding_t k_bindings[] = {
     { "fighter_14b90@fdidx",                 m_d2d_14b90_fdidx, 0x00000000u },
     { "fighter_14b90@fd11a",                 m_d2d_14b90_fd11a, 0x00000000u },
     { "fighter_14b90@fdside",                m_d2d_14b90_fdside, 0x00000000u },
+    { "camera_box_palette",                  b_d2d_15b90, 0x00000000u },
+    { "camera_box_palette@side",             m_d2d_15b90_side, 0x00000000u },
+    { "camera_box_palette@idx",              m_d2d_15b90_idx, 0x00000000u },
+    { "camera_box_palette@stride",           m_d2d_15b90_stride, 0x00000000u },
+    { "camera_box_palette@swap",             m_d2d_15b90_swap, 0x00000000u },
+    { "camera_box_palette@sext",             m_d2d_15b90_sext, 0x00000000u },
+    { "camera_box_palette@adj5",             m_d2d_15b90_adj5, 0x00000000u },
+    { "camera_box_palette@adja",             m_d2d_15b90_adja, 0x00000000u },
+    { "camera_box_palette@floor",            m_d2d_15b90_floor, 0x00000000u },
+    { "camera_box_palette@mirror",           m_d2d_15b90_mirror, 0x00000000u },
+    { "camera_box_palette@mirrorb",          m_d2d_15b90_mirrorb, 0x00000000u },
+    { "camera_box_palette@m100",             m_d2d_15b90_m100, 0x00000000u },
+    { "camera_box_palette@order",            m_d2d_15b90_order, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
