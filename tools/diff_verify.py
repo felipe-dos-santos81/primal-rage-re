@@ -22009,6 +22009,10 @@ D4E_SPECS += [
         calls=(BIT15,), allow_calls=(0x17EEC,), eax_mask=0, mutants=("@eax",)),
     Spec("camera_page_tail_b_al", 0x164F4, d4e_tail_cases("b", "camera_page_tail_b", ({},)),
          calls=(BIT15,), allow_calls=(0x3C570, 0x164C0), eax_mask=0xFF, mutants=("@eax",)),
+    # the sprite-code arm's site 0x16B46: k0 0xFFFFFF00 (the mirror), k1 1 (none)
+    Spec("camera_page_tail_a_al", 0x16AFC, d4e_tail_cases("a", "camera_page_tail_a", (
+        {0x1A570: 0xFFFFFF00}, {0x1A570: 1})),
+        calls=(BIT15,), allow_calls=(0x16734, 0x33A10, 0x3C570, 0x164C0), eax_mask=0xFF, mutants=("@eax",)),
 ]
 D1_SPECS += D4E_SPECS
 SPECS = [

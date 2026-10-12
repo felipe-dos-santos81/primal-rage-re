@@ -185,7 +185,7 @@ int camera_page_tail_a(u32 side, u32 out)
         u32 ch = (u32)DSB(DS_0010782A + side * 0x94u);
         u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + (u32)code) * 4u;
         DSD(out) = DSD(addr);
-        if (!camera_actor_bit15_clear(side))
+        if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x16B46, 0x16B4B: test al,al */
             DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
         return 1;
     }
@@ -213,7 +213,7 @@ int camera_page_tail_a(u32 side, u32 out)
             u32 e1 = (u32)DSB(entry + i * 3u + 1u);
             u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + e1) * 4u;
             DSD(out) = DSD(addr);
-            if (!camera_actor_bit15_clear(side))
+            if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x16C80, 0x16C85: test al,al */
                 DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
             DSD(DS_000FD138 + side * 4u) = DSD(out);            /* 0x16c98 */
             DSD(DS_000FD128 + side * 4u) = (u32)DSB(entry + i * 3u + 2u);

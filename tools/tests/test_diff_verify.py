@@ -15850,6 +15850,7 @@ D4E_MASKS = {
     "fight_hud_meter_step_al": 0x0,
     "camera_box_palette_al": 0x0,
     "camera_page_tail_b_al": 0xFF,
+    "camera_page_tail_a_al": 0xFF,
 }
 D4E_KINDS = {
     "fighter_146f0_al@eax": {'call #1', 'call #2'},
@@ -15888,6 +15889,7 @@ D4E_KINDS = {
     "fight_hud_meter_step_al@eaxcmd": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory'},
     "camera_box_palette_al@eax": {'byte'},
     "camera_page_tail_b_al@eax": {'byte'},
+    "camera_page_tail_a_al@eax": {'byte'},
 }
 D4E_CASES = [
     ("fighter_146f0_al@eax", ['c2', 'c3']),
@@ -15926,6 +15928,7 @@ D4E_CASES = [
     ("fight_hud_meter_step_al@eaxcmd", ['p2', 'p4']),
     ("camera_box_palette_al@eax", ['x2', 'x3']),
     ("camera_page_tail_b_al@eax", ['t0', 'u0']),
+    ("camera_page_tail_a_al@eax", ['k0', 't0', 'u0']),
 ]   # D4E_CASES end
 D1_MASKS.update(D4E_MASKS)
 D1_KINDS.update(D4E_KINDS)

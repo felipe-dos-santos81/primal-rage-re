@@ -30589,6 +30589,7 @@ static void m_d4e_15b90_eax(const u32 *r, u32 *eax)
     *eax = 0u;
 }
 static void m_d4e_tb_eax(const u32 *r, u32 *eax)    { *eax = d2d_tail_core(r, 0u, 0); }
+static void m_d4e_ta_eax(const u32 *r, u32 *eax)    { *eax = d2d_tail_core(r, 0u, 1); }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39235,6 +39236,8 @@ static const binding_t k_bindings[] = {
     { "camera_box_palette_al@eax", m_d4e_15b90_eax, 0x00000000u },
     { "camera_page_tail_b_al", b_d2d_164f4, 0x000000FFu },
     { "camera_page_tail_b_al@eax", m_d4e_tb_eax, 0x000000FFu },
+    { "camera_page_tail_a_al", b_d2d_16afc, 0x000000FFu },
+    { "camera_page_tail_a_al@eax", m_d4e_ta_eax, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)
