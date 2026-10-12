@@ -24444,6 +24444,272 @@ D4D_SPECS += [
          mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
 ]
 D1_SPECS += D4D_SPECS
+# ---- track D, wave 5, batch d5c (record 2026-10-12-reverse-d5c): the character-select screens (fight.c,
+# actors.c), the health/HUD pass 0x34B6C/0x35658 and the match-flow handlers of flow.c -----------------
+D5C_SPECS = []
+D5C_RESET = E.Call(0x2BAF4, ("eax",))
+D5C_SP_A, D5C_SP_B = 0x0010A300, 0x0010A340          # what the spawn stub returns (zero BSS of the image)
+
+
+def d5c_setup_pokes():
+    """What 0x43818 stores, each between seeded neighbours: 0x4F228's two flag bytes 0x107A54/55 and
+    two projection words 0x107A38/3A, and the two per-side handles DS_0010814C/DS_00108150."""
+    return {0x00107A52: bytes([0x52, 0x53, 0x54, 0x55, 0x56, 0x57]),
+            0x00107A36: le16(0x3636) + le16(0x3838) + le16(0x3A3A) + le16(0x3C3C),
+            0x00108148: le32(0x48484848) + le32(0x4C4C4C4C) + le32(0x50505050) + le32(0x54545454)}
+
+
+D5C_SPECS += [
+    # 0x43818 fight_char_screen_setup: no argument, one block. 0x4F228 with AL = 0 (run on both sides:
+    # its four stores), 0x2BAF4(1) (a stub), the bare `ret` 0x29D60 (run on the original side; the port
+    # has no call), three spawns (stubs): 0xC885C at (0, 0xE0, 0), 0xC87F8 at (0x1500, 0xE2, 0x3900) into
+    # DS_0010814C and at (0x3F00, 0xE2, 0x3900) into DS_00108150, each a5 = 0; the first handle is stored
+    # between the third spawn's `push 0` and its call (0x43872), so the memory at that call shows it. Then
+    # 0x33754 of 0x98EC50C, 0x98EC514, 0x8099AC, 0x809984. Void: 0x4377D `xor ecx,ecx; lea eax,[edx+1]`,
+    # 0x4450D `mov cl,1; mov eax,edx`.
+    Spec("fight_char_screen_setup", 0x43818, [
+        Case("s0", {}, d5c_setup_pokes(), {0x2AE14: D5C_SP_A, 0x33754: 7}),
+        Case("s1", {"eax": 0x5A5A5A01, "ebx": 0x77, "ecx": 0x88, "edx": 0x99}, d5c_setup_pokes(),
+             {0x2AE14: D5C_SP_B, 0x33754: 0}),
+    ], allow_calls=(0x4F228, 0x29D60), calls=(D5C_RESET, SPAWN, C1_PAL_ACQ), eax_mask=0,
+       mutants=("@noproj", "@projarg", "@order", "@noreset", "@reset0", "@desc1", "@x1", "@a31", "@y1", "@a51",
+                "@nospawn1", "@desc2", "@x2", "@a32", "@y2", "@no14c", "@14cslot", "@storelate", "@14cw",
+                "@x3", "@desc3", "@a33", "@y3", "@no150", "@150w", "@nopal1", "@palswap", "@pal3", "@pal4",
+                "@nopal4")),
+]
+D5C_SETUP = E.Call(0x43818, ())
+D5C_ENTRY = E.Call(0x43964, ("eax",))
+D5C_SELACT = E.Call(0x43A08, ("eax",))
+D5C_OPEN_BOTH = E.Call(0x444C8, (), clobbers=("edi", "ebp"))
+# 0x2C8F0 runs on both sides under its own rows' call set (0x2D974 real and recorded, the AIL wrappers
+# stubs): the two recorded field reads 0x35/0x37 show the EAX = -1 arm (the scaled arm reads 0x2A first)
+D5C_OPEN_ALLOW = (0x2C8F0, 0x1CAB8, 0x1CED4)
+D5C_OPEN_CALLS = (VOICE, P8_CLEAR) + D2C_VOL_CALLS + (D3A_MARK_REL, D5C_SETUP, D5C_ENTRY, D5C_SELACT)
+
+
+def d5c_sel(cur=(2, 5), start=(3, 4), cls=(0x61, 0x62), cd=0x7B09, p6e=(0x6E, 0x6F), st=(1, 1), b72=0x72, b73=0,
+            b74=0x74):
+    """The select bytes 0x108164..0x108175 whole: two bytes, the cursors 0x108166, the start cursors
+    0x108168, the classes 0x10816A, the countdown word 0x10816C, the confirmed classes 0x10816E, the
+    side states 0x108170, the bytes 0x108172/73/74 and one more."""
+    return {0x00108164: bytes([0x64, 0x65, cur[0], cur[1], start[0], start[1], cls[0], cls[1]]) + le16(cd)
+            + bytes([p6e[0], p6e[1], st[0], st[1], b72, b73, b74, 0x75])}
+
+
+def d5c_open_case(cid, b1f, b73, vol=(3, 0x40, 0x60), **eax):
+    """0x43738/0x444C8: the volume fixture of 0x2C8F0's rows; the bytes 0x104B1B and 0x104B24 each
+    between two bytes; the join bits 0x104B1F; the select bytes with the flag 0x108173; the dwords
+    0x108140..0x10814F (DS_00108144[side] between two); the hook DS_00104AE4 between two dwords."""
+    p = d2c_volcfg_case(*vol)
+    p.update(d5c_sel(b73=b73, st=(0x70, 0x71)))
+    p[0x00104B1A] = bytes([0x1A, 0x1B, 0x1C])
+    p[0x00104B1F] = bytes([b1f])
+    p[0x00104B23] = bytes([0x23, 0x24, 0x25])
+    p[0x00108140] = le32(0x40404040) + le32(0x44444444) + le32(0x48484848) + le32(0x4C4C4C4C)
+    p[0x00104AE0] = le32(0xE0E0E0E0) + le32(0xE4E4E4E4) + le32(0xE8E8E8E8)
+    se = {0x2C3FC: eax.get("voice", 1)}
+    if "draw" in eax:
+        se[0x2F528] = eax["draw"]
+    return Case(cid, {"edx": 0x99, "ebx": 0x77}, p, se)
+
+
+D5C_OPEN_MUT = ("@novoice", "@voiceid", "@noclear", "@novol", "@volscaled", "@no1b", "@no24", "@norel0",
+                "@norel1", "@nosetup", "@setupearly", "@no70a", "@noentry", "@noactor", "@entryorder",
+                "@entryside", "@no144", "@144w", "@144idx", "@nohook", "@hookv", "@no74", "@storelate")
+
+D5C_SPECS += [
+    # 0x43738 fight_char_screen_open: no argument. 0x2C3FC(0x30), 0x13DF0, 0x2C8F0 with EAX = -1 (run
+    # on both sides), the bytes 0x104B1B and 0x104B24 = 0, 0x1D810(0), 0x1D810(1), 0x43818; then per side
+    # the bit side + 1 of the byte 0x104B1F (`lea eax,[edx+1]; test ecx,eax` 0x4377F/0x43788: o1 1, o2 2,
+    # o3 3, o4 0xFC neither, o5 0xFD, o6 0xFE): set, the state byte 0x108170[side] = 1 before 0x43964(side)
+    # and 0x43A08(side); clear, the state = 0; DS_00108144[side] = 0 either way (after the calls). The
+    # countdown word 0x10816C = 5 when the byte 0x108173 is not 0 (o1, o2 0x80), else 0xF, drawn by
+    # 0x2F528(0x13, 1, the word, 2, 0, 0x4000); then the hook DS_00104AE4 = 0x29D60 and the byte 0x108174
+    # = 0. The word drawn was just stored (5 or 0xF), so its sign extension (`sar ebx,0x10` 0x437F6) is not
+    # observable. Void: the call site 0x4372E returns through 0x43733..0x43736 into the DS_00104AE4 frame
+    # hook 0x4367C, and the function is itself a hook value (0x28D6A, 0x28D87); the walk from the six
+    # `call [0x104ae4]` return sites is record 2026-10-11-reverse-d2b §1 (the 0x43A08 row; re-used).
+    Spec("fight_char_screen_open", 0x43738, [
+        d5c_open_case("o0", 0x00, 0x00),
+        d5c_open_case("o1", 0x01, 0x01, voice=0),
+        d5c_open_case("o2", 0x02, 0x80, vol=(3, 0xFFFFFFFF, 0xFFFFFFFF)),
+        d5c_open_case("o3", 0x03, 0x00, draw=0x5A5A5A5A),
+        d5c_open_case("o4", 0xFC, 0x00),
+        d5c_open_case("o5", 0xFD, 0x02),
+        d5c_open_case("o6", 0xFE, 0x00),
+    ], allow_calls=D5C_OPEN_ALLOW, calls=D5C_OPEN_CALLS + (D2C_NUMDRAW2,), eax_mask=0,
+       mutants=D5C_OPEN_MUT + ("@biteq", "@no70b", "@cdinv", "@cdb", "@b73bit", "@nodraw", "@drawargs", "@drawval",
+                               "@cdlate", "@hookearly")),
+    # 0x444C8 fight_char_screen_open_both: the same prologue, then both sides unconditionally (the state
+    # = 1, 0x43964, 0x43A08, DS_00108144[side] = 0), the byte 0x108174 = 0 and the hook = 0x29D60; no
+    # countdown and no draw. Void: its one call site 0x4462B returns through 0x44630..0x44636 and
+    # 0x4368D..0x43690 into the hook's callers (the same walk).
+    Spec("fight_char_screen_open_both", 0x444C8, [
+        d5c_open_case("b0", 0x00, 0x00),
+        d5c_open_case("b1", 0x03, 0x01, voice=0, vol=(2, 0x80000001, 0x7FFFFFFF)),
+    ], allow_calls=D5C_OPEN_ALLOW, calls=D5C_OPEN_CALLS, eax_mask=0,
+       mutants=D5C_OPEN_MUT + ("@bits", "@side0only", "@draw")),
+]
+
+
+def d5c_hook_case(cid, b73, start=(3, 4), tab=None):
+    """0x4454C: the select bytes; the two button bytes 0x105B34 between two bytes; the dwords
+    0x108110..0x108133 (the eight zeroed ones 0x108114 between two) and the eight pick bytes 0x108134
+    with four bytes after them; the byte 0x104B1D = 3, which the original does not read: the binding
+    reaches the static port function through its one caller, the hook 0x4367C, whose 0x4367F test it
+    satisfies. `tab` pokes the two default cursors 0xC8880 (the image's are 0 and 5)."""
+    p = d5c_sel(start=start, b73=b73)
+    p[0x00105B33] = bytes([0x33, 0x41, 0x42, 0x36])
+    p[0x00108110] = b"".join(le32(0x10101010 + 0x04040404 * k) for k in range(9)) + bytes(
+        [0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F])
+    p[0x00104B1D] = bytes([3])
+    if tab is not None:
+        p[0x000C8880] = bytes(tab)
+    return Case(cid, {}, p)
+
+
+D5C_SPECS += [
+    # 0x4454C (the port's static fight_4454c, bound through fight_hook_4367c with the byte 0x104B1D =
+    # 3): no argument. 0x2C3FC(0x100); with the byte 0x108173 not 0 (h2..h6; h4 0x80) each side's
+    # confirmed class 0x10816E = 0xFF, cursor 0x108166 = the start cursor 0x108168 and button byte
+    # 0x105B34 = 0, then the start cursor 0x108169 + 1, and at 7 or above as an unsigned byte (`xor
+    # eax,eax; mov al,bl; cmp eax,7; jl`: h6's 0x7F becomes 0x80) it is 0 and 0x108168 steps the same way
+    # (h3 one wrap, h4 both, h5 0xFF -> 0 no wrap). Otherwise (h0 the image's 0xC8880 bytes, h1 poked)
+    # per side: the confirmed class = 0xFF, the cursor = the byte 0xC8880[side], the button byte = 0, the
+    # four pick bytes 0x108134[side * 4] = 0xFF, the four dwords 0x108114[side * 16] = 0 and the byte
+    # 0x108164[side] = 0. Then 0x2C3FC(0x2E) and 0x444C8. Void: the one call site 0x43688 returns
+    # through 0x4368D..0x43690 into the hook's callers (the walk of 0x43738's row).
+    Spec("fight_4454c", 0x4454C, [
+        d5c_hook_case("h0", 0x00),
+        d5c_hook_case("h1", 0x00, tab=(0x06, 0x83)),
+        d5c_hook_case("h2", 0x01, start=(2, 3)),
+        d5c_hook_case("h3", 0x01, start=(2, 6)),
+        d5c_hook_case("h4", 0x80, start=(6, 6)),
+        d5c_hook_case("h5", 0x02, start=(0xFF, 0xFF)),
+        d5c_hook_case("h6", 0x01, start=(0x7F, 0x7F)),
+    ], calls=(VOICE, D5C_OPEN_BOTH), eax_mask=0,
+       mutants=("@novoice1", "@voice1id", "@b73bit", "@no6e", "@6ev", "@copytab", "@nocopy", "@no34", "@noinc9",
+                "@wrapgt", "@sext9", "@noclr9", "@noinc8", "@wrap8gt", "@sext8", "@noclr8", "@always8",
+                "@no6e2", "@tabstart", "@tabside", "@no34b", "@nopick", "@pickv", "@pick3", "@pickstride",
+                "@nozero", "@zero3", "@zerostride", "@zerow", "@no64", "@novoice2", "@voice2id", "@noopen",
+                "@order")),
+]
+
+D5C_PROMPT = E.Call(0x432A0, ("eax",), clobbers=("esi", "edi", "ebp"))
+D5C_OPPBLINK = E.Call(0x435AC, ("eax",), clobbers=("ebp",))
+D5C_BLINK = E.Call(0x43464, ("eax",))
+D5C_PORTRAIT = E.Call(0x43EA0, ("eax",))
+D5C_FIGHTER = E.Call(0x43FBC, ("eax",))
+D5C_COUNTDOWN = E.Call(0x43AAC, (), clobbers=("esi", "edi", "ebp"))
+D5C_JOIN = E.Call(0x43928, ())
+D5C_TEAMPASS = E.Call(0x44798, ())
+D5C_SELPASS = E.Call(0x43B24, (), clobbers=("esi", "edi", "ebp"))
+
+
+def d5c_pass_case(cid, st, cmd=(0, 0), cur=(2, 2), b1d=0, ab8=0, c04=0, phase=0x0001, b1f=0x40, poll=0):
+    """0x43B24: the select bytes (the states `st`, the cursors `cur`), the two command words 0x1088E0
+    between two words, the bytes 0x104B1D and 0x104B1F, the dword DS_00104AB8 between two, the byte
+    0x105C04 between two, the phase word 0xEF6DC with the word after it, and what the end arm stores:
+    the hook DS_00104AE4 and 0x4F980's three stores, each between its neighbours. `poll` is the
+    0x11F28 stub's EAX."""
+    p = d5c_sel(cur=cur, st=st)
+    p[0x001088DE] = le16(0xDEDF) + le16(cmd[0]) + le16(cmd[1]) + le16(0xE4E5)
+    p[0x00104B1D] = bytes([b1d])
+    p[0x00104B1F] = bytes([b1f])
+    p[0x00104AB4] = le32(0xB4B4B4B4) + le32(ab8) + le32(0xBCBCBCBC)
+    p[0x00105C03] = bytes([0x03, c04, 0x05])
+    p[0x000EF6DC] = le16(phase) + le16(0xDEDE)
+    p[0x00104AE0] = le32(0xE0E0E0E0) + le32(0xE4E4E4E4) + le32(0xE8E8E8E8)
+    p[0x001088F4] = bytes([0xF4, 0xF5, 0xF6])
+    p[0x00104AF8] = le16(0xF8F8) + le16(0xFAFA) + le16(0xFCFC)
+    p[0x00104AFE] = le16(0xFEFE) + le16(0x0B0B) + le16(0x0202)
+    return Case(cid, {}, p, {0x11F28: poll})
+
+
+D5C_SPECS += [
+    # 0x43B24 fight_char_select_pass: no argument; side 0 then side 1 on the state byte 0x108170
+    # (unsigned: `cmp al,1; jb / jbe`, `cmp al,2; je`; q8's 0xFF is "above 2").
+    # 0: 0x11F28(side), its whole EAX tested (`test eax,eax` 0x43B53: q0 returns 0x100); non-zero,
+    #    0x43964(side), 0x43A08(side), then the byte 0x104B1F |= side + 1 and the state = 1; zero,
+    #    0x432A0(side) (q1); the next side either way.
+    # 1: 0x435AC(side) when the byte 0x104B1D is 1 and side + 1 is not the dword DS_00104AB8 (q2 side
+    #    1, q14: 0x102 against 2), else 0x43464(side) (q2 side 0, q3, q6); then the stick.
+    # 2: the other side's state 0 (q4) or 2 (q5): the hook DS_00104AE4 = 0x430E8, 0x4F980(0x11) (run on
+    #    both sides) and the pass returns; otherwise the next side (q6 1, q7 3).
+    # The stick is bits 4..7 of the low byte of the command word 0x1088E0[side] (q7's high byte is
+    # 0xFF): 0x10 increments the signed cursor 0x108166 below 6, 0x20 decrements it above 0, 0x40 adds 4
+    # below 4 and then stores 6 at or above 7, 0x80 subtracts 4 at or above 4, any other non-zero value
+    # nothing; 0x43EA0(side) and 0x43FBC(side) follow every non-zero value. Bit 0 of the word, read again,
+    # calls 0x43D60(side). After both sides a non-zero byte 0x105C04 stores 0xF in the word 0x10816C and
+    # clears it (q13 0x80), and 0x43AAC runs when the word 0xEF6DC & 0x3F is 0 (q1 0, q13 0xFF40, q11
+    # 0x0020 not). Void: the one call site 0x438F3 returns through 0x438F8 `pop edx; ret` to 0x2538A `jmp
+    # 0x2540f`, whose 0x2A31C writes EAX first (the 0x25210 row's note; re-used).
+    Spec("fight_char_select_pass", 0x43B24, [
+        d5c_pass_case("q0", (0, 0), poll=0x100, cmd=(0x0011, 0x0011)),
+        d5c_pass_case("q1", (0, 0), poll=0, phase=0x0000, cmd=(0x0011, 0x0011)),
+        d5c_pass_case("q2", (1, 1), b1d=1, ab8=1, cmd=(0x0010, 0x0020), cur=(2, 5)),
+        d5c_pass_case("q3", (1, 1), b1d=2, ab8=2, cmd=(0x0040, 0x0080), cur=(3, 4)),
+        d5c_pass_case("q4", (2, 0), poll=1, cmd=(0x0011, 0x0011)),
+        d5c_pass_case("q5", (2, 2), cmd=(0x0011, 0x0011)),
+        d5c_pass_case("q6", (2, 1), cmd=(0x0011, 0x0041), cur=(2, 0)),
+        d5c_pass_case("q7", (3, 2), cmd=(0xFF10, 0x0001), cur=(6, 1)),
+        d5c_pass_case("q8", (0xFF, 5), cmd=(0x0020, 0x0020), cur=(0, 0xFF)),
+        d5c_pass_case("q9", (3, 3), cmd=(0x0040, 0x0040), cur=(7, 0x83)),
+        d5c_pass_case("q10", (3, 3), cmd=(0x0080, 0x0080), cur=(3, 0xFF)),
+        d5c_pass_case("q11", (3, 3), cmd=(0x0030, 0x00F0), cur=(2, 2), phase=0x0020),
+        d5c_pass_case("q12", (3, 3), cmd=(0x0050, 0x0100), cur=(1, 1)),
+        d5c_pass_case("q13", (3, 3), cmd=(0x5510, 0x0000), cur=(0xFF, 3), c04=0x80, phase=0xFF40),
+        d5c_pass_case("q14", (0, 1), b1d=1, ab8=0x00000102, cmd=(0x0000, 0x0001), poll=0),
+        d5c_pass_case("q15", (4, 4), cmd=(0x0080, 0x0040), cur=(4, 2), c04=1),
+        d5c_pass_case("q16", (3, 3), cmd=(0x0040, 0x0040), cur=(4, 0xFC)),
+    ], allow_calls=(0x4F980,), calls=(D3B_POLL, D5C_ENTRY, D5C_SELACT, D5C_PROMPT, D5C_OPPBLINK, D5C_BLINK,
+                                      D5C_PORTRAIT, D5C_FIGHTER, D4C_CONFIRM, D5C_COUNTDOWN), eax_mask=0,
+       unhit_named={0x43C2D: "dead: a non-zero value & 0xF0 below 0x20 is 0x10, which `cmp ax,0x10; je` (0x43C27) takes"},
+       mutants=("@pollside", "@pollal", "@noentry", "@noactor", "@entryorder", "@no1f", "@1fside", "@1fearly",
+                "@no70", "@noprompt", "@promptside", "@nob1d", "@ab8b", "@ab8inv", "@blinkside", "@st2zero",
+                "@st2any", "@nohook", "@hookv", "@nowipe", "@wipearg", "@noret", "@st2stick", "@stickw",
+                "@cmdside", "@right6", "@rightuns", "@left0", "@leftuns", "@down4", "@downuns", "@noclamp",
+                "@clamp7", "@clampv", "@up4", "@upuns", "@noportrait", "@nofighter", "@pforder", "@pside",
+                "@always", "@confbit", "@noconf", "@confside", "@c04always", "@nocd", "@cdb", "@cdv",
+                "@noc04clr", "@phase", "@phasew", "@nocount", "@st1cont", "@stsext", "@clampuns")),
+]
+
+
+def d5c_m10_case(cid, b1d, sub, skip=0, cd=0x0005, b72=0x5C):
+    """0x438B4: the byte 0x104B1D, the select bytes with the countdown word, the byte 0x108172 and
+    the sub-state 0x108174. `skip` is the 0x4F790 stub's EAX."""
+    p = d5c_sel(cd=cd, b72=b72, b74=sub)
+    p[0x00104B1D] = bytes([b1d])
+    return Case(cid, {"edx": 0x99}, p, {0x4F790: skip})
+
+
+D5C_SPECS += [
+    # 0x438B4 fight_mode_10_step: no argument. Two copies of one body, split on the byte 0x104B1D == 3;
+    # each on the sub-state byte 0x108174: 0, 0x44798 (g0) or 0x43B24 (g4); 1, 0x43928 and then AL of
+    # 0x4F790 (`test al,al` 0x438DE/0x43904: g2 and g6 return 0x100); anything else returns (g3 2, g10
+    # 0xFF). In the == 3 copy a non-zero AL stores the byte 0x108172 in 0x108174 (g1) and a zero AL
+    # returns (g2). In the other a non-zero AL stores it (g5), and a zero AL decrements the word
+    # 0x10816C and stores it only at or below 0 signed (`test dx,dx; jg` 0x43917: g6 5, g7 1, g8
+    # 0x8001, g9 0x8000 -> 0x7FFF, g11 0 -> 0xFFFF). Void: 0x25385 `jmp 0x2540f`, whose 0x2A31C writes EAX first (the
+    # 0x25210 row's note; re-used).
+    Spec("fight_mode_10_step", 0x438B4, [
+        d5c_m10_case("g0", 3, 0),
+        d5c_m10_case("g1", 3, 1, skip=1),
+        d5c_m10_case("g2", 3, 1, skip=0x100, cd=1),
+        d5c_m10_case("g3", 3, 2),
+        d5c_m10_case("g4", 0x83, 0),
+        d5c_m10_case("g5", 2, 1, skip=0xFFFFFF01),
+        d5c_m10_case("g6", 0, 1, skip=0x100, cd=5),
+        d5c_m10_case("g7", 1, 1, skip=0, cd=1),
+        d5c_m10_case("g8", 4, 1, skip=0, cd=0x8001),
+        d5c_m10_case("g9", 0, 1, skip=0, cd=0x8000),
+        d5c_m10_case("g10", 0, 0xFF),
+        d5c_m10_case("g11", 0, 1, skip=0, cd=0x0000),
+    ], calls=(D5C_TEAMPASS, D5C_SELPASS, D5C_JOIN, D3A_SKIP), eax_mask=0,
+       mutants=("@b1d", "@b1dbit", "@passswap", "@sub1", "@nojoin", "@joinlate", "@skipeax", "@noskip",
+                "@dec3", "@nodec", "@decd", "@ge", "@uns", "@nostore", "@src73", "@ret3")),
+]
+D1_SPECS += D5C_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

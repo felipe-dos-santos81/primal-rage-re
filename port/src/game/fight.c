@@ -134,6 +134,7 @@ void fight_scene_props(u32 scene)
 #define DS_000C87F8 0x000C87F8u   /* no symbols.h name: the per-side descriptor */
 void fight_char_screen_setup(void)
 {
+    PR_SEAM0(0x43818u);
     render_projection_reset(0u);                        /* 0x43822 0x4F228 */
     actors_reset();                                     /* 0x4382E 0x2BAF4 */
     /* 0x43833 0x29D60 is a ret-only no-op. */
@@ -278,6 +279,7 @@ void fight_hud_pulse(void)
  * zero-extended (`xor ebx,ebx`/`xor edx,edx` before each `mov bx`/`mov dx`). */
 void fight_char_entry_spawn(u32 side)
 {
+    PR_SEAM(0x43964u, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43972/0x4397C */
     DSD(DS_00108154 + side * 4u) = actor_spawn(
         (const u32 *)(mem + DSD(DS_000C8870 + side * 4u)),
@@ -302,6 +304,7 @@ void fight_char_entry_spawn(u32 side)
  * re-pointed at the sprite id 0x32B (0x43A9E 0x2BCF4). */
 void fight_char_select_actor(u32 side)
 {
+    PR_SEAM(0x43A08u, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43A10/0x43A16 */
     s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x43A19/0x43A51 */
     u32 rec = actor_spawn(
@@ -363,6 +366,7 @@ void fight_char_screen_open(void)
  * Its only caller is 0x4462B (in 0x4454C). */
 void fight_char_screen_open_both(void)
 {
+    PR_SEAM0(0x444C8u);
     (void)sound_voice(0x30u);                           /* 0x444CC/0x444D1 0x2C3FC */
     effects_clear();                                    /* 0x444D6 0x13DF0 */
     attract_config_volumes_unscaled();                  /* 0x444E0 0x2C8F0(-1) */
@@ -391,6 +395,7 @@ void fight_char_screen_open_both(void)
  * 0x11F28 result, or the side) is not read by 0x438B4's `call 0x4f790`. */
 void fight_char_join(void)
 {
+    PR_SEAM0(0x43928u);
     for (u32 side = 0; side < 2u; side++) {             /* 0x4392C/0x4395A/0x4395B */
         if (DSB(DS_00108170 + side) != 0u) continue;    /* 0x4392E/0x43935 */
         if (frontend_coin_poll(side) == 0u) continue;   /* 0x43939/0x4393E */
@@ -457,6 +462,7 @@ void fight_mode_10_step(void)
  * credit, 0x2C1C8 with EDX = 0x1B (EBX = 0 is not read). */
 void fight_char_prompt(u32 side)
 {
+    PR_SEAM(0x432A0u, side);
     if (config_credit_ready() != 0u) {                  /* 0x432A5/0x432AA */
         if ((DSB(DS_00104529) & 2u) != 0u)              /* 0x432AE */
             prompt_press_start(side, 0x3700);           /* 0x432B7..0x432BE 0x2C178 */
@@ -523,6 +529,7 @@ void fight_char_opp_text_clear(u32 side, u32 flag)
  * - 0x18: 0x432EC(side, DS_00104528 & 0x200). */
 void fight_char_text_blink(u32 side)
 {
+    PR_SEAM(0x43464u, side);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x4346C..0x4347B */
     if (phase != 0u) {                                  /* 0x43480 */
         if (phase == 0x18u)                             /* 0x4358B */
@@ -556,6 +563,7 @@ void fight_char_text_blink(u32 side)
  * 0x18, 0x433DC(side, DS_00104528 & 0x200). */
 void fight_char_opp_text_blink(u32 side)
 {
+    PR_SEAM(0x435ACu, side);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x435B3..0x435BD */
     if (phase != 0u) {                                  /* 0x435C2 */
         if (phase == 0x18u)                             /* 0x4365D */
@@ -586,6 +594,7 @@ void fight_char_opp_text_blink(u32 side)
  * voice 0xC888A[ch]. */
 void fight_char_portrait(u32 side)
 {
+    PR_SEAM(0x43EA0u, side);
     u32 other = side ^ 1u;                              /* 0x43EA6 */
     if (DSB(DS_00108170 + other) == 1u) {               /* 0x43EAA/0x43EB0 */
         if (DSB(DS_00108166 + side) == DSB(DS_00108166 + other)) {  /* 0x43EB5..0x43ECA */
@@ -622,6 +631,7 @@ void fight_char_portrait(u32 side)
  * 0xC8924[cls]. */
 void fight_char_fighter(u32 side)
 {
+    PR_SEAM(0x43FBCu, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43FC2/0x43FD1 */
     s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x43FDC/0x43FF6 */
     DSD(DSD(DS_0010813C + side * 4u) + 0x18u) =
@@ -728,6 +738,7 @@ void fight_char_confirm(u32 side)
  * = 1. */
 u32 fight_char_countdown(void)
 {
+    PR_SEAM_RET0(0x43AACu);
     u16 dx = (u16)(DSW(DS_0010816C) - 1u);              /* 0x43AAF/0x43AB6 */
     DSW(DS_0010816C) = dx;                              /* 0x43AB7 */
     if ((s16)dx > 0) {                                  /* 0x43ABE/0x43AC1 */
@@ -764,6 +775,7 @@ u32 fight_char_countdown(void)
  * read). */
 void fight_char_select_pass(void)
 {
+    PR_SEAM0(0x43B24u);
     for (u32 side = 0; side < 2u; side++) {             /* 0x43B27..0x43CCD */
         u8 b = DSB(DS_00108170 + side);                 /* 0x43B2B */
         if (b == 0u) {                                  /* 0x43B33/0x43B44 */
@@ -1029,6 +1041,7 @@ void fight_char_team_pick(u32 side)
  * DS_0010816C to 0xF and is cleared; there is no countdown step. */
 void fight_char_team_pass(void)
 {
+    PR_SEAM0(0x44798u);
     for (u32 side = 0; side < 2u; side++) {             /* 0x4479B..0x44914 */
         u8 b = DSB(DS_00108170 + side);                 /* 0x4479F */
         if (b == 3u) {                                  /* 0x447AF/0x447C5..0x447CD */
