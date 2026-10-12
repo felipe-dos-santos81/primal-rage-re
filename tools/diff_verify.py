@@ -21879,6 +21879,101 @@ D3E_SPECS += [
        mutants=("@eaxflag", "@flagbit", "@flagctx", "@nostance", "@stanceself", "@animside", "@67other", "@no67", "@dispside", "@eaxdisp", "@8aself", "@no8a", "@b54", "@swap", "@ecx", "@noad98", "@2bd44rec", "@norow60", "@nohook", "@hookslot", "@hooknoclr", "@hookclr", "@a48self", "@no5", "@36d20slot", "@c5no18", "@c5no1c", "@no8", "@c8side", "@no18b04", "@f40args", "@x28", "@a06zext", "@a06off", "@st0", "@st5", "@vnodec", "@vge", "@no3b080", "@midno18", "@midno1c", "@no41", "@64self", "@no64")),
 ]   # D3E_SPECS end
 D1_SPECS += D3E_SPECS
+
+
+# ---- track D4 batch d4c (record 2026-10-12-reverse-d4c) ----
+
+D4C_DESC = 0x0010A600            # the frame descriptor the 0x3C600 stub returns: nine 0x14-byte entries
+D4C_SEED = E.Call(0x3C6A8, ("eax", "edx", "ebx"), mode="real")   # run on both sides: the reloads read its stores
+
+
+def d4c_step_case(cid, side, i, phase, cd=5, cmd=0x0040, ent=None, acc=0x0A0A, facing=0, desc=D4C_DESC):
+    """0x3C88C: the three 2 x 32 word arrays (phase 0x107D58, countdown 0x107DD8, accumulator
+    0x107E58) whole, every word distinct, with (side, i)'s three words set; the word below the
+    first array (the low half of the dword the raw shifts for (0, 0)); i, side, the dword after
+    them and the facing byte 0x107EE4 with its three neighbours; the side's command word (the other
+    side's is the complement) between two words; and the nine descriptor entries (m0, m1, m2, the
+    +0x0C word, +0x0E, m4) at D4C_DESC, `ent` overriding fields of an entry. `desc` is the 0x3C600
+    stub's EAX."""
+    off = side * 0x40 + i * 2
+    p = {0x00107D54: le32(0x57565554)}
+    for base, tag, own in ((0x00107D58, 0x5600, phase), (0x00107DD8, 0x4100, cd), (0x00107E58, 0x2100, acc)):
+        w = [tag + k for k in range(0x40)]
+        w[off // 2] = own
+        b = b"".join(le16(x) for x in w)
+        p[base], p[base + 0x40] = b[:0x40], b[0x40:]
+    p[0x00107ED8] = le32(i) + le32(side) + le32(0xE3E2E1E0) + bytes([facing, 0xE5, 0xE6, 0xE7])
+    words = [cmd ^ 0xFFFF, cmd ^ 0xFFFF]
+    words[side] = cmd
+    p[0x001088DE] = le16(0xDEDF) + le16(words[0]) + le16(words[1]) + le16(0xE4E5)
+    blob = b""
+    for k in range(9):
+        e = {"m0": 0x0001, "m1": 0x0002, "m2": 0x0004, "wc": 0x0C00 + k, "m4": 0x0008}
+        e.update((ent or {}).get(k, {}))
+        blob += le32(e["m0"]) + le32(e["m1"]) + le32(e["m2"]) + le16(e["wc"]) + le16(0x0E00 + k) + le32(e["m4"])
+    for j in range(0, len(blob), 60):
+        p[D4C_DESC + j] = blob[j:j + 60]
+    return Case(cid, {}, p, {0x3C600: desc})
+
+
+D4C_SPECS = [
+    # 0x3C88C hit_slot_step: no argument; i = [0x107ED8], side = [0x107EDC], the facing byte
+    # 0x107EE4 zero-extended (`xor edx,edx; mov dl,..` 0x3C93D/0x3C941). 0x3C600 is a stub (the
+    # descriptor; 0 at a0: `test edx,edx; jne` 0x3C8C3), 0x3C6A8 runs real and is recorded (the
+    # raw reloads the phase it stores: 0x3C981, 0x3CA43, 0x3CB0D), 0x3C758 and 0x3C800 run on both
+    # sides (their accumulator arguments are the caller's stack dwords: no address to compare) and
+    # 0x3C6E8 under them. The phase is the signed word (`sar esi,0x10` 0x3C8C0): below 0 (n0) or
+    # above 8 (n1) seeds 0; 8 decrements the countdown word and seeds 0 below 1 signed (e0..e3:
+    # 2, 1, 0, 0x8000); 0 calls 0x3C758 with a zero accumulator and seeds 1 on EAX == 0 (`test
+    # eax,eax` 0x3C956), then arms (phase word = 8) when the reloaded phase's m0 is 0 and the word
+    # is not (z0 arms; z1 m0 set; z2 returns 1; z3 returns 2 with m0 = 0 and the word 0; z4 returns
+    # 3); 1 seeds 2 on EAX != 0 (o0 0, o1 1, o2 3, o3 2); 2..7 decrement the countdown, seed 0 and
+    # reload the phase below 1 (p7 1 -> 0, p8 0 -> -1; p12 2 -> 1 and p9 0x8000 -> 0x7FFF do not),
+    # load the accumulator word zero-extended (0x3CA5F/0x3CA61: p6 has bit 15), call 0x3C800 while
+    # the phase is 2..7 and store its dword's low word as the countdown on AL != 0 (p1, p10 facing
+    # 1, p11 facing 0), then 0x3C758 through the table 0x3C87C: 0 seeds phase + 1 and arms (p2
+    # arms, p3/p6/p9 do not), 1 nothing (p0), 2 seeds 0 (p4), 3 stores the accumulator's low word
+    # (p5). Void: its one caller 0x3CB96 loads EDX next and EAX at 0x3CB79 or returns through
+    # 0x3CB68, whose row has mask 0.
+    Spec("hit_slot_step", 0x3C88C, [
+        d4c_step_case("a0", 0, 3, 3, desc=0),
+        d4c_step_case("n0", 1, 0, 0xFFFF),
+        d4c_step_case("n1", 0, 0x1F, 9),
+        d4c_step_case("e0", 0, 0, 8, cd=2),
+        d4c_step_case("e1", 1, 7, 8, cd=1),
+        d4c_step_case("e2", 0, 0x1F, 8, cd=0),
+        d4c_step_case("e3", 1, 5, 8, cd=0x8000),
+        d4c_step_case("z0", 0, 2, 0, cmd=0x0001, ent={1: {"m0": 0, "m1": 0x0022}}),
+        d4c_step_case("z1", 1, 4, 0, cmd=0x0001),
+        d4c_step_case("z2", 0, 6, 0),
+        d4c_step_case("z3", 1, 1, 0, cmd=0x0004, ent={0: {"m0": 0}}),
+        d4c_step_case("z4", 0, 9, 0, cmd=0x0010, ent={0: {"m0": 0x0011}}),
+        d4c_step_case("o0", 0, 3, 1, cmd=0x0001),
+        d4c_step_case("o1", 1, 3, 1),
+        d4c_step_case("o2", 0, 0x1E, 1, cmd=0x0010, ent={1: {"m0": 0x0011}}),
+        d4c_step_case("o3", 1, 0x1E, 1, cmd=0x0004),
+        d4c_step_case("p0", 0, 5, 2),
+        d4c_step_case("p1", 1, 6, 3, cmd=0x0008, ent={3: {"wc": 0x8123}}),
+        d4c_step_case("p2", 0, 0xA, 4, cd=9, cmd=0x0001, acc=0, ent={5: {"m0": 0, "m1": 0x0033}}),
+        d4c_step_case("p3", 1, 0xB, 5, cd=9, cmd=0x0001, acc=0),
+        d4c_step_case("p4", 0, 0xC, 6, cd=9, cmd=0x0004),
+        d4c_step_case("p5", 1, 0xD, 2, cd=3, cmd=0x0010, acc=0x0100, ent={2: {"m0": 0x0111}}),
+        d4c_step_case("p6", 0, 0xE, 3, cd=3, cmd=0x0010, acc=0x8000, ent={3: {"m0": 0x8010}}),
+        d4c_step_case("p7", 1, 0xF, 5, cd=1, cmd=0x0018, acc=0x0100, ent={0: {"m0": 0x0010}}),
+        d4c_step_case("p8", 0, 0x10, 7, cd=0, cmd=0x0004),
+        d4c_step_case("p9", 1, 0x11, 7, cd=0x8000, cmd=0x0001, acc=0),
+        d4c_step_case("p10", 0, 0x12, 2, cd=4, cmd=0x0020, facing=1, ent={2: {"m4": 0x00010000, "wc": 0x0077}}),
+        d4c_step_case("p11", 1, 0x13, 2, cd=4, cmd=0x0010, facing=0, ent={2: {"m4": 0x00010000, "wc": 0x0066}}),
+        d4c_step_case("p12", 0, 0x14, 4, cd=2),
+    ], allow_calls=(0x3C758, 0x3C800, 0x3C6E8), calls=(D2A_DESC_CALL, D4C_SEED), eax_mask=0,
+       mutants=("@facew", "@side", "@nodesc0", "@noneg", "@gt7", "@gt9", "@p8nodec", "@p8decd", "@p8uns",
+                "@p8ge0", "@p8noseed", "@p0inv", "@p0val", "@p0stale", "@p0noarm", "@p0armz", "@p0armval",
+                "@p0armoff", "@p0armd", "@p1inv", "@p1val", "@p1eq1", "@nodec", "@declt0", "@decuns", "@noexp",
+                "@noreload", "@accsext", "@accearly", "@dispalways", "@nodisp", "@dispd", "@dispe58", "@c0val",
+                "@c0noarm", "@c0stale", "@c2none", "@c2val", "@c3none", "@c3d", "@c3stale", "@c1seed",
+                "@order")),
+]   # D4C_SPECS end
+D1_SPECS += D4C_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

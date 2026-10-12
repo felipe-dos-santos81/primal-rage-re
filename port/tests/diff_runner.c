@@ -30474,6 +30474,116 @@ D3E_TS_MUT(c8side, 29u)   D3E_TS_MUT(no18b04, 30u)  D3E_TS_MUT(f40args, 31u)  D3
 D3E_TS_MUT(a06zext, 33u)  D3E_TS_MUT(a06off, 34u)   D3E_TS_MUT(st0, 35u)      D3E_TS_MUT(st5, 36u)
 D3E_TS_MUT(vnodec, 37u)   D3E_TS_MUT(vge, 38u)      D3E_TS_MUT(no3b080, 39u)  D3E_TS_MUT(midno18, 40u)
 D3E_TS_MUT(midno1c, 41u)  D3E_TS_MUT(no41, 42u)     D3E_TS_MUT(s64self, 43u)  D3E_TS_MUT(no64, 44u)
+/* ---- track D4 batch d4c (record 2026-10-12-reverse-d4c) ---- */
+
+/* 0x3C88C hit_slot_step: no argument (i = [0x107ED8], side = [0x107EDC], the facing byte
+ * 0x107EE4). One restatement with one choice flipped per mutant number. */
+static u32 d4c_3c88c_core(u32 mut)
+{
+    const u32 D58 = 0x00107D58u, DD8 = 0x00107DD8u, E58 = 0x00107E58u;
+    u32 i = DSD(0x00107ED8u), side = DSD(0x00107EDCu);
+    u32 facing = (mut == 1u) ? (u32)DSW(0x00107EE4u) : (u32)DSB(0x00107EE4u); /* @facew */
+    u32 off = ((mut == 2u) ? 1u - side : side) * 0x40u + i * 2u;              /* @side: the other side's words */
+    u32 desc = hit_frame_desc(side, i);
+    s32 phase = (s16)DSW(D58 + off);
+    u32 acc0 = (u32)DSW(E58 + off);
+    u32 out, r;
+    if (desc == 0u && mut != 3u) { hit_slot_seed(side, 0u, i); return 0u; }   /* @nodesc0 */
+    if ((phase < 0 && mut != 4u) || phase > ((mut == 5u) ? 7 : (mut == 6u) ? 9 : 8)) {   /* @noneg, @gt7, @gt9 */
+        hit_slot_seed(side, 0u, i);
+        return 0u;
+    }
+    if (phase == 8) {
+        if (mut == 8u) DSD(DD8 + off) = DSD(DD8 + off) - 1u;                  /* @p8decd */
+        else if (mut != 7u) DSW(DD8 + off) = (u16)(DSW(DD8 + off) - 1u);      /* @p8nodec */
+        if ((mut == 9u) ? (DSW(DD8 + off) >= 1u)                              /* @p8uns */
+                : ((s16)DSW(DD8 + off) >= ((mut == 10u) ? 0 : 1))) return 0u; /* @p8ge0 */
+        if (mut != 11u) hit_slot_seed(side, 0u, i);                           /* @p8noseed */
+        return 0u;
+    }
+    if (phase == 0) {
+        s32 ph;
+        out = 0u;
+        r = hit_connect(side, facing, i, &out);
+        if ((mut == 12u) ? (r != 0u) : (r == 0u))                             /* @p0inv */
+            hit_slot_seed(side, (mut == 13u) ? 2u : 1u, i);                   /* @p0val */
+        ph = (mut == 14u) ? phase : (s32)(s16)DSW(D58 + off);                 /* @p0stale */
+        if (mut != 15u && DSD(desc + (u32)ph * 0x14u + ((mut == 18u) ? 4u : 0u)) == 0u   /* @p0noarm, @p0armoff */
+                && (mut == 16u || DSW(D58 + off) != 0u)) {                    /* @p0armz */
+            if (mut == 19u) DSD(D58 + off) = 8u;                              /* @p0armd */
+            else DSW(D58 + off) = (mut == 17u) ? 7u : 8u;                     /* @p0armval */
+        }
+        return 0u;
+    }
+    if (phase == 1) {
+        out = 0u;
+        r = hit_connect(side, facing, i, &out);
+        if ((mut == 20u) ? (r == 0u) : (mut == 22u) ? (r == 1u) : (r != 0u))  /* @p1inv, @p1eq1 */
+            hit_slot_seed(side, (mut == 21u) ? 1u : 2u, i);                   /* @p1val */
+        return 0u;
+    }
+    if (mut != 23u) DSW(DD8 + off) = (u16)(DSW(DD8 + off) - 1u);              /* @nodec */
+    if ((mut == 24u) ? ((s16)DSW(DD8 + off) < 0)                              /* @declt0 */
+            : (mut == 25u) ? (DSW(DD8 + off) < 1u)                            /* @decuns */
+            : ((s16)DSW(DD8 + off) < 1)) {
+        if (mut != 26u) hit_slot_seed(side, 0u, i);                           /* @noexp */
+        if (mut != 27u) phase = (s16)DSW(D58 + off);                          /* @noreload */
+    }
+    out = (mut == 28u) ? (u32)(s32)(s16)DSW(E58 + off)                        /* @accsext */
+        : (mut == 29u) ? acc0 : (u32)DSW(E58 + off);                          /* @accearly */
+    if (mut == 43u) r = hit_connect(side, facing, i, &out);                   /* @order: 0x3C758 first */
+    if ((phase >= 2 || mut == 30u) && phase < 8) {                            /* @dispalways */
+        u32 disp = 0u;
+        if (hit_displace(side, facing, i, &disp) != 0u && mut != 31u) {       /* @nodisp */
+            if (mut == 32u) DSD(DD8 + off) = disp;                            /* @dispd */
+            else if (mut == 33u) DSW(E58 + off) = (u16)disp;                  /* @dispe58 */
+            else DSW(DD8 + off) = (u16)disp;
+        }
+    }
+    {
+        u32 acc = out;
+        if (mut != 43u) r = hit_connect(side, facing, i, &acc);
+        else acc = out;
+        switch (r) {
+        case 0u: {
+            s32 ph;
+            hit_slot_seed(side, (u32)phase + ((mut == 34u) ? 0u : 1u), i);    /* @c0val */
+            ph = (mut == 36u) ? phase : (s32)(s16)DSW(D58 + off);             /* @c0stale */
+            if (mut != 35u && DSD(desc + (u32)ph * 0x14u) == 0u && DSW(D58 + off) != 0u)   /* @c0noarm */
+                DSW(D58 + off) = 8u;
+            break;
+        }
+        case 1u:
+            if (mut == 42u) hit_slot_seed(side, 0u, i);                       /* @c1seed */
+            break;
+        case 2u:
+            if (mut != 37u) hit_slot_seed(side, (mut == 38u) ? 1u : 0u, i);   /* @c2none, @c2val */
+            break;
+        case 3u:
+            if (mut == 40u) DSD(E58 + off) = acc;                             /* @c3d */
+            else if (mut == 41u) DSW(E58 + off) = (u16)out;                   /* @c3stale */
+            else if (mut != 39u) DSW(E58 + off) = (u16)acc;                   /* @c3none */
+            break;
+        default:
+            break;
+        }
+    }
+    return 0u;
+}
+static void b_d4c_3c88c(const u32 *r, u32 *eax) { (void)r; hit_slot_step(); *eax = 0u; }
+#define D4C_STEP_MUT(name, n) \
+    static void m_d4c_step_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4c_3c88c_core(n); }
+D4C_STEP_MUT(facew, 1u)    D4C_STEP_MUT(side, 2u)      D4C_STEP_MUT(nodesc0, 3u)  D4C_STEP_MUT(noneg, 4u)
+D4C_STEP_MUT(gt7, 5u)      D4C_STEP_MUT(gt9, 6u)       D4C_STEP_MUT(p8nodec, 7u)  D4C_STEP_MUT(p8decd, 8u)
+D4C_STEP_MUT(p8uns, 9u)    D4C_STEP_MUT(p8ge0, 10u)    D4C_STEP_MUT(p8noseed, 11u) D4C_STEP_MUT(p0inv, 12u)
+D4C_STEP_MUT(p0val, 13u)   D4C_STEP_MUT(p0stale, 14u)  D4C_STEP_MUT(p0noarm, 15u) D4C_STEP_MUT(p0armz, 16u)
+D4C_STEP_MUT(p0armval, 17u) D4C_STEP_MUT(p0armoff, 18u) D4C_STEP_MUT(p0armd, 19u) D4C_STEP_MUT(p1inv, 20u)
+D4C_STEP_MUT(p1val, 21u)   D4C_STEP_MUT(p1eq1, 22u)    D4C_STEP_MUT(nodec, 23u)   D4C_STEP_MUT(declt0, 24u)
+D4C_STEP_MUT(decuns, 25u)  D4C_STEP_MUT(noexp, 26u)    D4C_STEP_MUT(noreload, 27u) D4C_STEP_MUT(accsext, 28u)
+D4C_STEP_MUT(accearly, 29u) D4C_STEP_MUT(dispalways, 30u) D4C_STEP_MUT(nodisp, 31u) D4C_STEP_MUT(dispd, 32u)
+D4C_STEP_MUT(dispe58, 33u) D4C_STEP_MUT(c0val, 34u)    D4C_STEP_MUT(c0noarm, 35u) D4C_STEP_MUT(c0stale, 36u)
+D4C_STEP_MUT(c2none, 37u)  D4C_STEP_MUT(c2val, 38u)    D4C_STEP_MUT(c3none, 39u)  D4C_STEP_MUT(c3d, 40u)
+D4C_STEP_MUT(c3stale, 41u) D4C_STEP_MUT(c1seed, 42u)   D4C_STEP_MUT(order, 43u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39075,6 +39185,50 @@ static const binding_t k_bindings[] = {
     { "fighter_think_side@no41",             m_d3e_ts_no41, 0x00000000u },
     { "fighter_think_side@64self",           m_d3e_ts_s64self, 0x00000000u },
     { "fighter_think_side@no64",             m_d3e_ts_no64, 0x00000000u },
+    { "hit_slot_step",                       b_d4c_3c88c, 0x00000000u },
+    { "hit_slot_step@facew",                   m_d4c_step_facew, 0x00000000u },
+    { "hit_slot_step@side",                    m_d4c_step_side, 0x00000000u },
+    { "hit_slot_step@nodesc0",                 m_d4c_step_nodesc0, 0x00000000u },
+    { "hit_slot_step@noneg",                   m_d4c_step_noneg, 0x00000000u },
+    { "hit_slot_step@gt7",                     m_d4c_step_gt7, 0x00000000u },
+    { "hit_slot_step@gt9",                     m_d4c_step_gt9, 0x00000000u },
+    { "hit_slot_step@p8nodec",                 m_d4c_step_p8nodec, 0x00000000u },
+    { "hit_slot_step@p8decd",                  m_d4c_step_p8decd, 0x00000000u },
+    { "hit_slot_step@p8uns",                   m_d4c_step_p8uns, 0x00000000u },
+    { "hit_slot_step@p8ge0",                   m_d4c_step_p8ge0, 0x00000000u },
+    { "hit_slot_step@p8noseed",                m_d4c_step_p8noseed, 0x00000000u },
+    { "hit_slot_step@p0inv",                   m_d4c_step_p0inv, 0x00000000u },
+    { "hit_slot_step@p0val",                   m_d4c_step_p0val, 0x00000000u },
+    { "hit_slot_step@p0stale",                 m_d4c_step_p0stale, 0x00000000u },
+    { "hit_slot_step@p0noarm",                 m_d4c_step_p0noarm, 0x00000000u },
+    { "hit_slot_step@p0armz",                  m_d4c_step_p0armz, 0x00000000u },
+    { "hit_slot_step@p0armval",                m_d4c_step_p0armval, 0x00000000u },
+    { "hit_slot_step@p0armoff",                m_d4c_step_p0armoff, 0x00000000u },
+    { "hit_slot_step@p0armd",                  m_d4c_step_p0armd, 0x00000000u },
+    { "hit_slot_step@p1inv",                   m_d4c_step_p1inv, 0x00000000u },
+    { "hit_slot_step@p1val",                   m_d4c_step_p1val, 0x00000000u },
+    { "hit_slot_step@p1eq1",                   m_d4c_step_p1eq1, 0x00000000u },
+    { "hit_slot_step@nodec",                   m_d4c_step_nodec, 0x00000000u },
+    { "hit_slot_step@declt0",                  m_d4c_step_declt0, 0x00000000u },
+    { "hit_slot_step@decuns",                  m_d4c_step_decuns, 0x00000000u },
+    { "hit_slot_step@noexp",                   m_d4c_step_noexp, 0x00000000u },
+    { "hit_slot_step@noreload",                m_d4c_step_noreload, 0x00000000u },
+    { "hit_slot_step@accsext",                 m_d4c_step_accsext, 0x00000000u },
+    { "hit_slot_step@accearly",                m_d4c_step_accearly, 0x00000000u },
+    { "hit_slot_step@dispalways",              m_d4c_step_dispalways, 0x00000000u },
+    { "hit_slot_step@nodisp",                  m_d4c_step_nodisp, 0x00000000u },
+    { "hit_slot_step@dispd",                   m_d4c_step_dispd, 0x00000000u },
+    { "hit_slot_step@dispe58",                 m_d4c_step_dispe58, 0x00000000u },
+    { "hit_slot_step@c0val",                   m_d4c_step_c0val, 0x00000000u },
+    { "hit_slot_step@c0noarm",                 m_d4c_step_c0noarm, 0x00000000u },
+    { "hit_slot_step@c0stale",                 m_d4c_step_c0stale, 0x00000000u },
+    { "hit_slot_step@c2none",                  m_d4c_step_c2none, 0x00000000u },
+    { "hit_slot_step@c2val",                   m_d4c_step_c2val, 0x00000000u },
+    { "hit_slot_step@c3none",                  m_d4c_step_c3none, 0x00000000u },
+    { "hit_slot_step@c3d",                     m_d4c_step_c3d, 0x00000000u },
+    { "hit_slot_step@c3stale",                 m_d4c_step_c3stale, 0x00000000u },
+    { "hit_slot_step@c1seed",                  m_d4c_step_c1seed, 0x00000000u },
+    { "hit_slot_step@order",                   m_d4c_step_order, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
