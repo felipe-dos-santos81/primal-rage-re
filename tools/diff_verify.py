@@ -13935,6 +13935,71 @@ def d2a_burst_case(ad4, n, seed, y30=0x00070000, act=D2A_ACT, ae9=0x00):
     return p
 
 
+D2A_READ = E.Call(0x46460, ("eax", "edx"), clobbers=("edx",))
+D2A_SCAN = E.Call(0x4649C, ("eax", "edx", "ebx", "ecx"), mode="real")   # recorded and run (its own seam)
+D2A_GEO_TABS = (0x000A7A7C, 0x000A7AA4, 0x000A7AF4, 0x000A7B1C)        # 0x1DE64's four per-character tables
+
+
+def d2a_pick_case(side, w92, s63, cmd=0, sel=0, ch=2, ring=()):
+    """0x1DE64: the side slot's +0x62..+0x64 (the +0x63 gate), +0x7A and the +0x90 dword (`w92` is
+    its high word; the low word is on the other side of 0xF) and the other slot's (the other +0x63
+    answer, another character); both command words (the other side's with bits 0..3 and 14
+    flipped); the two selector words (the other side's is 4 only when the side's is not); the ring
+    index 5 and both rings: the side's is zero but for `ring` ((steps back from the index, word)
+    pairs), the other side's all 0x000F; and the four table dwords of each character and of ch
+    sign-extended, all distinct."""
+    so, oo = D2A_SLOT + side * 0x94, D2A_SLOT + (1 - side) * 0x94
+    words, sels = [0, 0], [0, 0]
+    words[side], words[1 - side] = cmd, cmd ^ 0x400F
+    sels[side], sels[1 - side] = sel, (0 if sel == 4 else 4)
+    lo = 0x0000 if ((w92 ^ 0x8000) - 0x8000) >= 0xF else 0x7000
+    rg = [bytearray(0x28), bytearray(le16(0x000F) * 0x14)]
+    for back, w in ring:
+        rg[0][((5 - back) % 0x14) * 2:((5 - back) % 0x14) * 2 + 2] = le16(w)
+    p = {so + 0x62: bytes([0x62, s63, 0x64]), oo + 0x62: bytes([0x72, 0 if s63 else 1, 0x74]),
+         so + 0x7A: bytes([ch]), oo + 0x7A: bytes([(ch + 1) & 0x7F]),
+         so + 0x90: le16(lo) + le16(w92), oo + 0x90: le16(0x9090) + le16(0x000F if lo else 0x000E),
+         0x001088E0: le16(words[0]) + le16(words[1]),
+         0x00101514: le32(D2A_CFG), D2A_CFG + 0x2D2: le16(0xD2D2) + le16(sels[0]) + le16(sels[1]) + le16(0xD8D8),
+         0x001082D2: le16(0xD2D2) + le16(5) + le16(0xD6D6),
+         0x00108270 + side * 0x28: bytes(rg[0]), 0x00108270 + (1 - side) * 0x28: bytes(rg[1])}
+    for i, c in enumerate(sorted({ch, (ch + 1) & 0x7F, (ch ^ 0x80) - 0x80})):
+        for j, t in enumerate(D2A_GEO_TABS):
+            p[t + c * 4] = le32(0x000F0000 + j * 0x1000 + i * 0x100 + (c & 0xFF))
+    return p
+
+
+def d2a_pick_cases():
+    """The 0x1DE64 cases: a* stance 2, b* bit 14 set, c* the 0x1DDF4 arms (all three with the slot's
+    +0x63 set, so the word is the command), s* the ring scan (the 0x46460 stub's EAX is the word)."""
+    def cmd(n, side, stance, c, sel=0, geo=None, ch=2):
+        return Case(n, {"eax": side, "edx": stance}, d2a_pick_case(side, 0x000F, 1, cmd=c, sel=sel, ch=ch),
+                    {} if geo is None else {0x1DDF4: geo})
+
+    def scan(n, side, word, w92=0x000F, ring=(), geo=1, sel=0):
+        return Case(n, {"eax": side, "edx": 0}, d2a_pick_case(side, w92, 0, cmd=0x0001, sel=sel, ring=ring),
+                    {0x46460: word, 0x1DDF4: geo})
+    return [
+        cmd("a0", 0, 2, 0x0001), cmd("a1", 1, 2, 0x4002), cmd("a2", 0, 0x00000102, 0x0004),
+        cmd("a3", 1, 2, 0x0008), cmd("a4", 0, 2, 0x0010), cmd("a5", 1, 2, 0x0010, sel=4),
+        cmd("b0", 0, 0, 0x4001), cmd("b1", 1, 0, 0x4002), cmd("b2", 0, 1, 0x4004), cmd("b3", 1, 3, 0x4008),
+        cmd("b4", 0, 0, 0x4000), cmd("b5", 1, 0, 0x4010, sel=4), cmd("b6", 0, 0, 0x400F), cmd("a6", 1, 2, 0x000F),
+        cmd("c0", 0, 0, 0x0003, sel=4, geo=1), cmd("c1", 1, 0, 0x0003, sel=4, geo=0x100),
+        cmd("c2", 0, 0, 0x000C, sel=4, geo=1), cmd("c3", 1, 0, 0x000C, sel=4, geo=0),
+        cmd("c4", 0, 0, 0x0001, sel=4, geo=1), cmd("c5", 1, 0, 0x0001, geo=0xFFFFFF00),
+        cmd("c6", 0, 0, 0x0002, geo=1), cmd("c7", 1, 0, 0x0002, geo=0),
+        cmd("c8", 0, 0, 0x0004, geo=1, ch=0x80), cmd("c9", 1, 0, 0x0004, geo=0x100),
+        cmd("c10", 0, 0, 0x0008, geo=0x80), cmd("c11", 1, 0, 0x0008, geo=0),
+        cmd("c12", 0, 0, 0x0010), cmd("c13", 1, 0, 0x00FF), cmd("c14", 0, 0, 0x0003, geo=1),
+        cmd("c15", 1, 0, 0x000F, sel=4, geo=1), cmd("c16", 0, 0, 0x0005, sel=4, geo=1),
+        scan("s0", 0, 0x0010), scan("s1", 1, 0x0010, w92=0x000E), scan("s2", 0, 0x0010, w92=0x8000),
+        scan("s3", 1, 0x0001), scan("s4", 0, 0x0002, ring=((0, 0x0003),)),
+        scan("s5", 1, 0x0004, ring=((3, 0x000F),)), scan("s6", 0, 0x0008, ring=((0, 0x000C),)),
+        scan("s7", 1, 0x0001, ring=((0, 0x0005),)), scan("s8", 0, 0x0001, ring=((4, 0x000F),)),
+        scan("s9", 1, 0x000100FF), scan("s10", 0, 0x00014001), scan("s11", 1, 0x0001, ring=((1, 0x0001), (2, 0x0008))),
+    ]
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -14325,6 +14390,20 @@ D2A_SPECS = [
        mutants=("@side", "@xz", "@yslot", "@ysh", "@nounlink", "@ins", "@flag", "@fl8", "@n8", "@r60",
                 "@r300", "@r18", "@rarg", "@w44", "@x14", "@x14a", "@pal0", "@palarg", "@nine", "@seven",
                 "@voice", "@ae9", "@vfirst", "@w34d")),
+    # 0x1DE64 hit_reaction_pick: EAX = side, DL = stance (a2: EDX = 0x102). 0x33950 runs real;
+    # 0x46460 is a stub whose EAX is the ring word (its low nibble, then its low word: `mov ax,[esp+
+    # 0x24]; cmp eax,0xff` 0x1DF52, and the bit tests after it; s9/s10 set the upper half); 0x4649C
+    # runs real and is recorded, so the two probes can differ (s4, s6); 0x1DDF4 is a stub whose AL
+    # the raw tests (six sites, 0x1E119..0x1E275: c1, c5, c9). AL only: every exit loads AL, and the
+    # one caller reads AL (0x352C1 `mov dl,al`). 0x1E028, 0x1E0C1 and 0x1E0DA are named unhit.
+    Spec("hit_reaction_pick", 0x1DE64, d2a_pick_cases(), allow_calls=(0x33950,),
+         calls=(D2A_READ, D2A_SCAN, C1_GEOM), eax_mask=0xFF, unhit_named={
+             0x1E028: "stance 2 with bits 0 and 1 both set: 0x1DFCD/0x1DFDB return 0xC or 0xD first",
+             0x1E0C1: "bit 14 with bits 0 and 1 both set: 0x1E060/0x1E074 return 8 or 9 first",
+             0x1E0DA: "bit 14 with bits 2 and 3 both set: 0x1E088/0x1E09B return 0xA or 0xB first"},
+       mutants=("@n", "@nb", "@nz", "@n90", "@s63", "@cmd", "@low", "@m1", "@m2", "@n2", "@or", "@i2", "@rw",
+                "@sel", "@selv", "@st", "@b4000", "@prio", "@geoal", "@gside", "@gtab", "@gidx", "@ch",
+                "@csext", "@b3", "@bc", "@zero", "@n1")),
 ]
 D1_SPECS += D2A_SPECS
 

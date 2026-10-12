@@ -21037,6 +21037,102 @@ static void m_d2a_406b4_ae9(const u32 *r, u32 *eax)      { d2a_406b4_core(r, 0x2
 static void m_d2a_406b4_vfirst(const u32 *r, u32 *eax)   { d2a_406b4_core(r, 0x400000u); *eax = 0u; }
 static void m_d2a_406b4_w34d(const u32 *r, u32 *eax)     { d2a_406b4_core(r, 0x800000u); *eax = 0u; }
 
+/* 0x1DE64: EAX = side, DL = stance; AL. 0x33950 runs real; 0x46460 is a stub (its EAX is the ring
+ * word), 0x4649C runs real and is recorded, 0x1DDF4 is a stub whose AL the raw tests. */
+static u32 d2a_1de64_geo(u32 side, u32 tab, u32 ch, u32 yes, u32 no, u32 mut)
+{
+    u32 a = (u32)hit_geometry((mut & 524288u) ? side : 1u - side,               /* @gside: the own side */
+                              DSD(tab + ch * 4u), (mut & 2097152u) ? 0x000A7A74u : 0x000A7A70u);   /* @gidx */
+    if (!(mut & 262144u)) a &= 0xFFu;                                           /* @geoal: the whole EAX */
+    return a != 0u ? yes : no;
+}
+static u32 d2a_1de64_core(const u32 *r_, u32 mut)
+{
+    u32 side = r_[R_EAX], stance = r_[R_EDX] & 0xFFu, ctx[6], slot, r = 0xFFu, ch, b3, b4, sel;
+    u32 ta = (mut & 1048576u) ? 0x000A7B1Cu : 0x000A7AF4u, tb = (mut & 1048576u) ? 0x000A7AF4u : 0x000A7B1Cu;   /* @gtab */
+    s32 w92, n, i;
+    fighter_ctx_same(ctx, side);
+    slot = ctx[2];
+    w92 = (mut & 4u) ? (s32)(u32)DSW(slot + 0x92u)                            /* @nz: zero-extended */
+        : (mut & 8u) ? (s32)(s16)DSW(slot + 0x90u) : (s32)(s16)DSW(slot + 0x92u);   /* @n90: the low word */
+    n = ((mut & 2u) ? (w92 <= 0xF) : (w92 < 0xF)) ? 5 : 0xF;                  /* @nb */
+    if (mut & 1u) n = (n == 5) ? 0xF : 5;                                      /* @n: swapped */
+    if (DSB(ctx[(mut & 16u) ? 3 : 2] + 0x63u) == 0u) {                        /* @s63: the other slot's */
+        for (i = 0; i < n; i++) {
+            u32 word = fighter_input_read(side, i);
+            if ((word & ((mut & 64u) ? 0xFFu : 0xFu)) != 0u) {                /* @low: the whole low byte */
+                int r1 = fighter_input_scan(side, (mut & 134217728u) ? 0 : i, 3, (mut & 128u) ? 1u : 3u);   /* @n1; @m1 */
+                int r2 = fighter_input_scan(side, i, (mut & 512u) ? 2 : 3, (mut & 256u) ? 4u : 0xCu);   /* @n2; @m2 */
+                if ((mut & 1024u) ? (r1 || r2) : (r1 && r2)) return 0xFFu;       /* @or */
+                if (i >= ((mut & 2048u) ? 1 : 2)) { r = word; break; }           /* @i2 */
+            }
+        }
+    } else {
+        r = (u32)DSW(0x001088E0u + ((mut & 32u) ? 1u - side : side) * 2u);    /* @cmd */
+    }
+    if (!(mut & 4096u)) r &= 0xFFFFu;                                            /* @rw: the whole dword */
+    if (r == 0xFFu) return 0xFFu;
+    sel = (u32)DSW(DSD(0x00101514u) + ((side == 0u) != ((mut & 8192u) != 0u) ? 0x2D4u : 0x2D6u));   /* @sel: swapped */
+    if (mut & 16384u) sel = (sel == 2u) ? 4u : 0u;                              /* @selv: selector 2 */
+    b3 = (mut & 16777216u) ? ((r & 3u) ? 3u : 0u) : (r & 3u);                        /* @b3: either bit */
+    b4 = (mut & 33554432u) ? ((r & 0xCu) ? 0xCu : 0u) : (r & 0xCu);                  /* @bc: either bit */
+    ch = (u32)DSB(ctx[(mut & 4194304u) ? 3 : 2] + 0x7Au);                           /* @ch: the other slot's */
+    if (mut & 8388608u) ch = (u32)(s32)(s8)ch;                                   /* @csext */
+    if (stance == ((mut & 32768u) ? 1u : 2u)) {                                   /* @st */
+        if ((r & 1u) != 0u) return 0xCu;
+        if ((r & 2u) != 0u) return 0xDu;
+        if ((r & 4u) != 0u) return 0xEu;
+        if ((r & 8u) != 0u) return 0xFu;
+        return 0xFFu;
+    }
+    if ((r & ((mut & 65536u) ? 0x8000u : 0x4000u)) != 0u) {                    /* @b4000 */
+        if (mut & 131072u) { if ((r & 2u) != 0u) return 9u; }                    /* @prio: bit 1 first */
+        if ((r & 1u) != 0u) return 8u;
+        if ((r & 2u) != 0u) return 9u;
+        if ((r & 4u) != 0u) return 0xAu;
+        if ((r & 8u) != 0u) return 0xBu;
+        return 0xFFu;
+    }
+    if (sel == 4u) {
+        if (b3 == 3u) return d2a_1de64_geo(side, ta, ch, 0x12u, 0x10u, mut);
+        if (b4 == 0xCu) return d2a_1de64_geo(side, tb, ch, 0x13u, 0x11u, mut);
+    }
+    if ((r & 1u) != 0u) return d2a_1de64_geo(side, ta, ch, 4u, (mut & 67108864u) ? 0xFFu : 0u, mut);   /* @zero */
+    if ((r & 2u) != 0u) return d2a_1de64_geo(side, tb, ch, 5u, 1u, mut);
+    if ((r & 4u) != 0u) return d2a_1de64_geo(side, 0x000A7A7Cu, ch, 6u, 2u, mut);
+    if ((r & 8u) != 0u) return d2a_1de64_geo(side, 0x000A7AA4u, ch, 7u, 3u, mut);
+    return 0xFFu;
+}
+static void b_d2a_1de64(const u32 *r, u32 *eax) { *eax = hit_reaction_pick(r[R_EAX], r[R_EDX] & 0xFFu); }
+static void m_d2a_1de64_n(const u32 *r, u32 *eax)     { *eax = d2a_1de64_core(r, 0x1u); }
+static void m_d2a_1de64_nb(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x2u); }
+static void m_d2a_1de64_nz(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x4u); }
+static void m_d2a_1de64_n90(const u32 *r, u32 *eax)   { *eax = d2a_1de64_core(r, 0x8u); }
+static void m_d2a_1de64_s63(const u32 *r, u32 *eax)   { *eax = d2a_1de64_core(r, 0x10u); }
+static void m_d2a_1de64_cmd(const u32 *r, u32 *eax)   { *eax = d2a_1de64_core(r, 0x20u); }
+static void m_d2a_1de64_low(const u32 *r, u32 *eax)   { *eax = d2a_1de64_core(r, 0x40u); }
+static void m_d2a_1de64_m1(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x80u); }
+static void m_d2a_1de64_m2(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x100u); }
+static void m_d2a_1de64_n2(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x200u); }
+static void m_d2a_1de64_or(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x400u); }
+static void m_d2a_1de64_i2(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x800u); }
+static void m_d2a_1de64_rw(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x1000u); }
+static void m_d2a_1de64_sel(const u32 *r, u32 *eax)   { *eax = d2a_1de64_core(r, 0x2000u); }
+static void m_d2a_1de64_selv(const u32 *r, u32 *eax)  { *eax = d2a_1de64_core(r, 0x4000u); }
+static void m_d2a_1de64_st(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x8000u); }
+static void m_d2a_1de64_b4000(const u32 *r, u32 *eax) { *eax = d2a_1de64_core(r, 0x10000u); }
+static void m_d2a_1de64_prio(const u32 *r, u32 *eax)  { *eax = d2a_1de64_core(r, 0x20000u); }
+static void m_d2a_1de64_geoal(const u32 *r, u32 *eax) { *eax = d2a_1de64_core(r, 0x40000u); }
+static void m_d2a_1de64_gside(const u32 *r, u32 *eax) { *eax = d2a_1de64_core(r, 0x80000u); }
+static void m_d2a_1de64_gtab(const u32 *r, u32 *eax)  { *eax = d2a_1de64_core(r, 0x100000u); }
+static void m_d2a_1de64_gidx(const u32 *r, u32 *eax)  { *eax = d2a_1de64_core(r, 0x200000u); }
+static void m_d2a_1de64_ch(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x400000u); }
+static void m_d2a_1de64_csext(const u32 *r, u32 *eax) { *eax = d2a_1de64_core(r, 0x800000u); }
+static void m_d2a_1de64_b3(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x1000000u); }
+static void m_d2a_1de64_bc(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x2000000u); }
+static void m_d2a_1de64_zero(const u32 *r, u32 *eax)  { *eax = d2a_1de64_core(r, 0x4000000u); }
+static void m_d2a_1de64_n1(const u32 *r, u32 *eax)    { *eax = d2a_1de64_core(r, 0x8000000u); }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -25396,6 +25492,35 @@ static const binding_t k_bindings[] = {
     { "fighter_406b4@ae9", m_d2a_406b4_ae9, 0x00000000u },
     { "fighter_406b4@vfirst", m_d2a_406b4_vfirst, 0x00000000u },
     { "fighter_406b4@w34d", m_d2a_406b4_w34d, 0x00000000u },
+    { "hit_reaction_pick", b_d2a_1de64, 0x000000FFu },
+    { "hit_reaction_pick@n", m_d2a_1de64_n, 0x000000FFu },
+    { "hit_reaction_pick@nb", m_d2a_1de64_nb, 0x000000FFu },
+    { "hit_reaction_pick@nz", m_d2a_1de64_nz, 0x000000FFu },
+    { "hit_reaction_pick@n90", m_d2a_1de64_n90, 0x000000FFu },
+    { "hit_reaction_pick@s63", m_d2a_1de64_s63, 0x000000FFu },
+    { "hit_reaction_pick@cmd", m_d2a_1de64_cmd, 0x000000FFu },
+    { "hit_reaction_pick@low", m_d2a_1de64_low, 0x000000FFu },
+    { "hit_reaction_pick@m1", m_d2a_1de64_m1, 0x000000FFu },
+    { "hit_reaction_pick@m2", m_d2a_1de64_m2, 0x000000FFu },
+    { "hit_reaction_pick@n2", m_d2a_1de64_n2, 0x000000FFu },
+    { "hit_reaction_pick@or", m_d2a_1de64_or, 0x000000FFu },
+    { "hit_reaction_pick@i2", m_d2a_1de64_i2, 0x000000FFu },
+    { "hit_reaction_pick@rw", m_d2a_1de64_rw, 0x000000FFu },
+    { "hit_reaction_pick@sel", m_d2a_1de64_sel, 0x000000FFu },
+    { "hit_reaction_pick@selv", m_d2a_1de64_selv, 0x000000FFu },
+    { "hit_reaction_pick@st", m_d2a_1de64_st, 0x000000FFu },
+    { "hit_reaction_pick@b4000", m_d2a_1de64_b4000, 0x000000FFu },
+    { "hit_reaction_pick@prio", m_d2a_1de64_prio, 0x000000FFu },
+    { "hit_reaction_pick@geoal", m_d2a_1de64_geoal, 0x000000FFu },
+    { "hit_reaction_pick@gside", m_d2a_1de64_gside, 0x000000FFu },
+    { "hit_reaction_pick@gtab", m_d2a_1de64_gtab, 0x000000FFu },
+    { "hit_reaction_pick@gidx", m_d2a_1de64_gidx, 0x000000FFu },
+    { "hit_reaction_pick@ch", m_d2a_1de64_ch, 0x000000FFu },
+    { "hit_reaction_pick@csext", m_d2a_1de64_csext, 0x000000FFu },
+    { "hit_reaction_pick@b3", m_d2a_1de64_b3, 0x000000FFu },
+    { "hit_reaction_pick@bc", m_d2a_1de64_bc, 0x000000FFu },
+    { "hit_reaction_pick@zero", m_d2a_1de64_zero, 0x000000FFu },
+    { "hit_reaction_pick@n1", m_d2a_1de64_n1, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)
