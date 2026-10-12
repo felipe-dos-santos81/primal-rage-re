@@ -25961,6 +25961,52 @@ static void m_d2d_3e524_c1ch(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 
 static void m_d2d_3e524_c1hold(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 26u); }
 static void m_d2d_3e524_c1rec(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 27u); }
 static void m_d2d_3e524_c1s57(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 28u); }
+/* ---- track D, wave 3, batch d3d (record 2026-10-12-reverse-d3d). Each core is the port's function
+ * with one mutation per number or bit; every index a mutant derives stays inside mem[]. ---- */
+
+/* 0x12D48's mutants (mutant n; 0 = the port's shape). No argument; the four mode bodies run on both
+ * sides. */
+static void d3d_12d48_body(u32 n)
+{
+    switch (n) {
+    case 0: camera_mode_track_player(); break;
+    case 1: camera_mode_track_pair();   break;
+    case 2: camera_mode_center_two();   break;
+    case 3: camera_mode_center_one();   break;
+    default: break;
+    }
+}
+static void d3d_12d48_clamp(u32 mut)
+{
+    s32 cam = (s32)DSD(DS_000F0AF0);
+    s32 hi = (mut == 16u) ? 0x5D01 : 0x5D00, lo = (mut == 17u) ? -0x5D01 : -0x5D00;   /* @hibound @lobound */
+    if (mut != 11u && ((mut == 13u) ? (u32)cam > 0x5D00u : cam > hi))                 /* @nohi @hiuns */
+        DSD(DS_000F0AF0) = 0x5D00u;
+    cam = (s32)DSD(DS_000F0AF0);
+    if (mut != 12u && ((mut == 14u) ? (u32)cam < 0xFFFFA300u : cam < lo))             /* @nolo @louns */
+        DSD(DS_000F0AF0) = (mut == 15u) ? 0x5D00u : 0xFFFFA300u;                       /* @losign */
+}
+static u32 d3d_12d48_core(u32 mut)
+{
+    u32 mode = (mut == 7u) ? (u32)DSW(DS_000F0AFE) : (u32)DSB(DS_000F0AFE);           /* @width */
+    if (mut == 10u) d3d_12d48_clamp(mut);                                             /* @early */
+    if (mut == 8u) mode &= 3u;                                                        /* @mask */
+    if (mut == 9u && (mode & 0x80u)) mode &= 3u;                                      /* @signed */
+    if (mut >= 1u && mut <= 4u && mode == mut - 1u) mode = 4u;                        /* @no0..@no3 */
+    if (mut == 5u && mode < 2u) mode ^= 1u;                                           /* @swap01 */
+    if (mut == 6u && (mode == 2u || mode == 3u)) mode ^= 1u;                          /* @swap23 */
+    d3d_12d48_body(mode);
+    if (mut != 10u) d3d_12d48_clamp(mut);
+    return 0u;
+}
+static void b_d3d_12d48(const u32 *r, u32 *eax) { (void)r; camera_dispatch(); *eax = 0u; }
+#define D3D_DISP_MUT(name, n) \
+    static void m_d3d_disp_##name(const u32 *r, u32 *eax) { (void)r; *eax = d3d_12d48_core(n); }
+D3D_DISP_MUT(no0, 1u)     D3D_DISP_MUT(no1, 2u)     D3D_DISP_MUT(no2, 3u)      D3D_DISP_MUT(no3, 4u)
+D3D_DISP_MUT(swap01, 5u)  D3D_DISP_MUT(swap23, 6u)  D3D_DISP_MUT(width, 7u)    D3D_DISP_MUT(mask, 8u)
+D3D_DISP_MUT(signed, 9u)  D3D_DISP_MUT(early, 10u)  D3D_DISP_MUT(nohi, 11u)    D3D_DISP_MUT(nolo, 12u)
+D3D_DISP_MUT(hiuns, 13u)  D3D_DISP_MUT(louns, 14u)  D3D_DISP_MUT(losign, 15u)  D3D_DISP_MUT(hibound, 16u)
+D3D_DISP_MUT(lobound, 17u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32277,6 +32323,25 @@ static const binding_t k_bindings[] = {
     { "fighter_3e524@c1hold",                m_d2d_3e524_c1hold, 0x00000000u },
     { "fighter_3e524@c1rec",                 m_d2d_3e524_c1rec, 0x00000000u },
     { "fighter_3e524@c1s57",                 m_d2d_3e524_c1s57, 0x00000000u },
+    /* track D, wave 3, batch d3d (record 2026-10-12-reverse-d3d) */
+    { "camera_dispatch",                     b_d3d_12d48,          0x00000000u },
+    { "camera_dispatch@no0",                 m_d3d_disp_no0, 0x00000000u },
+    { "camera_dispatch@no1",                 m_d3d_disp_no1, 0x00000000u },
+    { "camera_dispatch@no2",                 m_d3d_disp_no2, 0x00000000u },
+    { "camera_dispatch@no3",                 m_d3d_disp_no3, 0x00000000u },
+    { "camera_dispatch@swap01",              m_d3d_disp_swap01, 0x00000000u },
+    { "camera_dispatch@swap23",              m_d3d_disp_swap23, 0x00000000u },
+    { "camera_dispatch@width",               m_d3d_disp_width, 0x00000000u },
+    { "camera_dispatch@mask",                m_d3d_disp_mask, 0x00000000u },
+    { "camera_dispatch@signed",              m_d3d_disp_signed, 0x00000000u },
+    { "camera_dispatch@early",               m_d3d_disp_early, 0x00000000u },
+    { "camera_dispatch@nohi",                m_d3d_disp_nohi, 0x00000000u },
+    { "camera_dispatch@nolo",                m_d3d_disp_nolo, 0x00000000u },
+    { "camera_dispatch@hiuns",               m_d3d_disp_hiuns, 0x00000000u },
+    { "camera_dispatch@louns",               m_d3d_disp_louns, 0x00000000u },
+    { "camera_dispatch@losign",              m_d3d_disp_losign, 0x00000000u },
+    { "camera_dispatch@hibound",             m_d3d_disp_hibound, 0x00000000u },
+    { "camera_dispatch@lobound",             m_d3d_disp_lobound, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -11251,6 +11251,53 @@ D1_KINDS.update({
     "fight_4cd98@id": {"call #0", "call #0 memory"},
 })
 
+# track D, wave 3, batch d3d (record 2026-10-12-reverse-d3d): the masks, what catches each mutant, and
+# the exact catching case sets, measured row by row with `--function`.
+D3D_MASKS = {
+    "camera_dispatch": 0x0,
+}   # D3D_MASKS end
+D3D_KINDS = {
+    "camera_dispatch@no0": {'byte'},
+    "camera_dispatch@no1": {'byte'},
+    "camera_dispatch@no2": {'byte'},
+    "camera_dispatch@no3": {'byte'},
+    "camera_dispatch@swap01": {'byte'},
+    "camera_dispatch@swap23": {'byte'},
+    "camera_dispatch@width": {'byte'},
+    "camera_dispatch@mask": {'byte'},
+    "camera_dispatch@signed": {'byte'},
+    "camera_dispatch@early": {'byte'},
+    "camera_dispatch@nohi": {'byte'},
+    "camera_dispatch@nolo": {'byte'},
+    "camera_dispatch@hiuns": {'byte'},
+    "camera_dispatch@louns": {'byte'},
+    "camera_dispatch@losign": {'byte'},
+    "camera_dispatch@hibound": {'byte'},
+    "camera_dispatch@lobound": {'byte'},
+}   # D3D_KINDS end
+D3D_CASES = [
+    ("camera_dispatch@no0", ['d0', 'w0']),
+    ("camera_dispatch@no1", ['d1']),
+    ("camera_dispatch@no2", ['d2', 'e0']),
+    ("camera_dispatch@no3", ['d3', 'e1', 'w1']),
+    ("camera_dispatch@swap01", ['d0', 'd1', 'w0']),
+    ("camera_dispatch@swap23", ['d2', 'd3', 'e0', 'e1', 'w1']),
+    ("camera_dispatch@width", ['w0', 'w1']),
+    ("camera_dispatch@mask", ['d4', 'd5', 'd6', 'd7', 'd8', 'h2', 'l0', 'l1']),
+    ("camera_dispatch@signed", ['d7', 'd8']),
+    ("camera_dispatch@early", ['e0', 'e1']),
+    ("camera_dispatch@nohi", ['e0', 'h0', 'h2']),
+    ("camera_dispatch@nolo", ['e1', 'l0', 'l2']),
+    ("camera_dispatch@hiuns", ['e1', 'l0', 'l1', 'l2']),
+    ("camera_dispatch@louns", ['d0', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'e0', 'h0', 'h1', 'h2', 'w0', 'w1']),
+    ("camera_dispatch@losign", ['e1', 'l0', 'l2']),
+    ("camera_dispatch@hibound", ['h0']),
+    ("camera_dispatch@lobound", ['l0']),
+]   # D3D_CASES end
+D1_MASKS.update(D3D_MASKS)
+D1_KINDS.update(D3D_KINDS)
+D1_CASES.extend(D3D_CASES)
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,

@@ -18153,6 +18153,70 @@ D2D_SPECS = [
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 
+# ---- track D, wave 3, batch d3d (record 2026-10-12-reverse-d3d): game/camera.c, actors.c, nameentry.c,
+# config.c, svcmenu.c and platform functions. Every poke, and every address a binding or mutant
+# derives from one, stays inside the image.
+
+D3D_SPECS = []
+D3D_T0, D3D_T1 = 0x0010A000, 0x0010A080             # zero BSS: the two mode-0 table records
+D3D_R0, D3D_R1 = 0x0010A100, 0x0010A180             # the two slots' records
+
+
+def d3d_disp_case(mode, cam, idx=0, idx3=1):
+    """0x12D48: the camera block (y 0, the step word 0x400, the mode byte and the mode-0 index byte)
+    and a state in which each of the four mode bodies moves the camera x by its own amount: mode 0
+    by +0x200 (index 0) or -0x280 (index 1) from the 0x1077A8 records' +0x34, mode 1 by +0x90 (both
+    slots' +0x34 and +0x38 at cam + 0x1890: no split, 0x18714 is not reached), mode 2 by +0x40 (the
+    records' +0x18 midpoint is cam + 0x1000) and mode 3 by -0x40 (the index byte 0x10810D = 1
+    selects cam - 0x1000). The gate byte 0x1078FE is 0."""
+    c = lambda v: le32(cam + v)
+    p = d1h_cam(y=0, x=cam, mode=mode, idx=idx)
+    p[0x001077A8] = le32(D3D_T0) + le32(D3D_T1)
+    p[D3D_T0 + 0x30] = le32(0x30303030) + c(0x1A00) + le32(0x38383838)
+    p[D3D_T1 + 0x30] = le32(0x31313131) + c(-0x1A80) + le32(0x39393939)
+    for i, rec in enumerate((D3D_R0, D3D_R1)):
+        p[DS_SLOTS + i * 0x94] = le32(rec)
+        p[DS_SLOTS + i * 0x94 + 0x2C] = le32(0x2C2C2C2C + i) + le32(0x30303030 + i) + c(0x1890) + c(0x1890)
+        p[rec + 0x14] = le32(0x14141414 + i) + c((0x3000, -0x1000)[i]) + le32(0x1C1C1C1C + i)
+    p[0x001078FE] = b"\x00"
+    p[0x0010810D] = bytes([idx3])
+    return p
+
+
+D3D_SPECS += [
+    # 0x12D48 camera_dispatch: no argument. `cmp al,4; ja` 0x12D4D/0x12D4F then the five-entry table
+    # 0x12D34 (0x12D5E, 0x12D65, 0x12D6C, 0x12D73 and, for mode 4, the tail 0x12D78): the four mode
+    # bodies (their own rows, d1h and d2d) and 0x12C7C run on both sides, each moving the camera x
+    # by its own amount, then the signed clamp to +-0x5D00 (`jle` 0x12D82, `jge` 0x12D98), which
+    # reads the x the body left (e0, e1). Mask 0: 0x25422 returns to `xor ebx,ebx` .. `mov eax,ebx`
+    # 0x25436 or, both pointers null, to `call 0x33f08`, which loads EAX at 0x33F15 before reading
+    # it; 0x2554B returns to `xor eax,eax` 0x25550.
+    Spec("camera_dispatch", 0x12D48, [
+        Case("d0", {}, d3d_disp_case(0, 0x1000)),
+        Case("d1", {}, d3d_disp_case(1, 0x1000)),
+        Case("d2", {}, d3d_disp_case(2, 0x1000)),
+        Case("d3", {}, d3d_disp_case(3, 0x1000)),
+        Case("d4", {}, d3d_disp_case(4, 0x1000)),
+        Case("d5", {}, d3d_disp_case(5, 0x1000)),
+        Case("d6", {}, d3d_disp_case(6, 0x1000)),
+        Case("d7", {}, d3d_disp_case(0xFF, 0x1000)),
+        Case("d8", {}, d3d_disp_case(0x80, 0x1000)),
+        Case("w0", {}, d3d_disp_case(0, 0x1000, idx=1)),
+        Case("w1", {}, d3d_disp_case(3, 0x1000, idx=1)),
+        Case("h0", {}, d3d_disp_case(4, 0x5D01)),
+        Case("h1", {}, d3d_disp_case(4, 0x5D00)),
+        Case("h2", {}, d3d_disp_case(4, 0x7FFFFFFF)),
+        Case("l0", {}, d3d_disp_case(4, 0xFFFFA2FF)),
+        Case("l1", {}, d3d_disp_case(4, 0xFFFFA300)),
+        Case("l2", {}, d3d_disp_case(4, 0x80000000)),
+        Case("e0", {}, d3d_disp_case(2, 0x5CF0)),
+        Case("e1", {}, d3d_disp_case(3, 0xFFFFA310)),
+    ], allow_calls=(0x12DF0, 0x12E3C, 0x13290, 0x1333C, 0x12C7C), eax_mask=0,
+       mutants=("@no0", "@no1", "@no2", "@no3", "@swap01", "@swap23", "@width", "@mask", "@signed", "@early",
+                "@nohi", "@nolo", "@hiuns", "@louns", "@losign", "@hibound", "@lobound")),
+]
+D1_SPECS += D3D_SPECS
+
 
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
