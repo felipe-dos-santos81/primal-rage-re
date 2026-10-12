@@ -3701,11 +3701,11 @@ int fighter_attack_consume(u32 side)
     DSB(self + 0x5Fu) = 0xFFu;                          /* 0x3BE43 */
 
     if (DSB(DS_00107803 + side * 0x94u) == 0) {
-        if (hit_chain_resolve(side) != 0) return 1;     /* 0x3BE61 0x3CF38 */
+        if ((u8)hit_chain_resolve(side) != 0u) return 1;    /* 0x3BE61 0x3CF38, 0x3BE66: test al,al */
     }
 
-    u32 base = fighter_input_scan(side, 0, 5, 0x4000u) ? 0xBEF64u
-                                                       : 0xBEF28u;  /* 0x3BE7F */
+    u32 base = ((u8)fighter_input_scan(side, 0, 5, 0x4000u) != 0u)
+             ? 0xBEF64u : 0xBEF28u;                     /* 0x3BE7F, 0x3BE84 mov dl,al / 0x3BE9E test dl,dl */
     u32 ch = DSB(self + 0x7Au);                         /* 0x3BEF4 */
     DSD(DS_00107D40 + side * 4u) = base + ch * 6u;      /* 0x3BED4 */
     /* 0x3BEF7 mov eax,[ebx] (the slot's record), 0x3BEF9 mov edx,

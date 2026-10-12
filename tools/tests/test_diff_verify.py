@@ -15852,6 +15852,7 @@ D4E_MASKS = {
     "camera_page_tail_b_al": 0xFF,
     "camera_page_tail_a_al": 0xFF,
     "fighter_reaction_al": 0x0,
+    "fighter_attack_consume_al": 0xFF,
 }
 D4E_KINDS = {
     "fighter_146f0_al@eax": {'call #1', 'call #2'},
@@ -15894,6 +15895,8 @@ D4E_KINDS = {
     "fighter_reaction_al@eaxflag": {'byte', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6'},
     "fighter_reaction_al@eaxefc": {'byte', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6'},
     "fighter_reaction_al@eaxhold": {'byte'},
+    "fighter_attack_consume_al@eaxchain": {'byte', 'call #1', 'call #2'},
+    "fighter_attack_consume_al@eaxscan": {'byte', 'call #1 memory', 'call #2 memory'},
 }
 D4E_CASES = [
     ("fighter_146f0_al@eax", ['c2', 'c3']),
@@ -15936,6 +15939,8 @@ D4E_CASES = [
     ("fighter_reaction_al@eaxflag", ['r4', 'r5']),
     ("fighter_reaction_al@eaxefc", ['r5', 'r6']),
     ("fighter_reaction_al@eaxhold", ['h0', 'h1']),
+    ("fighter_attack_consume_al@eaxchain", ['a3', 'a5']),
+    ("fighter_attack_consume_al@eaxscan", ['a4', 'a5']),
 ]   # D4E_CASES end
 D1_MASKS.update(D4E_MASKS)
 D1_KINDS.update(D4E_KINDS)

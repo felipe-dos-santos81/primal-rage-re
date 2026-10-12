@@ -30636,6 +30636,43 @@ static void d4e_3b714_core(const u32 *r, u32 mut)
 static void m_d4e_3b714_eaxflag(const u32 *r, u32 *eax) { d4e_3b714_core(r, 1u); *eax = 0u; }
 static void m_d4e_3b714_eaxefc(const u32 *r, u32 *eax)  { d4e_3b714_core(r, 2u); *eax = 0u; }
 static void m_d4e_3b714_eaxhold(const u32 *r, u32 *eax) { d4e_3b714_core(r, 4u); *eax = 0u; }
+/* 0x3BDDC restated; each bit tests one callee's whole int (the port before the AL corrections
+ * 0x3BE66 and 0x3BE84 / 0x3BE9E). EAX = side. */
+static u32 d4e_3bddc_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], ctx[6], self, rec, base, ch;
+    u16 cmd;
+    int g;
+    fighter_ctx_same(ctx, side);
+    self = ctx[2];
+    if ((DSB(self + 0x40u) & 0x80u) != 0) return 0u;
+    cmd = DSW(0x001088E0u + side * 2u);
+    if ((cmd & 0x8000u) == 0) return 0u;
+    rec = DSD(0x001077B0u + side * 0x94u);
+    DSW(rec + 0x34u) = 0;
+    DSB(rec + 0x43u) = 0;
+    DSB(rec + 0x42u) = 0;
+    DSB(self + 0x5Fu) = 0xFFu;
+    if (DSB(0x00107803u + side * 0x94u) == 0) {
+        g = hit_chain_resolve(side);
+        if ((mut & 1u) ? (g != 0) : ((u8)g != 0u)) return 1u;               /* @eaxchain */
+    }
+    g = fighter_input_scan(side, 0, 5, 0x4000u);
+    base = ((mut & 2u) ? (g != 0) : ((u8)g != 0u)) ? 0xBEF64u : 0xBEF28u;   /* @eaxscan */
+    ch = DSB(self + 0x7Au);
+    DSD(0x00107D40u + side * 4u) = base + ch * 6u;
+    hit_anim_start_a(DSD(self), DSD(0x000C8B30u + ch * 4u), 0x3F800000u);
+    DSB(self + 0x52u) = 3u;
+    DSB(self + 0x54u) = 2u;
+    DSB(self + 0x53u) = 4u;
+    DSB(0x001078F8u + side) = 1u;
+    if (cmd & 0x1000u) DSW(0x001077FEu + side * 0x94u) = 1u;
+    else if (cmd & 0x2000u) DSW(0x001077FEu + side * 0x94u) = 0xFFFFu;
+    else DSW(0x001077FEu + side * 0x94u) = 0u;
+    return 1u;
+}
+static void m_d4e_3bddc_eaxchain(const u32 *r, u32 *eax) { *eax = d4e_3bddc_core(r, 1u); }
+static void m_d4e_3bddc_eaxscan(const u32 *r, u32 *eax)  { *eax = d4e_3bddc_core(r, 2u); }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39288,6 +39325,9 @@ static const binding_t k_bindings[] = {
     { "fighter_reaction_al@eaxflag", m_d4e_3b714_eaxflag, 0x00000000u },
     { "fighter_reaction_al@eaxefc", m_d4e_3b714_eaxefc, 0x00000000u },
     { "fighter_reaction_al@eaxhold", m_d4e_3b714_eaxhold, 0x00000000u },
+    { "fighter_attack_consume_al", b_c3g_3bddc, 0x000000FFu },
+    { "fighter_attack_consume_al@eaxchain", m_d4e_3bddc_eaxchain, 0x000000FFu },
+    { "fighter_attack_consume_al@eaxscan", m_d4e_3bddc_eaxscan, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)

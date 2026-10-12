@@ -22051,6 +22051,14 @@ D4E_SPECS += [
              {**D4E_REACT_EAX, 0x3B6C4: 0xFFFFFF00})),
         calls=d4e_stubbed(C2B_SPECS, "fighter_reaction", 0x39EFC),
         mutants=("@eaxflag", "@eaxefc", "@eaxhold")),
+    # 0x3BDDC fighter_attack_consume (C3g's row; mask 0xFF and stubs as there). Two AL sites:
+    # 0x3BE66 `test al,al` / `je` after 0x3CF38 (a3 0x100 and a5 0xFFFFFF00 go on to the scan, a2
+    # 0xFFFFFF01 returns 1) and 0x3BE84 `mov dl,al` .. 0x3BE9E `test dl,dl` / `je` after 0x4649C (a4
+    # 0x100 and a5 0xFFFFFF00 take the 0xBEF28 row, a6 0x80 and a7 0xFFFFFF03 the 0xBEF64 one).
+    d4e_al_spec(C3G_SPECS, "fighter_attack_consume", (
+        {}, {}, {0x3CF38: 0xFFFFFF01}, {0x3CF38: 0x00000100}, {0x4649C: 0x00000100},
+        {0x3CF38: 0xFFFFFF00, 0x4649C: 0xFFFFFF00}, {0x4649C: 0x00000080}, {0x4649C: 0xFFFFFF03}),
+        mutants=("@eaxchain", "@eaxscan")),
 ]
 D1_SPECS += D4E_SPECS
 SPECS = [
