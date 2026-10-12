@@ -7601,8 +7601,8 @@ void game_frame(void)
     case 0x23u: {
         /* 0x2554B: the camera dispatch and the DS_00104B1A slot alone. */
         camera_dispatch();                             /* 0x2554B 0x12D48 */
-        u32 side = DSB(DS_00104B1A);                   /* 0x25552 */
-        fighter_slot_latch(side);                      /* 0x25559 0x186D0 */
+        fighter_slot_latch(DSB(DS_00104B1A));          /* 0x25552/0x25559 0x186D0 */
+        u32 side = DSB(DS_00104B1A);                   /* 0x2555E, read again after the call */
         u32 rec = DSD(DS_001077B0 + side * 0x94u);     /* 0x25575 */
         if (rec != 0u) actor_pset_point(rec);          /* 0x25581 0x2A690 */
         fight_health_bars();                           /* 0x25586/0x255C0 0x33F08 */
