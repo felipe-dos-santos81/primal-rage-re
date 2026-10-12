@@ -10672,7 +10672,7 @@ void fighter_216ec(u32 slot, u32 rec, u32 side)
         DSW(DSD(ctx[3]) + 0x34u) = 0xFF6Au;                 /* 0x217B0 */
         DSW(DSD(ctx[3]) + 0x36u) = 0xFE0Cu;                 /* 0x217BC */
         DSW(DSD(ctx[3]) + 0x44u) = 0x000Au;                 /* 0x217C8 */
-        if (fighter_actor_bit15_clear(ctx[0]) != 0) return; /* 0x217D1..0x217D8 0x1A570 */
+        if ((u8)fighter_actor_bit15_clear(ctx[0]) != 0u) return;   /* 0x217D1..0x217D8 0x1A570, 0x217D6: test al,al */
         DSW(r + 0x34u) = (u16)(0u - DSW(r + 0x34u));        /* 0x217E2..0x217EB */
         DSW(ctx[5] + 0x34u) = (u16)(0u - DSW(ctx[5] + 0x34u));   /* 0x217F3..0x217FC */
         return;
