@@ -4944,6 +4944,7 @@ void game_null_step(void)
  * 0x270E0 (0x270BC) and 0x295E4. */
 void game_fight_reset(u32 stage, u32 full)
 {
+    PR_SEAM(0x20DF4u, stage, full);
     DSD(DS_000F0A48) = 0u;                              /* 0x20DFB */
     u32 s = (s32)stage < 7 ? stage : 7u;                /* 0x20DF7/0x20E01/0x20E06 */
     game_null_step();                                   /* 0x20E0B 0x29B70 */

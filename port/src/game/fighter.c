@@ -393,6 +393,7 @@ void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a4, u32 a5)
 
 void fighter_spawn(u32 side)
 {
+    PR_SEAM(0x33EB4u, side);
     /* 0x33EB4: A5 = 0x4000/0 by side; a3 = word[0xBD898] = 0x400; the initial x
      * is the dword at DS_000BDA38 + side*2 shifted right 16 (0x33EC4/0x33ECB). */
     u32 a3 = (u32)DSW(DS_000BD898);

@@ -33977,6 +33977,89 @@ D5A_RO_MUT(s4v8ee) D5A_RO_MUT(s4noafa) D5A_RO_MUT(s4vafa) D5A_RO_MUT(s4nob00) D5
 D5A_RO_MUT(s4nob25) D5A_RO_MUT(s4vb25) D5A_RO_MUT(s4tailalways) D5A_RO_MUT(pre4a0) D5A_RO_MUT(prebit1)
 D5A_RO_MUT(preinc1) D5A_RO_MUT(preinc0) D5A_RO_MUT(pre4a0c) D5A_RO_MUT(pre4a4) D5A_RO_MUT(preinc3)
 D5A_RO_MUT(pre4a4b) D5A_RO_MUT(pre49c) D5A_RO_MUT(prebit4)
+/* 0x11A8C: no argument. Mask 0: the one call site 0x11E4F goes on as 0x12484's does (`call 0x10db0`
+ * ...). Bound twice: the plain row (the RNG real) and the row with a stubbed RNG and stubs that rewrite
+ * what the raw reads after them (`_rr`). */
+static void b_d5a_11a8c(const u32 *r, u32 *eax) { (void)r; game_state_6(); *eax = 0u; }
+enum { D5A_S6_NONE, D5A_S6_novoice, D5A_S6_voice, D5A_S6_nocredit, D5A_S6_credit, D5A_S6_rng7, D5A_S6_rng6,
+       D5A_S6_noafc, D5A_S6_afcd, D5A_S6_afclate, D5A_S6_resetfull, D5A_S6_noreset, D5A_S6_sel0side,
+       D5A_S6_sel0ch, D5A_S6_spawn0, D5A_S6_nospawn0, D5A_S6_no2c8, D5A_S6_2c8v, D5A_S6_2c8w, D5A_S6_2c8early,
+       D5A_S6_p1le, D5A_S6_p1nosub, D5A_S6_p1d1, D5A_S6_sel1side, D5A_S6_spawn1, D5A_S6_nospawn1,
+       D5A_S6_sel1late, D5A_S6_nob15, D5A_S6_b15v, D5A_S6_b15late, D5A_S6_hudarg, D5A_S6_nohud, D5A_S6_nob1b,
+       D5A_S6_b1bv, D5A_S6_b1bearly, D5A_S6_no2cc, D5A_S6_2ccw, D5A_S6_2ccv, D5A_S6_bit, D5A_S6_bitinv,
+       D5A_S6_b528, D5A_S6_strid, D5A_S6_strrow, D5A_S6_strmode, D5A_S6_strcol, D5A_S6_str2, D5A_S6_no64,
+       D5A_S6_v64, D5A_S6_64b, D5A_S6_no6a, D5A_S6_v6a, D5A_S6_6ab, D5A_S6_no6c, D5A_S6_6cw, D5A_S6_6csext,
+       D5A_S6_no6f, D5A_S6_v6f, D5A_S6_tailearly, D5A_S6_prebit, D5A_S6_pre72, D5A_S6_stagefull,
+       D5A_S6_p1uns, D5A_S6_p1mod };
+static void d5a_11a8c_tail(u32 mut, u32 pre72)
+{
+    if (mut == D5A_S6_64b) DSB(0x000F0A64u) = 7u;
+    else if (mut != D5A_S6_no64) DSW(0x000F0A64u) = (mut == D5A_S6_v64) ? 8u : 7u;
+    if (mut == D5A_S6_6ab) DSB(0x000F0A6Au) = 0x84u;
+    else if (mut != D5A_S6_no6a) DSW(0x000F0A6Au) = (mut == D5A_S6_v6a) ? 0x385u : 0x384u;
+    u32 v = (mut == D5A_S6_pre72) ? (pre72 & 0xFFu) : (mut == D5A_S6_6cw) ? DSW(0x000F0A72u)
+            : (mut == D5A_S6_6csext) ? (u32)(u16)(s16)(s8)DSB(0x000F0A72u) : DSB(0x000F0A72u);
+    if (mut != D5A_S6_no6c) DSW(0x000F0A6Cu) = (u16)v;
+    if (mut != D5A_S6_no6f) DSB(0x000F0A6Fu) = (mut == D5A_S6_v6f) ? 1u : 0u;
+}
+static void d5a_11a8c_core(u32 mut)
+{
+    u32 prebit = DSB(0x00104529u), pre72 = DSB(0x000F0A72u);
+    if (mut != D5A_S6_novoice) (void)sound_voice((mut == D5A_S6_voice) ? 0x101u : 0x100u);
+    if (mut != D5A_S6_nocredit) config_set_credit_row((mut == D5A_S6_credit) ? 0x1Cu : 0x1Du);
+    u32 d1 = rng_next((mut == D5A_S6_rng7) ? 8u : 7u);
+    if (mut == D5A_S6_afcd) DSD(0x00104AFCu) = d1;
+    else if (mut != D5A_S6_noafc && mut != D5A_S6_afclate) DSW(0x00104AFCu) = (u16)d1;
+    if (mut != D5A_S6_noreset)
+        game_fight_reset((mut == D5A_S6_stagefull) ? d1 : (u32)(u16)d1, (mut == D5A_S6_resetfull) ? 0u : 1u);
+    if (mut == D5A_S6_afclate) DSW(0x00104AFCu) = (u16)d1;
+    fight_char_select((mut == D5A_S6_sel0side) ? 1u : 0u, (mut == D5A_S6_sel0ch) ? d1 + 1u : d1);
+    if (mut == D5A_S6_2c8early) DSD(0x001082C8u) = 7u;
+    if (mut != D5A_S6_nospawn0) fighter_spawn((mut == D5A_S6_spawn0) ? 1u : 0u);
+    if (mut == D5A_S6_2c8w) DSW(0x001082C8u) = 7u;
+    else if (mut != D5A_S6_no2c8 && mut != D5A_S6_2c8early) DSD(0x001082C8u) = (mut == D5A_S6_2c8v) ? 6u : 7u;
+    u32 d2 = rng_next((mut == D5A_S6_rng6) ? 7u : 6u);
+    u32 p1 = ((mut == D5A_S6_p1d1) ? 0u : d1) + d2;
+    if (mut == D5A_S6_p1uns) { if (p1 >= 7u) p1 -= 7u; }
+    else if (mut == D5A_S6_p1mod) { while ((s32)p1 >= 7) p1 -= 7u; }
+    else if (mut == D5A_S6_p1le) { if ((s32)p1 > 7) p1 -= 7u; }
+    else if (mut != D5A_S6_p1nosub) { if ((s32)p1 >= 7) p1 -= 7u; }
+    if (mut == D5A_S6_sel1late) fighter_spawn(1u);
+    fight_char_select((mut == D5A_S6_sel1side) ? 0u : 1u, p1);
+    if (mut != D5A_S6_nospawn1 && mut != D5A_S6_sel1late) fighter_spawn((mut == D5A_S6_spawn1) ? 0u : 1u);
+    if (mut != D5A_S6_nob15 && mut != D5A_S6_b15late) DSB(0x00104B15u) = (mut == D5A_S6_b15v) ? 2u : 1u;
+    if (mut == D5A_S6_b1bearly) DSB(0x00104B1Bu) = 1u;
+    if (mut == D5A_S6_tailearly) d5a_11a8c_tail(mut, pre72);
+    if (mut != D5A_S6_nohud) fight_hud_spawn((mut == D5A_S6_hudarg) ? 1u : 0u);
+    if (mut == D5A_S6_b15late) DSB(0x00104B15u) = 1u;
+    if (mut != D5A_S6_nob1b && mut != D5A_S6_b1bearly) DSB(0x00104B1Bu) = (mut == D5A_S6_b1bv) ? 2u : 1u;
+    u32 b = (mut == D5A_S6_prebit) ? prebit : DSB((mut == D5A_S6_b528) ? 0x00104528u : 0x00104529u);
+    if (mut == D5A_S6_2ccw) DSW(0x001082CCu) = 3u;
+    else if (mut != D5A_S6_no2cc) DSD(0x001082CCu) = (mut == D5A_S6_2ccv) ? 4u : 3u;
+    u32 set = (b & ((mut == D5A_S6_bit) ? 4u : 2u)) != 0u;
+    if (mut == D5A_S6_bitinv) set = !set;
+    if (!set) {
+        u32 m = (mut == D5A_S6_strmode) ? 0x4003u : 0x2000u;
+        s32 c = (mut == D5A_S6_strcol) ? 0 : -1;
+        text_cursor_set(c, 2, game_string_get((mut == D5A_S6_strid) ? 7u : 6u), m);
+        text_cursor_set(c, (mut == D5A_S6_strrow) ? 5 : 4, game_string_get(7u), m);
+        if (mut != D5A_S6_str2) text_cursor_set(c, 6, game_string_get(8u), m);
+    }
+    if (mut != D5A_S6_tailearly) d5a_11a8c_tail(mut, pre72);
+}
+#define D5A_S6_MUT(name) \
+    static void m_d5a_s6_##name(const u32 *r, u32 *eax) { (void)r; d5a_11a8c_core(D5A_S6_##name); *eax = 0u; }
+D5A_S6_MUT(novoice) D5A_S6_MUT(voice) D5A_S6_MUT(nocredit) D5A_S6_MUT(credit) D5A_S6_MUT(rng7) D5A_S6_MUT(rng6)
+D5A_S6_MUT(noafc) D5A_S6_MUT(afcd) D5A_S6_MUT(afclate) D5A_S6_MUT(resetfull) D5A_S6_MUT(noreset)
+D5A_S6_MUT(sel0side) D5A_S6_MUT(sel0ch) D5A_S6_MUT(spawn0) D5A_S6_MUT(nospawn0) D5A_S6_MUT(no2c8)
+D5A_S6_MUT(2c8v) D5A_S6_MUT(2c8w) D5A_S6_MUT(2c8early) D5A_S6_MUT(p1le) D5A_S6_MUT(p1nosub) D5A_S6_MUT(p1d1)
+D5A_S6_MUT(sel1side) D5A_S6_MUT(spawn1) D5A_S6_MUT(nospawn1) D5A_S6_MUT(sel1late) D5A_S6_MUT(nob15)
+D5A_S6_MUT(b15v) D5A_S6_MUT(b15late) D5A_S6_MUT(hudarg) D5A_S6_MUT(nohud) D5A_S6_MUT(nob1b) D5A_S6_MUT(b1bv)
+D5A_S6_MUT(b1bearly) D5A_S6_MUT(no2cc) D5A_S6_MUT(2ccw) D5A_S6_MUT(2ccv) D5A_S6_MUT(bit) D5A_S6_MUT(bitinv)
+D5A_S6_MUT(b528) D5A_S6_MUT(strid) D5A_S6_MUT(strrow) D5A_S6_MUT(strmode) D5A_S6_MUT(strcol) D5A_S6_MUT(str2)
+D5A_S6_MUT(no64) D5A_S6_MUT(v64) D5A_S6_MUT(64b) D5A_S6_MUT(no6a) D5A_S6_MUT(v6a) D5A_S6_MUT(6ab)
+D5A_S6_MUT(no6c) D5A_S6_MUT(6cw) D5A_S6_MUT(6csext) D5A_S6_MUT(no6f) D5A_S6_MUT(v6f) D5A_S6_MUT(tailearly)
+D5A_S6_MUT(prebit) D5A_S6_MUT(pre72) D5A_S6_MUT(stagefull) D5A_S6_MUT(p1uns) D5A_S6_MUT(p1mod)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -44537,6 +44620,70 @@ static const binding_t k_bindings[] = {
     { "game_mode_1f_step_rr@pre4a4b", m_d5a_ro_pre4a4b, 0x00000000u },
     { "game_mode_1f_step_rr@pre49c", m_d5a_ro_pre49c, 0x00000000u },
     { "game_mode_1f_step_rr@prebit4", m_d5a_ro_prebit4, 0x00000000u },
+    { "game_state_6", b_d5a_11a8c, 0x00000000u },
+    { "game_state_6@novoice", m_d5a_s6_novoice, 0x00000000u },
+    { "game_state_6@voice", m_d5a_s6_voice, 0x00000000u },
+    { "game_state_6@nocredit", m_d5a_s6_nocredit, 0x00000000u },
+    { "game_state_6@credit", m_d5a_s6_credit, 0x00000000u },
+    { "game_state_6@rng7", m_d5a_s6_rng7, 0x00000000u },
+    { "game_state_6@rng6", m_d5a_s6_rng6, 0x00000000u },
+    { "game_state_6@noafc", m_d5a_s6_noafc, 0x00000000u },
+    { "game_state_6@afcd", m_d5a_s6_afcd, 0x00000000u },
+    { "game_state_6@afclate", m_d5a_s6_afclate, 0x00000000u },
+    { "game_state_6@resetfull", m_d5a_s6_resetfull, 0x00000000u },
+    { "game_state_6@noreset", m_d5a_s6_noreset, 0x00000000u },
+    { "game_state_6@sel0side", m_d5a_s6_sel0side, 0x00000000u },
+    { "game_state_6@sel0ch", m_d5a_s6_sel0ch, 0x00000000u },
+    { "game_state_6@spawn0", m_d5a_s6_spawn0, 0x00000000u },
+    { "game_state_6@nospawn0", m_d5a_s6_nospawn0, 0x00000000u },
+    { "game_state_6@no2c8", m_d5a_s6_no2c8, 0x00000000u },
+    { "game_state_6@2c8v", m_d5a_s6_2c8v, 0x00000000u },
+    { "game_state_6@2c8w", m_d5a_s6_2c8w, 0x00000000u },
+    { "game_state_6@2c8early", m_d5a_s6_2c8early, 0x00000000u },
+    { "game_state_6@p1le", m_d5a_s6_p1le, 0x00000000u },
+    { "game_state_6@p1nosub", m_d5a_s6_p1nosub, 0x00000000u },
+    { "game_state_6@p1d1", m_d5a_s6_p1d1, 0x00000000u },
+    { "game_state_6@sel1side", m_d5a_s6_sel1side, 0x00000000u },
+    { "game_state_6@spawn1", m_d5a_s6_spawn1, 0x00000000u },
+    { "game_state_6@nospawn1", m_d5a_s6_nospawn1, 0x00000000u },
+    { "game_state_6@sel1late", m_d5a_s6_sel1late, 0x00000000u },
+    { "game_state_6@nob15", m_d5a_s6_nob15, 0x00000000u },
+    { "game_state_6@b15v", m_d5a_s6_b15v, 0x00000000u },
+    { "game_state_6@b15late", m_d5a_s6_b15late, 0x00000000u },
+    { "game_state_6@hudarg", m_d5a_s6_hudarg, 0x00000000u },
+    { "game_state_6@nohud", m_d5a_s6_nohud, 0x00000000u },
+    { "game_state_6@nob1b", m_d5a_s6_nob1b, 0x00000000u },
+    { "game_state_6@b1bv", m_d5a_s6_b1bv, 0x00000000u },
+    { "game_state_6@b1bearly", m_d5a_s6_b1bearly, 0x00000000u },
+    { "game_state_6@no2cc", m_d5a_s6_no2cc, 0x00000000u },
+    { "game_state_6@2ccw", m_d5a_s6_2ccw, 0x00000000u },
+    { "game_state_6@2ccv", m_d5a_s6_2ccv, 0x00000000u },
+    { "game_state_6@bit", m_d5a_s6_bit, 0x00000000u },
+    { "game_state_6@bitinv", m_d5a_s6_bitinv, 0x00000000u },
+    { "game_state_6@b528", m_d5a_s6_b528, 0x00000000u },
+    { "game_state_6@strid", m_d5a_s6_strid, 0x00000000u },
+    { "game_state_6@strrow", m_d5a_s6_strrow, 0x00000000u },
+    { "game_state_6@strmode", m_d5a_s6_strmode, 0x00000000u },
+    { "game_state_6@strcol", m_d5a_s6_strcol, 0x00000000u },
+    { "game_state_6@str2", m_d5a_s6_str2, 0x00000000u },
+    { "game_state_6@no64", m_d5a_s6_no64, 0x00000000u },
+    { "game_state_6@v64", m_d5a_s6_v64, 0x00000000u },
+    { "game_state_6@64b", m_d5a_s6_64b, 0x00000000u },
+    { "game_state_6@no6a", m_d5a_s6_no6a, 0x00000000u },
+    { "game_state_6@v6a", m_d5a_s6_v6a, 0x00000000u },
+    { "game_state_6@6ab", m_d5a_s6_6ab, 0x00000000u },
+    { "game_state_6@no6c", m_d5a_s6_no6c, 0x00000000u },
+    { "game_state_6@6cw", m_d5a_s6_6cw, 0x00000000u },
+    { "game_state_6@6csext", m_d5a_s6_6csext, 0x00000000u },
+    { "game_state_6@no6f", m_d5a_s6_no6f, 0x00000000u },
+    { "game_state_6@v6f", m_d5a_s6_v6f, 0x00000000u },
+    { "game_state_6@tailearly", m_d5a_s6_tailearly, 0x00000000u },
+    { "game_state_6_rr", b_d5a_11a8c, 0x00000000u },
+    { "game_state_6_rr@prebit", m_d5a_s6_prebit, 0x00000000u },
+    { "game_state_6_rr@pre72", m_d5a_s6_pre72, 0x00000000u },
+    { "game_state_6_rr@stagefull", m_d5a_s6_stagefull, 0x00000000u },
+    { "game_state_6_rr@p1uns", m_d5a_s6_p1uns, 0x00000000u },
+    { "game_state_6_rr@p1mod", m_d5a_s6_p1mod, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -24989,6 +24989,68 @@ D5A_SPECS += [
        mutants=("@pre4a0", "@36rec2", "@prebit1", "@preinc1", "@preinc0", "@pre4a0c", "@pre4a4", "@preinc3", "@pre4a4b",
                 "@pre49c", "@prebit4")),
 ]
+D5A_FRESET = E.Call(0x20DF4, ("eax", "edx"), clobbers=("edx", "edi", "ebp"))
+D5A_FSPAWN = E.Call(0x33EB4, ("eax",), clobbers=("ebp",))
+D5A_S6_CALLS = (VOICE, D1H_RNG_REAL, D5A_FRESET, D2E_M12_SELECT, D5A_FSPAWN, D3A_HUD, D1C_STR, D1D_CURSOR)
+# the RNG a stub (one EAX for both draws of a case), 0x1D890 clearing the option byte 0x104529 (read at
+# 0x11B29) and 0x2F198 storing 0x77 in the byte 0xF0A72 (read at 0x11BA6)
+D5A_S6_CALLS_W = (VOICE, D1H_RNG, D5A_FRESET, D2E_M12_SELECT, D5A_FSPAWN,
+                  dataclasses.replace(D3A_HUD, writes=((None, 0x00104529, b"\x00"),)), D1C_STR,
+                  dataclasses.replace(D1D_CURSOR, writes=((None, 0x000F0A72, b"\x77"),)))
+
+
+def d5a_s6_case(seed, b529=0x00, b72=0x33):
+    """0x11A8C: the RNG dword 0xEF6D8 (`seed`) and the option byte 0x104529 between seeded
+    neighbours; the seeded front-end words 0xF0A60..0xF0A77 (the byte 0xF0A72 is `b72` under 0x34);
+    the stage word 0x104AFC, the dwords 0x1082C8/0x1082CC, the bytes 0x104B15, 0x104B1B and 0x105C05,
+    each between seeded neighbours; the string buffer."""
+    fe = bytearray(d5a_fe_block(0x2F)[0x000F0A60])
+    fe[0x12] = b72
+    p = {0x000F0A60: bytes(fe)}
+    p.update({0x000EF6D4: le32(0xD4D4D4D4) + le32(seed) + le32(0xDCDCDCDC),
+              0x00104528: bytes([0x6B, b529, 0x6C]),
+              0x00104AFA: le16(0xFAFA) + le16(0x5A5A) + le16(0xFEFE),
+              0x001082C4: le32(0xC4C4C4C4) + le32(0x5A5A5A5A) + le32(0x5B5B5B5B) + le32(0xD0D0D0D0),
+              0x00104B14: bytes([0x63, 0x5A, 0x64]), 0x00104B1A: bytes([0x65, 0x5B, 0x66]),
+              0x00105C04: bytes([0x61, 0x5A, 0x62]), 0x00102760: b"\x5a" * 0x10})
+    return p
+
+
+D5A_SPECS += [
+    # 0x11A8C game_state_6: no argument. The voice 0x100, 0x29D60 (a bare `ret`), 0x2C06C(0x1D) (run
+    # on both sides: the byte 0x105C05), d1 = rng(7) (0x5D7DC, real, from the seed dword 0xEF6D8), the
+    # stage word 0x104AFC = d1, 0x20DF4(the word of d1 zero-extended, 1), 0x41350(0, d1), 0x33EB4(0),
+    # the dword 0x1082C8 = 7 (the EDX loaded before 0x33EB4), d2 = rng(6), p1 = d1 + d2 less 7 when
+    # it is 7 or above (signed `jl` 0x11AF4: s1/s2 are 6 and 7, s0 10), 0x41350(1, p1), 0x33EB4(1),
+    # the byte 0x104B15 = 1, 0x1D890(0), the byte 0x104B1B = 1, the dword 0x1082CC = 3 (`mov dword
+    # [0x1082cc],ebx` 0x11B2F), and with bit 1 of the byte 0x104529 clear the strings 6, 7 and 8
+    # through 0x2F198(-1, row 2 / 4 / 6, the string, 0x2000); then the words 0xF0A64 = 7, 0xF0A6A =
+    # 0x384 and 0xF0A6C = the BYTE 0xF0A72 zero-extended (`xor ah,ah; mov al,[0xf0a72]` 0x11B9F; s2 has 0x80) and
+    # the byte 0xF0A6F = 0. 0x20DF4 and 0x33EB4 are seamed here. Mask 0: see the binding.
+    Spec("game_state_6", 0x11A8C, [
+        Case("s0", {**D5A_REGS, "eax": 0x12345678}, d5a_s6_case(1, b529=0x00), {0x2C3FC: 0, 0x20DF4: 0x12345678}),
+        Case("s1", {}, d5a_s6_case(27, b529=0x02), {0x33EB4: 0xFFFFFFFF, 0x41350: 0x100}),
+        Case("s2", {}, d5a_s6_case(41, b529=0xFD, b72=0x80), {0x1D890: 0x12345678}),
+        Case("s3", {}, d5a_s6_case(47, b529=0xFF), {0x2F198: 0x100}),
+    ], allow_calls=(0x29D60, 0x2C06C, 0x1C500), calls=D5A_S6_CALLS, eax_mask=0,
+       mutants=("@novoice", "@voice", "@nocredit", "@credit", "@rng7", "@rng6", "@noafc", "@afcd", "@afclate",
+                "@resetfull", "@noreset", "@sel0side", "@sel0ch", "@spawn0", "@nospawn0", "@no2c8", "@2c8v", "@2c8w",
+                "@2c8early", "@p1le", "@p1nosub", "@p1d1", "@sel1side", "@spawn1", "@nospawn1", "@sel1late", "@nob15",
+                "@b15v", "@b15late", "@hudarg", "@nohud", "@nob1b", "@b1bv", "@b1bearly", "@no2cc", "@2ccw", "@2ccv",
+                "@bit", "@bitinv", "@b528", "@strid", "@strrow", "@strmode", "@strcol", "@str2", "@no64", "@v64",
+                "@64b", "@no6a", "@v6a", "@6ab", "@no6c", "@6cw", "@6csext", "@no6f", "@v6f", "@tailearly")),
+    # 0x11A8C again with the RNG a stub (r0 0x10003: the word alone goes to 0x20DF4, the sum is
+    # 0x20006; r1 0x40000000: the sum is negative as a signed dword, `jl` taken; r2 9: 18 - 7 = 11,
+    # one subtraction; r3 0xFFFFFFFF) and stubs that rewrite the option byte and the byte 0xF0A72
+    # (D5A_S6_CALLS_W).
+    Spec("game_state_6_rr", 0x11A8C, [
+        Case("r0", {}, d5a_s6_case(1, b529=0x02), {0x5D7DC: 0x00010003}),
+        Case("r1", {}, d5a_s6_case(1, b529=0x02), {0x5D7DC: 0x40000000}),
+        Case("r2", {}, d5a_s6_case(1, b529=0xFF), {0x5D7DC: 0x00000009}),
+        Case("r3", {}, d5a_s6_case(1, b529=0x02), {0x5D7DC: 0xFFFFFFFF}),
+    ], allow_calls=(0x29D60, 0x2C06C, 0x1C500), calls=D5A_S6_CALLS_W, eax_mask=0,
+       mutants=("@prebit", "@pre72", "@stagefull", "@p1uns", "@p1mod")),
+]
 D1_SPECS += D5A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
