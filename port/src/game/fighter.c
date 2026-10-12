@@ -2013,7 +2013,7 @@ void fighter_state_36430(u32 slot, u32 rec, u32 side)
                 DSB(slot + 0x54u) = 0u;                 /* 0x364C8 */
                 return;
             }
-            if ((DSB(slot + 0x43u) & 4u) == 0u) {
+            if ((DSB(DS_001077B0 + side * 0x94u + 0x43u) & 4u) == 0u) {  /* 0x3648B..0x36499: the side's slot, from ESI */
                 (void)fighter_attack_consume(side);     /* 0x364A5 */
                 return;
             }
@@ -2045,7 +2045,7 @@ void fighter_state_364fc(u32 slot, u32 rec, u32 side)
                 DSB(slot + 0x54u) = 0u;                 /* 0x36594 */
                 return;
             }
-            if ((DSB(slot + 0x43u) & 4u) == 0u) {
+            if ((DSB(DS_001077B0 + side * 0x94u + 0x43u) & 4u) == 0u) {  /* 0x36557..0x36565: the side's slot, from ESI */
                 (void)fighter_attack_consume(side);     /* 0x36571 */
                 return;
             }
