@@ -82,6 +82,7 @@ void fighter_35050(u32 side);                           /* 0x35050 */
  * 2026-10-11-reverse-d2a). */
 void fighter_146f0(u32 rec);                            /* 0x146F0 */
 void fighter_14a5c(u32 rec);                            /* 0x14A5C */
+void fighter_192dc(u32 side);                           /* 0x192DC */
 
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then

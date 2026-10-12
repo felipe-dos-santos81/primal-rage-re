@@ -13366,6 +13366,63 @@ D2A_STEP_MUTANTS = ("@gate", "@oside", "@cmd", "@m30", "@fd", "@flag", "@clr", "
                     "@rec", "@f8", "@sign", "@x2c", "@dxsh", "@and", "@s57", "@early", "@s54", "@a",
                     "@order", "@hold", "@voice", "@wide", "@xw")
 
+D2A_39278 = E.Call(0x39278, ("eax",), mode="real")   # recorded and run (the seam on fighter_39278)
+
+
+def d2a_hold_case(side, st, o53, w, d=None, s54=(0x33, 0x44)):
+    """0x192DC: the side slot's +0x5F (the other slot's is on the other side of 0x20) and the other
+    slot's +0x53 (the own slot's is 1 only when that one is not), both slots' +0x54 (0x107804 and
+    0x107898, which the dead compares at 0x1932A/0x19385 read), the side's 0x100CE0 word (the other
+    side's is on the other side of 2) and the two 0x107D2C words (`d`, or the opposite of the
+    0x100CE0 verdict: what @tab reads), with the word before each pair and the bytes around
+    DS_001088EC seeded."""
+    so, oo = D2A_SLOT + side * 0x94, D2A_SLOT + (1 - side) * 0x94
+    low = ((w ^ 0x8000) - 0x8000) < 2
+    ws, ds = [0, 0], [0, 0]
+    ws[side], ws[1 - side] = w, (2 if low else 1)
+    ds[side] = (2 if low else 1) if d is None else d
+    ds[1 - side] = 2 if ds[side] < 2 else 1
+    return {so + 0x53: bytes([0 if o53 == 1 else 1, s54[side]]), oo + 0x53: bytes([o53, s54[1 - side]]),
+            so + 0x5F: bytes([st]), oo + 0x5F: bytes([0x20 if st < 0x20 else 0x1F]),
+            0x00100CDE: le16(0xDEDE) + le16(ws[0]) + le16(ws[1]),
+            0x00107D2A: le16(0x2A2A) + le16(ds[0]) + le16(ds[1]),
+            0x001088EA: b"\xea\xea\xec\xec\xee\xee"}
+
+
+D2A_PSET = 0x00108000            # the pset pool DS_001014EC points at (d1a's base: entry 0x102 stays in the image)
+D2A_SNAP_SLOT, D2A_SNAP_REC = 0x00104530, 0x00104658   # 0x235C4: 0x33ACC's two destinations, per side
+
+
+def d2a_snap_case(side, o53, idx=3):
+    """0x235C4: both slots' 0x94 bytes (the record pointer, then slot-distinct bytes; the other
+    slot's +0x53 is `o53`, what 0x22B28 compares with 0x0A) and both records' 0x68 bytes (the
+    side's +0x56 word names pset entry `idx`, the other's entry 5), the two snapshot areas
+    0x104530..0x104727 filled with 0xEE, the pset entries' +0x18 dwords, and 0x22B28's tick words
+    and flag bytes seeded."""
+    recs = (D2A_R0, D2A_R1)
+    p = {}
+    for k in (0, 1):
+        slot = bytearray((0x40 + k * 0x80 + i) & 0xFF for i in range(0x94))
+        slot[0:4] = le32(recs[k])
+        if k != side:
+            slot[0x53] = o53
+        so = D2A_SLOT + k * 0x94
+        for off in range(0, 0x94, 0x40):
+            p[so + off] = bytes(slot[off:off + 0x40])
+        rec = bytearray((0x10 + k * 0x60 + i * 3) & 0xFF for i in range(0x68))
+        rec[0x56:0x58] = le16(idx if k == side else 5)
+        p[recs[k]] = bytes(rec[:0x40])
+        p[recs[k] + 0x40] = bytes(rec[0x40:])
+    for off in range(0, 0x1F8, 0x40):
+        p[D2A_SNAP_SLOT + off] = b"\xEE" * min(0x40, 0x1F8 - off)
+    p[0x001014EC] = le32(D2A_PSET)
+    p[D2A_PSET + idx * 0x20 + 0x18] = le32(0x00C0FFEE)
+    p[D2A_PSET + 5 * 0x20 + 0x18] = le32(0x0BADBAD5)
+    p[0x0010474C] = le16(0x7777) * 2
+    p[0x0010476C] = b"\x99\x99"
+    return p
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13380,6 +13437,41 @@ D2A_SPECS = [
     Spec("fighter_14a5c", 0x14A5C, d2a_step_cases(D2A_STEP_14A5C),
          allow_calls=(0x339AC, 0x14590, 0x33950), calls=D2A_STEP_CALLS, eax_mask=0,
          mutants=D2A_STEP_MUTANTS + ("@s54z", "@s52", "@late")),
+    # 0x192DC fighter_192dc: EAX = side. 0x33950 runs real (allowed); 0x39278 runs real and is
+    # recorded (D2A_39278), since one call and two leave the same DS_001088EC word. The compares at
+    # 0x19307..0x19343 and 0x19377..0x1939E are dead: every path from them reaches the one call at
+    # 0x193A0 (h5..h12 walk them). Mask 0: the caller returns at once (0x19585..0x1958A, in 0x193B0)
+    # and that return ends in `xor eax,eax` or a load of EAX on every path (record d1b §1, 0x39278).
+    Spec("fighter_192dc", 0x192DC, [
+        Case("h0", {"eax": 0}, d2a_hold_case(0, 0x1F, 1, 0x0001)),
+        Case("h1", {"eax": 1}, d2a_hold_case(1, 0x00, 1, 0x0002)),
+        Case("h2", {"eax": 0}, d2a_hold_case(0, 0x1F, 1, 0xFFFF)),
+        Case("h3", {"eax": 1}, d2a_hold_case(1, 0x20, 1, 0x0001)),
+        Case("h4", {"eax": 0}, d2a_hold_case(0, 0x80, 1, 0x0000)),
+        Case("h5", {"eax": 1}, d2a_hold_case(1, 0x05, 0, 0x0001, d=1, s54=(2, 2))),
+        Case("h6", {"eax": 0}, d2a_hold_case(0, 0x05, 2, 0x0001, d=1, s54=(2, 3))),
+        Case("h7", {"eax": 0}, d2a_hold_case(0, 0x05, 0, 0x0001, d=1, s54=(1, 1))),
+        Case("h8", {"eax": 1}, d2a_hold_case(1, 0x05, 0, 0x0001, d=2)),
+        Case("h9", {"eax": 0}, d2a_hold_case(0, 0x30, 0, 0x0001, d=1, s54=(2, 2))),
+        Case("h10", {"eax": 1}, d2a_hold_case(1, 0x30, 0, 0x0001, d=1, s54=(2, 5))),
+        Case("h11", {"eax": 0}, d2a_hold_case(0, 0x30, 0, 0x0001, d=1, s54=(3, 3))),
+        Case("h12", {"eax": 1}, d2a_hold_case(1, 0x30, 0xFF, 0x0001, d=2)),
+    ], allow_calls=(0x33950,), calls=(D2A_39278,), eax_mask=0,
+       mutants=("@sslot", "@sext", "@st", "@b20", "@o53", "@tab", "@word", "@usign", "@bound", "@arg",
+                "@once", "@v53")),
+    # 0x235C4 fighter_235c4: EAX = side (EDX is pushed and overwritten, 0x235C9). 0x33A10 (the
+    # stack ctx), 0x33ACC (the two `rep movsd` copies) and 0x22B28 (the stack ctx is its argument)
+    # run real; 0x39834 and 0x22B28's four callees are stubs. Mask 0: the one caller overwrites EAX
+    # (0x3B663 `jmp 0x3b6ac`, 0x3B6AC `mov eax,[esp+0xc]`).
+    Spec("fighter_235c4", 0x235C4, [
+        Case("s0", {"eax": 0, "edx": 0x22222222}, d2a_snap_case(0, 0x0A)),
+        Case("s1", {"eax": 1, "edx": 0x22222222}, d2a_snap_case(1, 0x0B)),
+        Case("s2", {"eax": 1, "edx": 0x22222222}, d2a_snap_case(1, 0x0A, idx=0x0102), {0x2C3FC: 0}),
+        Case("s3", {"eax": 0, "edx": 0x22222222}, d2a_snap_case(0, 0x00, idx=7)),
+    ], allow_calls=(0x33A10, 0x33ACC, 0x22B28), calls=(POSE, P6_13C70, CLEAR36, CLEAR34, VOICE),
+       eax_mask=0,
+       mutants=("@side", "@dst", "@scale", "@nosnap", "@react", "@pside", "@s52", "@s53", "@cb",
+                "@x18", "@x1c", "@slot", "@late", "@order", "@no22", "@ctx")),
 ]
 D1_SPECS += D2A_SPECS
 

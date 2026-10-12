@@ -7941,6 +7941,7 @@ void fighter_reaction(u32 param_1, u32 param_2)
  * tick's only output). */
 void fighter_39278(u32 v)
 {
+    PR_SEAM(0x39278u, v);
     DSW(DS_001088EC) = (u16)(v + 1u);                       /* 0x39278/0x39279 */
 }
 
@@ -8493,7 +8494,7 @@ void fighter_19164(u32 side)
 /* 0x192DC. The winner's pose-hold tick: run 0x39278(2) twice when the side's
  * +0x5F is below 0x20, the other slot's +0x53 is 1 and the 0x100CE0 word is
  * below 2, else once. */
-static void fighter_192dc(u32 side)
+void fighter_192dc(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                            /* 0x192E5 */
