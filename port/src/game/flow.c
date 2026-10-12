@@ -3784,9 +3784,9 @@ static void flow_results_darken_close(void)
  * DS_00104B11 = 0 and DS_00107830[winner] = 0 (0x28732/0x28738, the same
  * table 0x28788's own tail increments — here it is reset instead);
  * DS_00108106[stage] = (winner << 6) | 0x80 | DS_0010782A[winner]
- * (0x2873E..0x28755); DS_00107830[loser] = that byte XOR loser
- * (0x2875B..0x2876F); DS_00107813[loser] == 1 calls fighter_46534(loser, 1)
- * (0x28769..0x2877E). */
+ * (0x2873E..0x28755); DS_00107813[loser] == 1 (0x2875B..0x28778: the
+ * loser's slot offset, then the read; nothing is stored there) calls
+ * fighter_46534(loser, 1) (0x2877A..0x2877E). */
 static void flow_match_streak_update(void)
 {
     u32 result = DSD(DS_00104AD4);                       /* 0x286BF */
@@ -3808,7 +3808,6 @@ static void flow_match_streak_update(void)
         u8 flag = (u8)(((u8)winner << 6) | 0x80u
                         | DSB(DS_0010782A + winner * 0x94u));    /* 0x2873E..0x2874A */
         DSB(DS_00108106 + DSW(DS_00104AFC)) = flag;                /* 0x2874C..0x28755 */
-        DSB(DS_00107830 + loser * 0x94u) = (u8)(flag ^ (u8)loser); /* 0x2875B..0x2876F */
     }
     if (DSB(DS_00107813 + loser * 0x94u) == 1u)                    /* 0x28769..0x28778 */
         fighter_46534(loser, 1);                                    /* 0x2877A..0x2877E */
