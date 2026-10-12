@@ -74,6 +74,7 @@ void fight_list_init(void)
  * only caller is 0x412A0 (0x412D8). Scene 0's table is 0xBBC18 with 3 records. */
 void fight_scene_crowd(u32 scene)
 {
+    PR_SEAM(0x2C320u, scene);
     u16 n = DSW(DS_000BBD98 + scene * 2u);          /* 0x2C325 */
     if (n == 0u) return;                            /* 0x2C32D */
     u32 table = DSD(DS_000BBDA8 + scene * 4u);      /* 0x2C332 */
@@ -176,6 +177,7 @@ void fight_select_marker_release(u32 side)
  * 0x200, a3 = 0xFD, a4 = y, a5 = 0) into DS_001028E0[side]. */
 void fight_select_marker_spawn(u32 side, u32 cls, u32 y)
 {
+    PR_SEAM(0x1D7B8u, side, cls, y);
     u32 rec = DSD(DS_001028E0 + side * 4u);             /* 0x1D7C7 */
     if (rec != 0u) {                                    /* 0x1D7CD */
         actor_set_dead(rec);                            /* 0x1D7D5 0x2B150 */
@@ -1457,6 +1459,7 @@ void fight_dust_build(u32 side)
  * 0x257F2 (0x257A4). */
 void fight_char_reset(u32 side)
 {
+    PR_SEAM(0x33C18u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     DSB(slot + 0x7Fu) = 0;                      /* 0x33C2E */
     DSB(slot + 0x80u) = 0;                      /* 0x33C32 */

@@ -13487,6 +13487,211 @@ D2B_SPECS += [
        mutants=("@w74", "@w76", "@w78", "@w84", "@w8c", "@b8f2", "@b5e", "@fd158", "@fd148", "@w50",
                 "@c1d", "@one", "@arg", "@order", "@width", "@stride", "@ffff", "@late")),
 ]
+
+# 0x412A0: 0x2AE14 is the SPAWN stub (the descriptor a mem[] offset), 0x2C320 a stub. The tail call
+# `call [edi*4+0xc7f58]` (0x412DD) reaches 0x412EC (the function's own `ret`) or 0x5D812 (`xor eax,eax;
+# ret`), both allowed: the port issues neither (a PORT note in fight.c).
+D2B_CROWD = E.Call(0x2C320, ("eax",))
+D2B_PROPS = 0x0010A400
+
+
+def d2b_props_case(scene, triples, tail=0x0BAD0001):
+    """0x412A0: 0xC82CC[scene] pointed at a scratch table of 12-byte triples (desc, a2, the a3 word
+    and a word the raw does not read, 0x412BC `mov ecx,[esi+6]` / `sar ecx,0x10`), a zero dword, and
+    a non-zero a2 after it (the loop ends on the descriptor)."""
+    t = b"".join(le32(d) + le32(a2) + le16(w) + le16(hi) for d, a2, w, hi in triples)
+    return {0x000C82CC + scene * 4: le32(D2B_PROPS), D2B_PROPS: t + le32(0) + le32(tail) + le32(0x0BAD0002)}
+
+
+D2B_SPECS += [
+    # 0x412A0 fight_scene_props: EAX = scene. EAX dies unread: 0x20E86 returns (0x20E8B..0x20E8E, in
+    # 0x20DF4), and 0x20DF4's six callers load EAX next (0x11ACB `xor eax,eax`, 0x25A9A `mov eax,ebx`,
+    # 0x25BEB, 0x269CE / 0x269DA, 0x270E5, 0x295E9): mask 0.
+    Spec("fight_scene_props", 0x412A0, [
+        Case("p0", {"eax": 0}),                      # the image's scene 0: 5 triples, tail 0x412EC
+        Case("p1", {"eax": 7}, d2b_props_case(7, ())),      # an empty table, tail 0x5D812
+        Case("p2", {"eax": 3}),                      # the image's scene 3: 16 triples, tail 0x5D812
+        Case("p3", {"eax": 1}, d2b_props_case(1, ((0x000C77EC, 0xFFFF8000, 0x8001, 0x1234),
+                                                  (0x000C7800, 0x00000000, 0x7FFF, 0x5678),
+                                                  (0x000C7814, 0x11223344, 0x0000, 0x9ABC)))),
+        Case("p4", {"eax": 2}, d2b_props_case(2, (), tail=0x000C7828)),   # empty, tail 0x412EC
+        Case("p5", {"eax": 5}, d2b_props_case(5, ((0x000C7828, 0x00000001, 0xFFFF, 0xFFFF),))),
+    ], allow_calls=(0x412EC, 0x5D812), calls=(SPAWN, D2B_CROWD), eax_mask=0,
+       mutants=("@first", "@zext", "@width", "@a2", "@a4", "@a5", "@term", "@order", "@nocrowd", "@arg")),
+]
+
+
+def d2b_cs_case(b1d, own, oth, side, f34=(0x55, 0x00), extra=None):
+    """0x41350: the mode byte 0x104B1D, the two character bytes 0x10816A (`own` the side's, `oth` the
+    other's), 0x10816E/F, 0x105B34/35 (`f34` = the side's and the other's), 0x10810D and both slots'
+    +0x63, each inside seeded neighbours."""
+    a = [0, 0]; a[side], a[1 - side] = own, oth
+    f = [0, 0]; f[side], f[1 - side] = f34
+    p = {0x00104B1C: bytes([0x1C, b1d, 0x1E]),
+         0x00108169: bytes([0x69, a[0], a[1], 0x6C, 0x6D, 0x11, 0x22, 0x70]),
+         0x00105B33: bytes([0x33, f[0], f[1], 0x36]),
+         0x0010810C: bytes([0x0C, 0x77, 0x0E]),
+         D2B_SLOTS + 0x62: bytes([0x62, 0x55, 0x64]),
+         D2B_SLOTS + 0x94 + 0x62: bytes([0x72, 0x66, 0x74])}
+    p.update(extra or {})
+    return p
+
+
+D2B_SPECS += [
+    # 0x41350 fight_char_select: EAX = side, EDX = the character index, read as DX (0x41364 `mov
+    # ax,dx`). 0x33C18 is a stub (it preserves EDX, which the raw reads after it). EAX dies unread at
+    # the six call sites: 0x11AD2 `xor eax,eax`, 0x11B03 `mov eax,1`, 0x423B1 `mov eax,0x17`, 0x4316D
+    # `mov eax,0xc8364`; 0x41794 returns through 0x41760 and the walk is dead on every path; 0x418C4
+    # lies in the dead body 0x41878 (record E2: no reference anywhere): mask 0.
+    Spec("fight_char_select", 0x41350, [
+        Case("s0", {"eax": 0, "edx": 1}, d2b_cs_case(0, 0x44, 0x05, 0)),
+        Case("s1", {"eax": 1, "edx": 5}, d2b_cs_case(2, 0x44, 0x06, 1, f34=(0x55, 0x01))),
+        Case("s2", {"eax": 0, "edx": 2}, d2b_cs_case(1, 0x44, 0x44, 0)),
+        Case("s3", {"eax": 1, "edx": 2}, d2b_cs_case(1, 0x02, 0x03, 1)),
+        Case("s4", {"eax": 0, "edx": 0x00010003}, d2b_cs_case(0xFF, 0x44, 0x03, 0)),
+        Case("s5", {"eax": 1, "edx": 0x0103}, d2b_cs_case(0, 0x44, 0x6B, 1, extra={0x000C845D: b"\x6b"})),
+        Case("s6", {"eax": 0, "edx": 4}, d2b_cs_case(0, 0x01, 0x04, 0)),
+        Case("s7", {"eax": 1, "edx": 6}, d2b_cs_case(1, 0x09, 0x09, 1, f34=(0x00, 0x80))),
+    ], calls=(E.Call(0x33C18, ("eax",)),), eax_mask=0,
+       mutants=("@nogate", "@b1d", "@idx", "@tab", "@s63", "@b6e", "@b34", "@eq", "@o34", "@d0d", "@arg",
+                "@order", "@noreset")),
+]
+
+# The character-select text rows. The string path (0x1C500 with 0x474E4, 0x1E75C, 0x1E808, 0x500BB)
+# runs on both sides, as in C3g's 0x38D90 row: the decoded buffer 0x102760 is part of the memory at
+# each 0x2F280 call, so the call memory carries which string was decoded. 0x2B150, 0x2C088 and
+# 0x2F280 are stubs.
+D2B_STR_BASE, D2B_STR_HANDLE = 0x0010A400, 0x0010AA00
+D2B_STR_TREE = (0x1C500, 0x474E4, 0x1E75C, 0x1E808, 0x500BB)
+D2B_PROMPT_CLR = E.Call(0x2C088, ("eax", "edx", "ebx"), clobbers=("ebx", "edx", "edi", "ebp"))
+D2B_RELEASE = E.Call(0x2F280, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+
+
+def d2b_str_case(strings):
+    """A localisation table at D2B_STR_BASE holding `strings` ({id: plaintext}); every other entry
+    of a group that has one is empty, and the groups are chained through their +4 link (0x4752F). The
+    handle DS_001082DC names the base; the 0x102760 out buffer is seeded 0x5A."""
+    ngroups = max(strings) // 0x40 + 1
+    buf, offs = bytearray(8), []
+    for g in range(ngroups):
+        if g > 0:
+            offs.append(len(buf))
+            buf.extend(b"\x00" * 8)
+        ids = [i for i in strings if i // 0x40 == g]
+        for e in range(max(ids) % 0x40 + 1 if ids else 0):
+            s = strings.get(g * 0x40 + e, b"")
+            buf.append(len(s))
+            buf.extend(bytes(c ^ len(s) for c in s))
+    if offs:
+        buf[4:8] = le32(offs[0])
+    for i in range(len(offs) - 1):
+        buf[offs[i] + 4:offs[i] + 8] = le32(offs[i + 1])
+    p = {0x001082DC: le32(D2B_STR_HANDLE),
+         D2B_STR_HANDLE: b"\x00" * 8 + le32(D2B_STR_BASE) + le32(0x400) + b"\x00" * 15,
+         0x00102760: bytes([0x5A]) * 0x40}
+    for off in range(0, len(buf), 0x40):
+        p[D2B_STR_BASE + off] = bytes(buf[off:off + 0x40])
+    return p
+
+
+def d2b_ot_case(strings, recs=(0, 0), cols=(0x8003, 0x0018)):
+    """0x433DC: the two prompt sprite slots DS_00108144 between seeded dwords, the two col words
+    0xC894C (side 0's with bit 15 set: the raw zero-extends, 0x43422 `mov di` after `xor edi,edi`) and
+    the string table."""
+    p = d2b_str_case(strings)
+    p[0x00108140] = le32(0x0BAD8140) + le32(recs[0]) + le32(recs[1]) + le32(0x0BAD814C)
+    p[0x000C894C] = le16(cols[0]) + le16(cols[1])
+    return p
+
+
+D2B_OT_STR = {0x235: b"OPPONENT", 0x236: b"SELECT"}
+
+D2B_SPECS += [
+    # 0x433DC fight_char_opp_text_clear: EAX = side, EDX = flag (tested whole, 0x433E2 `test edx,edx`).
+    # EAX dies unread: the one call site 0x43670 returns through 0x435A8 into 0x43B24, where every
+    # path reloads EAX (0x43C32 `mov eax,[edx+0x108163]` .. 0x43CB8) with no read before: mask 0.
+    Spec("fight_char_opp_text_clear", 0x433DC, [
+        Case("o0", {"eax": 0, "edx": 0}, d2b_ot_case(D2B_OT_STR, recs=(D2B_REC0, D2B_REC1))),
+        Case("o1", {"eax": 1, "edx": 0}, d2b_ot_case(D2B_OT_STR, recs=(D2B_REC0, D2B_REC1))),
+        Case("o2", {"eax": 0, "edx": 1}, d2b_ot_case(D2B_OT_STR, recs=(D2B_REC0, 0))),
+        Case("o3", {"eax": 1, "edx": 0x200}, d2b_ot_case(D2B_OT_STR, recs=(0, D2B_REC1))),
+        Case("o4", {"eax": 0, "edx": 0x80000000}, d2b_ot_case(D2B_OT_STR, recs=(0, D2B_REC1))),
+        Case("o5", {"eax": 1, "edx": 1}, d2b_ot_case({0x235: b"", 0x236: b"X"}, recs=(D2B_REC0, 0),
+                                                      cols=(0x0003, 0xFFFF))),
+    ], allow_calls=D2B_STR_TREE, calls=(P7_2B150, D2B_PROMPT_CLR, D2B_RELEASE), eax_mask=0,
+       mutants=("@fl8", "@noflag", "@recside", "@nodead", "@zero", "@order", "@clrside", "@clrcol", "@col",
+                "@sext", "@ids", "@row1", "@row2", "@rel1", "@mode")),
+]
+
+# The character select's fighter actors (0x43A08, 0x43FBC, 0x442A0). 0x2AE14, 0x1D7B8, 0x2BCF4,
+# 0x2BC30 and 0x2A17C are stubs.
+D2B_MARKER = E.Call(0x1D7B8, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+D2B_MK0, D2B_MK1 = 0x0010A300, 0x0010A340          # DS_0010814C[side]
+D2B_SP0, D2B_SP1 = 0x0010A380, 0x0010A3C0          # what the spawn stub returns
+
+
+def d2b_sel_case(cur, fighters=(D2B_REC0, D2B_REC1), f29=(0x00, 0xF7), cls=None):
+    """The two signed cursors DS_00108166, the two x words 0xC88B4 and y words 0xC88B8 (poked: the
+    image's y words are equal, and bit 15 is set in side 0's to show the zero extension), the seven
+    0xC8924 words (poked: the image's first five are equal) after two more for a negative class,
+    DS_0010813C[2] (the fighters) and DS_0010814C[2] (the markers) between seeded dwords, each
+    fighter's +0x18/+0x1C dwords (every byte set) and +0x2C word, each marker's +0x29 and each
+    spawned record's +0x4D inside seeded neighbours. `cls` = {address: byte} pokes the class table
+    0xC8882 (a negative class, or the entries a negative or zero-extended cursor reaches)."""
+    p = {0x00108165: bytes([0x65, cur[0], cur[1], 0x68]),
+         0x000C88B4: le16(0x9500) + le16(0x3F00) + le16(0xB200) + le16(0x3300),
+         0x000C8920: le16(0x2020) + le16(0x2222) + b"".join(
+             le16(v) for v in (0x0C10, 0x0C21, 0x0C32, 0x0C43, 0x0C54, 0x0A65, 0x0A76)),
+         0x00108138: le32(0x0BAD8138) + le32(fighters[0]) + le32(fighters[1]) + le32(0x0BAD8144)
+         + le32(0x0BAD8148) + le32(D2B_MK0) + le32(D2B_MK1) + le32(0x0BAD8154)}
+    for i, rec in enumerate((D2B_REC0, D2B_REC1)):
+        p[rec + 0x18] = le32(0xFFFFFFFF) + le32(0xEEEEEEEE)
+        p[rec + 0x2A] = le16(0x2A2A) + le16(0x7777 + i) + le16(0x2E2E)
+    for i, (mk, sp) in enumerate(((D2B_MK0, D2B_SP0), (D2B_MK1, D2B_SP1))):
+        p[mk + 0x28] = bytes([0x28, f29[i], 0x2A])
+        p[sp + 0x4C] = bytes([0x4C, 0x77 + i, 0x4E])
+    for a, b in (cls or {}).items():
+        p[a] = bytes([b])
+    return p
+
+
+D2B_SEL_CASES = (            # (side, the fixture): the same states for the three rows
+    (0, dict(cur=(2, 5))),
+    (1, dict(cur=(2, 5), f29=(0xF7, 0x08))),
+    (0, dict(cur=(0xFF, 1), cls={0x000C8881: 0x02, 0x000C8981: 0x06})),      # a cursor of -1
+    (1, dict(cur=(1, 3), cls={0x000C8885: 0xFE})),                           # a class of -2
+    (1, dict(cur=(6, 0), f29=(0x08, 0x00))),
+)
+D2B_CF_MUTANTS = ("@chz", "@clsz", "@x", "@y", "@w18", "@w1c", "@stream", "@hold", "@pal", "@paltab",
+                  "@mk", "@y1800", "@w2c", "@tab2c", "@order", "@side")
+
+D2B_SPECS += [
+    # 0x43A08 fight_char_select_actor: EAX = side. The spawn stub's EAX is the new record (stored at
+    # DS_0010813C[side], its +0x4D written; the raw does not test it for 0). EAX dies unread: 0x4379D
+    # and 0x43B60 (the walk is dead on every path); 0x44521 loops (0x4450F `mov eax,edx`) or returns
+    # through 0x444C8 and the DS_00104AE4 frame hook 0x4367C (installed at 0x25806/0x25810), and after
+    # each of the six `call [0x104ae4]` sites (0x4F302, 0x4F373, 0x4F6F1, 0x4F70D, 0x4F9AA, 0x4F9D1)
+    # the walk is dead: mask 0.
+    Spec("fight_char_select_actor", 0x43A08, [
+        Case("a%d" % i, {"eax": s}, d2b_sel_case(**kw), {0x2AE14: (D2B_SP0, D2B_SP1)[i & 1]})
+        for i, (s, kw) in enumerate(D2B_SEL_CASES)
+    ], calls=(SPAWN, D2B_MARKER, P6_2BCF4), eax_mask=0,
+       mutants=("@chz", "@clsz", "@a5", "@x", "@y", "@a3", "@desc", "@store", "@b4d", "@mk", "@y1800",
+                "@or8", "@rec14c", "@order", "@sext", "@seek")),
+    # 0x43FBC fight_char_fighter: EAX = side. EAX dies unread (the one call site 0x43CA8: the walk is
+    # dead on every path): mask 0.
+    Spec("fight_char_fighter", 0x43FBC, [
+        Case("f%d" % i, {"eax": s}, d2b_sel_case(**kw)) for i, (s, kw) in enumerate(D2B_SEL_CASES)
+    ], calls=(ANIM_BEGIN, PALETTE, D2B_MARKER), eax_mask=0, mutants=D2B_CF_MUTANTS),
+    # 0x442A0 fight_char_team_fighter: EAX = side. The same, and nothing when DS_0010813C[side] is 0
+    # (0x442AE). EAX dies unread (the one call site 0x448EF: the walk is dead): mask 0.
+    Spec("fight_char_team_fighter", 0x442A0, [
+        Case("t%d" % i, {"eax": s}, d2b_sel_case(**kw)) for i, (s, kw) in enumerate(D2B_SEL_CASES)
+    ] + [
+        Case("t5", {"eax": 0}, d2b_sel_case((2, 5), fighters=(0, D2B_REC1))),
+        Case("t6", {"eax": 1}, d2b_sel_case((2, 5), fighters=(D2B_REC0, 0))),
+    ], calls=(ANIM_BEGIN, PALETTE, D2B_MARKER), eax_mask=0, mutants=D2B_CF_MUTANTS + ("@null",)),
+]
 D1_SPECS += D2B_SPECS
 
 SPECS = [
