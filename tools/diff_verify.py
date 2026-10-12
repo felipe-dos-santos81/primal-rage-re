@@ -24444,6 +24444,135 @@ D4D_SPECS += [
          mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
 ]
 D1_SPECS += D4D_SPECS
+# ---- track D, wave 5, batch d5h (record 2026-10-12-reverse-d5h) ----
+# game/flow.c's top of the call graph. Every poke, and every address a binding or mutant derives from
+# one, stays inside the image.
+D5H_SPECS = []
+
+# ---- 0x11D04 game_state_step (record §2): the state dispatcher ---------------------------------
+D5H_DIVERT = E.Call(0x257A4, ("eax",))
+D5H_ATTRACT = E.Call(0x11000, (), clobbers=("ebp",))
+D5H_PAUSE_TAIL, D5H_CONT_TAIL, D5H_OVERLAY = E.Call(0x10DB0, ()), E.Call(0x10E18, ()), E.Call(0x2BF08, ())
+D5H_TITLE = E.Call(0x121A0, (), clobbers=("ebp",))
+D5H_SELECT = E.Call(0x11F6C, (), clobbers=("esi", "edi", "ebp"))
+D5H_STATE3, D5H_STATE4 = E.Call(0x12484, ()), E.Call(0x11578, ())
+D5H_STATE6 = E.Call(0x11A8C, (), clobbers=("edi", "ebp"))
+D5H_MATCH, D5H_ROW = E.Call(0x1EA08, ()), E.Call(0x2C06C, ("eax",))
+D5H_ARENA = E.Call(0x263F4, (), clobbers=("edi", "ebp"))
+D5H_BARS, D5H_RESET = E.Call(0x33F08, ()), E.Call(0x10EE4, ())
+D5H_TAILS = (D5H_PAUSE_TAIL, D5H_CONT_TAIL, D5H_OVERLAY)
+# The blocks of 0x11D04 by what reaches them: the coin arm, the dispatch (every case), and each
+# jump-table target (table 0x11CDC, ten entries, diff_emu.RESOLVED_JUMPS[0x11D69]).
+D5H_SS_BLOCKS = {
+    "accept0": (0x11D1E,), "accept1": (0x11D31,), "divert": (0x11D38,),
+    0: (0x11D70,), 1: (0x11D88,), 2: (0x11DA0,), 3: (0x11DB8,), 4: (0x11DD0,), 5: (0x11DE8,), 6: (0x11E4F,),
+    7: (0x11E67, 0x11E77, 0x11E8F), 8: (0x11EAC,), 9: (0x11ED0, 0x11EE0, 0x11EF6, 0x11F0E, 0x11F13),
+}
+D5H_SS_ROWS = {"low": ("accept0", "accept1", "divert", 0, 1, 2, 3, 4, 6), "high": (5, 7, 8, 9),
+               "coin": ("accept0", "accept1", "divert", 0)}
+
+
+def d5h_ss_unhit(row):
+    """The blocks a row of 0x11D04 does not own, each named with the row that hits it."""
+    out = {}
+    for key, blocks in D5H_SS_BLOCKS.items():
+        if key in D5H_SS_ROWS[row]:
+            continue
+        owner = [r for r in ("low", "high", "coin") if key in D5H_SS_ROWS[r]][0]
+        what = "jump-table target %d (0x11CDC[%d])" % (key, key) if isinstance(key, int) else "the coin arm"
+        for b in blocks:
+            out[b] = "%s: row game_state_step_%s" % (what, owner)
+    return out
+
+
+def d5h_ss_case(st, timer=0x5A5A, gate=1, b1e=0x1E, c6c=0x0302, f71=0, f72=0x72, extra=None):
+    """0x11D04: the gate byte 0x104B1D between seeded neighbours (0x104B1E = `b1e`), the bytes 0x104B15
+    and 0x104B1B (0x15, 0x1B) between seeded neighbours, and the state block 0xF0A62..0xF0A73: the
+    state word 0xF0A64 = `st`, the timer word 0xF0A6A, the next-state word 0xF0A6C = `c6c`, the bytes
+    0xF0A6F (0x6F), 0xF0A71 = `f71` and 0xF0A72 = `f72`, every other byte seeded."""
+    p = {0x00104B14: bytes([0x14, 0x15, 0x16]),
+         0x00104B1A: bytes([0x1A, 0x1B, 0x1C, gate, b1e]),
+         0x000F0A62: (le16(0x6262) + le16(st) + le16(0x6666) + le16(0x6868) + le16(timer) + le16(c6c)
+                      + bytes([0x6E, 0x6F, 0x70, f71, f72, 0x73]))}
+    p.update(extra or {})
+    return p
+
+
+D5H_SS_LOW_CALLS = (D3B_POLL, D5H_DIVERT, D5H_ATTRACT, D5H_TITLE, D5H_SELECT, D5H_STATE3, D5H_STATE4,
+                    D5H_STATE6) + D5H_TAILS
+D5H_SS_HIGH_CALLS = (D3B_POLL, D5H_DIVERT, VOICE, D5H_MATCH, D5H_ROW, D5H_ARENA, D5H_BARS, D5H_RESET) + D5H_TAILS
+D5H_SS_COIN_CALLS = (E.Call(0x11F28, ("eax",), mode="real"), D3A_READY, D3A_SPEND, D5H_DIVERT,
+                     D5H_ATTRACT) + D5H_TAILS
+
+D5H_SPECS += [
+    # 0x11D04 game_state_step: no argument. With the byte 0x104B1D clear it polls 0x11F28(0) and
+    # 0x11F28(1) (`test eax,eax`: l1's stub EAX 0x100 is accepted); an accepted mask (bit 0, bit 1) runs
+    # the run clock 0x32970(0) and 0x257A4(mask) and returns with no tail. Otherwise the state word
+    # 0xF0A64 above 9 (unsigned, `ja`) or 0 runs 0x11000; 1..4 and 6 run 0x121A0, 0x11F6C, 0x12484,
+    # 0x11578 and 0x11A8C; every state then runs the tails 0x10DB0, 0x10E18, 0x2BF08. Every callee is a
+    # stub; 0x32970 is host-owned (the port omits it) and runs real in the original from its zero
+    # state, where it changes no byte. Mask 0: record §1.
+    Spec("game_state_step_low", 0x11D04, [
+        Case("l0", {}, d5h_ss_case(3, gate=0), {0x11F28: 1}),
+        Case("l1", D2E_DIRTY, d5h_ss_case(1, gate=0), {0x11F28: 0x100}),
+        Case("l2", {}, d5h_ss_case(0, gate=0), {0x11F28: 0}),
+        Case("l3", {}, d5h_ss_case(1, gate=1), {0x11F28: 1}),
+        Case("l4", {}, d5h_ss_case(2, gate=0, b1e=0x80), {0x11F28: 0}),
+        Case("l5", D2E_DIRTY, d5h_ss_case(3, gate=0x80), {0x11F28: 1}),
+        Case("l6", {}, d5h_ss_case(4, gate=1)),
+        Case("l7", {}, d5h_ss_case(6, gate=1)),
+        Case("l8", {}, d5h_ss_case(10, gate=1)),
+        Case("l9", {}, d5h_ss_case(0x0101, gate=1)),
+        Case("la", {}, d5h_ss_case(0xFFFF, gate=1)),
+        Case("lb", {}, d5h_ss_case(0, gate=1)),
+    ], unhit_named=d5h_ss_unhit("low"), allow_calls=(0x32970,), calls=D5H_SS_LOW_CALLS, eax_mask=0,
+       mutants=("@gate", "@gatew", "@al", "@code", "@order", "@fall", "@nodivert", "@byte", "@t0", "@t1", "@t2",
+                "@t3", "@t4", "@t6", "@hi", "@notail1", "@notail2", "@nooverlay", "@tailorder", "@overlayfirst",
+                "@one")),
+    # States 5, 7, 8 and 9. 5: voice 0x100, 0x1EA08, 0x2C06C(0x1D), the run clock, then the bytes
+    # 0xF0A6F/0xF0A72 = 0, the words 0xF0A6A = 0x12C, 0xF0A6C = 6, 0xF0A64 = 9. 7: the timer word
+    # 0xF0A6A - 1 is stored; zero-extended and below 1 (`jge`: only 0) it runs 0x11BCC (inlined in the
+    # port: the bytes 0x104B1B/0x104B15 = 0, 0xF0A64 = the word 0xF0A6C, the ret-only 0x29D60, voice
+    # 0x100 by a tail jump), else 0x263F4 and 0x33F08. 8: the run clock and 0x257A4(3), then the tails.
+    # 9: the timer the same way; at 0 the state takes the word 0xF0A6C and, with the byte 0xF0A71 set,
+    # 0x10EE4 runs (0x11EF2/0x11EF6; the port left this call out until D5, record §3). 0x11BCC, 0x29D60
+    # and 0x32970 run real in the original; the others are stubs.
+    Spec("game_state_step_high", 0x11D04, [
+        Case("h0", {}, d5h_ss_case(5)),
+        Case("h1", D2E_DIRTY, d5h_ss_case(5, gate=0), {0x11F28: 0, 0x2C3FC: 0}),
+        Case("h2", {}, d5h_ss_case(7, timer=2)),
+        Case("h3", {}, d5h_ss_case(7, timer=1)),
+        Case("h4", {}, d5h_ss_case(7, timer=0)),
+        Case("h5", {}, d5h_ss_case(7, timer=0x8001)),
+        Case("h6", D2E_DIRTY, d5h_ss_case(7, timer=0x0100), {0x2C3FC: 0}),
+        Case("h7", {}, d5h_ss_case(8)),
+        Case("h8", {}, d5h_ss_case(9, timer=5, f71=1)),
+        Case("h9", {}, d5h_ss_case(9, timer=1, f71=0)),
+        Case("ha", {}, d5h_ss_case(9, timer=1, f71=1)),
+        Case("hb", D2E_DIRTY, d5h_ss_case(9, timer=1, f71=0, f72=1)),
+        Case("hc", {}, d5h_ss_case(9, timer=0x8001, f71=1)),
+        Case("hd", {}, d5h_ss_case(9, timer=0, f71=0x80)),
+        Case("he", {}, d5h_ss_case(9, timer=1, f71=0x80, c6c=0x0006)),
+    ], unhit_named=d5h_ss_unhit("high"), allow_calls=(0x32970, 0x11BCC, 0x29D60), calls=D5H_SS_HIGH_CALLS,
+       eax_mask=0,
+       mutants=("@ge9", "@v5", "@novoice", "@nomatch", "@row", "@norow", "@order5", "@f6f", "@f72", "@t12c",
+                "@tw", "@c6", "@c6w", "@s9", "@t7nostore", "@t7ge", "@t7s", "@t7w", "@b1b", "@b15", "@n7state",
+                "@v7", "@n7voice", "@frameorder", "@nobars", "@exitframe", "@d3", "@n8tail", "@t9nostore",
+                "@t9s", "@n9state", "@n9reset", "@r9inv", "@r9order", "@r9w")),
+    # The coin arm with 0x11F28 real (its own row: frontend_coin_poll) over its stubs 0x2C060 and
+    # 0x2CA7C: the pressed dword 0x1088E4 against the image's masks 0x9ACBC (0x01000000, 0x00000100)
+    # gives each accepted mask, which the stubbed poll of _low cannot (one stub EAX serves both calls).
+    Spec("game_state_step_coin", 0x11D04, [
+        Case("c0", {}, {**d5h_ss_case(2, gate=0), **d3a_poll_case(0, 0x01000000)}, {0x2C060: 1}),
+        Case("c1", D2E_DIRTY, {**d5h_ss_case(2, gate=0), **d3a_poll_case(0, 0x00000100)}, {0x2C060: 1}),
+        Case("c2", {}, {**d5h_ss_case(2, gate=0), **d3a_poll_case(0, 0x01000100)}, {0x2C060: 1}),
+        Case("c3", {}, {**d5h_ss_case(0, gate=0), **d3a_poll_case(0x01000100, 0xFEFFFEFF)}, {0x2C060: 1}),
+        Case("c4", {}, {**d5h_ss_case(0xFFFF, gate=0), **d3a_poll_case(0, 0x01000100)}, {0x2C060: 0}),
+    ], unhit_named=d5h_ss_unhit("coin"), allow_calls=(0x32970,), calls=D5H_SS_COIN_CALLS, eax_mask=0,
+       mutants=("@bits", "@one", "@mask", "@code")),
+]
+D1_SPECS += D5H_SPECS
+# ---- d5h end ----
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

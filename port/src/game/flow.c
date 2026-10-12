@@ -1485,6 +1485,7 @@ void flow_1082c8_init(void)
  * unentered stub 0x11CC8 (`jmp` at 0x11CD4). */
 void game_coin_divert(u32 players)
 {
+    PR_SEAM(0x257A4u, players);
     (void)sound_voice(0x100u);                          /* 0x257A8/0x257AD 0x2C3FC */
     actors_reset_al(0u);                                /* 0x257B2/0x257B4 0x2BAF4 */
     DSB(DS_00104B17) = 0u;                              /* 0x257C0 (AH) */
@@ -4330,6 +4331,7 @@ void game_mode_0f_step(void)
  * 4 -> 0x1217B, default (ja) -> 0x1219A. */
 static void game_state_select(void)
 {
+    PR_SEAM0(0x11F6Cu);
     /* 0x487BC is a link-time offset below the data object's base; the loader
      * fixes it to mem+0xC87BC. Config row 1, phase 0 and phase 1. */
     const u32 *desc = (const u32 *)(mem + 0xC87BCu);
@@ -4476,6 +4478,7 @@ void game_attract_dump_frame(void)
 /* 0x121A0: the title state. Phase counter DS_000F0A6F. */
 static void game_state_title(void)
 {
+    PR_SEAM0(0x121A0u);
     if (DSB(DS_000F0A6F) == 0) {
         (void)sound_voice(0x41u);               /* 0x121C9/0x121CE 0x2C3FC: stop 0x40's loop */
         (void)sound_voice(0x43u);               /* 0x121D3/0x121D8 0x2C3FC: stop 0x42's loop */
@@ -4602,6 +4605,7 @@ void game_state_3_handoff(void)
  * reaches 0x1E00. `cam` is the record 0x12658 stores at DS_000F0A58. */
 static void game_state_3(void)
 {
+    PR_SEAM0(0x12484u);
     if (DSB(DS_000F0A6F) == 0) {
         actors_reset();                                             /* 0x2BAF4 */
         frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0u);       /* 0x124A9 */
@@ -4659,6 +4663,7 @@ static void game_state_3(void)
  * 0x2C06C is called in case 0 only, as the raw does. */
 static void game_state_4(void)
 {
+    PR_SEAM0(0x11578u);
     switch (DSW(DS_0009AD98)) {
     case 0:
         (void)sound_voice(0x100u);                              /* 0x1159A/0x1159F 0x2C3FC */
@@ -4968,6 +4973,7 @@ void game_fight_reset(u32 stage, u32 full)
  * character (draw1 + draw2) % 7. Exactly two draws, in that order. */
 static void game_state_6(void)
 {
+    PR_SEAM0(0x11A8Cu);
     (void)sound_voice(0x100u);                          /* 0x11A8F/0x11A94 0x2C3FC */
     /* 0x11A99 0x29D60 is a ret-only no-op. */
     config_set_credit_row(0x1Du);                       /* 0x11AA3 0x2C06C */
@@ -5078,6 +5084,7 @@ void hiscore_init(void)
  * wired. */
 void frontend_match_start(void)
 {
+    PR_SEAM0(0x1EA08u);
     u8 name[0x24];
 
     frontend_input_reset();                                     /* 0x1EA11 (0x4F1E4) */
@@ -7735,6 +7742,7 @@ void game_state_step(void)
  * that gate belongs only to the DS_00105C00 == 0 fallback. */
 void game_overlay_step(void)
 {
+    PR_SEAM0(0x2BF08u);
     s32 row = (s32)DSB(DS_00105C05);
 
     if (DSB(DS_0009AD58) != 0) return;                  /* 0x2BF18: attract */

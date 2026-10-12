@@ -18695,6 +18695,143 @@ D1_KINDS.update(D4D_KINDS)
 D1_CASES.extend(D4D_CASES)
 
 
+# ---- track D, wave 5, batch d5h (record 2026-10-12-reverse-d5h) ----
+# The d5h rows (record 2026-10-12-reverse-d5h): game/flow.c's dispatchers. Measured.
+D5H_MASKS = {
+    "game_state_step_low": 0x0,
+    "game_state_step_high": 0x0,
+    "game_state_step_coin": 0x0,
+}
+D5H_KINDS = {
+    "game_state_step_low@gate": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
+    "game_state_step_low@gatew": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
+    "game_state_step_low@al": {'call #2', 'call #3', 'call #4', 'call #5'},
+    "game_state_step_low@code": {'call #1'},
+    "game_state_step_low@order": {'call #0', 'call #1'},
+    "game_state_step_low@fall": {'call #3', 'call #4', 'call #5', 'call #6'},
+    "game_state_step_low@nodivert": {'call #2'},
+    "game_state_step_low@byte": {'call #0'},
+    "game_state_step_low@t0": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
+    "game_state_step_low@t1": {'call #0'},
+    "game_state_step_low@t2": {'call #2'},
+    "game_state_step_low@t3": {'call #0'},
+    "game_state_step_low@t4": {'call #0'},
+    "game_state_step_low@t6": {'call #0'},
+    "game_state_step_low@hi": {'call #1', 'call #2', 'call #3'},
+    "game_state_step_low@notail1": {'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
+    "game_state_step_low@notail2": {'call #2', 'call #3', 'call #4', 'call #5'},
+    "game_state_step_low@nooverlay": {'call #3', 'call #5'},
+    "game_state_step_low@tailorder": {'call #1', 'call #2', 'call #3', 'call #4'},
+    "game_state_step_low@overlayfirst": {'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
+    "game_state_step_low@one": {'call #2'},
+    "game_state_step_high@ge9": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory'},
+    "game_state_step_high@v5": {'call #0', 'call #2'},
+    "game_state_step_high@novoice": {'call #0', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7'},
+    "game_state_step_high@nomatch": {'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7'},
+    "game_state_step_high@row": {'call #2', 'call #4'},
+    "game_state_step_high@norow": {'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7'},
+    "game_state_step_high@order5": {'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_state_step_high@f6f": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_state_step_high@f72": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_state_step_high@t12c": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_state_step_high@tw": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_state_step_high@c6": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_state_step_high@c6w": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_state_step_high@s9": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_state_step_high@t7nostore": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_state_step_high@t7ge": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4'},
+    "game_state_step_high@t7s": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4'},
+    "game_state_step_high@t7w": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_state_step_high@b1b": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
+    "game_state_step_high@b15": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
+    "game_state_step_high@n7state": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
+    "game_state_step_high@v7": {'call #0'},
+    "game_state_step_high@n7voice": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "game_state_step_high@frameorder": {'call #0', 'call #1'},
+    "game_state_step_high@nobars": {'call #1', 'call #2', 'call #3', 'call #4'},
+    "game_state_step_high@exitframe": {'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
+    "game_state_step_high@d3": {'call #0'},
+    "game_state_step_high@n8tail": {'call #1', 'call #2', 'call #3'},
+    "game_state_step_high@t9nostore": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
+    "game_state_step_high@t9s": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3'},
+    "game_state_step_high@n9state": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
+    "game_state_step_high@n9reset": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "game_state_step_high@r9inv": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "game_state_step_high@r9order": {'call #0 memory'},
+    "game_state_step_high@r9w": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "game_state_step_coin@bits": {'call #5'},
+    "game_state_step_coin@one": {'call #6'},
+    "game_state_step_coin@mask": {'call #5'},
+    "game_state_step_coin@code": {'call #2', 'call #3', 'call #4', 'call #5', 'call #6'},
+}
+D5H_CASES = [
+    ("game_state_step_low@gate", ['l3', 'l5', 'l6', 'l7', 'l8', 'l9', 'la', 'lb']),
+    ("game_state_step_low@gatew", ['l0', 'l1', 'l2', 'l4']),
+    ("game_state_step_low@al", ['l1']),
+    ("game_state_step_low@code", ['l0', 'l1', 'l2', 'l4']),
+    ("game_state_step_low@order", ['l0', 'l1', 'l2', 'l4']),
+    ("game_state_step_low@fall", ['l0', 'l1']),
+    ("game_state_step_low@nodivert", ['l0', 'l1']),
+    ("game_state_step_low@byte", ['l9']),
+    ("game_state_step_low@t0", ['l2', 'l8', 'l9', 'la', 'lb']),
+    ("game_state_step_low@t1", ['l3']),
+    ("game_state_step_low@t2", ['l4']),
+    ("game_state_step_low@t3", ['l5']),
+    ("game_state_step_low@t4", ['l6']),
+    ("game_state_step_low@t6", ['l7']),
+    ("game_state_step_low@hi", ['l8', 'l9', 'la']),
+    ("game_state_step_low@notail1", ['l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9', 'la', 'lb']),
+    ("game_state_step_low@notail2", ['l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9', 'la', 'lb']),
+    ("game_state_step_low@nooverlay", ['l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9', 'la', 'lb']),
+    ("game_state_step_low@tailorder", ['l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9', 'la', 'lb']),
+    ("game_state_step_low@overlayfirst", ['l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8', 'l9', 'la', 'lb']),
+    ("game_state_step_low@one", ['l0', 'l1']),
+    ("game_state_step_high@ge9", ['h8', 'h9', 'ha', 'hb', 'hc', 'hd', 'he']),
+    ("game_state_step_high@v5", ['h0', 'h1']),
+    ("game_state_step_high@novoice", ['h0', 'h1']),
+    ("game_state_step_high@nomatch", ['h0', 'h1']),
+    ("game_state_step_high@row", ['h0', 'h1']),
+    ("game_state_step_high@norow", ['h0', 'h1']),
+    ("game_state_step_high@order5", ['h0', 'h1']),
+    ("game_state_step_high@f6f", ['h0', 'h1']),
+    ("game_state_step_high@f72", ['h0', 'h1']),
+    ("game_state_step_high@t12c", ['h0', 'h1']),
+    ("game_state_step_high@tw", ['h0', 'h1']),
+    ("game_state_step_high@c6", ['h0', 'h1']),
+    ("game_state_step_high@c6w", ['h0', 'h1']),
+    ("game_state_step_high@s9", ['h0', 'h1']),
+    ("game_state_step_high@t7nostore", ['h2', 'h3', 'h4', 'h5', 'h6']),
+    ("game_state_step_high@t7ge", ['h2']),
+    ("game_state_step_high@t7s", ['h4', 'h5']),
+    ("game_state_step_high@t7w", ['h4', 'h6']),
+    ("game_state_step_high@b1b", ['h3']),
+    ("game_state_step_high@b15", ['h3']),
+    ("game_state_step_high@n7state", ['h3']),
+    ("game_state_step_high@v7", ['h3']),
+    ("game_state_step_high@n7voice", ['h3']),
+    ("game_state_step_high@frameorder", ['h2', 'h4', 'h5', 'h6']),
+    ("game_state_step_high@nobars", ['h2', 'h4', 'h5', 'h6']),
+    ("game_state_step_high@exitframe", ['h3']),
+    ("game_state_step_high@d3", ['h7']),
+    ("game_state_step_high@n8tail", ['h7']),
+    ("game_state_step_high@t9nostore", ['h8', 'h9', 'ha', 'hb', 'hc', 'hd', 'he']),
+    ("game_state_step_high@t9s", ['hc', 'hd']),
+    ("game_state_step_high@n9state", ['h9', 'ha', 'hb', 'he']),
+    ("game_state_step_high@n9reset", ['ha', 'he']),
+    ("game_state_step_high@r9inv", ['h9', 'ha', 'hb', 'he']),
+    ("game_state_step_high@r9order", ['ha', 'he']),
+    ("game_state_step_high@r9w", ['h9', 'hb']),
+    ("game_state_step_coin@bits", ['c0', 'c1']),
+    ("game_state_step_coin@one", ['c2']),
+    ("game_state_step_coin@mask", ['c0', 'c1']),
+    ("game_state_step_coin@code", ['c0', 'c1', 'c2', 'c3', 'c4']),
+]   # D5H_CASES end
+D1_MASKS.update(D5H_MASKS)
+D1_KINDS.update(D5H_KINDS)
+D1_CASES.extend(D5H_CASES)
+# ---- d5h end ----
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -19754,6 +19891,11 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # D5 d5h (record 2026-10-12-reverse-d5h): the stubs its rows add
+        0x10DB0: (), 0x10E18: (), 0x10EE4: (), 0x11000: ("ebp",), 0x11578: (), 0x11A8C: ("edi", "ebp"),
+        0x11F6C: ("esi", "edi", "ebp"), 0x121A0: ("ebp",), 0x12484: (), 0x1EA08: (), 0x257A4: (),
+        0x263F4: ("edi", "ebp"), 0x2BF08: (), 0x2C06C: (), 0x33F08: (),
+        # D5 d5h end
         # D4 d4a (record 2026-10-12-reverse-d4a): the stubs its rows add
         0x13D4C: ("edx",), 0x1CB18: (), 0x24568: ("ebp",), 0x24804: ("ebp",), 0x256F4: (), 0x25C1C: ("esi", "edi", "ebp"), 0x27DC8: ("esi", "edi", "ebp"), 0x27ED8: (), 0x32B00: ("edx",), 0x33B00: ("ebx", "edx"), 0x39FF4: (), 0x3CB68: (), 0x40CB0: ("ebp",), 0x4F37C: (), 0x5DC2A: ("edx",), 0x5DC4D: ("ebx", "ecx", "edx"), 0x5DC70: ("ebx", "ecx", "edx"), 0x5DCA6: ("edx",), 0x5DCE4: ("edx",),
         # D4 d4c (record 2026-10-12-reverse-d4c): the stubs its rows add
@@ -19831,6 +19973,10 @@ class RealFunctionTests(unittest.TestCase):
 
     # the hand resolutions of E.RESOLVED_JUMPS (record §E3.5, §E3.12): from the guard to the jump, the bytes
     WINDOWS = {
+        # D5 d5h (record 2026-10-12-reverse-d5h §2)
+        0x11D69: ["cmp ax, 9", "ja 0x11d70", "and eax, 0xffff", "lea edx, [eax*4]", "mov ax, word ptr [0xf0a6a]",
+                  "dec eax", "jmp dword ptr cs:[edx + 0x11cdc]"],
+        # D5 d5h windows end
         0x18384: ["cmp al, 6", "ja 0x1838b", "and eax, 0xff", "lea esi, [eax*4]", "mov ecx, 0xcf399",
                   "lea eax, [edx*2]", "add ecx, eax", "jmp dword ptr cs:[esi + 0x18334]"],
         0x29DFE: ["cmp dx, 5", "ja 0x29e2d", "xor ebx, ebx", "mov bx, dx", "jmp dword ptr cs:[ebx*4 + 0x29d70]"],

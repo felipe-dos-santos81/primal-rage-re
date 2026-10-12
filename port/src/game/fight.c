@@ -1961,6 +1961,7 @@ void fight_round_reset(void)
 
 void fight_health_bars(void)
 {
+    PR_SEAM0(0x33F08u);
     u32 table = DSD(DS_001014EC);                           /* 0x33F0D */
     for (u32 side = 0; side < 2u; side++) {                 /* 0x33F13 */
         u32 rec = DSD(DS_001077A8 + side * 4u);             /* 0x33F15 */
@@ -5294,6 +5295,7 @@ void fight_effects_idle_pass(void)
 
 void fight_arena_frame(void)
 {
+    PR_SEAM0(0x263F4u);
     fight_slot_clear();                                        /* 0x263F7 */
     camera_screen_base(0, (s32)DSB(DS_0010782A));              /* 0x2640B */
     camera_screen_base(1, (s32)DSB(DS_001078BE));              /* 0x26422 */

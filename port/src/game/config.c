@@ -432,6 +432,7 @@ u32 config_credit_spend(u32 n)
 /* 0x2C06C. `mov byte [0x85c05], al`. */
 void config_set_credit_row(u8 row)
 {
+    PR_SEAM(0x2C06Cu, (u32)row);
     DSB(DS_00105C05) = row;
 }
 

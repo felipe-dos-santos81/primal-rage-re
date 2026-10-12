@@ -737,3 +737,8 @@ def decode_at(image, addr):
 def disasm_range(image, start, end):
     """Linear decode of [start, end): the capstone instructions, stopping at the first undecodable byte."""
     return list(_md.disasm(image.bytes_at(start, end - start), start))
+
+# D5 d5h (record 2026-10-12-reverse-d5h §2): 0x11D04's state switch. cmp ax,9; ja; and eax,0xffff;
+# lea edx,[eax*4]; mov ax,[0xf0a6a]; dec eax; jmp cs:[edx+0x11cdc] (the index is pre-scaled into EDX,
+# and EAX is reloaded with the timer word between the guard and the jump)
+RESOLVED_JUMPS[0x11D69] = (0x11D50, 0x11CDC, 10)

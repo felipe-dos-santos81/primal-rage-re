@@ -33137,6 +33137,138 @@ D4D_KN_MUT(ch0, 6u)    D4D_KN_MUT(wrapinv, 7u) D4D_KN_MUT(raw32, 8u)   D4D_KN_MU
 D4D_KN_MUT(updown, 11u) D4D_KN_MUT(plus, 12u)  D4D_KN_MUT(f10, 13u)    D4D_KN_MUT(fwide, 14u) D4D_KN_MUT(minus, 15u)
 D4D_KN_MUT(ef, 16u)    D4D_KN_MUT(scan2, 17u)  D4D_KN_MUT(ret, 18u)    D4D_KN_MUT(ret0, 19u)  D4D_KN_MUT(nogt, 20u)
 D4D_KN_MUT(nonul, 22u)
+/* ---- track D, wave 5, batch d5h (record 2026-10-12-reverse-d5h) ---- */
+/* Callees with no external C name (static in flow.c) are reached through their seam alone, which every
+ * case of these rows stubs (the d2e form). */
+static void d5h_seam0(u32 addr) { PR_SEAM0(addr); }
+
+/* 0x11D04 game_state_step: no argument; mask 0 (record §1: the one call site 0x25238 is followed by
+ * `jmp 0x2540f`, the mode tail). Three rows share this binding (record §2): _low (the coin arm with
+ * the poll stubbed, states 0..4, 6 and above 9), _high (states 5, 7, 8, 9) and _coin (the poll real). */
+static void b_d5h_11d04(const u32 *r, u32 *eax) { (void)r; game_state_step(); *eax = 0u; }
+
+/* 0x11D04's mutants. d5h_11d04_core is the raw read block by block; each mutant changes one choice.
+ * @n9reset is the pre-D5 port (state 9 never called 0x10EE4, raw 0x11EF2/0x11EF6). */
+enum { D5H_S_NONE, D5H_S_gate, D5H_S_gatew, D5H_S_al, D5H_S_code, D5H_S_order, D5H_S_bits, D5H_S_one,
+       D5H_S_mask, D5H_S_fall, D5H_S_nodivert, D5H_S_ge9, D5H_S_byte, D5H_S_t0, D5H_S_t1, D5H_S_t2, D5H_S_t3,
+       D5H_S_t4, D5H_S_t6, D5H_S_hi, D5H_S_notail1, D5H_S_notail2, D5H_S_nooverlay, D5H_S_tailorder,
+       D5H_S_overlayfirst, D5H_S_v5, D5H_S_novoice, D5H_S_nomatch, D5H_S_row, D5H_S_norow, D5H_S_order5,
+       D5H_S_f6f, D5H_S_f72, D5H_S_t12c, D5H_S_tw, D5H_S_c6, D5H_S_c6w, D5H_S_s9, D5H_S_t7nostore,
+       D5H_S_t7ge, D5H_S_t7s, D5H_S_t7w, D5H_S_b1b, D5H_S_b15, D5H_S_n7state, D5H_S_v7, D5H_S_n7voice,
+       D5H_S_frameorder, D5H_S_nobars, D5H_S_exitframe, D5H_S_d3, D5H_S_n8tail, D5H_S_t9nostore, D5H_S_t9s,
+       D5H_S_n9state, D5H_S_n9reset, D5H_S_r9inv, D5H_S_r9order, D5H_S_r9w };
+#define D5H_S(x) (mut == D5H_S_##x)
+static void d5h_11d04_tails(u32 mut)
+{
+    if (D5H_S(overlayfirst)) game_overlay_step();
+    if (D5H_S(tailorder)) frontend_continue_tail();
+    if (!D5H_S(notail1)) frontend_pause_tail();                 /* 0x10DB0 */
+    if (!D5H_S(notail2) && !D5H_S(tailorder)) frontend_continue_tail();   /* 0x10E18 */
+    if (!D5H_S(nooverlay) && !D5H_S(overlayfirst)) game_overlay_step();   /* 0x2BF08 */
+}
+static void d5h_11d04_core(u32 mut)
+{
+    u32 gate = D5H_S(gatew) ? DSW(0x00104B1Du) : DSB(0x00104B1Du);
+    if (D5H_S(gate) || gate == 0u) {                            /* 0x11D07..0x11D11 */
+        u32 acc = 0u, a, b;
+        if (D5H_S(order)) {
+            b = frontend_coin_poll(1u);
+            a = frontend_coin_poll(0u);
+        } else {
+            a = frontend_coin_poll(0u);                         /* 0x11D15 */
+            b = frontend_coin_poll(D5H_S(code) ? 0u : 1u);      /* 0x11D28 */
+        }
+        if (D5H_S(al)) { a &= 0xFFu; b &= 0xFFu; }
+        if (a != 0u) acc = D5H_S(bits) ? 2u : 1u;               /* 0x11D1E */
+        if (b != 0u) acc = D5H_S(one) ? 2u : acc | (D5H_S(bits) ? 1u : 2u);   /* 0x11D31 `or dl,2` */
+        if (acc != 0u) {                                        /* 0x11D34 */
+            if (!D5H_S(nodivert)) game_coin_divert(D5H_S(mask) ? 3u : acc);   /* 0x11D41 */
+            if (!D5H_S(fall)) return;
+        }
+    }
+    u32 st = D5H_S(byte) ? DSB(0x000F0A64u) : DSW(0x000F0A64u);   /* 0x11D4A */
+    u32 t = (u16)(DSW(0x000F0A6Au) - 1u);                       /* 0x11D62/0x11D68 */
+    if (D5H_S(ge9) ? st >= 9u : st > 9u) st = 0u;               /* 0x11D50/0x11D54 `ja 0x11d70` */
+    switch (st) {
+    case 0u:
+        if (!D5H_S(t0)) attract_step();                         /* 0x11D70 */
+        break;
+    case 1u:
+        if (D5H_S(t1)) attract_step(); else d5h_seam0(0x121A0u);
+        break;
+    case 2u:
+        if (D5H_S(t2)) attract_step(); else d5h_seam0(0x11F6Cu);
+        break;
+    case 3u:
+        if (D5H_S(t3)) attract_step(); else d5h_seam0(0x12484u);
+        break;
+    case 4u:
+        if (D5H_S(t4)) attract_step(); else d5h_seam0(0x11578u);
+        break;
+    case 5u:
+        if (D5H_S(order5)) { DSB(0x000F0A6Fu) = 0u; DSB(0x000F0A72u) = 0u; }
+        if (!D5H_S(novoice)) (void)sound_voice(D5H_S(v5) ? 0x101u : 0x100u);   /* 0x11DE8/0x11DF2 */
+        if (!D5H_S(nomatch)) frontend_match_start();            /* 0x11DF7 */
+        if (!D5H_S(norow)) config_set_credit_row(D5H_S(row) ? 0x1Cu : 0x1Du);   /* 0x11DFC/0x11E03 */
+        if (!D5H_S(f6f)) DSB(0x000F0A6Fu) = 0u;                 /* 0x11E11 */
+        if (!D5H_S(f72)) DSB(0x000F0A72u) = 0u;                 /* 0x11E17 */
+        if (D5H_S(tw)) DSB(0x000F0A6Au) = 0x2Cu;
+        else DSW(0x000F0A6Au) = D5H_S(t12c) ? 0x12Bu : 0x12Cu;  /* 0x11E1D */
+        if (D5H_S(c6w)) DSB(0x000F0A6Cu) = 6u;
+        else DSW(0x000F0A6Cu) = D5H_S(c6) ? 5u : 6u;            /* 0x11E2E */
+        DSW(0x000F0A64u) = D5H_S(s9) ? 8u : 9u;                /* 0x11E35 */
+        break;
+    case 6u:
+        if (D5H_S(t6)) attract_step(); else d5h_seam0(0x11A8Cu);
+        break;
+    case 7u:
+        if (D5H_S(t7w)) DSB(0x000F0A6Au) = (u8)t;
+        else if (!D5H_S(t7nostore)) DSW(0x000F0A6Au) = (u16)t;  /* 0x11E67 */
+        if (D5H_S(t7ge) ? t <= 1u : D5H_S(t7s) ? (s16)t < 1 : t < 1u) {   /* 0x11E6D..0x11E75 `jge` on the zero-extended word */
+            if (!D5H_S(b1b)) DSB(0x00104B1Bu) = 0u;             /* 0x11BCE */
+            if (!D5H_S(b15)) DSB(0x00104B15u) = 0u;             /* 0x11BD4 */
+            if (!D5H_S(n7state)) DSW(0x000F0A64u) = DSW(0x000F0A6Cu);   /* 0x11BDA/0x11BE0 */
+            if (!D5H_S(n7voice)) (void)sound_voice(D5H_S(v7) ? 0x101u : 0x100u);   /* 0x11BEB/0x11BF0 */
+            if (D5H_S(exitframe)) { fight_arena_frame(); fight_health_bars(); }
+        } else {
+            if (D5H_S(frameorder)) fight_health_bars();
+            fight_arena_frame();                                /* 0x11E8F */
+            if (!D5H_S(nobars) && !D5H_S(frameorder)) fight_health_bars();   /* 0x11E94 */
+        }
+        break;
+    case 8u:
+        game_coin_divert(D5H_S(d3) ? 1u : 3u);                  /* 0x11EB3/0x11EB8 */
+        if (D5H_S(n8tail)) return;
+        break;
+    case 9u:
+        if (!D5H_S(t9nostore)) DSW(0x000F0A6Au) = (u16)t;       /* 0x11ED0 */
+        if (D5H_S(t9s) ? (s16)t < 1 : t < 1u) {                 /* 0x11ED6..0x11EDE */
+            u32 flag = D5H_S(r9w) ? DSW(0x000F0A71u) : DSB(0x000F0A71u);   /* 0x11EE6 */
+            if (D5H_S(r9order) && flag != 0u) attract_state_reset();
+            if (!D5H_S(n9state)) DSW(0x000F0A64u) = DSW(0x000F0A6Cu);   /* 0x11EE0/0x11EEC */
+            if (!D5H_S(n9reset) && !D5H_S(r9order) && (D5H_S(r9inv) ? flag == 0u : flag != 0u))
+                attract_state_reset();                          /* 0x11EF2/0x11EF6 */
+        }
+        break;
+    default:
+        break;
+    }
+    if (D5H_S(hi) && DSW(0x000F0A64u) > 9u) return;
+    d5h_11d04_tails(mut);
+}
+#define D5H_S_MUT(name) \
+    static void m_d5h_11d04_##name(const u32 *r, u32 *eax) { (void)r; d5h_11d04_core(D5H_S_##name); *eax = 0u; }
+D5H_S_MUT(gate) D5H_S_MUT(gatew) D5H_S_MUT(al) D5H_S_MUT(code) D5H_S_MUT(order) D5H_S_MUT(bits) D5H_S_MUT(one)
+D5H_S_MUT(mask) D5H_S_MUT(fall) D5H_S_MUT(nodivert) D5H_S_MUT(ge9) D5H_S_MUT(byte) D5H_S_MUT(t0) D5H_S_MUT(t1)
+D5H_S_MUT(t2) D5H_S_MUT(t3) D5H_S_MUT(t4) D5H_S_MUT(t6) D5H_S_MUT(hi) D5H_S_MUT(notail1) D5H_S_MUT(notail2)
+D5H_S_MUT(nooverlay) D5H_S_MUT(tailorder) D5H_S_MUT(overlayfirst) D5H_S_MUT(v5) D5H_S_MUT(novoice)
+D5H_S_MUT(nomatch) D5H_S_MUT(row) D5H_S_MUT(norow) D5H_S_MUT(order5) D5H_S_MUT(f6f) D5H_S_MUT(f72) D5H_S_MUT(t12c)
+D5H_S_MUT(tw) D5H_S_MUT(c6) D5H_S_MUT(c6w) D5H_S_MUT(s9) D5H_S_MUT(t7nostore) D5H_S_MUT(t7ge)
+D5H_S_MUT(t7s) D5H_S_MUT(t7w) D5H_S_MUT(b1b) D5H_S_MUT(b15) D5H_S_MUT(n7state) D5H_S_MUT(v7) D5H_S_MUT(n7voice)
+D5H_S_MUT(frameorder) D5H_S_MUT(nobars) D5H_S_MUT(exitframe) D5H_S_MUT(d3) D5H_S_MUT(n8tail)
+D5H_S_MUT(t9nostore) D5H_S_MUT(t9s) D5H_S_MUT(n9state) D5H_S_MUT(n9reset) D5H_S_MUT(r9inv) D5H_S_MUT(r9order)
+D5H_S_MUT(r9w)
+/* ---- d5h end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43161,6 +43293,70 @@ static const binding_t k_bindings[] = {
     { "config_key_name@ret0",                  m_d4d_3157c_ret0, 0x000000FFu },
     { "config_key_name@nogt",                  m_d4d_3157c_nogt, 0x000000FFu },
     { "config_key_name@nonul",                 m_d4d_3157c_nonul, 0x000000FFu },
+    /* D5 d5h */
+    { "game_state_step_low", b_d5h_11d04, 0x00000000u },
+    { "game_state_step_low@gate", m_d5h_11d04_gate, 0x00000000u },
+    { "game_state_step_low@gatew", m_d5h_11d04_gatew, 0x00000000u },
+    { "game_state_step_low@al", m_d5h_11d04_al, 0x00000000u },
+    { "game_state_step_low@code", m_d5h_11d04_code, 0x00000000u },
+    { "game_state_step_low@order", m_d5h_11d04_order, 0x00000000u },
+    { "game_state_step_low@fall", m_d5h_11d04_fall, 0x00000000u },
+    { "game_state_step_low@nodivert", m_d5h_11d04_nodivert, 0x00000000u },
+    { "game_state_step_low@byte", m_d5h_11d04_byte, 0x00000000u },
+    { "game_state_step_low@t0", m_d5h_11d04_t0, 0x00000000u },
+    { "game_state_step_low@t1", m_d5h_11d04_t1, 0x00000000u },
+    { "game_state_step_low@t2", m_d5h_11d04_t2, 0x00000000u },
+    { "game_state_step_low@t3", m_d5h_11d04_t3, 0x00000000u },
+    { "game_state_step_low@t4", m_d5h_11d04_t4, 0x00000000u },
+    { "game_state_step_low@t6", m_d5h_11d04_t6, 0x00000000u },
+    { "game_state_step_low@hi", m_d5h_11d04_hi, 0x00000000u },
+    { "game_state_step_low@notail1", m_d5h_11d04_notail1, 0x00000000u },
+    { "game_state_step_low@notail2", m_d5h_11d04_notail2, 0x00000000u },
+    { "game_state_step_low@nooverlay", m_d5h_11d04_nooverlay, 0x00000000u },
+    { "game_state_step_low@tailorder", m_d5h_11d04_tailorder, 0x00000000u },
+    { "game_state_step_low@overlayfirst", m_d5h_11d04_overlayfirst, 0x00000000u },
+    { "game_state_step_low@one", m_d5h_11d04_one, 0x00000000u },
+    { "game_state_step_high", b_d5h_11d04, 0x00000000u },
+    { "game_state_step_high@ge9", m_d5h_11d04_ge9, 0x00000000u },
+    { "game_state_step_high@v5", m_d5h_11d04_v5, 0x00000000u },
+    { "game_state_step_high@novoice", m_d5h_11d04_novoice, 0x00000000u },
+    { "game_state_step_high@nomatch", m_d5h_11d04_nomatch, 0x00000000u },
+    { "game_state_step_high@row", m_d5h_11d04_row, 0x00000000u },
+    { "game_state_step_high@norow", m_d5h_11d04_norow, 0x00000000u },
+    { "game_state_step_high@order5", m_d5h_11d04_order5, 0x00000000u },
+    { "game_state_step_high@f6f", m_d5h_11d04_f6f, 0x00000000u },
+    { "game_state_step_high@f72", m_d5h_11d04_f72, 0x00000000u },
+    { "game_state_step_high@t12c", m_d5h_11d04_t12c, 0x00000000u },
+    { "game_state_step_high@tw", m_d5h_11d04_tw, 0x00000000u },
+    { "game_state_step_high@c6", m_d5h_11d04_c6, 0x00000000u },
+    { "game_state_step_high@c6w", m_d5h_11d04_c6w, 0x00000000u },
+    { "game_state_step_high@s9", m_d5h_11d04_s9, 0x00000000u },
+    { "game_state_step_high@t7nostore", m_d5h_11d04_t7nostore, 0x00000000u },
+    { "game_state_step_high@t7ge", m_d5h_11d04_t7ge, 0x00000000u },
+    { "game_state_step_high@t7s", m_d5h_11d04_t7s, 0x00000000u },
+    { "game_state_step_high@t7w", m_d5h_11d04_t7w, 0x00000000u },
+    { "game_state_step_high@b1b", m_d5h_11d04_b1b, 0x00000000u },
+    { "game_state_step_high@b15", m_d5h_11d04_b15, 0x00000000u },
+    { "game_state_step_high@n7state", m_d5h_11d04_n7state, 0x00000000u },
+    { "game_state_step_high@v7", m_d5h_11d04_v7, 0x00000000u },
+    { "game_state_step_high@n7voice", m_d5h_11d04_n7voice, 0x00000000u },
+    { "game_state_step_high@frameorder", m_d5h_11d04_frameorder, 0x00000000u },
+    { "game_state_step_high@nobars", m_d5h_11d04_nobars, 0x00000000u },
+    { "game_state_step_high@exitframe", m_d5h_11d04_exitframe, 0x00000000u },
+    { "game_state_step_high@d3", m_d5h_11d04_d3, 0x00000000u },
+    { "game_state_step_high@n8tail", m_d5h_11d04_n8tail, 0x00000000u },
+    { "game_state_step_high@t9nostore", m_d5h_11d04_t9nostore, 0x00000000u },
+    { "game_state_step_high@t9s", m_d5h_11d04_t9s, 0x00000000u },
+    { "game_state_step_high@n9state", m_d5h_11d04_n9state, 0x00000000u },
+    { "game_state_step_high@n9reset", m_d5h_11d04_n9reset, 0x00000000u },
+    { "game_state_step_high@r9inv", m_d5h_11d04_r9inv, 0x00000000u },
+    { "game_state_step_high@r9order", m_d5h_11d04_r9order, 0x00000000u },
+    { "game_state_step_high@r9w", m_d5h_11d04_r9w, 0x00000000u },
+    { "game_state_step_coin", b_d5h_11d04, 0x00000000u },
+    { "game_state_step_coin@bits", m_d5h_11d04_bits, 0x00000000u },
+    { "game_state_step_coin@one", m_d5h_11d04_one, 0x00000000u },
+    { "game_state_step_coin@mask", m_d5h_11d04_mask, 0x00000000u },
+    { "game_state_step_coin@code", m_d5h_11d04_code, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
