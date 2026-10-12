@@ -6456,6 +6456,7 @@ D2D_MASKS = {
     "fighter_48aac": 0x0,
     "fighter_48d94": 0x0,
     "fighter_40954": 0x0,
+    "fighter_4505c": 0x0,
 }   # D2D_MASKS end
 D2D_KINDS = {
     "camera_dust_burst@side": {'call #0'},
@@ -6967,6 +6968,21 @@ D2D_KINDS = {
     "fighter_40954@c4afe": {'byte'},
     "fighter_40954@c4swap": {'byte'},
     "fighter_40954@c4no78fc": {'byte'},
+    "fighter_4505c@ctx": {'byte'},
+    "fighter_4505c@noabs": {'byte'},
+    "fighter_4505c@vgt": {'byte'},
+    "fighter_4505c@vfield": {'byte'},
+    "fighter_4505c@wge": {'byte'},
+    "fighter_4505c@wzext": {'byte'},
+    "fighter_4505c@wslot": {'byte'},
+    "fighter_4505c@and": {'byte'},
+    "fighter_4505c@s57": {'byte'},
+    "fighter_4505c@no34": {'byte', 'call #0 memory'},
+    "fighter_4505c@stream": {'call #0'},
+    "fighter_4505c@hold": {'call #0'},
+    "fighter_4505c@late": {'call #0 memory'},
+    "fighter_4505c@c2s57": {'byte'},
+    "fighter_4505c@one": {'byte'},
 }   # D2D_KINDS end
 D2D_CASES = [
     ("camera_dust_burst@side", ['b0', 'b1', 'b2']),
@@ -7478,6 +7494,21 @@ D2D_CASES = [
     ("fighter_40954@c4afe", ['s4a']),
     ("fighter_40954@c4swap", ['s4a']),
     ("fighter_40954@c4no78fc", ['s4a']),
+    ("fighter_4505c@ctx", ['j0', 'j6']),
+    ("fighter_4505c@noabs", ['j2', 'j5']),
+    ("fighter_4505c@vgt", ['j1', 'j2']),
+    ("fighter_4505c@vfield", ['j1', 'j2', 'j5']),
+    ("fighter_4505c@wge", ['j0', 'j6']),
+    ("fighter_4505c@wzext", ['j4']),
+    ("fighter_4505c@wslot", ['j0', 'j6']),
+    ("fighter_4505c@and", ['j1', 'j2', 'j3', 'j5']),
+    ("fighter_4505c@s57", ['j2']),
+    ("fighter_4505c@no34", ['j8']),
+    ("fighter_4505c@stream", ['j8']),
+    ("fighter_4505c@hold", ['j8']),
+    ("fighter_4505c@late", ['j8']),
+    ("fighter_4505c@c2s57", ['j8']),
+    ("fighter_4505c@one", ['j7']),
 ]   # D2D_CASES end
 D1_MASKS.update(D2D_MASKS)
 D1_KINDS.update(D2D_KINDS)
@@ -8585,6 +8616,7 @@ class RealFunctionTests(unittest.TestCase):
                   "lea eax, [edi + 0x10]", "jmp dword ptr cs:[edx + 0x134a8]"],
         0x31EBC: ["cmp edi, 6", "ja 0x31eed", "lea eax, [edi*4]", "mov edx, dword ptr [esp]", "lea edi, [ebp - 8]",
                   "sub edx, 2", "jmp dword ptr cs:[eax + 0x31e0c]"],
+        0x4507A: ["cmp dl, 4", "ja 0x450d6", "xor eax, eax", "mov al, dl", "jmp dword ptr cs:[eax*4 + 0x45048]"],
     }
 
     def test_each_resolved_jump_table_matches_the_bytes(self):

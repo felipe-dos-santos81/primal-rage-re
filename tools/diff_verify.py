@@ -13772,6 +13772,26 @@ def d2d_40954_case(side, slot, state, w36=0x0036, c36=0x8000, z30=0x1000, tbl=0x
         buf[0x57], buf[0x7A] = state, 5
         p.update(d1d_chunks(D2D_SLOTX, buf))
     return p
+def d2d_4505c_case(side, slot, state, w34=0x0100, w88=0x0010):
+    """0x4505C: both fighters' slots seeded whole (the side's +0x86 dword with `w88` in its high
+    half; the EAX slot's +0x57 = `state`; the scratch slot D2D_SLOTX carries the opposite +0x88
+    word) and the EDX record's +0x32..+0x37 (the speed word +0x34 = `w34`, +0x36 a slow 0x10)."""
+    def w32(buf, o, v): buf[o:o + 4] = le32(v)
+    p = {D2D_REC + 0x32: le16(0x3233) + le16(w34) + le16(0x0010)}
+    for i in (0, 1):
+        buf = bytearray((0x80 | (k & 0x3F) | (i << 6)) & 0xFF for k in range(0x94))
+        w32(buf, 0, (D2D_F0, D2D_F1)[i])
+        buf[0x86:0x8A] = le16(0x8687) + le16(w88 if i == side else w88 ^ 0x003F)
+        if slot == DS_SLOTS + i * 0x94:
+            buf[0x57] = state
+        p.update(d1d_chunks(DS_SLOTS + i * 0x94, buf))
+    if slot == D2D_SLOTX:
+        buf = bytearray(0x40 | (k & 0x3F) for k in range(0x94))
+        w32(buf, 0, D2D_RX)
+        buf[0x57] = state
+        buf[0x86:0x8A] = le16(0x8687) + le16(w88 ^ 0x003F)
+        p.update(d1d_chunks(D2D_SLOTX, buf))
+    return p
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -14280,6 +14300,28 @@ D2D_SPECS = [
     ], calls=(ANCHOR, ANIM_BEGIN, VOICE, SPAWN, HIT_A, P6_2A148, PALETTE), allow_calls=(0x33950, 0x408E8),
        eax_mask=0,
        mutants=("@ctx", "@c0ge", "@c0v36", "@c0no44", "@c0s57", "@c1ch", "@c1lt", "@c1rec", "@c1side", "@c1x", "@c1anim", "@c1hold", "@c1no34", "@c1no36", "@c1no44", "@c1no54", "@c1s57", "@c2rec", "@c2no408", "@c2ch", "@c2hold", "@c2no148", "@c2flag", "@c2shift", "@c2y", "@c2xy", "@c2no90", "@c2or", "@c2x3", "@c2three", "@c2x4", "@c2side", "@c2pal", "@c2voice", "@c2s41", "@c2early", "@c3ptr", "@c3mask", "@c3rec", "@c3s57", "@c4ge", "@c4uns", "@c4ptr", "@c4no36", "@c4v24", "@c4afe", "@c4swap", "@c4no78fc")),
+    # 0x4505C fighter_4505c (wave-1 leftover, d1g §6): EAX = slot, EDX = rec, EBX = side (the slot
+    # +0x0C callback 0x45117 stores). Its jump table 0x45048 (`cmp dl,4; ja; xor eax,eax; mov al,dl`:
+    # RESOLVED_JUMPS 0x4507A) has five entries: 0, 2, and 1/4 (the common exit); entry 3 and
+    # anything above 4 is the runtime's fatal 0x62003, not exercised. 0x33950 runs on both sides,
+    # ANIM_BEGIN is a stub. Mask 0: as 0x48AAC.
+    Spec("fighter_4505c", 0x4505C, [
+        Case("j0", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0}, d2d_4505c_case(0, D2D_SLOTX, 0, w34=0x02FF, w88=0x001E)),
+        Case("j1", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_4505c_case(0, DS_SLOTS, 0, w34=0x0300, w88=0x0000)),
+        Case("j2", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1}, d2d_4505c_case(1, D2D_SLOTX, 0, w34=0xFD00, w88=0x0001)),
+        Case("j3", {"eax": DS_SLOTS + 0x94, "edx": D2D_REC, "ebx": 1},
+             d2d_4505c_case(1, DS_SLOTS + 0x94, 0, w34=0xFD01, w88=0x001F)),
+        Case("j4", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0}, d2d_4505c_case(0, D2D_SLOTX, 0, w34=0x0001, w88=0x8000)),
+        Case("j5", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_4505c_case(0, DS_SLOTS, 0, w34=0x8000, w88=0x0000)),
+        Case("j6", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1}, d2d_4505c_case(1, D2D_SLOTX, 0, w34=0xFD01, w88=0x001E)),
+        Case("j7", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_4505c_case(0, DS_SLOTS, 1, w34=0x7000, w88=0x7000)),
+        Case("j8", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1}, d2d_4505c_case(1, D2D_SLOTX, 2, w34=0x1234)),
+        Case("j9", {"eax": DS_SLOTS + 0x94, "edx": D2D_REC, "ebx": 1},
+             d2d_4505c_case(1, DS_SLOTS + 0x94, 4, w34=0x7000, w88=0x7000)),
+    ], calls=(ANIM_BEGIN,), allow_calls=(0x33950,), eax_mask=0,
+       unhit_named={0x450D6: "entry 3 of the table and +0x57 above 4 call the runtime's fatal 0x62003 (>= 0x5D000), "
+                             "which cannot run"},
+       mutants=("@ctx", "@noabs", "@vgt", "@vfield", "@wge", "@wzext", "@wslot", "@and", "@s57", "@no34", "@stream", "@hold", "@late", "@c2s57", "@one")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 
