@@ -5033,6 +5033,7 @@ void game_state_6(void)
  * reads 0, or every record when forced. */
 void hiscore_fill_defaults(u32 force)
 {
+    PR_SEAM(0x1E918u, force);
     u32 src = 0xA7BBCu;                                         /* 0x1E920 */
     for (u32 i = 0u; i < 10u; i++) {                            /* 0x1E925..0x1E94C */
         u32 r = hiscore_read(i, 0u);                            /* 0x1E92D 0x2DBC4 */
@@ -5046,6 +5047,7 @@ void hiscore_fill_defaults(u32 force)
  * 0x26 >= 200 (both `jl`, signed). */
 u32 hiscore_audit_reset_due(void)
 {
+    PR_SEAM_RET0(0x1E988u);
     if ((s32)config_field_get(0x27u) < 0x7D0) return 0u;        /* 0x1E98D/0x1E992 */
     if ((s32)config_field_get(0x26u) < 0xC8) return 0u;         /* 0x1E99E/0x1E9A3 */
     return 1u;                                                  /* 0x1E9AA */
@@ -5067,7 +5069,7 @@ void hiscore_init(void)
         DSB(DS_001042C7 + i) = 0x20u;                           /* 0x1E85F */
     u8 ah = DSB(DS_00104528 + 1u);                              /* 0x1E86F */
     if ((ah & 0x40u) == 0u
-        && ((ah & 0x20u) == 0u || hiscore_audit_reset_due() != 1u)) {   /* 0x1E875..0x1E88C */
+        && ((ah & 0x20u) == 0u || (hiscore_audit_reset_due() & 0xFFu) != 1u)) {   /* 0x1E875..0x1E88C; AL alone: `and eax,0xff` 0x1E884 */
         hiscore_fill_defaults(0u);                              /* 0x1E8F0 0x1E918 */
         u32 r = hiscore_read(0u, 1u);                           /* 0x1E8F7 0x2DBC4 */
         if (DSD(r) != 0u) return;                               /* 0x1E8FC/0x1E8FF */
@@ -5096,6 +5098,7 @@ void hiscore_init(void)
  * wired. */
 void frontend_match_start(void)
 {
+    PR_SEAM0(0x1EA08u);
     u8 name[0x24];
 
     frontend_input_reset();                                     /* 0x1EA11 (0x4F1E4) */
@@ -5165,6 +5168,7 @@ void frontend_match_start(void)
  * (0x1ECA5); ECX (the rank) survives it (0x204F5 push/0x2070A pop). */
 u32 hiscore_rank_single(u32 score)
 {
+    PR_SEAM_RET(0x1EC38u, score);
     u32 rank = hiscore_rank_probe(score, 0u);                  /* 0x1EC3F */
     /* PORT: 0x1EC44..0x1EC6B — field 0x27's deferred audit add; see header. */
     if ((u16)rank >= 10u) {                                    /* 0x1EC75/0x1EC78 */
@@ -5192,6 +5196,7 @@ u32 hiscore_rank_single(u32 score)
  * (0x1ED26). */
 u32 hiscore_rank_pair(void)
 {
+    PR_SEAM_RET0(0x1ECC8u);
     u32 r0 = hiscore_rank_probe(DSD(DS_001077EC), 0u);          /* 0x1ECD0 */
     DSW(DS_001044C0) = (u16)r0;                                  /* 0x1ECD5 */
     if ((u16)r0 >= 10u) return 0u;                               /* 0x1ECE0/0x1ECE3 */
@@ -5218,7 +5223,7 @@ void game_mode_1e_step(void)
     switch (DSB(DS_00104B25)) {
     case 0x00u:
         if (DSD(DS_00104AD4) == 2u && DSB(DS_00104B1F) == 0u    /* 0x1EECF/0x1EED6/0x1EED8/0x1EEDF */
-            && hiscore_rank_pair() != 0u) {                     /* 0x1EEE1/0x1EEE6/0x1EEE8 */
+            && (hiscore_rank_pair() & 0xFFu) != 0u) {           /* 0x1EEE1/0x1EEE6/0x1EEE8; AL alone: `test al,al` 0x1EEE6 */
             nameentry_reset();                                  /* 0x1EEEA 0x1ED2C */
             (void)sound_voice(0x100u);                          /* 0x1EEEF/0x1EEF4 0x2C3FC */
             (void)sound_voice(0xE1u);                           /* 0x1EEF9/0x1EEFE 0x2C3FC */
@@ -5260,7 +5265,7 @@ void game_mode_1e_step(void)
             DSB(DS_00104B25) = 7u;                                /* 0x1F2AA */
             break;
         }
-        if (hiscore_rank_single(DSD(DS_001077EC)) != 0u) {         /* 0x1F1A6/0x1F1AB/0x1F1B0/0x1F1B2 */
+        if ((hiscore_rank_single(DSD(DS_001077EC)) & 0xFFu) != 0u) {   /* 0x1F1A6/0x1F1AB/0x1F1B0/0x1F1B2; AL alone: `test al,al` 0x1F1B0 */
             u32 advance = (DSD(DS_00104AD4) != 0u)                  /* 0x1F1B8/0x1F1BF */
                        || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F1C1/0x1F1C8/0x1F1CE/0x1F1D5 */
             if (advance) {
@@ -5301,7 +5306,7 @@ void game_mode_1e_step(void)
             DSB(DS_00104B25) = 0xAu;                              /* 0x1F3CC */
             break;
         }
-        if (hiscore_rank_single(DSD(DS_00107880)) != 0u) {          /* 0x1F2C4/0x1F2C9/0x1F2CE/0x1F2D0 */
+        if ((hiscore_rank_single(DSD(DS_00107880)) & 0xFFu) != 0u) {    /* 0x1F2C4/0x1F2C9/0x1F2CE/0x1F2D0; AL alone: `test al,al` 0x1F2CE */
             u32 advance = (DSD(DS_00104AD4) != 1u)                   /* 0x1F2D6/0x1F2DC/0x1F2DF */
                        || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F2E1/0x1F2E8/0x1F2EE/0x1F2F4 */
             if (advance) {

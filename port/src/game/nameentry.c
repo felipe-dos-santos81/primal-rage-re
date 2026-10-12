@@ -148,6 +148,7 @@ u32 name_filter(u32 str)
 /* 0x1ED2C — record §49-T. */
 void nameentry_reset(void)
 {
+    PR_SEAM0(0x1ED2Cu);
     DSW(NE_HISCORE_CURSOR_COL) = 0xBu;                      /* 0x1ED3B */
     DSW(NE_HISCORE_CURSOR_ROW) = 6u;                        /* 0x1ED42 */
     frontend_input_reset();                                 /* 0x1ED49 0x4F1E4 */
@@ -179,6 +180,7 @@ void nameentry_reset(void)
 /* 0x1FFD0 — record §49-T. */
 void nameentry_cells_step(void)
 {
+    PR_SEAM0(0x1FFD0u);
     u8 tmp[2];
     tmp[0] = (u8)DSW(DS_0001E820);                          /* 0x1FFD9/0x1FFE5 */
     tmp[1] = (u8)(DSW(DS_0001E820) >> 8);
@@ -407,6 +409,7 @@ void nameentry_arm(u32 rank, u32 score)
 /* 0x20710 — record §49-T. */
 void nameentry_finish(u8 side)
 {
+    PR_SEAM(0x20710u, (u32)side);
     (void)name_filter(0x00104343u);                         /* 0x2071A 0x13EF0 */
     s32 count;
     u32 ecx = 0u;
@@ -475,6 +478,7 @@ static int ne_repeat(u32 ctr)
 
 u32 nameentry_step(u8 side)
 {
+    PR_SEAM_RET(0x1F458u, (u32)side);
     nameentry_cells_step();                                 /* 0x1F464 0x1FFD0 */
     u16 t = DSW(DS_0010438C);                               /* 0x1F469 */
     if (t != 0u) {                                          /* 0x1F473 */

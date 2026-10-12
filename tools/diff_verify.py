@@ -2628,7 +2628,7 @@ P7_23960 = E.Call(0x23960, ("eax",))
 P7_3A9D8 = E.Call(0x3A9D8, ("eax", "edx"), clobbers=("edx",))
 P7_2B150 = E.Call(0x2B150, ("eax",))
 P7_41310 = E.Call(0x41310, ("eax", "edx"))
-P7_49444 = E.Call(0x49444, ("eax",))
+P7_49444 = E.Call(0x49444, ("eax",), clobbers=("edi", "ebp"))
 P7_RNG   = E.Call(0x5D7DC, ("eax",), mode="real")
 P7_22404 = E.Call(0x22404, ("eax",))
 P7_2BCF4 = E.Call(0x2BCF4, ("eax", "edx"), clobbers=("edx",))
@@ -20742,8 +20742,8 @@ D3C_R0, D3C_R1, D3C_RX = 0x0010A200, 0x0010A300, 0x0010A400   # zero BSS: the sl
 D3C_SPECS = []
 
 D3C_ROWS = 0x00106000            # the 0x68-byte rows DS_001014F4 points at (d2a's base)
-D3C_3962C = E.Call(0x3962C, ("eax", "edx"), clobbers=("edx",))
-D3C_396AC = E.Call(0x396AC, ("eax", "edx"), clobbers=("edx",))
+D3C_3962C = E.Call(0x3962C, ("eax", "edx"), clobbers=("edx", "esi", "edi", "ebp"))
+D3C_396AC = E.Call(0x396AC, ("eax", "edx"), clobbers=("edx", "esi", "edi", "ebp"))
 D3C_19164 = E.Call(0x19164, ("eax",))
 D3C_1922C = E.Call(0x1922C, ("eax",))
 D3C_192DC = E.Call(0x192DC, ("eax",))
@@ -29158,6 +29158,511 @@ D5F_SPECS += [
 ]
 
 D1_SPECS += D5F_SPECS
+# ---- track D5 batch d5g (record 2026-10-12-reverse-d5g) ----
+D5G_SPECS = []
+D5G_REC = 0x0010A000                                # zero BSS: the record a 0x2DBC4 stub returns
+D5G_DUE = E.Call(0x1E988, ())
+D5G_FSET = E.Call(0x2DA0C, ("eax", "edx"), clobbers=("edx",))
+D5G_FILL = E.Call(0x1E918, ("eax",))
+D5G_INSERT = E.Call(0x2DCA0, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+
+
+def d5g_hi_case(flags, value):
+    """0x1E824: the three 0x24-byte name buffers (0x104367, 0x104407, 0x1042C7) seeded with bytes
+    that are not 0x20, each between two sentinel bytes; the dword 0x104528 (its byte 1 = `flags`)
+    between seeded dwords; the record the 0x2DBC4 stub returns, its first dword = `value`."""
+    buf = lambda k: bytes([0xE0 + k]) + bytes(0x41 + k * 0x30 + i for i in range(0x24)) + bytes([0xF0 + k])
+    return {0x00104366: buf(0), 0x00104406: buf(1), 0x001042C6: buf(2),
+            0x00104524: le32(0x24252627) + bytes([0x78, flags, 0x34, 0x12]) + le32(0x2C2D2E2F),
+            D5G_REC - 4: le32(0xFCFDFEFF) + le32(value) + le32(0x04050607)}
+
+
+D5G_HI_MUTANTS = ("@len", "@stride", "@fill", "@no2c7", "@late", "@eax", "@ne0", "@no20", "@no40", "@bits",
+                  "@dueearly", "@fsw", "@fval", "@force", "@noclr", "@clrw", "@mask", "@f29", "@stale", "@rdargs",
+                  "@nord", "@chk", "@rbyte", "@inv", "@nochk", "@iargs", "@isrc", "@order", "@ret40")
+D5G_SPECS += [
+    # 0x1E824 hiscore_init: no argument. The two 0x24-byte buffers 0x104367 + 0xA0k and the one at
+    # 0x1042C7 are blanked (0x20) before any call (the memory at the first call). Then the byte
+    # 0x104529: bit 0x40 (0x1E875), or bit 0x20 (0x1E87A) and 0x1E988's AL == 1 (`and eax,0xff; cmp
+    # eax,1` 0x1E884/0x1E889: r1 has stub EAX 0x101, r2 0xFFFFFF01, n3 0x100, n4 2) takes the reset
+    # arm: 0x2DA0C(0x27, 0), 0x2DA0C(0x26, 0), 0x1E918(1), then the byte re-read (0x1E8B0); bit 0x40
+    # clear returns (r0..r2), set clears it in the byte alone (`mov [0x104529],bl` 0x1E8C0), then
+    # 0x2DA0C(0x29, the dword 0x104528), 0x2DBC4(0, 1) and 0x2DCA0(0, 0xA7D74, 1) whatever the
+    # record holds (r3 non-zero, r4 zero). Else 0x1E918(0), 0x2DBC4(0, 1) and the insert only when
+    # the record's first dword is 0 (whole: n1 has only its top byte). The five callees are stubs.
+    # Mask 0: the one caller continues `mov eax,[0x104528]` (0x20C89).
+    Spec("hiscore_init", 0x1E824, [
+        Case("n0", {}, d5g_hi_case(0x00, 0), {0x2DBC4: D5G_REC, 0x2DCA0: 1}),
+        Case("n1", {"eax": 0x11111111}, d5g_hi_case(0x9F, 0x01000000), {0x2DBC4: D5G_REC}),
+        Case("n2", {}, d5g_hi_case(0x20, 0), {0x2DBC4: D5G_REC, 0x1E988: 0}),
+        Case("n3", {}, d5g_hi_case(0x20, 0x00000001), {0x2DBC4: D5G_REC, 0x1E988: 0x100}),
+        Case("n4", {}, d5g_hi_case(0xA0, 0), {0x2DBC4: D5G_REC, 0x1E988: 2}),
+        Case("r0", {}, d5g_hi_case(0x20, 0), {0x2DBC4: D5G_REC, 0x1E988: 1, 0x2DA0C: 0xFFFFFFFF}),
+        Case("r1", {}, d5g_hi_case(0x20, 0), {0x2DBC4: D5G_REC, 0x1E988: 0x101}),
+        Case("r2", {}, d5g_hi_case(0xBF, 0x55), {0x2DBC4: D5G_REC, 0x1E988: 0xFFFFFF01, 0x2DA0C: 1}),
+        Case("r3", {}, d5g_hi_case(0x40, 0x00000100), {0x2DBC4: D5G_REC, 0x2DA0C: 0x29}),
+        Case("r4", {}, d5g_hi_case(0xFF, 0), {0x2DBC4: D5G_REC, 0x1E988: 0}),
+        Case("r5", {}, d5g_hi_case(0x60, 0x80000000), {0x2DBC4: D5G_REC, 0x1E988: 0}),
+    ], calls=(D5G_DUE, D5G_FSET, D5G_FILL, D3D_2DBC4, D5G_INSERT), eax_mask=0, mutants=D5G_HI_MUTANTS),
+    # the re-read: the 0x1E918 stub rewrites the byte 0x104529 (0x5F: bit 0x40 set, bit 0x20 clear).
+    # q0 enters through bit 0x20 and AL = 1, and the byte read again at 0x1E8B0 has bit 0x40: it is
+    # cleared to 0x1F and the arm goes on; q1 is the other arm, which never reads it again.
+    Spec("hiscore_init_rr", 0x1E824, [
+        Case("q0", {}, d5g_hi_case(0x20, 0), {0x2DBC4: D5G_REC, 0x1E988: 1}),
+        Case("q1", {}, d5g_hi_case(0x00, 0), {0x2DBC4: D5G_REC}),
+    ], calls=(D5G_DUE, D5G_FSET, dataclasses.replace(D5G_FILL, writes=((None, 0x00104529, b"\x5f"),)), D3D_2DBC4,
+              D5G_INSERT), eax_mask=0, mutants=("@cache", "@cachetest", "@cachestore")),
+]
+D5G_TAB = 0x0010A100                                # zero BSS: the menu table
+D5G_CBK = 0x0002CB74                                # a registered callback (svc_start_menu), stubbed: it preserves every register
+D5G_WAIT = E.Call(0x2EA74, ())
+D5G_TITLE = E.Call(0x2FE84, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+D5G_POLLC = E.Call(0x2EEC8, ("eax", "edx"), clobbers=("edx", "ebp"))
+D5G_CODEROW = E.Call(0x305FC, ("eax", "edx"), clobbers=("edx",))
+D5G_CB = E.Call(D5G_CBK, ("eax",))
+# the strings of the menu rows (ids 1..12 of group 0): a hidden one ('?'), a row prefix (0x0B and a
+# digit), a blank-line prefix (0x0A), and the three that leave nothing after their prefix
+D5G_STR = {1: b"MENU", 2: b"?HID", 3: b"\x0b3TOP", 4: b"\nGAP", 5: b"ITEM", 6: b"VAL", 7: b"\x0b2",
+           8: b"?\x0b9", 9: b"B", 10: b"\x0b\xb1Z", 11: b"LAST", 12: b"?"}
+
+
+def d5g_menu_tab(entries, stride=0x10):
+    """The menu table at D5G_TAB: `entries` = (string id, second id, callback, row offset), the
+    first being the header; then the terminator (id 0, its other dwords seeded) and one more live
+    entry past it. A stride above 0x10 pads each entry with seeded bytes."""
+    buf = bytearray()
+    for i, e in enumerate(list(entries) + [(0, 6, D5G_CBK, 0x99), (5, 6, D5G_CBK, 3)]):
+        buf += b"".join(le32(v) for v in e) + bytes(0xD0 + i for _ in range(stride - 0x10))
+    return d1d_chunks(D5G_TAB, buf)
+
+
+def d5g_menu_case(entries, stride=0x10, act=1, latch=0, **st):
+    """0x2FFC4 / 0x2FA40: the string table, the menu table, the menu state 0x107410..0x10744F
+    (every dword seeded, the two entry pointers 0x107430/0x107434 with addresses of the zero BSS so
+    that a mutant that follows one stays inside mem[]; `st` sets flg, ents, cnt, old, cur, sel,
+    ent, rdw, cb; the active byte
+    0x107414 = `act` between seeded bytes), the key block 0x105F28 (the key time 0x8F00, the
+    latched key `latch`) and the tick dword 0x101500 = 0x9000, each between seeded dwords."""
+    d = dict(flg=0x5A000018, ents=D5G_TAB + stride, str=0x5A000020, cnt=0x5A000024, old=0x5A000028,
+             cur=0x5A00002C, sel=D5G_TAB + 0x300, ent=D5G_TAB + 0x304, len=0x5A000038, rdw=0x5A00003C,
+             row0=0x5A000040, row=0x5A000044, res=0x5A000048, cb=0)
+    d.update(st)
+    p = d1d_str_pokes(D5G_STR)
+    p.update(d5g_menu_tab(entries, stride))
+    p[0x00107410] = le32(0x10111213) + bytes([act, 0x15, 0x16, 0x17]) + b"".join(
+        le32(d[k]) for k in ("flg", "ents", "str", "cnt", "old", "cur", "sel", "ent", "len", "rdw", "row0",
+                             "row", "res", "cb"))
+    p[0x00105F28] = le32(0x28292A2B) + le32(0x00008F00) + le32(latch) + le32(0x34353637)
+    p[0x001014FC] = le32(0xFCFDFEFF) + le32(0x00009000) + le32(0x04050607)
+    return p
+
+
+D5G_E = lambda k, stride=0x10: D5G_TAB + k * stride      # entry k of the table (0 = the header)
+D5G_T0 = [(1, 0, 0, 0), (5, 6, D5G_CBK, 0), (9, 0, D5G_CBK, 0)]
+D5G_T1 = [(1, 6, D5G_CBK, 0), (3, 0, D5G_CBK, 1), (2, 6, D5G_CBK, 5), (4, 6, D5G_CBK, 2), (5, 0, D5G_CBK, 0xFFFFFFFF)]
+D5G_T2 = [(1, 0, 0, 0), (2, 0, D5G_CBK, 0), (5, 0, D5G_CBK, 0), (2, 6, D5G_CBK, 0), (9, 6, D5G_CBK, 0), (2, 0, D5G_CBK, 0)]
+
+
+def d5g_ms(cid, entries, keys, flags=0, stride=0x10, cb_eax=0, ebx=0x0000F000, **kw):
+    return Case(cid, {"eax": D5G_TAB, "edx": stride, "ecx": flags, "ebx": ebx},
+                d5g_menu_case(entries, stride, **kw), {0x2EEC8: keys, D5G_CBK: cb_eax})
+
+
+D5G_MS_INIT = lambda first, **kw: [(1, 0, kw.pop("cb", 0), 0), (first, 6, D5G_CBK, 0), (9, 0, D5G_CBK, 1)]
+D5G_MS_CASES = [
+    # the first call (the active byte 0 between non-zero bytes): the state is initialised from the
+    # first item's string, the title drawn, then the redraw and the poll of the same step
+    d5g_ms("i0", D5G_T0, 0, act=0),
+    d5g_ms("i1", D5G_T1, 0, flags=5, stride=0x14, act=0),
+    d5g_ms("i2", D5G_MS_INIT(7), 0, flags=0x00000100, act=0),
+    d5g_ms("i3", D5G_MS_INIT(8, cb=D5G_CBK), 0, flags=4, act=0),
+    d5g_ms("i4", D5G_MS_INIT(12), 0, act=0, ebx=0x12345678),
+    d5g_ms("i5", D5G_MS_INIT(10), 0, flags=0xFFFFFFFE, act=0),
+    d5g_ms("i6", D5G_MS_INIT(2), 0, act=0),
+    d5g_ms("i7", D5G_MS_INIT(4), 0x01000000, act=0, cb_eax=0xFFFFFFFB),
+    # the redraw alone (the poll returns no key)
+    d5g_ms("r0", D5G_T1, 0, rdw=1, old=0xFFFFFFFE, cur=1, cb=D5G_CBK, flg=0),
+    d5g_ms("r1", D5G_T1, 0, rdw=1, old=0, cur=2, flg=0),
+    d5g_ms("r2", D5G_T1, 0, stride=0x14, rdw=1, old=2, cur=3, flg=0, act=0x80),
+    d5g_ms("r3", D5G_T1, 0, rdw=1, old=1, cur=1, cb=D5G_CBK, flg=0),
+    d5g_ms("r4", D5G_T1, 0, rdw=0x01000000, old=5, cur=7, flg=0),
+    d5g_ms("r5", D5G_T1, 0, rdw=0, old=0, cur=2, flg=0),
+    d5g_ms("r6", D5G_T0, 0, rdw=1, old=1, cur=0, flg=0),
+    # the Esc key (the latch dword, whole: k2 is 0x11B) by flag bit 2 (the byte: k3 has bit 10)
+    d5g_ms("k0", D5G_T0, 0, rdw=0, flg=4, latch=0x1B),
+    d5g_ms("k1", D5G_T0, 0x03000000, rdw=0, flg=0xFFFFFFFB, latch=0x1B, cb=D5G_CBK, cb_eax=9),
+    d5g_ms("k2", D5G_T0, 0, rdw=0, flg=4, latch=0x0000011B),
+    d5g_ms("k3", D5G_T0, 0, rdw=0, flg=0x00000400, latch=0x1B),
+    # the menu callback's result (whole: c1 is 0x100)
+    d5g_ms("c0", D5G_T0, 0x02000000, rdw=0, flg=0, cb=D5G_CBK, cb_eax=0x1234, sel=D5G_E(2)),
+    d5g_ms("c1", D5G_T0, 0x01000000, rdw=0, flg=0, cb=D5G_CBK, cb_eax=0x100, sel=D5G_E(1)),
+    d5g_ms("c2", D5G_T0, 0, rdw=0, flg=0, cb=D5G_CBK, cb_eax=0, sel=D5G_E(1)),
+    # the Esc bit
+    d5g_ms("e0", D5G_T0, 0x02000000, rdw=0, flg=4, cur=1, cnt=2),
+    d5g_ms("e1", D5G_T0, 0x02000000, rdw=0, flg=0, cur=3, cnt=3),
+    d5g_ms("e2", D5G_T0, 0x02008000, rdw=0, flg=1, cur=1, cnt=2),
+    d5g_ms("e3", D5G_T0, 0x03000000, rdw=0, flg=0, cur=0, cnt=2),
+    # the Enter bit: the item's callback result -10, -5, another, 0
+    d5g_ms("n0", D5G_T0, 0x01000000, rdw=0, flg=0, sel=D5G_E(1), cb_eax=0xFFFFFFF6),
+    d5g_ms("n1", D5G_T0, 0x01000000, rdw=0, flg=5, sel=D5G_E(2), cb_eax=0xFFFFFFFB, old=1, cur=1),
+    d5g_ms("n2", D5G_T0, 0x01000000, rdw=0, flg=0, sel=D5G_E(1), cb_eax=7),
+    d5g_ms("n3", D5G_T0, 0x0100C000, rdw=0, flg=1, sel=D5G_E(2), cb_eax=0),
+    # up and down over D5G_T2 (items 0, 2 and 4 hidden; five walked)
+    d5g_ms("u0", D5G_T2, 0x80000000, rdw=0, flg=0, cur=3, cnt=5),
+    d5g_ms("u1", D5G_T2, 0x00008000, rdw=0, flg=0, cur=1, cnt=5),
+    d5g_ms("u2", D5G_T0, 0x80008000, rdw=0, flg=1, cur=0, cnt=2),
+    d5g_ms("u3", D5G_T0, 0x80000000, stride=0x14, rdw=0, flg=0, cur=1, cnt=2),
+    d5g_ms("d0", D5G_T2, 0x40000000, rdw=0, flg=0, cur=1, cnt=5),
+    d5g_ms("d1", D5G_T2, 0x00004000, rdw=0, flg=0, cur=3, cnt=5),
+    d5g_ms("d2", D5G_T0, 0x40004000, stride=0x14, rdw=0, flg=0, cur=1, cnt=2),
+    d5g_ms("d3", D5G_T0, 0xC000C000, rdw=0, flg=0, cur=1, cnt=2),
+    d5g_ms("d4", D5G_T0, 0x40000000, rdw=0, flg=1, cur=0, cnt=2),
+    # no key: the code row by flag bit 0 alone
+    d5g_ms("f0", D5G_T0, 0, rdw=0, flg=1),
+    d5g_ms("f1", D5G_T0, 0x00003FFF, rdw=0, flg=0xFFFFFFFE),
+]
+D5G_MS_MUTANTS = ("@actw", "@nostamp", "@voice", "@waitlate", "@nocur", "@old", "@hdr", "@noq", "@no0b", "@row0",
+                  "@zext", "@title", "@cb", "@flags", "@sel0", "@cnt0", "@ent", "@tdargs", "@tdflags", "@actearly",
+                  "@noact", "@cbarg", "@nocb0", "@rdw0", "@nohide", "@hidecnt", "@nonl", "@rowadd", "@hl", "@nosel",
+                  "@unhl", "@term", "@stride", "@row5", "@mask", "@pflag", "@esckey", "@escsw", "@cbsel", "@nores",
+                  "@cbal", "@bits", "@escrdw", "@escact", "@esccmp", "@entlate", "@entflags", "@entarg", "@entres",
+                  "@entret", "@entold", "@ent0", "@res1", "@upbit", "@dnbit", "@updn", "@wrap", "@fuse", "@nordw",
+                  "@dnwrap", "@codebit", "@code", "@norel", "@col", "@second", "@gap", "@nolen", "@relmode", "@row2")
+D5G_MENU_ALLOW = D1D_STR_ALLOW + (0x2EB80, 0x2FE40, 0x2EA64)
+D5G_SPECS += [
+    # 0x2FFC4 menu_step: EAX = the table, EDX = the stride, ECX = the flags (EBX is not read: i4).
+    # First call (the byte 0x107414 = 0): the key time 0x105F2C = the tick (0x500BB, run), the
+    # entries pointer, 0x2EA74 and 0x2C3FC(0x100) (stubs; the raw keeps EBX, EDI, ESI and EBP
+    # across them), cur 0, redraw 1, old -2, row0 5 plus the digit after a 0x0B prefix of the first
+    # item's string (signed: i5 has 0xB1), the title 0 when nothing follows the prefixes (i2, i3,
+    # i4), the callback and the flags, 0x2FE84(title, 0x5000, 0x1000, flags) (a stub) and the
+    # active byte 1 after it. Redraw (the dword 0x10743C, whole: r4): the callback(0), then while
+    # old != cur the items: '?' skipped but counted, 0x0A a blank row, the +0xC row offset, the old
+    # one released and redrawn (0x2F280 0x2000, 0x2F198 0xF000), the current one (0xF000, 0x2000;
+    # its entry kept at 0x107430), the others drawn (0xF000), each with its second string 5 columns
+    # past the first; the terminator sets old = cur. Then 0x2EEC8(0xC300C000, 1) (a stub: EAX = the
+    # keys) and 0x2EB80 (run: the latch dword): Esc is -10 with flag bit 2, else -5; the callback
+    # (sel), returned when non-zero (whole: c1); the Esc bit 25 (-1, or 0 / -5 by cur == count);
+    # the Enter bit 24 (0x2FE84(sel, 0x5000, 0x1000, 0), the item's callback: -10, -5 or 0); the up
+    # bits 0x80008000 and down bits 0x40004000 through 0x2FE40 (run), wrapping once; the code row
+    # 0x305FC(0x11, 2) by flag bit 0. The callback is 0x2CB74 (svc_start_menu, a stub, seamed
+    # here). Full mask: `test eax,eax; je; cmp eax,-5` (0x251F3), and 0x2CB74 returns it (0x2CB8D).
+    Spec("menu_step", 0x2FFC4, D5G_MS_CASES, allow_calls=D5G_MENU_ALLOW,
+         calls=(D5G_WAIT, VOICE, D5G_TITLE, D1D_RELEASE, D1D_CURSOR, D5G_POLLC, D5G_CODEROW, D5G_CB),
+         unhit_named={0x3053E: "the up wrap's second pass (every item hidden): 0x2EA68 `mov eax,1; jmp 0x62003`, "
+                               "the runtime's exit, which the port leaves out under PORT:",
+                      0x305A5: "the down wrap's second pass: the same 0x2EA68 exit"},
+         eax_mask=0xFFFFFFFF, mutants=D5G_MS_MUTANTS),
+]
+
+
+def d5g_mr(cid, entries, pad, flags=0, stride=0x10, cb_eax=0, ebx=0x0000F000):
+    """0x2FA40: d5g_menu_case's fixture (the menu state block stays seeded: 0x2FA40 keeps its state
+    in its frame), the pad level dword 0xE1C34 = `pad` and its latch 0xE1C38 = 0 between seeded
+    dwords (0x50161 reports a masked bit once), and the key-config record 0x2EBF0 reads (the
+    pointer 0x101514 at D4D_KB, +0x2D0..+0x2EF seeded with no arrow code, 0x0D or 0x1B)."""
+    p = d5g_menu_case(entries, stride)
+    p[0x000E1C30] = le32(0x30313233) + le32(pad) + le32(0) + le32(0x3C3D3E3F)
+    p[0x00101510] = le32(0x10111213) + le32(D4D_KB) + le32(0x18191A1B)
+    p[D4D_KB + 0x2D0] = bytes(0xC0 + i for i in range(0x20))
+    return Case(cid, {"eax": D5G_TAB, "edx": stride, "ecx": flags, "ebx": ebx}, p, {D5G_CBK: cb_eax})
+
+
+D5G_MR_HDR = lambda cb=0: (1, 0, cb, 0)
+D5G_MR_CASES = [
+    # one poll: the menu callback's non-zero result is returned (whole: q1 is 0x100)
+    d5g_mr("q0", [D5G_MR_HDR(D5G_CBK)] + D5G_T0[1:], 0, cb_eax=0x77),
+    d5g_mr("q1", [D5G_MR_HDR(D5G_CBK)] + D5G_T1[1:], 0x80000000, flags=1, stride=0x14, cb_eax=0x100),
+    d5g_mr("q2", [D5G_MR_HDR(D5G_CBK), (7, 6, D5G_CBK, 0), (9, 0, D5G_CBK, 1)], 0, cb_eax=0xFFFFFFFB),
+    d5g_mr("q3", [D5G_MR_HDR(D5G_CBK), (8, 6, D5G_CBK, 0), (9, 0, D5G_CBK, 1)], 0, flags=4, cb_eax=1),
+    d5g_mr("q4", [D5G_MR_HDR(D5G_CBK), (12, 6, D5G_CBK, 0), (9, 0, D5G_CBK, 1)], 0, cb_eax=2, ebx=0x12345678),
+    d5g_mr("q5", [D5G_MR_HDR(D5G_CBK), (10, 6, D5G_CBK, 0), (9, 0, D5G_CBK, 1)], 0, flags=0xFFFFFFFE, cb_eax=3),
+    d5g_mr("q6", [D5G_MR_HDR(D5G_CBK), (4, 6, D5G_CBK, 2), (2, 0, D5G_CBK, 7), (5, 0, D5G_CBK, 0xFFFFFFFF)], 0, cb_eax=4),
+    # the Esc bit on the first poll (the pad's bit 25): -1, or 0 when nothing was walked
+    d5g_mr("x0", D5G_T0, 0x02000000),
+    d5g_mr("x1", [D5G_MR_HDR()], 0x02000000, flags=1),
+    d5g_mr("x2", [D5G_MR_HDR(D5G_CBK)] + D5G_T0[1:], 0x02000000, cb_eax=0),
+    d5g_mr("x3", D5G_T0, 0x03000000, stride=0x14),
+    # two polls: the pad word on the first, the Esc key (the wait stub's write) on the second
+    d5g_mr("z0", D5G_T0, 0, flags=1),
+    d5g_mr("z1", D5G_T0, 0x3CFF3FFF, flags=0xFFFFFFFA),
+    d5g_mr("u0", D5G_T2, 0x80000000),
+    d5g_mr("u1", D5G_T0, 0x00008000, flags=1),
+    d5g_mr("u2", [D5G_MR_HDR(), (5, 6, D5G_CBK, 0)], 0x80008000),
+    d5g_mr("u3", D5G_T1, 0x80000000, stride=0x14),
+    d5g_mr("d0", D5G_T0, 0x40000000),
+    d5g_mr("d1", D5G_T2, 0x00004000, stride=0x14),
+    d5g_mr("d2", [D5G_MR_HDR(), (5, 6, D5G_CBK, 0)], 0x40004000),
+    d5g_mr("d3", D5G_T1, 0xC000C000),
+    d5g_mr("d5", [D5G_MR_HDR(), (5, 6, D5G_CBK, 0), (2, 0, D5G_CBK, 0)], 0x00004000),
+    d5g_mr("d4", D5G_T1, 0x40000000),
+    d5g_mr("n0", D5G_T0, 0x01000000, cb_eax=5),
+    d5g_mr("n1", D5G_T0, 0x81004000, flags=1, cb_eax=0xFFFFFFF6),
+    d5g_mr("n2", [D5G_MR_HDR(D5G_CBK)] + D5G_T0[1:], 0x01000000, stride=0x14, cb_eax=0),
+]
+D5G_MR_MUTANTS = ("@waitlate", "@voice", "@hdr", "@noq", "@no0b", "@row0", "@zext", "@title", "@cb", "@tdargs",
+                  "@tdflags", "@cbarg", "@nocb0", "@nohide", "@hidecnt", "@nonl", "@rowadd", "@unhl",
+                  "@nosel", "@hl", "@stride", "@last", "@mask", "@entbit", "@cbsel", "@cbal", "@escbit", "@esccmp",
+                  "@entflags", "@entold", "@entarg", "@enthdr", "@entkeys", "@upbit", "@dnbit", "@updn", "@dnwrap",
+                  "@codebit", "@code", "@waitearly", "@norel", "@col", "@second", "@gap", "@relmode", "@row2")
+D5G_SPECS += [
+    # 0x2FA40 menu_run: EAX = the table, EDX = the stride, ECX = the flags. The blocking menu: the
+    # same walk as 0x2FFC4 with its state in the frame (row0 keeps the 0x0B digit here: q1, q5), and
+    # a loop that leaves only on the menu callback's non-zero result (0x2FD3E) or on the Esc bit
+    # without flag bit 2 (0x2FD53: `sete al; and eax,0xff; dec eax`, cur == count only when nothing
+    # was walked, x1). The stubs script the keys: 0x2EA74 sets the latched key dword 0x105F30 to
+    # 0x1B and 0x2C3FC (after the first wait) to 0, and 0x2EDE0 runs on both sides (0x50161 reports
+    # each masked pad bit of the case's 0xE1C34 once; 0x2EBF0 turns the latched Esc into bit 25),
+    # so the first poll sees the pad word and the poll after the loop's 0x2EA74 the Esc key: the
+    # up and down moves (0x2FE40, run), the old item's release on the redraw they cause, Enter
+    # (0x2FE84(sel, 0x5000, 0x1000, 0), the item's callback, a full redraw) and the code row
+    # 0x305FC(0x11, 2) by flag bit 0 before each wait. The raw keeps EBP (the stride), ESI (cur) and
+    # EDI across every call. Full mask: `mov edx,eax` 0x2CBAD .. `mov eax,edx` 0x2CBB9.
+    Spec("menu_run", 0x2FA40, D5G_MR_CASES, allow_calls=D5G_MENU_ALLOW + (0x2EDE0, 0x50161, 0x2EBF0),
+         calls=(dataclasses.replace(D5G_WAIT, writes=((None, 0x00105F30, le32(0x1B)),)),
+                dataclasses.replace(VOICE, writes=((None, 0x00105F30, le32(0)),)),
+                D5G_TITLE, D1D_RELEASE, D1D_CURSOR, D5G_CODEROW, D5G_CB),
+         unhit_named={0x2FD65: "Esc under flag bit 2 acts as down and the loop then leaves only on a menu-callback "
+                               "result that changes between two polls: a stub's EAX is one value per case",
+                      0x2FDCB: "the up wrap's second pass (every item hidden): 0x2EA68 `mov eax,1; jmp 0x62003`, "
+                               "the runtime's exit, which the port leaves out under PORT:",
+                      0x2FE00: "the down wrap's second pass: the same 0x2EA68 exit"},
+         eax_mask=0xFFFFFFFF, mutants=D5G_MR_MUTANTS),
+]
+D5G_RANKPAIR = E.Call(0x1ECC8, ())
+D5G_NERESET = E.Call(0x1ED2C, ())
+D5G_RANK1 = E.Call(0x1EC38, ("eax",))
+D5G_NESTEP = E.Call(0x1F458, ("eax",), clobbers=("ebp",))
+D5G_INRESET = E.Call(0x4F1E4, ())
+D5G_ACTRESET = E.Call(0x2BAF4, ("eax",))
+D5G_HISCREEN = E.Call(0x1EA08, ())
+D5G_WIPEARM = E.Call(0x4F980, ("eax",))
+
+
+def d5g_1e_case(state, ad4=0, abc=0, b14=0, b1f=0, s0=0x00001000, s1=0x00002000, g0=0, g1=0):
+    """0x1EEB0: the state byte 0x104B25, the bytes 0x104B14 and 0x104B1F (0x104B10..0x104B27 seeded
+    around them), the dwords 0x104AD4, 0x104ABC and 0x104AE4 between seeded dwords, the words
+    0x104AFA, 0x104AFE, 0x104B00 and 0x1088EE between seeded words, the two scores 0x1077EC and
+    0x107880 and the two gate bytes 0x107813 and 0x1078A7 (0x94 apart: the slots' +0x63), each
+    between seeded neighbours; a third slot's byte 0x10793B is seeded too."""
+    b = bytearray(0xB0 + i for i in range(0x18))
+    b[0x04], b[0x0F], b[0x15] = b14, b1f, state
+    return {0x00104B10: bytes(b),
+            0x00104AD0: le32(0xD0D1D2D3) + le32(ad4) + le32(0xD8D9DADB),
+            0x00104AB8: le32(0xB8B9BABB) + le32(abc) + le32(0xC0C1C2C3),
+            0x00104AE0: le32(0xE0E1E2E3) + le32(0x5A5A5A5A) + le32(0xE8E9EAEB),
+            0x00104AF8: le16(0xF8F9) + le16(0x5AFA) + le16(0xFCFD) + le16(0x5AFE) + le16(0x5B00) + le16(0x0203),
+            0x001088EC: le16(0xECED) + le16(0x5AEE) + le16(0xF0F1),
+            0x001077E8: le32(0xE8E9EAEB) + le32(s0) + le32(0xF0F1F2F3),
+            0x0010787C: le32(0x7C7D7E7F) + le32(s1) + le32(0x84858687),
+            0x00107812: bytes([0x12, g0, 0x14]), 0x001078A6: bytes([0xA6, g1, 0xA8]),
+            0x0010793A: bytes([0x3A, 0x01, 0x3C])}
+
+
+D5G_1E = lambda cid, state, stubs=None, **kw: Case(cid, {"eax": 0x55555555}, d5g_1e_case(state, **kw), stubs or {})
+D5G_1E_CASES = [
+    # state 0: the two-player gate (the dword 0x104AD4 == 2, whole: a2 has 0x102; the byte 0x104B1F
+    # 0; 0x1ECC8's AL: a4 has stub EAX 0x100, a5 0xFFFFFF01), then the higher score first (unsigned,
+    # `jb` 0x1EF10: a6 has 0x80000000 against 1, a7 equal scores)
+    D5G_1E("a0", 0, {0x1ECC8: 1}, ad4=2, s0=0x3000, s1=0x2000),
+    D5G_1E("a1", 0, {0x1ECC8: 1}, ad4=2, s0=0x1000, s1=0x2000),
+    D5G_1E("a2", 0, {0x1ECC8: 1}, ad4=0x00000102),
+    D5G_1E("a3", 0, {0x1ECC8: 1}, ad4=2, b1f=1),
+    D5G_1E("a4", 0, {0x1ECC8: 0x100}, ad4=2),
+    D5G_1E("a5", 0, {0x1ECC8: 0xFFFFFF01}, ad4=2, s0=1, s1=0x80000000),
+    D5G_1E("a6", 0, {0x1ECC8: 1}, ad4=2, s0=0x80000000, s1=1),
+    D5G_1E("a7", 0, {0x1ECC8: 1, 0x1EC38: 1}, ad4=2, s0=0x4444, s1=0x4444),
+    D5G_1E("a8", 0, {0x1ECC8: 0}, ad4=2),
+    D5G_1E("a9", 0, {0x1ECC8: 1}, ad4=1),
+    # state 1 (the table's `ret` entry), and the states above 0x10
+    D5G_1E("b0", 1), D5G_1E("b1", 0x11), D5G_1E("b2", 0xFF),
+    # states 2 and 3
+    D5G_1E("c0", 2), D5G_1E("c1", 3),
+    # state 4: the byte 0x107813 (d1 has the next byte set instead), 0x1EC38(the first score)'s AL
+    # (d3: 0x100), then the dword 0x104AD4 non-zero, or the byte 0x104B14 and the dword 0x104ABC == 1
+    D5G_1E("d0", 4, {0x1EC38: 1}, g0=1),
+    D5G_1E("d1", 4, {0x1EC38: 1}, ad4=1),
+    D5G_1E("d2", 4, {0x1EC38: 0}, ad4=1),
+    D5G_1E("d3", 4, {0x1EC38: 0x100}, ad4=1),
+    D5G_1E("d4", 4, {0x1EC38: 0xFFFFFF01}, ad4=0x01000000),
+    D5G_1E("d5", 4, {0x1EC38: 1}, ad4=0, b14=0, abc=1),
+    D5G_1E("d6", 4, {0x1EC38: 1}, ad4=0, b14=1, abc=1),
+    D5G_1E("d7", 4, {0x1EC38: 1}, ad4=0, b14=0x80, abc=0x00000101),
+    D5G_1E("d8", 4, {0x1EC38: 1}, ad4=0, b14=1, abc=0),
+    # states 5 and 8: 0x1F458(the side), whole EAX (e2, f2: 0x100)
+    D5G_1E("e0", 5, {0x1F458: 0}), D5G_1E("e1", 5, {0x1F458: 1}), D5G_1E("e2", 5, {0x1F458: 0x100}),
+    D5G_1E("f0", 8, {0x1F458: 0}), D5G_1E("f1", 8, {0x1F458: 0x80000000}), D5G_1E("f2", 8, {0x1F458: 0x100}),
+    # states 6 and 9: the screen again only when the dword 0x104ABC is 1
+    D5G_1E("g0", 6, abc=1), D5G_1E("g1", 6, abc=0), D5G_1E("g2", 6, abc=0x00000101), D5G_1E("g3", 6, abc=2),
+    D5G_1E("h0", 9, abc=1), D5G_1E("h1", 9, abc=0), D5G_1E("h2", 9, abc=0x01000001),
+    # state 7: the second slot's byte and score, the dword 0x104AD4 != 1
+    D5G_1E("j0", 7, {0x1EC38: 1}, g1=1),
+    D5G_1E("j1", 7, {0x1EC38: 1}, ad4=0, g0=1),
+    D5G_1E("j2", 7, {0x1EC38: 0}, ad4=0),
+    D5G_1E("j3", 7, {0x1EC38: 0x100}, ad4=0),
+    D5G_1E("j4", 7, {0x1EC38: 0x7F01}, ad4=0x00000101),
+    D5G_1E("j5", 7, {0x1EC38: 1}, ad4=1, b14=0, abc=1),
+    D5G_1E("j6", 7, {0x1EC38: 1}, ad4=1, b14=1, abc=1),
+    D5G_1E("j7", 7, {0x1EC38: 1}, ad4=1, b14=1, abc=2),
+    # state 0xA: the byte 0x104B1F, the dword 0x104AD4 (2, or the side whose slot byte is 1), the
+    # byte 0x104B14
+    D5G_1E("k0", 0xA, ad4=2), D5G_1E("k1", 0xA, ad4=0, g0=1), D5G_1E("k2", 0xA, ad4=1, g1=1),
+    D5G_1E("k3", 0xA, ad4=0, g0=2, g1=1), D5G_1E("k4", 0xA, ad4=1, g0=1, g1=0x81, b14=1),
+    D5G_1E("k5", 0xA, ad4=2, b1f=1), D5G_1E("k6", 0xA, ad4=0, g0=1, b1f=0x80, b14=0x80),
+    D5G_1E("k7", 0xA, ad4=1, g0=1),
+    # states 0xB..0xE: 0x1F458(0, 1, 0, 1), then states 0xF, 0x10, 2, 2
+    D5G_1E("l0", 0xB, {0x1F458: 0}), D5G_1E("l1", 0xB, {0x1F458: 5}), D5G_1E("l2", 0xB, {0x1F458: 0x100}),
+    D5G_1E("m0", 0xC, {0x1F458: 0}), D5G_1E("m1", 0xC, {0x1F458: 0xFFFFFF00}),
+    D5G_1E("n0", 0xD, {0x1F458: 0}), D5G_1E("n1", 0xD, {0x1F458: 1}),
+    D5G_1E("o0", 0xE, {0x1F458: 0}), D5G_1E("o1", 0xE, {0x1F458: 0x10000}),
+    # states 0xF and 0x10: the other side's entry is armed
+    D5G_1E("p0", 0xF, {0x1EC38: 0, 0x1F458: 1}), D5G_1E("p1", 0x10, {0x1EC38: 1, 0x1F458: 0}),
+]
+D5G_1E_MUTANTS = ("@tab", "@s0ad4", "@s0b1f", "@s0eax", "@s0order", "@s0cmp", "@s0gt", "@s0late", "@s0arg", "@s0else",
+                  "@s2order", "@al", "@s2st", "@s3noin", "@s3b00", "@s4gatew", "@s4score", "@s4eax", "@s4ad4",
+                  "@s4b14", "@s4abcw", "@s4late", "@s4order", "@pside", "@pal", "@pnext", "@abc", "@qnext", "@s7gate",
+                  "@s7score", "@s7eax", "@s7ad4", "@s7late", "@s7order", "@saearly", "@sab1f", "@sa2", "@saside",
+                  "@sa1", "@sahook", "@sahooklate", "@sawipe", "@fearly", "@fnext", "@forder", "@fscore", "@fside",
+                  "@dafe", "@d8eew", "@db00", "@dafa", "@dlate", "@dvoice", "@rafe", "@r8ee", "@rb00w", "@rafa")
+D5G_SPECS += [
+    # 0x1EEB0 game_mode_1e_step: no argument (EAX is loaded from the state byte: every case enters
+    # with 0x55555555). The state byte 0x104B25 above 0x10 returns (`ja` 0x1EEBC); else the 17-entry
+    # table 0x1EE6C (entry 1 is the shared `ret`). The nine callees are stubs: 0x1ECC8 (AL: `test
+    # al,al` 0x1EEE6), 0x1ED2C, 0x2C3FC, 0x1EC38 (AL: `test al,al` 0x1F1B0, 0x1F2CE; its result is
+    # dropped in states 0, 0xF and 0x10), 0x1F458 (whole: `test eax,eax` 0x1EF4B, 0x1EFDD, 0x1F03E,
+    # 0x1F0C8, 0x1F208, 0x1F32B; dropped in 0xF and 0x10), 0x4F1E4, 0x2BAF4(1), 0x1EA08 and
+    # 0x4F980(0x11). The state byte is stored before the calls it precedes in the raw and after the
+    # ones it follows (the memory at each call): after 0x2C3FC in states 0xF/0x10 (0x1EFAE,
+    # 0x1F09E), after 0x2BAF4 in states 3 and 0xA (0x1F186, 0x1F3F1), after 0x1EA08 in state 2
+    # (0x1F15C). Mask 0: the one caller (0x253CB) continues `jmp 0x2540f`.
+    Spec("game_mode_1e_step", 0x1EEB0, D5G_1E_CASES,
+         calls=(D5G_RANKPAIR, D5G_NERESET, VOICE, D5G_RANK1, D5G_NESTEP, D5G_INRESET, D5G_ACTRESET, D5G_HISCREEN,
+                D5G_WIPEARM),
+         eax_mask=0, mutants=D5G_1E_MUTANTS),
+]
+D5G_NECELLS = E.Call(0x1FFD0, ())
+D5G_NEFINISH = E.Call(0x20710, ("eax",), clobbers=("esi", "edi", "ebp"))
+D5G_NEREC = 0x0010A500                              # zero BSS: the cursor record 0x1044B8 points at
+# the eight strings 0x1F458 draws (ids 0x16..0x1D), distinct
+D5G_NE_STR = {0x16: b"P2", 0x17: b"P1", 0x18: b"SCORE", 0x19: b"RANK", 0x1A: b"GOOD", 0x1B: b"NAME",
+              0x1C: b"BEST", 0x1D: b"TOP"}
+
+
+def d5g_ne_case(t=0x0100, ac=1, d8=0, p0=0, p1=0, e0=0, dc=0, col=0x0B, row=6, rank=0, cfg=0, frame=1,
+                a8=0x5A5A5AA8, c8=3, bc=3, cnt=0, lim=3, q=None, cells=None):
+    """0x1F458: the timer word 0x10438C; the block 0x1044A8..0x1044E3 (the spawn handle `a8`, the
+    dword 0x1044AC `ac`, the seek record 0x1044B0, the cursor record pointer 0x1044B8 = D5G_NEREC,
+    the queue's write index `bc` and read index `c8`, the cursor column and row words 0x1044D0 /
+    0x1044D2 after the seeded word 0x1044CE, the rank word 0x1044D6, the byte 0x1044D8 `d8`, the two
+    autorepeat counters 0x1044DC `dc` and 0x1044E0 `e0`); the queue's dwords 0x104458.. (`q`
+    {index: value} over seeded ones); the name's count and limit bytes 0x10431C / 0x10431D after
+    three seeded bytes; six letter cells from 0x104114 (`cells` {index: state byte}); the name
+    buffer 0x104340..0x10434F; the two pad bytes 0x1088E7 / 0x1088E5; the option byte 0x104529; the
+    frame word 0xEF6DC; the word 0xC8718; the two scores; the cursor record's +0x10..+0x23."""
+    blk = (le32(a8) + le32(ac) + le32(0x0010B0B0) + le32(0xB4B5B6B7) + le32(D5G_NEREC) + le32(bc)
+           + le32(0xC0C1C2C3) + le32(0xC4C5C6C7) + le32(c8) + le16(0xCCCD) + le16(0xCECF) + le16(col)
+           + le16(row) + le16(0xD4D5) + le16(rank) + bytes([d8, 0xD9, 0xDA, 0xDB]) + le32(dc) + le32(e0))
+    qv = {i: 0x5A000000 + i for i in range(17)}
+    qv.update(q or {})
+    cb = bytearray()
+    for i in range(6):
+        cb += bytes(0x60 + i * 0x10 + k for k in range(0x12)) + bytes([(cells or {}).get(i, 0), 0x77 + i])
+    p = d1d_str_pokes(D5G_NE_STR)
+    p.update(d1d_chunks(0x001044A8, blk))
+    p.update(d1d_chunks(0x00104458, b"".join(le32(qv[i]) for i in range(17))))
+    p.update(d1d_chunks(0x00104114, bytes(cb)))
+    p.update({0x00104388: le32(0x88898A8B) + le16(t) + le16(0x8E8F),
+              0x00104318: bytes([0x18, 0x19, 0x1A, 0x1B, cnt, lim, 0x1E, 0x1F]),
+              0x00104340: bytes(0x40 + i for i in range(0x10)),
+              0x001088E4: bytes([0xE4, p1, 0xE6, p0]),
+              0x00104528: bytes([0x28, cfg, 0x2A, 0x2B]),
+              0x000EF6DC: le16(frame),
+              0x000C8718: le16(0x8718),
+              0x001077E8: le32(0xE8E9EAEB) + le32(0x00012345) + le32(0xF0F1F2F3),
+              0x0010787C: le32(0x7C7D7E7F) + le32(0x00067890) + le32(0x84858687),
+              D5G_NEREC + 0x10: bytes(0x30 + i for i in range(0x14))})
+    return p
+
+
+D5G_NE = lambda cid, side, stubs=None, **kw: Case(cid, {"eax": side}, d5g_ne_case(**kw), stubs or {})
+D5G_NE_CASES = [
+    # the timer word (f3: only its high byte; f5: 0xFFFF), the finish at 0 with the dword 0x1044AC
+    # 0 (f2: only its top byte)
+    D5G_NE("f0", 0, t=0, ac=0), D5G_NE("f1", 1, t=1, ac=0), D5G_NE("f2", 0x100, t=0, ac=0x01000000),
+    D5G_NE("f3", 0, t=0x0100), D5G_NE("f4", 1, t=0x01C2), D5G_NE("f5", 0, t=0xFFFF),
+    # the letter grid, drawn while the dword 0x1044AC is 0
+    D5G_NE("g0", 0, t=5, ac=0), D5G_NE("g1", 1, t=5, ac=0, rank=2, frame=0x40),
+    # the cursor moves, gated by the byte 0x1044D8: right (pad bit 0x10, or the counter 0x1044E0
+    # above 0x1E and a multiple of 5), left (0x20, the counter 0x1044DC), up (0x80), down (0x40)
+    D5G_NE("h0", 0, d8=1, p0=0xF0), D5G_NE("h1", 2, p0=0xF0, p1=0xF0),
+    D5G_NE("r0", 0, p0=0x10), D5G_NE("r1", 1, p1=0x10, col=0x1D), D5G_NE("r2", 0, p0=0x10, col=0x1D, row=0xF),
+    D5G_NE("r3", 0xFFFFFF00, p0=0x10, col=0x20, row=0xF), D5G_NE("r4", 0, p1=0x10, e0=0x23, col=0x14),
+    D5G_NE("r5", 0, e0=0x1E, dc=0x1E), D5G_NE("r6", 1, e0=0x24, dc=0x24, p0=0xF0),
+    D5G_NE("r7", 0, p0=0x10, col=0xFFF0), D5G_NE("r8", 1, p1=0x30, col=0x11, row=9),
+    D5G_NE("l0", 0, p0=0x20, col=0x0E), D5G_NE("l1", 0, p0=0x20), D5G_NE("l2", 1, p1=0x20, row=0xF),
+    D5G_NE("l3", 1, p0=0x10, dc=0x28, col=0x17), D5G_NE("l4", 0, p0=0xA0, col=0x0B, row=9),
+    D5G_NE("u0", 0, p0=0x80, row=9), D5G_NE("u1", 1, p1=0x80), D5G_NE("u2", 0, p0=0x80, col=0x20, row=0xF),
+    D5G_NE("u3", 0, p0=0xC0, row=6, col=0x1D),
+    D5G_NE("w0", 0, p0=0x40), D5G_NE("w1", 1, p1=0x40, row=0xF, col=0x1D), D5G_NE("w2", 0, p0=0x40, row=0xC, col=0x20),
+    D5G_NE("w3", 0, p0=0x40, row=0xF, col=0x20),
+    # the blinking prompt by the frame word's low byte, the side's string and column
+    D5G_NE("b0", 0, frame=0x0020), D5G_NE("b1", 1, frame=0x0040), D5G_NE("b2", 1, frame=0x0120),
+    D5G_NE("b3", 0, frame=0xFF00), D5G_NE("b4", 0, frame=0x0010),
+    # the rank word and option bit 1: the two strings, or the two banner actors once
+    D5G_NE("k0", 0), D5G_NE("k1", 0, rank=5), D5G_NE("k2", 0, {0x2AE14: 0x0010B200}, cfg=2, a8=0),
+    D5G_NE("k3", 1, {0x2AE14: 0x0010B300}, rank=1, cfg=0xFF, a8=0), D5G_NE("k4", 0, cfg=2),
+    D5G_NE("k5", 0, rank=0x0100, cfg=0xFD),
+    # a letter: a face button of the side (0x0F), the cursor's cell
+    D5G_NE("t0", 0, p0=0x01, col=0x11, row=9, cnt=1),
+    D5G_NE("t1", 1, p1=0x08, col=0x1A, row=0xF, cnt=2),
+    D5G_NE("t2", 0, p0=0x02, col=0x1D, row=0xF, cnt=2, cells={1: 4}),
+    D5G_NE("t3", 0, p0=0x04, col=0x1D, row=0xF, cnt=3),
+    D5G_NE("t4", 0, p0=0x0F, col=0x1D, row=0xF, cnt=0),
+    D5G_NE("t5", 0, p0=0x01, col=0x1D, row=0xF, cnt=0x80),
+    D5G_NE("t6", 1, p1=0x01, col=0x20, row=0xF, cnt=2),
+    D5G_NE("t7", 0, p0=0x01, col=0x0E, cnt=3),
+    D5G_NE("t8", 0, p0=0x01, col=0x0E, cnt=0x80, lim=5),
+    D5G_NE("t9", 0, p1=0x0F, p0=0xF0, d8=1),
+    D5G_NE("ta", 1, p1=0x02, col=0x14, row=0xC, cnt=0, lim=1),
+    # a queued letter (read index != write index): the cursor jumps to it; DEL and END do not move it
+    D5G_NE("q0", 0, c8=3, bc=5, q={4: 0x10}, cnt=1),
+    D5G_NE("q1", 1, c8=0xF, bc=2, q={16: 0x1B}, cnt=2, cells={1: 0}),
+    D5G_NE("q2", 0, c8=0, bc=1, q={1: 0x1C}, cnt=4),
+    D5G_NE("q3", 0, c8=7, bc=9, q={8: 0x1A}, p0=0x01, cnt=0),
+    D5G_NE("q4", 0, c8=2, bc=3, q={3: 0xFFFFFFF9}, cnt=1),
+    D5G_NE("q5", 1, c8=5, bc=4, q={6: 0x06}, cnt=3, lim=3),
+]
+D5G_NE_MUTANTS = ("@nocells", "@tdec", "@tdiv", "@tnum", "@tw", "@finw", "@finside", "@finret", "@d8", "@padside",
+                  "@rep", "@repmod", "@repctr", "@rstep", "@rrow", "@runs", "@rx", "@rvoice", "@lstep", "@lrow",
+                  "@lcmp", "@ustep", "@uwrap", "@ucol20", "@uy", "@dstep", "@dwrap", "@dcol", "@grid", "@gridn",
+                  "@gridmode", "@score", "@str19", "@rank1", "@blink", "@blinkmode", "@blinkside", "@rankw", "@cfg",
+                  "@a8", "@a8store", "@spawnargs", "@face", "@queue", "@letter", "@qidx", "@qmask", "@qcur",
+                  "@delcnt", "@delcell", "@del9", "@deltimer", "@endz", "@endtimer", "@limit", "@space", "@seekarg",
+                  "@spawnxy", "@v9", "@cellstate", "@cellletter", "@cntinc", "@fullxy", "@ret")
+D5G_SPECS += [
+    # 0x1F458 nameentry_step: AL = the side (`mov [esp+4],al` 0x1F460: f2 has EAX = 0x100, r3
+    # 0xFFFFFF00, h1 the side 2, which is neither pad's). 0x1FFD0 (a stub); the timer word 0x10438C
+    # stepped down and drawn as its thirtieth (0x2F434(0x13, 0x1C, t / 0x1E, 2, 1, 0x4003)); at 0
+    # with the dword 0x1044AC 0, 0x20710(the side) and EAX = 0. Else, with the byte 0x1044D8 0, one
+    # cursor move (right, left, up, down, in that order; each by the side's pad bit or its
+    # autorepeat counter) with its two voices and the cursor record's +0x18 / +0x1C; the 28-cell
+    # grid (0x2F510, the dword 0x1044AC 0); the score and rank lines; the prompt every 32nd frame;
+    # the rank's two strings, or with option bit 1 the two banner actors once (0x2AE14, the handle
+    # kept at 0x1044A8 between the two calls: the memory at the second). Then a letter, from a
+    # face button of the side (the cursor's cell: 7 * ((row - 6) / 3) + (col - 0xB) / 3) or the
+    # queue 0x104458 (the entry after the read index, which is masked 0xF; the cursor follows a
+    # letter, not DEL 0x1B or END 0x1C): DEL steps the count back (signed: t5) and marks its cell,
+    # END terminates the name, a letter under the limit (signed bytes: t8) spawns its actor
+    # (0x2BCF4(the record 0x1044B0, 0x1E1) for the space 0x1A, else a blank cell), 0x2C3FC(0xE9),
+    # the cell's state and letter, and at the limit parks the cursor on END. 0x1C500 runs on both
+    # sides; the other nine callees are stubs. Full mask: `test eax,eax` after six of its eight
+    # call sites (0x1EF4B, 0x1EFDD, 0x1F03E, 0x1F0C8, 0x1F208, 0x1F32B).
+    Spec("nameentry_step", 0x1F458, D5G_NE_CASES, allow_calls=D1D_STR_ALLOW,
+         calls=(D5G_NECELLS, D2C_NUMSET, D5G_NEFINISH, VOICE, D2B_FONT2, D1B_HOLD, D4C_NUMDRAW, SPAWN, P6_2BCF4),
+         eax_mask=0xFFFFFFFF, mutants=D5G_NE_MUTANTS),
+]
+D1_SPECS += D5G_SPECS
+# ---- d5g end ----
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

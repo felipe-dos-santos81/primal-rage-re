@@ -627,6 +627,7 @@ void config_screen_wait(s32 n)
  * service-menu sites of record §K5.3, ported by K11 (svcmenu.c). */
 void config_screen_wait_zero(void)
 {
+    PR_SEAM0(0x2EA74u);
     config_screen_wait(0);                                  /* falls into 0x2EA78 */
 }
 
@@ -728,6 +729,7 @@ u32 config_input_poll(u32 mask, u8 flag)
  * on a non-zero result (0x2EEF2..0x2EEFB). Caller: 0x2FFC4 (0x303D2). */
 u32 config_input_poll_clear(u32 mask, u8 flag)
 {
+    PR_SEAM_RET(0x2EEC8u, mask, (u32)flag);
     u32 r = input_select_bits(mask);                        /* 0x2EED2 */
     if (flag != 0u) r |= config_key_flags(mask);            /* 0x2EEDB..0x2EEE8 */
     DSD(CFG_KEY_LATCH) = 0u;                                /* 0x2EEEC */
@@ -751,6 +753,7 @@ u32 config_input_poll_clear(u32 mask, u8 flag)
  * at 0x2000. Callers: 0x2FA40 (0x2FE2A) and 0x2FFC4 (0x305E2). */
 void config_code_row(s32 col, s32 row)
 {
+    PR_SEAM(0x305FCu, (u32)col, (u32)row);
     if (DSB(CFG_CODE_BASE + 3u) != 0u) {                    /* 0x3061D */
         u32 text = CFG_CODE_BASE + 0xDu;                    /* 0x30625..0x30631 */
         text_cursor_set(col, row, mem + text, 0x1000u);     /* 0x30638 */

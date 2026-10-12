@@ -762,6 +762,14 @@ _CALLEE_CLOBBER_FIXES[0x396AC] = ("edx",)
 # raw caller 0x4E67C keeps the next list node in EDI across the call (0x4E730 `mov edi,[ebx]`; call
 # 0x4E8EE; 0x4E8F3 `mov ebx,edi`).
 _CALLEE_CLOBBER_FIXES[0x49444] = ()
+# D5 d5g (record 2026-10-12-reverse-d5g section 2): 0x2EA74 is `xor eax,eax; mov eax,eax` with no `ret`: it
+# falls into 0x2EA78, whose own leading `push ebx; push ecx; push edx; push esi` (0x2EA78..0x2EA7B) the
+# scan cannot credit to the entry two instructions above it, so it reports every register. Its raw
+# callers keep all six live across the call: 0x2FFC4 loads EBX before it (0x2FFE7 `mov ebx,0xfffffffe`)
+# and stores it after (0x30017), and reads EDI (0x30086 `mov eax,[edi+8]`), ESI (0x30094 `add edi,esi`)
+# and EBP (0x300BB `mov eax,ebp`) after the call at 0x2FFF1; 0x2FA40 loads EDX, EBX and ECX before the
+# call at 0x2FA61 (0x2FA4E..0x2FA58) and stores them after (0x2FA72, 0x2FA76, 0x2FA7D).
+_CALLEE_CLOBBER_FIXES[0x2EA74] = ()
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --

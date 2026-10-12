@@ -88,6 +88,7 @@ void menu_debug_lines(u32 row)
 /* 0x2FE84 — record §49-X. */
 void menu_title_draw(u32 entry, u32 mode_a, u32 mode_b, u32 flags)
 {
+    PR_SEAM(0x2FE84u, entry, mode_a, mode_b, flags);
     u8 buf[0x30];
     frontend_input_reset();                                 /* 0x2FE96 0x4F1E4 */
     actors_reset();                                         /* 0x2FEA4 0x2BAF4 (eax = 1) */
