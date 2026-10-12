@@ -551,7 +551,7 @@ void frontend_mode12_advance(void)
  * 8 call sites across the image, none observable); then, when
  * DS_00108104[r] == 7, frontend_mode12_advance(), else
  * frontend_darken_marked(). EBX/EDX pushed and popped. */
-static void frontend_mode12_darken_or_tally(void)
+void frontend_mode12_darken_or_tally(void)
 {
     PR_SEAM0(0x416D4u);
     if (DSD(DS_00104AD4) == 2u) {                           /* 0x416DC/0x416DF */
@@ -564,7 +564,8 @@ static void frontend_mode12_darken_or_tally(void)
      * The original's EAX/EDX build (DS_0010782A[r^1] and DS_0010782A[r])
      * feeds only this no-op call, so the port drops the dead computation
      * too. */
-    if (DSB(DS_00108104 + r) == 7u) {                       /* 0x41738..0x4174B */
+    r = DSD(DS_00104AD4);                                   /* 0x41738: read again after 0x4660C */
+    if (DSB(DS_00108104 + r) == 7u) {                       /* 0x4173D..0x4174B */
         frontend_mode12_advance();                          /* 0x4174D 0x4160C */
         return;
     }
@@ -998,6 +999,7 @@ void frontend_char_screen_hook_voice(void)
  * gate DS_001088F4 = 1 and 1 returns. */
 u32 frontend_wipe_in(void)
 {
+    PR_SEAM_RET0(0x4F9E4u);
     if (DSD(DS_000C98F0) == 0u) {                       /* 0x4F9EE */
         DSD(DS_000C98F0) = actor_spawn((const u32 *)(mem + DS_000C98F4),
                                        0u, 0xFFu, 0u, 0u);  /* 0x4F9FF/0x4FA04 */

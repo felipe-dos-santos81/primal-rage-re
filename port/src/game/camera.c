@@ -1502,6 +1502,7 @@ int camera_point_side(u32 side, s32 x, s32 y, u32 tall)
  * 0/1's hit. DS_00100B08/B0C/B00/B04 and the two flip bytes are restored. */
 u32 camera_point_hit(s32 x, s32 y, u32 tall)
 {
+    PR_SEAM_RET(0x17D30u, (u32)x, (u32)y, tall);
     u32 s08 = DSD(DS_00100B08), s0c = DSD(DS_00100B0C);         /* 0x17D3D..0x17D4C */
     u32 s00 = DSD(DS_00100B00), s04 = DSD(DS_00100B04);         /* 0x17D50..0x17D60 */
     s32 px = (s32)(s16)x / 64 - 0x18;                          /* 0x17D64..0x17D88 */

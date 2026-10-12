@@ -553,6 +553,8 @@ void flow_winner_pose_step(void);
  * confirmed by raw `read_memory` — its 8 call sites across the image
  * (including 0x41733) are all no-ops. */
 void game_mode_12_step(void);
+/* 0x416D4: exposed for the differential row (record 2026-10-12-reverse-d5d). */
+void frontend_mode12_darken_or_tally(void);
 
 /* Record §48-D, mode 0x13 (the challenge screen after a match). 0x424E8,
  * game_frame's case 0x13, steps DS_00104B25: 0 the actors (0x428B8), 1 the

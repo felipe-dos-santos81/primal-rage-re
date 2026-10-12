@@ -533,6 +533,10 @@ void fight_4aad0(u32 entry, u32 index);
 /* 0x4B470 — demo-pose record §29, §42-C. The trample. EAX = entry, EDX = si;
  * exported for its differential row (track D3 d3b). */
 void fight_4b470(u32 entry, u32 index);
+/* 0x4B69C and 0x4E5A4: exported for their differential rows (track D5 d5d,
+ * record 2026-10-12-reverse-d5d). */
+void fight_4b69c(u32 entry, u32 index);
+void fight_4e5a4(u32 node, u32 idx);
 
 /* 0x4D224 — demo-pose record §43-A. The mode-0x22 pass's handler for types 0,
  * 7 and above 8. EAX = entry, EDX = si; exported for its differential row

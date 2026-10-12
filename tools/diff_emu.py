@@ -78,6 +78,11 @@ FLAT_GDT = STACK_LOW          # the two descriptors, at the bottom of the privat
 # reaches, saves and loads ES (0x6C8ED `push es`, 0x6C94E `les edx,[ecx-8]`, 0x6CA21 `mov es,edx`, 0x6CB68
 # `pop es`). A row that allows it runs under the same flat descriptors.
 FLAT_SEGMENT_CALLEES |= {0x6C8EB}
+# D5 d5d (record 2026-10-12-reverse-d5d §2): the runtime memmove 0x653A1 loads ES from DS on both of its
+# copy arms (0x653BB `mov edx,ds`, 0x653BD `push es`, 0x653BE `mov es,edx`; the same at 0x653D5..0x653DA) and
+# pops it back. Without the flat descriptors its `ret` pops through a 16-bit stack (the run stopped `int3 at
+# 0x10000`). No row before this batch names 0x653A1.
+FLAT_SEGMENT_CALLEES |= {0x653A1}
 
 
 def flat_segments(mu):
@@ -591,6 +596,11 @@ RESOLVED_JUMPS[0x41C61] = (0x41C36, 0x41C04, 9)
 # 0x208F8 (track D5 batch d5a, record 2026-10-12-reverse-d5a §4): cmp dl,4; ja; xor eax,eax; mov al,dl;
 # jmp cs:[eax*4+0x208e4] (the guard compares DL, the index is the EAX the next two instructions build from it)
 RESOLVED_JUMPS[0x20931] = (0x20924, 0x208E4, 5)
+
+# 0x4C60C (track D5 batch d5d, record 2026-10-12-reverse-d5d §2): the character byte is saved at [esp]
+# (0x4C678 `mov [esp],al`) and read back for the index: cmp al,6; ja; xor eax,eax; mov al,[esp]; shl eax,2;
+# jmp cs:[eax+0x4c5f0]
+RESOLVED_JUMPS[0x4C687] = (0x4C67B, 0x4C5F0, 7)
 
 
 def resolved_cases(image, entry):
