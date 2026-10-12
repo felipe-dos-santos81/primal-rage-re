@@ -2188,14 +2188,15 @@ int fight_position_gate(u32 rec)
 static void fight_health_sync(u32 side)
 {
     u32 rec = DSD(DS_001077A8 + side * 4u);     /* 0x34B73 */
+    u32 fighter;
     if (rec == 0) return;                       /* 0x34B7C */
-    if (DSD(rec) == 0) return;                  /* 0x34B82/0x34B86 */
+    fighter = DSD(rec);                         /* 0x34B82 mov esi,[ecx]: read once, before the gate */
+    if (fighter == 0) return;                   /* 0x34B84/0x34B86 */
 
     if ((fight_position_gate(rec) & 0xFF) != 0) {   /* 0x34B8E 0x36E2C, 0x34B93 test al,al */
-        u32 fighter = DSD(rec);
         s32 x = ((DSW(fighter + 0x28u) >> 8 & 0x40u) != 0u)
-              ? (s32)DSD(fighter + 0x18u) + 0x3000
-              : (s32)DSD(fighter + 0x18u) - 0x3000;
+              ? (s32)DSD(DSD(rec) + 0x18u) + 0x3000   /* 0x34BB4 mov eax,[ecx]: the slot read again */
+              : (s32)DSD(DSD(rec) + 0x18u) - 0x3000;  /* 0x34BA7 mov edx,[ecx] */
         if (x < (s32)DSD(DS_000BE018) && x > -(s32)DSD(DS_000BE018)) {
             /* 0x34BE8 0x36F10 (record §50-A), the in-range arm. The gate's
              * slot +0x42 bit 0x10 has one raw setter, 0x36E78's `or
@@ -2215,20 +2216,20 @@ static void fight_health_sync(u32 side)
         fighter_state_default(side);
         break;
     case 1u:                                    /* 0x34C15 -> 0x359E0 */
-        fighter_state_359e0(rec, DSD(rec), side);
+        fighter_state_359e0(rec, fighter, side);
         break;
     case 2u:                                    /* 0x34C26 -> 0x35C1C/0x35D20 */
-        if (fighter_state_35c1c(rec, DSD(rec)) != 0)
-            fighter_state_35d20(rec, DSD(rec));
+        if (fighter_state_35c1c(rec, fighter) != 0)
+            fighter_state_35d20(rec, fighter);
         break;
     case 3u:                                    /* 0x34C46 -> 0x35D7C */
         fighter_state_35d7c(side);
         break;
     case 4u:                                    /* 0x34C53 -> 0x35F84 */
-        fighter_state_35f84(rec, DSD(rec));
+        fighter_state_35f84(rec, fighter);
         break;
     case 5u:                                    /* 0x34C62 -> 0x36430 */
-        fighter_state_36430(rec, DSD(rec), side);
+        fighter_state_36430(rec, fighter, side);
         break;
     case 6u:                                    /* 0x34C73 -> 0x1A978 */
         fight_stance_pass(side);
@@ -2243,13 +2244,13 @@ static void fight_health_sync(u32 side)
     case 9u: case 10u: case 11u: case 14u: case 15u: case 16u:
         break;
     case 12u:                                   /* 0x34C9A -> 0x361C8 */
-        fighter_state_361c8(rec, DSD(rec));
+        fighter_state_361c8(rec, fighter);
         break;
     case 13u:                                   /* 0x34CA9 -> 0x36300 */
-        fighter_state_36300(rec, DSD(rec));
+        fighter_state_36300(rec, fighter);
         break;
     case 17u:                                   /* 0x34CB8 -> 0x36710 */
-        fighter_state_36710(rec, DSD(rec));
+        fighter_state_36710(rec, fighter);
         break;
     case 18u:                                   /* 0x34CC7 inline + 0x3BDDC/0x18B04 */
         /* Record §E.1 (2026-09-30-named-gaps-e-derivations.md). The command
@@ -2282,10 +2283,10 @@ static void fight_health_sync(u32 side)
         }
         break;
     case 20u:                                   /* 0x34D69 -> 0x35E6C */
-        fighter_state_35e6c(rec, DSD(rec));
+        fighter_state_35e6c(rec, fighter);
         break;
     case 21u:                                   /* 0x34D78 -> 0x364FC */
-        fighter_state_364fc(rec, DSD(rec), side);
+        fighter_state_364fc(rec, fighter, side);
         break;
     default:                                    /* >0x15 -> 0x34C08 0x349C8 */
         fighter_state_default(side);
