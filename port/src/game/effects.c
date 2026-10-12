@@ -169,6 +169,7 @@ u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
  * step body to darken to zero. The handle is read from the source record. */
 u32 effects_spawn_darken(u32 source_rec, u32 byte_arg)
 {
+    PR_SEAM_RET(0x13D4Cu, source_rec, byte_arg);
     u32 rec = effect_take_free();
     if (rec == 0) return 0;
     /* PORT: the raw dereferences [source_rec] for the handle (0x13D86);

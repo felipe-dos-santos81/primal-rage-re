@@ -21879,6 +21879,57 @@ D3E_SPECS += [
        mutants=("@eaxflag", "@flagbit", "@flagctx", "@nostance", "@stanceself", "@animside", "@67other", "@no67", "@dispside", "@eaxdisp", "@8aself", "@no8a", "@b54", "@swap", "@ecx", "@noad98", "@2bd44rec", "@norow60", "@nohook", "@hookslot", "@hooknoclr", "@hookclr", "@a48self", "@no5", "@36d20slot", "@c5no18", "@c5no1c", "@no8", "@c8side", "@no18b04", "@f40args", "@x28", "@a06zext", "@a06off", "@st0", "@st5", "@vnodec", "@vge", "@no3b080", "@midno18", "@midno1c", "@no41", "@64self", "@no64")),
 ]   # D3E_SPECS end
 D1_SPECS += D3E_SPECS
+# ---- track D4 batch d4a (record 2026-10-12-reverse-d4a): game/flow.c ----
+D4A_DARKEN = E.Call(0x13D4C, ("eax", "edx"), clobbers=("edx",))
+
+
+def d4a_dm_case(entries, abc, b19):
+    """0x41578: the front-end list (d2c_list_pokes), the dword 0x104ABC and the byte 0x104B19 each
+    between seeded neighbours, and the five stored fields with seeds that differ from what is
+    stored (words 0x104AFA = 0x5A5A, 0x104AFE = 0x5B5B, 0x104B00 = 0x5C5C around the untouched
+    0x104AFC and 0x104B02; word 0x1088EE = 0x5D5D; byte 0x104B25 = 0x5A)."""
+    p = d2c_list_pokes(entries)
+    p.update({0x00104AB8: le32(0x63636363) + le32(abc) + le32(0x64646464),
+              0x00104B18: bytes([0x61, b19, 0x62]),
+              0x00104AFA: le16(0x5A5A) + le16(0x7171) + le16(0x5B5B) + le16(0x5C5C) + le16(0x7272),
+              0x001088EC: le16(0x7373) + le16(0x5D5D) + le16(0x7474),
+              0x00104B24: bytes([0x65, 0x5A, 0x66])})
+    return p
+
+
+D4A_SPECS = [
+    # 0x41578 frontend_darken_marked: no argument. Every live list entry (0x33904, real on both
+    # sides: a leaf with its own row) whose +0 dword is 0x3E688 or 0x88874B0 gets 0x13D4C(entry, 2);
+    # then 0x32A3C(the dword 0x104ABC, the byte 0x104B19 zero-extended), the voice 0x33, and the
+    # stores 0x104AFE = 0x78 (DX), 0x1088EE = 0 (BX), 0x104AFA = 0x13 (CX), 0x104B00 = 0x15 (SI)
+    # as words and the byte 0x104B25 = 0 (AH after `xor ah,ah`: k1/k2 return AH set from the
+    # voice). 0x13D4C (seamed here, no row), 0x32A3C and 0x2C3FC are stubs. k2 holds the near
+    # misses (one bit off, the upper byte dropped or set). Mask 0: record §1.
+    Spec("frontend_darken_marked", 0x41578, [
+        Case("k0", {"ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468},
+             d4a_dm_case({}, 1, 0)),
+        Case("k1", {}, d4a_dm_case({0x00107618: (0x0003E688, 1), 0x00107628: (0x088874B0, 1),
+                                    0x00107638: (0x12345678, 1), 0x00107648: (0x0003E688, 0),
+                                    0x00107788: (0x088874B0, 0x80000000)}, 0xFFFFFFFC, 0x80),
+             {0x13D4C: 0x00000100, 0x2C3FC: 0xFFFFFFFF}),
+        Case("k2", {}, d4a_dm_case({0x00107618: (0x0003E689, 1), 0x00107628: (0x0003E687, 1),
+                                    0x00107638: (0x088874B1, 1), 0x00107648: (0x1003E688, 1),
+                                    0x00107658: (0x008874B0, 1), 0x00107668: (0x8003E688, 1),
+                                    0x00107678: (0x000874B0, 1), 0x00107788: (0x0003E688, 1)}, 2, 1),
+             {0x2C3FC: 0x00005500}),
+        Case("k3", {}, d4a_dm_case({0x00107618: (0x088874B0, 1), 0x00107628: (0x00000000, 1),
+                                    0x00107638: (0x088874B0, 0x100)}, 0x12345678, 0xFF),
+             {0x13D4C: 0xFFFFFFFF, 0x32A3C: 0x12345678}),
+        Case("k4", {}, d4a_dm_case({0x00107618: (0x0003E688, 0x100), 0x00107628: (0x22222222, 1)}, 0, 2)),
+    ], allow_calls=(0x33904,), calls=(D4A_DARKEN, D2E_M12_CLOSE, VOICE), eax_mask=0,
+       mutants=("@h1", "@h2", "@all", "@hw", "@off", "@arg", "@argh", "@nodarken", "@first", "@mode", "@modesrc",
+                "@flagsext", "@flagw", "@swap", "@noclose", "@closeearly", "@voice", "@novoice", "@order", "@afe",
+                "@afeb", "@noafe", "@ee", "@eeb", "@noee", "@afa", "@afab", "@noafa", "@b00", "@b00b", "@nob00",
+                "@b25", "@nob25", "@b25w", "@early", "@mid")),
+]   # D4A_SPECS end
+D1_SPECS += D4A_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

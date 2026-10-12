@@ -15842,6 +15842,96 @@ D1_KINDS.update(D3E_KINDS)
 D1_CASES.extend(D3E_CASES)
 
 
+# ---- track D4 batch d4a (record 2026-10-12-reverse-d4a): measured, the C3G form ----
+D4A_MASKS = {
+    "frontend_darken_marked": 0x0,
+}
+D4A_KINDS = {
+    "frontend_darken_marked@h1": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4'},
+    "frontend_darken_marked@h2": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4'},
+    "frontend_darken_marked@all": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "frontend_darken_marked@hw": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
+    "frontend_darken_marked@off": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4'},
+    "frontend_darken_marked@arg": {'call #0', 'call #1', 'call #2'},
+    "frontend_darken_marked@argh": {'call #0', 'call #1', 'call #2'},
+    "frontend_darken_marked@nodarken": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4'},
+    "frontend_darken_marked@first": {'call #1', 'call #2', 'call #3', 'call #4'},
+    "frontend_darken_marked@mode": {'call #2', 'call #3'},
+    "frontend_darken_marked@modesrc": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "frontend_darken_marked@flagsext": {'call #2', 'call #3'},
+    "frontend_darken_marked@flagw": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "frontend_darken_marked@swap": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "frontend_darken_marked@noclose": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4'},
+    "frontend_darken_marked@closeearly": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "frontend_darken_marked@voice": {'call #1', 'call #2', 'call #3', 'call #4'},
+    "frontend_darken_marked@novoice": {'call #1', 'call #2', 'call #3', 'call #4'},
+    "frontend_darken_marked@order": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4'},
+    "frontend_darken_marked@afe": {'byte'},
+    "frontend_darken_marked@afeb": {'byte'},
+    "frontend_darken_marked@noafe": {'byte'},
+    "frontend_darken_marked@ee": {'byte'},
+    "frontend_darken_marked@eeb": {'byte'},
+    "frontend_darken_marked@noee": {'byte'},
+    "frontend_darken_marked@afa": {'byte'},
+    "frontend_darken_marked@afab": {'byte'},
+    "frontend_darken_marked@noafa": {'byte'},
+    "frontend_darken_marked@b00": {'byte'},
+    "frontend_darken_marked@b00b": {'byte'},
+    "frontend_darken_marked@nob00": {'byte'},
+    "frontend_darken_marked@b25": {'byte'},
+    "frontend_darken_marked@nob25": {'byte'},
+    "frontend_darken_marked@b25w": {'byte'},
+    "frontend_darken_marked@early": {'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "frontend_darken_marked@mid": {'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+}
+D4A_CASES = [
+    ("frontend_darken_marked@h1", ['k1', 'k3']),
+    ("frontend_darken_marked@h2", ['k1', 'k2', 'k4']),
+    ("frontend_darken_marked@all", ['k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@hw", ['k2']),
+    ("frontend_darken_marked@off", ['k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@arg", ['k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@argh", ['k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@nodarken", ['k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@first", ['k1', 'k3']),
+    ("frontend_darken_marked@mode", ['k1', 'k3']),
+    ("frontend_darken_marked@modesrc", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@flagsext", ['k1', 'k3']),
+    ("frontend_darken_marked@flagw", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@swap", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@noclose", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@closeearly", ['k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@voice", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@novoice", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@order", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@afe", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@afeb", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@noafe", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@ee", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@eeb", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@noee", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@afa", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@afab", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@noafa", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@b00", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@b00b", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@nob00", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@b25", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@nob25", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@b25w", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@early", ['k0', 'k1', 'k2', 'k3', 'k4']),
+    ("frontend_darken_marked@mid", ['k0', 'k1', 'k2', 'k3', 'k4']),
+]
+# the reads past the image's end of the rows that index a slot by the byte 0x80 (zero-extended: 0x80 *
+# 0x94 above the slots; inside mem[], zero on both sides), for test_every_ported_function_agrees...
+D4A_OUTSIDE = {
+}
+P45_OUTSIDE.update(D4A_OUTSIDE)
+D1_MASKS.update(D4A_MASKS)
+D1_KINDS.update(D4A_KINDS)
+D1_CASES.extend(D4A_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -16901,6 +16991,8 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # D4 d4a (record 2026-10-12-reverse-d4a): the stubs its rows add
+        0x13D4C: ("edx",),
         # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
         0x19820: (), 0x1D764: (), 0x1D810: ("esi", "edi", "ebp"), 0x1D890: (), 0x1DAE8: (), 0x1DC6C: (), 0x20EF8: (), 0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x29CBC: ("edx",), 0x2C060: (), 0x2C0F4: ("ebx", "ecx", "edx", "ebp"), 0x2C178: ("edx", "ebp"), 0x2C1C8: ("ebx", "ecx", "edx", "esi", "edi"), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA48: (), 0x2CA78: (), 0x2CA7C: (), 0x2CAA8: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (), 0x4F790: (), 0x4FA88: ("edi", "ebp"),
         # D3 d3b (record 2026-10-12-reverse-d3b): the stubs its rows add

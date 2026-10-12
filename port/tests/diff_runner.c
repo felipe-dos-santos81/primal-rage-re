@@ -30474,6 +30474,67 @@ D3E_TS_MUT(c8side, 29u)   D3E_TS_MUT(no18b04, 30u)  D3E_TS_MUT(f40args, 31u)  D3
 D3E_TS_MUT(a06zext, 33u)  D3E_TS_MUT(a06off, 34u)   D3E_TS_MUT(st0, 35u)      D3E_TS_MUT(st5, 36u)
 D3E_TS_MUT(vnodec, 37u)   D3E_TS_MUT(vge, 38u)      D3E_TS_MUT(no3b080, 39u)  D3E_TS_MUT(midno18, 40u)
 D3E_TS_MUT(midno1c, 41u)  D3E_TS_MUT(no41, 42u)     D3E_TS_MUT(s64self, 43u)  D3E_TS_MUT(no64, 44u)
+/* ---- track D4 batch d4a (record 2026-10-12-reverse-d4a): game/flow.c ---- */
+/* 0x41578: no argument. Mask 0: the four call sites (0x41755 in 0x416D4; 0x41DE6, 0x42337, 0x42352 in
+ * 0x41C28) go straight to their pops and `ret`; 0x416D4's one site 0x420FE does too, and 0x41C28's EAX is
+ * dead (d2e record §1). The raw returns 0x2C3FC's EAX with AH cleared (`xor ah,ah` 0x415F6). */
+static void b_d4a_41578(const u32 *r, u32 *eax) { (void)r; frontend_darken_marked(); *eax = 0u; }
+enum { D4A_DM_NONE, D4A_DM_h1, D4A_DM_h2, D4A_DM_all, D4A_DM_hw, D4A_DM_off, D4A_DM_arg, D4A_DM_argh,
+       D4A_DM_nodarken, D4A_DM_first, D4A_DM_mode, D4A_DM_modesrc, D4A_DM_flagsext, D4A_DM_flagw, D4A_DM_swap,
+       D4A_DM_noclose, D4A_DM_closeearly, D4A_DM_voice, D4A_DM_novoice, D4A_DM_order, D4A_DM_afe, D4A_DM_afeb,
+       D4A_DM_noafe, D4A_DM_ee, D4A_DM_eeb, D4A_DM_noee, D4A_DM_afa, D4A_DM_afab, D4A_DM_noafa, D4A_DM_b00,
+       D4A_DM_b00b, D4A_DM_nob00, D4A_DM_b25, D4A_DM_nob25, D4A_DM_b25w, D4A_DM_early, D4A_DM_mid };
+static void d4a_41578_tail(u32 mut)
+{
+    if (mut == D4A_DM_afeb) DSB(0x00104AFEu) = 0x78u;
+    else if (mut != D4A_DM_noafe) DSW(0x00104AFEu) = (mut == D4A_DM_afe) ? 0x79u : 0x78u;
+    if (mut == D4A_DM_eeb) DSB(0x001088EEu) = 0u;
+    else if (mut != D4A_DM_noee) DSW(0x001088EEu) = (mut == D4A_DM_ee) ? 1u : 0u;
+    if (mut == D4A_DM_afab) DSB(0x00104AFAu) = 0x13u;
+    else if (mut != D4A_DM_noafa) DSW(0x00104AFAu) = (mut == D4A_DM_afa) ? 0x14u : 0x13u;
+    if (mut == D4A_DM_b00b) DSB(0x00104B00u) = 0x15u;
+    else if (mut != D4A_DM_nob00) DSW(0x00104B00u) = (mut == D4A_DM_b00) ? 0x16u : 0x15u;
+    if (mut == D4A_DM_b25w) DSW(0x00104B25u) = 0u;
+    else if (mut != D4A_DM_nob25) DSB(0x00104B25u) = (mut == D4A_DM_b25) ? 1u : 0u;
+}
+static void d4a_41578_close(u32 mut)
+{
+    u32 mode = (mut == D4A_DM_mode) ? DSB(0x00104ABCu) : (mut == D4A_DM_modesrc) ? DSD(0x00104AB8u) : DSD(0x00104ABCu);
+    u32 flag = (mut == D4A_DM_flagsext) ? (u32)(s32)(s8)DSB(0x00104B19u) : (mut == D4A_DM_flagw) ? DSW(0x00104B19u)
+                                                                        : DSB(0x00104B19u);
+    if (mut == D4A_DM_swap) config_play_time_close(flag, mode);
+    else if (mut != D4A_DM_noclose) config_play_time_close(mode, flag);
+}
+static void d4a_41578_core(u32 mut)
+{
+    if (mut == D4A_DM_closeearly) d4a_41578_close(mut);
+    u32 e = frontend_list_next(0u);
+    while (e != 0u) {
+        u32 h = DSD(e + ((mut == D4A_DM_off) ? 8u : 0u));
+        if (mut == D4A_DM_hw) h &= 0x00FFFFFFu;
+        int a = (h == 0x0003E688u), b = (h == ((mut == D4A_DM_hw) ? 0x008874B0u : 0x088874B0u));
+        if ((mut == D4A_DM_h1) ? a : (mut == D4A_DM_h2) ? b : (mut == D4A_DM_all) ? 1 : (a || b)) {
+            if (mut != D4A_DM_nodarken)
+                (void)effects_spawn_darken((mut == D4A_DM_argh) ? h : e, (mut == D4A_DM_arg) ? 3u : 2u);
+            if (mut == D4A_DM_first) break;
+        }
+        e = frontend_list_next(e);
+    }
+    if (mut == D4A_DM_early) d4a_41578_tail(mut);
+    if (mut == D4A_DM_order) (void)sound_voice(0x33u);
+    if (mut != D4A_DM_closeearly) d4a_41578_close(mut);
+    if (mut == D4A_DM_mid) d4a_41578_tail(mut);
+    if (mut != D4A_DM_novoice && mut != D4A_DM_order) (void)sound_voice((mut == D4A_DM_voice) ? 0x34u : 0x33u);
+    if (mut != D4A_DM_early && mut != D4A_DM_mid) d4a_41578_tail(mut);
+}
+#define D4A_DM_MUT(name) \
+    static void m_d4a_dm_##name(const u32 *r, u32 *eax) { (void)r; d4a_41578_core(D4A_DM_##name); *eax = 0u; }
+D4A_DM_MUT(h1) D4A_DM_MUT(h2) D4A_DM_MUT(all) D4A_DM_MUT(hw) D4A_DM_MUT(off) D4A_DM_MUT(arg) D4A_DM_MUT(argh)
+D4A_DM_MUT(nodarken) D4A_DM_MUT(first) D4A_DM_MUT(mode) D4A_DM_MUT(modesrc) D4A_DM_MUT(flagsext) D4A_DM_MUT(flagw)
+D4A_DM_MUT(swap) D4A_DM_MUT(noclose) D4A_DM_MUT(closeearly) D4A_DM_MUT(voice) D4A_DM_MUT(novoice) D4A_DM_MUT(order)
+D4A_DM_MUT(afe) D4A_DM_MUT(afeb) D4A_DM_MUT(noafe) D4A_DM_MUT(ee) D4A_DM_MUT(eeb) D4A_DM_MUT(noee) D4A_DM_MUT(afa)
+D4A_DM_MUT(afab) D4A_DM_MUT(noafa) D4A_DM_MUT(b00) D4A_DM_MUT(b00b) D4A_DM_MUT(nob00) D4A_DM_MUT(b25)
+D4A_DM_MUT(nob25) D4A_DM_MUT(b25w) D4A_DM_MUT(early) D4A_DM_MUT(mid)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39075,6 +39136,43 @@ static const binding_t k_bindings[] = {
     { "fighter_think_side@no41",             m_d3e_ts_no41, 0x00000000u },
     { "fighter_think_side@64self",           m_d3e_ts_s64self, 0x00000000u },
     { "fighter_think_side@no64",             m_d3e_ts_no64, 0x00000000u },
+    { "frontend_darken_marked", b_d4a_41578, 0x00000000u },
+    { "frontend_darken_marked@h1", m_d4a_dm_h1, 0x00000000u },
+    { "frontend_darken_marked@h2", m_d4a_dm_h2, 0x00000000u },
+    { "frontend_darken_marked@all", m_d4a_dm_all, 0x00000000u },
+    { "frontend_darken_marked@hw", m_d4a_dm_hw, 0x00000000u },
+    { "frontend_darken_marked@off", m_d4a_dm_off, 0x00000000u },
+    { "frontend_darken_marked@arg", m_d4a_dm_arg, 0x00000000u },
+    { "frontend_darken_marked@argh", m_d4a_dm_argh, 0x00000000u },
+    { "frontend_darken_marked@nodarken", m_d4a_dm_nodarken, 0x00000000u },
+    { "frontend_darken_marked@first", m_d4a_dm_first, 0x00000000u },
+    { "frontend_darken_marked@mode", m_d4a_dm_mode, 0x00000000u },
+    { "frontend_darken_marked@modesrc", m_d4a_dm_modesrc, 0x00000000u },
+    { "frontend_darken_marked@flagsext", m_d4a_dm_flagsext, 0x00000000u },
+    { "frontend_darken_marked@flagw", m_d4a_dm_flagw, 0x00000000u },
+    { "frontend_darken_marked@swap", m_d4a_dm_swap, 0x00000000u },
+    { "frontend_darken_marked@noclose", m_d4a_dm_noclose, 0x00000000u },
+    { "frontend_darken_marked@closeearly", m_d4a_dm_closeearly, 0x00000000u },
+    { "frontend_darken_marked@voice", m_d4a_dm_voice, 0x00000000u },
+    { "frontend_darken_marked@novoice", m_d4a_dm_novoice, 0x00000000u },
+    { "frontend_darken_marked@order", m_d4a_dm_order, 0x00000000u },
+    { "frontend_darken_marked@afe", m_d4a_dm_afe, 0x00000000u },
+    { "frontend_darken_marked@afeb", m_d4a_dm_afeb, 0x00000000u },
+    { "frontend_darken_marked@noafe", m_d4a_dm_noafe, 0x00000000u },
+    { "frontend_darken_marked@ee", m_d4a_dm_ee, 0x00000000u },
+    { "frontend_darken_marked@eeb", m_d4a_dm_eeb, 0x00000000u },
+    { "frontend_darken_marked@noee", m_d4a_dm_noee, 0x00000000u },
+    { "frontend_darken_marked@afa", m_d4a_dm_afa, 0x00000000u },
+    { "frontend_darken_marked@afab", m_d4a_dm_afab, 0x00000000u },
+    { "frontend_darken_marked@noafa", m_d4a_dm_noafa, 0x00000000u },
+    { "frontend_darken_marked@b00", m_d4a_dm_b00, 0x00000000u },
+    { "frontend_darken_marked@b00b", m_d4a_dm_b00b, 0x00000000u },
+    { "frontend_darken_marked@nob00", m_d4a_dm_nob00, 0x00000000u },
+    { "frontend_darken_marked@b25", m_d4a_dm_b25, 0x00000000u },
+    { "frontend_darken_marked@nob25", m_d4a_dm_nob25, 0x00000000u },
+    { "frontend_darken_marked@b25w", m_d4a_dm_b25w, 0x00000000u },
+    { "frontend_darken_marked@early", m_d4a_dm_early, 0x00000000u },
+    { "frontend_darken_marked@mid", m_d4a_dm_mid, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
