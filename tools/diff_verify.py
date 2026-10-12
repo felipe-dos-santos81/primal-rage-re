@@ -24444,6 +24444,63 @@ D4D_SPECS += [
          mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
 ]
 D1_SPECS += D4D_SPECS
+# ---- track D5 batch d5g (record 2026-10-12-reverse-d5g) ----
+D5G_SPECS = []
+D5G_REC = 0x0010A000                                # zero BSS: the record a 0x2DBC4 stub returns
+D5G_DUE = E.Call(0x1E988, ())
+D5G_FSET = E.Call(0x2DA0C, ("eax", "edx"), clobbers=("edx",))
+D5G_FILL = E.Call(0x1E918, ("eax",))
+D5G_INSERT = E.Call(0x2DCA0, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+
+
+def d5g_hi_case(flags, value):
+    """0x1E824: the three 0x24-byte name buffers (0x104367, 0x104407, 0x1042C7) seeded with bytes
+    that are not 0x20, each between two sentinel bytes; the dword 0x104528 (its byte 1 = `flags`)
+    between seeded dwords; the record the 0x2DBC4 stub returns, its first dword = `value`."""
+    buf = lambda k: bytes([0xE0 + k]) + bytes(0x41 + k * 0x30 + i for i in range(0x24)) + bytes([0xF0 + k])
+    return {0x00104366: buf(0), 0x00104406: buf(1), 0x001042C6: buf(2),
+            0x00104524: le32(0x24252627) + bytes([0x78, flags, 0x34, 0x12]) + le32(0x2C2D2E2F),
+            D5G_REC - 4: le32(0xFCFDFEFF) + le32(value) + le32(0x04050607)}
+
+
+D5G_HI_MUTANTS = ("@len", "@stride", "@fill", "@no2c7", "@late", "@eax", "@ne0", "@no20", "@no40", "@bits",
+                  "@dueearly", "@fsw", "@fval", "@force", "@noclr", "@clrw", "@mask", "@f29", "@stale", "@rdargs",
+                  "@nord", "@chk", "@rbyte", "@inv", "@nochk", "@iargs", "@isrc", "@order", "@ret40")
+D5G_SPECS += [
+    # 0x1E824 hiscore_init: no argument. The two 0x24-byte buffers 0x104367 + 0xA0k and the one at
+    # 0x1042C7 are blanked (0x20) before any call (the memory at the first call). Then the byte
+    # 0x104529: bit 0x40 (0x1E875), or bit 0x20 (0x1E87A) and 0x1E988's AL == 1 (`and eax,0xff; cmp
+    # eax,1` 0x1E884/0x1E889: r1 has stub EAX 0x101, r2 0xFFFFFF01, n3 0x100, n4 2) takes the reset
+    # arm: 0x2DA0C(0x27, 0), 0x2DA0C(0x26, 0), 0x1E918(1), then the byte re-read (0x1E8B0); bit 0x40
+    # clear returns (r0..r2), set clears it in the byte alone (`mov [0x104529],bl` 0x1E8C0), then
+    # 0x2DA0C(0x29, the dword 0x104528), 0x2DBC4(0, 1) and 0x2DCA0(0, 0xA7D74, 1) whatever the
+    # record holds (r3 non-zero, r4 zero). Else 0x1E918(0), 0x2DBC4(0, 1) and the insert only when
+    # the record's first dword is 0 (whole: n1 has only its top byte). The five callees are stubs.
+    # Mask 0: the one caller continues `mov eax,[0x104528]` (0x20C89).
+    Spec("hiscore_init", 0x1E824, [
+        Case("n0", {}, d5g_hi_case(0x00, 0), {0x2DBC4: D5G_REC, 0x2DCA0: 1}),
+        Case("n1", {"eax": 0x11111111}, d5g_hi_case(0x9F, 0x01000000), {0x2DBC4: D5G_REC}),
+        Case("n2", {}, d5g_hi_case(0x20, 0), {0x2DBC4: D5G_REC, 0x1E988: 0}),
+        Case("n3", {}, d5g_hi_case(0x20, 0x00000001), {0x2DBC4: D5G_REC, 0x1E988: 0x100}),
+        Case("n4", {}, d5g_hi_case(0xA0, 0), {0x2DBC4: D5G_REC, 0x1E988: 2}),
+        Case("r0", {}, d5g_hi_case(0x20, 0), {0x2DBC4: D5G_REC, 0x1E988: 1, 0x2DA0C: 0xFFFFFFFF}),
+        Case("r1", {}, d5g_hi_case(0x20, 0), {0x2DBC4: D5G_REC, 0x1E988: 0x101}),
+        Case("r2", {}, d5g_hi_case(0xBF, 0x55), {0x2DBC4: D5G_REC, 0x1E988: 0xFFFFFF01, 0x2DA0C: 1}),
+        Case("r3", {}, d5g_hi_case(0x40, 0x00000100), {0x2DBC4: D5G_REC, 0x2DA0C: 0x29}),
+        Case("r4", {}, d5g_hi_case(0xFF, 0), {0x2DBC4: D5G_REC, 0x1E988: 0}),
+        Case("r5", {}, d5g_hi_case(0x60, 0x80000000), {0x2DBC4: D5G_REC, 0x1E988: 0}),
+    ], calls=(D5G_DUE, D5G_FSET, D5G_FILL, D3D_2DBC4, D5G_INSERT), eax_mask=0, mutants=D5G_HI_MUTANTS),
+    # the re-read: the 0x1E918 stub rewrites the byte 0x104529 (0x5F: bit 0x40 set, bit 0x20 clear).
+    # q0 enters through bit 0x20 and AL = 1, and the byte read again at 0x1E8B0 has bit 0x40: it is
+    # cleared to 0x1F and the arm goes on; q1 is the other arm, which never reads it again.
+    Spec("hiscore_init_rr", 0x1E824, [
+        Case("q0", {}, d5g_hi_case(0x20, 0), {0x2DBC4: D5G_REC, 0x1E988: 1}),
+        Case("q1", {}, d5g_hi_case(0x00, 0), {0x2DBC4: D5G_REC}),
+    ], calls=(D5G_DUE, D5G_FSET, dataclasses.replace(D5G_FILL, writes=((None, 0x00104529, b"\x5f"),)), D3D_2DBC4,
+              D5G_INSERT), eax_mask=0, mutants=("@cache", "@cachetest", "@cachestore")),
+]
+D1_SPECS += D5G_SPECS
+# ---- d5g end ----
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

@@ -18695,6 +18695,85 @@ D1_KINDS.update(D4D_KINDS)
 D1_CASES.extend(D4D_CASES)
 
 
+# ---- track D5 batch d5g (record 2026-10-12-reverse-d5g): measured with verify_all on the row's own spec ----
+D5G_MASKS = {
+    "hiscore_init": 0x0,
+    "hiscore_init_rr": 0x0,
+}   # D5G_MASKS end
+D5G_KINDS = {
+    "hiscore_init@len": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_init@stride": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_init@fill": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_init@no2c7": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_init@late": {'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_init@eax": {'call #1', 'call #2', 'call #3'},
+    "hiscore_init@ne0": {'call #1', 'call #2', 'call #3'},
+    "hiscore_init@no20": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "hiscore_init@no40": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #5'},
+    "hiscore_init@bits": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
+    "hiscore_init@dueearly": {'call #0', 'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6'},
+    "hiscore_init@fsw": {'call #0', 'call #1', 'call #2'},
+    "hiscore_init@fval": {'call #0', 'call #1'},
+    "hiscore_init@force": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "hiscore_init@noclr": {'byte', 'call #3', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_init@clrw": {'byte', 'call #3', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_init@mask": {'byte', 'call #3', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_init@f29": {'call #3'},
+    "hiscore_init@stale": {'call #3'},
+    "hiscore_init@rdargs": {'call #1', 'call #2', 'call #4'},
+    "hiscore_init@nord": {'call #4', 'call #5'},
+    "hiscore_init@chk": {'call #5'},
+    "hiscore_init@rbyte": {'call #2'},
+    "hiscore_init@inv": {'call #2', 'call #3'},
+    "hiscore_init@nochk": {'call #2', 'call #3'},
+    "hiscore_init@iargs": {'call #2', 'call #3', 'call #5'},
+    "hiscore_init@isrc": {'call #2', 'call #3', 'call #5'},
+    "hiscore_init@order": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "hiscore_init@ret40": {'call #4', 'call #5', 'call #6'},
+    "hiscore_init_rr@cache": {'byte', 'call #4', 'call #5', 'call #6'},
+    "hiscore_init_rr@cachetest": {'byte', 'call #4', 'call #5', 'call #6'},
+    "hiscore_init_rr@cachestore": {'byte', 'call #4', 'call #4 memory', 'call #5 memory', 'call #6 memory'},
+}   # D5G_KINDS end
+D5G_CASES = [
+    ("hiscore_init@len", ['n0', 'n1', 'n2', 'n3', 'n4', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("hiscore_init@stride", ['n0', 'n1', 'n2', 'n3', 'n4', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("hiscore_init@fill", ['n0', 'n1', 'n2', 'n3', 'n4', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("hiscore_init@no2c7", ['n0', 'n1', 'n2', 'n3', 'n4', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("hiscore_init@late", ['n0', 'n1', 'n2', 'n3', 'n4', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("hiscore_init@eax", ['r1', 'r2']),
+    ("hiscore_init@ne0", ['n4']),
+    ("hiscore_init@no20", ['n0', 'n1']),
+    ("hiscore_init@no40", ['r3', 'r4', 'r5']),
+    ("hiscore_init@bits", ['n2', 'n3', 'n4', 'r0', 'r1', 'r2', 'r3']),
+    ("hiscore_init@dueearly", ['n0', 'n1', 'r3', 'r4', 'r5']),
+    ("hiscore_init@fsw", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("hiscore_init@fval", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("hiscore_init@force", ['n0', 'n1', 'n2', 'n3', 'n4', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("hiscore_init@noclr", ['r3', 'r4', 'r5']),
+    ("hiscore_init@clrw", ['r3', 'r4', 'r5']),
+    ("hiscore_init@mask", ['r4', 'r5']),
+    ("hiscore_init@f29", ['r3', 'r4', 'r5']),
+    ("hiscore_init@stale", ['r3', 'r4', 'r5']),
+    ("hiscore_init@rdargs", ['n0', 'n1', 'n2', 'n3', 'n4', 'r3', 'r4', 'r5']),
+    ("hiscore_init@nord", ['r3', 'r4', 'r5']),
+    ("hiscore_init@chk", ['r3', 'r5']),
+    ("hiscore_init@rbyte", ['n1']),
+    ("hiscore_init@inv", ['n0', 'n1', 'n2', 'n3', 'n4']),
+    ("hiscore_init@nochk", ['n1', 'n3']),
+    ("hiscore_init@iargs", ['n0', 'n2', 'n4', 'r3', 'r4', 'r5']),
+    ("hiscore_init@isrc", ['n0', 'n2', 'n4', 'r3', 'r4', 'r5']),
+    ("hiscore_init@order", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("hiscore_init@ret40", ['r0', 'r1', 'r2']),
+    ("hiscore_init_rr@cache", ['q0']),
+    ("hiscore_init_rr@cachetest", ['q0']),
+    ("hiscore_init_rr@cachestore", ['q0']),
+]   # D5G_CASES end
+D1_MASKS.update(D5G_MASKS)
+D1_KINDS.update(D5G_KINDS)
+D1_CASES.extend(D5G_CASES)
+# ---- d5g pins end ----
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -19754,6 +19833,9 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # D5 d5g (record 2026-10-12-reverse-d5g): the stubs its rows add
+        0x1E918: (), 0x1E988: (), 0x2DA0C: ("edx",), 0x2DCA0: ("ebx", "edx"),
+        # D5 d5g end
         # D4 d4a (record 2026-10-12-reverse-d4a): the stubs its rows add
         0x13D4C: ("edx",), 0x1CB18: (), 0x24568: ("ebp",), 0x24804: ("ebp",), 0x256F4: (), 0x25C1C: ("esi", "edi", "ebp"), 0x27DC8: ("esi", "edi", "ebp"), 0x27ED8: (), 0x32B00: ("edx",), 0x33B00: ("ebx", "edx"), 0x39FF4: (), 0x3CB68: (), 0x40CB0: ("ebp",), 0x4F37C: (), 0x5DC2A: ("edx",), 0x5DC4D: ("ebx", "ecx", "edx"), 0x5DC70: ("ebx", "ecx", "edx"), 0x5DCA6: ("edx",), 0x5DCE4: ("edx",),
         # D4 d4c (record 2026-10-12-reverse-d4c): the stubs its rows add

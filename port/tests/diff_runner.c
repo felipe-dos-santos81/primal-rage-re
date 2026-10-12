@@ -33137,6 +33137,77 @@ D4D_KN_MUT(ch0, 6u)    D4D_KN_MUT(wrapinv, 7u) D4D_KN_MUT(raw32, 8u)   D4D_KN_MU
 D4D_KN_MUT(updown, 11u) D4D_KN_MUT(plus, 12u)  D4D_KN_MUT(f10, 13u)    D4D_KN_MUT(fwide, 14u) D4D_KN_MUT(minus, 15u)
 D4D_KN_MUT(ef, 16u)    D4D_KN_MUT(scan2, 17u)  D4D_KN_MUT(ret, 18u)    D4D_KN_MUT(ret0, 19u)  D4D_KN_MUT(nogt, 20u)
 D4D_KN_MUT(nonul, 22u)
+/* ---- track D5 batch d5g (record 2026-10-12-reverse-d5g): the bindings ---- */
+/* 0x1E824 hiscore_init: no argument. The three 0x24-byte name buffers are blanked, then by the
+ * byte 0x104529: bit 0x40, or bit 0x20 and 0x1E988's AL == 1 (`and eax,0xff; cmp eax,1` 0x1E884),
+ * takes the reset arm. 0x1E988, 0x2DA0C, 0x1E918, 0x2DBC4 and 0x2DCA0 are stubs. Mask 0: the one
+ * caller continues `mov eax,[0x104528]` (0x20C89). */
+static void d5g_hi_fill(u32 mut)
+{
+    const u32 n = (mut == 1u) ? 0x23u : 0x24u;                               /* @len */
+    for (u32 k = 0u; k < 2u; k++)
+        for (u32 i = 0u; i < n; i++)
+            DSB(0x00104367u + k * ((mut == 2u) ? 0x9Fu : 0xA0u) + i) = (mut == 3u) ? 0u : 0x20u;   /* @stride @fill */
+    if (mut != 4u)                                                           /* @no2c7 */
+        for (u32 i = 0u; i < n; i++) DSB(0x001042C7u + i) = 0x20u;
+}
+static void d5g_hi_body(u32 mut)
+{
+    const u8 ah = DSB(0x00104529u);
+    const u8 b40 = (mut == 10u) ? 0x20u : 0x40u, b20 = (mut == 10u) ? 0x40u : 0x20u;   /* @bits */
+    u32 due = 0u;
+    int reset;
+    if (mut == 11u) due = hiscore_audit_reset_due();                         /* @dueearly */
+    if ((ah & b40) != 0u && mut != 9u) reset = 1;                            /* @no40 */
+    else if ((ah & b20) == 0u && mut != 8u) reset = 0;                       /* @no20 */
+    else {
+        if (mut != 11u) due = hiscore_audit_reset_due();
+        reset = (mut == 6u) ? due == 1u : (mut == 7u) ? (due & 0xFFu) != 0u : (due & 0xFFu) == 1u;   /* @eax @ne0 */
+    }
+    if (!reset) {
+        hiscore_fill_defaults((mut == 14u) ? 1u : 0u);                       /* @force */
+        u32 r = (mut == 22u) ? hiscore_read(1u, 0u) : hiscore_read(0u, 1u);  /* @rdargs */
+        if (mut != 27u) {                                                    /* @nochk */
+            u32 v = (mut == 25u) ? DSB(r) : DSD(r);                          /* @rbyte */
+            if ((mut == 26u) ? v == 0u : v != 0u) return;                    /* @inv */
+        }
+    } else {
+        if (mut == 30u) hiscore_fill_defaults(1u);                           /* @order */
+        (void)config_field_set((mut == 12u) ? 0x26u : 0x27u, (mut == 13u) ? 0x27u : 0u);   /* @fsw @fval */
+        (void)config_field_set((mut == 12u) ? 0x27u : 0x26u, 0u);
+        if (mut != 30u) hiscore_fill_defaults((mut == 14u) ? 0u : 1u);
+        const u8 dh = (mut == 15u || mut == 32u) ? ah : DSB(0x00104529u);    /* @cache @cachetest */
+        if ((dh & 0x40u) == 0u && mut != 31u) return;                        /* @ret40 */
+        const u32 stale = DSD(0x00104528u);
+        const u8 cur = (mut == 15u || mut == 33u) ? ah : DSB(0x00104529u);   /* @cachestore */
+        const u8 bl = (u8)(cur & ((mut == 18u) ? 0x9Fu : 0xBFu));            /* @mask */
+        if (mut == 17u) DSW(0x00104529u) = bl;                               /* @clrw */
+        else if (mut != 16u) DSB(0x00104529u) = bl;                          /* @noclr */
+        (void)config_field_set((mut == 19u) ? 0x2Au : 0x29u, (mut == 20u) ? stale : DSD(0x00104528u));   /* @f29 @stale */
+        u32 r = 0u;
+        if (mut != 23u) r = (mut == 22u) ? hiscore_read(1u, 0u) : hiscore_read(0u, 1u);   /* @nord */
+        if (mut == 24u && DSD(r) != 0u) return;                              /* @chk */
+    }
+    if (mut == 28u) (void)hiscore_insert(1u, 0xA7D74u, 0u);                  /* @iargs */
+    else (void)hiscore_insert(0u, (mut == 29u) ? 0xA7BBCu : 0xA7D74u, 1u);   /* @isrc */
+}
+static void d5g_1e824_core(u32 mut)
+{
+    if (mut != 5u) d5g_hi_fill(mut);                                         /* @late: the fill after the calls */
+    d5g_hi_body(mut);
+    if (mut == 5u) d5g_hi_fill(mut);
+}
+static void b_d5g_1e824(const u32 *r, u32 *eax) { (void)r; hiscore_init(); *eax = 0u; }
+#define D5G_HI_MUT(name, n) \
+    static void m_d5g_1e824_##name(const u32 *r, u32 *eax) { (void)r; d5g_1e824_core(n); *eax = 0u; }
+D5G_HI_MUT(len, 1u)    D5G_HI_MUT(stride, 2u) D5G_HI_MUT(fill, 3u)   D5G_HI_MUT(no2c7, 4u)  D5G_HI_MUT(late, 5u)
+D5G_HI_MUT(eax, 6u)    D5G_HI_MUT(ne0, 7u)    D5G_HI_MUT(no20, 8u)   D5G_HI_MUT(no40, 9u)   D5G_HI_MUT(bits, 10u)
+D5G_HI_MUT(dueearly, 11u) D5G_HI_MUT(fsw, 12u) D5G_HI_MUT(fval, 13u) D5G_HI_MUT(force, 14u) D5G_HI_MUT(cache, 15u)
+D5G_HI_MUT(noclr, 16u) D5G_HI_MUT(clrw, 17u)  D5G_HI_MUT(mask, 18u)  D5G_HI_MUT(f29, 19u)   D5G_HI_MUT(stale, 20u)
+D5G_HI_MUT(rdargs, 22u) D5G_HI_MUT(nord, 23u) D5G_HI_MUT(chk, 24u)   D5G_HI_MUT(rbyte, 25u) D5G_HI_MUT(inv, 26u)
+D5G_HI_MUT(nochk, 27u) D5G_HI_MUT(iargs, 28u) D5G_HI_MUT(isrc, 29u)  D5G_HI_MUT(order, 30u) D5G_HI_MUT(ret40, 31u)
+D5G_HI_MUT(cachetest, 32u) D5G_HI_MUT(cachestore, 33u)
+/* ---- d5g bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43161,6 +43232,42 @@ static const binding_t k_bindings[] = {
     { "config_key_name@ret0",                  m_d4d_3157c_ret0, 0x000000FFu },
     { "config_key_name@nogt",                  m_d4d_3157c_nogt, 0x000000FFu },
     { "config_key_name@nonul",                 m_d4d_3157c_nonul, 0x000000FFu },
+    /* track D5 batch d5g (record 2026-10-12-reverse-d5g) */
+    { "hiscore_init",                     b_d5g_1e824, 0x00000000u },
+    { "hiscore_init@len", m_d5g_1e824_len, 0x00000000u },
+    { "hiscore_init@stride", m_d5g_1e824_stride, 0x00000000u },
+    { "hiscore_init@fill", m_d5g_1e824_fill, 0x00000000u },
+    { "hiscore_init@no2c7", m_d5g_1e824_no2c7, 0x00000000u },
+    { "hiscore_init@late", m_d5g_1e824_late, 0x00000000u },
+    { "hiscore_init@eax", m_d5g_1e824_eax, 0x00000000u },
+    { "hiscore_init@ne0", m_d5g_1e824_ne0, 0x00000000u },
+    { "hiscore_init@no20", m_d5g_1e824_no20, 0x00000000u },
+    { "hiscore_init@no40", m_d5g_1e824_no40, 0x00000000u },
+    { "hiscore_init@bits", m_d5g_1e824_bits, 0x00000000u },
+    { "hiscore_init@dueearly", m_d5g_1e824_dueearly, 0x00000000u },
+    { "hiscore_init@fsw", m_d5g_1e824_fsw, 0x00000000u },
+    { "hiscore_init@fval", m_d5g_1e824_fval, 0x00000000u },
+    { "hiscore_init@force", m_d5g_1e824_force, 0x00000000u },
+    { "hiscore_init@noclr", m_d5g_1e824_noclr, 0x00000000u },
+    { "hiscore_init@clrw", m_d5g_1e824_clrw, 0x00000000u },
+    { "hiscore_init@mask", m_d5g_1e824_mask, 0x00000000u },
+    { "hiscore_init@f29", m_d5g_1e824_f29, 0x00000000u },
+    { "hiscore_init@stale", m_d5g_1e824_stale, 0x00000000u },
+    { "hiscore_init@rdargs", m_d5g_1e824_rdargs, 0x00000000u },
+    { "hiscore_init@nord", m_d5g_1e824_nord, 0x00000000u },
+    { "hiscore_init@chk", m_d5g_1e824_chk, 0x00000000u },
+    { "hiscore_init@rbyte", m_d5g_1e824_rbyte, 0x00000000u },
+    { "hiscore_init@inv", m_d5g_1e824_inv, 0x00000000u },
+    { "hiscore_init@nochk", m_d5g_1e824_nochk, 0x00000000u },
+    { "hiscore_init@iargs", m_d5g_1e824_iargs, 0x00000000u },
+    { "hiscore_init@isrc", m_d5g_1e824_isrc, 0x00000000u },
+    { "hiscore_init@order", m_d5g_1e824_order, 0x00000000u },
+    { "hiscore_init@ret40", m_d5g_1e824_ret40, 0x00000000u },
+    { "hiscore_init_rr", b_d5g_1e824, 0x00000000u },
+    { "hiscore_init_rr@cache", m_d5g_1e824_cache, 0x00000000u },
+    { "hiscore_init_rr@cachetest", m_d5g_1e824_cachetest, 0x00000000u },
+    { "hiscore_init_rr@cachestore", m_d5g_1e824_cachestore, 0x00000000u },
+    /* d5g end */
 };
 
 static const binding_t *find_binding(const char *name)

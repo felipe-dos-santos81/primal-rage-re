@@ -5015,6 +5015,7 @@ static void game_state_6(void)
  * reads 0, or every record when forced. */
 void hiscore_fill_defaults(u32 force)
 {
+    PR_SEAM(0x1E918u, force);
     u32 src = 0xA7BBCu;                                         /* 0x1E920 */
     for (u32 i = 0u; i < 10u; i++) {                            /* 0x1E925..0x1E94C */
         u32 r = hiscore_read(i, 0u);                            /* 0x1E92D 0x2DBC4 */
@@ -5028,6 +5029,7 @@ void hiscore_fill_defaults(u32 force)
  * 0x26 >= 200 (both `jl`, signed). */
 u32 hiscore_audit_reset_due(void)
 {
+    PR_SEAM_RET0(0x1E988u);
     if ((s32)config_field_get(0x27u) < 0x7D0) return 0u;        /* 0x1E98D/0x1E992 */
     if ((s32)config_field_get(0x26u) < 0xC8) return 0u;         /* 0x1E99E/0x1E9A3 */
     return 1u;                                                  /* 0x1E9AA */
