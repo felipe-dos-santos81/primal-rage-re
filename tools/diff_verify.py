@@ -19126,6 +19126,45 @@ D3B_SPECS += [
        mutants=("@cache",)),
 ]
 
+def d3b_tb_strings(s39, s38=b"READY"):
+    return {0x36: b"CHOOSE", 0x37: b"YOUR", 0x38: s38, 0x39: s39}
+
+
+D3B_SPECS += [
+    # 0x43464 fight_char_text_blink: EAX = side. 0x432EC, 0x2AE14 and 0x2F198 are stubs; the string
+    # path and the runtime strlen 0x65624 run on both sides (as in the 0x432EC row). EAX dies unread
+    # at its one call site 0x43BB0 (the walk, record d3b §1): mask 0.
+    Spec("fight_char_text_blink", 0x43464, [
+        # phase 0 with the sprite prompt: 0x432EC(side, 0), then the sprite into DS_00108144[side]
+        Case("a0", {"eax": 0}, d3b_blink_case(0x0000, 0x00000200, d3b_tb_strings(b"NOW")), {0x2AE14: 0x0010A300}),
+        Case("a1", {"eax": 1}, d3b_blink_case(0x7FE0, 0xFFFFFFFF, d3b_tb_strings(b"")), {0x2AE14: 0x0010A340}),
+        # phase 0 without it: three strings, and the fourth when string 0x39 is at least 2 long
+        Case("a2", {"eax": 0}, d3b_blink_case(0x0020, 0x00000400, d3b_tb_strings(b"NOW")), {0x2AE14: 0x0010A380}),
+        Case("a3", {"eax": 1}, d3b_blink_case(0x0000, 0xFFFFFDFF, d3b_tb_strings(b""), cols=(0x0003, 0xFFFF)),
+             {0x2AE14: 0x0010A3C0}),
+        Case("a4", {"eax": 0}, d3b_blink_case(0x0000, 0x00000000, d3b_tb_strings(b"X", b"")), {0x2AE14: 0x0010A300}),
+        Case("a5", {"eax": 1}, d3b_blink_case(0x0000, 0x00000000, d3b_tb_strings(b"XY")), {0x2AE14: 0x0010A300}),
+        # phase 0x18: 0x432EC(side, the dword's bit 9)
+        Case("a6", {"eax": 0}, d3b_blink_case(0x0018, 0x00000200, d3b_tb_strings(b"NOW")), {0x2AE14: 0x0010A300}),
+        Case("a7", {"eax": 1}, d3b_blink_case(0xFF38, 0xFFFFFDFF, d3b_tb_strings(b"NOW")), {0x2AE14: 0x0010A300}),
+        # any other phase: nothing
+        Case("a8", {"eax": 0}, d3b_blink_case(0x0010, 0x00000200, d3b_tb_strings(b"NOW")), {0x2AE14: 0x0010A300}),
+        Case("a9", {"eax": 1}, d3b_blink_case(0x0008, 0x00000200, d3b_tb_strings(b"NOW")), {0x2AE14: 0x0010A300}),
+    ], allow_calls=D3B_STR_ALLOW, calls=(D3B_TXTCLR, SPAWN, D1D_CURSOR), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "phase p18 flagall flag clrside18 bit clrflag noclr order sx sdesc sxs a3 a4 a5 store storeside "
+           "row0 lenid lt nolen col sext ids rel1 rowm2 rel2 rowm1 id3 rel3 row3 mode always4 ge row4 "
+           "mode4").split())),
+    # the same entry with the cursor stub that rewrites the col words (y2 and y3: the other arms)
+    Spec("fight_char_text_blink_rr", 0x43464, [
+        Case("y0", {"eax": 0}, d3b_blink_case(0x0000, 0x00000000, d3b_tb_strings(b"NOW")), {0x2AE14: 0x0010A300}),
+        Case("y1", {"eax": 1}, d3b_blink_case(0x0020, 0x00000000, d3b_tb_strings(b"X")), {0x2AE14: 0x0010A300}),
+        Case("y2", {"eax": 0}, d3b_blink_case(0x0000, 0x00000200, d3b_tb_strings(b"NOW")), {0x2AE14: 0x0010A300}),
+        Case("y3", {"eax": 1}, d3b_blink_case(0x0018, 0x00000200, d3b_tb_strings(b"NOW")), {0x2AE14: 0x0010A300}),
+    ], allow_calls=D3B_STR_ALLOW, calls=(D3B_TXTCLR, SPAWN, D3B_CURSOR_COL), eax_mask=0,
+       mutants=("@cache",)),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
