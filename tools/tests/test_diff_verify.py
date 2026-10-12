@@ -6449,6 +6449,7 @@ D2A_MASKS = {
     "ai_pred_467dc": 0xff,
     "ai_pred_4682c": 0xff,
     "fighter_input_ring_update": 0x0,
+    "ai_state_setup": 0x0,
 }
 D2A_KINDS = {
     "fighter_146f0@gate": {'call #0', 'call #1'},
@@ -6736,6 +6737,17 @@ D2A_KINDS = {
     "fighter_input_ring_update@d4": {'byte'},
     "fighter_input_ring_update@swap": {'byte'},
     "fighter_input_ring_update@m1010": {'byte'},
+    "ai_state_setup@slot": {'byte'},
+    "ai_state_setup@bside": {'byte'},
+    "ai_state_setup@s8a": {'byte'},
+    "ai_state_setup@s40": {'byte'},
+    "ai_state_setup@wrap": {'byte'},
+    "ai_state_setup@s64": {'byte'},
+    "ai_state_setup@nostate": {'byte'},
+    "ai_state_setup@stbyte": {'byte'},
+    "ai_state_setup@sext": {'byte'},
+    "ai_state_setup@id2": {'byte'},
+    "ai_state_setup@wside": {'byte'},
 }
 D2A_CASES = [
     ("fighter_146f0@gate", ['c0', 'c1', 'c2', 'c3', 'c4', 'c5']),
@@ -7023,6 +7035,17 @@ D2A_CASES = [
     ("fighter_input_ring_update@d4", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8']),
     ("fighter_input_ring_update@swap", ['r0', 'r1', 'r2', 'r4', 'r5', 'r6', 'r8']),
     ("fighter_input_ring_update@m1010", ['r1']),
+    ("ai_state_setup@slot", ['t0', 't0b', 't1', 't1b', 't1c', 'tb', 'tb0', 'tbf']),
+    ("ai_state_setup@bside", ['t0', 't0b', 't1', 't1b', 't1c', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 'tb', 'tb0', 'tbf', 'tc', 'td']),
+    ("ai_state_setup@s8a", ['t1', 't1b', 't1c']),
+    ("ai_state_setup@s40", ['t1', 't1c']),
+    ("ai_state_setup@wrap", ['t1c']),
+    ("ai_state_setup@s64", ['tb0', 'tbf']),
+    ("ai_state_setup@nostate", ['t0', 't0b', 't1', 't1b', 't1c', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 'tb', 'tb0', 'tbf', 'tc', 'td']),
+    ("ai_state_setup@stbyte", ['t0', 't0b', 't1', 't1b', 't1c', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 'tb', 'tb0', 'tbf', 'tc', 'td']),
+    ("ai_state_setup@sext", ['t0b', 't1c']),
+    ("ai_state_setup@id2", ['t2']),
+    ("ai_state_setup@wside", ['t0', 't0b', 't1', 't1b', 't1c', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 'tb', 'tb0', 'tbf', 'tc', 'td']),
 ]
 D1_MASKS.update(D2A_MASKS)
 D1_KINDS.update(D2A_KINDS)

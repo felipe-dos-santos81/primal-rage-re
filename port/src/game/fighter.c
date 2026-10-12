@@ -1130,7 +1130,7 @@ void ai_weight(u32 side, u32 id)
 
 /* 0x46C78. The state -> weight-id switch over the *other* slot's +0x5F/+0x8A/
  * +0x64 (0x33950's ctx[3] = &slot[1-side]), then +0x10 = state. */
-static void ai_state_setup(u32 side)
+void ai_state_setup(u32 side)
 {
     u32 b = ai_b(side);
     u32 state = DSD(b + 0x28u);                         /* 0x46C94 */

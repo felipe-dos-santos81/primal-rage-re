@@ -20572,6 +20572,53 @@ static void m_d2a_461dc_d4(const u32 *r, u32 *eax)      { d2a_461dc_core(r, 0x10
 static void m_d2a_461dc_swap(const u32 *r, u32 *eax)    { d2a_461dc_core(r, 0x200000u); *eax = 0u; }
 static void m_d2a_461dc_m1010(const u32 *r, u32 *eax)   { d2a_461dc_core(r, 0x400000u); *eax = 0u; }
 
+/* 0x46C78: EAX = side. 0x33950 and 0x46BBC run real. */
+static void d2a_46c78_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], b = 0x001081F0u + side * 0x40u, id = 0u, call = 1u;
+    u32 state = DSD(0x001081F0u + ((mut & 2u) ? 1u - side : side) * 0x40u + 0x28u);   /* @bside: the other block's state */
+    u32 other = 0x001077B0u + ((mut & 1u) ? side : 1u - side) * 0x94u;      /* @slot: ctx[2], the own slot */
+    u32 s5f = (mut & 256u) ? (u32)(s32)(s8)DSB(other + 0x5Fu) : (u32)DSB(other + 0x5Fu);   /* @sext */
+    switch (state) {
+    case 0u: id = s5f; break;
+    case 1u:
+        if ((DSB(other + 0x8Au) == 0u) != ((mut & 4u) != 0u))                /* @s8a: the test inverted */
+            id = (mut & 8u) ? s5f : (mut & 16u) ? ((s5f + 0x40u) & 0xFFu) : s5f + 0x40u;   /* @s40; @wrap: a byte sum */
+        else id = 0x88u;
+        break;
+    case 8u: id = 0x88u; break;
+    case 2u: id = (mut & 512u) ? 0x83u : 0x82u; break;                         /* @id2 */
+    case 3u: id = 0x85u; break;
+    case 4u: id = 0x87u; break;
+    case 5u: id = 0x83u; break;
+    case 6u: id = 0x84u; break;
+    case 7u: id = 0x81u; break;
+    case 9u: id = 0x86u; break;
+    case 0xBu:
+        if (DSB(other + 0x64u) != ((mut & 32u) ? 0u : 0xFFu)) id = (u32)DSB(other + 0x64u);   /* @s64: compares with 0 */
+        else id = 0x88u;
+        break;
+    case 0xCu: id = 0x89u; break;
+    case 0xDu: id = 0x8Au; break;
+    default: call = 0u; break;
+    }
+    if (call) ai_weight((mut & 1024u) ? 1u - side : side, id);                /* @wside */
+    if (mut & 128u) DSB(b + 0x10u) = (u8)state;                             /* @stbyte: a byte store */
+    else if (!(mut & 64u)) DSD(b + 0x10u) = state;                        /* @nostate */
+}
+static void b_d2a_46c78(const u32 *r, u32 *eax) { ai_state_setup(r[R_EAX]); *eax = 0u; }
+static void m_d2a_46c78_slot(const u32 *r, u32 *eax)    { d2a_46c78_core(r, 0x1u); *eax = 0u; }
+static void m_d2a_46c78_bside(const u32 *r, u32 *eax)   { d2a_46c78_core(r, 0x2u); *eax = 0u; }
+static void m_d2a_46c78_s8a(const u32 *r, u32 *eax)     { d2a_46c78_core(r, 0x4u); *eax = 0u; }
+static void m_d2a_46c78_s40(const u32 *r, u32 *eax)     { d2a_46c78_core(r, 0x8u); *eax = 0u; }
+static void m_d2a_46c78_wrap(const u32 *r, u32 *eax)    { d2a_46c78_core(r, 0x10u); *eax = 0u; }
+static void m_d2a_46c78_s64(const u32 *r, u32 *eax)     { d2a_46c78_core(r, 0x20u); *eax = 0u; }
+static void m_d2a_46c78_nostate(const u32 *r, u32 *eax) { d2a_46c78_core(r, 0x40u); *eax = 0u; }
+static void m_d2a_46c78_stbyte(const u32 *r, u32 *eax)  { d2a_46c78_core(r, 0x80u); *eax = 0u; }
+static void m_d2a_46c78_sext(const u32 *r, u32 *eax)    { d2a_46c78_core(r, 0x100u); *eax = 0u; }
+static void m_d2a_46c78_id2(const u32 *r, u32 *eax)     { d2a_46c78_core(r, 0x200u); *eax = 0u; }
+static void m_d2a_46c78_wside(const u32 *r, u32 *eax)   { d2a_46c78_core(r, 0x400u); *eax = 0u; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -24758,6 +24805,18 @@ static const binding_t k_bindings[] = {
     { "fighter_input_ring_update@d4", m_d2a_461dc_d4, 0x00000000u },
     { "fighter_input_ring_update@swap", m_d2a_461dc_swap, 0x00000000u },
     { "fighter_input_ring_update@m1010", m_d2a_461dc_m1010, 0x00000000u },
+    { "ai_state_setup", b_d2a_46c78, 0x00000000u },
+    { "ai_state_setup@slot", m_d2a_46c78_slot, 0x00000000u },
+    { "ai_state_setup@bside", m_d2a_46c78_bside, 0x00000000u },
+    { "ai_state_setup@s8a", m_d2a_46c78_s8a, 0x00000000u },
+    { "ai_state_setup@s40", m_d2a_46c78_s40, 0x00000000u },
+    { "ai_state_setup@wrap", m_d2a_46c78_wrap, 0x00000000u },
+    { "ai_state_setup@s64", m_d2a_46c78_s64, 0x00000000u },
+    { "ai_state_setup@nostate", m_d2a_46c78_nostate, 0x00000000u },
+    { "ai_state_setup@stbyte", m_d2a_46c78_stbyte, 0x00000000u },
+    { "ai_state_setup@sext", m_d2a_46c78_sext, 0x00000000u },
+    { "ai_state_setup@id2", m_d2a_46c78_id2, 0x00000000u },
+    { "ai_state_setup@wside", m_d2a_46c78_wside, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -13693,6 +13693,41 @@ def d2a_ring_case(sel, s63, w, pos):
             0x00108298: bytes(0xC0 + i for i in range(0x28)) + le16(0xC0C0)}
 
 
+D2A_AI_P1, D2A_AI_P2 = 0x0010A600, 0x0010AB00   # 0x46C78: the two id-indexed tables the real 0x46BBC reads
+
+
+def d2a_state_case(side, state, s5f, s8a=0, s64=0xFF, sc=2, oc=4):
+    """0x46C78: the side's AI block (+0x10..+0x1B seeded, +0x24..+0x3B with the state dword at
+    +0x28) and the other block's (another state: what @bside reads); the other slot's +0x5F, +0x64
+    and +0x8A as given and the own slot's different (what @slot reads); and what the real 0x46BBC
+    reads: both characters, the pair-table entries, and the two tables' dwords for every id a path
+    or a mutant can pick (distinct sentinels)."""
+    b, ob = 0x001081F0 + side * 0x40, 0x001081F0 + (1 - side) * 0x40
+    so, oo = D2A_SLOT + side * 0x94, D2A_SLOT + (1 - side) * 0x94
+    idx = sc * 10 + oc
+    p = {so + 0x7A: bytes([sc]), oo + 0x7A: bytes([oc]),
+         oo + 0x5F: bytes([s5f]), oo + 0x64: bytes([s64]), oo + 0x8A: bytes([s8a]),
+         so + 0x5F: bytes([s5f ^ 0x15]), so + 0x64: bytes([0x33 if s64 == 0xFF else 0xFF]),
+         so + 0x8A: bytes([0 if s8a else 1]),
+         0x00095CA8 + idx * 4: le32(D2A_AI_P1), 0x00095E38 + idx * 4: le32(D2A_AI_P2),
+         0x00095CA8 + (oc * 10 + sc) * 4: le32(D2A_AI_P2), 0x00095E38 + (oc * 10 + sc) * 4: le32(D2A_AI_P1),
+         b + 0x10: le32(0x10101010) + le32(0x14141414) + le32(0x18181818),
+         b + 0x24: le32(0x24242424) + le32(state) + b"\x2c\x2d\x2e\x2f" + le32(0x30303030) + le32(0x34343434)
+                   + le32(0x38383838),
+         ob + 0x10: le32(0x50505050) + le32(0x54545454) + le32(0x58585858),
+         ob + 0x24: le32(0x64646464) + le32(2 if state != 2 else 3) + b"\x6c\x6d\x6e\x6f" + le32(0x70707070)
+                    + le32(0x74747474) + le32(0x78787878)}
+    ids = {s5f, s5f ^ 0x15, s5f + 0x40, (s5f + 0x40) & 0xFF, (s5f ^ 0x15) + 0x40, 0x33, 0xFF, s64}
+    if s5f >= 0x80:
+        ids.add(s5f - 0x100)
+    for i in sorted(ids - set(range(0x81, 0x8B))):
+        p[D2A_AI_P1 + i * 4] = le32(0x11000000 + (i & 0xFFFF))
+        p[D2A_AI_P2 + i * 4] = le32(0x22000000 + (i & 0xFFFF))
+    p[D2A_AI_P1 + 0x81 * 4] = b"".join(le32(0x11000000 + i) for i in range(0x81, 0x8B))
+    p[D2A_AI_P2 + 0x81 * 4] = b"".join(le32(0x22000000 + i) for i in range(0x81, 0x8B))
+    return p
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13914,6 +13949,34 @@ D2A_SPECS = [
        mutants=("@s63", "@s63slot", "@selside", "@selb", "@t4", "@b101", "@b202", "@c2", "@c100", "@e404",
                 "@e808", "@f8", "@f400", "@flag", "@t1", "@t2", "@t3", "@prio", "@pz", "@wrap", "@d4",
                 "@swap", "@m1010")),
+    # 0x46C78 ai_state_setup: EAX = side. The state dword (the side's AI block +0x28) picks one of
+    # the 14 targets of the table 0x46C40; 0x33950 and 0x46BBC run real (0x46BBC is no stub of any
+    # row: its three stores carry the id). State 0xA and every state above 0xD reach 0x46D97, the
+    # raw's 0x62003 fatal, which the port skips: named unhit. Mask 0: the one caller overwrites EAX
+    # (0x46FE8 `mov eax,edx`).
+    Spec("ai_state_setup", 0x46C78, [
+        Case("t0", {"eax": 0}, d2a_state_case(0, 0, 0x05)),
+        Case("t0b", {"eax": 1}, d2a_state_case(1, 0, 0x80)),
+        Case("t1", {"eax": 1}, d2a_state_case(1, 1, 0x7F)),
+        Case("t1b", {"eax": 0}, d2a_state_case(0, 1, 0x7F, s8a=0x80)),
+        Case("t1c", {"eax": 1}, d2a_state_case(1, 1, 0xFF)),
+        Case("t2", {"eax": 0}, d2a_state_case(0, 2, 0x05)),
+        Case("t3", {"eax": 1}, d2a_state_case(1, 3, 0x05)),
+        Case("t4", {"eax": 0}, d2a_state_case(0, 4, 0x05)),
+        Case("t5", {"eax": 1}, d2a_state_case(1, 5, 0x05)),
+        Case("t6", {"eax": 0}, d2a_state_case(0, 6, 0x05)),
+        Case("t7", {"eax": 1}, d2a_state_case(1, 7, 0x05)),
+        Case("t8", {"eax": 0}, d2a_state_case(0, 8, 0x05)),
+        Case("t9", {"eax": 1}, d2a_state_case(1, 9, 0x05)),
+        Case("tb", {"eax": 1}, d2a_state_case(1, 0xB, 0x05, s64=0x23)),
+        Case("tbf", {"eax": 0}, d2a_state_case(0, 0xB, 0x05, s64=0xFF)),
+        Case("tb0", {"eax": 0}, d2a_state_case(0, 0xB, 0x05, s64=0x00)),
+        Case("tc", {"eax": 0}, d2a_state_case(0, 0xC, 0x05)),
+        Case("td", {"eax": 1}, d2a_state_case(1, 0xD, 0x05)),
+    ], allow_calls=(0x33950, 0x46BBC), eax_mask=0, unhit_named={
+        0x46D97: "state 0xA or above 0xD: the raw calls the 0x62003 fatal; the port skips the weight store"},
+       mutants=("@slot", "@bside", "@s8a", "@s40", "@wrap", "@s64", "@nostate", "@stbyte", "@sext", "@id2",
+                "@wside")),
 ]
 D1_SPECS += D2A_SPECS
 
