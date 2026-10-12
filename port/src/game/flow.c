@@ -5202,7 +5202,7 @@ void game_mode_1e_step(void)
     switch (DSB(DS_00104B25)) {
     case 0x00u:
         if (DSD(DS_00104AD4) == 2u && DSB(DS_00104B1F) == 0u    /* 0x1EECF/0x1EED6/0x1EED8/0x1EEDF */
-            && hiscore_rank_pair() != 0u) {                     /* 0x1EEE1/0x1EEE6/0x1EEE8 */
+            && (hiscore_rank_pair() & 0xFFu) != 0u) {           /* 0x1EEE1/0x1EEE6/0x1EEE8; AL alone: `test al,al` 0x1EEE6 */
             nameentry_reset();                                  /* 0x1EEEA 0x1ED2C */
             (void)sound_voice(0x100u);                          /* 0x1EEEF/0x1EEF4 0x2C3FC */
             (void)sound_voice(0xE1u);                           /* 0x1EEF9/0x1EEFE 0x2C3FC */
