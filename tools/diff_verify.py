@@ -13449,6 +13449,27 @@ def d2c_caption_case(r, b16=0x5A, c=(3, 5), f63=(0, 0), t=1):
             0x001088EF: bytes([0x11, 0x22, 0x33, t]), 0x00102760: b"\x5a" * 0x10}
 
 
+def d2c_streak_case(r, stage=3, f63=(0, 0), ch=(3, 5), b11=0x5A, v=(2, 4), t=(0x30, 0x50), acc=(0x10, 0x20),
+                    floor=4, b=1, cap=0x40):
+    """0x286BC: the result dword 0x104AD4, the stage word 0x104AFC (and the word after it), the two
+    bytes 0x108104 and the stage bytes 0x108106.. (0x5A each; the one at `stage` too when it is
+    past them), each slot's +0x63, +0x7A and +0x80 between neighbours, the count 0x104B11, and
+    what the two real callees read: 0x10452C = `b`, the 0xC9388 bytes for both `v`, the two
+    accumulators 0x1082C8 with the floor 0x1082D0 and the cap 0xC9408[b]."""
+    p = {0x00104AD4: le32(r), 0x00104AFC: le16(stage) + le16(0x7777),
+         0x00108103: bytes([0x61, v[0], v[1]]) + b"\x5a" * 8 + b"\x62",
+         0x00108106 + stage: b"\x5a",
+         0x00104B10: bytes([0x10, b11, 0x12]), 0x0010452C: bytes([b]),
+         0x000C9388 + b * 7 + v[0]: bytes([t[0]]), 0x000C9388 + b * 7 + v[1]: bytes([t[1]]),
+         0x001082C8: le32(acc[0]) + le32(acc[1]) + le32(floor) + le32(0xD4D4D4D4),
+         0x000C9408 + b: bytes([cap])}
+    for k in (0, 1):
+        so = 0x001077B0 + k * 0x94
+        p[so + 0x62] = bytes([0x6A + k, f63[k], 0x6C + k])
+        p[so + 0x79] = bytes([0x63, ch[k], 0x64, 0x65, 0x66, 0x67, 0x68, 0x5A, 0x69])
+    return p
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -13688,6 +13709,30 @@ D2C_SPECS = [
        mutants=("@b16", "@t9c4", "@id43", "@row", "@novoice", "@voiceid", "@above", "@tsign", "@thr",
                 "@f63", "@f63side", "@cside", "@rows", "@tbl", "@mode", "@id42", "@r2voice", "@r3",
                 "@order", "@col")),
+    # 0x286BC flow_match_streak_update: no argument. The result dword 0x104AD4: 2 clears the
+    # stage byte 0x108106[the word 0x104AFC]. Else it is the winner; the loser is winner ^ 1
+    # (`xor bl,1`). The winner's +0x63 == 1 (zero-extended): 0x104B11 += 1, then
+    # 0x4660C(0x108104[loser]) and the stage byte = 0. Otherwise 0x104B11 = 0, the winner's
+    # +0x80 = 0, the stage byte = (winner << 6, on DL) | 0x80 | the winner's +0x7A, and with the
+    # loser's +0x63 == 1, 0x46534(loser, 1). 0x4660C and 0x46534 run real on both sides (leaves
+    # with their own rows; 0x4660C reads the incremented 0x104B11). e3 runs a result of 3, which
+    # no caller produces: the bytes index slot 3 and the port does the same. Mask 0: the one
+    # caller (0x288CC) reloads EAX on every path (0x2891D, 0x2894B `xor eax,eax`, 0x289E5 `lea`).
+    Spec("flow_match_streak_update", 0x286BC, [
+        Case("d0", {}, d2c_streak_case(2, f63=(1, 1))),
+        Case("d1", {}, d2c_streak_case(2, stage=0x0106)),
+        Case("s0", {}, d2c_streak_case(0, f63=(1, 0), b11=0)),
+        Case("s1", {}, d2c_streak_case(1, stage=6, f63=(0, 1), b11=4)),
+        Case("s2", {}, d2c_streak_case(0, f63=(0x81, 0))),
+        Case("e0", {}, d2c_streak_case(0, f63=(0, 1))),
+        Case("e1", {}, d2c_streak_case(1, stage=0, f63=(0, 0), ch=(6, 2))),
+        Case("e2", {}, d2c_streak_case(1, f63=(1, 2), acc=(0x3F, 0x20))),
+        Case("e3", {}, d2c_streak_case(3, f63=(1, 1))),
+        Case("e4", {}, d2c_streak_case(0, f63=(2, 0x81), ch=(0, 5))),
+    ], allow_calls=(0x4660C, 0x46534), eax_mask=0,
+       mutants=("@draw", "@stagew", "@f63", "@inc", "@incorder", "@arg", "@zero2", "@b11z", "@s80",
+                "@s80side", "@flag80", "@flag6", "@flagch", "@spur", "@lf63", "@lside", "@delta",
+                "@nocall")),
 ]
 D1_SPECS += D2C_SPECS
 

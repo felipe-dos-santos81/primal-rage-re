@@ -3787,7 +3787,7 @@ static void flow_results_darken_close(void)
  * (0x2873E..0x28755); DS_00107813[loser] == 1 (0x2875B..0x28778: the
  * loser's slot offset, then the read; nothing is stored there) calls
  * fighter_46534(loser, 1) (0x2877A..0x2877E). */
-static void flow_match_streak_update(void)
+void flow_match_streak_update(void)
 {
     u32 result = DSD(DS_00104AD4);                       /* 0x286BF */
     if (result == 2u) {                                  /* 0x286C5/0x286C8 */

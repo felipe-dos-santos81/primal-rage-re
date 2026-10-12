@@ -20346,6 +20346,42 @@ D2C_RT_MUT(b16)   D2C_RT_MUT(t9c4)  D2C_RT_MUT(id43) D2C_RT_MUT(row)     D2C_RT_
 D2C_RT_MUT(above) D2C_RT_MUT(tsign) D2C_RT_MUT(thr)  D2C_RT_MUT(f63)     D2C_RT_MUT(f63side) D2C_RT_MUT(cside)
 D2C_RT_MUT(rows)  D2C_RT_MUT(tbl)   D2C_RT_MUT(mode) D2C_RT_MUT(id42)    D2C_RT_MUT(r2voice) D2C_RT_MUT(r3)
 D2C_RT_MUT(order) D2C_RT_MUT(col)
+
+/* 0x286BC: no argument. */
+static void b_d2c_286bc(const u32 *r, u32 *eax) { (void)r; flow_match_streak_update(); *eax = 0u; }
+enum { D2C_SU_NONE, D2C_SU_draw, D2C_SU_stagew, D2C_SU_f63, D2C_SU_inc, D2C_SU_incorder, D2C_SU_arg,
+       D2C_SU_zero2, D2C_SU_b11z, D2C_SU_s80, D2C_SU_s80side, D2C_SU_flag80, D2C_SU_flag6, D2C_SU_flagch,
+       D2C_SU_spur, D2C_SU_lf63, D2C_SU_lside, D2C_SU_delta, D2C_SU_nocall };
+#define D2C_SU(x) (mut == D2C_SU_##x)
+static void d2c_286bc_core(u32 mut)
+{
+    u32 result = DSD(0x00104AD4u);
+    u32 stage = 0x00108106u + (D2C_SU(stagew) ? (u32)DSB(0x00104AFCu) : (u32)DSW(0x00104AFCu));
+    if (result == 2u && !D2C_SU(draw)) { DSB(stage) = 0u; return; }
+    u32 winner = result, loser = winner ^ 1u;
+    u8 f = DSB(0x00107813u + winner * 0x94u);
+    if (D2C_SU(f63) ? f != 0u : f == 1u) {
+        if (!D2C_SU(inc) && !D2C_SU(incorder)) DSB(0x00104B11u) = (u8)(DSB(0x00104B11u) + 1u);
+        fighter_4660c((u32)DSB(0x00108104u + (D2C_SU(arg) ? winner : loser)));
+        if (D2C_SU(incorder)) DSB(0x00104B11u) = (u8)(DSB(0x00104B11u) + 1u);
+        if (!D2C_SU(zero2)) DSB(stage) = 0u;
+        return;
+    }
+    if (!D2C_SU(b11z)) DSB(0x00104B11u) = 0u;
+    if (!D2C_SU(s80)) DSB(0x00107830u + (D2C_SU(s80side) ? loser : winner) * 0x94u) = 0u;
+    u8 flag = (u8)(((u8)winner << (D2C_SU(flag6) ? 7 : 6)) | (D2C_SU(flag80) ? 0u : 0x80u)
+                   | DSB(0x0010782Au + (D2C_SU(flagch) ? loser : winner) * 0x94u));
+    DSB(stage) = flag;
+    if (D2C_SU(spur)) DSB(0x00107830u + loser * 0x94u) = (u8)(flag ^ (u8)loser);
+    u8 lf = DSB(0x00107813u + loser * 0x94u);
+    if ((D2C_SU(lf63) ? lf != 0u : lf == 1u) && !D2C_SU(nocall))
+        fighter_46534(D2C_SU(lside) ? winner : loser, D2C_SU(delta) ? 2 : 1);
+}
+#define D2C_SU_MUT(name) \
+    static void m_d2c_su_##name(const u32 *r, u32 *eax) { (void)r; d2c_286bc_core(D2C_SU_##name); *eax = 0u; }
+D2C_SU_MUT(draw)  D2C_SU_MUT(stagew) D2C_SU_MUT(f63)     D2C_SU_MUT(inc)    D2C_SU_MUT(incorder) D2C_SU_MUT(arg)
+D2C_SU_MUT(zero2) D2C_SU_MUT(b11z)   D2C_SU_MUT(s80)     D2C_SU_MUT(s80side) D2C_SU_MUT(flag80)  D2C_SU_MUT(flag6)
+D2C_SU_MUT(flagch) D2C_SU_MUT(spur)  D2C_SU_MUT(lf63)    D2C_SU_MUT(lside)  D2C_SU_MUT(delta)    D2C_SU_MUT(nocall)
 /* ---- end of track D2 batch d2c bindings ---- */
 
 static const binding_t k_bindings[] = {
@@ -24454,6 +24490,25 @@ static const binding_t k_bindings[] = {
     { "flow_match_result_text@r3", m_d2c_rt_r3, 0x00000000u },
     { "flow_match_result_text@order", m_d2c_rt_order, 0x00000000u },
     { "flow_match_result_text@col", m_d2c_rt_col, 0x00000000u },
+    { "flow_match_streak_update", b_d2c_286bc, 0x00000000u },
+    { "flow_match_streak_update@draw", m_d2c_su_draw, 0x00000000u },
+    { "flow_match_streak_update@stagew", m_d2c_su_stagew, 0x00000000u },
+    { "flow_match_streak_update@f63", m_d2c_su_f63, 0x00000000u },
+    { "flow_match_streak_update@inc", m_d2c_su_inc, 0x00000000u },
+    { "flow_match_streak_update@incorder", m_d2c_su_incorder, 0x00000000u },
+    { "flow_match_streak_update@arg", m_d2c_su_arg, 0x00000000u },
+    { "flow_match_streak_update@zero2", m_d2c_su_zero2, 0x00000000u },
+    { "flow_match_streak_update@b11z", m_d2c_su_b11z, 0x00000000u },
+    { "flow_match_streak_update@s80", m_d2c_su_s80, 0x00000000u },
+    { "flow_match_streak_update@s80side", m_d2c_su_s80side, 0x00000000u },
+    { "flow_match_streak_update@flag80", m_d2c_su_flag80, 0x00000000u },
+    { "flow_match_streak_update@flag6", m_d2c_su_flag6, 0x00000000u },
+    { "flow_match_streak_update@flagch", m_d2c_su_flagch, 0x00000000u },
+    { "flow_match_streak_update@spur", m_d2c_su_spur, 0x00000000u },
+    { "flow_match_streak_update@lf63", m_d2c_su_lf63, 0x00000000u },
+    { "flow_match_streak_update@lside", m_d2c_su_lside, 0x00000000u },
+    { "flow_match_streak_update@delta", m_d2c_su_delta, 0x00000000u },
+    { "flow_match_streak_update@nocall", m_d2c_su_nocall, 0x00000000u },
     /* ---- end of track D2 batch d2c entries ---- */
 };
 
