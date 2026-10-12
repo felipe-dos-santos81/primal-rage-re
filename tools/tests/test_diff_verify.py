@@ -11277,6 +11277,7 @@ D3A_MASKS = {
     "game_mode_23_step": 0x0,
     "flow_round_over": 0x0,
     "flow_join_poll": 0xffffffff,
+    "frontend_input_reset": 0x0,
 }
 D3A_KINDS = {
     "frontend_coin_poll@nocredit": {'call #0', 'call #1', 'eax'},
@@ -11805,6 +11806,10 @@ D3A_KINDS = {
     "flow_join_poll@psside": {'call #1'},
     "flow_join_poll@nops": {'call #1'},
     "flow_join_poll@order": {'call #1', 'call #2', 'call #2 memory'},
+    "frontend_input_reset@nostore": {'byte'},
+    "frontend_input_reset@val": {'byte'},
+    "frontend_input_reset@word": {'byte'},
+    "frontend_input_reset@off": {'byte'},
 }
 D3A_CASES = [
     ("frontend_coin_poll@nocredit", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
@@ -12333,6 +12338,10 @@ D3A_CASES = [
     ("flow_join_poll@psside", ['j3', 'j4', 'j7']),
     ("flow_join_poll@nops", ['j3', 'j4', 'j7']),
     ("flow_join_poll@order", ['j1', 'j2', 'j6', 'j9']),
+    ("frontend_input_reset@nostore", ['i0', 'i1', 'i2']),
+    ("frontend_input_reset@val", ['i0', 'i1', 'i2']),
+    ("frontend_input_reset@word", ['i0', 'i1', 'i2']),
+    ("frontend_input_reset@off", ['i0', 'i1', 'i2']),
 ]
 D1_MASKS.update(D3A_MASKS)
 D1_KINDS.update(D3A_KINDS)

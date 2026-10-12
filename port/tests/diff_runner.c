@@ -26793,6 +26793,12 @@ D3A_JN_MUT(set) D3A_JN_MUT(orbit) D3A_JN_MUT(nostore) D3A_JN_MUT(late) D3A_JN_MU
 D3A_JN_MUT(nospend) D3A_JN_MUT(ret1) D3A_JN_MUT(retside) D3A_JN_MUT(psrow) D3A_JN_MUT(psrow2)
 D3A_JN_MUT(psbit) D3A_JN_MUT(psside) D3A_JN_MUT(nops) D3A_JN_MUT(order)
 #undef D3A_JN
+/* 0x4F1E4: no argument. Mask 0: every one of its call sites reloads EAX next (`mov eax,1`, record §1). */
+static void b_d3a_4f1e4(const u32 *r, u32 *eax) { (void)r; frontend_input_reset(); *eax = 0u; }
+static void m_d3a_ir_nostore(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
+static void m_d3a_ir_val(const u32 *r, u32 *eax) { (void)r; DSB(0x00104B15u) = 1u; *eax = 0u; }
+static void m_d3a_ir_word(const u32 *r, u32 *eax) { (void)r; DSW(0x00104B15u) = 0u; *eax = 0u; }
+static void m_d3a_ir_off(const u32 *r, u32 *eax) { (void)r; DSB(0x00104B14u) = 0u; *eax = 0u; }
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33659,6 +33665,11 @@ static const binding_t k_bindings[] = {
     { "flow_join_poll@psside", m_d3a_jn_psside, 0xFFFFFFFFu },
     { "flow_join_poll@nops", m_d3a_jn_nops, 0xFFFFFFFFu },
     { "flow_join_poll@order", m_d3a_jn_order, 0xFFFFFFFFu },
+    { "frontend_input_reset", b_d3a_4f1e4, 0x00000000u },
+    { "frontend_input_reset@nostore", m_d3a_ir_nostore, 0x00000000u },
+    { "frontend_input_reset@val", m_d3a_ir_val, 0x00000000u },
+    { "frontend_input_reset@word", m_d3a_ir_word, 0x00000000u },
+    { "frontend_input_reset@off", m_d3a_ir_off, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

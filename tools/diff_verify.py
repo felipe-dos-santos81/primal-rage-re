@@ -18949,6 +18949,18 @@ D3A_SPECS += [
                 "@eside", "@noerase", "@set", "@orbit", "@nostore", "@late", "@early", "@spendn", "@nospend",
                 "@ret1", "@retside", "@psrow", "@psrow2", "@psbit", "@psside", "@nops", "@order")),
 ]
+D3A_SPECS += [
+    # 0x4F1E4 frontend_input_reset: no argument. 0x2EA30(0x2700), the byte 0x104B15 = 0 (DL
+    # across the call), 0x2EA30(the first call's EAX). 0x2EA30 is the interrupt lock on the byte
+    # 0xBCD60 (a named non-row, allowed; the port does not model it): the first call clears a 1
+    # and returns the old byte, the second puts a 1 back, so the byte ends as it started in each
+    # of the three cases (0, 1, another value). Mask 0: record §1.
+    Spec("frontend_input_reset", 0x4F1E4, [
+        Case("i0", {"edx": 0xABCD12FF}, {0x00104B14: b"\x61\x5a\x62", 0x000BCD60: b"\x00"}),
+        Case("i1", {"eax": 0xFFFFFFFF}, {0x00104B14: b"\x61\xff\x62", 0x000BCD60: b"\x01"}),
+        Case("i2", {}, {0x00104B14: b"\x61\x01\x62", 0x000BCD60: b"\x80"}),
+    ], allow_calls=(0x2EA30,), eax_mask=0, mutants=("@nostore", "@val", "@word", "@off")),
+]
 D1_SPECS += D3A_SPECS
 
 

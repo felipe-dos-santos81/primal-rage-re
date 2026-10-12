@@ -30,6 +30,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x26A50` | `game_mode_23_step` | 572 | 0: `0x25317 call` then `0x2531C jmp 0x2540f` (the mode tail) |
 | `0x27ED8` | `flow_round_over` | 206 | 0: its three call sites in `0x27FA8` (`0x28003`, `0x280BA`, `0x280D2`) are followed by four pops and `ret`; `0x27FA8`'s EAX is dead by the trace of the `0x27DC8` line above |
 | `0x28CC8` | `flow_join_poll` | 158 | full: `mov eax,ebx` `0x28D1E` or `xor eax,eax` `0x28D50`/`0x28D60`; both callers `test eax,eax` and pass EAX - 1 on (`0x25264`/`0x25268`, `0x2534E`/`0x25352`) |
+| `0x4F1E4` | `frontend_input_reset` | 26 | 0: each of its 24 call sites loads `mov eax,1` next, five of them after `xor ecx,ecx` and at most one more `xor` (`0x1EA1B`, `0x20940`, `0x2F9A6`, `0x2F9E0`, `0x2FE9B`) |
 
 ## §2 The row table (measured)
 
@@ -58,6 +59,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `game_mode_23_step` | `0x26A50` | 16 | 12/12 | 65 | 0 | one row over the four states of the jump table `0x26A40` (a bounded switch the scan follows). The string tree real; `0x29D60` allowed; `0x32970` real in the original only (§4); seven stubs (`0x1DAE8` seamed here, no row). `c2`: character `0x80`; `c3`: side `0x80` |
 | `flow_round_over` | `0x27ED8` | 8 | 9/9 | 30 | 0 | three stubs (`0x1D764`, `0x19820` seamed here; `0x1D764` has no row); the deferred audit add `0x2DAE4(0xF, 1)` real in the original, turned off by its field (§4). With `0x1D764` stubbed the `+0x5A` bytes survive, so m and every divisor vary: `o5` a negative product, `o6` a product that overflows 32 bits, `o3` a byte of `0xFF` (`@maxs`) |
 | `flow_join_poll` | `0x28CC8` | 10 | 12/12 | 27 | `0xFFFFFFFF` | five stubs (`0x2C1C8`, `0x2C178` seamed here). `j6`: the byte `0x104B1F` = `0xFD` and a `0x2C060` EAX of `0x100` (`@al`); `j9`: poked masks (`@eq`); `j3`/`j4`/`j7`: the row by the option bit |
+| `frontend_input_reset` | `0x4F1E4` | 3 | 1/1 | 4 | 0 | `0x2EA30` (the interrupt lock, a named non-row) allowed: the lock byte `0xBCD60` ends as it started for 0, 1 and `0x80` |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -164,6 +166,9 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   (`0x27F5C`) is never taken (EBX is a zero-extended byte) and is not a block leader. In the game `0x1D764`
   zeroes both `+0x5A` bytes first, so m is 0 there; the row's stub leaves them, which is what exercises the
   division.
+- `frontend_input_reset`: the two `0x2EA30` calls (lock with `0x2700`, restore with the first call's EAX) are
+  not modelled by the port (`/* PORT: */`); their only memory effect is the byte `0xBCD60`, cleared across the
+  store and put back. Not compared beyond its final value.
 
 ## §5 Store-sweep findings
 
