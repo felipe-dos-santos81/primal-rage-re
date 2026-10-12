@@ -275,7 +275,7 @@ int camera_page_tail_b(u32 side, u32 out)
         if (DSB(DS_000FD158 + side * 4u + 2u) == 0u) return 0;
         if (DSW(0x00107834u + side * 0x94u)
             != DSW(DS_00100B44 + side * 2u)) return 0;
-        if ((s32)r63 < (s32)(u32)DSW(DS_00100B48 + side * 2u)) return 0;
+        if ((s32)r63 < (s32)(s16)DSW(DS_00100B48 + side * 2u)) return 0;   /* 0x166F3 `cmp dx,si; jl` */
         DSD(out) = DSD(DS_000FD158 + side * 4u);
         return 1;
     }
