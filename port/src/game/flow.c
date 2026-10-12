@@ -5004,7 +5004,7 @@ void game_state_6(void)
      * push/pops EDX), so the store below is the constant 1. */
     fight_hud_spawn(0u);                                /* 0x11B1E 0x1D890 */
     DSB(DS_00104B19 + 2u) = 1u;                         /* 0x11B23 */
-    DSW(DS_001082CC) = 3u;                              /* 0x11B2F */
+    DSD(DS_001082CC) = 3u;                              /* 0x11B2F (a dword: `mov [0x1082cc],ebx`) */
 
     if ((DSB(DS_00104528 + 1u) & 2u) == 0u) {           /* 0x11B35 */
         text_cursor_set(-1, 2, game_string_get(6u), 0x2000u);   /* 0x11B49/55 */
