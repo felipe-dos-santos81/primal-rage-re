@@ -24698,6 +24698,201 @@ D5F_SPECS += [
     ], unhit_named=D5F_SPAWN_HALF, calls=(D5F_RNG, SPAWN, D5F_129FC_LINK), eax_mask=0, mutants=("@latenext",)),
 ]
 
+# ---- fight.c: mode 0x25's per-frame pass 0x4E67C ----
+D5F_M_NODE = 0x0010A000          # zero BSS: the list nodes, 0x28 apart
+D5F_M_REC = 0x0010A200           # their actor records, 0x80 apart
+D5F_M_PART = 0x0010A800          # the partner records, 0x40 apart
+D5F_M_F = (0x0010AA00, 0x0010AA80)   # the two fighters' records
+D5F_M_ALT = (0x0010AB00, 0x0010AB80, 0x0010AC00)   # the records the re-read spec's stubs relink to
+# 0x4A808/0x4A8A8: EAX = the node (`mov edx,eax` 0x4A8AB), `ret`, the whole EAX set (`mov eax,1`
+# 0x4A85A/0x4A8F9, `xor eax,eax` 0x4A862/0x4A902): the stubs return 0 or 1, what the port's u8
+# carries. 0x4E5A4: EAX = the node, EDX = the index (`mov esi,eax; mov ecx,edx` 0x4E5A7). 0x4E99C:
+# EAX = the count (`mov ebx,eax` 0x4E9A3). 0x4EBB8 takes nothing. 0x49444: EAX = the record; () by
+# diff_emu._CALLEE_CLOBBER_FIXES (record section 4). Clobbers otherwise E.callee_clobbers.
+D5F_4A808 = E.Call(0x4A808, ("eax",))
+D5F_4A8A8 = E.Call(0x4A8A8, ("eax",))
+D5F_4E5A4 = E.Call(0x4E5A4, ("eax", "edx"), clobbers=("edx",))
+D5F_4E99C = E.Call(0x4E99C, ("eax",))
+D5F_4EBB8 = E.Call(0x4EBB8, ())
+D5F_49444 = E.Call(0x49444, ("eax",))
+D5F_M25_CALLS = (D2B_2BE00_S, D5F_4A808, D5F_RNG, D5F_4E5A4, D5F_4A8A8, ANIM_BEGIN, D5F_49444, D5F_4E99C,
+                 D5F_4EBB8, D3B_M25SPAWN)
+# the re-read spec's stubs: 0x2BE00 moves the side byte 0x1088BC to 1 and stores a record at its
+# argument's +0x60 (the st-2 node of the case sits at its own record's +0x58, so that is its +8);
+# 0x4A808 relinks its node's +8; 0x4E5A4 leaves its node's state byte at 2; 0x4E99C makes the round
+# byte 0x1088BD even
+D5F_M25_RR = (E.Call(0x2BE00, ("eax",), writes=((None, 0x001088BC, b"\x01"), (0, 0x60, le32(D5F_M_ALT[0])))),
+              E.Call(0x4A808, ("eax",), writes=((0, 8, le32(D5F_M_ALT[1])),)),
+              D5F_RNG,
+              E.Call(0x4E5A4, ("eax", "edx"), clobbers=("edx",), writes=((0, 0x1E, b"\x02"),)),
+              D5F_4A8A8, ANIM_BEGIN, D5F_49444,
+              E.Call(0x4E99C, ("eax",), writes=((None, 0x001088BD, b"\x02"),)),
+              D5F_4EBB8, D3B_M25SPAWN)
+
+
+def d5f_n(c1c, st, w1a=0x1A2B, xw=0x0000, r34=0x3434, r48=0x21, partner=False, rec=None, inrec=False):
+    """One list node of a 0x4E67C case: its +0x1C word, its +0x1E state, its +0x1A word, its
+    record's +0x32 word (the x of the +0x30 dword's high half), +0x34 word and +0x48 byte, whether
+    it has a partner, the record slot it uses (default its own), and whether the node sits inside
+    its record at +0x58."""
+    return dict(c1c=c1c, st=st, w1a=w1a, xw=xw, r34=r34, r48=r48, partner=partner, rec=rec, inrec=inrec)
+
+
+def d5f_m25_case(nodes, pidx=0, w32=0x00E0, bd=0, b8=0, b9=0, be=0x5A, f0=1, f1=1, t1=None, t2=None, tw=0,
+                 streams=False, alts=False):
+    """0x4E67C: the bytes 0x1088B7..0x1088BF (B8 and B9 the two gates, BC the side, BD the round,
+    BE the flag it writes), the word 0x108894 between seeded words, the round flags
+    0x1078F0/0x1078F1 between seeded bytes, both fighters' record pointers and the records'
+    +0x2E..+0x35 (the +0x32 word is `w32` for the side and its complement for the other), the two
+    bit tables' entries for `tw` (the neighbouring entries complemented), with `streams` the three
+    stream entries a wrapped index reaches, and the list 0x10884C: each node whole (+0..+0x21), its
+    record's +0x14..+0x49 (every byte seeded; +0x18, +0x28, +0x30..+0x3B and +0x48 are the fields),
+    its partner's +0x16..+0x35, and with `alts` the relink targets' +0x27..+0x29 and +0x30..+0x39.
+    At most 40 pokes of at most 64 bytes (diffrun's limits)."""
+    p = {0x001088B7: bytes([0xB7, b8, b9, 0xBA, 0xBB, pidx, bd, be, 0xBF]),
+         0x00108892: le16(0x9292) + le16(0x7777) + le16(0x9696),
+         0x001078EF: bytes([0xEF, f0, f1, 0xF2])}
+    if streams:
+        p.update({0x000C9544 + 0xFFFF * 4: le32(0x000EE111), 0x000C9544 + 0xFFE0 * 4: le32(0x000EE222),
+                  0x000C9544 + 0x00DF * 4: le32(0x000EE333)})
+    for s in (0, 1):
+        f = D5F_M_F[s]
+        p[D5F_SLOT + s * 0x94] = le32(f)
+        p[f + 0x2E] = le16(0x2E2E) + le16(0x3030 + s) + le16(w32 if s == pidx else w32 ^ 0x7FFF) + le16(0x3434)
+    if t1 is not None:
+        lo = min(tw, tw ^ 1)
+        p[0x000C9810 + lo * 2] = b"".join(le16(t1 if w == tw else t1 ^ 0xFFFF) for w in (lo, lo + 1))
+        p[0x000C9830 + lo * 2] = b"".join(le16(t2 if w == tw else t2 ^ 0xFFFF) for w in (lo, lo + 1))
+    if alts:
+        for k, alt in enumerate(D5F_M_ALT):
+            p[alt + 0x27] = bytes([0x17 + k, 0x08 + k, 0x19 + k])
+            p[alt + 0x30] = (le16(0xA0A0 + k) + le16(0xA2A2 + k) + le16(0xA4A4 + k) + le16(0xA6A6 + k)
+                             + le16(0xA8A8 + k))
+    addr = []
+    for k, n in enumerate(nodes):
+        rec = D5F_M_REC + (k if n["rec"] is None else n["rec"]) * 0x80
+        addr.append(rec + 0x58 if n["inrec"] else D5F_M_NODE + k * 0x28)
+    chain = addr + [0x0010884C]
+    p[0x0010884C] = le32(chain[0])
+    for k, n in enumerate(nodes):
+        rec = D5F_M_REC + (k if n["rec"] is None else n["rec"]) * 0x80
+        part = D5F_M_PART + k * 0x40
+        p[addr[k]] = (le32(chain[k + 1]) + le32(0x04040404) + le32(rec) + le32(0x0C0C0C0C)
+                      + le32(part if n["partner"] else 0) + le32(0x14141414) + le16(0x1818) + le16(n["w1a"])
+                      + le16(n["c1c"]) + bytes([n["st"], 0x1F, 0x20, 0x21]))
+        if n["rec"] is None:
+            buf = bytearray(0x40 | (o & 0x3F) for o in range(0x14, 0x4A))
+            def put(off, data):
+                buf[off - 0x14:off - 0x14 + len(data)] = data
+            put(0x18, le32(0x18180081 + (k << 8)))
+            put(0x28, bytes([0x28 + (k & 7)]))
+            put(0x30, le16(0x3000 + k) + le16(n["xw"]) + le16(n["r34"]) + le16(0x3636) + le16(0x3838) + le16(0x3A3A))
+            put(0x48, bytes([n["r48"]]))
+            p[rec + 0x14] = bytes(buf)
+        if n["partner"]:
+            buf = bytearray(0x80 | (o & 0x3F) for o in range(0x16, 0x36))
+            buf[2:6] = le32(0x99999900 + k)
+            buf[0x32 - 0x16:0x34 - 0x16] = le16(0x9200 + k)
+            p[part + 0x16] = bytes(buf)
+    assert len(p) <= 40 and max(len(v) for v in p.values()) <= 64
+    return p
+
+
+def d5f_m25_cases():
+    """See the spec's comment for what each case reaches."""
+    N = d5f_n
+    def odd(px):
+        return [N(0xFFFD, 7, r34=0),                                # bit 1 clear, a still actor: skipped
+                N(0x0000, 7, r34=0x0100),                           # bit 1 clear, a moving actor: 0x4A808 decides
+                N(0x0002, 1, xw=px & 0xFFFF),                       # inside the band: bit 7 set; stalled
+                N(0x0082, 3, xw=(px + 0x101) & 0xFFFF),             # right of it: cleared; state 3: nothing more
+                N(0xFFFF, 0, xw=(px - 0x101) & 0xFFFF, r48=0x23),   # left of it: cleared; state 0: 0x4A8A8 decides
+                N(0x0002, 2, xw=(px + 0x100) & 0xFFFF, partner=True),   # the right edge: set; state 2, a partner
+                N(0x0082, 2, xw=(px - 0x100) & 0xFFFF)]             # the left edge: set; state 2 alone
+    even = [N(0xFF02, 3, w1a=0xFFE3),                     # table bit 3
+            N(0x0082, 3, w1a=0x0004),                     # table bit 4
+            N(0x00FF, 3, w1a=0x5A1F),                     # shift 31: past the word
+            N(0x0082, 3, w1a=0x0005)]                     # bit 5
+    ten = [N(0x0002, 1, rec=0) for _ in range(10)]
+    ten[0] = N(0x0002, 1)
+    nine = ten[:9] + [N(0x0002, 0, rec=0)]
+    eleven = ten + [N(0x0002, 1, rec=0)]
+    low = [N(0x0002, 0, r48=0x1F), N(0x0002, 0, r48=0x00), N(0x0002, 0, r48=0xFF)]
+    return [
+        Case("m0", {}, d5f_m25_case([], be=0x5A), {0x2BE00: 0x1C00}),
+        Case("m1", {}, d5f_m25_case([], w32=0x00E0, bd=2, b8=1), {0x2BE00: 0x1C01}),
+        Case("m2", {}, d5f_m25_case(odd(0x026F), w32=0x026F, bd=1, b8=1, b9=1),      # (0x26F - 0xE0) / 100 = 3
+             {0x2BE00: 0x7FFFFFFF, 0x4A808: 1, 0x4A8A8: 1}),
+        Case("m3", {}, d5f_m25_case(odd(-0x10), pidx=1, w32=0xFFF0, bd=3, b8=1), {0x2BE00: 0x00010000}),
+        Case("m4", {}, d5f_m25_case(even, w32=0x00E0 + 1600, bd=2, b8=1, t1=0x8008, t2=0x0010, tw=15),
+             {0x2BE00: 0x2000, 0x5D7DC: 0}),
+        Case("m5", {}, d5f_m25_case(even, pidx=1, w32=0x00E0 + 100, bd=0, t1=0x8008, t2=0x0010, tw=1),
+             {0x2BE00: 0x2000, 0x5D7DC: 1}),
+        Case("m6", {}, d5f_m25_case(even, w32=0x00E0 + 99, bd=0xFE, t1=0x0020, t2=0x8018, tw=0),
+             {0x2BE00: 0x2000, 0x5D7DC: 0x100}),
+        Case("m7", {}, d5f_m25_case(even, w32=0x8010, bd=4, t1=0x0008, t2=0x0000, tw=15),
+             {0x2BE00: 0x2000, 0x5D7DC: 0}),
+        Case("m8", {}, d5f_m25_case([], w32=0x00DF, bd=1), {0x2BE00: 0x2000}),
+        Case("m9", {}, d5f_m25_case(even, w32=0x00E0 + 1499, bd=2, t1=0x0010, t2=0x0000, tw=14),
+             {0x2BE00: 0x2000, 0x5D7DC: 0xFFFFFF00}),
+        Case("ma", {}, d5f_m25_case(ten, bd=5, b8=1), {0x2BE00: 0}),
+        Case("mb", {}, d5f_m25_case(nine, bd=4, b8=1, b9=1), {0x2BE00: 0}),
+        Case("mc", {}, d5f_m25_case(ten, bd=6, b9=1), {0x2BE00: 0}),
+        Case("md", {}, d5f_m25_case([N(0x0082, 2, partner=True), N(0x0002, 2)], bd=7, b8=1),
+             {0x2BE00: 0x80000000}),
+        Case("me", {}, d5f_m25_case(low, bd=2, b8=1, f1=0, streams=True), {0x2BE00: 0xFFFFFFFF, 0x4A8A8: 1}),
+        Case("mf", {}, d5f_m25_case([N(0x0002, 2, partner=True), N(0x0002, 1)], bd=8, b8=1), {0x2BE00: 0}),
+        Case("mg", {}, d5f_m25_case([], bd=2, b8=1, f0=0), {0x2BE00: 0}),
+        Case("mh", {}, d5f_m25_case(eleven, bd=1), {0x2BE00: 0}),
+    ]
+
+
+def d5f_m25_rr_cases():
+    """ra: the side byte is 0 at entry and the 0x2BE00 stub makes it 1, so the fighter whose +0x32
+    word feeds 0x108894 (0x4E6B8..0x4E6D5) and the odd round's band (0x4E799..0x4E7AF) is slot 1's;
+    its second node's x is in slot 1's band and out of slot 0's. rb: the second node sits at its own
+    record's +0x58, so the state-2 arm's 0x2BE00 relinks its +8 and the bit and the teardown go to
+    the new record (0x4E8E4, 0x4E8EB). In both, the first node's 0x4A808 relinks it (0x4E758,
+    0x4E761), 0x4E5A4 leaves the state byte at 2 (0x4E853) and 0x4E99C leaves the round even
+    (0x4E92D)."""
+    N = d5f_n
+    return [
+        Case("ra", {}, d5f_m25_case([N(0x0000, 7, r34=0x0100), N(0x0002, 1, xw=0x7D90)], w32=0x026F, bd=1, b8=1,
+                                    b9=1, alts=True), {0x2BE00: 0x2000, 0x4A808: 1}),
+        Case("rb", {}, d5f_m25_case([N(0x0000, 7, r34=0x0100), N(0x0002, 1, inrec=True)], bd=1, b9=1, alts=True),
+             {0x2BE00: 0x80000000, 0x4A808: 1}),
+    ]
+
+
+D5F_SPECS += [
+    # 0x4E67C fight_4e67c: no argument. Ten stubs. One stub EAX serves every 0x2BE00 call of a case:
+    # the entry's (`cmp eax,0x1c00; jle` 0x4E6B1, signed: m0 is the boundary, md/me are negative)
+    # and the state-2 arm's (`test eax,eax; jge` 0x4E8E0: mf returns 0, md 0x80000000). m2/m3 walk
+    # the odd round (the x band is +-0x100 inclusive on both edges, 0x4E7C1 `jg`, 0x4E7CE `jl`),
+    # m4..m7 and m9 the even round (two table bits with the rng between them, `test eax,eax`
+    # 0x4E805: m6 draws 0x100, m9 0xFFFFFF00; a shift of 31 runs past the word). m7's +0x32 word
+    # 0x8010 is the 16-bit wrap of 0x4E6DE `sub eax,0xe0` / 0x4E6E8 `test ax,ax`: 0x7F30, positive,
+    # so the index is 15. ma/mb/mc count ten and nine stalled nodes (0x4E907 `cmp eax,0xa`); md
+    # tears two state-2 nodes down; me reaches the stream table through a wrapped word index
+    # (+0x48 below 0x20). The last gate spawns on an even round or when nothing was processed
+    # (0x4E97A `test edx,edx; je`, 0x4E97E `test si,si; jne`): m1, m4, mb, mf (even), md (odd,
+    # none); m2, ma (odd, some) do not. Mask 0: 0x2685F `call 0x1282c`, whose first use of EAX is
+    # the load at 0x12834 (`mov ax,[0xef6dc]` .. `and eax,0xffff` 0x1283E).
+    Spec("fight_4e67c", 0x4E67C, d5f_m25_cases(), calls=D5F_M25_CALLS, eax_mask=0,
+         mutants=tuple("@" + m for m in (
+             "pside ge uns wrap div nozero clamp b94 bit1 r34b no34 no34z no32 o1a no1e w1e fall nobig par "
+             "band gt lt2 ux t1 sh sh1b sx rng rngal rnginv t2 norng setonly bit7 idx8 idx32 o48 no5a4 no38 "
+             "no34b no36 strm hold no1e1 early1e prochit nostall noproc1 nocopy18 nocopy32 copyw copyd livenode "
+             "le no28 bit28 no494 early494 st2proc ten tenge nobe cntst nocard cardfirst par2 nobe0 nob8 nof0 "
+             "nof1 spawninv spawnpar fresh nob8z b8first").split())),
+    # the same entry with stubs that rewrite what the raw reads again after them (d5f_m25_rr_cases)
+    Spec("fight_4e67c_rr", 0x4E67C, d5f_m25_rr_cases(), calls=D5F_M25_RR, eax_mask=0,
+         unhit_named={a: "the even round, states 0 and 1, the partner copy and the gates' other arms: the fight_4e67c row's"
+                      for a in (0x4E70F, 0x4E7D8, 0x4E7FB, 0x4E809, 0x4E830, 0x4E836, 0x4E862, 0x4E867, 0x4E86F,
+                                0x4E87A, 0x4E8AD, 0x4E8B0, 0x4E8C1, 0x4E90C, 0x4E97E)},
+         mutants=("@pcache", "@rcache", "@r2cache", "@stearly", "@bdcache")),
+]
+
 D1_SPECS += D5F_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

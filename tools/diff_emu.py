@@ -735,6 +735,13 @@ _CALLEE_CLOBBER_FIXES[0x36870] = ("esi", "ebp")
 # `mov eax,esi` and at the second pass's 0x19780 `cmp esi,[eax*4+0x100ad0]`).
 _CALLEE_CLOBBER_FIXES[0x3962C] = ("edx",)
 _CALLEE_CLOBBER_FIXES[0x396AC] = ("edx",)
+# D5 d5f (record section 4): 0x49444 pushes EBX, ECX, EDX and ESI (0x49444..0x49447) and pops them
+# before its one `ret` (0x494A0..0x494A3); its own instructions write only EAX, EBX, ECX, EDX and ESI.
+# Its callees 0x249B0 and 0x249D0 clobber nothing and 0x2B150 preserves ESI/EDI/EBP (the entry above):
+# the scan's (edi, ebp) is 0x2B150's uncorrected set, which the fixpoint uses for an inner callee. The
+# raw caller 0x4E67C keeps the next list node in EDI across the call (0x4E730 `mov edi,[ebx]`; call
+# 0x4E8EE; 0x4E8F3 `mov ebx,edi`).
+_CALLEE_CLOBBER_FIXES[0x49444] = ()
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --

@@ -5544,6 +5544,7 @@ void fight_mode25_enter(void)
  * the +0x1C bit 1 clear arm). */
 u8 fight_4a808(u32 node)
 {
+    PR_SEAM_RET(0x4A808u, node);
     u32 rec = DSD(node + 8u);                              /* 0x4A80A */
     s32 rx = (s32)DSD(rec + 0x18u);                         /* 0x4A810 */
     s32 target = (s32)DSD(node + 0x14u);                    /* 0x4A839 (reloaded below too) */
@@ -5565,6 +5566,7 @@ u8 fight_4a808(u32 node)
  * caller: 0x4E871 (0x4E67C, the +0x1E == 0 arm). */
 u8 fight_4a8a8(u32 node)
 {
+    PR_SEAM_RET(0x4A8A8u, node);
     u32 rec = DSD(node + 8u);                                /* 0x4A8AD */
     s32 pos = fight_2be00(rec);                               /* 0x4A8B0 0x2BE00 */
     s32 target = (s32)DSD(node + 0x14u);                       /* 0x4A8CE */
@@ -5594,6 +5596,7 @@ u8 fight_4a8a8(u32 node)
  * 0x4E84E (0x4E67C's per-entry tail-common). */
 static void fight_4e5a4(u32 node, u32 idx)
 {
+    PR_SEAM(0x4E5A4u, node, idx);
     if ((DSW(node + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4E5B1/0x4E5B8 */
     u32 rec = DSD(node + 8u);                                    /* 0x4E5BE */
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;   /* 0x4E5C1..0x4E5D0 */
@@ -5641,6 +5644,7 @@ static void fight_4e5a4(u32 node, u32 idx)
  * tail). */
 void fight_4e99c(u32 count)
 {
+    PR_SEAM(0x4E99Cu, count);
     u16 bx = (u16)count;                                             /* 0x4E9A3 */
     u8 r = (u8)(DSB(DS_001088BD) + 1u);                                /* 0x4E9A5/0x4E9B0/0x4E9BE */
     DSB(DS_001088BD) = r;                                               /* 0x4E9B4 */
