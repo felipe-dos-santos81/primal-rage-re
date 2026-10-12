@@ -70,6 +70,7 @@ void config_storage_touch(u32 kind)
 /* 0x2DA0C. Inverse of config_field_get (spec §3). */
 u32 config_field_set(u32 field, u32 value)
 {
+    PR_SEAM_RET(0x2DA0Cu, field, value);
     if (field > 0x3Eu) return 0xFFFFFFFFu;
 
     u32 d = DSD(DS_0002D300 + field * 4u);
@@ -291,6 +292,7 @@ u32 hiscore_read(u32 rec, u32 table)
  * finds no record. */
 u32 hiscore_insert(u32 rec, u32 src, u32 table)
 {
+    PR_SEAM_RET(0x2DCA0u, rec, src, table);
     u32 left = 0u, size = 0u;
     u32 p = hiscore_locate(rec, table, &left, &size);        /* 0x2DCBB */
     if (p == 0u) return 0u;                                  /* 0x2DCC4 */

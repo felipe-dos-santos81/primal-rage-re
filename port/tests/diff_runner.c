@@ -33643,6 +33643,122 @@ D5D_HI_MUT(flagbit, 6u) D5D_HI_MUT(flagidx, 7u) D5D_HI_MUT(nomove, 8u) D5D_HI_MU
 D5D_HI_MUT(vb, 11u) D5D_HI_MUT(vle, 12u) D5D_HI_MUT(nameoff, 13u) D5D_HI_MUT(two, 14u) D5D_HI_MUT(mask, 15u)
 D5D_HI_MUT(shift, 16u) D5D_HI_MUT(nuladv, 17u) D5D_HI_MUT(wbe, 18u) D5D_HI_MUT(touchalways, 19u) D5D_HI_MUT(notouch, 20u)
 D5D_HI_MUT(toucharg, 21u) D5D_HI_MUT(ret1, 22u)
+/* 0x1E918 hiscore_fill_defaults: EAX = force. 0x2DBC4 (and its 0x2DB58) runs on both sides over
+ * the case's table; 0x2DCA0 is a stub (seamed here). Mask 0: the two callers 0x1E8AB and 0x1E8F0
+ * (record §1). */
+static void d5d_1e918_core(u32 force, u32 mut)
+{
+    u32 src = (mut == 1u) ? 0x000A7BE8u : 0x000A7BBCu;                       /* @srcbase */
+    u32 n = (mut == 2u) ? 9u : 10u;                                          /* @nine */
+    for (u32 i = 0u; i < n; i++) {
+        u32 r = hiscore_read(i, (mut == 3u) ? 1u : 0u);                      /* @readtable */
+        u32 zero = (mut == 4u) ? DSB(r) == 0u : DSD(r) == 0u;                /* @valbyte */
+        u32 f = (mut == 5u) ? 0u : (mut == 6u) ? (force & 0xFFu) : force;    /* @noforce @forcelow */
+        if (mut == 7u) zero = !zero;                                         /* @inv */
+        if (zero || f != 0u) {
+            if (mut == 8u) (void)hiscore_insert(src, i, 0u);                 /* @args */
+            else (void)hiscore_insert((mut == 9u) ? i + 1u : i, src, (mut == 10u) ? 1u : 0u);   /* @idx @table */
+        }
+        src += (mut == 11u) ? 0x28u : (mut == 12u) ? 0u : 0x2Cu;             /* @stride @nostep */
+    }
+}
+static void b_d5d_1e918(const u32 *r, u32 *eax) { hiscore_fill_defaults(r[R_EAX]); *eax = 0u; }
+#define D5D_FD_MUT(name, n) \
+    static void m_d5d_1e918_##name(const u32 *r, u32 *eax) { d5d_1e918_core(r[R_EAX], n); *eax = 0u; }
+D5D_FD_MUT(srcbase, 1u) D5D_FD_MUT(nine, 2u) D5D_FD_MUT(readtable, 3u) D5D_FD_MUT(valbyte, 4u) D5D_FD_MUT(noforce, 5u)
+D5D_FD_MUT(forcelow, 6u) D5D_FD_MUT(inv, 7u) D5D_FD_MUT(args, 8u) D5D_FD_MUT(idx, 9u) D5D_FD_MUT(table, 10u)
+D5D_FD_MUT(stride, 11u) D5D_FD_MUT(nostep, 12u)
+/* 0x1EC38 hiscore_rank_single: EAX = score. 0x2DDE4, 0x204F4 (seamed here) and 0x2DA0C (seamed
+ * here) are stubs; the deferred audit add 0x2DAE4 runs in the original only, turned off by its
+ * own bytes (the port omits it and the clamps behind it: record §4). Mask 0xFF: `xor al,al`
+ * 0x1EC9F / `mov al,1` 0x1ECB8, read by `test al,al` at 0x1F1B0 and 0x1F2CE. */
+static u32 d5d_1ec38_core(u32 score, u32 mut)
+{
+    u32 rank = (mut == 1u) ? hiscore_rank_probe(score, 1u)                   /* @table */
+             : (mut == 2u) ? hiscore_rank_probe(0u, score) : hiscore_rank_probe(score, 0u);   /* @probearg */
+    u32 out = (mut == 3u) ? ((s32)(s16)rank >= 10)                           /* @sword */
+            : (mut == 4u) ? (rank >= 10u)                                    /* @full */
+            : (mut == 5u) ? ((u16)rank > 10u) : ((u16)rank >= 10u);          /* @gt */
+    if (out) return (mut == 6u) ? 1u : 0u;                                   /* @ret0 */
+    if (mut == 7u) DSW(0x001044D6u) = (u16)rank;                             /* @d6early */
+    if (mut == 8u) (void)config_field_set(0x26u, 0u);                        /* @order */
+    if (mut != 9u)                                                           /* @noarm */
+        nameentry_arm((mut == 10u) ? rank : (u32)(u16)rank, (mut == 11u) ? 0u : score);   /* @armrank @armscore */
+    if (mut != 8u && mut != 12u)                                             /* @noset */
+        (void)config_field_set((mut == 13u) ? 0x27u : 0x26u, (mut == 14u) ? 1u : 0u);   /* @setfield @setval */
+    if (mut == 15u) DSD(0x001044D6u) = (u16)rank;                            /* @d6w */
+    else if (mut != 16u && mut != 7u) DSW(0x001044D6u) = (u16)rank;          /* @nod6 */
+    return (mut == 17u) ? 0u : 1u;                                           /* @ret1 */
+}
+static void b_d5d_1ec38(const u32 *r, u32 *eax) { *eax = hiscore_rank_single(r[R_EAX]); }
+#define D5D_RS_MUT(name, n) \
+    static void m_d5d_1ec38_##name(const u32 *r, u32 *eax) { *eax = d5d_1ec38_core(r[R_EAX], n); }
+D5D_RS_MUT(table, 1u) D5D_RS_MUT(probearg, 2u) D5D_RS_MUT(sword, 3u) D5D_RS_MUT(full, 4u) D5D_RS_MUT(gt, 5u)
+D5D_RS_MUT(ret0, 6u) D5D_RS_MUT(d6early, 7u) D5D_RS_MUT(order, 8u) D5D_RS_MUT(noarm, 9u) D5D_RS_MUT(armrank, 10u)
+D5D_RS_MUT(armscore, 11u) D5D_RS_MUT(noset, 12u) D5D_RS_MUT(setfield, 13u) D5D_RS_MUT(setval, 14u) D5D_RS_MUT(d6w, 15u)
+D5D_RS_MUT(nod6, 16u) D5D_RS_MUT(ret1, 17u)
+/* 0x20710 nameentry_finish: AL = side (`mov bl,al` 0x20713; `and ebx,0xff` 0x2076A). 0x13EF0
+ * (seamed here), 0x2DCA0, 0x2F510, 0x2F4BC and 0x2B150 are stubs. The second row (`_rr`) has a
+ * 0x2DCA0 stub that rewrites the side's character byte, which the raw reads again at 0x207B8.
+ * Mask 0: the one caller 0x1F4C6 (record §1). */
+static void d5d_20710_core(u32 al, u32 mut)
+{
+    u32 side = al & 0xFFu, ecx = 0u, rec, charid;
+    s32 count;
+    if (mut != 1u) (void)name_filter((mut == 2u) ? 0x00104394u : 0x00104343u);   /* @nofilter @filterarg */
+    for (;;) {
+        u32 a;
+        u8 b, dl;
+        count = (s32)DSD(0x0010431Au) >> 24;
+        if (mut == 3u) { if (!((u32)(u16)ecx < (u32)(u8)count)) break; }     /* @unsigned */
+        else if (!((s32)(u16)ecx < count)) break;
+        a = 0x00104343u + (u16)ecx;
+        b = DSB(a);
+        if ((b == 8u && mut != 4u) || (b == 0u && mut != 5u)) DSB(a) = (mut == 6u) ? 0u : 0x20u;   /* @no8 @no0 @space */
+        dl = DSB(a);
+        if (mut != 7u) DSB(0x00104394u + (u16)ecx) = dl;                     /* @no94 */
+        if (mut != 8u) DSB(0x00104367u + (u16)ecx) = dl;                     /* @no67 */
+        ecx++;
+    }
+    if (mut == 9u) side ^= 1u;                                               /* @side */
+    rec = side * 0x94u;
+    charid = (mut == 10u) ? (u32)(s32)(s8)DSB(0x0010782Au + rec) : (u32)DSB(0x0010782Au + rec);   /* @charsext */
+    DSB(0x00104394u + ((mut == 11u) ? 0u : (u32)count)) = DSB(DSD(0x000A7DA0u + charid * 4u));    /* @letteridx */
+    if ((mut == 12u) ? ((s32)DSD(0x0010431Au) >> 24) >= 3 : ((s32)DSD(0x0010431Au) >> 24) > 3) {  /* @ge3 */
+        (void)hiscore_insert(0u, 0x00104390u, (mut == 13u) ? 0u : 1u);       /* @ins1table */
+        if (mut != 14u) charid = (u32)DSB(0x0010782Au + rec);                /* @cached */
+        if (mut != 15u) DSB(0x00104397u) = DSB(DSD(0x000A7DA0u + charid * 4u));   /* @no97 */
+    }
+    for (ecx = 0u; (s32)(u16)ecx < 0xA; ecx++) {
+        u16 dx = DSW(0x001044D6u);
+        if ((mut == 16u) ? (u8)ecx == (u8)dx : (u16)ecx == dx)               /* @rankb */
+            (void)hiscore_insert((mut == 17u) ? ecx + 1u : dx, 0x00104390u, (mut == 18u) ? 1u : 0u);   /* @insidx @instable */
+    }
+    if (mut != 19u)                                                          /* @nofont2 */
+        text_cursor_hold_font2(0x13, 0x1C, mem + 0x00080978u, (mut == 20u) ? 0x4000u : 0x4003u);   /* @font2mode */
+    {
+        u32 rank = DSW(0x001044D6u);
+        s32 col = (s32)DSB(0x000A7B94u + rank * 4u + 2u), row = (s32)DSB(0x000A7B94u + rank * 4u) + 1;
+        if (mut == 21u) { s32 t = col; col = row - 1; row = t + 1; }         /* @rankpos */
+        if (mut == 22u) row -= 1;                                            /* @row1 */
+        text_cursor_hold(col, row, mem + 0x0008097Cu, 0x1000u);
+    }
+    if (mut == 23u) {                                                        /* @deadorder */
+        actor_set_dead(DSD(0x001044B0u)); actor_set_dead(DSD(0x001044B4u)); actor_set_dead(DSD(0x001044B8u));
+        return;
+    }
+    actor_set_dead(DSD(0x001044B8u));
+    actor_set_dead(DSD(0x001044B4u));
+    if (mut != 24u) actor_set_dead(DSD(0x001044B0u));                        /* @twodead */
+}
+static void b_d5d_20710(const u32 *r, u32 *eax) { nameentry_finish((u8)r[R_EAX]); *eax = 0u; }
+#define D5D_NF_MUT(name, n) \
+    static void m_d5d_20710_##name(const u32 *r, u32 *eax) { d5d_20710_core(r[R_EAX], n); *eax = 0u; }
+D5D_NF_MUT(nofilter, 1u) D5D_NF_MUT(filterarg, 2u) D5D_NF_MUT(unsigned, 3u) D5D_NF_MUT(no8, 4u) D5D_NF_MUT(no0, 5u)
+D5D_NF_MUT(space, 6u) D5D_NF_MUT(no94, 7u) D5D_NF_MUT(no67, 8u) D5D_NF_MUT(side, 9u) D5D_NF_MUT(charsext, 10u)
+D5D_NF_MUT(letteridx, 11u) D5D_NF_MUT(ge3, 12u) D5D_NF_MUT(ins1table, 13u) D5D_NF_MUT(cached, 14u) D5D_NF_MUT(no97, 15u)
+D5D_NF_MUT(rankb, 16u) D5D_NF_MUT(insidx, 17u) D5D_NF_MUT(instable, 18u) D5D_NF_MUT(nofont2, 19u) D5D_NF_MUT(font2mode, 20u)
+D5D_NF_MUT(rankpos, 21u) D5D_NF_MUT(row1, 22u) D5D_NF_MUT(deadorder, 23u) D5D_NF_MUT(twodead, 24u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43932,6 +44048,63 @@ static const binding_t k_bindings[] = {
     { "hiscore_insert@notouch", m_d5d_2dca0_notouch, 0xFFFFFFFFu },
     { "hiscore_insert@toucharg", m_d5d_2dca0_toucharg, 0xFFFFFFFFu },
     { "hiscore_insert@ret1", m_d5d_2dca0_ret1, 0xFFFFFFFFu },
+    { "hiscore_fill_defaults", b_d5d_1e918, 0x00000000u },
+    { "hiscore_fill_defaults@srcbase", m_d5d_1e918_srcbase, 0x00000000u },
+    { "hiscore_fill_defaults@nine", m_d5d_1e918_nine, 0x00000000u },
+    { "hiscore_fill_defaults@readtable", m_d5d_1e918_readtable, 0x00000000u },
+    { "hiscore_fill_defaults@valbyte", m_d5d_1e918_valbyte, 0x00000000u },
+    { "hiscore_fill_defaults@noforce", m_d5d_1e918_noforce, 0x00000000u },
+    { "hiscore_fill_defaults@forcelow", m_d5d_1e918_forcelow, 0x00000000u },
+    { "hiscore_fill_defaults@inv", m_d5d_1e918_inv, 0x00000000u },
+    { "hiscore_fill_defaults@args", m_d5d_1e918_args, 0x00000000u },
+    { "hiscore_fill_defaults@idx", m_d5d_1e918_idx, 0x00000000u },
+    { "hiscore_fill_defaults@table", m_d5d_1e918_table, 0x00000000u },
+    { "hiscore_fill_defaults@stride", m_d5d_1e918_stride, 0x00000000u },
+    { "hiscore_fill_defaults@nostep", m_d5d_1e918_nostep, 0x00000000u },
+    { "hiscore_rank_single", b_d5d_1ec38, 0x000000FFu },
+    { "hiscore_rank_single@table", m_d5d_1ec38_table, 0x000000FFu },
+    { "hiscore_rank_single@probearg", m_d5d_1ec38_probearg, 0x000000FFu },
+    { "hiscore_rank_single@sword", m_d5d_1ec38_sword, 0x000000FFu },
+    { "hiscore_rank_single@full", m_d5d_1ec38_full, 0x000000FFu },
+    { "hiscore_rank_single@gt", m_d5d_1ec38_gt, 0x000000FFu },
+    { "hiscore_rank_single@ret0", m_d5d_1ec38_ret0, 0x000000FFu },
+    { "hiscore_rank_single@d6early", m_d5d_1ec38_d6early, 0x000000FFu },
+    { "hiscore_rank_single@order", m_d5d_1ec38_order, 0x000000FFu },
+    { "hiscore_rank_single@noarm", m_d5d_1ec38_noarm, 0x000000FFu },
+    { "hiscore_rank_single@armrank", m_d5d_1ec38_armrank, 0x000000FFu },
+    { "hiscore_rank_single@armscore", m_d5d_1ec38_armscore, 0x000000FFu },
+    { "hiscore_rank_single@noset", m_d5d_1ec38_noset, 0x000000FFu },
+    { "hiscore_rank_single@setfield", m_d5d_1ec38_setfield, 0x000000FFu },
+    { "hiscore_rank_single@setval", m_d5d_1ec38_setval, 0x000000FFu },
+    { "hiscore_rank_single@d6w", m_d5d_1ec38_d6w, 0x000000FFu },
+    { "hiscore_rank_single@nod6", m_d5d_1ec38_nod6, 0x000000FFu },
+    { "hiscore_rank_single@ret1", m_d5d_1ec38_ret1, 0x000000FFu },
+    { "nameentry_finish", b_d5d_20710, 0x00000000u },
+    { "nameentry_finish@nofilter", m_d5d_20710_nofilter, 0x00000000u },
+    { "nameentry_finish@filterarg", m_d5d_20710_filterarg, 0x00000000u },
+    { "nameentry_finish@unsigned", m_d5d_20710_unsigned, 0x00000000u },
+    { "nameentry_finish@no8", m_d5d_20710_no8, 0x00000000u },
+    { "nameentry_finish@no0", m_d5d_20710_no0, 0x00000000u },
+    { "nameentry_finish@space", m_d5d_20710_space, 0x00000000u },
+    { "nameentry_finish@no94", m_d5d_20710_no94, 0x00000000u },
+    { "nameentry_finish@no67", m_d5d_20710_no67, 0x00000000u },
+    { "nameentry_finish@side", m_d5d_20710_side, 0x00000000u },
+    { "nameentry_finish@charsext", m_d5d_20710_charsext, 0x00000000u },
+    { "nameentry_finish@letteridx", m_d5d_20710_letteridx, 0x00000000u },
+    { "nameentry_finish@ge3", m_d5d_20710_ge3, 0x00000000u },
+    { "nameentry_finish@ins1table", m_d5d_20710_ins1table, 0x00000000u },
+    { "nameentry_finish@no97", m_d5d_20710_no97, 0x00000000u },
+    { "nameentry_finish@rankb", m_d5d_20710_rankb, 0x00000000u },
+    { "nameentry_finish@insidx", m_d5d_20710_insidx, 0x00000000u },
+    { "nameentry_finish@instable", m_d5d_20710_instable, 0x00000000u },
+    { "nameentry_finish@nofont2", m_d5d_20710_nofont2, 0x00000000u },
+    { "nameentry_finish@font2mode", m_d5d_20710_font2mode, 0x00000000u },
+    { "nameentry_finish@rankpos", m_d5d_20710_rankpos, 0x00000000u },
+    { "nameentry_finish@row1", m_d5d_20710_row1, 0x00000000u },
+    { "nameentry_finish@deadorder", m_d5d_20710_deadorder, 0x00000000u },
+    { "nameentry_finish@twodead", m_d5d_20710_twodead, 0x00000000u },
+    { "nameentry_finish_rr", b_d5d_20710, 0x00000000u },
+    { "nameentry_finish_rr@cached", m_d5d_20710_cached, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

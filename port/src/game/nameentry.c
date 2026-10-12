@@ -124,6 +124,7 @@ L_22:
 /* 0x13EF0 — record §49-T. */
 u32 name_filter(u32 str)
 {
+    PR_SEAM_RET(0x13EF0u, str);
     DSB(NE_FILTER_TOL) =
         (DSB(NE_CONFIG_HI) & 4u) == 0u ? 2u : 0u;           /* 0x13EF8..0x13F1B */
     u8 acc = 0u;                                            /* 0x13F20 */
@@ -338,6 +339,7 @@ void nameentry_cells_step(void)
  * observable effect of that part. The rest arms the name-entry screen. */
 void nameentry_arm(u32 rank, u32 score)
 {
+    PR_SEAM(0x204F4u, rank, score);
     u8 tbl[0x1C0];
     u16 si;
     for (si = (u16)rank; (s32)(u32)si < 9; si++) {          /* 0x2050C, 0x2054E..0x20556 `jl` */

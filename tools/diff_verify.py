@@ -24885,6 +24885,145 @@ D5D_SPECS += [
                 "@movelen", "@movefwd", "@vb", "@vle", "@nameoff", "@two", "@mask", "@shift", "@nuladv", "@wbe",
                 "@touchalways", "@notouch", "@toucharg", "@ret1")),
 ]
+D5D_INSERT = E.Call(0x2DCA0, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))    # hiscore_insert, seamed by this batch
+D5D_FIELD_SET = E.Call(0x2DA0C, ("eax", "edx"), clobbers=("edx",))              # config_field_set, seamed by this batch
+D5D_ARM = E.Call(0x204F4, ("eax", "edx"), clobbers=("edx",))                    # nameentry_arm, seamed by this batch
+
+
+def d5d_fill_case(zero, count=10):
+    """0x1E918: d2d_hs_case with table 0's ten 12-byte records seeded, the value (the first four
+    bytes, big-endian) 0 for the records in `zero` and non-zero with a zero low byte, a zero top
+    byte or all four set for the others; `count` is table 0's record count."""
+    recs = {}
+    for i in range(10):
+        v = bytes(4) if i in zero else (bytes([1 + i, 0, 0, 0]), bytes([0, 0, 0, 1 + i]), bytes([0x80, 1, 2, 3 + i]))[i % 3]
+        recs[(0, i)] = v + bytes(0x40 | (i * 8 + k) & 0x3F for k in range(8))
+    return d2d_hs_case(descs=((count, 4, 8), (1, 4, 0x18), (1, 3, 2)), records=recs)
+
+
+D5D_SPECS += [
+    # 0x1E918 hiscore_fill_defaults: EAX = force. For i = 0..9 (`jb` 0x1E94C against 0xA):
+    # 0x2DBC4(i, 0), and when the dword it points at is 0 (`cmp ebp,[eax]` 0x1E932, EBP = 0: whole,
+    # d0's records 1, 4 and 7 have only their top byte set) or force is not (`test edi,edi`
+    # 0x1E936, whole: d2 is 0x100, d3 0x80000000), 0x2DCA0(i, 0xA7BBC + 0x2C * i, 0). 0x2DBC4 runs
+    # on both sides over the case's table (it returns 0x105EFC, its decoded value); 0x2DCA0 is a
+    # stub. d5 has a table of five records: 0x2DBC4 returns 0 for the last five and the raw reads
+    # the dword at address 0 (zero in the emulator and in mem[]: D5D_OUTSIDE), so they are
+    # inserted. Mask 0: record §1.
+    Spec("hiscore_fill_defaults", 0x1E918, [
+        Case("d0", {"eax": 0, "ebp": 0x11111111, "esi": 0x22222222}, d5d_fill_case({0, 3, 9})),
+        Case("d1", {"eax": 1}, d5d_fill_case({2}), {0x2DCA0: 0}),
+        Case("d2", {"eax": 0x00000100}, d5d_fill_case(set())),
+        Case("d3", {"eax": 0x80000000}, d5d_fill_case({5})),
+        Case("d4", {"eax": 0}, d5d_fill_case(set()), {0x2DCA0: 0xFFFFFFFF}),
+        Case("d5", {"eax": 0}, d5d_fill_case({1}, count=5)),
+    ], allow_calls=(0x2DBC4, 0x2DB58), calls=(D5D_INSERT,), eax_mask=0,
+       mutants=("@srcbase", "@nine", "@readtable", "@valbyte", "@noforce", "@forcelow", "@inv", "@args", "@idx",
+                "@table", "@stride", "@nostep")),
+]
+# the deferred audit adds 0x2DAE4(0x27, 1) and 0x2DAE4(0x26, 1) made no-ops by their own bytes, as d2e,
+# d3a and d4a do for fields 0x10, 0xF and 0xD: both descriptors read 8 nibbles at byte 0 of 0x105DE1,
+# which is negative (`test eax,eax; jl 0x2db54` 0x2DAEE), so each returns 0x80000000 at once
+D5D_AUDIT_OFF = {0x0002D398: le32(0x0001C000) + le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
+
+
+def d5d_rank_case(k=0):
+    """0x1EC38: the audit fields 0x26/0x27 turned off and the rank word 0x1044D6 between seeded
+    words."""
+    p = dict(D5D_AUDIT_OFF)
+    p[0x001044D4] = le16(0x6161 ^ k) + le16(0x5A5A) + le16(0x6262)
+    return p
+
+
+D5D_SPECS += [
+    # 0x1EC38 hiscore_rank_single: EAX = the score. 0x2DDE4(score, 0); the rank is its low word,
+    # zero-extended (`xor eax,eax; mov ax,cx` 0x1EC70; `cmp eax,0xa; jl` 0x1EC75: k3 is -1, k4
+    # 0x00010003, k5 0x8009). Below 10: 0x204F4(the rank word, score), 0x2DA0C(0x26, 0), the word
+    # 0x1044D6 = the rank word and AL = 1; else AL = 0. The three callees are stubs. In the
+    # original the audit adds 0x2DAE4(0x27, 1) and, on the losing arm, 0x2DAE4(0x26, 1) run from a
+    # state in which each returns at once; the port omits them (deferred) and with them the two
+    # clamps `0x2DA0C(0x27, 0x7D0)` (0x1EC61) and `0x2DA0C(0x26, 0xC8)` (0x1EC90), which need a
+    # running total above the bound: those two blocks are named, not exercised (record §4).
+    Spec("hiscore_rank_single", 0x1EC38, [
+        Case("k0", {"eax": 0x00012345, "ebx": 0x11111111, "ecx": 0x22222222, "edx": 0x33333333}, d5d_rank_case(),
+             {0x2DDE4: 0}),
+        Case("k1", {"eax": 0xFFFFFFFF}, d5d_rank_case(1), {0x2DDE4: 9, 0x2DA0C: 0xFFFFFF00, 0x204F4: 0xFFFFFF00}),
+        Case("k2", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 10}),
+        Case("k3", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 0xFFFFFFFF}),
+        Case("k4", {"eax": 0x80000000}, d5d_rank_case(), {0x2DDE4: 0x00010003}),
+        Case("k5", {"eax": 7}, d5d_rank_case(), {0x2DDE4: 0x00008009}),
+    ], unhit_named={0x1EC61: "the clamp 0x2DA0C(0x27, 0x7D0) behind the deferred audit add 0x2DAE4(0x27, 1), which the "
+                             "port omits (PORT, tools/port_classification.txt 2DAE4): reached only when the add runs "
+                             "and its total passes 2000",
+                    0x1EC90: "the clamp 0x2DA0C(0x26, 0xC8) behind the deferred audit add 0x2DAE4(0x26, 1), which the "
+                             "port omits: reached only when the add runs and its total passes 200"},
+       allow_calls=(0x2DAE4, 0x2D974), calls=(D3A_RANK, D5D_ARM, D5D_FIELD_SET), eax_mask=0xFF,
+       mutants=("@table", "@probearg", "@sword", "@full", "@gt", "@ret0", "@d6early", "@order", "@noarm", "@armrank",
+                "@armscore", "@noset", "@setfield", "@setval", "@d6w", "@nod6", "@ret1")),
+]
+D5D_FILTER = E.Call(0x13EF0, ("eax",))               # name_filter, seamed by this batch
+D5D_LET = 0x0010A700                                # zero BSS: one letter byte per character (the bytes 0xA7DA0's pointers reach)
+
+
+def d5d_nf_case(count, name, chars, rank, k=0):
+    """0x20710: the name limit dword 0x10431A (`count` its top byte, the three bytes under it and
+    the dword after it seeded), the typed name 0x104343.. and the two copies 0x104367.. and
+    0x104394.. (0x20 seeded bytes each, with the byte before), the record 0x104390 (its value
+    dword seeded), both sides' character bytes, the pointer table 0xA7DA0 poked so that character
+    c reaches the letter byte D5D_LET + c (entries 0..9, 0x80 and, for the sign-extending mutant,
+    -0x80, each a distinct letter), the rank word 0x1044D6 between seeded words and the three
+    record dwords 0x1044B0/B4/B8."""
+    p = {0x0010431A: bytes([0x61, 0x62, 0x63, count]) + le32(0x64646464),
+         0x00104342: bytes([0x65]) + bytes(name) + bytes(0x41 + ((i + k) % 26) for i in range(0x20 - len(name))),
+         0x00104366: bytes(0xA0 | ((i + k) & 0x1F) for i in range(0x21)),
+         0x0010438C: le32(0x8C8C8C8C) + le32(0x90909090) + bytes(0xC0 | ((i + k) & 0x1F) for i in range(0x20)),
+         0x0010782A: bytes([chars[0]]), 0x001078BE: bytes([chars[1]]),
+         0x000A7DA0: b"".join(le32(D5D_LET + c) for c in range(10)),
+         0x000A7DA0 + 0x80 * 4: le32(D5D_LET + 0x80),
+         D5D_LET: b"QRSTUVWXYZ", D5D_LET + 0x80: b"k", D5D_LET + 0x90: b"j",
+         0x001044D4: le16(0x6666) + le16(rank) + le16(0x6767),
+         0x001044AC: le32(0x68686868) + le32(0x0010A300) + le32(0x0010A340) + le32(0x0010A380) + le32(0x69696969)}
+    if rank != 3:
+        p[0x000A7DA0 - 0x80 * 4] = le32(D5D_LET + 0x90)    # inside the rank-position table: row 3's bytes
+    return p
+
+
+D5D_NF_CALLS = (D5D_FILTER, D2C_HOLD2, D1B_HOLD, D2C_DEAD)
+D5D_SPECS += [
+    # 0x20710 nameentry_finish: AL = the side. 0x13EF0(0x104343); for i below the signed limit
+    # byte 0x10431D (`sar edx,0x18`, read each pass; e4 is 0xFF: nothing) a typed byte 8 or 0
+    # becomes a space and the byte is copied to 0x104394 + i and 0x104367 + i; the letter of the
+    # side's character (the byte 0x10782A + 0x94 * side, zero-extended: e5 is 0x80; the first
+    # byte the pointer 0xA7DA0[it] reaches) goes to 0x104394 + the limit; with the limit above
+    # 3 (signed `jle` 0x207A3: e0 is 3) 0x2DCA0(0, 0x104390, 1) and the letter again to 0x104397;
+    # for i = 0..9, when i equals the rank word 0x1044D6 (a word compare: e3 is 0x0102, e2 0xFFFF)
+    # 0x2DCA0(the rank, 0x104390, 0); 0x2F510(0x13, 0x1C, the string 0x80978, 0x4003); 0x2F4BC(the
+    # byte 0xA7B96 + 4 * rank, the byte 0xA7B94 + 4 * rank + 1, the string 0x8097C, 0x1000); and
+    # 0x2B150 on the dwords 0x1044B8, 0x1044B4, 0x1044B0. Every callee is a stub. Mask 0: §1.
+    Spec("nameentry_finish", 0x20710, [
+        Case("e0", {"eax": 0}, d5d_nf_case(3, b"AB\x08", (2, 5), 2)),
+        Case("e1", {"eax": 1, "ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D},
+             d5d_nf_case(4, b"A\x00C\x08", (2, 5), 9), {0x2DCA0: 0}),
+        Case("e2", {"eax": 0}, d5d_nf_case(0, b"ZZZ", (7, 1), 0xFFFF, k=3)),
+        Case("e3", {"eax": 0xFFFFFF01}, d5d_nf_case(0x12, b"N\x08M\x00LONG\x08NAME\x00\x00XY\x08", (4, 9), 0x0102, k=5),
+             {0x13EF0: 0xFFFFFFFF}),
+        Case("e4", {"eax": 0x00000100}, d5d_nf_case(0xFF, b"QQQ", (3, 6), 0, k=7)),
+        Case("e5", {"eax": 1}, d5d_nf_case(5, b"\x08\x08\x00\x00\x01", (1, 0x80), 1, k=9)),
+        Case("e6", {"eax": 0}, d5d_nf_case(4, b"WXYZ", (0, 8), 10)),
+    ], calls=(D5D_INSERT,) + D5D_NF_CALLS, eax_mask=0,
+       mutants=("@nofilter", "@filterarg", "@unsigned", "@no8", "@no0", "@space", "@no94", "@no67", "@side",
+                "@charsext", "@letteridx", "@ge3", "@ins1table", "@no97", "@rankb", "@insidx", "@instable",
+                "@nofont2", "@font2mode", "@rankpos", "@row1", "@deadorder", "@twodead")),
+    # the same function with a 0x2DCA0 stub that rewrites side 1's character byte to 6: after the
+    # table-1 insert the raw reads the character again (`mov al,[ecx+0x10782a]` 0x207B8) for the
+    # letter it stores at 0x104397.
+    Spec("nameentry_finish_rr", 0x20710, [
+        Case("r0", {"eax": 1}, d5d_nf_case(4, b"ABCD", (2, 5), 9)),
+        Case("r1", {"eax": 1}, d5d_nf_case(7, b"ABC\x08EF\x00", (2, 0), 10, k=2)),
+    ], calls=(E.Call(0x2DCA0, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"),
+                     writes=((None, 0x001078BE, b"\x06"),)),) + D5D_NF_CALLS,
+       eax_mask=0, mutants=("@cached",)),
+]
 D1_SPECS += D5D_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
