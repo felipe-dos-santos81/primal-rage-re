@@ -13630,6 +13630,29 @@ def d2d_3f9c8_case(side, slot, state, w36=0x0036, z30=0x1400, w88=0x0010, tbl=0x
         buf[0x57], buf[0x7A] = state, xch
         p.update(d1d_chunks(D2D_SLOTX, buf))
     return p
+def d2d_3fdd8_case(side, x2c=0x00012000, o5f=0x85, ch=2):
+    """0x3FDD8: both slots seeded whole (record pointers; the side's +0x42 with bit 2 clear and
+    +0x5F = `o5f`; the other's +0x2C = `x2c` and +0x7A = `ch`, the side's +0x2C/+0x7A differ), both
+    records' +0x34..+0x37, +0x42..+0x45 and +0x60..+0x62 seeded, and the two characters' stream
+    dwords 0xC9170."""
+    other = 1 - side
+    def w32(buf, o, v): buf[o:o + 4] = le32(v)
+    p = {0x000C9170 + ch * 4: le32(0x000E9100 + ch), 0x000C9170 + (ch + 1) * 4: le32(0x000E9100 + ch + 1)}
+    for i in (0, 1):
+        buf = bytearray((0x80 | (k & 0x3F) | (i << 6)) & 0xFF for k in range(0x94))
+        rec = (D2D_F0, D2D_F1)[i]
+        w32(buf, 0, rec)
+        if i == side:
+            w32(buf, 0x2C, x2c ^ 0x00550000)
+            buf[0x42], buf[0x5F], buf[0x7A] = 0xA3, o5f, ch + 1
+        else:
+            w32(buf, 0x2C, x2c)
+            buf[0x42], buf[0x5F], buf[0x7A] = 0xB3, o5f ^ 0x41, ch
+        p.update(d1d_chunks(DS_SLOTS + i * 0x94, buf))
+        p[rec + 0x34] = le16(0x3434 + i) + le16(0x3636 + i)
+        p[rec + 0x42] = bytes([0x42 + i, 0x43 + i]) + le16(0x4444 + i) + bytes([0x46])
+        p[rec + 0x60] = bytes([0x60, 0x61 + i, 0x62])
+    return p
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -13990,6 +14013,19 @@ D2D_SPECS = [
                              "as at least 1 (`jge` 0x3FA45), so the `jge` at 0x3FA78 is always taken",
                     0x3FB76: "the +0x57 above 6 arm calls the runtime's fatal 0x62003 (>= 0x5D000), which cannot run"},
        mutants=("@ctx", "@c0ge", "@c0v36", "@c0no44", "@c0s57", "@c1ch", "@c1ge", "@c1z30", "@c1n", "@c1lt", "@c1s57", "@c1and", "@c1arg", "@c1side", "@c2one", "@c2order", "@c3s57", "@c3no44", "@c3rec", "@c4add", "@c4lt", "@c4ch", "@c4s57", "@c6no8a", "@c6deadside", "@c6always", "@c6no54", "@c6clrorder", "@c6x", "@c6y", "@c6ch", "@c6hold", "@c6anim", "@c6x2c", "@c6s57", "@c6early")),
+    # 0x3FDD8 fighter_3fdd8: EAX = side (the slot +0x1C callback 0x3FF81 stores). 0x33950 and
+    # 0x3D0C0 (its own row, d1b; a leaf that keeps EDX, which the raw still needs: `movsx edx,dx`
+    # 0x3FE0D) run on both sides; BIT15 (AL tested, `test al,al` 0x3FDF0: e2 returns 0x100),
+    # ANCHORX, ANIM_BEGIN, POSE and 0x39A10 are stubs. Mask 0: the one `call [edx+0x1c]` site is
+    # followed by `mov eax,[esp+8]` (0x19505/0x19508).
+    Spec("fighter_3fdd8", 0x3FDD8, [
+        Case("e0", {"eax": 0}, d2d_3fdd8_case(0), {0x1A570: 1}),
+        Case("e1", {"eax": 1}, d2d_3fdd8_case(1, x2c=0x00000400, o5f=0x03, ch=4), {0x1A570: 0}),
+        Case("e2", {"eax": 0}, d2d_3fdd8_case(0, x2c=0x7FFFFC00), {0x1A570: 0x00000100}),
+        Case("e3", {"eax": 1}, d2d_3fdd8_case(1, x2c=0xFFFFFC00), {0x1A570: 0xFFFFFF01}),
+    ], calls=(BIT15, ANCHORX, ANIM_BEGIN, POSE, E.Call(0x39A10, ("eax", "edx"), clobbers=("edx",))),
+       allow_calls=(0x33950, 0x3D0C0), eax_mask=0,
+       mutants=("@al", "@dxsign", "@nod0c0", "@d0c0side", "@xslot", "@xside", "@animrec", "@ch", "@hold", "@poseside", "@posearg", "@posesext", "@a10one", "@a10val", "@a10order", "@no34", "@no36", "@no44", "@no61", "@or42slot", "@or42bit", "@clrrec", "@early")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 
