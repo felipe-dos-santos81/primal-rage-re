@@ -1470,6 +1470,7 @@ void fight_char_reset(u32 side)
 
 void fight_char_select(u32 side, u32 char_index)
 {
+    PR_SEAM(0x41350u, side, char_index);
     fight_char_reset(side);                                 /* 0x41354 */
     if (DSB(DS_00104B1D) != 1u)                             /* 0x41359 */
         DSB(DS_0010816A + side) =

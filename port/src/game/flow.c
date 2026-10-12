@@ -402,6 +402,7 @@ void frontend_darken_all(void)
  * 0x42337, 0x42352 in 0x41C28). */
 void frontend_darken_marked(void)
 {
+    PR_SEAM0(0x41578u);
     u32 e = frontend_list_next(0u);                     /* 0x4157E */
     while (e != 0u) {                                   /* 0x41585/0x415B2 */
         u32 h = DSD(e);                                 /* 0x41589 */
@@ -461,6 +462,7 @@ void frontend_darken_marked(void)
  * 0x41C28. */
 void frontend_portrait_flash(u32 i)
 {
+    PR_SEAM(0x414B4u, i);
     u32 flags = DSB(DS_00108106 + i);                       /* 0x414B8/0x414C5 */
     u32 cls = flags & 0xFu;                                 /* 0x414C0/0x414C3 */
     u32 bit6 = (flags & 0x40u) >> 6;                        /* 0x414CD..0x414E4 */
@@ -481,6 +483,7 @@ void frontend_portrait_flash(u32 i)
  * 0x42159 (0x41C28). */
 void frontend_portrait_reveal(u32 slot)
 {
+    PR_SEAM(0x41528u, slot);
     u32 ch = DSB(DS_000C8664 + slot);                       /* 0x4152D */
     u32 rec = DSD(DS_001080C0 + ch * 4u);                   /* 0x4153A/0x41552 */
     DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) | 8u);         /* 0x41540 */
@@ -499,6 +502,7 @@ void frontend_portrait_reveal(u32 slot)
  * called from 0x416D4 at 0x416EC and from 0x41760 at 0x41778). */
 void flow_1082d0_from_column(u32 col)
 {
+    PR_SEAM(0x4660Cu, col);
     u32 count = DSB(DS_00104B11);                           /* 0x46613 */
     u32 b = DSB(DS_0010452C);                                /* 0x46620/0x46644 */
     u32 v = DSB(DS_000C9388 + col + b * 7u);                 /* 0x46633/0x46653 */
@@ -517,6 +521,7 @@ void flow_1082d0_from_column(u32 col)
  * DS_00108104[r] == 7 arm, 0x4212C (0x41C28). */
 void frontend_mode12_advance(void)
 {
+    PR_SEAM0(0x4160Cu);
     if ((DSB(DS_00104529) & 2u) != 0u) {                    /* 0x4160F/0x41616 */
         (void)actor_spawn((const u32 *)(mem + DS_000C8704), DSW(DS_000C8718),
                           0xFFu, 0x1200u, 0u);               /* 0x41618..0x41632 0x2AE14 */
@@ -544,6 +549,7 @@ void frontend_mode12_advance(void)
  * frontend_darken_marked(). EBX/EDX pushed and popped. */
 static void frontend_mode12_darken_or_tally(void)
 {
+    PR_SEAM0(0x416D4u);
     if (DSD(DS_00104AD4) == 2u) {                           /* 0x416DC/0x416DF */
         frontend_darken_marked();                           /* 0x41755 0x41578 */
         return;
@@ -569,6 +575,7 @@ static void frontend_mode12_darken_or_tally(void)
  * caller: state 5's DS_00108104[r] != 7 arm, 0x4213B (0x41C28). */
 static void frontend_mode12_challenge_continue(void)
 {
+    PR_SEAM0(0x41760u);
     u32 r = DSD(DS_00104AD4);                                /* 0x41763 */
     flow_1082d0_from_column((u32)DSB(DS_00108104 + r));      /* 0x41768..0x41778 0x4660C */
     flow_stage_pick();                                        /* 0x4177D 0x25848 */
@@ -587,6 +594,7 @@ static void frontend_mode12_challenge_continue(void)
  * Only caller: state 7's DS_00105B3A == 0 arm, 0x42439 (0x41C28). */
 void flow_no_continue_screen(void)
 {
+    PR_SEAM0(0x417C4u);
     if ((DSB(DS_00104529) & 2u) != 0u) {                    /* 0x417C7/0x417CE */
         (void)actor_spawn((const u32 *)(mem + DS_000C871C), DSW(DS_000C8718),
                           0xFFu, 0x1E00u, 0u);               /* 0x417D0..0x417EA 0x2AE14 */
@@ -620,6 +628,7 @@ void flow_no_continue_screen(void)
  * state 5's top, 0x420ED (0x41C28). */
 static void frontend_scoreboard_build(void)
 {
+    PR_SEAM0(0x418F4u);
     for (u32 i = 0u; i < 2u; i++) {
         u32 off4 = i * 4u, p2 = i * 2u;
         u32 rec = DSD(DS_001077A8 + off4);                  /* 0x4190E */
@@ -687,6 +696,7 @@ static void frontend_scoreboard_build(void)
  * record §48-Z). */
 static void flow_join_prompt_draw(void)
 {
+    PR_SEAM0(0x271E0u);
     DSB(DS_00104B21) = 0u;                                   /* 0x271F4 */
     DSB(DS_00104B14) = 1u;                                    /* 0x271FA */
     DSB(DS_00104B0C) = 0u;                                    /* 0x27200 */
@@ -1288,6 +1298,7 @@ void flow_1082c8_latch(void)
  * 0x42390. */
 void flow_stage_pick(void)
 {
+    PR_SEAM0(0x25848u);
     u8 m = DSB(DS_00104B17);                            /* 0x2584E */
     if (m == 0u) {                                      /* 0x25867 */
         u32 b1f = DSB(DS_00104B1F);                     /* 0x2586D */
