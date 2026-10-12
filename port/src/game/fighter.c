@@ -10260,7 +10260,7 @@ void fighter_38154(u32 side)
  * 2 runs fighter_state_35b7c(slot, R) directly and a phase above 2 returns
  * (0x382EB `jbe 0x383ed`, 0x382F1 `jmp 0x383f6`). EBX..EBP pushed and
  * popped. Only caller: 0x38564 (0x384F8). */
-static void fighter_382c4(u32 side)
+void fighter_382c4(u32 side)
 {
     u32 slot = DSD(DS_001077A8 + side * 4u);               /* 0x382CA */
     if (slot == 0u) return;                                 /* 0x382D3 */
