@@ -28,6 +28,7 @@
 
 void fight_slot_clear(void)
 {
+    PR_SEAM0(0x3C5CCu);
     DSD(DS_00107EE0) = 0;                       /* 0x3C5CF */
     DSD(DS_00107D50) = 0;                       /* 0x3C5D5 */
     DSD(DS_00107D54) = 0;                       /* 0x3C5DB */
@@ -254,6 +255,7 @@ void fight_hud_side_reset(u32 side)
  * record §49-J). */
 void fight_hud_pulse(void)
 {
+    PR_SEAM0(0x1DA08u);
     u32 side;
     for (side = 0; side < 2u; side++) {                 /* 0x1DA6C..0x1DA7B */
         u16 w = (u16)(DSW(DS_00102908 + side * 2u) - 1u);   /* 0x1DA12/0x1DA19 */
@@ -1265,6 +1267,7 @@ void fight_413c8(void)
  * (0x28788). */
 void fight_stage_marks_clear(void)
 {
+    PR_SEAM0(0x4246Cu);
     for (u32 i = 0; i < 7u; i++)                        /* 0x4247A 0x65490 */
         DSB(DS_00108106 + i) = 0u;
     DSB(DS_00108111) = 0u;                              /* 0x42481 */
@@ -2284,6 +2287,7 @@ static void fight_health_sync(u32 side)
 
 void fight_hud_pass(u32 side)
 {
+    PR_SEAM(0x35658u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 rec;
 
@@ -3875,6 +3879,7 @@ void fight_4d224(u32 entry, u32 index)
  * signed word) 0x4987C(side, the difference, 0) refills the list. */
 void fight_4d2d0(void)
 {
+    PR_SEAM0(0x4D2D0u);
     u16 cnt[2] = { 0u, 0u };                                    /* 0x4D2E1/0x4D2E6 */
     u32 entry = DSD(DS_0010884C);                               /* 0x4D2DB */
     if (entry != DS_0010884C) {                                 /* 0x4D2EA */
@@ -4407,6 +4412,7 @@ void fight_4cd98(void)
  *   (record k7-k12 §8). */
 void fight_4bf18(void)
 {
+    PR_SEAM0(0x4BF18u);
     {
         u32 wa = DSD(DS_00108868);                                  /* 0x4BF21 */
         if (DSW(wa + 0x36u) != 0u) {                                /* 0x4BF26/0x4BF2B */
@@ -4648,6 +4654,7 @@ void fight_4bf18(void)
 
 void fight_effects_pass(void)
 {
+    PR_SEAM0(0x49C78u);
     /* The raw's frame locals (record §K13.3): the per-side entry counts, the
      * words [ESP]/[ESP+2] (zeroed on every call, 0x49CC1/0x49CBC); the entry
      * count [ESP+8]; [ESP+0xC] (type 9's count, 0x4A128); case 14's count
@@ -5188,6 +5195,7 @@ void fight_effects_pass(void)
  * 0x4A708`, not two near-identical siblings. */
 void fight_effects_hold_all(void)
 {
+    PR_SEAM0(0x4A708u);
     u32 head = DSD(DS_0010884C);                        /* 0x4A70C */
     if (head == DS_0010884C) return;                     /* 0x4A711/0x4A716 */
     for (;;) {
@@ -5485,6 +5493,7 @@ void fight_mode25_spawn(u32 fresh)
  * (0x26254). */
 void fight_mode25_enter(void)
 {
+    PR_SEAM0(0x4E11Cu);
     u8 b1d = DSB(DS_00104B1D);                          /* 0x4E121 */
     s32 cx;
     u32 side;
@@ -5732,6 +5741,7 @@ void fight_4e99c(u32 count)
  * Only caller: 0x2685A (0x266AC). */
 void fight_4e67c(void)
 {
+    PR_SEAM0(0x4E67Cu);
     u32 p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);    /* 0x4E6B8..0x4E6CE, 0x4E799..0x4E7A6 idiom */
     int big = (s32)fight_2be00(p) > 0x1C00;                      /* 0x4E6AC/0x4E6B1/0x4E6B6 */
     if (big) {                                                    /* 0x4E6B6 */
