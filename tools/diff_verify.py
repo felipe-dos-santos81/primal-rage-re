@@ -13574,6 +13574,22 @@ def d2d_rank_case(scores, descs=None):
     descs = descs or ((len(scores), 4, 8), (1, 4, 0x18), (1, 3, 2))
     recs = {(0, i): v.to_bytes(4, "big") + bytes([0x61 + i]) * 8 for i, v in enumerate(scores)}
     return d2d_hs_case(descs=descs, records=recs, out=False)
+def d2d_opt_strings():
+    """The localisation table for 0x31E28: ids 0x16/0x17 (group 0) and 0x22D..0x230 (group 8), each
+    a distinct text; the groups between are empty, the entries before are zero-length."""
+    g0 = [b""] * 0x16 + [b"Sixteen", b"Seventeen"]
+    g8 = [b""] * 0x2D + [b"opt-22D", b"opt-22E!", b"opt-22F", b"opt-230?"]
+    return d1i_str_case([g0, [], [], [], [], [], [], [], g8])
+
+
+def d2d_opt_case(w0, w12, cursor=0x11223344, rec=D2D_REC):
+    """0x31E28: the string table, the record's +0..+3 (the word at +0) and +0x10..+0x15 (the word at
+    +0x12) and the text cursor."""
+    p = d2d_opt_strings()
+    p[rec] = le16(w0) + le16(0x0302)
+    p[rec + 0x10] = le16(0x1110) + le16(w12) + le16(0x1514)
+    p[0x00105F34] = le32(cursor)
+    return p
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -13847,6 +13863,31 @@ D2D_SPECS = [
     ], calls=(D1G_TXTFMT, D1G_TXT198, D1G_GLYPH), allow_calls=(0x2F434, 0x2F174), eax_mask=0,
        mutants=("@clamp0", "@clampff", "@label", "@numcol", "@numval", "@numw", "@pad", "@nummode", "@ge", "@tbf",
                 "@t81", "@col", "@count", "@glyph", "@numlate", "@rows")),
+    # 0x31E28 config_option_row: EAX = which, EDX = the record, BL = the flag (`test bl,bl` 0x31E33:
+    # o1's EBX is 0x100). The jump table 0x31E0C (`cmp edi,6; ja`, the index moved through `lea
+    # eax,[edi*4]`: RESOLVED_JUMPS 0x31EBC) has seven targets: 0, 2, 4 and 6 draw a string, the odd
+    # ones and anything above 6 do not. The string path (0x1C500 and its tree) and 0x2F174 run on
+    # both sides; D1G_TXT198 records each string by value and D1G_GLYPH each arrow. Mask 0: each
+    # of the five call sites loads EAX before reading it (0x3216C: `mov eax,1` 0x32173; 0x32182:
+    # `mov eax,ebx` 0x3218E; 0x32190: `xor eax,eax` 0x3219E/0x321A9; 0x32438: `mov eax,1` 0x3243F;
+    # 0x32446: `mov eax,[0x101514]` 0x3244B).
+    Spec("config_option_row", 0x31E28, [
+        Case("o0", {"eax": 0, "edx": D2D_REC, "ebx": 1}, d2d_opt_case(0, 7)),
+        Case("o1", {"eax": 0, "edx": D2D_REC, "ebx": 0x100}, d2d_opt_case(2, 0)),
+        Case("o2", {"eax": 1, "edx": D2D_REC, "ebx": 0}, d2d_opt_case(1, 4)),
+        Case("o3", {"eax": 0x100, "edx": D2D_REC, "ebx": 0x80}, d2d_opt_case(0, 6)),
+        Case("o4", {"eax": 0, "edx": D2D_REC, "ebx": 0}, d2d_opt_case(1, 0)),
+        Case("o5", {"eax": 1, "edx": D2D_REC, "ebx": 1}, d2d_opt_case(0, 3)),
+        Case("o6", {"eax": 0, "edx": D2D_REC, "ebx": 1}, d2d_opt_case(5, 0)),
+        Case("o7", {"eax": 1, "edx": D2D_REC, "ebx": 1}, d2d_opt_case(0, 7)),
+        Case("o8", {"eax": 0, "edx": D2D_REC, "ebx": 1}, d2d_opt_case(0x0100, 0)),
+        Case("o9", {"eax": 1, "edx": D2D_REC, "ebx": 0}, d2d_opt_case(0, 0x8000)),
+        Case("o10", {"eax": 0, "edx": D2D_REC, "ebx": 0}, d2d_opt_case(4, 6)),
+        Case("o11", {"eax": 0, "edx": D2D_REC, "ebx": 1}, d2d_opt_case(6, 2)),
+    ], calls=(D1G_TXT198, D1G_GLYPH), allow_calls=(0x1C500, 0x474E4, 0x1E75C, 0x1E808, 0x500BB, 0x2F174),
+       eax_mask=0,
+       mutants=("@flagw", "@arrow", "@which", "@valw", "@label", "@off", "@row", "@mode", "@base", "@byte", "@ids",
+                "@odd", "@optcol", "@optmode", "@order", "@glyphmode")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 

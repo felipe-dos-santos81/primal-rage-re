@@ -6447,6 +6447,7 @@ D2D_MASKS = {
     "hiscore_read": 0xffffffff,
     "hiscore_rank_probe": 0xffffffff,
     "config_bar_draw": 0x0,
+    "config_option_row": 0x0,
 }   # D2D_MASKS end
 D2D_KINDS = {
     "camera_dust_burst@side": {'call #0'},
@@ -6701,6 +6702,22 @@ D2D_KINDS = {
     "config_bar_draw@glyph": {'call #0', 'call #11', 'call #12', 'call #14', 'call #15', 'call #17', 'call #18', 'call #2', 'call #20', 'call #21', 'call #23', 'call #24', 'call #26', 'call #27', 'call #29', 'call #3', 'call #30', 'call #32', 'call #33', 'call #35', 'call #36', 'call #38', 'call #39', 'call #41', 'call #42', 'call #44', 'call #45', 'call #47', 'call #48', 'call #5', 'call #50', 'call #51', 'call #53', 'call #54', 'call #56', 'call #57', 'call #59', 'call #6', 'call #60', 'call #62', 'call #63', 'call #65', 'call #66', 'call #68', 'call #69', 'call #71', 'call #72', 'call #74', 'call #75', 'call #77', 'call #78', 'call #8', 'call #80', 'call #81', 'call #83', 'call #84', 'call #86', 'call #87', 'call #89', 'call #9', 'call #90', 'call #92', 'call #93', 'call #95'},
     "config_bar_draw@numlate": {'call #0', 'call #1', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #2 memory', 'call #20', 'call #20 memory', 'call #21', 'call #21 memory', 'call #22', 'call #22 memory', 'call #23', 'call #23 memory', 'call #24', 'call #24 memory', 'call #25', 'call #25 memory', 'call #26', 'call #26 memory', 'call #27', 'call #27 memory', 'call #28', 'call #28 memory', 'call #29', 'call #29 memory', 'call #3', 'call #3 memory', 'call #30', 'call #30 memory', 'call #31', 'call #31 memory', 'call #32', 'call #32 memory', 'call #33', 'call #33 memory', 'call #34', 'call #34 memory', 'call #35', 'call #35 memory', 'call #36', 'call #36 memory', 'call #37', 'call #37 memory', 'call #38', 'call #38 memory', 'call #39', 'call #39 memory', 'call #4', 'call #4 memory', 'call #40', 'call #40 memory', 'call #41', 'call #41 memory', 'call #42', 'call #42 memory', 'call #43', 'call #43 memory', 'call #44', 'call #44 memory', 'call #45', 'call #45 memory', 'call #46', 'call #46 memory', 'call #47', 'call #47 memory', 'call #48', 'call #48 memory', 'call #49', 'call #49 memory', 'call #5', 'call #5 memory', 'call #50', 'call #50 memory', 'call #51', 'call #51 memory', 'call #52', 'call #52 memory', 'call #53', 'call #53 memory', 'call #54', 'call #54 memory', 'call #55', 'call #55 memory', 'call #56', 'call #56 memory', 'call #57', 'call #57 memory', 'call #58', 'call #58 memory', 'call #59', 'call #59 memory', 'call #6', 'call #6 memory', 'call #60', 'call #60 memory', 'call #61', 'call #61 memory', 'call #62', 'call #62 memory', 'call #63', 'call #63 memory', 'call #64', 'call #64 memory', 'call #65', 'call #65 memory', 'call #66', 'call #66 memory', 'call #67', 'call #67 memory', 'call #68', 'call #68 memory', 'call #69', 'call #69 memory', 'call #7', 'call #7 memory', 'call #70', 'call #70 memory', 'call #71', 'call #71 memory', 'call #72', 'call #72 memory', 'call #73', 'call #73 memory', 'call #74', 'call #74 memory', 'call #75', 'call #75 memory', 'call #76', 'call #76 memory', 'call #77', 'call #77 memory', 'call #78', 'call #78 memory', 'call #79', 'call #79 memory', 'call #8', 'call #8 memory', 'call #80', 'call #80 memory', 'call #81', 'call #81 memory', 'call #82', 'call #82 memory', 'call #83', 'call #83 memory', 'call #84', 'call #84 memory', 'call #85', 'call #85 memory', 'call #86', 'call #86 memory', 'call #87', 'call #87 memory', 'call #88', 'call #88 memory', 'call #89', 'call #89 memory', 'call #9', 'call #9 memory', 'call #90', 'call #90 memory', 'call #91', 'call #91 memory', 'call #92', 'call #92 memory', 'call #93', 'call #93 memory', 'call #94', 'call #94 memory', 'call #95', 'call #95 memory', 'call #96', 'call #96 memory', 'call #97', 'call #97 memory'},
     "config_bar_draw@rows": {'call #10', 'call #11', 'call #13', 'call #14', 'call #16', 'call #17', 'call #19', 'call #2', 'call #20', 'call #22', 'call #23', 'call #25', 'call #26', 'call #28', 'call #29', 'call #31', 'call #32', 'call #34', 'call #35', 'call #37', 'call #38', 'call #4', 'call #40', 'call #41', 'call #43', 'call #44', 'call #46', 'call #47', 'call #49', 'call #5', 'call #50', 'call #52', 'call #53', 'call #55', 'call #56', 'call #58', 'call #59', 'call #61', 'call #62', 'call #64', 'call #65', 'call #67', 'call #68', 'call #7', 'call #70', 'call #71', 'call #73', 'call #74', 'call #76', 'call #77', 'call #79', 'call #8', 'call #80', 'call #82', 'call #83', 'call #85', 'call #86', 'call #88', 'call #89', 'call #91', 'call #92', 'call #94', 'call #95', 'call #97'},
+    "config_option_row@flagw": {'call #1'},
+    "config_option_row@arrow": {'call #1'},
+    "config_option_row@which": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory'},
+    "config_option_row@valw": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3'},
+    "config_option_row@label": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
+    "config_option_row@off": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3'},
+    "config_option_row@row": {'call #0'},
+    "config_option_row@mode": {'call #0'},
+    "config_option_row@base": {'call #1', 'call #2', 'call #3'},
+    "config_option_row@byte": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3'},
+    "config_option_row@ids": {'byte', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
+    "config_option_row@odd": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3'},
+    "config_option_row@optcol": {'call #1'},
+    "config_option_row@optmode": {'call #1'},
+    "config_option_row@order": {'call #1', 'call #2', 'call #3'},
+    "config_option_row@glyphmode": {'call #1', 'call #2'},
 }   # D2D_KINDS end
 D2D_CASES = [
     ("camera_dust_burst@side", ['b0', 'b1', 'b2']),
@@ -6955,6 +6972,22 @@ D2D_CASES = [
     ("config_bar_draw@glyph", ['v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6']),
     ("config_bar_draw@numlate", ['v0', 'v2', 'v4', 'v6']),
     ("config_bar_draw@rows", ['v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6']),
+    ("config_option_row@flagw", ['o1']),
+    ("config_option_row@arrow", ['o0', 'o1', 'o10', 'o11', 'o2', 'o3']),
+    ("config_option_row@which", ['o0', 'o1', 'o10', 'o11', 'o2', 'o3', 'o4', 'o5', 'o6', 'o7', 'o8', 'o9']),
+    ("config_option_row@valw", ['o0', 'o1', 'o10', 'o11']),
+    ("config_option_row@label", ['o0', 'o1', 'o10', 'o11', 'o4', 'o6', 'o8']),
+    ("config_option_row@off", ['o2', 'o3']),
+    ("config_option_row@row", ['o2', 'o3', 'o5', 'o7', 'o9']),
+    ("config_option_row@mode", ['o2', 'o3', 'o5', 'o7', 'o9']),
+    ("config_option_row@base", ['o2', 'o3', 'o5', 'o7', 'o9']),
+    ("config_option_row@byte", ['o8', 'o9']),
+    ("config_option_row@ids", ['o1', 'o11', 'o3']),
+    ("config_option_row@odd", ['o4']),
+    ("config_option_row@optcol", ['o0', 'o1', 'o10', 'o11', 'o2', 'o3']),
+    ("config_option_row@optmode", ['o0', 'o11', 'o3']),
+    ("config_option_row@order", ['o0', 'o1', 'o10', 'o11', 'o2', 'o3', 'o4', 'o5', 'o6', 'o7', 'o8', 'o9']),
+    ("config_option_row@glyphmode", ['o0', 'o11', 'o3', 'o5', 'o6', 'o7', 'o8']),
 ]   # D2D_CASES end
 D1_MASKS.update(D2D_MASKS)
 D1_KINDS.update(D2D_KINDS)
@@ -8060,6 +8093,8 @@ class RealFunctionTests(unittest.TestCase):
         0x3631D: ["cmp dl, 3", "ja 0x363da", "xor ecx, ecx", "mov cl, dl", "jmp dword ptr cs:[ecx*4 + 0x362f0]"],
         0x1353A: ["cmp al, 5", "ja 0x13996", "and eax, 0xff", "lea esi, [edi + 0x14]", "lea edx, [eax*4]",
                   "lea eax, [edi + 0x10]", "jmp dword ptr cs:[edx + 0x134a8]"],
+        0x31EBC: ["cmp edi, 6", "ja 0x31eed", "lea eax, [edi*4]", "mov edx, dword ptr [esp]", "lea edi, [ebp - 8]",
+                  "sub edx, 2", "jmp dword ptr cs:[eax + 0x31e0c]"],
     }
 
     def test_each_resolved_jump_table_matches_the_bytes(self):

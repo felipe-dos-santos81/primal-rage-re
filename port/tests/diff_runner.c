@@ -20574,6 +20574,62 @@ static void m_d2d_30788_count(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r,
 static void m_d2d_30788_glyph(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 14u); }
 static void m_d2d_30788_numlate(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 15u); }
 static void m_d2d_30788_rows(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 16u); }
+/* 0x31E28's mutants (mutant n; 0 = the port's shape). EAX = which, EDX = the record, BL = the flag.
+ * The string path (0x1C500 and its tree) and 0x2F174 run on both sides; 0x2F198 and 0x2F5A0 are the
+ * recorded stubs. */
+static u32 d2d_31e28_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    u32 which = r[R_EAX], p = r[R_EDX];
+    u32 flag = M(1) ? r[R_EBX] : (r[R_EBX] & 0xFFu);                                /* @flagw */
+    u32 arrow = ((flag != 0u) != M(2)) ? 0x3000u : 0x4000u;                         /* @arrow */
+    u32 value, base, id = 0u;
+    if ((which == 0u) != M(3)) {                                                    /* @which */
+        value = M(4) ? DSD(p) : DSW(p);                                             /* @valw */
+        text_cursor_set(2, 4, game_string_get(M(5) ? 0x16u : 0x17u), 0x2000u);      /* @label */
+        base = 0xAu;
+    } else {
+        value = DSW(p + (M(6) ? 0x10u : 0x12u));                                    /* @off */
+        text_cursor_set(0x16, M(7) ? 6 : 4, game_string_get(0x16u), M(8) ? 0x4000u : 0x2000u);   /* @row @mode */
+        base = M(9) ? 0xAu : 0x1Eu;                                                 /* @base */
+    }
+    switch (M(10) ? (value & 0xFFu) : value) {                                      /* @byte */
+    case 0u: id = 0x22Du; break;
+    case 2u: id = M(11) ? 0x22Eu : 0x22Fu; break;                                   /* @ids */
+    case 4u: id = 0x230u; break;
+    case 6u: id = M(11) ? 0x22Fu : 0x22Eu; break;
+    case 1u: if (M(12)) id = 0x22Du; break;                                         /* @odd */
+    default: break;
+    }
+    if (id != 0u)
+        text_cursor_set((s32)base - (M(13) ? 9 : 8), 6, game_string_get(id), M(14) ? 0x4000u : arrow);   /* @optcol @optmode */
+    if (M(15)) text_glyph_at((s32)base + 9, 0x3E, 6, 0x4000u);                      /* @order */
+    text_glyph_at((s32)base - 9, 0x3C, 6, M(16) ? arrow : 0x4000u);                 /* @glyphmode */
+    if (!M(15)) text_glyph_at((s32)base + 9, 0x3E, 6, 0x4000u);
+#undef M
+    return 0u;
+}
+static void b_d2d_31e28(const u32 *r, u32 *eax)
+{
+    config_option_row(r[R_EAX], r[R_EDX], (u8)r[R_EBX]);
+    *eax = 0u;
+}
+static void m_d2d_31e28_flagw(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 1u); }
+static void m_d2d_31e28_arrow(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 2u); }
+static void m_d2d_31e28_which(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 3u); }
+static void m_d2d_31e28_valw(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 4u); }
+static void m_d2d_31e28_label(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 5u); }
+static void m_d2d_31e28_off(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 6u); }
+static void m_d2d_31e28_row(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 7u); }
+static void m_d2d_31e28_mode(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 8u); }
+static void m_d2d_31e28_base(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 9u); }
+static void m_d2d_31e28_byte(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 10u); }
+static void m_d2d_31e28_ids(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 11u); }
+static void m_d2d_31e28_odd(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 12u); }
+static void m_d2d_31e28_optcol(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 13u); }
+static void m_d2d_31e28_optmode(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 14u); }
+static void m_d2d_31e28_order(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 15u); }
+static void m_d2d_31e28_glyphmode(const u32 *r, u32 *eax) { *eax = d2d_31e28_core(r, 16u); }
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -24724,6 +24780,23 @@ static const binding_t k_bindings[] = {
     { "config_bar_draw@glyph",               m_d2d_30788_glyph, 0x00000000u },
     { "config_bar_draw@numlate",             m_d2d_30788_numlate, 0x00000000u },
     { "config_bar_draw@rows",                m_d2d_30788_rows, 0x00000000u },
+    { "config_option_row",                   b_d2d_31e28, 0x00000000u },
+    { "config_option_row@flagw",             m_d2d_31e28_flagw, 0x00000000u },
+    { "config_option_row@arrow",             m_d2d_31e28_arrow, 0x00000000u },
+    { "config_option_row@which",             m_d2d_31e28_which, 0x00000000u },
+    { "config_option_row@valw",              m_d2d_31e28_valw, 0x00000000u },
+    { "config_option_row@label",             m_d2d_31e28_label, 0x00000000u },
+    { "config_option_row@off",               m_d2d_31e28_off, 0x00000000u },
+    { "config_option_row@row",               m_d2d_31e28_row, 0x00000000u },
+    { "config_option_row@mode",              m_d2d_31e28_mode, 0x00000000u },
+    { "config_option_row@base",              m_d2d_31e28_base, 0x00000000u },
+    { "config_option_row@byte",              m_d2d_31e28_byte, 0x00000000u },
+    { "config_option_row@ids",               m_d2d_31e28_ids, 0x00000000u },
+    { "config_option_row@odd",               m_d2d_31e28_odd, 0x00000000u },
+    { "config_option_row@optcol",            m_d2d_31e28_optcol, 0x00000000u },
+    { "config_option_row@optmode",           m_d2d_31e28_optmode, 0x00000000u },
+    { "config_option_row@order",             m_d2d_31e28_order, 0x00000000u },
+    { "config_option_row@glyphmode",         m_d2d_31e28_glyphmode, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
