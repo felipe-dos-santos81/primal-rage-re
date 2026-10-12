@@ -289,7 +289,7 @@ three more cells per row (cols 25..27 of rows 6..10).
 
 The other 17 raw call sites of `0x2F388` were then compared with the port's calls by their register
 loads (a scratch scan of the instructions before each `call`): the port's arguments agree at the
-fourteen flow.c sites it has; the three svcmenu.c sites (`0x30986`, `0x30CD3`, `0x31511`) were
+thirteen flow.c sites it has; the three svcmenu.c sites (`0x30986`, `0x30CD3`, `0x31511`) were
 compared only as far as those loads show (the constants agree; the computed row and col were not
 traced). One raw site has NO counterpart in the port and is outside this batch's queue, so it
 was NOT changed: `0x4F01A mov ebx,2` / `0x4F01F mov edx,0xb` / `0x4F024 mov eax,0xffffffff` /
