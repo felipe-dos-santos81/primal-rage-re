@@ -13464,6 +13464,52 @@ def d2d_tail_cases(which):
         Case("t12", R(2), T(2, 0, 5)),
         Case("t13", R(1), T(1, 0, 0, st=6)),
     ]
+D2D_RX = 0x0010A680                                  # the record of the scratch slot D2D_SLOTX
+
+
+def d2d_21458_case(side, slot, state, ch=2, z30=0x1000, w44=0x0044, w36=0x0036, c36=0x0036, tbl=0x1400,
+                   add=0xF380, o5f=0x85, rz=0xFFF80000):
+    """0x21458: both fighters' slots seeded whole (record pointers; the other's +0x5F = `o5f`) and
+    the EAX slot's +0x2C, +0x30 = `z30`, +0x54, +0x58 = `state`, +0x7A = `ch` (the scratch slot
+    D2D_SLOTX has its own record D2D_RX); the EAX slot's record's +0x34..+0x37 (`w36`), +0x42..+0x45
+    (`w44`); the side's record's +0x18, +0x28 and +0x36 = `c36`; the EDX record's +0x30 = `rz`; the
+    per-character words at 0xBD884 (`tbl`) and 0xA8236 (`add`) between the neighbouring characters'
+    and the two stream dwords."""
+    other = 1 - side
+    def w32(buf, o, v): buf[o:o + 4] = le32(v)
+    p = {D2D_REC + 0x2C: le32(0x2C2C2C2C) + le32(rz) + le32(0x34343434),
+         0x000BD882 + ch * 2: le16(0x6B6B) + le16(tbl) + le16(0x6C6C),
+         0x000A8234 + ch * 2: le16(0x7B7B) + le16(add) + le16(0x7C7C),
+         0x000A8274 + ch * 4: le32(0x000E4C00 + ch), 0x000A829C + ch * 4: le32(0x000E4D00 + ch)}
+    for i in (0, 1):
+        buf = bytearray((0x80 | (k & 0x3F) | (i << 6)) & 0xFF for k in range(0x94))
+        w32(buf, 0, (D2D_F0, D2D_F1)[i])
+        buf[0x7A] = (ch + 3) % 7
+        if i == other:
+            buf[0x5F] = o5f
+        if DS_SLOTS + i * 0x94 == slot:
+            w32(buf, 0x2C, 0x00123400 + i)
+            w32(buf, 0x30, z30)
+            buf[0x58], buf[0x7A] = state, ch
+        p.update(d1d_chunks(DS_SLOTS + i * 0x94, buf))
+    if slot == D2D_SLOTX:
+        buf = bytearray(0x40 | (k & 0x3F) for k in range(0x94))
+        w32(buf, 0, D2D_RX)
+        w32(buf, 0x2C, 0x00567800)
+        w32(buf, 0x30, z30)
+        buf[0x58], buf[0x7A] = state, ch
+        p.update(d1d_chunks(D2D_SLOTX, buf))
+    own = D2D_RX if slot == D2D_SLOTX else (D2D_F0, D2D_F1)[(slot - DS_SLOTS) // 0x94]
+    c5 = (D2D_F0, D2D_F1)[side]
+    for rec, tag in {own: 0x10, c5: 0x20, (D2D_F0, D2D_F1)[other]: 0x30}.items():
+        p[rec + 0x14] = le32(0x14141414) + le32(0x18181800 + tag) + le32(0x1C1C1C00 + tag)
+        p[rec + 0x28] = bytes([0xFF if tag != 0x30 else 0x20, 0x29 | 0x20, 0x2A])
+        p[rec + 0x34] = le16(0x3434) + le16(0x0036)
+        p[rec + 0x42] = bytes([0x42, 0x43]) + le16(0x4444) + bytes([0x46])
+    p[c5 + 0x34] = le16(0x3434) + le16(c36)
+    p[own + 0x34] = le16(0x3434) + le16(w36 if own != c5 else c36)
+    p[own + 0x42] = bytes([0x42, 0x43]) + le16(w44) + bytes([0x46])
+    return p
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -13576,6 +13622,39 @@ D2D_SPECS = [
        mutants=("@flagidx", "@nodec", "@noclamp", "@decalways", "@st", "@ff", "@tbl", "@s5f", "@zext", "@nolast",
                 "@bound", "@e1", "@mirror", "@mform", "@mwidth", "@nobox", "@cnt", "@noe1", "@anchor", "@cww",
                 "@cnt0", "@b2", "@nocw", "@boxside", "@early", "@side", "@nocode", "@cmirror", "@cidx")),
+    # 0x21458 fighter_21458: EAX = slot, EDX = rec, EBX = side (the slot +0x10 callback 0x21A24
+    # stores; `call [ecx+0x10]` 0x354E2). The jump table 0x21448 has four targets (`cmp al,3; ja`).
+    # 0x33A10 and 0x21F30 run on both sides (0x21F30's own voice 0x6C/0x72, 0xBB308 spawn and
+    # 0x13244 are recorded stubs); POSE, ANIM_BEGIN, SPAWN, CLEAR36 and ANCHOR are stubs. The EAX
+    # slot is the side's own in the z/o cases marked `own` and the scratch slot elsewhere, so the
+    # slot's record ([ecx]) and the context's ([esp+0x14]) differ. Mask 0: 0x3531C returns the
+    # callback's EAX to its one caller, which overwrites it (`mov eax,ebx` 0x3580E).
+    Spec("fighter_21458", 0x21458, [
+        Case("z0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_21458_case(0, DS_SLOTS, 0, z30=0x063F), {0x2AE14: D2D_SP, 0x2C3FC: 0}),
+        Case("z1", {"eax": DS_SLOTS + 0x94, "edx": D2D_REC, "ebx": 1},
+             d2d_21458_case(1, DS_SLOTS + 0x94, 0, ch=5, z30=0x0640, w44=0, c36=0, o5f=0x03, rz=0x7FFF0000)),
+        Case("z2", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_21458_case(0, DS_SLOTS, 0, z30=0x0640, c36=0x0100)),
+        Case("z3", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1},
+             d2d_21458_case(1, D2D_SLOTX, 0, z30=0, w44=0x0100, tbl=0x8000)),
+        Case("z4", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0},
+             d2d_21458_case(0, D2D_SLOTX, 0, z30=0x7000, w44=0, tbl=0x1400, rz=0x00058000)),
+        Case("o0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_21458_case(0, DS_SLOTS, 1, z30=0x077F, c36=0x8000)),
+        Case("o1", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1},
+             d2d_21458_case(1, D2D_SLOTX, 1, z30=0x0780, w36=0xFFFF, c36=0xFFFF)),
+        Case("o2", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1},
+             d2d_21458_case(1, D2D_SLOTX, 1, z30=0, w36=0xFFFF, c36=0)),
+        Case("o3", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1},
+             d2d_21458_case(1, D2D_SLOTX, 1, ch=5, z30=0xFFFFF000, w36=0x0001, c36=0xFFFF, add=0xF000)),
+        Case("w0", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0}, d2d_21458_case(0, D2D_SLOTX, 2)),
+        Case("w1", {"eax": DS_SLOTS + 0x94, "edx": D2D_REC, "ebx": 1}, d2d_21458_case(1, DS_SLOTS + 0x94, 2)),
+        Case("n0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_21458_case(0, DS_SLOTS, 3, w44=0, c36=0xFFFF)),
+        Case("n1", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1}, d2d_21458_case(1, D2D_SLOTX, 0x80, w44=0, c36=0xFFFF)),
+    ], calls=(POSE, VOICE, SPAWN, P6_13244, ANIM_BEGIN, CLEAR36, ANCHOR), allow_calls=(0x33A10, 0x21F30),
+       eax_mask=0,
+       mutants=("@ctx", "@c0thr", "@c0zext", "@c0ge", "@c0w44", "@c0and", "@poseside", "@posearg", "@posesext", "@no21f30", "@r36", "@r44", "@s58", "@s54", "@c0stream", "@spawnx", "@spawnrec", "@spawnshift", "@order", "@c1sum", "@c1ge", "@c1rec", "@c1zero", "@c1s54", "@c1s58", "@c1clr", "@c1x", "@c1y", "@c1side", "@c1stream", "@c2bit", "@c2rec", "@c2r43", "@c2width", "@chside")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 
