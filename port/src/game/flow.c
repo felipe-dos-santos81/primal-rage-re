@@ -562,7 +562,8 @@ static void frontend_mode12_darken_or_tally(void)
      * The original's EAX/EDX build (DS_0010782A[r^1] and DS_0010782A[r])
      * feeds only this no-op call, so the port drops the dead computation
      * too. */
-    if (DSB(DS_00108104 + r) == 7u) {                       /* 0x41738..0x4174B */
+    r = DSD(DS_00104AD4);                                   /* 0x41738: read again after 0x4660C */
+    if (DSB(DS_00108104 + r) == 7u) {                       /* 0x4173D..0x4174B */
         frontend_mode12_advance();                          /* 0x4174D 0x4160C */
         return;
     }
