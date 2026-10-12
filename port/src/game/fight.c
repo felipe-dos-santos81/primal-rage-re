@@ -3061,6 +3061,7 @@ static void fight_4b69c(u32 entry, u32 index)
     if (fight_4b788(hit, entry, index) == 0) return;            /* 0x4B705 */
     DSB(entry + 0x20u) = (u8)(hit - 1u);                        /* 0x4B713 */
     DSB(entry + 0x1Fu) = (u8)(DSB(entry + 0x1Fu) + 1u);         /* 0x4B716 */
+    rec = DSD(entry + 8u);                                      /* 0x4B719: read again after 0x4B788 */
     u32 k = DSB(rec + 0x4Au);
     if (k != 0u) {                                              /* 0x4B720 */
         DSB(DSD(DS_001014F4) + k * 0x68u + 0x4Bu) = 0;          /* 0x4B73B */
