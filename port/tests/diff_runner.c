@@ -30590,6 +30590,52 @@ static void m_d4e_15b90_eax(const u32 *r, u32 *eax)
 }
 static void m_d4e_tb_eax(const u32 *r, u32 *eax)    { *eax = d2d_tail_core(r, 0u, 0); }
 static void m_d4e_ta_eax(const u32 *r, u32 *eax)    { *eax = d2d_tail_core(r, 0u, 1); }
+/* 0x3B714 restated; each bit tests one predicate's whole int (the port before the `test al,al`
+ * corrections 0x3B748, 0x3B79C, 0x3B8B4). EAX = param_1, EDX = param_2. */
+static void d4e_3b714_core(const u32 *r, u32 mut)
+{
+    u32 param_1 = r[R_EAX], param_2 = r[R_EDX], ctx[6], anim[3], local_24;
+    u32 side = (u32)DSB(DSD(param_2) + 0x51u);
+    int g;
+    u8 local_18;
+    fighter_ctx_same(ctx, side);
+    g = fighter_pass_flag(1u, ctx[1]);
+    if ((mut & 1u) ? (g != 0) : ((u8)g != 0u)) return;                       /* @eaxflag */
+    local_24 = (u32)DSB(param_2 + 0x5Fu);
+    if (local_24 == 0xFFu) return;
+    fighter_anim_triple(anim, side, (s32)local_24);
+    if ((DSW(anim[2] + 2u) & 0x800u) != 0u) return;
+    g = fighter_39efc(ctx[1]);
+    if (((mut & 2u) ? (g != 0) : ((u8)g != 0u))                              /* @eaxefc */
+            && (DSW(anim[2] + 2u) & 0x4000u) == 0u) return;
+    if (DSB(param_1 + 0x52u) == 4u) {
+        DSW(DSD(param_1) + 0x34u) = 0;
+        DSW(param_1 + 0x4Eu) = 0;
+    }
+    DSB(param_1 + 0x65u) = DSB(param_2 + 0x5Fu);
+    local_18 = (u8)fighter_command_dispatch(ctx[1], local_24);
+    if (DSB(param_1 + 0x54u) != 2u)
+        fighter_3b080(ctx[1], (u32)DSB(anim[0] + 3u), (u32)DSB(anim[0] + 2u), 1u);
+    if (DSB(ctx[2] + 0x52u) == 4u) fighter_3ae9c(side, local_18);
+    if (local_18 == 0u) {
+        u32 idx = (u32)DSB(ctx[5] + 0x4Bu);
+        if (idx != 0u) {
+            u32 row = DSD(DS_001014F4) + idx * 0x68u;
+            if (DSB(row + 0x60u) != 0u) fighter_2bd44(ctx[5], row);
+        }
+        fighter_reaction_apply(param_1, local_24);
+    } else {
+        DSB(ctx[2] + 0x8Au) = 0;
+        fighter_3ad98(ctx[1], anim);
+    }
+    g = fighter_3b6c4(side);
+    if ((mut & 4u) ? (g != 0) : ((u8)g != 0u))                               /* @eaxhold */
+        DSW(ctx[5] + 0x34u) = DSW(ctx[4] + 0x34u);
+    DSB(param_1 + 0x41u) |= 0x80u;
+}
+static void m_d4e_3b714_eaxflag(const u32 *r, u32 *eax) { d4e_3b714_core(r, 1u); *eax = 0u; }
+static void m_d4e_3b714_eaxefc(const u32 *r, u32 *eax)  { d4e_3b714_core(r, 2u); *eax = 0u; }
+static void m_d4e_3b714_eaxhold(const u32 *r, u32 *eax) { d4e_3b714_core(r, 4u); *eax = 0u; }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39238,6 +39284,10 @@ static const binding_t k_bindings[] = {
     { "camera_page_tail_b_al@eax", m_d4e_tb_eax, 0x000000FFu },
     { "camera_page_tail_a_al", b_d2d_16afc, 0x000000FFu },
     { "camera_page_tail_a_al@eax", m_d4e_ta_eax, 0x000000FFu },
+    { "fighter_reaction_al", b_3b714, 0x00000000u },
+    { "fighter_reaction_al@eaxflag", m_d4e_3b714_eaxflag, 0x00000000u },
+    { "fighter_reaction_al@eaxefc", m_d4e_3b714_eaxefc, 0x00000000u },
+    { "fighter_reaction_al@eaxhold", m_d4e_3b714_eaxhold, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

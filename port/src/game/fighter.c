@@ -7938,7 +7938,7 @@ void fighter_reaction(u32 param_1, u32 param_2)
 
     side = (u32)DSB(DSD(param_2) + 0x51u);                  /* 0x3B720/0x3B727 */
     fighter_ctx_same(ctx, side);                            /* 0x3B733/0x3B735 */
-    if (fighter_pass_flag(1u, ctx[1]) != 0) return;         /* 0x3B743/0x3B74A */
+    if ((u8)fighter_pass_flag(1u, ctx[1]) != 0u) return;    /* 0x3B743/0x3B74A, 0x3B748: test al,al */
     local_24 = (u32)DSB(param_2 + 0x5Fu);                   /* 0x3B752 */
     if (local_24 == 0xFFu) {                                /* 0x3B755/0x3B75B */
         /* PORT: 0x3B762 0x62003(1) — the error stub, out of scope. */
@@ -7946,7 +7946,7 @@ void fighter_reaction(u32 param_1, u32 param_2)
     }
     fighter_anim_triple(anim, side, (s32)local_24);         /* 0x3B770/0x3B776 */
     if ((DSW(anim[2] + 2u) & 0x800u) != 0u) return;         /* 0x3B77B..0x3B78D */
-    if (fighter_39efc(ctx[1]) != 0                         /* 0x3B797/0x3B79C */
+    if ((u8)fighter_39efc(ctx[1]) != 0u                    /* 0x3B797, 0x3B79C: test al,al */
             && (DSW(anim[2] + 2u) & 0x4000u) == 0u)
         return;                                             /* 0x3B7B2 */
     if (DSB(param_1 + 0x52u) == 4u) {                       /* 0x3B7BB/0x3B7BE */
@@ -7967,7 +7967,7 @@ void fighter_reaction(u32 param_1, u32 param_2)
         DSB(ctx[2] + 0x8Au) = 0;                            /* 0x3B898 */
         fighter_3ad98(ctx[1], anim);                        /* 0x3B8A7 */
     }
-    if (fighter_3b6c4(side) != 0)                           /* 0x3B8AF/0x3B8B6 */
+    if ((u8)fighter_3b6c4(side) != 0u)                      /* 0x3B8AF/0x3B8B6, 0x3B8B4: test al,al */
         DSW(ctx[5] + 0x34u) = DSW(ctx[4] + 0x34u);          /* 0x3B8C0/0x3B8C4 */
     DSB(param_1 + 0x41u) |= 0x80u;                          /* 0x3B8C8 */
 }

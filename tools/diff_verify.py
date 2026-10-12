@@ -22014,6 +22014,44 @@ D4E_SPECS += [
         {0x1A570: 0xFFFFFF00}, {0x1A570: 1})),
         calls=(BIT15,), allow_calls=(0x16734, 0x33A10, 0x3C570, 0x164C0), eax_mask=0xFF, mutants=("@eax",)),
 ]
+
+
+def d4e_al_spec(specs, name, stubs, extra=(), **kw):
+    """The row `name` again as `name`_al: its cases with each one's stub EAX extended by `stubs`
+    (d4e_spec_cases), then `extra`; `kw` replaces what differs (calls, allow_calls, mutants)."""
+    src = next(s for s in specs if s.name == name)
+    return dataclasses.replace(src, name=name + "_al", cases=d4e_spec_cases(specs, name, stubs) + list(extra), **kw)
+
+
+def d4e_stubbed(specs, name, *addrs):
+    """The call set of the row `name` with the recorded-and-run callees `addrs` as stubs."""
+    src = next(s for s in specs if s.name == name)
+    return tuple(dataclasses.replace(k, mode="stub") if k.addr in addrs else k for k in src.calls)
+
+
+D4E_REACT_REGS = {"eax": DS_SLOTS + 0x94, "edx": DS_SLOTS}
+D4E_REACT_EAX = {0x3C59C: 0, 0x39EFC: 0, 0x3B298: 0, 0x3B080: 0, 0x3AE9C: 0, 0x2BD44: 0, 0x3AAFC: 0, 0x3AD98: 0}
+
+D4E_SPECS += [
+    # 0x3B714 fighter_reaction (C2b's row; mask 0 as there; its named fatal block stays named) with
+    # 0x39EFC a stub too (C2b runs it: the raw leaves EAX = the slot address with AL = 0, 0x39F09 /
+    # 0x39F13 `xor al,al`). Three `test al,al` sites: 0x3B748 after 0x3C59C (`jne` out: r4 0x100
+    # and r5 0xFFFFFF00 go on, r0 0xFFFFFF01 returns), 0x3B79C after 0x39EFC (`je` over the bit
+    # 0x4000 test: r5 0x100 and r6 0xFFFFFF00 skip it with the bit clear, r2 1 returns, r3
+    # 0xFFFFFF01 and r8 0x80 pass on the set bit) and 0x3B8B4 after 0x3B6C4 (`je` over the +0x34
+    # copy: h0 0x100 and h1 0xFFFFFF00 leave the word, r4 1 and r8 0xFFFFFF80 copy). h0 / h1 are
+    # r6 / r7 with the two records' +0x34 words different.
+    d4e_al_spec(C2B_SPECS, "fighter_reaction", (
+        {0x3C59C: 0xFFFFFF01}, {}, {0x39EFC: 1}, {0x39EFC: 0xFFFFFF01}, {0x3C59C: 0x00000100},
+        {0x3C59C: 0xFFFFFF00, 0x39EFC: 0x00000100}, {0x39EFC: 0xFFFFFF00}, {},
+        {0x39EFC: 0x00000080, 0x3B6C4: 0xFFFFFF80}), extra=(
+        Case("h0", D4E_REACT_REGS, c2b_3b714(0, 0, 0x10, rec5_4b=3, row60=1, rec4_34=0x1111, rec5_34=0x2222),
+             {**D4E_REACT_EAX, 0x3B6C4: 0x00000100}),
+        Case("h1", D4E_REACT_REGS, c2b_3b714(0, 0, 0x10, rec5_4b=3, row60=0, rec4_34=0x3333, rec5_34=0x4444),
+             {**D4E_REACT_EAX, 0x3B6C4: 0xFFFFFF00})),
+        calls=d4e_stubbed(C2B_SPECS, "fighter_reaction", 0x39EFC),
+        mutants=("@eaxflag", "@eaxefc", "@eaxhold")),
+]
 D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
