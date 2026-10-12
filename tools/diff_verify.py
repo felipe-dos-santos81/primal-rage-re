@@ -13865,6 +13865,50 @@ def d2a_st12_case(s58, w36=0x3636, w34=0x3434, thr=0x0100, y=0x00000100, ch=2):
     return p
 
 
+D2A_OS = 0x0010A600              # 0x45908: a scratch block the DS_001077A8 entry of the other side points at
+
+
+def d2a_land45_case(side, ost, b3a, distinct=False, s14=None, other=None, y30=0x00070000, r51=None):
+    """0x45908: both slots' record pointers, +0x52..+0x58 and +0x89..+0x8B, both records' +0x14
+    (their own slot), +0x18/+0x1C, +0x30 and +0x51; the DS_001077A8 pair (the slots, or `other`
+    for the other side's entry); DS_00105B3A between two seeded bytes. The other side's +0x52 is
+    `ost` and the own side's the other verdict. `distinct`: EAX is D2A_RX, whose +0x14 is the
+    scratch slot D2A_FS and whose +0x51 is the side (or `r51`), and the other side's entry (index
+    side ^ 1, or r51 ^ 1; the sign-extended index too, with the other verdict) points at D2A_OS."""
+    slots = (D2A_SLOT, D2A_SLOT + 0x94)
+    recs = (D2A_R0, D2A_R1)
+    no = 0x0E if ost == 0x0F else 0x0F
+    p = {0x00105B39: bytes([0x39, b3a, 0x3B])}
+    tab = [slots[0], slots[1]]
+    for k in (0, 1):
+        p[slots[k]] = le32(recs[k])
+        p[slots[k] + 0x52] = bytes([ost if k != side else no, 0x53, 0x7F, 0x55, 0x56, 0x77, 0x58])
+        p[slots[k] + 0x89] = bytes([0x89, 0x7A + k, 0x8B])
+        p[recs[k] + 0x14] = le32(slots[k] if s14 is None else s14)
+        p[recs[k] + 0x18] = le32(0x00181800 + k) + le32(0x1C1C1C1C)
+        p[recs[k] + 0x30] = le32(y30 + k)
+        p[recs[k] + 0x51] = bytes([k])
+    if other is not None:
+        tab[side ^ 1] = other
+    if distinct:
+        sd = side if r51 is None else r51
+        p[D2A_FS + 0x52] = bytes([no, 0x53, 0x6F, 0x55, 0x56, 0x67, 0x58])
+        p[D2A_FS + 0x89] = bytes([0x89, 0x6A, 0x8B])
+        p[D2A_OS + 0x52] = bytes([ost])
+        p[D2A_RX + 0x14] = le32(D2A_FS)
+        p[D2A_RX + 0x18] = le32(0x00181877) + le32(0x1C1C1C77)
+        p[D2A_RX + 0x30] = le32(y30)
+        p[D2A_RX + 0x51] = bytes([sd])
+        if (sd ^ 1) < 2:
+            tab[sd ^ 1] = D2A_OS
+        else:
+            p[0x001077A8 + (sd ^ 1) * 4] = le32(D2A_OS)
+            p[0x001077A8 + ((sd ^ 1) - 0x100) * 4] = le32(slots[0])
+            p[slots[0] + 0x52] = bytes([no, 0x53, 0x7F, 0x55, 0x56, 0x77, 0x58])
+    p[0x001077A8] = le32(tab[0]) + le32(tab[1])
+    return p
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -14219,6 +14263,26 @@ D2A_SPECS = [
     ], calls=(ANIM_BEGIN,), eax_mask=0,
        mutants=("@or41", "@ja", "@w36ge", "@w36u", "@thrs", "@ycmp", "@yu", "@inc", "@tab", "@hold", "@csext",
                 "@order", "@sub", "@subw", "@fall", "@v10", "@vabs", "@z34", "@s52", "@step", "@dir")),
+    # 0x45908 fighter_45908: EAX = rec. 0x339AC runs real; five stubs. The record's +0x14 slot (ESI)
+    # takes +0x54, +0x57 and the last +0x8A; ctx[2] the first +0x8A; ctx[4] goes to 0x3C480; the
+    # DS_001077A8 entry of side ^ 1 (ECX) gives the +0x52 test: z5/z6/z8 make them different blocks
+    # (z8: +0x51 = 0x80, so ctx[2] lies above the image, in mem[]). Mask 0: the caller returns at
+    # once (0x45872..0x45876, the slot +0x0C callback 0x4579C), and the callback's call site is
+    # followed by `xor eax,eax` (0x35431 `call dword [ecx+0xc]`, 0x35434).
+    Spec("fighter_45908", 0x45908, [
+        Case("z0", {"eax": D2A_R0}, d2a_land45_case(0, 0x0F, 1, s14=0)),
+        Case("z1", {"eax": D2A_R1}, d2a_land45_case(1, 0x0F, 1, other=0)),
+        Case("z2", {"eax": D2A_R0}, d2a_land45_case(0, 0x0F, 1)),
+        Case("z3", {"eax": D2A_R1}, d2a_land45_case(1, 0x0F, 2)),
+        Case("z4", {"eax": D2A_R0}, d2a_land45_case(0, 0x0E, 0)),
+        Case("z5", {"eax": D2A_RX}, d2a_land45_case(1, 0x0F, 0, distinct=True, y30=0x8001FFFF)),
+        Case("z6", {"eax": D2A_RX}, d2a_land45_case(0, 0x10, 0, distinct=True)),
+        Case("z7", {"eax": D2A_R1}, d2a_land45_case(1, 0x0F, 0xFF)),
+        Case("z8", {"eax": D2A_RX}, d2a_land45_case(0, 0x0F, 0, distinct=True, r51=0x80)),
+    ], allow_calls=(0x339AC,), calls=(CLEAR34, CLEAR36, HIT_A, SPAWN, VOICE), eax_mask=0,
+       mutants=("@oth0", "@osext", "@oxor", "@x1c", "@cside", "@corder", "@s54", "@s57", "@sslot", "@arec",
+                "@stream", "@hold", "@a8a", "@st", "@b3a", "@b3as", "@sx", "@sy", "@syz", "@sdesc", "@v46",
+                "@vswap", "@e8a", "@early", "@n14")),
 ]
 D1_SPECS += D2A_SPECS
 
