@@ -22411,6 +22411,22 @@ D4A_SPECS += [
                 "@type2", "@notype", "@loopalways", "@loopnever", "@loopne", "@loopcnt", "@nostart", "@startearly",
                 "@order", "@cur0", "@nocur", "@curoff", "@noclr", "@clrearly", "@clrfirst")),
 ]
+D4A_SAMPLE_START = E.Call(0x1CB18, ("eax",))
+D4A_SPECS += [
+    # 0x1CF20 game_audio_service: no argument. 0x1CB18(slot) for slot 0..3 (EDX counts, EAX = EDX
+    # before its `inc`), then 0x1C930 when the pending-music dword 0x1028CC is non-zero. 0x1CB18
+    # is a stub (seamed here; its own row above). The cases keep 0x1028CC = 0: the port starts
+    # music from its own request flag and its 0x1C930 is a host replacement, so that arm has no
+    # port counterpart to compare (record §4); neither has what the port does after the loop
+    # (the sequencer ticks and the mixer: host state, no mem[] byte).
+    Spec("game_audio_service", 0x1CF20, [
+        Case("a0", {"edx": 0x0BADF00D}, {0x001028C8: le32(0x5A5A5A5A) + le32(0) + le32(0x5B5B5B5B)}),
+        Case("a1", {"eax": 0xFFFFFFFF, "edx": 2}, {0x001028C8: le32(0) + le32(0) + le32(0)}, {0x1CB18: 0x12345678}),
+    ], calls=(D4A_SAMPLE_START,), eax_mask=0,
+       unhit_named={0x1CF39: "the pending-music arm (0x1028CC != 0 -> 0x1C930): the port keeps its request in "
+                             "a C flag and replaces 0x1C930 by host code (flow.c title_music_start, PORT)"},
+       mutants=("@three", "@five", "@rev", "@from1", "@same", "@none")),
+]
 D1_SPECS += D4A_SPECS
 
 

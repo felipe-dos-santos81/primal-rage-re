@@ -6492,6 +6492,7 @@ u32 snd_sample_queue(u32 h, u32 loop)
  * byte +0x08 is 1) and start it; +0x0C = the handle, +0x04 = 0. */
 void sound_sample_start(u32 slot)
 {
+    PR_SEAM(0x1CB18u, slot);
     u32 off = slot * SND_SLOT_STRIDE;                      /* 0x1CB25..0x1CB2E */
     u32 h = DSD(DS_00102864 + off);                        /* 0x1CB31 */
     if (h == 0u) return;                                   /* 0x1CB37/0x1CB39 */

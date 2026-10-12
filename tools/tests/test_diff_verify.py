@@ -15855,6 +15855,7 @@ D4A_MASKS = {
     "game_mode_30_step": 0x0,
     "game_mode_30_step_reread": 0x0,
     "sound_sample_start": 0x0,
+    "game_audio_service": 0x0,
 }
 D4A_KINDS = {
     "frontend_darken_marked@h1": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4'},
@@ -16338,6 +16339,12 @@ D4A_KINDS = {
     "sound_sample_start@noclr": {'byte'},
     "sound_sample_start@clrearly": {'call #5 memory', 'call #6 memory'},
     "sound_sample_start@clrfirst": {'byte'},
+    "game_audio_service@three": {'call #3'},
+    "game_audio_service@five": {'call #4'},
+    "game_audio_service@rev": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "game_audio_service@from1": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "game_audio_service@same": {'call #1', 'call #2', 'call #3'},
+    "game_audio_service@none": {'call #0', 'call #1', 'call #2', 'call #3'},
 }
 D4A_CASES = [
     ("frontend_darken_marked@h1", ['k1', 'k3']),
@@ -16821,6 +16828,12 @@ D4A_CASES = [
     ("sound_sample_start@noclr", ['s0', 's1', 's2', 's3', 's4', 's5', 's7', 's8']),
     ("sound_sample_start@clrearly", ['s0', 's1', 's2', 's3', 's4', 's5', 's7', 's8']),
     ("sound_sample_start@clrfirst", ['s0', 's1', 's2', 's3', 's4', 's5', 's7', 's8']),
+    ("game_audio_service@three", ['a0', 'a1']),
+    ("game_audio_service@five", ['a0', 'a1']),
+    ("game_audio_service@rev", ['a0', 'a1']),
+    ("game_audio_service@from1", ['a0', 'a1']),
+    ("game_audio_service@same", ['a0', 'a1']),
+    ("game_audio_service@none", ['a0', 'a1']),
 ]
 # the reads past the image's end of the rows that index a slot by the byte 0x80 (zero-extended: 0x80 *
 # 0x94 above the slots; inside mem[], zero on both sides), for test_every_ported_function_agrees...
@@ -17894,7 +17907,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D4 d4a (record 2026-10-12-reverse-d4a): the stubs its rows add
-        0x13D4C: ("edx",), 0x24568: ("ebp",), 0x24804: ("ebp",), 0x256F4: (), 0x25C1C: ("esi", "edi", "ebp"), 0x27DC8: ("esi", "edi", "ebp"), 0x27ED8: (), 0x32B00: ("edx",), 0x33B00: ("ebx", "edx"), 0x39FF4: (), 0x3CB68: (), 0x40CB0: ("ebp",), 0x4F37C: (), 0x5DC2A: ("edx",), 0x5DC4D: ("ebx", "ecx", "edx"), 0x5DC70: ("ebx", "ecx", "edx"), 0x5DCA6: ("edx",), 0x5DCE4: ("edx",),
+        0x13D4C: ("edx",), 0x1CB18: (), 0x24568: ("ebp",), 0x24804: ("ebp",), 0x256F4: (), 0x25C1C: ("esi", "edi", "ebp"), 0x27DC8: ("esi", "edi", "ebp"), 0x27ED8: (), 0x32B00: ("edx",), 0x33B00: ("ebx", "edx"), 0x39FF4: (), 0x3CB68: (), 0x40CB0: ("ebp",), 0x4F37C: (), 0x5DC2A: ("edx",), 0x5DC4D: ("ebx", "ecx", "edx"), 0x5DC70: ("ebx", "ecx", "edx"), 0x5DCA6: ("edx",), 0x5DCE4: ("edx",),
         # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
         0x19820: (), 0x1D764: (), 0x1D810: ("esi", "edi", "ebp"), 0x1D890: (), 0x1DAE8: (), 0x1DC6C: (), 0x20EF8: (), 0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x29CBC: ("edx",), 0x2C060: (), 0x2C0F4: ("ebx", "ecx", "edx", "ebp"), 0x2C178: ("edx", "ebp"), 0x2C1C8: ("ebx", "ecx", "edx", "esi", "edi"), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA48: (), 0x2CA78: (), 0x2CA7C: (), 0x2CAA8: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (), 0x4F790: (), 0x4FA88: ("edi", "ebp"),
         # D3 d3b (record 2026-10-12-reverse-d3b): the stubs its rows add

@@ -31242,6 +31242,20 @@ D4A_SS_MUT(addrbuf) D4A_SS_MUT(addrlen) D4A_SS_MUT(vol) D4A_SS_MUT(novol) D4A_SS
 D4A_SS_MUT(type) D4A_SS_MUT(type2) D4A_SS_MUT(notype) D4A_SS_MUT(loopalways) D4A_SS_MUT(loopnever)
 D4A_SS_MUT(loopne) D4A_SS_MUT(loopcnt) D4A_SS_MUT(nostart) D4A_SS_MUT(startearly) D4A_SS_MUT(order) D4A_SS_MUT(cur0)
 D4A_SS_MUT(nocur) D4A_SS_MUT(curoff) D4A_SS_MUT(noclr) D4A_SS_MUT(clrearly) D4A_SS_MUT(clrfirst)
+/* 0x1CF20: no argument. Mask 0: its two call sites go on with `mov eax,[0x10150c]` (0x256BB) and `jmp
+ * 0x2eaf9` (`xor eax,eax`). Only the four 0x1CB18 calls are compared: what the port does after them is its
+ * host audio path (record §4). */
+static void b_d4a_1cf20(const u32 *r, u32 *eax) { (void)r; game_audio_service(); *eax = 0u; }
+enum { D4A_AS_NONE, D4A_AS_three, D4A_AS_five, D4A_AS_rev, D4A_AS_from1, D4A_AS_same, D4A_AS_none };
+static void d4a_1cf20_core(u32 mut)
+{
+    u32 n = (mut == D4A_AS_three) ? 3u : (mut == D4A_AS_five) ? 5u : (mut == D4A_AS_none) ? 0u : 4u;
+    for (u32 i = 0; i < n; i++)
+        sound_sample_start((mut == D4A_AS_rev) ? 3u - i : (mut == D4A_AS_from1) ? i + 1u : (mut == D4A_AS_same) ? 0u : i);
+}
+#define D4A_AS_MUT(name) \
+    static void m_d4a_as_##name(const u32 *r, u32 *eax) { (void)r; d4a_1cf20_core(D4A_AS_##name); *eax = 0u; }
+D4A_AS_MUT(three) D4A_AS_MUT(five) D4A_AS_MUT(rev) D4A_AS_MUT(from1) D4A_AS_MUT(same) D4A_AS_MUT(none)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -40335,6 +40349,13 @@ static const binding_t k_bindings[] = {
     { "sound_sample_start@noclr", m_d4a_ss_noclr, 0x00000000u },
     { "sound_sample_start@clrearly", m_d4a_ss_clrearly, 0x00000000u },
     { "sound_sample_start@clrfirst", m_d4a_ss_clrfirst, 0x00000000u },
+    { "game_audio_service", b_d4a_1cf20, 0x00000000u },
+    { "game_audio_service@three", m_d4a_as_three, 0x00000000u },
+    { "game_audio_service@five", m_d4a_as_five, 0x00000000u },
+    { "game_audio_service@rev", m_d4a_as_rev, 0x00000000u },
+    { "game_audio_service@from1", m_d4a_as_from1, 0x00000000u },
+    { "game_audio_service@same", m_d4a_as_same, 0x00000000u },
+    { "game_audio_service@none", m_d4a_as_none, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
