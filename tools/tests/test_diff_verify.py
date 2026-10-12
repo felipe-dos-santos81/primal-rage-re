@@ -15854,6 +15854,7 @@ D4E_MASKS = {
     "fighter_reaction_al": 0x0,
     "fighter_attack_consume_al": 0xFF,
     "fight_char_opp_text_clear_rr": 0x0,
+    "fight_4aad0_rr2": 0x0,
 }
 D4E_KINDS = {
     "fighter_146f0_al@eax": {'call #1', 'call #2'},
@@ -15899,6 +15900,15 @@ D4E_KINDS = {
     "fighter_attack_consume_al@eaxchain": {'byte', 'call #1', 'call #2'},
     "fighter_attack_consume_al@eaxscan": {'byte', 'call #1 memory', 'call #2 memory'},
     "fight_char_opp_text_clear_rr@cache": {'call #1', 'call #3'},
+    "fight_4aad0_rr2@c0c2": {'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7'},
+    "fight_4aad0_rr2@c0c3": {'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6'},
+    "fight_4aad0_rr2@c0c4": {'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8'},
+    "fight_4aad0_rr2@c0c5": {'call #3', 'call #5'},
+    "fight_4aad0_rr2@c0c6": {'byte', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8 memory'},
+    "fight_4aad0_rr2@c8": {'byte', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8 memory'},
+    "fight_4aad0_rr2@c874a": {'call #5', 'call #6', 'call #7'},
+    "fight_4aad0_rr2@c874b": {'call #5', 'call #6', 'call #7'},
+    "fight_4aad0_rr2@cache": {'byte', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8'},
 }
 D4E_CASES = [
     ("fighter_146f0_al@eax", ['c2', 'c3']),
@@ -15944,6 +15954,15 @@ D4E_CASES = [
     ("fighter_attack_consume_al@eaxchain", ['a3', 'a5']),
     ("fighter_attack_consume_al@eaxscan", ['a4', 'a5']),
     ("fight_char_opp_text_clear_rr@cache", ['q0', 'q1']),
+    ("fight_4aad0_rr2@c0c2", ['y0']),
+    ("fight_4aad0_rr2@c0c3", ['y1', 'y2', 'y3', 'y6']),
+    ("fight_4aad0_rr2@c0c4", ['y0', 'y1', 'y2', 'y3', 'y4']),
+    ("fight_4aad0_rr2@c0c5", ['y1', 'y2', 'y3', 'y4', 'y7']),
+    ("fight_4aad0_rr2@c0c6", ['y1', 'y2', 'y3', 'y4', 'y6', 'y7']),
+    ("fight_4aad0_rr2@c8", ['y0', 'y1', 'y2', 'y3', 'y4', 'y6', 'y7']),
+    ("fight_4aad0_rr2@c874a", ['y0', 'y1', 'y3', 'y6', 'y7']),
+    ("fight_4aad0_rr2@c874b", ['y0', 'y1', 'y6', 'y7']),
+    ("fight_4aad0_rr2@cache", ['y0', 'y1', 'y2', 'y3', 'y4', 'y6', 'y7']),
 ]   # D4E_CASES end
 D1_MASKS.update(D4E_MASKS)
 D1_KINDS.update(D4E_KINDS)

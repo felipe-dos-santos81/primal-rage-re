@@ -30676,6 +30676,50 @@ static void m_d4e_3bddc_eaxscan(const u32 *r, u32 *eax)  { *eax = d4e_3bddc_core
 /* 0x433DC under a release stub that rewrites the col words: d2b's core reads the col word once
  * (its mutation set 0 is the port before the 0x4343C correction). */
 static void m_d4e_ot_cache(const u32 *r, u32 *eax) { d2b_433dc_core(r, 0u); *eax = 0u; }
+/* 0x4AAD0 restated with its loads where the raw has them; each bit keeps one of them across the
+ * call before it (the entry's slot pointer +0xC at 0x4AB0B, 0x4AB52, 0x4AB7C, 0x4ABA6, 0x4ABC7, the
+ * actor pointer +8 at 0x4ABB7, the midpoint 0x108874 at 0x4ABBF and 0x4ABD1). @cache is d3b's
+ * core at mutation set 0: the port before the corrections. EAX = entry, EDX = index. */
+static void d4e_4aad0_core(const u32 *r, u32 mut)
+{
+    u32 entry = r[R_EAX], index = r[R_EDX], slot, actor, mid, ad;
+    s32 d, pa, pr, ea, er;
+    if (DSW(0x00104B00u) == 9u) { DSB(entry + 0x1Eu) = 9u; return; }
+    slot = DSD(entry + 0xCu);
+    if (DSB(slot + 0x54u) == 3u) { if (fight_4b430(entry, index, 0u) != 0) return; }
+    if (!(mut & 1u)) slot = DSD(entry + 0xCu);                               /* @c0c2 */
+    if (DSB(slot + 0x54u) == 4u) { if (fight_4b3f0(entry, index, 0u) != 0) return; }
+    if (DSB(0x001088C2u) != 0u) { if (fight_4bd4c(entry, index) != 0) return; }
+    if ((u8)fight_4b5a8(entry, index) != 0u) return;
+    if (!(mut & 2u)) slot = DSD(entry + 0xCu);                               /* @c0c3 */
+    if ((DSB(slot + 0x42u) & 2u) != 0u || DSB(0x001088B2u + (u32)DSB(entry + 0x21u)) != 0u) {
+        if (fight_4b3f0(entry, index, 0u) != 0) return;
+    }
+    if (!(mut & 4u)) slot = DSD(entry + 0xCu);                               /* @c0c4 */
+    if ((DSB(slot + 0x42u) & 1u) != 0u || DSB(0x0010889Eu + (u32)DSB(entry + 0x21u)) != 0u) {
+        if (fight_4b430(entry, index, 0u) != 0) return;
+    }
+    if (!(mut & 8u)) slot = DSD(entry + 0xCu);                               /* @c0c5 */
+    actor = DSD(entry + 8u);
+    mid = DSD(0x00108874u);
+    d = fight_2be1c(actor, DSD(slot));
+    if (!(mut & 0x20u)) actor = DSD(entry + 8u);                             /* @c8 */
+    pa = fight_2be00(actor);
+    if (!(mut & 0x40u)) mid = DSD(0x00108874u);                              /* @c874a */
+    ea = (s32)(mid - (u32)pa);
+    if (!(mut & 0x10u)) slot = DSD(entry + 0xCu);                            /* @c0c6 */
+    pr = fight_2be00(DSD(slot));
+    if (!(mut & 0x80u)) mid = DSD(0x00108874u);                              /* @c874b */
+    er = (s32)(mid - (u32)pr);
+    ad = (d < 0) ? 0u - (u32)d : (u32)d;
+    if ((s32)ad >= 0x1800 || (s32)ad <= 0x600 || (ea > 0 && er < 0) || (ea < 0 && er > 0))
+        fight_4b144(entry, index);
+}
+#define D4E_TY_MUT(name, bit) \
+    static void m_d4e_ty_##name(const u32 *r, u32 *eax) { d4e_4aad0_core(r, bit); *eax = 0u; }
+D4E_TY_MUT(c0c2, 1u)   D4E_TY_MUT(c0c3, 2u)   D4E_TY_MUT(c0c4, 4u)     D4E_TY_MUT(c0c5, 8u)
+D4E_TY_MUT(c0c6, 0x10u) D4E_TY_MUT(c8, 0x20u) D4E_TY_MUT(c874a, 0x40u) D4E_TY_MUT(c874b, 0x80u)
+static void m_d4e_ty_cache(const u32 *r, u32 *eax) { d3b_4aad0_core(r, 0ull); *eax = 0u; }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39333,6 +39377,16 @@ static const binding_t k_bindings[] = {
     { "fighter_attack_consume_al@eaxscan", m_d4e_3bddc_eaxscan, 0x000000FFu },
     { "fight_char_opp_text_clear_rr", b_d2b_433dc, 0x00000000u },
     { "fight_char_opp_text_clear_rr@cache", m_d4e_ot_cache, 0x00000000u },
+    { "fight_4aad0_rr2", b_d3b_4aad0, 0x00000000u },
+    { "fight_4aad0_rr2@c0c2", m_d4e_ty_c0c2, 0x00000000u },
+    { "fight_4aad0_rr2@c0c3", m_d4e_ty_c0c3, 0x00000000u },
+    { "fight_4aad0_rr2@c0c4", m_d4e_ty_c0c4, 0x00000000u },
+    { "fight_4aad0_rr2@c0c5", m_d4e_ty_c0c5, 0x00000000u },
+    { "fight_4aad0_rr2@c0c6", m_d4e_ty_c0c6, 0x00000000u },
+    { "fight_4aad0_rr2@c8", m_d4e_ty_c8, 0x00000000u },
+    { "fight_4aad0_rr2@c874a", m_d4e_ty_c874a, 0x00000000u },
+    { "fight_4aad0_rr2@c874b", m_d4e_ty_c874b, 0x00000000u },
+    { "fight_4aad0_rr2@cache", m_d4e_ty_cache, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

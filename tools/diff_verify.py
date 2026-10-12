@@ -22070,6 +22070,52 @@ D4E_SPECS += [
     ], allow_calls=D2B_STR_TREE, calls=(P7_2B150, D2B_PROMPT_CLR, D3B_RELEASE_COL), eax_mask=0,
        mutants=("@cache",)),
 ]
+
+# 0x4AAD0 with stubs that rewrite what the raw loads again after each call (harness writes: none of
+# the callees is seen to write them). The entry's slot pointer +0xC: 0x4B430 leaves slot 1, 0x4B3F0
+# slot 0, 0x4B5A8 slot 1; 0x2BE1C leaves the actor pointer +8 = D2B_ACT1 and the slot pointer =
+# slot 0. 0x2BE00 is a stub here (d3b runs it): called on D2B_ACT1 it leaves the midpoint dword
+# 0x108874 = 0x4000, called on D2B_REC0 0x6000 (each call makes both arg-relative writes; the
+# other lands at 0x1087B4 or 0x108934, outside every field the function reads).
+D4E_M32 = 0xFFFFFFFF
+D4E_TY_430 = dataclasses.replace(D3B_4B430, writes=((None, D2B_ENT + 0x0C, le32(D2B_SLOTS + 0x94)),))
+D4E_TY_3F0 = dataclasses.replace(D3B_4B3F0, writes=((None, D2B_ENT + 0x0C, le32(D2B_SLOTS)),))
+D4E_TY_5A8 = dataclasses.replace(D3B_4B5A8, writes=((None, D2B_ENT + 0x0C, le32(D2B_SLOTS + 0x94)),))
+D4E_TY_E1C = dataclasses.replace(D3B_2BE1C, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT1) + le32(D2B_SLOTS)),))
+D4E_TY_E00 = dataclasses.replace(D2B_2BE00_S, writes=(
+    (0, (0x00108874 - D2B_ACT1) & D4E_M32, le32(0x4000)), (0, (0x00108874 - D2B_REC0) & D4E_M32, le32(0x6000))))
+
+
+def d4e_ty_stubs(x=0x5000, **kw):
+    return {**d3b_ty_stubs(**kw), 0x2BE00: x}
+
+
+D4E_SPECS += [
+    # 0x4AAD0 fight_4aad0 (d3b's rows; mask 0 as there). The raw loads `[ecx+0xc]` before each test
+    # (0x4AAEF, 0x4AB0B, 0x4AB52, 0x4AB7C, 0x4ABA6, 0x4ABC7), `[ecx+8]` for each of its two uses
+    # (0x4ABA9, 0x4ABB7) and the midpoint after each 0x2BE00 (0x4ABBF, 0x4ABD1).
+    Spec("fight_4aad0_rr2", 0x4AAD0, [
+        # slot 0's +0x54 = 3: 0x4B430 (leaves slot 1, whose +0x54 is 4) -> 0x4B3F0 (slot 0) ->
+        # 0x4B5A8 (slot 1, whose +0x42 is 0xFF) -> 0x4B3F0 (slot 0, whose +0x42 bit 0 is clear):
+        # no second 0x4B430; d in range, the midpoint 0x4000 below and 0x6000 above the 0x5000 both
+        # 0x2BE00 calls return: the walk
+        Case("y0", {"eax": D2B_ENT, "edx": 2}, d3b_ty_case(s54=3, s42=0x00), d4e_ty_stubs()),
+        # +0x54 = 0, slot 0's +0x42 = 1 (slot 1's 0xFE): 0x4B5A8 (slot 1: bit 1) -> 0x4B3F0 (slot 0:
+        # bit 0) -> 0x4B430 (slot 1): 0x2BE1C takes slot 1's record, the second 0x2BE00 slot 0's
+        Case("y1", {"eax": D2B_ENT, "edx": 3}, d3b_ty_case(s54=0, s42=0x01), d4e_ty_stubs(d=0xFFFFF000)),
+        # the same with 0x2BE00 returning 0x3000 (both gaps positive) and 0x7000 (both negative): no walk
+        Case("y2", {"eax": D2B_ENT, "edx": 4}, d3b_ty_case(s54=0, s42=0x01), d4e_ty_stubs(x=0x3000)),
+        Case("y3", {"eax": D2B_ENT, "edx": 5}, d3b_ty_case(s54=0, s42=0x01), d4e_ty_stubs(x=0x7000)),
+        # the entry on slot 1, DS_001088C2 set (0x4BD4C returns 0), d out of range; and mode 9
+        Case("y4", {"eax": D2B_ENT, "edx": 6}, d3b_ty_case(side=1, s54=4, s42=0x02, c2=1), d4e_ty_stubs(d=0x1800)),
+        Case("y5", {"eax": D2B_ENT, "edx": 7}, d3b_ty_case(mode=0x0009), d4e_ty_stubs()),
+        # slot 0's +0x42 = 2 (slot 1's 0xFD): after 0x4B5A8 bit 1 is clear and the table byte decides
+        # (clear: no 0x4B3F0; set: 0x4B3F0, then slot 0, whose bit 0 is clear and table byte set)
+        Case("y6", {"eax": D2B_ENT, "edx": 8}, d3b_ty_case(s54=0, s42=0x02), d4e_ty_stubs()),
+        Case("y7", {"eax": D2B_ENT, "edx": 9}, d3b_ty_case(s54=0, s42=0x02, b2=(1, 0), b9e=(1, 0)), d4e_ty_stubs()),
+    ], calls=(D4E_TY_430, D4E_TY_3F0, D3B_4BD4C, D4E_TY_5A8, D4E_TY_E1C, D4E_TY_E00, D3B_WALK), eax_mask=0,
+       mutants=("@c0c2", "@c0c3", "@c0c4", "@c0c5", "@c0c6", "@c8", "@c874a", "@c874b", "@cache")),
+]
 D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

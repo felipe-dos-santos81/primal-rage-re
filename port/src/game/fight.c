@@ -2701,30 +2701,33 @@ void fight_4aad0(u32 entry, u32 index)
         DSB(entry + 0x1Eu) = 9u;                    /* 0x4AAE6 */
         return;
     }
-    u32 slot = DSD(entry + 0xCu);                   /* 0x4AAEF */
-    if (DSB(slot + 0x54u) == 3u) {                  /* 0x4AAF2 */
+    if (DSB(DSD(entry + 0xCu) + 0x54u) == 3u) {     /* 0x4AAEF/0x4AAF2 */
         if (fight_4b430(entry, index, 0u) != 0) return; /* 0x4AAFE */
     }
-    if (DSB(slot + 0x54u) == 4u) {                  /* 0x4AB0E */
+    if (DSB(DSD(entry + 0xCu) + 0x54u) == 4u) {     /* 0x4AB0B/0x4AB0E */
         if (fight_4b3f0(entry, index, 0u) != 0) return; /* 0x4AB1A */
     }
     if (DSB(DS_001088C2) != 0u) {                   /* 0x4AB27 */
         if (fight_4bd4c(entry, index) != 0) return; /* 0x4AB34 */
     }
     if ((u8)fight_4b5a8(entry, index) != 0u) return;    /* 0x4AB45, 0x4AB4A `test al,al` */
-    if ((DSB(slot + 0x42u) & 2u) != 0u
+    if ((DSB(DSD(entry + 0xCu) + 0x42u) & 2u) != 0u     /* 0x4AB52/0x4AB55 */
             || DSB(DS_001088B2 + (u32)DSB(entry + 0x21u)) != 0u) {
         if (fight_4b3f0(entry, index, 0u) != 0) return; /* 0x4AB6F */
     }
-    if ((DSB(slot + 0x42u) & 1u) != 0u
+    if ((DSB(DSD(entry + 0xCu) + 0x42u) & 1u) != 0u     /* 0x4AB7C/0x4AB7F */
             || DSB(DS_0010889E + (u32)DSB(entry + 0x21u)) != 0u) {
         if (fight_4b430(entry, index, 0u) != 0) return; /* 0x4AB99 */
     }
     {
-        s32 d = fight_2be1c(DSD(entry + 8u), DSD(slot));    /* 0x4ABAE */
-        s32 e_actor = (s32)DSD(DS_00108874) - fight_2be00(DSD(entry + 8u));
-        s32 e_rec = (s32)DSD(DS_00108874) - fight_2be00(DSD(slot));
-        s32 ad = (d < 0) ? -d : d;
+        /* The entry's +0xC and +8 and the midpoint are loaded again after each
+         * call, as the raw does. */
+        s32 d = fight_2be1c(DSD(entry + 8u), DSD(DSD(entry + 0xCu)));   /* 0x4ABA6..0x4ABAE */
+        s32 pa = fight_2be00(DSD(entry + 8u));              /* 0x4ABB7/0x4ABBA */
+        s32 e_actor = (s32)(DSD(DS_00108874) - (u32)pa);    /* 0x4ABBF/0x4ABC5 */
+        s32 pr = fight_2be00(DSD(DSD(entry + 0xCu)));       /* 0x4ABC7..0x4ABCC */
+        s32 e_rec = (s32)(DSD(DS_00108874) - (u32)pr);      /* 0x4ABD1/0x4ABD7 */
+        s32 ad = (d < 0) ? (s32)(0u - (u32)d) : d;          /* 0x4ABDF/0x4ABED neg: INT_MIN stays */
         if (ad >= 0x1800 || ad <= 0x600                     /* 0x4ABE1/0x4ABEF */
                 || (e_actor > 0 && e_rec < 0)               /* 0x4ABFD */
                 || (e_actor < 0 && e_rec > 0))              /* 0x4ABF7 */
