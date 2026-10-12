@@ -21552,6 +21552,333 @@ D3C_SPECS += [
 D1_SPECS += D3C_SPECS
 
 
+# ---- track D3 batch d3e (record 2026-10-12-reverse-d3e) ----
+
+
+def d3e_cy_case(x, cam, shake=0, idx=0, lim=0x7FFF, caps=None):
+    """0x1317C: the dword 0x1078F2 (low word 0x5A5A, high word x) between sentinel words, the camera
+    block (y = cam, the shake word; the x dword's high word 0xC1C2 is what a read of 0xF0AF2's low
+    word finds), the dword before it, the index word 0x104AFC between sentinels, and the cap table:
+    the dword at 0x9AF28 + idx*2 gets the low word 0x1111 and the high word `lim`; `caps` pokes more
+    words at byte offsets from 0x9AF28 (what a wrong index or scale would read)."""
+    p = d1h_cam(y=cam, shake=shake)
+    p[0x000F0AE8] = le32(0xE8E9EAEB)
+    p[0x001078F0] = le16(0xF0F1) + le16(0x5A5A) + le16(x) + le16(0xF6F7)
+    p[0x00104AF8] = le32(0xF8F9FAFB) + le16(idx) + le16(0xFEFF)
+    words = {idx * 2: 0x1111, idx * 2 + 2: lim}
+    words.update(caps or {})
+    for off, w in words.items():
+        p[0x0009AF28 + off] = le16(w)
+    return p
+
+
+D3E_T = 1858         # the target 0x1317C computes for x = 0x3000 (d = 0x1C00), from the original's run
+
+D3E_SPECS = [
+    # 0x1317C camera_y_clamp: no argument. x = the dword 0x1078F2 `sar 16`; x <= 0x1400 (`jle`
+    # 0x1318D) gives the target 0, else `fild` d = x - 0x1400, `fstp dword` (exact: d < 2^24),
+    # `fld; fld st(0); fmul dword [0x804a8]; fmulp` = d * (d * C) at the control word's 53 bits and
+    # 0x61A4C (`frndint` under a control word whose high byte is 0x1F: chop), `fistp`. Then 0x12CD4
+    # (its one caller is 0x131CB: run on the original side, inlined in the port): snap when
+    # |target - cam| <= 0x100 (`jg` 0x12CF3), else step 0x100 toward it, plus the dword 0xF0AF2
+    # `sar 16` (the shake word 0xF0AF4, signed). Then the cap `[0x9AF28 + word[0x104AFC]*2] sar 16`
+    # (the index zero-extended, `xor eax,eax; mov ax,..` 0x131D0), stored when below the camera y
+    # read back (`jge` 0x131EA). A snap at |diff| < 0x100 is not observable: a 0x100 step from a
+    # difference of exactly 0x100 lands on the target. f0..f3 are the four x where a single-precision product truncates
+    # to another integer; f4 and f5 the x where only the inner or only the outer product in single
+    # precision does. EAX is the cap; no caller reads it (record §1).
+    Spec("camera_y_clamp", 0x1317C, [
+        Case("g0", {}, d3e_cy_case(0x1400, 0x40)),
+        Case("g1", {}, d3e_cy_case(0x1401, 0x40)),
+        Case("g2", {}, d3e_cy_case(0x1000, 0x20)),
+        Case("g3", {}, d3e_cy_case(0x8000, 0x10)),
+        Case("g4", {}, d3e_cy_case(0xFFFF, 0xFFFFFFF0)),
+        Case("g5", {}, d3e_cy_case(0x14D2, 0x08)),
+        Case("f0", {}, d3e_cy_case(12320, 1875 + 3)),
+        Case("f1", {}, d3e_cy_case(19520, 7500 - 3)),
+        Case("f2", {}, d3e_cy_case(22483, 10903 + 0x100)),
+        Case("f3", {}, d3e_cy_case(27181, 17602 + 5)),
+        Case("f4", {}, d3e_cy_case(8000, 300)),
+        Case("f5", {}, d3e_cy_case(29229, 21022)),
+        Case("f6", {}, d3e_cy_case(0x7FFF, 27646)),
+        Case("s0", {}, d3e_cy_case(0x3000, D3E_T - 0x100)),
+        Case("s1", {}, d3e_cy_case(0x3000, D3E_T - 0x101)),
+        Case("s2", {}, d3e_cy_case(0x3000, D3E_T + 0x100)),
+        Case("s3", {}, d3e_cy_case(0x3000, D3E_T + 0x101)),
+        Case("s4", {}, d3e_cy_case(0x3000, D3E_T + 0x5000, shake=0x0030)),
+        Case("s5", {}, d3e_cy_case(0x3000, D3E_T - 0x5000, shake=0xFFF0)),
+        Case("s6", {}, d3e_cy_case(0x3000, 0x80000000 + D3E_T)),
+        Case("s7", {}, d3e_cy_case(0x3000, D3E_T, shake=0x8000)),
+        Case("s8", {}, d3e_cy_case(0x3000, D3E_T - 0x90)),
+        Case("s9", {}, d3e_cy_case(0x3000, D3E_T + 0x90)),
+        Case("c0", {}, d3e_cy_case(0x1400, 0, shake=0x0200, lim=0x01FF)),
+        Case("c1", {}, d3e_cy_case(0x1400, 0, shake=0x0200, lim=0x0200)),
+        Case("c2", {}, d3e_cy_case(0x1400, 0, shake=0x0200, lim=0x0201)),
+        Case("c3", {}, d3e_cy_case(0x1400, 0, shake=0x0300, idx=1, lim=0x0123, caps={0: 0x7001, 6: 0x7002})),
+        Case("c4", {}, d3e_cy_case(0x1400, 0, shake=0x0300, idx=0x8000, lim=0x0055, caps={-0x10000 + 2: 0x7003})),
+        Case("c5", {}, d3e_cy_case(0x1400, 0, shake=0x0010, lim=0x8000)),
+        Case("c6", {}, d3e_cy_case(0x1400, 0, shake=0xFFFB, lim=0x0000)),
+        Case("c7", {}, d3e_cy_case(0x7FFF, 27646, idx=2, caps={4: 0x1100, 6: 0x1500})),
+    ], allow_calls=(0x61A4C, 0x12CD4), eax_mask=0,
+       unhit_named={0x131A6: "dead: `sar eax,0x10` (0x13185) leaves x below 0x8000, so `jl 0x131ac` (0x131A4) is always taken"},
+       mutants=("@zext", "@lo", "@nogate", "@off", "@float", "@mixed", "@outer", "@round", "@abs", "@step",
+                "@snapwide", "@snapnarrow", "@dir", "@noshake", "@shakez", "@shakelo", "@storew", "@idxsext", "@scale",
+                "@caplo", "@capz", "@capuns", "@nocap", "@capw", "@capearly")),
+]
+
+D3E_PS, D3E_PS2 = 0x0010A000, 0x0010A100         # the scratch slots the pointer table 0x1077A8 names
+D3E_R, D3E_R2 = 0x0010A400, 0x0010A480           # the pointed-to slot's record; the own slots' record
+D3E_3C59C = E.Call(0x3C59C, ("eax", "edx"), clobbers=("edx",))
+D3E_34038 = E.Call(0x34038, ("eax",), mode="real")     # its timer word is not 1: it returns at 0x34054 on both sides
+D3E_38D24 = E.Call(0x38D24, ("eax",))
+D3E_382C4 = E.Call(0x382C4, ("eax",))
+D3E_38434 = E.Call(0x38434, ("eax",), clobbers=("edi", "ebp"))
+D3E_MS = E.Call(0x2A4FC, ("eax",), clobbers=("ebp",))
+D3E_186C4 = E.Call(0x186C4, (), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+D3E_1922C = E.Call(0x1922C, ("eax",))
+D3E_3D004 = E.Call(0x3D004, ("eax",), clobbers=("edi", "ebp"))
+# the stubs of the chain row write what the real callees can: 0x2A4FC the record's x, 0x188AC the
+# record's x and y and the threshold dword
+D3E_MS_W = E.Call(0x2A4FC, ("eax",), clobbers=("ebp",), writes=((0, 0x18, le32(0x00005000)),))
+D3E_ANCHOR_W = E.Call(0x188AC, ("eax", "edx", "ebx"), clobbers=("edx",),
+                      writes=((None, D3E_R + 0x18, le32(0xFFFF9000) + le32(0x00C0FFEE)),
+                              (None, 0x000BE018, le32(0x00006000))))
+
+
+def d3e_f8_case(cid, side, flag, d4=0xFB, x=0x0100, y=0x00123456, thr=0x5000, w88=0x1234, slot=D3E_PS,
+                rec=D3E_R):
+    """0x384F8: the pointer table (the side's entry `slot`, the other a second scratch slot), both
+    own slots' +0 (a record that is not `rec`) and +0x86..+0x8F (the +0x88 word, a timer word +0x8C
+    that is not 1), the scratch slot's +0 and +0x24..+0x2F, the record's +0x14..+0x23, the
+    threshold dword between its neighbours, the flag byte 0x1088D4 and the byte 0x1078FB between
+    theirs. `flag` is the 0x3C59C stub's EAX."""
+    ptrs = [D3E_PS2, D3E_PS2]
+    ptrs[side] = slot
+    p = {0x001077A8: le32(ptrs[0]) + le32(ptrs[1]),
+         D3E_PS: le32(rec), D3E_PS + 0x24: le32(0x24242424) + le32(0x28282828) + le32(0x2C2C2C2C),
+         D3E_PS2: le32(D3E_R2), D3E_PS2 + 0x28: le32(0x82828282),
+         D3E_R + 0x14: le32(0x14141414) + le32(x) + le32(y) + le32(0x20202020),
+         D3E_R2 + 0x14: le32(0x41414141) + le32(0x00007777) + le32(0x00008888) + le32(0x02020202),
+         0x000BE014: le32(0x14141400) + le32(thr) + le32(0x1C1C1C00),
+         0x001088D3: bytes([0xD3, d4, 0xD5]), 0x001078FA: bytes([0xFA, 0x77, 0xFC])}
+    for s in (0, 1):
+        own = DS_SLOTS + s * 0x94
+        p[own] = le32(D3E_R2)
+        p[own + 0x28] = le32(0x28000000 + s)
+        p[own + 0x86] = le16(0x8686 + s) + le16(w88 if s == side else 0x4321) + le16(0x8A8A) + le16(3 + s) + le16(0x8E8E)
+    return Case(cid, {"eax": side}, p, {0x3C59C: flag})
+
+
+def d3e_434_case(cid, side, st, ret=1, bc=None, f0=0x5A, f1=0xA5, be=1, hook=0, s41=0x01, s43=0xFF, s56=0x7E,
+                 slot=D3E_PS, rec=D3E_R):
+    """0x38434: the pointer table, the scratch slot (its record, the +0x0C hook between two dwords,
+    +0x40..+0x44, +0x52..+0x57 with the state at +0x53 and a +0x52 that selects another arm, the
+    +0x74 word between two words), both own slots with a state of another arm and a +0x57 of 1,
+    the gate bytes 0x1088BC/0x1088BE and 0x1078F0/0x1078F1 between their neighbours, and what the
+    0x47E9C hook counts. `ret` is the 0x3D004 stub's EAX."""
+    ptrs = [D3E_PS2, D3E_PS2]
+    ptrs[side] = slot
+    other = 4 if st == 0xC else 0xC
+    p = {0x001077A8: le32(ptrs[0]) + le32(ptrs[1]),
+         D3E_PS: le32(rec), D3E_PS + 0x08: le32(0x08080808) + le32(hook) + le32(0x10101010),
+         D3E_PS + 0x40: bytes([0x40, s41, 0x42, s43, 0x44]),
+         D3E_PS + 0x52: bytes([other, st, 0x54, 0x55, s56, 0x02]),
+         D3E_PS + 0x72: le16(0x7272) + le16(0x7474) + le16(0x7676),
+         D3E_PS2: le32(D3E_R2), D3E_PS2 + 0x52: bytes([0x52, other, 0x54, 0x55, 0x66, 0x01]),
+         0x001088BB: bytes([0xBB, side if bc is None else bc, 0xBD, be, 0xBF]),
+         0x001078EF: bytes([0xEF, f0, f1]),
+         0x00108370: le32(0x10) + le32(0x20), 0x00108394: b"\x94\x95"}
+    for s in (0, 1):
+        own = DS_SLOTS + s * 0x94
+        p[own] = le32(D3E_R2)
+        p[own + 0x08] = le32(0x08080800 + s) + le32(0) + le32(0x10101000 + s)
+        p[own + 0x40] = bytes([0x40, 0x11, 0x42, 0xF3, 0x44])
+        p[own + 0x52] = bytes([0x52, other, 0x54, 0x55, 0x33 + s, 0x01])
+        p[own + 0x72] = le16(0x2727) + le16(0x4747) + le16(0x6767)
+    return Case(cid, {"eax": side}, p, {0x3D004: ret})
+
+
+D3E_SPECS += [
+    # 0x384F8 fight_384f8: EAX = side (kept in ECX; the record in ESI across the four calls, which
+    # 0x34038 run real preserves). 0x3C59C(3, side) is a stub: **AL tested** (`test al,al` 0x3850A:
+    # a2, a3 return 0x100 and 0xFFFFFF00, a4 0x1FF); AL == 0 increments the own slot's +0x88 word
+    # (`inc word [eax*4+0x107838]`, EAX = side*37). 0x1078FB = (byte 0x1088D4 bit 2 clear) + 2.
+    # slot = [0x1077A8 + side*4] and rec = [slot], either null returns (n0, n1); slot+0x28 =
+    # rec+0x18; then 0x34038(side) (real, recorded), 0x38D24, 0x382C4, 0x38434 on the side and
+    # 0x2A4FC(rec) (`mov eax,esi; call 0x2a4fc` 0x38570/0x38572), all stubs; the clamps: the
+    # threshold [0xBE018] signed against rec+0x18 (`jg` 0x38580 skips: x0..x2, x7, x8), then its
+    # negation against rec+0x18 (`jl` 0x38599 skips: x3..x6), each calling 0x188AC(side, bound,
+    # rec+0x1C); 0x186C4 last. The stubs write nothing here (the re-reads are the chain row's).
+    Spec("fight_384f8", 0x384F8, [
+        d3e_f8_case("a0", 0, 0),
+        d3e_f8_case("a1", 1, 1, d4=0x04),
+        d3e_f8_case("a2", 0, 0x100, d4=0xFF, w88=0xFFFF),
+        d3e_f8_case("a3", 1, 0xFFFFFF00, d4=0x00),
+        d3e_f8_case("a4", 0, 0x1FF),
+        d3e_f8_case("n0", 0, 0, slot=0),
+        d3e_f8_case("n1", 1, 0, rec=0),
+        d3e_f8_case("x0", 0, 1, x=0x5000),
+        d3e_f8_case("x1", 0, 1, x=0x4FFF),
+        d3e_f8_case("x2", 1, 1, x=0x6000),
+        d3e_f8_case("x3", 0, 1, x=0xFFFFB000),
+        d3e_f8_case("x4", 0, 1, x=0xFFFFB001),
+        d3e_f8_case("x5", 1, 1, x=0xFFFFA000),
+        d3e_f8_case("x6", 0, 1, x=0, thr=0),
+        d3e_f8_case("x7", 1, 1, x=0, thr=0xFFFFFF00),
+        d3e_f8_case("x8", 0, 1, x=0x80000000),
+    ], calls=(D3E_3C59C, D3E_34038, D3E_38D24, D3E_382C4, D3E_38434, D3E_MS, ANCHOR, D3E_186C4), eax_mask=0,
+       mutants=("@eax", "@incd", "@incptr", "@inc8a", "@noinc", "@fbbit", "@fbinv", "@fbw", "@nofb", "@fbbase",
+                "@ownslot", "@norec", "@28y", "@28w", "@no28", "@late28", "@no34038", "@order", "@434side",
+                "@motionslot", "@nomotion", "@gt", "@uns", "@noclamp1", "@y1", "@lt2", "@flagbit", "@flagside",
+                "@noneg", "@nolatch")),
+    # The same function with stubs that write: 0x2A4FC sets the record's x to 0x5000, 0x188AC sets
+    # it to -0x7000, the record's y to 0xC0FFEE and the threshold to 0x6000. The first clamp reads x
+    # after 0x2A4FC (0x3857D), the second reads the threshold, x and y again (0x3858C, 0x38592,
+    # 0x3859D): c0 runs both clamps (the second with -0x6000 and the new y), c1 neither (x = 0x6000
+    # before the motion call, 0x5000 after, threshold 0x5001).
+    Spec("fight_384f8_chain", 0x384F8, [
+        d3e_f8_case("c0", 0, 1, x=0, thr=0x5000),
+        d3e_f8_case("c1", 1, 1, x=0x6000, thr=0x5001),
+    ], calls=(D3E_3C59C, D3E_34038, D3E_38D24, D3E_382C4, D3E_38434, D3E_MS_W, D3E_ANCHOR_W, D3E_186C4), eax_mask=0,
+       unhit_named={0x3850E: "the AL == 0 increment: the fight_384f8 row's (a0, a2, a3)"},
+       mutants=("@xearly", "@thrstale", "@x2stale", "@y2stale", "@late28", "@nomotion")),
+    # 0x38434 fighter_38434: EAX = side. slot = [0x1077A8 + side*4], rec = [slot] (p0, p1: null).
+    # The slot's +0x53 through the table 0x38400 (`cmp al,0xc; ja 0x38467`; t0..t12 are its 13
+    # entries, tD/t80/tFF above it): 4 increments +0x56 (0x384BB); 7 sets +0x41 bit 7, clears +0x43
+    # bits 4-5 and calls the +0x0C hook when set, EAX = slot, EDX = rec, EBX = side (0x384C3..0x384D9;
+    # h0 hook 0x23130, whose 0x3C4CC call shows the record and whose stores the slot; h1 hook
+    # 0x47E9C, whose counter shows the side; t7 a null hook); 8 increments +0x56 and clears +0x43
+    # bits 4-5 (0x384E1); 0xC nothing; the rest 0x1922C(side), then +0x74 = 0 (a word), +0x56 = 0,
+    # and with byte 0x1088BC == side (zero-extended), 0x1078F0, 0x1078F1 and 0x1088BE all set
+    # (g0..g3 clear one each), 0x3D004(side): **AL tested** (`test al,al` 0x384AA; r1, r2 return
+    # 0x100, 0xFFFFFF00) clears the byte 0x1078F0[side].
+    Spec("fighter_38434", 0x38434, [
+        d3e_434_case("p0", 0, 0, slot=0),
+        d3e_434_case("p1", 1, 0, rec=0),
+        d3e_434_case("t0", 0, 0),
+        d3e_434_case("t1", 1, 1),
+        d3e_434_case("t2", 0, 2),
+        d3e_434_case("t3", 1, 3),
+        d3e_434_case("t4", 0, 4, s56=0xFF),
+        d3e_434_case("t5", 1, 5),
+        d3e_434_case("t6", 0, 6),
+        d3e_434_case("t7", 1, 7),
+        d3e_434_case("t8", 0, 8),
+        d3e_434_case("t9", 1, 9),
+        d3e_434_case("t10", 0, 0xA),
+        d3e_434_case("t11", 1, 0xB),
+        d3e_434_case("t12", 0, 0xC),
+        d3e_434_case("tD", 1, 0xD),
+        d3e_434_case("t80", 0, 0x80),
+        d3e_434_case("tFF", 1, 0xFF),
+        d3e_434_case("h0", 0, 7, hook=0x23130),
+        d3e_434_case("h1", 1, 7, hook=0x47E9C, s41=0x80, s43=0x30),
+        d3e_434_case("g0", 0, 0, bc=1),
+        d3e_434_case("g1", 1, 1, f0=0),
+        d3e_434_case("g2", 0, 2, f1=0),
+        d3e_434_case("g3", 1, 3, be=0),
+        d3e_434_case("r0", 0, 5, ret=0),
+        d3e_434_case("r1", 1, 6, ret=0x100),
+        d3e_434_case("r2", 0, 9, ret=0xFFFFFF00),
+        d3e_434_case("r3", 1, 0xA, ret=0x80),
+    ], calls=(D3E_1922C, D3E_3D004, HIT_B, VOICE, ANIM_BEGIN), allow_calls=(0x33950, 0x23130, 0x47E9C), eax_mask=0,
+       mutants=("@ownslot", "@norec", "@s52", "@cC", "@ja", "@c4noinc", "@c4w", "@c7no41", "@c7late", "@c7no43",
+                "@c7mask", "@c7nohook", "@c7swap", "@c7side", "@c7own", "@c8noinc", "@c8noand", "@early", "@no1922c",
+                "@1922cside", "@b74", "@no74", "@no56", "@nobc", "@nof0", "@nof1", "@nobe", "@always", "@clrother",
+                "@3d004side")),
+]
+
+D3E_PROJ = 0x0010A600                            # the thrower's projectile record (its +0x48 selects the arm)
+D3E_235C4 = E.Call(0x235C4, ("eax",), clobbers=("ebp",))
+D3E_36D20 = E.Call(0x36D20, ("eax",))
+D3E_THINK_CALLS = (D3E_3C59C, DISPATCH, D2A_2BD44, PALETTE, D3E_36D20, D3E_1922C, D3E_235C4, POSE, C1_FACING,
+                   C1_POSE, STANCE, ANCHORX,
+                   E.Call(0x3B080, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx")),
+                   E.Call(0x3AD98, ("eax", "[edx]", "[edx+4]", "[edx+8]"), clobbers=("edx",)))
+
+
+def d3e_think_case(cid, side, flag=0, disp=0, stance=0x10, a48=4, s54=1, s90=5, idx=0, row60=0, hook=0, gate=1,
+                   a06=0x44):
+    """0x3B464: the struck side's slot (ctx[3]: +0x10..+0x1F with the +0x14 hook, +0x28..+0x33 with
+    the x at +0x2C, +0x40..+0x7F with +0x41, +0x54, +0x64 = 0x77, +0x67 and the character 1 + side at
+    +0x7A, +0x88..+0x93 with +0x8A and +0x90), the thrower's slot (ctx[2]: the projectile pointer at
+    +0x08, +0x40..+0x7F with the stance at +0x64 and a +0x54 of the other answer, +0x88..+0x93), the
+    two records (+0x4B index, +0x51 side), the pool row's +0x60, the projectile's +0x48, the anim
+    row of (the thrower's character, the stance): its +2..+6, and the 0x29D04 hook's gate byte.
+    `flag` and `disp` are the 0x3C59C and 0x3B298 stubs' EAX."""
+    me, th = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    recs = (E3_REC, E3_REC2)
+    p = {**SLOT_PTRS, 0x001014F4: le32(C2B_POOL), D3E_PROJ + 0x44: le32(0x44444444) + bytes([a48, 0x49, 0x4A, 0x4B]),
+         0x0009AF3D: bytes([gate]), 0x00105B34: b"\x00\x01"}
+    for s, slot in ((side, me), (1 - side, th)):
+        own = s == side
+        b = bytearray(range(0x40, 0x80))
+        b[0x41 - 0x40] = 0x01 + s
+        b[0x54 - 0x40] = s54 if own else (1 if s54 == 2 else 2)
+        b[0x64 - 0x40] = 0x77 if own else stance
+        b[0x67 - 0x40] = 0x67
+        b[0x7A - 0x40] = 1 + s
+        p[slot + 0x40] = bytes(b)
+        t = bytearray(range(0x88, 0x94))
+        t[0x90 - 0x88] = s90 if own else 0x99
+        p[slot + 0x88] = bytes(t)
+        p[slot + 0x08] = le32(D3E_PROJ if not own else D3E_PROJ + 0x80)
+        p[slot + 0x10] = le32(0x10101010 + s) + le32(hook if own else 0x29D04) + le32(0x18181818) + le32(0x1C1C1C1C)
+        p[slot + 0x28] = le32(0x28282828) + le32(0x00012345 + (s << 20)) + le32(0x30303030)
+        rb = bytearray(range(0x48, 0x54))
+        rb[0x4B - 0x48] = idx if own else 7
+        rb[0x51 - 0x48] = s
+        p[recs[s] + 0x48] = bytes(rb)
+    p[D3E_PROJ + 0x80 + 0x48] = bytes([5 if a48 != 5 else 8])
+    p[C2B_POOL + 3 * 0x68 + 0x60] = bytes([row60])
+    p[C2B_POOL + 7 * 0x68 + 0x60] = bytes([1 - row60])
+    if stance < 0x40:
+        for s in (0, 1):                         # the row of each character: the thrower's is 1 + (1 - side)
+            a0 = 0x000DE114 + (((1 + s) << 6) + stance) * 11
+            p[a0 + 2] = bytes([0x22 + s, 0x33 + s, 0x04, 0x05, a06 if s == 1 - side else 0x66])
+    return Case(cid, {"eax": side}, p, {0x3C59C: flag, 0x3B298: disp})
+
+
+D3E_SPECS += [
+    # 0x3B464 fighter_think_side: EAX = side (kept in ECX for the +0x48 == 8 arm). 0x33A10, 0x3AFC4
+    # and the +0x14 hook 0x29D04 run on both sides; the rest are stubs. **AL of 0x3C59C** (0x3B484:
+    # k1, k2 return 0x100, 0xFFFFFF00) and the thrower's +0x64 == 0xFF (k3) return. **AL of 0x3B298**
+    # (0x3B4CC: b2 0x100, b3 0xFFFFFF01) selects the block arm: the thrower's +0x8A = 0, 0x3B080
+    # unless the side's +0x54 is 2 (b1), 0x3AD98 with the triple by value. Else 0x2BD44 on the side's
+    # record when its +0x4B row's +0x60 is set (d0; d1 clear), the +0x14 hook (EAX tested whole,
+    # `test eax,eax` 0x3B51E: d1 gate set returns 0, d2 returns 1 after its 0x2A17C call and the
+    # field is cleared), the thrower's projectile +0x48: 5 -> 0x36D20 and +0x18/+0x1C = 0 (d0), 8 ->
+    # 0x1922C(side), 0x235C4(side) (d1), else (4, 6, 9, 0xFF) 0x39834 and, +0x54 == 2, 0x18B04 and
+    # 0x39F40(ctx[1], -0x50, 0x64, 0xF, 0x14) (m0), else 0x3A95C(ctx[1], the signed byte anim+6) and,
+    # +0x64 neither 0 nor 5 (m5, m6) and the byte +0x90 - 1 above 3 unsigned (m1 5, m2 4, m3 1, m4
+    # 0), 0x188DC(ctx[1], +0x2C); 0x3B080; +0x18/+0x1C = 0. The tail: +0x41 bit 7, the thrower's
+    # +0x64 = 0xFF.
+    Spec("fighter_think_side", 0x3B464, [
+        d3e_think_case("k0", 0, flag=1),
+        d3e_think_case("k1", 0, flag=0x100),
+        d3e_think_case("k2", 1, flag=0xFFFFFF00),
+        d3e_think_case("k3", 1, stance=0xFF),
+        d3e_think_case("b0", 0, disp=1),
+        d3e_think_case("b1", 1, disp=1, s54=2),
+        d3e_think_case("b2", 1, disp=0x100),
+        d3e_think_case("b3", 0, disp=0xFFFFFF01),
+        d3e_think_case("d0", 0, idx=3, row60=1, a48=5),
+        d3e_think_case("d1", 1, idx=3, row60=0, a48=8, hook=0x29D04, gate=1),
+        d3e_think_case("d2", 0, hook=0x29D04, gate=0, a48=6),
+        d3e_think_case("d3", 1, a48=9, hook=0x29D04, gate=0),
+        d3e_think_case("d4", 0, a48=0xFF),
+        d3e_think_case("m0", 0, s54=2),
+        d3e_think_case("m1", 1, s54=2, a48=7),
+        d3e_think_case("m2", 0, s90=4),
+        d3e_think_case("m3", 1, s90=1),
+        d3e_think_case("m4", 0, s90=0),
+        d3e_think_case("m5", 1, stance=0),
+        d3e_think_case("m6", 0, stance=5),
+        d3e_think_case("m7", 1, stance=0x20, a06=0x80),
+    ], allow_calls=(0x33A10, 0x3AFC4, 0x29D04), calls=D3E_THINK_CALLS, eax_mask=0,
+       mutants=("@eaxflag", "@flagbit", "@flagctx", "@nostance", "@stanceself", "@animside", "@67other", "@no67", "@dispside", "@eaxdisp", "@8aself", "@no8a", "@b54", "@swap", "@ecx", "@noad98", "@2bd44rec", "@norow60", "@nohook", "@hookslot", "@hooknoclr", "@hookclr", "@a48self", "@no5", "@36d20slot", "@c5no18", "@c5no1c", "@no8", "@c8side", "@no18b04", "@f40args", "@x28", "@a06zext", "@a06off", "@st0", "@st5", "@vnodec", "@vge", "@no3b080", "@midno18", "@midno1c", "@no41", "@64self", "@no64")),
+]   # D3E_SPECS end
+D1_SPECS += D3E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

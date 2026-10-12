@@ -1212,6 +1212,12 @@ void fighter_38154(u32 side);
  * game_mode_25_step (0x266AC) calls it for each side. See fighter.c for the
  * full derivation. */
 void fight_384f8(u32 side);
+/* PORT: exported for the D3 d3e differential rows (linkage only; record
+ * 2026-10-12-reverse-d3e). */
+void fighter_382c4(u32 side);                           /* 0x382C4 */
+void fighter_38434(u32 side);                           /* 0x38434 */
+void fighter_think_side(u32 side);                      /* 0x3B464 */
+u8   hit_3d004(u32 side);                               /* 0x3D004 */
 void fighter_19820(void);
 
 /* 0x392A0. The winner-pose driver (see its header comment in fighter.c);

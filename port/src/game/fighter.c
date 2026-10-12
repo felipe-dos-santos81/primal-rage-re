@@ -275,6 +275,7 @@ void fighter_slot_latch(u32 side)
  * (0x186CB). fight_hud_pass's tail (0x35829) calls it after the actor sync. */
 void fighter_slot_latch_both(void)
 {
+    PR_SEAM0(0x186C4u);
     fighter_slot_latch(0u);                         /* 0x186C4/0x186C6 */
     fighter_slot_latch(1u);                         /* 0x186CB, falls into 0x186D0 */
 }
@@ -880,11 +881,11 @@ int fighter_command_dispatch(u32 side, u32 edx_arg)
  * (5), 0x1922C/0x235C4 (8) or the 0x39834 pose driver with the airborne
  * 0x39F40 pose or the grounded 0x3A95C stagger (demo-pose record §26,
  * §41-C). */
-static void fighter_think_side(u32 side)
+void fighter_think_side(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x3B471 */
-    if (fighter_frame_flag(1u, ctx[1]) != 0) return;    /* 0x3B47F */
+    if ((u8)fighter_frame_flag(1u, ctx[1]) != 0u) return;   /* 0x3B47F, 0x3B484 `test al,al` */
     if ((s8)DSB(ctx[2] + 0x64u) == -1) return;          /* 0x3B490/0x3B49F */
 
     u32 stance = (u8)DSB(ctx[2] + 0x64u);               /* 0x3B493/0x3B4B9 */
@@ -892,7 +893,7 @@ static void fighter_think_side(u32 side)
     fighter_anim_triple(anim, ctx[0], (s32)stance);     /* 0x3B4AC */
     DSB(ctx[3] + 0x67u) = 1;                            /* 0x3B4BD */
 
-    if (fighter_command_dispatch(ctx[1], stance) != 0) { /* 0x3B4C7 */
+    if ((u8)fighter_command_dispatch(ctx[1], stance) != 0u) {   /* 0x3B4C7, 0x3B4CC `test al,al` */
         DSB(ctx[2] + 0x8Au) = 0;                        /* 0x3B669 */
         if (DSB(ctx[3] + 0x54u) != 2u)                  /* 0x3B674 */
             fighter_3b080(ctx[1], (u32)DSB(anim[0] + 3u),
@@ -3257,6 +3258,7 @@ void fighter_38c5c(u32 side)
  * EDX and ECX: `push edx` at 0x1C501, 0x474E4's `push ecx` at 0x474E4). */
 void fighter_38d24(u32 side)
 {
+    PR_SEAM(0x38D24u, side);
     u16 t = DSW(DS_00107D18 + side * 2u);                       /* 0x38D2E */
     if (t == 0u) return;                                        /* 0x38D35 */
     t = (u16)(t - 1u);                                          /* 0x38D3C */
@@ -6485,6 +6487,7 @@ void fighter_22b28(const u32 ctx[6])
  * reaction 0x2A, state 0x10/0x0A with the +0x10 handler 0x22BEC, and 0x22B28. */
 void fighter_235c4(u32 side)
 {
+    PR_SEAM(0x235C4u, side);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x235CD 0x33A10 */
     fighter_33acc(ctx[1], FIGHTER_SNAP_SLOT + ctx[1] * 0x94u,
@@ -10291,6 +10294,7 @@ void fighter_38154(u32 side)
  * popped. Only caller: 0x38564 (0x384F8). */
 void fighter_382c4(u32 side)
 {
+    PR_SEAM(0x382C4u, side);
     u32 slot = DSD(DS_001077A8 + side * 4u);               /* 0x382CA */
     if (slot == 0u) return;                                 /* 0x382D3 */
     u32 rec = DSD(slot);                                     /* 0x382D9 */
@@ -10355,8 +10359,9 @@ void fighter_382c4(u32 side)
  * 001078F0/F1 and the timeout flag DS_001088BE are set, hit_3d004(side)
  * clearing DS_001078F0[side] on success. EBX..EBP pushed and popped. Only
  * caller: 0x3856B (0x384F8). */
-static void fighter_38434(u32 side)
+void fighter_38434(u32 side)
 {
+    PR_SEAM(0x38434u, side);
     u32 slot = DSD(DS_001077A8 + side * 4u);               /* 0x3843A */
     if (slot == 0u || DSD(slot) == 0u) return;               /* 0x38443/0x3844D */
 
@@ -10404,6 +10409,7 @@ static void fighter_38434(u32 side)
  * caller: 0x384A5 (0x38434, default case). */
 u8 hit_3d004(u32 side)
 {
+    PR_SEAM_RET(0x3D004u, side);
     if (hit_scan(side) != 0 && DSB(DS_00104B18) == 0u)      /* 0x3D00F/0x3D011, 0x3D013/0x3D01A */
         return 0u;
     DSW(DS_001088A6) = 0xB4u;                                /* 0x3D020 */
@@ -10430,7 +10436,8 @@ u8 hit_3d004(u32 side)
  * 2 (a scalar the last side to run this frame leaves behind). The combo node
  * slot = DS_001077A8[side], R = DSD(slot): with either null, returns early;
  * otherwise slot->+0x28 = R->+0x18, then fighter_34038(side), fighter_38d24
- * (side), fighter_382c4(side), fighter_38434(side); R's own x (+0x18) is
+ * (side), fighter_382c4(side), fighter_38434(side), then motion_step(R)
+ * (`mov eax,esi; call 0x2a4fc` 0x38570/0x38572); R's own x (+0x18) is
  * clamped into [-DS_000BE018, +DS_000BE018] through hit_anchor_set (whose
  * third register argument, y, is R->+0x1C read fresh at each call site, so
  * it re-writes its own current value); finally fighter_slot_latch_both()
@@ -10438,7 +10445,7 @@ u8 hit_3d004(u32 side)
  * 0x2676B/0x26775 (0x266AC, once per side). */
 void fight_384f8(u32 side)
 {
-    if (fighter_pass_flag(3u, side) == 0) {                    /* 0x3850A/0x3850C */
+    if ((u8)fighter_pass_flag(3u, side) == 0u) {               /* 0x3850A `test al,al`/0x3850C */
         u32 s = side * 0x94u;                                    /* 0x38510..0x3851C */
         DSW(DS_00107838 + s) = (u16)(DSW(DS_00107838 + s) + 1u);   /* 0x3851E */
     }
@@ -10454,6 +10461,7 @@ void fight_384f8(u32 side)
     fighter_38d24(side);                                                    /* 0x3855D */
     fighter_382c4(side);                                                      /* 0x38564 */
     fighter_38434(side);                                                       /* 0x3856B */
+    motion_step(rec);                                                          /* 0x38570/0x38572 0x2A4FC */
 
     if ((s32)DSD(rec + 0x18u) >= (s32)DSD(DS_000BE018))                              /* 0x3857D/0x38580 */
         hit_anchor_set(side, DSD(DS_000BE018), DSD(rec + 0x1Cu));                  /* 0x38587 0x188AC */

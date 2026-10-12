@@ -389,15 +389,18 @@ void camera_mode_track_player(void)
 
 /* 0x1317C. Camera-y clamp: compute the target from DS_001078F2's high word and
  * step DS_000F0AEC toward it (0x12CD4), then cap at DS_0009AF28[DS_00104AFC]. */
-static void camera_y_clamp(void)
+void camera_y_clamp(void)
 {
     s32 x = (s32)DSD(DS_001078F2) >> 16;
     s32 target = 0;
     if (x > 0x1400) {
         /* 0x1318F: the FPU path, (int)trunc(d*d*C) with C the float at 0x804A8.
-         * The raw multiplies d * (d*C); the port keeps that order in float. */
-        float c = *(const float *)(mem + CAMERA_CURVE);
-        float d = (float)(x - 0x1400);
+         * The raw multiplies d * (d*C) in x87 registers (0x131AC..0x131B8) at
+         * the game's control word 0x127F, 53 bits: the port keeps that order
+         * in double (a float product truncates to another integer for the
+         * word 12320, 19520, 22483 and 27181). */
+        double c = (double)*(const float *)(mem + CAMERA_CURVE);
+        double d = (double)(x - 0x1400);
         target = (s32)(d * (d * c));
     }
 
