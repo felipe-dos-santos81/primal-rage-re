@@ -1133,6 +1133,7 @@ void ai_weight(u32 side, u32 id)
  * +0x64 (0x33950's ctx[3] = &slot[1-side]), then +0x10 = state. */
 void ai_state_setup(u32 side)
 {
+    PR_SEAM(0x46C78u, side);
     u32 b = ai_b(side);
     u32 state = DSD(b + 0x28u);                         /* 0x46C94 */
     u32 other = DS_001077B0 + (side ^ 1u) * 0x94u;
@@ -1169,6 +1170,7 @@ void ai_state_setup(u32 side)
  * 0xFF) and select the move-id table (+0x18) and aux table (+0x38). */
 void ai_band(u32 side)
 {
+    PR_SEAM(0x46DD4u, side);
     u32 b = ai_b(side);
     u32 ids, aux;
     ai_band_tables(DSB(DS_001077B0 + side * 0x94u + 0x7Au), &ids, &aux);
@@ -1205,8 +1207,9 @@ void ai_band(u32 side)
  * weight-table pointer from the band sub-index, draw rng(0x64), pick the first
  * weighted index whose cumulative weight reaches the draw (index 9 is the
  * fallback), then load the move id and its step/aux pointers. */
-static void ai_pick(u32 side)
+void ai_pick(u32 side)
 {
+    PR_SEAM(0x46F4Cu, side);
     u32 b = ai_b(side);
     u32 step, aux;
     ai_move_tables(DSB(DS_001077B0 + side * 0x94u + 0x7Au), &step, &aux);
@@ -1372,7 +1375,7 @@ int ai_pred_468d8(u32 side)
 /* 0x469A8. Classify `param`'s slot state into the AI state of block[1-param],
  * then store it. The raw reads slot[param] (EBX) and writes block[1-param]
  * (ECX = 1-param); the port keeps that transpose. */
-static void ai_classify(u32 param)
+void ai_classify(u32 param)
 {
     u32 ecx = 1u - param;
     if (fighter_frame_flag(0u, param) == 0) {           /* 0x469BB */
@@ -1406,7 +1409,7 @@ static void ai_classify(u32 param)
 
 /* 0x470F8. Reset the active flag when the state transitioned, then, when the
  * fighter is idle (slot+0x53 == 0) and no move is active, pick a new move. */
-static void ai_manage(u32 side)
+void ai_manage(u32 side)
 {
     u32 b = ai_b(side);
     u32 slot = DS_001077B0 + side * 0x94u;

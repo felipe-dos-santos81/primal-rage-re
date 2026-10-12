@@ -26807,6 +26807,131 @@ D3C_MR(3d004, c53, 20u)
 D3C_MR(3d004, no55b, 21u)
 D3C_MR(3d004, order, 22u)
 D3C_MR(3d004, ret1, 23u)
+
+/* 0x470F8: EAX = side. b = 0x1081F0 + side*0x40. The active flag b+4 is cleared when the state
+ * b+0x28 is 0, or is 7 or 9 and differs from b+0x10, unless the slot's +0x54 is 2; then an idle
+ * slot (+0x53 == 0) with the flag clear picks a move (0x46F4C) and resets the block. */
+static void d3c_470f8_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    u32 side = r[R_EAX], oth = 1u - side;
+    u32 b = 0x001081F0u + (M(1) ? oth : side) * 0x40u;                       /* @bside */
+    u32 slot = D3C_SLOTS + (M(2) ? oth : side) * 0x94u;                      /* @sslot */
+    u32 st = M(3) ? (u32)DSB(b + 0x28u) : DSD(b + 0x28u);                    /* @stb: a byte read */
+    int air = DSB(slot + 0x54u) == (M(4) ? 1u : 2u);                         /* @v54 */
+    if (M(5)) air = 0;                                                       /* @noair */
+    if (st == 0u && !air) {
+        if (!M(6)) DSD(b + 0x04u) = 0u;                                      /* @noclr0 */
+    } else if (st == 7u && (DSD(b + 0x10u) != 7u || M(7)) && !air) {         /* @eq7 */
+        if (!M(8)) DSD(b + 0x04u) = 0u;                                      /* @noclr7 */
+    } else if (st == (M(9) ? 8u : 9u) && (DSD(b + 0x10u) != 9u || M(10)) && !air) {   /* @v9, @eq9 */
+        if (M(11)) DSB(b + 0x04u) = 0u; else DSD(b + 0x04u) = 0u;            /* @clrb: a byte store */
+    }
+    if (DSB(slot + 0x53u) != 0u && !M(12)) return;                           /* @no53 */
+    if ((M(13) ? (u32)DSB(b + 0x04u) : DSD(b + 0x04u)) != 0u) return;        /* @actb: a byte test */
+    if (M(21)) DSD(b + 0x00u) = DSD(b + 0x00u) + 1u;                         /* @early: counted before the pick */
+    ai_pick(M(14) ? oth : side);                                             /* @pickside */
+    if (!M(15)) DSD(b + 0x0Cu) = 0u;                                         /* @no0c */
+    if (!M(16)) DSD(b + 0x04u) = 1u;                                         /* @noact */
+    if (!M(17) && !M(21)) DSD(b + 0x00u) = DSD(b + 0x00u) + (M(18) ? 2u : 1u);   /* @noinc, @inc2 */
+    if (!M(19)) DSB(b + 0x30u) = 0u;                                         /* @no30 */
+    if (!M(20)) DSB(b + 0x31u) = 0u;                                         /* @no31 */
+#undef M
+}
+static void b_d3c_470f8(const u32 *r, u32 *eax) { ai_manage(r[R_EAX]); *eax = 0u; }
+D3C_M(470f8, bside, 1u)
+D3C_M(470f8, sslot, 2u)
+D3C_M(470f8, stb, 3u)
+D3C_M(470f8, v54, 4u)
+D3C_M(470f8, noair, 5u)
+D3C_M(470f8, noclr0, 6u)
+D3C_M(470f8, eq7, 7u)
+D3C_M(470f8, noclr7, 8u)
+D3C_M(470f8, v9, 9u)
+D3C_M(470f8, eq9, 10u)
+D3C_M(470f8, clrb, 11u)
+D3C_M(470f8, no53, 12u)
+D3C_M(470f8, actb, 13u)
+D3C_M(470f8, pickside, 14u)
+D3C_M(470f8, no0c, 15u)
+D3C_M(470f8, noact, 16u)
+D3C_M(470f8, noinc, 17u)
+D3C_M(470f8, inc2, 18u)
+D3C_M(470f8, no30, 19u)
+D3C_M(470f8, no31, 20u)
+D3C_M(470f8, early, 21u)
+
+/* 0x46F4C: EAX = side. The character (slot+0x7A) picks the step table (EBP) and the aux table
+ * ([esp]) through the seven-entry jump table 0x46F30; then 0x46C78, 0x46DD4, the difficulty dword
+ * clamped to 0..7, the weight row b+0x20, rng(0x64) and the first index whose running signed
+ * weight reaches the draw (index 9 otherwise). */
+static void d3c_46f4c_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    static const u32 k_step[7] = { 0x0008C0BCu, 0x00083C68u, 0x00091D0Cu, 0x000949E4u, 0x0008EF0Cu,
+                                   0x000892ACu, 0x000868D4u };
+    static const u32 k_aux[7] = { 0x0008A4A0u, 0x00081E24u, 0x00090154u, 0x00092F9Cu, 0x0008D2FCu,
+                                  0x00087B1Cu, 0x00084F78u };
+    u32 side = r[R_EAX], oth = 1u - side, b = 0x001081F0u + side * 0x40u, i, id, w;
+    u32 ch = (u32)DSB(D3C_SLOTS + (M(1) ? oth : side) * 0x94u + 0x7Au) % 7u;   /* @chside */
+    u32 step = M(2) ? k_aux[ch] : k_step[ch], aux = M(2) ? k_step[ch] : k_aux[ch];   /* @tabswap */
+    u32 dk = 0x001082C8u + (M(8) ? oth : side) * 4u;                         /* @diffside */
+    s32 diff, rr, cum = 0, wt;
+    if (M(5)) ai_band(side);                                                 /* @order: the band first */
+    if (!M(3)) ai_state_setup(M(6) ? oth : side);                            /* @nosetup, @setupside */
+    if (!M(4) && !M(5)) ai_band(side);                                       /* @noband */
+    diff = (s32)DSD(dk);
+    if (diff < 0 && !M(7)) DSD(dk) = 0u;                                     /* @noclampn */
+    else if ((M(10) ? diff > 8 : diff >= 8) && !M(9)) DSD(dk) = M(11) ? 8u : 7u;   /* @gt8, @noclamph, @clamp8 */
+    diff = (s32)DSD(dk);
+    w = 0x00095FC8u + (u32)DSB(b + (M(12) ? 0x2Eu : 0x2Fu)) * (M(13) ? 0x40u : 0x50u)   /* @bandb, @mul */
+        + (u32)diff * 0x0Au;
+    if (!M(14)) DSD(b + 0x20u) = w;                                          /* @no20 */
+    rr = (s32)rng_next(M(15) ? 0x65u : 0x64u);                               /* @rngarg */
+    if (M(16)) rr &= 0xFFFF;                                                 /* @r16 */
+    for (i = 0u; i != (M(20) ? 8u : 9u); i++) {                              /* @i9: index 8 the fallback */
+        wt = M(17) ? (s32)DSB(w + i) : (s32)(s8)DSB(w + i);                  /* @wz: zero-extended */
+        if (wt == 0 && !M(19)) continue;                                     /* @zero: a zero weight can win */
+        cum += wt;
+        if (M(18) ? rr < cum : M(21) ? (u32)rr <= (u32)cum : rr <= cum) break;   /* @lt, @ru */
+    }
+    if (!M(22)) DSD(b + 0x08u) = i;                                          /* @no08 */
+    id = (u32)DSB(DSD(b + 0x18u) + (M(23) ? i + 1u : i));                    /* @idx */
+    if (!M(24)) DSB(b + 0x2Eu) = (u8)id;                                     /* @no2e */
+    if (M(25)) id = (u32)(s32)(s8)id;                                        /* @idsext */
+    if (!M(26)) DSD(b + 0x1Cu) = DSD(step + (M(27) ? i : id) * 4u);          /* @no1c, @byi */
+    if (!M(28)) DSD(b + 0x3Cu) = DSD(aux + id * 4u);                         /* @no3c */
+#undef M
+}
+static void b_d3c_46f4c(const u32 *r, u32 *eax) { ai_pick(r[R_EAX]); *eax = 0u; }
+D3C_M(46f4c, chside, 1u)
+D3C_M(46f4c, tabswap, 2u)
+D3C_M(46f4c, nosetup, 3u)
+D3C_M(46f4c, noband, 4u)
+D3C_M(46f4c, order, 5u)
+D3C_M(46f4c, setupside, 6u)
+D3C_M(46f4c, noclampn, 7u)
+D3C_M(46f4c, diffside, 8u)
+D3C_M(46f4c, noclamph, 9u)
+D3C_M(46f4c, gt8, 10u)
+D3C_M(46f4c, clamp8, 11u)
+D3C_M(46f4c, bandb, 12u)
+D3C_M(46f4c, mul, 13u)
+D3C_M(46f4c, no20, 14u)
+D3C_M(46f4c, rngarg, 15u)
+D3C_M(46f4c, r16, 16u)
+D3C_M(46f4c, wz, 17u)
+D3C_M(46f4c, lt, 18u)
+D3C_M(46f4c, zero, 19u)
+D3C_M(46f4c, i9, 20u)
+D3C_M(46f4c, ru, 21u)
+D3C_M(46f4c, no08, 22u)
+D3C_M(46f4c, idx, 23u)
+D3C_M(46f4c, no2e, 24u)
+D3C_M(46f4c, idsext, 25u)
+D3C_M(46f4c, no1c, 26u)
+D3C_M(46f4c, byi, 27u)
+D3C_M(46f4c, no3c, 28u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33456,6 +33581,57 @@ static const binding_t k_bindings[] = {
     { "hit_3d004@no55b", m_d3c_3d004_no55b, 0x000000FFu },
     { "hit_3d004@order", m_d3c_3d004_order, 0x000000FFu },
     { "hit_3d004@ret1", m_d3c_3d004_ret1, 0x000000FFu },
+    { "ai_manage", b_d3c_470f8, 0x00000000u },
+    { "ai_manage@bside", m_d3c_470f8_bside, 0x00000000u },
+    { "ai_manage@sslot", m_d3c_470f8_sslot, 0x00000000u },
+    { "ai_manage@stb", m_d3c_470f8_stb, 0x00000000u },
+    { "ai_manage@v54", m_d3c_470f8_v54, 0x00000000u },
+    { "ai_manage@noair", m_d3c_470f8_noair, 0x00000000u },
+    { "ai_manage@noclr0", m_d3c_470f8_noclr0, 0x00000000u },
+    { "ai_manage@eq7", m_d3c_470f8_eq7, 0x00000000u },
+    { "ai_manage@noclr7", m_d3c_470f8_noclr7, 0x00000000u },
+    { "ai_manage@v9", m_d3c_470f8_v9, 0x00000000u },
+    { "ai_manage@eq9", m_d3c_470f8_eq9, 0x00000000u },
+    { "ai_manage@clrb", m_d3c_470f8_clrb, 0x00000000u },
+    { "ai_manage@no53", m_d3c_470f8_no53, 0x00000000u },
+    { "ai_manage@actb", m_d3c_470f8_actb, 0x00000000u },
+    { "ai_manage@pickside", m_d3c_470f8_pickside, 0x00000000u },
+    { "ai_manage@no0c", m_d3c_470f8_no0c, 0x00000000u },
+    { "ai_manage@noact", m_d3c_470f8_noact, 0x00000000u },
+    { "ai_manage@noinc", m_d3c_470f8_noinc, 0x00000000u },
+    { "ai_manage@inc2", m_d3c_470f8_inc2, 0x00000000u },
+    { "ai_manage@no30", m_d3c_470f8_no30, 0x00000000u },
+    { "ai_manage@no31", m_d3c_470f8_no31, 0x00000000u },
+    { "ai_manage@early", m_d3c_470f8_early, 0x00000000u },
+    { "ai_pick", b_d3c_46f4c, 0x00000000u },
+    { "ai_pick@chside", m_d3c_46f4c_chside, 0x00000000u },
+    { "ai_pick@tabswap", m_d3c_46f4c_tabswap, 0x00000000u },
+    { "ai_pick@nosetup", m_d3c_46f4c_nosetup, 0x00000000u },
+    { "ai_pick@noband", m_d3c_46f4c_noband, 0x00000000u },
+    { "ai_pick@order", m_d3c_46f4c_order, 0x00000000u },
+    { "ai_pick@setupside", m_d3c_46f4c_setupside, 0x00000000u },
+    { "ai_pick@noclampn", m_d3c_46f4c_noclampn, 0x00000000u },
+    { "ai_pick@diffside", m_d3c_46f4c_diffside, 0x00000000u },
+    { "ai_pick@noclamph", m_d3c_46f4c_noclamph, 0x00000000u },
+    { "ai_pick@gt8", m_d3c_46f4c_gt8, 0x00000000u },
+    { "ai_pick@clamp8", m_d3c_46f4c_clamp8, 0x00000000u },
+    { "ai_pick@bandb", m_d3c_46f4c_bandb, 0x00000000u },
+    { "ai_pick@mul", m_d3c_46f4c_mul, 0x00000000u },
+    { "ai_pick@no20", m_d3c_46f4c_no20, 0x00000000u },
+    { "ai_pick@rngarg", m_d3c_46f4c_rngarg, 0x00000000u },
+    { "ai_pick@r16", m_d3c_46f4c_r16, 0x00000000u },
+    { "ai_pick@wz", m_d3c_46f4c_wz, 0x00000000u },
+    { "ai_pick@lt", m_d3c_46f4c_lt, 0x00000000u },
+    { "ai_pick@zero", m_d3c_46f4c_zero, 0x00000000u },
+    { "ai_pick@i9", m_d3c_46f4c_i9, 0x00000000u },
+    { "ai_pick@ru", m_d3c_46f4c_ru, 0x00000000u },
+    { "ai_pick@no08", m_d3c_46f4c_no08, 0x00000000u },
+    { "ai_pick@idx", m_d3c_46f4c_idx, 0x00000000u },
+    { "ai_pick@no2e", m_d3c_46f4c_no2e, 0x00000000u },
+    { "ai_pick@idsext", m_d3c_46f4c_idsext, 0x00000000u },
+    { "ai_pick@no1c", m_d3c_46f4c_no1c, 0x00000000u },
+    { "ai_pick@byi", m_d3c_46f4c_byi, 0x00000000u },
+    { "ai_pick@no3c", m_d3c_46f4c_no3c, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

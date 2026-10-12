@@ -11949,6 +11949,114 @@ D3C_CASES += [
     ("hit_3d004@order", ['t2', 't3']),
     ("hit_3d004@ret1", ['t4', 't5']),
 ]
+D3C_MASKS.update({"ai_manage": 0x0})
+D3C_KINDS.update({
+    "ai_manage@bside": {'byte', 'call #0', 'call #0 memory'},
+    "ai_manage@sslot": {'byte', 'call #0'},
+    "ai_manage@stb": {'byte', 'call #0'},
+    "ai_manage@v54": {'byte', 'call #0'},
+    "ai_manage@noair": {'byte', 'call #0'},
+    "ai_manage@noclr0": {'byte', 'call #0'},
+    "ai_manage@eq7": {'byte', 'call #0'},
+    "ai_manage@noclr7": {'byte', 'call #0'},
+    "ai_manage@v9": {'byte', 'call #0'},
+    "ai_manage@eq9": {'byte', 'call #0'},
+    "ai_manage@clrb": {'byte', 'call #0'},
+    "ai_manage@no53": {'byte', 'call #0'},
+    "ai_manage@actb": {'byte', 'call #0'},
+    "ai_manage@pickside": {'call #0'},
+    "ai_manage@no0c": {'byte'},
+    "ai_manage@noact": {'byte'},
+    "ai_manage@noinc": {'byte'},
+    "ai_manage@inc2": {'byte'},
+    "ai_manage@no30": {'byte'},
+    "ai_manage@no31": {'byte'},
+    "ai_manage@early": {'byte', 'call #0 memory'},
+})
+D3C_CASES += [
+    ("ai_manage@bside", ['m0', 'm1', 'm10', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9']),
+    ("ai_manage@sslot", ['m0', 'm1', 'm10', 'm2', 'm5', 'm6', 'm8']),
+    ("ai_manage@stb", ['m3']),
+    ("ai_manage@v54", ['m1', 'm10', 'm5', 'm8']),
+    ("ai_manage@noair", ['m1', 'm5', 'm8']),
+    ("ai_manage@noclr0", ['m0']),
+    ("ai_manage@eq7", ['m4']),
+    ("ai_manage@noclr7", ['m2']),
+    ("ai_manage@v9", ['m10', 'm6', 'm9']),
+    ("ai_manage@eq9", ['m7']),
+    ("ai_manage@clrb", ['m10', 'm6']),
+    ("ai_manage@no53", ['m6']),
+    ("ai_manage@actb", ['m1', 'm3', 'm4', 'm5', 'm7', 'm8', 'm9']),
+    ("ai_manage@pickside", ['m0', 'm10', 'm2']),
+    ("ai_manage@no0c", ['m0', 'm10', 'm2']),
+    ("ai_manage@noact", ['m0', 'm10', 'm2']),
+    ("ai_manage@noinc", ['m0', 'm10', 'm2']),
+    ("ai_manage@inc2", ['m0', 'm10', 'm2']),
+    ("ai_manage@no30", ['m0', 'm10', 'm2']),
+    ("ai_manage@no31", ['m0', 'm10', 'm2']),
+    ("ai_manage@early", ['m0', 'm10', 'm2']),
+]
+D3C_MASKS.update({"ai_pick": 0x0})
+D3C_KINDS.update({
+    "ai_pick@chside": {'byte'},
+    "ai_pick@tabswap": {'byte'},
+    "ai_pick@nosetup": {'call #0', 'call #1', 'call #1 memory', 'call #2'},
+    "ai_pick@noband": {'call #1', 'call #1 memory', 'call #2'},
+    "ai_pick@order": {'call #0', 'call #1'},
+    "ai_pick@setupside": {'call #0'},
+    "ai_pick@noclampn": {'byte', 'call #2 memory'},
+    "ai_pick@diffside": {'byte', 'call #2 memory'},
+    "ai_pick@noclamph": {'byte', 'call #2 memory'},
+    "ai_pick@gt8": {'byte', 'call #2 memory'},
+    "ai_pick@clamp8": {'byte', 'call #2 memory'},
+    "ai_pick@bandb": {'byte', 'call #2 memory'},
+    "ai_pick@mul": {'byte', 'call #2 memory'},
+    "ai_pick@no20": {'byte', 'call #2 memory'},
+    "ai_pick@rngarg": {'call #2'},
+    "ai_pick@r16": {'byte'},
+    "ai_pick@wz": {'byte'},
+    "ai_pick@lt": {'byte'},
+    "ai_pick@zero": {'byte'},
+    "ai_pick@i9": {'byte'},
+    "ai_pick@ru": {'byte'},
+    "ai_pick@no08": {'byte'},
+    "ai_pick@idx": {'byte'},
+    "ai_pick@no2e": {'byte'},
+    "ai_pick@idsext": {'byte'},
+    "ai_pick@no1c": {'byte'},
+    "ai_pick@byi": {'byte'},
+    "ai_pick@no3c": {'byte'},
+})
+D3C_CASES += [
+    ("ai_pick@chside", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@tabswap", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@nosetup", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@noband", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@order", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@setupside", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@noclampn", ['a1', 'a4']),
+    ("ai_pick@diffside", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@noclamph", ['a2', 'a3']),
+    ("ai_pick@gt8", ['a2']),
+    ("ai_pick@clamp8", ['a2', 'a3']),
+    ("ai_pick@bandb", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@mul", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6']),
+    ("ai_pick@no20", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@rngarg", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@r16", ['a5', 'a6']),
+    ("ai_pick@wz", ['a2']),
+    ("ai_pick@lt", ['a0', 'a1']),
+    ("ai_pick@zero", ['a4', 'a6']),
+    ("ai_pick@i9", ['a3', 'a4', 'a5']),
+    ("ai_pick@ru", ['a6']),
+    ("ai_pick@no08", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@idx", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@no2e", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@idsext", ['a2']),
+    ("ai_pick@no1c", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@byi", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+    ("ai_pick@no3c", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
+]
 D1_MASKS.update(D3C_MASKS)
 D1_KINDS.update(D3C_KINDS)
 D1_CASES.extend(D3C_CASES)
@@ -13047,7 +13155,7 @@ class RealFunctionTests(unittest.TestCase):
         0x4660C: (), 0x25848: (), 0x41350: ("edx",), 0x271E0: (), 0x32A3C: ("edx",), 0x2F434: ("ebx", "ecx", "edx"),     # track D2 batch d2e
         0x3962C: ("edx", "esi", "edi", "ebp"), 0x396AC: ("edx", "esi", "edi", "ebp"), 0x19164: (), 0x1922C: (), 0x192DC: (), 0x29D04: (), 0x1DE64: ("edx",), 0x34DDC: (),     # track D3 batch d3c
         0x1A5D4: (), 0x1A640: (), 0x35B7C: ("edx",), 0x35C1C: ("edx",), 0x367DC: ("edx",), 0x34038: ("esi", "edi", "ebp"),     # track D3 batch d3c
-        0x4FB20: (), 0x3BAEC: (), 0x406B4: (),     # track D3 batch d3c
+        0x4FB20: (), 0x3BAEC: (), 0x406B4: (), 0x46F4C: (), 0x46C78: (), 0x46DD4: (),     # track D3 batch d3c
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))

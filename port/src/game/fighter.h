@@ -94,6 +94,9 @@ void ai_state_setup(u32 side);                          /* 0x46C78 */
  * 2026-10-12-reverse-d3c). */
 void fighter_382c4(u32 side);                           /* 0x382C4 */
 u8   hit_3d004(u32 side);                               /* 0x3D004 */
+void ai_classify(u32 param);                            /* 0x469A8 */
+void ai_pick(u32 side);                                 /* 0x46F4C */
+void ai_manage(u32 side);                               /* 0x470F8 */
 
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then

@@ -18731,6 +18731,121 @@ D3C_SPECS += [
                 "@eaxdrv", "@noinc", "@incw", "@no55", "@seedside", "@seedv", "@seedi", "@c63", "@chsext",
                 "@ret0", "@c53", "@no55b", "@order", "@ret1")),
 ]
+D3C_AI = 0x001081F0              # the two 0x40-byte AI blocks
+# 0x46F4C as a stub that bumps the pick counter word's high byte: 0x470F8 reads the block's +0x00
+# dword after the call (0x471D4), so a port that counted before the pick stores another value
+D3C_46F4C = E.Call(0x46F4C, ("eax",), writes=((None, D3C_AI + 1, b"\x5A"), (None, D3C_AI + 0x41, b"\x5A")))
+
+
+def d3c_manage_case(side, st, s10, s54=0, s53=0, act=0x00000100, cnt=0x000000FF):
+    """0x470F8: both AI blocks' +0x00, +0x04, +0x0C, +0x10, +0x28 and +0x30..+0x32 (the other
+    block's state is another arm, its flag the other answer) and both slots' +0x52..+0x55 (the
+    other slot's +0x53 and +0x54 are the other answers)."""
+    p = {}
+    for k in (0, 1):
+        b, so = D3C_AI + k * 0x40, D3C_SLOT + k * 0x94
+        own = k == side
+        p[b] = le32(cnt if own else 0x00000007) + le32(act if own else (0 if act else 1))
+        p[b + 0x0C] = le32(0x0C0C0C00 + k) + le32(s10 if own else 0x33333333)
+        p[b + 0x28] = le32(st if own else (0 if st else 9))
+        p[b + 0x30] = bytes([0x30 + k, 0x31 + k, 0x32 + k])
+        p[so + 0x52] = bytes([0x52, s53 if own else (0 if s53 else 1), s54 if own else (0 if s54 == 2 else 2), 0x55])
+    return p
+
+
+D3C_SPECS += [
+    # 0x470F8 ai_manage: EAX = side. 0x46F4C is a stub that changes the +0x00 counter the raw reads
+    # after it (0x471D4). The state and the flag are dwords (`cmp dword`, `test edi,edi`: m3's
+    # state is 0x100, m1/m5/m8's flag 0x100). Mask 0: the one caller writes EAX (0x472DA call,
+    # 0x472DF `xor eax,eax`).
+    Spec("ai_manage", 0x470F8, [
+        Case("m0", {"eax": 0}, d3c_manage_case(0, 0, 0)),
+        Case("m1", {"eax": 1}, d3c_manage_case(1, 0, 0, s54=2)),
+        Case("m2", {"eax": 0}, d3c_manage_case(0, 7, 8, cnt=0xFFFFFFFF)),
+        Case("m3", {"eax": 1}, d3c_manage_case(1, 0x100, 0)),
+        Case("m4", {"eax": 0}, d3c_manage_case(0, 7, 7)),
+        Case("m5", {"eax": 1}, d3c_manage_case(1, 7, 9, s54=2)),
+        Case("m6", {"eax": 0}, d3c_manage_case(0, 9, 7, s53=1)),
+        Case("m7", {"eax": 1}, d3c_manage_case(1, 9, 9)),
+        Case("m8", {"eax": 0}, d3c_manage_case(0, 9, 0x109, s54=2)),
+        Case("m9", {"eax": 1}, d3c_manage_case(1, 8, 0, act=0x01000000)),
+        Case("m10", {"eax": 0}, d3c_manage_case(0, 9, 0x109, s54=1)),
+    ], calls=(D3C_46F4C,), eax_mask=0,
+       mutants=("@bside", "@sslot", "@stb", "@v54", "@noair", "@noclr0", "@eq7", "@noclr7", "@v9", "@eq9",
+                "@clrb", "@no53", "@actb", "@pickside", "@no0c", "@noact", "@noinc", "@inc2", "@no30",
+                "@no31", "@early")),
+]
+D3C_IDS = 0x0010A600             # the ten move ids an AI block's +0x18 points at
+D3C_AI_STEP = (0x0008C0BC, 0x00083C68, 0x00091D0C, 0x000949E4, 0x0008EF0C, 0x000892AC, 0x000868D4)
+D3C_AI_AUX = (0x0008A4A0, 0x00081E24, 0x00090154, 0x00092F9C, 0x0008D2FC, 0x00087B1C, 0x00084F78)
+D3C_RNG = E.Call(0x5D7DC, ("eax",))
+D3C_46C78 = E.Call(0x46C78, ("eax",))   # saves what it writes (diff_emu._CALLEE_CLOBBER_FIXES)
+D3C_46DD4 = E.Call(0x46DD4, ("eax",))
+
+
+def d3c_pick_case(side, ch, diff, band, weights, ids=tuple(range(0x11, 0x1B))):
+    """0x46F4C: both slots' characters (the other's selects other tables), the two difficulty
+    dwords between seeded dwords (the other side's names another row), both AI blocks' +0x04,
+    +0x08, +0x18 (the id list D3C_IDS), +0x1C, +0x20, +0x2C..+0x30 (the band at +0x2F, another at
+    +0x2E) and +0x38/+0x3C; the weight row of the clamped difficulty inside 0xD0 bytes of 0x64
+    (any other row picks index 0); and per id the step and aux dwords of `ch`, with other dwords
+    at the id sign-extended and at the indexes 0..9."""
+    other = 1 - side
+    d = min(max((diff ^ 0x80000000) - 0x80000000, 0), 7)
+    row = 0x00095FC8 + band * 0x50 + d * 10
+    diffs = [0, 0]
+    diffs[side], diffs[other] = diff, (d + 1) & 7
+    p = {D3C_SLOT + side * 0x94 + 0x7A: bytes([ch]), D3C_SLOT + other * 0x94 + 0x7A: bytes([(ch + 3) % 7]),
+         0x001082C4: le32(0xC4C4C4C4) + le32(diffs[0]) + le32(diffs[1]) + le32(0xD0D0D0D0),
+         D3C_IDS: bytes(ids) + b"\xEE"}
+    for k in (side, other):
+        b = D3C_AI + k * 0x40
+        p[b + 0x04] = le32(0x04040400 + k) + le32(0x08080800 + k)
+        p[b + 0x18] = le32(D3C_IDS) + le32(0x1C1C1C00 + k) + le32(0x20202000 + k)
+        p[b + 0x2C] = bytes([0x2C, 0x2D, band + 1, band, 0x30 + k])
+        p[b + 0x38] = le32(0x38383800 + k) + le32(0x3C3C3C00 + k)
+    for off in range(-0x60, 0x70, 0x40):
+        p[row + off] = b"\x64" * min(0x40, 0x70 - off)
+    p[row] = bytes(weights)
+    step, aux = D3C_AI_STEP[ch], D3C_AI_AUX[ch]
+    p[step] = b"".join(le32(0x54000000 + i) for i in range(10))
+    p[step + 0x11 * 4] = b"".join(le32(0x51000000 + i) for i in range(0x11, 0x1B))
+    p[aux + 0x11 * 4] = b"".join(le32(0x52000000 + i) for i in range(0x11, 0x1B))
+    for i in ids:
+        if i >= 0x80:
+            p[step + i * 4] = le32(0x51000000 + i)
+            p[aux + i * 4] = le32(0x52000000 + i)
+            p[step + (i - 0x100) * 4] = le32(0x53000000 + i)
+            p[aux + (i - 0x100) * 4] = le32(0x55000000 + i)
+    return p
+
+
+D3C_SPECS += [
+    # 0x46F4C ai_pick: EAX = side. 0x46C78, 0x46DD4 and 0x5D7DC are stubs; the draw is the stub's
+    # whole EAX, compared signed with the running sum of the signed weight bytes (0x47068 `mov
+    # edi,eax`, 0x470AA `movsx ebx,cl`, 0x470AF `cmp edi,edx; jg`: a5 draws 0x10000, a6 -1, a2 has a
+    # weight 0xFF). a0..a6 take the seven targets of the jump table 0x46F30, one per character; a
+    # character above 6 leaves EBP and [esp] unset in the raw (0x46F6A `ja 0x46fe1`) and is not
+    # exercised (record §4). Mask 0: the one caller reads no EAX before it returns (0x471CA call,
+    # 0x471CF..0x47204, in 0x470F8), and that function's one caller writes it (0x472DF).
+    Spec("ai_pick", 0x46F4C, [
+        Case("a0", {"eax": 0}, d3c_pick_case(0, 0, 3, 1, [0, 10, 20, 30, 0, 0, 0, 0, 0, 0]), {0x5D7DC: 10}),
+        Case("a1", {"eax": 1}, d3c_pick_case(1, 1, 0xFFFFFFFF, 2, [5, 0, 0xFF, 50, 0, 0, 0, 0, 0, 0]),
+             {0x5D7DC: 5}),
+        Case("a2", {"eax": 0}, d3c_pick_case(0, 2, 8, 1, [5, 0, 0xFF, 3, 0, 0, 0, 0, 0, 0],
+                                             ids=(0x11, 0x12, 0x13, 0x80, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A)),
+             {0x5D7DC: 6}),
+        Case("a3", {"eax": 1}, d3c_pick_case(1, 3, 0x7FFFFFFF, 3, [1] * 10), {0x5D7DC: 99}),
+        Case("a4", {"eax": 0}, d3c_pick_case(0, 4, 0x80000000, 1, [0] * 10), {0x5D7DC: 0}),
+        Case("a5", {"eax": 1}, d3c_pick_case(1, 5, 7, 2, [10] * 10), {0x5D7DC: 0x00010000}),
+        Case("a6", {"eax": 0}, d3c_pick_case(0, 6, 0, 1, [0, 0, 7, 0, 0, 0, 0, 0, 0, 0]), {0x5D7DC: 0xFFFFFFFF}),
+        Case("a7", {"eax": 1}, d3c_pick_case(1, 6, 2, 0, [0, 0, 0, 0, 0, 0, 0, 0, 100, 0]), {0x5D7DC: 50}),
+    ], calls=(D3C_46C78, D3C_46DD4, D3C_RNG), eax_mask=0,
+       mutants=("@chside", "@tabswap", "@nosetup", "@noband", "@order", "@setupside", "@noclampn", "@diffside",
+                "@noclamph", "@gt8", "@clamp8", "@bandb", "@mul", "@no20", "@rngarg", "@r16",
+                "@wz", "@lt", "@zero", "@i9", "@ru", "@no08", "@idx", "@no2e", "@idsext",
+                "@no1c", "@byi", "@no3c")),
+]
 D1_SPECS += D3C_SPECS
 
 
