@@ -24715,6 +24715,117 @@ D5G_SPECS += [
                       0x2FE00: "the down wrap's second pass: the same 0x2EA68 exit"},
          eax_mask=0xFFFFFFFF, mutants=D5G_MR_MUTANTS),
 ]
+D5G_RANKPAIR = E.Call(0x1ECC8, ())
+D5G_NERESET = E.Call(0x1ED2C, ())
+D5G_RANK1 = E.Call(0x1EC38, ("eax",))
+D5G_NESTEP = E.Call(0x1F458, ("eax",), clobbers=("ebp",))
+D5G_INRESET = E.Call(0x4F1E4, ())
+D5G_ACTRESET = E.Call(0x2BAF4, ("eax",))
+D5G_HISCREEN = E.Call(0x1EA08, ())
+D5G_WIPEARM = E.Call(0x4F980, ("eax",))
+
+
+def d5g_1e_case(state, ad4=0, abc=0, b14=0, b1f=0, s0=0x00001000, s1=0x00002000, g0=0, g1=0):
+    """0x1EEB0: the state byte 0x104B25, the bytes 0x104B14 and 0x104B1F (0x104B10..0x104B27 seeded
+    around them), the dwords 0x104AD4, 0x104ABC and 0x104AE4 between seeded dwords, the words
+    0x104AFA, 0x104AFE, 0x104B00 and 0x1088EE between seeded words, the two scores 0x1077EC and
+    0x107880 and the two gate bytes 0x107813 and 0x1078A7 (0x94 apart: the slots' +0x63), each
+    between seeded neighbours; a third slot's byte 0x10793B is seeded too."""
+    b = bytearray(0xB0 + i for i in range(0x18))
+    b[0x04], b[0x0F], b[0x15] = b14, b1f, state
+    return {0x00104B10: bytes(b),
+            0x00104AD0: le32(0xD0D1D2D3) + le32(ad4) + le32(0xD8D9DADB),
+            0x00104AB8: le32(0xB8B9BABB) + le32(abc) + le32(0xC0C1C2C3),
+            0x00104AE0: le32(0xE0E1E2E3) + le32(0x5A5A5A5A) + le32(0xE8E9EAEB),
+            0x00104AF8: le16(0xF8F9) + le16(0x5AFA) + le16(0xFCFD) + le16(0x5AFE) + le16(0x5B00) + le16(0x0203),
+            0x001088EC: le16(0xECED) + le16(0x5AEE) + le16(0xF0F1),
+            0x001077E8: le32(0xE8E9EAEB) + le32(s0) + le32(0xF0F1F2F3),
+            0x0010787C: le32(0x7C7D7E7F) + le32(s1) + le32(0x84858687),
+            0x00107812: bytes([0x12, g0, 0x14]), 0x001078A6: bytes([0xA6, g1, 0xA8]),
+            0x0010793A: bytes([0x3A, 0x01, 0x3C])}
+
+
+D5G_1E = lambda cid, state, stubs=None, **kw: Case(cid, {"eax": 0x55555555}, d5g_1e_case(state, **kw), stubs or {})
+D5G_1E_CASES = [
+    # state 0: the two-player gate (the dword 0x104AD4 == 2, whole: a2 has 0x102; the byte 0x104B1F
+    # 0; 0x1ECC8's AL: a4 has stub EAX 0x100, a5 0xFFFFFF01), then the higher score first (unsigned,
+    # `jb` 0x1EF10: a6 has 0x80000000 against 1, a7 equal scores)
+    D5G_1E("a0", 0, {0x1ECC8: 1}, ad4=2, s0=0x3000, s1=0x2000),
+    D5G_1E("a1", 0, {0x1ECC8: 1}, ad4=2, s0=0x1000, s1=0x2000),
+    D5G_1E("a2", 0, {0x1ECC8: 1}, ad4=0x00000102),
+    D5G_1E("a3", 0, {0x1ECC8: 1}, ad4=2, b1f=1),
+    D5G_1E("a4", 0, {0x1ECC8: 0x100}, ad4=2),
+    D5G_1E("a5", 0, {0x1ECC8: 0xFFFFFF01}, ad4=2, s0=1, s1=0x80000000),
+    D5G_1E("a6", 0, {0x1ECC8: 1}, ad4=2, s0=0x80000000, s1=1),
+    D5G_1E("a7", 0, {0x1ECC8: 1, 0x1EC38: 1}, ad4=2, s0=0x4444, s1=0x4444),
+    D5G_1E("a8", 0, {0x1ECC8: 0}, ad4=2),
+    D5G_1E("a9", 0, {0x1ECC8: 1}, ad4=1),
+    # state 1 (the table's `ret` entry), and the states above 0x10
+    D5G_1E("b0", 1), D5G_1E("b1", 0x11), D5G_1E("b2", 0xFF),
+    # states 2 and 3
+    D5G_1E("c0", 2), D5G_1E("c1", 3),
+    # state 4: the byte 0x107813 (d1 has the next byte set instead), 0x1EC38(the first score)'s AL
+    # (d3: 0x100), then the dword 0x104AD4 non-zero, or the byte 0x104B14 and the dword 0x104ABC == 1
+    D5G_1E("d0", 4, {0x1EC38: 1}, g0=1),
+    D5G_1E("d1", 4, {0x1EC38: 1}, ad4=1),
+    D5G_1E("d2", 4, {0x1EC38: 0}, ad4=1),
+    D5G_1E("d3", 4, {0x1EC38: 0x100}, ad4=1),
+    D5G_1E("d4", 4, {0x1EC38: 0xFFFFFF01}, ad4=0x01000000),
+    D5G_1E("d5", 4, {0x1EC38: 1}, ad4=0, b14=0, abc=1),
+    D5G_1E("d6", 4, {0x1EC38: 1}, ad4=0, b14=1, abc=1),
+    D5G_1E("d7", 4, {0x1EC38: 1}, ad4=0, b14=0x80, abc=0x00000101),
+    D5G_1E("d8", 4, {0x1EC38: 1}, ad4=0, b14=1, abc=0),
+    # states 5 and 8: 0x1F458(the side), whole EAX (e2, f2: 0x100)
+    D5G_1E("e0", 5, {0x1F458: 0}), D5G_1E("e1", 5, {0x1F458: 1}), D5G_1E("e2", 5, {0x1F458: 0x100}),
+    D5G_1E("f0", 8, {0x1F458: 0}), D5G_1E("f1", 8, {0x1F458: 0x80000000}), D5G_1E("f2", 8, {0x1F458: 0x100}),
+    # states 6 and 9: the screen again only when the dword 0x104ABC is 1
+    D5G_1E("g0", 6, abc=1), D5G_1E("g1", 6, abc=0), D5G_1E("g2", 6, abc=0x00000101), D5G_1E("g3", 6, abc=2),
+    D5G_1E("h0", 9, abc=1), D5G_1E("h1", 9, abc=0), D5G_1E("h2", 9, abc=0x01000001),
+    # state 7: the second slot's byte and score, the dword 0x104AD4 != 1
+    D5G_1E("j0", 7, {0x1EC38: 1}, g1=1),
+    D5G_1E("j1", 7, {0x1EC38: 1}, ad4=0, g0=1),
+    D5G_1E("j2", 7, {0x1EC38: 0}, ad4=0),
+    D5G_1E("j3", 7, {0x1EC38: 0x100}, ad4=0),
+    D5G_1E("j4", 7, {0x1EC38: 0x7F01}, ad4=0x00000101),
+    D5G_1E("j5", 7, {0x1EC38: 1}, ad4=1, b14=0, abc=1),
+    D5G_1E("j6", 7, {0x1EC38: 1}, ad4=1, b14=1, abc=1),
+    D5G_1E("j7", 7, {0x1EC38: 1}, ad4=1, b14=1, abc=2),
+    # state 0xA: the byte 0x104B1F, the dword 0x104AD4 (2, or the side whose slot byte is 1), the
+    # byte 0x104B14
+    D5G_1E("k0", 0xA, ad4=2), D5G_1E("k1", 0xA, ad4=0, g0=1), D5G_1E("k2", 0xA, ad4=1, g1=1),
+    D5G_1E("k3", 0xA, ad4=0, g0=2, g1=1), D5G_1E("k4", 0xA, ad4=1, g0=1, g1=0x81, b14=1),
+    D5G_1E("k5", 0xA, ad4=2, b1f=1), D5G_1E("k6", 0xA, ad4=0, g0=1, b1f=0x80, b14=0x80),
+    D5G_1E("k7", 0xA, ad4=1, g0=1),
+    # states 0xB..0xE: 0x1F458(0, 1, 0, 1), then states 0xF, 0x10, 2, 2
+    D5G_1E("l0", 0xB, {0x1F458: 0}), D5G_1E("l1", 0xB, {0x1F458: 5}), D5G_1E("l2", 0xB, {0x1F458: 0x100}),
+    D5G_1E("m0", 0xC, {0x1F458: 0}), D5G_1E("m1", 0xC, {0x1F458: 0xFFFFFF00}),
+    D5G_1E("n0", 0xD, {0x1F458: 0}), D5G_1E("n1", 0xD, {0x1F458: 1}),
+    D5G_1E("o0", 0xE, {0x1F458: 0}), D5G_1E("o1", 0xE, {0x1F458: 0x10000}),
+    # states 0xF and 0x10: the other side's entry is armed
+    D5G_1E("p0", 0xF, {0x1EC38: 0, 0x1F458: 1}), D5G_1E("p1", 0x10, {0x1EC38: 1, 0x1F458: 0}),
+]
+D5G_1E_MUTANTS = ("@tab", "@s0ad4", "@s0b1f", "@s0eax", "@s0order", "@s0cmp", "@s0gt", "@s0late", "@s0arg", "@s0else",
+                  "@s2order", "@al", "@s2st", "@s3noin", "@s3b00", "@s4gatew", "@s4score", "@s4eax", "@s4ad4",
+                  "@s4b14", "@s4abcw", "@s4late", "@s4order", "@pside", "@pal", "@pnext", "@abc", "@qnext", "@s7gate",
+                  "@s7score", "@s7eax", "@s7ad4", "@s7late", "@s7order", "@saearly", "@sab1f", "@sa2", "@saside",
+                  "@sa1", "@sahook", "@sahooklate", "@sawipe", "@fearly", "@fnext", "@forder", "@fscore", "@fside",
+                  "@dafe", "@d8eew", "@db00", "@dafa", "@dlate", "@dvoice", "@rafe", "@r8ee", "@rb00w", "@rafa")
+D5G_SPECS += [
+    # 0x1EEB0 game_mode_1e_step: no argument (EAX is loaded from the state byte: every case enters
+    # with 0x55555555). The state byte 0x104B25 above 0x10 returns (`ja` 0x1EEBC); else the 17-entry
+    # table 0x1EE6C (entry 1 is the shared `ret`). The nine callees are stubs: 0x1ECC8 (AL: `test
+    # al,al` 0x1EEE6), 0x1ED2C, 0x2C3FC, 0x1EC38 (AL: `test al,al` 0x1F1B0, 0x1F2CE; its result is
+    # dropped in states 0, 0xF and 0x10), 0x1F458 (whole: `test eax,eax` 0x1EF4B, 0x1EFDD, 0x1F03E,
+    # 0x1F0C8, 0x1F208, 0x1F32B; dropped in 0xF and 0x10), 0x4F1E4, 0x2BAF4(1), 0x1EA08 and
+    # 0x4F980(0x11). The state byte is stored before the calls it precedes in the raw and after the
+    # ones it follows (the memory at each call): after 0x2C3FC in states 0xF/0x10 (0x1EFAE,
+    # 0x1F09E), after 0x2BAF4 in states 3 and 0xA (0x1F186, 0x1F3F1), after 0x1EA08 in state 2
+    # (0x1F15C). Mask 0: the one caller (0x253CB) continues `jmp 0x2540f`.
+    Spec("game_mode_1e_step", 0x1EEB0, D5G_1E_CASES,
+         calls=(D5G_RANKPAIR, D5G_NERESET, VOICE, D5G_RANK1, D5G_NESTEP, D5G_INRESET, D5G_ACTRESET, D5G_HISCREEN,
+                D5G_WIPEARM),
+         eax_mask=0, mutants=D5G_1E_MUTANTS),
+]
 D1_SPECS += D5G_SPECS
 # ---- d5g end ----
 SPECS = [

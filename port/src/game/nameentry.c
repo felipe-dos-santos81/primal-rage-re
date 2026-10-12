@@ -147,6 +147,7 @@ u32 name_filter(u32 str)
 /* 0x1ED2C — record §49-T. */
 void nameentry_reset(void)
 {
+    PR_SEAM0(0x1ED2Cu);
     DSW(NE_HISCORE_CURSOR_COL) = 0xBu;                      /* 0x1ED3B */
     DSW(NE_HISCORE_CURSOR_ROW) = 6u;                        /* 0x1ED42 */
     frontend_input_reset();                                 /* 0x1ED49 0x4F1E4 */
@@ -472,6 +473,7 @@ static int ne_repeat(u32 ctr)
 
 u32 nameentry_step(u8 side)
 {
+    PR_SEAM_RET(0x1F458u, (u32)side);
     nameentry_cells_step();                                 /* 0x1F464 0x1FFD0 */
     u16 t = DSW(DS_0010438C);                               /* 0x1F469 */
     if (t != 0u) {                                          /* 0x1F473 */

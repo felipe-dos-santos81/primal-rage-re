@@ -200,6 +200,7 @@ static void run_process_table(u32 table, u32 mask)
  * body instead of inlining the byte store. */
 void frontend_input_reset(void)
 {
+    PR_SEAM0(0x4F1E4u);
     DSB(DS_00104B15) = 0;                       /* 0x4F1F1 */
 }
 
@@ -958,6 +959,7 @@ void game_mode_12_step(void)
  * DS_00104B00 = 0x1A (0x4F994, a word). EDX is pushed and popped. */
 void frontend_wipe_arm(u32 ret_mode)
 {
+    PR_SEAM(0x4F980u, ret_mode);
     DSB(DS_001088F5) = 0u;                              /* 0x4F983 */
     DSW(DS_00104AFA) = (u16)ret_mode;                   /* 0x4F98E */
     DSW(DS_00104B00) = 0x1Au;                           /* 0x4F994 */
@@ -5080,6 +5082,7 @@ void hiscore_init(void)
  * wired. */
 void frontend_match_start(void)
 {
+    PR_SEAM0(0x1EA08u);
     u8 name[0x24];
 
     frontend_input_reset();                                     /* 0x1EA11 (0x4F1E4) */
@@ -5149,6 +5152,7 @@ void frontend_match_start(void)
  * (0x1ECA5); ECX (the rank) survives it (0x204F5 push/0x2070A pop). */
 u32 hiscore_rank_single(u32 score)
 {
+    PR_SEAM_RET(0x1EC38u, score);
     u32 rank = hiscore_rank_probe(score, 0u);                  /* 0x1EC3F */
     /* PORT: 0x1EC44..0x1EC6B — field 0x27's deferred audit add; see header. */
     if ((u16)rank >= 10u) {                                    /* 0x1EC75/0x1EC78 */
@@ -5176,6 +5180,7 @@ u32 hiscore_rank_single(u32 score)
  * (0x1ED26). */
 u32 hiscore_rank_pair(void)
 {
+    PR_SEAM_RET0(0x1ECC8u);
     u32 r0 = hiscore_rank_probe(DSD(DS_001077EC), 0u);          /* 0x1ECD0 */
     DSW(DS_001044C0) = (u16)r0;                                  /* 0x1ECD5 */
     if ((u16)r0 >= 10u) return 0u;                               /* 0x1ECE0/0x1ECE3 */

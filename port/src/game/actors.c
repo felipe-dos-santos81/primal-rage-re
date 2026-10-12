@@ -1109,6 +1109,7 @@ void actor_cursor_reset(void)
  * (0x2BBF6..0x2BC14), and neither 0x52106 nor 0x336C0. */
 void actors_reset_al(u32 al)
 {
+    PR_SEAM(0x2BAF4u, al);
     /* PORT: the original assumes its loader ran; without the pool the free-list
      * rebuild would walk mem[0..0xEBA0]. Return when actors_init would fail. */
     if (pool_base() == 0) return;
