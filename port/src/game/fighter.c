@@ -3644,16 +3644,18 @@ void fighter_state_3531c(u32 side)
     case 8u:
         DSB(slot + 0x56u) = (u8)(DSB(slot + 0x56u) + 1u);   /* 0x3547A */
         DSB(slot + 0x43u) &= 0xCFu;                         /* 0x35487 */
-        if ((s16)DSW(DS_000BDBE8) <= (s16)DSW(slot + 0x88u))  /* 0x35498 */
-            return;
-        if (fighter_34e20((u32)DSB(slot + 0x5Fu)) == 0)     /* 0x354A8 */
-            return;
         {
-            u32 r = (u32)DSB(slot + 0x5Fu);
-            DSB(slot + 0x53u) = 0;                          /* 0x354B5 */
+            u32 own = DS_001077B0 + side * 0x94u;           /* 0x35483, 0x3549A, 0x354AC, 0x354C5 */
+            u32 r;
+            if ((s16)DSW(DS_000BDBE8) <= (s16)DSW(own + 0x88u))  /* 0x35498 */
+                return;
+            if (fighter_34e20((u32)DSB(own + 0x5Fu)) == 0)  /* 0x354A8 */
+                return;
+            r = (u32)DSB(own + 0x5Fu);                      /* 0x354B2 */
+            DSB(own + 0x53u) = 0;                           /* 0x354B5 */
             if (hit_chain_resolve(side) != 0) return;       /* 0x354BC */
-            DSB(slot + 0x53u) = 8u;                         /* 0x354C9 */
-            DSB(slot + 0x5Fu) = (u8)r;                      /* 0x354CD */
+            DSB(own + 0x53u) = 8u;                          /* 0x354C9 */
+            DSB(own + 0x5Fu) = (u8)r;                       /* 0x354CD */
         }
         return;
     case 10u:
