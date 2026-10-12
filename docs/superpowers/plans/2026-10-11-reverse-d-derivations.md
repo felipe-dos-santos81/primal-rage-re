@@ -9,7 +9,7 @@ corrections, the named gaps and the gate evidence.
 ## §D.1 Why
 
 After C3g the port was `731 731 100` and the callee frontier was closed (322 rows), but the callee scan had
-only ever reached 183 of the 731 Ghidra-listed ported functions below `0x5D000`. The other **550** rested on
+only ever reached 181 of the 731 Ghidra-listed ported functions below `0x5D000`. The other **550** rested on
 hand-written unit tests and the narrow capture oracles. Every C3 batch that rowed such functions found
 raw-over-port defects. Track D rows them leaves first: a wave is the unrowed functions whose callees are all
 rowed, runtime (`>= 0x5D000`) or absent.
@@ -54,7 +54,9 @@ and the E2 table is byte-identical.
 
 ## §D.3 The corrections (54; every one address-proved and independently audited)
 
-Each is its own commit `port: D1|D2 <batch>: ...` with a mutant that reproduces the old behaviour. Three
+Each is its own commit `port: D1|D2 <batch>: ...` with a mutant that reproduces the old behaviour — except
+`0x28A8D`, whose function `0x28788` has no row yet: its regression is the unit test (`test_fight.c` arm B,
+which fails `133 != 0` with the fix reverted). Three
 read-only audits (capstone over the fixed-up image, a different agent from the implementer) re-derived them
 from the bytes: 20 + 18 + 11 CONFIRMED, none wrong or unsure; the d1c/d1e/d1f four were re-read by the agent
 that finished those batches, and `0x47A89` by the integrator.
@@ -139,6 +141,9 @@ non-default configuration bit):
   `0x2F388(-1, 0xB, 2)` (`0x4F01A..0x4F029`) and read its stream from `0xC9544` where the raw has `0xC95D4`
   (`0x4EFFF`).
 
+After the review fixes (PROGRESS, "Track D review fixes") the counter reads `652/652; 5651/5651; 1; 428/485
+(167)`: `snd_music_stop` gained the mutant `@eax` with the `0x1CA8F` correction.
+
 ## §D.4 Named gaps and what is not claimed
 
 - **Not rowed, by cause** (the batch record's §6 has each): no port function to bind (`0x12CD4`, `0x2F920`,
@@ -153,10 +158,13 @@ non-default configuration bit):
   the active counter `0x9AF3D` (d1c §4); the arms that end in the runtime `sprintf`/`printf` (`0x2BF87`,
   `0x1D10E`, `0x1D183`) and in the fatal `0x62003` are unhit and named; where a callee runs real instead of
   stubbed, an AL-versus-EAX test after it is not separated (named per row).
+- **A case set that cannot separate two readings** (found in review): `config_play_time_close`'s cases all
+  have `mode & 3 == 0`, so an index of `[mode & 3]` and of `[0]` agree; the row does not prove the index.
 - **Seen, not changed** (audit #3): `camera_mode_track_pair` keeps `diff < 0 ? -diff : diff` for the `neg` at
   `0x12ED5`/`0x12F3E` (C undefined at INT_MIN; the raw leaves INT_MIN) and caches `[0xF0AF0]` where the raw
   re-reads it at `0x12F34` after two `0x18714` calls (equivalence unproven); `snd_music_stop` (`0x1CA6C`)
-  tests the whole dword where the raw has `test al,al` at `0x1CA8F` (its row stubs only 0 and 1).
+  tested the whole dword where the raw has `test al,al` at `0x1CA8F` (its row stubbed only 0 and 1). The
+  review fixes corrected the two negations and `snd_music_stop`; the cached `[0xF0AF0]` stands.
 - **No capture reaches a changed path** (audit #2/#3 by reading; the gate by measurement, §D.6): the
   corrections' evidence is the rows and the unit tests, not a capture. The claim of every row is spec §5.3's:
   equivalence on the exercised blocks and inputs only, with its callees stubbed or run as stated.
@@ -203,6 +211,6 @@ non-default configuration bit):
   deliberately reads the slot above the image (`0x10C1B0`, and its `+0x8A` byte) and was not named in
   `P45_OUTSIDE`. With the read named, an uninterrupted `make verify` exits 0 (177 harness tests OK, the
   counter above, entry-triage byte-identical, `symbols.h` idempotent).
-- Audio: `make audio-render` on the pre-track tree gives sha1 `4194254de1155a2dda0ee0dd69f638d92cf9eea0`, the
-  C3g closure's.
+- Audio: `make audio-render` on the pre-track tree and on this tree are `cmp`-equal, sha1
+  `4194254de1155a2dda0ee0dd69f638d92cf9eea0` (the C3g closure's).
 

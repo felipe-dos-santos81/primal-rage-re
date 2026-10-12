@@ -324,7 +324,7 @@ consolidation gate).
   record `docs/superpowers/plans/2026-10-11-reverse-d-derivations.md`). C3g closed
   the callee frontier at 322 rows; track D rows the ported functions the callee
   scan never reached. `make diff-verify`'s counter after its waves 1 and 2 is
-  `652/652 functions VERIFIED; 5650/5650 mutants detected; 1 named gaps;
+  `652/652 functions VERIFIED; 5651/5651 mutants detected; 1 named gaps;
   428/485 rows with callees closed (167 have none)`; 230 ported functions have no
   row yet, so the open rows are open on those and on the named non-rows
   (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
