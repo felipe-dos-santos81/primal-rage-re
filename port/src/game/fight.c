@@ -4040,6 +4040,7 @@ void fight_4d2d0(void)
  * record §49-S). */
 void fight_4cc0c(void)
 {
+    PR_SEAM0(0x4CC0Cu);
     DSW(DSD(DS_00108868) + 0x36u) = 0xFE5Cu;                    /* 0x4CC19 */
     DSW(DS_001088A0) = 0x003Cu;                                 /* 0x4CC29 */
     DSW(DSD(DS_0010886C) + 0x36u) = 0xFE5Cu;                    /* 0x4CC30 */

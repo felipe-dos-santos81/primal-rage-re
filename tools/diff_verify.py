@@ -18735,6 +18735,113 @@ D3B_SPECS += [
            "f1f7 c5 z864 z864b nobd98 nocb18 order cbflag cbside cbidx").split())),
 ]
 
+D3B_GAMEOVER = E.Call(0x4CC0C, ())
+D3B_R68, D3B_R6C = 0x0010A180, 0x0010A300          # DS_00108868 / DS_0010886C
+D3B_CHP0, D3B_CHP1 = 0x0010A500, 0x0010A5A0        # what DS_001077A8[0..1] point at (+0x7A read)
+D3B_NEW = 0x0010A340                               # the actor 0x4C784's spawn stub returns (its +0x56 is read)
+
+
+def d3b_ball_case(side, hs, score, nodes=2, e10=0, b48=0x22, w28=(0x0000, 0x4000), pos=(0x3000, 0x4000),
+                  base=0x8000, apos=0x9000, g884=0x00050000, x18=(0x00040000, 0x00050000), f51=(1, 0),
+                  running=0, bd898=0x8A40, f29=0xFF, ch=(2, 5)):
+    """0x4C784: the ball entry DS_00108864 (D2B_ENT: its actor D2B_ACT at +8, the shadow +0x10, +0x1F
+    and the owner byte +0x21 `hs` inside seeded bytes) and its actor's +0x18 / +0x1C and +0x48; the
+    records DS_00108868 / DS_0010886C and the dword DS_00108884 between seeded dwords; the two score
+    bytes DS_0010889C (`score`), the words DS_00108898, DS_001088A0 (`running`) and DS_001088AC
+    inside seeded neighbours; both slots' record pointer, each record's +0x18 (`x18`), +0x28 word
+    (`w28`, bit 14 the facing), +0x51 (`f51`) and 0x2BE00 value (`pos` = (the side's, the
+    other's)); DS_00108868's record's value `base` and the spawned actor's `apos`; the two
+    DS_001077A8 pointers and their +0x7A bytes `ch`; the layer word 0xBD898; the free list of the
+    first `nodes` scratch nodes and an empty active list; string 0x56; and the actor the spawn stub
+    returns (D3B_NEW: its +0x10..+0x4F all non-zero, +0x29 = `f29`). The globals 0x108860..0x1088AF
+    go in two pokes and the actor in one: a case holds at most 39."""
+    recs = (D2B_REC0, D2B_REC1)
+    ring = [D2B_FREE] + list(D2B_NODES[:nodes])
+    p = d2b_str_case({0x56: b"BALL EATEN!", 0x55: b"NO"})
+    p.update(d2b_pos_pokes({recs[side]: (3, pos[0]), recs[1 - side]: (5, pos[1]), D3B_R68: (6, base),
+                            D3B_NEW: (7, apos)}))
+    g = bytearray(0x61 + i for i in range(0x40))            # 0x108860..0x10889F, every byte non-zero
+    g[0x04:0x10] = le32(D2B_ENT) + le32(D3B_R68) + le32(D3B_R6C)
+    g[0x24:0x28] = le32(g884)
+    g[0x38:0x3A] = le16(0x9898)
+    g[0x3C:0x3E] = bytes(score)
+    h = bytearray(0xA1 + i for i in range(0x10))            # 0x1088A0..0x1088AF
+    h[0x00:0x02] = le16(running)
+    h[0x0C:0x0E] = le16(0xACAC)
+    a = bytearray(0x91 + i for i in range(0x40))            # the new actor's +0x10..+0x4F
+    a[0x18:0x1A] = bytes([0x28, f29])
+    a[0x1E:0x20] = le16(0x1000)
+    a[0x38] = b48 ^ 1
+    a[0x3E] = 0x77
+    p.update({D2B_LIST: le32(D2B_LIST) + le32(D2B_LIST),
+              D2B_FREE: le32(ring[1 % len(ring)]) + le32(ring[-1]),
+              D2B_ENT + 0x08: le32(D2B_ACT) + le32(0x0BAD000C) + le32(e10) + le32(0x0BAD0014),
+              D2B_ENT + 0x1E: bytes([0x1E, 0x66, hs ^ 0x81, hs, 0x22]),
+              D2B_ACT + 0x14: le32(0x0BAD0014) + le32(0x00021800) + le32(0x00031C00) + le32(0x0BAD0020),
+              D2B_ACT + 0x47: bytes([0x47, b48, 0x49]),
+              0x00108860: bytes(g), 0x001088A0: bytes(h),
+              0x001077A8: le32(D3B_CHP0) + le32(D3B_CHP1),
+              D3B_CHP0 + 0x79: bytes([0x79, ch[0], 0x7B]),
+              D3B_CHP1 + 0x79: bytes([0x69, ch[1], 0x6B]),
+              0x000BD896: le16(0x7896) + le16(bd898) + le16(0x789A),
+              D3B_NEW + 0x10: bytes(a)})
+    for i, n in enumerate(ring[1:], 1):
+        p[n] = le32(ring[(i + 1) % len(ring)]) + le32(ring[i - 1]) + bytes(
+            (0x40 + i * 7 + j) & 0xFF or 0x5A for j in range(0x1C))
+    for s in (0, 1):
+        own = s == side
+        k = 0 if own else 1
+        p[D2B_SLOTS + s * 0x94] = le32(recs[s])
+        p[D2B_SLOTS + s * 0x94 + 0x79] = bytes([0x79, 0x77 + s, 0x7B])
+        p[recs[s] + 0x14] = le32(0x0BAD0014) + le32(x18[k]) + le32(0x0BAD001C)
+        p[recs[s] + 0x26] = le16(0x2626) + le16(w28[k]) + le16(0x2A2A)
+        p[recs[s] + 0x50] = bytes([0x50, f51[s], 0x52])
+    return p
+
+
+def d3b_ball_stubs(pick=0, val=0x11111111, x=0x00012000, new=D3B_NEW):
+    return {0x49388: pick, 0x29CDC: val, 0x2BE4C: x, 0x2AE14: new}
+
+
+D3B_SPECS += [
+    # 0x4C784 fight_4c784: EAX = side. 0x2AE14 (one record per case for both spawns), 0x2BC30, 0x2B150,
+    # 0x2C3FC, 0x4CC0C, 0x2F510, 0x49388, 0x29CDC and 0x2BE4C are stubs; 0x2BE00 runs its own bytes,
+    # recorded; the string path, 0x249D0, 0x249B0 and 0x496AC run on both sides. EAX dies unread at
+    # 0x4C697 and 0x4C6A9 (0x4C69C / 0x4C6AE `jmp 0x4c6b5`: the walk, record d3b §1): mask 0.
+    Spec("fight_4c784", 0x4C784, [
+        # the other side's first point: a new ball left of DS_00108868, walking right; a shadow dies
+        Case("e0", {"eax": 0}, d3b_ball_case(0, 1, (0x10, 0x00), e10=D2B_ACT1, apos=0x9000),
+             d3b_ball_stubs(0, 0x11111111, 0x00012000)),
+        # equal positions (0x4C9DD `jge`), the actor on its target (0x4CACF `jge`), no shadow, the
+        # fighter facing left, DS_00108884 equal to the other's x (0x4C8A6 `jle`)
+        Case("e1", {"eax": 1}, d3b_ball_case(1, 0, (0x01, 0x20), b48=0x23, w28=(0x4000, 0x0000),
+                                             pos=(0x4000, 0x4000), apos=0x68C0, f51=(0, 1), bd898=0x0400, f29=0x00),
+             d3b_ball_stubs(5, 0x22222222, 0xFFFE0000)),
+        # the third point: 0x4CC0C unless DS_001088A0 runs; the entry's +0x1F and DS_00108864 clear
+        Case("e2", {"eax": 0}, d3b_ball_case(0, 0, (0x10, 0x02), e10=D2B_ACT1, g884=0x00050001), d3b_ball_stubs()),
+        Case("e3", {"eax": 1}, d3b_ball_case(1, 1, (0x02, 0x10), running=0x0100, g884=0x0004FFFF), d3b_ball_stubs()),
+        # no free node: the text alone
+        Case("e4", {"eax": 0}, d3b_ball_case(0, 0, (0x10, 0x01), nodes=0, b48=0x90), d3b_ball_stubs()),
+        # a score of 0xFF wraps to 0; an id byte below 0x20; the fighter right of the other
+        Case("e5", {"eax": 1}, d3b_ball_case(1, 1, (0xFF, 0x10), b48=0x10, pos=(0x4001, 0x4000), apos=0x68BF,
+                                             w28=(0xBFFF, 0xFFFF), g884=0x80000000),
+             d3b_ball_stubs(3, 0x33333333, 0x00034000)),
+        # a negative position against a positive one (signed, 0x4C9DB)
+        Case("e6", {"eax": 0}, d3b_ball_case(0, 0, (0x10, 0x01), pos=(0xFFFFF000, 0x1000), apos=0x9740, f51=(0, 0)),
+             d3b_ball_stubs(2, 0x44444444, 0x00045000)),
+        Case("e7", {"eax": 1}, d3b_ball_case(1, 1, (0x00, 0x00), pos=(0x1000, 0xFFFFF000), apos=0x68C1, f51=(1, 1),
+                                             e10=D2B_ACT1),
+             d3b_ball_stubs(4, 0x55555555, 0x00056000)),
+    ], allow_calls=D2B_STR_TREE + (0x249D0, 0x249B0, 0x496AC),
+       calls=(SPAWN, ANIM_BEGIN, P7_2B150, VOICE, D3B_GAMEOVER, D2B_FONT2, D2B_PICK, D2B_DUSTVAL, D2B_2BE00,
+              D2B_2BE4C), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "hs flip flipbit sx y100 ysext sdesc sstream shold shdead shzero shorder dead vsext vswap v6 vce "
+           "vorder score scoredrop score2 turn turnge turnrec turnact wac w898 w898drop three f1f run norun "
+           "z864 txt row tmode lorder pickarg dvarg dvch d10 cmple cmpu d2580 d1740 dirs rec4c y2 xy ne8 a14 "
+           "nf1f f21 fc clamp w28 w1c e10 bump type s864 e14 or20 lt v34 b29 idx8 hold").split())),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
