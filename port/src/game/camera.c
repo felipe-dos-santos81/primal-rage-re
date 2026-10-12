@@ -1500,12 +1500,12 @@ u32 camera_point_hit(s32 x, s32 y, u32 tall)
     u8 s63 = DSB(DS_00100B63);                                 /* 0x17DB5 */
     DSB(DS_00100B63) = 0;                                      /* 0x17DCA */
     if (!(DSW(DS_00104B00) == 0x22u && DSB(CAMERA_MODE22_SIDE) != 0u)) /* 0x17DD0/0x17DD5 */
-        if (camera_point_side(0u, px, py, t) != 0) hit |= 1u;  /* 0x17DFB/0x17E0E */
+        if ((u8)camera_point_side(0u, px, py, t) != 0u) hit |= 1u;  /* 0x17DFB/0x17E0E, 0x17E00/0x17E13 `test al,al` */
     u8 s62 = DSB(DS_00100B62);                                 /* 0x17E1D */
     DSB(DS_00100B62) = 0;                                      /* 0x17E2D */
     DSB(DS_00100B63) = s63;                                    /* 0x17E3C */
     if (!(DSW(DS_00104B00) == 0x22u && DSB(CAMERA_MODE22_SIDE) != 1u)) /* 0x17E41/0x17E4E */
-        if (camera_point_side(1u, px, py, t) != 0) hit |= 2u;  /* 0x17E70/0x17E86 */
+        if ((u8)camera_point_side(1u, px, py, t) != 0u) hit |= 2u;  /* 0x17E70/0x17E86, 0x17E75/0x17E8B `test al,al` */
     DSD(DS_00100B08) = s08;                                    /* 0x17E96 */
     DSD(DS_00100B0C) = s0c;                                    /* 0x17EA4 */
     DSB(DS_00100B62) = s62;                                    /* 0x17EAE */
