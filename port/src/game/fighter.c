@@ -992,6 +992,7 @@ void fighter_think(void)
 /* 0x3B938 — demo-pose record §26. EAX = the thrower's slot. */
 void fighter_3b938(u32 slot)
 {
+    PR_SEAM(0x3B938u, slot);
     if (DSB(DSD(slot + 0x08u) + 0x48u) == 4u) {         /* 0x3B945/0x3B948 */
         actors_anim_begin(DSD(slot + 0x08u), FIGHTER_E1898,
                           0x40000000u);                 /* 0x3B97D */

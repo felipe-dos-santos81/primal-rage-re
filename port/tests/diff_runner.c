@@ -30806,6 +30806,111 @@ D4B_FS_MUT(type0, 9u) D4B_FS_MUT(e0, 10u)    D4B_FS_MUT(src, 11u)   D4B_FS_MUT(d
 D4B_FS_MUT(off10w, 13u) D4B_FS_MUT(off10, 14u) D4B_FS_MUT(f0f, 15u) D4B_FS_MUT(bump, 16u)
 D4B_FS_MUT(ret0, 17u) D4B_FS_MUT(nolock1, 101u) D4B_FS_MUT(nounlink, 102u) D4B_FS_MUT(nolock2, 104u)
 D4B_FS_MUT(head, 107u) D4B_FS_MUT(lockend, 110u)
+
+/* 0x140E4 camera_box_overlap: EAX, EDX = the two actors' pset indices. Per actor (0x140EE..0x141A7,
+ * 0x141AB..0x14252): the sprite is the handle at 0xA8B30 + (word[actor] & 0x7FFF) * 4, resolved;
+ * its origin is the words at +4 and +6 (`mov ecx,[eax+2]; sar ecx,0x10`, `mov edi,[eax+4]; sar
+ * edi,0x10`), the x origin mirrored to width - origin - 1 when the actor word's bit 15 is set
+ * (0x1412E..0x14137); x1 = ((actor+4 >> 6) * 0xF3D + 0x800) / 0x1000 truncating, minus the origin,
+ * y1 the same with actor+8 and 0xD56; x2 = x1 + the width word (`movsx`), y2 = y1 + the height
+ * (the first dword `sar 16`). Then 0x14080 clips the first rect by the second and returns AL. */
+static void d4b_140e4_rect(u32 idx, int rect[4], u32 mut, int second)
+{
+    u32 actor = DSD(DS_001014EC) + idx * ((mut == 1u) ? 0x10u : 0x20u);      /* @stride */
+    u32 word = DSW(actor);
+    u32 id = (mut == 2u) ? word : (word & 0x7FFFu);                           /* @idmask */
+    const u8 *p = (const u8 *)res_resolve(DSD(DS_000A8B30 + id * 4u));
+    u32 off = p != NULL ? (u32)(p - mem) : 0u;
+    s32 la = 0, lb = 0, w = 0, h = 0, x, y, kx, ky;
+    int flip = (mut == 3u) ? 0 : (mut == 4u) ? 1 : ((word & 0x8000u) != 0u);  /* @noflip, @flipall */
+    if (off != 0u) {
+        la = (mut == 5u) ? (s32)(s16)DSW(off + 2u) : (s32)DSD(off + 2u) >> 16;   /* @ox */
+        lb = (mut == 6u) ? (s32)(s16)DSW(off + 4u) : (s32)DSD(off + 4u) >> 16;   /* @oy */
+        w = (mut == 7u) ? (s32)(u32)DSW(off) : (s32)(s16)DSW(off);            /* @wzext */
+        h = (mut == 8u) ? (s32)(u32)DSW(off + 2u) : (s32)DSD(off) >> 16;      /* @hzext */
+        if (mut == 9u) { s32 t = w; w = h; h = t; }                           /* @wh */
+        if (flip) la = w - la - ((mut == 10u) ? 0 : 1);                       /* @flip1 */
+    }
+    kx = (mut == 11u) ? 0xD56 : 0xF3D;                                        /* @kx */
+    ky = (mut == 12u) ? 0xF3D : 0xD56;                                        /* @ky */
+    x = (s32)DSD(actor + ((mut == 13u) ? 8u : 4u)) >> ((mut == 14u) ? 5 : 6); /* @ax, @shift */
+    y = (s32)DSD(actor + ((mut == 15u) ? 4u : 8u)) >> 6;                      /* @ay */
+    x = (s32)((u32)x * (u32)kx + ((mut == 16u) ? 0u : 0x800u));               /* @round */
+    y = (s32)((u32)y * (u32)ky + 0x800u);
+    x = (mut == 17u) ? (x >> 12) : (x / 0x1000);                              /* @floor */
+    y = (mut == 18u) ? (y >> 12) : (y / 0x1000);                              /* @floory */
+    if (mut == 19u && second) { la = 0; }                                     /* @second: the second actor's x origin dropped */
+    rect[0] = x - la;
+    rect[1] = y - lb;
+    rect[2] = rect[0] + w;
+    rect[3] = rect[1] + h;
+}
+static u32 d4b_140e4_core(const u32 *r, u32 mut)
+{
+    int a[4], b[4];
+    d4b_140e4_rect(r[R_EAX], a, mut, 0);
+    d4b_140e4_rect((mut == 20u) ? r[R_EAX] : r[R_EDX], b, mut, 1);            /* @same: the first actor twice */
+    return (u32)camera_rect_clip(a, a, b);
+}
+static void b_d4b_140e4(const u32 *r, u32 *eax) { *eax = (u32)camera_box_overlap(r[R_EAX], r[R_EDX]); }
+#define D4B_BO_MUT(name, n) \
+    static void m_d4b_bo_##name(const u32 *r, u32 *eax) { *eax = d4b_140e4_core(r, n); }
+D4B_BO_MUT(stride, 1u) D4B_BO_MUT(idmask, 2u) D4B_BO_MUT(noflip, 3u) D4B_BO_MUT(flipall, 4u)
+D4B_BO_MUT(ox, 5u)     D4B_BO_MUT(oy, 6u)     D4B_BO_MUT(wzext, 7u)  D4B_BO_MUT(hzext, 8u)
+D4B_BO_MUT(wh, 9u)     D4B_BO_MUT(flip1, 10u) D4B_BO_MUT(kx, 11u)    D4B_BO_MUT(ky, 12u)
+D4B_BO_MUT(ax, 13u)    D4B_BO_MUT(shift, 14u) D4B_BO_MUT(ay, 15u)    D4B_BO_MUT(round, 16u)
+D4B_BO_MUT(floor, 17u) D4B_BO_MUT(floory, 18u) D4B_BO_MUT(second, 19u) D4B_BO_MUT(same, 20u)
+
+/* 0x17BC8 camera_projectile_clash: no argument. 0x140E4(word[rec0+0x56], word[rec1+0x56]) with rec0 =
+ * [0x1077B8], rec1 = [0x10784C]; AL zero returns it (`test al,al; je` 0x17BEF). Then 0x181D0(0x20,
+ * 0x20, [0x100AA8] - [0x100AAC], 0x100B1C; 0x100B14, 0x100B28, 0x100B34, 0x100B24) and 0x181D0(0x20,
+ * 0x20, [0x100AA0] - [0x100AA4], 0x100B18; 0x100B10, 0x100B2C, 0x100B30, 0x100B20), each `and
+ * eax,0xff; jne` to AL = 0; then both dwords 0x100B1C and 0x100B18 must be positive (`jle` 0x17C78,
+ * 0x17C81); then the voice 0x64, 0x3B938(0x1077B0), 0x2B150([0x10784C]) and AL = 1. */
+static u32 d4b_17bc8_core(u32 mut)
+{
+    u32 r0 = DSD((mut == 1u) ? DS_0010784C : DS_001077B8);                   /* @rec0 */
+    u32 r1 = DSD((mut == 2u) ? DS_001077B8 : DS_0010784C);                   /* @rec1 */
+    u32 i0 = (mut == 3u) ? DSD(r0 + 0x56u) : (u32)DSW(r0 + 0x56u);           /* @idxw */
+    u32 i1 = (mut == 4u) ? (u32)DSW(r1 + 0x54u) : (u32)DSW(r1 + 0x56u);      /* @idxoff */
+    s32 dx, dy;
+    u32 v;
+    v = (u32)camera_box_overlap(i0, i1);
+    if (((mut == 5u) ? v : (v & 0xFFu)) == 0u) return 0u;                    /* @al140: the port before the fix */
+    dx = (s32)DSD(DS_00100AA8) - (s32)DSD(DS_00100AAC);
+    dy = (s32)DSD(DS_00100AA0) - (s32)DSD(DS_00100AA4);
+    if (mut == 6u) dx = -dx;                                                  /* @dxsign */
+    if (mut == 7u) dy = -dy;                                                  /* @dysign */
+    if (mut == 8u) v = (u32)camera_sync_visible(0x20u, 0x20u, dx, DS_00100B1C, DS_00100B28, DS_00100B14,
+                                                DS_00100B34, DS_00100B24);   /* @outs: two out pointers exchanged */
+    else v = (u32)camera_sync_visible((mut == 9u) ? 0x10u : 0x20u, 0x20u, dx, DS_00100B1C, DS_00100B14,
+                                      DS_00100B28, DS_00100B34, DS_00100B24);   /* @p1 */
+    if (((mut == 10u) ? v : (v & 0xFFu)) != 0u && mut != 11u) return 0u;     /* @alsync, @nofirst */
+    v = (u32)camera_sync_visible(0x20u, 0x20u, (mut == 12u) ? dx : dy, DS_00100B18, DS_00100B10,   /* @dydx */
+                                 DS_00100B2C, DS_00100B30, DS_00100B20);
+    if (((mut == 13u) ? v : (v & 0xFFu)) != 0u && mut != 14u) return 0u;     /* @alsync2, @nosecond */
+    if (mut == 15u) { if ((s32)DSD(DS_00100B1C) < 0) return 0u; }            /* @b1cz: zero passes */
+    else if (mut == 16u) { if (DSD(DS_00100B1C) == 0u) return 0u; }          /* @b1cneg: a negative passes */
+    else if (mut != 17u && (s32)DSD(DS_00100B1C) <= 0) return 0u;            /* @nob1c */
+    if (mut == 18u) { if ((s32)DSD(DS_00100B18) < 0) return 0u; }            /* @b18z */
+    else if (mut == 19u) { if (DSD(DS_00100B18) == 0u) return 0u; }          /* @b18neg */
+    else if (mut != 20u && (s32)DSD(DS_00100B18) <= 0) return 0u;            /* @nob18 */
+    if (mut == 24u) actor_set_dead(DSD(DS_0010784C));                        /* @order: the kill first */
+    if (mut != 21u) (void)sound_voice((mut == 22u) ? 0x65u : 0x64u);          /* @novoice, @voice */
+    fighter_3b938((mut == 23u) ? DS_001077B0 + 0x94u : DS_001077B0);          /* @burst */
+    if (mut != 24u) actor_set_dead(DSD((mut == 25u) ? DS_001077B8 : DS_0010784C));   /* @kill */
+    return (mut == 26u) ? 0u : 1u;                                            /* @ret */
+}
+static void b_d4b_17bc8(const u32 *r, u32 *eax) { (void)r; *eax = (u32)camera_projectile_clash(); }
+#define D4B_PC_MUT(name, n) \
+    static void m_d4b_pc_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4b_17bc8_core(n); }
+D4B_PC_MUT(rec0, 1u)  D4B_PC_MUT(rec1, 2u)   D4B_PC_MUT(idxw, 3u)   D4B_PC_MUT(idxoff, 4u)
+D4B_PC_MUT(al140, 5u) D4B_PC_MUT(dxsign, 6u) D4B_PC_MUT(dysign, 7u) D4B_PC_MUT(outs, 8u)
+D4B_PC_MUT(p1, 9u)    D4B_PC_MUT(alsync, 10u) D4B_PC_MUT(nofirst, 11u) D4B_PC_MUT(dydx, 12u)
+D4B_PC_MUT(alsync2, 13u) D4B_PC_MUT(nosecond, 14u) D4B_PC_MUT(b1cz, 15u) D4B_PC_MUT(b1cneg, 16u)
+D4B_PC_MUT(nob1c, 17u) D4B_PC_MUT(b18z, 18u)  D4B_PC_MUT(b18neg, 19u) D4B_PC_MUT(nob18, 20u)
+D4B_PC_MUT(novoice, 21u) D4B_PC_MUT(voice, 22u) D4B_PC_MUT(burst, 23u) D4B_PC_MUT(order, 24u)
+D4B_PC_MUT(kill, 25u) D4B_PC_MUT(ret, 26u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39517,6 +39622,59 @@ static const binding_t k_bindings[] = {
     { "effects_spawn_scroll@nolock2",        m_d4b_fs_nolock2, 0xFFFFFFFFu },
     { "effects_spawn_scroll@head",           m_d4b_fs_head, 0xFFFFFFFFu },
     { "effects_spawn_scroll@lockend",        m_d4b_fs_lockend, 0xFFFFFFFFu },
+    { "camera_box_overlap",                  b_d4b_140e4, 0x000000FFu },
+    { "camera_box_overlap@stride",           m_d4b_bo_stride, 0x000000FFu },
+    { "camera_box_overlap@idmask",           m_d4b_bo_idmask, 0x000000FFu },
+    { "camera_box_overlap@noflip",           m_d4b_bo_noflip, 0x000000FFu },
+    { "camera_box_overlap@flipall",          m_d4b_bo_flipall, 0x000000FFu },
+    { "camera_box_overlap@ox",               m_d4b_bo_ox, 0x000000FFu },
+    { "camera_box_overlap@oy",               m_d4b_bo_oy, 0x000000FFu },
+    { "camera_box_overlap@wzext",            m_d4b_bo_wzext, 0x000000FFu },
+    { "camera_box_overlap@hzext",            m_d4b_bo_hzext, 0x000000FFu },
+    { "camera_box_overlap@wh",               m_d4b_bo_wh, 0x000000FFu },
+    { "camera_box_overlap@flip1",            m_d4b_bo_flip1, 0x000000FFu },
+    { "camera_box_overlap@kx",               m_d4b_bo_kx, 0x000000FFu },
+    { "camera_box_overlap@ky",               m_d4b_bo_ky, 0x000000FFu },
+    { "camera_box_overlap@ax",               m_d4b_bo_ax, 0x000000FFu },
+    { "camera_box_overlap@shift",            m_d4b_bo_shift, 0x000000FFu },
+    { "camera_box_overlap@ay",               m_d4b_bo_ay, 0x000000FFu },
+    { "camera_box_overlap@round",            m_d4b_bo_round, 0x000000FFu },
+    { "camera_box_overlap@floor",            m_d4b_bo_floor, 0x000000FFu },
+    { "camera_box_overlap@floory",           m_d4b_bo_floory, 0x000000FFu },
+    { "camera_box_overlap@second",           m_d4b_bo_second, 0x000000FFu },
+    { "camera_box_overlap@same",             m_d4b_bo_same, 0x000000FFu },
+    { "camera_projectile_clash",             b_d4b_17bc8, 0x000000FFu },
+    { "camera_projectile_clash@rec0",        m_d4b_pc_rec0, 0x000000FFu },
+    { "camera_projectile_clash@rec1",        m_d4b_pc_rec1, 0x000000FFu },
+    { "camera_projectile_clash@idxw",        m_d4b_pc_idxw, 0x000000FFu },
+    { "camera_projectile_clash@idxoff",      m_d4b_pc_idxoff, 0x000000FFu },
+    { "camera_projectile_clash@al140",       m_d4b_pc_al140, 0x000000FFu },
+    { "camera_projectile_clash@dxsign",      m_d4b_pc_dxsign, 0x000000FFu },
+    { "camera_projectile_clash@dysign",      m_d4b_pc_dysign, 0x000000FFu },
+    { "camera_projectile_clash@outs",        m_d4b_pc_outs, 0x000000FFu },
+    { "camera_projectile_clash@p1",          m_d4b_pc_p1, 0x000000FFu },
+    { "camera_projectile_clash@alsync",      m_d4b_pc_alsync, 0x000000FFu },
+    { "camera_projectile_clash@nofirst",     m_d4b_pc_nofirst, 0x000000FFu },
+    { "camera_projectile_clash@dydx",        m_d4b_pc_dydx, 0x000000FFu },
+    { "camera_projectile_clash@alsync2",     m_d4b_pc_alsync2, 0x000000FFu },
+    { "camera_projectile_clash@b1cz",        m_d4b_pc_b1cz, 0x000000FFu },
+    { "camera_projectile_clash@b1cneg",      m_d4b_pc_b1cneg, 0x000000FFu },
+    { "camera_projectile_clash@nob1c",       m_d4b_pc_nob1c, 0x000000FFu },
+    { "camera_projectile_clash@b18z",        m_d4b_pc_b18z, 0x000000FFu },
+    { "camera_projectile_clash@b18neg",      m_d4b_pc_b18neg, 0x000000FFu },
+    { "camera_projectile_clash@nob18",       m_d4b_pc_nob18, 0x000000FFu },
+    { "camera_projectile_clash@novoice",     m_d4b_pc_novoice, 0x000000FFu },
+    { "camera_projectile_clash@voice",       m_d4b_pc_voice, 0x000000FFu },
+    { "camera_projectile_clash@burst",       m_d4b_pc_burst, 0x000000FFu },
+    { "camera_projectile_clash@order",       m_d4b_pc_order, 0x000000FFu },
+    { "camera_projectile_clash@kill",        m_d4b_pc_kill, 0x000000FFu },
+    { "camera_projectile_clash@ret",         m_d4b_pc_ret, 0x000000FFu },
+    { "camera_projectile_clash_sync",        b_d4b_17bc8, 0x000000FFu },
+    { "camera_projectile_clash_sync@nofirst", m_d4b_pc_nofirst, 0x000000FFu },
+    { "camera_projectile_clash_sync@nosecond", m_d4b_pc_nosecond, 0x000000FFu },
+    { "camera_projectile_clash_sync@dxsign", m_d4b_pc_dxsign, 0x000000FFu },
+    { "camera_projectile_clash_sync@dysign", m_d4b_pc_dysign, 0x000000FFu },
+    { "camera_projectile_clash_sync@dydx",   m_d4b_pc_dydx, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)

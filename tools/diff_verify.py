@@ -22164,6 +22164,177 @@ D4B_SPECS += [
                 "@src", "@d", "@off10w", "@off10", "@f0f", "@bump", "@ret0", "@nolock1", "@nounlink", "@nolock2",
                 "@head", "@lockend")),
 ]
+
+# ---- 0x140E4: the two actors' projected sprite boxes ---------------------------------------------
+D4B_BOX_PSET = 0x10A400            # the pset array for the 0x140E4 cases (zero BSS)
+
+
+def d4b_s16(v):
+    v &= 0xFFFF
+    return v - 0x10000 if v & 0x8000 else v
+
+
+def d4b_axis(v, k):
+    """0x1413A..0x14156: ((v sar 6) * k + 0x800) as a signed dword, divided by 0x1000 truncating."""
+    v = v - (1 << 32) if v & 0x80000000 else v
+    t = ((v >> 6) * k + 0x800) & 0xFFFFFFFF
+    t = t - (1 << 32) if t & 0x80000000 else t
+    return -((-t) >> 12) if t < 0 else t >> 12
+
+
+def d4b_box(ax, ay, w, h, ox, oy, flip):
+    """The model of one actor's box, used only to place the second actor's origin on an edge of the
+    first box; every expectation comes from the original's run."""
+    ox, oy = d4b_s16(ox), d4b_s16(oy)
+    la = d4b_s16(w) - ox - 1 if flip else ox
+    x1, y1 = d4b_axis(ax, 0xF3D) - la, d4b_axis(ay, 0xD56) - oy
+    return x1, y1, x1 + d4b_s16(w), y1 + d4b_s16(h)
+
+
+def d4b_box_case(cid, mode, delta, a, b, ia=3, ib=5, ida=0x0123, idb=0x7FFE, ha=0x800040, hb=0x1000010):
+    """a = (x, y, width, height, origin x, origin y, flip); b = (x, y, width, height, flip): b's
+    origin is solved so that, in `mode`, the named edges are `delta` apart (0 = touching):
+    "xr" b's left on a's right, "xl" b's right on a's left, "yb" b's top on a's bottom, "yt" b's
+    bottom on a's top; the other axis is aligned with a's ("in": both are)."""
+    ax1, ay1, ax2, ay2 = d4b_box(*a)
+    bx, by, bw, bh, bflip = b
+    tx, ty = ax1, ay1                                # the b box's wanted x1, y1
+    if mode == "xr": tx = ax2 + delta
+    if mode == "xl": tx = ax1 - delta - d4b_s16(bw)
+    if mode == "yb": ty = ay2 + delta
+    if mode == "yt": ty = ay1 - delta - d4b_s16(bh)
+    la = d4b_axis(bx, 0xF3D) - tx
+    box = d4b_s16(bw) - la - 1 if bflip else la
+    boy = d4b_axis(by, 0xD56) - ty
+    assert -0x8000 <= box < 0x8000 and -0x8000 <= boy < 0x8000, (cid, box, boy)
+    assert d4b_box(bx, by, bw, bh, box, boy, bflip)[:2] == (tx, ty), cid
+    p = {**d4b_res(), 0x1014EC: le32(D4B_BOX_PSET),
+         0xA8B30 + ida * 4 - 4: le32(ha ^ 0x100) + le32(ha) + le32(ha ^ 0x200),
+         0xA8B30 + idb * 4 - 4: le32(hb ^ 0x100) + le32(hb) + le32(hb ^ 0x200),
+         d4b_at(ha) - 2: b"\xee\xee" + le16(a[2]) + le16(a[3]) + le16(a[4]) + le16(a[5]) + b"\xdd\xdd",
+         d4b_at(hb) - 2: b"\xcc\xcc" + le16(bw) + le16(bh) + le16(box) + le16(boy) + b"\xbb\xbb",
+         D4B_BOX_PSET + ia * 0x20: le16(ida | (0x8000 if a[6] else 0)) + le16(0x2A2A) + le32(a[0]) + le32(a[1]),
+         D4B_BOX_PSET + ib * 0x20: le16(idb | (0x8000 if bflip else 0)) + le16(0x2B2B) + le32(bx) + le32(by)}
+    return Case(cid, {"eax": ia, "edx": ib}, p)
+
+
+# two first actors and two second actors: different coordinates on both axes (so a change of either
+# projection moves the boxes apart), products whose +0x800 carries and negative products that
+# truncate (so the rounding and the truncation show), an odd width for the mirror
+D4B_BOX_A0 = (0x00012345, 0x0000ABCD, 0x0029, 0x0033, 0x0007, 0x0005, False)
+D4B_BOX_A1 = (0xFFFE1DC0, 0xFFFF2B40, 0x001F, 0x0011, 0xFFFD, 0x0009, True)
+D4B_BOX_B0 = (0x00034567, 0xFFFF6540, 0x0015, 0x0027, True)
+D4B_BOX_B1 = (0xFFFC0FC0, 0x00023456, 0x0030, 0x000B, False)
+
+D4B_SPECS += [
+    # 0x140E4 camera_box_overlap: EAX, EDX = the two actors' pset indices (`shl eax,5` 0x140F4, `shl
+    # ebp,5` 0x14191, from the base 0x1014EC). Per actor: the handle at 0xA8B30 + (word & 0x7FFF) * 4
+    # (`and ah,0x7f` 0x140FE), resolved by 0x1B544; the origin words at +4 and +6 (0x14114, 0x1411A,
+    # `sar 0x10`), the x origin mirrored to width - origin - 1 when the word's bit 15 is set
+    # (0x1412E..0x14137); x1 = ((actor+4 sar 6) * 0xF3D + 0x800) / 0x1000 (the truncating `sar edx,0x1f;
+    # shl edx,0xc; sbb eax,edx; sar eax,0xc` 0x1414E..0x14156) minus the origin, y1 the same with
+    # actor+8 and 0xD56; x2 = x1 + `movsx` width, y2 = y1 + the first dword `sar 0x10`. Both rects
+    # live on the raw's stack; 0x14080 (d1h's row; run on both sides) clips the first by the second
+    # in place and its AL is returned: all three callers `test al,al` (0x1769D, 0x1774D, 0x17BEF),
+    # mask 0xFF. The function writes no memory: every case is an edge pair, touching (AL = 1) and one
+    # pixel apart (AL = 0), on each of the four sides, so a one-pixel error in any edge shows.
+    Spec("camera_box_overlap", 0x140E4, [
+        d4b_box_case("xr0", "xr", 0, D4B_BOX_A0, D4B_BOX_B0),
+        d4b_box_case("xr1", "xr", 1, D4B_BOX_A0, D4B_BOX_B0),
+        d4b_box_case("xl0", "xl", 0, D4B_BOX_A1, D4B_BOX_B1),
+        d4b_box_case("xl1", "xl", 1, D4B_BOX_A1, D4B_BOX_B1),
+        d4b_box_case("yb0", "yb", 0, D4B_BOX_A1, D4B_BOX_B0, ia=1, ib=8, ida=0x7FFF, idb=0x0001),
+        d4b_box_case("yb1", "yb", 1, D4B_BOX_A1, D4B_BOX_B0, ia=1, ib=8, ida=0x7FFF, idb=0x0001),
+        d4b_box_case("yt0", "yt", 0, D4B_BOX_A0, D4B_BOX_B1, ha=0x1000010, hb=0x800040),
+        d4b_box_case("yt1", "yt", 1, D4B_BOX_A0, D4B_BOX_B1, ha=0x1000010, hb=0x800040),
+        # the other pairings: on each axis one actor's product is negative and the other's is not, so
+        # the truncation toward zero moves one box only
+        d4b_box_case("xm0", "xl", 0, D4B_BOX_A0, D4B_BOX_B1),
+        d4b_box_case("xm1", "xl", 1, D4B_BOX_A0, D4B_BOX_B1),
+        d4b_box_case("xn0", "xr", 0, D4B_BOX_A1, D4B_BOX_B0),
+        d4b_box_case("xn1", "xr", 1, D4B_BOX_A1, D4B_BOX_B0),
+        d4b_box_case("ym0", "yt", 0, D4B_BOX_A1, D4B_BOX_B1),
+        d4b_box_case("ym1", "yt", 1, D4B_BOX_A1, D4B_BOX_B1),
+        d4b_box_case("yn0", "yb", 0, D4B_BOX_A0, D4B_BOX_B0),
+        d4b_box_case("yn1", "yb", 1, D4B_BOX_A0, D4B_BOX_B0),
+        # a negative width and a negative height: an empty first box (AL = 0) with b's corner on its own
+        d4b_box_case("nw", "in", 0, (0x00012345, 0x0000ABCD, 0xFFF0, 0x0033, 0x0007, 0x0005, False), D4B_BOX_B0),
+        d4b_box_case("nh", "in", 0, (0x00012345, 0x0000ABCD, 0x0029, 0xFFF0, 0x0007, 0x0005, False), D4B_BOX_B1),
+    ], allow_calls=(0x1B544, 0x14080), eax_mask=0xFF,
+       mutants=("@stride", "@idmask", "@noflip", "@flipall", "@ox", "@oy", "@wzext", "@hzext", "@wh", "@flip1", "@kx",
+                "@ky", "@ax", "@shift", "@ay", "@round", "@floor", "@floory", "@second", "@same")),
+]
+
+# ---- 0x17BC8: two live projectiles against each other -------------------------------------------
+D4B_PC_R0, D4B_PC_R1 = 0x10A200, 0x10A280       # the two projectile records ([0x1077B8], [0x10784C])
+# 0x140E4 (this batch's row; seamed here): EAX, EDX; it saves EBX, ECX, ESI, EDI, EBP and writes EDX
+D4B_OVERLAP = E.Call(0x140E4, ("eax", "edx"), clobbers=("edx",))
+# 0x181D0 (d1h's row; seamed here): EAX, EDX, EBX, ECX and four stack dwords, `ret 0x10` on each of
+# its five returns; it saves ESI, EDI, EBP
+D4B_SYNC = E.Call(0x181D0, ("eax", "edx", "ebx", "ecx", "s0", "s1", "s2", "s3"), pop=0x10,
+                  clobbers=("ebx", "ecx", "edx"))
+D4B_SYNC_REAL = E.Call(0x181D0, ("eax", "edx", "ebx", "ecx", "s0", "s1", "s2", "s3"), mode="real")
+D4B_BURST = E.Call(0x3B938, ("eax",))            # d1b's row; seamed here; no register clobbered
+
+
+def d4b_clash(cid, ov, sync, b1c=5, b18=7, x=(0x100, 0x130), y=(0x50, 0x3F), voice=None, real=False):
+    """The two records' pset words between seeded words, the four anchors 0x100AA0..0x100AAC (y0, y1,
+    x0, x1) and the ten dwords 0x100B10..0x100B37 seeded, with the gates 0x100B1C and 0x100B18."""
+    p = {0x1077B8 - 4: le32(0xB4B4B4B4) + le32(D4B_PC_R0) + le32(0xBCBCBCBC),
+         0x10784C - 4: le32(0x48484848) + le32(D4B_PC_R1) + le32(0x50505050),
+         D4B_PC_R0 + 0x54: le16(0x5454) + le16(0x0123) + le16(0x5858),
+         D4B_PC_R1 + 0x54: le16(0x4545) + le16(0x8001) + le16(0x8585),
+         0x100AA0: le32(y[0]) + le32(y[1]) + le32(x[0]) + le32(x[1]),
+         0x100B10: le32(0x10101010) + le32(0x14141414) + le32(b18) + le32(b1c) + le32(0x20202020)
+                   + le32(0x24242424) + le32(0x28282828) + le32(0x2C2C2C2C) + le32(0x30303030) + le32(0x34343434)}
+    stubs = {0x140E4: ov}
+    if not real:
+        stubs[0x181D0] = sync
+    if voice is not None:
+        stubs[0x2C3FC] = voice
+    return Case(cid, {}, p, stubs)
+
+
+D4B_SPECS += [
+    # 0x17BC8 camera_projectile_clash: no argument. 0x140E4(word[[0x1077B8]+0x56], word[[0x10784C]+0x56])
+    # (`and eax,0xffff`, `and edx,0xffff` 0x17BDB/0x17BE5; `test al,al; je` 0x17BEF returns the callee's
+    # AL = 0: c1, and c2 with the stub's EAX 0x100). 0x181D0(0x20, 0x20, [0x100AA8] - [0x100AAC],
+    # 0x100B1C; 0x100B14, 0x100B28, 0x100B34, 0x100B24) (`sub ebx,edx; neg ebx` 0x17C19/0x17C31), `and
+    # eax,0xff; jne` (0x17C3A: c3 returns AL 1, c4 0x100 = AL 0), then 0x181D0(0x20, 0x20, [0x100AA0] -
+    # [0x100AA4], 0x100B18; 0x100B10, 0x100B2C, 0x100B30, 0x100B20), the same test (0x17C6A); then
+    # `cmp [0x100b1c],0; jle` and `cmp [0x100b18],0; jle` (0x17C71, 0x17C7A: c5..c8 are 0 and negative
+    # for each); then 0x2C3FC(0x64), 0x3B938(0x1077B0), 0x2B150([0x10784C]) and `mov al,1`. Mask 0xFF:
+    # the one caller stores AL (`mov [esp],al` 0x17CFA). A stub's EAX is one value per case, so the
+    # second 0x181D0 returning non-zero after the first returned zero is the _sync row's.
+    Spec("camera_projectile_clash", 0x17BC8, [
+        d4b_clash("c0", 1, 0),
+        d4b_clash("c1", 0, 0),
+        d4b_clash("c2", 0x100, 0),
+        d4b_clash("c3", 0xFFFFFF01, 1),
+        d4b_clash("c4", 1, 0x100, b1c=1, b18=1, x=(0xFFFFFFF0, 0x20), y=(0x7, 0x1234)),
+        d4b_clash("c5", 1, 0, b1c=0),
+        d4b_clash("c6", 1, 0, b1c=0xFFFFFFFF),
+        d4b_clash("c7", 1, 0, b18=0),
+        d4b_clash("c8", 1, 0, b18=0x80000000),
+        d4b_clash("c9", 0x55, 0xFFFFFF00, voice=0),
+    ], calls=(D4B_OVERLAP, D4B_SYNC, VOICE, D4B_BURST, P7_2B150), eax_mask=0xFF,
+       mutants=("@rec0", "@rec1", "@idxw", "@idxoff", "@al140", "@dxsign", "@dysign", "@outs", "@p1", "@alsync",
+                "@nofirst", "@dydx", "@alsync2", "@b1cz", "@b1cneg", "@nob1c", "@b18z", "@b18neg",
+                "@nob18", "@novoice", "@voice", "@burst", "@order", "@kill", "@ret")),
+    # The same function with 0x181D0 run on both sides (recorded): the two calls answer differently.
+    # q0: both extents overlap (differences 5 and -3): the full path. q1: the x difference 0x40 is
+    # past the 0x20 extent, the first call returns 1. q2: only the y difference is (-0x40): the
+    # second call returns 1 after the first returned 0 (`jne` 0x17C6F taken). q3: the same on x at
+    # -0x20, the exact edge.
+    Spec("camera_projectile_clash_sync", 0x17BC8, [
+        d4b_clash("q0", 1, 0, x=(0x105, 0x100), y=(0x50, 0x53), real=True),
+        d4b_clash("q1", 1, 0, x=(0x140, 0x100), y=(0x50, 0x53), real=True),
+        d4b_clash("q2", 1, 0, x=(0x105, 0x100), y=(0x10, 0x50), real=True),
+        d4b_clash("q3", 1, 0, x=(0x0E0, 0x100), y=(0x50, 0x53), real=True),
+        d4b_clash("q4", 1, 0, x=(0x100, 0x105), y=(0x70, 0x50), real=True),
+    ], calls=(D4B_OVERLAP, D4B_SYNC_REAL, VOICE, D4B_BURST, P7_2B150), eax_mask=0xFF,
+       mutants=("@nofirst", "@nosecond", "@dxsign", "@dysign", "@dydx")),
+]
 D1_SPECS += D4B_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

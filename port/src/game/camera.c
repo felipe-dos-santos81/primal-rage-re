@@ -722,6 +722,7 @@ static void camera_actor_rect(u32 actor_idx, int *rect)
  * 0x17698 gate for the 0x170A0 tail. */
 int camera_box_overlap(u32 actor0, u32 actor1)
 {
+    PR_SEAM_RET(0x140E4u, actor0, actor1);
     int rect0[4], rect1[4];
     camera_actor_rect(actor0, rect0);
     camera_actor_rect(actor1, rect1);
@@ -1056,6 +1057,7 @@ static void camera_box_clip(u32 side, u32 index, u8 *box)
 int camera_sync_visible(u32 p1, u32 p2, s32 p3, u32 p4,
                         u32 p5, u32 p6, u32 p7, u32 p8)
 {
+    PR_SEAM_RET(0x181D0u, p1, p2, (u32)p3, p4, p5, p6, p7, p8);
     if ((s32)p1 < 1) return 2;                         /* 0x181dd */
     if ((s32)p2 < 1) return 3;                         /* 0x181e9 */
     if (p3 < 0 && -p3 >= (s32)p1) return 1;            /* 0x181f6 */
@@ -1377,7 +1379,7 @@ static void camera_projectile_hit(u32 side)
  * two 0x181D0 syncs, with non-empty extents), post voice 0x64 (0x2C3FC,
  * record k7-k12 §8), burst side 0's (0x3B938), kill side 1's (0x2B150) and
  * return 1; else 0. */
-static int camera_projectile_clash(void)
+int camera_projectile_clash(void)
 {
     if ((u8)camera_box_overlap(DSW(DSD(DS_001077B8) + 0x56u),
                                DSW(DSD(DS_0010784C) + 0x56u)) == 0u)
