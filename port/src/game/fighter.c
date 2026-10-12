@@ -1784,23 +1784,29 @@ int fighter_1a640(u32 side)
     return 0;
 }
 
-/* 0x35F84. The +0x52 == 4 handler: set +0x41 bit 0x80; when the landing gate
- * (word[0xBD882+char*2] >> 16 >= slot+0x30 && rec+0x36 <= 0) passes, run
- * 0x1922C, zero rec+0x24, set slot+0x52 = 0x14, slot+0x78 = word[0xBDC16],
- * slot+0x53 = 4 and run 0x3C148/0x3C16C. */
+/* 0x35F84. The +0x52 == 4 handler: set the EAX slot's +0x41 bit 0x80; when
+ * the landing gate (word[0xBD882+char*2] >> 16 >= slot+0x30 on the EAX slot,
+ * and the +0x36 word of that slot's own record <= 0: 0x36007 `mov eax,[ebx]`)
+ * passes, run 0x1922C, zero the +0x24 of the side's record, set the side's
+ * slot +0x52 = 0x14, +0x78 = word[0xBDC16], +0x53 = 4 and run 0x3C148/0x3C16C.
+ * The side is the EDX record's +0x51; its slot is computed from it
+ * (0x35FA1..0x35FB9, [esp+8]) and its record read from that slot (0x35FD9..
+ * 0x35FDF, [esp+0x10]). */
 void fighter_state_35f84(u32 slot, u32 rec)
 {
     u32 side = DSB(rec + 0x51u);
+    u32 own = DS_001077B0 + side * 0x94u;               /* 0x35FA1..0x35FB9 */
+    u32 own_rec = DSD(own);                             /* 0x35FD9..0x35FDF */
     DSB(slot + 0x41u) |= 0x80u;                         /* 0x35FE9 */
     if ((s32)((s32)DSD(FIGHT_LAND_THR
                        + (u32)DSB(slot + 0x7Au) * 2u) >> 16)
             >= (s32)DSD(slot + 0x30u)                   /* 0x36003 */
-        && (s16)DSW(rec + 0x36u) <= 0) {                /* 0x36009 */
+        && (s16)DSW(DSD(slot) + 0x36u) <= 0) {          /* 0x36007/0x36009 */
         hit_stance_timer(side);                         /* 0x3601D */
-        DSD(rec + 0x24u) = 0;                           /* 0x3602A */
-        DSB(slot + 0x52u) = 0x14u;                      /* 0x36037 */
-        DSW(slot + 0x78u) = DSW(FIGHT_35F84_78);        /* 0x3603B */
-        DSB(slot + 0x53u) = 4u;                         /* 0x36042 */
+        DSD(own_rec + 0x24u) = 0;                       /* 0x36022/0x3602A */
+        DSB(own + 0x52u) = 0x14u;                       /* 0x36026/0x36037 */
+        DSW(own + 0x78u) = DSW(FIGHT_35F84_78);         /* 0x3603B */
+        DSB(own + 0x53u) = 4u;                          /* 0x36042 */
         fighter_3c148(side);                            /* 0x36046 */
         fighter_3c16c(side);                            /* 0x3604E */
     }

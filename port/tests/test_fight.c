@@ -8888,8 +8888,11 @@ static void check_state_dispatch(void)
     DSB(DS_001077B0 + 0x54u) = 0;
 
     /* E: +0x52 == 4 dispatches to 0x35F84 (the table's 0x34C53 entry), which
-     * writes +0x52 = 0x14 through the landing gate. The seeded 0x52 = 4
-     * differs from the post-value, so a no-op entry fails. */
+     * writes +0x52 = 0x14 through the landing gate. Like 0x35D7C it computes
+     * the slot it stores to from the side (0x35FA1..0x35FB9, used at 0x36026),
+     * so the byte it writes is the real slot 0's, not this fixture's p0, whose
+     * +0x52 stays 4. The seeded 0xAA differs from the post-value, so a no-op
+     * entry fails. */
     mem_fill(FIGHT_RECS, 0, 0x400u);
     fight_reset_actors();
     fight_reset_slot0(p0, r0);
@@ -8901,9 +8904,13 @@ static void check_state_dispatch(void)
     DSB(p0 + 0x42u) = 0;
     DSB(p0 + 0x43u) = 0;
     DSB(p0 + 0x52u) = 4;
+    DSB(DS_001077B0 + 0x52u) = 0xAAu;
     DSW(DS_001088E0) = 0;
     fight_hud_pass(0u);
-    CHECK_EQ_INT((int)DSB(p0 + 0x52u), 0x14);   /* 0x35F84's landing state */
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x52u), 0x14);  /* 0x35F84's landing state */
+    DSB(DS_001077B0 + 0x52u) = 0;
+    DSB(DS_001077B0 + 0x53u) = 0;
+    DSW(DS_001077B0 + 0x78u) = 0;
 
     /* F: +0x52 == 12 dispatches to 0x361C8 (0x34C9A); its +0x58 == 3 case
      * writes +0x52 = 9. Seeded +0x52 = 12 differs. */
