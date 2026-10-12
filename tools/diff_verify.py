@@ -22019,6 +22019,74 @@ D4A_SPECS += [
                     0x280F3: "the +0x42 store: this row's 0x27DC8 stub leaves the winner byte 2 (the plain row hits it)"},
        mutants=("@pre", "@preb1e", "@pread4a", "@pread4e", "@pread4b", "@preb16", "@nowin", "@nofreeze", "@noend")),
 ]
+# 0x474E4 as 0x2791C's rows stub it: four characters without a terminator, so that the buffer's
+# seeded tail (the case's) fixes the length 0x2791C counts; a stub EAX of 0 makes 0x1C500 zero the
+# first byte (length 0).
+D4A_STR4 = E.Call(0x474E4, ("eax", "edx", "ebx"), mode="stub", eax=8, clobbers=("ebx", "edx"),
+                  writes=((1, 0, b"CONT"),))
+D4A_SNAPBACK = E.Call(0x33B00, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+# the same callees leaving what 0x2791C reads after each: 0x33B00 the side byte 0x10810D = 0xFF (read
+# at 0x279AE), 0x1D764 the side byte = 1 and the bytes 0x104B0B = 0x77, 0x104B12 = 1 (0x279BB, 0x279D2,
+# 0x279E5), 0x46534 the side byte = 0 (0x279EF)
+D4A_SNAPBACK_W = E.Call(0x33B00, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"),
+                        writes=((None, 0x0010810D, b"\xff"),))
+D4A_HUD_RESET_W = E.Call(0x1D764, ("eax",), writes=((None, 0x0010810D, b"\x01"), (None, 0x00104B0B, b"\x77"),
+                                                    (None, 0x00104B12, b"\x01")))
+D4A_ACCUM_W = E.Call(0x46534, ("eax", "edx"), clobbers=("edx",), writes=((None, 0x0010810D, b"\x00"),))
+
+
+def d4a_ct_case(side, tail, b0b, b12, f41=(0xFF, 0x18, 0x5A, 0xA5), b00=0x5A5A):
+    """0x2791C: the side byte 0x10810D as the top byte of the dword 0x10810A (the three below it
+    seeded), the string buffer 0x102760 (four bytes the 0x474E4 stub overwrites, then `tail`), the
+    bytes 0x104B0B and 0x104B12 and the mode word 0x104B00 between seeded neighbours, and for the
+    slots -128, -1, 0 and 1 the +0x41 byte (`f41`, in that order) and the +0x5B byte (0x5A + i),
+    each between seeded bytes."""
+    p = {0x0010810A: bytes([0x11, 0x22, 0x33, side, 0x44]),
+         0x00102760: b"\x5a\x5a\x5a\x5a" + tail,
+         0x00104B0A: bytes([0x61, b0b, 0x62]), 0x00104B11: bytes([0x63, b12, 0x64]),
+         0x00104AFE: le16(0x6565) + le16(b00) + le16(0x6666)}
+    for i, s in enumerate((-128, -1, 0, 1)):
+        base = 0x001077B0 + s * 0x94
+        p[base + 0x40] = bytes([0x71 + i, f41[i], 0x75 + i])
+        p[base + 0x5A] = bytes([0x81 + i, 0x5A + i, 0x91 + i])
+    return p
+
+
+D4A_REG5 = {"ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468, "edi": 0x2468ACE0}
+D4A_SPECS += [
+    # 0x2791C flow_continue_take: no argument. String 0x41's length (0x1C500 real over the stubbed
+    # 0x474E4, `repne scasb`) goes to 0x2F388(-1, 0xA, len); 0x2C088(-1, 0xC, the side: the signed
+    # top byte of the dword 0x10810A); 0x2F388(-1, 0xE, 0x1C) and (-1, 0xF, 0x1C); 0x33B00(c,
+    # 0x104890 + c * 0x94, 0x1049B8 + c * 0x68) for c = 0, 1; 0x1D764(the side, re-read); the
+    # side's slot +0x5B = the byte 0x104B0B (side re-read); 0x46534(the byte 0x104B12 zero-extended,
+    # -2); the mode word 0x104B00 = 0xC and the side's (re-read) slot +0x41 &= 0xE7. Every callee
+    # but 0x1C500 is a stub (0x33B00 seamed here, no row). t2 runs side -1 with an empty string
+    # (stub EAX 0), t3 side -128 with 0x20 characters. Mask 0: record §1.
+    Spec("flow_continue_take", 0x2791C, [
+        Case("t0", D4A_REG5, d4a_ct_case(0x00, b"INUE?\x00\x6e\x6e", 0x21, 0x00)),
+        Case("t1", {}, d4a_ct_case(0x01, b"\x00\x6e\x6e", 0x80, 0x01, b00=0x010C), {0x46534: 0x12345678}),
+        Case("t2", {}, d4a_ct_case(0xFF, b"\x00", 0x00, 0x80), {0x474E4: 0, 0x1D764: 0x100}),
+        Case("t3", {}, d4a_ct_case(0x80, b"X" * 0x1C + b"\x00", 0xFF, 0xFF, f41=(0x18, 0xE7, 0x00, 0xFF))),
+        Case("t4", {}, d4a_ct_case(0x01, b"!\x00", 0x5B, 0x02, f41=(0xFF, 0xFF, 0xE7, 0x08))),
+    ], allow_calls=(0x1C500,),
+       calls=(D4A_STR4, D2C_RELCNT, D2B_PROMPT_CLR, D4A_SNAPBACK, D3A_HUD_RESET, D3A_ACCUM), eax_mask=0,
+       mutants=("@id", "@len1", "@lenfix", "@row1", "@col1", "@noclr1", "@prow", "@pcol", "@psidezext", "@pside0",
+                "@noprompt", "@porder", "@r2row", "@r2n", "@nor2", "@r3row", "@r3n", "@nor3", "@rorder", "@snapone",
+                "@snaprev", "@snapsrc", "@snapdst", "@snapswap", "@snapside", "@nosnap", "@hudzext", "@hudother",
+                "@nohud", "@hudearly", "@b5bzext", "@b5boff", "@b5bsrc", "@nob5b", "@b5bearly", "@accsext", "@accd",
+                "@accpos", "@noacc", "@accearly", "@f41zext", "@f41mask", "@f41bit", "@nof41", "@f41off",
+                "@f41early", "@f41clr", "@b00", "@b00b", "@nob00", "@b00early")),
+    # 0x2791C again with stubs that write what the raw reads after each call (D4A_*_W above): the
+    # side byte is 0xFF for 0x1D764's argument, 1 for the +0x5B store and 0 for the +0x41 store,
+    # whatever it was at entry; the bytes 0x104B0B and 0x104B12 are read after 0x1D764.
+    Spec("flow_continue_take_reread", 0x2791C, [
+        Case("r0", {}, d4a_ct_case(0x00, b"\x00", 0x21, 0x00)),
+        Case("r1", {}, d4a_ct_case(0x01, b"\x00", 0x77, 0x01)),
+        Case("r2", {}, d4a_ct_case(0xFF, b"\x00", 0x00, 0x80)),
+    ], allow_calls=(0x1C500,),
+       calls=(D4A_STR4, D2C_RELCNT, D2B_PROMPT_CLR, D4A_SNAPBACK_W, D4A_HUD_RESET_W, D4A_ACCUM_W), eax_mask=0,
+       mutants=("@prehud", "@pre5b", "@preb0b", "@preb12", "@pre41", "@nohud", "@noacc", "@nosnap")),
+]
 D1_SPECS += D4A_SPECS
 
 

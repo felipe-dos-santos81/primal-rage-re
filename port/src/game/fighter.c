@@ -2446,6 +2446,7 @@ void fighter_state_37464(u32 side)
  * +0x5A >= 0x78, and re-acquire the character palette. */
 void fighter_state_33b00(u32 side, u32 src, u32 dst2)
 {
+    PR_SEAM(0x33B00u, side, src, dst2);
     u32 slot = DS_001077B0 + side * 0x94u;
     u8 a = DSB(slot + 0x5Au);                           /* 0x33B21 */
     u8 b = DSB(slot + 0x5Du);                           /* 0x33B2D */

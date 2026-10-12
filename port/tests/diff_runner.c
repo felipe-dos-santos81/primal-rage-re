@@ -30663,6 +30663,84 @@ D4A_RE_MUT(orset) D4A_RE_MUT(orbit) D4A_RE_MUT(oroff) D4A_RE_MUT(orside) D4A_RE_
 D4A_RE_MUT(fc) D4A_RE_MUT(nofc) D4A_RE_MUT(fcw) D4A_RE_MUT(fe) D4A_RE_MUT(nofe) D4A_RE_MUT(few) D4A_RE_MUT(afe1)
 D4A_RE_MUT(noafe1) D4A_RE_MUT(afew) D4A_RE_MUT(m7) D4A_RE_MUT(m7b) D4A_RE_MUT(nom7) D4A_RE_MUT(early)
 D4A_RE_MUT(pre) D4A_RE_MUT(preb1e) D4A_RE_MUT(pread4a) D4A_RE_MUT(pread4e) D4A_RE_MUT(pread4b) D4A_RE_MUT(preb16)
+/* 0x2791C: no argument. Mask 0: the one caller 0x27A64 goes on with `mov eax,[0x10810a]` (0x27A69). Bound
+ * twice: the row with plain stubs and the row whose 0x33B00, 0x1D764 and 0x46534 stubs write the side byte
+ * (and the bytes 0x104B0B, 0x104B12) the raw reads after each of them (`_reread`). */
+static void b_d4a_2791c(const u32 *r, u32 *eax) { (void)r; flow_continue_take(); *eax = 0u; }
+enum { D4A_CT_NONE, D4A_CT_id, D4A_CT_len1, D4A_CT_lenfix, D4A_CT_row1, D4A_CT_col1, D4A_CT_noclr1, D4A_CT_prow,
+       D4A_CT_pcol, D4A_CT_psidezext, D4A_CT_pside0, D4A_CT_noprompt, D4A_CT_porder, D4A_CT_r2row, D4A_CT_r2n,
+       D4A_CT_nor2, D4A_CT_r3row, D4A_CT_r3n, D4A_CT_nor3, D4A_CT_rorder, D4A_CT_snapone, D4A_CT_snaprev,
+       D4A_CT_snapsrc, D4A_CT_snapdst, D4A_CT_snapswap, D4A_CT_snapside, D4A_CT_nosnap, D4A_CT_hudzext,
+       D4A_CT_hudother, D4A_CT_nohud, D4A_CT_hudearly, D4A_CT_b5bzext, D4A_CT_b5boff, D4A_CT_b5bsrc, D4A_CT_nob5b,
+       D4A_CT_b5bearly, D4A_CT_accsext, D4A_CT_accd, D4A_CT_accpos, D4A_CT_noacc, D4A_CT_accearly, D4A_CT_f41zext,
+       D4A_CT_f41mask, D4A_CT_f41bit, D4A_CT_nof41, D4A_CT_f41off, D4A_CT_f41early, D4A_CT_f41clr, D4A_CT_b00,
+       D4A_CT_b00b, D4A_CT_nob00, D4A_CT_b00early, D4A_CT_prehud, D4A_CT_pre5b, D4A_CT_preb0b, D4A_CT_preb12,
+       D4A_CT_pre41 };
+static u32 d4a_2791c_side(int zext) { return zext ? DSB(0x0010810Du) : (u32)(s32)(s8)DSB(0x0010810Du); }
+static void d4a_2791c_core(u32 mut)
+{
+    u32 w0 = d4a_2791c_side(0);
+    s32 n = (s32)strlen((const char *)game_string_get((mut == D4A_CT_id) ? 0x40u : 0x41u));
+    if (mut == D4A_CT_len1) n += 1;
+    if (mut == D4A_CT_lenfix) n = 9;
+    if (mut == D4A_CT_porder) prompt_press_start_clear(-1, 0xC, d4a_2791c_side(0));
+    if (mut != D4A_CT_noclr1)
+        text_cells_release_count((mut == D4A_CT_col1) ? 0 : -1, (mut == D4A_CT_row1) ? 0xB : 0xA, n);
+    if (mut != D4A_CT_noprompt && mut != D4A_CT_porder)
+        prompt_press_start_clear((mut == D4A_CT_pcol) ? 0 : -1, (mut == D4A_CT_prow) ? 0xD : 0xC,
+                                 (mut == D4A_CT_pside0) ? 0u : d4a_2791c_side(mut == D4A_CT_psidezext));
+    if (mut == D4A_CT_hudearly) fight_hud_side_reset(d4a_2791c_side(0));
+    if (mut == D4A_CT_rorder) text_cells_release_count(-1, 0xF, 0x1C);
+    if (mut != D4A_CT_nor2)
+        text_cells_release_count(-1, (mut == D4A_CT_r2row) ? 0xD : 0xE, (mut == D4A_CT_r2n) ? 0x1B : 0x1C);
+    if (mut != D4A_CT_nor3 && mut != D4A_CT_rorder)
+        text_cells_release_count(-1, (mut == D4A_CT_r3row) ? 0x10 : 0xF, (mut == D4A_CT_r3n) ? 0x1B : 0x1C);
+    for (u32 i = 0; i < ((mut == D4A_CT_snapone) ? 1u : 2u) && mut != D4A_CT_nosnap; i++) {
+        u32 c = (mut == D4A_CT_snaprev) ? 1u - i : i;
+        u32 src = 0x00104890u + c * ((mut == D4A_CT_snapsrc) ? 0x68u : 0x94u);
+        u32 dst = 0x001049B8u + c * ((mut == D4A_CT_snapdst) ? 0x94u : 0x68u);
+        if (mut == D4A_CT_snapswap) fighter_state_33b00(c, dst, src);
+        else fighter_state_33b00((mut == D4A_CT_snapside) ? 0u : c, src, dst);
+    }
+    u32 w1 = d4a_2791c_side(0);
+    u8 b0b = DSB(0x00104B0Bu);
+    u32 b12 = DSB(0x00104B12u);
+    if (mut == D4A_CT_b5bearly) DSB(0x0010780Bu + w1 * 0x94u) = DSB(0x00104B0Bu);
+    if (mut != D4A_CT_nohud && mut != D4A_CT_hudearly)
+        fight_hud_side_reset((mut == D4A_CT_prehud) ? w0 : (mut == D4A_CT_hudother) ? (w1 ^ 1u)
+                                                         : d4a_2791c_side(mut == D4A_CT_hudzext));
+    u32 w2 = (mut == D4A_CT_pre5b) ? w1 : d4a_2791c_side(mut == D4A_CT_b5bzext);
+    if (mut != D4A_CT_nob5b && mut != D4A_CT_b5bearly)
+        DSB(0x0010780Bu + w2 * 0x94u - ((mut == D4A_CT_b5boff) ? 1u : 0u)) =
+            (mut == D4A_CT_preb0b) ? b0b : DSB((mut == D4A_CT_b5bsrc) ? 0x00104B0Au : 0x00104B0Bu);
+    u32 w3 = d4a_2791c_side(0);
+    u32 at = 0x001077F1u + ((mut == D4A_CT_f41zext) ? d4a_2791c_side(1) : w3) * 0x94u - ((mut == D4A_CT_f41off) ? 1u : 0u);
+    u32 mask = (mut == D4A_CT_f41mask) ? 0xEFu : (mut == D4A_CT_f41bit) ? 0xF7u : (mut == D4A_CT_f41clr) ? 0u : 0xE7u;
+    if (mut == D4A_CT_f41early) DSB(at) = (u8)(DSB(at) & mask);
+    if (mut == D4A_CT_b00early) DSW(0x00104B00u) = 0xCu;
+    if (mut == D4A_CT_accearly) return;
+    if (mut != D4A_CT_noacc)
+        fighter_46534((mut == D4A_CT_preb12) ? b12 : (mut == D4A_CT_accsext) ? (u32)(s32)(s8)DSB(0x00104B12u)
+                                                                           : DSB(0x00104B12u),
+                      (mut == D4A_CT_accd) ? -1 : (mut == D4A_CT_accpos) ? 2 : -2);
+    if (mut != D4A_CT_pre41 && mut != D4A_CT_f41zext)
+        at = 0x001077F1u + d4a_2791c_side(0) * 0x94u - ((mut == D4A_CT_f41off) ? 1u : 0u);
+    if (mut == D4A_CT_b00b) DSB(0x00104B00u) = 0xCu;
+    else if (mut != D4A_CT_nob00 && mut != D4A_CT_b00early) DSW(0x00104B00u) = (mut == D4A_CT_b00) ? 0xDu : 0xCu;
+    if (mut != D4A_CT_nof41 && mut != D4A_CT_f41early) DSB(at) = (u8)(DSB(at) & mask);
+}
+#define D4A_CT_MUT(name) \
+    static void m_d4a_ct_##name(const u32 *r, u32 *eax) { (void)r; d4a_2791c_core(D4A_CT_##name); *eax = 0u; }
+D4A_CT_MUT(id) D4A_CT_MUT(len1) D4A_CT_MUT(lenfix) D4A_CT_MUT(row1) D4A_CT_MUT(col1) D4A_CT_MUT(noclr1)
+D4A_CT_MUT(prow) D4A_CT_MUT(pcol) D4A_CT_MUT(psidezext) D4A_CT_MUT(pside0) D4A_CT_MUT(noprompt) D4A_CT_MUT(porder)
+D4A_CT_MUT(r2row) D4A_CT_MUT(r2n) D4A_CT_MUT(nor2) D4A_CT_MUT(r3row) D4A_CT_MUT(r3n) D4A_CT_MUT(nor3)
+D4A_CT_MUT(rorder) D4A_CT_MUT(snapone) D4A_CT_MUT(snaprev) D4A_CT_MUT(snapsrc) D4A_CT_MUT(snapdst)
+D4A_CT_MUT(snapswap) D4A_CT_MUT(snapside) D4A_CT_MUT(nosnap) D4A_CT_MUT(hudzext) D4A_CT_MUT(hudother)
+D4A_CT_MUT(nohud) D4A_CT_MUT(hudearly) D4A_CT_MUT(b5bzext) D4A_CT_MUT(b5boff) D4A_CT_MUT(b5bsrc) D4A_CT_MUT(nob5b)
+D4A_CT_MUT(b5bearly) D4A_CT_MUT(accsext) D4A_CT_MUT(accd) D4A_CT_MUT(accpos) D4A_CT_MUT(noacc) D4A_CT_MUT(accearly)
+D4A_CT_MUT(f41zext) D4A_CT_MUT(f41mask) D4A_CT_MUT(f41bit) D4A_CT_MUT(nof41) D4A_CT_MUT(f41off) D4A_CT_MUT(f41early)
+D4A_CT_MUT(f41clr) D4A_CT_MUT(b00) D4A_CT_MUT(b00b) D4A_CT_MUT(nob00) D4A_CT_MUT(b00early) D4A_CT_MUT(prehud)
+D4A_CT_MUT(pre5b) D4A_CT_MUT(preb0b) D4A_CT_MUT(preb12) D4A_CT_MUT(pre41)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39385,6 +39463,67 @@ static const binding_t k_bindings[] = {
     { "flow_round_end_check_reread@nowin", m_d4a_re_nowin, 0x00000000u },
     { "flow_round_end_check_reread@nofreeze", m_d4a_re_nofreeze, 0x00000000u },
     { "flow_round_end_check_reread@noend", m_d4a_re_noend, 0x00000000u },
+    { "flow_continue_take", b_d4a_2791c, 0x00000000u },
+    { "flow_continue_take@id", m_d4a_ct_id, 0x00000000u },
+    { "flow_continue_take@len1", m_d4a_ct_len1, 0x00000000u },
+    { "flow_continue_take@lenfix", m_d4a_ct_lenfix, 0x00000000u },
+    { "flow_continue_take@row1", m_d4a_ct_row1, 0x00000000u },
+    { "flow_continue_take@col1", m_d4a_ct_col1, 0x00000000u },
+    { "flow_continue_take@noclr1", m_d4a_ct_noclr1, 0x00000000u },
+    { "flow_continue_take@prow", m_d4a_ct_prow, 0x00000000u },
+    { "flow_continue_take@pcol", m_d4a_ct_pcol, 0x00000000u },
+    { "flow_continue_take@psidezext", m_d4a_ct_psidezext, 0x00000000u },
+    { "flow_continue_take@pside0", m_d4a_ct_pside0, 0x00000000u },
+    { "flow_continue_take@noprompt", m_d4a_ct_noprompt, 0x00000000u },
+    { "flow_continue_take@porder", m_d4a_ct_porder, 0x00000000u },
+    { "flow_continue_take@r2row", m_d4a_ct_r2row, 0x00000000u },
+    { "flow_continue_take@r2n", m_d4a_ct_r2n, 0x00000000u },
+    { "flow_continue_take@nor2", m_d4a_ct_nor2, 0x00000000u },
+    { "flow_continue_take@r3row", m_d4a_ct_r3row, 0x00000000u },
+    { "flow_continue_take@r3n", m_d4a_ct_r3n, 0x00000000u },
+    { "flow_continue_take@nor3", m_d4a_ct_nor3, 0x00000000u },
+    { "flow_continue_take@rorder", m_d4a_ct_rorder, 0x00000000u },
+    { "flow_continue_take@snapone", m_d4a_ct_snapone, 0x00000000u },
+    { "flow_continue_take@snaprev", m_d4a_ct_snaprev, 0x00000000u },
+    { "flow_continue_take@snapsrc", m_d4a_ct_snapsrc, 0x00000000u },
+    { "flow_continue_take@snapdst", m_d4a_ct_snapdst, 0x00000000u },
+    { "flow_continue_take@snapswap", m_d4a_ct_snapswap, 0x00000000u },
+    { "flow_continue_take@snapside", m_d4a_ct_snapside, 0x00000000u },
+    { "flow_continue_take@nosnap", m_d4a_ct_nosnap, 0x00000000u },
+    { "flow_continue_take@hudzext", m_d4a_ct_hudzext, 0x00000000u },
+    { "flow_continue_take@hudother", m_d4a_ct_hudother, 0x00000000u },
+    { "flow_continue_take@nohud", m_d4a_ct_nohud, 0x00000000u },
+    { "flow_continue_take@hudearly", m_d4a_ct_hudearly, 0x00000000u },
+    { "flow_continue_take@b5bzext", m_d4a_ct_b5bzext, 0x00000000u },
+    { "flow_continue_take@b5boff", m_d4a_ct_b5boff, 0x00000000u },
+    { "flow_continue_take@b5bsrc", m_d4a_ct_b5bsrc, 0x00000000u },
+    { "flow_continue_take@nob5b", m_d4a_ct_nob5b, 0x00000000u },
+    { "flow_continue_take@b5bearly", m_d4a_ct_b5bearly, 0x00000000u },
+    { "flow_continue_take@accsext", m_d4a_ct_accsext, 0x00000000u },
+    { "flow_continue_take@accd", m_d4a_ct_accd, 0x00000000u },
+    { "flow_continue_take@accpos", m_d4a_ct_accpos, 0x00000000u },
+    { "flow_continue_take@noacc", m_d4a_ct_noacc, 0x00000000u },
+    { "flow_continue_take@accearly", m_d4a_ct_accearly, 0x00000000u },
+    { "flow_continue_take@f41zext", m_d4a_ct_f41zext, 0x00000000u },
+    { "flow_continue_take@f41mask", m_d4a_ct_f41mask, 0x00000000u },
+    { "flow_continue_take@f41bit", m_d4a_ct_f41bit, 0x00000000u },
+    { "flow_continue_take@nof41", m_d4a_ct_nof41, 0x00000000u },
+    { "flow_continue_take@f41off", m_d4a_ct_f41off, 0x00000000u },
+    { "flow_continue_take@f41early", m_d4a_ct_f41early, 0x00000000u },
+    { "flow_continue_take@f41clr", m_d4a_ct_f41clr, 0x00000000u },
+    { "flow_continue_take@b00", m_d4a_ct_b00, 0x00000000u },
+    { "flow_continue_take@b00b", m_d4a_ct_b00b, 0x00000000u },
+    { "flow_continue_take@nob00", m_d4a_ct_nob00, 0x00000000u },
+    { "flow_continue_take@b00early", m_d4a_ct_b00early, 0x00000000u },
+    { "flow_continue_take_reread", b_d4a_2791c, 0x00000000u },
+    { "flow_continue_take_reread@prehud", m_d4a_ct_prehud, 0x00000000u },
+    { "flow_continue_take_reread@pre5b", m_d4a_ct_pre5b, 0x00000000u },
+    { "flow_continue_take_reread@preb0b", m_d4a_ct_preb0b, 0x00000000u },
+    { "flow_continue_take_reread@preb12", m_d4a_ct_preb12, 0x00000000u },
+    { "flow_continue_take_reread@pre41", m_d4a_ct_pre41, 0x00000000u },
+    { "flow_continue_take_reread@nohud", m_d4a_ct_nohud, 0x00000000u },
+    { "flow_continue_take_reread@noacc", m_d4a_ct_noacc, 0x00000000u },
+    { "flow_continue_take_reread@nosnap", m_d4a_ct_nosnap, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
