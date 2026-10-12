@@ -25002,6 +25002,77 @@ D5E_SPECS += [
        unhit_named={0x285EC: "the word 0x104AFA = 5: this row's 0x28130 stub leaves the byte 0x104B1D 3 (the plain row hits it)"},
        mutants=("@prech1", "@prelat", "@preaf8", "@preb1d", "@noyc", "@notext")),
 ]
+D5E_384 = E.Call(0x384F8, ("eax",), clobbers=("edi", "ebp"))
+D5E_FX25 = E.Call(0x4E67C, (), clobbers=("ebp",))
+# 0x384F8 leaving the gate byte 0x1078FA = 2 (0x266AC reads it after the pair, 0x2677C), and 0x1DA08
+# leaving the frame word 0xEF6DC = 0x40, the countdown word 0x1088A6 = 0x78 and the flag byte
+# 0x104AEC = 0x40 (0x26869, 0x2686F, 0x26939)
+D5E_384_W = E.Call(0x384F8, ("eax",), clobbers=("edi", "ebp"), writes=((None, 0x001078FA, b"\x02"),))
+D5E_PULSE_W = E.Call(0x1DA08, (), writes=((None, 0x000EF6DC, le16(0x0040)), (None, 0x001088A6, le16(0x0078)),
+                                          (None, 0x00104AEC, b"\x40")))
+
+
+def d5e_25_case(f=(1, 1), a6=0x1234, ef=0x0001, bc=0, tail=b"\x00", gate=2, **kw):
+    """0x266AC: the two round flags 0x1078F0/0x1078F1, the countdown word 0x1088A6, the byte
+    0x104B18 (0x5A), the frame word 0xEF6DC and the byte 0x1088BC, each between seeded bytes, and
+    the string buffer 0x102760: four bytes the 0x474E4 stub overwrites, then `tail` (its
+    terminator fixes the length the raw counts)."""
+    return d5e_mem(d5e_base(gate=gate, **kw), {
+        0x001078EF: bytes([0x7A, f[0], f[1], 0x7B]),
+        0x001088A5: bytes([0x7C]) + le16(a6) + bytes([0x7D]),
+        0x00104B17: bytes([0x65, 0x5A, 0x66]),
+        0x000EF6DB: bytes([0x7E]) + le16(ef) + bytes([0x7F]),
+        0x001088BB: bytes([0x67, bc, 0x68]),
+        0x00102760: b"\x5a\x5a\x5a\x5a" + tail})
+
+
+D5E_RR_DRAW = "the drawn string: this row's 0x1DA08 stub leaves the frame word 0x40 (the plain row hits it)"
+D5E_25_CALLS = (D5E_CLEAR, D5E_SBASE, D5E_PROJ, D4A_PASS, D5E_384, D5E_PASSB, D5E_FX25, D5E_DUST, D5E_PULSE,
+                D4A_STR4, D1D_CURSOR, D2C_RELCNT, D4C_NUMDRAW)
+D5E_SPECS += [
+    # 0x266AC game_mode_25_step: no argument. With both round flags non-zero the word 0x1088A6 is
+    # decremented and, when it was 0, the byte 0x104B18 = 1 and the word = 0xB4. Then the prelude,
+    # one 0x17FA0 pair, 0x3CB68, 0x384F8(0), 0x384F8(1); with the gate byte == 2 a pair, 0x19068(0)
+    # and two more pairs; 0x4E67C, 0x1282C, 0x1DA08, 0x104AEC |= 2. With the low five bits of the
+    # frame word 0xEF6DC clear: bit 5 set draws string 0x3B (the byte 0x1088BC non-zero) or 0x3A
+    # at (-1, 5) with mode 0x2000 (0x2F198); bit 5 clear releases both strings' lengths at (-1, 5)
+    # (0x2F388, 0x3B first). Then, while the word 0x1088A6 is not zero, 0x2F4D0(-1, 0xB, the word
+    # / 60, 1, 0, 0x2000). 0x1C500 runs real over a stubbed 0x474E4 that writes four characters;
+    # every other callee is a stub. c4's 0x474E4 returns 0 (an empty string). Mask 0: the one
+    # site 0x252B2 is followed by `xor eax,eax` (0x252B7).
+    Spec("game_mode_25_step", 0x266AC, [
+        Case("c0", D5E_REG, d5e_25_case(a6=0, ef=0x0040, tail=b"INUE?\x00\x6e")),
+        Case("c1", {}, d5e_25_case(a6=1, ef=0x0020, bc=1, tail=b"!\x00", gate=1, aec=0x80)),
+        Case("c2", {}, d5e_25_case(f=(1, 0), ef=0x0120, tail=b"XY\x00", gate=3, ch=(0x83, 0x85))),
+        Case("c3", {}, d5e_25_case(f=(0, 1), a6=0x8000, lat=(0x00010000, 0xFFFF0000))),
+        Case("c4", {}, d5e_25_case(a6=0x0100, ef=0xFF00, tail=b"Z\x00", aec=0xBD), {0x474E4: 0}),
+        Case("c5", {}, d5e_25_case(f=(0x80, 0xFF), a6=0x003C, ef=0x0010, aec=0x00)),
+        Case("c6", {}, d5e_25_case(a6=0xFFFF, ef=0x00E0, bc=0x80, tail=b"ABCDEFGHIJKLMNOP\x00")),
+        Case("c7", {}, d5e_25_case(f=(0, 0), a6=0, ef=0x0060, tail=b"\x00")),
+    ], allow_calls=(0x1C500,), calls=D5E_25_CALLS, eax_mask=0,
+       mutants=(("@hf0only", "@hf1only", "@hfor", "@a6nodec", "@a6decb", "@a6old1", "@a6olds", "@nob18", "@b18v",
+                 "@b18w", "@noa6r", "@a6rv", "@a6rb", "@headlate")
+                + D5E_MUT_PRE2 + D5E_MUT_PROJ2
+                + ("@nopr1", "@nopass", "@passlate", "@no384a", "@no384b", "@f384rev", "@f384same")
+                + D5E_MUT_GATE
+                + ("@nopr2", "@pborder", "@nopassb", "@passb1", "@nopr3", "@nopr4", "@dustearly", "@nofx", "@pulseearly",
+                   "@nodust", "@aecearly", "@nopulse", "@noaec", "@aecset", "@aecbit", "@tmask", "@tmask0f", "@t40",
+                   "@t20inv", "@bcinv", "@curid", "@nocur", "@curcol", "@currow", "@curmode", "@relrev", "@relone",
+                   "@relcol", "@relrow", "@rellen", "@numall", "@a6sgt", "@a6s", "@a6b", "@a6div", "@nonum", "@ncol",
+                   "@nrow", "@nwidth", "@npad", "@nmode"))),
+    # 0x266AC again with stubs that write what the raw reads after them: 0x16D58 side 1's character
+    # byte and the latch sources (and the gate byte 3), 0x384F8 the gate byte 2, 0x1DA08 the frame
+    # word, the countdown word and the flag byte.
+    Spec("game_mode_25_step_rr", 0x266AC, [
+        Case("r0", {}, d5e_25_case(f=(0, 0), a6=0, ef=0x0001, gate=1, tail=b"AB\x00")),
+        Case("r1", {}, d5e_25_case(f=(1, 1), a6=0x1000, ef=0x0020, gate=3, aec=0x80, tail=b"\x00")),
+    ], allow_calls=(0x1C500,),
+       calls=(D5E_CLEAR, D5E_SBASE_W2, D5E_PROJ, D4A_PASS, D5E_384_W, D5E_PASSB, D5E_FX25, D5E_DUST, D5E_PULSE_W,
+              D4A_STR4, D1D_CURSOR, D2C_RELCNT, D4C_NUMDRAW), eax_mask=0,
+       unhit_named={0x266D7: "the countdown's reset: no case of this row holds a zero word with both flags (the plain row hits it)",
+                    0x2689E: D5E_RR_DRAW, 0x268A7: D5E_RR_DRAW, 0x268C9: D5E_RR_DRAW},
+       mutants=("@prech1", "@prelat", "@pregate", "@preef", "@prea6", "@preaec", "@nopulse", "@no384b")),
+]
 D1_SPECS += D5E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
