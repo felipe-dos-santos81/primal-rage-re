@@ -13531,6 +13531,39 @@ def d2c_dbg_case(st, sp, buf, last):
             0x000BCD5C: bytes(buf) + b"\x7a\x7b\x7c\x7d", 0x00105F34: le32(0x11223344)}
 
 
+def d2c_skip_case(held, pressed, masks=None):
+    """0x4F790: the held dword 0x1088D8 and the pressed dword 0x1088E4, each between seeded
+    dwords, and, when given, the two masks 0xC9898 (the image has 0x0F000000 and 0x00000F00)."""
+    p = {0x001088D4: le32(0x61616161) + le32(held) + le32(0x62626262),
+         0x001088E0: le32(0x63636363) + le32(pressed) + le32(0x64646464)}
+    if masks is not None:
+        p[0x000C9898] = le32(masks[0]) + le32(masks[1])
+    return p
+
+
+def d2c_wipe_case(rec, n, f4=0x5A):
+    """0x4FA88: the actor dword 0xC98F0 between two neighbours, the dwords 0x101508/0x10150C,
+    the bytes 0x1088F2..0x1088F6 (0x1088F4 the gate, 0x1088F5 the counter `n`)."""
+    return {0x000C98EC: le32(0x61616161) + le32(rec) + le32(0x62626262),
+            0x00101508: le32(0x11223344) + le32(0x5A5A5A5A),
+            0x001088F2: bytes([0x63, 0x64, f4, n, 0x65])}
+
+
+D2C_PSETW = E.Call(0x10D70, ("s0", "eax"), pop=4, clobbers=("ebx", "ecx", "edx"))
+
+
+def d2c_timer_case(b1d, b14, aec=0x80):
+    """0x4F37C: the bytes 0x104B1D and 0x104B14, the timer byte 0x1088F2 (0x5A) and the flag
+    byte 0x104AEC, each between seeded neighbours, and the cursor."""
+    return {0x00104B13: bytes([0x61, b14, 0x62]), 0x00104B1C: bytes([0x63, b1d, 0x64]),
+            0x001088F1: b"\x65\x5a\x66", 0x00104AEB: bytes([0x67, aec, 0x68]),
+            0x00105F34: le32(0x11223344)}
+
+
+D2C_NUMDRAW2 = E.Call(0x2F528, ("eax", "edx", "ebx", "ecx", "s0", "s1"), pop=8,
+                      clobbers=("ebx", "ecx", "edx"))
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -13914,6 +13947,56 @@ D2C_SPECS = [
                                                      bytes(range(0x41, 0x51)))),
     ], allow_calls=(0x2F41C,), calls=(D1G_TXT198,), eax_mask=0,
        mutants=("@col", "@row2", "@os", "@mode", "@buf", "@off", "@deref", "@order", "@mode2")),
+    # 0x4F790 frontend_skip_check: no argument. AL = 2 when the held dword 0x1088D8 covers either
+    # mask 0xC9898[0]/[1] whole (`and edx,ecx; cmp edx,ecx`); else 1 when the pressed dword
+    # 0x1088E4 has a bit of mask [0] (inline) or 0x4F778(1) says so (stub: AL tested at 0x4F7DA,
+    # k5 returns 0x100); else 0. The stores to 0x1088D8 (0x4F7C1, 0x4F7E6) write back the value
+    # read: no case can show them. Mask 0xFF: the six call sites test AL (`test al,al` at
+    # 0x438DE, 0x43904, 0x44957; `and eax,0xff` at 0x4F25F, 0x4F2C3, 0x4F32B).
+    Spec("frontend_skip_check", 0x4F790, [
+        Case("k0", {}, d2c_skip_case(0x0F000000, 0x00000100)),
+        Case("k1", {}, d2c_skip_case(0x30000F01, 0)),
+        Case("k2", {}, d2c_skip_case(0x0E000E00, 0x01000000)),
+        Case("k3", {}, d2c_skip_case(0x0E000E00, 0x00000100), {0x4F778: 1}),
+        Case("k4", {}, d2c_skip_case(0xF0FFF0FF, 0xF0FFF0FF), {0x4F778: 0}),
+        Case("k5", {}, d2c_skip_case(0, 0x00000100), {0x4F778: 0x100}),
+        Case("k6", {}, d2c_skip_case(0x07000700, 0), {0x4F778: 0xFFFFFF01}),
+        Case("k7", {}, d2c_skip_case(0x00000001, 0, masks=(0x0F000000, 0)), {0x4F778: 0}),
+    ], calls=(E.Call(0x4F778, ("eax",)),), eax_mask=0xFF,
+       mutants=("@any", "@one", "@ret2", "@inl", "@n", "@nocall", "@al", "@r1", "@held")),
+    # 0x4FA88 frontend_wipe_out: no argument. With no actor in 0xC98F0: the spawn 0xC9908 at
+    # (0, 0xFF, 0, 0) into it, 0x10150C = 0x101508 and the gate byte 0x1088F4 = 0. Then on the
+    # signed counter 0x1088F5 (`sar eax,0x18` of the dword 0x1088F2): above 0x10 the actor dies
+    # (0x2B150), 0xC98F0 = 0 and EAX = 1; else 0x10D70(the actor, the word 0xC993E[n], n
+    # sign-extended) after the counter is incremented, and EAX = 0. The three callees are stubs.
+    # Full mask: 0x4F9CD `test eax,eax`.
+    Spec("frontend_wipe_out", 0x4FA88, [
+        Case("w0", {}, d2c_wipe_case(0, 0), {0x2AE14: 0x0010A300}),
+        Case("w1", {}, d2c_wipe_case(0x0010A340, 0x10)),
+        Case("w2", {}, d2c_wipe_case(0x0010A340, 0x11)),
+        Case("w3", {}, d2c_wipe_case(0x0010A340, 0x80)),
+        Case("w4", {}, d2c_wipe_case(0, 0x7F), {0x2AE14: 0x0010A380}),
+        Case("w5", {}, d2c_wipe_case(0x0010A3C0, 0xFF, f4=0x01)),
+    ], calls=(SPAWN, D2C_DEAD, D2C_PSETW), eax_mask=0xFFFFFFFF,
+       mutants=("@gate", "@desc", "@a3", "@nostore", "@copy", "@copysrc", "@f4", "@f4all", "@gt",
+                "@unsigned", "@nodead", "@keep", "@ret1", "@tbl", "@zext", "@inc", "@args", "@order",
+                "@ret0")),
+    # 0x4F37C flow_round_timer_draw: no argument. The field at col 0x13, row 1: with 0x104B1D ==
+    # 2 the string 0x80C80 and 0x1088F2 = 0x1E, with 3 the string 0x80C84 and 0x1E, else with
+    # 0x104B14 non-zero the string 0x80C88 (0x1088F2 untouched), all through 0x2F198 with mode
+    # 0x4002; else 0x1088F2 = 0x3C, 0x2F528(0x13, 1, 0x3C, width 2, pad 0, mode 0x4000) and
+    # 0x104AEC |= 1. Both callees are stubs (0x2F198 by value: the image's strings). Mask 0: the
+    # three callers reload EAX (0x25EB2, 0x29547 `xor eax,eax`; 0x25AC7 traced, record §1).
+    Spec("flow_round_timer_draw", 0x4F37C, [
+        Case("r0", {}, d2c_timer_case(2, 0)),
+        Case("r1", {}, d2c_timer_case(3, 1)),
+        Case("r2", {}, d2c_timer_case(0, 1)),
+        Case("r3", {}, d2c_timer_case(0, 0)),
+        Case("r4", {}, d2c_timer_case(1, 0x80)),
+        Case("r5", {}, d2c_timer_case(0xFF, 0, aec=0xFE)),
+    ], calls=(D1G_TXT198, D2C_NUMDRAW2), eax_mask=0,
+       mutants=("@b1d2", "@f2a", "@f2b", "@xxf2", "@b14", "@col", "@row", "@mode", "@val", "@width",
+                "@pad", "@nmode", "@f2c", "@aec", "@aecv", "@order", "@forder")),
 ]
 D1_SPECS += D2C_SPECS
 

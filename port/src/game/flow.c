@@ -1077,6 +1077,7 @@ void frontend_mode_1b_step(void)
  * is dropped. The two masks are 0x0F000000 and 0x00000F00. */
 u32 frontend_buttons_pressed(u32 n)
 {
+    PR_SEAM_RET(0x4F778u, n);
     return (DSD(DS_000C9898 + n * 4u) & DSD(DS_001088E4)) != 0u
                ? 1u : 0u;                               /* 0x4F779..0x4F78B */
 }
