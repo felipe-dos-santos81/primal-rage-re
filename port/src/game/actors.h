@@ -105,6 +105,9 @@ void motion_step(u32 rec);
  * 15 taken from the parent's +0x28 bit 14. Exported for its own D1 row's
  * binding. */
 void anim_id_path(u32 rec, u32 slot);
+/* 0x2AA70 (D2d). The frame timer (EAX = rec, DX = the pset index), exported
+ * for its own differential row's binding. */
+void frame_timer(u32 rec, u32 slot);
 /* 0x19958 (record §50-E). The round-end debris spawner 0x19B90 calls once per
  * frame. Exported for its own D1 row's binding. */
 void debris_spawn(void);

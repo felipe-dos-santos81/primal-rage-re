@@ -20306,6 +20306,122 @@ static void m_d2d_21458_c2rec(const u32 *r, u32 *eax) { *eax = d2d_21458_core(r,
 static void m_d2d_21458_c2r43(const u32 *r, u32 *eax) { *eax = d2d_21458_core(r, 33u); }
 static void m_d2d_21458_c2width(const u32 *r, u32 *eax) { *eax = d2d_21458_core(r, 34u); }
 static void m_d2d_21458_chside(const u32 *r, u32 *eax) { *eax = d2d_21458_core(r, 36u); }
+/* 0x2AA70's mutants (mutant n; 0 = the port's shape). EAX = rec, DX = the pset index. 0x29F34,
+ * 0x2B2A0 and 0x2A408 (inside 0x2A39C, which runs on both sides) are stubs; the child's turn is the
+ * raw's own recursive call. */
+static void d2d_2aa70_core(u32 rec, u32 slot, u32 mut)
+{
+#define M(n) (mut == (n))
+    union { float f; u32 u; } fu, a, b;
+    float old;
+    u32 status;
+    if (!M(14)) slot &= 0xFFFFu;                                                    /* @slotw: the port before the fix */
+    if ((DSW(rec + 0x28u) & (M(1) ? 0x10u : 0x810u)) != 0 || (DSW(rec + 0x2Au) & 4u) != 0) {   /* @gate */
+        if ((DSW(rec + 0x28u) & (M(2) ? 0x0008u : 0x0800u)) != 0) return;           /* @dead */
+        if ((DSW(rec + 0x28u) & 0x10u) != 0) {
+            u32 v = anim_read_var(rec, M(4) ? DSD(rec + 8u) : (u32)DSW(DSD(rec + 8u)));   /* @vararg */
+            if ((M(3) ? v : (v & 0xFFFFu)) == 0) return;                            /* @varax */
+            if (!M(5)) DSB(rec + 0x28u) &= 0xEFu;                                   /* @noclr */
+        }
+        if ((DSW(rec + 0x2Au) & 4u) != 0
+                && ((((u32)DSW(DS_000EF6DC) ^ (DSW(rec + 0x2Au) & 1u)) & 1u) == 0) != M(6))   /* @parity */
+            return;
+    }
+    if ((DSW(rec + 0x2Au) & (M(8) ? 0x0002u : 0x0200u)) != 0) {                     /* @reload */
+        fu.f = (float)(M(9) ? (u32)DSW(DS_00105BEC) : (u32)DSB(DS_00105BEC));       /* @reloadw */
+        DSD(rec + 0x20u) = fu.u;
+    }
+    fu.u = DSD(rec + 0x20u);
+    old = fu.f;
+    fu.f = old - 1.0f;
+    DSD(rec + 0x20u) = fu.u;
+    if (M(10) ? (old >= 0.0f) : M(11) ? (old > 0.0f) : !(old <= 0.0f)) {            /* @cmp; @nan: the port before the fix */
+        if ((DSW(rec + 0x2Au) & (M(12) ? 0x0001u : 0x0100u)) == 0) return;          /* @hold100 */
+        if (!M(13) && DSD(DS_00104AE0) != 0) return;                                /* @ae0 */
+        if (M(15)) DSD(DSD(DS_001014EC) + slot * 0x20u) = 0x1E1u;                   /* @e1w */
+        else DSW(DSD(DS_001014EC) + slot * 0x20u) = 0x1E1u;
+        return;
+    }
+    for (;;) {
+        if (!M(16) && !M(35)) DSB(rec + 0x63u) = (u8)(DSB(rec + 0x63u) + 1u);       /* @no63 */
+        if (DSB(rec + 0x4Bu) != 0) {
+            for (;;) {
+                u32 child = DSD(DS_001014F4) + (u32)DSB(rec + 0x4Bu) * 0x68u;
+                if ((DSW(child + 0x28u) & (M(17) ? 0x0800u : 0x0008u)) == 0) {      /* @childbit */
+                    if (!M(18)) DSB(child + 0x2Au) |= 8u;                           /* @child2a */
+                    d2d_2aa70_core(child, M(19) ? slot : DSB(rec + 0x4Bu), mut);    /* @childslot */
+                    if (!M(20)) DSD(child + 0x20u) = 0u;                            /* @child20 */
+                    break;
+                }
+                if (!M(23)) DSB(child + 0x2Au) &= 0xF7u;                            /* @chain2a */
+                u8 next = DSB(child + 0x4Bu);
+                DSB(rec + 0x4Bu) = next;
+                if (next == 0) break;
+                if (!M(22)) DSB(child + 0x4Bu) = 0u;                                /* @chainclr */
+            }
+        }
+        status = 0;
+        for (;;) {
+            u32 p = DSD(rec + 8u) + (M(24) ? 4u : 2u);                              /* @walk4 */
+            DSD(rec + 8u) = p;
+            if ((DSW(p) & (M(25) ? 0x4000u : 0x8000u)) == 0) break;                 /* @opbit */
+            status = spawn_anim_opcode(rec, slot, M(26) ? 1u : 0u);                 /* @opflag */
+            if (status != 0) break;
+        }
+        if (M(35)) DSB(rec + 0x63u) = (u8)(DSB(rec + 0x63u) + 1u);                  /* @late */
+        if (status == (M(27) ? 1u : 2u)) return;                                    /* @st2 */
+        if (!M(28)) anim_id_path(rec, slot);                                        /* @noid */
+        if ((DSW(rec + 0x2Au) & (M(29) ? 0x0004u : 0x0400u)) != 0) {                /* @hold400 */
+            u32 off = M(30) ? (u32)DSB(rec + 0x52u) : (u32)((s32)DSD(rec + 0x4Fu) >> 24);   /* @holdsext */
+            fu.f = (float)(u32)DSB(DSD(rec + 0x10u) + (M(31) ? 0u : off));          /* @holdsrc */
+            DSD(rec + 0x24u) = fu.u;
+        }
+        a.u = DSD(rec + 0x24u);
+        b.u = DSD(rec + 0x20u);
+        if (!M(32)) a.f = a.f + b.f;                                                /* @add */
+        DSD(rec + 0x20u) = a.u;
+        if (!M(33) && (DSW(rec + 0x2Au) & 8u) != 0) return;                         /* @stop8 */
+        a.u = DSD(rec + 0x24u);
+        if (!(a.f > 0.0f)) return;
+        b.u = DSD(rec + 0x20u);
+        if (M(34) ? !(b.f <= 0.0f) : !(b.f < 0.0f)) return;                         /* @reloop */
+    }
+#undef M
+}
+static void b_d2d_2aa70(const u32 *r, u32 *eax) { frame_timer(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void m_d2d_ft_gate(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 1u); *eax = 0u; }
+static void m_d2d_ft_dead(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 2u); *eax = 0u; }
+static void m_d2d_ft_varax(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 3u); *eax = 0u; }
+static void m_d2d_ft_vararg(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 4u); *eax = 0u; }
+static void m_d2d_ft_noclr(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 5u); *eax = 0u; }
+static void m_d2d_ft_parity(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 6u); *eax = 0u; }
+static void m_d2d_ft_reload(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 8u); *eax = 0u; }
+static void m_d2d_ft_reloadw(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 9u); *eax = 0u; }
+static void m_d2d_ft_cmp(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 10u); *eax = 0u; }
+static void m_d2d_ft_nan(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 11u); *eax = 0u; }
+static void m_d2d_ft_hold100(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 12u); *eax = 0u; }
+static void m_d2d_ft_ae0(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 13u); *eax = 0u; }
+static void m_d2d_ft_slotw(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 14u); *eax = 0u; }
+static void m_d2d_ft_e1w(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 15u); *eax = 0u; }
+static void m_d2d_ft_no63(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 16u); *eax = 0u; }
+static void m_d2d_ft_childbit(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 17u); *eax = 0u; }
+static void m_d2d_ft_child2a(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 18u); *eax = 0u; }
+static void m_d2d_ft_childslot(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 19u); *eax = 0u; }
+static void m_d2d_ft_child20(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 20u); *eax = 0u; }
+static void m_d2d_ft_chainclr(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 22u); *eax = 0u; }
+static void m_d2d_ft_chain2a(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 23u); *eax = 0u; }
+static void m_d2d_ft_walk4(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 24u); *eax = 0u; }
+static void m_d2d_ft_opbit(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 25u); *eax = 0u; }
+static void m_d2d_ft_opflag(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 26u); *eax = 0u; }
+static void m_d2d_ft_st2(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 27u); *eax = 0u; }
+static void m_d2d_ft_noid(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 28u); *eax = 0u; }
+static void m_d2d_ft_hold400(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 29u); *eax = 0u; }
+static void m_d2d_ft_holdsext(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 30u); *eax = 0u; }
+static void m_d2d_ft_holdsrc(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 31u); *eax = 0u; }
+static void m_d2d_ft_add(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 32u); *eax = 0u; }
+static void m_d2d_ft_stop8(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 33u); *eax = 0u; }
+static void m_d2d_ft_reloop(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 34u); *eax = 0u; }
+static void m_d2d_ft_late(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 35u); *eax = 0u; }
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -24374,6 +24490,40 @@ static const binding_t k_bindings[] = {
     { "fighter_21458@c2r43",                 m_d2d_21458_c2r43, 0x00000000u },
     { "fighter_21458@c2width",               m_d2d_21458_c2width, 0x00000000u },
     { "fighter_21458@chside",                m_d2d_21458_chside, 0x00000000u },
+    { "frame_timer",                         b_d2d_2aa70, 0x00000000u },
+    { "frame_timer@gate",                    m_d2d_ft_gate, 0x00000000u },
+    { "frame_timer@dead",                    m_d2d_ft_dead, 0x00000000u },
+    { "frame_timer@varax",                   m_d2d_ft_varax, 0x00000000u },
+    { "frame_timer@vararg",                  m_d2d_ft_vararg, 0x00000000u },
+    { "frame_timer@noclr",                   m_d2d_ft_noclr, 0x00000000u },
+    { "frame_timer@parity",                  m_d2d_ft_parity, 0x00000000u },
+    { "frame_timer@reload",                  m_d2d_ft_reload, 0x00000000u },
+    { "frame_timer@reloadw",                 m_d2d_ft_reloadw, 0x00000000u },
+    { "frame_timer@cmp",                     m_d2d_ft_cmp, 0x00000000u },
+    { "frame_timer@nan",                     m_d2d_ft_nan, 0x00000000u },
+    { "frame_timer@hold100",                 m_d2d_ft_hold100, 0x00000000u },
+    { "frame_timer@ae0",                     m_d2d_ft_ae0, 0x00000000u },
+    { "frame_timer@slotw",                   m_d2d_ft_slotw, 0x00000000u },
+    { "frame_timer@e1w",                     m_d2d_ft_e1w, 0x00000000u },
+    { "frame_timer@no63",                    m_d2d_ft_no63, 0x00000000u },
+    { "frame_timer@childbit",                m_d2d_ft_childbit, 0x00000000u },
+    { "frame_timer@child2a",                 m_d2d_ft_child2a, 0x00000000u },
+    { "frame_timer@childslot",               m_d2d_ft_childslot, 0x00000000u },
+    { "frame_timer@child20",                 m_d2d_ft_child20, 0x00000000u },
+    { "frame_timer@chainclr",                m_d2d_ft_chainclr, 0x00000000u },
+    { "frame_timer@chain2a",                 m_d2d_ft_chain2a, 0x00000000u },
+    { "frame_timer@walk4",                   m_d2d_ft_walk4, 0x00000000u },
+    { "frame_timer@opbit",                   m_d2d_ft_opbit, 0x00000000u },
+    { "frame_timer@opflag",                  m_d2d_ft_opflag, 0x00000000u },
+    { "frame_timer@st2",                     m_d2d_ft_st2, 0x00000000u },
+    { "frame_timer@noid",                    m_d2d_ft_noid, 0x00000000u },
+    { "frame_timer@hold400",                 m_d2d_ft_hold400, 0x00000000u },
+    { "frame_timer@holdsext",                m_d2d_ft_holdsext, 0x00000000u },
+    { "frame_timer@holdsrc",                 m_d2d_ft_holdsrc, 0x00000000u },
+    { "frame_timer@add",                     m_d2d_ft_add, 0x00000000u },
+    { "frame_timer@stop8",                   m_d2d_ft_stop8, 0x00000000u },
+    { "frame_timer@reloop",                  m_d2d_ft_reloop, 0x00000000u },
+    { "frame_timer@late",                    m_d2d_ft_late, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

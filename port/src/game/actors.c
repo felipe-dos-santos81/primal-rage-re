@@ -2912,8 +2912,9 @@ void anim_id_path(u32 rec, u32 slot)
 
 /* 0x2AA70. The frame timer: consume stream opcodes until the dispatcher stops,
  * then take the sprite id through 0x2A39C. The child chain is drained before
- * the walk and a dead ancestor stops it. */
-static void frame_timer(u32 rec, u32 slot)
+ * the walk and a dead ancestor stops it. Exported for its own D2 row's
+ * binding. */
+void frame_timer(u32 rec, u32 slot)
 {
     slot &= 0xffffu;                            /* 0x2ABC4/0x2ABC8, 0x2ABDF/0x2ABE3, 0x2AC60/0x2AC62 `xor r,r; mov r16,si` */
     if ((DSW(rec + 0x28) & 0x810u) != 0 || (DSW(rec + 0x2a) & 4u) != 0) {

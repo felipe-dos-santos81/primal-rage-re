@@ -13510,6 +13510,37 @@ def d2d_21458_case(side, slot, state, ch=2, z30=0x1000, w44=0x0044, w36=0x0036, 
     p[own + 0x34] = le16(0x3434) + le16(w36 if own != c5 else c36)
     p[own + 0x42] = bytes([0x42, 0x43]) + le16(w44) + bytes([0x46])
     return p
+D2D_STREAM, D2D_HOLD, D2D_POOL = 0x0010A700, 0x0010A780, 0x0010A800   # a stream, a hold table, the actor pool
+
+
+def d2d_ft_rec(w28=0, w2a=0, d20=3.0, d24=3.0, stream=D2D_STREAM, b4a=0, b4b=0, b52=0, tag=0):
+    """One 0x68-byte actor record for 0x2AA70, every byte seeded: the stream pointer +8, the hold
+    table +0x10, the timer +0x20 and step +0x24 (floats), the flag words +0x28/+0x2A, the parent
+    +0x4A, the child +0x4B and the hold index +0x52."""
+    buf = bytearray(0x80 | ((k + tag) & 0x7F) for k in range(0x68))
+    buf[8:12], buf[0x10:0x14] = le32(stream), le32(D2D_HOLD)
+    buf[0x20:0x24], buf[0x24:0x28] = f32(d20), f32(d24)
+    buf[0x28:0x2A], buf[0x2A:0x2C] = le16(w28), le16(w2a)
+    buf[0x4A], buf[0x4B], buf[0x52] = b4a, b4b, b52
+    return buf
+
+
+def d2d_ft_case(words=(0x0123,), ef6dc=0, bec=7, ae0=0, children=None, **rec):
+    """0x2AA70: the record at D2D_REC, its stream (the word at the pointer, then `words`, then
+    non-opcode words), the pset array (entries 1..3 seeded) and the pool with the `children`
+    ({index: record fields}; each child's stream is 0x20 further), the tick word 0xEF6DC, the reload
+    byte 0x105BEC (0x105BED seeded), the gate dword 0x104AE0 and the hold table around D2D_HOLD."""
+    p = {0x001014EC: le32(D2D_PSET), 0x001014F4: le32(D2D_POOL), 0x000EF6DC: le16(ef6dc),
+         0x00105BEC: bytes([bec, 0x5D]), 0x00104AE0: le32(ae0),
+         D2D_HOLD - 4: bytes(range(0x21, 0x29)),
+         D2D_STREAM: le16(0xEEEE) + b"".join(le16(w) for w in words) + le16(0x0777) * 4}
+    p.update(d1d_chunks(D2D_REC, d2d_ft_rec(**rec)))
+    for idx in (1, 2, 3):
+        p[D2D_PSET + idx * 0x20] = le16(0x5050 + idx) + le16(0x0202 + idx) + le32(0x04040404)
+    for k, kw in (children or {}).items():
+        p.update(d1d_chunks(D2D_POOL + k * 0x68, d2d_ft_rec(stream=D2D_STREAM + 0x20 * k, tag=0x11 * k, **kw)))
+        p[D2D_STREAM + 0x20 * k] = le16(0xDDDD) + le16(0x0456 + k) + le16(0x0777) * 4
+    return p
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -13655,6 +13686,59 @@ D2D_SPECS = [
     ], calls=(POSE, VOICE, SPAWN, P6_13244, ANIM_BEGIN, CLEAR36, ANCHOR), allow_calls=(0x33A10, 0x21F30),
        eax_mask=0,
        mutants=("@ctx", "@c0thr", "@c0zext", "@c0ge", "@c0w44", "@c0and", "@poseside", "@posearg", "@posesext", "@no21f30", "@r36", "@r44", "@s58", "@s54", "@c0stream", "@spawnx", "@spawnrec", "@spawnshift", "@order", "@c1sum", "@c1ge", "@c1rec", "@c1zero", "@c1s54", "@c1s58", "@c1clr", "@c1x", "@c1y", "@c1side", "@c1stream", "@c2bit", "@c2rec", "@c2r43", "@c2width", "@chside")),
+    # 0x2AA70 frame_timer: EAX = rec, DX = the pset index (every use is `xor r,r; mov r16,si`:
+    # 0x2ABC4/0x2ABC8, 0x2ABDF/0x2ABE3, 0x2AC60/0x2AC62; m1's EDX has high bits, the first correction
+    # this row found, `@slotw` is the port before it). The x87 compares are `fldz; fcomp; jb/jae/ja`:
+    # an unordered timer takes the `jb` (0x2AB44) to the hold arm (m3, the second correction, `@nan`).
+    # 0x29F34 (AX tested, `test ax,ax` 0x2AAD1: g1 returns 0x10000), 0x2B2A0 (the whole EAX,
+    # `test eax,eax` 0x2ABD2, `cmp edx,2` 0x2ABD6) and 0x2A408 are stubs; 0x2A39C and the raw's own
+    # recursive call 0x2AB9B run on both sides. Mask 0: `mov ax,[ebx+0x28]` .. `and eax,0xffff`
+    # (0x2A256..0x2A267) after 0x2A251, `mov ax,[ebx]` .. `and eax,0xffff` (0x2ABB3..0x2ABBB) after
+    # 0x2AB9B.
+    Spec("frame_timer", 0x2AA70, [
+        Case("g0", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w28=0x0800)),
+        Case("g1", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w28=0x0010), {0x29F34: 0x00010000}),
+        Case("g2", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w28=0x0010), {0x29F34: 1}),
+        Case("g3", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w2a=0x0004)),
+        Case("g4", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w2a=0x0005)),
+        Case("g5", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w2a=0x0004, ef6dc=0x0101)),
+        Case("g6", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w28=0x0810), {0x29F34: 1}),
+        Case("g7", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w28=0x0010, w2a=0x0004, ef6dc=0x0100),
+             {0x29F34: 0xFFFF0001}),
+        Case("m0", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w2a=0x0200, d20=99.0)),
+        Case("m1", {"eax": D2D_REC, "edx": 0x00030001}, d2d_ft_case(w2a=0x0100, d20=2.5)),
+        Case("m2", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w2a=0x0100, d20=2.5, ae0=1)),
+        Case("m3", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w2a=0x0100, d20=float("nan"))),
+        Case("m4", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w2a=0x0001, d20=1.0)),
+        Case("l0", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(d20=0.0), {0x2A408: 0x0222}),
+        Case("l1", {"eax": D2D_REC, "edx": 0x00020003}, d2d_ft_case(words=(0x8001, 0x8002, 0x0005), d20=0.0),
+             {0x2B2A0: 0, 0x2A408: 0x8333}),
+        Case("l2", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(words=(0x8001, 0x8002), d20=-1.0),
+             {0x2B2A0: 1, 0x2A408: 0x0444}),
+        Case("l3", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(words=(0x8001,), d20=0.0), {0x2B2A0: 2, 0x2A408: 0x0555}),
+        Case("l4", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(words=(0xFFFF,), d20=0.0),
+             {0x2B2A0: 0x00010002, 0x2A408: 0x0666}),
+        Case("l5", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(words=(1, 2, 3, 4), d20=-5.0, d24=2.0),
+             {0x2A408: 0x0777}),
+        Case("l6", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w2a=0x0008, d20=-5.0, d24=2.0), {0x2A408: 0x0888}),
+        Case("l7", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(d20=-5.0, d24=0.0), {0x2A408: 0x0999}),
+        Case("l8", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(d20=-5.0, d24=-1.0), {0x2A408: 0x0AAA}),
+        Case("l9", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(w2a=0x0400, b52=0xFE, d20=0.0), {0x2A408: 0x0BBB}),
+        Case("l10", {"eax": D2D_REC, "edx": 3}, d2d_ft_case(d20=0.0, b4b=1, children={1: dict(d20=4.0)}),
+             {0x2A408: 0x0CCC}),
+        Case("l11", {"eax": D2D_REC, "edx": 3},
+             d2d_ft_case(d20=0.0, b4b=1, children={1: dict(w28=0x0008, w2a=0x0808, b4b=2),
+                                                   2: dict(w28=0x0008, w2a=0x000C)}),
+             {0x2A408: 0x0DDD}),
+        Case("l12", {"eax": D2D_REC, "edx": 3},
+             d2d_ft_case(d20=0.0, b4b=1, children={1: dict(w28=0x0008, w2a=0x0008, b4b=2),
+                                                   2: dict(w2a=0x0100, d20=2.0)}),
+             {0x2A408: 0x0EEE}),
+        Case("l13", {"eax": D2D_REC, "edx": 3},
+             d2d_ft_case(d20=0.0, b4b=2, children={2: dict(d20=0.0, d24=1.0)}), {0x2A408: 0x8FFF}),
+    ], calls=(E.Call(0x29F34, ("eax", "edx"), clobbers=("edx",)), C1_ANIM_OPCODE, C1_SPRITE_ID),
+       allow_calls=(0x2AA70, 0x2A39C), eax_mask=0,
+       mutants=("@gate", "@dead", "@varax", "@vararg", "@noclr", "@parity", "@reload", "@reloadw", "@cmp", "@nan", "@hold100", "@ae0", "@slotw", "@e1w", "@no63", "@childbit", "@child2a", "@childslot", "@child20", "@chainclr", "@chain2a", "@walk4", "@opbit", "@opflag", "@st2", "@noid", "@hold400", "@holdsext", "@holdsrc", "@add", "@stop8", "@reloop", "@late")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 
