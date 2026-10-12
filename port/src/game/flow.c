@@ -7058,8 +7058,6 @@ void game_loop(void)
             DSB(DS_001014FC) = 0;            /* 0x2569D `mov byte` */
             swap_buffers();                  /* 0x256AA 0x50188 */
         }
-        DSD(DS_0010150C)++;                  /* 0x256C0 */
-
         /* PORT: 0x256B1 (the master loop's body draw, `rng(0x7FFF)`) is pinned to
          * a non-advancing `mov eax,0` in the pinned original (tools/title_pin.py),
          * and the port draws nothing here, so both streams carry only the
@@ -7069,7 +7067,8 @@ void game_loop(void)
 
         /* 0x255CC's tail calls 0x1CF20 here: play pending samples, start/drive
          * the music, render one frame of audio. */
-        game_audio_service();
+        game_audio_service();                /* 0x256B6 0x1CF20 */
+        DSD(DS_0010150C)++;                  /* 0x256C0, after the service */
 
         /* 0x256C5: the original spins while DS_0010150C-1 == DS_00101508, i.e.
          * until the timer ISR (0x1BDF4) advances DS_00101508 to the frame
