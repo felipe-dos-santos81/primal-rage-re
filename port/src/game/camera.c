@@ -261,7 +261,7 @@ int camera_page_tail_b(u32 side, u32 out)
             u32 e1 = (u32)DSB(entry + i * 3u + 1u);
             u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + e1) * 4u;
             DSD(out) = DSD(addr);
-            if (!camera_actor_bit15_clear(side))
+            if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x16615, 0x1661A: test al,al */
                 DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
             DSD(DS_000FD158 + side * 4u) = DSD(out);            /* 0x1662d */
             DSD(DS_000FD148 + side * 4u) = (u32)DSB(entry + i * 3u + 2u);

@@ -30588,6 +30588,7 @@ static void m_d4e_15b90_eax(const u32 *r, u32 *eax)
     if (!fighter_actor_bit15_clear(side)) DSD(pa) = 0x100u - DSD(pa);
     *eax = 0u;
 }
+static void m_d4e_tb_eax(const u32 *r, u32 *eax)    { *eax = d2d_tail_core(r, 0u, 0); }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39232,6 +39233,8 @@ static const binding_t k_bindings[] = {
     { "fight_hud_meter_step_al@eaxcmd", m_d4e_1d540_eaxcmd, 0x00000000u },
     { "camera_box_palette_al", b_d2d_15b90, 0x00000000u },
     { "camera_box_palette_al@eax", m_d4e_15b90_eax, 0x00000000u },
+    { "camera_page_tail_b_al", b_d2d_164f4, 0x000000FFu },
+    { "camera_page_tail_b_al@eax", m_d4e_tb_eax, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)
