@@ -495,9 +495,10 @@ void fighter_pass_a(void)
             if (!bl) { DSD(DS_00100AF8) = 0; goto tail; }
         }
 
-        /* 0x196BC: the two +0x34 position words decide, then the +0x8A pair. */
-        if (DSW(DS_00107838) < DSW(DS_001078CC)) { DSD(DS_00100AFC) = 0; goto tail; }
-        if (DSW(DS_001078CC) < DSW(DS_00107838)) { DSD(DS_00100AF8) = 0; goto tail; }
+        /* 0x196BC: the two +0x88 words decide, signed (`cmp ax,dx; jge` 0x196C9/
+         * 0x196CC, `cmp dx,ax; jge` 0x196D7/0x196DA), then the +0x5A bytes. */
+        if ((s16)DSW(DS_00107838) < (s16)DSW(DS_001078CC)) { DSD(DS_00100AFC) = 0; goto tail; }
+        if ((s16)DSW(DS_001078CC) < (s16)DSW(DS_00107838)) { DSD(DS_00100AF8) = 0; goto tail; }
         if (DSB(DS_0010780A) > DSB(DS_0010789E)) { DSD(DS_00100AFC) = 0; goto tail; }
         if (DSB(DS_0010789E) > DSB(DS_0010780A)) { DSD(DS_00100AF8) = 0; goto tail; }
 
