@@ -1100,7 +1100,7 @@ u32 frontend_skip_check(void)
     u32 mask0 = DSD(DS_000C9898);                       /* 0x4F7BB */
     DSD(DS_001088D8) = held;                            /* 0x4F7C1 */
     u32 r = (DSD(DS_001088E4) & mask0) != 0u ? 1u : 0u; /* 0x4F7B6/0x4F7C7/0x4F7C9 */
-    if (r == 0u && frontend_buttons_pressed(1u) != 0u)  /* 0x4F7CE..0x4F7DC */
+    if (r == 0u && (u8)frontend_buttons_pressed(1u) != 0u)  /* 0x4F7CE..0x4F7DC (`test al,al`) */
         r = 1u;                                         /* 0x4F7DE */
     DSD(DS_001088D8) = DSD(DS_001088D8);                /* 0x4F7E0/0x4F7E6 */
     return r;
