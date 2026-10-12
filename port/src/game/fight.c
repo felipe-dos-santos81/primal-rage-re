@@ -1277,7 +1277,7 @@ void fight_hook_4142c(void)
  * the table word DS_00108860[side] (0x33C50 seeds it 100), except in mode 3
  * (the demo), where the range is 0x64. One draw; the value maps through the
  * raw's thresholds to a 0xC9524 index. */
-static u32 fight_dust_pick(u32 side)
+u32 fight_dust_pick(u32 side)
 {
     u32 range = (DSW(DS_00104B00) == 3u)
               ? 0x64u
@@ -2676,7 +2676,7 @@ static void fight_4aad0(u32 entry, u32 index)
  * again for 0x10..0x17. Then it clears +0x42 bits 0/1 (`and al,0xfc`) and the
  * side's 0x10889E/0x1088B2 bytes (0x4A6EE/0x4A6F4 store at +0x10889D/+0x1088B1
  * after `inc edx`). */
-static void fight_4a634(void)
+void fight_4a634(void)
 {
     u32 side;
     for (side = 0; side < 2u; side++) {                     /* 0x4A6FA */
@@ -5557,7 +5557,7 @@ static void fight_4e5a4(u32 node, u32 idx)
  * then DS_001088B9 = 0 always. EBX/ECX/EDX/ESI pushed and popped. Only
  * caller: 0x4E923 (0x4E67C, the DS_001088B9-gated post-loop
  * tail). */
-static void fight_4e99c(u32 count)
+void fight_4e99c(u32 count)
 {
     u16 bx = (u16)count;                                             /* 0x4E9A3 */
     u8 r = (u8)(DSB(DS_001088BD) + 1u);                                /* 0x4E9A5/0x4E9B0/0x4E9BE */

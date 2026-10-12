@@ -451,4 +451,16 @@ int fight_4bd4c(u32 entry, u32 index);
  * rise; exported for its differential row (track D1 d1f). */
 int fight_4d108(u32 entry, u32 index);
 
+/* 0x49388 — the dust descriptor picker. EAX = side; exported for its
+ * differential row (track D1 d1f). */
+u32 fight_dust_pick(u32 side);
+
+/* 0x4A634 — the effects pass's per-frame flag reset (no argument); exported
+ * for its differential row (track D1 d1f). */
+void fight_4a634(void);
+
+/* 0x4E99C — record §49-P. EBX (word) = the arrival count; exported for its
+ * differential row (track D1 d1f). */
+void fight_4e99c(u32 count);
+
 #endif /* PRAGE_GAME_FIGHT_H */

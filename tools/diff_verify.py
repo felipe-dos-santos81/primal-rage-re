@@ -8427,6 +8427,128 @@ D1F_SPECS += [
                 "@xy", "@layer", "@slot")),
 ]
 
+# 0x49388, 0x49300, 0x4A634, 0x4E99C.
+
+
+def d1f_pick_case(mode, r0, r1, r2=0x0BAD):
+    """0x49388: the mode word 0x104B00 (its high byte set where the case wants a word that is not
+    3 with a low byte of 3) and the two sides' range words at 0x108860, with the word after them
+    (the @width mutant's side-1 read)."""
+    return {0x00104B00: le16(mode), 0x00108860: le16(r0) + le16(r1) + le16(r2)}
+
+
+D1F_SPECS += [
+    # 0x49388 fight_dust_pick: EAX = side. The draw is a stub, so each threshold is hit on both
+    # sides of its boundary; the raw's compares are signed (`jge` at 0x493B3, 0x493BF, 0x493CB,
+    # 0x493D7, 0x493E3). Callers index with all of EAX (0x495B9 `[eax*4+0xc9524]`).
+    Spec("fight_dust_pick", 0x49388, [
+        Case("d0", {"eax": 0}, d1f_pick_case(3, 0x11, 0x22), {0x5D7DC: 0x00}),
+        Case("d1", {"eax": 0}, d1f_pick_case(0x12, 0x50, 0x60), {0x5D7DC: 0x1D}),
+        Case("d2", {"eax": 1}, d1f_pick_case(0x12, 0x50, 0x60), {0x5D7DC: 0x1E}),
+        Case("d3", {"eax": 0}, d1f_pick_case(0x0103, 0x50, 0x60), {0x5D7DC: 0x31}),
+        Case("d4", {"eax": 1}, d1f_pick_case(0, 0x50, 0xFFFF), {0x5D7DC: 0x32}),
+        Case("d5", {"eax": 0}, d1f_pick_case(3, 0x50, 0x60), {0x5D7DC: 0x45}),
+        Case("d6", {"eax": 0}, d1f_pick_case(0x12, 0x50, 0x60), {0x5D7DC: 0x46}),
+        Case("d7", {"eax": 0}, d1f_pick_case(0x12, 0x50, 0x60), {0x5D7DC: 0x54}),
+        Case("d8", {"eax": 0}, d1f_pick_case(0x12, 0x50, 0x60), {0x5D7DC: 0x55}),
+        Case("d9", {"eax": 0}, d1f_pick_case(0x12, 0x50, 0x60), {0x5D7DC: 0x5E}),
+        Case("d10", {"eax": 0}, d1f_pick_case(0x12, 0x50, 0x60), {0x5D7DC: 0x5F}),
+        Case("d11", {"eax": 0}, d1f_pick_case(0x12, 0x50, 0x60), {0x5D7DC: 0x80000000}),
+    ], calls=(D1F_RNG,), eax_mask=0xFFFFFFFF,
+       mutants=("@side", "@mode8", "@r64", "@width", "@unsigned", "@t1e", "@t32", "@t46", "@t55",
+                "@t5f")),
+]
+
+
+def d1f_li_case(mode, fill):
+    """0x49300: the mode word 0x104AFC, the node area 0x1083C4..0x10884B and the 0x10884C
+    sentinel pair filled with `fill`-derived bytes (so every link store shows), 0x108880, and the
+    0x1088CB/CC pair between seeded neighbours."""
+    p = {0x00104AFC: le16(mode), 0x00108880: le32(0x0BAD8880),
+         0x001088CA: bytes([0xCA, 0x77, 0x88, 0xCD])}
+    a = 0x001083C4
+    while a < 0x00108854:
+        n = min(0x40, 0x00108854 - a)
+        p[a] = bytes(((a + k) * 7 + fill) & 0xFF or 0x5A for k in range(n))
+        a += n
+    return p
+
+
+def d1f_fr_case(seed, s42, r):
+    """0x4A634: the rng state 0xEF6D8 (0x5D7DC runs), each slot's +0x42 byte between +0x41 and
+    +0x43, the two reaction bytes 0x1088A8, and the 0x10889E and 0x1088B2 pairs between seeded
+    neighbours."""
+    p = {0x000EF6D8: le32(seed),
+         0x001088A7: bytes([0xA7, r[0], r[1], 0xAA]),
+         0x0010889D: bytes([0x9D, 0x11, 0x22, 0xA0]),
+         0x001088B1: bytes([0xB1, 0x33, 0x44, 0xB4])}
+    for s in (0, 1):
+        p[D1F_SLOTS + s * 0x94 + 0x41] = bytes([0x41, s42[s], 0x43])
+    return p
+
+
+def d1f_rc_case(bd, ch, pairs, b9=0x77):
+    """0x4E99C: the round counter 0x1088BD, the character 0x1088BC (the index of the 5-byte rows
+    at 0x108888), the flag 0x1088B9, each inside seeded neighbours, and the ten row bytes
+    0x108888..0x108891 (`pairs` = the four bytes +0..+3 of the addressed row; the other row holds
+    different bytes)."""
+    rows = bytearray([0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9])
+    rows[(ch & 1) * 5:(ch & 1) * 5 + 4] = bytes(pairs)
+    return {0x00108888: bytes(rows),
+            0x001088B8: bytes([0xB8, b9, 0xBA, 0xBB, ch, bd, 0xBE])}
+
+
+D1F_SPECS += [
+    # 0x49300 fight_list_init: no argument. 0x249C0 has no seam and runs on both sides (allowed;
+    # its own row is list_insert_before). EAX dies unread (0x28E98 and 0x34978 load it before any
+    # read, record §1): mask 0.
+    Spec("fight_list_init", 0x49300, [
+        Case("i0", {}, d1f_li_case(7, 0x11)),
+        Case("i1", {}, d1f_li_case(6, 0x55)),
+        Case("i2", {}, d1f_li_case(0x0107, 0xA3)),
+    ], allow_calls=(0x249C0,), eax_mask=0,
+       mutants=("@stride", "@first", "@bound", "@head", "@v1500", "@self", "@mode", "@word",
+                "@swap")),
+    # 0x4A634 fight_4a634: no argument. 0x5D7DC runs real (recorded, P6_RNG): a case's stub EAX is one
+    # value, and the 0xCA/0xDB arm needs the two rng(2) draws to differ, so the draws come from
+    # the 0xEF6D8 seed. 0x2C3FC is the VOICE stub. EAX dies unread (0x4A596 `xor eax,eax`): mask 0.
+    Spec("fight_4a634", 0x4A634, [
+        Case("e0", {}, d1f_fr_case(0x04, (0xFF, 0x01), (0x20, 0x20))),
+        Case("e1", {}, d1f_fr_case(0x03, (0x02, 0x00), (0x3F, 0x30))),
+        Case("e2", {}, d1f_fr_case(0x01, (0x00, 0x02), (0x00, 0x21))),
+        Case("e3", {}, d1f_fr_case(0x03, (0x02, 0x00), (0x10, 0x00))),
+        Case("e4", {}, d1f_fr_case(0x01, (0x02, 0x00), (0x17, 0x00))),
+        Case("e5", {}, d1f_fr_case(0x06, (0x02, 0x02), (0x12, 0x2A))),
+        Case("e6", {}, d1f_fr_case(0x15, (0x03, 0x03), (0x25, 0x14))),
+        Case("e7", {}, d1f_fr_case(0x01, (0x02, 0x02), (0x1F, 0x40))),
+        Case("e8", {}, d1f_fr_case(0x01, (0x02, 0x02), (0x0F, 0x18))),
+    ], calls=(P6_RNG, VOICE), eax_mask=0,
+       mutants=("@bit", "@r", "@lo20", "@hi3f", "@lo10", "@hi17", "@r3", "@v1", "@second", "@pair",
+                "@clr", "@b9e", "@bb2", "@off", "@gate")),
+    # 0x4E99C fight_4e99c: EAX = the count (0x4E9A3 `mov ebx,eax`; the caller's 0x4E91C `xor eax,eax`,
+    # `mov ax,si`), tested as a word (`test bx,bx` 0x4E9D5). The incoming EBX is not read. 0x2C3FC and
+    # 0x34D8C are stubs. EAX dies unread (0x4EBC1 `mov eax,0x62` in 0x4EBB8, the next call): mask 0.
+    Spec("fight_4e99c", 0x4E99C, [
+        Case("y0", {"eax": 0}, d1f_rc_case(0x00, 0, (0x11, 0x22, 0x33, 0x44))),
+        Case("y1", {"eax": 0}, d1f_rc_case(0x01, 0, (0x03, 0x22, 0x33, 0x44))),
+        Case("y2", {"eax": 3}, d1f_rc_case(0x00, 1, (0x11, 0x22, 0x33, 0x44))),
+        Case("y3", {"eax": 3}, d1f_rc_case(0x01, 0, (0x07, 0x22, 0x33, 0x44))),
+        Case("y4", {"eax": 3}, d1f_rc_case(0x01, 1, (0x02, 0x22, 0x33, 0x44))),
+        Case("y5", {"eax": 0}, d1f_rc_case(0x02, 1, (0x11, 0x22, 0x33, 0x44))),
+        Case("y6", {"eax": 0}, d1f_rc_case(0x04, 0, (0x11, 0x22, 0x33, 0x44))),
+        Case("y7", {"eax": 0}, d1f_rc_case(0x05, 1, (0x11, 0x22, 0x04, 0x44))),
+        Case("y8", {"eax": 4}, d1f_rc_case(0x06, 0, (0x11, 0x22, 0x33, 0x44))),
+        Case("y9", {"eax": 4}, d1f_rc_case(0x07, 0, (0x11, 0x22, 0x06, 0x44))),
+        Case("y10", {"eax": 4}, d1f_rc_case(0x07, 1, (0x11, 0x22, 0x01, 0x44))),
+        Case("y11", {"eax": 0}, d1f_rc_case(0xFF, 0, (0x04, 0x22, 0x33, 0x44))),
+        Case("y12", {"eax": 0x00010000}, d1f_rc_case(0x00, 0, (0x11, 0x22, 0x33, 0x44))),
+        Case("y13", {"eax": 0x00000100}, d1f_rc_case(0x00, 0, (0x11, 0x22, 0x33, 0x44))),
+        Case("y14", {"eax": 0}, d1f_rc_case(0x03, 0x80, (0x11, 0x22, 0x33, 0x44))),
+    ], calls=(VOICE, FLASH), eax_mask=0,
+       mutants=("@inc", "@save", "@five", "@par", "@bx8", "@bx32", "@idx", "@hi", "@ten", "@v0",
+                "@b9", "@voice", "@tail", "@tog", "@flash", "@order", "@sext")),
+]
+
 D1_SPECS += D1F_SPECS
 
 SPECS = [

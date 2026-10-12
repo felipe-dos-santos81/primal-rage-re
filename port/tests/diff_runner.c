@@ -14108,6 +14108,196 @@ D1F_TAG(layer, 2048u)
 D1F_TAG(slot, 4096u)
 #undef D1F_TAG
 
+/* 0x49388's mutants. EAX = side. */
+static u32 d1f_49388_core(const u32 *r, u32 mut)
+{
+    u32 side = (mut & 1u) ? (r[R_EAX] ^ 1u) : r[R_EAX];                          /* @side */
+    u32 mode = (mut & 2u) ? (u32)DSB(0x00104B00u) : (u32)DSW(0x00104B00u);       /* @mode8 */
+    u32 range = (mode == 3u) ? ((mut & 4u) ? 0x63u : 0x64u)                      /* @r64 */
+                             : (u32)DSW(0x00108860u + side * ((mut & 8u) ? 4u : 2u));   /* @width */
+    s32 v = (s32)rng_next(range);
+    if (mut & 16u) {                                                             /* @unsigned */
+        u32 u = (u32)v;
+        if (u < 0x1eu) return 4u;
+        if (u < 0x32u) return 3u;
+        if (u < 0x46u) return 5u;
+        if (u < 0x55u) return 1u;
+        if (u < 0x5fu) return 0u;
+        return 2u;
+    }
+    if (v < ((mut & 32u) ? 0x1f : 0x1e)) return 4u;                              /* @t1e */
+    if (v < ((mut & 64u) ? 0x33 : 0x32)) return 3u;                              /* @t32 */
+    if (v < ((mut & 128u) ? 0x47 : 0x46)) return 5u;                             /* @t46 */
+    if (v < ((mut & 256u) ? 0x56 : 0x55)) return 1u;                             /* @t55 */
+    if (v < ((mut & 512u) ? 0x60 : 0x5f)) return 0u;                             /* @t5f */
+    return 2u;
+}
+static void b_d1f_49388(const u32 *r, u32 *eax)       { *eax = fight_dust_pick(r[R_EAX]); }
+static void m_d1f_pick_side(const u32 *r, u32 *eax)   { *eax = d1f_49388_core(r, 1u); }
+static void m_d1f_pick_mode8(const u32 *r, u32 *eax)  { *eax = d1f_49388_core(r, 2u); }
+static void m_d1f_pick_r64(const u32 *r, u32 *eax)    { *eax = d1f_49388_core(r, 4u); }
+static void m_d1f_pick_width(const u32 *r, u32 *eax)  { *eax = d1f_49388_core(r, 8u); }
+static void m_d1f_pick_unsigned(const u32 *r, u32 *eax) { *eax = d1f_49388_core(r, 16u); }
+static void m_d1f_pick_t1e(const u32 *r, u32 *eax)    { *eax = d1f_49388_core(r, 32u); }
+static void m_d1f_pick_t32(const u32 *r, u32 *eax)    { *eax = d1f_49388_core(r, 64u); }
+static void m_d1f_pick_t46(const u32 *r, u32 *eax)    { *eax = d1f_49388_core(r, 128u); }
+static void m_d1f_pick_t55(const u32 *r, u32 *eax)    { *eax = d1f_49388_core(r, 256u); }
+static void m_d1f_pick_t5f(const u32 *r, u32 *eax)    { *eax = d1f_49388_core(r, 512u); }
+
+/* 0x49300's mutants. No argument. */
+static void d1f_49300_core(u32 mut)
+{
+    u32 head = (mut & 8u) ? 0x0010884Cu : 0x001083C4u;                           /* @head */
+    DSD(0x00108880u) = (mut & 16u) ? 0x1400u : 0x1500u;                          /* @v1500 */
+    if (!(mut & 32u)) DSD(0x00108850u) = 0x0010884Cu;                            /* @self */
+    DSD(0x0010884Cu) = 0x0010884Cu;
+    DSD(0x001083C8u) = 0x001083C4u;
+    DSD(0x001083C4u) = 0x001083C4u;
+    for (u32 node = (mut & 2u) ? 0x001083F0u : 0x001083CCu;                      /* @first */
+         (mut & 4u) ? (node <= 0x0010884Cu - 0x24u - 0x24u) : (node < 0x0010884Cu);   /* @bound */
+         node += (mut & 1u) ? 0x48u : 0x24u)                                     /* @stride */
+        effects_list_insert_before(head, node);
+    u32 m = (mut & 128u) ? (u32)DSB(0x00104AFCu) : (u32)DSW(0x00104AFCu);        /* @word */
+    int seven = (mut & 64u) ? (m != 7u) : (m == 7u);                             /* @mode */
+    if (seven) {
+        DSB(0x001088CCu) = 0u;
+        DSB(0x001088CBu) = 0u;
+        return;
+    }
+    DSB(0x001088CCu) = (mut & 256u) ? 4u : 2u;                                   /* @swap */
+    DSB(0x001088CBu) = (mut & 256u) ? 2u : 4u;
+}
+static void b_d1f_49300(const u32 *r, u32 *eax)       { (void)r; fight_list_init(); *eax = 0u; }
+#define D1F_LI(name, mut) \
+    static void m_d1f_li_##name(const u32 *r, u32 *eax) { (void)r; d1f_49300_core(mut); *eax = 0u; }
+D1F_LI(stride, 1u)
+D1F_LI(first, 2u)
+D1F_LI(bound, 4u)
+D1F_LI(head, 8u)
+D1F_LI(v1500, 16u)
+D1F_LI(self, 32u)
+D1F_LI(mode, 64u)
+D1F_LI(word, 128u)
+D1F_LI(swap, 256u)
+#undef D1F_LI
+
+/* 0x4A634's mutants. No argument. */
+static void d1f_4a634_core(u32 mut)
+{
+    for (u32 side = 0; side < 2u; side++) {
+        u32 slot = 0x001077B0u + side * 0x94u;
+        if ((DSB(slot + 0x42u) & ((mut & 1u) ? 1u : 2u)) != 0u) {                /* @bit */
+            u32 r = (u32)DSB(0x001088A8u + ((mut & 2u) ? (side ^ 1u) : side));   /* @r */
+            if (r >= ((mut & 4u) ? 0x21u : 0x20u) && r <= ((mut & 8u) ? 0x3Eu : 0x3Fu)) {   /* @lo20 / @hi3f */
+                u32 d = rng_next((mut & 64u) ? 2u : 3u);                         /* @r3 */
+                if (mut & 128u) d = (d == 1u) ? 2u : (d == 2u) ? 1u : d;         /* @v1 */
+                (void)sound_voice(d == 1u ? 0xCEu : d == 2u ? 0xCFu : 0xCDu);
+            } else if (r >= ((mut & 16u) ? 0x11u : 0x10u) && r <= ((mut & 32u) ? 0x16u : 0x17u)) {   /* @lo10 / @hi17 */
+                if (rng_next(2u) != 0u || (mut & 16384u)) {                      /* @gate */
+                    int second = (mut & 256u) ? 1 : (rng_next(2u) != 0u);        /* @second */
+                    if (mut & 512u) second = !second;                            /* @pair */
+                    if (second) {
+                        (void)sound_voice(0xC9u);
+                        (void)sound_voice(0xDAu);
+                    } else {
+                        (void)sound_voice(0xCAu);
+                        (void)sound_voice(0xDBu);
+                    }
+                }
+            }
+        }
+        DSB(slot + 0x42u) &= (mut & 1024u) ? 0xFEu : 0xFCu;                      /* @clr */
+        if (!(mut & 2048u)) DSB(0x0010889Eu + side - ((mut & 8192u) ? 1u : 0u)) = 0;   /* @b9e / @off */
+        if (!(mut & 4096u)) DSB(0x001088B2u + side) = 0;                         /* @bb2 */
+    }
+}
+static void b_d1f_4a634(const u32 *r, u32 *eax)       { (void)r; fight_4a634(); *eax = 0u; }
+#define D1F_FR(name, mut) \
+    static void m_d1f_fr_##name(const u32 *r, u32 *eax) { (void)r; d1f_4a634_core(mut); *eax = 0u; }
+D1F_FR(bit, 1u)
+D1F_FR(r, 2u)
+D1F_FR(lo20, 4u)
+D1F_FR(hi3f, 8u)
+D1F_FR(lo10, 16u)
+D1F_FR(hi17, 32u)
+D1F_FR(r3, 64u)
+D1F_FR(v1, 128u)
+D1F_FR(second, 256u)
+D1F_FR(pair, 512u)
+D1F_FR(clr, 1024u)
+D1F_FR(b9e, 2048u)
+D1F_FR(bb2, 4096u)
+D1F_FR(off, 8192u)
+D1F_FR(gate, 16384u)
+#undef D1F_FR
+
+/* 0x4E99C's mutants. EAX = the arrival count (0x4E9A3 `mov ebx,eax`; its low word is tested). */
+static void d1f_4e99c_core(const u32 *r, u32 mut)
+{
+    u32 count = r[R_EAX];
+    u32 zero = (mut & 16u) ? ((u8)count == 0u) : (mut & 32u) ? (count == 0u)     /* @bx8 / @bx32 */
+                                                             : ((u16)count == 0u);
+    u8 rr = (u8)(DSB(0x001088BDu) + 1u);
+    if (!(mut & 1u)) DSB(0x001088BDu) = rr;                                      /* @inc */
+    u8 save = (u8)(rr + 1u);
+    u32 ch = (mut & 65536u) ? (u32)(s32)(s8)DSB(0x001088BCu) : (u32)DSB(0x001088BCu);   /* @sext */
+    u32 base = (((mut & 4u) ? (rr <= 5u) : (rr < 5u)) || (mut & 128u))           /* @five / @hi */
+             ? 0x00108888u : 0x0010888Au;
+    u32 at = base + ch * ((mut & 64u) ? 4u : 5u);                                /* @idx */
+    int odd = (rr % 2u) != 0u;
+    if (mut & 8u) odd = !odd;                                                    /* @par */
+    u8 ten = (mut & 256u) ? 0xBu : 0xAu;                                         /* @ten */
+    u32 hi = (mut & 2048u) ? 0x5Eu : 0x5Du, lo = (mut & 2048u) ? 0x5Du : 0x5Eu;  /* @voice */
+    if (zero && odd) {
+        DSB(at) = ten;
+        if (!(mut & 2u)) DSB(0x001088BDu) = save;                                /* @save */
+        (void)sound_voice(hi);
+    } else if (zero) {
+        DSB(at + 1u) = (u8)(ten - DSB(at));
+        (void)sound_voice(lo);
+    } else {
+        u8 bl = (u8)(ten - (u8)count);
+        if (odd) {
+            DSB(at) = bl;
+            (void)sound_voice(hi);
+        } else {
+            u8 v = (u8)(bl - DSB(at));
+            DSB(at + 1u) = v;
+            if (v != 0u || (mut & 512u)) (void)sound_voice(lo);                  /* @v0 */
+        }
+    }
+    u8 rd = DSB(0x001088BDu);
+    if ((mut & 4096u) ? ((rd & 1u) == 0u) : (rd == 2u || rd == 4u || rd == 6u)) {   /* @tail */
+        u8 old = DSB(0x001088BCu);
+        u8 v = (mut & 8192u) ? (u8)~old : (u8)(old == 0u);                       /* @tog */
+        if (mut & 32768u) hit_flash_pair(v);                                     /* @order */
+        DSB(0x001088BCu) = v;
+        if (!(mut & 32768u)) hit_flash_pair((mut & 16384u) ? old : v);           /* @flash */
+    }
+    if (!(mut & 1024u)) DSB(0x001088B9u) = 0u;                                   /* @b9 */
+}
+static void b_d1f_4e99c(const u32 *r, u32 *eax)       { fight_4e99c(r[R_EAX]); *eax = 0u; }
+#define D1F_RC(name, mut) \
+    static void m_d1f_rc_##name(const u32 *r, u32 *eax) { d1f_4e99c_core(r, mut); *eax = 0u; }
+D1F_RC(inc, 1u)
+D1F_RC(save, 2u)
+D1F_RC(five, 4u)
+D1F_RC(par, 8u)
+D1F_RC(bx8, 16u)
+D1F_RC(bx32, 32u)
+D1F_RC(idx, 64u)
+D1F_RC(hi, 128u)
+D1F_RC(ten, 256u)
+D1F_RC(v0, 512u)
+D1F_RC(b9, 1024u)
+D1F_RC(voice, 2048u)
+D1F_RC(tail, 4096u)
+D1F_RC(tog, 8192u)
+D1F_RC(flash, 16384u)
+D1F_RC(order, 32768u)
+D1F_RC(sext, 65536u)
+#undef D1F_RC
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -15977,6 +16167,61 @@ static const binding_t k_bindings[] = {
     { "fight_char_team_tag_add@xy",          m_d1f_tag_xy, 0x00000000u },
     { "fight_char_team_tag_add@layer",       m_d1f_tag_layer, 0x00000000u },
     { "fight_char_team_tag_add@slot",        m_d1f_tag_slot, 0x00000000u },
+    { "fight_dust_pick",                   b_d1f_49388,     0xFFFFFFFFu },
+    { "fight_dust_pick@side",              m_d1f_pick_side, 0xFFFFFFFFu },
+    { "fight_dust_pick@mode8",             m_d1f_pick_mode8, 0xFFFFFFFFu },
+    { "fight_dust_pick@r64",               m_d1f_pick_r64,  0xFFFFFFFFu },
+    { "fight_dust_pick@width",             m_d1f_pick_width, 0xFFFFFFFFu },
+    { "fight_dust_pick@unsigned",          m_d1f_pick_unsigned, 0xFFFFFFFFu },
+    { "fight_dust_pick@t1e",               m_d1f_pick_t1e,  0xFFFFFFFFu },
+    { "fight_dust_pick@t32",               m_d1f_pick_t32,  0xFFFFFFFFu },
+    { "fight_dust_pick@t46",               m_d1f_pick_t46,  0xFFFFFFFFu },
+    { "fight_dust_pick@t55",               m_d1f_pick_t55,  0xFFFFFFFFu },
+    { "fight_dust_pick@t5f",               m_d1f_pick_t5f,  0xFFFFFFFFu },
+    { "fight_list_init",                     b_d1f_49300, 0x00000000u },
+    { "fight_list_init@stride",              m_d1f_li_stride, 0x00000000u },
+    { "fight_list_init@first",               m_d1f_li_first, 0x00000000u },
+    { "fight_list_init@bound",               m_d1f_li_bound, 0x00000000u },
+    { "fight_list_init@head",                m_d1f_li_head, 0x00000000u },
+    { "fight_list_init@v1500",               m_d1f_li_v1500, 0x00000000u },
+    { "fight_list_init@self",                m_d1f_li_self, 0x00000000u },
+    { "fight_list_init@mode",                m_d1f_li_mode, 0x00000000u },
+    { "fight_list_init@word",                m_d1f_li_word, 0x00000000u },
+    { "fight_list_init@swap",                m_d1f_li_swap, 0x00000000u },
+    { "fight_4a634",                         b_d1f_4a634, 0x00000000u },
+    { "fight_4a634@bit",                     m_d1f_fr_bit, 0x00000000u },
+    { "fight_4a634@r",                       m_d1f_fr_r, 0x00000000u },
+    { "fight_4a634@lo20",                    m_d1f_fr_lo20, 0x00000000u },
+    { "fight_4a634@hi3f",                    m_d1f_fr_hi3f, 0x00000000u },
+    { "fight_4a634@lo10",                    m_d1f_fr_lo10, 0x00000000u },
+    { "fight_4a634@hi17",                    m_d1f_fr_hi17, 0x00000000u },
+    { "fight_4a634@r3",                      m_d1f_fr_r3, 0x00000000u },
+    { "fight_4a634@v1",                      m_d1f_fr_v1, 0x00000000u },
+    { "fight_4a634@second",                  m_d1f_fr_second, 0x00000000u },
+    { "fight_4a634@pair",                    m_d1f_fr_pair, 0x00000000u },
+    { "fight_4a634@clr",                     m_d1f_fr_clr, 0x00000000u },
+    { "fight_4a634@b9e",                     m_d1f_fr_b9e, 0x00000000u },
+    { "fight_4a634@bb2",                     m_d1f_fr_bb2, 0x00000000u },
+    { "fight_4a634@off",                     m_d1f_fr_off, 0x00000000u },
+    { "fight_4a634@gate",                    m_d1f_fr_gate, 0x00000000u },
+    { "fight_4e99c",                         b_d1f_4e99c, 0x00000000u },
+    { "fight_4e99c@inc",                     m_d1f_rc_inc, 0x00000000u },
+    { "fight_4e99c@save",                    m_d1f_rc_save, 0x00000000u },
+    { "fight_4e99c@five",                    m_d1f_rc_five, 0x00000000u },
+    { "fight_4e99c@par",                     m_d1f_rc_par, 0x00000000u },
+    { "fight_4e99c@bx8",                     m_d1f_rc_bx8, 0x00000000u },
+    { "fight_4e99c@bx32",                    m_d1f_rc_bx32, 0x00000000u },
+    { "fight_4e99c@idx",                     m_d1f_rc_idx, 0x00000000u },
+    { "fight_4e99c@hi",                      m_d1f_rc_hi, 0x00000000u },
+    { "fight_4e99c@ten",                     m_d1f_rc_ten, 0x00000000u },
+    { "fight_4e99c@v0",                      m_d1f_rc_v0, 0x00000000u },
+    { "fight_4e99c@b9",                      m_d1f_rc_b9, 0x00000000u },
+    { "fight_4e99c@voice",                   m_d1f_rc_voice, 0x00000000u },
+    { "fight_4e99c@tail",                    m_d1f_rc_tail, 0x00000000u },
+    { "fight_4e99c@tog",                     m_d1f_rc_tog, 0x00000000u },
+    { "fight_4e99c@flash",                   m_d1f_rc_flash, 0x00000000u },
+    { "fight_4e99c@order",                   m_d1f_rc_order, 0x00000000u },
+    { "fight_4e99c@sext",                    m_d1f_rc_sext, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
