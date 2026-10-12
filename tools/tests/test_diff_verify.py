@@ -27394,7 +27394,7 @@ class RealFunctionTests(unittest.TestCase):
         0x2F4D0: ("ebx", "ecx", "edx"), 0x2F20C: ("ebx", "ecx", "edx"), 0x1A6AC: ("edx",), 0x3C600: (),
         0x3CCEC: ("edx",), 0x3CE24: ("edx",), 0x4CE70: (), 0x3CBC4: (), 0x3CC58: (), 0x3CF38: (), 0x4649C: ("ebx", "edx"),
         0x41310: (), 0x46190: (), 0x46460: ("edx",), 0x468D8: (), 0x474E4: ("ebx", "edx"), 0x48170: (),
-        0x49444: ("edi", "ebp"), 0x4F434: (), 0x5D7DC: (), 0x5DC0F: ("ebx", "ecx", "edx"),
+        0x49444: (), 0x4F434: (), 0x5D7DC: (), 0x5DC0F: ("ebx", "ecx", "edx"),
         0x5DC8B: ("ebx", "ecx", "edx"), 0x5DD03: (), 0x5DEAF: ("ebx", "ecx", "edx"), 0x5DEED: (),
         0x3CD94: ("edx",), 0x2F198: ("ebx", "ecx", "edx"), 0x2F280: ("ebx", "ecx", "edx"),
         0x2F314: ("ebx", "ecx", "edx"), 0x2EF24: (), 0x65546: (), 0x61A70: ("edx",),
@@ -27405,7 +27405,7 @@ class RealFunctionTests(unittest.TestCase):
         0x4EBB8: (),     # track D2 batch d2e
         0x414B4: (), 0x41528: (), 0x41578: (), 0x418F4: (), 0x416D4: (), 0x4160C: (), 0x41760: (), 0x417C4: (),     # track D2 batch d2e
         0x4660C: (), 0x25848: (), 0x41350: ("edx",), 0x271E0: (), 0x32A3C: ("edx",),     # track D2 batch d2e
-        0x3962C: ("edx", "esi", "edi", "ebp"), 0x396AC: ("edx", "esi", "edi", "ebp"), 0x19164: (), 0x1922C: (), 0x192DC: (), 0x29D04: (), 0x1DE64: ("edx",), 0x34DDC: (),     # track D3 batch d3c
+        0x3962C: ("edx",), 0x396AC: ("edx",), 0x19164: (), 0x1922C: (), 0x192DC: (), 0x29D04: (), 0x1DE64: ("edx",), 0x34DDC: (),     # track D3 batch d3c
         0x1A5D4: (), 0x1A640: (), 0x35B7C: ("edx",), 0x35C1C: ("edx",), 0x367DC: ("edx",), 0x34038: ("esi", "edi", "ebp"),     # track D3 batch d3c
         0x4FB20: (), 0x3BAEC: (), 0x406B4: (), 0x46F4C: (), 0x46C78: (), 0x46DD4: (),     # track D3 batch d3c
         0x46958: (), 0x46698: (), 0x466F4: (), 0x4673C: (), 0x46794: (), 0x467DC: (), 0x4682C: (), 0x46898: (),     # track D3 batch d3c
@@ -27529,10 +27529,10 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (632 after track D's waves 1 to 4);
+        # the closed-row count is over the rows that have callees (758 after track D's wave 5 batches d5a to d5h);
         # the 167 without are counted apart
-        self.assertIn("diff-verify: 799/799 functions VERIFIED; 9285/9285 mutants detected; 1 named gaps; "
-                      "513/632 rows with callees closed (167 have none).", out.getvalue())
+        self.assertIn("diff-verify: 925/925 functions VERIFIED; 12849/12849 mutants detected; 1 named gaps; "
+                      "572/758 rows with callees closed (167 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):
