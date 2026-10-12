@@ -18842,6 +18842,52 @@ D3B_SPECS += [
            "nf1f f21 fc clamp w28 w1c e10 bump type s864 e14 or20 lt v34 b29 idx8 hold").split())),
 ]
 
+D3B_4D108 = E.Call(0x4D108, ("eax", "edx"), clobbers=("edx",))
+D3B_4D150 = E.Call(0x4D150, ("eax", "edx"), clobbers=("edx",))
+# the _rr spec's stubs rewrite the side-0 slot's +0x42 (harness writes): 0x4D150 leaves 2, 0x4B3F0 1
+D3B_4D150_W = dataclasses.replace(D3B_4D150, writes=((None, D2B_SLOTS + 0x42, b"\x02"),))
+
+
+def d3b_vh_stubs(kbd4c=0, k108=0, k150=0, k3f0=0, k430=0):
+    return {0x4BD4C: kbd4c, 0x4D108: k108, 0x4D150: k150, 0x4B3F0: k3f0, 0x4B430: k430}
+
+
+D3B_SPECS += [
+    # 0x4D224 fight_4d224: EAX = entry, EDX = index. Every callee is a stub; 0x4BD4C's, 0x4D150's and
+    # 0x4B3F0's results are tested whole (`test eax,eax`), 0x4D108's as AL (0x4D24C `test al,al`),
+    # 0x4B430's not at all. EAX dies unread at its one call site 0x4D3AB (0x4D3B0 `jmp 0x4d747`: the
+    # walk, record d3b §1): mask 0.
+    Spec("fight_4d224", 0x4D224, [
+        Case("j0", {"eax": D2B_ENT, "edx": 2}, d3b_ty_case(c2=1, s42=0x03), d3b_vh_stubs(kbd4c=0x100)),
+        Case("j1", {"eax": D2B_ENT, "edx": 3}, d3b_ty_case(side=1, c2=0x80, s42=0x03), d3b_vh_stubs(k108=0x100, k150=0x100)),
+        Case("j2", {"eax": D2B_ENT, "edx": 4}, d3b_ty_case(s42=0x03), d3b_vh_stubs(k108=1)),
+        Case("j3", {"eax": D2B_ENT, "edx": 5}, d3b_ty_case(side=1, s42=0x03), d3b_vh_stubs(k108=0xFFFFFF01)),
+        Case("j4", {"eax": D2B_ENT, "edx": 6}, d3b_ty_case(s42=0x03), d3b_vh_stubs(k3f0=0x100)),
+        Case("j5", {"eax": D2B_ENT, "edx": 7}, d3b_ty_case(side=1, s42=0x00, b2=(0, 1)), d3b_vh_stubs()),
+        Case("j6", {"eax": D2B_ENT, "edx": 8}, d3b_ty_case(s42=0x03), d3b_vh_stubs(k430=1)),
+        Case("j7", {"eax": D2B_ENT, "edx": 9}, d3b_ty_case(side=1, s42=0xFD), d3b_vh_stubs(k3f0=1)),
+        Case("j8", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(s42=0xFC, b9e=(0x80, 0)), d3b_vh_stubs()),
+        Case("j9", {"eax": D2B_ENT, "edx": 0}, d3b_ty_case(s42=0xFC, b2=(0, 1), b9e=(0, 1)), d3b_vh_stubs(1, 0, 0, 1, 1)),
+        Case("j10", {"eax": D2B_ENT, "edx": 9},
+             d3b_ty_case(f21=0x80, extra={0x00108932: b"\x01", 0x00108832: b"\x00", 0x0010891E: b"\x00",
+                                          0x0010881E: b"\x01"}), d3b_vh_stubs()),
+        Case("j11", {"eax": D2B_ENT, "edx": 3}, d3b_ty_case(side=1, s42=0x02, b9e=(1, 0)), d3b_vh_stubs(k150=1)),
+    ], calls=(D3B_4BD4C, D3B_4D108, D3B_4D150, D3B_4B3F0, D3B_4B430), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "c2 c2n albd4c eax108 no108 al150 order no150 sext tbidx bits tabs and al3f0 flag3f0 flag430 "
+           "bdidx").split())),
+    # the same entry with the stubs that rewrite the side-0 slot's +0x42
+    Spec("fight_4d224_rr", 0x4D224, [
+        # +0x42 = 0: 0x4D150 leaves 2 -> 0x4B3F0 (leaves 1) -> 0x4B430
+        Case("y0", {"eax": D2B_ENT, "edx": 2}, d3b_ty_case(s42=0x00, c2=1), d3b_vh_stubs()),
+        # +0x42 = 1 at entry: the same chain (a cached read would skip 0x4B3F0)
+        Case("y1", {"eax": D2B_ENT, "edx": 3}, d3b_ty_case(s42=0x01), d3b_vh_stubs()),
+        # the side-1 slot, which the stubs do not write: the table tests, no call
+        Case("y2", {"eax": D2B_ENT, "edx": 4}, d3b_ty_case(side=1, s42=0x00), d3b_vh_stubs()),
+    ], calls=(D3B_4BD4C, D3B_4D108, D3B_4D150_W, D3B_4B3F0_W, D3B_4B430), eax_mask=0,
+       mutants=("@c42a", "@c42b")),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
