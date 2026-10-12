@@ -4984,7 +4984,7 @@ void game_state_6(void)
     DSW(DS_00104AFC) = (u16)draw1;                      /* 0x11AB4 */
     /* 0x11ABA..0x11AC1: EAX = the zero-extended word of the draw, EDX = 1, so
      * 0x20DF4 takes its full-reset branch (record §46-B). */
-    game_fight_reset(draw1, 1u);                        /* 0x11AC4 0x20DF4 */
+    game_fight_reset((u32)(u16)draw1, 1u);              /* 0x11ABA/0x11AC1 `mov ax,bx`, 0x11AC4 0x20DF4 */
     fight_char_select(0u, draw1);                       /* 0x11ACD 0x41350 */
     fighter_spawn(0u);                                  /* 0x11AD9 0x33EB4 */
     /* 0x11AE3: EDX after 0x33EB4 is the caller's 7 — 0x33EB4 push/pops EDX and
