@@ -6431,6 +6431,66 @@ D1_MASKS.update(D1E_MASKS)
 D1_KINDS.update(D1E_KINDS)
 D1_CASES.extend(D1E_CASES)
 
+# ---- track D2 batch d2c (record 2026-10-11-reverse-d2c): measured, the C3G form ----
+D2C_MASKS = {
+    "game_state_3_handoff": 0xffffffff,
+}
+D2C_KINDS = {
+    "game_state_3_handoff@d1": {'call #0'},
+    "game_state_3_handoff@d2": {'call #1'},
+    "game_state_3_handoff@d3": {'call #2'},
+    "game_state_3_handoff@a2": {'call #0'},
+    "game_state_3_handoff@a3": {'call #0', 'call #1'},
+    "game_state_3_handoff@a4": {'call #1', 'call #2'},
+    "game_state_3_handoff@a5": {'call #1', 'call #2'},
+    "game_state_3_handoff@a5w": {'call #1', 'call #2'},
+    "game_state_3_handoff@local": {'byte', 'call #2', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_state_3_handoff@w36": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_state_3_handoff@off36": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_state_3_handoff@cam": {'call #1 memory'},
+    "game_state_3_handoff@order": {'byte', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_state_3_handoff@b1": {'byte', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_state_3_handoff@b2": {'byte', 'call #3 memory', 'call #4 memory'},
+    "game_state_3_handoff@src": {'byte', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_state_3_handoff@third": {'byte', 'call #3 memory', 'call #4 memory'},
+    "game_state_3_handoff@skip": {'call #3', 'call #4', 'call #5'},
+    "game_state_3_handoff@known": {'call #3', 'call #4', 'call #5'},
+    "game_state_3_handoff@al": {'call #3', 'call #4'},
+    "game_state_3_handoff@six": {'call #3', 'call #4'},
+    "game_state_3_handoff@handle": {'call #3', 'call #4'},
+    "game_state_3_handoff@a44": {'byte'},
+    "game_state_3_handoff@a44w": {'byte'},
+}
+D2C_CASES = [
+    ("game_state_3_handoff@d1", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@d2", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@d3", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@a2", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@a3", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@a4", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@a5", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@a5w", ['h0', 'h1', 'h3']),
+    ("game_state_3_handoff@local", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@w36", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@off36", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@cam", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@order", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@b1", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@b2", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@src", ['h0', 'h1', 'h2']),
+    ("game_state_3_handoff@third", ['h0', 'h1', 'h3']),
+    ("game_state_3_handoff@skip", ['h1', 'h2', 'h3']),
+    ("game_state_3_handoff@known", ['h1', 'h3']),
+    ("game_state_3_handoff@al", ['h1', 'h3']),
+    ("game_state_3_handoff@six", ['h1', 'h3']),
+    ("game_state_3_handoff@handle", ['h1', 'h3']),
+    ("game_state_3_handoff@a44", ['h0', 'h1', 'h2', 'h3']),
+    ("game_state_3_handoff@a44w", ['h0', 'h1', 'h2', 'h3']),
+]
+D1_MASKS.update(D2C_MASKS)
+D1_KINDS.update(D2C_KINDS)
+D1_CASES.extend(D2C_CASES)
+
 
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,

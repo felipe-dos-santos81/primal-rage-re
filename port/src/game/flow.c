@@ -4534,7 +4534,7 @@ static void game_state_title(void)
  * (0x126AC/0x126D2). Then it walks the front-end list and spawns a type-3
  * effect for every live entry that is neither handle 0x3E688 nor a known
  * resource. Called only from game_state_3 phase 0. */
-static void game_state_3_handoff(void)
+void game_state_3_handoff(void)
 {
     u32 first = actor_spawn((const u32 *)(mem + 0x9AC44u),
                             0x2A00u, 0xE0u, 0x5A00u, 0u);       /* 0x12672 */

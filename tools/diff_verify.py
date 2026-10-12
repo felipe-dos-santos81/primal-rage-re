@@ -13285,6 +13285,67 @@ D1F_SPECS += [
 
 D1_SPECS += D1F_SPECS
 
+# ---- track D2 batch d2c (record 2026-10-11-reverse-d2c): game/flow.c, attract.c, menu.c, nameentry.c ----
+D2C_REC, D2C_REC2 = 0x0010A300, 0x0010A400     # zero BSS of the image
+D2C_LIST, D2C_LIST_END = 0x00107608, 0x00107798     # 0x33904's table (0x10 stride; the head is skipped)
+
+
+def d2c_list_pokes(entries):
+    """0x33904's table: entries {addr: (handle, live)}; every other entry has +0 = 0x11111111 and
+    +4 = 0 (not live), +8 = 0x22222222, +0xC = 0x33333333. The entry at the end bound is live."""
+    buf = bytearray()
+    for a in range(D2C_LIST, D2C_LIST_END + 0x10, 0x10):
+        h, live = entries.get(a, (0x11111111, 0x44444444 if a == D2C_LIST_END else 0))
+        buf += le32(h) + le32(live) + le32(0x22222222) + le32(0x33333333)
+    return {D2C_LIST + o: bytes(buf[o:o + 0x40]) for o in range(0, len(buf), 0x40)}
+
+
+def d2c_handoff_case(rec, w56, x56, entries):
+    """0x12658: the spawned record `rec` (the stub's EAX) and the record D2C_REC2 the stub leaves in
+    0xF0A58, each with its +0x36 word, +0x4B byte and +0x56 word between seeded neighbours; the
+    camera dword 0xF0A58 and the word 0x107A44 with theirs; the front-end list."""
+    p = d2c_list_pokes(entries)
+    for r, w in ((rec, w56), (D2C_REC2, x56)):
+        p[r + 0x34] = b"\x61\x62\x71\x71\x63\x64"
+        p[r + 0x4A] = b"\x65\x5a\x66"
+        p[r + 0x55] = b"\x67" + le16(w) + b"\x68"
+    p[0x000F0A54] = le32(0x5B5B5B5B) + le32(0x5A5A5A5A) + le32(0x5C5C5C5C)
+    p[0x00107A42] = le16(0x7272) + le16(0x5A5A) + le16(0x7373)
+    return p
+
+
+# 0x2AE14 as 0x12658's row stubs it: one EAX serves the three spawns of a case, so each call also
+# leaves D2C_REC2 in the camera dword 0xF0A58. The raw re-reads that dword after the second spawn
+# (0x126A4), which separates the first record from the second and third.
+D2C_SPAWN_CAM = E.Call(0x2AE14, SPAWN.args, pop=4, clobbers=SPAWN.clobbers,
+                       writes=((None, 0x000F0A58, le32(D2C_REC2)),))
+
+D2C_SPECS = [
+    # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
+    # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
+    # the first's +0x36 word = 0xFFC0 and the camera dword 0xF0A58 = it, the +0x56 byte of each
+    # later record into the +0x4B byte of the one before; then every live list entry that is
+    # neither handle 0x3E688 nor a known resource (AL of 0x1C6D4) gets 0x13C70(rec, 6, [rec]);
+    # the word 0x107A44 = 0. 0x33904 and 0x1C6D4 run real on both sides (leaves with their own
+    # rows); 0x2AE14 and 0x13C70 are stubs. Full mask: EAX is 0 at both ways into 0x12710.
+    Spec("game_state_3_handoff", 0x12658, [
+        Case("h0", {}, d2c_handoff_case(D2C_REC, 0x8123, 0x7F45, {}), {0x2AE14: D2C_REC}),
+        Case("h1", {}, d2c_handoff_case(D2C_REC + 0x80, 0x00FF, 0xFB00, {
+            0x00107618: (0x0003E688, 1), 0x00107628: (0x0080995C, 1), 0x00107638: (0x00812345, 1),
+            0x00107648: (0x00812346, 0), 0x00107788: (0x00000000, 0x80000000)}),
+             {0x2AE14: D2C_REC + 0x80, 0x13C70: 0x100}),
+        Case("h2", {}, d2c_handoff_case(D2C_REC, 0x0400, 0x0000, {
+            0x00107618: (0x0003E688, 1), 0x00107778: (0x0003E688, 0x100)}), {0x2AE14: D2C_REC}),
+        Case("h3", {}, d2c_handoff_case(D2C_REC, 0xFFFF, 0x1234, {
+            0x00107618: (0x0003E689, 1), 0x00107628: (0x008099CC, 1), 0x00107638: (0x008099D0, 1),
+            0x00107788: (0x0003E688, 1)}), {0x2AE14: D2C_REC, 0x13C70: 0x0010A500}),
+    ], allow_calls=(0x33904, 0x1C6D4), calls=(D2C_SPAWN_CAM, P6_13C70), eax_mask=0xFFFFFFFF,
+       mutants=("@d1", "@d2", "@d3", "@a2", "@a3", "@a4", "@a5", "@a5w", "@local", "@w36", "@off36",
+                "@cam", "@order", "@b1", "@b2", "@src", "@third", "@skip", "@known", "@al", "@six",
+                "@handle", "@a44", "@a44w")),
+]
+D1_SPECS += D2C_SPECS
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

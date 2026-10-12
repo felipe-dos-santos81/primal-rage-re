@@ -19836,6 +19836,60 @@ D1F_RC(order, 32768u)
 D1F_RC(sext, 65536u)
 #undef D1F_RC
 
+/* ---- track D2 batch d2c (record 2026-10-11-reverse-d2c): game/flow.c, attract.c, menu.c,
+ * nameentry.c. Each core is the port function's body with one deviation per `mut`. ---- */
+/* 0x12658: no argument. EAX is 0 at every return (the walk's exit test, 0x126DE/0x1270C). */
+static void b_d2c_12658(const u32 *r, u32 *eax) { (void)r; game_state_3_handoff(); *eax = 0u; }
+enum { D2C_HO_NONE, D2C_HO_D1, D2C_HO_D2, D2C_HO_D3, D2C_HO_A2, D2C_HO_A3, D2C_HO_A4, D2C_HO_A5,
+       D2C_HO_A5W, D2C_HO_LOCAL, D2C_HO_W36, D2C_HO_OFF36, D2C_HO_CAM, D2C_HO_ORDER, D2C_HO_B1,
+       D2C_HO_B2, D2C_HO_SRC, D2C_HO_THIRD, D2C_HO_SKIP, D2C_HO_KNOWN, D2C_HO_AL, D2C_HO_SIX,
+       D2C_HO_HANDLE, D2C_HO_A44, D2C_HO_A44W };
+static u32 d2c_12658_a5(u32 rec, u32 mut)
+{
+    if (mut == D2C_HO_A5) return (u32)DSW(rec + 0x56u);
+    if (mut == D2C_HO_A5W) return (u32)DSB(rec + 0x56u) | 0x400u;
+    return ((u32)DSW(rec + 0x56u) & 0xFFFFu) | 0x400u;
+}
+static void d2c_12658_core(u32 mut)
+{
+    u32 first = actor_spawn((const u32 *)(mem + ((mut == D2C_HO_D1) ? 0x9AC58u : 0x9AC44u)),
+                            (mut == D2C_HO_A2) ? 0x5A00u : 0x2A00u, (mut == D2C_HO_A3) ? 0xE2u : 0xE0u,
+                            (mut == D2C_HO_A2) ? 0x2A00u : 0x5A00u, 0u);
+    if (mut == D2C_HO_W36) DSB(first + 0x36u) = 0xC0u;
+    else DSW(first + ((mut == D2C_HO_OFF36) ? 0x34u : 0x36u)) = 0xFFC0u;
+    if (mut != D2C_HO_CAM && mut != D2C_HO_ORDER) DSD(0x000F0A58u) = first;
+    u32 second = actor_spawn((const u32 *)(mem + ((mut == D2C_HO_D2) ? 0x9AC6Cu : 0x9AC58u)),
+                             (mut == D2C_HO_A4) ? 0xE2u : 0u, (mut == D2C_HO_A3) ? 0xE0u : 0xE2u, 0u,
+                             d2c_12658_a5(first, mut));
+    if (mut == D2C_HO_ORDER) DSD(0x000F0A58u) = first;
+    u32 cam = (mut == D2C_HO_LOCAL) ? first : DSD(0x000F0A58u);
+    if (mut != D2C_HO_B1) DSB(cam + 0x4Bu) = DSB(second + ((mut == D2C_HO_SRC) ? 0x57u : 0x56u));
+    u32 third = actor_spawn((const u32 *)(mem + ((mut == D2C_HO_D3) ? 0x9AC58u : 0x9AC6Cu)),
+                            0u, 0xE2u, (mut == D2C_HO_A4) ? 0xE2u : 0u, d2c_12658_a5(cam, mut));
+    if (mut != D2C_HO_B2)
+        DSB(second + 0x4Bu) = DSB(((mut == D2C_HO_THIRD) ? cam : third) + 0x56u);
+    for (u32 rec = frontend_list_next(0u); rec != 0u; rec = frontend_list_next(rec)) {
+        if (DSD(rec) == 0x3E688u && mut != D2C_HO_SKIP) continue;
+        u32 known = frontend_resource_known(rec);
+        if (mut == D2C_HO_AL) known |= rec & 0xFFFFFF00u;
+        if (known != 0u && mut != D2C_HO_KNOWN) continue;
+        effects_spawn(rec, (mut == D2C_HO_SIX) ? 3u : 6u, (mut == D2C_HO_HANDLE) ? rec : DSD(rec));
+    }
+    if (mut == D2C_HO_A44W) DSD(0x00107A44u) = 0u;
+    else if (mut != D2C_HO_A44) DSW(0x00107A44u) = 0u;
+}
+#define D2C_HO_MUT(name, m) \
+    static void m_d2c_ho_##name(const u32 *r, u32 *eax) { (void)r; d2c_12658_core(m); *eax = 0u; }
+D2C_HO_MUT(d1, D2C_HO_D1)       D2C_HO_MUT(d2, D2C_HO_D2)       D2C_HO_MUT(d3, D2C_HO_D3)
+D2C_HO_MUT(a2, D2C_HO_A2)       D2C_HO_MUT(a3, D2C_HO_A3)       D2C_HO_MUT(a4, D2C_HO_A4)
+D2C_HO_MUT(a5, D2C_HO_A5)       D2C_HO_MUT(a5w, D2C_HO_A5W)     D2C_HO_MUT(local, D2C_HO_LOCAL)
+D2C_HO_MUT(w36, D2C_HO_W36)     D2C_HO_MUT(off36, D2C_HO_OFF36) D2C_HO_MUT(cam, D2C_HO_CAM)
+D2C_HO_MUT(order, D2C_HO_ORDER) D2C_HO_MUT(b1, D2C_HO_B1)       D2C_HO_MUT(b2, D2C_HO_B2)
+D2C_HO_MUT(src, D2C_HO_SRC)     D2C_HO_MUT(third, D2C_HO_THIRD) D2C_HO_MUT(skip, D2C_HO_SKIP)
+D2C_HO_MUT(known, D2C_HO_KNOWN) D2C_HO_MUT(al, D2C_HO_AL)       D2C_HO_MUT(six, D2C_HO_SIX)
+D2C_HO_MUT(handle, D2C_HO_HANDLE) D2C_HO_MUT(a44, D2C_HO_A44)   D2C_HO_MUT(a44w, D2C_HO_A44W)
+/* ---- end of track D2 batch d2c bindings ---- */
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -23721,6 +23775,33 @@ static const binding_t k_bindings[] = {
     { "fight_4e99c@flash",                   m_d1f_rc_flash, 0x00000000u },
     { "fight_4e99c@order",                   m_d1f_rc_order, 0x00000000u },
     { "fight_4e99c@sext",                    m_d1f_rc_sext, 0x00000000u },
+    /* ---- track D2 batch d2c ---- */
+    { "game_state_3_handoff",               b_d2c_12658, 0xFFFFFFFFu },
+    { "game_state_3_handoff@d1", m_d2c_ho_d1, 0xFFFFFFFFu },
+    { "game_state_3_handoff@d2", m_d2c_ho_d2, 0xFFFFFFFFu },
+    { "game_state_3_handoff@d3", m_d2c_ho_d3, 0xFFFFFFFFu },
+    { "game_state_3_handoff@a2", m_d2c_ho_a2, 0xFFFFFFFFu },
+    { "game_state_3_handoff@a3", m_d2c_ho_a3, 0xFFFFFFFFu },
+    { "game_state_3_handoff@a4", m_d2c_ho_a4, 0xFFFFFFFFu },
+    { "game_state_3_handoff@a5", m_d2c_ho_a5, 0xFFFFFFFFu },
+    { "game_state_3_handoff@a5w", m_d2c_ho_a5w, 0xFFFFFFFFu },
+    { "game_state_3_handoff@local", m_d2c_ho_local, 0xFFFFFFFFu },
+    { "game_state_3_handoff@w36", m_d2c_ho_w36, 0xFFFFFFFFu },
+    { "game_state_3_handoff@off36", m_d2c_ho_off36, 0xFFFFFFFFu },
+    { "game_state_3_handoff@cam", m_d2c_ho_cam, 0xFFFFFFFFu },
+    { "game_state_3_handoff@order", m_d2c_ho_order, 0xFFFFFFFFu },
+    { "game_state_3_handoff@b1", m_d2c_ho_b1, 0xFFFFFFFFu },
+    { "game_state_3_handoff@b2", m_d2c_ho_b2, 0xFFFFFFFFu },
+    { "game_state_3_handoff@src", m_d2c_ho_src, 0xFFFFFFFFu },
+    { "game_state_3_handoff@third", m_d2c_ho_third, 0xFFFFFFFFu },
+    { "game_state_3_handoff@skip", m_d2c_ho_skip, 0xFFFFFFFFu },
+    { "game_state_3_handoff@known", m_d2c_ho_known, 0xFFFFFFFFu },
+    { "game_state_3_handoff@al", m_d2c_ho_al, 0xFFFFFFFFu },
+    { "game_state_3_handoff@six", m_d2c_ho_six, 0xFFFFFFFFu },
+    { "game_state_3_handoff@handle", m_d2c_ho_handle, 0xFFFFFFFFu },
+    { "game_state_3_handoff@a44", m_d2c_ho_a44, 0xFFFFFFFFu },
+    { "game_state_3_handoff@a44w", m_d2c_ho_a44w, 0xFFFFFFFFu },
+    /* ---- end of track D2 batch d2c entries ---- */
 };
 
 static const binding_t *find_binding(const char *name)
