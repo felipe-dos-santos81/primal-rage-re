@@ -7027,7 +7027,7 @@ void game_loop(void)
         const u16 state_before = DSW(DS_000F0A64);
         game_frame();                        /* 0x24C5C */
         run_process_table(DS_000A86C4, DSD(DS_00104AEC));  /* render table */
-        DSD(DS_00104AF4)++;                  /* 0x2563A */
+        DSW(DS_00104AF4) = (u16)(DSW(DS_00104AF4) + 1u);   /* 0x25632 `inc word`: no carry into DS_00104AF6 */
         effects_step();                      /* 0x134C0 (0x2563E) */
 
         /* 0x25643: the tick gate. The original presents only when the frame
