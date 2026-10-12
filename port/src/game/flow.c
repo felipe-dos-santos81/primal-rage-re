@@ -890,9 +890,12 @@ void game_mode_12_step(void)
     }
 
     case 7u: {                                                          /* 0x4226E */
-        s32 y = (s32)(s16)DSW(DSD(DS_001080F4) + 0x2Cu) - 0x40;          /* 0x4227C/0x4227F */
+        /* 0x42273..0x42289: the 16-bit difference, zero-extended (`xor edx,edx` /
+         * `sub ecx,0x40` / `mov dx,cx`), against 0x180: a word below 0x40 wraps
+         * to 0xFFxx and is still "above". */
+        u32 y = (u32)(u16)(DSW(DSD(DS_001080F4) + 0x2Cu) - 0x40u);       /* 0x42273..0x4227C */
         DSW(DSD(DS_001080F4) + 0x2Cu) = (u16)y;                          /* 0x4227F */
-        if (y > 0x180) break;                                            /* 0x42283/0x42289 */
+        if (y > 0x180u) break;                                           /* 0x42283/0x42289 */
         actor_set_dead(DSD(DS_001080F4));                                       /* 0x4228F 0x2B150 */
         (void)actor_spawn((const u32 *)(mem + DS_000C85A8), DSW(DS_00108100),
                           0xFFu, DSW(DS_00108102), 0u);                    /* 0x422B2 0x2AE14 */
