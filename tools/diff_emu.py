@@ -708,6 +708,17 @@ _CALLEE_CLOBBER_FIXES = {0x2B150: (), 0x2BD44: ("edx",), 0x3B298: ("edx",), 0x3C
 # not at its entry). The raw caller 0x11F28 reads EDX across the call (0x11F29 `mov edx,eax`, 0x11F39
 # `test [edx*4+0x9acbc],eax`).
 _CALLEE_CLOBBER_FIXES[0x2C060] = ()
+# D3 d3c: 0x29D04 pushes EBX, ECX, EDX (0x29D04..0x29D06) and pops all three before each of its two
+# `ret`s (0x29D12..0x29D14; 0x29D5B..0x29D5D), but the second run is followed by `mov eax,eax`
+# (0x29D5E) before the `ret` at 0x29D60, which the pops-directly-before-every-ret rule rejects. Its
+# raw caller 0x350D0 keeps the side in EBX across the +0x14 hook call (0x3514C; read at 0x35227).
+_CALLEE_CLOBBER_FIXES[0x29D04] = ()
+# D3 d3c: 0x46C78 saves EBX and EDX and its own instructions write only EAX, EBX and EDX; its callees
+# 0x33950 and 0x46BBC clobber EDX alone. The scan's (ecx, esi, edi, ebp) comes only from its direct
+# target 0x62003, the runtime's fatal exit (>= 0x5D000, taken to clobber everything), which does not
+# return. Its raw caller 0x46F4C loads EBP before the call (0x46F82..0x46FD9; call 0x46FE3) and reads
+# it after (0x47084, 0x470C4).
+_CALLEE_CLOBBER_FIXES[0x46C78] = ()
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --
