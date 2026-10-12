@@ -45,10 +45,7 @@ void fighter_164e8(u32 side);                           /* 0x164E8 */
 /* The winner-body helpers the think chain 0x1975C/0x3B464 shares; defined with
  * the 0x193B0 and 0x3B714 blocks below. */
 void hit_stance_timer(u32 side);                  /* 0x1922C */
-int fighter_3962c(u32 side, u32 param_2);         /* 0x3962C */
-int fighter_396ac(u32 side, u32 param_2);         /* 0x396AC */
 void fighter_18b44(u32 slot);                           /* 0x18B44 */
-void fighter_39278(u32 v);                        /* 0x39278 */
 u32 fighter_36d20(u32 slot);                             /* 0x36D20 */
 static void fighter_2bd44_by_index(u32 rec);             /* 0x3B4D4 = 0x3B844 */
 void fighter_18bd4(u8 flags[16]);                        /* 0x18BD4 */
@@ -2079,7 +2076,6 @@ void fighter_state_364fc(u32 slot, u32 rec, u32 side)
 #define FIGHT_35D20_ANIM_B  0x000C8B08u /* 0x35D20: default begin stream */
 #define FIGHT_35E6C_ANIM    0x000C8B58u /* 0x35E6C: per-char begin stream */
 
-void fighter_state_35b7c(u32 slot, u32 rec);                /* 0x35B7C */
 void fighter_state_35d20(u32 slot, u32 rec);                /* 0x35D20 */
 void fighter_1883c(u32 side, u32 a, u32 b);                  /* 0x1883C */
 void fighter_36e78(u32 slot);                              /* 0x36E78 */
@@ -8486,7 +8482,8 @@ static s32 fighter_x87_fistp(float f)
 /* 0x19164. The winner's stance-timer seed: B5A[side] = truncate(max(rec+0x20,
  * 5.0)), B5C[side] = 2 when rec+0x24 is outside (0, 17) else its truncation,
  * rec+0x24 = 0, and B58[side] = slot+0x5F. The 0x61A4C runtime rounds toward
- * zero (frontend-chain record §…), so C's (s32) cast is the same truncation. */
+ * zero (frontend-chain record §…) and the stores are `fistp`: fighter_x87_fistp
+ * is that truncation with the x87's indefinite for NaN and out-of-range. */
 void fighter_19164(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);              /* 0x19175 */

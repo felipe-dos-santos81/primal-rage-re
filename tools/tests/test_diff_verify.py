@@ -1140,6 +1140,7 @@ C3B_KINDS = {
     "set_dead@table": {"byte", "call #0", "call #0 memory", "call #1", "call #2"},
     "snd_music_stop@al": {"eax"},
     "snd_music_stop@cc": {"byte", "call #1 memory"},
+    "snd_music_stop@eax": {"byte", "call #1", "eax"},
     "snd_music_stop@gate": {"call #0"},
     "snd_music_stop@play": {"byte", "call #1", "eax"},
     "snd_music_stop@stop": {"call #1"},
@@ -6878,15 +6879,15 @@ D2B_KINDS = {
     "fight_4cc0c@v36": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory'},
     "fight_4cc0c@wa0": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory'},
     "fight_4cc0c@col": {'call #0'},
-    "fight_4cc0c@id": {'call #0 memory'},
+    "fight_4cc0c@id": {"call #0", "call #0 memory"},
     "fight_4cc0c@mode": {'call #0'},
     "fight_4cc0c@row": {'call #1'},
     "fight_4cc0c@font": {'call #2'},
-    "fight_4cc0c@b9c": {'byte', 'call #7 memory', 'call #8 memory'},
-    "fight_4cc0c@eq": {'byte', 'call #7 memory', 'call #8 memory'},
-    "fight_4cc0c@tied": {'byte', 'call #7 memory', 'call #8 memory'},
-    "fight_4cc0c@signed": {'byte', 'call #7 memory', 'call #8 memory'},
-    "fight_4cc0c@be": {'byte', 'call #7 memory', 'call #8 memory'},
+    "fight_4cc0c@b9c": {"byte", "call #7", "call #7 memory", "call #8", "call #8 memory"},
+    "fight_4cc0c@eq": {"byte", "call #7", "call #7 memory", "call #8", "call #8 memory"},
+    "fight_4cc0c@tied": {"byte", "call #7", "call #7 memory", "call #8", "call #8 memory"},
+    "fight_4cc0c@signed": {"byte", "call #7", "call #7 memory", "call #8 memory"},
+    "fight_4cc0c@be": {"byte", "call #7", "call #7 memory", "call #8 memory"},
     "fight_4cc0c@row9": {'call #8'},
     "fight_4cc0c@order": {'call #0 memory'},
     "fight_4cd98@b00": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
@@ -6900,7 +6901,7 @@ D2B_KINDS = {
     "fight_4cd98@bit5": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
     "fight_4cd98@type": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
     "fight_4cd98@z864": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory'},
-    "fight_4cd98@id": {'call #0 memory'},
+    "fight_4cd98@id": {"call #0", "call #0 memory"},
     "fight_4cd98@once": {'call #1', 'call #2', 'call #3'},
     "fight_4cd98@row9": {'call #1'},
     "fight_4cd98@mode": {'call #1'},
@@ -11242,19 +11243,6 @@ D1_KINDS.update(D2D_KINDS)
 D1_CASES.extend(D2D_CASES)
 
 
-# track D2 integration: 0x2F510's seam is by value (d2c's form: the string's first dword), so d2b's
-# string mutants differ in the call's argument as well as in the memory at the call (re-measured)
-D1_KINDS.update({
-    "fight_4cc0c@id": {"call #0", "call #0 memory"},
-    "fight_4cc0c@b9c": {"byte", "call #7", "call #7 memory", "call #8", "call #8 memory"},
-    "fight_4cc0c@eq": {"byte", "call #7", "call #7 memory", "call #8", "call #8 memory"},
-    "fight_4cc0c@tied": {"byte", "call #7", "call #7 memory", "call #8", "call #8 memory"},
-    "fight_4cc0c@signed": {"byte", "call #7", "call #7 memory", "call #8 memory"},
-    "fight_4cc0c@be": {"byte", "call #7", "call #7 memory", "call #8 memory"},
-    "fight_4cd98@id": {"call #0", "call #0 memory"},
-})
-
-
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -11352,6 +11340,17 @@ class RealFunctionTests(unittest.TestCase):
                          "--function", "rng_next", "--self-check"])
         self.assertEqual(rc, 0)
         self.assertIn("1/1 functions VERIFIED; 1/1 mutants detected", out.getvalue())
+
+    def test_the_pool_gives_the_sequential_loops_results(self):
+        # verify_all runs 16 or more items on a process pool: the same results, in the specs' order,
+        # as the sequential loop (jobs=1), for the rows and for the mutants
+        specs = [s for s in V.SPECS if not s.gap][:24]
+        img = os.path.join(self.tmp.name, "p.bin")
+        for mutants in (False, True):
+            seq = V.verify_all(DIFFRUN, EXE, img, specs, mutants=mutants, jobs=1)
+            par = V.verify_all(DIFFRUN, EXE, img, specs, mutants=mutants, jobs=4)
+            self.assertGreaterEqual(len(seq), 16)
+            self.assertEqual([dataclasses.asdict(r) for r in par], [dataclasses.asdict(r) for r in seq])
 
     def test_the_eax_mask_is_stated_by_the_spec_per_function(self):
         self.assertEqual({s.name: s.eax_mask for s in V.SPECS}, {
@@ -11975,10 +11974,11 @@ class RealFunctionTests(unittest.TestCase):
         ("set_dead@table", ['s4', 's7']),
         ("snd_music_stop@al", ['m2']),
         ("snd_music_stop@cc", ['m2']),
+        ("snd_music_stop@eax", ['m3']),
         ("snd_music_stop@gate", ['m0']),
-        ("snd_music_stop@play", ['m1']),
+        ("snd_music_stop@play", ['m1', 'm3']),
         ("snd_music_stop@stop", ['m2']),
-        ("snd_music_stop@zero", ['m0', 'm1', 'm2']),
+        ("snd_music_stop@zero", ['m0', 'm1', 'm2', 'm3']),
         ("snd_sample_playing@al", ['q3', 'q5']),
         ("snd_sample_playing@clear", ['q3', 'q5']),
         ("snd_sample_playing@driver", ['q0']),
@@ -12341,11 +12341,11 @@ class RealFunctionTests(unittest.TestCase):
         0x2F314: ("ebx", "ecx", "edx"), 0x2EF24: (), 0x65546: (), 0x61A70: ("edx",),
         0x2EFD4: ("ebx", "ecx", "edx"), 0x2F0F0: ("edx",),
         0x2F5A0: ("ebx", "ecx", "edx"), 0x2F830: ("ebx", "ecx", "edx"),
-        0x1D1B0: (), 0x2F510: ("ebx", "ecx", "edx"), 0x2F434: ("ebx", "ecx", "edx"), 0x4F1D0: (),     # track D2 batch d2c
-        0x4F778: (), 0x10D70: ("ebx", "ecx", "edx"), 0x2F528: ("ebx", "ecx", "edx"), 0x2F174: ("ebx", "ecx", "edx"),     # track D2 batch d2c
-        0x4EBB8: (), 0x2F510: ("ebx", "ecx", "edx"),     # track D2 batch d2e
+        0x1D1B0: (), 0x2F434: ("ebx", "ecx", "edx"), 0x4F1D0: (),     # track D2 batch d2c
+        0x4F778: (), 0x2F528: ("ebx", "ecx", "edx"), 0x2F174: ("ebx", "ecx", "edx"),     # track D2 batch d2c
+        0x4EBB8: (),     # track D2 batch d2e
         0x414B4: (), 0x41528: (), 0x41578: (), 0x418F4: (), 0x416D4: (), 0x4160C: (), 0x41760: (), 0x417C4: (),     # track D2 batch d2e
-        0x4660C: (), 0x25848: (), 0x41350: ("edx",), 0x271E0: (), 0x32A3C: ("edx",), 0x2F434: ("ebx", "ecx", "edx"),     # track D2 batch d2e
+        0x4660C: (), 0x25848: (), 0x41350: ("edx",), 0x271E0: (), 0x32A3C: ("edx",),     # track D2 batch d2e
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
@@ -12457,10 +12457,9 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (251 after C3g waves 3+4's eight
-        # rows with callees and the five wave-1/2 rows their rows close), the 71 without are
-        # counted apart
-        self.assertIn("diff-verify: 652/652 functions VERIFIED; 5650/5650 mutants detected; 1 named gaps; "
+        # the closed-row count is over the rows that have callees (485 after track D's waves 1 and 2);
+        # the 167 without are counted apart
+        self.assertIn("diff-verify: 652/652 functions VERIFIED; 5651/5651 mutants detected; 1 named gaps; "
                       "428/485 rows with callees closed (167 have none).", out.getvalue())
 
 
