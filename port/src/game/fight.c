@@ -136,6 +136,7 @@ void fight_scene_props(u32 scene)
 #define DS_000C87F8 0x000C87F8u   /* no symbols.h name: the per-side descriptor */
 void fight_char_screen_setup(void)
 {
+    PR_SEAM0(0x43818u);
     render_projection_reset(0u);                        /* 0x43822 0x4F228 */
     actors_reset();                                     /* 0x4382E 0x2BAF4 */
     /* 0x43833 0x29D60 is a ret-only no-op. */
@@ -280,6 +281,7 @@ void fight_hud_pulse(void)
  * zero-extended (`xor ebx,ebx`/`xor edx,edx` before each `mov bx`/`mov dx`). */
 void fight_char_entry_spawn(u32 side)
 {
+    PR_SEAM(0x43964u, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43972/0x4397C */
     DSD(DS_00108154 + side * 4u) = actor_spawn(
         (const u32 *)(mem + DSD(DS_000C8870 + side * 4u)),
@@ -304,6 +306,7 @@ void fight_char_entry_spawn(u32 side)
  * re-pointed at the sprite id 0x32B (0x43A9E 0x2BCF4). */
 void fight_char_select_actor(u32 side)
 {
+    PR_SEAM(0x43A08u, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43A10/0x43A16 */
     s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x43A19/0x43A51 */
     u32 rec = actor_spawn(
@@ -365,6 +368,7 @@ void fight_char_screen_open(void)
  * Its only caller is 0x4462B (in 0x4454C). */
 void fight_char_screen_open_both(void)
 {
+    PR_SEAM0(0x444C8u);
     (void)sound_voice(0x30u);                           /* 0x444CC/0x444D1 0x2C3FC */
     effects_clear();                                    /* 0x444D6 0x13DF0 */
     attract_config_volumes_unscaled();                  /* 0x444E0 0x2C8F0(-1) */
@@ -393,6 +397,7 @@ void fight_char_screen_open_both(void)
  * 0x11F28 result, or the side) is not read by 0x438B4's `call 0x4f790`. */
 void fight_char_join(void)
 {
+    PR_SEAM0(0x43928u);
     for (u32 side = 0; side < 2u; side++) {             /* 0x4392C/0x4395A/0x4395B */
         if (DSB(DS_00108170 + side) != 0u) continue;    /* 0x4392E/0x43935 */
         if (frontend_coin_poll(side) == 0u) continue;   /* 0x43939/0x4393E */
@@ -459,6 +464,7 @@ void fight_mode_10_step(void)
  * credit, 0x2C1C8 with EDX = 0x1B (EBX = 0 is not read). */
 void fight_char_prompt(u32 side)
 {
+    PR_SEAM(0x432A0u, side);
     if (config_credit_ready() != 0u) {                  /* 0x432A5/0x432AA */
         if ((DSB(DS_00104529) & 2u) != 0u)              /* 0x432AE */
             prompt_press_start(side, 0x3700);           /* 0x432B7..0x432BE 0x2C178 */
@@ -527,6 +533,7 @@ void fight_char_opp_text_clear(u32 side, u32 flag)
  * - 0x18: 0x432EC(side, DS_00104528 & 0x200). */
 void fight_char_text_blink(u32 side)
 {
+    PR_SEAM(0x43464u, side);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x4346C..0x4347B */
     if (phase != 0u) {                                  /* 0x43480 */
         if (phase == 0x18u)                             /* 0x4358B */
@@ -560,6 +567,7 @@ void fight_char_text_blink(u32 side)
  * 0x18, 0x433DC(side, DS_00104528 & 0x200). */
 void fight_char_opp_text_blink(u32 side)
 {
+    PR_SEAM(0x435ACu, side);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x435B3..0x435BD */
     if (phase != 0u) {                                  /* 0x435C2 */
         if (phase == 0x18u)                             /* 0x4365D */
@@ -590,6 +598,7 @@ void fight_char_opp_text_blink(u32 side)
  * voice 0xC888A[ch]. */
 void fight_char_portrait(u32 side)
 {
+    PR_SEAM(0x43EA0u, side);
     u32 other = side ^ 1u;                              /* 0x43EA6 */
     if (DSB(DS_00108170 + other) == 1u) {               /* 0x43EAA/0x43EB0 */
         if (DSB(DS_00108166 + side) == DSB(DS_00108166 + other)) {  /* 0x43EB5..0x43ECA */
@@ -626,6 +635,7 @@ void fight_char_portrait(u32 side)
  * 0xC8924[cls]. */
 void fight_char_fighter(u32 side)
 {
+    PR_SEAM(0x43FBCu, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43FC2/0x43FD1 */
     s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x43FDC/0x43FF6 */
     DSD(DSD(DS_0010813C + side * 4u) + 0x18u) =
@@ -732,6 +742,7 @@ void fight_char_confirm(u32 side)
  * = 1. */
 u32 fight_char_countdown(void)
 {
+    PR_SEAM_RET0(0x43AACu);
     u16 dx = (u16)(DSW(DS_0010816C) - 1u);              /* 0x43AAF/0x43AB6 */
     DSW(DS_0010816C) = dx;                              /* 0x43AB7 */
     if ((s16)dx > 0) {                                  /* 0x43ABE/0x43AC1 */
@@ -768,6 +779,7 @@ u32 fight_char_countdown(void)
  * read). */
 void fight_char_select_pass(void)
 {
+    PR_SEAM0(0x43B24u);
     for (u32 side = 0; side < 2u; side++) {             /* 0x43B27..0x43CCD */
         u8 b = DSB(DS_00108170 + side);                 /* 0x43B2B */
         if (b == 0u) {                                  /* 0x43B33/0x43B44 */
@@ -1033,6 +1045,7 @@ void fight_char_team_pick(u32 side)
  * DS_0010816C to 0xF and is cleared; there is no countdown step. */
 void fight_char_team_pass(void)
 {
+    PR_SEAM0(0x44798u);
     for (u32 side = 0; side < 2u; side++) {             /* 0x4479B..0x44914 */
         u8 b = DSB(DS_00108170 + side);                 /* 0x4479F */
         if (b == 3u) {                                  /* 0x447AF/0x447C5..0x447CD */
@@ -2028,6 +2041,7 @@ void fight_slot_pass(void)
 
 void fight_stance_pass(u32 side)
 {
+    PR_SEAM(0x1A978u, side);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                /* 0x1A984 0x33A10 */
     u32 self = ctx[3], other = ctx[2];
@@ -2161,6 +2175,7 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override)
  * set, +0x52 is one of {0,1,5,6,7} and +0x54 <= 1. */
 int fight_position_gate(u32 rec)
 {
+    PR_SEAM_RET(0x36E2Cu, rec);
     u8 st;
     if (!(DSB(DS_00104B1D) == 3u || DSB(DS_00104B14) == 0u
           || DSB(rec + 0x63u) != 0u))
@@ -2177,17 +2192,19 @@ int fight_position_gate(u32 rec)
  * 22-entry table 0x34B14 (0x34BF4..0x34C00; above 0x15 runs 0x349C8). Caller:
  * 0x357FC (fight_hud_pass). Case 0x12 (0x34CC7..0x34D21) is record §E.1 of
  * 2026-09-30-named-gaps-e-derivations.md. */
-static void fight_health_sync(u32 side)
+void fight_health_sync(u32 side)
 {
+    PR_SEAM(0x34B6Cu, side);
     u32 rec = DSD(DS_001077A8 + side * 4u);     /* 0x34B73 */
+    u32 fighter;
     if (rec == 0) return;                       /* 0x34B7C */
-    if (DSD(rec) == 0) return;                  /* 0x34B82/0x34B86 */
+    fighter = DSD(rec);                         /* 0x34B82 mov esi,[ecx]: read once, before the gate */
+    if (fighter == 0) return;                   /* 0x34B84/0x34B86 */
 
-    if (fight_position_gate(rec) != 0) {        /* 0x34B8E 0x36E2C */
-        u32 fighter = DSD(rec);
+    if ((fight_position_gate(rec) & 0xFF) != 0) {   /* 0x34B8E 0x36E2C, 0x34B93 test al,al */
         s32 x = ((DSW(fighter + 0x28u) >> 8 & 0x40u) != 0u)
-              ? (s32)DSD(fighter + 0x18u) + 0x3000
-              : (s32)DSD(fighter + 0x18u) - 0x3000;
+              ? (s32)DSD(DSD(rec) + 0x18u) + 0x3000   /* 0x34BB4 mov eax,[ecx]: the slot read again */
+              : (s32)DSD(DSD(rec) + 0x18u) - 0x3000;  /* 0x34BA7 mov edx,[ecx] */
         if (x < (s32)DSD(DS_000BE018) && x > -(s32)DSD(DS_000BE018)) {
             /* 0x34BE8 0x36F10 (record §50-A), the in-range arm. The gate's
              * slot +0x42 bit 0x10 has one raw setter, 0x36E78's `or
@@ -2207,20 +2224,20 @@ static void fight_health_sync(u32 side)
         fighter_state_default(side);
         break;
     case 1u:                                    /* 0x34C15 -> 0x359E0 */
-        fighter_state_359e0(rec, DSD(rec), side);
+        fighter_state_359e0(rec, fighter, side);
         break;
     case 2u:                                    /* 0x34C26 -> 0x35C1C/0x35D20 */
-        if (fighter_state_35c1c(rec, DSD(rec)) != 0)
-            fighter_state_35d20(rec, DSD(rec));
+        if (fighter_state_35c1c(rec, fighter) != 0)
+            fighter_state_35d20(rec, fighter);
         break;
     case 3u:                                    /* 0x34C46 -> 0x35D7C */
         fighter_state_35d7c(side);
         break;
     case 4u:                                    /* 0x34C53 -> 0x35F84 */
-        fighter_state_35f84(rec, DSD(rec));
+        fighter_state_35f84(rec, fighter);
         break;
     case 5u:                                    /* 0x34C62 -> 0x36430 */
-        fighter_state_36430(rec, DSD(rec), side);
+        fighter_state_36430(rec, fighter, side);
         break;
     case 6u:                                    /* 0x34C73 -> 0x1A978 */
         fight_stance_pass(side);
@@ -2235,13 +2252,13 @@ static void fight_health_sync(u32 side)
     case 9u: case 10u: case 11u: case 14u: case 15u: case 16u:
         break;
     case 12u:                                   /* 0x34C9A -> 0x361C8 */
-        fighter_state_361c8(rec, DSD(rec));
+        fighter_state_361c8(rec, fighter);
         break;
     case 13u:                                   /* 0x34CA9 -> 0x36300 */
-        fighter_state_36300(rec, DSD(rec));
+        fighter_state_36300(rec, fighter);
         break;
     case 17u:                                   /* 0x34CB8 -> 0x36710 */
-        fighter_state_36710(rec, DSD(rec));
+        fighter_state_36710(rec, fighter);
         break;
     case 18u:                                   /* 0x34CC7 inline + 0x3BDDC/0x18B04 */
         /* Record §E.1 (2026-09-30-named-gaps-e-derivations.md). The command
@@ -2254,7 +2271,7 @@ static void fight_health_sync(u32 side)
                 break;
             if (DSB(rec + 0x54u) != 0u && DSB(rec + 0x54u) != 1u)  /* 0x34CFA..0x34D04 */
                 break;
-            if (fighter_attack_consume(side) != 0)      /* 0x34D0C 0x3BDDC */
+            if ((fighter_attack_consume(side) & 0xFF) != 0)   /* 0x34D0C 0x3BDDC, 0x34D11 test al,al */
                 hit_facing_flag(side);                  /* 0x34D17 0x18B04 */
         }
         break;
@@ -2274,10 +2291,10 @@ static void fight_health_sync(u32 side)
         }
         break;
     case 20u:                                   /* 0x34D69 -> 0x35E6C */
-        fighter_state_35e6c(rec, DSD(rec));
+        fighter_state_35e6c(rec, fighter);
         break;
     case 21u:                                   /* 0x34D78 -> 0x364FC */
-        fighter_state_364fc(rec, DSD(rec), side);
+        fighter_state_364fc(rec, fighter, side);
         break;
     default:                                    /* >0x15 -> 0x34C08 0x349C8 */
         fighter_state_default(side);
@@ -2289,6 +2306,7 @@ static void fight_health_sync(u32 side)
 
 void fight_hud_pass(u32 side)
 {
+    PR_SEAM(0x35658u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 rec;
 
@@ -2296,7 +2314,7 @@ void fight_hud_pass(u32 side)
      * test-and-set fight_slot_clear zeroes each arena frame, so it runs once
      * per side; it maintains the slot+0x88/+0x8C/+0x90/+0x92 timers and
      * slot+0x78 that 0x350D0 and 0x3531C case 8 read. */
-    if (fighter_pass_flag(3u, side) == 0) {                 /* 0x356BE */
+    if ((fighter_pass_flag(3u, side) & 0xFF) == 0) {        /* 0x356BE, 0x356C3 test al,al */
         DSW(slot + 0x88u) = (u16)(DSW(slot + 0x88u) + 1u);  /* 0x356D6 */
         {
             s16 c = (s16)DSW(slot + 0x8Cu);                 /* 0x356CF */
@@ -5264,6 +5282,7 @@ void fight_effects_hold_all(void)
  * EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void fight_effects_idle_pass(void)
 {
+    PR_SEAM0(0x4DEF4u);
     if (DSW(DS_001088B0) == 0u && DSB(DS_001088BB) != 0u) {  /* 0x4DEF9..0x4DF0A */
         (void)sound_voice(0xCBu);                              /* 0x4DF0C/0x4DF11 0x2C3FC */
         DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);    /* 0x4DF16..0x4DF25 */

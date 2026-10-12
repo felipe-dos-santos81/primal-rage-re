@@ -32,6 +32,10 @@ void fight_arena_frame(void);
  * (record §49-A); the §7.8 gap is closed. */
 void fight_hud_pass(u32 side);
 
+/* PORT: exported for the D5 d5c differential rows (linkage only; record
+ * 2026-10-12-reverse-d5c). */
+void fight_health_sync(u32 side);                       /* 0x34B6C */
+
 /* 0x1A978. The per-side stance/command pass, reached from 0x34B6C. It calls the
  * command mapper 0x3B134 behind the 0x5f/0x62 gate and maintains the stance
  * bytes +0x61/+0x60/+0x54/+0x53. It calls 0x1A6AC and 0x1A8F4 (fighter.c,

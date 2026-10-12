@@ -1860,6 +1860,7 @@ void game_mode_0c_step(void)
  * (0x27A2C) and 0x42CB4 (three sites). */
 u32 flow_continue_poll(u32 side)
 {
+    PR_SEAM_RET(0x42F60u, side);
     if (config_credit_ready() == 0u) return 0u;         /* 0x42F63 0x2C060, 0x42F6A */
     if ((DSD(DS_0009ACBC + side * 4u) & DSD(DS_001088E4)) == 0u)
         return 0u;                                      /* 0x42F6C..0x42F78, 0x42FAA */
@@ -3514,6 +3515,7 @@ void flow_challenge_fighters(void)
  * sites). */
 void flow_challenge_join(u32 side)
 {
+    PR_SEAM(0x42FE0u, side);
     if (side == 0u) {                                   /* 0x42FE7/0x42FE9 */
         actors_anim_begin(DSD(DS_001080FC), DS_000E8816,
                           0x40C00000u);                 /* 0x42FEB..0x42FFA 0x2BC30 */

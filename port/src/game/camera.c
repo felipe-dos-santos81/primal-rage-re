@@ -1714,6 +1714,7 @@ void camera_impact_dust_spawn(void)
  * DS_001078F4 and run the y clamp. */
 void camera_y_commit(void)
 {
+    PR_SEAM0(0x12DA8u);
     s32 y;
     if (DSB(DS_000F0AFE) == 0) {
         y = (s32)(s16)DSW(DS_001077E0 + (u32)DSB(DS_000F0AFF) * 0x94u);
