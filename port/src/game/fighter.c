@@ -12692,7 +12692,7 @@ void fighter_47b04(u32 slot, u32 rec, u32 side)
     case 1:
         if (DSB(rec + 0x63u) != 0x10u) break;              /* 0x47B92..0x47B9A */
         DSB(other + 0x54u) = 0;                             /* 0x47BAA */
-        fighter_39834(side ^ 1u, (s32)(u32)DSB(DS_001077B0 + side * 0x94u + 0x5Fu)); /* 0x47B9C..0x47BB9: the side's slot, [side*0x94+0x10780F] */
+        fighter_39834(1u - side, (s32)(u32)DSB(DS_001077B0 + side * 0x94u + 0x5Fu)); /* 0x47B9C..0x47BB9: the side's slot, [side*0x94+0x10780F]; EAX = EBP = 1 - side (0x47B1C/0x47B28) */
         fighter_39fb0(other);                               /* 0x47BBE..0x47BC0 */
         DSB(slot + 0x57u) = 3u;                             /* 0x47BEF */
         break;
