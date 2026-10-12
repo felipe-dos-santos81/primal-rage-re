@@ -18790,6 +18790,37 @@ D3D_SPECS += [
                   "@c5uns", "@c5slot", "@c5no54", "@c554slot", "@c5rec", "@c5s57", "@c5w", "@c2rec", "@c2nos57", "@c2early", "@c2nocall",
                   "@c4no54", "@c4rec", "@c4nos57", "@c4late54")),
 ]
+
+
+def d3d_key_case(latch, tick, time):
+    """0x2EB80: the latched key dword 0x105F30 and the key time 0x105F2C between seeded dwords, the
+    tick dword 0x101500 (0x500BB's) between seeded dwords, the idle byte 0x107414 between
+    sentinels."""
+    return {0x00105F28: le32(0x28292A2B) + le32(time) + le32(latch) + le32(0x34353637),
+            0x001014FC: le32(0xFCFDFEFF) + le32(tick) + le32(0x04050607),
+            0x00107413: b"\x13\x5a\x15"}
+
+
+D3D_SPECS += [
+    # 0x2EB80 config_key_latched: no argument. The latch dword is tested and returned whole (`test
+    # edx,edx` 0x2EB87, `mov eax,edx`: k1 has only bit 16); else 0x500BB (`mov eax,[0x101500]; ret`,
+    # run on both sides: the port reads the dword itself) minus the key time, unsigned against
+    # 0x4B0 (`jbe` 0x2EB9F: k2 is exactly 0x4B0) gives 0. Full mask: the seven callers `test
+    # eax,eax` and compare EAX with 0x1B (0x2EBFD, 0x2EE41, 0x303D9, 0x32542, 0x32E36, 0x3306B,
+    # 0x33247).
+    Spec("config_key_latched", 0x2EB80, [
+        Case("k0", {"eax": 0x55555555}, d3d_key_case(0x0000001B, 0x00009000, 0x00001000)),
+        Case("k1", {}, d3d_key_case(0x00010000, 0x00009000, 0x00001000)),
+        Case("k2", {"eax": 0x55555555}, d3d_key_case(0, 0x000014B0, 0x00001000)),
+        Case("k3", {}, d3d_key_case(0, 0x80000010, 0x80000010)),
+        Case("k4", {}, d3d_key_case(0, 0x000000AF, 0xFFFFFFFF)),
+    ], allow_calls=(0x500BB,), eax_mask=0xFFFFFFFF,
+       unhit_named={0x2EBA1: "the idle timeout: byte 0x107414 = 0, then `jmp 0x65431` (the runtime longjmp, "
+                             "`mov ss,[eax+0x2a]` 0x65442), which cannot run",
+                    **{a: "the runtime longjmp 0x65431's own body, which the scan follows through the tail jump"
+                       for a in (0x65431, 0x6544F, 0x65450, 0x65468, 0x6546A, 0x65475, 0x65477, 0x65482, 0x65484)}},
+       mutants=("@latchw", "@ret1", "@nolatch", "@lt", "@swap", "@tick")),
+]
 D1_SPECS += D3D_SPECS
 
 

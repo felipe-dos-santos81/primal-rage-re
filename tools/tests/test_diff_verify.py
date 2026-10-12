@@ -11265,6 +11265,7 @@ D3D_MASKS = {
     "actors_update": 0x0,
     "fighter_3ea24": 0x0,
     "fighter_47b04": 0x0,
+    "config_key_latched": 0xffffffff,
 }   # D3D_MASKS end
 D3D_KINDS = {
     "camera_dispatch@no0": {'byte'},
@@ -11654,6 +11655,12 @@ D3D_KINDS = {
     "fighter_47b04@c4rec": {'call #0'},
     "fighter_47b04@c4nos57": {'byte'},
     "fighter_47b04@c4late54": {'call #0 memory'},
+    "config_key_latched@latchw": {'byte', 'eax'},
+    "config_key_latched@ret1": {'eax'},
+    "config_key_latched@nolatch": {'byte', 'eax'},
+    "config_key_latched@lt": {'byte'},
+    "config_key_latched@swap": {'byte'},
+    "config_key_latched@tick": {'byte'},
 }   # D3D_KINDS end
 D3D_CASES = [
     ("camera_dispatch@no0", ['d0', 'w0']),
@@ -12043,6 +12050,12 @@ D3D_CASES = [
     ("fighter_47b04@c4rec", ['f0', 'f2']),
     ("fighter_47b04@c4nos57", ['f0', 'f2']),
     ("fighter_47b04@c4late54", ['f0', 'f2']),
+    ("config_key_latched@latchw", ['k1']),
+    ("config_key_latched@ret1", ['k0', 'k1']),
+    ("config_key_latched@nolatch", ['k0', 'k1']),
+    ("config_key_latched@lt", ['k2']),
+    ("config_key_latched@swap", ['k2', 'k4']),
+    ("config_key_latched@tick", ['k2', 'k3', 'k4']),
 ]   # D3D_CASES end
 D1_MASKS.update(D3D_MASKS)
 D1_KINDS.update(D3D_KINDS)

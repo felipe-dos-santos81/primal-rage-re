@@ -26610,6 +26610,23 @@ D3D_47B04_MUT(c5ge, 25u) D3D_47B04_MUT(c5uns, 26u) D3D_47B04_MUT(c5slot, 27u) D3
 D3D_47B04_MUT(c554slot, 29u) D3D_47B04_MUT(c5rec, 30u) D3D_47B04_MUT(c5s57, 31u) D3D_47B04_MUT(c5w, 32u)
 D3D_47B04_MUT(c2rec, 33u) D3D_47B04_MUT(c2nos57, 34u) D3D_47B04_MUT(c2early, 35u) D3D_47B04_MUT(c2nocall, 36u)
 D3D_47B04_MUT(c4no54, 37u) D3D_47B04_MUT(c4rec, 38u) D3D_47B04_MUT(c4nos57, 39u) D3D_47B04_MUT(c4late54, 40u)
+/* 0x2EB80's mutants (mutant n; 0 = the port's shape). No argument. A mutant that takes the idle
+ * timeout stores the byte 0x107414 = 0 and returns 0 without the restart (which would leave diffrun). */
+static u32 d3d_2eb80_core(u32 mut)
+{
+    u32 latch = DSD(0x00105F30u);
+    if (mut != 3u && ((mut == 1u) ? (u16)latch != 0u : latch != 0u))                /* @nolatch @latchw */
+        return (mut == 2u) ? 1u : latch;                                            /* @ret1 */
+    u32 tick = DSD((mut == 6u) ? 0x00101504u : 0x00101500u), time = DSD(0x00105F2Cu);   /* @tick */
+    u32 d = (mut == 5u) ? time - tick : tick - time;                                /* @swap */
+    if ((mut == 4u) ? d >= 0x4B0u : d > 0x4B0u) DSB(0x00107414u) = 0u;              /* @lt */
+    return 0u;
+}
+static void b_d3d_2eb80(const u32 *r, u32 *eax) { (void)r; *eax = config_key_latched(); }
+#define D3D_KEY_MUT(name, n) \
+    static void m_d3d_2eb80_##name(const u32 *r, u32 *eax) { (void)r; *eax = d3d_2eb80_core(n); }
+D3D_KEY_MUT(latchw, 1u) D3D_KEY_MUT(ret1, 2u) D3D_KEY_MUT(nolatch, 3u) D3D_KEY_MUT(lt, 4u)
+D3D_KEY_MUT(swap, 5u)   D3D_KEY_MUT(tick, 6u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33325,6 +33342,13 @@ static const binding_t k_bindings[] = {
     { "fighter_47b04@c4rec",                 m_d3d_47b04_c4rec, 0x00000000u },
     { "fighter_47b04@c4nos57",               m_d3d_47b04_c4nos57, 0x00000000u },
     { "fighter_47b04@c4late54",              m_d3d_47b04_c4late54, 0x00000000u },
+    { "config_key_latched",                  b_d3d_2eb80, 0xFFFFFFFFu },
+    { "config_key_latched@latchw",           m_d3d_2eb80_latchw, 0xFFFFFFFFu },
+    { "config_key_latched@ret1",             m_d3d_2eb80_ret1, 0xFFFFFFFFu },
+    { "config_key_latched@nolatch",          m_d3d_2eb80_nolatch, 0xFFFFFFFFu },
+    { "config_key_latched@lt",               m_d3d_2eb80_lt, 0xFFFFFFFFu },
+    { "config_key_latched@swap",             m_d3d_2eb80_swap, 0xFFFFFFFFu },
+    { "config_key_latched@tick",             m_d3d_2eb80_tick, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

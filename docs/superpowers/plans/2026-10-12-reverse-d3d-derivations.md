@@ -23,6 +23,7 @@ the callees stubbed or run as stated.
 | `0x2A31C` | `actors_update` (actors.c) | 127 | Two callers: `0x2EA8B`, which returns to `mov eax,0x105b44` (`0x2EA90`), and `0x2540F` in the `0x24C5C` tail: `cmp byte [0x104b15],0; je 0x2545c` then `call 0x3bb90` (`xor ah,ah; mov [0x107d30],ah; xor eax,eax` `0x3BB93..0x3BB9B`) or the mode switch `0x2545C` (`mov ax,[0x104b00]` and compares of AX alone; its arms reach `call 0x3bb90`, `call 0x12d48` + `xor eax,eax` `0x25550`, `xor eax,eax` `0x25591`, the mode-0xC arm's `lea eax,[edx*8]` `0x25499`, or the `ret` `0x255CA`). `0x24C5C`'s one caller `0x2560B` then reaches `mov eax,ebx` (`0x25621`) or `call 0x134c0` and `mov eax,[0x10150c]` (`0x2563E`), as for `0x1D540`. Mask 0. |
 | `0x3EA24` | `fighter_3ea24` (fighter.c; registered in actors.c) | 508 | No direct caller; two stored pointers, `C7 43 0C` / `C7 40 0C` + `0x3EA24` (`mov dword [reg+0xc],imm`; the immediates at `0x3EC4E`, `0x3ED42`). Called at `0x35431`, returning to `xor eax,eax` (`0x35434`). Mask 0. |
 | `0x47B04` | `fighter_47b04` (fighter.c; registered in actors.c) | 247 | No direct caller; one stored pointer, `C7 41 0C` + `0x47B04` (`mov dword [ecx+0xc],imm`, the immediate at `0x47C56`). Called at `0x35431`, returning to `xor eax,eax` (`0x35434`). Mask 0. |
+| `0x2EB80` | `config_key_latched` (config.c) | 60 | Seven call sites (a rel32 scan): `0x2EBFD` (`xor edx,edx; test eax,eax`), `0x2EE41` (`mov ecx,eax; … test eax,eax`), `0x303D9`, `0x32542`, `0x32E36`, `0x3306B`, `0x33247` (each `test eax,eax; je …; cmp eax,0x1b`). Every caller reads EAX whole. Mask `0xFFFFFFFF`. |
 
 ## §2 The rows
 
@@ -39,6 +40,7 @@ the callees stubbed or run as stated.
 | `actors_update` | `0x2A31C` | 7 | 11/11 | 15/15 | 0 | No argument. `0x104B24` non-zero returns at once (`u0`, `u6` = `0x80`); with `0x104B26` zero the byte `0x105BEC` is decremented and, when it wraps to `0xFF`, reloaded with `0x105BEE` - 1 (`u3`: 7 -> 6; `u4`: 0 -> `0xFF`; `u5`: 1 -> 0, no reload). The walk from `[0x105BCC]` to the list head itself: bit 1 of `+0x28` skips, bit 0 is cleared in place (`and byte [eax+0x28],0xfe`), else `0x2A1FC` (a stub, seamed by this row, that rewrites the record's `+0` to `0x105BCC`: the walk continues from the next pointer read before the call, `mov edx,[eax]` `0x2A365`; `u5` links the records out of address order). |
 | `fighter_3ea24` | `0x3EA24` | 25 | 19/19 | 62/62 | 0 | `0x216EC`'s sibling; EAX and EDX are not read (`mov edx,ebx` `0x3EA29`), EBX = side. The counter word is `0x1080A8[side]` (read back through `0x1080A6`); the table `0x3EA10` has five entries (`cmp dl,4; ja`): `0x3EA5C 0x3EB31 0x3EB51 0x3EC1A 0x3EBD6` (`n1..n3`: states 5, 6, `0xFF`). State 0 stores through ctx[4]/ctx[5] (`+0x34/+0x36/+0x44` = `0x96/0xA/0xA` and `0xFF6A/0xFE0C/0xA`; `@c0twin` is `0x216EC`'s `0x258/0x28`), then **AL of `0x1A570`** (`test al,al; jne` `0x3EB01`: `s3` returns `0x100`, `s6` `0xFFFFFF80`). State 2 is `0x216EC`'s (the table by the character). State 4 calls `0x36870(ctx[4])` on the same condition as `0x216EC`'s (the table **by the side**, `c > 7`) and stores nothing (`@c4s57`). The cases are `0x216EC`'s minus its target-slot arm. |
 | `fighter_47b04` | `0x47B04` | 22 (18 without the `0x36870` clobber commit) | 14/14 (12/14, 2 named, without it; §4) | 40/40 (32/32) | 0 | EAX = slot (EDI: its `+0x57` is the state and takes the 3), EDX = rec (ECX: its `+0x63`), EBX = side. Nothing while `0x1077A8[side ^ 1]` is null (`xor al,1` `0x47B1A`; `q0`, `q1`); the cases point that table at structures that are not the fighters' slots, so the table pointer (ESI) and ctx[3] differ. Table `0x47AEC` = `0x47B79 0x47B92 0x47BC7 0x47BF3 0x47BDA 0x47B4A`. State 0: `+0x63 == 7` -> `0x47A00(side)` (seamed by this row). State 1: `+0x63 == 0x10` -> the other structure's `+0x54` = 0, `0x39834(1 - side, the side's slot's +0x5F zero-extended)`, `0x39FB0(the table pointer)`, EAX slot's `+0x57` = 3 (`o3`: side 2; `o1`: `+0x5F` = `0x80`). State 5: ctx[2]'s `+0x88` word signed above 10 (`v1`: 10; `v2`: `0x8000`) -> ctx[2]'s `+0x54` = 0 and `0x36870(ctx[4])`. State 2: `0x36870(rec)` and the 3 (`t0`, `t1`). State 4: `+0x63 == 0x10` (`f1`: 7) -> the table structure's `+0x54` = 0, `0x36870([that structure])`, the 3 (`f0`, `f2`). States 2 and 4's bodies need the `0x36870` clobber commit (§4). |
+| `config_key_latched` | `0x2EB80` | 5 | 4/14 (10 named, §4) | 6/6 | `0xFFFFFFFF` | No argument. The latch dword `0x105F30` is tested and returned whole (`mov edx,[0x105f30]; test edx,edx; … mov eax,edx`: `k1` = `0x00010000`); with it zero, `0x500BB` (`mov eax,[0x101500]; ret`, run on both sides — the port reads the dword itself) minus the key time `0x105F2C`, unsigned against `0x4B0` (`cmp eax,0x4b0; jbe` `0x2EB9A/0x2EB9F`), returns 0: `k2` is exactly `0x4B0`, `k3` equal ticks at `0x80000010`, `k4` a tick that wrapped past the key time (`0xAF - 0xFFFFFFFF` = `0xB0`). No port change. |
 
 ## §3 Corrections
 
@@ -96,6 +98,14 @@ where the raw has `test al,al`; their rows run `0x14590` real (allowed) and name
   rows that stub `0x36870` (`fighter_22638`, `fighter_4811c`, `fighter_4844c`, `fighter_37178`,
   `fighter_3fd30`, `fighter_3ea24`) were re-measured before and after: verdicts, mutant counts, catching kinds
   and case sets identical (a narrower poison cannot change a run that never read the register).
+- **`config_key_latched`: the idle timeout arm (`0x2EBA1`) cannot run.** Above `0x4B0` the raw stores the
+  byte `0x107414` = 0 and tail-jumps to the runtime longjmp `0x65431` with EAX = `0x1044F4`, EDX = 1
+  (`0x2EBA1..0x2EBB3`); that routine loads SS (`mov ss,[eax+0x2a]` `0x65442`) and never returns, and it cannot be
+  stubbed as a returning tail call either: the jump leaves the pushed EDX on top of the return address. The
+  static scan follows the tail jump, so the row names that arm and the nine blocks of `0x65431`'s body
+  (`0x65431 0x6544F 0x65450 0x65468 0x6546A 0x65475 0x65477 0x65482 0x65484`). Consequences, named: the store
+  of `0x107414` and the port's `game_restart_longjmp()` call are not compared, and the `0x4B0` boundary is
+  proved from below only (`k2`; `@lt`).
 
 ## §5 Store-sweep findings
 
@@ -142,6 +152,9 @@ where the raw has `test al,al`; their rows run `0x14590` real (allowed) and name
   seeded. Its stores on the exercised paths (`other+0x54`, EAX slot `+0x57`, ctx[2] `+0x54`) have dropping
   mutants (`@c1no54`, `@c1nos57`, `@c5no54`), wrong-structure mutants (`@c154ctx`, `@c1s57ctx`, `@c554slot`) and
   order mutants (`@c1early`, `@c1late54`: the memory at the stub calls).
+- `config_key_latched`: it stores nothing on the exercised paths; the three dwords it reads sit between
+  seeded dwords (`@tick` reads the next dword) and the idle byte `0x107414` is seeded `0x5A` so a mutant that
+  takes the timeout shows as a byte.
 
 ## §6 Queue entries not done
 
