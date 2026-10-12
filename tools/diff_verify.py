@@ -24444,6 +24444,630 @@ D4D_SPECS += [
          mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
 ]
 D1_SPECS += D4D_SPECS
+# ---- track D5 batch d5b (record 2026-10-12-reverse-d5b): the overlap family of camera.c -------------------
+D5B_SPECS = []
+
+
+def d5b_bytes(seed, n):
+    """n deterministic bytes (the high byte of an LCG), a fixture's filler."""
+    out, x = [], seed & 0xFFFFFFFF
+    for _ in range(n):
+        x = (x * 0x41C64E6D + 0x3039) & 0xFFFFFFFF
+        out.append((x >> 16) & 0xFF)
+    return bytes(out)
+
+
+def d5b_poke(p, addr, data):
+    """`data` at `addr`, in pokes of at most 64 bytes (diffrun's poke_t)."""
+    for o in range(0, len(data), 64):
+        p[addr + o] = data[o:o + 64]
+
+
+# ---- 0x16DA4: the overlap count of the two sides' bit-plane rows ---------------------------------------
+# 0x1631C (d4b's row; seamed here): EAX = side, EDX = index, EBX = frame, ECX = count; it saves ESI, EDI,
+# EBP and writes EBX, ECX, EDX. Its EAX is the row width in bytes, varied per case.
+D5B_HEIGHT = E.Call(0x1631C, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+# The same stub storing the two globals 0x16DA4 reads back after it: 0x100B54 (`mov ebp,[0x100b54]`
+# 0x16E08) and 0x100B18 (`mov ecx,[0x100b18]` 0x16DF5, `mov esi,[0x100b18]` 0x16E10).
+D5B_HEIGHT_RR = E.Call(0x1631C, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"),
+                       writes=((None, 0x100B54, le32(0x0007F000)), (None, 0x100B18, le32(0xFFFFFFFF))))
+# The three leaves run on both sides and are recorded (seamed here; d1h's rows): 0x1638C(side, dst, count,
+# row) = EAX, EDX, EBX, ECX; 0x15EC0(buf, len) = EDX, EAX; 0x1617C(bit, src, rows, dst, arg5) = EAX, EDX,
+# EBX, ECX and one stack dword.
+D5B_ROW = E.Call(0x1638C, ("eax", "edx", "ebx", "ecx"), mode="real")
+D5B_BITREV = E.Call(0x15EC0, ("edx", "eax"), mode="real")
+D5B_MERGE = E.Call(0x1617C, ("eax", "edx", "ebx", "ecx", "s0"), mode="real")
+# The row loop 0x16E22..0x1703B, which the _rr row does not enter (its stub stores a row count of -1)
+D5B_WH_LOOP = {a: "the row loop: the _rr row's 0x1631C stub stores [0x100B18] = -1 (`jle` 0x16E1C); the "
+                  "camera_winner_height row hits it"
+               for a in (0x16E22, 0x16E30, 0x16E59, 0x16E6F, 0x16E76, 0x16E9E, 0x16EA7, 0x16ED0, 0x16ED5, 0x16EFE,
+                         0x16F13, 0x16F20, 0x16F2E, 0x16F3A, 0x16F48, 0x16F64, 0x16F75, 0x16F83, 0x16FAF, 0x16FC1,
+                         0x16FC3, 0x16FEF, 0x17001, 0x1700E, 0x17027)}
+D5B_CONSTS = bytes.fromhex("c3a55a3c" "1e2d4b7896e1" "0ff033cc55aa")   # other bytes for 0xA173C, 0xA1740, 0xA1746
+
+
+def d5b_wh(cid, eax, mode, side, w, rows=2, shift=5, flips=(0, 0), idx=(0x21, 0x43), base=(3, 7), seed=1,
+           consts=None):
+    """0x100B18 (the row count), 0x100B38 (the shift) and 0x100B54 between seeded dwords; the two flip
+    bytes 0x100B62/0x100B63; the five 0x25-byte buffers 0x100B64 (the other's row), 0x100B89 (the
+    overlap), 0x100BAE (the side's row), 0x100BD3 (the mask plane), 0x100BF8 (the shifted row), all
+    seeded; three rows of each side's row table. `w` is the 0x1631C stub's EAX."""
+    p = {0x100B10: le32(0x10101010) + le32(0x14141414) + le32(rows) + le32(0x1C1C1C1C),
+         0x100B34: le32(0x34343434) + le32(shift) + le32(0x3C3C3C3C),
+         0x100B50: le32(0x50505050) + le32(0x54545454) + le32(0x58585858),
+         0x100B60: bytes([0x60, 0x61, flips[0], flips[1]])}
+    d5b_poke(p, 0x100B64, d5b_bytes(seed, 5 * 0x25))
+    d5b_poke(p, 0xFD160, d5b_bytes(seed + 100, 3 * 0x26))
+    d5b_poke(p, 0xFEDE0, d5b_bytes(seed + 200, 3 * 0x26))
+    if consts:
+        p[0xA173C] = consts
+    return Case(cid, {"eax": eax, "edx": idx[0], "ebx": idx[1], "ecx": base[0], "s0": base[1], "s1": mode,
+                      "s2": side}, p, {0x1631C: w})
+
+
+D5B_SPECS += [
+    # 0x16DA4 camera_winner_height: AL = flag (`mov [esp+0x10],al` 0x16DAE; w3 has EAX 0x100), EDX =
+    # the side's sprite index, EBX = the other's, ECX = the side's first row, [esp+4] = the other's
+    # first row, [esp+8] = mode, [esp+0xC] = side; `ret 0xc`. [0x100B54] = 0 (0x16DC8). mode != 0:
+    # width a = 0x1631C(side, EDX, ECX, [0x100B18]) (0x16DDC); mode -1 or 0: width b = 0x1631C(1 - side,
+    # EBX, [esp+4], [0x100B18]) (0x16DFF). Then per row while row < [0x100B18] (signed, re-read:
+    # `jle` 0x16E1C, `jl` 0x17038): mode 0 copies the 4 bytes at 0xA173C to 0x100BAE (width a = 4),
+    # any other mode 0x1638C(side, 0x100BAE, width a, row); mode 1 copies the same 4 bytes to
+    # 0x100B64 (width b = 4) before the row copy; mode 2 copies the 6 bytes at 0xA1740 there, mode 3
+    # the 6 at 0xA1746 (width b = 6), any other mode 0x1638C(1 - side, 0x100B64, width b, row). The
+    # flip byte 0x100B62[side] bit-reverses the side's row (0x15EC0(0x100BAE, width a)), 0x100B62[1 -
+    # side] the other's. The side's first `width a` bytes are ANDed with the plane 0x100BD3 (`jle`
+    # 0x16F62). Flag set: 0x1617C([0x100B38], 0x100BAE, 0x25, 0x100BF8, 0x25) and 0x100B89 = 0x100BF8
+    # AND 0x100B64; clear: the same with 0x100B64 shifted and ANDed with 0x100BAE. [0x100B54] += the
+    # 0xA163C popcount of each of the 0x25 bytes. At the end [0x100B54] = ((sum << 12) / 0xF3D << 12)
+    # / 0xD56 / 16, each division signed and truncating (0x1703E..0x1706F). Mask 0: the three call
+    # sites reload EAX or test memory (`mov eax,[0x100b54]` 0x1756A, 0x178EA; `cmp [0x100b54],0`
+    # 0x17BB1, then `mov al,1` / `xor al,al`, and 0x1790C's four callers `test al,al`). w10 and w12 are
+    # side 2 (1 - side = -1: the flip byte 0x100B61 and the second row table), w7/w8 a row count of 0 and
+    # -1, w9 a width of 0, w5 the shift 0x128 and w6 0x129 (0x1617C refuses it and stores nothing).
+    # Domain: a negative width is a 4 GB `rep movs` in 0x1638C (0x163BC), on both sides: no case, so
+    # the signed `jle` 0x16F62 is not separated from an unsigned compare. A mode outside -1..3 reads
+    # the raw's uninitialised [esp+0xC] as width b: no caller passes one (-1 0x17545, 0 0x178B5, 3
+    # 0x17B7B, 2 0x17B9B).
+    Spec("camera_winner_height", 0x16DA4, [
+        d5b_wh("w0", 0, 0xFFFFFFFF, 0, 5),
+        d5b_wh("w1", 1, 0xFFFFFFFF, 1, 0x25, rows=3, shift=0, flips=(1, 1), seed=2),
+        d5b_wh("w2", 0xFFFFFF01, 0, 0, 7, shift=0x0B, flips=(1, 0), seed=3),
+        d5b_wh("w3", 0x100, 0, 1, 2, rows=1, shift=0x24, flips=(1, 0), seed=4, consts=D5B_CONSTS),
+        d5b_wh("w4", 0, 1, 0, 9, flips=(0x80, 0), seed=5),
+        d5b_wh("w5", 1, 2, 1, 3, shift=0x128, flips=(0, 1), seed=6),
+        d5b_wh("w6", 0, 3, 0, 6, shift=0x129, flips=(1, 1), seed=7, consts=D5B_CONSTS),
+        d5b_wh("w7", 1, 0xFFFFFFFF, 0, 4, rows=0, seed=8),
+        d5b_wh("w8", 0, 2, 1, 4, rows=0xFFFFFFFF, seed=9),
+        d5b_wh("w9", 1, 0xFFFFFFFF, 1, 0, rows=1, shift=8, flips=(1, 1), seed=10),
+        d5b_wh("w10", 1, 3, 2, 8, rows=1, shift=3, seed=11),
+        d5b_wh("w11", 0, 2, 0, 1, rows=3, shift=1, flips=(0, 1), seed=12, consts=D5B_CONSTS),
+        d5b_wh("w12", 0, 0xFFFFFFFF, 2, 3, rows=1, shift=2, seed=16),
+    ], calls=(D5B_HEIGHT, D5B_ROW, D5B_BITREV, D5B_MERGE), eax_mask=0,
+       mutants=("@flag32", "@xor", "@nozero", "@first0", "@idxa", "@count1", "@second0", "@frameb", "@rowsuns",
+                "@m0src", "@m0w", "@m0row", "@rowside", "@row0", "@m1skip", "@m2src", "@m2w", "@m3row",
+                "@flipside", "@flipw", "@noflipb", "@andw", "@noand", "@flagswap", "@shift", "@mergelen", "@and2",
+                "@poplen", "@nopop", "@nofinal", "@andfirst")),
+    # The same entry with a 0x1631C stub that stores [0x100B54] = 0x0007F000 and [0x100B18] = -1: the
+    # sum starts from the stored dword (`mov ebp,[0x100b54]` 0x16E08), the second call's count and the
+    # loop bound are the stored row count (0x16DF5, 0x16E10), so no row runs and [0x100B54] is the three
+    # divisions of 0x7F000000: 546195 by 0xF3D, whose `shl 12` is negative as a dword (0x85593000), then
+    # -602763 by 0xD56 and -37672 by 16 (signed and truncating: an arithmetic shift gives -37673, the
+    # two divisors exchanged -27855).
+    Spec("camera_winner_height_rr", 0x16DA4, [
+        d5b_wh("r0", 1, 0xFFFFFFFF, 0, 5, seed=13),
+        d5b_wh("r1", 0, 0, 1, 3, rows=3, seed=14),
+        d5b_wh("r2", 1, 2, 0, 6, rows=1, seed=15),
+    ], calls=(D5B_HEIGHT_RR, D5B_ROW, D5B_BITREV, D5B_MERGE), eax_mask=0, unhit_named=D5B_WH_LOOP,
+       mutants=("@b54cache", "@b18cache", "@floor", "@divuns", "@kswap", "@nofinal")),
+]
+
+
+# ---- the scene 0x176CC, 0x1790C and 0x170A0 read ---------------------------------------------------------
+D5B_REC = (0x10A200, 0x10A280)        # the two fighters' records ([0x1077B0 + side * 0x94])
+D5B_PRJ = (0x10A300, 0x10A380)        # the two projectile records ([0x1077B8], [0x10784C])
+D5B_SPRITES = ((0x0027, 0x0031, 0x0009, 0x0005), (0x0015, 0x0044, 0x0003, 0x0007))   # width, height, origin x, origin y
+# 0x15C30 (d4b's row; seamed here): EAX = side, EDX = index, EBX = the 4-byte box, a buffer in the caller's
+# frame at every call site (`lea ebx,[esp+0x18]` 0x177AC, `lea ebx,[esp+4]` 0x17986 and 0x171B6, `mov
+# ebx,esp` 0x17206), passed by value (`[ebx]`); it saves ECX, ESI, EDI, EBP and writes EBX, EDX. A stub
+# cannot store into the caller's frame, so under it the box the caller reads back is the one it passed:
+# the _real rows run 0x15C30 on both sides.
+D5B_CLIP = E.Call(0x15C30, ("eax", "edx", "[ebx]"), clobbers=("ebx", "edx"))
+D5B_CLIP_ALLOW = (0x15C30, 0x15B90, 0x1A570)
+# 0x16DA4 (this batch's row; seamed here): EAX, EDX, EBX, ECX and three stack dwords, `ret 0xc`; it saves
+# ESI, EDI, EBP. The _W form stores [0x100B54], which every caller reads after the call.
+D5B_WINNER = E.Call(0x16DA4, ("eax", "edx", "ebx", "ecx", "s0", "s1", "s2"), pop=0xC, clobbers=("ebx", "ecx", "edx"))
+D5B_WINNER_W = E.Call(0x16DA4, ("eax", "edx", "ebx", "ecx", "s0", "s1", "s2"), pop=0xC, clobbers=("ebx", "ecx", "edx"),
+                      writes=((None, 0x100B54, le32(0x00C0FFEE)),))
+
+
+def d5b_region(over):
+    """0x100AA0..0x100B63, every dword seeded with its own byte (0x81818181 at 0x100AA0, 0x82828282 at
+    0x100AA4, ...), then `over` ({address: bytes})."""
+    buf = bytearray()
+    for a in range(0x100AA0, 0x100B64, 4):
+        buf += bytes([0x81 + (a - 0x100AA0) // 4]) * 4
+    for a, data in over.items():
+        buf[a - 0x100AA0:a - 0x100AA0 + len(data)] = data
+    p = {}
+    d5b_poke(p, 0x100AA0, bytes(buf))
+    return p
+
+
+def d5b_scene(over, chars=(2, 5), idx=(0x21, 0x43), guards=((0x7401, 0x7602), (0x7403, 0x7604)),
+              facing=(0x4000, 0x8000), sprites=D5B_SPRITES, handles=(0x800040, 0x1000010), prj=(True, True),
+              actors=None, pal=((0x40, 0x30), (0x51, 0x22)), corner=((5, 4), (6, 3))):
+    """Both slots (the record, the projectile record, the two countdown words +0x74/+0x76, the character),
+    both records' +0x28 word and +0x56 pset index (2 and 3; the projectiles' 5 and 6), each side's sprite
+    header behind the handle at 0xA8B30 + (0x17EEC(side) + index) * 4, and 0x100AA0..0x100B63 seeded with
+    `over` applied (0x100AF0 = the two indices). `actors` (for a row that runs 0x15C30): per side (flip,
+    x, y) of its pset record, whose word names the same sprite, and the side's 0xD5100 pair `pal`; the
+    sprite's two origin words are then solved, as d4b_clip does, so that the sprite rect's corner lies
+    `corner` right of and below the palette origin (the expectations are the original's)."""
+    p = {**d4b_res()}
+    reg = {0x100AF0: le32(idx[0]) + le32(idx[1])}
+    reg.update(over)
+    p.update(d5b_region(reg))
+    if actors:
+        p[0x1014EC] = le32(D4B_BOX_PSET)
+    for i in (0, 1):
+        s = 0x1077B0 + i * 0x94
+        k = D2D_CHAR_CONST[chars[i]] + idx[i]
+        p[s] = le32(D5B_REC[i]) + le32(0x04040404 + i) + le32(D5B_PRJ[i] if prj[i] else 0)
+        p[s + 0x74] = le16(guards[i][0]) + le16(guards[i][1]) + bytes([0x78, 0x79, chars[i], 0x7B])
+        p[D5B_REC[i] + 0x26] = le16(0x2626) + le16(facing[i]) + le16(0x2A2A)
+        p[D5B_REC[i] + 0x54] = le16(0x5454) + le16(2 + i) + le16(0x5858)
+        p[D5B_PRJ[i] + 0x54] = le16(0x4545) + le16(5 + i) + le16(0x8585)
+        p[0xA8B30 + k * 4 - 4] = le32(handles[i] ^ 0x10) + le32(handles[i]) + le32(handles[i] ^ 0x20)
+        spr = sprites[i]
+        if actors:
+            a, b = pal[i]
+            if chars[i] in (5, 6):
+                a, b = a + int((0x7F - a) / 8), b + int((0x5F - b) / 8)
+            if actors[i][0]:
+                a = 0x100 - a
+            la = ((a * 0xF3D + 0x800) >> 12) - corner[i][0]
+            spr = (spr[0], spr[1], d4b_s16(spr[0]) - la - 1 if actors[i][0] else la,
+                   ((b * 0xD56 + 0x800) >> 12) - corner[i][1])
+        p[d4b_at(handles[i]) - 2] = b"\xee\xee" + b"".join(le16(v) for v in spr) + b"\xdd\xdd"
+        if actors:
+            p[D4B_BOX_PSET + (2 + i) * 0x20] = (le16(k | (0x8000 if actors[i][0] else 0)) + le16(0x0202)
+                                                + le32(actors[i][1]) + le32(actors[i][2]))
+            p[0xD5100 + k * 2 - 1] = bytes([0x91 + i, pal[i][0], pal[i][1], 0x94 + i])
+    return p
+
+
+# ---- 0x176CC: a side's projectile against the other fighter -------------------------------------------
+def d5b_phit(cid, side, ov, sync, guard=(0, 1), box=(3, 4, 5, 6), over=None, real=False, win=0, **kw):
+    """`guard` = the other slot's two countdown words (the side's own are non-zero), `box` = the other
+    side's 0x100AC0 box (the side's own is 9, 9, 9, 9), `ov`/`sync`/`win` the stubs' EAX."""
+    o = 1 - side
+    guards = [(0x7401, 0x7602), (0x7403, 0x7604)]
+    guards[o] = guard
+    reg = {0x100AC0 + o * 4: bytes(box), 0x100AC0 + side * 4: bytes([9, 9, 9, 9]),
+           0x100AA0: le32(0x00000150) + le32(0xFFFFFF31) + le32(0x00012345) + le32(0x00000777),
+           0x100B00: le32(0x00000021) + le32(0x00000432) + le32(0xFFFFFE00) + le32(0x00000098)}
+    reg.update(over or {})
+    stubs = {0x140E4: ov, 0x16DA4: win}
+    if not real:
+        stubs[0x181D0] = sync
+    return Case(cid, {"eax": side}, d5b_scene(reg, guards=tuple(guards), **kw), stubs)
+
+
+D5B_SPECS += [
+    # 0x176CC camera_projectile_hit: EAX = side; o = 1 - side. 0x33950 fills a context in the frame that
+    # nothing reads (0x176F3; run from the original's bytes, the port has no call). The other slot's
+    # +0x74 word non-zero returns (`ja` 0x17700), its +0x76 word zero-extended above 1 returns (`jg`
+    # 0x17712: p3 is 2, p4 0x8000, p0 1). 0x140E4(word[[0x1077B8 + side * 0x94] + 0x56], word[[0x1077B0
+    # + o * 0x94] + 0x56]), `test al,al; je` (0x1774D: p5 is the stub's EAX 0x100, p1 0xFFFFFF01). The
+    # other's 0x100AC0 box with both extents >= 1 is copied to the frame and clipped by 0x15C30(o,
+    # [0x100AF0 + o * 4], box) (0x177C4); else the frame box is 0, 0, 0x20, 0x20 (p1 a zero width, p8 a
+    # zero height; only its first two bytes are read back, 0x177CD/0x177D0). The other's sprite =
+    # 0x1B544([0xA8B30 + (0x17EEC(o) + [0x100AF0 + o * 4]) * 4]). 0x181D0(0x20, `movsx` the sprite's width
+    # word, [0x100AA8 + side * 4] - (box[0] + [0x100B08 + o * 4]), 0x100B1C; 0x100B14, 0x100B28, 0x100B34,
+    # 0x100B24), `and eax,0xff; jne` (0x17849: p7 returns there, p1 has EAX 0x100); 0x181D0(0x20, the
+    # sprite's first dword `sar 0x10`, -([0x100B00 + o * 4] + box[1] - [0x100AA0 + side * 4]), 0x100B18;
+    # 0x100B10, 0x100B2C, 0x100B30, 0x100B20), the same test (0x17883). Then the flag [0x100B14] >
+    # [0x100B34] (`setg`, signed: p1 0x80000000 against 1, p8 equal), [0x100B38] = their absolute
+    # difference, [0x100B40] = [0x100B1C], the flip byte 0x100B62[side] saved and zeroed, 0x16DA4(flag, -1,
+    # [0x100AF0 + o * 4], [0x100B10], [0x100B30], 0, side), [0x100AD0 + side * 4] = [0x100B54], the flip
+    # byte restored. Mask 0: both call sites (0x17D0E, 0x17D21) go on to `cmp`/`mov eax,1` or return
+    # through 0x17CB0, whose one caller loads EAX (`mov eax,esp` 0x19774). p9 has a negative width word
+    # and a negative height.
+    Spec("camera_projectile_hit", 0x176CC, [
+        d5b_phit("p0", 0, 1, 0, over={0x100B14: le32(5), 0x100B34: le32(3)}),
+        d5b_phit("p1", 1, 0xFFFFFF01, 0x100, guard=(0, 0), box=(3, 4, 0, 6), win=0x55,
+                 over={0x100B14: le32(0x80000000), 0x100B34: le32(1)}),
+        d5b_phit("p2", 0, 1, 0, guard=(1, 0)),
+        d5b_phit("p3", 1, 1, 0, guard=(0, 2)),
+        d5b_phit("p4", 0, 1, 0, guard=(0, 0x8000)),
+        d5b_phit("p5", 1, 0x100, 0),
+        d5b_phit("p6", 0, 0, 0),
+        d5b_phit("p7", 0, 1, 1),
+        d5b_phit("p8", 0, 1, 0xFFFFFF00, box=(3, 4, 5, 0), over={0x100B14: le32(0x1234), 0x100B34: le32(0x1234)}),
+        d5b_phit("p9", 1, 0x7F, 0, box=(0xF0, 0x81, 1, 1),
+                 sprites=((0xFFF0, 0x8001, 0x0009, 0x0005), (0x0015, 0x0044, 0x0003, 0x0007))),
+    ], allow_calls=(0x33950, 0x17EEC, 0x1B544), calls=(D4B_OVERLAP, D5B_CLIP, D4B_SYNC, D5B_WINNER), eax_mask=0,
+       mutants=("@gside", "@g1off", "@g2sext", "@g2ge", "@ovrec0", "@ovrec1", "@ovargs", "@al140", "@boxac8",
+                "@boxside", "@boxw", "@noclip", "@clipside", "@clipidx", "@default", "@spridx", "@sybox", "@sxbox",
+                "@sx", "@swzext", "@outs", "@p1", "@alsync", "@shzext", "@sy", "@alsync2", "@flaguns",
+                "@flagge", "@noabs", "@b40", "@nob62", "@widx", "@wrows", "@wmode", "@wside", "@adside",
+                "@b62keep")),
+]
+D5B_ACTORS = ((False, 0x00012345, 0x0000ABCD), (True, 0x00034567, 0x00016540))   # per side: flip, x, y of its pset record
+
+D5B_SPECS += [
+    # The same entry with 0x15C30 and 0x181D0 run on both sides (0x181D0 recorded) and a 0x16DA4 stub
+    # that stores [0x100B54], which the raw reads after the call (`mov eax,[0x100b54]` 0x178EA). The
+    # clip changes the box the caller reads back (0x177CD/0x177D0): side 1's 3, 4, 5, 6 becomes 6, 9,
+    # 15, 18 and side 0's 2, 2, 3, 3 becomes 3, 2, 12, 9 (measured on 0x15C30's own bytes). q0: both
+    # syncs see the box (x 4 into the 21-wide sprite, y 7 into the 68-high one). q1: x 10 left of the
+    # sprite and y 40 into the 49-high one, both clipped. q2: the x sync returns 1. q3: the x sync
+    # returns 0 and the y sync 1 (`jne` 0x17888 taken after 0x1784E fell through). q4: the other's box
+    # is empty, the frame box 0, 0, 0x20, 0x20.
+    Spec("camera_projectile_hit_real", 0x176CC, [
+        d5b_phit("q0", 0, 1, 0, real=True, actors=D5B_ACTORS, box=(3, 4, 5, 6),
+                 over={0x100AA8: le32(0xA2), 0x100AA0: le32(0x442)}),
+        d5b_phit("q1", 1, 1, 0, real=True, actors=D5B_ACTORS, box=(2, 2, 3, 3),
+                 over={0x100AAC: le32(0xFFFFFDF9), 0x100AA4: le32(0x4B)}),
+        d5b_phit("q2", 0, 1, 0, real=True, actors=D5B_ACTORS, box=(3, 4, 5, 6), over={0x100AA0: le32(0x442)}),
+        d5b_phit("q3", 0, 1, 0, real=True, actors=D5B_ACTORS, box=(3, 4, 5, 6), over={0x100AA8: le32(0xA2)}),
+        d5b_phit("q4", 1, 1, 0, real=True, actors=D5B_ACTORS, box=(3, 4, 0, 6),
+                 over={0x100AAC: le32(0xFFFFFE05), 0x100AA4: le32(0x24)}),
+    ], allow_calls=(0x33950, 0x17EEC, 0x1B544) + D5B_CLIP_ALLOW, calls=(D4B_OVERLAP, D4B_SYNC_REAL, D5B_WINNER_W),
+       eax_mask=0, mutants=("@nosync2", "@adcache", "@preclip", "@sybox", "@sxbox", "@noabs", "@wrows")),
+]
+
+# ---- 0x1790C: a point box against one side's 0x100AC8 box -------------------------------------------------
+D5B_PLANE_ALLOW = (0x17EEC, 0x1B544, 0x61A70, 0x65490, 0x654C7, 0x15F48, 0x15FD4)
+
+
+def d5b_pside(cid, side, x, y, tall, sync, box=(3, 4, 5, 6), over=None, real=False, win=0, seed=1, **kw):
+    """`box` = the side's 0x100AC8 box (the other's is 9, 9, 9, 9); the plane 0x100BD3 seeded with the
+    three bytes before it and the four after it; `sync`/`win` the stubs' EAX."""
+    reg = {0x100AC8 + side * 4: bytes(box), 0x100AC8 + (1 - side) * 4: bytes([9, 9, 9, 9]),
+           0x100B00: le32(0x00000021) + le32(0x00000432) + le32(0xFFFFFE00) + le32(0x00000098)}
+    reg.update(over or {})
+    p = d5b_scene(reg, **kw)
+    p[0x100BD0] = d5b_bytes(seed + 50, 0x2C)
+    stubs = {0x16DA4: win}
+    if not real:
+        stubs[0x181D0] = sync
+    return Case(cid, {"eax": side, "edx": x, "ebx": y, "ecx": tall}, p, stubs)
+
+
+D5B_W24 = ((0x0018, 0x0031, 0x0009, 0x0005), (0x0020, 0x0044, 0x0003, 0x0007))      # widths that are multiples of 8
+D5B_WNEG = ((0xFFF7, 0x0031, 0x0009, 0x0005), (0xFFF7, 0x8001, 0x0003, 0x0007))     # a width of -9
+
+D5B_SPECS += [
+    # 0x1790C camera_point_side: EAX = side, EDX = x, EBX = y, ECX = tall (a dword: `test edx,edx` 0x17A8B,
+    # `cmp dword [esp+0x14],0` 0x17AC4; s5 is 0x100). The side's 0x100AC8 box with an extent below 1 returns
+    # AL = 0 (0x17934/0x1793E: s2, s3). The side's sprite (0x17EEC + 0x1B544), the box copied to the frame
+    # and clipped by 0x15C30(side, [0x100AF0 + side * 4], box). 0x181D0(box[2], 0x30, (box[0] + [0x100B08 +
+    # side * 4]) - x, 0x100B1C; 0x100B14, 0x100B28, 0x100B34, 0x100B24), `and eax,0xff; jne` (0x179ED). The
+    # byte width = the sprite's width word `movsx`, divided by 8 truncating, plus 1 when the remainder is
+    # not 0 (0x179FC..0x17A24: s1 is 24, s5 -9). The plane 0x100BD3 zeroed over 0x25 bytes (the runtime
+    # memset 0x61A70), 0x15F48(box[2], width, 0x100BD3, 0xFF), and with box[0] non-zero 0x15FD4(box[0],
+    # 0x100BD3, width, 0x100BD3, width) (`cmp byte [esi],0` 0x17A4E: s1). 0x181D0(the width word `movsx`,
+    # 0x30, [0x100B08 + side * 4] - x, the same outs) and 0x181D0(box[3], 0x30 when tall else 0x38, -(y -
+    # ([0x100B00 + side * 4] + box[1])), 0x100B18; 0x100B10, 0x100B2C, 0x100B30, 0x100B20), each `and
+    # eax,0xff; jne` (0x17AB9, 0x17B10). Then [0x100B10] += box[1], the flag [0x100B14] > [0x100B34]
+    # (`setg`), [0x100B38] = their absolute difference, [0x100B40] = [0x100B1C], 0x16DA4(flag, [0x100AF0 +
+    # side * 4], 0, [0x100B10], [0x100B30], 3 when tall else 2, side), and AL = 1 when [0x100B54] > 0
+    # (`jle` 0x17BB8, signed: s5 is 0x80000000, s1 0). Mask 0xFF: the four call sites `test al,al`
+    # (0x17E00, 0x17E13, 0x17E75, 0x17E8B). s4 returns at the first sync; s1, s5 and s8 have a stub EAX
+    # whose AL is 0. s6's box (7, 4, 30, 6) shifts 30 bits by 7 into the fifth plane byte, which only the
+    # rounded-up width keeps; s9 is the same box under a 32-wide sprite, whose width of 4 bytes drops it.
+    Spec("camera_point_side", 0x1790C, [
+        d5b_pside("s0", 0, 0x123, 0x45, 1, 0, over={0x100B54: le32(5), 0x100B14: le32(5), 0x100B34: le32(3)}),
+        d5b_pside("s1", 1, 0xFFFFFF00, 0x7654, 0, 0x100, box=(0, 4, 5, 6), sprites=D5B_W24, win=0x33,
+                  over={0x100B54: le32(0), 0x100B14: le32(0x80000000), 0x100B34: le32(1)}),
+        d5b_pside("s2", 0, 0x123, 0x45, 1, 0, box=(3, 4, 0, 6), over={0x100B54: le32(5)}),
+        d5b_pside("s3", 1, 0x123, 0x45, 1, 0, box=(3, 4, 5, 0), over={0x100B54: le32(5)}),
+        d5b_pside("s4", 0, 0x123, 0x45, 0, 1, over={0x100B54: le32(5)}),
+        d5b_pside("s5", 0, 0x40, 0xFFFFFFF0, 0x100, 0xFFFFFF00, sprites=D5B_WNEG, over={0x100B54: le32(0x80000000)}),
+        d5b_pside("s6", 0, 0x7FFFFFFF, 0x80000000, 0, 0, box=(7, 4, 30, 6),
+                  over={0x100B54: le32(1), 0x100B14: le32(0x1234), 0x100B34: le32(0x1234)}),
+        d5b_pside("s7", 1, 0x10, 0x20, 1, 0, box=(1, 0xFF, 0xFF, 0x80), over={0x100B54: le32(0x7FFFFFFF)}),
+        d5b_pside("s8", 1, 0x10, 0x20, 0, 0x100, sprites=D5B_WNEG, over={0x100B54: le32(0xFFFFFFFF)}),
+        d5b_pside("s9", 1, 0x10, 0x20, 1, 0, box=(7, 4, 30, 6), sprites=D5B_W24, over={0x100B54: le32(2)}),
+    ], allow_calls=D5B_PLANE_ALLOW, calls=(D5B_CLIP, D4B_SYNC, D5B_WINNER), eax_mask=0xFF,
+       mutants=("@boxac0", "@boxside", "@boxw", "@noclip", "@clipidx", "@s1box", "@s1sign", "@s1w", "@s1ext", "@al1",
+                "@wzext", "@bwfloor", "@bwceil", "@nofill", "@pixval", "@noshift", "@s3box", "@s2sign", "@s2zext",
+                "@al2", "@tall8", "@tallinv", "@s3sign", "@al3", "@nob10", "@b10box0", "@flaguns", "@flagge",
+                "@noabs", "@b40", "@wother", "@wmode", "@wside", "@retge", "@retuns")),
+]
+D5B_SPECS += [
+    # The same entry with 0x15C30 and 0x181D0 run on both sides (0x181D0 recorded) and a 0x16DA4 stub that
+    # stores [0x100B54] = 0x00C0FFEE over a negative seed (`cmp [0x100b54],0` 0x17BB1 reads it after the
+    # call). The clip changes the box the caller reads back: side 0's 3, 4, 5, 6 becomes 7, 8, 20, 18 and
+    # side 1's 2, 2, 3, 3 becomes 2, 3, 12, 9. t0: the three syncs see the box (x 5, the sprite -2, y -6).
+    # t1: side 1, not tall, the point left of the sprite ([0x100B14] 0 below [0x100B34] 3: the `neg` at
+    # 0x17B4D). t2: the first sync returns 1. t3: the third does, after two zeros (`jne` 0x17B15 taken).
+    # t4: an empty box.
+    Spec("camera_point_side_real", 0x1790C, [
+        d5b_pside("t0", 0, 0xFFFFFE02, 0x2F, 1, 0, real=True, actors=D5B_ACTORS),
+        d5b_pside("t1", 1, 0x95, 0x42B, 0, 0, real=True, actors=D5B_ACTORS, box=(2, 2, 3, 3)),
+        d5b_pside("t2", 0, 0x1234, 0x2F, 1, 0, real=True, actors=D5B_ACTORS),
+        d5b_pside("t3", 0, 0xFFFFFE02, 0x1234, 1, 0, real=True, actors=D5B_ACTORS),
+        d5b_pside("t4", 1, 0x95, 0x42B, 0, 0, real=True, actors=D5B_ACTORS, box=(2, 2, 0, 3)),
+    ], allow_calls=D5B_PLANE_ALLOW + D5B_CLIP_ALLOW, calls=(D4B_SYNC_REAL, D5B_WINNER_W), eax_mask=0xFF,
+       mutants=("@preclip", "@retcache", "@nosync3", "@s1box", "@s3box", "@nob10", "@b10box0", "@noshift")),
+    # The same entry with 0x15C30 a stub and 0x181D0 run: the box as passed need not lie inside the
+    # sprite, so the second sync can fail alone. v0: a 4-wide sprite, the box 2 right of the point (the
+    # first sync returns 0), the sprite 5 left of it (the second returns 1: `jne` 0x17ABE taken). v1:
+    # the same with the sprite 39 wide, all three syncs 0. v2: side 1, not tall, the point left of the
+    # sprite. v3: an empty box.
+    Spec("camera_point_side_sync", 0x1790C, [
+        d5b_pside("v0", 0, 0xFFFFFE05, 0x28, 1, 0, real=True, box=(7, 4, 20, 6), over={0x100B54: le32(5)},
+                  sprites=((0x0004, 0x0031, 0x0009, 0x0005), D5B_SPRITES[1])),
+        d5b_pside("v1", 0, 0xFFFFFE05, 0x28, 1, 0, real=True, box=(7, 4, 20, 6), over={0x100B54: le32(5)}),
+        d5b_pside("v2", 1, 0x90, 0x438, 0, 0, real=True, box=(7, 4, 20, 6), over={0x100B54: le32(0)}),
+        d5b_pside("v3", 1, 0x90, 0x438, 0, 0, real=True, box=(7, 4, 20, 0)),
+    ], allow_calls=D5B_PLANE_ALLOW, calls=(D5B_CLIP, D4B_SYNC_REAL, D5B_WINNER), eax_mask=0xFF,
+       mutants=("@nosync2", "@s2sign")),
+]
+
+# ---- 0x170A0: one side's 0x100AC8 box against the other's 0x100AC0 box ------------------------------------
+def d5b_unf(cid, side, sync, guard=(0, 1), box=(3, 4, 5, 6), obox=(2, 2, 3, 3), over=None, real=False, win=0,
+            seed=1, **kw):
+    """`guard` = the other slot's two countdown words, `box` = the side's 0x100AC8 box, `obox` = the
+    other's 0x100AC0 box (the two boxes the function does not read are 9, 9, 9, 9 and 8, 8, 8, 8)."""
+    o = 1 - side
+    guards = [(0x7401, 0x7602), (0x7403, 0x7604)]
+    guards[o] = guard
+    reg = {0x100AC8 + side * 4: bytes(box), 0x100AC8 + o * 4: bytes([9, 9, 9, 9]),
+           0x100AC0 + o * 4: bytes(obox), 0x100AC0 + side * 4: bytes([8, 8, 8, 8]),
+           0x100B00: le32(0x00000021) + le32(0x00000432) + le32(0xFFFFFE00) + le32(0x00000098)}
+    reg.update(over or {})
+    p = d5b_scene(reg, guards=tuple(guards), **kw)
+    p[0x100BD0] = d5b_bytes(seed + 70, 0x2C)
+    stubs = {0x16DA4: win}
+    if not real:
+        stubs[0x181D0] = sync
+    return Case(cid, {"eax": side}, p, stubs)
+
+
+# 0x170A0 tests the side's box twice (0x1713C..0x1715E, then 0x17184..0x171A0): the second test's empty
+# arm cannot run, the first having returned (`je 0x17576` 0x1715E).
+D5B_UF_DEAD = {a: "the second test of the side's box (0x17184..0x171A0): its empty arm is dead, the first test "
+                  "(0x1715E `je 0x17576`) returns for an empty box"
+               for a in (0x17198, 0x171E5)}
+
+D5B_SPECS += [
+    # 0x170A0 camera_unfreeze: EAX = side; o = 1 - side. The other slot's +0x74 word non-zero returns (`ja`
+    # 0x170CD), its +0x76 word zero-extended above 1 returns (`jg` 0x170E2: u3 is 2, u4 0x8000). Both
+    # sprites are resolved (0x17EEC + 0x1B544 each). The side's 0x100AC8 box with an extent below 1
+    # returns (0x1715E: u5, u6); the other's 0x100AC0 box with one is treated as absent (`xor edi,edi`
+    # 0x17182: u1, u7). The side's box is copied to the frame and clipped by 0x15C30(side, [0x100AF0 +
+    # side * 4], box), the other's, when present, by 0x15C30(o, [0x100AF0 + o * 4], box). [0x100AE0 + side
+    # * 4] = [0x100B08 + side * 4] + box[0], plus box[2] when bit 14 of the side's record +0x28 word is set
+    # (`and ah,0x40` 0x1725D: u0 0x4000, u1 0x8000, u7 0xFFFF, u8 0xBFFF); [0x100AD8 + side * 4] =
+    # [0x100B00 + side * 4] + box[1] + box[3] / 2; [0x100AE8 + side * 4] = that minus [0x100B00 + o * 4].
+    # The x sync 0x181D0(box[2], the other box's [2] or the other sprite's width word `movsx`, (box[0] +
+    # [0x100B08 + side * 4]) - (the other box's [0], or 0, + [0x100B08 + o * 4]), 0x100B1C; 0x100B14,
+    # 0x100B28, 0x100B34, 0x100B24), `and eax,0xff; jne` (0x17367). The byte width of the side's sprite
+    # (as 0x1790C's), the plane zeroed, 0x15F48(box[2], width, 0x100BD3, 0xFF) when box[2] is not 0, and
+    # 0x15FD4(box[0], 0x100BD3, width, 0x100BD3, width) when box[0] is not 0 (u7). The sprite sync
+    # 0x181D0(the side's width word, the other's, [0x100B08 + side * 4] - [0x100B08 + o * 4], the same
+    # outs) and the y sync 0x181D0(box[3], the other box's [3] or the other sprite's first dword `sar
+    # 0x10`, ([0x100B00 + side * 4] + box[1]) - ([0x100B00 + o * 4] + the other box's [1] or 0), 0x100B18;
+    # 0x100B10, 0x100B2C, 0x100B30, 0x100B20), each `and eax,0xff; jne` (0x17441, 0x174EA). Then
+    # [0x100B10] += box[1], [0x100B30] += the other box's [1] when present, the flag [0x100B14] >
+    # [0x100B34], [0x100B38], [0x100B40] as 0x176CC, 0x16DA4(flag, [0x100AF0 + side * 4], [0x100AF0 + o *
+    # 4], [0x100B10], [0x100B30], -1, side) and [0x100AF8 + side * 4] = [0x100B54]. Mask 0: the two call
+    # sites are 0x17580's (0x176AC, 0x176BF), which goes on to `cmp`/`mov eax,1` or returns to callers
+    # that call 0x1958C (`xor eax,eax` 0x19595) next. u9 returns at the first sync; u1, u7 and u10 have a
+    # stub EAX whose AL is 0. u11's box (7, 4, 30, 6) reaches the fifth plane byte (as 0x1790C's s6). The
+    # `je` at 0x173B6 (box[2] zero after the clip) is not taken: 0x181D0 returns 2 for a zero extent, and
+    # a stub cannot store into the frame box.
+    Spec("camera_unfreeze", 0x170A0, [
+        d5b_unf("u0", 0, 0, over={0x100B14: le32(5), 0x100B34: le32(3)}),
+        d5b_unf("u1", 1, 0x100, guard=(0, 0), obox=(2, 2, 0, 3), win=0x44,
+                over={0x100B14: le32(0x80000000), 0x100B34: le32(1)}),
+        d5b_unf("u2", 0, 0, guard=(1, 0)),
+        d5b_unf("u3", 1, 0, guard=(0, 2)),
+        d5b_unf("u4", 0, 0, guard=(0, 0x8000)),
+        d5b_unf("u5", 1, 0, box=(3, 4, 0, 6)),
+        d5b_unf("u6", 0, 0, box=(3, 4, 5, 0)),
+        d5b_unf("u7", 0, 0xFFFFFF00, box=(0, 0x81, 0xFF, 0xFF), obox=(2, 2, 3, 0), facing=(0xFFFF, 0x0000),
+                sprites=D5B_W24, over={0x100B14: le32(0x1234), 0x100B34: le32(0x1234)}),
+        d5b_unf("u8", 1, 0, box=(7, 4, 30, 7), obox=(0x80, 0x90, 0xA0, 0xB0), facing=(0x4000, 0xBFFF)),
+        d5b_unf("u9", 1, 1),
+        d5b_unf("u10", 0, 0x100, obox=(0, 0, 0, 0), sprites=D5B_WNEG),
+        d5b_unf("u11", 0, 0, box=(7, 4, 30, 6), facing=(0xBFFF, 0x4000)),
+    ], allow_calls=D5B_PLANE_ALLOW, calls=(D5B_CLIP, D4B_SYNC, D5B_WINNER), eax_mask=0, unhit_named=D5B_UF_DEAD,
+       mutants=("@gside", "@g2sext", "@g2ge", "@spbidx", "@boxac0", "@oboxac8", "@boxw", "@oboxw", "@noclip",
+                "@noclipb", "@clipbside", "@facebit", "@faceinv", "@noae0", "@adfull", "@ae8side", "@s1bb", "@s1bw",
+                "@s1zext", "@al1", "@bwfloor", "@nofill", "@noshift", "@s2sign", "@s2w", "@al2", "@s3bb", "@s3hzext",
+                "@al3", "@nob10", "@nob30", "@flaguns", "@flagge", "@noabs", "@b40", "@wmode", "@wside", "@afside")),
+]
+D5B_UF_NEAR = {0x100B00: le32(0x50) + le32(0x50) + le32(0x100) + le32(0x100)}     # both sides' y and x bases equal
+
+D5B_SPECS += [
+    # The same entry with 0x15C30 and 0x181D0 run on both sides (0x181D0 recorded) and a 0x16DA4 stub that
+    # stores [0x100B54] (`mov eax,[0x100b54]` 0x1756A reads it after the call). The clips change both
+    # frame boxes: side 0's 3, 4, 5, 6 becomes 7, 8, 20, 18 and side 1's 2, 2, 3, 3 becomes 2, 3, 12, 9.
+    # e0: side 0 against side 1's box, the three syncs 0. e1: side 1 against side 0's sprite (its box
+    # absent), the sprite 8 right of the other ([0x100B14] 0 below [0x100B34] 8: the `neg` 0x1752C). e2: the x sync returns 1. e3: the y sync does, after two
+    # zeros (`jne` 0x174EF taken). e4/e5: the two countdown returns; e6: the side's box empty.
+    Spec("camera_unfreeze_real", 0x170A0, [
+        d5b_unf("e0", 0, 0, real=True, actors=D5B_ACTORS, over=D5B_UF_NEAR),
+        d5b_unf("e1", 1, 0, real=True, actors=D5B_ACTORS, box=(2, 2, 3, 3), obox=(0, 0, 0, 0), guard=(0, 0),
+                over={0x100B00: le32(0x50) + le32(0x60) + le32(0xF8) + le32(0x100)}),
+        d5b_unf("e2", 0, 0, real=True, actors=D5B_ACTORS, facing=(0x0000, 0x4000)),
+        d5b_unf("e3", 0, 0, real=True, actors=D5B_ACTORS,
+                over={0x100B00: le32(0x50) + le32(0x1234) + le32(0x100) + le32(0x100)}),
+        d5b_unf("e4", 1, 0, real=True, actors=D5B_ACTORS, guard=(3, 0), over=D5B_UF_NEAR),
+        d5b_unf("e5", 0, 0, real=True, actors=D5B_ACTORS, guard=(0, 2), over=D5B_UF_NEAR),
+        d5b_unf("e6", 0, 0, real=True, actors=D5B_ACTORS, box=(3, 4, 0, 6), over=D5B_UF_NEAR),
+    ], allow_calls=D5B_PLANE_ALLOW + D5B_CLIP_ALLOW, calls=(D4B_SYNC_REAL, D5B_WINNER_W), eax_mask=0,
+       unhit_named=D5B_UF_DEAD,
+       mutants=("@preclip", "@preclipb", "@afcache", "@nosync3", "@s1bb", "@s3bb", "@nob10", "@nob30", "@adfull",
+                "@faceinv", "@noshift", "@noclipb", "@clipbside")),
+    # The same entry with 0x15C30 a stub and 0x181D0 run: the boxes as passed need not lie inside the
+    # sprites, so the sprite sync can fail alone. g0: the boxes 2 apart (the x sync returns 0), the
+    # sprites 100 apart (the sprite sync returns 1: `jne` 0x17446 taken). g1: the sprites 0 apart.
+    Spec("camera_unfreeze_sync", 0x170A0, [
+        d5b_unf("g0", 0, 0, real=True, box=(0, 4, 5, 6), obox=(98, 2, 50, 3),
+                over={0x100B00: le32(0x50) + le32(0x50) + le32(0x164) + le32(0x100)}),
+        d5b_unf("g1", 0, 0, real=True, box=(0, 4, 5, 6), obox=(0, 2, 50, 3), over=D5B_UF_NEAR),
+    ], allow_calls=D5B_PLANE_ALLOW, calls=(D5B_CLIP, D4B_SYNC_REAL, D5B_WINNER), eax_mask=0,
+       unhit_named={**{a: "not the _sync row's subject (the sprite sync failing alone, both boxes present, "
+                          "the side's box at x 0, the record's bit 14 set): the camera_unfreeze and "
+                          "camera_unfreeze_real rows hit it"
+                       for a in (0x17156, 0x17178, 0x17182, 0x17236, 0x17287, 0x1732B, 0x173D6, 0x17472, 0x174BA,
+                                 0x1752C)}, **D5B_UF_DEAD},
+       mutants=("@nosync2", "@s2sign", "@s2w")),
+]
+
+# ---- 0x17CB0: the projectile collision step ------------------------------------------------------------
+# 0x17BC8 (d4b's row; seamed here): no argument; it saves nothing itself and its callees write EDI, EBP.
+D5B_CLASH = E.Call(0x17BC8, (), clobbers=("edi", "ebp"))
+D5B_CLASH_W = E.Call(0x17BC8, (), clobbers=("edi", "ebp"), writes=((None, 0x1077B8, le32(0)),))
+# 0x176CC (this batch's row; seamed here): EAX = side; it saves EBX, ECX, EDX, ESI, EDI, EBP.
+D5B_PHIT = E.Call(0x176CC, ("eax",))
+D5B_PHIT_W = E.Call(0x176CC, ("eax",), writes=((None, 0x10784C, le32(D5B_PRJ[1])),))
+
+
+def d5b_pstep(cid, p0, p1, clash=0, eax=0x12345678, seed=1):
+    """The two projectile pointers between seeded dwords, 0x100AD0/0x100AD4 seeded, the plane 0x100BD3
+    seeded with the three bytes before it and the four after it."""
+    p = {0x1077B8 - 4: le32(0xB4B4B4B4) + le32(p0) + le32(0xBCBCBCBC),
+         0x10784C - 4: le32(0x48484848) + le32(p1) + le32(0x50505050),
+         0x100ACC: le32(0xCCCCCCCC) + le32(0xD0D0D0D0) + le32(0xD4D4D4D4) + le32(0xD8D8D8D8),
+         0x100BD0: d5b_bytes(seed + 90, 0x2C)}
+    return Case(cid, {"eax": eax}, p, {0x17BC8: clash})
+
+
+D5B_SPECS += [
+    # 0x17CB0 camera_projectile_step: no argument (the clash byte starts 0 whatever EAX holds: `xor ah,ah;
+    # mov [esp],ah` 0x17CC0/0x17CC7; c1 enters with EAX = -1). 0x15F48(0x128, 0x25, 0x100BD3, 0xFF) fills
+    # the plane (run on both sides), [0x100AD0] = [0x100AD4] = 0, and with both pointers [0x1077B8] and
+    # [0x10784C] non-zero the clash byte = AL of 0x17BC8 (`mov [esp],al` 0x17CFA: c1 is the stub's EAX
+    # 0x100, c2 0xFFFFFF00). A non-zero byte returns; else 0x176CC(0) when [0x1077B8] is non-zero and
+    # 0x176CC(1) when [0x10784C] is (both re-read: 0x17D03, 0x17D13). Mask 0: the one caller loads EAX
+    # (`mov eax,esp` 0x19774 after `call 0x17cb0` 0x19763).
+    Spec("camera_projectile_step", 0x17CB0, [
+        d5b_pstep("c0", D5B_PRJ[0], D5B_PRJ[1], 1),
+        d5b_pstep("c1", D5B_PRJ[0], D5B_PRJ[1], 0x100, eax=0xFFFFFFFF, seed=2),
+        d5b_pstep("c2", 0x00000100, 0x01000000, 0xFFFFFF00, seed=3),
+        d5b_pstep("c3", D5B_PRJ[0], 0, 1, seed=4),
+        d5b_pstep("c4", 0, D5B_PRJ[1], 1, seed=5),
+        d5b_pstep("c5", 0, 0, 1, seed=6),
+        d5b_pstep("c6", D5B_PRJ[0], D5B_PRJ[1], 0xFFFFFF01, seed=7),
+    ], allow_calls=(0x15F48, 0x61A70, 0x65490, 0x654C7), calls=(D5B_CLASH, D5B_PHIT), eax_mask=0,
+       mutants=("@noplane", "@bits", "@rows", "@val", "@noad0", "@ad4w", "@noad4", "@or", "@clasheax", "@noclashret",
+                "@hit0side", "@nohit1", "@late")),
+    # The same entry with stubs that store the pointers the raw reads again: 0x17BC8's zeroes [0x1077B8]
+    # (rr0: both live, the clash byte 0: only 0x176CC(1) follows), 0x176CC's makes [0x10784C] non-zero
+    # (rr1: side 0's alone is live, so no clash; 0x176CC(0), then 0x176CC(1) on the stored pointer).
+    Spec("camera_projectile_step_rr", 0x17CB0, [
+        d5b_pstep("rr0", D5B_PRJ[0], D5B_PRJ[1], 0x100, seed=8),
+        d5b_pstep("rr1", D5B_PRJ[0], 0, 1, seed=9),
+    ], allow_calls=(0x15F48, 0x61A70, 0x65490, 0x654C7), calls=(D5B_CLASH_W, D5B_PHIT_W), eax_mask=0,
+       mutants=("@cache0", "@cache1")),
+]
+
+# ---- 0x17D30: a point against both fighters --------------------------------------------------------------
+# 0x1790C (this batch's row; seamed here): EAX = side, EDX = x, EBX = y, ECX = tall; it saves ESI, EDI, EBP.
+# The stub stores the four dwords 0x17D30 saves at entry and restores at exit.
+D5B_POINT = E.Call(0x1790C, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"),
+                   writes=((None, 0x100B00, le32(0x11111100)), (None, 0x100B04, le32(0x11111104)),
+                           (None, 0x100B08, le32(0x11111108)), (None, 0x100B0C, le32(0x1111110C))))
+
+
+def d5b_point(cid, x, y, tall, st, mode=0x0005, sel=0, seed=1):
+    """0x100B00..0x100B0F and the flip bytes 0x100B62/0x100B63 between seeded bytes, the mode word
+    0x104B00 and the selector byte 0x104B1A between seeded bytes, the plane seeded."""
+    p = {0x100AFC: le32(0xFCFCFCFC) + le32(0x00000021) + le32(0x00000432) + le32(0xFFFFFE00) + le32(0x00000098)
+                   + le32(0x10101010),
+         0x100B60: bytes([0x60, 0x61, 0x62, 0x63, 0x64, 0x65]),
+         0x104AFE: le16(0xFEFE) + le16(mode) + le16(0x0202),
+         0x104B18: bytes([0x18, 0x19, sel, 0x1B]),
+         0x100BD0: d5b_bytes(seed + 110, 0x2C)}
+    return Case(cid, {"eax": x, "edx": y, "ebx": tall}, p, {0x1790C: st})
+
+
+D5B_SPECS += [
+    # 0x17D30 camera_point_hit: AX = x, DX = y, BX = tall (`movsx edx,ax` 0x17D64, `movsx edx,si` 0x17D74,
+    # `test bx,bx` 0x17D8D: h0's EAX is 0x7FFF1234, h1's EBX 0x10000, h7's 0xFFFF0002). The four dwords
+    # 0x100B08, 0x100B0C, 0x100B00, 0x100B04 are saved. px = x / 64 - 0x18, py = y / 64 - 0x30 (tall) or
+    # 0x38, both divisions signed and truncating (the `sar 0x1f; shl 6; sbb; sar 6` idiom: h1 is -1 and
+    # -63, h7 -32767). 0x15F48(0x128, 0x25, 0x100BD3, 0xFF) (run on both sides). The flip byte 0x100B63 is
+    # saved and zeroed; unless the mode word 0x104B00 is 0x22 and the byte 0x104B1A non-zero, 0x1790C(0,
+    # px, py, tall as 0/1) and AL non-zero sets bit 0 (`test al,al` 0x17E00/0x17E13: h2 is the stub's
+    # EAX 0x100). The flip byte 0x100B62 is saved and zeroed and 0x100B63 restored; unless the mode is
+    # 0x22 and 0x104B1A is not 1, 0x1790C(1, px, py, tall) and AL non-zero sets bit 1 (0x17E75/0x17E8B).
+    # The four dwords and 0x100B62 are restored (the stub stores other values in the four dwords) and
+    # EAX = the two bits. Mask full: the five call sites test the dword and compare it with 2 (`test
+    # eax,eax` 0x12A32, `cmp eax,2` 0x12A3A; 0x4B6E7, 0x4C646, 0x4D7ED, 0x4E5EA). h3..h5 are mode 0x22
+    # with the selector 0, 1 and 2 (side 0 alone, side 1 alone, neither); h6 is mode 0x122.
+    Spec("camera_point_hit", 0x17D30, [
+        d5b_point("h0", 0x7FFF1234, 0x00000ABC, 1, 1),
+        d5b_point("h1", 0x0000FFFF, 0x1234FFC1, 0x10000, 0xFFFFFF01, seed=2),
+        d5b_point("h2", 0x00000040, 0x00000080, 1, 0x100, seed=3),
+        d5b_point("h3", 0x00001234, 0x00000ABC, 0, 1, mode=0x22, sel=0, seed=4),
+        d5b_point("h4", 0x00001234, 0x00000ABC, 1, 1, mode=0x22, sel=1, seed=5),
+        d5b_point("h5", 0x00001234, 0x00000ABC, 1, 1, mode=0x22, sel=2, seed=6),
+        d5b_point("h6", 0x00001234, 0x00000ABC, 0, 0, mode=0x122, sel=2, seed=7),
+        d5b_point("h7", 0x00008001, 0x00007FFF, 0xFFFF0002, 0xFFFFFF00, seed=8),
+    ], allow_calls=(0x15F48, 0x61A70, 0x65490, 0x654C7), calls=(D5B_POINT,), eax_mask=0xFFFFFFFF,
+       mutants=("@xzext", "@yzext", "@tall32", "@xfloor", "@xoff", "@yfloor", "@ytall", "@noplane", "@nob63",
+                "@mode8", "@m22a", "@args", "@tallarg", "@al0", "@bits", "@nob62", "@b63late", "@m22b", "@side",
+                "@al1", "@keep08", "@keep0c", "@keep62", "@keep00", "@keep04", "@ret")),
+]
+
+# ---- 0x17580: the per-frame decay and the box-overlap gate ----------------------------------------------
+# 0x170A0 (this batch's row; seamed here): EAX = side; it saves EBX, ECX, EDX, ESI, EDI, EBP.
+D5B_UNFREEZE = E.Call(0x170A0, ("eax",))
+D5B_UNFREEZE_W = E.Call(0x170A0, ("eax",), writes=((None, 0x100B61, b"\x00"),))
+
+
+def d5b_decay(cid, cds, b, ov, gates):
+    """`cds` = the four countdown words 0x107824, 0x1078B8, 0x107826, 0x1078BA; `b` = [0x100B08],
+    [0x100B0C], [0x100B00], [0x100B04]; `gates` = the bytes 0x100B60, 0x100B61; all between seeded
+    bytes. The two records' +0x56 pset indices are 2 and 3."""
+    p = {0x107822: le16(0x2222) + le16(cds[0]) + le16(cds[2]) + le16(0x2828),
+         0x1078B6: le16(0xB6B6) + le16(cds[1]) + le16(cds[3]) + le16(0xBCBC),
+         0x1077B0: le32(D5B_REC[0]), 0x107844: le32(D5B_REC[1]),
+         D5B_REC[0] + 0x54: le16(0x5454) + le16(2) + le16(0x5858),
+         D5B_REC[1] + 0x54: le16(0x4545) + le16(3) + le16(0x8585),
+         0x100AF4: le32(0xF4F4F4F4) + le32(0xF8F8F8F8) + le32(0xFCFCFCFC) + le32(b[2]) + le32(b[3]) + le32(b[0])
+                   + le32(b[1]) + le32(0x10101010),
+         0x100B50: le32(0x50505050) + le32(0x54545454) + le32(0x58585858),
+         0x100B5C: le32(0x5C5C5C5C) + bytes([gates[0], gates[1], 0x62, 0x63])}
+    return Case(cid, {}, p, {0x140E4: ov})
+
+
+D5B_SPECS += [
+    # 0x17580 camera_decay: no argument. The four words 0x107824, 0x1078B8, 0x107826, 0x1078BA are each
+    # decremented when non-zero (`test dx,dx; jbe`, unsigned: d0 has 0xFFFF and 0x8000). [0x100B54] =
+    # [0x100AF8] = [0x100AFC] = 0. [0x100B08] and [0x100B0C] become (v * 0xF3D + 0x800) / 0x1000,
+    # [0x100B00] and [0x100B04] the same with 0xD56: a 32-bit `imul`, the division signed and truncating
+    # (0x175F6..0x1767B). 0x140E4(word[[0x1077B0] + 0x56], word[[0x107844] + 0x56]), `test al,al; je`
+    # (0x1769D: d1 is the stub's EAX 0x100, d3 0xFFFFFF01); then 0x170A0(0) when the byte 0x100B60 is
+    # non-zero and 0x170A0(1) when 0x100B61 is (read after the first call: 0x176B1). Mask 0: each of the
+    # seven call sites calls 0x1958C next, which begins `xor eax,eax` (0x19595).
+    Spec("camera_decay", 0x17580, [
+        d5b_decay("d0", (1, 0, 0xFFFF, 0x8000), (0x00012345, 0xFFFE1DC0, 0x0000ABCD, 0xFFFF2B40), 1, (1, 1)),
+        d5b_decay("d1", (0, 5, 0, 1), (0x7FFFFFFF, 0x80000000, 0x00000001, 0xFFFFFFFF), 0x100, (1, 1)),
+        d5b_decay("d2", (0x0100, 0x0001, 0x0002, 0), (0x00000123, 0x00000456, 0xFFFFF800, 0x000007FF), 0, (1, 1)),
+        d5b_decay("d3", (0, 0, 0, 0), (0xFFFFFFF9, 0x00100000, 0x00000080, 0xFFFFFF80), 0xFFFFFF01, (0, 0x80)),
+        d5b_decay("d4", (7, 7, 7, 7), (0x00000010, 0x00000020, 0x00000030, 0x00000040), 1, (0x80, 0)),
+        d5b_decay("d5", (1, 1, 1, 1), (0x00000011, 0x00000022, 0x00000033, 0x00000044), 1, (0, 0)),
+    ], calls=(D4B_OVERLAP, D5B_UNFREEZE), eax_mask=0,
+       mutants=("@cd0", "@cd1", "@cd2", "@cd3", "@cdsigned", "@cdalways", "@nob54", "@noaf8", "@noafc", "@k08",
+                "@k00", "@noround", "@floor", "@ovargs", "@ovsame", "@al", "@gate0", "@side0", "@noun1", "@late")),
+    # The same entry with a 0x170A0 stub that zeroes the byte 0x100B61: rr0 has both gates set and makes
+    # the first call alone (`cmp byte [0x100b61],0` 0x176B1 reads the stored byte); rr1 has the second
+    # gate alone.
+    Spec("camera_decay_rr", 0x17580, [
+        d5b_decay("rr0", (1, 1, 1, 1), (0x00000011, 0x00000022, 0x00000033, 0x00000044), 1, (1, 1)),
+        d5b_decay("rr1", (0, 0, 0, 0), (0x00000011, 0x00000022, 0x00000033, 0x00000044), 1, (0, 1)),
+    ], calls=(D4B_OVERLAP, D5B_UNFREEZE_W), eax_mask=0, mutants=("@b61cache",)),
+]
+D1_SPECS += D5B_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

@@ -752,6 +752,7 @@ int camera_box_overlap(u32 actor0, u32 actor1)
  * (0x15EDB `test eax,eax`, 0x15EDD `jle`), so a negative len swaps nothing. */
 void camera_bitrev(u32 buf, u32 len)
 {
+    PR_SEAM(0x15EC0u, buf, len);
     s32 half = (s32)len / 2;
     u32 lo = buf, hi = buf + len - 1u;
     for (s32 i = 0; i < half; i++) {
@@ -768,6 +769,7 @@ void camera_bitrev(u32 buf, u32 len)
  * 0xFEDE0 side 1, stride 0x26) at row `row` to dst. */
 void camera_sprite_row(u32 side, u32 dst, u32 count, u32 row)
 {
+    PR_SEAM(0x1638Cu, side, dst, count, row);
     u32 src = (side == 0u ? 0x000FD160u : 0x000FEDE0u) + row * 0x26u;
     for (u32 i = 0; i < count; i++) DSB(dst + i) = DSB(src + i);
 }
@@ -854,6 +856,7 @@ u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table)
  * into the side's row table. Returns the sprite's byte width. */
 u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count)
 {
+    PR_SEAM_RET(0x1631Cu, side, index, frame, count);
     u32 ch = DSB(DS_0010782A + side * 0x94u);
     u32 handle = DSD(DS_000A8B30
                      + (camera_char_const(ch) + index) * 4u);
@@ -931,6 +934,7 @@ int camera_bitplane_shift(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
  * carrying the next byte's high bits, then shift `dst` by bit/8. */
 int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 {
+    PR_SEAM_RET(0x1617Cu, bit, src, rows, dst, arg5);
     if ((s32)bit < 0 || (s32)bit > (s32)(rows * 8u)) return 0;
     if ((s32)rows < 1 || (s32)arg5 < 1 || arg5 != rows) return 0;
 
@@ -992,6 +996,7 @@ void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
  * `box` against it, scaled by the palette offsets 0x15B90 returns. */
 void camera_box_clip(u32 side, u32 index, u8 *box)
 {
+    PR_SEAM(0x15C30u, side, index, (u32)box[0] | ((u32)box[1] << 8) | ((u32)box[2] << 16) | ((u32)box[3] << 24));
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
     int rect[4];
@@ -1104,9 +1109,10 @@ done:
  * projectile) replaces the side's row with the 4 bytes at 0xA173C; 1 copies
  * those 4 bytes into the other's row before its 4-byte row copy; 2 and 3 use
  * the 6 bytes at 0xA1740 / 0xA1746 for the other's row (0x16E2C..0x16F0E). */
-static void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
-                                 u32 b10, u32 b30, s32 arg2, u32 side)
+void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
+                          u32 b10, u32 b30, s32 arg2, u32 side)
 {
+    PR_SEAM(0x16DA4u, flag, af0_side, af0_other, b10, b30, (u32)arg2, side);
     u32 other = 1u - side;
     u32 width_a = 0, width_b = 0;
     DSD(DS_00100B54) = 0;                              /* 0x16dc8 */
@@ -1175,6 +1181,7 @@ static void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
  * side's two countdowns (hit-stun/recovery). */
 void camera_unfreeze(u32 side)
 {
+    PR_SEAM(0x170A0u, side);
     u32 other = 1u - side;
     if (DSW(DS_00107824 + other * 0x94u) != 0u) return;      /* 0x170c5 */
     if ((u32)DSW(DS_00107826 + other * 0x94u) > 1u) return;  /* 0x170e2 */
@@ -1325,8 +1332,9 @@ void camera_decay(void)
  * 0xA173C constant (0x16DA4 mode 0), with DS_00100B62[side] cleared for the
  * call. Writes DS_00100AD0[side] = DS_00100B54. 0x176F3's 0x33950 context is
  * never read. */
-static void camera_projectile_hit(u32 side)
+void camera_projectile_hit(u32 side)
 {
+    PR_SEAM(0x176CCu, side);
     u32 other = 1u - side;
     if (DSW(DS_00107824 + other * 0x94u) != 0u) return;       /* 0x17700 */
     if ((u32)DSW(DS_00107826 + other * 0x94u) > 1u) return;   /* 0x17712 */
@@ -1385,6 +1393,7 @@ static void camera_projectile_hit(u32 side)
  * return 1; else 0. */
 int camera_projectile_clash(void)
 {
+    PR_SEAM_RET0(0x17BC8u);
     if ((u8)camera_box_overlap(DSW(DSD(DS_001077B8) + 0x56u),
                                DSW(DSD(DS_0010784C) + 0x56u)) == 0u)
         return 0;                                              /* 0x17BEF `test al,al`/0x17BF1 */
@@ -1434,8 +1443,9 @@ void camera_projectile_step(void)
  * box-x vs point-x, sprite-x vs point-x and box-y vs point-y; the overlap row
  * is the 0xA1746 (tall, mode 3) or 0xA1740 (mode 2) constant. 1 iff the
  * DS_00100B54 count is positive. */
-static int camera_point_side(u32 side, s32 x, s32 y, u32 tall)
+int camera_point_side(u32 side, s32 x, s32 y, u32 tall)
 {
+    PR_SEAM_RET(0x1790Cu, side, (u32)x, (u32)y, tall);
     u32 box_s = DS_00100AC8 + side * 4u;                       /* 0x1791F */
     if ((u32)DSB(box_s + 2u) < 1u || (u32)DSB(box_s + 3u) < 1u) /* 0x17934/0x1793E */
         return 0;
