@@ -13546,6 +13546,45 @@ def d2a_launch_case(side, ch, s54, y, cnt, n, h, m, a, den, ground, npad=0, och=
     return p
 
 
+D2A_ROWS = 0x00106000            # 0x39FF4: the 0x68-byte rows DS_001014F4 points at (row 0x80 stays in the image)
+D2A_2BD44 = E.Call(0x2BD44, ("eax", "edx"), clobbers=("edx",))
+
+
+def d2a_freeze_side(side, child, flag, f40, t, x):
+    """0x39FF4, one side: the slot's nine dwords +0x00..+0x23 (the record pointer, then
+    slot-distinct sentinels), +0x40, +0x5C..+0x5E, +0x7A and +0x8A..+0x8F (the timer word `t`
+    between two seeded words); the record's +0x18 (x) through +0x27 (+0x24 = 0, what the real
+    0x1922C seeds), +0x29..+0x2B and +0x4A..+0x4C (the child index); and the child's row: +0x60
+    = `flag` between two seeded bytes (+0x61 the opposite, what @flag reads), the opposite flag
+    at the 0x60 stride (@row) and at the sign-extended index (@csext)."""
+    so, rec = D2A_SLOT + side * 0x94, (D2A_R0, D2A_R1)[side]
+    p = {so: le32(rec) + b"".join(le32(v * 0x01010101 + side) for v in (4, 8, 0x0C, 0x10, 0x14, 0x18, 0x1C, 0x20)),
+         so + 0x40: le32(f40), so + 0x5C: bytes([0x5C, 0x7F, 0x5E]), so + 0x7A: bytes([3 + side]),
+         so + 0x8A: le16(0x8A8A) + le16(t) + le16(0x8E8E),
+         rec + 0x18: le32(x) + le32(0x1C1C1C1C) + le32(0x20202020) + le32(0),
+         rec + 0x29: bytes([0x29, 0xFF, 0x2B]), rec + 0x4A: bytes([0x4A, child, 0x4C])}
+    if child:
+        no = 0 if flag else 1
+        p[D2A_ROWS + child * 0x68 + 0x5F] = bytes([0x5F, flag, 0 if flag else 0x61])
+        p[D2A_ROWS + child * 0x60 + 0x60] = bytes([no])
+        if child >= 0x80:
+            p[D2A_ROWS + (child - 0x100) * 0x68 + 0x5F] = bytes([0x5F, no, 0x61])
+    return p
+
+
+def d2a_freeze_case(cam, s, actors, side0, side1):
+    """0x39FF4: the two sides (d2a_freeze_side's arguments after the side), the camera x
+    DS_000F0AF0, the row base, row 0's flag (what @child0 reads), and what the two real callees
+    read: DS_001078FF, the two DS_001077A0 actor dwords and DS_00104AE9 (0x34038), the eight bytes
+    DS_00100B58..5F (0x1922C)."""
+    p = {0x000F0AF0: le32(cam), 0x001014F4: le32(D2A_ROWS), D2A_ROWS + 0x5F: bytes([0x5F, 0x01, 0x00]),
+         0x001078FF: bytes([s]), 0x0010779C: le32(0x9C9C9C9C) + le32(actors[0]) + le32(actors[1]),
+         0x00104AE9: b"\xFF", 0x00100B58: bytes([0x58, 0x59, 0x01, 0xFF, 0x05, 0x07, 0x5E, 0x5F])}
+    p.update(d2a_freeze_side(0, *side0))
+    p.update(d2a_freeze_side(1, *side1))
+    return p
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13646,7 +13685,26 @@ D2A_SPECS = [
                                                och=0)),
     ], allow_calls=(0x33A10, 0x39AC8, 0x39B14), calls=(CLEAR34, CLEAR36, D2A_HIT_C, HIT_A, P6_1890C, SPEED),
        eax_mask=0,
-       mutants=("@clr", "@clr36", "@corder", "@nword", "@hinv", "@chslot", "@csext", "@s54", "@arm", "@noy", "@gz", "@gcmp", "@gy", "@gu", "@an", "@g44", "@w36", "@vm", "@hz", "@den32", "@q32", "@hsh", "@r63", "@or41", "@inc", "@b3", "@cs", "@w74", "@side", "@rec", "@early")),
+       mutants=("@clr", "@clr36", "@corder", "@nword", "@hinv", "@chslot", "@csext", "@s54", "@arm", "@noy",
+                "@gz", "@gcmp", "@gy", "@gu", "@an", "@g44", "@w36", "@vm", "@hz", "@den32", "@q32", "@hsh",
+                "@r63", "@or41", "@inc", "@b3", "@cs", "@w74", "@side", "@rec", "@early")),
+    # 0x39FF4 fighter_39ff4: no argument; side 0 then side 1 (EDI, ESI = side * 0x94). 0x34038 (its
+    # 0x2B150 and 0x29BC8 are stubs) and 0x1922C (with its 0x33950) run real; 0x2BD44 and 0x39F40
+    # are stubs. Mask 0: 0x28003 `call 0x27ed8`, whose first use of EAX is a write (0x27EE6 `mov
+    # eax,edx`), and 0x28069 `xor eax,eax`.
+    Spec("fighter_39ff4", 0x39FF4, [
+        Case("f0", {}, d2a_freeze_case(0x00010000, 0, (0x0010A500, 0x0010A540),
+                                       (3, 1, 0xFFFFFFFF, 0x0005, 0x0000FC00), (0, 0, 0x00000000, 0x0000, 0x00011234))),
+        Case("f1", {}, d2a_freeze_case(0x00020000, 1, (0x0010A500, 0),
+                                       (2, 0, 0x04081000, 0x8000, 0x0001E800), (0x80, 1, 0x12345678, 0x0001, 0x00022000))),
+        Case("f2", {}, d2a_freeze_case(0x80000000, 1, (0, 0x0010A540),
+                                       (1, 0x80, 0xFBF7EFFF, 0x7FFF, 0x00000000), (0, 0, 0x04080000, 0xFFFF, 0x7FFFE7FF))),
+        Case("f3", {}, d2a_freeze_case(0x00030000, 0, (0x0010A500, 0x0010A540),
+                                       (0x80, 0, 0x00001000, 0x0100, 0x00030000), (5, 1, 0x80000000, 0x0002, 0x0002FFC1))),
+    ], allow_calls=(0x34038, 0x1922C, 0x33950), calls=(D2A_2BD44, P7_2B150, P6_29BC8, P6_39F40), eax_mask=0,
+       mutants=("@child0", "@csext", "@row", "@flag", "@bd", "@c4b", "@f2a", "@x0c", "@x18", "@x1c", "@s5d",
+                "@mask1", "@mask2", "@or41", "@t", "@tb", "@t1", "@tbyte", "@no34", "@side34", "@no19",
+                "@order19", "@abs", "@k", "@div", "@noneg", "@q32", "@p64", "@p14", "@one", "@rev")),
 ]
 D1_SPECS += D2A_SPECS
 
