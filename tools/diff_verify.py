@@ -18539,6 +18539,77 @@ D3C_SPECS += [
                 "@x3c", "@noabs", "@lt", "@no52", "@v52", "@late52", "@nogate", "@gate2", "@eswap")
        + D3C_TAIL_MUTANTS),
 ]
+D3C_OS = 0x0010A100              # a scratch "other" slot DS_001077A8 can point at (its record is D3C_R1)
+D3C_34038 = E.Call(0x34038, ("eax",), clobbers=("esi", "edi", "ebp"))
+# 0x2BC30 as a stub that writes DS_001078FD = 1: 0x36F10 reads that byte again for the second of
+# its 0xE905A/0xE908A calls (0x370AA), after the first one returns
+D3C_ANIM_FD = E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4, clobbers=("edx",),
+                     writes=((None, 0x001078FD, b"\x01"),))
+
+
+def d3c_ko_case(r51, b13=1, b14=0, os=True, o52=0, ad4=None, o63=0, o42=0x00, ch=2, cfg=0xFD, mode=3,
+                b3a=0, w8c=0):
+    """0x36F10 on the scratch slot D3C_FS (record D3C_RX, side byte `r51`) and the other slot
+    D3C_OS (record D3C_R1, side byte 1 - (r51 & 1)): the gate bytes DS_00104B13/14; the
+    DS_001077A8 entries of r51 ^ 1 (D3C_OS, or 0), of r51 (D3C_FS) and of 1 - r51 where that is
+    another entry (0); the slot's +0x40..+0x43, +0x51..+0x55, +0x62..+0x64 (its +0x63 is the
+    other answer), +0x7A and +0x8A..+0x8F; the record's +0x32..+0x39, +0x51 and +0x58..+0x5A; the
+    other slot's +0x40 dword, +0x52 and +0x62..+0x64 and its record's +0x51 and +0x58..+0x5A;
+    DS_00104AD4 (default: the other record's side); the 0xC8A18, 0xC9238 and 0xBDAD4 entries of
+    `ch` (and of ch sign-extended); the config byte 0x104529, DS_001078DC/EC/F6/FD with their
+    neighbours, DS_00104B00, DS_00105B3A and the four DS_001028F8/DS_00102900 dwords."""
+    or51 = 1 - (r51 & 1)
+    p = {0x00104B13: bytes([b13, b14]),
+         0x001077A8 + (r51 ^ 1) * 4: le32(D3C_OS if os else 0), 0x001077A8 + r51 * 4: le32(D3C_FS),
+         D3C_FS: le32(D3C_RX), D3C_FS + 0x40: bytes([0x40, 0x41, 0x41, 0x43]),
+         D3C_FS + 0x51: bytes([0x51, 0x11, 0x22, 0x7F, 0x55]),
+         D3C_FS + 0x62: bytes([0x62, 0 if o63 == 1 else 1, 0x64]), D3C_FS + 0x7A: bytes([ch]),
+         D3C_FS + 0x8A: le16(0x8A8A) + le16(w8c) + le16(0x8E8E),
+         D3C_RX + 0x32: le16(0x3232) + le16(0x3434) + le16(0x3636) + le16(0x3838),
+         D3C_RX + 0x51: bytes([r51]), D3C_RX + 0x58: bytes([0x58, 0x59, 0x5A]),
+         D3C_OS: le32(D3C_R1), D3C_OS + 0x40: bytes([0x00, 0x01, o42, 0x00]),
+         D3C_OS + 0x52: bytes([o52]), D3C_OS + 0x62: bytes([0x62, o63, 0x64]),
+         D3C_R1 + 0x51: bytes([or51]), D3C_R1 + 0x58: bytes([0x68, 0x69, 0x6A]),
+         0x00104AD4: le32(or51 if ad4 is None else ad4),
+         0x000C8A18 + ch * 4: le32(0x000E1000 + ch), 0x000C9238 + ch * 4: le32(0x000E2000 + ch),
+         0x000BDAD4 + ch * 2: le16(0x01EC),
+         0x00104529: bytes([cfg]), 0x001078EC: le32(0x11111111), 0x001078F4: le16(0xF4F4) + le16(0xF6F6),
+         0x001078DC: le32(0xDCDCDCDC), 0x001078FC: bytes([0xFC, 0x77, 0xFE]),
+         0x00104B00: le16(mode), 0x00105B3A: bytes([b3a]),
+         0x001028F8: le32(0x0010C100) + le32(0x0010C200) + le32(0x0010C300) + le32(0x0010C400)}
+    if r51 >= 2:
+        p[0x001077A8 + ((1 - r51) & 0x3FFFFFFF) * 4 - 0x100000000] = le32(0)
+    if ch >= 0x80:
+        p[0x000C8A18 + (ch - 0x100) * 4] = le32(0x000E3000 + ch)
+        p[0x000C9238 + (ch - 0x100) * 4] = le32(0x000E4000 + ch)
+        p[0x000BDAD4 + (ch - 0x100) * 2] = le16(0x02EE)
+    return p
+
+
+D3C_SPECS += [
+    # 0x36F10 fighter_36f10: EAX = slot. Six stubs. The 0x2BC30 stub writes DS_001078FD = 1, which
+    # the raw reads again for its 0xE908A call (0x370AA `mov al,[0x1078fd]`, after the 0xE905A call
+    # at 0x370A3): h7's second record comes from DS_00102900[1]. h6 has the record's side byte
+    # 0x80, so the other slot is entry 0x81 of DS_001077A8 (0x36F2B `xor al,1`). Mask 0: the one
+    # caller jumps to the dispatcher's return (0x34BEA call, 0x34BEF `jmp 0x34d83`,
+    # 0x34D83..0x34D88), whose one call site writes EAX (0x35801 `mov eax,esi`).
+    Spec("fighter_36f10", 0x36F10, [
+        Case("h0", {"eax": D3C_FS}, d3c_ko_case(0, b13=0)),
+        Case("h1", {"eax": D3C_FS}, d3c_ko_case(0, os=False)),
+        Case("h2", {"eax": D3C_FS}, d3c_ko_case(0, o52=1, cfg=0xFF), {0x2AE14: 0x00123456}),
+        Case("h3", {"eax": D3C_FS}, d3c_ko_case(1, mode=0x0103, b3a=1, w8c=0x0100)),
+        Case("h4", {"eax": D3C_FS}, d3c_ko_case(0, b14=1, mode=0x0022)),
+        Case("h5", {"eax": D3C_FS}, d3c_ko_case(1, ad4=0x00000100, mode=0, b3a=2)),
+        Case("h6", {"eax": D3C_FS}, d3c_ko_case(0x80, o63=1, o42=0x10, mode=0, b3a=0x80, w8c=0xFFFF)),
+        Case("h7", {"eax": D3C_FS}, d3c_ko_case(0, ad4=0x00000000, ch=0x80, mode=0x2200)),
+    ], calls=(D3C_35B7C, D3C_ANIM_FD, SPAWN, TIMER, VOICE, D3C_34038), eax_mask=0,
+       mutants=("@nogate", "@x1", "@own", "@no52", "@no53", "@b34", "@no34", "@no36", "@no59", "@noo59", "@v59",
+                "@s52own", "@e35", "@adb", "@adown", "@s63own", "@nob14", "@or16", "@tab",
+                "@csext", "@tval", "@no42b", "@nodc", "@vbyte", "@hold", "@nof6", "@no54",
+                "@or42b", "@cfgbit", "@noec", "@xy", "@early", "@nofd", "@b00b", "@b3a",
+                "@sgn3a", "@cache", "@tab2", "@str2", "@w8cb", "@s8cb", "@no8c", "@hside",
+                "@late8c")),
+]
 D1_SPECS += D3C_SPECS
 
 

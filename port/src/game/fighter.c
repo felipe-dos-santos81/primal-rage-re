@@ -10104,6 +10104,7 @@ void fighter_458d4(u32 rec)
  * (0x384F8). */
 void fighter_34038(u32 side)
 {
+    PR_SEAM(0x34038u, side);
     u32 s, r;
     if ((s32)DSD(DS_0010783A + side * 0x94u) >> 16 != 1) return;  /* 0x3403B..0x34054 */
     s = DSB(DS_001078FF);                               /* 0x34056/0x34058 */
