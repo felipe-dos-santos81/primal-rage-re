@@ -18243,6 +18243,71 @@ D3A_SPECS += [
                              "row hiscore_rank_pair hits it (a0)"},
        mutants=("@side", "@tbl", "@c0w", "@noc0", "@noc2", "@swap", "@tie9", "@gt", "@w16", "@sext", "@val", "@second", "@order", "@r1w")),
 ]
+D3A_ERASE = E.Call(0x2C2B0, ("eax", "edx"), clobbers=("edx", "edi", "ebp"))
+# the runtime's sprintf 0x65546 and its tree, run from the original's bytes under the flat segments
+# (diff_emu.FLAT_SEGMENT_CALLEES names its core 0x6C8EB); the port formats with snprintf
+D3A_SPRINTF = (0x65546, 0x6C8EB, 0x6CB6C, 0x6CC9F, 0x6CE84, 0x6CCFA, 0x65533, 0x72D20, 0x72CD6)
+
+
+def d3a_tail_case(ac4, side, b529, v=(0x78, 0x30, 0x77), f41=(0x00, 0x55, 0x01), aec=0xFF, strings=None):
+    """0x26D4C: the gate dword 0x104AC4 between seeded dwords, the side byte 0x104B1A, the option
+    byte 0x104529 and the flag byte 0x104AEC between neighbours, the words 0x104AFE (0x5A5A) and
+    0x104B00 (0x5B5B) between two more, the +0x41 and +0x5B bytes of three consecutive 0x94-byte
+    slots (the third is what side 2 indexes) between neighbours, the two bytes a sign-extended
+    side 0x80 reaches (0x102DF1 = 0, 0x102E0B = 0x40), the run clock's no-elapsed-time state
+    (d1i_pt_case) and the string table (d1d_str_pokes)."""
+    p = d1i_pt_case()
+    p.update(d1d_str_pokes(strings or {0x3C: b"HOLD", 0x3D: b"DIFFICULTY ", 0x3E: b"!ab"}))
+    p.update({0x00104AC0: le32(0x61616161) + le32(ac4) + le32(0x62626262),
+              0x00104B19: bytes([0x63, side, 0x64]), 0x00104528: bytes([0x65, b529, 0x66]),
+              0x00104AEB: bytes([0x67, aec, 0x68]),
+              0x00104AFC: le16(0x6969) + le16(0x5A5A) + le16(0x5B5B) + le16(0x6A6A),
+              0x00102DF0: bytes([0x6B, 0x00, 0x6C]), 0x00102E0A: bytes([0x6D, 0x40, 0x6E])})
+    for k in range(3):
+        p[0x001077F0 + k * 0x94] = bytes([0x71 + k, f41[k], 0x74 + k])
+        p[0x0010780A + k * 0x94] = bytes([0x77 + k, v[k], 0x7A + k])
+    return p
+
+
+D3A_SPECS += [
+    # 0x26D4C flow_26d4c: no argument. Nothing when the dword 0x104AC4 is above 0 (signed `jg`).
+    # Else 0x2F388(-1, 3/5/7, 0x2A), the run clock 0x32970 (host-owned, the port omits it: it
+    # runs real in the original from the state where it changes no byte), the voices 0x29 and
+    # 0x22, 0x2C2B0(0, 0x1D) and (1, 0x1D); the side = the byte 0x104B1A zero-extended (t2: 0x80
+    # indexes past the image on both sides): slot +0x41 |= 0x10, the word 0x104AFE = 0xB4,
+    # 0x104AEC &= 0xEF, the word 0x104B00 = 0x24, all before string 0x3C is held through 0x2F510
+    # (-1, 7, mode 0x4000). pct = the slot's +0x5B byte * 100 / 0x78. With 0x104529 bit 1: the
+    # two spawns 0xA8970/0xA8984 and 0x2F434(0xF, 0xB, pct, 3, 1, 0x4003). Else string 0x3D and
+    # pct through the runtime's sprintf with the format at 0x809AC, "%s%.03d%" (run from the
+    # original's bytes: the trailing '%' emits nothing, which is the correction this row found;
+    # `@pct` is the port before it), string 0x3E appended, 0x2F198(-1, 3, mode 0x2000) with the
+    # text's first 16 bytes by value (every such case composes 15 characters or more, so the
+    # window holds no stack byte after the NUL). The string tree runs real on both sides; every
+    # other callee is a stub. s1's appended string has an even length (`je` 0x26F2B), s3's is
+    # empty. Mask 0: the one caller 0x26D3B, record §1.
+    Spec("flow_26d4c", 0x26D4C, [
+        Case("g0", {}, d3a_tail_case(1, 0, 0x02)),
+        Case("g1", {}, d3a_tail_case(0x7FFFFFFF, 1, 0x00)),
+        Case("t0", {}, d3a_tail_case(0, 0, 0x02), {0x2AE14: 0x0010A300}),
+        Case("t1", {}, d3a_tail_case(0x80000000, 1, 0xFF, v=(0x10, 0xFF, 0x20), f41=(0x55, 0xEF, 0x02),
+                                     aec=0x10), {0x2AE14: 0}),
+        Case("t2", {}, d3a_tail_case(0xFFFFFFFF, 0x80, 0x02, aec=0x00), {0x2AE14: 0x0010A300}),
+        Case("t3", {}, d3a_tail_case(0, 2, 0x06), {0x2AE14: 0x0010A300, 0x2C3FC: 0}),
+        Case("s0", {}, d3a_tail_case(0, 0, 0x00)),
+        Case("s1", {}, d3a_tail_case(0x80000000, 1, 0xFD, v=(0x10, 0x05, 0x20),
+                                     strings={0x3C: b"WAIT", 0x3D: b"Level of play ", 0x3E: b"xy"})),
+        Case("s2", {}, d3a_tail_case(0, 0, 0x01, v=(0xFF, 0x30, 0x77))),
+        Case("s3", {}, d3a_tail_case(0, 1, 0x00, v=(0x10, 0x00, 0x20),
+                                     strings={0x3C: b"HOLD", 0x3D: b"DIFFICULTY: ", 0x3E: b""})),
+    ], allow_calls=D1D_STR_ALLOW + (0x32970,) + D3A_SPRINTF,
+       calls=(D2C_RELCNT, VOICE, D3A_ERASE, D2C_HOLD2, SPAWN, D2C_NUMSET, D1G_TXT198), eax_mask=0,
+       mutants=("@gate", "@gateu", "@rel3", "@relcnt", "@relcol", "@norel7", "@v29", "@v22", "@vorder", "@erow",
+                "@eside", "@eone", "@sidesext", "@f41off", "@f41bit", "@f41set", "@nof41", "@afe", "@afeb",
+                "@aec", "@noaec", "@b00", "@b00b", "@id3c", "@hcol", "@hrow", "@hmode", "@late", "@vsext",
+                "@vside", "@mul", "@div", "@bit", "@sp1d", "@sp1x", "@sp2x", "@spz", "@sp5", "@spone", "@ncol",
+                "@nrow", "@nval", "@nwidth", "@npad", "@nmode", "@norder", "@id3d", "@id3e", "@pct", "@prec",
+                "@nocat", "@crow", "@cmode", "@ccol")),
+]
 D1_SPECS += D3A_SPECS
 
 

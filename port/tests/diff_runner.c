@@ -26023,6 +26023,84 @@ static u32 d3a_1ecc8_core(u32 mut)
 D3A_RP_MUT(side) D3A_RP_MUT(tbl)  D3A_RP_MUT(c0w)  D3A_RP_MUT(c2w)  D3A_RP_MUT(noc0)   D3A_RP_MUT(noc2)
 D3A_RP_MUT(swap) D3A_RP_MUT(tie)  D3A_RP_MUT(tie9) D3A_RP_MUT(gt)   D3A_RP_MUT(nor1)   D3A_RP_MUT(w16)
 D3A_RP_MUT(sext) D3A_RP_MUT(val)  D3A_RP_MUT(second) D3A_RP_MUT(order) D3A_RP_MUT(r1w)
+/* 0x26D4C: no argument. Mask 0: the one caller 0x26D3B goes on with `or byte [0x104aec],0x18`
+ * (0x26D40), four pops and `ret` into 0x25326 `jmp 0x2540f`, the mode tail the wave-1 records
+ * trace dead (d1c §1, d1d §1). */
+static void b_d3a_26d4c(const u32 *r, u32 *eax) { (void)r; flow_26d4c(); *eax = 0u; }
+enum { D3A_TL_NONE, D3A_TL_gate, D3A_TL_gateu, D3A_TL_rel3, D3A_TL_relcnt, D3A_TL_relcol, D3A_TL_norel7,
+       D3A_TL_v29, D3A_TL_v22, D3A_TL_vorder, D3A_TL_erow, D3A_TL_eside, D3A_TL_eone, D3A_TL_sidesext,
+       D3A_TL_f41off, D3A_TL_f41bit, D3A_TL_f41set, D3A_TL_nof41, D3A_TL_afe, D3A_TL_afeb, D3A_TL_aec,
+       D3A_TL_noaec, D3A_TL_b00, D3A_TL_b00b, D3A_TL_id3c, D3A_TL_hcol, D3A_TL_hrow, D3A_TL_hmode,
+       D3A_TL_late, D3A_TL_vsext, D3A_TL_vside, D3A_TL_mul, D3A_TL_div, D3A_TL_bit, D3A_TL_sp1d,
+       D3A_TL_sp1x, D3A_TL_sp2x, D3A_TL_spz, D3A_TL_sp5, D3A_TL_spone, D3A_TL_ncol, D3A_TL_nrow,
+       D3A_TL_nval, D3A_TL_nwidth, D3A_TL_npad, D3A_TL_nmode, D3A_TL_norder, D3A_TL_id3d, D3A_TL_id3e,
+       D3A_TL_pct, D3A_TL_prec, D3A_TL_nocat, D3A_TL_crow, D3A_TL_cmode, D3A_TL_ccol };
+static void d3a_26d4c_stores(u32 side, u32 mut)
+{
+    u32 f = 0x001077F1u + side * 0x94u - ((mut == D3A_TL_f41off) ? 1u : 0u);
+    if (mut == D3A_TL_f41set) DSB(f) = 0x10u;
+    else if (mut != D3A_TL_nof41) DSB(f) = (u8)(DSB(f) | ((mut == D3A_TL_f41bit) ? 0x08u : 0x10u));
+    if (mut == D3A_TL_afeb) DSB(0x00104AFEu) = 0xB4u;
+    else DSW(0x00104AFEu) = (mut == D3A_TL_afe) ? 0xB5u : 0xB4u;
+    if (mut != D3A_TL_noaec) DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) & ((mut == D3A_TL_aec) ? 0xF7u : 0xEFu));
+    if (mut == D3A_TL_b00b) DSB(0x00104B00u) = 0x24u;
+    else DSW(0x00104B00u) = (mut == D3A_TL_b00) ? 0x25u : 0x24u;
+}
+static void d3a_26d4c_core(u32 mut)
+{
+    s32 g = (s32)DSD(0x00104AC4u);
+    if ((mut == D3A_TL_gate) ? (g >= 0) : (mut == D3A_TL_gateu) ? (g != 0) : (g > 0)) return;
+    text_cells_release_count(-1, (mut == D3A_TL_rel3) ? 4 : 3, (mut == D3A_TL_relcnt) ? 0x2B : 0x2A);
+    text_cells_release_count(-1, 5, 0x2A);
+    if (mut != D3A_TL_norel7) text_cells_release_count((mut == D3A_TL_relcol) ? 0 : -1, 7, 0x2A);
+    if (mut == D3A_TL_vorder) (void)sound_voice(0x22u);
+    (void)sound_voice((mut == D3A_TL_v29) ? 0x28u : 0x29u);
+    if (mut != D3A_TL_vorder) (void)sound_voice((mut == D3A_TL_v22) ? 0x23u : 0x22u);
+    prompt_side_erase(0, (mut == D3A_TL_erow) ? 0x1C : 0x1D);
+    if (mut != D3A_TL_eone) prompt_side_erase((mut == D3A_TL_eside) ? 0 : 1, 0x1D);
+    u32 side = (mut == D3A_TL_sidesext) ? (u32)(s32)(s8)DSB(0x00104B1Au) : DSB(0x00104B1Au);
+    if (mut != D3A_TL_late) d3a_26d4c_stores(side, mut);
+    text_cursor_hold_font2((mut == D3A_TL_hcol) ? 0 : -1, (mut == D3A_TL_hrow) ? 3 : 7,
+                           game_string_get((mut == D3A_TL_id3c) ? 0x3Du : 0x3Cu),
+                           (mut == D3A_TL_hmode) ? 0x2000u : 0x4000u);
+    if (mut == D3A_TL_late) d3a_26d4c_stores(side, mut);
+    u32 va = 0x0010780Bu + ((mut == D3A_TL_vside) ? 0u : side) * 0x94u;
+    s32 v = (mut == D3A_TL_vsext) ? (s32)(s8)DSB(va) : (s32)DSB(va);
+    s32 pct = v * ((mut == D3A_TL_mul) ? 0x78 : 100) / ((mut == D3A_TL_div) ? 100 : 0x78);
+    if ((DSB(0x00104529u) & ((mut == D3A_TL_bit) ? 1u : 2u)) != 0u) {
+        if (mut == D3A_TL_norder) text_number_set(0xF, 0xB, pct, 3, 1u, 0x4003u);
+        (void)actor_spawn((const u32 *)(mem + ((mut == D3A_TL_sp1d) ? 0xA8984u : 0xA8970u)),
+                          (mut == D3A_TL_sp1x) ? 0x3A00u : 0x1400u, (mut == D3A_TL_spz) ? 0x1800u : 0xFFu,
+                          (mut == D3A_TL_spz) ? 0xFFu : 0x1800u, (mut == D3A_TL_sp5) ? 1u : 0u);
+        if (mut != D3A_TL_spone)
+            (void)actor_spawn((const u32 *)(mem + 0xA8984u), (mut == D3A_TL_sp2x) ? 0x1400u : 0x3A00u,
+                              0xFFu, 0x1800u, 0u);
+        if (mut != D3A_TL_norder)
+            text_number_set((mut == D3A_TL_ncol) ? -1 : 0xF, (mut == D3A_TL_nrow) ? 0xA : 0xB,
+                            (mut == D3A_TL_nval) ? v : pct, (mut == D3A_TL_nwidth) ? 2 : 3,
+                            (mut == D3A_TL_npad) ? 0u : 1u, (mut == D3A_TL_nmode) ? 0x4002u : 0x4003u);
+    } else {
+        char buf[0x40] = { 0 };
+        snprintf(buf, sizeof buf, (mut == D3A_TL_pct) ? "%s%03d%%" : (mut == D3A_TL_prec) ? "%s%d" : "%s%.03d",
+                 (const char *)game_string_get((mut == D3A_TL_id3d) ? 0x3Eu : 0x3Du), (int)pct);
+        size_t n = strlen(buf);
+        const char *t = (const char *)game_string_get((mut == D3A_TL_id3e) ? 0x3Du : 0x3Eu);
+        if (mut != D3A_TL_nocat) snprintf(buf + n, sizeof buf - n, "%s", t);
+        text_cursor_set((mut == D3A_TL_ccol) ? 0 : -1, (mut == D3A_TL_crow) ? 4 : 3, (const u8 *)buf,
+                        (mut == D3A_TL_cmode) ? 0x1000u : 0x2000u);
+    }
+}
+#define D3A_TL_MUT(name) \
+    static void m_d3a_tl_##name(const u32 *r, u32 *eax) { (void)r; d3a_26d4c_core(D3A_TL_##name); *eax = 0u; }
+D3A_TL_MUT(gate)   D3A_TL_MUT(gateu)  D3A_TL_MUT(rel3)   D3A_TL_MUT(relcnt) D3A_TL_MUT(relcol) D3A_TL_MUT(norel7)
+D3A_TL_MUT(v29)    D3A_TL_MUT(v22)    D3A_TL_MUT(vorder) D3A_TL_MUT(erow)   D3A_TL_MUT(eside)  D3A_TL_MUT(eone)
+D3A_TL_MUT(sidesext) D3A_TL_MUT(f41off) D3A_TL_MUT(f41bit) D3A_TL_MUT(f41set) D3A_TL_MUT(nof41) D3A_TL_MUT(afe)
+D3A_TL_MUT(afeb)   D3A_TL_MUT(aec)    D3A_TL_MUT(noaec)  D3A_TL_MUT(b00)    D3A_TL_MUT(b00b)   D3A_TL_MUT(id3c)
+D3A_TL_MUT(hcol)   D3A_TL_MUT(hrow)   D3A_TL_MUT(hmode)  D3A_TL_MUT(late)   D3A_TL_MUT(vsext)  D3A_TL_MUT(vside)
+D3A_TL_MUT(mul)    D3A_TL_MUT(div)    D3A_TL_MUT(bit)    D3A_TL_MUT(sp1d)   D3A_TL_MUT(sp1x)   D3A_TL_MUT(sp2x)
+D3A_TL_MUT(spz)    D3A_TL_MUT(sp5)    D3A_TL_MUT(spone)  D3A_TL_MUT(ncol)   D3A_TL_MUT(nrow)   D3A_TL_MUT(nval)
+D3A_TL_MUT(nwidth) D3A_TL_MUT(npad)   D3A_TL_MUT(nmode)  D3A_TL_MUT(norder) D3A_TL_MUT(id3d)   D3A_TL_MUT(id3e)
+D3A_TL_MUT(pct)    D3A_TL_MUT(prec)   D3A_TL_MUT(nocat)  D3A_TL_MUT(crow)   D3A_TL_MUT(cmode)  D3A_TL_MUT(ccol)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32380,6 +32458,61 @@ static const binding_t k_bindings[] = {
     { "hiscore_rank_pair_stub@second", m_d3a_rp_second, 0x000000FFu },
     { "hiscore_rank_pair_stub@order", m_d3a_rp_order, 0x000000FFu },
     { "hiscore_rank_pair_stub@r1w", m_d3a_rp_r1w, 0x000000FFu },
+    { "flow_26d4c", b_d3a_26d4c, 0x00000000u },
+    { "flow_26d4c@gate", m_d3a_tl_gate, 0x00000000u },
+    { "flow_26d4c@gateu", m_d3a_tl_gateu, 0x00000000u },
+    { "flow_26d4c@rel3", m_d3a_tl_rel3, 0x00000000u },
+    { "flow_26d4c@relcnt", m_d3a_tl_relcnt, 0x00000000u },
+    { "flow_26d4c@relcol", m_d3a_tl_relcol, 0x00000000u },
+    { "flow_26d4c@norel7", m_d3a_tl_norel7, 0x00000000u },
+    { "flow_26d4c@v29", m_d3a_tl_v29, 0x00000000u },
+    { "flow_26d4c@v22", m_d3a_tl_v22, 0x00000000u },
+    { "flow_26d4c@vorder", m_d3a_tl_vorder, 0x00000000u },
+    { "flow_26d4c@erow", m_d3a_tl_erow, 0x00000000u },
+    { "flow_26d4c@eside", m_d3a_tl_eside, 0x00000000u },
+    { "flow_26d4c@eone", m_d3a_tl_eone, 0x00000000u },
+    { "flow_26d4c@sidesext", m_d3a_tl_sidesext, 0x00000000u },
+    { "flow_26d4c@f41off", m_d3a_tl_f41off, 0x00000000u },
+    { "flow_26d4c@f41bit", m_d3a_tl_f41bit, 0x00000000u },
+    { "flow_26d4c@f41set", m_d3a_tl_f41set, 0x00000000u },
+    { "flow_26d4c@nof41", m_d3a_tl_nof41, 0x00000000u },
+    { "flow_26d4c@afe", m_d3a_tl_afe, 0x00000000u },
+    { "flow_26d4c@afeb", m_d3a_tl_afeb, 0x00000000u },
+    { "flow_26d4c@aec", m_d3a_tl_aec, 0x00000000u },
+    { "flow_26d4c@noaec", m_d3a_tl_noaec, 0x00000000u },
+    { "flow_26d4c@b00", m_d3a_tl_b00, 0x00000000u },
+    { "flow_26d4c@b00b", m_d3a_tl_b00b, 0x00000000u },
+    { "flow_26d4c@id3c", m_d3a_tl_id3c, 0x00000000u },
+    { "flow_26d4c@hcol", m_d3a_tl_hcol, 0x00000000u },
+    { "flow_26d4c@hrow", m_d3a_tl_hrow, 0x00000000u },
+    { "flow_26d4c@hmode", m_d3a_tl_hmode, 0x00000000u },
+    { "flow_26d4c@late", m_d3a_tl_late, 0x00000000u },
+    { "flow_26d4c@vsext", m_d3a_tl_vsext, 0x00000000u },
+    { "flow_26d4c@vside", m_d3a_tl_vside, 0x00000000u },
+    { "flow_26d4c@mul", m_d3a_tl_mul, 0x00000000u },
+    { "flow_26d4c@div", m_d3a_tl_div, 0x00000000u },
+    { "flow_26d4c@bit", m_d3a_tl_bit, 0x00000000u },
+    { "flow_26d4c@sp1d", m_d3a_tl_sp1d, 0x00000000u },
+    { "flow_26d4c@sp1x", m_d3a_tl_sp1x, 0x00000000u },
+    { "flow_26d4c@sp2x", m_d3a_tl_sp2x, 0x00000000u },
+    { "flow_26d4c@spz", m_d3a_tl_spz, 0x00000000u },
+    { "flow_26d4c@sp5", m_d3a_tl_sp5, 0x00000000u },
+    { "flow_26d4c@spone", m_d3a_tl_spone, 0x00000000u },
+    { "flow_26d4c@ncol", m_d3a_tl_ncol, 0x00000000u },
+    { "flow_26d4c@nrow", m_d3a_tl_nrow, 0x00000000u },
+    { "flow_26d4c@nval", m_d3a_tl_nval, 0x00000000u },
+    { "flow_26d4c@nwidth", m_d3a_tl_nwidth, 0x00000000u },
+    { "flow_26d4c@npad", m_d3a_tl_npad, 0x00000000u },
+    { "flow_26d4c@nmode", m_d3a_tl_nmode, 0x00000000u },
+    { "flow_26d4c@norder", m_d3a_tl_norder, 0x00000000u },
+    { "flow_26d4c@id3d", m_d3a_tl_id3d, 0x00000000u },
+    { "flow_26d4c@id3e", m_d3a_tl_id3e, 0x00000000u },
+    { "flow_26d4c@pct", m_d3a_tl_pct, 0x00000000u },
+    { "flow_26d4c@prec", m_d3a_tl_prec, 0x00000000u },
+    { "flow_26d4c@nocat", m_d3a_tl_nocat, 0x00000000u },
+    { "flow_26d4c@crow", m_d3a_tl_crow, 0x00000000u },
+    { "flow_26d4c@cmode", m_d3a_tl_cmode, 0x00000000u },
+    { "flow_26d4c@ccol", m_d3a_tl_ccol, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

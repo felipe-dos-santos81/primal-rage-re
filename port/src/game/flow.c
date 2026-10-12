@@ -4882,6 +4882,7 @@ void prompt_insert_coin(u32 side, s32 row)
  * 0x26DBF/0x26DCE (0x26D4C) and 0x43089..0x43092 (0x42FE0). */
 void prompt_side_erase(s32 side, s32 row)
 {
+    PR_SEAM(0x2C2B0u, (u32)side, (u32)row);
     if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x2C2B7/0x2C2BE */
         prompt_press_start_clear((s32)DSB(DS_000BAB58 + (u32)side), row,
                                  (u32)side);            /* 0x2C2C0..0x2C2CA 0x2C088 */
@@ -5545,7 +5546,7 @@ void game_mode_1f_step(void)
  *   bounds it, as prompt_insert_coin_blink's 0x2C1FA already established),
  *   and text_cursor_set(-1, 3, buf, 0x2000) draws it.
  * EBX..EDI are pushed and popped. */
-static void flow_26d4c(void)
+void flow_26d4c(void)
 {
     if ((s32)DSD(DS_00104AC4) > 0) return;                  /* 0x26D54/0x26D5B */
 

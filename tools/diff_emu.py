@@ -74,6 +74,10 @@ UNMODELED_MNEMONICS = frozenset({
 # address, so no other row's emulator state changes.
 FLAT_SEGMENT_CALLEES = frozenset({0x65624})
 FLAT_GDT = STACK_LOW          # the two descriptors, at the bottom of the private stack mapping
+# D3 d3a (record 2026-10-12-reverse-d3a §2.2): the runtime's formatter core 0x6C8EB, which sprintf 0x65546
+# reaches, saves and loads ES (0x6C8ED `push es`, 0x6C94E `les edx,[ecx-8]`, 0x6CA21 `mov es,edx`, 0x6CB68
+# `pop es`). A row that allows it runs under the same flat descriptors.
+FLAT_SEGMENT_CALLEES |= {0x6C8EB}
 
 
 def flat_segments(mu):

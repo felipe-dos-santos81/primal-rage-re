@@ -820,9 +820,11 @@ void game_mode_0f_step(void);
 /* 0x26C8C — record §49-L. The mode 0x22 handler: fight_slot_clear, the
  * per-side camera preamble shared with mode 0x24, fight_slot_pass,
  * fight_hud_pass, camera_y_commit, fight_4d2d0, a gated
- * camera_impact_dust_spawn and the unconditional tail 0x26D4C (flow_26d4c,
- * static in flow.c). See flow.c for the full derivation. */
+ * camera_impact_dust_spawn and the unconditional tail 0x26D4C (flow_26d4c).
+ * See flow.c for the full derivation. */
 void game_mode_22_step(void);
+/* 0x26D4C: mode 0x22's tail, declared for the differential row's binding. */
+void flow_26d4c(void);
 
 /* 0x26A50 — record §49-M. The mode 0x23 handler: a 4-state sub-machine on
  * DS_00104B25 that arms a round card, spawns it, draws the per-character
