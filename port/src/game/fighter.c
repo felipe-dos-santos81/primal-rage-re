@@ -3540,7 +3540,7 @@ void fighter_state_350d0(u32 side)
         u16 cmd = DSW(DS_001088E0 + side * 2u);
         int bvar2 = ((cmd >> 8) & 3u) != 0u
                  && ((cmd >> 8) & 0xCu) != 0u;              /* 0x35201 */
-        if (!bvar2 && fighter_attack_consume(side) != 0) {  /* 0x3520E */
+        if (!bvar2 && (u8)fighter_attack_consume(side) != 0u) {  /* 0x3520E, AL 0x35213 */
             hit_facing_flag(side);                          /* 0x3521A */
             return;
         }
@@ -3560,13 +3560,13 @@ void fighter_state_350d0(u32 side)
             return;
         }
         if (DSB(s + 0x54u) == 2u) {                         /* 0x35286 */
-            if (fighter_34ddc(side) == 0) return;           /* 0x3528E */
+            if ((u8)fighter_34ddc(side) == 0u) return;      /* 0x3528E, AL 0x35293 */
             if (DSB(DS_001078F8 + side) == 0u) return;      /* 0x35297 */
         }
         DSB(s + 0x56u) = 0;                                 /* 0x352A2 */
-        if (hit_chain_resolve(side) != 0) return;           /* 0x352A6 */
+        if ((u8)hit_chain_resolve(side) != 0u) return;      /* 0x352A6, AL 0x352AB */
         {
-            u32 r = hit_reaction_pick(side, (u32)DSB(s + 0x54u)); /* 0x352BA */
+            u32 r = (u32)(u8)hit_reaction_pick(side, (u32)DSB(s + 0x54u)); /* 0x352BA, AL 0x352C1 */
             if (r == 0xFFu) return;                         /* 0x352C9 */
             hit_reaction_apply(side, r);                    /* 0x352CD */
         }
