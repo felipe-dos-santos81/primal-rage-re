@@ -200,6 +200,7 @@ static void run_process_table(u32 table, u32 mask)
  * body instead of inlining the byte store. */
 void frontend_input_reset(void)
 {
+    PR_SEAM0(0x4F1E4u);
     DSB(DS_00104B15) = 0;                       /* 0x4F1F1 */
 }
 
@@ -219,6 +220,7 @@ void frontend_origin_zero(void)
  * DS_000BDDFC. */
 void title_origin_reset(u32 idx)
 {
+    PR_SEAM(0x38910u, idx);
     frontend_origin_zero();                     /* 0x3891A 0x4F1D0 */
     DSW(DS_00107A4A) = DSW(DS_00107A4E);        /* 0x38925 */
     DSW(DS_00107A4C) = DSW(DS_00107A4E);        /* 0x3892B */
