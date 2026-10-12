@@ -2071,7 +2071,7 @@ void fighter_state_364fc(u32 slot, u32 rec, u32 side)
 #define FIGHT_35D20_ANIM_B  0x000C8B08u /* 0x35D20: default begin stream */
 #define FIGHT_35E6C_ANIM    0x000C8B58u /* 0x35E6C: per-char begin stream */
 
-static void fighter_state_35b7c(u32 slot, u32 rec);         /* 0x35B7C */
+void fighter_state_35b7c(u32 slot, u32 rec);                /* 0x35B7C */
 void fighter_state_35d20(u32 slot, u32 rec);                /* 0x35D20 */
 void fighter_1883c(u32 side, u32 a, u32 b);                  /* 0x1883C */
 void fighter_36e78(u32 slot);                              /* 0x36E78 */
@@ -2167,7 +2167,7 @@ void fighter_35938(u32 rec)
 
 /* 0x35B7C. Enter the +0x52 = 2 approach: clear +0x53 unless 0x0D, set the
  * +0x58 frame step from the frame position, and hand off to 0x35C1C/0x35D20. */
-static void fighter_state_35b7c(u32 slot, u32 rec)
+void fighter_state_35b7c(u32 slot, u32 rec)
 {
     s32 max;
     s32 frame;

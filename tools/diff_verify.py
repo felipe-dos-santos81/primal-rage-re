@@ -13423,6 +13423,30 @@ def d2a_snap_case(side, o53, idx=3):
     return p
 
 
+D2A_FS, D2A_FR = 0x0010A000, 0x0010A100          # 0x35B7C: a scratch slot and its record
+D2A_SEEK_A, D2A_SEEK_B = 0x0010A300, 0x0010A500  # ... and 0x35C1C's two frame-word tables
+
+
+def d2a_enter_case(ch, word, frame, s53, s43=0x02, s54=0x04):
+    """0x35B7C: the slot's +0x42..+0x44, +0x51..+0x55 and +0x7A; the record's +0x28/+0x29 with the
+    words around them, +0x4F..+0x53 (the frame at +0x52, inside the dword the raw shifts) and
+    +0x57..+0x59 (the step, seeded 0x5A); the eight words at 0xBDA3E (distinct bytes, the word of
+    `ch` as given); and what the two real callees read: 0x35C1C's frame-word tables (A[i] = 0x1100
+    + i, B[i] = 0x2200 + i for i = -8..23), 0x35D20's two stream dwords and DS_001078FE."""
+    tab = bytearray(0x30 + 7 * j for j in range(16))
+    tab[ch * 2:ch * 2 + 2] = le16(word)
+    return {D2A_FS + 0x42: bytes([0x42, s43, 0x44]), D2A_FS + 0x51: bytes([0x51, 0x11, s53, s54, 0x55]),
+            D2A_FS + 0x7A: bytes([ch]),
+            D2A_FR + 0x26: le16(0x2626) + b"\x52\x51" + le16(0x2A2A),
+            D2A_FR + 0x4F: bytes([0x4F, 0x50, 0x51, frame, 0x53]), D2A_FR + 0x57: bytes([0x57, 0x5A, 0x59]),
+            0x000BDA3E: bytes(tab),
+            0x000C8A68 + ch * 4: le32(D2A_SEEK_A), 0x000C8AE0 + ch * 4: le32(D2A_SEEK_B),
+            D2A_SEEK_A - 16: b"".join(le16(0x1100 + (i & 0xFF)) for i in range(-8, 24)),
+            D2A_SEEK_B - 16: b"".join(le16(0x2200 + (i & 0xFF)) for i in range(-8, 24)),
+            0x000C8A90 + ch * 4: le32(0x000E4000 + ch), 0x000C8B08 + ch * 4: le32(0x000E5000 + ch),
+            0x001078FD: bytes([0xFD, 0x77, 0xFF])}
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13472,6 +13496,26 @@ D2A_SPECS = [
        eax_mask=0,
        mutants=("@side", "@dst", "@scale", "@nosnap", "@react", "@pside", "@s52", "@s53", "@cb",
                 "@x18", "@x1c", "@slot", "@late", "@order", "@no22", "@ctx")),
+    # 0x35B7C fighter_state_35b7c: EAX = slot, EDX = rec. 0x35C1C and 0x35D20 run real (neither is a
+    # stub of any row), so the `test eax,eax` at 0x35C05 is not separated from an AL test (0x35C1C
+    # returns 0 or 1; record §4); their 0x2BCF4 and 0x2BC30 are the stubs. n7 is the 16-bit
+    # difference: the 0xBDA3E word 0x8000 against frame 0x7F (0x35BBC `sub edi,eax`, 0x35BC5 `cwd`,
+    # 0x35BC7 `idiv si`; record §3). Mask 0: three sites return through 0x359E0 and one through
+    # 0x37464 into the dispatcher, whose one call site overwrites EAX (0x35801 `mov eax,esi`);
+    # 0x36F7E `mov eax,[ebx]` / 0x37019 `xor eax,eax`; 0x383F6.. returns to 0x38569 `mov eax,ecx`.
+    Spec("fighter_state_35b7c", 0x35B7C, [
+        Case("n0", {"eax": D2A_FS, "edx": D2A_FR}, d2a_enter_case(2, 0x0006, 0x01, 0x05)),
+        Case("n1", {"eax": D2A_FS, "edx": D2A_FR}, d2a_enter_case(3, 0x0006, 0x03, 0x0D, s43=0x00)),
+        Case("n2", {"eax": D2A_FS, "edx": D2A_FR}, d2a_enter_case(0, 0x0006, 0x05, 0x0D, s43=0xFF, s54=0x03)),
+        Case("n3", {"eax": D2A_FS, "edx": D2A_FR}, d2a_enter_case(6, 0x0006, 0xFA, 0x07)),
+        Case("n4", {"eax": D2A_FS, "edx": D2A_FR}, d2a_enter_case(1, 0x000C, 0x03, 0x05)),
+        Case("n5", {"eax": D2A_FS, "edx": D2A_FR}, d2a_enter_case(5, 0xFFFA, 0xFD, 0x05, s43=0x00)),
+        Case("n6", {"eax": D2A_FS, "edx": D2A_FR}, d2a_enter_case(4, 0xFFF9, 0xFC, 0x05)),
+        Case("n7", {"eax": D2A_FS, "edx": D2A_FR}, d2a_enter_case(2, 0x8000, 0x7F, 0x05)),
+        Case("n8", {"eax": D2A_FS, "edx": D2A_FR}, d2a_enter_case(3, 0x0106, 0x04, 0x05)),
+    ], allow_calls=(0x35C1C, 0x35D20), calls=(P6_2BCF4, ANIM_BEGIN), eax_mask=0,
+       mutants=("@s52", "@s53a", "@s53k", "@idx", "@maxb", "@maxz", "@floor", "@fz", "@cmp", "@neg",
+                "@f2z", "@w32", "@gate", "@r", "@div")),
 ]
 D1_SPECS += D2A_SPECS
 

@@ -20013,6 +20013,51 @@ static void m_d2a_235c4_order(const u32 *r, u32 *eax)  { d2a_235c4_core(r, 0x200
 static void m_d2a_235c4_no22(const u32 *r, u32 *eax)   { d2a_235c4_core(r, 0x4000u); *eax = 0u; }
 static void m_d2a_235c4_ctx(const u32 *r, u32 *eax)    { d2a_235c4_core(r, 0x8000u); *eax = 0u; }
 
+/* 0x35B7C: EAX = slot, EDX = rec. 0x35C1C and 0x35D20 run real (their 0x2BCF4 and 0x2BC30 are the
+ * stubs). The `>=` arm divides the 16-bit difference (`sub edi,eax` then `cwd; idiv si`,
+ * 0x35BBC..0x35BC7). */
+static void d2a_35b7c_core(const u32 *r, u32 mut)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX];
+    u16 word;
+    s32 max, half, frame;
+    if (!(mut & 1u)) DSB(slot + 0x52u) = 2u;                                /* @s52 */
+    if (((mut & 2u) || DSB(slot + 0x53u) != 0x0Du) && !(mut & 4u))  /* @s53a: always; @s53k: never */
+        DSB(slot + 0x53u) = 0u;
+    word = DSW(0x000BDA3Eu + (u32)DSB(slot + 0x7Au) * ((mut & 8u) ? 1u : 2u));   /* @idx: unscaled */
+    max = (mut & 16u) ? (s32)(word & 0xFFu)                                 /* @maxb: the low byte (0x35C1C's max) */
+        : (mut & 32u) ? (s32)(u32)word : (s32)(s16)word;                    /* @maxz: movzx for movsx */
+    half = (mut & 64u) ? (max >> 1) : max / 2;                             /* @floor: no sign fix-up */
+    frame = (mut & 128u) ? (s32)DSB(rec + 0x52u) : (s32)(s8)DSB(rec + 0x52u);  /* @fz: the frame zero-extended */
+    if ((mut & 256u) ? (frame <= half) : (frame < half)) {                    /* @cmp */
+        DSB(rec + 0x58u) = (mut & 512u) ? (u8)(frame / 3) : (u8)(-(frame / 3));   /* @neg: not negated */
+    } else {
+        s32 f2 = (mut & 1024u) ? (s32)DSB(rec + 0x52u) : (s32)(s8)DSB(rec + 0x52u);   /* @f2z */
+        if (mut & 2048u) DSB(rec + 0x58u) = (u8)((max - f2) / 3);              /* @w32: the 32-bit difference */
+        else if (mut & 16384u) DSB(rec + 0x58u) = (u8)((u16)((u32)word - (u32)f2) / 3u);   /* @div: unsigned */
+        else DSB(rec + 0x58u) = (u8)((s16)(u16)((u32)word - (u32)f2) / 3);
+    }
+    if (((mut & 4096u) || DSB(rec + 0x58u) != 0u)                             /* @gate: 0x35C1C on a zero step too */
+            && fighter_state_35c1c(slot, rec) == 0 && !(mut & 8192u)) return;    /* @r: its result ignored */
+    fighter_state_35d20(slot, rec);
+}
+static void b_d2a_35b7c(const u32 *r, u32 *eax) { fighter_state_35b7c(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void m_d2a_35b7c_s52(const u32 *r, u32 *eax)   { d2a_35b7c_core(r, 0x1u); *eax = 0u; }
+static void m_d2a_35b7c_s53a(const u32 *r, u32 *eax)  { d2a_35b7c_core(r, 0x2u); *eax = 0u; }
+static void m_d2a_35b7c_s53k(const u32 *r, u32 *eax)  { d2a_35b7c_core(r, 0x4u); *eax = 0u; }
+static void m_d2a_35b7c_idx(const u32 *r, u32 *eax)   { d2a_35b7c_core(r, 0x8u); *eax = 0u; }
+static void m_d2a_35b7c_maxb(const u32 *r, u32 *eax)  { d2a_35b7c_core(r, 0x10u); *eax = 0u; }
+static void m_d2a_35b7c_maxz(const u32 *r, u32 *eax)  { d2a_35b7c_core(r, 0x20u); *eax = 0u; }
+static void m_d2a_35b7c_floor(const u32 *r, u32 *eax) { d2a_35b7c_core(r, 0x40u); *eax = 0u; }
+static void m_d2a_35b7c_fz(const u32 *r, u32 *eax)    { d2a_35b7c_core(r, 0x80u); *eax = 0u; }
+static void m_d2a_35b7c_cmp(const u32 *r, u32 *eax)   { d2a_35b7c_core(r, 0x100u); *eax = 0u; }
+static void m_d2a_35b7c_neg(const u32 *r, u32 *eax)   { d2a_35b7c_core(r, 0x200u); *eax = 0u; }
+static void m_d2a_35b7c_f2z(const u32 *r, u32 *eax)   { d2a_35b7c_core(r, 0x400u); *eax = 0u; }
+static void m_d2a_35b7c_w32(const u32 *r, u32 *eax)   { d2a_35b7c_core(r, 0x800u); *eax = 0u; }
+static void m_d2a_35b7c_gate(const u32 *r, u32 *eax)  { d2a_35b7c_core(r, 0x1000u); *eax = 0u; }
+static void m_d2a_35b7c_r(const u32 *r, u32 *eax)     { d2a_35b7c_core(r, 0x2000u); *eax = 0u; }
+static void m_d2a_35b7c_div(const u32 *r, u32 *eax)   { d2a_35b7c_core(r, 0x4000u); *eax = 0u; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -23985,6 +24030,22 @@ static const binding_t k_bindings[] = {
     { "fighter_235c4@order", m_d2a_235c4_order, 0x00000000u },
     { "fighter_235c4@no22", m_d2a_235c4_no22, 0x00000000u },
     { "fighter_235c4@ctx", m_d2a_235c4_ctx, 0x00000000u },
+    { "fighter_state_35b7c", b_d2a_35b7c, 0x00000000u },
+    { "fighter_state_35b7c@s52", m_d2a_35b7c_s52, 0x00000000u },
+    { "fighter_state_35b7c@s53a", m_d2a_35b7c_s53a, 0x00000000u },
+    { "fighter_state_35b7c@s53k", m_d2a_35b7c_s53k, 0x00000000u },
+    { "fighter_state_35b7c@idx", m_d2a_35b7c_idx, 0x00000000u },
+    { "fighter_state_35b7c@maxb", m_d2a_35b7c_maxb, 0x00000000u },
+    { "fighter_state_35b7c@maxz", m_d2a_35b7c_maxz, 0x00000000u },
+    { "fighter_state_35b7c@floor", m_d2a_35b7c_floor, 0x00000000u },
+    { "fighter_state_35b7c@fz", m_d2a_35b7c_fz, 0x00000000u },
+    { "fighter_state_35b7c@cmp", m_d2a_35b7c_cmp, 0x00000000u },
+    { "fighter_state_35b7c@neg", m_d2a_35b7c_neg, 0x00000000u },
+    { "fighter_state_35b7c@f2z", m_d2a_35b7c_f2z, 0x00000000u },
+    { "fighter_state_35b7c@w32", m_d2a_35b7c_w32, 0x00000000u },
+    { "fighter_state_35b7c@gate", m_d2a_35b7c_gate, 0x00000000u },
+    { "fighter_state_35b7c@r", m_d2a_35b7c_r, 0x00000000u },
+    { "fighter_state_35b7c@div", m_d2a_35b7c_div, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

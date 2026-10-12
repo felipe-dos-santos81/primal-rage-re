@@ -6438,6 +6438,7 @@ D2A_MASKS = {
     "fighter_14a5c": 0x0,
     "fighter_192dc": 0x0,
     "fighter_235c4": 0x0,
+    "fighter_state_35b7c": 0x0,
 }
 D2A_KINDS = {
     "fighter_146f0@gate": {'call #0', 'call #1'},
@@ -6522,6 +6523,21 @@ D2A_KINDS = {
     "fighter_235c4@order": {'call #0 memory'},
     "fighter_235c4@no22": {'byte', 'call #1', 'call #2', 'call #3', 'call #4'},
     "fighter_235c4@ctx": {'byte', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4 memory'},
+    "fighter_state_35b7c@s52": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@s53a": {'byte', 'call #0 memory'},
+    "fighter_state_35b7c@s53k": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@idx": {'byte', 'call #0', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@maxb": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory'},
+    "fighter_state_35b7c@maxz": {'byte', 'call #0', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@floor": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@fz": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@cmp": {'byte', 'call #0', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@neg": {'byte', 'call #0', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@f2z": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@w32": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_35b7c@gate": {'byte', 'call #0', 'call #0 memory'},
+    "fighter_state_35b7c@r": {'byte', 'call #1'},
+    "fighter_state_35b7c@div": {'byte', 'call #0', 'call #0 memory', 'call #1 memory'},
 }
 D2A_CASES = [
     ("fighter_146f0@gate", ['c0', 'c1', 'c2', 'c3', 'c4', 'c5']),
@@ -6606,6 +6622,21 @@ D2A_CASES = [
     ("fighter_235c4@order", ['s0', 's1', 's2', 's3']),
     ("fighter_235c4@no22", ['s0', 's1', 's2', 's3']),
     ("fighter_235c4@ctx", ['s0', 's1', 's2', 's3']),
+    ("fighter_state_35b7c@s52", ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_state_35b7c@s53a", ['n1', 'n2']),
+    ("fighter_state_35b7c@s53k", ['n0', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_state_35b7c@idx", ['n1', 'n5', 'n7']),
+    ("fighter_state_35b7c@maxb", ['n5', 'n8']),
+    ("fighter_state_35b7c@maxz", ['n5', 'n7']),
+    ("fighter_state_35b7c@floor", ['n6']),
+    ("fighter_state_35b7c@fz", ['n3', 'n6']),
+    ("fighter_state_35b7c@cmp", ['n1', 'n5']),
+    ("fighter_state_35b7c@neg", ['n3', 'n4', 'n6', 'n8']),
+    ("fighter_state_35b7c@f2z", ['n5']),
+    ("fighter_state_35b7c@w32", ['n7']),
+    ("fighter_state_35b7c@gate", ['n0', 'n2']),
+    ("fighter_state_35b7c@r", ['n1', 'n4', 'n8']),
+    ("fighter_state_35b7c@div", ['n5']),
 ]
 D1_MASKS.update(D2A_MASKS)
 D1_KINDS.update(D2A_KINDS)
