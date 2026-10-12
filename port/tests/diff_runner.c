@@ -30482,6 +30482,7 @@ D3E_TS_MUT(midno1c, 41u)  D3E_TS_MUT(no41, 42u)     D3E_TS_MUT(s64self, 43u)  D3
 /* 0x146F0 / 0x14A5C under a stubbed 0x14590: d2a's core tests the callee's whole int, so its
  * mutation set 0 is the port before the `test al,al` correction (0x14707 / 0x14A73). */
 static void m_d4e_146f0_eax(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_146f0, r, 0u); *eax = 0u; }
+static void m_d4e_14a5c_eax(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_14a5c, r, 0u); *eax = 0u; }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39087,6 +39088,8 @@ static const binding_t k_bindings[] = {
     /* d4e (record 2026-10-12-reverse-d4e) */
     { "fighter_146f0_al", b_d2a_146f0, 0x00000000u },
     { "fighter_146f0_al@eax", m_d4e_146f0_eax, 0x00000000u },
+    { "fighter_14a5c_al", b_d2a_14a5c, 0x00000000u },
+    { "fighter_14a5c_al@eax", m_d4e_14a5c_eax, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -21905,6 +21905,10 @@ D4E_SPECS += [
     Spec("fighter_146f0_al", 0x146F0, d4e_step_cases(D2A_STEP_146F0),
          allow_calls=(0x339AC,), calls=D2A_STEP_CALLS + (D3D_14590,), eax_mask=0,
          mutants=("@eax",)),
+    # 0x14A5C fighter_14a5c (d2a's row; mask 0 as there): the twin, `test al,al` 0x14A73 / `je`.
+    Spec("fighter_14a5c_al", 0x14A5C, d4e_step_cases(D2A_STEP_14A5C),
+         allow_calls=(0x339AC,), calls=D2A_STEP_CALLS + (D3D_14590,), eax_mask=0,
+         mutants=("@eax",)),
 ]
 D1_SPECS += D4E_SPECS
 SPECS = [

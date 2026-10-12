@@ -5200,8 +5200,8 @@ void fighter_14a5c(u32 rec)
     s32 dx;
     PR_SEAM(0x14A5Cu, rec);
     hit_anim_ctx(ctx, rec);                                 /* 0x14A66 0x339AC */
-    stream = (fighter_14590(ctx[0]) != 0)
-           ? FIGHT_ANIM_14A5C_A : FIGHT_ANIM_14A5C_B;       /* 0x14A6E..0x14A7E */
+    stream = ((u8)fighter_14590(ctx[0]) != 0u)
+           ? FIGHT_ANIM_14A5C_A : FIGHT_ANIM_14A5C_B;       /* 0x14A6E..0x14A7E, 0x14A73: test al,al */
     bits = (u32)DSW(DS_001088E0 + ctx[0] * 2u);             /* 0x14A86/0x14A8E */
     if ((bits & 0x3000u) == 0u)                             /* 0x14A94 test ch,0x30 */
         bits |= DSD(FIGHT_FD100 + ctx[0] * 4u);             /* 0x14A9C */
