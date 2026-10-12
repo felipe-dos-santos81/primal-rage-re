@@ -18888,6 +18888,91 @@ D3C_SPECS += [
                 "@prev1", "@al698", "@vd", "@order", "@pside", "@alpred", "@v65", "@no6", "@v0b", "@al898",
                 "@v8", "@stb", "@nost")),
 ]
+D3C_CB10 = 0x0003D0BC            # not a function and not registered: the +0x10 hook's address is all the port can report
+D3C_350D0 = E.Call(0x350D0, ("eax",), clobbers=("edi", "ebp"))
+D3C_34E20 = E.Call(0x34E20, ("eax",))
+D3C_CB10_CALL = E.Call(D3C_CB10, (), clobbers=("edx",))
+# 0x3CF38 as a stub that overwrites both slots' +0x5F: 0x3531C saved the byte before the call
+# (0x354B2) and stores it back after it (0x354CD)
+D3C_3CF38_5F = E.Call(0x3CF38, ("eax",), writes=((None, D3C_SLOT + 0x5F, b"\xFF"),
+                                                 (None, D3C_SLOT + 0x94 + 0x5F, b"\xFF")))
+
+
+def d3c_disp_case(side, st, ptr="own", f6=0, cfg=0xFD, cb0c=0, cb10=0, ch=4, s5f=0x21, w88=0x005B,
+                  thr=0x0100):
+    """0x3531C: the DS_001077A8 pair (`ptr`: the side's own slot, None = 0, "norec" = the scratch
+    slot D3C_FS with no record, "scratch" = D3C_FS with the record D3C_RX; the other side's entry
+    is the opposite presence); the slot the pointer names: +0x0C/+0x10 hooks, +0x40..+0x43,
+    +0x52..+0x56 (the state at +0x53), +0x5E..+0x60, +0x7A and +0x86..+0x8B. With the scratch
+    slot, the side's own slot carries another state and no hook; `w88` and `s5f` go to the slot
+    the state reads them from (the side's own for state 8, the pointer's otherwise) and the other
+    slot gets another +0x5F and a +0x88 on the other side of the threshold; DS_001078F6 (F4
+    beside), DS_001078EC, the config byte and the threshold word DS_000BDBE8 (E6 beside)."""
+    other = 1 - side
+    so, oo = D3C_SLOT + side * 0x94, D3C_SLOT + other * 0x94
+    rs = (D3C_R0, D3C_R1)[side]
+    ptrs = [0, 0]
+    ptrs[side] = {"own": so, None: 0}.get(ptr, D3C_FS)
+    ptrs[other] = 0 if ptrs[side] else oo
+    ts, ws = (thr ^ 0x8000) - 0x8000, (w88 ^ 0x8000) - 0x8000
+
+    def slot_pokes(base, rec, state, f5f, w, k):
+        return {base: le32(rec), base + 0x0C: le32(cb0c) + le32(cb10),
+                base + 0x40: bytes([k, 0x01, 0x42, 0xFF]), base + 0x52: bytes([0x52, state, 0x54, 0x55, 0x56 + k]),
+                base + 0x5E: bytes([0x5E, f5f, 0x60]), base + 0x7A: bytes([ch]),
+                base + 0x86: le16(0x8686) + le16(w) + le16(0x8A8A)}
+    p = {0x001077A8: le32(ptrs[0]) + le32(ptrs[1]), oo: le32((D3C_R0, D3C_R1)[other]),
+         0x001078F4: le16(0xF4F4) + le16(f6), 0x001078EC: le32(0x0010C500), 0x00104529: bytes([cfg]),
+         0x000BDBE6: le16(0xE6E6) + le16(thr)}
+    if ptr == "own":
+        p.update(slot_pokes(so, rs, st, s5f, w88, 0))
+    else:
+        mine, alt = (s5f, w88), (s5f ^ 0x10, 0x7FFF if ts > ws else 0x8000)
+        own_v, ptr_v = (mine, alt) if st == 8 else (alt, mine)
+        p.update(slot_pokes(so, rs, 4 if st != 4 else 8, own_v[0], own_v[1], 0))
+        p[so + 0x0C] = le32(0) + le32(0)
+        p.update(slot_pokes(D3C_FS, 0 if ptr == "norec" else D3C_RX, st, ptr_v[0], ptr_v[1], 0x80))
+    return p
+
+
+D3C_SPECS += [
+    # 0x3531C fighter_state_3531c: EAX = side. Stubs: 0x2C3FC, 0x2B150, 0x350D0, 0x367DC, 0x34E20
+    # and 0x3CF38 (AL tested: 0x354A8, 0x354C1; d12 returns 0x100, d13 0xFFFFFF01 and 0x100), the
+    # 0x3C4CC inside the +0x0C hook and the +0x10 hook itself. The +0x0C hook is the registered
+    # 0x23130, run real with 0x33950; the +0x10 hook's address is unregistered, so the port
+    # reports the address alone (record §4). d5 and d10 point DS_001077A8[side] at a scratch slot:
+    # state 8 reads +0x88 and +0x5F and stores +0x53/+0x5F through the side's own slot ([esp+8]:
+    # 0x35483, 0x3549A, 0x354AC, 0x354C5). r1..r15 are the ten table entries that only return.
+    # Mask 0: the one call site writes EAX before reading it (0x35803 call, 0x3580E `mov eax,ebx`).
+    Spec("fighter_state_3531c", 0x3531C, [
+        Case("d0", {"eax": 0}, d3c_disp_case(0, 0, ptr=None)),
+        Case("d1", {"eax": 1}, d3c_disp_case(1, 0, ptr="norec")),
+        Case("d2", {"eax": 0}, d3c_disp_case(0, 0)),
+        Case("d3", {"eax": 1}, d3c_disp_case(1, 13, f6=0x0002)),
+        Case("d4", {"eax": 0}, d3c_disp_case(0, 0x10, f6=0x0001, cfg=0xFF)),
+        Case("d5", {"eax": 1}, d3c_disp_case(1, 4, ptr="scratch", f6=0x8001)),
+        Case("d6", {"eax": 0}, d3c_disp_case(0, 7)),
+        Case("d7", {"eax": 1}, d3c_disp_case(1, 7, ptr="scratch", cb0c=0x00023130, s5f=0x22, w88=0x005A)),
+        Case("d8", {"eax": 0}, d3c_disp_case(0, 7, ch=5, f6=0x0100)),
+        Case("d9", {"eax": 1}, d3c_disp_case(1, 7, s5f=0x23, w88=0x7FFF)),
+        Case("d10", {"eax": 0}, d3c_disp_case(0, 8, ptr="scratch", s5f=0x11, w88=0x00FF), {0x34E20: 1}),
+        Case("d11", {"eax": 1}, d3c_disp_case(1, 8, w88=0x0100), {0x34E20: 1}),
+        Case("d12", {"eax": 0}, d3c_disp_case(0, 8, w88=0x00FF), {0x34E20: 0x100}),
+        Case("d13", {"eax": 1}, d3c_disp_case(1, 8, w88=0x8000, thr=0x0001, s5f=0x17),
+             {0x34E20: 0xFFFFFF01, 0x3CF38: 0x100}),
+        Case("d14", {"eax": 0}, d3c_disp_case(0, 8, w88=0x00FF), {0x34E20: 1, 0x3CF38: 1}),
+        Case("d15", {"eax": 1}, d3c_disp_case(1, 10, ptr="scratch", cb10=D3C_CB10)),
+        Case("d16", {"eax": 0}, d3c_disp_case(0, 10)),
+        Case("d17", {"eax": 1}, d3c_disp_case(1, 7, s5f=0x22, w88=0x005B, ptr="scratch")),
+    ] + [Case("r%d" % st, {"eax": st & 1}, d3c_disp_case(st & 1, st)) for st in (1, 2, 3, 5, 6, 9, 11, 12, 14, 15)],
+       allow_calls=(0x23130, 0x33950),
+       calls=(VOICE, P7_2B150, D3C_350D0, HIT_B, D3C_367DC, D3C_34E20, D3C_3CF38_5F, D3C_CB10_CALL),
+       eax_mask=0,
+       mutants=("@pside", "@norec", "@f6b", "@decb", "@zero", "@vorder", "@cfgbit", "@orS", "@noor", "@stS",
+                "@noinc4", "@inc4S", "@no41", "@m43", "@cbrec", "@ch", "@no22", "@ge5a", "@w86", "@rS",
+                "@noinc8", "@no43", "@s8ptr", "@lt", "@ucmp", "@al20", "@no53", "@hside", "@alh", "@v8",
+                "@no5f", "@cb10S", "@no13", "@no16", "@st9", "@dside")),
+]
 D1_SPECS += D3C_SPECS
 
 

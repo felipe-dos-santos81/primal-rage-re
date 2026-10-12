@@ -27002,6 +27002,110 @@ D3C_M(469a8, al898, 19u)
 D3C_M(469a8, v8, 20u)
 D3C_M(469a8, stb, 21u)
 D3C_M(469a8, nost, 22u)
+
+/* 0x3531C: EAX = side. slot = DS_001077A8[side] (ECX), S = the side's own slot ([esp+8]). The
+ * DS_001078F6 countdown, then the +0x53 byte through the sixteen-entry jump table 0x352DC. State
+ * 8 increments +0x56 and masks +0x43 through the pointer but reads +0x88/+0x5F and stores
+ * +0x53/+0x5F through S (0x35483, 0x3549A, 0x354AC, 0x354C5); 0x34E20 and 0x3CF38 return the AL
+ * the raw tests (0x354A8, 0x354C1). */
+typedef void (*d3c_cb0c_fn)(u32 slot, u32 rec, u32 side);
+typedef void (*d3c_cb10_fn)(u32 slot, u32 side);
+static void d3c_3531c_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    u32 side = r[R_EAX], oth = 1u - side, S = D3C_SLOTS + side * 0x94u, slot, a, st, s8;
+    u8 keep;
+    slot = DSD(0x001077A8u + (M(1) ? oth : side) * 4u);                      /* @pside */
+    if (slot == 0u || (DSD(slot) == 0u && !M(2))) return;                    /* @norec */
+    if ((M(3) ? (u32)DSB(0x001078F6u) : (u32)DSW(0x001078F6u)) != 0u) {      /* @f6b: a byte test */
+        if (M(4)) DSB(0x001078F6u) = (u8)(DSB(0x001078F6u) - 1u);            /* @decb: a byte decrement */
+        else DSW(0x001078F6u) = (u16)(DSW(0x001078F6u) - 1u);
+        if (M(5) ? DSW(0x001078F6u) == 0u : (s16)DSW(0x001078F6u) < 1) {     /* @zero: only at zero */
+            (void)sound_voice(M(6) ? 0xE0u : 0xECu);                         /* @vorder */
+            (void)sound_voice(M(6) ? 0xECu : 0xE0u);
+            if ((DSB(0x00104529u) & (M(7) ? 1u : 2u)) != 0u) actor_set_dead(DSD(0x001078ECu));   /* @cfgbit */
+            if (M(8)) DSD(S + 0x40u) |= 0x00801000u;                         /* @orS: the side's own slot */
+            else if (!M(9)) DSD(slot + 0x40u) |= 0x00801000u;                /* @noor */
+        }
+    }
+    st = (u32)DSB((M(10) ? S : slot) + 0x53u);                               /* @stS */
+    if (st == 4u) {
+        if (!M(11)) DSB((M(12) ? S : slot) + 0x56u) = (u8)(DSB((M(12) ? S : slot) + 0x56u) + 1u);   /* @noinc4, @inc4S */
+    } else if (st == 7u) {
+        d3c_cb0c_fn fn;
+        if (!M(13)) DSB(slot + 0x41u) |= 0x80u;                              /* @no41 */
+        DSB(slot + 0x43u) &= M(14) ? 0xEFu : 0xCFu;                          /* @m43: bit 5 kept */
+        fn = (d3c_cb0c_fn)(void *)fn_resolve(DSD(slot + 0x0Cu));
+        if (fn) fn(slot, DSD((M(15) ? S : slot)), side);                     /* @cbrec */
+        if (DSB(slot + 0x7Au) == (M(16) ? 5u : 4u)                           /* @ch */
+                && (DSB(slot + 0x5Fu) == 0x21u || (DSB(slot + 0x5Fu) == 0x22u && !M(17)))   /* @no22 */
+                && (M(18) ? ((s32)DSD(slot + 0x86u) >> 16) >= 0x5A           /* @ge5a */
+                          : M(19) ? (s16)DSW(slot + 0x86u) > 0x5A            /* @w86: the low word */
+                                  : ((s32)DSD(slot + 0x86u) >> 16) > 0x5A)) {
+            if (M(20)) fighter_state_367dc(S, DSD(S)); else fighter_state_367dc(slot, DSD(slot));   /* @rS */
+        }
+    } else if (st == 8u) {
+        if (!M(21)) DSB(slot + 0x56u) = (u8)(DSB(slot + 0x56u) + 1u);        /* @noinc8 */
+        if (!M(22)) DSB(slot + 0x43u) &= 0xCFu;                              /* @no43 */
+        s8 = M(23) ? slot : S;                                               /* @s8ptr: the pointer slot */
+        if (M(24) ? (s16)DSW(0x000BDBE8u) < (s16)DSW(s8 + 0x88u)             /* @lt */
+                  : M(25) ? DSW(0x000BDBE8u) <= DSW(s8 + 0x88u)              /* @ucmp */
+                          : (s16)DSW(0x000BDBE8u) <= (s16)DSW(s8 + 0x88u)) return;
+        a = (u32)fighter_34e20((u32)DSB(s8 + 0x5Fu));
+        if (!M(26)) a &= 0xFFu;                                              /* @al20: the whole EAX */
+        if (a == 0u) return;
+        keep = DSB(s8 + 0x5Fu);
+        if (!M(27)) DSB(s8 + 0x53u) = 0u;                                    /* @no53 */
+        a = (u32)hit_chain_resolve(M(28) ? oth : side);                      /* @hside */
+        if (!M(29)) a &= 0xFFu;                                              /* @alh */
+        if (a != 0u) return;
+        DSB(s8 + 0x53u) = M(30) ? 0u : 8u;                                   /* @v8 */
+        if (!M(31)) DSB(s8 + 0x5Fu) = keep;                                  /* @no5f */
+    } else if (st == 10u) {
+        d3c_cb10_fn fn = (d3c_cb10_fn)(void *)fn_resolve(DSD((M(32) ? S : slot) + 0x10u));   /* @cb10S */
+        if (fn) fn(slot, side);
+    } else if (st == 0u || (st == 13u && !M(33)) || (st > 15u && !M(34)) || (st == 9u && M(35))) {   /* @no13, @no16, @st9 */
+        fighter_state_350d0(M(36) ? oth : side);                             /* @dside */
+    }
+#undef M
+}
+static void b_d3c_3531c(const u32 *r, u32 *eax) { fighter_state_3531c(r[R_EAX]); *eax = 0u; }
+D3C_M(3531c, pside, 1u)
+D3C_M(3531c, norec, 2u)
+D3C_M(3531c, f6b, 3u)
+D3C_M(3531c, decb, 4u)
+D3C_M(3531c, zero, 5u)
+D3C_M(3531c, vorder, 6u)
+D3C_M(3531c, cfgbit, 7u)
+D3C_M(3531c, orS, 8u)
+D3C_M(3531c, noor, 9u)
+D3C_M(3531c, stS, 10u)
+D3C_M(3531c, noinc4, 11u)
+D3C_M(3531c, inc4S, 12u)
+D3C_M(3531c, no41, 13u)
+D3C_M(3531c, m43, 14u)
+D3C_M(3531c, cbrec, 15u)
+D3C_M(3531c, ch, 16u)
+D3C_M(3531c, no22, 17u)
+D3C_M(3531c, ge5a, 18u)
+D3C_M(3531c, w86, 19u)
+D3C_M(3531c, rS, 20u)
+D3C_M(3531c, noinc8, 21u)
+D3C_M(3531c, no43, 22u)
+D3C_M(3531c, s8ptr, 23u)
+D3C_M(3531c, lt, 24u)
+D3C_M(3531c, ucmp, 25u)
+D3C_M(3531c, al20, 26u)
+D3C_M(3531c, no53, 27u)
+D3C_M(3531c, hside, 28u)
+D3C_M(3531c, alh, 29u)
+D3C_M(3531c, v8, 30u)
+D3C_M(3531c, no5f, 31u)
+D3C_M(3531c, cb10S, 32u)
+D3C_M(3531c, no13, 33u)
+D3C_M(3531c, no16, 34u)
+D3C_M(3531c, st9, 35u)
+D3C_M(3531c, dside, 36u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33725,6 +33829,43 @@ static const binding_t k_bindings[] = {
     { "ai_classify@v8", m_d3c_469a8_v8, 0x00000000u },
     { "ai_classify@stb", m_d3c_469a8_stb, 0x00000000u },
     { "ai_classify@nost", m_d3c_469a8_nost, 0x00000000u },
+    { "fighter_state_3531c", b_d3c_3531c, 0x00000000u },
+    { "fighter_state_3531c@pside", m_d3c_3531c_pside, 0x00000000u },
+    { "fighter_state_3531c@norec", m_d3c_3531c_norec, 0x00000000u },
+    { "fighter_state_3531c@f6b", m_d3c_3531c_f6b, 0x00000000u },
+    { "fighter_state_3531c@decb", m_d3c_3531c_decb, 0x00000000u },
+    { "fighter_state_3531c@zero", m_d3c_3531c_zero, 0x00000000u },
+    { "fighter_state_3531c@vorder", m_d3c_3531c_vorder, 0x00000000u },
+    { "fighter_state_3531c@cfgbit", m_d3c_3531c_cfgbit, 0x00000000u },
+    { "fighter_state_3531c@orS", m_d3c_3531c_orS, 0x00000000u },
+    { "fighter_state_3531c@noor", m_d3c_3531c_noor, 0x00000000u },
+    { "fighter_state_3531c@stS", m_d3c_3531c_stS, 0x00000000u },
+    { "fighter_state_3531c@noinc4", m_d3c_3531c_noinc4, 0x00000000u },
+    { "fighter_state_3531c@inc4S", m_d3c_3531c_inc4S, 0x00000000u },
+    { "fighter_state_3531c@no41", m_d3c_3531c_no41, 0x00000000u },
+    { "fighter_state_3531c@m43", m_d3c_3531c_m43, 0x00000000u },
+    { "fighter_state_3531c@cbrec", m_d3c_3531c_cbrec, 0x00000000u },
+    { "fighter_state_3531c@ch", m_d3c_3531c_ch, 0x00000000u },
+    { "fighter_state_3531c@no22", m_d3c_3531c_no22, 0x00000000u },
+    { "fighter_state_3531c@ge5a", m_d3c_3531c_ge5a, 0x00000000u },
+    { "fighter_state_3531c@w86", m_d3c_3531c_w86, 0x00000000u },
+    { "fighter_state_3531c@rS", m_d3c_3531c_rS, 0x00000000u },
+    { "fighter_state_3531c@noinc8", m_d3c_3531c_noinc8, 0x00000000u },
+    { "fighter_state_3531c@no43", m_d3c_3531c_no43, 0x00000000u },
+    { "fighter_state_3531c@s8ptr", m_d3c_3531c_s8ptr, 0x00000000u },
+    { "fighter_state_3531c@lt", m_d3c_3531c_lt, 0x00000000u },
+    { "fighter_state_3531c@ucmp", m_d3c_3531c_ucmp, 0x00000000u },
+    { "fighter_state_3531c@al20", m_d3c_3531c_al20, 0x00000000u },
+    { "fighter_state_3531c@no53", m_d3c_3531c_no53, 0x00000000u },
+    { "fighter_state_3531c@hside", m_d3c_3531c_hside, 0x00000000u },
+    { "fighter_state_3531c@alh", m_d3c_3531c_alh, 0x00000000u },
+    { "fighter_state_3531c@v8", m_d3c_3531c_v8, 0x00000000u },
+    { "fighter_state_3531c@no5f", m_d3c_3531c_no5f, 0x00000000u },
+    { "fighter_state_3531c@cb10S", m_d3c_3531c_cb10S, 0x00000000u },
+    { "fighter_state_3531c@no13", m_d3c_3531c_no13, 0x00000000u },
+    { "fighter_state_3531c@no16", m_d3c_3531c_no16, 0x00000000u },
+    { "fighter_state_3531c@st9", m_d3c_3531c_st9, 0x00000000u },
+    { "fighter_state_3531c@dside", m_d3c_3531c_dside, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

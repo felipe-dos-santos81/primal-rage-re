@@ -2574,6 +2574,7 @@ int fighter_34ddc(u32 side)
 /* 0x34E20. 1 when the reaction byte is below 0x18. */
 int fighter_34e20(u32 reaction)
 {
+    PR_SEAM_RET(0x34E20u, reaction);
     return reaction < 0x18u;
 }
 
@@ -3530,6 +3531,7 @@ u32 hit_reaction_pick(u32 side, u32 stance)
  * it through 0x34E2C. */
 void fighter_state_350d0(u32 side)
 {
+    PR_SEAM(0x350D0u, side);
     u32 ctx[6];
     u32 slot, rec;
     fighter_ctx_same(ctx, side);                            /* 0x3513B */

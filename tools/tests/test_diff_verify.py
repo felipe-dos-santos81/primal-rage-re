@@ -12106,6 +12106,83 @@ D3C_CASES += [
     ("ai_classify@stb", ['c10', 'c11', 'c12', 'c13', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
     ("ai_classify@nost", ['c0', 'c1', 'c10', 'c11', 'c12', 'c13', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
 ]
+D3C_MASKS.update({"fighter_state_3531c": 0x0})
+D3C_KINDS.update({
+    "fighter_state_3531c@pside": {'byte', 'call #0', 'call #1', 'call #2', 'call #3'},
+    "fighter_state_3531c@norec": {'call #0'},
+    "fighter_state_3531c@f6b": {'byte'},
+    "fighter_state_3531c@decb": {'byte'},
+    "fighter_state_3531c@zero": {'byte', 'call #0', 'call #1'},
+    "fighter_state_3531c@vorder": {'call #0', 'call #1'},
+    "fighter_state_3531c@cfgbit": {'call #2'},
+    "fighter_state_3531c@orS": {'byte'},
+    "fighter_state_3531c@noor": {'byte', 'call #3 memory'},
+    "fighter_state_3531c@stS": {'byte', 'call #0', 'call #1'},
+    "fighter_state_3531c@noinc4": {'byte'},
+    "fighter_state_3531c@inc4S": {'byte'},
+    "fighter_state_3531c@no41": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_3531c@m43": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_3531c@cbrec": {'call #0'},
+    "fighter_state_3531c@ch": {'call #0'},
+    "fighter_state_3531c@no22": {'call #0'},
+    "fighter_state_3531c@ge5a": {'call #2'},
+    "fighter_state_3531c@w86": {'call #0'},
+    "fighter_state_3531c@rS": {'call #0'},
+    "fighter_state_3531c@noinc8": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_3531c@no43": {'byte', 'call #0 memory', 'call #1 memory'},
+    "fighter_state_3531c@s8ptr": {'byte', 'call #0', 'call #1'},
+    "fighter_state_3531c@lt": {'byte', 'call #0', 'call #1'},
+    "fighter_state_3531c@ucmp": {'byte', 'call #0', 'call #1'},
+    "fighter_state_3531c@al20": {'byte', 'call #1'},
+    "fighter_state_3531c@no53": {'byte', 'call #1 memory'},
+    "fighter_state_3531c@hside": {'call #1'},
+    "fighter_state_3531c@alh": {'byte'},
+    "fighter_state_3531c@v8": {'byte'},
+    "fighter_state_3531c@no5f": {'byte'},
+    "fighter_state_3531c@cb10S": {'call #0'},
+    "fighter_state_3531c@no13": {'call #0'},
+    "fighter_state_3531c@no16": {'call #3'},
+    "fighter_state_3531c@st9": {'call #0'},
+    "fighter_state_3531c@dside": {'call #0', 'call #3'},
+})
+D3C_CASES += [
+    ("fighter_state_3531c@pside", ['d0', 'd10', 'd11', 'd12', 'd13', 'd14', 'd15', 'd17', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9']),
+    ("fighter_state_3531c@norec", ['d1']),
+    ("fighter_state_3531c@f6b", ['d8']),
+    ("fighter_state_3531c@decb", ['d8']),
+    ("fighter_state_3531c@zero", ['d5']),
+    ("fighter_state_3531c@vorder", ['d4', 'd5']),
+    ("fighter_state_3531c@cfgbit", ['d5']),
+    ("fighter_state_3531c@orS", ['d5']),
+    ("fighter_state_3531c@noor", ['d4', 'd5']),
+    ("fighter_state_3531c@stS", ['d10', 'd15', 'd17', 'd5', 'd7']),
+    ("fighter_state_3531c@noinc4", ['d5']),
+    ("fighter_state_3531c@inc4S", ['d5']),
+    ("fighter_state_3531c@no41", ['d17', 'd6', 'd7', 'd8', 'd9']),
+    ("fighter_state_3531c@m43", ['d17', 'd6', 'd7', 'd8', 'd9']),
+    ("fighter_state_3531c@cbrec", ['d7']),
+    ("fighter_state_3531c@ch", ['d17', 'd6', 'd8']),
+    ("fighter_state_3531c@no22", ['d17']),
+    ("fighter_state_3531c@ge5a", ['d7']),
+    ("fighter_state_3531c@w86", ['d17', 'd6']),
+    ("fighter_state_3531c@rS", ['d17']),
+    ("fighter_state_3531c@noinc8", ['d10', 'd11', 'd12', 'd13', 'd14']),
+    ("fighter_state_3531c@no43", ['d10', 'd11', 'd12', 'd13', 'd14']),
+    ("fighter_state_3531c@s8ptr", ['d10']),
+    ("fighter_state_3531c@lt", ['d11']),
+    ("fighter_state_3531c@ucmp", ['d13']),
+    ("fighter_state_3531c@al20", ['d12']),
+    ("fighter_state_3531c@no53", ['d10', 'd13', 'd14']),
+    ("fighter_state_3531c@hside", ['d10', 'd13', 'd14']),
+    ("fighter_state_3531c@alh", ['d13']),
+    ("fighter_state_3531c@v8", ['d10', 'd13']),
+    ("fighter_state_3531c@no5f", ['d10', 'd13']),
+    ("fighter_state_3531c@cb10S", ['d15']),
+    ("fighter_state_3531c@no13", ['d3']),
+    ("fighter_state_3531c@no16", ['d4']),
+    ("fighter_state_3531c@st9", ['r9']),
+    ("fighter_state_3531c@dside", ['d2', 'd3', 'd4']),
+]
 D1_MASKS.update(D3C_MASKS)
 D1_KINDS.update(D3C_KINDS)
 D1_CASES.extend(D3C_CASES)
@@ -13206,6 +13283,7 @@ class RealFunctionTests(unittest.TestCase):
         0x1A5D4: (), 0x1A640: (), 0x35B7C: ("edx",), 0x35C1C: ("edx",), 0x367DC: ("edx",), 0x34038: ("esi", "edi", "ebp"),     # track D3 batch d3c
         0x4FB20: (), 0x3BAEC: (), 0x406B4: (), 0x46F4C: (), 0x46C78: (), 0x46DD4: (),     # track D3 batch d3c
         0x46958: (), 0x46698: (), 0x466F4: (), 0x4673C: (), 0x46794: (), 0x467DC: (), 0x4682C: (), 0x46898: (),     # track D3 batch d3c
+        0x350D0: ("edi", "ebp"), 0x34E20: (), 0x3D0BC: ("edx",),     # track D3 batch d3c
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
