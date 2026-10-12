@@ -409,8 +409,8 @@ void camera_y_clamp(void)
      * sign-extended word at DS_000F0AF4, read as DSD(DS_000F0AF2) >> 16). */
     {
         s32 cam = (s32)DSD(DS_000F0AEC);
-        s32 diff = target - cam;
-        s32 mag = diff < 0 ? -diff : diff;
+        s32 diff = (s32)((u32)target - (u32)cam);           /* 0x12CDF sub */
+        s32 mag = diff < 0 ? (s32)(0u - (u32)diff) : diff;  /* 0x12CE7 neg: INT_MIN stays */
         if (mag <= 0x100) cam = target;
         else if (diff > 0) cam += 0x100;
         else cam -= 0x100;

@@ -10326,7 +10326,7 @@ void fighter_382c4(u32 side)
             v = (s32)(0x1F00u - ((u32)side << 9) + DSD(DS_00108884))
                 - (s32)DSD(rec + 0x18u);                                        /* 0x3835F..0x38375 */
     }
-    s32 av = (v < 0) ? -v : v;                                                    /* 0x38377..0x3837B */
+    s32 av = (v < 0) ? (s32)(0u - (u32)v) : v;                                    /* 0x38377..0x3837B neg: INT_MIN stays */
     if (av <= 0x200) {                                                              /* 0x3837D/0x38382 */
         DSB(slot + 0x52u) = 2u;                                                        /* 0x38388 */
         fighter_state_35b7c(slot, rec);                                                  /* 0x3838C */
@@ -10466,7 +10466,7 @@ void fight_384f8(u32 side)
     if ((s32)DSD(rec + 0x18u) >= (s32)DSD(DS_000BE018))                              /* 0x3857D/0x38580 */
         hit_anchor_set(side, DSD(DS_000BE018), DSD(rec + 0x1Cu));                  /* 0x38587 0x188AC */
     {
-        u32 negthr = (u32)(0 - (s32)DSD(DS_000BE018));                             /* 0x38595 */
+        u32 negthr = 0u - DSD(DS_000BE018);                                        /* 0x38595 neg */
         if ((s32)DSD(rec + 0x18u) <= (s32)negthr)                                  /* 0x38597/0x38599 */
             hit_anchor_set(side, negthr, DSD(rec + 0x1Cu));                        /* 0x385A0 */
     }
