@@ -188,3 +188,8 @@ Finding: none beyond §3 (no missing or extra store in the port on the exercised
   re-run with `--function .. --self-check`: each VERIFIED with every mutant detected.
 - `/tmp/pr_d5f/stubcheck.py`: every stub of `D5F_SPECS` declares `E.callee_clobbers`; the only
   disagreeing declarations elsewhere in `SPECS` are the three of §4.
+- The one full self-check of the batch, on its last row commit (`PR_DIFF_JOBS=4 python3 tools/diff_verify.py
+  --image /tmp/pr_d5f_img.bin --self-check`): `rc 0`, `diff-verify: 795/795 functions VERIFIED; 9513/9513
+  mutants detected; 1 named gaps; 502/628 rows with callees closed (167 have none)`. The base
+  (`reverse-d4int` with wave 4 merged) plus this batch's 11 specs and 293 mutants; the integrator re-pins
+  the counter on the merged tree.
