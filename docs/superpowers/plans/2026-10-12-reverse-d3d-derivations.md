@@ -56,6 +56,22 @@ Each is its own commit with a mutant that reproduces the old port.
 | `fighter_47b04` (`0x47B04`) | `0x47B9C..0x47BA8` `lea eax,[ebx*8]; add eax,ebx; shl eax,2; add eax,ebx` (EAX = side*37), `0x47BB0` `mov dl,[eax*4+0x10780f]` | state 1's `0x39834` value: `DSB(slot + 0x5F)` (the EAX slot) -> `DSB(0x1077B0 + side*0x94 + 0x5F)` (the side's slot) | Equal whenever the callback's EAX is the side's own slot. `0x3531C` loads ECX from the pointer table (`mov ecx,[ebx*4+0x1077a8]` `0x35383`, EBX = the side) and calls with `mov eax,ecx` (`0x3542F`): the two agree while `0x1077A8[side]` holds the side's own slot address `0x1077B0 + side*0x94`. The table's writers were not traced (unverified), so "no change in play" is not claimed. Case `o0` (scratch EAX slot); mutant `@slot5f`. |
 | `fighter_47b04` (`0x47B04`) | `0x47B1C` `mov ebp,1`, `0x47B28` `sub ebp,ebx`, `0x47BB7` `mov eax,ebp` before `call 0x39834` (`0x47BB9`) | state 1's `0x39834` side: `side ^ 1` -> `1 - side` | Not reached: equal for side 0 and 1. Case `o3` (side 2: `0xFFFFFFFF` against 3); mutant `@xor`. |
 
+**Found, not landed: `camera_y_clamp` (`0x1317C`) evaluates its curve in single precision.** The raw computes
+the target as `fild; fstp dword` (d = x - `0x1400` as a float), `fld; fld st(0); fmul dword [0x804a8]; fmulp`
+(`0x131AC..0x131B8`) and truncates through `0x61A4C` (`frndint` under a control word whose high byte is `0x1F`):
+d * (d * C) at the x87's 53 bits (the game's control word `0x127F`), C = the float `0x3817B426`. The port
+multiplies in `float` (`target = (s32)(d * (d * c))`, camera.c). Running the original's bytes
+(`E.run_original`, `0x61A4C` and `0x12CD4` allowed, camera y seeded 3 below so `0x12CD4` snaps to the target)
+gives, for the word `0x1078F4` = 12320, 19520, 22483, 27181: **1875, 7500, 10903, 17602**; the port's
+expression in IEEE single precision gives 1874, 7499, 10904, 17603 (computed with numpy `float32`; the port
+itself was **not run** on these inputs — `camera_y_clamp` is `static` and has no binding). Over all x in
+`0x1401..0x7FFF` those four are the only differences of that model. The fix would be
+`(s32)((double)d * ((double)d * (double)c))`. It is not landed because the row that would guard it is not
+done (§6: the EAX-mask analysis is open), and a camera-y change is one the oracles can see. The word is a
+fighter slot's `+0x30` (`0x12DA8` stores it at `0x12DE3`); whether play reaches exactly these four values was
+not checked. If it does, the camera y differs by one unit on that frame: unlike the corrections above, this
+one is not confined to out-of-range inputs.
+
 Seen, not changed (not this batch's rows): `fighter_146f0` (`0x14707`), `fighter_14a5c` (`0x14A73`),
 `fighter_14814` (`0x14872`) and `fighter_14b90` (`0x14BEC`) test the whole return value of `fighter_14590`
 where the raw has `test al,al`; their rows run `0x14590` real (allowed) and name the limit (d2a §4, d2d). With
@@ -158,4 +174,31 @@ where the raw has `test al,al`; their rows run `0x14590` real (allowed) and name
 
 ## §6 Queue entries not done
 
-(filled at the end)
+| entry | port function | why |
+|---|---|---|
+| `0x3157C` (L0, 1057) | `config_key_name` (config.c) | Not reached in the session (a compare tree over the key word; its `raw == 0` arm formats through the runtime `0x65546`). 24 call sites. |
+| `0x1317C` (L1, 122) | `camera_y_clamp` (camera.c, `static`) | Not rowed; a finding is recorded in §3. Open: (1) the function is `static` and needs exporting for a binding; (2) its EAX (the cap word, `sar eax,0x10` `0x131E5`) returns through `0x12DA8`'s `pop edx; ret` (`0x12DEE`) to 15 call sites (`0x263A5 0x26534 0x26691 0x26D23 0x270AE 0x274E2 0x27554 0x277EE 0x28307 0x2851D 0x2884C 0x28C09 0x29664 0x29710 0x29B4A`; the two other callers `0x1321D`/`0x1323C` sit in `0x131F8`/`0x13224`, which nothing calls or points to). Only `0x28307` (`xor eax,eax`) is closed by its next instruction; the others continue into `0x1DA08`, `0x4D2D0`, conditional arms and handler returns that were not traced, so mask 0 is not established. `0x12CD4` (inlined in the port) and the runtime `0x61A4C` (`fnstcw/fldcw/frndint`) both run under the emulator (measured). The `fld` arm `0x131A6` (x >= `0x8000`) is unreachable after `sar eax,0x10`. |
+| `0x1BE30` (L1, 147) | main.c | Not rowed: every callee is host-owned or deferred in `tools/port_classification.txt` (`0x10D34` §50-E, `0x1ADE4` §50-C, `0x1B084` §50-C deferred, `0x4FB98` §K9.2 — `int 10h` set-mode) or has no port function (`0x1D018`, track record §D.4); the port's start-up is the SDL host's. No row attempted. |
+| `0x1C470` (L1, 143) | `gfx_flush_palette` (platform/gfx.c) | Named gap: port I/O. `in al,dx` at `0x1C486`, `out dx,al` at `0x1C4AA`, `0x1C4CA`, `0x1C4CE`, `0x1C4D5` (the VGA DAC); the emulator does not model `in`/`out` and the port replaces them (gfx.c `PORT:` at the DAC write). |
+| `0x1C528` (L1, 190) | `sprite_node_build` (platform/sprite.c) | Named gap: no `mem[]` record to compare. The port builds a C `SpriteNode` struct (sprite.c: "PORT: the node is a C struct, not the original's mem[] record") through `gra_sprite_lookup`, where the raw fills the record at EAX from `0x1B544`'s result. The raw has no `in`/`out`/`int`. |
+| `0x51ED8` (L1, 109) | the loader text blit (platform/sprite.c) | Named gap: the literal aperture. `add edi,0xa0000` at `0x51F1B`, then the span routine `call [edx*4+0x80c8c]` (`0x51F35`) writes there; the port composites into the back buffer instead (AGENTS.md aperture rule; sprite.c `PORT:` at `0x51E5C`/`0x51ED8`). |
+| `0x1C740` (L1, 322) | movie.c | Not rowed: its callees are the host-owned aperture blit `0x50D23` (§K10), `0x52106` (`in`/`out`, track record §D.4) and nine runtime file routines (`0x62756` .. `0x65340`); the port's player is data-in through host.c. No row attempted. |
+| `0x2BAF4` (L1, 316) | actors.c | Not reached in the session (eleven callees, among them the named non-row `0x2EA30`, the unbound `0x2F920` and `0x52106`). |
+| `0x2D4EC` (L1, 319) | config.c | Not rowed: `tools/port_classification.txt` calls it "the declared no-op `0x2D4EC`" (line `2D498 deferred record-§K9.10`: its bounds-checked EEPROM-image store is deferred); a row would compare the raw's stores with a port that deliberately makes none. |
+| `0x31A78` (L1, 137) | svcmenu.c | Not reached in the session. It needs `0x3157C` stubbed (unrowed, no seam), keeps the key name in its own stack frame where the port uses the scratch buffer `0x03900080` (svcmenu.c `PORT:`), and measures it with `repne scasb`. |
+
+Done: `0x12D48`, `0x1461C`, `0x14988`, `0x1D540`, `0x204F4`, `0x216EC`, `0x2A1FC` (two rows), `0x3EA24`, `0x47B04`
+(L0) and `0x2A31C`, `0x2EB80` (L1): 11 of the 21 entries, 12 rows, 188 cases, 393 mutants.
+
+## §7 Counters and gates (measured on the branch head)
+
+- The one full self-check, `PR_DIFF_JOBS=4 python3 tools/diff_verify.py --image … --self-check`: `diff-verify:
+  664/664 functions VERIFIED; 6043/6043 mutants detected; 1 named gaps; 439/497 rows with callees closed (167
+  have none)`, `rc 0` (the branch point: `652/652; 5650/5650; 1; 428/485 (167)`).
+- Each row and each mutant set was also run ten times in a row with `--function … --self-check` (identical
+  every time).
+- Seams added (`port/src`, first statement of each): `0x14590 0x4F944 0x3F720 0x146F0 0x14A5C` (fighter.c),
+  `0x2DBC4` (config.c), `0x2A4FC 0x2A39C 0x2AA70 0x2A1FC` (actors.c), `0x47A00` (fighter.c). The rows that
+  already ran those callees real (allowed) were re-run and are unchanged.
+- Not run by this batch: `make verify`, `make diff-verify`, any `*-oracle` target, the Python unittest. The
+  seven port corrections of §3 are therefore unproven against the oracles.
