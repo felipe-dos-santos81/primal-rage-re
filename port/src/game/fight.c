@@ -5835,7 +5835,8 @@ void fight_4e67c(void)
 #define DS_000C9BE4 0x000C9BE4u   /* no symbols.h name: the "10, own stat" glyph pair's tens id */
 #define DS_000C9BE6 0x000C9BE6u   /* no symbols.h name: the "10, own stat" glyph pair's ones id */
 
-/* 0x4EBB8 — record §49-P. The mode-0x25 round-card body: a fixed 5-row x
+/* 0x4EBB8 — record §49-P. The mode-0x25 round-card body: the string 0x62 at
+ * row 6 (0x2F510(-1, 6, the string, 0x4000), 0x4EBC1..0x4EBDC), a fixed 5-row x
  * 11-col decorative glyph grid (i = 0..0x36, row = i/11 + 6, col = i%11 +
  * 0xE; skips DS_000C9850[i] == 0xFF; glyph = DS_000C9BCE[DS_000C9850[i]];
  * mode `mode_a`, which is 0x2000 when DS_00104AFC == 1 else 0x3000), then per
@@ -5859,6 +5860,7 @@ void fight_4e67c(void)
 void fight_mode25_scorecard(void)
 {
     PR_SEAM0(0x4EBB8u);
+    text_cursor_hold_font2(-1, 6, game_string_get(0x62u), 0x4000u);   /* 0x4EBC1..0x4EBDC 0x1C500, 0x2F510 */
     u32 mode_b = 0x3000u;                                       /* [esp+4] */
     u32 mode_a = (DSW(DS_00104AFC) == 1u) ? 0x2000u : 0x3000u;   /* [esp+0x14] */
 
