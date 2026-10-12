@@ -5733,9 +5733,10 @@ void fight_4e99c(u32 count)
  * Only caller: 0x2685A (0x266AC). */
 void fight_4e67c(void)
 {
-    u32 p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);    /* 0x4E6B8..0x4E6CE, 0x4E799..0x4E7A6 idiom */
+    u32 p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);    /* 0x4E68D..0x4E6A3 */
     int big = (s32)fight_2be00(p) > 0x1C00;                      /* 0x4E6AC/0x4E6B1/0x4E6B6 */
     if (big) {                                                    /* 0x4E6B6 */
+        p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);       /* 0x4E6B8..0x4E6CE: loaded again after the call */
         s32 v = (s32)(s16)(u16)(DSW(p + 0x32u) - 0xE0u);            /* 0x4E6D5/0x4E6DE; 0x4E6E8 `test ax,ax` (a 16-bit difference) */
         if (v <= 0) {                                                 /* 0x4E6E8/0x4E6EB */
             DSW(DS_00108894) = 0u;                                       /* 0x4E70F/0x4E711 */
@@ -5753,6 +5754,7 @@ void fight_4e67c(void)
         if ((DSW(node + 0x1Cu) & 2u) == 0u) {                                     /* 0x4E732..0x4E739 */
             u32 r = DSD(node + 8u);                                                /* 0x4E73B */
             if (DSW(r + 0x34u) != 0u && fight_4a808(node) != 0u) {                  /* 0x4E73E/0x4E743, 0x4E74B/0x4E750 */
+                r = DSD(node + 8u);                                                   /* 0x4E758/0x4E761: loaded again after the call */
                 DSW(r + 0x34u) = 0u;                                                  /* 0x4E75B */
                 DSW(r + 0x32u) = DSW(node + 0x1Au);                                    /* 0x4E768 */
                 DSB(node + 0x1Eu) = 0u;                                                 /* 0x4E76C */
@@ -5762,6 +5764,7 @@ void fight_4e67c(void)
         }
         if (big) {                                                                   /* 0x4E77B */
             if ((DSB(DS_001088BD) & 1u) != 0u) {                                       /* 0x4E795/0x4E797 */
+                p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);                     /* 0x4E799..0x4E7A6: loaded again at every node */
                 s32 px = (s32)DSD(p + 0x30u) >> 16;                                       /* 0x4E7AF/0x4E7B5 */
                 s32 rx = (s32)DSD(DSD(node + 8u) + 0x30u) >> 16;                           /* 0x4E7B2/0x4E7B8 */
                 if (rx > px + 0x100 || rx < px - 0x100)                                     /* 0x4E7C1/0x4E7C3, 0x4E7CE/0x4E7D0 */
@@ -5810,6 +5813,7 @@ void fight_4e67c(void)
             }
             r2 = DSD(node + 8u);                                                                                                        /* 0x4E8D8 */
             if (fight_2be00(r2) < 0) {                                                                                                    /* 0x4E8E0/0x4E8E2 */
+                r2 = DSD(node + 8u);                                                                                                         /* 0x4E8E4/0x4E8EB: loaded again after the call */
                 DSB(r2 + 0x28u) |= 0x80u;                                                                                                    /* 0x4E8E7 */
                 actor_type_49444(r2);                                                                                                          /* 0x4E8EE 0x49444 */
             }
