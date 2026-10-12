@@ -11,7 +11,6 @@ only. It does not mean the function is correct for states the cases never produc
 import argparse
 import concurrent.futures
 import dataclasses
-import glob
 import multiprocessing
 import os
 import subprocess
@@ -4982,9 +4981,12 @@ C3B_SPECS = [
                         DS_001028D9: b"\xAA", DS_001028CC: le32(0xBBBBBBBB)}, {0x1CA40: 0}),
         Case("m2", {}, {DS_001028C0: le32(0x10B000), DS_001028D4: le32(0xA5A5A5A5),
                         DS_001028D9: b"\xAA", DS_001028CC: le32(0xBBBBBBBB)}, {0x1CA40: 1}),
+        # AL = 0 with the upper bits set: `test al,al` (0x1CA8F) takes the not-playing exit
+        Case("m3", {}, {DS_001028C0: le32(0x10B000), DS_001028D4: le32(0xA5A5A5A5),
+                        DS_001028D9: b"\xAA", DS_001028CC: le32(0xBBBBBBBB)}, {0x1CA40: 0x100}),
     ], calls=(E.Call(0x1CA40, (), eax=0), E.Call(0x5DEAF, (), clobbers=("ebx", "ecx", "edx"))),
        eax_mask=0xFF,
-       mutants=("@gate", "@play", "@stop", "@zero", "@al", "@cc")),
+       mutants=("@gate", "@play", "@stop", "@zero", "@al", "@cc", "@eax")),
     # 0x1CE70 (record §C3b.1): EAX = the resource handle. The +0x0C dword of each 0x18-stride DIG
     # slot is compared; on a match 0x5DD03 (+0x00's AIL handle) status 4 returns 1, any other clears
     # the slot's +0x0C and the scan goes on. AL = 0 without a DIG driver.
@@ -18203,9 +18205,9 @@ SPECS = [
 
 def _verify_job(job):
     """One (spec, binding) item of `verify_all` in a pool worker. diffrun rewrites the image on every
-    run, so each worker process has its own image file."""
-    diffrun, exe, image_path, spec, name = job
-    own = "%s.%d" % (image_path, os.getpid())
+    run, so each worker process has its own image file, in this run's own directory."""
+    diffrun, exe, images, spec, name = job
+    own = os.path.join(images, "%d.bin" % os.getpid())
     port = run_port(diffrun, exe, own, cases_text(spec, name))
     return verify_spec(spec, E.Image.load(own), port, name)
 
@@ -18233,15 +18235,12 @@ def verify_all(diffrun, exe, image_path, specs, only=None, mutants=False, jobs=N
             done.append(verify_spec(spec, E.Image.load(image_path), port, name))
     else:
         run_port(diffrun, exe, image_path, "")  # the image the gap rows and the callers read
-        try:
+        with tempfile.TemporaryDirectory(prefix="pr_diff_") as images:   # two runs may share image_path
             with concurrent.futures.ProcessPoolExecutor(
                     max_workers=min(jobs, len(runs)),
                     mp_context=multiprocessing.get_context("spawn")) as pool:
-                done = list(pool.map(_verify_job, [(diffrun, exe, image_path, spec, name)
+                done = list(pool.map(_verify_job, [(diffrun, exe, images, spec, name)
                                                    for spec, name in runs], chunksize=4))
-        finally:
-            for own in glob.glob(glob.escape(image_path) + ".[0-9]*"):
-                os.unlink(own)
     done = iter(done)
     return [verify_gap(spec, E.Image.load(image_path)) if name is None else next(done)
             for spec, name in work]

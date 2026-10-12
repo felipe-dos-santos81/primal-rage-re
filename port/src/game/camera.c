@@ -477,8 +477,8 @@ void camera_mode_track_pair(void)
 
     s32 la = (s32)DSD(sa + 0x34u);
     s32 lb = (s32)DSD(sb + 0x34u);
-    s32 diff = la - lb;
-    s32 diffabs = diff < 0 ? -diff : diff;
+    s32 diff = (s32)((u32)la - (u32)lb);
+    s32 diffabs = diff < 0 ? (s32)(0u - (u32)diff) : diff;   /* 0x12ED5 neg: INT_MIN stays */
 
     /* 0x12ED7: split the pair when it exceeds word[0x9AF28]. */
     if (diffabs > (s32)DSW(DS_0009AF28)) {
@@ -501,8 +501,8 @@ void camera_mode_track_pair(void)
                 DSD(DSD(sb) + 0x18u) = hit_record_x(b);        /* 0x12F22/0x12F29 */
             }
         }
-        diff = la - lb;
-        diffabs = diff < 0 ? -diff : diff;
+        diff = (s32)((u32)la - (u32)lb);
+        diffabs = diff < 0 ? (s32)(0u - (u32)diff) : diff;         /* 0x12F3E neg */
     }
 
     /* 0x12F44: the two locals, each folded into the 0x1800 dead zone. */

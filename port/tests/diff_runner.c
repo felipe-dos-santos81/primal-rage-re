@@ -9566,6 +9566,7 @@ static void m_c3b_d_dir(const u32 *r, u32 *eax)   { c3b_d_core(r, C3B_D_DIR); *e
 #define C3B_M_ZERO 0x08u    /* the current song/pause bytes are not cleared */
 #define C3B_M_AL   0x10u    /* AL = 0 on the stop path */
 #define C3B_M_CC   0x20u    /* the pending song is not cleared */
+#define C3B_M_EAX  0x40u    /* the whole EAX of 0x1CA40 is tested (the raw: `test al,al`, 0x1CA8F) */
 static u32 c3b_music_stop_core(u32 mut)
 {
     u32 seq = DSD(DS_001028C0);
@@ -9574,7 +9575,8 @@ static u32 c3b_music_stop_core(u32 mut)
         DSB(DS_001028D9) = 0;
     }
     if (seq == 0u && !(mut & C3B_M_GATE)) return 0;
-    if (snd_music_playing() == 0u && !(mut & C3B_M_PLAY)) return 0;
+    if (((mut & C3B_M_EAX) ? snd_music_playing() : (u32)(u8)snd_music_playing()) == 0u
+        && !(mut & C3B_M_PLAY)) return 0;
     if (!(mut & C3B_M_CC)) DSD(DS_001028CC) = 0;
     if (!(mut & C3B_M_STOP)) AIL_stop_sequence(NULL);
     return (mut & C3B_M_AL) ? 0u : 1u;
@@ -9587,6 +9589,7 @@ static void m_c3b_m_stop(const u32 *r, u32 *eax) { (void)r; *eax = c3b_music_sto
 static void m_c3b_m_zero(const u32 *r, u32 *eax) { (void)r; *eax = c3b_music_stop_core(C3B_M_ZERO); }
 static void m_c3b_m_al(const u32 *r, u32 *eax)   { (void)r; *eax = c3b_music_stop_core(C3B_M_AL); }
 static void m_c3b_m_cc(const u32 *r, u32 *eax)   { (void)r; *eax = c3b_music_stop_core(C3B_M_CC); }
+static void m_c3b_m_eax(const u32 *r, u32 *eax)  { (void)r; *eax = c3b_music_stop_core(C3B_M_EAX); }
 
 #define C3B_P_DRIVER 0x01u  /* the DIG-driver gate is dropped */
 #define C3B_P_STATUS 0x02u  /* the playing status is 2, not 4 */
@@ -26892,6 +26895,7 @@ static const binding_t k_bindings[] = {
     { "snd_music_stop@zero",               m_c3b_m_zero,   0x000000FFu },
     { "snd_music_stop@al",                 m_c3b_m_al,     0x000000FFu },
     { "snd_music_stop@cc",                 m_c3b_m_cc,     0x000000FFu },
+    { "snd_music_stop@eax",                m_c3b_m_eax,    0x000000FFu },
     { "snd_sample_playing",                b_c3b_snd_sample_playing, 0x000000FFu },
     { "snd_sample_playing@driver",         m_c3b_p_driver, 0x000000FFu },
     { "snd_sample_playing@status",         m_c3b_p_status, 0x000000FFu },

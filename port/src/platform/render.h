@@ -9,8 +9,9 @@
 
 #include "types.h"
 
-/* PORT: 0x1C350. Rebuilds the free list over the 580-node pool and empties the
- * display list (head = 0). */
+/* PORT: 0x1C350. Rebuilds the free list over the 580-node pool. The display
+ * list head DS_00105B44 is left alone: the one raw caller 0x2BAF4 clears it
+ * first (0x2BBC9), as actors_reset_al does. */
 void render_list_init(void);
 
 /* 0x1C390. Pops and returns the free-list head (its next becomes the head). */

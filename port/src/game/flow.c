@@ -5851,6 +5851,9 @@ void game_mode_25_step(void)
     }
 }
 
+/* PORT: a data-object address symbols.h does not name. */
+#define FLOW_REVEAL_STREAMS 0x000C95D4u  /* 0x4EFFF `mov edx,[edx*4+0xc95d4]` */
+
 /* 0x4EF8C — record §49-P. Mode 0x25's reveal: for every entry on the active
  * list DS_0010884C whose +0x1C bit 1 is set, node->+0x14 = DS_000F0AF0 -
  * 0x8180, its actor R's +0x34 = 0xFF80, node->+0x1C &= 0x7F, R->+0x28 |=
@@ -5878,11 +5881,8 @@ void game_mode_25_reveal(void)
             DSB(node + 0x1Cu) = (u8)(DSB(node + 0x1Cu) & 0x7Fu);  /* 0x4EFDB */
             DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) | 0x4080u); /* 0x4EFE2..0x4EFEF */
             DSB(node + 0x1Eu) = 8u;                             /* 0x4EFF5 */
-            actors_anim_begin(rec, DSD(0x000C95D4u + idx * 4u),
-                              0x40400000u);                     /* 0x4EFFC..0x4F00B 0x2BC30, the
-                                                                   * 0xC95D4 table (0x4EFFF `mov edx,
-                                                                   * [edx*4+0xc95d4]`) fight.c's
-                                                                   * DS_000C95D4 local #define names */
+            actors_anim_begin(rec, DSD(FLOW_REVEAL_STREAMS + idx * 4u),
+                              0x40400000u);                     /* 0x4EFFC..0x4F00B 0x2BC30 */
         }
         node = next;                                             /* 0x4F010/0x4F012 */
     }
@@ -6221,7 +6221,7 @@ u32 snd_music_stop(void)
     DSD(DS_001028D4) = 0;                                  /* 0x1CA7A */
     DSB(DS_001028D9) = 0;                                  /* 0x1CA80 */
     if (DSD(DS_001028C0) == 0u) return 0;                  /* 0x1CA86 */
-    if (snd_music_playing() == 0u) return 0;               /* 0x1CA8A */
+    if ((u8)snd_music_playing() == 0u) return 0;           /* 0x1CA8A/0x1CA8F test al,al */
     DSD(DS_001028CC) = 0;                                  /* 0x1CAA1 */
     AIL_stop_sequence(s_sequence);                         /* 0x1CAA7 0x5DEAF */
     return 1;

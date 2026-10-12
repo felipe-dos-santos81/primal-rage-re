@@ -74,8 +74,6 @@ void render_list_init(void)
         DSD(node + 4) = 0u;
     }
     DSD(RENDER_FREE_HEAD) = RENDER_NODE_POOL;
-    /* PORT: 0x1C350 leaves the list head DS_00105B44 alone; its one raw caller
-     * 0x2BAF4 clears it first (0x2BBC9), as actors_reset_al does. */
     render_count = 0;
 }
 
