@@ -1252,6 +1252,7 @@ static void ai_pick(u32 side)
  * command's 0x2000 is set; 0x1000 in the mirror; else 0. */
 u32 ai_facing_cmd(u32 side)
 {
+    PR_SEAM_RET(0x1A5D4u, side);
     u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x1A5E0 */
     u16 cmd = DSW(DS_001088E0 + side * 2u);
     if ((DSW(rec + 0x28u) >> 8 & 0x40u) == 0u) {
@@ -2115,6 +2116,7 @@ void fighter_state_35d20(u32 slot, u32 rec)
  * frame stream, set +0x28 bit 4, and return 1 when the clamp fired. */
 int fighter_state_35c1c(u32 slot, u32 rec)
 {
+    PR_SEAM_RET(0x35C1Cu, slot, rec);
     u8 max = DSB(DS_000BDA3E + (u32)DSB(slot + 0x7Au) * 2u);   /* 0x35C25 */
     int r = 0;
     DSB(rec + 0x52u) = (u8)(DSB(rec + 0x52u) + DSB(rec + 0x58u));  /* 0x35C2F */
@@ -2177,6 +2179,7 @@ void fighter_35938(u32 rec)
  * +0x58 frame step from the frame position, and hand off to 0x35C1C/0x35D20. */
 void fighter_state_35b7c(u32 slot, u32 rec)
 {
+    PR_SEAM(0x35B7Cu, slot, rec);
     s32 max;
     s32 frame;
     DSB(slot + 0x52u) = 2u;                             /* 0x35B87 */
@@ -2611,6 +2614,7 @@ void fighter_4f944(u32 v)
  * 0x2BC30 stores EDX to rec+8 at 0x2BC52, so EDX is the stream). */
 void fighter_state_367dc(u32 slot, u32 rec)
 {
+    PR_SEAM(0x367DCu, slot, rec);
     actors_anim_begin(rec, DSD(FIGHT_ANIM_367DC
                                + (u32)DSB(slot + 0x7Au) * 4u),
                       0x40400000u);                         /* 0x367F5 */

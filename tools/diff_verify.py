@@ -18347,6 +18347,88 @@ D3C_SPECS += [
                 "@S56", "@hside", "@alh", "@rside", "@S54", "@alr", "@late56", "@latef2",
                 "@y16", "@p280b", "@S54a", "@aside", "@yu")),
 ]
+D3C_TAB = 0x0010A500             # the two-byte frame entries a record's +0x0C points at
+D3C_FRAME = 0xFE                 # the frame byte the 0x35C1C stub leaves at rec+0x52 (-2)
+D3C_1A5D4 = E.Call(0x1A5D4, ("eax",))
+D3C_1A640 = E.Call(0x1A640, ("eax",))
+D3C_35B7C = E.Call(0x35B7C, ("eax", "edx"), clobbers=("edx",))
+D3C_367DC = E.Call(0x367DC, ("eax", "edx"), clobbers=("edx",))
+# 0x35C1C as a stub that leaves the frame byte rec+0x52 = D3C_FRAME: the callers read the frame
+# after the call (0x35B39, 0x3760A, 0x38452), so a port that read it before sees the pre-call 3
+D3C_35C1C_F = E.Call(0x35C1C, ("eax", "edx"), clobbers=("edx",), writes=((1, 0x52, bytes([D3C_FRAME])),))
+
+
+def d3c_frame_pokes(rec, b, f28, r51, x):
+    """What the shared tail of 0x359E0/0x37464/0x382C4 reads of a record: +0x0C (D3C_TAB), +0x18
+    between two seeded dwords, the +0x28 word between two seeded words, +0x4F..+0x53 (the side
+    byte `r51`, the pre-call frame 3) and the table: the entry of D3C_FRAME is `b`, and the entries
+    of the pre-call frame, of D3C_FRAME zero-extended and of a one-byte stride hold other bytes."""
+    return {rec + 0x0C: le32(D3C_TAB), rec + 0x14: le32(0x14141414) + le32(x) + le32(0x1C1C1C1C),
+            rec + 0x26: le16(0x2626) + le16(f28) + le16(0x2A2A),
+            rec + 0x4F: bytes([0x4F, 0x50, r51, 0x03, 0x53]),
+            D3C_TAB - 4: bytes([b, 0xEE]), D3C_TAB - 2: bytes([b ^ 0x0F]),
+            D3C_TAB + 6: bytes([b ^ 0x55]), D3C_TAB + D3C_FRAME * 2: bytes([b ^ 0x33])}
+
+
+def d3c_gate_case(side, cmd=0, s43=0xBF, s41=0xBF, g=0, ch=2, da=0x0010, db=0x0020, x=0x00100000,
+                  b=0x7F, f28=0x0000, r51=None):
+    """0x359E0 on the scratch slot D3C_FS and the record D3C_RX: the slot's +0x40..+0x43,
+    +0x4A..+0x4F and +0x7A; the record as d3c_frame_pokes; the side's command word (the other
+    side's flips both the 0xC000 test and the 0x0500 compare); the low byte of DS_000EF6DC (bit 0
+    is `g`, bit 1 its complement); and the 0xBDBEE and 0xBDC02 words of `ch` (and of ch
+    sign-extended: other words)."""
+    words = [0, 0]
+    words[side] = cmd
+    words[1 - side] = (0 if cmd & 0xC000 else 0xC000) | (0 if (cmd & 0x0500) == 0x0500 else 0x0500)
+    p = d3c_frame_pokes(D3C_RX, b, f28, side if r51 is None else r51, x)
+    p.update({D3C_FS + 0x40: bytes([0x40, s41, 0x42, s43]),
+              D3C_FS + 0x4A: le16(0x4A4A) + le16(0x4C4C) + le16(0x4E4E),
+              D3C_FS + 0x7A: bytes([ch]),
+              0x001088E0: le16(words[0]) + le16(words[1]),
+              0x000EF6DC: bytes([0xFD if g else 0xFE]),
+              0x000BDBEE + ch * 2: le16(da), 0x000BDC02 + ch * 2: le16(db)})
+    if ch >= 0x80:
+        p[0x000BDBEE + (ch - 0x100) * 2] = le16(da ^ 0x7F0F)
+        p[0x000BDC02 + (ch - 0x100) * 2] = le16(db ^ 0x7F0F)
+    return p
+
+
+def d3c_gate_regs(side):
+    return {"eax": D3C_FS, "edx": D3C_RX, "ebx": side}
+
+
+D3C_SPECS += [
+    # 0x359E0 fighter_state_359e0: EAX = slot, EDX = rec, EBX = side. Eight stubs. 0x365C8 and
+    # 0x1A570 return the AL the raw tests (0x359EF; 0x35ABF, 0x35AFC `test al,al`: e1, e2, e7, e8
+    # return 0x100, 0xFFFFFF00, 0xFFFFFF01); 0x1A5D4 and 0x1A640 the EAX it tests whole (0x35A32,
+    # 0x35AB4; 0x35A51 `test eax,eax`: e5, e7 return 0x100, e4 0x2000, e8 0x1000). The 0x35C1C stub
+    # rewrites the frame byte, which the raw reads after the call (0x35B39). The port reads the
+    # command word once at entry where the raw reads it at 0x35A09 and 0x35A71: no stub writes it
+    # (record §4). Mask 0: the one caller returns at once (0x34C1B call, 0x34C20..0x34C25, the
+    # dispatcher 0x34B6C), whose one call site writes EAX (0x357FC call, 0x35801 `mov eax,esi`).
+    Spec("fighter_state_359e0", 0x359E0, [
+        Case("e0", d3c_gate_regs(0), d3c_gate_case(0), {0x365C8: 1}),
+        Case("e1", d3c_gate_regs(1), d3c_gate_case(1, cmd=0x4000), {0x365C8: 0x100}),
+        Case("e2", d3c_gate_regs(0), d3c_gate_case(0, cmd=0x3FFF, s43=0xFD), {0x365C8: 0xFFFFFF00, 0x1A5D4: 1}),
+        Case("e3", d3c_gate_regs(1), d3c_gate_case(1, s43=0xFF), {0x1A5D4: 0, 0x1A640: 0}),
+        Case("e4", d3c_gate_regs(0), d3c_gate_case(0, s43=0xFE), {0x1A640: 0x2000}),
+        Case("e5", d3c_gate_regs(1), d3c_gate_case(1, cmd=0x0100, s43=0x02, s41=0x40), {0x1A5D4: 0x100}),
+        Case("e6", d3c_gate_regs(0), d3c_gate_case(0, cmd=0x0500, s43=0x02, s41=0xFF, da=0xFFF0),
+             {0x1A5D4: 1, 0x1A570: 1}),
+        Case("e7", d3c_gate_regs(1), d3c_gate_case(1, s43=0xFF, g=1, x=0x0000FFF8, b=0x80, f28=0x4000),
+             {0x1A5D4: 0x100, 0x1A570: 0x100}),
+        Case("e8", d3c_gate_regs(0), d3c_gate_case(0, cmd=0x0400, s43=0x01, s41=0xC0, g=1, b=0xFF, f28=0xBFFF,
+                                                   r51=0x80), {0x1A640: 0x1000, 0x1A570: 0xFFFFFF01}),
+        Case("e9", d3c_gate_regs(1), d3c_gate_case(1, cmd=0x0500, s43=0xFF, s41=0xFF, ch=0x80, db=0x8000,
+                                                   b=0x01, f28=0xFFFF, r51=0), {0x1A640: 1, 0x1A570: 0}),
+    ], calls=(D2A_365C8, D3C_35B7C, D3C_367DC, D3C_1A5D4, D3C_1A640, BIT15, D3C_35C1C_F, C1_1883C),
+       eax_mask=0,
+       mutants=("@gside", "@al365", "@or43", "@late43", "@cmdside", "@c000", "@fside", "@alf", "@b2", "@bside",
+                "@alb", "@b1", "@m5", "@and41", "@cmd2side", "@nogate", "@gate2", "@alf2",
+                "@csext", "@tab", "@al570", "@sign", "@dz", "@x18w", "@sswap", "@fearly", "@fz",
+                "@bz", "@step1", "@sh", "@noflip", "@flipbit", "@no4c", "@aside", "@sxz",
+                "@b1x", "@asext", "@rswap", "@eswap", "@fside2", "@pside")),
+]
 D1_SPECS += D3C_SPECS
 
 
