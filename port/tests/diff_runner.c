@@ -26143,6 +26143,46 @@ D3A_JP_MUT(b21) D3A_JP_MUT(b14) D3A_JP_MUT(b0c) D3A_JP_MUT(b11) D3A_JP_MUT(b11la
 D3A_JP_MUT(afc) D3A_JP_MUT(afcb) D3A_JP_MUT(afcearly) D3A_JP_MUT(xor) D3A_JP_MUT(xorb) D3A_JP_MUT(order)
 D3A_JP_MUT(hook) D3A_JP_MUT(hookw) D3A_JP_MUT(afe) D3A_JP_MUT(afeb) D3A_JP_MUT(ee) D3A_JP_MUT(eew)
 D3A_JP_MUT(b00) D3A_JP_MUT(b00b) D3A_JP_MUT(early) D3A_JP_MUT(nocall0) D3A_JP_MUT(nocall1)
+/* 0x272DC: no argument. Mask 0: the one caller 0x274EC goes on with `or byte [0x104aec],2` (0x274F1), three
+ * pops and `ret` into 0x25362 `jmp 0x2540f`, the mode tail the wave-1 records trace dead. */
+static void b_d3a_272dc(const u32 *r, u32 *eax) { (void)r; flow_arena_ko_check(); *eax = 0u; }
+enum { D3A_KO_NONE, D3A_KO_wzext, D3A_KO_wlow, D3A_KO_thr, D3A_KO_bsext, D3A_KO_off5a, D3A_KO_vd3, D3A_KO_nosnap,
+       D3A_KO_nocont, D3A_KO_order, D3A_KO_side, D3A_KO_sidesext, D3A_KO_thr2, D3A_KO_bsext2, D3A_KO_v27,
+       D3A_KO_v22, D3A_KO_vorder, D3A_KO_f41side, D3A_KO_f41bit, D3A_KO_f41set, D3A_KO_nof41,
+       D3A_KO_f41zext, D3A_KO_b00, D3A_KO_b00b, D3A_KO_early, D3A_KO_fall };
+static void d3a_272dc_core(u32 mut)
+{
+    u32 w = (mut == D3A_KO_wzext) ? DSB(0x0010810Du) : (mut == D3A_KO_wlow) ? (u32)(s32)(s8)DSB(0x0010810Au)
+                                                                          : (u32)(s32)(s8)DSB(0x0010810Du);
+    u32 a = DSB(0x0010780Au + w * 0x94u + ((mut == D3A_KO_off5a) ? 1u : 0u));
+    if ((mut == D3A_KO_bsext) ? ((s32)(s8)a >= 0x78) : (a >= ((mut == D3A_KO_thr) ? 0x79u : 0x78u))) {
+        (void)sound_voice((mut == D3A_KO_vd3) ? 0xD2u : 0xD3u);
+        if (mut == D3A_KO_order) flow_continue_open();
+        if (mut != D3A_KO_nosnap) flow_match_snapshot();
+        if (mut != D3A_KO_nocont && mut != D3A_KO_order) flow_continue_open();
+        if (mut != D3A_KO_fall) return;
+    }
+    u32 side = (mut == D3A_KO_side) ? w : (mut == D3A_KO_sidesext) ? (u32)(s32)(s8)DSB(0x00104B12u) : DSB(0x00104B12u);
+    u32 b = DSB(0x0010780Au + side * 0x94u);
+    if ((mut == D3A_KO_bsext2) ? ((s32)(s8)b < 0x78) : (b < ((mut == D3A_KO_thr2) ? 0x79u : 0x78u))) return;
+    u32 f = 0x001077F1u + ((mut == D3A_KO_f41side) ? side : (mut == D3A_KO_f41zext) ? DSB(0x0010810Du) : w) * 0x94u;
+    if (mut == D3A_KO_early) { DSB(f) = (u8)(DSB(f) | 0x10u); DSW(0x00104B00u) = 0xDu; }
+    if (mut == D3A_KO_vorder) (void)sound_voice(0x22u);
+    (void)sound_voice((mut == D3A_KO_v27) ? 0x26u : 0x27u);
+    if (mut != D3A_KO_vorder) (void)sound_voice((mut == D3A_KO_v22) ? 0x23u : 0x22u);
+    if (mut == D3A_KO_early) return;
+    if (mut == D3A_KO_f41set) DSB(f) = 0x10u;
+    else if (mut != D3A_KO_nof41) DSB(f) = (u8)(DSB(f) | ((mut == D3A_KO_f41bit) ? 0x08u : 0x10u));
+    if (mut == D3A_KO_b00b) DSB(0x00104B00u) = 0xDu;
+    else DSW(0x00104B00u) = (mut == D3A_KO_b00) ? 0xEu : 0xDu;
+}
+#define D3A_KO_MUT(name) \
+    static void m_d3a_ko_##name(const u32 *r, u32 *eax) { (void)r; d3a_272dc_core(D3A_KO_##name); *eax = 0u; }
+D3A_KO_MUT(wzext) D3A_KO_MUT(wlow) D3A_KO_MUT(thr) D3A_KO_MUT(bsext) D3A_KO_MUT(off5a) D3A_KO_MUT(vd3)
+D3A_KO_MUT(nosnap) D3A_KO_MUT(nocont) D3A_KO_MUT(order) D3A_KO_MUT(side) D3A_KO_MUT(sidesext) D3A_KO_MUT(thr2)
+D3A_KO_MUT(bsext2) D3A_KO_MUT(v27) D3A_KO_MUT(v22) D3A_KO_MUT(vorder) D3A_KO_MUT(f41side) D3A_KO_MUT(f41bit)
+D3A_KO_MUT(f41set) D3A_KO_MUT(nof41) D3A_KO_MUT(f41zext) D3A_KO_MUT(b00) D3A_KO_MUT(b00b) D3A_KO_MUT(early)
+D3A_KO_MUT(fall)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32579,6 +32619,32 @@ static const binding_t k_bindings[] = {
     { "flow_join_prompt_draw@early", m_d3a_jp_early, 0x00000000u },
     { "flow_join_prompt_draw@nocall0", m_d3a_jp_nocall0, 0x00000000u },
     { "flow_join_prompt_draw@nocall1", m_d3a_jp_nocall1, 0x00000000u },
+    { "flow_arena_ko_check", b_d3a_272dc, 0x00000000u },
+    { "flow_arena_ko_check@wzext", m_d3a_ko_wzext, 0x00000000u },
+    { "flow_arena_ko_check@wlow", m_d3a_ko_wlow, 0x00000000u },
+    { "flow_arena_ko_check@thr", m_d3a_ko_thr, 0x00000000u },
+    { "flow_arena_ko_check@bsext", m_d3a_ko_bsext, 0x00000000u },
+    { "flow_arena_ko_check@off5a", m_d3a_ko_off5a, 0x00000000u },
+    { "flow_arena_ko_check@vd3", m_d3a_ko_vd3, 0x00000000u },
+    { "flow_arena_ko_check@nosnap", m_d3a_ko_nosnap, 0x00000000u },
+    { "flow_arena_ko_check@nocont", m_d3a_ko_nocont, 0x00000000u },
+    { "flow_arena_ko_check@order", m_d3a_ko_order, 0x00000000u },
+    { "flow_arena_ko_check@side", m_d3a_ko_side, 0x00000000u },
+    { "flow_arena_ko_check@sidesext", m_d3a_ko_sidesext, 0x00000000u },
+    { "flow_arena_ko_check@thr2", m_d3a_ko_thr2, 0x00000000u },
+    { "flow_arena_ko_check@bsext2", m_d3a_ko_bsext2, 0x00000000u },
+    { "flow_arena_ko_check@v27", m_d3a_ko_v27, 0x00000000u },
+    { "flow_arena_ko_check@v22", m_d3a_ko_v22, 0x00000000u },
+    { "flow_arena_ko_check@vorder", m_d3a_ko_vorder, 0x00000000u },
+    { "flow_arena_ko_check@f41side", m_d3a_ko_f41side, 0x00000000u },
+    { "flow_arena_ko_check@f41bit", m_d3a_ko_f41bit, 0x00000000u },
+    { "flow_arena_ko_check@f41set", m_d3a_ko_f41set, 0x00000000u },
+    { "flow_arena_ko_check@nof41", m_d3a_ko_nof41, 0x00000000u },
+    { "flow_arena_ko_check@f41zext", m_d3a_ko_f41zext, 0x00000000u },
+    { "flow_arena_ko_check@b00", m_d3a_ko_b00, 0x00000000u },
+    { "flow_arena_ko_check@b00b", m_d3a_ko_b00b, 0x00000000u },
+    { "flow_arena_ko_check@early", m_d3a_ko_early, 0x00000000u },
+    { "flow_arena_ko_check@fall", m_d3a_ko_fall, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

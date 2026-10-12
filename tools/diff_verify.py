@@ -18342,6 +18342,53 @@ D3A_SPECS += [
                 "@xorb", "@order", "@hook", "@hookw", "@afe", "@afeb", "@ee", "@eew", "@b00", "@b00b", "@early",
                 "@nocall0", "@nocall1")),
 ]
+D3A_SNAP = E.Call(0x27254, ())
+D3A_CONT = E.Call(0x278B0, ())
+
+
+def d3a_ko_case(w, side, a=(0x77, 0x77), f41=(0x01, 0x02), below=(0x00, 0x01), far=0x00):
+    """0x272DC: the dword 0x10810A (its top byte 0x10810D = `w`) and the byte after it, the side
+    byte 0x104B12 between neighbours, both slots' +0x5A (`a`) and +0x41 (`f41`) bytes between
+    neighbours, the same two bytes one slot below slot 0 (`below`: 0x107776 and 0x10775D, what
+    w = -1 indexes), the byte w or a sign-extended side 0x80 indexes (0x102E0A = `far`) and the
+    mode word 0x104B00 (0x5A5A) between seeded words."""
+    p = {0x0010810A: bytes([0x7E, 0x63, 0x64, w, 0x65]), 0x00104B11: bytes([0x66, side, 0x67]),
+         0x00107775: bytes([0x68, below[0], 0x69]), 0x0010775C: bytes([0x6A, below[1], 0x6B]),
+         0x00102E09: bytes([0x6C, far, 0x6D]),
+         0x00104AFE: le16(0x6161) + le16(0x5A5A) + le16(0x6262)}
+    for k in (0, 1):
+        p[0x00107809 + k * 0x94] = bytes([0x71 + k, a[k], 0x73 + k])
+        p[0x001077F0 + k * 0x94] = bytes([0x75 + k, f41[k], 0x77 + k])
+    return p
+
+
+D3A_SPECS += [
+    # 0x272DC flow_arena_ko_check: no argument. w = the byte 0x10810D sign-extended (`mov
+    # edx,[0x10810a]; sar edx,0x18`). When w's slot +0x5A byte (zero-extended, signed `jl`
+    # against 0x78) is 0x78 or more: the voice 0xD3, 0x27254 and 0x278B0. Else when the +0x5A
+    # byte of the side 0x104B12 (zero-extended) is 0x78 or more: the voices 0x27 and 0x22, w's
+    # slot +0x41 |= 0x10 (w re-read) and the mode word 0x104B00 = 0xD. Every callee is a stub
+    # (0x27254 and 0x278B0 seamed here, their own rows). a2/b2 run w = -1 (the bytes one slot
+    # below slot 0), a3 w = -128 (0x102E0A), n1 the side 0x80 (past the image on both sides: 0);
+    # in a0 the side's byte is high too (the first arm returns).
+    # Mask 0: the one caller 0x274EC, record §1.
+    Spec("flow_arena_ko_check", 0x272DC, [
+        Case("a0", {"edx": 0xABCD1234}, d3a_ko_case(0, 1, a=(0x78, 0x90))),
+        Case("a1", {}, d3a_ko_case(1, 0, a=(0x10, 0xFF))),
+        Case("a2", {}, d3a_ko_case(0xFF, 0, a=(0x10, 0x10), below=(0x78, 0x01))),
+        Case("a3", {}, d3a_ko_case(0x80, 1, a=(0x10, 0x10), far=0x79)),
+        Case("b0", {}, d3a_ko_case(0, 1, a=(0x77, 0x78))),
+        Case("b1", {}, d3a_ko_case(1, 0, a=(0x80, 0x10), f41=(0x01, 0xEF)), {0x2C3FC: 0}),
+        Case("b2", {}, d3a_ko_case(0xFF, 0, a=(0x79, 0x10), below=(0x77, 0x01))),
+        Case("b3", {}, d3a_ko_case(0, 1, a=(0x00, 0xFF), f41=(0x10, 0x02))),
+        Case("n0", {}, d3a_ko_case(0, 1)),
+        Case("n1", {}, d3a_ko_case(0, 0x80, a=(0x10, 0x10), far=0x90)),
+        Case("n2", {}, d3a_ko_case(1, 1, a=(0x7F, 0x77))),
+    ], calls=(VOICE, D3A_SNAP, D3A_CONT), eax_mask=0,
+       mutants=("@wzext", "@wlow", "@thr", "@bsext", "@off5a", "@vd3", "@nosnap", "@nocont", "@order", "@side",
+                "@sidesext", "@thr2", "@bsext2", "@v27", "@v22", "@vorder", "@f41side", "@f41bit", "@f41set",
+                "@nof41", "@f41zext", "@b00", "@b00b", "@early", "@fall")),
+]
 D1_SPECS += D3A_SPECS
 
 

@@ -13,6 +13,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x1ECC8` | `hiscore_rank_pair` | 98 | `0xFF`: the one caller is `0x1EEE1`, `test al,al` at `0x1EEE6`; the raw leaves the rank's second byte in EAX (`xor al,al` `0x1ECE5`/`0x1ED22`, `xor al,dl` `0x1ED11`, `mov al,1` `0x1ED26`) |
 | `0x26D4C` | `flow_26d4c` | 522 | 0: the one caller `0x26D3B` goes on with `or byte [0x104aec],0x18` (`0x26D40`), four pops and `ret` into `0x25326` `jmp 0x2540f`, the mode tail the wave-1 records trace dead (d1c §1, d1d §1) |
 | `0x271E0` | `flow_join_prompt_draw` | 115 | 0: the one caller `0x423FC` (`0x41C28` state 7) goes on with `xor edx,edx; mov eax,[0x104abc]` (`0x42401`/`0x42403`) |
+| `0x272DC` | `flow_arena_ko_check` | 164 | 0: the one caller `0x274EC` goes on with `or byte [0x104aec],2` (`0x274F1`), three pops and `ret` into `0x25362` `jmp 0x2540f` (the mode tail) |
 
 ## §2 The row table (measured)
 
@@ -23,6 +24,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `hiscore_rank_pair_stub` | `0x1ECC8` | 6 | 7/8 | 14 | `0xFF` | the same entry with `0x2DDE4` stubbed (seamed here): the rank's upper word (`s3` `0xFFFF0000`, `s4` `0x0000FFFF`) and the call list. `0x1ED22` named: one stub EAX serves both calls |
 | `flow_26d4c` | `0x26D4C` | 10 | 8/8 | 54 | 0 | the string tree (`0x1C500`..) real, the run clock `0x32970` real in the original from its no-elapsed-time state (the port omits it), the runtime `sprintf` `0x65546` real in the original (§2.2); every other callee a stub. Found correction §3.1 |
 | `flow_join_prompt_draw` | `0x271E0` | 4 | 1/1 | 23 | 0 | `0x4660C` and `0x2716C` stubbed (the latter seamed here); the memory at each call fixes the store order (`@b11late`, `@afcearly`, `@early`). `j2`/`j3` carry upper bytes in the dword `0x104AD4` (`xor al,1` on the whole EAX: `@xorb`) |
+| `flow_arena_ko_check` | `0x272DC` | 11 | 5/5 | 25 | 0 | every callee a stub (`0x27254`, `0x278B0` seamed here). `a2`/`b2` run w = -1, `a3` w = -128, `n1` the side `0x80`; `a1`/`b1`/`b3` carry a byte of `0x80` or more (`@bsext`, `@bsext2`) |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -33,6 +35,8 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x2DDE4` | EAX, EDX (`mov [esp+0xc],eax` `0x2DDEC`, `mov edi,edx` `0x2DDF0`) | 0 | `edx` | pushes EBX ECX ESI EDI EBP (`0x2DDE4..0x2DDE8`), both `ret` plain (`0x2DE89`, `0x2DE94`) |
 | `0x2C2B0` | EAX, EDX (`mov esi,eax` `0x2C2B3`, `mov ecx,edx` `0x2C2B5`) | 0 | `edx edi ebp` (the scan's set, through `0x2C088`'s; the callers here reload EDX and read neither EDI nor EBP across it) | one plain `ret` (`0x2C301`) |
 | `0x2716C` | EAX (`mov ecx,eax` `0x2716F`) | 0 | none | pushes EBX ECX EDX; the raw caller `0x271E0` keeps EDX (`0x27229`, read at `0x27233`), EBX, ECX and ESI across it |
+| `0x27254` | none | 0 | none | pushes EBX ECX EDX ESI EDI EBP (`0x27254..0x27259`), one plain `ret` (`0x272A7`) |
+| `0x278B0` | none | 0 | none | pushes EBX ECX EDX, one plain `ret` (`0x27919`) |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -84,6 +88,9 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   sides (past the image, inside `mem[]`), `@sidesext` lands on `0x102DF1`.
 - `flow_join_prompt_draw`: eleven stores, each seeded `0x5A..` between neighbours, each with a drop or a
   width mutant (`@b21 @b14 @b0c @b11 @afc @afcb @hook @hookw @afe @afeb @ee @eew @b00 @b00b`).
+- `flow_arena_ko_check`: two stores (w's slot `+0x41 |= 0x10`, the word `0x104B00 = 0xD`), both after the two
+  voices (`@early`: `call #0 memory`). `b3` has the bit already set (`@f41set`, `@nof41` are caught where it is
+  clear); `@f41side` stores to the `0x104B12` side's slot, `@f41zext` re-reads w zero-extended (`b2`).
 
 ## §6 Queue entries not done
 

@@ -1723,6 +1723,7 @@ void flow_match_result_text(void)
  * 0x2730F (0x272DC). */
 void flow_match_snapshot(void)
 {
+    PR_SEAM0(0x27254u);
     u32 c;
     for (c = 0; c < 2u; c++) {                          /* 0x27264, 0x27294..0x2729F */
         fighter_33acc(c, DS_00104890 + c * 0x94u,
@@ -1744,6 +1745,7 @@ void flow_match_snapshot(void)
  * only caller is 0x27314 (0x272DC). */
 void flow_continue_open(void)
 {
+    PR_SEAM0(0x278B0u);
     DSB(DS_00104B1F) = 0u;                              /* 0x278BC (AH) */
     DSB(DS_00108110) = 0xFu;                            /* 0x278C2 (DL) */
     DSB(DS_00105C04) = 0u;                              /* 0x278C8 (AH) */
