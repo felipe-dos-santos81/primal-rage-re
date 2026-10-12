@@ -362,7 +362,7 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
             if (sprite != 0) {
                 s32 local_a = (s32)((u32)DSD(sprite + 2u) >> 16);
                 s32 local_b = (s32)((u32)DSD(sprite + 4u) >> 16);
-                if (!camera_actor_bit15_clear(side))
+                if ((u8)camera_actor_bit15_clear(side) == 0u)   /* 0x1819B, 0x181A0: test al,al */
                     local_a = (s32)(s16)DSW(sprite) - local_a - 1;
                 DSD(out_b) = (u32)((s32)DSD(out_b) - local_b);
                 DSD(out_a) = (u32)((s32)DSD(out_a) - local_a);
