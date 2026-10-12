@@ -24748,6 +24748,190 @@ D5E_SPECS += [
               D2E_M12_CLOSE, D5E_YCOMMIT), eax_mask=0,
        mutants=("@preside", "@prehud", "@preafe", "@pread4", "@preabc", "@preb19", "@nofx", "@notimer", "@noside")),
 ]
+D5E_FX21 = E.Call(0x4BF18, ())
+D5E_ENDCHK = E.Call(0x27FA8, (), clobbers=("esi", "ebp"))
+D5E_M25 = E.Call(0x4E11C, ())
+# the mutants of the two-sided prelude (0x3C5CC, 0x16D58 per side, the latches), of one 0x17FA0
+# pair, of the 0x1078FA gate and of the gated projection block (three pairs, or two and `@pr3`)
+D5E_MUT_PRE2 = ("@nocls", "@clslate", "@chsext", "@chw", "@chother", "@sbside", "@nosb0", "@nosb1", "@sbrev",
+                "@latearly") + D5E_MUT_LATCH
+D5E_MUT_PROJ2 = ("@prev", "@nop0", "@nop1", "@pside", "@pa", "@pb", "@pf", "@pp", "@pi", "@pstride")
+D5E_MUT_GATE = ("@gw", "@gall", "@gnone", "@gge", "@gle")
+D5E_MUT_BLOCK = ("@nopr1", "@nodecay", "@nopassa", "@dorder", "@nopassb", "@passb1", "@thinkearly", "@nopr2",
+                 "@nothink")
+# 0x16D58 leaving what the handlers read after it: the gate byte 0x1078FA = 3, side 1's character
+# byte 0x1078BE = 9 (read after the first call) and the two latch sources (read after the second)
+D5E_SBASE_W2 = E.Call(0x16D58, ("eax", "edx"), clobbers=("edx",),
+                      writes=((None, 0x001078FA, b"\x03"), (None, 0x001078BE, b"\x09"),
+                              (None, 0x001077E4, le32(0xCAFEBABE)), (None, 0x00107878, le32(0x00DDBA11))))
+# 0x27FA8 leaving the gate byte 2, the word 0x108892 = 6, slot 0's +0x53 byte 0 and the flag byte
+# 0x104AEC = 0x40: 0x26254 reads all four after it (0x263B4..0x263DE), 0x26540 the flag byte
+D5E_ENDCHK_W = E.Call(0x27FA8, (), clobbers=("esi", "ebp"),
+                      writes=((None, 0x001078FA, b"\x02"), (None, 0x00108892, le16(6)),
+                              (None, 0x00107803, b"\x00"), (None, 0x00104AEC, b"\x40")))
+
+
+def d5e_04_case(gate, w=6, k=0, **kw):
+    """Modes 4 and 0x21 and the arena frame: the shared state, the word 0x108892 between seeded
+    bytes and slot 0's +0x53 byte (0x107803) between seeded bytes (+0x52 = 0x81)."""
+    return d5e_mem(d5e_base(gate=gate, **kw), {0x00108891: bytes([0x7D]) + le16(w) + bytes([0x7E]),
+                                               0x00107802: bytes([0x81, k, 0x82])})
+
+
+D5E_04_CALLS = (D5E_CLEAR, D5E_SBASE, D5E_PROJ, D5E_DECAY, D5E_PASSA, D5E_PASSB, D5E_THINK, D4A_PASS, D5E_HUD,
+                D5E_EFFECTS, D5E_FX21, D5E_DUST, D5E_YCOMMIT, D5E_PULSE, D5E_ENDCHK, D5E_M25)
+D5E_04_CALLS_W = (D5E_CLEAR, D5E_SBASE_W2, D5E_PROJ, D5E_DECAY, D5E_PASSA, D5E_PASSB, D5E_THINK, D4A_PASS, D5E_HUD,
+                  D5E_EFFECTS, D5E_FX21, D5E_DUST, D5E_YCOMMIT, D5E_PULSE, D5E_ENDCHK_W, D5E_M25)
+D5E_MUT_FIGHT = (D5E_MUT_PRE2 + D5E_MUT_GATE + D5E_MUT_BLOCK + ("@nopr3",) + D5E_MUT_PROJ2 + ("@nopass",)
+                 + D5E_MUT_HUD + ("@nofx", "@fxswap", "@dustearly", "@nodust", "@ycorder", "@noyc", "@pulseearly",
+                                  "@nopulse", "@nochk", "@aecearly", "@noaec", "@aecset", "@aecbit"))
+D5E_SPECS += [
+    # 0x26254 game_mode_04_step: no argument. 0x3C5CC; 0x16D58(0, slot 0's +0x7A byte), 0x16D58(1,
+    # slot 1's); the two latches; with the byte 0x1078FA == 2: 0x17FA0 for side 0 and side 1 (s,
+    # 0x100B08 + 4s, 0x100B00 + 4s, 0x100B62 + s, 0x100B60 + s, 0x100AF0 + 4s), 0x17580, 0x1958C,
+    # 0x19068(0), the pair again, 0x1975C, the pair a third time; then 0x3CB68, 0x35658(0),
+    # 0x35658(1), 0x49C78, 0x1282C, 0x12DA8, 0x1DA08, 0x27FA8, 0x104AEC |= 2 and, with the gate
+    # byte == 2, the word 0x108892 >= 6 (zero-extended) and slot 0's +0x53 byte == 0, 0x4E11C.
+    # Every callee is a stub (0x4BF18, mode 0x21's pass, is in the call set so that `@fxswap` is a
+    # call difference). Mask 0: 0x25242 is followed by `jmp 0x2540f`, 0x25287 by `call 0x28c38`
+    # (`mov eax,edx` 0x28C4D before any read).
+    Spec("game_mode_04_step", 0x26254, [
+        Case("f0", D5E_REG, d5e_04_case(2)),
+        Case("f1", {}, d5e_04_case(2, w=5, aec=0x80)),
+        Case("f2", {}, d5e_04_case(2, w=0x8000, ch=(0x83, 0x85), aec=0xBD)),
+        Case("f3", {}, d5e_04_case(2, w=0x0100, lat=(0x00010000, 0xFFFF0000))),
+        Case("f4", {}, d5e_04_case(2, w=7, k=1)),
+        Case("f5", {}, d5e_04_case(1, aec=0x02)),
+        Case("f6", {}, d5e_04_case(3, aec=0x00)),
+    ], calls=D5E_04_CALLS, eax_mask=0,
+       mutants=D5E_MUT_FIGHT + ("@aeclate", "@e25g1", "@e25gany", "@e25gw", "@e25w7", "@e25w5", "@e25wb", "@e25wsext",
+                                "@e25koff", "@e25kw", "@e25knz", "@e25all", "@noe25")),
+    # 0x26254 again with stubs that write what the raw reads after them (D5E_SBASE_W2,
+    # D5E_ENDCHK_W): the gate byte after the second 0x16D58 (3: no projection block) and again
+    # after 0x27FA8 (2: 0x4E11C), side 1's character byte after the first 0x16D58, the latch
+    # sources after the second, the word 0x108892, slot 0's +0x53 byte and the flag byte after
+    # 0x27FA8.
+    Spec("game_mode_04_step_rr", 0x26254, [
+        Case("r0", {}, d5e_04_case(2, w=5, k=1)),
+        Case("r1", {}, d5e_04_case(1, w=0, k=0x80, aec=0x80)),
+    ], calls=D5E_04_CALLS_W, eax_mask=0,
+       unhit_named={0x262A6: "the projection block: this row's 0x16D58 stub leaves the gate byte 3 (the plain row hits it)"},
+       mutants=("@pregate", "@prech1", "@prelat", "@preg25", "@prew25", "@prek25", "@preaec", "@nochk", "@noe25")),
+    # 0x26540 game_mode_21_step: 0x26254 with 0x4BF18 in place of 0x49C78 and no 0x4E11C tail.
+    # Mask 0: the one site 0x25296 is followed by `jmp 0x2540f`.
+    Spec("game_mode_21_step", 0x26540, [
+        Case("v0", D5E_REG, d5e_04_case(2)),
+        Case("v1", {}, d5e_04_case(1, ch=(0x83, 0x85), aec=0x80)),
+        Case("v2", {}, d5e_04_case(3, aec=0xBD, lat=(0x00010000, 0xFFFF0000))),
+    ], calls=D5E_04_CALLS, eax_mask=0, mutants=D5E_MUT_FIGHT + ("@e25all",)),
+    Spec("game_mode_21_step_rr", 0x26540, [
+        Case("r0", {}, d5e_04_case(2)),
+        Case("r1", {}, d5e_04_case(1, aec=0x80)),
+    ], calls=D5E_04_CALLS_W, eax_mask=0,
+       unhit_named={0x26592: "the projection block: this row's 0x16D58 stub leaves the gate byte 3 (the plain row hits it)"},
+       mutants=("@pregate", "@prech1", "@prelat", "@preaec", "@nochk")),
+    # 0x263F4 fight_arena_frame: no argument, one block. The prelude, the three 0x17FA0 pairs with
+    # 0x17580, 0x1958C, 0x19068(0) and 0x1975C between them (no gate), 0x3CB68, 0x35658(0),
+    # 0x35658(1), 0x49C78, 0x1282C, 0x12DA8. a1 and a2 hold a gate byte other than 2 (`@gated` is
+    # mode 4's gate). Mask 0: both sites (0x11C3F, 0x11E8F) are followed by `call 0x33f08`, whose
+    # first EAX use is a load (`mov eax,[ebx+0x1077a8]` 0x33F15).
+    Spec("fight_arena_frame", 0x263F4, [
+        Case("a0", D5E_REG, d5e_04_case(2)),
+        Case("a1", {}, d5e_04_case(1, ch=(0x83, 0x85), lat=(0x00010000, 0xFFFF0000))),
+        Case("a2", {}, d5e_04_case(3)),
+    ], calls=(D5E_CLEAR, D5E_SBASE, D5E_PROJ, D5E_DECAY, D5E_PASSA, D5E_PASSB, D5E_THINK, D4A_PASS, D5E_HUD,
+              D5E_EFFECTS, D5E_DUST, D5E_YCOMMIT), eax_mask=0,
+       mutants=D5E_MUT_PRE2 + ("@gated",) + D5E_MUT_BLOCK + ("@nopr3",) + D5E_MUT_PROJ2 + ("@nopass",) + D5E_MUT_HUD
+               + ("@nofx", "@dustearly", "@nodust", "@ycorder", "@noyc")),
+    Spec("fight_arena_frame_rr", 0x263F4, [
+        Case("r0", {}, d5e_04_case(2)),
+    ], calls=(D5E_CLEAR, D5E_SBASE_W2, D5E_PROJ, D5E_DECAY, D5E_PASSA, D5E_PASSB, D5E_THINK, D4A_PASS, D5E_HUD,
+              D5E_EFFECTS, D5E_DUST, D5E_YCOMMIT), eax_mask=0, mutants=("@prech1", "@prelat", "@nosb0")),
+]
+D5E_KO = E.Call(0x272DC, ())
+D5E_OVERCHK = E.Call(0x29970, ())
+# the two round checks leaving the flag byte 0x104AEC = 0x40: 0x27380 and 0x299E8 OR it in place
+# after the call (0x274F1, 0x29B59)
+D5E_KO_W = E.Call(0x272DC, (), writes=((None, 0x00104AEC, b"\x40"),))
+D5E_OVERCHK_W = E.Call(0x29970, (), writes=((None, 0x00104AEC, b"\x40"),))
+D5E_REC0, D5E_REC1, D5E_PSET = 0x0010A800, 0x0010A880, 0x00108900
+
+
+def d5e_0c_case(b12, f41=(0x00, 0x00), f42=(0x00, 0x00), ps=(0x01E1, 0x01E1), gate=2, **kw):
+    """Modes 0xC and 0x31: the slot byte 0x104B12 between seeded bytes; both slots' +0x40..+0x43
+    bytes (the +0x41 and +0x42 flags between 0x70 and seeded bytes) and record pointers (slot
+    +0x00: two scratch records, their +0x56 words 0x0103 and 0x0104 between the +0x54 word 5 and
+    a seeded word); the pose table base 0x1014EC = 0x108900 and the two entries the +0x56 words
+    select (0x10A960, 0x10A980: `ps`, between seeded words); the restore word 0x104AF6 = 0x1234
+    between seeded words; and, for the sign-extended slot byte 0x80, the flags 0x102DF1 = 1,
+    0x102DF2 = 0 and the record pointer 0x102DB0 = record 0."""
+    return d5e_mem(d5e_base(gate=gate, **kw), {
+        0x00104B11: bytes([0x63, b12, 0x64]),
+        0x001077B0: le32(D5E_REC0), 0x00107844: le32(D5E_REC1),
+        0x001077F0: bytes([0x70, f41[0], f42[0], 0x71]), 0x00107884: bytes([0x70, f41[1], f42[1], 0x72]),
+        D5E_REC0 + 0x54: le16(5) + le16(0x0103) + le16(0x7373),
+        D5E_REC1 + 0x54: le16(5) + le16(0x0104) + le16(0x7474),
+        0x001014EC: le32(D5E_PSET),
+        D5E_PSET + 0x0103 * 0x20 - 2: le16(0x7575) + le16(ps[0]) + le16(0x7676),
+        D5E_PSET + 0x0104 * 0x20 - 2: le16(0x7777) + le16(ps[1]) + le16(0x7878),
+        0x00104AF4: le16(0x6A6A) + le16(0x1234) + le16(0x6B6B),
+        0x00102DB0: le32(D5E_REC0), 0x00102DF0: bytes([0x70, 0x01, 0x00, 0x79])})
+
+
+D5E_0C_CALLS = (D5E_CLEAR, D5E_SBASE, D5E_PROJ, D5E_DECAY, D5E_PASSA, D5E_PASSB, D5E_THINK, D4A_PASS, D5E_HUD,
+                D5E_YCOMMIT, D5E_PULSE, D5E_KO, D5E_OVERCHK)
+D5E_0C_CALLS_W = (D5E_CLEAR, D5E_SBASE_W2, D5E_PROJ, D5E_DECAY, D5E_PASSA, D5E_PASSB, D5E_THINK, D4A_PASS, D5E_HUD,
+                  D5E_YCOMMIT, D5E_PULSE, D5E_KO_W, D5E_OVERCHK_W)
+D5E_MUT_0C = (("@b12sext", "@b12other", "@nof41", "@f41off", "@f41bit", "@nof42", "@f42bit", "@f42inv", "@idxb",
+               "@recoff", "@stride", "@nomask", "@v1e1", "@restb", "@norest", "@restsrc", "@headlate")
+              + D5E_MUT_PRE2 + D5E_MUT_GATE + D5E_MUT_BLOCK + ("@pr3",) + D5E_MUT_PROJ2 + ("@nopass",) + D5E_MUT_HUD
+              + ("@pulseearly", "@noyc", "@nopulse", "@nochk", "@chkswap", "@aecearly", "@noaec", "@aecset",
+                 "@aecbit"))
+
+
+def d5e_0c_cases():
+    return [
+        Case("h0", D5E_REG, d5e_0c_case(0, f41=(0x01, 0x00), f42=(0xF7, 0x00), ps=(0x81E1, 0x01E1))),
+        Case("h1", {}, d5e_0c_case(1, f41=(0x00, 0xFF), f42=(0x08, 0x00), gate=1, ch=(0x83, 0x85), aec=0x80)),
+        Case("h2", {}, d5e_0c_case(0, f41=(0xFE, 0x01), gate=3, aec=0xBD)),
+        Case("h3", {}, d5e_0c_case(0, f41=(0x01, 0x00), f42=(0x08, 0x00), lat=(0x00010000, 0xFFFF0000))),
+        Case("h4", {}, d5e_0c_case(1, f41=(0x00, 0x01), ps=(0x01E1, 0x01E0), aec=0x00)),
+        Case("h5", {}, d5e_0c_case(0, f41=(0x01, 0x00), ps=(0x41E1, 0x01E1))),
+        Case("h6", {}, d5e_0c_case(0x80, f41=(0x01, 0x01))),
+    ]
+
+
+D5E_RR_UNDO = "the frozen-pose word: this row's cases leave the slot's +0x41 bit 0 clear (the plain row hits it)"
+D5E_RR_BLOCK = "the projection block: this row's 0x16D58 stub leaves the gate byte 3 (the plain row hits it)"
+D5E_SPECS += [
+    # 0x27380 game_mode_0c_step: no argument. First the frozen-pose word of the slot the byte
+    # 0x104B12 selects (zero-extended): with its +0x41 bit 0 set and its +0x42 bit 3 clear, the
+    # word at [0x1014EC] + 0x20 * (the word at the slot's record +0x56), when its low 15 bits are
+    # 0x1E1, gets the word 0x104AF6. Then the prelude, the gated block (two 0x17FA0 pairs: 0x263F4's
+    # third, after 0x1975C, has no counterpart here: `@pr3`), 0x3CB68, 0x35658(0), 0x35658(1),
+    # 0x12DA8, 0x1DA08, 0x272DC and 0x104AEC |= 2. Every callee is a stub (0x29970, mode 0x31's
+    # check, is in the call set for `@chkswap`). h6's slot byte 0x80 reads 0x10C1F1, above the
+    # image (D5E_OUTSIDE). The +0x56 word is not exercised with bit 15 set (record §4). Mask 0:
+    # the one site 0x2535D is followed by `jmp 0x2540f`.
+    Spec("game_mode_0c_step", 0x27380, d5e_0c_cases(), calls=D5E_0C_CALLS, eax_mask=0, mutants=D5E_MUT_0C),
+    # 0x27380 again with a 0x16D58 stub that leaves the gate byte 3, side 1's character byte 9 and
+    # the latch sources changed, and a 0x272DC stub that leaves the flag byte 0x40.
+    Spec("game_mode_0c_step_rr", 0x27380, [
+        Case("r0", {}, d5e_0c_case(0)),
+        Case("r1", {}, d5e_0c_case(1, gate=1, aec=0x80)),
+    ], calls=D5E_0C_CALLS_W, eax_mask=0,
+       unhit_named={0x273A5: D5E_RR_UNDO, 0x273AE: D5E_RR_UNDO, 0x273DC: D5E_RR_UNDO, 0x27430: D5E_RR_BLOCK},
+       mutants=("@pregate", "@prech1", "@prelat", "@preaec", "@nochk")),
+    # 0x299E8 game_mode_31_step: 0x27380 with 0x29970 in place of 0x272DC. Mask 0: the one site
+    # 0x251A8 is followed by `jmp 0x2540f`.
+    Spec("game_mode_31_step", 0x299E8, d5e_0c_cases(), calls=D5E_0C_CALLS, eax_mask=0, mutants=D5E_MUT_0C),
+    Spec("game_mode_31_step_rr", 0x299E8, [
+        Case("r0", {}, d5e_0c_case(0)),
+        Case("r1", {}, d5e_0c_case(1, gate=1, aec=0x80)),
+    ], calls=D5E_0C_CALLS_W, eax_mask=0,
+       unhit_named={0x29A0D: D5E_RR_UNDO, 0x29A16: D5E_RR_UNDO, 0x29A44: D5E_RR_UNDO, 0x29A98: D5E_RR_BLOCK},
+       mutants=("@pregate", "@prech1", "@prelat", "@preaec", "@nochk")),
+]
 D1_SPECS += D5E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
