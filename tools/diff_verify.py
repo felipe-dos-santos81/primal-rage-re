@@ -8225,6 +8225,76 @@ def d1e_hb_case(s0=None, s1=None):
     return p
 
 
+def d1e_gate_case(b1d, b14, s63, s42, s52, s54):
+    """0x36E2C: the two mode bytes (0x104B1D, 0x104B14) and the slot's +0x42, +0x52, +0x54 and
+    +0x63, each between neighbours; +0x53 and +0x55 hold a value with the opposite verdict."""
+    ok52 = s52 in (0, 1, 5, 6, 7)
+    return {0x00104B13: bytes([0x13, b14, 0x15]), 0x00104B1C: bytes([0x1C, b1d, 0x1E]),
+            D1E_REC0 + 0x41: bytes([0xEF, s42, 0x00]),
+            D1E_REC0 + 0x51: bytes([0x02, s52, 2 if ok52 else 0, s54, 9 if s54 <= 1 else 0]),
+            D1E_REC0 + 0x62: bytes([0x00 if s63 else 0x62, s63, 0x00 if s63 else 0x64])}
+
+
+def d1e_scratch_case():
+    """0x38BEC: the 0x107D16..0x107D31 words and the 0x107A7F..0x107B00 bytes, all non-zero
+    (both sides' fields, and the bytes before and after each range)."""
+    p = {0x00107D16: b"".join(le16(0x8000 | (a & 0xFFF)) for a in range(0x107D16, 0x107D32, 2))}
+    buf = bytes((i % 0xFD) + 1 for i in range(0x82))
+    for off in range(0, len(buf), 0x40):
+        p[0x00107A7F + off] = buf[off:off + 0x40]
+    return p
+
+
+D1E_E0 = 0x000C8602        # a 0x413C8 handle whose +0x56 word is 0xC85BC[3]'s descriptor + 0x100
+# 0x2AE14 as 0x413C8 sees it: each stubbed spawn writes the word 0xABCD at its descriptor + 0x100,
+# so the D1E_E0 record's +0x56 changes when the i = 3 spawn returns (the raw reloads it each pass)
+D1E_SPAWN_W = dataclasses.replace(SPAWN, writes=((0, 0x100, b"\xcd\xab"),))
+
+
+def d1e_413_case(handle, w0):
+    """0x413C8: DS_001080F4 and the seven DS_001080C0 handles between seeded neighbours, and the
+    first handle's +0x54/+0x56 words."""
+    return {0x001080BC: le32(0xBCBCBCBC) + b"".join(le32(0xEEEEEEE0 + i) for i in range(7))
+            + le32(0xDCDCDCDC),
+            0x001080F0: le32(0xF0F0F0F0) + le32(0xF4F4F4F4) + le32(0xF8F8F8F8),
+            handle + 0x54: le16(w0 ^ 0x0101) + le16(w0)}
+
+
+# 0x2AE14 as 0x43964 sees it: each stubbed spawn also writes a marker over DS_00108154[0], so
+# after the second spawn the side-0 entry handle (the marker) and panel handle (the stub's EAX)
+# differ, and which of the two 0x2BCF4/0x2A17C take is observable (one stub has one EAX)
+D1E_SPAWN_A = dataclasses.replace(SPAWN, writes=((None, 0x00108154, le32(0x01A50511)),))
+
+
+def d1e_marks_case(marks, count, before=0x55, after=0x5D):
+    """0x4246C/0x4248C: the seven stage bytes 0x108106..0x10810C between two neighbours and the
+    count byte 0x108111 between two more."""
+    assert len(marks) == 7
+    return {0x00108105: bytes([before] + list(marks) + [after]),
+            0x00108110: bytes([0x10, count, 0x12])}
+
+
+def d1e_entry_case(side, ch, o_ch, a2=None, a4=None, pw=None):
+    """0x43964: the two character bytes 0x108166[side] between neighbours, the four handle
+    slots 0x108154../0x10815C.. with sentinels, and the 0xC88A6 words made distinct (the
+    image's are 0x540 for characters 0..3 and 0xEC0 for 4..6). `a2`/`a4`/`pw` poke the
+    character's 0xC8898/0xC88A6/0xC88F8 word."""
+    chars = [0, 0]
+    chars[side], chars[1 - side] = ch, o_ch
+    words = [0x0540 + 0x111 * i for i in range(7)]
+    if a4 is not None:
+        words[ch] = a4
+    p = {0x00108150: le32(0x50505050) + le32(0xAAAA5454) + le32(0xAAAA5858) + le32(0xBBBB5C5C)
+         + le32(0xBBBB6060),
+         0x00108164: bytes([0x64, 0x65] + chars + [0x68]),
+         0x000C88A6: b"".join(le16(w) for w in words)}
+    if a2 is not None:
+        p[0x000C8898 + ch * 2] = le16(a2)
+    if pw is not None:
+        p[0x000C88F8 + ch * 2] = le16(pw)
+    return p
+
+
 D1E_SPECS = [
     # 0x13134 fight_13134: no argument; EAX = 1/0 (`mov eax,1` 0x13150/0x13172, `xor eax,eax`
     # 0x13178), read whole by its caller (`test eax,eax` at 0x4BDBF).
@@ -8434,6 +8504,101 @@ D1E_SPECS = [
        mutants=("@one", "@idxf", "@ch", "@mask", "@flag", "@lo", "@hi", "@sext", "@e1", "@pset8",
                 "@inv", "@bit", "@nobit", "@spset", "@word", "@nocall", "@args", "@bar", "@no8", "@nospr",
                 "@wide")),
+    # 0x36E2C fight_position_gate: EAX = the slot. AL only (`mov al,1` 0x36E6D, `xor al,al`
+    # 0x36E71; the upper bytes are the slot's), and its one caller tests AL (0x34B93).
+    Spec("fight_position_gate", 0x36E2C, [
+        Case("g0", {"eax": D1E_REC0}, d1e_gate_case(3, 1, 0, 0x10, 0, 0)),
+        Case("g1", {"eax": D1E_REC0}, d1e_gate_case(2, 0, 0, 0x10, 5, 1)),
+        Case("g2", {"eax": D1E_REC0}, d1e_gate_case(2, 1, 0, 0x10, 0, 0)),
+        Case("g3", {"eax": D1E_REC0}, d1e_gate_case(2, 1, 1, 0x10, 7, 0)),
+        Case("g4", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0xEF, 0, 0)),
+        Case("g5", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0xFF, 6, 1)),
+        Case("g6", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0x10, 1, 0)),
+        Case("g7", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0x10, 2, 0)),
+        Case("g8", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0x10, 5, 2)),
+        Case("g9", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0x10, 0, 0x80)),
+        Case("g10", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0x10, 8, 0)),
+        Case("g11", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0x10, 3, 0)),
+        Case("g12", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0x10, 4, 0)),
+        Case("g13", {"eax": D1E_REC0}, d1e_gate_case(0, 0x80, 0x80, 0x30, 7, 1)),
+        Case("g14", {"eax": D1E_REC0}, d1e_gate_case(3, 0, 1, 0x20, 0, 0)),
+    ], eax_mask=0xFF,
+       mutants=("@b1d", "@b14", "@s63", "@bit", "@field", "@f54", "@st0", "@st5", "@st7", "@st6",
+                "@st1", "@st2", "@lt", "@signed")),
+    # 0x38BEC fight_side_scratch_clear: EAX = side; five words [side] and the 0x40 bytes at
+    # 0x107A80 + side * 0x40 cleared (`inc eax` before each `[eax+0x107a7f]` store). Void (EAX
+    # = side * 0x40 + 0x40 at return): its one caller rewrites AH only (0x20F22; open).
+    Spec("fight_side_scratch_clear", 0x38BEC, [
+        Case("y0", {"eax": 0}, d1e_scratch_case()),
+        Case("y1", {"eax": 1}, d1e_scratch_case()),
+    ], eax_mask=0,
+       mutants=("@d2c", "@d20", "@d18", "@d1c", "@d24", "@side", "@wscale", "@n3f", "@n41",
+                "@base", "@bscale", "@wbyte")),
+    # 0x3C5CC fight_slot_clear: no argument; DS_00107EE0, DS_00107D50 and DS_00107D54 = 0.
+    # Void: each of its 12 callers rewrites EAX before reading it (`xor eax,eax` or `lea eax`).
+    Spec("fight_slot_clear", 0x3C5CC, [
+        Case("f0", {}, {0x00107EDC: le32(0xDCDCDCDC) + le32(0xE0E1E2E3) + le32(0xE4E4E4E4),
+                        0x00107D4C: le32(0x4C4C4C4C) + le32(0x50515253) + le32(0x54555657)
+                        + le32(0x58585858)}),
+    ], eax_mask=0, mutants=("@ee0", "@d50", "@d54", "@word")),
+    # 0x413C8 fight_413c8: no argument. Eight 0x2AE14 spawns (D1E_SPAWN_W stub: one EAX for
+    # all eight, so the handles are equal and the store order shows in the memory at each
+    # call). a5 of the seven is the first handle's +0x56 word | 0x400, re-read each pass: with
+    # the handle D1E_E0 the i = 3 spawn's stub write changes that word. Void: its one caller
+    # rewrites AH only (0x4145D; open).
+    Spec("fight_413c8", 0x413C8, [
+        Case("q0", {}, d1e_413_case(D1E_E0, 0x1234), {0x2AE14: D1E_E0}),
+        Case("q1", {}, d1e_413_case(0x0010A6C1, 0xFBFF), {0x2AE14: 0x0010A6C1}),
+        Case("q2", {}, d1e_413_case(D1E_E0, 0x0400), {0x2AE14: D1E_E0}),
+    ], calls=(D1E_SPAWN_W,), eax_mask=0,
+       mutants=("@xy", "@a3", "@late", "@count", "@once", "@field", "@or", "@a3b", "@slot",
+                "@nostore", "@nof4")),
+    # 0x4246C fight_stage_marks_clear: no argument. 0x65490 (the runtime byte fill, allowed
+    # with its dword helper 0x654C7: their own bytes run in the original, the port fills the
+    # seven bytes itself) zeroes the stage bytes; `xor ah,ah` then clears 0x108111. Void:
+    # 0x25B4C rewrites EAX, 0x28B46 rewrites AL only (open).
+    Spec("fight_stage_marks_clear", 0x4246C, [
+        Case("m0", {}, d1e_marks_case([0x81, 0x02, 0x43, 0x04, 0xC5, 0x06, 0x47], 0x07)),
+        Case("m1", {}, d1e_marks_case([0xFF] * 7, 0xFF, before=0xFF, after=0xFF)),
+    ], allow_calls=(0x65490, 0x654C7), eax_mask=0,
+       mutants=("@n6", "@n8", "@base", "@nocount", "@cnt")),
+    # 0x4248C fight_stage_mark_drop: EAX = the class (AL), EDX = the side (DL, `shl dl,6`).
+    # Each stage byte whose low 7 bits equal the key becomes 0 and the count byte 0x108111 drops
+    # by one. Void: 0x43E5D/0x444A5 rewrite AL only (open).
+    Spec("fight_stage_mark_drop", 0x4248C, [
+        Case("s0", {"eax": 5, "edx": 1},
+             d1e_marks_case([0x45, 0xC5, 0x05, 0x44, 0x45, 0x46, 0x85], 7, before=0x45, after=0x45)),
+        Case("s1", {"eax": 3, "edx": 0},
+             d1e_marks_case([0x03, 0x43, 0x83, 0x00, 0x03, 0x7F, 0x03], 0, before=0x03, after=0x03)),
+        Case("s2", {"eax": 0, "edx": 0},
+             d1e_marks_case([0x00, 0x80, 0x01, 0x40, 0x00, 0xFF, 0x80], 0x10, before=0x80, after=0x00)),
+        Case("s3", {"eax": 0x105, "edx": 0x101},
+             d1e_marks_case([0x05, 0x45, 0x01, 0x45, 0xC5, 0x41, 0x04], 0x80, before=0x45, after=0x45)),
+        Case("s4", {"eax": 5, "edx": 2},
+             d1e_marks_case([0x85, 0x05, 0x45, 0x85, 0x05, 0x45, 0x85], 3, before=0x85, after=0x85)),
+        Case("s5", {"eax": 5, "edx": 4},
+             d1e_marks_case([0x85, 0x05, 0x45, 0x04, 0x06, 0xC5, 0x05], 3, before=0x05, after=0x05)),
+        Case("s6", {"eax": 0x85, "edx": 0},
+             d1e_marks_case([0x85, 0x05, 0x45, 0x85, 0x05, 0x45, 0x85], 9, before=0x85, after=0x05)),
+        Case("s7", {"eax": 6, "edx": 1},
+             d1e_marks_case([0x01, 0x02, 0x03, 0x04, 0x05, 0x07, 0x46], 1, before=0x46, after=0x46)),
+    ], eax_mask=0,
+       mutants=("@mask", "@shift", "@n6", "@n8", "@nodec", "@inc", "@keep7", "@nowrite", "@key7",
+                "@from1", "@cnt", "@argw")),
+    # 0x43964 fight_char_entry_spawn: EAX = side; the character is the signed byte
+    # 0x108166[side] (`sar esi,0x18`). Two spawns (D1E_SPAWN_A stub), then 0x2BCF4 and
+    # 0x2A17C (stubs) on the second handle, re-read from DS_0010815C[side]. Void: each caller
+    # rewrites EAX (`mov eax,edx` at 0x4379B/0x43B5E/0x4451C).
+    Spec("fight_char_entry_spawn", 0x43964, [
+        Case("n0", {"eax": 0}, d1e_entry_case(0, 1, 4), {0x2AE14: 0x02B6C7D8}),
+        Case("n1", {"eax": 1}, d1e_entry_case(1, 4, 1), {0x2AE14: 0x03B7C8D9}),
+        Case("n2", {"eax": 0}, d1e_entry_case(0, 0xFF, 2), {0x2AE14: 0x01B8C9DA}),
+        Case("n3", {"eax": 1}, d1e_entry_case(1, 6, 0, a2=0x9000, a4=0x8540, pw=0x8014),
+             {0x2AE14: 0x02B6C7D8}),
+        Case("n4", {"eax": 0}, d1e_entry_case(0, 0, 0), {0x2AE14: 0}),
+    ], calls=(D1E_SPAWN_A, P6_2BCF4, PALETTE), eax_mask=0,
+       mutants=("@zext", "@chside", "@swap", "@wsext", "@side", "@a3", "@slota", "@desc", "@actor",
+                "@order", "@id", "@psext", "@pal", "@noa", "@nob")),
 ]
 D1_SPECS += D1E_SPECS
 
