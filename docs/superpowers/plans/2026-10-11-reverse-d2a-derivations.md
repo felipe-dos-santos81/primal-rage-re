@@ -52,6 +52,10 @@ data pointer to it.
 | `0x354F0` | `fighter_wall_clamp` | 360 | 0 | `0x3581C` is followed by `0x35821` `mov eax,[esp]`; `0x35824` by `0x35829` `call 0x186c4`, whose first instruction is `xor eax,eax` |
 | `0x35E6C` | `fighter_state_35e6c` | 279 | 0 | the one caller returns at once (`0x34D6D` call, `0x34D72`..`0x34D77`, the dispatcher), then `0x35801` |
 | `0x35F84` | `fighter_state_35f84` | 213 | 0 | `0x34C57` call, `0x34C5C`..`0x34C61` (the dispatcher), then `0x35801` |
+| `0x3605C` | `fighter_3605c` | 184 | 0 | the three callers overwrite EAX at once (`0x2347F`, `0x23520`, `0x488AA` `mov eax,[esp+8]`) |
+| `0x361C8` | `fighter_state_361c8` | 183 | 0 | `0x34C9E` call, `0x34CA3`..`0x34CA8` (the dispatcher), then `0x35801` |
+| `0x45908` | `fighter_45908` | 197 | 0 | the one caller returns at once (`0x4586D` call, `0x45872`..`0x45876`, in the slot +0x0C callback `0x4579C`, whose address is stored at `0x458AA`); the callback's call site `0x35431` `call dword [ecx+0xc]` is followed by `0x35434` `xor eax,eax` (record d1b §6 stopped at `0x4505C`, the function Ghidra folds `0x4579C` into) |
+| `0x406B4` | `fighter_406b4` | 309 | 0 | `0x4065A` returns (`0x4065F`..`0x40662`, in `0x40608`) to `0x4058A` `mov eax,[0x108098]`. `0x4081E` (in `0x407EC`, update-table entry 14, the dword at `0xA867C`): nothing reads EAX before `0x407EC` returns (`0x4084C`, `0x408A1` write it; `0x408CF` `mov ah,1`), and the table call `0x24CEF` `call dword [eax+0xa8644]` is followed by `0x24CED` `mov eax,edx` for the next entry or by `0x24D08` `mov ah,1`, `0x24D0E` `int 0x16` (the BIOS keystroke status, which takes AH alone). **Limit:** bits 16..31 past that `int 0x16` are not followed |
 
 ## §2 The rows (measured)
 
@@ -76,6 +80,10 @@ data pointer to it.
 | `fighter_wall_clamp` | `0x354F0` | 16 | 22/22 | 21 | `0x0` | `0x188DC`, `0x187FC`, `0x1883C`, `0x3C148` stubs; `0x187FC`'s EAX is the distance (§3.7) |
 | `fighter_state_35e6c` | `0x35E6C` | 8 | 8/8 | 23 | `0x0` | `0x2C3FC`, `0x3BDDC` (AL tested), `0x18B04`, `0x3C480`, `0x188AC` stubs (§3.3, §3.8) |
 | `fighter_state_35f84` | `0x35F84` | 9 | 7/7 | 22 | `0x0` | `0x1922C` (with `0x33950`) real; `0x3C148`, `0x3C16C` stubs (§3.9) |
+| `fighter_3605c` | `0x3605C` | 3 | 1/1 | 18 | `0x0` | `ret 4` (the frame bits); `0x188AC`, `0x3C148`, `0x3C16C`, `0x3C4CC` stubs |
+| `fighter_state_361c8` | `0x361C8` | 15 | 15/15 | 21 | `0x0` | the table `0x361B8` (hand-resolved, §4); `0x2BC30` a stub |
+| `fighter_45908` | `0x45908` | 9 | 9/9 | 25 | `0x0` | `0x339AC` real; `0x3C148`, `0x3C16C`, `0x3C480`, `0x2AE14`, `0x2C3FC` stubs |
+| `fighter_406b4` | `0x406B4` | 5 | 11/11 | 24 | `0x0` | `0x249D0`, `0x249B0` real (allowed); `0x5D7DC` real and recorded; `0x2AE14`, `0x2A17C`, `0x2C3FC` stubs |
 
 The exact kinds and case sets that catch each mutant are `D2A_KINDS` and `D2A_CASES` in
 `tools/tests/test_diff_verify.py`; the mutants are the `m_d2a_*` bindings over the `d2a_*_core` functions of
@@ -261,6 +269,22 @@ run changes; the rows stub the callee with EAX = `0x100` (AL = 0). Each now read
 - **`0x354F0`: the sign call and the value call.** The raw takes the sign from the first `0x187FC` and the
   value from the second; the stub returns the same EAX to both, so a port using the first for both is
   only separated by the call count.
+- **`0x361C8`: a hand-resolved jump table.** `jmp cs:[ecx*4+0x361b8]` at `0x361E3` (guard `0x361D6` `cmp
+  dl,3; ja`, then `xor ecx,ecx; mov cl,dl`) is not a form `switch_cases` bounds, so the row was PARTIAL
+  until `diff_emu.RESOLVED_JUMPS` gained `0x361E3: (0x361D6, 0x361B8, 4)`; the table's four targets are
+  `0x3627B`, `0x361EB`, `0x36229`, `0x36232`. The matching `WINDOWS` line was added to
+  `test_each_resolved_jump_table_matches_the_bytes` (its assertions were replayed by hand for this entry;
+  the test itself is the integrator's run). No stub's derived clobber set changes with the entry (all 169
+  stubs of `SPECS` re-derived before and after).
+- **`0x406B4`: the list leaves are not recorded.** The port calls `effects_list_unlink` /
+  `effects_list_insert_after` (effects.c), which carry no seam (the seamed `0x249D0`/`0x249B0` are
+  actors.c's), so the row allows the two addresses and reads them in the list pointers.
+- **`0x406B4`: the rng(2) test's width.** `test eax,eax` at `0x4072F` on a value that is 0 or 1 (the real
+  `0x5D7DC` with range 2); an AL test is not separated.
+- **`0x45908`: writes above the image.** `z8` gives the record's +0x51 = 0x80, so ctx[2] is `0x1077B0 +
+  0x80*0x94 = 0x10C1B0`, past the image's end and inside mem[]; the raw's `mov byte [eax+0x8a],0` there
+  stores a 0 over a 0. `@sslot` writes a 4 there and `@n14` at `0x57`; `diffrun` reports and clears bytes
+  outside the image after each case.
 - **`0x235C4`: one block.** The row's four cases differ in the side, the pset index and the other slot's
   +0x53 (what the real `0x22B28` compares); the function itself has no branch.
 
@@ -286,6 +310,10 @@ seeded; at least one dropped or misplaced store per field is a mutant.
 | `fighter_wall_clamp` | none of its own | - |
 | `fighter_state_35e6c` | the EAX slot's +0x41 (+0x40, +0x42); the side slot's +0x54, +0x52, +0x53 (+0x51, +0x55), +0x84 (+0x82, +0x86), +0x92 (+0x90) | `@or41`, `@s54`, `@s52`, `@s53`, `@inc`, `@incb`, `@w92`, `@slot`, `@order` |
 | `fighter_state_35f84` | the EAX slot's +0x41; the side record's +0x24 (+0x20, +0x28); the side slot's +0x52, +0x53 (+0x51, +0x54), +0x78 (+0x76, +0x7A) | `@or41`, `@s24`, `@r24`, `@s52`, `@s53`, `@s78`, `@b78`, `@slot`, `@t19`, `@order` |
+| `fighter_3605c` | the side slot's +0x54, +0x52, +0x53 (+0x51, +0x55; the other slot seeded differently) | `@s54`, `@s52`, `@s53`, `@v53`, `@side`, `@order` |
+| `fighter_state_361c8` | slot+0x41 (+0x40, +0x42), slot+0x58 (+0x57, +0x59), slot+0x52 (+0x51, +0x53), rec+0x36 (+0x38), rec+0x34 (+0x32) | `@or41`, `@inc`, `@order`, `@sub`, `@subw`, `@z34`, `@s52`, `@step`, `@dir` |
+| `fighter_45908` | rec+0x1C (+0x18), the +0x14 slot's +0x54, +0x57 (+0x53..+0x58), ctx[2]+0x8A and the +0x14 slot's +0x8A (+0x89, +0x8B; different blocks in `z5`, `z6`, `z8`) | `@x1c`, `@s54`, `@s57`, `@sslot`, `@a8a`, `@e8a`, `@early` |
+| `fighter_406b4` | node+8 (+0xC seeded), the actor's +0x34, +0x36, +0x38 (+0x32), +0x44 (+0x42, +0x46), +0x14; `0x104AE9` (E8, EA) | `@n8`, `@w34d`, `@r60`, `@r300`, `@r18`, `@w44`, `@x14`, `@x14a`, `@ae9` |
 
 The two predicates (`0x467DC`, `0x4682C`) write nothing.
 
