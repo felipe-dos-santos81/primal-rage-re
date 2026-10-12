@@ -26608,6 +26608,8 @@ D3D_47B04_MUT(c1nopivot, 17u) D3D_47B04_MUT(c1pivotctx, 18u) D3D_47B04_MUT(c1ord
 D3D_47B04_MUT(c1s57ctx, 21u) D3D_47B04_MUT(c1early, 22u) D3D_47B04_MUT(c1late54, 23u) D3D_47B04_MUT(c4val, 24u)
 D3D_47B04_MUT(c5ge, 25u) D3D_47B04_MUT(c5uns, 26u) D3D_47B04_MUT(c5slot, 27u) D3D_47B04_MUT(c5no54, 28u)
 D3D_47B04_MUT(c554slot, 29u) D3D_47B04_MUT(c5rec, 30u) D3D_47B04_MUT(c5s57, 31u) D3D_47B04_MUT(c5w, 32u)
+D3D_47B04_MUT(c2rec, 33u) D3D_47B04_MUT(c2nos57, 34u) D3D_47B04_MUT(c2early, 35u) D3D_47B04_MUT(c2nocall, 36u)
+D3D_47B04_MUT(c4no54, 37u) D3D_47B04_MUT(c4rec, 38u) D3D_47B04_MUT(c4nos57, 39u) D3D_47B04_MUT(c4late54, 40u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33315,6 +33317,14 @@ static const binding_t k_bindings[] = {
     { "fighter_47b04@c5rec",                 m_d3d_47b04_c5rec, 0x00000000u },
     { "fighter_47b04@c5s57",                 m_d3d_47b04_c5s57, 0x00000000u },
     { "fighter_47b04@c5w",                   m_d3d_47b04_c5w, 0x00000000u },
+    { "fighter_47b04@c2rec",                 m_d3d_47b04_c2rec, 0x00000000u },
+    { "fighter_47b04@c2nos57",               m_d3d_47b04_c2nos57, 0x00000000u },
+    { "fighter_47b04@c2early",               m_d3d_47b04_c2early, 0x00000000u },
+    { "fighter_47b04@c2nocall",              m_d3d_47b04_c2nocall, 0x00000000u },
+    { "fighter_47b04@c4no54",                m_d3d_47b04_c4no54, 0x00000000u },
+    { "fighter_47b04@c4rec",                 m_d3d_47b04_c4rec, 0x00000000u },
+    { "fighter_47b04@c4nos57",               m_d3d_47b04_c4nos57, 0x00000000u },
+    { "fighter_47b04@c4late54",              m_d3d_47b04_c4late54, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

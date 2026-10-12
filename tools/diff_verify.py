@@ -872,7 +872,7 @@ P2_SPECS += [
 ]
 
 # 0x36870 (fighter_36870): EAX = rec, a plain `ret`; it clobbers ESI, EDI and EBP (E.callee_clobbers).
-ANIM54 = E.Call(0x36870, ("eax",), clobbers=("esi", "edi", "ebp"))
+ANIM54 = E.Call(0x36870, ("eax",), clobbers=("esi", "ebp"))
 
 
 # The slot +0x0C callbacks 0x21374 and 0x22938 store (record §P2.9) run as 0x3531C case 7 calls them (0x35431:
@@ -7483,7 +7483,7 @@ C3G_SPECS = [
                                                         x18_s=0x1500, x18_o=0x1200, act_o=0,
                                                         act_s=0)),
     ], allow_calls=(0x1A570,),
-       calls=(E.Call(0x36870, ("eax",), mode="stub", clobbers=("esi", "edi", "ebp")),
+       calls=(E.Call(0x36870, ("eax",), mode="stub", clobbers=("esi", "ebp")),
               E.Call(0x35838, ("eax", "edx", "ebx"), mode="stub", clobbers=("ebx", "edx")),
               E.Call(0x36638, ("eax", "edx"), mode="stub", clobbers=("edx",))),
         eax_mask=0, mutants=("@base", "@x", "@facing", "@bound", "@s52", "@fe", "@s18", "@call",
@@ -18763,8 +18763,9 @@ def d3d_47b04_cases():
         C("z0", 0, X, 0, r63=7), C("z1", 1, X, 0, r63=6), C("z2", 0, DS_SLOTS, 0, r63=0x10),
         C("o0", 0, X, 1), C("o1", 1, DS_SLOTS + 0x94, 1, s5f=0x80), C("o2", 0, X, 1, r63=0x0F),
         C("o3", 2, X, 1, s5f=0x33), C("o4", 1, X, 1, r63=7),
+        C("t0", 0, X, 2, r63=0), C("t1", 1, DS_SLOTS + 0x94, 2, r63=7),
         C("n0", 0, X, 3), C("n1", 1, X, 6, r63=7), C("n2", 0, X, 0xFF),
-        C("f1", 0, DS_SLOTS, 4, r63=7),
+        C("f0", 1, X, 4), C("f1", 0, DS_SLOTS, 4, r63=7), C("f2", 0, X, 4),
         C("v0", 0, X, 5, w88=0x000B), C("v1", 1, X, 5, w88=0x000A), C("v2", 0, X, 5, w88=0x8000),
         C("v3", 1, DS_SLOTS + 0x94, 5, w88=0x7FFF),
         C("q0", 0, X, 2, null=True), C("q1", 1, X, 0, r63=7, null=True),
@@ -18779,16 +18780,15 @@ D3D_SPECS += [
     # side 2) and the +0x5F byte of the SIDE's slot (`[eax*4+0x10780f]`, EAX = side*37, 0x47BB0:
     # the cases pass a scratch slot in EAX); state 5 reads ctx[2] and ctx[4] of 0x33950, which
     # runs on both sides. 0x36870, 0x47A00, 0x39834 and 0x39FB0 are stubs. Mask 0: `xor eax,eax`
-    # 0x35434.
+    # 0x35434. States 2 and 4 store through EDI after their 0x36870 call (0x47BCE, 0x47BEF): the
+    # stub's clobber set is the caller-observed one (diff_emu._CALLEE_CLOBBER_FIXES).
     Spec("fighter_47b04", 0x47B04, d3d_47b04_cases(),
          allow_calls=(0x33950,), calls=(ANIM54, D3D_47A00, POSE, PIVOT), eax_mask=0,
-         unhit_named={0x47BC7: "state 2 stores EDI's +0x57 after its 0x36870 call (0x47BCE): the stub's declared "
-                               "clobbers (esi, edi, ebp) poison EDI; record d3d section 4",
-                      0x47BE4: "state 4's body, the same after its 0x36870 call (0x47BEF)"},
          mutants=("@otheridx", "@otherctx", "@nonull", "@statectx", "@mask", "@c0val", "@c0side", "@c0rec", "@c1val",
                   "@c1no54", "@c154ctx", "@c1poseside", "@xor", "@slot5f", "@c15fsext", "@c15fother", "@c1nopivot",
                   "@c1pivotctx", "@c1order", "@c1nos57", "@c1s57ctx", "@c1early", "@c1late54", "@c4val", "@c5ge",
-                  "@c5uns", "@c5slot", "@c5no54", "@c554slot", "@c5rec", "@c5s57", "@c5w")),
+                  "@c5uns", "@c5slot", "@c5no54", "@c554slot", "@c5rec", "@c5s57", "@c5w", "@c2rec", "@c2nos57", "@c2early", "@c2nocall",
+                  "@c4no54", "@c4rec", "@c4nos57", "@c4late54")),
 ]
 D1_SPECS += D3D_SPECS
 
