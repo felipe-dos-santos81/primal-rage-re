@@ -26430,6 +26430,89 @@ D3A_CJ_MUT(s7fside) D3A_CJ_MUT(bit0) D3A_CJ_MUT(b1fset) D3A_CJ_MUT(dclow) D3A_CJ
 D3A_CJ_MUT(nos7f1) D3A_CJ_MUT(bit1) D3A_CJ_MUT(erow) D3A_CJ_MUT(eside) D3A_CJ_MUT(noerase) D3A_CJ_MUT(b19)
 D3A_CJ_MUT(b19early) D3A_CJ_MUT(b19late) D3A_CJ_MUT(d41) D3A_CJ_MUT(xor) D3A_CJ_MUT(xorb) D3A_CJ_MUT(one)
 D3A_CJ_MUT(swap41) D3A_CJ_MUT(animlate)
+/* 0x4F24C, 0x4F2B0, 0x4F318: no argument; the countdown of modes 0x15, 0x16 and 0x17. Mask 0: each is
+ * called from the mode dispatcher and followed by `jmp 0x2540f` (0x253E5, 0x253EC, 0x253F3), the mode tail
+ * the wave-1 records trace dead; 0x4F318's second site 0x425E5 is followed by `call 0x33f08`, whose first
+ * EAX use is a load (0x33F15). */
+static void b_d3a_4f24c(const u32 *r, u32 *eax) { (void)r; frontend_mode_15_step(); *eax = 0u; }
+static void b_d3a_4f2b0(const u32 *r, u32 *eax) { (void)r; frontend_mode_16_step(); *eax = 0u; }
+static void b_d3a_4f318(const u32 *r, u32 *eax) { (void)r; frontend_mode_17_step(); *eax = 0u; }
+enum { D3A_CD_NONE, D3A_CD_nz, D3A_CD_nodec, D3A_CD_eeb, D3A_CD_al, D3A_CD_two, D3A_CD_twov, D3A_CD_one, D3A_CD_sub,
+       D3A_CD_noafe, D3A_CD_afeb, D3A_CD_new, D3A_CD_sign, D3A_CD_ge, D3A_CD_skipalways, D3A_CD_nostore,
+       D3A_CD_src, D3A_CD_b00b, D3A_CD_hook, D3A_CD_nohook, D3A_CD_pre, D3A_CD_early, D3A_CD_ffff,
+       D3A_CD_late, D3A_CD_ffb, D3A_CD_store };
+static void d3a_hook_call(void)
+{
+    void (*hook)(void) = fn_resolve(DSD(0x00104AE4u));
+    if (hook != NULL) hook();
+}
+static void d3a_cd_core(int kind, u32 mut)
+{
+    u16 dx = DSW(0x001088EEu);
+    if ((dx == 0u) != (mut == D3A_CD_nz) || mut == D3A_CD_skipalways) {
+        u32 q = frontend_skip_check();
+        if (mut != D3A_CD_al) q &= 0xFFu;
+        if (q == 2u && mut != D3A_CD_two) DSW(0x00104AFEu) = (mut == D3A_CD_twov) ? 1u : dx;
+        if (q == 1u && mut != D3A_CD_one)
+            DSW(0x00104AFEu) = (u16)(DSW(0x00104AFEu) - ((mut == D3A_CD_sub) ? 0x3Bu : 0x3Cu));
+    }
+    if ((dx != 0u) != (mut == D3A_CD_nz)) {
+        if (mut == D3A_CD_eeb) DSB(0x001088EEu) = (u8)(dx - 1u);
+        else if (mut != D3A_CD_nodec) DSW(0x001088EEu) = (u16)(dx - 1u);
+    }
+    u16 ax = DSW(0x00104AFEu);
+    if (mut == D3A_CD_afeb) DSB(0x00104AFEu) = (u8)(ax - 1u);
+    else if (mut != D3A_CD_noafe) DSW(0x00104AFEu) = (u16)(ax - 1u);
+    if ((mut == D3A_CD_new) ? ((s16)(u16)(ax - 1u) > 0) : (mut == D3A_CD_sign) ? (ax != 0u)
+            : (mut == D3A_CD_ge) ? ((s16)ax >= 0) : ((s16)ax > 0)) return;
+    u16 pre = DSW(0x00104AFAu);
+    if (kind == 0x17) {
+        if (mut == D3A_CD_ffb) DSB(0x001088EEu) = 0xFFu;
+        else if (mut != D3A_CD_ffff && mut != D3A_CD_late) DSW(0x001088EEu) = 0xFFFFu;
+        if (mut != D3A_CD_nohook) d3a_hook_call();
+        if (mut == D3A_CD_late) DSW(0x001088EEu) = 0xFFFFu;
+        if (mut == D3A_CD_store) DSW(0x00104B00u) = DSW(0x00104AFAu);
+        return;
+    }
+    if (mut == D3A_CD_early) DSW(0x00104B00u) = pre;
+    if ((kind == 0x16 && mut != D3A_CD_nohook) || (kind == 0x15 && mut == D3A_CD_hook)) d3a_hook_call();
+    if (mut == D3A_CD_nostore || mut == D3A_CD_early) return;
+    u16 v = (mut == D3A_CD_pre) ? pre : (mut == D3A_CD_src) ? DSW(0x00104AFEu) : DSW(0x00104AFAu);
+    if (mut == D3A_CD_b00b) DSB(0x00104B00u) = (u8)v;
+    else DSW(0x00104B00u) = v;
+}
+#define D3A_CD_MUT(name) \
+    __attribute__((unused)) static void m_d3a_c15_##name(const u32 *r, u32 *eax) \
+    { (void)r; d3a_cd_core(0x15, D3A_CD_##name); *eax = 0u; } \
+    __attribute__((unused)) static void m_d3a_c16_##name(const u32 *r, u32 *eax) \
+    { (void)r; d3a_cd_core(0x16, D3A_CD_##name); *eax = 0u; } \
+    __attribute__((unused)) static void m_d3a_c17_##name(const u32 *r, u32 *eax) \
+    { (void)r; d3a_cd_core(0x17, D3A_CD_##name); *eax = 0u; }
+D3A_CD_MUT(nz) D3A_CD_MUT(nodec) D3A_CD_MUT(eeb) D3A_CD_MUT(al) D3A_CD_MUT(two) D3A_CD_MUT(twov)
+D3A_CD_MUT(one) D3A_CD_MUT(sub) D3A_CD_MUT(noafe) D3A_CD_MUT(afeb) D3A_CD_MUT(new) D3A_CD_MUT(sign)
+D3A_CD_MUT(ge) D3A_CD_MUT(skipalways) D3A_CD_MUT(nostore) D3A_CD_MUT(src) D3A_CD_MUT(b00b) D3A_CD_MUT(hook)
+D3A_CD_MUT(nohook) D3A_CD_MUT(pre) D3A_CD_MUT(early) D3A_CD_MUT(ffff) D3A_CD_MUT(late) D3A_CD_MUT(ffb)
+D3A_CD_MUT(store)
+
+/* 0x4F9C8: no argument. Mask 0: the one caller 0x2540A falls into the mode tail 0x2540F. */
+static void b_d3a_4f9c8(const u32 *r, u32 *eax) { (void)r; frontend_mode_1b_step(); *eax = 0u; }
+enum { D3A_WB_NONE, D3A_WB_al, D3A_WB_inv, D3A_WB_nohook, D3A_WB_pre, D3A_WB_early, D3A_WB_nostore, D3A_WB_src, D3A_WB_b00b };
+static void d3a_4f9c8_core(u32 mut)
+{
+    u32 w = frontend_wipe_out();
+    if (mut == D3A_WB_al) w &= 0xFFu;
+    if ((w == 0u) != (mut == D3A_WB_inv)) return;
+    u16 pre = DSW(0x00104AFAu);
+    if (mut == D3A_WB_early) DSW(0x00104B00u) = pre;
+    if (mut != D3A_WB_nohook) d3a_hook_call();
+    if (mut == D3A_WB_nostore || mut == D3A_WB_early) return;
+    u16 v = (mut == D3A_WB_pre) ? pre : (mut == D3A_WB_src) ? DSW(0x00104AFEu) : DSW(0x00104AFAu);
+    if (mut == D3A_WB_b00b) DSB(0x00104B00u) = (u8)v;
+    else DSW(0x00104B00u) = v;
+}
+#define D3A_WB_MUT(name) \
+    static void m_d3a_wb_##name(const u32 *r, u32 *eax) { (void)r; d3a_4f9c8_core(D3A_WB_##name); *eax = 0u; }
+D3A_WB_MUT(al) D3A_WB_MUT(inv) D3A_WB_MUT(nohook) D3A_WB_MUT(pre) D3A_WB_MUT(early) D3A_WB_MUT(nostore) D3A_WB_MUT(src) D3A_WB_MUT(b00b)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33043,6 +33126,75 @@ static const binding_t k_bindings[] = {
     { "flow_challenge_join@one", m_d3a_cj_one, 0x00000000u },
     { "flow_challenge_join@swap41", m_d3a_cj_swap41, 0x00000000u },
     { "flow_challenge_join@animlate", m_d3a_cj_animlate, 0x00000000u },
+    { "frontend_mode_15_step", b_d3a_4f24c, 0x00000000u },
+    { "frontend_mode_15_step@nz", m_d3a_c15_nz, 0x00000000u },
+    { "frontend_mode_15_step@nodec", m_d3a_c15_nodec, 0x00000000u },
+    { "frontend_mode_15_step@eeb", m_d3a_c15_eeb, 0x00000000u },
+    { "frontend_mode_15_step@al", m_d3a_c15_al, 0x00000000u },
+    { "frontend_mode_15_step@two", m_d3a_c15_two, 0x00000000u },
+    { "frontend_mode_15_step@twov", m_d3a_c15_twov, 0x00000000u },
+    { "frontend_mode_15_step@one", m_d3a_c15_one, 0x00000000u },
+    { "frontend_mode_15_step@sub", m_d3a_c15_sub, 0x00000000u },
+    { "frontend_mode_15_step@noafe", m_d3a_c15_noafe, 0x00000000u },
+    { "frontend_mode_15_step@afeb", m_d3a_c15_afeb, 0x00000000u },
+    { "frontend_mode_15_step@new", m_d3a_c15_new, 0x00000000u },
+    { "frontend_mode_15_step@sign", m_d3a_c15_sign, 0x00000000u },
+    { "frontend_mode_15_step@ge", m_d3a_c15_ge, 0x00000000u },
+    { "frontend_mode_15_step@skipalways", m_d3a_c15_skipalways, 0x00000000u },
+    { "frontend_mode_15_step@nostore", m_d3a_c15_nostore, 0x00000000u },
+    { "frontend_mode_15_step@src", m_d3a_c15_src, 0x00000000u },
+    { "frontend_mode_15_step@b00b", m_d3a_c15_b00b, 0x00000000u },
+    { "frontend_mode_15_step@hook", m_d3a_c15_hook, 0x00000000u },
+    { "frontend_mode_16_step", b_d3a_4f2b0, 0x00000000u },
+    { "frontend_mode_16_step@nz", m_d3a_c16_nz, 0x00000000u },
+    { "frontend_mode_16_step@nodec", m_d3a_c16_nodec, 0x00000000u },
+    { "frontend_mode_16_step@eeb", m_d3a_c16_eeb, 0x00000000u },
+    { "frontend_mode_16_step@al", m_d3a_c16_al, 0x00000000u },
+    { "frontend_mode_16_step@two", m_d3a_c16_two, 0x00000000u },
+    { "frontend_mode_16_step@twov", m_d3a_c16_twov, 0x00000000u },
+    { "frontend_mode_16_step@one", m_d3a_c16_one, 0x00000000u },
+    { "frontend_mode_16_step@sub", m_d3a_c16_sub, 0x00000000u },
+    { "frontend_mode_16_step@noafe", m_d3a_c16_noafe, 0x00000000u },
+    { "frontend_mode_16_step@afeb", m_d3a_c16_afeb, 0x00000000u },
+    { "frontend_mode_16_step@new", m_d3a_c16_new, 0x00000000u },
+    { "frontend_mode_16_step@sign", m_d3a_c16_sign, 0x00000000u },
+    { "frontend_mode_16_step@ge", m_d3a_c16_ge, 0x00000000u },
+    { "frontend_mode_16_step@skipalways", m_d3a_c16_skipalways, 0x00000000u },
+    { "frontend_mode_16_step@nostore", m_d3a_c16_nostore, 0x00000000u },
+    { "frontend_mode_16_step@src", m_d3a_c16_src, 0x00000000u },
+    { "frontend_mode_16_step@b00b", m_d3a_c16_b00b, 0x00000000u },
+    { "frontend_mode_16_step@nohook", m_d3a_c16_nohook, 0x00000000u },
+    { "frontend_mode_16_step@pre", m_d3a_c16_pre, 0x00000000u },
+    { "frontend_mode_16_step@early", m_d3a_c16_early, 0x00000000u },
+    { "frontend_mode_17_step", b_d3a_4f318, 0x00000000u },
+    { "frontend_mode_17_step@nz", m_d3a_c17_nz, 0x00000000u },
+    { "frontend_mode_17_step@nodec", m_d3a_c17_nodec, 0x00000000u },
+    { "frontend_mode_17_step@eeb", m_d3a_c17_eeb, 0x00000000u },
+    { "frontend_mode_17_step@al", m_d3a_c17_al, 0x00000000u },
+    { "frontend_mode_17_step@two", m_d3a_c17_two, 0x00000000u },
+    { "frontend_mode_17_step@twov", m_d3a_c17_twov, 0x00000000u },
+    { "frontend_mode_17_step@one", m_d3a_c17_one, 0x00000000u },
+    { "frontend_mode_17_step@sub", m_d3a_c17_sub, 0x00000000u },
+    { "frontend_mode_17_step@noafe", m_d3a_c17_noafe, 0x00000000u },
+    { "frontend_mode_17_step@afeb", m_d3a_c17_afeb, 0x00000000u },
+    { "frontend_mode_17_step@new", m_d3a_c17_new, 0x00000000u },
+    { "frontend_mode_17_step@sign", m_d3a_c17_sign, 0x00000000u },
+    { "frontend_mode_17_step@ge", m_d3a_c17_ge, 0x00000000u },
+    { "frontend_mode_17_step@skipalways", m_d3a_c17_skipalways, 0x00000000u },
+    { "frontend_mode_17_step@ffff", m_d3a_c17_ffff, 0x00000000u },
+    { "frontend_mode_17_step@late", m_d3a_c17_late, 0x00000000u },
+    { "frontend_mode_17_step@ffb", m_d3a_c17_ffb, 0x00000000u },
+    { "frontend_mode_17_step@nohook", m_d3a_c17_nohook, 0x00000000u },
+    { "frontend_mode_17_step@store", m_d3a_c17_store, 0x00000000u },
+    { "frontend_mode_1b_step", b_d3a_4f9c8, 0x00000000u },
+    { "frontend_mode_1b_step@al", m_d3a_wb_al, 0x00000000u },
+    { "frontend_mode_1b_step@inv", m_d3a_wb_inv, 0x00000000u },
+    { "frontend_mode_1b_step@nohook", m_d3a_wb_nohook, 0x00000000u },
+    { "frontend_mode_1b_step@pre", m_d3a_wb_pre, 0x00000000u },
+    { "frontend_mode_1b_step@early", m_d3a_wb_early, 0x00000000u },
+    { "frontend_mode_1b_step@nostore", m_d3a_wb_nostore, 0x00000000u },
+    { "frontend_mode_1b_step@src", m_d3a_wb_src, 0x00000000u },
+    { "frontend_mode_1b_step@b00b", m_d3a_wb_b00b, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

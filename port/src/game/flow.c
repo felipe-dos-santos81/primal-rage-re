@@ -1020,6 +1020,7 @@ u32 frontend_wipe_in(void)
  * and no gate store when the counter passes 0x10. */
 u32 frontend_wipe_out(void)
 {
+    PR_SEAM_RET0(0x4FA88u);
     if (DSD(DS_000C98F0) == 0u) {                       /* 0x4FA92 */
         DSD(DS_000C98F0) = actor_spawn((const u32 *)(mem + DS_000C9908),
                                        0u, 0xFFu, 0u, 0u);  /* 0x4FAA3/0x4FAA8 */
@@ -1105,6 +1106,7 @@ u32 frontend_buttons_pressed(u32 n)
  * EBX/ECX/EDX/EDI are pushed and popped. */
 u32 frontend_skip_check(void)
 {
+    PR_SEAM_RET0(0x4F790u);
     u32 held = DSD(DS_001088D8);                        /* 0x4F794 */
     for (u32 i = 0; i < 8u; i += 4u) {                  /* 0x4F79A/0x4F7AE/0x4F7B1 */
         u32 m = DSD(DS_000C9898 + i);                   /* 0x4F79E */

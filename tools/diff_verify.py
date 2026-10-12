@@ -18613,6 +18613,78 @@ D3A_SPECS += [
                 "@erow", "@eside", "@noerase", "@b19", "@b19early", "@b19late", "@d41", "@xor", "@xorb", "@one",
                 "@swap41", "@animlate")),
 ]
+D3A_SKIP = E.Call(0x4F790, ())
+D3A_WIPE = E.Call(0x4FA88, (), clobbers=("edi", "ebp"))
+D3A_HOOK_REAL = (0x28D68, 0x4F980)      # a registered hook and its callee, run real (d1d's 0x4F6E8 row)
+
+
+def d3a_cd_case(ee, afe, hook=0x5D812, afa=0x2222, b00=0x4444):
+    """0x4F24C/0x4F2B0/0x4F318/0x4F9C8: the delay word 0x1088EE between seeded words, the words
+    0x104AFA (the return mode), 0x104AFC, 0x104AFE (the countdown) and 0x104B00 (the mode) with a
+    seeded word after them, the hook dword 0x104AE4 between seeded dwords and the byte 0x1088F5
+    (the registered hook 0x28D68 stores 0x104AE4 = 0x43738, 0x1088F5 = 0, 0x104AFA = 0x10 and
+    0x104B00 = 0x1A; 0x5D812 is `xor eax,eax; ret`, which the port does not register)."""
+    return {0x001088EC: le16(0x6161) + le16(ee) + le16(0x6262),
+            0x00104AFA: le16(afa) + le16(0x3333) + le16(afe) + le16(b00) + le16(0x6363),
+            0x00104AE0: le32(0x64646464) + le32(hook) + le32(0x65656565), 0x001088F5: b"\x7F"}
+
+
+def d3a_cd_cases(real_hook):
+    """The countdown cases the three modes share. c2, c4, c6, c7 expire (the old countdown <= 0,
+    signed): c4 and c7 with the registered hook when `real_hook`."""
+    h = 0x28D68 if real_hook else 0x5D812
+    return [
+        Case("c0", {"ebx": 0x11111111, "edx": 0x22222222}, d3a_cd_case(5, 10)),
+        Case("c1", {}, d3a_cd_case(0, 10), {0x4F790: 0x00000100}),
+        Case("c2", {}, d3a_cd_case(0, 10), {0x4F790: 0xFFFFFF02}),
+        Case("c3", {}, d3a_cd_case(0, 0x50), {0x4F790: 0x00000101}),
+        Case("c4", {}, d3a_cd_case(0, 0x3C, hook=h), {0x4F790: 1}),
+        Case("c5", {}, d3a_cd_case(1, 1)),
+        Case("c6", {}, d3a_cd_case(0x8000, 0x8000)),
+        Case("c7", {}, d3a_cd_case(0, 0, hook=h, afa=0x0013), {0x4F790: 3}),
+        Case("c8", {}, d3a_cd_case(0xFFFF, 0x7FFF)),
+        Case("c9", {}, d3a_cd_case(0x0100, 0x0100)),
+    ]
+
+
+D3A_SPECS += [
+    # 0x4F24C frontend_mode_15_step: no argument. While the word 0x1088EE is non-zero it is
+    # decremented; at 0 the skip test 0x4F790 (a stub, seamed here; AL only: `and eax,0xff`):
+    # 2 stores DX (the 0 just tested, across the call) in the countdown word 0x104AFE, 1 takes
+    # 0x3C off it. Then the countdown is decremented, and when its old value was <= 0 (signed
+    # `test ax,ax; jg`) the mode word 0x104B00 = the word 0x104AFA. No hook call (`@hook` adds
+    # one). Mask 0: record §1.
+    Spec("frontend_mode_15_step", 0x4F24C, d3a_cd_cases(False),
+         calls=(D3A_SKIP, D1D_HOOK_NOP), eax_mask=0,
+         mutants=("@nz", "@nodec", "@eeb", "@al", "@two", "@twov", "@one", "@sub", "@noafe", "@afeb", "@new",
+                "@sign", "@ge", "@skipalways", "@nostore", "@src", "@b00b", "@hook")),
+    # 0x4F2B0 frontend_mode_16_step: the same countdown; on expiry `call [0x104ae4]`, then the
+    # mode word = the word 0x104AFA read after the call (0x4F308). c2/c6 call 0x5D812 (recorded
+    # on both sides: the port's fn_resolve reports the unregistered target through the seam),
+    # c4/c7 the registered 0x28D68, run real with its 0x4F980, whose store to 0x104AFA the raw
+    # reads back (`@pre`).
+    Spec("frontend_mode_16_step", 0x4F2B0, d3a_cd_cases(True),
+         allow_calls=D3A_HOOK_REAL, calls=(D3A_SKIP, D1D_HOOK_NOP), eax_mask=0,
+         mutants=("@nz", "@nodec", "@eeb", "@al", "@two", "@twov", "@one", "@sub", "@noafe", "@afeb", "@new",
+                "@sign", "@ge", "@skipalways", "@nostore", "@src", "@b00b", "@nohook", "@pre", "@early")),
+    # 0x4F318 frontend_mode_17_step: the same countdown; on expiry the word 0x1088EE = 0xFFFF,
+    # then `call [0x104ae4]` (the store first: `@late` is caught by the memory at the call). No
+    # mode store (`@store` adds one).
+    Spec("frontend_mode_17_step", 0x4F318, d3a_cd_cases(True),
+         allow_calls=D3A_HOOK_REAL, calls=(D3A_SKIP, D1D_HOOK_NOP), eax_mask=0,
+         mutants=("@nz", "@nodec", "@eeb", "@al", "@two", "@twov", "@one", "@sub", "@noafe", "@afeb", "@new",
+                "@sign", "@ge", "@skipalways", "@ffff", "@late", "@ffb", "@nohook", "@store")),
+    # 0x4F9C8 frontend_mode_1b_step: no argument. When 0x4FA88 returns non-zero (`test eax,eax`:
+    # w2's stub EAX is 0x100), `call [0x104ae4]`, then the mode word 0x104B00 = the word 0x104AFA
+    # read after the call. 0x4FA88 is a stub (seamed here, its own row). Mask 0: record §1.
+    Spec("frontend_mode_1b_step", 0x4F9C8, [
+        Case("w0", {}, d3a_cd_case(5, 10), {0x4FA88: 0}),
+        Case("w1", {}, d3a_cd_case(5, 10), {0x4FA88: 1}),
+        Case("w2", {}, d3a_cd_case(5, 10, hook=0x28D68), {0x4FA88: 0x00000100}),
+        Case("w3", {}, d3a_cd_case(0, 0, afa=0x0013), {0x4FA88: 0xFFFFFFFF}),
+    ], allow_calls=D3A_HOOK_REAL, calls=(D3A_WIPE, D1D_HOOK_NOP), eax_mask=0,
+       mutants=("@al", "@inv", "@nohook", "@pre", "@early", "@nostore", "@src", "@b00b")),
+]
 D1_SPECS += D3A_SPECS
 
 

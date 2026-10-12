@@ -20,6 +20,10 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x41760` | `frontend_mode12_challenge_continue` | 98 | 0: the one caller `0x4213B` (`0x41C28` state 5) goes on with `add esp,8` (`0x42140`), six pops and `ret`: the mode step's own return, whose EAX the d2e rows hold dead (mask 0, d2e §1) |
 | `0x42F60` | `flow_continue_poll` | 78 | full: `xor eax,eax` `0x42FAA`, `mov eax,1` `0x42FA3`, or the zero EAX of `0x2C060` just tested (`0x42F68`); all four callers `test eax,eax` (`0x27A3C`, `0x42CE6`, `0x42D2A`, `0x42D6F`) |
 | `0x42FE0` | `flow_challenge_join` | 221 | 0: the four call sites in `0x42CB4` drop EAX — `0x42D04..`, `0x42D8F..` and `0x42D3E mov ah,5` run to the pops and `ret` into `0x425E3 jmp 0x425ea; call 0x33f08` (first EAX use `mov eax,[ebx+0x1077a8]` `0x33F15`); after `0x42DB2` the loop reloads it (`mov eax,edx` `0x42D68`) or the tail rewrites it (`xor al,al` `0x42DC8` .. `mov eax,1`; `mov al,[0x104b1f]; and al,1; and eax,0xff` `0x42DDC..`). The fifth site `0x42FB1` is in the unreferenced stub `0x42FB0` (`mov ah,5`, `ret`) |
+| `0x4F24C` | `frontend_mode_15_step` | 97 | 0: `0x253E0 call` then `0x253E5 jmp 0x2540f` (the mode tail the wave-1 records trace dead) |
+| `0x4F2B0` | `frontend_mode_16_step` | 103 | 0: `0x253E7 call` then `0x253EC jmp 0x2540f` |
+| `0x4F318` | `frontend_mode_17_step` | 100 | 0: `0x253EE call` then `0x253F3 jmp 0x2540f`; `0x425E5 call` then `0x425EA call 0x33f08` (first EAX use a load, `0x33F15`) |
+| `0x4F9C8` | `frontend_mode_1b_step` | 28 | 0: `0x2540A call` falls into the mode tail `0x2540F` |
 
 ## §2 The row table (measured)
 
@@ -38,6 +42,10 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `frontend_mode12_challenge_continue` | `0x41760` | 4 | 1/1 | 20 | 0 | `0x4660C`, `0x25848`, `0x41350` stubbed with d2e's constants (the `0x25848` stub stores a new stage word: `@stagepre`). `h3`: a result of `0x100` (`@xorb`); `h0`: a col byte `0x83` (`@colsext`) |
 | `flow_continue_poll` | `0x42F60` | 7 | 8/8 | 20 | `0xFFFFFFFF` | five stubs (`0x2CA48`, `0x2CA78` seamed here). The stubbed `0x2CA78` returns non-zero in `q1` and `0x100` in `q4`, so the arm its real body (`xor eax,eax; ret`) never selects is compared too |
 | `flow_challenge_join` | `0x42FE0` | 7 | 8/8 | 32 | 0 | four stubs, none new. The stubs return AH set where the raw stores AH after `xor ah,ah` (`0x43078`). `j4`: side 2, handle `0x100` (`@dclow`); `j5`: side `0x100` (`@xorb`); `j6`: handle `0x10000` (`@e0low`) |
+| `frontend_mode_15_step` | `0x4F24C` | 10 | 9/9 | 18 | 0 | `0x4F790` stubbed (seamed here): its EAX carries upper bytes (`0xFFFFFF02`, `0x101`, `0x100`: `@al`). Boundaries: old countdown 1 (`c5`), 0 (`c7`), `0x8000` (`c6`), `0x7FFF` (`c8`) |
+| `frontend_mode_16_step` | `0x4F2B0` | 10 | 9/9 | 20 | 0 | the same cases; on expiry the hook `[0x104AE4]`: `0x5D812` recorded on both sides (`c2`, `c6`), the registered `0x28D68` real with its `0x4F980` (`c4`, `c7`), whose store to `0x104AFA` the raw reads back (`@pre`) |
+| `frontend_mode_17_step` | `0x4F318` | 10 | 9/9 | 19 | 0 | the same cases; the word `0x1088EE = 0xFFFF` is stored before the hook call (`@late`: `call #0/#1 memory`) |
+| `frontend_mode_1b_step` | `0x4F9C8` | 4 | 3/3 | 8 | 0 | `0x4FA88` stubbed (seamed here); `w2`'s stub EAX `0x100` separates `test eax,eax` from an AL test and runs the registered hook |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -59,6 +67,8 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x2CA78` | none | 0 | none | `xor eax,eax; ret` |
 | `0x2CA48` | none (its body reads memory only) | 0 | none | three plain `ret` (`0x2CA56`, `0x2CA74`, `0x2CA7A`) |
 | `0x2CAA8` (as a stub; seamed before) | none | 0 | none | `cmp; sete al; and eax,0xff; ret` |
+| `0x4F790` | none | 0 | none | pushes EBX ECX EDX EDI; one plain `ret` (`0x4F7F0`). The raw callers store DX after it (`0x4F269`) |
+| `0x4FA88` | none | 0 | `edi ebp` | pushes EBX ECX EDX ESI; two plain `ret` (`0x4FAE7`, `0x4FB1F`) |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -109,6 +119,9 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   stub of the row writes it, so the row does not separate the two.
 - `flow_continue_poll`: `0x42F88 inc eax; sar eax,1` on `0x2CAA8`'s result feeds `0x2CA48`, which reads no
   register: the value is not observable and the port does not compute it.
+- The mode-step family (`0x4F24C`, `0x4F2B0`, `0x4F318`, `0x4F9C8`): the hook is exercised with two values of the
+  dword `0x104AE4` only (the unregistered `0x5D812` and the registered `0x28D68`); the registered hooks take no
+  argument, so the EAX/EDX the raw leaves for them (the old countdown and its decrement) are not compared.
 
 ## §5 Store-sweep findings
 
@@ -142,6 +155,9 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   `@z8`), the slot's `+0x7F` byte = 0 (`j6` has it already 0) and `0x104B1F |= bit` (`@b1fset`), all before
   `0x2C2B0`; the byte `0x104B19 = 1` between `0x2C2B0` and the first `0x41310` (`@b19early`, `@b19late`: only
   the memory at a call).
+- The countdown family: the delay word `0x1088EE` and the countdown `0x104AFE` are stored as words (`@eeb`,
+  `@afeb`, caught where the high byte changes: `0x8000`, `0x0100`, 0); the mode word `0x104B00` takes the word
+  `0x104AFA` (`@b00b`, `@src`, `@nostore`). `0x4F318` stores `0x1088EE = 0xFFFF` (`@ffff`, `@ffb`).
 
 ## §6 Queue entries not done
 
