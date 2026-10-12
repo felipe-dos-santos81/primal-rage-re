@@ -10387,7 +10387,8 @@ static u8 hit_3d004(u32 side)
  * 2 (a scalar the last side to run this frame leaves behind). The combo node
  * slot = DS_001077A8[side], R = DSD(slot): with either null, returns early;
  * otherwise slot->+0x28 = R->+0x18, then fighter_34038(side), fighter_38d24
- * (side), fighter_382c4(side), fighter_38434(side); R's own x (+0x18) is
+ * (side), fighter_382c4(side), fighter_38434(side), then motion_step(R)
+ * (`mov eax,esi; call 0x2a4fc` 0x38570/0x38572); R's own x (+0x18) is
  * clamped into [-DS_000BE018, +DS_000BE018] through hit_anchor_set (whose
  * third register argument, y, is R->+0x1C read fresh at each call site, so
  * it re-writes its own current value); finally fighter_slot_latch_both()
@@ -10411,6 +10412,7 @@ void fight_384f8(u32 side)
     fighter_38d24(side);                                                    /* 0x3855D */
     fighter_382c4(side);                                                      /* 0x38564 */
     fighter_38434(side);                                                       /* 0x3856B */
+    motion_step(rec);                                                          /* 0x38570/0x38572 0x2A4FC */
 
     if ((s32)DSD(rec + 0x18u) >= (s32)DSD(DS_000BE018))                              /* 0x3857D/0x38580 */
         hit_anchor_set(side, DSD(DS_000BE018), DSD(rec + 0x1Cu));                  /* 0x38587 0x188AC */
