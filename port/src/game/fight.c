@@ -563,9 +563,10 @@ void fight_char_opp_text_blink(u32 side)
             DSW(DS_000C8948 + side * 2u), 0xFFu, 0x3700u, 0u);  /* 0x435ED..0x43602 */
         return;
     }
-    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x43621 */
-    text_cursor_set(col, 0x1B, game_string_get(0x235u), 0x1000u);  /* 0x4360B..0x4362C */
-    text_cursor_set(col, 0x1C, game_string_get(0x236u), 0x1000u);  /* 0x43631..0x43652 */
+    const u8 *s = game_string_get(0x235u);              /* 0x4360B/0x4361C */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), 0x1B, s, 0x1000u);  /* 0x43621..0x4362C */
+    s = game_string_get(0x236u);                        /* 0x43631/0x43642 */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), 0x1C, s, 0x1000u);  /* 0x43647..0x43652 */
 }
 
 /* 0x43EA0 — record §48-S. EAX = side (ECX), the other side EAX ^ 1. When the
