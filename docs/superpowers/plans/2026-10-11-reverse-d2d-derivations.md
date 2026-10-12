@@ -30,6 +30,17 @@ Masks: 0 = no caller reads EAX; 0xFF = AL; 0xFFFFFFFF = the whole register.
 | `0x15B90` | `camera_box_palette` (camera.c) | 159 | 0 | one call site `0x15D23`, followed by `mov eax,[edi+4]` (`0x15D28`) |
 | `0x164F4` | `camera_page_tail_b` (camera.c) | 547 | 0xFF | `mov al,1` (`0x1669E`, `0x16701`) / `xor al,al` (`0x1670C`); one call site `0x18108`, `test al,al` (`0x1810D`) |
 | `0x16AFC` | `camera_page_tail_a` (camera.c) | 601 | 0xFF | `mov al,1` (`0x16B5B`, `0x16CF4`, `0x16D3F`) / `xor al,al` (`0x16D4A`); one call site `0x180C9`, `test al,al` (`0x180CE`) |
+| `0x21458` | `fighter_21458` (fighter.c) | 344 | 0 | the slot `+0x10` callback (the dword at `0x21A24`): `call [ecx+0x10]` (`0x354E2`) ends `0x3531C`, whose one caller `0x35803` overwrites EAX (`mov eax,ebx` `0x3580E`) |
+| `0x2AA70` | `frame_timer` (actors.c) | 525 | 0 | `0x2A251`: `mov ax,[ebx+0x28]` .. `xor ah,ah; and al,4; and eax,0xffff` (`0x2A256..0x2A267`); the recursion `0x2AB9B`: `mov ax,[ebx]; xor al,al; and ah,0x80; and eax,0xffff` (`0x2ABB3..0x2ABBB`) |
+| `0x2C060` | `config_credit_ready` (config.c) | 10 | 0xFFFFFFFF | the tail's `setne al; and eax,0xff` (`0x2CA3C/0x2CA3F`); all eight callers `test eax,eax` (`0x11F30`, `0x27B63`, `0x28CE4`, `0x42618`, `0x42678`, `0x426DB`, `0x42F68`, `0x432AA`) |
+| `0x2DBC4` | `hiscore_read` (config.c) | 219 | 0xFFFFFFFF | `mov eax,0x105efc` (`0x2DC8F`) or the 0 of `0x2DB58` (`test eax,eax; je 0x2dc97`): the pointer is the result |
+| `0x2DDE4` | `hiscore_rank_probe` (config.c) | 177 | 0xFFFFFFFF | `mov eax,0xffffffff` (`0x2DE07`, `0x2DE7C`) / `mov eax,edi` (`0x2DE8A`): the rank is the result |
+| `0x30788` | `config_bar_draw` (config.c) | 220 | 0 | six call sites, each loads EAX before reading it: `mov eax,[esp+0x10]` (`0x30947`), `mov eax,ecx` (`0x30966`), `mov eax,5` (`0x3097E`), `mov eax,[esp+4]` (`0x30D7A`), `mov eax,ebp` (`0x30D99`); after `0x30DA3`: `mov eax,[esp]` (`0x30DAC`), `mov eax,[esp+4]` (`0x30DBD`), `mov eax,edx` (`0x30DD7`), `mov eax,0x22` (`0x30E19`), `mov eax,3` (`0x30E3D`), or `0x30B45`'s `call 0x2ea74`, which opens with `xor eax,eax` |
+| `0x31E28` | `config_option_row` (config.c) | 251 | 0 | `0x3216C`: `mov eax,1` (`0x32173`); `0x32182`: `mov eax,ebx` (`0x3218E`); `0x32190`: `xor eax,eax` (`0x3219E` / `0x321A9`); `0x32438`: `mov eax,1` (`0x3243F`); `0x32446`: `mov eax,[0x101514]` (`0x3244B`) |
+| `0x3E6A8` | `fighter_3e6a8` (fighter.c) | 344 | 0 | the slot `+0x10` callback (the dword at `0x3ECBF`), as `0x21458` |
+| `0x3F9C8` | `fighter_3f9c8` (fighter.c) | 446 | 0 | the slot `+0x0C` callback (the dword at `0x3FBC1`): `xor eax,eax` (`0x35434`) after `0x35431`; `0x384D9` returns through `0x38434` to `mov eax,esi` (`0x38570`) (record d1b, the `0x3F720` row) |
+| `0x3FDD8` | `fighter_3fdd8` (fighter.c) | 206 | 0 | the slot `+0x1C` callback (the dword at `0x3FF81`): the one `call [edx+0x1c]` (`0x19505`) is followed by `mov eax,[esp+8]` (`0x19508`) |
+| `0x4F644` | `input_state_update` (input.c) | 162 | 0 | followed by hand, two calls deep. `0x24C6E`: `mov eax,ebx` (`0x24C9F`) or, past the loop, `0x461DC` (`mov eax,2` `0x461F8` / `mov eax,[0x101514]` `0x46203` before any read) or `0x38990` (`mov ax,[0xf0aec]` `0x38991`, `mov eax,[0xf0aec]` `0x3899F`). `0x25210`: `jmp 0x2540f`, `0x2A31C` (`mov eax,[0x105bcc]` `0x2A353`, or its early `ret`), then `mov ax,[0x104b00]` (`0x2545C`, only AX compared) or `0x3BB90` (`xor ah,ah; mov [0x107d30],ah`, `xor eax,eax` `0x3BB9B`). **Weaker evidence than the other rows': not every branch below those calls was read** |
 
 ## §2 The rows (measured)
 
@@ -41,13 +52,31 @@ Masks: 0 = no caller reads EAX; 0xFF = AL; 0xFFFFFFFF = the whole register.
 | `camera_box_palette` | 0x15B90 | 6 | 6/6 | 12 | 0 | `0x17EEC`, `0x1A570` allow (camera.c reads both through its own unseamed helpers) |
 | `camera_page_tail_b` | 0x164F4 | 14 | 23/23 | 29 | 0xFF | `0x3C570`, `0x164C0`, `0x1A570` allow; correction §3.2 |
 | `camera_page_tail_a` | 0x16AFC | 15 | 27/27 | 29 | 0xFF | `0x16734` (with `0x33A10`), `0x3C570`, `0x164C0`, `0x1A570` allow |
+| `fighter_21458` | 0x21458 | 13 | 10/10 | 35 | 0 | stubs `0x39834`, VOICE, SPAWN, `0x13244`, ANIM_BEGIN, `0x3C16C`, `0x188AC`; `0x33A10`, `0x21F30` allow |
+| `frame_timer` | 0x2AA70 | 27 | 32/32 | 33 | 0 | stubs `0x29F34`, `0x2B2A0`, `0x2A408`; `0x2A39C` and the raw's own recursive call (`0x2AA70`) allow; corrections §3.3, §3.4 |
+| `config_credit_ready` | 0x2C060 | 5 | 2/2 | 6 | 0xFFFFFFFF | `0x2CAA8` real (recorded); the tail jump's target `0x2CA2C` is the row's second block |
+| `hiscore_read` | 0x2DBC4 | 7 | 17/17 | 13 | 0xFFFFFFFF | `0x2DB58` allow |
+| `hiscore_rank_probe` | 0x2DDE4 | 9 | 16/16 | 9 | 0xFFFFFFFF | `0x2DB58` allow; correction §3.5 |
+| `config_bar_draw` | 0x30788 | 7 | 15/15 | 16 | 0 | `0x2F434`, `0x2F174` allow; their `0x2EFD4`, `0x2F198`, `0x2F5A0` are the recorded stubs |
+| `config_option_row` | 0x31E28 | 12 | 14/14 | 16 | 0 | stubs `0x2F198`, `0x2F5A0`; the string path `0x1C500`/`0x474E4`/`0x1E75C`/`0x1E808`/`0x500BB` and `0x2F174` allow; `RESOLVED_JUMPS` `0x31EBC` |
+| `fighter_3e6a8` | 0x3E6A8 | 13 | 10/10 | 34 | 0 | as `fighter_21458` with `0x3F308` allow; EDX = the slot's record in every case (§4) |
+| `fighter_3f9c8` | 0x3F9C8 | 14 | 18/20 | 36 | 0 | stubs `0x187FC`, `0x189FC`, `0x3C190`, `0x3C148`, `0x2B150`, `0x3C16C`, `0x188AC`, `0x2BC30`, `0x188DC`; `0x33950`, `0x3F6F4`, `0x3F720` allow; two blocks named (§4) |
+| `fighter_3fdd8` | 0x3FDD8 | 4 | 4/4 | 23 | 0 | stubs `0x1A570`, `0x188DC`, `0x2BC30`, `0x39834`, `0x39A10`; `0x33950`, `0x3D0C0` allow; correction §3.6 |
+| `input_state_update` | 0x4F644 | 5 | 2/3 | 10 | 0 | `0x50161`, `0x2D2F0` allow; one block named (§4) |
 
 Every binding and mutant of each row was run ten times on the port side with identical output and no
 `diffrun` failure: no index-like sentinel leaves `mem[]` ("other side" mutants use `side ^ 1` on sides
 0 and 1; the side-2 cases of the two tails keep `0x1077B0 + 2 * 0x94` inside the image).
 
 **Exports for the bindings** (not corrections): `camera_mode_track_pair` and `camera_box_palette` lose
-`static` (declared in `camera.h`). No seam was added.
+`static` (declared in `camera.h`), `frame_timer` loses `static` (declared in `actors.h`). No seam was
+added.
+
+**Harness lines outside the batch's three blocks** (additive, none edited): `tools/diff_emu.py`
+`RESOLVED_JUMPS` gains `0x31EBC: (0x31EA7, 0x31E0C, 7)` with its comment, and the `WINDOWS` dictionary
+of `test_each_resolved_jump_table_matches_the_bytes` (`tools/tests/test_diff_verify.py`) gains the
+matching `0x31EBC` window (`cmp edi, 6` .. `jmp dword ptr cs:[eax + 0x31e0c]`), re-checked from the
+image by a scratch run of the test's own loop.
 
 ## §3 Corrections (raw over port, address-proved)
 
@@ -76,9 +105,80 @@ byte-identical before and after (sha256 of the concatenated `frames/*` `a53064ba
    state it produces differs. Mutant `camera_page_tail_b@uns` is the port before the fix (caught by
    `t9` alone).
 
+3. **`frame_timer` (`0x2AA70`): the pset index is DX, not EDX.** Raw: the argument stays in ESI and
+   every use narrows it: `xor edx,edx; mov dx,si` before `0x2B2A0` (`0x2ABC4/0x2ABC8`) and before
+   `0x2A39C` (`0x2ABDF/0x2ABE3`), `xor eax,eax; mov ax,si; .. shl eax,5` for the 0x1E1 pset store
+   (`0x2AC60..0x2AC6E`). The port used the whole 32-bit argument for the opcode call and the pset
+   store. Found by `m1` (EDX = `0x00030001`: `byte 0x10A620: original 0xE1, port unchanged`, the port's
+   word at `0x70A620`) and `l1` (`call #0: original 0x2B2A0(0x10A300, 0x3, 0x0), port 0x2B2A0(0x10A300,
+   0x20003, 0x0)`). New: `slot &= 0xffffu` on entry. Both callers pass a zero-extended value (`0x2A24D`
+   `mov edx,esi`, ESI from `mov si,[eax+0x56]` `0x2A204`; the recursion's `xor edx,edx; mov
+   dl,[ecx+0x4b]`), so no reachable state changes. Mutant `frame_timer@slotw` is the port before the
+   fix. The same class as d1g's `anim_id_path` correction.
+4. **`frame_timer` (`0x2AA70`): an unordered timer takes the hold arm.** Raw: `fldz; fcomp dword
+   [esp]; fnstsw ax; sahf; jb 0x2ac47` (`0x2AB3C..0x2AB44`): `jb` is taken for 0 < old and for an
+   unordered compare (C0 set), so a NaN timer goes to the hold arm (the 0x1E1 pset word under `+0x2A`
+   bit 8). The port's `old > 0.0f` fell into the opcode walk. Found by `m3` (timer `0x7FC00000`):
+   `call #0: original none, port 0x2A408(0x10A300, 0x10A660)`. New: `!(old <= 0.0f)`. The two later
+   compares need no change: `jae` (`0x2AC35`) is not taken on a NaN step, but the sum just stored is
+   then a NaN too and `ja` (`0x2AC3F`) is not taken either, so the raw returns as the port's
+   `!(step > 0)` does, with the same bytes. Mutant `frame_timer@nan` is the port before the fix.
+5. **`hiscore_rank_probe` (`0x2DDE4`): the win exit checks the byte budget.** Raw: the strict-win `ja
+   0x2de75` (`0x2DE5E`) lands on `cmp dword [esp+8],0; jge 0x2de8a` (`0x2DE75/0x2DE7A`), the same test
+   the exhausted loop falls into: -1 when the remaining budget is negative, else the rank. The port
+   returned the rank on a win without the test. The budget is negative on a win only when `0x2DB58`'s
+   `count * size` is at least `0x80000000` on entry; the descriptors are constants of the code object
+   (`0x2D3FC`: counts 10/1/1, sizes 12/28/5), so no reachable state changes. Found by `k7` (count
+   `0x8000`, size `0x10000`): `eax: original 0xFFFFFFFF, port 0x0`. Mutant `hiscore_rank_probe@left` is
+   the port before the fix.
+6. **`fighter_3fdd8` (`0x3FDD8`): AL of `0x1A570`.** Raw: `call 0x1a570; test al,al; je` (`0x3FDEB..
+   0x3FDF2`). The port compared the callee's whole return value with 0. Found by `e2` (stub EAX =
+   `0x100`): `call #1: original 0x188DC(0x0, 0x7FFFF400), port 0x188DC(0x0, 0x80000400)`. New: `(u8)..
+   != 0u`. The real `0x1A570` returns 0 or 1 in the whole register (`and eax,0xffff; sete al`
+   `0x1A59F/0x1A5A4`), so no reachable state changes. Mutant `fighter_3fdd8@al` is the port before the
+   fix.
+
 ## §4 Named gaps, limits and unhit blocks
 
-- **No unhit block** in any row so far.
+- **Unhit blocks, each named in its spec's `unhit_named`:**
+  - `fighter_3f9c8` `0x3FB76`: the `+0x57` above 6 arm, `mov eax,1; call 0x62003` (the runtime's
+    fatal exit, >= 0x5D000), cannot run; the port returns there (a `PORT:` comment).
+  - `fighter_3f9c8` `0x3FA7A` (`xor edx,eax`, the clamp of a negative count to 0): dead with
+    `0x3F6F4` real. `0x3F6F4(side, 0x28)` has just returned `0x28 - (+0x86 >> 16)` clamped at 0 and
+    the raw went on only for a result of at least 1 (`cmp eax,1; jge` `0x3FA42/0x3FA45`); the second
+    `0x33950` context is the same side's, so `0x3FA60..0x3FA72` recomputes the same value and the
+    `jge` at `0x3FA78` is always taken. A stubbed `0x3F6F4` would reach it; `0x3F6F4` is not in the
+    stub clobber table.
+  - `input_state_update` `0x4F694` (`or [0x1088e4],[0x1088d8]`): dead with `0x2D2F0` real (`xor
+    eax,eax; ret`): the byte `0x1088D4` just stored is 0, so `test byte [0x1088d4],2; je` (`0x4F68B`)
+    is always taken.
+- **`0x52106` (`gfx_boot_clear`'s raw) is a named gap, not a row.** Its body reads the VGA status port
+  and programs the DAC: `mov edx,0x3da; in al,dx; test al,8; je` (`0x52129..0x52131`, the wait for
+  vertical retrace), `out dx,al` at `0x5213F` and `0x52145..0x52147` (256 black DAC entries). `in`/`out`
+  are in the harness's `UNMODELED_MNEMONICS`: a run stops at `0x5212E` as `unmodeled: in at 0x5212E`.
+  Not measured (no spec was written: a `gap=` spec would be a named-gap row, which changes the pinned
+  counter's gap figure and `test_every_ported_function_agrees..`'s list).
+- **`fighter_3e6a8`: the record argument.** The port's function is `(slot, side)` and reads the record
+  from the slot; the raw reads EDX for the dust's `+0x30` (`mov eax,[esi+0x30]` `0x3E760`). Every case
+  passes EDX = the EAX slot's record, as the one call site does (`mov edx,[ecx]` `0x35396`, `call
+  [ecx+0x10]` `0x354E2`): an EDX that is another record is **not cased**, and the twin's `@spawnrec`
+  mutant has no counterpart here.
+- **`frame_timer`: NaN only where it separates.** `m3` cases a quiet NaN timer. A NaN step is not
+  cased (equivalent, §3.4); a signalling NaN is not cased (the x87 quiets it on load, the port's `float`
+  arithmetic is the host's).
+- **`hiscore_rank_probe`: a value byte count above 4 is not cased.** The raw packs the value into its
+  frame's first four bytes (`mov [esp+eax-1],dl` `0x2DE27`, with the size dword at `[esp+4]` and the
+  budget at `[esp+8]`): five or more bytes run into the size. The port keeps a separate 8-byte buffer
+  (its comment calls 8 "headroom"; the raw's frame gives 4). The descriptors' counts are the code
+  object's constants 4/4/3 (`0x2D400 + table*8`). `@ge` was dropped as equivalent (the compare runs on
+  the first differing byte, so `>=` is `>`).
+- **`hiscore_read`: an odd name byte count is not cased** (the raw's `sub esi,2; jne` `0x2DC8A` then
+  wraps; the port's loop is the same `n -= 2`).
+- **`config_credit_ready`, `config_bar_draw`, `config_option_row`: the stubs below the allowed
+  wrappers.** `0x2F434`/`0x2F174`/`0x1C500` run on both sides, so the rows prove the arguments those
+  wrappers hand on (`0x2EFD4`, `0x2F198`, `0x2F5A0` recorded) and rest on the wrappers' own rows (d1g).
+- **`input_state_update`: the selectors' order is not observable** (the two masks `0xFF00FF00` and
+  `0x00FF00FF` are disjoint, so the two turns at the latch commute; `@order` was dropped as equivalent).
 - **PORT guards not cased.** `camera_dust_burst` skips the stream start when the spawn returns 0 (the
   raw calls `0x2BC30` with EAX = 0 unconditionally, `0x12C0E..0x12C18`); no case returns 0 from the
   SPAWN stub.
@@ -117,6 +217,13 @@ two out dwords. Findings:
   shift of the `* 16` mutant lands on the next triple and matches the same code).
 - `camera_dust_burst@early` and `camera_mode_track_pair@late` are caught by the memory at a recorded
   call alone.
+- `fighter_3f9c8`: case `s2` first named a slot that was not the side's, whose seeded `+0x57` (0x97)
+  took the fatal arm (`unmodeled: call 0x62003 from 0x3FB7B`); it now passes the side's own slot.
+- `input_state_update@e0w` (a dword store at `0x1088E0`) was first written before the `0x1088E2` word
+  store, which overwrote its damage; it is now the last store.
+- `frame_timer`: the four `+0x20`/`+0x24` float stores, the `+0x63` counter, the child chain's three
+  byte stores and the pset word each have a mutant that drops or misplaces them (`@add`, `@no63`,
+  `@late`, `@child2a`, `@child20`, `@chainclr`, `@chain2a`, `@e1w`).
 
 ## §6 Queue entries not done
 
