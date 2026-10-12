@@ -19074,6 +19074,58 @@ D3B_SPECS += [
        mutants=("@skip", "@al", "@or", "@set", "@f170", "@f170v", "@once", "@sidearg", "@order", "@idx")),
 ]
 
+D3B_TXTCLR = E.Call(0x432EC, ("eax", "edx"), clobbers=("edx",))
+D3B_OPPCLR = E.Call(0x433DC, ("eax", "edx"), clobbers=("edx", "ebp"))
+# a cursor stub that also rewrites both col words 0xC894C (a harness write), as D3B_RELEASE_COL
+D3B_CURSOR_COL = dataclasses.replace(D1D_CURSOR, writes=((None, 0x000C894C, le16(0x0077) + le16(0x0088)),))
+
+
+def d3b_blink_case(phase, d528, strings, cols=(0x8003, 0x0018), xs=(0x8120, 0x0260)):
+    """0x435AC / 0x43464: the phase word DS_000EF6DC between seeded words; the dword DS_00104528 (its
+    second byte is DS_00104529: bit 1 the sprite prompt, the dword's bit 9) between seeded dwords;
+    the two prompt sprite slots DS_00108144 and the two col words 0xC894C (d2b's 0x433DC fixture);
+    the two x words 0xC8948 (side 0's with bit 15 set: the raw zero-extends) between seeded words;
+    and the string table."""
+    p = d2b_ot_case(strings, recs=(0x0BAD8144, 0x0BAD8148), cols=cols)
+    p[0x000EF6DA] = le16(0x76DA) + le16(phase) + le16(0x76DE)
+    p[0x00104524] = le32(0x0BAD4524) + le32(d528) + le32(0x0BAD452C)
+    p[0x000C8946] = le16(0x7946) + le16(xs[0]) + le16(xs[1])
+    return p
+
+
+D3B_SPECS += [
+    # 0x435AC fight_char_opp_text_blink: EAX = side. 0x432EC, 0x433DC, 0x2AE14 and 0x2F198 are stubs
+    # (0x432EC preserves ECX and EBX, which carry the spawn's a3 and a4 across it); the string path
+    # runs on both sides. EAX dies unread at its one call site 0x43BA7 (the walk, record d3b §1):
+    # mask 0.
+    Spec("fight_char_opp_text_blink", 0x435AC, [
+        # phase 0 with the sprite prompt: 0x432EC(side, 0), then the sprite into DS_00108144[side]
+        Case("b0", {"eax": 0}, d3b_blink_case(0x0000, 0x00000200, D2B_OT_STR), {0x2AE14: 0x0010A300}),
+        Case("b1", {"eax": 1}, d3b_blink_case(0x7FE0, 0xFFFFFFFF, D2B_OT_STR), {0x2AE14: 0x0010A340}),
+        # phase 0 without it: the two strings
+        Case("b2", {"eax": 0}, d3b_blink_case(0x0020, 0x00000400, D2B_OT_STR), {0x2AE14: 0x0010A380}),
+        Case("b3", {"eax": 1}, d3b_blink_case(0x0000, 0xFFFFFDFF, {0x235: b"", 0x236: b"X"}, cols=(0x0003, 0xFFFF)),
+             {0x2AE14: 0x0010A3C0}),
+        # phase 0x18: 0x433DC(side, the dword's bit 9)
+        Case("b4", {"eax": 0}, d3b_blink_case(0x0018, 0x00000200, D2B_OT_STR), {0x2AE14: 0x0010A300}),
+        Case("b5", {"eax": 1}, d3b_blink_case(0xFF38, 0xFFFFFDFF, D2B_OT_STR), {0x2AE14: 0x0010A300}),
+        # any other phase: nothing (0x10 and 0x08 separate a narrower mask and the other compare)
+        Case("b6", {"eax": 0}, d3b_blink_case(0x0010, 0x00000200, D2B_OT_STR), {0x2AE14: 0x0010A300}),
+        Case("b7", {"eax": 1}, d3b_blink_case(0x0008, 0x00000200, D2B_OT_STR), {0x2AE14: 0x0010A300}),
+    ], allow_calls=D2B_STR_TREE, calls=(D3B_TXTCLR, D3B_OPPCLR, SPAWN, D1D_CURSOR), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "phase p18 flagall flag oppside bit clrflag noclr order sx sdesc sxs a3 a4 a5 store storeside col "
+           "sext ids row1 row2 mode one").split())),
+    # the same entry with the cursor stub that rewrites the col words
+    Spec("fight_char_opp_text_blink_rr", 0x435AC, [
+        Case("z0", {"eax": 0}, d3b_blink_case(0x0000, 0x00000000, D2B_OT_STR), {0x2AE14: 0x0010A300}),
+        Case("z1", {"eax": 1}, d3b_blink_case(0x0020, 0x00000000, D2B_OT_STR), {0x2AE14: 0x0010A300}),
+        Case("z2", {"eax": 0}, d3b_blink_case(0x0000, 0x00000200, D2B_OT_STR), {0x2AE14: 0x0010A300}),
+        Case("z3", {"eax": 1}, d3b_blink_case(0x0018, 0x00000200, D2B_OT_STR), {0x2AE14: 0x0010A300}),
+    ], allow_calls=D2B_STR_TREE, calls=(D3B_TXTCLR, D3B_OPPCLR, SPAWN, D3B_CURSOR_COL), eax_mask=0,
+       mutants=("@cache",)),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
