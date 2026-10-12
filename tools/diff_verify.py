@@ -13380,6 +13380,90 @@ def d2d_boxpal_case(side, ch, index, a, b, bit15, och=None):
         p[rec + 0x54] = le16(0x5454) + le16(1 + i) + le16(0x5858)
         p[D1G_PSET + (1 + i) * 0x20] = le16(0x8123 if bit else 0x7FFF) + le16(0x0202)
     return p
+D2D_PSET = 0x0010A600                                # a pset array clear of the records above
+
+
+def d2d_frame(e1):
+    """The 0xCC300 frame dword the tail cases poke for code `e1` (byte 0 and byte 2 feed the mirror)."""
+    return bytes([e1 ^ 0x15, 0x2B, (e1 + 7) & 0xFF, 0xC0])
+
+
+def d2d_tail_case(which, side, flags, cnt, st=8, s5f=3, ch=2, r63=0x21, entries=(), last=True, bit15=False,
+                  uid=0x7777, w84=0x8484, cw=None, c63=0x0010, boxc=0xB3B2B1B0, anchor=0x0A0B0C0D):
+    """0x16AFC (which "a") / 0x164F4 ("b"): the flag dword 0x107EE0; 0xFD120..0xFD15F seeded whole
+    with the side's countdown `cnt` and cached box `boxc`; 0x100B38..0x100B4F seeded with the side's
+    cached +0x84 word (`cw`, default the slot's own) and, for "b", cached +0x63 word `c63`; the
+    0x100AF0 anchors; both slots seeded whole (state +0x53, +0x5F, character +0x7A, +0x84 word; the
+    other slot differs in each); the records' two floats (+0x24 - 1.0 == +0x20 iff `last`), pset
+    index and +0x63; the pset word (sprite id `uid`, bit 15); six scan triples at the table (the
+    sixth is beyond the raw's five) and the frame dword of each code; the out dword. Side 2 (the
+    flag index of any non-zero side) gets the globals, a record with a pset word 0x16734 misses on
+    and a slot state byte that returns 0."""
+    a = which == "a"
+    def w32(buf, o, v): buf[o:o + 4] = le32(v)
+    g = bytearray(0xA0 + k for k in range(0x40))
+    base = 0 if a else 0x20
+    w32(g, base + 8 + side * 4, cnt)
+    w32(g, base + 0x18 + side * 4, boxc)
+    p = {DS_FLAGS: le32(flags), 0x001014EC: le32(D2D_PSET),
+         D2D_OUT_A - 4: le32(0x0C0C0C0C) + le32(0xEEEEEEEE) + le32(0x14141414)}
+    p.update(d1d_chunks(0x000FD120, g))
+    if side == 2:
+        p[DS_SLOTS + 2 * 0x94] = le32(D2D_F0)
+        p[DS_SLOTS + 2 * 0x94 + 0x52] = bytes([0x52, 0x00, 0x54])
+        p[DS_SLOTS + 2 * 0x94 + 0x79] = bytes([0x79, ch, 0x7B])
+        p[D2D_F0 + 0x54] = le16(0x5454) + le16(1) + le16(0x5858)
+        p[D2D_PSET + 0x20] = le16(0x7777) + le16(0x0202)
+        return p
+    h = bytearray(0x38 + k for k in range(0x18))
+    wo = (4 if a else 0xC) + side * 2
+    h[wo:wo + 2] = le16(w84 if cw is None else cw)
+    if not a:
+        h[0x10 + side * 2:0x12 + side * 2] = le16(c63)
+    p[0x00100B38] = bytes(h)
+    p[0x00100AEC] = (le32(0xECECECEC) + le32(anchor if side == 0 else anchor ^ 0xFFFFFFFF)
+                     + le32(anchor if side == 1 else anchor ^ 0xFFFFFFFF) + le32(0xF8F8F8F8))
+    for i in (0, 1):
+        mine = i == side
+        rec = (D2D_F0, D2D_F1)[i]
+        buf = bytearray((0x80 | (k & 0x3F) | (i << 6)) & 0xFF for k in range(0x94))
+        w32(buf, 0, rec)
+        buf[0x53], buf[0x5F], buf[0x7A] = (st, s5f, ch) if mine else (6 if st in (7, 8) else 8, s5f ^ 1, (ch + 3) % 7)
+        buf[0x84:0x86] = le16(w84 if mine else w84 ^ 0xFFFF)
+        p.update(d1d_chunks(DS_SLOTS + i * 0x94, buf))
+        p[rec + 0x1C] = le32(0x1C1C1C1C) + f32(4.0 if last == mine else 9.0) + f32(5.0) + le32(0x28282828)
+        p[rec + 0x54] = le16(0x5454) + le16(1 + i) + le16(0x5858)
+        p[rec + 0x62] = bytes([0x62, r63 if mine else r63 ^ 0x7F, 0x64])
+        word = (uid | (0x8000 if bit15 else 0)) if mine else (0x7777 | (0 if bit15 else 0x8000))
+        p[D2D_PSET + (1 + i) * 0x20] = le16(word) + le16(0x0202)
+    ent = list(entries) + [(0x7E, 0x7D, 0x7C)] * (6 - len(entries))
+    p[(0x00098688 if a else 0x00096108) + ch * 0x3C0 + s5f * 15] = bytes(v for e in ent for v in e)
+    for e1 in [e[1] for e in ent] + list(range(0xD2, 0xDB)):
+        p[0x000CC300 + ((ch << 8) + e1) * 4] = d2d_frame(e1)
+    return p
+
+
+def d2d_tail_cases(which):
+    """The cases the two tails share: `f` maps a side to its flag bit ("a": bits 2/3, "b": bits 0/1)."""
+    f = (lambda s: 4 << s) if which == "a" else (lambda s: 1 << s)
+    D = (0x7E, 0x7D, 0x7C)
+    R = lambda s: {"eax": s, "edx": D2D_OUT_A}
+    T = lambda s, flags, cnt, **kw: d2d_tail_case(which, s, flags, cnt, **kw)
+    return [
+        Case("t0", R(0), T(0, 0, 5, s5f=4, entries=[(0x20, 0x30, 9), (0x21, 0x40, 7)])),
+        Case("t1", R(1), T(1, f(1), 5, st=7, entries=[D, D, D, D, (0x21, 0x55, 3)], bit15=True)),
+        Case("t2", R(0), T(0, 0, 0, st=6, entries=[(0x21, 0x40, 7)])),
+        Case("t3", R(1), T(1, 0, 2, s5f=0xFF)),
+        Case("t4", R(0), T(0, 0, 0xFFFFFFF0, entries=[(0x20, 0x30, 9)])),
+        Case("t5", R(1), T(1, f(1), 1, entries=[(0x21, 0x40, 7)], last=False, c63=0x0021)),
+        Case("t6", R(0), T(0, f(0), 1, entries=[D, D, D, D, D, (0x21, 0x66, 1)], boxc=0xB300B1B0)),
+        Case("t7", R(0), T(0, f(0), 1, cw=0x8485)),
+        Case("t8", R(1), T(1, f(1), 1, c63=0x0022)),
+        Case("t10", R(1), T(1, f(1), 0, r63=0x80, entries=[(0x80, 0x33, 2)])),
+        Case("t11", R(0), T(0, 0, 1, entries=[(0x20, 0x30, 9)])),
+        Case("t12", R(2), T(2, 0, 5)),
+        Case("t13", R(1), T(1, 0, 0, st=6)),
+    ]
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -13468,6 +13552,30 @@ D2D_SPECS = [
     ], allow_calls=(0x17EEC, 0x1A570), eax_mask=0,
        mutants=("@side", "@idx", "@stride", "@swap", "@sext", "@adj5", "@adja", "@floor", "@mirror", "@mirrorb",
                 "@m100", "@order")),
+    # 0x164F4 camera_page_tail_b: EAX = side, EDX = the out dword. 0x3C570 (flag bit 0, or 1 for
+    # any non-zero side: t12), 0x164C0 (the x87 last-frame test) and 0x1A570 run on both sides.
+    # The scan compares the record's +0x63 zero-extended with each triple's first byte
+    # sign-extended (`movzx esi,..; movsx eax,..` 0x165D0/0x165D4), five triples (`cmp ebx,5; jl`).
+    # Mask 0xFF: `mov al,1` / `xor al,al`, and the one caller tests AL (`test al,al` 0x1810D).
+    # t9 is the correction this row found (the cached +0x63 word is compared as a signed word:
+    # `cmp dx,si; jl` 0x166F3/0x166F6); `@uns` is the port before it.
+    Spec("camera_page_tail_b", 0x164F4, d2d_tail_cases("b") + [
+        Case("t9", {"eax": 0, "edx": D2D_OUT_A}, d2d_tail_case("b", 0, 1, 1, c63=0x8000)),
+    ], allow_calls=(0x3C570, 0x164C0, 0x1A570), eax_mask=0xFF,
+       mutants=("@flagidx", "@nodec", "@noclamp", "@decalways", "@st", "@ff", "@tbl", "@s5f", "@zext", "@nolast",
+                "@bound", "@e1", "@mirror", "@mform", "@mwidth", "@nobox", "@cnt", "@noe1", "@anchor", "@cww",
+                "@cnt0", "@b2", "@nocw", "@boxside", "@early", "@side", "@c63w", "@le", "@uns")),
+    # 0x16AFC camera_page_tail_a: the twin with 0x16734's sprite code first (k0/k1: the 0xCC300
+    # frame of (character, code), nothing else touched), flag bits 2/3, the 0x98688 table and no
+    # cached +0x63 word. 0x16734 (with its 0x33A10), 0x3C570, 0x164C0 and 0x1A570 run on both
+    # sides. Mask 0xFF: `test al,al` 0x180CE.
+    Spec("camera_page_tail_a", 0x16AFC, d2d_tail_cases("a") + [
+        Case("k0", {"eax": 0, "edx": D2D_OUT_A}, d2d_tail_case("a", 0, 0, 5, uid=0x0C48, entries=[(0x21, 0x40, 7)])),
+        Case("k1", {"eax": 1, "edx": D2D_OUT_A}, d2d_tail_case("a", 1, 0, 5, ch=3, uid=0x1750, bit15=True)),
+    ], allow_calls=(0x16734, 0x33A10, 0x3C570, 0x164C0, 0x1A570), eax_mask=0xFF,
+       mutants=("@flagidx", "@nodec", "@noclamp", "@decalways", "@st", "@ff", "@tbl", "@s5f", "@zext", "@nolast",
+                "@bound", "@e1", "@mirror", "@mform", "@mwidth", "@nobox", "@cnt", "@noe1", "@anchor", "@cww",
+                "@cnt0", "@b2", "@nocw", "@boxside", "@early", "@side", "@nocode", "@cmirror", "@cidx")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 
