@@ -24860,6 +24860,103 @@ D5C_SPECS += [
                       0x34D69, 0x34D78)},
        mutants=("@post", "@pre")),
 ]
+D5C_SYNC = E.Call(0x34B6C, ("eax",), clobbers=("ebp",))
+D5C_ST_3531C = E.Call(0x3531C, ("eax",))
+D5C_WALL = E.Call(0x354F0, ("eax",))
+D5C_ACTOR_SYNC = E.Call(0x2A1FC, ("eax",), clobbers=("edi", "ebp"))
+# the _rr row's 0x34B6C stub stores another record in the two slots its cases point at (a harness write)
+D5C_SYNC_RR = dataclasses.replace(D5C_SYNC, writes=((None, D5C_S0, le32(D5C_FX)), (None, D5C_A1, le32(D5C_FX))))
+# 0x34038 runs on both sides and is recorded, as in d3e's rows: the caller keeps the side in ESI across it,
+# which the byte scan cannot show it preserves. Every case leaves the side's +0x8C word other than 1, so it
+# returns at 0x34054.
+D5C_HUD_CALLS = (D3C_3C59C, D4C_33C78, D3E_34038, D3E_38D24, D5C_SYNC, D5C_ST_3531C, D5C_ACTOR_SYNC, D5C_WALL,
+                 D3E_186C4)
+
+
+def d5c_hud_case(cid, side, flag=0, w88=0x0010, w8c=5, w92=0x0100, w78=5, cap=0x0040, d4=0x00, mode=5, b43=0x00,
+                 cmd=0x0000, ptr=True, alt=False, f28=0x30, xs=(0x0123, 0x8123), a3=0x0400, sync_writes=False):
+    """0x35658: both slots' +0x76..+0x7B (the side's +0x78 word `w78`) and +0x86..+0x93 (its +0x88,
+    +0x8C and +0x92 words), the cap word 0xBDBEC, the byte 0x1088D4, the bytes 0x1078FA..FC, the
+    mode word 0x104B00 between two words, the slot pointers DS_001077A8 (the side's: its slot, with
+    `alt` another address, or 0), the pointed slot's record pointer, +0x28 dword and +0x42..+0x44 (its
+    +0x43 `b43`), the record's +0x14..+0x1F and +0x28 byte `f28` with the byte after it, the two command
+    words 0x1088E0, the respawn's x words 0xBDA3A (after one more word) and its layer word 0xBD898 with
+    the word after it. `flag` is the 0x3C59C stub's EAX."""
+    slots, o = (D5C_S0, D5C_S1), 1 - side
+    psl = [D5C_S0, D5C_S1]
+    if alt:
+        psl[side] = (D5C_A0, D5C_A1)[side]
+    if not ptr:
+        psl[side] = 0
+    p = {0x001077A8: le32(psl[0]) + le32(psl[1]),
+         0x000BDBEC: le16(cap), 0x001088D4: bytes([d4]), 0x001078FA: bytes([0xFA, 0xFB, 0xFC]),
+         0x00104AFE: le16(0xFEFE) + le16(mode) + le16(0x0202),
+         0x001088DE: le16(0xDEDF) + le16(cmd if side == 0 else 0x0001 ^ (cmd & 1))
+         + le16(cmd if side == 1 else 0x0001 ^ (cmd & 1)) + le16(0xE4E5),
+         0x000BDA38: le16(0x3838) + le16(xs[0]) + le16(xs[1]) + le16(0x3E3E),
+         0x000BD898: le16(a3) + le16(0xFFFF)}
+    for i, s in enumerate(slots):
+        own = i == side
+        p[s + 0x76] = le16(0x7676) + le16(w78 if own else 0x0033) + le16(0x7A7A)
+        p[s + 0x86] = (le16(0x8686) + le16(w88 if own else 0x0044) + le16(0x8A8A) + le16(w8c if own else 0x0055)
+                       + le16(0x8E8E) + le16(0x9090) + le16(w92 if own else 0x0066))
+    ps = psl[side] or slots[side]
+    f = (D5C_F0, D5C_F1)[side]
+    p[ps] = le32(f)
+    p[ps + 0x28] = le32(0x28282828) + le32(0x2C2C2C2C)
+    p[ps + 0x42] = bytes([0x42, b43, 0x44])
+    p[f + 0x14] = le32(0x14141414) + le32(0x00C0FFEE + side) + le32(0x1C1C1C1C)
+    p[f + 0x28] = bytes([f28, 0x29])
+    p[D5C_FX + 0x28] = bytes([0x50, 0x51])
+    return Case(cid, {"eax": side, "edx": 0x99, "ebx": 0x77, "ecx": 0x88}, p, {0x3C59C: flag})
+
+
+D5C_HUD_CASES = (
+    dict(side=0),
+    dict(side=1, flag=1, w8c=7, w78=0x0041, d4=0x04, alt=True),
+    dict(side=0, flag=0x100, w8c=0, w92=0x270F, w78=0, d4=0xFB, ptr=False),
+    dict(side=1, w8c=0x8003, w92=0x270E, w78=0x8000, d4=0xFF, mode=4, b43=0x80),
+    dict(side=0, w8c=3, w92=0x8000, w78=0x0040, mode=4, b43=0x7F, cmd=0x0001),
+    dict(side=1, flag=1, mode=4, cmd=0xFF01, alt=True),
+    dict(side=0, mode=4, cmd=0xFFFE),
+    dict(side=1, mode=0x0104, w88=0xFFFF, cap=0x8000, w78=0x8001, f28=0xFE),
+    dict(side=0, w8c=0x7FFF, w92=0x2710, w78=1, f28=0x01, alt=True),
+)
+
+D5C_SPECS += [
+    # 0x35658 fight_hud_pass: EAX = side. AL of 0x3C59C(3, side) (`test al,al` 0x356C3: a2 returns 0x100)
+    # zero: the slot's +0x88 word + 1; its +0x8C word - 1 above 0 signed and 0 below 0 (`test cx,cx; jle
+    # / jge`: a2 0, a3 0x8003, a8 0x7FFF); its +0x92 word + 1 when it is below 0x270F signed (`sar edx,0x10;
+    # cmp edx,0x270f; jge`: a2 0x270F, a3 0x270E, a4 0x8000). Then the +0x78 word: above the cap word
+    # 0xBDBEC signed it is 0 (a1; a4 equal; a7 0x8001 against 0x8000), else above 0 it is decremented (a3
+    # 0x8000 stays). The byte 0x1078FB = 3, or 2 when bit 2 of the byte 0x1088D4 is set (a2 0xFB). The
+    # slot pointer DS_001077A8[side] zero returns (a2). With the mode word 0x104B00 == 4 (a7 0x0104 is
+    # not) and bit 7 of the pointed slot's +0x43 clear (a3 set): bit 0 of the side's command word (a6
+    # 0xFFFE) calls 0x33C78(side, the signed word 0xBDA3A[side], the zero-extended word 0xBD898, 0, side ?
+    # 0 : 0x4000), and the pass returns either way. Otherwise the pointed slot's +0x28 = the record's +0x18
+    # dword, 0x34038(side) (run on both sides), 0x38D24(side), 0x34B6C(side), 0x3531C(side), the record's
+    # +0x28 byte |= 1, 0x2A1FC(record), 0x354F0(side), 0x354F0(1 - side), 0x186C4. Void: of its 28 call
+    # sites 26 overwrite EAX and two (0x277E4, 0x2965A) call 0x4DEF4, which reads EAX only after loading AX
+    # (record 2026-10-11-reverse-d1a §1, the 0x186C4 row; re-used, not re-walked).
+    Spec("fight_hud_pass", 0x35658, [d5c_hud_case("a%d" % i, **kw) for i, kw in enumerate(D5C_HUD_CASES)],
+         calls=D5C_HUD_CALLS, eax_mask=0,
+         mutants=("@flagargs", "@flageax", "@flagbit", "@no88", "@88other", "@88d", "@8cge", "@8cuns", "@no8cdec",
+                  "@no8cclr", "@92le", "@92uns", "@no92", "@92w", "@capge", "@capuns", "@nocapclr", "@78ge0",
+                  "@no78dec", "@78uns", "@fbinv", "@fbbit", "@nofb", "@fbv", "@ptrcanon", "@mode", "@modeany",
+                  "@b43bit", "@b43inv", "@cmdbit", "@cmdside", "@norespawn", "@a5inv", "@xw", "@xside", "@a3d",
+                  "@respawnfall", "@no28", "@28src", "@28late", "@no34038", "@no38d24", "@nosync", "@no3531c",
+                  "@order", "@callside", "@noor", "@orbit", "@orlate", "@actorarg", "@noactor", "@clamp1",
+                  "@clampswap", "@clampsame", "@nolatch")),
+    # the same entry with a 0x34B6C stub that stores another record in the pointed slot: the raw keeps the
+    # record it read at 0x357E4 (EBX) for the +0x28 byte and for 0x2A1FC
+    Spec("fight_hud_pass_rr", 0x35658, [
+        d5c_hud_case("y0", side=0),
+        d5c_hud_case("y1", side=1, alt=True, flag=1, w8c=7),
+    ], calls=tuple(D5C_SYNC_RR if k is D5C_SYNC else k for k in D5C_HUD_CALLS), eax_mask=0,
+       unhit_named={a: "the fight_hud_pass row's (a2..a7)" for a in (
+                      0x356EE, 0x356F0, 0x35746, 0x35792, 0x35798, 0x357AB, 0x357B1, 0x357B8, 0x357BA, 0x357DB)},
+       mutants=("@reread",)),
+]
 D1_SPECS += D5C_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

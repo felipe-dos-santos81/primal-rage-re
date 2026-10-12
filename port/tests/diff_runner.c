@@ -33561,6 +33561,102 @@ D5C_HS_MUT(swap20, 180u) D5C_HS_MUT(swap21, 181u)
 #define D5C_HR_MUT(name, n) \
     static void m_d5c_hr_##name(const u32 *r, u32 *eax) { *eax = d5c_34b6c_core(r, n); }
 D5C_HR_MUT(post, 50u) D5C_HR_MUT(pre, 51u)
+/* 0x35658 fight_hud_pass: EAX = side. */
+static u32 d5c_35658_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut != (n))
+    u32 side = r[R_EAX], o = 1u - side;
+    u32 slot = 0x001077B0u + side * 0x94u, oslot = 0x001077B0u + o * 0x94u;
+    u32 ps, f, e, cs = M(48u) ? side : o;                                            /* @callside */
+    u16 cap, v, mode;
+    int m4, clear;
+    e = M(1u) ? (u32)fighter_pass_flag(M(3u) ? 3u : 2u, side) : (u32)fighter_pass_flag(side, 3u);   /* @flagargs, @flagbit */
+    if ((M(2u) ? (e & 0xFFu) : e) == 0u) {                                           /* @flageax */
+        s16 c = (s16)DSW(slot + 0x8Cu);
+        s32 t;
+        if (!M(6u)) DSD(slot + 0x88u) = DSD(slot + 0x88u) + 1u;                      /* @88d */
+        else if (M(4u)) DSW((M(5u) ? slot : oslot) + 0x88u) = (u16)(DSW((M(5u) ? slot : oslot) + 0x88u) + 1u);   /* @no88, @88other */
+        if (!M(7u) ? (c >= 0) : !M(8u) ? ((u16)c > 0u) : (c > 0)) {                  /* @8cge, @8cuns */
+            if (M(9u)) DSW(slot + 0x8Cu) = (u16)(c - 1);                             /* @no8cdec */
+        } else if (c < 0 && M(10u)) {
+            DSW(slot + 0x8Cu) = 0u;                                                  /* @no8cclr */
+        }
+        t = M(14u) ? (s32)(s16)DSW(slot + 0x92u) : (s32)(s16)DSW(slot + 0x90u);      /* @92w */
+        if ((!M(11u) ? (t <= 0x270F) : !M(12u) ? ((u32)(u16)t < 0x270Fu) : (t < 0x270F)) && M(13u))   /* @92le, @92uns, @no92 */
+            DSW(slot + 0x92u) = (u16)(DSW(slot + 0x92u) + 1u);
+    }
+    cap = DSW(0x000BDBECu);
+    v = DSW(slot + 0x78u);
+    if (!M(15u) ? ((s16)v >= (s16)cap) : !M(16u) ? (v > cap) : ((s16)v > (s16)cap)) {    /* @capge, @capuns */
+        if (M(17u)) DSW(slot + 0x78u) = 0u;                                          /* @nocapclr */
+    } else if (!M(18u) ? ((s16)v >= 0) : !M(20u) ? (v > 0u) : ((s16)v > 0)) {        /* @78ge0, @78uns */
+        if (M(19u)) DSW(slot + 0x78u) = (u16)(v - 1u);                               /* @no78dec */
+    }
+    if (M(23u)) {                                                                    /* @nofb */
+        u32 set = M(22u) ? (DSB(0x001088D4u) & 4u) : (DSB(0x001088D4u) & 8u);        /* @fbbit */
+        if (!M(21u)) set = !set;                                                     /* @fbinv */
+        DSB(0x001078FBu) = (u8)((set ? 0u : 1u) + (M(24u) ? 2u : 0u));               /* @fbv */
+    }
+    ps = M(25u) ? DSD(0x001077A8u + side * 4u) : slot;                               /* @ptrcanon */
+    if (ps == 0u) return 0u;
+    mode = DSW(0x00104B00u);
+    m4 = !M(26u) ? ((mode & 0xFFu) == 4u) : (mode == 4u);                            /* @mode */
+    clear = M(28u) ? (DSB(ps + 0x43u) & 0x80u) == 0u : (DSB(ps + 0x43u) & 0x40u) == 0u;   /* @b43bit */
+    if (!M(29u)) clear = !clear;                                                     /* @b43inv */
+    if ((m4 || !M(27u)) && clear) {                                                  /* @modeany */
+        u16 w = DSW(0x001088E0u + (M(31u) ? side : o) * 2u);                         /* @cmdside */
+        if ((M(30u) ? (w & 1u) : (w & 2u)) != 0u && M(32u)) {                        /* @cmdbit, @norespawn */
+            u32 xsd = M(35u) ? side : o;                                             /* @xside */
+            u32 a2 = M(34u) ? (u32)((s32)DSD(0x000BDA38u + xsd * 2u) >> 16) : (u32)DSW(0x000BDA3Au + xsd * 2u);   /* @xw */
+            u32 a3 = M(36u) ? (u32)DSW(0x000BD898u) : DSD(0x000BD898u);              /* @a3d */
+            u32 a5 = ((side == 0u) == (M(33u) ? 1 : 0)) ? 0x4000u : 0u;              /* @a5inv */
+            fighter_spawn_slot(side, a2, a3, 0u, a5);
+        }
+        if (M(37u)) return 0u;                                                       /* @respawnfall */
+    }
+    f = DSD(ps);
+    if (M(38u) && M(40u)) DSD(ps + 0x28u) = DSD(f + (M(39u) ? 0x18u : 0x1Cu));       /* @no28, @28src */
+    if (M(41u)) fighter_34038(cs);                                                   /* @no34038 */
+    if (!M(40u)) DSD(ps + 0x28u) = DSD(f + 0x18u);                                   /* @28late */
+    if (M(42u)) fighter_38d24(cs);                                                   /* @no38d24 */
+    if (!M(45u) && M(44u)) fighter_state_3531c(cs);                                  /* @order */
+    if (M(43u)) fight_health_sync(cs);                                               /* @nosync */
+    if (M(45u) && M(44u)) fighter_state_3531c(cs);                                   /* @no3531c */
+    if (!M(60u)) f = DSD(ps);                                                        /* @reread (the _rr row) */
+    if (M(46u) && M(49u)) DSB(f + 0x28u) = (u8)(DSB(f + 0x28u) | (M(47u) ? 1u : 2u));    /* @noor, @orbit */
+    if (M(51u)) actor_sync(M(50u) ? f : ps);                                         /* @noactor, @actorarg */
+    if (!M(49u)) DSB(f + 0x28u) |= 1u;                                               /* @orlate */
+    if (!M(53u)) {                                                                   /* @clampswap */
+        fighter_wall_clamp(o);
+        fighter_wall_clamp(side);
+    } else {
+        fighter_wall_clamp(side);
+        if (M(52u)) fighter_wall_clamp(M(54u) ? o : side);                           /* @clamp1, @clampsame */
+    }
+    if (M(55u)) fighter_slot_latch_both();                                           /* @nolatch */
+    return 0u;
+#undef M
+}
+static void b_d5c_35658(const u32 *r, u32 *eax) { fight_hud_pass(r[R_EAX]); *eax = 0u; }
+#define D5C_HP_MUT(name, n) \
+    static void m_d5c_hp_##name(const u32 *r, u32 *eax) { *eax = d5c_35658_core(r, n); }
+D5C_HP_MUT(flagargs, 1u) D5C_HP_MUT(flageax, 2u) D5C_HP_MUT(flagbit, 3u) D5C_HP_MUT(no88, 4u)
+D5C_HP_MUT(s88other, 5u) D5C_HP_MUT(s88d, 6u) D5C_HP_MUT(s8cge, 7u) D5C_HP_MUT(s8cuns, 8u)
+D5C_HP_MUT(no8cdec, 9u) D5C_HP_MUT(no8cclr, 10u) D5C_HP_MUT(s92le, 11u) D5C_HP_MUT(s92uns, 12u)
+D5C_HP_MUT(no92, 13u) D5C_HP_MUT(s92w, 14u) D5C_HP_MUT(capge, 15u) D5C_HP_MUT(capuns, 16u)
+D5C_HP_MUT(nocapclr, 17u) D5C_HP_MUT(s78ge0, 18u) D5C_HP_MUT(no78dec, 19u) D5C_HP_MUT(s78uns, 20u)
+D5C_HP_MUT(fbinv, 21u) D5C_HP_MUT(fbbit, 22u) D5C_HP_MUT(nofb, 23u) D5C_HP_MUT(fbv, 24u)
+D5C_HP_MUT(ptrcanon, 25u) D5C_HP_MUT(mode, 26u) D5C_HP_MUT(modeany, 27u) D5C_HP_MUT(b43bit, 28u)
+D5C_HP_MUT(b43inv, 29u) D5C_HP_MUT(cmdbit, 30u) D5C_HP_MUT(cmdside, 31u) D5C_HP_MUT(norespawn, 32u)
+D5C_HP_MUT(a5inv, 33u) D5C_HP_MUT(xw, 34u) D5C_HP_MUT(xside, 35u) D5C_HP_MUT(a3d, 36u)
+D5C_HP_MUT(respawnfall, 37u) D5C_HP_MUT(no28, 38u) D5C_HP_MUT(s28src, 39u) D5C_HP_MUT(s28late, 40u)
+D5C_HP_MUT(no34038, 41u) D5C_HP_MUT(no38d24, 42u) D5C_HP_MUT(nosync, 43u) D5C_HP_MUT(no3531c, 44u)
+D5C_HP_MUT(order, 45u) D5C_HP_MUT(noor, 46u) D5C_HP_MUT(orbit, 47u) D5C_HP_MUT(callside, 48u)
+D5C_HP_MUT(orlate, 49u) D5C_HP_MUT(actorarg, 50u) D5C_HP_MUT(noactor, 51u) D5C_HP_MUT(clamp1, 52u)
+D5C_HP_MUT(clampswap, 53u) D5C_HP_MUT(clampsame, 54u) D5C_HP_MUT(nolatch, 55u)
+#define D5C_HQ_MUT(name, n) \
+    static void m_d5c_hq_##name(const u32 *r, u32 *eax) { *eax = d5c_35658_core(r, n); }
+D5C_HQ_MUT(reread, 60u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43868,6 +43964,64 @@ static const binding_t k_bindings[] = {
     { "fight_health_sync_rr", b_d5c_34b6c, 0x00000000u },
     { "fight_health_sync_rr@post", m_d5c_hr_post, 0x00000000u },
     { "fight_health_sync_rr@pre", m_d5c_hr_pre, 0x00000000u },
+    { "fight_hud_pass", b_d5c_35658, 0x00000000u },
+    { "fight_hud_pass@flagargs", m_d5c_hp_flagargs, 0x00000000u },
+    { "fight_hud_pass@flageax", m_d5c_hp_flageax, 0x00000000u },
+    { "fight_hud_pass@flagbit", m_d5c_hp_flagbit, 0x00000000u },
+    { "fight_hud_pass@no88", m_d5c_hp_no88, 0x00000000u },
+    { "fight_hud_pass@88other", m_d5c_hp_s88other, 0x00000000u },
+    { "fight_hud_pass@88d", m_d5c_hp_s88d, 0x00000000u },
+    { "fight_hud_pass@8cge", m_d5c_hp_s8cge, 0x00000000u },
+    { "fight_hud_pass@8cuns", m_d5c_hp_s8cuns, 0x00000000u },
+    { "fight_hud_pass@no8cdec", m_d5c_hp_no8cdec, 0x00000000u },
+    { "fight_hud_pass@no8cclr", m_d5c_hp_no8cclr, 0x00000000u },
+    { "fight_hud_pass@92le", m_d5c_hp_s92le, 0x00000000u },
+    { "fight_hud_pass@92uns", m_d5c_hp_s92uns, 0x00000000u },
+    { "fight_hud_pass@no92", m_d5c_hp_no92, 0x00000000u },
+    { "fight_hud_pass@92w", m_d5c_hp_s92w, 0x00000000u },
+    { "fight_hud_pass@capge", m_d5c_hp_capge, 0x00000000u },
+    { "fight_hud_pass@capuns", m_d5c_hp_capuns, 0x00000000u },
+    { "fight_hud_pass@nocapclr", m_d5c_hp_nocapclr, 0x00000000u },
+    { "fight_hud_pass@78ge0", m_d5c_hp_s78ge0, 0x00000000u },
+    { "fight_hud_pass@no78dec", m_d5c_hp_no78dec, 0x00000000u },
+    { "fight_hud_pass@78uns", m_d5c_hp_s78uns, 0x00000000u },
+    { "fight_hud_pass@fbinv", m_d5c_hp_fbinv, 0x00000000u },
+    { "fight_hud_pass@fbbit", m_d5c_hp_fbbit, 0x00000000u },
+    { "fight_hud_pass@nofb", m_d5c_hp_nofb, 0x00000000u },
+    { "fight_hud_pass@fbv", m_d5c_hp_fbv, 0x00000000u },
+    { "fight_hud_pass@ptrcanon", m_d5c_hp_ptrcanon, 0x00000000u },
+    { "fight_hud_pass@mode", m_d5c_hp_mode, 0x00000000u },
+    { "fight_hud_pass@modeany", m_d5c_hp_modeany, 0x00000000u },
+    { "fight_hud_pass@b43bit", m_d5c_hp_b43bit, 0x00000000u },
+    { "fight_hud_pass@b43inv", m_d5c_hp_b43inv, 0x00000000u },
+    { "fight_hud_pass@cmdbit", m_d5c_hp_cmdbit, 0x00000000u },
+    { "fight_hud_pass@cmdside", m_d5c_hp_cmdside, 0x00000000u },
+    { "fight_hud_pass@norespawn", m_d5c_hp_norespawn, 0x00000000u },
+    { "fight_hud_pass@a5inv", m_d5c_hp_a5inv, 0x00000000u },
+    { "fight_hud_pass@xw", m_d5c_hp_xw, 0x00000000u },
+    { "fight_hud_pass@xside", m_d5c_hp_xside, 0x00000000u },
+    { "fight_hud_pass@a3d", m_d5c_hp_a3d, 0x00000000u },
+    { "fight_hud_pass@respawnfall", m_d5c_hp_respawnfall, 0x00000000u },
+    { "fight_hud_pass@no28", m_d5c_hp_no28, 0x00000000u },
+    { "fight_hud_pass@28src", m_d5c_hp_s28src, 0x00000000u },
+    { "fight_hud_pass@28late", m_d5c_hp_s28late, 0x00000000u },
+    { "fight_hud_pass@no34038", m_d5c_hp_no34038, 0x00000000u },
+    { "fight_hud_pass@no38d24", m_d5c_hp_no38d24, 0x00000000u },
+    { "fight_hud_pass@nosync", m_d5c_hp_nosync, 0x00000000u },
+    { "fight_hud_pass@no3531c", m_d5c_hp_no3531c, 0x00000000u },
+    { "fight_hud_pass@order", m_d5c_hp_order, 0x00000000u },
+    { "fight_hud_pass@noor", m_d5c_hp_noor, 0x00000000u },
+    { "fight_hud_pass@orbit", m_d5c_hp_orbit, 0x00000000u },
+    { "fight_hud_pass@callside", m_d5c_hp_callside, 0x00000000u },
+    { "fight_hud_pass@orlate", m_d5c_hp_orlate, 0x00000000u },
+    { "fight_hud_pass@actorarg", m_d5c_hp_actorarg, 0x00000000u },
+    { "fight_hud_pass@noactor", m_d5c_hp_noactor, 0x00000000u },
+    { "fight_hud_pass@clamp1", m_d5c_hp_clamp1, 0x00000000u },
+    { "fight_hud_pass@clampswap", m_d5c_hp_clampswap, 0x00000000u },
+    { "fight_hud_pass@clampsame", m_d5c_hp_clampsame, 0x00000000u },
+    { "fight_hud_pass@nolatch", m_d5c_hp_nolatch, 0x00000000u },
+    { "fight_hud_pass_rr", b_d5c_35658, 0x00000000u },
+    { "fight_hud_pass_rr@reread", m_d5c_hq_reread, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

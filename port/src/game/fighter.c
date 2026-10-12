@@ -2270,6 +2270,7 @@ void fighter_1883c(u32 side, u32 a, u32 b)
  * 0x3560C, then 0x35615 or 0x3561E), and so does the port. */
 void fighter_wall_clamp(u32 side)
 {
+    PR_SEAM(0x354F0u, side);
     u32 own_slot = DS_001077B0 + side * 0x94u;
     u32 other_slot = DS_001077B0 + (1u - side) * 0x94u;
     u32 own_fighter;
@@ -3637,6 +3638,7 @@ void fighter_state_350d0(u32 side)
  * chain directly at 0x354BC; 10 runs the +0x10 callback. */
 void fighter_state_3531c(u32 side)
 {
+    PR_SEAM(0x3531Cu, side);
     u32 slot = DSD(DS_001077A8 + side * 4u);                /* 0x35383 */
     if (slot == 0u || DSD(slot) == 0u) return;              /* 0x3539A */
     if ((s16)DSW(DS_001078F6) != 0) {                       /* 0x353A7 */
