@@ -68,6 +68,16 @@ int fighter_slot_flag(u32 bit);
  * 0xA1290). */
 int fighter_connect_query(u32 param_1, u32 param_2);
 
+/* PORT: exported for the D1 d1a differential rows (linkage only; record
+ * 2026-10-11-reverse-d1a). */
+int  fighter_14590(u32 side);                           /* 0x14590 */
+void fighter_19164(u32 side);                           /* 0x19164 */
+u32  ai_facing_cmd(u32 side);                           /* 0x1A5D4 */
+int  fighter_spawn_audio_gate(void);                    /* 0x1CEBC */
+void fighter_21f30(u32 slot);                           /* 0x21F30 */
+void fighter_22b28(const u32 ctx[6]);                   /* 0x22B28 */
+void fighter_35050(u32 side);                           /* 0x35050 */
+
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then
  * picks a winner from the two 0x18950 reachabilities and, on an exact tie,

@@ -285,7 +285,7 @@ void fighter_slot_latch_both(void)
 /* 0x1CEBC. The audio gate the spawn tail tests: 1 when the DIG driver handle
  * DS_001028C8 is set (game_audio_init stores the port's stand-in, record
  * §45-A) and the sample pause byte DS_001028DB is clear. */
-static int fighter_spawn_audio_gate(void)
+int fighter_spawn_audio_gate(void)
 {
     if (DSD(DS_001028C8) == 0) return 0;            /* 0x1CEC3 */
     if (DSB(DS_001028DB) != 0) return 0;            /* 0x1CECC */
@@ -1248,7 +1248,7 @@ static void ai_pick(u32 side)
 
 /* 0x1A5D4. 0x2000 when the other side's facing bit 0x4000 is clear and the
  * command's 0x2000 is set; 0x1000 in the mirror; else 0. */
-static u32 ai_facing_cmd(u32 side)
+u32 ai_facing_cmd(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x1A5E0 */
     u16 cmd = DSW(DS_001088E0 + side * 2u);
@@ -1688,16 +1688,16 @@ void fighter_state_default(u32 side)
         }
         return;
     }
-    if (fighter_state_365c8(slot, rec, side) != 0)      /* 0x34A3E */
+    if ((u8)fighter_state_365c8(slot, rec, side) != 0)  /* 0x34A3E, 0x34A43 `test al,al` */
         DSB(slot + 0x43u) |= 0x40u;
     else
         DSB(slot + 0x43u) &= 0xBFu;
-    if (fighter_state_36638(slot, rec) != 0) return;    /* 0x34A55 */
+    if ((u8)fighter_state_36638(slot, rec) != 0) return;    /* 0x34A55, 0x34A5A `test al,al` */
     {
         u16 cmd = DSW(DS_001088E0 + side * 2u);         /* 0x34A62 */
         int bvar2 = ((cmd >> 8) & 3u) != 0u && ((cmd >> 8) & 0xCu) != 0u;
         if (bvar2) return;                              /* 0x34A8D jne 0x34B0B */
-        if (fighter_attack_consume(side) != 0) return;  /* 0x34A9F */
+        if ((u8)fighter_attack_consume(side) != 0) return;  /* 0x34A9F, 0x34AA7 `test al,al` */
         if ((cmd & 0x4000u) != 0u) {                    /* 0x34AB5 */
             actors_anim_begin(rec,
                 DSD(0x000C8978u + (u32)DSB(slot + 0x7Au) * 4u), 0x40000000u);
@@ -1715,11 +1715,10 @@ void fighter_state_default(u32 side)
  * when 0x3CF38 reports no hit, arms slot+0x54 = 2 and slot+0x53 = 4. */
 void fighter_state_35d7c(u32 side)
 {
-    u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x35DF1 */
-    if (slot == 0u) return;
+    u32 slot = DS_001077B0 + side * 0x94u;              /* 0x35D8E..0x35DA6 */
     DSB(slot + 0x54u) = 0;                              /* 0x35DDA */
     DSB(slot + 0x53u) = 0;                              /* 0x35DDE */
-    if (hit_chain_resolve(side) == 0) {                 /* 0x35DE8 0x3CF38 */
+    if ((u8)hit_chain_resolve(side) == 0) {             /* 0x35DE8 0x3CF38, 0x35DED `test al,al` */
         DSB(slot + 0x54u) = 2u;                         /* 0x35DF5 */
         DSB(slot + 0x53u) = 4u;
     }
@@ -4856,7 +4855,7 @@ int fighter_189fc(u32 side);                            /* 0x189FC */
  * ctx[3] (the other slot) in the knockback pose (+0x10 == 0x39CC8) or in
  * +0x52 state 0x11, 1 when the side's 0x107D2C word is positive (signed),
  * else 0. AL returned. */
-static int fighter_14590(u32 side)
+int fighter_14590(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                            /* 0x14598 0x33950 */
@@ -5774,7 +5773,7 @@ static s32 fighter_39b14(s32 a, s32 b)
  * slot and zero the field when it returns non-zero. The spawn zeroes +0x14 at
  * 0x33DFE; the ported non-zero writers are 0x22B28 (0x22B6F) and 0x22BEC
  * (0x22CD7), both storing 0x29D04 (record §41-C). */
-static void fighter_35050(u32 side)
+void fighter_35050(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x35062..0x35078 */
     if (DSD(slot + 0x14u) != 0u) {                      /* 0x350B0 */
@@ -6411,7 +6410,7 @@ void fighter_33acc(u32 side, u32 dst, u32 dst2)
  * 0x10474C tick at 0, the record's motion cleared (0x3C16C, 0x3C148, +0x24
  * hold 0), +0x58 = 1, +0x43 bit 1 cleared, and 0x10476C[side] = (the other
  * slot's +0x53 == 0x0A). */
-static void fighter_22b28(const u32 ctx[6])
+void fighter_22b28(const u32 ctx[6])
 {
     u32 rec = DSD(DS_001077B0 + ctx[1] * 0x94u);        /* 0x22B2D..0x22B3E */
     u32 src = DSD(DSD(DS_001014EC)
@@ -7505,7 +7504,7 @@ void fighter_24754(u32 side)
     u32 x, e;
     u16 speed;
     fighter_ctx_same(ctx, side);                        /* 0x2475B..0x2475F 0x33950 */
-    if (fighter_actor_bit15_clear(ctx[0]) != 0) {       /* 0x24764..0x2476E 0x1A570 */
+    if ((u8)fighter_actor_bit15_clear(ctx[0]) != 0) {   /* 0x24764..0x2476E 0x1A570, `test al,al` */
         x = DSD(ctx[5] + 0x18u) - DSD(ctx[5] + 0x3Cu);  /* 0x24770..0x2477B */
         speed = 0x0096u;                                /* 0x2477E */
     } else {
@@ -8454,22 +8453,34 @@ void fighter_151a0(u32 side)
     fighter_reaction(ctx[3], ctx[2]);                       /* 0x151AD..0x151B5 0x3B714 */
 }
 
+/* PORT: the dword `fistp` of a value 0x61A4C has truncated (frndint under
+ * RC = chop): the integer indefinite 0x80000000 for NaN and for a value whose
+ * truncation does not fit a dword, where a C cast is undefined. */
+static s32 fighter_x87_fistp(float f)
+{
+    if (!(f >= -2147483648.0f && f < 2147483648.0f)) return (s32)0x80000000u;
+    return (s32)f;
+}
+
 /* 0x19164. The winner's stance-timer seed: B5A[side] = truncate(max(rec+0x20,
  * 5.0)), B5C[side] = 2 when rec+0x24 is outside (0, 17) else its truncation,
  * rec+0x24 = 0, and B58[side] = slot+0x5F. The 0x61A4C runtime rounds toward
  * zero (frontend-chain record §…), so C's (s32) cast is the same truncation. */
-static void fighter_19164(u32 side)
+void fighter_19164(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);              /* 0x19175 */
     union { float f; u32 u; } fu;
     fu.u = DSD(rec + 0x20u);                                /* 0x19193/0x19196 */
+    /* PORT: `fld 5.0; fcomp [rec+0x20]; jbe` (0x1917C..0x19188) keeps rec+0x20
+     * when the compare is unordered too, and `fistp` (0x191A1/0x191E4) stores
+     * the integer indefinite for NaN or a value outside the dword. */
     DSB(DS_00100B5A + side) =
-        (u8)(s32)((fu.f >= 5.0f) ? fu.f : 5.0f);            /* 0x191A9 */
+        (u8)fighter_x87_fistp(!(5.0f > fu.f) ? fu.f : 5.0f);    /* 0x191A9 */
     fu.u = DSD(rec + 0x24u);                                /* 0x191BD */
     if (fu.f <= 0.0f || fu.f >= 17.0f)                      /* 0x191CC/0x191DA */
         DSB(DS_00100B5C + side) = 2u;                       /* 0x191F4 */
     else
-        DSB(DS_00100B5C + side) = (u8)(s32)fu.f;            /* 0x191EC */
+        DSB(DS_00100B5C + side) = (u8)fighter_x87_fistp(fu.f);  /* 0x191EC */
     DSD(rec + 0x24u) = 0;                                   /* 0x19210 */
     DSB(DS_00100B58 + side) = DSB(DS_0010780F + side * 0x94u);  /* 0x1921E */
 }
@@ -10496,7 +10507,7 @@ void fighter_3f308(u32 slot)
  * is set (else 0); the actor 0x2AE14 returns is not read. Then 0x13244.
  * Callers 0x214D9 (0x21458), 0x21DBE (0x21DA4) and 0x220A6 (0x2208C); the last
  * two are record gameplay-u0 §U0.10's. */
-static void fighter_21f30(u32 slot)
+void fighter_21f30(u32 slot)
 {
     u32 rec, a5;
     (void)sound_voice(0x6Cu);                               /* 0x21F35/0x21F3A 0x2C3FC */
