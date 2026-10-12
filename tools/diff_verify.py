@@ -18644,6 +18644,73 @@ D3D_SPECS += [
        mutants=("@nob24", "@b26dec", "@nodec", "@reloadval", "@noreload", "@reloadzero", "@bit1", "@bit0",
                 "@clrsync", "@noclr", "@clrbit1", "@late", "@first", "@bitsw", "@decw")),
 ]
+
+
+def d3d_3ea24_case(side, state, cnt, ch=2, och=4, z30=0x1000, r36=0x0123, tbl=None):
+    """0x3EA24: the 0x216EC fixture's slots, scratch slot and three records (d3d_216ec_case), with
+    the counter block 0x1080A0..0x1080AF instead: the side's word 0x1080A8[side] = `cnt`, the
+    other's different."""
+    p = d3d_216ec_case(side, state, cnt, ch=ch, och=och, z30=z30, r36=r36, tbl=tbl)
+    for a in (0x00104760, 0x001077A8, 0x001079A8, D3D_T0 + 0x78, D3D_T1 + 0x78, D3D_T80 + 0x78):
+        del p[a]
+    g = bytearray(0xA0 + k for k in range(0x10))
+    g[8 + side * 2:10 + side * 2] = le16(cnt)
+    g[8 + (1 - side) * 2:10 + (1 - side) * 2] = le16(cnt ^ 0x00FF)
+    p[0x001080A0] = bytes(g)
+    return p
+
+
+def d3d_3ea24_cases():
+    R = lambda s: {"eax": D3D_SLOTX, "edx": D3D_REC, "ebx": s}
+    T = d3d_3ea24_case
+    return [
+        Case("s0", R(0), T(0, 0, 0x0015)),
+        Case("s1", R(1), T(1, 0, 0x0016), {0x1A570: 1}),
+        Case("s2", R(0), T(0, 0, 0x0016), {0x1A570: 0}),
+        Case("s3", R(1), T(1, 0, 0x0030), {0x1A570: 0x00000100}),
+        Case("s4", R(0), T(0, 0, 0x7FFF)),
+        Case("s5", R(0), T(0, 0, 0xFFFF)),
+        Case("s6", R(1), T(1, 0, 0x0030), {0x1A570: 0xFFFFFF80}),
+        Case("o0", R(0), T(0, 1, 0x0018)),
+        Case("o1", R(1), T(1, 1, 0x0019)),
+        Case("l0", R(0), T(0, 2, 3, ch=2, z30=0x1200, r36=0x8000)),
+        Case("l1", R(1), T(1, 2, 3, ch=5, z30=0x14FF, r36=0x7FFF)),
+        Case("l2", R(0), T(0, 2, 3, ch=0x80, z30=0x17FF, r36=0xFFFF)),
+        Case("l3", R(1), T(1, 2, 3, ch=3, z30=0x0100, r36=0x0000, tbl={3: 0x9000})),
+        Case("l4", R(0), T(0, 2, 3, ch=6, z30=0xFFFFFFFF, r36=0x0001)),
+        Case("n0", R(0), T(0, 3, 0x0030, r36=0x8000)),
+        Case("n1", R(1), T(1, 5, 0x0030, r36=0x8000)),
+        Case("n2", R(0), T(0, 6, 0x0030, r36=0x8000)),
+        Case("n3", R(1), T(1, 0xFF, 0x0030, r36=0x8000)),
+        Case("f0", R(0), T(0, 4, 0x0000, ch=5, z30=0x0FFF, r36=0x8000)),
+        Case("f1", R(1), T(1, 4, 0x0007, r36=0x0001)),
+        Case("f2", R(0), T(0, 4, 0x0006, ch=5, z30=0x1000, r36=0x8000)),
+        Case("f3", R(1), T(1, 4, 0x0000, z30=0x0100, r36=0x8000, tbl={1: 0x9000})),
+        Case("f4", R(0), T(0, 4, 0x7FFF, r36=0x0001)),
+        Case("f5", R(0), T(0, 4, 0x0000, ch=5, z30=0x0FFF, r36=0x0000)),
+        Case("f6", R(1), T(1, 4, 0x0000, ch=5, z30=0x10FF, r36=0xFFFF)),
+    ]
+
+
+D3D_SPECS += [
+    # 0x3EA24 fighter_3ea24: 0x216EC's sibling (the slot +0x0C callback: the dwords at 0x3EC4E and
+    # 0x3ED42). EAX and EDX are not read (`mov edx,ebx` 0x3EA29), EBX = side. The counter word is
+    # 0x1080A8[side]; the table 0x3EA10 has five entries (`cmp dl,4; ja`): 0x3EA5C 0x3EB31 0x3EB51
+    # 0x3EC1A 0x3EBD6. State 0 stores into ctx[4] and ctx[5] (+0x36 = 0xA where 0x216EC has 0x258,
+    # +0x44 = 0xA for 0x28); state 4 ends in 0x36870(ctx[4]) and stores nothing. 0x33950 runs on
+    # both sides; 0x1A570 (AL tested, `test al,al; jne` 0x3EB01: s3 returns 0x100), 0x188AC,
+    # 0x3C148, 0x3C16C, 0x2BC30 and 0x36870 are stubs. Mask 0: `xor eax,eax` 0x35434.
+    Spec("fighter_3ea24", 0x3EA24, d3d_3ea24_cases(),
+         allow_calls=(0x33950,), calls=(BIT15, ANCHOR, CLEAR34, CLEAR36, ANIM_BEGIN, ANIM54), eax_mask=0,
+         mutants=("@ctrside", "@incd", "@incb", "@noinc", "@incstate", "@c0ge", "@c0uns", "@c0nos57", "@c0nor34",
+                  "@c0nor36", "@c0nor44", "@c0no4b", "@c0no24", "@c0no58", "@c0noo34", "@c0noo36", "@c0noo44",
+                  "@c0swap", "@c04bother", "@c024self", "@c058self", "@c0twin", "@eax", "@bitside", "@bitinv",
+                  "@negone", "@negdw", "@c0late", "@c1ge", "@c1nos", "@c2sign", "@c2always", "@c2rec", "@c2ge",
+                  "@c2zext", "@c2uns", "@c2chside", "@c2chsext", "@c2no54", "@c2ancside", "@c2ancrec", "@c2ancy",
+                  "@c2no34", "@c2no36", "@c2order", "@c2stream", "@c2hold", "@c2animrec", "@c2nos57", "@c2early",
+                  "@c2late54", "@c4char", "@c4sign", "@c4and", "@c4ge", "@c4uns", "@c4zext", "@c4rec", "@c4no",
+                  "@c4s57", "@slotarg", "@hi5")),
+]
 D1_SPECS += D3D_SPECS
 
 
