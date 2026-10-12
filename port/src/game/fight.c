@@ -643,6 +643,7 @@ void fight_char_fighter(u32 side)
  * else 0 (the `and eax,0xffff` result, 0x43D51). */
 u32 fight_char_button(u32 side)
 {
+    PR_SEAM_RET(0x43D0Cu, side);
     u16 w = DSW(DS_001088E0 + side * 2u);               /* 0x43D0F */
     if ((w & 0x200u) != 0u) return 1u;                  /* 0x43D16..0x43D23 */
     if ((w & 0x400u) != 0u) return 2u;                  /* 0x43D2A..0x43D3E */
@@ -682,6 +683,7 @@ void fight_stage_mark_drop(u32 cls, u32 side)
  * voice. */
 void fight_char_confirm(u32 side)
 {
+    PR_SEAM(0x43D60u, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43D65/0x43D6B */
     DSB(DS_0010816A + side) = DSB(DS_000C8882 + (u32)ch);  /* 0x43D6E/0x43D74 */
     DSB(DS_00108170 + side) = 2u;                       /* 0x43D7A/0x43D7E */
@@ -830,6 +832,7 @@ void fight_char_select_pass(void)
  * Phase 0x18: 0x432EC(side, DS_00104528 & 0x200). */
 void fight_char_team_text_blink(u32 side)
 {
+    PR_SEAM(0x44638u, side);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x44643..0x44652 */
     if (phase != 0u) {                                  /* 0x44657 */
         if (phase == 0x18u)                             /* 0x44774 */
@@ -863,6 +866,7 @@ void fight_char_team_text_blink(u32 side)
  * cursors alone, then 0x43EA0's entry, panel and voice updates. */
 void fight_char_team_portrait(u32 side)
 {
+    PR_SEAM(0x4418Cu, side);
     u32 other = side ^ 1u;                              /* 0x44191/0x4419C */
     if (DSD(DS_00108154 + side * 4u) == 0u) return;     /* 0x44196..0x441A1 */
     if (DSB(DS_00108166 + side) == DSB(DS_00108166 + other)) {  /* 0x441A7..0x441B3 */
@@ -893,6 +897,7 @@ void fight_char_team_portrait(u32 side)
  * fighter DS_0010813C[side] is 0 (0x442AE). */
 void fight_char_team_fighter(u32 side)
 {
+    PR_SEAM(0x442A0u, side);
     if (DSD(DS_0010813C + side * 4u) == 0u) return;     /* 0x442AE/0x442B5 */
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x442BB/0x442C9 */
     s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x442D4/0x442F0 */
@@ -915,6 +920,7 @@ void fight_char_team_fighter(u32 side)
  * its pset) and the slot zeroed (ECX = 0). */
 void fight_char_team_tag_drop(u32 side, u32 slot)
 {
+    PR_SEAM(0x44054u, side, slot);
     u32 a = DS_00108114 + side * 16u + slot * 4u;       /* 0x44056..0x4405C */
     u32 rec = DSD(a);                                   /* 0x4405F */
     if (rec == 0u) return;                              /* 0x44065 */
@@ -935,6 +941,7 @@ void fight_char_team_tag_drop(u32 side, u32 slot)
  * zero there is not observable. */
 void fight_char_team_tag_add(u32 side, u32 slot)
 {
+    PR_SEAM(0x4408Cu, side, slot);
     u32 a = DS_00108114 + side * 16u + slot * 4u;       /* 0x44097..0x4409C */
     if (DSD(a) != 0u) return;                           /* 0x4409C/0x440A4 */
     u32 desc[5];
@@ -966,6 +973,7 @@ void fight_char_team_tag_add(u32 side, u32 slot)
  * DS_0010816A; then the 0x6C voice. */
 void fight_char_team_pick(u32 side)
 {
+    PR_SEAM(0x4434Cu, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x4435D/0x44363 */
     s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x44366/0x4436C */
     u32 base = DS_00108134 + side * 4u;

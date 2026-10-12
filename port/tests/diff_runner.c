@@ -30935,6 +30935,281 @@ D4C_CG_MUT(nomap, 29u) D4C_CG_MUT(cmdside, 30u) D4C_CG_MUT(termw, 31u) D4C_CG_MU
 D4C_CG_MUT(notermzero, 33u) D4C_CG_MUT(durgt, 34u) D4C_CG_MUT(duruns, 35u) D4C_CG_MUT(b31sext, 36u)
 D4C_CG_MUT(noadv30, 37u) D4C_CG_MUT(noadv31, 38u) D4C_CG_MUT(noinc31, 39u) D4C_CG_MUT(duroff, 40u)
 D4C_CG_MUT(stride, 41u) D4C_CG_MUT(noinc0c, 42u) D4C_CG_MUT(inc0cw, 43u)
+/* 0x43D60 fight_char_confirm: EAX = side. One restatement with one choice flipped per mutant
+ * number (M(n): the mutant n is not selected). The deferred audit post is left out, as in the port. */
+static u32 d4c_43d60_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut != (n))
+    const u32 CUR = 0x00108166u, CLS = 0x0010816Au, P6E = 0x0010816Eu, ST = 0x00108170u, B34 = 0x00105B34u;
+    u32 side = r[R_EAX], o = side ^ 1u, btn, cls;
+    s32 ch = M(1u) ? (s32)(s8)DSB(CUR + (M(2u) ? side : o)) : (s32)DSB(CUR + side);  /* @curzext, @curother */
+    int clash;
+    if (M(4u)) DSB(CLS + side) = M(3u) ? DSB(0x000C8882u + (u32)ch) : (u8)ch;        /* @no6a, @clstab */
+    if (M(5u)) DSB(ST + side) = M(6u) ? 2u : 1u;                                     /* @no70, @v70 */
+    if (M(7u)) DSB(DS_001077B0 + (M(8u) ? side : o) * 0x94u + 0x63u) = 0u;           /* @no63, @63other */
+    btn = fight_char_button(M(9u) ? side : o);                                       /* @btnside */
+    if (M(10u)) DSB(B34 + side) = (u8)btn;                                           /* @no34 */
+    if (!M(11u)) btn &= 0xFFu;                                                       /* @btnb: the byte compared */
+    cls = (u32)DSB(CLS + side);
+    if ((s8)DSB(P6E + o) != -1) {
+        clash = (u32)DSB(M(12u) ? P6E + o : CLS + o) == cls                          /* @arm1cls */
+             && (!M(13u) || (u32)DSB(B34 + o) == btn);                               /* @nobtn1 */
+    } else {
+        clash = (!M(14u) || DSB(ST + o) == (M(15u) ? 2u : 1u))                       /* @arm2no70, @arm2v */
+             && (u32)DSB(M(16u) ? CLS + o : P6E + o) == cls                          /* @arm2cls */
+             && (!M(17u) || (u32)DSB(B34 + o) == btn);                               /* @nobtn2 */
+    }
+    if (clash && M(18u)) {                                                           /* @noclash */
+        u8 v = (DSB(B34 + o) == 0u) ? 1u : 0u;
+        if (!M(19u)) v ^= 1u;                                                        /* @clashinv */
+        DSB(B34 + (M(20u) ? side : o)) = v;                                          /* @clashother */
+    }
+    if ((s8)DSB(P6E + side) == -1 || DSB(P6E + side) != DSB(CLS + side) || !M(21u)) {   /* @nosame */
+        if (((s8)DSB(P6E + side) != -1 || !M(23u)) && M(22u))                        /* @resetalways, @noreset */
+            fight_char_reset(M(24u) ? side : o);                                     /* @resetside */
+        if (M(25u)) fight_stage_mark_drop(M(27u) ? (u32)DSB(CLS + side) : (u32)DSB(CUR + side),   /* @nodrop, @dropcur */
+                                          M(26u) ? side : o);                        /* @dropside */
+        if (M(28u)) DSB(P6E + (M(29u) ? side : o)) = DSB(CLS + side);                /* @no6e, @6eother */
+    }
+    if (!M(36u)) (void)sound_voice(0x6Cu);                                           /* @order: the voice first */
+    if (M(30u)) actor_set_dead(DSD(DS_00108154 + (M(31u) ? side : o) * 4u));         /* @nodead, @deadside */
+    if (M(32u)) fight_char_text_clear(M(33u) ? side : o, M(34u) ? 0u : 1u);          /* @noclr, @clrside, @clrflag */
+    if (M(36u) && M(35u)) (void)sound_voice(M(37u) ? 0x6Cu : 0x6Du);                 /* @novoice, @voiceid */
+    return 0u;
+#undef M
+}
+static void b_d4c_43d60(const u32 *r, u32 *eax) { fight_char_confirm(r[R_EAX]); *eax = 0u; }
+/* 0x43AAC fight_char_countdown: no argument; AL returned. */
+static u32 d4c_43aac_core(u32 mut)
+{
+#define M(n) (mut != (n))
+    u16 old = DSW(DS_0010816C), dx = (u16)(old - (M(1u) ? 1u : 0u));                 /* @nodec */
+    u32 side;
+    if (!M(2u)) DSD(DS_0010816C) = DSD(DS_0010816C) - 1u;                            /* @decd */
+    else DSW(DS_0010816C) = dx;
+    if (!M(3u) ? ((s16)dx >= 0) : !M(4u) ? (dx > 0u) : ((s16)dx > 0)) {              /* @ge, @uns */
+        s32 v = M(5u) ? (s32)(s16)DSW(DS_0010816C) : (s32)(s16)old;                  /* @stale */
+        if (!M(6u)) text_number_draw_font2(1, 0x13, v, 2, 0u, 0x4000u);              /* @drawargs */
+        else if (!M(7u)) text_number_draw_font2(0x13, 1, v, 2, 0x4000u, 0u);         /* @padmode */
+        else if (M(8u)) text_number_draw_font2(0x13, 1, v, M(9u) ? 2 : 3, 0u, 0x4000u);   /* @nodraw, @width */
+        return M(10u) ? 0u : 1u;                                                     /* @ret0 */
+    }
+    if (!M(17u)) frontend_wipe_arm(0x11u);                                           /* @order: the wipe before the confirms */
+    for (side = 0u; side < (M(11u) ? 2u : 1u); side++) {                             /* @side0only */
+        u8 b = DSB(DS_00108170 + side);
+        if (!M(12u) ? (b == 2u) : !M(13u) ? (b != 0u) : (b == 1u))                   /* @st2, @stne0 */
+            fight_char_confirm(M(14u) ? side : 1u - side);                           /* @confside */
+    }
+    if (M(15u)) DSD(DS_00104AE4) = M(16u) ? 0x000430E8u : 0x000430E0u;               /* @nohook, @hookv */
+    if (M(17u) && M(18u)) frontend_wipe_arm(M(19u) ? 0x11u : 0x10u);                 /* @nowipe, @wipearg */
+    return M(20u) ? 1u : 0u;                                                         /* @ret1 */
+#undef M
+}
+static void b_d4c_43aac(const u32 *r, u32 *eax) { (void)r; *eax = fight_char_countdown(); }
+#define D4C_CF_MUT(name, n) \
+    static void m_d4c_cf_##name(const u32 *r, u32 *eax) { *eax = d4c_43d60_core(r, n); }
+D4C_CF_MUT(curzext, 1u) D4C_CF_MUT(curother, 2u) D4C_CF_MUT(clstab, 3u)
+D4C_CF_MUT(no6a, 4u) D4C_CF_MUT(no70, 5u) D4C_CF_MUT(v70, 6u) D4C_CF_MUT(no63, 7u) D4C_CF_MUT(s63other, 8u)
+D4C_CF_MUT(btnside, 9u) D4C_CF_MUT(no34, 10u) D4C_CF_MUT(btnb, 11u) D4C_CF_MUT(arm1cls, 12u)
+D4C_CF_MUT(nobtn1, 13u) D4C_CF_MUT(arm2no70, 14u) D4C_CF_MUT(arm2v, 15u) D4C_CF_MUT(arm2cls, 16u)
+D4C_CF_MUT(nobtn2, 17u) D4C_CF_MUT(noclash, 18u) D4C_CF_MUT(clashinv, 19u) D4C_CF_MUT(clashother, 20u)
+D4C_CF_MUT(nosame, 21u) D4C_CF_MUT(noreset, 22u) D4C_CF_MUT(resetalways, 23u) D4C_CF_MUT(resetside, 24u)
+D4C_CF_MUT(nodrop, 25u) D4C_CF_MUT(dropside, 26u) D4C_CF_MUT(dropcur, 27u) D4C_CF_MUT(no6e, 28u)
+D4C_CF_MUT(s6eother, 29u) D4C_CF_MUT(nodead, 30u) D4C_CF_MUT(deadside, 31u) D4C_CF_MUT(noclr, 32u)
+D4C_CF_MUT(clrside, 33u) D4C_CF_MUT(clrflag, 34u) D4C_CF_MUT(novoice, 35u) D4C_CF_MUT(order, 36u)
+D4C_CF_MUT(voiceid, 37u)
+#define D4C_CD_MUT(name, n) \
+    static void m_d4c_cd_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4c_43aac_core(n); }
+D4C_CD_MUT(nodec, 1u) D4C_CD_MUT(decd, 2u) D4C_CD_MUT(ge, 3u) D4C_CD_MUT(uns, 4u)
+D4C_CD_MUT(stale, 5u) D4C_CD_MUT(drawargs, 6u) D4C_CD_MUT(padmode, 7u) D4C_CD_MUT(nodraw, 8u)
+D4C_CD_MUT(width, 9u) D4C_CD_MUT(ret0, 10u) D4C_CD_MUT(side0only, 11u) D4C_CD_MUT(st2, 12u)
+D4C_CD_MUT(stne0, 13u) D4C_CD_MUT(confside, 14u) D4C_CD_MUT(nohook, 15u) D4C_CD_MUT(hookv, 16u)
+D4C_CD_MUT(order, 17u) D4C_CD_MUT(nowipe, 18u) D4C_CD_MUT(wipearg, 19u) D4C_CD_MUT(ret1, 20u)
+/* 0x4434C fight_char_team_pick: EAX = side. One restatement with one choice flipped per mutant
+ * number (M(n): the mutant n is not selected). */
+static u32 d4c_4434c_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut != (n))
+    const u32 CUR = 0x00108166u, CLS = 0x0010816Au, P6E = 0x0010816Eu, ST = 0x00108170u;
+    u32 side = r[R_EAX], o = side ^ 1u, k;
+    s32 ch = M(1u) ? (s32)(s8)DSB(CUR + (M(2u) ? side : o)) : (s32)DSB(CUR + side);  /* @curzext, @curother */
+    s32 cls = M(3u) ? (s32)(s8)DSB(0x000C8882u + (u32)ch) : (s32)DSB(0x000C8882u + (u32)ch);   /* @clszext */
+    u32 base = 0x00108134u + (M(4u) ? side : o) * 4u;                                /* @pickside */
+    s32 found = -1, k0 = -1, k1 = -1;
+    if (!M(5u)) { for (k = 4u; k-- > 0u; ) if ((s8)DSB(base + k) == cls) { found = (s32)k; break; } }   /* @findrev */
+    else for (k = 0u; k < (M(6u) ? 4u : 3u); k++)                                    /* @find3 */
+        if ((s8)DSB(base + k) == cls) { found = (s32)k; break; }
+    if (found != -1) {
+        if (M(7u)) fight_char_team_tag_drop(M(8u) ? side : o, M(9u) ? (u32)found : (u32)found ^ 1u);   /* @nodropcall, @dropside, @dropk */
+        if (M(10u)) DSB(base + (u32)found) = M(11u) ? 0xFFu : 0u;                    /* @noff, @ffv */
+        if (!M(12u)) return 0u;                                                      /* @notail */
+    } else {
+        if (!M(13u)) { for (k = 4u; k-- > 0u; ) if ((s8)DSB(base + k) == -1) { k0 = (s32)k; break; } }   /* @freerev */
+        else for (k = 0u; k < 4u; k++) if ((s8)DSB(base + k) == -1) { k0 = (s32)k; break; }
+        if (k0 != -1) {
+            if (M(14u)) DSB(base + (u32)k0) = M(15u) ? (u8)cls : (u8)ch;             /* @nostore, @storecur */
+            if (M(16u)) DSB(ST + side) = 2u;                                         /* @no2 */
+            if (M(17u)) fight_char_team_tag_add(side, M(18u) ? (u32)k0 : (u32)k0 ^ 1u);   /* @noadd, @addk */
+        }
+        for (k = 0u; k < 4u; k++) if ((s8)DSB(base + k) == -1) { k1 = (s32)k; break; }
+        if (!M(19u)) k1 = (k0 == -1) ? -1 : 0;                                       /* @noscan2: full only when none was free */
+        if (k1 == -1) {
+            u32 ent = DS_00108154 + (M(22u) ? side : o) * 4u;                        /* @deadside */
+            if (M(20u)) DSB(ST + side) = 3u;                                         /* @no3 */
+            if (!M(24u)) DSD(ent) = 0u;                                              /* @zeroearly: before 0x2B150 */
+            if (M(21u)) actor_set_dead(DSD(ent));                                    /* @nodead */
+            if (M(23u)) DSD(ent) = 0u;                                               /* @nozero */
+            if (M(25u)) fight_char_text_clear(side, M(26u) ? 0u : 1u);               /* @noclr, @clrflag */
+        }
+    }
+    if (M(27u)) DSB(DS_001077B0 + side * 0x94u + 0x63u) = 0u;                        /* @no63 */
+    if ((s8)DSB(P6E + side) == -1 || DSB(P6E + side) != DSB(CLS + side) || !M(28u)) {   /* @nosame */
+        if ((s8)DSB(P6E + side) != -1 && M(29u)) fight_char_reset(side);             /* @noreset */
+        if (M(30u)) fight_stage_mark_drop(M(31u) ? (u32)DSB(CLS + side) : (u32)(u8)cls, side);   /* @nodrop, @droppick */
+        if (M(32u)) DSB(P6E + side) = M(33u) ? DSB(CLS + side) : (u8)cls;            /* @no6e, @6epick */
+    }
+    if (M(34u)) (void)sound_voice(0x6Cu);                                            /* @novoice */
+    return 0u;
+#undef M
+}
+static void b_d4c_4434c(const u32 *r, u32 *eax) { fight_char_team_pick(r[R_EAX]); *eax = 0u; }
+#define D4C_PK_MUT(name, n) \
+    static void m_d4c_pk_##name(const u32 *r, u32 *eax) { *eax = d4c_4434c_core(r, n); }
+D4C_PK_MUT(curzext, 1u) D4C_PK_MUT(curother, 2u) D4C_PK_MUT(clszext, 3u)
+D4C_PK_MUT(pickside, 4u) D4C_PK_MUT(findrev, 5u) D4C_PK_MUT(find3, 6u) D4C_PK_MUT(nodropcall, 7u)
+D4C_PK_MUT(dropside, 8u) D4C_PK_MUT(dropk, 9u) D4C_PK_MUT(noff, 10u) D4C_PK_MUT(ffv, 11u)
+D4C_PK_MUT(notail, 12u) D4C_PK_MUT(freerev, 13u) D4C_PK_MUT(nostore, 14u) D4C_PK_MUT(storecur, 15u)
+D4C_PK_MUT(no2, 16u) D4C_PK_MUT(noadd, 17u) D4C_PK_MUT(addk, 18u) D4C_PK_MUT(noscan2, 19u)
+D4C_PK_MUT(no3, 20u) D4C_PK_MUT(nodead, 21u) D4C_PK_MUT(deadside, 22u) D4C_PK_MUT(nozero, 23u)
+D4C_PK_MUT(zeroearly, 24u) D4C_PK_MUT(noclr, 25u) D4C_PK_MUT(clrflag, 26u) D4C_PK_MUT(no63, 27u)
+D4C_PK_MUT(nosame, 28u) D4C_PK_MUT(noreset, 29u) D4C_PK_MUT(nodrop, 30u) D4C_PK_MUT(droppick, 31u)
+D4C_PK_MUT(no6e, 32u) D4C_PK_MUT(s6epick, 33u) D4C_PK_MUT(novoice, 34u)
+/* 0x44638 fight_char_team_text_blink: EAX = side. One restatement with one choice flipped per
+ * mutant number (M(n): the mutant n is not selected). */
+static u32 d4c_44638_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut != (n))
+#define D4C_COL() (!M(22u) ? col0 : !M(23u) ? (u32)(s32)(s16)DSW(DS_000C894C + side * 2u) \
+                   : (u32)DSW(DS_000C894C + (M(24u) ? side : o) * 2u))               /* @cache, @colsext, @colside */
+    u32 side = r[R_EAX], o = side ^ 1u;
+    u32 phase = (u32)DSW(DS_000EF6DC) & (M(1u) ? 0x1Fu : 0x3Fu);                     /* @phase */
+    u32 col0 = (u32)DSW(DS_000C894C + side * 2u);
+    s32 row, len;
+    const u8 *s;
+    if (phase != 0u) {
+        if (phase == (M(2u) ? 0x18u : 0x10u))                                        /* @p18 */
+            fight_char_text_clear(M(5u) ? side : o,                                  /* @clrside18 */
+                                  !M(3u) ? DSD(DS_00104528) : DSD(DS_00104528) & (M(4u) ? 0x200u : 0x100u));   /* @flagall, @flag */
+        return 0u;
+    }
+    if ((DSB(0x00104529u) & (M(6u) ? 2u : 1u)) != 0u) {                              /* @bit */
+        u32 x = M(11u) ? (u32)DSW(0x000C8948u + (M(10u) ? side : o) * 2u)            /* @sx */
+                       : (u32)(s32)(s16)DSW(0x000C8948u + side * 2u);                /* @sxs */
+        u32 rec = 0u;
+        if (!M(9u)) rec = actor_spawn((const u32 *)(mem + 0x000C8934u), x, 0xFFu, 0x3700u, 0u);   /* @order */
+        if (M(8u)) fight_char_text_clear(side, M(7u) ? 0u : 1u);                     /* @noclr, @clrflag */
+        if (M(9u)) rec = actor_spawn((const u32 *)(mem + 0x000C8934u + (M(12u) ? 0u : 0x14u)), x,   /* @sdesc */
+                                     M(13u) ? 0xFFu : 0x3700u, M(13u) ? 0x3700u : 0xFFu, M(14u) ? 0u : 1u);   /* @a34, @a5 */
+        if (M(15u)) DSD(DS_00108144 + (M(16u) ? side : o) * 4u) = rec;               /* @nostore, @storeside */
+        return 0u;
+    }
+    row = M(17u) ? 0x1B : 0x1A;                                                      /* @row0 */
+    len = (s32)strlen((const char *)game_string_get(M(18u) ? 0x39u : 0x38u));        /* @lenid */
+    if (M(20u) && (M(19u) ? (len < 2) : (len <= 2))) row = 0x1C;                     /* @nolen, @le */
+    s = game_string_get(M(21u) ? 0x36u : 0x37u);                                     /* @ids */
+    text_cursor_set((s32)D4C_COL(), row - (M(25u) ? 2 : 1), s, 0x1000u);             /* @rel1 */
+    s = game_string_get(M(21u) ? 0x37u : 0x36u);
+    text_cursor_set((s32)D4C_COL(), row - (M(26u) ? 1 : 0), s, 0x1000u);             /* @rel2 */
+    s = game_string_get(0x38u);
+    text_cursor_set((s32)D4C_COL(), row + (M(27u) ? 0 : 1), s, M(28u) ? 0x1000u : 0x1002u);   /* @rel3, @mode */
+    len = (s32)strlen((const char *)game_string_get(0x39u));
+    if (M(30u) && (!M(29u) || (M(31u) ? (len >= 2) : (len > 2)))) row++;             /* @noinc, @incalways, @gt */
+    if (!M(32u) && len < 2) return 0u;                                               /* @skip4: 0x43464's form */
+    s = game_string_get(M(33u) ? 0x39u : 0x38u);                                     /* @id4 */
+    text_cursor_set((s32)D4C_COL(), row + (M(34u) ? 1 : 0), s, M(35u) ? 0x1000u : 0u);   /* @row4, @mode4 */
+    return 0u;
+#undef D4C_COL
+#undef M
+}
+static void b_d4c_44638(const u32 *r, u32 *eax) { fight_char_team_text_blink(r[R_EAX]); *eax = 0u; }
+#define D4C_TB_MUT(name, n) \
+    static void m_d4c_tb_##name(const u32 *r, u32 *eax) { *eax = d4c_44638_core(r, n); }
+D4C_TB_MUT(cache, 22u) D4C_TB_MUT(phase, 1u) D4C_TB_MUT(p18, 2u) D4C_TB_MUT(flagall, 3u)
+D4C_TB_MUT(flag, 4u) D4C_TB_MUT(clrside18, 5u) D4C_TB_MUT(bit, 6u) D4C_TB_MUT(clrflag, 7u)
+D4C_TB_MUT(noclr, 8u) D4C_TB_MUT(order, 9u) D4C_TB_MUT(sx, 10u) D4C_TB_MUT(sxs, 11u) D4C_TB_MUT(sdesc, 12u)
+D4C_TB_MUT(a34, 13u) D4C_TB_MUT(a5, 14u) D4C_TB_MUT(nostore, 15u) D4C_TB_MUT(storeside, 16u)
+D4C_TB_MUT(row0, 17u) D4C_TB_MUT(lenid, 18u) D4C_TB_MUT(le, 19u) D4C_TB_MUT(nolen, 20u) D4C_TB_MUT(ids, 21u)
+D4C_TB_MUT(colsext, 23u) D4C_TB_MUT(colside, 24u) D4C_TB_MUT(rel1, 25u) D4C_TB_MUT(rel2, 26u)
+D4C_TB_MUT(rel3, 27u) D4C_TB_MUT(mode, 28u) D4C_TB_MUT(incalways, 29u) D4C_TB_MUT(noinc, 30u)
+D4C_TB_MUT(gt, 31u) D4C_TB_MUT(skip4, 32u) D4C_TB_MUT(id4, 33u) D4C_TB_MUT(row4, 34u) D4C_TB_MUT(mode4, 35u)
+/* 0x44798 fight_char_team_pass: no argument. One restatement with one choice flipped per mutant
+ * number (M(n): the mutant n is not selected). */
+static u32 d4c_44798_core(u32 mut)
+{
+#define M(n) (mut != (n))
+    const u32 CUR = 0x00108166u, ST = 0x00108170u;
+    u32 side;
+    for (side = 0u; side < 2u; side++) {
+        u32 o = side ^ 1u, c = CUR + side;
+        u8 b = DSB(ST + side);
+        if (b == 3u) {
+            if (M(1u) && DSB(ST + o) != 3u) { if (M(2u)) continue; else goto stick; }   /* @noother, @fall3 */
+            if (M(3u)) DSB(0x0010816Au) = DSB(M(4u) ? 0x00108134u : 0x00108135u);    /* @no6a, @src6a */
+            if (M(5u)) DSB(0x00105B34u) = 0u;                                        /* @no34 */
+            if (M(6u)) DSB(0x0010816Bu) = DSB(M(7u) ? 0x00108138u : 0x00108135u);    /* @no6b, @src6b */
+            if (M(8u)) DSB(0x00105B35u) = ((DSB(0x0010816Au) == DSB(0x0010816Bu)) == (M(9u) ? 1 : 0)) ? 1u : 0u;   /* @no35, @inv35 */
+            if (M(10u)) DSD(DS_00104AE4) = M(11u) ? 0x000430E8u : 0x000430E0u;       /* @nohook, @hookv */
+            if (M(12u)) frontend_wipe_arm(M(13u) ? 0x11u : 0x10u);                   /* @nowipe, @wipearg */
+            if (M(14u)) return 0u;                                                   /* @noret */
+            continue;
+        }
+        if (b == (M(15u) ? 1u : 2u)) fight_char_team_text_blink(M(16u) ? side : o);  /* @blinkst, @blinkside */
+stick:
+        {
+            u32 w = (u32)DSW(DS_001088E0 + (M(17u) ? side : o) * 2u);                /* @cmdside */
+            u32 stick = w & (M(18u) ? 0x00F0u : 0xFFF0u);                            /* @stickw */
+            s8 v = (s8)DSB(c);
+            if (stick != 0u || !M(19u)) {                                            /* @always */
+                if (stick == 0x10u) {
+                    if (M(20u) ? (v < 6) : (v <= 6)) DSB(c) = (u8)(v + 1);           /* @right6 */
+                } else if (stick == 0x20u) {
+                    if (!M(21u) ? (v >= 0) : !M(22u) ? ((u8)v > 0u) : (v > 0)) DSB(c) = (u8)(v - 1);   /* @left0, @leftuns */
+                } else if (stick == 0x40u) {
+                    if (M(23u) ? (v < 4) : (v <= 4)) DSB(c) = (u8)(DSB(c) + 4u);     /* @down4 */
+                    if (M(26u) && (M(24u) ? ((s8)DSB(c) >= 7) : ((s8)DSB(c) > 7)))   /* @noclamp, @clamp7 */
+                        DSB(c) = M(25u) ? 6u : 7u;                                   /* @clampv */
+                } else if (stick == 0x80u) {
+                    if (!M(27u) ? (v > 4) : !M(28u) ? ((u8)v >= 4u) : (v >= 4)) DSB(c) = (u8)(v - 4);   /* @up4, @upuns */
+                }
+                if (!M(31u)) fight_char_team_fighter(side);                          /* @pforder */
+                if (M(29u)) fight_char_team_portrait(M(32u) ? side : o);             /* @noportrait, @pside */
+                if (M(31u) && M(30u)) fight_char_team_fighter(side);                 /* @nofighter */
+            }
+            if ((w & (M(33u) ? 1u : 2u)) != 0u && M(34u))                            /* @pickbit, @nopick */
+                fight_char_team_pick(M(35u) ? side : o);                             /* @pickside */
+        }
+    }
+    if (DSB(DS_00105C04) != 0u || !M(36u)) {                                         /* @c04always */
+        if (!M(38u)) DSB(DS_0010816C) = 0x0Fu;                                       /* @cdb */
+        else if (M(37u)) DSW(DS_0010816C) = M(39u) ? 0x000Fu : 0x0010u;              /* @nocd, @cdv */
+        if (M(40u)) DSB(DS_00105C04) = 0u;                                           /* @noc04clr */
+    }
+    return 0u;
+#undef M
+}
+static void b_d4c_44798(const u32 *r, u32 *eax) { (void)r; fight_char_team_pass(); *eax = 0u; }
+#define D4C_TP_MUT(name, n) \
+    static void m_d4c_tp_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4c_44798_core(n); }
+D4C_TP_MUT(noother, 1u) D4C_TP_MUT(fall3, 2u) D4C_TP_MUT(no6a, 3u) D4C_TP_MUT(src6a, 4u)
+D4C_TP_MUT(no34, 5u) D4C_TP_MUT(no6b, 6u) D4C_TP_MUT(src6b, 7u) D4C_TP_MUT(no35, 8u) D4C_TP_MUT(inv35, 9u)
+D4C_TP_MUT(nohook, 10u) D4C_TP_MUT(hookv, 11u) D4C_TP_MUT(nowipe, 12u) D4C_TP_MUT(wipearg, 13u)
+D4C_TP_MUT(noret, 14u) D4C_TP_MUT(blinkst, 15u) D4C_TP_MUT(blinkside, 16u) D4C_TP_MUT(cmdside, 17u)
+D4C_TP_MUT(stickw, 18u) D4C_TP_MUT(always, 19u) D4C_TP_MUT(right6, 20u) D4C_TP_MUT(left0, 21u)
+D4C_TP_MUT(leftuns, 22u) D4C_TP_MUT(down4, 23u) D4C_TP_MUT(clamp7, 24u) D4C_TP_MUT(clampv, 25u)
+D4C_TP_MUT(noclamp, 26u) D4C_TP_MUT(up4, 27u) D4C_TP_MUT(upuns, 28u) D4C_TP_MUT(noportrait, 29u)
+D4C_TP_MUT(nofighter, 30u) D4C_TP_MUT(pforder, 31u) D4C_TP_MUT(pside, 32u) D4C_TP_MUT(pickbit, 33u)
+D4C_TP_MUT(nopick, 34u) D4C_TP_MUT(pickside, 35u) D4C_TP_MUT(c04always, 36u) D4C_TP_MUT(nocd, 37u)
+D4C_TP_MUT(cdb, 38u) D4C_TP_MUT(cdv, 39u) D4C_TP_MUT(noc04clr, 40u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39793,6 +40068,178 @@ static const binding_t k_bindings[] = {
     { "fighter_command_generate@stride",       m_d4c_cg_stride, 0x00000000u },
     { "fighter_command_generate@noinc0c",      m_d4c_cg_noinc0c, 0x00000000u },
     { "fighter_command_generate@inc0cw",       m_d4c_cg_inc0cw, 0x00000000u },
+    { "fight_char_confirm",                  b_d4c_43d60, 0x00000000u },
+    { "fight_char_countdown",                b_d4c_43aac, 0x000000FFu },
+    { "fight_char_confirm@curzext",            m_d4c_cf_curzext, 0x00000000u },
+    { "fight_char_confirm@curother",           m_d4c_cf_curother, 0x00000000u },
+    { "fight_char_confirm@clstab",             m_d4c_cf_clstab, 0x00000000u },
+    { "fight_char_confirm@no6a",               m_d4c_cf_no6a, 0x00000000u },
+    { "fight_char_confirm@no70",               m_d4c_cf_no70, 0x00000000u },
+    { "fight_char_confirm@v70",                m_d4c_cf_v70, 0x00000000u },
+    { "fight_char_confirm@no63",               m_d4c_cf_no63, 0x00000000u },
+    { "fight_char_confirm@63other",            m_d4c_cf_s63other, 0x00000000u },
+    { "fight_char_confirm@btnside",            m_d4c_cf_btnside, 0x00000000u },
+    { "fight_char_confirm@no34",               m_d4c_cf_no34, 0x00000000u },
+    { "fight_char_confirm@btnb",               m_d4c_cf_btnb, 0x00000000u },
+    { "fight_char_confirm@arm1cls",            m_d4c_cf_arm1cls, 0x00000000u },
+    { "fight_char_confirm@nobtn1",             m_d4c_cf_nobtn1, 0x00000000u },
+    { "fight_char_confirm@arm2no70",           m_d4c_cf_arm2no70, 0x00000000u },
+    { "fight_char_confirm@arm2v",              m_d4c_cf_arm2v, 0x00000000u },
+    { "fight_char_confirm@arm2cls",            m_d4c_cf_arm2cls, 0x00000000u },
+    { "fight_char_confirm@nobtn2",             m_d4c_cf_nobtn2, 0x00000000u },
+    { "fight_char_confirm@noclash",            m_d4c_cf_noclash, 0x00000000u },
+    { "fight_char_confirm@clashinv",           m_d4c_cf_clashinv, 0x00000000u },
+    { "fight_char_confirm@clashother",         m_d4c_cf_clashother, 0x00000000u },
+    { "fight_char_confirm@nosame",             m_d4c_cf_nosame, 0x00000000u },
+    { "fight_char_confirm@noreset",            m_d4c_cf_noreset, 0x00000000u },
+    { "fight_char_confirm@resetalways",        m_d4c_cf_resetalways, 0x00000000u },
+    { "fight_char_confirm@resetside",          m_d4c_cf_resetside, 0x00000000u },
+    { "fight_char_confirm@nodrop",             m_d4c_cf_nodrop, 0x00000000u },
+    { "fight_char_confirm@dropside",           m_d4c_cf_dropside, 0x00000000u },
+    { "fight_char_confirm@dropcur",            m_d4c_cf_dropcur, 0x00000000u },
+    { "fight_char_confirm@no6e",               m_d4c_cf_no6e, 0x00000000u },
+    { "fight_char_confirm@6eother",            m_d4c_cf_s6eother, 0x00000000u },
+    { "fight_char_confirm@nodead",             m_d4c_cf_nodead, 0x00000000u },
+    { "fight_char_confirm@deadside",           m_d4c_cf_deadside, 0x00000000u },
+    { "fight_char_confirm@noclr",              m_d4c_cf_noclr, 0x00000000u },
+    { "fight_char_confirm@clrside",            m_d4c_cf_clrside, 0x00000000u },
+    { "fight_char_confirm@clrflag",            m_d4c_cf_clrflag, 0x00000000u },
+    { "fight_char_confirm@novoice",            m_d4c_cf_novoice, 0x00000000u },
+    { "fight_char_confirm@order",              m_d4c_cf_order, 0x00000000u },
+    { "fight_char_confirm@voiceid",            m_d4c_cf_voiceid, 0x00000000u },
+    { "fight_char_countdown@nodec",            m_d4c_cd_nodec, 0x000000FFu },
+    { "fight_char_countdown@decd",             m_d4c_cd_decd, 0x000000FFu },
+    { "fight_char_countdown@ge",               m_d4c_cd_ge, 0x000000FFu },
+    { "fight_char_countdown@uns",              m_d4c_cd_uns, 0x000000FFu },
+    { "fight_char_countdown@stale",            m_d4c_cd_stale, 0x000000FFu },
+    { "fight_char_countdown@drawargs",         m_d4c_cd_drawargs, 0x000000FFu },
+    { "fight_char_countdown@padmode",          m_d4c_cd_padmode, 0x000000FFu },
+    { "fight_char_countdown@nodraw",           m_d4c_cd_nodraw, 0x000000FFu },
+    { "fight_char_countdown@width",            m_d4c_cd_width, 0x000000FFu },
+    { "fight_char_countdown@ret0",             m_d4c_cd_ret0, 0x000000FFu },
+    { "fight_char_countdown@side0only",        m_d4c_cd_side0only, 0x000000FFu },
+    { "fight_char_countdown@st2",              m_d4c_cd_st2, 0x000000FFu },
+    { "fight_char_countdown@stne0",            m_d4c_cd_stne0, 0x000000FFu },
+    { "fight_char_countdown@confside",         m_d4c_cd_confside, 0x000000FFu },
+    { "fight_char_countdown@nohook",           m_d4c_cd_nohook, 0x000000FFu },
+    { "fight_char_countdown@hookv",            m_d4c_cd_hookv, 0x000000FFu },
+    { "fight_char_countdown@order",            m_d4c_cd_order, 0x000000FFu },
+    { "fight_char_countdown@nowipe",           m_d4c_cd_nowipe, 0x000000FFu },
+    { "fight_char_countdown@wipearg",          m_d4c_cd_wipearg, 0x000000FFu },
+    { "fight_char_countdown@ret1",             m_d4c_cd_ret1, 0x000000FFu },
+    { "fight_char_team_pick",                b_d4c_4434c, 0x00000000u },
+    { "fight_char_team_pick@curzext",          m_d4c_pk_curzext, 0x00000000u },
+    { "fight_char_team_pick@curother",         m_d4c_pk_curother, 0x00000000u },
+    { "fight_char_team_pick@clszext",          m_d4c_pk_clszext, 0x00000000u },
+    { "fight_char_team_pick@pickside",         m_d4c_pk_pickside, 0x00000000u },
+    { "fight_char_team_pick@findrev",          m_d4c_pk_findrev, 0x00000000u },
+    { "fight_char_team_pick@find3",            m_d4c_pk_find3, 0x00000000u },
+    { "fight_char_team_pick@nodropcall",       m_d4c_pk_nodropcall, 0x00000000u },
+    { "fight_char_team_pick@dropside",         m_d4c_pk_dropside, 0x00000000u },
+    { "fight_char_team_pick@dropk",            m_d4c_pk_dropk, 0x00000000u },
+    { "fight_char_team_pick@noff",             m_d4c_pk_noff, 0x00000000u },
+    { "fight_char_team_pick@ffv",              m_d4c_pk_ffv, 0x00000000u },
+    { "fight_char_team_pick@notail",           m_d4c_pk_notail, 0x00000000u },
+    { "fight_char_team_pick@freerev",          m_d4c_pk_freerev, 0x00000000u },
+    { "fight_char_team_pick@nostore",          m_d4c_pk_nostore, 0x00000000u },
+    { "fight_char_team_pick@storecur",         m_d4c_pk_storecur, 0x00000000u },
+    { "fight_char_team_pick@no2",              m_d4c_pk_no2, 0x00000000u },
+    { "fight_char_team_pick@noadd",            m_d4c_pk_noadd, 0x00000000u },
+    { "fight_char_team_pick@addk",             m_d4c_pk_addk, 0x00000000u },
+    { "fight_char_team_pick@noscan2",          m_d4c_pk_noscan2, 0x00000000u },
+    { "fight_char_team_pick@no3",              m_d4c_pk_no3, 0x00000000u },
+    { "fight_char_team_pick@nodead",           m_d4c_pk_nodead, 0x00000000u },
+    { "fight_char_team_pick@deadside",         m_d4c_pk_deadside, 0x00000000u },
+    { "fight_char_team_pick@nozero",           m_d4c_pk_nozero, 0x00000000u },
+    { "fight_char_team_pick@zeroearly",        m_d4c_pk_zeroearly, 0x00000000u },
+    { "fight_char_team_pick@noclr",            m_d4c_pk_noclr, 0x00000000u },
+    { "fight_char_team_pick@clrflag",          m_d4c_pk_clrflag, 0x00000000u },
+    { "fight_char_team_pick@no63",             m_d4c_pk_no63, 0x00000000u },
+    { "fight_char_team_pick@nosame",           m_d4c_pk_nosame, 0x00000000u },
+    { "fight_char_team_pick@noreset",          m_d4c_pk_noreset, 0x00000000u },
+    { "fight_char_team_pick@nodrop",           m_d4c_pk_nodrop, 0x00000000u },
+    { "fight_char_team_pick@droppick",         m_d4c_pk_droppick, 0x00000000u },
+    { "fight_char_team_pick@no6e",             m_d4c_pk_no6e, 0x00000000u },
+    { "fight_char_team_pick@6epick",           m_d4c_pk_s6epick, 0x00000000u },
+    { "fight_char_team_pick@novoice",          m_d4c_pk_novoice, 0x00000000u },
+    { "fight_char_team_text_blink",          b_d4c_44638, 0x00000000u },
+    { "fight_char_team_text_blink_rr",       b_d4c_44638, 0x00000000u },
+    { "fight_char_team_text_blink@phase",      m_d4c_tb_phase, 0x00000000u },
+    { "fight_char_team_text_blink@p18",        m_d4c_tb_p18, 0x00000000u },
+    { "fight_char_team_text_blink@flagall",    m_d4c_tb_flagall, 0x00000000u },
+    { "fight_char_team_text_blink@flag",       m_d4c_tb_flag, 0x00000000u },
+    { "fight_char_team_text_blink@clrside18",  m_d4c_tb_clrside18, 0x00000000u },
+    { "fight_char_team_text_blink@bit",        m_d4c_tb_bit, 0x00000000u },
+    { "fight_char_team_text_blink@clrflag",    m_d4c_tb_clrflag, 0x00000000u },
+    { "fight_char_team_text_blink@noclr",      m_d4c_tb_noclr, 0x00000000u },
+    { "fight_char_team_text_blink@order",      m_d4c_tb_order, 0x00000000u },
+    { "fight_char_team_text_blink@sx",         m_d4c_tb_sx, 0x00000000u },
+    { "fight_char_team_text_blink@sxs",        m_d4c_tb_sxs, 0x00000000u },
+    { "fight_char_team_text_blink@sdesc",      m_d4c_tb_sdesc, 0x00000000u },
+    { "fight_char_team_text_blink@a34",        m_d4c_tb_a34, 0x00000000u },
+    { "fight_char_team_text_blink@a5",         m_d4c_tb_a5, 0x00000000u },
+    { "fight_char_team_text_blink@nostore",    m_d4c_tb_nostore, 0x00000000u },
+    { "fight_char_team_text_blink@storeside",  m_d4c_tb_storeside, 0x00000000u },
+    { "fight_char_team_text_blink@row0",       m_d4c_tb_row0, 0x00000000u },
+    { "fight_char_team_text_blink@lenid",      m_d4c_tb_lenid, 0x00000000u },
+    { "fight_char_team_text_blink@le",         m_d4c_tb_le, 0x00000000u },
+    { "fight_char_team_text_blink@nolen",      m_d4c_tb_nolen, 0x00000000u },
+    { "fight_char_team_text_blink@ids",        m_d4c_tb_ids, 0x00000000u },
+    { "fight_char_team_text_blink@colsext",    m_d4c_tb_colsext, 0x00000000u },
+    { "fight_char_team_text_blink@colside",    m_d4c_tb_colside, 0x00000000u },
+    { "fight_char_team_text_blink@rel1",       m_d4c_tb_rel1, 0x00000000u },
+    { "fight_char_team_text_blink@rel2",       m_d4c_tb_rel2, 0x00000000u },
+    { "fight_char_team_text_blink@rel3",       m_d4c_tb_rel3, 0x00000000u },
+    { "fight_char_team_text_blink@mode",       m_d4c_tb_mode, 0x00000000u },
+    { "fight_char_team_text_blink@incalways",  m_d4c_tb_incalways, 0x00000000u },
+    { "fight_char_team_text_blink@noinc",      m_d4c_tb_noinc, 0x00000000u },
+    { "fight_char_team_text_blink@gt",         m_d4c_tb_gt, 0x00000000u },
+    { "fight_char_team_text_blink@skip4",      m_d4c_tb_skip4, 0x00000000u },
+    { "fight_char_team_text_blink@id4",        m_d4c_tb_id4, 0x00000000u },
+    { "fight_char_team_text_blink@row4",       m_d4c_tb_row4, 0x00000000u },
+    { "fight_char_team_text_blink@mode4",      m_d4c_tb_mode4, 0x00000000u },
+    { "fight_char_team_text_blink_rr@cache",  m_d4c_tb_cache, 0x00000000u },
+    { "fight_char_team_pass",                b_d4c_44798, 0x00000000u },
+    { "fight_char_team_pass@noother",          m_d4c_tp_noother, 0x00000000u },
+    { "fight_char_team_pass@fall3",            m_d4c_tp_fall3, 0x00000000u },
+    { "fight_char_team_pass@no6a",             m_d4c_tp_no6a, 0x00000000u },
+    { "fight_char_team_pass@src6a",            m_d4c_tp_src6a, 0x00000000u },
+    { "fight_char_team_pass@no34",             m_d4c_tp_no34, 0x00000000u },
+    { "fight_char_team_pass@no6b",             m_d4c_tp_no6b, 0x00000000u },
+    { "fight_char_team_pass@src6b",            m_d4c_tp_src6b, 0x00000000u },
+    { "fight_char_team_pass@no35",             m_d4c_tp_no35, 0x00000000u },
+    { "fight_char_team_pass@inv35",            m_d4c_tp_inv35, 0x00000000u },
+    { "fight_char_team_pass@nohook",           m_d4c_tp_nohook, 0x00000000u },
+    { "fight_char_team_pass@hookv",            m_d4c_tp_hookv, 0x00000000u },
+    { "fight_char_team_pass@nowipe",           m_d4c_tp_nowipe, 0x00000000u },
+    { "fight_char_team_pass@wipearg",          m_d4c_tp_wipearg, 0x00000000u },
+    { "fight_char_team_pass@noret",            m_d4c_tp_noret, 0x00000000u },
+    { "fight_char_team_pass@blinkst",          m_d4c_tp_blinkst, 0x00000000u },
+    { "fight_char_team_pass@blinkside",        m_d4c_tp_blinkside, 0x00000000u },
+    { "fight_char_team_pass@cmdside",          m_d4c_tp_cmdside, 0x00000000u },
+    { "fight_char_team_pass@stickw",           m_d4c_tp_stickw, 0x00000000u },
+    { "fight_char_team_pass@always",           m_d4c_tp_always, 0x00000000u },
+    { "fight_char_team_pass@right6",           m_d4c_tp_right6, 0x00000000u },
+    { "fight_char_team_pass@left0",            m_d4c_tp_left0, 0x00000000u },
+    { "fight_char_team_pass@leftuns",          m_d4c_tp_leftuns, 0x00000000u },
+    { "fight_char_team_pass@down4",            m_d4c_tp_down4, 0x00000000u },
+    { "fight_char_team_pass@clamp7",           m_d4c_tp_clamp7, 0x00000000u },
+    { "fight_char_team_pass@clampv",           m_d4c_tp_clampv, 0x00000000u },
+    { "fight_char_team_pass@noclamp",          m_d4c_tp_noclamp, 0x00000000u },
+    { "fight_char_team_pass@up4",              m_d4c_tp_up4, 0x00000000u },
+    { "fight_char_team_pass@upuns",            m_d4c_tp_upuns, 0x00000000u },
+    { "fight_char_team_pass@noportrait",       m_d4c_tp_noportrait, 0x00000000u },
+    { "fight_char_team_pass@nofighter",        m_d4c_tp_nofighter, 0x00000000u },
+    { "fight_char_team_pass@pforder",          m_d4c_tp_pforder, 0x00000000u },
+    { "fight_char_team_pass@pside",            m_d4c_tp_pside, 0x00000000u },
+    { "fight_char_team_pass@pickbit",          m_d4c_tp_pickbit, 0x00000000u },
+    { "fight_char_team_pass@nopick",           m_d4c_tp_nopick, 0x00000000u },
+    { "fight_char_team_pass@pickside",         m_d4c_tp_pickside, 0x00000000u },
+    { "fight_char_team_pass@c04always",        m_d4c_tp_c04always, 0x00000000u },
+    { "fight_char_team_pass@nocd",             m_d4c_tp_nocd, 0x00000000u },
+    { "fight_char_team_pass@cdb",              m_d4c_tp_cdb, 0x00000000u },
+    { "fight_char_team_pass@cdv",              m_d4c_tp_cdv, 0x00000000u },
+    { "fight_char_team_pass@noc04clr",         m_d4c_tp_noc04clr, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
