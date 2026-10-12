@@ -26346,6 +26346,41 @@ D3A_CC_MUT(col) D3A_CC_MUT(colw) D3A_CC_MUT(colsext) D3A_CC_MUT(nopick) D3A_CC_M
 D3A_CC_MUT(stagew) D3A_CC_MUT(xor) D3A_CC_MUT(xorb) D3A_CC_MUT(noselect) D3A_CC_MUT(sel2) D3A_CC_MUT(hook)
 D3A_CC_MUT(hookw) D3A_CC_MUT(ee) D3A_CC_MUT(eew) D3A_CC_MUT(b00) D3A_CC_MUT(b00b) D3A_CC_MUT(afe)
 D3A_CC_MUT(afeb) D3A_CC_MUT(early)
+/* 0x42F60: EAX = the side. Full mask: `xor eax,eax` 0x42FAA, `mov eax,1` 0x42FA3, or the zero EAX of
+ * 0x2C060 that `test eax,eax; je 0x42fac` just tested; all four callers `test eax,eax`. */
+static void b_d3a_42f60(const u32 *r, u32 *eax) { *eax = flow_continue_poll(r[R_EAX]); }
+enum { D3A_CN_NONE, D3A_CN_nocredit, D3A_CN_al, D3A_CN_side, D3A_CN_stride, D3A_CN_held, D3A_CN_eq, D3A_CN_zeroal,
+       D3A_CN_nozero, D3A_CN_swaparm, D3A_CN_nofree, D3A_CN_notake, D3A_CN_takeorder, D3A_CN_spendn,
+       D3A_CN_nospend, D3A_CN_c04, D3A_CN_c04v, D3A_CN_c04w, D3A_CN_early, D3A_CN_ret, D3A_CN_miss };
+static u32 d3a_42f60_core(u32 side, u32 mut)
+{
+    if (mut != D3A_CN_nocredit) {
+        u32 ready = config_credit_ready();
+        if (((mut == D3A_CN_al) ? (ready & 0xFFu) : ready) == 0u) return 0u;
+    }
+    u32 mask = DSD(0x0009ACBCu + ((mut == D3A_CN_side) ? 1u - side : side) * ((mut == D3A_CN_stride) ? 2u : 4u));
+    u32 in = (mut == D3A_CN_held) ? DSD(0x001088D8u) : DSD(0x001088E4u);
+    if ((mut == D3A_CN_eq) ? (mask != in) : ((mask & in) == 0u)) return (mut == D3A_CN_miss) ? 1u : 0u;
+    if (mut == D3A_CN_early) DSB(0x00105C04u) = 1u;
+    u32 z = (mut == D3A_CN_nozero) ? 0u : config_credit_zero(), s = 1u;
+    if (mut == D3A_CN_zeroal) z &= 0xFFu;
+    if ((z != 0u) != (mut == D3A_CN_swaparm)) {
+        if (mut == D3A_CN_takeorder) (void)config_credit_take();
+        if (mut != D3A_CN_nofree) (void)config_not_free_play();
+        if (mut != D3A_CN_notake && mut != D3A_CN_takeorder) (void)config_credit_take();
+    } else if (mut != D3A_CN_nospend) {
+        s = config_credit_spend((mut == D3A_CN_spendn) ? side : 1u);
+    }
+    if (mut == D3A_CN_c04w) DSW(0x00105C04u) = 1u;
+    else if (mut != D3A_CN_c04 && mut != D3A_CN_early) DSB(0x00105C04u) = (mut == D3A_CN_c04v) ? 0u : 1u;
+    return (mut == D3A_CN_ret) ? s : 1u;
+}
+#define D3A_CN_MUT(name) \
+    static void m_d3a_cn_##name(const u32 *r, u32 *eax) { *eax = d3a_42f60_core(r[R_EAX], D3A_CN_##name); }
+D3A_CN_MUT(nocredit) D3A_CN_MUT(al) D3A_CN_MUT(side) D3A_CN_MUT(stride) D3A_CN_MUT(held) D3A_CN_MUT(eq)
+D3A_CN_MUT(zeroal) D3A_CN_MUT(nozero) D3A_CN_MUT(swaparm) D3A_CN_MUT(nofree) D3A_CN_MUT(notake)
+D3A_CN_MUT(takeorder) D3A_CN_MUT(spendn) D3A_CN_MUT(nospend) D3A_CN_MUT(c04) D3A_CN_MUT(c04v) D3A_CN_MUT(c04w)
+D3A_CN_MUT(early) D3A_CN_MUT(ret) D3A_CN_MUT(miss)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32905,6 +32940,27 @@ static const binding_t k_bindings[] = {
     { "frontend_mode12_challenge_continue@afe", m_d3a_cc_afe, 0x00000000u },
     { "frontend_mode12_challenge_continue@afeb", m_d3a_cc_afeb, 0x00000000u },
     { "frontend_mode12_challenge_continue@early", m_d3a_cc_early, 0x00000000u },
+    { "flow_continue_poll", b_d3a_42f60, 0xFFFFFFFFu },
+    { "flow_continue_poll@nocredit", m_d3a_cn_nocredit, 0xFFFFFFFFu },
+    { "flow_continue_poll@al", m_d3a_cn_al, 0xFFFFFFFFu },
+    { "flow_continue_poll@side", m_d3a_cn_side, 0xFFFFFFFFu },
+    { "flow_continue_poll@stride", m_d3a_cn_stride, 0xFFFFFFFFu },
+    { "flow_continue_poll@held", m_d3a_cn_held, 0xFFFFFFFFu },
+    { "flow_continue_poll@eq", m_d3a_cn_eq, 0xFFFFFFFFu },
+    { "flow_continue_poll@zeroal", m_d3a_cn_zeroal, 0xFFFFFFFFu },
+    { "flow_continue_poll@nozero", m_d3a_cn_nozero, 0xFFFFFFFFu },
+    { "flow_continue_poll@swaparm", m_d3a_cn_swaparm, 0xFFFFFFFFu },
+    { "flow_continue_poll@nofree", m_d3a_cn_nofree, 0xFFFFFFFFu },
+    { "flow_continue_poll@notake", m_d3a_cn_notake, 0xFFFFFFFFu },
+    { "flow_continue_poll@takeorder", m_d3a_cn_takeorder, 0xFFFFFFFFu },
+    { "flow_continue_poll@spendn", m_d3a_cn_spendn, 0xFFFFFFFFu },
+    { "flow_continue_poll@nospend", m_d3a_cn_nospend, 0xFFFFFFFFu },
+    { "flow_continue_poll@c04", m_d3a_cn_c04, 0xFFFFFFFFu },
+    { "flow_continue_poll@c04v", m_d3a_cn_c04v, 0xFFFFFFFFu },
+    { "flow_continue_poll@c04w", m_d3a_cn_c04w, 0xFFFFFFFFu },
+    { "flow_continue_poll@early", m_d3a_cn_early, 0xFFFFFFFFu },
+    { "flow_continue_poll@ret", m_d3a_cn_ret, 0xFFFFFFFFu },
+    { "flow_continue_poll@miss", m_d3a_cn_miss, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

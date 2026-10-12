@@ -401,6 +401,7 @@ u32 config_credit_ready(void)
 /* 0x2CA48. Free play, then the zero-credit guard, then the suppressed debit. */
 u32 config_credit_take(void)
 {
+    PR_SEAM_RET0(0x2CA48u);
     if (DSB(DS_00105D60) != 0u) return 1u;            /* 0x2CA51 */
     if (DSD(DS_00105C00) == 0u) return 0u;            /* 0x2CA5E */
     if (DSB(DS_00104B1F) == 0u) DSD(DS_00105C00)--;   /* 0x2CA69 */
@@ -413,6 +414,7 @@ u32 config_credit_take(void)
  * and by 0x32F54 (0x32F56, svcmenu.c, record §K11.7). Always 0. */
 u32 config_credit_zero(void)
 {
+    PR_SEAM_RET0(0x2CA78u);
     return 0u;                                         /* 0x2CA78 */
 }
 

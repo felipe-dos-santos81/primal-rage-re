@@ -18540,6 +18540,42 @@ D3A_SPECS += [
                 "@noselect", "@sel2", "@hook", "@hookw", "@ee", "@eew", "@b00", "@b00b", "@afe", "@afeb",
                 "@early")),
 ]
+D3A_ZERO = E.Call(0x2CA78, ())
+D3A_FREE = E.Call(0x2CAA8, ())
+D3A_TAKE = E.Call(0x2CA48, ())
+
+
+def d3a_cont_case(held, pressed, tbl=None, c04=0x5A):
+    """0x42F60: 0x11F28's state (d3a_poll_case) and the byte 0x105C04 between neighbours."""
+    p = d3a_poll_case(held, pressed, tbl)
+    p[0x00105C03] = bytes([0x65, c04, 0x66])
+    return p
+
+
+D3A_SPECS += [
+    # 0x42F60 flow_continue_poll: EAX = the side. 0x11F28's two gates (0x2C060 non-zero, the
+    # mask dword 0x9ACBC[side] newly pressed in 0x1088E4); then 0x2CA78: non-zero (`test
+    # eax,eax`) -> 0x2CAA8 and 0x2CA48, zero -> 0x2CA7C(1); the byte 0x105C04 = 1 and EAX = 1.
+    # Every callee is a stub, so the arm the real 0x2CA78 (`xor eax,eax; ret`) never takes is
+    # run too (q1, and q4 with a stub EAX of 0x100); 0x2CA48 reads no register, so the `inc
+    # eax; sar eax,1` on 0x2CAA8's result (0x42F88) is not observable. Full mask.
+    Spec("flow_continue_poll", 0x42F60, [
+        Case("q0", {"eax": 0, "edx": 0xABCD1234}, d3a_cont_case(0, 0x01000000),
+             {0x2C060: 1, 0x2CA78: 0, 0x2CA7C: 0}),
+        Case("q1", {"eax": 1}, d3a_cont_case(0, 0xFFFFFFFF),
+             {0x2C060: 1, 0x2CA78: 1, 0x2CAA8: 0x7FFFFFFF, 0x2CA48: 0}),
+        Case("q2", {"eax": 0}, d3a_cont_case(0, 0x01000000), {0x2C060: 0, 0x2CA78: 1}),
+        Case("q3", {"eax": 1}, d3a_cont_case(0x00000100, 0x01000000), {0x2C060: 1, 0x2CA78: 0}),
+        Case("q4", {"eax": 0}, d3a_cont_case(0, 0x01000000, c04=0x01),
+             {0x2C060: 0x100, 0x2CA78: 0x100, 0x2CAA8: 1, 0x2CA48: 0x55}),
+        Case("q5", {"eax": 2}, d3a_cont_case(0, 0x00000040, c04=0x00), {0x2C060: 1, 0x2CA78: 0, 0x2CA7C: 1}),
+        Case("q6", {"eax": 1}, d3a_cont_case(0, 0x00020000, (0x00000003, 0x80030000, 0x00000004)),
+             {0x2C060: 0xFFFFFFFF, 0x2CA78: 0, 0x2CA7C: 7}),
+    ], calls=(D3A_READY, D3A_ZERO, D3A_FREE, D3A_TAKE, D3A_SPEND), eax_mask=0xFFFFFFFF,
+       mutants=("@nocredit", "@al", "@side", "@stride", "@held", "@eq", "@zeroal", "@nozero", "@swaparm",
+                "@nofree", "@notake", "@takeorder", "@spendn", "@nospend", "@c04", "@c04v", "@c04w", "@early",
+                "@ret", "@miss")),
+]
 D1_SPECS += D3A_SPECS
 
 

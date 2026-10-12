@@ -18,6 +18,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x29970` | `flow_round_over_check` | 119 | 0: the one caller `0x29B54` goes on with `or byte [0x104aec],2` (`0x29B59`), three pops and `ret` into `0x251AD` `jmp 0x2540f` (the mode tail) |
 | `0x2C178` | `prompt_press_start` | 53 | 0: it returns `0x2C0F4`'s EAX untouched (`pop esi; pop ecx; pop ebx; ret` after the call at `0x2C1A4`), which the d2c record (§1, `0x2C0F4`) traces dead through this function's nine call sites. Seen here: `0x28D40 jmp 0x28d60` (`xor eax,eax`); the three loops at `0x42606`/`0x42665`/`0x426BE` rewrite EAX at their tops (`lea eax,[ecx+1]`, `xor eax,eax`); their exit `0x4271B` and `0x432C3`/`0x432D3` return it upward (not re-traced here) |
 | `0x41760` | `frontend_mode12_challenge_continue` | 98 | 0: the one caller `0x4213B` (`0x41C28` state 5) goes on with `add esp,8` (`0x42140`), six pops and `ret`: the mode step's own return, whose EAX the d2e rows hold dead (mask 0, d2e §1) |
+| `0x42F60` | `flow_continue_poll` | 78 | full: `xor eax,eax` `0x42FAA`, `mov eax,1` `0x42FA3`, or the zero EAX of `0x2C060` just tested (`0x42F68`); all four callers `test eax,eax` (`0x27A3C`, `0x42CE6`, `0x42D2A`, `0x42D6F`) |
 
 ## §2 The row table (measured)
 
@@ -34,6 +35,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `flow_round_over_check_reread` | `0x29970` | 3 | 5/5 | 3 | 0 | the same entry with a `0x27C48` stub that stores `0x10` in `0x10789E`: side 1's byte is read at `0x299AD`, after side 0's call (`@pre`) |
 | `prompt_press_start` | `0x2C178` | 6 | 4/4 | 13 | 0 | `0x2C0F4` stubbed (seamed here). `k0`: x word `0x8123` (`@xzext`); `k2`: col byte `0x83` (`@colsext`); `k4`/`k5`: side 2 |
 | `frontend_mode12_challenge_continue` | `0x41760` | 4 | 1/1 | 20 | 0 | `0x4660C`, `0x25848`, `0x41350` stubbed with d2e's constants (the `0x25848` stub stores a new stage word: `@stagepre`). `h3`: a result of `0x100` (`@xorb`); `h0`: a col byte `0x83` (`@colsext`) |
+| `flow_continue_poll` | `0x42F60` | 7 | 8/8 | 20 | `0xFFFFFFFF` | five stubs (`0x2CA48`, `0x2CA78` seamed here). The stubbed `0x2CA78` returns non-zero in `q1` and `0x100` in `q4`, so the arm its real body (`xor eax,eax; ret`) never selects is compared too |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -52,6 +54,9 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x46534` | EAX, EDX | 0 | `edx` | pushes EBX ECX EBP; one plain `ret` (`0x46590`) |
 | `0x27C48` | none | 0 | none | pushes EBX ECX EDX; four plain `ret` (`0x27D0F`, `0x27D8D`, `0x27DB2`, `0x27DC7`) |
 | `0x2C0F4` | EAX, EDX, EBX, ECX (`mov esi,eax` `0x2C0F6`, `mov edi,ebx` `0x2C0F8`, `mov eax,ecx` `0x2C0FA`; EDX is the row, the d2c row's registers) | 0 | `ebx ecx edx ebp` | pushes ESI EDI; two plain `ret` (`0x2C167`, `0x2C176`); `0x2C178` reads none of the clobbered registers after the call |
+| `0x2CA78` | none | 0 | none | `xor eax,eax; ret` |
+| `0x2CA48` | none (its body reads memory only) | 0 | none | three plain `ret` (`0x2CA56`, `0x2CA74`, `0x2CA7A`) |
+| `0x2CAA8` (as a stub; seamed before) | none | 0 | none | `cmp; sete al; and eax,0xff; ret` |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -100,6 +105,8 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   Neither callee writes it: their direct-call trees (`0x4660C`, `0x25848`, `0x5D7DC`: three functions, no
   indirect transfer) name `0x104AD4` only in two reads of `0x25848` (`0x2595D cmp`, `0x2598F mov ecx,`). No
   stub of the row writes it, so the row does not separate the two.
+- `flow_continue_poll`: `0x42F88 inc eax; sar eax,1` on `0x2CAA8`'s result feeds `0x2CA48`, which reads no
+  register: the value is not observable and the port does not compute it.
 
 ## §5 Store-sweep findings
 
@@ -127,6 +134,8 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   `+0x5B` bytes next to the two tested bytes are above the threshold (`@off0`, `@off1`).
 - `frontend_mode12_challenge_continue`: four stores after `0x41350` (`@early`: `call #2 memory`), each seeded
   between neighbours with a value and a width mutant.
+- `flow_continue_poll`: one store, the byte `0x105C04 = 1`, after the spend (`@early`: the memory at calls
+  1..3); `q4` has the byte already 1 (`@c04` is caught where it is not), `@c04w` writes `0x105C05`.
 
 ## §6 Queue entries not done
 

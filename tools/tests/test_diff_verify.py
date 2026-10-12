@@ -11265,6 +11265,7 @@ D3A_MASKS = {
     "flow_round_over_check_reread": 0x0,
     "prompt_press_start": 0x0,
     "frontend_mode12_challenge_continue": 0x0,
+    "flow_continue_poll": 0xffffffff,
 }
 D3A_KINDS = {
     "frontend_coin_poll@nocredit": {'call #0', 'call #1', 'eax'},
@@ -11498,6 +11499,26 @@ D3A_KINDS = {
     "frontend_mode12_challenge_continue@afe": {'byte'},
     "frontend_mode12_challenge_continue@afeb": {'byte'},
     "frontend_mode12_challenge_continue@early": {'call #2 memory'},
+    "flow_continue_poll@nocredit": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'eax'},
+    "flow_continue_poll@al": {'call #1', 'call #2', 'call #3', 'eax'},
+    "flow_continue_poll@side": {'byte', 'call #1', 'call #2', 'call #3', 'eax'},
+    "flow_continue_poll@stride": {'byte', 'call #1', 'call #2', 'eax'},
+    "flow_continue_poll@held": {'byte', 'call #1', 'call #2', 'call #3', 'eax'},
+    "flow_continue_poll@eq": {'byte', 'call #1', 'call #2', 'call #3', 'eax'},
+    "flow_continue_poll@zeroal": {'call #2', 'call #3'},
+    "flow_continue_poll@nozero": {'call #1', 'call #2', 'call #3'},
+    "flow_continue_poll@swaparm": {'call #2', 'call #3'},
+    "flow_continue_poll@nofree": {'call #2', 'call #3'},
+    "flow_continue_poll@notake": {'call #3'},
+    "flow_continue_poll@takeorder": {'call #2', 'call #3'},
+    "flow_continue_poll@spendn": {'call #2'},
+    "flow_continue_poll@nospend": {'call #2'},
+    "flow_continue_poll@c04": {'byte'},
+    "flow_continue_poll@c04v": {'byte'},
+    "flow_continue_poll@c04w": {'byte'},
+    "flow_continue_poll@early": {'call #1 memory', 'call #2 memory', 'call #3 memory'},
+    "flow_continue_poll@ret": {'eax'},
+    "flow_continue_poll@miss": {'eax'},
 }
 D3A_CASES = [
     ("frontend_coin_poll@nocredit", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
@@ -11731,6 +11752,26 @@ D3A_CASES = [
     ("frontend_mode12_challenge_continue@afe", ['h0', 'h1', 'h2', 'h3']),
     ("frontend_mode12_challenge_continue@afeb", ['h0', 'h1', 'h2', 'h3']),
     ("frontend_mode12_challenge_continue@early", ['h0', 'h1', 'h2', 'h3']),
+    ("flow_continue_poll@nocredit", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6']),
+    ("flow_continue_poll@al", ['q4']),
+    ("flow_continue_poll@side", ['q0', 'q3', 'q4', 'q6']),
+    ("flow_continue_poll@stride", ['q3', 'q5', 'q6']),
+    ("flow_continue_poll@held", ['q0', 'q1', 'q3', 'q4', 'q5', 'q6']),
+    ("flow_continue_poll@eq", ['q1', 'q5', 'q6']),
+    ("flow_continue_poll@zeroal", ['q4']),
+    ("flow_continue_poll@nozero", ['q0', 'q1', 'q4', 'q5', 'q6']),
+    ("flow_continue_poll@swaparm", ['q0', 'q1', 'q4', 'q5', 'q6']),
+    ("flow_continue_poll@nofree", ['q1', 'q4']),
+    ("flow_continue_poll@notake", ['q1', 'q4']),
+    ("flow_continue_poll@takeorder", ['q1', 'q4']),
+    ("flow_continue_poll@spendn", ['q0', 'q5']),
+    ("flow_continue_poll@nospend", ['q0', 'q5', 'q6']),
+    ("flow_continue_poll@c04", ['q0', 'q1', 'q5', 'q6']),
+    ("flow_continue_poll@c04v", ['q0', 'q1', 'q4', 'q5', 'q6']),
+    ("flow_continue_poll@c04w", ['q0', 'q1', 'q4', 'q5', 'q6']),
+    ("flow_continue_poll@early", ['q0', 'q1', 'q5', 'q6']),
+    ("flow_continue_poll@ret", ['q0', 'q6']),
+    ("flow_continue_poll@miss", ['q3']),
 ]
 D1_MASKS.update(D3A_MASKS)
 D1_KINDS.update(D3A_KINDS)
@@ -12785,7 +12826,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
-        0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x2C060: (), 0x2C0F4: ("ebx", "ecx", "edx", "ebp"), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA7C: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (),
+        0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x2C060: (), 0x2C0F4: ("ebx", "ecx", "edx", "ebp"), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA48: (), 0x2CA78: (), 0x2CA7C: (), 0x2CAA8: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (),
         # D2 d2b (record 2026-10-11-reverse-d2b): the stubs its rows add
         0x10D70: ("ebx", "ecx", "edx"), 0x1A8F4: ("edx",), 0x38BEC: (), 0x46670: (),
         0x2C320: (), 0x33C18: (), 0x2C088: ("ebx", "edx", "edi", "ebp"), 0x1D7B8: ("ebx", "edx"),
