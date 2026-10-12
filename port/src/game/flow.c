@@ -4340,7 +4340,6 @@ void game_state_select(void)
     switch (DSB(DS_000F0A6F)) {
     case 0:
     case 1: {
-        u32 n = DSB(DS_000F0A6E);
         if (DSB(DS_000F0A6F) == 0) {
             /* 0x29D60 is a ret-only no-op. */
             actors_reset();                         /* 0x2BAF4 (eax = 1) */
@@ -4350,11 +4349,11 @@ void game_state_select(void)
             DSB(DS_000F0A6E) = 0;
             DSD(DS_000F0A44) = 0;
             if ((DSB(DS_00104528 + 1) & 2u) != 0u) DSD(DS_000F0A40) = 0;
-            n = 0;
         }
         actors_reset();                             /* 0x2BAF4 (eax = 1) */
         frontend_origin_zero();                     /* 0x4F1D0 */
         frontend_spawn_row(desc, 0u, 0u);           /* 0x38B18 */
+        u32 n = DSB(DS_000F0A6E);                   /* 0x11FFD */
         DSD(DS_000F0A44) = actor_spawn(             /* 0x2AE14 */
             (const u32 *)(mem + DSD(0x9AEE0u + 12u * n)),   /* 0x9AEE0 */
             0u, 0xE0u + n, 0x600u, 0u);
@@ -4364,12 +4363,15 @@ void game_state_select(void)
                 effects_spawn_pulse(node, 1u);      /* 0x13E28 (edx = 1) */
         }
         if ((DSB(DS_00104528 + 1) & 2u) != 0u) {
+            n = DSB(DS_000F0A6E);                   /* 0x1206C */
             DSD(DS_000F0A40) = actor_spawn(         /* 0x2AE14 */
                 (const u32 *)(mem + DSD(0x9AEC8u + 4u * n)),   /* 0x9AEC8 */
                 0x2A00u, 0xFFu, 0x3400u, 0u);
         } else {
+            n = DSB(DS_000F0A6E);                   /* 0x12090 */
             text_cursor_set(-1, 0x18,               /* 0x1C500 + 0x2F198 */
                 game_string_get(DSD(0x9AEE4u + 12u * n)), 0x4003u);  /* 0x9AEE4 */
+            n = DSB(DS_000F0A6E);                   /* 0x120C3 */
             u32 id2 = DSD(0x9AEE8u + 12u * n);
             if (id2 != 0)
                 text_cursor_set(-1, 0x1b,           /* 0x1C500 + 0x2F198 */
