@@ -18245,6 +18245,108 @@ D3C_SPECS += [
                 "@cb14arg", "@al14", "@keep14", "@o18", "@o1c", "@o0c", "@and8", "@s8c", "@no192",
                 "@p192", "@rowsz", "@late90", "@c36")),
 ]
+D3C_FS = 0x0010A000              # a scratch slot DS_001077A8 can point at (its record is D3C_RX)
+D3C_36BC8 = E.Call(0x36BC8, ("eax", "edx"), clobbers=("edx",))
+D3C_39040 = E.Call(0x39040, ("eax",))
+D3C_3CF38 = E.Call(0x3CF38, ("eax",))
+D3C_34E2C = E.Call(0x34E2C, ("eax", "edx"), clobbers=("edx", "edi", "ebp"))
+D3C_34DDC = E.Call(0x34DDC, ("eax",))
+D3C_1DE64 = E.Call(0x1DE64, ("eax", "edx"), clobbers=("edx",))
+
+
+def d3c_core_case(side, s43=0xFB, s54=0, s41=0xFB, w78=0, ch=2, thr=0x0100, y=0x00000100, w36=0x3636,
+                  cmd=0, ptr="own", f2=0, s42=0x6F, p54=None, f8=0, s14=0):
+    """0x350D0: both slots' record pointers, +0x0C..+0x1B (the +0x14 hook `s14`; the other slot
+    carries the opposite presence), +0x30, +0x40..+0x43, +0x52..+0x56, +0x72..+0x7A (the +0x74 and
+    +0x78 words between seeded words, the character at +0x7A); both records' +0x34..+0x39 (the
+    other record's +0x36 has the other sign); the 0xBEF14 word of `ch` (and of ch sign-extended:
+    the opposite verdict); both command words (the other side's flips the two-group test); the
+    DS_001077A8 pair (`ptr`: the side's own slot, None = 0, "norec" = the scratch slot D3C_FS with
+    no record, "scratch" = D3C_FS with the record D3C_RX; the other side's entry is the opposite
+    presence); the 0x1078F2 and 0x1078F8 byte pairs (the other side's are the opposite). With the
+    scratch slot, its +0x42 is `s42` and its +0x54 `p54`, and the side's own +0x42 fails the 0x90
+    test when `s42` passes it."""
+    other = 1 - side
+    so, oo = D3C_SLOT + side * 0x94, D3C_SLOT + other * 0x94
+    rs, ro = (D3C_R0, D3C_R1)[side], (D3C_R0, D3C_R1)[other]
+    words, f2s, f8s, ptrs = [0, 0], [0, 0], [0, 0], [0, 0]
+    words[side] = cmd
+    words[other] = 0x0300 if (cmd & 0x0300 and cmd & 0x0C00) else 0x0F00
+    f2s[side], f2s[other] = f2, (0 if f2 else 1)
+    f8s[side], f8s[other] = f8, (0 if f8 else 1)
+    ptrs[side] = {"own": so, None: 0}.get(ptr, D3C_FS)
+    ptrs[other] = 0 if ptrs[side] else oo
+    own42 = s42 if ptr == "own" else (0x6F if s42 & 0x90 else 0xFF)
+    p = {so: le32(rs), oo: le32(ro),
+         so + 0x0C: le32(0x0C0C0C00) + le32(0x10101000) + le32(s14) + le32(0x18181800),
+         oo + 0x0C: le32(0x0C0C0C01) + le32(0x10101001) + le32(0 if s14 else 0x00029D04) + le32(0x18181801),
+         so + 0x30: le32(y), oo + 0x30: le32(0x30303030),
+         so + 0x40: bytes([0xFF, s41, own42, s43]), oo + 0x40: bytes([0x60, s41 ^ 4, 0x62, s43 ^ 4]),
+         so + 0x52: bytes([0x52, 0x53, s54, 0x55, 0x56]),
+         oo + 0x52: bytes([0x62, 0x63, 1 if s54 == 2 else 2, 0x65, 0x66]),
+         so + 0x72: le16(0x7272) + le16(0x7474) + le16(0x7676) + le16(w78) + bytes([ch]),
+         oo + 0x72: le16(0x6272) + le16(0x6474) + le16(0x6676) + le16(0x6678) + bytes([(ch + 1) & 0x7F]),
+         rs + 0x34: le16(0x3434) + le16(w36) + le16(0x3838),
+         ro + 0x34: le16(0x2434) + le16(0x7FFF if w36 >= 0x8000 else 0x8000) + le16(0x2838),
+         0x000BEF14 + ch * 2: le16(thr),
+         0x001088E0: le16(words[0]) + le16(words[1]),
+         0x001077A8: le32(ptrs[0]) + le32(ptrs[1]),
+         0x001078F1: bytes([0xF1, f2s[0], f2s[1]]),
+         0x001078F7: bytes([0xF7, f8s[0], f8s[1]])}
+    if ch >= 0x80:
+        p[0x000BEF14 + (ch - 0x100) * 2] = le16(0x7FFF if thr >= 0x8000 else 0x8000)
+    if ptr in ("norec", "scratch"):
+        p[D3C_FS] = le32(0 if ptr == "norec" else D3C_RX)
+        p[D3C_FS + 0x40] = bytes([0x80, 0x81, s42, 0x83])
+        p[D3C_FS + 0x52] = bytes([0x72, 0x73, s54 if p54 is None else p54, 0x75, 0x76])
+        p[D3C_FS + 0x72] = le16(0x8272) + le16(0x8474) + le16(0x8676)
+    return p
+
+
+D3C_SPECS += [
+    # 0x350D0 fighter_state_350d0: EAX = side. Eleven stubs; 0x33950 runs real. The +0x14 hook
+    # 0x29D04 returns the EAX the raw tests whole (0x3514F: q1 returns 0x100); 0x3BDDC, 0x34DDC and
+    # 0x3CF38 return the AL the raw tests (0x35213, 0x35293, 0x352AB: q8, q10, q11 return 0x100 or
+    # 0xFFFFFF00) and 0x1DE64 the AL the raw keeps (0x352C1 `mov dl,al`: q11 returns 0x1FF, q12
+    # 0x105). q8..q10, q12 and q14 point DS_001077A8[side] at a scratch slot, so the stores and
+    # tests through that pointer (EDX from 0x35227) are told from those through the side's own slot
+    # ([esp+8]). Mask 0: the one caller returns at once (0x353FF call, 0x35404..0x3540D, in
+    # 0x3531C), whose one call site writes EAX before reading it (0x35803 call, 0x35808 `mov
+    # dh,[ebx+0x28]`, 0x3580B `or dh,1`, 0x3580E `mov eax,ebx`).
+    Spec("fighter_state_350d0", 0x350D0, [
+        Case("q0", {"eax": 0}, d3c_core_case(0, s43=0xFF, s14=0x00029D04), {0x29D04: 1}),
+        Case("q1", {"eax": 1}, d3c_core_case(1, s43=0xFF, s54=2, s41=0xFF, w78=0x0100, s14=0x00029D04),
+             {0x29D04: 0x100}),
+        Case("q2", {"eax": 0}, d3c_core_case(0, w78=0x8000, s54=2, thr=0x0101, y=0xFFFFFF00, w36=0x8000,
+                                             s14=0x00029D04), {0x29D04: 0}),
+        Case("q3", {"eax": 1}, d3c_core_case(1, s54=2, thr=0x0100, y=0x00000100, w36=0xFFFF, ptr=None)),
+        Case("q4", {"eax": 0}, d3c_core_case(0, s54=2, thr=0x7FFF, y=0x00000005, w36=0x0000, ptr="norec")),
+        Case("q5", {"eax": 1}, d3c_core_case(1, s54=2, ch=0x80, thr=0x8000, y=0x00000100, w36=0x8000, f2=1,
+                                             s42=0x10)),
+        Case("q6", {"eax": 0}, d3c_core_case(0, s41=0xFF, cmd=0x0600, s42=0x80)),
+        Case("q7", {"eax": 1}, d3c_core_case(1, cmd=0x0300), {0x3BDDC: 1}),
+        Case("q8", {"eax": 0}, d3c_core_case(0, cmd=0x0C00, ptr="scratch", p54=2, f8=1),
+             {0x3BDDC: 0x100, 0x34DDC: 0x100}),
+        Case("q9", {"eax": 1}, d3c_core_case(1, cmd=0x00FF, ptr="scratch", p54=2), {0x3BDDC: 0, 0x34DDC: 1}),
+        Case("q10", {"eax": 0}, d3c_core_case(0, cmd=0x0000, ptr="scratch", p54=2, f8=1),
+             {0x3BDDC: 0xFFFFFF00, 0x34DDC: 0xFFFFFF01, 0x3CF38: 1}),
+        Case("q11", {"eax": 1}, d3c_core_case(1, cmd=0x0F00, s54=1), {0x3CF38: 0x100, 0x1DE64: 0x1FF}),
+        Case("q12", {"eax": 0}, d3c_core_case(0, cmd=0x0900, ptr="scratch", p54=3),
+             {0x3CF38: 0, 0x1DE64: 0x105}),
+        Case("q13", {"eax": 1}, d3c_core_case(1, w78=0xFF01, cmd=0x0600), {0x1DE64: 0}),
+        Case("q14", {"eax": 0}, d3c_core_case(0, cmd=0x0F00, ptr="scratch", s42=0x90)),
+        Case("q15", {"eax": 1}, d3c_core_case(1, s54=2, thr=0x0100, y=0x00010005, w36=0x8000)),
+    ], allow_calls=(0x33950,),
+       calls=(D3C_29D04, D3C_36BC8, P6_39280, D2A_CONSUME, C1_FACING, D3C_39040, D3C_1922C, D3C_34DDC,
+              D3C_3CF38, D3C_1DE64, D3C_34E2C), eax_mask=0,
+       mutants=("@cb14arg", "@al14", "@keep14", "@b43", "@v54a", "@bslot", "@brec", "@andb", "@noand", "@p280",
+                "@c78ge", "@c78b", "@c78u", "@csext", "@tzext", "@tge", "@w36le", "@no53c",
+                "@v53c", "@cmdside", "@b3", "@bc", "@band", "@cside", "@alc", "@nofacing",
+                "@fside", "@pside", "@norec", "@p040", "@f2side", "@nof2", "@tside", "@w74b",
+                "@no74", "@s74", "@S42", "@m42", "@S53", "@dside", "@ald", "@f8side", "@no56",
+                "@S56", "@hside", "@alh", "@rside", "@S54", "@alr", "@late56", "@latef2",
+                "@y16", "@p280b", "@S54a", "@aside", "@yu")),
+]
 D1_SPECS += D3C_SPECS
 
 

@@ -2539,6 +2539,7 @@ void fighter_state_39280(u32 side)
  * (word[0xBD870 + char*2]) and the record's +0x36 is negative, else 1. */
 int fighter_34ddc(u32 side)
 {
+    PR_SEAM_RET(0x34DDCu, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 ch = (u32)DSB(slot + 0x7Au);
     s32 thr = (s32)(s16)DSW(FIGHT_THR_34DDC + ch * 2u);
@@ -3408,6 +3409,7 @@ void fighter_39040(u32 side)
  * geometry test. Returns 0xFF when nothing maps. */
 u32 hit_reaction_pick(u32 side, u32 stance)
 {
+    PR_SEAM_RET(0x1DE64u, side, stance);
     u32 ctx[6];
     u32 slot;
     u32 r = 0xFFu;
