@@ -3839,6 +3839,7 @@ u32 hit_displace(u32 side, u32 facing, u32 i, u32 *out)
 /* 0x3C88C. The per-slot attack-frame state machine. */
 void hit_slot_step(void)
 {
+    PR_SEAM0(0x3C88Cu);
     u32 i = DSD(DS_00107ED8);
     u32 side = DSD(DS_00107EDC);
     u32 facing = (u32)DSB(DS_00107EE4);

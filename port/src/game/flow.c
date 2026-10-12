@@ -7615,6 +7615,7 @@ void game_frame(void)
  * and 0x43B24 (0x43B4E). */
 u32 frontend_coin_poll(u32 code)
 {
+    PR_SEAM_RET(0x11F28u, code);
     if (config_credit_ready() == 0u) return 0u;
     if ((DSD(DS_0009ACBC + code * 4u) & DSD(DS_001088E4)) == 0u) return 0u;
     (void)config_credit_spend(1u);

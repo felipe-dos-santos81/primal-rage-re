@@ -26921,6 +26921,1430 @@ D3A_CO_MUT(r2five) D3A_CO_MUT(r3) D3A_CO_MUT(rlow) D3A_CO_MUT(t36a) D3A_CO_MUT(t
 D3A_CO_MUT(t5ba) D3A_CO_MUT(t5bb) D3A_CO_MUT(tgate) D3A_CO_MUT(tf8) D3A_CO_MUT(t4e) D3A_CO_MUT(t2e)
 D3A_CO_MUT(t2eb) D3A_CO_MUT(trec)
 #undef D3A_CO
+/* ---- track D3 batch d3b (record 2026-10-12-reverse-d3b): game/fight.c, the wave-3 functions ---- */
+#define D3B_M(n) (1ull << (n))
+
+/* 0x1D764's mutants. EAX = side. */
+static void d3b_1d764_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], oside = 1u - side;
+    u32 slot = DS_001077B0 + ((mut & 1u) ? oside : side) * 0x94u;             /* @side */
+    u8 cl;
+    if (mut & 0x1000u) fight_hud_bar_set(0, side);                            /* @order */
+    if (!(mut & 2u)) DSB(0x0010290Cu + ((mut & 4u) ? oside : side)) = 0u;     /* @b90c, @idx */
+    cl = DSB(slot + 0x42u);
+    if (mut & 8u) DSW(slot + 0x5Au) = 0u;                                     /* @width */
+    else if (!(mut & 0x10u)) DSB(slot + 0x5Au) = 0u;                          /* @b5a */
+    if (!(mut & 0x20u))                                                       /* @b42 */
+        DSB(slot + 0x42u) = (u8)(cl & ((mut & 0x40u) ? 0xF7u : 0xEFu));       /* @bit */
+    for (int pass = 0; pass < 2; pass++) {
+        if ((pass == 0) != ((mut & 0x2000u) != 0u)) {                         /* @corder */
+            if (!(mut & 0x1000u))
+                fight_hud_bar_set((mut & 0x80u) ? 1 : 0, (mut & 0x100u) ? oside : side);   /* @v, @barside */
+        } else {
+            actors_anim_begin(DSD(0x001028F8u + ((mut & 0x200u) ? oside : side) * 4u),      /* @rec */
+                              (mut & 0x400u) ? 0x000E9050u : 0x000E904Cu,                    /* @stream */
+                              (mut & 0x800u) ? 0x40000000u : 0x3F800000u);                   /* @hold */
+        }
+    }
+}
+static void b_d3b_1d764(const u32 *r, u32 *eax) { fight_hud_side_reset(r[R_EAX]); *eax = 0u; }
+#define D3B_RS(name, mut) \
+    static void m_d3b_rs_##name(const u32 *r, u32 *eax) { d3b_1d764_core(r, mut); *eax = 0u; }
+D3B_RS(side, 1u)
+D3B_RS(b90c, 2u)
+D3B_RS(idx, 4u)
+D3B_RS(width, 8u)
+D3B_RS(b5a, 0x10u)
+D3B_RS(b42, 0x20u)
+D3B_RS(bit, 0x40u)
+D3B_RS(v, 0x80u)
+D3B_RS(barside, 0x100u)
+D3B_RS(rec, 0x200u)
+D3B_RS(stream, 0x400u)
+D3B_RS(hold, 0x800u)
+D3B_RS(order, 0x1000u)
+D3B_RS(corder, 0x2000u)
+#undef D3B_RS
+
+/* 0x1D890's and 0x1DC6C's mutants. EAX = enable (AL). `twin` 0 is 0x1D890, 1 is 0x1DC6C. */
+static u32 d3b_word(u32 at, unsigned long long mut)
+{
+    return (mut & D3B_M(26)) ? (u32)(s32)(s16)DSW(at) : (u32)DSW(at);         /* @sext */
+}
+static void d3b_hud_core(const u32 *r, int twin, unsigned long long mut)
+{
+    static const u32 k_x[4] = { 0x000A768Cu, 0x000A7694u, 0x000A7628u, 0x000A7630u };
+    static const u32 k_y[4] = { 0x000A7690u, 0x000A7698u, 0x000A762Cu, 0x000A7634u };
+    static const u32 k_out[4] = { 0x001028F0u, 0x001028E8u, 0x001028F8u, 0x00102900u };
+    u32 enable = r[R_EAX];
+    if (mut & D3B_M(41)) twin = !twin;                                        /* @desc */
+    for (u32 side = 0; side < ((mut & D3B_M(0)) ? 1u : 2u); side++) {         /* @once */
+        u32 o = 1u - side;
+        if (!(mut & D3B_M(1))) DSB(0x0010780Eu + side * 0x94u) = 0;           /* @b80e */
+        if (!(mut & D3B_M(2))) DSB(0x0010290Cu + side) = 0;                   /* @b90c */
+        if (!(mut & D3B_M(3))) DSB(0x0010780Au + side * 0x94u) = 0;           /* @b80a */
+        if (!(mut & D3B_M(4))) DSB(0x0010290Eu + side) = 0;                   /* @b90e */
+        if (((mut & D3B_M(5)) ? enable : (u32)(u8)enable) == 0u) continue;    /* @al */
+        for (u32 i = 0; i < 4u; i++) {
+            u32 a = (side != 0u) != ((mut & D3B_M(6)) != 0u && i < 2u) ? 0x4000u : 0u;   /* @a */
+            if ((mut & D3B_M(7)) && i >= 2u) a = 0u;                          /* @a34 */
+            u32 ds = (mut & D3B_M(9 + 4 * i)) ? o : side;                     /* @d1..@d4 */
+            u32 d;
+            if (i == 0u) d = (twin && ds != 0u) ? DSD(0x000A7674u + ds * 4u) : DSD(0x000A767Cu + ds * 4u);
+            else if (i == 1u) d = DSD(0x000A7684u + ds * 4u);
+            else d = ((i == 2u) != (ds != side)) ? 0x000BB664u : 0x000BB678u;
+            u32 x = d3b_word(k_x[i] + ((mut & D3B_M(10 + 4 * i)) ? o : side) * 2u, mut);   /* @x1..@x4 */
+            u32 y = d3b_word(k_y[i] + ((mut & D3B_M(11 + 4 * i)) ? o : side) * 2u, mut);   /* @y1..@y4 */
+            if ((mut & D3B_M(25)) && i == 0u) { u32 t = x; x = y; y = t; }    /* @sw1 */
+            u32 rec = actor_spawn((const u32 *)(mem + d), x, (mut & D3B_M(8)) ? 0xFEu : 0xFFu, y, a);   /* @a3 */
+            if (!(mut & D3B_M(12 + 4 * i))) DSD(k_out[i] + side * 4u) = rec;  /* @s1..@s4 */
+            if (i == 1u) {
+                u32 bs = (mut & D3B_M(28)) ? o : side, b2s = (mut & D3B_M(30)) ? o : side;   /* @barside, @bar2side */
+                if (mut & D3B_M(31)) fight_hud_bar2_set((mut & D3B_M(29)) ? 1 : 0, b2s);     /* @barorder */
+                fight_hud_bar_set((mut & D3B_M(27)) ? 1 : 0, bs);             /* @bar */
+                if (!(mut & D3B_M(31))) fight_hud_bar2_set((mut & D3B_M(29)) ? 1 : 0, b2s);  /* @bar2 */
+            }
+        }
+        if (!(mut & (D3B_M(32) | D3B_M(33)))) DSD(0x001028E0u + side * 4u) = 0u;             /* @e0, @e0late */
+        if (mut & D3B_M(40)) DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) | 2u);  /* @aecearly */
+        u32 cs = 0x0010782Au + ((mut & D3B_M(34)) ? o : side) * 0x94u;        /* @ch */
+        fight_hud_badge_spawn((mut & D3B_M(37)) ? o : side,                   /* @bside */
+                              (mut & D3B_M(35)) ? (u32)DSW(cs) : (u32)DSB(cs),               /* @chw */
+                              (mut & D3B_M(36)) ? (u32)DSB(0x000A76D0u) : (u32)DSW(0x000A76D0u));   /* @y */
+        if (mut & D3B_M(33)) DSD(0x001028E0u + side * 4u) = 0u;
+        if (!(mut & (D3B_M(38) | D3B_M(40))))                                 /* @aec */
+            DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) | ((mut & D3B_M(39)) ? 8u : 2u));       /* @aecbit */
+    }
+}
+static void b_d3b_1d890(const u32 *r, u32 *eax) { fight_hud_spawn(r[R_EAX]); *eax = 0u; }
+static void b_d3b_1dc6c(const u32 *r, u32 *eax) { fight_hud_spawn_b(r[R_EAX]); *eax = 0u; }
+#define D3B_HUD(name, bit) \
+    static void m_d3b_hud_##name(const u32 *r, u32 *eax) { d3b_hud_core(r, 0, D3B_M(bit)); *eax = 0u; } \
+    static void m_d3b_hudb_##name(const u32 *r, u32 *eax) { d3b_hud_core(r, 1, D3B_M(bit)); *eax = 0u; }
+D3B_HUD(once, 0)
+D3B_HUD(b80e, 1)
+D3B_HUD(b90c, 2)
+D3B_HUD(b80a, 3)
+D3B_HUD(b90e, 4)
+D3B_HUD(al, 5)
+D3B_HUD(a, 6)
+D3B_HUD(a34, 7)
+D3B_HUD(a3, 8)
+D3B_HUD(d1, 9)
+D3B_HUD(x1, 10)
+D3B_HUD(y1, 11)
+D3B_HUD(s1, 12)
+D3B_HUD(d2, 13)
+D3B_HUD(x2, 14)
+D3B_HUD(y2, 15)
+D3B_HUD(s2, 16)
+D3B_HUD(d3, 17)
+D3B_HUD(x3, 18)
+D3B_HUD(y3, 19)
+D3B_HUD(s3, 20)
+D3B_HUD(d4, 21)
+D3B_HUD(x4, 22)
+D3B_HUD(y4, 23)
+D3B_HUD(s4, 24)
+D3B_HUD(sw1, 25)
+D3B_HUD(sext, 26)
+D3B_HUD(bar, 27)
+D3B_HUD(barside, 28)
+D3B_HUD(bar2, 29)
+D3B_HUD(bar2side, 30)
+D3B_HUD(barorder, 31)
+D3B_HUD(e0, 32)
+D3B_HUD(e0late, 33)
+D3B_HUD(ch, 34)
+D3B_HUD(chw, 35)
+D3B_HUD(y, 36)
+D3B_HUD(bside, 37)
+D3B_HUD(aec, 38)
+D3B_HUD(aecbit, 39)
+D3B_HUD(aecearly, 40)
+D3B_HUD(desc, 41)
+#undef D3B_HUD
+
+/* 0x1DAE8's mutants. AL = enable. The side is DS_00104B1A, read again after each call as the raw
+ * does (0x1DB61, 0x1DB75/0x1DB8E, 0x1DBC0). */
+static void d3b_1dae8_core(const u32 *r, unsigned long long mut)
+{
+    u32 enable = r[R_EAX];
+    u32 side = DSB(0x00104B1Au), o;
+    if (mut & D3B_M(29)) side = (u32)(s32)(s8)DSB(0x00104B1Au);              /* @sextside */
+    o = 1u - side;
+    u32 a3 = (mut & D3B_M(8)) ? 0xFEu : 0xFFu;                                /* @a3 */
+    if (!(mut & D3B_M(0))) DSB(0x0010290Cu + side) = 0u;                      /* @b90c */
+    if (!(mut & D3B_M(1)))                                                    /* @b80b */
+        DSB(((mut & D3B_M(2)) ? 0x0010780Au : 0x0010780Bu) + side * 0x94u) = 0u;   /* @b80a */
+    if (((mut & D3B_M(3)) ? enable : (u32)(u8)enable) == 0u) return;          /* @al */
+    u32 a = (side != 0u) != ((mut & D3B_M(4)) != 0u) ? 0x4000u : 0u;          /* @a */
+    u32 rec = actor_spawn((const u32 *)(mem + DSD(0x000A767Cu + ((mut & D3B_M(5)) ? o : side) * 4u)),   /* @d1 */
+                          d3b_word(0x000A768Cu + ((mut & D3B_M(6)) ? o : side) * 2u, mut), a3,          /* @x1 */
+                          d3b_word(0x000A7690u + ((mut & D3B_M(7)) ? o : side) * 2u, mut), a);          /* @y1 */
+    if (!(mut & D3B_M(9))) side = DSB(0x00104B1Au);                           /* @r2 */
+    if (!(mut & D3B_M(10))) DSD(0x001028F0u + side * 4u) = rec;               /* @s1 */
+    if (mut & D3B_M(30))                                                      /* @second */
+        (void)actor_spawn((const u32 *)(mem + DSD(0x000A7684u + side * 4u)),
+                          DSW(0x000A7694u + side * 2u), a3, DSW(0x000A7698u + side * 2u), a);
+    fight_hud_bar_set_inv((mut & D3B_M(11)) ? 1 : 0, (mut & D3B_M(12)) ? 1u - side : side);   /* @bari, @bariside */
+    if (!(mut & D3B_M(13))) side = DSB(0x00104B1Au);                          /* @r3 */
+    o = 1u - side;
+    a = (side != 0u) != ((mut & D3B_M(14)) != 0u) ? 0x4000u : 0u;             /* @a2 */
+    rec = actor_spawn((const u32 *)(mem + ((mut & D3B_M(15)) ? 0x000BB678u : 0x000BB664u)),             /* @d3 */
+                      d3b_word(0x000A7628u + ((mut & D3B_M(16)) ? o : side) * 2u, mut), a3,             /* @x3 */
+                      d3b_word(0x000A762Cu + ((mut & D3B_M(17)) ? o : side) * 2u, mut), a);             /* @y3 */
+    if (!(mut & D3B_M(18))) side = DSB(0x00104B1Au);                          /* @r5 */
+    o = 1u - side;
+    if (!(mut & D3B_M(19))) DSD(0x001028F8u + side * 4u) = rec;               /* @s3 */
+    if (!(mut & (D3B_M(20) | D3B_M(21)))) DSD(0x001028E0u + side * 4u) = 0u;  /* @e0, @e0late */
+    if (mut & D3B_M(27)) DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) | 8u);      /* @aecearly */
+    u32 cs = 0x0010782Au + ((mut & D3B_M(22)) ? o : side) * 0x94u;            /* @ch */
+    fight_hud_badge_spawn((mut & D3B_M(25)) ? o : side,                       /* @bside */
+                          (mut & D3B_M(23)) ? (u32)DSW(cs) : (u32)DSB(cs),    /* @chw */
+                          (mut & D3B_M(24)) ? (u32)DSB(0x000A76D0u) : (u32)DSW(0x000A76D0u));           /* @y */
+    if (mut & D3B_M(21)) DSD(0x001028E0u + side * 4u) = 0u;
+    if (!(mut & (D3B_M(27) | D3B_M(28))))                                     /* @aec */
+        DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) | ((mut & D3B_M(31)) ? 2u : 8u));   /* @aecbit */
+}
+static void b_d3b_1dae8(const u32 *r, u32 *eax) { fight_hud_spawn_side(r[R_EAX]); *eax = 0u; }
+#define D3B_HS(name, m) \
+    static void m_d3b_hs_##name(const u32 *r, u32 *eax) { d3b_1dae8_core(r, m); *eax = 0u; }
+D3B_HS(b90c, D3B_M(0))
+D3B_HS(b80b, D3B_M(1))
+D3B_HS(b80a, D3B_M(2))
+D3B_HS(al, D3B_M(3))
+D3B_HS(a, D3B_M(4))
+D3B_HS(d1, D3B_M(5))
+D3B_HS(x1, D3B_M(6))
+D3B_HS(y1, D3B_M(7))
+D3B_HS(a3, D3B_M(8))
+D3B_HS(r2, D3B_M(9))
+D3B_HS(s1, D3B_M(10))
+D3B_HS(bari, D3B_M(11))
+D3B_HS(bariside, D3B_M(12))
+D3B_HS(r3, D3B_M(13))
+D3B_HS(a2, D3B_M(14))
+D3B_HS(d3, D3B_M(15))
+D3B_HS(x3, D3B_M(16))
+D3B_HS(y3, D3B_M(17))
+D3B_HS(r5, D3B_M(18))
+D3B_HS(s3, D3B_M(19))
+D3B_HS(e0, D3B_M(20))
+D3B_HS(e0late, D3B_M(21))
+D3B_HS(ch, D3B_M(22))
+D3B_HS(chw, D3B_M(23))
+D3B_HS(y, D3B_M(24))
+D3B_HS(bside, D3B_M(25))
+D3B_HS(sext, D3B_M(26))
+D3B_HS(aecearly, D3B_M(27))
+D3B_HS(aec, D3B_M(28))
+D3B_HS(sextside, D3B_M(29))
+D3B_HS(second, D3B_M(30))
+D3B_HS(aecbit, D3B_M(31))
+D3B_HS(cache, D3B_M(9) | D3B_M(13) | D3B_M(18))
+#undef D3B_HS
+
+/* 0x432EC's mutants. EAX = side, EDX = flag. */
+static void d3b_432ec_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], flag = r[R_EDX], oside = side ^ 1u;
+    s32 row = (mut & 0x400u) ? 0x1A : 0x1B;                                   /* @row0 */
+    if ((mut & 1u) ? ((u8)flag != 0u) : (mut & 2u) ? 1 : (flag != 0u)) {      /* @fl8 @noflag */
+        u32 at = 0x00108144u + ((mut & 4u) ? oside : side) * 4u;              /* @recside */
+        u32 rec = DSD(at);
+        if (mut & 0x20u) prompt_press_start_clear(0, 0, side);                /* @order */
+        if (rec != 0u && !(mut & 8u)) actor_set_dead(rec);                    /* @nodead */
+        if (rec != 0u && (mut & 0x10u)) DSD(at) = 0u;                         /* @zero */
+        if (!(mut & 0x20u))
+            prompt_press_start_clear((mut & 0x80u) ? 1 : 0, 0, (mut & 0x40u) ? oside : side);   /* @clrcol @clrside */
+    }
+    s32 n = (s32)strlen((const char *)game_string_get((mut & 0x800000u) ? 0x38u : 0x39u));   /* @lenid */
+    if (!(mut & 0x1000u) && n < ((mut & 0x800u) ? 3 : 2)) row++;              /* @nolen, @lt */
+    u32 cw = 0x000C894Cu + ((mut & 0x100u) ? oside : side) * 2u;              /* @col */
+    s32 col0 = (s32)DSW(cw);
+    #define D3B_COL() ((mut & 0x200u) ? (s32)(s16)DSW(cw) : (mut & 0x1000000u) ? col0 : (s32)DSW(cw))   /* @sext, @cache */
+    const u8 *s;
+    s = game_string_get((mut & 0x2000u) ? 0x37u : 0x36u);                     /* @ids */
+    if (!(mut & 0x4000u)) text_cells_release(D3B_COL(), row - ((mut & 0x8000u) ? 1 : 2), s, 0x1000u);   /* @rel1, @rowm2 */
+    s = game_string_get((mut & 0x2000u) ? 0x36u : 0x37u);
+    if (!(mut & 0x10000u)) text_cells_release(D3B_COL(), row - ((mut & 0x20000u) ? 0 : 1), s, 0x1000u); /* @rel2, @rowm1 */
+    s = game_string_get((mut & 0x40000u) ? 0x39u : 0x38u);                    /* @id3 */
+    if (!(mut & 0x80000u))                                                    /* @rel3 */
+        text_cells_release(D3B_COL(), row + ((mut & 0x100000u) ? 1 : 0), s, (mut & 0x200000u) ? 0x2000u : 0x1000u);   /* @row3, @mode */
+    n = (s32)strlen((const char *)game_string_get(0x39u));
+    if ((mut & 0x400000u) || n >= ((mut & 0x2000000u) ? 3 : 2)) {             /* @always4, @ge */
+        s = game_string_get(0x39u);
+        text_cells_release(D3B_COL(), row + ((mut & 0x4000000u) ? 2 : 1), s, (mut & 0x8000000u) ? 0x2000u : 0x1000u);   /* @row4, @mode4 */
+    }
+    #undef D3B_COL
+}
+static void b_d3b_432ec(const u32 *r, u32 *eax) { fight_char_text_clear(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D3B_TC(name, mut) \
+    static void m_d3b_tc_##name(const u32 *r, u32 *eax) { d3b_432ec_core(r, mut); *eax = 0u; }
+D3B_TC(fl8, 1u)
+D3B_TC(noflag, 2u)
+D3B_TC(recside, 4u)
+D3B_TC(nodead, 8u)
+D3B_TC(zero, 0x10u)
+D3B_TC(order, 0x20u)
+D3B_TC(clrside, 0x40u)
+D3B_TC(clrcol, 0x80u)
+D3B_TC(col, 0x100u)
+D3B_TC(sext, 0x200u)
+D3B_TC(row0, 0x400u)
+D3B_TC(lt, 0x800u)
+D3B_TC(nolen, 0x1000u)
+D3B_TC(ids, 0x2000u)
+D3B_TC(rel1, 0x4000u)
+D3B_TC(rowm2, 0x8000u)
+D3B_TC(rel2, 0x10000u)
+D3B_TC(rowm1, 0x20000u)
+D3B_TC(id3, 0x40000u)
+D3B_TC(rel3, 0x80000u)
+D3B_TC(row3, 0x100000u)
+D3B_TC(mode, 0x200000u)
+D3B_TC(always4, 0x400000u)
+D3B_TC(lenid, 0x800000u)
+D3B_TC(cache, 0x1000000u)
+D3B_TC(ge, 0x2000000u)
+D3B_TC(row4, 0x4000000u)
+D3B_TC(mode4, 0x8000000u)
+#undef D3B_TC
+
+/* 0x494A8's mutants. EAX = side. */
+static void d3b_494a8_core(const u32 *r, unsigned long long mut)
+{
+    u32 side = r[R_EAX], bs = (mut & D3B_M(0)) ? (side ^ 1u) : side;          /* @sideidx */
+    u32 afa = (mut & D3B_M(1)) ? (u32)DSB(0x00104AFAu) : (mut & D3B_M(2)) ? DSD(0x00104AFAu) : (u32)DSW(0x00104AFAu);   /* @afa8, @afa32 */
+    if (afa == 0x23u) {
+        fight_4cf20((mut & D3B_M(3)) ? (side ^ 1u) : side);                   /* @sixside */
+        if (!(mut & D3B_M(4))) return;                                        /* @nosix */
+    }
+    if (!(mut & D3B_M(5))) DSB(0x001088AEu + bs) = 0u;                        /* @bae */
+    if (!(mut & D3B_M(6))) DSB(0x001088C4u) = 0u;                             /* @bc4 */
+    if (!(mut & D3B_M(7))) DSB(0x001088A2u + bs) = 0u;                        /* @ba2 */
+    if (!(mut & D3B_M(8))) DSB(0x001088A4u + bs) = 0u;                        /* @ba4 */
+    if (!(mut & D3B_M(9))) DSB(0x001088B2u + bs) = 0u;                        /* @bb2 */
+    if (!(mut & D3B_M(10))) DSB(0x001088BFu) = 0u;                            /* @bbf */
+    if (!(mut & D3B_M(11))) DSB(0x001088A8u + bs) = (mut & D3B_M(12)) ? 0u : 0xFFu;   /* @ba8, @ba8v */
+    if (!(mut & D3B_M(13))) DSB(0x0010889Eu + bs) = 0u;                       /* @b9e */
+    if (!(mut & D3B_M(14))) DSB(0x001088B6u + bs) = 0u;                       /* @bb6 */
+    if (mut & D3B_M(16)) DSB(0x00108892u) = 0u;                               /* @w892b: a byte */
+    else if (!(mut & D3B_M(15))) DSW(0x00108892u) = 0u;                       /* @w892 */
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 n = (u32)DSB(slot + 0x81u);
+    u32 step = (mut & D3B_M(17)) ? 0x300u : ((n != 0u) ? (0x300u / n) : 0x300u);   /* @step */
+    u32 offset = 0u;
+    for (u32 i = 0; (u32)DSB(slot + 0x81u) > i; i++) {
+        u32 entry = DSD(0x001083C4u);
+        if (entry == 0x001083C4u) {
+            if (mut & D3B_M(18)) break;                                       /* @early */
+            return;
+        }
+        if (mut & D3B_M(19)) {                                                /* @lorder */
+            effects_list_insert_after(0x0010884Cu, entry);
+            effects_list_unlink(entry);
+        } else {
+            effects_list_unlink(entry);
+            effects_list_insert_after(0x0010884Cu, entry);
+        }
+        u32 desc = DSD(0x000C9524u + fight_dust_pick((mut & D3B_M(20)) ? (side ^ 1u) : side) * 4u);   /* @pickarg */
+        u32 val = (mut & D3B_M(21)) ? fight_dust_value((u32)DSB(slot + 0x7Au), side)   /* @dvarg */
+                                    : fight_dust_value(side, (u32)DSB(slot + 0x7Au));
+        if (!(mut & D3B_M(22))) DSD(desc + 0x10u) = val;                      /* @d10 */
+        u32 rec = DSD(slot);
+        u32 x = DSD(rec + 0x18u) - ((mut & D3B_M(23)) ? 0x800u : 0xC00u);     /* @xc00 */
+        x += rng_next((mut & D3B_M(24)) ? 0x1000u : 0x1800u);                 /* @r18 */
+        u32 y0 = (mut & D3B_M(25)) ? (u32)(s32)(s16)DSW(rec + 0x30u) : (u32)((s32)DSD(rec + 0x30u) >> 16);   /* @y16 */
+        if (mut & D3B_M(26)) y0 = DSD(rec + 0x30u) >> 16;                     /* @yshr */
+        u32 y = ((mut & D3B_M(27)) ? 0u : offset) + y0 + ((mut & D3B_M(28)) ? 0x300u : 0x400u);   /* @offset, @y400 */
+        y += rng_next((mut & D3B_M(29)) ? 0x300u : step);                     /* @rstep */
+        u32 actor = (mut & D3B_M(30)) ? actor_spawn((const u32 *)(mem + desc), y, x, 0u, 0u)   /* @xy */
+                                      : actor_spawn((const u32 *)(mem + desc), x, y, 0u, 0u);
+        if (!(mut & D3B_M(31))) DSD(entry + 8u) = actor;                      /* @ne8 */
+        if (!(mut & D3B_M(32))) DSD(actor + 0x14u) = entry;                   /* @a14 */
+        if (!(mut & D3B_M(33))) DSB(entry + 0x1Eu) = 0u;                      /* @f1e */
+        if (!(mut & D3B_M(34))) DSB(entry + 0x1Fu) = 0u;                      /* @f1f */
+        if (!(mut & D3B_M(35))) DSB(entry + 0x21u) = (u8)side;                /* @f21 */
+        if (!(mut & D3B_M(36))) DSD(entry + 0x0Cu) = slot;                    /* @fc */
+        DSW(actor + 0x2Cu) = (mut & D3B_M(37)) ? (u16)y : fight_dust_clamp((s32)y);   /* @clamp */
+        if (mut & D3B_M(38)) DSB(entry + 0x1Cu) = 0u;                         /* @w1c: a byte */
+        else DSW(entry + 0x1Cu) = 0u;
+        if (!(mut & D3B_M(39))) DSD(entry + 0x10u) = 0u;                      /* @e10 */
+        if (mut & D3B_M(41)) DSW(entry + 0x1Au) = fight_dust_clamp((s32)y);   /* @w1ay */
+        else if (!(mut & D3B_M(40))) DSW(entry + 0x1Au) = (u16)y;             /* @w1a */
+        if ((DSB(rec + 0x51u) != 0u) != ((mut & D3B_M(42)) != 0u)) {          /* @f51 */
+            DSW(actor + 0x2Eu) = (u16)(DSW(actor + 0x2Eu) + ((mut & D3B_M(43)) ? 2u : 4u));   /* @w2e */
+            if (!(mut & D3B_M(44))) DSB(actor + 0x4Eu) = 1u;                  /* @b4e */
+        }
+        offset += step;
+        if (mut & D3B_M(45)) break;                                           /* @once */
+    }
+    if (!(mut & D3B_M(46))) DSB(0x001088C3u) = 0u;                            /* @bc3 */
+    if (!(mut & D3B_M(47))) DSB(0x001088C1u) = 0u;                            /* @bc1 */
+}
+static void b_d3b_494a8(const u32 *r, u32 *eax) { fight_dust_build(r[R_EAX]); *eax = 0u; }
+#define D3B_DB(name, bit) \
+    static void m_d3b_db_##name(const u32 *r, u32 *eax) { d3b_494a8_core(r, D3B_M(bit)); *eax = 0u; }
+D3B_DB(sideidx, 0)
+D3B_DB(afa8, 1)
+D3B_DB(afa32, 2)
+D3B_DB(sixside, 3)
+D3B_DB(nosix, 4)
+D3B_DB(bae, 5)
+D3B_DB(bc4, 6)
+D3B_DB(ba2, 7)
+D3B_DB(ba4, 8)
+D3B_DB(bb2, 9)
+D3B_DB(bbf, 10)
+D3B_DB(ba8, 11)
+D3B_DB(ba8v, 12)
+D3B_DB(b9e, 13)
+D3B_DB(bb6, 14)
+D3B_DB(w892, 15)
+D3B_DB(w892b, 16)
+D3B_DB(step, 17)
+D3B_DB(early, 18)
+D3B_DB(lorder, 19)
+D3B_DB(pickarg, 20)
+D3B_DB(dvarg, 21)
+D3B_DB(d10, 22)
+D3B_DB(xc00, 23)
+D3B_DB(r18, 24)
+D3B_DB(y16, 25)
+D3B_DB(yshr, 26)
+D3B_DB(offset, 27)
+D3B_DB(y400, 28)
+D3B_DB(rstep, 29)
+D3B_DB(xy, 30)
+D3B_DB(ne8, 31)
+D3B_DB(a14, 32)
+D3B_DB(f1e, 33)
+D3B_DB(f1f, 34)
+D3B_DB(f21, 35)
+D3B_DB(fc, 36)
+D3B_DB(clamp, 37)
+D3B_DB(w1c, 38)
+D3B_DB(e10, 39)
+D3B_DB(w1a, 40)
+D3B_DB(w1ay, 41)
+D3B_DB(f51, 42)
+D3B_DB(w2e, 43)
+D3B_DB(b4e, 44)
+D3B_DB(once, 45)
+D3B_DB(bc3, 46)
+D3B_DB(bc1, 47)
+#undef D3B_DB
+
+/* 0x4987C's mutants. EAX = side, EDX = count, EBX = kind. */
+static void d3b_4987c_core(const u32 *r, unsigned long long mut)
+{
+    u32 side = r[R_EAX], kind = r[R_EBX];
+    s32 count = (s32)r[R_EDX];
+    u32 slot = DS_001077B0 + side * 0x94u, other = DS_001077B0 + (side ^ 1u) * 0x94u;
+    if ((mut & D3B_M(0)) ? (count == 0) : (count <= 0)) return;               /* @count */
+    for (s32 i = 0; (mut & D3B_M(0)) ? ((u32)i < (u32)count) : (i < count); i++) {
+        u32 entry = DSD(0x001083C4u);
+        if (entry == 0x001083C4u) return;
+        if (mut & D3B_M(1)) {                                                 /* @lorder */
+            effects_list_insert_after(0x0010884Cu, entry);
+            effects_list_unlink(entry);
+        } else {
+            effects_list_unlink(entry);
+            effects_list_insert_after(0x0010884Cu, entry);
+        }
+        if (!(mut & D3B_M(2))) DSW(entry + 0x1Cu) = 0u;                       /* @w1c0 */
+        u32 desc;
+        u32 mode = (mut & D3B_M(10)) ? (u32)DSB(0x00104B00u) : (u32)DSW(0x00104B00u);   /* @mode */
+        if (kind != 0u) {
+            if (count == ((mut & D3B_M(3)) ? 2 : 1)) {                        /* @one */
+                desc = DSD(0x000C9538u + kind * 4u);
+            } else {
+                if ((kind == 1u) != ((mut & D3B_M(4)) != 0u))                 /* @k1 */
+                    desc = DSD(0x000C953Cu + (u32)i * 4u);
+                else
+                    desc = DSD(0x000C953Cu + ((u32)i ^ 1u) * 4u);
+                if ((i == 0 || (mut & D3B_M(6))) && !(mut & D3B_M(5)))        /* @bit0all, @bit0 */
+                    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 1u);
+            }
+        } else {
+            desc = DSD(0x000C9524u + fight_dust_pick((mut & D3B_M(7)) ? (side ^ 1u) : side) * 4u);   /* @pickarg */
+            u32 val = (mut & D3B_M(8)) ? fight_dust_value((u32)DSB(slot + 0x7Au), side)   /* @dvarg */
+                                       : fight_dust_value(side, (u32)DSB(slot + 0x7Au));
+            if (!(mut & D3B_M(9))) DSD(desc + 0x10u) = val;                   /* @d10 */
+        }
+        u32 srec = DSD(slot);
+        u32 rec4c = (mut & D3B_M(21)) ? DSD(other) : srec;                    /* @rec4c */
+        u32 far = (mut & D3B_M(12)) ? 0x5700u : 0x5780u;                      /* @d5780 */
+        u32 near = (mut & D3B_M(17)) ? 0x700u : 0x780u;                       /* @p780 */
+        int pair = ((kind != 0u || (mut & D3B_M(15))) && ((mut & D3B_M(16)) ? count >= 2 : count == 2)
+                    && (i == 0 || (mut & D3B_M(14))));                        /* @pairk, @pair2, @pair0 */
+        s32 x;
+        int minus;
+        if (mode == 0x22u) {
+            s32 fx = fight_2be00(srec);
+            u32 k = rng_next(2u);
+            minus = ((mut & D3B_M(11)) ? ((u8)k != 0u) : (k != 0u)) != ((mut & D3B_M(13)) != 0u);   /* @rngal, @swapdir */
+            x = fight_2be4c(rec4c, (s32)(minus ? (u32)fx - far : (u32)fx + far));
+        } else {
+            s32 ox, fx;
+            if (mut & D3B_M(20)) { fx = fight_2be00(srec); ox = fight_2be00(DSD(other)); }   /* @argswap */
+            else { ox = fight_2be00(DSD(other)); fx = fight_2be00(srec); }
+            minus = (mut & D3B_M(18)) ? ((u32)fx < (u32)ox) : (mut & D3B_M(19)) ? (fx <= ox) : (fx < ox);   /* @cmpu, @cmple */
+            x = fight_2be4c(rec4c, (s32)(minus ? (u32)fx - far : (u32)fx + far));
+        }
+        if (pair) x = (s32)(minus ? (u32)x - near : (u32)x + near);
+        int flag = (minus != 0) != ((mut & D3B_M(22)) != 0u);                 /* @flag */
+        s32 y;
+        if (kind != 0u) {
+            s32 w = (mut & D3B_M(25)) ? (s32)(s16)DSW(0x000BD898u) : (s32)(u32)DSW(0x000BD898u);   /* @ysext */
+            if ((mode == 0x22u) != ((mut & D3B_M(24)) != 0u)) y = w;          /* @ymode */
+            else y = w - ((mut & D3B_M(23)) ? 0x100 : 0x200);                 /* @y200 */
+        } else {
+            s32 y0 = (mut & D3B_M(26)) ? (s32)(s16)DSW(srec + 0x30u) : ((s32)DSD(srec + 0x30u) >> 16);   /* @y30 */
+            y = y0 + ((mut & D3B_M(27)) ? 0x300 : 0x400) + (s32)rng_next((mut & D3B_M(28)) ? 0x200u : 0x300u);   /* @y400, @r300 */
+        }
+        u32 actor = (mut & D3B_M(29)) ? actor_spawn((const u32 *)(mem + desc), (u32)y, (u32)x, 0u, 0u)   /* @xy */
+                                      : actor_spawn((const u32 *)(mem + desc), (u32)x, (u32)y, 0u, 0u);
+        if (!(mut & D3B_M(30))) DSD(entry + 8u) = actor;                      /* @ne8 */
+        u32 index = (mut & D3B_M(49)) ? (u32)(u8)((u32)DSB(actor + 0x48u) - 0x20u)   /* @idx8 */
+                                      : (u32)(u16)((u32)DSB(actor + 0x48u) - ((mut & D3B_M(50)) ? 0x21u : 0x20u));   /* @idx20 */
+        if (!(mut & D3B_M(31))) DSD(actor + 0x14u) = entry;                   /* @a14 */
+        if (!(mut & D3B_M(32))) DSD(entry + 0xCu) = slot;                     /* @fc */
+        if (!(mut & D3B_M(33))) DSB(entry + 0x21u) = (u8)side;                /* @f21 */
+        if (!(mut & D3B_M(34))) DSB(entry + 0x1Fu) = 0u;                      /* @f1f */
+        DSW(actor + 0x2Cu) = (mut & D3B_M(35)) ? (u16)y : fight_dust_clamp(y);   /* @clamp */
+        if (!(mut & D3B_M(36))) DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) | 0x10u);   /* @or10 */
+        if (!(mut & D3B_M(37))) DSD(entry + 0x10u) = 0u;                      /* @e10 */
+        int f51 = DSB(DSD(slot) + 0x51u) != 0u, m22 = mode == 0x22u;
+        if ((mut & D3B_M(38)) ? f51 : (mut & D3B_M(39)) ? m22 : (f51 || m22)) {   /* @bump, @bumpmode */
+            DSW(actor + 0x2Eu) = (u16)(DSW(actor + 0x2Eu) + ((mut & D3B_M(40)) ? 2u : 4u));   /* @w2e */
+            if (!(mut & D3B_M(41))) DSB(actor + 0x4Eu) = 1u;                  /* @b4e */
+        }
+        if (kind != 0u) {
+            int b0 = ((DSB(entry + 0x1Cu) & 1u) != 0u) != ((mut & D3B_M(42)) != 0u);   /* @v34a */
+            int pos = (flag != 0) != ((mut & D3B_M(43)) != 0u);               /* @v34sign */
+            if (!(mut & D3B_M(44)))                                           /* @w34 */
+                DSW(actor + 0x34u) = b0 ? (pos ? 0x00C0u : 0xFF40u) : (pos ? 0x0100u : 0xFF00u);
+            if (((mut & D3B_M(46)) ? flag : !flag) && !(mut & D3B_M(45)))     /* @or40inv, @or40 */
+                DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) | 0x40u);
+            DSB(entry + 0x1Eu) = (mut & D3B_M(47)) ? 6u : 7u;                 /* @type */
+            if (!(mut & D3B_M(48))) DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 0x10u);   /* @or10e */
+            if (mut & D3B_M(51)) fight_4b144(entry, index);                   /* @walkk */
+        } else if (!(mut & D3B_M(52))) {                                      /* @nowalk */
+            fight_4b144(entry, index);
+        }
+        if (mut & D3B_M(53)) return;                                          /* @once */
+    }
+}
+static void b_d3b_4987c(const u32 *r, u32 *eax) { fight_4987c(r[R_EAX], (s32)r[R_EDX], r[R_EBX]); *eax = 0u; }
+#define D3B_FL(name, bit) \
+    static void m_d3b_fl_##name(const u32 *r, u32 *eax) { d3b_4987c_core(r, D3B_M(bit)); *eax = 0u; }
+D3B_FL(count, 0)
+D3B_FL(lorder, 1)
+D3B_FL(w1c0, 2)
+D3B_FL(one, 3)
+D3B_FL(k1, 4)
+D3B_FL(bit0, 5)
+D3B_FL(bit0all, 6)
+D3B_FL(pickarg, 7)
+D3B_FL(dvarg, 8)
+D3B_FL(d10, 9)
+D3B_FL(mode, 10)
+D3B_FL(rngal, 11)
+D3B_FL(d5780, 12)
+D3B_FL(swapdir, 13)
+D3B_FL(pair0, 14)
+D3B_FL(pairk, 15)
+D3B_FL(pair2, 16)
+D3B_FL(p780, 17)
+D3B_FL(cmpu, 18)
+D3B_FL(cmple, 19)
+D3B_FL(argswap, 20)
+D3B_FL(rec4c, 21)
+D3B_FL(flag, 22)
+D3B_FL(y200, 23)
+D3B_FL(ymode, 24)
+D3B_FL(ysext, 25)
+D3B_FL(y30, 26)
+D3B_FL(y400, 27)
+D3B_FL(r300, 28)
+D3B_FL(xy, 29)
+D3B_FL(ne8, 30)
+D3B_FL(a14, 31)
+D3B_FL(fc, 32)
+D3B_FL(f21, 33)
+D3B_FL(f1f, 34)
+D3B_FL(clamp, 35)
+D3B_FL(or10, 36)
+D3B_FL(e10, 37)
+D3B_FL(bump, 38)
+D3B_FL(bumpmode, 39)
+D3B_FL(w2e, 40)
+D3B_FL(b4e, 41)
+D3B_FL(v34a, 42)
+D3B_FL(v34sign, 43)
+D3B_FL(w34, 44)
+D3B_FL(or40, 45)
+D3B_FL(or40inv, 46)
+D3B_FL(type, 47)
+D3B_FL(or10e, 48)
+D3B_FL(idx8, 49)
+D3B_FL(idx20, 50)
+D3B_FL(walkk, 51)
+D3B_FL(nowalk, 52)
+D3B_FL(once, 53)
+#undef D3B_FL
+
+/* 0x4A928's mutants. No argument. */
+static void d3b_4a928_core(u32 mut)
+{
+    if (!(mut & 1u)) DSB(0x001088C6u) = 0u;                                   /* @c6 */
+    if (!(mut & 2u)) DSD(0x00108870u) = 0u;                                   /* @z870 */
+    if (!(mut & 4u)) DSD(0x0010887Cu) = 0u;                                   /* @z87c */
+    u8 h0 = DSB((mut & 8u) ? 0x0010789Eu : 0x0010780Au);                      /* @c9s1 */
+    DSB(0x001088C9u) = (mut & 0x10u) ? (u8)((s32)h0 <= 0x78)                  /* @c9le */
+                     : (mut & 0x20u) ? (u8)((s32)(s8)h0 < 0x78)               /* @c9sx */
+                     : (u8)((s32)h0 < 0x78);
+    if (!(mut & 0x40u))                                                       /* @c7 */
+        DSB(0x001088C7u) = (u8)((DSB(0x0010780Au) == DSB(0x0010789Eu)) != ((mut & 0x80u) != 0u));   /* @c7ne */
+    s32 c9 = (s32)(s8)DSB(0x001088C9u);
+    s32 a = fight_4aa6c((mut & 0x100u) ? (c9 ^ 1) : c9);                      /* @aside */
+    if (!(mut & 0x200u)) DSD(0x0010885Cu) = (u32)a;                           /* @s5c */
+    if (a == 0) {
+        u32 s = (u32)(s32)(s8)DSB(0x001088C9u);
+        if (mut & 0x400u) s ^= 1u;                                            /* @fb1 */
+        a = fight_2be00(DSD(DS_001077B0 + s * 0x94u));
+        if (!(mut & 0x800u)) DSD(0x0010885Cu) = (u32)a;                       /* @fb1s */
+        if (!(mut & 0x1000u)) DSB(0x001088C6u) = 1u;                          /* @c6one */
+    }
+    s32 b = fight_4aa6c((mut & 0x100u) ? c9 : (s32)(s8)(DSB(0x001088C9u) ^ 1u));
+    if (!(mut & 0x2000u)) DSD(0x00108858u) = (u32)b;                          /* @s58 */
+    if (b == 0) {
+        u32 s = (u32)(s32)(s8)DSB(0x001088C9u);
+        if (mut & 0x4000u) s ^= 1u;                                           /* @fb2 */
+        b = fight_2be00(DSD(DS_001077B0 + s * 0x94u));
+        if (!(mut & 0x8000u)) DSD(0x00108858u) = (u32)b;                      /* @fb2s */
+        if (mut & 0x20000u) DSB(0x001088C6u) = 1u;                            /* @c8c6 */
+        else if (!(mut & 0x10000u)) DSB(0x001088C8u) = 1u;                    /* @c8one */
+    }
+    u32 ua = (u32)a, ub = (u32)b, d = (mut & 0x40000u) ? 0x1000u : 0x1400u;   /* @d1400 */
+    int below = (mut & 0x80000u) ? (a <= b) : (mut & 0x100000u) ? (ua < ub) : (a < b);   /* @le, @cmpu */
+    if (!(mut & 0x200000u))                                                   /* @cadrop */
+        DSB(0x001088CAu) = (u8)((below ? 0u : 1u) ^ ((mut & 0x400000u) ? 1u : 0u));   /* @ca */
+    u32 gap = below ? ub - ua : ua - ub;
+    int wide = (mut & 0x800000u) ? ((s32)gap > 0x1400) : (mut & 0x1000000u) ? (gap >= 0x1400u) : ((s32)gap >= 0x1400);   /* @gap, @gapu */
+    int toward = (below != 0) != ((mut & 0x2000000u) != 0u);                  /* @dirs */
+    if (wide) {
+        u32 base = (mut & 0x4000000u) ? ub : ua;                              /* @t7c */
+        DSD(0x0010887Cu) = toward ? base + d : base - d;
+    } else {
+        u32 base = (mut & 0x8000000u) ? ua : ub;                              /* @t70 */
+        DSD(0x00108870u) = toward ? base - d : base + d;
+    }
+}
+static void b_d3b_4a928(const u32 *r, u32 *eax) { (void)r; fight_4a928(); *eax = 0u; }
+#define D3B_SV(name, mut) \
+    static void m_d3b_sv_##name(const u32 *r, u32 *eax) { (void)r; d3b_4a928_core(mut); *eax = 0u; }
+D3B_SV(c6, 1u)
+D3B_SV(z870, 2u)
+D3B_SV(z87c, 4u)
+D3B_SV(c9s1, 8u)
+D3B_SV(c9le, 0x10u)
+D3B_SV(c9sx, 0x20u)
+D3B_SV(c7, 0x40u)
+D3B_SV(c7ne, 0x80u)
+D3B_SV(aside, 0x100u)
+D3B_SV(s5c, 0x200u)
+D3B_SV(fb1, 0x400u)
+D3B_SV(fb1s, 0x800u)
+D3B_SV(c6one, 0x1000u)
+D3B_SV(s58, 0x2000u)
+D3B_SV(fb2, 0x4000u)
+D3B_SV(fb2s, 0x8000u)
+D3B_SV(c8one, 0x10000u)
+D3B_SV(c8c6, 0x20000u)
+D3B_SV(d1400, 0x40000u)
+D3B_SV(le, 0x80000u)
+D3B_SV(cmpu, 0x100000u)
+D3B_SV(cadrop, 0x200000u)
+D3B_SV(ca, 0x400000u)
+D3B_SV(gap, 0x800000u)
+D3B_SV(gapu, 0x1000000u)
+D3B_SV(dirs, 0x2000000u)
+D3B_SV(t7c, 0x4000000u)
+D3B_SV(t70, 0x8000000u)
+#undef D3B_SV
+
+/* 0x4AAD0's mutants. EAX = entry, EDX = index. */
+static void d3b_4aad0_core(const u32 *r, unsigned long long mut)
+{
+    u32 entry = r[R_EAX], index = r[R_EDX];
+    if (((mut & D3B_M(0)) ? (u32)DSB(0x00104B00u) : (u32)DSW(0x00104B00u)) == 9u) {   /* @mode */
+        DSB(entry + 0x1Eu) = (mut & D3B_M(1)) ? 8u : 9u;                      /* @t9 */
+        return;
+    }
+    u32 slot = DSD(entry + 0xCu);
+    u8 s54 = DSB(slot + 0x54u), s42 = DSB(slot + 0x42u);
+    #define D3B_NZ(v, bit) ((mut & D3B_M(bit)) ? ((u8)(v) != 0u) : ((v) != 0))
+    if (DSB(slot + 0x54u) == ((mut & D3B_M(2)) ? 4u : 3u)) {                  /* @s54a */
+        int k = fight_4b430(entry, index, (mut & D3B_M(4)) ? 1u : 0u);        /* @flag430 */
+        if (D3B_NZ(k, 3)) return;                                             /* @al430 */
+    }
+    if (((mut & D3B_M(5)) ? s54 : DSB(slot + 0x54u)) == ((mut & D3B_M(2)) ? 3u : 4u)) {   /* @c54 */
+        int k = fight_4b3f0(entry, index, (mut & D3B_M(7)) ? 1u : 0u);        /* @flag3f0 */
+        if (D3B_NZ(k, 6)) return;                                             /* @al3f0 */
+    }
+    if ((DSB(0x001088C2u) != 0u || (mut & D3B_M(8))) && !(mut & D3B_M(9))) {  /* @c2, @c2n */
+        int k = fight_4bd4c(entry, index);
+        if (D3B_NZ(k, 10)) return;                                            /* @albd4c */
+    }
+    if (!(mut & D3B_M(12))) {                                                 /* @no5a8 */
+        int k = fight_4b5a8(entry, index);
+        if ((mut & D3B_M(11)) ? (k != 0) : ((u8)k != 0u)) return;             /* @eax5a8 */
+    }
+    u32 f21 = (mut & D3B_M(13)) ? (u32)(s32)(s8)DSB(entry + 0x21u) : (u32)DSB(entry + 0x21u);   /* @sext */
+    if (mut & D3B_M(14)) f21 ^= 1u;                                           /* @tbidx */
+    u32 bitA = (mut & D3B_M(15)) ? 1u : 2u, bitB = (mut & D3B_M(15)) ? 2u : 1u;   /* @bits */
+    u32 tabA = (mut & D3B_M(16)) ? 0x0010889Eu : 0x001088B2u, tabB = (mut & D3B_M(16)) ? 0x001088B2u : 0x0010889Eu;   /* @tabs */
+    int ga = (((mut & D3B_M(17)) ? s42 : DSB(slot + 0x42u)) & bitA) != 0u, gb = DSB(tabA + f21) != 0u;   /* @c42a */
+    if ((mut & D3B_M(18)) ? (ga && gb) : (ga || gb)) {                        /* @and */
+        int k = fight_4b3f0(entry, index, 0u);
+        if (D3B_NZ(k, 19)) return;                                            /* @al3f0b */
+    }
+    ga = (((mut & D3B_M(20)) ? s42 : DSB(slot + 0x42u)) & bitB) != 0u;        /* @c42b */
+    gb = DSB(tabB + f21) != 0u;
+    if ((mut & D3B_M(18)) ? (ga && gb) : (ga || gb)) {
+        int k = fight_4b430(entry, index, 0u);
+        if (D3B_NZ(k, 21)) return;                                            /* @al430b */
+    }
+    #undef D3B_NZ
+    u32 actor = DSD(entry + 8u), rec = DSD(slot);
+    s32 d = (mut & D3B_M(22)) ? fight_2be1c(rec, actor) : fight_2be1c(actor, rec);   /* @dswap */
+    s32 ea = (s32)(DSD(0x00108874u) - (u32)fight_2be00(actor));
+    s32 er = (s32)(DSD(0x00108874u) - (u32)fight_2be00(rec));
+    u32 ad = (d < 0 && !(mut & D3B_M(23))) ? 0u - (u32)d : (u32)d;            /* @abs */
+    int walk = ((mut & D3B_M(24)) ? ((s32)ad > 0x1800) : ((s32)ad >= 0x1800))   /* @ge1800 */
+            || ((mut & D3B_M(25)) ? ((s32)ad < 0x600) : ((s32)ad <= 0x600));  /* @le600 */
+    if (!(mut & D3B_M(28))) {                                                 /* @nosign */
+        walk = walk || (ea < 0 && ((mut & D3B_M(26)) ? (er >= 0) : (er > 0)));   /* @sign1 */
+        walk = walk || (ea > 0 && ((mut & D3B_M(27)) ? (er <= 0) : (er < 0)));   /* @sign2 */
+    }
+    if (mut & D3B_M(29)) walk = walk || (ea == 0 && er != 0);                 /* @zero */
+    if (walk && !(mut & D3B_M(30))) fight_4b144(entry, index);                /* @nowalk */
+}
+static void b_d3b_4aad0(const u32 *r, u32 *eax) { fight_4aad0(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D3B_TY(name, bit) \
+    static void m_d3b_ty_##name(const u32 *r, u32 *eax) { d3b_4aad0_core(r, D3B_M(bit)); *eax = 0u; }
+D3B_TY(mode, 0)
+D3B_TY(t9, 1)
+D3B_TY(s54a, 2)
+D3B_TY(al430, 3)
+D3B_TY(flag430, 4)
+D3B_TY(c54, 5)
+D3B_TY(al3f0, 6)
+D3B_TY(flag3f0, 7)
+D3B_TY(c2, 8)
+D3B_TY(c2n, 9)
+D3B_TY(albd4c, 10)
+D3B_TY(eax5a8, 11)
+D3B_TY(no5a8, 12)
+D3B_TY(sext, 13)
+D3B_TY(tbidx, 14)
+D3B_TY(bits, 15)
+D3B_TY(tabs, 16)
+D3B_TY(c42a, 17)
+D3B_TY(and, 18)
+D3B_TY(al3f0b, 19)
+D3B_TY(c42b, 20)
+D3B_TY(al430b, 21)
+D3B_TY(dswap, 22)
+D3B_TY(abs, 23)
+D3B_TY(ge1800, 24)
+D3B_TY(le600, 25)
+D3B_TY(sign1, 26)
+D3B_TY(sign2, 27)
+D3B_TY(nosign, 28)
+D3B_TY(zero, 29)
+D3B_TY(nowalk, 30)
+#undef D3B_TY
+
+/* 0x4B470's mutants. EAX = entry, EDX = index. */
+static void d3b_4b470_core(const u32 *r, unsigned long long mut)
+{
+    u32 entry = r[R_EAX], index = r[R_EDX];
+    u32 rec = DSD(entry + 8u);
+    s32 k = (mut & D3B_M(0)) ? (s32)(s8)DSB(rec + 0x48u) - 0x20 : (s32)DSB(rec + 0x48u) - 0x20;   /* @vsext */
+    if (mut & D3B_M(3)) k = (s32)index;                                       /* @vidx */
+    int low = (mut & D3B_M(1)) ? (k <= 3) : (k < 3);                          /* @vle */
+    u32 voice = (low != ((mut & D3B_M(2)) != 0u)) ? 0xD1u : 0xD0u;            /* @vswap */
+    if (!(mut & D3B_M(4))) (void)sound_voice(voice);                          /* @vorder */
+    actors_anim_begin(rec, DSD(0x000C9604u + (index + ((mut & D3B_M(5)) ? 1u : 0u)) * 4u),   /* @stream */
+                      (mut & D3B_M(6)) ? 0x40000000u : 0x40400000u);          /* @hold */
+    if (mut & D3B_M(4)) (void)sound_voice(voice);
+    if ((DSD(entry + 0x10u) == 0u || (mut & D3B_M(7))) && !(mut & D3B_M(8))) {   /* @shadow, @noshadow */
+        u32 x = DSD(rec + ((mut & D3B_M(10)) ? 0x1Cu : 0x18u));               /* @sx */
+        u32 y = (mut & D3B_M(11)) ? (u32)(s32)(s16)DSW(rec + 0x30u) : (u32)((s32)DSD(rec + 0x30u) >> 16);   /* @sy */
+        const u32 *desc = (const u32 *)(mem + DSD(0x000BB920u + (index + ((mut & D3B_M(9)) ? 1u : 0u)) * 4u));   /* @sdesc */
+        u32 sh = (mut & D3B_M(12)) ? actor_spawn(desc, y, x, 0u, 0u) : actor_spawn(desc, x, y, 0u, 0u);   /* @sxy */
+        if (!(mut & D3B_M(13))) DSD(entry + 0x10u) = sh;                      /* @sstore */
+    }
+    if (((mut & D3B_M(14)) ? (u32)DSB(0x00104B00u) : (u32)DSW(0x00104B00u)) != 0x22u) {   /* @mode */
+        u16 v = 0u;
+        if (DSB(entry + 0x1Fu) == ((mut & D3B_M(15)) ? 2u : 1u)) {            /* @f1f */
+            u32 bs = (mut & D3B_M(18)) ? (u32)DSB(entry + 0x21u)              /* @bitside */
+                   : (mut & D3B_M(19)) ? (u32)(s32)(s8)DSB(entry + 0x20u) : (u32)DSB(entry + 0x20u);   /* @bitsext */
+            int b = fighter_actor_bit15_clear(bs);
+            int set = (mut & D3B_M(16)) ? (b != 0) : ((u8)b != 0u);           /* @eax */
+            v = (set != ((mut & D3B_M(17)) != 0u)) ? 0xFF80u : 0x0080u;       /* @bitinv */
+        } else if (((s32)DSD(rec + 0x32u) >> 16) == ((mut & D3B_M(20)) ? 0x80 : -0x80)) {   /* @m80 */
+            v = 0x0080u;
+        } else {
+            v = 0xFF80u;
+        }
+        if (mut & D3B_M(22)) v = (u16)(v == 0x0080u ? 0x0100u : 0xFF00u);     /* @v34 */
+        if (!(mut & D3B_M(21))) DSW(rec + 0x34u) = v;                         /* @w34 */
+    }
+    if (!(mut & D3B_M(23))) DSW(rec + 0x36u) = (mut & D3B_M(24)) ? 0x0200u : 0x0240u;   /* @w36, @v36 */
+    if (!(mut & D3B_M(25))) DSB(entry + 0x1Eu) = 6u;                          /* @type */
+    if (!(mut & D3B_M(26)))                                                   /* @bit7 */
+        DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & ((mut & D3B_M(27)) ? 0xBFu : 0x7Fu));   /* @bit7v */
+    if (DSB(0x00104B1Du) == 3u && !(mut & D3B_M(28))) return;                 /* @b1d3 */
+    if (DSB(0x00104B1Du) == 2u && !(mut & D3B_M(29))) return;                 /* @b1d2 */
+    if (((mut & D3B_M(31)) ? (u32)DSB(0x00104AFCu) : (u32)DSW(0x00104AFCu)) != 0u && !(mut & D3B_M(30))) return;   /* @afc8, @afc */
+    if (DSB(0x001088C1u) != 0u && !(mut & D3B_M(32))) return;                 /* @c1 */
+    s32 ef = (mut & D3B_M(35)) ? (s32)DSB(0x001088F2u) : ((s32)DSD(0x001088EFu) >> 24);   /* @efu */
+    if (ef <= ((mut & D3B_M(34)) ? 0 : 1) && !(mut & D3B_M(33))) return;      /* @efle, @ef */
+    if ((u32)DSB(entry + 0x1Fu) <= ((mut & D3B_M(36)) ? 8u : 7u)) return;     /* @f1f7 */
+    if (DSB(0x001088C5u) != 0u && !(mut & D3B_M(37))) return;                 /* @c5 */
+    if (((mut & D3B_M(39)) ? (u32)DSB(0x00108864u) : DSD(0x00108864u)) != 0u && !(mut & D3B_M(38))) return;   /* @z864b, @z864 */
+    u32 cs = (mut & D3B_M(44)) ? (u32)DSB(entry + 0x21u) : (u32)DSB(entry + 0x20u);   /* @cbside */
+    u32 ci = index + ((mut & D3B_M(45)) ? 1u : 0u), cf = (mut & D3B_M(43)) ? 1u : 0u;   /* @cbidx, @cbflag */
+    if (mut & D3B_M(42)) fight_4cb18(entry, ci, cf, cs);                      /* @order */
+    if (!(mut & D3B_M(40))) fight_4bd98(entry);                               /* @nobd98 */
+    if (!(mut & (D3B_M(41) | D3B_M(42)))) fight_4cb18(entry, ci, cf, cs);     /* @nocb18 */
+}
+static void b_d3b_4b470(const u32 *r, u32 *eax) { fight_4b470(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D3B_TR(name, bit) \
+    static void m_d3b_tr_##name(const u32 *r, u32 *eax) { d3b_4b470_core(r, D3B_M(bit)); *eax = 0u; }
+D3B_TR(vsext, 0)
+D3B_TR(vle, 1)
+D3B_TR(vswap, 2)
+D3B_TR(vidx, 3)
+D3B_TR(vorder, 4)
+D3B_TR(stream, 5)
+D3B_TR(hold, 6)
+D3B_TR(shadow, 7)
+D3B_TR(noshadow, 8)
+D3B_TR(sdesc, 9)
+D3B_TR(sx, 10)
+D3B_TR(sy, 11)
+D3B_TR(sxy, 12)
+D3B_TR(sstore, 13)
+D3B_TR(mode, 14)
+D3B_TR(f1f, 15)
+D3B_TR(eax, 16)
+D3B_TR(bitinv, 17)
+D3B_TR(bitside, 18)
+D3B_TR(bitsext, 19)
+D3B_TR(m80, 20)
+D3B_TR(w34, 21)
+D3B_TR(v34, 22)
+D3B_TR(w36, 23)
+D3B_TR(v36, 24)
+D3B_TR(type, 25)
+D3B_TR(bit7, 26)
+D3B_TR(bit7v, 27)
+D3B_TR(b1d3, 28)
+D3B_TR(b1d2, 29)
+D3B_TR(afc, 30)
+D3B_TR(afc8, 31)
+D3B_TR(c1, 32)
+D3B_TR(ef, 33)
+D3B_TR(efle, 34)
+D3B_TR(efu, 35)
+D3B_TR(f1f7, 36)
+D3B_TR(c5, 37)
+D3B_TR(z864, 38)
+D3B_TR(z864b, 39)
+D3B_TR(nobd98, 40)
+D3B_TR(nocb18, 41)
+D3B_TR(order, 42)
+D3B_TR(cbflag, 43)
+D3B_TR(cbside, 44)
+D3B_TR(cbidx, 45)
+#undef D3B_TR
+
+/* 0x4C784's mutants. EAX = side. `m` is the first 64 mutation bits, `n` the rest. */
+static void d3b_4c784_core(const u32 *r, unsigned long long m, unsigned long long n)
+{
+    u32 side = r[R_EAX], other = side ^ 1u;
+    u32 hs = (m & D3B_M(0)) ? side : (u32)DSB(DSD(0x00108864u) + 0x21u);      /* @hs */
+    u32 fl = (DSW(DSD(DS_001077B0 + side * 0x94u) + 0x28u) & ((m & D3B_M(2)) ? 0x8000u : 0x4000u)) != 0u;   /* @flipbit */
+    u32 flip = (fl != ((m & D3B_M(1)) != 0u)) ? 0u : 0x4000u;                 /* @flip */
+    u32 ball = DSD(DSD(0x00108864u) + 8u);
+    u32 w = (m & D3B_M(5)) ? (u32)(s32)(s16)DSW(0x000BD898u) : (u32)DSW(0x000BD898u);   /* @ysext */
+    u32 spit = actor_spawn((const u32 *)(mem + ((m & D3B_M(6)) ? 0x000C9770u : 0x000C976Cu)),   /* @sdesc */
+                           DSD(ball + ((m & D3B_M(3)) ? 0x1Cu : 0x18u)),      /* @sx */
+                           w - ((m & D3B_M(4)) ? 0x200u : 0x100u),            /* @y100 */
+                           DSD(ball + ((m & D3B_M(3)) ? 0x18u : 0x1Cu)), flip);
+    actors_anim_begin(spit, (m & D3B_M(7)) ? 0x000EF680u : 0x000EF65Au,       /* @sstream */
+                      (m & D3B_M(8)) ? 0x40000000u : 0x40400000u);            /* @shold */
+    u32 voice = (((m & D3B_M(13)) ? (s32)(s8)DSB(ball + 0x48u) : (s32)DSB(ball + 0x48u)) - 0x20 < 3)   /* @vsext */
+                != ((m & D3B_M(14)) != 0u) ? 0xD4u : 0xD5u;                   /* @vswap */
+    if (m & D3B_M(17)) (void)sound_voice(voice);                              /* @vorder */
+    if (DSD(DSD(0x00108864u) + 0x10u) != 0u) {
+        if (m & D3B_M(11)) {                                                  /* @shorder */
+            u32 sh = DSD(DSD(0x00108864u) + 0x10u);
+            DSD(DSD(0x00108864u) + 0x10u) = 0u;
+            actor_set_dead(sh);
+        } else {
+            if (!(m & D3B_M(9))) actor_set_dead(DSD(DSD(0x00108864u) + 0x10u));   /* @shdead */
+            if (!(m & D3B_M(10))) DSD(DSD(0x00108864u) + 0x10u) = 0u;         /* @shzero */
+        }
+    }
+    if (!(m & D3B_M(12))) actor_set_dead(DSD(DSD(0x00108864u) + 8u));         /* @dead */
+    if (!(m & D3B_M(17))) (void)sound_voice(voice);
+    if (!(m & D3B_M(15))) (void)sound_voice(0xD6u);                           /* @v6 */
+    if (!(m & D3B_M(16))) (void)sound_voice(0xCEu);                           /* @vce */
+    u32 sc = (m & D3B_M(18)) ? side : other;                                  /* @score */
+    if (!(m & D3B_M(19)))                                                     /* @scoredrop */
+        DSB(0x0010889Cu + sc) = (u8)(DSB(0x0010889Cu + sc) + ((m & D3B_M(20)) ? 2u : 1u));   /* @score2 */
+    s32 g = (s32)DSD(0x00108884u), tx = (s32)DSD(DSD(DS_001077B0 + ((m & D3B_M(23)) ? side : other) * 0x94u) + 0x18u);   /* @turnrec */
+    int right = (m & D3B_M(22)) ? (g >= tx) : (g > tx);                       /* @turnge */
+    actors_anim_begin(DSD((m & D3B_M(24)) ? 0x00108868u : 0x0010886Cu),       /* @turnact */
+                      (right != ((m & D3B_M(21)) != 0u)) ? 0x000EF680u : 0x000EF6ACu, 0x40400000u);   /* @turn */
+    if (!(m & D3B_M(25))) DSW(0x001088ACu) = 0x0069u;                         /* @wac */
+    if (!(m & D3B_M(27))) DSW(0x00108898u) = (u16)(((other != 0u) != ((m & D3B_M(26)) != 0u)) ? 2u : 1u);   /* @w898drop, @w898 */
+    if ((u32)DSB(0x0010889Cu + other) >= ((m & D3B_M(28)) ? 4u : 3u)) {       /* @three */
+        u16 running = DSW(0x001088A0u);
+        if (!(m & D3B_M(29))) DSB(DSD(0x00108864u) + 0x1Fu) = 0u;             /* @f1f */
+        if ((running == 0u || (m & D3B_M(30))) && !(m & D3B_M(31))) fight_4cc0c();   /* @run, @norun */
+        if (!(m & D3B_M(32))) DSD(0x00108864u) = 0u;                          /* @z864 */
+        return;
+    }
+    text_cursor_hold_font2(-1, (m & D3B_M(34)) ? 5 : 6, game_string_get((m & D3B_M(33)) ? 0x55u : 0x56u),   /* @row, @txt */
+                           (m & D3B_M(35)) ? 0x1000u : 0x4000u);              /* @tmode */
+    u32 entry = DSD(0x001083C4u);
+    if (entry == 0x001083C4u) return;
+    if (m & D3B_M(36)) {                                                      /* @lorder */
+        effects_list_insert_after(0x0010884Cu, entry);
+        effects_list_unlink(entry);
+    } else {
+        effects_list_unlink(entry);
+        effects_list_insert_after(0x0010884Cu, entry);
+    }
+    u32 desc = DSD(0x000C9524u + fight_dust_pick((m & D3B_M(37)) ? side : other) * 4u);   /* @pickarg */
+    u32 chp = (m & D3B_M(39)) ? DS_001077B0 + other * 0x94u : DSD(0x001077A8u + side * 4u);   /* @dvch */
+    u32 val = fight_dust_value((m & D3B_M(38)) ? other : side, (u32)DSB(chp + 0x7Au));   /* @dvarg */
+    if (!(m & D3B_M(40))) DSD(desc + 0x10u) = val;                            /* @d10 */
+    s32 base = fight_2be00(DSD(0x00108868u));
+    s32 ox = fight_2be00(DSD(DS_001077B0 + other * 0x94u));
+    s32 sx = fight_2be00(DSD(DS_001077B0 + side * 0x94u));
+    int left = (m & D3B_M(41)) ? (sx <= ox) : (m & D3B_M(42)) ? ((u32)sx < (u32)ox) : (sx < ox);   /* @cmple, @cmpu */
+    u32 far = (m & D3B_M(43)) ? 0x2500u : 0x2580u, near = (m & D3B_M(44)) ? 0x1700u : 0x1740u;   /* @d2580, @d1740 */
+    u32 b2 = (u32)fight_2be00(DSD(0x00108868u));
+    u32 at = left ? b2 - far : b2 + far;
+    u32 target = (left != ((m & D3B_M(45)) != 0u)) ? (u32)base + near : (u32)base - near;   /* @dirs */
+    u32 x = (u32)fight_2be4c((m & D3B_M(47)) ? DSD(DS_001077B0 + side * 0x94u) : DSD(0x00108868u), (s32)at);   /* @rec4c */
+    u32 y = (u32)DSW(0x000BD898u) - ((m & D3B_M(48)) ? 0x100u : 0u);          /* @y2 */
+    u32 actor = (m & D3B_M(49)) ? actor_spawn((const u32 *)(mem + desc), y, x, 0u, 0u)   /* @xy */
+                                : actor_spawn((const u32 *)(mem + desc), x, y, 0u, 0u);
+    if (!(m & D3B_M(50))) DSD(entry + 8u) = actor;                            /* @ne8 */
+    u32 index = (n & D3B_M(3)) ? (u32)(u8)((u32)DSB(actor + 0x48u) - 0x20u)   /* @idx8 */
+                               : (u32)(u16)((u32)DSB(actor + 0x48u) - 0x20u);
+    if (!(m & D3B_M(51))) DSD(actor + 0x14u) = entry;                         /* @a14 */
+    if (!(m & D3B_M(52))) DSB(entry + 0x1Fu) = 0u;                            /* @nf1f */
+    DSB(entry + 0x21u) = (u8)((m & D3B_M(53)) ? side : hs);                   /* @f21 */
+    DSD(entry + 0xCu) = DS_001077B0 + ((m & D3B_M(54)) ? side : hs) * 0x94u;  /* @fc */
+    DSW(actor + 0x2Cu) = (m & D3B_M(55)) ? (u16)y : fight_dust_clamp((s32)y); /* @clamp */
+    if (!(m & D3B_M(56))) DSW(actor + 0x28u) = 0u;                            /* @w28 */
+    if (!(m & D3B_M(57))) DSW(entry + 0x1Cu) = 0u;                            /* @w1c */
+    if (!(m & D3B_M(58))) DSD(entry + 0x10u) = 0u;                            /* @e10 */
+    if ((DSB(DSD(DSD(entry + 0xCu)) + 0x51u) != 0u) != ((m & D3B_M(59)) != 0u)) {   /* @bump */
+        DSW(actor + 0x2Eu) = (u16)(DSW(actor + 0x2Eu) + 4u);
+        DSB(actor + 0x4Eu) = 1u;
+    }
+    DSB(entry + 0x1Eu) = (m & D3B_M(60)) ? 7u : 1u;                           /* @type */
+    if (!(m & D3B_M(61))) DSD(0x00108864u) = entry;                           /* @s864 */
+    if (!(m & D3B_M(62))) DSD(entry + 0x14u) = target;                        /* @e14 */
+    if (!(m & D3B_M(63))) DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 0x20u);   /* @or20 */
+    s32 pos = fight_2be00(actor);
+    int below = (n & D3B_M(0)) ? (pos <= (s32)target) : (pos < (s32)target);  /* @lt */
+    if (below != ((n & D3B_M(1)) != 0u)) {                                    /* @v34 */
+        DSW(actor + 0x34u) = 0x0080u;
+        if (!(n & D3B_M(2))) DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) & 0xBFu);   /* @b29 */
+    } else {
+        DSW(actor + 0x34u) = 0xFF80u;
+        if (!(n & D3B_M(2))) DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) | 0x40u);
+    }
+    actors_anim_begin(actor, DSD(0x000C95D4u + index * 4u), (n & D3B_M(4)) ? 0x40000000u : 0x40400000u);   /* @hold */
+}
+static void b_d3b_4c784(const u32 *r, u32 *eax) { fight_4c784(r[R_EAX]); *eax = 0u; }
+#define D3B_BE(name, bit) \
+    static void m_d3b_be_##name(const u32 *r, u32 *eax) { d3b_4c784_core(r, D3B_M(bit), 0ull); *eax = 0u; }
+#define D3B_BE2(name, bit) \
+    static void m_d3b_be_##name(const u32 *r, u32 *eax) { d3b_4c784_core(r, 0ull, D3B_M(bit)); *eax = 0u; }
+D3B_BE(hs, 0) D3B_BE(flip, 1) D3B_BE(flipbit, 2) D3B_BE(sx, 3) D3B_BE(y100, 4) D3B_BE(ysext, 5) D3B_BE(sdesc, 6)
+D3B_BE(sstream, 7) D3B_BE(shold, 8) D3B_BE(shdead, 9) D3B_BE(shzero, 10) D3B_BE(shorder, 11) D3B_BE(dead, 12)
+D3B_BE(vsext, 13) D3B_BE(vswap, 14) D3B_BE(v6, 15) D3B_BE(vce, 16) D3B_BE(vorder, 17) D3B_BE(score, 18)
+D3B_BE(scoredrop, 19) D3B_BE(score2, 20) D3B_BE(turn, 21) D3B_BE(turnge, 22) D3B_BE(turnrec, 23) D3B_BE(turnact, 24)
+D3B_BE(wac, 25) D3B_BE(w898, 26) D3B_BE(w898drop, 27) D3B_BE(three, 28) D3B_BE(f1f, 29) D3B_BE(run, 30)
+D3B_BE(norun, 31) D3B_BE(z864, 32) D3B_BE(txt, 33) D3B_BE(row, 34) D3B_BE(tmode, 35) D3B_BE(lorder, 36)
+D3B_BE(pickarg, 37) D3B_BE(dvarg, 38) D3B_BE(dvch, 39) D3B_BE(d10, 40) D3B_BE(cmple, 41) D3B_BE(cmpu, 42)
+D3B_BE(d2580, 43) D3B_BE(d1740, 44) D3B_BE(dirs, 45) D3B_BE(rec4c, 47) D3B_BE(y2, 48) D3B_BE(xy, 49)
+D3B_BE(ne8, 50) D3B_BE(a14, 51) D3B_BE(nf1f, 52) D3B_BE(f21, 53) D3B_BE(fc, 54) D3B_BE(clamp, 55) D3B_BE(w28, 56)
+D3B_BE(w1c, 57) D3B_BE(e10, 58) D3B_BE(bump, 59) D3B_BE(type, 60) D3B_BE(s864, 61) D3B_BE(e14, 62) D3B_BE(or20, 63)
+D3B_BE2(lt, 0) D3B_BE2(v34, 1) D3B_BE2(b29, 2) D3B_BE2(idx8, 3) D3B_BE2(hold, 4)
+#undef D3B_BE
+#undef D3B_BE2
+
+/* 0x4D224's mutants. EAX = entry, EDX = index. */
+static void d3b_4d224_core(const u32 *r, u32 mut)
+{
+    u32 entry = r[R_EAX], index = r[R_EDX];
+    u32 slot = DSD(entry + 0xCu);
+    u8 s42 = DSB(slot + 0x42u);
+    #define D3B_NZ(v, bit) ((mut & (bit)) ? ((u8)(v) != 0u) : ((v) != 0))
+    if ((DSB(0x001088C2u) != 0u || (mut & 1u)) && !(mut & 2u)) {              /* @c2, @c2n */
+        int k = fight_4bd4c(entry, index + ((mut & 0x80000u) ? 1u : 0u));     /* @bdidx */
+        if (D3B_NZ(k, 4u)) return;                                            /* @albd4c */
+    }
+    if (mut & 0x40u) {                                                        /* @order */
+        if (fight_4d150(entry, index) != 0) return;
+        if ((u8)fight_4d108(entry, index) != 0u) return;
+    } else {
+        if (!(mut & 0x10u)) {                                                 /* @no108 */
+            int k = fight_4d108(entry, index);
+            if ((mut & 8u) ? (k != 0) : ((u8)k != 0u)) return;                /* @eax108 */
+        }
+        if (!(mut & 0x100u)) {                                                /* @no150 */
+            int k = fight_4d150(entry, index);
+            if (D3B_NZ(k, 0x20u)) return;                                     /* @al150 */
+        }
+    }
+    u32 f21 = (mut & 0x200u) ? (u32)(s32)(s8)DSB(entry + 0x21u) : (u32)DSB(entry + 0x21u);   /* @sext */
+    if (mut & 0x400u) f21 ^= 1u;                                              /* @tbidx */
+    u32 bitA = (mut & 0x800u) ? 1u : 2u, bitB = (mut & 0x800u) ? 2u : 1u;     /* @bits */
+    u32 tabA = (mut & 0x1000u) ? 0x0010889Eu : 0x001088B2u, tabB = (mut & 0x1000u) ? 0x001088B2u : 0x0010889Eu;   /* @tabs */
+    int ga = (((mut & 0x20000u) ? s42 : DSB(DSD(entry + 0xCu) + 0x42u)) & bitA) != 0u, gb = DSB(tabA + f21) != 0u;   /* @c42a */
+    if ((mut & 0x2000u) ? (ga && gb) : (ga || gb)) {                          /* @and */
+        int k = fight_4b3f0(entry, index, (mut & 0x8000u) ? 1u : 0u);         /* @flag3f0 */
+        if (D3B_NZ(k, 0x4000u)) return;                                       /* @al3f0 */
+    }
+    ga = (((mut & 0x40000u) ? s42 : DSB(DSD(entry + 0xCu) + 0x42u)) & bitB) != 0u;   /* @c42b */
+    gb = DSB(tabB + f21) != 0u;
+    if ((mut & 0x2000u) ? (ga && gb) : (ga || gb))
+        (void)fight_4b430(entry, index, (mut & 0x10000u) ? 1u : 0u);          /* @flag430 */
+    #undef D3B_NZ
+}
+static void b_d3b_4d224(const u32 *r, u32 *eax) { fight_4d224(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D3B_VH(name, mut) \
+    static void m_d3b_vh_##name(const u32 *r, u32 *eax) { d3b_4d224_core(r, mut); *eax = 0u; }
+D3B_VH(c2, 1u)
+D3B_VH(c2n, 2u)
+D3B_VH(albd4c, 4u)
+D3B_VH(eax108, 8u)
+D3B_VH(no108, 0x10u)
+D3B_VH(al150, 0x20u)
+D3B_VH(order, 0x40u)
+D3B_VH(no150, 0x100u)
+D3B_VH(sext, 0x200u)
+D3B_VH(tbidx, 0x400u)
+D3B_VH(bits, 0x800u)
+D3B_VH(tabs, 0x1000u)
+D3B_VH(and, 0x2000u)
+D3B_VH(al3f0, 0x4000u)
+D3B_VH(flag3f0, 0x8000u)
+D3B_VH(flag430, 0x10000u)
+D3B_VH(c42a, 0x20000u)
+D3B_VH(c42b, 0x40000u)
+D3B_VH(bdidx, 0x80000u)
+#undef D3B_VH
+
+/* 0x4DEF4's mutants. No argument. */
+static void d3b_4def4_core(unsigned long long mut)
+{
+    u32 w0 = (mut & D3B_M(2)) ? (u32)DSB(0x001088B0u) : (u32)DSW(0x001088B0u);   /* @wb */
+    if (((mut & D3B_M(1)) || w0 == 0u) && ((mut & D3B_M(0)) || DSB(0x001088BBu) != 0u)) {   /* @bb0, @w0 */
+        u32 k = 0u;
+        if (mut & D3B_M(7)) k = rng_next(0x14u);                              /* @vorder */
+        if (!(mut & D3B_M(4))) (void)sound_voice((mut & D3B_M(3)) ? 0xCCu : 0xCBu);   /* @novcb, @vcb */
+        if (!(mut & D3B_M(7))) k = rng_next((mut & D3B_M(5)) ? 0x10u : 0x14u);   /* @r14 */
+        DSW(0x001088B0u) = (u16)(k + ((mut & D3B_M(6)) ? 0x70u : 0x78u));     /* @r78 */
+    }
+    u16 pre = DSW(0x001088B0u);
+    if (!(mut & D3B_M(8))) DSW(0x001088B0u) = (u16)(pre - 1u);                /* @dec */
+    u32 cmpv = (mut & D3B_M(9)) ? (u32)(u16)(pre - 1u) : (mut & D3B_M(12)) ? (u32)(u8)pre : (u32)pre;   /* @pre, @dcb */
+    if (cmpv == 0x3Cu && ((mut & D3B_M(10)) || DSB(0x001088BBu) != 0u) && !(mut & D3B_M(11)))   /* @vdc, @novdc */
+        (void)sound_voice(0xDCu);
+    u32 entry = DSD(0x0010884Cu);
+    if (entry == 0x0010884Cu) return;
+    for (;;) {
+        u32 rec = DSD(entry + 8u), next = DSD(entry), state = DSB(entry + 0x1Eu);
+        u32 index = (mut & D3B_M(33)) ? (u32)(u8)((u32)DSB(rec + 0x48u) - 0x20u)   /* @idx8 */
+                  : (u32)(u16)((u32)DSB(rec + 0x48u) - ((mut & D3B_M(34)) ? 0x21u : 0x20u));   /* @idx20 */
+        if ((mut & D3B_M(13)) && state == 0u) state = 1u;                     /* @type0 */
+        if ((mut & D3B_M(14)) && state == 5u) state = 4u;                     /* @type5 */
+        int open = 0;
+        if (state >= 1u && state <= 4u) {
+            u32 k = (mut & D3B_M(15)) ? 1u : fight_4a868(entry);              /* @gate */
+            open = (mut & D3B_M(16)) ? ((u8)k != 0u) : (k != 0u);             /* @al */
+        }
+        if (open) {
+            if (!(mut & (D3B_M(17) | D3B_M(37)))) DSB(0x001088BBu) = 1u;      /* @bb, @order */
+            if (mut & D3B_M(19)) DSD(rec + 0x34u) = 0u;                       /* @w34w: a dword */
+            else if (!(mut & D3B_M(18))) DSW(rec + 0x34u) = 0u;               /* @w34 */
+            u32 st = state;
+            if ((mut & D3B_M(25)) && st == 1u) st = 2u;                       /* @t1 */
+            else if ((mut & D3B_M(26)) && st == 2u) st = 1u;                  /* @t2 */
+            if (st == 4u && !(mut & D3B_M(32))) {                             /* @y4 */
+                actors_anim_begin(rec, DSD(((mut & D3B_M(29)) ? 0x000C9634u : 0x000C9724u) + index * 4u),   /* @t4 */
+                                  (mut & D3B_M(30)) ? 0x40400000u : 0x40A00000u);   /* @hold4 */
+            } else {
+                static const u32 lo[4] = { 0x000C9664u, 0x000C964Cu, 0x000C9634u, 0x000C9724u };
+                static const u32 hi[4] = { 0x000C955Cu, 0x000C9574u, 0x000C9574u, 0x000C9724u };
+                s32 h = (mut & D3B_M(22)) ? (s32)(s16)DSW(rec + 0x30u) : ((s32)DSD(rec + 0x30u) >> 16);   /* @hsx */
+                s32 layer = (mut & D3B_M(21)) ? (s32)(s16)DSW(0x000BD898u) : (s32)(u32)DSW(0x000BD898u);   /* @lsext */
+                u32 tbl;
+                if ((mut & D3B_M(20)) ? (h <= layer) : (h < layer)) {         /* @jl */
+                    tbl = lo[st - 1u];
+                    if ((mut & D3B_M(27)) && st == 3u) tbl = 0x000C964Cu;     /* @t3 */
+                    if (mut & D3B_M(24)) DSB(rec + 0x55u) = 1u;               /* @f55lo */
+                } else {
+                    if (!(mut & D3B_M(23))) DSB(rec + 0x55u) = 1u;            /* @f55 */
+                    tbl = hi[st - 1u];
+                    if ((mut & D3B_M(28)) && st == 3u) tbl = 0x000C955Cu;     /* @hi3 */
+                }
+                actors_anim_begin(rec, DSD(tbl + index * 4u), (mut & D3B_M(31)) ? 0x40A00000u : 0x40400000u);   /* @hold */
+            }
+            if (mut & D3B_M(37)) DSB(0x001088BBu) = 1u;
+            if (!(mut & D3B_M(35))) DSB(entry + 0x1Eu) = 0u;                  /* @clr */
+        }
+        entry = next;
+        if (entry == 0x0010884Cu || (mut & D3B_M(36))) break;                 /* @once */
+    }
+}
+static void b_d3b_4def4(const u32 *r, u32 *eax) { (void)r; fight_effects_idle_pass(); *eax = 0u; }
+#define D3B_ID(name, bit) \
+    static void m_d3b_id_##name(const u32 *r, u32 *eax) { (void)r; d3b_4def4_core(D3B_M(bit)); *eax = 0u; }
+D3B_ID(w0, 0) D3B_ID(bb0, 1) D3B_ID(wb, 2) D3B_ID(vcb, 3) D3B_ID(novcb, 4) D3B_ID(r14, 5) D3B_ID(r78, 6)
+D3B_ID(vorder, 7) D3B_ID(dec, 8) D3B_ID(pre, 9) D3B_ID(vdc, 10) D3B_ID(novdc, 11) D3B_ID(dcb, 12)
+D3B_ID(type0, 13) D3B_ID(type5, 14) D3B_ID(gate, 15) D3B_ID(al, 16) D3B_ID(bb, 17) D3B_ID(w34, 18)
+D3B_ID(w34w, 19) D3B_ID(jl, 20) D3B_ID(lsext, 21) D3B_ID(hsx, 22) D3B_ID(f55, 23) D3B_ID(f55lo, 24)
+D3B_ID(t1, 25) D3B_ID(t2, 26) D3B_ID(t3, 27) D3B_ID(hi3, 28) D3B_ID(t4, 29) D3B_ID(hold4, 30) D3B_ID(hold, 31)
+D3B_ID(y4, 32) D3B_ID(idx8, 33) D3B_ID(idx20, 34) D3B_ID(clr, 35) D3B_ID(once, 36) D3B_ID(order, 37)
+#undef D3B_ID
+
+/* 0x4E11C's mutants. No argument. */
+static void d3b_4e11c_core(unsigned long long mut)
+{
+    u8 b1d = DSB(0x00104B1Du);
+    s32 cx = (s32)DSD(0x000F0AF0u);
+    int skip = (b1d == 3u && !(mut & D3B_M(0))) || (b1d == 2u && !(mut & D3B_M(1)));   /* @b1d3, @b1d2 */
+    if (!skip) {
+        int lo = (mut & D3B_M(3)) ? (cx <= -0x3300) : (mut & D3B_M(5)) ? 0 : (cx < -0x3300);   /* @cxlo, @cxu */
+        int hi = (mut & D3B_M(4)) ? (cx >= 0x3300) : (mut & D3B_M(5)) ? ((u32)cx > 0x3300u) : (cx > 0x3300);   /* @cxhi */
+        int a = (mut & D3B_M(6)) ? 0 : (mut & D3B_M(7)) ? (DSD(0x00104AD8u) > 0u)             /* @ad8, @ad8u */
+              : (mut & D3B_M(8)) ? ((s32)DSD(0x00104AD8u) >= 0) : ((s32)DSD(0x00104AD8u) > 0);   /* @ad8ge */
+        int b = (mut & D3B_M(9)) ? 0 : (mut & D3B_M(10)) ? ((s32)DSD(0x00104ABCu) < 2)        /* @abc, @abcs */
+              : (mut & D3B_M(11)) ? (DSD(0x00104ABCu) <= 2u) : (DSD(0x00104ABCu) < 2u);       /* @abc2 */
+        u32 want = (mut & D3B_M(14)) ? 5u : 4u;                                               /* @chv */
+        int c0 = !(mut & D3B_M(12)) && DSB(0x0010782Au) != want;                              /* @ch0 */
+        int c1 = !(mut & D3B_M(13)) && DSB(0x001078BEu) != want;                              /* @ch1 */
+        int c4 = !(mut & D3B_M(15)) && DSB(0x001088C4u) != 0u;                                /* @c4 */
+        skip = lo || hi || a || b || c0 || c1 || c4;
+        if (skip && (mut & D3B_M(16))) return;                                                /* @nodec */
+    }
+    if (skip) {
+        if (mut & D3B_M(2)) DSB(0x00108892u) = (u8)(DSB(0x00108892u) - 1u);   /* @decb: a byte */
+        else DSW(0x00108892u) = (u16)(DSW(0x00108892u) - 1u);
+        return;
+    }
+    if (!(mut & D3B_M(17))) DSB(0x00104B25u) = 0u;                            /* @b25 */
+    if (!(mut & D3B_M(18))) DSB(0x001088C4u) = 1u;                            /* @c4s */
+    if (!(mut & D3B_M(19))) DSW(0x001088A6u) = (mut & D3B_M(20)) ? 0xB5u : 0xB4u;   /* @wa6, @wa6v */
+    if (!(mut & D3B_M(21))) DSW(0x0010889Au) = 0u;                            /* @w9a */
+    if (!(mut & D3B_M(22))) DSW(0x00108892u) = 0u;                            /* @w92 */
+    if (!(mut & D3B_M(23))) DSB(0x00104B15u) = 0u;                            /* @b15 */
+    if (!(mut & D3B_M(24))) DSB(0x001088C0u) = 1u;                            /* @c0 */
+    if (!(mut & D3B_M(25))) DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) & ((mut & D3B_M(26)) ? 0xFDu : 0xFEu));   /* @aec, @aecbit */
+    if (!(mut & D3B_M(27))) DSB(0x001088BCu) = 0u;                            /* @bc */
+    if (!(mut & (D3B_M(28) | D3B_M(38)))) DSW(0x00104B00u) = (mut & D3B_M(29)) ? 0x22u : 0x25u;   /* @mode, @modev, @order2 */
+    if (!(mut & D3B_M(30))) DSW(0x00108896u) = 0u;                            /* @w96 */
+    if (mut & D3B_M(37)) { DSB(0x001088BDu) = 0u; DSB(0x001088BEu) = 0u; }    /* @order */
+    if (!(mut & D3B_M(36))) hit_flash_pair((mut & D3B_M(35)) ? 1u : 0u);      /* @noflash, @flash */
+    if (mut & D3B_M(38)) DSW(0x00104B00u) = 0x25u;
+    if (!(mut & D3B_M(31))) DSB(0x001088BDu) = 0u;                            /* @bd */
+    if (!(mut & D3B_M(32))) DSB(0x001088BEu) = 0u;                            /* @be */
+    if (!(mut & D3B_M(33))) DSD(0x00108884u) = (mut & D3B_M(34)) ? (u32)cx + 1u : DSD(0x000F0AF0u);   /* @d884, @d884v */
+    for (u32 side = 0; side < ((mut & D3B_M(39)) ? 1u : 2u); side++) {        /* @once */
+        u32 e = ((mut & D3B_M(42)) ? 0x00108887u : 0x00108888u) + side * ((mut & D3B_M(41)) ? 4u : 5u);   /* @base, @stride */
+        u32 n = (mut & D3B_M(40)) ? 4u : 5u;                                  /* @b5 */
+        if (mut & D3B_M(45)) for (u32 i = 0; i < n; i++) DSB(e + i) = 0u;     /* @lorder */
+        if (!(mut & D3B_M(44))) fighter_38154((mut & D3B_M(43)) ? 1u - side : side);   /* @no38154, @sidearg */
+        if (!(mut & D3B_M(45))) for (u32 i = 0; i < n; i++) DSB(e + i) = 0u;
+    }
+    if (mut & D3B_M(53)) fight_mode25_spawn(1u);                              /* @sorder */
+    if (!(mut & D3B_M(50)))                                                   /* @notext */
+        text_cursor_hold_font2((mut & D3B_M(49)) ? 0 : -1, (mut & D3B_M(47)) ? 5 : 6,   /* @col, @row */
+                               game_string_get((mut & D3B_M(46)) ? 0x60u : 0x61u),      /* @txt */
+                               (mut & D3B_M(48)) ? 0x1000u : 0x4000u);        /* @tmode */
+    if (!(mut & (D3B_M(52) | D3B_M(53)))) fight_mode25_spawn((mut & D3B_M(51)) ? 0u : 1u);   /* @nospawn, @spawnarg */
+}
+static void b_d3b_4e11c(const u32 *r, u32 *eax) { (void)r; fight_mode25_enter(); *eax = 0u; }
+#define D3B_EN(name, bit) \
+    static void m_d3b_en_##name(const u32 *r, u32 *eax) { (void)r; d3b_4e11c_core(D3B_M(bit)); *eax = 0u; }
+D3B_EN(b1d3, 0) D3B_EN(b1d2, 1) D3B_EN(decb, 2) D3B_EN(cxlo, 3) D3B_EN(cxhi, 4) D3B_EN(cxu, 5) D3B_EN(ad8, 6)
+D3B_EN(ad8u, 7) D3B_EN(ad8ge, 8) D3B_EN(abc, 9) D3B_EN(abcs, 10) D3B_EN(abc2, 11) D3B_EN(ch0, 12) D3B_EN(ch1, 13)
+D3B_EN(chv, 14) D3B_EN(c4, 15) D3B_EN(nodec, 16) D3B_EN(b25, 17) D3B_EN(c4s, 18) D3B_EN(wa6, 19) D3B_EN(wa6v, 20)
+D3B_EN(w9a, 21) D3B_EN(w92, 22) D3B_EN(b15, 23) D3B_EN(c0, 24) D3B_EN(aec, 25) D3B_EN(aecbit, 26) D3B_EN(bc, 27)
+D3B_EN(mode, 28) D3B_EN(modev, 29) D3B_EN(w96, 30) D3B_EN(bd, 31) D3B_EN(be, 32) D3B_EN(d884, 33) D3B_EN(d884v, 34)
+D3B_EN(flash, 35) D3B_EN(noflash, 36) D3B_EN(order, 37) D3B_EN(order2, 38) D3B_EN(once, 39) D3B_EN(b5, 40)
+D3B_EN(stride, 41) D3B_EN(base, 42) D3B_EN(sidearg, 43) D3B_EN(no38154, 44) D3B_EN(lorder, 45) D3B_EN(txt, 46)
+D3B_EN(row, 47) D3B_EN(tmode, 48) D3B_EN(col, 49) D3B_EN(notext, 50) D3B_EN(spawnarg, 51) D3B_EN(nospawn, 52)
+D3B_EN(sorder, 53)
+#undef D3B_EN
+
+/* 0x3CB68's mutants. No argument. */
+static void d3b_3cb68_core(u32 mut)
+{
+    u32 n = DSD(0x00107ED8u);
+    if (!(mut & 1u)) DSD(0x00107EDCu) = 0u;                                   /* @edc0 */
+    u32 lside = 0u;
+    for (;;) {
+        u32 side = (mut & 0x200u) ? lside : DSD(0x00107EDCu);                 /* @cs */
+        if (!(mut & 2u)) DSD(0x00107ED8u) = n;                                /* @pre */
+        if (!(mut & 0x800u)) {                                                /* @order */
+            u32 b = (u32)fighter_actor_bit15_clear((mut & 4u) ? 1u - side : side);   /* @side */
+            if (mut & 0x10u) DSW(0x00107EE4u) = (u16)b;                       /* @ee4w: a word */
+            else if (!(mut & 8u)) DSB(0x00107EE4u) = (u8)b;                   /* @ee4 */
+        }
+        n = 0u;
+        u32 ln = 0u;
+        do {
+            if (!(mut & 0x40u)) DSD(0x00107ED8u) = (mut & 0x100u) ? ln : n;   /* @i, @cn */
+            hit_slot_step();
+            ln++;
+            n = (mut & 0x100u) ? ln : DSD(0x00107ED8u) + 1u;
+            if (mut & 0x40u) n = ln;
+        } while ((s32)n < ((mut & 0x20u) ? 0x1F : 0x20));                     /* @n1f */
+        if (mut & 0x800u) DSB(0x00107EE4u) = (u8)fighter_actor_bit15_clear(side);
+        lside++;
+        side = (mut & 0x200u) ? lside : DSD(0x00107EDCu) + 1u;
+        if (!(mut & 0x80u)) DSD(0x00107EDCu) = side;                          /* @edcinc */
+        if ((s32)((mut & 0x80u) ? lside : side) >= 2) break;
+    }
+    if (mut & 0x80u) DSD(0x00107EDCu) = 2u;
+    if (!(mut & 0x400u)) DSD(0x00107ED8u) = n;                                /* @final */
+}
+static void b_d3b_3cb68(const u32 *r, u32 *eax) { (void)r; fight_slot_pass(); *eax = 0u; }
+#define D3B_SP(name, mut) \
+    static void m_d3b_sp_##name(const u32 *r, u32 *eax) { (void)r; d3b_3cb68_core(mut); *eax = 0u; }
+D3B_SP(edc0, 1u)
+D3B_SP(pre, 2u)
+D3B_SP(side, 4u)
+D3B_SP(ee4, 8u)
+D3B_SP(ee4w, 0x10u)
+D3B_SP(n1f, 0x20u)
+D3B_SP(i, 0x40u)
+D3B_SP(edcinc, 0x80u)
+D3B_SP(cn, 0x100u)
+D3B_SP(cs, 0x200u)
+D3B_SP(final, 0x400u)
+D3B_SP(order, 0x800u)
+D3B_SP(old, 0x302u)
+#undef D3B_SP
+
+/* 0x432A0's mutants. EAX = side. */
+static void d3b_432a0_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], k = config_credit_ready();
+    int ready = (mut & 1u) ? ((u8)k != 0u) : (k != 0u);                       /* @al */
+    if (mut & 2u) ready = !ready;                                             /* @inv */
+    if (mut & 0x100u) ready = 1;                                              /* @always */
+    if (ready) {
+        int sprite = (DSB(0x00104529u) & ((mut & 4u) ? 4u : 2u)) != 0u;       /* @bit */
+        if (mut & 8u) sprite = !sprite;                                       /* @rows */
+        prompt_press_start((mut & 0x20u) ? 1u - side : side,                  /* @side */
+                           sprite ? ((mut & 0x10u) ? 0x3600 : 0x3700) : 0x1B);   /* @row37 */
+        return;
+    }
+    prompt_insert_coin((mut & 0x40u) ? 1u - side : side, (mut & 0x80u) ? 0x1C : 0x1B);   /* @coinside, @coinrow */
+}
+static void b_d3b_432a0(const u32 *r, u32 *eax) { fight_char_prompt(r[R_EAX]); *eax = 0u; }
+#define D3B_PR(name, mut) \
+    static void m_d3b_pr_##name(const u32 *r, u32 *eax) { d3b_432a0_core(r, mut); *eax = 0u; }
+D3B_PR(al, 1u)
+D3B_PR(inv, 2u)
+D3B_PR(bit, 4u)
+D3B_PR(rows, 8u)
+D3B_PR(row37, 0x10u)
+D3B_PR(side, 0x20u)
+D3B_PR(coinside, 0x40u)
+D3B_PR(coinrow, 0x80u)
+D3B_PR(always, 0x100u)
+#undef D3B_PR
+
+/* 0x43928's mutants. No argument. */
+static void d3b_43928_core(u32 mut)
+{
+    for (u32 side = 0; side < ((mut & 0x40u) ? 1u : 2u); side++) {            /* @once */
+        u32 fi = 0x00108170u + ((mut & 0x200u) ? 1u - side : side);           /* @idx */
+        if (DSB(fi) != 0u && !(mut & 1u)) continue;                           /* @skip */
+        if (mut & 0x100u) DSB(fi) = 1u;                                       /* @order */
+        u32 k = frontend_coin_poll((mut & 0x80u) ? 1u - side : side);         /* @sidearg */
+        if (((mut & 2u) ? (u32)(u8)k : k) == 0u) {                            /* @al */
+            if (mut & 0x100u) DSB(fi) = 0u;
+            continue;
+        }
+        if (mut & 8u) DSB(0x00104B1Fu) = (u8)(side + 1u);                     /* @set */
+        else DSB(0x00104B1Fu) = (u8)(DSB(0x00104B1Fu) | ((mut & 4u) ? side : side + 1u));   /* @or */
+        if (!(mut & 0x10u)) DSB(fi) = (mut & 0x20u) ? (u8)(side + 1u) : 1u;   /* @f170, @f170v */
+    }
+}
+static void b_d3b_43928(const u32 *r, u32 *eax) { (void)r; fight_char_join(); *eax = 0u; }
+#define D3B_JN(name, mut) \
+    static void m_d3b_jn_##name(const u32 *r, u32 *eax) { (void)r; d3b_43928_core(mut); *eax = 0u; }
+D3B_JN(skip, 1u)
+D3B_JN(al, 2u)
+D3B_JN(or, 4u)
+D3B_JN(set, 8u)
+D3B_JN(f170, 0x10u)
+D3B_JN(f170v, 0x20u)
+D3B_JN(once, 0x40u)
+D3B_JN(sidearg, 0x80u)
+D3B_JN(order, 0x100u)
+D3B_JN(idx, 0x200u)
+#undef D3B_JN
+
+/* 0x435AC's mutants. EAX = side. */
+static void d3b_435ac_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], oside = side ^ 1u;
+    u32 phase = (u32)DSW(0x000EF6DCu) & ((mut & 1u) ? 0x0Fu : 0x1Fu);         /* @phase */
+    if (phase != 0u) {
+        if (phase == ((mut & 2u) ? 0x10u : 0x18u)) {                          /* @p18 */
+            u32 f = (mut & 4u) ? DSD(0x00104528u) : (DSD(0x00104528u) & ((mut & 8u) ? 0x100u : 0x200u));   /* @flagall, @flag */
+            fight_char_opp_text_clear((mut & 0x10u) ? oside : side, f);       /* @oppside */
+        }
+        return;
+    }
+    if ((DSB(0x00104529u) & ((mut & 0x20u) ? 4u : 2u)) != 0u) {               /* @bit */
+        u32 rec = 0u;
+        if (mut & 0x100u)                                                     /* @order */
+            rec = actor_spawn((const u32 *)(mem + 0x000C8934u), DSW(0x000C8948u + side * 2u), 0xFFu, 0x3700u, 0u);
+        if (!(mut & 0x80u)) fight_char_text_clear(side, (mut & 0x40u) ? 1u : 0u);   /* @noclr, @clrflag */
+        if (!(mut & 0x100u)) {
+            u32 xw = 0x000C8948u + ((mut & 0x200u) ? oside : side) * 2u;      /* @sx */
+            rec = actor_spawn((const u32 *)(mem + ((mut & 0x400u) ? 0x000C8938u : 0x000C8934u)),   /* @sdesc */
+                              (mut & 0x800u) ? (u32)(s32)(s16)DSW(xw) : (u32)DSW(xw),   /* @sxs */
+                              (mut & 0x1000u) ? 0xFEu : 0xFFu,                /* @a3 */
+                              (mut & 0x2000u) ? 0x1Bu : 0x3700u, (mut & 0x4000u) ? 0x4000u : 0u);   /* @a4, @a5 */
+        }
+        if (!(mut & 0x8000u)) DSD(0x00108144u + ((mut & 0x10000u) ? oside : side) * 4u) = rec;   /* @store, @storeside */
+        return;
+    }
+    u32 cw = 0x000C894Cu + ((mut & 0x20000u) ? oside : side) * 2u;            /* @col */
+    s32 col0 = (s32)DSW(cw);
+    #define D3B_COL() ((mut & 0x40000u) ? (s32)(s16)DSW(cw) : (mut & 0x1000000u) ? col0 : (s32)DSW(cw))   /* @sext, @cache */
+    const u8 *s = game_string_get((mut & 0x80000u) ? 0x236u : 0x235u);        /* @ids */
+    text_cursor_set(D3B_COL(), (mut & 0x100000u) ? 0x1A : 0x1B, s, 0x1000u);  /* @row1 */
+    if (mut & 0x800000u) return;                                              /* @one */
+    s = game_string_get((mut & 0x80000u) ? 0x235u : 0x236u);
+    text_cursor_set(D3B_COL(), (mut & 0x200000u) ? 0x1D : 0x1C, s, (mut & 0x400000u) ? 0x2000u : 0x1000u);   /* @row2, @mode */
+    #undef D3B_COL
+}
+static void b_d3b_435ac(const u32 *r, u32 *eax) { fight_char_opp_text_blink(r[R_EAX]); *eax = 0u; }
+#define D3B_OB(name, mut) \
+    static void m_d3b_ob_##name(const u32 *r, u32 *eax) { d3b_435ac_core(r, mut); *eax = 0u; }
+D3B_OB(phase, 1u)
+D3B_OB(p18, 2u)
+D3B_OB(flagall, 4u)
+D3B_OB(flag, 8u)
+D3B_OB(oppside, 0x10u)
+D3B_OB(bit, 0x20u)
+D3B_OB(clrflag, 0x40u)
+D3B_OB(noclr, 0x80u)
+D3B_OB(order, 0x100u)
+D3B_OB(sx, 0x200u)
+D3B_OB(sdesc, 0x400u)
+D3B_OB(sxs, 0x800u)
+D3B_OB(a3, 0x1000u)
+D3B_OB(a4, 0x2000u)
+D3B_OB(a5, 0x4000u)
+D3B_OB(store, 0x8000u)
+D3B_OB(storeside, 0x10000u)
+D3B_OB(col, 0x20000u)
+D3B_OB(sext, 0x40000u)
+D3B_OB(ids, 0x80000u)
+D3B_OB(row1, 0x100000u)
+D3B_OB(row2, 0x200000u)
+D3B_OB(mode, 0x400000u)
+D3B_OB(one, 0x800000u)
+D3B_OB(cache, 0x1000000u)
+#undef D3B_OB
+
+/* 0x43464's mutants. EAX = side. */
+static void d3b_43464_core(const u32 *r, unsigned long long mut)
+{
+    u32 side = r[R_EAX], oside = side ^ 1u;
+    u32 phase = (u32)DSW(0x000EF6DCu) & ((mut & D3B_M(0)) ? 0x0Fu : 0x1Fu);   /* @phase */
+    if (phase != 0u) {
+        if (phase == ((mut & D3B_M(1)) ? 0x10u : 0x18u)) {                    /* @p18 */
+            u32 f = (mut & D3B_M(2)) ? DSD(0x00104528u) : (DSD(0x00104528u) & ((mut & D3B_M(3)) ? 0x100u : 0x200u));   /* @flagall, @flag */
+            fight_char_text_clear((mut & D3B_M(4)) ? oside : side, f);        /* @clrside18 */
+        }
+        return;
+    }
+    if ((DSB(0x00104529u) & ((mut & D3B_M(5)) ? 4u : 2u)) != 0u) {            /* @bit */
+        u32 rec = 0u;
+        if (mut & D3B_M(8))                                                   /* @order */
+            rec = actor_spawn((const u32 *)(mem + 0x000C8934u), DSW(0x000C8948u + side * 2u), 0xFFu, 0x3700u, 0u);
+        if (!(mut & D3B_M(7))) fight_char_text_clear(side, (mut & D3B_M(6)) ? 1u : 0u);   /* @noclr, @clrflag */
+        if (!(mut & D3B_M(8))) {
+            u32 xw = 0x000C8948u + ((mut & D3B_M(9)) ? oside : side) * 2u;    /* @sx */
+            rec = actor_spawn((const u32 *)(mem + ((mut & D3B_M(10)) ? 0x000C8938u : 0x000C8934u)),   /* @sdesc */
+                              (mut & D3B_M(11)) ? (u32)(s32)(s16)DSW(xw) : (u32)DSW(xw),   /* @sxs */
+                              (mut & D3B_M(12)) ? 0xFEu : 0xFFu,              /* @a3 */
+                              (mut & D3B_M(13)) ? 0x1Bu : 0x3700u, (mut & D3B_M(14)) ? 0x4000u : 0u);   /* @a4, @a5 */
+        }
+        if (!(mut & D3B_M(15))) DSD(0x00108144u + ((mut & D3B_M(16)) ? oside : side) * 4u) = rec;   /* @store, @storeside */
+        return;
+    }
+    s32 row = (mut & D3B_M(17)) ? 0x1A : 0x1B;                                /* @row0 */
+    s32 n = (s32)strlen((const char *)game_string_get((mut & D3B_M(18)) ? 0x38u : 0x39u));   /* @lenid */
+    if (!(mut & D3B_M(20)) && n < ((mut & D3B_M(19)) ? 3 : 2)) row++;         /* @nolen, @lt */
+    u32 cw = 0x000C894Cu + ((mut & D3B_M(21)) ? oside : side) * 2u;           /* @col */
+    s32 col0 = (s32)DSW(cw);
+    #define D3B_COL() ((mut & D3B_M(22)) ? (s32)(s16)DSW(cw) : (mut & D3B_M(36)) ? col0 : (s32)DSW(cw))   /* @sext, @cache */
+    const u8 *s;
+    s = game_string_get((mut & D3B_M(23)) ? 0x37u : 0x36u);                   /* @ids */
+    if (!(mut & D3B_M(24))) text_cursor_set(D3B_COL(), row - ((mut & D3B_M(25)) ? 1 : 2), s, 0x1000u);   /* @rel1, @rowm2 */
+    s = game_string_get((mut & D3B_M(23)) ? 0x36u : 0x37u);
+    if (!(mut & D3B_M(26))) text_cursor_set(D3B_COL(), row - ((mut & D3B_M(27)) ? 0 : 1), s, 0x1000u);   /* @rel2, @rowm1 */
+    s = game_string_get((mut & D3B_M(28)) ? 0x39u : 0x38u);                   /* @id3 */
+    if (!(mut & D3B_M(29)))                                                   /* @rel3 */
+        text_cursor_set(D3B_COL(), row + ((mut & D3B_M(30)) ? 1 : 0), s, (mut & D3B_M(31)) ? 0x2000u : 0x1000u);   /* @row3, @mode */
+    n = (s32)strlen((const char *)game_string_get(0x39u));
+    if ((mut & D3B_M(32)) || n >= ((mut & D3B_M(33)) ? 3 : 2)) {              /* @always4, @ge */
+        s = game_string_get(0x39u);
+        text_cursor_set(D3B_COL(), row + ((mut & D3B_M(34)) ? 2 : 1), s, (mut & D3B_M(35)) ? 0x2000u : 0x1000u);   /* @row4, @mode4 */
+    }
+    #undef D3B_COL
+}
+static void b_d3b_43464(const u32 *r, u32 *eax) { fight_char_text_blink(r[R_EAX]); *eax = 0u; }
+#define D3B_TB(name, bit) \
+    static void m_d3b_tb_##name(const u32 *r, u32 *eax) { d3b_43464_core(r, D3B_M(bit)); *eax = 0u; }
+D3B_TB(phase, 0) D3B_TB(p18, 1) D3B_TB(flagall, 2) D3B_TB(flag, 3) D3B_TB(clrside18, 4) D3B_TB(bit, 5)
+D3B_TB(clrflag, 6) D3B_TB(noclr, 7) D3B_TB(order, 8) D3B_TB(sx, 9) D3B_TB(sdesc, 10) D3B_TB(sxs, 11) D3B_TB(a3, 12)
+D3B_TB(a4, 13) D3B_TB(a5, 14) D3B_TB(store, 15) D3B_TB(storeside, 16) D3B_TB(row0, 17) D3B_TB(lenid, 18)
+D3B_TB(lt, 19) D3B_TB(nolen, 20) D3B_TB(col, 21) D3B_TB(sext, 22) D3B_TB(ids, 23) D3B_TB(rel1, 24) D3B_TB(rowm2, 25)
+D3B_TB(rel2, 26) D3B_TB(rowm1, 27) D3B_TB(id3, 28) D3B_TB(rel3, 29) D3B_TB(row3, 30) D3B_TB(mode, 31)
+D3B_TB(always4, 32) D3B_TB(ge, 33) D3B_TB(row4, 34) D3B_TB(mode4, 35) D3B_TB(cache, 36)
+#undef D3B_TB
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33865,6 +35289,672 @@ static const binding_t k_bindings[] = {
     { "flow_challenge_open@t2e", m_d3a_co_t2e, 0x00000000u },
     { "flow_challenge_open@t2eb", m_d3a_co_t2eb, 0x00000000u },
     { "flow_challenge_open@trec", m_d3a_co_trec, 0x00000000u },
+    /* track D3 batch d3b (record 2026-10-12-reverse-d3b) */
+    { "fight_hud_side_reset", b_d3b_1d764, 0x00000000u },
+    { "fight_hud_side_reset@side", m_d3b_rs_side, 0x00000000u },
+    { "fight_hud_side_reset@b90c", m_d3b_rs_b90c, 0x00000000u },
+    { "fight_hud_side_reset@idx", m_d3b_rs_idx, 0x00000000u },
+    { "fight_hud_side_reset@width", m_d3b_rs_width, 0x00000000u },
+    { "fight_hud_side_reset@b5a", m_d3b_rs_b5a, 0x00000000u },
+    { "fight_hud_side_reset@b42", m_d3b_rs_b42, 0x00000000u },
+    { "fight_hud_side_reset@bit", m_d3b_rs_bit, 0x00000000u },
+    { "fight_hud_side_reset@v", m_d3b_rs_v, 0x00000000u },
+    { "fight_hud_side_reset@barside", m_d3b_rs_barside, 0x00000000u },
+    { "fight_hud_side_reset@rec", m_d3b_rs_rec, 0x00000000u },
+    { "fight_hud_side_reset@stream", m_d3b_rs_stream, 0x00000000u },
+    { "fight_hud_side_reset@hold", m_d3b_rs_hold, 0x00000000u },
+    { "fight_hud_side_reset@order", m_d3b_rs_order, 0x00000000u },
+    { "fight_hud_side_reset@corder", m_d3b_rs_corder, 0x00000000u },
+    { "fight_hud_spawn", b_d3b_1d890, 0x00000000u },
+    { "fight_hud_spawn@once", m_d3b_hud_once, 0x00000000u },
+    { "fight_hud_spawn@b80e", m_d3b_hud_b80e, 0x00000000u },
+    { "fight_hud_spawn@b90c", m_d3b_hud_b90c, 0x00000000u },
+    { "fight_hud_spawn@b80a", m_d3b_hud_b80a, 0x00000000u },
+    { "fight_hud_spawn@b90e", m_d3b_hud_b90e, 0x00000000u },
+    { "fight_hud_spawn@al", m_d3b_hud_al, 0x00000000u },
+    { "fight_hud_spawn@a", m_d3b_hud_a, 0x00000000u },
+    { "fight_hud_spawn@a34", m_d3b_hud_a34, 0x00000000u },
+    { "fight_hud_spawn@a3", m_d3b_hud_a3, 0x00000000u },
+    { "fight_hud_spawn@d1", m_d3b_hud_d1, 0x00000000u },
+    { "fight_hud_spawn@x1", m_d3b_hud_x1, 0x00000000u },
+    { "fight_hud_spawn@y1", m_d3b_hud_y1, 0x00000000u },
+    { "fight_hud_spawn@s1", m_d3b_hud_s1, 0x00000000u },
+    { "fight_hud_spawn@d2", m_d3b_hud_d2, 0x00000000u },
+    { "fight_hud_spawn@x2", m_d3b_hud_x2, 0x00000000u },
+    { "fight_hud_spawn@y2", m_d3b_hud_y2, 0x00000000u },
+    { "fight_hud_spawn@s2", m_d3b_hud_s2, 0x00000000u },
+    { "fight_hud_spawn@d3", m_d3b_hud_d3, 0x00000000u },
+    { "fight_hud_spawn@x3", m_d3b_hud_x3, 0x00000000u },
+    { "fight_hud_spawn@y3", m_d3b_hud_y3, 0x00000000u },
+    { "fight_hud_spawn@s3", m_d3b_hud_s3, 0x00000000u },
+    { "fight_hud_spawn@d4", m_d3b_hud_d4, 0x00000000u },
+    { "fight_hud_spawn@x4", m_d3b_hud_x4, 0x00000000u },
+    { "fight_hud_spawn@y4", m_d3b_hud_y4, 0x00000000u },
+    { "fight_hud_spawn@s4", m_d3b_hud_s4, 0x00000000u },
+    { "fight_hud_spawn@sw1", m_d3b_hud_sw1, 0x00000000u },
+    { "fight_hud_spawn@sext", m_d3b_hud_sext, 0x00000000u },
+    { "fight_hud_spawn@bar", m_d3b_hud_bar, 0x00000000u },
+    { "fight_hud_spawn@barside", m_d3b_hud_barside, 0x00000000u },
+    { "fight_hud_spawn@bar2", m_d3b_hud_bar2, 0x00000000u },
+    { "fight_hud_spawn@bar2side", m_d3b_hud_bar2side, 0x00000000u },
+    { "fight_hud_spawn@barorder", m_d3b_hud_barorder, 0x00000000u },
+    { "fight_hud_spawn@e0", m_d3b_hud_e0, 0x00000000u },
+    { "fight_hud_spawn@e0late", m_d3b_hud_e0late, 0x00000000u },
+    { "fight_hud_spawn@ch", m_d3b_hud_ch, 0x00000000u },
+    { "fight_hud_spawn@chw", m_d3b_hud_chw, 0x00000000u },
+    { "fight_hud_spawn@y", m_d3b_hud_y, 0x00000000u },
+    { "fight_hud_spawn@bside", m_d3b_hud_bside, 0x00000000u },
+    { "fight_hud_spawn@aec", m_d3b_hud_aec, 0x00000000u },
+    { "fight_hud_spawn@aecbit", m_d3b_hud_aecbit, 0x00000000u },
+    { "fight_hud_spawn@aecearly", m_d3b_hud_aecearly, 0x00000000u },
+    { "fight_hud_spawn@desc", m_d3b_hud_desc, 0x00000000u },
+    { "fight_hud_spawn_b", b_d3b_1dc6c, 0x00000000u },
+    { "fight_hud_spawn_b@once", m_d3b_hudb_once, 0x00000000u },
+    { "fight_hud_spawn_b@b80e", m_d3b_hudb_b80e, 0x00000000u },
+    { "fight_hud_spawn_b@b90c", m_d3b_hudb_b90c, 0x00000000u },
+    { "fight_hud_spawn_b@b80a", m_d3b_hudb_b80a, 0x00000000u },
+    { "fight_hud_spawn_b@b90e", m_d3b_hudb_b90e, 0x00000000u },
+    { "fight_hud_spawn_b@al", m_d3b_hudb_al, 0x00000000u },
+    { "fight_hud_spawn_b@a", m_d3b_hudb_a, 0x00000000u },
+    { "fight_hud_spawn_b@a34", m_d3b_hudb_a34, 0x00000000u },
+    { "fight_hud_spawn_b@a3", m_d3b_hudb_a3, 0x00000000u },
+    { "fight_hud_spawn_b@d1", m_d3b_hudb_d1, 0x00000000u },
+    { "fight_hud_spawn_b@x1", m_d3b_hudb_x1, 0x00000000u },
+    { "fight_hud_spawn_b@y1", m_d3b_hudb_y1, 0x00000000u },
+    { "fight_hud_spawn_b@s1", m_d3b_hudb_s1, 0x00000000u },
+    { "fight_hud_spawn_b@d2", m_d3b_hudb_d2, 0x00000000u },
+    { "fight_hud_spawn_b@x2", m_d3b_hudb_x2, 0x00000000u },
+    { "fight_hud_spawn_b@y2", m_d3b_hudb_y2, 0x00000000u },
+    { "fight_hud_spawn_b@s2", m_d3b_hudb_s2, 0x00000000u },
+    { "fight_hud_spawn_b@d3", m_d3b_hudb_d3, 0x00000000u },
+    { "fight_hud_spawn_b@x3", m_d3b_hudb_x3, 0x00000000u },
+    { "fight_hud_spawn_b@y3", m_d3b_hudb_y3, 0x00000000u },
+    { "fight_hud_spawn_b@s3", m_d3b_hudb_s3, 0x00000000u },
+    { "fight_hud_spawn_b@d4", m_d3b_hudb_d4, 0x00000000u },
+    { "fight_hud_spawn_b@x4", m_d3b_hudb_x4, 0x00000000u },
+    { "fight_hud_spawn_b@y4", m_d3b_hudb_y4, 0x00000000u },
+    { "fight_hud_spawn_b@s4", m_d3b_hudb_s4, 0x00000000u },
+    { "fight_hud_spawn_b@sw1", m_d3b_hudb_sw1, 0x00000000u },
+    { "fight_hud_spawn_b@sext", m_d3b_hudb_sext, 0x00000000u },
+    { "fight_hud_spawn_b@bar", m_d3b_hudb_bar, 0x00000000u },
+    { "fight_hud_spawn_b@barside", m_d3b_hudb_barside, 0x00000000u },
+    { "fight_hud_spawn_b@bar2", m_d3b_hudb_bar2, 0x00000000u },
+    { "fight_hud_spawn_b@bar2side", m_d3b_hudb_bar2side, 0x00000000u },
+    { "fight_hud_spawn_b@barorder", m_d3b_hudb_barorder, 0x00000000u },
+    { "fight_hud_spawn_b@e0", m_d3b_hudb_e0, 0x00000000u },
+    { "fight_hud_spawn_b@e0late", m_d3b_hudb_e0late, 0x00000000u },
+    { "fight_hud_spawn_b@ch", m_d3b_hudb_ch, 0x00000000u },
+    { "fight_hud_spawn_b@chw", m_d3b_hudb_chw, 0x00000000u },
+    { "fight_hud_spawn_b@y", m_d3b_hudb_y, 0x00000000u },
+    { "fight_hud_spawn_b@bside", m_d3b_hudb_bside, 0x00000000u },
+    { "fight_hud_spawn_b@aec", m_d3b_hudb_aec, 0x00000000u },
+    { "fight_hud_spawn_b@aecbit", m_d3b_hudb_aecbit, 0x00000000u },
+    { "fight_hud_spawn_b@aecearly", m_d3b_hudb_aecearly, 0x00000000u },
+    { "fight_hud_spawn_b@desc", m_d3b_hudb_desc, 0x00000000u },
+    { "fight_hud_spawn_side", b_d3b_1dae8, 0x00000000u },
+    { "fight_hud_spawn_side@b90c", m_d3b_hs_b90c, 0x00000000u },
+    { "fight_hud_spawn_side@b80b", m_d3b_hs_b80b, 0x00000000u },
+    { "fight_hud_spawn_side@b80a", m_d3b_hs_b80a, 0x00000000u },
+    { "fight_hud_spawn_side@al", m_d3b_hs_al, 0x00000000u },
+    { "fight_hud_spawn_side@a", m_d3b_hs_a, 0x00000000u },
+    { "fight_hud_spawn_side@d1", m_d3b_hs_d1, 0x00000000u },
+    { "fight_hud_spawn_side@x1", m_d3b_hs_x1, 0x00000000u },
+    { "fight_hud_spawn_side@y1", m_d3b_hs_y1, 0x00000000u },
+    { "fight_hud_spawn_side@a3", m_d3b_hs_a3, 0x00000000u },
+    { "fight_hud_spawn_side@s1", m_d3b_hs_s1, 0x00000000u },
+    { "fight_hud_spawn_side@bari", m_d3b_hs_bari, 0x00000000u },
+    { "fight_hud_spawn_side@bariside", m_d3b_hs_bariside, 0x00000000u },
+    { "fight_hud_spawn_side@a2", m_d3b_hs_a2, 0x00000000u },
+    { "fight_hud_spawn_side@d3", m_d3b_hs_d3, 0x00000000u },
+    { "fight_hud_spawn_side@x3", m_d3b_hs_x3, 0x00000000u },
+    { "fight_hud_spawn_side@y3", m_d3b_hs_y3, 0x00000000u },
+    { "fight_hud_spawn_side@s3", m_d3b_hs_s3, 0x00000000u },
+    { "fight_hud_spawn_side@e0", m_d3b_hs_e0, 0x00000000u },
+    { "fight_hud_spawn_side@e0late", m_d3b_hs_e0late, 0x00000000u },
+    { "fight_hud_spawn_side@ch", m_d3b_hs_ch, 0x00000000u },
+    { "fight_hud_spawn_side@chw", m_d3b_hs_chw, 0x00000000u },
+    { "fight_hud_spawn_side@y", m_d3b_hs_y, 0x00000000u },
+    { "fight_hud_spawn_side@bside", m_d3b_hs_bside, 0x00000000u },
+    { "fight_hud_spawn_side@sext", m_d3b_hs_sext, 0x00000000u },
+    { "fight_hud_spawn_side@aecearly", m_d3b_hs_aecearly, 0x00000000u },
+    { "fight_hud_spawn_side@aec", m_d3b_hs_aec, 0x00000000u },
+    { "fight_hud_spawn_side@sextside", m_d3b_hs_sextside, 0x00000000u },
+    { "fight_hud_spawn_side@second", m_d3b_hs_second, 0x00000000u },
+    { "fight_hud_spawn_side@aecbit", m_d3b_hs_aecbit, 0x00000000u },
+    { "fight_hud_spawn_side_rr", b_d3b_1dae8, 0x00000000u },
+    { "fight_hud_spawn_side_rr@r2", m_d3b_hs_r2, 0x00000000u },
+    { "fight_hud_spawn_side_rr@r3", m_d3b_hs_r3, 0x00000000u },
+    { "fight_hud_spawn_side_rr@r5", m_d3b_hs_r5, 0x00000000u },
+    { "fight_hud_spawn_side_rr@cache", m_d3b_hs_cache, 0x00000000u },
+    { "fight_char_text_clear", b_d3b_432ec, 0x00000000u },
+    { "fight_char_text_clear@fl8", m_d3b_tc_fl8, 0x00000000u },
+    { "fight_char_text_clear@noflag", m_d3b_tc_noflag, 0x00000000u },
+    { "fight_char_text_clear@recside", m_d3b_tc_recside, 0x00000000u },
+    { "fight_char_text_clear@nodead", m_d3b_tc_nodead, 0x00000000u },
+    { "fight_char_text_clear@zero", m_d3b_tc_zero, 0x00000000u },
+    { "fight_char_text_clear@order", m_d3b_tc_order, 0x00000000u },
+    { "fight_char_text_clear@clrside", m_d3b_tc_clrside, 0x00000000u },
+    { "fight_char_text_clear@clrcol", m_d3b_tc_clrcol, 0x00000000u },
+    { "fight_char_text_clear@col", m_d3b_tc_col, 0x00000000u },
+    { "fight_char_text_clear@sext", m_d3b_tc_sext, 0x00000000u },
+    { "fight_char_text_clear@row0", m_d3b_tc_row0, 0x00000000u },
+    { "fight_char_text_clear@lt", m_d3b_tc_lt, 0x00000000u },
+    { "fight_char_text_clear@nolen", m_d3b_tc_nolen, 0x00000000u },
+    { "fight_char_text_clear@ids", m_d3b_tc_ids, 0x00000000u },
+    { "fight_char_text_clear@rel1", m_d3b_tc_rel1, 0x00000000u },
+    { "fight_char_text_clear@rowm2", m_d3b_tc_rowm2, 0x00000000u },
+    { "fight_char_text_clear@rel2", m_d3b_tc_rel2, 0x00000000u },
+    { "fight_char_text_clear@rowm1", m_d3b_tc_rowm1, 0x00000000u },
+    { "fight_char_text_clear@id3", m_d3b_tc_id3, 0x00000000u },
+    { "fight_char_text_clear@rel3", m_d3b_tc_rel3, 0x00000000u },
+    { "fight_char_text_clear@row3", m_d3b_tc_row3, 0x00000000u },
+    { "fight_char_text_clear@mode", m_d3b_tc_mode, 0x00000000u },
+    { "fight_char_text_clear@always4", m_d3b_tc_always4, 0x00000000u },
+    { "fight_char_text_clear@lenid", m_d3b_tc_lenid, 0x00000000u },
+    { "fight_char_text_clear@ge", m_d3b_tc_ge, 0x00000000u },
+    { "fight_char_text_clear@row4", m_d3b_tc_row4, 0x00000000u },
+    { "fight_char_text_clear@mode4", m_d3b_tc_mode4, 0x00000000u },
+    { "fight_char_text_clear_rr", b_d3b_432ec, 0x00000000u },
+    { "fight_char_text_clear_rr@cache", m_d3b_tc_cache, 0x00000000u },
+    { "fight_dust_build", b_d3b_494a8, 0x00000000u },
+    { "fight_dust_build@sideidx", m_d3b_db_sideidx, 0x00000000u },
+    { "fight_dust_build@afa8", m_d3b_db_afa8, 0x00000000u },
+    { "fight_dust_build@afa32", m_d3b_db_afa32, 0x00000000u },
+    { "fight_dust_build@sixside", m_d3b_db_sixside, 0x00000000u },
+    { "fight_dust_build@nosix", m_d3b_db_nosix, 0x00000000u },
+    { "fight_dust_build@bae", m_d3b_db_bae, 0x00000000u },
+    { "fight_dust_build@bc4", m_d3b_db_bc4, 0x00000000u },
+    { "fight_dust_build@ba2", m_d3b_db_ba2, 0x00000000u },
+    { "fight_dust_build@ba4", m_d3b_db_ba4, 0x00000000u },
+    { "fight_dust_build@bb2", m_d3b_db_bb2, 0x00000000u },
+    { "fight_dust_build@bbf", m_d3b_db_bbf, 0x00000000u },
+    { "fight_dust_build@ba8", m_d3b_db_ba8, 0x00000000u },
+    { "fight_dust_build@ba8v", m_d3b_db_ba8v, 0x00000000u },
+    { "fight_dust_build@b9e", m_d3b_db_b9e, 0x00000000u },
+    { "fight_dust_build@bb6", m_d3b_db_bb6, 0x00000000u },
+    { "fight_dust_build@w892", m_d3b_db_w892, 0x00000000u },
+    { "fight_dust_build@w892b", m_d3b_db_w892b, 0x00000000u },
+    { "fight_dust_build@step", m_d3b_db_step, 0x00000000u },
+    { "fight_dust_build@early", m_d3b_db_early, 0x00000000u },
+    { "fight_dust_build@lorder", m_d3b_db_lorder, 0x00000000u },
+    { "fight_dust_build@pickarg", m_d3b_db_pickarg, 0x00000000u },
+    { "fight_dust_build@dvarg", m_d3b_db_dvarg, 0x00000000u },
+    { "fight_dust_build@d10", m_d3b_db_d10, 0x00000000u },
+    { "fight_dust_build@xc00", m_d3b_db_xc00, 0x00000000u },
+    { "fight_dust_build@r18", m_d3b_db_r18, 0x00000000u },
+    { "fight_dust_build@y16", m_d3b_db_y16, 0x00000000u },
+    { "fight_dust_build@yshr", m_d3b_db_yshr, 0x00000000u },
+    { "fight_dust_build@offset", m_d3b_db_offset, 0x00000000u },
+    { "fight_dust_build@y400", m_d3b_db_y400, 0x00000000u },
+    { "fight_dust_build@rstep", m_d3b_db_rstep, 0x00000000u },
+    { "fight_dust_build@xy", m_d3b_db_xy, 0x00000000u },
+    { "fight_dust_build@ne8", m_d3b_db_ne8, 0x00000000u },
+    { "fight_dust_build@a14", m_d3b_db_a14, 0x00000000u },
+    { "fight_dust_build@f1e", m_d3b_db_f1e, 0x00000000u },
+    { "fight_dust_build@f1f", m_d3b_db_f1f, 0x00000000u },
+    { "fight_dust_build@f21", m_d3b_db_f21, 0x00000000u },
+    { "fight_dust_build@fc", m_d3b_db_fc, 0x00000000u },
+    { "fight_dust_build@clamp", m_d3b_db_clamp, 0x00000000u },
+    { "fight_dust_build@w1c", m_d3b_db_w1c, 0x00000000u },
+    { "fight_dust_build@e10", m_d3b_db_e10, 0x00000000u },
+    { "fight_dust_build@w1a", m_d3b_db_w1a, 0x00000000u },
+    { "fight_dust_build@w1ay", m_d3b_db_w1ay, 0x00000000u },
+    { "fight_dust_build@f51", m_d3b_db_f51, 0x00000000u },
+    { "fight_dust_build@w2e", m_d3b_db_w2e, 0x00000000u },
+    { "fight_dust_build@b4e", m_d3b_db_b4e, 0x00000000u },
+    { "fight_dust_build@once", m_d3b_db_once, 0x00000000u },
+    { "fight_dust_build@bc3", m_d3b_db_bc3, 0x00000000u },
+    { "fight_dust_build@bc1", m_d3b_db_bc1, 0x00000000u },
+    { "fight_4987c", b_d3b_4987c, 0x00000000u },
+    { "fight_4987c@count", m_d3b_fl_count, 0x00000000u },
+    { "fight_4987c@lorder", m_d3b_fl_lorder, 0x00000000u },
+    { "fight_4987c@w1c0", m_d3b_fl_w1c0, 0x00000000u },
+    { "fight_4987c@one", m_d3b_fl_one, 0x00000000u },
+    { "fight_4987c@k1", m_d3b_fl_k1, 0x00000000u },
+    { "fight_4987c@bit0", m_d3b_fl_bit0, 0x00000000u },
+    { "fight_4987c@bit0all", m_d3b_fl_bit0all, 0x00000000u },
+    { "fight_4987c@pickarg", m_d3b_fl_pickarg, 0x00000000u },
+    { "fight_4987c@dvarg", m_d3b_fl_dvarg, 0x00000000u },
+    { "fight_4987c@d10", m_d3b_fl_d10, 0x00000000u },
+    { "fight_4987c@mode", m_d3b_fl_mode, 0x00000000u },
+    { "fight_4987c@rngal", m_d3b_fl_rngal, 0x00000000u },
+    { "fight_4987c@d5780", m_d3b_fl_d5780, 0x00000000u },
+    { "fight_4987c@swapdir", m_d3b_fl_swapdir, 0x00000000u },
+    { "fight_4987c@pair0", m_d3b_fl_pair0, 0x00000000u },
+    { "fight_4987c@pairk", m_d3b_fl_pairk, 0x00000000u },
+    { "fight_4987c@pair2", m_d3b_fl_pair2, 0x00000000u },
+    { "fight_4987c@p780", m_d3b_fl_p780, 0x00000000u },
+    { "fight_4987c@cmpu", m_d3b_fl_cmpu, 0x00000000u },
+    { "fight_4987c@cmple", m_d3b_fl_cmple, 0x00000000u },
+    { "fight_4987c@argswap", m_d3b_fl_argswap, 0x00000000u },
+    { "fight_4987c@rec4c", m_d3b_fl_rec4c, 0x00000000u },
+    { "fight_4987c@flag", m_d3b_fl_flag, 0x00000000u },
+    { "fight_4987c@y200", m_d3b_fl_y200, 0x00000000u },
+    { "fight_4987c@ymode", m_d3b_fl_ymode, 0x00000000u },
+    { "fight_4987c@ysext", m_d3b_fl_ysext, 0x00000000u },
+    { "fight_4987c@y30", m_d3b_fl_y30, 0x00000000u },
+    { "fight_4987c@y400", m_d3b_fl_y400, 0x00000000u },
+    { "fight_4987c@r300", m_d3b_fl_r300, 0x00000000u },
+    { "fight_4987c@xy", m_d3b_fl_xy, 0x00000000u },
+    { "fight_4987c@ne8", m_d3b_fl_ne8, 0x00000000u },
+    { "fight_4987c@a14", m_d3b_fl_a14, 0x00000000u },
+    { "fight_4987c@fc", m_d3b_fl_fc, 0x00000000u },
+    { "fight_4987c@f21", m_d3b_fl_f21, 0x00000000u },
+    { "fight_4987c@f1f", m_d3b_fl_f1f, 0x00000000u },
+    { "fight_4987c@clamp", m_d3b_fl_clamp, 0x00000000u },
+    { "fight_4987c@or10", m_d3b_fl_or10, 0x00000000u },
+    { "fight_4987c@e10", m_d3b_fl_e10, 0x00000000u },
+    { "fight_4987c@bump", m_d3b_fl_bump, 0x00000000u },
+    { "fight_4987c@bumpmode", m_d3b_fl_bumpmode, 0x00000000u },
+    { "fight_4987c@w2e", m_d3b_fl_w2e, 0x00000000u },
+    { "fight_4987c@b4e", m_d3b_fl_b4e, 0x00000000u },
+    { "fight_4987c@v34a", m_d3b_fl_v34a, 0x00000000u },
+    { "fight_4987c@v34sign", m_d3b_fl_v34sign, 0x00000000u },
+    { "fight_4987c@w34", m_d3b_fl_w34, 0x00000000u },
+    { "fight_4987c@or40", m_d3b_fl_or40, 0x00000000u },
+    { "fight_4987c@or40inv", m_d3b_fl_or40inv, 0x00000000u },
+    { "fight_4987c@type", m_d3b_fl_type, 0x00000000u },
+    { "fight_4987c@or10e", m_d3b_fl_or10e, 0x00000000u },
+    { "fight_4987c@idx8", m_d3b_fl_idx8, 0x00000000u },
+    { "fight_4987c@idx20", m_d3b_fl_idx20, 0x00000000u },
+    { "fight_4987c@walkk", m_d3b_fl_walkk, 0x00000000u },
+    { "fight_4987c@nowalk", m_d3b_fl_nowalk, 0x00000000u },
+    { "fight_4987c@once", m_d3b_fl_once, 0x00000000u },
+    { "fight_4a928", b_d3b_4a928, 0x00000000u },
+    { "fight_4a928@c6", m_d3b_sv_c6, 0x00000000u },
+    { "fight_4a928@z870", m_d3b_sv_z870, 0x00000000u },
+    { "fight_4a928@z87c", m_d3b_sv_z87c, 0x00000000u },
+    { "fight_4a928@c9s1", m_d3b_sv_c9s1, 0x00000000u },
+    { "fight_4a928@c9le", m_d3b_sv_c9le, 0x00000000u },
+    { "fight_4a928@c9sx", m_d3b_sv_c9sx, 0x00000000u },
+    { "fight_4a928@c7", m_d3b_sv_c7, 0x00000000u },
+    { "fight_4a928@c7ne", m_d3b_sv_c7ne, 0x00000000u },
+    { "fight_4a928@aside", m_d3b_sv_aside, 0x00000000u },
+    { "fight_4a928@s5c", m_d3b_sv_s5c, 0x00000000u },
+    { "fight_4a928@fb1", m_d3b_sv_fb1, 0x00000000u },
+    { "fight_4a928@fb1s", m_d3b_sv_fb1s, 0x00000000u },
+    { "fight_4a928@c6one", m_d3b_sv_c6one, 0x00000000u },
+    { "fight_4a928@s58", m_d3b_sv_s58, 0x00000000u },
+    { "fight_4a928@fb2", m_d3b_sv_fb2, 0x00000000u },
+    { "fight_4a928@fb2s", m_d3b_sv_fb2s, 0x00000000u },
+    { "fight_4a928@c8one", m_d3b_sv_c8one, 0x00000000u },
+    { "fight_4a928@c8c6", m_d3b_sv_c8c6, 0x00000000u },
+    { "fight_4a928@d1400", m_d3b_sv_d1400, 0x00000000u },
+    { "fight_4a928@le", m_d3b_sv_le, 0x00000000u },
+    { "fight_4a928@cmpu", m_d3b_sv_cmpu, 0x00000000u },
+    { "fight_4a928@cadrop", m_d3b_sv_cadrop, 0x00000000u },
+    { "fight_4a928@ca", m_d3b_sv_ca, 0x00000000u },
+    { "fight_4a928@gap", m_d3b_sv_gap, 0x00000000u },
+    { "fight_4a928@gapu", m_d3b_sv_gapu, 0x00000000u },
+    { "fight_4a928@dirs", m_d3b_sv_dirs, 0x00000000u },
+    { "fight_4a928@t7c", m_d3b_sv_t7c, 0x00000000u },
+    { "fight_4a928@t70", m_d3b_sv_t70, 0x00000000u },
+    { "fight_4aad0", b_d3b_4aad0, 0x00000000u },
+    { "fight_4aad0@mode", m_d3b_ty_mode, 0x00000000u },
+    { "fight_4aad0@t9", m_d3b_ty_t9, 0x00000000u },
+    { "fight_4aad0@s54a", m_d3b_ty_s54a, 0x00000000u },
+    { "fight_4aad0@al430", m_d3b_ty_al430, 0x00000000u },
+    { "fight_4aad0@flag430", m_d3b_ty_flag430, 0x00000000u },
+    { "fight_4aad0@al3f0", m_d3b_ty_al3f0, 0x00000000u },
+    { "fight_4aad0@flag3f0", m_d3b_ty_flag3f0, 0x00000000u },
+    { "fight_4aad0@c2", m_d3b_ty_c2, 0x00000000u },
+    { "fight_4aad0@c2n", m_d3b_ty_c2n, 0x00000000u },
+    { "fight_4aad0@albd4c", m_d3b_ty_albd4c, 0x00000000u },
+    { "fight_4aad0@eax5a8", m_d3b_ty_eax5a8, 0x00000000u },
+    { "fight_4aad0@no5a8", m_d3b_ty_no5a8, 0x00000000u },
+    { "fight_4aad0@sext", m_d3b_ty_sext, 0x00000000u },
+    { "fight_4aad0@tbidx", m_d3b_ty_tbidx, 0x00000000u },
+    { "fight_4aad0@bits", m_d3b_ty_bits, 0x00000000u },
+    { "fight_4aad0@tabs", m_d3b_ty_tabs, 0x00000000u },
+    { "fight_4aad0@and", m_d3b_ty_and, 0x00000000u },
+    { "fight_4aad0@al3f0b", m_d3b_ty_al3f0b, 0x00000000u },
+    { "fight_4aad0@al430b", m_d3b_ty_al430b, 0x00000000u },
+    { "fight_4aad0@dswap", m_d3b_ty_dswap, 0x00000000u },
+    { "fight_4aad0@abs", m_d3b_ty_abs, 0x00000000u },
+    { "fight_4aad0@ge1800", m_d3b_ty_ge1800, 0x00000000u },
+    { "fight_4aad0@le600", m_d3b_ty_le600, 0x00000000u },
+    { "fight_4aad0@sign1", m_d3b_ty_sign1, 0x00000000u },
+    { "fight_4aad0@sign2", m_d3b_ty_sign2, 0x00000000u },
+    { "fight_4aad0@nosign", m_d3b_ty_nosign, 0x00000000u },
+    { "fight_4aad0@zero", m_d3b_ty_zero, 0x00000000u },
+    { "fight_4aad0@nowalk", m_d3b_ty_nowalk, 0x00000000u },
+    { "fight_4aad0_rr", b_d3b_4aad0, 0x00000000u },
+    { "fight_4aad0_rr@c54", m_d3b_ty_c54, 0x00000000u },
+    { "fight_4aad0_rr@c42a", m_d3b_ty_c42a, 0x00000000u },
+    { "fight_4aad0_rr@c42b", m_d3b_ty_c42b, 0x00000000u },
+    { "fight_4b470", b_d3b_4b470, 0x00000000u },
+    { "fight_4b470@vsext", m_d3b_tr_vsext, 0x00000000u },
+    { "fight_4b470@vle", m_d3b_tr_vle, 0x00000000u },
+    { "fight_4b470@vswap", m_d3b_tr_vswap, 0x00000000u },
+    { "fight_4b470@vidx", m_d3b_tr_vidx, 0x00000000u },
+    { "fight_4b470@vorder", m_d3b_tr_vorder, 0x00000000u },
+    { "fight_4b470@stream", m_d3b_tr_stream, 0x00000000u },
+    { "fight_4b470@hold", m_d3b_tr_hold, 0x00000000u },
+    { "fight_4b470@shadow", m_d3b_tr_shadow, 0x00000000u },
+    { "fight_4b470@noshadow", m_d3b_tr_noshadow, 0x00000000u },
+    { "fight_4b470@sdesc", m_d3b_tr_sdesc, 0x00000000u },
+    { "fight_4b470@sx", m_d3b_tr_sx, 0x00000000u },
+    { "fight_4b470@sy", m_d3b_tr_sy, 0x00000000u },
+    { "fight_4b470@sxy", m_d3b_tr_sxy, 0x00000000u },
+    { "fight_4b470@sstore", m_d3b_tr_sstore, 0x00000000u },
+    { "fight_4b470@mode", m_d3b_tr_mode, 0x00000000u },
+    { "fight_4b470@f1f", m_d3b_tr_f1f, 0x00000000u },
+    { "fight_4b470@eax", m_d3b_tr_eax, 0x00000000u },
+    { "fight_4b470@bitinv", m_d3b_tr_bitinv, 0x00000000u },
+    { "fight_4b470@bitside", m_d3b_tr_bitside, 0x00000000u },
+    { "fight_4b470@bitsext", m_d3b_tr_bitsext, 0x00000000u },
+    { "fight_4b470@m80", m_d3b_tr_m80, 0x00000000u },
+    { "fight_4b470@w34", m_d3b_tr_w34, 0x00000000u },
+    { "fight_4b470@v34", m_d3b_tr_v34, 0x00000000u },
+    { "fight_4b470@w36", m_d3b_tr_w36, 0x00000000u },
+    { "fight_4b470@v36", m_d3b_tr_v36, 0x00000000u },
+    { "fight_4b470@type", m_d3b_tr_type, 0x00000000u },
+    { "fight_4b470@bit7", m_d3b_tr_bit7, 0x00000000u },
+    { "fight_4b470@bit7v", m_d3b_tr_bit7v, 0x00000000u },
+    { "fight_4b470@b1d3", m_d3b_tr_b1d3, 0x00000000u },
+    { "fight_4b470@b1d2", m_d3b_tr_b1d2, 0x00000000u },
+    { "fight_4b470@afc", m_d3b_tr_afc, 0x00000000u },
+    { "fight_4b470@afc8", m_d3b_tr_afc8, 0x00000000u },
+    { "fight_4b470@c1", m_d3b_tr_c1, 0x00000000u },
+    { "fight_4b470@ef", m_d3b_tr_ef, 0x00000000u },
+    { "fight_4b470@efle", m_d3b_tr_efle, 0x00000000u },
+    { "fight_4b470@efu", m_d3b_tr_efu, 0x00000000u },
+    { "fight_4b470@f1f7", m_d3b_tr_f1f7, 0x00000000u },
+    { "fight_4b470@c5", m_d3b_tr_c5, 0x00000000u },
+    { "fight_4b470@z864", m_d3b_tr_z864, 0x00000000u },
+    { "fight_4b470@z864b", m_d3b_tr_z864b, 0x00000000u },
+    { "fight_4b470@nobd98", m_d3b_tr_nobd98, 0x00000000u },
+    { "fight_4b470@nocb18", m_d3b_tr_nocb18, 0x00000000u },
+    { "fight_4b470@order", m_d3b_tr_order, 0x00000000u },
+    { "fight_4b470@cbflag", m_d3b_tr_cbflag, 0x00000000u },
+    { "fight_4b470@cbside", m_d3b_tr_cbside, 0x00000000u },
+    { "fight_4b470@cbidx", m_d3b_tr_cbidx, 0x00000000u },
+    { "fight_4c784", b_d3b_4c784, 0x00000000u },
+    { "fight_4c784@hs", m_d3b_be_hs, 0x00000000u },
+    { "fight_4c784@flip", m_d3b_be_flip, 0x00000000u },
+    { "fight_4c784@flipbit", m_d3b_be_flipbit, 0x00000000u },
+    { "fight_4c784@sx", m_d3b_be_sx, 0x00000000u },
+    { "fight_4c784@y100", m_d3b_be_y100, 0x00000000u },
+    { "fight_4c784@ysext", m_d3b_be_ysext, 0x00000000u },
+    { "fight_4c784@sdesc", m_d3b_be_sdesc, 0x00000000u },
+    { "fight_4c784@sstream", m_d3b_be_sstream, 0x00000000u },
+    { "fight_4c784@shold", m_d3b_be_shold, 0x00000000u },
+    { "fight_4c784@shdead", m_d3b_be_shdead, 0x00000000u },
+    { "fight_4c784@shzero", m_d3b_be_shzero, 0x00000000u },
+    { "fight_4c784@shorder", m_d3b_be_shorder, 0x00000000u },
+    { "fight_4c784@dead", m_d3b_be_dead, 0x00000000u },
+    { "fight_4c784@vsext", m_d3b_be_vsext, 0x00000000u },
+    { "fight_4c784@vswap", m_d3b_be_vswap, 0x00000000u },
+    { "fight_4c784@v6", m_d3b_be_v6, 0x00000000u },
+    { "fight_4c784@vce", m_d3b_be_vce, 0x00000000u },
+    { "fight_4c784@vorder", m_d3b_be_vorder, 0x00000000u },
+    { "fight_4c784@score", m_d3b_be_score, 0x00000000u },
+    { "fight_4c784@scoredrop", m_d3b_be_scoredrop, 0x00000000u },
+    { "fight_4c784@score2", m_d3b_be_score2, 0x00000000u },
+    { "fight_4c784@turn", m_d3b_be_turn, 0x00000000u },
+    { "fight_4c784@turnge", m_d3b_be_turnge, 0x00000000u },
+    { "fight_4c784@turnrec", m_d3b_be_turnrec, 0x00000000u },
+    { "fight_4c784@turnact", m_d3b_be_turnact, 0x00000000u },
+    { "fight_4c784@wac", m_d3b_be_wac, 0x00000000u },
+    { "fight_4c784@w898", m_d3b_be_w898, 0x00000000u },
+    { "fight_4c784@w898drop", m_d3b_be_w898drop, 0x00000000u },
+    { "fight_4c784@three", m_d3b_be_three, 0x00000000u },
+    { "fight_4c784@f1f", m_d3b_be_f1f, 0x00000000u },
+    { "fight_4c784@run", m_d3b_be_run, 0x00000000u },
+    { "fight_4c784@norun", m_d3b_be_norun, 0x00000000u },
+    { "fight_4c784@z864", m_d3b_be_z864, 0x00000000u },
+    { "fight_4c784@txt", m_d3b_be_txt, 0x00000000u },
+    { "fight_4c784@row", m_d3b_be_row, 0x00000000u },
+    { "fight_4c784@tmode", m_d3b_be_tmode, 0x00000000u },
+    { "fight_4c784@lorder", m_d3b_be_lorder, 0x00000000u },
+    { "fight_4c784@pickarg", m_d3b_be_pickarg, 0x00000000u },
+    { "fight_4c784@dvarg", m_d3b_be_dvarg, 0x00000000u },
+    { "fight_4c784@dvch", m_d3b_be_dvch, 0x00000000u },
+    { "fight_4c784@d10", m_d3b_be_d10, 0x00000000u },
+    { "fight_4c784@cmple", m_d3b_be_cmple, 0x00000000u },
+    { "fight_4c784@cmpu", m_d3b_be_cmpu, 0x00000000u },
+    { "fight_4c784@d2580", m_d3b_be_d2580, 0x00000000u },
+    { "fight_4c784@d1740", m_d3b_be_d1740, 0x00000000u },
+    { "fight_4c784@dirs", m_d3b_be_dirs, 0x00000000u },
+    { "fight_4c784@rec4c", m_d3b_be_rec4c, 0x00000000u },
+    { "fight_4c784@y2", m_d3b_be_y2, 0x00000000u },
+    { "fight_4c784@xy", m_d3b_be_xy, 0x00000000u },
+    { "fight_4c784@ne8", m_d3b_be_ne8, 0x00000000u },
+    { "fight_4c784@a14", m_d3b_be_a14, 0x00000000u },
+    { "fight_4c784@nf1f", m_d3b_be_nf1f, 0x00000000u },
+    { "fight_4c784@f21", m_d3b_be_f21, 0x00000000u },
+    { "fight_4c784@fc", m_d3b_be_fc, 0x00000000u },
+    { "fight_4c784@clamp", m_d3b_be_clamp, 0x00000000u },
+    { "fight_4c784@w28", m_d3b_be_w28, 0x00000000u },
+    { "fight_4c784@w1c", m_d3b_be_w1c, 0x00000000u },
+    { "fight_4c784@e10", m_d3b_be_e10, 0x00000000u },
+    { "fight_4c784@bump", m_d3b_be_bump, 0x00000000u },
+    { "fight_4c784@type", m_d3b_be_type, 0x00000000u },
+    { "fight_4c784@s864", m_d3b_be_s864, 0x00000000u },
+    { "fight_4c784@e14", m_d3b_be_e14, 0x00000000u },
+    { "fight_4c784@or20", m_d3b_be_or20, 0x00000000u },
+    { "fight_4c784@lt", m_d3b_be_lt, 0x00000000u },
+    { "fight_4c784@v34", m_d3b_be_v34, 0x00000000u },
+    { "fight_4c784@b29", m_d3b_be_b29, 0x00000000u },
+    { "fight_4c784@idx8", m_d3b_be_idx8, 0x00000000u },
+    { "fight_4c784@hold", m_d3b_be_hold, 0x00000000u },
+    { "fight_4d224", b_d3b_4d224, 0x00000000u },
+    { "fight_4d224@c2", m_d3b_vh_c2, 0x00000000u },
+    { "fight_4d224@c2n", m_d3b_vh_c2n, 0x00000000u },
+    { "fight_4d224@albd4c", m_d3b_vh_albd4c, 0x00000000u },
+    { "fight_4d224@eax108", m_d3b_vh_eax108, 0x00000000u },
+    { "fight_4d224@no108", m_d3b_vh_no108, 0x00000000u },
+    { "fight_4d224@al150", m_d3b_vh_al150, 0x00000000u },
+    { "fight_4d224@order", m_d3b_vh_order, 0x00000000u },
+    { "fight_4d224@no150", m_d3b_vh_no150, 0x00000000u },
+    { "fight_4d224@sext", m_d3b_vh_sext, 0x00000000u },
+    { "fight_4d224@tbidx", m_d3b_vh_tbidx, 0x00000000u },
+    { "fight_4d224@bits", m_d3b_vh_bits, 0x00000000u },
+    { "fight_4d224@tabs", m_d3b_vh_tabs, 0x00000000u },
+    { "fight_4d224@and", m_d3b_vh_and, 0x00000000u },
+    { "fight_4d224@al3f0", m_d3b_vh_al3f0, 0x00000000u },
+    { "fight_4d224@flag3f0", m_d3b_vh_flag3f0, 0x00000000u },
+    { "fight_4d224@flag430", m_d3b_vh_flag430, 0x00000000u },
+    { "fight_4d224@bdidx", m_d3b_vh_bdidx, 0x00000000u },
+    { "fight_4d224_rr", b_d3b_4d224, 0x00000000u },
+    { "fight_4d224_rr@c42a", m_d3b_vh_c42a, 0x00000000u },
+    { "fight_4d224_rr@c42b", m_d3b_vh_c42b, 0x00000000u },
+    { "fight_effects_idle_pass", b_d3b_4def4, 0x00000000u },
+    { "fight_effects_idle_pass@w0", m_d3b_id_w0, 0x00000000u },
+    { "fight_effects_idle_pass@bb0", m_d3b_id_bb0, 0x00000000u },
+    { "fight_effects_idle_pass@wb", m_d3b_id_wb, 0x00000000u },
+    { "fight_effects_idle_pass@vcb", m_d3b_id_vcb, 0x00000000u },
+    { "fight_effects_idle_pass@novcb", m_d3b_id_novcb, 0x00000000u },
+    { "fight_effects_idle_pass@r14", m_d3b_id_r14, 0x00000000u },
+    { "fight_effects_idle_pass@r78", m_d3b_id_r78, 0x00000000u },
+    { "fight_effects_idle_pass@vorder", m_d3b_id_vorder, 0x00000000u },
+    { "fight_effects_idle_pass@dec", m_d3b_id_dec, 0x00000000u },
+    { "fight_effects_idle_pass@pre", m_d3b_id_pre, 0x00000000u },
+    { "fight_effects_idle_pass@vdc", m_d3b_id_vdc, 0x00000000u },
+    { "fight_effects_idle_pass@novdc", m_d3b_id_novdc, 0x00000000u },
+    { "fight_effects_idle_pass@dcb", m_d3b_id_dcb, 0x00000000u },
+    { "fight_effects_idle_pass@type0", m_d3b_id_type0, 0x00000000u },
+    { "fight_effects_idle_pass@type5", m_d3b_id_type5, 0x00000000u },
+    { "fight_effects_idle_pass@gate", m_d3b_id_gate, 0x00000000u },
+    { "fight_effects_idle_pass@al", m_d3b_id_al, 0x00000000u },
+    { "fight_effects_idle_pass@bb", m_d3b_id_bb, 0x00000000u },
+    { "fight_effects_idle_pass@w34", m_d3b_id_w34, 0x00000000u },
+    { "fight_effects_idle_pass@w34w", m_d3b_id_w34w, 0x00000000u },
+    { "fight_effects_idle_pass@jl", m_d3b_id_jl, 0x00000000u },
+    { "fight_effects_idle_pass@lsext", m_d3b_id_lsext, 0x00000000u },
+    { "fight_effects_idle_pass@hsx", m_d3b_id_hsx, 0x00000000u },
+    { "fight_effects_idle_pass@f55", m_d3b_id_f55, 0x00000000u },
+    { "fight_effects_idle_pass@f55lo", m_d3b_id_f55lo, 0x00000000u },
+    { "fight_effects_idle_pass@t1", m_d3b_id_t1, 0x00000000u },
+    { "fight_effects_idle_pass@t2", m_d3b_id_t2, 0x00000000u },
+    { "fight_effects_idle_pass@t3", m_d3b_id_t3, 0x00000000u },
+    { "fight_effects_idle_pass@hi3", m_d3b_id_hi3, 0x00000000u },
+    { "fight_effects_idle_pass@t4", m_d3b_id_t4, 0x00000000u },
+    { "fight_effects_idle_pass@hold4", m_d3b_id_hold4, 0x00000000u },
+    { "fight_effects_idle_pass@hold", m_d3b_id_hold, 0x00000000u },
+    { "fight_effects_idle_pass@y4", m_d3b_id_y4, 0x00000000u },
+    { "fight_effects_idle_pass@idx8", m_d3b_id_idx8, 0x00000000u },
+    { "fight_effects_idle_pass@idx20", m_d3b_id_idx20, 0x00000000u },
+    { "fight_effects_idle_pass@clr", m_d3b_id_clr, 0x00000000u },
+    { "fight_effects_idle_pass@once", m_d3b_id_once, 0x00000000u },
+    { "fight_effects_idle_pass@order", m_d3b_id_order, 0x00000000u },
+    { "fight_mode25_enter", b_d3b_4e11c, 0x00000000u },
+    { "fight_mode25_enter@b1d3", m_d3b_en_b1d3, 0x00000000u },
+    { "fight_mode25_enter@b1d2", m_d3b_en_b1d2, 0x00000000u },
+    { "fight_mode25_enter@decb", m_d3b_en_decb, 0x00000000u },
+    { "fight_mode25_enter@cxlo", m_d3b_en_cxlo, 0x00000000u },
+    { "fight_mode25_enter@cxhi", m_d3b_en_cxhi, 0x00000000u },
+    { "fight_mode25_enter@cxu", m_d3b_en_cxu, 0x00000000u },
+    { "fight_mode25_enter@ad8", m_d3b_en_ad8, 0x00000000u },
+    { "fight_mode25_enter@ad8u", m_d3b_en_ad8u, 0x00000000u },
+    { "fight_mode25_enter@ad8ge", m_d3b_en_ad8ge, 0x00000000u },
+    { "fight_mode25_enter@abc", m_d3b_en_abc, 0x00000000u },
+    { "fight_mode25_enter@abcs", m_d3b_en_abcs, 0x00000000u },
+    { "fight_mode25_enter@abc2", m_d3b_en_abc2, 0x00000000u },
+    { "fight_mode25_enter@ch0", m_d3b_en_ch0, 0x00000000u },
+    { "fight_mode25_enter@ch1", m_d3b_en_ch1, 0x00000000u },
+    { "fight_mode25_enter@chv", m_d3b_en_chv, 0x00000000u },
+    { "fight_mode25_enter@c4", m_d3b_en_c4, 0x00000000u },
+    { "fight_mode25_enter@nodec", m_d3b_en_nodec, 0x00000000u },
+    { "fight_mode25_enter@b25", m_d3b_en_b25, 0x00000000u },
+    { "fight_mode25_enter@c4s", m_d3b_en_c4s, 0x00000000u },
+    { "fight_mode25_enter@wa6", m_d3b_en_wa6, 0x00000000u },
+    { "fight_mode25_enter@wa6v", m_d3b_en_wa6v, 0x00000000u },
+    { "fight_mode25_enter@w9a", m_d3b_en_w9a, 0x00000000u },
+    { "fight_mode25_enter@w92", m_d3b_en_w92, 0x00000000u },
+    { "fight_mode25_enter@b15", m_d3b_en_b15, 0x00000000u },
+    { "fight_mode25_enter@c0", m_d3b_en_c0, 0x00000000u },
+    { "fight_mode25_enter@aec", m_d3b_en_aec, 0x00000000u },
+    { "fight_mode25_enter@aecbit", m_d3b_en_aecbit, 0x00000000u },
+    { "fight_mode25_enter@bc", m_d3b_en_bc, 0x00000000u },
+    { "fight_mode25_enter@mode", m_d3b_en_mode, 0x00000000u },
+    { "fight_mode25_enter@modev", m_d3b_en_modev, 0x00000000u },
+    { "fight_mode25_enter@w96", m_d3b_en_w96, 0x00000000u },
+    { "fight_mode25_enter@bd", m_d3b_en_bd, 0x00000000u },
+    { "fight_mode25_enter@be", m_d3b_en_be, 0x00000000u },
+    { "fight_mode25_enter@d884", m_d3b_en_d884, 0x00000000u },
+    { "fight_mode25_enter@d884v", m_d3b_en_d884v, 0x00000000u },
+    { "fight_mode25_enter@flash", m_d3b_en_flash, 0x00000000u },
+    { "fight_mode25_enter@noflash", m_d3b_en_noflash, 0x00000000u },
+    { "fight_mode25_enter@order", m_d3b_en_order, 0x00000000u },
+    { "fight_mode25_enter@order2", m_d3b_en_order2, 0x00000000u },
+    { "fight_mode25_enter@once", m_d3b_en_once, 0x00000000u },
+    { "fight_mode25_enter@b5", m_d3b_en_b5, 0x00000000u },
+    { "fight_mode25_enter@stride", m_d3b_en_stride, 0x00000000u },
+    { "fight_mode25_enter@base", m_d3b_en_base, 0x00000000u },
+    { "fight_mode25_enter@sidearg", m_d3b_en_sidearg, 0x00000000u },
+    { "fight_mode25_enter@no38154", m_d3b_en_no38154, 0x00000000u },
+    { "fight_mode25_enter@lorder", m_d3b_en_lorder, 0x00000000u },
+    { "fight_mode25_enter@txt", m_d3b_en_txt, 0x00000000u },
+    { "fight_mode25_enter@row", m_d3b_en_row, 0x00000000u },
+    { "fight_mode25_enter@tmode", m_d3b_en_tmode, 0x00000000u },
+    { "fight_mode25_enter@col", m_d3b_en_col, 0x00000000u },
+    { "fight_mode25_enter@notext", m_d3b_en_notext, 0x00000000u },
+    { "fight_mode25_enter@spawnarg", m_d3b_en_spawnarg, 0x00000000u },
+    { "fight_mode25_enter@nospawn", m_d3b_en_nospawn, 0x00000000u },
+    { "fight_mode25_enter@sorder", m_d3b_en_sorder, 0x00000000u },
+    { "fight_slot_pass", b_d3b_3cb68, 0x00000000u },
+    { "fight_slot_pass@edc0", m_d3b_sp_edc0, 0x00000000u },
+    { "fight_slot_pass@pre", m_d3b_sp_pre, 0x00000000u },
+    { "fight_slot_pass@side", m_d3b_sp_side, 0x00000000u },
+    { "fight_slot_pass@ee4", m_d3b_sp_ee4, 0x00000000u },
+    { "fight_slot_pass@ee4w", m_d3b_sp_ee4w, 0x00000000u },
+    { "fight_slot_pass@n1f", m_d3b_sp_n1f, 0x00000000u },
+    { "fight_slot_pass@i", m_d3b_sp_i, 0x00000000u },
+    { "fight_slot_pass@edcinc", m_d3b_sp_edcinc, 0x00000000u },
+    { "fight_slot_pass@final", m_d3b_sp_final, 0x00000000u },
+    { "fight_slot_pass@order", m_d3b_sp_order, 0x00000000u },
+    { "fight_slot_pass_rr", b_d3b_3cb68, 0x00000000u },
+    { "fight_slot_pass_rr@cn", m_d3b_sp_cn, 0x00000000u },
+    { "fight_slot_pass_rr@cs", m_d3b_sp_cs, 0x00000000u },
+    { "fight_slot_pass_rr@old", m_d3b_sp_old, 0x00000000u },
+    { "fight_char_prompt", b_d3b_432a0, 0x00000000u },
+    { "fight_char_prompt@al", m_d3b_pr_al, 0x00000000u },
+    { "fight_char_prompt@inv", m_d3b_pr_inv, 0x00000000u },
+    { "fight_char_prompt@bit", m_d3b_pr_bit, 0x00000000u },
+    { "fight_char_prompt@rows", m_d3b_pr_rows, 0x00000000u },
+    { "fight_char_prompt@row37", m_d3b_pr_row37, 0x00000000u },
+    { "fight_char_prompt@side", m_d3b_pr_side, 0x00000000u },
+    { "fight_char_prompt@coinside", m_d3b_pr_coinside, 0x00000000u },
+    { "fight_char_prompt@coinrow", m_d3b_pr_coinrow, 0x00000000u },
+    { "fight_char_prompt@always", m_d3b_pr_always, 0x00000000u },
+    { "fight_char_join", b_d3b_43928, 0x00000000u },
+    { "fight_char_join@skip", m_d3b_jn_skip, 0x00000000u },
+    { "fight_char_join@al", m_d3b_jn_al, 0x00000000u },
+    { "fight_char_join@or", m_d3b_jn_or, 0x00000000u },
+    { "fight_char_join@set", m_d3b_jn_set, 0x00000000u },
+    { "fight_char_join@f170", m_d3b_jn_f170, 0x00000000u },
+    { "fight_char_join@f170v", m_d3b_jn_f170v, 0x00000000u },
+    { "fight_char_join@once", m_d3b_jn_once, 0x00000000u },
+    { "fight_char_join@sidearg", m_d3b_jn_sidearg, 0x00000000u },
+    { "fight_char_join@order", m_d3b_jn_order, 0x00000000u },
+    { "fight_char_join@idx", m_d3b_jn_idx, 0x00000000u },
+    { "fight_char_opp_text_blink", b_d3b_435ac, 0x00000000u },
+    { "fight_char_opp_text_blink@phase", m_d3b_ob_phase, 0x00000000u },
+    { "fight_char_opp_text_blink@p18", m_d3b_ob_p18, 0x00000000u },
+    { "fight_char_opp_text_blink@flagall", m_d3b_ob_flagall, 0x00000000u },
+    { "fight_char_opp_text_blink@flag", m_d3b_ob_flag, 0x00000000u },
+    { "fight_char_opp_text_blink@oppside", m_d3b_ob_oppside, 0x00000000u },
+    { "fight_char_opp_text_blink@bit", m_d3b_ob_bit, 0x00000000u },
+    { "fight_char_opp_text_blink@clrflag", m_d3b_ob_clrflag, 0x00000000u },
+    { "fight_char_opp_text_blink@noclr", m_d3b_ob_noclr, 0x00000000u },
+    { "fight_char_opp_text_blink@order", m_d3b_ob_order, 0x00000000u },
+    { "fight_char_opp_text_blink@sx", m_d3b_ob_sx, 0x00000000u },
+    { "fight_char_opp_text_blink@sdesc", m_d3b_ob_sdesc, 0x00000000u },
+    { "fight_char_opp_text_blink@sxs", m_d3b_ob_sxs, 0x00000000u },
+    { "fight_char_opp_text_blink@a3", m_d3b_ob_a3, 0x00000000u },
+    { "fight_char_opp_text_blink@a4", m_d3b_ob_a4, 0x00000000u },
+    { "fight_char_opp_text_blink@a5", m_d3b_ob_a5, 0x00000000u },
+    { "fight_char_opp_text_blink@store", m_d3b_ob_store, 0x00000000u },
+    { "fight_char_opp_text_blink@storeside", m_d3b_ob_storeside, 0x00000000u },
+    { "fight_char_opp_text_blink@col", m_d3b_ob_col, 0x00000000u },
+    { "fight_char_opp_text_blink@sext", m_d3b_ob_sext, 0x00000000u },
+    { "fight_char_opp_text_blink@ids", m_d3b_ob_ids, 0x00000000u },
+    { "fight_char_opp_text_blink@row1", m_d3b_ob_row1, 0x00000000u },
+    { "fight_char_opp_text_blink@row2", m_d3b_ob_row2, 0x00000000u },
+    { "fight_char_opp_text_blink@mode", m_d3b_ob_mode, 0x00000000u },
+    { "fight_char_opp_text_blink@one", m_d3b_ob_one, 0x00000000u },
+    { "fight_char_opp_text_blink_rr", b_d3b_435ac, 0x00000000u },
+    { "fight_char_opp_text_blink_rr@cache", m_d3b_ob_cache, 0x00000000u },
+    { "fight_char_text_blink", b_d3b_43464, 0x00000000u },
+    { "fight_char_text_blink@phase", m_d3b_tb_phase, 0x00000000u },
+    { "fight_char_text_blink@p18", m_d3b_tb_p18, 0x00000000u },
+    { "fight_char_text_blink@flagall", m_d3b_tb_flagall, 0x00000000u },
+    { "fight_char_text_blink@flag", m_d3b_tb_flag, 0x00000000u },
+    { "fight_char_text_blink@clrside18", m_d3b_tb_clrside18, 0x00000000u },
+    { "fight_char_text_blink@bit", m_d3b_tb_bit, 0x00000000u },
+    { "fight_char_text_blink@clrflag", m_d3b_tb_clrflag, 0x00000000u },
+    { "fight_char_text_blink@noclr", m_d3b_tb_noclr, 0x00000000u },
+    { "fight_char_text_blink@order", m_d3b_tb_order, 0x00000000u },
+    { "fight_char_text_blink@sx", m_d3b_tb_sx, 0x00000000u },
+    { "fight_char_text_blink@sdesc", m_d3b_tb_sdesc, 0x00000000u },
+    { "fight_char_text_blink@sxs", m_d3b_tb_sxs, 0x00000000u },
+    { "fight_char_text_blink@a3", m_d3b_tb_a3, 0x00000000u },
+    { "fight_char_text_blink@a4", m_d3b_tb_a4, 0x00000000u },
+    { "fight_char_text_blink@a5", m_d3b_tb_a5, 0x00000000u },
+    { "fight_char_text_blink@store", m_d3b_tb_store, 0x00000000u },
+    { "fight_char_text_blink@storeside", m_d3b_tb_storeside, 0x00000000u },
+    { "fight_char_text_blink@row0", m_d3b_tb_row0, 0x00000000u },
+    { "fight_char_text_blink@lenid", m_d3b_tb_lenid, 0x00000000u },
+    { "fight_char_text_blink@lt", m_d3b_tb_lt, 0x00000000u },
+    { "fight_char_text_blink@nolen", m_d3b_tb_nolen, 0x00000000u },
+    { "fight_char_text_blink@col", m_d3b_tb_col, 0x00000000u },
+    { "fight_char_text_blink@sext", m_d3b_tb_sext, 0x00000000u },
+    { "fight_char_text_blink@ids", m_d3b_tb_ids, 0x00000000u },
+    { "fight_char_text_blink@rel1", m_d3b_tb_rel1, 0x00000000u },
+    { "fight_char_text_blink@rowm2", m_d3b_tb_rowm2, 0x00000000u },
+    { "fight_char_text_blink@rel2", m_d3b_tb_rel2, 0x00000000u },
+    { "fight_char_text_blink@rowm1", m_d3b_tb_rowm1, 0x00000000u },
+    { "fight_char_text_blink@id3", m_d3b_tb_id3, 0x00000000u },
+    { "fight_char_text_blink@rel3", m_d3b_tb_rel3, 0x00000000u },
+    { "fight_char_text_blink@row3", m_d3b_tb_row3, 0x00000000u },
+    { "fight_char_text_blink@mode", m_d3b_tb_mode, 0x00000000u },
+    { "fight_char_text_blink@always4", m_d3b_tb_always4, 0x00000000u },
+    { "fight_char_text_blink@ge", m_d3b_tb_ge, 0x00000000u },
+    { "fight_char_text_blink@row4", m_d3b_tb_row4, 0x00000000u },
+    { "fight_char_text_blink@mode4", m_d3b_tb_mode4, 0x00000000u },
+    { "fight_char_text_blink_rr", b_d3b_43464, 0x00000000u },
+    { "fight_char_text_blink_rr@cache", m_d3b_tb_cache, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
