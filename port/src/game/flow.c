@@ -342,6 +342,7 @@ static const u8 *title_string(void) { return game_string_get(0x15u); }
  * machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3)
 {
+    PR_SEAM(0x38B18u, (u32)((const u8 *)desc - mem), a2, a3);
     u32 slot = 0;
     while (slot < 7u && DSD(DS_00107A1C + slot * 4u) != 0) slot++;
     u32 at = slot < 7u ? DS_00107A1C + slot * 4u : DS_00107A1C - 4u;   /* 0x38B1F, 0x38B32 */
@@ -367,6 +368,7 @@ u32 frontend_list_next(u32 node)
  * rejects everything else. Exposed for a unit test. */
 u32 frontend_resource_known(u32 rec)
 {
+    PR_SEAM_RET(0x1C6D4u, rec);
     u32 v = DSD(rec);
     switch (v) {
     case 0x80995Cu: case 0x80997Cu: case 0x809984u: case 0x80998Cu:
@@ -1167,6 +1169,7 @@ void frontend_mode_15_step(void)
  * runs. The mode is left to the hook (unlike mode 0x16's 0x4F2B0). */
 void frontend_mode_17_step(void)
 {
+    PR_SEAM0(0x4F318u);
     u16 dx = DSW(DS_001088EE);                          /* 0x4F31A */
     if (dx == 0u) {                                     /* 0x4F321/0x4F324 */
         u32 r = frontend_skip_check() & 0xFFu;          /* 0x4F326 0x4F790, 0x4F32B */
@@ -3259,6 +3262,7 @@ void game_mode_21_step(void)
  * call, without the rest. */
 void flow_scroll_reset(u32 stage)
 {
+    PR_SEAM(0x20E90u, stage);
     DSD(DS_000F0AEC) = 0u;                              /* 0x20E93 */
     DSD(DS_000F0AF0) = 0u;                              /* 0x20E99 */
     DSW(DS_000F0AFA) = 0u;                              /* 0x20EA1 */
@@ -3311,6 +3315,7 @@ u32 flow_challenge_handle(u32 side, u32 ch)
  * stores it. */
 void flow_challenge_open(void)
 {
+    PR_SEAM0(0x428B8u);
     u32 r, pa, pb, rec;
     /* 0x428BD 0x29D60 is a ret-only no-op. */
     DSD(DS_001080DC) = 0u;                              /* 0x428D2 */
@@ -3400,6 +3405,7 @@ void flow_challenge_open(void)
  * stores it. */
 void flow_challenge_drop(void)
 {
+    PR_SEAM0(0x42BCCu);
     u32 o;
     if (DSB(DSD(DS_001080B4) + 0x5Bu) != 0u             /* 0x42BD0..0x42BD9 */
             && DSB(DSD(DS_001080B8) + 0x5Bu) != 0u) {   /* 0x42BDB..0x42BE4 */
@@ -3452,6 +3458,7 @@ void flow_challenge_drop(void)
  * DS_001080F0 = DS_00107844. */
 void flow_challenge_fighters(void)
 {
+    PR_SEAM0(0x42724u);
     u32 c0 = DSB(DS_0010782A);                          /* 0x4272C/0x42731 */
     u32 c1 = DSB(DS_001078BE);                          /* 0x42734/0x42739 */
     u32 r = DSD(DS_00104AD4);                           /* 0x4273D */
@@ -3572,6 +3579,7 @@ void flow_challenge_join(u32 side)
  * 0x42FE0. */
 void flow_challenge_poll(void)
 {
+    PR_SEAM0(0x42CB4u);
     u32 r = DSD(DS_00104AD4);                           /* 0x42CBA */
     u32 tick;
     s8 n;

@@ -1962,6 +1962,7 @@ void fight_round_reset(void)
 
 void fight_health_bars(void)
 {
+    PR_SEAM0(0x33F08u);
     u32 table = DSD(DS_001014EC);                           /* 0x33F0D */
     for (u32 side = 0; side < 2u; side++) {                 /* 0x33F13 */
         u32 rec = DSD(DS_001077A8 + side * 4u);             /* 0x33F15 */
@@ -3700,6 +3701,7 @@ void fight_4dbec(void)
  * 0x5D7DC (pushes EBX/EDX); EDX (si) survives the rng(2) draw. */
 void fight_challenge_crowd(void)
 {
+    PR_SEAM0(0x4B9ACu);
     u32 side;
     for (side = 0; side < 2u; side++) {                         /* 0x4B9BA..0x4B9C9, 0x4BD1F..0x4BD39 */
         u32 slot = DS_001077B0 + side * 0x94u;                  /* 0x4B9BC, 0x4BD27 */

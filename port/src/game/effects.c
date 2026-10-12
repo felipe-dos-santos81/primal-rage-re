@@ -544,6 +544,7 @@ void effects_clear(void)
  * the original's call graph and fn_resolve(0x29CFC) hold. */
 void effects_29cfc(void)
 {
+    PR_SEAM0(0x29CFCu);
     effects_clear();
 }
 

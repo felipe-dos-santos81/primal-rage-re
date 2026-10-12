@@ -24747,6 +24747,145 @@ D5I_SPECS += [
                     for a in (0x275C5, 0x27657, 0x27661, 0x276BE, 0x277BC)},
        mutants=("@prew0", "@pre529", "@prew1", "@prew2")),
 ]
+# mode 0x13's callees (clobbers: E.callee_clobbers over the image), all seamed by this batch but 0x4F1D0
+D5I_RESETAL = E.Call(0x2BAF4, ("eax",))
+D5I_ORIGIN = E.Call(0x4F1D0, ())
+D5I_ROW = E.Call(0x38B18, ("eax", "edx", "ebx"), clobbers=("ebx", "ecx", "edx"))
+D5I_COPEN = E.Call(0x428B8, ())
+D5I_CDROP = E.Call(0x42BCC, ())
+D5I_FXCLR = E.Call(0x29CFC, (), clobbers=("edx",))
+D5I_SCROLL = E.Call(0x20E90, ("eax",), clobbers=("edi", "ebp"))
+D5I_CFIGHT = E.Call(0x42724, ())
+D5I_CROWD = E.Call(0x4B9AC, ())
+D5I_KNOWN = E.Call(0x1C6D4, ("eax",))
+D5I_CPOLL = E.Call(0x42CB4, ())
+D5I_BARS = E.Call(0x33F08, ())
+D5I_M17 = E.Call(0x4F318, (), clobbers=("ecx", "esi", "edi", "ebp"))
+D5I_M13_CALLS = (VOICE, D5I_RESETAL, D5I_ORIGIN, D5I_ROW, D5I_COPEN, D5I_CDROP, D5I_FXCLR, D5I_SCROLL, D5I_CFIGHT,
+                 D5I_CROWD, D5I_KNOWN, P6_13C70, D5I_CPOLL, D5I_BARS, D5I_M17)
+# the same callees leaving what 0x424E8 reads after each: 0x428B8 the state byte 0x104B25 (0x42538) and
+# the byte 0x104B1D = 0 (0x425EF), 0x42BCC the byte 0x104B1D = 2, 0x33F08 the byte 0x104B1D = 1, 0x1C6D4
+# its entry's handle (0x425A4 `mov ebx,[ecx]`), 0x13C70 the state byte (0x425B8 `inc byte`), 0x2C060 the
+# option byte 0x104529 (0x4261C, 0x4267C, 0x426DF) and slot 1's gate 0x1078A7 (0x426CD), 0x2C178 the
+# dword 0x104AB8 (0x42606) and the byte 0x104B1F (0x4266A, 0x426C3)
+D5I_M13_CALLS_W = (
+    VOICE, D5I_RESETAL, D5I_ORIGIN, D5I_ROW, d5i_w(D5I_COPEN, (0x00104B25, b"\x40"), (0x00104B1D, b"\x00")),
+    d5i_w(D5I_CDROP, (0x00104B1D, b"\x02")), D5I_FXCLR, D5I_SCROLL, D5I_CFIGHT, D5I_CROWD,
+    dataclasses.replace(D5I_KNOWN, writes=((0, 0, le32(0x00AB9999)),)), d5i_w(P6_13C70, (0x00104B25, b"\x40")),
+    D5I_CPOLL, d5i_w(D5I_BARS, (0x00104B1D, b"\x01")),
+    d5i_w(D3A_READY, (0x00104529, b"\x02"), (0x001078A7, b"\x01")),
+    d5i_w(D3A_PRESS, (0x00104AB8, le32(0)), (0x00104B1F, b"\x00")))
+D5I_M13_TAIL = (0x425FA, 0x42606, 0x42613, 0x4261C, 0x42625, 0x42633, 0x4263E, 0x42649, 0x42653, 0x42659, 0x42665,
+                0x42673, 0x4267C, 0x42685, 0x42690, 0x4269B, 0x426A9, 0x426B3, 0x426CD, 0x426D6, 0x426DF, 0x426E8,
+                0x426F6, 0x42701)
+D5I_M13_ARMS = (0x424FB, 0x42508, 0x42553, 0x4255D, 0x42586, 0x42590, 0x42592, 0x4259D, 0x425AB, 0x425B8, 0x425C0,
+                0x425C9, 0x425DE, 0x425E5, 0x425EA)
+
+
+def d5i_m13(state, b1d=0, b1f=3, ab8=0x5A5A5A00, gates=(0x5A, 0x5B), b529=0, afc=0x0003, fx=0, lst=(),
+            phase=0x0018, cols=(0x0E, 0x92)):
+    """0x424E8: the state byte 0x104B25, the bytes 0x104B15 (0x5A), 0x104B1D `b1d` and 0x104B1F
+    `b1f`, the dword 0x104AB8 `ab8`, the two gate bytes 0x107813/0x1078A7 `gates`, the option
+    byte 0x104529, the stage word 0x104AFC `afc` and the effects count 0x9AF3D `fx`, each
+    between seeded neighbours; the 0x10-byte list entries 0x107618 + k * 0x10 of `lst` ((k,
+    handle) pairs: +0 the handle, +4 non-zero); and what a real 0x2C1C8 reads: the phase word
+    0xEF6DC (0x18: it releases 0x105BF8 = 0x21 cells at the side's col byte 0xBAB58[side])."""
+    p = {0x00104B24: bytes([0x61, state, 0x62]), 0x00104B14: bytes([0x63, 0x5A, 0x64]),
+         0x00104B1C: bytes([0x65, b1d, 0x66, b1f, 0x67]),
+         0x00104AB4: le32(0x68686868) + le32(ab8) + le32(0x69696969),
+         0x00107812: bytes([0x6A, gates[0], 0x6B]), 0x001078A6: bytes([0x6C, gates[1], 0x6D]),
+         0x00104528: bytes([0x6E, b529, 0x6F]), 0x00104AFA: le16(0x7070) + le16(afc) + le16(0x7171),
+         0x0009AF3C: bytes([0x72, fx, 0x73]), 0x000EF6DC: le16(phase) + le16(0x7474),
+         0x000BAB57: bytes([0x71, cols[0], cols[1]]), 0x00105BF8: le32(0x21),
+         0x00105C04: b"\x61\x62\x63\x64\x65", 0x00102760: b"\x5a" * 0x10}
+    for k, h in lst:
+        p[0x00107618 + k * 0x10] = le32(h) + le32(1) + le32(0x75757500 + k) + le32(0x76767600 + k)
+    return p
+
+
+D5I_LST = ((1, 0x00AB1111), (3, 0x0003E708), (23, 0x00AB3333))
+D5I_SPECS += [
+    # 0x424E8 game_mode_13_step: no argument. A jump table (0x424D0, six entries; `cmp al,5; ja`) on
+    # the state byte 0x104B25: 0 the voice 0x2C, 0x2BAF4(1), 0x4F1D0, 0x38B18(0xC87BC, 0, 0),
+    # 0x428B8, then 0x104B15 = 0 and the state + 1; 1 0x42BCC; 2 0x29CFC, 0x20E90(the zero-
+    # extended stage word 0x104AFC), 0x42724, 0x4B9AC, then the list walk 0x33904 (real over the
+    # poked entries): an entry whose handle is not 0x3E708 and that 0x1C6D4 rejects (`test al,al`:
+    # w2 returns 0x100) takes 0x13C70(the entry, 3, its handle), and the state + 1; 3 with the
+    # effects count 0x9AF3D zero the call 0xC7F58[stage] (0x412EC, a `ret`, or 0x5D812, `xor
+    # eax,eax; ret`: real in the original, not issued by the port, record §4) and the state + 1,
+    # then as 4: 0x42CB4 and 0x33F08; 5 0x4F318 and 0x33F08; above 5 nothing (z6, z7). Every
+    # other callee is a stub. The prompt tail is kept silent here (0x104B1D = 0 with both bits of
+    # 0x104B1F): the `_prompt` row runs it. Mask 0: record §1.
+    Spec("game_mode_13_step", 0x424E8, [
+        Case("o0", D5I_REG, d5i_m13(0), {0x428B8: 0x12345678}),
+        Case("d0", {}, d5i_m13(1)),
+        Case("w0", D5I_REG, d5i_m13(2, afc=0x8003, lst=D5I_LST), {0x1C6D4: 0}),
+        Case("w1", {}, d5i_m13(2, afc=0x0103, lst=D5I_LST), {0x1C6D4: 1}),
+        Case("w2", {}, d5i_m13(2, lst=D5I_LST), {0x1C6D4: 0x100, 0x13C70: 0x0010A300}),
+        Case("w3", {}, d5i_m13(2), {0x1C6D4: 0}),
+        Case("w4", {}, d5i_m13(2, lst=((0, 0x0003E708), (2, 0x0003E708))), {0x1C6D4: 0xFFFFFF00}),
+        Case("w5", {}, d5i_m13(2, lst=((5, 0x0003E709),)), {0x1C6D4: 0xFFFFFF01}),
+        Case("p0", D5I_REG, d5i_m13(3, afc=0, fx=0)),
+        Case("p1", {}, d5i_m13(3, afc=3, fx=0), {0x42CB4: 0x12345678}),
+        Case("p2", {}, d5i_m13(3, afc=7, fx=1)),
+        Case("p3", {}, d5i_m13(3, afc=0, fx=0x80)),
+        Case("q0", {}, d5i_m13(4, fx=0)),
+        Case("t0", D5I_REG, d5i_m13(5), {0x4F318: 0x12345678}),
+        Case("z6", {}, d5i_m13(6)),
+        Case("z7", {}, d5i_m13(0x81)),
+    ], allow_calls=(0x33904, 0x412EC, 0x5D812), calls=D5I_M13_CALLS, eax_mask=0,
+       unhit_named={a: "the prompt tail with a side to prompt: the `_prompt` row hits it" for a in D5I_M13_TAIL},
+       mutants=("@st6", "@stmask", "@openearly", "@novoice", "@voice", "@resetal", "@noreset", "@noorigin", "@norow",
+                "@rowdesc", "@rowa2", "@rowa3", "@noopen", "@b15w", "@nob15", "@b15early", "@s0noinc", "@s0inc2",
+                "@s0incearly", "@nodrop", "@s2incearly", "@crowdearly", "@nofxclr", "@scrollsext", "@scrollb",
+                "@noscroll", "@nofighters", "@nocrowd", "@noskip", "@knowneax", "@knowninv", "@nospawn", "@spawnsrc",
+                "@spawnarg", "@spawnh0", "@walkone", "@s2noinc", "@s3gateinv", "@s3gatew", "@s3always", "@s4inc",
+                "@s3noinc", "@s3inclate", "@barsearly", "@nopoll", "@nobars", "@s5poll", "@nom17", "@s5nobars")),
+    # 0x424E8, the prompt tail (0x425EF): on the byte 0x104B1D (read once) each side 0, 1 gets
+    # "PRESS START" (0x2C178 at row 0x3800 with the option byte 0x104529 bit 1, else 0x1C) when
+    # 0x2C060 returns non-zero (`test eax,eax`: a4 returns 0x100), else "INSERT 1 COIN"
+    # (0x2C1C8(side, 0x1C)), unless: with 1, the side's bit (side + 1) is clear in the dword
+    # 0x104AB8; with any other non-zero value, that bit is set in the byte 0x104B1F; with 0, that
+    # bit is set there or the side's gate byte 0x107813 + side * 0x94 is non-zero. 0x2C1C8 runs
+    # real (its loop registers ECX/ESI/EDI live across it and the scan cannot credit 0x2C1D4's
+    # pushes to it, record §4): at the phase 0x18 it releases the side's cells through the
+    # stubbed 0x2F388, which names the side by its col byte. The state is 6 or 0xFF. Mask 0: §1.
+    Spec("game_mode_13_step_prompt", 0x424E8, [
+        Case("a0", D5I_REG, d5i_m13(6, b1d=1, ab8=0x5A5A5A03, b1f=0xFC, b529=0x02, gates=(1, 1)), {0x2C060: 1}),
+        Case("a1", {}, d5i_m13(6, b1d=1, ab8=0x00000001, b1f=0x02, b529=0xFD), {0x2C060: 0xFFFFFFFF}),
+        Case("a2", {}, d5i_m13(6, b1d=1, ab8=0xFFFFFFFE, b1f=0x01, b529=0x02), {0x2C060: 0}),
+        Case("a3", {}, d5i_m13(6, b1d=1, ab8=0xFFFFFFFC, b1f=0x00), {0x2C060: 1}),
+        Case("a4", {}, d5i_m13(0xFF, b1d=1, ab8=0x00000003, b1f=0x03, b529=0x00), {0x2C060: 0x100}),
+        Case("b0", D5I_REG, d5i_m13(6, b1d=2, b1f=0xFC, ab8=0, b529=0x02, gates=(1, 1)), {0x2C060: 1}),
+        Case("b1", {}, d5i_m13(6, b1d=0xFF, b1f=0x01, ab8=0x00000001, gates=(0, 1)), {0x2C060: 0}),
+        Case("b2", {}, d5i_m13(6, b1d=0x80, b1f=0x02, ab8=0x00000002, b529=0x00), {0x2C060: 1}),
+        Case("b3", {}, d5i_m13(6, b1d=3, b1f=0x03, ab8=0), {0x2C060: 1}),
+        Case("c0", D5I_REG, d5i_m13(6, b1d=0, b1f=0xFC, ab8=0, gates=(0, 0), b529=0x02), {0x2C060: 1}),
+        Case("c1", {}, d5i_m13(6, b1d=0, b1f=0x00, ab8=0x00000003, gates=(1, 0)), {0x2C060: 0}),
+        Case("c2", {}, d5i_m13(6, b1d=0, b1f=0x01, ab8=0x00000002, gates=(0, 0x80)), {0x2C060: 1}),
+        Case("c3", {}, d5i_m13(6, b1d=0, b1f=0x02, ab8=0x00000001, gates=(0, 0), b529=0xFD), {0x2C060: 0x100}),
+        Case("c4", {}, d5i_m13(6, b1d=0, b1f=0x00, ab8=0, gates=(0, 0)), {0x2C060: 0}),
+    ], allow_calls=(0x2C1C8,), calls=(D3A_READY, D3A_PRESS, D2C_RELCNT), eax_mask=0,
+       unhit_named={a: "the state arms: the plain row hits them" for a in D5I_M13_ARMS},
+       mutants=("@credital", "@creditinv", "@bitmask", "@rowswap", "@nopress", "@pressside", "@row3800", "@row1c",
+                "@nocoin", "@coinside", "@coinrow", "@rev", "@one", "@bit0", "@b1dany", "@asrc", "@ainv", "@bsrc",
+                "@binv", "@gateany", "@gateother", "@gateoff", "@nogate")),
+    # 0x424E8 again with stubs that write what the raw reads after each call (D5I_M13_CALLS_W). r0:
+    # state 0, whose 0x428B8 leaves the state 0x40 and 0x104B1D = 0 (the third loop: side 1 stops
+    # at the gate 0x2C060 leaves); r1: state 1, whose 0x42BCC leaves 0x104B1D = 2 (the second
+    # loop: side 1 is prompted on the 0x104B1F that 0x2C178 leaves); r2: state 2 (each handle is
+    # 0xAB9999 at the 0x13C70 call; the state is 0x41); r4: state 4, whose 0x33F08 leaves
+    # 0x104B1D = 1 (the first loop: side 1 stops on the 0x104AB8 that 0x2C178 leaves).
+    Spec("game_mode_13_step_rr", 0x424E8, [
+        Case("r0", {}, d5i_m13(0, b1d=1, b1f=0x02, ab8=0x00000003, gates=(0, 0)), {0x2C060: 1}),
+        Case("r1", {}, d5i_m13(1, b1d=0, b1f=0x02, ab8=0, gates=(0, 0)), {0x2C060: 1}),
+        Case("r2", {}, d5i_m13(2, lst=D5I_LST), {0x1C6D4: 0}),
+        Case("r4", {}, d5i_m13(4, b1d=0, b1f=0x03, ab8=0x00000003), {0x2C060: 1}),
+    ], allow_calls=(0x33904, 0x2C1C8), calls=D5I_M13_CALLS_W, eax_mask=0,
+       unhit_named={a: "not taken under this row's writing stubs (the plain rows hit it)"
+                    for a in (0x425C0, 0x425C9, 0x425E5, 0x42633, 0x4263E, 0x42690, 0x4269B, 0x426F6, 0x42701)},
+       mutants=("@s0pre", "@prehandle", "@s2pre", "@preb1d", "@preab8", "@pre529", "@preb1f", "@pregate")),
+]
 D1_SPECS += D5I_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

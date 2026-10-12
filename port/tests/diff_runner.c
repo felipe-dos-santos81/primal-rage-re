@@ -33453,6 +33453,150 @@ static void d5i_274fc_core(u32 mut)
     if (mut != D5I_A_nobadge && mut != D5I_A_badgeearly) d5i_arena_badge(mut, e, ch2, ypre);
     d5i_arena_tail(mut, wpre, b0apre, 0xCu);
 }
+/* 0x424E8: no argument. Mask 0: the one call site 0x253C4 is followed by `jmp 0x2540f` (0x253C9), the mode
+ * tail the wave-1 records trace dead. Bound under three names: the state arms, the prompt tail (`_prompt`)
+ * and the row whose stubs write what the raw reads after each call (`_rr`). */
+static void b_d5i_424e8(const u32 *r, u32 *eax) { (void)r; game_mode_13_step(); *eax = 0u; }
+#define D5I_C_LIST(X) \
+    X(st6) X(stmask) X(openearly) X(novoice) X(voice) X(resetal) X(noreset) X(noorigin) X(norow) X(rowdesc) \
+    X(rowa2) X(rowa3) X(noopen) X(b15w) X(nob15) X(b15early) X(s0noinc) X(s0inc2) X(s0incearly) X(s0pre) \
+    X(nodrop) X(s2incearly) X(crowdearly) X(nofxclr) X(scrollsext) X(scrollb) X(noscroll) X(nofighters) \
+    X(nocrowd) X(noskip) X(knowneax) X(knowninv) X(nospawn) X(spawnsrc) X(spawnarg) X(spawnh0) X(prehandle) \
+    X(walkone) X(s2noinc) X(s2pre) X(s3gateinv) X(s3gatew) X(s3always) X(s4inc) X(s3noinc) X(s3inclate) \
+    X(barsearly) X(nopoll) X(nobars) X(s5poll) X(nom17) X(s5nobars) \
+    X(credital) X(creditinv) X(pre529) X(bitmask) X(rowswap) X(nopress) X(pressside) X(row3800) X(row1c) \
+    X(nocoin) X(coinside) X(coinrow) X(preb1d) X(rev) X(one) X(bit0) X(b1dany) X(preab8) X(asrc) X(ainv) \
+    X(preb1f) X(bsrc) X(binv) X(gateany) X(gateother) X(pregate) X(gateoff) X(nogate)
+enum { D5I_C_NONE,
+#define X(n) D5I_C_##n,
+       D5I_C_LIST(X)
+#undef X
+       D5I_C_COUNT };
+/* 0x42613..0x42644 (and its two twins): one side's prompt. */
+static void d5i_424e8_prompt(u32 mut, u32 side)
+{
+    u8 b529pre = DSB(0x00104529u);
+    u32 cr = config_credit_ready();
+    int ready = (mut == D5I_C_credital) ? ((cr & 0xFFu) != 0u) : (cr != 0u);
+    if (mut == D5I_C_creditinv) ready = !ready;
+    if (ready) {
+        u8 b = (mut == D5I_C_pre529) ? b529pre : DSB(0x00104529u);
+        int alt = (b & ((mut == D5I_C_bitmask) ? 1u : 2u)) != 0u;
+        if (mut == D5I_C_rowswap) alt = !alt;
+        if (mut != D5I_C_nopress)
+            prompt_press_start((mut == D5I_C_pressside) ? (side ^ 1u) : side,
+                               alt ? ((mut == D5I_C_row3800) ? 0x3600 : 0x3800) : ((mut == D5I_C_row1c) ? 0x1D : 0x1C));
+    } else if (mut != D5I_C_nocoin) {
+        prompt_insert_coin((mut == D5I_C_coinside) ? (side ^ 1u) : side, (mut == D5I_C_coinrow) ? 0x1D : 0x1C);
+    }
+}
+/* 0x425EF..0x42719: the three prompt loops on the byte 0x104B1D. */
+static void d5i_424e8_tail(u32 mut, u8 b1dpre)
+{
+    u8 b1d = (mut == D5I_C_preb1d) ? b1dpre : DSB(0x00104B1Du);
+    u32 ab8pre = DSD(0x00104AB8u), b1fpre = DSB(0x00104B1Fu);
+    u8 gpre[2] = { DSB(0x00107813u), DSB(0x001078A7u) };
+    for (u32 k = 0; k < ((mut == D5I_C_one) ? 1u : 2u); k++) {
+        u32 side = (mut == D5I_C_rev) ? 1u - k : k;
+        u32 bit = (mut == D5I_C_bit0) ? side : side + 1u;
+        if ((mut == D5I_C_b1dany) ? (b1d != 0u) : (b1d == 1u)) {
+            u32 m = (mut == D5I_C_preab8) ? ab8pre : (mut == D5I_C_asrc) ? (u32)DSB(0x00104B1Fu) : DSD(0x00104AB8u);
+            int skip = (bit & m) == 0u;
+            if (mut == D5I_C_ainv) skip = !skip;
+            if (skip) continue;
+        } else {
+            u32 m = (mut == D5I_C_preb1f) ? b1fpre : (mut == D5I_C_bsrc) ? DSD(0x00104AB8u) : (u32)DSB(0x00104B1Fu);
+            int skip = (bit & m) != 0u;
+            if (mut == D5I_C_binv) skip = !skip;
+            if (skip) continue;
+            if (b1d == 0u || mut == D5I_C_gateany) {
+                u32 gs = (mut == D5I_C_gateother) ? (side ^ 1u) : side;
+                u8 g = (mut == D5I_C_pregate) ? gpre[gs]
+                     : DSB(((mut == D5I_C_gateoff) ? 0x00107812u : 0x00107813u) + gs * 0x94u);
+                if (mut != D5I_C_nogate && g != 0u) continue;
+            }
+        }
+        d5i_424e8_prompt(mut, side);
+    }
+}
+static void d5i_424e8_core(u32 mut)
+{
+    u8 b1dpre = DSB(0x00104B1Du), b25pre = DSB(0x00104B25u);
+    u32 st = b25pre;
+    if (mut == D5I_C_st6 && st == 6u) st = 5u;
+    if (mut == D5I_C_stmask) st &= 0x7Fu;
+    switch (st) {
+    case 0u:
+        if (mut == D5I_C_b15early) DSB(0x00104B15u) = 0u;
+        if (mut == D5I_C_s0incearly) DSB(0x00104B25u) = (u8)(DSB(0x00104B25u) + 1u);
+        if (mut == D5I_C_openearly) flow_challenge_open();
+        if (mut != D5I_C_novoice) (void)sound_voice((mut == D5I_C_voice) ? 0x2Du : 0x2Cu);
+        if (mut == D5I_C_resetal) actors_reset_al(0u);
+        else if (mut != D5I_C_noreset) actors_reset();
+        if (mut != D5I_C_noorigin) frontend_origin_zero();
+        if (mut != D5I_C_norow)
+            frontend_spawn_row((const u32 *)(mem + ((mut == D5I_C_rowdesc) ? 0x000C87C0u : 0x000C87BCu)),
+                               (mut == D5I_C_rowa2) ? 1u : 0u, (mut == D5I_C_rowa3) ? 1u : 0u);
+        if (mut != D5I_C_noopen && mut != D5I_C_openearly) flow_challenge_open();
+        if (mut == D5I_C_b15w) DSW(0x00104B15u) = 0u;
+        else if (mut != D5I_C_nob15 && mut != D5I_C_b15early) DSB(0x00104B15u) = 0u;
+        if (mut != D5I_C_s0noinc && mut != D5I_C_s0incearly)
+            DSB(0x00104B25u) = (u8)(((mut == D5I_C_s0pre) ? b25pre : DSB(0x00104B25u))
+                                    + ((mut == D5I_C_s0inc2) ? 2u : 1u));
+        break;
+    case 1u:
+        if (mut != D5I_C_nodrop) flow_challenge_drop();
+        break;
+    case 2u: {
+        if (mut == D5I_C_s2incearly) DSB(0x00104B25u) = (u8)(DSB(0x00104B25u) + 1u);
+        if (mut == D5I_C_crowdearly) fight_challenge_crowd();
+        if (mut != D5I_C_nofxclr) effects_29cfc();
+        u32 stg = (mut == D5I_C_scrollsext) ? (u32)(s32)(s16)DSW(0x00104AFCu)
+                : (mut == D5I_C_scrollb) ? (u32)DSB(0x00104AFCu) : (u32)DSW(0x00104AFCu);
+        if (mut != D5I_C_noscroll) flow_scroll_reset(stg);
+        if (mut != D5I_C_nofighters) flow_challenge_fighters();
+        if (mut != D5I_C_nocrowd && mut != D5I_C_crowdearly) fight_challenge_crowd();
+        for (u32 e = frontend_list_next(0u); e != 0u; e = frontend_list_next(e)) {
+            u32 h = DSD(e);
+            if (h == 0x0003E708u && mut != D5I_C_noskip) continue;
+            u32 k = frontend_resource_known(e);
+            int known = (mut == D5I_C_knowneax) ? (k != 0u) : ((k & 0xFFu) != 0u);
+            if (mut == D5I_C_knowninv) known = !known;
+            if (known) continue;
+            if (mut != D5I_C_nospawn)
+                (void)effects_spawn((mut == D5I_C_spawnsrc) ? 0u : e, (mut == D5I_C_spawnarg) ? 2u : 3u,
+                                    (mut == D5I_C_prehandle) ? h : (mut == D5I_C_spawnh0) ? 0u : DSD(e));
+            if (mut == D5I_C_walkone) break;
+        }
+        if (mut != D5I_C_s2noinc && mut != D5I_C_s2incearly)
+            DSB(0x00104B25u) = (u8)(((mut == D5I_C_s2pre) ? b25pre : DSB(0x00104B25u)) + 1u);
+        break;
+    }
+    case 3u:
+    case 4u: {
+        int inc = 0;
+        if (st == 3u)
+            inc = (mut == D5I_C_s3gateinv) ? (DSB(0x0009AF3Du) != 0u) : (mut == D5I_C_s3always) ? 1
+                : (mut == D5I_C_s3gatew) ? (DSW(0x0009AF3Du) == 0u) : (DSB(0x0009AF3Du) == 0u);
+        if (st == 4u && mut == D5I_C_s4inc) inc = 1;
+        if (mut == D5I_C_s3noinc) inc = 0;
+        if (inc && mut != D5I_C_s3inclate) DSB(0x00104B25u) = (u8)(DSB(0x00104B25u) + 1u);
+        if (mut == D5I_C_barsearly) fight_health_bars();
+        if (mut != D5I_C_nopoll) flow_challenge_poll();
+        if (inc && mut == D5I_C_s3inclate) DSB(0x00104B25u) = (u8)(DSB(0x00104B25u) + 1u);
+        if (mut != D5I_C_nobars && mut != D5I_C_barsearly) fight_health_bars();
+        break;
+    }
+    case 5u:
+        if (mut == D5I_C_s5poll) flow_challenge_poll();
+        else if (mut != D5I_C_nom17) frontend_mode_17_step();
+        if (mut != D5I_C_s5nobars) fight_health_bars();
+        break;
+    default:
+        break;
+    }
+    d5i_424e8_tail(mut, b1dpre);
+}
 /* D5I-WRAP-BEGIN */
 #define D5I_M32(n) \
     static void m_d5i_m32_##n(const u32 *r, u32 *eax) { (void)r; d5i_296b8_core(D5I_A_##n); *eax = 0u; }
@@ -33506,6 +33650,21 @@ D5I_M0D(noafe) D5I_M0D(afe) D5I_M0D(endfall) D5I_M0D(precam0) D5I_M0D(precam1) D
 D5I_M0D(prelatch1) D5I_M0D(preaec) D5I_M0D(preb0c) D5I_M0D(preb21) D5I_M0D(prefa) D5I_M0D(pres1) D5I_M0D(pres46)
 D5I_M0D(pres33) D5I_M0D(presfn) D5I_M0D(prech) D5I_M0D(pres63) D5I_M0D(faffpre) D5I_M0D(presbadge) D5I_M0D(prechb)
 D5I_M0D(prey) D5I_M0D(prew) D5I_M0D(preb0a) D5I_M0D(prew0) D5I_M0D(pre529) D5I_M0D(prew1) D5I_M0D(prew2)
+#define D5I_M13(n) \
+    static void m_d5i_m13_##n(const u32 *r, u32 *eax) { (void)r; d5i_424e8_core(D5I_C_##n); *eax = 0u; }
+D5I_M13(st6) D5I_M13(stmask) D5I_M13(openearly) D5I_M13(novoice) D5I_M13(voice) D5I_M13(resetal) D5I_M13(noreset)
+D5I_M13(noorigin) D5I_M13(norow) D5I_M13(rowdesc) D5I_M13(rowa2) D5I_M13(rowa3) D5I_M13(noopen) D5I_M13(b15w)
+D5I_M13(nob15) D5I_M13(b15early) D5I_M13(s0noinc) D5I_M13(s0inc2) D5I_M13(s0incearly) D5I_M13(nodrop)
+D5I_M13(s2incearly) D5I_M13(crowdearly) D5I_M13(nofxclr) D5I_M13(scrollsext) D5I_M13(scrollb) D5I_M13(noscroll)
+D5I_M13(nofighters) D5I_M13(nocrowd) D5I_M13(noskip) D5I_M13(knowneax) D5I_M13(knowninv) D5I_M13(nospawn)
+D5I_M13(spawnsrc) D5I_M13(spawnarg) D5I_M13(spawnh0) D5I_M13(walkone) D5I_M13(s2noinc) D5I_M13(s3gateinv)
+D5I_M13(s3gatew) D5I_M13(s3always) D5I_M13(s4inc) D5I_M13(s3noinc) D5I_M13(s3inclate) D5I_M13(barsearly)
+D5I_M13(nopoll) D5I_M13(nobars) D5I_M13(s5poll) D5I_M13(nom17) D5I_M13(s5nobars) D5I_M13(credital)
+D5I_M13(creditinv) D5I_M13(bitmask) D5I_M13(rowswap) D5I_M13(nopress) D5I_M13(pressside) D5I_M13(row3800)
+D5I_M13(row1c) D5I_M13(nocoin) D5I_M13(coinside) D5I_M13(coinrow) D5I_M13(rev) D5I_M13(one) D5I_M13(bit0)
+D5I_M13(b1dany) D5I_M13(asrc) D5I_M13(ainv) D5I_M13(bsrc) D5I_M13(binv) D5I_M13(gateany) D5I_M13(gateother)
+D5I_M13(gateoff) D5I_M13(nogate) D5I_M13(s0pre) D5I_M13(prehandle) D5I_M13(s2pre) D5I_M13(preb1d) D5I_M13(preab8)
+D5I_M13(pre529) D5I_M13(preb1f) D5I_M13(pregate)
 /* D5I-WRAP-END */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -43843,6 +44002,89 @@ static const binding_t k_bindings[] = {
     { "game_mode_0d_step_end_rr@pre529", m_d5i_m0d_pre529, 0x00000000u },
     { "game_mode_0d_step_end_rr@prew1", m_d5i_m0d_prew1, 0x00000000u },
     { "game_mode_0d_step_end_rr@prew2", m_d5i_m0d_prew2, 0x00000000u },
+    { "game_mode_13_step", b_d5i_424e8, 0x00000000u },
+    { "game_mode_13_step_prompt", b_d5i_424e8, 0x00000000u },
+    { "game_mode_13_step_rr", b_d5i_424e8, 0x00000000u },
+    { "game_mode_13_step@st6", m_d5i_m13_st6, 0x00000000u },
+    { "game_mode_13_step@stmask", m_d5i_m13_stmask, 0x00000000u },
+    { "game_mode_13_step@openearly", m_d5i_m13_openearly, 0x00000000u },
+    { "game_mode_13_step@novoice", m_d5i_m13_novoice, 0x00000000u },
+    { "game_mode_13_step@voice", m_d5i_m13_voice, 0x00000000u },
+    { "game_mode_13_step@resetal", m_d5i_m13_resetal, 0x00000000u },
+    { "game_mode_13_step@noreset", m_d5i_m13_noreset, 0x00000000u },
+    { "game_mode_13_step@noorigin", m_d5i_m13_noorigin, 0x00000000u },
+    { "game_mode_13_step@norow", m_d5i_m13_norow, 0x00000000u },
+    { "game_mode_13_step@rowdesc", m_d5i_m13_rowdesc, 0x00000000u },
+    { "game_mode_13_step@rowa2", m_d5i_m13_rowa2, 0x00000000u },
+    { "game_mode_13_step@rowa3", m_d5i_m13_rowa3, 0x00000000u },
+    { "game_mode_13_step@noopen", m_d5i_m13_noopen, 0x00000000u },
+    { "game_mode_13_step@b15w", m_d5i_m13_b15w, 0x00000000u },
+    { "game_mode_13_step@nob15", m_d5i_m13_nob15, 0x00000000u },
+    { "game_mode_13_step@b15early", m_d5i_m13_b15early, 0x00000000u },
+    { "game_mode_13_step@s0noinc", m_d5i_m13_s0noinc, 0x00000000u },
+    { "game_mode_13_step@s0inc2", m_d5i_m13_s0inc2, 0x00000000u },
+    { "game_mode_13_step@s0incearly", m_d5i_m13_s0incearly, 0x00000000u },
+    { "game_mode_13_step@nodrop", m_d5i_m13_nodrop, 0x00000000u },
+    { "game_mode_13_step@s2incearly", m_d5i_m13_s2incearly, 0x00000000u },
+    { "game_mode_13_step@crowdearly", m_d5i_m13_crowdearly, 0x00000000u },
+    { "game_mode_13_step@nofxclr", m_d5i_m13_nofxclr, 0x00000000u },
+    { "game_mode_13_step@scrollsext", m_d5i_m13_scrollsext, 0x00000000u },
+    { "game_mode_13_step@scrollb", m_d5i_m13_scrollb, 0x00000000u },
+    { "game_mode_13_step@noscroll", m_d5i_m13_noscroll, 0x00000000u },
+    { "game_mode_13_step@nofighters", m_d5i_m13_nofighters, 0x00000000u },
+    { "game_mode_13_step@nocrowd", m_d5i_m13_nocrowd, 0x00000000u },
+    { "game_mode_13_step@noskip", m_d5i_m13_noskip, 0x00000000u },
+    { "game_mode_13_step@knowneax", m_d5i_m13_knowneax, 0x00000000u },
+    { "game_mode_13_step@knowninv", m_d5i_m13_knowninv, 0x00000000u },
+    { "game_mode_13_step@nospawn", m_d5i_m13_nospawn, 0x00000000u },
+    { "game_mode_13_step@spawnsrc", m_d5i_m13_spawnsrc, 0x00000000u },
+    { "game_mode_13_step@spawnarg", m_d5i_m13_spawnarg, 0x00000000u },
+    { "game_mode_13_step@spawnh0", m_d5i_m13_spawnh0, 0x00000000u },
+    { "game_mode_13_step@walkone", m_d5i_m13_walkone, 0x00000000u },
+    { "game_mode_13_step@s2noinc", m_d5i_m13_s2noinc, 0x00000000u },
+    { "game_mode_13_step@s3gateinv", m_d5i_m13_s3gateinv, 0x00000000u },
+    { "game_mode_13_step@s3gatew", m_d5i_m13_s3gatew, 0x00000000u },
+    { "game_mode_13_step@s3always", m_d5i_m13_s3always, 0x00000000u },
+    { "game_mode_13_step@s4inc", m_d5i_m13_s4inc, 0x00000000u },
+    { "game_mode_13_step@s3noinc", m_d5i_m13_s3noinc, 0x00000000u },
+    { "game_mode_13_step@s3inclate", m_d5i_m13_s3inclate, 0x00000000u },
+    { "game_mode_13_step@barsearly", m_d5i_m13_barsearly, 0x00000000u },
+    { "game_mode_13_step@nopoll", m_d5i_m13_nopoll, 0x00000000u },
+    { "game_mode_13_step@nobars", m_d5i_m13_nobars, 0x00000000u },
+    { "game_mode_13_step@s5poll", m_d5i_m13_s5poll, 0x00000000u },
+    { "game_mode_13_step@nom17", m_d5i_m13_nom17, 0x00000000u },
+    { "game_mode_13_step@s5nobars", m_d5i_m13_s5nobars, 0x00000000u },
+    { "game_mode_13_step_prompt@credital", m_d5i_m13_credital, 0x00000000u },
+    { "game_mode_13_step_prompt@creditinv", m_d5i_m13_creditinv, 0x00000000u },
+    { "game_mode_13_step_prompt@bitmask", m_d5i_m13_bitmask, 0x00000000u },
+    { "game_mode_13_step_prompt@rowswap", m_d5i_m13_rowswap, 0x00000000u },
+    { "game_mode_13_step_prompt@nopress", m_d5i_m13_nopress, 0x00000000u },
+    { "game_mode_13_step_prompt@pressside", m_d5i_m13_pressside, 0x00000000u },
+    { "game_mode_13_step_prompt@row3800", m_d5i_m13_row3800, 0x00000000u },
+    { "game_mode_13_step_prompt@row1c", m_d5i_m13_row1c, 0x00000000u },
+    { "game_mode_13_step_prompt@nocoin", m_d5i_m13_nocoin, 0x00000000u },
+    { "game_mode_13_step_prompt@coinside", m_d5i_m13_coinside, 0x00000000u },
+    { "game_mode_13_step_prompt@coinrow", m_d5i_m13_coinrow, 0x00000000u },
+    { "game_mode_13_step_prompt@rev", m_d5i_m13_rev, 0x00000000u },
+    { "game_mode_13_step_prompt@one", m_d5i_m13_one, 0x00000000u },
+    { "game_mode_13_step_prompt@bit0", m_d5i_m13_bit0, 0x00000000u },
+    { "game_mode_13_step_prompt@b1dany", m_d5i_m13_b1dany, 0x00000000u },
+    { "game_mode_13_step_prompt@asrc", m_d5i_m13_asrc, 0x00000000u },
+    { "game_mode_13_step_prompt@ainv", m_d5i_m13_ainv, 0x00000000u },
+    { "game_mode_13_step_prompt@bsrc", m_d5i_m13_bsrc, 0x00000000u },
+    { "game_mode_13_step_prompt@binv", m_d5i_m13_binv, 0x00000000u },
+    { "game_mode_13_step_prompt@gateany", m_d5i_m13_gateany, 0x00000000u },
+    { "game_mode_13_step_prompt@gateother", m_d5i_m13_gateother, 0x00000000u },
+    { "game_mode_13_step_prompt@gateoff", m_d5i_m13_gateoff, 0x00000000u },
+    { "game_mode_13_step_prompt@nogate", m_d5i_m13_nogate, 0x00000000u },
+    { "game_mode_13_step_rr@s0pre", m_d5i_m13_s0pre, 0x00000000u },
+    { "game_mode_13_step_rr@prehandle", m_d5i_m13_prehandle, 0x00000000u },
+    { "game_mode_13_step_rr@s2pre", m_d5i_m13_s2pre, 0x00000000u },
+    { "game_mode_13_step_rr@preb1d", m_d5i_m13_preb1d, 0x00000000u },
+    { "game_mode_13_step_rr@preab8", m_d5i_m13_preab8, 0x00000000u },
+    { "game_mode_13_step_rr@pre529", m_d5i_m13_pre529, 0x00000000u },
+    { "game_mode_13_step_rr@preb1f", m_d5i_m13_preb1f, 0x00000000u },
+    { "game_mode_13_step_rr@pregate", m_d5i_m13_pregate, 0x00000000u },
 /* D5I-TABLE-END */
 };
 
