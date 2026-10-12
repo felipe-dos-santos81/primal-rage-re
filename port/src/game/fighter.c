@@ -10257,7 +10257,8 @@ void fighter_38154(u32 side)
  * animation table R->+0xC[(s8)(R->+0x4F >> 24)] << 6 (16-bit truncating;
  * negated when R->+0x28 bit 0x4000 is set), then fighter_1883c((u32)R->+0x51
  * (the raw's actual EAX at the call, not `side`), (s32)slot->+0x4A >> 16, 0);
- * 2 or above runs fighter_state_35b7c(slot, R) directly. EBX..EBP pushed and
+ * 2 runs fighter_state_35b7c(slot, R) directly and a phase above 2 returns
+ * (0x382EB `jbe 0x383ed`, 0x382F1 `jmp 0x383f6`). EBX..EBP pushed and
  * popped. Only caller: 0x38564 (0x384F8). */
 static void fighter_382c4(u32 side)
 {
@@ -10271,10 +10272,11 @@ static void fighter_382c4(u32 side)
         fighter_38154(side);                                        /* 0x382FA 0x38154 */
         return;
     }
-    if (phase >= 2u) {                                              /* 0x382E6/0x382E9/0x382EB */
+    if (phase == 2u) {                                              /* 0x382E6/0x382E9/0x382EB */
         fighter_state_35b7c(slot, rec);                                /* 0x383F1 0x35B7C */
         return;
     }
+    if (phase > 2u) return;                                         /* 0x382F1 `jmp 0x383f6` */
 
     /* phase == 1 */
     s32 v;
