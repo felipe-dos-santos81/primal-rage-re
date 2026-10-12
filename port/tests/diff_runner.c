@@ -33441,6 +33441,126 @@ D5C_MT_MUT(b1d, 1u) D5C_MT_MUT(b1dbit, 2u) D5C_MT_MUT(passswap, 3u) D5C_MT_MUT(s
 D5C_MT_MUT(nojoin, 5u) D5C_MT_MUT(joinlate, 6u) D5C_MT_MUT(skipeax, 7u) D5C_MT_MUT(noskip, 8u)
 D5C_MT_MUT(dec3, 9u) D5C_MT_MUT(nodec, 10u) D5C_MT_MUT(decd, 11u) D5C_MT_MUT(ge, 12u)
 D5C_MT_MUT(uns, 13u) D5C_MT_MUT(nostore, 14u) D5C_MT_MUT(src73, 15u) D5C_MT_MUT(ret3, 16u)
+/* 0x34B6C fight_health_sync: EAX = side. */
+static u32 d5c_34b6c_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut != (n))
+    u32 side = r[R_EAX], o = side ^ 1u;
+    u32 slot = M(1u) ? DSD(0x001077A8u + side * 4u) : 0x001077B0u + side * 0x94u;    /* @canon */
+    u32 rec, g, st, n, sd = side, a, b, e, i;
+    if (slot == 0u) return 0u;
+    rec = DSD(slot);
+    if (rec == 0u && M(2u)) return 0u;                                               /* @nonull */
+    g = (u32)fight_position_gate(M(3u) ? slot : rec);                                /* @gatearg */
+    if (!M(50u)) rec = DSD(slot);                                                    /* @post: the record read after the gate */
+    if (M(4u) ? (g & 0xFFu) != 0u : g != 0u) {                                       /* @gateeax */
+        u32 xr = M(51u) ? DSD(slot) : rec;                                           /* @pre: x from the record read before it */
+        u16 w = DSW(rec + 0x28u);
+        int fl = M(5u) ? (w & 0x4000u) != 0u : (w & 0x0040u) != 0u;                  /* @bit6 */
+        s32 base = M(7u) ? (s32)DSD(xr + 0x18u) : (s32)(s16)DSW(xr + 0x18u);         /* @x18w */
+        s32 x, be = (s32)DSD(0x000BE018u), off = M(8u) ? 0x3000 : 0x300;             /* @off */
+        int in;
+        if (!M(6u)) fl = !fl;                                                        /* @sign */
+        x = (s32)((u32)base + (fl ? (u32)off : (u32)-off));
+        in = !M(9u) ? (x <= be) : !M(11u) ? ((u32)x < (u32)be) : (x < be);           /* @hige, @uns */
+        in = in && (!M(10u) ? (x >= -be) : !M(11u) ? ((u32)x > (u32)-be) : (x > -be));   /* @loge */
+        if (!M(12u)) in = !in;                                                       /* @armswap */
+        if (in) {
+            fighter_36f10(M(13u) ? slot : rec);                                      /* @f10arg */
+        } else {
+            if (M(14u) && M(16u)) DSB(slot + 0x43u) |= M(15u) ? 0x40u : 0x80u;       /* @no43, @43bit */
+            if (M(17u)) (void)fighter_state_36638(slot, rec);                        /* @38args */
+            else (void)fighter_state_36638(rec, slot);
+            if (!M(16u)) DSB(slot + 0x43u) |= 0x40u;                                 /* @43late */
+        }
+        return 0u;
+    }
+    st = DSB(slot + 0x52u);
+    if (st > 0x15u && !M(20u)) return 0u;                                            /* @hi */
+    n = st > 0x15u ? 0u : st;
+    if (!M(21u) && n >= 9u && n <= 11u) n = 0u;                                      /* @t9 */
+    if (!M(22u) && n >= 14u && n <= 16u) n = 0u;                                     /* @t14 */
+    if (!M(23u)) n = (n + 1u) % 22u;                                                 /* @idx1 */
+    if (mut == 100u + n) return 0u;                                                  /* @dropN */
+    if (mut == 130u + n) sd = o;                                                     /* @sideN */
+    a = slot; b = rec;
+    if (mut == 160u + n) { a = rec; b = slot; }                                      /* @swapN */
+    switch (n) {
+    case 0u: fighter_state_default(sd); break;
+    case 1u: fighter_state_359e0(a, b, sd); break;
+    case 2u:
+        e = (u32)fighter_state_35c1c(a, b);
+        if ((M(24u) ? e : (e & 0xFFu)) != 0u && M(25u)) {                            /* @c2al, @c2no */
+            if (M(26u)) fighter_state_35d20(slot, rec);                              /* @c2swap */
+            else fighter_state_35d20(rec, slot);
+        }
+        break;
+    case 3u: fighter_state_35d7c(sd); break;
+    case 4u: fighter_state_35f84(a, b); break;
+    case 5u: fighter_state_36430(a, b, sd); break;
+    case 6u: fight_stance_pass(sd); break;
+    case 7u: fighter_state_399cc(sd); break;
+    case 8u: fighter_state_37464(sd); break;
+    case 12u: fighter_state_361c8(a, b); break;
+    case 13u: fighter_state_36300(a, b); break;
+    case 17u: fighter_state_36710(a, b); break;
+    case 18u: {
+        u16 w = DSW(0x001088E0u + (M(30u) ? side : o) * 2u);                         /* @wside */
+        int both = !M(31u) ? ((w & 0x300u) != 0u) : !M(32u) ? ((w & 0xC00u) != 0u)   /* @w300, @wc00 */
+                 : !M(33u) ? ((w & 0xF00u) != 0u) : ((w & 0x300u) != 0u && (w & 0xC00u) != 0u);   /* @wor */
+        u8 b54 = DSB(slot + 0x54u);
+        if (both) break;
+        if (!M(34u) ? (b54 != 0u) : !M(35u) ? 0 : (b54 != 0u && b54 != 1u)) break;   /* @b54zero, @b54any */
+        e = (u32)fighter_attack_consume(sd);
+        if ((M(36u) ? (e & 0xFFu) : e) != 0u && M(37u)) hit_facing_flag(M(38u) ? side : o);   /* @consumeeax, @nofacing, @facingside */
+    } break;
+    case 19u: {
+        u16 v = (u16)(DSW(slot + 0x8Eu) - (M(40u) ? 1u : 0u));                       /* @nodec */
+        if (!M(41u)) DSD(slot + 0x8Eu) = DSD(slot + 0x8Eu) - 1u;                     /* @decd */
+        else DSW(slot + 0x8Eu) = v;
+        if (!M(42u) ? ((s16)v > 0) : !M(43u) ? 1 : ((s16)v >= 0)) break;             /* @le0, @uns19 */
+        for (i = 0u; i < (M(44u) ? 2u : 1u); i++) {                                  /* @one */
+            u32 s = M(49u) ? 0x001077B0u + i * 0x94u : DSD(0x001077A8u + i * 4u);    /* @loopptr */
+            u32 src = 0x00107BD0u + i * (M(46u) ? 0x94u : 0x68u);                    /* @stride */
+            u32 dst = 0x00107B00u + i * (M(46u) ? 0x68u : 0x94u);
+            if (DSB(s + 0x52u) != (M(45u) ? 0x13u : 0x12u)) continue;                /* @st12 */
+            if (!M(47u)) fighter_state_33b00(i, dst, src);                           /* @srcswap */
+            else fighter_state_33b00(M(48u) ? i : 1u - i, src, dst);                 /* @argside */
+        }
+    } break;
+    case 20u: fighter_state_35e6c(a, b); break;
+    case 21u: fighter_state_364fc(a, b, sd); break;
+    default: break;
+    }
+    return 0u;
+#undef M
+}
+static void b_d5c_34b6c(const u32 *r, u32 *eax) { fight_health_sync(r[R_EAX]); *eax = 0u; }
+#define D5C_HS_MUT(name, n) \
+    static void m_d5c_hs_##name(const u32 *r, u32 *eax) { *eax = d5c_34b6c_core(r, n); }
+D5C_HS_MUT(canon, 1u) D5C_HS_MUT(nonull, 2u) D5C_HS_MUT(gatearg, 3u) D5C_HS_MUT(gateeax, 4u)
+D5C_HS_MUT(bit6, 5u) D5C_HS_MUT(sign, 6u) D5C_HS_MUT(x18w, 7u) D5C_HS_MUT(off, 8u) D5C_HS_MUT(hige, 9u)
+D5C_HS_MUT(loge, 10u) D5C_HS_MUT(uns, 11u) D5C_HS_MUT(armswap, 12u) D5C_HS_MUT(f10arg, 13u)
+D5C_HS_MUT(no43, 14u) D5C_HS_MUT(s43bit, 15u) D5C_HS_MUT(s43late, 16u) D5C_HS_MUT(s38args, 17u)
+D5C_HS_MUT(hi, 20u) D5C_HS_MUT(t9, 21u) D5C_HS_MUT(t14, 22u) D5C_HS_MUT(idx1, 23u) D5C_HS_MUT(c2al, 24u)
+D5C_HS_MUT(c2no, 25u) D5C_HS_MUT(c2swap, 26u) D5C_HS_MUT(wside, 30u) D5C_HS_MUT(w300, 31u)
+D5C_HS_MUT(wc00, 32u) D5C_HS_MUT(wor, 33u) D5C_HS_MUT(b54zero, 34u) D5C_HS_MUT(b54any, 35u)
+D5C_HS_MUT(consumeeax, 36u) D5C_HS_MUT(nofacing, 37u) D5C_HS_MUT(facingside, 38u) D5C_HS_MUT(nodec, 40u)
+D5C_HS_MUT(decd, 41u) D5C_HS_MUT(le0, 42u) D5C_HS_MUT(uns19, 43u) D5C_HS_MUT(one, 44u) D5C_HS_MUT(st12, 45u)
+D5C_HS_MUT(stride, 46u) D5C_HS_MUT(srcswap, 47u) D5C_HS_MUT(argside, 48u) D5C_HS_MUT(loopptr, 49u)
+D5C_HS_MUT(drop0, 100u) D5C_HS_MUT(drop1, 101u) D5C_HS_MUT(drop2, 102u) D5C_HS_MUT(drop3, 103u)
+D5C_HS_MUT(drop4, 104u) D5C_HS_MUT(drop5, 105u) D5C_HS_MUT(drop6, 106u) D5C_HS_MUT(drop7, 107u)
+D5C_HS_MUT(drop8, 108u) D5C_HS_MUT(drop12, 112u) D5C_HS_MUT(drop13, 113u) D5C_HS_MUT(drop17, 117u)
+D5C_HS_MUT(drop18, 118u) D5C_HS_MUT(drop19, 119u) D5C_HS_MUT(drop20, 120u) D5C_HS_MUT(drop21, 121u)
+D5C_HS_MUT(side0, 130u) D5C_HS_MUT(side1, 131u) D5C_HS_MUT(side3, 133u) D5C_HS_MUT(side5, 135u)
+D5C_HS_MUT(side6, 136u) D5C_HS_MUT(side7, 137u) D5C_HS_MUT(side8, 138u) D5C_HS_MUT(side18, 148u)
+D5C_HS_MUT(side21, 151u) D5C_HS_MUT(swap1, 161u) D5C_HS_MUT(swap2, 162u) D5C_HS_MUT(swap4, 164u)
+D5C_HS_MUT(swap5, 165u) D5C_HS_MUT(swap12, 172u) D5C_HS_MUT(swap13, 173u) D5C_HS_MUT(swap17, 177u)
+D5C_HS_MUT(swap20, 180u) D5C_HS_MUT(swap21, 181u)
+/* the _rr row: which read of the slot's record each use takes */
+#define D5C_HR_MUT(name, n) \
+    static void m_d5c_hr_##name(const u32 *r, u32 *eax) { *eax = d5c_34b6c_core(r, n); }
+D5C_HR_MUT(post, 50u) D5C_HR_MUT(pre, 51u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43665,6 +43785,89 @@ static const binding_t k_bindings[] = {
     { "fight_mode_10_step@nostore", m_d5c_mt_nostore, 0x00000000u },
     { "fight_mode_10_step@src73", m_d5c_mt_src73, 0x00000000u },
     { "fight_mode_10_step@ret3", m_d5c_mt_ret3, 0x00000000u },
+    { "fight_health_sync", b_d5c_34b6c, 0x00000000u },
+    { "fight_health_sync@canon", m_d5c_hs_canon, 0x00000000u },
+    { "fight_health_sync@nonull", m_d5c_hs_nonull, 0x00000000u },
+    { "fight_health_sync@gatearg", m_d5c_hs_gatearg, 0x00000000u },
+    { "fight_health_sync@gateeax", m_d5c_hs_gateeax, 0x00000000u },
+    { "fight_health_sync@bit6", m_d5c_hs_bit6, 0x00000000u },
+    { "fight_health_sync@sign", m_d5c_hs_sign, 0x00000000u },
+    { "fight_health_sync@x18w", m_d5c_hs_x18w, 0x00000000u },
+    { "fight_health_sync@off", m_d5c_hs_off, 0x00000000u },
+    { "fight_health_sync@hige", m_d5c_hs_hige, 0x00000000u },
+    { "fight_health_sync@loge", m_d5c_hs_loge, 0x00000000u },
+    { "fight_health_sync@uns", m_d5c_hs_uns, 0x00000000u },
+    { "fight_health_sync@armswap", m_d5c_hs_armswap, 0x00000000u },
+    { "fight_health_sync@f10arg", m_d5c_hs_f10arg, 0x00000000u },
+    { "fight_health_sync@no43", m_d5c_hs_no43, 0x00000000u },
+    { "fight_health_sync@43bit", m_d5c_hs_s43bit, 0x00000000u },
+    { "fight_health_sync@43late", m_d5c_hs_s43late, 0x00000000u },
+    { "fight_health_sync@38args", m_d5c_hs_s38args, 0x00000000u },
+    { "fight_health_sync@hi", m_d5c_hs_hi, 0x00000000u },
+    { "fight_health_sync@idx1", m_d5c_hs_idx1, 0x00000000u },
+    { "fight_health_sync@c2al", m_d5c_hs_c2al, 0x00000000u },
+    { "fight_health_sync@c2no", m_d5c_hs_c2no, 0x00000000u },
+    { "fight_health_sync@c2swap", m_d5c_hs_c2swap, 0x00000000u },
+    { "fight_health_sync@drop0", m_d5c_hs_drop0, 0x00000000u },
+    { "fight_health_sync@drop1", m_d5c_hs_drop1, 0x00000000u },
+    { "fight_health_sync@drop2", m_d5c_hs_drop2, 0x00000000u },
+    { "fight_health_sync@drop3", m_d5c_hs_drop3, 0x00000000u },
+    { "fight_health_sync@drop4", m_d5c_hs_drop4, 0x00000000u },
+    { "fight_health_sync@drop5", m_d5c_hs_drop5, 0x00000000u },
+    { "fight_health_sync@drop6", m_d5c_hs_drop6, 0x00000000u },
+    { "fight_health_sync@drop7", m_d5c_hs_drop7, 0x00000000u },
+    { "fight_health_sync@drop8", m_d5c_hs_drop8, 0x00000000u },
+    { "fight_health_sync@side0", m_d5c_hs_side0, 0x00000000u },
+    { "fight_health_sync@side1", m_d5c_hs_side1, 0x00000000u },
+    { "fight_health_sync@side3", m_d5c_hs_side3, 0x00000000u },
+    { "fight_health_sync@side5", m_d5c_hs_side5, 0x00000000u },
+    { "fight_health_sync@side6", m_d5c_hs_side6, 0x00000000u },
+    { "fight_health_sync@side7", m_d5c_hs_side7, 0x00000000u },
+    { "fight_health_sync@side8", m_d5c_hs_side8, 0x00000000u },
+    { "fight_health_sync@swap1", m_d5c_hs_swap1, 0x00000000u },
+    { "fight_health_sync@swap2", m_d5c_hs_swap2, 0x00000000u },
+    { "fight_health_sync@swap4", m_d5c_hs_swap4, 0x00000000u },
+    { "fight_health_sync@swap5", m_d5c_hs_swap5, 0x00000000u },
+    { "fight_health_sync_t9", b_d5c_34b6c, 0x00000000u },
+    { "fight_health_sync_t9@t9", m_d5c_hs_t9, 0x00000000u },
+    { "fight_health_sync_t9@t14", m_d5c_hs_t14, 0x00000000u },
+    { "fight_health_sync_t9@idx1", m_d5c_hs_idx1, 0x00000000u },
+    { "fight_health_sync_t9@wside", m_d5c_hs_wside, 0x00000000u },
+    { "fight_health_sync_t9@w300", m_d5c_hs_w300, 0x00000000u },
+    { "fight_health_sync_t9@wc00", m_d5c_hs_wc00, 0x00000000u },
+    { "fight_health_sync_t9@wor", m_d5c_hs_wor, 0x00000000u },
+    { "fight_health_sync_t9@b54zero", m_d5c_hs_b54zero, 0x00000000u },
+    { "fight_health_sync_t9@b54any", m_d5c_hs_b54any, 0x00000000u },
+    { "fight_health_sync_t9@consumeeax", m_d5c_hs_consumeeax, 0x00000000u },
+    { "fight_health_sync_t9@nofacing", m_d5c_hs_nofacing, 0x00000000u },
+    { "fight_health_sync_t9@facingside", m_d5c_hs_facingside, 0x00000000u },
+    { "fight_health_sync_t9@nodec", m_d5c_hs_nodec, 0x00000000u },
+    { "fight_health_sync_t9@decd", m_d5c_hs_decd, 0x00000000u },
+    { "fight_health_sync_t9@le0", m_d5c_hs_le0, 0x00000000u },
+    { "fight_health_sync_t9@uns19", m_d5c_hs_uns19, 0x00000000u },
+    { "fight_health_sync_t9@one", m_d5c_hs_one, 0x00000000u },
+    { "fight_health_sync_t9@st12", m_d5c_hs_st12, 0x00000000u },
+    { "fight_health_sync_t9@stride", m_d5c_hs_stride, 0x00000000u },
+    { "fight_health_sync_t9@srcswap", m_d5c_hs_srcswap, 0x00000000u },
+    { "fight_health_sync_t9@argside", m_d5c_hs_argside, 0x00000000u },
+    { "fight_health_sync_t9@loopptr", m_d5c_hs_loopptr, 0x00000000u },
+    { "fight_health_sync_t9@drop12", m_d5c_hs_drop12, 0x00000000u },
+    { "fight_health_sync_t9@drop13", m_d5c_hs_drop13, 0x00000000u },
+    { "fight_health_sync_t9@drop17", m_d5c_hs_drop17, 0x00000000u },
+    { "fight_health_sync_t9@drop18", m_d5c_hs_drop18, 0x00000000u },
+    { "fight_health_sync_t9@drop19", m_d5c_hs_drop19, 0x00000000u },
+    { "fight_health_sync_t9@drop20", m_d5c_hs_drop20, 0x00000000u },
+    { "fight_health_sync_t9@drop21", m_d5c_hs_drop21, 0x00000000u },
+    { "fight_health_sync_t9@side18", m_d5c_hs_side18, 0x00000000u },
+    { "fight_health_sync_t9@side21", m_d5c_hs_side21, 0x00000000u },
+    { "fight_health_sync_t9@swap12", m_d5c_hs_swap12, 0x00000000u },
+    { "fight_health_sync_t9@swap13", m_d5c_hs_swap13, 0x00000000u },
+    { "fight_health_sync_t9@swap17", m_d5c_hs_swap17, 0x00000000u },
+    { "fight_health_sync_t9@swap20", m_d5c_hs_swap20, 0x00000000u },
+    { "fight_health_sync_t9@swap21", m_d5c_hs_swap21, 0x00000000u },
+    { "fight_health_sync_rr", b_d5c_34b6c, 0x00000000u },
+    { "fight_health_sync_rr@post", m_d5c_hr_post, 0x00000000u },
+    { "fight_health_sync_rr@pre", m_d5c_hr_pre, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

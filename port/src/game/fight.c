@@ -2036,6 +2036,7 @@ void fight_slot_pass(void)
 
 void fight_stance_pass(u32 side)
 {
+    PR_SEAM(0x1A978u, side);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                /* 0x1A984 0x33A10 */
     u32 self = ctx[3], other = ctx[2];
@@ -2169,6 +2170,7 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override)
  * set, +0x52 is one of {0,1,5,6,7} and +0x54 <= 1. */
 int fight_position_gate(u32 rec)
 {
+    PR_SEAM_RET(0x36E2Cu, rec);
     u8 st;
     if (!(DSB(DS_00104B1D) == 3u || DSB(DS_00104B14) == 0u
           || DSB(rec + 0x63u) != 0u))
@@ -2185,8 +2187,9 @@ int fight_position_gate(u32 rec)
  * 22-entry table 0x34B14 (0x34BF4..0x34C00; above 0x15 runs 0x349C8). Caller:
  * 0x357FC (fight_hud_pass). Case 0x12 (0x34CC7..0x34D21) is record §E.1 of
  * 2026-09-30-named-gaps-e-derivations.md. */
-static void fight_health_sync(u32 side)
+void fight_health_sync(u32 side)
 {
+    PR_SEAM(0x34B6Cu, side);
     u32 rec = DSD(DS_001077A8 + side * 4u);     /* 0x34B73 */
     u32 fighter;
     if (rec == 0) return;                       /* 0x34B7C */

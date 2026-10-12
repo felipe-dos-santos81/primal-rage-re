@@ -24709,6 +24709,157 @@ D5C_SPECS += [
        mutants=("@b1d", "@b1dbit", "@passswap", "@sub1", "@nojoin", "@joinlate", "@skipeax", "@noskip",
                 "@dec3", "@nodec", "@decd", "@ge", "@uns", "@nostore", "@src73", "@ret3")),
 ]
+D5C_GATE = E.Call(0x36E2C, ("eax",))
+D5C_F10 = E.Call(0x36F10, ("eax",), clobbers=("ebp",))
+D5C_ST_DEFAULT = E.Call(0x349C8, ("eax",), clobbers=("ebp",))
+D5C_ST_359E0 = E.Call(0x359E0, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+D5C_ST_35C1C = E.Call(0x35C1C, ("eax", "edx"), clobbers=("edx",))
+D5C_ST_35D20 = E.Call(0x35D20, ("eax", "edx"), clobbers=("edx",))
+D5C_ST_35D7C = E.Call(0x35D7C, ("edx",), clobbers=("edi", "ebp"))      # it reads EDX alone (0x35D85 `sub eax,edx`)
+D5C_ST_35F84 = E.Call(0x35F84, ("eax", "edx"), clobbers=("edx",))
+D5C_ST_36430 = E.Call(0x36430, ("eax", "edx", "ebx"), clobbers=("ebx", "edx", "ebp"))
+D5C_STANCE = E.Call(0x1A978, ("eax",), clobbers=("edi", "ebp"))
+D5C_ST_399CC = E.Call(0x399CC, ("eax",))
+D5C_ST_37464 = E.Call(0x37464, ("eax",))
+D5C_ST_361C8 = E.Call(0x361C8, ("eax", "edx"), clobbers=("edx",))
+D5C_ST_36300 = E.Call(0x36300, ("eax", "edx"), clobbers=("edx",))
+D5C_ST_36710 = E.Call(0x36710, ("eax", "edx"), clobbers=("edx",))
+D5C_ST_35E6C = E.Call(0x35E6C, ("eax", "edx"), clobbers=("edx", "ebp"))
+D5C_ST_364FC = E.Call(0x364FC, ("eax", "edx", "ebx"), clobbers=("ebx", "edx", "ebp"))
+# diffrun takes 16 stubs a case, so the 21 callees are two rows: the position branch with the states 0..8
+# and above 0x15, and the states 9..21
+D5C_SYNC_CALLS = (D5C_GATE, D5C_F10, C1_36638, D5C_ST_DEFAULT, D5C_ST_359E0, D5C_ST_35C1C, D5C_ST_35D20,
+                  D5C_ST_35D7C, D5C_ST_35F84, D5C_ST_36430, D5C_STANCE, D5C_ST_399CC, D5C_ST_37464)
+D5C_SYNC_CALLS_T9 = (D5C_GATE, D5C_ST_DEFAULT, D5C_ST_361C8, D5C_ST_36300, D5C_ST_36710, D2A_CONSUME, C1_FACING,
+                     D4A_SNAPBACK, D5C_ST_35E6C, D5C_ST_364FC)
+D5C_S0, D5C_S1 = 0x001077B0, 0x00107844              # the two fighter slots
+D5C_A0, D5C_A1 = 0x0010A600, 0x0010A700              # two other slots the pointer table can name (zero BSS)
+D5C_F0, D5C_F1, D5C_FX = 0x0010A300, 0x0010A400, 0x0010A500   # the fighter records; FX is what the _rr gate stub stores
+D5C_GATE_RR = dataclasses.replace(D5C_GATE, writes=((0, 0, le32(D5C_FX)),))
+
+
+def d5c_sync_case(cid, side, st, alt=False, f28=0x0000, x18=0x00010000, be=0x00012000, b43=0x05, b54=0,
+                  cmd=(0x0F00, 0x0F00), w8e=5, o_st=0x77, canon=None, ptr=True, rec=True, fx=None, **eax):
+    """0x34B6C: the slot pointers DS_001077A8 (the two slots, or with `alt` two other addresses);
+    each slot's record pointer, +0x41..+0x44 (the side's +0x43 is `b43`), +0x51..+0x55 (the side's
+    state `st` and +0x54 `b54`; the other's state `o_st`) and +0x8C..+0x93 (the side's +0x8E word
+    `w8e`); each record's +0x14..+0x1F (the side's x `x18`) and +0x28 word (`f28`) with the word after
+    it; the bound DS_000BE018; the two command words 0x1088E0 between two words. `canon` pokes the two
+    real slots' state bytes when the pointers name other slots. `fx` = (f28, x18) seeds the record the
+    _rr gate stub stores in the slot. `ptr`/`rec` False zero the side's pointer / record pointer."""
+    slots = (D5C_A0, D5C_A1) if alt else (D5C_S0, D5C_S1)
+    p = {0x001077A8: le32(slots[0] if ptr or side != 0 else 0) + le32(slots[1] if ptr or side != 1 else 0),
+         0x000BE018: le32(be),
+         0x001088DE: le16(0xDEDF) + le16(cmd[0]) + le16(cmd[1]) + le16(0xE4E5)}
+    for i, (s, f) in enumerate(zip(slots, (D5C_F0, D5C_F1))):
+        own = i == side
+        p[s] = le32(f if rec or not own else 0)
+        p[s + 0x41] = bytes([0x41, 0x42 + i, b43 if own else 0x33, 0x44])
+        p[s + 0x51] = bytes([0x51, st if own else o_st, 0x53, b54 if own else 0x66, 0x55])
+        p[s + 0x8C] = le16(0x8C8C) + le16(w8e if own else 0x0303) + le16(0x9090 + i) + le16(0x9292)
+        p[f + 0x14] = le32(0x14141414) + le32(x18 if own else 0x18181818) + le32(0x1C1C1C1C)
+        p[f + 0x28] = le16(f28 if own else 0xFFFF) + le16(0x2A2A)
+    if canon is not None:
+        p[D5C_S0 + 0x52], p[D5C_S1 + 0x52] = bytes([canon[0]]), bytes([canon[1]])
+    if fx is not None:
+        p[D5C_FX + 0x14] = le32(0x14141414) + le32(fx[1]) + le32(0x1C1C1C1C)
+        p[D5C_FX + 0x28] = le16(fx[0]) + le16(0x2A2A)
+    keys = {"gate": 0x36E2C, "c1c": 0x35C1C, "consume": 0x3BDDC, "r38": 0x36638}
+    return Case(cid, {"eax": side, "edx": 0x99, "ebx": 0x77, "ecx": 0x88}, p, {keys[k]: v for k, v in eax.items()})
+
+
+D5C_SYNC_T9_NAMED = "the states 9..21: the fight_health_sync_t9 row's"
+D5C_SYNC_T0_NAMED = "the position branch, the states 0..8 and above 0x15: the fight_health_sync row's"
+
+D5C_SPECS += [
+    # 0x34B6C fight_health_sync: EAX = side. The slot is the pointer DS_001077A8[side] (ECX) and the
+    # record the slot's first dword (ESI), read once before the gate; either zero returns (z0, z1). AL of
+    # 0x36E2C(slot) (`test al,al` 0x34B93: p8 returns 0x100): non-zero, x = the dword +0x18 of the slot's
+    # record, read again (`mov edx,[ecx]` 0x34BA7/0x34BB4), - 0x3000, or + 0x3000 when bit 14 of the
+    # record's +0x28 word is set (`and ah,0x40`: p2 0xBFFF, p4 0x0040); x below the dword DS_000BE018 and
+    # above its negation, both signed (`jge` 0x34BC7, `jg` 0x34BCF: p2 x = the bound, p3 one below, p4 x =
+    # the negation, p5 one above, p6 -1, p7 0x80003000), is 0x36F10(slot); otherwise the slot's +0x43 |=
+    # 0x40 and then 0x36638(slot, record). Zero: the state byte +0x52 through the 22-entry table 0x34B14
+    # (`cmp al,0x15; ja` unsigned: t22, t255 run the default 0x349C8(side)): 0 0x349C8(side); 1
+    # 0x359E0(slot, record, side); 2 0x35C1C(slot, record) and, its whole EAX non-zero (`test eax,eax`
+    # 0x34C2F: c1 returns 0x100), 0x35D20(slot, record); 3 0x35D7C, which reads EDX = the side (EAX is the
+    # slot); 4 0x35F84; 5 0x36430(slot, record, side); 6 0x1A978(side); 7 0x399CC(side); 8 0x37464(side);
+    # 9..11 and 14..16 nothing; 12 0x361C8; 13 0x36300; 17 0x36710; 20 0x35E6C; 21 0x364FC(slot, record,
+    # side). 18: unless the side's command word 0x1088E0 has a bit of 0x300 and a bit of 0xC00 (k0, k1;
+    # k7's other side has both), and with the slot's +0x54 0 or 1 (k4 2, k5 0xFF), AL of 0x3BDDC(side)
+    # (`test al,al` 0x34D11: k6 returns 0x100) non-zero calls 0x18B04(side). 19: the slot's +0x8E word
+    # decremented (a word store) and, below 0 signed (`test dx,dx; jge` 0x34D31: n1 0, n3 0x7FFF), for
+    # i = 0, 1 the real slot 0x1077B0 + i * 0x94 whose state is 0x13 (0x107802: n5's pointers name other
+    # slots) runs 0x33B00(i, 0x107BD0 + i * 0x94, 0x107B00 + i * 0x68). Void: its one call site 0x357FC
+    # is followed by 0x35801 `mov eax,esi`.
+    Spec("fight_health_sync", 0x34B6C, [
+        d5c_sync_case("z0", 0, 1, ptr=False),
+        d5c_sync_case("z1", 1, 1, rec=False),
+        d5c_sync_case("p0", 0, 0, gate=1),
+        d5c_sync_case("p1", 1, 9, gate=0xFFFFFF01, f28=0x4000, r38=1),
+        d5c_sync_case("p2", 0, 3, gate=1, f28=0xBFFF, x18=0x00015000),
+        d5c_sync_case("p3", 1, 4, gate=1, f28=0x4040, x18=0x0000EFFF),
+        d5c_sync_case("p4", 0, 5, gate=1, f28=0x0040, x18=0xFFFF1000, alt=True),
+        d5c_sync_case("p5", 1, 6, gate=1, x18=0xFFFF1001),
+        d5c_sync_case("p6", 0, 7, gate=1, x18=0x00002FFF),
+        d5c_sync_case("p7", 1, 8, gate=1, f28=0x4000, x18=0x80000000, alt=True, b43=0xC0),
+        d5c_sync_case("p8", 0, 0, gate=0x100),
+    ] + [d5c_sync_case("t%d" % n, n & 1, n, alt=n == 5) for n in (0, 1, 3, 4, 5, 6, 7, 8, 0x16, 0xFF)] + [
+        d5c_sync_case("c0", 0, 2, c1c=0),
+        d5c_sync_case("c1", 1, 2, c1c=0x100, alt=True),
+    ], calls=D5C_SYNC_CALLS, eax_mask=0,
+       unhit_named={a: D5C_SYNC_T9_NAMED for a in (
+                      0x34C9A, 0x34CA9, 0x34CB8, 0x34CC7, 0x34CDD, 0x34CEC, 0x34CF0, 0x34CF2, 0x34CFA,
+                      0x34D01, 0x34D0A, 0x34D15, 0x34D22, 0x34D36, 0x34D3F, 0x34D48, 0x34D58, 0x34D67,
+                      0x34D69, 0x34D78)},
+       mutants=("@canon", "@nonull", "@gatearg", "@gateeax", "@bit6", "@sign", "@x18w", "@off", "@hige", "@loge",
+                "@uns", "@armswap", "@f10arg", "@no43", "@43bit", "@43late", "@38args", "@hi", "@idx1", "@c2al",
+                "@c2no", "@c2swap")
+       + tuple("@drop%d" % n for n in range(9)) + tuple("@side%d" % n for n in (0, 1, 3, 5, 6, 7, 8))
+       + tuple("@swap%d" % n for n in (1, 2, 4, 5))),
+    # the same entry on the states 9..21 (the header above)
+    Spec("fight_health_sync_t9", 0x34B6C, [
+        d5c_sync_case("t%d" % n, n & 1, n, alt=n in (12, 17)) for n in (9, 10, 11, 12, 13, 14, 15, 16, 17, 20, 21)
+    ] + [
+        d5c_sync_case("k0", 0, 18, cmd=(0x0500, 0x0000), consume=1),
+        d5c_sync_case("k1", 1, 18, cmd=(0x0000, 0x0A00), consume=1),
+        d5c_sync_case("k2", 0, 18, cmd=(0x0300, 0x0F00), consume=1),
+        d5c_sync_case("k3", 1, 18, cmd=(0x0F00, 0x0C00), b54=1, consume=0),
+        d5c_sync_case("k4", 0, 18, cmd=(0xF0FF, 0x0F00), b54=2, consume=1),
+        d5c_sync_case("k5", 1, 18, cmd=(0x0F00, 0x0000), b54=0xFF, consume=1),
+        d5c_sync_case("k6", 0, 18, cmd=(0x0400, 0x0F00), consume=0x100),
+        d5c_sync_case("k7", 1, 18, cmd=(0x0F00, 0x0000), b54=1, consume=0xFFFFFF01, alt=True),
+        d5c_sync_case("n0", 0, 19, w8e=5, o_st=0x13),
+        d5c_sync_case("n1", 1, 19, w8e=1, o_st=0x13),
+        d5c_sync_case("n2", 0, 19, w8e=0, o_st=0x13),
+        d5c_sync_case("n3", 1, 19, w8e=0x8000, o_st=0x13),
+        d5c_sync_case("n4", 0, 19, w8e=0x8001, o_st=0x12),
+        d5c_sync_case("n5", 1, 19, w8e=0, alt=True, canon=(0x13, 0x12)),
+    ], calls=D5C_SYNC_CALLS_T9, eax_mask=0,
+       unhit_named={a: D5C_SYNC_T0_NAMED for a in (
+                      0x34B97, 0x34BA7, 0x34BB4, 0x34BBF, 0x34BC9, 0x34BD1, 0x34BE8, 0x34C08, 0x34C15,
+                      0x34C26, 0x34C37, 0x34C46, 0x34C53, 0x34C62, 0x34C73, 0x34C80, 0x34C8D)},
+       mutants=("@t9", "@t14", "@idx1", "@wside", "@w300", "@wc00", "@wor", "@b54zero", "@b54any", "@consumeeax",
+                "@nofacing", "@facingside", "@nodec", "@decd", "@le0", "@uns19", "@one", "@st12", "@stride",
+                "@srcswap", "@argside", "@loopptr")
+       + tuple("@drop%d" % n for n in (12, 13, 17, 18, 19, 20, 21)) + ("@side18", "@side21")
+       + tuple("@swap%d" % n for n in (12, 13, 17, 20, 21))),
+    # the same entry with a gate stub that stores another record in the slot: the raw keeps the record it
+    # read before the gate (ESI) for the +0x28 flag, for 0x36638 and for every table callee, and reads the
+    # slot again only for the +0x18 dword. y0: the old record's flag (set) with the new record's x is out
+    # of range; y1: the old flag (clear) with the new x is in range; y2: 0x359E0 takes the old record.
+    Spec("fight_health_sync_rr", 0x34B6C, [
+        d5c_sync_case("y0", 0, 0, gate=1, f28=0x4000, x18=0x00000000, fx=(0x0000, 0x00010000)),
+        d5c_sync_case("y1", 1, 0, gate=1, f28=0x0000, x18=0x00000000, fx=(0x4000, 0x00014000)),
+        d5c_sync_case("y2", 0, 1, gate=0, fx=(0x0000, 0)),
+    ], calls=(D5C_GATE_RR, D5C_F10, C1_36638, D5C_ST_359E0), eax_mask=0,
+       unhit_named={a: "the states other than 1: the fight_health_sync and fight_health_sync_t9 rows'" for a in (
+                      0x34C08, 0x34C26, 0x34C37, 0x34C46, 0x34C53, 0x34C62, 0x34C73, 0x34C80, 0x34C8D,
+                      0x34C9A, 0x34CA9, 0x34CB8, 0x34CC7, 0x34CDD, 0x34CEC, 0x34CF0, 0x34CF2, 0x34CFA,
+                      0x34D01, 0x34D0A, 0x34D15, 0x34D22, 0x34D36, 0x34D3F, 0x34D48, 0x34D58, 0x34D67,
+                      0x34D69, 0x34D78)},
+       mutants=("@post", "@pre")),
+]
 D1_SPECS += D5C_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
