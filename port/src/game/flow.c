@@ -207,6 +207,7 @@ void frontend_input_reset(void)
  * origin zeroing only; 0x4F1E4 (title_input_reset) is a different function. */
 void frontend_origin_zero(void)
 {
+    PR_SEAM0(0x4F1D0u);
     DSW(DS_00107A3A) = 0;                       /* 0x4F1D3 */
     DSW(DS_00107A38) = 0;                       /* 0x4F1DA */
 }
@@ -216,7 +217,7 @@ void frontend_origin_zero(void)
  * DS_00107A55, is not read); the mode-1 cursor words copy DS_00107A4E; the two
  * table words come from the data object's fixed-up tables DS_000BDE0C /
  * DS_000BDDFC. */
-static void title_origin_reset(u32 idx)
+void title_origin_reset(u32 idx)
 {
     frontend_origin_zero();                     /* 0x3891A 0x4F1D0 */
     DSW(DS_00107A4A) = DSW(DS_00107A4E);        /* 0x38925 */

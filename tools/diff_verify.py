@@ -13510,6 +13510,27 @@ D2C_VOL_U_ARM = ("the EAX = -1 arm: the port's attract_config_volumes_unscaled, 
                  "attract_config_volumes_unscaled")
 
 
+def d2c_origin_case(a4e, a48, tbl=None, a55=0x33):
+    """0x38910: the words 0x107A36..0x107A53 (every word it writes seeded 0x5A.., 0x107A4E and
+    0x107A48 the two sources, the others neighbours), the byte 0x107A55 (0x4F1D0's unread EAX)
+    and, when given, table words {index: (0xBDE0C word, 0xBDDFC word)}."""
+    w = [0x6161, 0x5A5A, 0x5B5B, 0x6262, 0x6363, 0x5C5C, 0x6464, 0x6565, 0x6666, a48, 0x5D5D, 0x5E5E,
+         a4e, 0x5F5F, 0x6767]
+    p = {0x00107A36: b"".join(le16(x) for x in w), 0x00107A55: bytes([a55])}
+    for i, (x, y) in (tbl or {}).items():
+        p[0x000BDE0C + i * 2] = le16(x)
+        p[0x000BDDFC + i * 2] = le16(y)
+    return p
+
+
+def d2c_dbg_case(st, sp, buf, last):
+    """0x2F940: the pointer 0x10740C -> a structure at `st` whose +0xC (between two decoys) points
+    at the 16 bytes `last` at `sp`, and the 16 bytes `buf` at 0xBCD5C (four more after them)."""
+    return {0x0010740C: le32(st), st + 8: le32(0x0010A3C0) + le32(sp) + le32(0x0010A3E0),
+            sp: bytes(last), 0x0010A3C0: b"\xC1" * 0x10, 0x0010A3E0: b"\xE1" * 0x10,
+            0x000BCD5C: bytes(buf) + b"\x7a\x7b\x7c\x7d", 0x00105F34: le32(0x11223344)}
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -13865,6 +13886,34 @@ D2C_SPECS = [
                                                0x2C92F)},
        mutants=("@m8", "@s10", "@shr", "@noshift", "@f35", "@f37", "@swap", "@order", "@mask",
                 "@f2a", "@udiv", "@div", "@sraw", "@early")),
+    # 0x38910 title_origin_reset: EAX = the table index (kept in EDX across 0x4F1D0, which
+    # pushes and pops it). 0x4F1D0 (stub; its EAX, the byte 0x107A55, is not an argument), then
+    # 0x107A4A and 0x107A4C = the word 0x107A4E, 0x107A50 = the word 0xBDE0C[idx], 0x107A40 = the
+    # word 0xBDDFC[idx], 0x107A3A = 0x107A50 / 32 and 0x107A38 = the word 0x107A48 / 64, both
+    # zero-extended first (`xor edx,edx; mov dx,..`, then the signed-divide idiom on a
+    # non-negative value). The one caller passes 0; t1 and t2 poke table words for other
+    # indices. Mask 0: 0x121F9, then 0x12218 `mov eax,0x9ae3c` / 0x12224 `mov eax,0x15`.
+    Spec("title_origin_reset", 0x38910, [
+        Case("t0", {"eax": 0, "edx": 0xABCD1234}, d2c_origin_case(0x1234, 0xFFC0)),
+        Case("t1", {"eax": 1, "edx": 0xABCD1234}, d2c_origin_case(0x8001, 0x0040, {1: (0x8765, 0x4321)})),
+        Case("t2", {"eax": 7, "edx": 0}, d2c_origin_case(0x0000, 0x7FFF, {7: (0x001F, 0xFFFF), 3: (0x7777, 0x6666)}),
+             {0x4F1D0: 0x12345678}),
+    ], calls=(E.Call(0x4F1D0, ()),), eax_mask=0,
+       mutants=("@nocall", "@a4a", "@a4c", "@src", "@tbl", "@idx", "@a50", "@a40", "@sh5", "@sh6",
+                "@sext", "@a48", "@order")),
+    # 0x2F940 menu_debug_lines: EAX = row. 0x2F198(4, row, "OS:   " at 0x80B44, 0x5000), then
+    # 0x2F41C(0xBCD5C, 0x5000); 0x2F198(4, row + 1, "MAIN: " at 0x80B4C, 0x5000) (EBX and ECX are
+    # loaded before the first 0x2F41C, which pushes and pops them), then 0x2F41C(the dword at
+    # +0xC of the structure 0x10740C points at, 0x5000). 0x2F41C runs real on both sides (its
+    # own row) and 0x2F198 is the by-value stub, so the four strings pass as their first 16
+    # bytes. Mask 0: the one caller has 0x2FECD `mov eax,[ebp]`.
+    Spec("menu_debug_lines", 0x2F940, [
+        Case("l0", {"eax": 0x1B}, d2c_dbg_case(0x0010A300, 0x0010A340, b"v1.23 debug\x00\x61\x62\x63\x64",
+                                               b"main 4.5\x00\x71\x72\x73\x74\x75\x76\x77")),
+        Case("l1", {"eax": 0xFFFFFFFF}, d2c_dbg_case(0x0010A380, 0x0010A300, bytes(range(0x21, 0x31)),
+                                                     bytes(range(0x41, 0x51)))),
+    ], allow_calls=(0x2F41C,), calls=(D1G_TXT198,), eax_mask=0,
+       mutants=("@col", "@row2", "@os", "@mode", "@buf", "@off", "@deref", "@order", "@mode2")),
 ]
 D1_SPECS += D2C_SPECS
 

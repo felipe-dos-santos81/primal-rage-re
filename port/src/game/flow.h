@@ -349,9 +349,11 @@ void game_init_null(void);
 u32 flow_challenge_handle(u32 side, u32 ch);
 void flow_105bf0_clear(void);
 void flow_list_105c0c_init(void);
-/* 0x12658 and 0x286BC: exposed for the differential rows (record 2026-10-11-reverse-d2c). */
+/* 0x12658, 0x286BC and 0x38910: exposed for the differential rows (record
+ * 2026-10-11-reverse-d2c). */
 void game_state_3_handoff(void);
 void flow_match_streak_update(void);
+void title_origin_reset(u32 idx);
 /* 0x4F200: DS_00107A55 = (u8)v, DS_00107A54 = 0, 0x4F1D0, 0x2BAF4(1). */
 void flow_screen_reset(u32 v);
 /* 0x25848: picks the stage word DS_00104AFC (on DS_00104B17). */

@@ -20505,6 +20505,56 @@ static u32 d2c_2c8f0_core(int scaled, u32 mut)
 D2C_VO_MUT(m8)  D2C_VO_MUT(s10) D2C_VO_MUT(shr)     D2C_VO_MUT(noshift) D2C_VO_MUT(f35)  D2C_VO_MUT(f37)
 D2C_VO_MUT(swap) D2C_VO_MUT(ret) D2C_VO_MUT(rethalf) D2C_VO_MUT(order)   D2C_VO_MUT(mask) D2C_VO_MUT(f2a)
 D2C_VO_MUT(udiv) D2C_VO_MUT(div) D2C_VO_MUT(sraw) D2C_VO_MUT(early)
+
+/* 0x38910: EAX = the table index. */
+static void b_d2c_38910(const u32 *r, u32 *eax) { title_origin_reset(r[R_EAX]); *eax = 0u; }
+enum { D2C_TO_NONE, D2C_TO_nocall, D2C_TO_a4a, D2C_TO_a4c, D2C_TO_src, D2C_TO_tbl, D2C_TO_idx, D2C_TO_a50,
+       D2C_TO_a40, D2C_TO_sh5, D2C_TO_sh6, D2C_TO_sext, D2C_TO_a48, D2C_TO_order };
+#define D2C_TO(x) (mut == D2C_TO_##x)
+static void d2c_38910_core(u32 idx, u32 mut)
+{
+    u32 off = idx * (D2C_TO(idx) ? 4u : 2u);
+    if (!D2C_TO(nocall) && !D2C_TO(order)) frontend_origin_zero();
+    u16 src = DSW(D2C_TO(src) ? 0x00107A48u : 0x00107A4Eu);
+    if (!D2C_TO(a4a)) DSW(0x00107A4Au) = src;
+    if (!D2C_TO(a4c)) DSW(0x00107A4Cu) = src;
+    if (!D2C_TO(a50)) DSW(0x00107A50u) = DSW((D2C_TO(tbl) ? 0x000BDDFCu : 0x000BDE0Cu) + off);
+    if (!D2C_TO(a40)) DSW(0x00107A40u) = DSW((D2C_TO(tbl) ? 0x000BDE0Cu : 0x000BDDFCu) + off);
+    u16 a = DSW(0x00107A50u), b = DSW(D2C_TO(a48) ? 0x00107A4Eu : 0x00107A48u);
+    DSW(0x00107A3Au) = D2C_TO(sext) ? (u16)((s16)a >> 5) : (u16)(a >> (D2C_TO(sh5) ? 6 : 5));
+    DSW(0x00107A38u) = D2C_TO(sext) ? (u16)((s16)b >> 6) : (u16)(b >> (D2C_TO(sh6) ? 5 : 6));
+    if (D2C_TO(order)) frontend_origin_zero();
+}
+#define D2C_TO_MUT(name) \
+    static void m_d2c_to_##name(const u32 *r, u32 *eax) { d2c_38910_core(r[R_EAX], D2C_TO_##name); *eax = 0u; }
+D2C_TO_MUT(nocall) D2C_TO_MUT(a4a) D2C_TO_MUT(a4c) D2C_TO_MUT(src) D2C_TO_MUT(tbl)  D2C_TO_MUT(idx) D2C_TO_MUT(a50)
+D2C_TO_MUT(a40)    D2C_TO_MUT(sh5) D2C_TO_MUT(sh6) D2C_TO_MUT(sext) D2C_TO_MUT(a48) D2C_TO_MUT(order)
+
+/* 0x2F940: EAX = row. */
+static void b_d2c_2f940(const u32 *r, u32 *eax) { menu_debug_lines(r[R_EAX]); *eax = 0u; }
+enum { D2C_DL_NONE, D2C_DL_col, D2C_DL_row2, D2C_DL_os, D2C_DL_mode, D2C_DL_buf, D2C_DL_off, D2C_DL_deref,
+       D2C_DL_order, D2C_DL_mode2 };
+#define D2C_DL(x) (mut == D2C_DL_##x)
+static void d2c_2f940_core(u32 row, u32 mut)
+{
+    u32 os = D2C_DL(os) ? 0x00080B4Cu : 0x00080B44u, mn = D2C_DL(os) ? 0x00080B44u : 0x00080B4Cu;
+    u32 st = DSD(0x0010740Cu) + (D2C_DL(off) ? 8u : 0xCu);
+    u32 last = D2C_DL(deref) ? st : DSD(st), mode = D2C_DL(mode) ? 0x4000u : 0x5000u;
+    if (D2C_DL(order)) {
+        text_cursor_set(4, (s32)row + 1, mem + mn, mode);
+        text_cursor_next_line(mem + last, 0x5000u);
+    }
+    text_cursor_set(D2C_DL(col) ? 0 : 4, (s32)row, mem + os, mode);
+    text_cursor_next_line(mem + (D2C_DL(buf) ? 0x000BCD60u : 0x000BCD5Cu), D2C_DL(mode2) ? 0x4000u : 0x5000u);
+    if (D2C_DL(order)) return;
+    text_cursor_set(4, (s32)row + (D2C_DL(row2) ? 0 : 1), mem + mn, mode);
+    text_cursor_next_line(mem + last, D2C_DL(mode2) ? 0x4000u : 0x5000u);
+}
+#define D2C_DL_MUT(name) \
+    static void m_d2c_dl_##name(const u32 *r, u32 *eax) { d2c_2f940_core(r[R_EAX], D2C_DL_##name); *eax = 0u; }
+D2C_DL_MUT(col) D2C_DL_MUT(row2) D2C_DL_MUT(os) D2C_DL_MUT(mode) D2C_DL_MUT(buf) D2C_DL_MUT(off) D2C_DL_MUT(deref)
+D2C_DL_MUT(order) D2C_DL_MUT(mode2)
+
 /* ---- end of track D2 batch d2c bindings ---- */
 
 static const binding_t k_bindings[] = {
@@ -24694,6 +24744,30 @@ static const binding_t k_bindings[] = {
     { "attract_config_volumes@div", m_d2c_vs_div, 0x00000000u },
     { "attract_config_volumes@sraw", m_d2c_vs_sraw, 0x00000000u },
     { "attract_config_volumes@early", m_d2c_vs_early, 0x00000000u },
+    { "title_origin_reset", b_d2c_38910, 0x00000000u },
+    { "title_origin_reset@nocall", m_d2c_to_nocall, 0x00000000u },
+    { "title_origin_reset@a4a", m_d2c_to_a4a, 0x00000000u },
+    { "title_origin_reset@a4c", m_d2c_to_a4c, 0x00000000u },
+    { "title_origin_reset@src", m_d2c_to_src, 0x00000000u },
+    { "title_origin_reset@tbl", m_d2c_to_tbl, 0x00000000u },
+    { "title_origin_reset@idx", m_d2c_to_idx, 0x00000000u },
+    { "title_origin_reset@a50", m_d2c_to_a50, 0x00000000u },
+    { "title_origin_reset@a40", m_d2c_to_a40, 0x00000000u },
+    { "title_origin_reset@sh5", m_d2c_to_sh5, 0x00000000u },
+    { "title_origin_reset@sh6", m_d2c_to_sh6, 0x00000000u },
+    { "title_origin_reset@sext", m_d2c_to_sext, 0x00000000u },
+    { "title_origin_reset@a48", m_d2c_to_a48, 0x00000000u },
+    { "title_origin_reset@order", m_d2c_to_order, 0x00000000u },
+    { "menu_debug_lines", b_d2c_2f940, 0x00000000u },
+    { "menu_debug_lines@col", m_d2c_dl_col, 0x00000000u },
+    { "menu_debug_lines@row2", m_d2c_dl_row2, 0x00000000u },
+    { "menu_debug_lines@os", m_d2c_dl_os, 0x00000000u },
+    { "menu_debug_lines@mode", m_d2c_dl_mode, 0x00000000u },
+    { "menu_debug_lines@buf", m_d2c_dl_buf, 0x00000000u },
+    { "menu_debug_lines@off", m_d2c_dl_off, 0x00000000u },
+    { "menu_debug_lines@deref", m_d2c_dl_deref, 0x00000000u },
+    { "menu_debug_lines@order", m_d2c_dl_order, 0x00000000u },
+    { "menu_debug_lines@mode2", m_d2c_dl_mode2, 0x00000000u },
     /* ---- end of track D2 batch d2c entries ---- */
 };
 

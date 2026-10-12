@@ -6450,6 +6450,8 @@ D2C_MASKS = {
     "prompt_side_erase": 0x0,
     "attract_config_volumes_unscaled": 0xffffffff,
     "attract_config_volumes": 0x0,
+    "title_origin_reset": 0x0,
+    "menu_debug_lines": 0x0,
 }
 D2C_KINDS = {
     "game_state_3_handoff@d1": {'call #0'},
@@ -6736,6 +6738,28 @@ D2C_KINDS = {
     "attract_config_volumes@div": {'byte', 'call #10', 'call #10 memory', 'call #11 memory', 'call #12', 'call #12 memory', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9 memory'},
     "attract_config_volumes@sraw": {'byte', 'call #10', 'call #10 memory', 'call #11 memory', 'call #12', 'call #12 memory', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9 memory'},
     "attract_config_volumes@early": {'call #2', 'call #2 memory', 'call #3', 'call #4'},
+    "title_origin_reset@nocall": {'call #0'},
+    "title_origin_reset@a4a": {'byte'},
+    "title_origin_reset@a4c": {'byte'},
+    "title_origin_reset@src": {'byte'},
+    "title_origin_reset@tbl": {'byte'},
+    "title_origin_reset@idx": {'byte'},
+    "title_origin_reset@a50": {'byte'},
+    "title_origin_reset@a40": {'byte'},
+    "title_origin_reset@sh5": {'byte'},
+    "title_origin_reset@sh6": {'byte'},
+    "title_origin_reset@sext": {'byte'},
+    "title_origin_reset@a48": {'byte'},
+    "title_origin_reset@order": {'call #0 memory'},
+    "menu_debug_lines@col": {'call #0'},
+    "menu_debug_lines@row2": {'call #2'},
+    "menu_debug_lines@os": {'call #0', 'call #2'},
+    "menu_debug_lines@mode": {'call #0', 'call #2'},
+    "menu_debug_lines@buf": {'call #1'},
+    "menu_debug_lines@off": {'call #3'},
+    "menu_debug_lines@deref": {'call #3'},
+    "menu_debug_lines@order": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "menu_debug_lines@mode2": {'call #1', 'call #3'},
 }
 D2C_CASES = [
     ("game_state_3_handoff@d1", ['h0', 'h1', 'h2', 'h3']),
@@ -7022,6 +7046,28 @@ D2C_CASES = [
     ("attract_config_volumes@div", ['v0', 'v1', 'v3', 'v5']),
     ("attract_config_volumes@sraw", ['v0', 'v1', 'v4']),
     ("attract_config_volumes@early", ['v0', 'v1', 'v2', 'v3', 'v4', 'v5']),
+    ("title_origin_reset@nocall", ['t0', 't1', 't2']),
+    ("title_origin_reset@a4a", ['t0', 't1', 't2']),
+    ("title_origin_reset@a4c", ['t0', 't1', 't2']),
+    ("title_origin_reset@src", ['t0', 't1', 't2']),
+    ("title_origin_reset@tbl", ['t0', 't1', 't2']),
+    ("title_origin_reset@idx", ['t1', 't2']),
+    ("title_origin_reset@a50", ['t0', 't1', 't2']),
+    ("title_origin_reset@a40", ['t0', 't1', 't2']),
+    ("title_origin_reset@sh5", ['t0', 't1']),
+    ("title_origin_reset@sh6", ['t0', 't1', 't2']),
+    ("title_origin_reset@sext", ['t0', 't1']),
+    ("title_origin_reset@a48", ['t0', 't1', 't2']),
+    ("title_origin_reset@order", ['t0', 't1', 't2']),
+    ("menu_debug_lines@col", ['l0', 'l1']),
+    ("menu_debug_lines@row2", ['l0', 'l1']),
+    ("menu_debug_lines@os", ['l0', 'l1']),
+    ("menu_debug_lines@mode", ['l0', 'l1']),
+    ("menu_debug_lines@buf", ['l0', 'l1']),
+    ("menu_debug_lines@off", ['l0', 'l1']),
+    ("menu_debug_lines@deref", ['l0', 'l1']),
+    ("menu_debug_lines@order", ['l0', 'l1']),
+    ("menu_debug_lines@mode2", ['l0', 'l1']),
 ]
 D1_MASKS.update(D2C_MASKS)
 D1_KINDS.update(D2C_KINDS)
@@ -8108,7 +8154,7 @@ class RealFunctionTests(unittest.TestCase):
         0x2F314: ("ebx", "ecx", "edx"), 0x2EF24: (), 0x65546: (), 0x61A70: ("edx",),
         0x2EFD4: ("ebx", "ecx", "edx"), 0x2F0F0: ("edx",),
         0x2F5A0: ("ebx", "ecx", "edx"), 0x2F830: ("ebx", "ecx", "edx"),
-        0x1D1B0: (), 0x2F510: ("ebx", "ecx", "edx"), 0x2F434: ("ebx", "ecx", "edx"),     # track D2 batch d2c
+        0x1D1B0: (), 0x2F510: ("ebx", "ecx", "edx"), 0x2F434: ("ebx", "ecx", "edx"), 0x4F1D0: (),     # track D2 batch d2c
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))
