@@ -18240,6 +18240,39 @@ D3B_SPECS += [
     ], calls=(SPAWN, D3B_BAR, D3B_BAR2, D3B_BADGE), eax_mask=0, mutants=D3B_HUD_MUTANTS),
 ]
 
+# 0x1DAE8's spawn and bar stubs that also rewrite the side byte DS_00104B1A (harness writes: the
+# real callees do not write it), so each of the raw's re-reads (0x1DB61, 0x1DB75, 0x1DBC0) takes a
+# value its predecessor did not have
+D3B_SPAWN_B1A = dataclasses.replace(SPAWN, writes=((None, 0x00104B1A, b"\x01"),))
+D3B_BARI_B1A = dataclasses.replace(D3B_BARI, writes=((None, 0x00104B1A, b"\x00"),))
+
+D3B_SPECS += [
+    # 0x1DAE8 fight_hud_spawn_side: AL = enable, the side is the byte DS_00104B1A. EAX dies unread at
+    # its one call site 0x26AA1 (0x26AB4 `mov ah,4` after 0x26AAF `call 0x20ef8`, whose EAX is dead:
+    # the walk): mask 0.
+    Spec("fight_hud_spawn_side", 0x1DAE8, [
+        Case("d0", {"eax": 1}, d3b_hud_case(b1a=0), {0x2AE14: 0x0010A300}),
+        Case("d1", {"eax": 1}, d3b_hud_case(b1a=1), {0x2AE14: 0x0010A340}),
+        Case("d2", {"eax": 1}, d3b_hud_case(0x8101, (0x23, 0xA4), 0xF7, b1a=1), {0x2AE14: 0x0010A380}),
+        Case("d3", {"eax": 0}, d3b_hud_case(0x8101, b1a=0), {0x2AE14: 0x0010A3C0}),
+        Case("d4", {"eax": 0x100}, d3b_hud_case(0x7203, b1a=1), {0x2AE14: 0x0010A400}),
+        Case("d5", {"eax": 0xFFFFFF80}, d3b_hud_case(0x7203, (0xFE, 0x01), 0x08, b1a=0x80), {0x2AE14: 0x0010A440}),
+        Case("d6", {"eax": 1}, d3b_hud_case(0x7203, (0xFE, 0x01), 0x02, b1a=0), {0x2AE14: 0x0010A480}),
+    ], calls=(SPAWN, D3B_BARI, D3B_BADGE), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "b90c b80b b80a al a d1 x1 y1 a3 s1 bari bariside a2 d3 x3 y3 s3 e0 e0late ch chw y bside sext "
+           "aecearly aec sextside second aecbit").split())),
+    # the same entry with the stubs that rewrite DS_00104B1A: the side each store and call uses is
+    # the byte as it is after the preceding call
+    Spec("fight_hud_spawn_side_rr", 0x1DAE8, [
+        Case("q0", {"eax": 1}, d3b_hud_case(0x8101, b1a=0), {0x2AE14: 0x0010A300}),
+        Case("q1", {"eax": 1}, d3b_hud_case(0x7203, b1a=1), {0x2AE14: 0x0010A340}),
+    ], calls=(D3B_SPAWN_B1A, D3B_BARI_B1A, D3B_BADGE), eax_mask=0,
+       unhit_named={0x1DB82: "the bar stub of this spec leaves DS_00104B1A = 0, so 0x1DB75 `cmp byte "
+                             "[0x104b1a],0` takes 0x1DB7E; fight_hud_spawn_side d1, d2 and d5 hit it"},
+       mutants=("@r2", "@r3", "@r5", "@cache")),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
