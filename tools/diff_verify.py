@@ -13693,9 +13693,10 @@ def d2d_fin_case(side, slot, state, x=0x00012100, ox=0x00012000, timer=0x0002, a
          D2D_SP + 0x58: bytes([0x58, 0x59, 0x5A])}
     for c in (ch, och, 5):
         p[0x000C75AA + c * 2] = le16(0x8120 + c)
-        p[0x000BDDC4 + c * 4] = le32(0x000ED000 + c)
-        p[0x000BDDE0 + c * 4] = le32(0x000C9500 + c * 0x20)
-        p[0x000BDC2C + c * 4] = le32(0x000EC000 + c)
+        if c != 5:                                   # the scratch slot's character reaches no table (40 pokes a case)
+            p[0x000BDDC4 + c * 4] = le32(0x000ED000 + c)
+            p[0x000BDDE0 + c * 4] = le32(0x000C9500 + c * 0x20)
+            p[0x000BDC2C + c * 4] = le32(0x000EC000 + c)
     for i in (0, 1):
         buf = bytearray((0x80 | (k & 0x3F) | (i << 6)) & 0xFF for k in range(0x94))
         rec = (D2D_F0, D2D_F1)[i]
@@ -13713,6 +13714,21 @@ def d2d_fin_case(side, slot, state, x=0x00012100, ox=0x00012000, timer=0x0002, a
         w32(buf, 0x2C, x)
         buf[0x57], buf[0x7A] = state, 5
         p.update(d1d_chunks(D2D_SLOTX, buf))
+    return p
+def d2d_48d94_case(side, slot, state, w28=0x4000, w2e=0x2E2F, w32=0x0300, seed=0x12345678, cam=0x00012340,
+                   count=8, nxt=0x04, lists=False, **kw):
+    """0x48D94: d2d_fin_case plus the EDX record's +0x26..+0x2B (`w28`) and +0x2C..+0x33 (`w2e`,
+    `w32`), the rng seed, the camera x, the descriptor's handle dword 0xC951C, the type-0x2D count
+    byte 0x108398 and the next-state byte 0x108399 between sentinels, and the spawn stub's record
+    +0x32..+0x37; with `lists`, the type-0x2D nodes and sentinels 0x48C4C rebuilds."""
+    p = d2d_fin_case(side, slot, state, **kw)
+    p.update({D2D_REC + 0x26: b"\x26\x27" + le16(w28) + b"\x2a\x2b",
+              D2D_REC + 0x2C: le16(0x2C2D) + le16(w2e) + le16(0x3031) + le16(w32),
+              DS_RNG: le32(seed), 0x000F0AF0: le32(cam), 0x000C951C: le32(0x1C1C1C1C),
+              0x00108394: bytes([0x94, 0x95, 0x96, 0x97, count, nxt, 0x9A]),
+              D2D_SP + 0x32: le16(0x3232) + le16(0x3434) + le16(0x3636)})
+    if lists:
+        p.update(d1g_lists_case(0x00108368, 0x001082E0, 0x001082E8, 0x00108368, 0x21))
     return p
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
@@ -14156,6 +14172,40 @@ D2D_SPECS = [
         Case("d1", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1}, d2d_fin_case(1, D2D_SLOTX, 0xFF, timer=9)),
     ], calls=(VOICE, ANCHORX, ANIM_BEGIN, SPAWN, SPEED), allow_calls=(0x33950, 0x380C4, 0x370F0), eax_mask=0,
        mutants=("@ctx", "@distge", "@noabs", "@distslot", "@voicech", "@voicesext", "@xarg", "@xside", "@no34", "@aebit", "@novoice59", "@t0", "@noinc", "@early", "@bstore", "@bge", "@buns", "@b380side", "@speedside", "@speedval", "@aekeep", "@t1", "@cstream", "@chold", "@c370rec", "@cswap", "@no78fc", "@corder", "@dstore")),
+    # 0x48D94 fighter_48d94: EAX = slot, EDX = rec, EBX = side (the slot +0x0C callback 0x48F54's
+    # setup stores). The jump table 0x48D80 has five targets (`cmp al,4; ja`). State 1 runs 0x48C4C
+    # real (its own row, d1g: 0x249C0 allowed, the voice 0xEF recorded); state 2 draws three or four
+    # rng values (0x5D7DC real and recorded, so each draw's range and order is in the call list),
+    # stores 0x29C08's handle in the descriptor before the spawn (the memory at the spawn call),
+    # and stops at a 0 spawn (s2c); state 4 runs 0x370F0 real. CALL29C08, SPAWN, PALETTE and
+    # ANIM_BEGIN are stubs. Mask 0: as 0x48AAC.
+    Spec("fighter_48d94", 0x48D94, [
+        Case("n0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_48d94_case(0, DS_SLOTS, 0)),
+        Case("n5", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1}, d2d_48d94_case(1, D2D_SLOTX, 5)),
+        Case("i1", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_48d94_case(0, DS_SLOTS, 1, lists=True),
+             {0x2C3FC: 0}),
+        Case("s2a", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_48d94_case(0, DS_SLOTS, 2, w28=0x4000, count=8, r51=1), {0x29C08: 0x00ABCDEF, 0x2AE14: D2D_SP}),
+        Case("s2b", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1},
+             d2d_48d94_case(1, D2D_SLOTX, 2, w28=0xBFFF, count=7, seed=0x0BADF00D, r51=0, cam=0xFFFFF000),
+             {0x29C08: 0x00123456, 0x2AE14: D2D_SP}),
+        Case("s2c", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_48d94_case(0, DS_SLOTS, 2, w28=0x4040, count=8, r51=0), {0x29C08: 0x00777777, 0x2AE14: 0}),
+        Case("s2d", {"eax": DS_SLOTS + 0x94, "edx": D2D_REC, "ebx": 1},
+             d2d_48d94_case(1, DS_SLOTS + 0x94, 2, w28=0x0040, count=0x80, w32=0x0100, seed=0x00000007, r51=1),
+             {0x29C08: 0x00555555, 0x2AE14: D2D_SP}),
+        Case("s2e", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_48d94_case(0, DS_SLOTS, 2, w28=0x4000, count=0x7F, w32=0x8100, seed=0xCAFEBABE, r51=0, nxt=0x77),
+             {0x29C08: 0x00111111, 0x2AE14: D2D_SP}),
+        Case("t3a", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_48d94_case(0, DS_SLOTS, 3, timer=2)),
+        Case("t3b", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1}, d2d_48d94_case(1, D2D_SLOTX, 3, timer=1, nxt=0x04)),
+        Case("t3c", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_48d94_case(0, DS_SLOTS, 3, timer=0x8001, nxt=0x02)),
+        Case("t3d", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_48d94_case(0, DS_SLOTS, 3, timer=0x8000)),
+        Case("f4a", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1}, d2d_48d94_case(1, D2D_SLOTX, 4)),
+        Case("f4b", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_48d94_case(0, DS_SLOTS, 4, b14=1)),
+    ], calls=(VOICE, P7_RNG, CALL29C08, SPAWN, PALETTE, ANIM_BEGIN),
+       allow_calls=(0x33950, 0x48C4C, 0x249C0, 0x370F0), eax_mask=0,
+       mutants=("@ctx", "@nolist", "@l57", "@bit", "@sign", "@dxsign", "@speedrange", "@yorder", "@ybase", "@yzext", "@yfield", "@palside", "@palch", "@nopal", "@pallate", "@cam", "@a5", "@desc", "@nonull", "@psetw", "@nopset", "@speedw", "@speedfield", "@cntgt", "@cntuns", "@cntfield", "@tb4", "@next4", "@rng4", "@next2", "@tadd", "@t3store", "@t3ge", "@t3next", "@f4stream", "@f4hold", "@f4rec", "@no78fc", "@f4swap")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 

@@ -41,6 +41,9 @@ Masks: 0 = no caller reads EAX; 0xFF = AL; 0xFFFFFFFF = the whole register.
 | `0x3F9C8` | `fighter_3f9c8` (fighter.c) | 446 | 0 | the slot `+0x0C` callback (the dword at `0x3FBC1`): `xor eax,eax` (`0x35434`) after `0x35431`; `0x384D9` returns through `0x38434` to `mov eax,esi` (`0x38570`) (record d1b, the `0x3F720` row) |
 | `0x3FDD8` | `fighter_3fdd8` (fighter.c) | 206 | 0 | the slot `+0x1C` callback (the dword at `0x3FF81`): the one `call [edx+0x1c]` (`0x19505`) is followed by `mov eax,[esp+8]` (`0x19508`) |
 | `0x4F644` | `input_state_update` (input.c) | 162 | 0 | followed by hand, two calls deep. `0x24C6E`: `mov eax,ebx` (`0x24C9F`) or, past the loop, `0x461DC` (`mov eax,2` `0x461F8` / `mov eax,[0x101514]` `0x46203` before any read) or `0x38990` (`mov ax,[0xf0aec]` `0x38991`, `mov eax,[0xf0aec]` `0x3899F`). `0x25210`: `jmp 0x2540f`, `0x2A31C` (`mov eax,[0x105bcc]` `0x2A353`, or its early `ret`), then `mov ax,[0x104b00]` (`0x2545C`, only AX compared) or `0x3BB90` (`xor ah,ah; mov [0x107d30],ah`, `xor eax,eax` `0x3BB9B`). **Weaker evidence than the other rows': not every branch below those calls was read** |
+| `0x4F4E8` | `flow_round_timer_step` (flow.c) | 223 | 0 | the render table's bit-0 entry (the dword at `0xA86C4`): after `call [eax+0xa86c4]` (`0x25623`) the walk reloads EAX for the next entry (`mov eax,ebx` `0x25621`) or leaves for `0x134C0` (pushes, `cmp byte [0x9af3c],0`, its early exits do not read EAX) and `mov eax,[0x10150c]` (`0x2563E`) |
+| `0x48AAC` | `fighter_48aac` (fighter.c) | 306 | 0 | the slot `+0x0C` callback (the dword at `0x48C06`), as `0x3F9C8` |
+| `0x48D94` | `fighter_48d94` (fighter.c) | 446 | 0 | the slot `+0x0C` callback (stored by `0x48F54`), as `0x3F9C8` |
 
 ## §2 The rows (measured)
 
