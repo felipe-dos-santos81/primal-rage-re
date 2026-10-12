@@ -25038,7 +25038,8 @@ D5E_SPECS += [
     # at (-1, 5) with mode 0x2000 (0x2F198); bit 5 clear releases both strings' lengths at (-1, 5)
     # (0x2F388, 0x3B first). Then, while the word 0x1088A6 is not zero, 0x2F4D0(-1, 0xB, the word
     # / 60, 1, 0, 0x2000). 0x1C500 runs real over a stubbed 0x474E4 that writes four characters;
-    # every other callee is a stub. c4's 0x474E4 returns 0 (an empty string). Mask 0: the one
+    # every other callee is a stub. The released lengths are 9 (c0), 0 (c4: 0x474E4 returns 0, an
+    # empty string) and 4 (c8). Mask 0: the one
     # site 0x252B2 is followed by `xor eax,eax` (0x252B7).
     Spec("game_mode_25_step", 0x266AC, [
         Case("c0", D5E_REG, d5e_25_case(a6=0, ef=0x0040, tail=b"INUE?\x00\x6e")),
@@ -25049,6 +25050,7 @@ D5E_SPECS += [
         Case("c5", {}, d5e_25_case(f=(0x80, 0xFF), a6=0x003C, ef=0x0010, aec=0x00)),
         Case("c6", {}, d5e_25_case(a6=0xFFFF, ef=0x00E0, bc=0x80, tail=b"ABCDEFGHIJKLMNOP\x00")),
         Case("c7", {}, d5e_25_case(f=(0, 0), a6=0, ef=0x0060, tail=b"\x00")),
+        Case("c8", {}, d5e_25_case(f=(1, 1), a6=0x003D, ef=0x0080, bc=1, tail=b"\x00\x6e")),
     ], allow_calls=(0x1C500,), calls=D5E_25_CALLS, eax_mask=0,
        mutants=(("@hf0only", "@hf1only", "@hfor", "@a6nodec", "@a6decb", "@a6old1", "@a6olds", "@nob18", "@b18v",
                  "@b18w", "@noa6r", "@a6rv", "@a6rb", "@headlate")
@@ -25072,6 +25074,116 @@ D5E_SPECS += [
        unhit_named={0x266D7: "the countdown's reset: no case of this row holds a zero word with both flags (the plain row hits it)",
                     0x2689E: D5E_RR_DRAW, 0x268A7: D5E_RR_DRAW, 0x268C9: D5E_RR_DRAW},
        mutants=("@prech1", "@prelat", "@pregate", "@preef", "@prea6", "@preaec", "@nopulse", "@no384b")),
+]
+D5E_STREAK = E.Call(0x286BC, ())
+D5E_MARKS = E.Call(0x4246C, ())
+# the callees leaving what 0x28788 reads after them: 0x4A708 the bytes 0x104B1D = 0 and 0x104B1F =
+# 3 (0x2890D, 0x2891F), 0x286BC the byte 0x108173 = 1 (0x288DB), 0x32B00 the result dword 0x104AD4
+# = 0 and slot 0's +0x63 byte = 1 (0x2893C, 0x289F8)
+D5E_HOLDALL_W = E.Call(0x4A708, (), writes=((None, 0x00104B1D, b"\x00"), (None, 0x00104B1F, b"\x03")))
+D5E_STREAK_W = E.Call(0x286BC, (), writes=((None, 0x00108173, b"\x01"),))
+D5E_SNAP_W = E.Call(0x32B00, ("eax", "edx"), clobbers=("edx",),
+                    writes=((None, 0x00104AD4, le32(0)), (None, 0x00107813, b"\x01")))
+
+
+def d5e_09_case(af8=0, fc=1, fafe=4, ad4=0, t813=(0, 0), st=(0x40, 0x41), lim=(5, 5), afc=3, f173=0, b1d=1, b1f=0,
+                b19=0x62, abc=1, **kw):
+    """0x28788: the results state (d5e_res_case) and the run 0x104B16..0x104B26 (every byte seeded
+    0xA0 + its index; 0x104B17 = 0x5B, 0x104B19 = `b19`, 0x104B1B = 0x5A, 0x104B1D = `b1d`,
+    0x104B1F = `b1f`, 0x104B25 = 0x5F), the result dword 0x104AD4 and the dword 0x104ABC between
+    seeded dwords, the byte 0x108173, both slots' +0x63 bytes (0x107813, 0x1078A7) and +0x80 bytes
+    (0x107830, 0x1078C4), the two bytes 0x108104/0x108105, the eight stage bytes 0x108106.. (0x50 +
+    i) and the stage byte 0x108208 (the stage word 0x0102), each between seeded bytes."""
+    run = bytearray(0xA0 + i for i in range(0x11))
+    for a, v in ((0x17, 0x5B), (0x19, b19), (0x1B, 0x5A), (0x1D, b1d), (0x1F, b1f), (0x25, 0x5F)):
+        run[a - 0x16] = v
+    return d5e_mem(d5e_res_case(af8, fc=fc, fafe=fafe, afc=afc, **kw), {
+        0x00104B16: bytes(run),
+        0x00104AD0: le32(0x67676767) + le32(ad4) + le32(0x68686868),
+        0x00104AB8: le32(0x6F6F6F6F) + le32(abc) + le32(0x70707070),
+        0x00108172: bytes([0x8E, f173, 0x8F]),
+        0x00107812: bytes([0x91, t813[0], 0x92]), 0x001078A6: bytes([0x93, t813[1], 0x94]),
+        0x0010782F: bytes([0x95, st[0], 0x96]), 0x001078C3: bytes([0x97, st[1], 0x98]),
+        0x00108103: bytes([0x7D, lim[0], lim[1]]) + bytes(0x50 + i for i in range(8)) + bytes([0x7E]),
+        0x00108207: bytes([0x8C, 0x5A, 0x8D])})
+
+
+D5E_09_CALLS = (D5E_CLEAR, D5E_SBASE, D5E_PROJ, D5E_DECAY, D5E_PASSA, D4A_PASS, D5E_HUD, D5E_PASSB, D5E_EFFECTS,
+                D5E_YCOMMIT, D5E_HOLDALL, D5E_RTEXT, D5E_STREAK, D4A_SNAPA, D2E_M12_CLOSE, D5E_MARKS)
+D5E_MUT_CLOSE = ("@nob25", "@b25v", "@b25w", "@noae4", "@ae4v", "@ae4w", "@nob00", "@b00v", "@b00b", "@noafa", "@afav",
+                 "@afab", "@abcb", "@b19sext", "@b19rw", "@noclose", "@closeswap", "@closeearly")
+D5E_SPECS += [
+    # 0x28788 game_mode_09_step: no argument. Mode 8's head with 0x3CB68 only when neither slot's
+    # +0x41 has bit 1. Then, with the byte 0xF0AFE == 4 and the byte 0x1078FC != 0: 0x4A708,
+    # 0x28130, 0x286BC; the words 0x104AFE = 0xF0, 0x1088EE = 0x3C; with the byte 0x108173 != 0 the
+    # result 0x104AD4 = 2 and both slots' +0x63 = 0; the byte 0x104B1B = 0; with the byte 0x104B1D
+    # == 0 the dword 0x104ABC = (0x104B1F == 3) + 1 and 0x32B00(it, 0). On the result (read after
+    # 0x32B00): 2: the byte 0x104B17 = 2, the result = 0 when slot 0's +0x63 == 1, = 1 when slot
+    # 1's is, the close (0x104B25 = 0, the hook 0x104AE4 = 0x29B74, the mode word = 0x17, the word
+    # 0x104AFA = 0x13, 0x32A3C(0x104ABC, the byte 0x104B19)). Otherwise w = the result, l = w ^ 1:
+    # w's +0x63 == 1: l's +0x80 += 1; when the new byte >= 3 and the byte 0x108104[l] < 6 the stage
+    # byte 0x108106[the word 0x104AFC] = (w << 6) | 0x80 | w's +0x7A, 0x104B17 = 1, l's +0x80 = 0,
+    # else 0x104B17 = 2; the close. Else, with the stage word == 7: 0x4246C, 0x104B17 = 0, the
+    # close; else 0x104B17 = 1, the mode word = 0x17 and the hook = 0x4142C. The four 0x32BAC
+    # calls are a bare `ret` the port omits (allowed: real in the original). Every other callee
+    # is a stub. u4's result -1 indexes the slot below slot 0 (inside the image). Mask 0: the one
+    # site 0x2533F is followed by `jmp 0x2540f`.
+    Spec("game_mode_09_step", 0x28788, [
+        Case("n0", D5E_REG, d5e_09_case(fafe=3)),
+        Case("n1", {}, d5e_09_case(fc=0, fe=1, f41=(0x02, 0x00), aec=0x80)),
+        Case("n2", {}, d5e_09_case(af8=2, fc=0, f41=(0x00, 0x02), ch=(0x83, 0x85))),
+        Case("n3", {}, d5e_09_case(af8=0x0100, fafe=0, f41=(0xFD, 0xFD), lat=(0x00010000, 0xFFFF0000))),
+        Case("n4", {}, d5e_09_case(af8=0x0101, fc=0, f41=(0x02, 0x02), aec=0x00)),
+        Case("q0", D5E_REG, d5e_09_case(af8=1, fc=0, fafe=0, ad4=2, b1d=0, b1f=3, abc=0x00030001)),
+        Case("q1", {}, d5e_09_case(ad4=2, t813=(1, 0), abc=0x0101, b19=0x80)),
+        Case("q2", {}, d5e_09_case(ad4=2, t813=(0, 1), b1d=0, b1f=2, f41=(0x10, 0xFF), af8=1, fc=0, fafe=0)),
+        Case("q3", {}, d5e_09_case(ad4=2, t813=(1, 1), aec=0xBD)),
+        Case("q4", {}, d5e_09_case(ad4=0x00010000, t813=(1, 1), f173=1, b1d=0x80)),
+        Case("q5", {}, d5e_09_case(ad4=2, t813=(2, 0x81), f173=0)),
+        Case("s0", D5E_REG, d5e_09_case(ad4=0, t813=(1, 0), st=(0x40, 2), lim=(9, 5))),
+        Case("s1", {}, d5e_09_case(ad4=1, t813=(0, 1), st=(2, 0x40), lim=(5, 9), afc=0x0102)),
+        Case("s2", {}, d5e_09_case(ad4=0, t813=(1, 0), st=(0x40, 1))),
+        Case("s3", {}, d5e_09_case(ad4=1, t813=(0, 1), st=(2, 0x40), lim=(6, 0))),
+        Case("s4", {}, d5e_09_case(ad4=0, t813=(1, 0), st=(0x40, 0xFF))),
+        Case("s5", {}, d5e_09_case(ad4=0, t813=(1, 0), st=(0x40, 0x7F), lim=(9, 0))),
+        Case("s6", {}, d5e_09_case(ad4=1, t813=(0, 1), st=(2, 0x40), lim=(0x80, 0))),
+        Case("u0", D5E_REG, d5e_09_case(ad4=0, t813=(0, 1), afc=7)),
+        Case("u1", {}, d5e_09_case(ad4=0, t813=(2, 0), afc=7)),
+        Case("u2", {}, d5e_09_case(ad4=0, t813=(0, 0))),
+        Case("u3", {}, d5e_09_case(ad4=1, t813=(1, 0x81), afc=0x0107)),
+        Case("u4", {}, d5e_09_case(ad4=0xFFFFFFFF, t813=(1, 1))),
+    ], allow_calls=(0x32BAC,), calls=D5E_09_CALLS, eax_mask=0,
+       mutants=(D5E_MUT_RHEAD
+                + ("@pga", "@pgb", "@pgand", "@pgnone", "@pgbit", "@pre78fc", "@prefafe", "@nofafe", "@fafe3", "@fafew",
+                   "@nofc", "@fcnz", "@fefe", "@tailearly", "@tswap", "@sorder", "@nohold", "@notext", "@nostreak",
+                   "@noafe", "@afev", "@afeb", "@noee", "@eev", "@eeb", "@no173", "@f173inv", "@noad42", "@ad42v",
+                   "@ad42w", "@no813a", "@no813b", "@nob1b", "@b1bv", "@b1bw", "@b1dnz", "@snapall", "@b1f2", "@idxv",
+                   "@noabc", "@abcw", "@abclate", "@snaparm", "@nosnap", "@d2v", "@nob17d", "@b17dv", "@noda", "@dav",
+                   "@nodb", "@dbv", "@dswap", "@dnz")
+                + D5E_MUT_CLOSE
+                + ("@wother", "@w63v", "@w63nz", "@lsame", "@stv", "@stw", "@nostinc", "@lwin", "@stsext", "@st2",
+                   "@st4", "@lsext", "@l7", "@l5", "@fch", "@fshift", "@f80", "@fnoch", "@fidxb", "@fidxoff",
+                   "@noflag", "@nob17s", "@b17sv", "@nost0", "@st0w", "@st0win", "@nob17e", "@b17ev", "@afc7b",
+                   "@afc7v", "@markslate", "@nomarks", "@nob17m", "@b17mv", "@nob17u", "@b17uv", "@nob00u", "@b00uv",
+                   "@b00ub", "@noae4u", "@ae4uv", "@ae4uw"))),
+    # 0x28788 again with stubs that write what the raw reads after them: 0x16D58 side 1's character
+    # byte and the latch sources, 0x12DA8 the countdown word = 1 (so both cases reach the tail),
+    # 0x4A708 the bytes 0x104B1D = 0 and 0x104B1F = 3, 0x286BC the byte 0x108173 = 1, 0x32B00 the
+    # result = 0 and slot 0's +0x63 byte = 1.
+    Spec("game_mode_09_step_rr", 0x28788, [
+        Case("r0", {}, d5e_09_case(af8=5, fc=0, fafe=0, ad4=1, t813=(0, 0), st=(0x40, 2), b1d=3, b1f=0)),
+        Case("r1", {}, d5e_09_case(af8=0, fc=0, fafe=0, ad4=2, t813=(0, 1), st=(0x40, 1), b1d=1, b1f=2, aec=0x80)),
+    ], allow_calls=(0x32BAC,),
+       calls=(D5E_CLEAR, D5E_SBASE_W2, D5E_PROJ, D5E_DECAY, D5E_PASSA, D4A_PASS, D5E_HUD, D5E_PASSB, D5E_EFFECTS,
+              D5E_YCOMMIT_WAF8, D5E_HOLDALL_W, D5E_RTEXT, D5E_STREAK_W, D5E_SNAP_W, D2E_M12_CLOSE, D5E_MARKS),
+       eax_mask=0,
+       unhit_named={**{a: "the drawn match: this row's 0x32B00 stub leaves the result 0 (the plain row hits it)"
+                       for a in (0x2894B, 0x2895F, 0x28967, 0x28973, 0x28978)},
+                    **{a: "the other arm: this row's 0x32B00 stub leaves slot 0's +0x63 byte 1 (the plain row hits it)"
+                       for a in (0x28B0B, 0x28B18, 0x28B2A, 0x28B37, 0x28BAE)},
+                    0x28BCC: "the early return: this row's 0x12DA8 stub runs the countdown out (the plain row hits it)"},
+       mutants=("@prech1", "@prelat", "@preaf8", "@preb1d", "@preb1f", "@pre173", "@pread4", "@prew63", "@nosnap",
+                "@nostreak", "@nohold")),
 ]
 D1_SPECS += D5E_SPECS
 SPECS = [

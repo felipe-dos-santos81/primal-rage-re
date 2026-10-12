@@ -33177,7 +33177,16 @@ enum { D5E_NONE, D5E_nol0, D5E_nol1, D5E_l0w, D5E_l1w, D5E_l1src, D5E_latchlate,
        D5E_f384same, D5E_pborder, D5E_nopr4, D5E_tmask, D5E_tmask0f, D5E_t40, D5E_t20inv, D5E_bcinv, D5E_curid,
        D5E_nocur, D5E_curcol, D5E_currow, D5E_curmode, D5E_relrev, D5E_relone, D5E_relcol, D5E_relrow, D5E_rellen,
        D5E_numall, D5E_a6sgt, D5E_a6s, D5E_a6b, D5E_a6div, D5E_nonum, D5E_ncol, D5E_nrow, D5E_nwidth, D5E_npad,
-       D5E_nmode, D5E_preef, D5E_prea6 };
+       D5E_nmode, D5E_preef, D5E_prea6, D5E_pga, D5E_pgb, D5E_pgand, D5E_pgnone, D5E_pgbit, D5E_pre78fc, D5E_nofc,
+       D5E_fcnz, D5E_fefe, D5E_sorder, D5E_nostreak, D5E_no173, D5E_f173inv, D5E_noad42, D5E_ad42v, D5E_ad42w,
+       D5E_no813a, D5E_no813b, D5E_nob1b, D5E_b1bv, D5E_b1bw, D5E_b1dnz, D5E_snapall, D5E_b1f2, D5E_idxv, D5E_noabc,
+       D5E_abcw, D5E_abclate, D5E_snaparm, D5E_nosnap, D5E_d2v, D5E_nob17d, D5E_b17dv, D5E_noda, D5E_dav, D5E_nodb,
+       D5E_dbv, D5E_dswap, D5E_dnz, D5E_afav, D5E_closeearly, D5E_w63v, D5E_w63nz, D5E_lsame, D5E_stv, D5E_stw,
+       D5E_nostinc, D5E_lwin, D5E_stsext, D5E_st2, D5E_st4, D5E_lsext, D5E_l7, D5E_l5, D5E_fch, D5E_fshift, D5E_f80,
+       D5E_fnoch, D5E_fidxb, D5E_fidxoff, D5E_noflag, D5E_nob17s, D5E_b17sv, D5E_nost0, D5E_st0w, D5E_st0win,
+       D5E_nob17e, D5E_b17ev, D5E_afc7b, D5E_afc7v, D5E_markslate, D5E_nomarks, D5E_nob17m, D5E_b17mv, D5E_nob17u,
+       D5E_b17uv, D5E_nob00u, D5E_b00uv, D5E_b00ub, D5E_noae4u, D5E_ae4uv, D5E_ae4uw, D5E_preb1f, D5E_pre173,
+       D5E_prew63 };
 static void d5e_latch(u32 mut)
 {
     if (mut != D5E_nol0) {
@@ -33728,6 +33737,126 @@ static void d5e_266ac_core(u32 mut)
                              (mut == D5E_npad) ? 1u : 0u, (mut == D5E_nmode) ? 0x1000u : 0x2000u);
     }
 }
+/* 0x28788: the close of its three arms (0x28978..0x289AF, 0x28A9D..0x28AD5, 0x28B3C..0x28B78) */
+static void d5e_res_close(u32 mut)
+{
+    if (mut == D5E_closeearly) config_play_time_close(DSD(0x00104ABCu), DSB(0x00104B19u));
+    if (mut == D5E_b25w) DSW(0x00104B25u) = 0u;
+    else if (mut != D5E_nob25) DSB(0x00104B25u) = (mut == D5E_b25v) ? 1u : 0u;
+    if (mut == D5E_ae4w) DSW(0x00104AE4u) = 0x9B74u;
+    else if (mut != D5E_noae4) DSD(0x00104AE4u) = (mut == D5E_ae4v) ? 0x0004142Cu : 0x00029B74u;
+    if (mut == D5E_b00b) DSB(0x00104B00u) = 0x17u;
+    else if (mut != D5E_nob00) DSW(0x00104B00u) = (mut == D5E_b00v) ? 0x16u : 0x17u;
+    if (mut == D5E_afab) DSB(0x00104AFAu) = 0x13u;
+    else if (mut != D5E_noafa) DSW(0x00104AFAu) = (mut == D5E_afav) ? 0x14u : 0x13u;
+    u32 abc = (mut == D5E_abcb) ? DSB(0x00104ABCu) : DSD(0x00104ABCu);
+    u32 fl = (mut == D5E_b19sext) ? (u32)(s32)(s8)DSB(0x00104B19u) : (mut == D5E_b19rw) ? DSW(0x00104B19u)
+           : DSB(0x00104B19u);
+    if (mut == D5E_closeswap) config_play_time_close(fl, abc);
+    else if (mut != D5E_noclose && mut != D5E_closeearly) config_play_time_close(abc, fl);
+}
+static void b_d5e_m09(const u32 *r, u32 *eax) { (void)r; game_mode_09_step(); *eax = 0u; }
+static void d5e_28788_core(u32 mut)
+{
+    u32 h0 = DSW(0x00104AF8u), fc0 = DSB(0x001078FCu), fa0 = DSB(0x000F0AFEu), d0 = DSB(0x00104B1Du),
+        f0 = DSB(0x00104B1Fu), k0 = DSB(0x00108173u);
+    d5e_res_head_a(mut);
+    {
+        u32 bit = (mut == D5E_pgbit) ? 1u : 2u;
+        int a = (DSB(0x001077F1u) & bit) != 0u, b = (DSB(0x00107885u) & bit) != 0u;
+        int skip = (mut == D5E_pga) ? a : (mut == D5E_pgb) ? b : (mut == D5E_pgand) ? (a && b)
+                 : (mut == D5E_pgnone) ? 0 : (a || b);
+        if (!skip && mut != D5E_nopass) fight_slot_pass();
+    }
+    d5e_res_head_b(mut, h0);
+    u32 fa = (mut == D5E_prefafe) ? fa0 : (mut == D5E_fafew) ? DSW(0x000F0AFEu) : DSB(0x000F0AFEu);
+    u32 fc = (mut == D5E_pre78fc) ? fc0 : DSB((mut == D5E_fefe) ? 0x001078FEu : 0x001078FCu);
+    if (mut != D5E_nofafe && fa != ((mut == D5E_fafe3) ? 3u : 4u)) return;
+    if (mut != D5E_nofc && ((mut == D5E_fcnz) ? (fc != 0u) : (fc == 0u))) return;
+    if (mut == D5E_tailearly) d5e_res_timers(D5E_NONE);
+    if (mut == D5E_tswap) flow_match_result_text();
+    if (mut != D5E_nohold) fight_effects_hold_all();
+    if (mut == D5E_sorder) flow_match_streak_update();
+    if (mut != D5E_notext && mut != D5E_tswap) flow_match_result_text();
+    if (mut != D5E_nostreak && mut != D5E_sorder) flow_match_streak_update();
+    if (mut != D5E_tailearly) d5e_res_timers(mut);
+    u32 k = (mut == D5E_pre173) ? k0 : DSB(0x00108173u);
+    if ((mut == D5E_f173inv) ? (k == 0u) : (mut == D5E_no173) ? 0 : (k != 0u)) {
+        if (mut == D5E_ad42w) DSW(0x00104AD4u) = 2u;
+        else if (mut != D5E_noad42) DSD(0x00104AD4u) = (mut == D5E_ad42v) ? 1u : 2u;
+        if (mut != D5E_no813a) DSB(0x00107813u) = 0u;
+        if (mut != D5E_no813b) DSB(0x001078A7u) = 0u;
+    }
+    if (mut == D5E_b1bw) DSW(0x00104B1Bu) = 0u;
+    else if (mut != D5E_nob1b) DSB(0x00104B1Bu) = (mut == D5E_b1bv) ? 1u : 0u;
+    u32 rpre = DSD(0x00104AD4u), wpre = DSB(0x00107813u);
+    u32 d = (mut == D5E_preb1d) ? d0 : DSB(0x00104B1Du);
+    if ((mut == D5E_b1dnz) ? (d != 0u) : (mut == D5E_snapall) ? 1 : (d == 0u)) {
+        u32 f = (mut == D5E_preb1f) ? f0 : DSB(0x00104B1Fu);
+        u32 idx = ((f == ((mut == D5E_b1f2) ? 2u : 3u)) ? 1u : 0u) + ((mut == D5E_idxv) ? 0u : 1u);
+        if (mut == D5E_abclate) config_play_time_snap(idx, 0u);
+        if (mut == D5E_abcw) DSW(0x00104ABCu) = (u16)idx;
+        else if (mut != D5E_noabc) DSD(0x00104ABCu) = idx;
+        if (mut == D5E_snaparm) config_play_time_snap(idx, 1u);
+        else if (mut != D5E_nosnap && mut != D5E_abclate) config_play_time_snap(idx, 0u);
+    }
+    u32 result = (mut == D5E_pread4) ? rpre : DSD(0x00104AD4u);
+    if (result == ((mut == D5E_d2v) ? 1u : 2u)) {
+        if (mut != D5E_nob17d) DSB(0x00104B17u) = (mut == D5E_b17dv) ? 1u : 2u;
+        u32 ta = DSB(0x00107813u), tb = DSB(0x001078A7u);
+        int ga = (mut == D5E_dnz) ? (ta != 0u) : (ta == 1u), gb = (mut == D5E_dnz) ? (tb != 0u) : (tb == 1u);
+        if (mut == D5E_dswap) {
+            if (gb) DSD(0x00104AD4u) = 1u;
+            if (ga) DSD(0x00104AD4u) = 0u;
+        } else {
+            if (ga && mut != D5E_noda) DSD(0x00104AD4u) = (mut == D5E_dav) ? 1u : 0u;
+            if (gb && mut != D5E_nodb) DSD(0x00104AD4u) = (mut == D5E_dbv) ? 0u : 1u;
+        }
+        d5e_res_close(mut);
+        return;
+    }
+    u32 winner = result, loser = winner ^ 1u;
+    u32 wt = (mut == D5E_prew63 && winner == 0u) ? wpre
+           : DSB(0x00107813u + ((mut == D5E_wother) ? loser : winner) * 0x94u);
+    if ((mut == D5E_w63nz) ? (wt != 0u) : (wt == ((mut == D5E_w63v) ? 0u : 1u))) {
+        u32 sa = 0x00107830u + ((mut == D5E_lsame) ? winner : loser) * 0x94u;
+        u32 st = (DSB(sa) + ((mut == D5E_stv) ? 2u : 1u)) & 0xFFu;
+        if (mut == D5E_stw) DSW(sa) = (u16)(DSW(sa) + 1u);
+        else if (mut != D5E_nostinc) DSB(sa) = (u8)st;
+        u32 lim = DSB(0x00108104u + ((mut == D5E_lwin) ? winner : loser));
+        int big = (mut == D5E_stsext) ? ((s32)(s8)st >= 3) : (st >= ((mut == D5E_st2) ? 2u : (mut == D5E_st4) ? 4u : 3u));
+        int low = (mut == D5E_lsext) ? ((s32)(s8)lim < 6) : (lim < ((mut == D5E_l7) ? 7u : (mut == D5E_l5) ? 5u : 6u));
+        if (big && low) {
+            u32 chs = DSB(0x0010782Au + ((mut == D5E_fch) ? loser : winner) * 0x94u);
+            u8 flag = (u8)(((u8)winner << ((mut == D5E_fshift) ? 7 : 6)) | ((mut == D5E_f80) ? 0u : 0x80u)
+                           | ((mut == D5E_fnoch) ? 0u : chs));
+            u32 at = ((mut == D5E_fidxoff) ? 0x00108105u : 0x00108106u)
+                   + ((mut == D5E_fidxb) ? DSB(0x00104AFCu) : DSW(0x00104AFCu));
+            u32 za = 0x00107830u + ((mut == D5E_st0win) ? winner : loser) * 0x94u;
+            if (mut != D5E_noflag) DSB(at) = flag;
+            if (mut != D5E_nob17s) DSB(0x00104B17u) = (mut == D5E_b17sv) ? 2u : 1u;
+            if (mut == D5E_st0w) DSW(za) = 0u;
+            else if (mut != D5E_nost0) DSB(za) = 0u;
+        } else if (mut != D5E_nob17e) {
+            DSB(0x00104B17u) = (mut == D5E_b17ev) ? 1u : 2u;
+        }
+        d5e_res_close(mut);
+        return;
+    }
+    u32 afc = (mut == D5E_afc7b) ? DSB(0x00104AFCu) : DSW(0x00104AFCu);
+    if (afc == ((mut == D5E_afc7v) ? 6u : 7u)) {
+        if (mut == D5E_markslate) DSB(0x00104B17u) = 0u;
+        if (mut != D5E_nomarks) fight_stage_marks_clear();
+        if (mut != D5E_nob17m && mut != D5E_markslate) DSB(0x00104B17u) = (mut == D5E_b17mv) ? 1u : 0u;
+        d5e_res_close(mut);
+        return;
+    }
+    if (mut != D5E_nob17u) DSB(0x00104B17u) = (mut == D5E_b17uv) ? 0u : 1u;
+    if (mut == D5E_b00ub) DSB(0x00104B00u) = 0x17u;
+    else if (mut != D5E_nob00u) DSW(0x00104B00u) = (mut == D5E_b00uv) ? 0x16u : 0x17u;
+    if (mut == D5E_ae4uw) DSW(0x00104AE4u) = 0x142Cu;
+    else if (mut != D5E_noae4u) DSD(0x00104AE4u) = (mut == D5E_ae4uv) ? 0x00029B74u : 0x0004142Cu;
+}
 #define D5E_MUT(tag, core, name) \
     static void m_d5e_##tag##_##name(const u32 *r, u32 *eax) { (void)r; core(D5E_##name); *eax = 0u; }
 #define D5E_M0A(name) D5E_MUT(m0a, d5e_28bd4_core, name)
@@ -33851,6 +33980,32 @@ D5E_M25(bcinv) D5E_M25(curid) D5E_M25(nocur) D5E_M25(curcol) D5E_M25(currow) D5E
 D5E_M25(relone) D5E_M25(relcol) D5E_M25(relrow) D5E_M25(rellen) D5E_M25(numall) D5E_M25(a6sgt) D5E_M25(a6s)
 D5E_M25(a6b) D5E_M25(a6div) D5E_M25(nonum) D5E_M25(ncol) D5E_M25(nrow) D5E_M25(nwidth) D5E_M25(npad) D5E_M25(nmode)
 D5E_M25(prech1) D5E_M25(prelat) D5E_M25(pregate) D5E_M25(preef) D5E_M25(prea6) D5E_M25(preaec)
+#define D5E_M09(name) D5E_MUT(m09, d5e_28788_core, name)
+D5E_M09(nocls) D5E_M09(clslate) D5E_M09(chsext) D5E_M09(chw) D5E_M09(chother) D5E_M09(sbside) D5E_M09(nosb0)
+D5E_M09(nosb1) D5E_M09(sbrev) D5E_M09(latearly) D5E_M09(nol0) D5E_M09(nol1) D5E_M09(l0w) D5E_M09(l1w) D5E_M09(l1src)
+D5E_M09(latchlate) D5E_M09(prev) D5E_M09(nop0) D5E_M09(nop1) D5E_M09(pside) D5E_M09(pa) D5E_M09(pb) D5E_M09(pf)
+D5E_M09(pp) D5E_M09(pi) D5E_M09(pstride) D5E_M09(nopr1) D5E_M09(nodecay) D5E_M09(nopassa) D5E_M09(dorder)
+D5E_M09(nopass) D5E_M09(nohud0) D5E_M09(nohud1) D5E_M09(hudrev) D5E_M09(hudsame) D5E_M09(nopassb) D5E_M09(passb0)
+D5E_M09(nofx) D5E_M09(noyc) D5E_M09(ycearly) D5E_M09(af8zero) D5E_M09(nodec) D5E_M09(decb) D5E_M09(hne) D5E_M09(hb)
+D5E_M09(no78fe) D5E_M09(fe78w) D5E_M09(no78fc) D5E_M09(fc78w) D5E_M09(nohf41a) D5E_M09(nohf41b) D5E_M09(hf41set)
+D5E_M09(hf41bit) D5E_M09(noafe4) D5E_M09(afe4v) D5E_M09(afe4w) D5E_M09(holdearly) D5E_M09(aecearly) D5E_M09(noaec)
+D5E_M09(aecset) D5E_M09(aecbit) D5E_M09(pga) D5E_M09(pgb) D5E_M09(pgand) D5E_M09(pgnone) D5E_M09(pgbit)
+D5E_M09(pre78fc) D5E_M09(prefafe) D5E_M09(nofafe) D5E_M09(fafe3) D5E_M09(fafew) D5E_M09(nofc) D5E_M09(fcnz)
+D5E_M09(fefe) D5E_M09(tailearly) D5E_M09(tswap) D5E_M09(sorder) D5E_M09(nohold) D5E_M09(notext) D5E_M09(nostreak)
+D5E_M09(noafe) D5E_M09(afev) D5E_M09(afeb) D5E_M09(noee) D5E_M09(eev) D5E_M09(eeb) D5E_M09(no173) D5E_M09(f173inv)
+D5E_M09(noad42) D5E_M09(ad42v) D5E_M09(ad42w) D5E_M09(no813a) D5E_M09(no813b) D5E_M09(nob1b) D5E_M09(b1bv)
+D5E_M09(b1bw) D5E_M09(b1dnz) D5E_M09(snapall) D5E_M09(b1f2) D5E_M09(idxv) D5E_M09(noabc) D5E_M09(abcw)
+D5E_M09(abclate) D5E_M09(snaparm) D5E_M09(nosnap) D5E_M09(d2v) D5E_M09(nob17d) D5E_M09(b17dv) D5E_M09(noda)
+D5E_M09(dav) D5E_M09(nodb) D5E_M09(dbv) D5E_M09(dswap) D5E_M09(dnz) D5E_M09(nob25) D5E_M09(b25v) D5E_M09(b25w)
+D5E_M09(noae4) D5E_M09(ae4v) D5E_M09(ae4w) D5E_M09(nob00) D5E_M09(b00v) D5E_M09(b00b) D5E_M09(noafa) D5E_M09(afav)
+D5E_M09(afab) D5E_M09(abcb) D5E_M09(b19sext) D5E_M09(b19rw) D5E_M09(noclose) D5E_M09(closeswap) D5E_M09(closeearly)
+D5E_M09(wother) D5E_M09(w63v) D5E_M09(w63nz) D5E_M09(lsame) D5E_M09(stv) D5E_M09(stw) D5E_M09(nostinc) D5E_M09(lwin)
+D5E_M09(stsext) D5E_M09(st2) D5E_M09(st4) D5E_M09(lsext) D5E_M09(l7) D5E_M09(l5) D5E_M09(fch) D5E_M09(fshift)
+D5E_M09(f80) D5E_M09(fnoch) D5E_M09(fidxb) D5E_M09(fidxoff) D5E_M09(noflag) D5E_M09(nob17s) D5E_M09(b17sv)
+D5E_M09(nost0) D5E_M09(st0w) D5E_M09(st0win) D5E_M09(nob17e) D5E_M09(b17ev) D5E_M09(afc7b) D5E_M09(afc7v)
+D5E_M09(markslate) D5E_M09(nomarks) D5E_M09(nob17m) D5E_M09(b17mv) D5E_M09(nob17u) D5E_M09(b17uv) D5E_M09(nob00u)
+D5E_M09(b00uv) D5E_M09(b00ub) D5E_M09(noae4u) D5E_M09(ae4uv) D5E_M09(ae4uw) D5E_M09(prech1) D5E_M09(prelat)
+D5E_M09(preaf8) D5E_M09(preb1d) D5E_M09(preb1f) D5E_M09(pre173) D5E_M09(pread4) D5E_M09(prew63)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -44684,6 +44839,193 @@ static const binding_t k_bindings[] = {
     { "game_mode_25_step_rr@preaec", m_d5e_m25_preaec, 0x00000000u },
     { "game_mode_25_step_rr@nopulse", m_d5e_m25_nopulse, 0x00000000u },
     { "game_mode_25_step_rr@no384b", m_d5e_m25_no384b, 0x00000000u },
+    { "game_mode_09_step", b_d5e_m09, 0x00000000u },
+    { "game_mode_09_step@nocls", m_d5e_m09_nocls, 0x00000000u },
+    { "game_mode_09_step@clslate", m_d5e_m09_clslate, 0x00000000u },
+    { "game_mode_09_step@chsext", m_d5e_m09_chsext, 0x00000000u },
+    { "game_mode_09_step@chw", m_d5e_m09_chw, 0x00000000u },
+    { "game_mode_09_step@chother", m_d5e_m09_chother, 0x00000000u },
+    { "game_mode_09_step@sbside", m_d5e_m09_sbside, 0x00000000u },
+    { "game_mode_09_step@nosb0", m_d5e_m09_nosb0, 0x00000000u },
+    { "game_mode_09_step@nosb1", m_d5e_m09_nosb1, 0x00000000u },
+    { "game_mode_09_step@sbrev", m_d5e_m09_sbrev, 0x00000000u },
+    { "game_mode_09_step@latearly", m_d5e_m09_latearly, 0x00000000u },
+    { "game_mode_09_step@nol0", m_d5e_m09_nol0, 0x00000000u },
+    { "game_mode_09_step@nol1", m_d5e_m09_nol1, 0x00000000u },
+    { "game_mode_09_step@l0w", m_d5e_m09_l0w, 0x00000000u },
+    { "game_mode_09_step@l1w", m_d5e_m09_l1w, 0x00000000u },
+    { "game_mode_09_step@l1src", m_d5e_m09_l1src, 0x00000000u },
+    { "game_mode_09_step@latchlate", m_d5e_m09_latchlate, 0x00000000u },
+    { "game_mode_09_step@prev", m_d5e_m09_prev, 0x00000000u },
+    { "game_mode_09_step@nop0", m_d5e_m09_nop0, 0x00000000u },
+    { "game_mode_09_step@nop1", m_d5e_m09_nop1, 0x00000000u },
+    { "game_mode_09_step@pside", m_d5e_m09_pside, 0x00000000u },
+    { "game_mode_09_step@pa", m_d5e_m09_pa, 0x00000000u },
+    { "game_mode_09_step@pb", m_d5e_m09_pb, 0x00000000u },
+    { "game_mode_09_step@pf", m_d5e_m09_pf, 0x00000000u },
+    { "game_mode_09_step@pp", m_d5e_m09_pp, 0x00000000u },
+    { "game_mode_09_step@pi", m_d5e_m09_pi, 0x00000000u },
+    { "game_mode_09_step@pstride", m_d5e_m09_pstride, 0x00000000u },
+    { "game_mode_09_step@nopr1", m_d5e_m09_nopr1, 0x00000000u },
+    { "game_mode_09_step@nodecay", m_d5e_m09_nodecay, 0x00000000u },
+    { "game_mode_09_step@nopassa", m_d5e_m09_nopassa, 0x00000000u },
+    { "game_mode_09_step@dorder", m_d5e_m09_dorder, 0x00000000u },
+    { "game_mode_09_step@nopass", m_d5e_m09_nopass, 0x00000000u },
+    { "game_mode_09_step@nohud0", m_d5e_m09_nohud0, 0x00000000u },
+    { "game_mode_09_step@nohud1", m_d5e_m09_nohud1, 0x00000000u },
+    { "game_mode_09_step@hudrev", m_d5e_m09_hudrev, 0x00000000u },
+    { "game_mode_09_step@hudsame", m_d5e_m09_hudsame, 0x00000000u },
+    { "game_mode_09_step@nopassb", m_d5e_m09_nopassb, 0x00000000u },
+    { "game_mode_09_step@passb0", m_d5e_m09_passb0, 0x00000000u },
+    { "game_mode_09_step@nofx", m_d5e_m09_nofx, 0x00000000u },
+    { "game_mode_09_step@noyc", m_d5e_m09_noyc, 0x00000000u },
+    { "game_mode_09_step@ycearly", m_d5e_m09_ycearly, 0x00000000u },
+    { "game_mode_09_step@af8zero", m_d5e_m09_af8zero, 0x00000000u },
+    { "game_mode_09_step@nodec", m_d5e_m09_nodec, 0x00000000u },
+    { "game_mode_09_step@decb", m_d5e_m09_decb, 0x00000000u },
+    { "game_mode_09_step@hne", m_d5e_m09_hne, 0x00000000u },
+    { "game_mode_09_step@hb", m_d5e_m09_hb, 0x00000000u },
+    { "game_mode_09_step@no78fe", m_d5e_m09_no78fe, 0x00000000u },
+    { "game_mode_09_step@fe78w", m_d5e_m09_fe78w, 0x00000000u },
+    { "game_mode_09_step@no78fc", m_d5e_m09_no78fc, 0x00000000u },
+    { "game_mode_09_step@fc78w", m_d5e_m09_fc78w, 0x00000000u },
+    { "game_mode_09_step@nohf41a", m_d5e_m09_nohf41a, 0x00000000u },
+    { "game_mode_09_step@nohf41b", m_d5e_m09_nohf41b, 0x00000000u },
+    { "game_mode_09_step@hf41set", m_d5e_m09_hf41set, 0x00000000u },
+    { "game_mode_09_step@hf41bit", m_d5e_m09_hf41bit, 0x00000000u },
+    { "game_mode_09_step@noafe4", m_d5e_m09_noafe4, 0x00000000u },
+    { "game_mode_09_step@afe4v", m_d5e_m09_afe4v, 0x00000000u },
+    { "game_mode_09_step@afe4w", m_d5e_m09_afe4w, 0x00000000u },
+    { "game_mode_09_step@holdearly", m_d5e_m09_holdearly, 0x00000000u },
+    { "game_mode_09_step@aecearly", m_d5e_m09_aecearly, 0x00000000u },
+    { "game_mode_09_step@noaec", m_d5e_m09_noaec, 0x00000000u },
+    { "game_mode_09_step@aecset", m_d5e_m09_aecset, 0x00000000u },
+    { "game_mode_09_step@aecbit", m_d5e_m09_aecbit, 0x00000000u },
+    { "game_mode_09_step@pga", m_d5e_m09_pga, 0x00000000u },
+    { "game_mode_09_step@pgb", m_d5e_m09_pgb, 0x00000000u },
+    { "game_mode_09_step@pgand", m_d5e_m09_pgand, 0x00000000u },
+    { "game_mode_09_step@pgnone", m_d5e_m09_pgnone, 0x00000000u },
+    { "game_mode_09_step@pgbit", m_d5e_m09_pgbit, 0x00000000u },
+    { "game_mode_09_step@pre78fc", m_d5e_m09_pre78fc, 0x00000000u },
+    { "game_mode_09_step@prefafe", m_d5e_m09_prefafe, 0x00000000u },
+    { "game_mode_09_step@nofafe", m_d5e_m09_nofafe, 0x00000000u },
+    { "game_mode_09_step@fafe3", m_d5e_m09_fafe3, 0x00000000u },
+    { "game_mode_09_step@fafew", m_d5e_m09_fafew, 0x00000000u },
+    { "game_mode_09_step@nofc", m_d5e_m09_nofc, 0x00000000u },
+    { "game_mode_09_step@fcnz", m_d5e_m09_fcnz, 0x00000000u },
+    { "game_mode_09_step@fefe", m_d5e_m09_fefe, 0x00000000u },
+    { "game_mode_09_step@tailearly", m_d5e_m09_tailearly, 0x00000000u },
+    { "game_mode_09_step@tswap", m_d5e_m09_tswap, 0x00000000u },
+    { "game_mode_09_step@sorder", m_d5e_m09_sorder, 0x00000000u },
+    { "game_mode_09_step@nohold", m_d5e_m09_nohold, 0x00000000u },
+    { "game_mode_09_step@notext", m_d5e_m09_notext, 0x00000000u },
+    { "game_mode_09_step@nostreak", m_d5e_m09_nostreak, 0x00000000u },
+    { "game_mode_09_step@noafe", m_d5e_m09_noafe, 0x00000000u },
+    { "game_mode_09_step@afev", m_d5e_m09_afev, 0x00000000u },
+    { "game_mode_09_step@afeb", m_d5e_m09_afeb, 0x00000000u },
+    { "game_mode_09_step@noee", m_d5e_m09_noee, 0x00000000u },
+    { "game_mode_09_step@eev", m_d5e_m09_eev, 0x00000000u },
+    { "game_mode_09_step@eeb", m_d5e_m09_eeb, 0x00000000u },
+    { "game_mode_09_step@no173", m_d5e_m09_no173, 0x00000000u },
+    { "game_mode_09_step@f173inv", m_d5e_m09_f173inv, 0x00000000u },
+    { "game_mode_09_step@noad42", m_d5e_m09_noad42, 0x00000000u },
+    { "game_mode_09_step@ad42v", m_d5e_m09_ad42v, 0x00000000u },
+    { "game_mode_09_step@ad42w", m_d5e_m09_ad42w, 0x00000000u },
+    { "game_mode_09_step@no813a", m_d5e_m09_no813a, 0x00000000u },
+    { "game_mode_09_step@no813b", m_d5e_m09_no813b, 0x00000000u },
+    { "game_mode_09_step@nob1b", m_d5e_m09_nob1b, 0x00000000u },
+    { "game_mode_09_step@b1bv", m_d5e_m09_b1bv, 0x00000000u },
+    { "game_mode_09_step@b1bw", m_d5e_m09_b1bw, 0x00000000u },
+    { "game_mode_09_step@b1dnz", m_d5e_m09_b1dnz, 0x00000000u },
+    { "game_mode_09_step@snapall", m_d5e_m09_snapall, 0x00000000u },
+    { "game_mode_09_step@b1f2", m_d5e_m09_b1f2, 0x00000000u },
+    { "game_mode_09_step@idxv", m_d5e_m09_idxv, 0x00000000u },
+    { "game_mode_09_step@noabc", m_d5e_m09_noabc, 0x00000000u },
+    { "game_mode_09_step@abcw", m_d5e_m09_abcw, 0x00000000u },
+    { "game_mode_09_step@abclate", m_d5e_m09_abclate, 0x00000000u },
+    { "game_mode_09_step@snaparm", m_d5e_m09_snaparm, 0x00000000u },
+    { "game_mode_09_step@nosnap", m_d5e_m09_nosnap, 0x00000000u },
+    { "game_mode_09_step@d2v", m_d5e_m09_d2v, 0x00000000u },
+    { "game_mode_09_step@nob17d", m_d5e_m09_nob17d, 0x00000000u },
+    { "game_mode_09_step@b17dv", m_d5e_m09_b17dv, 0x00000000u },
+    { "game_mode_09_step@noda", m_d5e_m09_noda, 0x00000000u },
+    { "game_mode_09_step@dav", m_d5e_m09_dav, 0x00000000u },
+    { "game_mode_09_step@nodb", m_d5e_m09_nodb, 0x00000000u },
+    { "game_mode_09_step@dbv", m_d5e_m09_dbv, 0x00000000u },
+    { "game_mode_09_step@dswap", m_d5e_m09_dswap, 0x00000000u },
+    { "game_mode_09_step@dnz", m_d5e_m09_dnz, 0x00000000u },
+    { "game_mode_09_step@nob25", m_d5e_m09_nob25, 0x00000000u },
+    { "game_mode_09_step@b25v", m_d5e_m09_b25v, 0x00000000u },
+    { "game_mode_09_step@b25w", m_d5e_m09_b25w, 0x00000000u },
+    { "game_mode_09_step@noae4", m_d5e_m09_noae4, 0x00000000u },
+    { "game_mode_09_step@ae4v", m_d5e_m09_ae4v, 0x00000000u },
+    { "game_mode_09_step@ae4w", m_d5e_m09_ae4w, 0x00000000u },
+    { "game_mode_09_step@nob00", m_d5e_m09_nob00, 0x00000000u },
+    { "game_mode_09_step@b00v", m_d5e_m09_b00v, 0x00000000u },
+    { "game_mode_09_step@b00b", m_d5e_m09_b00b, 0x00000000u },
+    { "game_mode_09_step@noafa", m_d5e_m09_noafa, 0x00000000u },
+    { "game_mode_09_step@afav", m_d5e_m09_afav, 0x00000000u },
+    { "game_mode_09_step@afab", m_d5e_m09_afab, 0x00000000u },
+    { "game_mode_09_step@abcb", m_d5e_m09_abcb, 0x00000000u },
+    { "game_mode_09_step@b19sext", m_d5e_m09_b19sext, 0x00000000u },
+    { "game_mode_09_step@b19rw", m_d5e_m09_b19rw, 0x00000000u },
+    { "game_mode_09_step@noclose", m_d5e_m09_noclose, 0x00000000u },
+    { "game_mode_09_step@closeswap", m_d5e_m09_closeswap, 0x00000000u },
+    { "game_mode_09_step@closeearly", m_d5e_m09_closeearly, 0x00000000u },
+    { "game_mode_09_step@wother", m_d5e_m09_wother, 0x00000000u },
+    { "game_mode_09_step@w63v", m_d5e_m09_w63v, 0x00000000u },
+    { "game_mode_09_step@w63nz", m_d5e_m09_w63nz, 0x00000000u },
+    { "game_mode_09_step@lsame", m_d5e_m09_lsame, 0x00000000u },
+    { "game_mode_09_step@stv", m_d5e_m09_stv, 0x00000000u },
+    { "game_mode_09_step@stw", m_d5e_m09_stw, 0x00000000u },
+    { "game_mode_09_step@nostinc", m_d5e_m09_nostinc, 0x00000000u },
+    { "game_mode_09_step@lwin", m_d5e_m09_lwin, 0x00000000u },
+    { "game_mode_09_step@stsext", m_d5e_m09_stsext, 0x00000000u },
+    { "game_mode_09_step@st2", m_d5e_m09_st2, 0x00000000u },
+    { "game_mode_09_step@st4", m_d5e_m09_st4, 0x00000000u },
+    { "game_mode_09_step@lsext", m_d5e_m09_lsext, 0x00000000u },
+    { "game_mode_09_step@l7", m_d5e_m09_l7, 0x00000000u },
+    { "game_mode_09_step@l5", m_d5e_m09_l5, 0x00000000u },
+    { "game_mode_09_step@fch", m_d5e_m09_fch, 0x00000000u },
+    { "game_mode_09_step@fshift", m_d5e_m09_fshift, 0x00000000u },
+    { "game_mode_09_step@f80", m_d5e_m09_f80, 0x00000000u },
+    { "game_mode_09_step@fnoch", m_d5e_m09_fnoch, 0x00000000u },
+    { "game_mode_09_step@fidxb", m_d5e_m09_fidxb, 0x00000000u },
+    { "game_mode_09_step@fidxoff", m_d5e_m09_fidxoff, 0x00000000u },
+    { "game_mode_09_step@noflag", m_d5e_m09_noflag, 0x00000000u },
+    { "game_mode_09_step@nob17s", m_d5e_m09_nob17s, 0x00000000u },
+    { "game_mode_09_step@b17sv", m_d5e_m09_b17sv, 0x00000000u },
+    { "game_mode_09_step@nost0", m_d5e_m09_nost0, 0x00000000u },
+    { "game_mode_09_step@st0w", m_d5e_m09_st0w, 0x00000000u },
+    { "game_mode_09_step@st0win", m_d5e_m09_st0win, 0x00000000u },
+    { "game_mode_09_step@nob17e", m_d5e_m09_nob17e, 0x00000000u },
+    { "game_mode_09_step@b17ev", m_d5e_m09_b17ev, 0x00000000u },
+    { "game_mode_09_step@afc7b", m_d5e_m09_afc7b, 0x00000000u },
+    { "game_mode_09_step@afc7v", m_d5e_m09_afc7v, 0x00000000u },
+    { "game_mode_09_step@markslate", m_d5e_m09_markslate, 0x00000000u },
+    { "game_mode_09_step@nomarks", m_d5e_m09_nomarks, 0x00000000u },
+    { "game_mode_09_step@nob17m", m_d5e_m09_nob17m, 0x00000000u },
+    { "game_mode_09_step@b17mv", m_d5e_m09_b17mv, 0x00000000u },
+    { "game_mode_09_step@nob17u", m_d5e_m09_nob17u, 0x00000000u },
+    { "game_mode_09_step@b17uv", m_d5e_m09_b17uv, 0x00000000u },
+    { "game_mode_09_step@nob00u", m_d5e_m09_nob00u, 0x00000000u },
+    { "game_mode_09_step@b00uv", m_d5e_m09_b00uv, 0x00000000u },
+    { "game_mode_09_step@b00ub", m_d5e_m09_b00ub, 0x00000000u },
+    { "game_mode_09_step@noae4u", m_d5e_m09_noae4u, 0x00000000u },
+    { "game_mode_09_step@ae4uv", m_d5e_m09_ae4uv, 0x00000000u },
+    { "game_mode_09_step@ae4uw", m_d5e_m09_ae4uw, 0x00000000u },
+    { "game_mode_09_step_rr", b_d5e_m09, 0x00000000u },
+    { "game_mode_09_step_rr@prech1", m_d5e_m09_prech1, 0x00000000u },
+    { "game_mode_09_step_rr@prelat", m_d5e_m09_prelat, 0x00000000u },
+    { "game_mode_09_step_rr@preaf8", m_d5e_m09_preaf8, 0x00000000u },
+    { "game_mode_09_step_rr@preb1d", m_d5e_m09_preb1d, 0x00000000u },
+    { "game_mode_09_step_rr@preb1f", m_d5e_m09_preb1f, 0x00000000u },
+    { "game_mode_09_step_rr@pre173", m_d5e_m09_pre173, 0x00000000u },
+    { "game_mode_09_step_rr@pread4", m_d5e_m09_pread4, 0x00000000u },
+    { "game_mode_09_step_rr@prew63", m_d5e_m09_prew63, 0x00000000u },
+    { "game_mode_09_step_rr@nosnap", m_d5e_m09_nosnap, 0x00000000u },
+    { "game_mode_09_step_rr@nostreak", m_d5e_m09_nostreak, 0x00000000u },
+    { "game_mode_09_step_rr@nohold", m_d5e_m09_nohold, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
