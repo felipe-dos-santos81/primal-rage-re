@@ -156,7 +156,7 @@ void attract_config_volumes(void)
 {
     u32 scale = config_field_get(0x2Au) & 3u;
     u32 m = config_field_get(0x35u);
-    u32 s = config_field_get(0x37u);
+    u32 s;
     /* 0x1CAB8 (music) and 0x1CED4 (SFX) store the value into
      * DS_000A2CB8/DS_000A2CB4 and push it to the AIL device (record §50-D:
      * sound_music_volume, sound_sfx_volume). The port's game_audio_service also
@@ -164,6 +164,7 @@ void attract_config_volumes(void)
      * by 3 with idiv (truncation toward zero) and halves with sar 1. */
     sound_music_volume((m == 0xFFFFFFFFu) ? 8u
                        : (u32)(((s32)(m * scale) / 3) >> 1));   /* 0x2C97C */
+    s = config_field_get(0x37u);                                /* 0x2C981/0x2C986 */
     sound_sfx_volume((s == 0xFFFFFFFFu) ? 0x10u
                      : (u32)(((s32)(s * scale) / 3) >> 1));     /* 0x2C9AC */
 }
