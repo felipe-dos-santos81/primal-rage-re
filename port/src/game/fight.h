@@ -526,4 +526,8 @@ int fight_4d150(u32 entry, u32 index);
  * index; exported for its differential row (track D3 d3b). */
 void fight_4aad0(u32 entry, u32 index);
 
+/* 0x4B470 — demo-pose record §29, §42-C. The trample. EAX = entry, EDX = si;
+ * exported for its differential row (track D3 d3b). */
+void fight_4b470(u32 entry, u32 index);
+
 #endif /* PRAGE_GAME_FIGHT_H */

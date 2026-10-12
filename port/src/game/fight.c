@@ -2859,6 +2859,7 @@ int fight_13134(void)
  * takes the 0xEF66A stream at 1.0, and both get +0x36 = 0x1A4. */
 void fight_4bd98(u32 entry)
 {
+    PR_SEAM(0x4BD98u, entry);
     if ((s32)DSD(DS_00104AD8) > 0) return;                      /* 0x4BDA7 */
     if (DSD(DS_00104ABC) < 2u) return;                          /* 0x4BDB4 */
     if (fight_13134() != 0) return;                             /* 0x4BDC1 */
@@ -2905,6 +2906,7 @@ void fight_4bd98(u32 entry)
  * +0x20) and 0x4C60C (0x4C760 flag 1, 0x4C774 flag 0; record §43-A). */
 void fight_4cb18(u32 entry, u32 index, u32 flag, u32 side)
 {
+    PR_SEAM(0x4CB18u, entry, index, flag, side);
     (void)sound_voice((s32)((u32)DSB(DSD(entry + 8u) + 0x48u) - 0x20u) < 3
                       ? 0xD1u : 0xD0u);                 /* 0x4CB1F..0x4CB39/0x4CB3E 0x2C3FC (signed `jge`) */
     actors_anim_begin(DSD(entry + 8u), DSD(DS_000C9604 + index * 4u),
@@ -2959,7 +2961,7 @@ int fight_4af04(u32 side)
  * DS_00104B1D not 2/3, DS_00104AFC, DS_001088C1, DS_001088C5 and DS_00108864
  * clear, [0x1088EF] >> 24 > 1 and +0x1F > 7, 0x4BD98 then 0x4CB18 (the
  * launch). EAX = entry, EDX = si. */
-static void fight_4b470(u32 entry, u32 index)
+void fight_4b470(u32 entry, u32 index)
 {
     u32 rec = DSD(entry + 8u);
     /* The id is from the record's +0x48 byte, not EDX: 0x4B47B..0x4B489
