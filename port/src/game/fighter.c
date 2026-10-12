@@ -2383,7 +2383,7 @@ void fighter_state_37464(u32 side)
         + (u32)DSB(slot + 0x7Au) * 14u + (u32)DSB(so + 0x7Au) * 2u);  /* 0x374D1 */
     s16 x;
     s16 diff;
-    if (fighter_actor_bit15_clear(other) == 0)          /* 0x374C8 */
+    if ((u8)fighter_actor_bit15_clear(other) == 0u)     /* 0x374C8, AL 0x374CD */
         x = (s16)((s16)DSW(ro + 0x18u) + base);         /* 0x3753C */
     else
         x = (s16)((s16)DSW(ro + 0x18u) - base);         /* 0x37509 */
