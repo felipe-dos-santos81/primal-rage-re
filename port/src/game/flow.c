@@ -4555,12 +4555,10 @@ void game_state_title(void)
         }
         /* 0x12402: DS_00107A50 += (rec58+0x32 >> 16) / 2, and
          * 0x12429: rec58+0x2C = 0x40000 / DS_000F0A66. */
-        u32 logo = DSD(DS_000F0A58);
-        if (logo != 0) {
-            DSW(DS_00107A50) = (u16)(DSW(DS_00107A50) +
-                                     (u16)(((s32)DSD(logo + 0x32) >> 16) / 2));
-            DSW(logo + 0x2C) = (u16)(0x40000u / (u32)DSW(DS_000F0A66));
-        }
+        u32 logo = DSD(DS_000F0A58);                        /* 0x12402 (no null test) */
+        DSW(DS_00107A50) = (u16)(DSW(DS_00107A50) +
+                                 (u16)(((s32)DSD(logo + 0x32) >> 16) / 2));    /* 0x12408..0x12423 */
+        DSW(logo + 0x2C) = (u16)(0x40000u / (u32)DSW(DS_000F0A66));            /* 0x12429..0x1243E */
     } else if (DSB(DS_000F0A6F) == 2 && DSB(DS_0009AF3D) == 0) {
         DSB(DS_000F0A6F) = 0;       /* 0x12453 (0x1244E) */
         DSW(DS_000F0A64) = 2;       /* 0x12459 */
