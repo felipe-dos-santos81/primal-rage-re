@@ -324,6 +324,17 @@ void frontend_input_reset(void);
  * selector and the attract machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3);
 
+/* PORT: flow.c functions made external for their differential rows (track D1,
+ * batch d1d; build/diffrun binds them by name). No behaviour changes. */
+void frontend_portrait_flash(u32 i);     /* 0x414B4 */
+void frontend_portrait_reveal(u32 slot); /* 0x41528 */
+void frontend_mode12_advance(void);      /* 0x4160C */
+void flow_no_continue_screen(void);      /* 0x417C4 */
+void flow_1082c8_latch(void);            /* 0x46504 */
+void flow_1082d0_from_column(u32 col);   /* 0x4660C */
+void swap_buffers(void);                 /* 0x50188 */
+void surface_setup(void);                /* 0x51F45 */
+
 /* Record §46-B. 0x20DF4: the fight reset (state 6 and the three hooks
  * below). `stage` is clamped to 7 for the full branch; `full` (the raw's EDX)
  * selects 0x2BAF4/0x38730/0x412A0. */
