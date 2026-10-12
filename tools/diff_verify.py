@@ -18764,6 +18764,97 @@ D3A_SPECS += [
        mutants=("@ad8", "@ad8w", "@ad8late", "@two", "@arg", "@swap", "@three", "@b14", "@b12sext", "@side",
                 "@b20", "@b20v", "@b20late", "@b20early", "@noreset", "@order")),
 ]
+D3A_HUD_SIDE = E.Call(0x1DAE8, ("eax",))
+D3A_M23_STR = {0x21: b"zero-a", 0x22: b"zero-b", 0x23: b"zero-c", 0x27: b"two-a", 0x28: b"two-bb", 0x29: b"two-ccc",
+               0x2A: b"three-a", 0x2B: b"three-b", 0x2C: b"three-c", 0x30: b"far-a", 0x31: b"far-b",
+               0x32: b"far-c"}
+
+
+def d3a_m23_case(b25, b529=0x00, aec=0x00, afe=0x5A5A, b23=0x5B, acc=0x0010A340, b1f=0, side=0,
+                 chars=(2, 0x80), ae8=0x00):
+    """0x26A50: the bytes 0x104B19..0x104B26 (the side 0x104B1A, 0x104B1B and 0x104B20 = 0x5A,
+    0x104B1F, 0x104B23, the state 0x104B25, the rest seeds), the byte 0x104B15 (0x5A), the dwords
+    0x104AAC, 0x104ABC, 0x104AC4, 0x104ACC, 0x104AD8 (0x5A.., 0x5B.., 0x5C.., `acc`, 0x5D..)
+    between seeded dwords, the flag bytes 0x104AE8/0x104AEC, the countdown word 0x104AFE and the
+    mode word 0x104B00 (0x5E5E), the option byte 0x104529, both slots' characters (+0x7A) and
+    the character a sign-extended side 0x80 reaches (0x102E2A = 3); the string rows of
+    characters 0x80 (0xA8F08: ids 0x30..0x32) and, for a sign-extended one, -0x80 (0xA8308: ids
+    0x2A..0x2C; 0xA8D08, what an 8-byte stride reaches, holds 0x21..0x23); the strings (the image's rows give character c the ids 0x21 + 3c ..); and the
+    run clock's no-elapsed-time state."""
+    p = d1i_pt_case()
+    p.update(d1d_str_pokes(D3A_M23_STR))
+    p.update({0x00104B19: bytes([0x61, side, 0x5A, 0x62, 0x63, 0x64, b1f, 0x5A, 0x65, 0x66, b23, 0x67, b25, 0x68]),
+              0x00104B14: b"\x69\x5a\x6a",
+              0x00104AA8: le32(0x6B6B6B6B) + le32(0x5A5A5A5A) + le32(0x6C6C6C6C),
+              0x00104AB8: le32(0x6D6D6D6D) + le32(0x5B5B5B5B) + le32(0x6E6E6E6E),
+              0x00104AC4: le32(0x5C5C5C5C) + le32(0x6F6F6F6F) + le32(acc) + le32(0x70707070)
+                          + le32(0x71717171) + le32(0x5D5D5D5D) + le32(0x72727272),
+              0x00104AE7: bytes([0x73, ae8, 0x74]), 0x00104AEB: bytes([0x75, aec, 0x76]),
+              0x00104AFC: le16(0x7777) + le16(afe) + le16(0x5E5E) + le16(0x7878),
+              0x00104528: bytes([0x79, b529, 0x7A]),
+              0x00107829: bytes([0x7B, chars[0], 0x7C]), 0x001078BD: bytes([0x7D, chars[1], 0x7E]),
+              0x00102E29: bytes([0x7F, 0x03, 0x60]),
+              0x000A8F08: le32(0x30) + le32(0x31) + le32(0x32),
+              0x000A8308: le32(0x2A) + le32(0x2B) + le32(0x2C),
+              0x000A8D08: le32(0x21) + le32(0x22) + le32(0x23)})
+    if b25 == 3:
+        # state 3 calls the run clock with EAX = the dword it just stored in 0x104ABC (0x26B94/
+        # 0x26B99), and 0x32970 keeps AL as its accumulator mask (0x32A25 `mov al,[esp]; mov
+        # [0x107494],al`): host-owned state the port does not model. Seeded here with the value
+        # the raw stores, so that the clock still changes no byte (record §4).
+        p[0x00107494] = le32(2 if b1f == 3 else 1)
+    return p
+
+
+D3A_SPECS += [
+    # 0x26A50 game_mode_23_step: no argument. The byte 0x104B25 - 1 indexes the four-entry jump
+    # table 0x26A40 (`dec al; cmp al,3; ja`); every path ends with 0x104AEC |= 8.
+    # 1 (0x26A71): the bytes 0x104B1B and 0x104B15 = 1, the dword 0x104AC4 = 0x16, 0x29D60 (a
+    #   bare `ret`, allowed), the dword 0x104AD8 = 0, 0x1DAE8(1), the byte 0x104B20 = 1, 0x20EF8,
+    #   then the word 0x104AFE = 0x3C (DI across both calls), 0x104B23 = 2 and 0x104B25 = 4.
+    # 2 (0x26AD6): the spawn 0xA895C (0x104529 bit 1) or 0xBB6B4 at (0x2A00, 0xFF, 0x1200, 0)
+    #   into the dword 0x104ACC, 0x104AE8 |= 0x40, the voice 0x60, then 0x104B25 = 4, the word
+    #   0x104AFE = 0x3C and 0x104B23 = 3.
+    # 3 (0x26B59): 0x2F4BC(-1, 5, 0x80994, 0), 0x2B150 on the dword 0x104ACC and that dword = 0,
+    #   the dword 0x104ABC = (the byte 0x104B1F == 3) + 1, the run clock 0x32970 (real in the
+    #   original only; its EAX is that dword, which it keeps as its mask byte 0x107494: the
+    #   cases seed the byte with it), the dword 0x104AAC = 0x78, the mode word 0x104B00 = 0x22;
+    #   with bit 1 clear the three strings of the 12-byte row 0xA8908[the +0x7A character of the side
+    #   0x104B1A, both zero-extended] through 0x2F198 at col -1, rows 3/5/7, mode 0x2000.
+    # 4 (0x26C61): the word 0x104AFE decremented; when the new value is <= 0 (signed `jg`),
+    #   0x104B25 = the byte 0x104B23.
+    # The string tree runs real on both sides; every other callee is a stub (0x1DAE8 seamed
+    # here; it has no row). c2 runs character 0x80, c3 the side 0x80 (past the image: character
+    # 0). Mask 0: record §1.
+    Spec("game_mode_23_step", 0x26A50, [
+        Case("d0", {}, d3a_m23_case(0)),
+        Case("d1", {}, d3a_m23_case(5, aec=0xF7)),
+        Case("d2", {}, d3a_m23_case(0xFF, aec=0x08)),
+        Case("a0", {"ebx": 0x11111111, "ecx": 0x22222222, "edx": 0x33333333, "esi": 0x44444444,
+                    "edi": 0x55555555}, d3a_m23_case(1), {0x1DAE8: 0x12345678, 0x20EF8: 0x9ABCDEF0}),
+        Case("b0", {}, d3a_m23_case(2, b529=0x02), {0x2AE14: 0x0010A300, 0x2C3FC: 0xFFFFFFFF}),
+        Case("b1", {}, d3a_m23_case(2, b529=0xFD, ae8=0xBF, aec=0xFF), {0x2AE14: 0xFFFFFFFF}),
+        Case("c0", {}, d3a_m23_case(3, b529=0x02, b1f=3)),
+        Case("c1", {}, d3a_m23_case(3, b529=0x00, b1f=0, side=0, acc=0x00000100), {0x2B150: 0x12345678}),
+        Case("c2", {}, d3a_m23_case(3, b529=0xFD, b1f=0x83, side=1, aec=0x01)),
+        Case("c3", {}, d3a_m23_case(3, b529=0x01, b1f=2, side=0x80)),
+        Case("e0", {}, d3a_m23_case(4, afe=5)),
+        Case("e1", {}, d3a_m23_case(4, afe=1, b23=0x02)),
+        Case("e2", {}, d3a_m23_case(4, afe=0, b23=0x03)),
+        Case("e3", {}, d3a_m23_case(4, afe=0x8001)),
+        Case("e4", {}, d3a_m23_case(4, afe=0x8000)),
+        Case("e5", {}, d3a_m23_case(4, afe=0x0100)),
+    ], allow_calls=D1D_STR_ALLOW + (0x29D60, 0x32970),
+       calls=(D3A_HUD_SIDE, D3A_ROUND_RESET, SPAWN, VOICE, D1B_HOLD, P7_2B150, D1D_CURSOR), eax_mask=0,
+       mutants=("@wrap", "@noaec", "@aecbit", "@s1b1b", "@s1b15", "@s1ac4", "@s1ac4w", "@s1ad8", "@s1ad8late",
+                "@s1hud", "@s1nohud", "@s1b20", "@s1b20late", "@s1noreset", "@s1afe", "@s1afeb", "@s1b23",
+                "@s1b25", "@s1early", "@s2bit", "@s2x", "@s2z", "@s2a5", "@s2acc", "@s2accw", "@s2acclate",
+                "@s2ae8", "@s2noae8", "@s2ae8late", "@s2vid", "@s2novoice", "@s2b25", "@s2afe", "@s2b23",
+                "@s2early", "@s3hrow", "@s3hstr", "@s3hmode", "@s3nohold", "@s3nodead", "@s3deadz", "@s3acc",
+                "@s3abc", "@s3abcb", "@s3aac", "@s3aacw", "@s3b00", "@s3b00b", "@s3bit", "@s3sidesext",
+                "@s3chsext", "@s3stride", "@s3tbl", "@s3row", "@s3mode", "@s3col", "@s3two", "@s3late",
+                "@s4nodec", "@s4afeb", "@s4old", "@s4ge", "@s4sign", "@s4src", "@s4nob25")),
+]
 D1_SPECS += D3A_SPECS
 
 

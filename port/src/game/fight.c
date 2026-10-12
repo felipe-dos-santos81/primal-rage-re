@@ -1805,6 +1805,7 @@ void fight_hud_bar_set_inv(s32 v, u32 side)
  * state 1, EAX = 1). */
 void fight_hud_spawn_side(u32 enable)
 {
+    PR_SEAM(0x1DAE8u, enable);
     u32 side = DSB(DS_00104B1A);                            /* 0x1DAF1 */
     DSB(DS_0010290C + side) = 0u;                           /* 0x1DAF9 */
     DSB(DS_0010780B + side * 0x94u) = 0u;                   /* 0x1DB0D */

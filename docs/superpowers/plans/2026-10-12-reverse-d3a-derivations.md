@@ -27,6 +27,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x10DB0` | `frontend_pause_tail` (attract.c) | 104 | 0: every site is `call 0x10db0; call 0x10e18` (`0x11D75`.. `0x11E99`); `0x10E18`'s first EAX use is `mov ah,[0xf0a71]` (`0x10E19`), it reads AH only until `mov eax,0x100` (`0x10E69`) |
 | `0x10E18` | `frontend_continue_tail` (attract.c) | 104 | 0: every site is followed by `call 0x2bf08`, which writes AH first (`0x2BF0E`) and passes AL through on its attract arm; that row's trace (d1c §1: twelve sites, each `pop edx; pop ecx; pop ebx; ret`, traced) holds EAX dead after it |
 | `0x25C1C` | `flow_round_hud_init` | 91 | 0: both call sites go on to a load of EAX on every path (`0x25CBC`: `mov eax,[0xa88b4]` `0x25CE4`, `mov eax,[0xa88a4]` `0x25CFF`, `xor eax,eax` `0x25D06`; `0x2935C`: `0x29384`, `0x2939F`, `0x293A6`) |
+| `0x26A50` | `game_mode_23_step` | 572 | 0: `0x25317 call` then `0x2531C jmp 0x2540f` (the mode tail) |
 
 ## §2 The row table (measured)
 
@@ -52,6 +53,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `frontend_pause_tail` | `0x10DB0` | 8 | 7/7 | 20 | 0 | `0x2C3FC` stubbed, `0x29D60` (a bare `ret`) allowed. `t2`/`t3` hold every bit but one with the neighbouring held bytes all set (`@dboff`, `@d9off`, `@either`); `t7` holds the other tail's two bits |
 | `frontend_continue_tail` | `0x10E18` | 8 | 7/7 | 20 | 0 | the same cases with the two bits swapped and the value 5 |
 | `flow_round_hud_init` | `0x25C1C` | 6 | 7/7 | 16 | 0 | four stubs, all seamed here; `0x29D60` allowed. Open on `0x1D890` and `0x1DC6C` (no row). `r4`: bytes `0x82`, `0x80`, `0x83` (`@b12sext`) |
+| `game_mode_23_step` | `0x26A50` | 16 | 12/12 | 65 | 0 | one row over the four states of the jump table `0x26A40` (a bounded switch the scan follows). The string tree real; `0x29D60` allowed; `0x32970` real in the original only (§4); seven stubs (`0x1DAE8` seamed here, no row). `c2`: character `0x80`; `c3`: side `0x80` |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -79,6 +81,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x1DC6C` | EAX (`mov [esp+8],al` `0x1DC75`) | 0 | none | pushes EBX ECX EDX ESI EDI EBP; one plain `ret` (`0x1DDF2`) |
 | `0x1D810` | EAX (`lea edx,[eax*4]` `0x1D813`) | 0 | `esi edi ebp` | pushes EBX ECX EDX; one plain `ret` (`0x1D836`) |
 | `0x20EF8` | none (`mov eax,ecx` `0x20F05` is its first EAX use) | 0 | none | pushes EBX ECX EDX ESI EDI; one plain `ret` (`0x20F9E`) |
+| `0x1DAE8` | EAX (`mov dl,al` `0x1DAEB`) | 0 | none | pushes EBX ECX EDX; one plain `ret` (`0x1DC09`) |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -134,6 +137,17 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   argument, so the EAX/EDX the raw leaves for them (the old countdown and its decrement) are not compared.
 - `flow_round_hud_init`: the byte `0x104B1D` is read twice (`0x25C24`, and again at `0x25C4B` after the HUD
   call); no stub writes it, so a port that reused the first read is not separated (the port re-reads).
+- `game_mode_23_step` state 3, the run clock's argument: `0x26B94 mov [0x104abc],eax` is followed at `0x26B99`
+  by `call 0x32970` with that EAX (1, or 2 when the byte `0x104B1F` is 3), and `0x32970` keeps AL as its
+  accumulator mask (`0x32A25 mov al,[esp]; 0x32A28 mov [0x107494],al`; the byte is read only by `0x32970`
+  itself, `0x32994` and `0x329B2`). Every other clock call of this batch passes 0. The port omits the clock
+  (`/* PORT: */`, host-owned) and so never writes `0x107494`: measured first as `c0..c3: byte 0x107494:
+  original 0x01, port unchanged` with the byte seeded 0. The cases now seed the byte with the value the raw
+  stores, so the clock again changes no byte; **the mask the game hands the clock here is not compared, and a
+  host clock that wants per-mode play time has to take it from the dword `0x104ABC`.**
+- `game_mode_23_step`: the three string ids are compared through the real string tree (the decoded text, 16
+  bytes by value at `0x2F198`), with the rows a wrong stride or a sign-extended character would reach poked to
+  other valid ids (`0xA8D08`, `0xA8308`), so that no mutant decodes an arbitrary id.
 
 ## §5 Store-sweep findings
 
@@ -175,6 +189,10 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   and the words a byte-store mutant (`@a6cb`, `@a64b`).
 - `flow_round_hud_init`: the dword `0x104AD8 = 0` before the HUD call (`@ad8late`, `@ad8w`) and the byte
   `0x104B20 = 1` between the marker release and `0x20EF8` (`@b20early`, `@b20late`: only the memory at a call).
+- `game_mode_23_step`: state 1's eight stores, state 2's five, state 3's four and state 4's two are each
+  seeded and each has a drop, value or width mutant; the stores a callee could observe are pinned to their
+  side of the call by the memory at it (`@s1ad8late`, `@s1b20late`, `@s1early`, `@s2acclate`, `@s2ae8late`,
+  `@s2early`, `@s3late`, `@s3deadz`). State 4 tests the decremented value (`@s4old`: `e1`, `e4`).
 
 ## §6 Queue entries not done
 
