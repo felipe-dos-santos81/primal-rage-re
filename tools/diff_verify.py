@@ -18846,6 +18846,48 @@ D3C_SPECS += [
                 "@wz", "@lt", "@zero", "@i9", "@ru", "@no08", "@idx", "@no2e", "@idsext",
                 "@no1c", "@byi", "@no3c")),
 ]
+D3C_3C59C = E.Call(0x3C59C, ("eax", "edx"), clobbers=("edx",))
+D3C_PREDS = tuple(E.Call(a, ("eax",)) for a in (0x46958, 0x46698, 0x466F4, 0x4673C, 0x46794, 0x467DC,
+                                                0x4682C, 0x468D8, 0x46898))
+
+
+def d3c_cls_case(p, prev=0x00000005, st=0x55555555, s53=0):
+    """0x469A8: both AI blocks' +0x20..+0x2F (the previous state at +0x24 and the state at +0x28
+    of block[1 - p] as given, block[p]'s other values) and both slots' +0x52..+0x54 (slot[p]'s
+    +0x53 as given, the other slot's another arm's)."""
+    b, bo = D3C_AI + (1 - p) * 0x40, D3C_AI + p * 0x40
+    so, oo = D3C_SLOT + p * 0x94, D3C_SLOT + (1 - p) * 0x94
+    return {b + 0x20: le32(0x20202020) + le32(prev) + le32(st) + le32(0x2C2C2C2C),
+            bo + 0x20: le32(0x60606060) + le32(prev ^ 3) + le32(st ^ 0x0F0F0F0F) + le32(0x6C6C6C6C),
+            so + 0x52: bytes([0x52, s53, 0x54]), oo + 0x52: bytes([0x62, 0 if s53 == 0x0B else 0x0B, 0x64])}
+
+
+D3C_SPECS += [
+    # 0x469A8 ai_classify: EAX = param; the block is block[1 - param] (ECX). Ten stubs, each
+    # followed by `test al,al` in the raw (0x469C0, 0x469DC, 0x46A0C, 0x46A25, 0x46A45, 0x46A65,
+    # 0x46A85, 0x46AA5, 0x46AC5, 0x46B44): the cases return 0x100 (AL clear) and 0xFFFFFF01 (AL
+    # set) as well as 0 and 1. 0x33950 runs real. Mask 0: the one caller writes EAX before reading
+    # it (0x47291 call, 0x47296 `mov edx,[esp]`, 0x47299 `lea eax,[edx*8]`).
+    Spec("ai_classify", 0x469A8, [
+        Case("c0", {"eax": 0}, d3c_cls_case(0, st=0), {0x3C59C: 0, 0x46958: 1}),
+        Case("c1", {"eax": 1}, d3c_cls_case(1, prev=1, st=7), {0x3C59C: 1, 0x46958: 1}),
+        Case("c2", {"eax": 0}, d3c_cls_case(0, prev=0, st=2), {0x3C59C: 0x100, 0x46958: 0xFFFFFF01, 0x46698: 1}),
+        Case("c3", {"eax": 1}, d3c_cls_case(1, prev=0x100), {0x3C59C: 1, 0x46958: 1, 0x46698: 0x100}),
+        Case("c4", {"eax": 0}, d3c_cls_case(0), {0x3C59C: 1, 0x46958: 0x100, 0x466F4: 1}),
+        Case("c5", {"eax": 1}, d3c_cls_case(1), {0x3C59C: 0xFFFFFF01, 0x466F4: 0x100, 0x4673C: 0xFFFFFF01}),
+        Case("c6", {"eax": 0}, d3c_cls_case(0), {0x3C59C: 1, 0x4673C: 0x100, 0x46794: 1}),
+        Case("c7", {"eax": 1}, d3c_cls_case(1), {0x3C59C: 1, 0x46794: 0x100, 0x467DC: 1, 0x4682C: 1}),
+        Case("c8", {"eax": 0}, d3c_cls_case(0), {0x3C59C: 1, 0x467DC: 0x100, 0x4682C: 1}),
+        Case("c9", {"eax": 1}, d3c_cls_case(1), {0x3C59C: 1, 0x4682C: 0x100, 0x468D8: 1}),
+        Case("c10", {"eax": 0}, d3c_cls_case(0, s53=0x0B), {0x3C59C: 1, 0x468D8: 0x100, 0x46898: 1}),
+        Case("c11", {"eax": 1}, d3c_cls_case(1, s53=6), {0x3C59C: 1, 0x46898: 1}),
+        Case("c12", {"eax": 0}, d3c_cls_case(0), {0x3C59C: 1, 0x46898: 0xFFFFFF01}),
+        Case("c13", {"eax": 1}, d3c_cls_case(1, s53=0x0A), {0x3C59C: 1, 0x46898: 0x100}),
+    ], allow_calls=(0x33950,), calls=(D3C_3C59C,) + D3C_PREDS, eax_mask=0,
+       mutants=("@bown", "@sother", "@fswap", "@fbit", "@alflag", "@nocopy", "@rside", "@already", "@prevb",
+                "@prev1", "@al698", "@vd", "@order", "@pside", "@alpred", "@v65", "@no6", "@v0b", "@al898",
+                "@v8", "@stb", "@nost")),
+]
 D1_SPECS += D3C_SPECS
 
 

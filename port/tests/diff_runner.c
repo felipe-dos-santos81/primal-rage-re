@@ -26932,6 +26932,76 @@ D3C_M(46f4c, idsext, 25u)
 D3C_M(46f4c, no1c, 26u)
 D3C_M(46f4c, byi, 27u)
 D3C_M(46f4c, no3c, 28u)
+
+/* 0x469A8: EAX = param (EBX); every block access is block[1 - param] (ECX). Ten predicate calls,
+ * each followed by `test al,al`; the two slot tests read slot[param]+0x53. */
+typedef int (*d3c_pred_fn)(u32 side);
+static void d3c_469a8_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    static const d3c_pred_fn k_pred[6] = { ai_pred_466f4, ai_pred_4673c, ai_pred_46794, ai_pred_467dc,
+                                           ai_pred_4682c, ai_pred_468d8 };
+    static const u32 k_state[6] = { 2u, 3u, 4u, 6u, 5u, 7u };
+    u32 p = r[R_EAX], q = 1u - p, i, a;
+    u32 b = 0x001081F0u + (M(1) ? p : q) * 0x40u;                            /* @bown: block[param] */
+    u32 slot = D3C_SLOTS + (M(2) ? q : p) * 0x94u;                           /* @sother: slot[1 - param] */
+    u32 st = 8u;
+    a = M(3) ? (u32)fighter_pass_flag(p, 0u) : (u32)fighter_pass_flag(M(4) ? 1u : 0u, p);   /* @fswap, @fbit */
+    if (!M(5)) a &= 0xFFu;                                                   /* @alflag: the whole EAX */
+    if (a == 0u && !M(6)) DSD(b + 0x24u) = DSD(b + 0x28u);                   /* @nocopy */
+    a = (u32)ai_ready(M(7) ? q : p);                                         /* @rside */
+    if (!M(8)) a &= 0xFFu;                                                   /* @already */
+    if (a != 0u) {
+        u32 prev = M(9) ? (u32)DSB(b + 0x24u) : DSD(b + 0x24u);              /* @prevb: a byte read */
+        if (prev == 0u || (prev == 1u && !M(10))) st = 1u;                   /* @prev1 */
+        else {
+            a = (u32)ai_pred_46698(p);
+            if (!M(11)) a &= 0xFFu;                                          /* @al698 */
+            st = a != 0u ? (M(12) ? 0x0Cu : 0x0Du) : 0u;                     /* @vd */
+        }
+    } else {
+        for (i = 0u; i < 6u; i++) {
+            u32 k = M(13) && i >= 3u && i <= 4u ? 7u - i : i;                /* @order: 0x4682C before 0x467DC */
+            a = (u32)k_pred[k](M(14) ? q : p);                               /* @pside */
+            if (!M(15)) a &= 0xFFu;                                          /* @alpred */
+            if (a != 0u) { st = M(16) && k >= 3u && k <= 4u ? k + 2u : k_state[k]; break; }   /* @v65: 5 and 6 swapped */
+        }
+        if (i == 6u) {
+            if (DSB(slot + 0x53u) == (M(17) ? 0x0Au : 0x0Bu)) st = 9u;       /* @v0b */
+            else if (DSB(slot + 0x53u) == 6u && !M(18)) st = 0x0Bu;          /* @no6 */
+            else {
+                a = (u32)ai_pred_46898(p);
+                if (!M(19)) a &= 0xFFu;                                      /* @al898 */
+                st = a != 0u ? 0x0Cu : (M(20) ? 0u : 8u);                    /* @v8 */
+            }
+        }
+    }
+    if (M(21)) DSB(b + 0x28u) = (u8)st; else if (!M(22)) DSD(b + 0x28u) = st;   /* @stb: a byte store; @nost */
+#undef M
+}
+static void b_d3c_469a8(const u32 *r, u32 *eax) { ai_classify(r[R_EAX]); *eax = 0u; }
+D3C_M(469a8, bown, 1u)
+D3C_M(469a8, sother, 2u)
+D3C_M(469a8, fswap, 3u)
+D3C_M(469a8, fbit, 4u)
+D3C_M(469a8, alflag, 5u)
+D3C_M(469a8, nocopy, 6u)
+D3C_M(469a8, rside, 7u)
+D3C_M(469a8, already, 8u)
+D3C_M(469a8, prevb, 9u)
+D3C_M(469a8, prev1, 10u)
+D3C_M(469a8, al698, 11u)
+D3C_M(469a8, vd, 12u)
+D3C_M(469a8, order, 13u)
+D3C_M(469a8, pside, 14u)
+D3C_M(469a8, alpred, 15u)
+D3C_M(469a8, v65, 16u)
+D3C_M(469a8, v0b, 17u)
+D3C_M(469a8, no6, 18u)
+D3C_M(469a8, al898, 19u)
+D3C_M(469a8, v8, 20u)
+D3C_M(469a8, stb, 21u)
+D3C_M(469a8, nost, 22u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33632,6 +33702,29 @@ static const binding_t k_bindings[] = {
     { "ai_pick@no1c", m_d3c_46f4c_no1c, 0x00000000u },
     { "ai_pick@byi", m_d3c_46f4c_byi, 0x00000000u },
     { "ai_pick@no3c", m_d3c_46f4c_no3c, 0x00000000u },
+    { "ai_classify", b_d3c_469a8, 0x00000000u },
+    { "ai_classify@bown", m_d3c_469a8_bown, 0x00000000u },
+    { "ai_classify@sother", m_d3c_469a8_sother, 0x00000000u },
+    { "ai_classify@fswap", m_d3c_469a8_fswap, 0x00000000u },
+    { "ai_classify@fbit", m_d3c_469a8_fbit, 0x00000000u },
+    { "ai_classify@alflag", m_d3c_469a8_alflag, 0x00000000u },
+    { "ai_classify@nocopy", m_d3c_469a8_nocopy, 0x00000000u },
+    { "ai_classify@rside", m_d3c_469a8_rside, 0x00000000u },
+    { "ai_classify@already", m_d3c_469a8_already, 0x00000000u },
+    { "ai_classify@prevb", m_d3c_469a8_prevb, 0x00000000u },
+    { "ai_classify@prev1", m_d3c_469a8_prev1, 0x00000000u },
+    { "ai_classify@al698", m_d3c_469a8_al698, 0x00000000u },
+    { "ai_classify@vd", m_d3c_469a8_vd, 0x00000000u },
+    { "ai_classify@order", m_d3c_469a8_order, 0x00000000u },
+    { "ai_classify@pside", m_d3c_469a8_pside, 0x00000000u },
+    { "ai_classify@alpred", m_d3c_469a8_alpred, 0x00000000u },
+    { "ai_classify@v65", m_d3c_469a8_v65, 0x00000000u },
+    { "ai_classify@v0b", m_d3c_469a8_v0b, 0x00000000u },
+    { "ai_classify@no6", m_d3c_469a8_no6, 0x00000000u },
+    { "ai_classify@al898", m_d3c_469a8_al898, 0x00000000u },
+    { "ai_classify@v8", m_d3c_469a8_v8, 0x00000000u },
+    { "ai_classify@stb", m_d3c_469a8_stb, 0x00000000u },
+    { "ai_classify@nost", m_d3c_469a8_nost, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

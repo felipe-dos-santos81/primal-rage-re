@@ -12057,6 +12057,55 @@ D3C_CASES += [
     ("ai_pick@byi", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
     ("ai_pick@no3c", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']),
 ]
+D3C_MASKS.update({"ai_classify": 0x0})
+D3C_KINDS.update({
+    "ai_classify@bown": {'byte', 'call #1 memory', 'call #2', 'call #2 memory'},
+    "ai_classify@sother": {'byte', 'call #8'},
+    "ai_classify@fswap": {'call #0'},
+    "ai_classify@fbit": {'call #0'},
+    "ai_classify@alflag": {'byte', 'call #1 memory', 'call #2'},
+    "ai_classify@nocopy": {'byte', 'call #1 memory', 'call #2'},
+    "ai_classify@rside": {'call #1'},
+    "ai_classify@already": {'byte', 'call #2'},
+    "ai_classify@prevb": {'byte', 'call #2'},
+    "ai_classify@prev1": {'byte', 'call #2'},
+    "ai_classify@al698": {'byte'},
+    "ai_classify@vd": {'byte'},
+    "ai_classify@order": {'byte', 'call #5', 'call #6'},
+    "ai_classify@pside": {'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7'},
+    "ai_classify@alpred": {'byte', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7'},
+    "ai_classify@v65": {'byte'},
+    "ai_classify@no6": {'byte', 'call #8'},
+    "ai_classify@v0b": {'byte', 'call #8'},
+    "ai_classify@al898": {'byte'},
+    "ai_classify@v8": {'byte'},
+    "ai_classify@stb": {'byte'},
+    "ai_classify@nost": {'byte'},
+})
+D3C_CASES += [
+    ("ai_classify@bown", ['c0', 'c1', 'c10', 'c11', 'c12', 'c13', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
+    ("ai_classify@sother", ['c10', 'c11', 'c12', 'c13']),
+    ("ai_classify@fswap", ['c1', 'c11', 'c13', 'c3', 'c5', 'c7', 'c9']),
+    ("ai_classify@fbit", ['c0', 'c1', 'c10', 'c11', 'c12', 'c13', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
+    ("ai_classify@alflag", ['c2']),
+    ("ai_classify@nocopy", ['c0', 'c2']),
+    ("ai_classify@rside", ['c0', 'c1', 'c10', 'c11', 'c12', 'c13', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
+    ("ai_classify@already", ['c4']),
+    ("ai_classify@prevb", ['c3']),
+    ("ai_classify@prev1", ['c1']),
+    ("ai_classify@al698", ['c3']),
+    ("ai_classify@vd", ['c2']),
+    ("ai_classify@order", ['c10', 'c11', 'c12', 'c13', 'c7', 'c8', 'c9']),
+    ("ai_classify@pside", ['c10', 'c11', 'c12', 'c13', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
+    ("ai_classify@alpred", ['c10', 'c5', 'c6', 'c7', 'c8', 'c9']),
+    ("ai_classify@v65", ['c7', 'c8']),
+    ("ai_classify@no6", ['c11']),
+    ("ai_classify@v0b", ['c10', 'c13']),
+    ("ai_classify@al898", ['c13']),
+    ("ai_classify@v8", ['c13']),
+    ("ai_classify@stb", ['c10', 'c11', 'c12', 'c13', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
+    ("ai_classify@nost", ['c0', 'c1', 'c10', 'c11', 'c12', 'c13', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']),
+]
 D1_MASKS.update(D3C_MASKS)
 D1_KINDS.update(D3C_KINDS)
 D1_CASES.extend(D3C_CASES)
@@ -13156,6 +13205,7 @@ class RealFunctionTests(unittest.TestCase):
         0x3962C: ("edx", "esi", "edi", "ebp"), 0x396AC: ("edx", "esi", "edi", "ebp"), 0x19164: (), 0x1922C: (), 0x192DC: (), 0x29D04: (), 0x1DE64: ("edx",), 0x34DDC: (),     # track D3 batch d3c
         0x1A5D4: (), 0x1A640: (), 0x35B7C: ("edx",), 0x35C1C: ("edx",), 0x367DC: ("edx",), 0x34038: ("esi", "edi", "ebp"),     # track D3 batch d3c
         0x4FB20: (), 0x3BAEC: (), 0x406B4: (), 0x46F4C: (), 0x46C78: (), 0x46DD4: (),     # track D3 batch d3c
+        0x46958: (), 0x46698: (), 0x466F4: (), 0x4673C: (), 0x46794: (), 0x467DC: (), 0x4682C: (), 0x46898: (),     # track D3 batch d3c
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))

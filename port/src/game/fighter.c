@@ -812,6 +812,7 @@ void fighter_pose_start(u32 side, u32 edx, u32 ebx, u32 ecx, u32 frame)
  * else set it and return 0. Distinct from 0x3C570's DS_00107EE0 bits. */
 static int fighter_frame_flag(u32 bit, u32 index)
 {
+    PR_SEAM_RET(0x3C59Cu, bit, index);
     u32 m = 1u << (bit & 0xffu);                /* 0x3C59E/0x3C5AC */
     u32 addr = DS_00107D50 + index * 4u;        /* 0x3C5A5 */
     if ((DSD(addr) & m) != 0) return 1;         /* 0x3C5B4/0x3C5B8 */
@@ -1269,6 +1270,7 @@ u32 ai_facing_cmd(u32 side)
 /* 0x46958. slot+0x53 in {7,8} and slot+0x5F < 0x40. */
 int ai_ready(u32 side)
 {
+    PR_SEAM_RET(0x46958u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     u8 st = DSB(slot + 0x53u);
     if (st == 8u || st == 7u) {
@@ -1280,6 +1282,7 @@ int ai_ready(u32 side)
 /* 0x46698. slot+0x40 bit 7 set, then the +0x2C ordering and rec_self+0x34. */
 int ai_pred_46698(u32 side)
 {
+    PR_SEAM_RET(0x46698u, side);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                        /* 0x466A0 */
     if ((DSB(ctx[2] + 0x40u) & 0x80u) == 0u) return 0;
@@ -1291,6 +1294,7 @@ int ai_pred_46698(u32 side)
 /* 0x466F4. Idle: +0x5F == 0xFF, +0x54 == 0, +0x53 == 0, +0x52 == 0. */
 int ai_pred_466f4(u32 side)
 {
+    PR_SEAM_RET(0x466F4u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x5Fu) != 0xFFu) return 0;
     if (DSB(slot + 0x54u) != 0u) return 0;
@@ -1301,6 +1305,7 @@ int ai_pred_466f4(u32 side)
 /* 0x4673C. +0x54 == 1 and +0x52 in {5,0x15}. */
 int ai_pred_4673c(u32 side)
 {
+    PR_SEAM_RET(0x4673Cu, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x5Fu) != 0xFFu) return 0;
     if (DSB(slot + 0x54u) != 1u) return 0;
@@ -1311,6 +1316,7 @@ int ai_pred_4673c(u32 side)
 /* 0x46794. +0x54 == 2 and +0x52 == 4. */
 int ai_pred_46794(u32 side)
 {
+    PR_SEAM_RET(0x46794u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x5Fu) != 0xFFu) return 0;
     if (DSB(slot + 0x54u) != 2u) return 0;
@@ -1323,6 +1329,7 @@ int ai_pred_46794(u32 side)
  * 0x1A5D4 command-sign test is zero (0x4681E je 0x46825). */
 int ai_pred_467dc(u32 side)
 {
+    PR_SEAM_RET(0x467DCu, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x54u) != 0u) return 0;
     if (DSB(slot + 0x53u) != 0u) return 0;
@@ -1336,6 +1343,7 @@ int ai_pred_467dc(u32 side)
  * 0x46875). */
 int ai_pred_4682c(u32 side)
 {
+    PR_SEAM_RET(0x4682Cu, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x54u) != 0u) return 0;
     if (DSB(slot + 0x53u) != 0u) return 0;
@@ -1349,6 +1357,7 @@ int ai_pred_4682c(u32 side)
  * wants slot+0x54 != 2 or slot+0x52 == 7. */
 int ai_pred_46898(u32 side)
 {
+    PR_SEAM_RET(0x46898u, side);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x468A0 */
     if (DSD(ctx[3] + 0x10u) != 0x22BECu) return 0;
