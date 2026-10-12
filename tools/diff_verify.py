@@ -13747,6 +13747,39 @@ def d2a_wall_case(side, x, f40, s53, o54, w34, thr=0x0040, w36=0x3636, wall=0x00
             ro + 0x32: le16(0x2232) + le16(0xFFFB if ws >= 0 else 0x0005) + le16(0x2636)}
 
 
+def d2a_st20_case(side, cmd, cnt=0x0005, ch=2, scratch=False):
+    """0x35E6C: both slots' record pointers, +0x40..+0x42, +0x51..+0x55, +0x7A, +0x82..+0x87 (the
+    +0x84 counter between two seeded words) and +0x90..+0x93; both records' +0x18 and +0x51; the
+    side's command word (the other side's has bits 8..11 complemented); the 0xC8B58 stream dword
+    of `ch`, of the other slot's character and of ch sign-extended. `scratch`: EAX is D2A_FS and
+    EDX is D2A_RX (+0x51 = side, another +0x18), both seeded like a slot and a record."""
+    recs = (D2A_R0, D2A_R1)
+    words = [0, 0]
+    words[side], words[1 - side] = cmd, cmd ^ 0x0F00
+    p = {0x001088E0: le16(words[0]) + le16(words[1])}
+    blocks = [(D2A_SLOT, recs[0], 0), (D2A_SLOT + 0x94, recs[1], 1)]
+    if scratch:
+        blocks.append((D2A_FS, D2A_RX, 2))
+    for so, rec, k in blocks:
+        c = ch if k == side else (ch + 1 + k) & 0x7F
+        p[so] = le32(rec)
+        p[so + 0x40] = bytes([0x40 + k, 0x41 + k, 0x42 + k])
+        p[so + 0x51] = bytes([0x51, 0x11 + k, 0x33 + k, 0x7F - k, 0x55])
+        p[so + 0x7A] = bytes([c])
+        p[so + 0x82] = le16(0x8282) + le16((cnt + k * 0x100) & 0xFFFF) + le16(0x8686)
+        p[so + 0x90] = le16(0x9090) + le16(0x9292 + k)
+        p[0x000C8B58 + c * 4] = le32(0x000E9000 + c)
+    for k, rec in enumerate(recs):
+        p[rec + 0x18] = le32(0x00181800 + k)
+        p[rec + 0x51] = bytes([k])
+    if scratch:
+        p[D2A_RX + 0x18] = le32(0x00181877)
+        p[D2A_RX + 0x51] = bytes([side])
+    if ch >= 0x80:
+        p[0x000C8B58 + (ch - 0x100) * 4] = le32(0x000EA000 + ch)
+    return p
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -14024,6 +14057,25 @@ D2A_SPECS = [
     ], calls=(ANCHORX, C1_AI_DIST, C1_1883C, CLEAR34), eax_mask=0,
        mutants=("@b40", "@x", "@cmp", "@ov", "@a53", "@o54", "@v54", "@one", "@abs", "@thrlo", "@thrz",
                 "@tcmp", "@pside", "@pneg", "@rec", "@w34", "@c34", "@c148", "@lret", "@lanchor", "@early")),
+    # 0x35E6C fighter_state_35e6c: EAX = slot, EDX = rec. The EAX slot only takes the +0x41 bit
+    # (0x35ED0 `or byte [ebx+0x41],0x80`); the side is the record's +0x51 and everything else runs
+    # on that side's own slot and its record (0x35F2B `mov eax,[esp+8]`, 0x35F58 and 0x35F6D `mov
+    # ..,[esp+0x10]`): b5/b6 pass a scratch slot and a third record. 0x3BDDC is a stub whose AL the
+    # raw tests (0x35F1A: b3 returns 0x100). Five stubs. Mask 0: the caller returns at once
+    # (0x34D72..0x34D77, the dispatcher) and its one call site overwrites EAX (0x35801).
+    Spec("fighter_state_35e6c", 0x35E6C, [
+        Case("b0", {"eax": D2A_SLOT, "edx": D2A_R0}, d2a_st20_case(0, 0x0000), {0x3BDDC: 1}),
+        Case("b1", {"eax": D2A_SLOT + 0x94, "edx": D2A_R1}, d2a_st20_case(1, 0x00FF), {0x3BDDC: 0}),
+        Case("b2", {"eax": D2A_SLOT, "edx": D2A_R0}, d2a_st20_case(0, 0x0500, cnt=0x00FF)),
+        Case("b3", {"eax": D2A_SLOT + 0x94, "edx": D2A_R1}, d2a_st20_case(1, 0x0300), {0x3BDDC: 0x100}),
+        Case("b4", {"eax": D2A_SLOT, "edx": D2A_R0}, d2a_st20_case(0, 0x0C00), {0x3BDDC: 0xFFFFFF01}),
+        Case("b5", {"eax": D2A_FS, "edx": D2A_RX}, d2a_st20_case(1, 0x0A00, scratch=True)),
+        Case("b6", {"eax": D2A_FS, "edx": D2A_RX}, d2a_st20_case(0, 0x0800, scratch=True), {0x3BDDC: 1}),
+        Case("b7", {"eax": D2A_SLOT, "edx": D2A_R0}, d2a_st20_case(0, 0x0F00, cnt=0xFFFF, ch=0x80)),
+    ], calls=(VOICE, D2A_CONSUME, C1_FACING, HIT_A, ANCHOR), eax_mask=0,
+       mutants=("@al", "@slot", "@rec", "@x18", "@or41", "@voice", "@cmd", "@b3", "@bc", "@band", "@cside",
+                "@fside", "@nofacing", "@s54", "@s52", "@s53", "@inc", "@incb", "@w92", "@csext", "@hold",
+                "@aside", "@order")),
 ]
 D1_SPECS += D2A_SPECS
 

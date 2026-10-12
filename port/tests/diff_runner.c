@@ -20682,6 +20682,69 @@ static void m_d2a_354f0_lret(const u32 *r, u32 *eax)    { d2a_354f0_core(r, 0x40
 static void m_d2a_354f0_lanchor(const u32 *r, u32 *eax) { d2a_354f0_core(r, 0x80000u); *eax = 0u; }
 static void m_d2a_354f0_early(const u32 *r, u32 *eax)   { d2a_354f0_core(r, 0x100000u); *eax = 0u; }
 
+/* 0x35E6C: EAX = slot, EDX = rec. Only the +0x41 store uses the EAX slot (EBX); the rest runs on
+ * the side's own slot and its record ([esp+8], [esp+0x10]; 0x35F2B, 0x35F58, 0x35F6D). */
+static void d2a_35e6c_tail(u32 s, u32 mut)
+{
+    if (!(mut & 8192u)) DSB(s + 0x54u) = 0u;                                    /* @s54 */
+    if (!(mut & 16384u)) DSB(s + 0x52u) = 9u;                                    /* @s52 */
+    if (!(mut & 32768u)) DSB(s + 0x53u) = 0u;                                    /* @s53 */
+    if (mut & 131072u) DSB(s + 0x84u) = (u8)(DSB(s + 0x84u) + 1u);               /* @incb: a byte increment */
+    else if (!(mut & 65536u)) DSW(s + 0x84u) = (u16)(DSW(s + 0x84u) + 1u);       /* @inc */
+    if (mut & 262144u) DSB(s + 0x92u) = 0u;                                       /* @w92: a byte store */
+    else DSW(s + 0x92u) = 0u;
+}
+static void d2a_35e6c_core(const u32 *r, u32 mut)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], side = (u32)DSB(rec + 0x51u);
+    u32 own = 0x001077B0u + side * 0x94u, orec = DSD(own), s = (mut & 2u) ? slot : own, ch;   /* @slot: the EAX slot */
+    u16 cmd = DSW(0x001088E0u + ((mut & 64u) ? 1u - side : side) * 2u);       /* @cmd */
+    int g1 = (cmd & ((mut & 128u) ? 0x0100u : 0x0300u)) != 0u;                  /* @b3: bit 8 alone */
+    int g2 = (cmd & ((mut & 256u) ? 0x0400u : 0x0C00u)) != 0u;                  /* @bc: bit 10 alone */
+    int bvar = (mut & 512u) ? (g1 || g2) : (g1 && g2);                        /* @band: either group */
+    if (!(mut & 16u)) DSB(slot + 0x41u) |= 0x80u;                            /* @or41 */
+    (void)sound_voice((mut & 32u) ? 0x6Cu : 0x6Du);                         /* @voice */
+    if (!bvar) {
+        u32 a = (u32)fighter_attack_consume((mut & 1024u) ? 1u - side : side);   /* @cside */
+        if (!(mut & 1u)) a &= 0xFFu;                                          /* @al: the whole EAX */
+        if (a != 0u) {
+            if (!(mut & 4096u)) hit_facing_flag((mut & 2048u) ? 1u - side : side);   /* @nofacing, @fside */
+            return;
+        }
+    }
+    ch = (mut & 524288u) ? (u32)(s32)(s8)DSB(s + 0x7Au) : (u32)DSB(s + 0x7Au);  /* @csext */
+    if (!(mut & 4194304u)) d2a_35e6c_tail(s, mut);
+    hit_anim_start_a((mut & 4u) ? rec : orec, DSD(0x000C8B58u + ch * 4u),    /* @rec: the EDX record */
+                     (mut & 1048576u) ? 0x3F800000u : 0x40000000u);               /* @hold */
+    if (mut & 4194304u) d2a_35e6c_tail(s, mut);                                  /* @order: the stores after 0x3C480 */
+    hit_anchor_set((mut & 2097152u) ? 1u - side : side,                          /* @aside */
+                   DSD(((mut & 8u) ? rec : orec) + 0x18u), 0u);              /* @x18: the EDX record's x */
+}
+static void b_d2a_35e6c(const u32 *r, u32 *eax) { fighter_state_35e6c(r[R_EAX], r[R_EDX]); *eax = 0u; }
+static void m_d2a_35e6c_al(const u32 *r, u32 *eax)       { d2a_35e6c_core(r, 0x1u); *eax = 0u; }
+static void m_d2a_35e6c_slot(const u32 *r, u32 *eax)     { d2a_35e6c_core(r, 0x2u); *eax = 0u; }
+static void m_d2a_35e6c_rec(const u32 *r, u32 *eax)      { d2a_35e6c_core(r, 0x4u); *eax = 0u; }
+static void m_d2a_35e6c_x18(const u32 *r, u32 *eax)      { d2a_35e6c_core(r, 0x8u); *eax = 0u; }
+static void m_d2a_35e6c_or41(const u32 *r, u32 *eax)     { d2a_35e6c_core(r, 0x10u); *eax = 0u; }
+static void m_d2a_35e6c_voice(const u32 *r, u32 *eax)    { d2a_35e6c_core(r, 0x20u); *eax = 0u; }
+static void m_d2a_35e6c_cmd(const u32 *r, u32 *eax)      { d2a_35e6c_core(r, 0x40u); *eax = 0u; }
+static void m_d2a_35e6c_b3(const u32 *r, u32 *eax)       { d2a_35e6c_core(r, 0x80u); *eax = 0u; }
+static void m_d2a_35e6c_bc(const u32 *r, u32 *eax)       { d2a_35e6c_core(r, 0x100u); *eax = 0u; }
+static void m_d2a_35e6c_band(const u32 *r, u32 *eax)     { d2a_35e6c_core(r, 0x200u); *eax = 0u; }
+static void m_d2a_35e6c_cside(const u32 *r, u32 *eax)    { d2a_35e6c_core(r, 0x400u); *eax = 0u; }
+static void m_d2a_35e6c_fside(const u32 *r, u32 *eax)    { d2a_35e6c_core(r, 0x800u); *eax = 0u; }
+static void m_d2a_35e6c_nofacing(const u32 *r, u32 *eax) { d2a_35e6c_core(r, 0x1000u); *eax = 0u; }
+static void m_d2a_35e6c_s54(const u32 *r, u32 *eax)      { d2a_35e6c_core(r, 0x2000u); *eax = 0u; }
+static void m_d2a_35e6c_s52(const u32 *r, u32 *eax)      { d2a_35e6c_core(r, 0x4000u); *eax = 0u; }
+static void m_d2a_35e6c_s53(const u32 *r, u32 *eax)      { d2a_35e6c_core(r, 0x8000u); *eax = 0u; }
+static void m_d2a_35e6c_inc(const u32 *r, u32 *eax)      { d2a_35e6c_core(r, 0x10000u); *eax = 0u; }
+static void m_d2a_35e6c_incb(const u32 *r, u32 *eax)     { d2a_35e6c_core(r, 0x20000u); *eax = 0u; }
+static void m_d2a_35e6c_w92(const u32 *r, u32 *eax)      { d2a_35e6c_core(r, 0x40000u); *eax = 0u; }
+static void m_d2a_35e6c_csext(const u32 *r, u32 *eax)    { d2a_35e6c_core(r, 0x80000u); *eax = 0u; }
+static void m_d2a_35e6c_hold(const u32 *r, u32 *eax)     { d2a_35e6c_core(r, 0x100000u); *eax = 0u; }
+static void m_d2a_35e6c_aside(const u32 *r, u32 *eax)    { d2a_35e6c_core(r, 0x200000u); *eax = 0u; }
+static void m_d2a_35e6c_order(const u32 *r, u32 *eax)    { d2a_35e6c_core(r, 0x400000u); *eax = 0u; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -24902,6 +24965,30 @@ static const binding_t k_bindings[] = {
     { "fighter_wall_clamp@lret", m_d2a_354f0_lret, 0x00000000u },
     { "fighter_wall_clamp@lanchor", m_d2a_354f0_lanchor, 0x00000000u },
     { "fighter_wall_clamp@early", m_d2a_354f0_early, 0x00000000u },
+    { "fighter_state_35e6c", b_d2a_35e6c, 0x00000000u },
+    { "fighter_state_35e6c@al", m_d2a_35e6c_al, 0x00000000u },
+    { "fighter_state_35e6c@slot", m_d2a_35e6c_slot, 0x00000000u },
+    { "fighter_state_35e6c@rec", m_d2a_35e6c_rec, 0x00000000u },
+    { "fighter_state_35e6c@x18", m_d2a_35e6c_x18, 0x00000000u },
+    { "fighter_state_35e6c@or41", m_d2a_35e6c_or41, 0x00000000u },
+    { "fighter_state_35e6c@voice", m_d2a_35e6c_voice, 0x00000000u },
+    { "fighter_state_35e6c@cmd", m_d2a_35e6c_cmd, 0x00000000u },
+    { "fighter_state_35e6c@b3", m_d2a_35e6c_b3, 0x00000000u },
+    { "fighter_state_35e6c@bc", m_d2a_35e6c_bc, 0x00000000u },
+    { "fighter_state_35e6c@band", m_d2a_35e6c_band, 0x00000000u },
+    { "fighter_state_35e6c@cside", m_d2a_35e6c_cside, 0x00000000u },
+    { "fighter_state_35e6c@fside", m_d2a_35e6c_fside, 0x00000000u },
+    { "fighter_state_35e6c@nofacing", m_d2a_35e6c_nofacing, 0x00000000u },
+    { "fighter_state_35e6c@s54", m_d2a_35e6c_s54, 0x00000000u },
+    { "fighter_state_35e6c@s52", m_d2a_35e6c_s52, 0x00000000u },
+    { "fighter_state_35e6c@s53", m_d2a_35e6c_s53, 0x00000000u },
+    { "fighter_state_35e6c@inc", m_d2a_35e6c_inc, 0x00000000u },
+    { "fighter_state_35e6c@incb", m_d2a_35e6c_incb, 0x00000000u },
+    { "fighter_state_35e6c@w92", m_d2a_35e6c_w92, 0x00000000u },
+    { "fighter_state_35e6c@csext", m_d2a_35e6c_csext, 0x00000000u },
+    { "fighter_state_35e6c@hold", m_d2a_35e6c_hold, 0x00000000u },
+    { "fighter_state_35e6c@aside", m_d2a_35e6c_aside, 0x00000000u },
+    { "fighter_state_35e6c@order", m_d2a_35e6c_order, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
