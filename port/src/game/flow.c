@@ -5465,7 +5465,7 @@ void game_mode_1f_step(void)
         u32 rec2 = actor_spawn((const u32 *)(mem + desc),
                                 0u, 0xF2u, 0u, frame_bits);      /* 0x20a00 0x2AE14 */
         DSD(DS_001044A4) = rec2;                                /* 0x20a05 */
-        DSW(rec1 + 0x36u) = 0xFFC0u;                             /* 0x20a17 */
+        DSW(DSD(DS_001044A0) + 0x36u) = 0xFFC0u;                 /* 0x20a10/0x20a17 */
         DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u);         /* 0x20a0a/0x20a1d */
         break;
     }
