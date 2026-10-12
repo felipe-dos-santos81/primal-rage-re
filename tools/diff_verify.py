@@ -18949,6 +18949,62 @@ D3B_SPECS += [
            "hsx f55 f55lo t1 t2 t3 hi3 t4 hold4 hold y4 idx8 idx20 clr once order").split())),
 ]
 
+D3B_M25SPAWN = E.Call(0x4E350, ("eax",))
+D3B_38154 = E.Call(0x38154, ("eax",))
+
+
+def d3b_m25_case(b1d=0, cx=0x00001234, ad8=0, abc=2, ch=(4, 4), c4=0, w92=0x0006, aec=0xFF):
+    """0x4E11C: the gate's inputs (DS_00104B1D, the dwords DS_000F0AF0, DS_00104AD8 and DS_00104ABC,
+    the two slots' +0x7A characters, DS_001088C4), each inside seeded neighbours; everything the body
+    writes non-zero and different from what it writes: one block 0x108880..0x1088BF (DS_00108884,
+    the ten bytes 0x108888..0x108891, the words 0x108892 (`w92`), 0x108896, 0x10889A and 0x1088A6,
+    the bytes 0x1088BC..BE), DS_001088C0 and DS_001088C4, DS_00104B15, DS_00104B25, DS_00104AEC
+    (`aec`) and the mode word DS_00104B00; and string 0x61."""
+    p = d2b_str_case({0x61: b"FEAST", 0x60: b"NO"})
+    g = bytearray(0x41 + i for i in range(0x40))            # 0x108880..0x1088BF, every byte non-zero
+    g[0x12:0x14] = le16(w92)
+    p.update({0x00108880: bytes(g),
+              0x001088C0: bytes([0xC0, 0xC1, 0xC2, 0xC3, c4, 0xC5]),
+              0x00104B14: bytes([0x14, 0x15, 0x16]),
+              0x00104B1C: bytes([0x1C, b1d, 0x1E]),
+              0x00104B24: bytes([0x24, 0x25, 0x26]),
+              0x00104AEB: bytes([0xEB, aec, 0xED]),
+              0x00104AFE: le16(0x7AFE) + le16(0x7B00) + le16(0x7B02),
+              0x00104AB8: le32(0x0BAD4AB8) + le32(abc) + le32(0x0BAD4AC0),
+              0x00104AD4: le32(0x0BAD4AD4) + le32(ad8) + le32(0x0BAD4ADC),
+              0x000F0AEC: le32(0x0BAD0AEC) + le32(cx) + le32(0x0BAD0AF4),
+              D2B_SLOTS + 0x79: bytes([0x79, ch[0], 0x7B]),
+              D2B_SLOTS + 0x94 + 0x79: bytes([0x69, ch[1], 0x6B])})
+    return p
+
+
+D3B_SPECS += [
+    # 0x4E11C fight_mode25_enter: no argument. 0x34D8C, 0x38154, 0x2F510 and 0x4E350 are stubs; the
+    # string path runs on both sides. EAX dies unread at its one call site 0x263EA (0x263EF.. the
+    # pops and `ret`, then 0x26254's callers: the walk, record d3b §1): mask 0.
+    Spec("fight_mode25_enter", 0x4E11C, [
+        # DS_00104B1D 3 and 2: the countdown word alone (it wraps at 0)
+        Case("m0", {}, d3b_m25_case(b1d=3)),
+        Case("m1", {}, d3b_m25_case(b1d=2, w92=0x0000)),
+        # one gate closed per case, every other open
+        Case("m2", {}, d3b_m25_case(cx=0xFFFFCCFF, w92=0x0100)),
+        Case("m3", {}, d3b_m25_case(cx=0x00003301)),
+        Case("m4", {}, d3b_m25_case(ad8=1)),
+        Case("m5", {}, d3b_m25_case(abc=1)),
+        Case("m6", {}, d3b_m25_case(ch=(5, 4))),
+        Case("m7", {}, d3b_m25_case(ch=(4, 3))),
+        Case("m8", {}, d3b_m25_case(c4=0x80)),
+        # every gate open: on each bound, a negative DS_00104AD8, an unsigned DS_00104ABC
+        Case("m9", {}, d3b_m25_case(b1d=1, cx=0xFFFFCD00, aec=0xFF)),
+        Case("m10", {}, d3b_m25_case(cx=0x00003300, ad8=0x80000000, abc=0xFFFFFFFF, aec=0x01)),
+        Case("m11", {}, d3b_m25_case(b1d=4, cx=0, ad8=0xFFFFFFFF, abc=3, aec=0xFE, w92=0x0155)),
+    ], allow_calls=D2B_STR_TREE, calls=(FLASH, D3B_38154, D2B_FONT2, D3B_M25SPAWN), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "b1d3 b1d2 decb cxlo cxhi cxu ad8 ad8u ad8ge abc abcs abc2 ch0 ch1 chv c4 nodec b25 c4s wa6 wa6v "
+           "w9a w92 b15 c0 aec aecbit bc mode modev w96 bd be d884 d884v flash noflash order order2 once b5 "
+           "stride base sidearg no38154 lorder txt row tmode col notext spawnarg nospawn sorder").split())),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [

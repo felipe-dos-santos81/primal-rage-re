@@ -5356,6 +5356,7 @@ void fight_mode25_face(void)
  * 0x4E987 (0x4E67C). */
 void fight_mode25_spawn(u32 fresh)
 {
+    PR_SEAM(0x4E350u, fresh);
     u32 i, node, desc = 0u;
     int fr = (u8)fresh != 0u;                           /* 0x4E359/0x4E35D */
     if (fr) fight_mode25_face();                        /* 0x4E361 0x4E27C */
