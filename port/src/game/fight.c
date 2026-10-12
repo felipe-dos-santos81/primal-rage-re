@@ -500,7 +500,8 @@ void fight_char_text_clear(u32 side, u32 flag)
 
 /* 0x433DC — record §48-S. EAX = side, EDX = `flag`: 0x432EC's `flag` arm,
  * then strings 0x235 and 0x236 released at the col word 0xC894C[side], rows
- * 0x1B and 0x1C, mode 0x1000. */
+ * 0x1B and 0x1C, mode 0x1000. The col word is read before each release, after
+ * that release's 0x1C500 (0x43422, 0x4343C). */
 void fight_char_opp_text_clear(u32 side, u32 flag)
 {
     PR_SEAM(0x433DCu, side, flag);
@@ -509,9 +510,10 @@ void fight_char_opp_text_clear(u32 side, u32 flag)
         if (rec != 0u) actor_set_dead(rec);             /* 0x433EF/0x433F5 0x2B150 */
         prompt_press_start_clear(0, 0, side);           /* 0x433FA..0x43400 0x2C088 */
     }
-    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x43422 */
-    text_cells_release(col, 0x1B, game_string_get(0x235u), 0x1000u);  /* 0x43405..0x4342D */
-    text_cells_release(col, 0x1C, game_string_get(0x236u), 0x1000u);  /* 0x43432..0x43457 */
+    const u8 *s = game_string_get(0x235u);              /* 0x43405..0x4340F */
+    text_cells_release((s32)DSW(DS_000C894C + side * 2u), 0x1B, s, 0x1000u);  /* 0x43422..0x4342D */
+    s = game_string_get(0x236u);                        /* 0x43432/0x43437 */
+    text_cells_release((s32)DSW(DS_000C894C + side * 2u), 0x1C, s, 0x1000u);  /* 0x4343C..0x43457 */
 }
 
 /* 0x43464 — record §48-S. EAX = side. The joined side's blinking text, on the
@@ -1598,6 +1600,7 @@ u32 fight_hud_rate(u32 side)
  * byte alone, `setnz`). Caller: 0x1D5FF (0x1D540). */
 u32 fight_cmd_bits_30(u32 side)
 {
+    PR_SEAM_RET(0x1D74Cu, side);
     return (DSW(DS_001088E0 + side * 2u) & 0x30u) != 0u;        /* 0x1D74C..0x1D760 */
 }
 
@@ -1666,7 +1669,7 @@ void fight_hud_meter_step(void)
         DSB(slot + 0x5Eu) = (u8)(DSB(slot + 0x5Eu) + 1u);       /* 0x1D5E6 */
 
         if ((u8)ai_pred_468d8(side) != 0u) {           /* 0x1D5F0 0x468D8, 0x1D5F5: test al,al */
-            if (fight_cmd_bits_30(side) != 0u                   /* 0x1D5FF 0x1D74C */
+            if ((u8)fight_cmd_bits_30(side) != 0u               /* 0x1D5FF 0x1D74C, 0x1D604: test al,al */
                     || DSB(slot + 0x63u) != 0u) {               /* 0x1D608 */
                 rate = 3u;                                      /* 0x1D615 */
                 if (DSB(slot + 0x63u) != 0u) {                  /* 0x1D61A/0x1D624 */
@@ -2478,29 +2481,34 @@ int fight_4bd4c(u32 entry, u32 index)
 int fight_4b5a8(u32 entry, u32 index)
 {
     PR_SEAM_RET(0x4B5A8u, entry, index);
-    u32 slot = DSD(entry + 0xCu);
-    u32 rec = DSD(slot);
-    u8 ch = DSB(rec + 0x51u);                       /* 0x4B5B1 */
+    u32 slot = DSD(entry + 0xCu);                   /* 0x4B5AC */
+    u8 ch = DSB(DSD(slot) + 0x51u);                 /* 0x4B5AF/0x4B5B1 */
     if (DSB(DS_001088B6 + ch) == 0u
             && !(DSB(slot + 0x52u) == 7u && DSB(slot + 0x53u) == 2u))
         return 0;                                   /* 0x4B694 */
-    u32 actor = DSD(entry + 8u);
-    actors_anim_begin(actor, DSD(DS_000C95BC + index * 4u), 0x40400000u); /* 0x4B5E6 */
-    DSW(entry + 0x1Au) = DSW(actor + 0x32u);        /* 0x4B5F2 */
-    DSW(actor + 0x38u) = 0xFFC0u;                   /* 0x4B5F9 */
+    /* The entry's +8 and +0xC are loaded again after each call, as the raw does. */
+    actors_anim_begin(DSD(entry + 8u), DSD(DS_000C95BC + index * 4u), 0x40400000u); /* 0x4B5DE..0x4B5E6 */
+    DSW(entry + 0x1Au) = DSW(DSD(entry + 8u) + 0x32u);      /* 0x4B5EB..0x4B5F2 */
+    DSW(DSD(entry + 8u) + 0x38u) = 0xFFC0u;         /* 0x4B5F6/0x4B5F9 */
+    u32 x;
     s32 v;
-    if (((DSW(rec + 0x28u) >> 8) & 0x40u) == 0u) {  /* 0x4B612 */
-        DSW(actor + 0x34u) = 0xFFC0u;               /* 0x4B632 */
-        v = fight_2be00(rec) - 0x1800;              /* 0x4B642 */
+    if (((DSW(DSD(DSD(entry + 0xCu)) + 0x28u) >> 8) & 0x40u) == 0u) {   /* 0x4B5FF..0x4B612 */
+        DSW(DSD(entry + 8u) + 0x34u) = 0xFFC0u;     /* 0x4B62F/0x4B632 */
+        x = (u32)fight_2be00(DSD(DSD(entry + 0xCu)));       /* 0x4B638..0x4B63D */
+        v = (s32)(x - 0x1800u);                     /* 0x4B642 lea */
     } else {
-        DSW(actor + 0x34u) = 0x0040u;               /* 0x4B617 */
-        v = fight_2be00(rec) + 0x1800;              /* 0x4B627 */
+        DSW(DSD(entry + 8u) + 0x34u) = 0x0040u;     /* 0x4B614/0x4B617 */
+        x = (u32)fight_2be00(DSD(DSD(entry + 0xCu)));       /* 0x4B61D..0x4B622 */
+        v = (s32)(x + 0x1800u);                     /* 0x4B627 lea */
     }
-    DSD(entry + 0x14u) = (u32)fight_2be4c(actor, v);    /* 0x4B650 */
+    DSD(entry + 0x14u) = (u32)fight_2be4c(DSD(entry + 8u), v);  /* 0x4B648..0x4B650 */
+    slot = DSD(entry + 0xCu);                       /* 0x4B653 */
     DSB(entry + 0x1Eu) = 3u;                        /* 0x4B656 */
-    u8 n = DSB(slot + 0x81u);
+    ch = DSB(DSD(slot) + 0x51u);                    /* 0x4B65A/0x4B65C */
+    u8 n = DSB(slot + 0x81u);                       /* 0x4B66B */
     if (DSB(DS_001088B6 + ch) > n)                  /* 0x4B671 */
         DSB(DS_001088B6 + ch) = n;                  /* 0x4B675 */
+    ch = DSB(DSD(DSD(entry + 0xCu)) + 0x51u);       /* 0x4B67B..0x4B680 */
     DSB(DS_001088B6 + ch) -= 1u;                    /* 0x4B68B */
     return 1;                                       /* 0x4B691 */
 }
@@ -2711,30 +2719,33 @@ void fight_4aad0(u32 entry, u32 index)
         DSB(entry + 0x1Eu) = 9u;                    /* 0x4AAE6 */
         return;
     }
-    u32 slot = DSD(entry + 0xCu);                   /* 0x4AAEF */
-    if (DSB(slot + 0x54u) == 3u) {                  /* 0x4AAF2 */
+    if (DSB(DSD(entry + 0xCu) + 0x54u) == 3u) {     /* 0x4AAEF/0x4AAF2 */
         if (fight_4b430(entry, index, 0u) != 0) return; /* 0x4AAFE */
     }
-    if (DSB(slot + 0x54u) == 4u) {                  /* 0x4AB0E */
+    if (DSB(DSD(entry + 0xCu) + 0x54u) == 4u) {     /* 0x4AB0B/0x4AB0E */
         if (fight_4b3f0(entry, index, 0u) != 0) return; /* 0x4AB1A */
     }
     if (DSB(DS_001088C2) != 0u) {                   /* 0x4AB27 */
         if (fight_4bd4c(entry, index) != 0) return; /* 0x4AB34 */
     }
     if ((u8)fight_4b5a8(entry, index) != 0u) return;    /* 0x4AB45, 0x4AB4A `test al,al` */
-    if ((DSB(slot + 0x42u) & 2u) != 0u
+    if ((DSB(DSD(entry + 0xCu) + 0x42u) & 2u) != 0u     /* 0x4AB52/0x4AB55 */
             || DSB(DS_001088B2 + (u32)DSB(entry + 0x21u)) != 0u) {
         if (fight_4b3f0(entry, index, 0u) != 0) return; /* 0x4AB6F */
     }
-    if ((DSB(slot + 0x42u) & 1u) != 0u
+    if ((DSB(DSD(entry + 0xCu) + 0x42u) & 1u) != 0u     /* 0x4AB7C/0x4AB7F */
             || DSB(DS_0010889E + (u32)DSB(entry + 0x21u)) != 0u) {
         if (fight_4b430(entry, index, 0u) != 0) return; /* 0x4AB99 */
     }
     {
-        s32 d = fight_2be1c(DSD(entry + 8u), DSD(slot));    /* 0x4ABAE */
-        s32 e_actor = (s32)DSD(DS_00108874) - fight_2be00(DSD(entry + 8u));
-        s32 e_rec = (s32)DSD(DS_00108874) - fight_2be00(DSD(slot));
-        s32 ad = (d < 0) ? -d : d;
+        /* The entry's +0xC and +8 and the midpoint are loaded again after each
+         * call, as the raw does. */
+        s32 d = fight_2be1c(DSD(entry + 8u), DSD(DSD(entry + 0xCu)));   /* 0x4ABA6..0x4ABAE */
+        s32 pa = fight_2be00(DSD(entry + 8u));              /* 0x4ABB7/0x4ABBA */
+        s32 e_actor = (s32)(DSD(DS_00108874) - (u32)pa);    /* 0x4ABBF/0x4ABC5 */
+        s32 pr = fight_2be00(DSD(DSD(entry + 0xCu)));       /* 0x4ABC7..0x4ABCC */
+        s32 e_rec = (s32)(DSD(DS_00108874) - (u32)pr);      /* 0x4ABD1/0x4ABD7 */
+        s32 ad = (d < 0) ? (s32)(0u - (u32)d) : d;          /* 0x4ABDF/0x4ABED neg: INT_MIN stays */
         if (ad >= 0x1800 || ad <= 0x600                     /* 0x4ABE1/0x4ABEF */
                 || (e_actor > 0 && e_rec < 0)               /* 0x4ABFD */
                 || (e_actor < 0 && e_rec > 0))              /* 0x4ABF7 */
@@ -3000,13 +3011,16 @@ int fight_4af04(u32 side)
  * launch). EAX = entry, EDX = si. */
 void fight_4b470(u32 entry, u32 index)
 {
-    u32 rec = DSD(entry + 8u);
-    /* The id is from the record's +0x48 byte, not EDX: 0x4B47B..0x4B489
+    u32 rec;
+    /* The entry's actor +8 is loaded again after each call, as the raw does
+     * (0x4B4A3, 0x4B4BD, 0x4B4FF / 0x4B504 / 0x4B50F, 0x4B52B).
+     * The id is from the record's +0x48 byte, not EDX: 0x4B47B..0x4B489
      * `sub eax,0x20; cmp eax,3; jge` (signed), record k7-k12 §7.2. */
-    (void)sound_voice((s32)DSB(rec + 0x48u) - 0x20 < 3
+    (void)sound_voice((s32)DSB(DSD(entry + 8u) + 0x48u) - 0x20 < 3
                       ? 0xD1u : 0xD0u);             /* 0x4B478..0x4B492, 0x4B497 0x2C3FC */
-    actors_anim_begin(rec, DSD(DS_000C9604 + index * 4u), 0x40400000u); /* 0x4B4B1 */
+    actors_anim_begin(DSD(entry + 8u), DSD(DS_000C9604 + index * 4u), 0x40400000u); /* 0x4B4A3..0x4B4B1 */
     if (DSD(entry + 0x10u) == 0u) {                             /* 0x4B4BB */
+        rec = DSD(entry + 8u);                                  /* 0x4B4BD */
         u32 sh = actor_spawn((const u32 *)(mem + DSD(DS_000BB920 + index * 4u)),
                              DSD(rec + 0x18u),
                              (u32)((s32)DSD(rec + 0x30u) >> 16), 0u, 0u); /* 0x4B4D2 */
@@ -3015,16 +3029,18 @@ void fight_4b470(u32 entry, u32 index)
     if (DSW(DS_00104B00) != 0x22u) {                            /* 0x4B4E5 */
         if (DSB(entry + 0x1Fu) == 1u) {                         /* 0x4B4EF */
             if ((u8)fighter_actor_bit15_clear((u32)DSB(entry + 0x20u)) != 0u) /* 0x4B4F6, 0x4B4FB `test al,al` */
-                DSW(rec + 0x34u) = 0xFF80u;                     /* 0x4B525 */
+                DSW(DSD(entry + 8u) + 0x34u) = 0xFF80u;         /* 0x4B4FF, 0x4B525 */
             else
-                DSW(rec + 0x34u) = 0x0080u;                     /* 0x4B507 */
-        } else if (((s32)DSD(rec + 0x32u) >> 16) == -0x80) {    /* 0x4B518 */
-            DSW(rec + 0x34u) = 0x0080u;                         /* 0x4B51D */
+                DSW(DSD(entry + 8u) + 0x34u) = 0x0080u;         /* 0x4B504/0x4B507 */
         } else {
-            DSW(rec + 0x34u) = 0xFF80u;                         /* 0x4B525 */
+            rec = DSD(entry + 8u);                              /* 0x4B50F */
+            if (((s32)DSD(rec + 0x32u) >> 16) == -0x80)         /* 0x4B518 */
+                DSW(rec + 0x34u) = 0x0080u;                     /* 0x4B51D */
+            else
+                DSW(rec + 0x34u) = 0xFF80u;                     /* 0x4B525 */
         }
     }
-    DSW(rec + 0x36u) = 0x0240u;                                 /* 0x4B52E */
+    DSW(DSD(entry + 8u) + 0x36u) = 0x0240u;                     /* 0x4B52B/0x4B52E */
     DSB(entry + 0x1Eu) = 6u;                                    /* 0x4B537 */
     DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0x7Fu);      /* 0x4B544 */
     if (DSB(DS_00104B1D) == 3u || DSB(DS_00104B1D) == 2u) return;  /* 0x4B547/0x4B54C */

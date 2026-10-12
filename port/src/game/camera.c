@@ -186,7 +186,7 @@ int camera_page_tail_a(u32 side, u32 out)
         u32 ch = (u32)DSB(DS_0010782A + side * 0x94u);
         u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + (u32)code) * 4u;
         DSD(out) = DSD(addr);
-        if (!camera_actor_bit15_clear(side))
+        if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x16B46, 0x16B4B: test al,al */
             DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
         return 1;
     }
@@ -214,7 +214,7 @@ int camera_page_tail_a(u32 side, u32 out)
             u32 e1 = (u32)DSB(entry + i * 3u + 1u);
             u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + e1) * 4u;
             DSD(out) = DSD(addr);
-            if (!camera_actor_bit15_clear(side))
+            if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x16C80, 0x16C85: test al,al */
                 DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
             DSD(DS_000FD138 + side * 4u) = DSD(out);            /* 0x16c98 */
             DSD(DS_000FD128 + side * 4u) = (u32)DSB(entry + i * 3u + 2u);
@@ -263,7 +263,7 @@ int camera_page_tail_b(u32 side, u32 out)
             u32 e1 = (u32)DSB(entry + i * 3u + 1u);
             u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + e1) * 4u;
             DSD(out) = DSD(addr);
-            if (!camera_actor_bit15_clear(side))
+            if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x16615, 0x1661A: test al,al */
                 DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
             DSD(DS_000FD158 + side * 4u) = DSD(out);            /* 0x1662d */
             DSD(DS_000FD148 + side * 4u) = (u32)DSB(entry + i * 3u + 2u);
@@ -413,8 +413,8 @@ void camera_y_clamp(void)
      * sign-extended word at DS_000F0AF4, read as DSD(DS_000F0AF2) >> 16). */
     {
         s32 cam = (s32)DSD(DS_000F0AEC);
-        s32 diff = target - cam;
-        s32 mag = diff < 0 ? -diff : diff;
+        s32 diff = (s32)((u32)target - (u32)cam);           /* 0x12CDF sub */
+        s32 mag = diff < 0 ? (s32)(0u - (u32)diff) : diff;  /* 0x12CE7 neg: INT_MIN stays */
         if (mag <= 0x100) cam = target;
         else if (diff > 0) cam += 0x100;
         else cam -= 0x100;
@@ -479,10 +479,7 @@ void camera_mode_track_pair(void)
     u32 sa = DS_001077B0 + a * 0x94u;
     u32 sb = DS_001077B0 + b * 0x94u;
 
-    /* esp[8+i*4] is slot[i]+0x34; a/b select which slot sits at index 0/1. */
-    u32 lo_off = (a == 0u) ? sa : sb;   /* slot[0] */
-    u32 hi_off = (a == 0u) ? sb : sa;   /* slot[1] */
-
+    /* esp[8+i*4] is the copy of slot[i]+0x34: la is slot[a]'s, lb slot[b]'s. */
     s32 la = (s32)DSD(sa + 0x34u);
     s32 lb = (s32)DSD(sb + 0x34u);
     s32 diff = (s32)((u32)la - (u32)lb);
@@ -511,11 +508,14 @@ void camera_mode_track_pair(void)
         }
         diff = (s32)((u32)la - (u32)lb);
         diffabs = diff < 0 ? (s32)(0u - (u32)diff) : diff;         /* 0x12F3E neg */
+        cam = (s32)DSD(DS_000F0AF0);                               /* 0x12F34: loaded again after the calls */
     }
 
-    /* 0x12F44: the two locals, each folded into the 0x1800 dead zone. */
-    s32 d0 = (s32)DSD(lo_off + 0x34u) - cam;
-    s32 d1 = (s32)DSD(hi_off + 0x34u) - cam;
+    /* 0x12F44: the two stack copies of +0x34 (0x12F4D `mov edx,[esp+eax+8]`:
+     * index 0 is slot 0's), each less the camera x and folded into the 0x1800
+     * dead zone. */
+    s32 d0 = (s32)((u32)(a == 0u ? la : lb) - (u32)cam);
+    s32 d1 = (s32)((u32)(a == 0u ? lb : la) - (u32)cam);
     /* 0x12F56..0x12F62: the magnitude is a `neg`, which leaves INT_MIN
      * negative, so the `jle` zeroes that local (the negation is unsigned here
      * to stay defined in C). */
@@ -985,7 +985,8 @@ void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
         *out_a = (u32)((s32)*out_a + da);
         *out_b = (u32)((s32)*out_b + db);
     }
-    if (!camera_actor_bit15_clear(side)) *out_a = 0x100u - *out_a;
+    if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x15C17, 0x15C1C: test al,al */
+        *out_a = 0x100u - *out_a;
 }
 
 /* 0x15C30. Project the side's actor sprite rect and clip the 4-byte box at

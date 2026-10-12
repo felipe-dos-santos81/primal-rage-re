@@ -870,7 +870,8 @@ P2_SPECS += [
          mutants=("@mutant", "@order")),
 ]
 
-# 0x36870 (fighter_36870): EAX = rec, a plain `ret`; it clobbers ESI, EDI and EBP (E.callee_clobbers).
+# 0x36870 (fighter_36870): EAX = rec, a plain `ret`. Its own body saves EBX, ECX and EDX and writes no other
+# register; the declared ("esi", "ebp") is the conservative set of E._CALLEE_CLOBBER_FIXES (record d3d §4).
 ANIM54 = E.Call(0x36870, ("eax",), clobbers=("esi", "ebp"))
 
 
@@ -24444,6 +24445,360 @@ D4D_SPECS += [
          mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
 ]
 D1_SPECS += D4D_SPECS
+
+# ---- track D wave 4, batch d4e (record 2026-10-12-reverse-d4e): follow-ups on rowed functions ------
+#
+# Second specs on entries that already have a row (the form of d3b's `_rr` specs: a `Call`'s mode and
+# `writes` are fixed per spec). `_al`: a predicate the first row runs on both sides is a stub here, so
+# its AL can be 0 under a non-zero EAX (the raw's `test al,al`). `_rr`: a stub rewrites a value the raw
+# loads again after the call.
+D4E_SPECS = []
+
+# 0x146F0 / 0x14A5C with 0x14590 a stub (d3d's D3D_14590; the first rows run it, so its AL is what the
+# state makes it). `test al,al` 0x14707 / 0x14A73: the stub returns 1, 0, 0x100, 0xFFFFFF00 (AL = 0
+# under a non-zero EAX: the false stream), 0xFFFFFF01 and 0x80. d2a's cases otherwise (the pokes that
+# steer the real 0x14590 stay and are not read).
+D4E_GATE_EAX = (1, 0, 0x00000100, 0xFFFFFF00, 0xFFFFFF01, 0x00000080)
+
+
+def d4e_step_cases(tw):
+    return [dataclasses.replace(c, stub_eax={0x14590: v})
+            for c, v in zip(d2a_step_cases(tw), D4E_GATE_EAX)]
+
+
+D4E_SPECS += [
+    # 0x146F0 fighter_146f0 (d2a's row; mask 0 as there).
+    Spec("fighter_146f0_al", 0x146F0, d4e_step_cases(D2A_STEP_146F0),
+         allow_calls=(0x339AC,), calls=D2A_STEP_CALLS + (D3D_14590,), eax_mask=0,
+         mutants=("@eax",)),
+    # 0x14A5C fighter_14a5c (d2a's row; mask 0 as there): the twin, `test al,al` 0x14A73 / `je`.
+    Spec("fighter_14a5c_al", 0x14A5C, d4e_step_cases(D2A_STEP_14A5C),
+         allow_calls=(0x339AC,), calls=D2A_STEP_CALLS + (D3D_14590,), eax_mask=0,
+         mutants=("@eax",)),
+]
+
+
+def d4e_spec_cases(specs, name, stubs):
+    """The cases of the row `name` with each one's stub EAX extended by `stubs`' entry (in order)."""
+    cases = next(s for s in specs if s.name == name).cases
+    assert len(cases) == len(stubs), name
+    return [dataclasses.replace(c, stub_eax={**c.stub_eax, **e}) for c, e in zip(cases, stubs)]
+
+
+D4E_SPECS += [
+    # 0x14B90 fighter_14b90 (d2d's row; mask 0 as there) with 0x396AC and 0x14590 stubs (d2d runs
+    # both). `test al,al` 0x14BB4 / `je` and 0x14BEC / `jbe`: 0x396AC returns 1, 0xFFFFFF01 (the
+    # hold arm), 0x100, 0, 0xFFFFFF00 (AL = 0: on); 0x14590 returns 1 (the +0x68 decrement and
+    # 0xD2FAC), 0x100, 0xFFFFFF00 (AL = 0: 0xD2F6A) and 0x80. d2d's cases otherwise.
+    Spec("fighter_14b90_al", 0x14B90, d4e_spec_cases(D2D_SPECS, "fighter_14b90", (
+        {0x396AC: 1}, {0x396AC: 0xFFFFFF01}, {0x396AC: 0x00000100, 0x14590: 1},
+        {0x396AC: 0, 0x14590: 0x00000100}, {0x396AC: 0xFFFFFF00, 0x14590: 0xFFFFFF00},
+        {0x396AC: 0, 0x14590: 0x00000080})),
+        calls=(VOICE, C1_18B44, D2A_HIT_C, CLEAR34, CLEAR36, D3C_396AC, D3D_14590),
+        allow_calls=(0x339AC,), eax_mask=0, mutants=("@eax396", "@eax590")),
+]
+
+
+def d4e_react_case(side, slot, x2c, hold):
+    """0x14814: d2d's 0x14B90 fixture (the record's +0x50..+0x56, both slots and the EAX slot seeded
+    whole) with 0x14814's own globals: the side dwords 0xFD108 / 0xFD10C (d2d seeds the first; the
+    second and the dword after it here), the bytes 0xFD11C / 0xFD11D (d2d's) and the hold dword
+    0x9AFE4. What steers the real 0x396AC and 0x14590 there is not read: both are stubs."""
+    p = d2d_react_case(side, slot, 3, 5, 1, x2c=x2c)
+    p[0x000FD10C] = le32(0xACACACAC) + le32(0xB0B0B0B0)
+    p[0x0009AFE4] = le32(hold)
+    return p
+
+
+D4E_SPECS += [
+    # 0x14814 fighter_14814: EAX = slot, EDX = rec (EBX is pushed and overwritten unread, 0x14819).
+    # The row no batch wrote: 0x14B90's twin over 0x3C4CC, the 0xD2E86 / 0xD2EDC / 0xD2E9A streams,
+    # the hold dword 0x9AFE4, the callbacks 0x1461C / 0x145CC / 0x145E4, the dwords 0xFD108 and the
+    # bytes 0xFD11C; its hold arm stores the state after the 0x3C4CC call (0x14857..0x14861) and
+    # +0x54 = 0 on both arms, and it has no 0x3C148 / 0x3C16C. 0x339AC runs on both sides; the voice,
+    # 0x18B44, 0x3C4CC, **0x396AC** (`test al,al` 0x14838) and **0x14590** (`test al,al` 0x14872)
+    # are stubs with the EAX values of fighter_14b90_al. Mask 0, as d2d's 0x14B90: `mov al,1`
+    # 0x1485F / 0x14903 on every path and the port's function is void; 0x14920 (in 0x1490C) is
+    # followed by `mov eax,[esp]` 0x14925, and the dword at 0xA46D0 (the only stored pointer to
+    # 0x14814 in the image) is a reaction callback whose AL 0x34E2C returns (record d2d §1).
+    Spec("fighter_14814", 0x14814, [
+        Case("a0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0x0BADEB00},
+             d4e_react_case(0, DS_SLOTS, (0x100, 0x200), 0x40A00000), {0x396AC: 1}),
+        Case("a1", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0x0BADEB01},
+             d4e_react_case(1, D2D_SLOTX, (0x100, 0x200), 0x3F000000), {0x396AC: 0xFFFFFF01, 0x2C3FC: 0}),
+        Case("b0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0x0BADEB02},
+             d4e_react_case(0, DS_SLOTS, (1, 0x80000000), 0x40A00000), {0x396AC: 0x00000100, 0x14590: 1}),
+        Case("b1", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0x0BADEB03},
+             d4e_react_case(1, D2D_SLOTX, (0x300, 0x300), 0x40A00000), {0x396AC: 0, 0x14590: 0x00000100}),
+        Case("c0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0x0BADEB04},
+             d4e_react_case(0, DS_SLOTS, (0x100, 0x200), 0x40A00000), {0x396AC: 0xFFFFFF00, 0x14590: 0xFFFFFF00}),
+        Case("c1", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0x0BADEB05},
+             d4e_react_case(1, D2D_SLOTX, (0x200, 0x100), 0x40A00000), {0x396AC: 0, 0x14590: 0x00000080}),
+    ], calls=(VOICE, C1_18B44, HIT_B, D3C_396AC, D3D_14590), allow_calls=(0x339AC,), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "eax396 eax590 voice sel gside aorder a53 b18 astream ahold gate dec nodec bstream early s57 b53 "
+           "b54 cb0c cbswap orbit r55 cmpuns cmpge fdidx noflag flagside a54 slotctx").split())),
+]
+
+D4E_1D74C = E.Call(0x1D74C, ("eax",))          # seamed by this batch; it preserves every register
+
+
+def d4e_tail_cases(which, name, extra):
+    """d2d's cases of a page tail with the 0x1A570 stub's EAX: of the thirteen shared ones only t0
+    and t1 reach the scan's call (t0 0x100: the mirror; t1 0xFFFFFF80: none); `extra` covers the
+    row's own cases; u0 / u1 are t0's state on side 1 with 0xFFFFFF00 and 0 (the mirror)."""
+    R = {"eax": 1, "edx": D2D_OUT_A}
+    T = lambda: d2d_tail_case(which, 1, 0, 5, s5f=4, entries=[(0x20, 0x30, 9), (0x21, 0x40, 7)])
+    return d4e_spec_cases(D2D_SPECS, name, ({0x1A570: 0x00000100}, {0x1A570: 0xFFFFFF80}) + ({},) * 11 + extra) + [
+        Case("u0", R, T(), {0x1A570: 0xFFFFFF00}), Case("u1", R, T(), {0x1A570: 0})]
+
+
+D4E_SPECS += [
+    # 0x1D540 fight_hud_meter_step (d3d's row; mask 0 as there) with 0x1D74C a stub (d3d runs it:
+    # its EAX is 0 or 1 whole, `and eax,0xffff` 0x1D758 / `setne al`). `test al,al` 0x1D604 / `jne`:
+    # with 0x468D8 holding and the slot's +0x63 clear, p2 (0x100) and p4 (0xFFFFFF00, side 1) leave
+    # the rate 0 in the original; p3 (0xFFFFFF01) and p7 (0x80) take the command arm. One EAX per
+    # case serves both sides. d3d's cases otherwise (the command words are not read).
+    Spec("fight_hud_meter_step_al", 0x1D540, d4e_spec_cases(D3D_SPECS, "fight_hud_meter_step", (
+        {}, {}, {}, {0x1D74C: 0}, {0x1D74C: 1}, {0x1D74C: 0x00000100}, {0x1D74C: 0xFFFFFF01},
+        {0x1D74C: 0xFFFFFF00}, {0x1D74C: 1}, {0x1D74C: 0}, {0x1D74C: 0x00000080}, {})),
+        calls=(PRED, D2B_PSW, D4E_1D74C), allow_calls=(0x33A10, 0x1D4D0, 0x1D2F0, 0x1D464), eax_mask=0,
+        mutants=("@eaxcmd",)),
+    # 0x15B90 camera_box_palette, 0x164F4 camera_page_tail_b, 0x16AFC camera_page_tail_a (d2d's
+    # rows; their masks) with 0x1A570 the BIT15 stub (d2d runs it; camera.c's own copy of the
+    # predicate carries the 0x1A570 seam from this batch). Each site is `call 0x1a570` / `test al,al`
+    # / `jne` over the mirror (0x15C1C, 0x1661A, 0x16B4B, 0x16C85): AL = 0 under EAX 0x100 or
+    # 0xFFFFFF00 mirrors in the original. d2d's cases otherwise (the pset word's bit 15 is not read).
+    Spec("camera_box_palette_al", 0x15B90, d4e_spec_cases(D2D_SPECS, "camera_box_palette", (
+        {0x1A570: 0}, {0x1A570: 1}, {0x1A570: 0x00000100}, {0x1A570: 0xFFFFFF00}, {0x1A570: 0xFFFFFF01},
+        {0x1A570: 0x00000080})),
+        calls=(BIT15,), allow_calls=(0x17EEC,), eax_mask=0, mutants=("@eax",)),
+    Spec("camera_page_tail_b_al", 0x164F4, d4e_tail_cases("b", "camera_page_tail_b", ({},)),
+         calls=(BIT15,), allow_calls=(0x3C570, 0x164C0), eax_mask=0xFF, mutants=("@eax",)),
+    # the sprite-code arm's site 0x16B46: k0 0xFFFFFF00 (the mirror), k1 1 (none)
+    Spec("camera_page_tail_a_al", 0x16AFC, d4e_tail_cases("a", "camera_page_tail_a", (
+        {0x1A570: 0xFFFFFF00}, {0x1A570: 1})),
+        calls=(BIT15,), allow_calls=(0x16734, 0x33A10, 0x3C570, 0x164C0), eax_mask=0xFF, mutants=("@eax",)),
+]
+
+
+def d4e_al_spec(specs, name, stubs, extra=(), **kw):
+    """The row `name` again as `name`_al: its cases with each one's stub EAX extended by `stubs`
+    (d4e_spec_cases), then `extra`; `kw` replaces what differs (calls, allow_calls, mutants)."""
+    src = next(s for s in specs if s.name == name)
+    return dataclasses.replace(src, name=name + "_al", cases=d4e_spec_cases(specs, name, stubs) + list(extra), **kw)
+
+
+def d4e_stubbed(specs, name, *addrs):
+    """The call set of the row `name` with the recorded-and-run callees `addrs` as stubs."""
+    src = next(s for s in specs if s.name == name)
+    return tuple(dataclasses.replace(k, mode="stub") if k.addr in addrs else k for k in src.calls)
+
+
+D4E_REACT_REGS = {"eax": DS_SLOTS + 0x94, "edx": DS_SLOTS}
+D4E_REACT_EAX = {0x3C59C: 0, 0x39EFC: 0, 0x3B298: 0, 0x3B080: 0, 0x3AE9C: 0, 0x2BD44: 0, 0x3AAFC: 0, 0x3AD98: 0}
+
+D4E_SPECS += [
+    # 0x3B714 fighter_reaction (C2b's row; mask 0 as there; its named fatal block stays named) with
+    # 0x39EFC a stub too (C2b runs it: the raw leaves EAX = the slot address with AL = 0, 0x39F09 /
+    # 0x39F13 `xor al,al`). Three `test al,al` sites: 0x3B748 after 0x3C59C (`jne` out: r4 0x100
+    # and r5 0xFFFFFF00 go on, r0 0xFFFFFF01 returns), 0x3B79C after 0x39EFC (`je` over the bit
+    # 0x4000 test: r5 0x100 and r6 0xFFFFFF00 skip it with the bit clear, r2 1 returns, r3
+    # 0xFFFFFF01 and r8 0x80 pass on the set bit) and 0x3B8B4 after 0x3B6C4 (`je` over the +0x34
+    # copy: h0 0x100 and h1 0xFFFFFF00 leave the word, r4 1 and r8 0xFFFFFF80 copy). h0 / h1 are
+    # r6 / r7 with the two records' +0x34 words different.
+    d4e_al_spec(C2B_SPECS, "fighter_reaction", (
+        {0x3C59C: 0xFFFFFF01}, {}, {0x39EFC: 1}, {0x39EFC: 0xFFFFFF01}, {0x3C59C: 0x00000100},
+        {0x3C59C: 0xFFFFFF00, 0x39EFC: 0x00000100}, {0x39EFC: 0xFFFFFF00}, {},
+        {0x39EFC: 0x00000080, 0x3B6C4: 0xFFFFFF80}), extra=(
+        Case("h0", D4E_REACT_REGS, c2b_3b714(0, 0, 0x10, rec5_4b=3, row60=1, rec4_34=0x1111, rec5_34=0x2222),
+             {**D4E_REACT_EAX, 0x3B6C4: 0x00000100}),
+        Case("h1", D4E_REACT_REGS, c2b_3b714(0, 0, 0x10, rec5_4b=3, row60=0, rec4_34=0x3333, rec5_34=0x4444),
+             {**D4E_REACT_EAX, 0x3B6C4: 0xFFFFFF00})),
+        calls=d4e_stubbed(C2B_SPECS, "fighter_reaction", 0x39EFC),
+        mutants=("@eaxflag", "@eaxefc", "@eaxhold")),
+    # 0x3BDDC fighter_attack_consume (C3g's row; mask 0xFF and stubs as there). Two AL sites:
+    # 0x3BE66 `test al,al` / `je` after 0x3CF38 (a3 0x100 and a5 0xFFFFFF00 go on to the scan, a2
+    # 0xFFFFFF01 returns 1) and 0x3BE84 `mov dl,al` .. 0x3BE9E `test dl,dl` / `je` after 0x4649C (a4
+    # 0x100 and a5 0xFFFFFF00 take the 0xBEF28 row, a6 0x80 and a7 0xFFFFFF03 the 0xBEF64 one).
+    d4e_al_spec(C3G_SPECS, "fighter_attack_consume", (
+        {}, {}, {0x3CF38: 0xFFFFFF01}, {0x3CF38: 0x00000100}, {0x4649C: 0x00000100},
+        {0x3CF38: 0xFFFFFF00, 0x4649C: 0xFFFFFF00}, {0x4649C: 0x00000080}, {0x4649C: 0xFFFFFF03}),
+        mutants=("@eaxchain", "@eaxscan")),
+    # 0x433DC fight_char_opp_text_clear (d2b's row; mask 0 as there) with d3b's release stub that
+    # rewrites both col words 0xC894C (a harness write: 0x2F280 does not write them). The raw loads
+    # the col word before each release, after that release's 0x1C500: 0x43422 `mov di,[esi+0xc894c]`
+    # and 0x4343C `mov si,[esi+0xc894c]`, the second after the first 0x2F280. Twin of d3b's
+    # fight_char_text_clear_rr.
+    Spec("fight_char_opp_text_clear_rr", 0x433DC, [
+        Case("q0", {"eax": 0, "edx": 1}, d2b_ot_case(D2B_OT_STR, recs=(D2B_REC0, D2B_REC1))),
+        Case("q1", {"eax": 1, "edx": 0}, d2b_ot_case(D2B_OT_STR)),
+    ], allow_calls=D2B_STR_TREE, calls=(P7_2B150, D2B_PROMPT_CLR, D3B_RELEASE_COL), eax_mask=0,
+       mutants=("@cache",)),
+]
+
+# 0x4AAD0 with stubs that rewrite what the raw loads again after each call (harness writes: none of
+# the callees is seen to write them). The entry's slot pointer +0xC: 0x4B430 leaves slot 1, 0x4B3F0
+# slot 0, 0x4B5A8 slot 1; 0x2BE1C leaves the actor pointer +8 = D2B_ACT1 and the slot pointer =
+# slot 0. 0x2BE00 is a stub here (d3b runs it): called on D2B_ACT1 it leaves the midpoint dword
+# 0x108874 = 0x4000, called on D2B_REC0 0x6000 (each call makes both arg-relative writes; the
+# other lands at 0x1087B4 or 0x108934, outside every field the function reads).
+D4E_M32 = 0xFFFFFFFF
+D4E_TY_430 = dataclasses.replace(D3B_4B430, writes=((None, D2B_ENT + 0x0C, le32(D2B_SLOTS + 0x94)),))
+D4E_TY_3F0 = dataclasses.replace(D3B_4B3F0, writes=((None, D2B_ENT + 0x0C, le32(D2B_SLOTS)),))
+D4E_TY_5A8 = dataclasses.replace(D3B_4B5A8, writes=((None, D2B_ENT + 0x0C, le32(D2B_SLOTS + 0x94)),))
+D4E_TY_E1C = dataclasses.replace(D3B_2BE1C, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT1) + le32(D2B_SLOTS)),))
+D4E_TY_E00 = dataclasses.replace(D2B_2BE00_S, writes=(
+    (0, (0x00108874 - D2B_ACT1) & D4E_M32, le32(0x4000)), (0, (0x00108874 - D2B_REC0) & D4E_M32, le32(0x6000))))
+
+
+def d4e_ty_stubs(x=0x5000, **kw):
+    return {**d3b_ty_stubs(**kw), 0x2BE00: x}
+
+
+D4E_SPECS += [
+    # 0x4AAD0 fight_4aad0 (d3b's rows; mask 0 as there). The raw loads `[ecx+0xc]` before each test
+    # (0x4AAEF, 0x4AB0B, 0x4AB52, 0x4AB7C, 0x4ABA6, 0x4ABC7), `[ecx+8]` for each of its two uses
+    # (0x4ABA9, 0x4ABB7) and the midpoint after each 0x2BE00 (0x4ABBF, 0x4ABD1).
+    Spec("fight_4aad0_rr2", 0x4AAD0, [
+        # slot 0's +0x54 = 3: 0x4B430 (leaves slot 1, whose +0x54 is 4) -> 0x4B3F0 (slot 0) ->
+        # 0x4B5A8 (slot 1, whose +0x42 is 0xFF) -> 0x4B3F0 (slot 0, whose +0x42 bit 0 is clear):
+        # no second 0x4B430; d in range, the midpoint 0x4000 below and 0x6000 above the 0x5000 both
+        # 0x2BE00 calls return: the walk
+        Case("y0", {"eax": D2B_ENT, "edx": 2}, d3b_ty_case(s54=3, s42=0x00), d4e_ty_stubs()),
+        # +0x54 = 0, slot 0's +0x42 = 1 (slot 1's 0xFE): 0x4B5A8 (slot 1: bit 1) -> 0x4B3F0 (slot 0:
+        # bit 0) -> 0x4B430 (slot 1): 0x2BE1C takes slot 1's record, the second 0x2BE00 slot 0's
+        Case("y1", {"eax": D2B_ENT, "edx": 3}, d3b_ty_case(s54=0, s42=0x01), d4e_ty_stubs(d=0xFFFFF000)),
+        # the same with 0x2BE00 returning 0x3000 (both gaps positive) and 0x7000 (both negative): no walk
+        Case("y2", {"eax": D2B_ENT, "edx": 4}, d3b_ty_case(s54=0, s42=0x01), d4e_ty_stubs(x=0x3000)),
+        Case("y3", {"eax": D2B_ENT, "edx": 5}, d3b_ty_case(s54=0, s42=0x01), d4e_ty_stubs(x=0x7000)),
+        # the entry on slot 1, DS_001088C2 set (0x4BD4C returns 0), d out of range; and mode 9
+        Case("y4", {"eax": D2B_ENT, "edx": 6}, d3b_ty_case(side=1, s54=4, s42=0x02, c2=1), d4e_ty_stubs(d=0x1800)),
+        Case("y5", {"eax": D2B_ENT, "edx": 7}, d3b_ty_case(mode=0x0009), d4e_ty_stubs()),
+        # slot 0's +0x42 = 2 (slot 1's 0xFD): after 0x4B5A8 bit 1 is clear and the table byte decides
+        # (clear: no 0x4B3F0; set: 0x4B3F0, then slot 0, whose bit 0 is clear and table byte set)
+        Case("y6", {"eax": D2B_ENT, "edx": 8}, d3b_ty_case(s54=0, s42=0x02), d4e_ty_stubs()),
+        Case("y7", {"eax": D2B_ENT, "edx": 9}, d3b_ty_case(s54=0, s42=0x02, b2=(1, 0), b9e=(1, 0)), d4e_ty_stubs()),
+    ], calls=(D4E_TY_430, D4E_TY_3F0, D3B_4BD4C, D4E_TY_5A8, D4E_TY_E1C, D4E_TY_E00, D3B_WALK), eax_mask=0,
+       mutants=("@c0c2", "@c0c3", "@c0c4", "@c0c5", "@c0c6", "@c8", "@c874a", "@c874b", "@cache")),
+]
+
+# 0x4B5A8 with stubs that rewrite the entry's pointers (harness writes): 0x2BC30 leaves the actor
+# pointer +8 = D2B_ACT1 and the slot pointer +0xC = slot 1, 0x2BE00 the actor pointer = D2B_ACT2,
+# 0x2BE4C the slot pointer = slot 0.
+D4E_GB_ANIM = dataclasses.replace(ANIM_BEGIN, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT1) + le32(D2B_SLOTS + 0x94)),))
+D4E_GB_E00 = dataclasses.replace(D2B_2BE00_S, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT2)),))
+D4E_GB_E4C = dataclasses.replace(D2B_2BE4C, writes=((None, D2B_ENT + 0x0C, le32(D2B_SLOTS)),))
+
+
+def d4e_gb_case(**kw):
+    """d2b's 0x4B5A8 fixture on side 0 with the words +0x30..+0x3B of the two actors the stubs
+    leave in the entry seeded (each word its own value)."""
+    p = d2b_fx_case(side=0, **kw)
+    for act, k in ((D2B_ACT1, 0x4100), (D2B_ACT2, 0x4200)):
+        p[act + 0x30] = b"".join(le16(k + o) for o in (0x30, 0x32, 0x34, 0x36, 0x38, 0x3A))
+    return p
+
+
+D4E_SPECS += [
+    # 0x4B5A8 fight_4b5a8 (d2b's row; mask 0xFF as there). The raw loads `[ebx+8]` again after
+    # 0x2BC30 (0x4B5EB, 0x4B5F6, 0x4B614 / 0x4B62F) and after 0x2BE00 (0x4B648), and `[ebx+0xc]`
+    # with its record after 0x2BC30 (0x4B5FF, 0x4B61D / 0x4B638) and after 0x2BE4C (0x4B653,
+    # 0x4B67B). After 0x2BC30 the record is slot 1's, whose +0x28 bit 14 is the opposite of slot
+    # 0's (q0 set, q1 clear); after 0x2BE4C the slot is slot 0 again (its +0x81 and its record's
+    # +0x51 pick the counter). q3 / q4: the gate closed.
+    Spec("fight_4b5a8_rr", 0x4B5A8, [
+        Case("q0", {"eax": D2B_ENT, "edx": 0}, d4e_gb_case(cnt=(5, 0x50), s81=3),
+             {0x2BE00: 0x5000, 0x2BE4C: 0x11111111}),
+        Case("q1", {"eax": D2B_ENT, "edx": 2}, d4e_gb_case(cnt=(2, 0x50), s81=0x10, r28=0x4000),
+             {0x2BE00: 0xFFFFF000, 0x2BE4C: 0x22222222}),
+        Case("q2", {"eax": D2B_ENT, "edx": 5}, d4e_gb_case(cnt=(0, 0x50), s52=(7, 2)),
+             {0x2BE00: 0x7FFFF000, 0x2BE4C: 0x33333333}),
+        Case("q3", {"eax": D2B_ENT, "edx": 1}, d4e_gb_case(cnt=(0, 0x50), s52=(7, 1)),
+             {0x2BE00: 0x5000, 0x2BE4C: 0x44444444}),
+        Case("q4", {"eax": D2B_ENT, "edx": 1}, d4e_gb_case(cnt=(0, 0x50), s52=(6, 2)),
+             {0x2BE00: 0x5000, 0x2BE4C: 0x44444444}),
+    ], calls=(D4E_GB_ANIM, D4E_GB_E00, D4E_GB_E4C), eax_mask=0xFF,
+       mutants=("@c8a", "@cca", "@c8b", "@ccb", "@cache")),
+]
+
+# 0x4B470 with stubs that each leave another actor in the entry's +8 (harness writes): the voice
+# D2B_ACT1, 0x2BC30 D2B_ACT2, the spawn D4E_ACT3, 0x1A570 D4E_ACT4.
+D4E_ACT3, D4E_ACT4 = 0x0010A400, 0x0010A440
+D4E_TR_VOICE = dataclasses.replace(VOICE, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT1)),))
+D4E_TR_ANIM = dataclasses.replace(ANIM_BEGIN, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT2)),))
+D4E_TR_SPAWN = dataclasses.replace(SPAWN, writes=((None, D2B_ENT + 0x08, le32(D4E_ACT3)),))
+D4E_TR_BIT15 = dataclasses.replace(BIT15, writes=((None, D2B_ENT + 0x08, le32(D4E_ACT4)),))
+
+
+def d4e_tr_case(w34=(0x2134, 0xFF80, 0x4134, 0x5134), **kw):
+    """d3b's 0x4B470 fixture with the four actors the stubs leave in the entry seeded as d3b seeds
+    the first: +0x14..+0x1F (the x at +0x18), the words +0x2E..+0x39 (the y at +0x32, the throw
+    word +0x34 = `w34`[i]) and the +0x48 id byte, each actor its own values."""
+    p = d3b_tr_case(**kw)
+    for i, act in enumerate((D2B_ACT1, D2B_ACT2, D4E_ACT3, D4E_ACT4)):
+        k = 0x21 + 0x10 * i
+        p[act + 0x14] = le32(0x0BAD0014 + (k << 8)) + le32(0x00010000 * k + 0x2000) + le32(0x0BAD001C + (k << 8))
+        p[act + 0x2E] = (le16(0x2E00 + k) + le16(0x3000 + k) + le16(0x0100 + k) + le16(w34[i]) + le16(0x3600 + k)
+                         + le16(0x3800 + k))
+        p[act + 0x47] = bytes([0x47, 0x90 + k, 0x49])
+    return p
+
+
+D4E_SPECS += [
+    # 0x4B470 fight_4b470 (d3b's row; mask 0 as there). The raw loads `[esi+8]` again after the
+    # voice (0x4B4A3), after 0x2BC30 (0x4B4BD, the spawn's x and y), after the spawn / 0x1A570
+    # (0x4B4FF, 0x4B504, 0x4B50F) and for the +0x36 store (0x4B52B).
+    Spec("fight_4b470_rr", 0x4B470, [
+        # the first hit, a shadow spawned: the throw and +0x36 land on the actor 0x1A570 left
+        Case("r0", {"eax": D2B_ENT, "edx": 0}, d4e_tr_case(), d3b_tr_stubs(1)),
+        # the first hit, no spawn (0x1A570's AL = 0 under 0x100)
+        Case("r1", {"eax": D2B_ENT, "edx": 5}, d4e_tr_case(b48=0x23, e10=0x0010A1C0, f20=1), d3b_tr_stubs(0x100)),
+        # a later hit: the reversal reads the +0x34 of the actor the spawn left (r2: not 0xFF80) or,
+        # with no spawn, of the one 0x2BC30 left (r3: 0xFF80)
+        Case("r2", {"eax": D2B_ENT, "edx": 2}, d4e_tr_case(f1f=2), d3b_tr_stubs(1)),
+        Case("r3", {"eax": D2B_ENT, "edx": 3}, d4e_tr_case(f1f=0, e10=0x0010A1C0), d3b_tr_stubs(1)),
+        # mode 0x22: no throw, +0x36 alone; and the eighth-hit tail with every gate open
+        Case("r4", {"eax": D2B_ENT, "edx": 7}, d4e_tr_case(f1f=1, mode=0x0022), d3b_tr_stubs(1)),
+        Case("r5", {"eax": D2B_ENT, "edx": 11}, d4e_tr_case(f1f=8, f20=1, b1d=1), d3b_tr_stubs(1)),
+    ], calls=(D4E_TR_VOICE, D4E_TR_ANIM, D4E_TR_SPAWN, D4E_TR_BIT15, D3B_4BD98, D3B_4CB18), eax_mask=0,
+       mutants=("@cv", "@ca", "@cs", "@cb", "@cache")),
+]
+
+# 0x12E3C with a 0x18714 stub that rewrites the camera x 0xF0AF0 (= D2D_C + 0x1000) and both slots'
+# +0x34 (slot 0's = D2D_C + 0x7000, slot 1's = D2D_C - 0x7000): harness writes, 0x18714 is not seen
+# to write them.
+D4E_PAIR_X = dataclasses.replace(C1_RECORD_X, writes=(
+    (None, 0x000F0AF0, le32(D2D_C + 0x1000)), (None, DS_SLOTS + 0x34, le32(D2D_C + 0x7000)),
+    (None, DS_SLOTS + 0x94 + 0x34, le32(D2D_C - 0x7000))))
+
+D4E_SPECS += [
+    # 0x12E3C camera_mode_track_pair (d2d's row; mask 0 as there). After the split's 0x18714 calls
+    # the raw loads the camera x again (0x12F34 `mov ebx,[0xf0af0]`; it stored EBX there at
+    # 0x12EEC) and folds the two stack copies of +0x34 (0x12F4D `mov edx,[esp+eax+8]`, written at
+    # 0x12E9B / 0x12EB5 and with each latch at 0x12EFE / 0x12F1E), not the slots' fields.
+    # Where both folded copies lie outside the 0x1800 zone the midpoint is (L0 + L1) / 2 whatever the
+    # camera x, so each case keeps one of them inside the zone for one of the two camera values.
+    Spec("camera_mode_track_pair_rr", 0x12E3C, [
+        # both slots pulled back to their latches: two calls
+        Case("v0", {}, d2d_pair_case(D2D_C, (D2D_C + 0x8000, D2D_C + 0x2000), (D2D_C - 0x6000, D2D_C - 0x1900)),
+             {0x18714: 0x11111111}),
+        # the right slot alone (slot 0): the left one's stack copy is its entry +0x34
+        Case("v1", {}, d2d_pair_case(D2D_C, (D2D_C + 0x8000, D2D_C + 0x2000), (D2D_C - 0x1234, D2D_C - 0x1234)),
+             {0x18714: 0x22222222}),
+        # the left slot alone (slot 1): the right one's field then holds the stub's value, on its latch
+        Case("v2", {}, d2d_pair_case(D2D_C, (D2D_C + 0x2000, D2D_C + 0x7000), (D2D_C - 0x6000, D2D_C - 0x1900)),
+             {0x18714: 0x33333333}),
+        # slot 0 on the left: its pull, then slot 1 (the stub's value is left of its latch: no pull)
+        Case("v3", {}, d2d_pair_case(D2D_C, (D2D_C - 0x6000, D2D_C - 0x1900), (D2D_C + 0x2000, D2D_C + 0x7000)),
+             {0x18714: 0x44444444}),
+        # split, neither pulled; and no split
+        Case("v4", {}, d2d_pair_case(D2D_C, (D2D_C + 0x3000, D2D_C + 0x3000), (D2D_C - 0x3000, D2D_C - 0x3000))),
+        Case("v5", {}, d2d_pair_case(D2D_C, (D2D_C + 0x100, D2D_C), (D2D_C + 0x2100, D2D_C))),
+    ], calls=(D4E_PAIR_X,), allow_calls=(0x12C7C,), eax_mask=0,
+       mutants=("@ccam", "@m34", "@cache")),
+]
+D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
