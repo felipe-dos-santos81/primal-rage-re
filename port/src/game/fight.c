@@ -2262,7 +2262,7 @@ static void fight_health_sync(u32 side)
                 break;
             if (DSB(rec + 0x54u) != 0u && DSB(rec + 0x54u) != 1u)  /* 0x34CFA..0x34D04 */
                 break;
-            if (fighter_attack_consume(side) != 0)      /* 0x34D0C 0x3BDDC */
+            if ((fighter_attack_consume(side) & 0xFF) != 0)   /* 0x34D0C 0x3BDDC, 0x34D11 test al,al */
                 hit_facing_flag(side);                  /* 0x34D17 0x18B04 */
         }
         break;
