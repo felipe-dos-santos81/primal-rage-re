@@ -643,6 +643,7 @@ void fight_char_fighter(u32 side)
  * else 0 (the `and eax,0xffff` result, 0x43D51). */
 u32 fight_char_button(u32 side)
 {
+    PR_SEAM_RET(0x43D0Cu, side);
     u16 w = DSW(DS_001088E0 + side * 2u);               /* 0x43D0F */
     if ((w & 0x200u) != 0u) return 1u;                  /* 0x43D16..0x43D23 */
     if ((w & 0x400u) != 0u) return 2u;                  /* 0x43D2A..0x43D3E */
@@ -682,6 +683,7 @@ void fight_stage_mark_drop(u32 cls, u32 side)
  * voice. */
 void fight_char_confirm(u32 side)
 {
+    PR_SEAM(0x43D60u, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43D65/0x43D6B */
     DSB(DS_0010816A + side) = DSB(DS_000C8882 + (u32)ch);  /* 0x43D6E/0x43D74 */
     DSB(DS_00108170 + side) = 2u;                       /* 0x43D7A/0x43D7E */
@@ -830,6 +832,7 @@ void fight_char_select_pass(void)
  * Phase 0x18: 0x432EC(side, DS_00104528 & 0x200). */
 void fight_char_team_text_blink(u32 side)
 {
+    PR_SEAM(0x44638u, side);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x44643..0x44652 */
     if (phase != 0u) {                                  /* 0x44657 */
         if (phase == 0x18u)                             /* 0x44774 */
@@ -845,13 +848,16 @@ void fight_char_team_text_blink(u32 side)
     }
     s32 row = 0x1B;                                     /* 0x4464B */
     if ((s32)strlen((const char *)game_string_get(0x39u)) < 2) row = 0x1C;  /* 0x4469F..0x446B3 */
-    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x446C9 */
-    text_cursor_set(col, row - 2, game_string_get(0x36u), 0x1000u);  /* 0x446B8..0x446DC */
-    text_cursor_set(col, row - 1, game_string_get(0x37u), 0x1000u);  /* 0x446E1..0x44705 */
-    text_cursor_set(col, row, game_string_get(0x38u), 0x1000u);      /* 0x4470A..0x44727 */
+    const u8 *s = game_string_get(0x36u);               /* 0x446B8/0x446C4 */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row - 2, s, 0x1000u);  /* 0x446C9..0x446DC */
+    s = game_string_get(0x37u);                         /* 0x446E1/0x446ED */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row - 1, s, 0x1000u);  /* 0x446F2..0x44705 */
+    s = game_string_get(0x38u);                         /* 0x4470A/0x44714 */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row, s, 0x1000u);      /* 0x4471B..0x44727 */
     if ((s32)strlen((const char *)game_string_get(0x39u)) >= 2)      /* 0x4472C..0x4473E */
         row++;                                          /* 0x44740 */
-    text_cursor_set(col, row + 1, game_string_get(0x39u), 0x1000u);  /* 0x44741..0x44765 */
+    s = game_string_get(0x39u);                         /* 0x44741/0x44746 */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row + 1, s, 0x1000u);  /* 0x4474E..0x44765 */
 }
 
 /* 0x4418C — record §48-S. EAX = side (ECX), the other side EDX ^ 1. 0x43EA0
@@ -860,6 +866,7 @@ void fight_char_team_text_blink(u32 side)
  * cursors alone, then 0x43EA0's entry, panel and voice updates. */
 void fight_char_team_portrait(u32 side)
 {
+    PR_SEAM(0x4418Cu, side);
     u32 other = side ^ 1u;                              /* 0x44191/0x4419C */
     if (DSD(DS_00108154 + side * 4u) == 0u) return;     /* 0x44196..0x441A1 */
     if (DSB(DS_00108166 + side) == DSB(DS_00108166 + other)) {  /* 0x441A7..0x441B3 */
@@ -890,6 +897,7 @@ void fight_char_team_portrait(u32 side)
  * fighter DS_0010813C[side] is 0 (0x442AE). */
 void fight_char_team_fighter(u32 side)
 {
+    PR_SEAM(0x442A0u, side);
     if (DSD(DS_0010813C + side * 4u) == 0u) return;     /* 0x442AE/0x442B5 */
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x442BB/0x442C9 */
     s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x442D4/0x442F0 */
@@ -912,6 +920,7 @@ void fight_char_team_fighter(u32 side)
  * its pset) and the slot zeroed (ECX = 0). */
 void fight_char_team_tag_drop(u32 side, u32 slot)
 {
+    PR_SEAM(0x44054u, side, slot);
     u32 a = DS_00108114 + side * 16u + slot * 4u;       /* 0x44056..0x4405C */
     u32 rec = DSD(a);                                   /* 0x4405F */
     if (rec == 0u) return;                              /* 0x44065 */
@@ -932,6 +941,7 @@ void fight_char_team_tag_drop(u32 side, u32 slot)
  * zero there is not observable. */
 void fight_char_team_tag_add(u32 side, u32 slot)
 {
+    PR_SEAM(0x4408Cu, side, slot);
     u32 a = DS_00108114 + side * 16u + slot * 4u;       /* 0x44097..0x4409C */
     if (DSD(a) != 0u) return;                           /* 0x4409C/0x440A4 */
     u32 desc[5];
@@ -963,6 +973,7 @@ void fight_char_team_tag_add(u32 side, u32 slot)
  * DS_0010816A; then the 0x6C voice. */
 void fight_char_team_pick(u32 side)
 {
+    PR_SEAM(0x4434Cu, side);
     s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x4435D/0x44363 */
     s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x44366/0x4436C */
     u32 base = DS_00108134 + side * 4u;
@@ -1410,6 +1421,7 @@ void fight_4cf20(u32 side)
  * it spawns is an ordinary pool actor and renders. */
 void fight_dust_build(u32 side)
 {
+    PR_SEAM(0x494A8u, side);
     if (DSW(DS_00104AFA) == 0x23u) {                    /* 0x494B7..0x494C0 */
         fight_4cf20(side);                              /* 0x494C6 (record §49-Z) */
         return;                                         /* 0x494CB */
@@ -5824,7 +5836,8 @@ void fight_4e67c(void)
 #define DS_000C9BE4 0x000C9BE4u   /* no symbols.h name: the "10, own stat" glyph pair's tens id */
 #define DS_000C9BE6 0x000C9BE6u   /* no symbols.h name: the "10, own stat" glyph pair's ones id */
 
-/* 0x4EBB8 — record §49-P. The mode-0x25 round-card body: a fixed 5-row x
+/* 0x4EBB8 — record §49-P. The mode-0x25 round-card body: the string 0x62 at
+ * row 6 (0x2F510(-1, 6, the string, 0x4000), 0x4EBC1..0x4EBDC), a fixed 5-row x
  * 11-col decorative glyph grid (i = 0..0x36, row = i/11 + 6, col = i%11 +
  * 0xE; skips DS_000C9850[i] == 0xFF; glyph = DS_000C9BCE[DS_000C9850[i]];
  * mode `mode_a`, which is 0x2000 when DS_00104AFC == 1 else 0x3000), then per
@@ -5838,16 +5851,18 @@ void fight_4e67c(void)
  * 1` mode 0x3000 and seeds `acc` from the sum itself. The DS_0010888A[base]
  * twin runs the same three-way split at col 0x14/0x15 and either adds 0x1E
  * or 0xF to `acc` (the two ">= 10" arms) or draws its own sum's two digits at
- * row `acc + 1` (note: not `row0` — the raw reuses the same stack slot) and
- * accumulates the sum into `acc` (the "both < 10" arm only). With DS_
- * 001088BD > 6, `acc`'s own two digits are drawn at col 0x17/0x18, again row
- * `acc + 1`. Finally DS_0010888C[base] = (u8)acc (side 0 lands on the named
+ * row `row0 + 1` (`movzx ebp,word [esp+0xc]` at 0x4EE94 follows one `push`,
+ * so the slot is the saved EDI at [esp+8], not `acc`) and accumulates the
+ * sum into `acc` (the "both < 10" arm only). With DS_001088BD > 6, `acc`'s
+ * own two digits are drawn at col 0x17/0x18, row `row0 + 1` again (0x4EF0F,
+ * the same slot). Finally DS_0010888C[base] = (u8)acc (side 0 lands on the named
  * DS_0010888C, side 1 on DS_00108891 — DS_0010888C + 5). EBX..EBP pushed and
  * popped. Only caller: 0x4F06E (0x4EF8C, game_mode_25_reveal)
  * and, indirectly through it, 0x4E928 (0x4E67C's DS_001088B9-gated tail). */
 void fight_mode25_scorecard(void)
 {
     PR_SEAM0(0x4EBB8u);
+    text_cursor_hold_font2(-1, 6, game_string_get(0x62u), 0x4000u);   /* 0x4EBC1..0x4EBDC 0x1C500, 0x2F510 */
     u32 mode_b = 0x3000u;                                       /* [esp+4] */
     u32 mode_a = (DSW(DS_00104AFC) == 1u) ? 0x2000u : 0x3000u;   /* [esp+0x14] */
 
@@ -5890,14 +5905,14 @@ void fight_mode25_scorecard(void)
             acc += 0xFu;                                                                                    /* 0x4EE59 */
         } else {
             u32 sum2 = (u32)DSB(DS_0010888A + base) + DSB(DS_0010888A + base + 1u);                           /* 0x4EE68..0x4EE74 */
-            text_number_draw(0x14, (s32)(acc + 1u), (s32)(sum2 / 10u), 1, 0u, mode_b);                          /* 0x4EEAA */
-            text_number_draw(0x15, (s32)(acc + 1u), (s32)(sum2 % 10u), 1, 0u, mode_b);                           /* 0x4EED1 */
+            text_number_draw(0x14, (s32)(row0 + 1u), (s32)(sum2 / 10u), 1, 0u, mode_b);                         /* 0x4EE94 (the saved EDI), 0x4EEAA */
+            text_number_draw(0x15, (s32)(row0 + 1u), (s32)(sum2 % 10u), 1, 0u, mode_b);                          /* 0x4EED1 */
             acc += sum2;                                                                                            /* 0x4EED6..0x4EEDE */
         }
 
         if (DSB(DS_001088BD) > 6u) {                                                                                   /* 0x4EEE5/0x4EEED */
-            text_number_draw(0x17, (s32)(acc + 1u), (s32)(acc / 10u), 1, 0u, mode_b);                                    /* 0x4EF25 */
-            text_number_draw(0x18, (s32)(acc + 1u), (s32)(acc % 10u), 1, 0u, mode_b);                                     /* 0x4EF4C */
+            text_number_draw(0x17, (s32)(row0 + 1u), (s32)(acc / 10u), 1, 0u, mode_b);                                   /* 0x4EF0F (the saved EDI), 0x4EF25 */
+            text_number_draw(0x18, (s32)(row0 + 1u), (s32)(acc % 10u), 1, 0u, mode_b);                                    /* 0x4EF4C */
         }
 
         DSB(DS_0010888C + base) = (u8)acc;                                                                                  /* 0x4EF6B */
