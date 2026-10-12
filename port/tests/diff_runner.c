@@ -30850,7 +30850,6 @@ static void d4e_12e3c_core(u32 mut)
 static void m_d4e_pair_ccam(const u32 *r, u32 *eax)  { (void)r; d4e_12e3c_core(1u); *eax = 0u; }
 static void m_d4e_pair_m34(const u32 *r, u32 *eax)   { (void)r; d4e_12e3c_core(2u); *eax = 0u; }
 static void m_d4e_pair_cache(const u32 *r, u32 *eax) { (void)r; d4e_12e3c_core(3u); *eax = 0u; }
-/* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
