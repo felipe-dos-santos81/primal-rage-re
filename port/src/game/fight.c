@@ -2365,6 +2365,7 @@ s32 fight_2be1c(u32 rec_a, u32 rec_b)
  * 0x80000000 stays negative, as the u32 negation below does. */
 u32 fight_4a868(u32 entry)
 {
+    PR_SEAM_RET(0x4A868u, entry);
     u32 rec = DSD(entry + 8u);                                    /* 0x4A86D */
     u32 x = (u32)fight_2be00(rec);                                /* 0x4A870 0x2BE00 */
     u32 reach = (u32)((s32)DSD(rec + 0x32u) >> 16) * 2u;          /* 0x4A877..0x4A880 */

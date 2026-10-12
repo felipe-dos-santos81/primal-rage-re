@@ -18888,6 +18888,67 @@ D3B_SPECS += [
        mutants=("@c42a", "@c42b")),
 ]
 
+D3B_4A868 = E.Call(0x4A868, ("eax",))
+
+
+def d3b_idle_case(w, bb, nodes, bd898=0x0500):
+    """0x4DEF4: the countdown word DS_001088B0 between seeded words and the flag DS_001088BB between
+    seeded bytes; the layer word 0xBD898; the DS_0010884C list of up to three entries, `nodes` =
+    ((type, the actor's +0x48 byte, its y (the +0x32 word), its +0x55 byte), ...): each entry's
+    +0x1D..+0x1F and each actor's +0x30..+0x37 (the +0x34 word non-zero), +0x47..+0x49 and
+    +0x54..+0x56 seeded."""
+    ents = ((D2B_ENT, D2B_ACT), (D2B_ENT1, D2B_ACT1), (D2B_ENT2, D2B_ACT2))
+    p = {0x001088AE: le16(0x78AE) + le16(w) + le16(0x78B2),
+         0x001088BA: bytes([0xBA, bb, 0xBC]),
+         0x000BD896: le16(0x7896) + le16(bd898) + le16(0x789A),
+         D2B_LIST: le32(ents[0][0] if nodes else D2B_LIST) + le32(0x0BAD0004)}
+    for i, (typ, b48, y, f55) in enumerate(nodes):
+        ent, act = ents[i]
+        p[ent] = le32(ents[i + 1][0] if i + 1 < len(nodes) else D2B_LIST) + le32(0x0BAD0004) + le32(act)
+        p[ent + 0x1D] = bytes([0x1D, typ, 0x1F])
+        p[act + 0x30] = le16(0x7030 + i) + le16(y) + le16(0x3434 + i) + le16(0x3636 + i)
+        p[act + 0x47] = bytes([0x47, b48, 0x49])
+        p[act + 0x54] = bytes([0x54, f55, 0x56])
+    return p
+
+
+D3B_SPECS += [
+    # 0x4DEF4 fight_effects_idle_pass: no argument. 0x2C3FC, 0x5D7DC, 0x4A868 (one EAX per case for
+    # every entry; tested whole, `test eax,eax`) and 0x2BC30 are stubs. EAX dies unread at 0x277E9
+    # and 0x2965F (0x277EE / 0x29664 `call 0x12da8`, then `mov ah,[0x104aec]`: the walk, record d3b
+    # §1): mask 0. The five targets of the jump table 0x4DEE0 are each hit.
+    Spec("fight_effects_idle_pass", 0x4DEF4, [
+        # the word at 0 with the flag: voice 0xCB, the word re-armed, then decremented; no entry
+        Case("i0", {}, d3b_idle_case(0x0000, 1, ()), {0x5D7DC: 5, 0x4A868: 1}),
+        # the word at 0 without the flag: it wraps to 0xFFFF; states 1..3 below the layer
+        Case("i1", {}, d3b_idle_case(0x0000, 0, ((1, 0x22, 0x04FF, 0x55), (2, 0x23, 0x0000, 0x66), (3, 0x24, 0xFFFF, 0x77))),
+             {0x5D7DC: 5, 0x4A868: 1}),
+        # the word at 0x3C with the flag: voice 0xDC; states 1..3 on and above the layer (0x4DFBF
+        # `jge`); 0x4A868 returns 0x100
+        Case("i2", {}, d3b_idle_case(0x003C, 0x80, ((1, 0x20, 0x0500, 0x55), (2, 0x25, 0x0501, 0x66), (3, 0x22, 0x7FFF, 0x77))),
+             {0x5D7DC: 5, 0x4A868: 0x100}),
+        # 0x3C without the flag: no voice; states 4, 0 and 5
+        Case("i3", {}, d3b_idle_case(0x003C, 0, ((4, 0x23, 0x7000, 0x55), (0, 0x22, 0x0000, 0x66), (5, 0x24, 0x0000, 0x77))),
+             {0x5D7DC: 5, 0x4A868: 1}),
+        # a word whose low byte is 0x3C; 0x4A868 returns 0: nothing acts
+        Case("i4", {}, d3b_idle_case(0x013C, 1, ((1, 0x22, 0x0000, 0x55), (2, 0x23, 0x0000, 0x66), (4, 0x24, 0x0000, 0x77))),
+             {0x5D7DC: 5, 0x4A868: 0}),
+        # a word whose low byte is 0; a layer word with bit 15 set against a negative and a positive y;
+        # an id byte below 0x20
+        Case("i5", {}, d3b_idle_case(0x0100, 1, ((3, 0x25, 0xFFFF, 0x55), (2, 0x10, 0x0100, 0x66), (1, 0x24, 0x8A40, 0x01)),
+                                     bd898=0x8A40), {0x5D7DC: 5, 0x4A868: 0xFFFFFF00}),
+        # the re-armed word lands on 0x3C (a harness draw of 0xFFC4): both voices; a state of 0xFF
+        Case("i6", {}, d3b_idle_case(0x0000, 1, ((0xFF, 0x22, 0x0000, 0x55), (4, 0x20, 0x0000, 0x66))),
+             {0x5D7DC: 0xFFC4, 0x4A868: 1}),
+        # state 3 on the layer, state 1 below it, state 2 below it (indexes whose table entries differ)
+        Case("i7", {}, d3b_idle_case(0x0002, 0, ((3, 0x23, 0x0500, 0x55), (1, 0x25, 0x0400, 0x66), (2, 0x20, 0x0400, 0x77))),
+             {0x5D7DC: 5, 0x4A868: 1}),
+    ], calls=(VOICE, D2B_RNG, D3B_4A868, ANIM_BEGIN), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "w0 bb0 wb vcb novcb r14 r78 vorder dec pre vdc novdc dcb type0 type5 gate al bb w34 w34w jl lsext "
+           "hsx f55 f55lo t1 t2 t3 hi3 t4 hold4 hold y4 idx8 idx20 clr once order").split())),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
