@@ -361,7 +361,10 @@ u32 hiscore_rank_probe(u32 value, u32 table)
     for (;;) {                                                /* 0x2DE3D */
         u32 i = 0u;
         while (i < nval && buf[i] == DSB(p + i)) i++;         /* 0x2DE43..0x2DE50 */
-        if (i < nval && buf[i] > DSB(p + i)) break;           /* 0x2DE52/0x2DE5E `ja` */
+        if (i < nval && buf[i] > DSB(p + i)) {                /* 0x2DE52/0x2DE5E `ja` */
+            if ((s32)left < 0) return 0xFFFFFFFFu;            /* 0x2DE75/0x2DE7A `cmp dword [esp+8],0; jge` */
+            break;
+        }
         s32 sleft = (s32)left - (s32)size;                    /* 0x2DE69 */
         p += size;                                            /* 0x2DE6B */
         rank++;                                                /* 0x2DE68 */

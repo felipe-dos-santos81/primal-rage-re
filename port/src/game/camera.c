@@ -275,7 +275,7 @@ int camera_page_tail_b(u32 side, u32 out)
         if (DSB(DS_000FD158 + side * 4u + 2u) == 0u) return 0;
         if (DSW(0x00107834u + side * 0x94u)
             != DSW(DS_00100B44 + side * 2u)) return 0;
-        if ((s32)r63 < (s32)(u32)DSW(DS_00100B48 + side * 2u)) return 0;
+        if ((s32)r63 < (s32)(s16)DSW(DS_00100B48 + side * 2u)) return 0;   /* 0x166F3 `cmp dx,si; jl` */
         DSD(out) = DSD(DS_000FD158 + side * 4u);
         return 1;
     }
@@ -463,7 +463,7 @@ void camera_x_commit(s32 arg)
  * when +0x34 > +0x38), storing +0x34 and +0x2C, and rewrites that slot's
  * record +0x18 through 0x18714 (hit_record_x) at 0x12F02/0x12F22, so the
  * record itself stops at the split distance. */
-static void camera_mode_track_pair(void)
+void camera_mode_track_pair(void)
 {
     s32 cam = (s32)DSD(DS_000F0AF0);
     u32 a = ((s32)DSD(DS_001077E4) >= (s32)DSD(DS_00107878)) ? 1u : 0u;
@@ -508,8 +508,13 @@ static void camera_mode_track_pair(void)
     /* 0x12F44: the two locals, each folded into the 0x1800 dead zone. */
     s32 d0 = (s32)DSD(lo_off + 0x34u) - cam;
     s32 d1 = (s32)DSD(hi_off + 0x34u) - cam;
-    s32 l0 = (d0 < -0x1800) ? d0 + 0x1800 : (d0 > 0x1800 ? d0 - 0x1800 : 0);
-    s32 l1 = (d1 < -0x1800) ? d1 + 0x1800 : (d1 > 0x1800 ? d1 - 0x1800 : 0);
+    /* 0x12F56..0x12F62: the magnitude is a `neg`, which leaves INT_MIN
+     * negative, so the `jle` zeroes that local (the negation is unsigned here
+     * to stay defined in C). */
+    s32 m0 = d0 < 0 ? (s32)(0u - (u32)d0) : d0;
+    s32 m1 = d1 < 0 ? (s32)(0u - (u32)d1) : d1;
+    s32 l0 = (m0 <= 0x1800) ? 0 : (d0 <= 0 ? d0 + 0x1800 : d0 - 0x1800);   /* 0x12F5C..0x12F7E */
+    s32 l1 = (m1 <= 0x1800) ? 0 : (d1 <= 0 ? d1 + 0x1800 : d1 - 0x1800);
 
     /* 0x12F89: far apart -> midpoint; else the non-zero local. */
     s32 arg;
@@ -958,7 +963,7 @@ int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 /* 0x15B90. Read the box palette/width pair at (0x17EEC(side) + index) from
  * 0xD5100/0xD5101 into the two out pointers, adjust chars 5/6, then mirror the
  * x out when the actor's bit 15 is clear. */
-static void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
+void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
 {
     u32 ch = DSB(DS_0010782A + side * 0x94u);
     u32 base = camera_char_const(ch) + index;

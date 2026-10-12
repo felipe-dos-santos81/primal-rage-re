@@ -13034,7 +13034,7 @@ void fighter_3fdd8(u32 side)
     u32 ctx[6];
     s32 dx;
     fighter_ctx_same(ctx, side);                            /* 0x3FDE2..0x3FDE4 0x33950 */
-    dx = fighter_actor_bit15_clear(side) != 0 ? 0x800 : -0x800;  /* 0x3FDEB..0x3FDFB */
+    dx = (u8)fighter_actor_bit15_clear(side) != 0u ? 0x800 : -0x800;  /* 0x3FDEB..0x3FDFB, `test al,al` 0x3FDF0 */
     fighter_3d0c0(ctx[1]);                                  /* 0x3FE00..0x3FE04 */
     hit_anchor_x(side, DSD(ctx[3] + 0x2Cu) + (u32)dx);      /* 0x3FE09..0x3FE17 0x188DC */
     actors_anim_begin(ctx[5], DSD(FSET_C9170 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
