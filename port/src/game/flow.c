@@ -620,7 +620,7 @@ void flow_no_continue_screen(void)
  * 0x800. EBP/ESI/EDI and a four-dword local frame are the raw's loop
  * scratch; i, off4 = i*4 and p2 = i*2 below play that role. Only caller:
  * state 5's top, 0x420ED (0x41C28). */
-static void frontend_scoreboard_build(void)
+void frontend_scoreboard_build(void)
 {
     for (u32 i = 0u; i < 2u; i++) {
         u32 off4 = i * 4u, p2 = i * 2u;

@@ -354,6 +354,8 @@ void flow_list_105c0c_init(void);
 void game_state_3_handoff(void);
 void flow_match_streak_update(void);
 void title_origin_reset(u32 idx);
+/* 0x418F4: exposed for the differential rows (record 2026-10-11-reverse-d2c). */
+void frontend_scoreboard_build(void);
 /* 0x4F200: DS_00107A55 = (u8)v, DS_00107A54 = 0, 0x4F1D0, 0x2BAF4(1). */
 void flow_screen_reset(u32 v);
 /* 0x25848: picks the stage word DS_00104AFC (on DS_00104B17). */

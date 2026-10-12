@@ -4028,6 +4028,7 @@ u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical)
  * and 5's scoreboard build (0x41A9D/0x41E5D area, record §48-Z). */
 void text_glyph_at(s32 col, s32 ch, s32 row, u32 mode)
 {
+    PR_SEAM(0x2F174u, (u32)col, (u32)ch, (u32)row, mode);
     s32 c = col, r = row;
     (void)text_glyph_emit(ch, &c, &r, mode, 0u);            /* 0x2F18E */
 }

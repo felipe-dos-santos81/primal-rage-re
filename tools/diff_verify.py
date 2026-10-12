@@ -13572,6 +13572,30 @@ def d2c_exit25_case(v, aec):
             0x00102760: b"\x5a" * 0x10}
 
 
+D2C_SB_REC = (0x0010A300, 0x0010A400)    # 0x418F4: the two records 0x1077A8 points at (zero BSS)
+D2C_GLYPHAT = E.Call(0x2F174, ("eax", "ebx", "edx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+
+
+def d2c_board_case(b529, recs, tally=(3, 7), tbl=None):
+    """0x418F4: the option byte 0x104529, the two record pointers 0x1077A8 and per record
+    (f63, ch, score, count): +0x63, +0x7A, the dword +0x3C between two neighbours and +0x82; the
+    words 0x108100/0x108102 (seeded) with the two tally bytes 0x108104 after them; when given,
+    the twenty table bytes 0xC8758..0xC876B (the image has 00 02 00 2c 12 27 0d 22 01 1d 0c 28
+    06 22 00 02 00 3a 00 00); and the string buffer."""
+    p = {0x00104529: bytes([b529]), 0x001077A8: le32(D2C_SB_REC[0]) + le32(D2C_SB_REC[1]),
+         0x001080FE: le16(0x6161) + le16(0x5A5A) + le16(0x5B5B) + bytes([tally[0], tally[1], 0x62]),
+         0x00102760: b"\x5a" * 0x10}
+    for k, (f63, ch, score, count) in enumerate(recs):
+        r = D2C_SB_REC[k]
+        p[r + 0x38] = le32(0x38383838 + k) + le32(score) + le32(0x40404040 + k)
+        p[r + 0x62] = bytes([0x62, f63, 0x64])
+        p[r + 0x79] = bytes([0x79, ch, 0x7B])
+        p[r + 0x81] = bytes([0x81, count, 0x83])
+    if tbl is not None:
+        p[0x000C8758] = bytes(tbl)
+    return p
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -14032,6 +14056,40 @@ D2C_SPECS = [
     ], allow_calls=(0x1C500,), calls=(D1C_STR, D1C_RELEASE), eax_mask=0,
        mutants=("@c0col", "@c1col", "@c2row", "@c3row", "@id", "@mode", "@n3", "@order", "@off8", "@row8",
                 "@regs")),
+    # 0x418F4 frontend_scoreboard_build: no argument. Per side whose record (0x1077A8[side]) has
+    # +0x63 != 1 (zero-extended): with 0x104529 bit 1 (the sprite layout) the character's
+    # descriptor 0xA7808[+0x7A] spawned at (the word 0xC8758[side], 0xFF, 0x2900), nineteen
+    # dashes on row 0x16 from that word / 512 (zero-extended), the sprites 0xC8730/0xC8744 at y
+    # 0x2E00/0x3400 and the tally byte 0x108104[side] at col 0xC875C[side], row 0x18, mode 0x4003;
+    # without it (the text layout) the spawn at (the signed high word of the dword 0xC8764[side*2],
+    # 0xFF, 0x2B00), twelve dashes on row 0x17 from col 0xC8760[side], strings 0x4C/0x4D/0x4E on
+    # rows 0x18/0x19/0x1B (mode 0) and the tally on row 0x1A at col 0xC8762[side], mode 0x2000. On
+    # side 1 the spawned actor gets 0x2A17C(actor, word 0x74, handle 0). Then the score (the
+    # record's +0x3C, width 7, pad 1, mode 0x2000) on row 0x1C at col 0xC875E[side] or
+    # 0xC8764[side], and +0x82 copies of 0xC85A8 at x = the word 0xC8518[side], y = 0x2600 (sprite
+    # layout) or 0x2800 less (k - 1) * 0x800 for k = the count down to 1, through the words
+    # 0x108100/0x108102. 0x1C500 runs real over the stubbed 0x474E4; the other callees are stubs.
+    # Mask 0: the one caller has 0x420F2 `xor eax,eax`.
+    Spec("frontend_scoreboard_build", 0x418F4, [
+        Case("s0", {}, d2c_board_case(0x02, ((0, 2, 0x00012345, 0), (0, 5, 0xFFFFFFFE, 2))),
+             {0x2AE14: 0x0010A600}),
+        Case("s1", {}, d2c_board_case(0xFD, ((1, 3, 0x1111, 5), (0x81, 6, 0x00098765, 1))),
+             {0x2AE14: 0x0010A640}),
+        Case("s2", {}, d2c_board_case(0x00, ((0, 0, 0x7FFFFFFF, 3), (2, 4, 0, 0)), tally=(0x80, 9)),
+             {0x2AE14: 0x0010A680}),
+        Case("s3", {}, d2c_board_case(0xFF, ((0, 1, 5, 0x80), (1, 2, 6, 1)),
+                                      tbl=b"\x00\x82\x00\x7e\x92\x27\x8d\x22\x81\x1d\x8c\x28\x86\x22\x00\x02"
+                                          b"\x00\x3a\x00\x00"), {0x2AE14: 0x0010A6C0}),
+        Case("s4", {}, d2c_board_case(0x04, ((0, 6, 1, 0), (0, 0, 2, 0)),
+                                      tbl=b"\x00\x02\x00\x2c\x12\x27\x0d\x22\x90\x1d\x0c\x98\x06\xa2\x00\xff"
+                                          b"\x00\x81\x00\x00"), {0x2AE14: 0x0010A700}),
+        Case("s5", {}, d2c_board_case(0x02, ((1, 2, 3, 4), (1, 5, 6, 7)))),
+    ], allow_calls=(0x1C500,),
+       calls=(SPAWN, PALETTE, D2C_GLYPHAT, D1C_STR, D1G_TXT198, D2C_NUMSET), eax_mask=0,
+       mutants=("@f63", "@bit", "@chside", "@x1", "@y1", "@pal0", "@palargs", "@nopal", "@sdiv",
+                "@n13", "@grow", "@gch", "@gmode", "@fix1", "@fixy", "@n1col", "@n1val", "@n1mode",
+                "@tx", "@n12", "@ids", "@trow", "@tmode", "@n2col", "@scol", "@sval", "@swidth",
+                "@cnt", "@y0", "@base", "@w100", "@w102", "@step", "@cdesc")),
 ]
 D1_SPECS += D2C_SPECS
 

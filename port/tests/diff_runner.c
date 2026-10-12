@@ -20712,6 +20712,89 @@ static void d2c_319b0_core(const u32 *r, u32 mut)
     static void m_d2c_bc_##name(const u32 *r, u32 *eax) { d2c_319b0_core(r, D2C_BC_##name); *eax = 0u; }
 D2C_BC_MUT(c0col) D2C_BC_MUT(c1col) D2C_BC_MUT(c2row) D2C_BC_MUT(c3row) D2C_BC_MUT(id)   D2C_BC_MUT(mode)
 D2C_BC_MUT(n3)    D2C_BC_MUT(order) D2C_BC_MUT(off8)  D2C_BC_MUT(row8)  D2C_BC_MUT(regs)
+
+/* 0x418F4: no argument. */
+static void b_d2c_418f4(const u32 *r, u32 *eax) { (void)r; frontend_scoreboard_build(); *eax = 0u; }
+enum { D2C_SB_NONE, D2C_SB_f63, D2C_SB_bit, D2C_SB_chside, D2C_SB_x1, D2C_SB_y1, D2C_SB_pal0, D2C_SB_palargs,
+       D2C_SB_nopal, D2C_SB_sdiv, D2C_SB_n13, D2C_SB_grow, D2C_SB_gch, D2C_SB_gmode, D2C_SB_fix1,
+       D2C_SB_fixy, D2C_SB_n1col, D2C_SB_n1val, D2C_SB_n1mode, D2C_SB_tx, D2C_SB_n12, D2C_SB_ids,
+       D2C_SB_trow, D2C_SB_tmode, D2C_SB_n2col, D2C_SB_scol, D2C_SB_sval, D2C_SB_swidth, D2C_SB_cnt,
+       D2C_SB_y0, D2C_SB_base, D2C_SB_w100, D2C_SB_w102, D2C_SB_step, D2C_SB_cdesc };
+#define D2C_SB(x) (mut == D2C_SB_##x)
+static void d2c_418f4_core(u32 mut)
+{
+    for (u32 i = 0u; i < 2u; i++) {
+        u32 p2 = i * 2u, rec = DSD(0x001077A8u + i * 4u);
+        u8 f = DSB(rec + 0x63u);
+        if (D2C_SB(f63) ? f != 0u : f == 1u) continue;
+        int sprite = (DSB(0x00104529u) & (D2C_SB(bit) ? 1u : 2u)) != 0u;
+        u32 ch = DSB((D2C_SB(chside) ? DSD(0x001077A8u + (1u - i) * 4u) : rec) + 0x7Au);
+        const u32 *desc = (const u32 *)(mem + DSD(0x000A7808u + ch * 4u));
+        u32 spawned;
+        s32 col;
+        if (sprite) {
+            u32 x = DSW(0x000C8758u + (D2C_SB(x1) ? i : p2));
+            spawned = actor_spawn(desc, x, 0xFFu, D2C_SB(y1) ? 0x2B00u : 0x2900u, 0u);
+            if ((i != 0u || D2C_SB(pal0)) && !D2C_SB(nopal)) {
+                if (D2C_SB(palargs)) actor_pset_palette(spawned, 0u, 0x74u);
+                else actor_pset_palette(spawned, 0x74u, 0u);
+            }
+            s32 base = D2C_SB(sdiv) ? (s32)(s16)DSW(0x000C8758u + p2) / 512 : (s32)(DSW(0x000C8758u + p2) >> 9);
+            for (s32 c = base; c != base + (D2C_SB(n13) ? 0x12 : 0x13); c++)
+                text_glyph_at(c, D2C_SB(gch) ? 0x2E : 0x2D, D2C_SB(grow) ? 0x17 : 0x16,
+                              D2C_SB(gmode) ? 0x4000u : 0x1000u);
+            (void)actor_spawn((const u32 *)(mem + (D2C_SB(fix1) ? 0x000C8744u : 0x000C8730u)), x, 0xFFu,
+                              D2C_SB(fixy) ? 0x3400u : 0x2E00u, 0u);
+            (void)actor_spawn((const u32 *)(mem + (D2C_SB(fix1) ? 0x000C8730u : 0x000C8744u)), x, 0xFFu,
+                              D2C_SB(fixy) ? 0x2E00u : 0x3400u, 0u);
+            text_number_set((s32)DSB((D2C_SB(n1col) ? 0x000C875Eu : 0x000C875Cu) + i), 0x18,
+                            D2C_SB(n1val) ? (s32)DSB(0x00108104u + (1u - i)) : (s32)DSB(0x00108104u + i), 1, 1u,
+                            D2C_SB(n1mode) ? 0x2000u : 0x4003u);
+            col = (s32)DSB((D2C_SB(scol) ? 0x000C8764u : 0x000C875Eu) + i);
+        } else {
+            u32 x = D2C_SB(tx) ? DSD(0x000C8764u + p2) >> 16 : (u32)((s32)DSD(0x000C8764u + p2) >> 16);
+            spawned = actor_spawn(desc, x, 0xFFu, D2C_SB(y1) ? 0x2900u : 0x2B00u, 0u);
+            if ((i != 0u || D2C_SB(pal0)) && !D2C_SB(nopal)) {
+                if (D2C_SB(palargs)) actor_pset_palette(spawned, 0u, 0x74u);
+                else actor_pset_palette(spawned, 0x74u, 0u);
+            }
+            s32 start = (s32)DSB(0x000C8760u + i);
+            for (s32 c = start; c != start + (D2C_SB(n12) ? 0x13 : 0xC); c++)
+                text_glyph_at(c, D2C_SB(gch) ? 0x2E : 0x2D, D2C_SB(grow) ? 0x16 : 0x17,
+                              D2C_SB(gmode) ? 0x4000u : 0x1000u);
+            u32 tm = D2C_SB(tmode) ? 0x1000u : 0u;
+            text_cursor_set(start, D2C_SB(trow) ? 0x19 : 0x18, game_string_get(D2C_SB(ids) ? 0x4Du : 0x4Cu), tm);
+            text_cursor_set(start, D2C_SB(trow) ? 0x18 : 0x19, game_string_get(D2C_SB(ids) ? 0x4Cu : 0x4Du), tm);
+            text_number_set((s32)DSB((D2C_SB(n2col) ? 0x000C8760u : 0x000C8762u) + i), 0x1A,
+                            (s32)DSB(0x00108104u + i), 1, 1u, 0x2000u);
+            text_cursor_set(start, 0x1B, game_string_get(0x4Eu), tm);
+            col = (s32)DSB((D2C_SB(scol) ? 0x000C875Eu : 0x000C8764u) + i);
+        }
+        text_number_set(col, 0x1C, (s32)DSD(rec + (D2C_SB(sval) ? 0x38u : 0x3Cu)), D2C_SB(swidth) ? 6 : 7, 1u,
+                        0x2000u);
+        s32 count = D2C_SB(cnt) ? (s32)(s8)DSB(rec + 0x82u) : (s32)DSB(rec + 0x82u);
+        if (count > 0) {
+            s32 y = (count << 11) - (D2C_SB(y0) ? 0 : 0x800);
+            do {
+                if (!D2C_SB(w100)) DSW(0x00108100u) = DSW(0x000C8518u + p2);
+                s32 base_y = (sprite != D2C_SB(base)) ? 0x2600 : 0x2800;
+                if (!D2C_SB(w102)) DSW(0x00108102u) = (u16)(base_y - y);
+                y -= D2C_SB(step) ? 0x400 : 0x800;
+                count--;
+                (void)actor_spawn((const u32 *)(mem + (D2C_SB(cdesc) ? 0x000C8730u : 0x000C85A8u)),
+                                  DSW(0x00108100u), 0xFFu, DSW(0x00108102u), 0u);
+            } while (count > 0);
+        }
+    }
+}
+#define D2C_SB_MUT(name) \
+    static void m_d2c_sb_##name(const u32 *r, u32 *eax) { (void)r; d2c_418f4_core(D2C_SB_##name); *eax = 0u; }
+D2C_SB_MUT(f63) D2C_SB_MUT(bit) D2C_SB_MUT(chside) D2C_SB_MUT(x1) D2C_SB_MUT(y1) D2C_SB_MUT(pal0)
+D2C_SB_MUT(palargs) D2C_SB_MUT(nopal) D2C_SB_MUT(sdiv) D2C_SB_MUT(n13) D2C_SB_MUT(grow) D2C_SB_MUT(gch)
+D2C_SB_MUT(gmode) D2C_SB_MUT(fix1) D2C_SB_MUT(fixy) D2C_SB_MUT(n1col) D2C_SB_MUT(n1val) D2C_SB_MUT(n1mode)
+D2C_SB_MUT(tx) D2C_SB_MUT(n12) D2C_SB_MUT(ids) D2C_SB_MUT(trow) D2C_SB_MUT(tmode) D2C_SB_MUT(n2col)
+D2C_SB_MUT(scol) D2C_SB_MUT(sval) D2C_SB_MUT(swidth) D2C_SB_MUT(cnt) D2C_SB_MUT(y0) D2C_SB_MUT(base)
+D2C_SB_MUT(w100) D2C_SB_MUT(w102) D2C_SB_MUT(step) D2C_SB_MUT(cdesc)
 /* ---- end of track D2 batch d2c bindings ---- */
 
 static const binding_t k_bindings[] = {
@@ -25000,6 +25083,41 @@ static const binding_t k_bindings[] = {
     { "svc_buttons_clear@off8", m_d2c_bc_off8, 0x00000000u },
     { "svc_buttons_clear@row8", m_d2c_bc_row8, 0x00000000u },
     { "svc_buttons_clear@regs", m_d2c_bc_regs, 0x00000000u },
+    { "frontend_scoreboard_build", b_d2c_418f4, 0x00000000u },
+    { "frontend_scoreboard_build@f63", m_d2c_sb_f63, 0x00000000u },
+    { "frontend_scoreboard_build@bit", m_d2c_sb_bit, 0x00000000u },
+    { "frontend_scoreboard_build@chside", m_d2c_sb_chside, 0x00000000u },
+    { "frontend_scoreboard_build@x1", m_d2c_sb_x1, 0x00000000u },
+    { "frontend_scoreboard_build@y1", m_d2c_sb_y1, 0x00000000u },
+    { "frontend_scoreboard_build@pal0", m_d2c_sb_pal0, 0x00000000u },
+    { "frontend_scoreboard_build@palargs", m_d2c_sb_palargs, 0x00000000u },
+    { "frontend_scoreboard_build@nopal", m_d2c_sb_nopal, 0x00000000u },
+    { "frontend_scoreboard_build@sdiv", m_d2c_sb_sdiv, 0x00000000u },
+    { "frontend_scoreboard_build@n13", m_d2c_sb_n13, 0x00000000u },
+    { "frontend_scoreboard_build@grow", m_d2c_sb_grow, 0x00000000u },
+    { "frontend_scoreboard_build@gch", m_d2c_sb_gch, 0x00000000u },
+    { "frontend_scoreboard_build@gmode", m_d2c_sb_gmode, 0x00000000u },
+    { "frontend_scoreboard_build@fix1", m_d2c_sb_fix1, 0x00000000u },
+    { "frontend_scoreboard_build@fixy", m_d2c_sb_fixy, 0x00000000u },
+    { "frontend_scoreboard_build@n1col", m_d2c_sb_n1col, 0x00000000u },
+    { "frontend_scoreboard_build@n1val", m_d2c_sb_n1val, 0x00000000u },
+    { "frontend_scoreboard_build@n1mode", m_d2c_sb_n1mode, 0x00000000u },
+    { "frontend_scoreboard_build@tx", m_d2c_sb_tx, 0x00000000u },
+    { "frontend_scoreboard_build@n12", m_d2c_sb_n12, 0x00000000u },
+    { "frontend_scoreboard_build@ids", m_d2c_sb_ids, 0x00000000u },
+    { "frontend_scoreboard_build@trow", m_d2c_sb_trow, 0x00000000u },
+    { "frontend_scoreboard_build@tmode", m_d2c_sb_tmode, 0x00000000u },
+    { "frontend_scoreboard_build@n2col", m_d2c_sb_n2col, 0x00000000u },
+    { "frontend_scoreboard_build@scol", m_d2c_sb_scol, 0x00000000u },
+    { "frontend_scoreboard_build@sval", m_d2c_sb_sval, 0x00000000u },
+    { "frontend_scoreboard_build@swidth", m_d2c_sb_swidth, 0x00000000u },
+    { "frontend_scoreboard_build@cnt", m_d2c_sb_cnt, 0x00000000u },
+    { "frontend_scoreboard_build@y0", m_d2c_sb_y0, 0x00000000u },
+    { "frontend_scoreboard_build@base", m_d2c_sb_base, 0x00000000u },
+    { "frontend_scoreboard_build@w100", m_d2c_sb_w100, 0x00000000u },
+    { "frontend_scoreboard_build@w102", m_d2c_sb_w102, 0x00000000u },
+    { "frontend_scoreboard_build@step", m_d2c_sb_step, 0x00000000u },
+    { "frontend_scoreboard_build@cdesc", m_d2c_sb_cdesc, 0x00000000u },
     /* ---- end of track D2 batch d2c entries ---- */
 };
 
