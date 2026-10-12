@@ -24630,6 +24630,109 @@ D5A_SPECS += [
                               0x125F3, 0x125FD, 0x12603, 0x12607, 0x12609, 0x1260D, 0x12652)},
        mutants=("@prebit", "@incpre")),
 ]
+D5A_ORIGIN = E.Call(0x4F1D0, ())
+D5A_PULSE = E.Call(0x13E28, ("eax", "edx"), clobbers=("edx",))
+D5A_SL_CALLS = (D5A_RESET, D5A_ORIGIN, D5A_ROW, SPAWN, D5A_PULSE, D1C_STR, D1D_CURSOR, P7_2B150)
+D5A_SL_ALLOW = (0x29D60, 0x2C06C, 0x33904, 0x1C6D4, 0x1C500)
+# the same callees rewriting what 0x11F6C reads again after them: 0x38B18 the entry byte 0xF0A6E = 2
+# (read at 0x11FFD) and the option byte 0x104529 = 2 (0x11FC3, 0x1205A), 0x2AE14 the entry byte = 3
+# (0x1206C, 0x12090), 0x13E28 the option byte = 0 (0x1205A), 0x2F198 the entry byte = 4 (0x120C3)
+D5A_SL_CALLS_W = (
+    D5A_RESET, D5A_ORIGIN,
+    dataclasses.replace(D5A_ROW, writes=((None, 0x000F0A6E, b"\x02"), (None, 0x00104529, b"\x02"))),
+    dataclasses.replace(SPAWN, writes=((None, 0x000F0A6E, b"\x03"),)),
+    dataclasses.replace(D5A_PULSE, writes=((None, 0x00104529, b"\x00"),)), D1C_STR,
+    dataclasses.replace(D1D_CURSOR, writes=((None, 0x000F0A6E, b"\x04"),)), P7_2B150)
+
+
+def d5a_sel_case(ph, n=0x2F, b529=0x00, entries=None, w68=0x2A29, b70=0x31, id2zero=None):
+    """0x11F6C: the phase byte 0xF0A6F, the entry byte 0xF0A6E (`n`), the countdown word 0xF0A68 and
+    the next-phase byte 0xF0A70 inside the seeded front-end words; the option byte 0x104529, the
+    credit-row byte 0x105C05 and the dwords 0xF0A40 and 0xF0A44 (the record phase 3 kills), each
+    between seeded neighbours; the string buffer; the front-end list; the image's own tables
+    0x9AEC8 (six descriptors) and 0x9AEE0 (six triples: descriptor, string 1, string 2) with the
+    second string of entry `id2zero` cleared, and the entries index 0x80 reaches (0x9B0C8, 0x9B4E0)."""
+    p = d2c_list_pokes(entries or {})
+    fe = bytearray(d5a_fe_block(ph)[0x000F0A60])
+    fe[0x08:0x0A] = le16(w68)
+    fe[0x0E] = n
+    fe[0x10] = b70
+    p.update({0x000F0A60: bytes(fe), 0x00104528: bytes([0x6B, b529, 0x6C]),
+              0x00105C04: bytes([0x61, 0x5A, 0x62]),
+              0x000F0A3C: le32(0x3C3C3C3C) + le32(0x5D5D5D5D) + le32(0x0010A340) + le32(0x48484848),
+              0x00102760: b"\x5a" * 0x10,
+              0x0009B4E0: le32(0x0010A500) + le32(0x21) + le32(0x22), 0x0009B0C8: le32(0x0010A600)})
+    if id2zero is not None:
+        p[0x0009AEE8 + 12 * id2zero] = le32(0)
+    return p
+
+
+D5A_SL_LIST = {0x00107618: (0x0080995C, 1), 0x00107628: (0x00812345, 1), 0x00107648: (0x00812346, 0),
+               0x00107788: (0x0003E688, 0x100)}
+D5A_SPECS += [
+    # 0x11F6C game_state_select: no argument; the phase byte 0xF0A6F through the table 0x11F58 (a
+    # bounded switch: `cmp al,4; ja`; z5 is 5, z8 0x80). Phase 0: 0x29D60 (a bare `ret`), 0x2BAF4(1),
+    # 0x4F1D0, 0x38B18(0xC87BC, 0, 0), 0x2C06C(1) (run on both sides: the byte 0x105C05), the entry
+    # byte 0xF0A6E = 0, the dword 0xF0A44 = 0 and, with bit 1 of the option byte 0x104529, the dword
+    # 0xF0A40 = 0; then it falls into phase 1. Phase 1: 0x2BAF4(1), 0x4F1D0, 0x38B18(0xC87BC, 0, 0);
+    # n = the entry byte, zero-extended (d2/d3 have 0x80); 0x2AE14(the dword 0x9AEE0[12n], 0, 0xE0 +
+    # n, 0x600, 0) into the dword 0xF0A44; every live list entry (0x33904, real) that 0x1C6D4 (real;
+    # `test al,al` 0x1203D) does not know gets 0x13E28(entry, 1); then by bit 1 of 0x104529 either
+    # 0x2AE14(the dword 0x9AEC8[4n], 0x2A00, 0xFF, 0x3400, 0) into 0xF0A40, or the string 0x9AEE4[12n]
+    # at row 0x18 and, when it is non-zero (d4), the string 0x9AEE8[12n] at row 0x1B (0x1C500 real
+    # over the stubbed 0x474E4; 0x2F198(-1, row, the string, 0x4003)); the bytes 0xF0A70 = 2 and
+    # 0xF0A6F = 4, the word 0xF0A68 = 0x5A. Phase 2: the entry byte + 1; at 6 (e1; e2 is 7, e3 wraps
+    # to 0) 0xF0A70 = 3, 0xF0A6F = 4 and 0xF0A68 = 0x1E, else 0xF0A6F = 1. Phase 3: 0x2B150(the dword
+    # 0xF0A44), the word 0xF0A64 = 3, 0xF0A6F = 0. Phase 4: the word 0xF0A68 - 1 stored, and when the
+    # value before was <= 0 as a signed word (`test ax,ax; jg` 0x1218B: t1/t2 its two sides, t3 and t5
+    # negative) 0xF0A6F = the byte 0xF0A70. 0x13E28 is seamed here. Mask 0: see the binding.
+    Spec("game_state_select", 0x11F6C, [
+        Case("n0", {**D5A_REGS, "eax": 0x12345678}, d5a_sel_case(0, n=5, b529=0x02, entries=D5A_SL_LIST),
+             {0x2AE14: 0x0010A480, 0x13E28: 0x100}),
+        Case("n1", {}, d5a_sel_case(0, n=3, b529=0xFD), {0x2AE14: 0, 0x38B18: 0x12345678}),
+        Case("d0", D5A_REGS, d5a_sel_case(1, n=0, b529=0x00, entries=D5A_SL_LIST), {0x2AE14: 0x0010A4C0}),
+        Case("d1", {}, d5a_sel_case(1, n=1, b529=0x02, entries={0x00107628: (0x00812345, 1)}),
+             {0x2AE14: 0xFFFFFFFF, 0x4F1D0: 0x100}),
+        Case("d2", {}, d5a_sel_case(1, n=0x80, b529=0xFD), {0x2AE14: 0x0010A480}),
+        Case("d3", {}, d5a_sel_case(1, n=0x80, b529=0x03), {0x2AE14: 0x0010A480}),
+        Case("d4", {}, d5a_sel_case(1, n=3, b529=0x04, id2zero=3), {0x2AE14: 0x0010A480, 0x2F198: 0x100}),
+        Case("d5", {}, d5a_sel_case(1, n=5, b529=0xFF), {0x2AE14: 0x0010A480}),
+        Case("e0", D5A_REGS, d5a_sel_case(2, n=4)),
+        Case("e1", {}, d5a_sel_case(2, n=5)),
+        Case("e2", {}, d5a_sel_case(2, n=6)),
+        Case("e3", {}, d5a_sel_case(2, n=0xFF)),
+        Case("k0", D5A_REGS, d5a_sel_case(3), {0x2B150: 0x12345678}),
+        Case("t0", D5A_REGS, d5a_sel_case(4, w68=0x0002)),
+        Case("t1", {}, d5a_sel_case(4, w68=0x0001)),
+        Case("t2", {}, d5a_sel_case(4, w68=0x0000)),
+        Case("t3", {}, d5a_sel_case(4, w68=0x8001, b70=0x80)),
+        Case("t4", {}, d5a_sel_case(4, w68=0x0100)),
+        Case("t5", {}, d5a_sel_case(4, w68=0x8000, b70=0x00)),
+        Case("z5", {}, d5a_sel_case(5, w68=0x0000)),
+        Case("z8", {}, d5a_sel_case(0x80, w68=0x0000)),
+    ], allow_calls=D5A_SL_ALLOW, calls=D5A_SL_CALLS, eax_mask=0,
+       mutants=("@ph5", "@phsext", "@nofall", "@noreset0", "@noorigin0", "@norow0", "@nocredit", "@credit", "@no6e0",
+                "@no440", "@440w", "@no400", "@400always", "@400bit", "@p0late", "@noreset", "@resetarg",
+                "@noorigin", "@originlate", "@norow", "@rowdesc", "@rowa2", "@rowa3", "@nsext", "@stride", "@tbl",
+                "@a2", "@a3", "@a3fix", "@a4", "@a5", "@no44", "@44w", "@listskip", "@al", "@knowninv", "@pulsearg",
+                "@pulseall", "@bit", "@bitinv", "@b528", "@tbl2", "@stride2", "@sx", "@sa3", "@sa4", "@sa5", "@no40",
+                "@40w", "@id1", "@row18", "@mode1", "@col1", "@id2", "@id2always", "@id2never", "@row1b", "@mode2",
+                "@no70", "@v70", "@no6f", "@v6f", "@no68", "@68b", "@v68", "@tailearly", "@s2noinc", "@s2six", "@s2ge",
+                "@s2v70", "@s2no70", "@s2v6f", "@s2v68", "@s2no68", "@s268b", "@s2one", "@s2noone",
+                "@s3nodead", "@s3rec", "@s3v64", "@s3no64", "@s364b", "@s3no6f", "@s3v6f", "@s3early", "@s4nodec",
+                "@s4decb", "@s4new", "@s4lt", "@s4uns", "@s4src", "@s4nocopy")),
+    # 0x11F6C again with stubs that rewrite the entry byte and the option byte (D5A_SL_CALLS_W): r0
+    # the spawn arm of phase 1, r1 its text arm (the list's one unknown entry clears the option byte
+    # again), r2 phase 0.
+    Spec("game_state_select_rr", 0x11F6C, [
+        Case("r0", {}, d5a_sel_case(1, n=1, b529=0x00), {0x2AE14: 0x0010A480}),
+        Case("r1", {}, d5a_sel_case(1, n=1, b529=0x00, entries={0x00107628: (0x00812345, 1)}), {0x2AE14: 0x0010A480}),
+        Case("r2", {}, d5a_sel_case(0, n=5, b529=0xFD), {0x2AE14: 0x0010A480}),
+    ], allow_calls=D5A_SL_ALLOW, calls=D5A_SL_CALLS_W, eax_mask=0,
+       unhit_named={a: "phases 2, 3 and 4 and the default: no callee to rewrite anything (the plain row hits it)"
+                    for a in (0x1211C, 0x12133, 0x1214E, 0x12159, 0x1217B, 0x12190, 0x1219A)},
+       mutants=("@pren1", "@pren2", "@pren3", "@pren4", "@prebit", "@prebit0")),
+]
 D1_SPECS += D5A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
