@@ -447,6 +447,7 @@ int fighter_connect_query(u32 param_1, u32 param_2)
 
 void fighter_pass_a(void)
 {
+    PR_SEAM0(0x1958Cu);
     if (DSB(DS_001078FA) != 2) return;              /* 0x1959C */
 
     for (u32 side = 0; side < 2; side++) {
@@ -528,6 +529,7 @@ tail:
 
 void fighter_pass_b(u32 arg)
 {
+    PR_SEAM(0x19068u, arg);
     if (DSB(DS_00107802) == 0x13u) return;          /* 0x1906E */
     if (DSB(DS_00107896) == 0x13u) return;          /* 0x1907B */
 
@@ -973,6 +975,7 @@ tail:
  * ctx[0]=i, ctx[1]=1-i, ctx[2]=&slot[i], ctx[3]=&slot[1-i]. */
 void fighter_think(void)
 {
+    PR_SEAM0(0x1975Cu);
     camera_projectile_step();                           /* 0x19763 0x17CB0 */
     for (u32 i = 0; i < 2u; i++) {                      /* 0x19772/0x19808 */
         u32 ctx[6];
@@ -10485,6 +10488,7 @@ u8 hit_3d004(u32 side)
  * 0x2676B/0x26775 (0x266AC, once per side). */
 void fight_384f8(u32 side)
 {
+    PR_SEAM(0x384F8u, side);
     if ((u8)fighter_pass_flag(3u, side) == 0u) {               /* 0x3850A `test al,al`/0x3850C */
         u32 s = side * 0x94u;                                    /* 0x38510..0x3851C */
         DSW(DS_00107838 + s) = (u16)(DSW(DS_00107838 + s) + 1u);   /* 0x3851E */

@@ -1682,6 +1682,7 @@ u32 flow_join_poll(void)
  * mode 9, record §48-Y). */
 void flow_match_result_text(void)
 {
+    PR_SEAM0(0x28130u);
     u32 r = DSD(DS_00104AD4);                           /* 0x28133 */
     if (r == 0xFFFFFFFFu) {                             /* 0x28139/0x2813C */
         u32 b = DSB(DS_00104B16);                       /* 0x28257 */
@@ -1776,6 +1777,7 @@ void flow_continue_open(void)
  * 0x274EC (0x27380). */
 void flow_arena_ko_check(void)
 {
+    PR_SEAM0(0x272DCu);
     s32 w = (s32)(s8)DSB(DS_0010810D);                  /* 0x272DD/0x272E3 */
     if (DSB(DS_0010780A + (u32)w * 0x94u) >= 0x78u) {   /* 0x272F4..0x27303 */
         (void)sound_voice(0xD3u);                       /* 0x27305/0x2730A 0x2C3FC */
@@ -2550,6 +2552,7 @@ void game_mode_30_step(void)
  * (mode 0x31, game_mode_31_step). */
 void flow_round_over_check(void)
 {
+    PR_SEAM0(0x29970u);
     if (DSB(DS_0010780A) >= 0x78u) {                    /* 0x29974..0x2997C */
         (void)sound_voice(0x27u);                       /* 0x2997E/0x29983 0x2C3FC */
         (void)sound_voice(0x22u);                       /* 0x29988/0x29992 0x2C3FC (EDX = 0x32, 0x2998D) */
@@ -3053,6 +3056,7 @@ void flow_round_over(void)
  *   0x263AF (0x26254) and 0x2669B (0x26540). */
 void flow_round_end_check(void)
 {
+    PR_SEAM0(0x27FA8u);
     u32 a = DSB(DS_0010780A), b = DSB(DS_0010789E);    /* 0x27FAE, 0x27FBA */
     if (a >= 0x78u || b >= 0x78u) {                     /* 0x27FB3/0x27FB6, 0x27FBF/0x27FC2 */
         s32 r;
@@ -3832,6 +3836,7 @@ static void flow_results_darken_close(void)
  * fighter_46534(loser, 1) (0x2877A..0x2877E). */
 void flow_match_streak_update(void)
 {
+    PR_SEAM0(0x286BCu);
     u32 result = DSD(DS_00104AD4);                       /* 0x286BF */
     if (result == 2u) {                                  /* 0x286C5/0x286C8 */
         DSB(DS_00108106 + DSW(DS_00104AFC)) = 0u;         /* 0x286CA..0x286D4 */
@@ -5580,6 +5585,7 @@ void game_mode_1f_step(void)
  * EBX..EDI are pushed and popped. */
 void flow_26d4c(void)
 {
+    PR_SEAM0(0x26D4Cu);
     if ((s32)DSD(DS_00104AC4) > 0) return;                  /* 0x26D54/0x26D5B */
 
     text_cells_release_count(-1, 3, 0x2A);                  /* 0x26D70 0x2F388 */
@@ -5637,6 +5643,7 @@ void game_mode_22_step(void)
     u32 side = DSB(DS_00104B1A);                            /* 0x26C95 */
     u32 ch = DSB(DS_0010782A + side * 0x94u);                /* 0x26CAE */
     camera_screen_base((s32)side, (s32)ch);                 /* 0x26CB7 0x16D58 */
+    side = DSB(DS_00104B1A);                                /* 0x26CBC: read again after 0x16D58 */
     DSD(DS_001077E8 + side * 0x94u) = DSD(DS_001077E4 + side * 0x94u);  /* 0x26CD1/0x26CD8 */
     camera_project(side,
                    DS_00100B08 + side * 4u,
@@ -5762,6 +5769,7 @@ void game_mode_24_step(void)
     u32 side = DSB(DS_00104B1A);                            /* 0x26F62 */
     u32 ch = DSB(DS_0010782A + side * 0x94u);                /* 0x26F7B */
     camera_screen_base((s32)side, (s32)ch);                 /* 0x26F84 0x16D58 */
+    side = DSB(DS_00104B1A);                                /* 0x26F89: read again after 0x16D58 */
     DSD(DS_001077E8 + side * 0x94u) = DSD(DS_001077E4 + side * 0x94u);  /* 0x26F9E/0x26FA5 */
     camera_project(side,
                    DS_00100B08 + side * 4u,

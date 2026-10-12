@@ -289,6 +289,7 @@ int camera_page_tail_b(u32 side, u32 out)
 void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
                     u32 index_out)
 {
+    PR_SEAM(0x17FA0u, side, out_a, out_b, facing, page_flag, index_out);
     /* 0x17FB5/0x1800A: the two "world anchor" blocks. They are independent of
      * the side argument and read the slot[0]/slot[1] secondary pointers
      * DS_001077B8 / DS_0010784C, skipping a null one. */
@@ -1298,6 +1299,7 @@ void camera_unfreeze(u32 side)
 
 void camera_decay(void)
 {
+    PR_SEAM0(0x17580u);
     /* 0x17585: four 16-bit countdowns, decremented only when non-zero. */
     if (DSW(DS_00107824) != 0) DSW(DS_00107824) = (u16)(DSW(DS_00107824) - 1u);
     if (DSW(DS_001078B8) != 0) DSW(DS_001078B8) = (u16)(DSW(DS_001078B8) - 1u);
@@ -1531,6 +1533,7 @@ u32 camera_point_hit(s32 x, s32 y, u32 tall)
 
 void camera_screen_base(s32 side, s32 character)
 {
+    PR_SEAM(0x16D58u, (u32)side, (u32)character);
     s16 s = (s16)side;
     s16 c = (s16)character;
     if (s < 0 || s > 1) return;                        /* 0x16D59/0x16D61 */
@@ -1565,6 +1568,7 @@ void camera_dust_list_init(void)
  * directly. */
 void camera_dust_spawn(void)
 {
+    PR_SEAM0(0x1282Cu);
     if ((DSW(DS_000EF6DC) & 0x3Fu) != 0) return;       /* 0x1283E */
     u32 draw = rng_next(7u);                           /* 0x1284E */
     if ((draw & 3u) != 0) return;                      /* 0x12855 */
@@ -1678,6 +1682,7 @@ u32 camera_dust_hit(u32 node)
  * gated on DS_00104AC4 > 1 signed). */
 void camera_impact_dust_spawn(void)
 {
+    PR_SEAM0(0x128D4u);
     if ((DSB(DS_000EF6DC) & 0xFu) == 0u) {             /* 0x128E6/0x128EB */
         u32 draw = rng_next(7u);                       /* 0x128F6 */
         if ((draw & 3u) == 0u) {                       /* 0x128FB */
