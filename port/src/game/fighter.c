@@ -2177,8 +2177,8 @@ static void fighter_state_35b7c(u32 slot, u32 rec)
     frame = (s8)((s32)DSD(rec + 0x4Fu) >> 24);          /* 0x35BAD */
     if (frame < max / 2)                                /* 0x35BB3 */
         DSB(rec + 0x58u) = (u8)(-(frame / 3));          /* 0x35BF3 */
-    else
-        DSB(rec + 0x58u) = (u8)((max - (s32)(s8)DSB(rec + 0x52u)) / 3);  /* 0x35BD5 */
+    else                                                /* 0x35BBC sub, 0x35BC5 cwd, 0x35BC7 idiv si: 16 bits */
+        DSB(rec + 0x58u) = (u8)((s16)(u16)(max - (s32)(s8)DSB(rec + 0x52u)) / 3);  /* 0x35BD5 */
     if (DSB(rec + 0x58u) == 0u || fighter_state_35c1c(slot, rec) != 0)
         fighter_state_35d20(slot, rec);                 /* 0x35C0D */
 }
