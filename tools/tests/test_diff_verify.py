@@ -12486,6 +12486,14 @@ D3A_CASES = [
     ("flow_challenge_open@t2eb", ['k0', 'k4', 'k5', 'k6', 'k7']),
     ("flow_challenge_open@trec", ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7']),
 ]
+# the reads past the image's end of the rows that index a slot by the byte 0x80 (zero-extended: 0x80 *
+# 0x94 above the slots; inside mem[], zero on both sides), for test_every_ported_function_agrees...
+D3A_OUTSIDE = {
+    "flow_26d4c": [(0x10C1F1, 1), (0x10C20B, 1)],
+    "flow_arena_ko_check": [(0x10C20A, 1)],
+    "game_mode_23_step": [(0x10C22A, 1)],
+}
+P45_OUTSIDE.update(D3A_OUTSIDE)
 D1_MASKS.update(D3A_MASKS)
 D1_KINDS.update(D3A_KINDS)
 D1_CASES.extend(D3A_CASES)
