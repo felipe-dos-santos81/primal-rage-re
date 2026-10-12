@@ -5113,14 +5113,19 @@ void frontend_match_start(void)
 
     for (u32 i = 1u; i < 10u; i++) {                            /* 0x1EB15..0x1EBF8 */
         u32 r = hiscore_read(i, 0u);                            /* 0x1EB2F 0x2DBC4 */
-        s32 row = DSB(0xA7B94u + i * 4u);
-        text_number_draw(DSB(0xA7B95u + i * 4u), row, (s32)(i + 1u), 2, 1u, mode);  /* 0x1EB5A */
+        /* 0x1EB4C, 0x1EB98, 0x1EBB9, 0x1EBD4: the row byte 0xA7B94[i] is
+         * loaded before each of the four calls, not kept across them. */
+        text_number_draw(DSB(0xA7B95u + i * 4u), DSB(0xA7B94u + i * 4u),
+                         (s32)(i + 1u), 2, 1u, mode);           /* 0x1EB4C..0x1EB5A 0x2F4D0 */
         for (u32 k = 0u; k < 3u; k++)                           /* 0x1EB68..0x1EB81 */
             name[k] = DSB(r + 4u + k);
         name[3] = 0u;                                           /* 0x1EB92 */
-        text_cursor_hold(DSB(0xA7B96u + i * 4u), row, name, mode);            /* 0x1EBA6 0x2F4BC */
-        text_number_draw(DSB(0xA7B97u + i * 4u), row, (s32)DSD(r), 7, 1u, mode);   /* 0x1EBC7 */
-        text_cursor_hold(DSB(0xA7B96u + i * 4u), row, name, mode);            /* 0x1EBE2 0x2F4BC */
+        text_cursor_hold(DSB(0xA7B96u + i * 4u), DSB(0xA7B94u + i * 4u),
+                         name, mode);                           /* 0x1EB98..0x1EBA6 0x2F4BC */
+        text_number_draw(DSB(0xA7B97u + i * 4u), DSB(0xA7B94u + i * 4u),
+                         (s32)DSD(r), 7, 1u, mode);             /* 0x1EBB1..0x1EBC7 0x2F4D0 */
+        text_cursor_hold(DSB(0xA7B96u + i * 4u), DSB(0xA7B94u + i * 4u),
+                         name, mode);                           /* 0x1EBD4..0x1EBE2 0x2F4BC */
     }
 
     u32 rec = actor_spawn((const u32 *)(mem + DSD(0xA7DCCu + sel * 4u)),   /* 0x1EC15 */
