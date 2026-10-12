@@ -30474,6 +30474,788 @@ D3E_TS_MUT(c8side, 29u)   D3E_TS_MUT(no18b04, 30u)  D3E_TS_MUT(f40args, 31u)  D3
 D3E_TS_MUT(a06zext, 33u)  D3E_TS_MUT(a06off, 34u)   D3E_TS_MUT(st0, 35u)      D3E_TS_MUT(st5, 36u)
 D3E_TS_MUT(vnodec, 37u)   D3E_TS_MUT(vge, 38u)      D3E_TS_MUT(no3b080, 39u)  D3E_TS_MUT(midno18, 40u)
 D3E_TS_MUT(midno1c, 41u)  D3E_TS_MUT(no41, 42u)     D3E_TS_MUT(s64self, 43u)  D3E_TS_MUT(no64, 44u)
+/* ---- track D4 batch d4a (record 2026-10-12-reverse-d4a): game/flow.c ---- */
+/* 0x41578: no argument. Mask 0: the four call sites (0x41755 in 0x416D4; 0x41DE6, 0x42337, 0x42352 in
+ * 0x41C28) go straight to their pops and `ret`; 0x416D4's one site 0x420FE does too, and 0x41C28's EAX is
+ * dead (d2e record §1). The raw returns 0x2C3FC's EAX with AH cleared (`xor ah,ah` 0x415F6). */
+static void b_d4a_41578(const u32 *r, u32 *eax) { (void)r; frontend_darken_marked(); *eax = 0u; }
+enum { D4A_DM_NONE, D4A_DM_h1, D4A_DM_h2, D4A_DM_all, D4A_DM_hw, D4A_DM_off, D4A_DM_arg, D4A_DM_argh,
+       D4A_DM_nodarken, D4A_DM_first, D4A_DM_mode, D4A_DM_modesrc, D4A_DM_flagsext, D4A_DM_flagw, D4A_DM_swap,
+       D4A_DM_noclose, D4A_DM_closeearly, D4A_DM_voice, D4A_DM_novoice, D4A_DM_order, D4A_DM_afe, D4A_DM_afeb,
+       D4A_DM_noafe, D4A_DM_ee, D4A_DM_eeb, D4A_DM_noee, D4A_DM_afa, D4A_DM_afab, D4A_DM_noafa, D4A_DM_b00,
+       D4A_DM_b00b, D4A_DM_nob00, D4A_DM_b25, D4A_DM_nob25, D4A_DM_b25w, D4A_DM_early, D4A_DM_mid };
+static void d4a_41578_tail(u32 mut)
+{
+    if (mut == D4A_DM_afeb) DSB(0x00104AFEu) = 0x78u;
+    else if (mut != D4A_DM_noafe) DSW(0x00104AFEu) = (mut == D4A_DM_afe) ? 0x79u : 0x78u;
+    if (mut == D4A_DM_eeb) DSB(0x001088EEu) = 0u;
+    else if (mut != D4A_DM_noee) DSW(0x001088EEu) = (mut == D4A_DM_ee) ? 1u : 0u;
+    if (mut == D4A_DM_afab) DSB(0x00104AFAu) = 0x13u;
+    else if (mut != D4A_DM_noafa) DSW(0x00104AFAu) = (mut == D4A_DM_afa) ? 0x14u : 0x13u;
+    if (mut == D4A_DM_b00b) DSB(0x00104B00u) = 0x15u;
+    else if (mut != D4A_DM_nob00) DSW(0x00104B00u) = (mut == D4A_DM_b00) ? 0x16u : 0x15u;
+    if (mut == D4A_DM_b25w) DSW(0x00104B25u) = 0u;
+    else if (mut != D4A_DM_nob25) DSB(0x00104B25u) = (mut == D4A_DM_b25) ? 1u : 0u;
+}
+static void d4a_41578_close(u32 mut)
+{
+    u32 mode = (mut == D4A_DM_mode) ? DSB(0x00104ABCu) : (mut == D4A_DM_modesrc) ? DSD(0x00104AB8u) : DSD(0x00104ABCu);
+    u32 flag = (mut == D4A_DM_flagsext) ? (u32)(s32)(s8)DSB(0x00104B19u) : (mut == D4A_DM_flagw) ? DSW(0x00104B19u)
+                                                                        : DSB(0x00104B19u);
+    if (mut == D4A_DM_swap) config_play_time_close(flag, mode);
+    else if (mut != D4A_DM_noclose) config_play_time_close(mode, flag);
+}
+static void d4a_41578_core(u32 mut)
+{
+    if (mut == D4A_DM_closeearly) d4a_41578_close(mut);
+    u32 e = frontend_list_next(0u);
+    while (e != 0u) {
+        u32 h = DSD(e + ((mut == D4A_DM_off) ? 8u : 0u));
+        if (mut == D4A_DM_hw) h &= 0x00FFFFFFu;
+        int a = (h == 0x0003E688u), b = (h == ((mut == D4A_DM_hw) ? 0x008874B0u : 0x088874B0u));
+        if ((mut == D4A_DM_h1) ? a : (mut == D4A_DM_h2) ? b : (mut == D4A_DM_all) ? 1 : (a || b)) {
+            if (mut != D4A_DM_nodarken)
+                (void)effects_spawn_darken((mut == D4A_DM_argh) ? h : e, (mut == D4A_DM_arg) ? 3u : 2u);
+            if (mut == D4A_DM_first) break;
+        }
+        e = frontend_list_next(e);
+    }
+    if (mut == D4A_DM_early) d4a_41578_tail(mut);
+    if (mut == D4A_DM_order) (void)sound_voice(0x33u);
+    if (mut != D4A_DM_closeearly) d4a_41578_close(mut);
+    if (mut == D4A_DM_mid) d4a_41578_tail(mut);
+    if (mut != D4A_DM_novoice && mut != D4A_DM_order) (void)sound_voice((mut == D4A_DM_voice) ? 0x34u : 0x33u);
+    if (mut != D4A_DM_early && mut != D4A_DM_mid) d4a_41578_tail(mut);
+}
+#define D4A_DM_MUT(name) \
+    static void m_d4a_dm_##name(const u32 *r, u32 *eax) { (void)r; d4a_41578_core(D4A_DM_##name); *eax = 0u; }
+D4A_DM_MUT(h1) D4A_DM_MUT(h2) D4A_DM_MUT(all) D4A_DM_MUT(hw) D4A_DM_MUT(off) D4A_DM_MUT(arg) D4A_DM_MUT(argh)
+D4A_DM_MUT(nodarken) D4A_DM_MUT(first) D4A_DM_MUT(mode) D4A_DM_MUT(modesrc) D4A_DM_MUT(flagsext) D4A_DM_MUT(flagw)
+D4A_DM_MUT(swap) D4A_DM_MUT(noclose) D4A_DM_MUT(closeearly) D4A_DM_MUT(voice) D4A_DM_MUT(novoice) D4A_DM_MUT(order)
+D4A_DM_MUT(afe) D4A_DM_MUT(afeb) D4A_DM_MUT(noafe) D4A_DM_MUT(ee) D4A_DM_MUT(eeb) D4A_DM_MUT(noee) D4A_DM_MUT(afa)
+D4A_DM_MUT(afab) D4A_DM_MUT(noafa) D4A_DM_MUT(b00) D4A_DM_MUT(b00b) D4A_DM_MUT(nob00) D4A_DM_MUT(b25)
+D4A_DM_MUT(nob25) D4A_DM_MUT(b25w) D4A_DM_MUT(early) D4A_DM_MUT(mid)
+/* 0x27FA8: no argument. Mask 0: neither call site reads EAX (0x263AF: `mov ah,[0x104aec]` 0x263B4 then pops
+ * and `ret`, or 0x4E11C, which writes AH at 0x4E121; 0x2669B: `or byte [0x104aec],2`, pops, `ret`), and the
+ * d3a record (§1, the 0x27DC8 line) traces their returns dead. Bound twice: the row with plain stubs and
+ * the row whose stubs write what the raw re-reads after each call (`_reread`). */
+static void b_d4a_27fa8(const u32 *r, u32 *eax) { (void)r; flow_round_end_check(); *eax = 0u; }
+enum { D4A_RE_NONE, D4A_RE_thra, D4A_RE_thrb, D4A_RE_asext, D4A_RE_bsext, D4A_RE_aonly, D4A_RE_bonly, D4A_RE_nowin,
+       D4A_RE_b00, D4A_RE_b00b, D4A_RE_b00d, D4A_RE_b1esext, D4A_RE_adcb, D4A_RE_ad4, D4A_RE_ad4b, D4A_RE_novoice,
+       D4A_RE_voice, D4A_RE_nofreeze, D4A_RE_noover, D4A_RE_vorder, D4A_RE_overorder, D4A_RE_falla, D4A_RE_noend,
+       D4A_RE_af8, D4A_RE_af8b, D4A_RE_noaf8, D4A_RE_af8early, D4A_RE_m9lo, D4A_RE_m9hi, D4A_RE_m9, D4A_RE_m8,
+       D4A_RE_mb, D4A_RE_tim0, D4A_RE_timu, D4A_RE_bnovoice, D4A_RE_bvoice, D4A_RE_bnofreeze, D4A_RE_bvorder,
+       D4A_RE_bb1e, D4A_RE_bb00, D4A_RE_bnoabs, D4A_RE_bsigned, D4A_RE_bdiff4, D4A_RE_bdiff2, D4A_RE_baf,
+       D4A_RE_bafoff, D4A_RE_bfall, D4A_RE_bnowin, D4A_RE_bad4, D4A_RE_bfall2, D4A_RE_bnowin2, D4A_RE_bnoend,
+       D4A_RE_b16, D4A_RE_b16none, D4A_RE_noor, D4A_RE_orset, D4A_RE_orbit, D4A_RE_oroff, D4A_RE_orside,
+       D4A_RE_orsext, D4A_RE_orearly, D4A_RE_fc, D4A_RE_nofc, D4A_RE_fcw, D4A_RE_fe, D4A_RE_nofe, D4A_RE_few,
+       D4A_RE_afe1, D4A_RE_noafe1, D4A_RE_afew, D4A_RE_m7, D4A_RE_m7b, D4A_RE_nom7, D4A_RE_early, D4A_RE_pre,
+       D4A_RE_preb1e, D4A_RE_pread4a, D4A_RE_pread4e, D4A_RE_pread4b, D4A_RE_preb16 };
+static void d4a_27fa8_tail(u32 mut)
+{
+    if (mut == D4A_RE_fcw) DSW(0x001078FCu) = 1u;
+    else if (mut != D4A_RE_nofc) DSB(0x001078FCu) = (mut == D4A_RE_fc) ? 2u : 1u;
+    if (mut == D4A_RE_few) DSW(0x001078FEu) = 1u;
+    else if (mut != D4A_RE_nofe) DSB(0x001078FEu) = (mut == D4A_RE_fe) ? 2u : 1u;
+    if (mut == D4A_RE_afew) DSW(0x000F0AFEu) = 2u;
+    else if (mut != D4A_RE_noafe1) DSB(0x000F0AFEu) = (mut == D4A_RE_afe1) ? 1u : 2u;
+    if (mut == D4A_RE_m7b) DSB(0x00104B00u) = 7u;
+    else if (mut != D4A_RE_nom7) DSW(0x00104B00u) = (mut == D4A_RE_m7) ? 6u : 7u;
+}
+static void d4a_27fa8_or(u32 mut, u32 w)
+{
+    if ((mut == D4A_RE_b16none) ? 0 : (w == ((mut == D4A_RE_b16) ? 1u : 2u))) return;
+    u32 at = 0x001077F2u + ((mut == D4A_RE_orside) ? (w ^ 1u) : w) * 0x94u - ((mut == D4A_RE_oroff) ? 1u : 0u);
+    if (mut == D4A_RE_orset) DSB(at) = 0x80u;
+    else if (mut != D4A_RE_noor) DSB(at) = (u8)(DSB(at) | ((mut == D4A_RE_orbit) ? 0x40u : 0x80u));
+}
+static u32 d4a_27fa8_w(u32 mut)
+{
+    return (mut == D4A_RE_orsext) ? (u32)(s32)(s8)DSB(0x00104B16u) : DSB(0x00104B16u);
+}
+static u32 d4a_27fa8_mode(u32 mut)
+{
+    return (mut == D4A_RE_b00b) ? DSB(0x00104B00u) : (mut == D4A_RE_b00d) ? DSD(0x00104B00u) : DSW(0x00104B00u);
+}
+static u32 d4a_27fa8_ad4(u32 mut)
+{
+    return (mut == D4A_RE_ad4b) ? DSB(0x00104AD4u) : DSD(0x00104AD4u);
+}
+static void d4a_27fa8_core(u32 mut)
+{
+    u32 a = DSB(0x0010780Au), b = DSB(0x0010789Eu), e0 = DSB(0x00104B1Eu);
+    int ahi = (mut == D4A_RE_asext) ? ((s32)(s8)a >= 0x78) : (a >= ((mut == D4A_RE_thra) ? 0x79u : 0x78u));
+    int bhi = (mut == D4A_RE_bsext) ? ((s32)(s8)b >= 0x78) : (b >= ((mut == D4A_RE_thrb) ? 0x79u : 0x78u));
+    if ((mut == D4A_RE_aonly) ? ahi : (mut == D4A_RE_bonly) ? bhi : (ahi || bhi)) {
+        u32 d4pre = d4a_27fa8_ad4(mut);
+        if (mut != D4A_RE_nowin) flow_round_winner();
+        u32 m = d4a_27fa8_mode(mut);
+        u32 e = (mut == D4A_RE_b1esext) ? (u32)(s32)(s8)DSB(0x00104B1Eu) : DSB(0x00104B1Eu);
+        u32 c = (mut == D4A_RE_adcb) ? DSB(0x00104ADCu) : DSD(0x00104ADCu);
+        u32 d4 = (mut == D4A_RE_pread4a) ? d4pre : d4a_27fa8_ad4(mut);
+        if (m != ((mut == D4A_RE_b00) ? 0xAu : 0xBu) && e == c && d4 == ((mut == D4A_RE_ad4) ? 1u : 2u)) {
+            if (mut == D4A_RE_vorder) fighter_39ff4();
+            if (mut != D4A_RE_novoice) (void)sound_voice((mut == D4A_RE_voice) ? 0xD4u : 0xD3u);
+            if (mut == D4A_RE_overorder) flow_round_over();
+            if (mut != D4A_RE_nofreeze && mut != D4A_RE_vorder) fighter_39ff4();
+            if (mut != D4A_RE_noover && mut != D4A_RE_overorder) flow_round_over();
+            if (mut != D4A_RE_falla) return;
+        }
+        if (mut == D4A_RE_af8early) DSW(0x00104AF8u) = 0x258u;
+        s32 rpre = (s32)DSD(0x00104AD4u);
+        if (mut != D4A_RE_noend) flow_match_end();
+        if (mut == D4A_RE_af8b) DSB(0x00104AF8u) = 0x58u;
+        else if (mut != D4A_RE_noaf8 && mut != D4A_RE_af8early) DSW(0x00104AF8u) = (mut == D4A_RE_af8) ? 0x259u : 0x258u;
+        s32 r = (mut == D4A_RE_pread4e) ? rpre : (s32)DSD(0x00104AD4u);
+        int in = (mut == D4A_RE_m9lo) ? (r > 0 && r <= 2) : (mut == D4A_RE_m9hi) ? (r >= 0 && r <= 1) : (r >= 0 && r <= 2);
+        u32 v = in ? ((mut == D4A_RE_m9) ? 0xAu : 9u) : ((mut == D4A_RE_m8) ? 7u : 8u);
+        if (mut == D4A_RE_mb) DSB(0x00104B00u) = (u8)v;
+        else DSW(0x00104B00u) = v;
+        return;
+    }
+    s32 t = (s32)DSD(0x001088EFu) >> 24;
+    if ((mut == D4A_RE_tim0) ? (t >= 0) : (mut == D4A_RE_timu) ? ((u32)t >= 1u) : (t >= 1)) return;
+    if (mut == D4A_RE_bvorder) fighter_39ff4();
+    if (mut != D4A_RE_bnovoice) (void)sound_voice((mut == D4A_RE_bvoice) ? 0xD2u : 0xD3u);
+    if (mut != D4A_RE_bnofreeze && mut != D4A_RE_bvorder && mut != D4A_RE_nofreeze) fighter_39ff4();
+    u32 e = (mut == D4A_RE_preb1e) ? e0 : (mut == D4A_RE_b1esext) ? (u32)(s32)(s8)DSB(0x00104B1Eu) : DSB(0x00104B1Eu);
+    u32 c = (mut == D4A_RE_adcb) ? DSB(0x00104ADCu) : DSD(0x00104ADCu);
+    if ((mut == D4A_RE_bb1e || e == c)
+            && (mut == D4A_RE_bb00 || d4a_27fa8_mode(mut) != ((mut == D4A_RE_b00) ? 0xAu : 0xBu))) {
+        s32 d;
+        if (mut != D4A_RE_pre) { a = DSB(0x0010780Au); b = DSB(0x0010789Eu); }
+        d = (s32)a - (s32)b;
+        if (d < 0 && mut != D4A_RE_bnoabs && mut != D4A_RE_bsigned) d = -d;
+        int near = (mut == D4A_RE_bsigned) ? (d <= 3)
+                 : (((u32)d & 0xFFu) <= ((mut == D4A_RE_bdiff4) ? 4u : (mut == D4A_RE_bdiff2) ? 2u : 3u));
+        if ((mut == D4A_RE_baf || DSB(0x00104AF3u) == DSB((mut == D4A_RE_bafoff) ? 0x00104AF1u : 0x00104AF2u)) && near) {
+            flow_round_over();
+            if (mut != D4A_RE_bfall) return;
+        }
+        u32 d4pre = d4a_27fa8_ad4(mut);
+        if (mut != D4A_RE_bnowin && mut != D4A_RE_nowin) flow_round_winner();
+        if (((mut == D4A_RE_pread4b) ? d4pre : d4a_27fa8_ad4(mut)) == ((mut == D4A_RE_bad4) ? 1u : 2u)) {
+            flow_round_over();
+            if (mut != D4A_RE_bfall2) return;
+        }
+    } else {
+        if (mut != D4A_RE_bnowin2 && mut != D4A_RE_nowin) flow_round_winner();
+    }
+    u32 wpre = d4a_27fa8_w(mut);
+    if (mut == D4A_RE_early) d4a_27fa8_tail(mut);
+    if (mut == D4A_RE_orearly) d4a_27fa8_or(mut, wpre);
+    if (mut != D4A_RE_bnoend && mut != D4A_RE_noend) flow_match_end();
+    if (mut != D4A_RE_orearly) d4a_27fa8_or(mut, (mut == D4A_RE_preb16) ? wpre : d4a_27fa8_w(mut));
+    if (mut != D4A_RE_early) d4a_27fa8_tail(mut);
+}
+#define D4A_RE_MUT(name) \
+    static void m_d4a_re_##name(const u32 *r, u32 *eax) { (void)r; d4a_27fa8_core(D4A_RE_##name); *eax = 0u; }
+D4A_RE_MUT(thra) D4A_RE_MUT(thrb) D4A_RE_MUT(asext) D4A_RE_MUT(bsext) D4A_RE_MUT(aonly) D4A_RE_MUT(bonly)
+D4A_RE_MUT(nowin) D4A_RE_MUT(b00) D4A_RE_MUT(b00b) D4A_RE_MUT(b00d) D4A_RE_MUT(b1esext) D4A_RE_MUT(adcb)
+D4A_RE_MUT(ad4) D4A_RE_MUT(ad4b) D4A_RE_MUT(novoice) D4A_RE_MUT(voice) D4A_RE_MUT(nofreeze) D4A_RE_MUT(noover)
+D4A_RE_MUT(vorder) D4A_RE_MUT(overorder) D4A_RE_MUT(falla) D4A_RE_MUT(noend) D4A_RE_MUT(af8) D4A_RE_MUT(af8b)
+D4A_RE_MUT(noaf8) D4A_RE_MUT(af8early) D4A_RE_MUT(m9lo) D4A_RE_MUT(m9hi) D4A_RE_MUT(m9) D4A_RE_MUT(m8)
+D4A_RE_MUT(mb) D4A_RE_MUT(tim0) D4A_RE_MUT(timu) D4A_RE_MUT(bnovoice) D4A_RE_MUT(bvoice) D4A_RE_MUT(bnofreeze)
+D4A_RE_MUT(bvorder) D4A_RE_MUT(bb1e) D4A_RE_MUT(bb00) D4A_RE_MUT(bnoabs) D4A_RE_MUT(bsigned) D4A_RE_MUT(bdiff4)
+D4A_RE_MUT(bdiff2) D4A_RE_MUT(baf) D4A_RE_MUT(bafoff) D4A_RE_MUT(bfall) D4A_RE_MUT(bnowin) D4A_RE_MUT(bad4)
+D4A_RE_MUT(bfall2) D4A_RE_MUT(bnowin2) D4A_RE_MUT(bnoend) D4A_RE_MUT(b16) D4A_RE_MUT(b16none) D4A_RE_MUT(noor)
+D4A_RE_MUT(orset) D4A_RE_MUT(orbit) D4A_RE_MUT(oroff) D4A_RE_MUT(orside) D4A_RE_MUT(orsext) D4A_RE_MUT(orearly)
+D4A_RE_MUT(fc) D4A_RE_MUT(nofc) D4A_RE_MUT(fcw) D4A_RE_MUT(fe) D4A_RE_MUT(nofe) D4A_RE_MUT(few) D4A_RE_MUT(afe1)
+D4A_RE_MUT(noafe1) D4A_RE_MUT(afew) D4A_RE_MUT(m7) D4A_RE_MUT(m7b) D4A_RE_MUT(nom7) D4A_RE_MUT(early)
+D4A_RE_MUT(pre) D4A_RE_MUT(preb1e) D4A_RE_MUT(pread4a) D4A_RE_MUT(pread4e) D4A_RE_MUT(pread4b) D4A_RE_MUT(preb16)
+/* 0x2791C: no argument. Mask 0: the one caller 0x27A64 goes on with `mov eax,[0x10810a]` (0x27A69). Bound
+ * twice: the row with plain stubs and the row whose 0x33B00, 0x1D764 and 0x46534 stubs write the side byte
+ * (and the bytes 0x104B0B, 0x104B12) the raw reads after each of them (`_reread`). */
+static void b_d4a_2791c(const u32 *r, u32 *eax) { (void)r; flow_continue_take(); *eax = 0u; }
+enum { D4A_CT_NONE, D4A_CT_id, D4A_CT_len1, D4A_CT_lenfix, D4A_CT_row1, D4A_CT_col1, D4A_CT_noclr1, D4A_CT_prow,
+       D4A_CT_pcol, D4A_CT_psidezext, D4A_CT_pside0, D4A_CT_noprompt, D4A_CT_porder, D4A_CT_r2row, D4A_CT_r2n,
+       D4A_CT_nor2, D4A_CT_r3row, D4A_CT_r3n, D4A_CT_nor3, D4A_CT_rorder, D4A_CT_snapone, D4A_CT_snaprev,
+       D4A_CT_snapsrc, D4A_CT_snapdst, D4A_CT_snapswap, D4A_CT_snapside, D4A_CT_nosnap, D4A_CT_hudzext,
+       D4A_CT_hudother, D4A_CT_nohud, D4A_CT_hudearly, D4A_CT_b5bzext, D4A_CT_b5boff, D4A_CT_b5bsrc, D4A_CT_nob5b,
+       D4A_CT_b5bearly, D4A_CT_accsext, D4A_CT_accd, D4A_CT_accpos, D4A_CT_noacc, D4A_CT_accearly, D4A_CT_f41zext,
+       D4A_CT_f41mask, D4A_CT_f41bit, D4A_CT_nof41, D4A_CT_f41off, D4A_CT_f41early, D4A_CT_f41clr, D4A_CT_b00,
+       D4A_CT_b00b, D4A_CT_nob00, D4A_CT_b00early, D4A_CT_prehud, D4A_CT_pre5b, D4A_CT_preb0b, D4A_CT_preb12,
+       D4A_CT_pre41 };
+static u32 d4a_2791c_side(int zext) { return zext ? DSB(0x0010810Du) : (u32)(s32)(s8)DSB(0x0010810Du); }
+static void d4a_2791c_core(u32 mut)
+{
+    u32 w0 = d4a_2791c_side(0);
+    s32 n = (s32)strlen((const char *)game_string_get((mut == D4A_CT_id) ? 0x40u : 0x41u));
+    if (mut == D4A_CT_len1) n += 1;
+    if (mut == D4A_CT_lenfix) n = 9;
+    if (mut == D4A_CT_porder) prompt_press_start_clear(-1, 0xC, d4a_2791c_side(0));
+    if (mut != D4A_CT_noclr1)
+        text_cells_release_count((mut == D4A_CT_col1) ? 0 : -1, (mut == D4A_CT_row1) ? 0xB : 0xA, n);
+    if (mut != D4A_CT_noprompt && mut != D4A_CT_porder)
+        prompt_press_start_clear((mut == D4A_CT_pcol) ? 0 : -1, (mut == D4A_CT_prow) ? 0xD : 0xC,
+                                 (mut == D4A_CT_pside0) ? 0u : d4a_2791c_side(mut == D4A_CT_psidezext));
+    if (mut == D4A_CT_hudearly) fight_hud_side_reset(d4a_2791c_side(0));
+    if (mut == D4A_CT_rorder) text_cells_release_count(-1, 0xF, 0x1C);
+    if (mut != D4A_CT_nor2)
+        text_cells_release_count(-1, (mut == D4A_CT_r2row) ? 0xD : 0xE, (mut == D4A_CT_r2n) ? 0x1B : 0x1C);
+    if (mut != D4A_CT_nor3 && mut != D4A_CT_rorder)
+        text_cells_release_count(-1, (mut == D4A_CT_r3row) ? 0x10 : 0xF, (mut == D4A_CT_r3n) ? 0x1B : 0x1C);
+    for (u32 i = 0; i < ((mut == D4A_CT_snapone) ? 1u : 2u) && mut != D4A_CT_nosnap; i++) {
+        u32 c = (mut == D4A_CT_snaprev) ? 1u - i : i;
+        u32 src = 0x00104890u + c * ((mut == D4A_CT_snapsrc) ? 0x68u : 0x94u);
+        u32 dst = 0x001049B8u + c * ((mut == D4A_CT_snapdst) ? 0x94u : 0x68u);
+        if (mut == D4A_CT_snapswap) fighter_state_33b00(c, dst, src);
+        else fighter_state_33b00((mut == D4A_CT_snapside) ? 0u : c, src, dst);
+    }
+    u32 w1 = d4a_2791c_side(0);
+    u8 b0b = DSB(0x00104B0Bu);
+    u32 b12 = DSB(0x00104B12u);
+    if (mut == D4A_CT_b5bearly) DSB(0x0010780Bu + w1 * 0x94u) = DSB(0x00104B0Bu);
+    if (mut != D4A_CT_nohud && mut != D4A_CT_hudearly)
+        fight_hud_side_reset((mut == D4A_CT_prehud) ? w0 : (mut == D4A_CT_hudother) ? (w1 ^ 1u)
+                                                         : d4a_2791c_side(mut == D4A_CT_hudzext));
+    u32 w2 = (mut == D4A_CT_pre5b) ? w1 : d4a_2791c_side(mut == D4A_CT_b5bzext);
+    if (mut != D4A_CT_nob5b && mut != D4A_CT_b5bearly)
+        DSB(0x0010780Bu + w2 * 0x94u - ((mut == D4A_CT_b5boff) ? 1u : 0u)) =
+            (mut == D4A_CT_preb0b) ? b0b : DSB((mut == D4A_CT_b5bsrc) ? 0x00104B0Au : 0x00104B0Bu);
+    u32 w3 = d4a_2791c_side(0);
+    u32 at = 0x001077F1u + ((mut == D4A_CT_f41zext) ? d4a_2791c_side(1) : w3) * 0x94u - ((mut == D4A_CT_f41off) ? 1u : 0u);
+    u32 mask = (mut == D4A_CT_f41mask) ? 0xEFu : (mut == D4A_CT_f41bit) ? 0xF7u : (mut == D4A_CT_f41clr) ? 0u : 0xE7u;
+    if (mut == D4A_CT_f41early) DSB(at) = (u8)(DSB(at) & mask);
+    if (mut == D4A_CT_b00early) DSW(0x00104B00u) = 0xCu;
+    if (mut == D4A_CT_accearly) return;
+    if (mut != D4A_CT_noacc)
+        fighter_46534((mut == D4A_CT_preb12) ? b12 : (mut == D4A_CT_accsext) ? (u32)(s32)(s8)DSB(0x00104B12u)
+                                                                           : DSB(0x00104B12u),
+                      (mut == D4A_CT_accd) ? -1 : (mut == D4A_CT_accpos) ? 2 : -2);
+    if (mut != D4A_CT_pre41 && mut != D4A_CT_f41zext)
+        at = 0x001077F1u + d4a_2791c_side(0) * 0x94u - ((mut == D4A_CT_f41off) ? 1u : 0u);
+    if (mut == D4A_CT_b00b) DSB(0x00104B00u) = 0xCu;
+    else if (mut != D4A_CT_nob00 && mut != D4A_CT_b00early) DSW(0x00104B00u) = (mut == D4A_CT_b00) ? 0xDu : 0xCu;
+    if (mut != D4A_CT_nof41 && mut != D4A_CT_f41early) DSB(at) = (u8)(DSB(at) & mask);
+}
+#define D4A_CT_MUT(name) \
+    static void m_d4a_ct_##name(const u32 *r, u32 *eax) { (void)r; d4a_2791c_core(D4A_CT_##name); *eax = 0u; }
+D4A_CT_MUT(id) D4A_CT_MUT(len1) D4A_CT_MUT(lenfix) D4A_CT_MUT(row1) D4A_CT_MUT(col1) D4A_CT_MUT(noclr1)
+D4A_CT_MUT(prow) D4A_CT_MUT(pcol) D4A_CT_MUT(psidezext) D4A_CT_MUT(pside0) D4A_CT_MUT(noprompt) D4A_CT_MUT(porder)
+D4A_CT_MUT(r2row) D4A_CT_MUT(r2n) D4A_CT_MUT(nor2) D4A_CT_MUT(r3row) D4A_CT_MUT(r3n) D4A_CT_MUT(nor3)
+D4A_CT_MUT(rorder) D4A_CT_MUT(snapone) D4A_CT_MUT(snaprev) D4A_CT_MUT(snapsrc) D4A_CT_MUT(snapdst)
+D4A_CT_MUT(snapswap) D4A_CT_MUT(snapside) D4A_CT_MUT(nosnap) D4A_CT_MUT(hudzext) D4A_CT_MUT(hudother)
+D4A_CT_MUT(nohud) D4A_CT_MUT(hudearly) D4A_CT_MUT(b5bzext) D4A_CT_MUT(b5boff) D4A_CT_MUT(b5bsrc) D4A_CT_MUT(nob5b)
+D4A_CT_MUT(b5bearly) D4A_CT_MUT(accsext) D4A_CT_MUT(accd) D4A_CT_MUT(accpos) D4A_CT_MUT(noacc) D4A_CT_MUT(accearly)
+D4A_CT_MUT(f41zext) D4A_CT_MUT(f41mask) D4A_CT_MUT(f41bit) D4A_CT_MUT(nof41) D4A_CT_MUT(f41off) D4A_CT_MUT(f41early)
+D4A_CT_MUT(f41clr) D4A_CT_MUT(b00) D4A_CT_MUT(b00b) D4A_CT_MUT(nob00) D4A_CT_MUT(b00early) D4A_CT_MUT(prehud)
+D4A_CT_MUT(pre5b) D4A_CT_MUT(preb0b) D4A_CT_MUT(preb12) D4A_CT_MUT(pre41)
+/* 0x28DA4: EAX = the joining side. Mask 0: both call sites (0x25269, 0x25353) are followed by `jmp
+ * 0x2540f`, the mode tail the wave-1 records trace dead (d1c §1, d1d §1). */
+static void b_d4a_28da4(const u32 *r, u32 *eax) { flow_player_join(r[R_EAX]); *eax = 0u; }
+enum { D4A_PJ_NONE, D4A_PJ_f48, D4A_PJ_nof48, D4A_PJ_f48w, D4A_PJ_noaec, D4A_PJ_aecb, D4A_PJ_noae8, D4A_PJ_ae8b,
+       D4A_PJ_late3, D4A_PJ_voice, D4A_PJ_novoice, D4A_PJ_abc, D4A_PJ_abc3, D4A_PJ_abcbit, D4A_PJ_abcb,
+       D4A_PJ_abclate, D4A_PJ_noabc, D4A_PJ_strid, D4A_PJ_col, D4A_PJ_row, D4A_PJ_mode, D4A_PJ_nohold,
+       D4A_PJ_norestore, D4A_PJ_restoreorder, D4A_PJ_resetother, D4A_PJ_noreset, D4A_PJ_c5bself, D4A_PJ_c5bearly,
+       D4A_PJ_noc5b, D4A_PJ_c5boff, D4A_PJ_c5bw, D4A_PJ_c5bval, D4A_PJ_c5blow, D4A_PJ_snapidx, D4A_PJ_snaparm,
+       D4A_PJ_nosnap, D4A_PJ_snaporder, D4A_PJ_b24, D4A_PJ_nob24, D4A_PJ_hook, D4A_PJ_nohook, D4A_PJ_hookw,
+       D4A_PJ_b00, D4A_PJ_b00b, D4A_PJ_nob00, D4A_PJ_b17, D4A_PJ_nob17, D4A_PJ_b15, D4A_PJ_nob15, D4A_PJ_afe,
+       D4A_PJ_afeb, D4A_PJ_noafe, D4A_PJ_ee, D4A_PJ_eeb, D4A_PJ_noee, D4A_PJ_tailearly };
+static void d4a_28da4_zero3(u32 mut)
+{
+    if (mut == D4A_PJ_f48w) DSW(0x000F0A48u) = 0u;
+    else if (mut != D4A_PJ_nof48) DSD(0x000F0A48u) = (mut == D4A_PJ_f48) ? 1u : 0u;
+    if (mut == D4A_PJ_aecb) DSB(0x00104AECu) = 0u;
+    else if (mut != D4A_PJ_noaec) DSD(0x00104AECu) = 0u;
+    if (mut == D4A_PJ_ae8b) DSB(0x00104AE8u) = 0u;
+    else if (mut != D4A_PJ_noae8) DSD(0x00104AE8u) = 0u;
+}
+static void d4a_28da4_abc(u32 mut)
+{
+    u32 f = DSB(0x00104B1Fu);
+    u32 v = (((mut == D4A_PJ_abcbit) ? ((f & 3u) == 3u) : (f == ((mut == D4A_PJ_abc3) ? 2u : 3u))) ? 1u : 0u)
+            + ((mut == D4A_PJ_abc) ? 0u : 1u);
+    if (mut == D4A_PJ_abcb) DSB(0x00104ABCu) = (u8)v;
+    else if (mut != D4A_PJ_noabc) DSD(0x00104ABCu) = v;
+}
+static void d4a_28da4_c5b(u32 side, u32 mut)
+{
+    u32 o = (mut == D4A_PJ_c5bself) ? side : (mut == D4A_PJ_c5blow) ? ((side ^ 1u) & 0xFFu) : (side ^ 1u);
+    u32 at = 0x0010780Bu + o * 0x94u - ((mut == D4A_PJ_c5boff) ? 1u : 0u);
+    if (mut == D4A_PJ_c5bw) DSW(at) = 0u;
+    else if (mut != D4A_PJ_noc5b) DSB(at) = (mut == D4A_PJ_c5bval) ? 1u : 0u;
+}
+static void d4a_28da4_tail(u32 mut)
+{
+    if (mut != D4A_PJ_nob24) DSB(0x00104B24u) = (mut == D4A_PJ_b24) ? 2u : 1u;
+    if (mut == D4A_PJ_hookw) DSW(0x00104AE4u) = 0x8D80u;
+    else if (mut != D4A_PJ_nohook) DSD(0x00104AE4u) = (mut == D4A_PJ_hook) ? 0x00028D68u : 0x00028D80u;
+    if (mut == D4A_PJ_b00b) DSB(0x00104B00u) = 0x17u;
+    else if (mut != D4A_PJ_nob00) DSW(0x00104B00u) = (mut == D4A_PJ_b00) ? 0x18u : 0x17u;
+    if (mut != D4A_PJ_nob17) DSB(0x00104B17u) = (mut == D4A_PJ_b17) ? 1u : 2u;
+    if (mut != D4A_PJ_nob15) DSB(0x00104B15u) = (mut == D4A_PJ_b15) ? 1u : 0u;
+    if (mut == D4A_PJ_afeb) DSB(0x00104AFEu) = 0x78u;
+    else if (mut != D4A_PJ_noafe) DSW(0x00104AFEu) = (mut == D4A_PJ_afe) ? 0x79u : 0x78u;
+    if (mut == D4A_PJ_eeb) DSB(0x001088EEu) = 0x1Eu;
+    else if (mut != D4A_PJ_noee) DSW(0x001088EEu) = (mut == D4A_PJ_ee) ? 0x1Fu : 0x1Eu;
+}
+static void d4a_28da4_core(u32 side, u32 mut)
+{
+    if (mut != D4A_PJ_late3) d4a_28da4_zero3(mut);
+    if (mut != D4A_PJ_novoice) (void)sound_voice((mut == D4A_PJ_voice) ? 0x101u : 0x100u);
+    if (mut == D4A_PJ_late3) d4a_28da4_zero3(mut);
+    if (mut != D4A_PJ_abclate) d4a_28da4_abc(mut);
+    if (mut == D4A_PJ_restoreorder) flow_1082c8_restore();
+    if (mut != D4A_PJ_nohold)
+        text_cursor_hold_font2((mut == D4A_PJ_col) ? 0 : -1, (mut == D4A_PJ_row) ? 0xB : 0xA,
+                               game_string_get((mut == D4A_PJ_strid) ? 0x45u : 0x44u),
+                               (mut == D4A_PJ_mode) ? 0x1000u : 0x4000u);
+    if (mut == D4A_PJ_abclate) d4a_28da4_abc(mut);
+    if (mut != D4A_PJ_norestore && mut != D4A_PJ_restoreorder) flow_1082c8_restore();
+    if (mut == D4A_PJ_c5bearly) d4a_28da4_c5b(side, mut);
+    if (mut == D4A_PJ_snaporder) config_play_time_snap(DSD(0x00104ABCu), 1u);
+    if (mut != D4A_PJ_noreset) fight_char_reset((mut == D4A_PJ_resetother) ? (side ^ 1u) : side);
+    if (mut != D4A_PJ_c5bearly) d4a_28da4_c5b(side, mut);
+    if (mut == D4A_PJ_tailearly) d4a_28da4_tail(mut);
+    if (mut != D4A_PJ_nosnap && mut != D4A_PJ_snaporder)
+        config_play_time_snap((mut == D4A_PJ_snapidx) ? DSB(0x00104B1Fu) : DSD(0x00104ABCu),
+                              (mut == D4A_PJ_snaparm) ? 0u : 1u);
+    if (mut != D4A_PJ_tailearly) d4a_28da4_tail(mut);
+}
+#define D4A_PJ_MUT(name) \
+    static void m_d4a_pj_##name(const u32 *r, u32 *eax) { d4a_28da4_core(r[R_EAX], D4A_PJ_##name); *eax = 0u; }
+D4A_PJ_MUT(f48) D4A_PJ_MUT(nof48) D4A_PJ_MUT(f48w) D4A_PJ_MUT(noaec) D4A_PJ_MUT(aecb) D4A_PJ_MUT(noae8)
+D4A_PJ_MUT(ae8b) D4A_PJ_MUT(late3) D4A_PJ_MUT(voice) D4A_PJ_MUT(novoice) D4A_PJ_MUT(abc) D4A_PJ_MUT(abc3)
+D4A_PJ_MUT(abcbit) D4A_PJ_MUT(abcb) D4A_PJ_MUT(abclate) D4A_PJ_MUT(noabc) D4A_PJ_MUT(strid) D4A_PJ_MUT(col)
+D4A_PJ_MUT(row) D4A_PJ_MUT(mode) D4A_PJ_MUT(nohold) D4A_PJ_MUT(norestore) D4A_PJ_MUT(restoreorder)
+D4A_PJ_MUT(resetother) D4A_PJ_MUT(noreset) D4A_PJ_MUT(c5bself) D4A_PJ_MUT(c5bearly) D4A_PJ_MUT(noc5b)
+D4A_PJ_MUT(c5boff) D4A_PJ_MUT(c5bw) D4A_PJ_MUT(c5bval) D4A_PJ_MUT(c5blow) D4A_PJ_MUT(snapidx) D4A_PJ_MUT(snaparm)
+D4A_PJ_MUT(nosnap) D4A_PJ_MUT(snaporder) D4A_PJ_MUT(b24) D4A_PJ_MUT(nob24) D4A_PJ_MUT(hook) D4A_PJ_MUT(nohook)
+D4A_PJ_MUT(hookw) D4A_PJ_MUT(b00) D4A_PJ_MUT(b00b) D4A_PJ_MUT(nob00) D4A_PJ_MUT(b17) D4A_PJ_MUT(nob17)
+D4A_PJ_MUT(b15) D4A_PJ_MUT(nob15) D4A_PJ_MUT(afe) D4A_PJ_MUT(afeb) D4A_PJ_MUT(noafe) D4A_PJ_MUT(ee) D4A_PJ_MUT(eeb)
+D4A_PJ_MUT(noee) D4A_PJ_MUT(tailearly)
+/* 0x25C88: no argument. Mask 0: the one call site 0x2524C is followed by `jmp 0x2540f`, the mode tail the
+ * wave-1 records trace dead (d1c §1, d1d §1). Bound twice: the row with plain stubs and the row whose
+ * stubs write what the raw reads after each call (`_reread`). */
+static void b_d4a_25c88(const u32 *r, u32 *eax) { (void)r; game_mode_05_step(); *eax = 0u; }
+enum { D4A_M5_NONE, D4A_M5_nopass, D4A_M5_passlate, D4A_M5_noaec, D4A_M5_aecset, D4A_M5_aecbit, D4A_M5_st0,
+       D4A_M5_st5, D4A_M5_b1b, D4A_M5_nob1b, D4A_M5_b15, D4A_M5_nob15, D4A_M5_nohud, D4A_M5_hudlate, D4A_M5_s1early,
+       D4A_M5_b14inv, D4A_M5_bitmask, D4A_M5_descswap, D4A_M5_i2, D4A_M5_i01, D4A_M5_b1esext, D4A_M5_adcb,
+       D4A_M5_eqlast, D4A_M5_tblswap, D4A_M5_stride, D4A_M5_spx, D4A_M5_spa3, D4A_M5_spy, D4A_M5_sp5, D4A_M5_noac0,
+       D4A_M5_ac0w, D4A_M5_z7, D4A_M5_z9, D4A_M5_zval, D4A_M5_zlate, D4A_M5_nomark, D4A_M5_markearly, D4A_M5_s1b25,
+       D4A_M5_s1b23, D4A_M5_s1afe, D4A_M5_s1afeb, D4A_M5_nos1afe, D4A_M5_s2and, D4A_M5_s2desc, D4A_M5_s2y,
+       D4A_M5_noacc, D4A_M5_s2ae8, D4A_M5_s2ae8set, D4A_M5_noae8, D4A_M5_s2voice, D4A_M5_s2vswap, D4A_M5_s2novoice,
+       D4A_M5_s2vearly, D4A_M5_ae8late, D4A_M5_s2b25, D4A_M5_s2afe, D4A_M5_s2afeb, D4A_M5_s2b23, D4A_M5_holdrow,
+       D4A_M5_holdcol, D4A_M5_holdstr, D4A_M5_holdmode, D4A_M5_nohold, D4A_M5_dead0, D4A_M5_dead1, D4A_M5_deadswap,
+       D4A_M5_noz0, D4A_M5_noz1, D4A_M5_z0late, D4A_M5_notimer, D4A_M5_timerearly, D4A_M5_nofc, D4A_M5_nofe,
+       D4A_M5_fcw, D4A_M5_abc3, D4A_M5_abcbit, D4A_M5_abcb, D4A_M5_noabc, D4A_M5_abclate, D4A_M5_snapa1e,
+       D4A_M5_snapaalways, D4A_M5_snapaarm, D4A_M5_snapb14, D4A_M5_snapbarm, D4A_M5_snapswap, D4A_M5_m6, D4A_M5_m6b,
+       D4A_M5_mc, D4A_M5_mclate, D4A_M5_nofn, D4A_M5_fns, D4A_M5_chside, D4A_M5_choff, D4A_M5_ssext,
+       D4A_M5_badgeswap, D4A_M5_badgey, D4A_M5_badgeysext, D4A_M5_nobadge, D4A_M5_badgeearly, D4A_M5_fafe,
+       D4A_M5_nofafe, D4A_M5_faff, D4A_M5_nofaff, D4A_M5_faffsrc, D4A_M5_tailearly, D4A_M5_nodec, D4A_M5_decb,
+       D4A_M5_s4old, D4A_M5_s4ge, D4A_M5_s4uns, D4A_M5_s4src, D4A_M5_nocopy, D4A_M5_preb14a, D4A_M5_preb14v,
+       D4A_M5_preabc, D4A_M5_preb14m, D4A_M5_pres, D4A_M5_pre10d };
+static void d4a_25c88_s1(u32 mut)
+{
+    u32 b14pre = DSB(0x00104B14u), desc;
+    if (mut != D4A_M5_s1early) {
+        if (mut != D4A_M5_nob1b) DSB(0x00104B1Bu) = (mut == D4A_M5_b1b) ? 2u : 1u;
+        if (mut != D4A_M5_nob15) DSB(0x00104B15u) = (mut == D4A_M5_b15) ? 2u : 1u;
+    }
+    if (mut != D4A_M5_nohud && mut != D4A_M5_hudlate) flow_round_hud_init();
+    if (mut == D4A_M5_s1early) { DSB(0x00104B1Bu) = 1u; DSB(0x00104B15u) = 1u; }
+    u32 b14 = (mut == D4A_M5_preb14a) ? b14pre : DSB(0x00104B14u);
+    int alt = (DSB(0x00104529u) & ((mut == D4A_M5_bitmask) ? 1u : 2u)) != 0u;
+    if ((mut == D4A_M5_b14inv) ? (b14 == 0u) : (b14 != 0u)) {
+        if (mut == D4A_M5_descswap) alt = !alt;
+        desc = alt ? DSD(0x000A88B4u) : DSD(0x000A88A4u);
+    } else {
+        u32 i, b = (mut == D4A_M5_b1esext) ? (u32)(s32)(s8)DSB(0x00104B1Eu) : DSB(0x00104B1Eu);
+        u32 c = (mut == D4A_M5_adcb) ? DSB(0x00104ADCu) : DSD(0x00104ADCu);
+        if (mut == D4A_M5_eqlast) i = (b == 1u) ? 0u : (b == c) ? 2u : 1u;
+        else if (b == c && mut != D4A_M5_i2) i = 2u;
+        else if (b == 1u) i = (mut == D4A_M5_i01) ? 1u : 0u;
+        else i = (mut == D4A_M5_i01) ? 0u : 1u;
+        if (mut == D4A_M5_tblswap) alt = !alt;
+        desc = DSD((alt ? 0x000A88A8u : 0x000A8898u) + i * ((mut == D4A_M5_stride) ? 8u : 4u));
+    }
+    if (mut == D4A_M5_markearly) flow_win_markers_spawn();
+    u32 rec = actor_spawn((const u32 *)(mem + desc), (mut == D4A_M5_spx) ? 0x2A01u : 0x2A00u,
+                          (mut == D4A_M5_spa3) ? 0xFEu : 0xFFu, (mut == D4A_M5_spy) ? 0x1200u : 0x3600u,
+                          (mut == D4A_M5_sp5) ? 1u : 0u);
+    if (mut == D4A_M5_hudlate) flow_round_hud_init();
+    if (mut == D4A_M5_ac0w) DSW(0x00104AC0u) = (u16)rec;
+    else if (mut != D4A_M5_noac0) DSD(0x00104AC0u) = rec;
+    u32 n = (mut == D4A_M5_z7) ? 7u : (mut == D4A_M5_z9) ? 9u : 8u;
+    if (mut != D4A_M5_zlate)
+        for (u32 i = 0; i < n; i++) DSD(0x00104A88u + i * 4u) = (mut == D4A_M5_zval) ? 1u : 0u;
+    if (mut != D4A_M5_nomark && mut != D4A_M5_markearly) flow_win_markers_spawn();
+    if (mut == D4A_M5_zlate)
+        for (u32 i = 0; i < n; i++) DSD(0x00104A88u + i * 4u) = 0u;
+    DSB(0x00104B25u) = (mut == D4A_M5_s1b25) ? 3u : 4u;
+    DSB(0x00104B23u) = (mut == D4A_M5_s1b23) ? 3u : 2u;
+    if (mut == D4A_M5_s1afeb) DSB(0x00104AFEu) = 0x3Cu;
+    else if (mut != D4A_M5_nos1afe) DSW(0x00104AFEu) = (mut == D4A_M5_s1afe) ? 0x3Du : 0x3Cu;
+}
+static void d4a_25c88_s2(u32 mut)
+{
+    int bit = (DSB(0x00104529u) & 2u) != 0u, b14 = DSB(0x00104B14u) != 0u;
+    int a = (mut == D4A_M5_s2and) ? (bit || b14) : (bit && b14);
+    if (mut == D4A_M5_s2desc) a = !a;
+    if (mut == D4A_M5_s2vearly) (void)sound_voice(b14 ? 0xD9u : 0xD7u);
+    u32 rec = actor_spawn((const u32 *)(mem + (a ? 0x000A8884u : 0x000BB6A0u)), 0x2A00u, 0xFFu,
+                          (mut == D4A_M5_s2y) ? 0x3600u : 0x1200u, 0u);
+    if (mut != D4A_M5_noacc) DSD(0x00104ACCu) = rec;
+    if (mut == D4A_M5_s2ae8set) DSB(0x00104AE8u) = 0x40u;
+    else if (mut != D4A_M5_noae8 && mut != D4A_M5_ae8late)
+        DSB(0x00104AE8u) = (u8)(DSB(0x00104AE8u) | ((mut == D4A_M5_s2ae8) ? 0x20u : 0x40u));
+    int v = (mut == D4A_M5_preb14v) ? b14 : (DSB(0x00104B14u) != 0u);
+    if (mut == D4A_M5_s2vswap) v = !v;
+    if (mut == D4A_M5_s2voice) v = 0;
+    if (mut != D4A_M5_s2novoice && mut != D4A_M5_s2vearly) (void)sound_voice(v ? 0xD9u : 0xD7u);
+    if (mut == D4A_M5_ae8late) DSB(0x00104AE8u) = (u8)(DSB(0x00104AE8u) | 0x40u);
+    DSB(0x00104B25u) = (mut == D4A_M5_s2b25) ? 3u : 4u;
+    if (mut == D4A_M5_s2afeb) DSB(0x00104AFEu) = 0x3Cu;
+    else DSW(0x00104AFEu) = (mut == D4A_M5_s2afe) ? 0x3Du : 0x3Cu;
+    DSB(0x00104B23u) = (mut == D4A_M5_s2b23) ? 2u : 3u;
+}
+static void d4a_25c88_abc(u32 mut)
+{
+    u32 f = DSB(0x00104B1Fu);
+    u32 v = (((mut == D4A_M5_abcbit) ? ((f & 3u) == 3u) : (f == ((mut == D4A_M5_abc3) ? 2u : 3u))) ? 1u : 0u) + 1u;
+    if (mut == D4A_M5_abcb) DSB(0x00104ABCu) = (u8)v;
+    else if (mut != D4A_M5_noabc) DSD(0x00104ABCu) = v;
+}
+static void d4a_25c88_s3tail(u32 mut)
+{
+    if (mut != D4A_M5_nofafe) DSB(0x000F0AFEu) = (mut == D4A_M5_fafe) ? 1u : 0u;
+    if (mut != D4A_M5_nofaff)
+        DSB(0x000F0AFFu) = (mut == D4A_M5_faff) ? 0u : DSB((mut == D4A_M5_faffsrc) ? 0x0010810Cu : 0x0010810Du);
+}
+static void d4a_25c88_s3(u32 mut)
+{
+    if (mut != D4A_M5_nohold)
+        text_cursor_hold((mut == D4A_M5_holdcol) ? 0 : -1, (mut == D4A_M5_holdrow) ? 4 : 5,
+                         mem + ((mut == D4A_M5_holdstr) ? 0x00080995u : 0x00080994u),
+                         (mut == D4A_M5_holdmode) ? 0x1000u : 0u);
+    if (mut == D4A_M5_timerearly) flow_round_timer_draw();
+    if (mut == D4A_M5_deadswap) {
+        actor_set_dead(DSD(0x00104ACCu)); DSD(0x00104ACCu) = 0u;
+        actor_set_dead(DSD(0x00104AC0u)); DSD(0x00104AC0u) = 0u;
+    } else {
+        if (mut != D4A_M5_dead0) actor_set_dead(DSD(0x00104AC0u));
+        if (mut != D4A_M5_noz0 && mut != D4A_M5_z0late) DSD(0x00104AC0u) = 0u;
+        if (mut != D4A_M5_dead1) actor_set_dead(DSD(0x00104ACCu));
+        if (mut == D4A_M5_z0late) DSD(0x00104AC0u) = 0u;
+        if (mut != D4A_M5_noz1) DSD(0x00104ACCu) = 0u;
+    }
+    if (mut != D4A_M5_notimer && mut != D4A_M5_timerearly) flow_round_timer_draw();
+    if (mut == D4A_M5_fcw) DSW(0x001078FCu) = 0u;
+    else if (mut != D4A_M5_nofc) DSB(0x001078FCu) = 0u;
+    if (mut != D4A_M5_nofe) DSB(0x001078FEu) = 0u;
+    if (mut != D4A_M5_abclate) d4a_25c88_abc(mut);
+    u32 abcpre = DSD(0x00104ABCu), b14pre = DSB(0x00104B14u);
+    int doa = (mut == D4A_M5_snapaalways) ? 1 : (DSB(0x00104B1Eu) == ((mut == D4A_M5_snapa1e) ? 2u : 1u));
+    int dob = (mut == D4A_M5_snapb14) ? (DSB(0x00104B14u) != 0u) : (DSB(0x00104B14u) == 0u);
+    if (mut == D4A_M5_snapswap && dob) config_play_time_snap_b(DSD(0x00104ABCu), 1u);
+    if (doa) config_play_time_snap(DSD(0x00104ABCu), (mut == D4A_M5_snapaarm) ? 0u : 1u);
+    if (mut != D4A_M5_snapswap && ((mut == D4A_M5_snapb14) ? (DSB(0x00104B14u) != 0u) : (DSB(0x00104B14u) == 0u)))
+        config_play_time_snap_b((mut == D4A_M5_preabc) ? abcpre : DSD(0x00104ABCu), (mut == D4A_M5_snapbarm) ? 0u : 1u);
+    if (mut == D4A_M5_abclate) d4a_25c88_abc(mut);
+    if (((mut == D4A_M5_preb14m) ? b14pre : DSB(0x00104B14u)) == 0u) {
+        if (mut == D4A_M5_m6b) DSB(0x00104B00u) = 6u;
+        else DSW(0x00104B00u) = (mut == D4A_M5_m6) ? 7u : 6u;
+        return;
+    }
+    u32 s = (mut == D4A_M5_ssext) ? (u32)(s32)(s8)DSB(0x00104B12u) : DSB(0x00104B12u);
+    u32 ch = (u32)(s32)(s8)DSB(0x0010816Au + s + ((mut == D4A_M5_choff) ? 1u : 0u));
+    if (mut != D4A_M5_mclate) DSW(0x00104B00u) = (mut == D4A_M5_mc) ? 0xDu : 0xCu;
+    if (mut == D4A_M5_badgeearly) fight_hud_badge_spawn(s, ch, (u32)DSW(0x000A76D0u));
+    if (mut != D4A_M5_nofn) {
+        void (*fn)(u32) = (void (*)(u32))(void *)fn_resolve(DSD(0x000A8628u + ((mut == D4A_M5_chside) ? s : ch) * 4u));
+        if (fn) fn((mut == D4A_M5_fns) ? ch : s);
+    }
+    if (mut == D4A_M5_mclate) DSW(0x00104B00u) = 0xCu;
+    if (mut == D4A_M5_tailearly) d4a_25c88_s3tail(mut);
+    if (mut != D4A_M5_pres) {
+        s = (mut == D4A_M5_ssext) ? (u32)(s32)(s8)DSB(0x00104B12u) : DSB(0x00104B12u);
+        ch = (u32)(s32)(s8)DSB(0x0010816Au + s + ((mut == D4A_M5_choff) ? 1u : 0u));
+    }
+    u8 b10dpre = DSB(0x0010810Du);
+    u32 y = (mut == D4A_M5_badgey) ? 0x980u : (mut == D4A_M5_badgeysext) ? (u32)(s32)(s16)DSW(0x000A76D0u)
+                                                                       : (u32)DSW(0x000A76D0u);
+    if (mut == D4A_M5_badgeswap) fight_hud_badge_spawn(ch, s, y);
+    else if (mut != D4A_M5_nobadge && mut != D4A_M5_badgeearly) fight_hud_badge_spawn(s, ch, y);
+    if (mut == D4A_M5_pre10d) { DSB(0x000F0AFEu) = 0u; DSB(0x000F0AFFu) = b10dpre; }
+    else if (mut != D4A_M5_tailearly) d4a_25c88_s3tail(mut);
+}
+static void d4a_25c88_s4(u32 mut)
+{
+    u16 old = DSW(0x00104AFEu);
+    u16 t = (mut == D4A_M5_nodec) ? old : (mut == D4A_M5_decb) ? (u16)((old & 0xFF00u) | ((old - 1u) & 0xFFu))
+                                                             : (u16)(old - 1u);
+    DSW(0x00104AFEu) = t;
+    s16 c = (s16)((mut == D4A_M5_s4old) ? old : t);
+    if ((mut == D4A_M5_s4ge) ? (c < 0) : (mut == D4A_M5_s4uns) ? (c == 0) : (c <= 0)) {
+        if (mut != D4A_M5_nocopy) DSB(0x00104B25u) = DSB((mut == D4A_M5_s4src) ? 0x00104B24u : 0x00104B23u);
+    }
+}
+static void d4a_25c88_core(u32 mut)
+{
+    if (mut != D4A_M5_nopass && mut != D4A_M5_passlate) fight_slot_pass();
+    u32 st = DSB(0x00104B25u);
+    if (mut == D4A_M5_st0 && st == 0u) st = 1u;
+    if (mut == D4A_M5_st5 && st == 5u) st = 4u;
+    if (st == 1u) d4a_25c88_s1(mut);
+    else if (st == 2u) d4a_25c88_s2(mut);
+    else if (st == 3u) d4a_25c88_s3(mut);
+    else if (st == 4u) d4a_25c88_s4(mut);
+    if (mut == D4A_M5_passlate) fight_slot_pass();
+    if (mut == D4A_M5_aecset) DSB(0x00104AECu) = 2u;
+    else if (mut != D4A_M5_noaec) DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) | ((mut == D4A_M5_aecbit) ? 1u : 2u));
+}
+#define D4A_M5_MUT(name) \
+    static void m_d4a_m5_##name(const u32 *r, u32 *eax) { (void)r; d4a_25c88_core(D4A_M5_##name); *eax = 0u; }
+D4A_M5_MUT(nopass) D4A_M5_MUT(passlate) D4A_M5_MUT(noaec) D4A_M5_MUT(aecset) D4A_M5_MUT(aecbit) D4A_M5_MUT(st0)
+D4A_M5_MUT(st5) D4A_M5_MUT(b1b) D4A_M5_MUT(nob1b) D4A_M5_MUT(b15) D4A_M5_MUT(nob15) D4A_M5_MUT(nohud)
+D4A_M5_MUT(hudlate) D4A_M5_MUT(s1early) D4A_M5_MUT(b14inv) D4A_M5_MUT(bitmask) D4A_M5_MUT(descswap) D4A_M5_MUT(i2)
+D4A_M5_MUT(i01) D4A_M5_MUT(b1esext) D4A_M5_MUT(adcb) D4A_M5_MUT(eqlast) D4A_M5_MUT(tblswap) D4A_M5_MUT(stride)
+D4A_M5_MUT(spx) D4A_M5_MUT(spa3) D4A_M5_MUT(spy) D4A_M5_MUT(sp5) D4A_M5_MUT(noac0) D4A_M5_MUT(ac0w) D4A_M5_MUT(z7)
+D4A_M5_MUT(z9) D4A_M5_MUT(zval) D4A_M5_MUT(zlate) D4A_M5_MUT(nomark) D4A_M5_MUT(markearly) D4A_M5_MUT(s1b25)
+D4A_M5_MUT(s1b23) D4A_M5_MUT(s1afe) D4A_M5_MUT(s1afeb) D4A_M5_MUT(nos1afe) D4A_M5_MUT(s2and) D4A_M5_MUT(s2desc)
+D4A_M5_MUT(s2y) D4A_M5_MUT(noacc) D4A_M5_MUT(s2ae8) D4A_M5_MUT(s2ae8set) D4A_M5_MUT(noae8) D4A_M5_MUT(s2voice)
+D4A_M5_MUT(s2vswap) D4A_M5_MUT(s2novoice) D4A_M5_MUT(s2vearly) D4A_M5_MUT(ae8late) D4A_M5_MUT(s2b25)
+D4A_M5_MUT(s2afe) D4A_M5_MUT(s2afeb) D4A_M5_MUT(s2b23) D4A_M5_MUT(holdrow) D4A_M5_MUT(holdcol) D4A_M5_MUT(holdstr)
+D4A_M5_MUT(holdmode) D4A_M5_MUT(nohold) D4A_M5_MUT(dead0) D4A_M5_MUT(dead1) D4A_M5_MUT(deadswap) D4A_M5_MUT(noz0)
+D4A_M5_MUT(noz1) D4A_M5_MUT(z0late) D4A_M5_MUT(notimer) D4A_M5_MUT(timerearly) D4A_M5_MUT(nofc) D4A_M5_MUT(nofe)
+D4A_M5_MUT(fcw) D4A_M5_MUT(abc3) D4A_M5_MUT(abcbit) D4A_M5_MUT(abcb) D4A_M5_MUT(noabc) D4A_M5_MUT(abclate)
+D4A_M5_MUT(snapa1e) D4A_M5_MUT(snapaalways) D4A_M5_MUT(snapaarm) D4A_M5_MUT(snapb14) D4A_M5_MUT(snapbarm)
+D4A_M5_MUT(snapswap) D4A_M5_MUT(m6) D4A_M5_MUT(m6b) D4A_M5_MUT(mc) D4A_M5_MUT(mclate) D4A_M5_MUT(nofn)
+D4A_M5_MUT(fns) D4A_M5_MUT(chside) D4A_M5_MUT(choff) D4A_M5_MUT(ssext) D4A_M5_MUT(badgeswap) D4A_M5_MUT(badgey)
+D4A_M5_MUT(badgeysext) D4A_M5_MUT(nobadge) D4A_M5_MUT(badgeearly) D4A_M5_MUT(fafe) D4A_M5_MUT(nofafe)
+D4A_M5_MUT(faff) D4A_M5_MUT(nofaff) D4A_M5_MUT(faffsrc) D4A_M5_MUT(tailearly) D4A_M5_MUT(nodec) D4A_M5_MUT(decb)
+D4A_M5_MUT(s4old) D4A_M5_MUT(s4ge) D4A_M5_MUT(s4uns) D4A_M5_MUT(s4src) D4A_M5_MUT(nocopy) D4A_M5_MUT(preb14a)
+D4A_M5_MUT(preb14v) D4A_M5_MUT(preabc) D4A_M5_MUT(preb14m) D4A_M5_MUT(pres) D4A_M5_MUT(pre10d)
+/* 0x29328: no argument. Mask 0: the one call site 0x2519E is followed by `jmp 0x2540f`, the mode tail the
+ * wave-1 records trace dead (d1c §1, d1d §1). Bound twice, as 0x25C88: states 1 and 4 are the same code. */
+static void b_d4a_29328(const u32 *r, u32 *eax) { (void)r; game_mode_30_step(); *eax = 0u; }
+enum { D4A_M30_NONE, D4A_M30_nopass, D4A_M30_passlate, D4A_M30_noaec, D4A_M30_aecset, D4A_M30_aecbit, D4A_M30_st0,
+       D4A_M30_st5, D4A_M30_b1b, D4A_M30_nob1b, D4A_M30_b15, D4A_M30_nob15, D4A_M30_nohud, D4A_M30_hudlate,
+       D4A_M30_s1early, D4A_M30_b14inv, D4A_M30_bitmask, D4A_M30_descswap, D4A_M30_i2, D4A_M30_i01, D4A_M30_b1esext,
+       D4A_M30_adcb, D4A_M30_eqlast, D4A_M30_tblswap, D4A_M30_stride, D4A_M30_spx, D4A_M30_spa3, D4A_M30_spy,
+       D4A_M30_sp5, D4A_M30_noac0, D4A_M30_ac0w, D4A_M30_z7, D4A_M30_z9, D4A_M30_zval, D4A_M30_zlate,
+       D4A_M30_nomark, D4A_M30_markearly, D4A_M30_s1b25, D4A_M30_s1b23, D4A_M30_s1afe, D4A_M30_s1afeb,
+       D4A_M30_nos1afe, D4A_M30_s2and, D4A_M30_s2desc, D4A_M30_s2y, D4A_M30_noacc, D4A_M30_s2ae8, D4A_M30_s2ae8set,
+       D4A_M30_noae8, D4A_M30_s2voice, D4A_M30_s2novoice, D4A_M30_s2vearly, D4A_M30_ae8late, D4A_M30_s2b25,
+       D4A_M30_s2afe, D4A_M30_s2afeb, D4A_M30_s2b23, D4A_M30_holdrow, D4A_M30_holdcol, D4A_M30_holdstr,
+       D4A_M30_holdmode, D4A_M30_nohold, D4A_M30_dead0, D4A_M30_dead1, D4A_M30_deadswap, D4A_M30_noz0, D4A_M30_noz1,
+       D4A_M30_z0late, D4A_M30_notimer, D4A_M30_timerearly, D4A_M30_nofc, D4A_M30_nofe, D4A_M30_fcw, D4A_M30_abc3,
+       D4A_M30_abcbit, D4A_M30_abcb, D4A_M30_noabc, D4A_M30_snapa, D4A_M30_b21inv, D4A_M30_b21always, D4A_M30_noaf0,
+       D4A_M30_noaf1, D4A_M30_af1w, D4A_M30_m31, D4A_M30_m31b, D4A_M30_nom31, D4A_M30_nodec, D4A_M30_decb,
+       D4A_M30_s4old, D4A_M30_s4ge, D4A_M30_s4uns, D4A_M30_s4src, D4A_M30_nocopy, D4A_M30_preb14a };
+static void d4a_29328_s1(u32 mut)
+{
+    u32 b14pre = DSB(0x00104B14u), desc;
+    if (mut != D4A_M30_s1early) {
+        if (mut != D4A_M30_nob1b) DSB(0x00104B1Bu) = (mut == D4A_M30_b1b) ? 2u : 1u;
+        if (mut != D4A_M30_nob15) DSB(0x00104B15u) = (mut == D4A_M30_b15) ? 2u : 1u;
+    }
+    if (mut != D4A_M30_nohud && mut != D4A_M30_hudlate) flow_round_hud_init();
+    if (mut == D4A_M30_s1early) { DSB(0x00104B1Bu) = 1u; DSB(0x00104B15u) = 1u; }
+    u32 b14 = (mut == D4A_M30_preb14a) ? b14pre : DSB(0x00104B14u);
+    int alt = (DSB(0x00104529u) & ((mut == D4A_M30_bitmask) ? 1u : 2u)) != 0u;
+    if ((mut == D4A_M30_b14inv) ? (b14 == 0u) : (b14 != 0u)) {
+        if (mut == D4A_M30_descswap) alt = !alt;
+        desc = alt ? DSD(0x000A88B4u) : DSD(0x000A88A4u);
+    } else {
+        u32 i, b = (mut == D4A_M30_b1esext) ? (u32)(s32)(s8)DSB(0x00104B1Eu) : DSB(0x00104B1Eu);
+        u32 c = (mut == D4A_M30_adcb) ? DSB(0x00104ADCu) : DSD(0x00104ADCu);
+        if (mut == D4A_M30_eqlast) i = (b == 1u) ? 0u : (b == c) ? 2u : 1u;
+        else if (b == c && mut != D4A_M30_i2) i = 2u;
+        else if (b == 1u) i = (mut == D4A_M30_i01) ? 1u : 0u;
+        else i = (mut == D4A_M30_i01) ? 0u : 1u;
+        if (mut == D4A_M30_tblswap) alt = !alt;
+        desc = DSD((alt ? 0x000A88A8u : 0x000A8898u) + i * ((mut == D4A_M30_stride) ? 8u : 4u));
+    }
+    if (mut == D4A_M30_markearly) flow_win_markers_spawn();
+    u32 rec = actor_spawn((const u32 *)(mem + desc), (mut == D4A_M30_spx) ? 0x2A01u : 0x2A00u,
+                          (mut == D4A_M30_spa3) ? 0xFEu : 0xFFu, (mut == D4A_M30_spy) ? 0x1200u : 0x3600u,
+                          (mut == D4A_M30_sp5) ? 1u : 0u);
+    if (mut == D4A_M30_hudlate) flow_round_hud_init();
+    if (mut == D4A_M30_ac0w) DSW(0x00104AC0u) = (u16)rec;
+    else if (mut != D4A_M30_noac0) DSD(0x00104AC0u) = rec;
+    u32 n = (mut == D4A_M30_z7) ? 7u : (mut == D4A_M30_z9) ? 9u : 8u;
+    if (mut != D4A_M30_zlate)
+        for (u32 i = 0; i < n; i++) DSD(0x00104A88u + i * 4u) = (mut == D4A_M30_zval) ? 1u : 0u;
+    if (mut != D4A_M30_nomark && mut != D4A_M30_markearly) flow_win_markers_spawn();
+    if (mut == D4A_M30_zlate)
+        for (u32 i = 0; i < n; i++) DSD(0x00104A88u + i * 4u) = 0u;
+    DSB(0x00104B25u) = (mut == D4A_M30_s1b25) ? 3u : 4u;
+    DSB(0x00104B23u) = (mut == D4A_M30_s1b23) ? 3u : 2u;
+    if (mut == D4A_M30_s1afeb) DSB(0x00104AFEu) = 0x3Cu;
+    else if (mut != D4A_M30_nos1afe) DSW(0x00104AFEu) = (mut == D4A_M30_s1afe) ? 0x3Du : 0x3Cu;
+}
+static void d4a_29328_s2(u32 mut)
+{
+    int bit = (DSB(0x00104529u) & 2u) != 0u, b14 = DSB(0x00104B14u) != 0u;
+    int a = (mut == D4A_M30_s2and) ? (bit || b14) : (bit && b14);
+    if (mut == D4A_M30_s2desc) a = !a;
+    if (mut == D4A_M30_s2vearly) (void)sound_voice(0xD7u);
+    u32 rec = actor_spawn((const u32 *)(mem + (a ? 0x000A8884u : 0x000BB6A0u)), 0x2A00u, 0xFFu,
+                          (mut == D4A_M30_s2y) ? 0x3600u : 0x1200u, 0u);
+    if (mut != D4A_M30_noacc) DSD(0x00104ACCu) = rec;
+    if (mut == D4A_M30_s2ae8set) DSB(0x00104AE8u) = 0x40u;
+    else if (mut != D4A_M30_noae8 && mut != D4A_M30_ae8late)
+        DSB(0x00104AE8u) = (u8)(DSB(0x00104AE8u) | ((mut == D4A_M30_s2ae8) ? 0x20u : 0x40u));
+    if (mut != D4A_M30_s2novoice && mut != D4A_M30_s2vearly)
+        (void)sound_voice((mut == D4A_M30_s2voice && DSB(0x00104B14u) != 0u) ? 0xD9u : 0xD7u);
+    if (mut == D4A_M30_ae8late) DSB(0x00104AE8u) = (u8)(DSB(0x00104AE8u) | 0x40u);
+    if (mut == D4A_M30_s2afeb) DSB(0x00104AFEu) = 0x3Cu;
+    else DSW(0x00104AFEu) = (mut == D4A_M30_s2afe) ? 0x3Du : 0x3Cu;
+    DSB(0x00104B23u) = (mut == D4A_M30_s2b23) ? 2u : 3u;
+    DSB(0x00104B25u) = (mut == D4A_M30_s2b25) ? 3u : 4u;
+}
+static void d4a_29328_abc(u32 mut)
+{
+    u32 f = DSB(0x00104B1Fu);
+    u32 v = (((mut == D4A_M30_abcbit) ? ((f & 3u) == 3u) : (f == ((mut == D4A_M30_abc3) ? 2u : 3u))) ? 1u : 0u) + 1u;
+    if (mut == D4A_M30_abcb) DSB(0x00104ABCu) = (u8)v;
+    else if (mut != D4A_M30_noabc) DSD(0x00104ABCu) = v;
+}
+static int d4a_29328_s3(u32 mut)
+{
+    if (mut != D4A_M30_nohold)
+        text_cursor_hold((mut == D4A_M30_holdcol) ? 0 : -1, (mut == D4A_M30_holdrow) ? 4 : 5,
+                         mem + ((mut == D4A_M30_holdstr) ? 0x00080995u : 0x00080994u),
+                         (mut == D4A_M30_holdmode) ? 0x1000u : 0u);
+    if (mut == D4A_M30_timerearly) flow_round_timer_draw();
+    if (mut == D4A_M30_deadswap) {
+        actor_set_dead(DSD(0x00104ACCu)); DSD(0x00104ACCu) = 0u;
+        actor_set_dead(DSD(0x00104AC0u)); DSD(0x00104AC0u) = 0u;
+    } else {
+        if (mut != D4A_M30_dead0) actor_set_dead(DSD(0x00104AC0u));
+        if (mut != D4A_M30_noz0 && mut != D4A_M30_z0late) DSD(0x00104AC0u) = 0u;
+        if (mut != D4A_M30_dead1) actor_set_dead(DSD(0x00104ACCu));
+        if (mut == D4A_M30_z0late) DSD(0x00104AC0u) = 0u;
+        if (mut != D4A_M30_noz1) DSD(0x00104ACCu) = 0u;
+    }
+    if (mut != D4A_M30_notimer && mut != D4A_M30_timerearly) flow_round_timer_draw();
+    if (mut == D4A_M30_fcw) DSW(0x001078FCu) = 0u;
+    else if (mut != D4A_M30_nofc) DSB(0x001078FCu) = 0u;
+    if (mut != D4A_M30_nofe) DSB(0x001078FEu) = 0u;
+    d4a_29328_abc(mut);
+    if (mut == D4A_M30_snapa && DSB(0x00104B1Eu) == 1u) config_play_time_snap(DSD(0x00104ABCu), 1u);
+    u32 b21 = DSB(0x00104B21u);
+    if ((mut == D4A_M30_b21inv) ? (b21 == 0u) : (mut == D4A_M30_b21always) ? 0 : (b21 != 0u)) return 0;
+    if (mut != D4A_M30_noaf0) DSB(0x00104AF0u) = 0u;
+    if (mut == D4A_M30_af1w) DSW(0x00104AF1u) = 0u;
+    else if (mut != D4A_M30_noaf1) DSB(0x00104AF1u) = 0u;
+    if (mut == D4A_M30_m31b) DSB(0x00104B00u) = 0x31u;
+    else if (mut != D4A_M30_nom31) DSW(0x00104B00u) = (mut == D4A_M30_m31) ? 0x32u : 0x31u;
+    return 1;
+}
+static void d4a_29328_s4(u32 mut)
+{
+    u16 old = DSW(0x00104AFEu);
+    u16 t = (mut == D4A_M30_nodec) ? old : (mut == D4A_M30_decb) ? (u16)((old & 0xFF00u) | ((old - 1u) & 0xFFu))
+                                                             : (u16)(old - 1u);
+    DSW(0x00104AFEu) = t;
+    s16 c = (s16)((mut == D4A_M30_s4old) ? old : t);
+    if ((mut == D4A_M30_s4ge) ? (c < 0) : (mut == D4A_M30_s4uns) ? (c == 0) : (c <= 0)) {
+        if (mut != D4A_M30_nocopy) DSB(0x00104B25u) = DSB((mut == D4A_M30_s4src) ? 0x00104B24u : 0x00104B23u);
+    }
+}
+static void d4a_29328_core(u32 mut)
+{
+    if (mut != D4A_M30_nopass && mut != D4A_M30_passlate) fight_slot_pass();
+    u32 st = DSB(0x00104B25u);
+    if (mut == D4A_M30_st0 && st == 0u) st = 1u;
+    if (mut == D4A_M30_st5 && st == 5u) st = 4u;
+    if (st == 1u) d4a_29328_s1(mut);
+    else if (st == 2u) d4a_29328_s2(mut);
+    else if (st == 3u) (void)d4a_29328_s3(mut);
+    else if (st == 4u) d4a_29328_s4(mut);
+    if (mut == D4A_M30_passlate) fight_slot_pass();
+    if (mut == D4A_M30_aecset) DSB(0x00104AECu) = 2u;
+    else if (mut != D4A_M30_noaec) DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) | ((mut == D4A_M30_aecbit) ? 1u : 2u));
+}
+#define D4A_M30_MUT(name) \
+    static void m_d4a_m30_##name(const u32 *r, u32 *eax) { (void)r; d4a_29328_core(D4A_M30_##name); *eax = 0u; }
+D4A_M30_MUT(nopass) D4A_M30_MUT(passlate) D4A_M30_MUT(noaec) D4A_M30_MUT(aecset) D4A_M30_MUT(aecbit)
+D4A_M30_MUT(st0) D4A_M30_MUT(st5) D4A_M30_MUT(b1b) D4A_M30_MUT(nob1b) D4A_M30_MUT(b15) D4A_M30_MUT(nob15)
+D4A_M30_MUT(nohud) D4A_M30_MUT(hudlate) D4A_M30_MUT(s1early) D4A_M30_MUT(b14inv) D4A_M30_MUT(bitmask)
+D4A_M30_MUT(descswap) D4A_M30_MUT(i2) D4A_M30_MUT(i01) D4A_M30_MUT(b1esext) D4A_M30_MUT(adcb) D4A_M30_MUT(eqlast)
+D4A_M30_MUT(tblswap) D4A_M30_MUT(stride) D4A_M30_MUT(spx) D4A_M30_MUT(spa3) D4A_M30_MUT(spy) D4A_M30_MUT(sp5)
+D4A_M30_MUT(noac0) D4A_M30_MUT(ac0w) D4A_M30_MUT(z7) D4A_M30_MUT(z9) D4A_M30_MUT(zval) D4A_M30_MUT(zlate)
+D4A_M30_MUT(nomark) D4A_M30_MUT(markearly) D4A_M30_MUT(s1b25) D4A_M30_MUT(s1b23) D4A_M30_MUT(s1afe)
+D4A_M30_MUT(s1afeb) D4A_M30_MUT(nos1afe) D4A_M30_MUT(s2and) D4A_M30_MUT(s2desc) D4A_M30_MUT(s2y) D4A_M30_MUT(noacc)
+D4A_M30_MUT(s2ae8) D4A_M30_MUT(s2ae8set) D4A_M30_MUT(noae8) D4A_M30_MUT(s2voice) D4A_M30_MUT(s2novoice)
+D4A_M30_MUT(s2vearly) D4A_M30_MUT(ae8late) D4A_M30_MUT(s2b25) D4A_M30_MUT(s2afe) D4A_M30_MUT(s2afeb)
+D4A_M30_MUT(s2b23) D4A_M30_MUT(holdrow) D4A_M30_MUT(holdcol) D4A_M30_MUT(holdstr) D4A_M30_MUT(holdmode)
+D4A_M30_MUT(nohold) D4A_M30_MUT(dead0) D4A_M30_MUT(dead1) D4A_M30_MUT(deadswap) D4A_M30_MUT(noz0) D4A_M30_MUT(noz1)
+D4A_M30_MUT(z0late) D4A_M30_MUT(notimer) D4A_M30_MUT(timerearly) D4A_M30_MUT(nofc) D4A_M30_MUT(nofe)
+D4A_M30_MUT(fcw) D4A_M30_MUT(abc3) D4A_M30_MUT(abcbit) D4A_M30_MUT(abcb) D4A_M30_MUT(noabc) D4A_M30_MUT(snapa)
+D4A_M30_MUT(b21inv) D4A_M30_MUT(b21always) D4A_M30_MUT(noaf0) D4A_M30_MUT(noaf1) D4A_M30_MUT(af1w) D4A_M30_MUT(m31)
+D4A_M30_MUT(m31b) D4A_M30_MUT(nom31) D4A_M30_MUT(nodec) D4A_M30_MUT(decb) D4A_M30_MUT(s4old) D4A_M30_MUT(s4ge)
+D4A_M30_MUT(s4uns) D4A_M30_MUT(s4src) D4A_M30_MUT(nocopy) D4A_M30_MUT(preb14a)
+/* 0x1CB18: EAX = the slot. Mask 0: the one caller 0x1CF26 rewrites EAX in its loop (`mov eax,edx` 0x1CF23)
+ * and leaves through 0x1C930 (`mov eax,[0x1028cc]`) or its `ret` into 0x256BB `mov eax,[0x10150c]` or
+ * 0x2EB0A `jmp 0x2eaf9` (`xor eax,eax`). The AIL handle the raw pushes for each thunk (the slot's +0x00
+ * dword) has no counterpart in the port, whose handles are host objects: not compared. */
+static void b_d4a_1cb18(const u32 *r, u32 *eax) { sound_sample_start(r[R_EAX]); *eax = 0u; }
+enum { D4A_SS_NONE, D4A_SS_stride, D4A_SS_slot1, D4A_SS_hoff, D4A_SS_nogate, D4A_SS_size1, D4A_SS_sizeb, D4A_SS_src,
+       D4A_SS_dst, D4A_SS_nocopy, D4A_SS_copylate, D4A_SS_noinit, D4A_SS_noaddr, D4A_SS_addrbuf, D4A_SS_addrlen,
+       D4A_SS_vol, D4A_SS_novol, D4A_SS_rate, D4A_SS_norate, D4A_SS_type, D4A_SS_type2, D4A_SS_notype,
+       D4A_SS_loopalways, D4A_SS_loopnever, D4A_SS_loopne, D4A_SS_loopcnt, D4A_SS_nostart, D4A_SS_startearly,
+       D4A_SS_order, D4A_SS_cur0, D4A_SS_nocur, D4A_SS_curoff, D4A_SS_noclr, D4A_SS_clrearly, D4A_SS_clrfirst };
+static void d4a_1cb18_core(u32 slot, u32 mut)
+{
+    u32 off = ((mut == D4A_SS_slot1) ? slot + 1u : slot) * ((mut == D4A_SS_stride) ? 0x14u : 0x18u);
+    u32 h = DSD(0x00102864u + off + ((mut == D4A_SS_hoff) ? 8u : 0u));
+    if (h == 0u && mut != D4A_SS_nogate) return;
+    const u8 *p = (const u8 *)res_resolve(h);
+    u32 buf = DSD(0x00102870u + off);
+    if (buf == 0u || p == NULL) return;
+    u32 size = DSD((u32)(p - mem));
+    if (mut == D4A_SS_size1 && size != 0u) size -= 1u;
+    if (mut == D4A_SS_sizeb) size &= 0xFFu;
+    u32 dst = buf + ((mut == D4A_SS_dst) ? 4u : 0u);
+    const u8 *src = p + ((mut == D4A_SS_src) ? 0 : 4);
+    if (mut != D4A_SS_nocopy && mut != D4A_SS_copylate) memcpy(mem + dst, src, size);
+    if (mut != D4A_SS_noinit) AIL_init_sample(NULL);
+    if (mut == D4A_SS_copylate) memcpy(mem + dst, src, size);
+    if (mut != D4A_SS_noaddr)
+        AIL_set_sample_address(NULL, mem + buf + ((mut == D4A_SS_addrbuf) ? 4u : 0u),
+                               size + ((mut == D4A_SS_addrlen) ? 4u : 0u));
+    if (mut == D4A_SS_order) AIL_set_sample_rate(NULL, 0x2B11u);
+    if (mut != D4A_SS_novol) AIL_set_sample_volume(NULL, (s32)DSD((mut == D4A_SS_vol) ? 0x000A2CB8u : 0x000A2CB4u));
+    if (mut != D4A_SS_norate && mut != D4A_SS_order) AIL_set_sample_rate(NULL, (mut == D4A_SS_rate) ? 0x2B10u : 0x2B11u);
+    if (mut != D4A_SS_notype) AIL_set_sample_type(NULL, (mut == D4A_SS_type) ? 1 : 0, (mut == D4A_SS_type2) ? 1u : 0u);
+    if (mut == D4A_SS_startearly) AIL_start_sample(NULL);
+    u32 lp = DSB(0x00102868u + off);
+    if ((mut == D4A_SS_loopalways) ? 1 : (mut == D4A_SS_loopnever) ? 0 : (mut == D4A_SS_loopne) ? (lp != 0u) : (lp == 1u))
+        AIL_set_sample_loop_count(NULL, (mut == D4A_SS_loopcnt) ? 1u : 0u);
+    if (mut == D4A_SS_clrearly) { DSD(0x0010286Cu + off) = DSD(0x00102864u + off); DSD(0x00102864u + off) = 0u; }
+    if (mut != D4A_SS_nostart && mut != D4A_SS_startearly) AIL_start_sample(NULL);
+    if (mut == D4A_SS_clrearly) return;
+    if (mut == D4A_SS_clrfirst) DSD(0x00102864u + off) = 0u;
+    if (mut != D4A_SS_nocur)
+        DSD(0x0010286Cu + off + ((mut == D4A_SS_curoff) ? 4u : 0u)) = (mut == D4A_SS_cur0) ? 0u : DSD(0x00102864u + off);
+    if (mut != D4A_SS_noclr) DSD(0x00102864u + off) = 0u;
+}
+#define D4A_SS_MUT(name) \
+    static void m_d4a_ss_##name(const u32 *r, u32 *eax) { d4a_1cb18_core(r[R_EAX], D4A_SS_##name); *eax = 0u; }
+D4A_SS_MUT(stride) D4A_SS_MUT(slot1) D4A_SS_MUT(hoff) D4A_SS_MUT(nogate) D4A_SS_MUT(size1) D4A_SS_MUT(sizeb)
+D4A_SS_MUT(src) D4A_SS_MUT(dst) D4A_SS_MUT(nocopy) D4A_SS_MUT(copylate) D4A_SS_MUT(noinit) D4A_SS_MUT(noaddr)
+D4A_SS_MUT(addrbuf) D4A_SS_MUT(addrlen) D4A_SS_MUT(vol) D4A_SS_MUT(novol) D4A_SS_MUT(rate) D4A_SS_MUT(norate)
+D4A_SS_MUT(type) D4A_SS_MUT(type2) D4A_SS_MUT(notype) D4A_SS_MUT(loopalways) D4A_SS_MUT(loopnever)
+D4A_SS_MUT(loopne) D4A_SS_MUT(loopcnt) D4A_SS_MUT(nostart) D4A_SS_MUT(startearly) D4A_SS_MUT(order) D4A_SS_MUT(cur0)
+D4A_SS_MUT(nocur) D4A_SS_MUT(curoff) D4A_SS_MUT(noclr) D4A_SS_MUT(clrearly) D4A_SS_MUT(clrfirst)
+/* 0x1CF20: no argument. Mask 0: its two call sites go on with `mov eax,[0x10150c]` (0x256BB) and `jmp
+ * 0x2eaf9` (`xor eax,eax`). Only the four 0x1CB18 calls are compared: what the port does after them is its
+ * host audio path (record §4). */
+static void b_d4a_1cf20(const u32 *r, u32 *eax) { (void)r; game_audio_service(); *eax = 0u; }
+enum { D4A_AS_NONE, D4A_AS_three, D4A_AS_five, D4A_AS_rev, D4A_AS_from1, D4A_AS_same, D4A_AS_none };
+static void d4a_1cf20_core(u32 mut)
+{
+    u32 n = (mut == D4A_AS_three) ? 3u : (mut == D4A_AS_five) ? 5u : (mut == D4A_AS_none) ? 0u : 4u;
+    for (u32 i = 0; i < n; i++)
+        sound_sample_start((mut == D4A_AS_rev) ? 3u - i : (mut == D4A_AS_from1) ? i + 1u : (mut == D4A_AS_same) ? 0u : i);
+}
+#define D4A_AS_MUT(name) \
+    static void m_d4a_as_##name(const u32 *r, u32 *eax) { (void)r; d4a_1cf20_core(D4A_AS_##name); *eax = 0u; }
+D4A_AS_MUT(three) D4A_AS_MUT(five) D4A_AS_MUT(rev) D4A_AS_MUT(from1) D4A_AS_MUT(same) D4A_AS_MUT(none)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39075,6 +39857,505 @@ static const binding_t k_bindings[] = {
     { "fighter_think_side@no41",             m_d3e_ts_no41, 0x00000000u },
     { "fighter_think_side@64self",           m_d3e_ts_s64self, 0x00000000u },
     { "fighter_think_side@no64",             m_d3e_ts_no64, 0x00000000u },
+    { "frontend_darken_marked", b_d4a_41578, 0x00000000u },
+    { "frontend_darken_marked@h1", m_d4a_dm_h1, 0x00000000u },
+    { "frontend_darken_marked@h2", m_d4a_dm_h2, 0x00000000u },
+    { "frontend_darken_marked@all", m_d4a_dm_all, 0x00000000u },
+    { "frontend_darken_marked@hw", m_d4a_dm_hw, 0x00000000u },
+    { "frontend_darken_marked@off", m_d4a_dm_off, 0x00000000u },
+    { "frontend_darken_marked@arg", m_d4a_dm_arg, 0x00000000u },
+    { "frontend_darken_marked@argh", m_d4a_dm_argh, 0x00000000u },
+    { "frontend_darken_marked@nodarken", m_d4a_dm_nodarken, 0x00000000u },
+    { "frontend_darken_marked@first", m_d4a_dm_first, 0x00000000u },
+    { "frontend_darken_marked@mode", m_d4a_dm_mode, 0x00000000u },
+    { "frontend_darken_marked@modesrc", m_d4a_dm_modesrc, 0x00000000u },
+    { "frontend_darken_marked@flagsext", m_d4a_dm_flagsext, 0x00000000u },
+    { "frontend_darken_marked@flagw", m_d4a_dm_flagw, 0x00000000u },
+    { "frontend_darken_marked@swap", m_d4a_dm_swap, 0x00000000u },
+    { "frontend_darken_marked@noclose", m_d4a_dm_noclose, 0x00000000u },
+    { "frontend_darken_marked@closeearly", m_d4a_dm_closeearly, 0x00000000u },
+    { "frontend_darken_marked@voice", m_d4a_dm_voice, 0x00000000u },
+    { "frontend_darken_marked@novoice", m_d4a_dm_novoice, 0x00000000u },
+    { "frontend_darken_marked@order", m_d4a_dm_order, 0x00000000u },
+    { "frontend_darken_marked@afe", m_d4a_dm_afe, 0x00000000u },
+    { "frontend_darken_marked@afeb", m_d4a_dm_afeb, 0x00000000u },
+    { "frontend_darken_marked@noafe", m_d4a_dm_noafe, 0x00000000u },
+    { "frontend_darken_marked@ee", m_d4a_dm_ee, 0x00000000u },
+    { "frontend_darken_marked@eeb", m_d4a_dm_eeb, 0x00000000u },
+    { "frontend_darken_marked@noee", m_d4a_dm_noee, 0x00000000u },
+    { "frontend_darken_marked@afa", m_d4a_dm_afa, 0x00000000u },
+    { "frontend_darken_marked@afab", m_d4a_dm_afab, 0x00000000u },
+    { "frontend_darken_marked@noafa", m_d4a_dm_noafa, 0x00000000u },
+    { "frontend_darken_marked@b00", m_d4a_dm_b00, 0x00000000u },
+    { "frontend_darken_marked@b00b", m_d4a_dm_b00b, 0x00000000u },
+    { "frontend_darken_marked@nob00", m_d4a_dm_nob00, 0x00000000u },
+    { "frontend_darken_marked@b25", m_d4a_dm_b25, 0x00000000u },
+    { "frontend_darken_marked@nob25", m_d4a_dm_nob25, 0x00000000u },
+    { "frontend_darken_marked@b25w", m_d4a_dm_b25w, 0x00000000u },
+    { "frontend_darken_marked@early", m_d4a_dm_early, 0x00000000u },
+    { "frontend_darken_marked@mid", m_d4a_dm_mid, 0x00000000u },
+    { "flow_round_end_check", b_d4a_27fa8, 0x00000000u },
+    { "flow_round_end_check@thra", m_d4a_re_thra, 0x00000000u },
+    { "flow_round_end_check@thrb", m_d4a_re_thrb, 0x00000000u },
+    { "flow_round_end_check@asext", m_d4a_re_asext, 0x00000000u },
+    { "flow_round_end_check@bsext", m_d4a_re_bsext, 0x00000000u },
+    { "flow_round_end_check@aonly", m_d4a_re_aonly, 0x00000000u },
+    { "flow_round_end_check@bonly", m_d4a_re_bonly, 0x00000000u },
+    { "flow_round_end_check@nowin", m_d4a_re_nowin, 0x00000000u },
+    { "flow_round_end_check@b00", m_d4a_re_b00, 0x00000000u },
+    { "flow_round_end_check@b00b", m_d4a_re_b00b, 0x00000000u },
+    { "flow_round_end_check@b00d", m_d4a_re_b00d, 0x00000000u },
+    { "flow_round_end_check@b1esext", m_d4a_re_b1esext, 0x00000000u },
+    { "flow_round_end_check@adcb", m_d4a_re_adcb, 0x00000000u },
+    { "flow_round_end_check@ad4", m_d4a_re_ad4, 0x00000000u },
+    { "flow_round_end_check@ad4b", m_d4a_re_ad4b, 0x00000000u },
+    { "flow_round_end_check@novoice", m_d4a_re_novoice, 0x00000000u },
+    { "flow_round_end_check@voice", m_d4a_re_voice, 0x00000000u },
+    { "flow_round_end_check@nofreeze", m_d4a_re_nofreeze, 0x00000000u },
+    { "flow_round_end_check@noover", m_d4a_re_noover, 0x00000000u },
+    { "flow_round_end_check@vorder", m_d4a_re_vorder, 0x00000000u },
+    { "flow_round_end_check@overorder", m_d4a_re_overorder, 0x00000000u },
+    { "flow_round_end_check@falla", m_d4a_re_falla, 0x00000000u },
+    { "flow_round_end_check@noend", m_d4a_re_noend, 0x00000000u },
+    { "flow_round_end_check@af8", m_d4a_re_af8, 0x00000000u },
+    { "flow_round_end_check@af8b", m_d4a_re_af8b, 0x00000000u },
+    { "flow_round_end_check@noaf8", m_d4a_re_noaf8, 0x00000000u },
+    { "flow_round_end_check@af8early", m_d4a_re_af8early, 0x00000000u },
+    { "flow_round_end_check@m9lo", m_d4a_re_m9lo, 0x00000000u },
+    { "flow_round_end_check@m9hi", m_d4a_re_m9hi, 0x00000000u },
+    { "flow_round_end_check@m9", m_d4a_re_m9, 0x00000000u },
+    { "flow_round_end_check@m8", m_d4a_re_m8, 0x00000000u },
+    { "flow_round_end_check@mb", m_d4a_re_mb, 0x00000000u },
+    { "flow_round_end_check@tim0", m_d4a_re_tim0, 0x00000000u },
+    { "flow_round_end_check@timu", m_d4a_re_timu, 0x00000000u },
+    { "flow_round_end_check@bnovoice", m_d4a_re_bnovoice, 0x00000000u },
+    { "flow_round_end_check@bvoice", m_d4a_re_bvoice, 0x00000000u },
+    { "flow_round_end_check@bnofreeze", m_d4a_re_bnofreeze, 0x00000000u },
+    { "flow_round_end_check@bvorder", m_d4a_re_bvorder, 0x00000000u },
+    { "flow_round_end_check@bb1e", m_d4a_re_bb1e, 0x00000000u },
+    { "flow_round_end_check@bb00", m_d4a_re_bb00, 0x00000000u },
+    { "flow_round_end_check@bnoabs", m_d4a_re_bnoabs, 0x00000000u },
+    { "flow_round_end_check@bsigned", m_d4a_re_bsigned, 0x00000000u },
+    { "flow_round_end_check@bdiff4", m_d4a_re_bdiff4, 0x00000000u },
+    { "flow_round_end_check@bdiff2", m_d4a_re_bdiff2, 0x00000000u },
+    { "flow_round_end_check@baf", m_d4a_re_baf, 0x00000000u },
+    { "flow_round_end_check@bafoff", m_d4a_re_bafoff, 0x00000000u },
+    { "flow_round_end_check@bfall", m_d4a_re_bfall, 0x00000000u },
+    { "flow_round_end_check@bnowin", m_d4a_re_bnowin, 0x00000000u },
+    { "flow_round_end_check@bad4", m_d4a_re_bad4, 0x00000000u },
+    { "flow_round_end_check@bfall2", m_d4a_re_bfall2, 0x00000000u },
+    { "flow_round_end_check@bnowin2", m_d4a_re_bnowin2, 0x00000000u },
+    { "flow_round_end_check@bnoend", m_d4a_re_bnoend, 0x00000000u },
+    { "flow_round_end_check@b16", m_d4a_re_b16, 0x00000000u },
+    { "flow_round_end_check@b16none", m_d4a_re_b16none, 0x00000000u },
+    { "flow_round_end_check@noor", m_d4a_re_noor, 0x00000000u },
+    { "flow_round_end_check@orset", m_d4a_re_orset, 0x00000000u },
+    { "flow_round_end_check@orbit", m_d4a_re_orbit, 0x00000000u },
+    { "flow_round_end_check@oroff", m_d4a_re_oroff, 0x00000000u },
+    { "flow_round_end_check@orside", m_d4a_re_orside, 0x00000000u },
+    { "flow_round_end_check@orsext", m_d4a_re_orsext, 0x00000000u },
+    { "flow_round_end_check@orearly", m_d4a_re_orearly, 0x00000000u },
+    { "flow_round_end_check@fc", m_d4a_re_fc, 0x00000000u },
+    { "flow_round_end_check@nofc", m_d4a_re_nofc, 0x00000000u },
+    { "flow_round_end_check@fcw", m_d4a_re_fcw, 0x00000000u },
+    { "flow_round_end_check@fe", m_d4a_re_fe, 0x00000000u },
+    { "flow_round_end_check@nofe", m_d4a_re_nofe, 0x00000000u },
+    { "flow_round_end_check@few", m_d4a_re_few, 0x00000000u },
+    { "flow_round_end_check@afe1", m_d4a_re_afe1, 0x00000000u },
+    { "flow_round_end_check@noafe1", m_d4a_re_noafe1, 0x00000000u },
+    { "flow_round_end_check@afew", m_d4a_re_afew, 0x00000000u },
+    { "flow_round_end_check@m7", m_d4a_re_m7, 0x00000000u },
+    { "flow_round_end_check@m7b", m_d4a_re_m7b, 0x00000000u },
+    { "flow_round_end_check@nom7", m_d4a_re_nom7, 0x00000000u },
+    { "flow_round_end_check@early", m_d4a_re_early, 0x00000000u },
+    { "flow_round_end_check_reread", b_d4a_27fa8, 0x00000000u },
+    { "flow_round_end_check_reread@pre", m_d4a_re_pre, 0x00000000u },
+    { "flow_round_end_check_reread@preb1e", m_d4a_re_preb1e, 0x00000000u },
+    { "flow_round_end_check_reread@pread4a", m_d4a_re_pread4a, 0x00000000u },
+    { "flow_round_end_check_reread@pread4e", m_d4a_re_pread4e, 0x00000000u },
+    { "flow_round_end_check_reread@pread4b", m_d4a_re_pread4b, 0x00000000u },
+    { "flow_round_end_check_reread@preb16", m_d4a_re_preb16, 0x00000000u },
+    { "flow_round_end_check_reread@nowin", m_d4a_re_nowin, 0x00000000u },
+    { "flow_round_end_check_reread@nofreeze", m_d4a_re_nofreeze, 0x00000000u },
+    { "flow_round_end_check_reread@noend", m_d4a_re_noend, 0x00000000u },
+    { "flow_continue_take", b_d4a_2791c, 0x00000000u },
+    { "flow_continue_take@id", m_d4a_ct_id, 0x00000000u },
+    { "flow_continue_take@len1", m_d4a_ct_len1, 0x00000000u },
+    { "flow_continue_take@lenfix", m_d4a_ct_lenfix, 0x00000000u },
+    { "flow_continue_take@row1", m_d4a_ct_row1, 0x00000000u },
+    { "flow_continue_take@col1", m_d4a_ct_col1, 0x00000000u },
+    { "flow_continue_take@noclr1", m_d4a_ct_noclr1, 0x00000000u },
+    { "flow_continue_take@prow", m_d4a_ct_prow, 0x00000000u },
+    { "flow_continue_take@pcol", m_d4a_ct_pcol, 0x00000000u },
+    { "flow_continue_take@psidezext", m_d4a_ct_psidezext, 0x00000000u },
+    { "flow_continue_take@pside0", m_d4a_ct_pside0, 0x00000000u },
+    { "flow_continue_take@noprompt", m_d4a_ct_noprompt, 0x00000000u },
+    { "flow_continue_take@porder", m_d4a_ct_porder, 0x00000000u },
+    { "flow_continue_take@r2row", m_d4a_ct_r2row, 0x00000000u },
+    { "flow_continue_take@r2n", m_d4a_ct_r2n, 0x00000000u },
+    { "flow_continue_take@nor2", m_d4a_ct_nor2, 0x00000000u },
+    { "flow_continue_take@r3row", m_d4a_ct_r3row, 0x00000000u },
+    { "flow_continue_take@r3n", m_d4a_ct_r3n, 0x00000000u },
+    { "flow_continue_take@nor3", m_d4a_ct_nor3, 0x00000000u },
+    { "flow_continue_take@rorder", m_d4a_ct_rorder, 0x00000000u },
+    { "flow_continue_take@snapone", m_d4a_ct_snapone, 0x00000000u },
+    { "flow_continue_take@snaprev", m_d4a_ct_snaprev, 0x00000000u },
+    { "flow_continue_take@snapsrc", m_d4a_ct_snapsrc, 0x00000000u },
+    { "flow_continue_take@snapdst", m_d4a_ct_snapdst, 0x00000000u },
+    { "flow_continue_take@snapswap", m_d4a_ct_snapswap, 0x00000000u },
+    { "flow_continue_take@snapside", m_d4a_ct_snapside, 0x00000000u },
+    { "flow_continue_take@nosnap", m_d4a_ct_nosnap, 0x00000000u },
+    { "flow_continue_take@hudzext", m_d4a_ct_hudzext, 0x00000000u },
+    { "flow_continue_take@hudother", m_d4a_ct_hudother, 0x00000000u },
+    { "flow_continue_take@nohud", m_d4a_ct_nohud, 0x00000000u },
+    { "flow_continue_take@hudearly", m_d4a_ct_hudearly, 0x00000000u },
+    { "flow_continue_take@b5bzext", m_d4a_ct_b5bzext, 0x00000000u },
+    { "flow_continue_take@b5boff", m_d4a_ct_b5boff, 0x00000000u },
+    { "flow_continue_take@b5bsrc", m_d4a_ct_b5bsrc, 0x00000000u },
+    { "flow_continue_take@nob5b", m_d4a_ct_nob5b, 0x00000000u },
+    { "flow_continue_take@b5bearly", m_d4a_ct_b5bearly, 0x00000000u },
+    { "flow_continue_take@accsext", m_d4a_ct_accsext, 0x00000000u },
+    { "flow_continue_take@accd", m_d4a_ct_accd, 0x00000000u },
+    { "flow_continue_take@accpos", m_d4a_ct_accpos, 0x00000000u },
+    { "flow_continue_take@noacc", m_d4a_ct_noacc, 0x00000000u },
+    { "flow_continue_take@accearly", m_d4a_ct_accearly, 0x00000000u },
+    { "flow_continue_take@f41zext", m_d4a_ct_f41zext, 0x00000000u },
+    { "flow_continue_take@f41mask", m_d4a_ct_f41mask, 0x00000000u },
+    { "flow_continue_take@f41bit", m_d4a_ct_f41bit, 0x00000000u },
+    { "flow_continue_take@nof41", m_d4a_ct_nof41, 0x00000000u },
+    { "flow_continue_take@f41off", m_d4a_ct_f41off, 0x00000000u },
+    { "flow_continue_take@f41early", m_d4a_ct_f41early, 0x00000000u },
+    { "flow_continue_take@f41clr", m_d4a_ct_f41clr, 0x00000000u },
+    { "flow_continue_take@b00", m_d4a_ct_b00, 0x00000000u },
+    { "flow_continue_take@b00b", m_d4a_ct_b00b, 0x00000000u },
+    { "flow_continue_take@nob00", m_d4a_ct_nob00, 0x00000000u },
+    { "flow_continue_take@b00early", m_d4a_ct_b00early, 0x00000000u },
+    { "flow_continue_take_reread", b_d4a_2791c, 0x00000000u },
+    { "flow_continue_take_reread@prehud", m_d4a_ct_prehud, 0x00000000u },
+    { "flow_continue_take_reread@pre5b", m_d4a_ct_pre5b, 0x00000000u },
+    { "flow_continue_take_reread@preb0b", m_d4a_ct_preb0b, 0x00000000u },
+    { "flow_continue_take_reread@preb12", m_d4a_ct_preb12, 0x00000000u },
+    { "flow_continue_take_reread@pre41", m_d4a_ct_pre41, 0x00000000u },
+    { "flow_continue_take_reread@nohud", m_d4a_ct_nohud, 0x00000000u },
+    { "flow_continue_take_reread@noacc", m_d4a_ct_noacc, 0x00000000u },
+    { "flow_continue_take_reread@nosnap", m_d4a_ct_nosnap, 0x00000000u },
+    { "flow_player_join", b_d4a_28da4, 0x00000000u },
+    { "flow_player_join@f48", m_d4a_pj_f48, 0x00000000u },
+    { "flow_player_join@nof48", m_d4a_pj_nof48, 0x00000000u },
+    { "flow_player_join@f48w", m_d4a_pj_f48w, 0x00000000u },
+    { "flow_player_join@noaec", m_d4a_pj_noaec, 0x00000000u },
+    { "flow_player_join@aecb", m_d4a_pj_aecb, 0x00000000u },
+    { "flow_player_join@noae8", m_d4a_pj_noae8, 0x00000000u },
+    { "flow_player_join@ae8b", m_d4a_pj_ae8b, 0x00000000u },
+    { "flow_player_join@late3", m_d4a_pj_late3, 0x00000000u },
+    { "flow_player_join@voice", m_d4a_pj_voice, 0x00000000u },
+    { "flow_player_join@novoice", m_d4a_pj_novoice, 0x00000000u },
+    { "flow_player_join@abc", m_d4a_pj_abc, 0x00000000u },
+    { "flow_player_join@abc3", m_d4a_pj_abc3, 0x00000000u },
+    { "flow_player_join@abcbit", m_d4a_pj_abcbit, 0x00000000u },
+    { "flow_player_join@abcb", m_d4a_pj_abcb, 0x00000000u },
+    { "flow_player_join@abclate", m_d4a_pj_abclate, 0x00000000u },
+    { "flow_player_join@noabc", m_d4a_pj_noabc, 0x00000000u },
+    { "flow_player_join@strid", m_d4a_pj_strid, 0x00000000u },
+    { "flow_player_join@col", m_d4a_pj_col, 0x00000000u },
+    { "flow_player_join@row", m_d4a_pj_row, 0x00000000u },
+    { "flow_player_join@mode", m_d4a_pj_mode, 0x00000000u },
+    { "flow_player_join@nohold", m_d4a_pj_nohold, 0x00000000u },
+    { "flow_player_join@norestore", m_d4a_pj_norestore, 0x00000000u },
+    { "flow_player_join@restoreorder", m_d4a_pj_restoreorder, 0x00000000u },
+    { "flow_player_join@resetother", m_d4a_pj_resetother, 0x00000000u },
+    { "flow_player_join@noreset", m_d4a_pj_noreset, 0x00000000u },
+    { "flow_player_join@c5bself", m_d4a_pj_c5bself, 0x00000000u },
+    { "flow_player_join@c5bearly", m_d4a_pj_c5bearly, 0x00000000u },
+    { "flow_player_join@noc5b", m_d4a_pj_noc5b, 0x00000000u },
+    { "flow_player_join@c5boff", m_d4a_pj_c5boff, 0x00000000u },
+    { "flow_player_join@c5bw", m_d4a_pj_c5bw, 0x00000000u },
+    { "flow_player_join@c5bval", m_d4a_pj_c5bval, 0x00000000u },
+    { "flow_player_join@c5blow", m_d4a_pj_c5blow, 0x00000000u },
+    { "flow_player_join@snapidx", m_d4a_pj_snapidx, 0x00000000u },
+    { "flow_player_join@snaparm", m_d4a_pj_snaparm, 0x00000000u },
+    { "flow_player_join@nosnap", m_d4a_pj_nosnap, 0x00000000u },
+    { "flow_player_join@snaporder", m_d4a_pj_snaporder, 0x00000000u },
+    { "flow_player_join@b24", m_d4a_pj_b24, 0x00000000u },
+    { "flow_player_join@nob24", m_d4a_pj_nob24, 0x00000000u },
+    { "flow_player_join@hook", m_d4a_pj_hook, 0x00000000u },
+    { "flow_player_join@nohook", m_d4a_pj_nohook, 0x00000000u },
+    { "flow_player_join@hookw", m_d4a_pj_hookw, 0x00000000u },
+    { "flow_player_join@b00", m_d4a_pj_b00, 0x00000000u },
+    { "flow_player_join@b00b", m_d4a_pj_b00b, 0x00000000u },
+    { "flow_player_join@nob00", m_d4a_pj_nob00, 0x00000000u },
+    { "flow_player_join@b17", m_d4a_pj_b17, 0x00000000u },
+    { "flow_player_join@nob17", m_d4a_pj_nob17, 0x00000000u },
+    { "flow_player_join@b15", m_d4a_pj_b15, 0x00000000u },
+    { "flow_player_join@nob15", m_d4a_pj_nob15, 0x00000000u },
+    { "flow_player_join@afe", m_d4a_pj_afe, 0x00000000u },
+    { "flow_player_join@afeb", m_d4a_pj_afeb, 0x00000000u },
+    { "flow_player_join@noafe", m_d4a_pj_noafe, 0x00000000u },
+    { "flow_player_join@ee", m_d4a_pj_ee, 0x00000000u },
+    { "flow_player_join@eeb", m_d4a_pj_eeb, 0x00000000u },
+    { "flow_player_join@noee", m_d4a_pj_noee, 0x00000000u },
+    { "flow_player_join@tailearly", m_d4a_pj_tailearly, 0x00000000u },
+    { "game_mode_05_step", b_d4a_25c88, 0x00000000u },
+    { "game_mode_05_step@nopass", m_d4a_m5_nopass, 0x00000000u },
+    { "game_mode_05_step@passlate", m_d4a_m5_passlate, 0x00000000u },
+    { "game_mode_05_step@noaec", m_d4a_m5_noaec, 0x00000000u },
+    { "game_mode_05_step@aecset", m_d4a_m5_aecset, 0x00000000u },
+    { "game_mode_05_step@aecbit", m_d4a_m5_aecbit, 0x00000000u },
+    { "game_mode_05_step@st0", m_d4a_m5_st0, 0x00000000u },
+    { "game_mode_05_step@st5", m_d4a_m5_st5, 0x00000000u },
+    { "game_mode_05_step@b1b", m_d4a_m5_b1b, 0x00000000u },
+    { "game_mode_05_step@nob1b", m_d4a_m5_nob1b, 0x00000000u },
+    { "game_mode_05_step@b15", m_d4a_m5_b15, 0x00000000u },
+    { "game_mode_05_step@nob15", m_d4a_m5_nob15, 0x00000000u },
+    { "game_mode_05_step@nohud", m_d4a_m5_nohud, 0x00000000u },
+    { "game_mode_05_step@hudlate", m_d4a_m5_hudlate, 0x00000000u },
+    { "game_mode_05_step@s1early", m_d4a_m5_s1early, 0x00000000u },
+    { "game_mode_05_step@b14inv", m_d4a_m5_b14inv, 0x00000000u },
+    { "game_mode_05_step@bitmask", m_d4a_m5_bitmask, 0x00000000u },
+    { "game_mode_05_step@descswap", m_d4a_m5_descswap, 0x00000000u },
+    { "game_mode_05_step@i2", m_d4a_m5_i2, 0x00000000u },
+    { "game_mode_05_step@i01", m_d4a_m5_i01, 0x00000000u },
+    { "game_mode_05_step@b1esext", m_d4a_m5_b1esext, 0x00000000u },
+    { "game_mode_05_step@adcb", m_d4a_m5_adcb, 0x00000000u },
+    { "game_mode_05_step@eqlast", m_d4a_m5_eqlast, 0x00000000u },
+    { "game_mode_05_step@tblswap", m_d4a_m5_tblswap, 0x00000000u },
+    { "game_mode_05_step@stride", m_d4a_m5_stride, 0x00000000u },
+    { "game_mode_05_step@spx", m_d4a_m5_spx, 0x00000000u },
+    { "game_mode_05_step@spa3", m_d4a_m5_spa3, 0x00000000u },
+    { "game_mode_05_step@spy", m_d4a_m5_spy, 0x00000000u },
+    { "game_mode_05_step@sp5", m_d4a_m5_sp5, 0x00000000u },
+    { "game_mode_05_step@noac0", m_d4a_m5_noac0, 0x00000000u },
+    { "game_mode_05_step@ac0w", m_d4a_m5_ac0w, 0x00000000u },
+    { "game_mode_05_step@z7", m_d4a_m5_z7, 0x00000000u },
+    { "game_mode_05_step@z9", m_d4a_m5_z9, 0x00000000u },
+    { "game_mode_05_step@zval", m_d4a_m5_zval, 0x00000000u },
+    { "game_mode_05_step@zlate", m_d4a_m5_zlate, 0x00000000u },
+    { "game_mode_05_step@nomark", m_d4a_m5_nomark, 0x00000000u },
+    { "game_mode_05_step@markearly", m_d4a_m5_markearly, 0x00000000u },
+    { "game_mode_05_step@s1b25", m_d4a_m5_s1b25, 0x00000000u },
+    { "game_mode_05_step@s1b23", m_d4a_m5_s1b23, 0x00000000u },
+    { "game_mode_05_step@s1afe", m_d4a_m5_s1afe, 0x00000000u },
+    { "game_mode_05_step@s1afeb", m_d4a_m5_s1afeb, 0x00000000u },
+    { "game_mode_05_step@nos1afe", m_d4a_m5_nos1afe, 0x00000000u },
+    { "game_mode_05_step@s2and", m_d4a_m5_s2and, 0x00000000u },
+    { "game_mode_05_step@s2desc", m_d4a_m5_s2desc, 0x00000000u },
+    { "game_mode_05_step@s2y", m_d4a_m5_s2y, 0x00000000u },
+    { "game_mode_05_step@noacc", m_d4a_m5_noacc, 0x00000000u },
+    { "game_mode_05_step@s2ae8", m_d4a_m5_s2ae8, 0x00000000u },
+    { "game_mode_05_step@s2ae8set", m_d4a_m5_s2ae8set, 0x00000000u },
+    { "game_mode_05_step@noae8", m_d4a_m5_noae8, 0x00000000u },
+    { "game_mode_05_step@s2voice", m_d4a_m5_s2voice, 0x00000000u },
+    { "game_mode_05_step@s2vswap", m_d4a_m5_s2vswap, 0x00000000u },
+    { "game_mode_05_step@s2novoice", m_d4a_m5_s2novoice, 0x00000000u },
+    { "game_mode_05_step@s2vearly", m_d4a_m5_s2vearly, 0x00000000u },
+    { "game_mode_05_step@ae8late", m_d4a_m5_ae8late, 0x00000000u },
+    { "game_mode_05_step@s2b25", m_d4a_m5_s2b25, 0x00000000u },
+    { "game_mode_05_step@s2afe", m_d4a_m5_s2afe, 0x00000000u },
+    { "game_mode_05_step@s2afeb", m_d4a_m5_s2afeb, 0x00000000u },
+    { "game_mode_05_step@s2b23", m_d4a_m5_s2b23, 0x00000000u },
+    { "game_mode_05_step@holdrow", m_d4a_m5_holdrow, 0x00000000u },
+    { "game_mode_05_step@holdcol", m_d4a_m5_holdcol, 0x00000000u },
+    { "game_mode_05_step@holdstr", m_d4a_m5_holdstr, 0x00000000u },
+    { "game_mode_05_step@holdmode", m_d4a_m5_holdmode, 0x00000000u },
+    { "game_mode_05_step@nohold", m_d4a_m5_nohold, 0x00000000u },
+    { "game_mode_05_step@dead0", m_d4a_m5_dead0, 0x00000000u },
+    { "game_mode_05_step@dead1", m_d4a_m5_dead1, 0x00000000u },
+    { "game_mode_05_step@deadswap", m_d4a_m5_deadswap, 0x00000000u },
+    { "game_mode_05_step@noz0", m_d4a_m5_noz0, 0x00000000u },
+    { "game_mode_05_step@noz1", m_d4a_m5_noz1, 0x00000000u },
+    { "game_mode_05_step@z0late", m_d4a_m5_z0late, 0x00000000u },
+    { "game_mode_05_step@notimer", m_d4a_m5_notimer, 0x00000000u },
+    { "game_mode_05_step@timerearly", m_d4a_m5_timerearly, 0x00000000u },
+    { "game_mode_05_step@nofc", m_d4a_m5_nofc, 0x00000000u },
+    { "game_mode_05_step@nofe", m_d4a_m5_nofe, 0x00000000u },
+    { "game_mode_05_step@fcw", m_d4a_m5_fcw, 0x00000000u },
+    { "game_mode_05_step@abc3", m_d4a_m5_abc3, 0x00000000u },
+    { "game_mode_05_step@abcbit", m_d4a_m5_abcbit, 0x00000000u },
+    { "game_mode_05_step@abcb", m_d4a_m5_abcb, 0x00000000u },
+    { "game_mode_05_step@noabc", m_d4a_m5_noabc, 0x00000000u },
+    { "game_mode_05_step@abclate", m_d4a_m5_abclate, 0x00000000u },
+    { "game_mode_05_step@snapa1e", m_d4a_m5_snapa1e, 0x00000000u },
+    { "game_mode_05_step@snapaalways", m_d4a_m5_snapaalways, 0x00000000u },
+    { "game_mode_05_step@snapaarm", m_d4a_m5_snapaarm, 0x00000000u },
+    { "game_mode_05_step@snapb14", m_d4a_m5_snapb14, 0x00000000u },
+    { "game_mode_05_step@snapbarm", m_d4a_m5_snapbarm, 0x00000000u },
+    { "game_mode_05_step@snapswap", m_d4a_m5_snapswap, 0x00000000u },
+    { "game_mode_05_step@m6", m_d4a_m5_m6, 0x00000000u },
+    { "game_mode_05_step@m6b", m_d4a_m5_m6b, 0x00000000u },
+    { "game_mode_05_step@mc", m_d4a_m5_mc, 0x00000000u },
+    { "game_mode_05_step@mclate", m_d4a_m5_mclate, 0x00000000u },
+    { "game_mode_05_step@nofn", m_d4a_m5_nofn, 0x00000000u },
+    { "game_mode_05_step@fns", m_d4a_m5_fns, 0x00000000u },
+    { "game_mode_05_step@chside", m_d4a_m5_chside, 0x00000000u },
+    { "game_mode_05_step@choff", m_d4a_m5_choff, 0x00000000u },
+    { "game_mode_05_step@ssext", m_d4a_m5_ssext, 0x00000000u },
+    { "game_mode_05_step@badgeswap", m_d4a_m5_badgeswap, 0x00000000u },
+    { "game_mode_05_step@badgey", m_d4a_m5_badgey, 0x00000000u },
+    { "game_mode_05_step@badgeysext", m_d4a_m5_badgeysext, 0x00000000u },
+    { "game_mode_05_step@nobadge", m_d4a_m5_nobadge, 0x00000000u },
+    { "game_mode_05_step@badgeearly", m_d4a_m5_badgeearly, 0x00000000u },
+    { "game_mode_05_step@fafe", m_d4a_m5_fafe, 0x00000000u },
+    { "game_mode_05_step@nofafe", m_d4a_m5_nofafe, 0x00000000u },
+    { "game_mode_05_step@faff", m_d4a_m5_faff, 0x00000000u },
+    { "game_mode_05_step@nofaff", m_d4a_m5_nofaff, 0x00000000u },
+    { "game_mode_05_step@faffsrc", m_d4a_m5_faffsrc, 0x00000000u },
+    { "game_mode_05_step@tailearly", m_d4a_m5_tailearly, 0x00000000u },
+    { "game_mode_05_step@nodec", m_d4a_m5_nodec, 0x00000000u },
+    { "game_mode_05_step@decb", m_d4a_m5_decb, 0x00000000u },
+    { "game_mode_05_step@s4old", m_d4a_m5_s4old, 0x00000000u },
+    { "game_mode_05_step@s4ge", m_d4a_m5_s4ge, 0x00000000u },
+    { "game_mode_05_step@s4uns", m_d4a_m5_s4uns, 0x00000000u },
+    { "game_mode_05_step@s4src", m_d4a_m5_s4src, 0x00000000u },
+    { "game_mode_05_step@nocopy", m_d4a_m5_nocopy, 0x00000000u },
+    { "game_mode_05_step_reread", b_d4a_25c88, 0x00000000u },
+    { "game_mode_05_step_reread@preb14a", m_d4a_m5_preb14a, 0x00000000u },
+    { "game_mode_05_step_reread@preb14v", m_d4a_m5_preb14v, 0x00000000u },
+    { "game_mode_05_step_reread@preabc", m_d4a_m5_preabc, 0x00000000u },
+    { "game_mode_05_step_reread@preb14m", m_d4a_m5_preb14m, 0x00000000u },
+    { "game_mode_05_step_reread@pres", m_d4a_m5_pres, 0x00000000u },
+    { "game_mode_05_step_reread@pre10d", m_d4a_m5_pre10d, 0x00000000u },
+    { "game_mode_05_step_reread@nohud", m_d4a_m5_nohud, 0x00000000u },
+    { "game_mode_05_step_reread@nofn", m_d4a_m5_nofn, 0x00000000u },
+    { "game_mode_05_step_reread@nobadge", m_d4a_m5_nobadge, 0x00000000u },
+    { "game_mode_30_step", b_d4a_29328, 0x00000000u },
+    { "game_mode_30_step@nopass", m_d4a_m30_nopass, 0x00000000u },
+    { "game_mode_30_step@passlate", m_d4a_m30_passlate, 0x00000000u },
+    { "game_mode_30_step@noaec", m_d4a_m30_noaec, 0x00000000u },
+    { "game_mode_30_step@aecset", m_d4a_m30_aecset, 0x00000000u },
+    { "game_mode_30_step@aecbit", m_d4a_m30_aecbit, 0x00000000u },
+    { "game_mode_30_step@st0", m_d4a_m30_st0, 0x00000000u },
+    { "game_mode_30_step@st5", m_d4a_m30_st5, 0x00000000u },
+    { "game_mode_30_step@b1b", m_d4a_m30_b1b, 0x00000000u },
+    { "game_mode_30_step@nob1b", m_d4a_m30_nob1b, 0x00000000u },
+    { "game_mode_30_step@b15", m_d4a_m30_b15, 0x00000000u },
+    { "game_mode_30_step@nob15", m_d4a_m30_nob15, 0x00000000u },
+    { "game_mode_30_step@nohud", m_d4a_m30_nohud, 0x00000000u },
+    { "game_mode_30_step@hudlate", m_d4a_m30_hudlate, 0x00000000u },
+    { "game_mode_30_step@s1early", m_d4a_m30_s1early, 0x00000000u },
+    { "game_mode_30_step@b14inv", m_d4a_m30_b14inv, 0x00000000u },
+    { "game_mode_30_step@bitmask", m_d4a_m30_bitmask, 0x00000000u },
+    { "game_mode_30_step@descswap", m_d4a_m30_descswap, 0x00000000u },
+    { "game_mode_30_step@i2", m_d4a_m30_i2, 0x00000000u },
+    { "game_mode_30_step@i01", m_d4a_m30_i01, 0x00000000u },
+    { "game_mode_30_step@b1esext", m_d4a_m30_b1esext, 0x00000000u },
+    { "game_mode_30_step@adcb", m_d4a_m30_adcb, 0x00000000u },
+    { "game_mode_30_step@eqlast", m_d4a_m30_eqlast, 0x00000000u },
+    { "game_mode_30_step@tblswap", m_d4a_m30_tblswap, 0x00000000u },
+    { "game_mode_30_step@stride", m_d4a_m30_stride, 0x00000000u },
+    { "game_mode_30_step@spx", m_d4a_m30_spx, 0x00000000u },
+    { "game_mode_30_step@spa3", m_d4a_m30_spa3, 0x00000000u },
+    { "game_mode_30_step@spy", m_d4a_m30_spy, 0x00000000u },
+    { "game_mode_30_step@sp5", m_d4a_m30_sp5, 0x00000000u },
+    { "game_mode_30_step@noac0", m_d4a_m30_noac0, 0x00000000u },
+    { "game_mode_30_step@ac0w", m_d4a_m30_ac0w, 0x00000000u },
+    { "game_mode_30_step@z7", m_d4a_m30_z7, 0x00000000u },
+    { "game_mode_30_step@z9", m_d4a_m30_z9, 0x00000000u },
+    { "game_mode_30_step@zval", m_d4a_m30_zval, 0x00000000u },
+    { "game_mode_30_step@zlate", m_d4a_m30_zlate, 0x00000000u },
+    { "game_mode_30_step@nomark", m_d4a_m30_nomark, 0x00000000u },
+    { "game_mode_30_step@markearly", m_d4a_m30_markearly, 0x00000000u },
+    { "game_mode_30_step@s1b25", m_d4a_m30_s1b25, 0x00000000u },
+    { "game_mode_30_step@s1b23", m_d4a_m30_s1b23, 0x00000000u },
+    { "game_mode_30_step@s1afe", m_d4a_m30_s1afe, 0x00000000u },
+    { "game_mode_30_step@s1afeb", m_d4a_m30_s1afeb, 0x00000000u },
+    { "game_mode_30_step@nos1afe", m_d4a_m30_nos1afe, 0x00000000u },
+    { "game_mode_30_step@s2and", m_d4a_m30_s2and, 0x00000000u },
+    { "game_mode_30_step@s2desc", m_d4a_m30_s2desc, 0x00000000u },
+    { "game_mode_30_step@s2y", m_d4a_m30_s2y, 0x00000000u },
+    { "game_mode_30_step@noacc", m_d4a_m30_noacc, 0x00000000u },
+    { "game_mode_30_step@s2ae8", m_d4a_m30_s2ae8, 0x00000000u },
+    { "game_mode_30_step@s2ae8set", m_d4a_m30_s2ae8set, 0x00000000u },
+    { "game_mode_30_step@noae8", m_d4a_m30_noae8, 0x00000000u },
+    { "game_mode_30_step@s2voice", m_d4a_m30_s2voice, 0x00000000u },
+    { "game_mode_30_step@s2novoice", m_d4a_m30_s2novoice, 0x00000000u },
+    { "game_mode_30_step@s2vearly", m_d4a_m30_s2vearly, 0x00000000u },
+    { "game_mode_30_step@ae8late", m_d4a_m30_ae8late, 0x00000000u },
+    { "game_mode_30_step@s2b25", m_d4a_m30_s2b25, 0x00000000u },
+    { "game_mode_30_step@s2afe", m_d4a_m30_s2afe, 0x00000000u },
+    { "game_mode_30_step@s2afeb", m_d4a_m30_s2afeb, 0x00000000u },
+    { "game_mode_30_step@s2b23", m_d4a_m30_s2b23, 0x00000000u },
+    { "game_mode_30_step@holdrow", m_d4a_m30_holdrow, 0x00000000u },
+    { "game_mode_30_step@holdcol", m_d4a_m30_holdcol, 0x00000000u },
+    { "game_mode_30_step@holdstr", m_d4a_m30_holdstr, 0x00000000u },
+    { "game_mode_30_step@holdmode", m_d4a_m30_holdmode, 0x00000000u },
+    { "game_mode_30_step@nohold", m_d4a_m30_nohold, 0x00000000u },
+    { "game_mode_30_step@dead0", m_d4a_m30_dead0, 0x00000000u },
+    { "game_mode_30_step@dead1", m_d4a_m30_dead1, 0x00000000u },
+    { "game_mode_30_step@deadswap", m_d4a_m30_deadswap, 0x00000000u },
+    { "game_mode_30_step@noz0", m_d4a_m30_noz0, 0x00000000u },
+    { "game_mode_30_step@noz1", m_d4a_m30_noz1, 0x00000000u },
+    { "game_mode_30_step@z0late", m_d4a_m30_z0late, 0x00000000u },
+    { "game_mode_30_step@notimer", m_d4a_m30_notimer, 0x00000000u },
+    { "game_mode_30_step@timerearly", m_d4a_m30_timerearly, 0x00000000u },
+    { "game_mode_30_step@nofc", m_d4a_m30_nofc, 0x00000000u },
+    { "game_mode_30_step@nofe", m_d4a_m30_nofe, 0x00000000u },
+    { "game_mode_30_step@fcw", m_d4a_m30_fcw, 0x00000000u },
+    { "game_mode_30_step@abc3", m_d4a_m30_abc3, 0x00000000u },
+    { "game_mode_30_step@abcbit", m_d4a_m30_abcbit, 0x00000000u },
+    { "game_mode_30_step@abcb", m_d4a_m30_abcb, 0x00000000u },
+    { "game_mode_30_step@noabc", m_d4a_m30_noabc, 0x00000000u },
+    { "game_mode_30_step@snapa", m_d4a_m30_snapa, 0x00000000u },
+    { "game_mode_30_step@b21inv", m_d4a_m30_b21inv, 0x00000000u },
+    { "game_mode_30_step@b21always", m_d4a_m30_b21always, 0x00000000u },
+    { "game_mode_30_step@noaf0", m_d4a_m30_noaf0, 0x00000000u },
+    { "game_mode_30_step@noaf1", m_d4a_m30_noaf1, 0x00000000u },
+    { "game_mode_30_step@af1w", m_d4a_m30_af1w, 0x00000000u },
+    { "game_mode_30_step@m31", m_d4a_m30_m31, 0x00000000u },
+    { "game_mode_30_step@m31b", m_d4a_m30_m31b, 0x00000000u },
+    { "game_mode_30_step@nom31", m_d4a_m30_nom31, 0x00000000u },
+    { "game_mode_30_step@nodec", m_d4a_m30_nodec, 0x00000000u },
+    { "game_mode_30_step@decb", m_d4a_m30_decb, 0x00000000u },
+    { "game_mode_30_step@s4old", m_d4a_m30_s4old, 0x00000000u },
+    { "game_mode_30_step@s4ge", m_d4a_m30_s4ge, 0x00000000u },
+    { "game_mode_30_step@s4uns", m_d4a_m30_s4uns, 0x00000000u },
+    { "game_mode_30_step@s4src", m_d4a_m30_s4src, 0x00000000u },
+    { "game_mode_30_step@nocopy", m_d4a_m30_nocopy, 0x00000000u },
+    { "game_mode_30_step_reread", b_d4a_29328, 0x00000000u },
+    { "game_mode_30_step_reread@preb14a", m_d4a_m30_preb14a, 0x00000000u },
+    { "game_mode_30_step_reread@nohud", m_d4a_m30_nohud, 0x00000000u },
+    { "game_mode_30_step_reread@nomark", m_d4a_m30_nomark, 0x00000000u },
+    { "sound_sample_start", b_d4a_1cb18, 0x00000000u },
+    { "sound_sample_start@stride", m_d4a_ss_stride, 0x00000000u },
+    { "sound_sample_start@slot1", m_d4a_ss_slot1, 0x00000000u },
+    { "sound_sample_start@hoff", m_d4a_ss_hoff, 0x00000000u },
+    { "sound_sample_start@nogate", m_d4a_ss_nogate, 0x00000000u },
+    { "sound_sample_start@size1", m_d4a_ss_size1, 0x00000000u },
+    { "sound_sample_start@sizeb", m_d4a_ss_sizeb, 0x00000000u },
+    { "sound_sample_start@src", m_d4a_ss_src, 0x00000000u },
+    { "sound_sample_start@dst", m_d4a_ss_dst, 0x00000000u },
+    { "sound_sample_start@nocopy", m_d4a_ss_nocopy, 0x00000000u },
+    { "sound_sample_start@copylate", m_d4a_ss_copylate, 0x00000000u },
+    { "sound_sample_start@noinit", m_d4a_ss_noinit, 0x00000000u },
+    { "sound_sample_start@noaddr", m_d4a_ss_noaddr, 0x00000000u },
+    { "sound_sample_start@addrbuf", m_d4a_ss_addrbuf, 0x00000000u },
+    { "sound_sample_start@addrlen", m_d4a_ss_addrlen, 0x00000000u },
+    { "sound_sample_start@vol", m_d4a_ss_vol, 0x00000000u },
+    { "sound_sample_start@novol", m_d4a_ss_novol, 0x00000000u },
+    { "sound_sample_start@rate", m_d4a_ss_rate, 0x00000000u },
+    { "sound_sample_start@norate", m_d4a_ss_norate, 0x00000000u },
+    { "sound_sample_start@type", m_d4a_ss_type, 0x00000000u },
+    { "sound_sample_start@type2", m_d4a_ss_type2, 0x00000000u },
+    { "sound_sample_start@notype", m_d4a_ss_notype, 0x00000000u },
+    { "sound_sample_start@loopalways", m_d4a_ss_loopalways, 0x00000000u },
+    { "sound_sample_start@loopnever", m_d4a_ss_loopnever, 0x00000000u },
+    { "sound_sample_start@loopne", m_d4a_ss_loopne, 0x00000000u },
+    { "sound_sample_start@loopcnt", m_d4a_ss_loopcnt, 0x00000000u },
+    { "sound_sample_start@nostart", m_d4a_ss_nostart, 0x00000000u },
+    { "sound_sample_start@startearly", m_d4a_ss_startearly, 0x00000000u },
+    { "sound_sample_start@order", m_d4a_ss_order, 0x00000000u },
+    { "sound_sample_start@cur0", m_d4a_ss_cur0, 0x00000000u },
+    { "sound_sample_start@nocur", m_d4a_ss_nocur, 0x00000000u },
+    { "sound_sample_start@curoff", m_d4a_ss_curoff, 0x00000000u },
+    { "sound_sample_start@noclr", m_d4a_ss_noclr, 0x00000000u },
+    { "sound_sample_start@clrearly", m_d4a_ss_clrearly, 0x00000000u },
+    { "sound_sample_start@clrfirst", m_d4a_ss_clrfirst, 0x00000000u },
+    { "game_audio_service", b_d4a_1cf20, 0x00000000u },
+    { "game_audio_service@three", m_d4a_as_three, 0x00000000u },
+    { "game_audio_service@five", m_d4a_as_five, 0x00000000u },
+    { "game_audio_service@rev", m_d4a_as_rev, 0x00000000u },
+    { "game_audio_service@from1", m_d4a_as_from1, 0x00000000u },
+    { "game_audio_service@same", m_d4a_as_same, 0x00000000u },
+    { "game_audio_service@none", m_d4a_as_none, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

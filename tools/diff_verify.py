@@ -21879,6 +21879,557 @@ D3E_SPECS += [
        mutants=("@eaxflag", "@flagbit", "@flagctx", "@nostance", "@stanceself", "@animside", "@67other", "@no67", "@dispside", "@eaxdisp", "@8aself", "@no8a", "@b54", "@swap", "@ecx", "@noad98", "@2bd44rec", "@norow60", "@nohook", "@hookslot", "@hooknoclr", "@hookclr", "@a48self", "@no5", "@36d20slot", "@c5no18", "@c5no1c", "@no8", "@c8side", "@no18b04", "@f40args", "@x28", "@a06zext", "@a06off", "@st0", "@st5", "@vnodec", "@vge", "@no3b080", "@midno18", "@midno1c", "@no41", "@64self", "@no64")),
 ]   # D3E_SPECS end
 D1_SPECS += D3E_SPECS
+# ---- track D4 batch d4a (record 2026-10-12-reverse-d4a): game/flow.c ----
+D4A_DARKEN = E.Call(0x13D4C, ("eax", "edx"), clobbers=("edx",))
+
+
+def d4a_dm_case(entries, abc, b19):
+    """0x41578: the front-end list (d2c_list_pokes), the dword 0x104ABC and the byte 0x104B19 each
+    between seeded neighbours, and the five stored fields with seeds that differ from what is
+    stored (words 0x104AFA = 0x5A5A, 0x104AFE = 0x5B5B, 0x104B00 = 0x5C5C around the untouched
+    0x104AFC and 0x104B02; word 0x1088EE = 0x5D5D; byte 0x104B25 = 0x5A)."""
+    p = d2c_list_pokes(entries)
+    p.update({0x00104AB8: le32(0x63636363) + le32(abc) + le32(0x64646464),
+              0x00104B18: bytes([0x61, b19, 0x62]),
+              0x00104AFA: le16(0x5A5A) + le16(0x7171) + le16(0x5B5B) + le16(0x5C5C) + le16(0x7272),
+              0x001088EC: le16(0x7373) + le16(0x5D5D) + le16(0x7474),
+              0x00104B24: bytes([0x65, 0x5A, 0x66])})
+    return p
+
+
+D4A_SPECS = [
+    # 0x41578 frontend_darken_marked: no argument. Every live list entry (0x33904, real on both
+    # sides: a leaf with its own row) whose +0 dword is 0x3E688 or 0x88874B0 gets 0x13D4C(entry, 2);
+    # then 0x32A3C(the dword 0x104ABC, the byte 0x104B19 zero-extended), the voice 0x33, and the
+    # stores 0x104AFE = 0x78 (DX), 0x1088EE = 0 (BX), 0x104AFA = 0x13 (CX), 0x104B00 = 0x15 (SI)
+    # as words and the byte 0x104B25 = 0 (AH after `xor ah,ah`: k1/k2 return AH set from the
+    # voice). 0x13D4C (seamed here, no row), 0x32A3C and 0x2C3FC are stubs. k2 holds the near
+    # misses (one bit off, the upper byte dropped or set). Mask 0: record §1.
+    Spec("frontend_darken_marked", 0x41578, [
+        Case("k0", {"ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468},
+             d4a_dm_case({}, 1, 0)),
+        Case("k1", {}, d4a_dm_case({0x00107618: (0x0003E688, 1), 0x00107628: (0x088874B0, 1),
+                                    0x00107638: (0x12345678, 1), 0x00107648: (0x0003E688, 0),
+                                    0x00107788: (0x088874B0, 0x80000000)}, 0xFFFFFFFC, 0x80),
+             {0x13D4C: 0x00000100, 0x2C3FC: 0xFFFFFFFF}),
+        Case("k2", {}, d4a_dm_case({0x00107618: (0x0003E689, 1), 0x00107628: (0x0003E687, 1),
+                                    0x00107638: (0x088874B1, 1), 0x00107648: (0x1003E688, 1),
+                                    0x00107658: (0x008874B0, 1), 0x00107668: (0x8003E688, 1),
+                                    0x00107678: (0x000874B0, 1), 0x00107788: (0x0003E688, 1)}, 2, 1),
+             {0x2C3FC: 0x00005500}),
+        Case("k3", {}, d4a_dm_case({0x00107618: (0x088874B0, 1), 0x00107628: (0x00000000, 1),
+                                    0x00107638: (0x088874B0, 0x100)}, 0x12345678, 0xFF),
+             {0x13D4C: 0xFFFFFFFF, 0x32A3C: 0x12345678}),
+        Case("k4", {}, d4a_dm_case({0x00107618: (0x0003E688, 0x100), 0x00107628: (0x22222222, 1)}, 0, 2)),
+    ], allow_calls=(0x33904,), calls=(D4A_DARKEN, D2E_M12_CLOSE, VOICE), eax_mask=0,
+       mutants=("@h1", "@h2", "@all", "@hw", "@off", "@arg", "@argh", "@nodarken", "@first", "@mode", "@modesrc",
+                "@flagsext", "@flagw", "@swap", "@noclose", "@closeearly", "@voice", "@novoice", "@order", "@afe",
+                "@afeb", "@noafe", "@ee", "@eeb", "@noee", "@afa", "@afab", "@noafa", "@b00", "@b00b", "@nob00",
+                "@b25", "@nob25", "@b25w", "@early", "@mid")),
+]   # D4A_SPECS end
+D4A_FREEZE = E.Call(0x39FF4, ())
+D4A_OVER = E.Call(0x27ED8, ())
+D4A_MEND = E.Call(0x27DC8, (), clobbers=("esi", "edi", "ebp"))
+# the same three callees leaving what 0x27FA8 reads after each call: 0x27C48 the dword 0x104AD4 = 2
+# (read at 0x27FEB and 0x280C9), 0x39FF4 the byte 0x10780A = 0x20 and the byte 0x104B1E = 0x77 (read at
+# 0x2808B and 0x28071), 0x27DC8 the dword 0x104AD4 = 3 and the byte 0x104B16 = 2 (0x28017, 0x280E8)
+D4A_WINNER_W = E.Call(0x27C48, (), writes=((None, 0x00104AD4, le32(2)),))
+D4A_FREEZE_W = E.Call(0x39FF4, (), writes=((None, 0x0010780A, b"\x20"), (None, 0x00104B1E, b"\x77")))
+D4A_MEND_W = E.Call(0x27DC8, (), writes=((None, 0x00104AD4, le32(3)), (None, 0x00104B16, b"\x02")),
+                    clobbers=("esi", "edi", "ebp"))
+
+
+def d4a_re_case(a, b, b00=5, b1e=5, adc=5, ad4=2, f2=0, af=(7, 7), b16=0, f42=(0x01, 0x42)):
+    """0x27FA8: the two +0x5A bytes (the +0x5B bytes above the threshold), the mode word 0x104B00,
+    the byte 0x104B1E, the dwords 0x104AD4 and 0x104ADC, the timer dword 0x1088EF (its top byte is
+    f2, the three below are seeded), the bytes 0x104AF2/0x104AF3, the winner byte 0x104B16 and
+    both slots' +0x42 bytes, each between seeded neighbours; and the stored fields with seeds that
+    differ from what is stored: the word 0x104AF8 (0x5A5A), the bytes 0x1078FC (0x5A), 0x1078FE
+    (0x5B) and 0xF0AFE (0x5A)."""
+    return {0x00107809: bytes([0x71, a, 0x80]), 0x0010789D: bytes([0x72, b, 0x90]),
+            0x00104AFE: le16(0x6161) + le16(b00) + le16(0x6262),
+            0x00104B1D: bytes([0x63, b1e, 0x64]),
+            0x00104AD0: le32(0x67676767) + le32(ad4) + le32(0x65656565) + le32(adc) + le32(0x66666666),
+            0x001088EF: bytes([0x11, 0x22, 0x33, f2, 0x44]),
+            0x00104AF1: bytes([0x68, af[0], af[1], 0x69]),
+            0x00104AF6: le16(0x6A6A) + le16(0x5A5A) + le16(0x6B6B),
+            0x00104B15: bytes([0x6C, b16, 0x6D]),
+            0x001077F1: bytes([0x73, f42[0], 0x74]), 0x00107885: bytes([0x75, f42[1], 0x76]),
+            0x001078FB: bytes([0x79, 0x5A, 0x7A, 0x5B, 0x7B]),
+            0x000F0AFD: bytes([0x7C, 0x5A, 0x7D])}
+
+
+D4A_REG4 = {"ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "edi": 0x13572468}
+D4A_SPECS += [
+    # 0x27FA8 flow_round_end_check: no argument. With either +0x5A byte (zero-extended) at 0x78 or
+    # more: 0x27C48; then, unless the mode word 0x104B00 is 0xB, with the byte 0x104B1E equal to
+    # the dword 0x104ADC and the dword 0x104AD4 == 2: the voice 0xD3, 0x39FF4, 0x27ED8; else
+    # 0x27DC8, the word 0x104AF8 = 0x258 and mode 9 for 0x104AD4 in 0..2 (signed), else 8. With
+    # both below and the top byte of the dword 0x1088EF (signed) below 1: the voice, 0x39FF4;
+    # then, with 0x104B1E == 0x104ADC and outside mode 0xB, 0x27ED8 when 0x104AF3 == 0x104AF2 and
+    # the low byte of |A - B| is 3 or less, else 0x27C48 and 0x27ED8 when 0x104AD4 == 2; the rest
+    # 0x27C48 (0x280DC) or nothing more (0x280E1), then 0x27DC8, the slot +0x42 of the byte
+    # 0x104B16 |= 0x80 unless it is 2, the bytes 0x1078FC = 0x1078FE = 1, 0xF0AFE = 2 and mode 7.
+    # Every callee is a stub (0x39FF4, 0x27ED8, 0x27DC8 seamed here; each has its own row). b1's
+    # winner byte 0x80 writes above the image on both sides (D4A_OUTSIDE). Mask 0: record §1.
+    Spec("flow_round_end_check", 0x27FA8, [
+        Case("a0", D4A_REG4, d4a_re_case(0x78, 0x10, b00=0x000B)),
+        Case("a1", {}, d4a_re_case(0x10, 0x78, adc=6)),
+        Case("a2", {}, d4a_re_case(0xFF, 0xFF, b1e=0x80, adc=0x80), {0x2C3FC: 0xFFFFFFFF}),
+        Case("a3", {}, d4a_re_case(0x78, 0x78, b00=0x010B)),
+        Case("a4", {}, d4a_re_case(0x77, 0x78, adc=0x105)),
+        Case("a5", {}, d4a_re_case(0x78, 0x77, ad4=3)),
+        Case("a6", {}, d4a_re_case(0x78, 0x00, ad4=0xFFFFFFFF), {0x27C48: 0x12345678, 0x27DC8: 0x100}),
+        Case("a7", {}, d4a_re_case(0x80, 0x00, ad4=1)),
+        Case("a8", {}, d4a_re_case(0x78, 0x00, b00=0x0105, ad4=0x102)),
+        Case("a9", {}, d4a_re_case(0x00, 0xFF, ad4=0)),
+        Case("n0", D4A_REG4, d4a_re_case(0x77, 0x77, f2=1)),
+        Case("n1", {}, d4a_re_case(0x10, 0x10, f2=0x7F)),
+        Case("b0", D4A_REG4, d4a_re_case(0x10, 0x20, b00=0x0105, adc=6)),
+        Case("b1", {}, d4a_re_case(0x10, 0x20, b00=0x000B, f2=0x80, b16=0x80)),
+        Case("b2", {}, d4a_re_case(0x10, 0x13, ad4=1), {0x2C3FC: 0x100}),
+        Case("b3", {}, d4a_re_case(0x13, 0x10, ad4=1)),
+        Case("b4", {}, d4a_re_case(0x10, 0x14)),
+        Case("b5", {}, d4a_re_case(0x14, 0x10, ad4=1, b16=2)),
+        Case("b6", {}, d4a_re_case(0x10, 0x10, af=(7, 8))),
+        Case("b7", {}, d4a_re_case(0x10, 0x10, af=(7, 8), ad4=0x102, b16=1)),
+        Case("b8", {}, d4a_re_case(0x00, 0x77, b00=0x010B, b1e=0x80, adc=0x80, f2=0xFF)),
+    ], calls=(D3A_WINNER, VOICE, D4A_FREEZE, D4A_OVER, D4A_MEND), eax_mask=0,
+       mutants=("@thra", "@thrb", "@asext", "@bsext", "@aonly", "@bonly", "@nowin", "@b00", "@b00b", "@b00d",
+                "@b1esext", "@adcb", "@ad4", "@ad4b", "@novoice", "@voice", "@nofreeze", "@noover", "@vorder",
+                "@overorder", "@falla", "@noend", "@af8", "@af8b", "@noaf8", "@af8early", "@m9lo", "@m9hi", "@m9",
+                "@m8", "@mb", "@tim0", "@timu", "@bnovoice", "@bvoice", "@bnofreeze", "@bvorder", "@bb1e", "@bb00",
+                "@bnoabs", "@bsigned", "@bdiff4", "@bdiff2", "@baf", "@bafoff", "@bfall", "@bnowin", "@bad4",
+                "@bfall2", "@bnowin2", "@bnoend", "@b16", "@b16none", "@noor", "@orset", "@orbit", "@oroff",
+                "@orside", "@orsext", "@orearly", "@fc", "@nofc", "@fcw", "@fe", "@nofe", "@few", "@afe1",
+                "@noafe1", "@afew", "@m7", "@m7b", "@nom7", "@early")),
+    # 0x27FA8 again with stubs that write what the raw reads after each call (D4A_*_W above): the
+    # dword 0x104AD4 after 0x27C48 (r0, r2) and after 0x27DC8 (r1), the two +0x5A bytes and the byte
+    # 0x104B1E after 0x39FF4 (r2, r3, r4, r5), the winner byte after 0x27DC8 (r4). `@pre` is the port
+    # before its correction (record §3): A and B kept from the entry.
+    Spec("flow_round_end_check_reread", 0x27FA8, [
+        Case("r0", {}, d4a_re_case(0x78, 0x10, ad4=0)),
+        Case("r1", {}, d4a_re_case(0x78, 0x10, b00=0x000B, ad4=1)),
+        Case("r2", {}, d4a_re_case(0x10, 0x10, adc=0x77, ad4=0)),
+        Case("r3", {}, d4a_re_case(0x10, 0x1E, b1e=0x77, adc=0x77, ad4=0)),
+        Case("r4", {}, d4a_re_case(0x10, 0x10, adc=5, ad4=0)),
+        Case("r5", {}, d4a_re_case(0x10, 0x22, b1e=0x77, adc=0x77, ad4=0)),
+    ], calls=(D4A_WINNER_W, VOICE, D4A_FREEZE_W, D4A_OVER, D4A_MEND_W), eax_mask=0,
+       unhit_named={0x2802D: "mode 9: this row's 0x27DC8 stub leaves the dword 0x104AD4 = 3 (the plain row hits it)",
+                    0x280F3: "the +0x42 store: this row's 0x27DC8 stub leaves the winner byte 2 (the plain row hits it)"},
+       mutants=("@pre", "@preb1e", "@pread4a", "@pread4e", "@pread4b", "@preb16", "@nowin", "@nofreeze", "@noend")),
+]
+# 0x474E4 as 0x2791C's rows stub it: four characters without a terminator, so that the buffer's
+# seeded tail (the case's) fixes the length 0x2791C counts; a stub EAX of 0 makes 0x1C500 zero the
+# first byte (length 0).
+D4A_STR4 = E.Call(0x474E4, ("eax", "edx", "ebx"), mode="stub", eax=8, clobbers=("ebx", "edx"),
+                  writes=((1, 0, b"CONT"),))
+D4A_SNAPBACK = E.Call(0x33B00, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+# the same callees leaving what 0x2791C reads after each: 0x33B00 the side byte 0x10810D = 0xFF (read
+# at 0x279AE), 0x1D764 the side byte = 1 and the bytes 0x104B0B = 0x77, 0x104B12 = 1 (0x279BB, 0x279D2,
+# 0x279E5), 0x46534 the side byte = 0 (0x279EF)
+D4A_SNAPBACK_W = E.Call(0x33B00, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"),
+                        writes=((None, 0x0010810D, b"\xff"),))
+D4A_HUD_RESET_W = E.Call(0x1D764, ("eax",), writes=((None, 0x0010810D, b"\x01"), (None, 0x00104B0B, b"\x77"),
+                                                    (None, 0x00104B12, b"\x01")))
+D4A_ACCUM_W = E.Call(0x46534, ("eax", "edx"), clobbers=("edx",), writes=((None, 0x0010810D, b"\x00"),))
+
+
+def d4a_ct_case(side, tail, b0b, b12, f41=(0xFF, 0x18, 0x5A, 0xA5), b00=0x5A5A):
+    """0x2791C: the side byte 0x10810D as the top byte of the dword 0x10810A (the three below it
+    seeded), the string buffer 0x102760 (four bytes the 0x474E4 stub overwrites, then `tail`), the
+    bytes 0x104B0B and 0x104B12 and the mode word 0x104B00 between seeded neighbours, and for the
+    slots -128, -1, 0 and 1 the +0x41 byte (`f41`, in that order) and the +0x5B byte (0x5A + i),
+    each between seeded bytes."""
+    p = {0x0010810A: bytes([0x11, 0x22, 0x33, side, 0x44]),
+         0x00102760: b"\x5a\x5a\x5a\x5a" + tail,
+         0x00104B0A: bytes([0x61, b0b, 0x62]), 0x00104B11: bytes([0x63, b12, 0x64]),
+         0x00104AFE: le16(0x6565) + le16(b00) + le16(0x6666)}
+    for i, s in enumerate((-128, -1, 0, 1)):
+        base = 0x001077B0 + s * 0x94
+        p[base + 0x40] = bytes([0x71 + i, f41[i], 0x75 + i])
+        p[base + 0x5A] = bytes([0x81 + i, 0x5A + i, 0x91 + i])
+    return p
+
+
+D4A_REG5 = {"ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468, "edi": 0x2468ACE0}
+D4A_SPECS += [
+    # 0x2791C flow_continue_take: no argument. String 0x41's length (0x1C500 real over the stubbed
+    # 0x474E4, `repne scasb`) goes to 0x2F388(-1, 0xA, len); 0x2C088(-1, 0xC, the side: the signed
+    # top byte of the dword 0x10810A); 0x2F388(-1, 0xE, 0x1C) and (-1, 0xF, 0x1C); 0x33B00(c,
+    # 0x104890 + c * 0x94, 0x1049B8 + c * 0x68) for c = 0, 1; 0x1D764(the side, re-read); the
+    # side's slot +0x5B = the byte 0x104B0B (side re-read); 0x46534(the byte 0x104B12 zero-extended,
+    # -2); the mode word 0x104B00 = 0xC and the side's (re-read) slot +0x41 &= 0xE7. Every callee
+    # but 0x1C500 is a stub (0x33B00 seamed here, no row). t2 runs side -1 with an empty string
+    # (stub EAX 0), t3 side -128 with 0x20 characters. Mask 0: record §1.
+    Spec("flow_continue_take", 0x2791C, [
+        Case("t0", D4A_REG5, d4a_ct_case(0x00, b"INUE?\x00\x6e\x6e", 0x21, 0x00)),
+        Case("t1", {}, d4a_ct_case(0x01, b"\x00\x6e\x6e", 0x80, 0x01, b00=0x010C), {0x46534: 0x12345678}),
+        Case("t2", {}, d4a_ct_case(0xFF, b"\x00", 0x00, 0x80), {0x474E4: 0, 0x1D764: 0x100}),
+        Case("t3", {}, d4a_ct_case(0x80, b"X" * 0x1C + b"\x00", 0xFF, 0xFF, f41=(0x18, 0xE7, 0x00, 0xFF))),
+        Case("t4", {}, d4a_ct_case(0x01, b"!\x00", 0x5B, 0x02, f41=(0xFF, 0xFF, 0xE7, 0x08))),
+    ], allow_calls=(0x1C500,),
+       calls=(D4A_STR4, D2C_RELCNT, D2B_PROMPT_CLR, D4A_SNAPBACK, D3A_HUD_RESET, D3A_ACCUM), eax_mask=0,
+       mutants=("@id", "@len1", "@lenfix", "@row1", "@col1", "@noclr1", "@prow", "@pcol", "@psidezext", "@pside0",
+                "@noprompt", "@porder", "@r2row", "@r2n", "@nor2", "@r3row", "@r3n", "@nor3", "@rorder", "@snapone",
+                "@snaprev", "@snapsrc", "@snapdst", "@snapswap", "@snapside", "@nosnap", "@hudzext", "@hudother",
+                "@nohud", "@hudearly", "@b5bzext", "@b5boff", "@b5bsrc", "@nob5b", "@b5bearly", "@accsext", "@accd",
+                "@accpos", "@noacc", "@accearly", "@f41zext", "@f41mask", "@f41bit", "@nof41", "@f41off",
+                "@f41early", "@f41clr", "@b00", "@b00b", "@nob00", "@b00early")),
+    # 0x2791C again with stubs that write what the raw reads after each call (D4A_*_W above): the
+    # side byte is 0xFF for 0x1D764's argument, 1 for the +0x5B store and 0 for the +0x41 store,
+    # whatever it was at entry; the bytes 0x104B0B and 0x104B12 are read after 0x1D764.
+    Spec("flow_continue_take_reread", 0x2791C, [
+        Case("r0", {}, d4a_ct_case(0x00, b"\x00", 0x21, 0x00)),
+        Case("r1", {}, d4a_ct_case(0x01, b"\x00", 0x77, 0x01)),
+        Case("r2", {}, d4a_ct_case(0xFF, b"\x00", 0x00, 0x80)),
+    ], allow_calls=(0x1C500,),
+       calls=(D4A_STR4, D2C_RELCNT, D2B_PROMPT_CLR, D4A_SNAPBACK_W, D4A_HUD_RESET_W, D4A_ACCUM_W), eax_mask=0,
+       mutants=("@prehud", "@pre5b", "@preb0b", "@preb12", "@pre41", "@nohud", "@noacc", "@nosnap")),
+]
+D4A_SNAPA = E.Call(0x32B00, ("eax", "edx"), clobbers=("edx",))
+# the deferred audit add 0x2DAE4(0xD, 1) made a no-op by its own bytes, as d2e does for field 0x10 and
+# d3a for field 0xF: field 0xD's descriptor (0x2D300 + 0xD * 4) reads 8 nibbles at byte 0 of 0x105DE1,
+# which is negative (`test eax,eax; jl 0x2db54` at 0x2DAEE)
+D4A_AUDIT_OFF_D = {0x0002D334: le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
+
+
+def d4a_pj_case(b1f):
+    """0x28DA4: the byte 0x104B1F between neighbours; every stored field with a seed that differs
+    from what is stored, between seeded neighbours (the dwords 0xF0A48, 0x104AE4/E8/EC and
+    0x104ABC, the words 0x104AFE, 0x104B00 and 0x1088EE, the bytes 0x104B15, 0x104B17, 0x104B24);
+    the +0x5B bytes of slots -2, 0, 1 and 3 (0x5A + i) between seeded bytes; the string buffer;
+    the run clock's no-elapsed-time state (d1i_pt_case) and the audit field that turns 0x2DAE4
+    off."""
+    p = d1i_pt_case()
+    p.update(D4A_AUDIT_OFF_D)
+    p.update({0x00104B1E: bytes([0x6D, b1f, 0x6E]),
+              0x000F0A44: le32(0x60606060) + le32(0x5A5A5A5A) + le32(0x7A7A7A7A),
+              0x00104AE0: le32(0x61616161) + le32(0x5B5B5B5B) + le32(0x5C5C5C5C) + le32(0x5D5D5D5D)
+                          + le32(0x62626262),
+              0x00104AB8: le32(0x6F6F6F6F) + le32(0x5A5A5A5A) + le32(0x70707070),
+              0x00104AFC: le16(0x6969) + le16(0x5E5E) + le16(0x5F5F) + le16(0x6A6A),
+              0x001088EC: le16(0x6B6B) + le16(0x5A5A) + le16(0x6C6C),
+              0x00104B14: bytes([0x63, 0x5A, 0x64, 0x5B, 0x65]),
+              0x00104B23: bytes([0x66, 0x5A, 0x67]),
+              0x00102760: b"\x5a" * 0x10})
+    for i, s in enumerate((-2, 0, 1, 3)):
+        p[0x001077B0 + s * 0x94 + 0x5A] = bytes([0x71 + i, 0x5A + i, 0x75 + i])
+    return p
+
+
+D4A_SPECS += [
+    # 0x28DA4 flow_player_join: EAX = the joining side. The dwords 0xF0A48, 0x104AEC and 0x104AE8 =
+    # 0, the voice 0x100, the dword 0x104ABC = (the byte 0x104B1F == 3) + 1, string 0x44 held by
+    # 0x2F510(-1, 0xA, it, 0x4000) (0x1C500 real over the stubbed 0x474E4; the string's first
+    # dword by value), 0x4651C, 0x33C18(side), the +0x5B byte of slot side ^ 1 = 0, 0x32B00(the
+    # dword 0x104ABC, 1), then the byte 0x104B24 = 1, the hook dword 0x104AE4 = 0x28D80, the mode
+    # word 0x104B00 = 0x17, the bytes 0x104B17 = 2 and 0x104B15 = 0, the words 0x104AFE = 0x78 and
+    # 0x1088EE = 0x1E. The run clock 0x32970(0) and the audit add 0x2DAE4(0xD, 1) are host-owned
+    # or deferred and the port omits both: they run real in the original, the clock from its
+    # no-elapsed-time state and the add with its field negative (it returns at 0x2DAF0), so
+    # neither is compared (record §4). 0x32B00 is seamed here. j2/j3 run sides 2 and -1 (the
+    # other slot is 3 and -2). Mask 0: record §1.
+    Spec("flow_player_join", 0x28DA4, [
+        Case("j0", {"eax": 0, "ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468},
+             d4a_pj_case(3)),
+        Case("j1", {"eax": 1}, d4a_pj_case(0), {0x2C3FC: 0xFFFFFFFF, 0x33C18: 0x12345678}),
+        Case("j2", {"eax": 2}, d4a_pj_case(0x83), {0x474E4: 0}),
+        Case("j3", {"eax": 0xFFFFFFFF}, d4a_pj_case(2), {0x32B00: 0x100}),
+        Case("j4", {"eax": 0x101}, d4a_pj_case(1)),
+    ], allow_calls=(0x1C500, 0x32970, 0x2DAE4, 0x2D974),
+       calls=(VOICE, D1C_STR, D2C_HOLD2, D3A_RESTORE, E.Call(0x33C18, ("eax",)), D4A_SNAPA), eax_mask=0,
+       mutants=("@f48", "@nof48", "@f48w", "@noaec", "@aecb", "@noae8", "@ae8b", "@late3", "@voice", "@novoice",
+                "@abc", "@abc3", "@abcbit", "@abcb", "@abclate", "@noabc", "@strid", "@col", "@row", "@mode",
+                "@nohold", "@norestore", "@restoreorder", "@resetother", "@noreset", "@c5bself", "@c5bearly",
+                "@noc5b", "@c5boff", "@c5bw", "@c5bval", "@c5blow", "@snapidx", "@snaparm", "@nosnap", "@snaporder",
+                "@b24", "@nob24", "@hook", "@nohook", "@hookw", "@b00", "@b00b", "@nob00", "@b17", "@nob17", "@b15",
+                "@nob15", "@afe", "@afeb", "@noafe", "@ee", "@eeb", "@noee", "@tailearly")),
+]
+D4A_PASS = E.Call(0x3CB68, ())
+D4A_HUDINIT = E.Call(0x25C1C, (), clobbers=("esi", "edi", "ebp"))
+D4A_MARKERS = E.Call(0x256F4, ())
+D4A_TIMER = E.Call(0x4F37C, ())
+# three of the seven entrances of the table 0xA8628 (characters 0, 1 and 6), reached by `call
+# [edx*4+0xa8628]` (0x25F27); each takes the side in EAX (`mov esi,eax` at its fifth byte)
+D4A_ENT0 = E.Call(0x40CB0, ("eax",), clobbers=("ebp",))
+D4A_ENT1 = E.Call(0x24568, ("eax",), clobbers=("ebp",))
+D4A_ENT6 = E.Call(0x24804, ("eax",), clobbers=("ebp",))
+D4A_M5_CALLS = (D4A_PASS, D4A_HUDINIT, SPAWN, D4A_MARKERS, VOICE, D2B_HOLD, P7_2B150, D4A_TIMER, D4A_SNAPA,
+                D3A_SNAPB, D4A_ENT0, D4A_ENT1, D4A_ENT6, D3B_BADGE)
+# the same callees leaving what 0x25C88 reads after each: 0x25C1C and 0x2AE14 the byte 0x104B14 = 1
+# (read at 0x25CC1 and 0x25E24), 0x32B00 the dword 0x104ABC = 0x77 (0x25EF8), 0x32B4C the byte
+# 0x104B14 = 1 (0x25F02), the entrance 0x40CB0 the byte 0x104B12 = 1 (0x25F30), 0x1D838 the byte
+# 0x10810D = 0x66 (0x25F4E)
+D4A_M5_CALLS_W = (
+    D4A_PASS, dataclasses.replace(D4A_HUDINIT, writes=((None, 0x00104B14, b"\x01"),)),
+    dataclasses.replace(SPAWN, writes=((None, 0x00104B14, b"\x01"),)), D4A_MARKERS, VOICE, D2B_HOLD, P7_2B150,
+    D4A_TIMER, dataclasses.replace(D4A_SNAPA, writes=((None, 0x00104ABC, le32(0x77)),)),
+    dataclasses.replace(D3A_SNAPB, writes=((None, 0x00104B14, b"\x01"),)),
+    dataclasses.replace(D4A_ENT0, writes=((None, 0x00104B12, b"\x01"),)), D4A_ENT1, D4A_ENT6,
+    dataclasses.replace(D3B_BADGE, writes=((None, 0x0010810D, b"\x66"),)))
+
+
+def d4a_m5_case(state, b14=0, b529=0, b1e=5, adc=5, b1f=0, b12=0, chs=(0, 1, 6, 1), afe=0x5A5A, b23=0x5B,
+                ac=(0x0010A300, 0x0010A340), ae8=0x00, aec=0x00, b10d=0x33, y=None):
+    """0x25C88 / 0x29328: the state byte 0x104B25 and the byte 0x104B23 (with 0x104B22, 0x104B24
+    and 0x104B26 seeded), the bytes 0x104B12, 0x104B14, 0x104B15 (0x5B), 0x104B1B (0x5A),
+    0x104B1E, 0x104B1F and 0x104529, the dwords 0x104ADC, 0x104ABC (0x5A..), 0x104AC0 and
+    0x104ACC, the eight dwords 0x104A88.. (0x5A5A5A00 + i), the words 0x104AFE and 0x104B00
+    (0x5C5C), the bytes 0x104AE8, 0x104AEC, 0x1078FC/0x1078FE, 0xF0AFE/0xF0AFF and 0x10810D, each
+    between seeded neighbours; the character bytes 0x10816A[0], [1], [0x80] and [-0x80] (`chs`,
+    under the three seeded bytes the dword read at 0x108167 covers); the badge word 0xA76D0 when
+    `y` is given; and the run clock's no-elapsed-time state with its mask byte 0x107494 already
+    what state 3 hands it (the dword 0x104ABC: record §4)."""
+    p = d1i_pt_case()
+    p[0x00107494] = le32(2 if b1f == 3 else 1)
+    p.update({0x00104B22: bytes([0x63, b23, 0x61, state, 0x62]),
+              0x00104B11: bytes([0x68, b12, 0x69, b14, 0x5B, 0x6A]),
+              0x00104B1A: bytes([0x64, 0x5A, 0x65, 0x67, b1e, b1f, 0x66]),
+              0x00104528: bytes([0x6B, b529, 0x6C]),
+              0x00104AD8: le32(0x6D6D6D6D) + le32(adc) + le32(0x6E6E6E6E),
+              0x00104AB8: le32(0x6F6F6F6F) + le32(0x5A5A5A5A) + le32(ac[0]) + le32(0x70707070)
+                          + le32(0x71717171) + le32(ac[1]) + le32(0x72727272),
+              0x00104A84: le32(0x73737373) + b"".join(le32(0x5A5A5A00 + i) for i in range(8)) + le32(0x74747474),
+              0x00104AFC: le16(0x7575) + le16(afe) + le16(0x5C5C) + le16(0x7676),
+              0x00104AE7: bytes([0x77, ae8, 0x78]), 0x00104AEB: bytes([0x79, aec, 0x7A]),
+              0x001078FB: bytes([0x7B, 0x5A, 0x7C, 0x5B, 0x7D]),
+              0x000F0AFD: bytes([0x7E, 0x5A, 0x5B, 0x7F]),
+              0x0010810C: bytes([0x21, b10d, 0x22]),
+              0x00108167: bytes([0x24, 0x25, 0x26, chs[0], chs[1], 0x05]),
+              0x001081E7: bytes([0x27, 0x28, 0x29, chs[2], 0x04]),
+              0x001080E7: bytes([0x2A, 0x2B, 0x2C, chs[3], 0x03])})
+    if y is not None:
+        p[0x000A76D0] = le16(y) + le16(0x7D7D)
+    return p
+
+
+D4A_REG5B = {"ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468, "edi": 0x2468ACE0}
+D4A_SPECS += [
+    # 0x25C88 game_mode_05_step: no argument. 0x3CB68, then on the byte 0x104B25 (the table
+    # 0x25C78, a bounded switch): 1 the round card (0x104B1B = 0x104B15 = 1, 0x25C1C, 0x2AE14 on
+    # one of the eight descriptor dwords 0xA8898.. into the dword 0x104AC0, the eight dwords
+    # 0x104A88.. = 0, 0x256F4, state 4 for 0x3C frames, then 2); 2 the fight card (0xA8884 or
+    # 0xBB6A0 into 0x104ACC, 0x104AE8 |= 0x40, the voice 0xD9 or 0xD7, state 4, then 3); 3 the
+    # start (0x2F4BC, 0x2B150 on both cards, 0x4F37C, 0x1078FC = 0x1078FE = 0, 0x104ABC, the
+    # play-time snapshots, then mode 6 or, with 0x104B14, mode 0xC, the character's entrance
+    # through 0xA8628 and its badge 0x1D838); 4 the countdown of the word 0x104AFE into the
+    # state 0x104B23. Every path ends with 0x104AEC |= 2. Every callee is a stub (0x3CB68,
+    # 0x25C1C, 0x256F4, 0x4F37C and three entrances seamed here); the run clock 0x32970 runs
+    # real in the original only, from the state where it changes no byte. u3 runs side 0x80 (the
+    # character byte 0x1081EA). Mask 0: record §1.
+    Spec("game_mode_05_step", 0x25C88, [
+        Case("z0", D4A_REG5B, d4a_m5_case(0, aec=0xFD)),
+        Case("z5", {}, d4a_m5_case(5, aec=0x02)),
+        Case("z8", {}, d4a_m5_case(0x81)),
+        Case("p0", D4A_REG5B, d4a_m5_case(1, b14=1, b529=0x02), {0x2AE14: 0x0010A400}),
+        Case("p1", {}, d4a_m5_case(1, b14=0x80, b529=0xFD, aec=0xFF), {0x2AE14: 0x00018000}),
+        Case("p2", {}, d4a_m5_case(1, b1e=0x80, adc=0x80, b529=0x02), {0x2AE14: 0}),
+        Case("p3", {}, d4a_m5_case(1, b1e=1, adc=5), {0x2AE14: 0x0010A400, 0x25C1C: 0x12345678}),
+        Case("p4", {}, d4a_m5_case(1, b1e=5, adc=0x105, b529=0xFF), {0x2AE14: 0x0010A400}),
+        Case("p5", {}, d4a_m5_case(1, b1e=1, adc=1), {0x2AE14: 0x0010A400}),
+        Case("p6", {}, d4a_m5_case(1, b1e=2, adc=1, b529=0x03), {0x2AE14: 0x0010A400}),
+        Case("q0", D4A_REG5B, d4a_m5_case(2, b14=1, b529=0x02), {0x2AE14: 0x0010A400}),
+        Case("q1", {}, d4a_m5_case(2, b14=0, b529=0x02, ae8=0xBF), {0x2AE14: 0x0010A480, 0x2C3FC: 0xFFFFFFFF}),
+        Case("q2", {}, d4a_m5_case(2, b14=0x80, b529=0xFD, ae8=0x40), {0x2AE14: 0}),
+        Case("q3", {}, d4a_m5_case(2, b14=0, b529=0x00, ae8=0x20), {0x2AE14: 0x0010A400}),
+        Case("u0", D4A_REG5B, d4a_m5_case(3, b1e=1, b1f=3), {0x2B150: 0x12345678}),
+        Case("u1", {}, d4a_m5_case(3, b1e=2, b1f=0x83, ac=(0, 0x0010A340))),
+        Case("u2", {}, d4a_m5_case(3, b14=1, b1e=1, b1f=0, b12=0, b10d=0x80), {0x40CB0: 0x100}),
+        Case("u3", {}, d4a_m5_case(3, b14=0x80, b1e=0x81, b12=0x80, chs=(0, 0, 6, 1), y=0x8123, b10d=0x01)),
+        Case("u4", {}, d4a_m5_case(3, b14=1, b1e=0, b1f=3, b12=1, chs=(6, 1, 0, 0))),
+        Case("u5", {}, d4a_m5_case(3, b14=1, b1e=1, b1f=2, b12=1, chs=(1, 0, 6, 6), b10d=0x00)),
+        Case("t0", D4A_REG5B, d4a_m5_case(4, afe=0x0002, b23=2)),
+        Case("t1", {}, d4a_m5_case(4, afe=0x0001, b23=3)),
+        Case("t2", {}, d4a_m5_case(4, afe=0x0000, b23=2)),
+        Case("t3", {}, d4a_m5_case(4, afe=0x8001, b23=0x80)),
+        Case("t4", {}, d4a_m5_case(4, afe=0x0100, b23=3)),
+        Case("t5", {}, d4a_m5_case(4, afe=0x8000, b23=2)),
+    ], allow_calls=(0x32970,), calls=D4A_M5_CALLS, eax_mask=0,
+       mutants=("@nopass", "@passlate", "@noaec", "@aecset", "@aecbit", "@st0", "@st5", "@b1b", "@nob1b", "@b15",
+                "@nob15", "@nohud", "@hudlate", "@s1early", "@b14inv", "@bitmask", "@descswap", "@i2", "@i01",
+                "@b1esext", "@adcb", "@eqlast", "@tblswap", "@stride", "@spx", "@spa3", "@spy", "@sp5", "@noac0",
+                "@ac0w", "@z7", "@z9", "@zval", "@zlate", "@nomark", "@markearly", "@s1b25", "@s1b23", "@s1afe",
+                "@s1afeb", "@nos1afe", "@s2and", "@s2desc", "@s2y", "@noacc", "@s2ae8", "@s2ae8set", "@noae8",
+                "@s2voice", "@s2vswap", "@s2novoice", "@s2vearly", "@ae8late", "@s2b25", "@s2afe", "@s2afeb",
+                "@s2b23", "@holdrow", "@holdcol", "@holdstr", "@holdmode", "@nohold", "@dead0", "@dead1",
+                "@deadswap", "@noz0", "@noz1", "@z0late", "@notimer", "@timerearly", "@nofc", "@nofe", "@fcw",
+                "@abc3", "@abcbit", "@abcb", "@noabc", "@abclate", "@snapa1e", "@snapaalways", "@snapaarm",
+                "@snapb14", "@snapbarm", "@snapswap", "@m6", "@m6b", "@mc", "@mclate", "@nofn", "@fns", "@chside",
+                "@choff", "@ssext", "@badgeswap", "@badgey", "@badgeysext", "@nobadge", "@badgeearly", "@fafe",
+                "@nofafe", "@faff", "@nofaff", "@faffsrc", "@tailearly", "@nodec", "@decb", "@s4old", "@s4ge",
+                "@s4uns", "@s4src", "@nocopy")),
+    # 0x25C88 again with stubs that write what the raw reads after each call (D4A_M5_CALLS_W).
+    Spec("game_mode_05_step_reread", 0x25C88, [
+        Case("r1", {}, d4a_m5_case(1, b14=0, b529=0x02), {0x2AE14: 0x0010A400}),
+        Case("r2", {}, d4a_m5_case(2, b14=0, b529=0x02), {0x2AE14: 0x0010A400}),
+        Case("r3", {}, d4a_m5_case(3, b14=0, b1e=1, b1f=3, b12=0, chs=(0, 1, 6, 6))),
+    ], allow_calls=(0x32970,), calls=D4A_M5_CALLS_W, eax_mask=0,
+       unhit_named={a: "not taken under this row's writing stubs (the plain row hits it)"
+                    for a in (0x25CEE, 0x25D06, 0x25D17, 0x25D1E, 0x25D23, 0x25D27, 0x25D2C, 0x25D3A, 0x25D53,
+                              0x25DE5, 0x25E34, 0x25F6B, 0x25F81, 0x25F95, 0x25F9F)},
+       mutants=("@preb14a", "@preb14v", "@preabc", "@preb14m", "@pres", "@pre10d", "@nohud", "@nofn", "@nobadge")),
+]
+D4A_M30_CALLS = (D4A_PASS, D4A_HUDINIT, SPAWN, D4A_MARKERS, VOICE, D2B_HOLD, P7_2B150, D4A_TIMER)
+
+
+def d4a_m30_case(state, b21=0, **kw):
+    """0x29328: d4a_m5_case plus the byte 0x104B21 (between the seeded 0x104B20 and 0x104B22) and
+    the bytes 0x104AF0/0x104AF1 (0x5A, 0x5B) between seeded neighbours."""
+    p = d4a_m5_case(state, **kw)
+    p[0x00104B21] = bytes([b21])
+    p[0x00104AEF] = bytes([0x2D, 0x5A, 0x5B, 0x2E])
+    return p
+
+
+D4A_SPECS += [
+    # 0x29328 game_mode_30_step: no argument. Mode 5's twin (0x25C88, above) on the table 0x29318:
+    # states 1 and 4 are the same code; state 2's voice is 0xD7 whatever the byte 0x104B14 holds
+    # (q0, q2 have it set), with the stores in the order word 0x104AFE, 0x104B23 (DL, loaded
+    # before the voice), 0x104B25; state 3 runs the same clean-up (0x2F4BC, 0x2B150 twice,
+    # 0x4F37C, the two bytes, the dword 0x104ABC, the run clock), takes no play-time snapshot,
+    # and only with the byte 0x104B21 == 0 stores 0x104AF0 = 0x104AF1 = 0 and the mode word 0x31.
+    # Every callee is a stub; the run clock 0x32970 runs real in the original only. Mask 0: §1.
+    Spec("game_mode_30_step", 0x29328, [
+        Case("z0", D4A_REG5B, d4a_m30_case(0, aec=0xFD)),
+        Case("z5", {}, d4a_m30_case(5, aec=0x02)),
+        Case("z8", {}, d4a_m30_case(0x81)),
+        Case("p0", D4A_REG5B, d4a_m30_case(1, b14=1, b529=0x02), {0x2AE14: 0x0010A400}),
+        Case("p1", {}, d4a_m30_case(1, b14=0x80, b529=0xFD, aec=0xFF), {0x2AE14: 0x00018000}),
+        Case("p2", {}, d4a_m30_case(1, b1e=0x80, adc=0x80, b529=0x02), {0x2AE14: 0}),
+        Case("p3", {}, d4a_m30_case(1, b1e=1, adc=5), {0x2AE14: 0x0010A400, 0x25C1C: 0x12345678}),
+        Case("p4", {}, d4a_m30_case(1, b1e=5, adc=0x105, b529=0xFF), {0x2AE14: 0x0010A400}),
+        Case("p5", {}, d4a_m30_case(1, b1e=1, adc=1), {0x2AE14: 0x0010A400}),
+        Case("p6", {}, d4a_m30_case(1, b1e=2, adc=1, b529=0x03), {0x2AE14: 0x0010A400}),
+        Case("q0", D4A_REG5B, d4a_m30_case(2, b14=1, b529=0x02), {0x2AE14: 0x0010A400}),
+        Case("q1", {}, d4a_m30_case(2, b14=0, b529=0x02, ae8=0xBF), {0x2AE14: 0x0010A480, 0x2C3FC: 0xFFFFFFFF}),
+        Case("q2", {}, d4a_m30_case(2, b14=0x80, b529=0xFD, ae8=0x40), {0x2AE14: 0}),
+        Case("q3", {}, d4a_m30_case(2, b14=0, b529=0x00, ae8=0x20), {0x2AE14: 0x0010A400}),
+        Case("v0", D4A_REG5B, d4a_m30_case(3, b1e=1, b1f=3), {0x2B150: 0x12345678}),
+        Case("v1", {}, d4a_m30_case(3, b21=1, b1f=0x83, ac=(0, 0x0010A340))),
+        Case("v2", {}, d4a_m30_case(3, b21=0x80, b1f=3, b1e=1)),
+        Case("v3", {}, d4a_m30_case(3, b1f=2, b1e=1, b14=1), {0x4F37C: 0xFFFFFFFF}),
+        Case("t0", D4A_REG5B, d4a_m30_case(4, afe=0x0002, b23=2)),
+        Case("t1", {}, d4a_m30_case(4, afe=0x0001, b23=3)),
+        Case("t2", {}, d4a_m30_case(4, afe=0x0000, b23=2)),
+        Case("t3", {}, d4a_m30_case(4, afe=0x8001, b23=0x80)),
+        Case("t4", {}, d4a_m30_case(4, afe=0x0100, b23=3)),
+        Case("t5", {}, d4a_m30_case(4, afe=0x8000, b23=2)),
+    ], allow_calls=(0x32970,), calls=D4A_M30_CALLS + (D4A_SNAPA,), eax_mask=0,
+       mutants=("@nopass", "@passlate", "@noaec", "@aecset", "@aecbit", "@st0", "@st5", "@b1b", "@nob1b", "@b15",
+                "@nob15", "@nohud", "@hudlate", "@s1early", "@b14inv", "@bitmask", "@descswap", "@i2", "@i01",
+                "@b1esext", "@adcb", "@eqlast", "@tblswap", "@stride", "@spx", "@spa3", "@spy", "@sp5", "@noac0",
+                "@ac0w", "@z7", "@z9", "@zval", "@zlate", "@nomark", "@markearly", "@s1b25", "@s1b23", "@s1afe",
+                "@s1afeb", "@nos1afe", "@s2and", "@s2desc", "@s2y", "@noacc", "@s2ae8", "@s2ae8set", "@noae8",
+                "@s2voice", "@s2novoice", "@s2vearly", "@ae8late", "@s2b25", "@s2afe", "@s2afeb", "@s2b23",
+                "@holdrow", "@holdcol", "@holdstr", "@holdmode", "@nohold", "@dead0", "@dead1", "@deadswap",
+                "@noz0", "@noz1", "@z0late", "@notimer", "@timerearly", "@nofc", "@nofe", "@fcw", "@abc3",
+                "@abcbit", "@abcb", "@noabc", "@snapa", "@b21inv", "@b21always", "@noaf0", "@noaf1", "@af1w",
+                "@m31", "@m31b", "@nom31", "@nodec", "@decb", "@s4old", "@s4ge", "@s4uns", "@s4src", "@nocopy")),
+    # 0x29328 again with a 0x25C1C stub that stores 1 in the byte 0x104B14, which state 1 reads
+    # after the call (0x29361).
+    Spec("game_mode_30_step_reread", 0x29328, [
+        Case("r1", {}, d4a_m30_case(1, b14=0, b529=0x02), {0x2AE14: 0x0010A400}),
+    ], calls=(D4A_PASS, dataclasses.replace(D4A_HUDINIT, writes=((None, 0x00104B14, b"\x01"),)), SPAWN,
+              D4A_MARKERS), eax_mask=0,
+       unhit_named={a: "not taken by this row's one case, state 1 under the writing stub (the plain row hits it)"
+                    for a in (0x2938E, 0x293A6, 0x293B7, 0x293BE, 0x293C3, 0x293C7, 0x293CC, 0x293DA, 0x293F3,
+                              0x29473, 0x2947C, 0x29485, 0x2949D, 0x294B3, 0x294FC, 0x2956E, 0x29593, 0x295A7,
+                              0x295B1)},
+       mutants=("@preb14a", "@nohud", "@nomark")),
+]
+# The AIL thunks 0x1CB18 calls (cdecl: the caller drops its pushes, so pop 0). s0 is the slot's AIL
+# handle, a host object in the port, and is not an argument here; the clobbers are the scan's.
+D4A_AIL_INIT = E.Call(0x5DC0F, (), clobbers=("ebx", "ecx", "edx"))
+D4A_AIL_ADDR = E.Call(0x5DC2A, ("s1", "s2"), clobbers=("edx",))
+D4A_AIL_VOL = E.Call(0x5DCC5, ("s1",), clobbers=("ebx", "ecx", "edx"))
+D4A_AIL_RATE = E.Call(0x5DCA6, ("s1",), clobbers=("edx",))
+D4A_AIL_TYPE = E.Call(0x5DC4D, ("s1", "s2"), clobbers=("ebx", "ecx", "edx"))
+D4A_AIL_LOOP = E.Call(0x5DCE4, ("s1",), clobbers=("edx",))
+D4A_AIL_START = E.Call(0x5DC70, (), clobbers=("ebx", "ecx", "edx"))
+D4A_SS_BUF = (0x0010AB00, 0x0010AB40, 0x0010AB80, 0x0010AC00)   # the slots' buffers (zero BSS); the last has 0x130 bytes
+
+
+# index entries 0, 1, 0, 0; payloads 0x40 apart, the last with room for 0x105 bytes
+D4A_SS_H0, D4A_SS_H1, D4A_SS_H2, D4A_SS_H3 = 0x00000040, 0x00800080, 0x000000C0, 0x00000100
+
+
+def d4a_ss_case(queued, loops, payload=b"", h=None, vol=0x55, extra=()):
+    """0x1CB18: the four 0x18-byte slots at 0x102860 (+0 an AIL handle, +4 `queued[k]`, +8
+    `loops[k]` under three seeded bytes, +0xC 0x99999990 + k, +0x10 a buffer, +0x14 a time), the
+    dword before them, the SFX volume 0xA2CB4 between seeded dwords, every buffer filled with
+    0x5A + k, and the resource `h` (c2b_res: its payload's first dword is the length, then
+    `payload` and two guard bytes); `extra` handles resolve to a 4-byte payload."""
+    p = {0x0010285C: le32(0x5E5E5E5E), 0x000A2CB0: le32(0x61616161) + le32(vol) + le32(0x62626262)}
+    for k in range(4):
+        p[0x00102860 + k * 0x18] = (le32(0x0010C000 + k * 0x18) + le32(queued[k])
+                                    + bytes([loops[k], 0x63, 0x64, 0x65]) + le32(0x99999990 + k)
+                                    + le32(D4A_SS_BUF[k]) + le32(0x44444440 + k))
+        p[D4A_SS_BUF[k] - 4] = bytes([0x5A + k]) * (0x130 if k == 3 else 0x30)
+    for hh, body in tuple((x, b"\x71\x72\x73\x74") for x in extra) + ((h, payload),):
+        p.update(c2b_res(hh, len(body)))
+        p[C2B_RES_DATA + (hh & 0x7FFFFF) + 4] = body + b"\x7e\x7f"
+    return {a + o: v[o:o + 0x40] for a, v in p.items() for o in range(0, max(len(v), 1), 0x40)}   # a poke holds 64 bytes
+
+
+D4A_SPECS += [
+    # 0x1CB18 sound_sample_start: EAX = the slot (0x18-byte records at 0x102860). Nothing with no
+    # queued handle (+0x04). Else the resource (0x1B544, real on both sides against the preloaded
+    # entry) gives [length][bytes]: the bytes are copied to the slot's buffer (+0x10; `rep movsd`
+    # of length / 4, `rep movsb` of length & 3), then 0x5DC0F, 0x5DC2A(buffer, length),
+    # 0x5DCC5(the dword 0xA2CB4), 0x5DCA6(0x2B11), 0x5DC4D(0, 0), 0x5DCE4(0) when the loop byte
+    # +0x08 (zero-extended) is 1, 0x5DC70; +0x0C = the queued handle and +0x04 = 0. The seven AIL
+    # thunks are stubs (five seamed here); their handle argument is not compared (record §4).
+    # s6 has no queued handle but a resolvable handle 0, s7 a length of 0, s8 one of 0x105.
+    Spec("sound_sample_start", 0x1CB18, [
+        Case("s0", {"eax": 0, "ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468,
+                    "edi": 0x2468ACE0, "ebp": 0x0F1E2D3C},
+             d4a_ss_case((D4A_SS_H0, D4A_SS_H1, 0, D4A_SS_H2), (1, 1, 1, 1), bytes(range(1, 0x24)),
+                         h=D4A_SS_H0, extra=(D4A_SS_H1, D4A_SS_H2))),
+        Case("s1", {"eax": 1}, d4a_ss_case((D4A_SS_H0, D4A_SS_H1, 0, D4A_SS_H2), (1, 0, 1, 1), b"\x11\x12\x13",
+                                           h=D4A_SS_H1, vol=0xFFFFFF80, extra=(D4A_SS_H0, D4A_SS_H2)),
+             {0x5DC0F: 0xFFFFFFFF}),
+        Case("s2", {"eax": 3}, d4a_ss_case((D4A_SS_H0, 0, 0, D4A_SS_H2), (0, 0, 0, 2), b"\x21\x22\x23\x24\x25",
+                                           h=D4A_SS_H2, vol=0, extra=(D4A_SS_H0,))),
+        Case("s3", {"eax": 2}, d4a_ss_case((D4A_SS_H0, D4A_SS_H2, D4A_SS_H1, 0), (0, 0, 1, 0), b"\x31",
+                                           h=D4A_SS_H1, extra=(D4A_SS_H0, D4A_SS_H2))),
+        Case("s4", {"eax": 0}, d4a_ss_case((D4A_SS_H2, 0, D4A_SS_H0, 0), (0x81, 1, 1, 1), b"\x41\x42\x43\x44",
+                                           h=D4A_SS_H2, extra=(D4A_SS_H0,))),
+        Case("s5", {"eax": 1}, d4a_ss_case((D4A_SS_H0, D4A_SS_H2, D4A_SS_H1, 0), (1, 0xFF, 1, 1),
+                                           bytes(range(0x50, 0x57)), h=D4A_SS_H2, extra=(D4A_SS_H0, D4A_SS_H1))),
+        Case("s6", {"eax": 2}, d4a_ss_case((D4A_SS_H0, D4A_SS_H1, 0, D4A_SS_H2), (1, 1, 1, 1), b"\x61\x62\x63\x64",
+                                           h=0x00000000, extra=(D4A_SS_H0, D4A_SS_H1, D4A_SS_H2))),
+        Case("s7", {"eax": 3}, d4a_ss_case((0, 0, 0, D4A_SS_H2), (1, 1, 1, 1), b"", h=D4A_SS_H2)),
+        Case("s8", {"eax": 3}, d4a_ss_case((D4A_SS_H0, 0, 0, D4A_SS_H3), (1, 1, 1, 0),
+                                           bytes((i * 7 + 1) & 0xFF for i in range(0x105)), h=D4A_SS_H3,
+                                           extra=(D4A_SS_H0,))),
+    ], allow_calls=(0x1B544,),
+       calls=(D4A_AIL_INIT, D4A_AIL_ADDR, D4A_AIL_VOL, D4A_AIL_RATE, D4A_AIL_TYPE, D4A_AIL_LOOP, D4A_AIL_START),
+       eax_mask=0,
+       mutants=("@stride", "@slot1", "@hoff", "@nogate", "@size1", "@sizeb", "@src", "@dst", "@nocopy", "@copylate",
+                "@noinit", "@noaddr", "@addrbuf", "@addrlen", "@vol", "@novol", "@rate", "@norate", "@type",
+                "@type2", "@notype", "@loopalways", "@loopnever", "@loopne", "@loopcnt", "@nostart", "@startearly",
+                "@order", "@cur0", "@nocur", "@curoff", "@noclr", "@clrearly", "@clrfirst")),
+]
+D4A_SAMPLE_START = E.Call(0x1CB18, ("eax",))
+D4A_SPECS += [
+    # 0x1CF20 game_audio_service: no argument. 0x1CB18(slot) for slot 0..3 (EDX counts, EAX = EDX
+    # before its `inc`), then 0x1C930 when the pending-music dword 0x1028CC is non-zero. 0x1CB18
+    # is a stub (seamed here; its own row above). The cases keep 0x1028CC = 0: the port starts
+    # music from its own request flag and its 0x1C930 is a host replacement, so that arm has no
+    # port counterpart to compare (record §4); neither has what the port does after the loop
+    # (the sequencer ticks and the mixer: host state, no mem[] byte).
+    Spec("game_audio_service", 0x1CF20, [
+        Case("a0", {"edx": 0x0BADF00D}, {0x001028C8: le32(0x5A5A5A5A) + le32(0) + le32(0x5B5B5B5B)}),
+        Case("a1", {"eax": 0xFFFFFFFF, "edx": 2}, {0x001028C8: le32(0) + le32(0) + le32(0)}, {0x1CB18: 0x12345678}),
+    ], calls=(D4A_SAMPLE_START,), eax_mask=0,
+       unhit_named={0x1CF39: "the pending-music arm (0x1028CC != 0 -> 0x1C930): the port keeps its request in "
+                             "a C flag and replaces 0x1C930 by host code (flow.c title_music_start, PORT)"},
+       mutants=("@three", "@five", "@rev", "@from1", "@same", "@none")),
+]
+D1_SPECS += D4A_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

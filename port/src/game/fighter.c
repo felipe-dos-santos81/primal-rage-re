@@ -2446,6 +2446,7 @@ void fighter_state_37464(u32 side)
  * +0x5A >= 0x78, and re-acquire the character palette. */
 void fighter_state_33b00(u32 side, u32 src, u32 dst2)
 {
+    PR_SEAM(0x33B00u, side, src, dst2);
     u32 slot = DS_001077B0 + side * 0x94u;
     u8 a = DSB(slot + 0x5Au);                           /* 0x33B21 */
     u8 b = DSB(slot + 0x5Du);                           /* 0x33B2D */
@@ -7028,6 +7029,7 @@ void fighter_246d4(u32 rec)
  * 0x81000 and +0x63 = 1. */
 void fighter_24568(u32 side)
 {
+    PR_SEAM(0x24568u, side);
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x24602..0x24610 */
     int left = fighter_actor_bit15_clear((u32)DSB(FIGHTER_10810D)) != 0;  /* 0x2456E..0x2457C 0x1A570 */
     u32 x, a5, mask, v;
@@ -7128,6 +7130,7 @@ void fighter_40c34(u32 rec)
  * 9/3/2 with +0x40 |= 0x81000 and +0x63 = 1. No 0x2372C and no +0x64. */
 void fighter_40cb0(u32 side)
 {
+    PR_SEAM(0x40CB0u, side);
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x40D4D..0x40D5B */
     int left = fighter_actor_bit15_clear((u32)DSB(FIGHTER_10810D)) != 0;  /* 0x40CB6..0x40CC4 0x1A570 */
     u32 x, a5, mask, v;
@@ -7586,6 +7589,7 @@ void fighter_24754(u32 side)
  * 0x24754's. */
 void fighter_24804(u32 side)
 {
+    PR_SEAM(0x24804u, side);
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x2489E..0x248AC */
     int left = fighter_actor_bit15_clear((u32)DSB(FIGHTER_10810D)) != 0;  /* 0x2480A..0x24818 0x1A570 */
     u32 x, a5, mask, v;
@@ -10163,6 +10167,7 @@ void fighter_34038(u32 side)
  * EBX..EBP are pushed and popped. Callers: 0x27FFE and 0x28064 (0x27FA8). */
 void fighter_39ff4(void)
 {
+    PR_SEAM0(0x39FF4u);
     u32 side;
     for (side = 0; side < 2u; side++) {                 /* 0x39FFA..0x3A0DC */
         u32 slot = DS_001077B0 + side * 0x94u;
