@@ -20656,6 +20656,37 @@ D2C_TD_MUT(mode) D2C_TD_MUT(val) D2C_TD_MUT(width) D2C_TD_MUT(pad)  D2C_TD_MUT(n
 D2C_TD_MUT(aecv) D2C_TD_MUT(order) D2C_TD_MUT(forder)
 
 
+
+/* 0x4F0FC: no argument. */
+static void b_d2c_4f0fc(const u32 *r, u32 *eax) { (void)r; game_mode_25_exit(); *eax = 0u; }
+enum { D2C_ME_NONE, D2C_ME_id67, D2C_ME_rowb, D2C_ME_mode, D2C_ME_col, D2C_ME_rel, D2C_ME_relrow, D2C_ME_rel4,
+       D2C_ME_b00, D2C_ME_b00w, D2C_ME_c0, D2C_ME_b15, D2C_ME_aec, D2C_ME_aecv, D2C_ME_order };
+#define D2C_ME(x) (mut == D2C_ME_##x)
+static void d2c_4f0fc_tail(u32 mut)
+{
+    if (D2C_ME(b00w)) DSB(0x00104B00u) = 6u;
+    else DSW(0x00104B00u) = D2C_ME(b00) ? 7u : 6u;
+    if (!D2C_ME(c0)) DSB(0x001088C0u) = 0u;
+    if (!D2C_ME(b15)) DSB(0x00104B15u) = 1u;
+    if (!D2C_ME(aec)) DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) | (D2C_ME(aecv) ? 2u : 1u));
+}
+static void d2c_4f0fc_core(u32 mut)
+{
+    u32 mode = D2C_ME(mode) ? 0x1000u : 0x4000u;
+    s32 col = D2C_ME(col) ? 0 : -1;
+    text_cursor_hold_font2(col, D2C_ME(rowb) ? 0xE : 0xB, game_string_get(D2C_ME(id67) ? 0x68u : 0x67u), mode);
+    text_cursor_hold_font2(col, D2C_ME(rowb) ? 0xB : 0xE, game_string_get(D2C_ME(id67) ? 0x67u : 0x68u), mode);
+    if (D2C_ME(order)) d2c_4f0fc_tail(mut);
+    for (s32 row = 6; row < (D2C_ME(rel4) ? 0xA : 0xB); row++) {
+        if (D2C_ME(rel)) text_cells_release_count(-1, row, 0xE);
+        else text_cells_release_count(0xE, row + (D2C_ME(relrow) ? 1 : 0), 0xB);
+    }
+    if (!D2C_ME(order)) d2c_4f0fc_tail(mut);
+}
+#define D2C_ME_MUT(name) \
+    static void m_d2c_me_##name(const u32 *r, u32 *eax) { (void)r; d2c_4f0fc_core(D2C_ME_##name); *eax = 0u; }
+D2C_ME_MUT(id67) D2C_ME_MUT(rowb) D2C_ME_MUT(mode) D2C_ME_MUT(col)  D2C_ME_MUT(rel) D2C_ME_MUT(relrow) D2C_ME_MUT(rel4)
+D2C_ME_MUT(b00)  D2C_ME_MUT(b00w) D2C_ME_MUT(c0)   D2C_ME_MUT(b15)  D2C_ME_MUT(aec) D2C_ME_MUT(aecv)   D2C_ME_MUT(order)
 /* ---- end of track D2 batch d2c bindings ---- */
 
 static const binding_t k_bindings[] = {
@@ -24917,6 +24948,21 @@ static const binding_t k_bindings[] = {
     { "flow_round_timer_draw@aecv", m_d2c_td_aecv, 0x00000000u },
     { "flow_round_timer_draw@order", m_d2c_td_order, 0x00000000u },
     { "flow_round_timer_draw@forder", m_d2c_td_forder, 0x00000000u },
+    { "game_mode_25_exit", b_d2c_4f0fc, 0x00000000u },
+    { "game_mode_25_exit@id67", m_d2c_me_id67, 0x00000000u },
+    { "game_mode_25_exit@rowb", m_d2c_me_rowb, 0x00000000u },
+    { "game_mode_25_exit@mode", m_d2c_me_mode, 0x00000000u },
+    { "game_mode_25_exit@col", m_d2c_me_col, 0x00000000u },
+    { "game_mode_25_exit@rel", m_d2c_me_rel, 0x00000000u },
+    { "game_mode_25_exit@relrow", m_d2c_me_relrow, 0x00000000u },
+    { "game_mode_25_exit@rel4", m_d2c_me_rel4, 0x00000000u },
+    { "game_mode_25_exit@b00", m_d2c_me_b00, 0x00000000u },
+    { "game_mode_25_exit@b00w", m_d2c_me_b00w, 0x00000000u },
+    { "game_mode_25_exit@c0", m_d2c_me_c0, 0x00000000u },
+    { "game_mode_25_exit@b15", m_d2c_me_b15, 0x00000000u },
+    { "game_mode_25_exit@aec", m_d2c_me_aec, 0x00000000u },
+    { "game_mode_25_exit@aecv", m_d2c_me_aecv, 0x00000000u },
+    { "game_mode_25_exit@order", m_d2c_me_order, 0x00000000u },
     /* ---- end of track D2 batch d2c entries ---- */
 };
 

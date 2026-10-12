@@ -6455,6 +6455,7 @@ D2C_MASKS = {
     "frontend_skip_check": 0xff,
     "frontend_wipe_out": 0xffffffff,
     "flow_round_timer_draw": 0x0,
+    "game_mode_25_exit": 0x0,
 }
 D2C_KINDS = {
     "game_state_3_handoff@d1": {'call #0'},
@@ -6808,6 +6809,20 @@ D2C_KINDS = {
     "flow_round_timer_draw@aecv": {'byte'},
     "flow_round_timer_draw@order": {'call #0 memory'},
     "flow_round_timer_draw@forder": {'call #0 memory'},
+    "game_mode_25_exit@id67": {'call #0', 'call #2'},
+    "game_mode_25_exit@rowb": {'call #1', 'call #3'},
+    "game_mode_25_exit@mode": {'call #1', 'call #3'},
+    "game_mode_25_exit@col": {'call #1', 'call #3'},
+    "game_mode_25_exit@rel": {'call #4', 'call #5', 'call #6', 'call #7', 'call #8'},
+    "game_mode_25_exit@relrow": {'call #4', 'call #5', 'call #6', 'call #7', 'call #8'},
+    "game_mode_25_exit@rel4": {'call #8'},
+    "game_mode_25_exit@b00": {'byte'},
+    "game_mode_25_exit@b00w": {'byte'},
+    "game_mode_25_exit@c0": {'byte'},
+    "game_mode_25_exit@b15": {'byte'},
+    "game_mode_25_exit@aec": {'byte'},
+    "game_mode_25_exit@aecv": {'byte'},
+    "game_mode_25_exit@order": {'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory'},
 }
 D2C_CASES = [
     ("game_state_3_handoff@d1", ['h0', 'h1', 'h2', 'h3']),
@@ -7161,6 +7176,20 @@ D2C_CASES = [
     ("flow_round_timer_draw@aecv", ['r3', 'r5']),
     ("flow_round_timer_draw@order", ['r3', 'r5']),
     ("flow_round_timer_draw@forder", ['r0', 'r1']),
+    ("game_mode_25_exit@id67", ['x0', 'x1']),
+    ("game_mode_25_exit@rowb", ['x0', 'x1']),
+    ("game_mode_25_exit@mode", ['x0', 'x1']),
+    ("game_mode_25_exit@col", ['x0', 'x1']),
+    ("game_mode_25_exit@rel", ['x0', 'x1']),
+    ("game_mode_25_exit@relrow", ['x0', 'x1']),
+    ("game_mode_25_exit@rel4", ['x0', 'x1']),
+    ("game_mode_25_exit@b00", ['x0', 'x1']),
+    ("game_mode_25_exit@b00w", ['x0', 'x1']),
+    ("game_mode_25_exit@c0", ['x0', 'x1']),
+    ("game_mode_25_exit@b15", ['x0', 'x1']),
+    ("game_mode_25_exit@aec", ['x0', 'x1']),
+    ("game_mode_25_exit@aecv", ['x0', 'x1']),
+    ("game_mode_25_exit@order", ['x0', 'x1']),
 ]
 D1_MASKS.update(D2C_MASKS)
 D1_KINDS.update(D2C_KINDS)

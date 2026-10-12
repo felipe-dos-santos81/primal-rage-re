@@ -13564,6 +13564,14 @@ D2C_NUMDRAW2 = E.Call(0x2F528, ("eax", "edx", "ebx", "ecx", "s0", "s1"), pop=8,
                       clobbers=("ebx", "ecx", "edx"))
 
 
+def d2c_exit25_case(v, aec):
+    """0x4F0FC: the mode word 0x104B00, the bytes 0x1088C0 and 0x104B15 (= `v`) and the flag
+    byte 0x104AEC, each between seeded neighbours, and the string buffer."""
+    return {0x00104AFE: le16(0x6161) + bytes([v, v]) + le16(0x6262), 0x001088BF: bytes([0x63, v, 0x64]),
+            0x00104B14: bytes([0x65, v, 0x66]), 0x00104AEB: bytes([0x67, aec, 0x68]),
+            0x00102760: b"\x5a" * 0x10}
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -13997,6 +14005,18 @@ D2C_SPECS = [
     ], calls=(D1G_TXT198, D2C_NUMDRAW2), eax_mask=0,
        mutants=("@b1d2", "@f2a", "@f2b", "@xxf2", "@b14", "@col", "@row", "@mode", "@val", "@width",
                 "@pad", "@nmode", "@f2c", "@aec", "@aecv", "@order", "@forder")),
+    # 0x4F0FC game_mode_25_exit: no argument. Strings 0x67 (row 0xB) and 0x68 (row 0xE) at col
+    # -1, mode 0x4000 through 0x2F510; five 0x2F388(col 0xE, row 6..0xA, count 0xB) (`mov
+    # ebx,0xb; mov edx,row; mov eax,0xe`); then the mode word 0x104B00 = 6, 0x1088C0 = 0,
+    # 0x104B15 = 1 and 0x104AEC |= 1. 0x1C500 runs real over the stubbed 0x474E4; 0x2F510 and
+    # 0x2F388 are stubs. Mask 0: the one call site 0x25303 traced (record §1).
+    Spec("game_mode_25_exit", 0x4F0FC, [
+        Case("x0", {}, d2c_exit25_case(0x5A, 0x80)),
+        Case("x1", {"eax": 0xFFFFFFFF, "ebx": 0xFFFFFFFF, "edx": 0xFFFFFFFF}, d2c_exit25_case(0xFF, 0xFE),
+             {0x474E4: 0}),
+    ], allow_calls=(0x1C500,), calls=(D1C_STR, D2C_HOLD2, D2C_RELCNT), eax_mask=0,
+       mutants=("@id67", "@rowb", "@mode", "@col", "@rel", "@relrow", "@rel4", "@b00", "@b00w", "@c0",
+                "@b15", "@aec", "@aecv", "@order")),
 ]
 D1_SPECS += D2C_SPECS
 
