@@ -24976,6 +24976,81 @@ D5H_SPECS += [
                           dataclasses.replace(D5H_H[0x4EF8C], writes=((None, 0x00104B25, b"\x05"),))),
        d5h_gf_muts("rr")),
 ]
+
+# ---- 0x255CC game_loop (record §2.5): the master loop ------------------------------------------
+# The project's two master-loop pins (tools/title_pin.py, PATCHES 0x78505 and 0x7852A): `call 0x5d7dc`
+# at 0x256B1 (the body draw) and 0x256D6 (the spin draw) replaced by `mov eax,0`. The port is written
+# against that pinned original (flow.c game_loop, PORT). Unpinned, with 0x5D7DC outside the call set,
+# the original stops `unmodeled: call 0x5D7DC from 0x256B1` (measured).
+D5H_LOOP_PINS = {0x000256B1: bytes.fromhex("b800000000"), 0x000256D6: bytes.fromhex("b800000000")}
+D5H_PUMP = E.Call(0x500C4, ())
+D5H_SCENE = E.Call(0x292AC, (), clobbers=("ecx", "esi", "edi", "ebp"))
+D5H_EDGE = E.Call(0x389C4, ())
+D5H_FRAME = E.Call(0x24C5C, (), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+# The stubs model what the loop waits on (record §2.5): render entry 0 sets the quit flag 0xA81A8, the
+# effects step arms render entries 0 and 4 for the next iteration, and the audio service steps the ISR
+# tick 0x101508 to 0x10001 (above the
+# frame count in its high word, so a word compare of the pair is caught), so the spin 0x256C6 (which waits on the timer ISR 0x1BDF4) never runs.
+D5H_RENDER0 = E.Call(0x4F4E8, (), writes=((None, 0x000A81A8, b"\x01"),))
+D5H_RENDER4 = E.Call(0x4F5C8, ())
+D5H_FX = E.Call(0x134C0, (), writes=((None, 0x00104AEC, le32(0x00000011)),))
+D5H_SORT = E.Call(0x1C3FC, ())
+D5H_LIST = E.Call(0x14328, (), clobbers=("ebx", "edx"))
+D5H_FLUSH = E.Call(0x1C470, (), clobbers=("edi", "ebp"))
+D5H_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x00101508, le32(0x00010001)),))
+D5H_LOOP_CALLS = (D5H_PUMP, D5H_SCENE, D5H_EDGE, D4B_FILL, D5H_FRAME, D5H_RENDER0, D5H_RENDER4, D5H_FX, D5H_SORT,
+                  D5H_LIST, D5H_FLUSH, D5H_AUDIO)
+
+
+def d5h_loop_case(aec=0, a54=1, f4=0, af4=0xFFFF, a55=0x55, f5=0xF5):
+    """0x255CC: the pins; the tick pair 0x101508/0x10150C seeded (the prologue zeroes both); the scroll
+    gate 0x107A54 and the list gate 0x1088F4, each before a seeded byte; the render mask 0x104AEC; the
+    frame word 0x104AF4 before the seeded word 0x104AF6; the copy flag 0x1014FC clear before three
+    seeded bytes; the quit flag 0xA81A8 clear before a seeded byte; the front buffer 0xE87A0 = 0xB0000
+    and the back buffer 0xE87A4 = 0xA0000, the aperture itself, so the dirty blit 0x501A3 (real in the
+    original, host-owned) rewrites the bytes it reads."""
+    p = dict(D5H_LOOP_PINS)
+    p.update({
+        0x00101508: le32(0x11111111) + le32(0x22222222),
+        0x00107A54: bytes([a54, a55]), 0x001088F4: bytes([f4, f5]),
+        0x00104AEC: le32(aec), 0x00104AF4: le16(af4) + le16(0x5A5A),
+        0x001014FC: bytes([0x00, 0xFD, 0xFE, 0xFF]), 0x000A81A8: bytes([0x00, 0x5A]),
+        0x000E87A0: le32(0x000B0000) + le32(0x000A0000),
+    })
+    return p
+
+
+D5H_LOOP_UNHIT = {
+    0x25680: "the full copy to the VGA aperture (`mov edi,0xa0000` 0x255E9, the rep movs at 0x25693): the "
+             "port presents through gfx_present and never writes mem[0xA0000] (the aperture rule); a named "
+             "gap (record §4)",
+    0x256D4: "the spin on the ISR tick 0x101508, which the timer ISR 0x1BDF4 steps: the emulator has no "
+             "ISR (the 0x1CF20 stub steps the tick) and the port models it in the spin (game_isr_ticks); a "
+             "named gap (record §4)",
+}
+
+D5H_SPECS += [
+    # 0x255CC game_loop under the two pins: the tick pair zeroed; per iteration 0x500C4, 0x292AC, with
+    # the byte 0x107A54 set 0x389C4 and 0x38A38, 0x24C5C, the render table 0xA86C4 over the mask dword
+    # 0x104AEC (entries 0 and 4 here), the word 0x104AF4 + 1 (k0: 0xFFFF wraps and 0x104AF6 keeps its
+    # word), 0x134C0; when the frame count 0x10150C equals the tick 0x101508: 0x1C3FC, 0x14328 unless
+    # the byte 0x1088F4 is set, 0x1C470, the dirty blit 0x501A3 (the copy flag 0x1014FC clear) and the
+    # swap 0x50188; then 0x1CF20, 0x10150C + 1, and again until the quit flag 0xA81A8 is set. k0/k2/k3
+    # run two iterations (the second with the gate false and the render entries armed), k1 one. 0x501A3
+    # and 0x50188 run real; the others are stubs. The port's own additions in game_loop are not claimed:
+    # the host key fill (it writes zeros over the zero bitmap bytes [0x101514]+0x2D8/9), gfx_present and
+    # the dump hooks.
+    Spec("game_loop", 0x255CC, [
+        Case("k0", {}, d5h_loop_case()),
+        Case("k1", D2E_DIRTY, d5h_loop_case(aec=0x00000011, a54=0, f4=1)),
+        Case("k2", {}, d5h_loop_case(aec=0x00000010, a54=0x80, f4=0x80, af4=0x1233)),
+        Case("k3", {}, d5h_loop_case(aec=0x80000004, a54=0, f4=0, a55=0, f5=0)),
+    ], unhit_named=D5H_LOOP_UNHIT, allow_calls=(0x501A3, 0x50188, 0x5D812), calls=D5H_LOOP_CALLS, eax_mask=0,
+       mutants=("@no508", "@no50c", "@nopump", "@notick", "@tickorder", "@scroll", "@scrollw", "@scrollorder",
+                "@noframe", "@frameearly", "@nortbl", "@rorder", "@rearly", "@af4d", "@noaf4", "@af4late", "@nofx",
+                "@gate", "@gatew", "@nosort", "@f4", "@f4w", "@listorder", "@noflush", "@fcd", "@noswap",
+                "@swapearly", "@incearly", "@noinc", "@noaudio", "@once", "@quitw")),
+]
 D1_SPECS += D5H_SPECS
 # ---- d5h end ----
 SPECS = [

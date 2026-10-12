@@ -2693,6 +2693,7 @@ void game_mode_33_step(void)
  * (the init writes (v & 0xF) * 5 + 0x1E, so it is never zero). */
 void flow_round_timer_step(void)
 {
+    PR_SEAM0(0x4F4E8u);
     if (DSB(DS_00105B3B) != 0u) {                       /* 0x4F4ED */
         for (u32 i = 0; i < 2u; i++)                    /* 0x4F4FB..0x4F52A */
             text_number_draw((s32)(1u + i * 0x22u), 7,
@@ -2734,6 +2735,7 @@ void flow_round_timer_step(void)
  * 0x24B26..0x24B48). */
 void flow_bonus_count_step(void)
 {
+    PR_SEAM0(0x4F5C8u);
     u32 n;
     if (DSD(DS_001088D0) == 0u) return;
     if (((s32)(u32)DSW(DS_00104AF4) % (s32)DSD(DS_001088D0)) != 0)
@@ -6163,6 +6165,7 @@ static void title_music_start(void)
  * and the mixer renders on the virtual clock below; nothing is submitted. */
 void game_audio_service(void)
 {
+    PR_SEAM0(0x1CF20u);
     for (u32 i = 0; i < 4u; i++) sound_sample_start(i);    /* 0x1CF21..0x1CF2E 0x1CB18 */
     if (s_music_request) {
         s_music_request = 0;
@@ -7288,6 +7291,7 @@ void game_key_loop(void)
 
 void game_frame(void)
 {
+    PR_SEAM0(0x24C5Cu);
     /* PORT: 0x24C5C calls 0x4F644 at 0x24C6E (unless DAT_00104B00 == 0x27) as
      * its first action, before the frame counter and the process tables. */
     if (DSW(DS_00104B00) != 0x27u) input_state_update();   /* 0x4F644 (0x24C6E) */

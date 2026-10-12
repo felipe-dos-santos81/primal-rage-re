@@ -33576,6 +33576,80 @@ D5H_F_DROP(0A) D5H_F_DROP(0B) D5H_F_DROP(0C) D5H_F_DROP(0D) D5H_F_DROP(0E) D5H_F
 D5H_F_DROP(13) D5H_F_DROP(14) D5H_F_DROP(15) D5H_F_DROP(16) D5H_F_DROP(17) D5H_F_DROP(18) D5H_F_DROP(19) D5H_F_DROP(1A)
 D5H_F_DROP(1B) D5H_F_DROP(1E) D5H_F_DROP(1F) D5H_F_DROP(20) D5H_F_DROP(21) D5H_F_DROP(22) D5H_F_DROP(23) D5H_F_DROP(24)
 D5H_F_DROP(25) D5H_F_DROP(30) D5H_F_DROP(31) D5H_F_DROP(32) D5H_F_DROP(33)
+
+/* 0x255CC game_loop: no argument; mask 0 (record §1: 0x20DE8 returns through 0x20DF2 to 0x1C0C2, where
+ * 0x10D34 loads EAX at 0x10D43 or returns, 0x1BE30 takes none and 0x1C0CC is `xor eax,eax`). The port
+ * splits the prologue's two stores off as game_loop_begin (PORT). Every case applies the project's two
+ * master-loop pins (tools/title_pin.py: `call 0x5d7dc` at 0x256B1 and 0x256D6 replaced by `mov eax,0`),
+ * which the port is written against (record §2.5). */
+static void b_d5h_255cc(const u32 *r, u32 *eax) { (void)r; game_loop_begin(); game_loop(); *eax = 0u; }
+
+/* 0x255CC's mutants: the raw read block by block, the host-owned blit and the ISR spin left out.
+ * @af4d (a dword increment of the word 0x104AF4), @incearly (0x10150C stepped before 0x1CF20) and @fcd
+ * (a dword store over the byte 0x1014FC) are the pre-D5 port. A mutant that loses the quit stops
+ * after four iterations. */
+#define D5H_L_LIST(X) \
+    X(no508) X(no50c) X(nopump) X(notick) X(tickorder) X(scroll) X(scrollw) X(scrollorder) X(noframe) \
+    X(frameearly) X(nortbl) X(rorder) X(rearly) X(af4d) X(noaf4) X(af4late) X(nofx) X(gate) X(gatew) X(nosort) \
+    X(f4) X(f4w) X(listorder) X(noflush) X(fcd) X(noswap) X(swapearly) X(incearly) X(noinc) X(noaudio) \
+    X(once) X(quitw)
+enum { D5H_L_NONE,
+#define X(n) D5H_L_##n,
+       D5H_L_LIST(X)
+#undef X
+       D5H_L_COUNT };
+#define D5H_L(x) (mut == D5H_L_##x)
+static void d5h_255cc_core(u32 mut)
+{
+    if (!D5H_L(no508)) DSD(0x00101508u) = 0u;                    /* 0x255D4 */
+    if (!D5H_L(no50c)) DSD(0x0010150Cu) = DSD(0x00101508u);      /* 0x255DA/0x255DF */
+    for (u32 it = 0u; it < 4u; it++) {
+        if (D5H_L(tickorder)) d5h_seam0(0x292ACu);
+        if (!D5H_L(nopump)) (void)d5h_seamr0(0x500C4u);          /* 0x255EE */
+        if (!D5H_L(notick) && !D5H_L(tickorder)) d5h_seam0(0x292ACu);   /* 0x255F3 */
+        if (D5H_L(frameearly)) d5h_seam0(0x24C5Cu);
+        if (D5H_L(scroll) || (D5H_L(scrollw) ? DSW(0x00107A54u) : DSB(0x00107A54u)) != 0u) {   /* 0x255F8 */
+            if (D5H_L(scrollorder)) d5h_seam0(0x38A38u);
+            d5h_seam0(0x389C4u);                                 /* 0x25601 */
+            if (!D5H_L(scrollorder)) d5h_seam0(0x38A38u);        /* 0x25606 */
+        }
+        if (!D5H_L(noframe) && !D5H_L(frameearly)) d5h_seam0(0x24C5Cu);   /* 0x2560B */
+        if (D5H_L(rearly)) d5h_seam0(0x134C0u);
+        if (!D5H_L(nortbl)) {                                    /* 0x25610..0x25630 */
+            u32 mask = DSD(0x00104AECu);
+            for (u32 n = 0u; n < 32u; n++) {
+                u32 i = D5H_L(rorder) ? 31u - n : n;
+                if ((mask & (1u << i)) == 0u) continue;
+                void (*fn)(void) = fn_resolve(DSD(0x000A86C4u + i * 4u));
+                if (fn) fn();
+            }
+        }
+        if (D5H_L(af4d)) DSD(0x00104AF4u) = DSD(0x00104AF4u) + 1u;
+        else if (!D5H_L(noaf4) && !D5H_L(af4late)) DSW(0x00104AF4u) = (u16)(DSW(0x00104AF4u) + 1u);   /* 0x25632 `inc word` */
+        if (!D5H_L(nofx) && !D5H_L(rearly)) d5h_seam0(0x134C0u); /* 0x25639 */
+        if (D5H_L(af4late)) DSW(0x00104AF4u) = (u16)(DSW(0x00104AF4u) + 1u);
+        if (D5H_L(gate) || (D5H_L(gatew) ? DSW(0x0010150Cu) == DSW(0x00101508u)
+                                         : DSD(0x0010150Cu) == DSD(0x00101508u))) {   /* 0x2563E..0x25649 */
+            if (D5H_L(swapearly)) swap_buffers();
+            if (D5H_L(listorder) && DSB(0x001088F4u) == 0u) d5h_seam0(0x14328u);
+            if (!D5H_L(nosort)) d5h_seam0(0x1C3FCu);             /* 0x25650 */
+            if (!D5H_L(listorder) && (D5H_L(f4) || (D5H_L(f4w) ? DSW(0x001088F4u) : DSB(0x001088F4u)) == 0u))
+                d5h_seam0(0x14328u);                             /* 0x25655/0x2566D */
+            if (!D5H_L(noflush)) d5h_seam0(0x1C470u);            /* 0x25672 */
+            /* 0x25677..0x256A5: the aperture copy or the dirty blit 0x501A3, host-owned */
+            if (D5H_L(fcd)) DSD(0x001014FCu) = 0u;
+            if (!D5H_L(noswap) && !D5H_L(swapearly)) swap_buffers();   /* 0x256AA */
+        }
+        if (D5H_L(incearly)) DSD(0x0010150Cu) = DSD(0x0010150Cu) + 1u;
+        if (!D5H_L(noaudio)) d5h_seam0(0x1CF20u);                /* 0x256B6 */
+        if (!D5H_L(noinc) && !D5H_L(incearly)) DSD(0x0010150Cu) = DSD(0x0010150Cu) + 1u;   /* 0x256C0 */
+        /* 0x256C6..0x256DB: the spin on the ISR tick, not reached (the 0x1CF20 stub steps the tick) */
+        if (D5H_L(once) || (D5H_L(quitw) ? DSW(0x000A81A8u) : DSB(0x000A81A8u)) != 0u) break;   /* 0x256DD */
+    }
+}
+#define X(n) static void m_d5h_255cc_##n(const u32 *r, u32 *eax) { (void)r; d5h_255cc_core(D5H_L_##n); *eax = 0u; }
+D5H_L_LIST(X)
+#undef X
 /* ---- d5h end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -43850,6 +43924,39 @@ static const binding_t k_bindings[] = {
     { "game_frame_rr@b1acache", m_d5h_24c5c_b1acache, 0x00000000u },
     { "game_frame_rr@bdearly", m_d5h_24c5c_bdearly, 0x00000000u },
     { "game_frame_rr@inccache", m_d5h_24c5c_inccache, 0x00000000u },
+    { "game_loop", b_d5h_255cc, 0x00000000u },
+    { "game_loop@no508", m_d5h_255cc_no508, 0x00000000u },
+    { "game_loop@no50c", m_d5h_255cc_no50c, 0x00000000u },
+    { "game_loop@nopump", m_d5h_255cc_nopump, 0x00000000u },
+    { "game_loop@notick", m_d5h_255cc_notick, 0x00000000u },
+    { "game_loop@tickorder", m_d5h_255cc_tickorder, 0x00000000u },
+    { "game_loop@scroll", m_d5h_255cc_scroll, 0x00000000u },
+    { "game_loop@scrollw", m_d5h_255cc_scrollw, 0x00000000u },
+    { "game_loop@scrollorder", m_d5h_255cc_scrollorder, 0x00000000u },
+    { "game_loop@noframe", m_d5h_255cc_noframe, 0x00000000u },
+    { "game_loop@frameearly", m_d5h_255cc_frameearly, 0x00000000u },
+    { "game_loop@nortbl", m_d5h_255cc_nortbl, 0x00000000u },
+    { "game_loop@rorder", m_d5h_255cc_rorder, 0x00000000u },
+    { "game_loop@rearly", m_d5h_255cc_rearly, 0x00000000u },
+    { "game_loop@af4d", m_d5h_255cc_af4d, 0x00000000u },
+    { "game_loop@noaf4", m_d5h_255cc_noaf4, 0x00000000u },
+    { "game_loop@af4late", m_d5h_255cc_af4late, 0x00000000u },
+    { "game_loop@nofx", m_d5h_255cc_nofx, 0x00000000u },
+    { "game_loop@gate", m_d5h_255cc_gate, 0x00000000u },
+    { "game_loop@gatew", m_d5h_255cc_gatew, 0x00000000u },
+    { "game_loop@nosort", m_d5h_255cc_nosort, 0x00000000u },
+    { "game_loop@f4", m_d5h_255cc_f4, 0x00000000u },
+    { "game_loop@f4w", m_d5h_255cc_f4w, 0x00000000u },
+    { "game_loop@listorder", m_d5h_255cc_listorder, 0x00000000u },
+    { "game_loop@noflush", m_d5h_255cc_noflush, 0x00000000u },
+    { "game_loop@fcd", m_d5h_255cc_fcd, 0x00000000u },
+    { "game_loop@noswap", m_d5h_255cc_noswap, 0x00000000u },
+    { "game_loop@swapearly", m_d5h_255cc_swapearly, 0x00000000u },
+    { "game_loop@incearly", m_d5h_255cc_incearly, 0x00000000u },
+    { "game_loop@noinc", m_d5h_255cc_noinc, 0x00000000u },
+    { "game_loop@noaudio", m_d5h_255cc_noaudio, 0x00000000u },
+    { "game_loop@once", m_d5h_255cc_once, 0x00000000u },
+    { "game_loop@quitw", m_d5h_255cc_quitw, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -68,6 +68,7 @@ static void attract_register(void)
  * address at DS_000A8744 + i*4, where i is the byte offset (0, 4, 8, ...). */
 void attract_scene_tick(void)
 {
+    PR_SEAM0(0x292ACu);
     attract_register();
     u32 mask = DSD(DS_00104AD0);
     for (u32 i = 0; mask != 0; i += 4u, mask >>= 1) {

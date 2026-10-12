@@ -141,6 +141,7 @@ void render_list_remove(u32 pset_off)
  * Needed because a pset's layer can change while it is listed. */
 void render_list_sort(void)
 {
+    PR_SEAM0(0x1C3FCu);
     u32 head = DSD(RENDER_LIST_HEAD);
     if (head == 0) return;
     u32 prev = head;
@@ -174,6 +175,7 @@ int render_list_count(void)
  * the camera's clip fields; the camera's own x/y are the projection origin. */
 void render_list(void)
 {
+    PR_SEAM0(0x14328u);
     const struct RenderCamera *cam = &render_camera_default;
     int last_mode1_y = -1;
 
@@ -240,6 +242,7 @@ void render_list(void)
  * its bias never applies but the `/ 64` is kept for symmetry with the raw. */
 void render_scroll_edge(void)
 {
+    PR_SEAM0(0x389C4u);
     if ((s16)DSW(DS_00107A3C) < 1) {
         DSW(DS_00107A38) = (u16)((int)DSW(DS_00107A48) / 64);
         DSW(DS_00107A4C) = DSW(DS_00107A4E);

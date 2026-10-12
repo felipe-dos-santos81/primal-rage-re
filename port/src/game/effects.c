@@ -335,6 +335,7 @@ static u32 effect_darken(u32 cur)
 /* 0x134C0. */
 void effects_step(void)
 {
+    PR_SEAM0(0x134C0u);
     if (DSB(DS_0009AF3C) != 0) return;
     u32 rec = DSD(DS_000FCCE0);
     while (rec != DS_000FCCE0) {
