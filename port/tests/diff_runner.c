@@ -30571,6 +30571,23 @@ D4E_REACT_MUT(14814, a54, 0x8000000u)   D4E_REACT_MUT(14814, slotctx, 0x10000000
 /* 0x1D540 under a stubbed 0x1D74C: d3d's core tests that callee's whole int, so its mutation 0 is
  * the port before the `test al,al` correction (0x1D604). */
 static void m_d4e_1d540_eaxcmd(const u32 *r, u32 *eax) { (void)r; *eax = d3d_1d540_core(0u); }
+/* 0x15B90, 0x164F4 and 0x16AFC under a stubbed 0x1A570, the predicate's whole int tested: the port
+ * before the `test al,al` corrections (0x15C1C, 0x1661A, 0x16B4B, 0x16C85). The tails are d2d's
+ * core at mutation 0; 0x15B90 is restated (d2d's core stores the two dwords after the call). */
+static void m_d4e_15b90_eax(const u32 *r, u32 *eax)
+{
+    u32 side = r[R_EAX], pa = r[R_EDX], pb = r[R_EBX];
+    u32 ch = DSB(DS_0010782A + side * 0x94u);
+    u32 base = camera_char_const(ch) + r[R_ECX];
+    DSD(pa) = DSB(0x000D5100u + base * 2u);            /* stored before the call, as the port and the raw */
+    DSD(pb) = DSB(0x000D5101u + base * 2u);
+    if (ch == 5u || ch == 6u) {
+        DSD(pa) = (u32)((s32)DSD(pa) + (s32)(0x7Fu - DSD(pa)) / 8);
+        DSD(pb) = (u32)((s32)DSD(pb) + (s32)(0x5Fu - DSD(pb)) / 8);
+    }
+    if (!fighter_actor_bit15_clear(side)) DSD(pa) = 0x100u - DSD(pa);
+    *eax = 0u;
+}
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39213,6 +39230,8 @@ static const binding_t k_bindings[] = {
     { "fighter_14814@slotctx", m_d4e_14814_slotctx, 0x00000000u },
     { "fight_hud_meter_step_al", b_d3d_1d540, 0x00000000u },
     { "fight_hud_meter_step_al@eaxcmd", m_d4e_1d540_eaxcmd, 0x00000000u },
+    { "camera_box_palette_al", b_d2d_15b90, 0x00000000u },
+    { "camera_box_palette_al@eax", m_d4e_15b90_eax, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

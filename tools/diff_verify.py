@@ -21976,6 +21976,17 @@ D4E_SPECS += [
 
 D4E_1D74C = E.Call(0x1D74C, ("eax",))          # seamed by this batch; it preserves every register
 
+
+def d4e_tail_cases(which, name, extra):
+    """d2d's cases of a page tail with the 0x1A570 stub's EAX: of the thirteen shared ones only t0
+    and t1 reach the scan's call (t0 0x100: the mirror; t1 0xFFFFFF80: none); `extra` covers the
+    row's own cases; u0 / u1 are t0's state on side 1 with 0xFFFFFF00 and 0 (the mirror)."""
+    R = {"eax": 1, "edx": D2D_OUT_A}
+    T = lambda: d2d_tail_case(which, 1, 0, 5, s5f=4, entries=[(0x20, 0x30, 9), (0x21, 0x40, 7)])
+    return d4e_spec_cases(D2D_SPECS, name, ({0x1A570: 0x00000100}, {0x1A570: 0xFFFFFF80}) + ({},) * 11 + extra) + [
+        Case("u0", R, T(), {0x1A570: 0xFFFFFF00}), Case("u1", R, T(), {0x1A570: 0})]
+
+
 D4E_SPECS += [
     # 0x1D540 fight_hud_meter_step (d3d's row; mask 0 as there) with 0x1D74C a stub (d3d runs it:
     # its EAX is 0 or 1 whole, `and eax,0xffff` 0x1D758 / `setne al`). `test al,al` 0x1D604 / `jne`:
@@ -21987,6 +21998,15 @@ D4E_SPECS += [
         {0x1D74C: 0xFFFFFF00}, {0x1D74C: 1}, {0x1D74C: 0}, {0x1D74C: 0x00000080}, {})),
         calls=(PRED, D2B_PSW, D4E_1D74C), allow_calls=(0x33A10, 0x1D4D0, 0x1D2F0, 0x1D464), eax_mask=0,
         mutants=("@eaxcmd",)),
+    # 0x15B90 camera_box_palette, 0x164F4 camera_page_tail_b, 0x16AFC camera_page_tail_a (d2d's
+    # rows; their masks) with 0x1A570 the BIT15 stub (d2d runs it; camera.c's own copy of the
+    # predicate carries the 0x1A570 seam from this batch). Each site is `call 0x1a570` / `test al,al`
+    # / `jne` over the mirror (0x15C1C, 0x1661A, 0x16B4B, 0x16C85): AL = 0 under EAX 0x100 or
+    # 0xFFFFFF00 mirrors in the original. d2d's cases otherwise (the pset word's bit 15 is not read).
+    Spec("camera_box_palette_al", 0x15B90, d4e_spec_cases(D2D_SPECS, "camera_box_palette", (
+        {0x1A570: 0}, {0x1A570: 1}, {0x1A570: 0x00000100}, {0x1A570: 0xFFFFFF00}, {0x1A570: 0xFFFFFF01},
+        {0x1A570: 0x00000080})),
+        calls=(BIT15,), allow_calls=(0x17EEC,), eax_mask=0, mutants=("@eax",)),
 ]
 D1_SPECS += D4E_SPECS
 SPECS = [

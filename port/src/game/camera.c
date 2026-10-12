@@ -70,6 +70,7 @@ u32 camera_char_const(u32 ch)
  * (word[actor] & 0x8000) == 0 for slot[side]'s actor. */
 static int camera_actor_bit15_clear(u32 side)
 {
+    PR_SEAM_RET(0x1A570u, side);
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
     return (DSW(actor) & 0x8000u) == 0;
@@ -978,7 +979,8 @@ void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
         *out_a = (u32)((s32)*out_a + da);
         *out_b = (u32)((s32)*out_b + db);
     }
-    if (!camera_actor_bit15_clear(side)) *out_a = 0x100u - *out_a;
+    if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x15C17, 0x15C1C: test al,al */
+        *out_a = 0x100u - *out_a;
 }
 
 /* 0x15C30. Project the side's actor sprite rect and clip the 4-byte box at
