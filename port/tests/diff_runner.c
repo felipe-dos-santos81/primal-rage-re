@@ -26377,6 +26377,166 @@ D3B_DB(once, 45)
 D3B_DB(bc3, 46)
 D3B_DB(bc1, 47)
 #undef D3B_DB
+
+/* 0x4987C's mutants. EAX = side, EDX = count, EBX = kind. */
+static void d3b_4987c_core(const u32 *r, unsigned long long mut)
+{
+    u32 side = r[R_EAX], kind = r[R_EBX];
+    s32 count = (s32)r[R_EDX];
+    u32 slot = DS_001077B0 + side * 0x94u, other = DS_001077B0 + (side ^ 1u) * 0x94u;
+    if ((mut & D3B_M(0)) ? (count == 0) : (count <= 0)) return;               /* @count */
+    for (s32 i = 0; (mut & D3B_M(0)) ? ((u32)i < (u32)count) : (i < count); i++) {
+        u32 entry = DSD(0x001083C4u);
+        if (entry == 0x001083C4u) return;
+        if (mut & D3B_M(1)) {                                                 /* @lorder */
+            effects_list_insert_after(0x0010884Cu, entry);
+            effects_list_unlink(entry);
+        } else {
+            effects_list_unlink(entry);
+            effects_list_insert_after(0x0010884Cu, entry);
+        }
+        if (!(mut & D3B_M(2))) DSW(entry + 0x1Cu) = 0u;                       /* @w1c0 */
+        u32 desc;
+        u32 mode = (mut & D3B_M(10)) ? (u32)DSB(0x00104B00u) : (u32)DSW(0x00104B00u);   /* @mode */
+        if (kind != 0u) {
+            if (count == ((mut & D3B_M(3)) ? 2 : 1)) {                        /* @one */
+                desc = DSD(0x000C9538u + kind * 4u);
+            } else {
+                if ((kind == 1u) != ((mut & D3B_M(4)) != 0u))                 /* @k1 */
+                    desc = DSD(0x000C953Cu + (u32)i * 4u);
+                else
+                    desc = DSD(0x000C953Cu + ((u32)i ^ 1u) * 4u);
+                if ((i == 0 || (mut & D3B_M(6))) && !(mut & D3B_M(5)))        /* @bit0all, @bit0 */
+                    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 1u);
+            }
+        } else {
+            desc = DSD(0x000C9524u + fight_dust_pick((mut & D3B_M(7)) ? (side ^ 1u) : side) * 4u);   /* @pickarg */
+            u32 val = (mut & D3B_M(8)) ? fight_dust_value((u32)DSB(slot + 0x7Au), side)   /* @dvarg */
+                                       : fight_dust_value(side, (u32)DSB(slot + 0x7Au));
+            if (!(mut & D3B_M(9))) DSD(desc + 0x10u) = val;                   /* @d10 */
+        }
+        u32 srec = DSD(slot);
+        u32 rec4c = (mut & D3B_M(21)) ? DSD(other) : srec;                    /* @rec4c */
+        u32 far = (mut & D3B_M(12)) ? 0x5700u : 0x5780u;                      /* @d5780 */
+        u32 near = (mut & D3B_M(17)) ? 0x700u : 0x780u;                       /* @p780 */
+        int pair = ((kind != 0u || (mut & D3B_M(15))) && ((mut & D3B_M(16)) ? count >= 2 : count == 2)
+                    && (i == 0 || (mut & D3B_M(14))));                        /* @pairk, @pair2, @pair0 */
+        s32 x;
+        int minus;
+        if (mode == 0x22u) {
+            s32 fx = fight_2be00(srec);
+            u32 k = rng_next(2u);
+            minus = ((mut & D3B_M(11)) ? ((u8)k != 0u) : (k != 0u)) != ((mut & D3B_M(13)) != 0u);   /* @rngal, @swapdir */
+            x = fight_2be4c(rec4c, (s32)(minus ? (u32)fx - far : (u32)fx + far));
+        } else {
+            s32 ox, fx;
+            if (mut & D3B_M(20)) { fx = fight_2be00(srec); ox = fight_2be00(DSD(other)); }   /* @argswap */
+            else { ox = fight_2be00(DSD(other)); fx = fight_2be00(srec); }
+            minus = (mut & D3B_M(18)) ? ((u32)fx < (u32)ox) : (mut & D3B_M(19)) ? (fx <= ox) : (fx < ox);   /* @cmpu, @cmple */
+            x = fight_2be4c(rec4c, (s32)(minus ? (u32)fx - far : (u32)fx + far));
+        }
+        if (pair) x = (s32)(minus ? (u32)x - near : (u32)x + near);
+        int flag = (minus != 0) != ((mut & D3B_M(22)) != 0u);                 /* @flag */
+        s32 y;
+        if (kind != 0u) {
+            s32 w = (mut & D3B_M(25)) ? (s32)(s16)DSW(0x000BD898u) : (s32)(u32)DSW(0x000BD898u);   /* @ysext */
+            if ((mode == 0x22u) != ((mut & D3B_M(24)) != 0u)) y = w;          /* @ymode */
+            else y = w - ((mut & D3B_M(23)) ? 0x100 : 0x200);                 /* @y200 */
+        } else {
+            s32 y0 = (mut & D3B_M(26)) ? (s32)(s16)DSW(srec + 0x30u) : ((s32)DSD(srec + 0x30u) >> 16);   /* @y30 */
+            y = y0 + ((mut & D3B_M(27)) ? 0x300 : 0x400) + (s32)rng_next((mut & D3B_M(28)) ? 0x200u : 0x300u);   /* @y400, @r300 */
+        }
+        u32 actor = (mut & D3B_M(29)) ? actor_spawn((const u32 *)(mem + desc), (u32)y, (u32)x, 0u, 0u)   /* @xy */
+                                      : actor_spawn((const u32 *)(mem + desc), (u32)x, (u32)y, 0u, 0u);
+        if (!(mut & D3B_M(30))) DSD(entry + 8u) = actor;                      /* @ne8 */
+        u32 index = (mut & D3B_M(49)) ? (u32)(u8)((u32)DSB(actor + 0x48u) - 0x20u)   /* @idx8 */
+                                      : (u32)(u16)((u32)DSB(actor + 0x48u) - ((mut & D3B_M(50)) ? 0x21u : 0x20u));   /* @idx20 */
+        if (!(mut & D3B_M(31))) DSD(actor + 0x14u) = entry;                   /* @a14 */
+        if (!(mut & D3B_M(32))) DSD(entry + 0xCu) = slot;                     /* @fc */
+        if (!(mut & D3B_M(33))) DSB(entry + 0x21u) = (u8)side;                /* @f21 */
+        if (!(mut & D3B_M(34))) DSB(entry + 0x1Fu) = 0u;                      /* @f1f */
+        DSW(actor + 0x2Cu) = (mut & D3B_M(35)) ? (u16)y : fight_dust_clamp(y);   /* @clamp */
+        if (!(mut & D3B_M(36))) DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) | 0x10u);   /* @or10 */
+        if (!(mut & D3B_M(37))) DSD(entry + 0x10u) = 0u;                      /* @e10 */
+        int f51 = DSB(DSD(slot) + 0x51u) != 0u, m22 = mode == 0x22u;
+        if ((mut & D3B_M(38)) ? f51 : (mut & D3B_M(39)) ? m22 : (f51 || m22)) {   /* @bump, @bumpmode */
+            DSW(actor + 0x2Eu) = (u16)(DSW(actor + 0x2Eu) + ((mut & D3B_M(40)) ? 2u : 4u));   /* @w2e */
+            if (!(mut & D3B_M(41))) DSB(actor + 0x4Eu) = 1u;                  /* @b4e */
+        }
+        if (kind != 0u) {
+            int b0 = ((DSB(entry + 0x1Cu) & 1u) != 0u) != ((mut & D3B_M(42)) != 0u);   /* @v34a */
+            int pos = (flag != 0) != ((mut & D3B_M(43)) != 0u);               /* @v34sign */
+            if (!(mut & D3B_M(44)))                                           /* @w34 */
+                DSW(actor + 0x34u) = b0 ? (pos ? 0x00C0u : 0xFF40u) : (pos ? 0x0100u : 0xFF00u);
+            if (((mut & D3B_M(46)) ? flag : !flag) && !(mut & D3B_M(45)))     /* @or40inv, @or40 */
+                DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) | 0x40u);
+            DSB(entry + 0x1Eu) = (mut & D3B_M(47)) ? 6u : 7u;                 /* @type */
+            if (!(mut & D3B_M(48))) DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 0x10u);   /* @or10e */
+            if (mut & D3B_M(51)) fight_4b144(entry, index);                   /* @walkk */
+        } else if (!(mut & D3B_M(52))) {                                      /* @nowalk */
+            fight_4b144(entry, index);
+        }
+        if (mut & D3B_M(53)) return;                                          /* @once */
+    }
+}
+static void b_d3b_4987c(const u32 *r, u32 *eax) { fight_4987c(r[R_EAX], (s32)r[R_EDX], r[R_EBX]); *eax = 0u; }
+#define D3B_FL(name, bit) \
+    static void m_d3b_fl_##name(const u32 *r, u32 *eax) { d3b_4987c_core(r, D3B_M(bit)); *eax = 0u; }
+D3B_FL(count, 0)
+D3B_FL(lorder, 1)
+D3B_FL(w1c0, 2)
+D3B_FL(one, 3)
+D3B_FL(k1, 4)
+D3B_FL(bit0, 5)
+D3B_FL(bit0all, 6)
+D3B_FL(pickarg, 7)
+D3B_FL(dvarg, 8)
+D3B_FL(d10, 9)
+D3B_FL(mode, 10)
+D3B_FL(rngal, 11)
+D3B_FL(d5780, 12)
+D3B_FL(swapdir, 13)
+D3B_FL(pair0, 14)
+D3B_FL(pairk, 15)
+D3B_FL(pair2, 16)
+D3B_FL(p780, 17)
+D3B_FL(cmpu, 18)
+D3B_FL(cmple, 19)
+D3B_FL(argswap, 20)
+D3B_FL(rec4c, 21)
+D3B_FL(flag, 22)
+D3B_FL(y200, 23)
+D3B_FL(ymode, 24)
+D3B_FL(ysext, 25)
+D3B_FL(y30, 26)
+D3B_FL(y400, 27)
+D3B_FL(r300, 28)
+D3B_FL(xy, 29)
+D3B_FL(ne8, 30)
+D3B_FL(a14, 31)
+D3B_FL(fc, 32)
+D3B_FL(f21, 33)
+D3B_FL(f1f, 34)
+D3B_FL(clamp, 35)
+D3B_FL(or10, 36)
+D3B_FL(e10, 37)
+D3B_FL(bump, 38)
+D3B_FL(bumpmode, 39)
+D3B_FL(w2e, 40)
+D3B_FL(b4e, 41)
+D3B_FL(v34a, 42)
+D3B_FL(v34sign, 43)
+D3B_FL(w34, 44)
+D3B_FL(or40, 45)
+D3B_FL(or40inv, 46)
+D3B_FL(type, 47)
+D3B_FL(or10e, 48)
+D3B_FL(idx8, 49)
+D3B_FL(idx20, 50)
+D3B_FL(walkk, 51)
+D3B_FL(nowalk, 52)
+D3B_FL(once, 53)
+#undef D3B_FL
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32909,6 +33069,61 @@ static const binding_t k_bindings[] = {
     { "fight_dust_build@once", m_d3b_db_once, 0x00000000u },
     { "fight_dust_build@bc3", m_d3b_db_bc3, 0x00000000u },
     { "fight_dust_build@bc1", m_d3b_db_bc1, 0x00000000u },
+    { "fight_4987c", b_d3b_4987c, 0x00000000u },
+    { "fight_4987c@count", m_d3b_fl_count, 0x00000000u },
+    { "fight_4987c@lorder", m_d3b_fl_lorder, 0x00000000u },
+    { "fight_4987c@w1c0", m_d3b_fl_w1c0, 0x00000000u },
+    { "fight_4987c@one", m_d3b_fl_one, 0x00000000u },
+    { "fight_4987c@k1", m_d3b_fl_k1, 0x00000000u },
+    { "fight_4987c@bit0", m_d3b_fl_bit0, 0x00000000u },
+    { "fight_4987c@bit0all", m_d3b_fl_bit0all, 0x00000000u },
+    { "fight_4987c@pickarg", m_d3b_fl_pickarg, 0x00000000u },
+    { "fight_4987c@dvarg", m_d3b_fl_dvarg, 0x00000000u },
+    { "fight_4987c@d10", m_d3b_fl_d10, 0x00000000u },
+    { "fight_4987c@mode", m_d3b_fl_mode, 0x00000000u },
+    { "fight_4987c@rngal", m_d3b_fl_rngal, 0x00000000u },
+    { "fight_4987c@d5780", m_d3b_fl_d5780, 0x00000000u },
+    { "fight_4987c@swapdir", m_d3b_fl_swapdir, 0x00000000u },
+    { "fight_4987c@pair0", m_d3b_fl_pair0, 0x00000000u },
+    { "fight_4987c@pairk", m_d3b_fl_pairk, 0x00000000u },
+    { "fight_4987c@pair2", m_d3b_fl_pair2, 0x00000000u },
+    { "fight_4987c@p780", m_d3b_fl_p780, 0x00000000u },
+    { "fight_4987c@cmpu", m_d3b_fl_cmpu, 0x00000000u },
+    { "fight_4987c@cmple", m_d3b_fl_cmple, 0x00000000u },
+    { "fight_4987c@argswap", m_d3b_fl_argswap, 0x00000000u },
+    { "fight_4987c@rec4c", m_d3b_fl_rec4c, 0x00000000u },
+    { "fight_4987c@flag", m_d3b_fl_flag, 0x00000000u },
+    { "fight_4987c@y200", m_d3b_fl_y200, 0x00000000u },
+    { "fight_4987c@ymode", m_d3b_fl_ymode, 0x00000000u },
+    { "fight_4987c@ysext", m_d3b_fl_ysext, 0x00000000u },
+    { "fight_4987c@y30", m_d3b_fl_y30, 0x00000000u },
+    { "fight_4987c@y400", m_d3b_fl_y400, 0x00000000u },
+    { "fight_4987c@r300", m_d3b_fl_r300, 0x00000000u },
+    { "fight_4987c@xy", m_d3b_fl_xy, 0x00000000u },
+    { "fight_4987c@ne8", m_d3b_fl_ne8, 0x00000000u },
+    { "fight_4987c@a14", m_d3b_fl_a14, 0x00000000u },
+    { "fight_4987c@fc", m_d3b_fl_fc, 0x00000000u },
+    { "fight_4987c@f21", m_d3b_fl_f21, 0x00000000u },
+    { "fight_4987c@f1f", m_d3b_fl_f1f, 0x00000000u },
+    { "fight_4987c@clamp", m_d3b_fl_clamp, 0x00000000u },
+    { "fight_4987c@or10", m_d3b_fl_or10, 0x00000000u },
+    { "fight_4987c@e10", m_d3b_fl_e10, 0x00000000u },
+    { "fight_4987c@bump", m_d3b_fl_bump, 0x00000000u },
+    { "fight_4987c@bumpmode", m_d3b_fl_bumpmode, 0x00000000u },
+    { "fight_4987c@w2e", m_d3b_fl_w2e, 0x00000000u },
+    { "fight_4987c@b4e", m_d3b_fl_b4e, 0x00000000u },
+    { "fight_4987c@v34a", m_d3b_fl_v34a, 0x00000000u },
+    { "fight_4987c@v34sign", m_d3b_fl_v34sign, 0x00000000u },
+    { "fight_4987c@w34", m_d3b_fl_w34, 0x00000000u },
+    { "fight_4987c@or40", m_d3b_fl_or40, 0x00000000u },
+    { "fight_4987c@or40inv", m_d3b_fl_or40inv, 0x00000000u },
+    { "fight_4987c@type", m_d3b_fl_type, 0x00000000u },
+    { "fight_4987c@or10e", m_d3b_fl_or10e, 0x00000000u },
+    { "fight_4987c@idx8", m_d3b_fl_idx8, 0x00000000u },
+    { "fight_4987c@idx20", m_d3b_fl_idx20, 0x00000000u },
+    { "fight_4987c@walkk", m_d3b_fl_walkk, 0x00000000u },
+    { "fight_4987c@nowalk", m_d3b_fl_nowalk, 0x00000000u },
+    { "fight_4987c@once", m_d3b_fl_once, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

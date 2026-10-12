@@ -2609,6 +2609,7 @@ void fight_4ac80(u32 rec)
  * 0x4B164..0x4B24D. */
 void fight_4b144(u32 entry, u32 index)
 {
+    PR_SEAM(0x4B144u, entry, index);
     u32 rec = DSD(DSD(entry + 0xCu));               /* 0x4B14C */
     s32 pos = fight_2be00(rec);                     /* 0x4B151 */
     s32 mid = (s32)DSD(DS_00108874);                /* 0x4B156 */

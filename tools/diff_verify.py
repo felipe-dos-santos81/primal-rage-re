@@ -18382,6 +18382,108 @@ D3B_SPECS += [
            "e10 w1a w1ay f51 w2e b4e once bc3 bc1").split())),
 ]
 
+D3B_WALK = E.Call(0x4B144, ("eax", "edx"), clobbers=("edx",))
+
+
+def d3b_fly_case(side, nodes, mode=0x0005, pos=(0x3000, 0x4000), f51=0, ch=2, y30=0x0100, lo30=0x7777,
+                 bd898=0x8A40, b48=0x22, f29=0x00, w2e=0x1000, extra=None):
+    """0x4987C: the mode word DS_00104B00 between seeded words; both slots' record pointer and +0x7A
+    (`ch`), each record's +0x30 dword (y in the high word), +0x51 and its 0x2BE00 value (`pos` =
+    (the side's, the other's), through the pset fixture); the layer word 0xBD898 between seeded
+    words (bit 15 set by default: the raw zero-extends it); the free list of the first `nodes`
+    scratch nodes (each +8..+0x23 seeded) and an empty active list; the actor the spawn stub
+    returns: +0x14, +0x28..+0x2F (the +0x29 flags, +0x2C, +0x2E), +0x34 between seeded words, +0x48
+    (the index byte) and +0x4E inside seeded neighbours."""
+    ring = [D2B_FREE] + list(D2B_NODES[:nodes])
+    p = d2b_pos_pokes({(D2B_REC0, D2B_REC1)[side]: (3, pos[0]), (D2B_REC0, D2B_REC1)[1 - side]: (5, pos[1])})
+    p.update({D2B_LIST: le32(D2B_LIST) + le32(D2B_LIST),
+              D2B_FREE: le32(ring[1 % len(ring)]) + le32(ring[-1]),
+              0x00104AFE: le16(0x7AFE) + le16(mode) + le16(0x7B02),
+              0x000BD896: le16(0x7896) + le16(bd898) + le16(0x789A),
+              D2B_NEW + 0x10: le32(0x0BAD0010) + le32(0x0BAD0014) + le32(0x0BAD0018),
+              D2B_NEW + 0x28: bytes([0x28, f29, 0x2A, 0x2B]) + le16(0x2C2C) + le16(w2e) + le16(0x3030),
+              D2B_NEW + 0x32: le16(0x3232) + le16(0x3434) + le16(0x3636),
+              D2B_NEW + 0x47: bytes([0x47, b48, 0x49]),
+              D2B_NEW + 0x4D: bytes([0x4D, 0x77, 0x4F])})
+    for i, n in enumerate(ring[1:], 1):
+        p[n] = le32(ring[(i + 1) % len(ring)]) + le32(ring[i - 1]) + bytes(
+            (0x40 + i * 7 + j) & 0xFF or 0x5A for j in range(0x1C))
+    for s in (0, 1):
+        slot, rec = D2B_SLOTS + s * 0x94, (D2B_REC0, D2B_REC1)[s]
+        own = s == side
+        p[slot] = le32(rec)
+        p[slot + 0x79] = bytes([0x79, ch if own else ch ^ 7, 0x7B])
+        p[rec + 0x30] = le16(lo30) + le16(y30 if own else y30 ^ 0x0055) + le16(0x3434)
+        p[rec + 0x50] = bytes([0x50, f51 if own else (0 if f51 else 1), 0x52])
+    p.update(extra or {})
+    return p
+
+
+def d3b_fly_stubs(pick, val, rng, x, new=D2B_NEW):
+    return {0x49388: pick, 0x29CDC: val, 0x5D7DC: rng, 0x2BE4C: x, 0x2AE14: new}
+
+
+D3B_SPECS += [
+    # 0x4987C fight_4987c: EAX = side, EDX = count (signed, 0x498AB `test edx,edx` / `jle`, 0x49C1A
+    # `jl`), EBX = kind. 0x49388, 0x29CDC, 0x5D7DC (one value per case for rng(2) and rng(0x300)),
+    # 0x2BE4C (EAX = the x, per case), 0x2AE14 and 0x4B144 are stubs; 0x2BE00 runs its own bytes on
+    # both sides, recorded (each record its own value); 0x249D0, 0x249B0 and 0x496AC run on both
+    # sides. EAX dies unread at 0x4A616 and 0x4D792 (the walk, record d3b §1): mask 0.
+    Spec("fight_4987c", 0x4987C, [
+        # kind 0 (the dust refill): one entry, the fighter left of the other, +0x51 clear
+        Case("f0", {"eax": 0, "edx": 1, "ebx": 0}, d3b_fly_case(0, 2),
+             d3b_fly_stubs(0, 0x11111111, 0x55, 0x00012000)),
+        # kind 0, two entries, equal positions (0x49A52 `jge` taken), +0x51 set; index byte below 0x20
+        Case("f1", {"eax": 1, "edx": 2, "ebx": 0}, d3b_fly_case(1, 3, pos=(0x4000, 0x4000), f51=1, b48=0x10, ch=5),
+             d3b_fly_stubs(5, 0x22222222, 0x2FF, 0xFFFE0000)),
+        # kind 1, one flyer: 0xC9538[1], no bit 0; left of the other (flag 1)
+        Case("f2", {"eax": 0, "edx": 1, "ebx": 1}, d3b_fly_case(0, 2, f29=0xAF),
+             d3b_fly_stubs(1, 0x33333333, 7, 0x00034000)),
+        # kind 1, a pair, right of the other (flag 0): the first takes bit 0, +0x780 and +0x29 bit 6
+        Case("f3", {"eax": 1, "edx": 2, "ebx": 1}, d3b_fly_case(1, 3, pos=(0x4001, 0x4000), f51=0x80, f29=0xAF),
+             d3b_fly_stubs(2, 0x44444444, 9, 0x00045000)),
+        # kind 2, a pair, left of the other: 0xC953C[i ^ 1]
+        Case("f4", {"eax": 0, "edx": 2, "ebx": 2}, d3b_fly_case(0, 2, pos=(0xFFFFF000, 0x1000), bd898=0x0400),
+             d3b_fly_stubs(3, 0x55555555, 3, 0x7FFFFFFF)),
+        # mode 0x22, kind 0: rng(2) = 0x100 (non-zero, AL = 0): the minus arm; the mode bumps +0x2E
+        Case("f5", {"eax": 1, "edx": 1, "ebx": 0}, d3b_fly_case(1, 1, mode=0x0022, y30=0x0700),
+             d3b_fly_stubs(4, 0x66666666, 0x100, 0x00056000)),
+        # mode 0x22, kind 0: rng(2) = 0: the plus arm
+        Case("f6", {"eax": 0, "edx": 1, "ebx": 0}, d3b_fly_case(0, 1, mode=0x0022, y30=0x8000, lo30=0x0123, w2e=0xFFFE),
+             d3b_fly_stubs(0, 0x77777777, 0, 0x00067000)),
+        # mode 0x22, kind 2, a pair, rng(2) = 1: the minus arm's pair; y is the layer word itself
+        Case("f7", {"eax": 1, "edx": 2, "ebx": 2}, d3b_fly_case(1, 2, mode=0x0022),
+             d3b_fly_stubs(0, 0x11111111, 1, 0x00078000)),
+        # mode 0x22, kind 1, a pair, rng(2) = 0: the plus arm's pair
+        Case("f8", {"eax": 0, "edx": 2, "ebx": 1}, d3b_fly_case(0, 2, mode=0x0022, f51=1, bd898=0x0400),
+             d3b_fly_stubs(0, 0x11111111, 0, 0x00089000)),
+        # counts of 0 and -1: nothing
+        Case("f9", {"eax": 0, "edx": 0, "ebx": 1}, d3b_fly_case(0, 2), d3b_fly_stubs(0, 0x11111111, 0x55, 0x12000)),
+        Case("f10", {"eax": 1, "edx": 0xFFFFFFFF, "ebx": 0}, d3b_fly_case(1, 2), d3b_fly_stubs(0, 0x11111111, 0x55, 0x12000)),
+        # three wanted (kind 1: 0xC953C[0..2]), two free nodes: the empty pool ends it
+        Case("f11", {"eax": 0, "edx": 3, "ebx": 1}, d3b_fly_case(0, 2, pos=(0x5000, 0x4000)),
+             d3b_fly_stubs(0, 0x11111111, 0x55, 0x000AB000)),
+        # an empty pool at once
+        Case("f12", {"eax": 1, "edx": 2, "ebx": 2}, d3b_fly_case(1, 0), d3b_fly_stubs(0, 0x11111111, 0x55, 0x12000)),
+        # a mode word whose low byte is 0x22: not mode 0x22
+        Case("f13", {"eax": 1, "edx": 1, "ebx": 2}, d3b_fly_case(1, 1, mode=0x0122, pos=(0x100, 0x200)),
+             d3b_fly_stubs(0, 0x11111111, 1, 0x000CD000)),
+        # a kind whose low byte is 0 (0x498D8 `shl eax,2` of all of EBP): 0xC9538[0x100], poked
+        Case("f14", {"eax": 0, "edx": 1, "ebx": 0x100},
+             d3b_fly_case(0, 1, extra={0x000C9938: le32(0x000BB5C4)}),
+             d3b_fly_stubs(0, 0x11111111, 1, 0x000DE000)),
+        # three wanted, kind 2, three free nodes: 0xC953C[1], [0], [3]
+        Case("f15", {"eax": 1, "edx": 3, "ebx": 2}, d3b_fly_case(1, 3, pos=(0x7000, 0x8000)),
+             d3b_fly_stubs(0, 0x11111111, 0x55, 0x000EF000)),
+    ], allow_calls=(0x249D0, 0x249B0, 0x496AC),
+       calls=(D2B_PICK, D2B_DUSTVAL, D2B_RNG, D2B_2BE00, D2B_2BE4C, SPAWN, D3B_WALK), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "count lorder w1c0 one k1 bit0 bit0all pickarg dvarg d10 mode rngal d5780 swapdir pair0 pairk "
+           "pair2 p780 cmpu cmple argswap rec4c flag y200 ymode ysext y30 y400 r300 xy ne8 a14 fc f21 f1f "
+           "clamp or10 e10 bump bumpmode w2e b4e v34a v34sign w34 or40 or40inv type or10e idx8 idx20 walkk "
+           "nowalk once").split())),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
