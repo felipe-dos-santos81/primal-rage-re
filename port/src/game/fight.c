@@ -1634,7 +1634,7 @@ void fight_hud_meter_step(void)
 
         DSB(slot + 0x5Eu) = (u8)(DSB(slot + 0x5Eu) + 1u);       /* 0x1D5E6 */
 
-        if (ai_pred_468d8(side) != 0u) {               /* 0x1D5F0 0x468D8 */
+        if ((u8)ai_pred_468d8(side) != 0u) {           /* 0x1D5F0 0x468D8, 0x1D5F5: test al,al */
             if (fight_cmd_bits_30(side) != 0u                   /* 0x1D5FF 0x1D74C */
                     || DSB(slot + 0x63u) != 0u) {               /* 0x1D608 */
                 rate = 3u;                                      /* 0x1D615 */
@@ -1657,7 +1657,7 @@ void fight_hud_meter_step(void)
             }
         }
 
-        if (ai_pred_468d8(side) != 0u) {               /* 0x1D6B6 0x468D8 */
+        if ((u8)ai_pred_468d8(side) != 0u) {           /* 0x1D6B6 0x468D8, 0x1D6BB: test al,al */
             if ((s32)DSB(slot + 0x5Eu) > (s32)lim) {            /* 0x1D6C5..0x1D6CD */
                 DSB(slot + 0x5Eu) = 0;                          /* 0x1D6D1 */
                 s32 c = (s32)DSB(slot + 0x5Du);                 /* 0x1D6DD */
