@@ -1208,6 +1208,7 @@ void fight_384f8(u32 side);
  * 2026-10-12-reverse-d3e). */
 void fighter_382c4(u32 side);                           /* 0x382C4 */
 void fighter_38434(u32 side);                           /* 0x38434 */
+void fighter_think_side(u32 side);                      /* 0x3B464 */
 u8   hit_3d004(u32 side);                               /* 0x3D004 */
 void fighter_19820(void);
 

@@ -18388,6 +18388,97 @@ D3E_SPECS += [
                 "@c7mask", "@c7nohook", "@c7swap", "@c7side", "@c7own", "@c8noinc", "@c8noand", "@early", "@no1922c",
                 "@1922cside", "@b74", "@no74", "@no56", "@nobc", "@nof0", "@nof1", "@nobe", "@always", "@clrother",
                 "@3d004side")),
+]
+
+D3E_PROJ = 0x0010A600                            # the thrower's projectile record (its +0x48 selects the arm)
+D3E_235C4 = E.Call(0x235C4, ("eax",), clobbers=("ebp",))
+D3E_36D20 = E.Call(0x36D20, ("eax",))
+D3E_THINK_CALLS = (D3E_3C59C, DISPATCH, D2A_2BD44, PALETTE, D3E_36D20, D3E_1922C, D3E_235C4, POSE, C1_FACING,
+                   C1_POSE, STANCE, ANCHORX,
+                   E.Call(0x3B080, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx")),
+                   E.Call(0x3AD98, ("eax", "[edx]", "[edx+4]", "[edx+8]"), clobbers=("edx",)))
+
+
+def d3e_think_case(cid, side, flag=0, disp=0, stance=0x10, a48=4, s54=1, s90=5, idx=0, row60=0, hook=0, gate=1,
+                   a06=0x44):
+    """0x3B464: the struck side's slot (ctx[3]: +0x10..+0x1F with the +0x14 hook, +0x28..+0x33 with
+    the x at +0x2C, +0x40..+0x7F with +0x41, +0x54, +0x64 = 0x77, +0x67 and the character 1 + side at
+    +0x7A, +0x88..+0x93 with +0x8A and +0x90), the thrower's slot (ctx[2]: the projectile pointer at
+    +0x08, +0x40..+0x7F with the stance at +0x64 and a +0x54 of the other answer, +0x88..+0x93), the
+    two records (+0x4B index, +0x51 side), the pool row's +0x60, the projectile's +0x48, the anim
+    row of (the thrower's character, the stance): its +2..+6, and the 0x29D04 hook's gate byte.
+    `flag` and `disp` are the 0x3C59C and 0x3B298 stubs' EAX."""
+    me, th = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    recs = (E3_REC, E3_REC2)
+    p = {**SLOT_PTRS, 0x001014F4: le32(C2B_POOL), D3E_PROJ + 0x44: le32(0x44444444) + bytes([a48, 0x49, 0x4A, 0x4B]),
+         0x0009AF3D: bytes([gate]), 0x00105B34: b"\x00\x01"}
+    for s, slot in ((side, me), (1 - side, th)):
+        own = s == side
+        b = bytearray(range(0x40, 0x80))
+        b[0x41 - 0x40] = 0x01 + s
+        b[0x54 - 0x40] = s54 if own else (1 if s54 == 2 else 2)
+        b[0x64 - 0x40] = 0x77 if own else stance
+        b[0x67 - 0x40] = 0x67
+        b[0x7A - 0x40] = 1 + s
+        p[slot + 0x40] = bytes(b)
+        t = bytearray(range(0x88, 0x94))
+        t[0x90 - 0x88] = s90 if own else 0x99
+        p[slot + 0x88] = bytes(t)
+        p[slot + 0x08] = le32(D3E_PROJ if not own else D3E_PROJ + 0x80)
+        p[slot + 0x10] = le32(0x10101010 + s) + le32(hook if own else 0x29D04) + le32(0x18181818) + le32(0x1C1C1C1C)
+        p[slot + 0x28] = le32(0x28282828) + le32(0x00012345 + (s << 20)) + le32(0x30303030)
+        rb = bytearray(range(0x48, 0x54))
+        rb[0x4B - 0x48] = idx if own else 7
+        rb[0x51 - 0x48] = s
+        p[recs[s] + 0x48] = bytes(rb)
+    p[D3E_PROJ + 0x80 + 0x48] = bytes([5 if a48 != 5 else 8])
+    p[C2B_POOL + 3 * 0x68 + 0x60] = bytes([row60])
+    p[C2B_POOL + 7 * 0x68 + 0x60] = bytes([1 - row60])
+    if stance < 0x40:
+        for s in (0, 1):                         # the row of each character: the thrower's is 1 + (1 - side)
+            a0 = 0x000DE114 + (((1 + s) << 6) + stance) * 11
+            p[a0 + 2] = bytes([0x22 + s, 0x33 + s, 0x04, 0x05, a06 if s == 1 - side else 0x66])
+    return Case(cid, {"eax": side}, p, {0x3C59C: flag, 0x3B298: disp})
+
+
+D3E_SPECS += [
+    # 0x3B464 fighter_think_side: EAX = side (kept in ECX for the +0x48 == 8 arm). 0x33A10, 0x3AFC4
+    # and the +0x14 hook 0x29D04 run on both sides; the rest are stubs. **AL of 0x3C59C** (0x3B484:
+    # k1, k2 return 0x100, 0xFFFFFF00) and the thrower's +0x64 == 0xFF (k3) return. **AL of 0x3B298**
+    # (0x3B4CC: b2 0x100, b3 0xFFFFFF01) selects the block arm: the thrower's +0x8A = 0, 0x3B080
+    # unless the side's +0x54 is 2 (b1), 0x3AD98 with the triple by value. Else 0x2BD44 on the side's
+    # record when its +0x4B row's +0x60 is set (d0; d1 clear), the +0x14 hook (EAX tested whole,
+    # `test eax,eax` 0x3B51E: d1 gate set returns 0, d2 returns 1 after its 0x2A17C call and the
+    # field is cleared), the thrower's projectile +0x48: 5 -> 0x36D20 and +0x18/+0x1C = 0 (d0), 8 ->
+    # 0x1922C(side), 0x235C4(side) (d1), else (4, 6, 9, 0xFF) 0x39834 and, +0x54 == 2, 0x18B04 and
+    # 0x39F40(ctx[1], -0x50, 0x64, 0xF, 0x14) (m0), else 0x3A95C(ctx[1], the signed byte anim+6) and,
+    # +0x64 neither 0 nor 5 (m5, m6) and the byte +0x90 - 1 above 3 unsigned (m1 5, m2 4, m3 1, m4
+    # 0), 0x188DC(ctx[1], +0x2C); 0x3B080; +0x18/+0x1C = 0. The tail: +0x41 bit 7, the thrower's
+    # +0x64 = 0xFF.
+    Spec("fighter_think_side", 0x3B464, [
+        d3e_think_case("k0", 0, flag=1),
+        d3e_think_case("k1", 0, flag=0x100),
+        d3e_think_case("k2", 1, flag=0xFFFFFF00),
+        d3e_think_case("k3", 1, stance=0xFF),
+        d3e_think_case("b0", 0, disp=1),
+        d3e_think_case("b1", 1, disp=1, s54=2),
+        d3e_think_case("b2", 1, disp=0x100),
+        d3e_think_case("b3", 0, disp=0xFFFFFF01),
+        d3e_think_case("d0", 0, idx=3, row60=1, a48=5),
+        d3e_think_case("d1", 1, idx=3, row60=0, a48=8, hook=0x29D04, gate=1),
+        d3e_think_case("d2", 0, hook=0x29D04, gate=0, a48=6),
+        d3e_think_case("d3", 1, a48=9, hook=0x29D04, gate=0),
+        d3e_think_case("d4", 0, a48=0xFF),
+        d3e_think_case("m0", 0, s54=2),
+        d3e_think_case("m1", 1, s54=2, a48=7),
+        d3e_think_case("m2", 0, s90=4),
+        d3e_think_case("m3", 1, s90=1),
+        d3e_think_case("m4", 0, s90=0),
+        d3e_think_case("m5", 1, stance=0),
+        d3e_think_case("m6", 0, stance=5),
+        d3e_think_case("m7", 1, stance=0x20, a06=0x80),
+    ], allow_calls=(0x33A10, 0x3AFC4, 0x29D04), calls=D3E_THINK_CALLS, eax_mask=0,
+       mutants=("@eaxflag", "@flagbit", "@flagctx", "@nostance", "@stanceself", "@animside", "@67other", "@no67", "@dispside", "@eaxdisp", "@8aself", "@no8a", "@b54", "@swap", "@ecx", "@noad98", "@2bd44rec", "@norow60", "@nohook", "@hookslot", "@hooknoclr", "@hookclr", "@a48self", "@no5", "@36d20slot", "@c5no18", "@c5no1c", "@no8", "@c8side", "@no18b04", "@f40args", "@x28", "@a06zext", "@a06off", "@st0", "@st5", "@vnodec", "@vge", "@no3b080", "@midno18", "@midno1c", "@no41", "@64self", "@no64")),
 ]   # D3E_SPECS end
 D1_SPECS += D3E_SPECS
 SPECS = [

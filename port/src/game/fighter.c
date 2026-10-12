@@ -813,6 +813,7 @@ void fighter_pose_start(u32 side, u32 edx, u32 ebx, u32 ecx, u32 frame)
  * else set it and return 0. Distinct from 0x3C570's DS_00107EE0 bits. */
 static int fighter_frame_flag(u32 bit, u32 index)
 {
+    PR_SEAM_RET(0x3C59Cu, bit, index);
     u32 m = 1u << (bit & 0xffu);                /* 0x3C59E/0x3C5AC */
     u32 addr = DS_00107D50 + index * 4u;        /* 0x3C5A5 */
     if ((DSD(addr) & m) != 0) return 1;         /* 0x3C5B4/0x3C5B8 */
@@ -883,7 +884,7 @@ int fighter_command_dispatch(u32 side, u32 edx_arg)
  * (5), 0x1922C/0x235C4 (8) or the 0x39834 pose driver with the airborne
  * 0x39F40 pose or the grounded 0x3A95C stagger (demo-pose record §26,
  * §41-C). */
-static void fighter_think_side(u32 side)
+void fighter_think_side(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x3B471 */
@@ -6456,6 +6457,7 @@ void fighter_22b28(const u32 ctx[6])
  * reaction 0x2A, state 0x10/0x0A with the +0x10 handler 0x22BEC, and 0x22B28. */
 void fighter_235c4(u32 side)
 {
+    PR_SEAM(0x235C4u, side);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x235CD 0x33A10 */
     fighter_33acc(ctx[1], FIGHTER_SNAP_SLOT + ctx[1] * 0x94u,
