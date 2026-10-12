@@ -4543,8 +4543,9 @@ static void game_state_3_handoff(void)
     u32 a5 = (DSW(first + 0x56u) & 0xFFFFu) | 0x400u;           /* 0x12686 */
     u32 second = actor_spawn((const u32 *)(mem + 0x9AC58u),
                              0u, 0xE2u, 0u, a5);                /* 0x1269D */
-    DSB(first + 0x4Bu) = DSB(second + 0x56u);                   /* 0x126AC */
-    a5 = (DSW(first + 0x56u) & 0xFFFFu) | 0x400u;               /* 0x126B3 */
+    u32 cam = DSD(DS_000F0A58);                                 /* 0x126A4 */
+    DSB(cam + 0x4Bu) = DSB(second + 0x56u);                     /* 0x126AC */
+    a5 = (DSW(cam + 0x56u) & 0xFFFFu) | 0x400u;                 /* 0x126B3 */
     u32 third = actor_spawn((const u32 *)(mem + 0x9AC6Cu),
                             0u, 0xE2u, 0u, a5);                 /* 0x126CA */
     DSB(second + 0x4Bu) = DSB(third + 0x56u);                   /* 0x126D2 */
