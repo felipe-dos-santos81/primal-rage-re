@@ -308,7 +308,8 @@ static void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a4, u32 a5)
      * between 0x33C78 and 0x33CD3): the y, rec+0x1C. Of the nine raw callers
      * only 0x40D48 (in 0x40CB0, entry 0 of 0xA8628) passes a non-zero EBX,
      * 0x4C00 from 0x40D2F (record §46-C, threaded through since §48-V). */
-    u32 rec = actor_spawn((const u32 *)(mem + desc), a2, a3, a4, a5);
+    u32 rec = actor_spawn((const u32 *)(mem + desc), a2, a3, a4,
+                          a5 & 0xFFFFu);            /* 0x33CBB/0x33CBD: xor ecx,ecx; mov cx,[esp+0x14] */
     DSD(slot) = rec;                                /* 0x33CD8 */
 
     u8 n = (u8)(DSB(DS_001078FA) + 1u);             /* 0x33CDA..0x33CEA */
