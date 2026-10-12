@@ -471,7 +471,9 @@ void fight_char_prompt(u32 side)
  * Then strings 0x36, 0x37, 0x38 are released at the col word 0xC894C[side],
  * rows r - 2, r - 1 and r, and string 0x39 at r + 1 when it is at least 2
  * long, with mode 0x1000. r is 0x1B, or 0x1C when string 0x39 is shorter
- * than 2 (0x65624 is strlen; the compare is signed). */
+ * than 2 (0x65624 is strlen; the compare is signed). The col word is read
+ * before each release, after that release's 0x1C500 (0x43349, 0x4336B,
+ * 0x4338C, 0x433C4). */
 void fight_char_text_clear(u32 side, u32 flag)
 {
     s32 row = 0x1B;                                     /* 0x432F3 */
@@ -481,12 +483,16 @@ void fight_char_text_clear(u32 side, u32 flag)
         prompt_press_start_clear(0, 0, side);           /* 0x43310..0x43316 0x2C088 */
     }
     if ((s32)strlen((const char *)game_string_get(0x39u)) < 2) row = 0x1C;  /* 0x4331B..0x4332F */
-    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x43349 */
-    text_cells_release(col, row - 2, game_string_get(0x36u), 0x1000u);  /* 0x43330..0x43354 */
-    text_cells_release(col, row - 1, game_string_get(0x37u), 0x1000u);  /* 0x43359..0x43376 */
-    text_cells_release(col, row, game_string_get(0x38u), 0x1000u);      /* 0x4337B..0x43397 */
-    if ((s32)strlen((const char *)game_string_get(0x39u)) >= 2)          /* 0x4339C..0x433AE */
-        text_cells_release(col, row + 1, game_string_get(0x39u), 0x1000u);  /* 0x433B0..0x433CF */
+    const u8 *s = game_string_get(0x36u);               /* 0x43330/0x43335 */
+    text_cells_release((s32)DSW(DS_000C894C + side * 2u), row - 2, s, 0x1000u);  /* 0x43349..0x43354 */
+    s = game_string_get(0x37u);                         /* 0x43359/0x43363 */
+    text_cells_release((s32)DSW(DS_000C894C + side * 2u), row - 1, s, 0x1000u);  /* 0x4336B..0x43376 */
+    s = game_string_get(0x38u);                         /* 0x4337B/0x43385 */
+    text_cells_release((s32)DSW(DS_000C894C + side * 2u), row, s, 0x1000u);      /* 0x4338C..0x43397 */
+    if ((s32)strlen((const char *)game_string_get(0x39u)) >= 2) {       /* 0x4339C..0x433AE */
+        s = game_string_get(0x39u);                     /* 0x433B0/0x433BF */
+        text_cells_release((s32)DSW(DS_000C894C + side * 2u), row + 1, s, 0x1000u);  /* 0x433C4..0x433CF */
+    }
 }
 
 /* 0x433DC — record §48-S. EAX = side, EDX = `flag`: 0x432EC's `flag` arm,
