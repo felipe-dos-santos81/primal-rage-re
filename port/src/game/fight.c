@@ -2684,7 +2684,7 @@ void fight_4aad0(u32 entry, u32 index)
     if (DSB(DS_001088C2) != 0u) {                   /* 0x4AB27 */
         if (fight_4bd4c(entry, index) != 0) return; /* 0x4AB34 */
     }
-    if (fight_4b5a8(entry, index) != 0) return;     /* 0x4AB45 */
+    if ((u8)fight_4b5a8(entry, index) != 0u) return;    /* 0x4AB45, 0x4AB4A `test al,al` */
     if ((DSB(slot + 0x42u) & 2u) != 0u
             || DSB(DS_001088B2 + (u32)DSB(entry + 0x21u)) != 0u) {
         if (fight_4b3f0(entry, index, 0u) != 0) return; /* 0x4AB6F */
