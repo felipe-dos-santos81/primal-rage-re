@@ -2191,7 +2191,7 @@ static void fight_health_sync(u32 side)
     if (rec == 0) return;                       /* 0x34B7C */
     if (DSD(rec) == 0) return;                  /* 0x34B82/0x34B86 */
 
-    if (fight_position_gate(rec) != 0) {        /* 0x34B8E 0x36E2C */
+    if ((fight_position_gate(rec) & 0xFF) != 0) {   /* 0x34B8E 0x36E2C, 0x34B93 test al,al */
         u32 fighter = DSD(rec);
         s32 x = ((DSW(fighter + 0x28u) >> 8 & 0x40u) != 0u)
               ? (s32)DSD(fighter + 0x18u) + 0x3000
