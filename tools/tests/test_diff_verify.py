@@ -6451,6 +6451,7 @@ D2D_MASKS = {
     "fighter_3e6a8": 0x0,
     "fighter_3f9c8": 0x0,
     "fighter_3fdd8": 0x0,
+    "input_state_update": 0x0,
 }   # D2D_MASKS end
 D2D_KINDS = {
     "camera_dust_burst@side": {'call #0'},
@@ -6814,6 +6815,16 @@ D2D_KINDS = {
     "fighter_3fdd8@or42bit": {'byte'},
     "fighter_3fdd8@clrrec": {'byte'},
     "fighter_3fdd8@early": {'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "input_state_update@mask1": {'byte'},
+    "input_state_update@mask2": {'byte'},
+    "input_state_update@noand": {'byte'},
+    "input_state_update@nodc": {'byte'},
+    "input_state_update@nod4": {'byte'},
+    "input_state_update@or": {'byte'},
+    "input_state_update@e0swap": {'byte'},
+    "input_state_update@e2shift": {'byte'},
+    "input_state_update@e0w": {'byte'},
+    "input_state_update@noe2": {'byte'},
 }   # D2D_KINDS end
 D2D_CASES = [
     ("camera_dust_burst@side", ['b0', 'b1', 'b2']),
@@ -7177,6 +7188,16 @@ D2D_CASES = [
     ("fighter_3fdd8@or42bit", ['e0', 'e1', 'e2', 'e3']),
     ("fighter_3fdd8@clrrec", ['e0', 'e1', 'e2', 'e3']),
     ("fighter_3fdd8@early", ['e0', 'e1', 'e2', 'e3']),
+    ("input_state_update@mask1", ['u0', 'u1', 'u2', 'u3', 'u4']),
+    ("input_state_update@mask2", ['u0', 'u1', 'u2', 'u3', 'u4']),
+    ("input_state_update@noand", ['u2', 'u3', 'u4']),
+    ("input_state_update@nodc", ['u0', 'u1', 'u2', 'u3', 'u4']),
+    ("input_state_update@nod4", ['u0', 'u1', 'u2', 'u3', 'u4']),
+    ("input_state_update@or", ['u1', 'u4']),
+    ("input_state_update@e0swap", ['u1', 'u3', 'u4']),
+    ("input_state_update@e2shift", ['u0', 'u1', 'u2', 'u4']),
+    ("input_state_update@e0w", ['u0', 'u1', 'u2', 'u3', 'u4']),
+    ("input_state_update@noe2", ['u0', 'u1', 'u2', 'u3', 'u4']),
 ]   # D2D_CASES end
 D1_MASKS.update(D2D_MASKS)
 D1_KINDS.update(D2D_KINDS)

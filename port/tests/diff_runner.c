@@ -20838,6 +20838,45 @@ static void m_d2d_3fdd8_or42slot(const u32 *r, u32 *eax) { *eax = d2d_3fdd8_core
 static void m_d2d_3fdd8_or42bit(const u32 *r, u32 *eax) { *eax = d2d_3fdd8_core(r, 21u); }
 static void m_d2d_3fdd8_clrrec(const u32 *r, u32 *eax) { *eax = d2d_3fdd8_core(r, 22u); }
 static void m_d2d_3fdd8_early(const u32 *r, u32 *eax) { *eax = d2d_3fdd8_core(r, 23u); }
+/* 0x4F644's mutants (mutant n; 0 = the port's shape). No argument. 0x50161 and 0x2D2F0 run on both
+ * sides. */
+static u32 d2d_4f644_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    (void)r;
+    u32 e4, d8;
+    e4 = input_select_bits(M(2) ? 0xFF000000u : 0xFF00FF00u);                       /* @mask1 */
+    d8 = input_select_bits(M(3) ? 0xFF00FF00u : 0x00FF00FFu);                       /* @mask2 */
+    if (!M(4)) d8 &= 0xFF00FF00u;                                                   /* @noand */
+    DSD(DS_001088E4) = e4;
+    DSD(DS_001088D8) = d8;
+    if (!M(5)) DSD(DS_001088DC) = input_joystick_device(0xFFu);                     /* @nodc */
+    if (!M(6)) DSD(DS_001088D4) = input_joystick_device(0xFFFFFF00u) & 0xFFu;       /* @nod4 */
+    if ((DSB(DS_001088D4) & 2u) != 0u || M(7)) DSD(DS_001088E4) |= DSD(DS_001088D8);   /* @or */
+    {
+        u32 a = DSD(DS_001088E4), b = DSD(DS_001088D8);
+        u32 e0 = M(8) ? (((b & 0xFF000000u) >> 24) | ((a & 0xFF000000u) >> 16))     /* @e0swap */
+                      : (((a & 0xFF000000u) >> 24) | ((b & 0xFF000000u) >> 16));
+        u32 e2 = M(9) ? (((a & 0xFF00u) >> 8) | ((b & 0xFF00u) >> 8))               /* @e2shift */
+                      : (((a & 0xFF00u) >> 8) | (b & 0xFF00u));
+        if (!M(10)) DSW(DS_001088E0) = (u16)e0;
+        if (!M(11)) DSW(DS_001088E2) = (u16)e2;                                     /* @noe2 */
+        if (M(10)) DSD(DS_001088E0) = e0;                                           /* @e0w: a dword store, last */
+    }
+#undef M
+    return 0u;
+}
+static void b_d2d_4f644(const u32 *r, u32 *eax) { (void)r; input_state_update(); *eax = 0u; }
+static void m_d2d_4f644_mask1(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 2u); }
+static void m_d2d_4f644_mask2(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 3u); }
+static void m_d2d_4f644_noand(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 4u); }
+static void m_d2d_4f644_nodc(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 5u); }
+static void m_d2d_4f644_nod4(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 6u); }
+static void m_d2d_4f644_or(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 7u); }
+static void m_d2d_4f644_e0swap(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 8u); }
+static void m_d2d_4f644_e2shift(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 9u); }
+static void m_d2d_4f644_e0w(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 10u); }
+static void m_d2d_4f644_noe2(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 11u); }
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -25101,6 +25140,17 @@ static const binding_t k_bindings[] = {
     { "fighter_3fdd8@or42bit",               m_d2d_3fdd8_or42bit, 0x00000000u },
     { "fighter_3fdd8@clrrec",                m_d2d_3fdd8_clrrec, 0x00000000u },
     { "fighter_3fdd8@early",                 m_d2d_3fdd8_early, 0x00000000u },
+    { "input_state_update",                  b_d2d_4f644, 0x00000000u },
+    { "input_state_update@mask1",            m_d2d_4f644_mask1, 0x00000000u },
+    { "input_state_update@mask2",            m_d2d_4f644_mask2, 0x00000000u },
+    { "input_state_update@noand",            m_d2d_4f644_noand, 0x00000000u },
+    { "input_state_update@nodc",             m_d2d_4f644_nodc, 0x00000000u },
+    { "input_state_update@nod4",             m_d2d_4f644_nod4, 0x00000000u },
+    { "input_state_update@or",               m_d2d_4f644_or, 0x00000000u },
+    { "input_state_update@e0swap",           m_d2d_4f644_e0swap, 0x00000000u },
+    { "input_state_update@e2shift",          m_d2d_4f644_e2shift, 0x00000000u },
+    { "input_state_update@e0w",              m_d2d_4f644_e0w, 0x00000000u },
+    { "input_state_update@noe2",             m_d2d_4f644_noe2, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

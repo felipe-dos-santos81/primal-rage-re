@@ -13653,6 +13653,11 @@ def d2d_3fdd8_case(side, x2c=0x00012000, o5f=0x85, ch=2):
         p[rec + 0x42] = bytes([0x42 + i, 0x43 + i]) + le16(0x4444 + i) + bytes([0x46])
         p[rec + 0x60] = bytes([0x60, 0x61 + i, 0x62])
     return p
+def d2d_input_case(level, latch):
+    """0x4F644: the level and latch dwords 0xE1C34/0xE1C38 between seeded dwords, and the six result
+    fields 0x1088D4..0x1088E7 with a dword on either side, all seeded."""
+    return {0x000E1C30: le32(0x30303030) + le32(level) + le32(latch) + le32(0x3C3C3C3C),
+            0x001088D0: bytes(0xD0 + k for k in range(0x1C))}
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -14026,6 +14031,23 @@ D2D_SPECS = [
     ], calls=(BIT15, ANCHORX, ANIM_BEGIN, POSE, E.Call(0x39A10, ("eax", "edx"), clobbers=("edx",))),
        allow_calls=(0x33950, 0x3D0C0), eax_mask=0,
        mutants=("@al", "@dxsign", "@nod0c0", "@d0c0side", "@xslot", "@xside", "@animrec", "@ch", "@hold", "@poseside", "@posearg", "@posesext", "@a10one", "@a10val", "@a10order", "@no34", "@no36", "@no44", "@no61", "@or42slot", "@or42bit", "@clrrec", "@early")),
+    # 0x4F644 input_state_update: no argument. 0x50161 (twice; the two masks are disjoint, so the
+    # two selectors' turns at the latch 0xE1C38 commute and their order is not observable) and
+    # 0x2D2F0 (`xor eax,eax; ret`, twice) run on both sides, each with its own row. Mask 0: after 0x24C6E every path loads EAX before reading it (`mov eax,ebx`
+    # 0x24C9F, 0x461DC's `xor ecx,ecx` .. `mov eax,2` 0x461F8 or its 0x461FF arm, 0x38990's `mov
+    # ax,[0xf0aec]` .. `mov eax,[0xf0aec]`); after 0x25210 `jmp 0x2540f`, 0x2A31C's `mov
+    # eax,[0x105bcc]` 0x2A353 or its early `ret`, then `mov ax,[0x104b00]` 0x2545C (only AX is
+    # compared) or 0x3BB90's `xor eax,eax` 0x3BB9B. Followed by hand, two calls deep (record §1).
+    Spec("input_state_update", 0x4F644, [
+        Case("u0", {}, d2d_input_case(0xA5005A00, 0x00000000)),
+        Case("u1", {"eax": 0x12345678}, d2d_input_case(0xFF00FF00, 0x0F000F00)),
+        Case("u2", {}, d2d_input_case(0x12345678, 0x00FF00FF)),
+        Case("u3", {}, d2d_input_case(0x00000000, 0xFFFFFFFF)),
+        Case("u4", {}, d2d_input_case(0x81C3E7FF, 0x80402010)),
+    ], allow_calls=(0x50161, 0x2D2F0), eax_mask=0,
+       unhit_named={0x4F694: "dead with 0x2D2F0 real (`xor eax,eax; ret`): the byte 0x1088D4 it has just stored is "
+                             "0, so `test byte [0x1088d4],2; je` 0x4F68B is always taken"},
+       mutants=("@mask1", "@mask2", "@noand", "@nodc", "@nod4", "@or", "@e0swap", "@e2shift", "@e0w", "@noe2")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 
