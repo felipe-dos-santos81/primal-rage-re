@@ -13508,7 +13508,7 @@ def d2a_launch_case(side, ch, s54, y, cnt, n, h, m, a, den, ground, npad=0, och=
     seeded differently); the four per-side words n, h, m, a at 0x107A60/68/70/78 (the other side's
     are other values; `npad` is the word above n, the high half of the dword the raw's fild reads);
     and for `ch`, the other character and ch sign-extended the divisor dword, the stream dword and
-    the ground word (0xBD884 + ch*2, with the word below it)."""
+    the ground word (0xBD884 + ch*2: the high half of the dword at 0xBD882 + ch*2 the raw shifts)."""
     other = 1 - side
     so, oo = D2A_SLOT + side * 0x94, D2A_SLOT + other * 0x94
     rs, ro = (D2A_R0, D2A_R1)[side], (D2A_R0, D2A_R1)[other]
@@ -13542,7 +13542,7 @@ def d2a_launch_case(side, ch, s54, y, cnt, n, h, m, a, den, ground, npad=0, och=
     for c, d, st, gr in chars:
         p[D2A_BED10 + c * 4] = le32(d)
         p[D2A_BED60 + c * 4] = le32(st + (c & 0xFF))
-        p[D2A_BD882 + c * 2] = le16(0x8282) + le16(gr)
+        p[D2A_BD882 + 2 + c * 2] = le16(gr)
     return p
 
 
@@ -13777,6 +13777,57 @@ def d2a_st20_case(side, cmd, cnt=0x0005, ch=2, scratch=False):
         p[D2A_RX + 0x51] = bytes([side])
     if ch >= 0x80:
         p[0x000C8B58 + (ch - 0x100) * 4] = le32(0x000EA000 + ch)
+    return p
+
+
+D2A_RY = 0x0010A500              # the scratch slot D2A_FS's own record (0x35F84, 0x361C8)
+
+
+def d2a_slotlike(k, ch, y):
+    """(slot address, record address) of block k (0, 1 = the two slots, 2 = the scratch slot
+    D2A_FS with its record D2A_RY) and the pokes of its fields: the record pointer, +0x30,
+    +0x40..+0x42, +0x51..+0x54, +0x76..+0x7B (the +0x78 word seeded, `ch` at +0x7A)."""
+    so = (D2A_SLOT, D2A_SLOT + 0x94, D2A_FS)[k]
+    rec = (D2A_R0, D2A_R1, D2A_RY)[k]
+    return so, rec, {so: le32(rec), so + 0x30: le32(y), so + 0x40: bytes([0x40 + k, 0x41 + k, 0x42 + k]),
+                     so + 0x51: bytes([0x51, 0x62 + k, 0x63 + k, 0x54]),
+                     so + 0x76: le16(0x7676) + le16(0x7878 + k) + bytes([ch, 0x7B])}
+
+
+def d2a_reclike(rec, side, w36):
+    """A record's +0x20..+0x2B (+0x24 = 1.0, non-zero), +0x34..+0x39 (`w36` between two seeded
+    words) and +0x51."""
+    return {rec + 0x20: le32(0x20202020) + le32(0x3F800000) + le32(0x28282828),
+            rec + 0x34: le16(0x3434) + le16(w36) + le16(0x3838), rec + 0x51: bytes([side])}
+
+
+def d2a_landgate_case(side, thr, y, w36, ch=2, scratch=None, w78=0x1234):
+    """0x35F84: the side's slot and record pass or fail the gate as given (`thr` is the 0xBD884
+    word of `ch`: the high half of the dword the raw shifts); the other slot and record hold the
+    other verdict.
+    `scratch` = (thr, y, w36 of D2A_RY, w36 of D2A_RX): EAX is D2A_FS (character 3) and EDX is
+    D2A_RX, so the gate's slot, the gate's record, the side's slot, the side's record and the EDX
+    record are five different blocks. The 0xBDC16 word between two seeded words, and the eight
+    bytes DS_00100B58..5F the real 0x1922C reads."""
+    ok = ((thr ^ 0x8000) - 0x8000) >= ((y ^ 0x80000000) - 0x80000000) and ((w36 ^ 0x8000) - 0x8000) <= 0
+    p = {0x000BDC14: le16(0x1414) + le16(w78) + le16(0x1818),
+         0x00100B58: bytes([0x58, 0x59, 0x01, 0x01, 0x05, 0x07, 0x5E, 0x5F])}
+    chars = {ch: thr, (ch + 1) & 0x7F: 0x8000 if ok else 0x7FFF}
+    for k in (0, 1):
+        own = k == side
+        so, rec, q = d2a_slotlike(k, ch if own else (ch + 1) & 0x7F, y if own else 0x00000010)
+        p.update(q)
+        p.update(d2a_reclike(rec, k, w36 if own else (0x0001 if ok else 0x0000)))
+    if scratch is not None:
+        so, rec, q = d2a_slotlike(2, 3 if ch != 3 else 4, scratch[1])
+        p.update(q)
+        p.update(d2a_reclike(D2A_RY, 1 - side, scratch[2]))
+        p.update(d2a_reclike(D2A_RX, side, scratch[3]))
+        chars[3 if ch != 3 else 4] = scratch[0]
+    for c, t in chars.items():
+        p[D2A_BD882 + 2 + c * 2] = le16(t)
+    if ch >= 0x80:
+        p[D2A_BD882 + 2 + (ch - 0x100) * 2] = le16(0x8000 if ok else 0x7FFF)
     return p
 
 
@@ -14076,6 +14127,29 @@ D2A_SPECS = [
        mutants=("@al", "@slot", "@rec", "@x18", "@or41", "@voice", "@cmd", "@b3", "@bc", "@band", "@cside",
                 "@fside", "@nofacing", "@s54", "@s52", "@s53", "@inc", "@incb", "@w92", "@csext", "@hold",
                 "@aside", "@order")),
+    # 0x35F84 fighter_state_35f84: EAX = slot, EDX = rec. The gate reads the EAX slot (+0x7A, +0x30)
+    # and that slot's own record (0x36007 `mov eax,[ebx]`, +0x36); the side is the EDX record's
+    # +0x51, and the stores go to the side's own slot and its record (0x36022 `mov eax,[esp+0x10]`,
+    # 0x36026 `mov edx,[esp+8]`): l4/l5 make the five blocks different. 0x1922C (with 0x33950) runs
+    # real; 0x3C148 and 0x3C16C are stubs. Mask 0: the caller returns at once (0x34C5C..0x34C61,
+    # the dispatcher) and its one call site overwrites EAX (0x35801).
+    Spec("fighter_state_35f84", 0x35F84, [
+        Case("l0", {"eax": D2A_SLOT, "edx": D2A_R0}, d2a_landgate_case(0, 0x0100, 0x00000100, 0x0000)),
+        Case("l1", {"eax": D2A_SLOT + 0x94, "edx": D2A_R1}, d2a_landgate_case(1, 0x0100, 0x00000101, 0x0000)),
+        Case("l2", {"eax": D2A_SLOT, "edx": D2A_R0}, d2a_landgate_case(0, 0x0100, 0x00000080, 0x0001)),
+        Case("l3", {"eax": D2A_SLOT + 0x94, "edx": D2A_R1},
+             d2a_landgate_case(1, 0x0100, 0x00000080, 0x8000, ch=0x80, w78=0x00FF)),
+        Case("l4", {"eax": D2A_FS, "edx": D2A_RX},
+             d2a_landgate_case(1, 0x0010, 0x00007000, 0x0005, scratch=(0x0060, 0x00000050, 0x0000, 0x0005))),
+        Case("l5", {"eax": D2A_FS, "edx": D2A_RX},
+             d2a_landgate_case(0, 0x0100, 0x00000080, 0x0000, scratch=(0x0060, 0x00000050, 0x0007, 0x0000))),
+        Case("l6", {"eax": D2A_FS, "edx": D2A_RX},
+             d2a_landgate_case(0, 0x0100, 0x00000080, 0x0000, scratch=(0x0060, 0x00000050, 0x0000, 0x0000))),
+        Case("l7", {"eax": D2A_SLOT, "edx": D2A_R0}, d2a_landgate_case(0, 0xFFF0, 0xFFFFFFF8, 0x0000)),
+        Case("l8", {"eax": D2A_SLOT + 0x94, "edx": D2A_R1}, d2a_landgate_case(1, 0xFFF0, 0x80000000, 0xFFFF)),
+    ], allow_calls=(0x1922C, 0x33950), calls=(CLEAR34, CLEAR36), eax_mask=0,
+       mutants=("@or41", "@chs", "@csext", "@thrz", "@y", "@ycmp", "@r36", "@r36s", "@w36", "@u36", "@no19",
+                "@r24", "@s24", "@slot", "@s52", "@s78", "@b78", "@s53", "@c148", "@c16c", "@order", "@t19")),
 ]
 D1_SPECS += D2A_SPECS
 
