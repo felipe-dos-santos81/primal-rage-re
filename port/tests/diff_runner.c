@@ -26799,6 +26799,125 @@ static void m_d3a_ir_nostore(const u32 *r, u32 *eax) { (void)r; *eax = 0u; }
 static void m_d3a_ir_val(const u32 *r, u32 *eax) { (void)r; DSB(0x00104B15u) = 1u; *eax = 0u; }
 static void m_d3a_ir_word(const u32 *r, u32 *eax) { (void)r; DSW(0x00104B15u) = 0u; *eax = 0u; }
 static void m_d3a_ir_off(const u32 *r, u32 *eax) { (void)r; DSB(0x00104B14u) = 0u; *eax = 0u; }
+/* 0x428B8: no argument. Mask 0: the one caller 0x42533 goes on with byte loads and stores (0x42538..) and
+ * `jmp 0x425ef`, where each of the three ways on rewrites EAX before reading it (`lea eax,[ecx+1]` 0x4260C,
+ * `xor eax,eax` 0x42665, `lea eax,[ecx+1]` 0x426C0). */
+static void b_d3a_428b8(const u32 *r, u32 *eax) { (void)r; flow_challenge_open(); *eax = 0u; }
+enum { D3A_CO_NONE, D3A_CO_dc0, D3A_CO_e00, D3A_CO_e40, D3A_CO_e80, D3A_CO_b110, D3A_CO_sp1d, D3A_CO_sp1x, D3A_CO_sp1y,
+       D3A_CO_sp1z, D3A_CO_sp1a5, D3A_CO_sp2d, D3A_CO_sp2x, D3A_CO_sp2y, D3A_CO_sp2z, D3A_CO_sp2a5,
+       D3A_CO_b4, D3A_CO_b8, D3A_CO_b4late, D3A_CO_pbsrc, D3A_CO_pasrc, D3A_CO_noor, D3A_CO_orb,
+       D3A_CO_pzext, D3A_CO_r0side, D3A_CO_r0ch, D3A_CO_r0chsext, D3A_CO_r0patch, D3A_CO_r0p, D3A_CO_r0f8,
+       D3A_CO_r0e4, D3A_CO_r0dc, D3A_CO_r0x3, D3A_CO_r0a3, D3A_CO_r0gate, D3A_CO_r0b19, D3A_CO_r0b1f,
+       D3A_CO_r0and, D3A_CO_r1side, D3A_CO_r1ch, D3A_CO_r1patch, D3A_CO_r1p, D3A_CO_r1fc,
+       D3A_CO_r1e8, D3A_CO_r1e0, D3A_CO_r1x3, D3A_CO_r1gate, D3A_CO_r1b19, D3A_CO_r1b1f, D3A_CO_r1and,
+       D3A_CO_r2order, D3A_CO_r2p, D3A_CO_r2patch2, D3A_CO_r2swapf, D3A_CO_r2swape, D3A_CO_r2swapd,
+       D3A_CO_r2x, D3A_CO_r2b1f, D3A_CO_r2five, D3A_CO_r3, D3A_CO_rlow, D3A_CO_t36a, D3A_CO_t36b,
+       D3A_CO_t36w, D3A_CO_t5ba, D3A_CO_t5bb, D3A_CO_tgate, D3A_CO_tf8, D3A_CO_t4e, D3A_CO_t2e,
+       D3A_CO_t2eb, D3A_CO_trec };
+#define D3A_CO(x) (mut == D3A_CO_##x)
+static u32 d3a_ch_spawn(u32 desc, u32 a2, u32 a3, u32 a4, u32 a5)
+{
+    return actor_spawn((const u32 *)(mem + desc), a2, a3, a4, a5);
+}
+static void d3a_428b8_core(u32 mut)
+{
+    u32 r, pa, pb, rec, first;
+    if (!D3A_CO(dc0)) DSD(0x001080DCu) = 0u;
+    if (!D3A_CO(e00)) DSD(0x001080E0u) = 0u;
+    if (!D3A_CO(e40)) DSD(0x001080E4u) = 0u;
+    DSB(0x00108110u) = D3A_CO(b110) ? 8u : 9u;
+    if (!D3A_CO(e80)) DSD(0x001080E8u) = 0u;
+    first = d3a_ch_spawn(D3A_CO(sp1d) ? 0x000C8378u : 0x000C8364u, D3A_CO(sp1x) ? 0x2A00u : 0u,
+                         D3A_CO(sp1y) ? 0xF1u : 0xF0u, D3A_CO(sp1z) ? 0u : 0xFFFFC400u, D3A_CO(sp1a5) ? 1u : 0u);
+    if (!D3A_CO(b4) && !D3A_CO(b4late)) DSD(0x001080B4u) = first;
+    rec = d3a_ch_spawn(D3A_CO(sp2d) ? 0x000C8364u : 0x000C8378u, D3A_CO(sp2x) ? 0u : 0x2A00u,
+                       D3A_CO(sp2y) ? 0xF0u : 0xF1u, D3A_CO(sp2z) ? 0u : 0xFFFFC400u, D3A_CO(sp2a5) ? 1u : 0u);
+    if (D3A_CO(b4late)) DSD(0x001080B4u) = first;
+    if (!D3A_CO(b8)) DSD(0x001080B8u) = rec;
+    u32 or_ = D3A_CO(noor) ? 0u : D3A_CO(orb) ? 0x200u : 0x400u;
+    u32 ra = DSD(0x001080B4u);
+    pb = (u32)DSW((D3A_CO(pbsrc) ? ra : rec) + 0x56u) | or_;
+    pa = (u32)DSW((D3A_CO(pasrc) ? rec : ra) + 0x56u) | or_;
+    if (D3A_CO(pzext)) { pa = (u32)(s32)(s16)pa; pb = (u32)(s32)(s16)pb; }
+    r = DSD(0x00104AD4u);
+    if (D3A_CO(rlow)) r &= 0xFFu;
+    if (D3A_CO(r3) && r == 3u) r = 2u;
+    if (r == 0u) {
+        u32 p = D3A_CO(r0p) ? pa : pb;
+        u32 ch = D3A_CO(r0ch) ? DSB(0x0010782Au) : D3A_CO(r0chsext) ? (u32)(s32)(s8)DSB(0x001078BEu) : DSB(0x001078BEu);
+        u32 h = flow_challenge_handle(D3A_CO(r0side) ? 0u : 1u, ch);
+        if (!D3A_CO(r0patch)) DSD(0x000C83C4u) = h;
+        DSD(D3A_CO(r0f8) ? 0x001080FCu : 0x001080F8u) = d3a_ch_spawn(0x000C83B4u, 0x30u, D3A_CO(r0a3) ? 0xE1u : 0xE0u, 0xDAu, p);
+        DSD(D3A_CO(r0e4) ? 0x001080E8u : 0x001080E4u) = d3a_ch_spawn(0x000C838Cu, 0x14u, 0xF3u, 0xFu, p);
+        DSD(D3A_CO(r0dc) ? 0x001080E0u : 0x001080DCu) =
+            d3a_ch_spawn(0x000C83A0u, D3A_CO(r0x3) ? 0x4Cu : 0x46u, 0xF4u, 0x34u, p);
+        if (DSB(D3A_CO(r0gate) ? 0x001078A7u : 0x00107813u) == 0u) {
+            if (!D3A_CO(r0b19)) DSB(0x00104B19u) = 0u;
+            DSB(0x00104B1Fu) = D3A_CO(r0b1f) ? 2u : 1u;
+        } else {
+            DSB(0x00104B1Fu) = (u8)(DSB(0x00104B1Fu) & (D3A_CO(r0and) ? 0xFEu : 0xFDu));
+        }
+    } else if (r == 1u) {
+        u32 p = D3A_CO(r1p) ? pb : pa;
+        u32 h = flow_challenge_handle(D3A_CO(r1side) ? 1u : 0u, DSB(D3A_CO(r1ch) ? 0x001078BEu : 0x0010782Au));
+        if (!D3A_CO(r1patch)) DSD(0x000C83C4u) = h;
+        DSD(D3A_CO(r1fc) ? 0x001080F8u : 0x001080FCu) = d3a_ch_spawn(0x000C83B4u, 0x30u, 0xE0u, 0xDAu, p);
+        DSD(D3A_CO(r1e8) ? 0x001080E4u : 0x001080E8u) = d3a_ch_spawn(0x000C838Cu, 0x14u, 0xF3u, 0xFu, p);
+        DSD(D3A_CO(r1e0) ? 0x001080DCu : 0x001080E0u) = d3a_ch_spawn(0x000C83A0u, D3A_CO(r1x3) ? 0x46u : 0x4Cu, 0xF4u, 0x34u, p);
+        if (DSB(D3A_CO(r1gate) ? 0x00107813u : 0x001078A7u) == 0u) {
+            if (!D3A_CO(r1b19)) DSB(0x00104B19u) = 0u;
+            DSB(0x00104B1Fu) = D3A_CO(r1b1f) ? 1u : 2u;
+        } else {
+            DSB(0x00104B1Fu) = (u8)(DSB(0x00104B1Fu) & (D3A_CO(r1and) ? 0xFDu : 0xFEu));
+        }
+    } else if (r == 2u) {
+        u32 qa = D3A_CO(r2p) ? pb : pa, qb = D3A_CO(r2p) ? pa : pb, h;
+        u32 fa = D3A_CO(r2swapf) ? 0x001080F8u : 0x001080FCu, fb = D3A_CO(r2swapf) ? 0x001080FCu : 0x001080F8u;
+        u32 ea = D3A_CO(r2swape) ? 0x001080E4u : 0x001080E8u, eb = D3A_CO(r2swape) ? 0x001080E8u : 0x001080E4u;
+        u32 da = D3A_CO(r2swapd) ? 0x001080DCu : 0x001080E0u, db = D3A_CO(r2swapd) ? 0x001080E0u : 0x001080DCu;
+        u32 s0 = D3A_CO(r2order) ? 1u : 0u;
+        h = flow_challenge_handle(s0, DSB(s0 ? 0x001078BEu : 0x0010782Au));
+        DSD(0x000C83C4u) = h;
+        DSD(fa) = d3a_ch_spawn(0x000C83B4u, 0x30u, 0xE0u, 0xDAu, qa);
+        h = flow_challenge_handle(1u - s0, DSB(s0 ? 0x0010782Au : 0x001078BEu));
+        if (!D3A_CO(r2patch2)) DSD(0x000C83C4u) = h;
+        DSD(fb) = d3a_ch_spawn(0x000C83B4u, 0x30u, 0xE0u, 0xDAu, qb);
+        DSD(ea) = d3a_ch_spawn(0x000C838Cu, 0x14u, 0xF3u, 0xFu, qa);
+        DSD(eb) = d3a_ch_spawn(0x000C838Cu, 0x14u, 0xF3u, 0xFu, qb);
+        DSD(da) = d3a_ch_spawn(0x000C83A0u, D3A_CO(r2x) ? 0x46u : 0x4Cu, 0xF4u, 0x34u, qa);
+        if (!D3A_CO(r2five)) DSD(db) = d3a_ch_spawn(0x000C83A0u, D3A_CO(r2x) ? 0x4Cu : 0x46u, 0xF4u, 0x34u, qb);
+        if (!D3A_CO(r2b1f)) DSB(0x00104B1Fu) = 0u;
+    }
+    rec = DSD(D3A_CO(trec) ? 0x001080B8u : 0x001080B4u);
+    if (D3A_CO(t36w)) DSD(rec + 0x34u) = 0x01000000u;
+    else DSW(rec + 0x36u) = D3A_CO(t36a) ? 0x40u : 0x100u;
+    if (!D3A_CO(t5ba)) DSB(rec + 0x5Bu) = 0u;
+    rec = DSD(0x001080B8u);
+    DSW(rec + 0x36u) = D3A_CO(t36b) ? 0x100u : 0x40u;
+    if (!D3A_CO(t5bb)) DSB(rec + 0x5Bu) = 0u;
+    if (DSD(0x00104AD4u) != (D3A_CO(tgate) ? 0u : 1u)) {
+        rec = DSD(D3A_CO(tf8) ? 0x001080FCu : 0x001080F8u);
+        if (!D3A_CO(t4e)) DSB(rec + 0x4Eu) = 1u;
+        if (D3A_CO(t2eb)) DSB(rec + 0x2Eu) = (u8)(DSB(rec + 0x2Eu) + 4u);
+        else DSW(rec + 0x2Eu) = (u16)(DSW(rec + 0x2Eu) + (D3A_CO(t2e) ? 2u : 4u));
+    }
+}
+#define D3A_CO_MUT(name) \
+    static void m_d3a_co_##name(const u32 *r, u32 *eax) { (void)r; d3a_428b8_core(D3A_CO_##name); *eax = 0u; }
+D3A_CO_MUT(dc0) D3A_CO_MUT(e00) D3A_CO_MUT(e40) D3A_CO_MUT(e80) D3A_CO_MUT(b110) D3A_CO_MUT(sp1d)
+D3A_CO_MUT(sp1x) D3A_CO_MUT(sp1y) D3A_CO_MUT(sp1z) D3A_CO_MUT(sp1a5) D3A_CO_MUT(sp2d) D3A_CO_MUT(sp2x)
+D3A_CO_MUT(sp2y) D3A_CO_MUT(sp2z) D3A_CO_MUT(sp2a5) D3A_CO_MUT(b4) D3A_CO_MUT(b8) D3A_CO_MUT(b4late)
+D3A_CO_MUT(pbsrc) D3A_CO_MUT(pasrc) D3A_CO_MUT(noor) D3A_CO_MUT(orb) D3A_CO_MUT(pzext) D3A_CO_MUT(r0side)
+D3A_CO_MUT(r0ch) D3A_CO_MUT(r0chsext) D3A_CO_MUT(r0patch) D3A_CO_MUT(r0p) D3A_CO_MUT(r0f8) D3A_CO_MUT(r0e4)
+D3A_CO_MUT(r0dc) D3A_CO_MUT(r0x3) D3A_CO_MUT(r0a3) D3A_CO_MUT(r0gate) D3A_CO_MUT(r0b19) D3A_CO_MUT(r0b1f)
+D3A_CO_MUT(r0and) D3A_CO_MUT(r1side) D3A_CO_MUT(r1ch) D3A_CO_MUT(r1patch) D3A_CO_MUT(r1p)
+D3A_CO_MUT(r1fc) D3A_CO_MUT(r1e8) D3A_CO_MUT(r1e0) D3A_CO_MUT(r1x3) D3A_CO_MUT(r1gate) D3A_CO_MUT(r1b19)
+D3A_CO_MUT(r1b1f) D3A_CO_MUT(r1and) D3A_CO_MUT(r2order) D3A_CO_MUT(r2p) D3A_CO_MUT(r2patch2)
+D3A_CO_MUT(r2swapf) D3A_CO_MUT(r2swape) D3A_CO_MUT(r2swapd) D3A_CO_MUT(r2x) D3A_CO_MUT(r2b1f)
+D3A_CO_MUT(r2five) D3A_CO_MUT(r3) D3A_CO_MUT(rlow) D3A_CO_MUT(t36a) D3A_CO_MUT(t36b) D3A_CO_MUT(t36w)
+D3A_CO_MUT(t5ba) D3A_CO_MUT(t5bb) D3A_CO_MUT(tgate) D3A_CO_MUT(tf8) D3A_CO_MUT(t4e) D3A_CO_MUT(t2e)
+D3A_CO_MUT(t2eb) D3A_CO_MUT(trec)
+#undef D3A_CO
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33670,6 +33789,78 @@ static const binding_t k_bindings[] = {
     { "frontend_input_reset@val", m_d3a_ir_val, 0x00000000u },
     { "frontend_input_reset@word", m_d3a_ir_word, 0x00000000u },
     { "frontend_input_reset@off", m_d3a_ir_off, 0x00000000u },
+    { "flow_challenge_open", b_d3a_428b8, 0x00000000u },
+    { "flow_challenge_open@dc0", m_d3a_co_dc0, 0x00000000u },
+    { "flow_challenge_open@e00", m_d3a_co_e00, 0x00000000u },
+    { "flow_challenge_open@e40", m_d3a_co_e40, 0x00000000u },
+    { "flow_challenge_open@e80", m_d3a_co_e80, 0x00000000u },
+    { "flow_challenge_open@b110", m_d3a_co_b110, 0x00000000u },
+    { "flow_challenge_open@sp1d", m_d3a_co_sp1d, 0x00000000u },
+    { "flow_challenge_open@sp1x", m_d3a_co_sp1x, 0x00000000u },
+    { "flow_challenge_open@sp1y", m_d3a_co_sp1y, 0x00000000u },
+    { "flow_challenge_open@sp1z", m_d3a_co_sp1z, 0x00000000u },
+    { "flow_challenge_open@sp1a5", m_d3a_co_sp1a5, 0x00000000u },
+    { "flow_challenge_open@sp2d", m_d3a_co_sp2d, 0x00000000u },
+    { "flow_challenge_open@sp2x", m_d3a_co_sp2x, 0x00000000u },
+    { "flow_challenge_open@sp2y", m_d3a_co_sp2y, 0x00000000u },
+    { "flow_challenge_open@sp2z", m_d3a_co_sp2z, 0x00000000u },
+    { "flow_challenge_open@sp2a5", m_d3a_co_sp2a5, 0x00000000u },
+    { "flow_challenge_open@b4", m_d3a_co_b4, 0x00000000u },
+    { "flow_challenge_open@b8", m_d3a_co_b8, 0x00000000u },
+    { "flow_challenge_open@b4late", m_d3a_co_b4late, 0x00000000u },
+    { "flow_challenge_open@pbsrc", m_d3a_co_pbsrc, 0x00000000u },
+    { "flow_challenge_open@pasrc", m_d3a_co_pasrc, 0x00000000u },
+    { "flow_challenge_open@noor", m_d3a_co_noor, 0x00000000u },
+    { "flow_challenge_open@orb", m_d3a_co_orb, 0x00000000u },
+    { "flow_challenge_open@pzext", m_d3a_co_pzext, 0x00000000u },
+    { "flow_challenge_open@r0side", m_d3a_co_r0side, 0x00000000u },
+    { "flow_challenge_open@r0ch", m_d3a_co_r0ch, 0x00000000u },
+    { "flow_challenge_open@r0chsext", m_d3a_co_r0chsext, 0x00000000u },
+    { "flow_challenge_open@r0patch", m_d3a_co_r0patch, 0x00000000u },
+    { "flow_challenge_open@r0p", m_d3a_co_r0p, 0x00000000u },
+    { "flow_challenge_open@r0f8", m_d3a_co_r0f8, 0x00000000u },
+    { "flow_challenge_open@r0e4", m_d3a_co_r0e4, 0x00000000u },
+    { "flow_challenge_open@r0dc", m_d3a_co_r0dc, 0x00000000u },
+    { "flow_challenge_open@r0x3", m_d3a_co_r0x3, 0x00000000u },
+    { "flow_challenge_open@r0a3", m_d3a_co_r0a3, 0x00000000u },
+    { "flow_challenge_open@r0gate", m_d3a_co_r0gate, 0x00000000u },
+    { "flow_challenge_open@r0b19", m_d3a_co_r0b19, 0x00000000u },
+    { "flow_challenge_open@r0b1f", m_d3a_co_r0b1f, 0x00000000u },
+    { "flow_challenge_open@r0and", m_d3a_co_r0and, 0x00000000u },
+    { "flow_challenge_open@r1side", m_d3a_co_r1side, 0x00000000u },
+    { "flow_challenge_open@r1ch", m_d3a_co_r1ch, 0x00000000u },
+    { "flow_challenge_open@r1patch", m_d3a_co_r1patch, 0x00000000u },
+    { "flow_challenge_open@r1p", m_d3a_co_r1p, 0x00000000u },
+    { "flow_challenge_open@r1fc", m_d3a_co_r1fc, 0x00000000u },
+    { "flow_challenge_open@r1e8", m_d3a_co_r1e8, 0x00000000u },
+    { "flow_challenge_open@r1e0", m_d3a_co_r1e0, 0x00000000u },
+    { "flow_challenge_open@r1x3", m_d3a_co_r1x3, 0x00000000u },
+    { "flow_challenge_open@r1gate", m_d3a_co_r1gate, 0x00000000u },
+    { "flow_challenge_open@r1b19", m_d3a_co_r1b19, 0x00000000u },
+    { "flow_challenge_open@r1b1f", m_d3a_co_r1b1f, 0x00000000u },
+    { "flow_challenge_open@r1and", m_d3a_co_r1and, 0x00000000u },
+    { "flow_challenge_open@r2order", m_d3a_co_r2order, 0x00000000u },
+    { "flow_challenge_open@r2p", m_d3a_co_r2p, 0x00000000u },
+    { "flow_challenge_open@r2patch2", m_d3a_co_r2patch2, 0x00000000u },
+    { "flow_challenge_open@r2swapf", m_d3a_co_r2swapf, 0x00000000u },
+    { "flow_challenge_open@r2swape", m_d3a_co_r2swape, 0x00000000u },
+    { "flow_challenge_open@r2swapd", m_d3a_co_r2swapd, 0x00000000u },
+    { "flow_challenge_open@r2x", m_d3a_co_r2x, 0x00000000u },
+    { "flow_challenge_open@r2b1f", m_d3a_co_r2b1f, 0x00000000u },
+    { "flow_challenge_open@r2five", m_d3a_co_r2five, 0x00000000u },
+    { "flow_challenge_open@r3", m_d3a_co_r3, 0x00000000u },
+    { "flow_challenge_open@rlow", m_d3a_co_rlow, 0x00000000u },
+    { "flow_challenge_open@t36a", m_d3a_co_t36a, 0x00000000u },
+    { "flow_challenge_open@t36b", m_d3a_co_t36b, 0x00000000u },
+    { "flow_challenge_open@t36w", m_d3a_co_t36w, 0x00000000u },
+    { "flow_challenge_open@t5ba", m_d3a_co_t5ba, 0x00000000u },
+    { "flow_challenge_open@t5bb", m_d3a_co_t5bb, 0x00000000u },
+    { "flow_challenge_open@tgate", m_d3a_co_tgate, 0x00000000u },
+    { "flow_challenge_open@tf8", m_d3a_co_tf8, 0x00000000u },
+    { "flow_challenge_open@t4e", m_d3a_co_t4e, 0x00000000u },
+    { "flow_challenge_open@t2e", m_d3a_co_t2e, 0x00000000u },
+    { "flow_challenge_open@t2eb", m_d3a_co_t2eb, 0x00000000u },
+    { "flow_challenge_open@trec", m_d3a_co_trec, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

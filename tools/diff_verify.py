@@ -18961,6 +18961,87 @@ D3A_SPECS += [
         Case("i2", {}, {0x00104B14: b"\x61\x01\x62", 0x000BCD60: b"\x80"}),
     ], allow_calls=(0x2EA30,), eax_mask=0, mutants=("@nostore", "@val", "@word", "@off")),
 ]
+D3A_CH_A, D3A_CH_OLD = 0x0010A300, 0x0010A600      # the first banner's record, the record 0x1080F8 held before
+# 0x2AE14 as 0x428B8's row stubs it: one EAX serves every spawn of a case, so each call also leaves
+# D3A_CH_A in the dword 0x1080B4. The raw re-reads that dword after the second spawn (0x4291C), which
+# makes the first banner's record differ from the second's (the stub's EAX) and pa from pb.
+D3A_CH_SPAWN = E.Call(0x2AE14, SPAWN.args, pop=4, clobbers=SPAWN.clobbers,
+                      writes=((None, 0x001080B4, le32(D3A_CH_A)),))
+# 0x29CBC leaving a junk dword in the descriptor field its caller patches with its EAX: each of the
+# two patch stores of the r = 2 arm is then observable
+D3A_CH_HANDLE = E.Call(0x29CBC, ("eax", "edx"), clobbers=("edx",),
+                       writes=((None, 0x000C83C4, le32(0x7B7B7B7B)),))
+
+
+def d3a_chopen_case(r, recb, wa=0x1234, wb=0x8003, chars=(0x83, 0x05), f63=(0, 0), b1f=0xFF, w2e=0xFFFE):
+    """0x428B8: the result dword 0x104AD4 between seeded dwords; the banner dwords 0x1080B4/B8
+    and the record dwords 0x1080F8/FC (four different addresses in the zero BSS, D3A_CH_OLD in
+    0x1080F8: a binding that follows a stale one stays inside the image) and the prompt dwords
+    0x1080DC..E8 (0x5C.. to 0x5F..), all between seeded dwords; the count byte
+    0x108110 and the bytes 0x104B19 (0x5A) and 0x104B1F between neighbours; the descriptor dword
+    0xC83C4; both characters (+0x7A) and both think gates (+0x63); and three records (the first
+    banner's D3A_CH_A, the stub's `recb`, and D3A_CH_OLD) each with its +0x2E word (`w2e`),
+    +0x36 word (0x5A5A), +0x4E and +0x5B bytes (0x5A) and +0x56 word (`wa`, `wb`, 0x4444) between
+    neighbours."""
+    p = {0x00104AD0: le32(0x61616161) + le32(r) + le32(0x62626262),
+         0x001080B0: le32(0x63636363) + le32(0x0010A780) + le32(0x0010A800) + le32(0x64646464),
+         0x001080D8: le32(0x65656565) + le32(0x5C5C5C5C) + le32(0x5D5D5D5D) + le32(0x5E5E5E5E) + le32(0x5F5F5F5F)
+                     + le32(0x66666666) + le32(0x67676767) + le32(0x68686868) + le32(D3A_CH_OLD)
+                     + le32(0x0010A880) + le32(0x69696969),
+         0x0010810F: b"\x6a\x5a\x6b", 0x00104B18: b"\x6c\x5a\x6d", 0x00104B1E: bytes([0x6E, b1f, 0x6F]),
+         0x000C83C4: le32(0x6A6A6A6A),
+         0x00107829: bytes([0x70, chars[0], 0x71]), 0x001078BD: bytes([0x72, chars[1], 0x73]),
+         0x00107812: bytes([0x74, f63[0], 0x75]), 0x001078A6: bytes([0x76, f63[1], 0x77])}
+    for k, (rec, w56) in enumerate(((D3A_CH_A, wa), (recb, wb), (D3A_CH_OLD, 0x4444))):
+        p[rec + 0x2D] = bytes([0x80 + k]) + le16(w2e) + bytes([0x84 + k])
+        p[rec + 0x34] = le16(0x8888 + k) + le16(0x5A5A) + le16(0x8C8C + k)
+        p[rec + 0x4D] = bytes([0x90 + k, 0x5A, 0x94 + k])
+        p[rec + 0x55] = bytes([0x98 + k]) + le16(w56) + bytes([0x9C + k])
+        p[rec + 0x5A] = bytes([0xA0 + k, 0x5A, 0xA4 + k])
+    return p
+
+
+D3A_SPECS += [
+    # 0x428B8 flow_challenge_open: no argument. 0x29D60 (a bare `ret`, allowed); the dwords
+    # 0x1080DC/E0/E4/E8 = 0 and the byte 0x108110 = 9; the spawns 0xC8364 at (0, 0xF0,
+    # 0xFFFFC400, 0) into the dword 0x1080B4 and 0xC8378 at (0x2A00, 0xF1, 0xFFFFC400, 0) into
+    # 0x1080B8; pb = the second record's +0x56 word | 0x400, pa = the +0x56 word of the record
+    # the dword 0x1080B4 now names | 0x400 (both zero-extended). On r = the dword 0x104AD4:
+    # 0 -> 0x29CBC(1, slot 1's character) into the descriptor dword 0xC83C4, then 0xC83B4 (0x30,
+    #   0xE0, 0xDA), 0xC838C (0x14, 0xF3, 0xF) and 0xC83A0 (0x46, 0xF4, 0x34), each with a5 = pb,
+    #   into 0x1080F8, 0x1080E4, 0x1080DC; with slot 0's +0x63 zero the bytes 0x104B19 = 0 and
+    #   0x104B1F = 1, else 0x104B1F &= 0xFD;
+    # 1 -> the mirror with 0x29CBC(0, slot 0's character), a5 = pa, 0xC83A0 at 0x4C, into
+    #   0x1080FC, 0x1080E8, 0x1080E0; slot 1's +0x63: 0x104B1F = 2, else &= 0xFE;
+    # 2 -> both, alternating pa/pb (0xC83C4 patched before each 0xC83B4), and 0x104B1F = 0;
+    # else none. Last the first record's +0x36 word = 0x100 and +0x5B = 0, the second's +0x36 =
+    # 0x40 and +0x5B = 0, and with r != 1 the 0x1080F8 record's +0x4E = 1 and +0x2E word += 4
+    # (k5..k7: the record that dword held before). Both callees are stubs with a write each (see
+    # their constants); one stub EAX serves every spawn of a case, so the child dwords are told
+    # apart by the memory at the calls. Mask 0: record §1.
+    Spec("flow_challenge_open", 0x428B8, [
+        Case("k0", {"ebx": 0x11111111, "ecx": 0x22222222, "edx": 0x33333333, "esi": 0x44444444,
+                    "edi": 0x55555555}, d3a_chopen_case(0, 0x0010A400), {0x2AE14: 0x0010A400, 0x29CBC: 0x00C0FFEE}),
+        Case("k1", {}, d3a_chopen_case(0, 0x0010A500, chars=(0x05, 0x83), f63=(0x80, 0), w2e=0x0010),
+             {0x2AE14: 0x0010A500, 0x29CBC: 0x12345678}),
+        Case("k2", {}, d3a_chopen_case(1, 0x0010A400, f63=(1, 0)), {0x2AE14: 0x0010A400, 0x29CBC: 0x00C0FFEE}),
+        Case("k3", {}, d3a_chopen_case(1, 0x0010A500, f63=(0, 1), wa=0x8765, wb=0x0001),
+             {0x2AE14: 0x0010A500, 0x29CBC: 0xFFFFFFFF}),
+        Case("k4", {}, d3a_chopen_case(2, 0x0010A400, f63=(1, 1), w2e=0x00FE),
+             {0x2AE14: 0x0010A400, 0x29CBC: 0x00C0FFEE}),
+        Case("k5", {}, d3a_chopen_case(3, 0x0010A400), {0x2AE14: 0x0010A400}),
+        Case("k6", {}, d3a_chopen_case(0xFFFFFFFF, 0x0010A500, w2e=0x7FFC), {0x2AE14: 0x0010A500}),
+        Case("k7", {}, d3a_chopen_case(0x00000100, 0x0010A400), {0x2AE14: 0x0010A400}),
+    ], allow_calls=(0x29D60,), calls=(D3A_CH_SPAWN, D3A_CH_HANDLE), eax_mask=0,
+       mutants=("@dc0", "@e00", "@e40", "@e80", "@b110", "@sp1d", "@sp1x", "@sp1y", "@sp1z", "@sp1a5", "@sp2d",
+                "@sp2x", "@sp2y", "@sp2z", "@sp2a5", "@b4", "@b8", "@b4late", "@pbsrc", "@pasrc", "@noor",
+                "@orb", "@pzext", "@r0side", "@r0ch", "@r0chsext", "@r0patch", "@r0p", "@r0f8", "@r0e4",
+                "@r0dc", "@r0x3", "@r0a3", "@r0gate", "@r0b19", "@r0b1f", "@r0and", "@r1side",
+                "@r1ch", "@r1patch", "@r1p", "@r1fc", "@r1e8", "@r1e0", "@r1x3", "@r1gate", "@r1b19", "@r1b1f",
+                "@r1and", "@r2order", "@r2p", "@r2patch2", "@r2swapf", "@r2swape", "@r2swapd", "@r2x", "@r2b1f",
+                "@r2five", "@r3", "@rlow", "@t36a", "@t36b", "@t36w", "@t5ba", "@t5bb", "@tgate", "@tf8",
+                "@t4e", "@t2e", "@t2eb", "@trec")),
+]
 D1_SPECS += D3A_SPECS
 
 

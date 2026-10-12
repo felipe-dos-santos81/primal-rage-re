@@ -31,6 +31,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x27ED8` | `flow_round_over` | 206 | 0: its three call sites in `0x27FA8` (`0x28003`, `0x280BA`, `0x280D2`) are followed by four pops and `ret`; `0x27FA8`'s EAX is dead by the trace of the `0x27DC8` line above |
 | `0x28CC8` | `flow_join_poll` | 158 | full: `mov eax,ebx` `0x28D1E` or `xor eax,eax` `0x28D50`/`0x28D60`; both callers `test eax,eax` and pass EAX - 1 on (`0x25264`/`0x25268`, `0x2534E`/`0x25352`) |
 | `0x4F1E4` | `frontend_input_reset` | 26 | 0: each of its 24 call sites loads `mov eax,1` next, five of them after `xor ecx,ecx` and at most one more `xor` (`0x1EA1B`, `0x20940`, `0x2F9A6`, `0x2F9E0`, `0x2FE9B`) |
+| `0x428B8` | `flow_challenge_open` | 785 | 0: the one caller `0x42533` goes on with byte loads and stores (`0x42538..0x42548`) and `jmp 0x425ef`, where each of the three ways on rewrites EAX before reading it (`lea eax,[ecx+1]` `0x4260C`, `xor eax,eax` `0x42665`, `lea eax,[ecx+1]` `0x426C0`) |
 
 ## §2 The row table (measured)
 
@@ -60,6 +61,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `flow_round_over` | `0x27ED8` | 8 | 9/9 | 30 | 0 | three stubs (`0x1D764`, `0x19820` seamed here; `0x1D764` has no row); the deferred audit add `0x2DAE4(0xF, 1)` real in the original, turned off by its field (§4). With `0x1D764` stubbed the `+0x5A` bytes survive, so m and every divisor vary: `o5` a negative product, `o6` a product that overflows 32 bits, `o3` a byte of `0xFF` (`@maxs`) |
 | `flow_join_poll` | `0x28CC8` | 10 | 12/12 | 27 | `0xFFFFFFFF` | five stubs (`0x2C1C8`, `0x2C178` seamed here). `j6`: the byte `0x104B1F` = `0xFD` and a `0x2C060` EAX of `0x100` (`@al`); `j9`: poked masks (`@eq`); `j3`/`j4`/`j7`: the row by the option bit |
 | `frontend_input_reset` | `0x4F1E4` | 3 | 1/1 | 4 | 0 | `0x2EA30` (the interrupt lock, a named non-row) allowed: the lock byte `0xBCD60` ends as it started for 0, 1 and `0x80` |
+| `flow_challenge_open` | `0x428B8` | 8 | 15/15 | 71 | 0 | `0x2AE14` and `0x29CBC` stubbed, each with a stub write (§4); `0x29D60` allowed. `k4`: both sides' six children; `k5..k7`: a result of 3, `0xFFFFFFFF`, `0x100` (`@r3`, `@rlow`) |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -92,6 +94,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x19820` | none (its first EAX use is `mov eax,0x100c20` `0x19852`) | 0 | none | pushes EBX ECX EDX; one plain `ret` (`0x198C7`) |
 | `0x2C1C8` | EAX, EDX (`mov al,[eax+0xbab58]` `0x2C1C8`; it falls into `0x2C1D4`, which takes EDX as the row) | 0 | `ebx ecx edx esi edi` | the scan's set: `0x2C1C8` has no push of its own (the saves are `0x2C1D4`'s), so it is over-approximated; `0x28CC8` reads no register after the call (`0x28D50 xor eax,eax`, three pops). `0x28D49 xor ebx,ebx` before the call is not an argument |
 | `0x2C178` | EAX, EDX (the row's registers) | 0 | `edx ebp` | pushes EBX ECX ESI; one plain `ret` (`0x2C1AC`) |
+| `0x29CBC` | EAX, EDX (`mov bl,[eax+0x105b34]` `0x29CBD`, `shl edx,2` `0x29CC3`) | 0 | `edx` | pushes EBX; two plain `ret` (`0x29CD1`, `0x29CD9`). The raw caller keeps ECX and EBX (a3, a4) across it |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -169,6 +172,19 @@ asserted the text. Unproven against the oracles until the integrator's gate.
 - `frontend_input_reset`: the two `0x2EA30` calls (lock with `0x2700`, restore with the first call's EAX) are
   not modelled by the port (`/* PORT: */`); their only memory effect is the byte `0xBCD60`, cleared across the
   store and put back. Not compared beyond its final value.
+- `flow_challenge_open`: one stub EAX serves every `0x2AE14` call of a case, so (a) the first banner's record
+  would equal the second's and pa would equal pb: the row's spawn stub also writes a fixed record address into
+  the dword `0x1080B4`, which the raw re-reads at `0x4291C` after the second spawn and again in the tail
+  (`0x42B86`) — so the store of the first spawn's EAX at `0x4290A` is seen only by the memory at the second
+  call (`@b4`, `@b4late`), and that the tail re-reads the dword rather than keeping the first EAX is not
+  separated; (b) all child dwords of a case receive the same value: a swapped destination is caught by the
+  memory at the next call (`@r2swapf`, `@r2swape`, `@r2swapd`) or, for a dword only one arm writes, by the
+  bytes at return. The `0x29CBC` stub writes a junk dword into `0xC83C4`, which makes each patch store
+  observable (`@r0patch`, `@r1patch`, `@r2patch2`). Not separated: reading the think gate (`0x107813`,
+  `0x1078A7`) before instead of after the last spawn (no stub writes it).
+- Stale pointers: the dwords `0x1080B4`, `0x1080B8`, `0x1080F8`, `0x1080FC` are seeded with four addresses in
+  the image's zero BSS. With `0x5B5B5B5B`-style seeds the mutants that follow a stale one (`@b8`, `@tf8`) left
+  `mem[]` and `diffrun` died with SIGSEGV; no pin was taken from such a run.
 
 ## §5 Store-sweep findings
 
@@ -220,6 +236,10 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   `0x80` is negative); then the word `0x104B00` and the dword `0x104AA8` (`@aa8w`).
 - `flow_join_poll`: one store, the byte `0x104B1F |= side + 1`, between `0x2C2B0` and `0x2CA7C` (`@early`,
   `@late`: only the memory at a call); `@set` and `@orbit` are caught where other bits are set or the side is 0.
+- `flow_challenge_open`: the four prompt dwords and the count byte before the first spawn (each a `call #0
+  memory` difference when dropped); the two banner dwords; per arm the patch dword and three (or six) child
+  dwords; the two flag bytes; the tail's four record stores and, for r != 1, the `+0x4E` byte and the `+0x2E`
+  word (`@t2eb`: caught where the add carries, `w2e` = `0xFFFE`, `0x00FE`, `0x7FFC`; `k1`'s `0x0010` does not).
 
 ## §6 Queue entries not done
 

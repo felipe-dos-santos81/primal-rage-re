@@ -3262,6 +3262,7 @@ void flow_scroll_reset(u32 stage)
  * 0x42979, 0x42A13, 0x42AAD and 0x42AE3 are all in 0x428B8. */
 u32 flow_challenge_handle(u32 side, u32 ch)
 {
+    PR_SEAM_RET(0x29CBCu, side, ch);
     if (DSB(DS_00105B34 + side) != 0u)                  /* 0x29CBD..0x29CC8 */
         return DSD(DS_000A8ADC + ch * 4u);              /* 0x29CCA */
     return DSD(DS_000A8AC0 + ch * 4u);                  /* 0x29CD2 */
