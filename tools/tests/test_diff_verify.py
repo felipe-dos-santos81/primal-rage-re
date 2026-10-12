@@ -6432,6 +6432,59 @@ D1_KINDS.update(D1E_KINDS)
 D1_CASES.extend(D1E_CASES)
 
 
+# track D1, the 0x47A00 row (record 2026-10-11-reverse-d1b §3.8): its mask, and what alone catches each mutant
+D1J_MASKS = {"fighter_47a00": 0x0}
+D1J_KINDS = {
+    "fighter_47a00@gate": {"call #1", "byte", "call #2 memory", "call #5", "call #7", "call #2", "call #1 memory", "call #4", "call #5 memory", "call #6 memory", "call #3 memory", "call #0 memory", "call #4 memory", "call #0", "call #6", "call #3"},
+    "fighter_47a00@w56rec": {"call #0"},
+    "fighter_47a00@or400": {"call #0"},
+    "fighter_47a00@a60": {"byte", "call #2 memory", "call #1 memory", "call #5 memory", "call #6 memory", "call #3 memory", "call #7 memory", "call #4 memory"},
+    "fighter_47a00@r4b": {"byte", "call #2 memory", "call #1 memory", "call #5 memory", "call #6 memory", "call #3 memory", "call #7 memory", "call #4 memory"},
+    "fighter_47a00@a56": {"byte", "call #2 memory", "call #1 memory", "call #5 memory", "call #6 memory", "call #3 memory", "call #7 memory", "call #4 memory"},
+    "fighter_47a00@s57": {"byte", "call #2 memory", "call #1 memory", "call #5 memory", "call #6 memory", "call #3 memory", "call #7 memory", "call #0 memory", "call #4 memory"},
+    "fighter_47a00@s57side": {"byte", "call #2 memory", "call #1 memory", "call #5 memory", "call #6 memory", "call #3 memory", "call #7 memory", "call #0 memory", "call #4 memory"},
+    "fighter_47a00@pside": {"call #0", "call #1"},
+    "fighter_47a00@pb": {"call #0", "call #1"},
+    "fighter_47a00@voice": {"call #2", "call #1"},
+    "fighter_47a00@char": {"call #2", "call #7", "call #6", "call #3"},
+    "fighter_47a00@rec": {"call #2", "call #3"},
+    "fighter_47a00@frame": {"call #2", "call #3"},
+    "fighter_47a00@hold": {"call #4", "call #3"},
+    "fighter_47a00@t1": {"call #4", "call #5"},
+    "fighter_47a00@tval": {"call #4", "call #5"},
+    "fighter_47a00@t2": {"call #7", "call #5", "call #6"},
+    "fighter_47a00@place": {"call #7", "call #6"},
+    "fighter_47a00@dzext": {"call #7", "call #6"},
+    "fighter_47a00@gs8": {"call #1", "byte", "call #2 memory", "call #5", "call #7", "call #2", "call #1 memory", "call #4", "call #5 memory", "call #6 memory", "call #3 memory", "call #0 memory", "call #4 memory", "call #0", "call #6", "call #3"},
+}
+D1J_CASES = [
+    ('fighter_47a00@gate', ['t1']),
+    ('fighter_47a00@w56rec', ['t0', 't1']),
+    ('fighter_47a00@or400', ['t0', 't1']),
+    ('fighter_47a00@a60', ['t0', 't1']),
+    ('fighter_47a00@r4b', ['t0', 't1']),
+    ('fighter_47a00@a56', ['t0', 't1']),
+    ('fighter_47a00@s57', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@s57side', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@pside', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@pb', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@voice', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@char', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@rec', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@frame', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@hold', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@t1', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@tval', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@t2', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@place', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@dzext', ['t0', 't1', 't2', 't3']),
+    ('fighter_47a00@gs8', ['t3']),
+]
+D1_MASKS.update(D1J_MASKS)
+D1_KINDS.update(D1J_KINDS)
+D1_CASES.extend(D1J_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")

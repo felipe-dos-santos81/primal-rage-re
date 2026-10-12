@@ -19836,6 +19836,49 @@ D1F_RC(order, 32768u)
 D1F_RC(sext, 65536u)
 #undef D1F_RC
 
+/* ---- track D1, the 0x47A00 row (record 2026-10-11-reverse-d1b §3.8; landed with the 0x47A89 correction) ---- */
+/* 0x47A00's mutants. EAX = side. The 0x3C480 record is ctx[5], the other side's (`mov eax,
+ * [esp+0x14]` 0x47A89). */
+static void d1b_47a00_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], ctx[6], och;
+    u8 gate = DSB(0x00105B3Au);
+    fighter_ctx_same(ctx, side);
+    if ((mut & 1u) ? (gate < 1u) : (mut & 0x100000u) ? ((s8)gate <= 1) : (gate <= 1u)) {   /* @gate, @gs8 */
+        u32 w = (u32)DSW(ctx[(mut & 2u) ? 5 : 4] + 0x56u);              /* @w56rec */
+        u32 a = actor_spawn((const u32 *)(mem + 0x000BB128u), 0u, 0u, 0u,
+                            (mut & 4u) ? w : (w | 0x0400u));            /* @or400 */
+        if (!(mut & 8u)) DSB(a + 0x60u) = 1u;                           /* @a60 */
+        if (!(mut & 0x10u))                                             /* @r4b */
+            DSB(ctx[4] + 0x4Bu) = DSB(a + ((mut & 0x20u) ? 0x57u : 0x56u));     /* @a56 */
+    }
+    if (!(mut & 0x40u))                                                 /* @s57 */
+        DSB(0x001077B0u + ((mut & 0x80u) ? ctx[1] : side) * 0x94u + 0x57u) = 1u;   /* @s57side */
+    fighter_39834((mut & 0x100u) ? ctx[0] : ctx[1],                     /* @pside */
+                  (s32)(u32)DSB(ctx[(mut & 0x200u) ? 3 : 2] + 0x5Fu));  /* @pb */
+    (void)sound_voice((mut & 0x400u) ? 0x47u : 0x46u);                  /* @voice */
+    och = (u32)DSB(ctx[(mut & 0x800u) ? 2 : 3] + 0x7Au);                /* @char */
+    hit_anim_start_a(ctx[(mut & 0x1000u) ? 4 : 5],                      /* @rec */
+                     DSD(0x000C90F8u + och * 4u),
+                     (mut & 0x2000u) ? 0x40000000u : 0x40400000u);      /* @frame */
+    fighter_3c358((mut & 0x4000u) ? ctx[1] : side);                     /* @hold */
+    fighter_39a10(ctx[(mut & 0x8000u) ? 5 : 4], (mut & 0x10000u) ? 0x308u : 0x309u);    /* @t1, @tval */
+    if (!(mut & 0x20000u)) fighter_39a10(ctx[5], 0x309u);               /* @t2 */
+    fighter_3c208((mut & 0x40000u) ? ctx[0] : ctx[1],                   /* @place */
+                  (mut & 0x80000u) ? (s32)(u32)DSW(0x000C9456u + och * 2u)      /* @dzext */
+                                   : (s32)(s16)DSW(0x000C9456u + och * 2u));
+}
+static void b_d1b_47a00(const u32 *r, u32 *eax) { fighter_47a00(r[R_EAX]); *eax = 0u; }
+#define D1B_47A00_MUT(name, bit) \
+    static void m_d1b_47a00_##name(const u32 *r, u32 *eax) { d1b_47a00_core(r, bit); *eax = 0u; }
+D1B_47A00_MUT(gate, 1u)        D1B_47A00_MUT(w56rec, 2u)      D1B_47A00_MUT(or400, 4u)
+D1B_47A00_MUT(a60, 8u)         D1B_47A00_MUT(r4b, 0x10u)      D1B_47A00_MUT(a56, 0x20u)
+D1B_47A00_MUT(s57, 0x40u)      D1B_47A00_MUT(s57side, 0x80u)  D1B_47A00_MUT(pside, 0x100u)
+D1B_47A00_MUT(pb, 0x200u)      D1B_47A00_MUT(voice, 0x400u)   D1B_47A00_MUT(char, 0x800u)
+D1B_47A00_MUT(rec, 0x1000u)    D1B_47A00_MUT(frame, 0x2000u)  D1B_47A00_MUT(hold, 0x4000u)
+D1B_47A00_MUT(t1, 0x8000u)     D1B_47A00_MUT(tval, 0x10000u)  D1B_47A00_MUT(t2, 0x20000u)
+D1B_47A00_MUT(place, 0x40000u) D1B_47A00_MUT(dzext, 0x80000u) D1B_47A00_MUT(gs8, 0x100000u)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -23721,6 +23764,28 @@ static const binding_t k_bindings[] = {
     { "fight_4e99c@flash",                   m_d1f_rc_flash, 0x00000000u },
     { "fight_4e99c@order",                   m_d1f_rc_order, 0x00000000u },
     { "fight_4e99c@sext",                    m_d1f_rc_sext, 0x00000000u },
+    { "fighter_47a00",            b_d1b_47a00,            0x00000000u },
+    { "fighter_47a00@gate", m_d1b_47a00_gate, 0x00000000u },
+    { "fighter_47a00@w56rec", m_d1b_47a00_w56rec, 0x00000000u },
+    { "fighter_47a00@or400", m_d1b_47a00_or400, 0x00000000u },
+    { "fighter_47a00@a60", m_d1b_47a00_a60, 0x00000000u },
+    { "fighter_47a00@r4b", m_d1b_47a00_r4b, 0x00000000u },
+    { "fighter_47a00@a56", m_d1b_47a00_a56, 0x00000000u },
+    { "fighter_47a00@s57", m_d1b_47a00_s57, 0x00000000u },
+    { "fighter_47a00@s57side", m_d1b_47a00_s57side, 0x00000000u },
+    { "fighter_47a00@pside", m_d1b_47a00_pside, 0x00000000u },
+    { "fighter_47a00@pb", m_d1b_47a00_pb, 0x00000000u },
+    { "fighter_47a00@voice", m_d1b_47a00_voice, 0x00000000u },
+    { "fighter_47a00@char", m_d1b_47a00_char, 0x00000000u },
+    { "fighter_47a00@rec", m_d1b_47a00_rec, 0x00000000u },
+    { "fighter_47a00@frame", m_d1b_47a00_frame, 0x00000000u },
+    { "fighter_47a00@hold", m_d1b_47a00_hold, 0x00000000u },
+    { "fighter_47a00@t1", m_d1b_47a00_t1, 0x00000000u },
+    { "fighter_47a00@tval", m_d1b_47a00_tval, 0x00000000u },
+    { "fighter_47a00@t2", m_d1b_47a00_t2, 0x00000000u },
+    { "fighter_47a00@place", m_d1b_47a00_place, 0x00000000u },
+    { "fighter_47a00@dzext", m_d1b_47a00_dzext, 0x00000000u },
+    { "fighter_47a00@gs8", m_d1b_47a00_gs8, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

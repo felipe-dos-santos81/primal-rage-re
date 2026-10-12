@@ -13285,6 +13285,52 @@ D1F_SPECS += [
 
 D1_SPECS += D1F_SPECS
 
+# ---- track D1, the 0x47A00 row (record 2026-10-11-reverse-d1b §3.8): landed with the 0x47A89
+# correction (the OTHER side's record goes to 0x3C480) ---------------------------------------------
+D1B_47A00_CALLS = (SPAWN, E.Call(0x39834, ("eax", "edx"), clobbers=("edx", "ebp")), VOICE, HIT_A,
+                   E.Call(0x3C358, ("eax",)), E.Call(0x39A10, ("eax", "edx"), clobbers=("edx",)),
+                   E.Call(0x3C208, ("eax", "edx"), clobbers=("edx",)))
+
+
+def d1b_47a00_case(side, gate, ch=2, och=4, b=0x15, w56=0x8123):
+    """0x47A00: the gate byte 0x105B3A, both slots' record pointers and +0x57/+0x5F/+0x7A, both
+    records' +0x4B and word +0x56, the stub actor's +0x56 and +0x60, and the two characters'
+    0xC90F8 streams and 0xC9456 words."""
+    ss, os_ = DS_SLOTS + side * 0x94, DS_SLOTS + (1 - side) * 0x94
+    return {0x00105B39: bytes([0x39, gate, 0x3B]), ss: le32(D1B_REC), os_: le32(D1B_REC2),
+            ss + 0x56: b"\x56\x57\x58", os_ + 0x56: b"\x66\x67\x68",
+            ss + 0x5E: bytes([0x5E, b, 0x60]), os_ + 0x5E: bytes([0x6E, b ^ 0x3F, 0x70]),
+            ss + 0x79: bytes([0x79, ch, 0x7B]), os_ + 0x79: bytes([0x79, och, 0x7B]),
+            D1B_REC + 0x4A: b"\x4a\x4b\x4c", D1B_REC + 0x54: le16(0x5455) + le16(w56) + b"\x58\x59",
+            D1B_REC2 + 0x4A: b"\x5a\x5b\x5c",
+            D1B_REC2 + 0x54: le16(0x6465) + le16(w56 ^ 0x0FFF) + b"\x68\x69",
+            D1B_CHILD + 0x55: b"\x55\xa6\xa7", D1B_CHILD + 0x5F: b"\x5f\x60\x61",
+            0x000C90F8 + och * 4: le32(0x000E1111), 0x000C90F8 + ch * 4: le32(0x000E2222),
+            0x000C9456 + och * 2: le16(0x8010), 0x000C9456 + ch * 2: le16(0x0020)}
+
+
+D1J_SPECS = [
+    # 0x47A00 fighter_47a00: EAX = side; the throw setup. With the byte 0x105B3A at most 1
+    # (zero-extended, `jg` 0x47A21) 0xBB128 spawns with a5 = the side record's word +0x56 |
+    # 0x400, its +0x60 = 1 and the record's +0x4B = its +0x56 (the raw does not test the spawn
+    # for 0; the port's PORT guard is not exercised, a 0 stub EAX would write outside the
+    # image). Then slot+0x57 = 1, 0x39834(other, slot+0x5F), voice 0x46, 0x3C480 on the OTHER
+    # side's record (`mov eax,[esp+0x14]` 0x47A89) with 0xC90F8[the other's char] at 3.0,
+    # 0x3C358(side), 0x39A10 on both records with 0x309 and 0x3C208(other, the s16 0xC9456[the
+    # other's char]). 0x33950 runs on both sides. Mask 0 (record §1).
+    Spec("fighter_47a00", 0x47A00, [
+        Case("t0", {"eax": 0}, d1b_47a00_case(0, 0), {0x2AE14: D1B_CHILD}),
+        Case("t1", {"eax": 1}, d1b_47a00_case(1, 1, ch=5, och=0), {0x2AE14: D1B_CHILD}),
+        Case("t2", {"eax": 0}, d1b_47a00_case(0, 2), {0x2AE14: D1B_CHILD, 0x2C3FC: 0}),
+        Case("t3", {"eax": 1}, d1b_47a00_case(1, 0xFF, ch=6, och=3), {0x2AE14: D1B_CHILD}),
+    ], allow_calls=(0x33950,), calls=D1B_47A00_CALLS, eax_mask=0,
+       mutants=("@gate", "@w56rec", "@or400", "@a60", "@r4b", "@a56", "@s57", "@s57side",
+                "@pside", "@pb", "@voice", "@char", "@rec", "@frame", "@hold", "@t1", "@tval",
+                "@t2", "@place", "@dzext", "@gs8")),
+]
+D1_SPECS += D1J_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
