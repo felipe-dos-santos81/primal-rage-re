@@ -4394,6 +4394,7 @@ void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
  * too, the service-menu ones in svcmenu.c (K11). */
 void text_number_set(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
 {
+    PR_SEAM(0x2F434u, col, row, value, width, pad, mode);
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
      * which only a pad above 3 could observe. */
     u8 buf[0x14] = {0};
