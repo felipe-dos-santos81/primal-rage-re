@@ -13496,7 +13496,7 @@ def d2a_handler_cases():
 D2A_HANDLER_CALLS = (D2A_365C8, C1_36638, D2A_CONSUME, ANIM_BEGIN)
 D2A_HANDLER_MUTANTS = ("@al365", "@al366", "@slot43", "@or", "@cmd", "@prio", "@b2", "@cside", "@tab",
                        "@hold", "@s52a", "@s54", "@early", "@inv", "@s52b", "@late", "@csext", "@order",
-                       "@no366", "@side1a", "@holdb", "@tabb")
+                       "@no366", "@side1a", "@holdb", "@tabb", "@al1a")
 
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and

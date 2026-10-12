@@ -6562,6 +6562,7 @@ D2A_KINDS = {
     "fighter_state_36430@side1a": {'byte', 'call #2'},
     "fighter_state_36430@holdb": {'call #2'},
     "fighter_state_36430@tabb": {'call #2'},
+    "fighter_state_36430@al1a": {'byte', 'call #2'},
     "fighter_state_364fc@al365": {'byte', 'call #1 memory', 'call #2 memory'},
     "fighter_state_364fc@al366": {'call #2'},
     "fighter_state_364fc@slot43": {'call #2'},
@@ -6584,6 +6585,7 @@ D2A_KINDS = {
     "fighter_state_364fc@side1a": {'byte', 'call #2'},
     "fighter_state_364fc@holdb": {'call #2'},
     "fighter_state_364fc@tabb": {'call #2'},
+    "fighter_state_364fc@al1a": {'byte', 'call #2'},
 }
 D2A_CASES = [
     ("fighter_146f0@gate", ['c0', 'c1', 'c2', 'c3', 'c4', 'c5']),
@@ -6705,6 +6707,7 @@ D2A_CASES = [
     ("fighter_state_36430@side1a", ['k10', 'k4', 'k5', 'k9']),
     ("fighter_state_36430@holdb", ['k4', 'k9']),
     ("fighter_state_36430@tabb", ['k4', 'k9']),
+    ("fighter_state_36430@al1a", ['k4', 'k9']),
     ("fighter_state_364fc@al365", ['k2']),
     ("fighter_state_364fc@al366", ['k2']),
     ("fighter_state_364fc@slot43", ['k6', 'k7']),
@@ -6727,6 +6730,7 @@ D2A_CASES = [
     ("fighter_state_364fc@side1a", ['k10', 'k4', 'k5', 'k9']),
     ("fighter_state_364fc@holdb", ['k10', 'k5']),
     ("fighter_state_364fc@tabb", ['k10', 'k5']),
+    ("fighter_state_364fc@al1a", ['k4', 'k9']),
 ]
 D1_MASKS.update(D2A_MASKS)
 D1_KINDS.update(D2A_KINDS)

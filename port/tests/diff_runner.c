@@ -20090,7 +20090,9 @@ static void d2a_3643x_core(u32 tw, const u32 *r, u32 mut)
             (void)fighter_attack_consume((mut & 128u) ? 1u - side : side);   /* @cside */
         return;
     }
-    if ((fighter_1a640((mut & 524288u) ? 1u - side : side) != 0) == ((tw != 0u) != ((mut & 8192u) != 0u)))
+    a = (u32)fighter_1a640((mut & 524288u) ? 1u - side : side);
+    if (mut & 0x400000u) a &= 0xFFu;                                               /* @al1a: AL for the whole EAX */
+    if ((a != 0u) == ((tw != 0u) != ((mut & 8192u) != 0u)))
         return;                                                                    /* @side1a; @inv: the twin's sense */
     if (mut & 32768u)                                                           /* @late: the store after 0x2BC30 */
         actors_anim_begin(rec, DSD((tw ? 0x000C8FB8u : 0x000C8F90u) + ch * 4u), tw ? 0x40000000u : 0x40400000u);
@@ -20121,6 +20123,7 @@ static void m_d2a_36430_order(const u32 *r, u32 *eax)  { d2a_3643x_core(0u, r, 0
 static void m_d2a_36430_no366(const u32 *r, u32 *eax)  { d2a_3643x_core(0u, r, 0x40000u); *eax = 0u; }
 static void m_d2a_36430_side1a(const u32 *r, u32 *eax) { d2a_3643x_core(0u, r, 0x80000u); *eax = 0u; }
 static void m_d2a_36430_holdb(const u32 *r, u32 *eax)  { d2a_3643x_core(0u, r, 0x100000u); *eax = 0u; }
+static void m_d2a_36430_al1a(const u32 *r, u32 *eax)   { d2a_3643x_core(0u, r, 0x400000u); *eax = 0u; }
 static void m_d2a_36430_tabb(const u32 *r, u32 *eax)   { d2a_3643x_core(0u, r, 0x200000u); *eax = 0u; }
 static void b_d2a_364fc(const u32 *r, u32 *eax) { fighter_state_364fc(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
 static void m_d2a_364fc_al365(const u32 *r, u32 *eax)  { d2a_3643x_core(1u, r, 0x1u); *eax = 0u; }
@@ -20144,6 +20147,7 @@ static void m_d2a_364fc_order(const u32 *r, u32 *eax)  { d2a_3643x_core(1u, r, 0
 static void m_d2a_364fc_no366(const u32 *r, u32 *eax)  { d2a_3643x_core(1u, r, 0x40000u); *eax = 0u; }
 static void m_d2a_364fc_side1a(const u32 *r, u32 *eax) { d2a_3643x_core(1u, r, 0x80000u); *eax = 0u; }
 static void m_d2a_364fc_holdb(const u32 *r, u32 *eax)  { d2a_3643x_core(1u, r, 0x100000u); *eax = 0u; }
+static void m_d2a_364fc_al1a(const u32 *r, u32 *eax)   { d2a_3643x_core(1u, r, 0x400000u); *eax = 0u; }
 static void m_d2a_364fc_tabb(const u32 *r, u32 *eax)   { d2a_3643x_core(1u, r, 0x200000u); *eax = 0u; }
 
 static const binding_t k_bindings[] = {
@@ -24157,6 +24161,7 @@ static const binding_t k_bindings[] = {
     { "fighter_state_36430@side1a", m_d2a_36430_side1a, 0x00000000u },
     { "fighter_state_36430@holdb", m_d2a_36430_holdb, 0x00000000u },
     { "fighter_state_36430@tabb", m_d2a_36430_tabb, 0x00000000u },
+    { "fighter_state_36430@al1a", m_d2a_36430_al1a, 0x00000000u },
     { "fighter_state_364fc", b_d2a_364fc, 0x00000000u },
     { "fighter_state_364fc@al365", m_d2a_364fc_al365, 0x00000000u },
     { "fighter_state_364fc@al366", m_d2a_364fc_al366, 0x00000000u },
@@ -24180,6 +24185,7 @@ static const binding_t k_bindings[] = {
     { "fighter_state_364fc@side1a", m_d2a_364fc_side1a, 0x00000000u },
     { "fighter_state_364fc@holdb", m_d2a_364fc_holdb, 0x00000000u },
     { "fighter_state_364fc@tabb", m_d2a_364fc_tabb, 0x00000000u },
+    { "fighter_state_364fc@al1a", m_d2a_364fc_al1a, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
