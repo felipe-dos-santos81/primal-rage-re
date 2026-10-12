@@ -189,8 +189,8 @@ Two differences, one commit:
    0x3C88C()`). The mutants `@cn`, `@cs` cache one counter each and `@old` is the old port.
 
 Ordinary play: no difference seen. 0x1A570 does not read DS_00107ED8 (its bytes, 0x1A570..0x1A5A8),
-and 0x3C88C's own body only loads the two counters (thirty-odd `mov r,[0x107ed8]` / `[0x107edc]`, no
-store); whether its callees 0x3C600, 0x3C6A8 and 0x3C758 store to them is unverified.
+and 0x3C88C's own body only loads the two counters (forty references to 0x107ED8 / 0x107EDC in its scan, every one
+a load, none a store); whether its callees 0x3C600, 0x3C6A8 and 0x3C758 store to them is unverified.
 
 ### §3.7 `fight_char_opp_text_blink` (0x435AC) and §3.8 `fight_char_text_blink` (0x43464) read the col word before each string
 
@@ -365,7 +365,7 @@ Limits worth knowing:
 
 - 0x4EBB8 (979 bytes, the mode-0x25 round card): no row. Its first 0x1B0 bytes were read (the 0x62
   title through 0x2F510, the 0x37-cell loop over 0xC9850 / 0xC9BCE through 0x2F174, the start of the
-  per-side score loop over 0x108888); the rest and the port's `fight_mode25_card` were not compared.
+  per-side score loop over 0x108888); the rest and the port's `fight_mode25_scorecard` were not compared.
   EAX mask 0 by the walk (call sites 0x4E928 and 0x4F06E). It already carries `PR_SEAM0(0x4EBB8u)`
   (d2e stubs it). Skipped for its size against the session's remaining budget, not for a blocker.
 - 0x43D60 (319), 0x4434C (377), 0x44638 (350): not reached, not read. EAX masks 0 by the walk
