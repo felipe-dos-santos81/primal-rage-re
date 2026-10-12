@@ -2189,9 +2189,17 @@ int test_sprite(void)
 
 #define RSCRATCH 0x3F00000u
 
+/* 0x1C350 (render_list_init) rebuilds the free list only; its one raw caller 0x2BAF4 clears the
+ * list head DS_00105B44 first (0x2BBC9). The render tests' reset does both. */
+static void render_reset(void)
+{
+    DSD(DS_00105B44) = 0;
+    render_list_init();
+}
+
 static void check_list_order(void)
 {
-    render_list_init();
+    render_reset();
     CHECK_EQ_INT(render_list_count(), 0);
 
     /* Three hand-built psets in layer order 5, 1, 3 (insertion order).
@@ -2224,7 +2232,7 @@ static void check_list_order(void)
     CHECK_EQ_INT(DSD(n + 4), p3);
 
     /* Stability: equal layers keep insertion order. */
-    render_list_init();
+    render_reset();
     u32 q1 = RSCRATCH + 0x100u, q2 = RSCRATCH + 0x120u;
     DSW(q1 + 0x0E) = 2; DSW(q2 + 0x0E) = 2;
     CHECK_EQ_INT(render_list_insert(q1), 1);
@@ -2240,7 +2248,7 @@ static void check_list_order(void)
     CHECK_EQ_INT(DSD(render_list_head() + 4), q2);
 
     /* Exhaustion: 580 nodes, the 581st insert fails without corrupting. */
-    render_list_init();
+    render_reset();
     for (int i = 0; i < 580; i++)
         CHECK_EQ_INT(render_list_insert(RSCRATCH + 0x200u + (u32)i * 0x20u), 1);
     CHECK_EQ_INT(render_list_insert(RSCRATCH + 0x30000u), 0);
@@ -2275,7 +2283,7 @@ static void check_proj_rounding(void)
 
 static void check_offscreen_skip(void)
 {
-    render_list_init();
+    render_reset();
 
     /* A pset whose sprite is entirely off-screen must be skipped and leave the
      * back buffer untouched. Layer 3 takes the un-shifted coordinate path. */
@@ -2329,7 +2337,7 @@ static void check_layer_modes(void)
     DSW(DS_00107900 + 2) = 32;            /* row 1 shifts by 1 */
     DSW(DS_00107900 + 4) = 64;            /* row 2 shifts by 2 */
 
-    render_list_init();
+    render_reset();
     u32 back = DSD(DS_000E87A4);
     static u8 pristine[320 * 200];
     static u8 got[320 * 200];
@@ -2413,7 +2421,7 @@ static void expect_composite(u8 *out, u32 icon, int x, int y,
 
 static void check_end_to_end(void)
 {
-    render_list_init();
+    render_reset();
 
     GraSprite g; u32 dh = 0;
     CHECK_EQ_INT(gra_sprite_lookup(0x2C11u, &g, &dh), 1);

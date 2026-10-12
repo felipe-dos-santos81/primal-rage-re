@@ -2845,8 +2845,9 @@ dead:
     set_dead(rec);
 }
 
-/* 0x2A4FC. Integrate the record's velocity and gravity. */
-static void motion_step(u32 rec)
+/* 0x2A4FC. Integrate the record's velocity and gravity. Exported for its own
+ * D1 row's binding. */
+void motion_step(u32 rec)
 {
     if ((DSW(rec + 0x2a) >> 8 & 0x80u) == 0) return;
     /* PORT: the original integrates the x velocity as `sar dword [eax+0x32],16`
@@ -2894,11 +2895,11 @@ static void motion_step(u32 rec)
 }
 
 /* 0x2A39C. Clear the +0x28 0x04 bit and write pset+0 from the reader, or-ing
- * the parent's hflip into bit 0x8000. */
-static void anim_id_path(u32 rec, u32 slot)
+ * the parent's hflip into bit 0x8000. Exported for its own D1 row's binding. */
+void anim_id_path(u32 rec, u32 slot)
 {
     DSB(rec + 0x28) &= 0xfb;
-    u32 pset = DSD(DS_001014EC) + slot * PSET_SIZE;
+    u32 pset = DSD(DS_001014EC) + (slot & 0xffffu) * PSET_SIZE;   /* 0x2A3A0/0x2A3A2 `xor ecx,ecx; mov cx,dx` */
     u32 id = anim_next_sprite_id(rec, pset);
     if (DSB(rec + 0x4a) != 0) {
         u32 parent = DSD(DS_001014F4)
@@ -3152,8 +3153,9 @@ static void actor_type_19928(u32 rec)
  * sign-extended, EBX = w0 sign-extended, stack 0): the two `sar 16` of the
  * dwords at [esp+0xA] and [esp+2] read the words above the pushed 0 and the
  * count, which are zero (0x19A42..0x19A51). A spawned record then gets its
- * +0x34/+0x36 (and +0x44) by mode (0x19A5F..0x19AB6). */
-static void debris_spawn(void)
+ * +0x34/+0x36 (and +0x44) by mode (0x19A5F..0x19AB6). Exported for its own D1
+ * row's binding. */
+void debris_spawn(void)
 {
     u32 r, x, desc;
     u16 w8, w0, mode;

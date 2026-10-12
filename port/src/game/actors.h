@@ -98,6 +98,16 @@ void actor_pset_word_set(u32 rec, u32 word);
  * rec+0x18 from pset+4 and the 16.16 rec+0x44) or the DS_000F0AF0 form, and
  * clears rec+0x29 bit 5. Exposed for its unit test. */
 void actor_mode1_pset(u32 rec);
+/* 0x2A4FC. Integrate the record's velocity and gravity (0x2A1FC's 0x2A2E2 and
+ * 0x38572 call it). Exported for its own D1 row's binding. */
+void motion_step(u32 rec);
+/* 0x2A39C. Clear rec+0x28 bit 2 and write the pset word from 0x2A408, its bit
+ * 15 taken from the parent's +0x28 bit 14. Exported for its own D1 row's
+ * binding. */
+void anim_id_path(u32 rec, u32 slot);
+/* 0x19958 (record §50-E). The round-end debris spawner 0x19B90 calls once per
+ * frame. Exported for its own D1 row's binding. */
+void debris_spawn(void);
 /* 0x28E98. Self-link the type-0x0A/0x19 sentinels 0x104880 (in use) and
  * 0x104888 (free) and append the sixteen nodes 0x104780..0x104870 to the free
  * list in address order. State 6's reset 0x20DF4 calls it at 0x20E3D; without
