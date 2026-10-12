@@ -13498,6 +13498,54 @@ D2A_HANDLER_MUTANTS = ("@al365", "@al366", "@slot43", "@or", "@cmd", "@prio", "@
                        "@hold", "@s52a", "@s54", "@early", "@inv", "@s52b", "@late", "@csext", "@order",
                        "@no366", "@side1a", "@holdb", "@tabb", "@al1a")
 
+D2A_BED10, D2A_BED60, D2A_BD882 = 0x000BED10, 0x000BED60, 0x000BD882   # 0x39B30's three per-character tables
+
+
+def d2a_launch_case(side, ch, s54, y, cnt, n, h, m, a, den, ground, npad=0, och=1):
+    """0x39B30: both slots' record pointers, +0x30, +0x40..+0x42, +0x54, +0x67..+0x69, +0x74..+0x77
+    and +0x7A (the other slot: another character, the other +0x54 arm, a y on the other side of the
+    ground); the side record's +0x34..+0x39, +0x42..+0x47 and +0x62..+0x64 (the other record's
+    seeded differently); the four per-side words n, h, m, a at 0x107A60/68/70/78 (the other side's
+    are other values; `npad` is the word above n, the high half of the dword the raw's fild reads);
+    and for `ch`, the other character and ch sign-extended the divisor dword, the stream dword and
+    the ground word (0xBD884 + ch*2, with the word below it)."""
+    other = 1 - side
+    so, oo = D2A_SLOT + side * 0x94, D2A_SLOT + other * 0x94
+    rs, ro = (D2A_R0, D2A_R1)[side], (D2A_R0, D2A_R1)[other]
+    gs = (ground ^ 0x8000) - 0x8000
+    ys = (y ^ 0x80000000) - 0x80000000
+    quad = [[0, 0], [0, 0], [0, 0], [0, 0]]
+    for i, (v, o) in enumerate(((n, 0x0005), (h, 0x0123), (m, 0x0009), (a, 0x0321))):
+        quad[i][side], quad[i][other] = v, o
+    pad = [0x5A5A, 0x5A5A]
+    pad[side] = npad
+    p = {so: le32(rs), oo: le32(ro),
+         so + 0x30: le32(y), oo + 0x30: le32(0x7FFFFFFF if gs > ys else 0x80000000),
+         so + 0x40: bytes([0x40, 0x41, 0x42]), oo + 0x40: bytes([0x60, 0x61, 0x62]),
+         so + 0x54: bytes([s54]), oo + 0x54: bytes([0 if s54 == 2 else 2]),
+         so + 0x67: bytes([0x67, cnt, 0x69]), oo + 0x67: bytes([0x57, 0x7F, 0x59]),
+         so + 0x74: le16(0x7474) + le16(0x7676), oo + 0x74: le16(0x6464) + le16(0x6666),
+         so + 0x7A: bytes([ch]), oo + 0x7A: bytes([och]),
+         rs + 0x34: le16(0x3434) + le16(0x3636) + le16(0x3838), ro + 0x34: le16(0x2434) + le16(0x2636) + le16(0x2838),
+         rs + 0x42: le16(0x4242) + le16(0x4444) + le16(0x4646), ro + 0x42: le16(0x2242) + le16(0x2444) + le16(0x2646),
+         rs + 0x62: bytes([0x62, 0x7F, 0x64]), ro + 0x62: bytes([0x52, 0x6F, 0x54]),
+         0x00107A5E: le16(0x5E5E) + le16(quad[0][0]) + le16(pad[0]) + le16(quad[0][1]) + le16(pad[1])
+                     + le16(quad[1][0]) + le16(0x6A6A) + le16(quad[1][1]) + le16(0x6E6E)
+                     + le16(quad[2][0]) + le16(0x7272) + le16(quad[2][1]) + le16(0x7676)
+                     + le16(quad[3][0]) + le16(0x7A7A) + le16(quad[3][1]) + le16(0x7E7E)}
+    chars = [(ch, den, 0x000E6000, ground)]
+    if och != ch:
+        chars.append((och, den + 3, 0x000E7000, (ground + 0x40) & 0xFFFF))
+    sx = (ch ^ 0x80) - 0x80
+    if sx != ch:
+        chars.append((sx, den + 5, 0x000E8000, (ground + 0x80) & 0xFFFF))
+    for c, d, st, gr in chars:
+        p[D2A_BED10 + c * 4] = le32(d)
+        p[D2A_BED60 + c * 4] = le32(st + (c & 0xFF))
+        p[D2A_BD882 + c * 2] = le16(0x8282) + le16(gr)
+    return p
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -13579,6 +13627,26 @@ D2A_SPECS = [
     # with +0x52 = 5 and the 0xC8FB8 stream at 2.0. Mask 0: 0x34D83..0x34D88, then 0x35801.
     Spec("fighter_state_364fc", 0x364FC, d2a_handler_cases(), allow_calls=(0x1A640,),
          calls=D2A_HANDLER_CALLS, eax_mask=0, mutants=D2A_HANDLER_MUTANTS),
+    # 0x39B30 fighter_39b30: EAX = side. 0x33A10 (the stack ctx), 0x39AC8 and 0x39B14 run real; six
+    # stubs (0x3C148, 0x3C16C, 0x3C520, 0x3C480, 0x1890C, 0x3C190). The hold is x87: `fild
+    # [ch*4+0xbed10]; fild [side*4+0x107a60]; fdivrp; fstp dword` 0x39B64..0x39B7A, the dividend the
+    # whole dword (q1: the word above n is 3). The divisor dword is never 0 here (0/0 is the x87's
+    # negative default NaN, the host's is not; record §4), nor n (0x39AC8's #DE) nor (s16)(n + m)
+    # (0x39C6D `idiv ebx`). Mask 0: the one caller overwrites EAX (0x39D10 `mov eax,[esp+0xc]`).
+    Spec("fighter_39b30", 0x39B30, [
+        Case("q0", {"eax": 0}, d2a_launch_case(0, 2, 2, 0x00000080, 0x00, 0x0010, 0x0040, 0x0010, 0x0100, 5, 0x0100)),
+        Case("q1", {"eax": 1}, d2a_launch_case(1, 3, 0, 0x00000100, 0x02, 0x0008, 0xFFC0, 0x0004, 0x0100, 7, 0x0100,
+                                               npad=3)),
+        Case("q2", {"eax": 0}, d2a_launch_case(0, 0, 2, 0x80000000, 0xFF, 0xFFF0, 0x7FFF, 0x0011, 0xFF00, 7, 0x8000,
+                                               npad=0xFFFF)),
+        Case("q3", {"eax": 1}, d2a_launch_case(1, 6, 1, 0x7FFFFFFF, 0x03, 0x7FFF, 0x7FFF, 0x0002, 0x7FFF, 4, 0x0100)),
+        Case("q4", {"eax": 0}, d2a_launch_case(0, 0x80, 0x82, 0x000000FF, 0x01, 0x0010, 0x8000, 0x0010, 0x0200, 6,
+                                               0x0100)),
+        Case("q5", {"eax": 1}, d2a_launch_case(1, 5, 2, 0xFFFFFF00, 0x80, 0x0003, 0x0001, 0x0001, 0x0001, 8, 0x0100,
+                                               och=0)),
+    ], allow_calls=(0x33A10, 0x39AC8, 0x39B14), calls=(CLEAR34, CLEAR36, D2A_HIT_C, HIT_A, P6_1890C, SPEED),
+       eax_mask=0,
+       mutants=("@clr", "@clr36", "@corder", "@nword", "@hinv", "@chslot", "@csext", "@s54", "@arm", "@noy", "@gz", "@gcmp", "@gy", "@gu", "@an", "@g44", "@w36", "@vm", "@hz", "@den32", "@q32", "@hsh", "@r63", "@or41", "@inc", "@b3", "@cs", "@w74", "@side", "@rec", "@early")),
 ]
 D1_SPECS += D2A_SPECS
 

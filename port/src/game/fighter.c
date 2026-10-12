@@ -5799,7 +5799,7 @@ void fighter_35050(u32 side)
  * g * n and horizontal speed h * 64 / (n + m) through 0x3C190; clear the
  * record's +0x63, set the slot's +0x41 bit 7 and count +0x68 (at 3 the slot's
  * +0x74 word = 0x29A). EAX = side. */
-static void fighter_39b30(u32 side)
+void fighter_39b30(u32 side)
 {
     u32 ctx[6];
     u32 slot, rec, ch, hold;
