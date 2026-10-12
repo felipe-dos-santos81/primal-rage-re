@@ -2457,7 +2457,7 @@ void fighter_state_35e6c(u32 slot, u32 rec)
     int bvar = ((cmd >> 8) & 3u) != 0u && ((cmd >> 8) & 0xCu) != 0u;  /* 0x35EE1 */
     DSB(slot + 0x41u) |= 0x80u;                         /* 0x35ED0 */
     (void)sound_voice(0x6Du);                           /* 0x35ED4/0x35ED9 0x2C3FC */
-    if (!bvar && fighter_attack_consume(side) != 0) {   /* 0x35F15 */
+    if (!bvar && (u8)fighter_attack_consume(side) != 0u) {  /* 0x35F15, 0x35F1A: test al,al */
         hit_facing_flag(side);                          /* 0x35F21 */
         return;
     }
