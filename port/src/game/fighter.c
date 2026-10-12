@@ -10434,6 +10434,7 @@ void fight_384f8(u32 side)
  * 0x27F3A (0x27ED8). */
 void fighter_19820(void)
 {
+    PR_SEAM0(0x19820u);
     u32 node;
     DSD(DS_00100C2C) = DS_00100C28;                     /* 0x19832 */
     DSD(DS_00100C28) = DS_00100C28;                     /* 0x19838 */

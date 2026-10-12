@@ -18855,6 +18855,60 @@ D3A_SPECS += [
                 "@s3chsext", "@s3stride", "@s3tbl", "@s3row", "@s3mode", "@s3col", "@s3two", "@s3late",
                 "@s4nodec", "@s4afeb", "@s4old", "@s4ge", "@s4sign", "@s4src", "@s4nob25")),
 ]
+D3A_HUD_RESET = E.Call(0x1D764, ("eax",))
+D3A_19820 = E.Call(0x19820, ())
+# the deferred audit add 0x2DAE4(0xF, 1) made a no-op by its own bytes, as d2e does for field 0x10:
+# field 0xF's descriptor (0x2D300 + 0xF * 4) reads 8 nibbles at byte 0 of 0x105DE1, which is negative
+# (`test eax,eax; jl 0x2db54` at 0x2DAEE)
+D3A_AUDIT_OFF_F = {0x0002D33C: le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
+
+
+def d3a_rover_case(a, b, d0, f40=(0xFFFFFFFF, 0x00101000), f2=0x80):
+    """0x27ED8: both slots' +0x40 dwords (0x1077F0/0x107884) between seeded dwords, the two +0x5A
+    bytes (0x10780A/0x10789E) between neighbours, the dword 0x1088EF (its top byte 0x1088F2 =
+    `f2`: the raw stores 0x1E there before it reads it back) and the byte after it, the dword
+    0x1088D0, the dwords 0x104AA8 (0x5A..) and 0x104AC8 (0x5B..) and the mode word 0x104B00
+    (0x5C5C), each between seeded neighbours; and the audit field that turns 0x2DAE4 off."""
+    p = dict(D3A_AUDIT_OFF_F)
+    p.update({0x001077EC: le32(0x61616161) + le32(f40[0]) + le32(0x62626262),
+              0x00107880: le32(0x63636363) + le32(f40[1]) + le32(0x64646464),
+              0x00107809: bytes([0x65, a, 0x66]), 0x0010789D: bytes([0x67, b, 0x68]),
+              0x001088EF: bytes([0x11, 0x22, 0x33, f2, 0x69]),
+              0x001088CC: le32(0x6A6A6A6A) + le32(d0) + le32(0x6B6B6B6B),
+              0x00104AA4: le32(0x6C6C6C6C) + le32(0x5A5A5A5A) + le32(0x6D6D6D6D),
+              0x00104AC4: le32(0x6E6E6E6E) + le32(0x5B5B5B5B) + le32(0x6F6F6F6F),
+              0x00104AFE: le16(0x7070) + le16(0x5C5C) + le16(0x7171)})
+    return p
+
+
+D3A_SPECS += [
+    # 0x27ED8 flow_round_over: no argument. Per side the slot's +0x40 dword &= 0xFFEFEFFF, then
+    # 0x1D764(side); the audit add 0x2DAE4(0xF, 1) (deferred, the port omits it: real in the
+    # original with the field that makes it return at once); the spawn 0xBB6C8 at (0x2A00, 0xFF,
+    # 0xF00, 0) (ECX/EBX loaded before 0x2DAE4) into the dword 0x104AC8; 0x19820; the byte
+    # 0x1088F2 = 0x1E; m = the larger +0x5A byte (unsigned `ja`); for m below 0x78 q = the byte
+    # 0x1088F2 (sign-extended, the 0x1E just stored) * the dword 0x1088D0 / (0x78 - m) (`imul`,
+    # signed `idiv`), and 1 for m >= 0x78 or q == 0; the mode word 0x104B00 = 0xA and the dword
+    # 0x104AA8 = q. 0x1D764, 0x2AE14 and 0x19820 are stubs (0x1D764 and 0x19820 seamed here), so
+    # the +0x5A bytes are not zeroed as the real 0x1D764 does and every divisor is exercised.
+    # Mask 0: record §1.
+    Spec("flow_round_over", 0x27ED8, [
+        Case("o0", {"ebx": 0x11111111, "ecx": 0x22222222, "edx": 0x33333333, "esi": 0x44444444},
+             d3a_rover_case(0x10, 0x20, 0x00000100), {0x2AE14: 0x0010A300}),
+        Case("o1", {}, d3a_rover_case(0x77, 0x00, 0x00000003, f40=(0x00101000, 0xFFEFEFFF)),
+             {0x2AE14: 0xFFFFFFFF, 0x1D764: 0x12345678, 0x19820: 0x9ABCDEF0}),
+        Case("o2", {}, d3a_rover_case(0x78, 0x00, 0x00000100), {0x2AE14: 0}),
+        Case("o3", {}, d3a_rover_case(0x00, 0xFF, 0x00000100), {0x2AE14: 0x0010A300}),
+        Case("o4", {}, d3a_rover_case(0x00, 0x00, 0x00000001, f2=0x00), {0x2AE14: 0x0010A300}),
+        Case("o5", {}, d3a_rover_case(0x40, 0x30, 0xFFFFFF00), {0x2AE14: 0x0010A300}),
+        Case("o6", {}, d3a_rover_case(0x70, 0x70, 0x10000000), {0x2AE14: 0x0010A300}),
+        Case("o7", {}, d3a_rover_case(0x05, 0x06, 0x00010004), {0x2AE14: 0x0010A300}),
+    ], allow_calls=(0x2DAE4, 0x2D974), calls=(D3A_HUD_RESET, SPAWN, D3A_19820), eax_mask=0,
+       mutants=("@mask", "@maskw", "@off", "@one", "@sideswap", "@resetearly", "@noreset", "@spx", "@spz",
+                "@sp5", "@desc", "@ac8", "@ac8late", "@no19820", "@order", "@f2", "@nof2", "@f2late",
+                "@f2early", "@max", "@maxs", "@thr", "@d0w", "@udiv", "@sub", "@zero", "@b00", "@b00b", "@aa8",
+                "@aa8w")),
+]
 D1_SPECS += D3A_SPECS
 
 

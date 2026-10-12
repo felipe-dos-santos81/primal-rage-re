@@ -28,6 +28,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x10E18` | `frontend_continue_tail` (attract.c) | 104 | 0: every site is followed by `call 0x2bf08`, which writes AH first (`0x2BF0E`) and passes AL through on its attract arm; that row's trace (d1c §1: twelve sites, each `pop edx; pop ecx; pop ebx; ret`, traced) holds EAX dead after it |
 | `0x25C1C` | `flow_round_hud_init` | 91 | 0: both call sites go on to a load of EAX on every path (`0x25CBC`: `mov eax,[0xa88b4]` `0x25CE4`, `mov eax,[0xa88a4]` `0x25CFF`, `xor eax,eax` `0x25D06`; `0x2935C`: `0x29384`, `0x2939F`, `0x293A6`) |
 | `0x26A50` | `game_mode_23_step` | 572 | 0: `0x25317 call` then `0x2531C jmp 0x2540f` (the mode tail) |
+| `0x27ED8` | `flow_round_over` | 206 | 0: its three call sites in `0x27FA8` (`0x28003`, `0x280BA`, `0x280D2`) are followed by four pops and `ret`; `0x27FA8`'s EAX is dead by the trace of the `0x27DC8` line above |
 
 ## §2 The row table (measured)
 
@@ -54,6 +55,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `frontend_continue_tail` | `0x10E18` | 8 | 7/7 | 20 | 0 | the same cases with the two bits swapped and the value 5 |
 | `flow_round_hud_init` | `0x25C1C` | 6 | 7/7 | 16 | 0 | four stubs, all seamed here; `0x29D60` allowed. Open on `0x1D890` and `0x1DC6C` (no row). `r4`: bytes `0x82`, `0x80`, `0x83` (`@b12sext`) |
 | `game_mode_23_step` | `0x26A50` | 16 | 12/12 | 65 | 0 | one row over the four states of the jump table `0x26A40` (a bounded switch the scan follows). The string tree real; `0x29D60` allowed; `0x32970` real in the original only (§4); seven stubs (`0x1DAE8` seamed here, no row). `c2`: character `0x80`; `c3`: side `0x80` |
+| `flow_round_over` | `0x27ED8` | 8 | 9/9 | 30 | 0 | three stubs (`0x1D764`, `0x19820` seamed here; `0x1D764` has no row); the deferred audit add `0x2DAE4(0xF, 1)` real in the original, turned off by its field (§4). With `0x1D764` stubbed the `+0x5A` bytes survive, so m and every divisor vary: `o5` a negative product, `o6` a product that overflows 32 bits, `o3` a byte of `0xFF` (`@maxs`) |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -82,6 +84,8 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x1D810` | EAX (`lea edx,[eax*4]` `0x1D813`) | 0 | `esi edi ebp` | pushes EBX ECX EDX; one plain `ret` (`0x1D836`) |
 | `0x20EF8` | none (`mov eax,ecx` `0x20F05` is its first EAX use) | 0 | none | pushes EBX ECX EDX ESI EDI; one plain `ret` (`0x20F9E`) |
 | `0x1DAE8` | EAX (`mov dl,al` `0x1DAEB`) | 0 | none | pushes EBX ECX EDX; one plain `ret` (`0x1DC09`) |
+| `0x1D764` | EAX (`mov ebx,eax` `0x1D767`) | 0 | none | pushes EBX ECX EDX; one plain `ret` (`0x1D7B5`) |
+| `0x19820` | none (its first EAX use is `mov eax,0x100c20` `0x19852`) | 0 | none | pushes EBX ECX EDX; one plain `ret` (`0x198C7`) |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -148,6 +152,14 @@ asserted the text. Unproven against the oracles until the integrator's gate.
 - `game_mode_23_step`: the three string ids are compared through the real string tree (the decoded text, 16
   bytes by value at `0x2F198`), with the rows a wrong stride or a sign-extended character would reach poked to
   other valid ids (`0xA8D08`, `0xA8308`), so that no mutant decodes an arbitrary id.
+- `flow_round_over`: the port omits the audit add `0x2DAE4(0xF, 1)` (`0x27F0B..0x27F1F`, deferred under
+  `/* PORT: */`). The row runs it in the original with field `0xF` negative (`0x2D33C` re-pointed at
+  `0x105DE1 = 0x80000000`; `0x2DAEE test eax,eax; jl 0x2db54`), d2e's technique for field `0x10`: the add
+  itself is not compared. The upper bound of the threshold (`cmp ebx,0x78; jge`) cannot have a mutant on its
+  far side — m = `0x78` would divide by zero — so `@thr` moves it down (`o1`, m = `0x77`). `test ebx,ebx; jl`
+  (`0x27F5C`) is never taken (EBX is a zero-extended byte) and is not a block leader. In the game `0x1D764`
+  zeroes both `+0x5A` bytes first, so m is 0 there; the row's stub leaves them, which is what exercises the
+  division.
 
 ## §5 Store-sweep findings
 
@@ -193,6 +205,10 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   seeded and each has a drop, value or width mutant; the stores a callee could observe are pinned to their
   side of the call by the memory at it (`@s1ad8late`, `@s1b20late`, `@s1early`, `@s2acclate`, `@s2ae8late`,
   `@s2early`, `@s3late`, `@s3deadz`). State 4 tests the decremented value (`@s4old`: `e1`, `e4`).
+- `flow_round_over`: each slot's `+0x40` dword is masked before `0x1D764(side)` (`@resetearly`), as a dword
+  (`@maskw`; `o1`'s slot 1 already has both bits clear); the dword `0x104AC8` before `0x19820` (`@ac8late`);
+  the byte `0x1088F2 = 0x1E` after `0x19820` (`@f2early`) and before it is read back (`@f2late`: the seed
+  `0x80` is negative); then the word `0x104B00` and the dword `0x104AA8` (`@aa8w`).
 
 ## §6 Queue entries not done
 

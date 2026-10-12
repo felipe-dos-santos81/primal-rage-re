@@ -221,6 +221,7 @@ void fight_hud_badge_spawn(u32 side, u32 ch, u32 y)
  * (0x27ED8, record §48-K). */
 void fight_hud_side_reset(u32 side)
 {
+    PR_SEAM(0x1D764u, side);
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x1D767..0x1D773 */
     u8 cl;
     DSB(DS_0010290C + side) = 0u;                       /* 0x1D775 */
