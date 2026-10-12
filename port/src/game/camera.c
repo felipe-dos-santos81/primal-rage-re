@@ -351,16 +351,17 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
         DSD(out_b) = (u32)(((s32)DSD(actor + 8u) + 0x20) >> 6);
 
         /* 0x18170: sprite = 0x16308(side, *index_out); subtract its origin.
-         * local_A = (s32)((u32)sprite[+2]) >> 16, or (s16)sprite[0] - that - 1
-         * when 0x1A570(side) == 0; local_B = (s32)((u32)sprite[+4]) >> 16.
+         * local_A = the dword sprite[+2] `sar 16` (signed), or (s16)sprite[0] -
+         * that - 1 when 0x1A570(side) returns AL == 0; local_B = the dword
+         * sprite[+4] `sar 16` (signed).
          * out_b -= local_B; out_a -= local_A. PORT: res_resolve can return
          * NULL (the raw dereferences unconditionally); the subtraction is
          * skipped there, the port's existing resource-failure guard. */
         {
             u32 sprite = camera_resolve_sprite(side, DSD(index_out));
             if (sprite != 0) {
-                s32 local_a = (s32)((u32)DSD(sprite + 2u) >> 16);
-                s32 local_b = (s32)((u32)DSD(sprite + 4u) >> 16);
+                s32 local_a = (s32)DSD(sprite + 2u) >> 16;         /* 0x18193 `sar ecx,0x10` */
+                s32 local_b = (s32)DSD(sprite + 4u) >> 16;         /* 0x18198 `sar edx,0x10` */
                 if ((u8)camera_actor_bit15_clear(side) == 0u)      /* 0x181A0 `test al,al` */
                     local_a = (s32)(s16)DSW(sprite) - local_a - 1;
                 DSD(out_b) = (u32)((s32)DSD(out_b) - local_b);
