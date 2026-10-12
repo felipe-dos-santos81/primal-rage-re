@@ -30,6 +30,7 @@
 /* 0x249B0: insert rec immediately after `at`. */
 void effects_list_insert_after(u32 at, u32 rec)
 {
+    PR_SEAM(0x249B0u, at, rec);
     u32 next = DSD(at);
     DSD(at) = rec;
     DSD(rec) = next;
@@ -51,6 +52,7 @@ void effects_list_insert_before(u32 at, u32 rec)
 /* 0x249D0: unlink rec and zero its two link fields. */
 void effects_list_unlink(u32 rec)
 {
+    PR_SEAM(0x249D0u, rec);
     u32 prev = DSD(rec + 4);
     DSD(DSD(rec) + 4) = prev;
     DSD(prev) = DSD(rec);
@@ -100,6 +102,7 @@ static void camera_register(void);
 /* 0x13ADC. */
 void effects_init(void)
 {
+    PR_SEAM0(0x13ADCu);
     camera_register();
     DSB(DS_0009AF3C) = 1;
     DSD(DS_000FCCE4) = DS_000FCCE0;
@@ -169,6 +172,7 @@ u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
  * step body to darken to zero. The handle is read from the source record. */
 u32 effects_spawn_darken(u32 source_rec, u32 byte_arg)
 {
+    PR_SEAM_RET(0x13D4Cu, source_rec, byte_arg);
     u32 rec = effect_take_free();
     if (rec == 0) return 0;
     /* PORT: the raw dereferences [source_rec] for the handle (0x13D86);

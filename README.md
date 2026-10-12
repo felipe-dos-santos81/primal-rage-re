@@ -39,10 +39,10 @@ and the game-over/high-score flows. Two claims back that:
   bytes in unicorn against the port's C functions from the same image,
   comparing every changed byte, the return register, the ordered calls (with
   the memory changed so far at each) and the block coverage:
-  **733/733 functions VERIFIED; 7850/7850 mutants detected**. C3g closed the
+  **799/799 functions VERIFIED; 9285/9285 mutants detected**. C3g closed the
   callee-row frontier at 322 rows; track D is rowing every ported function the
-  callee scan never reached (571 of 731 have a row after its waves 1 to 3;
-  record `2026-10-11-reverse-d-derivations.md`), and its rows have found 83
+  callee scan never reached (615 of 731 have a row after its waves 1 to 4;
+  record `2026-10-11-reverse-d-derivations.md`), and its rows have found 113
   raw-over-port corrections so far. The
   E2 triage's remaining rows are the 231 table-driven span-writers — not ported
   one by one (decision D2: the port blits a span as one routine) — and 2

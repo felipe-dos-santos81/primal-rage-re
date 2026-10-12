@@ -265,6 +265,7 @@ void AIL_init_sample(HSAMPLE sample)
 /* 0x5dc2a — spec audio.md "AIL surface" (row 13). */
 void AIL_set_sample_address(HSAMPLE sample, const void *buf, u32 len)
 {
+    PR_SEAM(0x5DC2Au, (u32)((const u8 *)buf - mem), len);
     if (sample == NULL || !sample->used)
         return;
     sample->addr = (const u8 *)buf;
@@ -274,6 +275,7 @@ void AIL_set_sample_address(HSAMPLE sample, const void *buf, u32 len)
 /* 0x5dc4d — spec audio.md "AIL surface" (row 14). */
 void AIL_set_sample_type(HSAMPLE sample, s32 format, u32 flag)
 {
+    PR_SEAM(0x5DC4Du, (u32)format, flag);
     if (sample == NULL || !sample->used)
         return;
     sample->format = format;
@@ -285,6 +287,7 @@ void AIL_set_sample_type(HSAMPLE sample, s32 format, u32 flag)
  * conversion + mixer add. */
 void AIL_start_sample(HSAMPLE sample)
 {
+    PR_SEAM0(0x5DC70u);
     if (sample == NULL || !sample->used)
         return;
     s16 *buf = sample_buffer(sample);
@@ -326,6 +329,7 @@ void AIL_stop_sample(HSAMPLE sample)
 /* 0x5dca6 — spec audio.md "AIL surface" (row 17). */
 void AIL_set_sample_rate(HSAMPLE sample, u32 rate)
 {
+    PR_SEAM(0x5DCA6u, rate);
     if (sample == NULL || !sample->used)
         return;
     sample->rate = rate;
@@ -348,6 +352,7 @@ void AIL_set_sample_volume(HSAMPLE sample, s32 volume)
  * (0x68050 writes the sample's +0x30): 0 loops forever, 1 plays once. */
 void AIL_set_sample_loop_count(HSAMPLE sample, u32 count)
 {
+    PR_SEAM(0x5DCE4u, count);
     if (sample == NULL || !sample->used)
         return;
     sample->loop = count;

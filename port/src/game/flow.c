@@ -2212,6 +2212,7 @@ void game_mode_32_step(void)
  * (0x27C48, record §48-K) and 0x29446 (0x29328, game_mode_30_step). */
 void flow_win_markers_spawn(void)
 {
+    PR_SEAM0(0x256F4u);
     u32 k;
     for (k = 0; k < (u32)DSB(DS_00104AF2); k++) {       /* 0x2573F..0x25748 */
         if (DSD(DS_00104A88 + k * 4u) == 0u)            /* 0x25714 */
@@ -2237,6 +2238,7 @@ void flow_win_markers_spawn(void)
  * and 0x25AC7 (0x25A84, no entrance). */
 void flow_round_timer_draw(void)
 {
+    PR_SEAM0(0x4F37Cu);
     u8 b1d = DSB(DS_00104B1D);                          /* 0x4F37F */
     if (b1d == 2u) {                                    /* 0x4F385 */
         DSB(DS_001088F2) = 0x1Eu;                       /* 0x4F39B (CH) */
@@ -2264,6 +2266,7 @@ void flow_round_timer_draw(void)
  * game_mode_30_step). */
 void flow_round_hud_init(void)
 {
+    PR_SEAM0(0x25C1Cu);
     /* 0x25C1D 0x29D60 is a ret-only no-op. */
     DSD(DS_00104AD8) = 0u;                              /* 0x25C2A */
     if (DSB(DS_00104B1D) == 2u)                         /* 0x25C30 */
@@ -2960,6 +2963,7 @@ void flow_round_winner(void)
  * 0x2800D and 0x280E3 (0x27FA8). */
 void flow_match_end(void)
 {
+    PR_SEAM0(0x27DC8u);
     u32 b;
     /* PORT: 0x27DCC 0x32970(EAX = 0), the run clock, is out of scope (spec
      * §7); the host clock owns wall time. */
@@ -2997,6 +3001,7 @@ void flow_match_end(void)
  * pushed and popped. Callers: 0x28003, 0x280BA and 0x280D2 (0x27FA8). */
 void flow_round_over(void)
 {
+    PR_SEAM0(0x27ED8u);
     u32 side, m, q;
     for (side = 0; side < 2u; side++) {                 /* 0x27EE6..0x27F09 */
         u32 slot = DS_001077B0 + side * 0x94u;
@@ -3063,7 +3068,10 @@ void flow_round_end_check(void)
     fighter_39ff4();                                    /* 0x28064 0x39FF4 */
     if ((u32)DSB(DS_00104B1E) == DSD(DS_00104ADC)       /* 0x28069..0x28078 */
             && DSW(DS_00104B00) != 0x0Bu) {             /* 0x2807A..0x28085 */
-        u32 d = a >= b ? a - b : b - a;                 /* 0x28087..0x2809C */
+        u32 d;
+        a = DSB(DS_0010780A);                           /* 0x2808B: re-read after the voice and 0x39FF4 */
+        b = DSB(DS_0010789E);                           /* 0x28090 */
+        d = a >= b ? a - b : b - a;                     /* 0x28096..0x2809C */
         if (DSB(DS_00104AF3) == DSB(DS_00104AF2) && (d & 0xFFu) <= 3u) {  /* 0x2809E..0x280B8 */
             flow_round_over();                          /* 0x280BA 0x27ED8 */
             return;
@@ -5546,8 +5554,8 @@ void game_mode_1f_step(void)
  *   0xFF, 0x1800, 0) and 0xA8984 at (0x3A00, 0xFF, 0x1800, 0), then
  *   text_number_set(0xF, 0xB, pct, 3, 1, 0x4003) (0x2F434), and the string
  *   path below is skipped;
- * - with the bit clear: game_string_get(0x3D), sprintf(buf, "%s%.03d%%",
- *   that string, pct) (0x65546, format read at data 0x809AC: "%s%.03d%";
+ * - with the bit clear: game_string_get(0x3D), sprintf(buf, "%s%.03d%",
+ *   that string, pct) (0x65546, the format the nine bytes at data 0x809AC;
  *   the runtime's formatter emits nothing for the bare trailing '%', so the
  *   text is the string and three digits with no percent sign: the port
  *   formats "%s%.03d" (the differential row runs the original's 0x65546;
@@ -6484,6 +6492,7 @@ u32 snd_sample_queue(u32 h, u32 loop)
  * byte +0x08 is 1) and start it; +0x0C = the handle, +0x04 = 0. */
 void sound_sample_start(u32 slot)
 {
+    PR_SEAM(0x1CB18u, slot);
     u32 off = slot * SND_SLOT_STRIDE;                      /* 0x1CB25..0x1CB2E */
     u32 h = DSD(DS_00102864 + off);                        /* 0x1CB31 */
     if (h == 0u) return;                                   /* 0x1CB37/0x1CB39 */

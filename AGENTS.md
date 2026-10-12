@@ -323,16 +323,21 @@ consolidation gate).
 - **The differential rows are being extended to every ported function** (track D,
   record `docs/superpowers/plans/2026-10-11-reverse-d-derivations.md`). C3g closed
   the callee frontier at 322 rows; track D rows the ported functions the callee
-  scan never reached. `make diff-verify`'s counter after its waves 1 to 3 is
-  `733/733 functions VERIFIED; 7850/7850 mutants detected; 1 named gaps;
-  479/566 rows with callees closed (167 have none)`; 160 ported functions have no
-  row yet, so the open rows are open on those and on the named non-rows
+  scan never reached. `make diff-verify`'s counter after its waves 1 to 4 is
+  `799/799 functions VERIFIED; 9285/9285 mutants detected; 1 named gaps;
+  513/632 rows with callees closed (167 have none)`; 116 ported functions have no
+  row yet (18 of them named gaps, record §D.8), so the open rows are open on those and on the named non-rows
   (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
   `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
   record why they moved. The harness runs its rows on a process pool
   (`PR_DIFF_JOBS`, default the CPU count; 1 is the sequential loop): a full
-  `--self-check` is about two minutes.
+  `--self-check` is a few minutes. `--self-check` does not see every pin: a stub's
+  declared clobbers must agree across all specs and with the pinned dictionary, a
+  read outside the image must be named, and a seam added to a helper that an
+  existing mutant binding calls directly (`effects_list_unlink`, d4b) changes what
+  catches that mutant. Only the harness suite (`make diff-verify`'s unittest) checks
+  those; a batch that did not run it has not checked them (record §D.7, §D.8).
 - **Every binding and every mutant must stay inside `mem[]`.** `DSB/DSW/DSD` have
   no bounds check, and a read outside the 64 MB array is host-dependent (an
   intermittent SIGBUS on macOS 27): an index-like sentinel (side, slot,

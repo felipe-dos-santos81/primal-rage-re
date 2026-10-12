@@ -486,6 +486,7 @@ void config_play_time_close(u32 mode, u32 flag)
  * and 0x28937 (0x28788). */
 void config_play_time_snap(u32 idx, u32 arm)
 {
+    PR_SEAM(0x32B00u, idx, arm);
     if (arm != 0u) {                                    /* 0x32B0B `jz` */
         DSD(DS_00107478) = DSD(DS_0010746C + idx * 4u); /* 0x32B0F/0x32B40 */
         return;
@@ -674,6 +675,7 @@ static u32 cfg_dir_bits(u32 kb, u32 off, u32 code, u32 bits)
  * unchanged (0x2EBF5, 0x2EDD1). Callers: 0x2EDE0 (0x2EDFB), 0x2EEC8 (0x2EEE3). */
 u32 config_key_flags(u32 mask)
 {
+    PR_SEAM_RET(0x2EBF0u, mask);
     u32 kb = DSD(DS_00101514);                              /* 0x2EBF5 */
     u32 code = config_key_latched();                        /* 0x2EBFD */
     u32 out = 0u;                                           /* 0x2EC02 */

@@ -70,6 +70,7 @@ u32 camera_char_const(u32 ch)
  * (word[actor] & 0x8000) == 0 for slot[side]'s actor. */
 static int camera_actor_bit15_clear(u32 side)
 {
+    PR_SEAM_RET(0x1A570u, side);
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
     return (DSW(actor) & 0x8000u) == 0;
@@ -85,7 +86,7 @@ static u32 camera_res_off(const void *p)
 
 /* 0x16308. res_resolve(DSD(0xA8B30 + (0x17EEC(side) + index) * 4)). The raw
  * tail-jumps 0x1B544; a failed resolve returns the 0 sentinel. */
-static u32 camera_resolve_sprite(u32 side, u32 index)
+u32 camera_resolve_sprite(u32 side, u32 index)
 {
     u32 handle = DSD(DS_000A8B30
                      + (camera_char_const(DSB(DS_0010782A + side * 0x94u))
@@ -179,12 +180,13 @@ int camera_sprite_code(u32 side)
  * 0xFD120..0xFD138. */
 int camera_page_tail_a(u32 side, u32 out)
 {
+    PR_SEAM_RET(0x16AFCu, side, out);
     int code = camera_sprite_code(side);
     if (code != -1) {                               /* 0x16b14 */
         u32 ch = (u32)DSB(DS_0010782A + side * 0x94u);
         u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + (u32)code) * 4u;
         DSD(out) = DSD(addr);
-        if (!camera_actor_bit15_clear(side))
+        if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x16B46, 0x16B4B: test al,al */
             DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
         return 1;
     }
@@ -212,7 +214,7 @@ int camera_page_tail_a(u32 side, u32 out)
             u32 e1 = (u32)DSB(entry + i * 3u + 1u);
             u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + e1) * 4u;
             DSD(out) = DSD(addr);
-            if (!camera_actor_bit15_clear(side))
+            if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x16C80, 0x16C85: test al,al */
                 DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
             DSD(DS_000FD138 + side * 4u) = DSD(out);            /* 0x16c98 */
             DSD(DS_000FD128 + side * 4u) = (u32)DSB(entry + i * 3u + 2u);
@@ -238,6 +240,7 @@ int camera_page_tail_a(u32 side, u32 out)
  * to `out`. */
 int camera_page_tail_b(u32 side, u32 out)
 {
+    PR_SEAM_RET(0x164F4u, side, out);
     if (fighter_slot_flag(side == 0u ? 0u : 1u) == 0) {      /* 0x16500 */
         s32 v = (s32)DSD(DS_000FD148 + side * 4u) - 1;
         DSD(DS_000FD148 + side * 4u) = (u32)(v < 0 ? 0 : v);
@@ -260,7 +263,7 @@ int camera_page_tail_b(u32 side, u32 out)
             u32 e1 = (u32)DSB(entry + i * 3u + 1u);
             u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + e1) * 4u;
             DSD(out) = DSD(addr);
-            if (!camera_actor_bit15_clear(side))
+            if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x16615, 0x1661A: test al,al */
                 DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
             DSD(DS_000FD158 + side * 4u) = DSD(out);            /* 0x1662d */
             DSD(DS_000FD148 + side * 4u) = (u32)DSB(entry + i * 3u + 2u);
@@ -333,11 +336,11 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
          * DS_00100A78[side] into DS_00100AC0[side] (or zeroes it); 0x164F4 does
          * the same from DS_00100A90[side] into DS_00100AC8[side] and raises
          * *page_flag on success. Both read the just-written DS_00100AF0[side]. */
-        if (camera_page_tail_a(side, DS_00100A78 + side * 4u) != 0)
+        if ((u8)camera_page_tail_a(side, DS_00100A78 + side * 4u) != 0u)   /* 0x180CE `test al,al` */
             DSD(DS_00100AC0 + side * 4u) = DSD(DS_00100A78 + side * 4u);
         else
             mem_fill(DS_00100AC0 + side * 4u, 0, 4u);
-        if (camera_page_tail_b(side, DS_00100A90 + side * 4u) != 0) {
+        if ((u8)camera_page_tail_b(side, DS_00100A90 + side * 4u) != 0u) { /* 0x1810D `test al,al` */
             DSB(page_flag) = 1;
             DSD(DS_00100AC8 + side * 4u) = DSD(DS_00100A90 + side * 4u);
         } else {
@@ -351,17 +354,18 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
         DSD(out_b) = (u32)(((s32)DSD(actor + 8u) + 0x20) >> 6);
 
         /* 0x18170: sprite = 0x16308(side, *index_out); subtract its origin.
-         * local_A = (s32)((u32)sprite[+2]) >> 16, or (s16)sprite[0] - that - 1
-         * when 0x1A570(side) == 0; local_B = (s32)((u32)sprite[+4]) >> 16.
+         * local_A = the dword sprite[+2] `sar 16` (signed), or (s16)sprite[0] -
+         * that - 1 when 0x1A570(side) returns AL == 0; local_B = the dword
+         * sprite[+4] `sar 16` (signed).
          * out_b -= local_B; out_a -= local_A. PORT: res_resolve can return
          * NULL (the raw dereferences unconditionally); the subtraction is
          * skipped there, the port's existing resource-failure guard. */
         {
             u32 sprite = camera_resolve_sprite(side, DSD(index_out));
             if (sprite != 0) {
-                s32 local_a = (s32)((u32)DSD(sprite + 2u) >> 16);
-                s32 local_b = (s32)((u32)DSD(sprite + 4u) >> 16);
-                if (!camera_actor_bit15_clear(side))
+                s32 local_a = (s32)DSD(sprite + 2u) >> 16;         /* 0x18193 `sar ecx,0x10` */
+                s32 local_b = (s32)DSD(sprite + 4u) >> 16;         /* 0x18198 `sar edx,0x10` */
+                if ((u8)camera_actor_bit15_clear(side) == 0u)      /* 0x181A0 `test al,al` */
                     local_a = (s32)(s16)DSW(sprite) - local_a - 1;
                 DSD(out_b) = (u32)((s32)DSD(out_b) - local_b);
                 DSD(out_a) = (u32)((s32)DSD(out_a) - local_a);
@@ -391,6 +395,7 @@ void camera_mode_track_player(void)
  * step DS_000F0AEC toward it (0x12CD4), then cap at DS_0009AF28[DS_00104AFC]. */
 void camera_y_clamp(void)
 {
+    PR_SEAM0(0x1317Cu);
     s32 x = (s32)DSD(DS_001078F2) >> 16;
     s32 target = 0;
     if (x > 0x1400) {
@@ -408,8 +413,8 @@ void camera_y_clamp(void)
      * sign-extended word at DS_000F0AF4, read as DSD(DS_000F0AF2) >> 16). */
     {
         s32 cam = (s32)DSD(DS_000F0AEC);
-        s32 diff = target - cam;
-        s32 mag = diff < 0 ? -diff : diff;
+        s32 diff = (s32)((u32)target - (u32)cam);           /* 0x12CDF sub */
+        s32 mag = diff < 0 ? (s32)(0u - (u32)diff) : diff;  /* 0x12CE7 neg: INT_MIN stays */
         if (mag <= 0x100) cam = target;
         else if (diff > 0) cam += 0x100;
         else cam -= 0x100;
@@ -474,10 +479,7 @@ void camera_mode_track_pair(void)
     u32 sa = DS_001077B0 + a * 0x94u;
     u32 sb = DS_001077B0 + b * 0x94u;
 
-    /* esp[8+i*4] is slot[i]+0x34; a/b select which slot sits at index 0/1. */
-    u32 lo_off = (a == 0u) ? sa : sb;   /* slot[0] */
-    u32 hi_off = (a == 0u) ? sb : sa;   /* slot[1] */
-
+    /* esp[8+i*4] is the copy of slot[i]+0x34: la is slot[a]'s, lb slot[b]'s. */
     s32 la = (s32)DSD(sa + 0x34u);
     s32 lb = (s32)DSD(sb + 0x34u);
     s32 diff = (s32)((u32)la - (u32)lb);
@@ -506,11 +508,14 @@ void camera_mode_track_pair(void)
         }
         diff = (s32)((u32)la - (u32)lb);
         diffabs = diff < 0 ? (s32)(0u - (u32)diff) : diff;         /* 0x12F3E neg */
+        cam = (s32)DSD(DS_000F0AF0);                               /* 0x12F34: loaded again after the calls */
     }
 
-    /* 0x12F44: the two locals, each folded into the 0x1800 dead zone. */
-    s32 d0 = (s32)DSD(lo_off + 0x34u) - cam;
-    s32 d1 = (s32)DSD(hi_off + 0x34u) - cam;
+    /* 0x12F44: the two stack copies of +0x34 (0x12F4D `mov edx,[esp+eax+8]`:
+     * index 0 is slot 0's), each less the camera x and folded into the 0x1800
+     * dead zone. */
+    s32 d0 = (s32)((u32)(a == 0u ? la : lb) - (u32)cam);
+    s32 d1 = (s32)((u32)(a == 0u ? lb : la) - (u32)cam);
     /* 0x12F56..0x12F62: the magnitude is a `neg`, which leaves INT_MIN
      * negative, so the `jle` zeroes that local (the negation is unsigned here
      * to stay defined in C). */
@@ -721,6 +726,7 @@ static void camera_actor_rect(u32 actor_idx, int *rect)
  * 0x17698 gate for the 0x170A0 tail. */
 int camera_box_overlap(u32 actor0, u32 actor1)
 {
+    PR_SEAM_RET(0x140E4u, actor0, actor1);
     int rect0[4], rect1[4];
     camera_actor_rect(actor0, rect0);
     camera_actor_rect(actor1, rect1);
@@ -770,8 +776,9 @@ void camera_sprite_row(u32 side, u32 dst, u32 count, u32 row)
  * at `frame`) into the per-side row table `table`, and return the sprite's byte
  * width ((s16)word[sprite] + 7) >> 3. The sprite's dword +8 is a second handle
  * to the pixel-data stream. */
-static u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table)
+u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table)
 {
+    PR_SEAM_RET(0x41030u, handle, frame, count, table);
     const u8 *p = (const u8 *)res_resolve(handle);
     u32 sp = camera_res_off(p);
     /* PORT: res_resolve can return NULL (the raw dereferences unconditionally);
@@ -845,7 +852,7 @@ static u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table)
 
 /* 0x1631C. Clamp `frame`/`count` to the sprite's height, then decode those rows
  * into the side's row table. Returns the sprite's byte width. */
-static u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count)
+u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count)
 {
     u32 ch = DSB(DS_0010782A + side * 0x94u);
     u32 handle = DSD(DS_000A8B30
@@ -978,12 +985,13 @@ void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
         *out_a = (u32)((s32)*out_a + da);
         *out_b = (u32)((s32)*out_b + db);
     }
-    if (!camera_actor_bit15_clear(side)) *out_a = 0x100u - *out_a;
+    if ((u8)camera_actor_bit15_clear(side) == 0u)       /* 0x15C17, 0x15C1C: test al,al */
+        *out_a = 0x100u - *out_a;
 }
 
 /* 0x15C30. Project the side's actor sprite rect and clip the 4-byte box at
  * `box` against it, scaled by the palette offsets 0x15B90 returns. */
-static void camera_box_clip(u32 side, u32 index, u8 *box)
+void camera_box_clip(u32 side, u32 index, u8 *box)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
@@ -1054,6 +1062,7 @@ static void camera_box_clip(u32 side, u32 index, u8 *box)
 int camera_sync_visible(u32 p1, u32 p2, s32 p3, u32 p4,
                         u32 p5, u32 p6, u32 p7, u32 p8)
 {
+    PR_SEAM_RET(0x181D0u, p1, p2, (u32)p3, p4, p5, p6, p7, p8);
     if ((s32)p1 < 1) return 2;                         /* 0x181dd */
     if ((s32)p2 < 1) return 3;                         /* 0x181e9 */
     if (p3 < 0 && -p3 >= (s32)p1) return 1;            /* 0x181f6 */
@@ -1375,20 +1384,20 @@ static void camera_projectile_hit(u32 side)
  * two 0x181D0 syncs, with non-empty extents), post voice 0x64 (0x2C3FC,
  * record k7-k12 §8), burst side 0's (0x3B938), kill side 1's (0x2B150) and
  * return 1; else 0. */
-static int camera_projectile_clash(void)
+int camera_projectile_clash(void)
 {
-    if (camera_box_overlap(DSW(DSD(DS_001077B8) + 0x56u),
-                           DSW(DSD(DS_0010784C) + 0x56u)) == 0)
-        return 0;                                              /* 0x17BF1 */
-    if (camera_sync_visible(0x20u, 0x20u,
-                            (s32)DSD(DS_00100AA8) - (s32)DSD(DS_00100AAC),
-                            DS_00100B1C, DS_00100B14, DS_00100B28,
-                            DS_00100B34, DS_00100B24) != 0)    /* 0x17C35 */
+    if ((u8)camera_box_overlap(DSW(DSD(DS_001077B8) + 0x56u),
+                               DSW(DSD(DS_0010784C) + 0x56u)) == 0u)
+        return 0;                                              /* 0x17BEF `test al,al`/0x17BF1 */
+    if ((u8)camera_sync_visible(0x20u, 0x20u,
+                                (s32)DSD(DS_00100AA8) - (s32)DSD(DS_00100AAC),
+                                DS_00100B1C, DS_00100B14, DS_00100B28,
+                                DS_00100B34, DS_00100B24) != 0u)   /* 0x17C35, 0x17C3A `and eax,0xff` */
         return 0;
-    if (camera_sync_visible(0x20u, 0x20u,
-                            (s32)DSD(DS_00100AA0) - (s32)DSD(DS_00100AA4),
-                            DS_00100B18, DS_00100B10, DS_00100B2C,
-                            DS_00100B30, DS_00100B20) != 0)    /* 0x17C65 */
+    if ((u8)camera_sync_visible(0x20u, 0x20u,
+                                (s32)DSD(DS_00100AA0) - (s32)DSD(DS_00100AA4),
+                                DS_00100B18, DS_00100B10, DS_00100B2C,
+                                DS_00100B30, DS_00100B20) != 0u)   /* 0x17C65, 0x17C6A `and eax,0xff` */
         return 0;
     if ((s32)DSD(DS_00100B1C) <= 0) return 0;                  /* 0x17C78 */
     if ((s32)DSD(DS_00100B18) <= 0) return 0;                  /* 0x17C81 */

@@ -282,6 +282,7 @@ void render_scroll_track(void)
  * Callers seed it from the loaded scroll config before the fill runs. */
 void render_scroll_fill(void)
 {
+    PR_SEAM0(0x38A38u);
     int stride = (int)(DSD(DS_000F0AF0) << 8);
     int step   = stride / (int)DSW(DS_00107A40);
     int idx    = (int)DSW(DS_00107A52) - 1;
@@ -307,8 +308,9 @@ void render_scroll_fill(void)
  * acquires the four scene palettes. The height comes from the resolved sprite
  * descriptor's first dword (the 12-byte { s16 w; s16 h; ... } record
  * gra_sprite_lookup reads), high word, signed. */
-static void render_scroll_scene_a(u32 i)
+void render_scroll_scene_a(u32 i)
 {
+    PR_SEAM(0x387F4u, i);
     DSB(DS_00107A55) = DSB(DS_000A8A18 + i);            /* 0x387F9/0x387FF */
     u32 desc = DSD(DS_000BDF7C + i * 4u);               /* 0x38804 */
     u32 handle = DSD(DS_000A8B30 + DSD(desc) * 4u);     /* 0x3880B/0x3880D */
@@ -334,12 +336,16 @@ static void render_scroll_scene_a(u32 i)
  * actor whose descriptor 0xBDF9C[i] points at (layer a3 = 1, a4 = DS_00107A4E +
  * 0x100), seeds DS_00107A56 from the 0xA8A20 byte table and DS_00107A52 =
  * 0xF8 - DS_00107A4E. */
-static void render_scroll_scene_b(u32 i)
+void render_scroll_scene_b(u32 i)
 {
+    PR_SEAM(0x38890u, i);
     DSB(DS_00107A56) = DSB(DS_000A8A20 + i);            /* 0x38893/0x3889E */
     DSW(DS_00107A52) = (u16)(0xF8 - (int)DSW(DS_00107A4E));   /* 0x388AB/0x388C3 */
     /* PORT: the raw resolves the two sprite handles at 0x388CA and 0x388E5 and
-     * discards both pointers; 0x1B544 has no side effect in the port. */
+     * discards both pointers. For scenes 0..7 both handles are in the INDEX entry
+     * render_scroll_scene_a (0x38814) has just resolved, which res_resolve leaves
+     * LOADED, so a resolve here would write nothing; other scene indexes are not
+     * covered by that argument. */
     u32 desc = DSD(DS_000BDF9C + i * 4u);               /* 0x388F3 */
     DSD(DS_000BDFC0) = actor_spawn((const u32 *)(mem + desc), 0u, 1u,
                                    (u32)DSW(DS_00107A4E) + 0x100u, 0u);  /* 0x38901/0x38906 */

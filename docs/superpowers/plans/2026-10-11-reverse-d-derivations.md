@@ -6,7 +6,7 @@ Waves 1 and 2 (2026-10-11/12). Integration branch `reverse-d1` (off `main` `e53c
 (wave 2). This record is the track's ledger: why, how the batches were merged, the counters, the
 corrections, the named gaps and the gate evidence.
 Wave 3 (2026-10-12, integrated on `reverse-d3int`, per-batch records
-`2026-10-12-reverse-d3{a..e}-derivations.md`) is §D.7; §D.1-§D.6 describe waves 1 and 2 as they were gated.
+`2026-10-12-reverse-d3{a..e}-derivations.md`) is §D.7 and wave 4 (`reverse-d4int`) is §D.8; §D.1-§D.6 describe waves 1 and 2 as they were gated.
 
 ## §D.1 Why
 
@@ -310,3 +310,116 @@ the merged tree: with the `flow_26d4c` correction alone reverted the count is 65
 the one actor less is the percent sign's glyph — the only correction of the wave a capture run distinguishes
 (the frame ratchet stops before it, so no pixel is compared there). No trace or frame pin moved for the camera
 correction.
+
+## §D.8 Wave 4 (66 rows, 30 corrections)
+
+Four batches in worktrees off `94898999` (the wave-3 integration tree), merged on `reverse-d4int` (off `main`
+`4a7f5e5f`) by the additive composition with base `94898999` and the list main, d4a..d4d: no conflict. Per-batch
+records `2026-10-12-reverse-d4{a..e}-derivations.md`. The wave is the 65 functions at call depths 0 and 1.
+
+| batch | scope | rows | cases | mutants |
+|---|---|---|---|---|
+| d4a | flow.c (four `_reread` second specs) | 12 (8 addresses) | 110 | 487 |
+| d4b | camera, effects, sprite, render (`0x17BC8` twice; `0x14268` and `0x1C528` are one C function) | 17 (16) | 128 | 285 |
+| d4c | fighter.c, fight.c (`0x1958C` and `0x44638` twice) | 14 (12) | 220 | 449 |
+| d4d | config, actors, attract | 8 | 167 | 149 |
+| **total** | | **51** | **625** | **1370** |
+
+A fifth batch, d4e, took the audits' open findings (§D.7 "seen, not changed", audit #7's notes) on functions
+that already had rows: 15 more specs (65 mutants) — every one a second spec on an existing entry (`_al`: the
+predicate the first row runs for real is stubbed; `_rr`: the stubs rewrite a value the raw reloads) except
+`fighter_14814` (`0x14814`), a new row. It changed no existing spec or pin. Merged last; the one `port/src`
+conflict was `camera_project`, where d4b's arithmetic shift stands.
+
+`make diff-verify`: **`799/799 functions VERIFIED; 9285/9285 mutants detected; 1 named gaps; 513/632 rows
+with callees closed (167 have none)`** (`784/784; 9220/9220; 499/617` before d4e). 615 of the 731 have a row
+and 116 do not: 18 named gaps below, the six named non-rows, and 92 for waves 5 and 6.
+
+**The corrections** (each its own commit `port: D4 <batch>: ...`; audits #7, #8 and #9 re-derived all 30
+from the bytes: 4 + 9 + 17 CONFIRMED, and every seam). The 13 of d4a..d4d, each with a mutant that is the old
+code:
+
+| batch | correction | raw |
+|---|---|---|
+| d4a | flow_round_end_check re-reads both `+0x5A` bytes after the `0xD3` voice and `0x39FF4` | `0x2808B/0x28090` |
+| d4b | camera_projectile_clash takes AL of `0x140E4` and of `0x181D0` | `0x17BEF`, `0x17C3A/0x17C6A` |
+| d4b | camera_project tests AL of `0x16AFC`/`0x164F4` | `0x180CE/0x1810D` |
+| d4b | camera_project tests AL of `0x1A570` | `0x181A0` |
+| d4b | camera_project shifts the sprite origins arithmetically | `0x18193/0x18198` `sar` |
+| d4c | fighter_pass_a compares the `+0x88` words signed | `0x196C9/0x196CC`, `0x196D7/0x196DA` |
+| d4c | fighter_spawn_slot narrows its stack argument to 16 bits | `0x33CBB..0x33CC2` |
+| d4c | fighter_spawn_slot clamps the quotient signed | `0x33DCC/0x33DCE` |
+| d4c | fighter_command_generate lacked the block `0x4721B..0x47283` | `0x47225 test ah,8`, `0x47233`, `0x4725C`, `0x47283` |
+| d4c | fighter_command_generate passes `0x1A570`'s byte to `0x3C6E8` | `0x472F2 and eax,0xff` |
+| d4c | fight_char_team_text_blink reads the column word before each string | `0x446C9/0x446F2/0x4471B/0x4474E` |
+| d4c | fight_mode25_scorecard lacked the title draw | `0x4EBC1..0x4EBDC` |
+| d4c | fight_mode25_scorecard draws the digits on the side's row, not `tally + 1` | `0x4EE8C/0x4EE94`, `0x4EF05/0x4EF0F` |
+
+d4e's 17 (record `2026-10-12-reverse-d4e-derivations.md`), none of which changes ordinary play by audit #9's
+reading (the C predicates return 0 or 1; no callee was found writing a re-read value):
+
+| correction | raw |
+|---|---|
+| fighter_146f0, fighter_14a5c test AL of `0x14590` | `0x14707`, `0x14A73` |
+| fighter_14b90, fighter_14814 test AL of `0x396AC` and `0x14590` | `0x14BB4/0x14BEC`, `0x14838/0x14872` |
+| fight_hud_meter_step tests AL of `0x1D74C` | `0x1D604` |
+| camera_box_palette, camera_page_tail_b, camera_page_tail_a test AL of `0x1A570` | `0x15C1C`, `0x1661A`, `0x16B4B/0x16C85` |
+| fighter_reaction tests AL of `0x3C59C`, `0x39EFC`, `0x3B6C4` | `0x3B748/0x3B79C/0x3B8B4` |
+| fighter_attack_consume tests AL of `0x3CF38` and takes `0x4649C`'s AL | `0x3BE66`, `0x3BE84/0x3BE9E` |
+| fighter_think tests AL of `0x3962C` and `0x396AC` (no row: ESI is live across both calls and d3c's declared clobbers include it; the bytes only) | `0x197A0/0x197C4` |
+| fight_char_opp_text_clear reads the column word before each release | `0x43422/0x4343C` |
+| fight_4aad0 reloads the entry's pointers and the midpoint `0x108874` after each call | `0x4AB0B..0x4ABC7`, `0x4ABBF/0x4ABD1` |
+| fight_4b5a8, fight_4b470 reload the entry's actor and slot pointers | `0x4B5EB/0x4B5FF/0x4B648/0x4B653`, `0x4B4A3..0x4B52B` |
+| camera_mode_track_pair reloads the camera x after the split and folds the stack copies (the latch where it was written), not the slots' `+0x34` | `0x12F34`, `0x12F4D` |
+| fighter_frame_flag (the static second body of `0x3C59C`) shifts modulo 32 | `0x3C5AC` |
+
+and, without a correction count: the wrapping negations at `0x3837B`, `0x12CE7`, `0x38595` and `fight_4aad0`'s
+are unsigned, and three stale comments are corrected. `camera_project`'s `0x181A0` (d4b) and the unsigned
+negations have no case behind them; `fighter_think_side`'s `+0x64` re-read (`0x3B4B9`) cannot be separated:
+only `0x3AFC4` runs between the reads and it stores through the caller's frame alone.
+
+**Which change ordinary play** (audits, by reading). `camera_project`'s shift: a negative origin word was
+subtracted as `0x0000FFxx`, the output dword off by `0x10000`, so `0x181D0`'s signed compare saw no overlap on
+that frame. Of the 5893 fighter body sprites none has a negative y origin and 25 have a negative x origin
+(Rex 4, Kon 2, Cob 14, Dia 4, Hav 1; 19 of them named in the character's own stream block); whether a capture
+plays one is not established by reading — the gate below is the measurement. The scorecard corrections are the
+hidden bowling minigame (mode 0x25): string `0x62` (nine spaces) on row 6 and the digits on rows 7 and 9
+instead of wandering with the score. `fighter_command_generate`'s block (the `DEMO ONLY` text and the clear of
+`0x1082C8[side]`) needs bit 11 of config field `0x29`, which no option row of this image sets (defaults
+`0x00142095`): not reached without a CMOS file that carries it — d4c's record calls it reachable, the audit's
+reading stands. `fighter_pass_a`'s signed compare differs only for a `+0x88` word with bit 15 set. The rest are
+equivalent while the C callees return 0 or 1 and do not write the re-read value.
+
+**Named gaps** (the batch records' §4/§6; measured stops): no C function to bind (`0x11BCC`, `0x12CD4`,
+`0x2F920`, `0x1D018`: inlined in their callers); `in`/`out`/`int` (`0x1C470` at `0x1C486`, `0x52106` at
+`0x5212E`, `0x4FBA2` at `0x4FBAD`, `0x2EA74` falling into `int 0x16` at `0x2EB15`); the VGA aperture
+(`0x51ED8`, `add edi,0xa0000` at `0x51F1B`); host replacements and runtime I/O (`0x1C930`, `0x1CF40`,
+`0x47370`, `0x1C740`, `0x1BE30`); declared no-ops in the port (`0x2EA68`, `0x2D4EC`); a static function over
+a C `SpriteNode` (`0x1C5E8`); the raw's own stack frame as the name buffer (`0x31A78`). Not reached:
+`0x51E5C`, `0x14328`, `0x34B6C` (wave 5).
+
+**Named by the batches and the audits, open:** `camera_mode_track_pair` reads `[slot]` unsequenced against
+`0x18714` where the raw loads it after the call (`0x12F07/0x12F27`); `camera_x_commit`'s `-diff`
+(`0x12C90`) and four signed adds near ±2^31 are C-undefined where the raw wraps; `camera_box_palette`'s header
+says "bit 15 clear" for the AL = 0 arm; `0x28788` still has no row; `frontend_darken_all` and `actors_reset_al` report a constant
+under the full mask (the mask-0 caller analysis is not done: nothing about the port's return is compared);
+`game_audio_service`'s row compares only its four `0x1CB18` calls; the five AIL seams omit the host `sample`
+pointer (the handle the raw pushes is not compared); `fighter_spawn_slot` caches the record pointer and the
+character byte the raw re-reads (`0x33D1E..`, `0x33D31..`) and tests `0x1CEBC`'s whole return (`0x33E4D`);
+`fighter_command_generate` caches `entry` (`0x47307..0x47312`); `sound_sample_start` keeps the buffer pointer
+and length the raw re-reads after `0x5DC0F` (`0x1CB73..0x1CB79`); modes 5 and 0x30 do not reach two of the
+eight descriptor dwords (`0xA889C`, `0xA88A8`) or entrances other than 0, 1 and 6.
+
+**Gate evidence.** Self-check on the merged tree `799/799; 9285/9285; 1; 513/632 (167)`, rc 0; all 352
+stub clobber sets equal the image's and the pinned dictionary, no row reads outside the image unnamed. The first
+`make verify` passed every oracle stage and stopped in the harness tests on pins of two C3 rows: the mutants of
+`actor_alloc` (`0x2AC80`) and `actor_type_49444` (`0x49444`) are C bodies in `diff_runner.c` that call effects.c's
+exported list helpers, and d4b seamed those copies (`0x249D0`, `0x249B0`) for its effects rows. Their list calls
+are recorded now; before, every case with a list call "caught" them on `original 0x249D0(..), port none`,
+whatever the mutant broke. A run of the real-function tests with a soft assertion listed every moved pin: 16
+(ten mutants' kinds, six catching-case sets), all in those two rows, every mutant still detected; re-pinned with
+the cause in a comment. The second `make verify` exits 0: 178 harness tests OK, the counter above, entry-triage
+byte-identical, `symbols.h` idempotent, every oracle pin unchanged, and its 782 normalised lines before
+"== differential verification" equal the wave-3 gate's — 0 differing. So no capture distinguishes any wave-4
+correction, `camera_project`'s shift included: its evidence is the row and the audit's sprite count, not a replay.
+
