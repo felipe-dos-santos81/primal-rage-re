@@ -3809,7 +3809,7 @@ void fight_4d224(u32 entry, u32 index)
     if (DSB(DS_001088C2) != 0u) {                               /* 0x4D22B */
         if (fight_4bd4c(entry, index) != 0) return;             /* 0x4D236/0x4D23D */
     }
-    if (fight_4d108(entry, index) != 0) return;                 /* 0x4D247/0x4D24E */
+    if ((u8)fight_4d108(entry, index) != 0u) return;            /* 0x4D247, 0x4D24C `test al,al` */
     if (fight_4d150(entry, index) != 0) return;                 /* 0x4D254/0x4D25B */
     if ((DSB(DSD(entry + 0xCu) + 0x42u) & 2u) != 0u
             || DSB(DS_001088B2 + (u32)DSB(entry + 0x21u)) != 0u) {  /* 0x4D260/0x4D26B */
