@@ -5535,9 +5535,11 @@ void game_mode_1f_step(void)
  *   text_number_set(0xF, 0xB, pct, 3, 1, 0x4003) (0x2F434), and the string
  *   path below is skipped;
  * - with the bit clear: game_string_get(0x3D), sprintf(buf, "%s%.03d%%",
- *   that string, pct) (0x65546, format read at data 0x809AC: "%s%.03d%", a
- *   bare trailing '%' the port writes as the equivalent "%s%03d%%"; the
- *   0x65546 formatter itself is not ported, as game_overlay_step's 0x2BF08
+ *   that string, pct) (0x65546, format read at data 0x809AC: "%s%.03d%";
+ *   the runtime's formatter emits nothing for the bare trailing '%', so the
+ *   text is the string and three digits with no percent sign: the port
+ *   formats "%s%.03d" (the differential row runs the original's 0x65546;
+ *   the formatter itself is not ported, as game_overlay_step's 0x2BF08
  *   already established for this codebase), then the raw's unbounded
  *   REPNE-SCASB manual strcat appends game_string_get(0x3E) to it (the port
  *   bounds it, as prompt_insert_coin_blink's 0x2C1FA already established),
@@ -5575,7 +5577,7 @@ static void flow_26d4c(void)
         text_number_set(0xF, 0xB, pct, 3, 1u, 0x4003u);     /* 0x26EDB 0x2F434 */
     } else {
         char buf[0x40];
-        snprintf(buf, sizeof buf, "%s%03d%%",
+        snprintf(buf, sizeof buf, "%s%.03d",
                 (const char *)game_string_get(0x3Du), (int)pct);   /* 0x26F01 0x65546 */
         size_t n = strlen(buf);
         snprintf(buf + n, sizeof buf - n, "%s",
