@@ -3440,6 +3440,7 @@ u32 hit_reaction_pick(u32 side, u32 stance)
             r = (u32)DSW(DS_001088E0 + side * 2u);          /* 0x1DEC2 */
         }
     }
+    r &= 0xFFFFu;                                           /* 0x1DF50/0x1DF52: xor eax,eax; mov ax,[esp+0x24] */
     if (r != 0xFFu) {                                       /* 0x1DF5C */
         s32 sel = (side == 0u)
                 ? (s32)(s16)DSW(DSD(DS_00101514) + 0x2D4u)  /* 0x1DF6B */
@@ -3459,29 +3460,29 @@ u32 hit_reaction_pick(u32 side, u32 stance)
         } else if ((r & 0x4000u) == 0u) {                   /* 0x1E052 */
             if (sel == 4) {                                 /* 0x1E0E5 */
                 if (b3 == 3u)                               /* 0x1E0F6 */
-                    return hit_geometry(1u - side,
-                        DSD(0x000A7AF4u + ch * 4u), 0x000A7A70u)
+                    return (u8)hit_geometry(1u - side,
+                        DSD(0x000A7AF4u + ch * 4u), 0x000A7A70u) != 0u
                         ? 0x12u : 0x10u;                    /* 0x1E11D */
                 if (b4 == 0xCu)                             /* 0x1E13B */
-                    return hit_geometry(1u - side,
-                        DSD(0x000A7B1Cu + ch * 4u), 0x000A7A70u)
+                    return (u8)hit_geometry(1u - side,
+                        DSD(0x000A7B1Cu + ch * 4u), 0x000A7A70u) != 0u
                         ? 0x13u : 0x11u;                    /* 0x1E166 */
             }
             if ((r & 1u) != 0u)                             /* 0x1E17E */
-                return hit_geometry(1u - side,
-                    DSD(0x000A7AF4u + ch * 4u), 0x000A7A70u)
+                return (u8)hit_geometry(1u - side,
+                    DSD(0x000A7AF4u + ch * 4u), 0x000A7A70u) != 0u
                     ? 4u : 0u;                              /* 0x1E1A9 */
             if ((r & 2u) != 0u)                             /* 0x1E1C1 */
-                return hit_geometry(1u - side,
-                    DSD(0x000A7B1Cu + ch * 4u), 0x000A7A70u)
+                return (u8)hit_geometry(1u - side,
+                    DSD(0x000A7B1Cu + ch * 4u), 0x000A7A70u) != 0u
                     ? 5u : 1u;                              /* 0x1E1E8 */
             if ((r & 4u) != 0u)                             /* 0x1E20B */
-                return hit_geometry(1u - side,
-                    DSD(0x000A7A7Cu + ch * 4u), 0x000A7A70u)
+                return (u8)hit_geometry(1u - side,
+                    DSD(0x000A7A7Cu + ch * 4u), 0x000A7A70u) != 0u
                     ? 6u : 2u;                              /* 0x1E22F */
             if ((r & 8u) != 0u)                             /* 0x1E252 */
-                return hit_geometry(1u - side,
-                    DSD(0x000A7AA4u + ch * 4u), 0x000A7A70u)
+                return (u8)hit_geometry(1u - side,
+                    DSD(0x000A7AA4u + ch * 4u), 0x000A7A70u) != 0u
                     ? 7u : 3u;                              /* 0x1E279 */
         } else {                                            /* 0x1E058 */
             if ((r & 1u) != 0u) return 8u;                  /* 0x1E069 */
