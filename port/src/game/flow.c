@@ -1516,6 +1516,7 @@ void game_coin_divert(u32 players)
  * Callers: 0x28E07 (0x28DA4) and 0x27E74 (0x27DC8, record §48-K). */
 void flow_1082c8_restore(void)
 {
+    PR_SEAM0(0x4651Cu);
     DSD(DS_001082C8) = DSD(DS_001082C0);                /* 0x4651C/0x46521 */
     DSD(DS_001082CC) = DSD(DS_001082C4);                /* 0x46526/0x4652B */
 }
@@ -6635,6 +6636,7 @@ u32 sound_voice_stage(u32 stage)
  * pushed and popped. One caller: 0x27E4B (flow_match_end). */
 void sound_voice_match_end(void)
 {
+    PR_SEAM0(0x4F728u);
     u32 r = DSD(DS_00104AD4);                                  /* 0x4F729 */
     u32 id = 0x23u;                                             /* 0x4F761 */
     if (r != 0xFFFFFFFFu && r != 3u &&                          /* 0x4F72F/0x4F734 */

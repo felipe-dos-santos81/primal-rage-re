@@ -18389,6 +18389,52 @@ D3A_SPECS += [
                 "@sidesext", "@thr2", "@bsext2", "@v27", "@v22", "@vorder", "@f41side", "@f41bit", "@f41set",
                 "@nof41", "@f41zext", "@b00", "@b00b", "@early", "@fall")),
 ]
+D3A_SNAPB = E.Call(0x32B4C, ("eax", "edx"), clobbers=("edx",))
+D3A_VEND = E.Call(0x4F728, ())               # 0x4F728 never reads EAX (0x4F739 `lea eax` is its first use)
+D3A_RESTORE = E.Call(0x4651C, ())
+D3A_ACCUM = E.Call(0x46534, ("eax", "edx"), clobbers=("edx",))
+
+
+def d3a_end_case(b1f, f63, ac8, b16, ae8=0xFF, aec=0xFF, chars=(7, 0x80)):
+    """0x27DC8: the byte 0x104B1F, the dword 0x104ABC (0x5A5A5A5A), the handle dword 0x104AC8,
+    the flag bytes 0x104AE8 and 0x104AEC and the winner byte 0x104B16, each between seeded
+    neighbours; slot 0's +0x63 (0x107813) and both +0x7A characters (0x10782A/0x1078BE), which
+    stay above 6 so that the audit callee 0x32BB0 returns at once (`cmp eax,6; ja` 0x32BB3);
+    the stage word 0x104AFC; and the run clock's no-elapsed-time state (d1i_pt_case)."""
+    p = d1i_pt_case()
+    p.update({0x00104B1E: bytes([0x61, b1f, 0x62]),
+              0x00104AB8: le32(0x63636363) + le32(0x5A5A5A5A) + le32(0x64646464),
+              0x00104AC4: le32(0x65656565) + le32(ac8) + le32(0x66666666),
+              0x00104AE7: bytes([0x67, ae8, 0x68]), 0x00104AEB: bytes([0x69, aec, 0x6A]),
+              0x00104B15: bytes([0x6B, b16, 0x6C]), 0x00107812: bytes([0x6D, f63, 0x6E]),
+              0x00107829: bytes([0x6F, chars[0], 0x70]), 0x001078BD: bytes([0x71, chars[1], 0x72]),
+              0x00104AFC: le16(0x0003)})
+    return p
+
+
+D3A_SPECS += [
+    # 0x27DC8 flow_match_end: no argument. The dword 0x104ABC = (the byte 0x104B1F == 3) + 1,
+    # then 0x32B4C(that, 0); 0x2B150 on the dword 0x104AC8 when it is non-zero (all of it; the
+    # dword is kept); 0x4F728; 0x2C2B0(0, 0x1D) and (1, 0x1D); 0x104AE8 &= 0xFB and 0x104AEC &=
+    # 0xFE, then 0x4651C; unless the byte 0x104B16 (zero-extended) is 2, 0x46534(it, -1) and
+    # 0x46534(it ^ 1 as a byte, 1). Every one of those callees is a stub. The run clock 0x32970
+    # and the audit callee 0x32BB0 are host-owned or deferred and the port omits both: they run
+    # real in the original, the clock from its no-elapsed-time state and 0x32BB0 with a first
+    # character above 6 (it returns at once), so the three arms that pick its arguments
+    # (0x27DF9..0x27E23) are executed but their choice is not observable. Mask 0: record §1.
+    Spec("flow_match_end", 0x27DC8, [
+        Case("e0", {"edx": 0xABCD1234, "ebx": 0x12345678}, d3a_end_case(3, 0, 0x0010A300, 0)),
+        Case("e1", {}, d3a_end_case(0, 0, 0, 1, ae8=0x04, aec=0x01), {0x46534: 0xFFFFFF00}),
+        Case("e2", {}, d3a_end_case(2, 1, 0, 2, ae8=0x00, aec=0x00)),
+        Case("e3", {}, d3a_end_case(0x83, 0x80, 0x00000100, 0xFF, chars=(0xFF, 7)), {0x46534: 0x12345678}),
+        Case("e4", {}, d3a_end_case(3, 1, 0x80000000, 3, ae8=0xFB, aec=0xFE, chars=(8, 0x10))),
+    ], allow_calls=(0x32970, 0x32BB0),
+       calls=(D3A_SNAPB, P7_2B150, D3A_VEND, D3A_ERASE, D3A_RESTORE, D3A_ACCUM), eax_mask=0,
+       mutants=("@abc", "@abc3", "@abcb", "@abcbit", "@snaparg", "@snapflag", "@nosnap", "@snapearly",
+                "@nodead", "@deadalways", "@deadlow", "@deadclr", "@novoice", "@vorder", "@erow", "@eside",
+                "@eone", "@ae8", "@noae8", "@aec", "@noaec", "@late", "@early", "@norestore", "@always",
+                "@b16sext", "@d1", "@d2", "@xor", "@one", "@swap")),
+]
 D1_SPECS += D3A_SPECS
 
 

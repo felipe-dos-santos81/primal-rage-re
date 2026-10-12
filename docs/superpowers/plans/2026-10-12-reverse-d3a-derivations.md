@@ -14,6 +14,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x26D4C` | `flow_26d4c` | 522 | 0: the one caller `0x26D3B` goes on with `or byte [0x104aec],0x18` (`0x26D40`), four pops and `ret` into `0x25326` `jmp 0x2540f`, the mode tail the wave-1 records trace dead (d1c §1, d1d §1) |
 | `0x271E0` | `flow_join_prompt_draw` | 115 | 0: the one caller `0x423FC` (`0x41C28` state 7) goes on with `xor edx,edx; mov eax,[0x104abc]` (`0x42401`/`0x42403`) |
 | `0x272DC` | `flow_arena_ko_check` | 164 | 0: the one caller `0x274EC` goes on with `or byte [0x104aec],2` (`0x274F1`), three pops and `ret` into `0x25362` `jmp 0x2540f` (the mode tail) |
+| `0x27DC8` | `flow_match_end` | 224 | 0: neither call site in `0x27FA8` reads EAX before its `ret` (`0x28012..0x2803A`/`0x28048`; `0x280E8..0x2812F`, where `0x280F3 lea eax` is the only use); `0x27FA8`'s sites `0x263AF` and `0x2669B` write AH or nothing up to their `ret` (`0x263B4 mov ah,[0x104aec]`; `0x4E11C` on one path writes AH at `0x4E121` and AL at `0x4E19D` before any read; `0x266A0..0x266AA`); then `0x25247`/`0x2529B` `jmp 0x2540f` (the mode tail) or `0x2528C call 0x28c38`, whose first EAX use is `mov eax,edx` (`0x28C4D`) |
 
 ## §2 The row table (measured)
 
@@ -25,6 +26,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `flow_26d4c` | `0x26D4C` | 10 | 8/8 | 54 | 0 | the string tree (`0x1C500`..) real, the run clock `0x32970` real in the original from its no-elapsed-time state (the port omits it), the runtime `sprintf` `0x65546` real in the original (§2.2); every other callee a stub. Found correction §3.1 |
 | `flow_join_prompt_draw` | `0x271E0` | 4 | 1/1 | 23 | 0 | `0x4660C` and `0x2716C` stubbed (the latter seamed here); the memory at each call fixes the store order (`@b11late`, `@afcearly`, `@early`). `j2`/`j3` carry upper bytes in the dword `0x104AD4` (`xor al,1` on the whole EAX: `@xorb`) |
 | `flow_arena_ko_check` | `0x272DC` | 11 | 5/5 | 25 | 0 | every callee a stub (`0x27254`, `0x278B0` seamed here). `a2`/`b2` run w = -1, `a3` w = -128, `n1` the side `0x80`; `a1`/`b1`/`b3` carry a byte of `0x80` or more (`@bsext`, `@bsext2`) |
+| `flow_match_end` | `0x27DC8` | 5 | 11/11 | 31 | 0 | six stubs (`0x32B4C`, `0x4F728`, `0x4651C`, `0x46534` seamed here); `0x32970` and `0x32BB0` real in the original only (the port omits both, §4). `e3`: the byte `0x104B1F` = `0x83` (`@abcbit`), the handle `0x100` (`@deadlow`), the winner byte `0xFF` (`@b16sext`) |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -37,6 +39,10 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x2716C` | EAX (`mov ecx,eax` `0x2716F`) | 0 | none | pushes EBX ECX EDX; the raw caller `0x271E0` keeps EDX (`0x27229`, read at `0x27233`), EBX, ECX and ESI across it |
 | `0x27254` | none | 0 | none | pushes EBX ECX EDX ESI EDI EBP (`0x27254..0x27259`), one plain `ret` (`0x272A7`) |
 | `0x278B0` | none | 0 | none | pushes EBX ECX EDX, one plain `ret` (`0x27919`) |
+| `0x32B4C` | EAX, EDX (`shl eax,2` `0x32B54`, `test edx,edx` `0x32B57`) | 0 | `edx` | pushes EBX ECX; one plain `ret` (`0x32B91`) |
+| `0x4F728` | none: its first EAX use is a write (`lea eax,[edx*8]` `0x4F739`, or `mov eax,0x23` `0x4F761`) | 0 | none | pushes EDX; one plain `ret` (`0x4F776`). The raw caller keeps EDX = `0x1D` across it (`0x27E46`, used at `0x27E52`) |
+| `0x4651C` | none | 0 | none | one plain `ret` (`0x46530`) |
+| `0x46534` | EAX, EDX | 0 | `edx` | pushes EBX ECX EBP; one plain `ret` (`0x46590`) |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -72,6 +78,14 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   raw's unbounded `repne scasb` append (`0x26F1D..0x26F3B`) is not driven past the 0x40-byte frame (the port
   bounds it). The run clock `0x32970` is not compared (host-owned): the original runs it from the state where
   it changes no byte.
+- `flow_match_end`: the port omits `0x32970` (the run clock) and `0x32BB0` (two audit adds through the deferred
+  `0x2DAE4` for characters below 7), both under `/* PORT: */`. The row runs them in the original from states
+  where they change no byte: the clock with no elapsed time, `0x32BB0` with a first character above 6
+  (`cmp eax,6; ja 0x32bd7` at `0x32BB3` returns before the second is looked at). So the argument choice at
+  `0x27DF0..0x27E28` (which character goes to EAX and EDX, by the dword `0x104ABC` and slot 0's `+0x63`) is
+  executed on every arm but not observable, and the audit adds for characters 0..6 — the ordinary case —
+  are not compared at all. `0x4F728` takes no argument, so the stage word loaded at `0x27E40` is not
+  observable either.
 
 ## §5 Store-sweep findings
 
@@ -91,6 +105,9 @@ asserted the text. Unproven against the oracles until the integrator's gate.
 - `flow_arena_ko_check`: two stores (w's slot `+0x41 |= 0x10`, the word `0x104B00 = 0xD`), both after the two
   voices (`@early`: `call #0 memory`). `b3` has the bit already set (`@f41set`, `@nof41` are caught where it is
   clear); `@f41side` stores to the `0x104B12` side's slot, `@f41zext` re-reads w zero-extended (`b2`).
+- `flow_match_end`: three stores. The dword `0x104ABC` is stored before `0x32B4C` (`@snapearly`: `call #0
+  memory`) as a dword (`@abcb`); the two flag bytes are cleared after the second `0x2C2B0` and before `0x4651C`
+  (`@early`, `@late`). `e2` has both bits already clear, `e4` only the two bits set.
 
 ## §6 Queue entries not done
 

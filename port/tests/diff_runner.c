@@ -26183,6 +26183,60 @@ D3A_KO_MUT(nosnap) D3A_KO_MUT(nocont) D3A_KO_MUT(order) D3A_KO_MUT(side) D3A_KO_
 D3A_KO_MUT(bsext2) D3A_KO_MUT(v27) D3A_KO_MUT(v22) D3A_KO_MUT(vorder) D3A_KO_MUT(f41side) D3A_KO_MUT(f41bit)
 D3A_KO_MUT(f41set) D3A_KO_MUT(nof41) D3A_KO_MUT(f41zext) D3A_KO_MUT(b00) D3A_KO_MUT(b00b) D3A_KO_MUT(early)
 D3A_KO_MUT(fall)
+/* 0x27DC8: no argument. Mask 0: neither call site in 0x27FA8 reads EAX before its `ret` (0x28012..0x2803A/
+ * 0x28048; 0x280E8.., `lea eax` 0x280F3), 0x27FA8's own sites 0x263AF and 0x2669B write AH or nothing up
+ * to their `ret` (0x4E11C on one path writes AH and AL before reading them), into 0x25247/0x2529B `jmp
+ * 0x2540f` or 0x2528C `call 0x28c38` (`mov eax,edx` 0x28C4D): record §1. */
+static void b_d3a_27dc8(const u32 *r, u32 *eax) { (void)r; flow_match_end(); *eax = 0u; }
+enum { D3A_ME_NONE, D3A_ME_abc, D3A_ME_abc3, D3A_ME_abcb, D3A_ME_abcbit, D3A_ME_snaparg, D3A_ME_snapflag, D3A_ME_nosnap,
+       D3A_ME_snapearly, D3A_ME_nodead, D3A_ME_deadalways, D3A_ME_deadlow, D3A_ME_deadclr, D3A_ME_novoice,
+       D3A_ME_vorder, D3A_ME_erow, D3A_ME_eside, D3A_ME_eone, D3A_ME_ae8, D3A_ME_noae8, D3A_ME_aec,
+       D3A_ME_noaec, D3A_ME_late, D3A_ME_early, D3A_ME_norestore, D3A_ME_always, D3A_ME_b16sext, D3A_ME_d1,
+       D3A_ME_d2, D3A_ME_xor, D3A_ME_one, D3A_ME_swap };
+static void d3a_27dc8_flags(u32 mut)
+{
+    if (mut != D3A_ME_noae8) DSB(0x00104AE8u) = (u8)(DSB(0x00104AE8u) & ((mut == D3A_ME_ae8) ? 0xF7u : 0xFBu));
+    if (mut != D3A_ME_noaec) DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) & ((mut == D3A_ME_aec) ? 0xFDu : 0xFEu));
+}
+static void d3a_27dc8_core(u32 mut)
+{
+    u32 f = DSB(0x00104B1Fu);
+    u32 v = (((mut == D3A_ME_abcbit) ? ((f & 3u) == 3u) : (f == ((mut == D3A_ME_abc3) ? 2u : 3u))) ? 1u : 0u)
+            + ((mut == D3A_ME_abc) ? 0u : 1u);
+    if (mut == D3A_ME_snapearly) config_play_time_snap_b(v, 0u);
+    if (mut == D3A_ME_abcb) DSB(0x00104ABCu) = (u8)v;
+    else DSD(0x00104ABCu) = v;
+    if (mut != D3A_ME_nosnap && mut != D3A_ME_snapearly)
+        config_play_time_snap_b((mut == D3A_ME_snaparg) ? f : v, (mut == D3A_ME_snapflag) ? 1u : 0u);
+    u32 h = DSD(0x00104AC8u);
+    if (mut == D3A_ME_deadalways || ((mut == D3A_ME_deadlow) ? ((h & 0xFFu) != 0u) : (h != 0u))) {
+        if (mut != D3A_ME_nodead) actor_set_dead(h);
+        if (mut == D3A_ME_deadclr) DSD(0x00104AC8u) = 0u;
+    }
+    if (mut == D3A_ME_early) d3a_27dc8_flags(mut);
+    if (mut != D3A_ME_novoice && mut != D3A_ME_vorder) sound_voice_match_end();
+    prompt_side_erase(0, (mut == D3A_ME_erow) ? 0x1C : 0x1D);
+    if (mut != D3A_ME_eone) prompt_side_erase((mut == D3A_ME_eside) ? 0 : 1, 0x1D);
+    if (mut == D3A_ME_vorder) sound_voice_match_end();
+    if (mut != D3A_ME_early && mut != D3A_ME_late) d3a_27dc8_flags(mut);
+    if (mut != D3A_ME_norestore) flow_1082c8_restore();
+    if (mut == D3A_ME_late) d3a_27dc8_flags(mut);
+    u32 b = (mut == D3A_ME_b16sext) ? (u32)(s32)(s8)DSB(0x00104B16u) : DSB(0x00104B16u);
+    if (b != 2u || mut == D3A_ME_always) {
+        u32 o = (mut == D3A_ME_xor) ? b : ((DSB(0x00104B16u) ^ 1u) & 0xFFu);
+        if (mut == D3A_ME_swap) fighter_46534(o, 1);
+        fighter_46534(b, (mut == D3A_ME_d1) ? 1 : -1);
+        if (mut != D3A_ME_one && mut != D3A_ME_swap) fighter_46534(o, (mut == D3A_ME_d2) ? -1 : 1);
+    }
+}
+#define D3A_ME_MUT(name) \
+    static void m_d3a_me_##name(const u32 *r, u32 *eax) { (void)r; d3a_27dc8_core(D3A_ME_##name); *eax = 0u; }
+D3A_ME_MUT(abc) D3A_ME_MUT(abc3) D3A_ME_MUT(abcb) D3A_ME_MUT(abcbit) D3A_ME_MUT(snaparg) D3A_ME_MUT(snapflag)
+D3A_ME_MUT(nosnap) D3A_ME_MUT(snapearly) D3A_ME_MUT(nodead) D3A_ME_MUT(deadalways) D3A_ME_MUT(deadlow)
+D3A_ME_MUT(deadclr) D3A_ME_MUT(novoice) D3A_ME_MUT(vorder) D3A_ME_MUT(erow) D3A_ME_MUT(eside) D3A_ME_MUT(eone)
+D3A_ME_MUT(ae8) D3A_ME_MUT(noae8) D3A_ME_MUT(aec) D3A_ME_MUT(noaec) D3A_ME_MUT(late) D3A_ME_MUT(early)
+D3A_ME_MUT(norestore) D3A_ME_MUT(always) D3A_ME_MUT(b16sext) D3A_ME_MUT(d1) D3A_ME_MUT(d2) D3A_ME_MUT(xor)
+D3A_ME_MUT(one) D3A_ME_MUT(swap)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32645,6 +32699,38 @@ static const binding_t k_bindings[] = {
     { "flow_arena_ko_check@b00b", m_d3a_ko_b00b, 0x00000000u },
     { "flow_arena_ko_check@early", m_d3a_ko_early, 0x00000000u },
     { "flow_arena_ko_check@fall", m_d3a_ko_fall, 0x00000000u },
+    { "flow_match_end", b_d3a_27dc8, 0x00000000u },
+    { "flow_match_end@abc", m_d3a_me_abc, 0x00000000u },
+    { "flow_match_end@abc3", m_d3a_me_abc3, 0x00000000u },
+    { "flow_match_end@abcb", m_d3a_me_abcb, 0x00000000u },
+    { "flow_match_end@abcbit", m_d3a_me_abcbit, 0x00000000u },
+    { "flow_match_end@snaparg", m_d3a_me_snaparg, 0x00000000u },
+    { "flow_match_end@snapflag", m_d3a_me_snapflag, 0x00000000u },
+    { "flow_match_end@nosnap", m_d3a_me_nosnap, 0x00000000u },
+    { "flow_match_end@snapearly", m_d3a_me_snapearly, 0x00000000u },
+    { "flow_match_end@nodead", m_d3a_me_nodead, 0x00000000u },
+    { "flow_match_end@deadalways", m_d3a_me_deadalways, 0x00000000u },
+    { "flow_match_end@deadlow", m_d3a_me_deadlow, 0x00000000u },
+    { "flow_match_end@deadclr", m_d3a_me_deadclr, 0x00000000u },
+    { "flow_match_end@novoice", m_d3a_me_novoice, 0x00000000u },
+    { "flow_match_end@vorder", m_d3a_me_vorder, 0x00000000u },
+    { "flow_match_end@erow", m_d3a_me_erow, 0x00000000u },
+    { "flow_match_end@eside", m_d3a_me_eside, 0x00000000u },
+    { "flow_match_end@eone", m_d3a_me_eone, 0x00000000u },
+    { "flow_match_end@ae8", m_d3a_me_ae8, 0x00000000u },
+    { "flow_match_end@noae8", m_d3a_me_noae8, 0x00000000u },
+    { "flow_match_end@aec", m_d3a_me_aec, 0x00000000u },
+    { "flow_match_end@noaec", m_d3a_me_noaec, 0x00000000u },
+    { "flow_match_end@late", m_d3a_me_late, 0x00000000u },
+    { "flow_match_end@early", m_d3a_me_early, 0x00000000u },
+    { "flow_match_end@norestore", m_d3a_me_norestore, 0x00000000u },
+    { "flow_match_end@always", m_d3a_me_always, 0x00000000u },
+    { "flow_match_end@b16sext", m_d3a_me_b16sext, 0x00000000u },
+    { "flow_match_end@d1", m_d3a_me_d1, 0x00000000u },
+    { "flow_match_end@d2", m_d3a_me_d2, 0x00000000u },
+    { "flow_match_end@xor", m_d3a_me_xor, 0x00000000u },
+    { "flow_match_end@one", m_d3a_me_one, 0x00000000u },
+    { "flow_match_end@swap", m_d3a_me_swap, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

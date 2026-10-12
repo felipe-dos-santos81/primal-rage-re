@@ -5401,6 +5401,7 @@ int hit_chain_resolve(u32 side)
  * Also called twice by 0x27DC8 (record §48-K). */
 void fighter_46534(u32 side, s32 delta)
 {
+    PR_SEAM(0x46534u, side, (u32)delta);
     s32 v = (s32)DSD(DS_001082C8 + side * 4u) + delta;      /* 0x4653C/0x46542 */
     u32 cap = (u32)DSB(FIGHTER_C9408 + (u32)DSB(DS_0010452C));   /* 0x46552 */
     DSD(DS_001082C8 + side * 4u) = (u32)v;                  /* 0x4654C */

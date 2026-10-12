@@ -504,6 +504,7 @@ void config_play_time_snap(u32 idx, u32 arm)
  * 0x25EFD (0x25C88, EDX = 1) and 0x27DEB (0x27DC8, EDX = 0, record §48-K). */
 void config_play_time_snap_b(u32 idx, u32 arm)
 {
+    PR_SEAM(0x32B4Cu, idx, arm);
     if (arm != 0u) {                                    /* 0x32B57 `jz` */
         DSD(DS_00107480) = DSD(DS_0010746C + idx * 4u); /* 0x32B5B/0x32B89 */
         return;
