@@ -698,6 +698,11 @@ def callee_clobbers(image, addr, resolved=None):
 # call, so the caller-observed set is edx.
 _CALLEE_CLOBBER_FIXES = {0x2B150: (), 0x2BD44: ("edx",), 0x3B298: ("edx",), 0x3CF38: (),
                          0x2AD40: ("edx",)}
+# D3 d3c: 0x29D04 pushes EBX, ECX, EDX (0x29D04..0x29D06) and pops all three before each of its two
+# `ret`s (0x29D12..0x29D14; 0x29D5B..0x29D5D), but the second run is followed by `mov eax,eax`
+# (0x29D5E) before the `ret` at 0x29D60, which the pops-directly-before-every-ret rule rejects. Its
+# raw caller 0x350D0 keeps the side in EBX across the +0x14 hook call (0x3514C; read at 0x35227).
+_CALLEE_CLOBBER_FIXES[0x29D04] = ()
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --

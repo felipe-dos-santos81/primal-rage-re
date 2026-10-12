@@ -11252,6 +11252,124 @@ D1_KINDS.update({
 })
 
 
+# ---- track D wave 3, batch d3c (record 2026-10-12-reverse-d3c): game/fighter.c ----
+D3C_MASKS = {}
+D3C_KINDS = {}
+D3C_CASES = []
+D3C_MASKS.update({"fighter_winner_body": 0x0})
+D3C_KINDS.update({
+    "fighter_winner_body@flash": {'call #0'},
+    "fighter_winner_body@and2": {'byte', 'call #1 memory', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@and3": {'byte', 'call #1 memory', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@mask": {'byte', 'call #1 memory', 'call #10 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@tside": {'call #1'},
+    "fighter_winner_body@sel": {'call #2'},
+    "fighter_winner_body@al1": {'byte', 'call #3', 'call #3 memory', 'call #4', 'call #5'},
+    "fighter_winner_body@side2": {'call #3'},
+    "fighter_winner_body@al2": {'byte', 'call #4', 'call #5'},
+    "fighter_winner_body@s8a": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "fighter_winner_body@dust": {'call #3', 'call #4'},
+    "fighter_winner_body@trec": {'call #4', 'call #5'},
+    "fighter_winner_body@order": {'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5'},
+    "fighter_winner_body@tval": {'call #4', 'call #5'},
+    "fighter_winner_body@kside": {'byte', 'call #10', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "fighter_winner_body@cmpb": {'byte', 'call #4', 'call #5', 'call #6'},
+    "fighter_winner_body@cmpd": {'byte', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8'},
+    "fighter_winner_body@nokeep": {'byte', 'call #10 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@keepd": {'byte', 'call #10 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@n164": {'call #4'},
+    "fighter_winner_body@s8b": {'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory'},
+    "fighter_winner_body@cslot": {'call #10', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9'},
+    "fighter_winner_body@cor": {'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #9'},
+    "fighter_winner_body@c54": {'call #10', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9'},
+    "fighter_winner_body@c52": {'call #10', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9'},
+    "fighter_winner_body@c34": {'call #5'},
+    "fighter_winner_body@no36": {'call #10', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "fighter_winner_body@x1c": {'byte', 'call #10', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "fighter_winner_body@irec": {'call #10', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "fighter_winner_body@idxz": {'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8'},
+    "fighter_winner_body@row60": {'call #10', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "fighter_winner_body@brec": {'call #7'},
+    "fighter_winner_body@no90": {'byte', 'call #10 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@s90": {'byte', 'call #10 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@v90": {'byte', 'call #10 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@cbarg": {'byte', 'call #10 memory', 'call #5', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@z18": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@z1c": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_winner_body@react": {'byte', 'call #5', 'call #6 memory', 'call #7 memory'},
+    "fighter_winner_body@cb14arg": {'call #6', 'call #8', 'call #9'},
+    "fighter_winner_body@al14": {'byte', 'call #10 memory', 'call #7 memory'},
+    "fighter_winner_body@keep14": {'byte', 'call #9 memory'},
+    "fighter_winner_body@o18": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #9 memory'},
+    "fighter_winner_body@o1c": {'byte', 'call #6 memory', 'call #7 memory'},
+    "fighter_winner_body@o0c": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #9 memory'},
+    "fighter_winner_body@and8": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #9 memory'},
+    "fighter_winner_body@s8c": {'byte', 'call #10 memory', 'call #6 memory', 'call #7 memory', 'call #9 memory'},
+    "fighter_winner_body@no192": {'call #10', 'call #6', 'call #7', 'call #9'},
+    "fighter_winner_body@p192": {'call #10', 'call #6', 'call #7', 'call #9'},
+    "fighter_winner_body@rowsz": {'call #10', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "fighter_winner_body@late90": {'call #5 memory', 'call #7 memory', 'call #8 memory'},
+    "fighter_winner_body@c36": {'call #6'},
+})
+D3C_CASES += [
+    ("fighter_winner_body@flash", ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@and2", ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@and3", ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@mask", ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@tside", ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@sel", ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@al1", ['n1', 'n2']),
+    ("fighter_winner_body@side2", ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@al2", ['n2']),
+    ("fighter_winner_body@s8a", ['n0', 'n1']),
+    ("fighter_winner_body@dust", ['n0', 'n1']),
+    ("fighter_winner_body@trec", ['n0', 'n1']),
+    ("fighter_winner_body@order", ['n0', 'n1']),
+    ("fighter_winner_body@tval", ['n0', 'n1']),
+    ("fighter_winner_body@kside", ['n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@cmpb", ['n4']),
+    ("fighter_winner_body@cmpd", ['n2', 'n3']),
+    ("fighter_winner_body@nokeep", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@keepd", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@n164", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@s8b", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@cslot", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@cor", ['n4', 'n5']),
+    ("fighter_winner_body@c54", ['n4', 'n6', 'n7']),
+    ("fighter_winner_body@c52", ['n5', 'n6', 'n7']),
+    ("fighter_winner_body@c34", ['n6', 'n7']),
+    ("fighter_winner_body@no36", ['n6', 'n7']),
+    ("fighter_winner_body@x1c", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@irec", ['n5', 'n6', 'n7']),
+    ("fighter_winner_body@idxz", ['n5']),
+    ("fighter_winner_body@row60", ['n6']),
+    ("fighter_winner_body@brec", ['n7']),
+    ("fighter_winner_body@no90", ['n5', 'n6', 'n7']),
+    ("fighter_winner_body@s90", ['n5', 'n6', 'n7']),
+    ("fighter_winner_body@v90", ['n5', 'n6', 'n7']),
+    ("fighter_winner_body@cbarg", ['n5', 'n6', 'n7']),
+    ("fighter_winner_body@z18", ['n5', 'n6', 'n7']),
+    ("fighter_winner_body@z1c", ['n5', 'n6', 'n7']),
+    ("fighter_winner_body@react", ['n4', 'n8']),
+    ("fighter_winner_body@cb14arg", ['n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@al14", ['n7', 'n8']),
+    ("fighter_winner_body@keep14", ['n6']),
+    ("fighter_winner_body@o18", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@o1c", ['n4', 'n8']),
+    ("fighter_winner_body@o0c", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@and8", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@s8c", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@no192", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@p192", ['n4', 'n5', 'n6', 'n7', 'n8']),
+    ("fighter_winner_body@rowsz", ['n7']),
+    ("fighter_winner_body@late90", ['n5', 'n6', 'n7']),
+    ("fighter_winner_body@c36", ['n6', 'n7']),
+]
+D1_MASKS.update(D3C_MASKS)
+D1_KINDS.update(D3C_KINDS)
+D1_CASES.extend(D3C_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -12343,6 +12461,7 @@ class RealFunctionTests(unittest.TestCase):
         0x4EBB8: (), 0x2F510: ("ebx", "ecx", "edx"),     # track D2 batch d2e
         0x414B4: (), 0x41528: (), 0x41578: (), 0x418F4: (), 0x416D4: (), 0x4160C: (), 0x41760: (), 0x417C4: (),     # track D2 batch d2e
         0x4660C: (), 0x25848: (), 0x41350: ("edx",), 0x271E0: (), 0x32A3C: ("edx",), 0x2F434: ("ebx", "ecx", "edx"),     # track D2 batch d2e
+        0x3962C: ("edx", "esi", "edi", "ebp"), 0x396AC: ("edx", "esi", "edi", "ebp"), 0x19164: (), 0x1922C: (), 0x192DC: (), 0x29D04: (),     # track D3 batch d3c
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))

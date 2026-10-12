@@ -4246,6 +4246,7 @@ void hit_facing_flag(u32 side)
  * the taken arm) and B5E. */
 void hit_stance_timer(u32 side)
 {
+    PR_SEAM(0x1922Cu, side);
     if ((s8)DSB(DS_00100B5A + side) > 0) {              /* 0x19244 */
         u32 rec = DSD(DS_001077B0 + side * 0x94u);
         if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) == 0u) {   /* 0x19251 */
@@ -6511,6 +6512,7 @@ void fighter_22bec(u32 slot, u32 side)
  * gives the record 0x2A17C is called on (EDX = 0). */
 u32 fighter_29d04(u32 slot)
 {
+    PR_SEAM_RET(0x29D04u, slot);
     u32 side;
     u32 handle;
     if (DSB(DS_0009AF3D) != 0u) return 0u;              /* 0x29D07..0x29D15 */
@@ -7966,6 +7968,7 @@ void fighter_39278(u32 v)
  * the +0x5F stance byte; 0x193B0 passes 0. */
 int fighter_3962c(u32 side, u32 param_2)
 {
+    PR_SEAM_RET(0x3962Cu, side, param_2);
     u32 ctx[6];
     u32 anim[3];
     u8 b;
@@ -7985,6 +7988,7 @@ int fighter_3962c(u32 side, u32 param_2)
  * word, and the 0x107D2C word is at least 1. EDX selects +0x64 over +0x5F. */
 int fighter_396ac(u32 side, u32 param_2)
 {
+    PR_SEAM_RET(0x396ACu, side, param_2);
     u32 ctx[6];
     u32 anim[3];
     u32 idx;
@@ -8489,6 +8493,7 @@ static s32 fighter_x87_fistp(float f)
  * zero (frontend-chain record §…), so C's (s32) cast is the same truncation. */
 void fighter_19164(u32 side)
 {
+    PR_SEAM(0x19164u, side);
     u32 rec = DSD(DS_001077B0 + side * 0x94u);              /* 0x19175 */
     union { float f; u32 u; } fu;
     fu.u = DSD(rec + 0x20u);                                /* 0x19193/0x19196 */
@@ -8511,6 +8516,7 @@ void fighter_19164(u32 side)
  * below 2, else once. */
 void fighter_192dc(u32 side)
 {
+    PR_SEAM(0x192DCu, side);
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                            /* 0x192E5 */
     if ((u32)DSB(ctx[2] + 0x5Fu) < 0x20u                    /* 0x192FB */

@@ -18154,6 +18154,100 @@ D2D_SPECS = [
 D1_SPECS += D2D_SPECS
 
 
+# ---- track D wave 3, batch d3c (record 2026-10-12-reverse-d3c): game/fighter.c --------------------
+#
+# Every index a case passes (side, state, character, row) keeps base + index * size inside mem[] for
+# the binding and for each mutant; what a mutant's wrong read finds is seeded with the opposite
+# answer. The slots are the real pair at DS_001077B0, the records D3C_R0/D3C_R1 in zero BSS.
+
+D3C_SLOT = 0x001077B0            # DS_001077B0: the two 0x94-byte fighter slots
+D3C_R0, D3C_R1, D3C_RX = 0x0010A200, 0x0010A300, 0x0010A400   # zero BSS: the slots' records, and a third
+D3C_SPECS = []
+
+D3C_ROWS = 0x00106000            # the 0x68-byte rows DS_001014F4 points at (d2a's base)
+D3C_3962C = E.Call(0x3962C, ("eax", "edx"), clobbers=("edx", "esi", "edi", "ebp"))
+D3C_396AC = E.Call(0x396AC, ("eax", "edx"), clobbers=("edx", "esi", "edi", "ebp"))
+D3C_19164 = E.Call(0x19164, ("eax",))
+D3C_1922C = E.Call(0x1922C, ("eax",))
+D3C_192DC = E.Call(0x192DC, ("eax",))
+D3C_29D04 = E.Call(0x29D04, ("eax",))   # saves EBX/ECX/EDX (diff_emu._CALLEE_CLOBBER_FIXES)
+# 0x3B714 as a stub that dirties its second argument's +0x8A (the side's slot), so the last
+# `mov byte [slot+0x8a],0` of 0x193B0 (0x19576) is a store the bytes at return can see
+D3C_REACT_8A = E.Call(0x3B714, ("eax", "edx"), clobbers=("edx",), writes=((1, 0x8A, b"\x77"),))
+
+
+def d3c_win_case(side, w84, k, o52=0x10, o54=1, cb1c=0, cb14=0, idx=0, flag=0):
+    """0x193B0: both slots' record pointers, +0x0C..+0x1F (the +0x14 and +0x1C hooks: the slot the
+    raw does not read carries the opposite presence), +0x42..+0x44 (0xFF at +0x43), +0x52..+0x54
+    (the other slot's are `o52`/`o54`; the side's own give the opposite verdict), +0x82..+0x87 (the
+    side's +0x84 word between two seeded words), +0x89..+0x8B and +0x8F..+0x91; the two 0x100B50
+    words between two seeded words (the side's is `k`, the other side's gives the opposite
+    verdict); both records' +0x4A..+0x4C (the other record's child index `idx`; the side's own
+    names a row with the opposite answer); and the rows' +0x60 flags (row 0's is set, the row of
+    `idx` is `flag`, row 4's is set)."""
+    other = 1 - side
+    so, oo = D3C_SLOT + side * 0x94, D3C_SLOT + other * 0x94
+    rs, ro = (D3C_R0, D3C_R1)[side], (D3C_R0, D3C_R1)[other]
+    ks = [0, 0]
+    ks[side], ks[other] = k, (w84 ^ 0x0101 if k == w84 else w84)
+    clears = o54 != 2 and o52 != 0x11
+    p = {so: le32(rs), oo: le32(ro),
+         so + 0x0C: le32(0x0C0C0C00) + le32(0x10101000) + le32(0 if cb14 else 0x00029D04)
+         + le32(0x18181800) + le32(cb1c),
+         oo + 0x0C: le32(0x0C0C0C01) + le32(0x10101001) + le32(cb14) + le32(0x18181801)
+         + le32(0 if cb1c else 0x0003E4C4),
+         so + 0x42: bytes([0x42, 0xFF, 0x44]), oo + 0x42: bytes([0x62, 0xFF, 0x64]),
+         so + 0x52: bytes([0x11, 0x53, 2] if clears else [0x10, 0x53, 1]),
+         oo + 0x52: bytes([o52, 0x63, o54]),
+         so + 0x82: le16(0x8282) + le16(w84) + le16(0x8686),
+         oo + 0x82: le16(0x6262) + le16(w84 ^ 0xFFFF) + le16(0x6666),
+         so + 0x89: bytes([0x89, 0x5A, 0x8B]), oo + 0x89: bytes([0x69, 0x6A, 0x6B]),
+         so + 0x8F: bytes([0x8F, 0x90, 0x91]), oo + 0x8F: bytes([0x6F, 0x70, 0x71]),
+         0x00100B4E: le16(0x4E4E) + le16(ks[0]) + le16(ks[1]) + le16(0x5454),
+         rs + 0x4A: bytes([0x4A, 0 if (idx and flag) else 4, 0x4C]), ro + 0x4A: bytes([0x6A, idx, 0x6C]),
+         rs + 0x51: bytes([side]), ro + 0x51: bytes([other]),
+         0x001014F4: le32(D3C_ROWS), D3C_ROWS + 0x60: b"\x01", D3C_ROWS + 4 * 0x68 + 0x60: b"\x01"}
+    if idx:
+        p[D3C_ROWS + idx * 0x68 + 0x60] = bytes([flag])
+    return p
+
+
+D3C_SPECS += [
+    # 0x193B0 fighter_winner_body: EAX = side. Eleven stubs; 0x33950 and the +0x1C hook 0x3E4C4
+    # (registered; it calls 0x33950 and the 0x3B714 stub with its side's slots) run real. 0x3962C
+    # and 0x396AC return the AL the raw tests (0x193E9, 0x1941E `test al,al`: n1/n2 return 0x100
+    # and 0xFFFFFF00); the +0x14 hook 0x29D04 is a stub whose whole EAX the raw tests (0x1953A
+    # `test eax,eax`: n7 returns 0x100). Mask 0: the one caller returns at once (0x1974D call,
+    # 0x19752..0x1975B, in 0x1958C), and every caller of 0x1958C writes EAX first (`xor eax,eax`
+    # 0x262F3, 0x26482, 0x265DF, 0x2747D, 0x29AE5, 0x2882C; `call 0x3cb68` 0x284F8, 0x28827, whose
+    # first use of EAX is the load at 0x3CB79).
+    Spec("fighter_winner_body", 0x193B0, [
+        Case("n0", {"eax": 0}, d3c_win_case(0, 0x1234, 0x4321), {0x3962C: 1, 0x396AC: 0}),
+        Case("n1", {"eax": 1}, d3c_win_case(1, 0x1234, 0x4321), {0x3962C: 0x100, 0x396AC: 0xFFFFFF01}),
+        Case("n2", {"eax": 0}, d3c_win_case(0, 0x1234, 0x1234), {0x3962C: 0xFFFFFF00, 0x396AC: 0x100}),
+        Case("n3", {"eax": 1}, d3c_win_case(1, 0x8001, 0x8001)),
+        Case("n4", {"eax": 1}, d3c_win_case(1, 0x1234, 0x5634, o54=2)),
+        Case("n5", {"eax": 0}, d3c_win_case(0, 0x1234, 0x1235, o52=0x11, cb1c=0x0003E4C4, cb14=0x00029D04),
+             {0x29D04: 1}),
+        Case("n6", {"eax": 1}, d3c_win_case(1, 0x0000, 0xFFFF, cb1c=0x0003E4C4, cb14=0x00029D04, idx=2),
+             {0x29D04: 0}),
+        Case("n7", {"eax": 0}, d3c_win_case(0, 0xFFFF, 0x0000, cb1c=0x0003E4C4, cb14=0x00029D04, idx=3, flag=1),
+             {0x29D04: 0x100}),
+        Case("n8", {"eax": 1}, d3c_win_case(1, 0x0001, 0x0002, o52=0x11, o54=2, cb14=0x00029D04, idx=3, flag=1),
+             {0x29D04: 0xFFFFFF00}),
+    ], allow_calls=(0x33950, 0x3E4C4),
+       calls=(FLASH, D3C_1922C, D3C_3962C, D3C_396AC, C1_18B44, TIMER, D3C_19164, CLEAR34, CLEAR36,
+              D2A_2BD44, D3C_REACT_8A, D3C_29D04, D3C_192DC), eax_mask=0,
+       mutants=("@flash", "@and2", "@and3", "@mask", "@tside", "@sel", "@al1", "@side2", "@al2", "@s8a",
+                "@dust", "@trec", "@order", "@tval", "@kside", "@cmpb", "@cmpd", "@nokeep", "@keepd",
+                "@n164", "@s8b", "@cslot", "@cor", "@c54", "@c52", "@c34", "@no36", "@x1c", "@irec",
+                "@idxz", "@row60", "@brec", "@no90", "@s90", "@v90", "@cbarg", "@z18", "@z1c", "@react",
+                "@cb14arg", "@al14", "@keep14", "@o18", "@o1c", "@o0c", "@and8", "@s8c", "@no192",
+                "@p192", "@rowsz", "@late90", "@c36")),
+]
+D1_SPECS += D3C_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
