@@ -2522,6 +2522,7 @@ int fight_4b5a8(u32 entry, u32 index)
  * the hold 5.0 (`push 0x40a00000`, 0x4AC72). EAX = entry, EDX = index. */
 void fight_4ac38(u32 entry, u32 index)
 {
+    PR_SEAM(0x4AC38u, entry, index);
     u32 actor = DSD(entry + 8u);
     DSB(actor + 0x29u) &= 0xBFu;                    /* 0x4AC3E */
     DSB(actor + 0x29u) |= 0x10u;                    /* 0x4AC45 */
@@ -3385,6 +3386,7 @@ int fight_4d898(u32 hit, u32 entry, u32 index)
  * EDX = si. */
 void fight_4d7a4(u32 entry, u32 index)
 {
+    PR_SEAM(0x4D7A4u, entry, index);
     if ((DSB(entry + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4D7BB */
     u32 rec = DSD(entry + 8u);
     u32 ps = DSD(DS_001014EC) + ((u32)DSW(rec + 0x56u) << 5);  /* 0x4D7C1..0x4D7D3 */
@@ -3433,6 +3435,7 @@ void fight_4d7a4(u32 entry, u32 index)
  * +0x1C bit 4. */
 void fight_4987c(u32 side, s32 count, u32 kind)
 {
+    PR_SEAM(0x4987Cu, side, (u32)count, kind);
     u32 slot = DS_001077B0 + side * 0x94u;                      /* 0x4988D..0x498A7 */
     u32 other = DS_001077B0 + (side ^ 1u) * 0x94u;              /* 0x498B3..0x498CE */
     s32 i;
@@ -3843,6 +3846,7 @@ int fight_4d150(u32 entry, u32 index)
  * DS_0010889E[+0x21]) 0x4B430, each with EBX = 0; the first that acts ends it. */
 void fight_4d224(u32 entry, u32 index)
 {
+    PR_SEAM(0x4D224u, entry, index);
     if (DSB(DS_001088C2) != 0u) {                               /* 0x4D22B */
         if (fight_4bd4c(entry, index) != 0) return;             /* 0x4D236/0x4D23D */
     }
