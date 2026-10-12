@@ -22155,6 +22155,49 @@ D4E_SPECS += [
     ], calls=(D4E_GB_ANIM, D4E_GB_E00, D4E_GB_E4C), eax_mask=0xFF,
        mutants=("@c8a", "@cca", "@c8b", "@ccb", "@cache")),
 ]
+
+# 0x4B470 with stubs that each leave another actor in the entry's +8 (harness writes): the voice
+# D2B_ACT1, 0x2BC30 D2B_ACT2, the spawn D4E_ACT3, 0x1A570 D4E_ACT4.
+D4E_ACT3, D4E_ACT4 = 0x0010A400, 0x0010A440
+D4E_TR_VOICE = dataclasses.replace(VOICE, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT1)),))
+D4E_TR_ANIM = dataclasses.replace(ANIM_BEGIN, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT2)),))
+D4E_TR_SPAWN = dataclasses.replace(SPAWN, writes=((None, D2B_ENT + 0x08, le32(D4E_ACT3)),))
+D4E_TR_BIT15 = dataclasses.replace(BIT15, writes=((None, D2B_ENT + 0x08, le32(D4E_ACT4)),))
+
+
+def d4e_tr_case(w34=(0x2134, 0xFF80, 0x4134, 0x5134), **kw):
+    """d3b's 0x4B470 fixture with the four actors the stubs leave in the entry seeded as d3b seeds
+    the first: +0x14..+0x1F (the x at +0x18), the words +0x2E..+0x39 (the y at +0x32, the throw
+    word +0x34 = `w34`[i]) and the +0x48 id byte, each actor its own values."""
+    p = d3b_tr_case(**kw)
+    for i, act in enumerate((D2B_ACT1, D2B_ACT2, D4E_ACT3, D4E_ACT4)):
+        k = 0x21 + 0x10 * i
+        p[act + 0x14] = le32(0x0BAD0014 + (k << 8)) + le32(0x00010000 * k + 0x2000) + le32(0x0BAD001C + (k << 8))
+        p[act + 0x2E] = (le16(0x2E00 + k) + le16(0x3000 + k) + le16(0x0100 + k) + le16(w34[i]) + le16(0x3600 + k)
+                         + le16(0x3800 + k))
+        p[act + 0x47] = bytes([0x47, 0x90 + k, 0x49])
+    return p
+
+
+D4E_SPECS += [
+    # 0x4B470 fight_4b470 (d3b's row; mask 0 as there). The raw loads `[esi+8]` again after the
+    # voice (0x4B4A3), after 0x2BC30 (0x4B4BD, the spawn's x and y), after the spawn / 0x1A570
+    # (0x4B4FF, 0x4B504, 0x4B50F) and for the +0x36 store (0x4B52B).
+    Spec("fight_4b470_rr", 0x4B470, [
+        # the first hit, a shadow spawned: the throw and +0x36 land on the actor 0x1A570 left
+        Case("r0", {"eax": D2B_ENT, "edx": 0}, d4e_tr_case(), d3b_tr_stubs(1)),
+        # the first hit, no spawn (0x1A570's AL = 0 under 0x100)
+        Case("r1", {"eax": D2B_ENT, "edx": 5}, d4e_tr_case(b48=0x23, e10=0x0010A1C0, f20=1), d3b_tr_stubs(0x100)),
+        # a later hit: the reversal reads the +0x34 of the actor the spawn left (r2: not 0xFF80) or,
+        # with no spawn, of the one 0x2BC30 left (r3: 0xFF80)
+        Case("r2", {"eax": D2B_ENT, "edx": 2}, d4e_tr_case(f1f=2), d3b_tr_stubs(1)),
+        Case("r3", {"eax": D2B_ENT, "edx": 3}, d4e_tr_case(f1f=0, e10=0x0010A1C0), d3b_tr_stubs(1)),
+        # mode 0x22: no throw, +0x36 alone; and the eighth-hit tail with every gate open
+        Case("r4", {"eax": D2B_ENT, "edx": 7}, d4e_tr_case(f1f=1, mode=0x0022), d3b_tr_stubs(1)),
+        Case("r5", {"eax": D2B_ENT, "edx": 11}, d4e_tr_case(f1f=8, f20=1, b1d=1), d3b_tr_stubs(1)),
+    ], calls=(D4E_TR_VOICE, D4E_TR_ANIM, D4E_TR_SPAWN, D4E_TR_BIT15, D3B_4BD98, D3B_4CB18), eax_mask=0,
+       mutants=("@cv", "@ca", "@cs", "@cb", "@cache")),
+]
 D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

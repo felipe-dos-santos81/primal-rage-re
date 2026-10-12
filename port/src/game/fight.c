@@ -2998,13 +2998,16 @@ int fight_4af04(u32 side)
  * launch). EAX = entry, EDX = si. */
 void fight_4b470(u32 entry, u32 index)
 {
-    u32 rec = DSD(entry + 8u);
-    /* The id is from the record's +0x48 byte, not EDX: 0x4B47B..0x4B489
+    u32 rec;
+    /* The entry's actor +8 is loaded again after each call, as the raw does
+     * (0x4B4A3, 0x4B4BD, 0x4B4FF / 0x4B504 / 0x4B50F, 0x4B52B).
+     * The id is from the record's +0x48 byte, not EDX: 0x4B47B..0x4B489
      * `sub eax,0x20; cmp eax,3; jge` (signed), record k7-k12 §7.2. */
-    (void)sound_voice((s32)DSB(rec + 0x48u) - 0x20 < 3
+    (void)sound_voice((s32)DSB(DSD(entry + 8u) + 0x48u) - 0x20 < 3
                       ? 0xD1u : 0xD0u);             /* 0x4B478..0x4B492, 0x4B497 0x2C3FC */
-    actors_anim_begin(rec, DSD(DS_000C9604 + index * 4u), 0x40400000u); /* 0x4B4B1 */
+    actors_anim_begin(DSD(entry + 8u), DSD(DS_000C9604 + index * 4u), 0x40400000u); /* 0x4B4A3..0x4B4B1 */
     if (DSD(entry + 0x10u) == 0u) {                             /* 0x4B4BB */
+        rec = DSD(entry + 8u);                                  /* 0x4B4BD */
         u32 sh = actor_spawn((const u32 *)(mem + DSD(DS_000BB920 + index * 4u)),
                              DSD(rec + 0x18u),
                              (u32)((s32)DSD(rec + 0x30u) >> 16), 0u, 0u); /* 0x4B4D2 */
@@ -3013,16 +3016,18 @@ void fight_4b470(u32 entry, u32 index)
     if (DSW(DS_00104B00) != 0x22u) {                            /* 0x4B4E5 */
         if (DSB(entry + 0x1Fu) == 1u) {                         /* 0x4B4EF */
             if ((u8)fighter_actor_bit15_clear((u32)DSB(entry + 0x20u)) != 0u) /* 0x4B4F6, 0x4B4FB `test al,al` */
-                DSW(rec + 0x34u) = 0xFF80u;                     /* 0x4B525 */
+                DSW(DSD(entry + 8u) + 0x34u) = 0xFF80u;         /* 0x4B4FF, 0x4B525 */
             else
-                DSW(rec + 0x34u) = 0x0080u;                     /* 0x4B507 */
-        } else if (((s32)DSD(rec + 0x32u) >> 16) == -0x80) {    /* 0x4B518 */
-            DSW(rec + 0x34u) = 0x0080u;                         /* 0x4B51D */
+                DSW(DSD(entry + 8u) + 0x34u) = 0x0080u;         /* 0x4B504/0x4B507 */
         } else {
-            DSW(rec + 0x34u) = 0xFF80u;                         /* 0x4B525 */
+            rec = DSD(entry + 8u);                              /* 0x4B50F */
+            if (((s32)DSD(rec + 0x32u) >> 16) == -0x80)         /* 0x4B518 */
+                DSW(rec + 0x34u) = 0x0080u;                     /* 0x4B51D */
+            else
+                DSW(rec + 0x34u) = 0xFF80u;                     /* 0x4B525 */
         }
     }
-    DSW(rec + 0x36u) = 0x0240u;                                 /* 0x4B52E */
+    DSW(DSD(entry + 8u) + 0x36u) = 0x0240u;                     /* 0x4B52B/0x4B52E */
     DSB(entry + 0x1Eu) = 6u;                                    /* 0x4B537 */
     DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0x7Fu);      /* 0x4B544 */
     if (DSB(DS_00104B1D) == 3u || DSB(DS_00104B1D) == 2u) return;  /* 0x4B547/0x4B54C */

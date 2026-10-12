@@ -30757,6 +30757,51 @@ static void m_d4e_gb_cca(const u32 *r, u32 *eax)   { *eax = d4e_4b5a8_core(r, 2u
 static void m_d4e_gb_c8b(const u32 *r, u32 *eax)   { *eax = d4e_4b5a8_core(r, 4u); }
 static void m_d4e_gb_ccb(const u32 *r, u32 *eax)   { *eax = d4e_4b5a8_core(r, 8u); }
 static void m_d4e_gb_cache(const u32 *r, u32 *eax) { *eax = d2b_4b5a8_core(r, 0u); }
+/* 0x4B470 restated with its `[esi+8]` loads where the raw has them; each bit keeps the actor
+ * across one call (the voice, 0x2BC30, the spawn, 0x1A570); @cache keeps it across all four: the
+ * port before the corrections. EAX = entry, EDX = index. */
+static void d4e_4b470_core(const u32 *r, u32 mut)
+{
+    u32 entry = r[R_EAX], index = r[R_EDX], rec = DSD(entry + 8u);
+    (void)sound_voice((s32)DSB(rec + 0x48u) - 0x20 < 3 ? 0xD1u : 0xD0u);
+    if (!(mut & 1u)) rec = DSD(entry + 8u);                                  /* @cv */
+    actors_anim_begin(rec, DSD(0x000C9604u + index * 4u), 0x40400000u);
+    if (!(mut & 2u)) rec = DSD(entry + 8u);                                  /* @ca */
+    if (DSD(entry + 0x10u) == 0u) {
+        u32 sh = actor_spawn((const u32 *)(void *)(mem + DSD(0x000BB920u + index * 4u)), DSD(rec + 0x18u),
+                             (u32)((s32)DSD(rec + 0x30u) >> 16), 0u, 0u);
+        DSD(entry + 0x10u) = sh;
+        if (!(mut & 4u)) rec = DSD(entry + 8u);                              /* @cs */
+    }
+    if (DSW(0x00104B00u) != 0x22u) {
+        if (DSB(entry + 0x1Fu) == 1u) {
+            int g = fighter_actor_bit15_clear((u32)DSB(entry + 0x20u));
+            if (!(mut & 8u)) rec = DSD(entry + 8u);                          /* @cb */
+            DSW(rec + 0x34u) = ((u8)g != 0u) ? 0xFF80u : 0x0080u;
+        } else if (((s32)DSD(rec + 0x32u) >> 16) == -0x80) {
+            DSW(rec + 0x34u) = 0x0080u;
+        } else {
+            DSW(rec + 0x34u) = 0xFF80u;
+        }
+    }
+    DSW(rec + 0x36u) = 0x0240u;
+    DSB(entry + 0x1Eu) = 6u;
+    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0x7Fu);
+    if (DSB(0x00104B1Du) == 3u || DSB(0x00104B1Du) == 2u) return;
+    if (DSW(0x00104AFCu) != 0u) return;
+    if (DSB(0x001088C1u) != 0u) return;
+    if (((s32)DSD(0x001088EFu) >> 24) <= 1) return;
+    if ((u32)DSB(entry + 0x1Fu) <= 7u) return;
+    if (DSB(0x001088C5u) != 0u) return;
+    if (DSD(0x00108864u) != 0u) return;
+    fight_4bd98(entry);
+    fight_4cb18(entry, index, 0u, (u32)DSB(entry + 0x20u));
+}
+static void m_d4e_tr_cv(const u32 *r, u32 *eax)    { d4e_4b470_core(r, 1u); *eax = 0u; }
+static void m_d4e_tr_ca(const u32 *r, u32 *eax)    { d4e_4b470_core(r, 2u); *eax = 0u; }
+static void m_d4e_tr_cs(const u32 *r, u32 *eax)    { d4e_4b470_core(r, 4u); *eax = 0u; }
+static void m_d4e_tr_cb(const u32 *r, u32 *eax)    { d4e_4b470_core(r, 8u); *eax = 0u; }
+static void m_d4e_tr_cache(const u32 *r, u32 *eax) { d4e_4b470_core(r, 15u); *eax = 0u; }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39430,6 +39475,12 @@ static const binding_t k_bindings[] = {
     { "fight_4b5a8_rr@c8b", m_d4e_gb_c8b, 0x000000FFu },
     { "fight_4b5a8_rr@ccb", m_d4e_gb_ccb, 0x000000FFu },
     { "fight_4b5a8_rr@cache", m_d4e_gb_cache, 0x000000FFu },
+    { "fight_4b470_rr", b_d3b_4b470, 0x00000000u },
+    { "fight_4b470_rr@cv", m_d4e_tr_cv, 0x00000000u },
+    { "fight_4b470_rr@ca", m_d4e_tr_ca, 0x00000000u },
+    { "fight_4b470_rr@cs", m_d4e_tr_cs, 0x00000000u },
+    { "fight_4b470_rr@cb", m_d4e_tr_cb, 0x00000000u },
+    { "fight_4b470_rr@cache", m_d4e_tr_cache, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
