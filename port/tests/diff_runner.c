@@ -19946,6 +19946,93 @@ D2D_PAIR_MUT(rec, 512u)     D2D_PAIR_MUT(field, 1024u)   D2D_PAIR_MUT(stale, 204
 D2D_PAIR_MUT(far, 4096u)    D2D_PAIR_MUT(mid, 8192u)     D2D_PAIR_MUT(pick, 16384u)
 D2D_PAIR_MUT(zone, 0x8000u) D2D_PAIR_MUT(zneg, 0x10000u) D2D_PAIR_MUT(late, 0x20000u)
 D2D_PAIR_MUT(cam, 0x40000u)
+/* 0x14B90's mutants (mutant n of the list in the table; 0 = the port's shape). EAX = slot, EDX = rec.
+ * 0x339AC, 0x396AC and 0x14590 run on both sides; the voice, 0x18B44, 0x3C520, 0x3C148 and 0x3C16C
+ * are stubs. */
+static u32 d2d_14b90_core(const u32 *r, u32 mut)
+{
+    u32 slot = r[R_EAX], rec = r[R_EDX], ctx[6], stream;
+#define M(n) (mut == (n))
+    hit_anim_ctx(ctx, rec);
+    if (!M(2)) (void)sound_voice(M(1) ? 0xB1u : 0xB0u);                             /* @voice @novoice */
+    if (fighter_396ac(M(4) ? ctx[1] : ctx[0], M(3) ? 1u : 0u) != 0) {               /* @sel @gside */
+        DSB(slot + 0x52u) = 9u;
+        DSB(slot + 0x53u) = M(5) ? 7u : 4u;                                         /* @a53 */
+        DSB(slot + 0x54u) = 2u;
+        if (!M(7)) fighter_18b44(M(6) ? ctx[3] : ctx[2]);                           /* @b18 @no18b44 */
+        hit_anim_start_c(rec, M(8) ? 0x000D2F6Au : 0x000D2F56u,                     /* @astream */
+                         M(9) ? 0x3F800000u : DSD(0x0009AFF4u));                    /* @ahold */
+        return 0u;
+    }
+    if (fighter_14590(M(10) ? ctx[1] : ctx[0]) != 0) {                              /* @gate */
+        u32 at = (M(11) ? ctx[2] : ctx[3]) + 0x68u;                                 /* @dec */
+        if (!M(12)) DSB(at) = (u8)(DSB(at) + (M(13) ? 1u : 0xFFu));                 /* @nodec @inc */
+        stream = M(14) ? 0x000D2F6Au : 0x000D2FACu;                                 /* @bstream */
+    } else {
+        stream = M(14) ? 0x000D2FACu : 0x000D2F6Au;
+    }
+    if (M(15)) slot = ctx[2];                                                       /* @slotctx */
+    if (M(16)) DSB(slot + 0x52u) = 9u;                                              /* @early */
+    hit_anim_start_c(rec, stream, 0x3F800000u);
+    if (!M(17)) DSB(slot + 0x57u) = 0u;                                             /* @s57 */
+    DSB(slot + 0x52u) = 9u;
+    DSB(slot + 0x53u) = M(18) ? 4u : 7u;                                            /* @b53 */
+    DSB(slot + 0x54u) = 2u;
+    if (!M(19)) DSD(slot + 0x0Cu) = 0x00014988u;                                    /* @cb0c */
+    DSD(slot + 0x18u) = M(20) ? 0x00014950u : 0x00014938u;                          /* @cbswap */
+    DSD(slot + 0x1Cu) = M(20) ? 0x00014938u : 0x00014950u;
+    if (M(21)) DSD(slot + 0x40u) = 0x00048000u;                                     /* @or */
+    else DSD(slot + 0x40u) |= M(22) ? 0x00040000u : 0x00048000u;                    /* @orbit */
+    if (M(24)) DSB(slot + 0x55u) = 0u;                                              /* @r55slot */
+    else if (!M(23)) DSB(rec + 0x55u) = 0u;                                         /* @r55 */
+    if (M(26)) { fighter_3c16c(ctx[0]); fighter_3c148(ctx[0]); }                    /* @clrorder */
+    else {
+        if (!M(25)) fighter_3c148(M(27) ? ctx[1] : ctx[0]);                         /* @no148 @clrside */
+        fighter_3c16c(ctx[0]);
+    }
+    {
+        u32 xa = DSD((M(30) ? slot : ctx[2]) + 0x2Cu), xb = DSD(ctx[3] + 0x2Cu);    /* @cmpslot */
+        u32 gt = M(28) ? (xa > xb) : M(29) ? ((s32)xa >= (s32)xb) : ((s32)xa > (s32)xb);   /* @cmpuns @cmpge */
+        DSD(0x000FD100u + (M(31) ? ctx[1] : ctx[0]) * 4u) = gt ? 0x2000u : 0x1000u; /* @fdidx */
+    }
+    if (!M(32)) DSB(0x000FD11Au + (M(33) ? ctx[1] : ctx[0])) = 0u;                  /* @fd11a @fdside */
+#undef M
+    return 0u;
+}
+static void b_d2d_14b90(const u32 *r, u32 *eax) { fighter_14b90(r[R_EAX], r[R_EDX], r[R_EBX]); *eax = 0u; }
+static void m_d2d_14b90_voice(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 1u); }
+static void m_d2d_14b90_novoice(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 2u); }
+static void m_d2d_14b90_sel(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 3u); }
+static void m_d2d_14b90_gside(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 4u); }
+static void m_d2d_14b90_a53(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 5u); }
+static void m_d2d_14b90_b18(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 6u); }
+static void m_d2d_14b90_no18b44(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 7u); }
+static void m_d2d_14b90_astream(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 8u); }
+static void m_d2d_14b90_ahold(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 9u); }
+static void m_d2d_14b90_gate(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 10u); }
+static void m_d2d_14b90_dec(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 11u); }
+static void m_d2d_14b90_nodec(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 12u); }
+static void m_d2d_14b90_inc(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 13u); }
+static void m_d2d_14b90_bstream(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 14u); }
+static void m_d2d_14b90_slotctx(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 15u); }
+static void m_d2d_14b90_early(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 16u); }
+static void m_d2d_14b90_s57(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 17u); }
+static void m_d2d_14b90_b53(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 18u); }
+static void m_d2d_14b90_cb0c(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 19u); }
+static void m_d2d_14b90_cbswap(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 20u); }
+static void m_d2d_14b90_or(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 21u); }
+static void m_d2d_14b90_orbit(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 22u); }
+static void m_d2d_14b90_r55(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 23u); }
+static void m_d2d_14b90_r55slot(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 24u); }
+static void m_d2d_14b90_no148(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 25u); }
+static void m_d2d_14b90_clrorder(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 26u); }
+static void m_d2d_14b90_clrside(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 27u); }
+static void m_d2d_14b90_cmpuns(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 28u); }
+static void m_d2d_14b90_cmpge(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 29u); }
+static void m_d2d_14b90_cmpslot(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 30u); }
+static void m_d2d_14b90_fdidx(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 31u); }
+static void m_d2d_14b90_fd11a(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 32u); }
+static void m_d2d_14b90_fdside(const u32 *r, u32 *eax) { *eax = d2d_14b90_core(r, 33u); }
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -23871,6 +23958,40 @@ static const binding_t k_bindings[] = {
     { "camera_mode_track_pair@zneg",         m_d2d_pair_zneg, 0x00000000u },
     { "camera_mode_track_pair@late",         m_d2d_pair_late, 0x00000000u },
     { "camera_mode_track_pair@cam",          m_d2d_pair_cam, 0x00000000u },
+    { "fighter_14b90",                       b_d2d_14b90, 0x00000000u },
+    { "fighter_14b90@voice",                 m_d2d_14b90_voice, 0x00000000u },
+    { "fighter_14b90@novoice",               m_d2d_14b90_novoice, 0x00000000u },
+    { "fighter_14b90@sel",                   m_d2d_14b90_sel, 0x00000000u },
+    { "fighter_14b90@gside",                 m_d2d_14b90_gside, 0x00000000u },
+    { "fighter_14b90@a53",                   m_d2d_14b90_a53, 0x00000000u },
+    { "fighter_14b90@b18",                   m_d2d_14b90_b18, 0x00000000u },
+    { "fighter_14b90@no18b44",               m_d2d_14b90_no18b44, 0x00000000u },
+    { "fighter_14b90@astream",               m_d2d_14b90_astream, 0x00000000u },
+    { "fighter_14b90@ahold",                 m_d2d_14b90_ahold, 0x00000000u },
+    { "fighter_14b90@gate",                  m_d2d_14b90_gate, 0x00000000u },
+    { "fighter_14b90@dec",                   m_d2d_14b90_dec, 0x00000000u },
+    { "fighter_14b90@nodec",                 m_d2d_14b90_nodec, 0x00000000u },
+    { "fighter_14b90@inc",                   m_d2d_14b90_inc, 0x00000000u },
+    { "fighter_14b90@bstream",               m_d2d_14b90_bstream, 0x00000000u },
+    { "fighter_14b90@slotctx",               m_d2d_14b90_slotctx, 0x00000000u },
+    { "fighter_14b90@early",                 m_d2d_14b90_early, 0x00000000u },
+    { "fighter_14b90@s57",                   m_d2d_14b90_s57, 0x00000000u },
+    { "fighter_14b90@b53",                   m_d2d_14b90_b53, 0x00000000u },
+    { "fighter_14b90@cb0c",                  m_d2d_14b90_cb0c, 0x00000000u },
+    { "fighter_14b90@cbswap",                m_d2d_14b90_cbswap, 0x00000000u },
+    { "fighter_14b90@or",                    m_d2d_14b90_or, 0x00000000u },
+    { "fighter_14b90@orbit",                 m_d2d_14b90_orbit, 0x00000000u },
+    { "fighter_14b90@r55",                   m_d2d_14b90_r55, 0x00000000u },
+    { "fighter_14b90@r55slot",               m_d2d_14b90_r55slot, 0x00000000u },
+    { "fighter_14b90@no148",                 m_d2d_14b90_no148, 0x00000000u },
+    { "fighter_14b90@clrorder",              m_d2d_14b90_clrorder, 0x00000000u },
+    { "fighter_14b90@clrside",               m_d2d_14b90_clrside, 0x00000000u },
+    { "fighter_14b90@cmpuns",                m_d2d_14b90_cmpuns, 0x00000000u },
+    { "fighter_14b90@cmpge",                 m_d2d_14b90_cmpge, 0x00000000u },
+    { "fighter_14b90@cmpslot",               m_d2d_14b90_cmpslot, 0x00000000u },
+    { "fighter_14b90@fdidx",                 m_d2d_14b90_fdidx, 0x00000000u },
+    { "fighter_14b90@fd11a",                 m_d2d_14b90_fd11a, 0x00000000u },
+    { "fighter_14b90@fdside",                m_d2d_14b90_fdside, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
