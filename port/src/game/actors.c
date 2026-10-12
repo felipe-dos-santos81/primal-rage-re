@@ -3729,6 +3729,7 @@ void actor_sync(u32 rec)
  * then walk the active list and sync each record. */
 void actors_update(void)
 {
+    PR_SEAM0(0x2A31Cu);
     if (DSB(DS_00104B24) != 0) return;
     if (DSB(DS_00104B26) == 0) {
         u8 c = (u8)(DSB(DS_00105BEC) - 1);

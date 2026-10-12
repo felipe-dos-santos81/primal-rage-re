@@ -415,6 +415,7 @@ void fight_char_join(void)
  * 0x2540F tail writes EAX before reading it). */
 void fight_mode_10_step(void)
 {
+    PR_SEAM0(0x438B4u);
     u32 sub = DSB(DS_00108174);                         /* 0x438BE / 0x438E4 */
     if (DSB(DS_00104B1D) == 3u) {                       /* 0x438B5/0x438BC */
         if (sub == 0u) {                                /* 0x438C3/0x438C5 */
@@ -4649,6 +4650,7 @@ void fight_4bf18(void)
 
 void fight_effects_pass(void)
 {
+    PR_SEAM0(0x49C78u);
     /* The raw's frame locals (record §K13.3): the per-side entry counts, the
      * words [ESP]/[ESP+2] (zeroed on every call, 0x49CC1/0x49CBC); the entry
      * count [ESP+8]; [ESP+0xC] (type 9's count, 0x4A128); case 14's count

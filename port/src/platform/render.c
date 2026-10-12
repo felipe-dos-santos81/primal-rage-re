@@ -263,6 +263,7 @@ void render_scroll_edge(void)
  * dword read at 0x389D2, DS_00107A4A at 0x389FD). */
 void render_scroll_track(void)
 {
+    PR_SEAM0(0x38990u);
     DSW(DS_00107A3C) = (u16)(DSW(DS_000F0AEC) & 0xFFC0u);               /* 0x38999 */
     DSW(DS_00107A4A) = (u16)((s32)DSD(DS_000F0AEC) / 64
                              + (s32)DSW(DS_00107A4E));                  /* 0x389BC */

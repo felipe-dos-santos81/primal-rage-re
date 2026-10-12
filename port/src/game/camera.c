@@ -580,6 +580,7 @@ void camera_mode_center_one(void)
 
 void camera_dispatch(void)
 {
+    PR_SEAM0(0x12D48u);
     switch (DSB(DS_000F0AFE)) {
     case 0: camera_mode_track_player(); break;   /* 0x12D5E -> 0x12DF0 */
     case 1: camera_mode_track_pair();   break;   /* 0x12D65 -> 0x12E3C */
@@ -604,6 +605,7 @@ void camera_dispatch(void)
  * bits before the signed compares. */
 void camera_pair_hold(u32 track)
 {
+    PR_SEAM(0x12FD8u, track);
     s32 mid = (s32)DSD(DS_00108884);
     if ((u8)track == 0u) {                                      /* 0x12FE3 */
         DSD(DS_000F0AF0) = (u32)mid;                            /* 0x1311E/0x13123 */

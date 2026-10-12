@@ -496,6 +496,7 @@ void effects_step(void)
  * shake decay. */
 void camera_shake_decay(void)
 {
+    PR_SEAM0(0x1324Cu);
     s16 vel = (s16)DSW(DS_000F0AF6);
     s16 off = (s16)DSW(DS_000F0AF4);
     s16 sum = (s16)(off + vel);
