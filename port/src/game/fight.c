@@ -476,6 +476,7 @@ void fight_char_prompt(u32 side)
  * 0x4338C, 0x433C4). */
 void fight_char_text_clear(u32 side, u32 flag)
 {
+    PR_SEAM(0x432ECu, side, flag);
     s32 row = 0x1B;                                     /* 0x432F3 */
     if (flag != 0u) {                                   /* 0x432F8 */
         u32 rec = DSD(DS_00108144 + side * 4u);         /* 0x432FF */
@@ -500,6 +501,7 @@ void fight_char_text_clear(u32 side, u32 flag)
  * 0x1B and 0x1C, mode 0x1000. */
 void fight_char_opp_text_clear(u32 side, u32 flag)
 {
+    PR_SEAM(0x433DCu, side, flag);
     if (flag != 0u) {                                   /* 0x433E2 */
         u32 rec = DSD(DS_00108144 + side * 4u);         /* 0x433E9 */
         if (rec != 0u) actor_set_dead(rec);             /* 0x433EF/0x433F5 0x2B150 */
