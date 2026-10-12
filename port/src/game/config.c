@@ -445,6 +445,7 @@ void config_set_credit_row_init(void)
  * eax,0x10; inc eax; mov [0x105c00],eax`. */
 void config_credits_init(void)
 {
+    PR_SEAM0(0x2C304u);
     DSD(DS_00105C00) = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;  /* 0x2C309..0x2C317 */
 }
 

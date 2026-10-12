@@ -25,6 +25,7 @@
  * and clears the bit (the raw's 0x4F7FD `jz 0x4F830`). */
 void attract_palette_advance(void)
 {
+    PR_SEAM0(0x4F7F4u);
     if (DSD(DS_000F0A48) != 0u) {
         u32 handle = DSD(DS_000C98A0 + (u32)DSB(DS_001088F1) * 4u);  /* 0x4F810 */
         DSB(DS_001088F1) = (u8)(DSB(DS_001088F1) + 1u);              /* 0x4F817 */

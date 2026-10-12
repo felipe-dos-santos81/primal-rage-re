@@ -33137,6 +33137,172 @@ D4D_KN_MUT(ch0, 6u)    D4D_KN_MUT(wrapinv, 7u) D4D_KN_MUT(raw32, 8u)   D4D_KN_MU
 D4D_KN_MUT(updown, 11u) D4D_KN_MUT(plus, 12u)  D4D_KN_MUT(f10, 13u)    D4D_KN_MUT(fwide, 14u) D4D_KN_MUT(minus, 15u)
 D4D_KN_MUT(ef, 16u)    D4D_KN_MUT(scan2, 17u)  D4D_KN_MUT(ret, 18u)    D4D_KN_MUT(ret0, 19u)  D4D_KN_MUT(nogt, 20u)
 D4D_KN_MUT(nonul, 22u)
+/* ---- track D5 batch d5d (record 2026-10-12-reverse-d5d) ---- */
+/* Each row's binding is the port function adapted to the original's registers; each mutant is the
+ * function's shape re-stated with one choice changed (`mut` names it, 0 = the port's shape). Every
+ * address a binding or a mutant derives from a poke stays inside the image. */
+/* 0x4F200 flow_screen_reset: EAX = v. 0x4F1D0 and 0x2BAF4 are stubs. Mask 0: the raw returns
+ * 0x2BAF4's EAX and the one caller 0x430F9 goes on to `call 0x25848`, which loads AL (0x2584E) and
+ * clears or reloads EAX on every path before reading more of it (record §1). */
+static void d5d_4f200_core(u32 v, u32 mut)
+{
+    if (mut == 11u) { frontend_origin_zero(); actors_reset_al(1u); }         /* @late */
+    if (mut == 8u) DSW(0x00107A55u) = (u16)v;                                /* @w55 */
+    else if (mut != 1u) DSB(0x00107A55u) = (mut == 2u) ? (u8)(v >> 8) : (u8)v;   /* @no55 @hi */
+    if (mut == 5u) { DSB(0x00107A54u) = (u8)v; DSB(0x00107A55u) = 0u; }      /* @swap */
+    else if (mut != 3u) DSB(0x00107A54u) = (mut == 4u) ? (u8)(v >> 8) : 0u;  /* @no54 @ah */
+    if (mut == 11u) return;
+    if (mut == 6u) actors_reset_al(1u);                                      /* @order */
+    if (mut != 7u) frontend_origin_zero();                                   /* @noorigin */
+    if (mut == 6u || mut == 9u) return;                                      /* @noreset */
+    actors_reset_al((mut == 10u) ? 0u : (mut == 12u) ? v : 1u);              /* @arg0 @argv */
+}
+static void b_d5d_4f200(const u32 *r, u32 *eax) { flow_screen_reset(r[R_EAX]); *eax = 0u; }
+#define D5D_SR_MUT(name, n) \
+    static void m_d5d_4f200_##name(const u32 *r, u32 *eax) { d5d_4f200_core(r[R_EAX], n); *eax = 0u; }
+D5D_SR_MUT(no55, 1u) D5D_SR_MUT(hi, 2u)   D5D_SR_MUT(no54, 3u)     D5D_SR_MUT(ah, 4u)    D5D_SR_MUT(swap, 5u)
+D5D_SR_MUT(order, 6u) D5D_SR_MUT(noorigin, 7u) D5D_SR_MUT(w55, 8u) D5D_SR_MUT(noreset, 9u) D5D_SR_MUT(arg0, 10u)
+D5D_SR_MUT(late, 11u) D5D_SR_MUT(argv, 12u)
+/* 0x292AC attract_scene_tick: no argument. Every table target is recorded: 0x4F7F4 (registered,
+ * seamed here) and 0x4F1D0 are stubs, 0x5D812 runs (`xor eax,eax; ret`; the port does not register
+ * it, and fn_resolve's miss reports it to the seam). Mask 0: the one caller 0x255F3 goes on to
+ * `cmp byte [0x107a54],0`, then 0x389C4 / 0x24C5C, which load EAX first (record §1). */
+static void d5d_tick_call(u32 off)
+{
+    void (*fn)(void) = fn_resolve(DSD(0x000A8744u + off));
+    if (fn != NULL) fn();
+}
+static void d5d_292ac_core(u32 mut)
+{
+    u32 mask = DSD(0x00104AD0u);
+    if (mut == 1u) {                                                         /* @msb */
+        for (u32 b = 32u; b-- > 0u; )
+            if ((mask >> b) & 1u) d5d_tick_call(b * 4u);
+        return;
+    }
+    for (u32 i = 0u, pass = 0u; mask != 0u && pass < 34u; i += 4u, pass++) {
+        if ((mask & 1u) != 0u && !(mut == 2u && i == 0u) && mut != 3u) {     /* @skip0 @nocall */
+            d5d_tick_call((mut == 4u) ? i / 4u : (mut == 5u) ? i + 4u : i);  /* @scale @pre */
+            if (mut == 6u) return;                                           /* @first */
+        }
+        if (mut == 7u) mask = DSD(0x00104AD0u) >> (pass + 1u);               /* @reread */
+        else if (mut == 8u) mask = (u32)((s32)mask >> 1);                    /* @sar */
+        else mask >>= 1;
+    }
+}
+static void b_d5d_292ac(const u32 *r, u32 *eax) { (void)r; attract_scene_tick(); *eax = 0u; }
+#define D5D_ST_MUT(name, n) \
+    static void m_d5d_292ac_##name(const u32 *r, u32 *eax) { (void)r; d5d_292ac_core(n); *eax = 0u; }
+D5D_ST_MUT(msb, 1u) D5D_ST_MUT(skip0, 2u) D5D_ST_MUT(nocall, 3u) D5D_ST_MUT(scale, 4u) D5D_ST_MUT(pre, 5u)
+D5D_ST_MUT(first, 6u) D5D_ST_MUT(reread, 7u) D5D_ST_MUT(sar, 8u)
+/* 0x10EE4 attract_state_reset and 0x10E80 game_state_init (`full`): no argument. 0x4F1E4, 0x2BAF4
+ * and 0x2C304 are stubs (the first and the last seamed here); the run clock 0x32970 runs in the
+ * original only (host-owned; the port omits it). Mask 0: record §1. */
+static void d5d_state_core(u32 full, u32 mut)
+{
+    if (mut == 1u) {                                                         /* @early */
+        DSW(0x00104B00u) = 3u; DSW(0x000F0A64u) = 0u; DSB(0x000F0A71u) = 0u; DSB(0x000F0A6Fu) = 0u;
+    }
+    if (mut == 2u) actors_reset_al(1u);                                      /* @order */
+    if (mut != 3u) frontend_input_reset();                                   /* @noinput */
+    if (mut != 2u && mut != 4u) actors_reset_al((mut == 5u) ? 0u : 1u);      /* @noreset @arg0 */
+    if (mut == 6u) DSD(0x00104B00u) = 3u;                                    /* @modew */
+    else if (mut != 7u) DSW(0x00104B00u) = (mut == 8u) ? 4u : 3u;            /* @nomode @mode */
+    if (mut == 9u) DSD(0x000F0A64u) = 0u;                                    /* @a64w */
+    else if (mut != 10u) DSW(0x000F0A64u) = 0u;                              /* @noa64 */
+    if (mut != 11u) DSB(0x000F0A71u) = 0u;                                   /* @noa71 */
+    if (full) {
+        if (mut == 20u) DSB(0x000F0A5Cu) = 4u;                               /* @a5cb */
+        else if (mut != 21u && mut != 22u) DSD(0x000F0A5Cu) = (mut == 23u) ? 3u : 4u;   /* @noa5c @a5clate @a5cval */
+    }
+    if (mut != 12u) DSB(0x000F0A6Fu) = 0u;                                   /* @noa6f */
+    if (mut == 13u) { DSB(0x000F0A70u) = 0u; DSB(0x000F0A6Eu) = 0u; }        /* @off */
+    if (!full) return;
+    if (mut == 24u) { DSD(0x00104AB8u) = 0u; DSB(0x00104B1Fu) = 0u; }        /* @tailearly */
+    if (mut != 25u) config_credits_init();                                   /* @nocredits */
+    if (mut == 22u) DSD(0x000F0A5Cu) = 4u;
+    if (mut == 24u) return;
+    if (mut == 26u) DSB(0x00104AB8u) = 0u;                                   /* @ab8b */
+    else if (mut != 27u) DSD(0x00104AB8u) = 0u;                              /* @noab8 */
+    if (mut != 28u) DSB(0x00104B1Fu) = 0u;                                   /* @no1f */
+}
+static void b_d5d_10ee4(const u32 *r, u32 *eax) { (void)r; attract_state_reset(); *eax = 0u; }
+static void b_d5d_10e80(const u32 *r, u32 *eax) { (void)r; game_state_init(); *eax = 0u; }
+#define D5D_AS_MUT(name, n) \
+    static void m_d5d_10ee4_##name(const u32 *r, u32 *eax) { (void)r; d5d_state_core(0u, n); *eax = 0u; } \
+    static void m_d5d_10e80_##name(const u32 *r, u32 *eax) { (void)r; d5d_state_core(1u, n); *eax = 0u; }
+#define D5D_GS_MUT(name, n) \
+    static void m_d5d_10e80_##name(const u32 *r, u32 *eax) { (void)r; d5d_state_core(1u, n); *eax = 0u; }
+D5D_AS_MUT(early, 1u) D5D_AS_MUT(order, 2u) D5D_AS_MUT(noinput, 3u) D5D_AS_MUT(noreset, 4u) D5D_AS_MUT(arg0, 5u)
+D5D_AS_MUT(modew, 6u) D5D_AS_MUT(nomode, 7u) D5D_AS_MUT(mode, 8u)   D5D_AS_MUT(a64w, 9u)    D5D_AS_MUT(noa64, 10u)
+D5D_AS_MUT(noa71, 11u) D5D_AS_MUT(noa6f, 12u) D5D_AS_MUT(off, 13u)
+D5D_GS_MUT(a5cb, 20u) D5D_GS_MUT(noa5c, 21u) D5D_GS_MUT(a5clate, 22u) D5D_GS_MUT(a5cval, 23u) D5D_GS_MUT(tailearly, 24u)
+D5D_GS_MUT(nocredits, 25u) D5D_GS_MUT(ab8b, 26u) D5D_GS_MUT(noab8, 27u) D5D_GS_MUT(no1f, 28u)
+static void m_d5d_10ee4_twin(const u32 *r, u32 *eax) { (void)r; d5d_state_core(1u, 0u); *eax = 0u; }
+static void m_d5d_10e80_twin(const u32 *r, u32 *eax) { (void)r; d5d_state_core(0u, 0u); *eax = 0u; }
+/* 0x4F9E4 frontend_wipe_in: no argument; EAX whole (0x4F9A6 `test eax,eax`). 0x2AE14, 0x2B150,
+ * 0x2BAF4 and 0x10D70 are stubs. */
+static u32 d5d_4f9e4_core(u32 mut)
+{
+    if (DSD(0x000C98F0u) == 0u || mut == 1u) {                               /* @gate */
+        u32 h = actor_spawn((const u32 *)(mem + ((mut == 2u) ? 0x000C9908u : 0x000C98F4u)), 0u,
+                            (mut == 3u) ? 0xFEu : 0xFFu, 0u, 0u);            /* @desc @a3 */
+        if (mut != 4u) DSD(0x000C98F0u) = h;                                 /* @nostore */
+        if (mut == 5u) DSD(0x00101508u) = DSD(0x0010150Cu);                  /* @copysrc */
+        else if (mut != 6u) DSD(0x0010150Cu) = DSD(0x00101508u);             /* @copy */
+        if (mut == 7u) DSB(0x001088F4u) = 0u;                                /* @f4spawn */
+    }
+    s8 n = (s8)DSB(0x001088F5u);
+    if ((mut == 8u) ? (u8)n > 0x10u : (mut == 9u) ? (s32)n >= 0x10 : (s32)n > 0x10) {   /* @unsigned @gt */
+        if (mut == 10u) actors_reset_al(1u);                                 /* @resetearly */
+        if (mut == 11u) DSB(0x001088F4u) = 1u;                               /* @f4early */
+        if (mut != 12u) actor_set_dead(DSD(0x000C98F0u));                    /* @nodead */
+        if (mut != 13u) DSD(0x000C98F0u) = 0u;                               /* @keep */
+        if (mut != 10u && mut != 14u) actors_reset_al((mut == 15u) ? 0u : 1u);   /* @noreset @arg0 */
+        if (mut != 16u && mut != 11u) DSB(0x001088F4u) = 1u;                 /* @nof4 */
+        return (mut == 17u) ? 0u : 1u;                                       /* @ret1 */
+    }
+    u32 rec = DSD(0x000C98F0u);
+    u32 word = DSW(((mut == 18u) ? 0x000C993Eu : 0x000C991Cu)
+                   + ((mut == 19u) ? (u32)(u8)n * 2u : (u32)((s32)n * 2))); /* @tbl @zext */
+    if (mut != 20u && mut != 21u) DSB(0x001088F5u) = (u8)(n + 1);            /* @inc @order */
+    if (mut == 22u) actor_pset_word_set(word, rec);                          /* @args */
+    else actor_pset_word_set(rec, word);
+    if (mut == 21u) DSB(0x001088F5u) = (u8)(n + 1);
+    return (mut == 23u) ? 1u : 0u;                                           /* @ret0 */
+}
+static void b_d5d_4f9e4(const u32 *r, u32 *eax) { (void)r; *eax = frontend_wipe_in(); }
+#define D5D_WI_MUT(name, n) \
+    static void m_d5d_4f9e4_##name(const u32 *r, u32 *eax) { (void)r; *eax = d5d_4f9e4_core(n); }
+D5D_WI_MUT(gate, 1u) D5D_WI_MUT(desc, 2u) D5D_WI_MUT(a3, 3u) D5D_WI_MUT(nostore, 4u) D5D_WI_MUT(copysrc, 5u)
+D5D_WI_MUT(copy, 6u) D5D_WI_MUT(f4spawn, 7u) D5D_WI_MUT(unsigned, 8u) D5D_WI_MUT(gt, 9u) D5D_WI_MUT(resetearly, 10u)
+D5D_WI_MUT(f4early, 11u) D5D_WI_MUT(nodead, 12u) D5D_WI_MUT(keep, 13u) D5D_WI_MUT(noreset, 14u) D5D_WI_MUT(arg0, 15u)
+D5D_WI_MUT(nof4, 16u) D5D_WI_MUT(ret1, 17u) D5D_WI_MUT(tbl, 18u) D5D_WI_MUT(zext, 19u) D5D_WI_MUT(inc, 20u)
+D5D_WI_MUT(order, 21u) D5D_WI_MUT(args, 22u) D5D_WI_MUT(ret0, 23u)
+/* 0x4F9A0 frontend_mode_1a_step: no argument. 0x4F9E4 is a stub (seamed here); the hook is the
+ * registered 0x28D68 (run on both sides) or 0x5D812 (recorded). Mask 0: the one caller 0x25403
+ * jumps to the mode tail 0x2540F (record §1). */
+static void d5d_4f9a0_core(u32 mut)
+{
+    u32 w = frontend_wipe_in();
+    if (mut == 1u) w &= 0xFFu;                                               /* @al */
+    if ((w == 0u) != (mut == 2u)) return;                                    /* @inv */
+    if (mut == 3u) { DSB(0x001088F5u) = 0u; DSW(0x00104B00u) = 0x1Bu; }      /* @early */
+    if (mut != 4u) {                                                         /* @nohook */
+        void (*hook)(void) = fn_resolve(DSD(0x00104AE4u));
+        if (hook != NULL) hook();
+    }
+    if (mut == 3u) return;
+    if (mut == 5u) DSW(0x001088F5u) = 0u;                                    /* @f5w */
+    else if (mut != 6u) DSB(0x001088F5u) = (mut == 7u) ? 1u : 0u;            /* @nof5 @f5val */
+    if (mut == 8u) DSB(0x00104B00u) = 0x1Bu;                                 /* @b00b */
+    else if (mut != 9u) DSW(0x00104B00u) = (mut == 10u) ? DSW(0x00104AFAu) : 0x1Bu;   /* @nob00 @twin */
+}
+static void b_d5d_4f9a0(const u32 *r, u32 *eax) { (void)r; frontend_mode_1a_step(); *eax = 0u; }
+#define D5D_MA_MUT(name, n) \
+    static void m_d5d_4f9a0_##name(const u32 *r, u32 *eax) { (void)r; d5d_4f9a0_core(n); *eax = 0u; }
+D5D_MA_MUT(al, 1u) D5D_MA_MUT(inv, 2u) D5D_MA_MUT(early, 3u) D5D_MA_MUT(nohook, 4u) D5D_MA_MUT(f5w, 5u)
+D5D_MA_MUT(nof5, 6u) D5D_MA_MUT(f5val, 7u) D5D_MA_MUT(b00b, 8u) D5D_MA_MUT(nob00, 9u) D5D_MA_MUT(twin, 10u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43161,6 +43327,103 @@ static const binding_t k_bindings[] = {
     { "config_key_name@ret0",                  m_d4d_3157c_ret0, 0x000000FFu },
     { "config_key_name@nogt",                  m_d4d_3157c_nogt, 0x000000FFu },
     { "config_key_name@nonul",                 m_d4d_3157c_nonul, 0x000000FFu },
+    /* ---- track D5 batch d5d (record 2026-10-12-reverse-d5d) ---- */
+    { "flow_screen_reset", b_d5d_4f200, 0x00000000u },
+    { "flow_screen_reset@no55", m_d5d_4f200_no55, 0x00000000u },
+    { "flow_screen_reset@hi", m_d5d_4f200_hi, 0x00000000u },
+    { "flow_screen_reset@no54", m_d5d_4f200_no54, 0x00000000u },
+    { "flow_screen_reset@ah", m_d5d_4f200_ah, 0x00000000u },
+    { "flow_screen_reset@swap", m_d5d_4f200_swap, 0x00000000u },
+    { "flow_screen_reset@order", m_d5d_4f200_order, 0x00000000u },
+    { "flow_screen_reset@noorigin", m_d5d_4f200_noorigin, 0x00000000u },
+    { "flow_screen_reset@w55", m_d5d_4f200_w55, 0x00000000u },
+    { "flow_screen_reset@noreset", m_d5d_4f200_noreset, 0x00000000u },
+    { "flow_screen_reset@arg0", m_d5d_4f200_arg0, 0x00000000u },
+    { "flow_screen_reset@late", m_d5d_4f200_late, 0x00000000u },
+    { "flow_screen_reset@argv", m_d5d_4f200_argv, 0x00000000u },
+    { "attract_scene_tick", b_d5d_292ac, 0x00000000u },
+    { "attract_scene_tick@msb", m_d5d_292ac_msb, 0x00000000u },
+    { "attract_scene_tick@skip0", m_d5d_292ac_skip0, 0x00000000u },
+    { "attract_scene_tick@nocall", m_d5d_292ac_nocall, 0x00000000u },
+    { "attract_scene_tick@scale", m_d5d_292ac_scale, 0x00000000u },
+    { "attract_scene_tick@pre", m_d5d_292ac_pre, 0x00000000u },
+    { "attract_scene_tick@first", m_d5d_292ac_first, 0x00000000u },
+    { "attract_scene_tick@reread", m_d5d_292ac_reread, 0x00000000u },
+    { "attract_scene_tick@sar", m_d5d_292ac_sar, 0x00000000u },
+    { "attract_state_reset", b_d5d_10ee4, 0x00000000u },
+    { "attract_state_reset@early", m_d5d_10ee4_early, 0x00000000u },
+    { "attract_state_reset@order", m_d5d_10ee4_order, 0x00000000u },
+    { "attract_state_reset@noinput", m_d5d_10ee4_noinput, 0x00000000u },
+    { "attract_state_reset@noreset", m_d5d_10ee4_noreset, 0x00000000u },
+    { "attract_state_reset@arg0", m_d5d_10ee4_arg0, 0x00000000u },
+    { "attract_state_reset@modew", m_d5d_10ee4_modew, 0x00000000u },
+    { "attract_state_reset@nomode", m_d5d_10ee4_nomode, 0x00000000u },
+    { "attract_state_reset@mode", m_d5d_10ee4_mode, 0x00000000u },
+    { "attract_state_reset@a64w", m_d5d_10ee4_a64w, 0x00000000u },
+    { "attract_state_reset@noa64", m_d5d_10ee4_noa64, 0x00000000u },
+    { "attract_state_reset@noa71", m_d5d_10ee4_noa71, 0x00000000u },
+    { "attract_state_reset@noa6f", m_d5d_10ee4_noa6f, 0x00000000u },
+    { "attract_state_reset@off", m_d5d_10ee4_off, 0x00000000u },
+    { "attract_state_reset@twin", m_d5d_10ee4_twin, 0x00000000u },
+    { "game_state_init", b_d5d_10e80, 0x00000000u },
+    { "game_state_init@early", m_d5d_10e80_early, 0x00000000u },
+    { "game_state_init@order", m_d5d_10e80_order, 0x00000000u },
+    { "game_state_init@noinput", m_d5d_10e80_noinput, 0x00000000u },
+    { "game_state_init@noreset", m_d5d_10e80_noreset, 0x00000000u },
+    { "game_state_init@arg0", m_d5d_10e80_arg0, 0x00000000u },
+    { "game_state_init@modew", m_d5d_10e80_modew, 0x00000000u },
+    { "game_state_init@nomode", m_d5d_10e80_nomode, 0x00000000u },
+    { "game_state_init@mode", m_d5d_10e80_mode, 0x00000000u },
+    { "game_state_init@a64w", m_d5d_10e80_a64w, 0x00000000u },
+    { "game_state_init@noa64", m_d5d_10e80_noa64, 0x00000000u },
+    { "game_state_init@noa71", m_d5d_10e80_noa71, 0x00000000u },
+    { "game_state_init@noa6f", m_d5d_10e80_noa6f, 0x00000000u },
+    { "game_state_init@off", m_d5d_10e80_off, 0x00000000u },
+    { "game_state_init@a5cb", m_d5d_10e80_a5cb, 0x00000000u },
+    { "game_state_init@noa5c", m_d5d_10e80_noa5c, 0x00000000u },
+    { "game_state_init@a5clate", m_d5d_10e80_a5clate, 0x00000000u },
+    { "game_state_init@a5cval", m_d5d_10e80_a5cval, 0x00000000u },
+    { "game_state_init@tailearly", m_d5d_10e80_tailearly, 0x00000000u },
+    { "game_state_init@nocredits", m_d5d_10e80_nocredits, 0x00000000u },
+    { "game_state_init@ab8b", m_d5d_10e80_ab8b, 0x00000000u },
+    { "game_state_init@noab8", m_d5d_10e80_noab8, 0x00000000u },
+    { "game_state_init@no1f", m_d5d_10e80_no1f, 0x00000000u },
+    { "game_state_init@twin", m_d5d_10e80_twin, 0x00000000u },
+    { "frontend_wipe_in", b_d5d_4f9e4, 0xFFFFFFFFu },
+    { "frontend_wipe_in@gate", m_d5d_4f9e4_gate, 0xFFFFFFFFu },
+    { "frontend_wipe_in@desc", m_d5d_4f9e4_desc, 0xFFFFFFFFu },
+    { "frontend_wipe_in@a3", m_d5d_4f9e4_a3, 0xFFFFFFFFu },
+    { "frontend_wipe_in@nostore", m_d5d_4f9e4_nostore, 0xFFFFFFFFu },
+    { "frontend_wipe_in@copysrc", m_d5d_4f9e4_copysrc, 0xFFFFFFFFu },
+    { "frontend_wipe_in@copy", m_d5d_4f9e4_copy, 0xFFFFFFFFu },
+    { "frontend_wipe_in@f4spawn", m_d5d_4f9e4_f4spawn, 0xFFFFFFFFu },
+    { "frontend_wipe_in@unsigned", m_d5d_4f9e4_unsigned, 0xFFFFFFFFu },
+    { "frontend_wipe_in@gt", m_d5d_4f9e4_gt, 0xFFFFFFFFu },
+    { "frontend_wipe_in@resetearly", m_d5d_4f9e4_resetearly, 0xFFFFFFFFu },
+    { "frontend_wipe_in@f4early", m_d5d_4f9e4_f4early, 0xFFFFFFFFu },
+    { "frontend_wipe_in@nodead", m_d5d_4f9e4_nodead, 0xFFFFFFFFu },
+    { "frontend_wipe_in@keep", m_d5d_4f9e4_keep, 0xFFFFFFFFu },
+    { "frontend_wipe_in@noreset", m_d5d_4f9e4_noreset, 0xFFFFFFFFu },
+    { "frontend_wipe_in@arg0", m_d5d_4f9e4_arg0, 0xFFFFFFFFu },
+    { "frontend_wipe_in@nof4", m_d5d_4f9e4_nof4, 0xFFFFFFFFu },
+    { "frontend_wipe_in@ret1", m_d5d_4f9e4_ret1, 0xFFFFFFFFu },
+    { "frontend_wipe_in@tbl", m_d5d_4f9e4_tbl, 0xFFFFFFFFu },
+    { "frontend_wipe_in@zext", m_d5d_4f9e4_zext, 0xFFFFFFFFu },
+    { "frontend_wipe_in@inc", m_d5d_4f9e4_inc, 0xFFFFFFFFu },
+    { "frontend_wipe_in@order", m_d5d_4f9e4_order, 0xFFFFFFFFu },
+    { "frontend_wipe_in@args", m_d5d_4f9e4_args, 0xFFFFFFFFu },
+    { "frontend_wipe_in@ret0", m_d5d_4f9e4_ret0, 0xFFFFFFFFu },
+    { "frontend_mode_1a_step", b_d5d_4f9a0, 0x00000000u },
+    { "frontend_mode_1a_step@al", m_d5d_4f9a0_al, 0x00000000u },
+    { "frontend_mode_1a_step@inv", m_d5d_4f9a0_inv, 0x00000000u },
+    { "frontend_mode_1a_step@early", m_d5d_4f9a0_early, 0x00000000u },
+    { "frontend_mode_1a_step@nohook", m_d5d_4f9a0_nohook, 0x00000000u },
+    { "frontend_mode_1a_step@f5w", m_d5d_4f9a0_f5w, 0x00000000u },
+    { "frontend_mode_1a_step@nof5", m_d5d_4f9a0_nof5, 0x00000000u },
+    { "frontend_mode_1a_step@f5val", m_d5d_4f9a0_f5val, 0x00000000u },
+    { "frontend_mode_1a_step@b00b", m_d5d_4f9a0_b00b, 0x00000000u },
+    { "frontend_mode_1a_step@nob00", m_d5d_4f9a0_nob00, 0x00000000u },
+    { "frontend_mode_1a_step@twin", m_d5d_4f9a0_twin, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -200,6 +200,7 @@ static void run_process_table(u32 table, u32 mask)
  * body instead of inlining the byte store. */
 void frontend_input_reset(void)
 {
+    PR_SEAM0(0x4F1E4u);
     DSB(DS_00104B15) = 0;                       /* 0x4F1F1 */
 }
 
@@ -994,6 +995,7 @@ void frontend_char_screen_hook_voice(void)
  * gate DS_001088F4 = 1 and 1 returns. */
 u32 frontend_wipe_in(void)
 {
+    PR_SEAM_RET0(0x4F9E4u);
     if (DSD(DS_000C98F0) == 0u) {                       /* 0x4F9EE */
         DSD(DS_000C98F0) = actor_spawn((const u32 *)(mem + DS_000C98F4),
                                        0u, 0xFFu, 0u, 0u);  /* 0x4F9FF/0x4FA04 */
