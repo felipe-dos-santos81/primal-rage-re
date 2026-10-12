@@ -388,6 +388,7 @@ u32 frontend_resource_known(u32 rec)
  * `xor eax,eax`. EBX/ECX/EDX are pushed and popped. */
 void frontend_darken_all(void)
 {
+    PR_SEAM0(0x29B74u);
     effects_clear();                                    /* 0x29B77 0x13DF0 */
     u32 e = frontend_list_next(0u);                     /* 0x29B7E */
     while (e != 0u) {                                   /* 0x29B85/0x29BA0 */
@@ -1861,6 +1862,7 @@ void game_mode_0c_step(void)
  * (0x27A2C) and 0x42CB4 (three sites). */
 u32 flow_continue_poll(u32 side)
 {
+    PR_SEAM_RET(0x42F60u, side);
     if (config_credit_ready() == 0u) return 0u;         /* 0x42F63 0x2C060, 0x42F6A */
     if ((DSD(DS_0009ACBC + side * 4u) & DSD(DS_001088E4)) == 0u)
         return 0u;                                      /* 0x42F6C..0x42F78, 0x42FAA */
@@ -1889,6 +1891,7 @@ u32 flow_continue_poll(u32 side)
  * (0x27A2C). */
 void flow_continue_take(void)
 {
+    PR_SEAM0(0x2791Cu);
     s32 w;
     u8 f;
     s32 n = (s32)strlen((const char *)game_string_get(0x41u)); /* 0x27926 0x1C500, 0x2792B..0x2793B */
@@ -4668,7 +4671,7 @@ static void game_state_3(void)
  * phase DS_000F0A74, then enters phase 4. Phase 4 counts the timer down and
  * continues when the pre-decrement value is zero. Phase 3 hands to state 9.
  * 0x2C06C is called in case 0 only, as the raw does. */
-static void game_state_4(void)
+void game_state_4(void)
 {
     switch (DSW(DS_0009AD98)) {
     case 0:
@@ -4870,6 +4873,7 @@ void prompt_press_start(u32 side, s32 row)
  * so the bound is not reached. */
 void prompt_insert_coin_blink(s32 col, s32 row)
 {
+    PR_SEAM(0x2C1D4u, (u32)col, (u32)row);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x2C1E2..0x2C1EC */
     if (phase != 0u) {                                  /* 0x2C1F1 */
         if (phase == 0x18u)                             /* 0x2C1AD */

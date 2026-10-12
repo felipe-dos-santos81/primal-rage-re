@@ -24959,6 +24959,146 @@ D5I_SPECS += [
        unhit_named={0x1EB0F: "the figure index above 6: the plain row hits it (m3)"},
        mutants=("@prename", "@prescore", "@presel", "@prerow", "@rprename", "@rprescore")),
 ]
+# mode 0xE's callees (0x42F60, 0x2791C, 0x29B74 and 0x2C1D4 seamed by this batch)
+D5I_CONTPOLL = E.Call(0x42F60, ("eax",))
+D5I_CONTTAKE = E.Call(0x2791C, (), clobbers=("ebp",))
+D5I_BTN = E.Call(0x4F778, ("eax",))
+D5I_DARKEN = E.Call(0x29B74, ())
+D5I_COINBLINK = E.Call(0x2C1D4, ("eax", "edx"), clobbers=("ebx", "edx"))
+D5I_M0E_CALLS = (D5I_CONTPOLL, D5I_CONTTAKE, P7_41310, D5I_BTN, VOICE, D5I_DARKEN, D2C_NUMSET, D3A_READY, D3A_BLINK,
+                 D5I_COINBLINK)
+# the same callees leaving what 0x27A2C reads after each: 0x42F60 the side byte 0x10810D = 0 (0x27A40), the
+# byte 0x105C04 = 0 (0x27A7F) and the byte 0x104B1F = 1 (0x27A9E); 0x2791C the side byte = 0x80 (0x27A69);
+# 0x4F778 the frame word 0xEF6DC = 0x40 (0x27ACD) and the count byte 0x108110 = 5 (0x27AE5); 0x2F434 the
+# count byte = 0x10 (0x27B51)
+D5I_M0E_CALLS_W = (
+    d5i_w(D5I_CONTPOLL, (0x0010810D, b"\x00"), (0x00105C04, b"\x00"), (0x00104B1F, b"\x01")),
+    d5i_w(D5I_CONTTAKE, (0x0010810D, b"\x80")), P7_41310,
+    d5i_w(D5I_BTN, (0x000EF6DC, le16(0x0040)), (0x00108110, b"\x05")), VOICE, D5I_DARKEN,
+    d5i_w(D2C_NUMSET, (0x00108110, b"\x10")), D3A_READY, D3A_BLINK, D5I_COINBLINK)
+# and the prompt's: 0x2C060 the side byte = 1 (0x27B71), 0x2C0F4 and 0x2C1D4 the byte 0x104AEC (0x27B97)
+D5I_M0E_CALLS_W2 = (D5I_CONTPOLL, d5i_w(D3A_READY, (0x0010810D, b"\x01")),
+                    d5i_w(D3A_BLINK, (0x00104AEC, b"\x30")), d5i_w(D5I_COINBLINK, (0x00104AEC, b"\x30")))
+# the audit add 0x2DAE4(0x11, 1) made a no-op by its own bytes (D4A_AUDIT_OFF_D's form for field 0x11: its
+# descriptor 0x2D300 + 0x11 * 4 reads 8 nibbles at byte 0 of 0x105DE1, which is negative: 0x2DAEE)
+D5I_AUDIT_OFF_11 = {0x0002D344: le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
+
+
+def d5i_m0e(w=0, c04=0, b1f=1, ef=0x0001, cnt=0x0C, aec=0x5C):
+    """0x27A2C: the side byte 0x10810D `w` and the count byte 0x108110 `cnt` (the dwords read at
+    0x10810A and 0x10810D cover the seeded bytes around them), the bytes 0x105C04 `c04`,
+    0x104B1F `b1f`, 0x104B25 (0x5A) and 0x104AEC `aec`, the frame word 0xEF6DC `ef` and the
+    word 0x104AFA (0x5B5B), each between seeded neighbours; the audit field that turns 0x2DAE4
+    off."""
+    p = {0x0010810A: bytes([0x22, 0x23, 0x24, w, 0x25, 0x26, cnt, 0x27]), 0x00105C03: bytes([0x61, c04, 0x62]),
+         0x00104B1E: bytes([0x63, b1f, 0x64]), 0x000EF6DC: le16(ef) + le16(0x6565),
+         0x00104B24: bytes([0x66, 0x5A, 0x67]), 0x00104AF8: le16(0x6868) + le16(0x5B5B) + le16(0x6969),
+         0x00104AEB: bytes([0x6A, aec, 0x6B])}
+    p.update(D5I_AUDIT_OFF_11)
+    return p
+
+
+D5I_SPECS += [
+    # 0x27A2C game_mode_0e_step: no argument. 0x42F60(the signed side byte 0x10810D), tested whole
+    # (`test eax,eax`: t1 returns 0x100): non-zero stores 0x104B1F = (the side byte != 0) + 1,
+    # runs the audit add 0x2DAE4(0x11, 1) (real in the original only, from the state where it
+    # changes nothing; the port defers it), 0x2791C and 0x41310(the signed side byte, 1), and
+    # returns. Else a tick is forced when the byte 0x105C04 is set (the count 0x108110 = 0xA,
+    # 0x105C04 = 0) or asked of 0x4F778(1) with the 0x104B1F bit 0, else 0x4F778(0) with bit 1
+    # (`and eax,0xff`: b1 returns 0x100). On a tick or the frame word's low byte & 0x3F == 0 the
+    # count is decremented; below 0 (signed byte: x1 goes 0x81 -> 0x80) the voices 0x27 and 0x22,
+    # 0x29D60 (a `ret`), 0x29B74, 0x104B25 = 0 and the word 0x104AFA = 0x1E, and it returns; else
+    # 0x2F434(-1, 0xE, the signed count, 2, 1, 0x4002). Then while the signed count is below 0xE:
+    # 0x2C060 non-zero (whole) -> 0x2C0F4(-1, 0xC, the signed side byte, 0), else 0x2C1D4(0xE,
+    # 0xC); and 0x104AEC |= 2. Every callee is a stub. Mask 0: record §1.
+    Spec("game_mode_0e_step", 0x27A2C, [
+        Case("t0", D5I_REG, d5i_m0e(w=0), {0x42F60: 1}),
+        Case("t1", {}, d5i_m0e(w=1, aec=0xFD), {0x42F60: 0x100, 0x2791C: 0x12345678}),
+        Case("t2", {}, d5i_m0e(w=0x80), {0x42F60: 0xFFFFFFFF}),
+        Case("f0", D5I_REG, d5i_m0e(c04=1, cnt=0x33), {0x2C060: 1}),
+        Case("f1", {}, d5i_m0e(c04=0x80, ef=0x0040, w=1, b1f=3), {0x2C060: 0}),
+        Case("b0", D5I_REG, d5i_m0e(b1f=1, cnt=0x0C, w=0x80), {0x4F778: 1, 0x2C060: 0x100}),
+        Case("b1", {}, d5i_m0e(b1f=2, cnt=0x0D, w=1), {0x4F778: 0x100, 0x2C060: 1}),
+        Case("b2", {}, d5i_m0e(b1f=3, ef=0x0100, cnt=0x0F), {0x4F778: 0, 0x2C060: 1}),
+        Case("b3", {}, d5i_m0e(b1f=0xFC, ef=0x003F, cnt=0x0E), {0x2C060: 1}),
+        Case("b4", {}, d5i_m0e(b1f=0, ef=0x0080, cnt=0x01, aec=0xFF), {0x2C060: 0}),
+        Case("b5", {}, d5i_m0e(b1f=0, cnt=0x90, w=1), {0x2C060: 1}),
+        Case("b6", {}, d5i_m0e(b1f=0, ef=0x0000, cnt=0x80), {0x2C060: 1}),
+        Case("b7", {}, d5i_m0e(b1f=2, ef=0x0020, cnt=0x0C), {0x4F778: 0xFFFFFF00, 0x2C060: 0}),
+        Case("x0", D5I_REG, d5i_m0e(b1f=1, cnt=0x00), {0x4F778: 1, 0x29B74: 0x12345678}),
+        Case("x1", {}, d5i_m0e(b1f=0, ef=0x0000, cnt=0x81), {0x2C3FC: 0xFFFFFFFF}),
+    ], allow_calls=(0x2DAE4, 0x2D974, 0x29D60), calls=D5I_M0E_CALLS, eax_mask=0,
+       mutants=("@pollzext", "@pollal", "@pollinv", "@b1finv", "@b1fside", "@b1flate", "@nob1f", "@b1fw", "@notake",
+                "@noaward", "@awardzext", "@awardamt", "@awardearly", "@takeaec", "@c04inv", "@no8110", "@val8110",
+                "@noc04", "@c04w", "@forcetick0", "@bitswap", "@bit2first", "@btnswap", "@tickeax", "@notick1",
+                "@phmask", "@phword", "@phand", "@dec2", "@nodec", "@eqff", "@le0", "@v1", "@nov1", "@v2", "@nov2",
+                "@vswap", "@nodarken", "@darkenearly", "@nob25", "@b25val", "@b25early", "@afab", "@noafa",
+                "@afaval", "@timeoutaec", "@nonum", "@numcol", "@numrow", "@numpre", "@numw", "@numpad", "@nummode",
+                "@limle", "@limuns", "@credital", "@creditinv", "@pscol", "@psrow", "@pszext", "@pssprite", "@nops",
+                "@iccol", "@icrow", "@noic", "@aecset", "@noaec", "@aecbit")),
+    # 0x27A2C again with stubs that write what the raw reads after each call (D5I_M0E_CALLS_W). r0
+    # takes the continue (0x104B1F = 1 from the side byte 0x42F60 leaves, the award to the side
+    # 0x2791C leaves); r1 polls 0x4F778(1) on the 0x104B1F that 0x42F60 leaves, ticks on the frame
+    # word 0x4F778 leaves, draws the count it leaves less one, and prompts nobody on the count
+    # 0x2F434 leaves.
+    Spec("game_mode_0e_step_rr", 0x27A2C, [
+        Case("r0", {}, d5i_m0e(w=1, c04=1, b1f=0), {0x42F60: 1}),
+        Case("r1", {}, d5i_m0e(w=1, c04=1, b1f=0, ef=0x0001, cnt=0x0C), {0x42F60: 0, 0x4F778: 0, 0x2C060: 1}),
+    ], allow_calls=(0x2DAE4, 0x2D974, 0x29D60), calls=D5I_M0E_CALLS_W, eax_mask=0,
+       unhit_named={a: "not taken under this row's writing stubs (the plain row hits it)"
+                    for a in (0x27A88, 0x27AB3, 0x27AC1, 0x27AE1, 0x27AF7, 0x27B5E, 0x27B67, 0x27B83)},
+       mutants=("@prew0", "@prew1", "@prec04", "@preb1f", "@preef", "@pre8110", "@pre8110b")),
+    # and the prompt's (D5I_M0E_CALLS_W2): no tick; 0x2C0F4 gets the side 0x2C060 leaves, and the
+    # last store ORs into the 0x104AEC the prompt leaves.
+    Spec("game_mode_0e_step_rr2", 0x27A2C, [
+        Case("r0", {}, d5i_m0e(w=0, b1f=0, cnt=0x0C), {0x2C060: 1}),
+        Case("r1", {}, d5i_m0e(w=0, b1f=0, cnt=0x0C), {0x2C060: 0}),
+    ], calls=D5I_M0E_CALLS_W2, eax_mask=0,
+       unhit_named={a: "not taken by this row's two cases (the plain row hits it)"
+                    for a in (0x27A40, 0x27A88, 0x27AAC, 0x27AC1, 0x27AC3, 0x27AE5, 0x27AF7, 0x27B2D)},
+       mutants=("@preside", "@preaec")),
+]
+def d5i_g4(state, timer=0x5B5B, nxt=0x5A5A):
+    """0x11578: the phase word 0x9AD98 `state` (the word after it seeded), the continuation word
+    0xF0A74 `nxt` and the timer word 0xF0A76 `timer`, the words 0xF0A64 (0x5A5A), 0xF0A6A
+    (0x5B5B) and 0xF0A6C (0x5C5C) and the row byte 0x105C05 (0x5A) that a real 0x2C06C
+    stores, each between seeded neighbours."""
+    return {0x0009AD98: le16(state) + le16(0x6161),
+            0x000F0A72: le16(0x6262) + le16(nxt) + le16(timer) + le16(0x6363),
+            0x000F0A62: le16(0x6666) + le16(0x5A5A) + le16(0x6767),
+            0x000F0A68: le16(0x6868) + le16(0x5B5B) + le16(0x5C5C) + le16(0x6969),
+            0x00105C04: bytes([0x6A, 0x5A, 0x6B])}
+
+
+D5I_G_MUT = tuple("@" + n for n in """st5 stbyte novoice voice noinreset resetal noreset norowset rowsetall rowsetval rowsetlate nospawn spdesc spx spa3 spy sp5 swap01 notimer timer timerb nonext next nophase phase no6c v6c no64 v64 no6a v6a nophase3 phase3 nodec dec2 cmpnew s4signed s4byte nocont contsrc""".split())
+D5I_G_MUT += tuple("@p%dl%d%s" % (p, k, f) for p, n in ((0, 8), (1, 12), (2, 13)) for k in range(n)
+                   for f in ("col", "row", "str", "mode", "drop"))
+D5I_SPECS += [
+    # 0x11578 game_state_4: no argument. A jump table (0x11564, five entries; `cmp ax,4; ja`) on
+    # the phase word 0x9AD98. 0, 1, 2 are the three text pages: the voice 0x100, 0x4F1E4,
+    # 0x2BAF4(1), on page 0 alone 0x2C06C(0x1D) (real: it stores the byte 0x105C05), 0x2AE14(the
+    # descriptor 0x9AD84, 0, 0xE0, 0, 0), then 8, 12 and 13 lines 0x2F4BC(col, row, a string of
+    # the image, mode), the timer word 0xF0A76 = 0xB4, the continuation word 0xF0A74 = 1, 2, 3
+    # and the phase 4. 3: the words 0xF0A6C = 0, 0xF0A64 = 9, 0xF0A6A = 1 and the phase 0. 4: the
+    # timer - 1, and the phase = the continuation when the value before the decrement was 0
+    # (`test ax,ax; ja`: unsigned, the word). Above 4 nothing (k5, k6, k7: 0x104). Every other
+    # callee is a stub; 0x2F4BC's string is a mem[] offset. Mask 0: record §1.
+    Spec("game_state_4", 0x11578, [
+        Case("k0", D5I_REG, d5i_g4(0), {0x2AE14: 0x0010A700}),
+        Case("k1", {}, d5i_g4(1), {0x2AE14: 0, 0x2C3FC: 0xFFFFFFFF}),
+        Case("k2", D5I_REG, d5i_g4(2), {0x2AE14: 0xFFFFFFFF, 0x2F4BC: 0x12345678}),
+        Case("k3", {}, d5i_g4(3)),
+        Case("c0", {}, d5i_g4(4, timer=0x0002, nxt=0x0002)),
+        Case("c1", {}, d5i_g4(4, timer=0x0000, nxt=0x0002)),
+        Case("c2", {}, d5i_g4(4, timer=0x0001, nxt=0x0003)),
+        Case("c3", {}, d5i_g4(4, timer=0x8000, nxt=0x0001)),
+        Case("c4", {}, d5i_g4(4, timer=0x0100, nxt=0x0001)),
+        Case("k5", {}, d5i_g4(5)),
+        Case("k6", {}, d5i_g4(0xFFFF)),
+        Case("k7", {}, d5i_g4(0x0104, timer=0x0000, nxt=0x0002)),
+    ], allow_calls=(0x2C06C,), calls=(VOICE, D5I_INRESET, D5I_RESETAL, SPAWN, D2B_HOLD), eax_mask=0,
+       mutants=D5I_G_MUT),
+]
 D1_SPECS += D5I_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

@@ -890,6 +890,10 @@ void game_mode_2d_step(void);
 void game_mode_2e_step(void);
 void game_mode_2f_step(void);
 
+/* 0x11578. State 4's phase machine, the three credit pages (flow.c);
+ * exported for its differential row (track D5 d5i). */
+void game_state_4(void);
+
 void flow_scroll_reset(u32 stage);
 void flow_challenge_open(void);
 void flow_challenge_drop(void);
