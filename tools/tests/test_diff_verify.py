@@ -6432,6 +6432,95 @@ D1_KINDS.update(D1E_KINDS)
 D1_CASES.extend(D1E_CASES)
 
 
+# track D, wave 2, batch d2d (record 2026-10-11-reverse-d2d): the masks, what catches each mutant, and
+# the exact catching case sets, measured row by row with `--function`.
+D2D_MASKS = {
+    "camera_dust_burst": 0x0,
+    "camera_mode_track_pair": 0x0,
+}   # D2D_MASKS end
+D2D_KINDS = {
+    "camera_dust_burst@side": {'call #0'},
+    "camera_dust_burst@bit": {'call #0'},
+    "camera_dust_burst@flag": {'call #0'},
+    "camera_dust_burst@xy": {'call #0'},
+    "camera_dust_burst@add": {'call #0'},
+    "camera_dust_burst@ysext": {'call #0'},
+    "camera_dust_burst@yw": {'call #0'},
+    "camera_dust_burst@desc": {'call #0'},
+    "camera_dust_burst@stream": {'call #1'},
+    "camera_dust_burst@hold": {'call #1'},
+    "camera_dust_burst@nodead": {'call #2', 'call #3', 'call #4', 'call #5'},
+    "camera_dust_burst@deadrec": {'call #2'},
+    "camera_dust_burst@vorder": {'call #3', 'call #4'},
+    "camera_dust_burst@idx": {'byte'},
+    "camera_dust_burst@amount": {'byte'},
+    "camera_dust_burst@early": {'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "camera_dust_burst@late": {'call #1', 'call #2'},
+    "camera_dust_burst@xw": {'call #0'},
+    "camera_mode_track_pair@ab": {'byte', 'call #0', 'call #1'},
+    "camera_mode_track_pair@thr": {'byte', 'call #0', 'call #1'},
+    "camera_mode_track_pair@thrsext": {'byte', 'call #0', 'call #1'},
+    "camera_mode_track_pair@sa": {'byte', 'call #0', 'call #0 memory', 'call #1'},
+    "camera_mode_track_pair@no34a": {'byte', 'call #0 memory', 'call #1 memory'},
+    "camera_mode_track_pair@no2ca": {'byte', 'call #0 memory', 'call #1 memory'},
+    "camera_mode_track_pair@no34b": {'byte', 'call #0 memory', 'call #1 memory'},
+    "camera_mode_track_pair@no2cb": {'byte', 'call #0 memory', 'call #1 memory'},
+    "camera_mode_track_pair@arg": {'call #0'},
+    "camera_mode_track_pair@rec": {'byte', 'call #1 memory'},
+    "camera_mode_track_pair@field": {'byte', 'call #1 memory'},
+    "camera_mode_track_pair@stale": {'byte'},
+    "camera_mode_track_pair@far": {'byte'},
+    "camera_mode_track_pair@mid": {'byte'},
+    "camera_mode_track_pair@pick": {'byte'},
+    "camera_mode_track_pair@zone": {'byte'},
+    "camera_mode_track_pair@zneg": {'byte'},
+    "camera_mode_track_pair@late": {'call #0 memory'},
+    "camera_mode_track_pair@cam": {'byte'},
+}   # D2D_KINDS end
+D2D_CASES = [
+    ("camera_dust_burst@side", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@bit", ['b0', 'b2']),
+    ("camera_dust_burst@flag", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@xy", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@add", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@ysext", ['b0']),
+    ("camera_dust_burst@yw", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@desc", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@stream", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@hold", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@nodead", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@deadrec", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@vorder", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@idx", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@amount", ['b0', 'b2']),
+    ("camera_dust_burst@early", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@late", ['b0', 'b1', 'b2']),
+    ("camera_dust_burst@xw", ['b0', 'b1', 'b2']),
+    ("camera_mode_track_pair@ab", ['p1', 'p13', 'p2', 'p3', 'p4', 'p6']),
+    ("camera_mode_track_pair@thr", ['p5']),
+    ("camera_mode_track_pair@thrsext", ['p7']),
+    ("camera_mode_track_pair@sa", ['p1', 'p13', 'p2', 'p4', 'p6']),
+    ("camera_mode_track_pair@no34a", ['p1', 'p13', 'p2', 'p6']),
+    ("camera_mode_track_pair@no2ca", ['p1', 'p13', 'p2', 'p6']),
+    ("camera_mode_track_pair@no34b", ['p1', 'p13', 'p3', 'p6']),
+    ("camera_mode_track_pair@no2cb", ['p1', 'p13', 'p3', 'p6']),
+    ("camera_mode_track_pair@arg", ['p1', 'p13', 'p2', 'p6']),
+    ("camera_mode_track_pair@rec", ['p1', 'p13', 'p2', 'p6']),
+    ("camera_mode_track_pair@field", ['p1', 'p13', 'p2', 'p6']),
+    ("camera_mode_track_pair@stale", ['p1', 'p2']),
+    ("camera_mode_track_pair@far", ['p8']),
+    ("camera_mode_track_pair@mid", ['p4']),
+    ("camera_mode_track_pair@pick", ['p12', 'p9']),
+    ("camera_mode_track_pair@zone", ['p11']),
+    ("camera_mode_track_pair@zneg", ['p10', 'p2', 'p4', 'p5', 'p6', 'p7']),
+    ("camera_mode_track_pair@late", ['p1', 'p13', 'p2', 'p6']),
+    ("camera_mode_track_pair@cam", ['p0', 'p1', 'p10', 'p12', 'p13', 'p14', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9']),
+]   # D2D_CASES end
+D1_MASKS.update(D2D_MASKS)
+D1_KINDS.update(D2D_KINDS)
+D1_CASES.extend(D2D_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")

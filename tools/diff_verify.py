@@ -13285,6 +13285,91 @@ D1F_SPECS += [
 
 D1_SPECS += D1F_SPECS
 
+# ---- track D, wave 2, batch d2d (record 2026-10-11-reverse-d2d): game/camera.c, actors.c, config.c,
+# platform/gfx.c and input.c functions whose callees are all rowed. Every poke, and every address a
+# binding or mutant derives from one, stays inside the image.
+
+D2D_F0, D2D_F1 = 0x0010A200, 0x0010A280             # zero BSS: the two fighters' records
+D2D_REC, D2D_SP = 0x0010A300, 0x0010A400            # an actor record and the record a SPAWN stub returns
+
+def d2d_burst_case(w0, w1, idx, b5b, x=0x12345678, y=0x00010000, yw=0x0123, dust=D2D_REC):
+    """0x12BB8: both slots' record pointers and the records' +0x28 words between sentinels, the dust
+    record's +0x14..+0x23, the word 0xBD898 between sentinels, the side byte 0x104B1A between
+    sentinels and that slot's +0x5A..+0x5C."""
+    return {DS_SLOTS: le32(D2D_F0), DS_SLOTS + 0x94: le32(D2D_F1),
+            D2D_F0 + 0x26: b"\x26\x27" + le16(w0) + b"\x2a\x2b",
+            D2D_F1 + 0x26: b"\x36\x37" + le16(w1) + b"\x3a\x3b",
+            dust + 0x14: le32(0x14141414) + le32(x) + le32(y) + le32(0x20202020),
+            0x000BD896: b"\x96\x97" + le16(yw) + b"\x9a\x9b",
+            0x00104B19: bytes([0x19, idx, 0x1B]),
+            DS_SLOTS + idx * 0x94 + 0x5A: bytes([0x5A, b5b, 0x5C])}
+def d2d_pair_case(cam, s0, s1, thr=0x5000, step=0xFFFF):
+    """0x12E3C: the camera x and its step word (0xFFFF: 0x12C7C then commits the target exactly),
+    the threshold word 0x9AF28 between sentinels, and per slot its record pointer, +0x28..+0x3F
+    (the +0x34 position and +0x38 latch between seeded dwords) and the record's +0x14..+0x1F."""
+    p = {0x000F0AF0: le32(cam), 0x000F0AFC: le16(step),
+         0x0009AF26: b"\x26\x27" + le16(thr) + b"\x2a\x2b"}
+    for i, (v34, v38) in enumerate((s0, s1)):
+        slot, rec = DS_SLOTS + i * 0x94, (D2D_F0, D2D_F1)[i]
+        p[slot] = le32(rec)
+        p[slot + 0x28] = (le32(0x28282828 + i) + le32(0x2C2C2C2C + i) + le32(0x30303030 + i)
+                          + le32(v34) + le32(v38) + le32(0x3C3C3C3C + i))
+        p[rec + 0x14] = le32(0x14141414 + i) + le32(0x18181818 + i) + le32(0x1C1C1C1C + i)
+    return p
+
+
+D2D_C = 0x00020000                                   # the camera x of the 0x12E3C cases
+D2D_SPECS = [
+    # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
+    # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
+    # (its own row, d1f) runs on both sides, after the three voices (the memory at each voice call
+    # has no +0x5B change yet). Mask 0: the four call sites 0x12AA3/0x12AFF/0x12B51/0x12B9D are
+    # each followed by `mov eax,1` (0x12AA8, 0x12B04, 0x12B56, 0x12BA2).
+    Spec("camera_dust_burst", 0x12BB8, [
+        Case("b0", {"eax": 0, "edx": D2D_REC}, d2d_burst_case(0xBFFF, 0x4000, 1, 0x10, y=0xFFFFFF00, yw=0x8123),
+             {0x2AE14: D2D_SP, 0x2C3FC: 0}),
+        Case("b1", {"eax": 1, "edx": D2D_REC}, d2d_burst_case(0xBFFF, 0x4040, 0, 0x77, x=0x00018000),
+             {0x2AE14: D2D_SP + 0x80}),
+        Case("b2", {"eax": 0, "edx": D2D_REC + 0x40}, d2d_burst_case(0x0040, 0x4000, 2, 0x20, dust=D2D_REC + 0x40),
+             {0x2AE14: D2D_SP}),
+    ], calls=(SPAWN, ANIM_BEGIN, P7_2B150, VOICE), allow_calls=(0x4DBB4,), eax_mask=0,
+       mutants=("@side", "@bit", "@flag", "@xy", "@add", "@ysext", "@yw", "@desc", "@stream", "@hold",
+                "@nodead", "@deadrec", "@vorder", "@idx", "@amount", "@early", "@late", "@xw")),
+    # 0x12E3C camera_mode_track_pair: no argument (0x12D48's mode 1, `call 0x12e3c` 0x12D65).
+    # 0x18714 is the C1_RECORD_X stub; 0x12C7C (its own row, d1h) runs on both sides with the step
+    # word 0xFFFF, so the committed camera x is the target itself. Mask 0: 0x12D48 returns to
+    # `xor ebx,ebx` .. `mov eax,ebx` (0x25427..0x25436; the `je` arm reaches `call 0x33f08`, which
+    # loads EAX at 0x33F15) and to `xor eax,eax` (0x25550). p11 is the correction this row found
+    # (a slot exactly 2^31 left of the camera: `neg` leaves INT_MIN, `jle` 0x12F62 zeroes the
+    # local); `@zone` is the port before it.
+    Spec("camera_mode_track_pair", 0x12E3C, [
+        Case("p0", {}, d2d_pair_case(D2D_C, (D2D_C + 0x100, D2D_C), (D2D_C + 0x200, D2D_C))),
+        Case("p1", {}, d2d_pair_case(D2D_C, (D2D_C + 0x8000, D2D_C + 0x2000), (D2D_C - 0x1000, D2D_C - 0x800)),
+             {0x18714: 0x11111111}),
+        Case("p2", {}, d2d_pair_case(D2D_C, (D2D_C - 0x6000, D2D_C - 0x1900), (D2D_C + 0x1000, D2D_C + 0x1000)),
+             {0x18714: 0x22222222}),
+        Case("p3", {}, d2d_pair_case(D2D_C, (D2D_C - 0x1000, D2D_C - 0x1000), (D2D_C + 0x7000, D2D_C + 0x4000)),
+             {0x18714: 0x33333333}),
+        Case("p4", {}, d2d_pair_case(D2D_C, (D2D_C - 0x4003, D2D_C - 0x5000), (D2D_C + 0x4000, D2D_C + 0x5000))),
+        Case("p5", {}, d2d_pair_case(D2D_C, (D2D_C - 0x2800, D2D_C), (D2D_C + 0x2800, D2D_C))),
+        Case("p6", {}, d2d_pair_case(D2D_C, (D2D_C - 0x4800, D2D_C - 0x1801), (D2D_C + 0x4801, D2D_C + 0x1900),
+                                     thr=0x9000), {0x18714: 0x44444444}),
+        Case("p7", {}, d2d_pair_case(D2D_C, (D2D_C - 0x3000, D2D_C), (D2D_C + 0x3000, D2D_C), thr=0x9000)),
+        Case("p8", {}, d2d_pair_case(D2D_C, (D2D_C - 0x1000, D2D_C - 0x1000), (D2D_C + 0x2000, D2D_C + 0x2000))),
+        Case("p9", {}, d2d_pair_case(D2D_C, (D2D_C + 0x1900, D2D_C + 0x1900), (D2D_C + 0x2000, D2D_C + 0x2000))),
+        Case("p10", {}, d2d_pair_case(D2D_C, (D2D_C - 0x1801, D2D_C - 0x1801), (D2D_C - 0x1800, D2D_C - 0x1800))),
+        Case("p11", {}, d2d_pair_case(0, (0x80000000, 0x80000000), (0x80004000, 0x80004000))),
+        Case("p12", {}, d2d_pair_case(D2D_C, (D2D_C + 0x2000, D2D_C + 0x2000), (D2D_C + 0x1900, D2D_C + 0x1900))),
+        Case("p13", {}, d2d_pair_case(D2D_C, (D2D_C + 0x8000, D2D_C - 0x100), (D2D_C - 0x1000, D2D_C + 0x100)),
+             {0x18714: 0x55555555}),
+        Case("p14", {}, d2d_pair_case(D2D_C, (D2D_C + 0x1900, D2D_C), (D2D_C + 0x1900, D2D_C))),
+    ], calls=(C1_RECORD_X,), allow_calls=(0x12C7C,), eax_mask=0,
+       mutants=("@ab", "@thr", "@thrsext", "@sa", "@no34a", "@no2ca", "@no34b", "@no2cb", "@arg", "@rec",
+                "@field", "@stale", "@far", "@mid", "@pick", "@zone", "@zneg", "@late", "@cam")),
+]   # D2D_SPECS end
+D1_SPECS += D2D_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

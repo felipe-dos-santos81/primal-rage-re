@@ -78,6 +78,10 @@ void camera_mode_track_player(void);
 void camera_mode_center_two(void);
 void camera_mode_center_one(void);
 
+/* 0x12E3C (D2d). 0x12D48's mode 1 body, exported for its own differential
+ * row's binding. */
+void camera_mode_track_pair(void);
+
 /* 0x164C0 (D1h). 1 iff slot[side]'s record +0x24, plus the -1.0f at 0x80580,
  * equals its +0x20; exported for its own differential row's binding. */
 int camera_frame_last(u32 side);

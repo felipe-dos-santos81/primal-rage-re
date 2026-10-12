@@ -463,7 +463,7 @@ void camera_x_commit(s32 arg)
  * when +0x34 > +0x38), storing +0x34 and +0x2C, and rewrites that slot's
  * record +0x18 through 0x18714 (hit_record_x) at 0x12F02/0x12F22, so the
  * record itself stops at the split distance. */
-static void camera_mode_track_pair(void)
+void camera_mode_track_pair(void)
 {
     s32 cam = (s32)DSD(DS_000F0AF0);
     u32 a = ((s32)DSD(DS_001077E4) >= (s32)DSD(DS_00107878)) ? 1u : 0u;

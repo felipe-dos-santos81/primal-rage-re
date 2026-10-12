@@ -19836,6 +19836,116 @@ D1F_RC(order, 32768u)
 D1F_RC(sext, 65536u)
 #undef D1F_RC
 
+/* ---- track D, wave 2, batch d2d (record 2026-10-11-reverse-d2d). Each core is the port's function
+ * with one mutation per bit; every index a mutant derives stays inside mem[]. ---- */
+
+/* 0x12BB8's mutants. EAX = side, EDX = the dust actor's record. The spawn, the stream start, the
+ * retire and the three voices are stubs; 0x4DBB4 runs on both sides. */
+static u32 d2d_12bb8_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], dust = r[R_EDX];
+    u32 fighter = DSD(DS_001077B0 + ((mut & 1u) ? (side ^ 1u) : side) * 0x94u);     /* @side */
+    u32 set = (DSW(fighter + 0x28u) & ((mut & 2u) ? 0x0040u : 0x4000u)) != 0u;      /* @bit */
+    u32 flag5 = (set != ((mut & 4u) != 0u)) ? 0u : 0x4000u;                         /* @flag */
+    u32 x = (mut & 0x20000u) ? (u32)DSW(dust + 0x18u) : DSD(dust + 0x18u);          /* @xw */
+    u32 y = DSD(dust + 0x1Cu) + ((mut & 16u) ? 0u : 0x580u);                        /* @add */
+    u32 w = (mut & 32u) ? (u32)(s32)(s16)DSW(DS_000BD898)                           /* @ysext */
+          : (mut & 64u) ? DSD(DS_000BD898) : (u32)DSW(DS_000BD898);                 /* @yw */
+    if (mut & 8u) { u32 t = x; x = y; y = t; }                                      /* @xy */
+    u32 rec = actor_spawn((const u32 *)(mem + 0x000C976Cu + ((mut & 128u) ? 4u : 0u)),   /* @desc */
+                          x, w, y, flag5);
+    if (mut & 0x10000u) actor_set_dead(dust);                                       /* @late */
+    if (rec != 0) actors_anim_begin(rec, 0x000EF65Au + ((mut & 256u) ? 1u : 0u),    /* @stream */
+                                    (mut & 512u) ? 0x40000000u : 0x40400000u);      /* @hold */
+    if (mut & 0x8000u)                                                              /* @early */
+        fight_slot_5b_add(DS_001077B0 + (u32)DSB(0x00104B1Au) * 0x94u, 1);
+    if (!(mut & (1024u | 0x10000u)))                                                /* @nodead */
+        actor_set_dead((mut & 2048u) ? rec : dust);                                 /* @deadrec */
+    (void)sound_voice((mut & 4096u) ? 0xD6u : 0xBFu);                               /* @vorder */
+    (void)sound_voice((mut & 4096u) ? 0xBFu : 0xD6u);
+    (void)sound_voice(0xCEu);
+    if (!(mut & 0x8000u))
+        fight_slot_5b_add(DS_001077B0 + ((mut & 8192u) ? side : (u32)DSB(0x00104B1Au)) * 0x94u,   /* @idx */
+                          (mut & 16384u) ? 2 : 1);                                  /* @amount */
+    return 0u;
+}
+static void b_d2d_12bb8(const u32 *r, u32 *eax) { camera_dust_burst(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D2D_BURST_MUT(name, bit) \
+    static void m_d2d_burst_##name(const u32 *r, u32 *eax) { *eax = d2d_12bb8_core(r, bit); }
+D2D_BURST_MUT(side, 1u)       D2D_BURST_MUT(bit, 2u)        D2D_BURST_MUT(flag, 4u)
+D2D_BURST_MUT(xy, 8u)         D2D_BURST_MUT(add, 16u)       D2D_BURST_MUT(ysext, 32u)
+D2D_BURST_MUT(yw, 64u)        D2D_BURST_MUT(desc, 128u)     D2D_BURST_MUT(stream, 256u)
+D2D_BURST_MUT(hold, 512u)     D2D_BURST_MUT(nodead, 1024u)  D2D_BURST_MUT(deadrec, 2048u)
+D2D_BURST_MUT(vorder, 4096u)  D2D_BURST_MUT(idx, 8192u)     D2D_BURST_MUT(amount, 16384u)
+D2D_BURST_MUT(early, 0x8000u) D2D_BURST_MUT(late, 0x10000u) D2D_BURST_MUT(xw, 0x20000u)
+/* 0x12E3C's mutants. No argument. 0x18714 is a stub (its EAX is what the pulled slot's record +0x18
+ * takes), 0x12C7C runs on both sides. L[i] is slot i's +0x34 as the raw's two stack locals hold it. */
+static u32 d2d_12e3c_core(u32 mut)
+{
+    u32 cam = DSD(DS_000F0AF0);
+    u32 a = ((s32)DSD(DS_001077E4) >= (s32)DSD(DS_00107878)) ? 1u : 0u;
+    if (mut & 1u) a ^= 1u;                                                          /* @ab */
+    u32 b = 1u - a;
+    const u32 s[2] = { DS_001077B0, DS_001077B0 + 0x94u };
+    u32 L[2], l[2], arg;
+    L[a] = DSD(s[a] + 0x34u);
+    L[b] = DSD(s[b] + 0x34u);
+    u32 diff = L[a] - L[b];
+    s32 mag = (s32)diff < 0 ? (s32)(0u - diff) : (s32)diff;
+    s32 thr = (mut & 4u) ? (s32)(s16)DSW(DS_0009AF28) : (s32)DSW(DS_0009AF28);     /* @thrsext */
+    if ((mut & 2u) ? mag >= thr : mag > thr) {                                      /* @thr */
+        s32 v = (s32)DSD(s[a] + 0x34u), latch = (s32)DSD(s[a] + 0x38u);
+        if ((mut & 8u) ? v > latch : v < latch) {                                   /* @sa */
+            if (!(mut & (16u | 0x20000u))) DSD(s[a] + 0x34u) = (u32)latch;          /* @no34a */
+            if (!(mut & 32u)) DSD(s[a] + 0x2Cu) = (u32)latch;                       /* @no2ca */
+            L[a] = (u32)latch;
+            u32 x = hit_record_x((mut & 256u) ? b : a);                             /* @arg */
+            if (mut & 0x20000u) DSD(s[a] + 0x34u) = (u32)latch;                     /* @late */
+            DSD(DSD(s[(mut & 512u) ? b : a]) + ((mut & 1024u) ? 0x1Cu : 0x18u)) = x;   /* @rec @field */
+        }
+        v = (s32)DSD(s[b] + 0x34u); latch = (s32)DSD(s[b] + 0x38u);
+        if (v > latch) {
+            if (!(mut & 64u)) DSD(s[b] + 0x34u) = (u32)latch;                       /* @no34b */
+            if (!(mut & 128u)) DSD(s[b] + 0x2Cu) = (u32)latch;                      /* @no2cb */
+            L[b] = (u32)latch;
+            u32 x = hit_record_x(b);
+            DSD(DSD(s[b]) + 0x18u) = x;
+        }
+        if (!(mut & 2048u)) {                                                       /* @stale */
+            diff = L[a] - L[b];
+            mag = (s32)diff < 0 ? (s32)(0u - diff) : (s32)diff;
+        }
+    }
+    for (u32 i = 0; i < 2u; i++) {
+        u32 d = L[i] - cam;
+        if (mut & 0x8000u) {                                                        /* @zone: the port before the fix */
+            l[i] = ((s32)d < -0x1800) ? d + 0x1800u : ((s32)d > 0x1800 ? d - 0x1800u : 0u);
+        } else {
+            s32 m = (s32)d < 0 ? (s32)(0u - d) : (s32)d;
+            if (m <= 0x1800) l[i] = 0u;
+            else if ((s32)d <= 0) l[i] = (mut & 0x10000u) ? d - 0x1800u : d + 0x1800u;   /* @zneg */
+            else l[i] = d - 0x1800u;
+        }
+    }
+    if ((mut & 4096u) ? mag >= 0x3000 : mag > 0x3000) {                             /* @far */
+        s32 sum = (s32)(l[0] + l[1]);
+        arg = (mut & 8192u) ? (u32)(sum >> 1) : (u32)(sum / 2);                     /* @mid */
+    } else if (mut & 16384u) arg = l[1] != 0u ? l[1] : l[0];                        /* @pick */
+    else arg = l[0] != 0u ? l[0] : l[1];
+    if (!(mut & 0x40000u)) arg += cam;                                              /* @cam */
+    camera_x_commit((s32)arg);
+    return 0u;
+}
+static void b_d2d_12e3c(const u32 *r, u32 *eax) { (void)r; camera_mode_track_pair(); *eax = 0u; }
+#define D2D_PAIR_MUT(name, bit) \
+    static void m_d2d_pair_##name(const u32 *r, u32 *eax) { (void)r; *eax = d2d_12e3c_core(bit); }
+D2D_PAIR_MUT(ab, 1u)        D2D_PAIR_MUT(thr, 2u)        D2D_PAIR_MUT(thrsext, 4u)
+D2D_PAIR_MUT(sa, 8u)        D2D_PAIR_MUT(no34a, 16u)     D2D_PAIR_MUT(no2ca, 32u)
+D2D_PAIR_MUT(no34b, 64u)    D2D_PAIR_MUT(no2cb, 128u)    D2D_PAIR_MUT(arg, 256u)
+D2D_PAIR_MUT(rec, 512u)     D2D_PAIR_MUT(field, 1024u)   D2D_PAIR_MUT(stale, 2048u)
+D2D_PAIR_MUT(far, 4096u)    D2D_PAIR_MUT(mid, 8192u)     D2D_PAIR_MUT(pick, 16384u)
+D2D_PAIR_MUT(zone, 0x8000u) D2D_PAIR_MUT(zneg, 0x10000u) D2D_PAIR_MUT(late, 0x20000u)
+D2D_PAIR_MUT(cam, 0x40000u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -23721,6 +23831,46 @@ static const binding_t k_bindings[] = {
     { "fight_4e99c@flash",                   m_d1f_rc_flash, 0x00000000u },
     { "fight_4e99c@order",                   m_d1f_rc_order, 0x00000000u },
     { "fight_4e99c@sext",                    m_d1f_rc_sext, 0x00000000u },
+    /* track D, wave 2, batch d2d (record 2026-10-11-reverse-d2d) */
+    { "camera_dust_burst",                 b_d2d_12bb8,          0x00000000u },
+    { "camera_dust_burst@side",            m_d2d_burst_side,     0x00000000u },
+    { "camera_dust_burst@bit",             m_d2d_burst_bit,      0x00000000u },
+    { "camera_dust_burst@flag",            m_d2d_burst_flag,     0x00000000u },
+    { "camera_dust_burst@xy",              m_d2d_burst_xy,       0x00000000u },
+    { "camera_dust_burst@add",             m_d2d_burst_add,      0x00000000u },
+    { "camera_dust_burst@ysext",           m_d2d_burst_ysext,    0x00000000u },
+    { "camera_dust_burst@yw",              m_d2d_burst_yw,       0x00000000u },
+    { "camera_dust_burst@desc",            m_d2d_burst_desc,     0x00000000u },
+    { "camera_dust_burst@stream",          m_d2d_burst_stream,   0x00000000u },
+    { "camera_dust_burst@hold",            m_d2d_burst_hold,     0x00000000u },
+    { "camera_dust_burst@nodead",          m_d2d_burst_nodead,   0x00000000u },
+    { "camera_dust_burst@deadrec",         m_d2d_burst_deadrec,  0x00000000u },
+    { "camera_dust_burst@vorder",          m_d2d_burst_vorder,   0x00000000u },
+    { "camera_dust_burst@idx",             m_d2d_burst_idx,      0x00000000u },
+    { "camera_dust_burst@amount",          m_d2d_burst_amount,   0x00000000u },
+    { "camera_dust_burst@early",           m_d2d_burst_early,    0x00000000u },
+    { "camera_dust_burst@late",            m_d2d_burst_late,     0x00000000u },
+    { "camera_dust_burst@xw",              m_d2d_burst_xw,       0x00000000u },
+    { "camera_mode_track_pair",            b_d2d_12e3c,          0x00000000u },
+    { "camera_mode_track_pair@ab",           m_d2d_pair_ab, 0x00000000u },
+    { "camera_mode_track_pair@thr",          m_d2d_pair_thr, 0x00000000u },
+    { "camera_mode_track_pair@thrsext",      m_d2d_pair_thrsext, 0x00000000u },
+    { "camera_mode_track_pair@sa",           m_d2d_pair_sa, 0x00000000u },
+    { "camera_mode_track_pair@no34a",        m_d2d_pair_no34a, 0x00000000u },
+    { "camera_mode_track_pair@no2ca",        m_d2d_pair_no2ca, 0x00000000u },
+    { "camera_mode_track_pair@no34b",        m_d2d_pair_no34b, 0x00000000u },
+    { "camera_mode_track_pair@no2cb",        m_d2d_pair_no2cb, 0x00000000u },
+    { "camera_mode_track_pair@arg",          m_d2d_pair_arg, 0x00000000u },
+    { "camera_mode_track_pair@rec",          m_d2d_pair_rec, 0x00000000u },
+    { "camera_mode_track_pair@field",        m_d2d_pair_field, 0x00000000u },
+    { "camera_mode_track_pair@stale",        m_d2d_pair_stale, 0x00000000u },
+    { "camera_mode_track_pair@far",          m_d2d_pair_far, 0x00000000u },
+    { "camera_mode_track_pair@mid",          m_d2d_pair_mid, 0x00000000u },
+    { "camera_mode_track_pair@pick",         m_d2d_pair_pick, 0x00000000u },
+    { "camera_mode_track_pair@zone",         m_d2d_pair_zone, 0x00000000u },
+    { "camera_mode_track_pair@zneg",         m_d2d_pair_zneg, 0x00000000u },
+    { "camera_mode_track_pair@late",         m_d2d_pair_late, 0x00000000u },
+    { "camera_mode_track_pair@cam",          m_d2d_pair_cam, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
