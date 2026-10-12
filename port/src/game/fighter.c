@@ -4900,7 +4900,7 @@ void fighter_3f720(u32 side, s32 n)
  * 0x3C480. Then 0x3C148 and the anchor x: ctx[3]'s +0x2C minus the 0x9AFDA
  * word's high half when bit 0x2000 is set, else plus it. Then 0x18B04,
  * ctx[2]'s +0x42 bit 2 cleared and +0x57 = 3. */
-static void fighter_146f0(u32 rec)
+void fighter_146f0(u32 rec)
 {
     u32 ctx[6];
     u32 stream;
@@ -5145,7 +5145,7 @@ void fighter_14d7c(u32 side)
  * 0x3C480 (0x146F0 writes neither). Then 0x3C148 and the anchor x: ctx[3]'s
  * +0x2C minus the 0x9AFEA dword's high half when bit 0x2000 is set, else
  * plus it. Then 0x18B04, ctx[2]'s +0x42 bit 2 cleared and +0x57 = 3. */
-static void fighter_14a5c(u32 rec)
+void fighter_14a5c(u32 rec)
 {
     u32 ctx[6];
     u32 stream;

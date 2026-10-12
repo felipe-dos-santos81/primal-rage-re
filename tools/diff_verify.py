@@ -13285,6 +13285,104 @@ D1F_SPECS += [
 
 D1_SPECS += D1F_SPECS
 
+# ---- track D wave 2, batch d2a (record 2026-10-11-reverse-d2a): game/fighter.c --------------------
+#
+# Every index a case passes (side, state, character) keeps base + index * size inside the image for
+# the binding and for each mutant (the brief's mem[] rule); what a mutant's wrong read finds is
+# seeded with the opposite answer, never left to whatever the image holds.
+
+D2A_SLOT = 0x001077B0            # DS_001077B0: the two 0x94-byte fighter slots
+D2A_R0, D2A_R1, D2A_RX = 0x0010A200, 0x0010A300, 0x0010A400   # zero BSS: the slots' records, and a third
+D2A_HIT_C = E.Call(0x3C520, ("eax", "edx", "s0"), pop=4, clobbers=("edx",))
+D2A_STEP_146F0 = (0x000FD108, 0x000FD11C, 0x0009AFDA)   # the per-side dword, the per-side byte, the constants
+D2A_STEP_14A5C = (0x000FD100, 0x000FD11A, 0x0009AFEA)
+
+
+def d2a_step_case(tw, side, gate, cmd, fd, flag, x_o, dx, y, w, s42=0xFF, xrec=False):
+    """0x146F0/0x14A5C. `gate` makes 0x14590(side) 1 ("pose": the other slot's +0x10 is 0x39CC8;
+    "st": its +0x52 is 0x11) or 0 ("no": neither; "le": the side's 0x107D2C word is negative), and
+    0x14590(1 - side) the opposite. The side's command word, per-side dword and per-side byte are as
+    given; the other side's are chosen so that reading them flips the add/subtract choice (the
+    word: bit 13 alone or bit 12 alone, so no OR), the OR'd bit 13 (the dword) or the arm (the
+    byte). The constants are the dx, y and w words (0x9AFDC/DE/E0 or the twin's), the word before
+    them seeded; the side slot's +0x41..+0x43 and +0x52..+0x58, its record's +0x34..+0x39 and
+    +0x42..+0x47 and the bytes 0x1078F7..FA are seeded. `xrec`: EDX is a third record whose +0x51
+    names the side, so ctx[4] is not EDX."""
+    fd_a, flag_a, k = tw
+    other = 1 - side
+    so, oo = D2A_SLOT + side * 0x94, D2A_SLOT + other * 0x94
+    rs, ro = (D2A_R0, D2A_R1)[side], (D2A_R0, D2A_R1)[other]
+    on = gate in ("pose", "st")
+    sub = bool((cmd if cmd & 0x3000 else cmd | fd) & 0x2000)
+    words, fds, flags, gws = [0, 0], [0, 0], [0, 0], [5, 5]
+    words[side], words[other] = cmd, (0x1000 if sub else 0x2000)
+    fds[side], fds[other] = fd, fd ^ 0x2000
+    flags[side], flags[other] = flag, (0 if flag else 1)
+    if gate == "le":
+        gws[side] = 0x8000
+    p = {so: le32(rs), oo: le32(ro),
+         so + 0x10: le32(0x12345678 if on else 0x00039CC8),
+         oo + 0x10: le32(0x00039CC8 if gate in ("pose", "le") else 0x12349CC8),
+         so + 0x2C: le32(0x00777000), oo + 0x2C: le32(x_o),
+         so + 0x41: bytes([0x41, s42, 0x43]), oo + 0x41: bytes([0x61, 0xFF, 0x63]),
+         so + 0x52: bytes([0x33, 0x53, 0x7F, 0x55, 0x56, 0x77, 0x58]),
+         oo + 0x52: bytes([0x11 if gate == "st" else 0x44, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68]),
+         0x00107D2C: le16(gws[0]) + le16(gws[1]),
+         0x001088E0: le16(words[0]) + le16(words[1]),
+         fd_a: le32(fds[0]) + le32(fds[1]), flag_a: bytes(flags),
+         k - 2: le16(0xAAAA) + le16(0xBBBB) + le16(dx) + le16(y) + le16(w),
+         rs + 0x34: le16(0x3434) + le16(0x3636) + le16(0x3838),
+         rs + 0x42: le16(0x4242) + le16(0x4444) + le16(0x4646),
+         rs + 0x51: bytes([side]), ro + 0x51: bytes([other]),
+         0x001078F7: bytes([0xF7, 0x08, 0x09, 0xFA])}
+    if xrec:
+        p[D2A_RX + 0x34] = le16(0x7434) + le16(0x7636) + le16(0x7838)
+        p[D2A_RX + 0x42] = le16(0x7242) + le16(0x7444) + le16(0x7646)
+        p[D2A_RX + 0x51] = bytes([side])
+    return p
+
+
+def d2a_step_cases(tw):
+    """The six cases both twins take: every block, both sides, both arms, the OR taken and not."""
+    rec = (D2A_R0, D2A_R1)
+    return [
+        Case("c0", {"eax": 0x11111111, "edx": rec[0]},
+             d2a_step_case(tw, 0, "pose", 0x0000, 0x2000, 1, 0x00050000, 0x0011, 0x0080, 0x0019)),
+        Case("c1", {"eax": 0x11111111, "edx": rec[1]},
+             d2a_step_case(tw, 1, "no", 0x1000, 0x2000, 0, 0x00012345, 0x0011, 0x0080, 0x0019)),
+        Case("c2", {"eax": 0x11111111, "edx": rec[0]},
+             d2a_step_case(tw, 0, "st", 0x2000, 0x0000, 0, 0x00000005, 0xFFF0, 0x0080, 0x0019, s42=0x04)),
+        Case("c3", {"eax": 0x11111111, "edx": D2A_RX},
+             d2a_step_case(tw, 1, "le", 0x00FF, 0x1000, 0x80, 0xFFFFFF00, 0xFFF0, 0xFF80, 0x7001, xrec=True)),
+        Case("c4", {"eax": 0x11111111, "edx": rec[1]},
+             d2a_step_case(tw, 1, "pose", 0x3000, 0x0000, 1, 0x00040000, 0x8000, 0x7FFF, 0xFFFF)),
+        Case("c5", {"eax": 0x11111111, "edx": rec[0]},
+             d2a_step_case(tw, 0, "no", 0x0000, 0x0000, 0, 0x00060000, 0x7FFF, 0x0000, 0x0001, s42=0xFB)),
+    ]
+
+
+D2A_STEP_CALLS = (CLEAR34, D2A_HIT_C, HIT_A, P6_1890C, ANCHORX, C1_FACING, VOICE)
+D2A_STEP_MUTANTS = ("@gate", "@oside", "@cmd", "@m30", "@fd", "@flag", "@clr", "@ysh", "@w36", "@w44",
+                    "@rec", "@f8", "@sign", "@x2c", "@dxsh", "@and", "@s57", "@early", "@s54", "@a",
+                    "@order", "@hold", "@voice", "@wide", "@xw")
+
+D2A_SPECS = [
+    # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
+    # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
+    # is not separated from a whole-EAX test (its port returns 0 or 1; record §4). Seven stubs.
+    # Mask 0: the one caller overwrites EAX at once (0x146E0 `mov eax,[esp+8]`).
+    Spec("fighter_146f0", 0x146F0, d2a_step_cases(D2A_STEP_146F0),
+         allow_calls=(0x339AC, 0x14590, 0x33950), calls=D2A_STEP_CALLS, eax_mask=0,
+         mutants=D2A_STEP_MUTANTS + ("@twin",)),
+    # 0x14A5C fighter_14a5c: 0x146F0's twin over 0xFD100/0xFD11A/0x9AFEA and the 0xD2FCC/0xD2F8A
+    # streams; its 0x3C480 arm first stores ctx[2]'s +0x54 = 0 and +0x52 = 9 (0x14B0A, 0x14B12).
+    # Mask 0: the one caller overwrites EAX at once (0x14A4C `mov eax,[esp+8]`).
+    Spec("fighter_14a5c", 0x14A5C, d2a_step_cases(D2A_STEP_14A5C),
+         allow_calls=(0x339AC, 0x14590, 0x33950), calls=D2A_STEP_CALLS, eax_mask=0,
+         mutants=D2A_STEP_MUTANTS + ("@s54z", "@s52", "@late")),
+]
+D1_SPECS += D2A_SPECS
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

@@ -19836,6 +19836,102 @@ D1F_RC(order, 32768u)
 D1F_RC(sext, 65536u)
 #undef D1F_RC
 
+/* ---- track D wave 2, batch d2a (record 2026-10-11-reverse-d2a): game/fighter.c ----------------
+ * Each core re-states its function with one mutation per bit; bit set 0 is the port's logic and
+ * is never bound (the row's binding calls the port function itself). */
+
+/* 0x146F0 and its twin 0x14A5C: EDX = rec (EAX is overwritten unread, 0x146F8/0x14A64). `t` holds
+ * the twin's addresses; the twin alone stores +0x54 = 0 and +0x52 = 9 on the 0x3C480 arm. */
+typedef struct { u32 a, b, fd, flag, k; u32 twin; } d2a_step_t;
+static const d2a_step_t k_d2a_146f0 = { 0x000D2EFCu, 0x000D2EBAu, 0x000FD108u, 0x000FD11Cu, 0x0009AFDAu, 0u };
+static const d2a_step_t k_d2a_14a5c = { 0x000D2FCCu, 0x000D2F8Au, 0x000FD100u, 0x000FD11Au, 0x0009AFEAu, 1u };
+static void d2a_step_stores(const d2a_step_t *t, const u32 *ctx, u32 rec, u32 mut)
+{
+    u32 rw = (mut & 0x400u) ? rec : ctx[4];                              /* @rec: EDX, not ctx[4] */
+    if (!(mut & 0x40000u)) DSB(ctx[2] + 0x54u) = 2u;                     /* @s54 */
+    if (mut & 0x8000000u) DSD(rw + 0x36u) = (u32)(u16)(DSW(t->k + 6u) * 3u);   /* @wide: a dword store */
+    else DSW(rw + 0x36u) = (u16)(DSW(t->k + 6u) * ((mut & 0x100u) ? 1u : 3u));  /* @w36: x1 */
+    if (!(mut & 0x200u)) DSW(rw + 0x44u) = DSW(t->k + 6u);               /* @w44 */
+    DSB(0x001078F8u + ((mut & 0x800u) ? ctx[1] : ctx[0])) = 1u;          /* @f8: the other side's */
+}
+static void d2a_step_tail(const u32 *ctx, u32 mut)
+{
+    DSB(ctx[2] + 0x42u) &= (mut & 0x8000u) ? 0xFDu : 0xFBu;              /* @and: bit 1, not bit 2 */
+    if (!(mut & 0x10000u)) DSB(ctx[2] + 0x57u) = 3u;                     /* @s57 */
+}
+static void d2a_step_core(const d2a_step_t *t, const u32 *r, u32 mut)
+{
+    u32 rec = r[R_EDX], ctx[6], stream, bits, x, dx;
+    int g, sub;
+    hit_anim_ctx(ctx, rec);
+    g = fighter_14590((mut & 2u) ? ctx[1] : ctx[0]) != 0;                /* @oside */
+    if (mut & 1u) g = !g;                                                /* @gate: the streams swapped */
+    stream = g ? t->a : t->b;
+    bits = (u32)DSW(0x001088E0u + ((mut & 4u) ? ctx[1] : ctx[0]) * 2u);  /* @cmd: the other side's word */
+    if ((bits & ((mut & 8u) ? 0x2000u : 0x3000u)) == 0u)                 /* @m30: bit 13 alone gates the OR */
+        bits |= DSD(t->fd + ((mut & 0x10u) ? ctx[1] : ctx[0]) * 4u);     /* @fd: the other side's dword */
+    if (DSB(t->flag + ((mut & 0x20u) ? ctx[1] : ctx[0])) != 0u) {        /* @flag: the other side's byte */
+        if (!(mut & 0x40u)) fighter_3c148(ctx[0]);                       /* @clr: the first 0x3C148 dropped */
+        if (mut & 0x80000u) hit_anim_start_a(rec, stream, 0x3F800000u);  /* @a: 0x3C480 for 0x3C520 */
+        else hit_anim_start_c(rec, stream, (mut & 0x2000000u) ? 0x40000000u : 0x3F800000u);   /* @hold */
+        if (mut & 0x100000u) d2a_step_stores(t, ctx, rec, mut);          /* @order: the stores before 0x1890C */
+        hit_anchor_y(ctx[0], (mut & 0x80u) ? (DSD(t->k + 2u) >> 16)      /* @ysh: a logical shift */
+                                           : (u32)((s32)DSD(t->k + 2u) >> 16));
+        if (!(mut & 0x100000u)) d2a_step_stores(t, ctx, rec, mut);
+    } else {
+        u32 tw = (mut & 0x200000u) ? !t->twin : t->twin;                 /* @twin: the other twin's arm */
+        if (tw && (mut & 0x1000000u)) hit_anim_start_a(rec, stream, 0x3F800000u);   /* @late: the stores after 0x3C480 */
+        if (tw && !(mut & 0x400000u)) DSB(ctx[2] + 0x54u) = 0u;          /* @s54z */
+        if (tw && !(mut & 0x800000u)) DSB(ctx[2] + 0x52u) = 9u;          /* @s52 */
+        if (!(tw && (mut & 0x1000000u))) hit_anim_start_a(rec, stream, 0x3F800000u);
+    }
+    fighter_3c148(ctx[0]);
+    dx = (mut & 0x4000u) ? (DSD(t->k) >> 16) : (u32)((s32)DSD(t->k) >> 16);   /* @dxsh: a logical shift */
+    x = DSD(((mut & 0x2000u) ? ctx[2] : ctx[3]) + 0x2Cu);                /* @x2c: the own slot's x */
+    if (mut & 0x10000000u) x = (u32)DSW(ctx[3] + 0x2Cu);                 /* @xw: a word read */
+    sub = (bits & 0x2000u) != 0u;
+    if (mut & 0x1000u) sub = !sub;                                       /* @sign */
+    hit_anchor_x(ctx[0], sub ? x - dx : dx + x);
+    if (mut & 0x20000u) d2a_step_tail(ctx, mut);                         /* @early: the stores before 0x18B04 */
+    hit_facing_flag(ctx[0]);
+    if (!(mut & 0x20000u)) d2a_step_tail(ctx, mut);
+    (void)sound_voice((mut & 0x4000000u) ? 0xB0u : 0xB1u);               /* @voice */
+}
+static void b_d2a_146f0(const u32 *r, u32 *eax) { fighter_146f0(r[R_EDX]); *eax = 0u; }
+static void b_d2a_14a5c(const u32 *r, u32 *eax) { fighter_14a5c(r[R_EDX]); *eax = 0u; }
+#define D2A_STEP_MUT(name, bit)                                                                    \
+    static void m_d2a_146f0_##name(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_146f0, r, bit); *eax = 0u; } \
+    static void m_d2a_14a5c_##name(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_14a5c, r, bit); *eax = 0u; }
+D2A_STEP_MUT(gate, 1u)
+D2A_STEP_MUT(oside, 2u)
+D2A_STEP_MUT(cmd, 4u)
+D2A_STEP_MUT(m30, 8u)
+D2A_STEP_MUT(fd, 0x10u)
+D2A_STEP_MUT(flag, 0x20u)
+D2A_STEP_MUT(clr, 0x40u)
+D2A_STEP_MUT(ysh, 0x80u)
+D2A_STEP_MUT(w36, 0x100u)
+D2A_STEP_MUT(w44, 0x200u)
+D2A_STEP_MUT(rec, 0x400u)
+D2A_STEP_MUT(f8, 0x800u)
+D2A_STEP_MUT(sign, 0x1000u)
+D2A_STEP_MUT(x2c, 0x2000u)
+D2A_STEP_MUT(dxsh, 0x4000u)
+D2A_STEP_MUT(and, 0x8000u)
+D2A_STEP_MUT(s57, 0x10000u)
+D2A_STEP_MUT(early, 0x20000u)
+D2A_STEP_MUT(s54, 0x40000u)
+D2A_STEP_MUT(a, 0x80000u)
+D2A_STEP_MUT(order, 0x100000u)
+static void m_d2a_146f0_twin(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_146f0, r, 0x200000u); *eax = 0u; }
+static void m_d2a_14a5c_s54z(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_14a5c, r, 0x400000u); *eax = 0u; }
+static void m_d2a_14a5c_s52(const u32 *r, u32 *eax)  { d2a_step_core(&k_d2a_14a5c, r, 0x800000u); *eax = 0u; }
+static void m_d2a_14a5c_late(const u32 *r, u32 *eax) { d2a_step_core(&k_d2a_14a5c, r, 0x1000000u); *eax = 0u; }
+D2A_STEP_MUT(hold, 0x2000000u)
+D2A_STEP_MUT(voice, 0x4000000u)
+D2A_STEP_MUT(wide, 0x8000000u)
+D2A_STEP_MUT(xw, 0x10000000u)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -23721,6 +23817,63 @@ static const binding_t k_bindings[] = {
     { "fight_4e99c@flash",                   m_d1f_rc_flash, 0x00000000u },
     { "fight_4e99c@order",                   m_d1f_rc_order, 0x00000000u },
     { "fight_4e99c@sext",                    m_d1f_rc_sext, 0x00000000u },
+    /* track D wave 2, batch d2a (record 2026-10-11-reverse-d2a) */
+    { "fighter_146f0", b_d2a_146f0, 0x00000000u },
+    { "fighter_146f0@gate", m_d2a_146f0_gate, 0x00000000u },
+    { "fighter_146f0@oside", m_d2a_146f0_oside, 0x00000000u },
+    { "fighter_146f0@cmd", m_d2a_146f0_cmd, 0x00000000u },
+    { "fighter_146f0@m30", m_d2a_146f0_m30, 0x00000000u },
+    { "fighter_146f0@fd", m_d2a_146f0_fd, 0x00000000u },
+    { "fighter_146f0@flag", m_d2a_146f0_flag, 0x00000000u },
+    { "fighter_146f0@clr", m_d2a_146f0_clr, 0x00000000u },
+    { "fighter_146f0@ysh", m_d2a_146f0_ysh, 0x00000000u },
+    { "fighter_146f0@w36", m_d2a_146f0_w36, 0x00000000u },
+    { "fighter_146f0@w44", m_d2a_146f0_w44, 0x00000000u },
+    { "fighter_146f0@rec", m_d2a_146f0_rec, 0x00000000u },
+    { "fighter_146f0@f8", m_d2a_146f0_f8, 0x00000000u },
+    { "fighter_146f0@sign", m_d2a_146f0_sign, 0x00000000u },
+    { "fighter_146f0@x2c", m_d2a_146f0_x2c, 0x00000000u },
+    { "fighter_146f0@dxsh", m_d2a_146f0_dxsh, 0x00000000u },
+    { "fighter_146f0@and", m_d2a_146f0_and, 0x00000000u },
+    { "fighter_146f0@s57", m_d2a_146f0_s57, 0x00000000u },
+    { "fighter_146f0@early", m_d2a_146f0_early, 0x00000000u },
+    { "fighter_146f0@s54", m_d2a_146f0_s54, 0x00000000u },
+    { "fighter_146f0@a", m_d2a_146f0_a, 0x00000000u },
+    { "fighter_146f0@order", m_d2a_146f0_order, 0x00000000u },
+    { "fighter_146f0@hold", m_d2a_146f0_hold, 0x00000000u },
+    { "fighter_146f0@voice", m_d2a_146f0_voice, 0x00000000u },
+    { "fighter_146f0@wide", m_d2a_146f0_wide, 0x00000000u },
+    { "fighter_146f0@xw", m_d2a_146f0_xw, 0x00000000u },
+    { "fighter_146f0@twin", m_d2a_146f0_twin, 0x00000000u },
+    { "fighter_14a5c", b_d2a_14a5c, 0x00000000u },
+    { "fighter_14a5c@gate", m_d2a_14a5c_gate, 0x00000000u },
+    { "fighter_14a5c@oside", m_d2a_14a5c_oside, 0x00000000u },
+    { "fighter_14a5c@cmd", m_d2a_14a5c_cmd, 0x00000000u },
+    { "fighter_14a5c@m30", m_d2a_14a5c_m30, 0x00000000u },
+    { "fighter_14a5c@fd", m_d2a_14a5c_fd, 0x00000000u },
+    { "fighter_14a5c@flag", m_d2a_14a5c_flag, 0x00000000u },
+    { "fighter_14a5c@clr", m_d2a_14a5c_clr, 0x00000000u },
+    { "fighter_14a5c@ysh", m_d2a_14a5c_ysh, 0x00000000u },
+    { "fighter_14a5c@w36", m_d2a_14a5c_w36, 0x00000000u },
+    { "fighter_14a5c@w44", m_d2a_14a5c_w44, 0x00000000u },
+    { "fighter_14a5c@rec", m_d2a_14a5c_rec, 0x00000000u },
+    { "fighter_14a5c@f8", m_d2a_14a5c_f8, 0x00000000u },
+    { "fighter_14a5c@sign", m_d2a_14a5c_sign, 0x00000000u },
+    { "fighter_14a5c@x2c", m_d2a_14a5c_x2c, 0x00000000u },
+    { "fighter_14a5c@dxsh", m_d2a_14a5c_dxsh, 0x00000000u },
+    { "fighter_14a5c@and", m_d2a_14a5c_and, 0x00000000u },
+    { "fighter_14a5c@s57", m_d2a_14a5c_s57, 0x00000000u },
+    { "fighter_14a5c@early", m_d2a_14a5c_early, 0x00000000u },
+    { "fighter_14a5c@s54", m_d2a_14a5c_s54, 0x00000000u },
+    { "fighter_14a5c@a", m_d2a_14a5c_a, 0x00000000u },
+    { "fighter_14a5c@order", m_d2a_14a5c_order, 0x00000000u },
+    { "fighter_14a5c@hold", m_d2a_14a5c_hold, 0x00000000u },
+    { "fighter_14a5c@voice", m_d2a_14a5c_voice, 0x00000000u },
+    { "fighter_14a5c@wide", m_d2a_14a5c_wide, 0x00000000u },
+    { "fighter_14a5c@xw", m_d2a_14a5c_xw, 0x00000000u },
+    { "fighter_14a5c@s54z", m_d2a_14a5c_s54z, 0x00000000u },
+    { "fighter_14a5c@s52", m_d2a_14a5c_s52, 0x00000000u },
+    { "fighter_14a5c@late", m_d2a_14a5c_late, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -78,6 +78,11 @@ void fighter_21f30(u32 slot);                           /* 0x21F30 */
 void fighter_22b28(const u32 ctx[6]);                   /* 0x22B28 */
 void fighter_35050(u32 side);                           /* 0x35050 */
 
+/* PORT: exported for the D2 d2a differential rows (linkage only; record
+ * 2026-10-11-reverse-d2a). */
+void fighter_146f0(u32 rec);                            /* 0x146F0 */
+void fighter_14a5c(u32 rec);                            /* 0x14A5C */
+
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then
  * picks a winner from the two 0x18950 reachabilities and, on an exact tie,
