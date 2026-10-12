@@ -20422,6 +20422,110 @@ static void m_d2d_ft_add(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_
 static void m_d2d_ft_stop8(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 33u); *eax = 0u; }
 static void m_d2d_ft_reloop(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 34u); *eax = 0u; }
 static void m_d2d_ft_late(const u32 *r, u32 *eax) { d2d_2aa70_core(r[R_EAX], r[R_EDX], 35u); *eax = 0u; }
+/* 0x2C060's mutants: `call 0x2caa8; jmp 0x2ca2c`. The 0x2CAA8 call is recorded (real). */
+static u32 d2d_2c060_core(const u32 *r, u32 mut)
+{
+    (void)r;
+    u32 fp = DSB(DS_00105D60), cr = DSD(DS_00105C00);
+    if (mut != 1u) (void)config_not_free_play();                                    /* @nocall */
+    if (mut == 2u) return config_not_free_play();                                   /* @first: returns 0x2CAA8's result */
+    if (mut == 3u) return (fp & cr) != 0u;                                          /* @and */
+    if (mut == 4u) return ((fp | (cr & 0xFFu)) != 0u);                              /* @crb */
+    if (mut == 5u) return ((DSD(DS_00105D60) | cr) != 0u);                          /* @fpw */
+    if (mut == 6u) return cr != 0u;                                                 /* @nofree */
+    return (fp | cr) != 0u;
+}
+static void b_d2d_2c060(const u32 *r, u32 *eax) { (void)r; *eax = config_credit_ready(); }
+static void m_d2d_2c060_nocall(const u32 *r, u32 *eax) { *eax = d2d_2c060_core(r, 1u); }
+static void m_d2d_2c060_first(const u32 *r, u32 *eax) { *eax = d2d_2c060_core(r, 2u); }
+static void m_d2d_2c060_and(const u32 *r, u32 *eax) { *eax = d2d_2c060_core(r, 3u); }
+static void m_d2d_2c060_crb(const u32 *r, u32 *eax) { *eax = d2d_2c060_core(r, 4u); }
+static void m_d2d_2c060_fpw(const u32 *r, u32 *eax) { *eax = d2d_2c060_core(r, 5u); }
+static void m_d2d_2c060_nofree(const u32 *r, u32 *eax) { *eax = d2d_2c060_core(r, 6u); }
+/* 0x2DBC4's mutants (mutant n; 0 = the port's shape). EAX = rec, EDX = table. 0x2DB58 runs on both
+ * sides. */
+static u32 d2d_2dbc4_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    u32 rec = r[R_EAX], table = r[R_EDX];
+    u32 p = hiscore_locate(M(1) ? rec + 1u : rec, table, NULL, NULL);               /* @rec */
+    if (p == 0u) return 0u;
+    u32 desc = DS_0002D3FC + (M(2) ? 0u : table) * 8u;                              /* @desc */
+    u32 value = 0u, nval = M(3) ? 4u : DSW(desc + 4u);                              /* @vb */
+    for (u32 n = 0; n < nval; n++)
+        value = M(4) ? (value | ((u32)DSB(p + n) << (8u * (n & 3u)))) : ((value << 8) | DSB(p + n));   /* @le */
+    p += nval;
+    u32 out = M(5) ? DS_00105EFC + 2u : DS_00105F00;                                /* @out */
+    DSD(DS_00105EFC) = value;
+    for (u32 n = DSW(desc + 6u); n != 0u; n -= 2u) {
+        u32 w = M(6) ? ((u32)DSB(p + 1u) | ((u32)DSB(p) << 8)) : ((u32)DSB(p) | ((u32)DSB(p + 1u) << 8));   /* @wbe */
+        p += 2u;
+        for (u32 k = 0u; k < (M(7) ? 2u : 3u); k++) {                               /* @two */
+            u32 c = w & (M(8) ? 0x3Fu : 0x1Fu);                                     /* @mask */
+            DSB(out++) = (u8)(c != 0u ? c + (M(9) ? 0x41u : 0x40u) : (M(10) ? 0u : 0x20u));   /* @add @space */
+            w >>= M(11) ? 4u : 5u;                                                  /* @shift */
+        }
+    }
+    if (!M(12)) DSB(out) = 0u;                                                      /* @nonul */
+#undef M
+    return mut == 13u ? DS_00105F00 : DS_00105EFC;                                  /* @ret */
+}
+static void b_d2d_2dbc4(const u32 *r, u32 *eax) { *eax = hiscore_read(r[R_EAX], r[R_EDX]); }
+
+/* 0x2DDE4's mutants. EAX = value, EDX = table. 0x2DB58 runs on both sides. */
+static u32 d2d_2dde4_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    u32 value = r[R_EAX], table = r[R_EDX], left = 0u, size = 0u, rank = 0u;
+    u32 p = hiscore_locate(M(1) ? 1u : 0u, table, &left, &size);                    /* @rec */
+    if (p == 0u) return M(2) ? 0u : 0xFFFFFFFFu;                                    /* @miss */
+    u32 nval = DSW(DS_0002D400 + (M(3) ? 0u : table) * 8u);                         /* @desc */
+    u8 buf[4] = { 0, 0, 0, 0 };
+    for (u32 n = nval; n != 0u; n--) {
+        buf[(M(4) ? nval - n : n - 1u) & 3u] = (u8)value;                           /* @le */
+        value >>= 8;
+    }
+    for (;;) {
+        u32 i = 0u;
+        while (i < nval && buf[i & 3u] == DSB(p + i)) i++;
+        if (i < nval && (M(6) ? (s8)buf[i & 3u] > (s8)DSB(p + i)                    /* @signed */
+                         : buf[i & 3u] > DSB(p + i))) {
+            if (!M(7) && (s32)left < 0) return 0xFFFFFFFFu;                         /* @left: the port before the fix */
+            return rank;
+        }
+        if (M(8) && i == nval) return rank;                                         /* @tie */
+        s32 sleft = (s32)left - (s32)size;
+        p += M(9) ? nval : size;                                                    /* @stride */
+        rank++;
+        if (M(10) ? sleft <= 0 : sleft < 0) return 0xFFFFFFFFu;                     /* @end */
+        left = (u32)sleft;
+    }
+#undef M
+}
+static void b_d2d_2dde4(const u32 *r, u32 *eax) { *eax = hiscore_rank_probe(r[R_EAX], r[R_EDX]); }
+static void m_d2d_2dbc4_rec(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 1u); }
+static void m_d2d_2dbc4_desc(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 2u); }
+static void m_d2d_2dbc4_vb(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 3u); }
+static void m_d2d_2dbc4_le(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 4u); }
+static void m_d2d_2dbc4_out(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 5u); }
+static void m_d2d_2dbc4_wbe(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 6u); }
+static void m_d2d_2dbc4_two(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 7u); }
+static void m_d2d_2dbc4_mask(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 8u); }
+static void m_d2d_2dbc4_add(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 9u); }
+static void m_d2d_2dbc4_space(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 10u); }
+static void m_d2d_2dbc4_shift(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 11u); }
+static void m_d2d_2dbc4_nonul(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 12u); }
+static void m_d2d_2dbc4_ret(const u32 *r, u32 *eax) { *eax = d2d_2dbc4_core(r, 13u); }
+
+static void m_d2d_2dde4_rec(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 1u); }
+static void m_d2d_2dde4_miss(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 2u); }
+static void m_d2d_2dde4_desc(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 3u); }
+static void m_d2d_2dde4_le(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 4u); }
+static void m_d2d_2dde4_signed(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 6u); }
+static void m_d2d_2dde4_left(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 7u); }
+static void m_d2d_2dde4_tie(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 8u); }
+static void m_d2d_2dde4_stride(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 9u); }
+static void m_d2d_2dde4_end(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 10u); }
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -24524,6 +24628,37 @@ static const binding_t k_bindings[] = {
     { "frame_timer@stop8",                   m_d2d_ft_stop8, 0x00000000u },
     { "frame_timer@reloop",                  m_d2d_ft_reloop, 0x00000000u },
     { "frame_timer@late",                    m_d2d_ft_late, 0x00000000u },
+    { "config_credit_ready",                 b_d2d_2c060, 0xFFFFFFFFu },
+    { "config_credit_ready@nocall",          m_d2d_2c060_nocall, 0xFFFFFFFFu },
+    { "config_credit_ready@first",           m_d2d_2c060_first, 0xFFFFFFFFu },
+    { "config_credit_ready@and",             m_d2d_2c060_and, 0xFFFFFFFFu },
+    { "config_credit_ready@crb",             m_d2d_2c060_crb, 0xFFFFFFFFu },
+    { "config_credit_ready@fpw",             m_d2d_2c060_fpw, 0xFFFFFFFFu },
+    { "config_credit_ready@nofree",          m_d2d_2c060_nofree, 0xFFFFFFFFu },
+    { "hiscore_read",                        b_d2d_2dbc4, 0xFFFFFFFFu },
+    { "hiscore_read@rec",                    m_d2d_2dbc4_rec, 0xFFFFFFFFu },
+    { "hiscore_read@desc",                   m_d2d_2dbc4_desc, 0xFFFFFFFFu },
+    { "hiscore_read@vb",                     m_d2d_2dbc4_vb, 0xFFFFFFFFu },
+    { "hiscore_read@le",                     m_d2d_2dbc4_le, 0xFFFFFFFFu },
+    { "hiscore_read@out",                    m_d2d_2dbc4_out, 0xFFFFFFFFu },
+    { "hiscore_read@wbe",                    m_d2d_2dbc4_wbe, 0xFFFFFFFFu },
+    { "hiscore_read@two",                    m_d2d_2dbc4_two, 0xFFFFFFFFu },
+    { "hiscore_read@mask",                   m_d2d_2dbc4_mask, 0xFFFFFFFFu },
+    { "hiscore_read@add",                    m_d2d_2dbc4_add, 0xFFFFFFFFu },
+    { "hiscore_read@space",                  m_d2d_2dbc4_space, 0xFFFFFFFFu },
+    { "hiscore_read@shift",                  m_d2d_2dbc4_shift, 0xFFFFFFFFu },
+    { "hiscore_read@nonul",                  m_d2d_2dbc4_nonul, 0xFFFFFFFFu },
+    { "hiscore_read@ret",                    m_d2d_2dbc4_ret, 0xFFFFFFFFu },
+    { "hiscore_rank_probe",                  b_d2d_2dde4, 0xFFFFFFFFu },
+    { "hiscore_rank_probe@rec",              m_d2d_2dde4_rec, 0xFFFFFFFFu },
+    { "hiscore_rank_probe@miss",             m_d2d_2dde4_miss, 0xFFFFFFFFu },
+    { "hiscore_rank_probe@desc",             m_d2d_2dde4_desc, 0xFFFFFFFFu },
+    { "hiscore_rank_probe@le",               m_d2d_2dde4_le, 0xFFFFFFFFu },
+    { "hiscore_rank_probe@signed",           m_d2d_2dde4_signed, 0xFFFFFFFFu },
+    { "hiscore_rank_probe@left",             m_d2d_2dde4_left, 0xFFFFFFFFu },
+    { "hiscore_rank_probe@tie",              m_d2d_2dde4_tie, 0xFFFFFFFFu },
+    { "hiscore_rank_probe@stride",           m_d2d_2dde4_stride, 0xFFFFFFFFu },
+    { "hiscore_rank_probe@end",              m_d2d_2dde4_end, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

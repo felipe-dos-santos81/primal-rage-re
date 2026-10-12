@@ -13541,6 +13541,39 @@ def d2d_ft_case(words=(0x0123,), ef6dc=0, bec=7, ae0=0, children=None, **rec):
         p.update(d1d_chunks(D2D_POOL + k * 0x68, d2d_ft_rec(stream=D2D_STREAM + 0x20 * k, tag=0x11 * k, **kw)))
         p[D2D_STREAM + 0x20 * k] = le16(0xDDDD) + le16(0x0456 + k) + le16(0x0777) * 4
     return p
+D2D_HS = (0x0010A100, 0x0010A200, 0x0010A280)        # the three tables' record blocks of the high-score cases
+
+
+def d2d_hs_case(descs=((10, 4, 8), (1, 4, 0x18), (1, 3, 2)), records=None, out=True):
+    """0x2DBC4/0x2DDE4: d1i_hs_case with the three record blocks in the scratch BSS; `records`
+    ({(table, rec): bytes}) at their place in the blocks; with `out`, the result dword 0x105EFC and
+    the name buffer after it seeded (0x105EF8..0x105F27)."""
+    p = d1i_hs_case(descs=descs, bases=D2D_HS)
+    if out:
+        p[0x00105EF8] = bytes(0xE0 | (k & 0x0F) for k in range(0x30))
+    for (t, rec), data in (records or {}).items():
+        p[D2D_HS[t] + rec * (descs[t][1] + descs[t][2])] = bytes(data)
+    return p
+
+
+def d2d_name(*chars):
+    """Name words: three 5-bit characters each, low field first (0 is a space)."""
+    out = b""
+    for i in range(0, len(chars), 3):
+        a, b, c = chars[i:i + 3]
+        out += le16(a | (b << 5) | (c << 10))
+    return out
+
+
+D2D_HS_REC = bytes([0x12, 0x34, 0x56, 0x78]) + d2d_name(1, 2, 3, 0, 26, 0, 31, 0, 0, 5, 6, 7)
+D2D_HS_REC9 = bytes([0xFF, 0x00, 0x80, 0x01]) + le16(0x8000 | 1 | (2 << 5) | (3 << 10)) + d2d_name(9, 9, 9, 0, 0, 0, 4, 0, 4)
+
+
+def d2d_rank_case(scores, descs=None):
+    """0x2DDE4: table 0 holds `scores` (4-byte big-endian values, 12-byte records, names seeded)."""
+    descs = descs or ((len(scores), 4, 8), (1, 4, 0x18), (1, 3, 2))
+    recs = {(0, i): v.to_bytes(4, "big") + bytes([0x61 + i]) * 8 for i, v in enumerate(scores)}
+    return d2d_hs_case(descs=descs, records=recs, out=False)
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -13739,6 +13772,62 @@ D2D_SPECS = [
     ], calls=(E.Call(0x29F34, ("eax", "edx"), clobbers=("edx",)), C1_ANIM_OPCODE, C1_SPRITE_ID),
        allow_calls=(0x2AA70, 0x2A39C), eax_mask=0,
        mutants=("@gate", "@dead", "@varax", "@vararg", "@noclr", "@parity", "@reload", "@reloadw", "@cmp", "@nan", "@hold100", "@ae0", "@slotw", "@e1w", "@no63", "@childbit", "@child2a", "@childslot", "@child20", "@chainclr", "@chain2a", "@walk4", "@opbit", "@opflag", "@st2", "@noid", "@hold400", "@holdsext", "@holdsrc", "@add", "@stop8", "@reloop", "@late")),
+    # 0x2C060 config_credit_ready: `call 0x2caa8; jmp 0x2ca2c`. 0x2CAA8 runs real and is recorded
+    # (its result is discarded); the tail jump's target 0x2CA2C is this row's second block. Full
+    # mask: `setne al; and eax,0xff` (0x2CA3C/0x2CA3F), and all eight callers `test eax,eax`
+    # (0x11F30, 0x27B63, 0x28CE4, 0x42618, 0x42678, 0x426DB, 0x42F68, 0x432AA).
+    Spec("config_credit_ready", 0x2C060, [
+        Case("q0", {}, d1i_credit_case(0, 0)),
+        Case("q1", {"eax": 0x12345678}, d1i_credit_case(1, 0)),
+        Case("q2", {}, d1i_credit_case(0, 1)),
+        Case("q3", {}, d1i_credit_case(0x00010000, 0)),
+        Case("q4", {}, d1i_credit_case(0x00000300, 0x80)),
+    ], calls=(E.Call(0x2CAA8, (), mode="real"),), eax_mask=0xFFFFFFFF,
+       mutants=("@nocall", "@first", "@and", "@crb", "@fpw", "@nofree")),
+    # 0x2DBC4 hiscore_read: EAX = rec, EDX = table. 0x2DB58 (its own row, d1i) runs on both sides
+    # with both out pointers 0 (`xor ecx,ecx; xor ebx,ebx` 0x2DBCD/0x2DBCF). The value is read
+    # big-endian over the descriptor's +4 byte count (h6: five bytes, the first shifted out), each
+    # name word gives three 5-bit characters low field first. An odd name byte count never ends
+    # the raw's `sub esi,2; jne` and is not cased. Full mask: `mov eax,0x105efc` 0x2DC8F, or the
+    # 0 of 0x2DB58.
+    Spec("hiscore_read", 0x2DBC4, [
+        Case("h0", {"eax": 0, "edx": 0}, d2d_hs_case(records={(0, 0): D2D_HS_REC, (0, 1): D2D_HS_REC9})),
+        Case("h1", {"eax": 9, "edx": 0}, d2d_hs_case(records={(0, 9): D2D_HS_REC9, (0, 8): D2D_HS_REC})),
+        Case("h2", {"eax": 10, "edx": 0}, d2d_hs_case(records={(0, 9): D2D_HS_REC9})),
+        Case("h3", {"eax": 0, "edx": 2}, d2d_hs_case(records={(2, 0): bytes([0xAB, 0xCD, 0xEF]) + d2d_name(31, 0, 17),
+                                                               (0, 0): D2D_HS_REC})),
+        Case("h4", {"eax": 0, "edx": 3}, d2d_hs_case(records={(0, 0): D2D_HS_REC})),
+        Case("h5", {"eax": 1, "edx": 1},
+             d2d_hs_case(descs=((10, 4, 8), (3, 0, 0), (1, 3, 2)), records={(0, 0): D2D_HS_REC})),
+        Case("h6", {"eax": 1, "edx": 1},
+             d2d_hs_case(descs=((10, 4, 8), (2, 5, 4), (1, 3, 2)),
+                         records={(1, 0): bytes([9, 9, 9, 9, 9]) + d2d_name(8, 8, 8, 8, 8, 8),
+                                  (1, 1): bytes([0x11, 0x22, 0x33, 0x44, 0x55]) + d2d_name(1, 0, 2, 0, 3, 0)})),
+    ], allow_calls=(0x2DB58,), eax_mask=0xFFFFFFFF,
+       mutants=("@rec", "@desc", "@vb", "@le", "@out", "@wbe", "@two", "@mask", "@add", "@space", "@shift",
+                "@nonul", "@ret")),
+    # 0x2DDE4 hiscore_rank_probe: EAX = value, EDX = table. 0x2DB58 runs on both sides (rec 0, the
+    # two out dwords on the raw's stack). The value is packed big-endian over the descriptor's +4
+    # byte count into the frame's first four bytes and compared bytewise, unsigned (`ja` 0x2DE5E):
+    # the rank is the count of records that are not beaten. A byte count above 4 would run into
+    # the raw's own frame (the size dword at [esp+4]) and is not cased: the descriptors are the
+    # code object's constants 4/4/3. k7 is the correction this row found (`cmp dword [esp+8],0;
+    # jge` 0x2DE75/0x2DE7A also guards the win); `@left` is the port before it. Full mask.
+    Spec("hiscore_rank_probe", 0x2DDE4, [
+        Case("k0", {"eax": 0x00000500, "edx": 0}, d2d_rank_case([0x900, 0x700, 0x500, 0x300])),
+        Case("k1", {"eax": 0x00000501, "edx": 0}, d2d_rank_case([0x900, 0x700, 0x500, 0x300])),
+        Case("k2", {"eax": 0xFFFFFFFF, "edx": 0}, d2d_rank_case([0x900, 0x700, 0x500, 0x300])),
+        Case("k3", {"eax": 0x00000001, "edx": 0}, d2d_rank_case([0x900, 0x700, 0x500, 0x300])),
+        Case("k4", {"eax": 0x80000000, "edx": 0}, d2d_rank_case([0x7FFFFFFF, 0x700])),
+        Case("k5", {"eax": 0x00000900, "edx": 3}, d2d_rank_case([0x900, 0x700])),
+        Case("k6", {"eax": 0x00123456, "edx": 2},
+             d2d_hs_case(records={(2, 0): bytes([0x12, 0x34, 0x55, 0x01, 0x02]), (0, 0): D2D_HS_REC}, out=False)),
+        Case("k7", {"eax": 0x00000002, "edx": 0},
+             d2d_rank_case([1], descs=((0x8000, 2, 0xFFFE), (1, 4, 0x18), (1, 3, 2)))),
+        Case("k8", {"eax": 0x12345678, "edx": 1},
+             d2d_hs_case(descs=((10, 4, 8), (2, 0, 4), (1, 3, 2)), records={(1, 0): b"\x01\x02\x03\x04"}, out=False)),
+    ], allow_calls=(0x2DB58,), eax_mask=0xFFFFFFFF,
+       mutants=("@rec", "@miss", "@desc", "@le", "@signed", "@left", "@tie", "@stride", "@end")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 
