@@ -1450,14 +1450,22 @@ void ai_manage(u32 side)
 }
 
 /* 0x47208. One side's command word for this frame. The 0x2D974/0x2CAA8 block
- * at 0x47241 (a DIP bit 0x800 plus 0x2CAA8 = config_not_free_play) is inert in
- * the demo: DS_00105D60 (FREE PLAY) is 0, so 0x2CAA8 returns 1 and
- * `(dip & 0x800) && 0x2CAA8() == 0` is false at 0x47237/0x4723B. It is a named
- * gap because it can run under free play. */
+ * at 0x4721B (bit 11 of the field 0x29 plus 0x2CAA8 = config_not_free_play) is
+ * inert in the demo: DS_00105D60 (FREE PLAY) is 0, so 0x2CAA8 returns 1 and
+ * `(field & 0x800) && 0x2CAA8() == 0` is false at 0x47237/0x4723B. Under free
+ * play it draws the string 0x51 and, the two slots' +0x63 differing, clears
+ * the side's DS_001082C8 dword. */
 void fighter_command_generate(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                        /* 0x47216 */
+    if ((config_field_get(0x29u) & 0x800u) != 0u        /* 0x47220, `test ah,8` 0x47225 */
+            && config_not_free_play() == 0u) {          /* 0x4722E, `test eax,eax` 0x47233 */
+        text_cursor_hold_font2(0xA, 7, game_string_get(0x51u), 0x4000u);   /* 0x47241..0x4725C */
+        if (DSB(DS_00107813) != DSB(DS_001078A7)        /* 0x47265..0x47270 */
+                && DSB(ctx[2] + 0x63u) != 0u)           /* 0x47278 */
+            DSD(DS_001082C8 + ctx[0] * 4u) = 0u;        /* 0x47283 */
+    }
     ai_classify(ctx[1]);                                /* 0x47291 */
     {
         u32 slot = ctx[2];
