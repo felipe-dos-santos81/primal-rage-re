@@ -14608,6 +14608,70 @@ D2B_SPECS += [
                 "@fc", "@w2c", "@or10", "@w1c", "@e10", "@f51", "@w2e", "@b4e", "@and40", "@or2", "@type0",
                 "@w34", "@idx", "@hold", "@store", "@type1", "@order")),
 ]
+
+# 0x4DBEC (the winner's crowd, 0x1C entries). 0x5D7DC runs on both sides, recorded (seeded): every
+# entry draws rng(2) twice and the arms need both results. 0x2BE00, 0x49388, 0x29CDC, 0x2BE4C, 0x2AE14
+# (one scratch actor per case) and 0x2BC30 are stubs; 0x249D0, 0x249B0 and 0x496AC run on both sides.
+D2B_PACK = tuple(0x0010A800 + i * 0x24 for i in range(30))        # 0x24-byte nodes, packed
+
+
+def d2b_wc_case(seed, w, nodes, f51=1, ch=(2, 5), y30=0x0500, b48=0x22, f29=0x00, w2e=0x1000):
+    """0x4DBEC: the rng seed; the winner byte DS_0010810D; DS_001088B0 (word) and DS_001088BB (byte)
+    non-zero inside seeded bytes; both slots' record pointer and +0x7A, each record's +0x30 dword (y
+    in the high word) and +0x51 (the other side's values differ); the free list of the first `nodes`
+    packed nodes (+8..+0x23 seeded) and an empty active list; the actor the spawn stub returns."""
+    ring = [D2B_FREE] + list(D2B_PACK[:nodes])
+    buf = bytearray()
+    for i, n in enumerate(ring[1:], 1):
+        buf += le32(ring[(i + 1) % len(ring)]) + le32(ring[i - 1]) + bytes(
+            (0x40 + i * 7 + j) & 0xFF or 0x5A for j in range(0x1C))
+    p = {0x000EF6D8: le32(seed),
+         0x0010810C: bytes([0x0C, w, 0x0E]),
+         0x001088AE: bytes([0xAE, 0xAF]) + le16(0xB0B0) + bytes(range(0xB2, 0xBD)),
+         D2B_LIST: le32(D2B_LIST) + le32(D2B_LIST),
+         D2B_FREE: le32(ring[1 % len(ring)]) + le32(ring[-1]),
+         D2B_NEW + 0x10: le32(0x0BAD0010) + le32(0x0BAD0014) + le32(0x0BAD0018),
+         D2B_NEW + 0x28: bytes([0x28, f29, 0x2A, 0x2B]) + le16(0x2C2C) + le16(w2e) + le16(0x3030) + le16(0x3232)
+         + le16(0x3434) + le16(0x3636),
+         D2B_NEW + 0x47: bytes([0x47, b48, 0x49]),
+         D2B_NEW + 0x4D: bytes([0x4D, 0x77, 0x4F])}
+    for off in range(0, len(buf), 0x40):
+        p[D2B_PACK[0] + off] = bytes(buf[off:off + 0x40])
+    for s in (0, 1):
+        slot, rec = D2B_SLOTS + s * 0x94, (D2B_REC0, D2B_REC1)[s]
+        own = s == w
+        p[slot] = le32(rec)
+        p[slot + 0x79] = bytes([0x79, ch[s], 0x7B])
+        p[rec + 0x30] = le16(0x7777) + le16(y30 if own else y30 ^ 0x0155) + le16(0x3434)
+        p[rec + 0x50] = bytes([0x50, f51 if own else (0 if f51 else 1), 0x52])
+    return p
+
+
+def d2b_wc_stubs(pos, x, pick=0, val=0x11111111):
+    return {0x2BE00: pos, 0x2BE4C: x, 0x49388: pick, 0x29CDC: val, 0x2AE14: D2B_NEW}
+
+
+D2B_SPECS += [
+    # 0x4DBEC fight_4dbec: no argument. EAX dies unread at both call sites (0x2766D and 0x29838: the
+    # walk is dead on every path): mask 0.
+    Spec("fight_4dbec", 0x4DBEC, [
+        # a full run of 0x1C entries (29 free nodes): a position of 0x100 (the left targets go negative)
+        Case("w0", {}, d2b_wc_case(0x00000001, 0, 29), d2b_wc_stubs(0x00000100, 0x00012345)),
+        # side 1, a position of 0x5000 (the right targets pass 0x5400), +0x51 clear, a negative y; twelve
+        # free nodes
+        Case("w1", {}, d2b_wc_case(0x12345678, 1, 12, f51=0, y30=0x8000, b48=0x10, f29=0xAF, w2e=0xFFFE),
+             d2b_wc_stubs(0x00005000, 0xFFFF8000, pick=5, val=0x22222222)),
+        # five free nodes: the pool empties at the sixth entry; then at once
+        Case("w2", {}, d2b_wc_case(0x0BADF00D, 0, 5, ch=(6, 0), y30=0x0AF0, b48=0xFF),
+             d2b_wc_stubs(0x00002000, 0x00000001, pick=3, val=0x33333333)),
+        Case("w3", {}, d2b_wc_case(0xCAFE1234, 1, 0), d2b_wc_stubs(0x00002000, 0x00000001, pick=2)),
+    ], allow_calls=(0x249D0, 0x249B0, 0x496AC),
+       calls=(P6_RNG, D2B_2BE00_S, D2B_PICK, D2B_DUSTVAL, D2B_2BE4C, SPAWN, ANIM_BEGIN), eax_mask=0,
+       mutants=("@bbb", "@r14", "@p78", "@wb0", "@slotw", "@l5780", "@flag0", "@lane", "@pickarg", "@dvarg",
+                "@d10", "@be4c", "@lanemul", "@tneg", "@t5400", "@e14", "@type4", "@typel", "@y80", "@r200",
+                "@yflag", "@xy", "@ne8", "@a14", "@fc", "@f21", "@f1f", "@clamp", "@or10", "@w1c", "@e10",
+                "@f51", "@w2e", "@b4e", "@w34", "@or40", "@idx", "@hold", "@n1c")),
+]
 D1_SPECS += D2B_SPECS
 
 SPECS = [

@@ -43,6 +43,7 @@ the whole image for a stored pointer to it (none found for any member below).
 | 0x4CF20 | `fight_4cf20` | 487 | 0x494C6 | walk, dead on every path | 0 |
 | 0x4D150 | `fight_4d150` | 209 | 0x4D254 | 0x4D259 `test eax,eax` | 0xFFFFFFFF |
 | 0x4D898 | `fight_4d898` | 796 | 0x4D80B | 0x4D810 `test eax,eax` | 0xFFFFFFFF |
+| 0x4DBEC | `fight_4dbec` | 755 | 0x2766D, 0x29838 | walk, dead on every path | 0 |
 | 0x4E350 | `fight_mode25_spawn` | 481 | 0x4E271, 0x4E987 | walk, dead on every path (0x4E987: 0x4E98C `mov [0x1088b8],ch`, the pops, `ret` from 0x4E67C, then its callers) | 0 |
 
 "walk" is the rule record d1f §1 states: from the return site the code is followed (both arms of every
@@ -97,8 +98,9 @@ the Ghidra bodies. Every mask of this record was re-walked with it: all unchange
 | `fight_4d150` | 0x4D150 | 10 | 9/9 | 18/18 | 0xFFFFFFFF | 0x5D7DC runs on both sides, recorded (seeded draws); 0x2BE00, 0x2BE4C and 0x2BC30 stubs |
 | `fight_4d898` | 0x4D898 | 27 | 41/41 | 50/50 | 0xFFFFFFFF | 0x2B150, 0x2BC30, 0x2BD20 and 0x2C3FC stubs; 0x496AC runs on both sides (allowed); the six targets of the jump table 0x4D880 each hit |
 | `fight_mode25_spawn` | 0x4E350 | 6 | 37/37 | 39/39 | 0 | 0x4E27C, 0x5D7DC, 0x29CDC, 0x2AE14 and 0x2BC30 stubs; 0x249D0 and 0x249B0 run on both sides (allowed); the two jump tables 0x4E300 / 0x4E328 resolved by hand (E.RESOLVED_JUMPS), all ten entries of each walked |
+| `fight_4dbec` | 0x4DBEC | 4 | 28/28 | 39/39 | 0 | 0x5D7DC runs on both sides, recorded (seeded draws); 0x2BE00, 0x49388, 0x29CDC, 0x2BE4C, 0x2AE14 and 0x2BC30 stubs; 0x249D0, 0x249B0 and 0x496AC run on both sides (allowed) |
 
-29 rows, 578 mutants.
+30 rows, 617 mutants.
 
 The `D2B_MASKS` / `D2B_KINDS` / `D2B_CASES` pins of `tools/tests/test_diff_verify.py` are generated from
 these measurements. Every stub the batch declares carries the clobbers `E.callee_clobbers` derives from
@@ -109,7 +111,9 @@ the bytes (checked per row). Stubs the pinned dictionary of
 0x29CDC (edx), 0x2BE00 (), 0x2BE4C (), 0x2BD20 (edx), 0x13134 (), 0x2F510 (ebx, ecx, edx), 0x4E27C ().
 
 Each mutant's port side was run ten times with identical output before its pin was written
-(`fight_mode25_spawn`: twice at the commit that adds it; the ten-run pass is recorded below). That
+(`fight_mode25_spawn`: twice at the commit that adds it, then the ten-run pass, whose pins equal the
+committed ones; `fight_4dbec`: twice, the cost of its 0x1C-entry cases; a ten-run pass was started
+after the commit and its outcome is in the batch's report, not here). That
 rule earned its keep once: `fight_mode25_spawn@kept` and `@ne8` first followed a seeded node byte as an
 actor pointer and crashed `diffrun` (signal 11); both were rewritten to stay inside mem[] (the mutant
 keeps the spawned record in a local) before any pin was taken.
@@ -223,6 +227,10 @@ Limits worth knowing:
   (0x4DB53 / 0x4DB90 `jle`), so no mutant separates them. `hit` is 1 or 2; the index stays below 7.
 - `fight_mode25_spawn`: the spawn stub returns one actor for all ten entries of a case; a kept entry's
   actor is another record. A fresh call with a table entry already set replaces it (case f2).
+- `fight_4dbec`: 0x5D7DC runs its own bytes from a seed (three seeds), so the draws are not chosen one
+  by one: an exactly-zero left target (0x4DD35 `jge`) and a target of exactly 0x5400 (0x4DD79 `jle`)
+  are not exercised, and rng(2)'s `test eax,eax` (0x4DCF9, 0x4DD9B) is not separated from an AL test.
+  The spawn stub returns one actor for every entry of a case. One case runs the full 0x1C entries.
 
 ## §5 Store sweep
 
@@ -248,17 +256,11 @@ Limits worth knowing:
 | `fight_4d150` | entry +0x14, +0x1E; actor +0x34, +0x29 | as `fight_4b144` | `@e14`, `@type`, `@dir`, `@b29`, `@order` |
 | `fight_4d898` | 0x4B788's, and the DS_00104B1A slot's +0x5B | both slots' +0x5A..+0x5C seeded with different bytes | 0x4B788's, and `@b1a`, `@capv`, `@add1`, `@t0`..`@t5`, `@tdef`, `@t120` |
 | `fight_mode25_spawn` | 0x1088B9 / 0x1088B8 = 0; per entry: the list links, desc +0x10, entry +0x1A, +8, +0x14, +0x1F, +0x21, +0x0C, +0x1C (word 0, then \|= 2), +0x10, +0x1E; actor +0x14, +0x2C, +0x29 (\|= 0x10, &= 0xBF), +0x2E, +0x4E, +0x34; DS_0010839C[i] | the table sits between seeded dwords; free and kept nodes' +8..+0x23 seeded | `@b9`, `@b8`, `@d10`, `@w1a`, `@ne8`, `@a14`, `@e14`, `@f1f`, `@f21`, `@fc`, `@w2c`, `@or10`, `@w1c`, `@e10`, `@w2e`, `@b4e`, `@and40`, `@or2`, `@type0`, `@type1`, `@w34`, `@store`, `@order` |
+| `fight_4dbec` | 0x1088BB = 0, the word 0x1088B0; per entry: the list links, desc +0x10, entry +0x14, +0x1E, +8, +0x0C, +0x21, +0x1F, +0x1C word, +0x10; actor +0x14, +0x2C, +0x29 (\|= 0x10, \|= 0x40), +0x2E, +0x4E, +0x34 | 0x1088AE..0x1088BC seeded; the packed free nodes' +8..+0x23 seeded | `@bbb`, `@wb0`, `@d10`, `@e14`, `@typel`, `@ne8`, `@a14`, `@fc`, `@f21`, `@f1f`, `@clamp`, `@or10`, `@w1c`, `@e10`, `@w2e`, `@b4e`, `@w34`, `@or40` |
 
 ## §6 Queue entries not done
 
 - 0x432EC `fight_char_text_clear`: a named gap (§4), no row.
-- 0x4DBEC (755 bytes, the winner's crowd) and 0x4EBB8 (979 bytes, the mode-0x25 round card): not
-  reached, no row. What is known of them, short of a row:
-  - both EAX masks walk to 0 (0x4DBEC's call sites 0x2766D and 0x29838, 0x4EBB8's 0x4E928 and 0x4F06E);
-  - 0x4DBEC was disassembled: 28 blocks, no indirect jump, a loop of 0x1C entries over 0x249D0 /
-    0x249B0, 0x49388, 0x29CDC, 0x2BE00, 0x2BE4C, 0x2AE14, 0x496AC, 0x2BC30 and four to six 0x5D7DC draws
-    per entry (rng(2) twice, rng(0xA00) once or twice, rng(0x200)); a row would need the seeded 0x5D7DC
-    (as `fight_challenge_crowd`) and a 28-node pool. Every one of those callees has a seam after this
-    batch (fight.c's list splice runs allowed);
-  - 0x4EBB8 was not read. Its queue line names 0x1C500, 0x2F174, 0x2F4D0 and 0x2F510; 0x2F174
-    (`text_glyph_at`) has no seam yet.
+- 0x4EBB8 (979 bytes, the mode-0x25 round card): not reached, no row. It was not read. Its EAX mask
+  walks to 0 (call sites 0x4E928 and 0x4F06E); its queue line names the callees 0x1C500, 0x2F174,
+  0x2F4D0 and 0x2F510, of which 0x2F174 (`text_glyph_at`) has no seam yet.

@@ -21516,6 +21516,121 @@ D2B_M25(type1, 0u, 0x20u)
 D2B_M25(order, 0u, 0x40u)
 #undef D2B_M25
 
+/* 0x4DBEC's mutants. No argument. */
+static void d2b_4dbec_core(u32 mut, u32 mut2)
+{
+    u32 w = DSB(0x0010810Du), ow = w ^ 1u;
+    u32 slot = DS_001077B0 + w * 0x94u, flag = (mut & 0x40u) ? 1u : 0u;                   /* @flag0 */
+    s32 lane = 0;
+    if (!(mut & 1u)) DSB(0x001088BBu) = 0u;                                               /* @bbb */
+    u32 d = rng_next((mut & 2u) ? 0x15u : 0x14u) + ((mut & 4u) ? 0x70u : 0x78u);          /* @r14 @p78 */
+    if (!(mut & 8u)) DSW(0x001088B0u) = (u16)d;                                           /* @wb0 */
+    u32 pos = (u32)fight_2be00(DSD((mut & 0x10u) ? DS_001077B0 + ow * 0x94u : slot));     /* @slotw */
+    u32 span = (mut & 0x20u) ? 0x5700u : 0x5780u;                                         /* @l5780 */
+    u32 left = pos - span, right = pos + span;
+    for (u32 i = 0; i < ((mut2 & 0x800u) ? 0x1Bu : 0x1Cu); i++) {                         /* @n1c */
+        flag = flag == 0u ? 1u : 0u;
+        lane++;
+        if (lane > ((mut & 0x80u) ? 3 : 2)) lane = 0;                                     /* @lane */
+        u32 entry = DSD(0x001083C4u);
+        if (entry == 0x001083C4u) return;
+        effects_list_unlink(entry);
+        effects_list_insert_after(0x0010884Cu, entry);
+        u32 desc = DSD(0x000C9524u + fight_dust_pick((mut & 0x100u) ? ow : w) * 4u);      /* @pickarg */
+        u32 val = (mut & 0x200u) ? fight_dust_value((u32)DSB(slot + 0x7Au), w)            /* @dvarg */
+                                 : fight_dust_value(w, (u32)DSB(slot + 0x7Au));
+        if (!(mut & 0x400u)) DSD(desc + 0x10u) = val;                                     /* @d10 */
+        u32 x, t, lm = (u32)lane * ((mut & 0x1000u) ? 0x800u : 0xA00u);                   /* @lanemul */
+        int away, toleft = rng_next(2u) != 0u;
+        if (toleft) {
+            x = (u32)fight_2be4c(DSD(slot), (s32)((mut & 0x800u) ? right : left));        /* @be4c */
+            t = pos - lm - rng_next(0xA00u);
+            away = 0;
+            if (!(mut & 0x2000u) && (s32)t < 0) t = rng_next(0xA00u);                     /* @tneg */
+        } else {
+            x = (u32)fight_2be4c(DSD(slot), (s32)((mut & 0x800u) ? left : right));
+            t = rng_next(0xA00u) + lm + pos;
+            away = 1;
+            if ((s32)t > ((mut & 0x4000u) ? 0x5000 : 0x5400))                             /* @t5400 */
+                t = ((mut & 0x4000u) ? 0x5000u : 0x5400u) - rng_next(0xA00u);
+        }
+        if (!(mut & 0x8000u)) DSD(entry + 0x14u) = t;                                     /* @e14 */
+        int four = rng_next(2u) != 0u && flag == ((mut & 0x10000u) ? 0u : 1u);            /* @type4 */
+        DSB(entry + 0x1Eu) = four ? 4u : (u8)(lane + ((mut & 0x20000u) ? 0 : 1));         /* @typel */
+        u32 y = (u32)((s32)DSD(DSD(slot) + 0x30u) >> 16);
+        u32 yo = (mut & 0x40000u) ? 0x100u : 0x80u;                                       /* @y80 */
+        u32 yr = rng_next((mut & 0x80000u) ? 0x100u : 0x200u);                            /* @r200 */
+        if ((flag != 0u) != ((mut & 0x100000u) != 0u)) y = y - yo - yr;                   /* @yflag */
+        else y = y + yo + yr;
+        u32 actor = (mut & 0x200000u) ? actor_spawn((const u32 *)(mem + desc), y, x, 0u, 0u)   /* @xy */
+                                      : actor_spawn((const u32 *)(mem + desc), x, y, 0u, 0u);
+        if (!(mut & 0x400000u)) DSD(entry + 8u) = actor;                                  /* @ne8 */
+        u32 b48 = DSB(actor + 0x48u);
+        if (!(mut & 0x800000u)) DSD(actor + 0x14u) = entry;                               /* @a14 */
+        if (!(mut & 0x1000000u)) DSD(entry + 0x0Cu) = slot;                               /* @fc */
+        DSB(entry + 0x21u) = (u8)((mut & 0x2000000u) ? ow : w);                           /* @f21 */
+        if (!(mut & 0x4000000u)) DSB(entry + 0x1Fu) = 0u;                                 /* @f1f */
+        DSW(actor + 0x2Cu) = (mut & 0x8000000u) ? (u16)y : fight_dust_clamp((s32)y);      /* @clamp */
+        if (!(mut & 0x10000000u)) DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) | 0x10u);  /* @or10 */
+        if (mut & 0x20000000u) DSB(entry + 0x1Cu) = 0u; else DSW(entry + 0x1Cu) = 0u;     /* @w1c: a byte */
+        if (!(mut & 0x40000000u)) DSD(entry + 0x10u) = 0u;                                /* @e10 */
+        int f51 = DSB(DSD(slot) + 0x51u) != 0u;
+        if (mut & 0x80000000u) f51 = !f51;                                                /* @f51 */
+        if (f51) {
+            DSW(actor + 0x2Eu) = (u16)(DSW(actor + 0x2Eu) + ((mut2 & 1u) ? 2u : 4u));     /* @w2e */
+            if (!(mut2 & 2u)) DSB(actor + 0x4Eu) = 1u;                                    /* @b4e */
+        }
+        int a2 = (mut2 & 4u) ? !away : away;                                              /* @w34 */
+        DSW(actor + 0x34u) = a2 ? 0xFF80u : 0x0080u;
+        if (away && !(mut2 & 8u)) DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) | 0x40u);  /* @or40 */
+        actors_anim_begin(actor, DSD(0x000C95D4u + ((mut2 & 0x10u) ? (b48 & 0xFFFFu) : (u32)(u16)(b48 - 0x20u)) * 4u),   /* @idx */
+                          (mut2 & 0x20u) ? 0x40A00000u : 0x40400000u);                    /* @hold */
+    }
+}
+static void b_d2b_4dbec(const u32 *r, u32 *eax)       { (void)r; fight_4dbec(); *eax = 0u; }
+#define D2B_WC(name, mut, mut2) \
+    static void m_d2b_wc_##name(const u32 *r, u32 *eax) { (void)r; d2b_4dbec_core(mut, mut2); *eax = 0u; }
+D2B_WC(bbb, 1u, 0u)
+D2B_WC(r14, 2u, 0u)
+D2B_WC(p78, 4u, 0u)
+D2B_WC(wb0, 8u, 0u)
+D2B_WC(slotw, 0x10u, 0u)
+D2B_WC(l5780, 0x20u, 0u)
+D2B_WC(flag0, 0x40u, 0u)
+D2B_WC(lane, 0x80u, 0u)
+D2B_WC(pickarg, 0x100u, 0u)
+D2B_WC(dvarg, 0x200u, 0u)
+D2B_WC(d10, 0x400u, 0u)
+D2B_WC(be4c, 0x800u, 0u)
+D2B_WC(lanemul, 0x1000u, 0u)
+D2B_WC(tneg, 0x2000u, 0u)
+D2B_WC(t5400, 0x4000u, 0u)
+D2B_WC(e14, 0x8000u, 0u)
+D2B_WC(type4, 0x10000u, 0u)
+D2B_WC(typel, 0x20000u, 0u)
+D2B_WC(y80, 0x40000u, 0u)
+D2B_WC(r200, 0x80000u, 0u)
+D2B_WC(yflag, 0x100000u, 0u)
+D2B_WC(xy, 0x200000u, 0u)
+D2B_WC(ne8, 0x400000u, 0u)
+D2B_WC(a14, 0x800000u, 0u)
+D2B_WC(fc, 0x1000000u, 0u)
+D2B_WC(f21, 0x2000000u, 0u)
+D2B_WC(f1f, 0x4000000u, 0u)
+D2B_WC(clamp, 0x8000000u, 0u)
+D2B_WC(or10, 0x10000000u, 0u)
+D2B_WC(w1c, 0x20000000u, 0u)
+D2B_WC(e10, 0x40000000u, 0u)
+D2B_WC(f51, 0x80000000u, 0u)
+D2B_WC(w2e, 0u, 1u)
+D2B_WC(b4e, 0u, 2u)
+D2B_WC(w34, 0u, 4u)
+D2B_WC(or40, 0u, 8u)
+D2B_WC(idx, 0u, 0x10u)
+D2B_WC(hold, 0u, 0x20u)
+D2B_WC(n1c, 0u, 0x800u)
+#undef D2B_WC
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -26009,6 +26124,46 @@ static const binding_t k_bindings[] = {
     { "fight_mode25_spawn@store", m_d2b_m25_store, 0x00000000u },
     { "fight_mode25_spawn@type1", m_d2b_m25_type1, 0x00000000u },
     { "fight_mode25_spawn@order", m_d2b_m25_order, 0x00000000u },
+    { "fight_4dbec", b_d2b_4dbec, 0x00000000u },
+    { "fight_4dbec@bbb", m_d2b_wc_bbb, 0x00000000u },
+    { "fight_4dbec@r14", m_d2b_wc_r14, 0x00000000u },
+    { "fight_4dbec@p78", m_d2b_wc_p78, 0x00000000u },
+    { "fight_4dbec@wb0", m_d2b_wc_wb0, 0x00000000u },
+    { "fight_4dbec@slotw", m_d2b_wc_slotw, 0x00000000u },
+    { "fight_4dbec@l5780", m_d2b_wc_l5780, 0x00000000u },
+    { "fight_4dbec@flag0", m_d2b_wc_flag0, 0x00000000u },
+    { "fight_4dbec@lane", m_d2b_wc_lane, 0x00000000u },
+    { "fight_4dbec@pickarg", m_d2b_wc_pickarg, 0x00000000u },
+    { "fight_4dbec@dvarg", m_d2b_wc_dvarg, 0x00000000u },
+    { "fight_4dbec@d10", m_d2b_wc_d10, 0x00000000u },
+    { "fight_4dbec@be4c", m_d2b_wc_be4c, 0x00000000u },
+    { "fight_4dbec@lanemul", m_d2b_wc_lanemul, 0x00000000u },
+    { "fight_4dbec@tneg", m_d2b_wc_tneg, 0x00000000u },
+    { "fight_4dbec@t5400", m_d2b_wc_t5400, 0x00000000u },
+    { "fight_4dbec@e14", m_d2b_wc_e14, 0x00000000u },
+    { "fight_4dbec@type4", m_d2b_wc_type4, 0x00000000u },
+    { "fight_4dbec@typel", m_d2b_wc_typel, 0x00000000u },
+    { "fight_4dbec@y80", m_d2b_wc_y80, 0x00000000u },
+    { "fight_4dbec@r200", m_d2b_wc_r200, 0x00000000u },
+    { "fight_4dbec@yflag", m_d2b_wc_yflag, 0x00000000u },
+    { "fight_4dbec@xy", m_d2b_wc_xy, 0x00000000u },
+    { "fight_4dbec@ne8", m_d2b_wc_ne8, 0x00000000u },
+    { "fight_4dbec@a14", m_d2b_wc_a14, 0x00000000u },
+    { "fight_4dbec@fc", m_d2b_wc_fc, 0x00000000u },
+    { "fight_4dbec@f21", m_d2b_wc_f21, 0x00000000u },
+    { "fight_4dbec@f1f", m_d2b_wc_f1f, 0x00000000u },
+    { "fight_4dbec@clamp", m_d2b_wc_clamp, 0x00000000u },
+    { "fight_4dbec@or10", m_d2b_wc_or10, 0x00000000u },
+    { "fight_4dbec@w1c", m_d2b_wc_w1c, 0x00000000u },
+    { "fight_4dbec@e10", m_d2b_wc_e10, 0x00000000u },
+    { "fight_4dbec@f51", m_d2b_wc_f51, 0x00000000u },
+    { "fight_4dbec@w2e", m_d2b_wc_w2e, 0x00000000u },
+    { "fight_4dbec@b4e", m_d2b_wc_b4e, 0x00000000u },
+    { "fight_4dbec@w34", m_d2b_wc_w34, 0x00000000u },
+    { "fight_4dbec@or40", m_d2b_wc_or40, 0x00000000u },
+    { "fight_4dbec@idx", m_d2b_wc_idx, 0x00000000u },
+    { "fight_4dbec@hold", m_d2b_wc_hold, 0x00000000u },
+    { "fight_4dbec@n1c", m_d2b_wc_n1c, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
