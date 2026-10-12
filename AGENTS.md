@@ -320,16 +320,26 @@ consolidation gate).
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
   adjacent port frames rather than a 1:1 match.
-- **The differential frontier is closed** (record
-  `docs/superpowers/plans/2026-10-05-reverse-c3g-derivations.md` §C3g.7): every
-  address the callee scan reaches is a row, runtime (>= 0x5D000), or a named
-  non-row (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`,
-  `0x500BB`, `0x5DEED`, the AIL wrappers); the rows that stay open do so solely
-  on those. `make diff-verify`'s counter on the closed tree is
-  `322/322 functions VERIFIED; 1353/1353 mutants detected; 1 named gaps;
-  229/251 rows with callees closed (71 have none)`. A change that ports a
-  function or touches a row's callees must keep that counter and every pin
-  intact, or re-measure and record why they moved.
+- **The differential rows are being extended to every ported function** (track D,
+  record `docs/superpowers/plans/2026-10-11-reverse-d-derivations.md`). C3g closed
+  the callee frontier at 322 rows; track D rows the ported functions the callee
+  scan never reached. `make diff-verify`'s counter after its waves 1 and 2 is
+  `652/652 functions VERIFIED; 5650/5650 mutants detected; 1 named gaps;
+  428/485 rows with callees closed (167 have none)`; 230 ported functions have no
+  row yet, so the open rows are open on those and on the named non-rows
+  (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
+  `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
+  row's callees must keep that counter and every pin intact, or re-measure and
+  record why they moved. The harness runs its rows on a process pool
+  (`PR_DIFF_JOBS`, default the CPU count; 1 is the sequential loop): a full
+  `--self-check` is about two minutes.
+- **Every binding and every mutant must stay inside `mem[]`.** `DSB/DSW/DSD` have
+  no bounds check, and a read outside the 64 MB array is host-dependent (an
+  intermittent SIGBUS on macOS 27): an index-like sentinel (side, slot,
+  character, a pointer field the function follows) keeps `base + index * size`
+  in range, the "other side" `1 - side` included. A row whose original
+  deliberately reads above the image names the read in `P45_OUTSIDE`
+  (`tools/tests/test_diff_verify.py`).
 
 ## Workflow and docs
 
