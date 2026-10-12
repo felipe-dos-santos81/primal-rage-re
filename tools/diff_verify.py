@@ -13828,6 +13828,25 @@ D2D_SPECS = [
              d2d_hs_case(descs=((10, 4, 8), (2, 0, 4), (1, 3, 2)), records={(1, 0): b"\x01\x02\x03\x04"}, out=False)),
     ], allow_calls=(0x2DB58,), eax_mask=0xFFFFFFFF,
        mutants=("@rec", "@miss", "@desc", "@le", "@signed", "@left", "@tie", "@stride", "@end")),
+    # 0x30788 config_bar_draw: EAX = value, EDX = row, EBX = the label row. 0x2F434 (the number,
+    # only with a non-negative label row, `jl` 0x307B7) and 0x2F174 (96 glyph calls: 32 cells on
+    # three rows) run on both sides; what they call is recorded: D1G_TXTFMT, D1G_TXT198 (which
+    # writes the cursor) and D1G_GLYPH. Mask 0: every call site loads EAX before reading it
+    # (`mov eax,[esp+0x10]` 0x30947, `mov eax,ecx` 0x30966, `mov eax,5` 0x3097E, `mov eax,[esp+4]`
+    # 0x30D7A, `mov eax,ebp` 0x30D99; after 0x30DA3 `mov eax,[esp]` 0x30DAC, `mov eax,[esp+4]`
+    # 0x30DBD, `mov eax,edx` 0x30DD7, `mov eax,0x22` 0x30E19, `mov eax,3` 0x30E3D, or 0x30B45's
+    # `call 0x2ea74`, which opens with `xor eax,eax` 0x2EA74).
+    Spec("config_bar_draw", 0x30788, [
+        Case("v0", {"eax": 0x50, "edx": 6, "ebx": 3}, {0x00105F34: le32(0x11223344)}),
+        Case("v1", {"eax": 0xFF, "edx": 9, "ebx": 0xFFFFFFFF}, {0x00105F34: le32(0x11223344)}, {0x2F5A0: 1}),
+        Case("v2", {"eax": 0xFFFFFFFB, "edx": 0, "ebx": 0}, {0x00105F34: le32(0xAABBCCDD)}),
+        Case("v3", {"eax": 0x1234, "edx": 0x10, "ebx": 0x80000000}, {0x00105F34: le32(0x11223344)}),
+        Case("v4", {"eax": 0x88, "edx": 2, "ebx": 5}, {0x00105F34: le32(0x01020304)}),
+        Case("v5", {"eax": 0xC0, "edx": 2, "ebx": 0xFFFFFFFE}, {0x00105F34: le32(0x01020304)}),
+        Case("v6", {"eax": 0x7FFFFFFF, "edx": 3, "ebx": 7}, {0x00105F34: le32(0x01020304)}),
+    ], calls=(D1G_TXTFMT, D1G_TXT198, D1G_GLYPH), allow_calls=(0x2F434, 0x2F174), eax_mask=0,
+       mutants=("@clamp0", "@clampff", "@label", "@numcol", "@numval", "@numw", "@pad", "@nummode", "@ge", "@tbf",
+                "@t81", "@col", "@count", "@glyph", "@numlate", "@rows")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 

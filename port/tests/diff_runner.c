@@ -20526,6 +20526,54 @@ static void m_d2d_2dde4_left(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 
 static void m_d2d_2dde4_tie(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 8u); }
 static void m_d2d_2dde4_stride(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 9u); }
 static void m_d2d_2dde4_end(const u32 *r, u32 *eax) { *eax = d2d_2dde4_core(r, 10u); }
+/* 0x30788's mutants (mutant n; 0 = the port's shape). EAX = value, EDX = row, EBX = the label row.
+ * 0x2F434 and 0x2F174 run on both sides; their 0x2EFD4, 0x2F198 and 0x2F5A0 are the recorded stubs. */
+static u32 d2d_30788_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    s32 value = (s32)r[R_EAX], row = (s32)r[R_EDX], label = (s32)r[R_EBX];
+    s32 raw = value;
+    if (value < 0 && !M(1)) value = 0;                                              /* @clamp0 */
+    if (value > 0xFF && !M(2)) value = 0xFF;                                        /* @clampff */
+    if (!M(15) && (M(3) ? label > 0 : label >= 0))                                  /* @label */
+        text_number_set(M(4) ? 0x18 : 0x19, label, M(5) ? raw : value,              /* @numcol @numval */
+                        M(6) ? 2 : 3, M(7) ? 0u : 2u, M(8) ? 0xC000u : 0xC002u);    /* @numw @pad @nummode */
+    u32 mode = 0x1000u;
+    s32 col = M(12) ? 4 : 5;                                                        /* @col */
+    for (s32 i = 0; M(13) ? i < 0xF8 : i <= 0xFF; i += 8) {                         /* @count */
+        if (M(9) ? i >= value : i > value) mode = 0xF000u;                          /* @ge */
+        else if (i > (M(10) ? 0xC0 : 0xBF)) mode = 0x3000u;                         /* @tbf */
+        else if (i > (M(11) ? 0x88 : 0x81)) mode = 0x2000u;                         /* @t81 */
+        text_glyph_at(col, M(14) ? 0x14 : 0x13, row, mode);                         /* @glyph */
+        text_glyph_at(col, 0x13, row + 1, mode);
+        text_glyph_at(col, 0x13, row + (M(16) ? 1 : 2), mode);                      /* @rows */
+        col++;
+    }
+    if (M(15) && label >= 0) text_number_set(0x19, label, value, 3, 2u, 0xC002u);   /* @numlate */
+#undef M
+    return 0u;
+}
+static void b_d2d_30788(const u32 *r, u32 *eax)
+{
+    config_bar_draw((s32)r[R_EAX], (s32)r[R_EDX], (s32)r[R_EBX]);
+    *eax = 0u;
+}
+static void m_d2d_30788_clamp0(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 1u); }
+static void m_d2d_30788_clampff(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 2u); }
+static void m_d2d_30788_label(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 3u); }
+static void m_d2d_30788_numcol(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 4u); }
+static void m_d2d_30788_numval(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 5u); }
+static void m_d2d_30788_numw(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 6u); }
+static void m_d2d_30788_pad(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 7u); }
+static void m_d2d_30788_nummode(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 8u); }
+static void m_d2d_30788_ge(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 9u); }
+static void m_d2d_30788_tbf(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 10u); }
+static void m_d2d_30788_t81(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 11u); }
+static void m_d2d_30788_col(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 12u); }
+static void m_d2d_30788_count(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 13u); }
+static void m_d2d_30788_glyph(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 14u); }
+static void m_d2d_30788_numlate(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 15u); }
+static void m_d2d_30788_rows(const u32 *r, u32 *eax) { *eax = d2d_30788_core(r, 16u); }
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -24659,6 +24707,23 @@ static const binding_t k_bindings[] = {
     { "hiscore_rank_probe@tie",              m_d2d_2dde4_tie, 0xFFFFFFFFu },
     { "hiscore_rank_probe@stride",           m_d2d_2dde4_stride, 0xFFFFFFFFu },
     { "hiscore_rank_probe@end",              m_d2d_2dde4_end, 0xFFFFFFFFu },
+    { "config_bar_draw",                     b_d2d_30788, 0x00000000u },
+    { "config_bar_draw@clamp0",              m_d2d_30788_clamp0, 0x00000000u },
+    { "config_bar_draw@clampff",             m_d2d_30788_clampff, 0x00000000u },
+    { "config_bar_draw@label",               m_d2d_30788_label, 0x00000000u },
+    { "config_bar_draw@numcol",              m_d2d_30788_numcol, 0x00000000u },
+    { "config_bar_draw@numval",              m_d2d_30788_numval, 0x00000000u },
+    { "config_bar_draw@numw",                m_d2d_30788_numw, 0x00000000u },
+    { "config_bar_draw@pad",                 m_d2d_30788_pad, 0x00000000u },
+    { "config_bar_draw@nummode",             m_d2d_30788_nummode, 0x00000000u },
+    { "config_bar_draw@ge",                  m_d2d_30788_ge, 0x00000000u },
+    { "config_bar_draw@tbf",                 m_d2d_30788_tbf, 0x00000000u },
+    { "config_bar_draw@t81",                 m_d2d_30788_t81, 0x00000000u },
+    { "config_bar_draw@col",                 m_d2d_30788_col, 0x00000000u },
+    { "config_bar_draw@count",               m_d2d_30788_count, 0x00000000u },
+    { "config_bar_draw@glyph",               m_d2d_30788_glyph, 0x00000000u },
+    { "config_bar_draw@numlate",             m_d2d_30788_numlate, 0x00000000u },
+    { "config_bar_draw@rows",                m_d2d_30788_rows, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
