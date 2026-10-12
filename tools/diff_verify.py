@@ -13792,6 +13792,36 @@ def d2d_4505c_case(side, slot, state, w34=0x0100, w88=0x0010):
         buf[0x86:0x8A] = le16(0x8687) + le16(w88 ^ 0x003F)
         p.update(d1d_chunks(D2D_SLOTX, buf))
     return p
+def d2d_3ee00_case(side, slot, state, w34=0x0200, w88=0x0010, r51=0, chs=(0, 5), ptrs=(DS_SLOTS, DS_SLOTS + 0x94)):
+    """0x3EE00: the slot pointer pair 0x1077A8 = `ptrs`; both fighters' slots seeded whole (+0x7A =
+    `chs`; the side's +0x86 dword with `w88` in its high half; the EAX slot's +0x57 = `state`; the
+    scratch slot D2D_SLOTX carries the opposite +0x88 word); the EDX record's +0x32..+0x37 (`w34`),
+    +0x41..+0x44 and +0x50..+0x52 (+0x51 = `r51`); the EAX slot's record's +0x32..+0x37 and
+    +0x41..+0x44."""
+    def w32(buf, o, v): buf[o:o + 4] = le32(v)
+    p = {0x001077A8: le32(ptrs[0]) + le32(ptrs[1]),
+         D2D_REC + 0x32: le16(0x3233) + le16(w34) + le16(0x3637), D2D_REC + 0x41: b"\x41\x42\x43\x44",
+         D2D_REC + 0x50: bytes([0x50, r51, 0x52])}
+    for i in (0, 1):
+        buf = bytearray((0x80 | (k & 0x3F) | (i << 6)) & 0xFF for k in range(0x94))
+        rec = (D2D_F0, D2D_F1)[i]
+        w32(buf, 0, rec)
+        buf[0x7A] = chs[i]
+        buf[0x86:0x8A] = le16(0x8687) + le16(w88 if i == side else w88 ^ 0x003F)
+        if slot == DS_SLOTS + i * 0x94:
+            buf[0x57] = state
+        p.update(d1d_chunks(DS_SLOTS + i * 0x94, buf))
+        p[rec + 0x32] = le16(0x3233) + le16(0x1100 + i) + le16(0x3637)
+        p[rec + 0x41] = bytes([0x41, 0x52 + i, 0x43, 0x44])
+    if slot == D2D_SLOTX:
+        buf = bytearray(0x40 | (k & 0x3F) for k in range(0x94))
+        w32(buf, 0, D2D_RX)
+        buf[0x57] = state
+        buf[0x86:0x8A] = le16(0x8687) + le16(w88 ^ 0x003F)
+        p.update(d1d_chunks(D2D_SLOTX, buf))
+        p[D2D_RX + 0x32] = le16(0x3233) + le16(0x1177) + le16(0x3637)
+        p[D2D_RX + 0x41] = b"\x41\x62\x43\x44"
+    return p
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -14322,6 +14352,39 @@ D2D_SPECS = [
        unhit_named={0x450D6: "entry 3 of the table and +0x57 above 4 call the runtime's fatal 0x62003 (>= 0x5D000), "
                              "which cannot run"},
        mutants=("@ctx", "@noabs", "@vgt", "@vfield", "@wge", "@wzext", "@wslot", "@and", "@s57", "@no34", "@stream", "@hold", "@late", "@c2s57", "@one")),
+    # 0x3EE00 fighter_3ee00 (wave-1 leftover, d1g §6): EAX = slot, EDX = rec, EBX = side (the slot
+    # +0x0C callback 0x3EF9E stores). It returns at once when the other side's slot pointer
+    # (0x1077A8[side ^ 1], `xor al,1` 0x3EE0E) is 0. The jump table 0x3EDF0 has four targets (`cmp
+    # al,3; ja`); above 3 is the runtime's fatal 0x62003, not exercised. The slot the record's +0x51
+    # names picks the stream by its character: 0 (`jbe` 0x3EE91/0x3EEF6), 5, or none. 0x33950 runs
+    # on both sides; ANIM_BEGIN and VOICE are stubs. Mask 0: as 0x48AAC.
+    Spec("fighter_3ee00", 0x3EE00, [
+        Case("e0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_3ee00_case(0, DS_SLOTS, 0, w34=0x0300, ptrs=(DS_SLOTS, 0))),
+        Case("a0", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0}, d2d_3ee00_case(0, D2D_SLOTX, 0, w34=0x0200, r51=0)),
+        Case("a1", {"eax": DS_SLOTS + 0x94, "edx": D2D_REC, "ebx": 1},
+             d2d_3ee00_case(1, DS_SLOTS + 0x94, 0, w34=0xFE00, r51=1)),
+        Case("a2", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_3ee00_case(0, DS_SLOTS, 0, w34=0x01FF, w88=0x001E)),
+        Case("a3", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 1},
+             d2d_3ee00_case(1, D2D_SLOTX, 0, w34=0x01FF, w88=0x001F, r51=1, chs=(0, 3))),
+        Case("a4", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_3ee00_case(0, DS_SLOTS, 0, w34=0x0200, r51=0, ptrs=(0, DS_SLOTS + 0x94))),
+        Case("a5", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_3ee00_case(0, DS_SLOTS, 0, w34=0x0000, w88=0x8000)),
+        Case("a6", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_3ee00_case(0, DS_SLOTS, 0, w34=0xFE01, w88=0x001F, r51=1, chs=(0, 5))),
+        Case("a7", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0}, d2d_3ee00_case(0, D2D_SLOTX, 0, w34=0x01FF, w88=0x001E)),
+        Case("b0", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0}, d2d_3ee00_case(0, D2D_SLOTX, 1, w34=0x0000)),
+        Case("b1", {"eax": DS_SLOTS + 0x94, "edx": D2D_REC, "ebx": 1},
+             d2d_3ee00_case(1, DS_SLOTS + 0x94, 1, w34=0x0100), {0x2C3FC: 0}),
+        Case("c0", {"eax": D2D_SLOTX, "edx": D2D_REC, "ebx": 0}, d2d_3ee00_case(0, D2D_SLOTX, 2, r51=0)),
+        Case("c1", {"eax": DS_SLOTS + 0x94, "edx": D2D_REC, "ebx": 1}, d2d_3ee00_case(1, DS_SLOTS + 0x94, 2, r51=1)),
+        Case("c2", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_3ee00_case(0, DS_SLOTS, 2, r51=1, chs=(0, 1))),
+        Case("c3", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0},
+             d2d_3ee00_case(0, DS_SLOTS, 2, r51=0, ptrs=(0, DS_SLOTS + 0x94))),
+        Case("d0", {"eax": DS_SLOTS, "edx": D2D_REC, "ebx": 0}, d2d_3ee00_case(0, DS_SLOTS, 3, w34=0x0300)),
+    ], calls=(ANIM_BEGIN, VOICE), allow_calls=(0x33950,), eax_mask=0,
+       unhit_named={0x3EF30: "the +0x57 above 3 arm calls the runtime's fatal 0x62003 (>= 0x5D000), which cannot run"},
+       mutants=("@nullside", "@ctx", "@noabs", "@vgt", "@wge", "@wslot", "@and", "@no42", "@late42", "@osside", "@astream", "@ahold", "@arec", "@a57", "@b43", "@bbyte", "@bnovoice", "@bearly", "@b57", "@crec", "@chold", "@cno34", "@c42", "@c57", "@cstream", "@cnonull")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 
