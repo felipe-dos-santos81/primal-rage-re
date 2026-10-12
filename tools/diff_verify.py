@@ -13909,6 +13909,32 @@ def d2a_land45_case(side, ost, b3a, distinct=False, s14=None, other=None, y30=0x
     return p
 
 
+D2A_NODES, D2A_ACT = 0x0010A600, 0x0010A800   # 0x406B4: the free-list nodes (0x10 bytes each) and the spawned actor
+
+
+def d2a_burst_case(ad4, n, seed, y30=0x00070000, act=D2A_ACT, ae9=0x00):
+    """0x406B4: DS_00104AD4, both slots' record pointers, +0x2C and +0x30 and both records' +0x30
+    (slot-distinct), the free list at 0x107EF8 holding `n` nodes (each node's +8/+0xC seeded) and
+    the empty active list at 0x107EF0, the RNG state, the actor block the 0x2AE14 stub returns
+    (+0x14, +0x32..+0x39 and +0x42..+0x47 seeded) and DS_00104AE8/E9."""
+    free_, act_l = 0x00107EF8, 0x00107EF0
+    nodes = [D2A_NODES + k * 0x10 for k in range(n)]
+    ring = [free_] + nodes
+    p = {0x00104AD4: le32(ad4), DS_RNG: le32(seed), act_l: le32(act_l) + le32(act_l),
+         free_: le32(ring[1 % len(ring)]) + le32(ring[-1]),
+         0x00104AE8: bytes([0xE8, ae9, 0xEA]),
+         act + 0x14: le32(0x14141414), act + 0x32: le16(0x3232) + le16(0x3434) + le16(0x3636) + le16(0x3838),
+         act + 0x42: le16(0x4242) + le16(0x4444) + le16(0x4646)}
+    for k, a in enumerate(nodes):
+        p[a] = le32(ring[(k + 2) % len(ring)]) + le32(ring[k]) + le32(0x08080800 + k) + le32(0x0C0C0C00 + k)
+    for k in (0, 1):
+        so, rec = D2A_SLOT + k * 0x94, (D2A_R0, D2A_R1)[k]
+        p[so] = le32(rec)
+        p[so + 0x2C] = le32(0x002C0000 + k * 0x1111) + le32(0x00300000 + k * 0x2222)
+        p[rec + 0x30] = le32((y30 + k * 0x00010000) & 0xFFFFFFFF)
+    return p
+
+
 D2A_SPECS = [
     # 0x146F0 fighter_146f0: EDX = rec (EAX is overwritten unread, 0x146F8). 0x339AC, 0x14590 and
     # its 0x33950 run real (allowed): 0x14590 is no stub of any row, so the `test al,al` at 0x14707
@@ -14283,6 +14309,22 @@ D2A_SPECS = [
        mutants=("@oth0", "@osext", "@oxor", "@x1c", "@cside", "@corder", "@s54", "@s57", "@sslot", "@arec",
                 "@stream", "@hold", "@a8a", "@st", "@b3a", "@b3as", "@sx", "@sy", "@syz", "@sdesc", "@v46",
                 "@vswap", "@e8a", "@early", "@n14")),
+    # 0x406B4 fighter_406b4: no argument. The list leaves 0x249D0 and 0x249B0 run real (allowed: the
+    # port calls its effects.c copies, which carry no seam; the list pointers show them); 0x5D7DC
+    # runs real and is recorded, so each of the four draws of a pass is a different value; 0x2AE14,
+    # 0x2A17C and 0x2C3FC are stubs. n0: an empty free list; n1: three nodes; n2: nine (the eighth
+    # pass ends the loop); n3: eight. Mask 0: 0x4065F returns to 0x4058A `mov eax,[0x108098]`; the
+    # other site returns through the update-table call 0x24CEF (record §1 names the limit).
+    Spec("fighter_406b4", 0x406B4, [
+        Case("n0", {}, d2a_burst_case(0, 0, 0x12345678), {0x2AE14: D2A_ACT}),
+        Case("n1", {}, d2a_burst_case(0, 3, 0x12345678, ae9=0xBF), {0x2AE14: D2A_ACT}),
+        Case("n2", {}, d2a_burst_case(1, 9, 0x0BADF00D), {0x2AE14: D2A_ACT}),
+        Case("n3", {}, d2a_burst_case(1, 8, 0xCAFEBABE, y30=0x8001FFFF), {0x2AE14: D2A_ACT + 0x100}),
+        Case("n4", {}, d2a_burst_case(0, 1, 0x00000001, y30=0xFFFF0000), {0x2AE14: D2A_ACT + 0x100}),
+    ], allow_calls=(0x249B0, 0x249D0), calls=(D1H_RNG_REAL, SPAWN, PALETTE, VOICE), eax_mask=0,
+       mutants=("@side", "@xz", "@yslot", "@ysh", "@nounlink", "@ins", "@flag", "@fl8", "@n8", "@r60",
+                "@r300", "@r18", "@rarg", "@w44", "@x14", "@x14a", "@pal0", "@palarg", "@nine", "@seven",
+                "@voice", "@ae9", "@vfirst", "@w34d")),
 ]
 D1_SPECS += D2A_SPECS
 
