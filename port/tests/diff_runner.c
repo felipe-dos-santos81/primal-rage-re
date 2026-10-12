@@ -33529,6 +33529,120 @@ D5D_MT_MUT(nospace, 21u) D5D_MT_MUT(jg, 22u) D5D_MT_MUT(wide1, 23u) D5D_MT_MUT(w
 D5D_MT_MUT(nouscore, 26u) D5D_MT_MUT(uscore1, 27u) D5D_MT_MUT(widealways, 28u) D5D_MT_MUT(nowide, 29u) D5D_MT_MUT(uscorealways, 30u)
 D5D_MT_MUT(col, 31u) D5D_MT_MUT(row, 32u) D5D_MT_MUT(modea, 33u) D5D_MT_MUT(flag4, 34u) D5D_MT_MUT(idswap, 35u)
 D5D_MT_MUT(rows, 36u) D5D_MT_MUT(modeb, 37u) D5D_MT_MUT(one, 38u)
+/* 0x2DA0C config_field_set: EAX = field, EDX = value. 0x2D4EC (the storage image the port does
+ * not keep: a declared no-op, seamed here) is a stub. Full mask: the function returns -1 or 0
+ * (`mov eax,0xffffffff` 0x2DA16; `xor eax,eax` 0x2DAD9) and so does the port. */
+static u32 d5d_2da0c_core(u32 field, u32 value, u32 mut)
+{
+    u32 d, trail, bitpos, width;
+    s32 ebx;
+    if ((mut == 1u) ? field >= 0x3Eu : (mut == 2u) ? (s32)field > 0x3E : field > 0x3Eu)   /* @bound @signed */
+        return (mut == 3u) ? 0u : 0xFFFFFFFFu;                               /* @rem */
+    d = DSD(0x0002D300u + field * 4u);
+    trail = d & ((mut == 4u) ? 0x1Fu : 0x3Fu);                               /* @trailmask */
+    if (trail != 0u && mut != 5u) {                                          /* @notrail */
+        u8 flags = DSB(0x00105DD8u), lowb = (u8)value;
+        if (mut == 6u) config_storage_touch(0u);                             /* @touch0early */
+        if (mut != 7u) DSB(((mut == 8u) ? 0x00105DB0u : 0x00105DAFu) + trail) = lowb;   /* @flagorder @trailoff */
+        if (mut != 9u) flags |= 1u;                                          /* @flag1 */
+        if (mut != 10u) value = (mut == 11u) ? (u32)((s32)value >> 8) : value >> 8;   /* @noshift8 @sar */
+        DSB(0x00105DD8u) = flags;
+        if (mut == 7u) DSB(0x00105DAFu + trail) = lowb;
+        if (mut != 6u && mut != 12u) config_storage_touch(0u);               /* @notouch0 */
+    }
+    if (mut != 13u) DSB(0x00105DD8u) |= (mut == 14u) ? 4u : 6u;              /* @no6 @six */
+    bitpos = (d >> 6) & ((mut == 15u) ? 0x7Fu : 0xFFu);                      /* @bitpos */
+    width = ((d >> 14) & ((mut == 16u) ? 3u : 7u)) + 1u;                     /* @width */
+    ebx = (s32)bitpos >> 1;
+    if ((bitpos & 1u) != 0u) {
+        u8 low = DSB(0x00105DE1u + (u32)ebx) & ((mut == 17u) ? 0xF0u : 0x0Fu);   /* @oddkeep */
+        ebx += 1;
+        width -= 1u;
+        DSB(0x00105DE0u + (u32)ebx) = (u8)(low | ((value & 0x0Fu) << 4));
+        if (mut != 18u) value >>= 4;                                         /* @oddshift */
+    }
+    for (;;) {
+        if (width == 0u) break;
+        if (width == 1u) {
+            if (mut == 19u) { DSB(0x00105DE1u + (u32)ebx) = (u8)value; break; }   /* @w1 */
+            DSB(0x00105DE1u + (u32)ebx) = (u8)((DSB(0x00105DE1u + (u32)ebx) & 0xF0u) | (value & 0x0Fu));
+            break;
+        }
+        width -= 2u;
+        DSB(0x00105DE1u + (u32)ebx) = (u8)value;
+        ebx += 1;
+        value = (mut == 20u) ? value >> 4 : value >> 8;                      /* @byteshift */
+    }
+    if (mut == 21u) { config_storage_touch(2u); config_storage_touch(1u); return 0u; }   /* @touchorder */
+    if (mut != 22u) config_storage_touch(1u);                                /* @notouch1 */
+    if (mut != 23u) config_storage_touch(2u);                                /* @notouch2 */
+    return (mut == 24u) ? 1u : 0u;                                           /* @ret */
+}
+static void b_d5d_2da0c(const u32 *r, u32 *eax) { *eax = config_field_set(r[R_EAX], r[R_EDX]); }
+#define D5D_FS_MUT(name, n) \
+    static void m_d5d_2da0c_##name(const u32 *r, u32 *eax) { *eax = d5d_2da0c_core(r[R_EAX], r[R_EDX], n); }
+D5D_FS_MUT(bound, 1u) D5D_FS_MUT(signed, 2u) D5D_FS_MUT(rem, 3u) D5D_FS_MUT(trailmask, 4u) D5D_FS_MUT(notrail, 5u)
+D5D_FS_MUT(touch0early, 6u) D5D_FS_MUT(flagorder, 7u) D5D_FS_MUT(trailoff, 8u) D5D_FS_MUT(flag1, 9u) D5D_FS_MUT(noshift8, 10u)
+D5D_FS_MUT(sar, 11u) D5D_FS_MUT(notouch0, 12u) D5D_FS_MUT(no6, 13u) D5D_FS_MUT(six, 14u) D5D_FS_MUT(bitpos, 15u)
+D5D_FS_MUT(width, 16u) D5D_FS_MUT(oddkeep, 17u) D5D_FS_MUT(oddshift, 18u) D5D_FS_MUT(w1, 19u) D5D_FS_MUT(byteshift, 20u)
+D5D_FS_MUT(touchorder, 21u) D5D_FS_MUT(notouch1, 22u) D5D_FS_MUT(notouch2, 23u) D5D_FS_MUT(ret, 24u)
+/* 0x2DCA0 hiscore_insert: EAX = rec, EDX = src, EBX = table. 0x2DB58 runs on both sides, the
+ * runtime memmove 0x653A1 in the original; 0x2D4EC is a stub. Full mask: `mov eax,ebx` 0x2DDD7 (1,
+ * or the 0 of a failed 0x2DB58), as the port returns. */
+static u32 d5d_2dca0_core(u32 rec, u32 src, u32 table, u32 mut)
+{
+    u32 left = 0u, size = 0u, desc, nval, value, s, stored;
+    u32 p = hiscore_locate(rec, table, &left, &size);
+    if (p == 0u) return (mut == 1u) ? 1u : 0u;                               /* @ret0 */
+    desc = 0x0002D3FCu + table * 8u;
+    stored = DSW(desc + ((mut == 2u) ? 0u : 2u));                            /* @count */
+    if (mut == 3u) config_storage_touch(table + 6u);                         /* @touchearly */
+    if (((mut == 4u) ? stored >= rec : stored > rec) && mut != 5u) {         /* @flagle @noflag */
+        u32 f = (mut == 6u) ? table : table + 6u;                            /* @flagbit */
+        DSB(0x00105DD8u + ((mut == 7u) ? 0u : (f >> 3))) |= (u8)(1u << (f & 7u));   /* @flagidx */
+    }
+    if ((s32)left > (s32)size && mut != 8u) {                                /* @nomove */
+        u32 n = (mut == 9u) ? left : left - size;                            /* @movelen */
+        if (mut == 10u) { for (u32 k = 0u; k < n; k++) DSB(p + size + k) = DSB(p + k); }   /* @movefwd */
+        else memmove(mem + p + size, mem + p, n);
+    }
+    nval = (mut == 11u) ? 4u : DSW(desc + 4u);                               /* @vb */
+    value = DSD(src);
+    for (u32 n = nval; n != 0u; n--) {
+        DSB(p + ((mut == 12u) ? nval - n : n - 1u)) = (u8)value;             /* @vle */
+        value >>= 8;
+    }
+    p += nval;
+    s = src + ((mut == 13u) ? 0u : 4u);                                      /* @nameoff */
+    for (u32 n = DSW(desc + 6u); n != 0u; n -= 2u) {
+        u32 w = 0u;
+        for (u32 k = 0u; k < ((mut == 14u) ? 2u : 3u); k++) {                /* @two */
+            s32 c = (s8)DSB(s);
+            if (c != 0 && c != 0x20) {
+                w |= ((u32)c & ((mut == 15u) ? 0x3Fu : 0x1Fu)) << (((mut == 16u) ? 6u : 5u) * k);   /* @mask @shift */
+                s++;
+            } else if (c == 0x20 || mut == 17u) {                            /* @nuladv */
+                s++;
+            }
+        }
+        if (mut == 18u) { DSB(p) = (u8)(w >> 8); DSB(p + 1u) = (u8)w; }      /* @wbe */
+        else { DSB(p) = (u8)w; DSB(p + 1u) = (u8)(w >> 8); }
+        p += 2u;
+    }
+    if (mut == 3u) return 1u;
+    if (mut == 19u) config_storage_touch(table + 6u);                        /* @touchalways */
+    else if (DSW(desc + 2u) > rec && mut != 20u)                             /* @notouch */
+        config_storage_touch((mut == 21u) ? table : table + 6u);             /* @toucharg */
+    return (mut == 22u) ? 0u : 1u;                                           /* @ret1 */
+}
+static void b_d5d_2dca0(const u32 *r, u32 *eax) { *eax = hiscore_insert(r[R_EAX], r[R_EDX], r[R_EBX]); }
+#define D5D_HI_MUT(name, n) \
+    static void m_d5d_2dca0_##name(const u32 *r, u32 *eax) { *eax = d5d_2dca0_core(r[R_EAX], r[R_EDX], r[R_EBX], n); }
+D5D_HI_MUT(ret0, 1u) D5D_HI_MUT(count, 2u) D5D_HI_MUT(touchearly, 3u) D5D_HI_MUT(flagle, 4u) D5D_HI_MUT(noflag, 5u)
+D5D_HI_MUT(flagbit, 6u) D5D_HI_MUT(flagidx, 7u) D5D_HI_MUT(nomove, 8u) D5D_HI_MUT(movelen, 9u) D5D_HI_MUT(movefwd, 10u)
+D5D_HI_MUT(vb, 11u) D5D_HI_MUT(vle, 12u) D5D_HI_MUT(nameoff, 13u) D5D_HI_MUT(two, 14u) D5D_HI_MUT(mask, 15u)
+D5D_HI_MUT(shift, 16u) D5D_HI_MUT(nuladv, 17u) D5D_HI_MUT(wbe, 18u) D5D_HI_MUT(touchalways, 19u) D5D_HI_MUT(notouch, 20u)
+D5D_HI_MUT(toucharg, 21u) D5D_HI_MUT(ret1, 22u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43770,6 +43884,54 @@ static const binding_t k_bindings[] = {
     { "menu_title_draw@rows", m_d5d_2fe84_rows, 0x00000000u },
     { "menu_title_draw@modeb", m_d5d_2fe84_modeb, 0x00000000u },
     { "menu_title_draw@one", m_d5d_2fe84_one, 0x00000000u },
+    { "config_field_set", b_d5d_2da0c, 0xFFFFFFFFu },
+    { "config_field_set@bound", m_d5d_2da0c_bound, 0xFFFFFFFFu },
+    { "config_field_set@signed", m_d5d_2da0c_signed, 0xFFFFFFFFu },
+    { "config_field_set@rem", m_d5d_2da0c_rem, 0xFFFFFFFFu },
+    { "config_field_set@trailmask", m_d5d_2da0c_trailmask, 0xFFFFFFFFu },
+    { "config_field_set@notrail", m_d5d_2da0c_notrail, 0xFFFFFFFFu },
+    { "config_field_set@touch0early", m_d5d_2da0c_touch0early, 0xFFFFFFFFu },
+    { "config_field_set@flagorder", m_d5d_2da0c_flagorder, 0xFFFFFFFFu },
+    { "config_field_set@trailoff", m_d5d_2da0c_trailoff, 0xFFFFFFFFu },
+    { "config_field_set@flag1", m_d5d_2da0c_flag1, 0xFFFFFFFFu },
+    { "config_field_set@noshift8", m_d5d_2da0c_noshift8, 0xFFFFFFFFu },
+    { "config_field_set@sar", m_d5d_2da0c_sar, 0xFFFFFFFFu },
+    { "config_field_set@notouch0", m_d5d_2da0c_notouch0, 0xFFFFFFFFu },
+    { "config_field_set@no6", m_d5d_2da0c_no6, 0xFFFFFFFFu },
+    { "config_field_set@six", m_d5d_2da0c_six, 0xFFFFFFFFu },
+    { "config_field_set@bitpos", m_d5d_2da0c_bitpos, 0xFFFFFFFFu },
+    { "config_field_set@width", m_d5d_2da0c_width, 0xFFFFFFFFu },
+    { "config_field_set@oddkeep", m_d5d_2da0c_oddkeep, 0xFFFFFFFFu },
+    { "config_field_set@oddshift", m_d5d_2da0c_oddshift, 0xFFFFFFFFu },
+    { "config_field_set@w1", m_d5d_2da0c_w1, 0xFFFFFFFFu },
+    { "config_field_set@byteshift", m_d5d_2da0c_byteshift, 0xFFFFFFFFu },
+    { "config_field_set@touchorder", m_d5d_2da0c_touchorder, 0xFFFFFFFFu },
+    { "config_field_set@notouch1", m_d5d_2da0c_notouch1, 0xFFFFFFFFu },
+    { "config_field_set@notouch2", m_d5d_2da0c_notouch2, 0xFFFFFFFFu },
+    { "config_field_set@ret", m_d5d_2da0c_ret, 0xFFFFFFFFu },
+    { "hiscore_insert", b_d5d_2dca0, 0xFFFFFFFFu },
+    { "hiscore_insert@ret0", m_d5d_2dca0_ret0, 0xFFFFFFFFu },
+    { "hiscore_insert@count", m_d5d_2dca0_count, 0xFFFFFFFFu },
+    { "hiscore_insert@touchearly", m_d5d_2dca0_touchearly, 0xFFFFFFFFu },
+    { "hiscore_insert@flagle", m_d5d_2dca0_flagle, 0xFFFFFFFFu },
+    { "hiscore_insert@noflag", m_d5d_2dca0_noflag, 0xFFFFFFFFu },
+    { "hiscore_insert@flagbit", m_d5d_2dca0_flagbit, 0xFFFFFFFFu },
+    { "hiscore_insert@flagidx", m_d5d_2dca0_flagidx, 0xFFFFFFFFu },
+    { "hiscore_insert@nomove", m_d5d_2dca0_nomove, 0xFFFFFFFFu },
+    { "hiscore_insert@movelen", m_d5d_2dca0_movelen, 0xFFFFFFFFu },
+    { "hiscore_insert@movefwd", m_d5d_2dca0_movefwd, 0xFFFFFFFFu },
+    { "hiscore_insert@vb", m_d5d_2dca0_vb, 0xFFFFFFFFu },
+    { "hiscore_insert@vle", m_d5d_2dca0_vle, 0xFFFFFFFFu },
+    { "hiscore_insert@nameoff", m_d5d_2dca0_nameoff, 0xFFFFFFFFu },
+    { "hiscore_insert@two", m_d5d_2dca0_two, 0xFFFFFFFFu },
+    { "hiscore_insert@mask", m_d5d_2dca0_mask, 0xFFFFFFFFu },
+    { "hiscore_insert@shift", m_d5d_2dca0_shift, 0xFFFFFFFFu },
+    { "hiscore_insert@nuladv", m_d5d_2dca0_nuladv, 0xFFFFFFFFu },
+    { "hiscore_insert@wbe", m_d5d_2dca0_wbe, 0xFFFFFFFFu },
+    { "hiscore_insert@touchalways", m_d5d_2dca0_touchalways, 0xFFFFFFFFu },
+    { "hiscore_insert@notouch", m_d5d_2dca0_notouch, 0xFFFFFFFFu },
+    { "hiscore_insert@toucharg", m_d5d_2dca0_toucharg, 0xFFFFFFFFu },
+    { "hiscore_insert@ret1", m_d5d_2dca0_ret1, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

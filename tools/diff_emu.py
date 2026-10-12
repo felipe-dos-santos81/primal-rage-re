@@ -78,6 +78,11 @@ FLAT_GDT = STACK_LOW          # the two descriptors, at the bottom of the privat
 # reaches, saves and loads ES (0x6C8ED `push es`, 0x6C94E `les edx,[ecx-8]`, 0x6CA21 `mov es,edx`, 0x6CB68
 # `pop es`). A row that allows it runs under the same flat descriptors.
 FLAT_SEGMENT_CALLEES |= {0x6C8EB}
+# D5 d5d (record 2026-10-12-reverse-d5d §2): the runtime memmove 0x653A1 loads ES from DS on both of its
+# copy arms (0x653BB `mov edx,ds`, 0x653BD `push es`, 0x653BE `mov es,edx`; the same at 0x653D5..0x653DA) and
+# pops it back. Without the flat descriptors its `ret` pops through a 16-bit stack (the run stopped `int3 at
+# 0x10000`). No row before this batch names 0x653A1.
+FLAT_SEGMENT_CALLEES |= {0x653A1}
 
 
 def flat_segments(mu):

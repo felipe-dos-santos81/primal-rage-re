@@ -63,6 +63,7 @@ u32 config_field_get(u32 field)
  * 2026-09-29-todo-verify-derivations.md). */
 void config_storage_touch(u32 kind)
 {
+    PR_SEAM(0x2D4ECu, kind);
     (void)kind;
 }
 

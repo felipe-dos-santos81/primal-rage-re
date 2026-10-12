@@ -24787,6 +24787,104 @@ D5D_SPECS += [
                   "@widealways", "@nowide", "@uscorealways", "@col", "@row", "@modea", "@flag4", "@idswap", "@rows",
                   "@modeb", "@one")),
 ]
+D5D_TOUCH = E.Call(0x2D4EC, ("eax",))                # config_storage_touch, seamed by this batch (a declared no-op in the port)
+
+
+def d5d_fs_case(field, trail, bitpos, width, flags=0x50):
+    """0x2DA0C: the field's descriptor 0x2D300 + 4 * field poked to {trail byte offset (bits
+    0..5), nibble position (bits 6..13), width - 1 in nibbles (bits 14..16)} with the unread
+    bits above set, and the storage 0x105DB0..0x105E6F seeded with distinct bytes (the flag byte
+    0x105DD8 = `flags`)."""
+    p = {0x0002D300 + field * 4: le32(0xFFFE0000 | ((width - 1) << 14) | (bitpos << 6) | trail)}
+    buf = bytearray(0x60 | ((i * 5) & 0x1F) | (0x80 if i & 1 else 0) for i in range(0xC0))
+    buf[0x28] = flags
+    p.update(d1d_chunks(0x00105DB0, bytes(buf)))
+    return p
+
+
+D5D_SPECS += [
+    # 0x2DA0C config_field_set: EAX = the field, EDX = the value. A field above 0x3E, unsigned
+    # (`jbe` 0x2DA14: f1 is -1, f2 0x80000000), returns -1. Else the descriptor 0x2D300[field]:
+    # with a trail offset (bits 0..5) the value's low byte goes to 0x105DAF + it, the flag byte
+    # 0x105DD8 (read before that store: c9's trail is 0x29, the flag byte itself) gets bit 0, the
+    # value is shifted right 8 (logical: cb) and 0x2D4EC(0); the flag byte |= 6; then width
+    # nibbles (bits 14..16, + 1) at nibble position bits 6..13 of 0x105DE1: an odd position's
+    # first nibble is the high half of its byte, whole bytes follow and a last odd nibble is a
+    # low half; 0x2D4EC(1), 0x2D4EC(2) and 0. 0x2D4EC is a stub.
+    Spec("config_field_set", 0x2DA0C, [
+        Case("f0", {"eax": 0x3F, "edx": 0x12345678}, d5d_fs_case(0x3E, 3, 4, 2)),
+        Case("f1", {"eax": 0xFFFFFFFF, "edx": 0x12345678}, d5d_fs_case(0x3E, 3, 4, 2)),
+        Case("f2", {"eax": 0x80000000, "edx": 0x12345678}, d5d_fs_case(0, 3, 4, 2)),
+        Case("c1", {"eax": 0x3E, "edx": 0x1234567B}, d5d_fs_case(0x3E, 0, 0, 1)),
+        Case("c2", {"eax": 0, "edx": 0x123456C7}, d5d_fs_case(0, 0, 4, 2, flags=0x00)),
+        Case("c3", {"eax": 5, "edx": 0x12345D9A}, d5d_fs_case(5, 0, 8, 3)),
+        Case("c4", {"eax": 6, "edx": 0x1234567E}, d5d_fs_case(6, 0, 5, 1, flags=0xFF)),
+        Case("c5", {"eax": 7, "edx": 0x123456E3}, d5d_fs_case(7, 0, 7, 2)),
+        Case("c6", {"eax": 8, "edx": 0x9ABCDEF1}, d5d_fs_case(8, 0, 0x21, 8)),
+        Case("c7", {"eax": 9, "edx": 0x9ABCDEF1}, d5d_fs_case(9, 0, 0x40, 8)),
+        Case("c8", {"eax": 0x10, "edx": 0x12345678}, d5d_fs_case(0x10, 0x10, 0x10, 4), {0x2D4EC: 0xFFFFFFFF}),
+        Case("c9", {"eax": 0x11, "edx": 0x00ABCDEE}, d5d_fs_case(0x11, 0x29, 0x13, 3, flags=0x10)),
+        Case("ca", {"eax": 0x12, "edx": 0x76543210}, d5d_fs_case(0x12, 0x3F, 0xFF, 8)),
+        Case("cb", {"eax": 0x13, "edx": 0x87654321}, d5d_fs_case(0x13, 0x20, 0x30, 8)),
+        Case("cc", {"eax": 0x14, "edx": 0x00000F5A}, d5d_fs_case(0x14, 1, 0xC1, 5)),
+    ], calls=(D5D_TOUCH,), eax_mask=0xFFFFFFFF,
+       mutants=("@bound", "@signed", "@rem", "@trailmask", "@notrail", "@touch0early", "@flagorder", "@trailoff",
+                "@flag1", "@noshift8", "@sar", "@notouch0", "@no6", "@six", "@bitpos", "@width", "@oddkeep",
+                "@oddshift", "@w1", "@byteshift", "@touchorder", "@notouch1", "@notouch2", "@ret")),
+]
+D5D_SRC = 0x0010A500                                # zero BSS: the record to insert (a value dword, then the name)
+D5D_HS_DESCS = ((10, 4, 8), (1, 4, 0x18), (1, 3, 2))    # the image's three descriptors
+
+
+def d5d_hs_case(src, descs=D5D_HS_DESCS, stored=None, flags=(0x11, 0x22)):
+    """0x2DCA0: d2d_hs_case (the three record blocks in the scratch BSS) with every block seeded
+    whole and for one record past its end, each descriptor's +2 word = `stored`[t] (the image's
+    equal the counts), the two flag bytes 0x105DD8/0x105DD9 between seeded bytes, and the source
+    record `src` followed by seeded bytes."""
+    p = d2d_hs_case(descs=descs, out=False)
+    stored = stored or [d[0] for d in descs]
+    for t, (count, vb, nb) in enumerate(descs):
+        p[D1I_HS_DESC + t * 8] = le16(count) + le16(stored[t]) + le16(vb) + le16(nb)
+        n = (count + 1) * (vb + nb) + 4
+        p.update(d1d_chunks(D2D_HS[t], bytes(((0x20 * (t + 1)) + i * 3) & 0xFF | 0x01 for i in range(n))))
+    p[0x00105DD7] = bytes([0x61, flags[0], flags[1], 0x62])
+    p[D5D_SRC] = bytes(src) + b"\x71\x72\x73\x74"
+    return p
+
+
+D5D_NAME12 = b"ABCDEFGHIJKL"
+D5D_SPECS += [
+    # 0x2DCA0 hiscore_insert: EAX = rec, EDX = src, EBX = table. 0x2DB58(rec, table, &left, &size)
+    # (run on both sides): 0 returns 0 (i2 rec == count, i3 table 3). With the descriptor's +2
+    # word above rec, unsigned (`jbe` 0x2DCE6: i4 equal, i5 one above), bit (table + 6) & 7 of the
+    # byte 0x105DD8 + ((table + 6) >> 3) is set (i6: table 2, the next byte). With left > size the
+    # records from rec move down one (the runtime memmove 0x653A1, an overlapping copy; i1: the
+    # last record, nothing moves). The value dword goes in big-endian over the +4 byte count (i8:
+    # five bytes; i7: none) and each name word packs three characters, 5 bits each, low field
+    # first: a space leaves its field 0 and is consumed, the NUL is not (ia, ib). Then, +2 word
+    # above rec again, 0x2D4EC(table + 6) (a stub), and 1.
+    Spec("hiscore_insert", 0x2DCA0, [
+        Case("i0", {"eax": 0, "edx": D5D_SRC, "ebx": 0}, d5d_hs_case(le32(0x12345678) + D5D_NAME12)),
+        Case("i1", {"eax": 9, "edx": D5D_SRC, "ebx": 0}, d5d_hs_case(le32(0x9ABCDEF0) + b"mnopqrstuvwx")),
+        Case("i2", {"eax": 10, "edx": D5D_SRC, "ebx": 0}, d5d_hs_case(le32(0x12345678) + D5D_NAME12)),
+        Case("i3", {"eax": 0, "edx": D5D_SRC, "ebx": 3}, d5d_hs_case(le32(0x12345678) + D5D_NAME12)),
+        Case("i4", {"eax": 5, "edx": D5D_SRC, "ebx": 0},
+             d5d_hs_case(le32(0x01020304) + D5D_NAME12, stored=(5, 1, 1))),
+        Case("i5", {"eax": 5, "edx": D5D_SRC, "ebx": 0},
+             d5d_hs_case(le32(0x01020304) + D5D_NAME12, stored=(6, 1, 1), flags=(0xFF, 0x22)), {0x2D4EC: 0xFFFFFFFF}),
+        Case("i6", {"eax": 0, "edx": D5D_SRC, "ebx": 2}, d5d_hs_case(le32(0xAABBCCDD) + b"\xc1\xe2\x7f")),
+        Case("i7", {"eax": 1, "edx": D5D_SRC, "ebx": 1},
+             d5d_hs_case(le32(0x12345678) + D5D_NAME12, descs=((10, 4, 8), (3, 0, 0), (1, 3, 2)))),
+        Case("i8", {"eax": 0, "edx": D5D_SRC, "ebx": 1},
+             d5d_hs_case(le32(0x11223344) + b"ZY XWV", descs=((10, 4, 8), (2, 5, 4), (1, 3, 2)))),
+        Case("i9", {"eax": 3, "edx": D5D_SRC, "ebx": 0}, d5d_hs_case(le32(0x80000001) + b"A B  C D E F")),
+        Case("ia", {"eax": 7, "edx": D5D_SRC, "ebx": 0}, d5d_hs_case(le32(0) + b"AB\x00DEFGHIJKL")),
+        Case("ib", {"eax": 0, "edx": D5D_SRC, "ebx": 1}, d5d_hs_case(le32(0xFFFFFFFF) + b" \x00" + b"Q" * 0x24)),
+    ], allow_calls=(0x2DB58, 0x653A1), calls=(D5D_TOUCH,), eax_mask=0xFFFFFFFF,
+       mutants=("@ret0", "@count", "@touchearly", "@flagle", "@noflag", "@flagbit", "@flagidx", "@nomove",
+                "@movelen", "@movefwd", "@vb", "@vle", "@nameoff", "@two", "@mask", "@shift", "@nuladv", "@wbe",
+                "@touchalways", "@notouch", "@toucharg", "@ret1")),
+]
 D1_SPECS += D5D_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
