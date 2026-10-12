@@ -15847,6 +15847,7 @@ D4E_MASKS = {
     "fighter_14a5c_al": 0x0,
     "fighter_14b90_al": 0x0,
     "fighter_14814": 0x0,
+    "fight_hud_meter_step_al": 0x0,
 }
 D4E_KINDS = {
     "fighter_146f0_al@eax": {'call #1', 'call #2'},
@@ -15882,6 +15883,7 @@ D4E_KINDS = {
     "fighter_14814@flagside": {'byte'},
     "fighter_14814@a54": {'byte'},
     "fighter_14814@slotctx": {'byte'},
+    "fight_hud_meter_step_al@eaxcmd": {'byte', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory'},
 }
 D4E_CASES = [
     ("fighter_146f0_al@eax", ['c2', 'c3']),
@@ -15917,6 +15919,7 @@ D4E_CASES = [
     ("fighter_14814@flagside", ['b0', 'b1', 'c0', 'c1']),
     ("fighter_14814@a54", ['a0', 'a1']),
     ("fighter_14814@slotctx", ['b1', 'c1']),
+    ("fight_hud_meter_step_al@eaxcmd", ['p2', 'p4']),
 ]   # D4E_CASES end
 D1_MASKS.update(D4E_MASKS)
 D1_KINDS.update(D4E_KINDS)
@@ -16982,6 +16985,8 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # D4 d4e (record 2026-10-12-reverse-d4e): the stubs its rows add
+        0x1D74C: (),
         # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
         0x19820: (), 0x1D764: (), 0x1D810: ("esi", "edi", "ebp"), 0x1D890: (), 0x1DAE8: (), 0x1DC6C: (), 0x20EF8: (), 0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x29CBC: ("edx",), 0x2C060: (), 0x2C0F4: ("ebx", "ecx", "edx", "ebp"), 0x2C178: ("edx", "ebp"), 0x2C1C8: ("ebx", "ecx", "edx", "esi", "edi"), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA48: (), 0x2CA78: (), 0x2CA7C: (), 0x2CAA8: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (), 0x4F790: (), 0x4FA88: ("edi", "ebp"),
         # D3 d3b (record 2026-10-12-reverse-d3b): the stubs its rows add

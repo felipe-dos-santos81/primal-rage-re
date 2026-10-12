@@ -30568,6 +30568,9 @@ D4E_REACT_MUT(14814, cb0c, 0x40000u)    D4E_REACT_MUT(14814, cbswap, 0x80000u)  
 D4E_REACT_MUT(14814, r55, 0x200000u)    D4E_REACT_MUT(14814, cmpuns, 0x400000u) D4E_REACT_MUT(14814, cmpge, 0x800000u)
 D4E_REACT_MUT(14814, fdidx, 0x1000000u) D4E_REACT_MUT(14814, noflag, 0x2000000u) D4E_REACT_MUT(14814, flagside, 0x4000000u)
 D4E_REACT_MUT(14814, a54, 0x8000000u)   D4E_REACT_MUT(14814, slotctx, 0x10000000u)
+/* 0x1D540 under a stubbed 0x1D74C: d3d's core tests that callee's whole int, so its mutation 0 is
+ * the port before the `test al,al` correction (0x1D604). */
+static void m_d4e_1d540_eaxcmd(const u32 *r, u32 *eax) { (void)r; *eax = d3d_1d540_core(0u); }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39208,6 +39211,8 @@ static const binding_t k_bindings[] = {
     { "fighter_14814@flagside", m_d4e_14814_flagside, 0x00000000u },
     { "fighter_14814@a54", m_d4e_14814_a54, 0x00000000u },
     { "fighter_14814@slotctx", m_d4e_14814_slotctx, 0x00000000u },
+    { "fight_hud_meter_step_al", b_d3d_1d540, 0x00000000u },
+    { "fight_hud_meter_step_al@eaxcmd", m_d4e_1d540_eaxcmd, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

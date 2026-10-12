@@ -21973,6 +21973,21 @@ D4E_SPECS += [
            "eax396 eax590 voice sel gside aorder a53 b18 astream ahold gate dec nodec bstream early s57 b53 "
            "b54 cb0c cbswap orbit r55 cmpuns cmpge fdidx noflag flagside a54 slotctx").split())),
 ]
+
+D4E_1D74C = E.Call(0x1D74C, ("eax",))          # seamed by this batch; it preserves every register
+
+D4E_SPECS += [
+    # 0x1D540 fight_hud_meter_step (d3d's row; mask 0 as there) with 0x1D74C a stub (d3d runs it:
+    # its EAX is 0 or 1 whole, `and eax,0xffff` 0x1D758 / `setne al`). `test al,al` 0x1D604 / `jne`:
+    # with 0x468D8 holding and the slot's +0x63 clear, p2 (0x100) and p4 (0xFFFFFF00, side 1) leave
+    # the rate 0 in the original; p3 (0xFFFFFF01) and p7 (0x80) take the command arm. One EAX per
+    # case serves both sides. d3d's cases otherwise (the command words are not read).
+    Spec("fight_hud_meter_step_al", 0x1D540, d4e_spec_cases(D3D_SPECS, "fight_hud_meter_step", (
+        {}, {}, {}, {0x1D74C: 0}, {0x1D74C: 1}, {0x1D74C: 0x00000100}, {0x1D74C: 0xFFFFFF01},
+        {0x1D74C: 0xFFFFFF00}, {0x1D74C: 1}, {0x1D74C: 0}, {0x1D74C: 0x00000080}, {})),
+        calls=(PRED, D2B_PSW, D4E_1D74C), allow_calls=(0x33A10, 0x1D4D0, 0x1D2F0, 0x1D464), eax_mask=0,
+        mutants=("@eaxcmd",)),
+]
 D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

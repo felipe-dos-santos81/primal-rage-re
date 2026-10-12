@@ -1586,6 +1586,7 @@ u32 fight_hud_rate(u32 side)
  * byte alone, `setnz`). Caller: 0x1D5FF (0x1D540). */
 u32 fight_cmd_bits_30(u32 side)
 {
+    PR_SEAM_RET(0x1D74Cu, side);
     return (DSW(DS_001088E0 + side * 2u) & 0x30u) != 0u;        /* 0x1D74C..0x1D760 */
 }
 
@@ -1654,7 +1655,7 @@ void fight_hud_meter_step(void)
         DSB(slot + 0x5Eu) = (u8)(DSB(slot + 0x5Eu) + 1u);       /* 0x1D5E6 */
 
         if ((u8)ai_pred_468d8(side) != 0u) {           /* 0x1D5F0 0x468D8, 0x1D5F5: test al,al */
-            if (fight_cmd_bits_30(side) != 0u                   /* 0x1D5FF 0x1D74C */
+            if ((u8)fight_cmd_bits_30(side) != 0u               /* 0x1D5FF 0x1D74C, 0x1D604: test al,al */
                     || DSB(slot + 0x63u) != 0u) {               /* 0x1D608 */
                 rate = 3u;                                      /* 0x1D615 */
                 if (DSB(slot + 0x63u) != 0u) {                  /* 0x1D61A/0x1D624 */
