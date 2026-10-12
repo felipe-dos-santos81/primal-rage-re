@@ -74,6 +74,10 @@ UNMODELED_MNEMONICS = frozenset({
 # address, so no other row's emulator state changes.
 FLAT_SEGMENT_CALLEES = frozenset({0x65624})
 FLAT_GDT = STACK_LOW          # the two descriptors, at the bottom of the private stack mapping
+# D3 d3a (record 2026-10-12-reverse-d3a §2.2): the runtime's formatter core 0x6C8EB, which sprintf 0x65546
+# reaches, saves and loads ES (0x6C8ED `push es`, 0x6C94E `les edx,[ecx-8]`, 0x6CA21 `mov es,edx`, 0x6CB68
+# `pop es`). A row that allows it runs under the same flat descriptors.
+FLAT_SEGMENT_CALLEES |= {0x6C8EB}
 
 
 def flat_segments(mu):
@@ -698,6 +702,29 @@ def callee_clobbers(image, addr, resolved=None):
 # call, so the caller-observed set is edx.
 _CALLEE_CLOBBER_FIXES = {0x2B150: (), 0x2BD44: ("edx",), 0x3B298: ("edx",), 0x3CF38: (),
                          0x2AD40: ("edx",)}
+# D3 d3a (record 2026-10-12-reverse-d3a §2): 0x2C060 is `call 0x2caa8; jmp 0x2ca2c`. 0x2CAA8 writes EAX
+# only (0x2CAAF `sete al`, 0x2CAB2 `and eax,0xff`) and the tail-jump target saves EDX around its one use
+# (0x2CA2C `push edx` ... 0x2CA44 `pop edx`; `ret`), which the scan cannot credit to 0x2C060 (the push is
+# not at its entry). The raw caller 0x11F28 reads EDX across the call (0x11F29 `mov edx,eax`, 0x11F39
+# `test [edx*4+0x9acbc],eax`).
+_CALLEE_CLOBBER_FIXES[0x2C060] = ()
+# D3 d3c: 0x29D04 pushes EBX, ECX, EDX (0x29D04..0x29D06) and pops all three before each of its two
+# `ret`s (0x29D12..0x29D14; 0x29D5B..0x29D5D), but the second run is followed by `mov eax,eax`
+# (0x29D5E) before the `ret` at 0x29D60, which the pops-directly-before-every-ret rule rejects. Its
+# raw caller 0x350D0 keeps the side in EBX across the +0x14 hook call (0x3514C; read at 0x35227).
+_CALLEE_CLOBBER_FIXES[0x29D04] = ()
+# D3 d3c: 0x46C78 saves EBX and EDX and its own instructions write only EAX, EBX and EDX; its callees
+# 0x33950 and 0x46BBC clobber EDX alone. The scan's (ecx, esi, edi, ebp) comes only from its direct
+# target 0x62003, the runtime's fatal exit (>= 0x5D000, taken to clobber everything), which does not
+# return. Its raw caller 0x46F4C loads EBP before the call (0x46F82..0x46FD9; call 0x46FE3) and reads
+# it after (0x47084, 0x470C4).
+_CALLEE_CLOBBER_FIXES[0x46C78] = ()
+# D3 d3d (record 2026-10-12-reverse-d3d section 4): 0x36870's own body pushes and pops EBX, ECX and
+# EDX and writes no other register; the scan inherits esi/edi/ebp from 0x379C4, whose indirect hook
+# call (`call [0x1078e8]` 0x379E8) makes it assume every register written. The raw caller 0x47B04
+# keeps EDI live across the call (set at 0x47B0B, read at 0x47BCE and 0x47BEF: `mov byte
+# [edi+0x57],3`), so 0x36870 preserves EDI; ESI and EBP stay in the set (no caller shown to read them).
+_CALLEE_CLOBBER_FIXES[0x36870] = ("esi", "ebp")
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --

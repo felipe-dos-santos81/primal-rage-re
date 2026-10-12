@@ -262,6 +262,7 @@ u32 hiscore_locate(u32 rec, u32 table, u32 *left_out, u32 *size_out)
  * or 0 when 0x2DB58 finds no record. */
 u32 hiscore_read(u32 rec, u32 table)
 {
+    PR_SEAM_RET(0x2DBC4u, rec, table);
     u32 p = hiscore_locate(rec, table, NULL, NULL);          /* 0x2DBD1 */
     if (p == 0u) return 0u;                                  /* 0x2DBDA */
     u32 desc = DS_0002D3FC + table * 8u;                     /* 0x2DBE0 */
@@ -348,6 +349,7 @@ u32 hiscore_insert(u32 rec, u32 src, u32 table)
  * is headroom, not a value the port invents. */
 u32 hiscore_rank_probe(u32 value, u32 table)
 {
+    PR_SEAM_RET(0x2DDE4u, value, table);
     u32 left = 0u, size = 0u;
     u32 p = hiscore_locate(0u, table, &left, &size);          /* 0x2DDFC */
     if (p == 0u) return 0xFFFFFFFFu;                          /* 0x2DE01/0x2DE07 */
@@ -392,6 +394,7 @@ u32 config_has_credit(void)
 /* 0x2C060. `call 0x2caa8; jmp 0x2ca2c` — the 0x2CAA8 result is discarded. */
 u32 config_credit_ready(void)
 {
+    PR_SEAM_RET0(0x2C060u);
     (void)config_not_free_play();
     return config_has_credit();
 }
@@ -399,6 +402,7 @@ u32 config_credit_ready(void)
 /* 0x2CA48. Free play, then the zero-credit guard, then the suppressed debit. */
 u32 config_credit_take(void)
 {
+    PR_SEAM_RET0(0x2CA48u);
     if (DSB(DS_00105D60) != 0u) return 1u;            /* 0x2CA51 */
     if (DSD(DS_00105C00) == 0u) return 0u;            /* 0x2CA5E */
     if (DSB(DS_00104B1F) == 0u) DSD(DS_00105C00)--;   /* 0x2CA69 */
@@ -411,12 +415,14 @@ u32 config_credit_take(void)
  * and by 0x32F54 (0x32F56, svcmenu.c, record §K11.7). Always 0. */
 u32 config_credit_zero(void)
 {
+    PR_SEAM_RET0(0x2CA78u);
     return 0u;                                         /* 0x2CA78 */
 }
 
 /* 0x2CA7C. `cmp eax,[0x85c00]; ja` is an unsigned guard. */
 u32 config_credit_spend(u32 n)
 {
+    PR_SEAM_RET(0x2CA7Cu, n);
     if (DSB(DS_00105D60) != 0u) return 1u;            /* 0x2CA85 */
     if (n > DSD(DS_00105C00)) return 0u;              /* 0x2CA91 */
     if (DSB(DS_00104B1F) == 0u) DSD(DS_00105C00) -= n;/* 0x2CA9C */
@@ -501,6 +507,7 @@ void config_play_time_snap(u32 idx, u32 arm)
  * 0x25EFD (0x25C88, EDX = 1) and 0x27DEB (0x27DC8, EDX = 0, record §48-K). */
 void config_play_time_snap_b(u32 idx, u32 arm)
 {
+    PR_SEAM(0x32B4Cu, idx, arm);
     if (arm != 0u) {                                    /* 0x32B57 `jz` */
         DSD(DS_00107480) = DSD(DS_0010746C + idx * 4u); /* 0x32B5B/0x32B89 */
         return;
