@@ -5049,7 +5049,7 @@ void hiscore_init(void)
         DSB(DS_001042C7 + i) = 0x20u;                           /* 0x1E85F */
     u8 ah = DSB(DS_00104528 + 1u);                              /* 0x1E86F */
     if ((ah & 0x40u) == 0u
-        && ((ah & 0x20u) == 0u || hiscore_audit_reset_due() != 1u)) {   /* 0x1E875..0x1E88C */
+        && ((ah & 0x20u) == 0u || (hiscore_audit_reset_due() & 0xFFu) != 1u)) {   /* 0x1E875..0x1E88C; AL alone: `and eax,0xff` 0x1E884 */
         hiscore_fill_defaults(0u);                              /* 0x1E8F0 0x1E918 */
         u32 r = hiscore_read(0u, 1u);                           /* 0x1E8F7 0x2DBC4 */
         if (DSD(r) != 0u) return;                               /* 0x1E8FC/0x1E8FF */
