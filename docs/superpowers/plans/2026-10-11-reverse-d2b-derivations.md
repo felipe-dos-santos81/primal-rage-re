@@ -26,6 +26,17 @@ the whole image for a stored pointer to it (none found for any member below).
 | 0x43A08 | `fight_char_select_actor` | 162 | 0x4379D, 0x43B60, 0x44521 | 0x4379D and 0x43B60: walk, dead on every path. 0x44521 loops (0x4450F `mov eax,edx`) or returns through 0x444C8 into 0x4367C, a function no instruction calls: it is the DS_00104AE4 frame hook (0x25806 `mov edx,0x4367c`, 0x25810 `mov [0x104ae4],edx`); from the return site of each of the six `call [0x104ae4]` (0x4F302, 0x4F373, 0x4F6F1, 0x4F70D, 0x4F9AA, 0x4F9D1) the walk is dead on every path | 0 |
 | 0x43FBC | `fight_char_fighter` | 150 | 0x43CA8 | walk, dead on every path | 0 |
 | 0x442A0 | `fight_char_team_fighter` | 170 | 0x448EF | walk, dead on every path | 0 |
+| 0x493F0 | `fight_midpoint` | 50 | 0x49CAA, 0x4C3C9 | both store all of EAX: 0x49CB7 and 0x4C3DD `mov [0x108874],eax` | 0xFFFFFFFF |
+| 0x496DC | `fight_496dc` | 416 | 0x4A32B | walk, dead on every path | 0 |
+| 0x4A708 | `fight_effects_hold_all` | 122 | 0x28594, 0x288C2 | walk, dead on every path | 0 |
+| 0x4A868 | `fight_4a868` | 63 | 0x4A361, 0x4BFDE, 0x4DF8E, 0x4DFFA, 0x4E066, 0x4E0D0 | each `test eax,eax` (0x4A366, 0x4BFE3, 0x4DF93, 0x4DFFF, 0x4E06B, 0x4E0D5) | 0xFFFFFFFF |
+| 0x4A8A8 | `fight_4a8a8` | 96 | 0x4E871 | 0x4E876 `test eax,eax` | 0xFFFFFFFF |
+| 0x4AA6C | `fight_4aa6c` | 98 | 0x4A97A, 0x4A9C2 | 0x4A97F `mov [0x10885c],eax` / 0x4A984 `test eax,eax`; 0x4A9C7 `mov [0x108858],eax` / 0x4A9CC `test eax,eax` | 0xFFFFFFFF |
+| 0x4B144 | `fight_4b144` | 359 | 0x49C05, 0x4AC0B | walk, dead on every path | 0 |
+| 0x4B2AC | `fight_4b2ac` | 322 | 0x4A163 | walk, dead on every path | 0 |
+| 0x4B5A8 | `fight_4b5a8` | 241 | 0x4AB45 | 0x4AB4A `test al,al`; walk on AH and the high word: dead | 0xFF |
+| 0x4B788 | `fight_4b788` | 547 | 0x4B705 | 0x4B70A `test eax,eax` | 0xFFFFFFFF |
+| 0x4BD98 | `fight_4bd98` | 346 | 0x4B590 | walk, dead on every path | 0 |
 
 "walk" is `eaxwalk.py`'s rule, the one record d1f §1 states: from the return site the code is followed
 (both arms of every conditional, into direct callees to depth 4, out through `ret` into the callers of
@@ -51,15 +62,27 @@ hand, as 0x1DC0C and 0x4367C above.
 | `fight_char_select_actor` | 0x43A08 | 5 | 4/4 | 16/16 | 0 | 0x2AE14 (EAX = the new record, varied per case), 0x1D7B8 and 0x2BCF4 stubs |
 | `fight_char_fighter` | 0x43FBC | 5 | 1/1 | 16/16 | 0 | 0x2BC30, 0x2A17C and 0x1D7B8 stubs |
 | `fight_char_team_fighter` | 0x442A0 | 7 | 3/3 | 17/17 | 0 | 0x2BC30, 0x2A17C and 0x1D7B8 stubs |
+| `fight_midpoint` | 0x493F0 | 8 | 3/3 | 7/7 | 0xFFFFFFFF | 0x2BE00 runs on both sides, recorded (each record its own value) |
+| `fight_4a868` | 0x4A868 | 11 | 6/6 | 8/8 | 0xFFFFFFFF | 0x2BE00 runs on both sides, recorded |
+| `fight_4a8a8` | 0x4A8A8 | 10 | 12/12 | 7/7 | 0xFFFFFFFF | 0x2BE00 runs on both sides, recorded |
+| `fight_4aa6c` | 0x4AA6C | 8 | 8/8 | 8/8 | 0xFFFFFFFF | 0x2BE00 runs on both sides, recorded: the call list is the matching entries, in order |
+| `fight_effects_hold_all` | 0x4A708 | 5 | 7/7 | 15/15 | 0 | 0x4B3F0 and 0x4B430 stubs, each rewriting the entry's next pointer to the list head (a harness write: the raw read the next entry before the call, 0x4A71D) |
+| `fight_496dc` | 0x496DC | 8 | 12/12 | 33/33 | 0 | 0x49388, 0x29CDC, 0x5D7DC, 0x2AE14 and 0x2BC30 stubs; 0x249D0, 0x249B0 and 0x496AC run on both sides (allowed) |
+| `fight_4b5a8` | 0x4B5A8 | 8 | 10/10 | 21/21 | 0xFF | 0x2BC30, 0x2BE00 and 0x2BE4C stubs |
+| `fight_4b144` | 0x4B144 | 16 | 17/17 | 20/20 | 0 | 0x2BE00, 0x5D7DC, 0x2BE4C and 0x2BC30 stubs; one rng value per case for its one to three draws |
+| `fight_4b2ac` | 0x4B2AC | 12 | 23/23 | 25/25 | 0 | 0x5D7DC, 0x2BE4C and 0x2BC30 stubs |
+| `fight_4b788` | 0x4B788 | 13 | 21/21 | 34/34 | 0xFFFFFFFF | 0x2B150, 0x2BC30, 0x2BD20 and 0x2C3FC stubs; 0x496AC runs on both sides (allowed) |
+| `fight_4bd98` | 0x4BD98 | 10 | 8/8 | 33/33 | 0 | 0x13134, 0x2AE14 and 0x2BC30 stubs; the 0x2BC30 stub rewrites DS_00108868 to a second record (a harness write), so the two +0x36 stores land on different records |
 
-11 rows, 156 mutants.
+22 rows, 367 mutants.
 
 The `D2B_MASKS` / `D2B_KINDS` / `D2B_CASES` pins of `tools/tests/test_diff_verify.py` are generated from
 these measurements. Every stub the batch declares carries the clobbers `E.callee_clobbers` derives from
 the bytes (checked per row). Stubs the pinned dictionary of
 `test_each_stub_declares_the_registers_its_callee_clobbers` did not have are added to it as new lines
 (no existing line changed): 0x10D70 (ebx, ecx, edx), 0x1A8F4 (edx), 0x38BEC (), 0x46670 (), 0x2C320 (), 0x33C18 (),
-0x2C088 (ebx, edx, edi, ebp), 0x1D7B8 (ebx, edx).
+0x2C088 (ebx, edx, edi, ebp), 0x1D7B8 (ebx, edx), 0x4B3F0 and 0x4B430 (ebx, edx), 0x49388 (),
+0x29CDC (edx), 0x2BE00 (), 0x2BE4C (), 0x2BD20 (edx), 0x13134 ().
 
 ## §3 Corrections (port/src)
 
@@ -72,9 +95,16 @@ The `port/src` edits of the batch that are not corrections:
   `0x38BEC` `fight_side_scratch_clear` (`PR_SEAM`, side), `0x46670` `fight_1081f0_clear` (`PR_SEAM0`),
   `0x2C320` `fight_scene_crowd` (`PR_SEAM`, scene), `0x33C18` `fight_char_reset` (`PR_SEAM`, side),
   `0x2C088` `prompt_press_start_clear` (`PR_SEAM`, col, row, side), `0x1D7B8`
-  `fight_select_marker_spawn` (`PR_SEAM`, side, cls, y).
+  `fight_select_marker_spawn` (`PR_SEAM`, side, cls, y), `0x2BE00` `fight_2be00` (`PR_SEAM_RET`, rec),
+  `0x2BE4C` `fight_2be4c` (`PR_SEAM_RET`, rec, value), `0x4B3F0` `fight_4b3f0` and `0x4B430`
+  `fight_4b430` (`PR_SEAM_RET`, entry, index, flag), `0x49388` `fight_dust_pick` (`PR_SEAM_RET`, side),
+  `0x29CDC` `fight_dust_value` (`PR_SEAM_RET`, side, ch), `0x2BD20` `actors_link_held` (`PR_SEAM_RET`,
+  rec, v), `0x13134` `fight_13134` (`PR_SEAM_RET0`).
   Each callee's own row was re-run after its seam and is unchanged (VERIFIED, every mutant detected).
-- exports for a binding: `fight_hud_bar_set_inv` (0x1DA84) loses `static` and is declared in `fight.h`.
+- exports for a binding (each loses `static` and is declared in `fight.h`): `fight_hud_bar_set_inv`
+  (0x1DA84), `fight_midpoint` (0x493F0), `fight_4aa6c` (0x4AA6C), `fight_4a8a8` (0x4A8A8),
+  `fight_4b5a8` (0x4B5A8), `fight_4b144` (0x4B144), `fight_4b2ac` (0x4B2AC), `fight_4b788` (0x4B788),
+  `fight_4bd98` (0x4BD98).
 
 A note on record d1g §1: it says the 0x10D70 call at 0x1DAE0 "returns through 0x1DA84: ... 0x1DC5C
 (returns through 0x1DAE8 to 0x26AA1)". 0x1DC5C is not in 0x1DAE8 (which ends at 0x1DC09 `ret`): it is in
@@ -113,6 +143,28 @@ Limits worth knowing:
 - `fight_char_team_fighter@null` runs the body with a fighter pointer of 0 and so writes mem[0x18],
   mem[0x1C] and mem[0x2C]: below the image, inside mem[], reported and cleared by the runner.
 - the string table of the text rows is a fixture (ids 0x235 and 0x236 in group 8), not ENGLISH.TXT.
+- the four 0x2BE00 readers run 0x2BE00's own bytes; the port's signed C arithmetic agrees with the raw's
+  wrapping `neg`/`sar` on the extreme inputs the rows include (a difference of 0x80000000 in
+  `fight_midpoint` d6, a wrapping subtraction in d7), on this compiler.
+- `fight_4aa6c`: the count is tested and divided as 16 bits (0x4AAAD `test cx,cx`, 0x4AAB8 `mov si,cx`); a
+  list of 65536 matching entries is not exercised. The raw reads the next link before the 0x2BE00
+  call (0x4AA92); 0x2BE00 writes nothing, so the order cannot show.
+- `fight_496dc`: the spawn stub returns one actor per case, so in the two-iteration cases both
+  iterations write the same actor (the memory at each call separates them). The +0x34 word the raw
+  tests after the 0x2BC30 call (0x4980B) is the one it copied before it; a stub does not change it,
+  so "read after the call" is not separated from "read before". fight.c's `effects_list_unlink` /
+  `effects_list_insert_after` carry no seam (the seamed 0x249D0/0x249B0 are actors.c's copies), so
+  the splice runs on both sides and shows in the memory, not in the call list.
+- `fight_4b5a8`: the entry's +0x1A is the actor's +0x32 read after the 0x2BC30 call (0x4B5EE); the stub
+  does not change it, so the read's position is not separated.
+- `fight_4b144`, `fight_4b2ac`: the rng stub has one EAX per case, used for rng(2) and for every
+  rng(0x1200) / rng(0xC00) of that case; the ranges are in the call list.
+- `fight_4b2ac`: a divisor DS_000C9520 of 0 (a divide fault in the raw) is not exercised.
+- `fight_4b788`: `hit` is 1 or 2 in every case (0x4B7C0 `xor si,1` on a 16-bit register is not
+  separated from a 32-bit one). The index stays below 7.
+- `fight_4bd98`: the spawn stub returns one record for both spawns, so which spawn's record 0x2BC30
+  takes (0x4BED0, EAX = the second) is not separated; the two midpoint arms are equal unless the
+  difference wraps (cases e8, e9).
 
 ## §5 Store sweep
 
@@ -125,11 +177,16 @@ Limits worth knowing:
 | `fight_char_opp_text_clear` | none of its own (DS_00108144[side] is NOT zeroed) | the slot pair sits between seeded dwords | `@zero` (a store the raw does not make) |
 | `fight_char_select_actor` | DS_0010813C[side] = the spawn, its +0x4D = 0x1E, the marker's +0x29 \|= 8 | +0x4C/+0x4E and +0x28/+0x2A seeded; +0x29 starts with bit 3 clear in four cases | `@store`, `@b4d`, `@or8` (dropped), `@order` (the OR before the 0x1D7B8 call), `@rec14c` |
 | `fight_char_fighter`, `fight_char_team_fighter` | the fighter's +0x18 and +0x1C dwords, +0x2C word | +0x18/+0x1C start 0xFFFFFFFF/0xEEEEEEEE (a 16-bit store shows), +0x2A/+0x2E seeded | `@w18`, `@w1c` (16-bit), `@w2c` (dropped), `@order` (the +0x2C store before the calls), `@x`, `@y`, `@tab2c` |
+| `fight_effects_hold_all` | each non-type-6 entry's actor +0x38, +0x34, +0x36 words = 0 | the three words start non-zero, +0x32 and +0x3A seeded | `@w38`, `@w34`, `@w36` (dropped), `@width` (a dword at +0x38), `@order` (after the call) |
+| `fight_496dc` | per node: the list links, desc +0x10, node +8, +0x1F, +0x0C, +0x21, +0x1E, +0x14; actor +0x14, +0x2C, +0x28, +0x34, +0x2E (+= 4), +0x4E | the free nodes' +8..+0x23 and the actor's fields hold slot-distinct bytes | `@desc10`, `@ne8`, `@a14`, `@f1f`, `@fc`, `@fcrec`, `@f21`, `@clamp`, `@w28`, `@w34`, `@type`, `@n14`, `@w2e`, `@b4e`, `@lorder`, `@order` |
+| `fight_4b5a8` | entry +0x1A, +0x14, +0x1E; actor +0x38, +0x34; the counter DS_001088B6[ch] (capped, then decremented) | entry +0x18/+0x1C, actor +0x32/+0x3A, the counter pair's neighbours | `@w1a`, `@y`, `@w38`, `@e14`, `@type`, `@cap`, `@dec`, `@signed`, `@order` |
+| `fight_4b144`, `fight_4b2ac` | entry +0x14 (and +0x1E = 1 in 0x4B144); actor +0x34, +0x29; DS_00108878 (twice) in 0x4B2AC | as above; DS_0010886C..0x108883 seeded | `@e14`, `@type`, `@dir`, `@b29`, `@b29pre`, `@stop`, `@w78`, `@order` |
+| `fight_4b788` | entry +0x1C \|= 0x40, +0x10 = 0, +0x20, +0x1E; actor +0x29, +0x18, +0x1C, +0x32, +0x2C, +0x38/+0x36/+0x34, +0x4A | every field inside seeded neighbours, both slots and records slot-distinct | `@set40`, `@z10`, `@flip`, `@ef`, `@e20`, `@mirror`, `@y1c`, `@w32`, `@clamp`, `@stop`, `@type`, `@b4a`, `@order` |
+| `fight_4bd98` | DS_00108864, entry +0x1E, +0x1C; 0x1088C1, 0x104B00, 0x1088C5, 0x1088AA, 0x1088A0, 0x108898, 0x10889D, 0x10889C, 0x104AEC, 0x1088AC, 0x108884 (twice), 0x108868, 0x10886C, both records' +0x36 | every stored byte starts non-zero inside seeded neighbours | `@w864`, `@type`, `@c1`, `@b00`, `@c5`, `@waa`, `@wa0`, `@w98`, `@b9d`, `@b9c`, `@aec`, `@wac`, `@bit5`, `@sub854`, `@w868`, `@late`, `@w86c`, `@r36a`, `@r36b`, `@v36` |
 
 ## §6 Queue entries not done
 
 - 0x432EC `fight_char_text_clear`: a named gap (§4), no row.
 
-Not yet reached (the queue is worked top to bottom): 0x493F0, 0x496DC, 0x4A708, 0x4A868, 0x4A8A8,
-0x4AA6C, 0x4B144, 0x4B2AC, 0x4B5A8, 0x4B788, 0x4B9AC, 0x4BD98, 0x4CC0C, 0x4CD98, 0x4CF20, 0x4D150,
+Not yet reached (the queue is worked top to bottom): 0x4B9AC, 0x4CC0C, 0x4CD98, 0x4CF20, 0x4D150,
 0x4D898, 0x4DBEC, 0x4E350, 0x4EBB8.

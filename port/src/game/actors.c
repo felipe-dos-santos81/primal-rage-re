@@ -2660,6 +2660,7 @@ void actors_anim_seek(u32 rec, u32 stream)
  * and 0x4D898 (0x4DA85), which pass the held record's own +0x56 word. */
 u32 actors_link_held(u32 rec, u32 v)
 {
+    PR_SEAM_RET(0x2BD20u, rec, v);
     DSB(DSD(DS_001014F4) + (u32)DSB(rec + 0x4Au) * ACTOR_REC_SIZE + 0x4Bu) =
         (u8)v;                                          /* 0x2BD3C */
     return 0;                                           /* 0x2BD40 */
