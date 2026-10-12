@@ -4189,6 +4189,7 @@ void actor_release(u32 rec, u32 pset)
  * 0x2AD40 and zeroed, and the column wraps to the next row after 0x2A. */
 void text_cells_release_count(s32 col, s32 row, s32 count)
 {
+    PR_SEAM(0x2F388u, col, row, count);
     if (col < 0) {                                      /* 0x2F393 */
         col = (0x2b - count) >> 1;                      /* 0x2F397..0x2F39E */
         if (col < 0) {                                  /* 0x2F3A0 */

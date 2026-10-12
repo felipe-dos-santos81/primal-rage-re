@@ -3235,7 +3235,7 @@ void flow_scroll_reset(u32 stage)
  * 0xA8ADC[ch] when the byte DS_00105B34[side] is non-zero, else 0xA8AC0[ch]
  * (0x29CDC's twin on other tables). EBX is pushed and popped. Its callers
  * 0x42979, 0x42A13, 0x42AAD and 0x42AE3 are all in 0x428B8. */
-static u32 flow_challenge_handle(u32 side, u32 ch)
+u32 flow_challenge_handle(u32 side, u32 ch)
 {
     if (DSB(DS_00105B34 + side) != 0u)                  /* 0x29CBD..0x29CC8 */
         return DSD(DS_000A8ADC + ch * 4u);              /* 0x29CCA */
@@ -4715,7 +4715,7 @@ static void game_state_4(void)
  * eax,0x105c14` / 0x2C3C7 `mov edx,ebx` / 0x2C3C9 `add ebx,0x14` / 0x2C3CC
  * `call 0x249c0`, while EBX < 0x105D5C). Callers: 0x20E2E (in 0x20DF4) and
  * 0x20ED5. EBX/ECX/EDX are pushed and popped. */
-static void flow_list_105c0c_init(void)
+void flow_list_105c0c_init(void)
 {
     DSD(DS_00105C10) = DS_00105C0C;                     /* 0x2C3A2 */
     DSD(DS_00105C0C) = DS_00105C0C;                     /* 0x2C3A8 */
@@ -4727,7 +4727,7 @@ static void flow_list_105c0c_init(void)
 
 /* 0x2C074 — record §46-B. DS_00105BF4 = DS_00105BF0 = 0 (EDX pushed and
  * popped). Callers: 0x20E47 (in 0x20DF4) and 0x20EEE. */
-static void flow_105bf0_clear(void)
+void flow_105bf0_clear(void)
 {
     DSD(DS_00105BF4) = 0u;                              /* 0x2C077 */
     DSD(DS_00105BF0) = 0u;                              /* 0x2C07D */
@@ -6346,7 +6346,7 @@ void sound_music_pause_toggle(void)
         DSD(DS_001028CC) = song;                           /* 0x1D1E7 */
         return;
     }
-    if (DSD(DS_001028C0) != 0u && snd_music_playing() != 0u)   /* 0x1D1F2 0x1D1FB 0x1D202 */
+    if (DSD(DS_001028C0) != 0u && (u8)snd_music_playing() != 0u)   /* 0x1D1F2 0x1D1FB 0x1D200 `test al,al` */
         AIL_stop_sequence(s_sequence);                     /* 0x1D20B 0x5DEAF */
     DSB(DS_001028DA) = 1;                                  /* 0x1D213 */
 }

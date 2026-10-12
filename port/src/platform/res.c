@@ -118,7 +118,11 @@ static u32 res_alloc(u32 size)
 
 /* PORT: the port's 0x1C308 (the paged allocator, host-owned record-§50-D)
  * exported for 0x1D0BC: a mem[] offset, or 0 when the block does not fit. */
-u32 res_block_alloc(u32 size) { return res_alloc(size); }
+u32 res_block_alloc(u32 size)
+{
+    PR_SEAM_RET(0x1C308u, size);
+    return res_alloc(size);
+}
 
 u32 res_count(void) { return DSD(DS_001014F0); }
 
