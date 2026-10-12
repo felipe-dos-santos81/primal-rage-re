@@ -5707,8 +5707,9 @@ void fight_4e99c(u32 count)
 /* 0x4E67C — record §49-P. Mode 0x25's per-frame audience-effects pass, called
  * unconditionally by game_mode_25_step (0x266AC). fight_2be00 of the fighter
  * record at slot DS_001088BC ("P"): when it exceeds 0x1C00 (signed), the
- * `big` flag is set and DS_00108894 is loaded from clamp(((s16)P's record's
- * +0x32 word - 0xE0) / 100, 0, 15) (0 when that difference is not positive);
+ * `big` flag is set and DS_00108894 is loaded from clamp(((s16)(P's record's
+ * +0x32 word - 0xE0)) / 100, 0, 15) (0 when that 16-bit difference is not
+ * positive);
  * else `big` is clear and DS_00108894 keeps whatever it held. Then, for every
  * entry on the active list DS_0010884C: with its +0x1C bit 1 clear, a live
  * actor R (+0x34 != 0) that fight_4a808 reports arrived is retired (+0x34 =
@@ -5735,7 +5736,7 @@ void fight_4e67c(void)
     u32 p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);    /* 0x4E6B8..0x4E6CE, 0x4E799..0x4E7A6 idiom */
     int big = (s32)fight_2be00(p) > 0x1C00;                      /* 0x4E6AC/0x4E6B1/0x4E6B6 */
     if (big) {                                                    /* 0x4E6B6 */
-        s32 v = (s32)(s16)DSW(p + 0x32u) - 0xE0;                    /* 0x4E6D5/0x4E6DE */
+        s32 v = (s32)(s16)(u16)(DSW(p + 0x32u) - 0xE0u);            /* 0x4E6D5/0x4E6DE; 0x4E6E8 `test ax,ax` (a 16-bit difference) */
         if (v <= 0) {                                                 /* 0x4E6E8/0x4E6EB */
             DSW(DS_00108894) = 0u;                                       /* 0x4E70F/0x4E711 */
         } else {
