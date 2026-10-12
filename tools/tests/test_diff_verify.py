@@ -9608,6 +9608,19 @@ D1_KINDS.update(D2A_KINDS)
 D1_CASES.extend(D2A_CASES)
 
 
+# track D2 integration: 0x2F510's seam is by value (d2c's form: the string's first dword), so d2b's
+# string mutants differ in the call's argument as well as in the memory at the call (re-measured)
+D1_KINDS.update({
+    "fight_4cc0c@id": {"call #0", "call #0 memory"},
+    "fight_4cc0c@b9c": {"byte", "call #7", "call #7 memory", "call #8", "call #8 memory"},
+    "fight_4cc0c@eq": {"byte", "call #7", "call #7 memory", "call #8", "call #8 memory"},
+    "fight_4cc0c@tied": {"byte", "call #7", "call #7 memory", "call #8", "call #8 memory"},
+    "fight_4cc0c@signed": {"byte", "call #7", "call #7 memory", "call #8 memory"},
+    "fight_4cc0c@be": {"byte", "call #7", "call #7 memory", "call #8 memory"},
+    "fight_4cd98@id": {"call #0", "call #0 memory"},
+})
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
