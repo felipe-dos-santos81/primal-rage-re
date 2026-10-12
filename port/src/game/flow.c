@@ -343,6 +343,7 @@ static const u8 *title_string(void) { return game_string_get(0x15u); }
  * machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3)
 {
+    PR_SEAM(0x38B18u, (u32)((const u8 *)desc - mem), a2, a3);
     u32 slot = 0;
     while (slot < 7u && DSD(DS_00107A1C + slot * 4u) != 0) slot++;
     u32 at = slot < 7u ? DS_00107A1C + slot * 4u : DS_00107A1C - 4u;   /* 0x38B1F, 0x38B32 */
@@ -549,7 +550,7 @@ void frontend_mode12_advance(void)
  * 8 call sites across the image, none observable); then, when
  * DS_00108104[r] == 7, frontend_mode12_advance(), else
  * frontend_darken_marked(). EBX/EDX pushed and popped. */
-static void frontend_mode12_darken_or_tally(void)
+void frontend_mode12_darken_or_tally(void)
 {
     PR_SEAM0(0x416D4u);
     if (DSD(DS_00104AD4) == 2u) {                           /* 0x416DC/0x416DF */

@@ -1265,6 +1265,7 @@ void fight_413c8(void)
  * (0x28788). */
 void fight_stage_marks_clear(void)
 {
+    PR_SEAM0(0x4246Cu);
     for (u32 i = 0; i < 7u; i++)                        /* 0x4247A 0x65490 */
         DSB(DS_00108106 + i) = 0u;
     DSB(DS_00108111) = 0u;                              /* 0x42481 */
