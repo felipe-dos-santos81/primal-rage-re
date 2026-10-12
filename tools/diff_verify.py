@@ -24620,6 +24620,134 @@ D5E_SPECS += [
                       for a in (0x283B9, 0x283C4, 0x283CC, 0x283D9, 0x283DE, 0x283F9, 0x28402)},
        mutants=("@prew", "@pread4", "@pre54", "@noaf8a", "@nomodea")),
 ]
+D5E_FX22 = E.Call(0x4D2D0, ())
+D5E_IDUST = E.Call(0x128D4, (), clobbers=("ebp",))
+D5E_26D4C = E.Call(0x26D4C, (), clobbers=("ebp",))
+# the mutants of the per-side prelude modes 0x22 and 0x24 share (0x26C90..0x26D1E, 0x26F5D..0x26FEB)
+D5E_MUT_SIDE = ("@nocls", "@clslate", "@sidesext", "@sidew", "@chother", "@chsext", "@chw", "@sbside", "@nosb",
+                "@nolat", "@latw", "@latsrc", "@latside", "@latearly", "@latlate", "@pside", "@pa", "@pb", "@pf",
+                "@pp", "@pi", "@pstride", "@noproj", "@nopass", "@passearly", "@hudside", "@hud0", "@nohud")
+# the same prelude's callees leaving the side byte 0x104B1A changed: 0x16D58 stores 1 (the raw
+# reads it again for the latch and 0x17FA0, 0x26CBC / 0x26F89), 0x3CB68 stores 2 (and again for
+# 0x35658, 0x26D19 / 0x26FE6)
+D5E_SBASE_W = E.Call(0x16D58, ("eax", "edx"), clobbers=("edx",), writes=((None, 0x00104B1A, b"\x01"),))
+D5E_PASS_W = E.Call(0x3CB68, (), writes=((None, 0x00104B1A, b"\x02"),))
+
+
+def d5e_side_case(side, ch=(0x03, 0x05), **kw):
+    """Modes 0x22 and 0x24: the side byte 0x104B1A inside the run 0x104B0B..0x104B22 (every byte
+    seeded 0x90 + its index), slot 2's character byte (0x107952 = 7) and latch (0x10790C ->
+    0x107910), and the bytes the sign-extended side 0x80 would index (the character byte 0x102E2A
+    and the latch 0x102DE4 -> 0x102DE8), each between seeded neighbours."""
+    run = bytearray(0x90 + i for i in range(0x18))
+    run[0x1A - 0x0B] = side
+    return d5e_mem(d5e_base(ch=ch, **kw), {
+        0x00104B0B: bytes(run),
+        0x00107951: bytes([0x77, 0x07, 0x78]),
+        0x00107908: le32(0x55555555) + le32(0x0FEDCBA9) + le32(0x5C5C5C5C) + le32(0x66666666),
+        0x00102E29: bytes([0x79, 0x0B, 0x7A]),
+        0x00102DE0: le32(0x77777777) + le32(0x13572468) + le32(0x5D5D5D5D) + le32(0x78787878)})
+
+
+def d5e_22_case(side, ac4, **kw):
+    """0x26C8C: the side prelude's state and the dword 0x104AC4 between seeded dwords."""
+    return d5e_mem(d5e_side_case(side, **kw), {0x00104AC0: le32(0x69696969) + le32(ac4) + le32(0x6A6A6A6A)})
+
+
+# 0x4D2D0 leaving the dword 0x104AC4 = 2: 0x26C8C reads it after that call (0x26D2D)
+D5E_FX22_W = E.Call(0x4D2D0, (), writes=((None, 0x00104AC4, le32(2)),))
+D5E_22_CALLS = (D5E_CLEAR, D5E_SBASE, D5E_PROJ, D4A_PASS, D5E_HUD, D5E_YCOMMIT, D5E_FX22, D5E_IDUST, D5E_26D4C)
+D5E_SPECS += [
+    # 0x26C8C game_mode_22_step: no argument. 0x3C5CC; s = the byte 0x104B1A (movzx):
+    # 0x16D58(s, slot s's +0x7A byte); s again: slot s's latch, 0x17FA0(s, 0x100B08 + 4s, 0x100B00
+    # + 4s, 0x100B62 + s, 0x100B60 + s, 0x100AF0 + 4s); 0x3CB68; 0x35658(s, read a third time);
+    # 0x12DA8; 0x4D2D0; 0x128D4 when the dword 0x104AC4 > 1 (signed); 0x26D4C; 0x104AEC |= 0x18.
+    # Every callee is a stub. s5's side 0x80 reads the character byte 0x10C22A and moves the
+    # latch 0x10C1E4 -> 0x10C1E8, above the image, on both sides (D5E_OUTSIDE); s1 gives side 1 a
+    # character byte of 0x85. Mask 0: the one site 0x25321 is followed by `jmp 0x2540f`.
+    Spec("game_mode_22_step", 0x26C8C, [
+        Case("s0", D5E_REG, d5e_22_case(0, 2)),
+        Case("s1", {}, d5e_22_case(1, 1, ch=(0x03, 0x85), aec=0x80)),
+        Case("s2", {}, d5e_22_case(1, 0x100, aec=0x08)),
+        Case("s3", {}, d5e_22_case(0, 0xFFFFFFFF, aec=0x10)),
+        Case("s4", {}, d5e_22_case(2, 0)),
+        Case("s5", {}, d5e_22_case(0x80, 0x80000000, aec=0xE7)),
+    ], calls=D5E_22_CALLS, eax_mask=0,
+       mutants=D5E_MUT_SIDE + ("@noyc", "@nofx", "@ycorder", "@ac4ge", "@ac4u", "@ac4b", "@nodust", "@dustall",
+                               "@no26d4c", "@d4corder", "@noaec", "@aecset", "@aec08", "@aec10", "@aecearly")),
+    # 0x26C8C again with stubs that write what the raw reads after them: 0x16D58 the side byte = 1,
+    # 0x3CB68 the side byte = 2, 0x4D2D0 the dword 0x104AC4 = 2. `@preside` is the port before its
+    # correction (record §3.1): the side kept from before 0x16D58.
+    Spec("game_mode_22_step_rr", 0x26C8C, [
+        Case("r0", {}, d5e_22_case(0, 0)),
+        Case("r1", {}, d5e_22_case(2, 0xFFFFFFFF)),
+    ], calls=(D5E_CLEAR, D5E_SBASE_W, D5E_PROJ, D5E_PASS_W, D5E_HUD, D5E_YCOMMIT, D5E_FX22_W, D5E_IDUST, D5E_26D4C),
+       eax_mask=0,
+       mutants=("@preside", "@prehud", "@preac4", "@nosb", "@nopass", "@nofx")),
+]
+
+
+def d5e_24_case(side, afe, ad4=0, abc=1, b19=0x62, extra=None, **kw):
+    """0x26F58: the side prelude's state (the run 0x104B0B.. holds the bytes 0x104B0C, 0x104B11,
+    0x104B14, 0x104B19 and 0x104B21 it stores, each seeded 0x90 + its index), the words 0x104AFC
+    (0x5E5E), 0x104AFE (the countdown) and 0x104B00 (0x6060) between seeded words, the hook dword
+    0x104AE4 (0x5F5F5F5F), the result dword 0x104AD4, the dword 0x104ABC, the word 0x1088EE
+    (0x6161) between seeded bytes, and the audit field that turns the deferred 0x2DAE4(0x10, 1)
+    off (D2E_M12_AUDIT_OFF)."""
+    p = d5e_mem(d5e_side_case(side, **kw), {
+        0x00104AFA: le16(0x6B6B) + le16(0x5E5E) + le16(afe) + le16(0x6060) + le16(0x6C6C),
+        0x00104AE0: le32(0x6D6D6D6D) + le32(0x5F5F5F5F) + le32(0x6E6E6E6E),
+        0x00104AD0: le32(0x67676767) + le32(ad4) + le32(0x68686868),
+        0x00104AB8: le32(0x6F6F6F6F) + le32(abc) + le32(0x70707070),
+        0x001088ED: bytes([0x7B, 0x61, 0x61, 0x7C]),
+        0x00104B19: bytes([b19])}, D2E_M12_AUDIT_OFF, extra or {})
+    return p
+
+
+# the callees leaving what 0x26F58 reads after them: 0x4D2D0 the countdown word 0x104AFE = 1
+# (0x26FFB), 0x4660C the result dword 0x104AD4 = 1 (0x2704E), 0x2716C the dword 0x104ABC = 2 and
+# the byte 0x104B19 = 7 (0x27082, 0x27087)
+D5E_FX22_WAFE = E.Call(0x4D2D0, (), writes=((None, 0x00104AFE, le16(1)),))
+D5E_TIMER_W = E.Call(0x4660C, ("eax",), writes=((None, 0x00104AD4, le32(1)),))
+D5E_SIDE_W = E.Call(0x2716C, ("eax",), writes=((None, 0x00104ABC, le32(2)), (None, 0x00104B19, b"\x07")))
+D5E_SPECS += [
+    # 0x26F58 game_mode_24_step: no argument. Mode 0x22's prelude through 0x35658(s); 0x4D2D0;
+    # 0x104AEC |= 8 and the word 0x104AFE -= 1; when the new word is <= 0 (signed): the bytes
+    # 0x104B21 = 0, 0x104B14 = 1, 0x104B0C = 0, 0x104B11 = 0; 0x4660C(4); the word 0x104AFC = 7;
+    # 0x2716C(the dword 0x104AD4 with bit 0 flipped, read after 0x4660C); the word 0x104AFE =
+    # 0x78, the hook dword 0x104AE4 = 0x27134, the mode word 0x104B00 = 0x17, the word 0x1088EE
+    # = 0; 0x32A3C(the dword 0x104ABC, the byte 0x104B19 zero-extended); 0x104B19 = 0; the audit
+    # add 0x2DAE4(0x10, 1) (deferred, the port omits it: real in the original only, from a state
+    # where it changes no byte); then, always, 0x12DA8. Every other callee is a stub. Mask 0: the
+    # one site 0x2532B is followed by `jmp 0x2540f`.
+    Spec("game_mode_24_step", 0x26F58, [
+        Case("t0", D5E_REG, d5e_24_case(0, 5)),
+        Case("t1", {}, d5e_24_case(1, 1, ad4=0, abc=0x101, b19=0x80, ch=(0x03, 0x85))),
+        Case("t2", {}, d5e_24_case(0, 0, ad4=1, abc=2, b19=0x01, aec=0x08)),
+        Case("t3", {}, d5e_24_case(1, 0x8001, ad4=0x102, abc=1, b19=0x00, aec=0xF7)),
+        Case("t4", {}, d5e_24_case(2, 0x0100)),
+        Case("t5", {}, d5e_24_case(0x80, 2, aec=0x00)),
+    ], allow_calls=(0x2DAE4, 0x2D974),
+       calls=(D5E_CLEAR, D5E_SBASE, D5E_PROJ, D4A_PASS, D5E_HUD, D5E_FX22, D2E_M12_TIMER, D3A_SIDE, D2E_M12_CLOSE,
+              D5E_YCOMMIT), eax_mask=0,
+       mutants=D5E_MUT_SIDE + (
+           "@nofx", "@noaec", "@aecset", "@aec10", "@aecearly", "@nodec", "@decb", "@afeearly", "@tlt", "@tu", "@tb",
+           "@nob21", "@b21v", "@b21w", "@nob14", "@b14v", "@b14w", "@nob0c", "@b0cw", "@nob11", "@b11w",
+           "@storeslate", "@notimer", "@col", "@ad4b", "@ad4x", "@noafc", "@afcv", "@afcb", "@afclate", "@noside",
+           "@noafe78", "@afe78v", "@afe78b", "@noae4", "@ae4v", "@ae4w", "@nob00", "@b00v", "@b00b", "@hookearly",
+           "@noee", "@eev", "@eeb", "@eelate", "@noclose", "@closeswap", "@abcb", "@b19sext", "@b19rw", "@nob19",
+           "@b19early", "@b19w", "@noyc", "@ycearly")),
+    # 0x26F58 again with stubs that write what the raw reads after them (above): the side byte
+    # after 0x16D58 and after 0x3CB68, the countdown after 0x4D2D0 (so both cases run the reset),
+    # the result after 0x4660C, the dword 0x104ABC and the byte 0x104B19 after 0x2716C.
+    Spec("game_mode_24_step_rr", 0x26F58, [
+        Case("r0", {}, d5e_24_case(0, 5, ad4=0x10, abc=1)),
+        Case("r1", {}, d5e_24_case(2, 0x7FFF, ad4=0xFFFFFFFF, abc=0x33, b19=0x80)),
+    ], allow_calls=(0x2DAE4, 0x2D974),
+       calls=(D5E_CLEAR, D5E_SBASE_W, D5E_PROJ, D5E_PASS_W, D5E_HUD, D5E_FX22_WAFE, D5E_TIMER_W, D5E_SIDE_W,
+              D2E_M12_CLOSE, D5E_YCOMMIT), eax_mask=0,
+       mutants=("@preside", "@prehud", "@preafe", "@pread4", "@preabc", "@preb19", "@nofx", "@notimer", "@noside")),
+]
 D1_SPECS += D5E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
