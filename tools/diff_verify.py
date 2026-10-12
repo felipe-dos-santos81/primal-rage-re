@@ -22116,6 +22116,45 @@ D4E_SPECS += [
     ], calls=(D4E_TY_430, D4E_TY_3F0, D3B_4BD4C, D4E_TY_5A8, D4E_TY_E1C, D4E_TY_E00, D3B_WALK), eax_mask=0,
        mutants=("@c0c2", "@c0c3", "@c0c4", "@c0c5", "@c0c6", "@c8", "@c874a", "@c874b", "@cache")),
 ]
+
+# 0x4B5A8 with stubs that rewrite the entry's pointers (harness writes): 0x2BC30 leaves the actor
+# pointer +8 = D2B_ACT1 and the slot pointer +0xC = slot 1, 0x2BE00 the actor pointer = D2B_ACT2,
+# 0x2BE4C the slot pointer = slot 0.
+D4E_GB_ANIM = dataclasses.replace(ANIM_BEGIN, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT1) + le32(D2B_SLOTS + 0x94)),))
+D4E_GB_E00 = dataclasses.replace(D2B_2BE00_S, writes=((None, D2B_ENT + 0x08, le32(D2B_ACT2)),))
+D4E_GB_E4C = dataclasses.replace(D2B_2BE4C, writes=((None, D2B_ENT + 0x0C, le32(D2B_SLOTS)),))
+
+
+def d4e_gb_case(**kw):
+    """d2b's 0x4B5A8 fixture on side 0 with the words +0x30..+0x3B of the two actors the stubs
+    leave in the entry seeded (each word its own value)."""
+    p = d2b_fx_case(side=0, **kw)
+    for act, k in ((D2B_ACT1, 0x4100), (D2B_ACT2, 0x4200)):
+        p[act + 0x30] = b"".join(le16(k + o) for o in (0x30, 0x32, 0x34, 0x36, 0x38, 0x3A))
+    return p
+
+
+D4E_SPECS += [
+    # 0x4B5A8 fight_4b5a8 (d2b's row; mask 0xFF as there). The raw loads `[ebx+8]` again after
+    # 0x2BC30 (0x4B5EB, 0x4B5F6, 0x4B614 / 0x4B62F) and after 0x2BE00 (0x4B648), and `[ebx+0xc]`
+    # with its record after 0x2BC30 (0x4B5FF, 0x4B61D / 0x4B638) and after 0x2BE4C (0x4B653,
+    # 0x4B67B). After 0x2BC30 the record is slot 1's, whose +0x28 bit 14 is the opposite of slot
+    # 0's (q0 set, q1 clear); after 0x2BE4C the slot is slot 0 again (its +0x81 and its record's
+    # +0x51 pick the counter). q3 / q4: the gate closed.
+    Spec("fight_4b5a8_rr", 0x4B5A8, [
+        Case("q0", {"eax": D2B_ENT, "edx": 0}, d4e_gb_case(cnt=(5, 0x50), s81=3),
+             {0x2BE00: 0x5000, 0x2BE4C: 0x11111111}),
+        Case("q1", {"eax": D2B_ENT, "edx": 2}, d4e_gb_case(cnt=(2, 0x50), s81=0x10, r28=0x4000),
+             {0x2BE00: 0xFFFFF000, 0x2BE4C: 0x22222222}),
+        Case("q2", {"eax": D2B_ENT, "edx": 5}, d4e_gb_case(cnt=(0, 0x50), s52=(7, 2)),
+             {0x2BE00: 0x7FFFF000, 0x2BE4C: 0x33333333}),
+        Case("q3", {"eax": D2B_ENT, "edx": 1}, d4e_gb_case(cnt=(0, 0x50), s52=(7, 1)),
+             {0x2BE00: 0x5000, 0x2BE4C: 0x44444444}),
+        Case("q4", {"eax": D2B_ENT, "edx": 1}, d4e_gb_case(cnt=(0, 0x50), s52=(6, 2)),
+             {0x2BE00: 0x5000, 0x2BE4C: 0x44444444}),
+    ], calls=(D4E_GB_ANIM, D4E_GB_E00, D4E_GB_E4C), eax_mask=0xFF,
+       mutants=("@c8a", "@cca", "@c8b", "@ccb", "@cache")),
+]
 D1_SPECS += D4E_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

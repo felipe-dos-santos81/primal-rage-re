@@ -15855,6 +15855,7 @@ D4E_MASKS = {
     "fighter_attack_consume_al": 0xFF,
     "fight_char_opp_text_clear_rr": 0x0,
     "fight_4aad0_rr2": 0x0,
+    "fight_4b5a8_rr": 0xFF,
 }
 D4E_KINDS = {
     "fighter_146f0_al@eax": {'call #1', 'call #2'},
@@ -15909,6 +15910,11 @@ D4E_KINDS = {
     "fight_4aad0_rr2@c874a": {'call #5', 'call #6', 'call #7'},
     "fight_4aad0_rr2@c874b": {'call #5', 'call #6', 'call #7'},
     "fight_4aad0_rr2@cache": {'byte', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8'},
+    "fight_4b5a8_rr@c8a": {'byte', 'call #1 memory', 'call #2 memory'},
+    "fight_4b5a8_rr@cca": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory'},
+    "fight_4b5a8_rr@c8b": {'call #2'},
+    "fight_4b5a8_rr@ccb": {'byte'},
+    "fight_4b5a8_rr@cache": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory'},
 }
 D4E_CASES = [
     ("fighter_146f0_al@eax", ['c2', 'c3']),
@@ -15963,6 +15969,11 @@ D4E_CASES = [
     ("fight_4aad0_rr2@c874a", ['y0', 'y1', 'y3', 'y6', 'y7']),
     ("fight_4aad0_rr2@c874b", ['y0', 'y1', 'y6', 'y7']),
     ("fight_4aad0_rr2@cache", ['y0', 'y1', 'y2', 'y3', 'y4', 'y6', 'y7']),
+    ("fight_4b5a8_rr@c8a", ['q0', 'q1', 'q2']),
+    ("fight_4b5a8_rr@cca", ['q0', 'q1', 'q2']),
+    ("fight_4b5a8_rr@c8b", ['q0', 'q1', 'q2']),
+    ("fight_4b5a8_rr@ccb", ['q0', 'q1', 'q2']),
+    ("fight_4b5a8_rr@cache", ['q0', 'q1', 'q2']),
 ]   # D4E_CASES end
 D1_MASKS.update(D4E_MASKS)
 D1_KINDS.update(D4E_KINDS)

@@ -30720,6 +30720,43 @@ static void d4e_4aad0_core(const u32 *r, u32 mut)
 D4E_TY_MUT(c0c2, 1u)   D4E_TY_MUT(c0c3, 2u)   D4E_TY_MUT(c0c4, 4u)     D4E_TY_MUT(c0c5, 8u)
 D4E_TY_MUT(c0c6, 0x10u) D4E_TY_MUT(c8, 0x20u) D4E_TY_MUT(c874a, 0x40u) D4E_TY_MUT(c874b, 0x80u)
 static void m_d4e_ty_cache(const u32 *r, u32 *eax) { d3b_4aad0_core(r, 0ull); *eax = 0u; }
+/* 0x4B5A8 restated with its loads where the raw has them; each bit keeps one pointer across a
+ * call (the actor +8 across 0x2BC30 and across 0x2BE00, the slot +0xC across 0x2BC30 and across
+ * 0x2BE4C). @cache is d2b's core at mutation set 0: the port before the corrections. */
+static u32 d4e_4b5a8_core(const u32 *r, u32 mut)
+{
+    u32 entry = r[R_EAX], index = r[R_EDX], slot, rec, actor, cnt, x, v;
+    u8 n;
+    int right;
+    slot = DSD(entry + 0xCu);
+    rec = DSD(slot);
+    cnt = 0x001088B6u + (u32)DSB(rec + 0x51u);
+    if (DSB(cnt) == 0u && !(DSB(slot + 0x52u) == 7u && DSB(slot + 0x53u) == 2u)) return 0u;
+    actor = DSD(entry + 8u);
+    actors_anim_begin(actor, DSD(0x000C95BCu + index * 4u), 0x40400000u);
+    if (!(mut & 1u)) actor = DSD(entry + 8u);                                /* @c8a */
+    DSW(entry + 0x1Au) = DSW(actor + 0x32u);
+    DSW(actor + 0x38u) = 0xFFC0u;
+    if (!(mut & 2u)) { slot = DSD(entry + 0xCu); rec = DSD(slot); }          /* @cca */
+    right = (DSW(rec + 0x28u) & 0x4000u) != 0u;
+    DSW(actor + 0x34u) = right ? 0x0040u : 0xFFC0u;
+    x = (u32)fight_2be00(rec);
+    if (!(mut & 4u)) actor = DSD(entry + 8u);                                /* @c8b */
+    v = (u32)fight_2be4c(actor, (s32)(right ? x + 0x1800u : x - 0x1800u));
+    DSD(entry + 0x14u) = v;
+    DSB(entry + 0x1Eu) = 3u;
+    if (!(mut & 8u)) { slot = DSD(entry + 0xCu); rec = DSD(slot); }          /* @ccb */
+    cnt = 0x001088B6u + (u32)DSB(rec + 0x51u);
+    n = DSB(slot + 0x81u);
+    if (DSB(cnt) > n) DSB(cnt) = n;
+    DSB(cnt) = (u8)(DSB(cnt) - 1u);
+    return 1u;
+}
+static void m_d4e_gb_c8a(const u32 *r, u32 *eax)   { *eax = d4e_4b5a8_core(r, 1u); }
+static void m_d4e_gb_cca(const u32 *r, u32 *eax)   { *eax = d4e_4b5a8_core(r, 2u); }
+static void m_d4e_gb_c8b(const u32 *r, u32 *eax)   { *eax = d4e_4b5a8_core(r, 4u); }
+static void m_d4e_gb_ccb(const u32 *r, u32 *eax)   { *eax = d4e_4b5a8_core(r, 8u); }
+static void m_d4e_gb_cache(const u32 *r, u32 *eax) { *eax = d2b_4b5a8_core(r, 0u); }
 /* d4e block end */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -39387,6 +39424,12 @@ static const binding_t k_bindings[] = {
     { "fight_4aad0_rr2@c874a", m_d4e_ty_c874a, 0x00000000u },
     { "fight_4aad0_rr2@c874b", m_d4e_ty_c874b, 0x00000000u },
     { "fight_4aad0_rr2@cache", m_d4e_ty_cache, 0x00000000u },
+    { "fight_4b5a8_rr", b_d2b_4b5a8, 0x000000FFu },
+    { "fight_4b5a8_rr@c8a", m_d4e_gb_c8a, 0x000000FFu },
+    { "fight_4b5a8_rr@cca", m_d4e_gb_cca, 0x000000FFu },
+    { "fight_4b5a8_rr@c8b", m_d4e_gb_c8b, 0x000000FFu },
+    { "fight_4b5a8_rr@ccb", m_d4e_gb_ccb, 0x000000FFu },
+    { "fight_4b5a8_rr@cache", m_d4e_gb_cache, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)
