@@ -19836,6 +19836,82 @@ D1F_RC(order, 32768u)
 D1F_RC(sext, 65536u)
 #undef D1F_RC
 
+/* ---- track D2 batch d2e (record 2026-10-11-reverse-d2e): 0x4EF8C and 0x41C28 ---------------------- */
+/* 0x4EF8C: no argument; mask 0 (record §1). d2e_4ef8c_core is the raw read block by block; each
+ * mutant changes one choice. @tbl (the 0xC9544 table) and @norel (no (-1, 0xB, 2) release) are the
+ * pre-D2 port. */
+static void b_d2e_4ef8c(const u32 *r, u32 *eax) { (void)r; game_mode_25_reveal(); *eax = 0u; }
+enum { D2E_RV_NONE, D2E_RV_w9a, D2E_RV_v9a, D2E_RV_no9a, D2E_RV_late9a, D2E_RV_next, D2E_RV_bit, D2E_RV_rec,
+       D2E_RV_idx8, D2E_RV_idxs, D2E_RV_off48, D2E_RV_sub, D2E_RV_n14, D2E_RV_n14v, D2E_RV_n14w, D2E_RV_r34,
+       D2E_RV_r34w, D2E_RV_n1c, D2E_RV_n1cw, D2E_RV_n1cv, D2E_RV_r28, D2E_RV_r28v, D2E_RV_r28b, D2E_RV_n1e,
+       D2E_RV_n1ev, D2E_RV_n1ew, D2E_RV_tbl, D2E_RV_speed, D2E_RV_animrec, D2E_RV_norel, D2E_RV_relargs, D2E_RV_relcnt,
+       D2E_RV_ids, D2E_RV_row5, D2E_RV_len, D2E_RV_nocard, D2E_RV_cardorder, D2E_RV_early, D2E_RV_signed, D2E_RV_swap,
+       D2E_RV_off91, D2E_RV_eqids, D2E_RV_neid, D2E_RV_rows, D2E_RV_mode, D2E_RV_col };
+#define D2E_RV(x) (mut == D2E_RV_##x)
+static void d2e_4ef8c_core(u32 mut)
+{
+    u8 early_a = DSB(0x0010888Cu), early_b = DSB(0x00108891u);
+    if (D2E_RV(w9a)) DSB(0x0010889Au) = 0xF0u;
+    else if (!D2E_RV(no9a) && !D2E_RV(late9a)) DSW(0x0010889Au) = D2E_RV(v9a) ? 0xF1u : 0xF0u;
+    u32 node = DSD(0x0010884Cu);
+    while (node != 0x0010884Cu) {
+        u32 next = DSD(node);
+        if ((DSW(node + 0x1Cu) & (D2E_RV(bit) ? 1u : 2u)) != 0u) {
+            u32 rec = DSD(node + (D2E_RV(rec) ? 4u : 8u));
+            u32 b = (u32)DSB(rec + (D2E_RV(off48) ? 0x49u : 0x48u)) - (D2E_RV(sub) ? 0x21u : 0x20u);
+            u32 idx = D2E_RV(idx8) ? (u32)(u8)b : D2E_RV(idxs) ? b : (u32)(u16)b;
+            if (D2E_RV(n14w)) DSW(node + 0x14u) = (u16)(DSD(0x000F0AF0u) - 0x8180u);
+            else if (!D2E_RV(n14)) DSD(node + 0x14u) = DSD(0x000F0AF0u) - (D2E_RV(n14v) ? 0x8100u : 0x8180u);
+            if (D2E_RV(r34w)) DSD(rec + 0x34u) = 0xFF80u;
+            else if (!D2E_RV(r34)) DSW(rec + 0x34u) = 0xFF80u;
+            if (D2E_RV(n1cw)) DSW(node + 0x1Cu) = (u16)(DSW(node + 0x1Cu) & 0x7Fu);
+            else if (!D2E_RV(n1c)) DSB(node + 0x1Cu) = (u8)(DSB(node + 0x1Cu) & (D2E_RV(n1cv) ? 0xFDu : 0x7Fu));
+            if (D2E_RV(r28b)) DSB(rec + 0x28u) = (u8)(DSB(rec + 0x28u) | 0x80u);
+            else if (!D2E_RV(r28)) DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) | (D2E_RV(r28v) ? 0x4000u : 0x4080u));
+            if (D2E_RV(n1ew)) DSW(node + 0x1Eu) = 8u;
+            else if (!D2E_RV(n1e)) DSB(node + 0x1Eu) = D2E_RV(n1ev) ? 9u : 8u;
+            actors_anim_begin(D2E_RV(animrec) ? node : rec,
+                              DSD((D2E_RV(tbl) ? 0x000C9544u : 0x000C95D4u) + idx * 4u),
+                              D2E_RV(speed) ? 0x40A00000u : 0x40400000u);
+        }
+        node = D2E_RV(next) ? DSD(node) : next;
+    }
+    if (D2E_RV(late9a)) DSW(0x0010889Au) = 0xF0u;
+    if (D2E_RV(cardorder)) fight_mode25_scorecard();
+    if (D2E_RV(relargs)) text_cells_release_count(0xB, -1, 2);
+    else if (!D2E_RV(norel)) text_cells_release_count(-1, 0xB, D2E_RV(relcnt) ? 3 : 2);
+    for (u32 k = 0u; k < 2u; k++) {
+        u32 id = ((k == 0u) != (D2E_RV(ids) != 0)) ? 0x3Bu : 0x3Au;
+        s32 n = (s32)strlen((const char *)game_string_get(id));
+        text_cells_release_count(-1, D2E_RV(row5) ? 6 : 5, D2E_RV(len) ? n + 1 : n);
+    }
+    if (!D2E_RV(nocard) && !D2E_RV(cardorder)) fight_mode25_scorecard();
+    {
+        u8 a = DSB(0x0010888Cu), b = DSB(D2E_RV(off91) ? 0x00108890u : 0x00108891u);
+        u32 mode = D2E_RV(mode) ? 0x2000u : 0x4000u;
+        s32 col = D2E_RV(col) ? 0 : -1, r0 = D2E_RV(rows) ? 0xE : 0xB, r1 = D2E_RV(rows) ? 0xB : 0xE;
+        if (D2E_RV(early)) { a = early_a; b = early_b; }
+        if (a == b) {
+            text_cursor_hold_font2(col, r0, game_string_get(D2E_RV(eqids) ? 0x64u : 0x63u), mode);
+            text_cursor_hold_font2(col, r1, game_string_get(D2E_RV(eqids) ? 0x63u : 0x64u), mode);
+        } else {
+            int le = D2E_RV(signed) ? (s8)a <= (s8)b : D2E_RV(swap) ? b <= a : a <= b;
+            text_cursor_hold_font2(col, r0, game_string_get(le ? 0x65u : 0x66u), mode);
+            text_cursor_hold_font2(col, r1, game_string_get(D2E_RV(neid) ? 0x64u : 0x63u), mode);
+        }
+    }
+}
+#define D2E_RV_MUT(name) \
+    static void m_d2e_rv_##name(const u32 *r, u32 *eax) { (void)r; d2e_4ef8c_core(D2E_RV_##name); *eax = 0u; }
+D2E_RV_MUT(w9a) D2E_RV_MUT(v9a) D2E_RV_MUT(no9a) D2E_RV_MUT(late9a) D2E_RV_MUT(next) D2E_RV_MUT(bit)
+D2E_RV_MUT(rec) D2E_RV_MUT(idx8) D2E_RV_MUT(idxs) D2E_RV_MUT(off48) D2E_RV_MUT(sub) D2E_RV_MUT(n14)
+D2E_RV_MUT(n14v) D2E_RV_MUT(n14w) D2E_RV_MUT(r34) D2E_RV_MUT(r34w) D2E_RV_MUT(n1c) D2E_RV_MUT(n1cw)
+D2E_RV_MUT(n1cv) D2E_RV_MUT(r28) D2E_RV_MUT(r28v) D2E_RV_MUT(r28b) D2E_RV_MUT(n1e) D2E_RV_MUT(n1ev)
+D2E_RV_MUT(n1ew) D2E_RV_MUT(tbl) D2E_RV_MUT(speed) D2E_RV_MUT(animrec) D2E_RV_MUT(norel) D2E_RV_MUT(relargs)
+D2E_RV_MUT(relcnt) D2E_RV_MUT(ids) D2E_RV_MUT(row5) D2E_RV_MUT(len) D2E_RV_MUT(nocard) D2E_RV_MUT(cardorder)
+D2E_RV_MUT(early) D2E_RV_MUT(signed) D2E_RV_MUT(swap) D2E_RV_MUT(off91) D2E_RV_MUT(eqids) D2E_RV_MUT(neid)
+D2E_RV_MUT(rows) D2E_RV_MUT(mode) D2E_RV_MUT(col)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -23721,6 +23797,52 @@ static const binding_t k_bindings[] = {
     { "fight_4e99c@flash",                   m_d1f_rc_flash, 0x00000000u },
     { "fight_4e99c@order",                   m_d1f_rc_order, 0x00000000u },
     { "fight_4e99c@sext",                    m_d1f_rc_sext, 0x00000000u },
+    { "game_mode_25_reveal", b_d2e_4ef8c, 0x00000000u },
+    { "game_mode_25_reveal@w9a", m_d2e_rv_w9a, 0x00000000u },
+    { "game_mode_25_reveal@v9a", m_d2e_rv_v9a, 0x00000000u },
+    { "game_mode_25_reveal@no9a", m_d2e_rv_no9a, 0x00000000u },
+    { "game_mode_25_reveal@late9a", m_d2e_rv_late9a, 0x00000000u },
+    { "game_mode_25_reveal@next", m_d2e_rv_next, 0x00000000u },
+    { "game_mode_25_reveal@bit", m_d2e_rv_bit, 0x00000000u },
+    { "game_mode_25_reveal@rec", m_d2e_rv_rec, 0x00000000u },
+    { "game_mode_25_reveal@idx8", m_d2e_rv_idx8, 0x00000000u },
+    { "game_mode_25_reveal@idxs", m_d2e_rv_idxs, 0x00000000u },
+    { "game_mode_25_reveal@off48", m_d2e_rv_off48, 0x00000000u },
+    { "game_mode_25_reveal@sub", m_d2e_rv_sub, 0x00000000u },
+    { "game_mode_25_reveal@n14", m_d2e_rv_n14, 0x00000000u },
+    { "game_mode_25_reveal@n14v", m_d2e_rv_n14v, 0x00000000u },
+    { "game_mode_25_reveal@n14w", m_d2e_rv_n14w, 0x00000000u },
+    { "game_mode_25_reveal@r34", m_d2e_rv_r34, 0x00000000u },
+    { "game_mode_25_reveal@r34w", m_d2e_rv_r34w, 0x00000000u },
+    { "game_mode_25_reveal@n1c", m_d2e_rv_n1c, 0x00000000u },
+    { "game_mode_25_reveal@n1cw", m_d2e_rv_n1cw, 0x00000000u },
+    { "game_mode_25_reveal@n1cv", m_d2e_rv_n1cv, 0x00000000u },
+    { "game_mode_25_reveal@r28", m_d2e_rv_r28, 0x00000000u },
+    { "game_mode_25_reveal@r28v", m_d2e_rv_r28v, 0x00000000u },
+    { "game_mode_25_reveal@r28b", m_d2e_rv_r28b, 0x00000000u },
+    { "game_mode_25_reveal@n1e", m_d2e_rv_n1e, 0x00000000u },
+    { "game_mode_25_reveal@n1ev", m_d2e_rv_n1ev, 0x00000000u },
+    { "game_mode_25_reveal@n1ew", m_d2e_rv_n1ew, 0x00000000u },
+    { "game_mode_25_reveal@tbl", m_d2e_rv_tbl, 0x00000000u },
+    { "game_mode_25_reveal@speed", m_d2e_rv_speed, 0x00000000u },
+    { "game_mode_25_reveal@animrec", m_d2e_rv_animrec, 0x00000000u },
+    { "game_mode_25_reveal@norel", m_d2e_rv_norel, 0x00000000u },
+    { "game_mode_25_reveal@relargs", m_d2e_rv_relargs, 0x00000000u },
+    { "game_mode_25_reveal@relcnt", m_d2e_rv_relcnt, 0x00000000u },
+    { "game_mode_25_reveal@ids", m_d2e_rv_ids, 0x00000000u },
+    { "game_mode_25_reveal@row5", m_d2e_rv_row5, 0x00000000u },
+    { "game_mode_25_reveal@len", m_d2e_rv_len, 0x00000000u },
+    { "game_mode_25_reveal@nocard", m_d2e_rv_nocard, 0x00000000u },
+    { "game_mode_25_reveal@cardorder", m_d2e_rv_cardorder, 0x00000000u },
+    { "game_mode_25_reveal@early", m_d2e_rv_early, 0x00000000u },
+    { "game_mode_25_reveal@signed", m_d2e_rv_signed, 0x00000000u },
+    { "game_mode_25_reveal@swap", m_d2e_rv_swap, 0x00000000u },
+    { "game_mode_25_reveal@off91", m_d2e_rv_off91, 0x00000000u },
+    { "game_mode_25_reveal@eqids", m_d2e_rv_eqids, 0x00000000u },
+    { "game_mode_25_reveal@neid", m_d2e_rv_neid, 0x00000000u },
+    { "game_mode_25_reveal@rows", m_d2e_rv_rows, 0x00000000u },
+    { "game_mode_25_reveal@mode", m_d2e_rv_mode, 0x00000000u },
+    { "game_mode_25_reveal@col", m_d2e_rv_col, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -6432,6 +6432,109 @@ D1_KINDS.update(D1E_KINDS)
 D1_CASES.extend(D1E_CASES)
 
 
+
+# ---- track D2 batch d2e (record 2026-10-11-reverse-d2e): measured pins, the C3G form ----
+D2E_MASKS = {
+    "game_mode_25_reveal": 0x0,
+}
+D2E_KINDS = {
+    "game_mode_25_reveal@w9a": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@v9a": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@no9a": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@late9a": {'call #0 memory', 'call #1 memory'},
+    "game_mode_25_reveal@next": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7'},
+    "game_mode_25_reveal@bit": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory'},
+    "game_mode_25_reveal@rec": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@idx8": {'call #1'},
+    "game_mode_25_reveal@idxs": {'call #1'},
+    "game_mode_25_reveal@off48": {'call #0', 'call #1'},
+    "game_mode_25_reveal@sub": {'call #0', 'call #1'},
+    "game_mode_25_reveal@n14": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@n14v": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@n14w": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@r34": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@r34w": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@n1c": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@n1cw": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@n1cv": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@r28": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@r28v": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@r28b": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@n1e": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@n1ev": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@n1ew": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@tbl": {'call #0', 'call #1'},
+    "game_mode_25_reveal@speed": {'call #0', 'call #1'},
+    "game_mode_25_reveal@animrec": {'call #0', 'call #1'},
+    "game_mode_25_reveal@norel": {'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7'},
+    "game_mode_25_reveal@relargs": {'call #0', 'call #1', 'call #2'},
+    "game_mode_25_reveal@relcnt": {'call #0', 'call #1', 'call #2'},
+    "game_mode_25_reveal@ids": {'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5 memory'},
+    "game_mode_25_reveal@row5": {'call #1', 'call #2', 'call #3', 'call #4'},
+    "game_mode_25_reveal@len": {'call #1', 'call #2', 'call #3', 'call #4'},
+    "game_mode_25_reveal@nocard": {'byte', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7'},
+    "game_mode_25_reveal@cardorder": {'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory'},
+    "game_mode_25_reveal@early": {'byte', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory'},
+    "game_mode_25_reveal@signed": {'byte', 'call #5', 'call #5 memory', 'call #6 memory'},
+    "game_mode_25_reveal@swap": {'byte', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7 memory'},
+    "game_mode_25_reveal@off91": {'byte', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6 memory'},
+    "game_mode_25_reveal@eqids": {'byte', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory'},
+    "game_mode_25_reveal@neid": {'byte', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory'},
+    "game_mode_25_reveal@rows": {'call #4', 'call #5', 'call #6', 'call #7'},
+    "game_mode_25_reveal@mode": {'call #4', 'call #5', 'call #6', 'call #7'},
+    "game_mode_25_reveal@col": {'call #4', 'call #5', 'call #6', 'call #7'},
+}
+D2E_CASES = [
+    ("game_mode_25_reveal@w9a", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@v9a", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@no9a", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@late9a", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@next", ['w0']),
+    ("game_mode_25_reveal@bit", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@rec", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@idx8", ['w0']),
+    ("game_mode_25_reveal@idxs", ['w0']),
+    ("game_mode_25_reveal@off48", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@sub", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@n14", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@n14v", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@n14w", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@r34", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@r34w", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@n1c", ['w0']),
+    ("game_mode_25_reveal@n1cw", ['w0', 'w3']),
+    ("game_mode_25_reveal@n1cv", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@r28", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@r28v", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@r28b", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@n1e", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@n1ev", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@n1ew", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@tbl", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@speed", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@animrec", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@norel", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@relargs", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@relcnt", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@ids", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@row5", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@len", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@nocard", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@cardorder", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@early", ['w0', 'w1', 'w2']),
+    ("game_mode_25_reveal@signed", ['w2']),
+    ("game_mode_25_reveal@swap", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@off91", ['e0', 'w1', 'w3']),
+    ("game_mode_25_reveal@eqids", ['e0']),
+    ("game_mode_25_reveal@neid", ['w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@rows", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@mode", ['e0', 'w0', 'w1', 'w2', 'w3']),
+    ("game_mode_25_reveal@col", ['e0', 'w0', 'w1', 'w2', 'w3']),
+]
+D1_MASKS.update(D2E_MASKS)
+D1_KINDS.update(D2E_KINDS)
+D1_CASES.extend(D2E_CASES)
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -7512,6 +7615,7 @@ class RealFunctionTests(unittest.TestCase):
         0x2F314: ("ebx", "ecx", "edx"), 0x2EF24: (), 0x65546: (), 0x61A70: ("edx",),
         0x2EFD4: ("ebx", "ecx", "edx"), 0x2F0F0: ("edx",),
         0x2F5A0: ("ebx", "ecx", "edx"), 0x2F830: ("ebx", "ecx", "edx"),
+        0x4EBB8: (), 0x2F510: ("ebx", "ecx", "edx"),     # track D2 batch d2e
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))

@@ -65,6 +65,29 @@ UNMODELED_MNEMONICS = frozenset({
     "outsd", "hlt", "cli", "sti", "syscall", "sysenter", "iret", "iretd",
 })
 
+# Runtime routines that load a segment register (track D2 batch d2e, record 2026-10-11-reverse-d2e
+# §2.2): the WATCOM strlen 0x65624 runs `push es; mov eax,ds; mov es,eax ... pop es`. Unicorn starts
+# with no descriptor tables, and a segment load there recomputes the stack-size flag from an empty
+# SS cache: every later push/pop goes through a 16-bit SS:SP (the `ret` at 0x6563C pops address 0).
+# A run whose allow-list or real call set names one of these gets the flat 32-bit segments DOS/4GW
+# gives the game (one code and one data descriptor over the whole address space). Opt-in by
+# address, so no other row's emulator state changes.
+FLAT_SEGMENT_CALLEES = frozenset({0x65624})
+FLAT_GDT = STACK_LOW          # the two descriptors, at the bottom of the private stack mapping
+
+
+def flat_segments(mu):
+    """Load a three-entry GDT (null, flat code 0x08, flat data 0x10) and point CS at the code
+    descriptor and SS/DS/ES at the data descriptor."""
+    def desc(access):
+        return bytes([0xFF, 0xFF, 0, 0, 0, access, 0xCF, 0])      # base 0, limit 0xFFFFF pages, 32-bit
+    gdt = bytes(8) + desc(0x9B) + desc(0x93)
+    mu.mem_write(FLAT_GDT, gdt)
+    mu.reg_write(ux.UC_X86_REG_GDTR, (0, FLAT_GDT, len(gdt) - 1, 0))
+    for r in (ux.UC_X86_REG_SS, ux.UC_X86_REG_DS, ux.UC_X86_REG_ES):
+        mu.reg_write(r, 0x10)
+    mu.reg_write(ux.UC_X86_REG_CS, 0x08)
+
 
 def available():
     return unicorn is not None and capstone is not None
@@ -222,6 +245,8 @@ def run_original(image, entry, regs=None, pokes=None, allow_calls=(), max_insns=
     # `fldcw` at 0x72A83 loads the word at 0xF09B4 = 0x127F (53-bit precision, round to nearest, every
     # exception masked); 0x6B70D loads the same word (record 2026-10-03-reverse-p3 §P3.6).
     mu.reg_write(ux.UC_X86_REG_FPCW, 0x127F)
+    if FLAT_SEGMENT_CALLEES & (set(allow_calls) | {c.addr for c in calls if c.mode == "real"}):
+        flat_segments(mu)
 
     state = {"stop": None, "prev": None}
     executed = set()

@@ -13285,6 +13285,77 @@ D1F_SPECS += [
 
 D1_SPECS += D1F_SPECS
 
+
+# ---- track D2 batch d2e (record 2026-10-11-reverse-d2e): 0x4EF8C and 0x41C28 (game/flow.c) --------
+D2E_HEAD = 0x0010884C                                   # 0x4EF8C's list head (`cmp eax,0x10884c`)
+D2E_NODE = (0x0010A300, 0x0010A340, 0x0010A380)         # the list's nodes (zero BSS)
+D2E_REC = (0x0010A400, 0x0010A480, 0x0010A500)          # their +8 actor records (zero BSS)
+D2E_HOLD2 = E.Call(0x2F510, ("eax", "edx", "[ebx]", "ecx"), clobbers=("ebx", "ecx", "edx"))
+D2E_RELCNT = E.Call(0x2F388, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+# 0x2BC30 as the 0x4EF8C row stubs it: the stub rewrites the first node's link to the list head, so
+# a walk that reads a node's link after the call (the raw reads it before, 0x4EFAE) stops early.
+D2E_ANIM_UNLINK = E.Call(0x2BC30, ANIM_BEGIN.args, pop=4, clobbers=ANIM_BEGIN.clobbers,
+                         writes=((None, D2E_NODE[0], le32(D2E_HEAD)),))
+# 0x4EBB8 (the scorecard, no row: the 0x4EF8C row stays open on it) writes side 0's tally
+# 0x10888C; the stub writes 0x40 there, so a compare read before the call sees the case's seed.
+D2E_CARD = E.Call(0x4EBB8, (), writes=((None, 0x0010888C, b"\x40"),))
+D2E_REVEAL_STR = {0x3A: b"P1WIN", 0x3B: b"PLAYER2", 0x63: b"DRAW", 0x64: b"GAME!!", 0x65: b"LEFT-",
+                  0x66: b"RGHT--"}
+
+
+def d2e_reveal_case(nodes, a, b, af0=0x00123456):
+    """0x4EF8C: the list 0x10884C -> nodes -> 0x10884C (doubly linked), each node (flags word,
+    +0x48 byte): +0x14 between seeded dwords, +0x1C/+0x1D the flags word, +0x1E/+0x1F seeded, and
+    its record's +0x28 and +0x34 words and +0x48 byte between seeded neighbours; the dword 0xF0AF0;
+    the countdown word 0x10889A between seeded words; the two tallies 0x10888C (`a`, which the
+    scorecard stub overwrites with 0x40) and 0x108891 (`b`) with the bytes around them; the entry
+    0xFFFF of the 0xC95D4 table (0x1095D0, zero BSS); and the six strings."""
+    p = d1d_str_pokes(D2E_REVEAL_STR)
+    chain = [D2E_HEAD] + list(D2E_NODE[:len(nodes)]) + [D2E_HEAD]
+    p[D2E_HEAD] = le32(chain[1]) + le32(chain[-2])
+    for i, (flags, b48) in enumerate(nodes):
+        n, r = D2E_NODE[i], D2E_REC[i]
+        p[n] = (le32(chain[i + 2]) + le32(chain[i]) + le32(r) + le32(0x0C0C0C0C + i) + le32(0x10101010 + i)
+                + le32(0x5A5A5A5A) + le32(0x18181818 + i) + le16(flags) + bytes([0x1E + i, 0x9F]))
+        p[r + 0x24] = le32(0x24242424) + le16(0x0102 + i) + le16(0x2A2A + i) + le32(0x2C2C2C2C)
+        p[r + 0x30] = le32(0x30303030) + le16(0x3434 + i) + le16(0x3636 + i) + le32(0x38383838)
+        p[r + 0x47] = bytes([0x47, b48, 0x23 + i])
+    p[0x000F0AF0] = le32(af0)
+    p[0x00108898] = le16(0x9898) + le16(0x9A9A) + le16(0x9C9C)
+    p[0x0010888B] = bytes([0x8B, a, 0x8D]) + b"\x8e\x8f" + bytes([0x44, b, 0x92])
+    p[0x001095CC] = le32(0x00EE9001) + le32(0x00EE9002) + le32(0x00EE9003)
+    return p
+
+
+D2E_SPECS = [
+    # 0x4EF8C game_mode_25_reveal: no argument. The countdown word 0x10889A = 0xF0; the walk of
+    # the list 0x10884C (the link read before the body, 0x4EFAE): for a node whose +0x1C bit 1 is
+    # set, node+0x14 = [0xF0AF0] - 0x8180, rec+0x34 = 0xFF80 (word), node+0x1C &= 0x7F (byte),
+    # rec+0x28 |= 0x4080 (word), node+0x1E = 8 (byte) and 0x2BC30(rec, [0xC95D4 + (u16)(the byte
+    # rec+0x48 - 0x20) * 4], 3.0). Then 0x2F388(-1, 0xB, 2), 0x2F388(-1, 5, strlen(string 0x3B)),
+    # 0x2F388(-1, 5, strlen(string 0x3A)), 0x4EBB8, and on the tallies 0x10888C/0x108891: equal,
+    # strings 0x63 (row 0xB) and 0x64 (row 0xE); else 0x65 (`setbe`: 0x10888C below) or 0x66 at row
+    # 0xB and 0x63 at row 0xE; all col -1, mode 0x4000, through 0x2F510. 0x1C500 and its tree and
+    # the runtime's strlen 0x65624 run real; 0x2BC30, 0x2F388, 0x4EBB8 and 0x2F510 are stubs.
+    # Mask 0: the one call site 0x252E1 is followed by `inc byte [0x104b25]` and `jmp 0x2540f`,
+    # the mode tail the d1c and d1d records trace dead (0x2528C, 0x253F5).
+    Spec("game_mode_25_reveal", 0x4EF8C, [
+        Case("e0", {}, d2e_reveal_case([], 0x40, 0x40)),
+        Case("w0", {"eax": 0xFFFFFFFF, "ebx": 0xFFFFFFFF, "ecx": 0xFFFFFFFF, "edx": 0xFFFFFFFF},
+             d2e_reveal_case([(0x00FF, 0x22), (0x02FD, 0x25), (0xFF82, 0x1F)], 0x41, 0x41)),
+        Case("w1", {}, d2e_reveal_case([(0x0001, 0x20), (0x0003, 0xFF)], 0x3F, 0x3F, af0=0x8180)),
+        Case("w2", {}, d2e_reveal_case([(0x0002, 0x20)], 0x80, 0x80, af0=0x7FFF)),
+        Case("w3", {}, d2e_reveal_case([(0x0000, 0x30), (0x0100, 0x31), (0x8002, 0x21)], 0x40, 0x39)),
+    ], allow_calls=D1D_STR_ALLOW + (0x65624,),
+       calls=(D2E_ANIM_UNLINK, D2E_RELCNT, D2E_CARD, D2E_HOLD2), eax_mask=0,
+       mutants=("@w9a", "@v9a", "@no9a", "@late9a", "@next", "@bit", "@rec", "@idx8", "@idxs", "@off48",
+                "@sub", "@n14", "@n14v", "@n14w", "@r34", "@r34w", "@n1c", "@n1cw", "@n1cv", "@r28",
+                "@r28v", "@r28b", "@n1e", "@n1ev", "@n1ew", "@tbl", "@speed", "@animrec", "@norel",
+                "@relargs", "@relcnt", "@ids", "@row5", "@len", "@nocard", "@cardorder", "@early",
+                "@signed", "@swap", "@off91", "@eqids", "@neid", "@rows", "@mode", "@col")),
+]
+D1_SPECS += D2E_SPECS
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
