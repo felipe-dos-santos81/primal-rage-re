@@ -13344,6 +13344,38 @@ def d2c_filter_case(cfg, text, words=None):
 D2C_TOGGLE = E.Call(0x1D1B0, ())       # sound_music_pause_toggle: its own row (d1c); clobbers nothing
 
 
+D2C_CELLS = 0x00104114          # 0x1FFD0's 18 letter cells, stride 0x14
+D2C_CELL_REC = 0x0010A300       # cell i's actor record at + i*0x20 (zero BSS)
+D2C_CELL_SPAWN = 0x0010A680     # the spawn stub's record
+
+
+def d2c_cells_case(cells, ac=0x5A5A5A5A, c4=0x0001000C, cc=0x00020005, name=b"abcdefghijklmnopqr"):
+    """0x1FFD0: the 18 cells (cells = {i: fields}; a cell not named is state 0 with every other
+    field seeded) each with its own seeded 0x20-byte record, the active flag 0x1044AC and the two
+    banner handles 0x1044B0/B4, the row/col dwords 0x1044C4/0x1044CC (high words non-zero: the
+    target words read them as words) and the name buffer 0x104343."""
+    buf = bytearray()
+    for i in range(18):
+        f = dict(h=D2C_CELL_REC + i * 0x20, x=0x11110000 + i, y=0x22220000 + i, vel=0x3333,
+                 acc=0x4444, tgt=0x5555, st=0, code=0x66)
+        f.update(cells.get(i, {}))
+        buf += (le32(f["h"]) + le32(f["x"]) + le32(f["y"]) + le16(f["vel"]) + le16(f["acc"])
+                + le16(f["tgt"]) + bytes([f["st"], f["code"]]))
+    p = {D2C_CELLS + o: bytes(buf[o:o + 0x40]) for o in range(0, len(buf), 0x40)}
+    recs = bytes(0x80 | ((i * 7 + j) & 0x7F) for i in range(18) for j in range(0x20))
+    p.update({D2C_CELL_REC + o: recs[o:o + 0x40] for o in range(0, len(recs), 0x40)})
+    p[0x001044AC] = le32(ac) + le32(0x0010A600) + le32(0x0010A640)
+    p[0x001044C4] = le32(c4) + le32(0x6B6B6B6B) + le32(cc)
+    p[0x00104343] = bytes(name) + b"\x00\x5a\x5a"
+    return p
+
+
+# 0x2F510 by value: the string's first four bytes (the letter arm's string is a two-byte stack
+# buffer, whose address has no mem[] offset; the two bytes after its NUL are the emulator's zero stack).
+D2C_HOLD2 = E.Call(0x2F510, ("eax", "edx", "[ebx]", "ecx"), clobbers=("ebx", "ecx", "edx"))
+D2C_DEAD = E.Call(0x2B150, ("eax",))
+
+
 D2C_SPECS = [
     # 0x12658 game_state_3_handoff: no argument. Three spawns (0x9AC44 at x 0x2A00, a3 0xE0, a4
     # 0x5A00; 0x9AC58 and 0x9AC6C at 0, 0xE2, 0 with a5 = the camera record's +0x56 word | 0x400),
@@ -13411,6 +13443,58 @@ D2C_SPECS = [
         Case("r4", {}, d1c_pause_case(d8=1, da=1), {0x1D1B0: 0x00005A00}),
     ], calls=(D2C_TOGGLE,), eax_mask=0,
        mutants=("@nz", "@bit", "@noclear", "@order", "@nocall", "@byte", "@ah")),
+    # 0x1FFD0 nameentry_cells_step: no argument. The active flag 0x1044AC = 0, then per cell of
+    # the 18 at 0x104114 (stride 0x14) with a non-zero state: the flag = 1 and the state's arm of
+    # the nine-entry jump table 0x1FFAC (resolved by hand: diff_emu.RESOLVED_JUMPS). 1 spawns the
+    # letter; 2..6 are the drop, bounce, slide, settle and rise (each a velocity word, an
+    # acceleration word and a signed target, the actor's +0x1C or +0x18 updated); 7 kills the
+    # actor; 8 prints (a letter at its grid place, the space, or the delete with its puff) and
+    # redraws the name; 9 is the puff of an aborted cell. Every callee is a stub. The spawn
+    # stub's one EAX per case is every spawned handle. Mask 0: the one caller (0x1F464) reloads
+    # EAX on every path (liveness trace, record §1).
+    Spec("nameentry_cells_step", 0x1FFD0, [
+        Case("a0", {}, d2c_cells_case({0: dict(st=1, code=0), 5: dict(st=1, code=0x1B), 7: dict(st=7),
+                                      9: dict(st=9, x=0x1234, y=0x5678), 17: dict(st=1, code=3)}),
+             {0x2AE14: D2C_CELL_SPAWN}),
+        Case("b0", {}, d2c_cells_case({
+            0: dict(st=2, y=0x1000, vel=0x0010, acc=0x0020, tgt=0x7000),
+            1: dict(st=2, y=0x0100, vel=0x0005, acc=0x0002, tgt=0x0105),
+            2: dict(st=2, y=0x0100, vel=0x0008, acc=0x0008, tgt=0x0110),
+            3: dict(st=2, y=0x2000, vel=0xFFF0, acc=0xFFFE, tgt=0x7000),
+            4: dict(st=2, y=0x0008, vel=0x0004, acc=0x0004, tgt=0xFFF0),
+            6: dict(st=2, y=0x0100, vel=0xFFF9, acc=0x0000, tgt=0x0080)})),
+        Case("c0", {}, d2c_cells_case({
+            0: dict(st=3, y=0x0100, vel=0x0020, acc=0x0008, tgt=0x0110),
+            1: dict(st=3, y=0x0100, vel=0x0020, acc=0x0008, tgt=0x0110),
+            2: dict(st=3, y=0x0100, vel=0xFFE0, acc=0x0008, tgt=0x7000),
+            3: dict(st=3, y=0x0100, vel=0x0020, acc=0x0008, tgt=0x0120)})),
+        Case("d0", {}, d2c_cells_case({
+            2: dict(st=4, x=0x4C00, vel=0x0000, acc=0xFFC0, tgt=0x4A00),
+            3: dict(st=4, x=0x4A10, vel=0xFFC0, acc=0xFFC0, tgt=0x4A00),
+            4: dict(st=4, x=0x4A80, vel=0xFFC0, acc=0xFFC0, tgt=0x4A00),
+            6: dict(st=5, x=0x3000, vel=0xFF00, acc=0xFFC0, tgt=0x1600),
+            7: dict(st=5, x=0x1680, vel=0xFF00, acc=0xFFC0, tgt=0x1600),
+            8: dict(st=5, x=0x1606, vel=0xFFF9, acc=0xFFC0, tgt=0x1600),
+            9: dict(st=5, x=0x1607, vel=0xFFF9, acc=0xFFC0, tgt=0x1600)})),
+        Case("e0", {}, d2c_cells_case({
+            0: dict(st=6, y=0x1000, vel=0x0010, acc=0x0040, tgt=0x1800),
+            1: dict(st=6, y=0x17F8, vel=0x0010, acc=0x0040, tgt=0x1800),
+            2: dict(st=6, y=0x17F0, vel=0x0010, acc=0x0040, tgt=0x1800)})),
+        Case("f0", {}, d2c_cells_case({4: dict(st=8, code=0), 5: dict(st=8, code=6),
+                                      6: dict(st=8, code=7), 7: dict(st=8, code=25),
+                                      10: dict(st=8, code=0x1C), 11: dict(st=8, code=0x80)})),
+        Case("f1", {}, d2c_cells_case({8: dict(st=8, code=0x1A), 9: dict(st=8, code=0x1B)}),
+             {0x2AE14: D2C_CELL_SPAWN}),
+        Case("g0", {}, d2c_cells_case({3: dict(st=10), 4: dict(st=0xFF)})),
+        Case("h0", {}, d2c_cells_case({})),
+    ], calls=(SPAWN, P6_2BCF4, VOICE, D2C_DEAD, D2C_HOLD2), eax_mask=0,
+       mutants=("@ac0", "@ac1", "@n", "@s1tgt", "@s1x", "@s1acc", "@s1args", "@s1store", "@s1anim",
+                "@s1voice", "@s1vel", "@s1st", "@s2pre", "@s2cmp", "@s2div", "@s2zext", "@s2y",
+                "@s2neg", "@s2voice", "@s3par", "@s3tgt", "@s3acc", "@s3cmp", "@s4cmp", "@s4tgt",
+                "@s4off", "@s4pre", "@s5udiv", "@s5tgt", "@s5acc", "@s5voice", "@s5x", "@s6cmp",
+                "@s6vel", "@s6st", "@s7order", "@s7st", "@s8sign", "@s8lt", "@s8row", "@s8ch",
+                "@s8tmp", "@s8sp", "@s8seek", "@s8mode", "@s8blank", "@s8x", "@s8xy", "@s8clr",
+                "@s8nul", "@s8order", "@s9args", "@s9dead", "@s9order", "@s9st", "@s3post")),
 ]
 D1_SPECS += D2C_SPECS
 

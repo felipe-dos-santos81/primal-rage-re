@@ -19962,6 +19962,198 @@ static void d2c_1d270_core(u32 mut)
 D2C_RS_MUT(nz) D2C_RS_MUT(bit) D2C_RS_MUT(noclear) D2C_RS_MUT(order) D2C_RS_MUT(nocall) D2C_RS_MUT(byte)
 D2C_RS_MUT(ah)
 
+
+/* 0x1FFD0: no argument. */
+static void b_d2c_1ffd0(const u32 *r, u32 *eax) { (void)r; nameentry_cells_step(); *eax = 0u; }
+enum { D2C_CS_NONE, D2C_CS_ac0, D2C_CS_ac1, D2C_CS_n, D2C_CS_s1tgt, D2C_CS_s1x, D2C_CS_s1acc, D2C_CS_s1args,
+       D2C_CS_s1store, D2C_CS_s1anim, D2C_CS_s1voice, D2C_CS_s1vel, D2C_CS_s1st, D2C_CS_s2pre,
+       D2C_CS_s2cmp, D2C_CS_s2div, D2C_CS_s2zext, D2C_CS_s2y, D2C_CS_s2neg, D2C_CS_s2voice,
+       D2C_CS_s3par, D2C_CS_s3tgt, D2C_CS_s3acc, D2C_CS_s3cmp, D2C_CS_s3post, D2C_CS_s4cmp, D2C_CS_s4tgt,
+       D2C_CS_s4off, D2C_CS_s4pre, D2C_CS_s5udiv, D2C_CS_s5tgt, D2C_CS_s5acc, D2C_CS_s5voice,
+       D2C_CS_s5x, D2C_CS_s6cmp, D2C_CS_s6vel, D2C_CS_s6st, D2C_CS_s7order, D2C_CS_s7st, D2C_CS_s8sign,
+       D2C_CS_s8lt, D2C_CS_s8row, D2C_CS_s8ch, D2C_CS_s8tmp, D2C_CS_s8sp, D2C_CS_s8seek, D2C_CS_s8mode,
+       D2C_CS_s8blank, D2C_CS_s8x, D2C_CS_s8xy, D2C_CS_s8clr, D2C_CS_s8nul, D2C_CS_s8order,
+       D2C_CS_s9args, D2C_CS_s9dead, D2C_CS_s9order, D2C_CS_s9st };
+#define D2C_CS(x) (mut == D2C_CS_##x)
+#define D2C_SAR16(a) (((s32)DSD(a)) >> 16)
+static void d2c_1ffd0_core(u32 mut)
+{
+    u8 tmp[2];
+    tmp[0] = (u8)DSW(0x0001E820u);
+    tmp[1] = (u8)(DSW(0x0001E820u) >> 8);
+    if (!D2C_CS(ac0)) DSD(0x001044ACu) = 0u;
+    for (u32 i = 0u; i < (D2C_CS(n) ? 0x11u : 0x12u); i++) {
+        u32 c = 0x00104114u + 0x14u * i;
+        u8 st = DSB(c + 0x12u);
+        if (st == 0u) continue;
+        if (!D2C_CS(ac1)) DSD(0x001044ACu) = 1u;
+        if ((u8)(st - 1u) > 8u) continue;
+        if (D2C_CS(ac1)) DSD(0x001044ACu) = 1u;
+        u32 ebx = (u32)DSW(0x001044C4u) << 9;
+        switch (st) {
+        case 1u: {
+            DSW(c + 0x10u) = D2C_CS(s1tgt) ? (u16)(ebx >> 1) : (u16)ebx;
+            DSD(c + 4u) = D2C_CS(s1x) ? 0x200u : 0x4C00u;
+            DSD(c + 8u) = D2C_CS(s1x) ? 0x4C00u : 0x200u;
+            if (!D2C_CS(s1acc)) DSW(c + 0xEu) = 0x20u;
+            if (!D2C_CS(s1st)) DSB(c + 0x12u) = 2u;
+            if (!D2C_CS(s1vel)) DSW(c + 0xCu) = 0u;
+            u32 h = actor_spawn((const u32 *)(mem + 0xA7E44u), DSD(c + 4u), D2C_CS(s1args) ? 0xFEu : 0xFFu,
+                                DSD(c + 8u), 0u);
+            if (!D2C_CS(s1store)) DSD(c) = h;
+            actors_anim_seek(DSD(c), DSW(0x000A7DF4u + 2u * DSB(c + (D2C_CS(s1anim) ? 0x12u : 0x13u))));
+            (void)sound_voice(D2C_CS(s1voice) ? 0x7Bu : 0xB0u);
+            (void)sound_voice(D2C_CS(s1voice) ? 0xB0u : 0x7Bu);
+            break;
+        }
+        case 2u: {
+            s32 pre = D2C_SAR16(c + 0xAu);
+            DSW(c + 0xCu) = (u16)(DSW(c + 0xCu) + DSW(c + 0xEu));
+            s32 v = D2C_CS(s2pre) ? pre : D2C_CS(s2zext) ? (s32)DSW(c + 0xCu) : D2C_SAR16(c + 0xAu);
+            s32 y = (s32)DSD(c + 8u) + v;
+            s32 tgt = D2C_SAR16(c + 0xEu);
+            DSD(c + 8u) = (u32)y;
+            if (D2C_CS(s2cmp) ? tgt <= y : tgt < y) {
+                DSD(c + 8u) = (u32)tgt;
+                DSB(c + 0x12u) = 3u;
+                s32 nv = D2C_CS(s2neg) ? D2C_SAR16(c + 0xAu) : -D2C_SAR16(c + 0xAu);
+                DSW(c + 0xCu) = D2C_CS(s2div) ? (u16)(nv >> 2) : (u16)(nv / 4);
+                if (!D2C_CS(s2voice)) (void)sound_voice(0x71u);
+            }
+            DSD(DSD(c) + 0x1Cu) = D2C_CS(s2y) ? (u32)y : DSD(c + 8u);
+            break;
+        }
+        case 3u: {
+            s32 v = D2C_SAR16(c + 0xAu);
+            u16 vel = DSW(c + 0xCu);
+            if (D2C_CS(s3post)) v = (s32)(s16)(u16)(vel + DSW(c + 0xEu));
+            s32 y = (s32)DSD(c + 8u) + v;
+            DSD(c + 8u) = (u32)y;
+            vel = (u16)(vel + DSW(c + 0xEu));
+            s32 tgt = D2C_SAR16(c + 0xEu);
+            DSW(c + 0xCu) = vel;
+            if (D2C_CS(s3cmp) ? tgt <= (s32)DSD(c + 8u) : tgt < (s32)DSD(c + 8u)) {
+                DSB(c + 0x12u) = 4u;
+                DSW(c + 0x10u) = 0x4A00u;
+                DSD(c + 8u) = D2C_CS(s3tgt) ? (u32)D2C_SAR16(c + 0xEu) : (u32)tgt;
+                DSW(c + 0xEu) = D2C_CS(s3acc) ? 0x00C0u : 0xFFC0u;
+                DSW(c + 0xCu) = 0u;
+                (void)sound_voice((((i & 1u) != 0u) != D2C_CS(s3par)) ? 0xE7u : 0xE8u);
+            }
+            DSD(DSD(c) + 0x1Cu) = DSD(c + 8u);
+            break;
+        }
+        case 4u: {
+            s32 pre = D2C_SAR16(c + 0xAu);
+            DSW(c + 0xCu) = (u16)(DSW(c + 0xCu) + DSW(c + 0xEu));
+            s32 v = D2C_CS(s4pre) ? pre : D2C_SAR16(c + 0xAu);
+            s32 x = (s32)DSD(c + 4u) + v;
+            s32 tgt = D2C_SAR16(c + 0xEu);
+            DSD(c + 4u) = (u32)x;
+            if (D2C_CS(s4cmp) ? tgt >= x : tgt > x) {
+                DSB(c + 0x12u) = 5u;
+                DSW(c + 0x10u) = (u16)(((u32)DSW(0x001044CCu) + (D2C_CS(s4tgt) ? i : 2u * i)) << 9);
+            }
+            DSD(DSD(c) + (D2C_CS(s4off) ? 0x1Cu : 0x18u)) = DSD(c + 4u);
+            break;
+        }
+        case 5u: {
+            s32 v = D2C_SAR16(c + 0xAu);
+            s32 x = (s32)DSD(c + 4u) + v;
+            s32 tgt = D2C_SAR16(c + 0xEu);
+            DSD(c + 4u) = (u32)x;
+            if (tgt > x) {
+                DSB(c + 0x12u) = 6u;
+                if (!D2C_CS(s5x)) DSD(c + 4u) = (u32)D2C_SAR16(c + 0xEu);
+                DSW(c + 0xCu) = D2C_CS(s5udiv) ? (u16)(DSW(c + 0xCu) / 3u) : (u16)((s16)DSW(c + 0xCu) / 3);
+                if (!D2C_CS(s5tgt)) DSW(c + 0x10u) = (u16)ebx;
+                if (!D2C_CS(s5acc)) DSW(c + 0xEu) = 0x40u;
+                (void)sound_voice(D2C_CS(s5voice) ? 0x4Du : 0x70u);
+                (void)sound_voice(D2C_CS(s5voice) ? 0x70u : 0x4Du);
+            }
+            DSD(DSD(c) + 0x18u) = DSD(c + 4u);
+            break;
+        }
+        case 6u: {
+            s32 v = D2C_SAR16(c + 0xAu);
+            s32 y = (s32)DSD(c + 8u) + v;
+            u16 vel = (u16)(DSW(c + 0xCu) + DSW(c + 0xEu));
+            DSD(c + 8u) = (u32)y;
+            if (!D2C_CS(s6vel)) DSW(c + 0xCu) = vel;
+            s32 tgt = D2C_SAR16(c + 0xEu);
+            if (D2C_CS(s6cmp) ? tgt <= (s32)DSD(c + 8u) : tgt < (s32)DSD(c + 8u)) {
+                if (!D2C_CS(s6st)) DSB(c + 0x12u) = 7u;
+                DSD(c + 8u) = (u32)D2C_SAR16(c + 0xEu);
+            }
+            DSD(DSD(c) + 0x1Cu) = DSD(c + 8u);
+            break;
+        }
+        case 7u:
+            if (D2C_CS(s7order)) actor_set_dead(DSD(c));
+            DSB(c + 0x12u) = D2C_CS(s7st) ? 9u : 8u;
+            if (!D2C_CS(s7order)) actor_set_dead(DSD(c));
+            break;
+        case 8u: {
+            s32 code = D2C_CS(s8sign) ? (s32)(s8)DSB(c + 0x13u) : (s32)DSB(c + 0x13u);
+            u32 col0 = DSD(0x001044CCu), row0 = DSD(0x001044C4u);
+            u32 mode = D2C_CS(s8mode) ? 0x1000u : 0x4000u;
+            if (D2C_CS(s8lt) ? code <= 0x1A : code < 0x1A) {
+                u8 ch = (u8)(code + 0x41);
+                if (!D2C_CS(s8tmp)) tmp[0] = ch;
+                if (!D2C_CS(s8ch)) DSB(0x00104343u + i) = ch;
+                s32 row = 3 * (code / 7) + 6, col = 3 * (code % 7) + 0xB;
+                if (D2C_CS(s8row)) text_cursor_hold_font2(row, col, tmp, mode);
+                else text_cursor_hold_font2(col, row, tmp, mode);
+            } else if (code == 0x1A) {
+                DSB(0x00104343u + i) = D2C_CS(s8sp) ? 0u : 0x20u;
+                actors_anim_seek(DSD(D2C_CS(s8seek) ? 0x001044B4u : 0x001044B0u), DSW(0x000A7E28u));
+            } else if (code == 0x1B) {
+                if (!D2C_CS(s8nul)) DSB(0x00104343u + i) = 0u;
+                text_cursor_hold_font2((s32)(col0 + 2u * i), (s32)row0, mem + 0x00080974u, mode);
+                u32 x = ((col0 + 2u * i) << 9) + (D2C_CS(s8x) ? 0u : 0x200u), y = (row0 << 9) + 0x200u;
+                if (D2C_CS(s8xy)) (void)actor_spawn((const u32 *)(mem + 0xA7E58u), y, 0xFFu, x, 0u);
+                else (void)actor_spawn((const u32 *)(mem + 0xA7E58u), x, 0xFFu, y, 0u);
+                (void)sound_voice(0xE9u);
+            }
+            if (D2C_CS(s8order))
+                text_cursor_hold_font2((s32)(col0 + 2u * i + 2u), (s32)row0, mem + 0x00080974u, mode);
+            text_cursor_hold_font2((s32)col0, (s32)row0, mem + 0x00104343u, mode);
+            if (!D2C_CS(s8order))
+                text_cursor_hold_font2((s32)(col0 + 2u * i + (D2C_CS(s8blank) ? 0u : 2u)), (s32)row0,
+                                       mem + 0x00080974u, mode);
+            if (!D2C_CS(s8clr)) DSB(c + 0x12u) = 0u;
+            break;
+        }
+        case 9u:
+            if (D2C_CS(s9order)) actor_set_dead(DSD(c));
+            if (D2C_CS(s9args))
+                (void)actor_spawn((const u32 *)(mem + 0xA7E58u), DSD(c + 8u) + 0x200u, 0xFFu,
+                                  DSD(c + 4u) + 0x200u, 0u);
+            else
+                (void)actor_spawn((const u32 *)(mem + 0xA7E58u), DSD(c + 4u) + 0x200u, 0xFFu,
+                                  DSD(c + 8u) + 0x200u, 0u);
+            (void)sound_voice(0xE9u);
+            if (!D2C_CS(s9dead) && !D2C_CS(s9order)) actor_set_dead(DSD(c));
+            if (!D2C_CS(s9st)) DSB(c + 0x12u) = 0u;
+            break;
+        default:
+            break;
+        }
+    }
+}
+#define D2C_CS_MUT(name) \
+    static void m_d2c_cs_##name(const u32 *r, u32 *eax) { (void)r; d2c_1ffd0_core(D2C_CS_##name); *eax = 0u; }
+D2C_CS_MUT(ac0) D2C_CS_MUT(ac1) D2C_CS_MUT(n) D2C_CS_MUT(s1tgt) D2C_CS_MUT(s1x)
+D2C_CS_MUT(s1acc) D2C_CS_MUT(s1args) D2C_CS_MUT(s1store) D2C_CS_MUT(s1anim) D2C_CS_MUT(s1voice)
+D2C_CS_MUT(s1vel) D2C_CS_MUT(s1st) D2C_CS_MUT(s2pre) D2C_CS_MUT(s2cmp) D2C_CS_MUT(s2div)
+D2C_CS_MUT(s2zext) D2C_CS_MUT(s2y) D2C_CS_MUT(s2neg) D2C_CS_MUT(s2voice) D2C_CS_MUT(s3par)
+D2C_CS_MUT(s3tgt) D2C_CS_MUT(s3acc) D2C_CS_MUT(s3cmp) D2C_CS_MUT(s4cmp) D2C_CS_MUT(s4tgt)
+D2C_CS_MUT(s4off) D2C_CS_MUT(s4pre) D2C_CS_MUT(s5udiv) D2C_CS_MUT(s5tgt) D2C_CS_MUT(s5acc)
+D2C_CS_MUT(s5voice) D2C_CS_MUT(s5x) D2C_CS_MUT(s6cmp) D2C_CS_MUT(s6vel) D2C_CS_MUT(s6st)
+D2C_CS_MUT(s7order) D2C_CS_MUT(s7st) D2C_CS_MUT(s8sign) D2C_CS_MUT(s8lt) D2C_CS_MUT(s8row)
+D2C_CS_MUT(s8ch) D2C_CS_MUT(s8tmp) D2C_CS_MUT(s8sp) D2C_CS_MUT(s8seek) D2C_CS_MUT(s8mode)
+D2C_CS_MUT(s8blank) D2C_CS_MUT(s8x) D2C_CS_MUT(s8xy) D2C_CS_MUT(s8clr) D2C_CS_MUT(s8nul)
+D2C_CS_MUT(s8order) D2C_CS_MUT(s9args) D2C_CS_MUT(s9dead) D2C_CS_MUT(s9order) D2C_CS_MUT(s9st) D2C_CS_MUT(s3post)
 /* ---- end of track D2 batch d2c bindings ---- */
 
 static const binding_t k_bindings[] = {
@@ -23904,6 +24096,63 @@ static const binding_t k_bindings[] = {
     { "sound_resume@nocall", m_d2c_rs_nocall, 0x00000000u },
     { "sound_resume@byte", m_d2c_rs_byte, 0x00000000u },
     { "sound_resume@ah", m_d2c_rs_ah, 0x00000000u },
+    { "nameentry_cells_step", b_d2c_1ffd0, 0x00000000u },
+    { "nameentry_cells_step@ac0", m_d2c_cs_ac0, 0x00000000u },
+    { "nameentry_cells_step@ac1", m_d2c_cs_ac1, 0x00000000u },
+    { "nameentry_cells_step@n", m_d2c_cs_n, 0x00000000u },
+    { "nameentry_cells_step@s1tgt", m_d2c_cs_s1tgt, 0x00000000u },
+    { "nameentry_cells_step@s1x", m_d2c_cs_s1x, 0x00000000u },
+    { "nameentry_cells_step@s1acc", m_d2c_cs_s1acc, 0x00000000u },
+    { "nameentry_cells_step@s1args", m_d2c_cs_s1args, 0x00000000u },
+    { "nameentry_cells_step@s1store", m_d2c_cs_s1store, 0x00000000u },
+    { "nameentry_cells_step@s1anim", m_d2c_cs_s1anim, 0x00000000u },
+    { "nameentry_cells_step@s1voice", m_d2c_cs_s1voice, 0x00000000u },
+    { "nameentry_cells_step@s1vel", m_d2c_cs_s1vel, 0x00000000u },
+    { "nameentry_cells_step@s1st", m_d2c_cs_s1st, 0x00000000u },
+    { "nameentry_cells_step@s2pre", m_d2c_cs_s2pre, 0x00000000u },
+    { "nameentry_cells_step@s2cmp", m_d2c_cs_s2cmp, 0x00000000u },
+    { "nameentry_cells_step@s2div", m_d2c_cs_s2div, 0x00000000u },
+    { "nameentry_cells_step@s2zext", m_d2c_cs_s2zext, 0x00000000u },
+    { "nameentry_cells_step@s2y", m_d2c_cs_s2y, 0x00000000u },
+    { "nameentry_cells_step@s2neg", m_d2c_cs_s2neg, 0x00000000u },
+    { "nameentry_cells_step@s2voice", m_d2c_cs_s2voice, 0x00000000u },
+    { "nameentry_cells_step@s3par", m_d2c_cs_s3par, 0x00000000u },
+    { "nameentry_cells_step@s3tgt", m_d2c_cs_s3tgt, 0x00000000u },
+    { "nameentry_cells_step@s3acc", m_d2c_cs_s3acc, 0x00000000u },
+    { "nameentry_cells_step@s3cmp", m_d2c_cs_s3cmp, 0x00000000u },
+    { "nameentry_cells_step@s4cmp", m_d2c_cs_s4cmp, 0x00000000u },
+    { "nameentry_cells_step@s4tgt", m_d2c_cs_s4tgt, 0x00000000u },
+    { "nameentry_cells_step@s4off", m_d2c_cs_s4off, 0x00000000u },
+    { "nameentry_cells_step@s4pre", m_d2c_cs_s4pre, 0x00000000u },
+    { "nameentry_cells_step@s5udiv", m_d2c_cs_s5udiv, 0x00000000u },
+    { "nameentry_cells_step@s5tgt", m_d2c_cs_s5tgt, 0x00000000u },
+    { "nameentry_cells_step@s5acc", m_d2c_cs_s5acc, 0x00000000u },
+    { "nameentry_cells_step@s5voice", m_d2c_cs_s5voice, 0x00000000u },
+    { "nameentry_cells_step@s5x", m_d2c_cs_s5x, 0x00000000u },
+    { "nameentry_cells_step@s6cmp", m_d2c_cs_s6cmp, 0x00000000u },
+    { "nameentry_cells_step@s6vel", m_d2c_cs_s6vel, 0x00000000u },
+    { "nameentry_cells_step@s6st", m_d2c_cs_s6st, 0x00000000u },
+    { "nameentry_cells_step@s7order", m_d2c_cs_s7order, 0x00000000u },
+    { "nameentry_cells_step@s7st", m_d2c_cs_s7st, 0x00000000u },
+    { "nameentry_cells_step@s8sign", m_d2c_cs_s8sign, 0x00000000u },
+    { "nameentry_cells_step@s8lt", m_d2c_cs_s8lt, 0x00000000u },
+    { "nameentry_cells_step@s8row", m_d2c_cs_s8row, 0x00000000u },
+    { "nameentry_cells_step@s8ch", m_d2c_cs_s8ch, 0x00000000u },
+    { "nameentry_cells_step@s8tmp", m_d2c_cs_s8tmp, 0x00000000u },
+    { "nameentry_cells_step@s8sp", m_d2c_cs_s8sp, 0x00000000u },
+    { "nameentry_cells_step@s8seek", m_d2c_cs_s8seek, 0x00000000u },
+    { "nameentry_cells_step@s8mode", m_d2c_cs_s8mode, 0x00000000u },
+    { "nameentry_cells_step@s8blank", m_d2c_cs_s8blank, 0x00000000u },
+    { "nameentry_cells_step@s8x", m_d2c_cs_s8x, 0x00000000u },
+    { "nameentry_cells_step@s8xy", m_d2c_cs_s8xy, 0x00000000u },
+    { "nameentry_cells_step@s8clr", m_d2c_cs_s8clr, 0x00000000u },
+    { "nameentry_cells_step@s8nul", m_d2c_cs_s8nul, 0x00000000u },
+    { "nameentry_cells_step@s8order", m_d2c_cs_s8order, 0x00000000u },
+    { "nameentry_cells_step@s9args", m_d2c_cs_s9args, 0x00000000u },
+    { "nameentry_cells_step@s9dead", m_d2c_cs_s9dead, 0x00000000u },
+    { "nameentry_cells_step@s9order", m_d2c_cs_s9order, 0x00000000u },
+    { "nameentry_cells_step@s9st", m_d2c_cs_s9st, 0x00000000u },
+    { "nameentry_cells_step@s3post", m_d2c_cs_s3post, 0x00000000u },
     /* ---- end of track D2 batch d2c entries ---- */
 };
 
