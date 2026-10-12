@@ -3757,6 +3757,7 @@ void fight_challenge_crowd(void)
  * Else AL = 0 (0x4D149 `xor al,al`). */
 int fight_4d108(u32 entry, u32 index)
 {
+    PR_SEAM_RET(0x4D108u, entry, index);
     if (rng_next(0x3Cu) != 0u) return 0;                        /* 0x4D110/0x4D117 */
     actors_anim_begin(DSD(entry + 8u), DSD(DS_000C95BC + index * 4u),
                       0x40400000u);                             /* 0x4D128 */
@@ -3774,6 +3775,7 @@ int fight_4d108(u32 entry, u32 index)
  * 3.0; returns 1. Else 0. */
 int fight_4d150(u32 entry, u32 index)
 {
+    PR_SEAM_RET(0x4D150u, entry, index);
     if (rng_next(0x3Cu) != 0u) return 0;                        /* 0x4D15C/0x4D163 */
     u32 off;
     if (rng_next(2u) != 0u)                                     /* 0x4D170 */
@@ -3802,7 +3804,7 @@ int fight_4d150(u32 entry, u32 index)
  * take it; else the rise 0x4D108, the walk 0x4D150, then (on the slot's +0x42
  * bit 1 or DS_001088B2[+0x21]) 0x4B3F0, then (on +0x42 bit 0 or
  * DS_0010889E[+0x21]) 0x4B430, each with EBX = 0; the first that acts ends it. */
-static void fight_4d224(u32 entry, u32 index)
+void fight_4d224(u32 entry, u32 index)
 {
     if (DSB(DS_001088C2) != 0u) {                               /* 0x4D22B */
         if (fight_4bd4c(entry, index) != 0) return;             /* 0x4D236/0x4D23D */

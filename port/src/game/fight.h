@@ -530,4 +530,9 @@ void fight_4aad0(u32 entry, u32 index);
  * exported for its differential row (track D3 d3b). */
 void fight_4b470(u32 entry, u32 index);
 
+/* 0x4D224 — demo-pose record §43-A. The mode-0x22 pass's handler for types 0,
+ * 7 and above 8. EAX = entry, EDX = si; exported for its differential row
+ * (track D3 d3b). */
+void fight_4d224(u32 entry, u32 index);
+
 #endif /* PRAGE_GAME_FIGHT_H */
