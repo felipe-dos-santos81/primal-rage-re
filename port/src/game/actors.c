@@ -2850,6 +2850,7 @@ dead:
  * D1 row's binding. */
 void motion_step(u32 rec)
 {
+    PR_SEAM(0x2A4FCu, rec);
     if ((DSW(rec + 0x2a) >> 8 & 0x80u) == 0) return;
     /* PORT: the original integrates the x velocity as `sar dword [eax+0x32],16`
      * and the y velocity as `sar dword [eax+0x34],16` — the 16.16 fixed-point
@@ -2899,6 +2900,7 @@ void motion_step(u32 rec)
  * the parent's hflip into bit 0x8000. Exported for its own D1 row's binding. */
 void anim_id_path(u32 rec, u32 slot)
 {
+    PR_SEAM(0x2A39Cu, rec, slot);
     DSB(rec + 0x28) &= 0xfb;
     u32 pset = DSD(DS_001014EC) + (slot & 0xffffu) * PSET_SIZE;   /* 0x2A3A0/0x2A3A2 `xor ecx,ecx; mov cx,dx` */
     u32 id = anim_next_sprite_id(rec, pset);
@@ -2917,6 +2919,7 @@ void anim_id_path(u32 rec, u32 slot)
  * binding. */
 void frame_timer(u32 rec, u32 slot)
 {
+    PR_SEAM(0x2AA70u, rec, slot);
     slot &= 0xffffu;                            /* 0x2ABC4/0x2ABC8, 0x2ABDF/0x2ABE3, 0x2AC60/0x2AC62 `xor r,r; mov r16,si` */
     if ((DSW(rec + 0x28) & 0x810u) != 0 || (DSW(rec + 0x2a) & 4u) != 0) {
         if ((DSW(rec + 0x28) >> 8 & 8u) != 0) return;
@@ -3695,6 +3698,7 @@ void release_record(u32 rec, u32 pset)
  * Exposed for 0x35658's 0x35813 call (the state-7 arena's fighter sync). */
 void actor_sync(u32 rec)
 {
+    PR_SEAM(0x2A1FCu, rec);
     u32 slot = DSW(rec + 0x56);
     u32 pset = DSD(DS_001014EC) + slot * PSET_SIZE;
     if (DSB(DS_00104B26) != 0) {
