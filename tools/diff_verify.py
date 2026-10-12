@@ -13354,6 +13354,262 @@ D2E_SPECS = [
                 "@relargs", "@relcnt", "@ids", "@row5", "@len", "@nocard", "@cardorder", "@early",
                 "@signed", "@swap", "@off91", "@eqids", "@neid", "@rows", "@mode", "@col")),
 ]
+
+# ---- 0x41C28 game_mode_12_step: one row per jump-table target (record §2.3) ----------------------
+D2E_BG = 0x0010A300                 # the background record 0x1080F4 points at (zero BSS)
+D2E_SLOT_REC = 0x0010A400           # the seven portrait records 0x1080C0[k], 0x40 apart (zero BSS)
+D2E_SPAWNED = 0x0010A600            # the spawn stub's record
+# The blocks of each jump-table target (table 0x41C04, nine entries) and the three shared ones:
+# the two of the dispatch, which every case runs, and the epilogue 0x42461, which the guard and
+# states 3, 6, 7 and 8 jump to (the other states return through their own copy of the pops).
+D2E_M12_BLOCKS = {
+    0: (0x41C68, 0x41C71, 0x41C97, 0x41CB7),
+    1: (0x41CDD, 0x41CEE, 0x41CFE, 0x41D11, 0x41D39, 0x41D4D, 0x41D62, 0x41D68, 0x41D77, 0x41DB2, 0x41DBC,
+        0x41DC7, 0x41DE6, 0x41DF5),
+    2: (0x41E1B, 0x41E24, 0x41E30, 0x41E50),
+    3: (0x41E6D, 0x41E89, 0x41EAB, 0x41EFF, 0x41F0B, 0x41FA0, 0x42049),
+    4: (0x4208E, 0x420B2, 0x420BC),
+    5: (0x420E1, 0x420ED, 0x420FE, 0x4210D, 0x4212C, 0x4213B, 0x4214A),
+    6: (0x4217D, 0x421C0, 0x421D0, 0x421DE, 0x4224A, 0x4226C),
+    7: (0x4226E, 0x4228F, 0x422E8, 0x42302, 0x4231A, 0x42337, 0x42346, 0x42352, 0x42361, 0x4236D, 0x42376,
+        0x423DA, 0x423E3, 0x423EC, 0x423F5, 0x423FC, 0x42434),
+    8: (0x42443, 0x42457),
+}
+D2E_M12_EPILOGUE = 0x42461
+
+
+def d2e_m12_unhit(state):
+    """The blocks a state's row does not own: the other eight jump-table targets' (each hit by its
+    own row) and, for the states that return through their own pops, the shared epilogue."""
+    out = {b: "jump-table target %d (0x41C04[%d]): row game_mode_12_step_s%d" % (k, k, k)
+           for k, blocks in D2E_M12_BLOCKS.items() if k != state for b in blocks}
+    if state in (0, 1, 2, 4, 5):
+        out[D2E_M12_EPILOGUE] = ("the shared epilogue: state %d returns through its own pops; rows "
+                                 "game_mode_12_step_s3, _s6, _s7 and _s8 hit it" % state)
+    return out
+
+
+D2E_M12_WIDTH = E.Call(0x2F0F0, ("eax", "edx"), clobbers=("edx",))
+D2E_M12_NUMSET = E.Call(0x2F434, ("eax", "edx", "ebx", "ecx", "s0", "s1"), pop=8, clobbers=("ebx", "ecx", "edx"))
+D2E_M12_FLASH, D2E_M12_REVEAL = E.Call(0x414B4, ("eax",)), E.Call(0x41528, ("eax",))
+D2E_M12_DARKEN, D2E_M12_BOARD, D2E_M12_TALLY = E.Call(0x41578, ()), E.Call(0x418F4, ()), E.Call(0x416D4, ())
+D2E_M12_ADVANCE, D2E_M12_CONT, D2E_M12_OVER = E.Call(0x4160C, ()), E.Call(0x41760, ()), E.Call(0x417C4, ())
+D2E_M12_TIMER = E.Call(0x4660C, ("eax",))
+# 0x25848 picks the stage word 0x104AFC; the stub stores 4 there, so the 0x41350 call that follows
+# it (0x4239C reads the word after the call) shows whether it was read before or after
+D2E_M12_PICK = E.Call(0x25848, (), writes=((None, 0x00104AFC, le16(4)),))
+D2E_M12_SELECT = E.Call(0x41350, ("eax", "edx"), clobbers=("edx",))
+D2E_M12_JOIN = E.Call(0x271E0, ())
+D2E_M12_CLOSE = E.Call(0x32A3C, ("eax", "edx"), clobbers=("edx",))
+# The call set of each state's row (diffrun takes sixteen stubs a case; the function has 24 callees).
+D2E_M12_CALLS = {
+    0: (SPAWN, D1D_CURSOR),
+    1: (D2E_M12_FLASH, VOICE, D2E_M12_DARKEN),
+    2: (P7_2B150, D2E_HOLD2),
+    3: (SPAWN, PALETTE, P6_2BCF4, D2E_M12_WIDTH, D1D_CURSOR, VOICE),
+    4: (D2E_M12_FLASH, VOICE),
+    5: (D2E_M12_REVEAL, D2E_M12_BOARD, D2E_M12_TALLY, VOICE, D2E_M12_ADVANCE, D2E_M12_CONT),
+    6: (VOICE, ANIM_BEGIN),
+    7: (P7_2B150, SPAWN, P7_41310, D2E_M12_NUMSET, D2E_M12_DARKEN, D2E_M12_TIMER, D2E_M12_PICK,
+        D2E_M12_SELECT, D2E_M12_OVER, D2E_M12_JOIN, D2E_M12_CLOSE),
+    8: (),
+}
+# What runs real: 0x1C500 and its tree where a state draws text, 0x2F41C in state 3 (it only
+# forwards to the stubbed 0x2F198) and, in state 7, the audit add 0x2DAE4 with its field read
+# 0x2D974. The port has no call for 0x2DAE4 (deferred under a PORT comment): the two cases that
+# reach it make it a no-op by its own bytes (field 0x10 negative, 0x2DAF0 `jl 0x2db54`), record §4.
+D2E_M12_ALLOW = {0: D1D_STR_ALLOW, 2: D1D_STR_ALLOW, 3: D1D_STR_ALLOW + (0x2F41C,), 7: (0x2DAE4, 0x2D974)}
+D2E_M12_AUDIT_OFF = {0x0002D340: le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
+D2E_DIRTY = {"eax": 0xFFFFFFFF, "ebx": 0xFFFFFFFF, "ecx": 0xFFFFFFFF, "edx": 0xFFFFFFFF}
+
+
+def d2e_m12_case(state, r=0, flag=0x02, afc=3, afe=0x5A5A, b23=0x93, bg=(0x1800, 0x2000, 0x200, 0x3434, 0x3636),
+                 w=(0x5151, 0x5252), tally=(3, 5), slots=b"\x01\x02\x03\x04\x05\x06\x07", c10e=0x5E, c10f=0x5F,
+                 c111=0x21, c112=3, c113=0, ch=(2, 5), f63=(0, 0), cyc=(1, 1), score=(0x00012345, 0x00FEDCBA),
+                 b1d=0, b1f=0, b19=0x77, b52c=0, b3a=0, abc=0x00030002, px=0x2A00, bc=0x0010A680,
+                 stage=(0x00000195, 0x40), xw=(0x0600, 0x4F00), cols=(b"\x11\x12", b"\x21\x22"), strings=None,
+                 ids=(5, 7), extra=None):
+    """0x41C28: the state byte 0x104B25 between seeded neighbours (0x104B23 = `b23`), the side
+    0x104AD4 = `r`, the layout flag 0x104529, the stage word 0x104AFC and the countdown 0x104AFE,
+    the gate bytes 0x104B19/1D/1F, 0x10452C, 0x105B3A, the dwords 0x104ABC/0x104AE4, the word
+    0x1088EE; the handle 0x1080BC, the seven portrait records 0x1080C0 and the background record
+    0x1080F4 -> D2E_BG with `bg` = (+0x18, +0x1C, +0x2C, +0x34, +0x36) between seeded neighbours; the
+    words 0x108100/02 (`w`), the tallies 0x108104, the seven slot bytes 0x108106 and 0x10810E..13;
+    per side the slot's +0x3C dword, +0x5B, +0x63, +0x7A and +0x82 bytes between seeded neighbours;
+    the tables: 0xC8718 (`px`), the stage's 0xC86A4 dword and 0xC86A8 byte (`stage`), 0xC8518
+    (`xw`), 0xC875E/0xC8764 (`cols`), the string ids 0xC866C[ch]/0xC8688[stage] (`ids`); and the
+    strings."""
+    p = d1d_str_pokes(strings) if strings else {}
+    p.update({
+        0x00104B18: bytes([0x63, b19, 0x64, 0x65, 0x61, b1d, 0x62, b1f]),
+        0x00104B22: bytes([0x92, b23, 0x94, state, 0x96]),
+        0x00104AD4: le32(r), 0x00104ABC: le32(abc),
+        0x00104AE0: le32(0xE0E0E0E0) + le32(0xE4E4E4E4) + le32(0xE8E8E8E8),
+        0x00104528: bytes([0x5C, flag]), 0x0010452B: bytes([0x2B, b52c, 0x2D]),
+        0x00104AFA: le16(0xFAFA) + le16(afc) + le16(afe) + le16(0x5B5B),
+        0x001088EC: le16(0xECEC) + le16(0xEEEE) + le16(0xF0F0),
+        0x00105B39: bytes([0x39, b3a, 0x3B]),
+        0x001080B8: le32(0xB8B8B8B8) + le32(bc) + b"".join(le32(D2E_SLOT_REC + k * 0x40) for k in range(7)),
+        0x001080DC: b"".join(le32(0xDCDCDC00 + k) for k in range(6)) + le32(D2E_BG) + le32(0xF8F8F8F8),
+        0x001080FE: (le16(0x6161) + le16(w[0]) + le16(w[1]) + bytes(tally) + bytes(slots)
+                     + bytes([0x0D, c10e, c10f, 0x10, c111, c112, c113, 0x14])),
+        D2E_BG + 0x14: le32(0x14141414) + le32(bg[0]) + le32(bg[1]) + le32(0x20202020),
+        D2E_BG + 0x28: (le16(0x2828) + le16(0x2A2A) + le16(bg[2]) + le16(0x2E2E) + le32(0x30303030)
+                        + le16(bg[3]) + le16(bg[4]) + le32(0x38383838)),
+        0x000C8716: le16(0x1616) + le16(px) + le16(0x1A1A),
+        0x000C86A4 + afc * 8: le32(stage[0]) + bytes([stage[1], 0xA9, 0xAA, 0xAB]),
+        0x000C8518: le16(xw[0]) + le16(xw[1]),
+        0x000C875E: cols[0], 0x000C8764: cols[1],
+    })
+    for s in (0, 1):
+        base = 0x001077B0 + s * 0x94
+        p[base + 0x38] = le32(0x38000000 + s) + le32(score[s]) + le32(0x40000000 + s)
+        p[base + 0x5A] = bytes([0x5A, 0x5B + s, 0x5C])
+        p[base + 0x62] = bytes([0x62, f63[s], 0x64])
+        p[base + 0x79] = bytes([0x79, ch[s], 0x7B])
+        p[base + 0x81] = bytes([0x81, cyc[s], 0x83])
+    p[0x000C866C + ch[r & 1] * 4] = le32(ids[0])
+    p[0x000C8688 + afc * 4] = le32(ids[1])
+    p.update(extra or {})
+    return p
+
+
+D2E_M12_TXT = {5: b"NAME5", 7: b"STAGE-7", 0xDB: b"VS", 0x4F: b"PROMPT4F", 0x50: b"ERASE50"}
+
+
+def d2e_m12_spec(state, cases, mutants):
+    return Spec("game_mode_12_step_s%d" % state, 0x41C28, cases, unhit_named=d2e_m12_unhit(state),
+                allow_calls=D2E_M12_ALLOW.get(state, ()), calls=D2E_M12_CALLS[state], eax_mask=0, mutants=mutants)
+
+
+D2E_SPECS += [
+    # 0x41C28 game_mode_12_step: no argument; nine states on the byte 0x104B25 through the jump
+    # table 0x41C04 (resolved by hand: diff_emu.RESOLVED_JUMPS[0x41C61]). One row per table target
+    # (record §2.3): each names the other targets' blocks; together they hit 67/67. Every direct
+    # callee a state reaches is a stub (D2E_M12_CALLS) except 0x1C500 (real, with its tree),
+    # 0x2F41C (real: it forwards to the stubbed 0x2F198) and 0x2DAE4 with 0x2D974 (D2E_M12_ALLOW). Mask 0: the one call site 0x253BD is followed
+    # by `jmp 0x2540f`, the mode tail the d1c and d1d records trace dead.
+    #
+    # State 0: with 0x104529 bit 1 the prompt sprite 0xC876C at (the word 0xC8718 zero-extended,
+    # 0xFF, 0x3600), its handle to 0x1080BC; else string 0x4F at (-1, 0x1B), mode 0x4003. Then the
+    # countdown 0x104AFE = 0xF (word), 0x104B25 = 8, 0x104B23 = 1.
+    d2e_m12_spec(0, [
+        Case("a0", {}, d2e_m12_case(0, flag=0x02, px=0x8123), {0x2AE14: D2E_SPAWNED}),
+        Case("a1", D2E_DIRTY, d2e_m12_case(0, flag=0xFD, strings=D2E_M12_TXT), {0x2AE14: D2E_SPAWNED}),
+    ], ()),
+    # State 1: from slot 0x10810F, the first slot below 7 that is not the stage word 0x104AFC and
+    # has bit 7 of its byte 0x108106[i]: 0x414B4(i), the counter 0x108112 post-incremented into
+    # voice 0x34 + n, and unless the side is 2 a tally 0x108104[side] for each side whose character
+    # byte (+0x7A) | side * 0x40 equals the slot byte's low seven bits; then 0x10810F = i + 1,
+    # 0x104B23 = 1, 0x104AFE = 8, 0x104B25 = 8, 0x108111 += 1. With no such slot: 0x41578 when the
+    # side is 2 or its +0x63 is 1, else 0x104AFE = 0x1E, 0x104B23 = 2, 0x104B25 = 8.
+    d2e_m12_spec(1, [
+        Case("b0", {}, d2e_m12_case(1, r=0, afc=0, c10f=0, slots=b"\x85\x85\x03\x04\x05\x06\x07", ch=(5, 5))),
+        Case("b1", D2E_DIRTY, d2e_m12_case(1, r=1, afc=0x0302, c10f=2, slots=b"\x82\x82\x82\x46\xC5\x06\x07",
+                                           ch=(5, 5), c112=0xFF, c111=0xFF), {0x2C3FC: 0}),
+        Case("b2", {}, d2e_m12_case(1, r=2, afc=9, c10f=1, slots=b"\x82\x02\x03\x04\x05\x06\x82", ch=(2, 2))),
+        Case("b3", {}, d2e_m12_case(1, r=2, afc=6, c10f=0, slots=b"\x01\x02\x03\x04\x05\x06\x87", f63=(0, 0))),
+        Case("b4", {}, d2e_m12_case(1, r=0, afc=3, c10f=7, slots=b"\x80" * 7, f63=(1, 0))),
+        Case("b5", {}, d2e_m12_case(1, r=1, afc=3, c10f=9, slots=b"\x80" * 7, f63=(1, 0x81))),
+        Case("b6", {}, d2e_m12_case(1, r=0, afc=2, c10f=4, slots=b"\x80\x80\x80\x80\x45\x7F\x40", f63=(0, 1))),
+    ], ()),
+    # State 2: with 0x104529 bit 1 the prompt handle 0x1080BC is killed (0x2B150); else string 0x50
+    # at (-1, 0x1B), mode 0x4000 through 0x2F510. Then 0x104B25 = 3 and the background record's
+    # +0x36 word = 0x40.
+    d2e_m12_spec(2, [
+        Case("c0", {}, d2e_m12_case(2, flag=0x02)),
+        Case("c1", D2E_DIRTY, d2e_m12_case(2, flag=0xFD, strings=D2E_M12_TXT)),
+    ], ()),
+    # State 3: nothing until the background's +0x36 (signed word) + its +0x1C reaches 0x2300
+    # (`jl`); then +0x1C = 0x2300, +0x36 = 0, and with 0x104529 bit 1 four spawns (the side's
+    # character descriptor 0xA7760[+0x7A] at x = (0xA8 - (the stage's byte 0xC86A8 + 0x58) / 2) << 6,
+    # y 0x200, and 0x2A17C(it, word 0x74, handle 0) when the side is not 0; 0xC8780 0x50 further
+    # right, y 0x400; 0xC87A8 another byte / 2 + 8 further, y 0x400, re-seeked to the stage's
+    # stream 0xC86A4; 0xC8794 at the word 0xC8718, y 0xA00), else the three strings (the
+    # character's 0xC866C, 0xDB, the stage's 0xC8688) measured by 0x2F0F0 and drawn from col 0x15 -
+    # sum / 2 (truncating), row 2, the last two through 0x2F41C. Then 0x10810E = 0, the side's
+    # tally += 1, 0x104B25 = 4, 0x108111 += 1 and voice 0x3A.
+    d2e_m12_spec(3, [
+        Case("d0", {}, d2e_m12_case(3, bg=(0x1800, 0x2300, 0x200, 0x3434, 0xFFFF))),
+        Case("d1", {}, d2e_m12_case(3, r=1, flag=0x02, afc=2, stage=(0x00000196, 0x71), ch=(2, 6),
+                                    bg=(0x1800, 0x22FF, 0x200, 0x3434, 0x0001), px=0x9100),
+             {0x2AE14: D2E_SPAWNED}),
+        Case("d2", D2E_DIRTY, d2e_m12_case(3, r=0, flag=0xFF, afc=0x0102, stage=(0x00AB0102, 0xFF), ch=(4, 6),
+                                           bg=(0x1800, 0x2300, 0x200, 0x3434, 0x7FFF)), {0x2AE14: D2E_SPAWNED + 0x40}),
+        Case("d3", {}, d2e_m12_case(3, r=0, flag=0xFD, afc=5, ch=(3, 1), strings=D2E_M12_TXT,
+                                    bg=(0x1800, 0x7FFF0000, 0x200, 0x3434, 0x0000)), {0x2F0F0: 5}),
+        Case("d4", {}, d2e_m12_case(3, r=1, flag=0x00, afc=0x0101, ch=(3, 1), strings=D2E_M12_TXT,
+                                    bg=(0x1800, 0x2400, 0x200, 0x3434, 0xFFFF), tally=(0xFF, 0xFF), c111=0xFF),
+             {0x2F0F0: 0xFFFFFFFF}),
+        Case("d5", {}, d2e_m12_case(3, bg=(0x1800, 0x7FFFFFFF, 0x200, 0x3434, 0x0001))),
+        Case("d6", {}, d2e_m12_case(3, bg=(0x1800, 0x80000000, 0x200, 0x3434, 0xFFFF))),
+    ], ()),
+    # State 4: 0x414B4(the stage word), 0x10810E += 1, voice 0xC7 when it is now exactly 8, then
+    # 0x104AFE = 4, 0x104B23 = 5, 0x104B25 = 8.
+    d2e_m12_spec(4, [
+        Case("e0", {}, d2e_m12_case(4, afc=0x0206, c10e=6)),
+        Case("e1", D2E_DIRTY, d2e_m12_case(4, afc=1, c10e=7)),
+        Case("e2", {}, d2e_m12_case(4, afc=1, c10e=8)),
+        Case("e3", {}, d2e_m12_case(4, afc=1, c10e=0xFF)),
+    ], ()),
+    # State 5: while 0x10810E is below 8 (zero-extended), 0x41528(the stage word), 0x104B23 = 4,
+    # 0x104AFE = 4, 0x104B25 = 8. Otherwise 0x418F4, then 0x416D4 when 0x104B1F is 3, else voice
+    # 0x33 and 0x4160C when the side's tally is 7, 0x41760 when it is not.
+    d2e_m12_spec(5, [
+        Case("f0", {}, d2e_m12_case(5, afc=0x0304, c10e=7)),
+        Case("f1", {}, d2e_m12_case(5, c10e=8, b1f=3, tally=(7, 7))),
+        Case("f2", D2E_DIRTY, d2e_m12_case(5, r=1, c10e=9, b1f=2, tally=(6, 7))),
+        Case("f3", {}, d2e_m12_case(5, r=0, c10e=0x80, b1f=0x83, tally=(6, 7))),
+        Case("f4", {}, d2e_m12_case(5, r=1, c10e=8, b1f=0, tally=(7, 8))),
+    ], ()),
+    # State 6: step = (the background's +0x2C word, zero-extended, - 0x180) / 64 (truncating);
+    # 0x108100 = the word 0xC8518[side]; 0x108102 = 0x2600 (0x104529 bit 1) or 0x2800, less (the
+    # side's +0x82 - 1) << 11; the background's +0x34/+0x36 words = (those words, zero-extended,
+    # less its +0x18/+0x1C dwords) / step (signed); voice 0xBC; 0x104B25 = 7; the background begins
+    # 0xE9286 at 1.0 and the seven records 0x1080C0[k] begin 0xC85F4[k] at 1.0.
+    d2e_m12_spec(6, [
+        Case("g0", {}, d2e_m12_case(6, r=0, flag=0x02, bg=(0x1800, 0x2000, 0x01C0, 0x3434, 0x3636), cyc=(1, 9))),
+        Case("g1", D2E_DIRTY, d2e_m12_case(6, r=1, flag=0xFD, bg=(0x00012345, 0xFFFF0000, 0x8200, 0x3434, 0x3636),
+                                           cyc=(9, 0), xw=(0x0600, 0x9000))),
+        Case("g2", {}, d2e_m12_case(6, r=0, flag=0x00, bg=(0x00009000, 0x00004000, 0x00FF, 0x3434, 0x3636),
+                                    cyc=(0x80, 1), xw=(0x8001, 0x4F00))),
+    ], ()),
+    # State 7: the background's +0x2C word -= 0x40; while it is above 0x180 (the 16-bit result
+    # zero-extended, `jg`) nothing more. Then the background dies (0x2B150), 0xC85A8 spawns at
+    # (0x108100, 0xFF, 0x108102), 0x41310(side, 100000), the side's +0x3C is drawn at col
+    # 0xC875E[side] (0x104529 bit 1) or 0xC8764[side], row 0x1C, width 7, pad 1, mode 0x2000; then
+    # 0x41578 when 0x104B1D is set or 0x104B1F is 3; else with 0x10452C below 9 and 0x108113 clear
+    # 0x4660C(the side's tally), 0x25848, 0x41350(side ^ 1, the stage word), the hook 0x259CC, mode
+    # 0x17, 0x1088EE = 0 and a 0x78 countdown; else 0x417C4 when 0x105B3A is clear; else 0x3C into
+    # 0x10780B (0x1078A7 set) or 0x10789F, 0x271E0, 0x32A3C(0x104ABC, the byte 0x104B19), 0x104B19
+    # = 0 and 0x2DAE4(0x10, 1).
+    d2e_m12_spec(7, [
+        Case("h0", {}, d2e_m12_case(7, bg=(0x1800, 0x2000, 0x0200, 0x3434, 0x3636))),
+        Case("h1", {}, d2e_m12_case(7, r=1, flag=0x02, bg=(0x1800, 0x2000, 0x01C0, 0x3434, 0x3636), b1d=0x80,
+                                    w=(0x8100, 0x9200)), {0x2AE14: D2E_SPAWNED}),
+        Case("h2", {}, d2e_m12_case(7, bg=(0x1800, 0x2000, 0x0010, 0x3434, 0x3636), b1d=1)),
+        Case("h3", {}, d2e_m12_case(7, bg=(0x1800, 0x2000, 0x9000, 0x3434, 0x3636), b1d=1)),
+        Case("h4", D2E_DIRTY, d2e_m12_case(7, r=0, flag=0xFD, bg=(0x1800, 0x2000, 0x0041, 0x3434, 0x3636), b1f=3),
+             {0x2AE14: D2E_SPAWNED}),
+        Case("h5", {}, d2e_m12_case(7, r=1, flag=0x02, afc=2, bg=(0x1800, 0x2000, 0x0040, 0x3434, 0x3636), b1f=2,
+                                    b52c=8, c113=0, tally=(3, 0x85))),
+        Case("h6", {}, d2e_m12_case(7, r=0, flag=0x00, bg=(0x1800, 0x2000, 0x0100, 0x3434, 0x3636), b52c=9, b3a=0)),
+        Case("h7", {}, d2e_m12_case(7, r=0, flag=0x02, bg=(0x1800, 0x2000, 0x0180, 0x3434, 0x3636), b52c=8,
+                                    c113=1, b3a=1, f63=(0, 1), extra=D2E_M12_AUDIT_OFF)),
+        Case("h8", {}, d2e_m12_case(7, r=1, flag=0x02, bg=(0x1800, 0x2000, 0x0180, 0x3434, 0x3636), b52c=0x80,
+                                    c113=0, b3a=0x80, f63=(1, 0), b19=0x80, extra=D2E_M12_AUDIT_OFF)),
+    ], ()),
+    # State 8 and the guard: the countdown word 0x104AFE decrements; at zero or below (signed,
+    # 0x42455 `jg`) 0x104B25 = 0x104B23. A state byte above 8 returns at once (0x41C38 `ja`).
+    d2e_m12_spec(8, [
+        Case("i0", {}, d2e_m12_case(8, afe=5)),
+        Case("i1", {}, d2e_m12_case(8, afe=1)),
+        Case("i2", D2E_DIRTY, d2e_m12_case(8, afe=0, b23=0x07)),
+        Case("i3", {}, d2e_m12_case(8, afe=0x0100, b23=0x02)),
+        Case("j0", {}, d2e_m12_case(9, afe=1)),
+        Case("j1", D2E_DIRTY, d2e_m12_case(0xFF, afe=1)),
+    ], ()),
+]
 D1_SPECS += D2E_SPECS
 
 SPECS = [

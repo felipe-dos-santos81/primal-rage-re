@@ -560,6 +560,11 @@ RESOLVED_JUMPS = {
     0x1353A: (0x13520, 0x134A8, 6),
 }
 
+# 0x41C28 (track D2 batch d2e, record 2026-10-11-reverse-d2e §2.2): cmp al,8; ja; mov edx,[0x104ad4];
+# lea ecx,[edx*8]; add ecx,edx; shl ecx,2; and eax,0xff; add ecx,edx; lea ebx,[eax*4]; shl ecx,2;
+# jmp cs:[ebx+0x41c04] (the side's slot offset is built in ECX between the guard and the jump)
+RESOLVED_JUMPS[0x41C61] = (0x41C36, 0x41C04, 9)
+
 
 def resolved_cases(image, entry):
     """The case targets of a RESOLVED_JUMPS entry, read from the image."""

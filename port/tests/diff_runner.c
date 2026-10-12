@@ -19912,6 +19912,10 @@ D2E_RV_MUT(relcnt) D2E_RV_MUT(ids) D2E_RV_MUT(row5) D2E_RV_MUT(len) D2E_RV_MUT(n
 D2E_RV_MUT(early) D2E_RV_MUT(signed) D2E_RV_MUT(swap) D2E_RV_MUT(off91) D2E_RV_MUT(eqids) D2E_RV_MUT(neid)
 D2E_RV_MUT(rows) D2E_RV_MUT(mode) D2E_RV_MUT(col)
 
+/* 0x41C28: no argument; mask 0 (record §1). One row per jump-table target (record §2.3): the nine
+ * rows share this binding. */
+static void b_d2e_41c28(const u32 *r, u32 *eax) { (void)r; game_mode_12_step(); *eax = 0u; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -23843,6 +23847,15 @@ static const binding_t k_bindings[] = {
     { "game_mode_25_reveal@rows", m_d2e_rv_rows, 0x00000000u },
     { "game_mode_25_reveal@mode", m_d2e_rv_mode, 0x00000000u },
     { "game_mode_25_reveal@col", m_d2e_rv_col, 0x00000000u },
+    { "game_mode_12_step_s0", b_d2e_41c28, 0x00000000u },
+    { "game_mode_12_step_s1", b_d2e_41c28, 0x00000000u },
+    { "game_mode_12_step_s2", b_d2e_41c28, 0x00000000u },
+    { "game_mode_12_step_s3", b_d2e_41c28, 0x00000000u },
+    { "game_mode_12_step_s4", b_d2e_41c28, 0x00000000u },
+    { "game_mode_12_step_s5", b_d2e_41c28, 0x00000000u },
+    { "game_mode_12_step_s6", b_d2e_41c28, 0x00000000u },
+    { "game_mode_12_step_s7", b_d2e_41c28, 0x00000000u },
+    { "game_mode_12_step_s8", b_d2e_41c28, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
