@@ -1518,6 +1518,7 @@ u32 camera_point_hit(s32 x, s32 y, u32 tall)
 
 void camera_screen_base(s32 side, s32 character)
 {
+    PR_SEAM(0x16D58u, (u32)side, (u32)character);
     s16 s = (s16)side;
     s16 c = (s16)character;
     if (s < 0 || s > 1) return;                        /* 0x16D59/0x16D61 */
@@ -1701,6 +1702,7 @@ void camera_impact_dust_spawn(void)
  * DS_001078F4 and run the y clamp. */
 void camera_y_commit(void)
 {
+    PR_SEAM0(0x12DA8u);
     s32 y;
     if (DSB(DS_000F0AFE) == 0) {
         y = (s32)(s16)DSW(DS_001077E0 + (u32)DSB(DS_000F0AFF) * 0x94u);

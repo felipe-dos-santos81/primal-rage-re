@@ -1532,6 +1532,7 @@ void flow_1082c8_restore(void)
  * Only caller: 0x29871 (0x296B8). */
 void flow_side_char_set(u32 side, u32 ch)
 {
+    PR_SEAM(0x292D4u, side, ch);
     u32 other = side ^ 1u;                              /* 0x292E4/0x292E6 */
     fight_char_reset(side);                             /* 0x292D7 0x33C18 */
     DSB(DS_00105B34 + side) = 0u;                       /* 0x292DC/0x292DE */
@@ -1675,6 +1676,7 @@ u32 flow_join_poll(void)
  * mode 9, record §48-Y). */
 void flow_match_result_text(void)
 {
+    PR_SEAM0(0x28130u);
     u32 r = DSD(DS_00104AD4);                           /* 0x28133 */
     if (r == 0xFFFFFFFFu) {                             /* 0x28139/0x2813C */
         u32 b = DSB(DS_00104B16);                       /* 0x28257 */

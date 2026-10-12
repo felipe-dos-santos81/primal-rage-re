@@ -526,6 +526,7 @@ tail:
 
 void fighter_pass_b(u32 arg)
 {
+    PR_SEAM(0x19068u, arg);
     if (DSB(DS_00107802) == 0x13u) return;          /* 0x1906E */
     if (DSB(DS_00107896) == 0x13u) return;          /* 0x1907B */
 

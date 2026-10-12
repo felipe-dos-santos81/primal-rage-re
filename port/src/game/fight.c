@@ -28,6 +28,7 @@
 
 void fight_slot_clear(void)
 {
+    PR_SEAM0(0x3C5CCu);
     DSD(DS_00107EE0) = 0;                       /* 0x3C5CF */
     DSD(DS_00107D50) = 0;                       /* 0x3C5D5 */
     DSD(DS_00107D54) = 0;                       /* 0x3C5DB */
@@ -2284,6 +2285,7 @@ static void fight_health_sync(u32 side)
 
 void fight_hud_pass(u32 side)
 {
+    PR_SEAM(0x35658u, side);
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 rec;
 
@@ -3577,6 +3579,7 @@ void fight_slot_5b_add(u32 slot, s32 amount)
  *   3.0, si = (u16)(the actor's +0x48 - 0x20). */
 void fight_4dbec(void)
 {
+    PR_SEAM0(0x4DBECu);
     u32 w = DSB(FIGHT_SLOT_INDEX);                              /* 0x4DC0E */
     u32 slot = DS_001077B0 + w * 0x94u;                         /* 0x4DC1A..0x4DC32 */
     s32 pos, left, right;

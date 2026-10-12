@@ -24444,6 +24444,310 @@ D4D_SPECS += [
          mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
 ]
 D1_SPECS += D4D_SPECS
+# ---- track D5 batch d5i (record 2026-10-12-reverse-d5i): flow.c's mode handlers ----
+D5I_SPECS = []
+D5I_REG = {"ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468, "edi": 0x2468ACE0}
+D5I_REC, D5I_AUX = (0x0010A300, 0x0010A400), (0x0010A500, 0x0010A540)   # zero BSS of the image
+# The arena handlers' callees (clobbers: E.callee_clobbers over the image). 0x3C5CC, 0x16D58, 0x35658,
+# 0x19068, 0x12DA8, 0x28130, 0x292D4 and 0x4DBEC are seamed by this batch.
+D5I_CLEAR = E.Call(0x3C5CC, ())
+D5I_CAMBASE = E.Call(0x16D58, ("eax", "edx"), clobbers=("edx",))
+D5I_HUDPASS = E.Call(0x35658, ("eax",), clobbers=("edi", "ebp"))
+D5I_PASSB = E.Call(0x19068, ("eax",), clobbers=("edi", "ebp"))
+D5I_YCOMMIT = E.Call(0x12DA8, ())
+D5I_RESULT = E.Call(0x28130, ())
+D5I_CHARSET = E.Call(0x292D4, ("eax", "edx"))
+D5I_BONUS = E.Call(0x4DBEC, ())
+D5I_PRE = (D5I_CLEAR, D5I_CAMBASE, D5I_HUDPASS, D5I_PASSB, D5I_YCOMMIT)
+
+
+def d5i_w(call, *writes):
+    """`call` as a stub that stores `writes` ((address, bytes) pairs): what the raw reads after it."""
+    return dataclasses.replace(call, writes=tuple((None, a, b) for a, b in writes))
+
+
+# The same prelude leaving what the raw reads after each call: 0x3C5CC the byte 0x10782A (0x296C4,
+# 0x27508), 0x16D58 the byte 0x1078BE (0x296D6, 0x2751A) and the dwords 0x1077E4 and 0x107878
+# (0x296E1/0x296EB, 0x27525/0x2752F), 0x12DA8 the bytes 0x104AEC, 0x104B0C and 0x104B21 (0x29715..,
+# 0x27559..) and the side byte (`side`: 0x104B09 for 0x296B8, 0x104B12 for 0x274FC) = 1.
+def d5i_pre_w(side, b21):
+    return (d5i_w(D5I_CLEAR, (0x0010782A, b"\x07")),
+            d5i_w(D5I_CAMBASE, (0x001078BE, b"\x09"), (0x001077E4, le32(0xAABBCCDD)), (0x00107878, le32(0x0DDC0FFE))),
+            D5I_HUDPASS, D5I_PASSB,
+            d5i_w(D5I_YCOMMIT, (0x00104AEC, b"\x30"), (0x00104B0C, b"\x01"), (0x00104B21, bytes([b21])),
+                  (side, b"\x01")))
+
+
+def d5i_arena(b0c=1, b21=0x10, aec=0x5C, c=(0x05, 0x83), b09=0, b12=1, b0a=0, af=(1, 2), w=0, fa=0x10,
+              f41=(0xFF, 0xFF), tbl=(6, 0, 1, 6, 0, 6, 1, 0, 0, 1, 6, 0, 1, 6, 0, 1), y=0x0980,
+              score=(0x12345678, 0x9ABCDEF0), b529=0, chs=(0, 1, 6, 0), extra=None):
+    """0x296B8 / 0x274FC: the two slots' records (+0) and second records (+4), their +0x30..+0x43
+    (the latch source +0x34, the latch +0x38 = 0x5A../0x5B.., the dword +0x3C `score`, the flag
+    byte +0x41 `f41`), +0x62..+0x64 (0x5A/0x5B at +0x63) and +0x79..+0x7B (the character `c` at
+    +0x7A), the records' +0x47..+0x49 (0x5A/0x5B at +0x48), the bytes 0x104AEC `aec`,
+    0x104AF0/F1 `af`, 0x104B09 `b09`, 0x104B0A `b0a`, 0x104B0C `b0c`, 0x104B12 `b12`, 0x104B21
+    `b21`, 0x1078FA `fa`, 0x10810D `w` (under the three bytes the dword read at 0x10810A covers),
+    0xF0AFE/FF (0x5A, 0x5B), 0x104529 `b529`, the words 0x104AFE (0x5E5E) and 0x104B00 (0x5F5F),
+    each between seeded neighbours; the 16 character bytes 0x108134.. `tbl` (under the three
+    bytes the dword read at 0x108131 covers), the four character bytes 0x10816A.. `chs`, the
+    badge word 0xA76D0 `y`, the string buffer 0x102760, and the dwords 0x107EE0, 0x107D50 and
+    0x107D54 that a real 0x3C5CC clears."""
+    p = {0x001077B0: le32(D5I_REC[0]) + le32(D5I_AUX[0]), 0x00107844: le32(D5I_REC[1]) + le32(D5I_AUX[1]),
+         0x001077E0: le32(0x60606060) + le32(0x11223344) + le32(0x5A5A5A5A) + le32(score[0])
+                     + bytes([0x61, f41[0], 0x62, 0x63]),
+         0x00107874: le32(0x64646464) + le32(0x55667788) + le32(0x5B5B5B5B) + le32(score[1])
+                     + bytes([0x65, f41[1], 0x66, 0x67]),
+         0x00107812: bytes([0x68, 0x5A, 0x69]), 0x00107829: bytes([0x6A, c[0], 0x6B]),
+         0x001078A6: bytes([0x6C, 0x5B, 0x6D]), 0x001078BD: bytes([0x6E, c[1], 0x6F]),
+         D5I_REC[0] + 0x47: bytes([0x70, 0x5A, 0x71]), D5I_REC[1] + 0x47: bytes([0x72, 0x5B, 0x73]),
+         0x00104AEB: bytes([0x74, aec, 0x75]), 0x00104AEF: bytes([0x76, af[0], af[1], 0x77]),
+         0x00104B08: bytes([0x78, b09, b0a, 0x79, b0c, 0x7A]), 0x00104B11: bytes([0x7B, b12, 0x7C]),
+         0x00104B20: bytes([0x7D, b21, 0x7E]), 0x001078F9: bytes([0x7F, fa, 0x21]),
+         0x0010810A: bytes([0x22, 0x23, 0x24, w, 0x25]), 0x000F0AFD: bytes([0x26, 0x5A, 0x5B, 0x27]),
+         0x00104AFC: le16(0x2828) + le16(0x5E5E) + le16(0x5F5F) + le16(0x2929),
+         0x00102760: b"\x5a" * 0x10, 0x00108131: bytes([0x2A, 0x2B, 0x2C]) + bytes(tbl) + bytes([0x2D]),
+         0x000A76D0: le16(y) + le16(0x7D7D), 0x00104528: bytes([0x2E, b529, 0x2F]),
+         0x00108167: bytes([0x30, 0x31, 0x32]) + bytes(chs) + bytes([0x33]),
+         0x00107EE0: le32(0x34343434), 0x00107D50: le32(0x35353535) + le32(0x36363636)}
+    p.update(extra or {})
+    return p
+
+
+# what the cases that leave slots 0 and 1 poke: side 0x80's count byte 0x104B70 and character bytes
+# 0x108334.. (0x296B8) and 0x1081EA (0x274FC), with two record pointers where a sign-extended side
+# 0x80 would look for its slot (0x102DB0; the zero-extended one is above the image and reads 0);
+# the slot of the side byte 0x80 as a winner (signed: 0x1077B0 - 0x80 * 0x94), its +0x3C `score` and
+# +0x41 `f41`; the slots 2 and 3 the `_rr` rows reach.
+def d5i_far(cnt=2, tbl=(6, 0, 1, 1), ch=1):
+    return {0x00104B6F: bytes([0x37, cnt, 0x38]), 0x00108331: bytes([0x39, 0x3A, 0x3B]) + bytes(tbl) + bytes([0x3C]),
+            0x001081E7: bytes([0x3D, 0x3E, 0x3F, ch, 0x40]), 0x00102DB0: le32(D5I_REC[0]) + le32(0x0010A580)}
+
+
+def d5i_neg(score=0x12345678, f41=0xFF):
+    return {0x00102DE8: le32(0x41414141) + le32(score) + bytes([0x42, f41, 0x43, 0x44])}
+
+
+def d5i_s23(score=(300, 1011), f41=(0xFF, 0xFF)):
+    return {0x00107910: le32(0x45454545) + le32(score[0]) + bytes([0x46, f41[0], 0x47]),
+            0x001079A4: le32(0x48484848) + le32(score[1]) + bytes([0x49, f41[1], 0x4A]),
+            0x0010793A: bytes([0x4B, 0x5C, 0x4C]), 0x00107951: bytes([0x4D, 0x5D, 0x4E]),
+            0x001079CE: bytes([0x4F, 0x5E, 0x50]), 0x001079E5: bytes([0x51, 0x5F, 0x52])}
+
+
+D5I_ENTS = (D4A_ENT0, D4A_ENT1, D4A_ENT6)
+D5I_M32_NEXT = D5I_PRE + (P7_2B150, D5I_CHARSET, D3A_ACCUM, D4C_RESET) + D5I_ENTS + (D3A_HUD_RESET, D3B_BADGE, VOICE)
+D5I_M32_END = (D5I_HUDPASS, D5I_PASSB, D5I_YCOMMIT, P7_2B150, VOICE, D5I_RESULT, D1C_STR, D1D_CURSOR, D5I_BONUS,
+               D5I_CHARSET, D3A_ACCUM, D4C_RESET, D4A_ENT0, D4A_ENT1, D3A_HUD_RESET, D3B_BADGE)
+D5I_TBL01 = (1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0)      # characters 0 and 1 only (the `_end` rows' two entrances)
+# the next-character arm's callees leaving what 0x296B8 reads after each: 0x2B150 the side byte
+# 0x104B09 = 0 (0x29780) and the byte 0x1078FA (0x2978F), 0x292D4, 0x46534, 0x33C18 and the entrance
+# the side byte = 2, 3, 0, 1 (0x2987D, 0x29889, 0x29895, 0x298A3), 0x1D764 the side byte = 2 and the
+# badge word 0xA76D0 (0x298E7, 0x298EE), 0x1D838 the side byte = 3, the winner byte 0x10810D = 3 and
+# the byte 0x104B0A (0x298F8, 0x29919, 0x2993A)
+D5I_M32_NEXT_W = d5i_pre_w(0x00104B09, 0x20) + (
+    d5i_w(P7_2B150, (0x00104B09, b"\x00"), (0x001078FA, b"\x40")), d5i_w(D5I_CHARSET, (0x00104B09, b"\x02")),
+    d5i_w(D3A_ACCUM, (0x00104B09, b"\x03")), d5i_w(D4C_RESET, (0x00104B09, b"\x00")),
+    d5i_w(D4A_ENT0, (0x00104B09, b"\x01")), d5i_w(D4A_ENT1, (0x00104B09, b"\x01")),
+    d5i_w(D4A_ENT6, (0x00104B09, b"\x01")),
+    d5i_w(D3A_HUD_RESET, (0x00104B09, b"\x02"), (0x000A76D0, le16(0x0444))),
+    d5i_w(D3B_BADGE, (0x00104B09, b"\x03"), (0x0010810D, b"\x03"), (0x00104B0A, b"\x01")), VOICE)
+# the match-end arm's: 0x28130 the two flag bytes 0x1077F1 and 0x107885 (0x297CE, 0x297D5) and the
+# two counts 0x104AF0/F1 (0x297DE, 0x297EA)
+D5I_M32_END_W = d5i_pre_w(0x00104B09, 0x20) + (
+    d5i_w(P7_2B150, (0x00104B09, b"\x00"), (0x001078FA, b"\x40")), VOICE,
+    d5i_w(D5I_RESULT, (0x001077F1, b"\x41"), (0x00107885, b"\x02"), (0x00104AF0, b"\x06\x05")),
+    D1C_STR, D1D_CURSOR, D5I_BONUS)
+D5I_PRE_MUT = ("@noclear", "@clearlate", "@cam0side", "@cam0sext", "@cam0slot", "@cam1sext", "@camswap", "@nocam1",
+               "@nolatch0", "@latch0w", "@latchx", "@nolatch1", "@latchearly", "@hudswap", "@nohud1", "@hud00",
+               "@passb0", "@nopassb", "@passbearly", "@nocommit", "@commitearly", "@noaec", "@aecset", "@aecbit",
+               "@aecearly", "@gateoff", "@gatesrc")
+D5I_PRE_RR_MUT = ("@precam0", "@precam1", "@prelatch0", "@prelatch1", "@preaec", "@preb0c", "@preb21")
+D5I_RETIRE_MUT = ("@nob0c", "@b0cw", "@nob21", "@ssext", "@recother", "@rec48w", "@norec48", "@rec48off",
+                  "@deadearly", "@nodead", "@deadoff", "@deadother", "@fainc", "@faw", "@nofa")
+D5I_TAIL_MUT = ("@wzext", "@now41", "@w41bit", "@b0axor", "@nob0a", "@modeearly", "@tvoiceinv", "@tvoiceconst",
+                "@tvoicebit", "@notvoice", "@modeb", "@nomode", "@modeval")
+D5I_NEXT_MUT = ("@choff", "@chzext", "@noaccum", "@accum2", "@accumlate", "@noreset", "@nofn", "@fnidx", "@fns",
+                "@nonfafe", "@nfafe", "@nofaff", "@faffs", "@nohudreset", "@hudresetother", "@badgeswap", "@badgey",
+                "@badgeysext", "@nobadge", "@badgeearly")
+D5I_END_MUT = ("@resultearly", "@noendvoice", "@endvoice", "@noresult", "@bonusearly", "@nobonus", "@nofafe",
+               "@fafe", "@b00b", "@nob00", "@b00", "@afeb", "@noafe", "@afe", "@endfall")
+D5I_SPECS += [
+    # 0x296B8 game_mode_32_step: no argument. The arena prelude (0x3C5CC, 0x16D58 per side on the
+    # slot's zero-extended +0x7A, the two latches +0x34 -> +0x38, 0x35658 per side, 0x19068(1),
+    # 0x12DA8, 0x104AEC |= 2), nothing more while the byte 0x104B0C is 0 (i0, i1); else 0x104B0C =
+    # 0, 0x104B21 + 1 and, with the side s = the zero-extended byte 0x104B09, the record's +0x48 =
+    # 0, 0x2B150 on the slot's +4 record, the count byte 0x104AF0[s] + 1 and 0x1078FA - 1. This
+    # row runs the next-character arm (neither count is 4): c = the signed byte 0x108134[s * 4 +
+    # the count], 0x292D4(s, c), 0x46534(s, 1), 0x33C18(s), the entrance 0xA8628[c](s), the slot's
+    # +0x63 = 0 and +0x7A = c, 0xF0AFE = 0, 0xF0AFF = s ^ 1, 0x1D764(s), 0x1D838(s, c, the word
+    # 0xA76D0), slot s ^ 1's +0x41 &= 0xEF, then the tail: the slot of the signed byte 0x10810D
+    # +0x41 &= 0xEF, 0x104B0A ^= 1, the voice 0x25 + (the result != 0) and the mode word 0x31.
+    # Every callee is a stub. n4 runs side 0x80 (the slot above the image: its record pointer
+    # reads 0), n5 the character -1 (the dword 0xA8624 poked to the entrance 0x40CB0), n2 the
+    # winner byte 0x80. Mask 0: record §1.
+    Spec("game_mode_32_step", 0x296B8, [
+        Case("i0", D5I_REG, d5i_arena(b0c=0)),
+        Case("i1", {}, d5i_arena(b0c=0, aec=0xFF, c=(0x80, 0x7F), b09=1, b12=0, af=(0, 0))),
+        Case("n0", D5I_REG, d5i_arena(b0c=1, b09=0, af=(0, 2), w=1, b0a=0, b21=0xFF, fa=0), {0x12DA8: 0x12345678}),
+        Case("n1", {}, d5i_arena(b0c=0x80, b09=1, b12=0, af=(2, 1), w=1, b0a=1, y=0x8123), {0x2C3FC: 0xFFFFFFFF}),
+        Case("n2", {}, d5i_arena(b09=0, af=(2, 0), w=0x80, b0a=0xFF, c=(0x09, 0x00), extra=d5i_neg())),
+        Case("n3", {}, d5i_arena(b09=1, b12=0, af=(0, 0xFF), f41=(0x10, 0xEF), w=0)),
+        Case("n4", {}, d5i_arena(b09=0x80, af=(1, 2), w=1, extra=d5i_far())),
+        Case("n5", {}, d5i_arena(b09=0, af=(1, 2), w=0, tbl=(6, 0, 0xFF, 6, 0, 6, 1, 0, 0, 1, 6, 0, 1, 6, 0, 1),
+                                 extra={0x000A8624: le32(0x00040CB0)})),
+    ], calls=D5I_M32_NEXT, eax_mask=0,
+       unhit_named={a: "the match-end arm (a count of 4): the `_end` row hits it"
+                    for a in (0x297BF, 0x297F2, 0x29810, 0x2982C)},
+       mutants=D5I_PRE_MUT + D5I_RETIRE_MUT + ("@b21add2", "@chidx", "@chstride", "@setswap", "@noset", "@no63",
+                                               "@off63", "@val63", "@w7a", "@no7a", "@off7a", "@otherself",
+                                               "@noother41", "@other41bit") + D5I_NEXT_MUT + D5I_TAIL_MUT),
+    # 0x296B8, the match-end arm: either count 4 after the increment (0x297A9, 0x297B9): the voice
+    # 0x2A, 0x28130, both slots' +0x41 |= 0x10, then the byte 0x10810D = 1 and the string 0x65 when
+    # 0x104AF1 < 0x104AF0 (unsigned `jae`: e2 has 0x80 against 4, e3 4 against 4), else 0 and
+    # 0x66, by 0x2F198 at col -1, row 0xB, mode 0x2000 (0x1C500 real over the stubbed 0x474E4;
+    # the string's first four dwords by value); 0x4DBEC; 0xF0AFE = 3, the mode word 0x33 and the
+    # word 0x104AFE = 0x258. 0x3C5CC and 0x16D58 run real here (leaves; the plain row stubs them)
+    # so that the next-character arm's callees fit the 16 stubs too: x0 takes that arm (a count of
+    # 5), as the mutants that misjudge the counts do. e5 runs side 0x80. Mask 0: record §1.
+    Spec("game_mode_32_step_end", 0x296B8, [
+        Case("e0", D5I_REG, d5i_arena(b0c=1, b09=0, af=(3, 2), w=0x5A, f41=(0x00, 0xEF), b21=0xFF, fa=0,
+                                      tbl=D5I_TBL01)),
+        Case("e1", {}, d5i_arena(b0c=0x80, b09=1, b12=0, af=(2, 3), w=0x5A, f41=(0xEF, 0x00), tbl=D5I_TBL01),
+             {0x474E4: 0}),
+        Case("e2", {}, d5i_arena(b09=1, b12=0, af=(4, 0x7F), w=0x5A, tbl=D5I_TBL01,
+                                 extra={0x001081B5: bytes([0x53, 0x54, 0x55, 1, 0, 0x56])}), {0x28130: 0x12345678}),
+        Case("e3", {}, d5i_arena(b09=0, af=(3, 4), w=0x5A, tbl=D5I_TBL01), {0x4DBEC: 0xFFFFFFFF}),
+        Case("e4", {}, d5i_arena(b09=1, b12=0, af=(4, 0), w=0x5A, tbl=D5I_TBL01)),
+        Case("e5", {}, d5i_arena(b09=0x80, af=(4, 1), w=0x5A, tbl=D5I_TBL01, extra=d5i_far(cnt=0x33, tbl=(1, 0, 1, 0)))),
+        Case("x0", {}, d5i_arena(b09=0, af=(4, 1), w=1, tbl=D5I_TBL01)),
+    ], allow_calls=(0x1C500, 0x3C5CC, 0x16D58), calls=D5I_M32_END, eax_mask=0,
+       mutants=("@winsother", "@winsadd2", "@nowins", "@cnt5", "@cntand", "@cntonly0", "@cntonly1", "@cntwins",
+                "@e41early", "@noe41a", "@e41bit", "@noe41b", "@cmpswap", "@cmple", "@cmpsigned", "@idswap",
+                "@wswap", "@now", "@wlate", "@nocursor", "@col", "@row", "@mode") + D5I_END_MUT),
+    # 0x296B8 again with stubs that write what the raw reads after each call (D5I_M32_NEXT_W): the
+    # prelude's and the next-character arm's. The side byte starts 0 and is 1 at the retire, 0 at
+    # the count, 2, 3, 0 at the three calls, 1 at the slot stores, 2 at the badge, 3 at the +0x41.
+    Spec("game_mode_32_step_rr", 0x296B8, [
+        Case("r0", {}, d5i_arena(b0c=0, b09=0, af=(0, 5), w=0, extra=d5i_s23())),
+    ], calls=D5I_M32_NEXT_W, eax_mask=0,
+       unhit_named={a: "the match-end arm: the `_end` row hits it" for a in (0x297BF, 0x297F2, 0x29810, 0x2982C)},
+       mutants=D5I_PRE_RR_MUT + ("@pres0", "@pres1", "@prefa", "@pres46", "@pres33", "@presfn", "@pres63",
+                                 "@presbadge", "@prey", "@presother", "@prew", "@preb0a")),
+    # and the match-end arm's (D5I_M32_END_W): the counts are 4 and 5 at the decision and 6 and 5 at
+    # the compare.
+    Spec("game_mode_32_step_end_rr", 0x296B8, [
+        Case("r0", {}, d5i_arena(b0c=0, b09=0, af=(3, 5), w=0x5A, f41=(0xEF, 0xEF))),
+    ], allow_calls=(0x1C500,), calls=D5I_M32_END_W, eax_mask=0,
+       unhit_named={a: "not taken by this row's one case (the plain rows hit it)"
+                    for a in (0x297AE, 0x29810, 0x29861, 0x29919, 0x2996C)},
+       mutants=("@pree41", "@preaf")),
+]
+D5I_M0D_NEXT = D5I_PRE + (P7_2B150, D3A_SIDE, D3A_ACCUM, D4C_RESET) + D5I_ENTS + (D3A_HUD_RESET, D3B_BADGE, VOICE)
+D5I_M0D_END = (D5I_HUDPASS, D5I_YCOMMIT, VOICE, D5I_RESULT, D3A_ERASE, SPAWN, D1C_STR, D1D_CURSOR, P7_41310, D5I_BONUS,
+               P7_2B150, D3A_SIDE, D4C_RESET, D3A_HUD_RESET, D3B_BADGE, D4A_ENT0)
+# the next-character arm's callees leaving what 0x274FC reads after each: 0x2B150 the byte 0x1078FA
+# (0x276EB) and the side byte 0x104B12 = 0 (0x276F5), 0x2716C the side byte = 2 (0x2770C) and the four
+# character bytes 0x10816A.., 0x46534 the side byte = 3 (0x27718), 0x33C18 the side byte = 0 (0x27724)
+# and the character bytes again (0x27729), the entrance the winner byte 0x10810D = 2 (0x27739) and
+# the side byte = 1 (0x27747), 0x1D764 the side byte = 2 (0x27759), the character bytes (0x27760) and
+# the badge word 0xA76D0 (0x27766), 0x1D838 the winner byte = 3 (0x27775) and the byte 0x104B0A
+# (0x27794)
+D5I_M0D_ENT_W = ((0x0010810D, b"\x02"), (0x00104B12, b"\x01"))
+D5I_M0D_NEXT_W = d5i_pre_w(0x00104B12, 0x20) + (
+    d5i_w(P7_2B150, (0x00104B12, b"\x00"), (0x001078FA, b"\x40")),
+    d5i_w(D3A_SIDE, (0x00104B12, b"\x02"), (0x0010816A, bytes([1, 0, 6, 1]))),
+    d5i_w(D3A_ACCUM, (0x00104B12, b"\x03")),
+    d5i_w(D4C_RESET, (0x00104B12, b"\x00"), (0x0010816A, bytes([6, 1, 0, 0]))),
+    d5i_w(D4A_ENT0, *D5I_M0D_ENT_W), d5i_w(D4A_ENT1, *D5I_M0D_ENT_W), d5i_w(D4A_ENT6, *D5I_M0D_ENT_W),
+    d5i_w(D3A_HUD_RESET, (0x00104B12, b"\x02"), (0x0010816A, bytes([0, 6, 1, 0])), (0x000A76D0, le16(0x0444))),
+    d5i_w(D3B_BADGE, (0x0010810D, b"\x03"), (0x00104B0A, b"\x01")), VOICE)
+# the match-end arm's: 0x28130 the winner byte 0x10810D = 1 (0x275A8), 0x2C2B0 the option byte
+# 0x104529 (0x275BC), 0x2F198 (and 0x2AE14) the winner byte = 2 (0x27622), 0x4DBEC the winner byte = 3
+# (0x27672)
+D5I_M0D_END_W = d5i_pre_w(0x00104B12, 0x06) + (
+    VOICE, d5i_w(D5I_RESULT, (0x0010810D, b"\x01")), d5i_w(D3A_ERASE, (0x00104529, b"\x00")),
+    d5i_w(SPAWN, (0x0010810D, b"\x02")), D1C_STR, d5i_w(D1D_CURSOR, (0x0010810D, b"\x02")), P7_41310,
+    d5i_w(D5I_BONUS, (0x0010810D, b"\x03")))
+D5I_GUARD = {0x00107802: b"\x13"}                # 0x19068 returns at its first compare (0x1906E): it runs real in the `_end` row
+D5I_SPECS += [
+    # 0x274FC game_mode_0d_step: no argument. The same prelude as 0x296B8 (0x274FF..0x27570), then
+    # 0x104B0C = 0 and 0x104B21 + 1. This row runs the next-character arm (the count is not 7):
+    # with s = the zero-extended byte 0x104B12 the record's +0x48 = 0, 0x2B150 on the slot's +4
+    # record, 0x1078FA - 1, 0x2716C(s), 0x46534(s, 1), 0x33C18(s), the entrance 0xA8628[the signed
+    # byte 0x10816A[s]](s), 0xF0AFF = the byte 0x10810D, 0xF0AFE = 0, 0x1D764(s), 0x1D838(s, that
+    # character, the word 0xA76D0), then the tail of 0x296B8 with the mode word 0xC. Every callee
+    # is a stub. n3 runs side 0x80, n4 the character -1 (0xA8624 poked), n2 the winner byte 0x80,
+    # n1 a count of 8. Mask 0: record §1.
+    Spec("game_mode_0d_step", 0x274FC, [
+        Case("i0", D5I_REG, d5i_arena(b0c=0)),
+        Case("i1", {}, d5i_arena(b0c=0, aec=0xFF, c=(0x80, 0x7F), b12=1, b09=0)),
+        Case("n0", D5I_REG, d5i_arena(b0c=1, b21=0xFF, b12=0, b09=1, w=1, b0a=0, fa=0), {0x12DA8: 0x12345678}),
+        Case("n1", {}, d5i_arena(b0c=0x80, b21=7, b12=1, b09=0, chs=(6, 1, 0, 6), w=1, b0a=1, y=0x8123),
+             {0x2C3FC: 0xFFFFFFFF}),
+        Case("n2", {}, d5i_arena(b21=4, b12=0, b09=1, chs=(6, 0, 1, 1), w=0x80, b0a=0xFF, c=(0x09, 0x00),
+                                 extra=d5i_neg())),
+        Case("n3", {}, d5i_arena(b12=0x80, b09=0, w=0, f41=(0x10, 0xEF), extra=d5i_far())),
+        Case("n4", {}, d5i_arena(b12=1, b09=0, chs=(0, 0xFF, 6, 1), w=0, extra={0x000A8624: le32(0x00040CB0)})),
+    ], calls=D5I_M0D_NEXT, eax_mask=0,
+       unhit_named={a: "the match-end arm (the count reaches 7): the `_end` row hits it"
+                    for a in (0x27599, 0x275C5, 0x275E2, 0x27622, 0x27650, 0x27657, 0x27661, 0x27666, 0x2766D)},
+       mutants=D5I_PRE_MUT + D5I_RETIRE_MUT + ("@norandom", "@randomother", "@randomlate", "@faffother")
+               + D5I_NEXT_MUT + D5I_TAIL_MUT),
+    # 0x274FC, the match-end arm: the count reaches 7 (0x27590 `cmp eax,7; jne`: x0 has 8, x1 6):
+    # the voice 0x2A, 0x28130, 0x2C2B0(the signed byte 0x10810D ^ 1, 0x1D), then with the option
+    # byte 0x104529 bit 1 the actor 0xA8998 at (0x2A00, 0xFF, 0x1800, 0), else the strings 0x3F
+    # and 0x40 by 0x2F198 at col -1, rows 0xB and 0xD, mode 0x2000 (0x1C500 real over the stubbed
+    # 0x474E4); the winner w = the signed byte 0x10810D earns 5000000 through 0x41310 when its
+    # slot's +0x3C is a multiple of 100 (`div ecx`, unsigned: e3 has 0x80000034) and 1000000 when
+    # the remainder is <= 10 (e1 has 10, e2 11); 0x4DBEC; 0xF0AFE = 3, the mode word 0xF, the word
+    # 0x104AFE = 0x258 and w's slot +0x41 |= 0x10. 0x3C5CC, 0x16D58, 0x46534 (leaves) and 0x19068
+    # (stopped at its first compare by the byte 0x107802 = 0x13) run real here, so that the
+    # next-character arm's callees fit the 16 stubs: x0 and x1 take that arm, as the mutants that
+    # misjudge the count do. e4 runs the winner byte 0x80. Mask 0: record §1.
+    Spec("game_mode_0d_step_end", 0x274FC, [
+        Case("e0", D5I_REG, d5i_arena(b21=6, w=0, b529=0x02, score=(500, 0x9ABCDEF0), f41=(0xEF, 0xEF),
+                                      chs=(0, 0, 0, 0), extra=D5I_GUARD)),
+        Case("e1", {}, d5i_arena(b0c=0x80, b21=6, w=1, b529=0xFD, score=(500, 1010), f41=(0xEF, 0x00),
+                                 chs=(0, 0, 0, 0), extra=D5I_GUARD), {0x474E4: 0}),
+        Case("e2", {}, d5i_arena(b21=6, w=0, b529=0x00, score=(1011, 500), f41=(0x00, 0xEF), chs=(0, 0, 0, 0),
+                                 extra=D5I_GUARD), {0x28130: 0x12345678}),
+        Case("e3", {}, d5i_arena(b21=6, w=1, b529=0xFF, score=(1011, 0x80000034), f41=(0xEF, 0xEF),
+                                 chs=(0, 0, 0, 0), extra=D5I_GUARD), {0x2AE14: 0x0010A600}),
+        Case("e4", {}, d5i_arena(b21=6, w=0x80, b529=0x02, score=(500, 500), chs=(0, 0, 0, 0),
+                                 extra={**D5I_GUARD, **d5i_neg(score=201, f41=0x00)}), {0x41310: 0xFFFFFFFF}),
+        Case("e5", {}, d5i_arena(b21=6, w=0, b529=0x02, score=(0x00010064, 500), chs=(0, 0, 0, 0),
+                                 extra=D5I_GUARD), {0x4DBEC: 0x100}),
+        Case("x0", {}, d5i_arena(b21=7, b12=0, b09=1, w=1, chs=(0, 0, 0, 0), extra=D5I_GUARD)),
+        Case("x1", {}, d5i_arena(b21=5, b12=1, b09=0, w=0, chs=(0, 0, 0, 0), extra=D5I_GUARD)),
+    ], allow_calls=(0x1C500, 0x3C5CC, 0x16D58, 0x19068, 0x46534), calls=D5I_M0D_END, eax_mask=0,
+       mutants=("@b21add2", "@cnt8", "@cntge", "@erasezext", "@eraseself", "@noerase", "@eraserow", "@bitmask",
+                "@cardinv", "@carddesc", "@spx", "@spa3", "@spy", "@sp5", "@nocard", "@str1id", "@row1", "@col1",
+                "@mode1", "@nostr1", "@str2id", "@row2", "@nostr2", "@strswap", "@wzext", "@scoff", "@scw",
+                "@remsigned", "@remlt", "@amtswap", "@nobig", "@nosmall", "@awardother", "@awardalways", "@noe41",
+                "@e41and", "@e41bit") + D5I_END_MUT),
+    # 0x274FC again with stubs that write what the raw reads after each call (D5I_M0D_NEXT_W): the
+    # prelude's and the next-character arm's. The side byte starts 0 and is 1 at the retire, 0, 2,
+    # 3 at the three calls, 0 at the entrance (character 6 by then), 1 at 0x1D764, 2 at the badge
+    # (character 1 by then); the winner byte is 2 at 0xF0AFF and 3 at the +0x41.
+    Spec("game_mode_0d_step_rr", 0x274FC, [
+        Case("r0", {}, d5i_arena(b0c=0, b12=0, b09=1, chs=(0, 1, 6, 0), w=0, extra=d5i_s23())),
+    ], calls=D5I_M0D_NEXT_W, eax_mask=0,
+       unhit_named={a: "the match-end arm: the `_end` row hits it"
+                    for a in (0x27599, 0x275C5, 0x275E2, 0x27622, 0x27650, 0x27657, 0x27661, 0x27666, 0x2766D)},
+       mutants=D5I_PRE_RR_MUT + ("@prefa", "@pres1", "@pres46", "@pres33", "@presfn", "@prech", "@pres63",
+                                 "@faffpre", "@presbadge", "@prechb", "@prey", "@prew", "@preb0a")),
+    # and the match-end arm's (D5I_M0D_END_W): the winner byte starts 0 and is 1 at the erase, 2 at
+    # the award (slot 2's +0x3C is 300) and 3 at the +0x41; the option byte has bit 1 until
+    # 0x2C2B0 returns.
+    Spec("game_mode_0d_step_end_rr", 0x274FC, [
+        Case("r0", {}, d5i_arena(b0c=0, w=0, b529=0x02, score=(1011, 1011),
+                                 extra=d5i_s23(score=(300, 1011), f41=(0xEF, 0xEF)))),
+    ], allow_calls=(0x1C500,), calls=D5I_M0D_END_W, eax_mask=0,
+       unhit_named={a: "not taken by this row's one case (the plain rows hit it)"
+                    for a in (0x275C5, 0x27657, 0x27661, 0x276BE, 0x277BC)},
+       mutants=("@prew0", "@pre529", "@prew1", "@prew2")),
+]
+D1_SPECS += D5I_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
