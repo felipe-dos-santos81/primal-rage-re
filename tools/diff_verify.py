@@ -9,7 +9,10 @@ Narrow claim, in every verdict: VERIFIED means equivalence on the exercised bloc
 only. It does not mean the function is correct for states the cases never produce.
 """
 import argparse
+import concurrent.futures
 import dataclasses
+import glob
+import multiprocessing
 import os
 import subprocess
 import sys
@@ -162,8 +165,10 @@ def run_port(diffrun, exe, image_path, text, timeout=60):
         f.write(text)
         path = f.name
     try:
+        # close_fds=False lets subprocess use posix_spawn: a fork of this process, whose address space
+        # the emulator's mappings make large, cost about half a second per run (measured)
         p = subprocess.run([diffrun, "--exe", exe, "--image-out", image_path, "--cases", path],
-                           capture_output=True, text=True, timeout=timeout)
+                           capture_output=True, text=True, timeout=timeout, close_fds=False)
     except subprocess.TimeoutExpired:
         raise RuntimeError("diffrun timed out after %ds (a port function did not return)" % timeout)
     finally:
@@ -17034,21 +17039,50 @@ SPECS = [
 
 # ---- driver -------------------------------------------------------------------------------------
 
-def verify_all(diffrun, exe, image_path, specs, only=None, mutants=False):
-    """One SpecResult per function (or per mutant binding when `mutants`)."""
-    results = []
+def _verify_job(job):
+    """One (spec, binding) item of `verify_all` in a pool worker. diffrun rewrites the image on every
+    run, so each worker process has its own image file."""
+    diffrun, exe, image_path, spec, name = job
+    own = "%s.%d" % (image_path, os.getpid())
+    port = run_port(diffrun, exe, own, cases_text(spec, name))
+    return verify_spec(spec, E.Image.load(own), port, name)
+
+
+def verify_all(diffrun, exe, image_path, specs, only=None, mutants=False, jobs=None):
+    """One SpecResult per function (or per mutant binding when `mutants`), in the specs' order.
+    The items are independent (each runs diffrun on its own cases and emulates the original from a
+    fresh image), so 16 or more of them run on a process pool: `jobs`, else PR_DIFF_JOBS, else the
+    CPU count; 1 keeps everything in this process."""
+    work = []                                   # (spec, binding name; None for a named gap)
     for spec in specs:
         if only and spec.name != only:
             continue
         if spec.gap:
             if not mutants:
-                results.append(verify_gap(spec, E.Image.load(image_path)))
+                work.append((spec, None))
             continue
-        names = [spec.name + s for s in spec.mutants] if mutants else [spec.name]
-        for name in names:
+        work += [(spec, spec.name + s) for s in spec.mutants] if mutants else [(spec, spec.name)]
+    jobs = jobs or int(os.environ.get("PR_DIFF_JOBS") or 0) or os.cpu_count() or 1
+    runs = [(spec, name) for spec, name in work if name is not None]
+    if jobs <= 1 or len(runs) < 16:
+        done = []
+        for spec, name in runs:
             port = run_port(diffrun, exe, image_path, cases_text(spec, name))
-            results.append(verify_spec(spec, E.Image.load(image_path), port, name))
-    return results
+            done.append(verify_spec(spec, E.Image.load(image_path), port, name))
+    else:
+        run_port(diffrun, exe, image_path, "")  # the image the gap rows and the callers read
+        try:
+            with concurrent.futures.ProcessPoolExecutor(
+                    max_workers=min(jobs, len(runs)),
+                    mp_context=multiprocessing.get_context("spawn")) as pool:
+                done = list(pool.map(_verify_job, [(diffrun, exe, image_path, spec, name)
+                                                   for spec, name in runs], chunksize=4))
+        finally:
+            for own in glob.glob(glob.escape(image_path) + ".[0-9]*"):
+                os.unlink(own)
+    done = iter(done)
+    return [verify_gap(spec, E.Image.load(image_path)) if name is None else next(done)
+            for spec, name in work]
 
 
 def mutant_detection(r):
