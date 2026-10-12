@@ -198,7 +198,11 @@ non-default configuration bit):
 - Wave 1 + the `0x47A00` correction: the same — 942 lines, 0 differing. No capture distinguishes the throw fix.
 - Both waves (this tree): self-check `652/652 functions VERIFIED; 5650/5650 mutants detected; 1 named gaps;
   428/485 rows with callees closed (167 have none)`, rc 0; `PR_ORACLE_REQUIRED=1 ./build/run_tests` all checks
-  passed. The full `make verify` on this tree is recorded in the closure paragraph of `docs/PROGRESS.md`.
+  passed. The first `make verify` on this tree passed every oracle stage (its 942 pre-differential lines equal
+  the baseline's, 0 differing) and stopped in the harness tests on one pin: `fighter_45908`'s case z8
+  deliberately reads the slot above the image (`0x10C1B0`, and its `+0x8A` byte) and was not named in
+  `P45_OUTSIDE`. With the read named, an uninterrupted `make verify` exits 0 (177 harness tests OK, the
+  counter above, entry-triage byte-identical, `symbols.h` idempotent).
 - Audio: `make audio-render` on the pre-track tree gives sha1 `4194254de1155a2dda0ee0dd69f638d92cf9eea0`, the
   C3g closure's.
 
