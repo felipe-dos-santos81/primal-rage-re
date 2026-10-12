@@ -37,7 +37,7 @@ functions are not followed). The first kill it reports is quoted.
 | 0x27254 | `flow_match_snapshot` (flow.c) | 84 | `0x2730F`: `call 0x278b0`, whose `0x278B5 xor ah,ah` and `0x278CE mov eax,0x41` write EAX before any read: traced | 0 |
 | 0x278B0 | `flow_continue_open` (flow.c) | 106 | `0x27314` (pops, `ret` into `0x27380`'s caller chain): traced | 0 |
 | 0x27C48 | `flow_round_winner` (flow.c) | 384 | `0x27FC8`: `0x27FCD xor eax,eax`; `0x299A6`: `0x299AB xor eax,eax`; `0x280C4` (kills `0x27DCA xor eax,eax`, `0x27EE6 mov eax,edx`), `0x280DC` and `0x299DF`: traced | 0 |
-| 0x28130 | `flow_match_result_text` (flow.c) | 404 | `0x275A3`: `0x275B4 movsx eax,al` (AL loaded before it); `0x28599`, `0x288C7` (kills `0x286CA xor eax,eax`, `0x286E0 lea eax,[edx*8]`) and `0x297C9` (`0x297F4 mov eax,0x65`, `0x29810 mov eax,0x66`): traced | 0 |
+| 0x28130 | `flow_match_result_text` (flow.c) | 404 | `0x275A3`: `0x275A8 mov al,[0x10810d]`, `0x275B4 movsx eax,al`; `0x28599`, `0x288C7` (kills `0x286CA xor eax,eax`, `0x286E0 lea eax,[edx*8]`) and `0x297C9` (`0x297F4 mov eax,0x65`, `0x29810 mov eax,0x66`): traced | 0 |
 | 0x286BC | `flow_match_streak_update` (flow.c) | 203 | `0x288CC`: traced (kills `0x2891D xor eax,eax`, `0x2894B xor eax,eax`, `0x289E5 lea eax,[ebx*8]`) | 0 |
 | 0x2C0F4 | `prompt_press_start_blink` (flow.c) | 131 | `0x27B7C` and `0x2C1A4` (in `0x2C178`): traced | 0 |
 | 0x2C1C8 | `prompt_insert_coin` (flow.c) | 12 + 0x2C1D4's body | `0x28D4B`: `0x28D50 xor eax,eax`; `0x42644`, `0x426A4`, `0x4270A`, `0x432E0`: traced | 0 |
@@ -288,8 +288,10 @@ released the same first column (a centred run of 0xE cells starts at `(0x2b - 0x
 three more cells per row (cols 25..27 of rows 6..10).
 
 The other 17 raw call sites of `0x2F388` were then compared with the port's calls by their register
-loads (a scratch scan of the three `mov`s before each `call`): the port's arguments agree at every
-site it has. One raw site has NO counterpart in the port and is outside this batch's queue, so it
+loads (a scratch scan of the instructions before each `call`): the port's arguments agree at the
+fourteen flow.c sites it has; the three svcmenu.c sites (`0x30986`, `0x30CD3`, `0x31511`) were
+compared only as far as those loads show (the constants agree; the computed row and col were not
+traced). One raw site has NO counterpart in the port and is outside this batch's queue, so it
 was NOT changed: `0x4F01A mov ebx,2` / `0x4F01F mov edx,0xb` / `0x4F024 mov eax,0xffffffff` /
 `0x4F029 call 0x2f388`, in `0x4EF8C` (`game_mode_25_reveal`, flow.c), between the node walk's exit
 (`0x4F018 jne 0x4efa8`) and the two `(-1, 5, strlen)` releases the port does have. `0x4EF8C` has no
