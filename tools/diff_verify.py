@@ -18314,6 +18314,74 @@ D3B_SPECS += [
        mutants=("@cache",)),
 ]
 
+D3B_SIX = E.Call(0x4CF20, ("eax",))
+
+
+def d3b_dust_case(side, n81, f51, nodes, afa=0x0005, ch=2, x18=0x00012000, y30=0x0100, lo30=0x7777,
+                  w2e=0x1000):
+    """0x494A8: the mode word DS_00104AFA between seeded words; the bytes 0x108890..0x1088C5 (every
+    byte the function zeroes, DS_001088A8[side] which it sets to 0xFF, and their neighbours)
+    non-zero, none 0xFF, the two sides' bytes different; the side's slot +0x7A (`ch`) and +0x81
+    (`n81`, the loop bound), its record's +0x18, +0x30 dword (y in the high word) and +0x51, the
+    other slot and record holding other values; the free list of the first `nodes` scratch nodes
+    (each +8..+0x23 seeded) and an empty active list; and the actor the spawn stub returns (+0x14,
+    +0x2C, +0x2E, +0x4E inside seeded neighbours)."""
+    ring = [D2B_FREE] + list(D2B_NODES[:nodes])
+    p = {D2B_LIST: le32(D2B_LIST) + le32(D2B_LIST),
+         D2B_FREE: le32(ring[1 % len(ring)]) + le32(ring[-1]),
+         0x00104AF8: le16(0x7AF8) + le16(afa) + le16(0x7AFC),
+         0x00108890: bytes(0x11 + i for i in range(0x36)),
+         D2B_NEW + 0x10: le32(0x0BAD0010) + le32(0x0BAD0014) + le32(0x0BAD0018),
+         D2B_NEW + 0x2A: le16(0x2A2A) + le16(0x2C2C) + le16(w2e) + le16(0x3030),
+         D2B_NEW + 0x4D: bytes([0x4D, 0x77, 0x4F])}
+    for i, n in enumerate(ring[1:], 1):
+        p[n] = le32(ring[(i + 1) % len(ring)]) + le32(ring[i - 1]) + bytes(
+            (0x40 + i * 7 + j) & 0xFF or 0x5A for j in range(0x1C))
+    for s in (0, 1):
+        slot, rec = D2B_SLOTS + s * 0x94, (D2B_REC0, D2B_REC1)[s]
+        own = s == side
+        p[slot] = le32(rec)
+        p[slot + 0x79] = bytes([0x79, ch if own else ch ^ 7, 0x7B])
+        p[slot + 0x80] = bytes([0x80, n81 if own else n81 ^ 3, 0x82])
+        p[rec + 0x14] = le32(0x0BAD0014) + le32(x18 if own else x18 ^ 0x00550000) + le32(0x0BAD001C)
+        p[rec + 0x30] = le16(lo30) + le16(y30 if own else y30 ^ 0x0055) + le16(0x3434)
+        p[rec + 0x50] = bytes([0x50, f51 if own else (0 if f51 else 1), 0x52])
+    return p
+
+
+D3B_SPECS += [
+    # 0x494A8 fight_dust_build: EAX = side. 0x4CF20 (the DS_00104AFA == 0x23 arm), 0x49388, 0x29CDC,
+    # 0x5D7DC (one value for both draws of every iteration; the ranges 0x1800 and the step are in the
+    # call list) and 0x2AE14 are stubs; 0x249D0, 0x249B0 and 0x496AC run on both sides. EAX dies
+    # unread (the one call site 0x33E43: 0x33E48 `call 0x1cebc` loads it before any read; the walk
+    # of record d3b §1): mask 0.
+    Spec("fight_dust_build", 0x494A8, [
+        # two entries, the record's +0x51 set (the +0x2E/+0x4E arm); step 0x180
+        Case("a0", {"eax": 0}, d3b_dust_case(0, 2, 1, 3), d2b_sp_stubs(0, 0x11111111, 0x55)),
+        # three entries, +0x51 clear; y above the clamp's 0xB00 from the second entry on
+        Case("a1", {"eax": 1}, d3b_dust_case(1, 3, 0, 4, y30=0x0600), d2b_sp_stubs(5, 0x22222222, 0xFF)),
+        # no entry (+0x81 = 0): the stores alone
+        Case("a2", {"eax": 0}, d3b_dust_case(0, 0, 1, 2), d2b_sp_stubs(1, 0x33333333, 7)),
+        # five wanted, two free nodes: the empty pool returns before the last two stores
+        Case("a3", {"eax": 1}, d3b_dust_case(1, 5, 1, 2, w2e=0xFFFE), d2b_sp_stubs(3, 0x44444444, 0x99)),
+        # the mode word 0x23: 0x4CF20 alone
+        Case("a4", {"eax": 1}, d3b_dust_case(1, 2, 1, 3, afa=0x0023), d2b_sp_stubs(0, 0x11111111, 0x55)),
+        # a mode word whose low byte is 0x23: the ordinary path
+        Case("a5", {"eax": 0}, d3b_dust_case(0, 1, 0, 1, afa=0x0123, ch=6), d2b_sp_stubs(2, 0x55555555, 0)),
+        # +0x81 = 0xFF (step 3), one free node; +0x51 = 0x80
+        Case("a6", {"eax": 1}, d3b_dust_case(1, 0xFF, 0x80, 1, ch=4), d2b_sp_stubs(4, 0x66666666, 2)),
+        # a negative y (+0x30's high word 0x8000), +0x30's low word set, an x that wraps; an empty pool
+        Case("a7", {"eax": 0}, d3b_dust_case(0, 1, 0, 1, x18=0x00000400, y30=0x8000, lo30=0x0123, ch=5),
+             d2b_sp_stubs(0, 0x77777777, 0x10)),
+        Case("a8", {"eax": 0}, d3b_dust_case(0, 1, 1, 0), d2b_sp_stubs(0, 0x11111111, 0x55)),
+    ], allow_calls=(0x249D0, 0x249B0, 0x496AC), calls=(D3B_SIX, D2B_PICK, D2B_DUSTVAL, D2B_RNG, SPAWN),
+       eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "sideidx afa8 afa32 sixside nosix bae bc4 ba2 ba4 bb2 bbf ba8 ba8v b9e bb6 w892 w892b step early "
+           "lorder pickarg dvarg d10 xc00 r18 y16 yshr offset y400 rstep xy ne8 a14 f1e f1f f21 fc clamp w1c "
+           "e10 w1a w1ay f51 w2e b4e once bc3 bc1").split())),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [

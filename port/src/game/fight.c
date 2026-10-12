@@ -1344,6 +1344,7 @@ u16 fight_dust_clamp(s32 v)
  * C3/C1 alone. */
 void fight_4cf20(u32 side)
 {
+    PR_SEAM(0x4CF20u, side);
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x4CF20..0x4CF41 */
     DSB(slot + 0x81u) = 6u;                             /* 0x4CF45 */
     DSB(DS_001088AE + side) = 0;                        /* 0x4CF4E */
