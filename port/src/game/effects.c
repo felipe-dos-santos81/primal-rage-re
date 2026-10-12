@@ -100,6 +100,7 @@ static void camera_register(void);
 /* 0x13ADC. */
 void effects_init(void)
 {
+    PR_SEAM0(0x13ADCu);
     camera_register();
     DSB(DS_0009AF3C) = 1;
     DSD(DS_000FCCE4) = DS_000FCCE0;

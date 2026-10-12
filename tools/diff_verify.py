@@ -22139,6 +22139,61 @@ D4D_SPECS += [
        mutants=("@noclear", "@clearlate", "@head", "@swap", "@arg", "@nodarken", "@first", "@vals", "@early",
                 "@no8ee", "@noafe", "@nob00", "@wide8ee", "@wideb00")),
 ]
+D4D_PSETS, D4D_RECS = 0x00074000, 0x000F1000        # zero runs of the image: the pset pool (0x4880), the record pool (0xEBA0)
+D4D_CSRC, D4D_CDST = 0x00090000, 0x000C0000         # the copy arm's 0xFA00-byte source and destination (image data)
+D4D_EFF_INIT = E.Call(0x13ADC)
+D4D_SCREEN = E.Call(0x52106, ("eax",), clobbers=("ebx",))
+
+
+def d4d_reset_case(lock):
+    """0x2BAF4: the lock byte 0xBCD60; the four dwords it zeroes (0x104AE8, 0x104AEC, 0x100B4C,
+    0x104AD0), the word 0x105BEA and the byte 0x105BED, each seeded between seeded neighbours; the
+    two pool pointers 0x1014EC/0x1014F4 at zero runs of the image with sentinels inside each pool
+    (its first dword, a middle dword, its last dword) and in the dword past its end; the two list
+    heads 0x105B3C/0x105BCC, the pair 0x105B44/0x105B48 and the 0x80-byte ring 0x105B4C seeded;
+    sentinels at the start, the middle and the last dword of the 0x14D4 bytes at 0x105F38 and in
+    the dword past them; the bytes the callees that run rewrite (0x107A00..0x107A57 for 0x38B70
+    and 0x4F228, 0xBDFBC..0xBDFC7); the copy arm's buffer pointers 0xE87A0/0xE87A4."""
+    s = lambda v: le32(0x5A000000 | v)
+    p = {0x000BCD60: bytes([lock]),
+         0x00104AE4: s(0xAE4) + le32(0x11111111) + le32(0x22222222) + s(0xAF0),
+         0x00100B48: s(0xB48) + le32(0x33333333) + s(0xB50),
+         0x00104ACC: s(0xACC) + le32(0x44444444) + s(0xAD4),
+         0x00105BE8: bytes([0xE8, 0xE9, 0x5A, 0x5B, 0xEC, 0x77, 0xEE, 0xEF]),
+         0x001014EC: le32(D4D_PSETS), 0x001014F4: le32(D4D_RECS),
+         D4D_PSETS: s(1), D4D_PSETS + 0x2440: s(2), D4D_PSETS + 0x487C: s(3) + s(4),
+         D4D_RECS + 0x10: s(5), D4D_RECS + 0x7590: s(6), D4D_RECS + 0xEB98: s(7) + s(8) + s(9) + s(10),
+         0x00105B3C: s(0xB3C) + s(0xB40) + s(0xB44) + s(0xB48),
+         0x00105BCC: s(0xBCC) + s(0xBD0),
+         0x00105F38: s(11), 0x00106938: s(12), 0x00107408: s(13) + s(14),
+         0x000BDFBC: s(15) + s(16) + s(17),
+         0x000E879C: s(18) + le32(D4D_CSRC) + le32(D4D_CDST) + s(19)}
+    p.update(d1d_chunks(0x00105B4C, bytes(0x80 | i for i in range(0x80))))
+    p.update(d1d_chunks(0x00107A00, bytes(0x40 | (i & 0x3F) for i in range(0x58))))
+    return p
+
+
+D4D_SPECS += [
+    # 0x2BAF4 actors_reset_al: AL = the flag, saved at [esp] and tested as DL (`test dl,dl` 0x2BBE4:
+    # t1 has EAX = 0xFFFFFF00, t2 EAX = 0x00010080). The four dwords, 0x13DF0 (a stub: the memory at
+    # its call), the word 0x105BEA and the byte 0x105BED, three runtime memsets (the pset pool
+    # 0x4880 bytes, the record pool 0xEBA0, the ring 0x80), the two list heads, the 580 records
+    # appended to the free list (0x249C0, tail insert; `jb` 0x2BBB6 against the re-read pool base
+    # + 0xEBA0), 0x13ADC (a stub), 0x4F228 with AL = 0, the pair 0x105B44/0x105B48, 0x1C350,
+    # 0x38B70, 0x2F920 (the 0x14D4-byte fill, no port function: the port fills inline), then by the
+    # flag 0x52106(0) (a stub: `in`/`out`) and 0x336C0, or the 0xFA00-byte copy [0xE87A0] ->
+    # [0xE87A4]; the byte 0x105BED = 1. The lock byte 0xBCD60 is 0 or 0x80: with a 1 (the image's
+    # value) 0x2EA30 holds it at 0 across the body, which every stub call's memory shows and the
+    # port, which does not model the lock, cannot (the named non-row 0x2EA30; as release_record's
+    # row). Full mask with the binding's lock byte: see the binding.
+    Spec("actors_reset_al", 0x2BAF4, [
+        Case("t0", {"eax": 1}, d4d_reset_case(0)),
+        Case("t1", {"eax": 0xFFFFFF00}, d4d_reset_case(0x80)),
+        Case("t2", {"eax": 0x00010080}, d4d_reset_case(0x80)),
+    ], allow_calls=(0x2EA30, 0x61A70, 0x65490, 0x654C7, 0x249C0, 0x4F228, 0x1C350, 0x38B70, 0x2F920, 0x336C0, 0x33734),
+       calls=(P8_CLEAR, D4D_EFF_INIT, D4D_SCREEN), eax_mask=0xFFFFFFFF,
+       mutants=("@al32", "@noae8", "@noaec", "@nob4c", "@noad0", "@ad0w", "@clearearly", "@nobea", "@beab", "@nobed0", "@psetlen", "@reclen", "@ringlen", "@ringbase", "@noactive", "@freehead", "@bound", "@count", "@noinit", "@initearly", "@projarg", "@nob44", "@nob48", "@norl", "@nocur", "@nofill", "@filllen", "@noscreen", "@screenarg", "@nopal", "@swapcopy", "@copylen", "@nobed1", "@al1")),
+]
 D1_SPECS += D4D_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

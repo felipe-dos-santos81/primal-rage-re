@@ -30649,6 +30649,71 @@ static void b_d4d_29b74(const u32 *r, u32 *eax) { (void)r; frontend_darken_all()
 D4D_DA_MUT(noclear, 1u) D4D_DA_MUT(clearlate, 2u) D4D_DA_MUT(head, 3u)  D4D_DA_MUT(swap, 4u)   D4D_DA_MUT(arg, 5u)
 D4D_DA_MUT(nodarken, 6u) D4D_DA_MUT(first, 7u)    D4D_DA_MUT(vals, 8u)  D4D_DA_MUT(early, 9u)  D4D_DA_MUT(no8ee, 10u)
 D4D_DA_MUT(noafe, 11u)  D4D_DA_MUT(nob00, 12u)    D4D_DA_MUT(wide8ee, 13u) D4D_DA_MUT(wideb00, 14u)
+/* 0x2BAF4 actors_reset_al: AL = the flag (`mov [esp],al` 0x2BAFD; `test dl,dl` 0x2BBE4). 0x13DF0,
+ * 0x13ADC and 0x52106 are stubs; 0x4F228, 0x1C350, 0x38B70, 0x336C0 and (original side) the
+ * runtime memset 0x61A70, the list insert 0x249C0, 0x2F920 and the lock 0x2EA30 run on both sides.
+ * The raw returns 0x2EA30's EAX, the lock byte 0xBCD60 as the pair of calls leaves it (unchanged:
+ * 0x2EA30(0x2700) clears a 1 and returns the old byte, 0x2EA30(that byte) puts the 1 back and
+ * returns it); the port does not model the lock and its function is void, so the binding reports
+ * that byte under the full mask. */
+static u32 d4d_2baf4_core(u32 eax, u32 mut)
+{
+    const u32 psets = DSD(0x001014ECu), recs = DSD(0x001014F4u);
+    const u32 al = (mut == 1u) ? eax : (mut == 35u) ? (u32)((eax & 0xFFu) == 1u) : (eax & 0xFFu);   /* @al32 @al1 */
+    u32 n, rec;
+    if (mut == 8u) effects_clear();                                          /* @clearearly */
+    if (mut != 2u) DSD(0x00104AE8u) = 0u;                                    /* @noae8 */
+    if (mut != 3u) DSD(0x00104AECu) = 0u;                                    /* @noaec */
+    if (mut != 4u) DSD(0x00100B4Cu) = 0u;                                    /* @nob4c */
+    if (mut == 7u) DSW(0x00104AD0u) = 0u; else if (mut != 5u) DSD(0x00104AD0u) = 0u;   /* @ad0w @noad0 */
+    if (mut != 8u) effects_clear();
+    if (mut == 10u) DSB(0x00105BEAu) = 0u; else if (mut != 9u) DSW(0x00105BEAu) = 0u;  /* @beab @nobea */
+    if (mut != 11u) DSB(0x00105BEDu) = 0u;                                   /* @nobed0 */
+    mem_fill(psets, 0, (mut == 12u) ? 0x4800u : 0x4880u);                    /* @psetlen */
+    mem_fill(recs, 0, (mut == 13u) ? 0xEB38u : 0xEBA0u);                     /* @reclen */
+    mem_fill((mut == 15u) ? 0x00105B50u : 0x00105B4Cu, 0, (mut == 14u) ? 0x7Fu : 0x80u);   /* @ringlen @ringbase */
+    if (mut == 21u) effects_init();                                          /* @initearly */
+    if (mut != 16u) { DSD(0x00105BD0u) = 0x00105BCCu; DSD(0x00105BCCu) = 0x00105BCCu; }   /* @noactive */
+    DSD(0x00105B40u) = 0x00105B3Cu;
+    DSD(0x00105B3Cu) = 0x00105B3Cu;
+    n = (mut == 18u) ? 581u : (mut == 19u) ? 579u : 580u;                    /* @bound @count */
+    for (rec = recs; rec < recs + n * 0x68u; rec += 0x68u) {
+        if (mut == 17u) {                                                    /* @freehead: 0x249B0's insert after the head */
+            u32 next = DSD(0x00105B3Cu);
+            DSD(0x00105B3Cu) = rec; DSD(rec) = next; DSD(rec + 4u) = 0x00105B3Cu; DSD(next + 4u) = rec;
+        } else {
+            u32 prev = DSD(0x00105B40u);
+            DSD(0x00105B40u) = rec; DSD(rec) = 0x00105B3Cu; DSD(rec + 4u) = prev; DSD(prev) = rec;
+        }
+    }
+    if (mut != 20u && mut != 21u) effects_init();                            /* @noinit */
+    render_projection_reset((u8)((mut == 22u) ? al : 0u));                   /* @projarg */
+    if (mut != 23u) DSD(0x00105B44u) = 0u;                                   /* @nob44 */
+    if (mut != 24u) DSD(0x00105B48u) = 0u;                                   /* @nob48 */
+    if (mut != 25u) render_list_init();                                      /* @norl */
+    if (mut != 26u) actor_cursor_reset();                                    /* @nocur */
+    if (mut != 27u) mem_fill(0x00105F38u, 0, (mut == 28u) ? 0x14D0u : 0x14D4u);   /* @nofill @filllen */
+    if (al != 0u) {
+        if (mut != 29u) gfx_screen_reset((mut == 30u) ? al : 0u);            /* @noscreen @screenarg */
+        if (mut != 31u) palette_list_init();                                 /* @nopal */
+    } else if (mut == 32u) {                                                 /* @swapcopy */
+        memcpy(mem + DSD(0x000E87A0u), mem + DSD(0x000E87A4u), 0xFA00u);
+    } else {
+        memcpy(mem + DSD(0x000E87A4u), mem + DSD(0x000E87A0u), (mut == 33u) ? 0xF9FCu : 0xFA00u);   /* @copylen */
+    }
+    if (mut != 34u) DSB(0x00105BEDu) = 1u;                                   /* @nobed1 */
+    return (u32)DSB(0x000BCD60u);
+}
+static void b_d4d_2baf4(const u32 *r, u32 *eax) { actors_reset_al(r[R_EAX]); *eax = (u32)DSB(0x000BCD60u); }
+#define D4D_AR_MUT(name, n) \
+    static void m_d4d_2baf4_##name(const u32 *r, u32 *eax) { *eax = d4d_2baf4_core(r[R_EAX], n); }
+D4D_AR_MUT(al32, 1u)    D4D_AR_MUT(noae8, 2u)   D4D_AR_MUT(noaec, 3u)   D4D_AR_MUT(nob4c, 4u)    D4D_AR_MUT(noad0, 5u)
+D4D_AR_MUT(ad0w, 7u)    D4D_AR_MUT(clearearly, 8u) D4D_AR_MUT(nobea, 9u) D4D_AR_MUT(beab, 10u)   D4D_AR_MUT(nobed0, 11u)
+D4D_AR_MUT(psetlen, 12u) D4D_AR_MUT(reclen, 13u) D4D_AR_MUT(ringlen, 14u) D4D_AR_MUT(ringbase, 15u) D4D_AR_MUT(noactive, 16u)
+D4D_AR_MUT(freehead, 17u) D4D_AR_MUT(bound, 18u) D4D_AR_MUT(count, 19u) D4D_AR_MUT(noinit, 20u)  D4D_AR_MUT(initearly, 21u)
+D4D_AR_MUT(projarg, 22u) D4D_AR_MUT(nob44, 23u)  D4D_AR_MUT(nob48, 24u) D4D_AR_MUT(norl, 25u)    D4D_AR_MUT(nocur, 26u)
+D4D_AR_MUT(nofill, 27u) D4D_AR_MUT(filllen, 28u) D4D_AR_MUT(noscreen, 29u) D4D_AR_MUT(screenarg, 30u) D4D_AR_MUT(nopal, 31u)
+D4D_AR_MUT(swapcopy, 32u) D4D_AR_MUT(copylen, 33u) D4D_AR_MUT(nobed1, 34u) D4D_AR_MUT(al1, 35u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39351,6 +39416,41 @@ static const binding_t k_bindings[] = {
     { "frontend_darken_all@nob00",             m_d4d_29b74_nob00, 0xFFFFFFFFu },
     { "frontend_darken_all@wide8ee",           m_d4d_29b74_wide8ee, 0xFFFFFFFFu },
     { "frontend_darken_all@wideb00",           m_d4d_29b74_wideb00, 0xFFFFFFFFu },
+    { "actors_reset_al",                       b_d4d_2baf4, 0xFFFFFFFFu },
+    { "actors_reset_al@al32",                  m_d4d_2baf4_al32, 0xFFFFFFFFu },
+    { "actors_reset_al@noae8",                 m_d4d_2baf4_noae8, 0xFFFFFFFFu },
+    { "actors_reset_al@noaec",                 m_d4d_2baf4_noaec, 0xFFFFFFFFu },
+    { "actors_reset_al@nob4c",                 m_d4d_2baf4_nob4c, 0xFFFFFFFFu },
+    { "actors_reset_al@noad0",                 m_d4d_2baf4_noad0, 0xFFFFFFFFu },
+    { "actors_reset_al@ad0w",                  m_d4d_2baf4_ad0w, 0xFFFFFFFFu },
+    { "actors_reset_al@clearearly",            m_d4d_2baf4_clearearly, 0xFFFFFFFFu },
+    { "actors_reset_al@nobea",                 m_d4d_2baf4_nobea, 0xFFFFFFFFu },
+    { "actors_reset_al@beab",                  m_d4d_2baf4_beab, 0xFFFFFFFFu },
+    { "actors_reset_al@nobed0",                m_d4d_2baf4_nobed0, 0xFFFFFFFFu },
+    { "actors_reset_al@psetlen",               m_d4d_2baf4_psetlen, 0xFFFFFFFFu },
+    { "actors_reset_al@reclen",                m_d4d_2baf4_reclen, 0xFFFFFFFFu },
+    { "actors_reset_al@ringlen",               m_d4d_2baf4_ringlen, 0xFFFFFFFFu },
+    { "actors_reset_al@ringbase",              m_d4d_2baf4_ringbase, 0xFFFFFFFFu },
+    { "actors_reset_al@noactive",              m_d4d_2baf4_noactive, 0xFFFFFFFFu },
+    { "actors_reset_al@freehead",              m_d4d_2baf4_freehead, 0xFFFFFFFFu },
+    { "actors_reset_al@bound",                 m_d4d_2baf4_bound, 0xFFFFFFFFu },
+    { "actors_reset_al@count",                 m_d4d_2baf4_count, 0xFFFFFFFFu },
+    { "actors_reset_al@noinit",                m_d4d_2baf4_noinit, 0xFFFFFFFFu },
+    { "actors_reset_al@initearly",             m_d4d_2baf4_initearly, 0xFFFFFFFFu },
+    { "actors_reset_al@projarg",               m_d4d_2baf4_projarg, 0xFFFFFFFFu },
+    { "actors_reset_al@nob44",                 m_d4d_2baf4_nob44, 0xFFFFFFFFu },
+    { "actors_reset_al@nob48",                 m_d4d_2baf4_nob48, 0xFFFFFFFFu },
+    { "actors_reset_al@norl",                  m_d4d_2baf4_norl, 0xFFFFFFFFu },
+    { "actors_reset_al@nocur",                 m_d4d_2baf4_nocur, 0xFFFFFFFFu },
+    { "actors_reset_al@nofill",                m_d4d_2baf4_nofill, 0xFFFFFFFFu },
+    { "actors_reset_al@filllen",               m_d4d_2baf4_filllen, 0xFFFFFFFFu },
+    { "actors_reset_al@noscreen",              m_d4d_2baf4_noscreen, 0xFFFFFFFFu },
+    { "actors_reset_al@screenarg",             m_d4d_2baf4_screenarg, 0xFFFFFFFFu },
+    { "actors_reset_al@nopal",                 m_d4d_2baf4_nopal, 0xFFFFFFFFu },
+    { "actors_reset_al@swapcopy",              m_d4d_2baf4_swapcopy, 0xFFFFFFFFu },
+    { "actors_reset_al@copylen",               m_d4d_2baf4_copylen, 0xFFFFFFFFu },
+    { "actors_reset_al@nobed1",                m_d4d_2baf4_nobed1, 0xFFFFFFFFu },
+    { "actors_reset_al@al1",                   m_d4d_2baf4_al1, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)
