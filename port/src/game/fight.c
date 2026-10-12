@@ -2553,6 +2553,7 @@ int fight_4b5a8(u32 entry, u32 index)
  * the hold 5.0 (`push 0x40a00000`, 0x4AC72). EAX = entry, EDX = index. */
 void fight_4ac38(u32 entry, u32 index)
 {
+    PR_SEAM(0x4AC38u, entry, index);
     u32 actor = DSD(entry + 8u);
     DSB(actor + 0x29u) &= 0xBFu;                    /* 0x4AC3E */
     DSB(actor + 0x29u) |= 0x10u;                    /* 0x4AC45 */
@@ -3428,6 +3429,7 @@ int fight_4d898(u32 hit, u32 entry, u32 index)
  * EDX = si. */
 void fight_4d7a4(u32 entry, u32 index)
 {
+    PR_SEAM(0x4D7A4u, entry, index);
     if ((DSB(entry + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4D7BB */
     u32 rec = DSD(entry + 8u);
     u32 ps = DSD(DS_001014EC) + ((u32)DSW(rec + 0x56u) << 5);  /* 0x4D7C1..0x4D7D3 */
@@ -3476,6 +3478,7 @@ void fight_4d7a4(u32 entry, u32 index)
  * +0x1C bit 4. */
 void fight_4987c(u32 side, s32 count, u32 kind)
 {
+    PR_SEAM(0x4987Cu, side, (u32)count, kind);
     u32 slot = DS_001077B0 + side * 0x94u;                      /* 0x4988D..0x498A7 */
     u32 other = DS_001077B0 + (side ^ 1u) * 0x94u;              /* 0x498B3..0x498CE */
     s32 i;
@@ -3886,6 +3889,7 @@ int fight_4d150(u32 entry, u32 index)
  * DS_0010889E[+0x21]) 0x4B430, each with EBX = 0; the first that acts ends it. */
 void fight_4d224(u32 entry, u32 index)
 {
+    PR_SEAM(0x4D224u, entry, index);
     if (DSB(DS_001088C2) != 0u) {                               /* 0x4D22B */
         if (fight_4bd4c(entry, index) != 0) return;             /* 0x4D236/0x4D23D */
     }
@@ -5594,6 +5598,7 @@ void fight_mode25_enter(void)
  * the +0x1C bit 1 clear arm). */
 u8 fight_4a808(u32 node)
 {
+    PR_SEAM_RET(0x4A808u, node);
     u32 rec = DSD(node + 8u);                              /* 0x4A80A */
     s32 rx = (s32)DSD(rec + 0x18u);                         /* 0x4A810 */
     s32 target = (s32)DSD(node + 0x14u);                    /* 0x4A839 (reloaded below too) */
@@ -5615,6 +5620,7 @@ u8 fight_4a808(u32 node)
  * caller: 0x4E871 (0x4E67C, the +0x1E == 0 arm). */
 u8 fight_4a8a8(u32 node)
 {
+    PR_SEAM_RET(0x4A8A8u, node);
     u32 rec = DSD(node + 8u);                                /* 0x4A8AD */
     s32 pos = fight_2be00(rec);                               /* 0x4A8B0 0x2BE00 */
     s32 target = (s32)DSD(node + 0x14u);                       /* 0x4A8CE */
@@ -5644,6 +5650,7 @@ u8 fight_4a8a8(u32 node)
  * 0x4E84E (0x4E67C's per-entry tail-common). */
 void fight_4e5a4(u32 node, u32 idx)
 {
+    PR_SEAM(0x4E5A4u, node, idx);
     if ((DSW(node + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4E5B1/0x4E5B8 */
     u32 rec = DSD(node + 8u);                                    /* 0x4E5BE */
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;   /* 0x4E5C1..0x4E5D0 */
@@ -5693,6 +5700,7 @@ void fight_4e5a4(u32 node, u32 idx)
  * tail). */
 void fight_4e99c(u32 count)
 {
+    PR_SEAM(0x4E99Cu, count);
     u16 bx = (u16)count;                                             /* 0x4E9A3 */
     u8 r = (u8)(DSB(DS_001088BD) + 1u);                                /* 0x4E9A5/0x4E9B0/0x4E9BE */
     DSB(DS_001088BD) = r;                                               /* 0x4E9B4 */
@@ -5759,8 +5767,9 @@ void fight_4e99c(u32 count)
 /* 0x4E67C — record §49-P. Mode 0x25's per-frame audience-effects pass, called
  * unconditionally by game_mode_25_step (0x266AC). fight_2be00 of the fighter
  * record at slot DS_001088BC ("P"): when it exceeds 0x1C00 (signed), the
- * `big` flag is set and DS_00108894 is loaded from clamp(((s16)P's record's
- * +0x32 word - 0xE0) / 100, 0, 15) (0 when that difference is not positive);
+ * `big` flag is set and DS_00108894 is loaded from clamp(((s16)(P's record's
+ * +0x32 word - 0xE0)) / 100, 0, 15) (0 when that 16-bit difference is not
+ * positive);
  * else `big` is clear and DS_00108894 keeps whatever it held. Then, for every
  * entry on the active list DS_0010884C: with its +0x1C bit 1 clear, a live
  * actor R (+0x34 != 0) that fight_4a808 reports arrived is retired (+0x34 =
@@ -5779,16 +5788,17 @@ void fight_4e99c(u32 count)
  * After the list: `stalled` == 10 sets DS_001088BE = 1; with DS_001088B9,
  * fight_4e99c(`processed`) then fight_mode25_scorecard(), and DS_001088BD
  * even also clears DS_001088BE. Finally, with DS_001088B8 and both round
- * flags DS_001078F0/F1 set, and (DS_001088BD even, or `processed` != 0),
+ * flags DS_001078F0/F1 set, and (DS_001088BD even, or `processed` == 0),
  * fight_mode25_spawn(0) and DS_001088B8 = 0. EBX..EDI pushed and popped.
  * Only caller: 0x2685A (0x266AC). */
 void fight_4e67c(void)
 {
     PR_SEAM0(0x4E67Cu);
-    u32 p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);    /* 0x4E6B8..0x4E6CE, 0x4E799..0x4E7A6 idiom */
+    u32 p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);    /* 0x4E68D..0x4E6A3 */
     int big = (s32)fight_2be00(p) > 0x1C00;                      /* 0x4E6AC/0x4E6B1/0x4E6B6 */
     if (big) {                                                    /* 0x4E6B6 */
-        s32 v = (s32)(s16)DSW(p + 0x32u) - 0xE0;                    /* 0x4E6D5/0x4E6DE */
+        p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);       /* 0x4E6B8..0x4E6CE: loaded again after the call */
+        s32 v = (s32)(s16)(u16)(DSW(p + 0x32u) - 0xE0u);            /* 0x4E6D5/0x4E6DE; 0x4E6E8 `test ax,ax` (a 16-bit difference) */
         if (v <= 0) {                                                 /* 0x4E6E8/0x4E6EB */
             DSW(DS_00108894) = 0u;                                       /* 0x4E70F/0x4E711 */
         } else {
@@ -5805,6 +5815,7 @@ void fight_4e67c(void)
         if ((DSW(node + 0x1Cu) & 2u) == 0u) {                                     /* 0x4E732..0x4E739 */
             u32 r = DSD(node + 8u);                                                /* 0x4E73B */
             if (DSW(r + 0x34u) != 0u && fight_4a808(node) != 0u) {                  /* 0x4E73E/0x4E743, 0x4E74B/0x4E750 */
+                r = DSD(node + 8u);                                                   /* 0x4E758/0x4E761: loaded again after the call */
                 DSW(r + 0x34u) = 0u;                                                  /* 0x4E75B */
                 DSW(r + 0x32u) = DSW(node + 0x1Au);                                    /* 0x4E768 */
                 DSB(node + 0x1Eu) = 0u;                                                 /* 0x4E76C */
@@ -5814,6 +5825,7 @@ void fight_4e67c(void)
         }
         if (big) {                                                                   /* 0x4E77B */
             if ((DSB(DS_001088BD) & 1u) != 0u) {                                       /* 0x4E795/0x4E797 */
+                p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);                     /* 0x4E799..0x4E7A6: loaded again at every node */
                 s32 px = (s32)DSD(p + 0x30u) >> 16;                                       /* 0x4E7AF/0x4E7B5 */
                 s32 rx = (s32)DSD(DSD(node + 8u) + 0x30u) >> 16;                           /* 0x4E7B2/0x4E7B8 */
                 if (rx > px + 0x100 || rx < px - 0x100)                                     /* 0x4E7C1/0x4E7C3, 0x4E7CE/0x4E7D0 */
@@ -5862,6 +5874,7 @@ void fight_4e67c(void)
             }
             r2 = DSD(node + 8u);                                                                                                        /* 0x4E8D8 */
             if (fight_2be00(r2) < 0) {                                                                                                    /* 0x4E8E0/0x4E8E2 */
+                r2 = DSD(node + 8u);                                                                                                         /* 0x4E8E4/0x4E8EB: loaded again after the call */
                 DSB(r2 + 0x28u) |= 0x80u;                                                                                                    /* 0x4E8E7 */
                 actor_type_49444(r2);                                                                                                          /* 0x4E8EE 0x49444 */
             }
@@ -5877,7 +5890,7 @@ void fight_4e67c(void)
     }
     if (DSB(DS_001088B8) != 0u                                                                                                                             /* 0x4E952 */
             && DSB(DS_001078F0) != 0u && DSB(DS_001078F1) != 0u                                                                                             /* 0x4E95B/0x4E964 */
-            && ((DSB(DS_001088BD) & 1u) == 0u || processed != 0u)) {                                                                                        /* 0x4E97C/0x4E981 */
+            && ((DSB(DS_001088BD) & 1u) == 0u || (u16)processed == 0u)) {                                                                                   /* 0x4E97C `je` (even), 0x4E97E `test si,si`/0x4E981 `jne` (odd: only with none processed) */
         fight_mode25_spawn(0u);                                                                                                                                /* 0x4E987 */
         DSB(DS_001088B8) = 0u;                                                                                                                                  /* 0x4E98C */
     }

@@ -1426,6 +1426,7 @@ int camera_projectile_clash(void)
  * (0x176CC). */
 void camera_projectile_step(void)
 {
+    PR_SEAM0(0x17CB0u);
     u8 clash = 0;                                              /* 0x17CC7 */
     camera_bitplane_pixel(0x128u, 0x25u, DS_00100BD3, 0xFFu);  /* 0x17CCF */
     DSD(DS_00100AD0) = 0;                                      /* 0x17CDC */
@@ -1602,6 +1603,7 @@ void camera_dust_spawn(void)
  * which camera_dust_hit folds into its one call. */
 void camera_dust_burst(u32 side, u32 dust)
 {
+    PR_SEAM(0x12BB8u, side, dust);
     u32 fighter = DSD(DS_001077B0 + side * 0x94u);     /* 0x12BC9 */
     u32 flag5 = ((DSW(fighter + 0x28u) & 0x4000u) != 0u)
               ? 0u : 0x4000u;                          /* 0x12BD0..0x12BE9 */
@@ -1632,6 +1634,7 @@ void camera_dust_burst(u32 side, u32 dust)
  * 1; a fail returns 0. */
 u32 camera_dust_hit(u32 node)
 {
+    PR_SEAM_RET(0x129FCu, node);
     u32 dust = DSD(node + 8u);                         /* 0x12A01 */
     u32 ent = DSD(DS_001014EC) + (u32)DSW(dust + 0x56u) * 0x20u;   /* 0x12A04..0x12A16 */
     u32 hit = camera_point_hit((s32)(s16)DSW(ent + 4u),
@@ -1659,7 +1662,7 @@ u32 camera_dust_hit(u32 node)
                 && react != 4u && react != 5u) return 0u;       /* 0x12B17..0x12B41 */
         break;
     }
-    camera_dust_burst(side, dust);                     /* 0x12A99..0x12AA3 */
+    camera_dust_burst(side, DSD(node + 8u));           /* 0x12A99 `mov eax,[ecx+8]` (loaded again) ..0x12AA3 */
     DSB(DS_000F0AE8) = react;                          /* 0x12AAD */
     return 1u;                                         /* 0x12AA8 */
 }
@@ -1671,9 +1674,10 @@ u32 camera_dust_hit(u32 node)
  * 0x1282C's (0x2800/-0x80/0 or -0x2800/0x80/0x4000). Unlike 0x1282C, a3 is
  * the fixed word DS_000BD898 (sign-extended), not rng(0x1300), and a4 is
  * rng(0x2000) alone, not (0x1300 - r1) + r2 — the raw reaches this value
- * through a convoluted partial-dword stack read (`mov eax,edx; sub eax,edx`
- * zeroes EAX, then a sign-extended low word survives an unrelated `sar
- * ebx,0x10`); the port computes it directly. Spawns one actor from 0xBB254 as
+ * through a partial-dword stack read (`mov eax,edx; sub eax,edx` zeroes EAX;
+ * the draw's low word is stored at [esp] and `mov ebx,[esp-2]; sar ebx,0x10`
+ * sign-extends it), so a4 is the draw's low word, sign-extended (the draw is
+ * below 0x2000, so the same value). Spawns one actor from 0xBB254 as
  * 0x1282C does. Both gates (0x128EB, 0x128FD) and the spawn fall to 0x1296F,
  * the tail (record §49-W): outside mode 0x24, the byte DS_000F0AE8 is reset
  * to 0xFF when the slot DS_00104B1A names has +0x52 = 0; with the in-use dust
@@ -1693,7 +1697,7 @@ void camera_impact_dust_spawn(void)
                 off = (s32)0xFFFFD800; yvel = 0x80; flag5 = 0x4000u;
             }
             s32 a3 = (s32)(s16)DSW(DS_000BD898);        /* 0x1294D */
-            u32 a4 = rng_next(0x2000u);                 /* 0x12938 */
+            u32 a4 = (u32)(s32)(s16)rng_next(0x2000u);  /* 0x12938; 0x12941 `mov [esp],di`, 0x12956 `sar ebx,0x10` */
             u32 rec = actor_spawn((const u32 *)(mem + CAMERA_DUST_DESC),
                                   (u32)((s32)DSD(DS_000F0AF0) + off),
                                   (u32)a3, a4, flag5);   /* 0x12962 */

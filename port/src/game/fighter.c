@@ -892,6 +892,7 @@ int fighter_command_dispatch(u32 side, u32 edx_arg)
  * §41-C). */
 void fighter_think_side(u32 side)
 {
+    PR_SEAM(0x3B464u, side);
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x3B471 */
     if ((u8)fighter_frame_flag(1u, ctx[1]) != 0u) return;   /* 0x3B47F, 0x3B484 `test al,al` */
