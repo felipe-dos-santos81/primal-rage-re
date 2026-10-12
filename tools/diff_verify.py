@@ -13658,6 +13658,19 @@ def d2d_input_case(level, latch):
     fields 0x1088D4..0x1088E7 with a dword on either side, all seeded."""
     return {0x000E1C30: le32(0x30303030) + le32(level) + le32(latch) + le32(0x3C3C3C3C),
             0x001088D0: bytes(0xD0 + k for k in range(0x1C))}
+def d2d_timer_case(b3b, d0=0x1E, tick=0x003C, f2=0x0B, s3c=(0x00012345, 0xFFFFFFD6)):
+    """0x4F4E8: the gate byte 0x105B3B between sentinels, both slots' +0x38..+0x43 (the +0x3C dword),
+    the divisor dword 0x1088D0 between seeded dwords, the tick word 0x104AF4 followed by a non-zero
+    word, the countdown byte 0x1088F2 (the top byte of the dword 0x1088EF, its low bytes and the byte
+    after it seeded) and the text cursor."""
+    p = {0x00105B3A: bytes([0x3A, b3b, 0x3C]),
+         0x001088CC: le32(0xCCCCCCCC) + le32(d0),
+         0x00104AF4: le16(tick) + le16(0x4321),
+         0x001088EF: bytes([0xEF, 0xF0, 0xF1, f2, 0xF3]),
+         0x00105F34: le32(0x11223344)}
+    for i in (0, 1):
+        p[DS_SLOTS + i * 0x94 + 0x38] = le32(0x38383838 + i) + le32(s3c[i]) + le32(0x40404040 + i)
+    return p
 D2D_SPECS = [
     # 0x12BB8 camera_dust_burst: EAX = side, EDX = the dust actor's record. SPAWN returns the record
     # the stream is started on (the port guards a 0, a PORT deviation: no case returns 0); 0x4DBB4
@@ -14048,6 +14061,29 @@ D2D_SPECS = [
        unhit_named={0x4F694: "dead with 0x2D2F0 real (`xor eax,eax; ret`): the byte 0x1088D4 it has just stored is "
                              "0, so `test byte [0x1088d4],2; je` 0x4F68B is always taken"},
        mutants=("@mask1", "@mask2", "@noand", "@nodc", "@nod4", "@or", "@e0swap", "@e2shift", "@e0w", "@noe2")),
+    # 0x4F4E8 flow_round_timer_step: no argument (the render table's bit-0 entry, the dword at
+    # 0xA86C4). The 0x2F4D0 number draw and the voice 0x52 are stubs (the raw keeps the mode in EDX
+    # across the voice, which preserves it); 0x2F528 runs on both sides with D1G_TXTFMT/D1G_TXT198
+    # recorded. A zero divisor 0x1088D0 faults the raw's `idiv` (0x4F55A) and is not cased (the port
+    # returns, a PORT guard). Mask 0: the walk reloads EAX for the next entry (`mov eax,ebx`
+    # 0x25621) or leaves for 0x134C0 (no read of EAX before its early exits) and `mov
+    # eax,[0x10150c]` 0x2563E.
+    Spec("flow_round_timer_step", 0x4F4E8, [
+        Case("r0", {}, d2d_timer_case(1)),
+        Case("r1", {"eax": 0x5A5A5A5A}, d2d_timer_case(0, d0=0x63, tick=0x0063)),
+        Case("r2", {}, d2d_timer_case(0, d0=0x62, tick=0x0126, f2=0)),
+        Case("r3", {}, d2d_timer_case(0, tick=0x003D)),
+        Case("r4", {}, d2d_timer_case(0, f2=0x0B)),
+        Case("r5", {}, d2d_timer_case(0, f2=0x0A), {0x2C3FC: 0}),
+        Case("r6", {}, d2d_timer_case(0, f2=0x80)),
+        Case("r7", {}, d2d_timer_case(0, d0=5, tick=0xFFFF, f2=0x30)),
+        Case("r8", {}, d2d_timer_case(0, d0=0xFFFFFFFE, tick=0x0004, f2=0x01)),
+        Case("r9", {}, d2d_timer_case(0x80, d0=0x1E, s3c=(0x7FFFFFFF, 0))),
+        Case("r10", {}, d2d_timer_case(0, d0=0x62, tick=0x00C4, f2=0x20)),
+    ], calls=(E.Call(0x2F4D0, ("eax", "edx", "ebx", "ecx", "s0", "s1"), mode="stub", pop=8,
+                     clobbers=("ebx", "ecx", "edx")), VOICE, D1G_TXTFMT, D1G_TXT198),
+       allow_calls=(0x2F528,), eax_mask=0,
+       mutants=("@gate", "@cols", "@row", "@width", "@mode", "@field", "@order", "@nogate2", "@d0ge", "@d0uns", "@ticksext", "@tickw", "@f2zero", "@thr", "@f2zext", "@novoice", "@voice", "@nodec", "@drawold", "@col", "@modes", "@voicelate")),
 ]   # D2D_SPECS end
 D1_SPECS += D2D_SPECS
 

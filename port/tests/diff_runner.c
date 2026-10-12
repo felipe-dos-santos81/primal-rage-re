@@ -20877,6 +20877,67 @@ static void m_d2d_4f644_e0swap(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r
 static void m_d2d_4f644_e2shift(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 9u); }
 static void m_d2d_4f644_e0w(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 10u); }
 static void m_d2d_4f644_noe2(const u32 *r, u32 *eax) { *eax = d2d_4f644_core(r, 11u); }
+/* 0x4F4E8's mutants (mutant n; 0 = the port's shape). No argument. 0x2F4D0 and the voice are stubs;
+ * 0x2F528 runs on both sides (its 0x2EFD4 and 0x2F198 are the recorded stubs). */
+static u32 d2d_4f4e8_core(const u32 *r, u32 mut)
+{
+#define M(n) (mut == (n))
+    (void)r;
+    u32 mode;
+    if ((DSB(0x00105B3Bu) != 0u) != M(1)) {                                         /* @gate */
+        for (u32 k = 0; k < 2u; k++) {
+            u32 i = M(7) ? 1u - k : k;                                              /* @order */
+            text_number_draw((s32)(1u + i * (M(2) ? 0x21u : 0x22u)), M(3) ? 6 : 7,  /* @cols @row */
+                             (s32)DSD(DS_001077B0 + i * 0x94u + (M(6) ? 0x38u : 0x3Cu)),   /* @field */
+                             M(4) ? 5 : 6, 0u, M(5) ? 0x4000u : 0x2000u);           /* @width @mode */
+        }
+    }
+    if (DSB(0x00105B3Bu) != 0u && !M(8)) return 0u;                                 /* @nogate2 */
+    if (M(10) ? DSD(0x001088D0u) > 0x62u                                            /* @d0uns */
+              : M(9) ? (s32)DSD(0x001088D0u) >= 0x62 : (s32)DSD(0x001088D0u) > 0x62) return 0u;   /* @d0ge */
+    if (DSD(0x001088D0u) == 0u) return 0u;
+    {
+        s32 tick = M(11) ? (s32)(s16)DSW(DS_00104AF4)                               /* @ticksext */
+                 : M(12) ? (s32)(DSD(DS_00104AF4) & 0x7FFFFFFFu) : (s32)DSW(DS_00104AF4);   /* @tickw */
+        if ((tick % (s32)DSD(0x001088D0u)) != 0) return 0u;
+    }
+    if (DSB(0x001088F2u) == 0u && !M(13)) return 0u;                                /* @f2zero */
+    {
+        s32 v = M(15) ? (s32)DSB(0x001088F2u) : ((s32)DSD(0x001088EFu) >> 24);      /* @f2zext */
+        int low = M(14) ? v < 0xA : v <= 0xA;                                       /* @thr */
+        mode = (low != M(21)) ? 0x3000u : 0x4000u;                                  /* @modes */
+        if (low && !M(16) && !M(22)) (void)sound_voice(M(17) ? 0x53u : 0x52u);      /* @novoice @voice */
+        if (M(19)) text_number_draw_font2(0x13, 1, (s32)DSD(0x001088EFu) >> 24, 2, 0u, mode);   /* @drawold */
+        if (!M(18)) DSB(0x001088F2u) = (u8)(DSB(0x001088F2u) - 1u);                 /* @nodec */
+        if (low && M(22)) (void)sound_voice(0x52u);                                 /* @voicelate */
+        if (!M(19)) text_number_draw_font2(M(20) ? 0x12 : 0x13, 1, (s32)DSD(0x001088EFu) >> 24, 2, 0u, mode);   /* @col */
+    }
+#undef M
+    return 0u;
+}
+static void b_d2d_4f4e8(const u32 *r, u32 *eax) { (void)r; flow_round_timer_step(); *eax = 0u; }
+static void m_d2d_4f4e8_gate(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 1u); }
+static void m_d2d_4f4e8_cols(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 2u); }
+static void m_d2d_4f4e8_row(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 3u); }
+static void m_d2d_4f4e8_width(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 4u); }
+static void m_d2d_4f4e8_mode(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 5u); }
+static void m_d2d_4f4e8_field(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 6u); }
+static void m_d2d_4f4e8_order(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 7u); }
+static void m_d2d_4f4e8_nogate2(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 8u); }
+static void m_d2d_4f4e8_d0ge(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 9u); }
+static void m_d2d_4f4e8_d0uns(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 10u); }
+static void m_d2d_4f4e8_ticksext(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 11u); }
+static void m_d2d_4f4e8_tickw(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 12u); }
+static void m_d2d_4f4e8_f2zero(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 13u); }
+static void m_d2d_4f4e8_thr(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 14u); }
+static void m_d2d_4f4e8_f2zext(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 15u); }
+static void m_d2d_4f4e8_novoice(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 16u); }
+static void m_d2d_4f4e8_voice(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 17u); }
+static void m_d2d_4f4e8_nodec(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 18u); }
+static void m_d2d_4f4e8_drawold(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 19u); }
+static void m_d2d_4f4e8_col(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 20u); }
+static void m_d2d_4f4e8_modes(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 21u); }
+static void m_d2d_4f4e8_voicelate(const u32 *r, u32 *eax) { *eax = d2d_4f4e8_core(r, 22u); }
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -25151,6 +25212,29 @@ static const binding_t k_bindings[] = {
     { "input_state_update@e2shift",          m_d2d_4f644_e2shift, 0x00000000u },
     { "input_state_update@e0w",              m_d2d_4f644_e0w, 0x00000000u },
     { "input_state_update@noe2",             m_d2d_4f644_noe2, 0x00000000u },
+    { "flow_round_timer_step",               b_d2d_4f4e8, 0x00000000u },
+    { "flow_round_timer_step@gate",          m_d2d_4f4e8_gate, 0x00000000u },
+    { "flow_round_timer_step@cols",          m_d2d_4f4e8_cols, 0x00000000u },
+    { "flow_round_timer_step@row",           m_d2d_4f4e8_row, 0x00000000u },
+    { "flow_round_timer_step@width",         m_d2d_4f4e8_width, 0x00000000u },
+    { "flow_round_timer_step@mode",          m_d2d_4f4e8_mode, 0x00000000u },
+    { "flow_round_timer_step@field",         m_d2d_4f4e8_field, 0x00000000u },
+    { "flow_round_timer_step@order",         m_d2d_4f4e8_order, 0x00000000u },
+    { "flow_round_timer_step@nogate2",       m_d2d_4f4e8_nogate2, 0x00000000u },
+    { "flow_round_timer_step@d0ge",          m_d2d_4f4e8_d0ge, 0x00000000u },
+    { "flow_round_timer_step@d0uns",         m_d2d_4f4e8_d0uns, 0x00000000u },
+    { "flow_round_timer_step@ticksext",      m_d2d_4f4e8_ticksext, 0x00000000u },
+    { "flow_round_timer_step@tickw",         m_d2d_4f4e8_tickw, 0x00000000u },
+    { "flow_round_timer_step@f2zero",        m_d2d_4f4e8_f2zero, 0x00000000u },
+    { "flow_round_timer_step@thr",           m_d2d_4f4e8_thr, 0x00000000u },
+    { "flow_round_timer_step@f2zext",        m_d2d_4f4e8_f2zext, 0x00000000u },
+    { "flow_round_timer_step@novoice",       m_d2d_4f4e8_novoice, 0x00000000u },
+    { "flow_round_timer_step@voice",         m_d2d_4f4e8_voice, 0x00000000u },
+    { "flow_round_timer_step@nodec",         m_d2d_4f4e8_nodec, 0x00000000u },
+    { "flow_round_timer_step@drawold",       m_d2d_4f4e8_drawold, 0x00000000u },
+    { "flow_round_timer_step@col",           m_d2d_4f4e8_col, 0x00000000u },
+    { "flow_round_timer_step@modes",         m_d2d_4f4e8_modes, 0x00000000u },
+    { "flow_round_timer_step@voicelate",     m_d2d_4f4e8_voicelate, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
