@@ -25082,7 +25082,7 @@ D5C_SPECS += [
     # above 0: the non-zero actors DS_001080E0 and DS_001080DC each take +8 = the dword 0xC82EC[the
     # count] and +0x28 |= 4 (c5 both, c6 and c10 one, c12 none). The count is at least 0 there, so its
     # sign extension (`sar eax,0x18` 0x42F14/0x42F3A) is not observable. Void: its one call site 0x425DE
-    # returns through 0x424E8 to 0x253C9 `jmp 0x2540f` (the 0x25210 row's note; re-used).
+    # is followed by `jmp 0x425ea` and `call 0x33f08`, which loads EAX (0x33F15) before any read of it.
     Spec("flow_challenge_poll", 0x42CB4, [
         d5c_poll_case("c0", 0, cont=0x100),
         d5c_poll_case("c1", 0, phase=0x0020),
