@@ -26745,6 +26745,54 @@ D3A_RO_MUT(ac8late) D3A_RO_MUT(no19820) D3A_RO_MUT(order) D3A_RO_MUT(f2) D3A_RO_
 D3A_RO_MUT(f2early) D3A_RO_MUT(max) D3A_RO_MUT(maxs) D3A_RO_MUT(thr) D3A_RO_MUT(d0w) D3A_RO_MUT(udiv)
 D3A_RO_MUT(sub) D3A_RO_MUT(zero) D3A_RO_MUT(b00) D3A_RO_MUT(b00b) D3A_RO_MUT(aa8) D3A_RO_MUT(aa8w)
 #undef D3A_RO
+/* 0x28CC8: no argument. Full mask: `mov eax,ebx` 0x28D1E or `xor eax,eax` 0x28D50/0x28D60; both callers
+ * `test eax,eax` and pass EAX - 1 on (0x25264/0x25268, 0x2534E/0x25352). */
+static void b_d3a_28cc8(const u32 *r, u32 *eax) { (void)r; *eax = flow_join_poll(); }
+enum { D3A_JN_NONE, D3A_JN_first, D3A_JN_cont, D3A_JN_al, D3A_JN_coinrow, D3A_JN_coinside, D3A_JN_nocoin, D3A_JN_mask,
+       D3A_JN_held, D3A_JN_eq, D3A_JN_erow, D3A_JN_eside, D3A_JN_noerase, D3A_JN_set, D3A_JN_orbit,
+       D3A_JN_nostore, D3A_JN_late, D3A_JN_early, D3A_JN_spendn, D3A_JN_nospend, D3A_JN_ret1,
+       D3A_JN_retside, D3A_JN_psrow, D3A_JN_psrow2, D3A_JN_psbit, D3A_JN_psside, D3A_JN_nops, D3A_JN_order };
+#define D3A_JN(x) (mut == D3A_JN_##x)
+static u32 d3a_28cc8_core(u32 mut)
+{
+    for (u32 side = 0u; side < (D3A_JN(first) ? 1u : 2u); side++) {
+        u32 bit = side + 1u;
+        if ((DSB(0x00104B1Fu) & bit) != 0u) continue;
+        u32 ready = config_credit_ready();
+        if ((D3A_JN(al) ? (ready & 0xFFu) : ready) == 0u) {
+            if (!D3A_JN(nocoin)) prompt_insert_coin(D3A_JN(coinside) ? 1u - side : side, D3A_JN(coinrow) ? 0x1C : 0x1D);
+            if (D3A_JN(cont)) continue;
+            return 0u;
+        }
+        u32 m = DSD(0x0009ACBCu + (D3A_JN(mask) ? 1u - side : side) * 4u);
+        u32 in = D3A_JN(held) ? DSD(0x001088D8u) : DSD(0x001088E4u);
+        if (D3A_JN(eq) ? (m == in) : ((m & in) != 0u)) {
+            u8 v = D3A_JN(set) ? (u8)bit : (u8)(DSB(0x00104B1Fu) | (D3A_JN(orbit) ? side : bit));
+            if (D3A_JN(early)) DSB(0x00104B1Fu) = v;
+            if (D3A_JN(order)) (void)config_credit_spend(1u);
+            if (!D3A_JN(noerase)) prompt_side_erase(D3A_JN(eside) ? (s32)(1u - side) : (s32)side, D3A_JN(erow) ? 0x1C : 0x1D);
+            if (!D3A_JN(nostore) && !D3A_JN(late) && !D3A_JN(early)) DSB(0x00104B1Fu) = v;
+            if (!D3A_JN(nospend) && !D3A_JN(order)) (void)config_credit_spend(D3A_JN(spendn) ? bit : 1u);
+            if (D3A_JN(late)) DSB(0x00104B1Fu) = v;
+            return D3A_JN(ret1) ? 1u : D3A_JN(retside) ? side : bit;
+        }
+        if (!D3A_JN(nops))
+            prompt_press_start(D3A_JN(psside) ? 1u - side : side,
+                               D3A_JN(psrow) ? 0x1D : D3A_JN(psrow2) ? 0x3A00
+                               : ((DSB(0x00104529u) & (D3A_JN(psbit) ? 1u : 2u)) != 0u) ? 0x3A00 : 0x1D);
+        if (D3A_JN(cont)) continue;
+        return 0u;
+    }
+    return 0u;
+}
+#define D3A_JN_MUT(name) \
+    static void m_d3a_jn_##name(const u32 *r, u32 *eax) { (void)r; *eax = d3a_28cc8_core(D3A_JN_##name); }
+D3A_JN_MUT(first) D3A_JN_MUT(cont) D3A_JN_MUT(al) D3A_JN_MUT(coinrow) D3A_JN_MUT(coinside) D3A_JN_MUT(nocoin)
+D3A_JN_MUT(mask) D3A_JN_MUT(held) D3A_JN_MUT(eq) D3A_JN_MUT(erow) D3A_JN_MUT(eside) D3A_JN_MUT(noerase)
+D3A_JN_MUT(set) D3A_JN_MUT(orbit) D3A_JN_MUT(nostore) D3A_JN_MUT(late) D3A_JN_MUT(early) D3A_JN_MUT(spendn)
+D3A_JN_MUT(nospend) D3A_JN_MUT(ret1) D3A_JN_MUT(retside) D3A_JN_MUT(psrow) D3A_JN_MUT(psrow2)
+D3A_JN_MUT(psbit) D3A_JN_MUT(psside) D3A_JN_MUT(nops) D3A_JN_MUT(order)
+#undef D3A_JN
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33583,6 +33631,34 @@ static const binding_t k_bindings[] = {
     { "flow_round_over@b00b", m_d3a_ro_b00b, 0x00000000u },
     { "flow_round_over@aa8", m_d3a_ro_aa8, 0x00000000u },
     { "flow_round_over@aa8w", m_d3a_ro_aa8w, 0x00000000u },
+    { "flow_join_poll", b_d3a_28cc8, 0xFFFFFFFFu },
+    { "flow_join_poll@first", m_d3a_jn_first, 0xFFFFFFFFu },
+    { "flow_join_poll@cont", m_d3a_jn_cont, 0xFFFFFFFFu },
+    { "flow_join_poll@al", m_d3a_jn_al, 0xFFFFFFFFu },
+    { "flow_join_poll@coinrow", m_d3a_jn_coinrow, 0xFFFFFFFFu },
+    { "flow_join_poll@coinside", m_d3a_jn_coinside, 0xFFFFFFFFu },
+    { "flow_join_poll@nocoin", m_d3a_jn_nocoin, 0xFFFFFFFFu },
+    { "flow_join_poll@mask", m_d3a_jn_mask, 0xFFFFFFFFu },
+    { "flow_join_poll@held", m_d3a_jn_held, 0xFFFFFFFFu },
+    { "flow_join_poll@eq", m_d3a_jn_eq, 0xFFFFFFFFu },
+    { "flow_join_poll@erow", m_d3a_jn_erow, 0xFFFFFFFFu },
+    { "flow_join_poll@eside", m_d3a_jn_eside, 0xFFFFFFFFu },
+    { "flow_join_poll@noerase", m_d3a_jn_noerase, 0xFFFFFFFFu },
+    { "flow_join_poll@set", m_d3a_jn_set, 0xFFFFFFFFu },
+    { "flow_join_poll@orbit", m_d3a_jn_orbit, 0xFFFFFFFFu },
+    { "flow_join_poll@nostore", m_d3a_jn_nostore, 0xFFFFFFFFu },
+    { "flow_join_poll@late", m_d3a_jn_late, 0xFFFFFFFFu },
+    { "flow_join_poll@early", m_d3a_jn_early, 0xFFFFFFFFu },
+    { "flow_join_poll@spendn", m_d3a_jn_spendn, 0xFFFFFFFFu },
+    { "flow_join_poll@nospend", m_d3a_jn_nospend, 0xFFFFFFFFu },
+    { "flow_join_poll@ret1", m_d3a_jn_ret1, 0xFFFFFFFFu },
+    { "flow_join_poll@retside", m_d3a_jn_retside, 0xFFFFFFFFu },
+    { "flow_join_poll@psrow", m_d3a_jn_psrow, 0xFFFFFFFFu },
+    { "flow_join_poll@psrow2", m_d3a_jn_psrow2, 0xFFFFFFFFu },
+    { "flow_join_poll@psbit", m_d3a_jn_psbit, 0xFFFFFFFFu },
+    { "flow_join_poll@psside", m_d3a_jn_psside, 0xFFFFFFFFu },
+    { "flow_join_poll@nops", m_d3a_jn_nops, 0xFFFFFFFFu },
+    { "flow_join_poll@order", m_d3a_jn_order, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

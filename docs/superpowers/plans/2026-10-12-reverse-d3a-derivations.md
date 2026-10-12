@@ -29,6 +29,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x25C1C` | `flow_round_hud_init` | 91 | 0: both call sites go on to a load of EAX on every path (`0x25CBC`: `mov eax,[0xa88b4]` `0x25CE4`, `mov eax,[0xa88a4]` `0x25CFF`, `xor eax,eax` `0x25D06`; `0x2935C`: `0x29384`, `0x2939F`, `0x293A6`) |
 | `0x26A50` | `game_mode_23_step` | 572 | 0: `0x25317 call` then `0x2531C jmp 0x2540f` (the mode tail) |
 | `0x27ED8` | `flow_round_over` | 206 | 0: its three call sites in `0x27FA8` (`0x28003`, `0x280BA`, `0x280D2`) are followed by four pops and `ret`; `0x27FA8`'s EAX is dead by the trace of the `0x27DC8` line above |
+| `0x28CC8` | `flow_join_poll` | 158 | full: `mov eax,ebx` `0x28D1E` or `xor eax,eax` `0x28D50`/`0x28D60`; both callers `test eax,eax` and pass EAX - 1 on (`0x25264`/`0x25268`, `0x2534E`/`0x25352`) |
 
 ## §2 The row table (measured)
 
@@ -56,6 +57,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `flow_round_hud_init` | `0x25C1C` | 6 | 7/7 | 16 | 0 | four stubs, all seamed here; `0x29D60` allowed. Open on `0x1D890` and `0x1DC6C` (no row). `r4`: bytes `0x82`, `0x80`, `0x83` (`@b12sext`) |
 | `game_mode_23_step` | `0x26A50` | 16 | 12/12 | 65 | 0 | one row over the four states of the jump table `0x26A40` (a bounded switch the scan follows). The string tree real; `0x29D60` allowed; `0x32970` real in the original only (§4); seven stubs (`0x1DAE8` seamed here, no row). `c2`: character `0x80`; `c3`: side `0x80` |
 | `flow_round_over` | `0x27ED8` | 8 | 9/9 | 30 | 0 | three stubs (`0x1D764`, `0x19820` seamed here; `0x1D764` has no row); the deferred audit add `0x2DAE4(0xF, 1)` real in the original, turned off by its field (§4). With `0x1D764` stubbed the `+0x5A` bytes survive, so m and every divisor vary: `o5` a negative product, `o6` a product that overflows 32 bits, `o3` a byte of `0xFF` (`@maxs`) |
+| `flow_join_poll` | `0x28CC8` | 10 | 12/12 | 27 | `0xFFFFFFFF` | five stubs (`0x2C1C8`, `0x2C178` seamed here). `j6`: the byte `0x104B1F` = `0xFD` and a `0x2C060` EAX of `0x100` (`@al`); `j9`: poked masks (`@eq`); `j3`/`j4`/`j7`: the row by the option bit |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -86,6 +88,8 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x1DAE8` | EAX (`mov dl,al` `0x1DAEB`) | 0 | none | pushes EBX ECX EDX; one plain `ret` (`0x1DC09`) |
 | `0x1D764` | EAX (`mov ebx,eax` `0x1D767`) | 0 | none | pushes EBX ECX EDX; one plain `ret` (`0x1D7B5`) |
 | `0x19820` | none (its first EAX use is `mov eax,0x100c20` `0x19852`) | 0 | none | pushes EBX ECX EDX; one plain `ret` (`0x198C7`) |
+| `0x2C1C8` | EAX, EDX (`mov al,[eax+0xbab58]` `0x2C1C8`; it falls into `0x2C1D4`, which takes EDX as the row) | 0 | `ebx ecx edx esi edi` | the scan's set: `0x2C1C8` has no push of its own (the saves are `0x2C1D4`'s), so it is over-approximated; `0x28CC8` reads no register after the call (`0x28D50 xor eax,eax`, three pops). `0x28D49 xor ebx,ebx` before the call is not an argument |
+| `0x2C178` | EAX, EDX (the row's registers) | 0 | `edx ebp` | pushes EBX ECX ESI; one plain `ret` (`0x2C1AC`) |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -209,6 +213,8 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   (`@maskw`; `o1`'s slot 1 already has both bits clear); the dword `0x104AC8` before `0x19820` (`@ac8late`);
   the byte `0x1088F2 = 0x1E` after `0x19820` (`@f2early`) and before it is read back (`@f2late`: the seed
   `0x80` is negative); then the word `0x104B00` and the dword `0x104AA8` (`@aa8w`).
+- `flow_join_poll`: one store, the byte `0x104B1F |= side + 1`, between `0x2C2B0` and `0x2CA7C` (`@early`,
+  `@late`: only the memory at a call); `@set` and `@orbit` are caught where other bits are set or the side is 0.
 
 ## §6 Queue entries not done
 

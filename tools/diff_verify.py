@@ -18909,6 +18909,46 @@ D3A_SPECS += [
                 "@f2early", "@max", "@maxs", "@thr", "@d0w", "@udiv", "@sub", "@zero", "@b00", "@b00b", "@aa8",
                 "@aa8w")),
 ]
+# 0x2C1C8 falls into 0x2C1D4, whose pushes the scan cannot credit to it: the over-approximated set is
+# harmless under 0x28CC8, which reads no register after the call (0x28D50 `xor eax,eax`, three pops)
+D3A_COIN = E.Call(0x2C1C8, ("eax", "edx"), clobbers=("ebx", "ecx", "edx", "esi", "edi"))
+D3A_PRESS = E.Call(0x2C178, ("eax", "edx"), clobbers=("edx", "ebp"))
+
+
+def d3a_jpoll_case(b1f, held, pressed, b529=0x00, tbl=None):
+    """0x28CC8: 0x11F28's state (d3a_poll_case), the joined-sides byte 0x104B1F and the option
+    byte 0x104529 between neighbours."""
+    p = d3a_poll_case(held, pressed, tbl)
+    p.update({0x00104B1E: bytes([0x65, b1f, 0x66]), 0x00104528: bytes([0x67, b529, 0x68])})
+    return p
+
+
+D3A_SPECS += [
+    # 0x28CC8 flow_join_poll: no argument. The first side (0, 1) whose bit side + 1 is clear in
+    # the byte 0x104B1F decides, and the loop ends there: 0x2C060 zero (`test eax,eax`) ->
+    # 0x2C1C8(side, 0x1D), 0; the mask dword 0x9ACBC[side] newly pressed in 0x1088E4 ->
+    # 0x2C2B0(side, 0x1D), the byte 0x104B1F |= side + 1 (re-read after the call), 0x2CA7C(1),
+    # EAX = side + 1 (EBX across the three calls); else 0x2C178(side, 0x3A00 with 0x104529 bit 1,
+    # else 0x1D), 0. Both bits set: 0. Every callee is a stub (0x2C1C8 and 0x2C178 seamed here).
+    # Full mask.
+    Spec("flow_join_poll", 0x28CC8, [
+        Case("j0", {"ebx": 0x11111111, "ecx": 0x22222222, "edx": 0x33333333},
+             d3a_jpoll_case(0x00, 0, 0x01000100), {0x2C060: 0}),
+        Case("j1", {}, d3a_jpoll_case(0x00, 0, 0x01000000), {0x2C060: 1, 0x2CA7C: 0, 0x2C2B0: 0x12345678}),
+        Case("j2", {}, d3a_jpoll_case(0x01, 0, 0x00000100), {0x2C060: 1, 0x2CA7C: 0x55}),
+        Case("j3", {}, d3a_jpoll_case(0x00, 0x01000000, 0x00000100, b529=0x02), {0x2C060: 1, 0x2C178: 0x77}),
+        Case("j4", {}, d3a_jpoll_case(0x00, 0x01000000, 0x00000100, b529=0xFD), {0x2C060: 1}),
+        Case("j5", {}, d3a_jpoll_case(0x03, 0, 0x01000100), {0x2C060: 1}),
+        Case("j6", {}, d3a_jpoll_case(0xFD, 0, 0xFFFFFFFF), {0x2C060: 0x100, 0x2CA7C: 1}),
+        Case("j7", {}, d3a_jpoll_case(0x02, 0x01000100, 0x00000100, b529=0x01), {0x2C060: 1}),
+        Case("j8", {}, d3a_jpoll_case(0x81, 0, 0x01000100), {0x2C060: 0, 0x2C1C8: 0x99}),
+        Case("j9", {}, d3a_jpoll_case(0x80, 0, 0x00020000, tbl=(0x80030000, 0x00000003, 0x00000004)),
+             {0x2C060: 0xFFFFFFFF, 0x2CA7C: 7}),
+    ], calls=(D3A_READY, D3A_COIN, D3A_ERASE, D3A_SPEND, D3A_PRESS), eax_mask=0xFFFFFFFF,
+       mutants=("@first", "@cont", "@al", "@coinrow", "@coinside", "@nocoin", "@mask", "@held", "@eq", "@erow",
+                "@eside", "@noerase", "@set", "@orbit", "@nostore", "@late", "@early", "@spendn", "@nospend",
+                "@ret1", "@retside", "@psrow", "@psrow2", "@psbit", "@psside", "@nops", "@order")),
+]
 D1_SPECS += D3A_SPECS
 
 
