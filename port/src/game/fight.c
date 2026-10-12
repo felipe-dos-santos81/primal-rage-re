@@ -536,12 +536,16 @@ void fight_char_text_blink(u32 side)
     }
     s32 row = 0x1B;                                     /* 0x43474 */
     if ((s32)strlen((const char *)game_string_get(0x39u)) < 2) row = 0x1C;  /* 0x434C8..0x434DC */
-    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x434F5 */
-    text_cursor_set(col, row - 2, game_string_get(0x36u), 0x1000u);  /* 0x434E1..0x43500 */
-    text_cursor_set(col, row - 1, game_string_get(0x37u), 0x1000u);  /* 0x43505..0x43522 */
-    text_cursor_set(col, row, game_string_get(0x38u), 0x1000u);      /* 0x43527..0x43543 */
-    if ((s32)strlen((const char *)game_string_get(0x39u)) >= 2)      /* 0x43548..0x4355A */
-        text_cursor_set(col, row + 1, game_string_get(0x39u), 0x1000u);  /* 0x4355C..0x4357F */
+    const u8 *s = game_string_get(0x36u);               /* 0x434E1/0x434ED */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row - 2, s, 0x1000u);  /* 0x434F5..0x43500 */
+    s = game_string_get(0x37u);                         /* 0x43505/0x4350F */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row - 1, s, 0x1000u);  /* 0x43517..0x43522 */
+    s = game_string_get(0x38u);                         /* 0x43527/0x43531 */
+    text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row, s, 0x1000u);      /* 0x43538..0x43543 */
+    if ((s32)strlen((const char *)game_string_get(0x39u)) >= 2) {    /* 0x43548..0x4355A */
+        s = game_string_get(0x39u);                     /* 0x4355C/0x43561 */
+        text_cursor_set((s32)DSW(DS_000C894C + side * 2u), row + 1, s, 0x1000u);  /* 0x43569..0x4357F */
+    }
 }
 
 /* 0x435AC — record §48-S. EAX = side. 0x43464's twin for the side that is
