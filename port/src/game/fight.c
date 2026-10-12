@@ -165,6 +165,7 @@ void fight_char_screen_setup(void)
  * pushes and pops EBX, ECX and EDX). */
 void fight_select_marker_release(u32 side)
 {
+    PR_SEAM(0x1D810u, side);
     u32 rec = DSD(DS_001028E0 + side * 4u);             /* 0x1D81A */
     if (rec == 0u) return;                              /* 0x1D822 */
     actor_set_dead(rec);                                /* 0x1D828 0x2B150 */
@@ -1690,6 +1691,7 @@ void fight_hud_meter_step(void)
  * (0x25C1C, EAX = 1) and 0x25AC2 (0x25A84, no entrance). */
 void fight_hud_spawn(u32 enable)
 {
+    PR_SEAM(0x1D890u, enable);
     for (u32 side = 0; side < 2u; side++) {                 /* 0x1D8A6 loop */
         DSB(DS_0010780E + side * 0x94u) = 0;                /* 0x1D8AB */
         DSB(DS_0010290C + side) = 0;                        /* 0x1D8B1 */
@@ -1733,6 +1735,7 @@ void fight_hud_spawn(u32 enable)
  * entrance). */
 void fight_hud_spawn_b(u32 enable)
 {
+    PR_SEAM(0x1DC6Cu, enable);
     for (u32 side = 0; side < 2u; side++) {                 /* 0x1DC83 loop */
         DSB(DS_0010780E + side * 0x94u) = 0;                /* 0x1DC89 */
         DSB(DS_0010290C + side) = 0;                        /* 0x1DC8F */
@@ -1890,6 +1893,7 @@ void fight_1081f0_clear(void)
  * (0x25C1C) and 0x26AAF (0x26A50). */
 void fight_round_reset(void)
 {
+    PR_SEAM0(0x20EF8u);
     for (u32 s = 0; s < 2u; s++) {                      /* 0x20F05..0x20F86 */
         u32 slot = DS_001077B0 + s * 0x94u;
         fight_side_scratch_clear(s);                    /* 0x20F07 0x38BEC */

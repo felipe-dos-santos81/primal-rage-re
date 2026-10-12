@@ -26,6 +26,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x4F9C8` | `frontend_mode_1b_step` | 28 | 0: `0x2540A call` falls into the mode tail `0x2540F` |
 | `0x10DB0` | `frontend_pause_tail` (attract.c) | 104 | 0: every site is `call 0x10db0; call 0x10e18` (`0x11D75`.. `0x11E99`); `0x10E18`'s first EAX use is `mov ah,[0xf0a71]` (`0x10E19`), it reads AH only until `mov eax,0x100` (`0x10E69`) |
 | `0x10E18` | `frontend_continue_tail` (attract.c) | 104 | 0: every site is followed by `call 0x2bf08`, which writes AH first (`0x2BF0E`) and passes AL through on its attract arm; that row's trace (d1c §1: twelve sites, each `pop edx; pop ecx; pop ebx; ret`, traced) holds EAX dead after it |
+| `0x25C1C` | `flow_round_hud_init` | 91 | 0: both call sites go on to a load of EAX on every path (`0x25CBC`: `mov eax,[0xa88b4]` `0x25CE4`, `mov eax,[0xa88a4]` `0x25CFF`, `xor eax,eax` `0x25D06`; `0x2935C`: `0x29384`, `0x2939F`, `0x293A6`) |
 
 ## §2 The row table (measured)
 
@@ -50,6 +51,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `frontend_mode_1b_step` | `0x4F9C8` | 4 | 3/3 | 8 | 0 | `0x4FA88` stubbed (seamed here); `w2`'s stub EAX `0x100` separates `test eax,eax` from an AL test and runs the registered hook |
 | `frontend_pause_tail` | `0x10DB0` | 8 | 7/7 | 20 | 0 | `0x2C3FC` stubbed, `0x29D60` (a bare `ret`) allowed. `t2`/`t3` hold every bit but one with the neighbouring held bytes all set (`@dboff`, `@d9off`, `@either`); `t7` holds the other tail's two bits |
 | `frontend_continue_tail` | `0x10E18` | 8 | 7/7 | 20 | 0 | the same cases with the two bits swapped and the value 5 |
+| `flow_round_hud_init` | `0x25C1C` | 6 | 7/7 | 16 | 0 | four stubs, all seamed here; `0x29D60` allowed. Open on `0x1D890` and `0x1DC6C` (no row). `r4`: bytes `0x82`, `0x80`, `0x83` (`@b12sext`) |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -73,6 +75,10 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x2CAA8` (as a stub; seamed before) | none | 0 | none | `cmp; sete al; and eax,0xff; ret` |
 | `0x4F790` | none | 0 | none | pushes EBX ECX EDX EDI; one plain `ret` (`0x4F7F0`). The raw callers store DX after it (`0x4F269`) |
 | `0x4FA88` | none | 0 | `edi ebp` | pushes EBX ECX EDX ESI; two plain `ret` (`0x4FAE7`, `0x4FB1F`) |
+| `0x1D890` | EAX (`mov [esp+8],al` `0x1D899`) | 0 | none | pushes EBX ECX EDX ESI EDI EBP; one plain `ret` (`0x1DA06`) |
+| `0x1DC6C` | EAX (`mov [esp+8],al` `0x1DC75`) | 0 | none | pushes EBX ECX EDX ESI EDI EBP; one plain `ret` (`0x1DDF2`) |
+| `0x1D810` | EAX (`lea edx,[eax*4]` `0x1D813`) | 0 | `esi edi ebp` | pushes EBX ECX EDX; one plain `ret` (`0x1D836`) |
+| `0x20EF8` | none (`mov eax,ecx` `0x20F05` is its first EAX use) | 0 | none | pushes EBX ECX EDX ESI EDI; one plain `ret` (`0x20F9E`) |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -126,6 +132,8 @@ asserted the text. Unproven against the oracles until the integrator's gate.
 - The mode-step family (`0x4F24C`, `0x4F2B0`, `0x4F318`, `0x4F9C8`): the hook is exercised with two values of the
   dword `0x104AE4` only (the unregistered `0x5D812` and the registered `0x28D68`); the registered hooks take no
   argument, so the EAX/EDX the raw leaves for them (the old countdown and its decrement) are not compared.
+- `flow_round_hud_init`: the byte `0x104B1D` is read twice (`0x25C24`, and again at `0x25C4B` after the HUD
+  call); no stub writes it, so a port that reused the first read is not separated (the port re-reads).
 
 ## §5 Store-sweep findings
 
@@ -165,6 +173,8 @@ asserted the text. Unproven against the oracles until the integrator's gate.
 - The two tails: the latch byte `0xF0A71 = 1` is stored before the voice (`@a71late`: `call #0 memory`), as
   are the bytes `0x104B1B`, `0x104B15` and the words `0xF0A6C`, `0xF0A64` (`@early`); each has a drop mutant
   and the words a byte-store mutant (`@a6cb`, `@a64b`).
+- `flow_round_hud_init`: the dword `0x104AD8 = 0` before the HUD call (`@ad8late`, `@ad8w`) and the byte
+  `0x104B20 = 1` between the marker release and `0x20EF8` (`@b20early`, `@b20late`: only the memory at a call).
 
 ## §6 Queue entries not done
 

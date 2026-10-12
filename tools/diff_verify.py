@@ -18732,6 +18732,38 @@ D3A_SPECS += [
                 "@nob1b", "@nob15", "@a6c", "@a6cb", "@val", "@a64", "@a64else", "@a64b", "@novoice", "@vid",
                 "@early")),
 ]
+D3A_HUD = E.Call(0x1D890, ("eax",))
+D3A_HUD_B = E.Call(0x1DC6C, ("eax",))
+D3A_MARK_REL = E.Call(0x1D810, ("eax",), clobbers=("esi", "edi", "ebp"))
+D3A_ROUND_RESET = E.Call(0x20EF8, ())
+
+
+def d3a_hud_case(b1d, b14, b12):
+    """0x25C1C: the dword 0x104AD8 (0x5A5A5A5A) between seeded dwords, the bytes 0x104B12,
+    0x104B14 and 0x104B1D between neighbours and the byte 0x104B20 (0x5A) between two more."""
+    return {0x00104AD4: le32(0x61616161) + le32(0x5A5A5A5A) + le32(0x62626262),
+            0x00104B11: bytes([0x63, b12, 0x64, b14, 0x65]), 0x00104B1C: bytes([0x66, b1d, 0x67]),
+            0x00104B1F: b"\x68\x5a\x69"}
+
+
+D3A_SPECS += [
+    # 0x25C1C flow_round_hud_init: no argument. 0x29D60 (a bare `ret`, allowed; the port does
+    # not call it); the dword 0x104AD8 = 0; 0x1DC6C(1) when the byte 0x104B1D is 2, else
+    # 0x1D890(1); with the byte not 3 and the byte 0x104B14 non-zero, 0x1D810(the byte 0x104B12
+    # zero-extended); the byte 0x104B20 = 1, then 0x20EF8. The four callees are stubs, all seamed
+    # here (0x1D810 and 0x20EF8 have rows; 0x1D890 and 0x1DC6C have none, so the row stays open
+    # on them). Mask 0: record §1.
+    Spec("flow_round_hud_init", 0x25C1C, [
+        Case("r0", {"edx": 0xABCD1234}, d3a_hud_case(2, 1, 1)),
+        Case("r1", {}, d3a_hud_case(0, 1, 0), {0x1D890: 0x12345678, 0x1D810: 0x9ABCDEF0}),
+        Case("r2", {}, d3a_hud_case(3, 1, 1)),
+        Case("r3", {}, d3a_hud_case(1, 0, 1)),
+        Case("r4", {}, d3a_hud_case(0x82, 0x80, 0x83)),
+        Case("r5", {}, d3a_hud_case(2, 0, 0), {0x1DC6C: 0xFFFFFFFF}),
+    ], allow_calls=(0x29D60,), calls=(D3A_HUD, D3A_HUD_B, D3A_MARK_REL, D3A_ROUND_RESET), eax_mask=0,
+       mutants=("@ad8", "@ad8w", "@ad8late", "@two", "@arg", "@swap", "@three", "@b14", "@b12sext", "@side",
+                "@b20", "@b20v", "@b20late", "@b20early", "@noreset", "@order")),
+]
 D1_SPECS += D3A_SPECS
 
 

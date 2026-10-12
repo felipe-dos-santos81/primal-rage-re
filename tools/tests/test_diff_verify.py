@@ -11273,6 +11273,7 @@ D3A_MASKS = {
     "frontend_mode_1b_step": 0x0,
     "frontend_pause_tail": 0x0,
     "frontend_continue_tail": 0x0,
+    "flow_round_hud_init": 0x0,
 }
 D3A_KINDS = {
     "frontend_coin_poll@nocredit": {'call #0', 'call #1', 'eax'},
@@ -11663,6 +11664,22 @@ D3A_KINDS = {
     "frontend_continue_tail@novoice": {'call #0'},
     "frontend_continue_tail@vid": {'call #0'},
     "frontend_continue_tail@early": {'call #0 memory'},
+    "flow_round_hud_init@ad8": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "flow_round_hud_init@ad8w": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "flow_round_hud_init@ad8late": {'call #0 memory'},
+    "flow_round_hud_init@two": {'call #0'},
+    "flow_round_hud_init@arg": {'call #0'},
+    "flow_round_hud_init@swap": {'call #0'},
+    "flow_round_hud_init@three": {'call #1', 'call #1 memory', 'call #2'},
+    "flow_round_hud_init@b14": {'call #1', 'call #1 memory', 'call #2'},
+    "flow_round_hud_init@b12sext": {'call #1'},
+    "flow_round_hud_init@side": {'call #1'},
+    "flow_round_hud_init@b20": {'byte', 'call #1 memory', 'call #2 memory'},
+    "flow_round_hud_init@b20v": {'byte', 'call #1 memory', 'call #2 memory'},
+    "flow_round_hud_init@b20late": {'call #1 memory', 'call #2 memory'},
+    "flow_round_hud_init@b20early": {'call #1 memory'},
+    "flow_round_hud_init@noreset": {'call #1', 'call #2'},
+    "flow_round_hud_init@order": {'call #1', 'call #1 memory', 'call #2', 'call #2 memory'},
 }
 D3A_CASES = [
     ("frontend_coin_poll@nocredit", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
@@ -12053,6 +12070,22 @@ D3A_CASES = [
     ("frontend_continue_tail@novoice", ['t0', 't6']),
     ("frontend_continue_tail@vid", ['t0', 't6']),
     ("frontend_continue_tail@early", ['t0', 't6']),
+    ("flow_round_hud_init@ad8", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("flow_round_hud_init@ad8w", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("flow_round_hud_init@ad8late", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("flow_round_hud_init@two", ['r0', 'r2', 'r5']),
+    ("flow_round_hud_init@arg", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("flow_round_hud_init@swap", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("flow_round_hud_init@three", ['r0', 'r2']),
+    ("flow_round_hud_init@b14", ['r3', 'r5']),
+    ("flow_round_hud_init@b12sext", ['r4']),
+    ("flow_round_hud_init@side", ['r1', 'r4']),
+    ("flow_round_hud_init@b20", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("flow_round_hud_init@b20v", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("flow_round_hud_init@b20late", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("flow_round_hud_init@b20early", ['r0', 'r1', 'r4']),
+    ("flow_round_hud_init@noreset", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("flow_round_hud_init@order", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
 ]
 D1_MASKS.update(D3A_MASKS)
 D1_KINDS.update(D3A_KINDS)
@@ -13107,7 +13140,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
-        0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x2C060: (), 0x2C0F4: ("ebx", "ecx", "edx", "ebp"), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA48: (), 0x2CA78: (), 0x2CA7C: (), 0x2CAA8: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (), 0x4F790: (), 0x4FA88: ("edi", "ebp"),
+        0x1D810: ("esi", "edi", "ebp"), 0x1D890: (), 0x1DC6C: (), 0x20EF8: (), 0x2716C: (), 0x27254: (), 0x278B0: (), 0x27C48: (), 0x2C060: (), 0x2C0F4: ("ebx", "ecx", "edx", "ebp"), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA48: (), 0x2CA78: (), 0x2CA7C: (), 0x2CAA8: (), 0x2DDE4: ("edx",), 0x32B4C: ("edx",), 0x4651C: (), 0x46534: ("edx",), 0x4F728: (), 0x4F790: (), 0x4FA88: ("edi", "ebp"),
         # D2 d2b (record 2026-10-11-reverse-d2b): the stubs its rows add
         0x10D70: ("ebx", "ecx", "edx"), 0x1A8F4: ("edx",), 0x38BEC: (), 0x46670: (),
         0x2C320: (), 0x33C18: (), 0x2C088: ("ebx", "edx", "edi", "ebp"), 0x1D7B8: ("ebx", "edx"),
