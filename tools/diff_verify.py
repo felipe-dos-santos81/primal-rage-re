@@ -18484,6 +18484,65 @@ D3B_SPECS += [
            "nowalk once").split())),
 ]
 
+D3B_MEAN = E.Call(0x4AA6C, ("eax",), mode="real")
+
+
+def d3b_sv_case(b5a, nodes, recpos=(0x00011000, 0x00022000)):
+    """0x4A928: both slots' +0x59..+0x5B (`b5a` = the two +0x5A bytes) and record pointers; the
+    DS_0010884C list of d2b's 0x4AA6C fixture (`nodes` = ((the +0x21 byte, the actor's 0x2BE00
+    value), ...)); each slot record's own 0x2BE00 value `recpos`; the dwords DS_00108858 / 5C /
+    70 / 7C and the bytes DS_001088C6..CA, all non-zero inside seeded neighbours."""
+    p = d2b_mean_case(nodes)
+    for s, (rec, idx) in enumerate(((D2B_REC0, 5), (D2B_REC1, 6))):
+        p[D2B_SLOTS + s * 0x94] = le32(rec)
+        p[D2B_SLOTS + s * 0x94 + 0x59] = bytes([0x59 + s, b5a[s], 0x5B + s])
+        p[rec + 0x54] = le16(0x5454) + le16(idx) + le16(0x5858)
+        p[D2B_PSET + idx * 0x20] = le32(0x0BAD0000 + idx) + le32(recpos[s]) + le32(0x0BAD0008)
+    p[0x00108854] = le32(0x0BAD8854) + le32(0x58585858) + le32(0x5C5C5C5C) + le32(0x0BAD8860)
+    p[0x0010886C] = le32(0x0BAD886C) + le32(0x70707070) + le32(0x0BAD8874) + le32(0x0BAD8878) \
+        + le32(0x7C7C7C7C) + le32(0x0BAD8880)
+    p[0x001088C5] = bytes([0xC5, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xCB])
+    return p
+
+
+D3B_SPECS += [
+    # 0x4A928 fight_4a928: no argument. 0x4AA6C and 0x2BE00 run their own bytes on both sides,
+    # recorded (a stub's one EAX per case could not give the two means different values). EAX dies
+    # unread at its one call site 0x4A562 (the walk, record d3b §1): mask 0.
+    Spec("fight_4a928", 0x4A928, [
+        # slot 0's +0x5A below 0x78 (C9 = 1) and equal to slot 1's; the side-1 mean below the side-0
+        # mean by 0x3000: DS_0010887C
+        Case("s0", {}, d3b_sv_case((0x10, 0x10), ((1, 0x2FFF), (0, 0x5FFF)))),
+        # +0x5A = 0x78 (C9 = 0), slot 1's differs; a gap of 0x13FF: DS_00108870
+        Case("s1", {}, d3b_sv_case((0x78, 0x77), ((0, 0x1000), (1, 0x23FF)))),
+        # a gap of exactly 0x1400
+        Case("s2", {}, d3b_sv_case((0x77, 0x78), ((1, 0x1000), (0, 0x2400)))),
+        # the first mean above the second by 0x1400, by 0x13FF, and equal
+        Case("s3", {}, d3b_sv_case((0x79, 0x79), ((0, 0x2400), (1, 0x1000)))),
+        Case("s4", {}, d3b_sv_case((0x00, 0x01), ((1, 0x23FF), (0, 0x1000), (1, 0x23FF)))),
+        Case("s5", {}, d3b_sv_case((0xFF, 0x10), ((0, 0x4000), (1, 0x4000)))),
+        # no entry of side C9: the first mean is slot C9's record's own position
+        Case("s6", {}, d3b_sv_case((0x20, 0x21), ((0, 0x9000),))),
+        Case("s7", {}, d3b_sv_case((0x80, 0x80), ((1, 0x0400),), recpos=(0x00033000, 0x00044000))),
+        # no entry at all: both from slot C9's record
+        Case("s8", {}, d3b_sv_case((0x01, 0x90), ())),
+        Case("s9", {}, d3b_sv_case((0x90, 0x01), (), recpos=(0x00055000, 0x00066000))),
+        # no entry of the other side
+        Case("s10", {}, d3b_sv_case((0x30, 0x30), ((1, 0x7000),))),
+        Case("s11", {}, d3b_sv_case((0xA0, 0x30), ((0, 0x0100),), recpos=(0x00003000, 0x00077000))),
+        # a mean of 0 with an entry present (-1 / 1 + 1): the fallback all the same
+        Case("s12", {}, d3b_sv_case((0x40, 0x41), ((1, 0xFFFFFFFF), (0, 0x8000)))),
+        # the subtraction wraps: 0x80000000 against 0x7FFFFFFF, both ways
+        Case("s13", {}, d3b_sv_case((0x40, 0x41), ((1, 0x7FFFFFFF), (0, 0x7FFFFFFE)))),
+        Case("s14", {}, d3b_sv_case((0x40, 0x41), ((1, 0x7FFFFFFE), (0, 0x7FFFFFFF)))),
+        # negative means
+        Case("s15", {}, d3b_sv_case((0x7A, 0x7A), ((0, 0xFFFFE000), (1, 0xFFFFF7FF)))),
+    ], calls=(D3B_MEAN, D2B_2BE00), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "c6 z870 z87c c9s1 c9le c9sx c7 c7ne aside s5c fb1 fb1s c6one s58 fb2 fb2s c8one c8c6 d1400 le "
+           "cmpu cadrop ca gap gapu dirs t7c t70").split())),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [

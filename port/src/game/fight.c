@@ -3105,6 +3105,7 @@ void fight_496dc(u32 entry, s32 count)
  * before the body. Callers: 0x4A97A and 0x4A9C2 (0x4A928). */
 s32 fight_4aa6c(s32 side)
 {
+    PR_SEAM_RET(0x4AA6Cu, (u32)side);
     s32 sum = 0;
     u32 count = 0;
     u32 e = DSD(DS_0010884C);                           /* 0x4AA77 */

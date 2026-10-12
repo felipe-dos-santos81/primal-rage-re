@@ -26537,6 +26537,86 @@ D3B_FL(walkk, 51)
 D3B_FL(nowalk, 52)
 D3B_FL(once, 53)
 #undef D3B_FL
+
+/* 0x4A928's mutants. No argument. */
+static void d3b_4a928_core(u32 mut)
+{
+    if (!(mut & 1u)) DSB(0x001088C6u) = 0u;                                   /* @c6 */
+    if (!(mut & 2u)) DSD(0x00108870u) = 0u;                                   /* @z870 */
+    if (!(mut & 4u)) DSD(0x0010887Cu) = 0u;                                   /* @z87c */
+    u8 h0 = DSB((mut & 8u) ? 0x0010789Eu : 0x0010780Au);                      /* @c9s1 */
+    DSB(0x001088C9u) = (mut & 0x10u) ? (u8)((s32)h0 <= 0x78)                  /* @c9le */
+                     : (mut & 0x20u) ? (u8)((s32)(s8)h0 < 0x78)               /* @c9sx */
+                     : (u8)((s32)h0 < 0x78);
+    if (!(mut & 0x40u))                                                       /* @c7 */
+        DSB(0x001088C7u) = (u8)((DSB(0x0010780Au) == DSB(0x0010789Eu)) != ((mut & 0x80u) != 0u));   /* @c7ne */
+    s32 c9 = (s32)(s8)DSB(0x001088C9u);
+    s32 a = fight_4aa6c((mut & 0x100u) ? (c9 ^ 1) : c9);                      /* @aside */
+    if (!(mut & 0x200u)) DSD(0x0010885Cu) = (u32)a;                           /* @s5c */
+    if (a == 0) {
+        u32 s = (u32)(s32)(s8)DSB(0x001088C9u);
+        if (mut & 0x400u) s ^= 1u;                                            /* @fb1 */
+        a = fight_2be00(DSD(DS_001077B0 + s * 0x94u));
+        if (!(mut & 0x800u)) DSD(0x0010885Cu) = (u32)a;                       /* @fb1s */
+        if (!(mut & 0x1000u)) DSB(0x001088C6u) = 1u;                          /* @c6one */
+    }
+    s32 b = fight_4aa6c((mut & 0x100u) ? c9 : (s32)(s8)(DSB(0x001088C9u) ^ 1u));
+    if (!(mut & 0x2000u)) DSD(0x00108858u) = (u32)b;                          /* @s58 */
+    if (b == 0) {
+        u32 s = (u32)(s32)(s8)DSB(0x001088C9u);
+        if (mut & 0x4000u) s ^= 1u;                                           /* @fb2 */
+        b = fight_2be00(DSD(DS_001077B0 + s * 0x94u));
+        if (!(mut & 0x8000u)) DSD(0x00108858u) = (u32)b;                      /* @fb2s */
+        if (mut & 0x20000u) DSB(0x001088C6u) = 1u;                            /* @c8c6 */
+        else if (!(mut & 0x10000u)) DSB(0x001088C8u) = 1u;                    /* @c8one */
+    }
+    u32 ua = (u32)a, ub = (u32)b, d = (mut & 0x40000u) ? 0x1000u : 0x1400u;   /* @d1400 */
+    int below = (mut & 0x80000u) ? (a <= b) : (mut & 0x100000u) ? (ua < ub) : (a < b);   /* @le, @cmpu */
+    if (!(mut & 0x200000u))                                                   /* @cadrop */
+        DSB(0x001088CAu) = (u8)((below ? 0u : 1u) ^ ((mut & 0x400000u) ? 1u : 0u));   /* @ca */
+    u32 gap = below ? ub - ua : ua - ub;
+    int wide = (mut & 0x800000u) ? ((s32)gap > 0x1400) : (mut & 0x1000000u) ? (gap >= 0x1400u) : ((s32)gap >= 0x1400);   /* @gap, @gapu */
+    int toward = (below != 0) != ((mut & 0x2000000u) != 0u);                  /* @dirs */
+    if (wide) {
+        u32 base = (mut & 0x4000000u) ? ub : ua;                              /* @t7c */
+        DSD(0x0010887Cu) = toward ? base + d : base - d;
+    } else {
+        u32 base = (mut & 0x8000000u) ? ua : ub;                              /* @t70 */
+        DSD(0x00108870u) = toward ? base - d : base + d;
+    }
+}
+static void b_d3b_4a928(const u32 *r, u32 *eax) { (void)r; fight_4a928(); *eax = 0u; }
+#define D3B_SV(name, mut) \
+    static void m_d3b_sv_##name(const u32 *r, u32 *eax) { (void)r; d3b_4a928_core(mut); *eax = 0u; }
+D3B_SV(c6, 1u)
+D3B_SV(z870, 2u)
+D3B_SV(z87c, 4u)
+D3B_SV(c9s1, 8u)
+D3B_SV(c9le, 0x10u)
+D3B_SV(c9sx, 0x20u)
+D3B_SV(c7, 0x40u)
+D3B_SV(c7ne, 0x80u)
+D3B_SV(aside, 0x100u)
+D3B_SV(s5c, 0x200u)
+D3B_SV(fb1, 0x400u)
+D3B_SV(fb1s, 0x800u)
+D3B_SV(c6one, 0x1000u)
+D3B_SV(s58, 0x2000u)
+D3B_SV(fb2, 0x4000u)
+D3B_SV(fb2s, 0x8000u)
+D3B_SV(c8one, 0x10000u)
+D3B_SV(c8c6, 0x20000u)
+D3B_SV(d1400, 0x40000u)
+D3B_SV(le, 0x80000u)
+D3B_SV(cmpu, 0x100000u)
+D3B_SV(cadrop, 0x200000u)
+D3B_SV(ca, 0x400000u)
+D3B_SV(gap, 0x800000u)
+D3B_SV(gapu, 0x1000000u)
+D3B_SV(dirs, 0x2000000u)
+D3B_SV(t7c, 0x4000000u)
+D3B_SV(t70, 0x8000000u)
+#undef D3B_SV
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -33124,6 +33204,35 @@ static const binding_t k_bindings[] = {
     { "fight_4987c@walkk", m_d3b_fl_walkk, 0x00000000u },
     { "fight_4987c@nowalk", m_d3b_fl_nowalk, 0x00000000u },
     { "fight_4987c@once", m_d3b_fl_once, 0x00000000u },
+    { "fight_4a928", b_d3b_4a928, 0x00000000u },
+    { "fight_4a928@c6", m_d3b_sv_c6, 0x00000000u },
+    { "fight_4a928@z870", m_d3b_sv_z870, 0x00000000u },
+    { "fight_4a928@z87c", m_d3b_sv_z87c, 0x00000000u },
+    { "fight_4a928@c9s1", m_d3b_sv_c9s1, 0x00000000u },
+    { "fight_4a928@c9le", m_d3b_sv_c9le, 0x00000000u },
+    { "fight_4a928@c9sx", m_d3b_sv_c9sx, 0x00000000u },
+    { "fight_4a928@c7", m_d3b_sv_c7, 0x00000000u },
+    { "fight_4a928@c7ne", m_d3b_sv_c7ne, 0x00000000u },
+    { "fight_4a928@aside", m_d3b_sv_aside, 0x00000000u },
+    { "fight_4a928@s5c", m_d3b_sv_s5c, 0x00000000u },
+    { "fight_4a928@fb1", m_d3b_sv_fb1, 0x00000000u },
+    { "fight_4a928@fb1s", m_d3b_sv_fb1s, 0x00000000u },
+    { "fight_4a928@c6one", m_d3b_sv_c6one, 0x00000000u },
+    { "fight_4a928@s58", m_d3b_sv_s58, 0x00000000u },
+    { "fight_4a928@fb2", m_d3b_sv_fb2, 0x00000000u },
+    { "fight_4a928@fb2s", m_d3b_sv_fb2s, 0x00000000u },
+    { "fight_4a928@c8one", m_d3b_sv_c8one, 0x00000000u },
+    { "fight_4a928@c8c6", m_d3b_sv_c8c6, 0x00000000u },
+    { "fight_4a928@d1400", m_d3b_sv_d1400, 0x00000000u },
+    { "fight_4a928@le", m_d3b_sv_le, 0x00000000u },
+    { "fight_4a928@cmpu", m_d3b_sv_cmpu, 0x00000000u },
+    { "fight_4a928@cadrop", m_d3b_sv_cadrop, 0x00000000u },
+    { "fight_4a928@ca", m_d3b_sv_ca, 0x00000000u },
+    { "fight_4a928@gap", m_d3b_sv_gap, 0x00000000u },
+    { "fight_4a928@gapu", m_d3b_sv_gapu, 0x00000000u },
+    { "fight_4a928@dirs", m_d3b_sv_dirs, 0x00000000u },
+    { "fight_4a928@t7c", m_d3b_sv_t7c, 0x00000000u },
+    { "fight_4a928@t70", m_d3b_sv_t70, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
