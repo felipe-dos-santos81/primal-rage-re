@@ -13395,9 +13395,9 @@ D2E_M12_FLASH, D2E_M12_REVEAL = E.Call(0x414B4, ("eax",)), E.Call(0x41528, ("eax
 D2E_M12_DARKEN, D2E_M12_BOARD, D2E_M12_TALLY = E.Call(0x41578, ()), E.Call(0x418F4, ()), E.Call(0x416D4, ())
 D2E_M12_ADVANCE, D2E_M12_CONT, D2E_M12_OVER = E.Call(0x4160C, ()), E.Call(0x41760, ()), E.Call(0x417C4, ())
 D2E_M12_TIMER = E.Call(0x4660C, ("eax",))
-# 0x25848 picks the stage word 0x104AFC; the stub stores 4 there, so the 0x41350 call that follows
-# it (0x4239C reads the word after the call) shows whether it was read before or after
-D2E_M12_PICK = E.Call(0x25848, (), writes=((None, 0x00104AFC, le16(4)),))
+# 0x25848 picks the stage word 0x104AFC; the stub stores 0x0104 there, so the 0x41350 call that
+# follows it (0x4239C reads the word after the call) shows whether it was read before or after
+D2E_M12_PICK = E.Call(0x25848, (), writes=((None, 0x00104AFC, le16(0x0104)),))
 D2E_M12_SELECT = E.Call(0x41350, ("eax", "edx"), clobbers=("edx",))
 D2E_M12_JOIN = E.Call(0x271E0, ())
 D2E_M12_CLOSE = E.Call(0x32A3C, ("eax", "edx"), clobbers=("edx",))
@@ -13446,7 +13446,7 @@ def d2e_m12_case(state, r=0, flag=0x02, afc=3, afe=0x5A5A, b23=0x93, bg=(0x1800,
         0x00104AD4: le32(r), 0x00104ABC: le32(abc),
         0x00104AE0: le32(0xE0E0E0E0) + le32(0xE4E4E4E4) + le32(0xE8E8E8E8),
         0x00104528: bytes([0x5C, flag]), 0x0010452B: bytes([0x2B, b52c, 0x2D]),
-        0x00104AFA: le16(0xFAFA) + le16(afc) + le16(afe) + le16(0x5B5B),
+        0x00104AFA: le16(0xFAFA) + le16(afc) + le16(afe) + le16(0x5B5B) + b"\x6c",
         0x001088EC: le16(0xECEC) + le16(0xEEEE) + le16(0xF0F0),
         0x00105B39: bytes([0x39, b3a, 0x3B]),
         0x001080B8: le32(0xB8B8B8B8) + le32(bc) + b"".join(le32(D2E_SLOT_REC + k * 0x40) for k in range(7)),
@@ -13494,9 +13494,9 @@ D2E_SPECS += [
     # 0xFF, 0x3600), its handle to 0x1080BC; else string 0x4F at (-1, 0x1B), mode 0x4003. Then the
     # countdown 0x104AFE = 0xF (word), 0x104B25 = 8, 0x104B23 = 1.
     d2e_m12_spec(0, [
-        Case("a0", {}, d2e_m12_case(0, flag=0x02, px=0x8123), {0x2AE14: D2E_SPAWNED}),
+        Case("a0", {}, d2e_m12_case(0, flag=0x02, px=0x8123, afc=0x0103), {0x2AE14: D2E_SPAWNED}),
         Case("a1", D2E_DIRTY, d2e_m12_case(0, flag=0xFD, strings=D2E_M12_TXT), {0x2AE14: D2E_SPAWNED}),
-    ], ()),
+    ], ("@bit", "@x", "@desc", "@y", "@bc", "@id", "@row", "@mode", "@afe", "@afew", "@b25", "@b23", "@order")),
     # State 1: from slot 0x10810F, the first slot below 7 that is not the stage word 0x104AFC and
     # has bit 7 of its byte 0x108106[i]: 0x414B4(i), the counter 0x108112 post-incremented into
     # voice 0x34 + n, and unless the side is 2 a tally 0x108104[side] for each side whose character
@@ -13504,22 +13504,25 @@ D2E_SPECS += [
     # 0x104B23 = 1, 0x104AFE = 8, 0x104B25 = 8, 0x108111 += 1. With no such slot: 0x41578 when the
     # side is 2 or its +0x63 is 1, else 0x104AFE = 0x1E, 0x104B23 = 2, 0x104B25 = 8.
     d2e_m12_spec(1, [
-        Case("b0", {}, d2e_m12_case(1, r=0, afc=0, c10f=0, slots=b"\x85\x85\x03\x04\x05\x06\x07", ch=(5, 5))),
-        Case("b1", D2E_DIRTY, d2e_m12_case(1, r=1, afc=0x0302, c10f=2, slots=b"\x82\x82\x82\x46\xC5\x06\x07",
-                                           ch=(5, 5), c112=0xFF, c111=0xFF), {0x2C3FC: 0}),
+        Case("b0", {}, d2e_m12_case(1, r=0, afc=0, c10f=0, slots=b"\x85\x85\x03\x04\x05\x06\x07", ch=(5, 5),
+                                    c113=0x13)),
+        Case("b1", D2E_DIRTY, d2e_m12_case(1, r=1, afc=0x0302, c10f=2, slots=b"\x82\x82\xC2\x46\xC5\x06\x07",
+                                           ch=(5, 2), c112=0xFF, c111=0xFF), {0x2C3FC: 0}),
         Case("b2", {}, d2e_m12_case(1, r=2, afc=9, c10f=1, slots=b"\x82\x02\x03\x04\x05\x06\x82", ch=(2, 2))),
         Case("b3", {}, d2e_m12_case(1, r=2, afc=6, c10f=0, slots=b"\x01\x02\x03\x04\x05\x06\x87", f63=(0, 0))),
         Case("b4", {}, d2e_m12_case(1, r=0, afc=3, c10f=7, slots=b"\x80" * 7, f63=(1, 0))),
-        Case("b5", {}, d2e_m12_case(1, r=1, afc=3, c10f=9, slots=b"\x80" * 7, f63=(1, 0x81))),
+        Case("b5", {}, d2e_m12_case(1, r=1, afc=0x0703, c10f=9, slots=b"\x80" * 7, f63=(1, 0x81))),
         Case("b6", {}, d2e_m12_case(1, r=0, afc=2, c10f=4, slots=b"\x80\x80\x80\x80\x45\x7F\x40", f63=(0, 1))),
-    ], ()),
+    ], ("@start", "@skip", "@afcb", "@bit80", "@flash", "@nstore", "@post", "@r2", "@cls", "@tag", "@chside",
+        "@tally", "@i1", "@b23", "@afe", "@b25", "@c111", "@order", "@end", "@dark2", "@f63", "@f63side",
+        "@tafe", "@tb23", "@tb25")),
     # State 2: with 0x104529 bit 1 the prompt handle 0x1080BC is killed (0x2B150); else string 0x50
     # at (-1, 0x1B), mode 0x4000 through 0x2F510. Then 0x104B25 = 3 and the background record's
     # +0x36 word = 0x40.
     d2e_m12_spec(2, [
         Case("c0", {}, d2e_m12_case(2, flag=0x02)),
         Case("c1", D2E_DIRTY, d2e_m12_case(2, flag=0xFD, strings=D2E_M12_TXT)),
-    ], ()),
+    ], ("@bit", "@dead", "@id", "@row", "@mode", "@b25", "@w36", "@w36v", "@w36b", "@order")),
     # State 3: nothing until the background's +0x36 (signed word) + its +0x1C reaches 0x2300
     # (`jl`); then +0x1C = 0x2300, +0x36 = 0, and with 0x104529 bit 1 four spawns (the side's
     # character descriptor 0xA7760[+0x7A] at x = (0xA8 - (the stage's byte 0xC86A8 + 0x58) / 2) << 6,
@@ -13543,7 +13546,9 @@ D2E_SPECS += [
              {0x2F0F0: 0xFFFFFFFF}),
         Case("d5", {}, d2e_m12_case(3, bg=(0x1800, 0x7FFFFFFF, 0x200, 0x3434, 0x0001))),
         Case("d6", {}, d2e_m12_case(3, bg=(0x1800, 0x80000000, 0x200, 0x3434, 0xFFFF))),
-    ], ()),
+    ], ("@zext", "@le", "@y1c", "@w36", "@bit", "@chside", "@afcb", "@half", "@desc", "@y", "@pal", "@palgate",
+        "@x50", "@halfw", "@seek", "@noseek", "@ylast", "@xlast", "@w2", "@wmode", "@div", "@col", "@row",
+        "@first", "@lines", "@c10e", "@tally", "@b25", "@c111", "@voice", "@order")),
     # State 4: 0x414B4(the stage word), 0x10810E += 1, voice 0xC7 when it is now exactly 8, then
     # 0x104AFE = 4, 0x104B23 = 5, 0x104B25 = 8.
     d2e_m12_spec(4, [
@@ -13551,7 +13556,7 @@ D2E_SPECS += [
         Case("e1", D2E_DIRTY, d2e_m12_case(4, afc=1, c10e=7)),
         Case("e2", {}, d2e_m12_case(4, afc=1, c10e=8)),
         Case("e3", {}, d2e_m12_case(4, afc=1, c10e=0xFF)),
-    ], ()),
+    ], ("@afcb", "@noinc", "@ge8", "@voice", "@afe", "@b23", "@b25", "@order")),
     # State 5: while 0x10810E is below 8 (zero-extended), 0x41528(the stage word), 0x104B23 = 4,
     # 0x104AFE = 4, 0x104B25 = 8. Otherwise 0x418F4, then 0x416D4 when 0x104B1F is 3, else voice
     # 0x33 and 0x4160C when the side's tally is 7, 0x41760 when it is not.
@@ -13561,7 +13566,8 @@ D2E_SPECS += [
         Case("f2", D2E_DIRTY, d2e_m12_case(5, r=1, c10e=9, b1f=2, tally=(6, 7))),
         Case("f3", {}, d2e_m12_case(5, r=0, c10e=0x80, b1f=0x83, tally=(6, 7))),
         Case("f4", {}, d2e_m12_case(5, r=1, c10e=8, b1f=0, tally=(7, 8))),
-    ], ()),
+    ], ("@le8", "@signed", "@afcb", "@b23", "@afe", "@b25", "@noboard", "@b1f", "@voice", "@seven", "@tside",
+        "@swap", "@order")),
     # State 6: step = (the background's +0x2C word, zero-extended, - 0x180) / 64 (truncating);
     # 0x108100 = the word 0xC8518[side]; 0x108102 = 0x2600 (0x104529 bit 1) or 0x2800, less (the
     # side's +0x82 - 1) << 11; the background's +0x34/+0x36 words = (those words, zero-extended,
@@ -13572,8 +13578,9 @@ D2E_SPECS += [
         Case("g1", D2E_DIRTY, d2e_m12_case(6, r=1, flag=0xFD, bg=(0x00012345, 0xFFFF0000, 0x8200, 0x3434, 0x3636),
                                            cyc=(9, 0), xw=(0x0600, 0x9000))),
         Case("g2", {}, d2e_m12_case(6, r=0, flag=0x00, bg=(0x00009000, 0x00004000, 0x00FF, 0x3434, 0x3636),
-                                    cyc=(0x80, 1), xw=(0x8001, 0x4F00))),
-    ], ()),
+                                    cyc=(0xF4, 1), xw=(0x8001, 0x4F00))),
+    ], ("@sext", "@floor", "@sub", "@w100side", "@now100", "@cycside", "@bit", "@dec", "@now102", "@vx1c",
+        "@vxs", "@vy18", "@vys", "@vswap", "@voice", "@b25", "@b25early", "@anim0", "@speed", "@n", "@tbl")),
     # State 7: the background's +0x2C word -= 0x40; while it is above 0x180 (the 16-bit result
     # zero-extended, `jg`) nothing more. Then the background dies (0x2B150), 0xC85A8 spawns at
     # (0x108100, 0xFF, 0x108102), 0x41310(side, 100000), the side's +0x3C is drawn at col
@@ -13598,17 +13605,20 @@ D2E_SPECS += [
                                     c113=1, b3a=1, f63=(0, 1), extra=D2E_M12_AUDIT_OFF)),
         Case("h8", {}, d2e_m12_case(7, r=1, flag=0x02, bg=(0x1800, 0x2000, 0x0180, 0x3434, 0x3636), b52c=0x80,
                                     c113=0, b3a=0x80, f63=(1, 0), b19=0x80, extra=D2E_M12_AUDIT_OFF)),
-    ], ()),
+    ], ("@sext", "@nowrap", "@dec", "@nostore", "@ge", "@dead", "@spawnxy", "@desc", "@pts", "@ptside", "@bit",
+        "@colside", "@valside", "@width", "@pad", "@mode", "@row", "@b1d", "@b1f", "@lt9", "@c113", "@col",
+        "@pickorder", "@selside", "@selafc", "@hook", "@ee", "@afe", "@b00", "@b3a", "@a7", "@v3c",
+        "@joinorder", "@close", "@b19", "@b19early")),
     # State 8 and the guard: the countdown word 0x104AFE decrements; at zero or below (signed,
     # 0x42455 `jg`) 0x104B25 = 0x104B23. A state byte above 8 returns at once (0x41C38 `ja`).
     d2e_m12_spec(8, [
-        Case("i0", {}, d2e_m12_case(8, afe=5)),
+        Case("i0", {}, d2e_m12_case(8, afe=5, afc=0x0103)),
         Case("i1", {}, d2e_m12_case(8, afe=1)),
         Case("i2", D2E_DIRTY, d2e_m12_case(8, afe=0, b23=0x07)),
         Case("i3", {}, d2e_m12_case(8, afe=0x0100, b23=0x02)),
         Case("j0", {}, d2e_m12_case(9, afe=1)),
         Case("j1", D2E_DIRTY, d2e_m12_case(0xFF, afe=1)),
-    ], ()),
+    ], ("@gt", "@nodec", "@byte", "@unsigned", "@lt", "@copy")),
 ]
 D1_SPECS += D2E_SPECS
 
