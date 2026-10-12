@@ -1379,18 +1379,18 @@ static void camera_projectile_hit(u32 side)
  * return 1; else 0. */
 static int camera_projectile_clash(void)
 {
-    if (camera_box_overlap(DSW(DSD(DS_001077B8) + 0x56u),
-                           DSW(DSD(DS_0010784C) + 0x56u)) == 0)
-        return 0;                                              /* 0x17BF1 */
-    if (camera_sync_visible(0x20u, 0x20u,
-                            (s32)DSD(DS_00100AA8) - (s32)DSD(DS_00100AAC),
-                            DS_00100B1C, DS_00100B14, DS_00100B28,
-                            DS_00100B34, DS_00100B24) != 0)    /* 0x17C35 */
+    if ((u8)camera_box_overlap(DSW(DSD(DS_001077B8) + 0x56u),
+                               DSW(DSD(DS_0010784C) + 0x56u)) == 0u)
+        return 0;                                              /* 0x17BEF `test al,al`/0x17BF1 */
+    if ((u8)camera_sync_visible(0x20u, 0x20u,
+                                (s32)DSD(DS_00100AA8) - (s32)DSD(DS_00100AAC),
+                                DS_00100B1C, DS_00100B14, DS_00100B28,
+                                DS_00100B34, DS_00100B24) != 0u)   /* 0x17C35, 0x17C3A `and eax,0xff` */
         return 0;
-    if (camera_sync_visible(0x20u, 0x20u,
-                            (s32)DSD(DS_00100AA0) - (s32)DSD(DS_00100AA4),
-                            DS_00100B18, DS_00100B10, DS_00100B2C,
-                            DS_00100B30, DS_00100B20) != 0)    /* 0x17C65 */
+    if ((u8)camera_sync_visible(0x20u, 0x20u,
+                                (s32)DSD(DS_00100AA0) - (s32)DSD(DS_00100AA4),
+                                DS_00100B18, DS_00100B10, DS_00100B2C,
+                                DS_00100B30, DS_00100B20) != 0u)   /* 0x17C65, 0x17C6A `and eax,0xff` */
         return 0;
     if ((s32)DSD(DS_00100B1C) <= 0) return 0;                  /* 0x17C78 */
     if ((s32)DSD(DS_00100B18) <= 0) return 0;                  /* 0x17C81 */
