@@ -5777,6 +5777,7 @@ void fight_4e67c(void)
  * and, indirectly through it, 0x4E928 (0x4E67C's DS_001088B9-gated tail). */
 void fight_mode25_scorecard(void)
 {
+    PR_SEAM0(0x4EBB8u);
     u32 mode_b = 0x3000u;                                       /* [esp+4] */
     u32 mode_a = (DSW(DS_00104AFC) == 1u) ? 0x2000u : 0x3000u;   /* [esp+0x14] */
 
