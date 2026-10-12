@@ -2819,6 +2819,7 @@ void fight_4a634(void)
  * 0xC9790[ch] at 0xC97C8[ch]. EAX = hit (1/2), EDX = entry, EBX = si. */
 int fight_4b788(u32 hit, u32 entry, u32 index)
 {
+    PR_SEAM_RET(0x4B788u, hit, entry, index);
     if ((u32)DSB(DS_00105B3A) > 1u) return 1;                   /* 0x4B7A0 */
     u32 s = hit - 1u;                                           /* 0x4B7A9 */
     u32 slot = DS_001077B0 + s * 0x94u;                         /* 0x4B7C4 */
@@ -3001,6 +3002,7 @@ int fight_4af04(u32 side)
  * launch). EAX = entry, EDX = si. */
 void fight_4b470(u32 entry, u32 index)
 {
+    PR_SEAM(0x4B470u, entry, index);
     u32 rec = DSD(entry + 8u);
     /* The id is from the record's +0x48 byte, not EDX: 0x4B47B..0x4B489
      * `sub eax,0x20; cmp eax,3; jge` (signed), record k7-k12 §7.2. */
@@ -3049,7 +3051,7 @@ void fight_4b470(u32 entry, u32 index)
  * Both sides hit counts as side 0. When 0x4B788 lets it through, +0x20 = the
  * hitter side, +0x1F counts the hit, a held actor (+0x4A) is released, and
  * 0x4B470 tramples it. */
-static void fight_4b69c(u32 entry, u32 index)
+void fight_4b69c(u32 entry, u32 index)
 {
     if ((DSB(entry + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4B6B3 */
     u32 rec = DSD(entry + 8u);
@@ -3298,6 +3300,7 @@ void fight_4b2ac(u32 entry, u32 index)
  * Returns 0. EAX = hit (1/2), EDX = entry, EBX = si. */
 int fight_4d898(u32 hit, u32 entry, u32 index)
 {
+    PR_SEAM_RET(0x4D898u, hit, entry, index);
     u32 slot = DS_001077B0 + (hit - 1u) * 0x94u;                /* 0x4D8A6..0x4D8BF */
     u8 mv = DSB(slot + 0x5Fu);                                  /* 0x4D8C8 */
     s32 ch = (s32)(s8)DSB(slot + 0x7Au);                        /* 0x4D8C1, 0x4D8CF `sar` */
@@ -4123,6 +4126,7 @@ void fight_4cc0c(void)
  * §8). */
 void fight_4c784(u32 side)
 {
+    PR_SEAM(0x4C784u, side);
     u32 hs = DSB(DSD(DS_00108864) + 0x21u);                     /* 0x4C78F..0x4C79E */
     u32 flip = ((DSW(DSD(DS_001077B0 + side * 0x94u) + 0x28u) & 0x4000u) != 0u)
              ? 0u : 0x4000u;                                    /* 0x4C7B0..0x4C7D0 */
@@ -5594,7 +5598,7 @@ u8 fight_4a8a8(u32 node)
  * +0x36 = -0x60/0x240 (the flinch throw), node->+0x1C &= 0x7F, R->+0x28 |=
  * 0x80 and node->+0x1E = 2. EBX/ECX/ESI pushed and popped. Only caller: the
  * 0x4E84E (0x4E67C's per-entry tail-common). */
-static void fight_4e5a4(u32 node, u32 idx)
+void fight_4e5a4(u32 node, u32 idx)
 {
     if ((DSW(node + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4E5B1/0x4E5B8 */
     u32 rec = DSD(node + 8u);                                    /* 0x4E5BE */

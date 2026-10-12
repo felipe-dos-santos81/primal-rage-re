@@ -25024,6 +25024,214 @@ D5D_SPECS += [
                      writes=((None, 0x001078BE, b"\x06"),)),) + D5D_NF_CALLS,
        eax_mask=0, mutants=("@cached",)),
 ]
+D5D_HIT = E.Call(0x17D30, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))        # camera_point_hit, seamed by this batch (d5b owns its row)
+D5D_GATE_B = E.Call(0x4B788, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))     # fight_4b788, seamed by this batch
+D5D_GATE_D = E.Call(0x4D898, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))     # fight_4d898, seamed by this batch
+D5D_TRAMPLE = E.Call(0x4B470, ("eax", "edx"), clobbers=("edx",))                 # fight_4b470, seamed by this batch
+D5D_FE, D5D_FR, D5D_FR2 = 0x0010A200, 0x0010A300, 0x0010A400    # zero BSS: the entry, its actor record, another record
+D5D_FPS, D5D_FPOOL = 0x0010A800, 0x00106000                     # the pset pool (zero BSS) and the record pool base
+D5D_FMUT = ("@bit", "@zext", "@xy", "@tall", "@nohit0", "@noclamp", "@clampge", "@unsigned", "@nogate", "@gateargs",
+            "@gate", "@gateal", "@no20", "@side20", "@no1f", "@b2", "@trampleargs", "@notrample", "@ksext", "@kzero",
+            "@nopool", "@pooloff", "@no2a", "@no29", "@no4a", "@no1c", "@aeidx", "@noae")
+
+
+def d5d_fx_rec(rec, pidx, held, k=0, xy=(0x8001, 0x7FFF)):
+    """One actor record of the effects rows: its pset index word +0x56 (the pset's words +4/+8 =
+    `xy`, between seeded words), the bytes +0x28..+0x2B and the held byte +0x4A (`held`) between
+    seeded neighbours, and the dwords +0x18 / +0x30 and the words +0x34 / +0x36 seeded."""
+    return {rec + 0x54: le16(0x5454) + le16(pidx) + le16(0x5858),
+            D5D_FPS + pidx * 0x20: le16(0x1111) + le16(0x2222) + le16(xy[0]) + le16(0x3333) + le16(xy[1]) + le16(0x4444),
+            rec + 0x18: le32(0x00123400 + k), rec + 0x28: bytes([0x7F, 0xFF, 0xFF, 0x2B]),
+            rec + 0x30: le32(0x80FF1234 + k) + le16(0x3434) + le16(0x3636) + le16(0x3838),
+            rec + 0x49: bytes([0x49, held, 0x4B])}
+
+
+def d5d_fx_case(flags, held, f21=1, pidx=3, rec=D5D_FR, rec2=None, b1f=0x7F, e10=0x0010A380):
+    """0x4B69C/0x4D7A4/0x4C60C/0x4E5A4: the entry (the actor dword +8 between seeded dwords, the
+    partner dword +0x10, the bytes +0x1C = `flags` .. +0x21 = `f21` with a 0x80 in +0x1D), its
+    actor record (d5d_fx_rec) and, with `rec2`, a second record with another pset point and
+    held byte; the two pool pointers; the pool byte +0x4B of records 2 and 0x80 (and of -0x80,
+    for the sign-extending mutant) between seeded bytes; the counters 0x1088AE + i and the
+    flags 0x1088B2 + i for i = 1, 0x7F and 0x83 (0x1088AC..0x1088B7 and the bytes around the
+    other two seeded)."""
+    p = {D5D_FE + 4: le32(0x04040404) + le32(rec) + le32(0x0C0C0C0C) + le32(e10) + le32(0x14141414),
+         D5D_FE + 0x1B: bytes([0x1B, flags, 0x80, 0x1E, b1f, 0x5A, f21, 0x22]),
+         0x001014EC: le32(D5D_FPS), 0x001014F4: le32(D5D_FPOOL),
+         0x001088AC: bytes(0xA0 + i for i in range(12)), 0x001088AE + 0x7F - 1: bytes([0x71, 0x72, 0x73]),
+         0x001088AE + 0x83 - 1: bytes([0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B])}
+    for k in (2, 0x80, -0x80):
+        p[D5D_FPOOL + k * 0x68 + 0x4A] = bytes([0x4A, 0x5B, 0x4C])
+    p.update(d5d_fx_rec(rec, pidx, held))
+    if rec2 is not None:
+        p.update(d5d_fx_rec(rec2, pidx + 2, 2 if held == 0 else 0, k=0x11, xy=(0x0123, 0xFEDC)))
+    return p
+
+
+def d5d_prelude_cases(gate):
+    """The cases the two per-entry preludes share: (the 0x17D30 stub's EAX, the gate stub's)."""
+    def case(cid, flags, held, hit, ok, **kw):
+        return Case(cid, {"eax": D5D_FE, "edx": 0x00000007 + (0x10000 if cid in ("b4", "b6") else 0)},
+                    d5d_fx_case(flags, held, **kw), {0x17D30: hit, gate: ok})
+    return [case("b0", 0x7F, 2, 1, 1), case("b1", 0x80, 2, 0, 1), case("b2", 0xFF, 2, 1, 0),
+            case("b3", 0x80, 0, 1, 1), case("b4", 0xC0, 2, 2, 0x00000100, f21=0x83),
+            case("b5", 0xFF, 0x80, 3, 0xFFFFFFFF, f21=0x7F, b1f=0xFF), case("b6", 0x81, 2, 0xFFFFFFFF, 1),
+            case("b7", 0xC1, 0, 0x80000002, 1)]
+
+
+D5D_SPECS += [
+    # 0x4B69C fight_4b69c: EAX = the entry, EDX = si. Only with +0x1C bit 7 (a byte: b0 has 0x7F
+    # with 0x80 in +0x1D): 0x17D30(the pset words +4 and +8 of the actor +8, each sign-extended,
+    # 0); 0 returns; a result above 2, signed (`jle` 0x4B6F5: b5 is 3, b6 -1, b7 0x80000002),
+    # counts as 1; 0x4B788(it, entry, si), whose whole EAX is tested (`test eax,eax` 0x4B70A: b4's
+    # stub returns 0x100); then +0x20 = the result - 1 (a byte), +0x1F counts, and with the
+    # actor's held byte +0x4A (read again through +8, zero-extended: b5 is 0x80) the pool record's
+    # +0x4B = 0, the actor's +0x2A bit 3 and +0x29 bit 6 cleared, +0x4A = 0, the entry's +0x1C bit
+    # 6 cleared, the byte 0x1088AE + the entry's +0x21 counted and the byte 0x1088B2 + it = 1;
+    # 0x4B470(entry, si). The three callees are stubs. The pset index is zero-extended (`and
+    # edx,0xffff` 0x4B6C2); an index of 0x8000 or more puts the pset above the image and is not
+    # cased (record §4). Mask 0: record §1.
+    Spec("fight_4b69c", 0x4B69C, d5d_prelude_cases(0x4B788),
+         calls=(D5D_HIT, D5D_GATE_B, D5D_TRAMPLE), eax_mask=0, mutants=D5D_FMUT),
+    # the same function with a 0x4B788 stub that points the entry's +8 at another record (its
+    # held byte the other way round): the raw reads +8 again at 0x4B719 and before each of the
+    # three record stores (0x4B740, 0x4B747, 0x4B74E).
+    Spec("fight_4b69c_rr", 0x4B69C, [
+        Case("r0", {"eax": D5D_FE, "edx": 5}, d5d_fx_case(0xC0, 2, rec2=D5D_FR2), {0x17D30: 1, 0x4B788: 1}),
+        Case("r1", {"eax": D5D_FE, "edx": 5}, d5d_fx_case(0xC0, 0, rec2=D5D_FR2), {0x17D30: 2, 0x4B788: 1}),
+        Case("r2", {"eax": D5D_FE, "edx": 6}, d5d_fx_case(0xFF, 0x80, rec2=D5D_FR2, f21=0x83), {0x17D30: 3, 0x4B788: 0x100}),
+    ], calls=(D5D_HIT, E.Call(0x4B788, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"),
+                             writes=((None, D5D_FE + 8, le32(D5D_FR2)),)), D5D_TRAMPLE),
+       eax_mask=0, mutants=("@cached",)),
+    # 0x4D7A4 fight_4d7a4: the mode-0x22 twin. The gate is 0x4D898 and the release has no
+    # 0x1088B2 store (`@b2` adds it; in 0x4B69C's row it drops it). Mask 0: record §1.
+    Spec("fight_4d7a4", 0x4D7A4, d5d_prelude_cases(0x4D898),
+         calls=(D5D_HIT, D5D_GATE_D, D5D_TRAMPLE), eax_mask=0, mutants=D5D_FMUT),
+    Spec("fight_4d7a4_rr", 0x4D7A4, [
+        Case("r0", {"eax": D5D_FE, "edx": 5}, d5d_fx_case(0xC0, 2, rec2=D5D_FR2), {0x17D30: 1, 0x4D898: 1}),
+        Case("r1", {"eax": D5D_FE, "edx": 5}, d5d_fx_case(0xC0, 0, rec2=D5D_FR2), {0x17D30: 2, 0x4D898: 1}),
+        Case("r2", {"eax": D5D_FE, "edx": 6}, d5d_fx_case(0xFF, 0x80, rec2=D5D_FR2, f21=0x83), {0x17D30: 3, 0x4D898: 0x100}),
+    ], calls=(D5D_HIT, E.Call(0x4D898, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"),
+                             writes=((None, D5D_FE + 8, le32(D5D_FR2)),)), D5D_TRAMPLE),
+       eax_mask=0, mutants=("@cached",)),
+]
+D5D_EAT = E.Call(0x4C784, ("eax",))                  # fight_4c784, seamed by this batch
+
+
+def d5d_vb_case(side, ch, f5f, flags=0x5F, held=0, f21=1, rec2=None):
+    """0x4C60C: d5d_fx_case, the word 0x108898 between seeded words, and the character byte +0x7A
+    and the byte +0x5F of the fighter slots -2, 0, 1 and 3 (0x1077B0 + 0x94 * s): `ch` and `f5f`
+    for `side`, and for the others a character that is struck and a +0x5F that differs."""
+    p = d5d_fx_case(flags, held, f21=f21, rec2=rec2)
+    p[0x00108896] = le16(0x9696) + le16(0x5A5A) + le16(0x9A9A)
+    for s in (-2, 0, 1, 3):
+        slot = 0x001077B0 + 0x94 * s
+        p[slot + 0x5E] = bytes([0x5E, f5f if s == side else (0x0D if not 0x0C <= f5f <= 0x0F else 0x03), 0x60])
+        p[slot + 0x79] = bytes([0x79, ch if s == side else (1 if ch != 1 else 0), 0x7B])
+    return p
+
+
+def d5d_vb_cases():
+    """(case, the 0x17D30 stub's EAX, the character, the +0x5F byte, the fixture's other fields)."""
+    rows = [("c0", 0, 0, 0, {}), ("c1", 1, 0, 0, {}), ("c2", 2, 3, 0, {}), ("c3", 1, 5, 2, {}),
+            ("c4", 2, 2, 1, {}), ("c5", 1, 2, 0, {}), ("c6", 3, 1, 0x0C, {"flags": 0xFF}),
+            ("c7", 1, 4, 0x0F, {"flags": 0x08}), ("c8", 2, 6, 0x10, {}), ("c9", 1, 7, 0, {}),
+            ("ca", 2, 0x80, 0, {}), ("cb", 0xFFFFFFFF, 6, 0x0B, {}),
+            ("cc", 1, 0, 1, {"held": 2, "flags": 0xFF, "f21": 0x83}),
+            ("cd", 2, 3, 0x0D, {"held": 0x80, "flags": 0x48, "f21": 0x7F}), ("ce", 2, 1, 0, {}),
+            ("cf", 1, 4, 0, {})]
+    out = []
+    for cid, hit, ch, f5f, kw in rows:
+        side = (1 if hit > 2 and hit < 0x80000000 else hit) - 1
+        if hit == 0xFFFFFFFF:
+            side = -2
+        out.append(Case(cid, {"eax": D5D_FE, "edx": 0x00000009 if cid != "c6" else 0x00010002},
+                        d5d_vb_case(side, ch, f5f, **kw), {0x17D30: hit}))
+    return out
+
+
+D5D_SPECS += [
+    # 0x4C60C fight_4c60c: EAX = the entry, EDX = si. 0x17D30(the actor's pset point, 0); 0
+    # returns; above 2, signed, counts as 1 (c6: 3; cb: -1, the slot two below slot 0). The side's
+    # character byte +0x7A above 6, unsigned (`ja` 0x4C67D: c9 is 7, ca 0x80), does nothing;
+    # else the table 0x4C5F0: characters 0, 3, 5 with the slot's +0x5F == 0, and character 2
+    # with +0x5F == 1, are eaten (0x4C784(side)) and nothing else happens; every other case is
+    # struck: the word 0x108898 = 0, the entry's +0x20 = the side, +0x1C bit 3 cleared, +0x1F
+    # counted, the held actor released as 0x4D7A4 does, then 0x4CB18(entry, si, flag, side) with
+    # flag 1 and +0x1C bit 3 set after it when the slot's +0x5F is 0xC..0xF (c6, c7, cd; c8 is
+    # 0x10, cb 0xB), else flag 0. The three callees are stubs. Mask 0: record §1.
+    Spec("fight_4c60c", 0x4C60C, d5d_vb_cases(), calls=(D5D_HIT, D5D_EAT, D3B_4CB18), eax_mask=0,
+         mutants=("@xy", "@tall", "@noclamp", "@unsigned", "@slotside", "@ch7", "@chs", "@c0one", "@c2zero", "@eat1",
+                  "@eat4", "@noeat", "@eatarg", "@eatstruck", "@98b", "@no98", "@no20", "@no1cf7", "@no1f", "@b2",
+                  "@mvside", "@mvlo", "@mvhi", "@1c08early", "@flag", "@launchside", "@no1c08", "@1c08always",
+                  "@ksext", "@kzero", "@nopool", "@no2a", "@no29", "@no4a", "@no1c", "@noae")),
+    # the same function with a 0x17D30 stub that points the entry's +8 at another record: the raw
+    # reads +8 again for the release (`mov eax,[esi+8]` 0x4C6DB, 0x4C707, 0x4C70E, 0x4C715).
+    Spec("fight_4c60c_rr", 0x4C60C, [
+        Case("r0", {"eax": D5D_FE, "edx": 5}, d5d_vb_case(0, 1, 0, flags=0xFF, held=2, rec2=D5D_FR2), {0x17D30: 1}),
+        Case("r1", {"eax": D5D_FE, "edx": 5}, d5d_vb_case(1, 4, 0x0E, flags=0xFF, held=0, rec2=D5D_FR2), {0x17D30: 2}),
+        Case("r2", {"eax": D5D_FE, "edx": 5}, d5d_vb_case(0, 0, 0, rec2=D5D_FR2), {0x17D30: 3}),
+        Case("r3", {"eax": D5D_FE, "edx": 5}, d5d_vb_case(1, 2, 1, rec2=D5D_FR2), {0x17D30: 2}),
+        Case("r4", {"eax": D5D_FE, "edx": 5}, d5d_vb_case(0, 7, 0, rec2=D5D_FR2), {0x17D30: 0}),
+    ], calls=(E.Call(0x17D30, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"),
+                     writes=((None, D5D_FE + 8, le32(D5D_FR2)),)), D5D_EAT, D3B_4CB18),
+       eax_mask=0, mutants=("@cached",)),
+]
+D5D_FR3 = 0x0010A500                                # zero BSS: a third record
+D5D_FIDX = 0x00010002                               # an index above 0xFFFF: its two table dwords are poked
+
+
+def d5d_fl_case(flags, e10, idx=2, recs=(D5D_FR,)):
+    """0x4E5A4: d5d_fx_case with the partner dword +0x10 = `e10`, the flag byte 0x1088BA between
+    seeded bytes, the records in `recs` (each with its own pset point, +0x18 and +0x30; the
+    first is the entry's) and, for D5D_FIDX, the stream and descriptor table dwords (the image's
+    serve the small indices)."""
+    p = d5d_fx_case(flags, 0, e10=e10)
+    p[0x001088B9] = bytes([0xB9, 0x5A, 0xBB])
+    for i, r in enumerate(recs[1:]):
+        p.update(d5d_fx_rec(r, 5 + 2 * i, 0, k=0x11 * (i + 1), xy=(0x0123 + i, 0xFEDC - i)))
+        p[r + 0x30] = le32(0x7ABC0000 + 0x11110000 * i) + le16(0x3434) + le16(0x3636) + le16(0x3838)
+    if idx == D5D_FIDX:
+        p[0x000C9604 + idx * 4] = le32(0x000EE777)
+        p[0x000BB920 + idx * 4] = le32(0x000BB777)
+    return p
+
+
+D5D_SPECS += [
+    # 0x4E5A4 fight_4e5a4: EAX = the node, EDX = idx. Only with +0x1C bit 7: 0x17D30(the actor's
+    # pset point, 0); 0 returns; else the byte 0x1088BA = 1, +0x20 = the result - 1 with a result
+    # above 2, signed, counted as 1 (f5: 3; f6: -1), +0x1F counted, 0x2BC30(the actor +8, the
+    # stream 0xC9604[idx], 3.0f); with no partner in +0x10 the spawn 0xBB920[idx] at (the actor's
+    # +0x18, its +0x30 `sar 16`: the fixture's is negative, 0, 0) into +0x10; then the actor's
+    # +0x34 = 0xFFA0 and +0x36 = 0x240, the node's +0x1C bit 7 cleared, the actor's +0x28 bit 7 set
+    # and the node's +0x1E = 2. idx is ECX whole (`lea ebx,[ecx*4]` 0x4E605: f7 is 0x10002). The
+    # three callees are stubs. Mask 0: record §1.
+    Spec("fight_4e5a4", 0x4E5A4, [
+        Case("f0", {"eax": D5D_FE, "edx": 2}, d5d_fl_case(0x7F, 0), {0x17D30: 1}),
+        Case("f1", {"eax": D5D_FE, "edx": 2}, d5d_fl_case(0x80, 0), {0x17D30: 0}),
+        Case("f2", {"eax": D5D_FE, "edx": 0}, d5d_fl_case(0x80, 0), {0x17D30: 1, 0x2AE14: 0x0010A600}),
+        Case("f3", {"eax": D5D_FE, "edx": 5}, d5d_fl_case(0xFF, 0x0010A380), {0x17D30: 2, 0x2BC30: 0xFFFFFFFF}),
+        Case("f4", {"eax": D5D_FE, "edx": 7}, d5d_fl_case(0xC1, 0x01000000), {0x17D30: 1}),
+        Case("f5", {"eax": D5D_FE, "edx": 1}, d5d_fl_case(0x81, 0), {0x17D30: 3, 0x2AE14: 0}),
+        Case("f6", {"eax": D5D_FE, "edx": 3}, d5d_fl_case(0x80, 0), {0x17D30: 0xFFFFFFFF, 0x2AE14: 0x0010A640}),
+        Case("f7", {"eax": D5D_FE, "edx": D5D_FIDX}, d5d_fl_case(0x80, 0, idx=D5D_FIDX), {0x17D30: 2, 0x2AE14: 0x0010A680}),
+    ], calls=(D5D_HIT, ANIM_BEGIN, SPAWN), eax_mask=0,
+       mutants=("@bit", "@xy", "@tall", "@noba", "@noclamp", "@unsigned", "@no20", "@no1f", "@noanim", "@stream",
+                "@idxw", "@rate", "@partner", "@desc", "@shr", "@spawnxy", "@no10", "@no34", "@vals", "@no36", "@no1c",
+                "@no28", "@no1e")),
+    # the same function with a 0x17D30 stub that points the node's +8 at a second record and a
+    # 0x2BC30 stub that points it at a third: the raw reads +8 again for the 0x2BC30 call (`mov
+    # eax,[esi+8]` 0x4E619), for the spawn's arguments (0x4E633) and for the stores after it.
+    Spec("fight_4e5a4_rr", 0x4E5A4, [
+        Case("r0", {"eax": D5D_FE, "edx": 4}, d5d_fl_case(0x80, 0, recs=(D5D_FR, D5D_FR2, D5D_FR3)),
+             {0x17D30: 1, 0x2AE14: 0x0010A600}),
+        Case("r1", {"eax": D5D_FE, "edx": 6}, d5d_fl_case(0xFF, 0x0010A380, recs=(D5D_FR, D5D_FR2, D5D_FR3)),
+             {0x17D30: 3}),
+    ], calls=(E.Call(0x17D30, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"),
+                     writes=((None, D5D_FE + 8, le32(D5D_FR2)),)),
+              E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4, clobbers=("edx",),
+                     writes=((None, D5D_FE + 8, le32(D5D_FR3)),)), SPAWN),
+       eax_mask=0, mutants=("@cached1", "@cached2")),
+]
 D1_SPECS += D5D_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

@@ -594,6 +594,11 @@ RESOLVED_JUMPS = {
 # jmp cs:[ebx+0x41c04] (the side's slot offset is built in ECX between the guard and the jump)
 RESOLVED_JUMPS[0x41C61] = (0x41C36, 0x41C04, 9)
 
+# 0x4C60C (track D5 batch d5d, record 2026-10-12-reverse-d5d §2): the character byte is saved at [esp]
+# (0x4C678 `mov [esp],al`) and read back for the index: cmp al,6; ja; xor eax,eax; mov al,[esp]; shl eax,2;
+# jmp cs:[eax+0x4c5f0]
+RESOLVED_JUMPS[0x4C687] = (0x4C67B, 0x4C5F0, 7)
+
 
 def resolved_cases(image, entry):
     """The case targets of a RESOLVED_JUMPS entry, read from the image."""
