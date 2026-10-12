@@ -3649,11 +3649,11 @@ void fighter_state_3531c(u32 side)
             u32 r;
             if ((s16)DSW(DS_000BDBE8) <= (s16)DSW(own + 0x88u))  /* 0x35498 */
                 return;
-            if (fighter_34e20((u32)DSB(own + 0x5Fu)) == 0)  /* 0x354A8 */
+            if ((u8)fighter_34e20((u32)DSB(own + 0x5Fu)) == 0u)  /* 0x354A3, AL 0x354A8 */
                 return;
             r = (u32)DSB(own + 0x5Fu);                      /* 0x354B2 */
             DSB(own + 0x53u) = 0;                           /* 0x354B5 */
-            if (hit_chain_resolve(side) != 0) return;       /* 0x354BC */
+            if ((u8)hit_chain_resolve(side) != 0u) return;  /* 0x354BC, AL 0x354C1 */
             DSB(own + 0x53u) = 8u;                          /* 0x354C9 */
             DSB(own + 0x5Fu) = (u8)r;                       /* 0x354CD */
         }
