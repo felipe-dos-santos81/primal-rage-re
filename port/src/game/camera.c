@@ -1413,6 +1413,7 @@ int camera_projectile_clash(void)
  * (0x176CC). */
 void camera_projectile_step(void)
 {
+    PR_SEAM0(0x17CB0u);
     u8 clash = 0;                                              /* 0x17CC7 */
     camera_bitplane_pixel(0x128u, 0x25u, DS_00100BD3, 0xFFu);  /* 0x17CCF */
     DSD(DS_00100AD0) = 0;                                      /* 0x17CDC */

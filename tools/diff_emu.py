@@ -725,6 +725,16 @@ _CALLEE_CLOBBER_FIXES[0x46C78] = ()
 # keeps EDI live across the call (set at 0x47B0B, read at 0x47BCE and 0x47BEF: `mov byte
 # [edi+0x57],3`), so 0x36870 preserves EDI; ESI and EBP stay in the set (no caller shown to read them).
 _CALLEE_CLOBBER_FIXES[0x36870] = ("esi", "ebp")
+# D5 d5f (record 2026-10-12-reverse-d5f section 4): 0x3962C saves EBX (0x3962C `push ebx`; `pop ebx`
+# 0x396A1, 0x396A8) and its own instructions write only EAX, EBX and EDX; 0x396AC saves EBX and ECX
+# (0x396AC/0x396AD; `pop ecx; pop ebx` 0x39734) and writes only EAX, EBX, ECX and EDX. Their callees are
+# 0x33950 (EDX alone) and 0x3AFC4, which saves ECX and writes EAX, ECX and EDX: the scan's
+# (esi, edi, ebp) comes only from 0x3AFC4's direct target 0x62003, the runtime's fatal exit (>= 0x5D000,
+# taken to clobber everything), which does not return (as 0x46C78 above). The raw caller 0x1975C keeps
+# ESI = 2 live across both calls (0x1976D `mov esi,2`; calls 0x1979B, 0x197BF; read at 0x197FD
+# `mov eax,esi` and at the second pass's 0x19780 `cmp esi,[eax*4+0x100ad0]`).
+_CALLEE_CLOBBER_FIXES[0x3962C] = ("edx",)
+_CALLEE_CLOBBER_FIXES[0x396AC] = ("edx",)
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --

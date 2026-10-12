@@ -24444,6 +24444,76 @@ D4D_SPECS += [
          mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
 ]
 D1_SPECS += D4D_SPECS
+# ---- track D wave 5, batch d5f (record 2026-10-12-reverse-d5f): fighter.c, camera.c, fight.c ------
+#
+# Every index a case passes keeps base + index * size inside mem[] for the binding and each mutant.
+
+D5F_SLOT = 0x001077B0            # DS_001077B0: the two 0x94-byte fighter slots
+D5F_SPECS = []
+
+# 0x17CB0 takes nothing (its first instructions load constants; `ret`); 0x3B464 EAX = side (`mov ecx,eax`
+# 0x3B46B after its pushes; `ret`). Clobbers: E.callee_clobbers. 0x3962C/0x396AC: EAX = side, DL = the
+# selector; ("edx",) by diff_emu._CALLEE_CLOBBER_FIXES (the scan's esi/edi/ebp is the runtime's fatal
+# exit 0x62003 under 0x3AFC4; record section 4).
+D5F_17CB0 = E.Call(0x17CB0, (), clobbers=("edi", "ebp"))
+D5F_3B464 = E.Call(0x3B464, ("eax",), clobbers=("edi", "ebp"))
+D5F_3962C = E.Call(0x3962C, ("eax", "edx"), clobbers=("edx",))
+D5F_396AC = E.Call(0x396AC, ("eax", "edx"), clobbers=("edx",))
+# the re-read spec's stubs: the step writes both overlap counts, the burst rewrites the second
+D5F_17CB0_W = E.Call(0x17CB0, (), clobbers=("edi", "ebp"), writes=((None, 0x00100AD0, le32(3) + le32(2)),))
+D5F_BURST_W = E.Call(0x3B938, ("eax",), writes=((None, 0x00100AD4, le32(5)),))
+
+
+def d5f_think_case(c0, c1):
+    """0x1975C: the two overlap counts DS_00100AD0/AD4 between two seeded dwords; each slot's
+    +0x66..+0x68 (+0x67: the struck side's flag, written 1) and +0x89..+0x8B (+0x8A: the thrower's,
+    written 0 by a gate), every byte nonzero, slot-distinct and different from what is written."""
+    p = {0x00100ACC: le32(0xCCCCCCCC) + le32(c0) + le32(c1) + le32(0xD8D8D8D8)}
+    for s in (0, 1):
+        b = D5F_SLOT + s * 0x94
+        p[b + 0x66] = bytes([0x66 + s * 0x10, 0x67 + s * 0x10, 0x68 + s * 0x10])
+        p[b + 0x89] = bytes([0x89 - s * 0x10, 0x5A + s, 0x8B - s * 0x10])
+    return p
+
+
+D5F_SPECS += [
+    # 0x1975C fighter_think: no argument. 0x33950 (the ctx builder) runs on both sides; 0x39278 is
+    # recorded and run. The count test is signed (`cmp esi,[..]; jge` 0x19780/0x19787 with ESI = 2:
+    # t0's 0x80000003 and t5's 0xFFFFFFFF skip, 2 skips, 3 runs; t3/t5's 0x00010002/0x00010000 are
+    # dwords, not words). The two gates return the AL the raw tests (`test al,al` 0x197A0, 0x197C4:
+    # t2..t5 return 0x100 and 0xFFFFFF00 for "no", 0xFFFFFF01 for "yes"). Mask 0: every caller
+    # writes EAX before reading it (`xor eax,eax` 0x2635B, 0x264EA, 0x26647 after the calls at
+    # 0x2633D, 0x264CC, 0x26629; `call 0x3cb68` at 0x274CC and 0x29B34, whose first use of EAX is
+    # the load at 0x3CB79).
+    Spec("fighter_think", 0x1975C, [
+        Case("t0", {}, d5f_think_case(2, 0x80000003)),
+        Case("t1", {}, d5f_think_case(3, 0x7FFFFFFF), {0x3962C: 1}),
+        Case("t2", {}, d5f_think_case(3, 3), {0x3962C: 0x100, 0x396AC: 1}),
+        Case("t3", {}, d5f_think_case(0x00010002, 0x7FFFFFFF), {0x3962C: 0xFFFFFF00, 0x396AC: 0x100}),
+        Case("t4", {}, d5f_think_case(2, 3), {0x3962C: 0x100, 0x396AC: 0xFFFFFF01}),
+        Case("t5", {}, d5f_think_case(0xFFFFFFFF, 0x00010000), {0x3962C: 0xFFFFFF01}),
+        Case("t6", {}, d5f_think_case(3, 2)),
+        Case("t7", {}, d5f_think_case(0, 3)),
+    ], allow_calls=(0x33950,),
+       calls=(D5F_17CB0, D3C_1922C, D5F_3962C, D5F_396AC, C1_18B44, D5F_3B464, D4B_BURST, D2A_39278), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "nostep one rev cside uns ge cw notimer tside g1side g1sel eax1 both g2side g2sel eax2 swap "
+           "no8a o8a v8a w8a nodust dustslot noret no67 o67 v67 w67 late67 thside bslot v392 order "
+           "noburst no392 nothink dustearly").split())),
+    # the same entry with stubs that rewrite the counts: the step 0x17CB0 writes (3, 2) over the
+    # case's own, and the first pass's burst 0x3B938 then writes 5 over the second, which the raw
+    # reads only at the second pass's 0x19780
+    Spec("fighter_think_rr", 0x1975C, [
+        Case("u0", {}, d5f_think_case(0, 0x7FFFFFFF)),
+        Case("u1", {}, d5f_think_case(0x7FFFFFFF, 0)),
+    ], unhit_named={0x197A4: "the first gate's arm: fighter_think's t1 and t5 run it",
+                    0x197C8: "the second gate's arm: fighter_think's t2 and t4 run it"},
+       allow_calls=(0x33950,),
+       calls=(D5F_17CB0_W, D3C_1922C, D5F_3962C, D5F_396AC, C1_18B44, D5F_3B464, D5F_BURST_W, D2A_39278), eax_mask=0,
+       mutants=("@cache", "@cache2")),
+]
+
+D1_SPECS += D5F_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

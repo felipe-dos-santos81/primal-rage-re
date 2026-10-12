@@ -18695,6 +18695,100 @@ D1_KINDS.update(D4D_KINDS)
 D1_CASES.extend(D4D_CASES)
 
 
+# ---- track D5 batch d5f (record 2026-10-12-reverse-d5f): measured with verify_all on the row's own spec ----
+D5F_MASKS = {
+    "fighter_think": 0x0,
+    "fighter_think_rr": 0x0,
+}   # D5F_MASKS end
+D5F_KINDS = {
+    "fighter_think@nostep": {'call #0', 'call #1', 'call #10', 'call #11', 'call #12', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6', 'call #6 memory', 'call #7', 'call #8', 'call #9', 'call #9 memory'},
+    "fighter_think@one": {'byte', 'call #1', 'call #10', 'call #11', 'call #12', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "fighter_think@rev": {'byte', 'call #1', 'call #10', 'call #11', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "fighter_think@cside": {'byte', 'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6 memory'},
+    "fighter_think@uns": {'byte', 'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6'},
+    "fighter_think@ge": {'byte', 'call #1', 'call #10', 'call #11', 'call #12', 'call #2', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "fighter_think@cw": {'byte', 'call #1', 'call #10', 'call #11', 'call #12', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "fighter_think@notimer": {'call #1', 'call #10', 'call #11', 'call #12', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6', 'call #6 memory', 'call #7', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "fighter_think@tside": {'call #1', 'call #7'},
+    "fighter_think@g1side": {'call #2', 'call #8'},
+    "fighter_think@g1sel": {'call #2', 'call #8'},
+    "fighter_think@eax1": {'byte', 'call #10', 'call #11', 'call #12', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "fighter_think@both": {'call #3', 'call #3 memory', 'call #4'},
+    "fighter_think@g2side": {'call #3', 'call #9'},
+    "fighter_think@g2sel": {'call #3', 'call #9'},
+    "fighter_think@eax2": {'byte', 'call #10', 'call #11', 'call #12', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "fighter_think@swap": {'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #8', 'call #9'},
+    "fighter_think@no8a": {'byte', 'call #3 memory', 'call #4 memory'},
+    "fighter_think@o8a": {'byte', 'call #3 memory', 'call #4 memory'},
+    "fighter_think@v8a": {'byte', 'call #3 memory', 'call #4 memory'},
+    "fighter_think@w8a": {'byte', 'call #3 memory', 'call #4 memory'},
+    "fighter_think@nodust": {'call #3', 'call #4'},
+    "fighter_think@dustslot": {'call #3', 'call #4'},
+    "fighter_think@noret": {'byte', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8'},
+    "fighter_think@no67": {'byte', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_think@o67": {'byte', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_think@v67": {'byte', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_think@w67": {'byte', 'call #10 memory', 'call #11 memory', 'call #12 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_think@late67": {'call #10 memory', 'call #4 memory'},
+    "fighter_think@thside": {'call #10', 'call #4'},
+    "fighter_think@bslot": {'call #11', 'call #5'},
+    "fighter_think@v392": {'byte', 'call #10 memory', 'call #11 memory', 'call #12', 'call #12 memory', 'call #6', 'call #7 memory', 'call #8 memory', 'call #9 memory'},
+    "fighter_think@order": {'call #10', 'call #11', 'call #4', 'call #5'},
+    "fighter_think@noburst": {'call #10', 'call #11', 'call #12', 'call #5', 'call #6', 'call #6 memory', 'call #7', 'call #8', 'call #9', 'call #9 memory'},
+    "fighter_think@no392": {'byte', 'call #10', 'call #10 memory', 'call #11', 'call #12', 'call #6', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "fighter_think@nothink": {'call #10', 'call #11', 'call #12', 'call #4', 'call #5', 'call #6', 'call #6 memory', 'call #7', 'call #8', 'call #9', 'call #9 memory'},
+    "fighter_think@dustearly": {'call #3 memory', 'call #4 memory'},
+    "fighter_think_rr@cache": {'byte', 'call #1', 'call #10', 'call #11', 'call #12', 'call #2', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6 memory', 'call #7', 'call #8', 'call #9'},
+    "fighter_think_rr@cache2": {'byte', 'call #10', 'call #11', 'call #12', 'call #7', 'call #8', 'call #9'},
+}   # D5F_KINDS end
+D5F_CASES = [
+    ("fighter_think@nostep", ['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7']),
+    ("fighter_think@one", ['t3', 't4', 't5', 't7']),
+    ("fighter_think@rev", ['t1', 't2', 't3']),
+    ("fighter_think@cside", ['t4', 't5', 't6', 't7']),
+    ("fighter_think@uns", ['t0', 't5']),
+    ("fighter_think@ge", ['t0', 't4', 't6']),
+    ("fighter_think@cw", ['t0', 't3', 't5']),
+    ("fighter_think@notimer", ['t1', 't2', 't3', 't4', 't5', 't6', 't7']),
+    ("fighter_think@tside", ['t1', 't2', 't3', 't4', 't5', 't6', 't7']),
+    ("fighter_think@g1side", ['t1', 't2', 't3', 't4', 't5', 't6', 't7']),
+    ("fighter_think@g1sel", ['t1', 't2', 't3', 't4', 't5', 't6', 't7']),
+    ("fighter_think@eax1", ['t2', 't3', 't4']),
+    ("fighter_think@both", ['t1', 't5']),
+    ("fighter_think@g2side", ['t2', 't3', 't4', 't6', 't7']),
+    ("fighter_think@g2sel", ['t2', 't3', 't4', 't6', 't7']),
+    ("fighter_think@eax2", ['t3']),
+    ("fighter_think@swap", ['t1', 't2', 't3', 't4', 't5', 't6', 't7']),
+    ("fighter_think@no8a", ['t1', 't2', 't4', 't5']),
+    ("fighter_think@o8a", ['t1', 't2', 't4', 't5']),
+    ("fighter_think@v8a", ['t1', 't2', 't4', 't5']),
+    ("fighter_think@w8a", ['t1', 't2', 't4', 't5']),
+    ("fighter_think@nodust", ['t1', 't2', 't4', 't5']),
+    ("fighter_think@dustslot", ['t1', 't2', 't4', 't5']),
+    ("fighter_think@noret", ['t1', 't2']),
+    ("fighter_think@no67", ['t3', 't6', 't7']),
+    ("fighter_think@o67", ['t3', 't6', 't7']),
+    ("fighter_think@v67", ['t3', 't6', 't7']),
+    ("fighter_think@w67", ['t3', 't6', 't7']),
+    ("fighter_think@late67", ['t3', 't6', 't7']),
+    ("fighter_think@thside", ['t3', 't6', 't7']),
+    ("fighter_think@bslot", ['t3', 't6', 't7']),
+    ("fighter_think@v392", ['t3', 't6', 't7']),
+    ("fighter_think@order", ['t3', 't6', 't7']),
+    ("fighter_think@noburst", ['t3', 't6', 't7']),
+    ("fighter_think@no392", ['t3', 't6', 't7']),
+    ("fighter_think@nothink", ['t3', 't6', 't7']),
+    ("fighter_think@dustearly", ['t1', 't2', 't4', 't5']),
+    ("fighter_think_rr@cache", ['u0', 'u1']),
+    ("fighter_think_rr@cache2", ['u0', 'u1']),
+]   # D5F_CASES end
+D5F_OUTSIDE = {}
+P45_OUTSIDE.update(D5F_OUTSIDE)
+D1_MASKS.update(D5F_MASKS)
+D1_KINDS.update(D5F_KINDS)
+D1_CASES.extend(D5F_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -19754,6 +19848,8 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # D5 d5f (record 2026-10-12-reverse-d5f): the stubs its rows add
+        0x17CB0: ("edi", "ebp"), 0x3B464: ("edi", "ebp"),
         # D4 d4a (record 2026-10-12-reverse-d4a): the stubs its rows add
         0x13D4C: ("edx",), 0x1CB18: (), 0x24568: ("ebp",), 0x24804: ("ebp",), 0x256F4: (), 0x25C1C: ("esi", "edi", "ebp"), 0x27DC8: ("esi", "edi", "ebp"), 0x27ED8: (), 0x32B00: ("edx",), 0x33B00: ("ebx", "edx"), 0x39FF4: (), 0x3CB68: (), 0x40CB0: ("ebp",), 0x4F37C: (), 0x5DC2A: ("edx",), 0x5DC4D: ("ebx", "ecx", "edx"), 0x5DC70: ("ebx", "ecx", "edx"), 0x5DCA6: ("edx",), 0x5DCE4: ("edx",),
         # D4 d4c (record 2026-10-12-reverse-d4c): the stubs its rows add

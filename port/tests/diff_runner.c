@@ -33137,6 +33137,65 @@ D4D_KN_MUT(ch0, 6u)    D4D_KN_MUT(wrapinv, 7u) D4D_KN_MUT(raw32, 8u)   D4D_KN_MU
 D4D_KN_MUT(updown, 11u) D4D_KN_MUT(plus, 12u)  D4D_KN_MUT(f10, 13u)    D4D_KN_MUT(fwide, 14u) D4D_KN_MUT(minus, 15u)
 D4D_KN_MUT(ef, 16u)    D4D_KN_MUT(scan2, 17u)  D4D_KN_MUT(ret, 18u)    D4D_KN_MUT(ret0, 19u)  D4D_KN_MUT(nogt, 20u)
 D4D_KN_MUT(nonul, 22u)
+/* ---- track D wave 5, batch d5f (record 2026-10-12-reverse-d5f): fighter.c, camera.c, fight.c ---- */
+/* 0x1975C fighter_think, as the port writes it, with one deviation per `mut` (0 = none is never
+ * bound: the row's binding calls the port's own function). */
+static void d5f_think(u32 mut)
+{
+    u32 c[2] = { 0u, 0u };
+    if (mut == 30u) { c[0] = DSD(DS_00100AD0); c[1] = DSD(DS_00100AD0 + 4u); }        /* @cache: read before the step */
+    if (mut != 1u) camera_projectile_step();                                          /* @nostep */
+    if (mut == 31u) { c[0] = DSD(DS_00100AD0); c[1] = DSD(DS_00100AD0 + 4u); }        /* @cache2: both read before the loop */
+    for (u32 k = 0u; k < ((mut == 2u) ? 1u : 2u); k++) {                              /* @one */
+        u32 i = (mut == 3u) ? 1u - k : k;                                             /* @rev */
+        u32 ctx[6];
+        u32 n;
+        int hit;
+        fighter_ctx_same(ctx, i);
+        n = (mut == 30u || mut == 31u) ? c[i] : DSD(DS_00100AD0 + ctx[(mut == 4u) ? 1u : 0u] * 4u);   /* @cside */
+        if (mut == 5u) { if (n <= 2u) continue; }                                     /* @uns */
+        else if (mut == 6u) { if ((s32)n < 2) continue; }                             /* @ge */
+        else if (mut == 7u) { if ((s16)n <= 2) continue; }                            /* @cw */
+        else if ((s32)n <= 2) continue;
+        if (mut != 8u) hit_stance_timer(ctx[(mut == 9u) ? 0u : 1u]);                  /* @notimer @tside */
+        if (mut == 17u) {                                                             /* @swap: the second gate first */
+            hit = (u8)fighter_396ac(ctx[0], 1u) != 0u || (u8)fighter_3962c(ctx[0], 1u) != 0u;
+        } else {
+            int g = fighter_3962c(ctx[(mut == 10u) ? 1u : 0u], (mut == 11u) ? 0u : 1u);   /* @g1side @g1sel */
+            hit = (mut == 12u) ? (g != 0) : ((u8)g != 0u);                            /* @eax1: the port before the correction */
+            if (!hit || mut == 13u) {                                                 /* @both */
+                int h = fighter_396ac(ctx[(mut == 14u) ? 1u : 0u], (mut == 15u) ? 0u : 1u);   /* @g2side @g2sel */
+                if ((mut == 16u) ? (h != 0) : ((u8)h != 0u)) hit = 1;                 /* @eax2: the port before the correction */
+            }
+        }
+        if (hit) {
+            if (mut == 39u) fighter_18b44(ctx[2]);                                    /* @dustearly */
+            if (mut == 21u) DSW(ctx[2] + 0x8Au) = 0u;                                 /* @w8a */
+            else if (mut != 18u) DSB(ctx[(mut == 19u) ? 3u : 2u] + 0x8Au) = (mut == 20u) ? 1u : 0u;   /* @no8a @o8a @v8a */
+            if (mut != 22u && mut != 39u) fighter_18b44(ctx[(mut == 23u) ? 3u : 2u]); /* @nodust @dustslot */
+            if (mut == 24u) continue;                                                 /* @noret */
+            return;
+        }
+        if (mut == 28u) DSW(ctx[3] + 0x67u) = 1u;                                     /* @w67 */
+        else if (mut != 25u && mut != 29u) DSB(ctx[(mut == 26u) ? 2u : 3u] + 0x67u) = (mut == 27u) ? 0u : 1u;   /* @no67 @o67 @v67 */
+        if (mut == 35u) fighter_3b938(ctx[2]);                                        /* @order */
+        if (mut != 38u) fighter_think_side(ctx[(mut == 32u) ? 0u : 1u]);              /* @nothink @thside */
+        if (mut == 29u) DSB(ctx[3] + 0x67u) = 1u;                                     /* @late67 */
+        if (mut != 36u && mut != 35u) fighter_3b938(ctx[(mut == 33u) ? 3u : 2u]);     /* @noburst @bslot */
+        if (mut != 37u) fighter_39278((mut == 34u) ? 1u : 2u);                        /* @no392 @v392 */
+    }
+}
+static void b_d5f_1975c(const u32 *r, u32 *eax) { (void)r; fighter_think(); *eax = 0u; }
+#define D5F_TH_MUT(name, n) \
+    static void m_d5f_1975c_##name(const u32 *r, u32 *eax) { (void)r; d5f_think(n); *eax = 0u; }
+D5F_TH_MUT(nostep, 1u)  D5F_TH_MUT(one, 2u)     D5F_TH_MUT(rev, 3u)      D5F_TH_MUT(cside, 4u)   D5F_TH_MUT(uns, 5u)
+D5F_TH_MUT(ge, 6u)      D5F_TH_MUT(cw, 7u)      D5F_TH_MUT(notimer, 8u)  D5F_TH_MUT(tside, 9u)   D5F_TH_MUT(g1side, 10u)
+D5F_TH_MUT(g1sel, 11u)  D5F_TH_MUT(eax1, 12u)   D5F_TH_MUT(both, 13u)    D5F_TH_MUT(g2side, 14u) D5F_TH_MUT(g2sel, 15u)
+D5F_TH_MUT(eax2, 16u)   D5F_TH_MUT(swap, 17u)   D5F_TH_MUT(no8a, 18u)    D5F_TH_MUT(o8a, 19u)    D5F_TH_MUT(v8a, 20u)
+D5F_TH_MUT(w8a, 21u)    D5F_TH_MUT(nodust, 22u) D5F_TH_MUT(dustslot, 23u) D5F_TH_MUT(noret, 24u) D5F_TH_MUT(no67, 25u)
+D5F_TH_MUT(o67, 26u)    D5F_TH_MUT(v67, 27u)    D5F_TH_MUT(w67, 28u)     D5F_TH_MUT(late67, 29u) D5F_TH_MUT(cache, 30u)
+D5F_TH_MUT(cache2, 31u) D5F_TH_MUT(thside, 32u) D5F_TH_MUT(bslot, 33u)   D5F_TH_MUT(v392, 34u)   D5F_TH_MUT(order, 35u)
+D5F_TH_MUT(noburst, 36u) D5F_TH_MUT(no392, 37u) D5F_TH_MUT(nothink, 38u) D5F_TH_MUT(dustearly, 39u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43161,6 +43220,48 @@ static const binding_t k_bindings[] = {
     { "config_key_name@ret0",                  m_d4d_3157c_ret0, 0x000000FFu },
     { "config_key_name@nogt",                  m_d4d_3157c_nogt, 0x000000FFu },
     { "config_key_name@nonul",                 m_d4d_3157c_nonul, 0x000000FFu },
+    /* D5 d5f (record 2026-10-12-reverse-d5f) */
+    { "fighter_think", b_d5f_1975c, 0x00000000u },
+    { "fighter_think@nostep", m_d5f_1975c_nostep, 0x00000000u },
+    { "fighter_think@one", m_d5f_1975c_one, 0x00000000u },
+    { "fighter_think@rev", m_d5f_1975c_rev, 0x00000000u },
+    { "fighter_think@cside", m_d5f_1975c_cside, 0x00000000u },
+    { "fighter_think@uns", m_d5f_1975c_uns, 0x00000000u },
+    { "fighter_think@ge", m_d5f_1975c_ge, 0x00000000u },
+    { "fighter_think@cw", m_d5f_1975c_cw, 0x00000000u },
+    { "fighter_think@notimer", m_d5f_1975c_notimer, 0x00000000u },
+    { "fighter_think@tside", m_d5f_1975c_tside, 0x00000000u },
+    { "fighter_think@g1side", m_d5f_1975c_g1side, 0x00000000u },
+    { "fighter_think@g1sel", m_d5f_1975c_g1sel, 0x00000000u },
+    { "fighter_think@eax1", m_d5f_1975c_eax1, 0x00000000u },
+    { "fighter_think@both", m_d5f_1975c_both, 0x00000000u },
+    { "fighter_think@g2side", m_d5f_1975c_g2side, 0x00000000u },
+    { "fighter_think@g2sel", m_d5f_1975c_g2sel, 0x00000000u },
+    { "fighter_think@eax2", m_d5f_1975c_eax2, 0x00000000u },
+    { "fighter_think@swap", m_d5f_1975c_swap, 0x00000000u },
+    { "fighter_think@no8a", m_d5f_1975c_no8a, 0x00000000u },
+    { "fighter_think@o8a", m_d5f_1975c_o8a, 0x00000000u },
+    { "fighter_think@v8a", m_d5f_1975c_v8a, 0x00000000u },
+    { "fighter_think@w8a", m_d5f_1975c_w8a, 0x00000000u },
+    { "fighter_think@nodust", m_d5f_1975c_nodust, 0x00000000u },
+    { "fighter_think@dustslot", m_d5f_1975c_dustslot, 0x00000000u },
+    { "fighter_think@noret", m_d5f_1975c_noret, 0x00000000u },
+    { "fighter_think@no67", m_d5f_1975c_no67, 0x00000000u },
+    { "fighter_think@o67", m_d5f_1975c_o67, 0x00000000u },
+    { "fighter_think@v67", m_d5f_1975c_v67, 0x00000000u },
+    { "fighter_think@w67", m_d5f_1975c_w67, 0x00000000u },
+    { "fighter_think@late67", m_d5f_1975c_late67, 0x00000000u },
+    { "fighter_think@thside", m_d5f_1975c_thside, 0x00000000u },
+    { "fighter_think@bslot", m_d5f_1975c_bslot, 0x00000000u },
+    { "fighter_think@v392", m_d5f_1975c_v392, 0x00000000u },
+    { "fighter_think@order", m_d5f_1975c_order, 0x00000000u },
+    { "fighter_think@noburst", m_d5f_1975c_noburst, 0x00000000u },
+    { "fighter_think@no392", m_d5f_1975c_no392, 0x00000000u },
+    { "fighter_think@nothink", m_d5f_1975c_nothink, 0x00000000u },
+    { "fighter_think@dustearly", m_d5f_1975c_dustearly, 0x00000000u },
+    { "fighter_think_rr", b_d5f_1975c, 0x00000000u },
+    { "fighter_think_rr@cache", m_d5f_1975c_cache, 0x00000000u },
+    { "fighter_think_rr@cache2", m_d5f_1975c_cache2, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
