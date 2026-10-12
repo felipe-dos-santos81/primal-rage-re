@@ -31059,6 +31059,183 @@ D4B_BC_MUT(acc8, 20u) D4B_BC_MUT(lensext, 21u) D4B_BC_MUT(nozero, 22u) D4B_BC_MU
 D4B_BC_MUT(gt, 24u)   D4B_BC_MUT(rzero, 25u) D4B_BC_MUT(notrim, 26u)
 D4B_BC_MUT(yacc8, 40u) D4B_BC_MUT(ylensext, 41u) D4B_BC_MUT(ynozero, 42u) D4B_BC_MUT(ypartb0, 43u)
 D4B_BC_MUT(ygt, 44u)  D4B_BC_MUT(yrzero, 45u) D4B_BC_MUT(ynotrim, 46u)
+
+#include "platform/sprite.h"             /* SpriteNode, for the 0x14268 / 0x1C528 / 0x51E5C rows */
+
+/* 0x14268 sprite_node_build (and its second copy 0x1C528, the same bytes but for the call's rel32):
+ * EAX = the node, DX = the sprite id. The port's node is a C struct (sprite.h): the binding loads it
+ * from the raw node's bytes at EAX, runs the C function and stores back the six fields the raw
+ * writes and the C struct has at the same offsets: +0x08 xorg, +0x0C yorg, +0x10 type, +0x14 rows,
+ * +0x18 width, +0x20 pixel handle. Not compared (record §4): the raw's +0x24 (the descriptor handle,
+ * `mov [ebx+0x24],eax` 0x14287; the C struct keeps none) and the C function's own zeroing of
+ * pal_ptr, the clip fields, stride and row (PORT, sprite.c). */
+static u32 d4b_14268_core(const u32 *r, u32 mut)
+{
+    u32 at = r[R_EAX], id = r[R_EDX] & 0xFFFFu;
+    SpriteNode n;
+    memcpy(&n, mem + at, sizeof n);
+    if (mut == 0u) {
+        sprite_node_build(&n, id);
+    } else if (id == 0u) {
+        n.rows = n.width = n.xorg = 0;
+        if (mut != 1u) n.yorg = 0;                                            /* @zero: +0x0C kept */
+        if (mut == 2u) n.type = 0u;                                           /* @zerotype */
+    } else {
+        u32 h = DSD(DS_000A8B30 + ((mut == 3u) ? id : (id & 0x7FFFu)) * 4u);  /* @mask */
+        const u8 *p = (const u8 *)res_resolve(h);
+        u32 d = p != NULL ? (u32)(p - mem) : 0u;
+        s32 height = (mut == 4u) ? (s32)(u32)DSW(d + 2u) : (s32)(s16)DSW(d + 2u);   /* @hzext */
+        s32 width = (s32)(s16)DSW(d);
+        int neg = (mut == 5u) ? (height <= 0) : (height < 0);                 /* @le: a zero height taken as raw */
+        if (neg) {
+            n.rows = -height;
+            n.width = (mut == 6u) ? width : -width;                           /* @negw */
+            n.type = (mut == 7u) ? 1u : 2u;                                   /* @type */
+        } else {
+            n.rows = height;
+            n.width = width;
+            n.type = (mut == 7u) ? 2u : 1u;
+        }
+        n.pixel_handle = DSD(d + ((mut == 8u) ? 4u : 8u));                    /* @pix */
+        n.xorg = (mut == 9u) ? (s32)(u32)DSW(d + 4u) : (s32)(s16)DSW(d + 4u); /* @xzext */
+        n.yorg = (mut == 10u) ? (s32)(s16)DSW(d + 4u) : (s32)(s16)DSW(d + 6u);   /* @yorg */
+        if ((id & 0x8000u) != 0u && mut != 11u) {                             /* @nohflip */
+            if (mut != 12u) n.type |= 8u;                                     /* @hflip8 */
+            if (mut == 13u) n.xorg = width - n.xorg - 1;                      /* @mirrorw: the header's width, not the node's */
+            else if (mut != 14u) n.xorg = n.width - n.xorg - ((mut == 15u) ? 0 : 1);   /* @nomirror, @mirror1 */
+        }
+    }
+    DSD(at + 0x08u) = (u32)n.xorg;
+    DSD(at + 0x0Cu) = (u32)n.yorg;
+    DSD(at + 0x10u) = n.type;
+    DSD(at + 0x14u) = (u32)n.rows;
+    DSD(at + 0x18u) = (u32)n.width;
+    DSD(at + 0x20u) = n.pixel_handle;
+    return 0u;
+}
+static void b_d4b_14268(const u32 *r, u32 *eax) { *eax = d4b_14268_core(r, 0u); }
+#define D4B_NB_MUT(name, n) \
+    static void m_d4b_nb_##name(const u32 *r, u32 *eax) { *eax = d4b_14268_core(r, n); }
+D4B_NB_MUT(zero, 1u)  D4B_NB_MUT(zerotype, 2u) D4B_NB_MUT(mask, 3u)  D4B_NB_MUT(hzext, 4u)
+D4B_NB_MUT(le, 5u)    D4B_NB_MUT(negw, 6u)   D4B_NB_MUT(type, 7u)    D4B_NB_MUT(pix, 8u)
+D4B_NB_MUT(xzext, 9u) D4B_NB_MUT(yorg, 10u)  D4B_NB_MUT(nohflip, 11u) D4B_NB_MUT(hflip8, 12u)
+D4B_NB_MUT(mirrorw, 13u) D4B_NB_MUT(nomirror, 14u) D4B_NB_MUT(mirror1, 15u)
+
+#define D4B_BDF7C 0x000BDF7Cu              /* the two spawn-descriptor tables (render.c's own defines) */
+#define D4B_BDF9C 0x000BDF9Cu
+
+/* 0x387F4 render_scroll_scene_a: EAX = the scene index; EBX is the caller's (0x38730 keeps the index
+ * there: `mov ebx,eax` 0x38733, `mov eax,ebx` 0x387CF) and stays the subtrahend's base when the
+ * sprite's height is not negative (`jge` 0x38820 skips `mov ebx,eax; neg ebx`). */
+static u32 d4b_387f4_core(const u32 *r, u32 mut)
+{
+    u32 i = r[R_EAX], desc, pv;
+    const u8 *p;
+    s32 v, x;
+    static const u32 pal[4] = { 0x105FF3Cu, 0x080997Cu, 0x0809984u, 0x080998Cu };
+    if (mut == 1u) DSW(DS_00107A55) = (u16)DSB(DS_000A8A18 + i);              /* @a55w */
+    else DSB(DS_00107A55) = DSB(DS_000A8A18 + ((mut == 2u) ? 0u : i));        /* @i */
+    desc = DSD(((mut == 3u) ? D4B_BDF9C : D4B_BDF7C) + i * 4u);           /* @desc */
+    p = (const u8 *)res_resolve(DSD(DS_000A8B30 + DSD(desc) * 4u));
+    pv = p != NULL ? DSD((u32)(p - mem)) : 0u;
+    v = (mut == 4u) ? (s32)(s16)pv : ((s32)pv >> 16);                         /* @hlow: the width word */
+    if (mut == 5u) x = (v < 0) ? -v : v;                                      /* @abs: the height itself when not negative */
+    else if (mut == 6u) x = (v < 0) ? v : (s32)i;                             /* @noneg */
+    else if (mut == 7u) x = (v <= 0) ? -v : (s32)i;                           /* @le */
+    else x = (v < 0) ? -v : (s32)i;
+    if (mut == 8u) DSD(DS_00107A48) = (u32)(x - (s32)DSW(DS_00107A4E)) << 6;  /* @a48d */
+    else DSW(DS_00107A48) = (u16)((u32)(x - ((mut == 9u) ? 0 : (s32)DSW(DS_00107A4E))) << ((mut == 10u) ? 5 : 6));   /* @noa4e, @shift */
+    if (mut == 11u)                                                           /* @early: the palettes before the spawn */
+        for (u32 k = 0; k < 4u && DSW(DS_00104B00) != 0x13u; k++) palette_acquire(pal[k]);
+    pv = actor_spawn((const u32 *)(mem + desc), 0u, (mut == 12u) ? 1u : 2u, 0u, 0u);   /* @layer */
+    DSD((mut == 13u) ? DS_000BDFC0 : DS_000BDFBC) = pv;                       /* @bdfbc */
+    if (mut == 11u) return 0u;
+    if ((mut == 14u) ? (DSB(DS_00104B00) != 0x13u) : (mut == 15u) ? (DSW(DS_00104B00) == 0x13u)   /* @modeb, @modeeq */
+                     : (DSW(DS_00104B00) != 0x13u)) {
+        for (u32 k = 0; k < ((mut == 16u) ? 3u : 4u); k++)                    /* @pal3 */
+            palette_acquire(pal[(mut == 17u) ? 3u - k : k]);                  /* @palorder */
+    }
+    return 0u;
+}
+static void b_d4b_387f4(const u32 *r, u32 *eax) { render_scroll_scene_a(r[R_EAX]); *eax = 0u; }
+#define D4B_SA_MUT(name, n) \
+    static void m_d4b_sa_##name(const u32 *r, u32 *eax) { *eax = d4b_387f4_core(r, n); }
+D4B_SA_MUT(a55w, 1u)  D4B_SA_MUT(i, 2u)      D4B_SA_MUT(desc, 3u)   D4B_SA_MUT(hlow, 4u)
+D4B_SA_MUT(abs, 5u)   D4B_SA_MUT(noneg, 6u)  D4B_SA_MUT(le, 7u)     D4B_SA_MUT(a48d, 8u)
+D4B_SA_MUT(noa4e, 9u) D4B_SA_MUT(shift, 10u) D4B_SA_MUT(early, 11u) D4B_SA_MUT(layer, 12u)
+D4B_SA_MUT(bdfbc, 13u) D4B_SA_MUT(modeb, 14u) D4B_SA_MUT(modeeq, 15u) D4B_SA_MUT(pal3, 16u)
+D4B_SA_MUT(palorder, 17u)
+
+/* 0x38890 render_scroll_scene_b: EAX = the scene index. */
+static u32 d4b_38890_core(const u32 *r, u32 mut)
+{
+    u32 i = r[R_EAX], desc, a4;
+    if (mut == 11u) goto spawn;                                               /* @order: the spawn before the stores */
+stores:
+    DSB((mut == 1u) ? DS_00107A55 : DS_00107A56) = DSB(DS_000A8A20 + ((mut == 2u) ? 0u : i));   /* @a56, @i */
+    if (mut == 3u) DSD(DS_00107A52) = (u32)(0xF8 - (s32)DSW(DS_00107A4E));    /* @a52d */
+    else DSW(DS_00107A52) = (u16)(((mut == 4u) ? 0xF0 : 0xF8) - (s32)DSW(DS_00107A4E));   /* @f8 */
+    if (mut == 11u) return 0u;
+spawn:
+    desc = DSD(((mut == 5u) ? D4B_BDF7C : D4B_BDF9C) + i * 4u);           /* @desc */
+    a4 = (mut == 6u) ? (u32)DSW(DS_00107A4E)                                  /* @a4 */
+       : (mut == 7u) ? (u32)(u16)(DSW(DS_00107A4E) + 0x100u)                  /* @a4w */
+       : (mut == 8u) ? (u32)((s32)(s16)DSW(DS_00107A4E) + 0x100)              /* @a4sext */
+       : (u32)DSW(DS_00107A4E) + 0x100u;
+    a4 = actor_spawn((const u32 *)(mem + desc), 0u, (mut == 9u) ? 2u : 1u, a4, 0u);   /* @layer */
+    DSD((mut == 10u) ? DS_000BDFBC : DS_000BDFC0) = a4;                       /* @bdfc0 */
+    if (mut == 11u) goto stores;
+    return 0u;
+}
+static void b_d4b_38890(const u32 *r, u32 *eax) { render_scroll_scene_b(r[R_EAX]); *eax = 0u; }
+#define D4B_SB_MUT(name, n) \
+    static void m_d4b_sb_##name(const u32 *r, u32 *eax) { *eax = d4b_38890_core(r, n); }
+D4B_SB_MUT(a56, 1u)   D4B_SB_MUT(i, 2u)      D4B_SB_MUT(a52d, 3u)   D4B_SB_MUT(f8, 4u)
+D4B_SB_MUT(desc, 5u)  D4B_SB_MUT(a4, 6u)     D4B_SB_MUT(a4w, 7u)    D4B_SB_MUT(a4sext, 8u)
+D4B_SB_MUT(layer, 9u) D4B_SB_MUT(bdfc0, 10u) D4B_SB_MUT(order, 11u)
+
+/* 0x38730 render_scroll_setup: EAX = the scene index. */
+static u32 d4b_38730_core(const u32 *r, u32 mut)
+{
+    u32 i = r[R_EAX];
+    DSW(DS_00107A4E) = DSW(((mut == 1u) ? DS_000BDE2C : DS_000BDE1C) + i * 2u);   /* @a4e */
+    DSW(DS_00107A42) = DSW(((mut == 2u) ? DS_000BDE1C : DS_000BDE2C) + i * 2u);   /* @a42 */
+    if (mut == 3u) {                                                          /* @a4astale: the table's word, not 0x107A4E read back */
+        u16 w = DSW(DS_00107A4E);
+        frontend_origin_zero();
+        DSW(DS_00107A4A) = w;
+        DSW(DS_00107A4C) = w;
+    } else {
+        if (mut != 4u) frontend_origin_zero();                                /* @noorigin */
+        if (mut != 5u) DSW(DS_00107A4A) = DSW(DS_00107A4E);                   /* @noa4a */
+        if (mut != 6u) DSW(DS_00107A4C) = DSW(DS_00107A4E);                   /* @noa4c */
+    }
+    DSW(DS_00107A50) = DSW(((mut == 7u) ? DS_000BDDFC : DS_000BDE0C) + i * 2u);   /* @a50 */
+    DSW(DS_00107A40) = DSW(((mut == 8u) ? DS_000BDE0C : DS_000BDDFC) + i * 2u);   /* @a40 */
+    DSW(DS_00107A3A) = (mut == 9u) ? (u16)((s32)(s16)DSW(DS_00107A50) / 32)   /* @a3asext */
+                     : (u16)((s32)DSW(DS_00107A50) / ((mut == 10u) ? 64 : 32));   /* @a3a */
+    if (mut != 12u)                                                           /* @a38late */
+        DSW(DS_00107A38) = (mut == 11u) ? (u16)((s32)(s16)DSW(DS_00107A48) / 64)   /* @a38sext */
+                         : (u16)((s32)DSW(DS_00107A48) / 64);
+    if (mut == 13u) DSB(DS_00107A54) = 1u;                                    /* @a54early */
+    if (mut == 14u) { render_scroll_scene_b(i); render_scroll_scene_a(i); }   /* @order */
+    else {
+        render_scroll_scene_a((mut == 15u) ? 0u : i);                         /* @scenei */
+        if (mut == 12u) DSW(DS_00107A38) = (u16)((s32)DSW(DS_00107A48) / 64);
+        render_scroll_scene_b(i);
+    }
+    if (mut != 16u) render_scroll_fill();                                     /* @nofill */
+    if (mut != 17u) DSB(DS_00107A54) = 1u;                                    /* @noa54 */
+    return 0u;
+}
+static void b_d4b_38730(const u32 *r, u32 *eax) { render_scroll_setup(r[R_EAX]); *eax = 0u; }
+#define D4B_SS_MUT(name, n) \
+    static void m_d4b_ss_##name(const u32 *r, u32 *eax) { *eax = d4b_38730_core(r, n); }
+D4B_SS_MUT(a4e, 1u)   D4B_SS_MUT(a42, 2u)    D4B_SS_MUT(a4astale, 3u) D4B_SS_MUT(noorigin, 4u)
+D4B_SS_MUT(noa4a, 5u) D4B_SS_MUT(noa4c, 6u)  D4B_SS_MUT(a50, 7u)    D4B_SS_MUT(a40, 8u)
+D4B_SS_MUT(a3asext, 9u) D4B_SS_MUT(a3a, 10u) D4B_SS_MUT(a38sext, 11u) D4B_SS_MUT(a38late, 12u)
+D4B_SS_MUT(a54early, 13u) D4B_SS_MUT(order, 14u) D4B_SS_MUT(scenei, 15u) D4B_SS_MUT(nofill, 16u)
+D4B_SS_MUT(noa54, 17u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39883,6 +40060,86 @@ static const binding_t k_bindings[] = {
     { "camera_box_clip@ygt",                 m_d4b_bc_ygt, 0x00000000u },
     { "camera_box_clip@yrzero",              m_d4b_bc_yrzero, 0x00000000u },
     { "camera_box_clip@ynotrim",             m_d4b_bc_ynotrim, 0x00000000u },
+    { "sprite_node_build",                   b_d4b_14268, 0x00000000u },
+    { "sprite_node_build@zero",              m_d4b_nb_zero, 0x00000000u },
+    { "sprite_node_build@zerotype",          m_d4b_nb_zerotype, 0x00000000u },
+    { "sprite_node_build@mask",              m_d4b_nb_mask, 0x00000000u },
+    { "sprite_node_build@hzext",             m_d4b_nb_hzext, 0x00000000u },
+    { "sprite_node_build@le",                m_d4b_nb_le, 0x00000000u },
+    { "sprite_node_build@negw",              m_d4b_nb_negw, 0x00000000u },
+    { "sprite_node_build@type",              m_d4b_nb_type, 0x00000000u },
+    { "sprite_node_build@pix",               m_d4b_nb_pix, 0x00000000u },
+    { "sprite_node_build@xzext",             m_d4b_nb_xzext, 0x00000000u },
+    { "sprite_node_build@yorg",              m_d4b_nb_yorg, 0x00000000u },
+    { "sprite_node_build@nohflip",           m_d4b_nb_nohflip, 0x00000000u },
+    { "sprite_node_build@hflip8",            m_d4b_nb_hflip8, 0x00000000u },
+    { "sprite_node_build@mirrorw",           m_d4b_nb_mirrorw, 0x00000000u },
+    { "sprite_node_build@nomirror",          m_d4b_nb_nomirror, 0x00000000u },
+    { "sprite_node_build@mirror1",           m_d4b_nb_mirror1, 0x00000000u },
+    { "sprite_node_build_1c528",             b_d4b_14268, 0x00000000u },
+    { "sprite_node_build_1c528@zero",        m_d4b_nb_zero, 0x00000000u },
+    { "sprite_node_build_1c528@zerotype",    m_d4b_nb_zerotype, 0x00000000u },
+    { "sprite_node_build_1c528@mask",        m_d4b_nb_mask, 0x00000000u },
+    { "sprite_node_build_1c528@hzext",       m_d4b_nb_hzext, 0x00000000u },
+    { "sprite_node_build_1c528@le",          m_d4b_nb_le, 0x00000000u },
+    { "sprite_node_build_1c528@negw",        m_d4b_nb_negw, 0x00000000u },
+    { "sprite_node_build_1c528@type",        m_d4b_nb_type, 0x00000000u },
+    { "sprite_node_build_1c528@pix",         m_d4b_nb_pix, 0x00000000u },
+    { "sprite_node_build_1c528@xzext",       m_d4b_nb_xzext, 0x00000000u },
+    { "sprite_node_build_1c528@yorg",        m_d4b_nb_yorg, 0x00000000u },
+    { "sprite_node_build_1c528@nohflip",     m_d4b_nb_nohflip, 0x00000000u },
+    { "sprite_node_build_1c528@hflip8",      m_d4b_nb_hflip8, 0x00000000u },
+    { "sprite_node_build_1c528@mirrorw",     m_d4b_nb_mirrorw, 0x00000000u },
+    { "sprite_node_build_1c528@nomirror",    m_d4b_nb_nomirror, 0x00000000u },
+    { "sprite_node_build_1c528@mirror1",     m_d4b_nb_mirror1, 0x00000000u },
+    { "render_scroll_scene_a",               b_d4b_387f4, 0x00000000u },
+    { "render_scroll_scene_a@a55w",          m_d4b_sa_a55w, 0x00000000u },
+    { "render_scroll_scene_a@i",             m_d4b_sa_i, 0x00000000u },
+    { "render_scroll_scene_a@desc",          m_d4b_sa_desc, 0x00000000u },
+    { "render_scroll_scene_a@hlow",          m_d4b_sa_hlow, 0x00000000u },
+    { "render_scroll_scene_a@abs",           m_d4b_sa_abs, 0x00000000u },
+    { "render_scroll_scene_a@noneg",         m_d4b_sa_noneg, 0x00000000u },
+    { "render_scroll_scene_a@le",            m_d4b_sa_le, 0x00000000u },
+    { "render_scroll_scene_a@a48d",          m_d4b_sa_a48d, 0x00000000u },
+    { "render_scroll_scene_a@noa4e",         m_d4b_sa_noa4e, 0x00000000u },
+    { "render_scroll_scene_a@shift",         m_d4b_sa_shift, 0x00000000u },
+    { "render_scroll_scene_a@early",         m_d4b_sa_early, 0x00000000u },
+    { "render_scroll_scene_a@layer",         m_d4b_sa_layer, 0x00000000u },
+    { "render_scroll_scene_a@bdfbc",         m_d4b_sa_bdfbc, 0x00000000u },
+    { "render_scroll_scene_a@modeb",         m_d4b_sa_modeb, 0x00000000u },
+    { "render_scroll_scene_a@modeeq",        m_d4b_sa_modeeq, 0x00000000u },
+    { "render_scroll_scene_a@pal3",          m_d4b_sa_pal3, 0x00000000u },
+    { "render_scroll_scene_a@palorder",      m_d4b_sa_palorder, 0x00000000u },
+    { "render_scroll_scene_b",               b_d4b_38890, 0x00000000u },
+    { "render_scroll_scene_b@a56",           m_d4b_sb_a56, 0x00000000u },
+    { "render_scroll_scene_b@i",             m_d4b_sb_i, 0x00000000u },
+    { "render_scroll_scene_b@a52d",          m_d4b_sb_a52d, 0x00000000u },
+    { "render_scroll_scene_b@f8",            m_d4b_sb_f8, 0x00000000u },
+    { "render_scroll_scene_b@desc",          m_d4b_sb_desc, 0x00000000u },
+    { "render_scroll_scene_b@a4",            m_d4b_sb_a4, 0x00000000u },
+    { "render_scroll_scene_b@a4w",           m_d4b_sb_a4w, 0x00000000u },
+    { "render_scroll_scene_b@a4sext",        m_d4b_sb_a4sext, 0x00000000u },
+    { "render_scroll_scene_b@layer",         m_d4b_sb_layer, 0x00000000u },
+    { "render_scroll_scene_b@bdfc0",         m_d4b_sb_bdfc0, 0x00000000u },
+    { "render_scroll_scene_b@order",         m_d4b_sb_order, 0x00000000u },
+    { "render_scroll_setup",                 b_d4b_38730, 0x00000000u },
+    { "render_scroll_setup@a4e",             m_d4b_ss_a4e, 0x00000000u },
+    { "render_scroll_setup@a42",             m_d4b_ss_a42, 0x00000000u },
+    { "render_scroll_setup@a4astale",        m_d4b_ss_a4astale, 0x00000000u },
+    { "render_scroll_setup@noorigin",        m_d4b_ss_noorigin, 0x00000000u },
+    { "render_scroll_setup@noa4a",           m_d4b_ss_noa4a, 0x00000000u },
+    { "render_scroll_setup@noa4c",           m_d4b_ss_noa4c, 0x00000000u },
+    { "render_scroll_setup@a50",             m_d4b_ss_a50, 0x00000000u },
+    { "render_scroll_setup@a40",             m_d4b_ss_a40, 0x00000000u },
+    { "render_scroll_setup@a3asext",         m_d4b_ss_a3asext, 0x00000000u },
+    { "render_scroll_setup@a3a",             m_d4b_ss_a3a, 0x00000000u },
+    { "render_scroll_setup@a38sext",         m_d4b_ss_a38sext, 0x00000000u },
+    { "render_scroll_setup@a38late",         m_d4b_ss_a38late, 0x00000000u },
+    { "render_scroll_setup@a54early",        m_d4b_ss_a54early, 0x00000000u },
+    { "render_scroll_setup@order",           m_d4b_ss_order, 0x00000000u },
+    { "render_scroll_setup@scenei",          m_d4b_ss_scenei, 0x00000000u },
+    { "render_scroll_setup@nofill",          m_d4b_ss_nofill, 0x00000000u },
+    { "render_scroll_setup@noa54",           m_d4b_ss_noa54, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)
