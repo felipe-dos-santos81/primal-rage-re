@@ -3795,7 +3795,7 @@ static u32 hit_connect(u32 side, u32 facing, u32 i, u16 *out)
 {
     u32 desc = hit_frame_desc(side, i);
     u32 off = side * 0x40u + i * 2u;
-    u32 phase = (u32)DSW(DS_00107D58 + off);
+    u32 phase = (u32)(s32)(s16)DSW(DS_00107D58 + off);  /* 0x3C76D/0x3C774: sar ebx,0x10 */
     u16 m0 = fighter_cmd_facing(facing, DSD(desc + phase * 0x14u));
     u16 m1 = fighter_cmd_facing(facing, DSD(desc + phase * 0x14u + 4u));
     u16 m2 = fighter_cmd_facing(facing, DSD(desc + phase * 0x14u + 8u));
@@ -3818,7 +3818,7 @@ static u32 hit_displace(u32 side, u32 facing, u32 i, u16 *out)
 {
     u32 desc = hit_frame_desc(side, i);
     u32 off = side * 0x40u + i * 2u;
-    u32 phase = (u32)DSW(DS_00107D58 + off);
+    u32 phase = (u32)(s32)(s16)DSW(DS_00107D58 + off);  /* 0x3C818/0x3C81E: sar edx,0x10 */
     u16 m = fighter_cmd_facing(facing, DSD(desc + phase * 0x14u + 0x10u));
     if ((DSW(DS_001088E0 + side * 2u) & m) == 0u) return 0u;
     *out = (u16)(DSD(desc + phase * 0x14u + 0xAu) >> 16);
