@@ -30552,6 +30552,103 @@ D4D_POLL_MUT(retsel, 9u) D4D_POLL_MUT(twin, 13u)    D4D_POLL_MUT(stampsel, 14u)
 #define D4D_POLLC_MUT(name, n) \
     static void m_d4d_2eec8_##name(const u32 *r, u32 *eax) { *eax = d4d_poll_core(r[R_EAX], r[R_EDX], 1u, n); }
 D4D_POLLC_MUT(noclr, 10u) D4D_POLLC_MUT(clrearly, 11u) D4D_POLLC_MUT(clrw, 12u)
+/* 0x33874 palette_reflow: EAX = the descriptor (an entry of the 0x107618 table), EDX = the handle.
+ * 0x1B544 runs on both sides (res_resolve); the records go through the port's palette_record. */
+static u32 d4d_33874_core(u32 desc, u32 handle, u32 mut)
+{
+    const u32 end = 0x00107798u;
+    const u32 *res = res_resolve(handle);
+    u32 count = (mut == 1u) ? 3u : res ? *res : 0u;                          /* @count */
+    s32 len = (s32)DSD(desc + ((mut == 2u) ? 8u : 0x0Cu));                   /* @lenoff */
+    int shrt = (mut == 3u) ? (u32)len < count : (mut == 4u) ? len <= (s32)count : len < (s32)count;   /* @lenuns @lenle */
+    const u32 flag = (mut == 13u) ? 0u : 1u;                                 /* @flag0 */
+    if (shrt) {
+        u32 prev = desc;
+        for (u32 p = desc + ((mut == 5u) ? 0u : 0x10u); (mut == 6u) ? p <= end : p < end; p += 0x10u) {   /* @self @bound */
+            u32 ns = DSD(prev + 8u) + DSD(prev + ((mut == 21u) ? 4u : 0x0Cu));                            /* @prevlen */
+            if ((mut == 7u) ? (s32)ns < (s32)DSD(p + 8u) : (mut == 8u) ? ns <= DSD(p + 8u)
+                : (s32)ns <= (s32)DSD(p + 8u)) break;                        /* @lt @uns */
+            if (mut == 9u && DSD(p) == 0u) continue;                         /* @skip0: 0x33754's free-entry skip */
+            if (mut != 10u) DSD(p + 8u) = ns;                                /* @nostart */
+            palette_record((mut == 11u) ? handle : DSD(p), ns, (mut == 12u) ? count : DSD(p + 0x0Cu), flag);   /* @rechandle @reccount */
+            if (mut != 14u) prev = p;                                        /* @noprev */
+        }
+        if (mut == 19u) DSD(desc) = handle;                                  /* @both */
+    } else if (handle != DSD(desc) || mut == 15u) {                          /* @always */
+        if (mut != 16u) DSD(desc) = handle;                                  /* @nohandle */
+        if (mut != 20u)                                                      /* @norec */
+            palette_record(handle, DSD(desc + ((mut == 17u) ? 4u : 8u)),     /* @startoff */
+                           (mut == 18u) ? DSD(desc + 0x0Cu) : count, flag);  /* @reclen */
+    }
+    return 0u;
+}
+static void b_d4d_33874(const u32 *r, u32 *eax) { palette_reflow(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define D4D_PR_MUT(name, n) \
+    static void m_d4d_33874_##name(const u32 *r, u32 *eax) { *eax = d4d_33874_core(r[R_EAX], r[R_EDX], n); }
+D4D_PR_MUT(count, 1u)  D4D_PR_MUT(lenoff, 2u)   D4D_PR_MUT(lenuns, 3u)   D4D_PR_MUT(lenle, 4u)   D4D_PR_MUT(self, 5u)
+D4D_PR_MUT(bound, 6u)  D4D_PR_MUT(lt, 7u)       D4D_PR_MUT(uns, 8u)      D4D_PR_MUT(skip0, 9u)   D4D_PR_MUT(nostart, 10u)
+D4D_PR_MUT(rechandle, 11u) D4D_PR_MUT(reccount, 12u) D4D_PR_MUT(flag0, 13u) D4D_PR_MUT(noprev, 14u) D4D_PR_MUT(always, 15u)
+D4D_PR_MUT(nohandle, 16u) D4D_PR_MUT(startoff, 17u) D4D_PR_MUT(reclen, 18u) D4D_PR_MUT(both, 19u) D4D_PR_MUT(norec, 20u)
+D4D_PR_MUT(prevlen, 21u)
+/* 0x4F7F4 attract_palette_advance: no argument; 0x33874 is a stub. */
+static u32 d4d_4f7f4_core(u32 mut)
+{
+    if (DSD(0x000F0A48u) != 0u || mut == 1u) {                               /* @nogate */
+        u8 c = DSB(0x001088F1u);
+        u32 idx = (mut == 2u) ? (u32)(s32)(s8)c : (mut == 3u) ? (u32)(u8)(c + 1u) : (u32)c;   /* @sext @preinc */
+        u32 handle = DSD(0x000C98A0u + idx * ((mut == 4u) ? 2u : 4u));       /* @scale */
+        if (mut != 5u && mut != 6u) DSB(0x001088F1u) = (u8)(c + 1u);         /* @noinc @late */
+        if (mut == 7u) palette_reflow(handle, DSD(0x000F0A48u));             /* @swap */
+        else if (mut != 9u) palette_reflow((mut == 8u) ? 0x000F0A48u : DSD(0x000F0A48u), handle);   /* @entry @nocall */
+        if (mut == 6u) DSB(0x001088F1u) = (u8)(c + 1u);
+        {
+            u8 n = (mut == 10u) ? c : DSB(0x001088F1u);                      /* @stale */
+            if ((mut == 11u) ? n <= 10u : (mut == 12u) ? (s8)n < 10 : n < 10u) return 0u;   /* @le @signed */
+        }
+    }
+    if (mut == 13u) return 0u;                                               /* @noclr */
+    if (mut == 14u) DSB(0x00104AD0u) &= 0xFDu;                               /* @bit */
+    else if (mut == 15u) DSD(0x00104AD0u) &= 0xFEu;                          /* @wide */
+    else DSB(0x00104AD0u) &= 0xFEu;
+    return 0u;
+}
+static void b_d4d_4f7f4(const u32 *r, u32 *eax) { (void)r; attract_palette_advance(); *eax = 0u; }
+#define D4D_PA_MUT(name, n) \
+    static void m_d4d_4f7f4_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4d_4f7f4_core(n); }
+D4D_PA_MUT(nogate, 1u) D4D_PA_MUT(sext, 2u)  D4D_PA_MUT(preinc, 3u) D4D_PA_MUT(scale, 4u)  D4D_PA_MUT(noinc, 5u)
+D4D_PA_MUT(late, 6u)   D4D_PA_MUT(swap, 7u)  D4D_PA_MUT(entry, 8u)  D4D_PA_MUT(nocall, 9u) D4D_PA_MUT(stale, 10u)
+D4D_PA_MUT(le, 11u)    D4D_PA_MUT(signed, 12u) D4D_PA_MUT(noclr, 13u) D4D_PA_MUT(bit, 14u) D4D_PA_MUT(wide, 15u)
+/* 0x29B74 frontend_darken_all: no argument. 0x13DF0 and 0x13D4C are stubs, 0x33904 runs on both
+ * sides. The raw returns the constant 0 (the two `test eax,eax; je/jne` edges 0x29B85/0x29BA0 are
+ * the only ways into the tail 0x29BA2, which writes EDX, ECX and three words): the binding reports
+ * that 0 for the void port function, under the full mask. */
+static u32 d4d_29b74_core(u32 mut)
+{
+    u32 e;
+    if (mut == 9u) { DSW(0x001088EEu) = 0x78u; DSW(0x00104AFEu) = 0x78u; DSW(0x00104B00u) = 0x15u; }   /* @early */
+    if (mut != 1u && mut != 2u) effects_clear();                             /* @noclear @clearlate */
+    e = frontend_list_next((mut == 3u) ? 0x00107618u : 0u);                  /* @head */
+    while (e != 0u) {
+        if (mut == 4u) (void)effects_spawn_darken(3u, e);                    /* @swap */
+        else if (mut != 6u) (void)effects_spawn_darken(e, (mut == 5u) ? 4u : 3u);   /* @arg @nodarken */
+        if (mut == 7u) break;                                                /* @first */
+        e = frontend_list_next(e);
+    }
+    if (mut == 2u) effects_clear();
+    if (mut == 9u) return 0u;
+    if (mut == 13u) DSD(0x001088EEu) = 0x78u;                                /* @wide8ee */
+    else if (mut != 10u) DSW(0x001088EEu) = (mut == 8u) ? 0x15u : 0x78u;     /* @no8ee @vals */
+    if (mut != 11u) DSW(0x00104AFEu) = (mut == 8u) ? 0x15u : 0x78u;          /* @noafe */
+    if (mut == 14u) DSD(0x00104B00u) = 0x15u;                                /* @wideb00 */
+    else if (mut != 12u) DSW(0x00104B00u) = (mut == 8u) ? 0x78u : 0x15u;     /* @nob00 */
+    return 0u;
+}
+static void b_d4d_29b74(const u32 *r, u32 *eax) { (void)r; frontend_darken_all(); *eax = 0u; }
+#define D4D_DA_MUT(name, n) \
+    static void m_d4d_29b74_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4d_29b74_core(n); }
+D4D_DA_MUT(noclear, 1u) D4D_DA_MUT(clearlate, 2u) D4D_DA_MUT(head, 3u)  D4D_DA_MUT(swap, 4u)   D4D_DA_MUT(arg, 5u)
+D4D_DA_MUT(nodarken, 6u) D4D_DA_MUT(first, 7u)    D4D_DA_MUT(vals, 8u)  D4D_DA_MUT(early, 9u)  D4D_DA_MUT(no8ee, 10u)
+D4D_DA_MUT(noafe, 11u)  D4D_DA_MUT(nob00, 12u)    D4D_DA_MUT(wide8ee, 13u) D4D_DA_MUT(wideb00, 14u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39201,6 +39298,59 @@ static const binding_t k_bindings[] = {
     { "config_input_poll_clear@noclr",         m_d4d_2eec8_noclr, 0xFFFFFFFFu },
     { "config_input_poll_clear@clrearly",      m_d4d_2eec8_clrearly, 0xFFFFFFFFu },
     { "config_input_poll_clear@clrw",          m_d4d_2eec8_clrw, 0xFFFFFFFFu },
+    { "palette_reflow",                        b_d4d_33874, 0x00000000u },
+    { "palette_reflow@count",                  m_d4d_33874_count, 0x00000000u },
+    { "palette_reflow@lenoff",                 m_d4d_33874_lenoff, 0x00000000u },
+    { "palette_reflow@lenuns",                 m_d4d_33874_lenuns, 0x00000000u },
+    { "palette_reflow@lenle",                  m_d4d_33874_lenle, 0x00000000u },
+    { "palette_reflow@self",                   m_d4d_33874_self, 0x00000000u },
+    { "palette_reflow@bound",                  m_d4d_33874_bound, 0x00000000u },
+    { "palette_reflow@lt",                     m_d4d_33874_lt, 0x00000000u },
+    { "palette_reflow@uns",                    m_d4d_33874_uns, 0x00000000u },
+    { "palette_reflow@skip0",                  m_d4d_33874_skip0, 0x00000000u },
+    { "palette_reflow@nostart",                m_d4d_33874_nostart, 0x00000000u },
+    { "palette_reflow@rechandle",              m_d4d_33874_rechandle, 0x00000000u },
+    { "palette_reflow@reccount",               m_d4d_33874_reccount, 0x00000000u },
+    { "palette_reflow@flag0",                  m_d4d_33874_flag0, 0x00000000u },
+    { "palette_reflow@noprev",                 m_d4d_33874_noprev, 0x00000000u },
+    { "palette_reflow@always",                 m_d4d_33874_always, 0x00000000u },
+    { "palette_reflow@nohandle",               m_d4d_33874_nohandle, 0x00000000u },
+    { "palette_reflow@startoff",               m_d4d_33874_startoff, 0x00000000u },
+    { "palette_reflow@reclen",                 m_d4d_33874_reclen, 0x00000000u },
+    { "palette_reflow@both",                   m_d4d_33874_both, 0x00000000u },
+    { "palette_reflow@norec",                  m_d4d_33874_norec, 0x00000000u },
+    { "palette_reflow@prevlen",                m_d4d_33874_prevlen, 0x00000000u },
+    { "attract_palette_advance",               b_d4d_4f7f4, 0x00000000u },
+    { "attract_palette_advance@nogate",        m_d4d_4f7f4_nogate, 0x00000000u },
+    { "attract_palette_advance@sext",          m_d4d_4f7f4_sext, 0x00000000u },
+    { "attract_palette_advance@preinc",        m_d4d_4f7f4_preinc, 0x00000000u },
+    { "attract_palette_advance@scale",         m_d4d_4f7f4_scale, 0x00000000u },
+    { "attract_palette_advance@noinc",         m_d4d_4f7f4_noinc, 0x00000000u },
+    { "attract_palette_advance@late",          m_d4d_4f7f4_late, 0x00000000u },
+    { "attract_palette_advance@swap",          m_d4d_4f7f4_swap, 0x00000000u },
+    { "attract_palette_advance@entry",         m_d4d_4f7f4_entry, 0x00000000u },
+    { "attract_palette_advance@nocall",        m_d4d_4f7f4_nocall, 0x00000000u },
+    { "attract_palette_advance@stale",         m_d4d_4f7f4_stale, 0x00000000u },
+    { "attract_palette_advance@le",            m_d4d_4f7f4_le, 0x00000000u },
+    { "attract_palette_advance@signed",        m_d4d_4f7f4_signed, 0x00000000u },
+    { "attract_palette_advance@noclr",         m_d4d_4f7f4_noclr, 0x00000000u },
+    { "attract_palette_advance@bit",           m_d4d_4f7f4_bit, 0x00000000u },
+    { "attract_palette_advance@wide",          m_d4d_4f7f4_wide, 0x00000000u },
+    { "frontend_darken_all",                   b_d4d_29b74, 0xFFFFFFFFu },
+    { "frontend_darken_all@noclear",           m_d4d_29b74_noclear, 0xFFFFFFFFu },
+    { "frontend_darken_all@clearlate",         m_d4d_29b74_clearlate, 0xFFFFFFFFu },
+    { "frontend_darken_all@head",              m_d4d_29b74_head, 0xFFFFFFFFu },
+    { "frontend_darken_all@swap",              m_d4d_29b74_swap, 0xFFFFFFFFu },
+    { "frontend_darken_all@arg",               m_d4d_29b74_arg, 0xFFFFFFFFu },
+    { "frontend_darken_all@nodarken",          m_d4d_29b74_nodarken, 0xFFFFFFFFu },
+    { "frontend_darken_all@first",             m_d4d_29b74_first, 0xFFFFFFFFu },
+    { "frontend_darken_all@vals",              m_d4d_29b74_vals, 0xFFFFFFFFu },
+    { "frontend_darken_all@early",             m_d4d_29b74_early, 0xFFFFFFFFu },
+    { "frontend_darken_all@no8ee",             m_d4d_29b74_no8ee, 0xFFFFFFFFu },
+    { "frontend_darken_all@noafe",             m_d4d_29b74_noafe, 0xFFFFFFFFu },
+    { "frontend_darken_all@nob00",             m_d4d_29b74_nob00, 0xFFFFFFFFu },
+    { "frontend_darken_all@wide8ee",           m_d4d_29b74_wide8ee, 0xFFFFFFFFu },
+    { "frontend_darken_all@wideb00",           m_d4d_29b74_wideb00, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)
