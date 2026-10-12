@@ -5546,8 +5546,8 @@ void game_mode_1f_step(void)
  *   0xFF, 0x1800, 0) and 0xA8984 at (0x3A00, 0xFF, 0x1800, 0), then
  *   text_number_set(0xF, 0xB, pct, 3, 1, 0x4003) (0x2F434), and the string
  *   path below is skipped;
- * - with the bit clear: game_string_get(0x3D), sprintf(buf, "%s%.03d%%",
- *   that string, pct) (0x65546, format read at data 0x809AC: "%s%.03d%";
+ * - with the bit clear: game_string_get(0x3D), sprintf(buf, "%s%.03d%",
+ *   that string, pct) (0x65546, the format the nine bytes at data 0x809AC;
  *   the runtime's formatter emits nothing for the bare trailing '%', so the
  *   text is the string and three digits with no percent sign: the port
  *   formats "%s%.03d" (the differential row runs the original's 0x65546;

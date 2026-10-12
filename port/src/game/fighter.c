@@ -12719,7 +12719,9 @@ void fighter_47bfc(u32 slot, u32 rec, u32 side)
  * when the other side's slot pointer DS_001077A8[side ^ 1] (ESI) is 0. On the
  * slot's +0x57 (above 5 does nothing): 0 calls 0x47A00(side) when the record's
  * +0x63 is 7; 1, with +0x63 == 0x10, clears the other slot's +0x54, runs
- * 0x39834 on the other side with this slot's +0x5F, 0x39FB0 on the other slot
+ * 0x39834 on the other side with the +0x5F of the side's own fighter slot
+ * (0x47BB0 `mov dl,[eax*4+0x10780f]`, EAX = side * 0x25: not the EAX slot's),
+ * 0x39FB0 on the other slot
  * and sets +0x57 = 3; 2 runs 0x36870 on the record and sets +0x57 = 3; 3
  * nothing; 4, with +0x63 == 0x10, clears the other slot's +0x54, runs
  * 0x36870 on its record and sets +0x57 = 3; 5, when the slot's signed word

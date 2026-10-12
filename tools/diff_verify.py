@@ -870,7 +870,8 @@ P2_SPECS += [
          mutants=("@mutant", "@order")),
 ]
 
-# 0x36870 (fighter_36870): EAX = rec, a plain `ret`; it clobbers ESI, EDI and EBP (E.callee_clobbers).
+# 0x36870 (fighter_36870): EAX = rec, a plain `ret`. Its own body saves EBX, ECX and EDX and writes no other
+# register; the declared ("esi", "ebp") is the conservative set of E._CALLEE_CLOBBER_FIXES (record d3d §4).
 ANIM54 = E.Call(0x36870, ("eax",), clobbers=("esi", "ebp"))
 
 
