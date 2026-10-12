@@ -18543,6 +18543,129 @@ D3B_SPECS += [
            "cmpu cadrop ca gap gapu dirs t7c t70").split())),
 ]
 
+# 0x4AAD0's callees: 0x4B3F0 / 0x4B430 as d2b's stubs without their list-head write, 0x4BD4C and
+# 0x4B5A8 and 0x2BE1C stubs (seamed by this batch; the raw 0x2BE1C computes the difference inline,
+# the port's calls fight_2be00 twice, so it cannot run on both sides under a recorded 0x2BE00),
+# 0x4B144 the D3B_WALK stub; 0x2BE00 runs its own bytes, recorded.
+D3B_4B3F0 = dataclasses.replace(D2B_4B3F0, writes=())
+D3B_4B430 = dataclasses.replace(D2B_4B430, writes=())
+D3B_4BD4C = E.Call(0x4BD4C, ("eax", "edx"), clobbers=("edx",))
+D3B_4B5A8 = E.Call(0x4B5A8, ("eax", "edx"), clobbers=("edx",))
+D3B_2BE1C = E.Call(0x2BE1C, ("eax", "edx"), clobbers=("edx",))
+# the _rr spec's stubs rewrite the side-0 slot's state bytes (harness writes), so the raw's re-reads
+# of slot +0x54 (0x4AB0E) and +0x42 (0x4AB55, 0x4AB7F) each see what the preceding callee left
+D3B_4B430_W = dataclasses.replace(D3B_4B430, writes=((None, D2B_SLOTS + 0x54, b"\x04"),))
+D3B_4B3F0_W = dataclasses.replace(D3B_4B3F0, writes=((None, D2B_SLOTS + 0x42, b"\x01"),))
+D3B_4B5A8_W = dataclasses.replace(D3B_4B5A8, writes=((None, D2B_SLOTS + 0x42, b"\x02"),))
+
+
+def d3b_ty_case(side=0, mode=0x0005, s54=0x00, s42=0x00, c2=0, b2=(0, 0), b9e=(0, 0), pa=0x5000, pr=0x4000,
+                mid=0x9000, f21=None, extra=None):
+    """0x4AAD0: one effects entry (D2B_ENT: its actor at +8, the side's slot at +0xC, +0x1E and the
+    side byte +0x21 inside seeded bytes); the mode word DS_00104B00 between seeded words; BOTH slots'
+    record pointer, +0x42 and +0x54 (the other slot's bytes are the complement); the actor's and the
+    slot record's 0x2BE00 values `pa` / `pr` (the other record another value); the midpoint dword
+    DS_00108874 between seeded dwords; the byte DS_001088C2 and the two per-side byte pairs
+    DS_001088B2 / DS_0010889E, each between seeded bytes."""
+    f21 = side if f21 is None else f21
+    recs = (D2B_REC0, D2B_REC1)
+    p = d2b_pos_pokes({D2B_ACT: (2, pa), recs[side]: (3, pr), recs[1 - side]: (5, pr ^ 0x00F00000)})
+    p.update({D2B_ENT + 0x08: le32(D2B_ACT) + le32(D2B_SLOTS + side * 0x94) + le32(0x0BAD0010),
+              D2B_ENT + 0x1D: bytes([0x1D, 0x55, 0x1F, f21 ^ 0xFF, f21, 0x22]),
+              0x00104AFE: le16(0x7AFE) + le16(mode) + le16(0x7B02),
+              0x00108870: le32(0x0BAD8870) + le32(mid) + le32(0x0BAD8878),
+              0x001088C1: bytes([0xC1, c2, 0xC3]),
+              0x001088B1: bytes([0xB1, b2[0], b2[1], 0xB4]),
+              0x0010889D: bytes([0x9D, b9e[0], b9e[1], 0xA0])})
+    for s in (0, 1):
+        own = s == side
+        so = D2B_SLOTS + s * 0x94
+        p[so] = le32(recs[s])
+        p[so + 0x41] = bytes([0x41, s42 if own else s42 ^ 0xFF, 0x43])
+        p[so + 0x53] = bytes([0x53, s54 if own else s54 ^ 7, 0x55])
+    p.update(extra or {})
+    return p
+
+
+def d3b_ty_stubs(k430=0, k3f0=0, kbd4c=0, k5a8=0, d=0x1000):
+    return {0x4B430: k430, 0x4B3F0: k3f0, 0x4BD4C: kbd4c, 0x4B5A8: k5a8, 0x2BE1C: d}
+
+
+D3B_SPECS += [
+    # 0x4AAD0 fight_4aad0: EAX = entry, EDX = index. EAX dies unread at its one call site 0x49D25
+    # (the walk, record d3b §1): mask 0. The results of 0x4B430, 0x4B3F0 and 0x4BD4C are tested
+    # whole (`test eax,eax`), 0x4B5A8's as AL (0x4AB4A `test al,al`): each stub returns 0, 1 and
+    # 0x100 somewhere.
+    Spec("fight_4aad0", 0x4AAD0, [
+        # mode 9: the type alone; a mode word whose low byte is 9 goes on
+        Case("n0", {"eax": D2B_ENT, "edx": 2}, d3b_ty_case(mode=0x0009, s54=3), d3b_ty_stubs(1, 1, 1, 1)),
+        Case("n1", {"eax": D2B_ENT, "edx": 3}, d3b_ty_case(mode=0x0109, s54=3), d3b_ty_stubs(k430=1)),
+        # +0x54 = 3: 0x4B430 returns 0x100 (AL = 0): out; returns 0: on, to the distance test
+        Case("n2", {"eax": D2B_ENT, "edx": 0}, d3b_ty_case(side=1, s54=3), d3b_ty_stubs(k430=0x100)),
+        Case("n3", {"eax": D2B_ENT, "edx": 5}, d3b_ty_case(side=1, s54=3, pa=0x5800), d3b_ty_stubs(d=0x1800)),
+        # +0x54 = 4: 0x4B3F0 returns 0x100: out; returns 0: on, DS_001088C2 set: 0x4BD4C 0x100: out
+        Case("n4", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(s54=4), d3b_ty_stubs(k3f0=0x100)),
+        Case("n5", {"eax": D2B_ENT, "edx": 4}, d3b_ty_case(s54=4, c2=1), d3b_ty_stubs(kbd4c=0x100)),
+        # 0x4BD4C returns 0; 0x4B5A8 returns 0x100 (AL = 0): on; +0x42 bit 1: 0x4B3F0 returns 1
+        Case("n6", {"eax": D2B_ENT, "edx": 6}, d3b_ty_case(side=1, c2=0x80, s42=0x02),
+             d3b_ty_stubs(k3f0=1, k5a8=0x100)),
+        # 0x4B5A8 returns 1 and 0xFFFFFF01: out
+        Case("n7", {"eax": D2B_ENT, "edx": 2}, d3b_ty_case(s42=0xFF), d3b_ty_stubs(k5a8=1)),
+        Case("n8", {"eax": D2B_ENT, "edx": 2}, d3b_ty_case(s42=0xFF, b2=(1, 1)), d3b_ty_stubs(k5a8=0xFFFFFF01)),
+        # +0x42 clear, DS_001088B2[side] set: 0x4B3F0 (returns 0x100: out)
+        Case("n9", {"eax": D2B_ENT, "edx": 7}, d3b_ty_case(side=1, b2=(0, 0x80)), d3b_ty_stubs(k3f0=0x100)),
+        # the other side's table byte set, this side's clear: no call; DS_0010889E[side]: 0x4B430
+        Case("n10", {"eax": D2B_ENT, "edx": 7}, d3b_ty_case(b2=(0, 1), b9e=(1, 0)), d3b_ty_stubs(k430=0x100)),
+        # +0x42 bit 0: 0x4B430 returns 0: on
+        Case("n11", {"eax": D2B_ENT, "edx": 8}, d3b_ty_case(side=1, s42=0xFD, b9e=(1, 0), pa=0x4A00, pr=0x5000), d3b_ty_stubs(d=0xFFFFFA00)),
+        # +0x42 = 3: both calls return 0
+        Case("n12", {"eax": D2B_ENT, "edx": 9}, d3b_ty_case(s42=0x03, pa=0x5601, pr=0x5000), d3b_ty_stubs(d=0x601)),
+        # a side byte of 0x80 (zero-extended into the tables, 0x4AB5D `xor eax,eax` / `mov al`)
+        Case("n13", {"eax": D2B_ENT, "edx": 9},
+             d3b_ty_case(f21=0x80, extra={0x00108932: b"\x01", 0x00108832: b"\x00", 0x0010891E: b"\x00",
+                                          0x0010881E: b"\x01"}), d3b_ty_stubs(k3f0=1)),
+        # the distance test (every other stub returns 0; d is 0x2BE1C's): |d| = 0x1800, 0x17FF, 0x600 and
+        # 0x601, each sign, with both gaps positive; d = 0
+        Case("w0", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(), d3b_ty_stubs(d=0x1800)),
+        Case("w1", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(side=1), d3b_ty_stubs(d=0xFFFFE800)),
+        Case("w2", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(), d3b_ty_stubs(d=0x17FF)),
+        Case("w3", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(side=1), d3b_ty_stubs(d=0xFFFFE801)),
+        Case("w4", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(), d3b_ty_stubs(d=0x600)),
+        Case("w5", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(side=1), d3b_ty_stubs(d=0xFFFFFA00)),
+        Case("w6", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(), d3b_ty_stubs(d=0x601)),
+        Case("w7", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(side=1), d3b_ty_stubs(d=0xFFFFF9FF)),
+        Case("w8", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(), d3b_ty_stubs(d=0)),
+        # d in range: the midpoint between the two (either order), on the record, on the actor, above
+        # both, below both
+        Case("x0", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(pa=0x5000, pr=0x4000, mid=0x4800), d3b_ty_stubs()),
+        Case("x1", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(side=1, pa=0x4000, pr=0x5000, mid=0x4800), d3b_ty_stubs()),
+        Case("x2", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(pa=0x5000, pr=0x4000, mid=0x4000), d3b_ty_stubs()),
+        Case("x3", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(pa=0x4000, pr=0x5000, mid=0x5000), d3b_ty_stubs()),
+        Case("x4", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(pa=0x4000, pr=0x5000, mid=0x4000), d3b_ty_stubs()),
+        Case("x5", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(pa=0x5000, pr=0x4000, mid=0x5000), d3b_ty_stubs()),
+        Case("x6", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(pa=0x5000, pr=0x4000, mid=0x9000), d3b_ty_stubs()),
+        Case("x7", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(pa=0x5000, pr=0x4000, mid=0), d3b_ty_stubs()),
+        # d = 0x80000000: `neg` keeps it negative, so it is below 0x600
+        Case("x8", {"eax": D2B_ENT, "edx": 1}, d3b_ty_case(), d3b_ty_stubs(d=0x80000000)),
+    ], calls=(D3B_4B430, D3B_4B3F0, D3B_4BD4C, D3B_4B5A8, D3B_2BE1C, D2B_2BE00, D3B_WALK), eax_mask=0,
+       mutants=tuple("@" + m for m in (
+           "mode t9 s54a al430 flag430 al3f0 flag3f0 c2 c2n albd4c eax5a8 no5a8 sext tbidx bits tabs and "
+           "al3f0b al430b dswap abs ge1800 le600 sign1 sign2 nosign zero nowalk").split())),
+    # the same entry with the stubs that rewrite the side-0 slot's +0x54 and +0x42
+    Spec("fight_4aad0_rr", 0x4AAD0, [
+        # +0x54 = 3: 0x4B430 (leaves 4) -> 0x4B3F0 (leaves +0x42 = 1) -> 0x4B5A8 (leaves 2) ->
+        # 0x4B3F0 (leaves 1) -> 0x4B430; then a negative d with the midpoint between the two
+        Case("v0", {"eax": D2B_ENT, "edx": 2}, d3b_ty_case(s54=3, s42=0x00, pa=0x5000, pr=0x4000, mid=0x4800),
+             d3b_ty_stubs(d=0xFFFFF000)),
+        # +0x54 = 0, +0x42 = 1: 0x4B5A8 (leaves 2) -> 0x4B3F0 (leaves 1) -> 0x4B430
+        Case("v1", {"eax": D2B_ENT, "edx": 3}, d3b_ty_case(s54=0, s42=0x01, c2=1), d3b_ty_stubs()),
+        # the side-1 slot, which the stubs do not write: the table tests; and mode 9
+        Case("v2", {"eax": D2B_ENT, "edx": 4}, d3b_ty_case(side=1, s54=3, s42=0x00), d3b_ty_stubs()),
+        Case("v3", {"eax": D2B_ENT, "edx": 5}, d3b_ty_case(mode=0x0009), d3b_ty_stubs()),
+    ], calls=(D3B_4B430_W, D3B_4B3F0_W, D3B_4BD4C, D3B_4B5A8_W, D3B_2BE1C, D2B_2BE00, D3B_WALK), eax_mask=0,
+       mutants=("@c54", "@c42a", "@c42b")),
+]
+
 D1_SPECS += D3B_SPECS
 
 SPECS = [
