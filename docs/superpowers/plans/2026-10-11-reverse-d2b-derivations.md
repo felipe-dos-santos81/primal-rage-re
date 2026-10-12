@@ -112,8 +112,9 @@ the bytes (checked per row). Stubs the pinned dictionary of
 
 Each mutant's port side was run ten times with identical output before its pin was written
 (`fight_mode25_spawn`: twice at the commit that adds it, then the ten-run pass, whose pins equal the
-committed ones; `fight_4dbec`: twice, the cost of its 0x1C-entry cases; a ten-run pass was started
-after the commit and its outcome is in the batch's report, not here). That
+committed ones; `fight_4dbec`: the same, twice then ten times, the pins equal). On the final tree
+every row was measured once more, all 30 together: 30 VERIFIED, 617 mutants detected, each with the
+kinds and the case set the test file pins. That
 rule earned its keep once: `fight_mode25_spawn@kept` and `@ne8` first followed a seeded node byte as an
 actor pointer and crashed `diffrun` (signal 11); both were rewritten to stay inside mem[] (the mutant
 keeps the spawned record in a local) before any pin was taken.
