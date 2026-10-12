@@ -18308,6 +18308,40 @@ D3A_SPECS += [
                 "@nrow", "@nval", "@nwidth", "@npad", "@nmode", "@norder", "@id3d", "@id3e", "@pct", "@prec",
                 "@nocat", "@crow", "@cmode", "@ccol")),
 ]
+D3A_SIDE = E.Call(0x2716C, ("eax",))
+
+
+def d3a_join_case(r):
+    """0x271E0: the result dword 0x104AD4 between seeded dwords, the hook dword 0x104AE4 between
+    two more, the words 0x104AFC, 0x104AFE, 0x104B00 (0x5A5A, 0x5B5B, 0x5C5C) between seeded
+    words, the bytes 0x104B0C, 0x104B11, 0x104B14 and 0x104B21 (0x5A) between neighbours and the
+    word 0x1088EE (0x5D5D) between seeded words."""
+    return {0x00104AD0: le32(0x61616161) + le32(r) + le32(0x62626262),
+            0x00104AE0: le32(0x63636363) + le32(0x5E5E5E5E) + le32(0x64646464),
+            0x00104AFA: le16(0x6565) + le16(0x5A5A) + le16(0x5B5B) + le16(0x5C5C) + le16(0x6666),
+            0x00104B0B: b"\x67\x5a\x68", 0x00104B10: b"\x69\x5a\x6a\x6b\x5a\x6c",
+            0x00104B20: b"\x6d\x5a\x6e", 0x001088EC: le16(0x6F6F) + le16(0x5D5D) + le16(0x7070)}
+
+
+D3A_SPECS += [
+    # 0x271E0 flow_join_prompt_draw: no argument. The bytes 0x104B21, 0x104B0C, 0x104B11 = 0 (AH)
+    # and 0x104B14 = 1 (DL), then 0x4660C(4); the word 0x104AFC = DX = 7 (loaded before the call,
+    # which preserves EDX) and 0x2716C(the dword 0x104AD4 with bit 0 of AL flipped: `xor al,1` on
+    # the whole EAX); then the hook dword 0x104AE4 = 0x27134 (EDX across 0x2716C), the word
+    # 0x104AFE = 0x78 (BX), the word 0x1088EE = 0 (CX) and the mode word 0x104B00 = 0x17 (SI).
+    # Both callees are stubs (their own rows): the memory at each call fixes the store order.
+    # Mask 0: the one caller 0x423FC has `mov eax,[0x104abc]` at 0x42403.
+    Spec("flow_join_prompt_draw", 0x271E0, [
+        Case("j0", {}, d3a_join_case(0)),
+        Case("j1", {"eax": 0xFFFFFFFF, "edx": 0xFFFFFFFF, "ebx": 0xFFFFFFFF, "ecx": 0xFFFFFFFF,
+                    "esi": 0xFFFFFFFF}, d3a_join_case(1), {0x4660C: 0x12345678, 0x2716C: 0x9ABCDEF0}),
+        Case("j2", {}, d3a_join_case(0x12345678)),
+        Case("j3", {}, d3a_join_case(0xFFFFFFFF)),
+    ], calls=(D2E_M12_TIMER, D3A_SIDE), eax_mask=0,
+       mutants=("@b21", "@b14", "@b0c", "@b11", "@b11late", "@col", "@afc", "@afcb", "@afcearly", "@xor",
+                "@xorb", "@order", "@hook", "@hookw", "@afe", "@afeb", "@ee", "@eew", "@b00", "@b00b", "@early",
+                "@nocall0", "@nocall1")),
+]
 D1_SPECS += D3A_SPECS
 
 

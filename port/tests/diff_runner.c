@@ -26101,6 +26101,48 @@ D3A_TL_MUT(mul)    D3A_TL_MUT(div)    D3A_TL_MUT(bit)    D3A_TL_MUT(sp1d)   D3A_
 D3A_TL_MUT(spz)    D3A_TL_MUT(sp5)    D3A_TL_MUT(spone)  D3A_TL_MUT(ncol)   D3A_TL_MUT(nrow)   D3A_TL_MUT(nval)
 D3A_TL_MUT(nwidth) D3A_TL_MUT(npad)   D3A_TL_MUT(nmode)  D3A_TL_MUT(norder) D3A_TL_MUT(id3d)   D3A_TL_MUT(id3e)
 D3A_TL_MUT(pct)    D3A_TL_MUT(prec)   D3A_TL_MUT(nocat)  D3A_TL_MUT(crow)   D3A_TL_MUT(cmode)  D3A_TL_MUT(ccol)
+/* 0x271E0: no argument. Mask 0: the one caller 0x423FC goes on with `xor edx,edx; mov eax,[0x104abc]`
+ * (0x42401/0x42403). */
+static void b_d3a_271e0(const u32 *r, u32 *eax) { (void)r; flow_join_prompt_draw(); *eax = 0u; }
+enum { D3A_JP_NONE, D3A_JP_b21, D3A_JP_b14, D3A_JP_b0c, D3A_JP_b11, D3A_JP_b11late, D3A_JP_col, D3A_JP_afc, D3A_JP_afcb,
+       D3A_JP_afcearly, D3A_JP_xor, D3A_JP_xorb, D3A_JP_order, D3A_JP_hook, D3A_JP_hookw, D3A_JP_afe,
+       D3A_JP_afeb, D3A_JP_ee, D3A_JP_eew, D3A_JP_b00, D3A_JP_b00b, D3A_JP_early, D3A_JP_nocall0,
+       D3A_JP_nocall1 };
+static void d3a_271e0_tail(u32 mut)
+{
+    if (mut == D3A_JP_hookw) DSW(0x00104AE4u) = 0x7134u;
+    else DSD(0x00104AE4u) = (mut == D3A_JP_hook) ? 0x0002716Cu : 0x00027134u;
+    if (mut == D3A_JP_afeb) DSB(0x00104AFEu) = 0x78u;
+    else DSW(0x00104AFEu) = (mut == D3A_JP_afe) ? 0x77u : 0x78u;
+    if (mut == D3A_JP_eew) DSD(0x001088EEu) = 0u;
+    else if (mut != D3A_JP_ee) DSW(0x001088EEu) = 0u;
+    if (mut == D3A_JP_b00b) DSB(0x00104B00u) = 0x17u;
+    else DSW(0x00104B00u) = (mut == D3A_JP_b00) ? 0x18u : 0x17u;
+}
+static void d3a_271e0_core(u32 mut)
+{
+    if (mut != D3A_JP_b21) DSB(0x00104B21u) = 0u;
+    DSB(0x00104B14u) = (mut == D3A_JP_b14) ? 0u : 1u;
+    if (mut != D3A_JP_b0c) DSB(0x00104B0Cu) = 0u;
+    if (mut != D3A_JP_b11 && mut != D3A_JP_b11late) DSB(0x00104B11u) = 0u;
+    if (mut == D3A_JP_afcearly) DSW(0x00104AFCu) = 7u;
+    if (mut == D3A_JP_order) flow_side_char_random(DSD(0x00104AD4u) ^ 1u);
+    if (mut != D3A_JP_nocall0) flow_1082d0_from_column((mut == D3A_JP_col) ? 7u : 4u);
+    if (mut == D3A_JP_b11late) DSB(0x00104B11u) = 0u;
+    if (mut == D3A_JP_afcb) DSB(0x00104AFCu) = 7u;
+    else if (mut != D3A_JP_afcearly) DSW(0x00104AFCu) = (mut == D3A_JP_afc) ? 4u : 7u;
+    u32 v = DSD(0x00104AD4u);
+    if (mut == D3A_JP_early) d3a_271e0_tail(mut);
+    if (mut != D3A_JP_order && mut != D3A_JP_nocall1)
+        flow_side_char_random((mut == D3A_JP_xor) ? v : (mut == D3A_JP_xorb) ? ((v ^ 1u) & 0xFFu) : (v ^ 1u));
+    if (mut != D3A_JP_early) d3a_271e0_tail(mut);
+}
+#define D3A_JP_MUT(name) \
+    static void m_d3a_jp_##name(const u32 *r, u32 *eax) { (void)r; d3a_271e0_core(D3A_JP_##name); *eax = 0u; }
+D3A_JP_MUT(b21) D3A_JP_MUT(b14) D3A_JP_MUT(b0c) D3A_JP_MUT(b11) D3A_JP_MUT(b11late) D3A_JP_MUT(col)
+D3A_JP_MUT(afc) D3A_JP_MUT(afcb) D3A_JP_MUT(afcearly) D3A_JP_MUT(xor) D3A_JP_MUT(xorb) D3A_JP_MUT(order)
+D3A_JP_MUT(hook) D3A_JP_MUT(hookw) D3A_JP_MUT(afe) D3A_JP_MUT(afeb) D3A_JP_MUT(ee) D3A_JP_MUT(eew)
+D3A_JP_MUT(b00) D3A_JP_MUT(b00b) D3A_JP_MUT(early) D3A_JP_MUT(nocall0) D3A_JP_MUT(nocall1)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32513,6 +32555,30 @@ static const binding_t k_bindings[] = {
     { "flow_26d4c@crow", m_d3a_tl_crow, 0x00000000u },
     { "flow_26d4c@cmode", m_d3a_tl_cmode, 0x00000000u },
     { "flow_26d4c@ccol", m_d3a_tl_ccol, 0x00000000u },
+    { "flow_join_prompt_draw", b_d3a_271e0, 0x00000000u },
+    { "flow_join_prompt_draw@b21", m_d3a_jp_b21, 0x00000000u },
+    { "flow_join_prompt_draw@b14", m_d3a_jp_b14, 0x00000000u },
+    { "flow_join_prompt_draw@b0c", m_d3a_jp_b0c, 0x00000000u },
+    { "flow_join_prompt_draw@b11", m_d3a_jp_b11, 0x00000000u },
+    { "flow_join_prompt_draw@b11late", m_d3a_jp_b11late, 0x00000000u },
+    { "flow_join_prompt_draw@col", m_d3a_jp_col, 0x00000000u },
+    { "flow_join_prompt_draw@afc", m_d3a_jp_afc, 0x00000000u },
+    { "flow_join_prompt_draw@afcb", m_d3a_jp_afcb, 0x00000000u },
+    { "flow_join_prompt_draw@afcearly", m_d3a_jp_afcearly, 0x00000000u },
+    { "flow_join_prompt_draw@xor", m_d3a_jp_xor, 0x00000000u },
+    { "flow_join_prompt_draw@xorb", m_d3a_jp_xorb, 0x00000000u },
+    { "flow_join_prompt_draw@order", m_d3a_jp_order, 0x00000000u },
+    { "flow_join_prompt_draw@hook", m_d3a_jp_hook, 0x00000000u },
+    { "flow_join_prompt_draw@hookw", m_d3a_jp_hookw, 0x00000000u },
+    { "flow_join_prompt_draw@afe", m_d3a_jp_afe, 0x00000000u },
+    { "flow_join_prompt_draw@afeb", m_d3a_jp_afeb, 0x00000000u },
+    { "flow_join_prompt_draw@ee", m_d3a_jp_ee, 0x00000000u },
+    { "flow_join_prompt_draw@eew", m_d3a_jp_eew, 0x00000000u },
+    { "flow_join_prompt_draw@b00", m_d3a_jp_b00, 0x00000000u },
+    { "flow_join_prompt_draw@b00b", m_d3a_jp_b00b, 0x00000000u },
+    { "flow_join_prompt_draw@early", m_d3a_jp_early, 0x00000000u },
+    { "flow_join_prompt_draw@nocall0", m_d3a_jp_nocall0, 0x00000000u },
+    { "flow_join_prompt_draw@nocall1", m_d3a_jp_nocall1, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

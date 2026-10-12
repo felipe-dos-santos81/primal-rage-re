@@ -825,6 +825,9 @@ void game_mode_0f_step(void);
 void game_mode_22_step(void);
 /* 0x26D4C: mode 0x22's tail, declared for the differential row's binding. */
 void flow_26d4c(void);
+/* 0x271E0: the join screen's reset and hook arm (record §48-Z), declared for
+ * the differential row's binding. */
+void flow_join_prompt_draw(void);
 
 /* 0x26A50 — record §49-M. The mode 0x23 handler: a 4-state sub-machine on
  * DS_00104B25 that arms a round card, spawns it, draws the per-character

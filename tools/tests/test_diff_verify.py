@@ -11258,6 +11258,7 @@ D3A_MASKS = {
     "hiscore_rank_pair": 0xff,
     "hiscore_rank_pair_stub": 0xff,
     "flow_26d4c": 0x0,
+    "flow_join_prompt_draw": 0x0,
 }
 D3A_KINDS = {
     "frontend_coin_poll@nocredit": {'call #0', 'call #1', 'eax'},
@@ -11351,6 +11352,29 @@ D3A_KINDS = {
     "flow_26d4c@crow": {'call #8'},
     "flow_26d4c@cmode": {'call #8'},
     "flow_26d4c@ccol": {'call #8'},
+    "flow_join_prompt_draw@b21": {'byte', 'call #0 memory', 'call #1 memory'},
+    "flow_join_prompt_draw@b14": {'byte', 'call #0 memory', 'call #1 memory'},
+    "flow_join_prompt_draw@b0c": {'byte', 'call #0 memory', 'call #1 memory'},
+    "flow_join_prompt_draw@b11": {'byte', 'call #0 memory', 'call #1 memory'},
+    "flow_join_prompt_draw@b11late": {'call #0 memory'},
+    "flow_join_prompt_draw@col": {'call #0'},
+    "flow_join_prompt_draw@afc": {'byte', 'call #1 memory'},
+    "flow_join_prompt_draw@afcb": {'byte', 'call #1 memory'},
+    "flow_join_prompt_draw@afcearly": {'call #0 memory'},
+    "flow_join_prompt_draw@xor": {'call #1'},
+    "flow_join_prompt_draw@xorb": {'call #1'},
+    "flow_join_prompt_draw@order": {'call #0', 'call #1', 'call #1 memory'},
+    "flow_join_prompt_draw@hook": {'byte'},
+    "flow_join_prompt_draw@hookw": {'byte'},
+    "flow_join_prompt_draw@afe": {'byte'},
+    "flow_join_prompt_draw@afeb": {'byte'},
+    "flow_join_prompt_draw@ee": {'byte'},
+    "flow_join_prompt_draw@eew": {'byte'},
+    "flow_join_prompt_draw@b00": {'byte'},
+    "flow_join_prompt_draw@b00b": {'byte'},
+    "flow_join_prompt_draw@early": {'call #1 memory'},
+    "flow_join_prompt_draw@nocall0": {'call #0', 'call #0 memory', 'call #1'},
+    "flow_join_prompt_draw@nocall1": {'call #1'},
 }
 D3A_CASES = [
     ("frontend_coin_poll@nocredit", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
@@ -11444,6 +11468,29 @@ D3A_CASES = [
     ("flow_26d4c@crow", ['s0', 's1', 's2', 's3']),
     ("flow_26d4c@cmode", ['s0', 's1', 's2', 's3']),
     ("flow_26d4c@ccol", ['s0', 's1', 's2', 's3']),
+    ("flow_join_prompt_draw@b21", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@b14", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@b0c", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@b11", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@b11late", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@col", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@afc", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@afcb", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@afcearly", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@xor", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@xorb", ['j2', 'j3']),
+    ("flow_join_prompt_draw@order", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@hook", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@hookw", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@afe", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@afeb", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@ee", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@eew", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@b00", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@b00b", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@early", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@nocall0", ['j0', 'j1', 'j2', 'j3']),
+    ("flow_join_prompt_draw@nocall1", ['j0', 'j1', 'j2', 'j3']),
 ]
 D1_MASKS.update(D3A_MASKS)
 D1_KINDS.update(D3A_KINDS)
@@ -12498,7 +12545,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
-        0x2C060: (), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA7C: (), 0x2DDE4: ("edx",),
+        0x2716C: (), 0x2C060: (), 0x2C2B0: ("edx", "edi", "ebp"), 0x2CA7C: (), 0x2DDE4: ("edx",),
         # D2 d2b (record 2026-10-11-reverse-d2b): the stubs its rows add
         0x10D70: ("ebx", "ecx", "edx"), 0x1A8F4: ("edx",), 0x38BEC: (), 0x46670: (),
         0x2C320: (), 0x33C18: (), 0x2C088: ("ebx", "edx", "edi", "ebp"), 0x1D7B8: ("ebx", "edx"),

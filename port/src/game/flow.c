@@ -696,7 +696,7 @@ void frontend_scoreboard_build(void)
  * mode 0x17 and a 0x78-frame (120) countdown. EBX/ECX/EDX/ESI pushed and
  * popped. Only caller: state 7's DS_00105B3A != 0 arm, 0x423FC (0x41C28,
  * record §48-Z). */
-static void flow_join_prompt_draw(void)
+void flow_join_prompt_draw(void)
 {
     PR_SEAM0(0x271E0u);
     DSB(DS_00104B21) = 0u;                                   /* 0x271F4 */
@@ -1551,6 +1551,7 @@ void flow_side_char_set(u32 side, u32 ch)
  * (0x26F58), 0x2722E (0x271E0) and 0x27700 (0x274FC). */
 void flow_side_char_random(u32 side)
 {
+    PR_SEAM(0x2716Cu, side);
     u32 other = side ^ 1u;                              /* 0x271A4/0x271A6 */
     u32 c;
     fight_char_reset(side);                             /* 0x27171 0x33C18 */

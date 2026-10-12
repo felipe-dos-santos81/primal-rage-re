@@ -12,6 +12,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x11F28` | `frontend_coin_poll` | 47 | full: `xor eax,eax` `0x11F53`, `mov eax,1` `0x11F4C`, or the zero EAX of `0x2C060` that `test eax,eax; je 0x11f55` (`0x11F30`) just tested |
 | `0x1ECC8` | `hiscore_rank_pair` | 98 | `0xFF`: the one caller is `0x1EEE1`, `test al,al` at `0x1EEE6`; the raw leaves the rank's second byte in EAX (`xor al,al` `0x1ECE5`/`0x1ED22`, `xor al,dl` `0x1ED11`, `mov al,1` `0x1ED26`) |
 | `0x26D4C` | `flow_26d4c` | 522 | 0: the one caller `0x26D3B` goes on with `or byte [0x104aec],0x18` (`0x26D40`), four pops and `ret` into `0x25326` `jmp 0x2540f`, the mode tail the wave-1 records trace dead (d1c §1, d1d §1) |
+| `0x271E0` | `flow_join_prompt_draw` | 115 | 0: the one caller `0x423FC` (`0x41C28` state 7) goes on with `xor edx,edx; mov eax,[0x104abc]` (`0x42401`/`0x42403`) |
 
 ## §2 The row table (measured)
 
@@ -21,6 +22,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `hiscore_rank_pair` | `0x1ECC8` | 8 | 8/8 | 11 | `0xFF` | `0x2DDE4` and its `0x2DB58` real (their own rows): ten records give two different ranks 0..10 |
 | `hiscore_rank_pair_stub` | `0x1ECC8` | 6 | 7/8 | 14 | `0xFF` | the same entry with `0x2DDE4` stubbed (seamed here): the rank's upper word (`s3` `0xFFFF0000`, `s4` `0x0000FFFF`) and the call list. `0x1ED22` named: one stub EAX serves both calls |
 | `flow_26d4c` | `0x26D4C` | 10 | 8/8 | 54 | 0 | the string tree (`0x1C500`..) real, the run clock `0x32970` real in the original from its no-elapsed-time state (the port omits it), the runtime `sprintf` `0x65546` real in the original (§2.2); every other callee a stub. Found correction §3.1 |
+| `flow_join_prompt_draw` | `0x271E0` | 4 | 1/1 | 23 | 0 | `0x4660C` and `0x2716C` stubbed (the latter seamed here); the memory at each call fixes the store order (`@b11late`, `@afcearly`, `@early`). `j2`/`j3` carry upper bytes in the dword `0x104AD4` (`xor al,1` on the whole EAX: `@xorb`) |
 
 ### §2.1 Callee stubs added by this batch
 
@@ -30,6 +32,7 @@ Claim of every row: equivalence on the exercised blocks and inputs only, with it
 | `0x2CA7C` | EAX (`cmp eax,[0x105c00]` `0x2CA8B`) | 0 | none | every `ret` is plain (`0x2CA8A`, `0x2CAA7`, and `0x2CA78`'s) |
 | `0x2DDE4` | EAX, EDX (`mov [esp+0xc],eax` `0x2DDEC`, `mov edi,edx` `0x2DDF0`) | 0 | `edx` | pushes EBX ECX ESI EDI EBP (`0x2DDE4..0x2DDE8`), both `ret` plain (`0x2DE89`, `0x2DE94`) |
 | `0x2C2B0` | EAX, EDX (`mov esi,eax` `0x2C2B3`, `mov ecx,edx` `0x2C2B5`) | 0 | `edx edi ebp` (the scan's set, through `0x2C088`'s; the callers here reload EDX and read neither EDI nor EBP across it) | one plain `ret` (`0x2C301`) |
+| `0x2716C` | EAX (`mov ecx,eax` `0x2716F`) | 0 | none | pushes EBX ECX EDX; the raw caller `0x271E0` keeps EDX (`0x27229`, read at `0x27233`), EBX, ECX and ESI across it |
 
 ### §2.2 The runtime `sprintf` runs from the original's bytes
 
@@ -79,6 +82,8 @@ asserted the text. Unproven against the oracles until the integrator's gate.
   (`@nof41 @f41set @f41bit @f41off @afe @afeb @aec @noaec @b00 @b00b`); `@late` (the stores after the hold) is
   caught only by `call #7 memory`. The side byte is zero-extended: `t2`'s `0x80` writes `0x10C1F1` on both
   sides (past the image, inside `mem[]`), `@sidesext` lands on `0x102DF1`.
+- `flow_join_prompt_draw`: eleven stores, each seeded `0x5A..` between neighbours, each with a drop or a
+  width mutant (`@b21 @b14 @b0c @b11 @afc @afcb @hook @hookw @afe @afeb @ee @eew @b00 @b00b`).
 
 ## §6 Queue entries not done
 
