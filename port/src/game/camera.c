@@ -85,7 +85,7 @@ static u32 camera_res_off(const void *p)
 
 /* 0x16308. res_resolve(DSD(0xA8B30 + (0x17EEC(side) + index) * 4)). The raw
  * tail-jumps 0x1B544; a failed resolve returns the 0 sentinel. */
-static u32 camera_resolve_sprite(u32 side, u32 index)
+u32 camera_resolve_sprite(u32 side, u32 index)
 {
     u32 handle = DSD(DS_000A8B30
                      + (camera_char_const(DSB(DS_0010782A + side * 0x94u))
@@ -391,6 +391,7 @@ void camera_mode_track_player(void)
  * step DS_000F0AEC toward it (0x12CD4), then cap at DS_0009AF28[DS_00104AFC]. */
 void camera_y_clamp(void)
 {
+    PR_SEAM0(0x1317Cu);
     s32 x = (s32)DSD(DS_001078F2) >> 16;
     s32 target = 0;
     if (x > 0x1400) {
@@ -770,8 +771,9 @@ void camera_sprite_row(u32 side, u32 dst, u32 count, u32 row)
  * at `frame`) into the per-side row table `table`, and return the sprite's byte
  * width ((s16)word[sprite] + 7) >> 3. The sprite's dword +8 is a second handle
  * to the pixel-data stream. */
-static u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table)
+u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table)
 {
+    PR_SEAM_RET(0x41030u, handle, frame, count, table);
     const u8 *p = (const u8 *)res_resolve(handle);
     u32 sp = camera_res_off(p);
     /* PORT: res_resolve can return NULL (the raw dereferences unconditionally);
@@ -845,7 +847,7 @@ static u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table)
 
 /* 0x1631C. Clamp `frame`/`count` to the sprite's height, then decode those rows
  * into the side's row table. Returns the sprite's byte width. */
-static u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count)
+u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count)
 {
     u32 ch = DSB(DS_0010782A + side * 0x94u);
     u32 handle = DSD(DS_000A8B30

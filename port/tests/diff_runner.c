@@ -30474,6 +30474,185 @@ D3E_TS_MUT(c8side, 29u)   D3E_TS_MUT(no18b04, 30u)  D3E_TS_MUT(f40args, 31u)  D3
 D3E_TS_MUT(a06zext, 33u)  D3E_TS_MUT(a06off, 34u)   D3E_TS_MUT(st0, 35u)      D3E_TS_MUT(st5, 36u)
 D3E_TS_MUT(vnodec, 37u)   D3E_TS_MUT(vge, 38u)      D3E_TS_MUT(no3b080, 39u)  D3E_TS_MUT(midno18, 40u)
 D3E_TS_MUT(midno1c, 41u)  D3E_TS_MUT(no41, 42u)     D3E_TS_MUT(s64self, 43u)  D3E_TS_MUT(no64, 44u)
+/* ---- track D4 batch d4b (record 2026-10-12-reverse-d4b) ---- */
+
+/* 0x12DA8 camera_y_commit: no argument. Mode byte 0xF0AFE zero (`test al,al` 0x12DAE): the word at
+ * slot[byte 0xF0AFF] + 0x30 (the index zero-extended, `xor edx,edx; mov dl,..` 0x12DB2, times 0x94),
+ * else the signed max of the dwords 0x1077E0 and 0x107874 (`cmp eax,edx; jg` 0x12DDD); its low word
+ * is stored at 0x1078F4 (0x12DE3) and 0x1317C runs (stubbed). One restatement, one choice flipped
+ * per mutant number. */
+static u32 d4b_12da8_core(u32 mut)
+{
+    s32 y;
+    int mode0 = (mut == 1u) ? (DSW(DS_000F0AFE) == 0u) : (DSB(DS_000F0AFE) == 0u);   /* @modew */
+    if (mut == 11u) camera_y_clamp();                                        /* @order: the call first */
+    if (mode0) {
+        u32 sel = (mut == 2u) ? 0u                                           /* @sel */
+                : (mut == 3u) ? (u32)(s32)(s8)DSB(DS_000F0AFF)               /* @sext */
+                : (u32)DSB(DS_000F0AFF);
+        y = (s32)(s16)DSW(DS_001077E0 + sel * 0x94u + ((mut == 4u) ? 2u : 0u));   /* @hi */
+    } else {
+        s32 a = (s32)DSD(DS_001077E0), b = (s32)DSD(DS_00107874);
+        if (mut == 5u) y = ((u32)a > (u32)b) ? a : b;                        /* @unsigned */
+        else if (mut == 6u) y = (a > b) ? b : a;                             /* @min */
+        else if (mut == 7u) y = ((s16)a > (s16)b) ? a : b;                   /* @cmpw */
+        else y = (a > b) ? a : b;
+    }
+    if (mut == 8u) DSD(DS_001078F2 + 2u) = (u32)y;                           /* @wide */
+    else if (mut == 9u) DSW(DS_001078F2) = (u16)y;                           /* @lo */
+    else DSW(DS_001078F2 + 2u) = (u16)y;
+    if (mut != 10u && mut != 11u) camera_y_clamp();                          /* @nocall */
+    return 0u;
+}
+static void b_d4b_12da8(const u32 *r, u32 *eax) { (void)r; camera_y_commit(); *eax = 0u; }
+#define D4B_YC_MUT(name, n) \
+    static void m_d4b_yc_##name(const u32 *r, u32 *eax) { (void)r; *eax = d4b_12da8_core(n); }
+D4B_YC_MUT(modew, 1u) D4B_YC_MUT(sel, 2u)   D4B_YC_MUT(sext, 3u)   D4B_YC_MUT(hi, 4u)
+D4B_YC_MUT(unsigned, 5u) D4B_YC_MUT(min, 6u) D4B_YC_MUT(cmpw, 7u)  D4B_YC_MUT(wide, 8u)
+D4B_YC_MUT(lo, 9u)    D4B_YC_MUT(nocall, 10u) D4B_YC_MUT(order, 11u)
+
+/* 0x16308 camera_resolve_sprite: EAX = side, EDX = index. `call 0x17eec; add eax,edx; mov
+ * eax,[eax*4+0xa8b30]; jmp 0x1b544`: the handle at 0xA8B30 + (the side's character constant +
+ * index) * 4, resolved. The port returns the pointer's mem[] offset, the raw's linear address. */
+static u32 d4b_16308_core(u32 side, u32 index, u32 mut)
+{
+    u32 ch = DSB(DS_0010782A + ((mut == 1u) ? 1u - side : side) * 0x94u);        /* @side */
+    u32 k = (mut == 3u) ? 0u : (mut == 5u) ? ch : camera_char_const(ch);         /* @nochar, @rawch */
+    u32 handle = DSD(DS_000A8B30 + (k + ((mut == 2u) ? 0u : index)) * ((mut == 4u) ? 2u : 4u));   /* @noidx, @scale */
+    const u8 *p = (const u8 *)res_resolve(handle);
+    return p != NULL ? (u32)(p - mem) : 0u;
+}
+static void b_d4b_16308(const u32 *r, u32 *eax) { *eax = camera_resolve_sprite(r[R_EAX], r[R_EDX]); }
+#define D4B_RS_MUT(name, n) \
+    static void m_d4b_rs_##name(const u32 *r, u32 *eax) { *eax = d4b_16308_core(r[R_EAX], r[R_EDX], n); }
+D4B_RS_MUT(side, 1u) D4B_RS_MUT(noidx, 2u) D4B_RS_MUT(nochar, 3u) D4B_RS_MUT(scale, 4u) D4B_RS_MUT(rawch, 5u)
+
+/* 0x1631C camera_sprite_height: EAX = side, EDX = index, EBX = frame, ECX = count. The sprite's
+ * height is its first dword `sar 16` (0x1634C); frame >= height (`jl` 0x16353, signed) gives count 1
+ * and frame = height - 1; frame + count > height (`jle` 0x16368) gives count = height - frame; the
+ * table is 0xFD160 for side 0, else 0xFEDE0 (`test esi,esi` 0x1636E); then 0x41030(handle, frame,
+ * count, table), whose EAX it returns. */
+static u32 d4b_1631c_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], index = r[R_EDX], frame = r[R_EBX], count = r[R_ECX];
+    u32 handle = DSD(DS_000A8B30 + (camera_char_const(DSB(DS_0010782A + side * 0x94u)) + index) * 4u);
+    const u8 *p = (const u8 *)res_resolve(handle);
+    u32 sp = p != NULL ? (u32)(p - mem) : 0u;
+    s32 height = (mut == 1u) ? (s32)(s16)DSW(sp)                              /* @hsrc: the width word */
+               : (mut == 2u) ? (s32)(u32)DSW(sp + 2u)                         /* @hzext */
+               : (s32)DSD(sp) >> 16;
+    int over = (mut == 3u) ? ((s32)frame > height)                            /* @gt */
+             : (mut == 4u) ? (frame >= (u32)height)                           /* @uns */
+             : ((s32)frame >= height);
+    u32 table, ret;
+    if (over) {
+        if (mut != 5u) count = 1u;                                            /* @nocount1 */
+        frame = (u32)(height - ((mut == 6u) ? 0 : 1));                        /* @last */
+    }
+    if ((s32)(frame + count) > height)
+        count = (u32)(height - ((mut == 7u) ? 0 : (s32)frame));               /* @sumfull */
+    if (mut == 8u) table = (side == 0u) ? 0x000FEDE0u : 0x000FD160u;          /* @table */
+    else if (mut == 9u) table = (side == 1u) ? 0x000FEDE0u : 0x000FD160u;     /* @side1 */
+    else table = (side == 0u) ? 0x000FD160u : 0x000FEDE0u;
+    if (mut == 10u) ret = camera_bitplane_accum(handle, count, frame, table); /* @args */
+    else if (mut == 11u)                                                      /* @handle: the index dropped */
+        ret = camera_bitplane_accum(DSD(DS_000A8B30 + camera_char_const(DSB(DS_0010782A + side * 0x94u)) * 4u),
+                                    frame, count, table);
+    else ret = camera_bitplane_accum(handle, frame, count, table);
+    return (mut == 12u) ? (ret & 0xFFu) : ret;                                /* @al */
+}
+static void b_d4b_1631c(const u32 *r, u32 *eax)
+{
+    *eax = camera_sprite_height(r[R_EAX], r[R_EDX], r[R_EBX], r[R_ECX]);
+}
+#define D4B_SH_MUT(name, n) \
+    static void m_d4b_sh_##name(const u32 *r, u32 *eax) { *eax = d4b_1631c_core(r, n); }
+D4B_SH_MUT(hsrc, 1u)  D4B_SH_MUT(hzext, 2u) D4B_SH_MUT(gt, 3u)    D4B_SH_MUT(uns, 4u)
+D4B_SH_MUT(nocount1, 5u) D4B_SH_MUT(last, 6u) D4B_SH_MUT(sumfull, 7u) D4B_SH_MUT(table, 8u)
+D4B_SH_MUT(side1, 9u) D4B_SH_MUT(args, 10u) D4B_SH_MUT(handle, 11u) D4B_SH_MUT(al, 12u)
+
+/* 0x41030 camera_bitplane_accum: EAX = handle, EDX = frame, EBX = count, ECX = table. The sprite's
+ * width word (`movsx`, 0x41050) gives the byte width (width + 7) / 8 truncating (0x41053..0x41062);
+ * the stream is the handle at the sprite's +8. `frame` rows are skipped (0x4106F..0x410B6), then
+ * `count` rows decoded into table + row * 0x26: the row's byte width zeroed (0x61A70), then runs of
+ * a control byte: bit 7 set = a run of (b & 0x3F) pixels, transparent when bit 6 is set, else one
+ * colour byte follows and the pixels are set; bit 7 clear = (b & 0x7F) literal bytes, all set. One
+ * restatement, one choice flipped per mutant number. */
+static u32 d4b_41030_core(const u32 *r, u32 mut)
+{
+    u32 handle = r[R_EAX], frame = r[R_EDX], count = r[R_EBX], table = r[R_ECX];
+    const u8 *p = (const u8 *)res_resolve(handle);
+    u32 sp = p != NULL ? (u32)(p - mem) : 0u;
+    const u8 *q = (const u8 *)res_resolve(DSD(sp + ((mut == 1u) ? 4u : 8u)));    /* @handle2 */
+    u32 si = q != NULL ? (u32)(q - mem) : 0u;
+    s32 width = (s32)(s16)DSW(sp);
+    u32 byte_width = (mut == 2u) ? (((u32)DSW(sp) + 7u) / 8u)                 /* @wzext */
+                   : (mut == 3u) ? (u32)(width / 8)                           /* @round */
+                   : (u32)((width + 7) / 8);
+    u32 stride = (mut == 4u) ? 0x28u : 0x26u;                                 /* @stride */
+    u8 bit = 0x80u;
+    if (si == 0u) return 0u;
+    for (u32 k = 0; k < frame && mut != 5u; k++) {                            /* @noframe */
+        s32 ww = (s32)(s16)DSW(sp);
+        while (ww > 0) {
+            u8 b = DSB(si); si++;
+            if ((b & 0x80u) != 0) {
+                ww -= (s32)(u32)(b & ((mut == 6u) ? 0x7Fu : 0x3Fu));          /* @skipmask */
+                if ((b & 0x40u) == 0u && mut != 7u) si++;                     /* @skipcolour */
+            } else {
+                u32 rl = (u32)(b & 0x7Fu);
+                if (mut != 8u) si += rl;                                      /* @skiplit */
+                ww -= (s32)rl;
+            }
+        }
+    }
+    if ((s32)count > 0 || mut == 9u) {                                        /* @rows: no count test */
+        u32 row_off = 0, total = count * 0x26u;
+        do {
+            u32 dst = table + row_off * stride / 0x26u;
+            s32 ww = (s32)(s16)DSW(sp);
+            if (mut != 10u) mem_fill(dst, 0, byte_width);                     /* @nofill */
+            if (mut != 11u) bit = 0x80u;                                      /* @bitkeep */
+            if (mut == 12u) bit = 0x40u;                                      /* @msb */
+            while (ww > 0) {
+                u8 b = DSB(si); si++;
+                if ((b & 0x80u) != 0) {
+                    u32 rl = (u32)(b & 0x3Fu);
+                    int draw = (mut == 13u) ? ((b & 0x40u) != 0u) : ((b & 0x40u) == 0u);   /* @transp */
+                    ww -= (s32)rl;
+                    if ((b & 0x40u) == 0u && mut != 14u) si++;                /* @colour */
+                    for (u32 i = 0; i < rl; i++) {
+                        if (draw) DSB(dst) |= bit;
+                        bit >>= 1;
+                        if (bit == 0u) { bit = 0x80u; dst++; }
+                    }
+                } else {
+                    u32 rl = (u32)(b & 0x7Fu);
+                    ww -= (s32)rl;
+                    if (mut != 15u) si += rl;                                 /* @litadv */
+                    for (u32 i = 0; i < rl; i++) {
+                        if (mut != 16u) DSB(dst) |= bit;                      /* @litclear */
+                        bit >>= 1;
+                        if (bit == 0u) { bit = 0x80u; dst++; }
+                    }
+                }
+            }
+            row_off += 0x26u;
+        } while ((s32)row_off < (s32)total);
+    }
+    return (mut == 17u) ? (u32)(s32)(s16)DSW(sp) : byte_width;                /* @ret: the width, not the byte width */
+}
+static void b_d4b_41030(const u32 *r, u32 *eax)
+{
+    *eax = camera_bitplane_accum(r[R_EAX], r[R_EDX], r[R_EBX], r[R_ECX]);
+}
+#define D4B_BA_MUT(name, n) \
+    static void m_d4b_ba_##name(const u32 *r, u32 *eax) { *eax = d4b_41030_core(r, n); }
+D4B_BA_MUT(handle2, 1u) D4B_BA_MUT(wzext, 2u)  D4B_BA_MUT(round, 3u)   D4B_BA_MUT(stride, 4u)
+D4B_BA_MUT(noframe, 5u) D4B_BA_MUT(skipmask, 6u) D4B_BA_MUT(skipcolour, 7u) D4B_BA_MUT(skiplit, 8u)
+D4B_BA_MUT(rows, 9u)    D4B_BA_MUT(nofill, 10u) D4B_BA_MUT(bitkeep, 11u) D4B_BA_MUT(msb, 12u)
+D4B_BA_MUT(transp, 13u) D4B_BA_MUT(colour, 14u) D4B_BA_MUT(litadv, 15u) D4B_BA_MUT(litclear, 16u)
+D4B_BA_MUT(ret, 17u)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -39075,6 +39254,56 @@ static const binding_t k_bindings[] = {
     { "fighter_think_side@no41",             m_d3e_ts_no41, 0x00000000u },
     { "fighter_think_side@64self",           m_d3e_ts_s64self, 0x00000000u },
     { "fighter_think_side@no64",             m_d3e_ts_no64, 0x00000000u },
+    /* ---- track D4 batch d4b (record 2026-10-12-reverse-d4b) ---- */
+    { "camera_y_commit",                     b_d4b_12da8, 0x00000000u },
+    { "camera_y_commit@modew",               m_d4b_yc_modew, 0x00000000u },
+    { "camera_y_commit@sel",                 m_d4b_yc_sel, 0x00000000u },
+    { "camera_y_commit@sext",                m_d4b_yc_sext, 0x00000000u },
+    { "camera_y_commit@hi",                  m_d4b_yc_hi, 0x00000000u },
+    { "camera_y_commit@unsigned",            m_d4b_yc_unsigned, 0x00000000u },
+    { "camera_y_commit@min",                 m_d4b_yc_min, 0x00000000u },
+    { "camera_y_commit@cmpw",                m_d4b_yc_cmpw, 0x00000000u },
+    { "camera_y_commit@wide",                m_d4b_yc_wide, 0x00000000u },
+    { "camera_y_commit@lo",                  m_d4b_yc_lo, 0x00000000u },
+    { "camera_y_commit@nocall",              m_d4b_yc_nocall, 0x00000000u },
+    { "camera_y_commit@order",               m_d4b_yc_order, 0x00000000u },
+    { "camera_resolve_sprite",               b_d4b_16308, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@side",          m_d4b_rs_side, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@noidx",         m_d4b_rs_noidx, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@nochar",        m_d4b_rs_nochar, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@scale",         m_d4b_rs_scale, 0xFFFFFFFFu },
+    { "camera_resolve_sprite@rawch",         m_d4b_rs_rawch, 0xFFFFFFFFu },
+    { "camera_sprite_height",                b_d4b_1631c, 0xFFFFFFFFu },
+    { "camera_sprite_height@hsrc",           m_d4b_sh_hsrc, 0xFFFFFFFFu },
+    { "camera_sprite_height@hzext",          m_d4b_sh_hzext, 0xFFFFFFFFu },
+    { "camera_sprite_height@gt",             m_d4b_sh_gt, 0xFFFFFFFFu },
+    { "camera_sprite_height@uns",            m_d4b_sh_uns, 0xFFFFFFFFu },
+    { "camera_sprite_height@nocount1",       m_d4b_sh_nocount1, 0xFFFFFFFFu },
+    { "camera_sprite_height@last",           m_d4b_sh_last, 0xFFFFFFFFu },
+    { "camera_sprite_height@sumfull",        m_d4b_sh_sumfull, 0xFFFFFFFFu },
+    { "camera_sprite_height@table",          m_d4b_sh_table, 0xFFFFFFFFu },
+    { "camera_sprite_height@side1",          m_d4b_sh_side1, 0xFFFFFFFFu },
+    { "camera_sprite_height@args",           m_d4b_sh_args, 0xFFFFFFFFu },
+    { "camera_sprite_height@handle",         m_d4b_sh_handle, 0xFFFFFFFFu },
+    { "camera_sprite_height@al",             m_d4b_sh_al, 0xFFFFFFFFu },
+    { "camera_bitplane_accum",               b_d4b_41030, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@handle2",       m_d4b_ba_handle2, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@wzext",         m_d4b_ba_wzext, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@round",         m_d4b_ba_round, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@stride",        m_d4b_ba_stride, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@noframe",       m_d4b_ba_noframe, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@skipmask",      m_d4b_ba_skipmask, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@skipcolour",    m_d4b_ba_skipcolour, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@skiplit",       m_d4b_ba_skiplit, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@rows",          m_d4b_ba_rows, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@nofill",        m_d4b_ba_nofill, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@bitkeep",       m_d4b_ba_bitkeep, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@msb",           m_d4b_ba_msb, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@transp",        m_d4b_ba_transp, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@colour",        m_d4b_ba_colour, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@litadv",        m_d4b_ba_litadv, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@litclear",      m_d4b_ba_litclear, 0xFFFFFFFFu },
+    { "camera_bitplane_accum@ret",           m_d4b_ba_ret, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

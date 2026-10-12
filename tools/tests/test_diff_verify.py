@@ -15842,6 +15842,116 @@ D1_KINDS.update(D3E_KINDS)
 D1_CASES.extend(D3E_CASES)
 
 
+# ---- track D4 batch d4b (record 2026-10-12-reverse-d4b): measured with verify_all on the rows' own specs ----
+D4B_MASKS = {
+    "camera_y_commit": 0x0,
+    "camera_resolve_sprite": 0xffffffff,
+    "camera_sprite_height": 0xffffffff,
+    "camera_bitplane_accum": 0xffffffff,
+}   # D4B_MASKS end
+D4B_KINDS = {
+    "camera_y_commit@modew": {'byte', 'call #0 memory'},
+    "camera_y_commit@sel": {'byte', 'call #0 memory'},
+    "camera_y_commit@sext": {'byte', 'call #0 memory'},
+    "camera_y_commit@hi": {'byte', 'call #0 memory'},
+    "camera_y_commit@unsigned": {'byte', 'call #0 memory'},
+    "camera_y_commit@min": {'byte', 'call #0 memory'},
+    "camera_y_commit@cmpw": {'byte', 'call #0 memory'},
+    "camera_y_commit@wide": {'byte', 'call #0 memory'},
+    "camera_y_commit@lo": {'byte', 'call #0 memory'},
+    "camera_y_commit@nocall": {'call #0'},
+    "camera_y_commit@order": {'call #0 memory'},
+    "camera_resolve_sprite@side": {'eax'},
+    "camera_resolve_sprite@noidx": {'eax'},
+    "camera_resolve_sprite@nochar": {'eax'},
+    "camera_resolve_sprite@scale": {'eax'},
+    "camera_resolve_sprite@rawch": {'eax'},
+    "camera_sprite_height@hsrc": {'call #0'},
+    "camera_sprite_height@hzext": {'call #0'},
+    "camera_sprite_height@gt": {'call #0'},
+    "camera_sprite_height@uns": {'call #0'},
+    "camera_sprite_height@nocount1": {'call #0'},
+    "camera_sprite_height@last": {'call #0'},
+    "camera_sprite_height@sumfull": {'call #0'},
+    "camera_sprite_height@table": {'call #0'},
+    "camera_sprite_height@side1": {'call #0'},
+    "camera_sprite_height@args": {'call #0'},
+    "camera_sprite_height@handle": {'call #0'},
+    "camera_sprite_height@al": {'eax'},
+    "camera_bitplane_accum@handle2": {'byte'},
+    "camera_bitplane_accum@wzext": {'byte', 'eax'},
+    "camera_bitplane_accum@round": {'byte', 'eax'},
+    "camera_bitplane_accum@stride": {'byte'},
+    "camera_bitplane_accum@noframe": {'byte'},
+    "camera_bitplane_accum@skipmask": {'byte'},
+    "camera_bitplane_accum@skipcolour": {'byte'},
+    "camera_bitplane_accum@skiplit": {'byte'},
+    "camera_bitplane_accum@rows": {'byte'},
+    "camera_bitplane_accum@nofill": {'byte'},
+    "camera_bitplane_accum@bitkeep": {'byte'},
+    "camera_bitplane_accum@msb": {'byte'},
+    "camera_bitplane_accum@transp": {'byte'},
+    "camera_bitplane_accum@colour": {'byte'},
+    "camera_bitplane_accum@litadv": {'byte'},
+    "camera_bitplane_accum@litclear": {'byte'},
+    "camera_bitplane_accum@ret": {'eax'},
+}   # D4B_KINDS end
+D4B_CASES = [
+    ("camera_y_commit@modew", ['m2', 'm3']),
+    ("camera_y_commit@sel", ['m1', 'm2', 'm3']),
+    ("camera_y_commit@sext", ['m2']),
+    ("camera_y_commit@hi", ['m0', 'm1', 'm3']),
+    ("camera_y_commit@unsigned", ['x0']),
+    ("camera_y_commit@min", ['x0', 'x1', 'x2']),
+    ("camera_y_commit@cmpw", ['x2']),
+    ("camera_y_commit@wide", ['m0', 'm1', 'm2', 'm3', 'x0', 'x1', 'x2', 'x3']),
+    ("camera_y_commit@lo", ['m0', 'm1', 'm2', 'm3', 'x0', 'x1', 'x2', 'x3']),
+    ("camera_y_commit@nocall", ['m0', 'm1', 'm2', 'm3', 'x0', 'x1', 'x2', 'x3']),
+    ("camera_y_commit@order", ['m0', 'm1', 'm2', 'm3', 'x0', 'x1', 'x2', 'x3']),
+    ("camera_resolve_sprite@side", ['r0', 'r1', 'r2', 'r3', 'r4']),
+    ("camera_resolve_sprite@noidx", ['r0', 'r1', 'r3', 'r4']),
+    ("camera_resolve_sprite@nochar", ['r0', 'r1', 'r2', 'r3', 'r4']),
+    ("camera_resolve_sprite@scale", ['r0', 'r1', 'r2', 'r3', 'r4']),
+    ("camera_resolve_sprite@rawch", ['r0', 'r1', 'r2', 'r3', 'r4']),
+    ("camera_sprite_height@hsrc", ['h1', 'h2', 'h3', 'h4', 'h6', 'h7', 'h8']),
+    ("camera_sprite_height@hzext", ['h6']),
+    ("camera_sprite_height@gt", ['h1']),
+    ("camera_sprite_height@uns", ['h5', 'h6']),
+    ("camera_sprite_height@nocount1", ['h8']),
+    ("camera_sprite_height@last", ['h1', 'h6', 'h7', 'h8']),
+    ("camera_sprite_height@sumfull", ['h2']),
+    ("camera_sprite_height@table", ['h0', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8']),
+    ("camera_sprite_height@side1", ['h7']),
+    ("camera_sprite_height@args", ['h0', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8']),
+    ("camera_sprite_height@handle", ['h0', 'h1', 'h3', 'h4', 'h5', 'h6', 'h8']),
+    ("camera_sprite_height@al", ['h1', 'h2', 'h4']),
+    ("camera_bitplane_accum@handle2", ['a0', 'a1', 'a5', 'a6', 'a7', 'a8']),
+    ("camera_bitplane_accum@wzext", ['a4']),
+    ("camera_bitplane_accum@round", ['a0', 'a1', 'a2', 'a3', 'a5', 'a6', 'a8']),
+    ("camera_bitplane_accum@stride", ['a0', 'a1', 'a6']),
+    ("camera_bitplane_accum@noframe", ['a1', 'a6', 'a8']),
+    ("camera_bitplane_accum@skipmask", ['a8']),
+    ("camera_bitplane_accum@skipcolour", ['a1', 'a8']),
+    ("camera_bitplane_accum@skiplit", ['a1', 'a6']),
+    ("camera_bitplane_accum@rows", ['a2', 'a3']),
+    ("camera_bitplane_accum@nofill", ['a0', 'a1', 'a5', 'a6', 'a7', 'a8']),
+    ("camera_bitplane_accum@bitkeep", ['a0', 'a1', 'a6']),
+    ("camera_bitplane_accum@msb", ['a0', 'a1', 'a5', 'a6', 'a7', 'a8']),
+    ("camera_bitplane_accum@transp", ['a0', 'a1', 'a5', 'a6', 'a7', 'a8']),
+    ("camera_bitplane_accum@colour", ['a0', 'a5', 'a6']),
+    ("camera_bitplane_accum@litadv", ['a0', 'a1']),
+    ("camera_bitplane_accum@litclear", ['a0', 'a1', 'a6']),
+    ("camera_bitplane_accum@ret", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'a7', 'a8']),
+]   # D4B_CASES end
+D4B_OUTSIDE = {
+    "camera_y_commit": [(0x10C1E0, 2)],
+}   # D4B_OUTSIDE end
+P45_OUTSIDE.update(D4B_OUTSIDE)
+D1_MASKS.update(D4B_MASKS)
+D1_KINDS.update(D4B_KINDS)
+D1_CASES.extend(D4B_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -16963,6 +17073,7 @@ class RealFunctionTests(unittest.TestCase):
         0x46958: (), 0x46698: (), 0x466F4: (), 0x4673C: (), 0x46794: (), 0x467DC: (), 0x4682C: (), 0x46898: (),     # track D3 batch d3c
         0x350D0: ("edi", "ebp"), 0x34E20: (), 0x3D0BC: ("edx",),     # track D3 batch d3c
         0x38D24: (), 0x382C4: (), 0x38434: ("edi", "ebp"), 0x2A4FC: ("ebp",), 0x186C4: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x1922C: (), 0x3D004: ("edi", "ebp"), 0x235C4: ("ebp",),     # track D3 batch d3e
+        0x1317C: (), 0x41030: ("ebx", "ecx", "edx"),     # track D4 batch d4b
         0x5DECA: ("ebx", "ecx", "edx"), 0x5DCC5: ("ebx", "ecx", "edx"), 0x2F388: ("ebx", "edx"), 0x1C308: ("edx",)})
         for addr, declared in stubs.items():
             self.assertEqual(E.callee_clobbers(img, addr), declared, hex(addr))

@@ -21879,6 +21879,178 @@ D3E_SPECS += [
        mutants=("@eaxflag", "@flagbit", "@flagctx", "@nostance", "@stanceself", "@animside", "@67other", "@no67", "@dispside", "@eaxdisp", "@8aself", "@no8a", "@b54", "@swap", "@ecx", "@noad98", "@2bd44rec", "@norow60", "@nohook", "@hookslot", "@hooknoclr", "@hookclr", "@a48self", "@no5", "@36d20slot", "@c5no18", "@c5no1c", "@no8", "@c8side", "@no18b04", "@f40args", "@x28", "@a06zext", "@a06off", "@st0", "@st5", "@vnodec", "@vge", "@no3b080", "@midno18", "@midno1c", "@no41", "@64self", "@no64")),
 ]   # D3E_SPECS end
 D1_SPECS += D3E_SPECS
+# ---- track D4 batch d4b (record 2026-10-12-reverse-d4b): camera.c, effects.c, sprite.c, render.c, gfx.c ----
+D4B_SPECS = []
+
+# 0x1317C camera_y_clamp (rowed by d3e), stubbed: no argument; E.callee_clobbers gives no register.
+D4B_YCLAMP = E.Call(0x1317C, ())
+D4B_YSEL, D4B_YMODE, D4B_YOUT = 0xF0AFF, 0xF0AFE, 0x1078F2     # the selector byte, the mode byte, the dword whose high word is stored
+D4B_YA, D4B_YB = 0x1077E0, 0x107874                            # slot 0's and slot 1's +0x30
+
+
+def d4b_yc(cid, mode, sel, a, b, extra=None):
+    pokes = {D4B_YMODE: bytes([mode, sel]), D4B_YA: le32(a), D4B_YB: le32(b),
+             D4B_YOUT: le32(0x5A6B7C8D), D4B_YOUT + 4: le16(0x9EAF)}
+    pokes.update(extra or {})
+    return Case(cid, {}, pokes)
+
+
+D4B_SPECS += [
+    # 0x12DA8 camera_y_commit: no argument. Mode byte 0xF0AFE zero (`mov al,[0xf0afe]; test al,al`
+    # 0x12DA9): the word at 0x1077E0 + byte[0xF0AFF] * 0x94 (`xor edx,edx; mov dl,..` 0x12DB2: the
+    # index zero-extended; `mov ax,[eax*4+0x1077e0]` 0x12DC8); else the signed max of the dwords
+    # 0x1077E0 and 0x107874 (`cmp eax,edx; jg` 0x12DDD). `mov [0x1078f4],ax` (0x12DE3), then 0x1317C
+    # (stubbed: the store precedes it) and `pop edx; ret`. EAX is 0x1317C's, which no caller of
+    # 0x12DA8 reads (d3e's table of its 15 call sites, record 2026-10-12-reverse-d3e §1): mask 0.
+    # m2's index 0x80 reads the word at 0x10C1E0, above the image (zero on both sides); a
+    # sign-extended index reads 0x102DE0, seeded.
+    Spec("camera_y_commit", 0x12DA8, [
+        d4b_yc("m0", 0, 0, 0x1234ABCD, 0x5678EF01),
+        d4b_yc("m1", 0, 1, 0x1234ABCD, 0x5678EF01),
+        d4b_yc("m2", 0, 0x80, 0x1234ABCD, 0x5678EF01, {0x1077E0 - 0x80 * 0x94: le32(0x77665544)}),
+        d4b_yc("m3", 0, 2, 0x1234ABCD, 0x5678EF01, {0x1077E0 + 2 * 0x94: le32(0x0BADF00D)}),
+        d4b_yc("x0", 1, 0, 0x00012345, 0xFFFF8888),        # a > b signed only
+        d4b_yc("x1", 0x80, 1, 0x00000010, 0x7FFF0020),     # a < b; the mode byte's bit 7 alone
+        d4b_yc("x2", 1, 1, 0x00010005, 0x00000009),        # a > b as dwords, a < b as words
+        d4b_yc("x3", 2, 0, 0xFFFF0007, 0xFFFF0007),        # equal: `jg` not taken, the same value
+    ], calls=(D4B_YCLAMP,), eax_mask=0,
+       mutants=("@modew", "@sel", "@sext", "@hi", "@unsigned", "@min", "@cmpw", "@wide", "@lo", "@nocall", "@order")),
+]
+
+# ---- 0x16308 / 0x1631C / 0x41030: the sprite resolve, the row clamp and the RLE row decode --------
+# The resource fixture is C2b's (a preloaded INDEX entry, so 0x1B544's fast path 0x1B569 and the
+# port's res_resolve agree), with a second entry so a handle's index is not a constant.
+D4B_RES2 = 0x10AA00                # entry 2's payload base (entry 1's is C2B_RES_DATA)
+D4B_SPR = 0x800040                 # the sprite header's handle: entry 1, offset 0x40
+D4B_STREAM, D4B_ALT = 0x800100, 0x1000020    # the stream handles at the header's +8 and (a mutant's) +4
+D4B_TABLE_A, D4B_TABLE_B = 0xFD160, 0xFEDE0  # the two row tables (0x16372/0x16379)
+
+
+def d4b_res():
+    return {C2B_RES_PTR: le32(C2B_RES_TABLE), C2B_RES_N: le32(0x100),
+            C2B_RES_TABLE + 0x14 + 0x0C: le32(0x01000000) + le32(C2B_RES_DATA),
+            C2B_RES_TABLE + 0x28 + 0x0C: le32(0x01000000) + le32(D4B_RES2)}
+
+
+def d4b_at(handle):
+    """The linear address a fixture handle resolves to."""
+    return (C2B_RES_DATA, D4B_RES2)[(handle >> 23) - 1] + (handle & 0x7FFFFF)
+
+
+def d4b_handle_slot(ch, index):
+    """The 0xA8B30 dword 0x16308/0x1631C read for character `ch` and `index`."""
+    return 0xA8B30 + ((D2D_CHAR_CONST[ch if ch < 7 else 0] + index) & 0x3FFFFFFF) * 4
+
+
+def d4b_sprite_case(side, ch, index, handle, header=None):
+    """Both slots' characters (the other one's differs), the 0xA8B30 dword for (ch, index) between two
+    other resolvable handles, and the resource entries; `header` is poked where `handle` resolves."""
+    slot = d4b_handle_slot(ch, index)
+    p = {**d4b_res(), **d1h_char_case(side, ch),
+         slot - 4: le32(handle ^ 0x10) + le32(handle) + le32(handle ^ 0x20)}
+    if header is not None:
+        p[d4b_at(handle) - 2] = b"\xee\xee" + header + b"\xdd\xdd"
+    return p
+
+
+# the five rows of the width-20 stream: A literal 5, transparent 7, colour run 8; B colour run 20;
+# C transparent 20; D literal 20; E two colour runs of 31 (the second overshoots the width); then
+# padding that ends any row (colour runs of 63), so a mutant that loses its place still terminates
+D4B_ROWS = (bytes([0x05]) + b"\x11" * 5 + bytes([0xC7, 0x88, 0x9F]) + bytes([0x94, 0x9F]) + bytes([0xD4])
+            + bytes([0x14]) + b"\x11" * 20 + bytes([0x9F, 0x9F]))
+
+
+def d4b_decode_case(cid, frame, count, table, width=20, stream=None, spr=D4B_SPR, st=D4B_STREAM):
+    data = (D4B_ROWS if stream is None else stream) + b"\xbf" * 128
+    p = {**d4b_res(),
+         d4b_at(spr) - 2: b"\xee\xee" + le16(width) + le16(0x7777) + le32(D4B_ALT) + le32(st) + b"\xdd\xdd",
+         d4b_at(D4B_ALT): b"\xbf" * 64,
+         table - 2: b"\x5a" * 64, table - 2 + 64: b"\x5a" * 48}
+    p.update({d4b_at(st) + o: data[o:o + 64] for o in range(0, 128, 64)})
+    return Case(cid, {"eax": spr, "edx": frame, "ebx": count, "ecx": table}, p)
+
+
+# 0x41030 (seamed by this batch): its four register arguments in the C order; `ret`; it saves ESI, EDI
+# and EBP (0x41030..0x41032, 0x41195..0x41197) and writes EBX, ECX and EDX.
+D4B_ACCUM = E.Call(0x41030, ("eax", "edx", "ebx", "ecx"), clobbers=("ebx", "ecx", "edx"))
+# 0x1B544's arms past its preloaded fast path (0x1B572): 0x16308 tail-jumps it (`jmp 0x1b544`
+# 0x16316), so the scan counts its blocks as 0x16308's. The fixture's entries are preloaded.
+D4B_RES_SLOW = {a: "0x1B544's non-resident arm (the tail-jumped host resolver, a named non-row; the "
+                   "fixture's entries are preloaded, `test [ecx+0xc],0x1000000` 0x1B569)"
+                for a in (0x1B57C, 0x1B585, 0x1B58E, 0x1B5A6, 0x1B5AF, 0x1B5C2, 0x1B5CB, 0x1B5D4, 0x1B5E0)}
+
+D4B_SPECS += [
+    # 0x16308 camera_resolve_sprite: EAX = side, EDX = index. `call 0x17eec` (the side's character
+    # word, d1h's row, run on both sides); `add eax,edx; mov eax,[eax*4+0xa8b30]; jmp 0x1b544`. EAX is
+    # the resolved pointer, which the one caller dereferences (`mov ecx,[eax+2]` 0x1818D after `call
+    # 0x16308` 0x18186): mask full. The port returns the pointer's mem[] offset (the same number).
+    # r2 is character 7 (the table's default arm), r3 index -1.
+    Spec("camera_resolve_sprite", 0x16308, [
+        Case("r0", {"eax": 0, "edx": 5}, d4b_sprite_case(0, 2, 5, 0x800123)),
+        Case("r1", {"eax": 1, "edx": 0x40}, d4b_sprite_case(1, 5, 0x40, 0x1000010)),
+        Case("r2", {"eax": 0, "edx": 0}, d4b_sprite_case(0, 7, 0, 0x800001)),
+        Case("r3", {"eax": 1, "edx": 0xFFFFFFFF}, d4b_sprite_case(1, 1, 0xFFFFFFFF, 0x8001FF)),
+        Case("r4", {"eax": 1, "edx": 1}, d4b_sprite_case(1, 6, 1, 0x1000000)),
+    ], allow_calls=(0x17EEC, 0x1B544), eax_mask=0xFFFFFFFF, unhit_named=D4B_RES_SLOW,
+       mutants=("@side", "@noidx", "@nochar", "@scale", "@rawch")),
+    # 0x1631C camera_sprite_height: EAX = side, EDX = index, EBX = frame, ECX = count. height = the
+    # sprite's first dword `sar 16` (0x1634C). `cmp edx,eax; jl` (0x16351, signed): frame >= height
+    # gives count 1, frame = height - 1; then `lea ebp,[edx+ebx]; cmp ebp,eax; jle` (0x16363): frame +
+    # count > height gives count = height - frame. `test esi,esi` (0x1636E): side 0's table 0xFD160,
+    # any other side's 0xFEDE0 (h7 is side 2). Then 0x41030(handle, frame, count, table), stubbed; its
+    # EAX is returned and both callers store it (`mov [esp+8],eax` 0x16DE1, `mov [esp+0xc],eax`
+    # 0x16E04): mask full, the stub's EAX varied per case.
+    Spec("camera_sprite_height", 0x1631C, [
+        Case("h0", {"eax": 0, "edx": 5, "ebx": 3, "ecx": 4},
+             d4b_sprite_case(0, 2, 5, 0x800040, le16(0x0123) + le16(10)), {0x41030: 0x11}),
+        Case("h1", {"eax": 1, "edx": 0x40, "ebx": 10, "ecx": 4},          # frame == height
+             d4b_sprite_case(1, 5, 0x40, 0x1000010, le16(0x0005) + le16(10)), {0x41030: 0x12345678}),
+        Case("h2", {"eax": 0, "edx": 0, "ebx": 8, "ecx": 5},              # frame + count > height
+             d4b_sprite_case(0, 7, 0, 0x800040, le16(0x0020) + le16(10)), {0x41030: 0x100}),
+        Case("h3", {"eax": 1, "edx": 1, "ebx": 6, "ecx": 4},              # frame + count == height
+             d4b_sprite_case(1, 6, 1, 0x800040, le16(0x0004) + le16(10)), {0x41030: 0}),
+        Case("h4", {"eax": 0, "edx": 2, "ebx": 9, "ecx": 1},              # the last row
+             d4b_sprite_case(0, 3, 2, 0x800040, le16(0x0003) + le16(10)), {0x41030: 0xFFFFFFFF}),
+        Case("h5", {"eax": 1, "edx": 3, "ebx": 0xFFFFFFFF, "ecx": 3},     # a negative frame: signed, kept
+             d4b_sprite_case(1, 4, 3, 0x800040, le16(0x0007) + le16(10)), {0x41030: 7}),
+        Case("h6", {"eax": 0, "edx": 4, "ebx": 0, "ecx": 2},              # a negative height
+             d4b_sprite_case(0, 1, 4, 0x800040, le16(0x0009) + le16(0x8000)), {0x41030: 9}),
+        Case("h7", {"eax": 2, "edx": 0, "ebx": 12, "ecx": 3},             # side 2, frame > height
+             {**d4b_sprite_case(0, 2, 0, 0x800040, le16(0x0002) + le16(10)),
+              0x001077B0 + 2 * 0x94 + 0x78: bytes([0x78, 0x79, 2, 0x7B])}, {0x41030: 0x55}),
+        Case("h8", {"eax": 1, "edx": 2, "ebx": 11, "ecx": 0},             # frame > height with count 0: count 1
+             d4b_sprite_case(1, 0, 2, 0x800040, le16(0x0006) + le16(10)), {0x41030: 0x66}),
+    ], allow_calls=(0x17EEC, 0x1B544), calls=(D4B_ACCUM,), eax_mask=0xFFFFFFFF,
+       mutants=("@hsrc", "@hzext", "@gt", "@uns", "@nocount1", "@last", "@sumfull", "@table", "@side1", "@args",
+                "@handle", "@al")),
+    # 0x41030 camera_bitplane_accum: EAX = handle, EDX = frame, EBX = count, ECX = table. Two resolves
+    # (the header, then the handle at its +8, 0x41048). byte width = (movsx word + 7) / 8 truncating
+    # (0x41050..0x41062). The skip loop runs `frame` times (`dec edi; cmp edi,-1` 0x4106F): a row of
+    # width <= 0 is empty (`jle` 0x4107E); a control byte with bit 7 takes (b & 0x3F) off the width and,
+    # bit 6 clear, one more stream byte (0x410A7); without bit 7 it takes (b & 0x7F) off both. count <=
+    # 0 decodes nothing (`jle` 0x410BA); else rows at table + k * 0x26 while k * 0x26 < count * 0x26
+    # (`jl` 0x41188): the byte width zeroed by the runtime memset 0x61A70 (run on the original side),
+    # the bit restarted at 0x80 (0x410F9), each drawn pixel `or [ecx],al` with the bit shifted right
+    # and the next byte on a carry out. EAX = the byte width, returned through 0x1631C: mask full.
+    # Domain: a width word below -7 makes the byte width negative (a 4 GB memset on both sides): no
+    # case; a4's -7 gives 0. A count of 0x6BCA1B or more overflows `count * 0x26`: no case.
+    Spec("camera_bitplane_accum", 0x41030, [
+        d4b_decode_case("a0", 0, 2, D4B_TABLE_A),
+        d4b_decode_case("a1", 3, 2, D4B_TABLE_B),                     # the three skip arms, then rows D and E
+        d4b_decode_case("a2", 1, 0, D4B_TABLE_A),
+        d4b_decode_case("a3", 0, 0xFFFFFFFF, D4B_TABLE_B),
+        d4b_decode_case("a4", 2, 2, D4B_TABLE_A, width=0xFFF9),       # width -7: empty rows, byte width 0
+        d4b_decode_case("a5", 0, 1, D4B_TABLE_B, width=9, spr=0x1000080, st=0x800180,
+                        stream=bytes([0x80, 0x9F, 0xC0, 0x00, 0x89, 0x9F])),   # three empty runs, then 9 pixels
+        d4b_decode_case("a6", 1, 3, D4B_TABLE_A, width=1, stream=bytes([0x01, 0x11, 0x81, 0x9F, 0xC1, 0x01, 0x11])),
+        d4b_decode_case("a7", 0, 1, D4B_TABLE_A, width=16, stream=bytes([0xC3, 0x8D, 0x9F])),
+        # a skipped row of a transparent 5 and a colour 15: a 0x7F run mask ends it one run early
+        d4b_decode_case("a8", 1, 1, D4B_TABLE_B, stream=bytes([0xC5, 0x8F, 0x9F, 0x94, 0x9F])),
+    ], allow_calls=(0x1B544, 0x61A70, 0x65490, 0x654C7), eax_mask=0xFFFFFFFF,
+       mutants=("@handle2", "@wzext", "@round", "@stride", "@noframe", "@skipmask", "@skipcolour", "@skiplit",
+                "@rows", "@nofill", "@bitkeep", "@msb", "@transp", "@colour", "@litadv", "@litclear", "@ret")),
+]
+D1_SPECS += D4B_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),
