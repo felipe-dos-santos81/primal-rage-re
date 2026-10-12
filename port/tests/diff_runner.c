@@ -33311,6 +33311,116 @@ D5A_CD_MUT(nor1) D5A_CD_MUT(rswap) D5A_CD_MUT(rsame) D5A_CD_MUT(noinit) D5A_CD_M
 D5A_CD_MUT(fill8) D5A_CD_MUT(fillbase) D5A_CD_MUT(nofill) D5A_CD_MUT(fillval) D5A_CD_MUT(filllate)
 D5A_CD_MUT(hook) D5A_CD_MUT(nohook) D5A_CD_MUT(hookw) D5A_CD_MUT(hooklate) D5A_CD_MUT(wipearg) D5A_CD_MUT(nowipe)
 D5A_CD_MUT(voice2) D5A_CD_MUT(novoice2)
+/* 0x12484: no argument. Mask 0: the one call site 0x11DB8 goes on with `call 0x10db0` and `call
+ * 0x10e18`, each of which loads AH (0x10DB1, 0x10E19) and reads EAX only after `mov eax,0x100` (0x10E01,
+ * 0x10E69), then `call 0x2bf08` (`mov ah,[0x9ad58]` 0x2BF0E, `call 0x2caa8` before `test eax,eax`
+ * 0x2BF23), and returns through 0x11D04 to `jmp 0x2540f` (0x2523D), the mode tail the wave-1 records
+ * trace dead (d1c §1, d1d §1). Bound twice: the plain row and the row whose stubs write what the raw
+ * reads after them (`_rr`). */
+static void b_d5a_12484(const u32 *r, u32 *eax) { (void)r; game_state_3(); *eax = 0u; }
+enum { D5A_S3_NONE, D5A_S3_ph1any, D5A_S3_phsext, D5A_S3_noreset, D5A_S3_resetarg, D5A_S3_resetlate,
+       D5A_S3_rows3, D5A_S3_rowswap, D5A_S3_rowa2, D5A_S3_rowa3, D5A_S3_rowdesc, D5A_S3_listskip, D5A_S3_handle,
+       D5A_S3_efftype, D5A_S3_effnode, D5A_S3_effall, D5A_S3_bit, D5A_S3_bitinv, D5A_S3_b528, D5A_S3_prebit,
+       D5A_S3_spawndesc, D5A_S3_spawnx, D5A_S3_spawna3, D5A_S3_spawna4, D5A_S3_spawna5, D5A_S3_nof40,
+       D5A_S3_f40w, D5A_S3_strswap, D5A_S3_str1, D5A_S3_row18, D5A_S3_row1b, D5A_S3_mode, D5A_S3_col,
+       D5A_S3_notext2, D5A_S3_nohandoff, D5A_S3_handoffearly, D5A_S3_noinc, D5A_S3_incearly, D5A_S3_incpre,
+       D5A_S3_a38sext, D5A_S3_a38shift, D5A_S3_noa38, D5A_S3_a38new, D5A_S3_a44d, D5A_S3_noa44, D5A_S3_a44noabs,
+       D5A_S3_a44c, D5A_S3_a1e, D5A_S3_noabs2, D5A_S3_bsign, D5A_S3_bneg16, D5A_S3_blow, D5A_S3_lt, D5A_S3_uns,
+       D5A_S3_no24, D5A_S3_v24, D5A_S3_no6c, D5A_S3_6cb, D5A_S3_no1c, D5A_S3_v1c, D5A_S3_no64, D5A_S3_64b,
+       D5A_S3_no36, D5A_S3_36d, D5A_S3_no6a, D5A_S3_6ab, D5A_S3_no72, D5A_S3_72w };
+static void d5a_12484_phase0(u32 mut)
+{
+    const u32 *desc = (const u32 *)(mem + ((mut == D5A_S3_rowdesc) ? 0x0009AC20u : 0x0009AC1Cu));
+    u32 pre6f = DSB(0x000F0A6Fu), prebit = DSB(0x00104529u);
+    u32 x = (mut == D5A_S3_rowa2) ? 0x2Bu : 0x2Au, y = (mut == D5A_S3_rowa3) ? 0x1Fu : 0x1Eu;
+    if (mut != D5A_S3_noreset && mut != D5A_S3_resetlate) actors_reset_al((mut == D5A_S3_resetarg) ? 0u : 1u);
+    frontend_spawn_row(desc, 0u, 0u);
+    if (mut == D5A_S3_rowswap) frontend_spawn_row(desc, 0u, y);
+    frontend_spawn_row(desc, x, 0u);
+    if (mut != D5A_S3_rowswap) frontend_spawn_row(desc, 0u, y);
+    if (mut != D5A_S3_rows3) frontend_spawn_row(desc, x, y);
+    if (mut == D5A_S3_resetlate) actors_reset_al(1u);
+    if (mut == D5A_S3_handoffearly) game_state_3_handoff();
+    u32 node = frontend_list_next(0u);
+    if (mut == D5A_S3_listskip && node != 0u) node = frontend_list_next(node);
+    for (; node != 0u; node = frontend_list_next(node))
+        if (mut == D5A_S3_effall || DSD(node) == ((mut == D5A_S3_handle) ? 0x0003E689u : 0x0003E688u))
+            (void)effects_spawn((mut == D5A_S3_effnode) ? node + 0x10u : node, (mut == D5A_S3_efftype) ? 3u : 2u,
+                                DSD(node));
+    u32 b = (mut == D5A_S3_prebit) ? prebit : DSB((mut == D5A_S3_b528) ? 0x00104528u : 0x00104529u);
+    u32 set = (b & ((mut == D5A_S3_bit) ? 4u : 2u)) != 0u;
+    if (mut == D5A_S3_bitinv) set = !set;
+    if (set) {
+        u32 rec = actor_spawn((const u32 *)(mem + ((mut == D5A_S3_spawndesc) ? 0x0009AEB8u : 0x0009AEB4u)),
+                              (mut == D5A_S3_spawnx) ? 0x2A01u : 0x2A00u, (mut == D5A_S3_spawna3) ? 0xFEu : 0xFFu,
+                              (mut == D5A_S3_spawna4) ? 0x3401u : 0x3400u, (mut == D5A_S3_spawna5) ? 1u : 0u);
+        if (mut == D5A_S3_f40w) DSW(0x000F0A40u) = (u16)rec;
+        else if (mut != D5A_S3_nof40) DSD(0x000F0A40u) = rec;
+    } else {
+        u32 m = (mut == D5A_S3_mode) ? 0x4002u : 0x4003u;
+        s32 c = (mut == D5A_S3_col) ? 0 : -1;
+        u32 s1 = (mut == D5A_S3_strswap) ? 0x14u : (mut == D5A_S3_str1) ? 0x12u : 0x13u;
+        text_cursor_set(c, (mut == D5A_S3_row18) ? 0x19 : 0x18, game_string_get(s1), m);
+        if (mut != D5A_S3_notext2)
+            text_cursor_set(c, (mut == D5A_S3_row1b) ? 0x1C : 0x1B,
+                            game_string_get((mut == D5A_S3_strswap) ? 0x13u : 0x14u), m);
+    }
+    if (mut == D5A_S3_incearly) DSB(0x000F0A6Fu)++;
+    if (mut != D5A_S3_nohandoff && mut != D5A_S3_handoffearly) game_state_3_handoff();
+    if (mut == D5A_S3_incpre) DSB(0x000F0A6Fu) = (u8)(pre6f + 1u);
+    else if (mut != D5A_S3_noinc && mut != D5A_S3_incearly) DSB(0x000F0A6Fu)++;
+}
+static void d5a_12484_phase1(u32 mut)
+{
+    u32 cam = DSD(0x000F0A58u);
+    u32 w44 = DSW(0x00107A44u);
+    s32 v = ((mut == D5A_S3_a44c) ? 0x5A01 : 0x5A00) - (s32)DSD(cam + 0x1Cu);
+    if (v < 0 && mut != D5A_S3_a44noabs) v = -v;
+    if (mut == D5A_S3_a38new) w44 = (u16)v;
+    u32 q = (mut == D5A_S3_a38sext) ? (u32)((s32)(s16)w44 >> 6) : (w44 >> ((mut == D5A_S3_a38shift) ? 5 : 6));
+    if (mut != D5A_S3_noa38) DSW(0x00107A38u) = (u16)q;
+    if (mut == D5A_S3_a44d) DSD(0x00107A44u) = (u32)v;
+    else if (mut != D5A_S3_noa44) DSW(0x00107A44u) = (u16)v;
+    s32 a = (s32)DSD(cam + 0x1Cu) - ((mut == D5A_S3_a1e) ? 0x1E01 : 0x1E00);
+    s32 hi = (s32)DSD(cam + 0x34u) >> 16;
+    s32 b = ((s16)DSW(cam + 0x36u) < 0 && mut != D5A_S3_bsign) ? -hi : hi;
+    if (mut == D5A_S3_bneg16) b = (s16)b;
+    if (mut == D5A_S3_blow) b = (s32)(s16)DSW(cam + 0x34u) < 0 ? -(s32)(s16)DSW(cam + 0x34u) : (s32)(s16)DSW(cam + 0x34u);
+    if (a < 0 && mut != D5A_S3_noabs2) a = -a;
+    if ((mut == D5A_S3_lt) ? !(a < b) : (mut == D5A_S3_uns) ? !((u32)a <= (u32)b) : !(a <= b)) return;
+    if (mut != D5A_S3_no24) DSD(cam + 0x24u) = (mut == D5A_S3_v24) ? 0x40C00001u : 0x40C00000u;
+    if (mut == D5A_S3_6cb) DSB(0x000F0A6Cu) = 6u;
+    else if (mut != D5A_S3_no6c) DSW(0x000F0A6Cu) = 6u;
+    if (mut != D5A_S3_no1c) DSD(cam + 0x1Cu) = (mut == D5A_S3_v1c) ? 0x1E01u : 0x1E00u;
+    if (mut == D5A_S3_64b) DSB(0x000F0A64u) = 9u;
+    else if (mut != D5A_S3_no64) DSW(0x000F0A64u) = 9u;
+    if (mut == D5A_S3_36d) DSD(cam + 0x36u) = 0u;
+    else if (mut != D5A_S3_no36) DSW(cam + 0x36u) = 0u;
+    if (mut == D5A_S3_6ab) DSB(0x000F0A6Au) = 0xF0u;
+    else if (mut != D5A_S3_no6a) DSW(0x000F0A6Au) = 0xF0u;
+    if (mut == D5A_S3_72w) DSW(0x000F0A72u) = 0u;
+    else if (mut != D5A_S3_no72) DSB(0x000F0A72u) = 0u;
+}
+static void d5a_12484_core(u32 mut)
+{
+    u32 ph = DSB(0x000F0A6Fu);
+    if (ph == 0u || (mut == D5A_S3_phsext && (s8)ph <= 0)) d5a_12484_phase0(mut);
+    else if (ph == 1u || mut == D5A_S3_ph1any) d5a_12484_phase1(mut);
+}
+#define D5A_S3_MUT(name) \
+    static void m_d5a_s3_##name(const u32 *r, u32 *eax) { (void)r; d5a_12484_core(D5A_S3_##name); *eax = 0u; }
+D5A_S3_MUT(ph1any) D5A_S3_MUT(phsext) D5A_S3_MUT(noreset) D5A_S3_MUT(resetarg) D5A_S3_MUT(resetlate)
+D5A_S3_MUT(rows3) D5A_S3_MUT(rowswap) D5A_S3_MUT(rowa2) D5A_S3_MUT(rowa3) D5A_S3_MUT(rowdesc) D5A_S3_MUT(listskip)
+D5A_S3_MUT(handle) D5A_S3_MUT(efftype) D5A_S3_MUT(effnode) D5A_S3_MUT(effall) D5A_S3_MUT(bit) D5A_S3_MUT(bitinv)
+D5A_S3_MUT(b528) D5A_S3_MUT(prebit) D5A_S3_MUT(spawndesc) D5A_S3_MUT(spawnx) D5A_S3_MUT(spawna3)
+D5A_S3_MUT(spawna4) D5A_S3_MUT(spawna5) D5A_S3_MUT(nof40) D5A_S3_MUT(f40w) D5A_S3_MUT(strswap) D5A_S3_MUT(str1)
+D5A_S3_MUT(row18) D5A_S3_MUT(row1b) D5A_S3_MUT(mode) D5A_S3_MUT(col) D5A_S3_MUT(notext2) D5A_S3_MUT(nohandoff)
+D5A_S3_MUT(handoffearly) D5A_S3_MUT(noinc) D5A_S3_MUT(incearly) D5A_S3_MUT(incpre) D5A_S3_MUT(a38sext)
+D5A_S3_MUT(a38shift) D5A_S3_MUT(noa38) D5A_S3_MUT(a38new) D5A_S3_MUT(a44d) D5A_S3_MUT(noa44) D5A_S3_MUT(a44noabs)
+D5A_S3_MUT(a44c) D5A_S3_MUT(a1e) D5A_S3_MUT(noabs2) D5A_S3_MUT(bsign) D5A_S3_MUT(bneg16) D5A_S3_MUT(blow)
+D5A_S3_MUT(lt) D5A_S3_MUT(uns) D5A_S3_MUT(no24) D5A_S3_MUT(v24) D5A_S3_MUT(no6c) D5A_S3_MUT(6cb) D5A_S3_MUT(no1c)
+D5A_S3_MUT(v1c) D5A_S3_MUT(no64) D5A_S3_MUT(64b) D5A_S3_MUT(no36) D5A_S3_MUT(36d) D5A_S3_MUT(no6a) D5A_S3_MUT(6ab)
+D5A_S3_MUT(no72) D5A_S3_MUT(72w)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -43433,6 +43543,75 @@ static const binding_t k_bindings[] = {
     { "game_coin_divert@nowipe", m_d5a_cd_nowipe, 0x00000000u },
     { "game_coin_divert@voice2", m_d5a_cd_voice2, 0x00000000u },
     { "game_coin_divert@novoice2", m_d5a_cd_novoice2, 0x00000000u },
+    { "game_state_3", b_d5a_12484, 0x00000000u },
+    { "game_state_3@ph1any", m_d5a_s3_ph1any, 0x00000000u },
+    { "game_state_3@phsext", m_d5a_s3_phsext, 0x00000000u },
+    { "game_state_3@noreset", m_d5a_s3_noreset, 0x00000000u },
+    { "game_state_3@resetarg", m_d5a_s3_resetarg, 0x00000000u },
+    { "game_state_3@resetlate", m_d5a_s3_resetlate, 0x00000000u },
+    { "game_state_3@rows3", m_d5a_s3_rows3, 0x00000000u },
+    { "game_state_3@rowswap", m_d5a_s3_rowswap, 0x00000000u },
+    { "game_state_3@rowa2", m_d5a_s3_rowa2, 0x00000000u },
+    { "game_state_3@rowa3", m_d5a_s3_rowa3, 0x00000000u },
+    { "game_state_3@rowdesc", m_d5a_s3_rowdesc, 0x00000000u },
+    { "game_state_3@listskip", m_d5a_s3_listskip, 0x00000000u },
+    { "game_state_3@handle", m_d5a_s3_handle, 0x00000000u },
+    { "game_state_3@efftype", m_d5a_s3_efftype, 0x00000000u },
+    { "game_state_3@effnode", m_d5a_s3_effnode, 0x00000000u },
+    { "game_state_3@effall", m_d5a_s3_effall, 0x00000000u },
+    { "game_state_3@bit", m_d5a_s3_bit, 0x00000000u },
+    { "game_state_3@bitinv", m_d5a_s3_bitinv, 0x00000000u },
+    { "game_state_3@b528", m_d5a_s3_b528, 0x00000000u },
+    { "game_state_3@spawndesc", m_d5a_s3_spawndesc, 0x00000000u },
+    { "game_state_3@spawnx", m_d5a_s3_spawnx, 0x00000000u },
+    { "game_state_3@spawna3", m_d5a_s3_spawna3, 0x00000000u },
+    { "game_state_3@spawna4", m_d5a_s3_spawna4, 0x00000000u },
+    { "game_state_3@spawna5", m_d5a_s3_spawna5, 0x00000000u },
+    { "game_state_3@nof40", m_d5a_s3_nof40, 0x00000000u },
+    { "game_state_3@f40w", m_d5a_s3_f40w, 0x00000000u },
+    { "game_state_3@strswap", m_d5a_s3_strswap, 0x00000000u },
+    { "game_state_3@str1", m_d5a_s3_str1, 0x00000000u },
+    { "game_state_3@row18", m_d5a_s3_row18, 0x00000000u },
+    { "game_state_3@row1b", m_d5a_s3_row1b, 0x00000000u },
+    { "game_state_3@mode", m_d5a_s3_mode, 0x00000000u },
+    { "game_state_3@col", m_d5a_s3_col, 0x00000000u },
+    { "game_state_3@notext2", m_d5a_s3_notext2, 0x00000000u },
+    { "game_state_3@nohandoff", m_d5a_s3_nohandoff, 0x00000000u },
+    { "game_state_3@handoffearly", m_d5a_s3_handoffearly, 0x00000000u },
+    { "game_state_3@noinc", m_d5a_s3_noinc, 0x00000000u },
+    { "game_state_3@incearly", m_d5a_s3_incearly, 0x00000000u },
+    { "game_state_3@a38sext", m_d5a_s3_a38sext, 0x00000000u },
+    { "game_state_3@a38shift", m_d5a_s3_a38shift, 0x00000000u },
+    { "game_state_3@noa38", m_d5a_s3_noa38, 0x00000000u },
+    { "game_state_3@a38new", m_d5a_s3_a38new, 0x00000000u },
+    { "game_state_3@a44d", m_d5a_s3_a44d, 0x00000000u },
+    { "game_state_3@noa44", m_d5a_s3_noa44, 0x00000000u },
+    { "game_state_3@a44noabs", m_d5a_s3_a44noabs, 0x00000000u },
+    { "game_state_3@a44c", m_d5a_s3_a44c, 0x00000000u },
+    { "game_state_3@a1e", m_d5a_s3_a1e, 0x00000000u },
+    { "game_state_3@noabs2", m_d5a_s3_noabs2, 0x00000000u },
+    { "game_state_3@bsign", m_d5a_s3_bsign, 0x00000000u },
+    { "game_state_3@bneg16", m_d5a_s3_bneg16, 0x00000000u },
+    { "game_state_3@blow", m_d5a_s3_blow, 0x00000000u },
+    { "game_state_3@lt", m_d5a_s3_lt, 0x00000000u },
+    { "game_state_3@uns", m_d5a_s3_uns, 0x00000000u },
+    { "game_state_3@no24", m_d5a_s3_no24, 0x00000000u },
+    { "game_state_3@v24", m_d5a_s3_v24, 0x00000000u },
+    { "game_state_3@no6c", m_d5a_s3_no6c, 0x00000000u },
+    { "game_state_3@6cb", m_d5a_s3_6cb, 0x00000000u },
+    { "game_state_3@no1c", m_d5a_s3_no1c, 0x00000000u },
+    { "game_state_3@v1c", m_d5a_s3_v1c, 0x00000000u },
+    { "game_state_3@no64", m_d5a_s3_no64, 0x00000000u },
+    { "game_state_3@64b", m_d5a_s3_64b, 0x00000000u },
+    { "game_state_3@no36", m_d5a_s3_no36, 0x00000000u },
+    { "game_state_3@36d", m_d5a_s3_36d, 0x00000000u },
+    { "game_state_3@no6a", m_d5a_s3_no6a, 0x00000000u },
+    { "game_state_3@6ab", m_d5a_s3_6ab, 0x00000000u },
+    { "game_state_3@no72", m_d5a_s3_no72, 0x00000000u },
+    { "game_state_3@72w", m_d5a_s3_72w, 0x00000000u },
+    { "game_state_3_rr", b_d5a_12484, 0x00000000u },
+    { "game_state_3_rr@prebit", m_d5a_s3_prebit, 0x00000000u },
+    { "game_state_3_rr@incpre", m_d5a_s3_incpre, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

@@ -24542,6 +24542,94 @@ D5A_SPECS += [
                 "@filllate", "@hook", "@nohook", "@hookw", "@hooklate", "@wipearg", "@nowipe", "@voice2",
                 "@novoice2")),
 ]
+D5A_ROW = E.Call(0x38B18, ("eax", "edx", "ebx"), clobbers=("ebx", "ecx", "edx"))
+D5A_HANDOFF = E.Call(0x12658, ())
+D5A_S3_CALLS = (D5A_RESET, D5A_ROW, P6_13C70, SPAWN, D1C_STR, D1D_CURSOR, D5A_HANDOFF)
+# the same callees leaving what 0x12484 reads after them: 0x38B18 the option byte 0x104529 = 2 (read at
+# 0x12527), 0x12658 the phase byte 0xF0A6F = 5 (`inc byte [0xf0a6f]` 0x12597)
+D5A_S3_CALLS_W = (D5A_RESET, dataclasses.replace(D5A_ROW, writes=((None, 0x00104529, b"\x02"),)), P6_13C70, SPAWN,
+                  D1C_STR, D1D_CURSOR, dataclasses.replace(D5A_HANDOFF, writes=((None, 0x000F0A6F, b"\x05"),)))
+D5A_CAMREC = 0x0010A300        # zero BSS of the image: the record the camera dword 0xF0A58 names
+
+
+def d5a_fe_block(ph):
+    """The front-end words 0xF0A60..0xF0A77, every byte distinct and non-zero, with the phase byte
+    0xF0A6F = `ph`."""
+    b = bytearray(range(0x21, 0x39))
+    b[0x0F] = ph
+    return {0x000F0A60: bytes(b)}
+
+
+def d5a_s3_case(ph, b529=0x00, x=0, d34=0, w44=0x5A5A, entries=None):
+    """0x12484: the phase byte inside the seeded front-end words; the option byte 0x104529, the
+    dword 0xF0A40 and the camera dword 0xF0A58 (= D5A_CAMREC), each between seeded neighbours; the
+    record's +0x1C (`x`), +0x24 and +0x34 (`d34`, whose high word is the +0x36 word) between seeded
+    dwords; the words 0x107A38 and 0x107A44 (`w44`) between seeded words; the string buffer; the
+    front-end list (d2c_list_pokes)."""
+    p = d2c_list_pokes(entries or {})
+    p.update(d5a_fe_block(ph))
+    p.update({0x00104528: bytes([0x6B, b529, 0x6C]),
+              0x000F0A3C: le32(0x3C3C3C3C) + le32(0x5D5D5D5D) + le32(0x44444444),
+              0x000F0A54: le32(0x5B5B5B5B) + le32(D5A_CAMREC) + le32(0x5C5C5C5C),
+              D5A_CAMREC + 0x18: le32(0x18181818) + le32(x) + le32(0x20202020) + le32(0x24242424) + le32(0x28282828),
+              D5A_CAMREC + 0x30: le32(0x30303030) + le32(d34) + le32(0x38383838),
+              0x00107A36: le16(0x3636) + le16(0x5E5E) + le16(0x3A3A),
+              0x00107A42: le16(0x4242) + le16(w44) + le16(0x4646),
+              0x00102760: b"\x5a" * 0x10})
+    return p
+
+
+D5A_SPECS += [
+    # 0x12484 game_state_3: no argument; the phase byte 0xF0A6F (`test al,al; jbe` / `cmp al,1; je`:
+    # p2 is 2, p3 0x80). Phase 0: 0x2BAF4(1); 0x38B18(0x9AC1C, a2, a3) four times ((0, 0), (0x2A, 0),
+    # (0, 0x1E), (0x2A, 0x1E)); for every live list entry (0x33904, real on both sides) whose handle
+    # is 0x3E688, 0x13C70(entry, 2, the handle); then by bit 1 of the byte 0x104529 either
+    # 0x2AE14(0x9AEB4, 0x2A00, 0xFF, 0x3400, 0) into the dword 0xF0A40, or the strings 0x13 and 0x14
+    # (0x1C500 real over the stubbed 0x474E4) through 0x2F198(-1, row 0x18 / 0x1B, the string, mode
+    # 0x4003); 0x12658; the phase byte + 1. Phase 1: the word 0x107A38 = the word 0x107A44
+    # zero-extended >> 6 (q1 has 0xFFC0); the word 0x107A44 = |0x5A00 - x| (x = the camera record's
+    # +0x1C dword); then when |x - 0x1E00| <= the +0x34 dword `sar 16`, negated when the +0x36 word is
+    # negative (signed `jg` 0x1260B: q0/q1 and q2/q3 are the two sides of the bound on each sign, q6
+    # has the high word 0x8000, q7 x = 0x80001E00), the record's +0x24 = 0x40C00000, +0x1C = 0x1E00,
+    # +0x36 word = 0, the words 0xF0A6C = 6, 0xF0A64 = 9, 0xF0A6A = 0xF0 and the byte 0xF0A72 = 0.
+    # 0x38B18 and 0x12658 are seamed here. Mask 0: see the binding.
+    Spec("game_state_3", 0x12484, [
+        Case("a0", {**D5A_REGS, "eax": 0x12345678},
+             d5a_s3_case(0, b529=0x02, entries={0x00107618: (0x0003E688, 1), 0x00107628: (0x0003E689, 1),
+                                               0x00107648: (0x0003E688, 0), 0x00107788: (0x0003E688, 0x100)}),
+             {0x2AE14: 0x0010A480, 0x38B18: 0x12345678}),
+        Case("a1", {}, d5a_s3_case(0, b529=0xFD), {0x2F198: 0xFFFFFFFF, 0x12658: 0x100}),
+        Case("a2", {}, d5a_s3_case(0, b529=0x00, entries={0x00107618: (0x0003E600, 1), 0x00107638: (0x0003E688, 1),
+                                                           0x00107778: (0x0003E688, 0x80000000)}),
+             {0x13C70: 0x100, 0x2BAF4: 0xFFFFFFFF}),
+        Case("a3", {}, d5a_s3_case(0, b529=0xFF), {0x2AE14: 0}),
+        Case("p2", {}, d5a_s3_case(2, x=0x1E10, d34=0x00100000)),
+        Case("p3", {}, d5a_s3_case(0x80, x=0x1E10, d34=0x00100000)),
+        Case("q0", D5A_REGS, d5a_s3_case(1, x=0x1E10, d34=0x00100000, w44=0x1234)),
+        Case("q1", {}, d5a_s3_case(1, x=0x1E11, d34=0x0010FFFF, w44=0xFFC0)),
+        Case("q2", {}, d5a_s3_case(1, x=0x1DE0, d34=0xFFE00011, w44=0x003F)),
+        Case("q3", {}, d5a_s3_case(1, x=0x1DDF, d34=0xFFE01234, w44=0x0040)),
+        Case("q4", {}, d5a_s3_case(1, x=0x6C34, d34=0x7FFF0000, w44=0x8000)),
+        Case("q5", {}, d5a_s3_case(1, x=0xFFFF0000, d34=0x01000000)),
+        Case("q6", {}, d5a_s3_case(1, x=0x8E00, d34=0x80000001)),
+        Case("q7", {}, d5a_s3_case(1, x=0x80001E00, d34=0x00000002)),
+    ], allow_calls=(0x33904, 0x1C500), calls=D5A_S3_CALLS, eax_mask=0,
+       mutants=("@ph1any", "@phsext", "@noreset", "@resetarg", "@resetlate", "@rows3", "@rowswap", "@rowa2", "@rowa3",
+                "@rowdesc", "@listskip", "@handle", "@efftype", "@effnode", "@effall", "@bit", "@bitinv", "@b528",
+                "@spawndesc", "@spawnx", "@spawna3", "@spawna4", "@spawna5", "@nof40", "@f40w", "@strswap", "@str1",
+                "@row18", "@row1b", "@mode", "@col", "@notext2", "@nohandoff", "@handoffearly", "@noinc",
+                "@incearly", "@a38sext", "@a38shift", "@noa38", "@a38new", "@a44d", "@noa44", "@a44noabs", "@a44c",
+                "@a1e", "@noabs2", "@bsign", "@bneg16", "@blow", "@lt", "@uns", "@no24", "@v24", "@no6c", "@6cb",
+                "@no1c", "@v1c", "@no64", "@64b", "@no36", "@36d", "@no6a", "@6ab", "@no72", "@72w")),
+    # 0x12484 again with stubs that write what the raw reads after them (D5A_S3_CALLS_W).
+    Spec("game_state_3_rr", 0x12484, [
+        Case("r0", {}, d5a_s3_case(0, b529=0x00), {0x2AE14: 0x0010A480}),
+    ], allow_calls=(0x33904, 0x1C500), calls=D5A_S3_CALLS_W, eax_mask=0,
+       unhit_named={a: "not taken by this row's one case, phase 0 under the writing stubs (the plain row hits it)"
+                    for a in (0x12492, 0x1249A, 0x12502, 0x1250C, 0x1251A, 0x12552, 0x125A3, 0x125D4, 0x125D6,
+                              0x125F3, 0x125FD, 0x12603, 0x12607, 0x12609, 0x1260D, 0x12652)},
+       mutants=("@prebit", "@incpre")),
+]
 D1_SPECS += D5A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

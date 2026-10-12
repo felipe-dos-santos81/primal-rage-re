@@ -199,6 +199,7 @@ u32 effects_spawn_darken(u32 source_rec, u32 byte_arg)
  * toward the resolved block at +0x410. The handle is read from source_rec. */
 u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg)
 {
+    PR_SEAM_RET(0x13E28u, source_rec, byte_arg);
     u32 rec = effect_take_free();
     if (rec == 0) return 0;
     /* PORT: the raw dereferences [source_rec] for the handle (0x13E66). */

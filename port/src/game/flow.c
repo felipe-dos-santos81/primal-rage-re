@@ -342,6 +342,7 @@ static const u8 *title_string(void) { return game_string_get(0x15u); }
  * machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3)
 {
+    PR_SEAM(0x38B18u, (u32)((const u8 *)desc - mem), a2, a3);
     u32 slot = 0;
     while (slot < 7u && DSD(DS_00107A1C + slot * 4u) != 0) slot++;
     u32 at = slot < 7u ? DS_00107A1C + slot * 4u : DS_00107A1C - 4u;   /* 0x38B1F, 0x38B32 */
@@ -4330,7 +4331,7 @@ void game_mode_0f_step(void)
  * state 3 past the sixth; phase 3 hands off. The jump table at 0x11F58 fixes
  * the boundaries: 0 -> 0x11F89, 1 -> 0x11FDA, 2 -> 0x1211C, 3 -> 0x12159,
  * 4 -> 0x1217B, default (ja) -> 0x1219A. */
-static void game_state_select(void)
+void game_state_select(void)
 {
     /* 0x487BC is a link-time offset below the data object's base; the loader
      * fixes it to mem+0xC87BC. Config row 1, phase 0 and phase 1. */
@@ -4476,7 +4477,7 @@ void game_attract_dump_frame(void)
 }
 
 /* 0x121A0: the title state. Phase counter DS_000F0A6F. */
-static void game_state_title(void)
+void game_state_title(void)
 {
     if (DSB(DS_000F0A6F) == 0) {
         (void)sound_voice(0x41u);               /* 0x121C9/0x121CE 0x2C3FC: stop 0x40's loop */
@@ -4574,6 +4575,7 @@ static void game_state_title(void)
  * resource. Called only from game_state_3 phase 0. */
 void game_state_3_handoff(void)
 {
+    PR_SEAM0(0x12658u);
     u32 first = actor_spawn((const u32 *)(mem + 0x9AC44u),
                             0x2A00u, 0xE0u, 0x5A00u, 0u);       /* 0x12672 */
     DSW(first + 0x36u) = 0xFFC0u;                               /* 0x12677 */
@@ -4602,7 +4604,7 @@ void game_state_3_handoff(void)
  * branch (text rows or an actor through 0x2AE14) and hands off through 0x12658.
  * Phase 1 tracks the handoff actor's offset and terminates into state 9 when it
  * reaches 0x1E00. `cam` is the record 0x12658 stores at DS_000F0A58. */
-static void game_state_3(void)
+void game_state_3(void)
 {
     if (DSB(DS_000F0A6F) == 0) {
         actors_reset();                                             /* 0x2BAF4 */
@@ -4659,7 +4661,7 @@ static void game_state_3(void)
  * phase DS_000F0A74, then enters phase 4. Phase 4 counts the timer down and
  * continues when the pre-decrement value is zero. Phase 3 hands to state 9.
  * 0x2C06C is called in case 0 only, as the raw does. */
-static void game_state_4(void)
+void game_state_4(void)
 {
     switch (DSW(DS_0009AD98)) {
     case 0:
@@ -4970,7 +4972,7 @@ void game_fight_reset(u32 stage, u32 full)
  * RNG DRAW ORDER (Task 7 pins the shared stream): draw1 = rng(7) at 0x11AAD also
  * sets DS_00104AFC and P0's character; draw2 = rng(6) at 0x11AE9 gives P1 the
  * character (draw1 + draw2) % 7. Exactly two draws, in that order. */
-static void game_state_6(void)
+void game_state_6(void)
 {
     (void)sound_voice(0x100u);                          /* 0x11A8F/0x11A94 0x2C3FC */
     /* 0x11A99 0x29D60 is a ret-only no-op. */

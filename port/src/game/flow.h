@@ -356,6 +356,14 @@ void flow_match_streak_update(void);
 void title_origin_reset(u32 idx);
 /* 0x418F4: exposed for the differential rows (record 2026-10-11-reverse-d2c). */
 void frontend_scoreboard_build(void);
+/* PORT: the front-end states 1, 2, 3, 4 and 6 (0x121A0, 0x11F6C, 0x12484,
+ * 0x11578, 0x11A8C), exposed for the differential rows (record
+ * 2026-10-12-reverse-d5a). */
+void game_state_title(void);
+void game_state_select(void);
+void game_state_3(void);
+void game_state_4(void);
+void game_state_6(void);
 /* 0x4F200: DS_00107A55 = (u8)v, DS_00107A54 = 0, 0x4F1D0, 0x2BAF4(1). */
 void flow_screen_reset(u32 v);
 /* 0x25848: picks the stage word DS_00104AFC (on DS_00104B17). */
