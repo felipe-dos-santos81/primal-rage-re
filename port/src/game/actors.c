@@ -4058,6 +4058,7 @@ void text_glyph_at(s32 col, s32 ch, s32 row, u32 mode)
  * no caller reads it. */
 static void text_blit_glyph(u32 ch, s32 *col, s32 *row)
 {
+    PR_SEAM(0x1C5E8u, ch, (u32)*col, (u32)*row);
     u32 e = 0xbcd7cu + (ch & 0xffu) * 4u;
     SpriteNode n;
     sprite_node_build(&n, DSW(e));                    /* 0x1C5FB/0x1C60B */

@@ -753,6 +753,7 @@ int camera_box_overlap(u32 actor0, u32 actor1)
  * (0x15EDB `test eax,eax`, 0x15EDD `jle`), so a negative len swaps nothing. */
 void camera_bitrev(u32 buf, u32 len)
 {
+    PR_SEAM(0x15EC0u, buf, len);
     s32 half = (s32)len / 2;
     u32 lo = buf, hi = buf + len - 1u;
     for (s32 i = 0; i < half; i++) {
@@ -769,6 +770,7 @@ void camera_bitrev(u32 buf, u32 len)
  * 0xFEDE0 side 1, stride 0x26) at row `row` to dst. */
 void camera_sprite_row(u32 side, u32 dst, u32 count, u32 row)
 {
+    PR_SEAM(0x1638Cu, side, dst, count, row);
     u32 src = (side == 0u ? 0x000FD160u : 0x000FEDE0u) + row * 0x26u;
     for (u32 i = 0; i < count; i++) DSB(dst + i) = DSB(src + i);
 }
@@ -855,6 +857,7 @@ u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table)
  * into the side's row table. Returns the sprite's byte width. */
 u32 camera_sprite_height(u32 side, u32 index, u32 frame, u32 count)
 {
+    PR_SEAM_RET(0x1631Cu, side, index, frame, count);
     u32 ch = DSB(DS_0010782A + side * 0x94u);
     u32 handle = DSD(DS_000A8B30
                      + (camera_char_const(ch) + index) * 4u);
@@ -932,6 +935,7 @@ int camera_bitplane_shift(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
  * carrying the next byte's high bits, then shift `dst` by bit/8. */
 int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 {
+    PR_SEAM_RET(0x1617Cu, bit, src, rows, dst, arg5);
     if ((s32)bit < 0 || (s32)bit > (s32)(rows * 8u)) return 0;
     if ((s32)rows < 1 || (s32)arg5 < 1 || arg5 != rows) return 0;
 
@@ -994,6 +998,7 @@ void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
  * `box` against it, scaled by the palette offsets 0x15B90 returns. */
 void camera_box_clip(u32 side, u32 index, u8 *box)
 {
+    PR_SEAM(0x15C30u, side, index, (u32)box[0] | ((u32)box[1] << 8) | ((u32)box[2] << 16) | ((u32)box[3] << 24));
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
     int rect[4];
@@ -1106,9 +1111,10 @@ done:
  * projectile) replaces the side's row with the 4 bytes at 0xA173C; 1 copies
  * those 4 bytes into the other's row before its 4-byte row copy; 2 and 3 use
  * the 6 bytes at 0xA1740 / 0xA1746 for the other's row (0x16E2C..0x16F0E). */
-static void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
-                                 u32 b10, u32 b30, s32 arg2, u32 side)
+void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
+                          u32 b10, u32 b30, s32 arg2, u32 side)
 {
+    PR_SEAM(0x16DA4u, flag, af0_side, af0_other, b10, b30, (u32)arg2, side);
     u32 other = 1u - side;
     u32 width_a = 0, width_b = 0;
     DSD(DS_00100B54) = 0;                              /* 0x16dc8 */
@@ -1177,6 +1183,7 @@ static void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
  * side's two countdowns (hit-stun/recovery). */
 void camera_unfreeze(u32 side)
 {
+    PR_SEAM(0x170A0u, side);
     u32 other = 1u - side;
     if (DSW(DS_00107824 + other * 0x94u) != 0u) return;      /* 0x170c5 */
     if ((u32)DSW(DS_00107826 + other * 0x94u) > 1u) return;  /* 0x170e2 */
@@ -1230,7 +1237,7 @@ void camera_unfreeze(u32 side)
                                     DS_00100B1C, DS_00100B14, DS_00100B28,
                                     DS_00100B34, DS_00100B24);
         }
-        if (r != 0) return;                                 /* 0x1736c */
+        if ((u8)r != 0u) return;                            /* 0x17367 `and eax,0xff`/0x1736c */
     }
 
     /* 0x17372: build the 0x25-byte bit-plane of the side's sprite. */
@@ -1252,7 +1259,7 @@ void camera_unfreeze(u32 side)
                                     - (s32)DSD(DS_00100B08 + other * 4u),
                                     DS_00100B1C, DS_00100B14, DS_00100B28,
                                     DS_00100B34, DS_00100B24);   /* 0x1743c */
-        if (r != 0) return;                                 /* 0x17446 */
+        if ((u8)r != 0u) return;                            /* 0x17441 `and eax,0xff`/0x17446 */
     }
     {
         int r;
@@ -1269,7 +1276,7 @@ void camera_unfreeze(u32 side)
                                     DS_00100B18, DS_00100B10, DS_00100B2C,
                                     DS_00100B30, DS_00100B20);
         }
-        if (r != 0) return;                                 /* 0x174ef */
+        if ((u8)r != 0u) return;                            /* 0x174EA `and eax,0xff`/0x174ef */
     }
 
     DSD(DS_00100B10) = DSD(DS_00100B10) + sb1;             /* 0x174f9 */
@@ -1309,8 +1316,8 @@ void camera_decay(void)
      * actor index (0x17680/0x1768F) and slot1's (0x17685), and when the boxes
      * overlap runs 0x170A0(0) for B60 != 0 (0x176AC) and 0x170A0(1) for
      * B61 != 0 (0x176BF). */
-    if (camera_box_overlap(DSW(DSD(DS_001077B0) + 0x56u),
-                           DSW(DSD(DS_00107844) + 0x56u)) != 0) {
+    if ((u8)camera_box_overlap(DSW(DSD(DS_001077B0) + 0x56u),
+                               DSW(DSD(DS_00107844) + 0x56u)) != 0u) {   /* 0x1769D `test al,al` */
         if (DSB(DS_00100B60) != 0) camera_unfreeze(0u);    /* 0x176AC */
         if (DSB(DS_00100B61) != 0) camera_unfreeze(1u);    /* 0x176BF */
     }
@@ -1327,15 +1334,16 @@ void camera_decay(void)
  * 0xA173C constant (0x16DA4 mode 0), with DS_00100B62[side] cleared for the
  * call. Writes DS_00100AD0[side] = DS_00100B54. 0x176F3's 0x33950 context is
  * never read. */
-static void camera_projectile_hit(u32 side)
+void camera_projectile_hit(u32 side)
 {
+    PR_SEAM(0x176CCu, side);
     u32 other = 1u - side;
     if (DSW(DS_00107824 + other * 0x94u) != 0u) return;       /* 0x17700 */
     if ((u32)DSW(DS_00107826 + other * 0x94u) > 1u) return;   /* 0x17712 */
-    if (camera_box_overlap(DSW(DSD(DS_001077B8 + side * 0x94u) + 0x56u),
-                           DSW(DSD(DS_001077B0 + other * 0x94u) + 0x56u))
-            == 0)
-        return;                                                /* 0x1774F */
+    if ((u8)camera_box_overlap(DSW(DSD(DS_001077B8 + side * 0x94u) + 0x56u),
+                               DSW(DSD(DS_001077B0 + other * 0x94u) + 0x56u))
+            == 0u)
+        return;                                                /* 0x1774D `test al,al`/0x1774F */
 
     u8 box[4];
     {
@@ -1350,16 +1358,16 @@ static void camera_projectile_hit(u32 side)
     u32 sp = camera_resolve_sprite(other, DSD(DS_00100AF0 + other * 4u)); /* 0x177DF..0x177ED */
     s32 dy = (s32)DSD(DS_00100B00 + other * 4u) + (s32)box[1]
              - (s32)DSD(DS_00100AA0 + side * 4u);              /* 0x1782E/0x1783C */
-    if (camera_sync_visible(0x20u, (u32)(s32)(s16)DSW(sp),
-                            (s32)DSD(DS_00100AA8 + side * 4u)
-                            - ((s32)box[0]
-                               + (s32)DSD(DS_00100B08 + other * 4u)),
-                            DS_00100B1C, DS_00100B14, DS_00100B28,
-                            DS_00100B34, DS_00100B24) != 0)    /* 0x17844 */
+    if ((u8)camera_sync_visible(0x20u, (u32)(s32)(s16)DSW(sp),
+                                (s32)DSD(DS_00100AA8 + side * 4u)
+                                - ((s32)box[0]
+                                   + (s32)DSD(DS_00100B08 + other * 4u)),
+                                DS_00100B1C, DS_00100B14, DS_00100B28,
+                                DS_00100B34, DS_00100B24) != 0u)   /* 0x17844, 0x17849 `and eax,0xff` */
         return;
-    if (camera_sync_visible(0x20u, (u32)((s32)DSD(sp) >> 16), -dy,
-                            DS_00100B18, DS_00100B10, DS_00100B2C,
-                            DS_00100B30, DS_00100B20) != 0)    /* 0x1787E */
+    if ((u8)camera_sync_visible(0x20u, (u32)((s32)DSD(sp) >> 16), -dy,
+                                DS_00100B18, DS_00100B10, DS_00100B2C,
+                                DS_00100B30, DS_00100B20) != 0u)   /* 0x1787E, 0x17883 `and eax,0xff` */
         return;
 
     u32 flag = ((s32)DSD(DS_00100B14) > (s32)DSD(DS_00100B34)) ? 1u : 0u; /* 0x17897 */
@@ -1387,6 +1395,7 @@ static void camera_projectile_hit(u32 side)
  * return 1; else 0. */
 int camera_projectile_clash(void)
 {
+    PR_SEAM_RET0(0x17BC8u);
     if ((u8)camera_box_overlap(DSW(DSD(DS_001077B8) + 0x56u),
                                DSW(DSD(DS_0010784C) + 0x56u)) == 0u)
         return 0;                                              /* 0x17BEF `test al,al`/0x17BF1 */
@@ -1436,8 +1445,9 @@ void camera_projectile_step(void)
  * box-x vs point-x, sprite-x vs point-x and box-y vs point-y; the overlap row
  * is the 0xA1746 (tall, mode 3) or 0xA1740 (mode 2) constant. 1 iff the
  * DS_00100B54 count is positive. */
-static int camera_point_side(u32 side, s32 x, s32 y, u32 tall)
+int camera_point_side(u32 side, s32 x, s32 y, u32 tall)
 {
+    PR_SEAM_RET(0x1790Cu, side, (u32)x, (u32)y, tall);
     u32 box_s = DS_00100AC8 + side * 4u;                       /* 0x1791F */
     if ((u32)DSB(box_s + 2u) < 1u || (u32)DSB(box_s + 3u) < 1u) /* 0x17934/0x1793E */
         return 0;
@@ -1445,10 +1455,10 @@ static int camera_point_side(u32 side, s32 x, s32 y, u32 tall)
     u8 box[4];
     for (u32 i = 0; i < 4u; i++) box[i] = DSB(box_s + i);     /* 0x17972..0x17994 */
     camera_box_clip(side, DSD(DS_00100AF0 + side * 4u), box); /* 0x1799F */
-    if (camera_sync_visible((u32)box[2], 0x30u,
-                            ((s32)box[0] + (s32)DSD(DS_00100B08 + side * 4u)) - x,
-                            DS_00100B1C, DS_00100B14, DS_00100B28,
-                            DS_00100B34, DS_00100B24) != 0)    /* 0x179E8 */
+    if ((u8)camera_sync_visible((u32)box[2], 0x30u,
+                                ((s32)box[0] + (s32)DSD(DS_00100B08 + side * 4u)) - x,
+                                DS_00100B1C, DS_00100B14, DS_00100B28,
+                                DS_00100B34, DS_00100B24) != 0u)   /* 0x179E8, 0x179ED `and eax,0xff` */
         return 0;
     {
         s32 w = (s32)(s16)DSW(sp);                             /* 0x179FC */
@@ -1461,14 +1471,14 @@ static int camera_point_side(u32 side, s32 x, s32 y, u32 tall)
                                   DS_00100BD3, bw);            /* 0x17A61 */
     }
     s32 dy = y - ((s32)DSD(DS_00100B00 + side * 4u) + (s32)box[1]); /* 0x17A79/0x17A85 */
-    if (camera_sync_visible((u32)(s32)(s16)DSW(sp), 0x30u,
-                            (s32)DSD(DS_00100B08 + side * 4u) - x,
-                            DS_00100B1C, DS_00100B14, DS_00100B28,
-                            DS_00100B34, DS_00100B24) != 0)    /* 0x17AB4 */
+    if ((u8)camera_sync_visible((u32)(s32)(s16)DSW(sp), 0x30u,
+                                (s32)DSD(DS_00100B08 + side * 4u) - x,
+                                DS_00100B1C, DS_00100B14, DS_00100B28,
+                                DS_00100B34, DS_00100B24) != 0u)   /* 0x17AB4, 0x17AB9 `and eax,0xff` */
         return 0;
-    if (camera_sync_visible((u32)box[3], tall != 0u ? 0x30u : 0x38u, -dy,
-                            DS_00100B18, DS_00100B10, DS_00100B2C,
-                            DS_00100B30, DS_00100B20) != 0)    /* 0x17B0B */
+    if ((u8)camera_sync_visible((u32)box[3], tall != 0u ? 0x30u : 0x38u, -dy,
+                                DS_00100B18, DS_00100B10, DS_00100B2C,
+                                DS_00100B30, DS_00100B20) != 0u)   /* 0x17B0B, 0x17B10 `and eax,0xff` */
         return 0;
     DSD(DS_00100B10) = DSD(DS_00100B10) + (u32)box[1];         /* 0x17B38 */
     u32 flag = ((s32)DSD(DS_00100B14) > (s32)DSD(DS_00100B34)) ? 1u : 0u; /* 0x17B40 */
@@ -1502,12 +1512,12 @@ u32 camera_point_hit(s32 x, s32 y, u32 tall)
     u8 s63 = DSB(DS_00100B63);                                 /* 0x17DB5 */
     DSB(DS_00100B63) = 0;                                      /* 0x17DCA */
     if (!(DSW(DS_00104B00) == 0x22u && DSB(CAMERA_MODE22_SIDE) != 0u)) /* 0x17DD0/0x17DD5 */
-        if (camera_point_side(0u, px, py, t) != 0) hit |= 1u;  /* 0x17DFB/0x17E0E */
+        if ((u8)camera_point_side(0u, px, py, t) != 0u) hit |= 1u;  /* 0x17DFB/0x17E0E, 0x17E00/0x17E13 `test al,al` */
     u8 s62 = DSB(DS_00100B62);                                 /* 0x17E1D */
     DSB(DS_00100B62) = 0;                                      /* 0x17E2D */
     DSB(DS_00100B63) = s63;                                    /* 0x17E3C */
     if (!(DSW(DS_00104B00) == 0x22u && DSB(CAMERA_MODE22_SIDE) != 1u)) /* 0x17E41/0x17E4E */
-        if (camera_point_side(1u, px, py, t) != 0) hit |= 2u;  /* 0x17E70/0x17E86 */
+        if ((u8)camera_point_side(1u, px, py, t) != 0u) hit |= 2u;  /* 0x17E70/0x17E86, 0x17E75/0x17E8B `test al,al` */
     DSD(DS_00100B08) = s08;                                    /* 0x17E96 */
     DSD(DS_00100B0C) = s0c;                                    /* 0x17EA4 */
     DSB(DS_00100B62) = s62;                                    /* 0x17EAE */

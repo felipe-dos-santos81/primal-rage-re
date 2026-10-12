@@ -34436,6 +34436,688 @@ D5A_S6_MUT(b528) D5A_S6_MUT(strid) D5A_S6_MUT(strrow) D5A_S6_MUT(strmode) D5A_S6
 D5A_S6_MUT(no64) D5A_S6_MUT(v64) D5A_S6_MUT(64b) D5A_S6_MUT(no6a) D5A_S6_MUT(v6a) D5A_S6_MUT(6ab)
 D5A_S6_MUT(no6c) D5A_S6_MUT(6cw) D5A_S6_MUT(6csext) D5A_S6_MUT(no6f) D5A_S6_MUT(v6f) D5A_S6_MUT(tailearly)
 D5A_S6_MUT(prebit) D5A_S6_MUT(pre72) D5A_S6_MUT(stagefull) D5A_S6_MUT(p1uns) D5A_S6_MUT(p1mod)
+/* ---- track D5 batch d5b (record 2026-10-12-reverse-d5b): the overlap family of camera.c ---- */
+#include "platform/gra.h"                /* gra_sprite_pixels, for the render_list_blit mutants */
+
+/* 0x16DA4 camera_winner_height: AL = flag (`mov [esp+0x10],al` 0x16DAE: the raw keeps the byte, so
+ * the binding passes AL; @flag32 passes EAX), EDX = the side's sprite index, EBX = the other's, ECX
+ * = the side's first row, [esp+4] = the other's first row, [esp+8] = mode, [esp+0xC] = side (`ret
+ * 0xc`). One restatement of camera.c's body, one choice flipped per mutant number. */
+static void d5b_16da4_and(u32 n)
+{
+    for (u32 i = 0u; i < n; i++) DSB(DS_00100BAE + i) = (u8)(DSB(DS_00100BAE + i) & DSB(DS_00100BD3 + i));
+}
+static void d5b_16da4_copy(u32 dst, u32 src, u32 n)
+{
+    for (u32 i = 0u; i < n; i++) DSB(dst + i) = DSB(src + i);
+}
+static u32 d5b_16da4_core(const u32 *r, u32 mut)
+{
+    u32 flag = (mut == 1u) ? r[R_EAX] : (r[R_EAX] & 0xFFu);                  /* @flag32 */
+    u32 ia = r[R_EDX], ib = r[R_EBX], b10 = r[R_ECX], b30 = r[R_S0], side = r[R_S2];
+    s32 mode = (s32)r[R_S1];
+    u32 other = (mut == 2u) ? (side ^ 1u) : 1u - side;                       /* @xor */
+    u32 wa = 0u, wb = 0u, n0 = DSD(DS_00100B18);
+    u32 k1 = (mut == 30u) ? 0xD56u : 0xF3Du, k2 = (mut == 30u) ? 0xF3Du : 0xD56u;   /* @kswap */
+    s32 t;
+    if (mut != 3u) DSD(DS_00100B54) = 0u;                                    /* @nozero */
+    if (mode != 0 || mut == 4u)                                              /* @first0 */
+        wa = camera_sprite_height(side, (mut == 5u) ? ib : ia, b10, (mut == 6u) ? 1u : DSD(DS_00100B18));   /* @idxa @count1 */
+    if (mode == -1 || (mode == 0 && mut != 7u))                              /* @second0 */
+        wb = camera_sprite_height(other, ib, (mut == 8u) ? b10 : b30, (mut == 35u) ? n0 : DSD(DS_00100B18));   /* @frameb @b18cache */
+    if (mut == 34u) DSD(DS_00100B54) = 0u;                                   /* @b54cache: the sum restarts from 0 */
+    for (u32 row = 0u; ; row++) {
+        u32 n = (mut == 35u) ? n0 : DSD(DS_00100B18);
+        if (mut == 9u && (s32)n < 0) n = 2u;                                 /* @rowsuns: an unsigned count, bounded to two rows here */
+        if ((s32)row >= (s32)n) break;
+        if (mode == 0) {
+            wa = (mut == 11u) ? 6u : 4u;                                     /* @m0w */
+            d5b_16da4_copy(DS_00100BAE, (mut == 10u) ? DS_000A1740 : DS_000A173C, wa);   /* @m0src */
+            if (mut == 12u) camera_sprite_row(side, DS_00100BAE, wa, row);   /* @m0row */
+        } else {
+            camera_sprite_row((mut == 13u) ? other : side, DS_00100BAE, wa, (mut == 14u) ? 0u : row);   /* @rowside @row0 */
+        }
+        if (mode == 1 && mut != 15u) { d5b_16da4_copy(DS_00100B64, DS_000A173C, 4u); wb = 4u; }   /* @m1skip */
+        if (mode == 2) {
+            wb = (mut == 17u) ? 4u : 6u;                                     /* @m2w */
+            d5b_16da4_copy(DS_00100B64, (mut == 16u) ? DS_000A1746 : DS_000A1740, wb);   /* @m2src */
+        } else if (mode == 3 && mut != 18u) {                                /* @m3row */
+            wb = 6u;
+            d5b_16da4_copy(DS_00100B64, DS_000A1746, wb);
+        } else {
+            camera_sprite_row(other, DS_00100B64, wb, row);
+        }
+        if (mut == 36u) d5b_16da4_and(wa);                                   /* @andfirst */
+        if (DSB(DS_00100B62 + ((mut == 19u) ? other : side)) != 0u)          /* @flipside */
+            camera_bitrev(DS_00100BAE, (mut == 20u) ? wb : wa);              /* @flipw */
+        if (mut != 21u && DSB(DS_00100B62 + other) != 0u) camera_bitrev(DS_00100B64, wb);   /* @noflipb */
+        if (mut != 36u && mut != 23u) d5b_16da4_and((mut == 22u) ? 0x25u : wa);   /* @noand @andw */
+        if ((flag != 0u) != (mut == 24u)) {                                  /* @flagswap */
+            u32 len = (mut == 26u) ? 0x24u : 0x25u;                          /* @mergelen */
+            (void)camera_bitplane_merge(DSD((mut == 25u) ? DS_00100B34 : DS_00100B38), DS_00100BAE, len,
+                                        DS_00100BF8, len);                   /* @shift */
+            for (u32 i = 0u; i < 0x25u; i++)
+                DSB(DS_00100B89 + i) = (u8)(DSB(DS_00100BF8 + i)
+                                             & DSB(((mut == 27u) ? DS_00100BAE : DS_00100B64) + i));   /* @and2 */
+        } else {
+            (void)camera_bitplane_merge(DSD(DS_00100B38), DS_00100B64, 0x25u, DS_00100BF8, 0x25u);
+            for (u32 i = 0u; i < 0x25u; i++)
+                DSB(DS_00100B89 + i) = (u8)(DSB(DS_00100BF8 + i) & DSB(DS_00100BAE + i));
+        }
+        for (u32 i = 0u; i < ((mut == 28u) ? 0x24u : 0x25u); i++)            /* @poplen */
+            DSD(DS_00100B54) = DSD(DS_00100B54)
+                + ((mut == 29u) ? (u32)DSB(DS_00100B89 + i) : (u32)DSB(0x000A163Cu + DSB(DS_00100B89 + i)));   /* @nopop */
+    }
+    t = (s32)(DSD(DS_00100B54) << 12);
+    t = (mut == 33u) ? (s32)((u32)t / k1) : t / (s32)k1;                     /* @divuns: both divisions unsigned */
+    t = (s32)((u32)t << 12);
+    t = (mut == 33u) ? (s32)((u32)t / k2) : t / (s32)k2;
+    if (mut != 31u) DSD(DS_00100B54) = (mut == 32u) ? (u32)(t >> 4) : (u32)(t / 16);   /* @nofinal @floor */
+    return 0u;
+}
+static void b_d5b_16da4(const u32 *r, u32 *eax)
+{
+    camera_winner_height(r[R_EAX] & 0xFFu, r[R_EDX], r[R_EBX], r[R_ECX], r[R_S0], (s32)r[R_S1], r[R_S2]);
+    *eax = 0u;
+}
+#define D5B_WH_MUT(name, n) \
+    static void m_d5b_wh_##name(const u32 *r, u32 *eax) { *eax = d5b_16da4_core(r, n); }
+D5B_WH_MUT(flag32, 1u)   D5B_WH_MUT(xor, 2u)      D5B_WH_MUT(nozero, 3u)   D5B_WH_MUT(first0, 4u)
+D5B_WH_MUT(idxa, 5u)     D5B_WH_MUT(count1, 6u)   D5B_WH_MUT(second0, 7u)  D5B_WH_MUT(frameb, 8u)
+D5B_WH_MUT(rowsuns, 9u)  D5B_WH_MUT(m0src, 10u)   D5B_WH_MUT(m0w, 11u)     D5B_WH_MUT(m0row, 12u)
+D5B_WH_MUT(rowside, 13u) D5B_WH_MUT(row0, 14u)    D5B_WH_MUT(m1skip, 15u)  D5B_WH_MUT(m2src, 16u)
+D5B_WH_MUT(m2w, 17u)     D5B_WH_MUT(m3row, 18u)   D5B_WH_MUT(flipside, 19u) D5B_WH_MUT(flipw, 20u)
+D5B_WH_MUT(noflipb, 21u) D5B_WH_MUT(andw, 22u)    D5B_WH_MUT(noand, 23u)   D5B_WH_MUT(flagswap, 24u)
+D5B_WH_MUT(shift, 25u)   D5B_WH_MUT(mergelen, 26u) D5B_WH_MUT(and2, 27u)   D5B_WH_MUT(poplen, 28u)
+D5B_WH_MUT(nopop, 29u)   D5B_WH_MUT(kswap, 30u)   D5B_WH_MUT(nofinal, 31u) D5B_WH_MUT(floor, 32u)
+D5B_WH_MUT(divuns, 33u)  D5B_WH_MUT(b54cache, 34u) D5B_WH_MUT(b18cache, 35u) D5B_WH_MUT(andfirst, 36u)
+
+/* 0x176CC camera_projectile_hit: EAX = side. One restatement of camera.c's body, one choice flipped
+ * per mutant number; the callees go through their seamed C functions. */
+static u32 d5b_176cc_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], other = 1u - side;
+    u32 v, sp, box_o, flag, b54;
+    s32 dx, dy, d;
+    u8 box[4], saved;
+    if (DSW(DS_00107824 + ((mut == 1u) ? side : other) * 0x94u + ((mut == 2u) ? 2u : 0u)) != 0u) return 0u;   /* @gside @g1off */
+    if (mut == 3u) { if ((s32)(s16)DSW(DS_00107826 + other * 0x94u) > 1) return 0u; }           /* @g2sext */
+    else if (mut == 4u) { if ((u32)DSW(DS_00107826 + other * 0x94u) >= 1u) return 0u; }         /* @g2ge */
+    else if ((u32)DSW(DS_00107826 + other * 0x94u) > 1u) return 0u;
+    {
+        u32 a0 = DSW(DSD(((mut == 5u) ? DS_001077B0 : DS_001077B8) + side * 0x94u) + 0x56u);    /* @ovrec0: the side's fighter */
+        u32 a1 = DSW(DSD(DS_001077B0 + ((mut == 6u) ? side : other) * 0x94u) + 0x56u);          /* @ovrec1 */
+        v = (mut == 7u) ? (u32)camera_box_overlap(a1, a0) : (u32)camera_box_overlap(a0, a1);    /* @ovargs */
+    }
+    if (((mut == 8u) ? v : (v & 0xFFu)) == 0u) return 0u;                    /* @al140: the port before the fix */
+    box_o = ((mut == 9u) ? DS_00100AC8 : DS_00100AC0) + ((mut == 10u) ? side : other) * 4u;     /* @boxac8 @boxside */
+    if (DSB(box_o + 2u) >= 1u && (mut == 11u || DSB(box_o + 3u) >= 1u)) {    /* @boxw: the width alone */
+        for (u32 i = 0u; i < 4u; i++) box[i] = DSB(box_o + i);
+        if (mut != 12u)                                                      /* @noclip */
+            camera_box_clip((mut == 13u) ? side : other,                     /* @clipside */
+                            DSD(DS_00100AF0 + ((mut == 14u) ? side : other) * 4u), box);        /* @clipidx */
+        if (mut == 40u) for (u32 i = 0u; i < 4u; i++) box[i] = DSB(box_o + i);                  /* @preclip: the box as passed */
+    } else {
+        box[0] = (mut == 15u) ? 0x20u : 0u; box[1] = 0u; box[2] = 0x20u; box[3] = 0x20u;        /* @default */
+    }
+    sp = camera_resolve_sprite(other, DSD(DS_00100AF0 + ((mut == 16u) ? side : other) * 4u));   /* @spridx */
+    dy = (s32)DSD(DS_00100B00 + other * 4u) + ((mut == 17u) ? 0 : (s32)box[1])                  /* @sybox */
+         - (s32)DSD(DS_00100AA0 + side * 4u);
+    dx = (s32)DSD(DS_00100AA8 + side * 4u)
+         - (((mut == 18u) ? 0 : (s32)box[0]) + (s32)DSD(DS_00100B08 + other * 4u));             /* @sxbox */
+    if (mut == 19u) dx = -dx;                                                /* @sx */
+    {
+        u32 w = (mut == 20u) ? (u32)DSW(sp) : (u32)(s32)(s16)DSW(sp);        /* @swzext */
+        if (mut == 21u) v = (u32)camera_sync_visible(0x20u, w, dx, DS_00100B1C, DS_00100B28, DS_00100B14,
+                                                     DS_00100B34, DS_00100B24);   /* @outs: two out pointers exchanged */
+        else v = (u32)camera_sync_visible((mut == 22u) ? 0x30u : 0x20u, w, dx, DS_00100B1C, DS_00100B14,
+                                          DS_00100B28, DS_00100B34, DS_00100B24);   /* @p1 */
+    }
+    if (((mut == 23u) ? v : (v & 0xFFu)) != 0u) return 0u;                   /* @alsync: the port before the fix */
+    v = (u32)camera_sync_visible(0x20u, (mut == 24u) ? DSD(sp) >> 16 : (u32)((s32)DSD(sp) >> 16),   /* @shzext */
+                                 (mut == 25u) ? dy : -dy, DS_00100B18, DS_00100B10, DS_00100B2C,    /* @sy */
+                                 DS_00100B30, DS_00100B20);
+    if (mut != 27u && ((mut == 26u) ? v : (v & 0xFFu)) != 0u) return 0u;     /* @alsync2 (the port before the fix) @nosync2 */
+    if (mut == 28u) flag = (DSD(DS_00100B14) > DSD(DS_00100B34)) ? 1u : 0u;  /* @flaguns */
+    else if (mut == 29u) flag = ((s32)DSD(DS_00100B14) >= (s32)DSD(DS_00100B34)) ? 1u : 0u;     /* @flagge */
+    else flag = ((s32)DSD(DS_00100B14) > (s32)DSD(DS_00100B34)) ? 1u : 0u;
+    d = (s32)DSD(DS_00100B14) - (s32)DSD(DS_00100B34);
+    if (d < 0 && mut != 30u) d = -d;                                         /* @noabs */
+    DSD(DS_00100B38) = (u32)d;
+    DSD(DS_00100B40) = DSD((mut == 31u) ? DS_00100B18 : DS_00100B1C);        /* @b40 */
+    saved = DSB(DS_00100B62 + side);
+    if (mut != 32u) DSB(DS_00100B62 + side) = 0u;                            /* @nob62 */
+    b54 = DSD(DS_00100B54);
+    camera_winner_height(flag, (mut == 33u) ? DSD(DS_00100AF0 + side * 4u) : 0xFFFFFFFFu,       /* @widx */
+                         DSD(DS_00100AF0 + other * 4u),
+                         DSD((mut == 34u) ? DS_00100B30 : DS_00100B10),      /* @wrows */
+                         DSD((mut == 34u) ? DS_00100B10 : DS_00100B30),
+                         (mut == 35u) ? 1 : 0, (mut == 36u) ? other : side); /* @wmode @wside */
+    DSD(DS_00100AD0 + ((mut == 37u) ? other : side) * 4u) = (mut == 38u) ? b54 : DSD(DS_00100B54);   /* @adside @adcache */
+    if (mut != 39u) DSB(DS_00100B62 + side) = saved;                         /* @b62keep */
+    return 0u;
+}
+static void b_d5b_176cc(const u32 *r, u32 *eax) { camera_projectile_hit(r[R_EAX]); *eax = 0u; }
+#define D5B_PH_MUT(name, n) \
+    static void m_d5b_ph_##name(const u32 *r, u32 *eax) { *eax = d5b_176cc_core(r, n); }
+D5B_PH_MUT(gside, 1u)   D5B_PH_MUT(g1off, 2u)   D5B_PH_MUT(g2sext, 3u)  D5B_PH_MUT(g2ge, 4u)
+D5B_PH_MUT(ovrec0, 5u)  D5B_PH_MUT(ovrec1, 6u)  D5B_PH_MUT(ovargs, 7u)  D5B_PH_MUT(al140, 8u)
+D5B_PH_MUT(boxac8, 9u)  D5B_PH_MUT(boxside, 10u) D5B_PH_MUT(boxw, 11u)  D5B_PH_MUT(noclip, 12u)
+D5B_PH_MUT(clipside, 13u) D5B_PH_MUT(clipidx, 14u) D5B_PH_MUT(default, 15u) D5B_PH_MUT(spridx, 16u)
+D5B_PH_MUT(sybox, 17u)  D5B_PH_MUT(sxbox, 18u)  D5B_PH_MUT(sx, 19u)     D5B_PH_MUT(swzext, 20u)
+D5B_PH_MUT(outs, 21u)   D5B_PH_MUT(p1, 22u)     D5B_PH_MUT(alsync, 23u) D5B_PH_MUT(shzext, 24u)
+D5B_PH_MUT(sy, 25u)     D5B_PH_MUT(alsync2, 26u) D5B_PH_MUT(nosync2, 27u) D5B_PH_MUT(flaguns, 28u)
+D5B_PH_MUT(flagge, 29u) D5B_PH_MUT(noabs, 30u)  D5B_PH_MUT(b40, 31u)    D5B_PH_MUT(nob62, 32u)
+D5B_PH_MUT(widx, 33u)   D5B_PH_MUT(wrows, 34u)  D5B_PH_MUT(wmode, 35u)  D5B_PH_MUT(wside, 36u)
+D5B_PH_MUT(adside, 37u) D5B_PH_MUT(adcache, 38u) D5B_PH_MUT(b62keep, 39u) D5B_PH_MUT(preclip, 40u)
+
+/* 0x1790C camera_point_side: EAX = side, EDX = x, EBX = y, ECX = tall. One restatement of camera.c's
+ * body, one choice flipped per mutant number. */
+static u32 d5b_1790c_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], tall = r[R_ECX];
+    s32 x = (s32)r[R_EDX], y = (s32)r[R_EBX];
+    u32 box_s = ((mut == 1u) ? DS_00100AC0 : DS_00100AC8) + ((mut == 2u) ? 1u - side : side) * 4u;   /* @boxac0 @boxside */
+    u32 sp, v, bw, flag, b54, t3;
+    s32 w, dx, dy, d;
+    u8 box[4];
+    if ((u32)DSB(box_s + 2u) < 1u || (mut != 3u && (u32)DSB(box_s + 3u) < 1u)) return 0u;   /* @boxw */
+    sp = camera_resolve_sprite(side, DSD(DS_00100AF0 + side * 4u));
+    for (u32 i = 0u; i < 4u; i++) box[i] = DSB(box_s + i);
+    if (mut != 4u) camera_box_clip(side, DSD(DS_00100AF0 + ((mut == 5u) ? 1u - side : side) * 4u), box);   /* @noclip @clipidx */
+    if (mut == 6u) for (u32 i = 0u; i < 4u; i++) box[i] = DSB(box_s + i);    /* @preclip: the box as passed */
+    dx = ((mut == 7u) ? 0 : (s32)box[0]) + (s32)DSD(DS_00100B08 + side * 4u) - x;   /* @s1box */
+    if (mut == 8u) dx = -dx;                                                 /* @s1sign */
+    v = (u32)camera_sync_visible((u32)box[(mut == 9u) ? 3 : 2], (mut == 10u) ? 0x38u : 0x30u, dx,   /* @s1w @s1ext */
+                                 DS_00100B1C, DS_00100B14, DS_00100B28, DS_00100B34, DS_00100B24);
+    if (((mut == 11u) ? v : (v & 0xFFu)) != 0u) return 0u;                   /* @al1: the port before the fix */
+    w = (mut == 12u) ? (s32)DSW(sp) : (s32)(s16)DSW(sp);                     /* @wzext */
+    bw = (u32)(w / 8);
+    if ((mut == 13u) ? 0 : (mut == 14u) ? 1 : (w % 8) != 0) bw++;            /* @bwfloor @bwceil */
+    if (mut != 15u) mem_fill(DS_00100BD3, 0, 0x25u);                         /* @nofill */
+    camera_bitplane_pixel((u32)box[2], bw, DS_00100BD3, (mut == 16u) ? 0x7Fu : 0xFFu);   /* @pixval */
+    if (box[0] != 0u && mut != 17u)                                          /* @noshift */
+        (void)camera_bitplane_shift((u32)box[0], DS_00100BD3, bw, DS_00100BD3, bw);
+    dy = y - ((s32)DSD(DS_00100B00 + side * 4u) + ((mut == 18u) ? 0 : (s32)box[1]));   /* @s3box */
+    dx = (s32)DSD(DS_00100B08 + side * 4u) - x;
+    if (mut == 19u) dx = -dx;                                                /* @s2sign */
+    v = (u32)camera_sync_visible((mut == 20u) ? (u32)DSW(sp) : (u32)(s32)(s16)DSW(sp), 0x30u, dx,   /* @s2zext */
+                                 DS_00100B1C, DS_00100B14, DS_00100B28, DS_00100B34, DS_00100B24);
+    if (mut != 22u && ((mut == 21u) ? v : (v & 0xFFu)) != 0u) return 0u;     /* @al2 (the port before the fix) @nosync2 */
+    t3 = (mut == 23u) ? (tall & 0xFFu) : tall;                               /* @tall8 */
+    v = (u32)camera_sync_visible((u32)box[3], ((t3 != 0u) != (mut == 24u)) ? 0x30u : 0x38u,   /* @tallinv */
+                                 (mut == 25u) ? dy : -dy, DS_00100B18, DS_00100B10, DS_00100B2C,   /* @s3sign */
+                                 DS_00100B30, DS_00100B20);
+    if (mut != 27u && ((mut == 26u) ? v : (v & 0xFFu)) != 0u) return 0u;     /* @al3 (the port before the fix) @nosync3 */
+    if (mut != 28u) DSD(DS_00100B10) = DSD(DS_00100B10) + (u32)box[(mut == 29u) ? 0 : 1];   /* @nob10 @b10box0 */
+    if (mut == 30u) flag = (DSD(DS_00100B14) > DSD(DS_00100B34)) ? 1u : 0u;  /* @flaguns */
+    else if (mut == 31u) flag = ((s32)DSD(DS_00100B14) >= (s32)DSD(DS_00100B34)) ? 1u : 0u;   /* @flagge */
+    else flag = ((s32)DSD(DS_00100B14) > (s32)DSD(DS_00100B34)) ? 1u : 0u;
+    d = (s32)DSD(DS_00100B14) - (s32)DSD(DS_00100B34);
+    if (d < 0 && mut != 32u) d = -d;                                         /* @noabs */
+    DSD(DS_00100B38) = (u32)d;
+    DSD(DS_00100B40) = DSD((mut == 33u) ? DS_00100B18 : DS_00100B1C);        /* @b40 */
+    b54 = DSD(DS_00100B54);
+    camera_winner_height(flag, DSD(DS_00100AF0 + side * 4u),
+                         (mut == 34u) ? DSD(DS_00100AF0 + (1u - side) * 4u) : 0u,   /* @wother */
+                         DSD(DS_00100B10), DSD(DS_00100B30),
+                         ((tall != 0u) != (mut == 35u)) ? 3 : 2, (mut == 36u) ? 1u - side : side);   /* @wmode @wside */
+    v = (mut == 37u) ? b54 : DSD(DS_00100B54);                               /* @retcache */
+    if (mut == 38u) return ((s32)v >= 0) ? 1u : 0u;                          /* @retge */
+    if (mut == 39u) return (v != 0u) ? 1u : 0u;                              /* @retuns */
+    return ((s32)v > 0) ? 1u : 0u;
+}
+static void b_d5b_1790c(const u32 *r, u32 *eax)
+{
+    *eax = (u32)camera_point_side(r[R_EAX], (s32)r[R_EDX], (s32)r[R_EBX], r[R_ECX]);
+}
+#define D5B_PS_MUT(name, n) \
+    static void m_d5b_ps_##name(const u32 *r, u32 *eax) { *eax = d5b_1790c_core(r, n); }
+D5B_PS_MUT(boxac0, 1u)  D5B_PS_MUT(boxside, 2u) D5B_PS_MUT(boxw, 3u)    D5B_PS_MUT(noclip, 4u)
+D5B_PS_MUT(clipidx, 5u) D5B_PS_MUT(preclip, 6u) D5B_PS_MUT(s1box, 7u)   D5B_PS_MUT(s1sign, 8u)
+D5B_PS_MUT(s1w, 9u)     D5B_PS_MUT(s1ext, 10u)  D5B_PS_MUT(al1, 11u)    D5B_PS_MUT(wzext, 12u)
+D5B_PS_MUT(bwfloor, 13u) D5B_PS_MUT(bwceil, 14u) D5B_PS_MUT(nofill, 15u) D5B_PS_MUT(pixval, 16u)
+D5B_PS_MUT(noshift, 17u) D5B_PS_MUT(s3box, 18u) D5B_PS_MUT(s2sign, 19u) D5B_PS_MUT(s2zext, 20u)
+D5B_PS_MUT(al2, 21u)    D5B_PS_MUT(nosync2, 22u) D5B_PS_MUT(tall8, 23u) D5B_PS_MUT(tallinv, 24u)
+D5B_PS_MUT(s3sign, 25u) D5B_PS_MUT(al3, 26u)    D5B_PS_MUT(nosync3, 27u) D5B_PS_MUT(nob10, 28u)
+D5B_PS_MUT(b10box0, 29u) D5B_PS_MUT(flaguns, 30u) D5B_PS_MUT(flagge, 31u) D5B_PS_MUT(noabs, 32u)
+D5B_PS_MUT(b40, 33u)    D5B_PS_MUT(wother, 34u) D5B_PS_MUT(wmode, 35u)  D5B_PS_MUT(wside, 36u)
+D5B_PS_MUT(retcache, 37u) D5B_PS_MUT(retge, 38u) D5B_PS_MUT(retuns, 39u)
+
+/* 0x170A0 camera_unfreeze: EAX = side. One restatement of camera.c's body, one choice flipped per
+ * mutant number. */
+static u32 d5b_170a0_core(const u32 *r, u32 mut)
+{
+    u32 side = r[R_EAX], other = 1u - side;
+    u32 sp_a, sp_b, box_s, box_o, rec, v, bw, flag, ae0, ad8, sb1, ob1, b54, facing;
+    s32 w, d, p3;
+    u8 ba[4], bb[4] = { 0u, 0u, 0u, 0u };
+    if (DSW(DS_00107824 + ((mut == 1u) ? side : other) * 0x94u) != 0u) return 0u;   /* @gside */
+    if (mut == 2u) { if ((s32)(s16)DSW(DS_00107826 + other * 0x94u) > 1) return 0u; }           /* @g2sext */
+    else if (mut == 3u) { if ((u32)DSW(DS_00107826 + other * 0x94u) >= 1u) return 0u; }         /* @g2ge */
+    else if ((u32)DSW(DS_00107826 + other * 0x94u) > 1u) return 0u;
+    sp_a = camera_resolve_sprite(side, DSD(DS_00100AF0 + side * 4u));
+    sp_b = camera_resolve_sprite(other, DSD(DS_00100AF0 + ((mut == 4u) ? side : other) * 4u));  /* @spbidx */
+    box_s = ((mut == 5u) ? DS_00100AC0 : DS_00100AC8) + side * 4u;           /* @boxac0 */
+    box_o = ((mut == 6u) ? DS_00100AC8 : DS_00100AC0) + other * 4u;          /* @oboxac8 */
+    if (DSB(box_s + 2u) == 0u || (mut != 7u && DSB(box_s + 3u) == 0u)) return 0u;   /* @boxw */
+    if (DSB(box_o + 2u) == 0u || (mut != 8u && DSB(box_o + 3u) == 0u)) box_o = 0u;  /* @oboxw */
+    for (u32 i = 0u; i < 4u; i++) ba[i] = DSB(box_s + i);
+    if (mut != 9u) camera_box_clip(side, DSD(DS_00100AF0 + side * 4u), ba);  /* @noclip */
+    if (mut == 10u) for (u32 i = 0u; i < 4u; i++) ba[i] = DSB(box_s + i);    /* @preclip: the box as passed */
+    sb1 = ba[1];
+    if (box_o != 0u) {
+        for (u32 i = 0u; i < 4u; i++) bb[i] = DSB(box_o + i);
+        if (mut != 11u) camera_box_clip((mut == 12u) ? side : other, DSD(DS_00100AF0 + other * 4u), bb);   /* @noclipb @clipbside */
+        if (mut == 13u) for (u32 i = 0u; i < 4u; i++) bb[i] = DSB(box_o + i);   /* @preclipb */
+    }
+    ob1 = bb[1];
+    rec = DSD(DS_001077B0 + side * 0x94u);
+    facing = (((u32)DSW(rec + 0x28u) & ((mut == 14u) ? 0x8000u : 0x4000u)) != 0u) ? 1u : 0u;    /* @facebit */
+    ae0 = DSD(DS_00100B08 + side * 4u) + (u32)ba[0];
+    if ((facing != 0u) != (mut == 15u)) ae0 += (u32)ba[2];                   /* @faceinv */
+    if (mut != 16u) DSD(DS_00100AE0 + side * 4u) = ae0;                      /* @noae0 */
+    ad8 = DSD(DS_00100B00 + side * 4u) + (u32)ba[1] + ((mut == 17u) ? (u32)ba[3] : (u32)((s32)ba[3] / 2));   /* @adfull */
+    DSD(DS_00100AD8 + side * 4u) = ad8;
+    DSD(DS_00100AE8 + side * 4u) = ad8 - DSD(DS_00100B00 + ((mut == 18u) ? side : other) * 4u);   /* @ae8side */
+    if (box_o != 0u) {
+        p3 = ((s32)ba[0] + (s32)DSD(DS_00100B08 + side * 4u))
+             - (((mut == 19u) ? 0 : (s32)bb[0]) + (s32)DSD(DS_00100B08 + other * 4u));          /* @s1bb */
+        v = (u32)camera_sync_visible((u32)ba[2], (u32)bb[(mut == 20u) ? 3 : 2], p3, DS_00100B1C,   /* @s1bw */
+                                     DS_00100B14, DS_00100B28, DS_00100B34, DS_00100B24);
+    } else {
+        p3 = (s32)ba[0] + (s32)DSD(DS_00100B08 + side * 4u) - (s32)DSD(DS_00100B08 + other * 4u);
+        v = (u32)camera_sync_visible((u32)ba[2], (mut == 21u) ? (u32)DSW(sp_b) : (u32)(s32)(s16)DSW(sp_b),   /* @s1zext */
+                                     p3, DS_00100B1C, DS_00100B14, DS_00100B28, DS_00100B34, DS_00100B24);
+    }
+    if (((mut == 22u) ? v : (v & 0xFFu)) != 0u) return 0u;                   /* @al1: the port before the fix */
+    w = (s32)(s16)DSW(sp_a);
+    bw = (u32)(w / 8);
+    if (mut != 23u && (w % 8) != 0) bw++;                                    /* @bwfloor */
+    if (mut != 24u) mem_fill(DS_00100BD3, 0, 0x25u);                         /* @nofill */
+    if (ba[2] != 0u) camera_bitplane_pixel((u32)ba[2], bw, DS_00100BD3, 0xFFu);
+    if (ba[0] != 0u && mut != 25u)                                           /* @noshift */
+        (void)camera_bitplane_shift((u32)ba[0], DS_00100BD3, bw, DS_00100BD3, bw);
+    p3 = (s32)DSD(DS_00100B08 + side * 4u) - (s32)DSD(DS_00100B08 + other * 4u);
+    if (mut == 26u) p3 = -p3;                                                /* @s2sign */
+    v = (u32)camera_sync_visible((u32)(s32)(s16)DSW(sp_a), (u32)(s32)(s16)DSW((mut == 27u) ? sp_a : sp_b), p3,   /* @s2w */
+                                 DS_00100B1C, DS_00100B14, DS_00100B28, DS_00100B34, DS_00100B24);
+    if (mut != 29u && ((mut == 28u) ? v : (v & 0xFFu)) != 0u) return 0u;     /* @al2 (the port before the fix) @nosync2 */
+    if (box_o != 0u) {
+        p3 = ((s32)DSD(DS_00100B00 + side * 4u) + (s32)ba[1])
+             - ((s32)DSD(DS_00100B00 + other * 4u) + ((mut == 30u) ? 0 : (s32)bb[1]));          /* @s3bb */
+        v = (u32)camera_sync_visible((u32)ba[3], (u32)bb[3], p3, DS_00100B18, DS_00100B10, DS_00100B2C,
+                                     DS_00100B30, DS_00100B20);
+    } else {
+        p3 = ((s32)DSD(DS_00100B00 + side * 4u) + (s32)ba[1]) - (s32)DSD(DS_00100B00 + other * 4u);
+        v = (u32)camera_sync_visible((u32)ba[3], (mut == 31u) ? DSD(sp_b) >> 16 : (u32)((s32)DSD(sp_b) >> 16),   /* @s3hzext */
+                                     p3, DS_00100B18, DS_00100B10, DS_00100B2C, DS_00100B30, DS_00100B20);
+    }
+    if (mut != 33u && ((mut == 32u) ? v : (v & 0xFFu)) != 0u) return 0u;     /* @al3 (the port before the fix) @nosync3 */
+    if (mut != 34u) DSD(DS_00100B10) = DSD(DS_00100B10) + sb1;               /* @nob10 */
+    if (box_o != 0u && mut != 35u) DSD(DS_00100B30) = DSD(DS_00100B30) + ob1;   /* @nob30 */
+    if (mut == 37u) flag = (DSD(DS_00100B14) > DSD(DS_00100B34)) ? 1u : 0u;  /* @flaguns */
+    else if (mut == 38u) flag = ((s32)DSD(DS_00100B14) >= (s32)DSD(DS_00100B34)) ? 1u : 0u;     /* @flagge */
+    else flag = ((s32)DSD(DS_00100B14) > (s32)DSD(DS_00100B34)) ? 1u : 0u;
+    d = (s32)DSD(DS_00100B14) - (s32)DSD(DS_00100B34);
+    if (d < 0 && mut != 39u) d = -d;                                         /* @noabs */
+    DSD(DS_00100B38) = (u32)d;
+    DSD(DS_00100B40) = DSD((mut == 40u) ? DS_00100B18 : DS_00100B1C);        /* @b40 */
+    b54 = DSD(DS_00100B54);
+    camera_winner_height(flag, DSD(DS_00100AF0 + side * 4u), DSD(DS_00100AF0 + other * 4u),
+                         DSD(DS_00100B10), DSD(DS_00100B30), (mut == 41u) ? 0 : -1,
+                         (mut == 42u) ? other : side);                       /* @wmode @wside */
+    DSD(DS_00100AF8 + ((mut == 43u) ? other : side) * 4u) = (mut == 44u) ? b54 : DSD(DS_00100B54);   /* @afside @afcache */
+    return 0u;
+}
+static void b_d5b_170a0(const u32 *r, u32 *eax) { camera_unfreeze(r[R_EAX]); *eax = 0u; }
+#define D5B_UF_MUT(name, n) \
+    static void m_d5b_uf_##name(const u32 *r, u32 *eax) { *eax = d5b_170a0_core(r, n); }
+D5B_UF_MUT(gside, 1u)   D5B_UF_MUT(g2sext, 2u)  D5B_UF_MUT(g2ge, 3u)    D5B_UF_MUT(spbidx, 4u)
+D5B_UF_MUT(boxac0, 5u)  D5B_UF_MUT(oboxac8, 6u) D5B_UF_MUT(boxw, 7u)    D5B_UF_MUT(oboxw, 8u)
+D5B_UF_MUT(noclip, 9u)  D5B_UF_MUT(preclip, 10u) D5B_UF_MUT(noclipb, 11u) D5B_UF_MUT(clipbside, 12u)
+D5B_UF_MUT(preclipb, 13u) D5B_UF_MUT(facebit, 14u) D5B_UF_MUT(faceinv, 15u) D5B_UF_MUT(noae0, 16u)
+D5B_UF_MUT(adfull, 17u) D5B_UF_MUT(ae8side, 18u) D5B_UF_MUT(s1bb, 19u)  D5B_UF_MUT(s1bw, 20u)
+D5B_UF_MUT(s1zext, 21u) D5B_UF_MUT(al1, 22u)    D5B_UF_MUT(bwfloor, 23u) D5B_UF_MUT(nofill, 24u)
+D5B_UF_MUT(noshift, 25u) D5B_UF_MUT(s2sign, 26u) D5B_UF_MUT(s2w, 27u)   D5B_UF_MUT(al2, 28u)
+D5B_UF_MUT(nosync2, 29u) D5B_UF_MUT(s3bb, 30u)  D5B_UF_MUT(s3hzext, 31u) D5B_UF_MUT(al3, 32u)
+D5B_UF_MUT(nosync3, 33u) D5B_UF_MUT(nob10, 34u) D5B_UF_MUT(nob30, 35u)  D5B_UF_MUT(flaguns, 37u)
+D5B_UF_MUT(flagge, 38u) D5B_UF_MUT(noabs, 39u)  D5B_UF_MUT(b40, 40u)    D5B_UF_MUT(wmode, 41u)
+D5B_UF_MUT(wside, 42u)  D5B_UF_MUT(afside, 43u) D5B_UF_MUT(afcache, 44u)
+
+/* 0x17CB0 camera_projectile_step: no argument. One restatement of camera.c's body, one choice flipped
+ * per mutant number. */
+static u32 d5b_17cb0_core(u32 mut)
+{
+    u32 clash = 0u, p0, p1;
+    if (mut != 1u)                                                           /* @noplane */
+        camera_bitplane_pixel((mut == 2u) ? 0x120u : 0x128u, (mut == 3u) ? 0x24u : 0x25u, DS_00100BD3,   /* @bits @rows */
+                              (mut == 4u) ? 0xFEu : 0xFFu);                  /* @val */
+    if (mut != 5u && mut != 13u) DSD(DS_00100AD0) = 0u;                      /* @noad0 */
+    if (mut == 6u) DSW(DS_00100AD4) = 0u;                                    /* @ad4w */
+    else if (mut != 7u) DSD(DS_00100AD4) = 0u;                               /* @noad4 */
+    p0 = DSD(DS_001077B8);
+    p1 = DSD(DS_0010784C);
+    if ((mut == 8u) ? (p0 != 0u || p1 != 0u) : (p0 != 0u && p1 != 0u)) {     /* @or */
+        u32 v = (u32)camera_projectile_clash();
+        clash = (mut == 9u) ? v : (v & 0xFFu);                               /* @clasheax */
+    }
+    if (mut == 13u) DSD(DS_00100AD0) = 0u;                                   /* @late: zeroed after the clash test */
+    if (clash != 0u && mut != 10u) return 0u;                                /* @noclashret */
+    if (mut != 14u) p0 = DSD(DS_001077B8);                                   /* @cache0: the pointer read before the clash */
+    if (p0 != 0u) camera_projectile_hit((mut == 11u) ? 1u : 0u);             /* @hit0side */
+    if (mut != 15u) p1 = DSD(DS_0010784C);                                   /* @cache1 */
+    if (p1 != 0u && mut != 12u) camera_projectile_hit((mut == 11u) ? 0u : 1u);   /* @nohit1 */
+    return 0u;
+}
+static void b_d5b_17cb0(const u32 *r, u32 *eax) { (void)r; camera_projectile_step(); *eax = 0u; }
+#define D5B_ST_MUT(name, n) \
+    static void m_d5b_st_##name(const u32 *r, u32 *eax) { (void)r; *eax = d5b_17cb0_core(n); }
+D5B_ST_MUT(noplane, 1u) D5B_ST_MUT(bits, 2u)    D5B_ST_MUT(rows, 3u)    D5B_ST_MUT(val, 4u)
+D5B_ST_MUT(noad0, 5u)   D5B_ST_MUT(ad4w, 6u)    D5B_ST_MUT(noad4, 7u)   D5B_ST_MUT(or, 8u)
+D5B_ST_MUT(clasheax, 9u) D5B_ST_MUT(noclashret, 10u) D5B_ST_MUT(hit0side, 11u) D5B_ST_MUT(nohit1, 12u)
+D5B_ST_MUT(late, 13u)   D5B_ST_MUT(cache0, 14u) D5B_ST_MUT(cache1, 15u)
+
+/* 0x17D30 camera_point_hit: AX = x, DX = y, BX = tall. One restatement of camera.c's body, one choice
+ * flipped per mutant number. */
+static u32 d5b_17d30_core(const u32 *r, u32 mut)
+{
+    u32 s08 = DSD(DS_00100B08), s0c = DSD(DS_00100B0C), s00 = DSD(DS_00100B00), s04 = DSD(DS_00100B04);
+    s32 x = (mut == 1u) ? (s32)(r[R_EAX] & 0xFFFFu) : (s32)(s16)r[R_EAX];    /* @xzext */
+    s32 y = (mut == 2u) ? (s32)(r[R_EDX] & 0xFFFFu) : (s32)(s16)r[R_EDX];    /* @yzext */
+    u32 tallw = (mut == 3u) ? r[R_EBX] : (r[R_EBX] & 0xFFFFu);               /* @tall32 */
+    s32 px = ((mut == 4u) ? (x >> 6) : x / 64) - ((mut == 5u) ? 0x10 : 0x18);   /* @xfloor @xoff */
+    s32 py = ((mut == 6u) ? (y >> 6) : y / 64) - (((tallw != 0u) != (mut == 7u)) ? 0x30 : 0x38);   /* @yfloor @ytall */
+    u32 t = (tallw != 0u) ? 1u : 0u, hit = 0u, v, mode;
+    u8 s63, s62;
+    if (mut != 8u) camera_bitplane_pixel(0x128u, 0x25u, DS_00100BD3, 0xFFu); /* @noplane */
+    s63 = DSB(DS_00100B63);
+    if (mut != 9u) DSB(DS_00100B63) = 0u;                                    /* @nob63 */
+    mode = (mut == 10u) ? (u32)DSB(DS_00104B00) : (u32)DSW(DS_00104B00);     /* @mode8 */
+    if (!(mode == 0x22u && ((mut == 11u) ? DSB(0x00104B1Au) == 0u : DSB(0x00104B1Au) != 0u))) {   /* @m22a */
+        v = (u32)camera_point_side(0u, (mut == 12u) ? py : px, (mut == 12u) ? px : py,          /* @args */
+                                   (mut == 13u) ? tallw : t);                /* @tallarg */
+        if (((mut == 14u) ? v : (v & 0xFFu)) != 0u) hit |= (mut == 15u) ? 2u : 1u;   /* @al0 (the port before the fix) @bits */
+    }
+    s62 = DSB(DS_00100B62);
+    if (mut != 16u) DSB(DS_00100B62) = 0u;                                   /* @nob62 */
+    if (mut != 17u) DSB(DS_00100B63) = s63;                                  /* @b63late: restored at the end only */
+    mode = (mut == 10u) ? (u32)DSB(DS_00104B00) : (u32)DSW(DS_00104B00);
+    if (!(mode == 0x22u && ((mut == 18u) ? DSB(0x00104B1Au) == 1u : DSB(0x00104B1Au) != 1u))) {   /* @m22b */
+        v = (u32)camera_point_side((mut == 19u) ? 0u : 1u, px, py, t);       /* @side */
+        if (((mut == 20u) ? v : (v & 0xFFu)) != 0u) hit |= (mut == 15u) ? 1u : 2u;   /* @al1 (the port before the fix) */
+    }
+    if (mut == 17u) DSB(DS_00100B63) = s63;
+    if (mut != 21u) DSD(DS_00100B08) = s08;                                  /* @keep08 */
+    if (mut != 22u) DSD(DS_00100B0C) = s0c;                                  /* @keep0c */
+    if (mut != 23u) DSB(DS_00100B62) = s62;                                  /* @keep62 */
+    if (mut != 24u) DSD(DS_00100B00) = s00;                                  /* @keep00 */
+    if (mut != 25u) DSD(DS_00100B04) = s04;                                  /* @keep04 */
+    return (mut == 26u) ? ((hit != 0u) ? 1u : 0u) : hit;                     /* @ret */
+}
+static void b_d5b_17d30(const u32 *r, u32 *eax)
+{
+    *eax = camera_point_hit((s32)r[R_EAX], (s32)r[R_EDX], r[R_EBX]);
+}
+#define D5B_PT_MUT(name, n) \
+    static void m_d5b_pt_##name(const u32 *r, u32 *eax) { *eax = d5b_17d30_core(r, n); }
+D5B_PT_MUT(xzext, 1u)   D5B_PT_MUT(yzext, 2u)   D5B_PT_MUT(tall32, 3u)  D5B_PT_MUT(xfloor, 4u)
+D5B_PT_MUT(xoff, 5u)    D5B_PT_MUT(yfloor, 6u)  D5B_PT_MUT(ytall, 7u)   D5B_PT_MUT(noplane, 8u)
+D5B_PT_MUT(nob63, 9u)   D5B_PT_MUT(mode8, 10u)  D5B_PT_MUT(m22a, 11u)   D5B_PT_MUT(args, 12u)
+D5B_PT_MUT(tallarg, 13u) D5B_PT_MUT(al0, 14u)   D5B_PT_MUT(bits, 15u)   D5B_PT_MUT(nob62, 16u)
+D5B_PT_MUT(b63late, 17u) D5B_PT_MUT(m22b, 18u)  D5B_PT_MUT(side, 19u)   D5B_PT_MUT(al1, 20u)
+D5B_PT_MUT(keep08, 21u) D5B_PT_MUT(keep0c, 22u) D5B_PT_MUT(keep62, 23u) D5B_PT_MUT(keep00, 24u)
+D5B_PT_MUT(keep04, 25u) D5B_PT_MUT(ret, 26u)
+
+/* 0x17580 camera_decay: no argument. One restatement of camera.c's body, one choice flipped per
+ * mutant number. */
+static u32 d5b_17580_scale(u32 x, u32 k, u32 mut)
+{
+    s32 t = (s32)(x * k + ((mut == 12u) ? 0u : 0x800u));                     /* @noround */
+    return (mut == 13u) ? (u32)(t >> 12) : (u32)(t / 0x1000);                /* @floor */
+}
+static void d5b_17580_scales(u32 mut)
+{
+    DSD(DS_00100B08) = d5b_17580_scale(DSD(DS_00100B08), (mut == 10u) ? 0xD56u : 0xF3Du, mut);   /* @k08 */
+    DSD(DS_00100B0C) = d5b_17580_scale(DSD(DS_00100B0C), 0xF3Du, mut);
+    DSD(DS_00100B00) = d5b_17580_scale(DSD(DS_00100B00), (mut == 11u) ? 0xF3Du : 0xD56u, mut);   /* @k00 */
+    DSD(DS_00100B04) = d5b_17580_scale(DSD(DS_00100B04), 0xD56u, mut);
+}
+static u32 d5b_17580_core(u32 mut)
+{
+    static const u32 cd[4] = { DS_00107824, DS_001078B8, DS_00107826, DS_001078BA };
+    u32 a0, a1, v;
+    u8 b61;
+    for (u32 i = 0u; i < 4u; i++) {
+        u16 w = DSW(cd[i]);
+        if (mut == 1u + i) continue;                                         /* @cd0 @cd1 @cd2 @cd3 */
+        if (mut == 5u) { if ((s16)w > 0) DSW(cd[i]) = (u16)(w - 1u); }       /* @cdsigned */
+        else if (mut == 6u || w != 0u) DSW(cd[i]) = (u16)(w - 1u);           /* @cdalways */
+    }
+    if (mut != 7u) DSD(DS_00100B54) = 0u;                                    /* @nob54 */
+    if (mut != 8u) DSD(DS_00100AF8) = 0u;                                    /* @noaf8 */
+    if (mut != 9u) DSD(DS_00100AFC) = 0u;                                    /* @noafc */
+    if (mut != 21u) d5b_17580_scales(mut);                                   /* @late: scaled after the overlap test */
+    a0 = DSW(DSD(DS_001077B0) + 0x56u);
+    a1 = DSW(DSD(DS_00107844) + 0x56u);
+    v = (mut == 14u) ? (u32)camera_box_overlap(a1, a0)                       /* @ovargs */
+        : (mut == 15u) ? (u32)camera_box_overlap(a0, a0)                     /* @ovsame */
+        : (u32)camera_box_overlap(a0, a1);
+    if (mut == 21u) d5b_17580_scales(mut);
+    if (((mut == 16u) ? v : (v & 0xFFu)) == 0u) return 0u;                   /* @al: the port before the fix */
+    b61 = DSB(DS_00100B61);
+    if (DSB((mut == 17u) ? DS_00100B61 : DS_00100B60) != 0u) camera_unfreeze((mut == 18u) ? 1u : 0u);   /* @gate0 @side0 */
+    if (((mut == 19u) ? b61 : DSB(DS_00100B61)) != 0u && mut != 20u)         /* @b61cache @noun1 */
+        camera_unfreeze((mut == 18u) ? 0u : 1u);
+    return 0u;
+}
+static void b_d5b_17580(const u32 *r, u32 *eax) { (void)r; camera_decay(); *eax = 0u; }
+#define D5B_DC_MUT(name, n) \
+    static void m_d5b_dc_##name(const u32 *r, u32 *eax) { (void)r; *eax = d5b_17580_core(n); }
+D5B_DC_MUT(cd0, 1u)     D5B_DC_MUT(cd1, 2u)     D5B_DC_MUT(cd2, 3u)     D5B_DC_MUT(cd3, 4u)
+D5B_DC_MUT(cdsigned, 5u) D5B_DC_MUT(cdalways, 6u) D5B_DC_MUT(nob54, 7u) D5B_DC_MUT(noaf8, 8u)
+D5B_DC_MUT(noafc, 9u)   D5B_DC_MUT(k08, 10u)    D5B_DC_MUT(k00, 11u)    D5B_DC_MUT(noround, 12u)
+D5B_DC_MUT(floor, 13u)  D5B_DC_MUT(ovargs, 14u) D5B_DC_MUT(ovsame, 15u) D5B_DC_MUT(al, 16u)
+D5B_DC_MUT(gate0, 17u)  D5B_DC_MUT(side0, 18u)  D5B_DC_MUT(b61cache, 19u) D5B_DC_MUT(noun1, 20u)
+D5B_DC_MUT(late, 21u)
+
+/* 0x14328 render_list: EAX = the list head's address, EDX = the camera, EBX = the clip record; the
+ * port's render_list() takes none (the global head, the fixed camera {0, 0} and clip {0, 0, 320, 200}).
+ * One restatement of render.c's body, one choice flipped per mutant number; 0x51E5C goes through its
+ * seamed C function. The raw's EAX at return is the list's terminating link, 0. */
+static u32 d5b_blit_mode;                  /* a render_list_blit mutant's choice; 0 = sprite_blit itself */
+/* sprite_blit_at's dispatch (sprite.c) with the back buffer as the base, one choice flipped per `bm`. */
+static void d5b_51e5c_mut(SpriteNode *n, u32 bm)
+{
+    const u8 *src = NULL;
+    u8 bank, *dst;
+    int rows, L = n->clip_l, R = n->clip_r, T = n->clip_t, w = n->width;
+    int stride = (bm == 11u) ? 321 : 320;                                    /* @stride */
+    if (n->width == 0 || n->rows == 0) return;
+    if (!gra_sprite_pixels(n->pixel_handle, &src)) return;
+    bank = (bm == 1u) ? DSB(n->pal_ptr + 8u) : (u8)sprite_bank(n->pal_ptr);  /* @bank: the byte, not the byte - 1 */
+    dst = mem + DSD(DS_000E87A4)
+          + ((bm == 2u) ? (u32)n->y * 320u : DSD(DS_001088F8 + (u32)n->y * 4u)) + (u32)n->x;   /* @rowtab */
+    rows = n->rows - ((bm == 3u) ? 0 : n->clip_b);                           /* @clipb */
+    switch (n->type & 0x1Fu) {
+    case 0x01: sprite_render_rle(src, dst, w, rows, stride, bank); break;
+    case 0x02: sprite_render_raw(src, dst, w, rows, stride, bank, 0, 0, 0); break;
+    case 0x04: case 0x06: case 0x14: case 0x16:
+        if (bm == 4u) sprite_render_raw(src, dst, w, rows, stride, bank, L, R, T);              /* @noshear */
+        else sprite_render_shear(src, dst, w, rows, stride, bank, L, R, T);
+        break;
+    case 0x00: if (bm == 12u) sprite_render_rle(src, dst, w, rows, stride, bank); break;      /* @t0: drawn */
+    case 0x03: if (bm == 13u) sprite_render_rle(src, dst, w, rows, stride, bank); break;      /* @t3: drawn */
+    case 0x15: if (bm == 14u) sprite_render_rle_clipped(src, dst, w, rows, stride, bank, L, R, T, 0); break;   /* @t15: drawn */
+    case 0x1A: if (bm == 15u) sprite_render_raw(src, dst, w, rows, stride, bank, L, R, T); break;   /* @t1a: drawn */
+    case 0x1F: if (bm == 16u) sprite_render_rle(src, dst, w, rows, stride, bank); break;      /* @t1f: drawn */
+    case 0x05: if (bm == 5u) sprite_render_rle(src, dst, w, rows, stride, bank); break;       /* @t5: drawn */
+    case 0x09: sprite_render_rle_clipped(src, dst, w, rows, stride, bank, 0, 0, 0, (bm == 6u) ? 0 : 1); break;   /* @nomirror */
+    case 0x0A: if (bm == 7u) sprite_render_raw(src, dst, w, rows, stride, bank, 0, 0, 0); break;   /* @t0a: drawn */
+    case 0x11: sprite_render_rle_clipped(src, dst, w, rows, stride, bank, (bm == 8u) ? R : L,   /* @lr */
+                                         (bm == 8u) ? L : R, T, 0); break;
+    case 0x12: sprite_render_raw(src, dst, w, rows, stride, bank, L, R, (bm == 9u) ? 0 : T); break;   /* @notop */
+    case 0x19: sprite_render_rle_clipped(src, dst, w, rows, stride, bank, L, R, T, (bm == 10u) ? 0 : 1); break;   /* @nomirrorclip */
+    default: break;
+    }
+}
+static void d5b_14328_blit(SpriteNode *n)
+{
+    if (d5b_blit_mode == 0u) sprite_blit(n);
+    else d5b_51e5c_mut(n, d5b_blit_mode);
+}
+static int d5b_14328_proj(int v, int num, u32 mut)
+{
+    int p = v * num + ((mut == 1u) ? 0 : 0x800);                             /* @noround */
+    if (p < 0 && mut != 2u) p += 0xFFF;                                      /* @floor */
+    return p >> 12;
+}
+static u32 d5b_14328_core(u32 mut)
+{
+    int last = -1;
+    for (u32 node = DSD(DS_00105B44); node != 0u; node = DSD(node)) {
+        u32 pset = DSD(node + 4u), layer;
+        SpriteNode n;
+        int px, py, x, y, W, H, t, l, sx, sy;
+        sprite_node_build(&n, DSW(pset));
+        n.pal_ptr = (mut == 3u) ? 0u : DSD(pset + 0x18u);                    /* @nopal */
+        layer = (mut == 4u) ? (u32)DSB(pset + 0x0Eu) : (u32)DSW(pset + 0x0Eu);   /* @layer8 */
+        if (((mut == 5u) ? ((s32)(s16)layer > 2) : (layer > 2u)) && mut != 6u) {   /* @layersext @noshift */
+            px = (s32)DSD(pset + 4u) >> 6;
+            py = (s32)DSD(pset + 8u) >> 6;
+        } else {
+            px = (s32)DSD(pset + 4u);
+            py = (s32)DSD(pset + 8u);
+        }
+        x = d5b_14328_proj(px, (mut == 7u) ? 3414 : 3901, mut) - ((mut == 8u) ? 0 : n.xorg);   /* @kswap @noxorg */
+        y = d5b_14328_proj(py, (mut == 7u) ? 3901 : 3414, mut) - ((mut == 9u) ? 0 : n.yorg);   /* @noyorg */
+        if (layer == 1u) {
+            x -= d5b_14328_proj((mut == 27u) ? (int)(s16)DSW(DS_00107A3E)       /* @l1xsext */
+                                : (int)DSW((mut == 10u) ? DS_00107A3A : DS_00107A3E), 3901, mut);   /* @l1x */
+            y = d5b_14328_proj(((mut == 28u) ? (int)(s16)DSW(DS_00107A4E) : (int)DSW(DS_00107A4E))   /* @l1ysext */
+                               + ((mut == 11u) ? 0 : (mut == 12u) ? (s32)DSD(DS_000F0AEC)       /* @l1noaec @l1aecraw */
+                                  : ((s32)DSD(DS_000F0AEC) >> 6)), 3414, mut);
+            if (mut != 13u) last = y;                                        /* @l1last */
+            if (mut != 14u) n.type |= 4u;                                    /* @l1type */
+        }
+        if (layer == 2u) {
+            x -= d5b_14328_proj((mut == 29u) ? (int)(s16)DSW(DS_00107A3A)       /* @l2xsext */
+                                : (int)DSW((mut == 15u) ? DS_00107A3E : DS_00107A3A), 3901, mut);   /* @l2x */
+            if (last == -1 || mut == 16u)                                    /* @l2always */
+                y -= d5b_14328_proj((mut == 30u) ? (int)(s16)DSW(DS_00107A38) : (int)DSW(DS_00107A38), 3414, mut);   /* @l2ysext */
+            else y = last - ((mut == 17u) ? 0 : n.rows);                     /* @l2rows */
+        }
+        W = n.width;
+        H = n.rows;
+        if (W + x < 0 || H + y < 0) continue;
+        n.clip_b = (H + y) - 200;
+        if (n.clip_b < 0 && mut != 18u) n.clip_b = 0;                        /* @clipbneg */
+        n.clip_r = (W + x) - 320;
+        if (n.clip_r < 0 && mut != 19u) n.clip_r = 0;                        /* @cliprneg */
+        t = 0 - y;
+        n.clip_t = (t > 0) ? t : 0;
+        if (t >= 0 && mut != 20u) y = 0;                                     /* @ykeep */
+        l = 0 - x;
+        n.clip_l = (l > 0) ? l : 0;
+        if (l >= 0 && mut != 21u) x = 0;                                     /* @xkeep */
+        sx = n.clip_l + n.clip_r;
+        sy = n.clip_t + n.clip_b;
+        if (sx + sy == 0) {
+            n.x = x; n.y = y;
+            d5b_14328_blit(&n);
+        } else if ((mut == 22u) ? (sx <= W && sy <= H) : (sx < W && sy < H)) {   /* @fullle */
+            if (mut != 23u) n.type |= 0x10u;                                 /* @noclipbit */
+            n.x = (mut == 24u) ? y : x;                                      /* @xy */
+            n.y = (mut == 24u) ? x : y;
+            d5b_14328_blit(&n);
+        }
+        if (mut == 25u) break;                                               /* @first */
+    }
+    return (mut == 26u) ? 1u : 0u;                                           /* @ret */
+}
+static void b_d5b_14328(const u32 *r, u32 *eax) { (void)r; render_list(); *eax = 0u; }
+#define D5B_RL_MUT(name, n) \
+    static void m_d5b_rl_##name(const u32 *r, u32 *eax) { (void)r; *eax = d5b_14328_core(n); }
+D5B_RL_MUT(noround, 1u) D5B_RL_MUT(floor, 2u)   D5B_RL_MUT(nopal, 3u)   D5B_RL_MUT(layer8, 4u)
+D5B_RL_MUT(layersext, 5u) D5B_RL_MUT(noshift, 6u) D5B_RL_MUT(kswap, 7u) D5B_RL_MUT(noxorg, 8u)
+D5B_RL_MUT(noyorg, 9u)  D5B_RL_MUT(l1x, 10u)    D5B_RL_MUT(l1noaec, 11u) D5B_RL_MUT(l1aecraw, 12u)
+D5B_RL_MUT(l1last, 13u) D5B_RL_MUT(l1type, 14u) D5B_RL_MUT(l2x, 15u)    D5B_RL_MUT(l2always, 16u)
+D5B_RL_MUT(l2rows, 17u) D5B_RL_MUT(clipbneg, 18u) D5B_RL_MUT(cliprneg, 19u) D5B_RL_MUT(ykeep, 20u)
+D5B_RL_MUT(xkeep, 21u)  D5B_RL_MUT(fullle, 22u) D5B_RL_MUT(noclipbit, 23u) D5B_RL_MUT(xy, 24u)
+D5B_RL_MUT(first, 25u)  D5B_RL_MUT(ret, 26u)    D5B_RL_MUT(l1xsext, 27u) D5B_RL_MUT(l1ysext, 28u)
+D5B_RL_MUT(l2xsext, 29u) D5B_RL_MUT(l2ysext, 30u)
+/* 0x51E5C sprite_blit: EAX = the raw node. The binding reads the C SpriteNode's fields from the raw
+ * offsets (+0..+0x20, then the clips at +0x28..+0x34; +0x24 is the descriptor handle, which the C node
+ * does not keep) and stores nothing back: sprite_blit leaves its node as it was. */
+static void d5b_51e5c_load(u32 at, SpriteNode *n)
+{
+    n->x = (int)DSD(at);            n->y = (int)DSD(at + 4u);
+    n->xorg = (int)DSD(at + 8u);    n->yorg = (int)DSD(at + 0x0Cu);
+    n->type = DSD(at + 0x10u);      n->rows = (int)DSD(at + 0x14u);
+    n->width = (int)DSD(at + 0x18u); n->pal_ptr = DSD(at + 0x1Cu);
+    n->pixel_handle = DSD(at + 0x20u);
+    n->clip_l = (int)DSD(at + 0x28u); n->clip_r = (int)DSD(at + 0x2Cu);
+    n->clip_t = (int)DSD(at + 0x30u); n->clip_b = (int)DSD(at + 0x34u);
+    n->stride = (int)DSD(at + 0x38u); n->row = (int)DSD(at + 0x3Cu);
+}
+static void b_d5b_51e5c(const u32 *r, u32 *eax)
+{
+    SpriteNode n;
+    d5b_51e5c_load(r[R_EAX], &n);
+    sprite_blit(&n);
+    *eax = 0u;
+}
+#define D5B_SB_MUT(name, bm) \
+    static void m_d5b_sb_##name(const u32 *r, u32 *eax) \
+    { SpriteNode n; d5b_51e5c_load(r[R_EAX], &n); d5b_51e5c_mut(&n, bm); *eax = 0u; }
+D5B_SB_MUT(t0, 12u)     D5B_SB_MUT(t3, 13u)     D5B_SB_MUT(t5, 5u)      D5B_SB_MUT(t0a, 7u)
+D5B_SB_MUT(t15, 14u)    D5B_SB_MUT(t1a, 15u)    D5B_SB_MUT(t1f, 16u)
+#define D5B_BL_MUT(name, n) \
+    static void m_d5b_bl_##name(const u32 *r, u32 *eax) \
+    { (void)r; d5b_blit_mode = n; *eax = d5b_14328_core(0u); d5b_blit_mode = 0u; }
+D5B_BL_MUT(bank, 1u)    D5B_BL_MUT(rowtab, 2u)  D5B_BL_MUT(clipb, 3u)   D5B_BL_MUT(noshear, 4u)
+D5B_BL_MUT(t5, 5u)      D5B_BL_MUT(nomirror, 6u) D5B_BL_MUT(t0a, 7u)    D5B_BL_MUT(lr, 8u)
+D5B_BL_MUT(notop, 9u)   D5B_BL_MUT(nomirrorclip, 10u) D5B_BL_MUT(stride, 11u)
+
+/* 0x1C65C text_blit_string: EAX = the string, EDX = x, EBX = y. The mutants restate actors.c's body
+ * over a seam-level stand-in of 0x1C5E8 (static there): the same PR_SEAM line, so the call list is the
+ * comparison. */
+static void d5b_1c5e8_seam(u32 ch, s32 col, s32 row)
+{
+    PR_SEAM(0x1C5E8u, ch, (u32)col, (u32)row);
+}
+static u32 d5b_1c65c_core(const u32 *r, u32 mut)
+{
+    const u8 *s = mem + r[R_EAX];
+    s32 x = (s32)r[R_EDX], y = (s32)r[R_EBX], col, row;
+    s32 px = x * ((mut == 1u) ? 0xd56 : 0xf3d) + ((mut == 3u) ? 0 : 0x800);  /* @kx @noround */
+    s32 py = y * ((mut == 2u) ? 0xf3d : 0xd56) + ((mut == 3u) ? 0 : 0x800);  /* @ky */
+    col = (mut == 4u) ? (px >> 12) : px / 0x1000;                            /* @floor */
+    row = (mut == 4u) ? (py >> 12) : py / 0x1000;
+    if (mut == 10u) { col = x; row = y; }                                    /* @unscaled */
+    if (*s == 0u) { if (mut == 5u) gfx_flush_palette(); return 0u; }         /* @emptyflush */
+    if (mut == 11u) gfx_flush_palette();                                     /* @flushfirst */
+    while (*s != 0u) {
+        u32 ch = (mut == 7u) ? (u32)(s32)(s8)*s : (u32)*s;                   /* @chsext */
+        if (mut == 8u) d5b_1c5e8_seam(ch, row, col);                         /* @argsxy */
+        else d5b_1c5e8_seam(ch, col, row);
+        s++;
+        if (mut == 9u) break;                                                /* @first */
+    }
+    if (mut != 6u && mut != 11u) gfx_flush_palette();                        /* @noflush */
+    return 0u;
+}
+static void b_d5b_1c65c(const u32 *r, u32 *eax)
+{
+    text_blit_string(mem + r[R_EAX], (s32)r[R_EDX], (s32)r[R_EBX]);
+    *eax = 0u;
+}
+#define D5B_TX_MUT(name, n) \
+    static void m_d5b_tx_##name(const u32 *r, u32 *eax) { *eax = d5b_1c65c_core(r, n); }
+D5B_TX_MUT(kx, 1u)      D5B_TX_MUT(ky, 2u)      D5B_TX_MUT(noround, 3u) D5B_TX_MUT(floor, 4u)
+D5B_TX_MUT(emptyflush, 5u) D5B_TX_MUT(noflush, 6u) D5B_TX_MUT(chsext, 7u) D5B_TX_MUT(argsxy, 8u)
+D5B_TX_MUT(first, 9u)   D5B_TX_MUT(unscaled, 10u) D5B_TX_MUT(flushfirst, 11u)
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -45141,6 +45823,327 @@ static const binding_t k_bindings[] = {
     { "game_state_6_rr@stagefull", m_d5a_s6_stagefull, 0x00000000u },
     { "game_state_6_rr@p1uns", m_d5a_s6_p1uns, 0x00000000u },
     { "game_state_6_rr@p1mod", m_d5a_s6_p1mod, 0x00000000u },
+    /* track D5 batch d5b (record 2026-10-12-reverse-d5b) */
+    { "camera_winner_height",                b_d5b_16da4, 0x00000000u },
+    { "camera_winner_height@flag32",         m_d5b_wh_flag32, 0x00000000u },
+    { "camera_winner_height@xor",            m_d5b_wh_xor, 0x00000000u },
+    { "camera_winner_height@nozero",         m_d5b_wh_nozero, 0x00000000u },
+    { "camera_winner_height@first0",         m_d5b_wh_first0, 0x00000000u },
+    { "camera_winner_height@idxa",           m_d5b_wh_idxa, 0x00000000u },
+    { "camera_winner_height@count1",         m_d5b_wh_count1, 0x00000000u },
+    { "camera_winner_height@second0",        m_d5b_wh_second0, 0x00000000u },
+    { "camera_winner_height@frameb",         m_d5b_wh_frameb, 0x00000000u },
+    { "camera_winner_height@rowsuns",        m_d5b_wh_rowsuns, 0x00000000u },
+    { "camera_winner_height@m0src",          m_d5b_wh_m0src, 0x00000000u },
+    { "camera_winner_height@m0w",            m_d5b_wh_m0w, 0x00000000u },
+    { "camera_winner_height@m0row",          m_d5b_wh_m0row, 0x00000000u },
+    { "camera_winner_height@rowside",        m_d5b_wh_rowside, 0x00000000u },
+    { "camera_winner_height@row0",           m_d5b_wh_row0, 0x00000000u },
+    { "camera_winner_height@m1skip",         m_d5b_wh_m1skip, 0x00000000u },
+    { "camera_winner_height@m2src",          m_d5b_wh_m2src, 0x00000000u },
+    { "camera_winner_height@m2w",            m_d5b_wh_m2w, 0x00000000u },
+    { "camera_winner_height@m3row",          m_d5b_wh_m3row, 0x00000000u },
+    { "camera_winner_height@flipside",       m_d5b_wh_flipside, 0x00000000u },
+    { "camera_winner_height@flipw",          m_d5b_wh_flipw, 0x00000000u },
+    { "camera_winner_height@noflipb",        m_d5b_wh_noflipb, 0x00000000u },
+    { "camera_winner_height@andw",           m_d5b_wh_andw, 0x00000000u },
+    { "camera_winner_height@noand",          m_d5b_wh_noand, 0x00000000u },
+    { "camera_winner_height@flagswap",       m_d5b_wh_flagswap, 0x00000000u },
+    { "camera_winner_height@shift",          m_d5b_wh_shift, 0x00000000u },
+    { "camera_winner_height@mergelen",       m_d5b_wh_mergelen, 0x00000000u },
+    { "camera_winner_height@and2",           m_d5b_wh_and2, 0x00000000u },
+    { "camera_winner_height@poplen",         m_d5b_wh_poplen, 0x00000000u },
+    { "camera_winner_height@nopop",          m_d5b_wh_nopop, 0x00000000u },
+    { "camera_winner_height@nofinal",        m_d5b_wh_nofinal, 0x00000000u },
+    { "camera_winner_height@andfirst",       m_d5b_wh_andfirst, 0x00000000u },
+    { "camera_winner_height_rr",             b_d5b_16da4, 0x00000000u },
+    { "camera_winner_height_rr@b54cache",    m_d5b_wh_b54cache, 0x00000000u },
+    { "camera_winner_height_rr@b18cache",    m_d5b_wh_b18cache, 0x00000000u },
+    { "camera_winner_height_rr@floor",       m_d5b_wh_floor, 0x00000000u },
+    { "camera_winner_height_rr@divuns",      m_d5b_wh_divuns, 0x00000000u },
+    { "camera_winner_height_rr@kswap",       m_d5b_wh_kswap, 0x00000000u },
+    { "camera_winner_height_rr@nofinal",     m_d5b_wh_nofinal, 0x00000000u },
+    { "camera_projectile_hit",                 b_d5b_176cc, 0x00000000u },
+    { "camera_projectile_hit@gside",           m_d5b_ph_gside, 0x00000000u },
+    { "camera_projectile_hit@g1off",           m_d5b_ph_g1off, 0x00000000u },
+    { "camera_projectile_hit@g2sext",          m_d5b_ph_g2sext, 0x00000000u },
+    { "camera_projectile_hit@g2ge",            m_d5b_ph_g2ge, 0x00000000u },
+    { "camera_projectile_hit@ovrec0",          m_d5b_ph_ovrec0, 0x00000000u },
+    { "camera_projectile_hit@ovrec1",          m_d5b_ph_ovrec1, 0x00000000u },
+    { "camera_projectile_hit@ovargs",          m_d5b_ph_ovargs, 0x00000000u },
+    { "camera_projectile_hit@al140",           m_d5b_ph_al140, 0x00000000u },
+    { "camera_projectile_hit@boxac8",          m_d5b_ph_boxac8, 0x00000000u },
+    { "camera_projectile_hit@boxside",         m_d5b_ph_boxside, 0x00000000u },
+    { "camera_projectile_hit@boxw",            m_d5b_ph_boxw, 0x00000000u },
+    { "camera_projectile_hit@noclip",          m_d5b_ph_noclip, 0x00000000u },
+    { "camera_projectile_hit@clipside",        m_d5b_ph_clipside, 0x00000000u },
+    { "camera_projectile_hit@clipidx",         m_d5b_ph_clipidx, 0x00000000u },
+    { "camera_projectile_hit@default",         m_d5b_ph_default, 0x00000000u },
+    { "camera_projectile_hit@spridx",          m_d5b_ph_spridx, 0x00000000u },
+    { "camera_projectile_hit@sybox",           m_d5b_ph_sybox, 0x00000000u },
+    { "camera_projectile_hit@sxbox",           m_d5b_ph_sxbox, 0x00000000u },
+    { "camera_projectile_hit@sx",              m_d5b_ph_sx, 0x00000000u },
+    { "camera_projectile_hit@swzext",          m_d5b_ph_swzext, 0x00000000u },
+    { "camera_projectile_hit@outs",            m_d5b_ph_outs, 0x00000000u },
+    { "camera_projectile_hit@p1",              m_d5b_ph_p1, 0x00000000u },
+    { "camera_projectile_hit@alsync",          m_d5b_ph_alsync, 0x00000000u },
+    { "camera_projectile_hit@shzext",          m_d5b_ph_shzext, 0x00000000u },
+    { "camera_projectile_hit@sy",              m_d5b_ph_sy, 0x00000000u },
+    { "camera_projectile_hit@alsync2",         m_d5b_ph_alsync2, 0x00000000u },
+    { "camera_projectile_hit@flaguns",         m_d5b_ph_flaguns, 0x00000000u },
+    { "camera_projectile_hit@flagge",          m_d5b_ph_flagge, 0x00000000u },
+    { "camera_projectile_hit@noabs",           m_d5b_ph_noabs, 0x00000000u },
+    { "camera_projectile_hit@b40",             m_d5b_ph_b40, 0x00000000u },
+    { "camera_projectile_hit@nob62",           m_d5b_ph_nob62, 0x00000000u },
+    { "camera_projectile_hit@widx",            m_d5b_ph_widx, 0x00000000u },
+    { "camera_projectile_hit@wrows",           m_d5b_ph_wrows, 0x00000000u },
+    { "camera_projectile_hit@wmode",           m_d5b_ph_wmode, 0x00000000u },
+    { "camera_projectile_hit@wside",           m_d5b_ph_wside, 0x00000000u },
+    { "camera_projectile_hit@adside",          m_d5b_ph_adside, 0x00000000u },
+    { "camera_projectile_hit@b62keep",         m_d5b_ph_b62keep, 0x00000000u },
+    { "camera_projectile_hit_real",            b_d5b_176cc, 0x00000000u },
+    { "camera_projectile_hit_real@nosync2",    m_d5b_ph_nosync2, 0x00000000u },
+    { "camera_projectile_hit_real@adcache",    m_d5b_ph_adcache, 0x00000000u },
+    { "camera_projectile_hit_real@preclip",    m_d5b_ph_preclip, 0x00000000u },
+    { "camera_projectile_hit_real@sybox",      m_d5b_ph_sybox, 0x00000000u },
+    { "camera_projectile_hit_real@sxbox",      m_d5b_ph_sxbox, 0x00000000u },
+    { "camera_projectile_hit_real@noabs",      m_d5b_ph_noabs, 0x00000000u },
+    { "camera_projectile_hit_real@wrows",      m_d5b_ph_wrows, 0x00000000u },
+    { "camera_point_side",                     b_d5b_1790c, 0x000000FFu },
+    { "camera_point_side@boxac0",              m_d5b_ps_boxac0, 0x000000FFu },
+    { "camera_point_side@boxside",             m_d5b_ps_boxside, 0x000000FFu },
+    { "camera_point_side@boxw",                m_d5b_ps_boxw, 0x000000FFu },
+    { "camera_point_side@noclip",              m_d5b_ps_noclip, 0x000000FFu },
+    { "camera_point_side@clipidx",             m_d5b_ps_clipidx, 0x000000FFu },
+    { "camera_point_side@s1box",               m_d5b_ps_s1box, 0x000000FFu },
+    { "camera_point_side@s1sign",              m_d5b_ps_s1sign, 0x000000FFu },
+    { "camera_point_side@s1w",                 m_d5b_ps_s1w, 0x000000FFu },
+    { "camera_point_side@s1ext",               m_d5b_ps_s1ext, 0x000000FFu },
+    { "camera_point_side@al1",                 m_d5b_ps_al1, 0x000000FFu },
+    { "camera_point_side@wzext",               m_d5b_ps_wzext, 0x000000FFu },
+    { "camera_point_side@bwfloor",             m_d5b_ps_bwfloor, 0x000000FFu },
+    { "camera_point_side@bwceil",              m_d5b_ps_bwceil, 0x000000FFu },
+    { "camera_point_side@nofill",              m_d5b_ps_nofill, 0x000000FFu },
+    { "camera_point_side@pixval",              m_d5b_ps_pixval, 0x000000FFu },
+    { "camera_point_side@noshift",             m_d5b_ps_noshift, 0x000000FFu },
+    { "camera_point_side@s3box",               m_d5b_ps_s3box, 0x000000FFu },
+    { "camera_point_side@s2sign",              m_d5b_ps_s2sign, 0x000000FFu },
+    { "camera_point_side@s2zext",              m_d5b_ps_s2zext, 0x000000FFu },
+    { "camera_point_side@al2",                 m_d5b_ps_al2, 0x000000FFu },
+    { "camera_point_side@tall8",               m_d5b_ps_tall8, 0x000000FFu },
+    { "camera_point_side@tallinv",             m_d5b_ps_tallinv, 0x000000FFu },
+    { "camera_point_side@s3sign",              m_d5b_ps_s3sign, 0x000000FFu },
+    { "camera_point_side@al3",                 m_d5b_ps_al3, 0x000000FFu },
+    { "camera_point_side@nob10",               m_d5b_ps_nob10, 0x000000FFu },
+    { "camera_point_side@b10box0",             m_d5b_ps_b10box0, 0x000000FFu },
+    { "camera_point_side@flaguns",             m_d5b_ps_flaguns, 0x000000FFu },
+    { "camera_point_side@flagge",              m_d5b_ps_flagge, 0x000000FFu },
+    { "camera_point_side@noabs",               m_d5b_ps_noabs, 0x000000FFu },
+    { "camera_point_side@b40",                 m_d5b_ps_b40, 0x000000FFu },
+    { "camera_point_side@wother",              m_d5b_ps_wother, 0x000000FFu },
+    { "camera_point_side@wmode",               m_d5b_ps_wmode, 0x000000FFu },
+    { "camera_point_side@wside",               m_d5b_ps_wside, 0x000000FFu },
+    { "camera_point_side@retge",               m_d5b_ps_retge, 0x000000FFu },
+    { "camera_point_side@retuns",              m_d5b_ps_retuns, 0x000000FFu },
+    { "camera_point_side_real",                b_d5b_1790c, 0x000000FFu },
+    { "camera_point_side_real@preclip",        m_d5b_ps_preclip, 0x000000FFu },
+    { "camera_point_side_real@retcache",       m_d5b_ps_retcache, 0x000000FFu },
+    { "camera_point_side_real@nosync3",        m_d5b_ps_nosync3, 0x000000FFu },
+    { "camera_point_side_real@s1box",          m_d5b_ps_s1box, 0x000000FFu },
+    { "camera_point_side_real@s3box",          m_d5b_ps_s3box, 0x000000FFu },
+    { "camera_point_side_real@nob10",          m_d5b_ps_nob10, 0x000000FFu },
+    { "camera_point_side_real@b10box0",        m_d5b_ps_b10box0, 0x000000FFu },
+    { "camera_point_side_real@noshift",        m_d5b_ps_noshift, 0x000000FFu },
+    { "camera_point_side_sync",                b_d5b_1790c, 0x000000FFu },
+    { "camera_point_side_sync@nosync2",        m_d5b_ps_nosync2, 0x000000FFu },
+    { "camera_point_side_sync@s2sign",         m_d5b_ps_s2sign, 0x000000FFu },
+    { "camera_unfreeze",                       b_d5b_170a0, 0x00000000u },
+    { "camera_unfreeze@gside",                 m_d5b_uf_gside, 0x00000000u },
+    { "camera_unfreeze@g2sext",                m_d5b_uf_g2sext, 0x00000000u },
+    { "camera_unfreeze@g2ge",                  m_d5b_uf_g2ge, 0x00000000u },
+    { "camera_unfreeze@spbidx",                m_d5b_uf_spbidx, 0x00000000u },
+    { "camera_unfreeze@boxac0",                m_d5b_uf_boxac0, 0x00000000u },
+    { "camera_unfreeze@oboxac8",               m_d5b_uf_oboxac8, 0x00000000u },
+    { "camera_unfreeze@boxw",                  m_d5b_uf_boxw, 0x00000000u },
+    { "camera_unfreeze@oboxw",                 m_d5b_uf_oboxw, 0x00000000u },
+    { "camera_unfreeze@noclip",                m_d5b_uf_noclip, 0x00000000u },
+    { "camera_unfreeze@noclipb",               m_d5b_uf_noclipb, 0x00000000u },
+    { "camera_unfreeze@clipbside",             m_d5b_uf_clipbside, 0x00000000u },
+    { "camera_unfreeze@facebit",               m_d5b_uf_facebit, 0x00000000u },
+    { "camera_unfreeze@faceinv",               m_d5b_uf_faceinv, 0x00000000u },
+    { "camera_unfreeze@noae0",                 m_d5b_uf_noae0, 0x00000000u },
+    { "camera_unfreeze@adfull",                m_d5b_uf_adfull, 0x00000000u },
+    { "camera_unfreeze@ae8side",               m_d5b_uf_ae8side, 0x00000000u },
+    { "camera_unfreeze@s1bb",                  m_d5b_uf_s1bb, 0x00000000u },
+    { "camera_unfreeze@s1bw",                  m_d5b_uf_s1bw, 0x00000000u },
+    { "camera_unfreeze@s1zext",                m_d5b_uf_s1zext, 0x00000000u },
+    { "camera_unfreeze@al1",                   m_d5b_uf_al1, 0x00000000u },
+    { "camera_unfreeze@bwfloor",               m_d5b_uf_bwfloor, 0x00000000u },
+    { "camera_unfreeze@nofill",                m_d5b_uf_nofill, 0x00000000u },
+    { "camera_unfreeze@noshift",               m_d5b_uf_noshift, 0x00000000u },
+    { "camera_unfreeze@s2sign",                m_d5b_uf_s2sign, 0x00000000u },
+    { "camera_unfreeze@s2w",                   m_d5b_uf_s2w, 0x00000000u },
+    { "camera_unfreeze@al2",                   m_d5b_uf_al2, 0x00000000u },
+    { "camera_unfreeze@s3bb",                  m_d5b_uf_s3bb, 0x00000000u },
+    { "camera_unfreeze@s3hzext",               m_d5b_uf_s3hzext, 0x00000000u },
+    { "camera_unfreeze@al3",                   m_d5b_uf_al3, 0x00000000u },
+    { "camera_unfreeze@nob10",                 m_d5b_uf_nob10, 0x00000000u },
+    { "camera_unfreeze@nob30",                 m_d5b_uf_nob30, 0x00000000u },
+    { "camera_unfreeze@flaguns",               m_d5b_uf_flaguns, 0x00000000u },
+    { "camera_unfreeze@flagge",                m_d5b_uf_flagge, 0x00000000u },
+    { "camera_unfreeze@noabs",                 m_d5b_uf_noabs, 0x00000000u },
+    { "camera_unfreeze@b40",                   m_d5b_uf_b40, 0x00000000u },
+    { "camera_unfreeze@wmode",                 m_d5b_uf_wmode, 0x00000000u },
+    { "camera_unfreeze@wside",                 m_d5b_uf_wside, 0x00000000u },
+    { "camera_unfreeze@afside",                m_d5b_uf_afside, 0x00000000u },
+    { "camera_unfreeze_real",                  b_d5b_170a0, 0x00000000u },
+    { "camera_unfreeze_real@preclip",          m_d5b_uf_preclip, 0x00000000u },
+    { "camera_unfreeze_real@preclipb",         m_d5b_uf_preclipb, 0x00000000u },
+    { "camera_unfreeze_real@afcache",          m_d5b_uf_afcache, 0x00000000u },
+    { "camera_unfreeze_real@nosync3",          m_d5b_uf_nosync3, 0x00000000u },
+    { "camera_unfreeze_real@s1bb",             m_d5b_uf_s1bb, 0x00000000u },
+    { "camera_unfreeze_real@s3bb",             m_d5b_uf_s3bb, 0x00000000u },
+    { "camera_unfreeze_real@nob10",            m_d5b_uf_nob10, 0x00000000u },
+    { "camera_unfreeze_real@nob30",            m_d5b_uf_nob30, 0x00000000u },
+    { "camera_unfreeze_real@adfull",           m_d5b_uf_adfull, 0x00000000u },
+    { "camera_unfreeze_real@faceinv",          m_d5b_uf_faceinv, 0x00000000u },
+    { "camera_unfreeze_real@noshift",          m_d5b_uf_noshift, 0x00000000u },
+    { "camera_unfreeze_real@noclipb",          m_d5b_uf_noclipb, 0x00000000u },
+    { "camera_unfreeze_real@clipbside",        m_d5b_uf_clipbside, 0x00000000u },
+    { "camera_unfreeze_sync",                  b_d5b_170a0, 0x00000000u },
+    { "camera_unfreeze_sync@nosync2",          m_d5b_uf_nosync2, 0x00000000u },
+    { "camera_unfreeze_sync@s2sign",           m_d5b_uf_s2sign, 0x00000000u },
+    { "camera_unfreeze_sync@s2w",              m_d5b_uf_s2w, 0x00000000u },
+    { "camera_projectile_step",                b_d5b_17cb0, 0x00000000u },
+    { "camera_projectile_step@noplane",        m_d5b_st_noplane, 0x00000000u },
+    { "camera_projectile_step@bits",           m_d5b_st_bits, 0x00000000u },
+    { "camera_projectile_step@rows",           m_d5b_st_rows, 0x00000000u },
+    { "camera_projectile_step@val",            m_d5b_st_val, 0x00000000u },
+    { "camera_projectile_step@noad0",          m_d5b_st_noad0, 0x00000000u },
+    { "camera_projectile_step@ad4w",           m_d5b_st_ad4w, 0x00000000u },
+    { "camera_projectile_step@noad4",          m_d5b_st_noad4, 0x00000000u },
+    { "camera_projectile_step@or",             m_d5b_st_or, 0x00000000u },
+    { "camera_projectile_step@clasheax",       m_d5b_st_clasheax, 0x00000000u },
+    { "camera_projectile_step@noclashret",     m_d5b_st_noclashret, 0x00000000u },
+    { "camera_projectile_step@hit0side",       m_d5b_st_hit0side, 0x00000000u },
+    { "camera_projectile_step@nohit1",         m_d5b_st_nohit1, 0x00000000u },
+    { "camera_projectile_step@late",           m_d5b_st_late, 0x00000000u },
+    { "camera_projectile_step_rr",             b_d5b_17cb0, 0x00000000u },
+    { "camera_projectile_step_rr@cache0",      m_d5b_st_cache0, 0x00000000u },
+    { "camera_projectile_step_rr@cache1",      m_d5b_st_cache1, 0x00000000u },
+    { "camera_point_hit",                      b_d5b_17d30, 0xFFFFFFFFu },
+    { "camera_point_hit@xzext",                m_d5b_pt_xzext, 0xFFFFFFFFu },
+    { "camera_point_hit@yzext",                m_d5b_pt_yzext, 0xFFFFFFFFu },
+    { "camera_point_hit@tall32",               m_d5b_pt_tall32, 0xFFFFFFFFu },
+    { "camera_point_hit@xfloor",               m_d5b_pt_xfloor, 0xFFFFFFFFu },
+    { "camera_point_hit@xoff",                 m_d5b_pt_xoff, 0xFFFFFFFFu },
+    { "camera_point_hit@yfloor",               m_d5b_pt_yfloor, 0xFFFFFFFFu },
+    { "camera_point_hit@ytall",                m_d5b_pt_ytall, 0xFFFFFFFFu },
+    { "camera_point_hit@noplane",              m_d5b_pt_noplane, 0xFFFFFFFFu },
+    { "camera_point_hit@nob63",                m_d5b_pt_nob63, 0xFFFFFFFFu },
+    { "camera_point_hit@mode8",                m_d5b_pt_mode8, 0xFFFFFFFFu },
+    { "camera_point_hit@m22a",                 m_d5b_pt_m22a, 0xFFFFFFFFu },
+    { "camera_point_hit@args",                 m_d5b_pt_args, 0xFFFFFFFFu },
+    { "camera_point_hit@tallarg",              m_d5b_pt_tallarg, 0xFFFFFFFFu },
+    { "camera_point_hit@al0",                  m_d5b_pt_al0, 0xFFFFFFFFu },
+    { "camera_point_hit@bits",                 m_d5b_pt_bits, 0xFFFFFFFFu },
+    { "camera_point_hit@nob62",                m_d5b_pt_nob62, 0xFFFFFFFFu },
+    { "camera_point_hit@b63late",              m_d5b_pt_b63late, 0xFFFFFFFFu },
+    { "camera_point_hit@m22b",                 m_d5b_pt_m22b, 0xFFFFFFFFu },
+    { "camera_point_hit@side",                 m_d5b_pt_side, 0xFFFFFFFFu },
+    { "camera_point_hit@al1",                  m_d5b_pt_al1, 0xFFFFFFFFu },
+    { "camera_point_hit@keep08",               m_d5b_pt_keep08, 0xFFFFFFFFu },
+    { "camera_point_hit@keep0c",               m_d5b_pt_keep0c, 0xFFFFFFFFu },
+    { "camera_point_hit@keep62",               m_d5b_pt_keep62, 0xFFFFFFFFu },
+    { "camera_point_hit@keep00",               m_d5b_pt_keep00, 0xFFFFFFFFu },
+    { "camera_point_hit@keep04",               m_d5b_pt_keep04, 0xFFFFFFFFu },
+    { "camera_point_hit@ret",                  m_d5b_pt_ret, 0xFFFFFFFFu },
+    { "camera_decay",                          b_d5b_17580, 0x00000000u },
+    { "camera_decay@cd0",                      m_d5b_dc_cd0, 0x00000000u },
+    { "camera_decay@cd1",                      m_d5b_dc_cd1, 0x00000000u },
+    { "camera_decay@cd2",                      m_d5b_dc_cd2, 0x00000000u },
+    { "camera_decay@cd3",                      m_d5b_dc_cd3, 0x00000000u },
+    { "camera_decay@cdsigned",                 m_d5b_dc_cdsigned, 0x00000000u },
+    { "camera_decay@cdalways",                 m_d5b_dc_cdalways, 0x00000000u },
+    { "camera_decay@nob54",                    m_d5b_dc_nob54, 0x00000000u },
+    { "camera_decay@noaf8",                    m_d5b_dc_noaf8, 0x00000000u },
+    { "camera_decay@noafc",                    m_d5b_dc_noafc, 0x00000000u },
+    { "camera_decay@k08",                      m_d5b_dc_k08, 0x00000000u },
+    { "camera_decay@k00",                      m_d5b_dc_k00, 0x00000000u },
+    { "camera_decay@noround",                  m_d5b_dc_noround, 0x00000000u },
+    { "camera_decay@floor",                    m_d5b_dc_floor, 0x00000000u },
+    { "camera_decay@ovargs",                   m_d5b_dc_ovargs, 0x00000000u },
+    { "camera_decay@ovsame",                   m_d5b_dc_ovsame, 0x00000000u },
+    { "camera_decay@al",                       m_d5b_dc_al, 0x00000000u },
+    { "camera_decay@gate0",                    m_d5b_dc_gate0, 0x00000000u },
+    { "camera_decay@side0",                    m_d5b_dc_side0, 0x00000000u },
+    { "camera_decay@noun1",                    m_d5b_dc_noun1, 0x00000000u },
+    { "camera_decay@late",                     m_d5b_dc_late, 0x00000000u },
+    { "camera_decay_rr",                       b_d5b_17580, 0x00000000u },
+    { "camera_decay_rr@b61cache",              m_d5b_dc_b61cache, 0x00000000u },
+    { "render_list",                           b_d5b_14328, 0xFFFFFFFFu },
+    { "render_list@noround",                   m_d5b_rl_noround, 0xFFFFFFFFu },
+    { "render_list@floor",                     m_d5b_rl_floor, 0xFFFFFFFFu },
+    { "render_list@nopal",                     m_d5b_rl_nopal, 0xFFFFFFFFu },
+    { "render_list@layer8",                    m_d5b_rl_layer8, 0xFFFFFFFFu },
+    { "render_list@layersext",                 m_d5b_rl_layersext, 0xFFFFFFFFu },
+    { "render_list@noshift",                   m_d5b_rl_noshift, 0xFFFFFFFFu },
+    { "render_list@kswap",                     m_d5b_rl_kswap, 0xFFFFFFFFu },
+    { "render_list@noxorg",                    m_d5b_rl_noxorg, 0xFFFFFFFFu },
+    { "render_list@noyorg",                    m_d5b_rl_noyorg, 0xFFFFFFFFu },
+    { "render_list@l1x",                       m_d5b_rl_l1x, 0xFFFFFFFFu },
+    { "render_list@l1noaec",                   m_d5b_rl_l1noaec, 0xFFFFFFFFu },
+    { "render_list@l1aecraw",                  m_d5b_rl_l1aecraw, 0xFFFFFFFFu },
+    { "render_list@l1last",                    m_d5b_rl_l1last, 0xFFFFFFFFu },
+    { "render_list@l1type",                    m_d5b_rl_l1type, 0xFFFFFFFFu },
+    { "render_list@l2x",                       m_d5b_rl_l2x, 0xFFFFFFFFu },
+    { "render_list@l2always",                  m_d5b_rl_l2always, 0xFFFFFFFFu },
+    { "render_list@l2rows",                    m_d5b_rl_l2rows, 0xFFFFFFFFu },
+    { "render_list@clipbneg",                  m_d5b_rl_clipbneg, 0xFFFFFFFFu },
+    { "render_list@cliprneg",                  m_d5b_rl_cliprneg, 0xFFFFFFFFu },
+    { "render_list@ykeep",                     m_d5b_rl_ykeep, 0xFFFFFFFFu },
+    { "render_list@xkeep",                     m_d5b_rl_xkeep, 0xFFFFFFFFu },
+    { "render_list@fullle",                    m_d5b_rl_fullle, 0xFFFFFFFFu },
+    { "render_list@noclipbit",                 m_d5b_rl_noclipbit, 0xFFFFFFFFu },
+    { "render_list@xy",                        m_d5b_rl_xy, 0xFFFFFFFFu },
+    { "render_list@first",                     m_d5b_rl_first, 0xFFFFFFFFu },
+    { "render_list@ret",                       m_d5b_rl_ret, 0xFFFFFFFFu },
+    { "render_list@l1xsext",                   m_d5b_rl_l1xsext, 0xFFFFFFFFu },
+    { "render_list@l1ysext",                   m_d5b_rl_l1ysext, 0xFFFFFFFFu },
+    { "render_list@l2xsext",                   m_d5b_rl_l2xsext, 0xFFFFFFFFu },
+    { "render_list@l2ysext",                   m_d5b_rl_l2ysext, 0xFFFFFFFFu },
+    { "render_list_blit",                      b_d5b_14328, 0xFFFFFFFFu },
+    { "render_list_blit@bank",                 m_d5b_bl_bank, 0xFFFFFFFFu },
+    { "render_list_blit@rowtab",               m_d5b_bl_rowtab, 0xFFFFFFFFu },
+    { "render_list_blit@clipb",                m_d5b_bl_clipb, 0xFFFFFFFFu },
+    { "render_list_blit@noshear",              m_d5b_bl_noshear, 0xFFFFFFFFu },
+    { "render_list_blit@t5",                   m_d5b_bl_t5, 0xFFFFFFFFu },
+    { "render_list_blit@nomirror",             m_d5b_bl_nomirror, 0xFFFFFFFFu },
+    { "render_list_blit@t0a",                  m_d5b_bl_t0a, 0xFFFFFFFFu },
+    { "render_list_blit@lr",                   m_d5b_bl_lr, 0xFFFFFFFFu },
+    { "render_list_blit@notop",                m_d5b_bl_notop, 0xFFFFFFFFu },
+    { "render_list_blit@nomirrorclip",         m_d5b_bl_nomirrorclip, 0xFFFFFFFFu },
+    { "render_list_blit@stride",               m_d5b_bl_stride, 0xFFFFFFFFu },
+    { "sprite_blit",                           b_d5b_51e5c, 0x00000000u },
+    { "sprite_blit@t0",                        m_d5b_sb_t0, 0x00000000u },
+    { "sprite_blit@t3",                        m_d5b_sb_t3, 0x00000000u },
+    { "sprite_blit@t5",                        m_d5b_sb_t5, 0x00000000u },
+    { "sprite_blit@t0a",                       m_d5b_sb_t0a, 0x00000000u },
+    { "sprite_blit@t15",                       m_d5b_sb_t15, 0x00000000u },
+    { "sprite_blit@t1a",                       m_d5b_sb_t1a, 0x00000000u },
+    { "sprite_blit@t1f",                       m_d5b_sb_t1f, 0x00000000u },
+    { "text_blit_string",                      b_d5b_1c65c, 0x00000000u },
+    { "text_blit_string@kx",                   m_d5b_tx_kx, 0x00000000u },
+    { "text_blit_string@ky",                   m_d5b_tx_ky, 0x00000000u },
+    { "text_blit_string@noround",              m_d5b_tx_noround, 0x00000000u },
+    { "text_blit_string@floor",                m_d5b_tx_floor, 0x00000000u },
+    { "text_blit_string@emptyflush",           m_d5b_tx_emptyflush, 0x00000000u },
+    { "text_blit_string@noflush",              m_d5b_tx_noflush, 0x00000000u },
+    { "text_blit_string@chsext",               m_d5b_tx_chsext, 0x00000000u },
+    { "text_blit_string@argsxy",               m_d5b_tx_argsxy, 0x00000000u },
+    { "text_blit_string@first",                m_d5b_tx_first, 0x00000000u },
+    { "text_blit_string@unscaled",             m_d5b_tx_unscaled, 0x00000000u },
+    { "text_blit_string@flushfirst",           m_d5b_tx_flushfirst, 0x00000000u },
 };
 
 static const binding_t *find_binding(const char *name)

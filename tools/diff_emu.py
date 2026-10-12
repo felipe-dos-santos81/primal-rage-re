@@ -728,6 +728,13 @@ _CALLEE_CLOBBER_FIXES[0x46C78] = ()
 # keeps EDI live across the call (set at 0x47B0B, read at 0x47BCE and 0x47BEF: `mov byte
 # [edi+0x57],3`), so 0x36870 preserves EDI; ESI and EBP stay in the set (no caller shown to read them).
 _CALLEE_CLOBBER_FIXES[0x36870] = ("esi", "ebp")
+# D5 d5b (record 2026-10-12-reverse-d5b section 1): 0x51E5C tests two node fields first (0x51E5C, 0x51E65:
+# no register written; both `je` go to the `ret` at 0x51ED4), then pushes EBX, ECX, EDX, ESI, EDI, EBP
+# (0x51E6E..0x51E73) and pops all six (0x51ECE..0x51ED3) around its body and its indirect renderer call
+# (`call [edx*4+0x80c8c]` 0x51EBF), which is what makes the scan assume every register written; the pushes
+# are not at the entry, so the scan credits none. The raw caller 0x14328 keeps EBP (the camera) and EDI
+# (the clip record) live across the call (set 0x1432F/0x14331, read 0x1439C and 0x144E4 for the next node).
+_CALLEE_CLOBBER_FIXES[0x51E5C] = ()
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --
