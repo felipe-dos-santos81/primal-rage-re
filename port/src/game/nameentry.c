@@ -424,7 +424,8 @@ void nameentry_finish(u8 side)
     DSB(0x00104394u + (u32)count) = DSB(DSD(DS_000A7DA0 + charid * 4u));   /* 0x20789..0x20792 */
     if (((s32)DSD(NE_NAME_MAX) >> 24) > 3) {                /* 0x20798..0x207A3 `jle` */
         (void)hiscore_insert(0u, 0x00104390u, 1u);          /* 0x207B1 0x2DCA0 */
-        DSB(0x00104397u) = DSB(DSD(DS_000A7DA0 + charid * 4u));   /* 0x207B8..0x207C7 */
+        charid = DSB(DS_0010782A + rec);                    /* 0x207B8: read again after 0x2DCA0 */
+        DSB(0x00104397u) = DSB(DSD(DS_000A7DA0 + charid * 4u));   /* 0x207BE..0x207C7 */
     }
     for (ecx = 0u; (s32)(u16)ecx < 0xA; ecx++) {            /* 0x207CC..0x207F6 */
         u16 dx = DSW(DS_001044D6);                          /* 0x207D0 */
