@@ -25961,6 +25961,31 @@ static void m_d2d_3e524_c1ch(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 
 static void m_d2d_3e524_c1hold(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 26u); }
 static void m_d2d_3e524_c1rec(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 27u); }
 static void m_d2d_3e524_c1s57(const u32 *r, u32 *eax) { *eax = d2d_3e524_core(r, 28u); }
+/* ---- track D3 batch d3a (record 2026-10-12-reverse-d3a): game/flow.c ---- */
+/* 0x11F28: EAX = the event (side). Full mask: `xor eax,eax` 0x11F53, `mov eax,1` 0x11F4C, or the
+ * zero EAX of 0x2C060 that `test eax,eax; je 0x11f55` just tested. */
+static void b_d3a_11f28(const u32 *r, u32 *eax) { *eax = frontend_coin_poll(r[R_EAX]); }
+enum { D3A_CP_NONE, D3A_CP_nocredit, D3A_CP_al, D3A_CP_side, D3A_CP_stride, D3A_CP_held, D3A_CP_eq,
+       D3A_CP_word, D3A_CP_nospend, D3A_CP_spendn, D3A_CP_ret, D3A_CP_order, D3A_CP_miss };
+static u32 d3a_11f28_core(u32 code, u32 mut)
+{
+    if (mut != D3A_CP_nocredit) {
+        u32 ready = config_credit_ready();
+        if (((mut == D3A_CP_al) ? (ready & 0xFFu) : ready) == 0u) return 0u;
+    }
+    if (mut == D3A_CP_order) (void)config_credit_spend(1u);
+    u32 mask = DSD(0x0009ACBCu + ((mut == D3A_CP_side) ? 1u - code : code) * ((mut == D3A_CP_stride) ? 2u : 4u));
+    u32 in = (mut == D3A_CP_held) ? DSD(0x001088D8u) : (mut == D3A_CP_word) ? DSW(0x001088E4u) : DSD(0x001088E4u);
+    if ((mut == D3A_CP_eq) ? (mask != in) : ((mask & in) == 0u)) return (mut == D3A_CP_miss) ? 1u : 0u;
+    if (mut == D3A_CP_order) return 1u;
+    if (mut == D3A_CP_nospend) return 1u;
+    u32 s = config_credit_spend((mut == D3A_CP_spendn) ? code : 1u);
+    return (mut == D3A_CP_ret) ? s : 1u;
+}
+#define D3A_CP_MUT(name) \
+    static void m_d3a_cp_##name(const u32 *r, u32 *eax) { *eax = d3a_11f28_core(r[R_EAX], D3A_CP_##name); }
+D3A_CP_MUT(nocredit) D3A_CP_MUT(al)      D3A_CP_MUT(side)   D3A_CP_MUT(stride) D3A_CP_MUT(held) D3A_CP_MUT(eq)
+D3A_CP_MUT(word)     D3A_CP_MUT(nospend) D3A_CP_MUT(spendn) D3A_CP_MUT(ret)    D3A_CP_MUT(order) D3A_CP_MUT(miss)
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -32277,6 +32302,20 @@ static const binding_t k_bindings[] = {
     { "fighter_3e524@c1hold",                m_d2d_3e524_c1hold, 0x00000000u },
     { "fighter_3e524@c1rec",                 m_d2d_3e524_c1rec, 0x00000000u },
     { "fighter_3e524@c1s57",                 m_d2d_3e524_c1s57, 0x00000000u },
+    /* track D3 batch d3a (record 2026-10-12-reverse-d3a) */
+    { "frontend_coin_poll", b_d3a_11f28, 0xFFFFFFFFu },
+    { "frontend_coin_poll@nocredit", m_d3a_cp_nocredit, 0xFFFFFFFFu },
+    { "frontend_coin_poll@al", m_d3a_cp_al, 0xFFFFFFFFu },
+    { "frontend_coin_poll@side", m_d3a_cp_side, 0xFFFFFFFFu },
+    { "frontend_coin_poll@stride", m_d3a_cp_stride, 0xFFFFFFFFu },
+    { "frontend_coin_poll@held", m_d3a_cp_held, 0xFFFFFFFFu },
+    { "frontend_coin_poll@eq", m_d3a_cp_eq, 0xFFFFFFFFu },
+    { "frontend_coin_poll@word", m_d3a_cp_word, 0xFFFFFFFFu },
+    { "frontend_coin_poll@nospend", m_d3a_cp_nospend, 0xFFFFFFFFu },
+    { "frontend_coin_poll@spendn", m_d3a_cp_spendn, 0xFFFFFFFFu },
+    { "frontend_coin_poll@ret", m_d3a_cp_ret, 0xFFFFFFFFu },
+    { "frontend_coin_poll@order", m_d3a_cp_order, 0xFFFFFFFFu },
+    { "frontend_coin_poll@miss", m_d3a_cp_miss, 0xFFFFFFFFu },
 };
 
 static const binding_t *find_binding(const char *name)

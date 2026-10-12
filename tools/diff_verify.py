@@ -18154,6 +18154,47 @@ D2D_SPECS = [
 D1_SPECS += D2D_SPECS
 
 
+# ---- track D3 batch d3a (record 2026-10-12-reverse-d3a): game/flow.c ----
+# 0x2C060 preserves EDX (diff_emu._CALLEE_CLOBBER_FIXES: its tail-jump target 0x2CA2C saves it).
+D3A_READY = E.Call(0x2C060, ())
+D3A_SPEND = E.Call(0x2CA7C, ("eax",))
+
+
+def d3a_poll_case(held, pressed, tbl=None):
+    """0x11F28: the held dword 0x1088D8 and the pressed dword 0x1088E4, each between seeded dwords,
+    and, when given, the three mask dwords at 0x9ACBC (the image has 0x01000000, 0x00000100 and,
+    past the two the callers index, 0x3A000040)."""
+    p = {0x001088D4: le32(0x61616161) + le32(held) + le32(0x62626262),
+         0x001088E0: le32(0x63636363) + le32(pressed) + le32(0x64646464)}
+    if tbl is not None:
+        p[0x0009ACBC] = b"".join(le32(x) for x in tbl)
+    return p
+
+
+D3A_SPECS = [
+    # 0x11F28 frontend_coin_poll: EAX = the event (side); EDX enters dirty (pushed, popped). 0 when
+    # 0x2C060 returns 0 (`test eax,eax`: p4's stub EAX 0x100 has AL 0 and is accepted), 0 when the
+    # mask dword 0x9ACBC[event] shares no bit with the pressed dword 0x1088E4, else 0x2CA7C(1) and 1
+    # whatever it returns. Both callees are stubs. p7 pokes the two masks (the image's differ only
+    # in one bit each), p8 indexes the third dword (the callers pass 0 and 1). Full mask.
+    Spec("frontend_coin_poll", 0x11F28, [
+        Case("p0", {"eax": 0, "edx": 0xABCD1234}, d3a_poll_case(0, 0x01000000), {0x2C060: 1, 0x2CA7C: 0}),
+        Case("p1", {"eax": 1, "edx": 0xABCD1234}, d3a_poll_case(0, 0xFFFFFFFF), {0x2C060: 1, 0x2CA7C: 0x55}),
+        Case("p2", {"eax": 0}, d3a_poll_case(0, 0x01000000), {0x2C060: 0, 0x2CA7C: 1}),
+        Case("p3", {"eax": 1}, d3a_poll_case(0x00000100, 0x01000000), {0x2C060: 1, 0x2CA7C: 1}),
+        Case("p4", {"eax": 0}, d3a_poll_case(0, 0x01000000), {0x2C060: 0x100, 0x2CA7C: 1}),
+        Case("p5", {"eax": 0}, d3a_poll_case(0x01000000, 0xFEFFFFFF), {0x2C060: 1, 0x2CA7C: 1}),
+        Case("p6", {"eax": 1}, d3a_poll_case(0, 0x00000100), {0x2C060: 0xFFFFFFFF, 0x2CA7C: 0}),
+        Case("p7", {"eax": 1}, d3a_poll_case(0, 0x00020000, (0x00000003, 0x80030000, 0x00000004)),
+             {0x2C060: 1, 0x2CA7C: 7}),
+        Case("p8", {"eax": 2}, d3a_poll_case(0, 0x00000040), {0x2C060: 1, 0x2CA7C: 1}),
+    ], calls=(D3A_READY, D3A_SPEND), eax_mask=0xFFFFFFFF,
+       mutants=("@nocredit", "@al", "@side", "@stride", "@held", "@eq", "@word", "@nospend", "@spendn",
+                "@ret", "@order", "@miss")),
+]   # D3A_SPECS end
+D1_SPECS += D3A_SPECS
+
+
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

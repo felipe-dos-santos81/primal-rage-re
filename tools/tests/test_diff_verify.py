@@ -11252,6 +11252,43 @@ D1_KINDS.update({
 })
 
 
+# ---- track D3 batch d3a (record 2026-10-12-reverse-d3a): measured, the C3G form ----
+D3A_MASKS = {
+    "frontend_coin_poll": 0xffffffff,
+}
+D3A_KINDS = {
+    "frontend_coin_poll@nocredit": {'call #0', 'call #1', 'eax'},
+    "frontend_coin_poll@al": {'call #1', 'eax'},
+    "frontend_coin_poll@side": {'call #1', 'eax'},
+    "frontend_coin_poll@stride": {'call #1', 'eax'},
+    "frontend_coin_poll@held": {'call #1', 'eax'},
+    "frontend_coin_poll@eq": {'call #1', 'eax'},
+    "frontend_coin_poll@word": {'call #1', 'eax'},
+    "frontend_coin_poll@nospend": {'call #1'},
+    "frontend_coin_poll@spendn": {'call #1'},
+    "frontend_coin_poll@ret": {'eax'},
+    "frontend_coin_poll@order": {'call #1'},
+    "frontend_coin_poll@miss": {'eax'},
+}
+D3A_CASES = [
+    ("frontend_coin_poll@nocredit", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
+    ("frontend_coin_poll@al", ['p4']),
+    ("frontend_coin_poll@side", ['p0', 'p3', 'p4', 'p5', 'p6', 'p7']),
+    ("frontend_coin_poll@stride", ['p3', 'p7', 'p8']),
+    ("frontend_coin_poll@held", ['p0', 'p1', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']),
+    ("frontend_coin_poll@eq", ['p1', 'p7', 'p8']),
+    ("frontend_coin_poll@word", ['p0', 'p4', 'p7']),
+    ("frontend_coin_poll@nospend", ['p0', 'p1', 'p4', 'p6', 'p7', 'p8']),
+    ("frontend_coin_poll@spendn", ['p0', 'p4', 'p8']),
+    ("frontend_coin_poll@ret", ['p0', 'p1', 'p6', 'p7']),
+    ("frontend_coin_poll@order", ['p3', 'p5']),
+    ("frontend_coin_poll@miss", ['p3', 'p5']),
+]
+D1_MASKS.update(D3A_MASKS)
+D1_KINDS.update(D3A_KINDS)
+D1_CASES.extend(D3A_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -12299,6 +12336,8 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # D3 d3a (record 2026-10-12-reverse-d3a): the stubs its rows add
+        0x2C060: (), 0x2CA7C: (),
         # D2 d2b (record 2026-10-11-reverse-d2b): the stubs its rows add
         0x10D70: ("ebx", "ecx", "edx"), 0x1A8F4: ("edx",), 0x38BEC: (), 0x46670: (),
         0x2C320: (), 0x33C18: (), 0x2C088: ("ebx", "edx", "edi", "ebp"), 0x1D7B8: ("ebx", "edx"),

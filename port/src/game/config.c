@@ -392,6 +392,7 @@ u32 config_has_credit(void)
 /* 0x2C060. `call 0x2caa8; jmp 0x2ca2c` — the 0x2CAA8 result is discarded. */
 u32 config_credit_ready(void)
 {
+    PR_SEAM_RET0(0x2C060u);
     (void)config_not_free_play();
     return config_has_credit();
 }
@@ -417,6 +418,7 @@ u32 config_credit_zero(void)
 /* 0x2CA7C. `cmp eax,[0x85c00]; ja` is an unsigned guard. */
 u32 config_credit_spend(u32 n)
 {
+    PR_SEAM_RET(0x2CA7Cu, n);
     if (DSB(DS_00105D60) != 0u) return 1u;            /* 0x2CA85 */
     if (n > DSD(DS_00105C00)) return 0u;              /* 0x2CA91 */
     if (DSB(DS_00104B1F) == 0u) DSD(DS_00105C00) -= n;/* 0x2CA9C */

@@ -698,6 +698,12 @@ def callee_clobbers(image, addr, resolved=None):
 # call, so the caller-observed set is edx.
 _CALLEE_CLOBBER_FIXES = {0x2B150: (), 0x2BD44: ("edx",), 0x3B298: ("edx",), 0x3CF38: (),
                          0x2AD40: ("edx",)}
+# D3 d3a (record 2026-10-12-reverse-d3a §2): 0x2C060 is `call 0x2caa8; jmp 0x2ca2c`. 0x2CAA8 writes EAX
+# only (0x2CAAF `sete al`, 0x2CAB2 `and eax,0xff`) and the tail-jump target saves EDX around its one use
+# (0x2CA2C `push edx` ... 0x2CA44 `pop edx`; `ret`), which the scan cannot credit to 0x2C060 (the push is
+# not at its entry). The raw caller 0x11F28 reads EDX across the call (0x11F29 `mov edx,eax`, 0x11F39
+# `test [edx*4+0x9acbc],eax`).
+_CALLEE_CLOBBER_FIXES[0x2C060] = ()
 
 
 # ---- decoding helpers for the static tools (E2 tools/entry_triage.py); additive, used by nothing above --
