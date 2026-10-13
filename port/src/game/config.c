@@ -1065,9 +1065,9 @@ u32 config_file_load(void)
  * PORT: 0x1B088 0x10D34 and 0x1B10B 0x10D0C, the CD-drive switch around the file access (host-owned,
  * record §50-E), are left out, as in config_file_load.
  * PORT: 0x1B097 0x61C60 fopen("cmos", "wb" 0x8059C) is host_save_writable: 0 for the raw's NULL, and
- * for a run with no save path (the captures' read-only mount refused the open the same way). 0x1B0E1
- * 0x62031 fwrite(0x100CE4, 1, 0x7F8, file) and 0x1B0EA 0x61EC0 fclose (its result is not read) are
- * host_save_write. A short write ends the raw's program (0x1B0EF `cmp edx,0x7f8`, 0x1B0F7..0x1B0FE
+ * for a run with no save path (the captures ran on a read-only mount). 0x1B0E1 0x62031
+ * fwrite(0x100CE4, 1, 0x7F8, file) and 0x1B0EA 0x61EC0 fclose are host_save_write, which also reports
+ * a failed close; the raw does not read fclose's result. A short write ends the raw's program (0x1B0EF `cmp edx,0x7f8`, 0x1B0F7..0x1B0FE
  * 0x62003(1), the runtime's exit); the port returns the flag the bytes around that call set (DL = 1 at
  * 0x1B0FC, `jmp 0x1B10B`). */
 u32 config_file_save(void)
