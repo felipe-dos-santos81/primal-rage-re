@@ -795,3 +795,8 @@ RESOLVED_JUMPS[0x11D69] = (0x11D50, 0x11CDC, 10)
 # credits none. The raw caller 0x1C5E8 keeps ECX (the column's address, 0x1C5ED) and ESI (the width byte,
 # 0x1C5FF) live across the call at 0x1C63D (read at 0x1C642 `cmp esi,0x10` and 0x1C647 `add [ecx],0xf`).
 _CALLEE_CLOBBER_FIXES[0x51ED8] = ()
+# D6 d6a (record 2026-10-13-reverse-d6a section 2): 0x31A78's key switch, 0x319B0's form. cmp edi,3; ja;
+# mov eax,[esp+0x10]; jmp cs:[eax+0x31a68]. EDI is the counter [esp+0x18] (loaded at 0x31AB2) and the index
+# [esp+0x10] is 4 * it: both start 0 (0x31A96, 0x31AA4) and step together (0x31B65 add eax,4 / 0x31B68
+# inc edx, stored at 0x31B69/0x31B6D).
+RESOLVED_JUMPS[0x31AD6] = (0x31AC9, 0x31A68, 4)
