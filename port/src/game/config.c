@@ -274,6 +274,35 @@ void config_set_defaults(void)
     config_keys_apply_defaults();                  /* 0x2CB50, record §50-C */
 }
 
+/* 0x2D638 — record 2026-10-13-reverse-s §S.5. No argument. The reader of an
+ * older image layout: a 0x51-byte record at cell 0 (0x2D643..0x2D64E; the
+ * current one is 0x53 bytes, 0x2D701) and, when that read fails, its copy at
+ * cell 0x2D4B4(0x51) = 0x59 (the loop inline at 0x2D659..0x2D66A), which
+ * replaces the first only when its result is greater (0x2D67A `jle`). When the
+ * four bytes at +0x4D of the record kept are the magic (0x2D6A0..0x2D6BF), the
+ * 5-byte record at cell 0x195 is read to 0x105DDC (0x2D6C1..0x2D6D0); the two
+ * `< -1` tests (0x2D69B, 0x2D6D5) never hold, 0x2E990 returning 1 or -1. Both
+ * 0x51-byte buffers are the raw's frame. */
+void config_storage_load(void)
+{
+    PR_SEAM0(0x2D638u);
+    u8 a[0x51], b[0x51];                                /* [esp+0x54], [esp] */
+    s32 r = config_storage_read(0u, a, 0x51u);          /* 0x2D643..0x2D653 */
+    if (r < 0) {                                        /* 0x2D655 */
+        s32 r2 = config_storage_read(config_codeword_len(0x51u), b, 0x51u);   /* 0x2D659..0x2D678 */
+        if (r2 > r) {                                   /* 0x2D67A */
+            memcpy(a, b, sizeof a);                     /* 0x2D67E..0x2D696 */
+            r = r2;                                     /* 0x2D699 */
+        }
+    }
+    if (r < -1) return;                                 /* 0x2D69B */
+    if (((u32)a[0x4D] | ((u32)a[0x4E] << 8) | ((u32)a[0x4F] << 16) | ((u32)a[0x50] << 24))
+            != 0x9C94D2C4u)                             /* 0x2D6A0..0x2D6BF */
+        return;
+    if (config_storage_read(0x195u, mem + 0x00105DDCu, 5u) < -1)   /* 0x2D6C1..0x2D6D8 */
+        mem_fill(0x00105DDCu, 0, 5u);                   /* 0x2D6DA..0x2D6E6 */
+}
+
 /* 0x2D6F8, no-storage path. */
 void config_validate(void)
 {

@@ -29332,6 +29332,7 @@ SA_MASKS = {
     "config_image_store": 0x0,
     "config_storage_read": 0xFFFFFFFF,
     "config_storage_touch": 0x0,
+    "config_storage_load": 0x0,
 }   # SA_MASKS end
 SA_KINDS = {
     "config_image_store@lo": {'byte', 'call #0'},
@@ -29371,6 +29372,17 @@ SA_KINDS = {
     "config_storage_touch@six": {'byte'},
     "config_storage_touch@frame": {'byte'},
     "config_storage_touch@cellsext": {'call #0', 'call #1', 'call #10', 'call #11', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "config_storage_load@len53": {'byte'},
+    "config_storage_load@cell5b": {'byte'},
+    "config_storage_load@nofb": {'byte'},
+    "config_storage_load@ge": {'byte'},
+    "config_storage_load@magicoff": {'byte'},
+    "config_storage_load@magicbe": {'byte'},
+    "config_storage_load@nomagic": {'byte'},
+    "config_storage_load@cell199": {'byte'},
+    "config_storage_load@len4": {'byte'},
+    "config_storage_load@dst": {'byte'},
+    "config_storage_load@clear": {'byte'},
 }   # SA_KINDS end
 SA_CASES = [
     ("config_image_store@lo", ['e0']),
@@ -29410,6 +29422,17 @@ SA_CASES = [
     ("config_storage_touch@six", ['f0', 'k1', 'k2', 'k6']),
     ("config_storage_touch@frame", ['f0']),
     ("config_storage_touch@cellsext", ['b2']),
+    ("config_storage_load@len53", ['o4']),
+    ("config_storage_load@cell5b", ['o2']),
+    ("config_storage_load@nofb", ['o2']),
+    ("config_storage_load@ge", ['o3', 'o5']),
+    ("config_storage_load@magicoff", ['o1', 'o2', 'o3', 'o6', 'o7']),
+    ("config_storage_load@magicbe", ['o1', 'o2', 'o3', 'o6']),
+    ("config_storage_load@nomagic", ['o0', 'o4', 'o5', 'o7']),
+    ("config_storage_load@cell199", ['o1', 'o2', 'o3', 'o6']),
+    ("config_storage_load@len4", ['o1', 'o2', 'o3', 'o6']),
+    ("config_storage_load@dst", ['o1', 'o2', 'o3', 'o6']),
+    ("config_storage_load@clear", ['o6']),
 ]   # SA_CASES end
 SA_OUTSIDE = {}
 P45_OUTSIDE.update(SA_OUTSIDE)

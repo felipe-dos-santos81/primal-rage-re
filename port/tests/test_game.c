@@ -4495,6 +4495,37 @@ int test_config_storage(void)
         CHECK(sa_image_is(0x5Au), "badkind: negative");
     }
 
+    {
+        /* load (0x2D638), the reader of the older layout: a 0x51-byte record at
+         * cell 0 with a second copy at cell 0x2D4B4(0x51) = 0x59, the magic at
+         * +0x4D, and a 5-byte record at cell 0x195 that goes to 0x105DDC. Here the
+         * first copy fails its check and holds no magic; the second is good. The
+         * records are encoded through kind 5's entry, poked. */
+        static const u8 five[5] = { 0x71u, 0x72u, 0x73u, 0x74u, 0x75u };
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        mem_fill(0x00105DE1u, 0x21u, 0x51u);
+        DSD(0x00105DE1u + 0x4Du) = 0x9C94D2C4u;
+        DSD(SA_KINDS + 5u * 8u) = 0x00510059u;
+        DSD(SA_KINDS + 5u * 8u + 4u) = 0x00105DE1u;
+        config_storage_touch(5u);
+        memcpy(mem + 0x00105EC8u, five, 5u);
+        DSD(SA_KINDS + 5u * 8u) = 0x00050195u;
+        DSD(SA_KINDS + 5u * 8u + 4u) = 0x00105EC8u;
+        config_storage_touch(5u);
+        memcpy(mem + SA_KINDS + 5u * 8u, sv_ent, sizeof sv_ent);
+        DSB(SA_IMG) = 0x01u;
+        mem_fill(0x00105DDBu, 0xEEu, 6u);
+        config_storage_load();
+        CHECK(memcmp(mem + 0x00105DDCu, five, 5u) == 0, "load: the second copy's magic lets the 5 bytes in");
+        CHECK_EQ_INT(DSB(0x00105DDBu), 0xEE);
+
+        /* the zero image holds no magic: nothing is read to 0x105DDC */
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        mem_fill(0x00105DDBu, 0xEEu, 6u);
+        config_storage_load();
+        CHECK_EQ_INT(DSD(0x00105DDCu), 0xEEEEEEEEu);
+    }
+
     memcpy(mem + SA_CFG, sv_cfg, sizeof sv_cfg);
     memcpy(mem + SA_IMG - 1u, sv_img, sizeof sv_img);
     return g_failures - before;

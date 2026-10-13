@@ -34,6 +34,12 @@ u32 config_menu_default_bits(u32 table);
  * function's comment in config.c. */
 void config_set_defaults(void);
 
+/* 0x2D638. The reader of an older image layout (a 0x51-byte record at cell 0
+ * with a copy at cell 0x59, the magic at +0x4D): when either copy holds the
+ * magic, the 5-byte record at cell 0x195 is read to 0x105DDC, from where
+ * hiscore_storage_load's defaults pass copies it to table 2. */
+void config_storage_load(void);
+
 /* 0x2D6F8. Validates the stored config against the magic at DS_00105E30 and runs
  * the defaults path when it fails. With the storage layer stubbed (spec §7) the
  * stored image is absent, so the magic never matches and this always takes the

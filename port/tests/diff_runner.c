@@ -41746,6 +41746,36 @@ static void b_sa_2d4ec(const u32 *r, u32 *eax) { config_storage_touch(r[R_EAX]);
 SA_TC_MUT(k0cell, 1u) SA_TC_MUT(k0mul, 2u)  SA_TC_MUT(k0base, 3u) SA_TC_MUT(bound, 4u)  SA_TC_MUT(bound1, 5u)
 SA_TC_MUT(nofatal, 6u) SA_TC_MUT(msg, 7u)   SA_TC_MUT(stride, 8u) SA_TC_MUT(up, 9u)     SA_TC_MUT(par0, 10u)
 SA_TC_MUT(overall, 11u) SA_TC_MUT(bit, 12u) SA_TC_MUT(six, 13u)   SA_TC_MUT(frame, 14u) SA_TC_MUT(cellsext, 15u)
+
+/* 0x2D638 config_storage_load: no argument. The mutants restate config.c's body. */
+static void sa_2d638_core(u32 mut)
+{
+    u8 a[0x53], b[0x53];
+    u32 len = (mut == 1u) ? 0x53u : 0x51u;                                       /* @len53 */
+    s32 r = config_storage_read(0u, a, len);
+    if (r < 0 && mut != 3u) {                                                    /* @nofb */
+        s32 r2 = config_storage_read((mut == 2u) ? 0x5Bu : config_codeword_len(0x51u), b, len);   /* @cell5b */
+        if ((mut == 4u) ? r2 >= r : r2 > r) {                                    /* @ge */
+            memcpy(a, b, len);
+            r = r2;
+        }
+    }
+    if (r < -1) return;
+    u32 off = (mut == 5u) ? 0x4Cu : 0x4Du;                                       /* @magicoff */
+    u32 m = (u32)a[off] | ((u32)a[off + 1u] << 8) | ((u32)a[off + 2u] << 16) | ((u32)a[off + 3u] << 24);
+    if (mut == 6u) m = ((u32)a[off] << 24) | ((u32)a[off + 1u] << 16) | ((u32)a[off + 2u] << 8) | (u32)a[off + 3u];   /* @magicbe */
+    if (m != 0x9C94D2C4u && mut != 7u) return;                                   /* @nomagic */
+    s32 r3 = config_storage_read((mut == 8u) ? 0x199u : 0x195u,                  /* @cell199 */
+                                 mem + ((mut == 10u) ? 0x00105DDDu : 0x00105DDCu),   /* @dst */
+                                 (mut == 9u) ? 4u : 5u);                         /* @len4 */
+    if ((mut == 11u) ? r3 < 0 : r3 < -1) mem_fill(0x00105DDCu, 0, 5u);           /* @clear */
+}
+static void b_sa_2d638(const u32 *r, u32 *eax) { (void)r; config_storage_load(); *eax = 0u; }
+#define SA_LD_MUT(name, n) \
+    static void m_sa_ld_##name(const u32 *r, u32 *eax) { (void)r; sa_2d638_core(n); *eax = 0u; }
+SA_LD_MUT(len53, 1u)   SA_LD_MUT(cell5b, 2u)  SA_LD_MUT(nofb, 3u)    SA_LD_MUT(ge, 4u)   SA_LD_MUT(magicoff, 5u)
+SA_LD_MUT(magicbe, 6u) SA_LD_MUT(nomagic, 7u) SA_LD_MUT(cell199, 8u) SA_LD_MUT(len4, 9u) SA_LD_MUT(dst, 10u)
+SA_LD_MUT(clear, 11u)
 /* ---- sa bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56741,6 +56771,18 @@ static const binding_t k_bindings[] = {
     { "config_storage_touch@six", m_sa_tc_six, 0x00000000u },
     { "config_storage_touch@frame", m_sa_tc_frame, 0x00000000u },
     { "config_storage_touch@cellsext", m_sa_tc_cellsext, 0x00000000u },
+    { "config_storage_load",             b_sa_2d638, 0x00000000u },
+    { "config_storage_load@len53", m_sa_ld_len53, 0x00000000u },
+    { "config_storage_load@cell5b", m_sa_ld_cell5b, 0x00000000u },
+    { "config_storage_load@nofb", m_sa_ld_nofb, 0x00000000u },
+    { "config_storage_load@ge", m_sa_ld_ge, 0x00000000u },
+    { "config_storage_load@magicoff", m_sa_ld_magicoff, 0x00000000u },
+    { "config_storage_load@magicbe", m_sa_ld_magicbe, 0x00000000u },
+    { "config_storage_load@nomagic", m_sa_ld_nomagic, 0x00000000u },
+    { "config_storage_load@cell199", m_sa_ld_cell199, 0x00000000u },
+    { "config_storage_load@len4", m_sa_ld_len4, 0x00000000u },
+    { "config_storage_load@dst", m_sa_ld_dst, 0x00000000u },
+    { "config_storage_load@clear", m_sa_ld_clear, 0x00000000u },
     /* sa table end */
 };
 

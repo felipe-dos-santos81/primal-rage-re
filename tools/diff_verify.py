@@ -32489,6 +32489,60 @@ SA_SPECS += [
                                       "bit six frame cellsext".split())),
 ]
 
+SA_MAGIC = le32(0x9C94D2C4)                     # `cmp eax,0x9c94d2c4` 0x2D6BA, `cmp ecx,0x9c94d2c4` 0x2D820
+SA_READ_REAL = (0x2E990, 0x61A70, 0x65490, 0x654C7)      # the read, into the raw's frame, and its memset
+SA_FIVE = bytes([0x71, 0x72, 0x73, 0x74, 0x75])
+
+
+def sa_old(magic_at=None, seed=0x21):
+    """A 0x51-byte record of the older layout, the magic at `magic_at` (None: nowhere)."""
+    d = bytearray(sa_data(0x51, seed))
+    if magic_at is not None:
+        d[magic_at:magic_at + 4] = SA_MAGIC
+    return bytes(d)
+
+
+def sa_load(cid, one=None, two=None, flip1=(), flip2=(), five=SA_FIVE, flip5=()):
+    """0x2D638: the first copy at cell 0 and the second at cell 0x59 (None: the image's zeros), the
+    5-byte record at cell 0x195; the bytes 0x105DDA..0x105DE2 seeded."""
+    p = {0x00105DDA: bytes([0xDA, 0xDB, 0xEC, 0xED, 0xEE, 0xEF, 0xE0, 0xE1, 0xE2])}
+    if one is not None:
+        p.update(sa_cells(0, sa_codeword(one), flips=flip1))
+    if two is not None:
+        p.update(sa_cells(0x59, sa_codeword(two), flips=flip2))
+    if five is not None:
+        p.update(sa_cells(0x195, sa_codeword(five), flips=flip5))
+    return Case(cid, dict(D2E_DIRTY), p)
+
+
+SA_SPECS += [
+    # 0x2D638 config_storage_load: no argument. 0x2E990(0, the frame's first buffer, 0x51); when that is
+    # negative, 0x2E990(0x59, the second buffer, 0x51) (0x59 is the loop 0x2D659..0x2D66A on 0x51), whose
+    # bytes replace the first's only when its result is greater (`jle` 0x2D67C). When the four bytes at
+    # +0x4D of the buffer kept are 0x9C94D2C4, 0x2E990(0x195, 0x105DDC, 5). o0: the image's zeros. o1: a
+    # good first copy with the magic. o2: a first copy that fails and holds no magic, a good second with
+    # it. o3: both fail, the first holds the magic (-1 is not below -1, 0x2D69B: the 5 bytes are read).
+    # o4: a good first copy without the magic, a good second with it (never read). o5: both fail, only the
+    # second holds the magic (equal results keep the first). o6: o1 with the 5-byte record failing its
+    # check (its bytes stay: -1 is not below -1, 0x2D6D5). o7: the magic one byte lower, at +0x4C. The
+    # reads run on both sides (their buffers are the raw's frame and C arrays). Mask 0: `xor eax,eax`
+    # 0x2D725 follows the one call site.
+    Spec("config_storage_load", 0x2D638, [
+        sa_load("o0"),
+        sa_load("o1", one=sa_old(0x4D)),
+        sa_load("o2", one=sa_old(None), two=sa_old(0x4D, seed=0x35), flip1=((0x13, 0x08),)),
+        sa_load("o3", one=sa_old(0x4D), two=sa_old(None, seed=0x35), flip1=((0x13, 0x08),), flip2=((0x21, 0x10),)),
+        sa_load("o4", one=sa_old(None), two=sa_old(0x4D, seed=0x35)),
+        sa_load("o5", one=sa_old(None), two=sa_old(0x4D, seed=0x35), flip1=((0x13, 0x08),), flip2=((0x21, 0x10),)),
+        sa_load("o6", one=sa_old(0x4D), flip5=((3, 0x55),)),
+        sa_load("o7", one=sa_old(0x4C)),
+    ], allow_calls=SA_READ_REAL, eax_mask=0,
+       unhit_named={0x2D6DA: "the clear of 0x105DDC when the 5-byte read is below -1: 0x2E990 returns 1 "
+                             "(0x2EA1C) or -1 (0x2EA23) and nothing else"},
+       mutants=tuple("@" + m for m in "len53 cell5b nofb ge magicoff magicbe nomagic cell199 len4 dst "
+                                      "clear".split())),
+]
+
 D1_SPECS += SA_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
