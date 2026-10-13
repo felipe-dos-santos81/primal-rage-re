@@ -691,9 +691,9 @@ void game_mode_0a_step(void);
  * table 0 through config.h's hiscore_rank_probe (0x2DDE4): a rank < 10
  * clears config field 0x26 and records the rank in DS_001044D6, returning
  * 1, after arming the name-entry screen through nameentry_arm (0x204F4,
- * record §51-A); a rank >= 10 returns 0. The deferred field-0x27/0x26 audit
- * adds (0x2DAE4) are out of scope — see flow.c's header comment on this
- * function. */
+ * record §51-A); a rank >= 10 returns 0. It also posts the field-0x27 and
+ * field-0x26 audit adds (audit_add, 0x2DAE4) with their clamps at 2000 and
+ * 200 — see flow.c's header comment on this function. */
 u32 hiscore_rank_single(u32 score);
 
 /* 0x1ECC8 — record §49-R. Ranks both fighters' post-match scores
@@ -759,10 +759,10 @@ u32 hiscore_rank_pair(void);
  *   0x1EC38, and states 0xF/0x10, which store DS_00104B25 = 0xE/0xD, reset
  *   the screen, re-probe the other side's score through 0x1EC38 (return
  *   discarded) and prime nameentry_step for that side (return discarded).
- *   Two established gaps recur throughout, left as the same PORT: notes
+ *   One established gap recurs throughout, left as the same PORT: notes
  *   this codebase already uses elsewhere: every 0x2C3FC voice call (record
- *   §45-A) and, inside 0x1EC38, 0x2DAE4 (the deferred audit no-op, spec
- *   §7). EBX/ECX/EDX/ESI/EDI are pushed and popped. */
+ *   §45-A). Inside 0x1EC38 the audit adds 0x2DAE4 are real calls (track S
+ *   §S.6). EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void game_mode_1e_step(void);
 
 /* 0x208F8 — record §49-J. The mode 0x1F handler: the "roar" screen between
