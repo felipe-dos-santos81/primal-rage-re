@@ -32306,6 +32306,42 @@ D6A_SPECS += [
 ]
 
 D1_SPECS += D6A_SPECS
+
+# ---- track S batch sb (record 2026-10-13-reverse-s-derivations §S.6): the audit counters ---------------
+# 0x2D4EC (config_storage_touch) is a stub in every row: its body is another batch's.
+SB_SPECS = []
+SB_HIST = 0x00105ECC           # the byte below histogram 0 (0x105ECD, 0x14 counters), 1 (0x105EE1, 0x14), 2 (0x105EF5, 7)
+
+
+def sb_hist(flags=(0x80, 0x5A), more=None):
+    """The three histograms with the byte below and the byte above (0x105ECC..0x105EFC) seeded with
+    distinct non-zero bytes, and the dirty bytes 0x105DD8/0x105DD9 = `flags` between seeded bytes."""
+    p = {SB_HIST: bytes(0x41 + i for i in range(0x31)), 0x00105DD7: bytes([0x61, flags[0], flags[1], 0x62])}
+    p.update(more or {})
+    return p
+
+
+SB_SPECS += [
+    # 0x2E034 audit_counter_store: EAX = table, EDX = index, EBX = value (`and ebx,0xff` 0x2E08B: the plan's
+    # two-argument signature is corrected, record §S.6). A table >= 3 (`jb` 0x2E03D, unsigned: s4 is 3, s5
+    # -1) or an index >= the size word 0x2D444[table + 3] + 2 (`jb` 0x2E062, unsigned: s3 equal, s6 -1)
+    # returns -1. Else bit (table + 3) & 7 of the byte 0x105DD8 + ((table + 3) >> 3) is set, the byte
+    # [source + index] = BL, 0x2D4EC(table + 3) (a stub; its EAX is not read: `mov eax,ebx` 0x2E09B) and the
+    # result is the value's low byte.
+    Spec("audit_counter_store", 0x2E034, [
+        Case("s0", {"eax": 0, "edx": 0, "ebx": 0x12345678}, sb_hist(flags=(0x00, 0x5A))),
+        Case("s1", {"eax": 1, "edx": 0x13, "ebx": 0xFFFFFF00}, sb_hist(flags=(0xC1, 0x5A))),
+        Case("s2", {"eax": 2, "edx": 6, "ebx": 0x80}, sb_hist(), {0x2D4EC: 0x12345678}),
+        Case("s3", {"eax": 2, "edx": 7, "ebx": 0x80}, sb_hist()),
+        Case("s4", {"eax": 3, "edx": 0, "ebx": 0x99}, sb_hist()),
+        Case("s5", {"eax": 0xFFFFFFFF, "edx": 0, "ebx": 0x99}, sb_hist()),
+        Case("s6", {"eax": 1, "edx": 0xFFFFFFFF, "ebx": 0x99}, sb_hist()),
+    ], calls=(D5D_TOUCH,), eax_mask=0xFFFFFFFF,
+       mutants=tuple("@" + m for m in "tle tsigned ile isigned size kind bit nobit noand word nostore notouch "
+                                      "touchearly ret".split())),
+]
+
+D1_SPECS += SB_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

@@ -4374,6 +4374,62 @@ int test_config(void)
     return 0;
 }
 
+/* ---- the audit counters (track S batch sb, record §S.6) ---- */
+
+#define AU_LO      0x00105DA0u   /* saved: the config block, the flag bytes, the three histograms */
+#define AU_LEN     0x160u
+#define AU_H0      0x00105ECDu   /* histogram 0, 0x14 counters (0x2D45C) */
+#define AU_H1      0x00105EE1u   /* histogram 1, 0x14 counters (0x2D464) */
+#define AU_H2      0x00105EF5u   /* histogram 2, 7 counters (0x2D46C) */
+
+/* Seeds the three histograms and the two flag bytes with non-zero bytes that
+ * differ from every value the cases below store. */
+static void au_seed(void)
+{
+    for (u32 i = 0u; i < 0x2Fu; i++) DSB(AU_H0 + i) = (u8)(0x40u + i);
+    DSB(DS_00105DD8) = 0x80u;
+    DSB(DS_00105DD8 + 1u) = 0x5Au;
+}
+
+/* The bytes of AU_LO..AU_LO + AU_LEN that differ from `ref`. */
+static u32 au_changed(const u8 *ref)
+{
+    u32 n = 0u;
+    for (u32 i = 0u; i < AU_LEN; i++) n += DSB(AU_LO + i) != ref[i];
+    return n;
+}
+
+int test_audit(void)
+{
+    u8 saved[AU_LEN], ref[AU_LEN];
+    tf_snap(saved, AU_LO, AU_LEN);
+
+    /* Evidence lines (image only, not port logic): the three storage
+     * descriptors the counters go through. */
+    CHECK_EQ_INT((int)DSW(0x0002D45Eu), 0x14);
+    CHECK_EQ_INT((int)DSD(0x0002D460u), (int)AU_H0);
+    CHECK_EQ_INT((int)DSW(0x0002D46Eu), 7);
+    CHECK_EQ_INT((int)DSD(0x0002D470u), (int)AU_H2);
+
+    /* tables/store — 0x2E034: the value's low byte lands in the counter, the
+     * dirty bit table + 3 is set, the neighbours stay. */
+    au_seed();
+    CHECK_EQ_INT((int)audit_counter_store(1u, 0x13u, 0x1234u), 0x34);   /* 0x2E08B `and ebx,0xff` */
+    CHECK_EQ_INT((int)DSB(AU_H1 + 0x13u), 0x34);
+    CHECK_EQ_INT((int)DSB(AU_H1 + 0x12u), 0x40 + 0x14 + 0x12);
+    CHECK_EQ_INT((int)DSB(AU_H2), 0x40 + 0x28);
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x80 | 0x10);                   /* bit 1 + 3 */
+    CHECK_EQ_INT((int)DSB(DS_00105DD8 + 1u), 0x5A);
+    au_seed();
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counter_store(1u, 0x14u, 0x77u), -1);       /* 0x2E062 `jb`: index == size */
+    CHECK_EQ_INT((int)audit_counter_store(3u, 0u, 0x77u), -1);          /* 0x2E03D `jb`: table 3 */
+    CHECK_EQ_INT((int)au_changed(ref), 0);
+
+    tf_put(saved, AU_LO, AU_LEN);
+    return 0;
+}
+
 /* ---- test_anim.c ---- */
 
 /* port/tests/test_anim.c — the animation-stream interpreter (Task 7).

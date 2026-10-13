@@ -29325,6 +29325,48 @@ P45_OUTSIDE.update(D6A_OUTSIDE)
 D1_MASKS.update(D6A_MASKS)
 D1_KINDS.update(D6A_KINDS)
 D1_CASES.extend(D6A_CASES)
+# ---- track S batch sb (record 2026-10-13-reverse-s-derivations §S.6): the audit counters ----
+SB_MASKS = {
+    "audit_counter_store": 0xFFFFFFFF,
+}   # SB_MASKS end
+SB_KINDS = {
+    "audit_counter_store@tle": {'byte', 'call #0', 'eax'},
+    "audit_counter_store@tsigned": {'byte', 'call #0', 'eax'},
+    "audit_counter_store@ile": {'byte', 'call #0', 'eax'},
+    "audit_counter_store@isigned": {'byte', 'call #0', 'eax'},
+    "audit_counter_store@size": {'byte', 'call #0', 'eax'},
+    "audit_counter_store@kind": {'call #0'},
+    "audit_counter_store@bit": {'byte', 'call #0 memory'},
+    "audit_counter_store@nobit": {'byte', 'call #0 memory'},
+    "audit_counter_store@noand": {'eax'},
+    "audit_counter_store@word": {'byte', 'call #0 memory'},
+    "audit_counter_store@nostore": {'byte', 'call #0 memory'},
+    "audit_counter_store@notouch": {'call #0'},
+    "audit_counter_store@touchearly": {'call #0 memory'},
+    "audit_counter_store@ret": {'eax'},
+}   # SB_KINDS end
+SB_CASES = [
+    ("audit_counter_store@tle", ['s4']),
+    ("audit_counter_store@tsigned", ['s5']),
+    ("audit_counter_store@ile", ['s3']),
+    ("audit_counter_store@isigned", ['s6']),
+    ("audit_counter_store@size", ['s3']),
+    ("audit_counter_store@kind", ['s0', 's1', 's2']),
+    ("audit_counter_store@bit", ['s0', 's1', 's2']),
+    ("audit_counter_store@nobit", ['s0', 's1', 's2']),
+    ("audit_counter_store@noand", ['s0', 's1']),
+    ("audit_counter_store@word", ['s0', 's1', 's2']),
+    ("audit_counter_store@nostore", ['s0', 's1', 's2']),
+    ("audit_counter_store@notouch", ['s0', 's1', 's2']),
+    ("audit_counter_store@touchearly", ['s0', 's1', 's2']),
+    ("audit_counter_store@ret", ['s0', 's2']),
+]   # SB_CASES end
+SB_OUTSIDE = {}
+P45_OUTSIDE.update(SB_OUTSIDE)
+D1_MASKS.update(SB_MASKS)
+D1_KINDS.update(SB_KINDS)
+D1_CASES.extend(SB_CASES)
+# ---- sb pins end ----
 
 
 @needs_unicorn

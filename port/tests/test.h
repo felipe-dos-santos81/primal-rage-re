@@ -60,6 +60,7 @@ extern int g_failures;
     X(test_fight)       \
     X(test_pose_pool)   \
     X(test_config)      \
+    X(test_audit)       \
     X(test_cfg_helpers) \
     X(test_svcmenu)     \
     X(test_frontend)    \

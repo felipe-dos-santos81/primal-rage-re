@@ -41636,6 +41636,37 @@ static void b_d6a_52106(const u32 *r, u32 *eax) { gfx_screen_reset(r[R_EAX]); *e
 D6A_SR_MUT(no508, 1u) D6A_SR_MUT(no50c, 2u) D6A_SR_MUT(one, 3u) D6A_SR_MUT(e4twice, 4u) D6A_SR_MUT(byte, 5u)
 D6A_SR_MUT(short, 6u) D6A_SR_MUT(w50c, 7u)
 /* ---- d6a bindings end ---- */
+/* ---- track S batch sb (record 2026-10-13-reverse-s-derivations §S.6): the audit counters ---- */
+#define SB_STORE 0x0002D444u        /* the 8-byte storage descriptors {u16 cell, u16 size, u32 source} */
+#define SB_DESC  0x0002D414u        /* the 0x10-byte histogram descriptors */
+#define SB_DIRTY 0x00105DD8u
+
+/* 0x2E034 audit_counter_store: EAX = table, EDX = index, EBX = value. The mutants restate svcmenu.c's body.
+ * Every index a mutant follows stays in mem[]: @tle reaches descriptor 6 (0x105E34), @tsigned descriptor 2
+ * (0x105DE1), @isigned the byte below the source. */
+static u32 sb_2e034_core(u32 table, u32 index, u32 value, u32 mut)
+{
+    if (mut == 1u ? table > 3u : mut == 2u ? (s32)table >= 3 : table >= 3u) return 0xFFFFFFFFu;   /* @tle @tsigned */
+    const u32 s = table + 3u;
+    const u32 d = SB_STORE + 8u * s;
+    const u32 size = DSW(d + ((mut == 5u) ? 0u : 2u));                           /* @size */
+    if (mut == 3u ? index > size : mut == 4u ? (s32)index >= (s32)size : index >= size)   /* @ile @isigned */
+        return 0xFFFFFFFFu;
+    if (mut == 11u) config_storage_touch(s);                                     /* @touchearly */
+    if (mut != 8u) DSB(SB_DIRTY + (s >> 3)) |= (u8)(1u << (((mut == 7u) ? table : s) & 7u));   /* @nobit @bit */
+    if (mut != 9u) value &= 0xFFu;                                               /* @noand */
+    if (mut == 10u) DSW(DSD(d + 4u) + index) = (u16)value;                       /* @word */
+    else if (mut != 12u) DSB(DSD(d + 4u) + index) = (u8)value;                   /* @nostore */
+    if (mut != 11u && mut != 13u) config_storage_touch((mut == 6u) ? table : s); /* @notouch @kind */
+    return (mut == 14u) ? 0u : value;                                            /* @ret */
+}
+static void b_sb_2e034(const u32 *r, u32 *eax) { *eax = (u32)audit_counter_store(r[R_EAX], r[R_EDX], r[R_EBX]); }
+#define SB_CS_MUT(name, n) \
+    static void m_sb_cs_##name(const u32 *r, u32 *eax) { *eax = sb_2e034_core(r[R_EAX], r[R_EDX], r[R_EBX], n); }
+SB_CS_MUT(tle, 1u)   SB_CS_MUT(tsigned, 2u) SB_CS_MUT(ile, 3u)    SB_CS_MUT(isigned, 4u) SB_CS_MUT(size, 5u)
+SB_CS_MUT(kind, 6u)  SB_CS_MUT(bit, 7u)     SB_CS_MUT(nobit, 8u)  SB_CS_MUT(noand, 9u)   SB_CS_MUT(word, 10u)
+SB_CS_MUT(touchearly, 11u) SB_CS_MUT(nostore, 12u) SB_CS_MUT(notouch, 13u) SB_CS_MUT(ret, 14u)
+/* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -56589,6 +56620,23 @@ static const binding_t k_bindings[] = {
     { "gfx_screen_reset@short", m_d6a_sr_short, 0x00000000u },
     { "gfx_screen_reset@w50c", m_d6a_sr_w50c, 0x00000000u },
     /* d6a table end */
+    /* track S batch sb */
+    { "audit_counter_store",             b_sb_2e034, 0xFFFFFFFFu },
+    { "audit_counter_store@tle", m_sb_cs_tle, 0xFFFFFFFFu },
+    { "audit_counter_store@tsigned", m_sb_cs_tsigned, 0xFFFFFFFFu },
+    { "audit_counter_store@ile", m_sb_cs_ile, 0xFFFFFFFFu },
+    { "audit_counter_store@isigned", m_sb_cs_isigned, 0xFFFFFFFFu },
+    { "audit_counter_store@size", m_sb_cs_size, 0xFFFFFFFFu },
+    { "audit_counter_store@kind", m_sb_cs_kind, 0xFFFFFFFFu },
+    { "audit_counter_store@bit", m_sb_cs_bit, 0xFFFFFFFFu },
+    { "audit_counter_store@nobit", m_sb_cs_nobit, 0xFFFFFFFFu },
+    { "audit_counter_store@noand", m_sb_cs_noand, 0xFFFFFFFFu },
+    { "audit_counter_store@word", m_sb_cs_word, 0xFFFFFFFFu },
+    { "audit_counter_store@nostore", m_sb_cs_nostore, 0xFFFFFFFFu },
+    { "audit_counter_store@notouch", m_sb_cs_notouch, 0xFFFFFFFFu },
+    { "audit_counter_store@touchearly", m_sb_cs_touchearly, 0xFFFFFFFFu },
+    { "audit_counter_store@ret", m_sb_cs_ret, 0xFFFFFFFFu },
+    /* sb table end */
 };
 
 static const binding_t *find_binding(const char *name)

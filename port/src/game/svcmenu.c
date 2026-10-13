@@ -1339,6 +1339,25 @@ static s32 audit_bucket(u32 g, u32 i)
     return (s32)DSB(DSD(t + 4u) + i);                       /* 0x2E50A..0x2E510 */
 }
 
+/* 0x2E034 — record §S.6. EAX = table, EDX = index, EBX = value. -1 for a
+ * table >= 3 or an index >= the table's size (both `jb`, unsigned). Else
+ * the table's dirty bit (table + 3) is set in DS_00105DD8, the byte
+ * [source + index] = BL, 0x2D4EC(table + 3), and the result is the value's
+ * low byte (0x2E08B `and ebx,0xff`, 0x2E09B `mov eax,ebx`). */
+s32 audit_counter_store(u32 table, u32 index, u32 value)
+{
+    PR_SEAM_RET(0x2E034u, table, index, value);
+    if (table >= 3u) return -1;                             /* 0x2E03A/0x2E03D */
+    const u32 s = table + 3u;                               /* 0x2E06E */
+    const u32 d = AUDIT_STORE + 8u * s;                     /* 0x2E049..0x2E058 */
+    if (index >= DSW(d + 2u)) return -1;                    /* 0x2E05C..0x2E062 */
+    DSB(DS_00105DD8 + (s >> 3)) |= (u8)(1u << (s & 7u));    /* 0x2E071..0x2E082 */
+    value &= 0xFFu;                                         /* 0x2E08B */
+    DSB(DSD(d + 4u) + index) = (u8)value;                   /* 0x2E088/0x2E091 */
+    config_storage_touch(s);                                /* 0x2E094/0x2E096 0x2D4EC */
+    return (s32)value;                                      /* 0x2E09B */
+}
+
 /* 0x2E11C — record §K11.8. EAX = g. */
 u32 audit_hist_clear(u32 g)
 {
