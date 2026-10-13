@@ -41636,6 +41636,26 @@ static void b_d6a_52106(const u32 *r, u32 *eax) { gfx_screen_reset(r[R_EAX]); *e
 D6A_SR_MUT(no508, 1u) D6A_SR_MUT(no50c, 2u) D6A_SR_MUT(one, 3u) D6A_SR_MUT(e4twice, 4u) D6A_SR_MUT(byte, 5u)
 D6A_SR_MUT(short, 6u) D6A_SR_MUT(w50c, 7u)
 /* ---- d6a bindings end ---- */
+/* ---- track S batch sa (record 2026-10-13-reverse-s section S.5): the storage image and its validators ---- */
+
+/* 0x2D498 config_image_store: EAX = the address, DL = the byte. The mutants restate config.c's body. */
+static void sa_2d498_core(u32 addr, u32 v, u32 mut)
+{
+    u32 lo = (mut == 1u) ? 0x00100CE5u : (mut == 2u) ? 0x00100CE3u : 0x00100CE4u;    /* @lo @lo1 */
+    u32 hi = (mut == 3u) ? 0x001014DDu : (mut == 4u) ? 0x001014DBu : 0x001014DCu;    /* @hi @hi1 */
+    if (addr < lo || addr >= hi) {
+        if (mut != 6u) menu_fatal_error((mut == 7u) ? 0x00080AC8u : 0x00080AA8u);    /* @nofatal @msg */
+        if (mut != 8u) return;                                                       /* @both */
+    }
+    if (mut == 5u) DSW(addr) = (u16)v;                                               /* @width */
+    else DSB(addr) = (u8)v;
+}
+static void b_sa_2d498(const u32 *r, u32 *eax) { config_image_store(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define SA_IS_MUT(name, n) \
+    static void m_sa_is_##name(const u32 *r, u32 *eax) { sa_2d498_core(r[R_EAX], r[R_EDX], n); *eax = 0u; }
+SA_IS_MUT(lo, 1u) SA_IS_MUT(lo1, 2u) SA_IS_MUT(hi, 3u) SA_IS_MUT(hi1, 4u) SA_IS_MUT(width, 5u)
+SA_IS_MUT(nofatal, 6u) SA_IS_MUT(msg, 7u) SA_IS_MUT(both, 8u)
+/* ---- sa bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -56589,6 +56609,17 @@ static const binding_t k_bindings[] = {
     { "gfx_screen_reset@short", m_d6a_sr_short, 0x00000000u },
     { "gfx_screen_reset@w50c", m_d6a_sr_w50c, 0x00000000u },
     /* d6a table end */
+    /* track S batch sa */
+    { "config_image_store",              b_sa_2d498, 0x00000000u },
+    { "config_image_store@lo", m_sa_is_lo, 0x00000000u },
+    { "config_image_store@lo1", m_sa_is_lo1, 0x00000000u },
+    { "config_image_store@hi", m_sa_is_hi, 0x00000000u },
+    { "config_image_store@hi1", m_sa_is_hi1, 0x00000000u },
+    { "config_image_store@width", m_sa_is_width, 0x00000000u },
+    { "config_image_store@nofatal", m_sa_is_nofatal, 0x00000000u },
+    { "config_image_store@msg", m_sa_is_msg, 0x00000000u },
+    { "config_image_store@both", m_sa_is_both, 0x00000000u },
+    /* sa table end */
 };
 
 static const binding_t *find_binding(const char *name)

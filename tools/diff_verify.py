@@ -32306,6 +32306,40 @@ D6A_SPECS += [
 ]
 
 D1_SPECS += D6A_SPECS
+
+# ---- track S batch sa (record 2026-10-13-reverse-s section S.5): the storage image and its validators ----
+SA_SPECS = []
+SA_IMG, SA_IMG_END = 0x00100CE4, 0x001014DC     # the image: `cmp eax,0x100ce4` 0x2D498, `cmp eax,0x1014dc` 0x2D49F
+# 0x2EA68 `mov eax,1; jmp 0x62003`: the runtime's exit(1), which does not come back; the port's
+# menu_fatal_error returns (menu.c, PORT). A stub here returns to the instruction after the call, so a
+# row names 0x2EA68 only where those bytes do what the port does after it (seamed by this batch).
+SA_FATAL = E.Call(0x2EA68, ("eax",), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+
+
+def sa_store(cid, addr, edx):
+    """0x2D498: the five bytes around `addr` seeded (none is the byte stored)."""
+    return Case(cid, {**D2E_DIRTY, "eax": addr, "edx": edx}, {addr - 2: bytes([0xB1, 0xB2, 0xB3, 0xB4, 0xB5])})
+
+
+SA_SPECS += [
+    # 0x2D498 config_image_store: EAX = the address, DL = the byte (`mov [eax],dl` 0x2D4B0: e0 and e4 have
+    # the upper bytes of EDX set, e4 a zero DL). Stored when 0x100CE4 <= EAX < 0x1014DC (`jb` 0x2D49D, `jb`
+    # 0x2D4A4): e0 the first byte, e1 the last, e2 one below, e3 one past, e5 address 0x1000 above. Outside,
+    # `mov eax,0x80aa8; jmp 0x2ea68` (a stub: the tail jump's return is the function's). Mask 0: the one
+    # call site 0x2D612 is followed by `jmp 0x2d5c2`, where EAX is loaded (0x2D5CA) or the loop ends
+    # (`mov eax,1` 0x2D61C).
+    Spec("config_image_store", 0x2D498, [
+        sa_store("e0", SA_IMG, 0x12345634),
+        sa_store("e1", SA_IMG_END - 1, 0x00000056),
+        sa_store("e2", SA_IMG - 1, 0x00000077),
+        sa_store("e3", SA_IMG_END, 0x00000088),
+        sa_store("e4", 0x00101000, 0xFFFFFF00),
+        sa_store("e5", SA_IMG_END + 0x1000, 0x00000099),
+    ], calls=(SA_FATAL,), eax_mask=0,
+       mutants=tuple("@" + m for m in "lo lo1 hi hi1 width nofatal msg both".split())),
+]
+
+D1_SPECS += SA_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

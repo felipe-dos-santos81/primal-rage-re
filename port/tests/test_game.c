@@ -4374,6 +4374,37 @@ int test_config(void)
     return 0;
 }
 
+/* ---- track S batch sa: the storage image (record 2026-10-13-reverse-s §S.5) ---- */
+
+#define SA_IMG      0x00100CE4u     /* [0x2D48C]: the image */
+#define SA_IMG_LEN  0x7F8u          /* 0x1014DC - 0x100CE4 (0x2D49F) */
+
+int test_config_storage(void)
+{
+    int before = g_failures;
+    static u8 sv_img[SA_IMG_LEN + 2u];              /* 0x100CE3..0x1014DC */
+    memcpy(sv_img, mem + SA_IMG - 1u, sizeof sv_img);
+
+    {
+        /* store (0x2D498): DL alone goes to the first and the last image byte; the
+         * byte below the image and the byte past it are refused (`jb` 0x2D49D,
+         * `jb` 0x2D4A4). The fill is 0xA5 and no value stored is. */
+        mem_fill(SA_IMG - 1u, 0xA5u, SA_IMG_LEN + 2u);
+        config_image_store(SA_IMG, 0x1234u);
+        config_image_store(SA_IMG + SA_IMG_LEN - 1u, 0x56u);
+        config_image_store(SA_IMG - 1u, 0x77u);
+        config_image_store(SA_IMG + SA_IMG_LEN, 0x88u);
+        CHECK_EQ_INT(DSB(SA_IMG), 0x34);
+        CHECK_EQ_INT(DSB(SA_IMG + 1u), 0xA5);
+        CHECK_EQ_INT(DSB(SA_IMG + SA_IMG_LEN - 1u), 0x56);
+        CHECK_EQ_INT(DSB(SA_IMG - 1u), 0xA5);
+        CHECK_EQ_INT(DSB(SA_IMG + SA_IMG_LEN), 0xA5);
+    }
+
+    memcpy(mem + SA_IMG - 1u, sv_img, sizeof sv_img);
+    return g_failures - before;
+}
+
 /* ---- test_anim.c ---- */
 
 /* port/tests/test_anim.c — the animation-stream interpreter (Task 7).

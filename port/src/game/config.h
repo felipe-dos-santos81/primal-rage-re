@@ -45,6 +45,16 @@ void config_validate(void);
  * arm and 0x2DAE4 are not run by the port (declared no-op / deferred). */
 u32 config_codeword_len(u32 n);
 
+/* ---- the storage image (record 2026-10-13-reverse-s §S.1, §S.5) ------------
+ * 0x7F8 bytes at 0x100CE4..0x1014DB ([0x2D48C]). A record of `len` bytes is a
+ * codeword of config_codeword_len(len) cells, one byte per two-byte cell: the
+ * data at the positions that are neither 0 nor a power of two, position 2^j
+ * the XOR of the data whose position has bit j, position 0 the XOR of all. */
+
+/* 0x2D498. Stores the byte `value` at `addr` when 0x100CE4 <= addr < 0x1014DC;
+ * outside, the fatal exit 0x2EA68 (menu_fatal_error, which returns in the port). */
+void config_image_store(u32 addr, u32 value);
+
 /* 0x2D4EC. Maintains the EEPROM storage image at 0x80CE4, which the port does not
  * keep (no save/load I/O, spec §7). Its call sites are declared no-ops so a
  * later persistence cycle has them in place. It takes EAX only: 0x2D4F5

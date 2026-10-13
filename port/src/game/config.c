@@ -3,6 +3,7 @@
 
 #include "game/actors.h"
 #include "game/flow.h"
+#include "game/menu.h"
 #include "platform/gfx.h"
 #include "platform/input.h"
 #include "platform/render.h"
@@ -54,6 +55,19 @@ u32 config_field_get(u32 field)
     if (trail != 0u)
         value = (value << 8) | DSB(DS_00105DAF + trail);
     return value;
+}
+
+/* 0x2D498 — record 2026-10-13-reverse-s §S.5. EAX = the address, DL = the byte
+ * (0x2D4B0 `mov [eax],dl`). Inside 0x100CE4 <= address < 0x1014DC (`jb` 0x2D49D,
+ * `jb` 0x2D4A4) the byte is stored; outside, the fatal exit 0x2EA68 with the
+ * message 0x80AA8 "attempt to write outside eeprom" (a tail jump, 0x2D4A6/0x2D4AB). */
+void config_image_store(u32 addr, u32 value)
+{
+    if (addr < 0x00100CE4u || addr >= 0x001014DCu) {    /* 0x2D498..0x2D4A4 */
+        menu_fatal_error(0x00080AA8u);                  /* 0x2D4A6/0x2D4AB */
+        return;   /* PORT: 0x62003 does not return; the port drops the byte and its caller goes on. */
+    }
+    DSB(addr) = (u8)value;                              /* 0x2D4B0 */
 }
 
 /* 0x2D4EC. Maintains the EEPROM storage image at 0x80CE4, which the port does not

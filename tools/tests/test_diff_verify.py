@@ -29327,6 +29327,38 @@ D1_KINDS.update(D6A_KINDS)
 D1_CASES.extend(D6A_CASES)
 
 
+# S sa (record 2026-10-13-reverse-s section S.5): the storage image and its validators; measured pins
+SA_MASKS = {
+    "config_image_store": 0x0,
+}   # SA_MASKS end
+SA_KINDS = {
+    "config_image_store@lo": {'byte', 'call #0'},
+    "config_image_store@lo1": {'byte', 'call #0'},
+    "config_image_store@hi": {'byte', 'call #0'},
+    "config_image_store@hi1": {'byte', 'call #0'},
+    "config_image_store@width": {'byte'},
+    "config_image_store@nofatal": {'call #0'},
+    "config_image_store@msg": {'call #0'},
+    "config_image_store@both": {'byte'},
+}   # SA_KINDS end
+SA_CASES = [
+    ("config_image_store@lo", ['e0']),
+    ("config_image_store@lo1", ['e2']),
+    ("config_image_store@hi", ['e3']),
+    ("config_image_store@hi1", ['e1']),
+    ("config_image_store@width", ['e0', 'e1', 'e4']),
+    ("config_image_store@nofatal", ['e2', 'e3', 'e5']),
+    ("config_image_store@msg", ['e2', 'e3', 'e5']),
+    ("config_image_store@both", ['e2', 'e3', 'e5']),
+]   # SA_CASES end
+SA_OUTSIDE = {}
+P45_OUTSIDE.update(SA_OUTSIDE)
+D1_MASKS.update(SA_MASKS)
+D1_KINDS.update(SA_KINDS)
+D1_CASES.extend(SA_CASES)
+# S sa end
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -30390,6 +30422,9 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # S sa (record 2026-10-13-reverse-s section S.5): the stubs its rows add
+        0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"),
+        # S sa end
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
         0x51ED8: (), 0x2CCD0: (), 0x1AE20: (), 0x2CADC: ("edi",), 0x1D250: (), 0x1D270: (), 0x2EA78: ("edi", "ebp"),
         # D6 d6a end
