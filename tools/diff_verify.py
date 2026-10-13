@@ -32339,6 +32339,93 @@ SA_SPECS += [
        mutants=tuple("@" + m for m in "lo lo1 hi hi1 width nofatal msg both".split())),
 ]
 
+SA_DST = 0x0010A400                             # a destination in the image's zero BSS
+SA_BASE = 0x0002D48C                            # the dword that holds the image's address (0x2E99E, 0x2D4F7)
+
+
+def sa_n(length):
+    """The codeword length of a record: the loop of 0x2D4B4 (inline at 0x2E9A7 and 0x2D541)."""
+    a = 1
+    while True:
+        length += 1
+        if a >= length:
+            return length
+        a += a
+
+
+def sa_codeword(data):
+    """The cells of the record `data`: a fixture built from the layout the two rows below measure
+    (0x2E9E0..0x2EA05 read side, 0x2D5C2..0x2D61C write side); every expectation comes from the
+    original's run, not from this."""
+    n = sa_n(len(data))
+    cw, it = [0] * n, iter(data)
+    for pos in range(n):
+        if pos & (pos - 1):
+            cw[pos] = next(it)
+            for j in range(pos.bit_length()):
+                if pos >> j & 1:
+                    cw[1 << j] ^= cw[pos]
+    for pos in range(1, n):
+        cw[0] ^= cw[pos]
+    return cw
+
+
+def sa_cells(cell, cw, base=SA_IMG, flips=(), pad=0xEE):
+    """Pokes: the codeword `cw` from cell `cell`, two bytes a cell, the second byte of each (never read:
+    `sub esi,2` 0x2E9D4) `pad`; `flips` is ((position, xor), ...)."""
+    cw = list(cw)
+    for pos, x in flips:
+        cw[pos] ^= x
+    return d1d_chunks(base + 2 * cell, bytes(b for c in cw for b in (c, pad)))
+
+
+def sa_data(n, seed):
+    """`n` record bytes, none zero and none 0xEE."""
+    return bytes(1 + (seed + 5 * i) % 0xED for i in range(n))
+
+
+def sa_read(cid, cell, length, pokes, base=None):
+    """0x2E990: the destination seeded 0xD0.. from one byte below it to one byte past it."""
+    p = {**pokes, **d1d_chunks(SA_DST - 1, bytes(0xD0 | (i & 0xF) for i in range(length + 2)))}
+    if base is not None:
+        p[SA_BASE] = le32(base)
+    return Case(cid, {**D2E_DIRTY, "eax": cell, "edx": SA_DST, "ebx": length}, p)
+
+
+SA_REC26, SA_REC78, SA_REC53 = sa_data(0x26, 0x11), sa_data(0x78, 0x47), sa_data(0x53, 0x83)
+
+SA_SPECS += [
+    # 0x2E990 config_storage_read: EAX = the cell, EDX = the destination, EBX = the length. The codeword
+    # of n cells (the loop 0x2E9A7..0x2E9B3 on the length: l0..l4 are the lengths 0..4, n = 1, 4, 6, 7, 8)
+    # starts at [0x2D48C] + 2 * cell (b0 has another base and a cell above 0xFFFF) and is read one byte
+    # per two (every second byte is 0xEE here). The cells at the positions that are neither 0 nor a power
+    # of two fill the destination from its end (the bytes around it are seeded), whatever the check finds
+    # (d0, p0); every cell is XORed into the syndrome byte 0 and into byte 1 + j for each bit j of its
+    # position; 1 when the eight bytes are zero, else -1. z0 reads the image's zeros, r0..r2 good records
+    # of 0x26, 0x78 and 0x53 bytes, d0 one with a data cell changed, p0 with the cell 1 changed; y0..y7
+    # leave exactly one syndrome byte non-zero (y0: cell 0 changed; yk: cells 0 and 2^(k-1) changed by the
+    # same byte). 0x61A70 (the syndrome's clear) runs on the original's side. Mask full: every caller
+    # compares EAX (0x2D653, 0x2D67A, 0x2D6D5, 0x2D72E, 0x2D74A, 0x2D8E4, 0x2DF0D, 0x2DFC5).
+    Spec("config_storage_read", 0x2E990, [
+        sa_read("z0", 0x199, 5, {}),
+        sa_read("r0", 0x1A3, 0x26, sa_cells(0x1A3, sa_codeword(SA_REC26))),
+        sa_read("r1", 0xF6, 0x78, sa_cells(0xF6, sa_codeword(SA_REC78))),
+        sa_read("r2", 0x5B, 0x53, sa_cells(0x5B, sa_codeword(SA_REC53))),
+        sa_read("d0", 0x1A3, 0x26, sa_cells(0x1A3, sa_codeword(SA_REC26), flips=((0x15, 0x40),))),
+        sa_read("p0", 0x1A3, 0x26, sa_cells(0x1A3, sa_codeword(SA_REC26), flips=((1, 0x01),))),
+        sa_read("y0", 0xF6, 0x78, sa_cells(0xF6, sa_codeword(SA_REC78), flips=((0, 0x80),))),
+        *[sa_read("y%d" % k, 0xF6, 0x78,
+                  sa_cells(0xF6, sa_codeword(SA_REC78), flips=((0, 0x21), (1 << (k - 1), 0x21))))
+          for k in range(1, 8)],
+        sa_read("l0", 0x10, 0, {}),
+        sa_read("l0x", 0x10, 0, {SA_IMG + 0x20: b"\x01\xee"}),
+        *[sa_read("l%d" % n, 0x20, n, sa_cells(0x20, sa_codeword(sa_data(n, 0x31 * n)))) for n in range(1, 5)],
+        sa_read("b0", 0x00010100, 0x26, sa_cells(0x00010100, sa_codeword(SA_REC26), base=0x000E0000),
+                base=0x000E0000),
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7),
+       mutants=tuple("@" + m for m in "stride cell1 base n nge asc pos0 syn0 syn7 bit le ret nowrite or".split())),
+]
+
 D1_SPECS += SA_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

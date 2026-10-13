@@ -41655,6 +41655,47 @@ static void b_sa_2d498(const u32 *r, u32 *eax) { config_image_store(r[R_EAX], r[
     static void m_sa_is_##name(const u32 *r, u32 *eax) { sa_2d498_core(r[R_EAX], r[R_EDX], n); *eax = 0u; }
 SA_IS_MUT(lo, 1u) SA_IS_MUT(lo1, 2u) SA_IS_MUT(hi, 3u) SA_IS_MUT(hi1, 4u) SA_IS_MUT(width, 5u)
 SA_IS_MUT(nofatal, 6u) SA_IS_MUT(msg, 7u) SA_IS_MUT(both, 8u)
+
+/* 0x2E990 config_storage_read: EAX = the cell, EDX = the destination (a mem[] offset here), EBX = the
+ * length. The mutants restate config.c's body. */
+static u32 sa_2e990_core(u32 cell, u32 dst, u32 len, u32 mut)
+{
+    u32 base = (mut == 3u) ? 0x00100CE4u : DSD(0x0002D48Cu);                     /* @base */
+    u32 step = (mut == 1u) ? 1u : 2u;                                            /* @stride */
+    u32 at = cell * ((mut == 2u) ? 1u : 2u) + base;                              /* @cell1 */
+    u32 n = config_codeword_len(len);
+    if (mut == 4u) n = len + 8u;                                                 /* @n */
+    if (mut == 5u) { u32 a = 1u; n = len; for (;;) { n++; if ((s32)a > (s32)n) break; a += a; } }   /* @nge */
+    if ((s32)n > 0x80) return 0xFFFFFFFFu;
+    u8 syn[8] = { 0 }, buf[0x80];
+    u32 left = len, up = 0u;
+    at += n * step;
+    for (s32 pos = (s32)n - 1; pos >= 0; pos--) {
+        at -= step;
+        u8 b = DSB(at);
+        int data = (pos & (pos - 1)) != 0 || (mut == 7u && pos == 0);            /* @pos0 */
+        if (data) {
+            if (mut == 6u) buf[up++] = b;                                        /* @asc */
+            else buf[--left & 0x7Fu] = b, up++;
+        }
+        if (mut == 14u) syn[0] |= b; else syn[0] ^= b;                           /* @or */
+        for (s32 bit = 1, j = (mut == 10u) ? 0 : 1; (mut == 11u) ? bit < pos : bit <= pos; bit += bit, j++)   /* @bit @le */
+            if ((bit & pos) != 0) syn[j] ^= b;
+    }
+    u8 any = 0u;
+    for (s32 i = (mut == 9u) ? 6 : 7; i >= ((mut == 8u) ? 1 : 0); i--) any |= syn[i];   /* @syn7 @syn0 */
+    if (mut == 13u && any != 0u) return 0xFFFFFFFFu;                             /* @nowrite */
+    /* the data bytes go to the destination's end: `up` of them, the last at dst + len - 1 */
+    if (mut == 6u) for (u32 k = 0u; k < up; k++) DSB(dst + k) = buf[k];
+    else for (u32 k = 0u; k < up; k++) DSB(dst + len - 1u - k) = buf[(len - 1u - k) & 0x7Fu];
+    return any != 0u ? ((mut == 12u) ? 0u : 0xFFFFFFFFu) : 1u;                   /* @ret */
+}
+static void b_sa_2e990(const u32 *r, u32 *eax) { *eax = (u32)config_storage_read(r[R_EAX], mem + r[R_EDX], r[R_EBX]); }
+#define SA_RD_MUT(name, n) \
+    static void m_sa_rd_##name(const u32 *r, u32 *eax) { *eax = sa_2e990_core(r[R_EAX], r[R_EDX], r[R_EBX], n); }
+SA_RD_MUT(stride, 1u) SA_RD_MUT(cell1, 2u) SA_RD_MUT(base, 3u) SA_RD_MUT(n, 4u)   SA_RD_MUT(nge, 5u)
+SA_RD_MUT(asc, 6u)    SA_RD_MUT(pos0, 7u)  SA_RD_MUT(syn0, 8u) SA_RD_MUT(syn7, 9u) SA_RD_MUT(bit, 10u)
+SA_RD_MUT(le, 11u)    SA_RD_MUT(ret, 12u)  SA_RD_MUT(nowrite, 13u) SA_RD_MUT(or, 14u)
 /* ---- sa bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56619,6 +56660,21 @@ static const binding_t k_bindings[] = {
     { "config_image_store@nofatal", m_sa_is_nofatal, 0x00000000u },
     { "config_image_store@msg", m_sa_is_msg, 0x00000000u },
     { "config_image_store@both", m_sa_is_both, 0x00000000u },
+    { "config_storage_read",             b_sa_2e990, 0xFFFFFFFFu },
+    { "config_storage_read@stride", m_sa_rd_stride, 0xFFFFFFFFu },
+    { "config_storage_read@cell1", m_sa_rd_cell1, 0xFFFFFFFFu },
+    { "config_storage_read@base", m_sa_rd_base, 0xFFFFFFFFu },
+    { "config_storage_read@n", m_sa_rd_n, 0xFFFFFFFFu },
+    { "config_storage_read@nge", m_sa_rd_nge, 0xFFFFFFFFu },
+    { "config_storage_read@asc", m_sa_rd_asc, 0xFFFFFFFFu },
+    { "config_storage_read@pos0", m_sa_rd_pos0, 0xFFFFFFFFu },
+    { "config_storage_read@syn0", m_sa_rd_syn0, 0xFFFFFFFFu },
+    { "config_storage_read@syn7", m_sa_rd_syn7, 0xFFFFFFFFu },
+    { "config_storage_read@bit", m_sa_rd_bit, 0xFFFFFFFFu },
+    { "config_storage_read@le", m_sa_rd_le, 0xFFFFFFFFu },
+    { "config_storage_read@ret", m_sa_rd_ret, 0xFFFFFFFFu },
+    { "config_storage_read@nowrite", m_sa_rd_nowrite, 0xFFFFFFFFu },
+    { "config_storage_read@or", m_sa_rd_or, 0xFFFFFFFFu },
     /* sa table end */
 };
 

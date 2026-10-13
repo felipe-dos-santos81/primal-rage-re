@@ -12,6 +12,7 @@
 #include "../symbols.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 /* 0x2D974. The walk mirrors the raw exactly (spec §3): the descriptor gives a bit
@@ -55,6 +56,50 @@ u32 config_field_get(u32 field)
     if (trail != 0u)
         value = (value << 8) | DSB(DS_00105DAF + trail);
     return value;
+}
+
+/* The seam argument of a destination pointer: its mem[] offset, the original's
+ * linear address, or 0xFFFFFFFF for a C array (the raw's own frame, 0x2D648,
+ * 0x2D671, 0x2D743), which no spec can name. */
+static u32 storage_dst_arg(const u8 *dst)
+{
+    uintptr_t d = (uintptr_t)dst, base = (uintptr_t)mem;
+    return d >= base && d - base < MEM_SIZE ? (u32)(d - base) : 0xFFFFFFFFu;
+}
+
+/* 0x2E990 — record 2026-10-13-reverse-s §S.5. EAX = the cell, EDX = the
+ * destination, EBX = the length. Decodes the codeword of n cells (0x2D4B4's
+ * loop on the length, inline at 0x2E9A7..0x2E9B3) that starts at [0x2D48C] +
+ * 2 * cell, from its last cell down: a cell at a position that is neither 0
+ * nor a power of two is a data byte, stored from the end of the destination
+ * down (0x2E9E0..0x2E9E7), whatever the check finds; every cell is XORed into
+ * the syndrome byte 0 and into byte 1 + j for each bit j of its position
+ * (0x2E9E8..0x2EA03). Returns 1 when the eight syndrome bytes are zero
+ * (0x2EA1C), else -1 (0x2EA23). EBX and EDX are not preserved. */
+s32 config_storage_read(u32 cell, u8 *dst, u32 len)
+{
+    PR_SEAM_RET(0x2E990u, cell, storage_dst_arg(dst), len);
+    u32 at = cell * 2u + DSD(0x0002D48Cu);              /* 0x2E997..0x2E9A5 */
+    u32 n = config_codeword_len(len);                   /* 0x2E9A7..0x2E9B3 */
+    /* PORT: past 0x80 cells a position has bit 7 and the raw XORs it into the
+     * low byte of its own pointer at [esp+8] (0x2E9FC with EDX = ESP + 8), so
+     * the result depends on the stack address. The kind table's longest record
+     * is 0x78 bytes (0x80 cells) and no caller passes more; the port refuses. */
+    if ((s32)n > 0x80) return -1;
+    u8 syn[8] = { 0 };                                  /* 0x2E9B5..0x2E9C3 0x61A70(esp, 0, 8) */
+    u32 left = len;                                     /* 0x2E9B7: EDI = dst + len */
+    at += n * 2u;                                       /* 0x2E9CA/0x2E9CD */
+    for (s32 pos = (s32)n - 1; pos >= 0; pos--) {       /* 0x2E9D3..0x2E9D9 */
+        at -= 2u;                                       /* 0x2E9D4 */
+        u8 b = DSB(at);                                 /* 0x2E9DE */
+        if ((pos & (pos - 1)) != 0) dst[--left] = b;    /* 0x2E9DB..0x2E9E7 */
+        syn[0] ^= b;                                    /* 0x2E9E8 */
+        for (s32 bit = 1, j = 1; bit <= pos; bit += bit, j++)   /* 0x2E9EB..0x2EA03 */
+            if ((bit & pos) != 0) syn[j] ^= b;          /* 0x2E9F8..0x2E9FC */
+    }
+    u8 any = 0u;
+    for (s32 i = 7; i >= 0; i--) any |= syn[i];         /* 0x2EA07..0x2EA16 */
+    return any != 0u ? -1 : 1;                          /* 0x2EA18..0x2EA23 */
 }
 
 /* 0x2D498 — record 2026-10-13-reverse-s §S.5. EAX = the address, DL = the byte

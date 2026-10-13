@@ -29330,6 +29330,7 @@ D1_CASES.extend(D6A_CASES)
 # S sa (record 2026-10-13-reverse-s section S.5): the storage image and its validators; measured pins
 SA_MASKS = {
     "config_image_store": 0x0,
+    "config_storage_read": 0xFFFFFFFF,
 }   # SA_MASKS end
 SA_KINDS = {
     "config_image_store@lo": {'byte', 'call #0'},
@@ -29340,6 +29341,20 @@ SA_KINDS = {
     "config_image_store@nofatal": {'call #0'},
     "config_image_store@msg": {'call #0'},
     "config_image_store@both": {'byte'},
+    "config_storage_read@stride": {'byte', 'eax'},
+    "config_storage_read@cell1": {'byte', 'eax'},
+    "config_storage_read@base": {'byte'},
+    "config_storage_read@n": {'byte'},
+    "config_storage_read@nge": {'byte', 'eax'},
+    "config_storage_read@asc": {'byte'},
+    "config_storage_read@pos0": {'byte'},
+    "config_storage_read@syn0": {'eax'},
+    "config_storage_read@syn7": {'eax'},
+    "config_storage_read@bit": {'eax'},
+    "config_storage_read@le": {'eax'},
+    "config_storage_read@ret": {'eax'},
+    "config_storage_read@nowrite": {'byte'},
+    "config_storage_read@or": {'eax'},
 }   # SA_KINDS end
 SA_CASES = [
     ("config_image_store@lo", ['e0']),
@@ -29350,6 +29365,20 @@ SA_CASES = [
     ("config_image_store@nofatal", ['e2', 'e3', 'e5']),
     ("config_image_store@msg", ['e2', 'e3', 'e5']),
     ("config_image_store@both", ['e2', 'e3', 'e5']),
+    ("config_storage_read@stride", ['b0', 'd0', 'l1', 'l2', 'l3', 'l4', 'p0', 'r0', 'r1', 'r2', 'y0', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7']),
+    ("config_storage_read@cell1", ['b0', 'd0', 'l0x', 'l1', 'l2', 'l3', 'l4', 'p0', 'r0', 'r1', 'r2', 'y0', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7']),
+    ("config_storage_read@base", ['b0']),
+    ("config_storage_read@n", ['b0', 'd0', 'l0', 'l0x', 'l1', 'l2', 'l3', 'l4', 'p0', 'r0', 'z0']),
+    ("config_storage_read@nge", ['r1', 'y0', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7']),
+    ("config_storage_read@asc", ['b0', 'd0', 'l2', 'l3', 'l4', 'p0', 'r0', 'r1', 'r2', 'y0', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7']),
+    ("config_storage_read@pos0", ['b0', 'd0', 'l0', 'l0x', 'l1', 'l2', 'l3', 'l4', 'p0', 'r0', 'r1', 'r2', 'y0', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7', 'z0']),
+    ("config_storage_read@syn0", ['l0x', 'y0']),
+    ("config_storage_read@syn7", ['y7']),
+    ("config_storage_read@bit", ['p0']),
+    ("config_storage_read@le", ['b0', 'l1', 'l2', 'l3', 'l4', 'r0', 'r1', 'r2']),
+    ("config_storage_read@ret", ['d0', 'l0x', 'p0', 'y0', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7']),
+    ("config_storage_read@nowrite", ['d0', 'p0', 'y0', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7']),
+    ("config_storage_read@or", ['b0', 'l1', 'l2', 'l3', 'l4', 'r0', 'r1', 'r2']),
 ]   # SA_CASES end
 SA_OUTSIDE = {}
 P45_OUTSIDE.update(SA_OUTSIDE)

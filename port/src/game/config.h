@@ -51,6 +51,11 @@ u32 config_codeword_len(u32 n);
  * data at the positions that are neither 0 nor a power of two, position 2^j
  * the XOR of the data whose position has bit j, position 0 the XOR of all. */
 
+/* 0x2E990. Decodes the `len`-byte record at cell `cell` into `dst` (a pointer:
+ * the raw's callers pass globals and their own frames) and returns 1 when its
+ * check bytes agree, -1 otherwise; the bytes are stored either way. */
+s32 config_storage_read(u32 cell, u8 *dst, u32 len);
+
 /* 0x2D498. Stores the byte `value` at `addr` when 0x100CE4 <= addr < 0x1014DC;
  * outside, the fatal exit 0x2EA68 (menu_fatal_error, which returns in the port). */
 void config_image_store(u32 addr, u32 value);
