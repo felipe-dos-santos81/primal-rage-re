@@ -1376,6 +1376,37 @@ s32 audit_counters_halve(u32 table)
     return 0;                                               /* 0x2E112 */
 }
 
+/* 0x2E180 — record §S.6. EAX = table, EDX = index, EBX = the addend. The
+ * counter is read as 0x2E034 would store it: -1 for a table >= 3 or an
+ * index >= the size (both `jb`), which is returned (0x2E1B9 `jl`). The sum
+ * above 0xFF, signed (0x2E1C3 `jle`): for t = 2 down to 0, each table whose
+ * bit t is set in the mask word 0x2D420 + 0x10 * table is halved through
+ * 0x2E0A4, a negative result returning -1 with nothing stored (0x2E1F2
+ * `jge`); then the sum is halved (0x2E203 `sar`). The sum is stored through
+ * 0x2E034 and returned whole (0x2E210 `mov eax,esi`). */
+s32 audit_counter_add(u32 table, u32 index, u32 add)
+{
+    PR_SEAM_RET(0x2E180u, table, index, add);
+    s32 v = -1;                                             /* 0x2E18D, 0x2E1A9 */
+    if (table < 3u) {                                       /* 0x2E188/0x2E18B */
+        const u32 d = AUDIT_STORE + 8u * (table + 3u);      /* 0x2E194..0x2E19A */
+        if (index < DSW(d + 2u))                            /* 0x2E19F..0x2E1A7 */
+            v = (s32)DSB(DSD(d + 4u) + index);              /* 0x2E1B0/0x2E1B3 `movzx` */
+    }
+    if (v < 0) return v;                                    /* 0x2E1B7/0x2E1B9 */
+    v += (s32)add;                                          /* 0x2E1BB */
+    if (v > 0xFF) {                                         /* 0x2E1BD/0x2E1C3 */
+        const u32 mask = DSW(AUDIT_DESC + 0x10u * table + 0xCu);   /* 0x2E1C5..0x2E1D6 */
+        for (s32 t = 2; t >= 0; t--) {                      /* 0x2E1D1, 0x2E1FE..0x2E201 */
+            if ((mask & (1u << t)) == 0u) continue;         /* 0x2E1DC..0x2E1E7 */
+            if (audit_counters_halve((u32)t) < 0) return -1;   /* 0x2E1E9..0x2E1F4 */
+        }
+        v >>= 1;                                            /* 0x2E203 */
+    }
+    (void)audit_counter_store(table, index, (u32)v);        /* 0x2E205..0x2E20B */
+    return v;                                               /* 0x2E210 */
+}
+
 /* 0x2E11C — record §K11.8. EAX = g. */
 u32 audit_hist_clear(u32 g)
 {

@@ -189,6 +189,12 @@ s32 audit_counter_store(u32 table, u32 index, u32 value);
  * bit and posts 0x2D4EC(table + 3). Returns 0, or -1 (nothing written) for
  * table >= 3 — 0x2E0A4. */
 s32 audit_counters_halve(u32 table);
+/* Adds `add` to counter `index` of histogram `table`. A sum above 0xFF
+ * (signed) first halves every table named by the descriptor's mask word
+ * (0x2D420 + 0x10 * table) and is itself halved. Returns the sum stored
+ * (whole, not its low byte), or -1 for table >= 3, index >= the size, or a
+ * failed halving — 0x2E180. */
+s32 audit_counter_add(u32 table, u32 index, u32 add);
 /* Prepares histogram `g`: copies its title (the template up to a tab or NUL)
  * into `buf` of `size` bytes, lays out the state block, sums the counters and
  * stores the largest in [max_out] and the median bucket in [median_out] (each

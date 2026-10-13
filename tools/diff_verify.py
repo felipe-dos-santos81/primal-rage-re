@@ -32359,6 +32359,38 @@ SB_SPECS += [
        mutants=tuple("@" + m for m in "tle tsigned sar two bit nobit short long size dowhile kind notouch "
                                       "touchearly ret".split())),
 ]
+SB_HALVE = E.Call(0x2E0A4, ("eax",))                                        # audit_counters_halve, seamed by this batch
+SB_STORE = E.Call(0x2E034, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))  # audit_counter_store, seamed by this batch
+SB_MASK = 0x0002D420                                                        # the mask word of histogram descriptor 0
+
+SB_SPECS += [
+    # 0x2E180 audit_counter_add: EAX = table, EDX = index, EBX = the addend. A table >= 3 (`jb` 0x2E18B: a5 is 3,
+    # a6 -1) or an index >= the size word (`jb` 0x2E1A7: a7 equal, a8 -1) gives -1, returned (`jl` 0x2E1B9).
+    # Else the counter, zero-extended (`movzx` 0x2E1B3: a0's is 0xC2), plus EBX. A sum <= 0xFF signed (`jle`
+    # 0x2E1C3: a1 is 0xFF, a4 negative) goes to 0x2E034(table, index, sum) and is returned whole. A larger
+    # one: for t = 2 down to 0, bit t of the mask word 0x2D420 + 0x10 * table (the image's are 1, 2, 4; a9
+    # and aa poke 7, ab 0xFFF8, ac 5) calls 0x2E0A4(t), whose negative EAX returns -1 at once (`jge` 0x2E1F2:
+    # aa -1, ac 0x80000000; a9 0x7FFFFFFF goes on); then the sum is halved and stored. Both callees are stubs;
+    # 0x2E034's EAX is not read (`mov eax,esi` 0x2E210 follows: a3, a9).
+    Spec("audit_counter_add", 0x2E180, [
+        Case("a0", {"eax": 0, "edx": 0, "ebx": 1}, sb_hist()),
+        Case("a1", {"eax": 1, "edx": 0x13, "ebx": 0x96}, sb_hist()),
+        Case("a2", {"eax": 1, "edx": 0x13, "ebx": 0x97}, sb_hist()),
+        Case("a3", {"eax": 2, "edx": 6, "ebx": 0x00012300}, sb_hist(), {0x2E034: 0x5A5A5A5A}),
+        Case("a4", {"eax": 0, "edx": 1, "ebx": 0xFFFFFF00}, sb_hist()),
+        Case("a5", {"eax": 3, "edx": 0, "ebx": 1}, sb_hist()),
+        Case("a6", {"eax": 0xFFFFFFFF, "edx": 0, "ebx": 1}, sb_hist()),
+        Case("a7", {"eax": 2, "edx": 7, "ebx": 1}, sb_hist()),
+        Case("a8", {"eax": 0, "edx": 0xFFFFFFFF, "ebx": 1}, sb_hist()),
+        Case("a9", {"eax": 0, "edx": 2, "ebx": 0x100}, sb_hist(more={SB_MASK: le16(7)}),
+             {0x2E0A4: 0x7FFFFFFF, 0x2E034: 0xFFFFFFFF}),
+        Case("aa", {"eax": 1, "edx": 2, "ebx": 0x100}, sb_hist(more={SB_MASK + 0x10: le16(7)}), {0x2E0A4: 0xFFFFFFFF}),
+        Case("ab", {"eax": 2, "edx": 2, "ebx": 0x101}, sb_hist(more={SB_MASK + 0x20: le16(0xFFF8)})),
+        Case("ac", {"eax": 2, "edx": 0, "ebx": 0x100}, sb_hist(more={SB_MASK + 0x20: le16(5)}), {0x2E0A4: 0x80000000}),
+    ], calls=(SB_HALVE, SB_STORE), eax_mask=0xFFFFFFFF,
+       mutants=tuple("@" + m for m in "tle tsigned ile isigned size sext addb ge unsigned maskoff maskrow up two "
+                                      "noabort eq nohalf nostore storeswap storeearly ret retbyte".split())),
+]
 
 D1_SPECS += SB_SPECS
 SPECS = [

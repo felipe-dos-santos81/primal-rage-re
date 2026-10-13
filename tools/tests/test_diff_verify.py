@@ -29329,6 +29329,7 @@ D1_CASES.extend(D6A_CASES)
 SB_MASKS = {
     "audit_counter_store": 0xFFFFFFFF,
     "audit_counters_halve": 0xFFFFFFFF,
+    "audit_counter_add": 0xFFFFFFFF,
 }   # SB_MASKS end
 SB_KINDS = {
     "audit_counter_store@tle": {'byte', 'call #0', 'eax'},
@@ -29359,6 +29360,27 @@ SB_KINDS = {
     "audit_counters_halve@notouch": {'call #0'},
     "audit_counters_halve@touchearly": {'call #0 memory'},
     "audit_counters_halve@ret": {'eax'},
+    "audit_counter_add@tle": {'call #0', 'eax'},
+    "audit_counter_add@tsigned": {'call #0', 'eax'},
+    "audit_counter_add@ile": {'call #0', 'eax'},
+    "audit_counter_add@isigned": {'call #0', 'eax'},
+    "audit_counter_add@size": {'call #0', 'eax'},
+    "audit_counter_add@sext": {'call #0', 'call #1', 'call #2', 'call #3', 'eax'},
+    "audit_counter_add@addb": {'call #0', 'call #1', 'call #2', 'call #3', 'eax'},
+    "audit_counter_add@ge": {'call #0', 'call #1', 'eax'},
+    "audit_counter_add@unsigned": {'call #0', 'call #1', 'eax'},
+    "audit_counter_add@maskoff": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "audit_counter_add@maskrow": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "audit_counter_add@up": {'call #0', 'call #2'},
+    "audit_counter_add@two": {'call #2', 'call #3'},
+    "audit_counter_add@noabort": {'call #1', 'call #2', 'call #3', 'eax'},
+    "audit_counter_add@eq": {'call #1', 'call #2', 'eax'},
+    "audit_counter_add@nohalf": {'call #0', 'call #1', 'call #3', 'eax'},
+    "audit_counter_add@nostore": {'call #0', 'call #1', 'call #3'},
+    "audit_counter_add@storeswap": {'call #0', 'call #1', 'call #3'},
+    "audit_counter_add@storeearly": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "audit_counter_add@ret": {'eax'},
+    "audit_counter_add@retbyte": {'eax'},
 }   # SB_KINDS end
 SB_CASES = [
     ("audit_counter_store@tle", ['s4']),
@@ -29389,6 +29411,27 @@ SB_CASES = [
     ("audit_counters_halve@notouch", ['h0', 'h1', 'h2', 'h5']),
     ("audit_counters_halve@touchearly", ['h0', 'h1', 'h2', 'h5']),
     ("audit_counters_halve@ret", ['h0', 'h1', 'h2', 'h5']),
+    ("audit_counter_add@tle", ['a5']),
+    ("audit_counter_add@tsigned", ['a6']),
+    ("audit_counter_add@ile", ['a7']),
+    ("audit_counter_add@isigned", ['a8']),
+    ("audit_counter_add@size", ['a7']),
+    ("audit_counter_add@sext", ['a0', 'a3', 'a9', 'aa', 'ab', 'ac']),
+    ("audit_counter_add@addb", ['a3', 'a4', 'a9', 'aa', 'ab', 'ac']),
+    ("audit_counter_add@ge", ['a1']),
+    ("audit_counter_add@unsigned", ['a4']),
+    ("audit_counter_add@maskoff", ['a2', 'a3', 'a9', 'ab']),
+    ("audit_counter_add@maskrow", ['a2', 'a3', 'ab', 'ac']),
+    ("audit_counter_add@up", ['a9', 'aa', 'ac']),
+    ("audit_counter_add@two", ['a9']),
+    ("audit_counter_add@noabort", ['aa', 'ac']),
+    ("audit_counter_add@eq", ['ac']),
+    ("audit_counter_add@nohalf", ['a2', 'a3', 'a9', 'ab']),
+    ("audit_counter_add@nostore", ['a0', 'a1', 'a2', 'a3', 'a4', 'a9', 'ab']),
+    ("audit_counter_add@storeswap", ['a1', 'a2', 'a3', 'a4', 'a9']),
+    ("audit_counter_add@storeearly", ['a2', 'a3', 'a9', 'aa', 'ab', 'ac']),
+    ("audit_counter_add@ret", ['a0', 'a1', 'a2', 'a3', 'a4', 'a9', 'ab']),
+    ("audit_counter_add@retbyte", ['a3', 'a4']),
 ]   # SB_CASES end
 SB_OUTSIDE = {}
 P45_OUTSIDE.update(SB_OUTSIDE)
@@ -30461,6 +30504,9 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # S sb (record 2026-10-13-reverse-s §S.6): the stubs its rows add
+        0x2E0A4: (), 0x2E034: ("ebx", "edx"),
+        # S sb end
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
         0x51ED8: (), 0x2CCD0: (), 0x1AE20: (), 0x2CADC: ("edi",), 0x1D250: (), 0x1D270: (), 0x2EA78: ("edi", "ebp"),
         # D6 d6a end

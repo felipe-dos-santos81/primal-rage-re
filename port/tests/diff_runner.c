@@ -41697,6 +41697,46 @@ static void b_sb_2e0a4(const u32 *r, u32 *eax) { *eax = (u32)audit_counters_halv
 SB_CH_MUT(tle, 1u)  SB_CH_MUT(tsigned, 2u) SB_CH_MUT(sar, 3u)  SB_CH_MUT(two, 4u)      SB_CH_MUT(bit, 5u)
 SB_CH_MUT(nobit, 6u) SB_CH_MUT(short, 7u)  SB_CH_MUT(long, 8u) SB_CH_MUT(size, 9u)     SB_CH_MUT(dowhile, 10u)
 SB_CH_MUT(kind, 11u) SB_CH_MUT(notouch, 12u) SB_CH_MUT(touchearly, 13u) SB_CH_MUT(ret, 14u)
+
+/* 0x2E180 audit_counter_add: EAX = table, EDX = index, EBX = the addend. The mutants restate svcmenu.c's
+ * body. @tle reads descriptor 6's block and @tsigned descriptor 2's; @isigned the byte below the source. */
+static u32 sb_2e180_core(u32 table, u32 index, u32 add, u32 mut)
+{
+    s32 v = -1;
+    if (mut == 1u ? table <= 3u : mut == 2u ? (s32)table < 3 : table < 3u) {     /* @tle @tsigned */
+        const u32 d = SB_STORE + 8u * (table + 3u);
+        const u32 size = DSW(d + ((mut == 5u) ? 0u : 2u));                       /* @size */
+        if (mut == 3u ? index <= size : mut == 4u ? (s32)index < (s32)size : index < size)   /* @ile @isigned */
+            v = (mut == 6u) ? (s32)(s8)DSB(DSD(d + 4u) + index) : (s32)DSB(DSD(d + 4u) + index);   /* @sext */
+    }
+    if (v < 0) return (u32)v;
+    v += (mut == 7u) ? (s32)(add & 0xFFu) : (s32)add;                            /* @addb */
+    if (mut == 19u) (void)audit_counter_store(table, index, (u32)v);             /* @storeearly */
+    if (mut == 8u ? v >= 0xFF : mut == 9u ? (u32)v > 0xFFu : v > 0xFF) {         /* @ge @unsigned */
+        const u32 mask = DSW(SB_DESC + ((mut == 11u) ? 8u : 0x10u) * table       /* @maskrow */
+                             + ((mut == 10u) ? 0xEu : 0xCu));                    /* @maskoff */
+        for (s32 i = 2; i >= ((mut == 13u) ? 1 : 0); i--) {                      /* @two */
+            const s32 t = (mut == 12u) ? 2 - i : i;                              /* @up */
+            if ((mask & (1u << t)) == 0u) continue;
+            const s32 h = (s32)audit_counters_halve((u32)t);
+            if (mut == 14u) continue;                                            /* @noabort */
+            if ((mut == 15u) ? h == -1 : h < 0) return 0xFFFFFFFFu;              /* @eq */
+        }
+        if (mut != 16u) v >>= 1;                                                 /* @nohalf */
+    }
+    u32 r = 0u;
+    if (mut == 18u) r = (u32)audit_counter_store(index, table, (u32)v);          /* @storeswap */
+    else if (mut != 17u && mut != 19u) r = (u32)audit_counter_store(table, index, (u32)v);   /* @nostore */
+    return (mut == 20u) ? r : (mut == 21u) ? ((u32)v & 0xFFu) : (u32)v;          /* @ret @retbyte */
+}
+static void b_sb_2e180(const u32 *r, u32 *eax) { *eax = (u32)audit_counter_add(r[R_EAX], r[R_EDX], r[R_EBX]); }
+#define SB_CA_MUT(name, n) \
+    static void m_sb_ca_##name(const u32 *r, u32 *eax) { *eax = sb_2e180_core(r[R_EAX], r[R_EDX], r[R_EBX], n); }
+SB_CA_MUT(tle, 1u)   SB_CA_MUT(tsigned, 2u)  SB_CA_MUT(ile, 3u)      SB_CA_MUT(isigned, 4u)  SB_CA_MUT(size, 5u)
+SB_CA_MUT(sext, 6u)  SB_CA_MUT(addb, 7u)     SB_CA_MUT(ge, 8u)       SB_CA_MUT(unsigned, 9u) SB_CA_MUT(maskoff, 10u)
+SB_CA_MUT(maskrow, 11u) SB_CA_MUT(up, 12u)   SB_CA_MUT(two, 13u)     SB_CA_MUT(noabort, 14u) SB_CA_MUT(eq, 15u)
+SB_CA_MUT(nohalf, 16u) SB_CA_MUT(nostore, 17u) SB_CA_MUT(storeswap, 18u) SB_CA_MUT(storeearly, 19u)
+SB_CA_MUT(ret, 20u)  SB_CA_MUT(retbyte, 21u)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56682,6 +56722,28 @@ static const binding_t k_bindings[] = {
     { "audit_counters_halve@notouch", m_sb_ch_notouch, 0xFFFFFFFFu },
     { "audit_counters_halve@touchearly", m_sb_ch_touchearly, 0xFFFFFFFFu },
     { "audit_counters_halve@ret", m_sb_ch_ret, 0xFFFFFFFFu },
+    { "audit_counter_add",               b_sb_2e180, 0xFFFFFFFFu },
+    { "audit_counter_add@tle", m_sb_ca_tle, 0xFFFFFFFFu },
+    { "audit_counter_add@tsigned", m_sb_ca_tsigned, 0xFFFFFFFFu },
+    { "audit_counter_add@ile", m_sb_ca_ile, 0xFFFFFFFFu },
+    { "audit_counter_add@isigned", m_sb_ca_isigned, 0xFFFFFFFFu },
+    { "audit_counter_add@size", m_sb_ca_size, 0xFFFFFFFFu },
+    { "audit_counter_add@sext", m_sb_ca_sext, 0xFFFFFFFFu },
+    { "audit_counter_add@addb", m_sb_ca_addb, 0xFFFFFFFFu },
+    { "audit_counter_add@ge", m_sb_ca_ge, 0xFFFFFFFFu },
+    { "audit_counter_add@unsigned", m_sb_ca_unsigned, 0xFFFFFFFFu },
+    { "audit_counter_add@maskoff", m_sb_ca_maskoff, 0xFFFFFFFFu },
+    { "audit_counter_add@maskrow", m_sb_ca_maskrow, 0xFFFFFFFFu },
+    { "audit_counter_add@up", m_sb_ca_up, 0xFFFFFFFFu },
+    { "audit_counter_add@two", m_sb_ca_two, 0xFFFFFFFFu },
+    { "audit_counter_add@noabort", m_sb_ca_noabort, 0xFFFFFFFFu },
+    { "audit_counter_add@eq", m_sb_ca_eq, 0xFFFFFFFFu },
+    { "audit_counter_add@nohalf", m_sb_ca_nohalf, 0xFFFFFFFFu },
+    { "audit_counter_add@nostore", m_sb_ca_nostore, 0xFFFFFFFFu },
+    { "audit_counter_add@storeswap", m_sb_ca_storeswap, 0xFFFFFFFFu },
+    { "audit_counter_add@storeearly", m_sb_ca_storeearly, 0xFFFFFFFFu },
+    { "audit_counter_add@ret", m_sb_ca_ret, 0xFFFFFFFFu },
+    { "audit_counter_add@retbyte", m_sb_ca_retbyte, 0xFFFFFFFFu },
     /* sb table end */
 };
 

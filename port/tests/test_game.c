@@ -4441,6 +4441,26 @@ int test_audit(void)
     CHECK_EQ_INT((int)audit_counters_halve(3u), -1);                    /* 0x2E0AD `jb` */
     CHECK_EQ_INT((int)au_changed(ref), 0);
 
+    /* add — 0x2E180: counter + n; past 0xFF the tables of the descriptor's
+     * mask word (0x2D420 + 0x10 * table: its own bit in the image) are halved
+     * and the sum >> 1 is stored. */
+    CHECK_EQ_INT((int)DSW(0x0002D420u), 1);                              /* evidence line (image only) */
+    au_seed();
+    DSB(AU_H0 + 3u) = 0xFEu;
+    DSB(AU_H0 + 4u) = 0x09u;
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counter_add(0u, 3u, 1u), 0xFF);              /* 0x2E1C3 `jle`: 0xFF stays */
+    CHECK_EQ_INT((int)DSB(AU_H0 + 3u), 0xFF);
+    CHECK_EQ_INT((int)au_changed(ref), 2);                               /* the counter and the flag */
+    CHECK_EQ_INT((int)audit_counter_add(0u, 3u, 1u), 0x80);              /* 0x100 >> 1, 0x2E203 */
+    CHECK_EQ_INT((int)DSB(AU_H0 + 3u), 0x80);
+    CHECK_EQ_INT((int)DSB(AU_H0 + 4u), 0x04);                            /* halved through 0x2E0A4 */
+    CHECK_EQ_INT((int)DSB(AU_H1), 0x40 + 0x14);                          /* table 1 is not in the mask */
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counter_add(3u, 0u, 1u), -1);                /* 0x2E18B `jb` */
+    CHECK_EQ_INT((int)audit_counter_add(2u, 7u, 1u), -1);                /* 0x2E1A7 `jb`: index == size */
+    CHECK_EQ_INT((int)au_changed(ref), 0);
+
     tf_put(saved, AU_LO, AU_LEN);
     return 0;
 }
