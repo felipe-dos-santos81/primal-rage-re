@@ -41899,6 +41899,12 @@ static void b_sb_32b00(const u32 *r, u32 *eax) { config_play_time_snap(r[R_EAX],
 SB_SA_MUT(kind, 1u) SB_SA_MUT(nopost, 2u) SB_SA_MUT(postearly, 3u) SB_SA_MUT(nostore, 4u) SB_SA_MUT(sdiv, 5u)
 SB_SA_MUT(div, 6u)  SB_SA_MUT(raw, 7u)    SB_SA_MUT(nosub, 8u)     SB_SA_MUT(argraw, 9u)  SB_SA_MUT(idx, 10u)
 SB_SA_MUT(other, 11u) SB_SA_MUT(wide, 12u)
+static void b_sb_32b4c(const u32 *r, u32 *eax) { config_play_time_snap_b(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define SB_SB_MUT(name, n) \
+    static void m_sb_sb_##name(const u32 *r, u32 *eax) { sb_snap_core(r[R_EAX], 0x00107480u, 0u, n); *eax = 0u; }
+SB_SB_MUT(kind, 1u) SB_SB_MUT(nopost, 2u) SB_SB_MUT(postearly, 3u) SB_SB_MUT(nostore, 4u) SB_SB_MUT(sdiv, 5u)
+SB_SB_MUT(div, 6u)  SB_SB_MUT(raw, 7u)    SB_SB_MUT(nosub, 8u)     SB_SB_MUT(argraw, 9u)  SB_SB_MUT(idx, 10u)
+SB_SB_MUT(other, 11u) SB_SB_MUT(wide, 12u)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -57004,6 +57010,19 @@ static const binding_t k_bindings[] = {
     { "config_play_time_snap_audit@idx", m_sb_sa_idx, 0x00000000u },
     { "config_play_time_snap_audit@other", m_sb_sa_other, 0x00000000u },
     { "config_play_time_snap_audit@wide", m_sb_sa_wide, 0x00000000u },
+    { "config_play_time_snap_b_audit",   b_sb_32b4c, 0x00000000u },
+    { "config_play_time_snap_b_audit@kind", m_sb_sb_kind, 0x00000000u },
+    { "config_play_time_snap_b_audit@nopost", m_sb_sb_nopost, 0x00000000u },
+    { "config_play_time_snap_b_audit@postearly", m_sb_sb_postearly, 0x00000000u },
+    { "config_play_time_snap_b_audit@nostore", m_sb_sb_nostore, 0x00000000u },
+    { "config_play_time_snap_b_audit@sdiv", m_sb_sb_sdiv, 0x00000000u },
+    { "config_play_time_snap_b_audit@div", m_sb_sb_div, 0x00000000u },
+    { "config_play_time_snap_b_audit@raw", m_sb_sb_raw, 0x00000000u },
+    { "config_play_time_snap_b_audit@nosub", m_sb_sb_nosub, 0x00000000u },
+    { "config_play_time_snap_b_audit@argraw", m_sb_sb_argraw, 0x00000000u },
+    { "config_play_time_snap_b_audit@idx", m_sb_sb_idx, 0x00000000u },
+    { "config_play_time_snap_b_audit@other", m_sb_sb_other, 0x00000000u },
+    { "config_play_time_snap_b_audit@wide", m_sb_sb_wide, 0x00000000u },
     /* sb table end */
 };
 

@@ -32543,6 +32543,23 @@ SB_SPECS += [
        unhit_named={0x32B0F: "the arm != 0 store: the config_play_time_snap row's"}, mutants=SB_SNAP_MUT),
 ]
 
+SB_SPECS += [
+    # 0x32B4C config_play_time_snap_b, the arm == 0 block: 0x32B00's on the dword 0x107480, posting to
+    # histogram 0 (`xor eax,eax` 0x32B76). r4's idx 5 reads the snapshot itself; r3's idx 3 reads 0x32B00's
+    # dword 0x107478. Mask 0: EAX at return is the stub's and no caller reads it (`xor eax,eax` 0x27E02,
+    # 0x27E10 or 0x27E1B; `xor eax,eax` 0x25F0B, or 0x25F6B returns it from the mode handler 0x25C88, void:
+    # the game_mode_05_step row).
+    Spec("config_play_time_snap_b_audit", 0x32B4C, [
+        Case("r0", {"eax": 1, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x33333333, 0x44444444)), {0x2E934: 0xFFFFFFFF}),
+        Case("r1", {"eax": 2, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x55555590, 0x44444444))),
+        Case("r2", {"eax": 2, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x55555591, 0x44444444)), {0x2E934: 0x12345678}),
+        Case("r3", {"eax": 3, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x33333333, 0x00012300), snap_b=0x00000100)),
+        Case("r4", {"eax": 5, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x33333333, 0x44444444))),
+        Case("r5", {"eax": 0, "edx": 0}, sb_snap((0x00012345, 0x22222222, 0x33333333, 0x44444444), snap_b=0x00000045)),
+    ], calls=(SB_POST,), eax_mask=0,
+       unhit_named={0x32B5B: "the arm != 0 store: the config_play_time_snap_b row's"}, mutants=SB_SNAP_MUT),
+]
+
 D1_SPECS += SB_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

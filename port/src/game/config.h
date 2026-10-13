@@ -129,8 +129,9 @@ void config_play_time_close(u32 mode, u32 flag);
 void config_play_time_snap(u32 idx, u32 arm);
 
 /* 0x32B4C (record §48-U). 0x32B00 on DS_00107480: `arm` != 0 stores
- * DS_0010746C[idx]; 0 stores (DS_0010746C[idx] - DS_00107480) / 0x3C, its
- * 0x2E934(0, t) audit post deferred (spec §7). Ported caller: 0x25EFD. */
+ * DS_0010746C[idx]; 0 stores (DS_0010746C[idx] - DS_00107480) / 0x3C and
+ * posts it through audit_post(0, t) (0x2E934). Ported callers: 0x25EFD and
+ * 0x27DEB. */
 void config_play_time_snap_b(u32 idx, u32 arm);
 
 /* ---- the audit adds (track S batch sb, record §S.6) ---------------------- */

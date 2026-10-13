@@ -29336,6 +29336,7 @@ SB_MASKS = {
     "audit_characters": 0x0,
     "config_play_time_close_audit": 0x0,
     "config_play_time_snap_audit": 0x0,
+    "config_play_time_snap_b_audit": 0x0,
 }   # SB_MASKS end
 SB_KINDS = {
     "audit_counter_store@tle": {'byte', 'call #0', 'eax'},
@@ -29479,6 +29480,18 @@ SB_KINDS = {
     "config_play_time_snap_audit@idx": {'byte', 'call #0', 'call #0 memory'},
     "config_play_time_snap_audit@other": {'byte', 'call #0', 'call #0 memory'},
     "config_play_time_snap_audit@wide": {'byte', 'call #0 memory'},
+    "config_play_time_snap_b_audit@kind": {'call #0'},
+    "config_play_time_snap_b_audit@nopost": {'call #0'},
+    "config_play_time_snap_b_audit@postearly": {'call #0 memory'},
+    "config_play_time_snap_b_audit@nostore": {'byte', 'call #0 memory'},
+    "config_play_time_snap_b_audit@sdiv": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_b_audit@div": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_b_audit@raw": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_b_audit@nosub": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_b_audit@argraw": {'call #0'},
+    "config_play_time_snap_b_audit@idx": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_b_audit@other": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_b_audit@wide": {'byte', 'call #0 memory'},
 }   # SB_KINDS end
 SB_CASES = [
     ("audit_counter_store@tle", ['s4']),
@@ -29622,6 +29635,18 @@ SB_CASES = [
     ("config_play_time_snap_audit@idx", ['q0', 'q1', 'q2', 'q3', 'q4']),
     ("config_play_time_snap_audit@other", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5']),
     ("config_play_time_snap_audit@wide", ['q0', 'q1', 'q2', 'q3']),
+    ("config_play_time_snap_b_audit@kind", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("config_play_time_snap_b_audit@nopost", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("config_play_time_snap_b_audit@postearly", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("config_play_time_snap_b_audit@nostore", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("config_play_time_snap_b_audit@sdiv", ['r0']),
+    ("config_play_time_snap_b_audit@div", ['r0', 'r2', 'r3', 'r5']),
+    ("config_play_time_snap_b_audit@raw", ['r0', 'r1', 'r2', 'r3', 'r5']),
+    ("config_play_time_snap_b_audit@nosub", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("config_play_time_snap_b_audit@argraw", ['r0', 'r1', 'r2', 'r3', 'r5']),
+    ("config_play_time_snap_b_audit@idx", ['r0', 'r1', 'r2', 'r3', 'r4']),
+    ("config_play_time_snap_b_audit@other", ['r0', 'r1', 'r2', 'r3', 'r4', 'r5']),
+    ("config_play_time_snap_b_audit@wide", ['r0', 'r1', 'r2', 'r4']),
 ]   # SB_CASES end
 SB_OUTSIDE = {}
 P45_OUTSIDE.update(SB_OUTSIDE)
