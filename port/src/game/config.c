@@ -58,9 +58,9 @@ u32 config_field_get(u32 field)
     return value;
 }
 
-/* The seam argument of a destination pointer: its mem[] offset, the original's
- * linear address, or 0xFFFFFFFF for a C array (the raw's own frame, 0x2D648,
- * 0x2D671, 0x2D743), which no spec can name. */
+/* PORT: the seam argument of a destination pointer: its mem[] offset, the
+ * original's linear address, or 0xFFFFFFFF for a C array (the raw's own frame,
+ * 0x2D648, 0x2D671, 0x2D743), which no spec can name. */
 static u32 storage_dst_arg(const u8 *dst)
 {
     uintptr_t d = (uintptr_t)dst, base = (uintptr_t)mem;
@@ -149,7 +149,7 @@ void config_storage_touch(u32 kind)
         menu_fatal_error(0x00080AE4u);                  /* 0x2D571/0x2D576 */
         return;                                         /* 0x2D57B/0x2D580 */
     }
-    u8 fr[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0x8Cu, 0xD4u, 0x02u, 0x00u };   /* +8: 0x2D4F7 */
+    u8 fr[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0x8Cu, 0xD4u, 0x02u, 0x00u };   /* 0x2D4F7: the pointer, at +8 */
     memset(fr, 0, n - len);                             /* 0x2D58F..0x2D59E 0x61A70: at most 12, n < 0x7F8 */
     u32 base = DSD((u32)fr[8] | ((u32)fr[9] << 8) | ((u32)fr[10] << 16) | ((u32)fr[11] << 24));   /* 0x2D5A3/0x2D5B0 */
     u32 at = n * 2u + (((cell * 2u) & 0xFFFFu) + base); /* 0x2D585..0x2D58B, 0x2D5AB..0x2D5BB */
@@ -286,7 +286,7 @@ void config_set_defaults(void)
 void config_storage_load(void)
 {
     PR_SEAM0(0x2D638u);
-    u8 a[0x51], b[0x51];                                /* [esp+0x54], [esp] */
+    u8 a[0x51], b[0x51];                                /* 0x2D648 [esp+0x54], 0x2D671 [esp] */
     s32 r = config_storage_read(0u, a, 0x51u);          /* 0x2D643..0x2D653 */
     if (r < 0) {                                        /* 0x2D655 */
         s32 r2 = config_storage_read(config_codeword_len(0x51u), b, 0x51u);   /* 0x2D659..0x2D678 */
@@ -381,13 +381,13 @@ void config_validate(void)
     DSB(DS_00105DA4) = 0u;                         /* 0x2D715 */
     config_storage_load();                         /* 0x2D71B */
     s32 r1 = config_storage_read(0u, mem + DS_00105DE1, 0x53u);   /* 0x2D720..0x2D72E */
-    u8 two[0x53];                                  /* [esp] */
+    u8 two[0x53];                                  /* 0x2D743: [esp] */
     s32 r2 = config_storage_read(config_codeword_len(0x53u), two, 0x53u);   /* 0x2D730..0x2D74A */
 
     if ((r1 < 0 || r2 < 0) && DSB(DS_0002D490) == 0u)   /* 0x2D74C..0x2D75B */
         return;                                    /* 0x2D75D..0x2D76A */
 
-    s32 r = r1;                                    /* ESI */
+    s32 r = r1;                                    /* 0x2D72E: ESI, the winner's result */
     if (r2 > r1) {                                 /* 0x2D76F */
         DSB(DS_00105DD8) |= 2u;                    /* 0x2D778..0x2D786 */
         memcpy(mem + DS_00105DE1, two, sizeof two);    /* 0x2D773..0x2D798 */
@@ -401,7 +401,7 @@ void config_validate(void)
     }
 
     /* 0x2D807..0x2D82D: the four bytes at DS_00105E30 read as a little-endian u32. */
-    u32 defaults = (DSD(DS_00105E30) != 0x9C94D2C4u || r < -1) ? 1u : 0u;   /* EBP */
+    u32 defaults = (DSD(DS_00105E30) != 0x9C94D2C4u || r < -1) ? 1u : 0u;   /* 0x2D727, 0x2D82D: EBP */
     if (defaults != 0u) {                          /* 0x2D832 */
         /* 0x2D83A: defaults. The two 0x61A70 calls clear the field buffer
          * 0x105DE1 (0x53 bytes: it holds DS_00105E2F and the magic) and the
