@@ -42286,6 +42286,9 @@ SB_CF_MUT(postlate, SB_M_AUDITLATE)
 /* ---- track S, batch sc (record 2026-10-13-reverse-s §S.7): the save file ---- */
 #include "host.h"
 #include <unistd.h>
+#include <signal.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
 /* The raw's file calls are `mov eax,<result>` in every case (diff_verify.py SC_SPECS); the port's are the
  * host's (host_save_read/_writable/_write), which no seam reaches. Each binding reads the case's results
  * from the poked bytes and gives the host a scratch save path whose state yields them. */
@@ -57891,17 +57894,109 @@ static u32 g_seam_addr, g_seam_arg, g_seam_nargs;
 
 /* Prints `<tag> <addr> <byte>` for every non-zero byte of mem[lo..hi), the range outside the image
  * where the load left zeros, and clears it when `clear` (the case's end) but not at a call. */
-static void scan_outside(u32 lo, u32 hi, char tag, int clear)
+/* Write tracking outside the image. Scanning the 63 MB above the image at every recorded call and at
+ * every case's end was most of a run's time, and nearly all of it is never written. The whole pages
+ * outside the image are read-only instead: the first write to one faults, the handler marks the page
+ * and lets the write through, and a scan visits the marked pages alone. Every byte that is not zero
+ * lies in a marked page (a store is the only way it changed; a page that is not zero when tracking
+ * starts is marked then), so the lines printed are the ones the full scan printed, in the same order.
+ * A system call that writes into a clean page (a read() straight into mem[]) fails with EFAULT
+ * instead of faulting: no binding does that outside the image. Without mprotect, or with a page size
+ * that does not divide mem[], tracking stays off and the scans are the full ones. */
+static u32 g_pg;                            /* the host's page size, 0 while tracking is off */
+static u32 g_trk_lo, g_trk_hi;              /* tracked: the pages of [0, g_trk_lo) and [g_trk_hi, MEM_SIZE) */
+static u8 g_dirty[MEM_SIZE / 0x1000u];      /* by page index */
+
+static void track_fault(int sig, siginfo_t *si, void *ctx)
+{
+    const uintptr_t at = (uintptr_t)si->si_addr, base = (uintptr_t)mem;
+    (void)ctx;
+    if (g_pg != 0u && at >= base && at - base < MEM_SIZE) {
+        const u32 off = (u32)(at - base) / g_pg * g_pg;
+        if ((off < g_trk_lo || off >= g_trk_hi) && !g_dirty[off / g_pg]
+            && mprotect(mem + off, g_pg, PROT_READ | PROT_WRITE) == 0) {
+            g_dirty[off / g_pg] = 1u;
+            return;                         /* the store runs again and succeeds */
+        }
+    }
+    signal(sig, SIG_DFL);                   /* not a tracked write: it faults again and ends the process */
+}
+
+static void scan_block(u32 a, u32 n, char tag, int clear)
+{
+    for (u32 i = 0; i < n; i++)
+        if (mem[a + i] != 0) {
+            printf("%c 0x%X 0x%02X\n", tag, a + i, mem[a + i]);
+            if (clear) mem[a + i] = 0;
+        }
+}
+
+static int block_is_zero(u32 a, u32 n)
 {
     static const u8 zero[0x10000];
+    for (; n != 0u; ) {
+        const u32 k = n < sizeof zero ? n : (u32)sizeof zero;
+        if (memcmp(mem + a, zero, k) != 0) return 0;
+        a += k; n -= k;
+    }
+    return 1;
+}
+
+static void track_start(void)
+{
+    const long pg = sysconf(_SC_PAGESIZE);
+    struct sigaction sa;
+    if (pg < 0x1000 || (MEM_SIZE % (u32)pg) != 0u || ((uintptr_t)mem % (uintptr_t)pg) != 0u) return;
+    const u32 p = (u32)pg, lo = CODE_BASE / p * p, hi = (CODE_BASE + g_len + p - 1u) / p * p;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = track_fault;
+    sa.sa_flags = SA_SIGINFO | SA_NODEFER;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGSEGV, &sa, NULL) != 0 || sigaction(SIGBUS, &sa, NULL) != 0) return;
+    for (u32 a = 0; a < MEM_SIZE; a += p) {
+        if (a >= lo && a < hi) continue;
+        if (!block_is_zero(a, p)) g_dirty[a / p] = 1u;          /* written before the cases: reported as before */
+        else if (mprotect(mem + a, p, PROT_READ) != 0) {         /* no tracking on this host: undo it */
+            (void)mprotect(mem, MEM_SIZE, PROT_READ | PROT_WRITE);
+            memset(g_dirty, 0, sizeof g_dirty);
+            return;
+        }
+    }
+    g_trk_lo = lo; g_trk_hi = hi; g_pg = p;
+}
+
+static void scan_outside(u32 lo, u32 hi, char tag, int clear)
+{
+    if (g_pg == 0u) {                                            /* tracking off: the full scan */
+        for (u32 a = lo; a < hi; ) {
+            u32 n = hi - a < 0x10000u ? hi - a : 0x10000u;
+            if (!block_is_zero(a, n)) scan_block(a, n, tag, clear);   /* a zero block: nothing written */
+            a += n;
+        }
+        return;
+    }
     for (u32 a = lo; a < hi; ) {
-        u32 n = hi - a < sizeof zero ? hi - a : (u32)sizeof zero;
-        if (memcmp(mem + a, zero, n) == 0) { a += n; continue; }      /* a zero block: nothing written */
-        for (u32 i = 0; i < n; i++)
-            if (mem[a + i] != 0) {
-                printf("%c 0x%X 0x%02X\n", tag, a + i, mem[a + i]);
-                if (clear) mem[a + i] = 0;
-            }
+        const u32 page = a / g_pg * g_pg;
+        const u32 n = (page + g_pg < hi ? page + g_pg : hi) - a;
+        if (page >= g_trk_lo && page < g_trk_hi) {               /* the image's edge pages: not tracked */
+            if (!block_is_zero(a, n)) scan_block(a, n, tag, clear);
+        } else if (g_dirty[page / g_pg]) {
+            scan_block(a, n, tag, clear);
+            if (clear && a == page && n == g_pg && mprotect(mem + page, g_pg, PROT_READ) == 0)
+                g_dirty[page / g_pg] = 0u;                       /* zero again: tracked afresh */
+        }
+        a += n;
+    }
+}
+
+/* The image's bytes that differ from `ref`, one `tag` line each, skipping the blocks that are equal. */
+static void scan_image(const u8 *ref, char tag)
+{
+    for (u32 a = 0; a < g_len; ) {
+        const u32 n = g_len - a < 0x1000u ? g_len - a : 0x1000u;
+        if (memcmp(mem + CODE_BASE + a, ref + a, n) != 0)
+            for (u32 i = a; i < a + n; i++)
+                if (mem[CODE_BASE + i] != ref[i]) printf("%c 0x%X 0x%02X\n", tag, CODE_BASE + i, mem[CODE_BASE + i]);
         a += n;
     }
 }
@@ -57912,8 +58007,7 @@ static void scan_outside(u32 lo, u32 hi, char tag, int clear)
 static void print_call_memory(void)
 {
     scan_outside(0, CODE_BASE, 'm', 0);
-    for (u32 i = 0; i < g_len; i++)
-        if (mem[CODE_BASE + i] != g_pre[i]) printf("m 0x%X 0x%02X\n", CODE_BASE + i, mem[CODE_BASE + i]);
+    scan_image(g_pre, 'm');
     scan_outside(CODE_BASE + g_len, MEM_SIZE, 'm', 0);
 }
 
@@ -58013,8 +58107,7 @@ static void run_case(const case_t *c)
         printf("error a stub write names argument %u, but 0x%X reports %u arguments\n", g_seam_arg, g_seam_addr, g_seam_nargs);
     else if (g_seam_error) printf("error a stub write outside the image\n");
     else printf("ret eax 0x%X mask 0x%X\n", eax & b->eax_mask, b->eax_mask);
-    for (u32 i = 0; i < g_len; i++)
-        if (mem[CODE_BASE + i] != g_pre[i]) printf("w 0x%X 0x%02X\n", CODE_BASE + i, mem[CODE_BASE + i]);
+    scan_image(g_pre, 'w');
     scan_outside(0, CODE_BASE, 'w', 1);              /* the case's writes outside the image, cleared */
     scan_outside(CODE_BASE + g_len, MEM_SIZE, 'w', 1);
     memcpy(mem + CODE_BASE, g_pristine, g_len);
@@ -58092,20 +58185,44 @@ static int run_cases(const char *path)
 int main(int argc, char **argv)
 {
     const char *exe = NULL, *img = NULL, *cases = NULL;
+    int ncases = 0;
     for (int i = 1; i < argc; i += 2) {
         if (i + 1 >= argc) {
             fprintf(stderr, "diffrun: option %s needs a value\n", argv[i]);
-            fprintf(stderr, "usage: diffrun --exe PRAGE.EXE --image-out FILE [--cases FILE]\n");
+            fprintf(stderr, "usage: diffrun --exe PRAGE.EXE --image-out FILE [--cases FILE]...\n");
             return 2;
         }
         if (strcmp(argv[i], "--exe") == 0) exe = argv[i + 1];
         else if (strcmp(argv[i], "--image-out") == 0) img = argv[i + 1];
-        else if (strcmp(argv[i], "--cases") == 0) cases = argv[i + 1];
+        else if (strcmp(argv[i], "--cases") == 0) { cases = argv[i + 1]; ncases++; }
         else { fprintf(stderr, "diffrun: unknown option %s\n", argv[i]); return 2; }
     }
-    if (!exe || !img) { fprintf(stderr, "usage: diffrun --exe PRAGE.EXE --image-out FILE [--cases FILE]\n"); return 2; }
+    if (!exe || !img) { fprintf(stderr, "usage: diffrun --exe PRAGE.EXE --image-out FILE [--cases FILE]...\n"); return 2; }
     if (!load_image(exe, img)) { fprintf(stderr, "diffrun: cannot load %s\n", exe); return 1; }
     if (!register_code()) { fprintf(stderr, "diffrun: cannot register the port's code pointers\n"); return 1; }
     pr_seam = seam_hook;
-    return cases && !run_cases(cases) ? 1 : 0;
+    if (getenv("PR_DIFF_FULLSCAN") == NULL) track_start();   /* PR_DIFF_FULLSCAN: the full scans, for comparison */
+    if (ncases <= 1)
+        return cases && !run_cases(cases) ? 1 : 0;
+    /* Several case files: each runs in a child forked from this loaded state, so it starts exactly as
+     * a process of its own would (the image, mem[] and every C static), and a `file N` line heads its
+     * output. One load of the EXE serves a function and all of its mutants. */
+    for (int i = 1, n = 0; i < argc; i += 2) {
+        if (strcmp(argv[i], "--cases") != 0) continue;
+        printf("file %d\n", n++);
+        fflush(stdout);
+        pid_t pid = fork();
+        if (pid < 0) { perror("diffrun: fork"); return 1; }
+        if (pid == 0) {
+            int ok = run_cases(argv[i + 1]);
+            fflush(stdout);
+            _exit(ok ? 0 : 1);
+        }
+        int st = 0;
+        if (waitpid(pid, &st, 0) != pid || !WIFEXITED(st) || WEXITSTATUS(st) != 0) {
+            fprintf(stderr, "diffrun: case file %d (%s) failed (status 0x%X)\n", n - 1, argv[i + 1], (unsigned)st);
+            return 1;
+        }
+    }
+    return 0;
 }

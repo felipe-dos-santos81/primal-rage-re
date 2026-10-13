@@ -31617,6 +31617,60 @@ X87 = program({0x10000: "D93D24000800" "D90510000800" "DC0518000800" "D91D200008
 
 
 @needs_unicorn
+@unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
+                     "build/diffrun or PRAGE.EXE missing")
+class RunnerScanTests(unittest.TestCase):
+    """diffrun reports a case's writes outside the image from the pages a write fault marked, not from
+    a scan of all of mem[]; PR_DIFF_FULLSCAN keeps the full scan. Both must print the same lines."""
+
+    # 0x23130 stores 9 and 7 at EAX + 0x52 and + 0x53. The pairs fall: below the image; on its lower
+    # edge (0xFFFF, 0x10000); just above its end, in the edge page that is not tracked; across that
+    # page's end (0x10BFFF, 0x10C000); in the middle of mem[]; across a page boundary there; and at
+    # mem[]'s end (the function touches +0x54 too, the last byte: nothing leaves mem[])
+    SLOTS = (0x0000C000, 0x0000FFAD, 0x0010B0AE, 0x0010BFAD, 0x02000000, 0x02003FAD, 0x03FFFFAB)
+
+    def raw(self, text, full):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "x.cases")
+            with open(path, "w") as f:
+                f.write(text)
+            env = dict(os.environ)
+            env.pop("PR_DIFF_FULLSCAN", None)
+            if full:
+                env["PR_DIFF_FULLSCAN"] = "1"
+            p = subprocess.run([DIFFRUN, "--exe", EXE, "--image-out", os.path.join(tmp, "i.bin"), "--cases", path],
+                               capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return p.stdout
+
+    def test_the_tracked_scan_prints_what_the_full_scan_prints(self):
+        # each slot twice in a row: the second case of a pair writes the pages that the first one's
+        # end-of-case clear protected again
+        spec = next(s for s in V.SPECS if s.name == "fighter_23130")
+        base = spec.cases[0]
+        cases = [dataclasses.replace(base, id="s%d%s" % (i, tag), regs={**base.regs, "eax": slot}, pokes={})
+                 for i, slot in enumerate(self.SLOTS) for tag in "ab"]
+        text = V.cases_text(dataclasses.replace(spec, cases=cases), spec.name)
+        tracked, full = self.raw(text, False), self.raw(text, True)
+        self.assertEqual(tracked, full)
+        for slot in self.SLOTS:                     # every store is reported, in both cases of its pair
+            self.assertEqual(tracked.count("w 0x%X 0x09\n" % (slot + 0x52)), 2, hex(slot))
+            self.assertEqual(tracked.count("w 0x%X 0x07\n" % (slot + 0x53)), 2, hex(slot))
+            self.assertGreaterEqual(tracked.count("m 0x%X 0x09\n" % (slot + 0x52)), 2, hex(slot))
+
+    def test_several_case_files_answer_as_separate_runs(self):
+        # run_port_many: one process, one forked child a file; the mutants of a function with it
+        spec = next(s for s in V.SPECS if s.name == "fighter_23130")
+        names = [spec.name] + [spec.name + m for m in spec.mutants]
+        with tempfile.TemporaryDirectory() as tmp:
+            img = os.path.join(tmp, "i.bin")
+            texts = [V.cases_text(spec, n) for n in names]
+            many = V.run_port_many(DIFFRUN, EXE, img, texts)
+            self.assertEqual(many, [V.run_port(DIFFRUN, EXE, img, t) for t in texts])
+            self.assertEqual(len(many), len(names))
+            self.assertNotEqual(many[0], many[1])               # a mutant's answer is its own
+
+
 class X87ControlWordTests(unittest.TestCase):
     """The original runs at the game's x87 control word 0x127F (raw 0x72A83, the word at 0xF09B4; record
     2026-10-03-reverse-p3 §P3.6), not unicorn's reset 0x0000."""
