@@ -2710,6 +2710,7 @@ lab:
  * (0x49D1E/0x4AAD5/0x4AAD7). */
 void fight_4aad0(u32 entry, u32 index)
 {
+    PR_SEAM(0x4AAD0u, entry, index);
     if (DSW(DS_00104B00) == 9u) {                   /* 0x4AAE1 */
         DSB(entry + 0x1Eu) = 9u;                    /* 0x4AAE6 */
         return;
@@ -2754,6 +2755,7 @@ void fight_4aad0(u32 entry, u32 index)
  * after `inc edx`). */
 void fight_4a634(void)
 {
+    PR_SEAM0(0x4A634u);
     u32 side;
     for (side = 0; side < 2u; side++) {                     /* 0x4A6FA */
         u32 slot = DS_001077B0 + side * 0x94u;              /* 0x4A6E8 */
@@ -2974,6 +2976,7 @@ void fight_4cb18(u32 entry, u32 index, u32 flag, u32 side)
  * stream); else 0. EAX = side (AL, zero-extended at 0x4AF09). */
 int fight_4af04(u32 side)
 {
+    PR_SEAM_RET(0x4AF04u, side);
     u32 slot = DS_001077B0 + (side & 0xFFu) * 0x94u;           /* 0x4AF0B..0x4AF19 */
     u8 ch = DSB(slot + 0x7Au);                                  /* 0x4AF1C */
     u32 lo, hi;
@@ -3003,6 +3006,7 @@ int fight_4af04(u32 side)
  * launch). EAX = entry, EDX = si. */
 void fight_4b470(u32 entry, u32 index)
 {
+    PR_SEAM(0x4B470u, entry, index);
     u32 rec = DSD(entry + 8u);
     /* The id is from the record's +0x48 byte, not EDX: 0x4B47B..0x4B489
      * `sub eax,0x20; cmp eax,3; jge` (signed), record k7-k12 §7.2. */
@@ -3053,6 +3057,7 @@ void fight_4b470(u32 entry, u32 index)
  * 0x4B470 tramples it. */
 static void fight_4b69c(u32 entry, u32 index)
 {
+    PR_SEAM(0x4B69Cu, entry, index);
     if ((DSB(entry + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4B6B3 */
     u32 rec = DSD(entry + 8u);
     u32 ps = DSD(DS_001014EC) + ((u32)DSW(rec + 0x56u) << 5);  /* 0x4B6BC..0x4B6CD */
@@ -3099,6 +3104,7 @@ static void fight_4b69c(u32 entry, u32 index)
  * (0x49C78's case-13 body, record §K13.1 of 2026-09-29-k13-fx74-derivations.md). */
 void fight_496dc(u32 entry, s32 count)
 {
+    PR_SEAM(0x496DCu, entry, (u32)count);
     u32 slot = DS_001077B0 + (u32)DSB(entry + 0x21u) * 0x94u;  /* 0x496EC..0x49707 */
     for (s32 i = 0; i < count; i++) {                   /* 0x49715/0x4986B */
         u32 ne = DSD(DS_001083C4);                      /* 0x4971D */
@@ -3180,6 +3186,7 @@ s32 fight_4aa6c(s32 side)
  * §K13.3 of 2026-09-29-k13-fx74-derivations.md). */
 void fight_4a928(void)
 {
+    PR_SEAM0(0x4A928u);
     DSB(DS_001088C6) = 0;                               /* 0x4A92F */
     DSD(DS_00108870) = 0;                               /* 0x4A937 */
     DSD(DS_0010887C) = 0;                               /* 0x4A942 */
@@ -3222,6 +3229,7 @@ void fight_4a928(void)
  * EAX = entry; EDX and EBX are pushed and popped. */
 int fight_4a7d4(u32 entry)
 {
+    PR_SEAM_RET(0x4A7D4u, entry);
     u32 actor = DSD(entry + 8u);
     s32 d = (s32)(DSD(actor + 0x18u) - DSD(entry + 0x14u));    /* 0x4A7DF */
     if (d < 0) d = (s32)(0u - (u32)d);                          /* 0x4A7E5 */
@@ -3242,6 +3250,7 @@ int fight_4a7d4(u32 entry)
  * The 0x4B35A hflip clear precedes the distance test. */
 void fight_4b2ac(u32 entry, u32 index)
 {
+    PR_SEAM(0x4B2ACu, entry, index);
     s32 s = (s32)(s8)(u8)(DSB(DS_001088C9) ^ 1u);               /* 0x4B2B5..0x4B2BC */
     u32 slot = DS_001077B0 + (u32)s * 0x94u;                    /* 0x4B2BF..0x4B2D3 */
     u32 q = DSD(slot + 0x3Cu) / DSD(DS_000C9520);               /* 0x4B2D8/0x4B2DE */
@@ -3436,6 +3445,7 @@ void fight_4d7a4(u32 entry, u32 index)
  * +0x1C bit 4. */
 void fight_4987c(u32 side, s32 count, u32 kind)
 {
+    PR_SEAM(0x4987Cu, side, (u32)count, kind);
     u32 slot = DS_001077B0 + side * 0x94u;                      /* 0x4988D..0x498A7 */
     u32 other = DS_001077B0 + (side ^ 1u) * 0x94u;              /* 0x498B3..0x498CE */
     s32 i;

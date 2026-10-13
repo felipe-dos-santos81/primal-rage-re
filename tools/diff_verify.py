@@ -24747,6 +24747,442 @@ D5J_SPECS += [
              "allcached allreread c1cache t3cache t5cache t6cache tlcache scache s898cache nextlate sno1f").split())),
 ]
 
+# ---- fight.c: the scene/effects pass 0x49C78 ----
+D5J_ALT2 = 0x0010AB80            # the record the arms' own stubs relink the first node to
+D5J_CELL = 0x0010AC00            # the pointer cells the nodes' +0xC name, 8 apart
+D5J_PART = 0x0010AC40            # the records those cells name, 0x40 apart (their +0x28 word)
+D5J_CELL2, D5J_PART2, D5J_PART3 = 0x0010AD80, 0x0010ADC0, 0x0010AE00   # the re-read spec's cell and its two records
+D5J_T4 = 0x0010AE40              # DS_001014F4: the 0x68-byte table type 8 clears a +0x4B byte of
+D5J_T4HI = 0x00107B80            # the same for the index 0x80: its byte is 0x10AFCB (0x1047CB sign-extended)
+D5J_SREC = (0x0010AF00, 0x0010AF40, 0x0010AF80)   # the records of slot 0, slot 1 and "slot -1" (0x10771C)
+# 0x4B69C, 0x4AAD0, 0x4B470, 0x4B2AC: EAX = the entry, EDX = the index (`mov ecx,eax; mov esi,edx`
+# 0x4B6A2, 0x4AAD5; `mov esi,eax; mov edi,edx` 0x4B474; `mov ebx,eax; mov esi,edx` 0x4B2B1). 0x496DC:
+# EAX = the entry, EDX = the count (0x496E4, 0x496E6). 0x4AF04: AL (`mov dl,al` 0x4AF09; the caller
+# zero-extends the byte, 0x4A09D). 0x4A7D4: EAX. 0x4987C: EAX, EDX, EBX. 0x4A634, 0x4A928: no
+# argument. Clobbers E.callee_clobbers.
+D5J_4B69C = E.Call(0x4B69C, ("eax", "edx"), clobbers=("edx",))
+D5J_4A634 = E.Call(0x4A634, ())
+D5J_4AAD0 = E.Call(0x4AAD0, ("eax", "edx"), clobbers=("edx",))
+D5J_4AF04 = E.Call(0x4AF04, ("eax",))
+D5J_4B470 = E.Call(0x4B470, ("eax", "edx"), clobbers=("edx",))
+D5J_4B2AC = E.Call(0x4B2AC, ("eax", "edx"), clobbers=("edx",))
+D5J_4A7D4 = E.Call(0x4A7D4, ("eax",))
+D5J_496DC = E.Call(0x496DC, ("eax", "edx"), clobbers=("edx",))
+D5J_4987C = E.Call(0x4987C, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+D5J_4A928 = E.Call(0x4A928, ())
+# types 0..8 and above 0xE, and the DS_001088BF tail (0x4A928 only in the mode-9 tail cases)
+D5J_FX_A = (D5J_493F0, D5J_4B69C, D5J_4A634, D5J_4AAD0, D3B_4BD4C, D5J_4AC38, D3B_2BE1C, ANIM_BEGIN, D2B_RNG,
+            P7_2B150, VOICE, D5J_4AF04, D5J_4B470, D5J_4987C, D5J_4A928)
+# types 9..14 (and 3, whose landing writes the frame word [esp+4]) and the mode-9 block
+D5J_FX_B = (D5J_493F0, D5J_4B69C, D5J_4A634, D5J_4B430, D5J_4B2AC, D5J_4A7D4, ANIM_BEGIN, P7_2B150, D2B_2BE00_S,
+            D2B_RNG, D5J_496DC, D3B_4A868, VOICE, D5J_4A928, D3B_2BE1C)
+# the re-read spec: the prelude relinks the node's +8 to D5J_ALT and its +0xC to D5J_CELL2; each
+# stub an arm calls before a loaded-again site relinks the first node's +8 to D5J_ALT2; the stream
+# stub also points D5J_CELL2 at D5J_PART3
+D5J_RELINK2 = ((None, D5J_NODE + 8, le32(D5J_ALT2)),)
+D5J_FX_RR = (D5J_493F0, E.Call(0x4B69C, ("eax", "edx"), clobbers=("edx",),
+                               writes=((0, 8, le32(D5J_ALT)), (0, 0xC, le32(D5J_CELL2)))),
+             D5J_4A634, E.Call(0x4BD4C, ("eax", "edx"), clobbers=("edx",), writes=D5J_RELINK2), D5J_4AC38,
+             E.Call(0x2BE1C, ("eax", "edx"), clobbers=("edx",), writes=D5J_RELINK2),
+             E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4, clobbers=("edx",),
+                    writes=D5J_RELINK2 + ((None, D5J_CELL2, le32(D5J_PART3)),)),
+             D2B_RNG, E.Call(0x2B150, ("eax",), writes=D5J_RELINK2), E.Call(0x2C3FC, ("eax",), writes=D5J_RELINK2),
+             E.Call(0x4AF04, ("eax",), writes=D5J_RELINK2), D5J_4B470,
+             E.Call(0x4A7D4, ("eax",), writes=D5J_RELINK2), D2B_2BE00_S, D5J_496DC,
+             E.Call(0x4A868, ("eax",), writes=D5J_RELINK2))
+# the prelude spec: 0x4B69C makes the node type 6 and cuts it out of the list, 0x4A634 stores the mode
+# word 0x24 (0x2C3FC and 0x4AAD0 are reached by no case: they bound what a mutant can run)
+D5J_FX_PRE = (D5J_493F0, E.Call(0x4B69C, ("eax", "edx"), clobbers=("edx",),
+                                writes=((0, 0x1E, b"\x06"), (0, 0, le32(D5J_LIST)))),
+              E.Call(0x4A634, (), writes=((None, 0x00104B00, le16(0x0024)),)), P7_2B150, ANIM_BEGIN, D2B_RNG,
+              D5J_4987C, D5J_4AAD0, VOICE)
+
+
+def d5j_fn(ty, fl=0x00, t14=0x00140000, w18=0x1818, w1a=0x1A1A, f1f=0x1F, b20=0x20, side=0, held=False, part=None,
+           x18=0x00180000, r1c=0x001C0000, w28=0x2828, w2a=0x2A2A, lo30=0x0900, xw=0x0100, w34=0x3434, w36=0x3636,
+           w38=0x3838, x3c=0x00003C00, r48=0x21, b4a=0x00):
+    """One list node of a 0x49C78 case: its type (+0x1E), flags (+0x1C), +0x14, +0x18, +0x1A, +0x1F,
+    +0x20, +0x21 (the side), a held actor (+0x10), the +0x28 word of the record its +0xC cell names
+    (`part`), and its actor's +0x18, +0x1C, +0x28, +0x2A, +0x30 (low word), +0x32, +0x34, +0x36,
+    +0x38, +0x3C, +0x48 and +0x4A."""
+    return dict(ty=ty, fl=fl, t14=t14, w18=w18, w1a=w1a, f1f=f1f, b20=b20, side=side, held=held, part=part,
+                x18=x18, r1c=r1c, w28=w28, w2a=w2a, lo30=lo30, xw=xw, w34=w34, w36=w36, w38=w38, x3c=x3c, r48=r48,
+                b4a=b4a)
+
+
+def d5j_frec(n, k):
+    """The actor record's +0x14..+0x4B, every byte seeded."""
+    buf = bytearray(0x40 | (o & 0x3F) for o in range(0x14, 0x4C))
+    def put(off, data):
+        buf[off - 0x14:off - 0x14 + len(data)] = data
+    put(0x14, le32(0x0BAD1400 + k))
+    put(0x18, le32(n["x18"]))
+    put(0x1C, le32(n["r1c"]))
+    put(0x28, le16(n["w28"]) + le16(n["w2a"]) + le16(0x2C2C))
+    put(0x30, le16(n["lo30"]) + le16(n["xw"]) + le16(n["w34"]) + le16(n["w36"]) + le16(n["w38"]) + le16(0x3A3A))
+    put(0x3C, le32(n["x3c"]))
+    put(0x48, bytes([n["r48"], 0x49, n["b4a"], 0x4B]))
+    return bytes(buf)
+
+
+def d5j_part(word, k):
+    """A partner record's +0x26..+0x2B: its +0x28 word between seeded words."""
+    return le16(0x2600 + k) + le16(word) + le16(0x2A00 + k)
+
+
+def d5j_fx_case(nodes, mode=0x0024, b16=0, aec=0xFF, w878=0x00000878, ae=(0x31, 0x32), b0=0xB0B0, b2=(0x51, 0x52),
+                b4=0, bf=0, c2=0, c3=0, c6=0, c7=0, c8=0, c9=0, ca=0, b80a=0x5A, bd=0x0400, t4=D5J_T4, alt=None,
+                alt2=None, extra=None):
+    """0x49C78: the mode word DS_00104B00, the bytes DS_00104B16 and DS_00104AEC, DS_00108874 (seeded)
+    and DS_00108878, the bytes DS_001088AE[2], the word DS_001088B0, the bytes DS_001088B2[2], the
+    word DS_001088B4, the bytes DS_001088BF, DS_001088C2, DS_001088C3 and DS_001088C6..DS_001088CA,
+    slot 0's +0x5A (DS_0010780A), the word 0xBD898 and DS_001014F4, each between seeded neighbours;
+    the two slots' record pointers; the list DS_0010884C: each node's +0..+0x23, its actor's
+    +0x14..+0x4B and +0x54..+0x57, its held actor's +0x16..+0x35, its +0xC cell and that cell's
+    record's +0x28 word. `alt`/`alt2`: the records D5J_ALT / D5J_ALT2 of the re-read spec, with
+    the cell D5J_CELL2 and its records D5J_PART2 / D5J_PART3."""
+    p = {0x00104AFE: le16(0xFEFE) + le16(mode) + le16(0x0202),
+         0x00104B15: bytes([0x15, b16, 0x17]),
+         0x00104AEB: bytes([0xEB, aec, 0xED]),
+         0x00108870: le32(0x0BAD8870) + le32(0x74747474) + le32(w878) + le32(0x0BAD887C),
+         0x001088AD: bytes([0xAD, ae[0], ae[1]]) + le16(b0) + bytes([b2[0], b2[1]]) + le16(b4) + bytes([0xB6]),
+         0x001088BE: bytes([0xBE, bf, 0xC0, 0xC1, c2, c3, 0xC4, 0xC5, c6, c7, c8, c9, ca, 0xCB]),
+         0x00107809: bytes([0x09, b80a, 0x0B]),
+         0x000BD896: b"\x96\x97" + le16(bd) + b"\x9a\x9b",
+         0x001014F4: le32(t4),
+         0x001077B0: le32(D5J_SREC[0]),
+         0x00107844: le32(D5J_SREC[1])}
+    addr = [D5J_NODE + k * 0x30 for k in range(len(nodes))]
+    chain = addr + [D5J_LIST]
+    p[D5J_LIST] = le32(chain[0])
+    for k, n in enumerate(nodes):
+        rec, held, cell, part = D5J_REC + k * 0x80, D5J_HELD + k * 0x40, D5J_CELL + k * 8, D5J_PART + k * 0x40
+        p[addr[k]] = (le32(chain[k + 1]) + le32(0x04040404) + le32(rec) + le32(cell)
+                      + le32(held if n["held"] else 0) + le32(n["t14"]) + le16(n["w18"]) + le16(n["w1a"])
+                      + bytes([n["fl"], 0x1D, n["ty"], n["f1f"], n["b20"], n["side"], 0x22, 0x23]))
+        p[rec + 0x14] = d5j_frec(n, k)
+        p[rec + 0x54] = bytes([0x54, 0x77, 0x56, 0x57])
+        if n["held"]:
+            buf = bytearray(0x80 | (o & 0x3F) for o in range(0x16, 0x36))
+            buf[2:6] = le32(0x99999900 + k)
+            buf[0x32 - 0x16:0x34 - 0x16] = le16(0x9200 + k)
+            p[held + 0x16] = bytes(buf)
+        if n["part"] is not None:
+            p[cell] = le32(part)
+            p[part + 0x26] = d5j_part(n["part"], k)
+    if alt is not None:
+        p[D5J_ALT + 0x14] = d5j_frec(alt, 9)
+        p[D5J_ALT + 0x54] = bytes([0xA4, 0x66, 0xA6, 0xA7])
+        p[D5J_ALT2 + 0x14] = d5j_frec(alt2, 10)
+        p[D5J_ALT2 + 0x54] = bytes([0xB4, 0x55, 0xB6, 0xB7])
+        p[D5J_CELL2] = le32(D5J_PART2)
+        p[D5J_PART2 + 0x26] = d5j_part(0xBFFF, 11)
+        p[D5J_PART3 + 0x26] = d5j_part(0x4000, 12)
+    p.update(extra or {})
+    assert len(p) <= 40 and max(len(v) for v in p.values()) <= 64
+    return p
+
+
+def d5j_t4_seed(t4, *ks):
+    """The +0x4A..+0x4C bytes of the DS_001014F4 entries `ks`: the +0x4B byte type 8 clears."""
+    return {t4 + k * 0x68 + 0x4A: bytes([0x4A, 0x70 + (k & 0xF), 0x4C]) for k in ks}
+
+
+def d5j_fx_a_cases():
+    """See the fight_effects_pass spec's comment."""
+    X, C = d5j_fn, d5j_fx_case
+    hi = 0x000C973C + 0xFFFF * 4
+    V = dict(x3c=0x00000010, fl=0x05)          # type 7: inside both gates' x range, bit 0 set, bit 2 set
+    return [
+        # the empty list: the midpoint store, the mode gate of the DS_001088BF tail and its four pairs
+        Case("e0", {}, C([], c2=0x77), {0x493F0: 0x12345678}),
+        Case("e1", {}, C([], mode=0x0007, bf=1, aec=0x80), {0x5D7DC: 1}),
+        Case("e2", {}, C([], mode=0x0008, bf=2, aec=0x7F), {0x5D7DC: 1}),
+        Case("e3", {}, C([], mode=0x0009, bf=3, c3=1, b0=5, b4=0x0707, c9=0), {0x5D7DC: 1}),
+        Case("e4", {}, C([], mode=0x0109, bf=1, c2=1), {0x5D7DC: 1}),
+        Case("e5", {}, C([], mode=0x0107, bf=2), {0x5D7DC: 0}),
+        Case("e6", {}, C([], mode=0x0108, bf=3), {0x5D7DC: 0xFFFFFFFF}),
+        Case("e7", {}, C([], bf=4), {0x5D7DC: 1}),
+        Case("e8", {}, C([], bf=5), {0x5D7DC: 1}),
+        Case("e9", {}, C([], bf=0xFF, mode=0x0000), {0x5D7DC: 1}),
+        # types 0 and above 0xE (the default arm 0x4AAD0); 0xE is not one of them
+        Case("d0", {}, C([X(0), X(0xF, r48=0x1F), X(0xFF, r48=0x00, side=1), X(0xE, w34=0)])),
+        # type 1: the 0x4BD4C gate (whole EAX, 0x49D44 `test eax,eax`) and the arrival
+        Case("c0", {}, C([X(1, t14=0x00100000, x18=0x00100030, w34=0x0030),
+                          X(1, t14=0x00100000, x18=0x00100031, w34=0x0030),
+                          X(1, t14=0x00100030, x18=0x00100000, w34=0xFFD0),
+                          X(1, t14=0x00100000, x18=0x00100031, w34=0xFFD0),
+                          X(1, t14=0x00100031, x18=0x00100000, w34=0x0030),
+                          X(1, t14=0x80100000, x18=0x00100000, w34=0x0030)])),
+        Case("c1", {}, C([X(1, t14=0x00100000, x18=0x00100000)], c2=1), {0x4BD4C: 1}),
+        Case("c2", {}, C([X(1, t14=0x00100000, x18=0x00100000)], c2=0x80), {0x4BD4C: 0x100}),
+        Case("c3", {}, C([X(1, t14=0x00100000, x18=0x00100000, w34=0)], c2=1), {0x4BD4C: 0}),
+        # type 2
+        Case("t2", {}, C([X(2, w18=2), X(2, w18=1), X(2, w18=0), X(2, w18=0x8001), X(2, w18=0x8000)])),
+        # type 3: the fall and the landing
+        Case("t3", {}, C([X(3, xw=0x0401, part=0x1111), X(3, xw=0x0400, w28=0x8123, part=0x2222, r48=0x23)]),
+             {0x2BE1C: 1, 0x5D7DC: 0x12}),
+        Case("t3b", {}, C([X(3, xw=0x0100, w28=0x0123, part=0x3333, lo30=0x0700)], bd=0x9000), {0x2BE1C: 0, 0x5D7DC: 0}),
+        Case("t3c", {}, C([X(3, xw=0x8000, fl=0x02, part=0x4444, r48=0x1F)]), {0x2BE1C: 0x80000000, 0x5D7DC: 0x3B}),
+        # type 4: the timer, then the walk towards the partner's +0x28 bit 14
+        Case("t4", {}, C([X(4, w18=5, part=0x4000), X(4, w18=1, part=0x4000, fl=0xFF), X(4, w18=0, part=0xBFFF),
+                          X(4, w18=0x8001, part=0x0000, r48=0x25), X(4, w18=2, part=0x4000)])),
+        # type 5
+        Case("t5", {}, C([X(5, xw=0x00FF, w1a=0x0100), X(5, xw=0x0100, w1a=0x0100, w18=0x7FFF),
+                          X(5, xw=0x8000, w1a=0x7000), X(5, xw=0x0A00, w1a=0x8000, r48=0x24)])),
+        # type 6
+        Case("s0", {}, C([X(6, w36=0xFFFF, r1c=2, held=True), X(6, w36=0, r1c=0)])),
+        Case("s1", {}, C([X(6, w36=0xFFFB, r1c=5, held=True, r48=0x22)], extra={0x000C973C + 2 * 4: le32(0)})),
+        Case("s2", {}, C([X(6, w36=0x0001, r1c=0xFFFFFFFF, r48=0x1F)], extra={hi: le32(0x000EE777)})),
+        Case("s3", {}, C([X(6, w36=0x0001, r1c=0, w34=0xFFFF)])),
+        # type 7: the voice gate, the velocity step, the flip
+        Case("v0", {}, C([X(7, x3c=1), X(7, x3c=0), X(7, x3c=0x53FF), X(7, x3c=0x5400), X(7, x3c=0x0100, fl=0x04),
+                          X(7, x3c=0xFFFFFFFF), X(7, x3c=0x00002000, fl=0xFB)])),
+        Case("v1", {}, C([X(7, x3c=0, fl=0x05, w34=0), X(7, x3c=0x5400, fl=0x05, w34=0x0100),
+                          X(7, w34=0x0101, **V), X(7, w34=0xFF00, **V), X(7, w34=0xFF01, **V)])),
+        Case("v3", {}, C([X(7, x3c=0xFFFFFFFF, fl=0x05, w34=7), X(7, x3c=0x5401, fl=0x05, w34=9),
+                          X(7, w34=0xFFFF, **V), X(7, w34=0x00FF, **V), X(7, w34=5, x3c=0x10, fl=0x04)])),
+        Case("v2", {}, C([X(7, x3c=0xFFFFFCFF, w34=0xFF00), X(7, x3c=0xFFFFFD00, w34=0xFF00),
+                          X(7, x3c=0x5701, w34=0x0100), X(7, x3c=0x5700, w34=0x0100),
+                          X(7, x3c=0x5701, w34=0xFF00), X(7, x3c=0xFFFFFCFF, w34=0x0100),
+                          X(7, x3c=0x5701, w34=0x00FF, fl=0x01)])),
+        # type 8: bit 6 of +0x1C, 0x4AF04's AL (0x4A0A7 `test al,al`), the held actor's release
+        Case("h0", {}, C([X(8, fl=0x00, b4a=1), X(8, fl=0x40, b4a=1, b20=1)], extra=d5j_t4_seed(D5J_T4, 1)),
+             {0x4AF04: 1}),
+        Case("h1", {}, C([X(8, fl=0xFF, b20=0, side=1, b4a=1, w28=0x6828), X(8, fl=0x40, b4a=0),
+                          X(8, fl=0x40, b20=1, side=0, b4a=3, r48=0x1F)], extra=d5j_t4_seed(D5J_T4, 1, 3)),
+             {0x4AF04: 0}),
+        Case("h2", {}, C([X(8, fl=0x40, b20=0xFF, side=1, b4a=0x80)], t4=D5J_T4HI,
+                         extra={0x0010AFCA: bytes([0x4A, 0x77, 0x4C]), 0x001047CA: bytes([0x4A, 0x5C, 0x4C])}),
+             {0x4AF04: 0x100}),
+        Case("h3", {}, C([X(8, fl=0x40, b4a=1)], extra=d5j_t4_seed(D5J_T4, 1)), {0x4AF04: 0xFFFFFF80}),
+    ]
+
+
+def d5j_fx_b_cases():
+    """See the fight_effects_pass_m9 spec's comment."""
+    X, C = d5j_fn, d5j_fx_case
+    G = dict(w2a=0x3A2A)                         # +0x2A bit 12 set: the on-screen gate's flag
+    M = dict(mode=0x0009)
+    return [
+        # type 9 and the mode-9 block
+        Case("m0", {}, C([X(9), X(9, side=1)], b80a=0x77, c9=0, b4=0x0707, **M), {0x5D7DC: 5}),
+        Case("m1", {}, C([X(9), X(9)], b4=0x0100, b16=1, c3=1, b0=0, b80a=0x78, c9=1, **M), {0x5D7DC: 0x13}),
+        Case("m2", {}, C([X(14, w34=0), X(14, w34=0), X(14, w34=0)], c3=1, b0=0x003C, b80a=0x80, c9=1, **M)),
+        Case("m3", {}, C([X(9), X(14, w34=0), X(9, b20=1)], c3=0, b0=0x0100, b4=1, **M), {0x5D7DC: 0xFFFFFFFF}),
+        Case("m4", {}, C([X(9), X(14, w34=0), X(9), X(9, side=0, b20=1)], c3=0, b16=0, **M), {0x5D7DC: 1}),
+        Case("m5", {}, C([X(9, side=1)], c3=0x80, b0=0x0100, b16=1, **M), {0x5D7DC: 1}),
+        Case("m6", {}, C([X(9, side=1, b20=0)], c3=1, b0=0x013C, b16=1, **M), {0x5D7DC: 1}),
+        # type 10
+        Case("k0", {}, C([X(10, fl=0xFF)], **M)),
+        Case("k1", {}, C([X(10, fl=0x80, r48=0x1F)], c7=1, c8=0), {0x4B430: 0}),
+        Case("k2", {}, C([X(10, fl=0x80)], c7=0, c8=0x80), {0x4B430: 1}),
+        Case("k3", {}, C([X(10, fl=0x80)], c7=1, c8=1), {0x4B430: 0x100}),
+        # type 11 and the mode-9 block's type-12 pass
+        Case("w0", {}, C([X(11, xw=0x0700, w34=0x0000), X(9)], c3=1, b0=9, **M), {0x4A7D4: 0}),
+        Case("w1", {}, C([X(11, xw=0x0500, w34=0x0100), X(9)], c3=1, b0=9, **M), {0x4A7D4: 0}),
+        Case("w2", {}, C([X(11, xw=0x0700, w34=5, r48=0x24), X(13, **G)], c3=1, b0=9, **M), {0x4A7D4: 1}),
+        Case("w3", {}, C([X(11, xw=0x8000, w34=5)]), {0x4A7D4: 0x100}),
+        # type 12
+        Case("y0", {}, C([X(12, w28=0x2828)], ca=0, c6=0)),
+        Case("y1", {}, C([X(12, w28=0x6828, r48=0x22)], ca=1, c6=1)),
+        Case("y2", {}, C([X(12, w28=0x6828)], ca=0x80, c6=0x80)),
+        # type 13: the on-screen gate, the kill, the turn and the new target
+        Case("d0", {}, C([X(13, x3c=0xFFFFFD00, **G), X(13, x3c=0x5700, **G), X(13, x3c=0xFFFFFCFF, **G)], c9=0, c7=0)),
+        Case("d1", {}, C([X(13, x3c=0x5701, side=1, w34=0x0080, lo30=0x0500, xw=0x0600, **G)], c9=1, c7=1),
+             {0x2BE00: 0x1000, 0x5D7DC: 0x345}),
+        Case("d2", {}, C([X(13, w34=0x0081, w28=0x6828, side=0, r48=0x22)], c9=1, w878=0xFFFFFFFE),
+             {0x2BE00: 0, 0x5D7DC: 0xBFF}),
+        Case("d3", {}, C([X(13, w34=0x0080, side=0xFF)], c9=0xFF, c7=0, extra={0x0010771C: le32(D5J_SREC[2])}),
+             {0x2BE00: 0xFFFFF000, 0x5D7DC: 0x800}),
+        Case("d4", {}, C([X(13, w34=0xFF80, side=0)], c9=0, c7=0x80), {0x2BE00: 1, 0x5D7DC: 2}),
+        # type 14: the count, the 0x4A868 gate (whole EAX, 0x4A366 `test eax,eax`), the turn
+        Case("f1", {}, C([X(14, w34=0x0100)]), {0x4A868: 1}),
+        Case("f2", {}, C([X(14, w34=0x0001, r48=0x1F)]), {0x4A868: 0x100}),
+        Case("f3", {}, C([X(14, w34=5, x3c=0xFFFFFD00, **G), X(14, w34=5, x3c=0x5700, **G)]), {0x4A868: 0}),
+        Case("f4", {}, C([X(14, w34=0x0080, x3c=0x5701, lo30=0x0500, xw=0x0600, **G)], c9=1),
+             {0x4A868: 0, 0x2BE00: 0x2000, 0x5D7DC: 0x111}),
+        Case("f5", {}, C([X(14, w34=0x0001, w28=0x6828, x3c=0xFFFFFCFF, r48=0x23, **G)], c9=0),
+             {0x4A868: 0, 0x2BE00: 0xFFFFFFFF, 0x5D7DC: 0x222}),
+        Case("f6", {}, C([X(14, w34=0x8000)], c9=0xFF, extra={0x0010771C: le32(D5J_SREC[2])}),
+             {0x4A868: 0, 0x2BE00: 0, 0x5D7DC: 0x400}),
+        # type 3 in mode 9: the landing's frame word [esp+4] is side 2's count
+        Case("l0", {}, C([X(3, xw=0x0100, part=0x1111)], b16=2, c3=0, **M), {0x2BE1C: 1, 0x5D7DC: 7}),
+        Case("l1", {}, C([X(3, xw=0x0100, part=0x1111), X(9, side=2)], b16=2, c3=0, b4=1, **M),
+             {0x2BE1C: 0, 0x5D7DC: 7}),
+    ]
+
+
+def d5j_fx_rr_cases():
+    """One node per arm that mixes the actors. The node's own record, D5J_ALT (the prelude's) and
+    D5J_ALT2 (the arm's own stubs') differ in every field an arm reads."""
+    X = d5j_fn
+    A = X(0, x18=0x00100040, r1c=0x00000007, w28=0x6828, w2a=0x2A2A, lo30=0x0111, xw=0x7000, w34=0x0010, w36=0x0055,
+          w38=0x0066, x3c=0x00000100, r48=0x25, b4a=2)
+    A2 = X(0, x18=0x00100008, r1c=0x00000009, w28=0x2828, w2a=0x2A2A, lo30=0x0222, xw=0x0600, w34=0x00FF, w36=0x0077,
+           w38=0x0088, x3c=0x00005701, r48=0x26, b4a=1)
+    def C(cid, node, stub=None, a=None, **kw):
+        return Case(cid, {}, d5j_fx_case([node], alt=a or A, alt2=A2, **kw), stub or {})
+    G = dict(w2a=0x3A2A, x3c=0x00001000)         # the node's own record is held by the on-screen gate
+    return [
+        C("q1", X(1, t14=0x00100000, x18=0x00100100, w34=0x0010), {0x4BD4C: 0}, c2=1),
+        C("q3", X(3, xw=0x0100, part=0x1111), {0x2BE1C: 1, 0x5D7DC: 0x12}),
+        C("q4", X(4, w18=1, part=0x0000)),
+        C("q5", X(5, xw=0x0100, w1a=0x0100)),
+        C("q6", X(6, w36=0xFFFB, r1c=5, held=True)),
+        C("q7", X(7, fl=0x01, x3c=0xFFFFFFFF)),
+        C("q8", X(8, fl=0x40, b4a=3), {0x4AF04: 0}, extra=d5j_t4_seed(D5J_T4, 1, 2, 3)),
+        C("qb", X(11, w34=0), {0x4A7D4: 1}),
+        C("qc", X(11, w34=0), {0x4A7D4: 0}, a=dict(A, w34=0), mode=0x0009, c3=1, b0=5),
+        C("qd", X(12, w28=0x2828), ca=0),
+        C("qe", X(13, side=1, **G), {0x2BE00: 0x1000, 0x5D7DC: 0x345}, c9=0, c7=0),
+        C("qf", X(13, side=0, **G), c9=0, c7=0),
+        C("qg", X(14, w34=0), {0x4A868: 1}),
+        C("qh", X(14, w34=0), {0x4A868: 0, 0x2BE00: 0xFFFFF000, 0x5D7DC: 0x800}),
+    ]
+
+
+def d5j_fx_pre_cases():
+    """Two nodes of type 0, which the prelude makes type 6: one falls, one lands."""
+    X = d5j_fn
+    N = [X(0, w36=1, r1c=0x100), X(0, w36=0xFFFF, r1c=1, r48=0x23)]
+    return [
+        Case("u0", {}, d5j_fx_case(N, mode=0x0007, bf=2), {0x5D7DC: 1}),
+        Case("u1", {}, d5j_fx_case(N, mode=0x0009, bf=3, c3=1, b0=5), {0x5D7DC: 0}),
+    ]
+
+
+# the blocks each spec of 0x49C78 leaves to the others (re-derived by running every case; together the
+# four specs hit all 139 leaders)
+D5J_FX_UNHIT_A = (0x4A115, 0x4A11F, 0x4A128, 0x4A131, 0x4A13A, 0x4A143, 0x4A15C, 0x4A17A, 0x4A19F, 0x4A1D2, 0x4A1E0,
+                  0x4A1EB, 0x4A1F4, 0x4A206, 0x4A216, 0x4A238, 0x4A241, 0x4A24A, 0x4A261, 0x4A268, 0x4A273, 0x4A284,
+                  0x4A28D, 0x4A29A, 0x4A2AA, 0x4A2B9, 0x4A2C6, 0x4A300, 0x4A310, 0x4A31C, 0x4A35F, 0x4A36A, 0x4A3A4,
+                  0x4A3BA, 0x4A3C2, 0x4A3CE, 0x4A3DE, 0x4A3ED, 0x4A3FA, 0x4A434, 0x4A444, 0x4A450, 0x4A45C, 0x4A4AE,
+                  0x4A4E8, 0x4A527, 0x4A575, 0x4A581)
+D5J_FX_UNHIT_B = (0x49D1E, 0x49D2F, 0x49D38, 0x49D4C, 0x49D5B, 0x49D5D, 0x49D67, 0x49D71, 0x49D77, 0x49D7F, 0x49D90,
+                  0x49DA2, 0x49E5A, 0x49E6C, 0x49EA0, 0x49EA8, 0x49EAE, 0x49EC0, 0x49EE3, 0x49F11, 0x49F18, 0x49F1C,
+                  0x49F23, 0x49F3A, 0x49F49, 0x49F50, 0x49F5E, 0x49F70, 0x49F83, 0x49F9A, 0x49FB8, 0x49FC2, 0x49FCC,
+                  0x49FD4, 0x49FE3, 0x49FF6, 0x49FFA, 0x4A002, 0x4A011, 0x4A01E, 0x4A025, 0x4A02D, 0x4A033, 0x4A03A,
+                  0x4A042, 0x4A046, 0x4A056, 0x4A05E, 0x4A072, 0x4A07E, 0x4A08A, 0x4A09D, 0x4A0AF, 0x4A0BD, 0x4A5C7,
+                  0x4A5CF, 0x4A5DC, 0x4A5E3, 0x4A5F4, 0x4A605, 0x4A60A, 0x4A611, 0x4A61B)
+D5J_FX_UNHIT_RR = (0x49D1E, 0x49D5B, 0x49D67, 0x49D90, 0x49DA2, 0x49DFC, 0x49EA8, 0x49F83, 0x49FB8, 0x4A01E, 0x4A025,
+                   0x4A02D, 0x4A03A, 0x4A056, 0x4A07E, 0x4A115, 0x4A11F, 0x4A128, 0x4A131, 0x4A13A, 0x4A143, 0x4A15C,
+                   0x4A206, 0x4A238, 0x4A261, 0x4A268, 0x4A2AA, 0x4A310, 0x4A3BA, 0x4A3C2, 0x4A3DE, 0x4A434, 0x4A4AE,
+                   0x4A4E8, 0x4A527, 0x4A559, 0x4A56E, 0x4A575, 0x4A581, 0x4A5C7, 0x4A5CF, 0x4A5DC, 0x4A5E3, 0x4A5F4,
+                   0x4A605, 0x4A60A, 0x4A611, 0x4A61B)
+D5J_FX_UNHIT_PRE = (0x49D1E, 0x49D2F, 0x49D38, 0x49D4C, 0x49D5B, 0x49D5D, 0x49D67, 0x49D71, 0x49D77, 0x49D7F, 0x49D90,
+                    0x49DA2, 0x49DB3, 0x49DDE, 0x49DF2, 0x49DFC, 0x49E02, 0x49E5A, 0x49E6C, 0x49EA0, 0x49EA8, 0x49EAE,
+                    0x49EC0, 0x49EE3, 0x49F23, 0x49F50, 0x49F83, 0x49FC2, 0x49FCC, 0x49FD4, 0x49FE3, 0x49FF6, 0x49FFA,
+                    0x4A002, 0x4A011, 0x4A01E, 0x4A025, 0x4A02D, 0x4A033, 0x4A03A, 0x4A042, 0x4A046, 0x4A056, 0x4A05E,
+                    0x4A072, 0x4A07E, 0x4A08A, 0x4A09D, 0x4A0AF, 0x4A0BD, 0x4A115, 0x4A11F, 0x4A128, 0x4A131, 0x4A13A,
+                    0x4A143, 0x4A15C, 0x4A17A, 0x4A19F, 0x4A1D2, 0x4A1E0, 0x4A1EB, 0x4A1F4, 0x4A206, 0x4A216, 0x4A238,
+                    0x4A241, 0x4A24A, 0x4A261, 0x4A268, 0x4A273, 0x4A284, 0x4A28D, 0x4A29A, 0x4A2AA, 0x4A2B9, 0x4A2C6,
+                    0x4A300, 0x4A310, 0x4A31C, 0x4A346, 0x4A35F, 0x4A36A, 0x4A3A4, 0x4A3BA, 0x4A3C2, 0x4A3CE, 0x4A3DE,
+                    0x4A3ED, 0x4A3FA, 0x4A434, 0x4A444, 0x4A450, 0x4A45C, 0x4A4AE, 0x4A4E8, 0x4A527, 0x4A559, 0x4A575,
+                    0x4A581, 0x4A5DC, 0x4A605, 0x4A60A)
+
+D5J_SPECS += [
+    # 0x49C78 fight_effects_pass: no argument. Four specs on the entry (22 callees; a case holds 16
+    # stubs and 40 pokes); 0x496AC, a leaf, runs on both sides in all four. This one: the midpoint
+    # store, types 0..8 and above 0xE, and the DS_001088BF tail. e0..e9 the empty list: DS_001088C2
+    # cleared after 0x4A634, the tail skipped in modes 7, 8, 9 as words (e4..e6: 0x0109, 0x0107,
+    # 0x0108 run it) with DS_001088BF kept, its four (count, kind) pairs through the jump table
+    # 0x49C68 (`cmp al,3; ja` 0x4A5CD: e8's 5 and e9's 0xFF only clear the byte), bit 7 of
+    # DS_00104AEC cleared; e3 is mode 9 with an empty list (the block's own row is _m9). d0 the
+    # default arm 0x4AAD0 (`cmp al,0xe; ja` 0x49D08: 0xF and 0xFF, not 0xE). c0..c3 type 1: the
+    # 0x4BD4C gate under DS_001088C2, whole EAX (0x49D44 `test eax,eax`: c2 returns 0x100), and the
+    # arrival (`jg` 0x49D79). t2 type 2. t3, t3b, t3c type 3: the clamp, the x against the
+    # zero-extended word 0xBD898 (`jg` 0x49DD8: t3b's 0x9000), 0x2BE1C signed (`jle` 0x49DF0: t3c's
+    # 0x80000000), the +0x28 bit 14, the stream, the timer from rng(0x3C) + 0x3C. t4 type 4: the
+    # signed word timer (`jg` 0x49E66), the walk towards the +0x28 bit 14 of the record the +0xC cell
+    # names. t5 type 5, s0..s3 type 6 (as 0x4BF18's). v0..v3 type 7: the voice once inside 0 < x <
+    # 0x5400 (bit 2 of +0x1C), the +0x34 step for 0 <= x <= 0x5400 with bit 0 (`jle` 0x4A023,
+    # 0x4A038), the +0x28 bit 7 at -0x100 below -0x300 or 0x100 above 0x5700. h0..h3 type 8: bit 6,
+    # 0x4AF04's AL (0x4A0A7 `test al,al`: h2 returns 0x100, h3 0xFFFFFF80), the held index +0x4A
+    # zero-extended (h2's 0x80) into the DS_001014F4 table, the side's DS_001088AE / DS_001088B2
+    # bytes, 0x4B470. Mask 0: the callers go on to `call 0x1282c` (0x263A0, 0x2652F: AX loaded at
+    # 0x12834), to `call 0x12da8` (0x28307, 0x2851D, 0x2884C, 0x28C09: AL loaded at 0x12DA9, EAX at
+    # 0x12DBA / 0x12DD2) or to `jmp 0x2540f` (0x25312: the chain the input_state_update row followed).
+    Spec("fight_effects_pass", 0x49C78, d5j_fx_a_cases(), calls=D5J_FX_A, allow_calls=(0x496AC,), eax_mask=0,
+         unhit_named={a: "types 9 to 14 and the mode-9 block's voices and type-12 pass: the fight_effects_pass_m9 row's"
+                      for a in D5J_FX_UNHIT_A},
+         mutants=tuple("@" + m for m in (
+             "nomid midw idx32 idx8 once noprel prelent t0 tf te "
+             "c2 c2not bdal dist step stepz gt c1noarr "
+             "t2dec t2ge t2uns "
+             "clamparg noclamp bd898s t3gt be1cswap be1cge be1cuns bit4000 nobit hold3 "
+             "t3strm t3s38 t3s34 t3late t3timer t3rng t3type t3f80 "
+             "t4dec t4ge t4uns t4strm t4hold t4s38 t4v38 t4bit t4dir t4type t4f7f "
+             "t5clamp t5lt t5uns t5strm t5s38 t5s34 t5type t5w18 "
+             "t6ge t6no80 t6nocopy18 t6nocopy32 t6copyw t6copyd t6sumw t6sum t6gt t6sub "
+             "t6nodead t6keep10 t6strm t6type t6hold t6no1c t6no36 t6s34 t6no1f "
+             "t7x0 t7x54 t7f4 t7nobit t7late t7voice t7y0 t7y54 t7f1 t7lo t7hi "
+             "t7l300 t7r57 t7no28 t7v "
+             "t8bit t8side af04eax t8k t8no4b t8sx t8no2a t8no29 t8no4a t8nobf t8noae "
+             "t8ae20 t8nob2 t8late t8idx "
+             "m9w noc2 c2early tail9 tail8 tail7 tailw bf5 bfswap bfcount bfrng "
+             "nobf0 bfearly noaec aecbit").split())),
+    # the same entry: types 9..14 and the mode-9 block (the frame locals: the per-side counts
+    # [esp+side*2], the entry count [esp+8], type 9's count [esp+0xC], type 14's [esp+0x10], type
+    # 11's flags [esp+0x14] / [esp+0x18]). m0..m6 type 9 (the word DS_001088B4: m1's 0x0100) and the
+    # block: the voice 0xCB when type 14's count reaches the DS_00104B16 side's count - 2 (signed
+    # `jl` 0x4A4A3: m1's -2, m3 equal, m4 below) with DS_001088C3 clear, the DS_001088B0 countdown
+    # (a word: m5's 0x0100, m6's 0x013C; the voice 0xDC at 0x3C, m2), DS_001088C9 = slot 0's +0x5A <
+    # 0x78 unsigned (m0 0x77, m1 0x78, m2 0x80), DS_001088B4 and 0x4A928 when every entry is an idle
+    # type 9 (`cmp ax,bx` 0x4A554). k0..k3 type 10 (0x4B430's whole EAX, 0x4A154 `test eax,eax`: k3
+    # returns 0x100). w0..w3 type 11 (0x4A7D4's whole EAX, 0x4A19B: w3 returns 0x100) and the block's
+    # type-12 pass. y0..y2 type 12. d0..d4 type 13: the on-screen gate (+0x2A bit 12, -0x300 <= x <=
+    # 0x5700), the kill when the side is the sign-extended DS_001088C9 (`sar eax,0x18` of the dword
+    # 0x1088C6: d3's 0xFF) with DS_001088C7 clear, the turn, the target from 0x2BE00 of that slot's
+    # record (d3: slot -1, the dword 0x10771C) and rng(0xC00) (`jle` 0x4A2FE), 0x496DC with
+    # DS_00108878. f1..f6 type 14 (0x4A868's whole EAX, 0x4A366: f2 returns 0x100). l0, l1 type 3 in
+    # mode 9 with DS_00104B16 = 2: the landing writes the frame dword [esp+4], side 2's count, which
+    # the raw never initialises (only [esp] and [esp+2], 0x49CBC/0x49CC1) — the port's named gap; no
+    # case reads it before a landing wrote it.
+    Spec("fight_effects_pass_m9", 0x49C78, d5j_fx_b_cases(), calls=D5J_FX_B, allow_calls=(0x496AC,), eax_mask=0,
+         unhit_named={a: "types 0 to 8 (but 3) and above 0xE, and the DS_001088BF tail: the fight_effects_pass row's"
+                      for a in D5J_FX_UNHIT_B},
+         mutants=tuple("@" + m for m in (
+             "nocnt cnt20 nocount still0 t9b t9type t9idle t10c7 t10c8 b430al t10flag "
+             "t10type t10f7f t10early t10no2ac "
+             "t11walk t11noclamp a7d4al t11s38 t11s34 t11s36 t11strm t11hold t11still t11w34b "
+             "t12inv t12no29 t12w34 t12strm t12c6 t12early "
+             "t13c9z t13c7 t13nodead t13type t13no6dc t13cnt t13late t13no878 "
+             "t13bit t13lo t13hi t13dir t13no29 t13w34 t13strm t13hold t13slotz t13rle "
+             "t13sign t13rng t13no14 t13noclamp t13clamparg "
+             "t14cnt t14w34b t14al t14s38 t14s34 t14s36 t14no55 t14strm2 "
+             "t14bit t14lo t14hi t14dir t14no29 t14w34 t14strm t14hold t14slotz t14rle "
+             "t14sign t14rng t14no14 t14noclamp t14clamparg "
+             "nols2 m9lim m9lt m9uns m9b16 m9c3 m9v1 m9noc3 m9c3early m9rng1 m9add1 "
+             "m9b0b m9nov2 m9nodec m9pre m9v3 m9c9le m9noc9 m9c9s m9nob4 m9ne m9no928 "
+             "m9b4late m9stillonly m9walkonly m9t12").split())),
+    # the same entry with stubs that rewrite what the raw loads again. The raw loads the entry's
+    # actor into EBX at the loop's top (0x49CD8), before the prelude 0x4B69C, and uses EBX only in
+    # types 3, 4, 5 and 6 (the x, +0x32 and +0x36 tests, the +0x28 bit, the +0x1C/+0x34/+0x36/+0x38
+    # stores); every other use is [ecx+8] loaded again. The prelude stub relinks the node to
+    # D5J_ALT and its +0xC cell to D5J_CELL2; each stub an arm calls before such a site (0x4BD4C,
+    # 0x2BE1C, 0x2BC30, 0x2B150, 0x2C3FC, 0x4AF04, 0x4A7D4, 0x4A868) relinks it again to D5J_ALT2,
+    # and the stream stub repoints D5J_CELL2 (type 4 reads the partner's +0x28 after its stream
+    # call, 0x49E8B). The index is the first record's (SI, 0x49CE1). qc is mode 9, where type 11's
+    # +0x34 test (0x4A1D5) decides the type-12 pass.
+    Spec("fight_effects_pass_rr", 0x49C78, d5j_fx_rr_cases(), calls=D5J_FX_RR, allow_calls=(0x496AC,), eax_mask=0,
+         unhit_named={a: "types 0, 2, 9 and 10, the arms' other branches, the mode-9 block's voices and the "
+                         "DS_001088BF tail: the fight_effects_pass and fight_effects_pass_m9 rows'"
+                      for a in D5J_FX_UNHIT_RR},
+         mutants=tuple("@" + m for m in (
+             "allcached allreread armcache c1cache t3cache t4cache t5cache t6cache t7cache "
+             "t8cache t11cache t12cache t13cache t14cache cellcache t4pcache idxlate").split())),
+    # the same entry with a prelude that makes the node type 6 (the raw reads +0x1E after it,
+    # 0x49D03) and cuts it out of the list (the link was loaded before it, 0x49CD3), and a 0x4A634
+    # that stores the mode word 0x24 (the tail reads it after the call, 0x4A59A): u0 enters in mode
+    # 7, u1 in mode 9 (whose block runs on the word read at 0x4A478, before 0x4A634).
+    Spec("fight_effects_pass_pre", 0x49C78, d5j_fx_pre_cases(), calls=D5J_FX_PRE, eax_mask=0,
+         unhit_named={a: "every type but 6, the mode-9 block's arms and the other DS_001088BF pairs: the "
+                         "fight_effects_pass and fight_effects_pass_m9 rows'"
+                      for a in D5J_FX_UNHIT_PRE},
+         mutants=("@tycache", "@modecache", "@nextlate")),
+]
+
 D1_SPECS += D5J_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
