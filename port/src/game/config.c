@@ -672,6 +672,49 @@ void config_credits_init(void)
     DSD(DS_00105C00) = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;  /* 0x2C309..0x2C317 */
 }
 
+/* 0x2D62C — record 2026-10-13-reverse-s §S.9. `inc dword [0x105D88]; ret`.
+ * One caller, the timer ISR 0x1BDF4 (0x1BE28). */
+void config_isr_tick(void)
+{
+    DSD(DS_00105D88)++;                                 /* 0x2D62C */
+}
+
+/* 0x32970 — record 2026-10-13-reverse-s §S.9. EAX = the new mode mask (kept
+ * on the stack, 0x32978; only its low byte is used, 0x32A25). EBX, ECX, EDX,
+ * ESI and EDI are pushed and popped. Every value is read from memory where the
+ * raw reads it: the total and the minute counter after the accumulator loop
+ * (0x329B7, 0x329BD), whose stores can land on them (a mask bit above 4). */
+u32 config_run_clock(u32 mask)
+{
+    const u32 last = DSD(DS_0010747C);                  /* 0x3297B */
+    const u32 now = DSD(DS_00105D88);                   /* 0x32981 */
+    DSD(DS_0010747C) = now;                             /* 0x3298B */
+    const u32 el = now - last;                          /* 0x32992 */
+    u32 acc = 0x00107470u;                              /* 0x32986 */
+    for (u32 m = DSB(DS_00107494); m != 0u; m >>= 1, acc += 4u)   /* 0x32994..0x329AE */
+        if ((m & 1u) != 0u) DSD(acc) += el;             /* 0x329A0..0x329A5 */
+    const u32 slot = 0x00107488u + (u32)DSB(DS_00107494) * 4u;    /* 0x329B0/0x329B2 */
+    const u32 total = DSD(DS_00107484) + el;            /* 0x329B7, 0x329C4 */
+    const u32 mins = DSD(slot) + el;                    /* 0x329BD, 0x329C6 */
+    DSD(DS_00107484) = total;                           /* 0x329C8 */
+    DSD(slot) = mins;                                   /* 0x329CE */
+    if (total >= 0x3840u) {                             /* 0x329D5/0x329DB `jb` */
+        DSD(DS_00107484) = 0u;                          /* 0x329E9 */
+        for (u32 i = 3u; i != 6u; i++) {                /* 0x329DD, 0x32A1C..0x32A23 */
+            const u32 at = 0x00107488u + (i - 3u) * 4u; /* 0x329EF, 0x32A1D */
+            u32 c = DSD(at);                            /* 0x329F4 */
+            if (c > 0xE10u) {                           /* 0x329F6/0x329FC `jbe` */
+                const u32 q = (c / 0xE10u) & 0xFFFFu;   /* 0x329FE..0x32A06: DIV, then `mov dx,ax` */
+                c -= q * 0xE10u;                        /* 0x32A09/0x32A0C */
+                DSD(at) = c;                            /* 0x32A15 */
+                (void)audit_add(i, q);                  /* 0x32A0E..0x32A17 0x2DAE4 */
+            }
+        }
+    }
+    DSB(DS_00107494) = (u8)mask;                        /* 0x32A25/0x32A28 */
+    return 0x00107488u;                                 /* 0x32A2D */
+}
+
 /* 0x32A3C — derivation record §42-E, track S §S.6. EAX = the mode (only its
  * low two bits index, 0x32A43 `and edx,3`), EDX = the flag, kept in ECX
  * (0x32A3F). Takes the per-mode tick accumulator DS_0010746C[mode & 3] and
@@ -684,19 +727,7 @@ void config_play_time_close(u32 mode, u32 flag)
 {
     PR_SEAM(0x32A3Cu, mode, flag);
     u32 idx = mode & 3u;                                /* 0x32A43 */
-    /* PORT: 0x32A4A 0x32970(EAX = 0), the run clock, is out of scope (spec
-     * §7); the host clock owns wall time. Its stores, for a later port:
-     * DS_0010747C = DS_00105D88; the elapsed ticks added into
-     * DS_0010746C[k + 1] for each set bit k of DS_00107494, into
-     * DS_00107484 and into DS_00107488[DS_00107494]; at DS_00107484 >=
-     * 0x3840 it zeroes it and, for each DS_00107488[i] > 0xE10 (i = 0..2),
-     * keeps the remainder mod 0xE10 and posts 0x2DAE4(3 + i, quotient);
-     * and DS_00107494 = AL = 0 (0x32A28), clearing the mode mask. It
-     * preserves EDX (0x32972 push). Until it is ported DS_0010746C[1..2]
-     * are only ever zeroed: every time value posted here and by 0x32B00 and
-     * 0x32B4C is 0 (the time totals do not move, the time histograms count
-     * bucket 0), and fields 3..5 and the slot byte DS_00105E2F never move
-     * (record 2026-10-13-reverse-s §S.8, audit F2). */
+    (void)config_run_clock(0u);                         /* 0x32A45/0x32A4A 0x32970 (it keeps EDX, 0x32972) */
     u32 ticks = DSD(DS_0010746C + idx * 4u);            /* 0x32A4F */
     DSD(DS_0010746C + idx * 4u) = 0u;                   /* 0x32A56 */
     if (idx == 0u) return;                              /* 0x32A5D/0x32A5F */
@@ -887,11 +918,13 @@ void config_screen_wait(s32 n)
              * retrace, as the master loop's spin does: when the gate byte is
              * not 1 (0x1BDF8..0x1BE00) it adds 1 to DS_00101508 and
              * DS_00101500 (0x1BE0E..0x1BE16) and to the word DS_000EF6DE
-             * (0x1BE21). Its calls 0x1BBAC and 0x2D62C are not ported. */
+             * (0x1BE21), and calls 0x2D62C (0x1BE28). Its call 0x1BBAC (the
+             * input sampler) is the host's. */
             if (DSB(CFG_ISR_GATE) != 1u) {
                 DSD(DS_00101508)++;
                 DSD(CFG_TICK_ISR)++;
                 DSW(CFG_FRAME_WORD) = (u16)(DSW(CFG_FRAME_WORD) + 1u);
+                config_isr_tick();                          /* 0x1BE28 0x2D62C */
             }
             host_wait_vblank();
         }

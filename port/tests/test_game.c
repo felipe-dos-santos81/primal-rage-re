@@ -4847,6 +4847,93 @@ int test_audit(void)
     return 0;
 }
 
+/* The run clock 0x32970 and the ISR tick 0x2D62C (track S, record
+ * 2026-10-13-reverse-s §S.9). */
+#define RC_LO   0x0010746Cu   /* the accumulators, the last tick, the minute counters, the mask */
+#define RC_LEN  0x40u
+int test_run_clock(void)
+{
+    int before = g_failures;
+    u8 sv_rc[RC_LEN], sv_au[AU_LEN], sv_img[0x7F8];
+    const u32 sv_tick = DSD(DS_00105D88), sv_t1 = DSD(DS_00101508), sv_t0 = DSD(DS_00101500);
+    tf_snap(sv_rc, RC_LO, RC_LEN);
+    tf_snap(sv_au, AU_LO, AU_LEN);
+    tf_snap(sv_img, 0x00100CE4u, 0x7F8u);
+
+    /* tick — 0x2D62C `inc dword [0x105D88]`, and the modelled ISR adds it with
+     * its counter pair (0x1BE0E..0x1BE28). */
+    DSD(DS_00105D88) = 0x00012344u;
+    config_isr_tick();
+    CHECK_EQ_INT((int)DSD(DS_00105D88), 0x00012345);
+    DSD(DS_00101508) = 0x100u;
+    game_isr_ticks(3u);
+    CHECK_EQ_INT((int)DSD(DS_00105D88), 0x00012348);
+    CHECK_EQ_INT((int)DSD(DS_00101508), 0x103);
+
+    /* elapsed — mask 5 (bits 0 and 2), 600 ticks, below the 4-minute mark: the
+     * two accumulators, the total and the mask's minute counter take the 600,
+     * the others stay, the mask becomes the argument's low byte, no post. */
+    for (u32 i = 0u; i < RC_LEN; i += 4u) DSD(RC_LO + i) = 0x1000u + i;
+    DSD(DS_0010747C) = 1000u;
+    DSD(DS_00105D88) = 1600u;
+    DSD(DS_00107484) = 0x100u;
+    DSD(DS_00107494) = 5u;
+    (void)config_field_set(3u, 7u);
+    CHECK_EQ_INT((int)config_run_clock(0x12345603u), 0x00107488);       /* 0x32A2D */
+    CHECK_EQ_INT((int)DSD(DS_0010747C), 1600);                          /* 0x3298B */
+    CHECK_EQ_INT((int)DSD(DS_00107470), 0x1004 + 600);                  /* bit 0 */
+    CHECK_EQ_INT((int)DSD(DS_00107470 + 4u), 0x1008);                   /* bit 1 clear */
+    CHECK_EQ_INT((int)DSD(DS_00107470 + 8u), 0x100C + 600);             /* bit 2 */
+    CHECK_EQ_INT((int)DSD(DS_00107484), 0x100 + 600);                   /* 0x329C8 */
+    CHECK_EQ_INT((int)DSD(DS_00107488), 0x101C);
+    CHECK_EQ_INT((int)DSD(DS_00107488 + 4u * 5u), 0x1030 + 600);        /* 0x329CE, index = the old mask */
+    CHECK_EQ_INT((int)DSB(DS_00107494), 3);                             /* 0x32A28: AL */
+    CHECK_EQ_INT((int)config_field_get(3u), 7);
+
+    /* minutes — the total reaches 0x3840 (`jb` 0x329DB): it is zeroed and each
+     * minute counter above 0xE10 (`jbe` 0x329FC) keeps its remainder and posts
+     * the quotient to field 3 + i (0x32A17). One tick short, nothing moves. */
+    for (u32 pass = 0u; pass < 2u; pass++) {
+        DSD(DS_0010747C) = 5000u;
+        DSD(DS_00105D88) = 5001u;
+        DSD(DS_00107494) = 0u;
+        DSD(DS_00107484) = 0x3840u - 2u + pass;
+        DSD(DS_00107488) = 2u * 0xE10u + 4u;
+        DSD(DS_00107488 + 4u) = 0xE10u;
+        DSD(DS_00107488 + 8u) = 0xE11u;
+        (void)config_field_set(3u, 7u);
+        (void)config_field_set(4u, 9u);
+        (void)config_field_set(5u, 4u);
+        (void)config_run_clock(0u);
+        CHECK_EQ_INT((int)DSD(DS_00107484), pass ? 0 : 0x3840 - 1);
+        CHECK_EQ_INT((int)DSD(DS_00107488), pass ? 5 : 2 * 0xE10 + 5);
+        CHECK_EQ_INT((int)DSD(DS_00107488 + 4u), 0xE10);
+        CHECK_EQ_INT((int)DSD(DS_00107488 + 8u), pass ? 1 : 0xE11);
+        CHECK_EQ_INT((int)config_field_get(3u), pass ? 9 : 7);
+        CHECK_EQ_INT((int)config_field_get(4u), 9);
+        CHECK_EQ_INT((int)config_field_get(5u), pass ? 5 : 4);
+    }
+
+    /* the play-time close runs the clock first (0x32A4A): 600 ticks in mode 1
+     * are 10 seconds posted to field 0xA (0x32A9B; track S audit F2). */
+    DSD(DS_0010746C + 4u) = 0u;
+    DSD(DS_0010747C) = 7000u;
+    DSD(DS_00105D88) = 7600u;
+    DSD(DS_00107484) = 0u;
+    DSD(DS_00107494) = 1u;
+    (void)config_field_set(0xAu, 3u);
+    config_play_time_close(1u, 0u);
+    CHECK_EQ_INT((int)config_field_get(0xAu), 13);
+
+    tf_put(sv_rc, RC_LO, RC_LEN);
+    tf_put(sv_au, AU_LO, AU_LEN);
+    tf_put(sv_img, 0x00100CE4u, 0x7F8u);
+    DSD(DS_00105D88) = sv_tick;
+    DSD(DS_00101508) = sv_t1;
+    DSD(DS_00101500) = sv_t0;
+    return g_failures - before;
+}
+
 /* ---- test_anim.c ---- */
 
 /* port/tests/test_anim.c — the animation-stream interpreter (Task 7).

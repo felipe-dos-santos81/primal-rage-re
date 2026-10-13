@@ -11321,13 +11321,15 @@ D1I_PT_AUDIT = ("posts through the audit layer (0x2DAE4/0x2E934, ported by track
 
 
 def d1i_pt_case(acc=(0x11111111, 0x22222222, 0x33333333, 0x44444444), clock=0x00012345):
-    """0x32A3C/0x32B00/0x32B4C: the four accumulators 0x10746C.., then the run clock's state in
-    the one form where 0x32970 changes no byte: last tick 0x10747C == the ISR tick 0x105D88 (no
-    elapsed time), 0x107480 seeded, 0x107484 below 0x3840, 0x107488.. seeded, mode mask
-    0x107494 = 0."""
+    """0x32A3C/0x32B00/0x32B4C: the four accumulators 0x10746C.., then the run clock's state in a
+    form where a call of 0x32970 (ported by track S, record section S.9; run on both sides) is seen:
+    the ISR tick 0x105D88 is 600 past the last tick 0x10747C and the mode mask 0x107494 is 1, so
+    the call adds 600 to the accumulator 0x107470, to the total 0x107484 (0x100, below 0x3840) and
+    to the minute counter 0x10748C, moves the last tick and stores its argument's low byte as the
+    mask. 0x107480 is seeded."""
     return {D1I_PT_ACC: b"".join(le32(v) for v in acc) + le32(clock) + le32(0x55555555) + le32(0x00000100)
-                        + le32(0x00000200) + le32(0x00000300) + le32(0x00000400) + le32(0),
-            0x00105D88: le32(clock)}
+                        + le32(0x00000200) + le32(0x00000300) + le32(0x00000400) + le32(1),
+            0x00105D88: le32((clock + 600) & 0xFFFFFFFF)}
 
 
 def d1i_pack_case(seed, rec=D1I_KREC):
@@ -29724,8 +29726,11 @@ def d5h_ss_case(st, timer=0x5A5A, gate=1, b1e=0x1E, c6c=0x0302, f71=0, f72=0x72,
     """0x11D04: the gate byte 0x104B1D between seeded neighbours (0x104B1E = `b1e`), the bytes 0x104B15
     and 0x104B1B (0x15, 0x1B) between seeded neighbours, and the state block 0xF0A62..0xF0A73: the
     state word 0xF0A64 = `st`, the timer word 0xF0A6A, the next-state word 0xF0A6C = `c6c`, the bytes
-    0xF0A6F (0x6F), 0xF0A71 = `f71` and 0xF0A72 = `f72`, every other byte seeded."""
-    p = {0x00104B14: bytes([0x14, 0x15, 0x16]),
+    0xF0A6F (0x6F), 0xF0A71 = `f71` and 0xF0A72 = `f72`, every other byte seeded. The run clock's state
+    is d1i_pt_case's, in which a call of 0x32970 is seen (the coin arm 0x11D3A, state 5 0x11E0C, state
+    8 0x11EAE; record 2026-10-13-reverse-s section S.9)."""
+    p = {**d1i_pt_case(),
+         0x00104B14: bytes([0x14, 0x15, 0x16]),
          0x00104B1A: bytes([0x1A, 0x1B, 0x1C, gate, b1e]),
          0x000F0A62: (le16(0x6262) + le16(st) + le16(0x6666) + le16(0x6868) + le16(timer) + le16(c6c)
                       + bytes([0x6E, 0x6F, 0x70, f71, f72, 0x73]))}
@@ -33123,6 +33128,53 @@ SC_SPECS = [
 ]
 
 D1_SPECS += SC_SPECS
+
+# ---- track S integration: the run clock and the ISR tick (record 2026-10-13-reverse-s §S.9) ----------
+SI_RC = 0x0010746C                              # acc[0..3], last tick, 0x107480, total, counters[0..2], mask
+
+
+def si_rc(cid, eax, last, now, mask, total=0x100, counters=(0x200, 0x300, 0x400), stub=None, extra=None):
+    """0x32970: the four accumulators seeded, the last tick, the total, the three minute counters, the
+    old mask byte (its dword's upper bytes seeded), the dwords above (the slot of a mask up to 7) and
+    the ISR tick 0x105D88."""
+    p = {**d1d_chunks(SI_RC, b"".join(le32(v) for v in (0x11111111, 0x22222222, 0x33333333, 0x44444444, last,
+                                                         0x55555555, total) + tuple(counters))
+                             + bytes([mask, 0x66, 0x77, 0x88])
+                             + b"".join(le32(0x01000000 * (i + 1)) for i in range(8))),
+         0x00105D88: le32(now)}
+    p.update(extra or {})
+    return Case(cid, {"eax": eax}, p, stub or {})
+
+
+SI_SPECS = [
+    # 0x32970 config_run_clock: EAX = the new mask (AL is kept, 0x32A25). c0: no elapsed time and the mask
+    # unchanged, nothing moves. c1: 600 ticks under the mask 5 (bits 0 and 2; the slot 0x107488 + 4 * 5).
+    # c2: the mask 0xFF, whose bits 3, 5, 6 and 7 add into the last tick, the total and two minute
+    # counters before those are read (0x329B7, 0x329BD), and whose slot is 0x107884. c3: the total
+    # reaches 0x3840 exactly (`jb` 0x329DB): zeroed, and the counters above 0xE10 (`jbe` 0x329FC: the
+    # second holds 0xE10 exactly) post their minutes and keep the remainder; the stub's EAX is not read.
+    # c4: one tick short of 0x3840. c5: a quotient above 0xFFFF is cut to its low word (`mov dx,ax`
+    # 0x32A06) and the remainder keeps the rest. c6: the tick behind the last one (an unsigned elapsed
+    # time, so the total is far above 0x3840). EAX is the constant 0x107488 (0x32A2D); no caller reads it.
+    Spec("config_run_clock", 0x32970, [
+        si_rc("c0", 0x12345600, 0x00012345, 0x00012345, 0),
+        si_rc("c1", 0x12345603, 1000, 1600, 5),
+        si_rc("c2", 0x000000A5, 7000, 7001, 0xFF),
+        si_rc("c3", 0, 5000, 5001, 0, total=0x3840 - 1, counters=(2 * 0xE10 + 4, 0xE10, 0xE11),
+              stub={0x2DAE4: 0xDEADBEEF}),
+        si_rc("c4", 2, 5000, 5001, 0, total=0x3840 - 2, counters=(2 * 0xE10 + 4, 0xE10, 0xE11)),
+        si_rc("c5", 1, 9000, 9010, 1, total=0x4000, counters=(0x10, 0xE10 * 0x10001 + 7, 0xE10 + 1)),
+        si_rc("c6", 0x80, 0x00020000, 0x0001FF00, 2, total=0x10, counters=(0xE11, 0x20, 0x30)),
+    ], calls=(SB_AUDIT,), eax_mask=0xFFFFFFFF,
+       mutants=tuple("@" + m for m in "nolast accbase noacc slotnew nototal ge nozero gec q32 norem field two "
+                                      "maskold noslot signedcmp cached".split())),
+    # 0x2D62C config_isr_tick: `inc dword [0x105D88]; mov eax,eax; ret`. t1 carries out of the low word.
+    Spec("config_isr_tick", 0x2D62C, [
+        Case("t0", {"eax": 0x1234ABCD}, {0x00105D88: le32(0x00012344)}),
+        Case("t1", {"eax": 0}, {0x00105D88: le32(0x0001FFFF)}),
+    ], eax_mask=0xFFFFFFFF, mutants=("@two", "@word", "@none")),
+]
+D1_SPECS += SI_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

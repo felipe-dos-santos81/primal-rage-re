@@ -1602,8 +1602,7 @@ void flow_side_char_random(u32 side)
 void flow_player_join(u32 side)
 {
     PR_SEAM(0x28DA4u, side);
-    /* PORT: 0x28DAC 0x32970(EAX = 0), the run clock, is out of scope (spec
-     * §7); the host clock owns wall time. */
+    (void)config_run_clock(0u);                         /* 0x28DAA/0x28DAC 0x32970 */
     DSD(DS_000F0A48) = 0u;                              /* 0x28DB8 */
     DSD(DS_00104AEC) = 0u;                              /* 0x28DBE */
     DSD(DS_00104AE8) = 0u;                              /* 0x28DC4 */
@@ -2393,8 +2392,7 @@ void game_mode_05_step(void)
         DSB(DS_001078FC) = 0u;                          /* 0x25EA6 (AH) */
         DSB(DS_001078FE) = 0u;                          /* 0x25EAC (AH) */
         DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;   /* 0x25EB2..0x25EC5 */
-        /* PORT: 0x25ECA 0x32970, the run clock, is out of scope (spec §7);
-         * the host clock owns wall time. */
+        (void)config_run_clock(DSD(DS_00104ABC));       /* 0x25ECA 0x32970: EAX = the value just stored */
         if (DSB(DS_00104B1E) == 1u)                     /* 0x25ECF..0x25ED9 */
             config_play_time_snap(DSD(DS_00104ABC), 1u);    /* 0x25EE5 0x32B00 */
         if (DSB(DS_00104B14) == 0u)                     /* 0x25EEA */
@@ -2537,8 +2535,7 @@ void game_mode_30_step(void)
         DSB(DS_001078FC) = 0u;                          /* 0x29539/0x2953B */
         DSB(DS_001078FE) = 0u;                          /* 0x29541 */
         DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;  /* 0x29547..0x2955A */
-        /* PORT: 0x2955F 0x32970, the run clock, is out of scope (spec §7);
-         * the host clock owns wall time. */
+        (void)config_run_clock(DSD(DS_00104ABC));       /* 0x2955F 0x32970: EAX = the value just stored */
         if (DSB(DS_00104B21) == 0u) {                   /* 0x29564..0x2956C */
             DSB(DS_00104AF0) = 0u;                      /* 0x29573 */
             DSB(DS_00104AF1) = 0u;                      /* 0x29579 */
@@ -3000,8 +2997,7 @@ void flow_match_end(void)
 {
     PR_SEAM0(0x27DC8u);
     u32 b;
-    /* PORT: 0x27DCC 0x32970(EAX = 0), the run clock, is out of scope (spec
-     * §7); the host clock owns wall time. */
+    (void)config_run_clock(0u);                         /* 0x27DCA/0x27DCC 0x32970 */
     DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;   /* 0x27DD1..0x27DE6 */
     config_play_time_snap_b(DSD(DS_00104ABC), 0u);      /* 0x27DE4/0x27DEB 0x32B4C */
     if (DSD(DS_00104ABC) == 1u)                         /* 0x27DF0: read again after 0x32B4C */
@@ -4325,8 +4321,7 @@ void game_mode_07_step(void)
  *   - 0x32B94(the byte DS_00104B1F, zero-extended: 0x2785A `xor eax,eax`,
  *     0x27861 `mov al`) (0x2786B, audit_add_if_bit0, track S §S.6): bit 0
  *     set posts 0x2DAE4(0xE, 1);
- *   - the run-clock tick 0x32970(0) (0x27874; host-owned, record §48-V:
- *     the host clock owns wall time);
+ *   - the run clock 0x32970(0) (0x27874, config_run_clock);
  *   - config_play_time_close(1, DS_00104B19) (0x27879..0x27886 0x32A3C);
  *   - DS_00104B25 = 0, DS_00104AFA = 0x1F, DS_00104B00 = 0x17 and
  *     DS_00104AE4 = frontend_darken_all (0x29B74) — the same hook mode 9's
@@ -4358,8 +4353,7 @@ void game_mode_0f_step(void)
     }
     fighter_41310(DSD(DS_00104AD4), 0x30D40);                  /* 0x2784B..0x27855 0x41310 */
     audit_add_if_bit0(DSB(DS_00104B1F));                       /* 0x2785A..0x2786B 0x32B94 */
-    /* PORT: 0x27874 0x32970(EAX = 0), the run clock, is out of scope (spec
-     * §7); the host clock owns wall time. */
+    (void)config_run_clock(0u);                                 /* 0x27870/0x27874 0x32970 */
     config_play_time_close(1u, DSB(DS_00104B19));               /* 0x27879..0x27886 0x32A3C */
     DSB(DS_00104B25) = 0u;                                       /* 0x27890 */
     DSW(DS_00104AFA) = 0x1Fu;                                    /* 0x27896 */
@@ -5603,7 +5597,7 @@ void game_mode_1f_step(void)
  * call). Otherwise:
  * - three text_cells_release_count(-1, 3, 0x2A), (-1, 5, 0x2A), (-1, 7,
  *   0x2A) clears (0x2F388);
- * - the run clock 0x32970(0), out of scope (spec §7); the voices
+ * - the run clock 0x32970(0) (0x26D9F); the voices
  *   0x2C3FC(0x29) (case 0) and 0x2C3FC(0x22) (case 5); the raw loads
  *   EDX = 0x1D before the second call (0x26DB3), but 0x2C3FC never reads
  *   EDX (0x2C3FF, record k7-k12 §6.2): it pushes and pops it, so the 0x1D
@@ -5639,7 +5633,7 @@ void flow_26d4c(void)
     text_cells_release_count(-1, 3, 0x2A);                  /* 0x26D70 0x2F388 */
     text_cells_release_count(-1, 5, 0x2A);                  /* 0x26D84 */
     text_cells_release_count(-1, 7, 0x2A);                  /* 0x26D98 */
-    /* PORT: 0x26D9F 0x32970(0), the run clock, is out of scope (spec §7). */
+    (void)config_run_clock(0u);                             /* 0x26D9D/0x26D9F 0x32970 */
     (void)sound_voice(0x29u);                               /* 0x26DA4/0x26DA9 0x2C3FC */
     (void)sound_voice(0x22u);                               /* 0x26DAE/0x26DB8 0x2C3FC; EDX = 0x1D is not read */
     prompt_side_erase(0, 0x1D);                             /* 0x26DBF 0x2C2B0 */
@@ -5766,7 +5760,7 @@ void game_mode_23_step(void)
         actor_set_dead(DSD(DS_00104ACC));                    /* 0x26B74 0x2B150 */
         DSD(DS_00104ACC) = 0u;                               /* 0x26B82 */
         DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;  /* 0x26B94 */
-        /* PORT: 0x26B99 0x32970, the run clock, is out of scope (spec §7). */
+        (void)config_run_clock(DSD(DS_00104ABC));            /* 0x26B99 0x32970: EAX = the value just stored */
         DSD(DS_00104AAC) = 0x78u;                            /* 0x26BBE */
         DSW(DS_00104B00) = 0x22u;                            /* 0x26BD1 */
         if ((DSB(DS_00104529) & 2u) == 0u) {                 /* 0x26BD8/0x26BDB */
@@ -6039,8 +6033,7 @@ void game_mode_25_exit(void)
  * and the byte DS_00104B1F = 0 (DH). */
 void game_state_init(void)
 {
-    /* PORT: 0x10E84 0x32970(EAX = 0), the run clock, is out of scope (spec
-     * §7); the host clock owns wall time. */
+    (void)config_run_clock(0u);                         /* 0x10E82/0x10E84 0x32970 */
     frontend_input_reset();                             /* 0x10E90 0x4F1E4 */
     actors_reset();                                     /* 0x10E9C 0x2BAF4 (eax = 1) */
     DSW(DS_00104B00) = 3u;                              /* 0x10EA1 */
@@ -6917,6 +6910,7 @@ void game_init_resume(void)
      * (0x2C317) sets it (record 2026-10-01-gameplay-u11 §K.4). */
     /* 0x20CCC: the init chain writes the overlay row to 0x1D. */
     config_set_credit_row_init();
+    (void)config_run_clock(0u);                        /* 0x20CD1/0x20CD5 0x32970 */
     DSW(DS_00104AFC) = 0u;  /* 0x20CD3 xor ebx,ebx; 0x20CDF (0x32970, 0x13ADC keep EBX) */
     /* 0x47370 loads the localisation table (0x20C10 calls it before 0x10E80);
      * the port reads ENGLISH.TXT directly rather than the DOS memory/file
@@ -6996,6 +6990,7 @@ void game_isr_ticks(u32 n)
 {
     DSD(DS_00101508) += n;                                 /* 0x1BE0E/0x1BE10 */
     DSD(DS_00101500) += n;                                 /* 0x1BE0F/0x1BE16 */
+    DSD(DS_00105D88) += n;                                 /* 0x1BE28 0x2D62C (config_isr_tick), n times */
 }
 
 /* 0x5D808 — record named-gaps-b §B.11. `mov word [0xEF6DE],0; ret`: clears
@@ -7722,9 +7717,8 @@ void game_state_step(void)
         if (frontend_coin_poll(0u)) accepted |= 1u;    /* 0x11D15 */
         if (frontend_coin_poll(1u)) accepted |= 2u;    /* 0x11D28 */
         if (accepted != 0u) {                          /* 0x11D34/0x11D36 */
-            /* PORT: 0x11D38 runs 0x32970(eax = 0), the run-clock/tick update,
-             * out of scope (spec §7). It pushes and pops EDX, so 0x11D3F's
-             * `mov eax,edx` passes the accepted mask on (record §48-W). */
+            (void)config_run_clock(0u);                 /* 0x11D38/0x11D3A 0x32970: it pushes and pops EDX,
+                                                        * so 0x11D3F `mov eax,edx` passes the mask on */
             game_coin_divert(accepted);                /* 0x11D41 0x257A4 */
             return;                                    /* 0x11D46..0x11D49 */
         }
@@ -7750,8 +7744,7 @@ void game_state_step(void)
             (void)sound_voice(0x100u);                  /* 0x11DE8/0x11DF2 0x2C3FC */
             frontend_match_start();                     /* 0x1EA08 */
             config_set_credit_row(0x1Du);               /* 0x2C06C */
-            /* PORT: 0x32970(eax = 0), the run-clock/tick update, is out of scope
-             * (spec §7); the host clock owns wall time. */
+            (void)config_run_clock(0u);                 /* 0x11E07/0x11E0C 0x32970 */
             DSB(DS_000F0A6F) = 0;                       /* 0x11E11 */
             DSB(DS_000F0A72) = 0;                       /* 0x11E17 */
             DSW(DS_000F0A6A) = 0x12C;                   /* 0x11E1D */
@@ -7780,10 +7773,9 @@ void game_state_step(void)
             }
             break;
         case 8:
-            /* PORT: 0x11EAC runs 0x32970(eax = 0), the run clock, out of scope
-             * (spec §7); 0x11EB3 then loads EAX = 3. Only attract phase 0xB
-             * (0x114D6) stores state 8, when DS_00108173 != 0, and no
-             * instruction stores that byte (records §47-M.2, §48-W). */
+            /* Only attract phase 0xB (0x114D6) stores state 8, when DS_00108173 != 0,
+             * and no instruction stores that byte (records §47-M.2, §48-W). */
+            (void)config_run_clock(0u);                 /* 0x11EAC/0x11EAE 0x32970 */
             game_coin_divert(3u);                       /* 0x11EB8 0x257A4 */
             break;
         case 9:

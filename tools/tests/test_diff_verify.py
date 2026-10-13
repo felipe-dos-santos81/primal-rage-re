@@ -12127,7 +12127,7 @@ D3A_KINDS = {
     "flow_26d4c@rel3": {'call #0'},
     "flow_26d4c@relcnt": {'call #0'},
     "flow_26d4c@relcol": {'call #2'},
-    "flow_26d4c@norel7": {'call #10', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #9'},
+    "flow_26d4c@norel7": {'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #9', 'call #10'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "flow_26d4c@v29": {'call #3'},
     "flow_26d4c@v22": {'call #4'},
     "flow_26d4c@vorder": {'call #3', 'call #4'},
@@ -19225,11 +19225,11 @@ D5C_KINDS = {
     "game_mode_0f_step@nolatch1": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
     "game_mode_0f_step@latchrev": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
     "game_mode_0f_step@latchlate": {'call #0 memory', 'call #1 memory'},
-    "game_mode_0f_step@nohud0": {'call #0', 'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7'},
-    "game_mode_0f_step@nohud1": {'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7'},
+    "game_mode_0f_step@nohud0": {'call #0', 'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #6 memory', 'call #7'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
+    "game_mode_0f_step@nohud1": {'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #6 memory', 'call #7'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "game_mode_0f_step@hudswap": {'call #0', 'call #1'},
-    "game_mode_0f_step@noidle": {'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7'},
-    "game_mode_0f_step@nocam": {'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7'},
+    "game_mode_0f_step@noidle": {'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #6 memory', 'call #7'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
+    "game_mode_0f_step@nocam": {'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #6 memory', 'call #7'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "game_mode_0f_step@idleorder": {'call #2', 'call #3'},
     "game_mode_0f_step@noaec": {'byte', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
     "game_mode_0f_step@aecbit": {'byte', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
@@ -19237,7 +19237,7 @@ D5C_KINDS = {
     "game_mode_0f_step@nodec": {'byte', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory'},
     "game_mode_0f_step@ge": {'byte', 'call #4', 'call #5', 'call #6', 'call #7'},
     "game_mode_0f_step@uns": {'byte', 'call #4', 'call #5', 'call #6', 'call #7'},
-    "game_mode_0f_step@novoice": {'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7'},
+    "game_mode_0f_step@novoice": {'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #6 memory', 'call #7'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "game_mode_0f_step@voiceid": {'call #4'},
     "game_mode_0f_step@no25": {'byte'},
     "game_mode_0f_step@nomode": {'byte'},
@@ -19250,7 +19250,7 @@ D5C_KINDS = {
     "game_mode_0f_step@no41": {'byte', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
     "game_mode_0f_step@41bit": {'byte', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
     "game_mode_0f_step@41off": {'byte', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
-    "game_mode_0f_step@no41310": {'call #5', 'call #6', 'call #7'},
+    "game_mode_0f_step@no41310": {'call #5', 'call #6', 'call #6 memory', 'call #7'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "game_mode_0f_step@41310args": {'call #5'},
     "game_mode_0f_step@adb": {'call #5'},
     "game_mode_0f_step@delta": {'call #5'},
@@ -19259,7 +19259,7 @@ D5C_KINDS = {
     "game_mode_0f_step@closeflag": {'call #7'},
     "game_mode_0f_step@noafa": {'byte'},
     "game_mode_0f_step@afav": {'byte'},
-    "game_mode_0f_step@closeearly": {'call #5', 'call #6', 'call #7'},
+    "game_mode_0f_step@closeearly": {'call #5', 'call #6', 'call #7', 'call #7 memory'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "flow_challenge_poll@rb": {'byte', 'call #0', 'call #1'},
     "flow_challenge_poll@poll0arg": {'call #0'},
     "flow_challenge_poll@poll1arg": {'call #0'},
@@ -25682,9 +25682,9 @@ D5H_MASKS = {
     "game_loop": 0x0,
 }
 D5H_KINDS = {
-    "game_state_step_low@gate": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
-    "game_state_step_low@gatew": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5'},
-    "game_state_step_low@al": {'call #2', 'call #3', 'call #4', 'call #5'},
+    "game_state_step_low@gate": {'byte', 'call #0', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
+    "game_state_step_low@gatew": {'byte', 'call #0', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
+    "game_state_step_low@al": {'byte', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "game_state_step_low@code": {'call #1'},
     "game_state_step_low@order": {'call #0', 'call #1'},
     "game_state_step_low@fall": {'call #3', 'call #4', 'call #5', 'call #6'},
@@ -25741,7 +25741,7 @@ D5H_KINDS = {
     "game_state_step_coin@bits": {'call #5'},
     "game_state_step_coin@one": {'call #6'},
     "game_state_step_coin@mask": {'call #5'},
-    "game_state_step_coin@code": {'call #2', 'call #3', 'call #4', 'call #5', 'call #6'},
+    "game_state_step_coin@code": {'byte', 'call #2', 'call #3', 'call #4', 'call #5', 'call #5 memory', 'call #6'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "game_frame_head@noinput": {'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
     "game_frame_head@cmd26": {'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4', 'call #5', 'call #6'},
     "game_frame_head@cmd1b": {'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9', 'call #10', 'call #11', 'call #12'},
@@ -29501,11 +29501,11 @@ SB_KINDS = {
     "game_mode_12_step_s7@auditn": {'call #6'},
     "game_mode_12_step_s7@auditearly": {'call #6 memory'},
     "game_mode_12_step_s7@auditover": {'call #5'},
-    "game_mode_0f_step@nobit0": {'call #6', 'call #7'},
+    "game_mode_0f_step@nobit0": {'call #6', 'call #6 memory', 'call #7'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "game_mode_0f_step@bit0arg": {'call #6'},
     "game_mode_0f_step@bit0sext": {'call #6'},
     "game_mode_0f_step@bit0early": {'call #5', 'call #6'},
-    "game_mode_0f_step@bit0late": {'call #6', 'call #7'},
+    "game_mode_0f_step@bit0late": {'call #6', 'call #6 memory', 'call #7'},   # track S: the run clock 0x32970 is ported, its stores move with the mutation
     "flow_match_end@nochars": {'call #1', 'call #2', 'call #3', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #7', 'call #8'},
     "flow_match_end@charsswap": {'call #1'},
     "flow_match_end@chars0": {'call #1'},
@@ -29646,7 +29646,7 @@ SB_CASES = [
     ("config_play_time_close_audit@fc", ['k1', 'k4']),
     ("config_play_time_close_audit@f12", ['k0', 'k1', 'k4']),
     ("config_play_time_close_audit@no12", ['k0', 'k1', 'k4']),
-    ("config_play_time_close_audit@t12", ['k0', 'k1']),
+    ("config_play_time_close_audit@t12", ['k0', 'k1', 'k4']),   # track S: with the run clock ported the seconds differ in one more case
     ("config_play_time_close_audit@f9", ['k2']),
     ("config_play_time_close_audit@f7", ['k3', 'k5']),
     ("config_play_time_close_audit@f13", ['k2', 'k3', 'k5']),
@@ -30102,6 +30102,56 @@ SC_CASES = [
 D1_MASKS.update(SC_MASKS)
 D1_KINDS.update(SC_KINDS)
 D1_CASES.extend(SC_CASES)
+# track S integration (record 2026-10-13-reverse-s section S.9): the run clock and the ISR tick
+SI_MASKS = {
+    "config_run_clock": 0xFFFFFFFF,
+    "config_isr_tick": 0xFFFFFFFF,
+}   # SI_MASKS end
+SI_KINDS = {
+    "config_run_clock@nolast": {'byte', 'call #0 memory', 'call #1 memory'},
+    "config_run_clock@accbase": {'byte', 'call #0 memory', 'call #1 memory'},
+    "config_run_clock@noacc": {'byte', 'call #0 memory', 'call #1 memory'},
+    "config_run_clock@slotnew": {'byte', 'call #0 memory', 'call #1'},
+    "config_run_clock@nototal": {'byte', 'call #0', 'call #1'},
+    "config_run_clock@ge": {'byte', 'call #0', 'call #1'},
+    "config_run_clock@nozero": {'byte', 'call #0 memory', 'call #1 memory'},
+    "config_run_clock@gec": {'byte', 'call #1', 'call #1 memory', 'call #2'},
+    "config_run_clock@q32": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory'},
+    "config_run_clock@norem": {'byte', 'call #0 memory', 'call #1 memory'},
+    "config_run_clock@field": {'call #0', 'call #1'},
+    "config_run_clock@two": {'byte', 'call #1'},
+    "config_run_clock@maskold": {'byte'},
+    "config_run_clock@noslot": {'byte', 'call #0 memory', 'call #1', 'call #1 memory'},
+    "config_run_clock@signedcmp": {'byte', 'call #0', 'call #1'},
+    "config_run_clock@cached": {'byte'},
+    "config_isr_tick@two": {'byte'},
+    "config_isr_tick@word": {'byte'},
+    "config_isr_tick@none": {'byte'},
+}   # SI_KINDS end
+SI_CASES = [
+    ("config_run_clock@nolast", ['c1', 'c2', 'c3', 'c4', 'c5', 'c6']),
+    ("config_run_clock@accbase", ['c1', 'c2', 'c5', 'c6']),
+    ("config_run_clock@noacc", ['c1', 'c2', 'c5', 'c6']),
+    ("config_run_clock@slotnew", ['c1', 'c2', 'c4', 'c6']),
+    ("config_run_clock@nototal", ['c1', 'c2', 'c3', 'c4', 'c6']),
+    ("config_run_clock@ge", ['c3']),
+    ("config_run_clock@nozero", ['c3', 'c5', 'c6']),
+    ("config_run_clock@gec", ['c3']),
+    ("config_run_clock@q32", ['c5', 'c6']),
+    ("config_run_clock@norem", ['c3', 'c5', 'c6']),
+    ("config_run_clock@field", ['c3', 'c5', 'c6']),
+    ("config_run_clock@two", ['c3', 'c5', 'c6']),
+    ("config_run_clock@maskold", ['c1', 'c2', 'c4', 'c6']),
+    ("config_run_clock@noslot", ['c1', 'c2', 'c3', 'c4', 'c5', 'c6']),
+    ("config_run_clock@signedcmp", ['c6']),
+    ("config_run_clock@cached", ['c2']),
+    ("config_isr_tick@two", ['t0', 't1']),
+    ("config_isr_tick@word", ['t1']),
+    ("config_isr_tick@none", ['t0', 't1']),
+]   # SI_CASES end
+D1_MASKS.update(SI_MASKS)
+D1_KINDS.update(SI_KINDS)
+D1_CASES.extend(SI_CASES)
 
 
 @needs_unicorn
@@ -31424,10 +31474,10 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (821 after track S, the storage layer);
-        # the 167 without are counted apart
-        self.assertIn("diff-verify: 988/988 functions VERIFIED; 14706/14706 mutants detected; 1 named gaps; "
-                      "622/821 rows with callees closed (167 have none).", out.getvalue())
+        # the closed-row count is over the rows that have callees (822 after track S, the storage layer
+        # and the run clock); the 168 without are counted apart
+        self.assertIn("diff-verify: 990/990 functions VERIFIED; 14725/14725 mutants detected; 1 named gaps; "
+                      "635/822 rows with callees closed (168 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

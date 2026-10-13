@@ -29,9 +29,11 @@
  * (0x1CFFA push 0x3c; 0x1CFFF AIL_set_timer_frequency 0x5DA87) and starts it
  * (0x1D008 0x5DAA6); 0x1BDF4 calls 0x2D62C at 0x1BE28, only while the byte
  * DS_00104B22 is not 1 (0x1BDF8..0x1BE00). The dword at 0x1BF5C is the
- * 0x109A0 memory lock of 0x2D62C's code, not an install. g_tick ignores that
- * gate: DAT_00105D88's only reader besides the lock is the host-owned run clock
- * 0x32970 (record §1 of 2026-09-29-todo-verify-derivations.md). See
+ * 0x109A0 memory lock of 0x2D62C's code, not an install. g_tick is the host's
+ * own pacing counter and ignores that gate. The game's counter DS_00105D88 is
+ * not g_tick: the port's modelled ISR ticks advance it (flow.c game_isr_ticks,
+ * config.c's key wait; 0x2D62C is config_isr_tick), and the run clock 0x32970
+ * (config_run_clock) reads it (record 2026-10-13-reverse-s §S.9). See
  * port/spec/game_flow.md "Tick". */
 #define HOST_TICK_NS 16666667ull
 

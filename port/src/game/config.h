@@ -151,11 +151,25 @@ void config_set_credit_row_init(void);
  * 1. Callers: 0x10ECC (0x10E80, game_state_init) and 0x2CBB4 (svcmenu.c). */
 void config_credits_init(void);
 
-/* 0x32A3C. The play-time audit close: takes and zeroes the per-mode tick
- * accumulator DS_0010746C[mode & 3] and, for a mode other than 0, posts the
- * game count and the seconds through audit_add (0x2DAE4). PORT: its run-clock
- * call 0x32970 is not ported (nor is any of that function's 17 call sites), so
- * the accumulators never advance and the seconds posted are 0. Callers: 0x41578, 0x26F58, 0x277C0,
+/* 0x2D62C (record 2026-10-13-reverse-s §S.9). `inc dword [0x105D88]`: the tick
+ * the timer ISR 0x1BDF4 adds at 0x1BE28, 60 a second, which the run clock
+ * reads. */
+void config_isr_tick(void);
+
+/* 0x32970 (record 2026-10-13-reverse-s §S.9). The run clock. EAX = the new
+ * mode mask (its low byte is kept, 0x32A25). The ticks since its last call
+ * (DS_00105D88 - DS_0010747C) are added to DS_00107470[k] for each set bit k
+ * of the old mask byte DS_00107494, to the total DS_00107484 and to the minute
+ * counter DS_00107488[old mask]. When the total reaches 0x3840 it is zeroed
+ * and each of the three counters DS_00107488[0..2] above 0xE10 keeps its
+ * remainder and posts its minutes through audit_add(3 + i, minutes). Returns
+ * 0x107488 (0x32A2D); no caller reads it. */
+u32 config_run_clock(u32 mask);
+
+/* 0x32A3C. The play-time audit close: runs the clock (0x32A4A), takes and
+ * zeroes the per-mode tick accumulator DS_0010746C[mode & 3] and, for a mode
+ * other than 0, posts the game count and the seconds through audit_add
+ * (0x2DAE4). Callers: 0x41578, 0x26F58, 0x277C0,
  * 0x28788 and 0x41C28 (all ported) and the dead 0x2861C region. */
 void config_play_time_close(u32 mode, u32 flag);
 

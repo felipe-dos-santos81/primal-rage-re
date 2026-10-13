@@ -88,8 +88,7 @@ void attract_scene_tick(void)
 void attract_state_reset(void)
 {
     PR_SEAM0(0x10EE4u);
-    /* PORT: 0x32970(eax = 0), the run-clock/tick update, is out of scope
-     * (spec §7); the host clock owns wall time. */
+    (void)config_run_clock(0u);                 /* 0x10EE6/0x10EE8 0x32970 */
     /* 0x4F1E4: the raw calls the shared input-latch clear. flow.c's
      * frontend_input_reset() is that one-byte write. */
     frontend_input_reset();

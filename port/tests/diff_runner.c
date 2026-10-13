@@ -17792,9 +17792,9 @@ static void m_d1i_pb_dst(const u32 *r, u32 *eax)       { DSD(0x00107478u) = DSD(
 static void m_d1i_pb_wide(const u32 *r, u32 *eax)      { DSW(0x00107480u) = DSW(0x0010746Cu + r[R_EAX] * 4u); *eax = r[R_EAX] << 2; }
 static void m_d1i_pb_arm(const u32 *r, u32 *eax)       { config_play_time_snap_b(r[R_EAX], r[R_EDX] & 0xFFu); *eax = r[R_EAX] << 2; }
 static void b_d1i_32a3c(const u32 *r, u32 *eax)        { config_play_time_close(r[R_EAX], r[R_EDX]); *eax = 0x00107488u; }
-static void m_d1i_pc_idx(const u32 *r, u32 *eax)       { DSD(0x0010746Cu + (r[R_EAX] & 7u) * 4u) = 0u; *eax = 0x00107488u; }
-static void m_d1i_pc_drop(const u32 *r, u32 *eax)      { (void)r; *eax = 0x00107488u; }
-static void m_d1i_pc_wide(const u32 *r, u32 *eax)      { DSW(0x0010746Cu + (r[R_EAX] & 3u) * 4u) = 0u; *eax = 0x00107488u; }
+static void m_d1i_pc_idx(const u32 *r, u32 *eax)       { (void)config_run_clock(0u); DSD(0x0010746Cu + (r[R_EAX] & 7u) * 4u) = 0u; *eax = 0x00107488u; }
+static void m_d1i_pc_drop(const u32 *r, u32 *eax)      { (void)r; (void)config_run_clock(0u); *eax = 0x00107488u; }
+static void m_d1i_pc_wide(const u32 *r, u32 *eax)      { (void)config_run_clock(0u); DSW(0x0010746Cu + (r[R_EAX] & 3u) * 4u) = 0u; *eax = 0x00107488u; }
 /* ---- end of D1 batch d1i ---------------------------------------------------------------------- */
 
 /* ---- track D1 batch d1c (record 2026-10-11-reverse-d1c): game/flow.c's first half ------------- */
@@ -26068,6 +26068,7 @@ static void d3a_26d4c_core(u32 mut)
     text_cells_release_count(-1, (mut == D3A_TL_rel3) ? 4 : 3, (mut == D3A_TL_relcnt) ? 0x2B : 0x2A);
     text_cells_release_count(-1, 5, 0x2A);
     if (mut != D3A_TL_norel7) text_cells_release_count((mut == D3A_TL_relcol) ? 0 : -1, 7, 0x2A);
+    (void)config_run_clock(0u);   /* 0x32970, ported by track S (record section S.9) */
     if (mut == D3A_TL_vorder) (void)sound_voice(0x22u);
     (void)sound_voice((mut == D3A_TL_v29) ? 0x28u : 0x29u);
     if (mut != D3A_TL_vorder) (void)sound_voice((mut == D3A_TL_v22) ? 0x23u : 0x22u);
@@ -26226,6 +26227,7 @@ static void d3a_27dc8_chars(u32 mut, u32 abc, u32 f63, u32 c0, u32 c1)
 }
 static void d3a_27dc8_core(u32 mut)
 {
+    (void)config_run_clock(0u);   /* 0x32970, ported by track S (record section S.9) */
     u32 f = DSB(0x00104B1Fu);
     u32 v = (((mut == D3A_ME_abcbit) ? ((f & 3u) == 3u) : (f == ((mut == D3A_ME_abc3) ? 2u : 3u))) ? 1u : 0u)
             + ((mut == D3A_ME_abc) ? 0u : 1u);
@@ -26691,6 +26693,7 @@ static void d3a_26a50_core(u32 mut)
         u32 v = ((DSB(0x00104B1Fu) == (D3A_M(s3abc) ? 2u : 3u)) ? 1u : 0u) + 1u;
         if (D3A_M(s3abcb)) DSB(0x00104ABCu) = (u8)v;
         else DSD(0x00104ABCu) = v;
+        (void)config_run_clock(v);   /* 0x32970, ported by track S (record section S.9) */
         if (!D3A_M(s3late)) d3a_26a50_s3stores(mut);
         if ((DSB(0x00104529u) & (D3A_M(s3bit) ? 1u : 2u)) == 0u) {
             u32 side = D3A_M(s3sidesext) ? (u32)(s32)(s8)DSB(0x00104B1Au) : DSB(0x00104B1Au);
@@ -30826,6 +30829,7 @@ static void d4a_28da4_tail(u32 mut)
 }
 static void d4a_28da4_core(u32 side, u32 mut)
 {
+    (void)config_run_clock(0u);   /* 0x32970, ported by track S (record section S.9) */
     if (mut != D4A_PJ_late3) d4a_28da4_zero3(mut);
     if (mut != D4A_PJ_novoice) (void)sound_voice((mut == D4A_PJ_voice) ? 0x101u : 0x100u);
     if (mut == D4A_PJ_late3) d4a_28da4_zero3(mut);
@@ -30954,6 +30958,7 @@ static void d4a_25c88_abc(u32 mut)
     u32 v = (((mut == D4A_M5_abcbit) ? ((f & 3u) == 3u) : (f == ((mut == D4A_M5_abc3) ? 2u : 3u))) ? 1u : 0u) + 1u;
     if (mut == D4A_M5_abcb) DSB(0x00104ABCu) = (u8)v;
     else if (mut != D4A_M5_noabc) DSD(0x00104ABCu) = v;
+    (void)config_run_clock(v);   /* 0x32970, ported by track S (record section S.9) */
 }
 static void d4a_25c88_s3tail(u32 mut)
 {
@@ -31150,6 +31155,7 @@ static void d4a_29328_abc(u32 mut)
     u32 v = (((mut == D4A_M30_abcbit) ? ((f & 3u) == 3u) : (f == ((mut == D4A_M30_abc3) ? 2u : 3u))) ? 1u : 0u) + 1u;
     if (mut == D4A_M30_abcb) DSB(0x00104ABCu) = (u8)v;
     else if (mut != D4A_M30_noabc) DSD(0x00104ABCu) = v;
+    (void)config_run_clock(v);   /* 0x32970, ported by track S (record section S.9) */
 }
 static int d4a_29328_s3(u32 mut)
 {
@@ -35724,6 +35730,7 @@ static u32 d5c_end_core(u32 mut, int f)
         if (M(SB_M_NOAUDIT) && M(SB_M_AUDITEARLY) && M(SB_M_AUDITLATE))              /* track S sb: 0x2786B; @nobit0 */
             audit_add_if_bit0(!M(SB_M_AUDITF) ? (u32)DSB(0x00104B19u)                /* @bit0arg */
                               : !M(SB_M_AUDITN) ? (u32)(s32)(s8)DSB(0x00104B1Fu) : (u32)DSB(0x00104B1Fu));   /* @bit0sext */
+        (void)config_run_clock(0u);   /* 0x32970, ported by track S (record section S.9) */
         if (M(35u) && M(40u))                                                        /* @noclose */
             config_play_time_close(M(36u) ? 1u : 0u, M(37u) ? DSB(0x00104B19u) : DSB(0x00104B1Fu));   /* @closemode, @closeflag */
         if (!M(SB_M_AUDITLATE)) audit_add_if_bit0(DSB(0x00104B1Fu));                 /* @bit0late */
@@ -35951,6 +35958,7 @@ D5D_ST_MUT(first, 6u) D5D_ST_MUT(reread, 7u) D5D_ST_MUT(sar, 8u)
  * original only (host-owned; the port omits it). Mask 0: record §1. */
 static void d5d_state_core(u32 full, u32 mut)
 {
+    (void)config_run_clock(0u);   /* 0x32970, ported by track S (record section S.9) */
     if (mut == 1u) {                                                         /* @early */
         DSW(0x00104B00u) = 3u; DSW(0x000F0A64u) = 0u; DSB(0x000F0A71u) = 0u; DSB(0x000F0A6Fu) = 0u;
     }
@@ -38961,6 +38969,7 @@ static void d5h_11d04_core(u32 mut)
         if (a != 0u) acc = D5H_S(bits) ? 2u : 1u;               /* 0x11D1E */
         if (b != 0u) acc = D5H_S(one) ? 2u : acc | (D5H_S(bits) ? 1u : 2u);   /* 0x11D31 `or dl,2` */
         if (acc != 0u) {                                        /* 0x11D34 */
+            (void)config_run_clock(0u);                         /* 0x11D3A */
             if (!D5H_S(nodivert)) game_coin_divert(D5H_S(mask) ? 3u : acc);   /* 0x11D41 */
             if (!D5H_S(fall)) return;
         }
@@ -38989,6 +38998,7 @@ static void d5h_11d04_core(u32 mut)
         if (!D5H_S(novoice)) (void)sound_voice(D5H_S(v5) ? 0x101u : 0x100u);   /* 0x11DE8/0x11DF2 */
         if (!D5H_S(nomatch)) frontend_match_start();            /* 0x11DF7 */
         if (!D5H_S(norow)) config_set_credit_row(D5H_S(row) ? 0x1Cu : 0x1Du);   /* 0x11DFC/0x11E03 */
+        (void)config_run_clock(0u);                             /* 0x11E0C */
         if (!D5H_S(f6f)) DSB(0x000F0A6Fu) = 0u;                 /* 0x11E11 */
         if (!D5H_S(f72)) DSB(0x000F0A72u) = 0u;                 /* 0x11E17 */
         if (D5H_S(tw)) DSB(0x000F0A6Au) = 0x2Cu;
@@ -39016,6 +39026,7 @@ static void d5h_11d04_core(u32 mut)
         }
         break;
     case 8u:
+        (void)config_run_clock(0u);                             /* 0x11EAE */
         game_coin_divert(D5H_S(d3) ? 1u : 3u);                  /* 0x11EB3/0x11EB8 */
         if (D5H_S(n8tail)) return;
         break;
@@ -42172,6 +42183,7 @@ SB_AC_MUT(same, 11u)
  * body. @idx masks the mode with 7: the eight dwords from 0x10746C are the run clock's block. */
 static void sb_32a3c_core(u32 mode, u32 flag, u32 mut)
 {
+    (void)config_run_clock(0u);   /* 0x32970, ported by track S (record section S.9) */
     const u32 idx = mode & ((mut == 3u) ? 7u : 3u);                              /* @idx */
     const u32 ticks = DSD(0x0010746Cu + idx * 4u);
     if (mut != 1u && mut != 2u) DSD(0x0010746Cu + idx * 4u) = 0u;                /* @nozero @zerolate */
@@ -42386,6 +42398,52 @@ SC_SV_MUT(notouch2, 6u)  SC_SV_MUT(touchorder, 7u) SC_SV_MUT(touch0, 8u) SC_SV_M
 SC_SV_MUT(len8, 11u)     SC_SV_MUT(add, 12u)     SC_SV_MUT(sumat, 13u)   SC_SV_MUT(flag, 14u)   SC_SV_MUT(nowrite, 15u)
 SC_SV_MUT(writefirst, 16u) SC_SV_MUT(wlen, 17u)  SC_SV_MUT(wsrc, 18u)
 /* ---- sc bindings end ---- */
+/* ---- track S integration: the run clock 0x32970 and the ISR tick 0x2D62C (record §S.9) ---- */
+static u32 si_32970_core(u32 mask, u32 mut)
+{
+    const u32 last = DSD(0x0010747Cu);
+    const u32 now = DSD(0x00105D88u);
+    u32 total0 = DSD(0x00107484u);                                               /* @cached */
+    u32 slot0 = DSD(0x00107488u + (u32)DSB(0x00107494u) * 4u);
+    if (mut != 1u) DSD(0x0010747Cu) = now;                                       /* @nolast */
+    const u32 el = now - last;
+    u32 acc = (mut == 2u) ? 0x0010746Cu : 0x00107470u;                           /* @accbase */
+    if (mut != 3u)                                                               /* @noacc */
+        for (u32 m = DSB(0x00107494u); m != 0u; m >>= 1, acc += 4u)
+            if ((m & 1u) != 0u) DSD(acc) += el;
+    const u32 slot = 0x00107488u + ((mut == 4u) ? (mask & 0xFFu) : (u32)DSB(0x00107494u)) * 4u;   /* @slotnew */
+    const u32 total = ((mut == 16u) ? total0 : DSD(0x00107484u)) + ((mut == 5u) ? 0u : el);       /* @nototal */
+    const u32 mins = ((mut == 16u) ? slot0 : DSD(slot)) + ((mut == 14u) ? 0u : el);               /* @noslot */
+    DSD(0x00107484u) = total;
+    DSD(slot) = mins;
+    if ((mut == 6u) ? total > 0x3840u : (mut == 15u) ? (s32)total >= 0x3840 : total >= 0x3840u) { /* @ge @signed */
+        if (mut != 7u) DSD(0x00107484u) = 0u;                                    /* @nozero */
+        for (u32 i = 3u; i != ((mut == 12u) ? 5u : 6u); i++) {                   /* @two */
+            const u32 at = 0x00107488u + (i - 3u) * 4u;
+            u32 c = DSD(at);
+            if ((mut == 8u) ? c >= 0xE10u : c > 0xE10u) {                        /* @gec */
+                const u32 q = (mut == 9u) ? c / 0xE10u : (c / 0xE10u) & 0xFFFFu; /* @q32 */
+                c -= q * 0xE10u;
+                if (mut != 10u) DSD(at) = c;                                     /* @norem */
+                (void)audit_add((mut == 11u) ? i - 3u : i, q);                   /* @field */
+            }
+        }
+    }
+    if (mut != 13u) DSB(0x00107494u) = (u8)mask;                                 /* @maskold */
+    return 0x00107488u;
+}
+static void b_si_32970(const u32 *r, u32 *eax) { *eax = config_run_clock(r[R_EAX]); }
+#define SI_RC_MUT(name, n) \
+    static void m_si_rc_##name(const u32 *r, u32 *eax) { *eax = si_32970_core(r[R_EAX], n); }
+SI_RC_MUT(nolast, 1u) SI_RC_MUT(accbase, 2u) SI_RC_MUT(noacc, 3u)   SI_RC_MUT(slotnew, 4u) SI_RC_MUT(nototal, 5u)
+SI_RC_MUT(ge, 6u)     SI_RC_MUT(nozero, 7u)  SI_RC_MUT(gec, 8u)     SI_RC_MUT(q32, 9u)     SI_RC_MUT(norem, 10u)
+SI_RC_MUT(field, 11u) SI_RC_MUT(two, 12u)    SI_RC_MUT(maskold, 13u) SI_RC_MUT(noslot, 14u) SI_RC_MUT(signedcmp, 15u)
+SI_RC_MUT(cached, 16u)
+static void b_si_2d62c(const u32 *r, u32 *eax) { config_isr_tick(); *eax = r[R_EAX]; }
+static void m_si_tick_two(const u32 *r, u32 *eax) { DSD(0x00105D88u) += 2u; *eax = r[R_EAX]; }
+static void m_si_tick_word(const u32 *r, u32 *eax) { DSW(0x00105D88u) = (u16)(DSW(0x00105D88u) + 1u); *eax = r[R_EAX]; }
+static void m_si_tick_none(const u32 *r, u32 *eax) { *eax = r[R_EAX]; }
+
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -57708,6 +57766,27 @@ static const binding_t k_bindings[] = {
     { "config_file_load@filllen", m_sc_ld_filllen, 0x000000FFu },
     { "config_file_load@fillall", m_sc_ld_fillall, 0x000000FFu },
     { "config_file_load@flag", m_sc_ld_flag, 0x000000FFu },
+    { "config_run_clock",                b_si_32970, 0xFFFFFFFFu },
+    { "config_run_clock@nolast", m_si_rc_nolast, 0xFFFFFFFFu },
+    { "config_run_clock@accbase", m_si_rc_accbase, 0xFFFFFFFFu },
+    { "config_run_clock@noacc", m_si_rc_noacc, 0xFFFFFFFFu },
+    { "config_run_clock@slotnew", m_si_rc_slotnew, 0xFFFFFFFFu },
+    { "config_run_clock@nototal", m_si_rc_nototal, 0xFFFFFFFFu },
+    { "config_run_clock@ge", m_si_rc_ge, 0xFFFFFFFFu },
+    { "config_run_clock@nozero", m_si_rc_nozero, 0xFFFFFFFFu },
+    { "config_run_clock@gec", m_si_rc_gec, 0xFFFFFFFFu },
+    { "config_run_clock@q32", m_si_rc_q32, 0xFFFFFFFFu },
+    { "config_run_clock@norem", m_si_rc_norem, 0xFFFFFFFFu },
+    { "config_run_clock@field", m_si_rc_field, 0xFFFFFFFFu },
+    { "config_run_clock@two", m_si_rc_two, 0xFFFFFFFFu },
+    { "config_run_clock@maskold", m_si_rc_maskold, 0xFFFFFFFFu },
+    { "config_run_clock@noslot", m_si_rc_noslot, 0xFFFFFFFFu },
+    { "config_run_clock@signedcmp", m_si_rc_signedcmp, 0xFFFFFFFFu },
+    { "config_run_clock@cached", m_si_rc_cached, 0xFFFFFFFFu },
+    { "config_isr_tick",                 b_si_2d62c, 0xFFFFFFFFu },
+    { "config_isr_tick@two", m_si_tick_two, 0xFFFFFFFFu },
+    { "config_isr_tick@word", m_si_tick_word, 0xFFFFFFFFu },
+    { "config_isr_tick@none", m_si_tick_none, 0xFFFFFFFFu },
     { "config_file_save",                b_sc_1b084, 0x000000FFu },
     { "config_file_save@gatelate", m_sc_sv_gatelate, 0x000000FFu },
     { "config_file_save@nogate", m_sc_sv_nogate, 0x000000FFu },
