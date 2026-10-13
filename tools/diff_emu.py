@@ -800,3 +800,9 @@ _CALLEE_CLOBBER_FIXES[0x51ED8] = ()
 # [esp+0x10] is 4 * it: both start 0 (0x31A96, 0x31AA4) and step together (0x31B65 add eax,4 / 0x31B68
 # inc edx, stored at 0x31B69/0x31B6D).
 RESOLVED_JUMPS[0x31AD6] = (0x31AC9, 0x31A68, 4)
+# D6 d6a (record 2026-10-13-reverse-d6a section 4): 0x1AE20 is `mov eax,0xa2c62; lea eax,[eax]` with no
+# `ret`: it falls into 0x1AE28, whose leading `push ebx; push ecx; push edx; push esi; push edi`
+# (0x1AE28..0x1AE2C; popped 0x1AED8..0x1AEDC before the `ret`) the scan cannot credit to the entry two
+# instructions above it (0x2EA74's case). The raw caller 0x2CADC loads ECX and EBX before the call at
+# 0x2CB50 (0x2CB3A `mov ecx,0xb000`, 0x2CB46 `mov ebx,0x809f0`) for the 0x2F280 call at 0x2CB69.
+_CALLEE_CLOBBER_FIXES[0x1AE20] = ()

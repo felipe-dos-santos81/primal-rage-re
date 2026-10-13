@@ -30233,7 +30233,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
-        0x51ED8: (), 0x2CCD0: (), 0x1AE20: ("ebx", "ecx", "edx", "esi", "edi"),
+        0x51ED8: (), 0x2CCD0: (), 0x1AE20: (),
         # D6 d6a end
         # D5 d5a (record 2026-10-12-reverse-d5a): the stubs its rows add
         0x12658: (), 0x12750: (), 0x12C70: (), 0x13E28: ("edx",), 0x20DF4: ("edx", "edi", "ebp"), 0x28E98: (), 0x2BAF4: (), 0x2C074: (), 0x2C390: (), 0x33EB4: ("ebp",), 0x34978: (), 0x38730: ("edi", "ebp"), 0x38910: (), 0x38B18: ("ebx", "ecx", "edx"), 0x412A0: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x46594: (), 0x49300: (), 0x4F1E4: (), 0x4F980: (),

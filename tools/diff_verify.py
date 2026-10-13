@@ -32012,7 +32012,7 @@ D6A_SPECS += [
 D6A_NOP5 = b"\x90" * 5
 D6A_DEFAULTS_PINS = {0x0002CAF3: D6A_NOP5, 0x0002CB5F: D6A_NOP5, 0x0002CB69: D6A_NOP5}
 D6A_MENU_BITS = E.Call(0x2CCD0, ("eax",))                                   # config_menu_default_bits, seamed here
-D6A_KEYS_DEFAULT = E.Call(0x1AE20, (), clobbers=("ebx", "ecx", "edx", "esi", "edi"))   # seamed here
+D6A_KEYS_DEFAULT = E.Call(0x1AE20, ())            # config_keys_apply_defaults, seamed here (diff_emu fix)
 
 D6A_SPECS += [
     # 0x2CADC config_set_defaults: no argument. 0x2CCD0(0xA2EB4), whose EAX goes whole to 0x2DA0C(0x29, ..)
