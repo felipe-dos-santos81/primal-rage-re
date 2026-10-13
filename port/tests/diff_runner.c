@@ -41490,6 +41490,55 @@ D6A_CV_MUT(nofill2, 6u) D6A_CV_MUT(nofill, 7u)   D6A_CV_MUT(fill1len, 8u)  D6A_C
 D6A_CV_MUT(magicearly, 11u) D6A_CV_MUT(nodefaults, 12u) D6A_CV_MUT(magicbe, 13u) D6A_CV_MUT(touchorder, 14u)
 D6A_CV_MUT(notouch2, 15u) D6A_CV_MUT(notouch0, 16u) D6A_CV_MUT(noda7, 17u) D6A_CV_MUT(da7, 18u)    D6A_CV_MUT(noget, 19u)
 D6A_CV_MUT(getfield, 20u)
+
+/* 0x2EA78 config_screen_wait: EAX = n. The raw's BIOS peek `int 0x16` (0x2EB15) is `cmp eax,eax` in every
+ * case (no key); the port's key queue is empty (input_clear). The mutants restate config.c's body with the
+ * ISR gate byte 0x104B22 at 1 (the port's tick model, PORT, is off). */
+#include "platform/input.h"
+static void d6a_2ea78_core(s32 n, u32 mut)
+{
+    s32 ecx = n;
+    if (mut == 2u) DSW(0x00105F30u) = 0u;                                        /* @latchw */
+    else if (mut != 1u) DSD(0x00105F30u) = 0u;                                   /* @nolatch */
+    if (mut != 3u) actors_update();                                              /* @noupdate */
+    if (mut == 6u) render_list();                                                /* @order */
+    if (mut != 4u) render_list_sort();                                           /* @nosort */
+    if (mut == 10u) { u32 t = DSD(0x000E87A0u); DSD(0x000E87A0u) = DSD(0x000E87A4u); DSD(0x000E87A4u) = t; }   /* @swapearly */
+    if (mut != 5u && mut != 6u) render_list();                                   /* @nolist */
+    const u8 *src = mem + DSD(0x000E87A4u);
+    if (DSB(0x001014FCu) != 0u) {
+        if (mut == 8u) DSD(0x001014FCu) = 0u;                                    /* @flagw */
+        else if (mut != 7u) DSB(0x001014FCu) = 0u;                               /* @flagkeep */
+    }
+    if (mut == 12u) gfx_flush_palette();                                         /* @flushfirst */
+    if (mut != 9u && mut != 10u) {                                               /* @noswap */
+        u32 t = DSD(0x000E87A0u); DSD(0x000E87A0u) = DSD(0x000E87A4u); DSD(0x000E87A4u) = t;
+    }
+    if (mut != 11u && mut != 12u) gfx_flush_palette();                           /* @noflush */
+    gfx_present(src, 320, 200);
+    if (ecx == -1 && mut != 13u) return;                                         /* @m1 */
+    for (;;) {
+        if (mut == 17u) (void)input_pump();                                      /* @pumpfirst */
+        u16 seen = DSW(0x000EF6DEu);
+        while (DSW(0x000EF6DEu) == seen) game_audio_service();
+        if (mut != 17u) (void)input_pump();
+        s32 prev = ecx;
+        ecx--;
+        if (!((mut == 14u) ? (prev > 0) : (mut == 15u) ? (prev >= -1) : (prev > -1))) break;   /* @passes @ge */
+        if (mut == 15u && prev < -1) break;
+    }
+}
+static void b_d6a_2ea78(const u32 *r, u32 *eax) { input_clear(); config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
+static void b_d6a_2ea74(const u32 *r, u32 *eax) { (void)r; input_clear(); config_screen_wait_zero(); *eax = 0u; }
+#define D6A_SW_MUT(name, n) \
+    static void m_d6a_sw_##name(const u32 *r, u32 *eax) { input_clear(); d6a_2ea78_core((s32)r[R_EAX], n); *eax = 0u; }
+D6A_SW_MUT(nolatch, 1u) D6A_SW_MUT(latchw, 2u)  D6A_SW_MUT(noupdate, 3u) D6A_SW_MUT(nosort, 4u)  D6A_SW_MUT(nolist, 5u)
+D6A_SW_MUT(order, 6u)   D6A_SW_MUT(flagkeep, 7u) D6A_SW_MUT(flagw, 8u)   D6A_SW_MUT(noswap, 9u)  D6A_SW_MUT(swapearly, 10u)
+D6A_SW_MUT(noflush, 11u) D6A_SW_MUT(flushfirst, 12u) D6A_SW_MUT(m1, 13u) D6A_SW_MUT(passes, 14u) D6A_SW_MUT(ge, 15u)
+D6A_SW_MUT(pumpfirst, 17u)
+static void m_d6a_swz_n1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(1); *eax = 0u; }
+static void m_d6a_swz_m1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(-1); *eax = 0u; }
+static void m_d6a_swz_eax(const u32 *r, u32 *eax) { input_clear(); config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
 /* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56382,6 +56431,27 @@ static const binding_t k_bindings[] = {
     { "config_validate@da7", m_d6a_cv_da7, 0x00000000u },
     { "config_validate@noget", m_d6a_cv_noget, 0x00000000u },
     { "config_validate@getfield", m_d6a_cv_getfield, 0x00000000u },
+    { "config_screen_wait",              b_d6a_2ea78, 0x00000000u },
+    { "config_screen_wait@nolatch", m_d6a_sw_nolatch, 0x00000000u },
+    { "config_screen_wait@latchw", m_d6a_sw_latchw, 0x00000000u },
+    { "config_screen_wait@noupdate", m_d6a_sw_noupdate, 0x00000000u },
+    { "config_screen_wait@nosort", m_d6a_sw_nosort, 0x00000000u },
+    { "config_screen_wait@nolist", m_d6a_sw_nolist, 0x00000000u },
+    { "config_screen_wait@order", m_d6a_sw_order, 0x00000000u },
+    { "config_screen_wait@flagkeep", m_d6a_sw_flagkeep, 0x00000000u },
+    { "config_screen_wait@flagw", m_d6a_sw_flagw, 0x00000000u },
+    { "config_screen_wait@noswap", m_d6a_sw_noswap, 0x00000000u },
+    { "config_screen_wait@swapearly", m_d6a_sw_swapearly, 0x00000000u },
+    { "config_screen_wait@noflush", m_d6a_sw_noflush, 0x00000000u },
+    { "config_screen_wait@flushfirst", m_d6a_sw_flushfirst, 0x00000000u },
+    { "config_screen_wait@m1", m_d6a_sw_m1, 0x00000000u },
+    { "config_screen_wait@passes", m_d6a_sw_passes, 0x00000000u },
+    { "config_screen_wait@ge", m_d6a_sw_ge, 0x00000000u },
+    { "config_screen_wait@pumpfirst", m_d6a_sw_pumpfirst, 0x00000000u },
+    { "config_screen_wait_zero",         b_d6a_2ea74, 0x00000000u },
+    { "config_screen_wait_zero@n1", m_d6a_swz_n1, 0x00000000u },
+    { "config_screen_wait_zero@m1", m_d6a_swz_m1, 0x00000000u },
+    { "config_screen_wait_zero@eax", m_d6a_swz_eax, 0x00000000u },
     /* d6a table end */
 };
 
