@@ -232,11 +232,12 @@ void attract_step(void)
         break;
 
     case 2: {
-        /* 0x11089: DS_000F0A5C = old + 1, wrapped to 0 at >= 4. */
-        u8 c = (u8)(DSB(DS_000F0A5C) + 1u);
+        /* 0x11089: the dword DS_000F0A5C = old + 1 (`mov ecx,[0xf0a5c]; inc
+         * ecx`), zeroed at >= 4 (signed: 0x1109E `cmp ecx,4`, 0x110A1 `jl`). */
+        s32 c = (s32)DSD(DS_000F0A5C) + 1;          /* 0x11089/0x11091 */
         DSB(DS_0009AD58) = 0;                       /* 0x11092 */
-        if (c >= 4u) c = 0u;                        /* 0x110A1 (jl) */
-        DSB(DS_000F0A5C) = c;                       /* 0x11098/0x110A5 */
+        DSD(DS_000F0A5C) = (u32)c;                  /* 0x11098 */
+        if (c >= 4) DSD(DS_000F0A5C) = 0u;          /* 0x110A1, 0x110A3/0x110A5 */
         attract_config_volumes();                   /* 0x110B0 (0x2C8F0, eax = -2) */
         /* 0x110BA: 0x4F1E4 (frontend_input_reset) ignores eax. */
         frontend_input_reset();                     /* 0x4F1E4 */
@@ -351,7 +352,7 @@ void attract_step(void)
         } else {
             text_cursor_set(-1, 4, game_string_get(0x1EAu), 0x4003u);    /* 0x11435 */
         }
-        if (DSB(DS_000F0A5C) == 0u) {                                   /* 0x11441 */
+        if (DSD(DS_000F0A5C) == 0u) {                                   /* 0x1143A `cmp dword`, 0x11441 */
             DSW(DS_000F0A68) = 0xF0u;                                    /* 0x1144A */
             DSB(DS_000F0A70) = 0xBu;                                     /* 0x11450 */
         } else {
@@ -378,13 +379,16 @@ void attract_step(void)
         DSB(DS_000F0A6F) = 0u;                      /* 0x114CC */
         if (DSB(DS_00108173) != 0u) {               /* 0x114D2 */
             DSW(DS_000F0A64) = 8u;                  /* 0x114D6 */
-        } else if (DSB(DS_000F0A5C) == 0u) {        /* 0x114E4 */
-            DSW(DS_000F0A64) = 1u;                  /* 0x114EE */
         } else {
-            if (DSB(DS_000F0A5C) == 1u)      DSB(DS_000F0A72) = 5u;   /* 0x1150E */
-            else if (DSB(DS_000F0A5C) == 2u) DSB(DS_000F0A72) = 0u;   /* 0x11517 */
-            else if (DSB(DS_000F0A5C) == 3u) DSB(DS_000F0A72) = 4u;   /* 0x1151F */
-            DSW(DS_000F0A64) = 6u;                  /* 0x11526 */
+            u32 n = DSD(DS_000F0A5C);               /* 0x114E4 `mov ebx,[0xf0a5c]` */
+            if (n == 0u) {                          /* 0x114EA/0x114EC */
+                DSW(DS_000F0A64) = 1u;              /* 0x114EE */
+            } else {
+                if (n == 1u)      DSB(DS_000F0A72) = 5u;   /* 0x11509, 0x1150E */
+                else if (n == 2u) DSB(DS_000F0A72) = 0u;   /* 0x11500, 0x11517 (AH) */
+                else if (n == 3u) DSB(DS_000F0A72) = 4u;   /* 0x11502, 0x1151F */
+                DSW(DS_000F0A64) = 6u;              /* 0x11526 */
+            }
         }
         break;
 
