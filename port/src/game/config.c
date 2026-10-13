@@ -4,6 +4,7 @@
 #include "game/actors.h"
 #include "game/flow.h"
 #include "game/menu.h"
+#include "game/svcmenu.h"
 #include "platform/gfx.h"
 #include "platform/input.h"
 #include "platform/render.h"
@@ -668,10 +669,14 @@ void config_credits_init(void)
     DSD(DS_00105C00) = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;  /* 0x2C309..0x2C317 */
 }
 
-/* 0x32A3C — derivation record §42-E. EAX = the mode (only its low two bits
- * index, 0x32A43 `and edx,3`), EDX = the flag, kept in ECX (0x32A3F). Takes
- * the per-mode tick accumulator DS_0010746C[mode & 3] and zeroes it
- * (0x32A4F/0x32A56); mode 0 stops there (0x32A5F). */
+/* 0x32A3C — derivation record §42-E, track S §S.6. EAX = the mode (only its
+ * low two bits index, 0x32A43 `and edx,3`), EDX = the flag, kept in ECX
+ * (0x32A3F). Takes the per-mode tick accumulator DS_0010746C[mode & 3] and
+ * zeroes it (0x32A4F/0x32A56); mode 0 stops there (0x32A5F). The others post
+ * through 0x2DAE4, with t = the ticks / 0x3C:
+ *   mode 1, flag == 0: (8, 1), (0xA, t), (0x12, t)
+ *   mode 1, flag != 0: (6, 1), (0xB, 1), (0xC, t), (0x12, t)
+ *   mode 2 or 3:       (flag == 0 ? 9 : 7, 1), (0x13, t) */
 void config_play_time_close(u32 mode, u32 flag)
 {
     PR_SEAM(0x32A3Cu, mode, flag);
@@ -687,13 +692,24 @@ void config_play_time_close(u32 mode, u32 flag)
      * preserves EDX (0x32972 push). */
     u32 ticks = DSD(DS_0010746C + idx * 4u);            /* 0x32A4F */
     DSD(DS_0010746C + idx * 4u) = 0u;                   /* 0x32A56 */
-    (void)ticks;
-    (void)flag;
-    /* PORT: the audit adds through 0x2DAE4 (deferred no-op, spec §7) that
-     * follow for mode != 0, with t = ticks / 0x3C (unsigned DIV):
-     *   mode 1, flag == 0: (8, 1), (0xA, t), (0x12, t)          0x32A7B..
-     *   mode 1, flag != 0: (6, 1), (0xB, 1), (0xC, t), (0x12, t) 0x32A91..
-     *   mode 2/3:          (flag == 0 ? 9 : 7, 1), (0x13, t)     0x32AC4.. */
+    if (idx == 0u) return;                              /* 0x32A5D/0x32A5F */
+    const u32 t = ticks / 0x3Cu;                        /* 0x32A6A..0x32A75, 0x32AE3..0x32AEE: unsigned DIV */
+    if (idx == 1u) {                                    /* 0x32A65/0x32A68 */
+        u32 field;
+        if (flag == 0u) {                               /* 0x32A77/0x32A79: all of ECX */
+            (void)audit_add(8u, 1u);                    /* 0x32A7B..0x32A85 */
+            field = 0xAu;                               /* 0x32A8A */
+        } else {
+            (void)audit_add(6u, 1u);                    /* 0x32A91..0x32A9B */
+            (void)audit_add(0xBu, 1u);                  /* 0x32AA0..0x32AAA */
+            field = 0xCu;                               /* 0x32AAF */
+        }
+        (void)audit_add(field, t);                      /* 0x32AB4/0x32AB6 */
+        (void)audit_add(0x12u, t);                      /* 0x32ABB..0x32AC2, 0x32AF5 */
+        return;
+    }
+    (void)audit_add(flag == 0u ? 9u : 7u, 1u);          /* 0x32AC4..0x32ADE */
+    (void)audit_add(0x13u, t);                          /* 0x32AE3..0x32AF5 */
 }
 
 /* 0x32B00 — record §48-Q. EAX = the index (0x32B08 `shl eax,2`, no mask),
@@ -702,8 +718,8 @@ void config_play_time_close(u32 mode, u32 flag)
  * 0x32B40). EDX == 0: t = (DS_0010746C[idx] - DS_00107478) / 0x3C (unsigned
  * DIV with EDX = 0, 0x32B17..0x32B24) is stored (0x32B2F), posted through
  * 0x2E934(1, t), then DS_00107478 is reloaded and stored back
- * (0x32B3A/0x32B40). Callers: 0x28E3F (0x28DA4, EDX = 1), 0x25EE5 (0x25C88)
- * and 0x28937 (0x28788). */
+ * (0x32B3A/0x32B40: the same dword, no change). Callers: 0x28E3F (0x28DA4,
+ * EDX = 1), 0x25EE5 (0x25C88) and 0x28937 (0x28788). */
 void config_play_time_snap(u32 idx, u32 arm)
 {
     PR_SEAM(0x32B00u, idx, arm);
@@ -711,11 +727,10 @@ void config_play_time_snap(u32 idx, u32 arm)
         DSD(DS_00107478) = DSD(DS_0010746C + idx * 4u); /* 0x32B0F/0x32B40 */
         return;
     }
-    DSD(DS_00107478) = (DSD(DS_0010746C + idx * 4u)
-                        - DSD(DS_00107478)) / 0x3Cu;    /* 0x32B17..0x32B2F */
-    /* PORT: 0x32B35 0x2E934(1, t), the audit post, is deferred (spec §7).
-     * Neither it nor its callees 0x2E180, 0x2E0A4 and 0x2E034 name 0x107478,
-     * so the reload and store at 0x32B3A/0x32B40 leave the value as stored. */
+    const u32 t = (DSD(DS_0010746C + idx * 4u)
+                   - DSD(DS_00107478)) / 0x3Cu;         /* 0x32B17..0x32B26 */
+    DSD(DS_00107478) = t;                               /* 0x32B2F */
+    (void)audit_post(1u, t);                            /* 0x32B28..0x32B35 0x2E934 */
 }
 
 /* 0x32B4C — record §48-U. 0x32B00 on DS_00107480 in place of DS_00107478,
@@ -724,7 +739,7 @@ void config_play_time_snap(u32 idx, u32 arm)
  * popped. EDX != 0: DS_00107480 = DS_0010746C[idx] (0x32B5B, stored at
  * 0x32B89). EDX == 0: t = (DS_0010746C[idx] - DS_00107480) / 0x3C (unsigned
  * DIV with EDX = 0) is stored (0x32B78), posted through 0x2E934(0, t), and
- * DS_00107480 is reloaded and stored back (0x32B83/0x32B89). Callers:
+ * DS_00107480 is reloaded and stored back (0x32B83/0x32B89: no change). Callers:
  * 0x25EFD (0x25C88, EDX = 1) and 0x27DEB (0x27DC8, EDX = 0, record §48-K). */
 void config_play_time_snap_b(u32 idx, u32 arm)
 {
@@ -733,11 +748,67 @@ void config_play_time_snap_b(u32 idx, u32 arm)
         DSD(DS_00107480) = DSD(DS_0010746C + idx * 4u); /* 0x32B5B/0x32B89 */
         return;
     }
-    DSD(DS_00107480) = (DSD(DS_0010746C + idx * 4u)
-                        - DSD(DS_00107480)) / 0x3Cu;    /* 0x32B63..0x32B78 */
-    /* PORT: 0x32B7E 0x2E934(0, t), the audit post, is deferred (spec §7);
-     * as for 0x32B00, it names neither 0x107480 nor anything the reload at
-     * 0x32B83 reads, so the value stays as stored. */
+    const u32 t = (DSD(DS_0010746C + idx * 4u)
+                   - DSD(DS_00107480)) / 0x3Cu;         /* 0x32B63..0x32B72 */
+    DSD(DS_00107480) = t;                               /* 0x32B78 */
+    (void)audit_post(0u, t);                            /* 0x32B74..0x32B7E 0x2E934 */
+}
+
+/* ---- the audit adds (track S batch sb, record §S.6) ------------------------ */
+
+/* 0x2DAE4 — record §S.6. EAX = field, EDX = n. The field is read through
+ * 0x2D974; a negative value is returned as read and nothing is written
+ * (0x2DAF0 `jl`). Else the sum goes back through 0x2DA0C and is returned
+ * (0x2DB52 `mov eax,ecx`). Field 3 alone (0x2DAF5), when old ^ sum is 0x100
+ * or more, signed (0x2DAFA..0x2DB01 `jl`), first steps the slot byte
+ * DS_00105E2F: slot + 1, or 0 when 0x2D4B4(0x26) * (slot + 1) + 0x1A3 +
+ * 0x2D4B4(0x26) reaches 0x7F8 (0x2DB2B `jb`, unsigned), and sets bits 1 and 2
+ * of DS_00105DD8. Callers that read EAX: 0x1EC50 (`and eax,0xffff`) and
+ * 0x1EC84 (`cmp eax,0xc8`). */
+s32 audit_add(u32 field, u32 n)
+{
+    PR_SEAM_RET(0x2DAE4u, field, n);
+    const s32 old = (s32)config_field_get(field);           /* 0x2DAE9 */
+    if (old < 0) return old;                                /* 0x2DAEE/0x2DAF0 */
+    const u32 sum = (u32)old + n;                           /* 0x2DAF2 */
+    if (field == 3u && (s32)((u32)old ^ sum) >= 0x100) {    /* 0x2DAF5..0x2DB01 */
+        u32 slot = (u32)DSB(DS_00105E2F) + 1u;              /* 0x2DB03..0x2DB10 */
+        const u32 end = config_codeword_len(0x26u) * slot + 0x1A3u   /* 0x2DB0B..0x2DB19 */
+                        + config_codeword_len(0x26u);       /* 0x2DB1F..0x2DB29 */
+        if (end >= 0x7F8u) slot = 0u;                       /* 0x2DB2B..0x2DB32 */
+        const u8 flags = DSB(DS_00105DD8) | 6u;             /* 0x2DB34/0x2DB3A */
+        DSB(DS_00105E2F) = (u8)slot;                        /* 0x2DB3D */
+        DSB(DS_00105DD8) = flags;                           /* 0x2DB43 */
+    }
+    (void)config_field_set(field, sum);                     /* 0x2DB49..0x2DB4D */
+    return (s32)sum;                                        /* 0x2DB52 */
+}
+
+/* 0x32B94 — record §S.6. AL = the flags (0x32B95 `test al,1`): bit 0 set
+ * posts 0x2DAE4(0xE, 1). EDX is pushed and popped. It has no `ret` of its
+ * own: after `pop edx` (0x32BA8) and a `lea eax,[eax]` it runs into the
+ * `ret` at 0x32BAC. Caller: 0x2786B (0x277C0), which does not read EAX
+ * (0x27870 `xor eax,eax`). */
+void audit_add_if_bit0(u32 flags)
+{
+    PR_SEAM(0x32B94u, flags);
+    if ((flags & 1u) != 0u)                                 /* 0x32B95/0x32B97 */
+        (void)audit_add(0xEu, 1u);                          /* 0x32B99..0x32BA3 */
+}
+
+/* 0x32BB0 — record §S.6. EAX = the first character, EDX = the second (kept
+ * in EBX). A first character above 6, unsigned, returns at once (0x32BB6
+ * `ja 0x32bd7`, past the second's test); else 0x2DAE4(0x1B + c0, 1), and for
+ * a second at or below 6 (0x32BC8 `ja`) 0x2DAE4(0x1B + c1, 1). Caller:
+ * 0x27E28 (0x27DC8), with EDX = -1 for one player; it does not read EAX
+ * (0x27E37 `mov eax,ebx` or 0x27E3E `xor eax,eax` follows). */
+void audit_characters(u32 c0, u32 c1)
+{
+    PR_SEAM(0x32BB0u, c0, c1);
+    if (c0 > 6u) return;                                    /* 0x32BB3/0x32BB6 */
+    (void)audit_add(c0 + 0x1Bu, 1u);                        /* 0x32BB8..0x32BC0 */
+    if (c1 > 6u) return;                                    /* 0x32BC5/0x32BC8 */
+    (void)audit_add(c1 + 0x1Bu, 1u);                        /* 0x32BCA..0x32BD2 */
 }
 
 /* ---- timed screen, key latch and menu helpers (record §49-Y) -------------- */

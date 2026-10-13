@@ -150,22 +150,41 @@ void config_set_credit_row_init(void);
  * 1. Callers: 0x10ECC (0x10E80, game_state_init) and 0x2CBB4 (svcmenu.c). */
 void config_credits_init(void);
 
-/* 0x32A3C. The play-time audit close: zeroes the per-mode tick accumulator
- * DS_0010746C[mode & 3]. Its run-clock call 0x32970 and its 0x2DAE4 audit adds
- * are out of scope / deferred (spec §7). Callers: 0x41578, 0x26F58, 0x277C0,
+/* 0x32A3C. The play-time audit close: takes and zeroes the per-mode tick
+ * accumulator DS_0010746C[mode & 3] and, for a mode other than 0, posts the
+ * game count and the seconds through audit_add (0x2DAE4). Its run-clock call
+ * 0x32970 is out of scope (host-owned). Callers: 0x41578, 0x26F58, 0x277C0,
  * 0x28788 and 0x41C28 (all ported) and the dead 0x2861C region. */
 void config_play_time_close(u32 mode, u32 flag);
 
 /* 0x32B00 (record §48-Q). `arm` != 0: DS_00107478 = DS_0010746C[idx]; 0:
- * DS_00107478 = (DS_0010746C[idx] - DS_00107478) / 0x3C, its 0x2E934 audit
- * post deferred (spec §7). Ported callers: 0x28DA4 (flow_player_join) and
- * 0x25EE5 (0x25C88, game_mode_05_step, record §48-U). */
+ * DS_00107478 = (DS_0010746C[idx] - DS_00107478) / 0x3C, posted through
+ * audit_post(1, that) (0x2E934). Ported callers: 0x28DA4 (flow_player_join)
+ * and 0x25EE5 (0x25C88, game_mode_05_step, record §48-U). */
 void config_play_time_snap(u32 idx, u32 arm);
 
 /* 0x32B4C (record §48-U). 0x32B00 on DS_00107480: `arm` != 0 stores
- * DS_0010746C[idx]; 0 stores (DS_0010746C[idx] - DS_00107480) / 0x3C, its
- * 0x2E934(0, t) audit post deferred (spec §7). Ported caller: 0x25EFD. */
+ * DS_0010746C[idx]; 0 stores (DS_0010746C[idx] - DS_00107480) / 0x3C and
+ * posts it through audit_post(0, t) (0x2E934). Ported callers: 0x25EFD and
+ * 0x27DEB. */
 void config_play_time_snap_b(u32 idx, u32 arm);
+
+/* ---- the audit adds (track S batch sb, record §S.6) ---------------------- */
+
+/* 0x2DAE4. Adds `n` to config field `field` (0x2D974 then 0x2DA0C) and
+ * returns the sum; a field that reads negative (an index above 0x3E reads
+ * -1) is returned as read and not written. Field 3 also steps the slot byte
+ * DS_00105E2F when the sum changes at or above bit 8. */
+s32 audit_add(u32 field, u32 n);
+
+/* 0x32B94. audit_add(0xE, 1) when bit 0 of `flags` (the raw's AL) is set.
+ * Caller: 0x2786B (0x277C0) with the byte DS_00104B1F. */
+void audit_add_if_bit0(u32 flags);
+
+/* 0x32BB0. One audit_add(0x1B + c, 1) per character at or below 6
+ * (unsigned); a first character above 6 skips the second too. Caller:
+ * 0x27E28 (0x27DC8), `c1` = -1 with one player. */
+void audit_characters(u32 c0, u32 c1);
 
 /* ---- timed screen, key latch and menu helpers (record §49-Y) ------------ */
 

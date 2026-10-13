@@ -4641,6 +4641,198 @@ int test_config_storage(void)
     return g_failures - before;
 }
 
+/* ---- the audit counters (track S batch sb, record §S.6) ---- */
+
+#define AU_LO      0x00105DA0u   /* saved: the config block, the flag bytes, the three histograms */
+#define AU_LEN     0x160u
+#define AU_H0      0x00105ECDu   /* histogram 0, 0x14 counters (0x2D45C) */
+#define AU_H1      0x00105EE1u   /* histogram 1, 0x14 counters (0x2D464) */
+#define AU_H2      0x00105EF5u   /* histogram 2, 7 counters (0x2D46C) */
+
+/* Seeds the three histograms and the two flag bytes with non-zero bytes that
+ * differ from every value the cases below store. */
+static void au_seed(void)
+{
+    for (u32 i = 0u; i < 0x2Fu; i++) DSB(AU_H0 + i) = (u8)(0x40u + i);
+    DSB(DS_00105DD8) = 0x80u;
+    DSB(DS_00105DD8 + 1u) = 0x5Au;
+}
+
+/* The bytes of AU_LO..AU_LO + AU_LEN that differ from `ref`. */
+static u32 au_changed(const u8 *ref)
+{
+    u32 n = 0u;
+    for (u32 i = 0u; i < AU_LEN; i++) n += DSB(AU_LO + i) != ref[i];
+    return n;
+}
+
+/* The one counter that audit_post(kind, value) raised by 1 over seeded
+ * histograms, as table * 0x100 + index; -1 when none, another change or more
+ * than one. */
+static s32 au_posted(u32 kind, u32 value)
+{
+    static const u32 base[3] = { AU_H0, AU_H1, AU_H2 }, size[3] = { 0x14u, 0x14u, 7u };
+    u8 ref[AU_LEN];
+    s32 hit = -1;
+    u32 n = 0u;
+    au_seed();
+    tf_snap(ref, AU_LO, AU_LEN);
+    (void)audit_post(kind, value);
+    for (u32 t = 0u; t < 3u; t++)
+        for (u32 i = 0u; i < size[t]; i++) {
+            const u32 a = base[t] + i;
+            if (DSB(a) == (u8)(ref[a - AU_LO] + 1u)) { hit = (s32)(t * 0x100u + i); n++; }
+            else if (DSB(a) != ref[a - AU_LO]) n += 2u;
+        }
+    return n == 1u ? hit : -1;
+}
+
+int test_audit(void)
+{
+    u8 saved[AU_LEN], ref[AU_LEN];
+    tf_snap(saved, AU_LO, AU_LEN);
+
+    /* Evidence lines (image only, not port logic): the three storage
+     * descriptors the counters go through. */
+    CHECK_EQ_INT((int)DSW(0x0002D45Eu), 0x14);
+    CHECK_EQ_INT((int)DSD(0x0002D460u), (int)AU_H0);
+    CHECK_EQ_INT((int)DSW(0x0002D46Eu), 7);
+    CHECK_EQ_INT((int)DSD(0x0002D470u), (int)AU_H2);
+
+    /* tables/store — 0x2E034: the value's low byte lands in the counter, the
+     * dirty bit table + 3 is set, the neighbours stay. */
+    au_seed();
+    CHECK_EQ_INT((int)audit_counter_store(1u, 0x13u, 0x1234u), 0x34);   /* 0x2E08B `and ebx,0xff` */
+    CHECK_EQ_INT((int)DSB(AU_H1 + 0x13u), 0x34);
+    CHECK_EQ_INT((int)DSB(AU_H1 + 0x12u), 0x40 + 0x14 + 0x12);
+    CHECK_EQ_INT((int)DSB(AU_H2), 0x40 + 0x28);
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x80 | 0x10);                   /* bit 1 + 3 */
+    CHECK_EQ_INT((int)DSB(DS_00105DD8 + 1u), 0x5A);
+    au_seed();
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counter_store(1u, 0x14u, 0x77u), -1);       /* 0x2E062 `jb`: index == size */
+    CHECK_EQ_INT((int)audit_counter_store(3u, 0u, 0x77u), -1);          /* 0x2E03D `jb`: table 3 */
+    CHECK_EQ_INT((int)au_changed(ref), 0);
+
+    /* halve — 0x2E0A4: every counter of the table >> 1 (logical), the dirty
+     * bit, 0; the other tables stay (0x15 = the 0x14 counters and the flag). */
+    au_seed();
+    DSB(AU_H1) = 0xFFu;
+    DSB(AU_H1 + 0x13u) = 0x81u;
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counters_halve(1u), 0);
+    CHECK_EQ_INT((int)DSB(AU_H1), 0x7F);                                /* 0x2E100 `shr cl,1` */
+    CHECK_EQ_INT((int)DSB(AU_H1 + 0x13u), 0x40);                        /* the last counter */
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x80 | 0x10);
+    CHECK_EQ_INT((int)au_changed(ref), 0x15);
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counters_halve(3u), -1);                    /* 0x2E0AD `jb` */
+    CHECK_EQ_INT((int)au_changed(ref), 0);
+
+    /* add — 0x2E180: counter + n; past 0xFF the tables of the descriptor's
+     * mask word (0x2D420 + 0x10 * table: its own bit in the image) are halved
+     * and the sum >> 1 is stored. */
+    CHECK_EQ_INT((int)DSW(0x0002D420u), 1);                              /* evidence line (image only) */
+    au_seed();
+    DSB(AU_H0 + 3u) = 0xFEu;
+    DSB(AU_H0 + 4u) = 0x09u;
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counter_add(0u, 3u, 1u), 0xFF);              /* 0x2E1C3 `jle`: 0xFF stays */
+    CHECK_EQ_INT((int)DSB(AU_H0 + 3u), 0xFF);
+    CHECK_EQ_INT((int)au_changed(ref), 2);                               /* the counter and the flag */
+    CHECK_EQ_INT((int)audit_counter_add(0u, 3u, 1u), 0x80);              /* 0x100 >> 1, 0x2E203 */
+    CHECK_EQ_INT((int)DSB(AU_H0 + 3u), 0x80);
+    CHECK_EQ_INT((int)DSB(AU_H0 + 4u), 0x04);                            /* halved through 0x2E0A4 */
+    CHECK_EQ_INT((int)DSB(AU_H1), 0x40 + 0x14);                          /* table 1 is not in the mask */
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counter_add(3u, 0u, 1u), -1);                /* 0x2E18B `jb` */
+    CHECK_EQ_INT((int)audit_counter_add(2u, 7u, 1u), -1);                /* 0x2E1A7 `jb`: index == size */
+    CHECK_EQ_INT((int)au_changed(ref), 0);
+
+    /* post — 0x2E934: the value's bucket (0 below the first width, then one
+     * per step, at most the count - 1) gets 1. Kinds 0, 1 and 2 are the ones
+     * the call sites pass (0x32B7E, 0x32B35, 0x43E77). Kinds 3 and above store
+     * nothing whichever function refuses them: the differential row tells
+     * 0x2E93D's refusal from 0x2E180's (cases p7..pa). */
+    CHECK_EQ_INT((int)DSD(0x0002D418u), 10);                             /* evidence lines (image only): */
+    CHECK_EQ_INT((int)DSD(0x0002D42Cu), 15);                             /* the widths 10, 15 and 1, and */
+    CHECK_EQ_INT((int)DSB(0x0002D422u), 0x14);                           /* the counts 0x14 and 7 */
+    CHECK_EQ_INT((int)DSB(0x0002D442u), 7);
+    CHECK_EQ_INT((int)au_posted(0u, 9u), 0x000);                         /* 0x2E95B `jb` */
+    CHECK_EQ_INT((int)au_posted(0u, 10u), 0x001);
+    CHECK_EQ_INT((int)au_posted(0u, 189u), 0x012);                       /* one below the last bucket */
+    CHECK_EQ_INT((int)au_posted(0u, 190u), 0x013);
+    CHECK_EQ_INT((int)au_posted(0u, 0xFFFFFFFFu), 0x013);                /* 0x2E978 `jl`: the count - 1 */
+    CHECK_EQ_INT((int)au_posted(1u, 30u), 0x102);
+    CHECK_EQ_INT((int)au_posted(2u, 0xFFFFFFFFu), 0x206);                /* a signed -1 class, unsigned here */
+    au_seed();
+    CHECK_EQ_INT((int)audit_post(2u, 3u), 0x40 + 0x28 + 3 + 1);          /* 0x2E180's EAX, returned */
+
+    /* add — 0x2DAE4: the field + n through 0x2D974/0x2DA0C; the sum is
+     * returned. Field 0x10 is a byte at 0x105DC0 under two nibbles. */
+    (void)config_field_set(0x10u, 0x0FEu);
+    DSB(DS_00105E2F) = 7u;
+    DSB(DS_00105DD8) = 0x80u;
+    CHECK_EQ_INT((int)audit_add(0x10u, 5u), 0x103);
+    CHECK_EQ_INT((int)config_field_get(0x10u), 0x103);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 7);                              /* 0x2DAF8 `jne`: not field 3 */
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x87);                           /* 0x2DA0C's bits */
+
+    /* negative — 0x2DAF0 `jl`: a field that reads negative is returned as
+     * read and not written (field 0x29 is eight nibbles). */
+    (void)config_field_set(0x29u, 0x80000005u);
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_add(0x29u, 1u), (int)0x80000005u);
+    CHECK_EQ_INT((int)au_changed(ref), 0);
+
+    /* field3 — 0x2DAFA..0x2DB01: when field 3's sum differs from the old
+     * value at or above bit 8, the slot byte 0x105E2F steps (the low-byte
+     * block's place in the stored image). */
+    (void)config_field_set(3u, 0x0FEu);
+    CHECK_EQ_INT((int)audit_add(3u, 1u), 0xFF);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 7);                              /* 0xFE ^ 0xFF < 0x100 */
+    CHECK_EQ_INT((int)audit_add(3u, 1u), 0x100);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 8);
+    CHECK_EQ_INT((int)config_field_get(3u), 0x100);
+
+    /* clamp — 0x2DB2B `cmp eax,0x7f8; jb`: slot 35 is the last whose 45
+     * cells end inside the image (0x1A3 + 45 * 35 + 45 = 0x7F7); the next
+     * step wraps to 0. */
+    DSB(DS_00105E2F) = 34u;
+    (void)config_field_set(3u, 0x1FFu);
+    (void)audit_add(3u, 1u);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 35);
+    (void)config_field_set(3u, 0x2FFu);
+    (void)audit_add(3u, 1u);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 0);
+
+    /* bit0 — 0x32B94 `test al,1`: one add to field 0xE for an odd AL,
+     * whatever the bytes above it hold. */
+    (void)config_field_set(0xEu, 0x12u);
+    audit_add_if_bit0(0x00000102u);
+    CHECK_EQ_INT((int)config_field_get(0xEu), 0x12);
+    audit_add_if_bit0(0xFFFFFF01u);
+    CHECK_EQ_INT((int)config_field_get(0xEu), 0x13);
+
+    /* characters — 0x32BB0: field 0x1B + c gets 1 for each character at or
+     * below 6, unsigned; a first character above 6 ends the call before the
+     * second (0x32BB6 `ja 0x32bd7`). Fields 0x1A and 0x22 are the neighbours
+     * of the seven. */
+    for (u32 f = 0x1Au; f <= 0x22u; f++) (void)config_field_set(f, 0x20u + f);
+    audit_characters(2u, 6u);
+    audit_characters(7u, 1u);
+    audit_characters(6u, 7u);
+    audit_characters(3u, 0xFFFFFFFFu);                                   /* 0x27E04: -1 for one player */
+    {
+        static const u8 want[9] = { 0u, 0u, 0u, 1u, 1u, 0u, 0u, 2u, 0u };
+        for (u32 f = 0x1Au; f <= 0x22u; f++)
+            CHECK_EQ_INT((int)config_field_get(f), (int)(0x20u + f + want[f - 0x1Au]));
+    }
+
+    tf_put(saved, AU_LO, AU_LEN);
+    return 0;
+}
+
 /* ---- test_anim.c ---- */
 
 /* port/tests/test_anim.c — the animation-stream interpreter (Task 7).

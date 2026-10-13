@@ -1339,6 +1339,99 @@ static s32 audit_bucket(u32 g, u32 i)
     return (s32)DSB(DSD(t + 4u) + i);                       /* 0x2E50A..0x2E510 */
 }
 
+/* 0x2E034 — record §S.6. EAX = table, EDX = index, EBX = value. -1 for a
+ * table >= 3 or an index >= the table's size (both `jb`, unsigned). Else
+ * the table's dirty bit (table + 3) is set in DS_00105DD8, the byte
+ * [source + index] = BL, 0x2D4EC(table + 3), and the result is the value's
+ * low byte (0x2E08B `and ebx,0xff`, 0x2E09B `mov eax,ebx`). */
+s32 audit_counter_store(u32 table, u32 index, u32 value)
+{
+    PR_SEAM_RET(0x2E034u, table, index, value);
+    if (table >= 3u) return -1;                             /* 0x2E03A/0x2E03D */
+    const u32 s = table + 3u;                               /* 0x2E06E */
+    const u32 d = AUDIT_STORE + 8u * s;                     /* 0x2E049..0x2E058 */
+    if (index >= DSW(d + 2u)) return -1;                    /* 0x2E05C..0x2E062 */
+    DSB(DS_00105DD8 + (s >> 3)) |= (u8)(1u << (s & 7u));    /* 0x2E071..0x2E082 */
+    value &= 0xFFu;                                         /* 0x2E08B */
+    DSB(DSD(d + 4u) + index) = (u8)value;                   /* 0x2E088/0x2E091 */
+    config_storage_touch(s);                                /* 0x2E094/0x2E096 0x2D4EC */
+    return (s32)value;                                      /* 0x2E09B */
+}
+
+/* 0x2E0A4 — record §S.6. EAX = table. -1 for a table >= 3 (`jb`,
+ * unsigned). Else the table's dirty bit is set, every counter of the table
+ * is halved (0x2E100 `shr cl,1`; the count is the size word minus 1 down to
+ * 0, signed: 0x2E0F8..0x2E108), 0x2D4EC(table + 3), and the result is 0. */
+s32 audit_counters_halve(u32 table)
+{
+    PR_SEAM_RET(0x2E0A4u, table);
+    if (table >= 3u) return -1;                             /* 0x2E0AA/0x2E0AD */
+    const u32 s = table + 3u;                               /* 0x2E0B9 */
+    const u32 d = AUDIT_STORE + 8u * s;                     /* 0x2E0C6..0x2E0DD */
+    DSB(DS_00105DD8 + (s >> 3)) |= (u8)(1u << (s & 7u));    /* 0x2E0BC..0x2E0E8 */
+    u32 p = DSD(d + 4u);                                    /* 0x2E0E5 */
+    for (s32 n = (s32)DSW(d + 2u) - 1; n >= 0; n--, p++)    /* 0x2E0EE..0x2E108 */
+        DSB(p) = (u8)(DSB(p) >> 1);                         /* 0x2E0FD..0x2E103 */
+    config_storage_touch(s);                                /* 0x2E10A/0x2E10D 0x2D4EC */
+    return 0;                                               /* 0x2E112 */
+}
+
+/* 0x2E180 — record §S.6. EAX = table, EDX = index, EBX = the addend. The
+ * counter is read as 0x2E034 would store it: -1 for a table >= 3 or an
+ * index >= the size (both `jb`), which is returned (0x2E1B9 `jl`). The sum
+ * above 0xFF, signed (0x2E1C3 `jle`): for t = 2 down to 0, each table whose
+ * bit t is set in the mask word 0x2D420 + 0x10 * table is halved through
+ * 0x2E0A4, a negative result returning -1 with nothing stored (0x2E1F2
+ * `jge`); then the sum is halved (0x2E203 `sar`). The sum is stored through
+ * 0x2E034 and returned whole (0x2E210 `mov eax,esi`). */
+s32 audit_counter_add(u32 table, u32 index, u32 add)
+{
+    PR_SEAM_RET(0x2E180u, table, index, add);
+    s32 v = -1;                                             /* 0x2E18D, 0x2E1A9 */
+    if (table < 3u) {                                       /* 0x2E188/0x2E18B */
+        const u32 d = AUDIT_STORE + 8u * (table + 3u);      /* 0x2E194..0x2E19A */
+        if (index < DSW(d + 2u))                            /* 0x2E19F..0x2E1A7 */
+            v = (s32)DSB(DSD(d + 4u) + index);              /* 0x2E1B0/0x2E1B3 `movzx` */
+    }
+    if (v < 0) return v;                                    /* 0x2E1B7/0x2E1B9 */
+    v = (s32)((u32)v + add);                                /* 0x2E1BB */
+    if (v > 0xFF) {                                         /* 0x2E1BD/0x2E1C3 */
+        const u32 mask = DSW(AUDIT_DESC + 0x10u * table + 0xCu);   /* 0x2E1C5..0x2E1D6 */
+        for (s32 t = 2; t >= 0; t--) {                      /* 0x2E1D1, 0x2E1FE..0x2E201 */
+            if ((mask & (1u << t)) == 0u) continue;         /* 0x2E1DC..0x2E1E7 */
+            if (audit_counters_halve((u32)t) < 0) return -1;   /* 0x2E1E9..0x2E1F4 */
+        }
+        v >>= 1;                                            /* 0x2E203 */
+    }
+    (void)audit_counter_store(table, index, (u32)v);        /* 0x2E205..0x2E20B */
+    return v;                                               /* 0x2E210 */
+}
+
+/* 0x2E934 — record §S.6. EAX = kind, EDX = value. -1 for a kind above 3
+ * (`jbe`, unsigned: kind 3 reads the four dwords after the three histogram
+ * descriptors and is then refused by 0x2E180). The bucket is 0 for a value
+ * below the descriptor's first width (+4, `jb`), else 1 plus one for each
+ * step (+8) the rest still holds, while the bucket is below the count byte
+ * (+0xE) minus 1, signed (0x2E978 `jl`). Returns 0x2E180(kind, bucket, 1). */
+s32 audit_post(u32 kind, u32 value)
+{
+    PR_SEAM_RET(0x2E934u, kind, value);
+    if (kind > 3u) return -1;                               /* 0x2E93A/0x2E93D */
+    const u32 d = AUDIT_DESC + 0x10u * kind;                /* 0x2E949..0x2E94E */
+    u32 bucket = 0u;                                        /* 0x2E957 */
+    if (value >= DSD(d + 4u)) {                             /* 0x2E954..0x2E95B */
+        bucket = 1u;                                        /* 0x2E95D */
+        value -= DSD(d + 4u);                               /* 0x2E962 */
+        while ((s32)bucket < (s32)DSB(d + 0xEu) - 1) {      /* 0x2E970..0x2E978 */
+            const u32 step = DSD(d + 8u);                   /* 0x2E966 */
+            if (value < step) break;                        /* 0x2E969/0x2E96B */
+            bucket++;                                       /* 0x2E96D */
+            value -= step;                                  /* 0x2E96E */
+        }
+    }
+    return audit_counter_add(kind, bucket, 1u);             /* 0x2E97A..0x2E983 */
+}
+
 /* 0x2E11C — record §K11.8. EAX = g. */
 u32 audit_hist_clear(u32 g)
 {

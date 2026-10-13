@@ -939,9 +939,7 @@ void game_mode_12_step(void)
         flow_join_prompt_draw();                                             /* 0x423FC 0x271E0 */
         config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));          /* 0x4240E 0x32A3C */
         DSB(DS_00104B19) = 0u;                                                /* 0x4241A */
-        /* PORT: 0x42420..0x42425 0x2DAE4(0x10, 1), the audit add (EDX = 1 from
-         * 0x42415), is deferred (spec §7) as at 0x28E53; a plain call, not a
-         * longjmp (record named-gaps-b §B.6a item 9). */
+        (void)audit_add(0x10u, 1u);                                           /* 0x42415..0x42425 0x2DAE4 */
         break;
     }
 
@@ -1617,8 +1615,7 @@ void flow_player_join(u32 side)
     fight_char_reset(side);                             /* 0x28E12 0x33C18 */
     DSB(DS_0010780B + (side ^ 1u) * 0x94u) = 0u;        /* 0x28E0E/0x28E17..0x28E29 */
     config_play_time_snap(DSD(DS_00104ABC), 1u);        /* 0x28E30..0x28E3F 0x32B00 */
-    /* PORT: 0x28E53 0x2DAE4(0xD, 1), the audit add, is deferred (spec §7),
-     * as in 0x2D962 and 0x32A3C (config.c). */
+    (void)audit_add(0xDu, 1u);                          /* 0x28E44..0x28E53 0x2DAE4 */
     DSB(DS_00104B24) = 1u;                              /* 0x28E27/0x28E5A (BL) */
     DSD(DS_00104AE4) = FN_00028D80;                     /* 0x28E4E/0x28E60 */
     DSW(DS_00104B00) = 0x17u;                           /* 0x28E3A/0x28E66 (CX) */
@@ -1935,8 +1932,9 @@ void flow_continue_take(void)
  * 0x25376 `jmp 0x2540F`; its only caller). EBX/ECX/EDX are pushed and
  * popped. The side w = (s8)DS_0010810D (`mov eax,[0x10810a]; sar eax,0x18`).
  * - 0x42F60(w) non-zero (the side's start, with a credit spent): DS_00104B1F
- *   = (the byte DS_0010810D != 0) + 1 (`setne al; inc eax`), the 0x2DAE4
- *   audit, 0x2791C (the continue taken, mode 0xC) and 0x41310(w, 1), return.
+ *   = (the byte DS_0010810D != 0) + 1 (`setne al; inc eax`), the audit add
+ *   0x2DAE4(0x11, 1) (0x27A5F, track S §S.6), 0x2791C (the continue taken,
+ *   mode 0xC) and 0x41310(w, 1), return.
  * - Otherwise a tick is forced when DS_00105C04 is set (DS_00108110 = 0xA,
  *   DS_00105C04 = 0 by DH after `xor dh,dh`, EAX = 1), else by a newly
  *   pressed button: 0x4F778(1) with the DS_00104B1F bit 0, else 0x4F778(0)
@@ -1962,8 +1960,7 @@ void game_mode_0e_step(void)
     u32 tick;
     if (flow_continue_poll((u32)(s32)(s8)DSB(DS_0010810D)) != 0u) {  /* 0x27A2F..0x27A3E 0x42F60 */
         DSB(DS_00104B1F) = (u8)((DSB(DS_0010810D) != 0u ? 1u : 0u) + 1u);  /* 0x27A40..0x27A55 */
-        /* PORT: 0x27A5F 0x2DAE4(0x11, 1), the audit add, is deferred (spec
-         * §7), as in 0x28E53 (0x28DA4) and 0x2D962 (config.c). */
+        (void)audit_add(0x11u, 1u);                     /* 0x27A50..0x27A5F 0x2DAE4 */
         flow_continue_take();                           /* 0x27A64 0x2791C */
         fighter_41310((u32)(s32)(s8)DSB(DS_0010810D), 1);   /* 0x27A69..0x27A76 0x41310 */
         return;                                         /* 0x27A7B */
@@ -3007,9 +3004,11 @@ void flow_match_end(void)
      * §7); the host clock owns wall time. */
     DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;   /* 0x27DD1..0x27DE6 */
     config_play_time_snap_b(DSD(DS_00104ABC), 0u);      /* 0x27DE4/0x27DEB 0x32B4C */
-    /* PORT: 0x27DF0..0x27E28 0x32BB0(c0, c1) (or (c, -1) with DS_00104ABC
-     * == 1): two 0x2DAE4(0x1B + c, 1) audit adds for the characters below 7,
-     * deferred (spec §7) as in 0x2D962 and 0x32A3C (config.c). */
+    if (DSD(DS_00104ABC) == 1u)                         /* 0x27DF0: read again after 0x32B4C */
+        audit_characters(DSB(DSB(DS_00107813) != 0u ? DS_001078BE : DS_0010782A),
+                         0xFFFFFFFFu);                  /* 0x27DF9..0x27E17, 0x27E23/0x27E28 0x32BB0 */
+    else
+        audit_characters(DSB(DS_0010782A), DSB(DS_001078BE));   /* 0x27E19..0x27E28 0x32BB0 */
     if (DSD(DS_00104AC8) != 0u)                         /* 0x27E2D/0x27E35 */
         actor_set_dead(DSD(DS_00104AC8));               /* 0x27E39 0x2B150 */
     sound_voice_match_end();                            /* 0x27E3E..0x27E4B 0x4F728 */
@@ -3046,8 +3045,7 @@ void flow_round_over(void)
         DSD(slot + 0x40u) &= 0xFFEFEFFFu;               /* 0x27EE8..0x27EFB */
         fight_hud_side_reset(side);                     /* 0x27F01 0x1D764 */
     }
-    /* PORT: 0x27F1F 0x2DAE4(0xF, 1), the audit add, is deferred (spec §7),
-     * as in 0x2D962 and 0x32A3C (config.c). */
+    (void)audit_add(0xFu, 1u);                          /* 0x27F0B..0x27F1F 0x2DAE4 */
     DSD(DS_00104AC8) = actor_spawn((const u32 *)(mem + DS_000BB6C8),
                                    0x2A00u, 0xFFu, 0xF00u, 0u);   /* 0x27F24..0x27F35 0x2AE14 */
     fighter_19820();                                    /* 0x27F3A 0x19820 */
@@ -4324,14 +4322,9 @@ void game_mode_07_step(void)
  *     on their countdown-arm arms; 0x2782C..0x27843);
  *   - fighter_41310(DS_00104AD4, 0x30D40) — the *match result*, not
  *     DS_0010810D, is this call's side argument (0x2784B..0x27855);
- *   - the deferred 0x32B94 (0x2786B): tests DS_00104B1F bit 0 and, when set,
- *     posts one audit entry through 0x2DAE4(0xE, 1) — the deferred audit
- *     idiom, spec §7 — before an unconditional bare `ret`; no memory-visible
- *     effect either way (confirmed by disassembling 0x32B94 in full: 8
- *     instructions, the only call is the conditional 0x2DAE4, EDX pushed and
- *     popped around it), so this call site is a no-op here, the same
- *     treatment already given the four calls onto the neighbouring 0x32BAC
- *     bare-`ret` stub in mode 9's port;
+ *   - 0x32B94(the byte DS_00104B1F, zero-extended: 0x2785A `xor eax,eax`,
+ *     0x27861 `mov al`) (0x2786B, audit_add_if_bit0, track S §S.6): bit 0
+ *     set posts 0x2DAE4(0xE, 1);
  *   - the run-clock tick 0x32970(0) (0x27874; host-owned, record §48-V:
  *     the host clock owns wall time);
  *   - config_play_time_close(1, DS_00104B19) (0x27879..0x27886 0x32A3C);
@@ -4364,11 +4357,7 @@ void game_mode_0f_step(void)
             (u8)(DSB(DS_001077F1 + (u32)w * 0x94u) & 0xEFu);     /* 0x27835..0x27843 */
     }
     fighter_41310(DSD(DS_00104AD4), 0x30D40);                  /* 0x2784B..0x27855 0x41310 */
-    /* PORT: 0x2786B 0x32B94: tests DS_00104B1F bit 0; when set, posts a
-     * deferred audit entry through 0x2DAE4(0xE, 1) (out of scope, spec §7)
-     * before an unconditional bare `ret`; no memory-visible effect either
-     * way — omitted, the same treatment already given the 0x32BAC-stub call
-     * sites in mode 9's port. */
+    audit_add_if_bit0(DSB(DS_00104B1F));                       /* 0x2785A..0x2786B 0x32B94 */
     /* PORT: 0x27874 0x32970(EAX = 0), the run clock, is out of scope (spec
      * §7); the host clock owns wall time. */
     config_play_time_close(1u, DSB(DS_00104B19));               /* 0x27879..0x27886 0x32A3C */
@@ -5207,16 +5196,13 @@ void frontend_match_start(void)
  * `xor edx,edx` at 0x1EC3D/0x1EC50's own callers). A rank >= 10 (0x1EC75/
  * 0x1EC78, the low 16 bits of the probe's return, 0xFFFFFFFF included)
  * returns 0. A rank < 10 clears config field 0x26 (0x1ECB1/0x1ECB3
- * config_field_set — the real, unconditional store, not the deferred audit
- * add below), records the rank into DS_001044D6 (0x1ECBA) and returns 1.
- * PORT: 0x1EC44..0x1EC6B and 0x1EC7A..0x1EC9A each post one deferred
- * 0x2DAE4 audit add (field 0x27 always, clamped at 2000 through
- * config_field_set when its running total exceeds it; field 0x26 only on
- * the non-qualifying path, clamped at 200) — 0x2DAE4 is the deferred audit
- * idiom this codebase already treats as out of scope everywhere else
- * (spec §7); neither add changes this function's own return value or
- * DS_001044D6, so omitting them changes no state this port's own callers
- * observe. A rank < 10 first arms the name-entry screen through
+ * config_field_set), records the rank into DS_001044D6 (0x1ECBA) and
+ * returns 1. Two audit adds (track S §S.6): 0x2DAE4(0x27, 1) always
+ * (0x1EC44..0x1EC50), its sum's low word above 2000 (0x1EC55 `and
+ * eax,0xffff`, 0x1EC5A/0x1EC5F) stored back as 2000 through 0x2DA0C; and
+ * on the rank >= 10 arm 0x2DAE4(0x26, 1) (0x1EC7A..0x1EC84), its sum above
+ * 200, signed and whole (0x1EC89/0x1EC8E `jle`), stored back as 200. A
+ * rank < 10 first arms the name-entry screen through
  * nameentry_arm (0x204F4, record §51-A) with EAX = the rank's low word
  * (0x1EC70/0x1EC72 `xor eax,eax; mov ax,cx`) and EDX = the score
  * (0x1ECA5); ECX (the rank) survives it (0x204F5 push/0x2070A pop). */
@@ -5224,10 +5210,11 @@ u32 hiscore_rank_single(u32 score)
 {
     PR_SEAM_RET(0x1EC38u, score);
     u32 rank = hiscore_rank_probe(score, 0u);                  /* 0x1EC3F */
-    /* PORT: 0x1EC44..0x1EC6B — field 0x27's deferred audit add; see header. */
+    if (((u32)audit_add(0x27u, 1u) & 0xFFFFu) > 0x7D0u)        /* 0x1EC44..0x1EC5F */
+        (void)config_field_set(0x27u, 0x7D0u);                 /* 0x1EC61..0x1EC6B */
     if ((u16)rank >= 10u) {                                    /* 0x1EC75/0x1EC78 */
-        /* PORT: 0x1EC7A..0x1EC9A — field 0x26's deferred audit add; see
-         * header. */
+        if (audit_add(0x26u, 1u) > 0xC8)                       /* 0x1EC7A..0x1EC8E */
+            (void)config_field_set(0x26u, 0xC8u);              /* 0x1EC90..0x1EC9A */
         return 0u;                                             /* 0x1EC9F */
     }
     nameentry_arm((u16)rank, score);                            /* 0x1ECA7 0x204F4 */
@@ -5821,8 +5808,8 @@ void game_mode_23_step(void)
  * game_hook_27134 (DS_00104AE4 = 0x27134 — this is the store the hook's own
  * header comment cites as "stored at 0x27074 (0x26F58)"), DS_00104AFE =
  * 0x78, DS_00104B00 = 0x17, DS_001088EE = 0, config_play_time_close(mode =
- * DS_00104ABC, flag = DS_00104B19), DS_00104B19 = 0, and the deferred
- * 0x2DAE4 audit add (spec §7, per config_play_time_close's own header).
+ * DS_00104ABC, flag = DS_00104B19), DS_00104B19 = 0, and the audit add
+ * 0x2DAE4(0x10, 1) (0x270A9, track S §S.6).
  * Either way, camera_y_commit runs last. EBX/ECX/EDX/ESI/EDI are pushed and
  * popped. Sole caller per get_xrefs_to: 0x24C5C's jump table (record
  * §47-B.1). */
@@ -5863,8 +5850,7 @@ void game_mode_24_step(void)
         DSW(DS_001088EE) = 0u;                               /* 0x2708D */
         config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));  /* 0x27094 0x32A3C */
         DSB(DS_00104B19) = 0u;                               /* 0x270A3 */
-        /* PORT: 0x270A9 0x2DAE4's play-time audit add is out of scope
-         * (spec §7), per config_play_time_close's own header. */
+        (void)audit_add(0x10u, 1u);                          /* 0x27099..0x270A9 0x2DAE4 */
     }
     camera_y_commit();                                       /* 0x270AE 0x12DA8 */
 }
