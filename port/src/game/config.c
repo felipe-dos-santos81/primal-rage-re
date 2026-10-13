@@ -129,6 +129,7 @@ u32 config_field_set(u32 field, u32 value)
  * whose count is zero or negative is skipped. */
 u32 config_menu_default_bits(u32 table)
 {
+    PR_SEAM_RET(0x2CCD0u, table);
     u32 bits = 0u;
     u32 rec = table;
     while (DSD(rec) != 0u) {
@@ -978,6 +979,7 @@ void config_keys_apply(u32 rec)
  * into 0x1AE28: applies the default record at DS 0x22C62. */
 void config_keys_apply_defaults(void)
 {
+    PR_SEAM0(0x1AE20u);
     config_keys_apply(KEYCFG_DEFAULTS);                     /* 0x1AE20 */
 }
 
