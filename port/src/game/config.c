@@ -164,7 +164,7 @@ void config_set_defaults(void)
     config_field_set(0x35u, 0xA0u);
     config_field_set(0x37u, 0xA0u);
     u32 v2a = config_field_get(0x2Au);
-    config_field_set(0x2Au, (v2a & 0xFCu) | 3u);
+    config_field_set(0x2Au, (v2a & 0xFFFFFFFCu) | 3u);   /* 0x2CB36/0x2CB38 `and al,0xfc; or al,3`: AL alone */
     config_keys_apply_defaults();                  /* 0x2CB50, record §50-C */
 }
 
