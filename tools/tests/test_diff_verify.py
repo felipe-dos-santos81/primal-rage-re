@@ -29019,6 +29019,7 @@ D1_CASES.extend(D5J_CASES)
 D6A_MASKS = {
     "text_blit_glyph": 0x0,
     "text_blit_glyph_rr": 0x0,
+    "svc_buttons_draw": 0x0,
 }   # D6A_MASKS end
 D6A_KINDS = {
     "text_blit_glyph@chmask": {'byte', 'call #1'},
@@ -29036,6 +29037,21 @@ D6A_KINDS = {
     "text_blit_glyph_rr@rowcache": {'call #1'},
     "text_blit_glyph_rr@addcache": {'byte'},
     "text_blit_glyph_rr@wreread": {'byte'},
+    "svc_buttons_draw@side": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #2 memory', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@side8": {'byte', 'call #0 memory', 'call #1', 'call #1 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #2 memory', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@left4": {'call #0', 'call #1', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #20', 'call #21 memory', 'call #22 memory', 'call #23 memory', 'call #24 memory', 'call #25 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7 memory', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@right6": {'byte', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #20 memory', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@three": {'byte', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25'},
+    "svc_buttons_draw@zero": {'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@key8": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #2', 'call #2 memory', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@raw": {'byte', 'call #0', 'call #1', 'call #1 memory', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #19', 'call #2', 'call #2 memory', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@step": {'byte', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@nohalf": {'byte', 'call #0', 'call #1', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #20', 'call #20 memory', 'call #21', 'call #21 memory', 'call #22', 'call #22 memory', 'call #23', 'call #23 memory', 'call #24', 'call #24 memory', 'call #25', 'call #25 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@halfup": {'byte', 'call #0', 'call #1', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #20', 'call #20 memory', 'call #21', 'call #21 memory', 'call #22', 'call #22 memory', 'call #23', 'call #23 memory', 'call #24', 'call #24 memory', 'call #25', 'call #25 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@lr": {'byte', 'call #0', 'call #1', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #20', 'call #20 memory', 'call #21', 'call #21 memory', 'call #22', 'call #22 memory', 'call #23', 'call #23 memory', 'call #24', 'call #24 memory', 'call #25', 'call #25 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@rows": {'byte', 'call #0', 'call #1', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #20', 'call #20 memory', 'call #21', 'call #21 memory', 'call #22', 'call #22 memory', 'call #23', 'call #23 memory', 'call #24', 'call #24 memory', 'call #25', 'call #25 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
+    "svc_buttons_draw@mode": {'call #0', 'call #1', 'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #18', 'call #19', 'call #2', 'call #20', 'call #21', 'call #22', 'call #23', 'call #24', 'call #25', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "svc_buttons_draw@rowoff": {'byte', 'call #0', 'call #1', 'call #10', 'call #10 memory', 'call #11', 'call #11 memory', 'call #12', 'call #12 memory', 'call #13', 'call #13 memory', 'call #14', 'call #14 memory', 'call #15', 'call #15 memory', 'call #16', 'call #16 memory', 'call #17', 'call #17 memory', 'call #18', 'call #18 memory', 'call #19', 'call #19 memory', 'call #2', 'call #20', 'call #20 memory', 'call #21', 'call #21 memory', 'call #22', 'call #22 memory', 'call #23', 'call #23 memory', 'call #24', 'call #24 memory', 'call #25', 'call #25 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory', 'call #8', 'call #8 memory', 'call #9', 'call #9 memory'},
 }   # D6A_KINDS end
 D6A_CASES = [
     ("text_blit_glyph@chmask", ['g3', 'g4']),
@@ -29053,6 +29069,21 @@ D6A_CASES = [
     ("text_blit_glyph_rr@rowcache", ['rr0', 'rr1']),
     ("text_blit_glyph_rr@addcache", ['rr0', 'rr1']),
     ("text_blit_glyph_rr@wreread", ['rr0']),
+    ("svc_buttons_draw@side", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@side8", ['b2']),
+    ("svc_buttons_draw@left4", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@right6", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@three", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@zero", ['b0', 'b1']),
+    ("svc_buttons_draw@key8", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@raw", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@step", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@nohalf", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@halfup", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@lr", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@rows", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@mode", ['b0', 'b1', 'b2', 'b3']),
+    ("svc_buttons_draw@rowoff", ['b0', 'b1', 'b2', 'b3']),
 ]   # D6A_CASES end
 D6A_OUTSIDE = {}
 P45_OUTSIDE.update(D6A_OUTSIDE)
@@ -30260,6 +30291,9 @@ class RealFunctionTests(unittest.TestCase):
 
     # the hand resolutions of E.RESOLVED_JUMPS (record §E3.5, §E3.12): from the guard to the jump, the bytes
     WINDOWS = {
+        # D6 d6a (record 2026-10-13-reverse-d6a §2)
+        0x31AD6: ["cmp edi, 3", "ja 0x31b5d", "mov eax, dword ptr [esp + 0x10]", "jmp dword ptr cs:[eax + 0x31a68]"],
+        # D6 d6a windows end
         # D5 d5h (record 2026-10-12-reverse-d5h §2)
         0x11D69: ["cmp ax, 9", "ja 0x11d70", "and eax, 0xffff", "lea edx, [eax*4]", "mov ax, word ptr [0xf0a6a]",
                   "dec eax", "jmp dword ptr cs:[edx + 0x11cdc]"],

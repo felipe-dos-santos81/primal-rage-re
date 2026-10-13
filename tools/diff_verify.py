@@ -31887,6 +31887,56 @@ D6A_SPECS += [
        mutants=("@colcache", "@rowcache", "@addcache", "@wreread")),
 ]
 
+# ---- 0x31A78: the service menu's four button names -----------------------------------------------------
+# The name is built in the function's own frame (`mov ebx,esp` 0x31AB0 for 0x3157C, 0x31AF1/0x31B14/
+# 0x31B4B for 0x2F198), which the port keeps in a scratch above the image (svcmenu.c, PORT): the binding
+# hides that scratch from the call-memory reports and zeroes it at the end (diff_runner.c
+# d6a_scratch_hook), as the emulator leaves the private stack out. 0x3157C with its tree, 0x2F198, 0x2F830
+# and 0x2F0F0 run on both sides, so no seam carries the buffer's address; the name is compared character
+# by character at 0x2F5A0 (a stub, by value: the character, the column, the row, the mode, 0). A stub does
+# not advance the column in 0x2F830's frame, so every character of a name is recorded at its first column;
+# the count reaches the cursor words 0x105F34/0x105F36.
+D6A_KEYREC = 0x0010A300                         # the 0x28-byte key-config record (zero BSS)
+D6A_TEXT_REAL = (0x2F198, 0x2F830, 0x2F0F0)
+D6A_NAME_REAL = (0x3157C,) + D1D_STR_ALLOW + D3A_SPRINTF       # 0x3157C and its tree (the config_key_name row's)
+# names of at most five characters for the ids 0x220..0x22B: wrapped ("<" + name + ">" + NUL) each fits
+# the frame's eight bytes below the locals [esp+8] and [esp+0xC] (a longer name overruns them: no case)
+D6A_NAMES = {0x220: b"HOME", 0x221: b"PGUP", 0x222: b"PGDN", 0x223: b"UP", 0x224: b"LEFT", 0x225: b"RIGHT",
+             0x226: b"DWN", 0x227: b"END", 0x228: b"INS", 0x229: b"DEL", 0x22A: b"BKSP", 0x22B: b"T"}
+
+
+def d6a_buttons(cid, side, col, row, keys0, keys1):
+    """0x31A78: the string table (d1d_str_pokes) with D6A_NAMES; the record seeded whole with the four key
+    words of side 0 at +0xA and of side 1 at +0x1C; the cursor words 0x105F34 seeded."""
+    rec = bytearray((0xE0 + i) & 0xFF for i in range(0x28))
+    rec[0x0A:0x12] = b"".join(le16(k) for k in keys0)
+    rec[0x1C:0x24] = b"".join(le16(k) for k in keys1)
+    p = d1d_str_pokes(D6A_NAMES)
+    p.update({D6A_KEYREC: bytes(rec), 0x00105F34: le16(0x7171) + le16(0x7272)})
+    return Case(cid, {"eax": side, "edx": D6A_KEYREC, "ebx": col, "ecx": row}, p)
+
+
+D6A_SPECS += [
+    # 0x31A78 svc_buttons_draw: EAX = side (whole: `test eax,eax` 0x31A7E; b2 has 0x100), EDX = the record,
+    # EBX = col, ECX = row. The four key words from +0xA (side 0) or +0x1C, zero-extended (`xor eax,eax;
+    # mov ax,[edx]` 0x31AB6/0x31ABB), each named wrapped by 0x3157C(key, 0, frame) (`xor edx,edx` 0x31ABE);
+    # a key with no name leaves the buffer as the key before left it (b0's third, b1's second and third).
+    # half = strlen `shr` 1 (0x31AEF..: names of 3 to 7 characters). Key 0 at (col - 5 - half, row + 8),
+    # key 1 at (col + 5 - half, row + 8), keys 2 and 3 the same columns at row + 0xC (jump table 0x31A68),
+    # each 0x2F198(.., the name, 0x4000). b3's first column is -1, which 0x2F198 centres. Mask 0: every call
+    # site overwrites EAX (0x3220C..0x3222B, `mov eax,0xa` 0x32252, `mov eax,[0x101514]` 0x324AE, `call
+    # 0x2ea74` 0x324E1). Not cased: a first key with no name (the raw then draws its uninitialised frame;
+    # the port zeroes its scratch, PORT).
+    Spec("svc_buttons_draw", 0x31A78, [
+        d6a_buttons("b0", 0, 0x0A, 0x0B, (0x1E41, 0x4700, 0x0100, 0x3D00), (0x4800, 0x1E61, 0x5000, 0x4B00)),
+        d6a_buttons("b1", 1, 0x1E, 0x0B, (0x4800, 0x1E61, 0x5000, 0x4B00), (0x4D00, 0x1C0D, 0x3920, 0x4400)),
+        d6a_buttons("b2", 0x100, 0x15, 0x00, (0x4D00, 0x4700, 0x4900, 0x5100), (0x0E00, 0x4800, 0x5000, 0x4F00)),
+        d6a_buttons("b3", 0, 0x07, 0x03, (0x4700, 0x3062, 0x5200, 0x5300), (0x0F00, 0x4A00, 0x4E00, 0x4200)),
+    ], allow_calls=D6A_NAME_REAL + D6A_TEXT_REAL, calls=(D1G_GLYPH,), eax_mask=0,
+       mutants=tuple("@" + m for m in "side side8 left4 right6 three zero key8 raw step nohalf halfup lr rows "
+                                      "mode rowoff".split())),
+]
+
 D1_SPECS += D6A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
