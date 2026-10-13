@@ -144,6 +144,11 @@ s32 audit_add(u32 field, u32 n);
  * Caller: 0x2786B (0x277C0) with the byte DS_00104B1F. */
 void audit_add_if_bit0(u32 flags);
 
+/* 0x32BB0. One audit_add(0x1B + c, 1) per character at or below 6
+ * (unsigned); a first character above 6 skips the second too. Caller:
+ * 0x27E28 (0x27DC8), `c1` = -1 with one player. */
+void audit_characters(u32 c0, u32 c1);
+
 /* ---- timed screen, key latch and menu helpers (record §49-Y) ------------ */
 
 /* 0x2EA78. Builds and presents one frame without the game logic, then waits

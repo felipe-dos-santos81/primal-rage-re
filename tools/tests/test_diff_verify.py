@@ -29333,6 +29333,7 @@ SB_MASKS = {
     "audit_post": 0xFFFFFFFF,
     "audit_add": 0xFFFFFFFF,
     "audit_add_if_bit0": 0x0,
+    "audit_characters": 0x0,
 }   # SB_MASKS end
 SB_KINDS = {
     "audit_counter_store@tle": {'byte', 'call #0', 'eax'},
@@ -29430,6 +29431,17 @@ SB_KINDS = {
     "audit_add_if_bit0@eax": {'call #0'},
     "audit_add_if_bit0@field": {'call #0'},
     "audit_add_if_bit0@n": {'call #0'},
+    "audit_characters@c0le": {'call #0', 'call #1'},
+    "audit_characters@c1le": {'call #1'},
+    "audit_characters@c0signed": {'call #0', 'call #1'},
+    "audit_characters@c1signed": {'call #1'},
+    "audit_characters@noskip": {'call #0'},
+    "audit_characters@base": {'call #0', 'call #1'},
+    "audit_characters@n": {'call #0'},
+    "audit_characters@swap": {'call #0', 'call #1'},
+    "audit_characters@nofirst": {'call #0', 'call #1'},
+    "audit_characters@nosecond": {'call #1'},
+    "audit_characters@same": {'call #1'},
 }   # SB_KINDS end
 SB_CASES = [
     ("audit_counter_store@tle", ['s4']),
@@ -29527,6 +29539,17 @@ SB_CASES = [
     ("audit_add_if_bit0@eax", ['b1', 'b2']),
     ("audit_add_if_bit0@field", ['b0', 'b3']),
     ("audit_add_if_bit0@n", ['b0', 'b3']),
+    ("audit_characters@c0le", ['c2']),
+    ("audit_characters@c1le", ['c3']),
+    ("audit_characters@c0signed", ['c5']),
+    ("audit_characters@c1signed", ['c4']),
+    ("audit_characters@noskip", ['c2', 'c5']),
+    ("audit_characters@base", ['c0', 'c1', 'c3', 'c4']),
+    ("audit_characters@n", ['c0', 'c1', 'c3', 'c4']),
+    ("audit_characters@swap", ['c0', 'c1', 'c2', 'c3', 'c4', 'c5']),
+    ("audit_characters@nofirst", ['c0', 'c1', 'c3', 'c4']),
+    ("audit_characters@nosecond", ['c0', 'c1']),
+    ("audit_characters@same", ['c0', 'c1']),
 ]   # SB_CASES end
 SB_OUTSIDE = {}
 P45_OUTSIDE.update(SB_OUTSIDE)

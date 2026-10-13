@@ -32470,6 +32470,23 @@ SB_SPECS += [
        mutants=tuple("@" + m for m in "always never bit1 eax field n".split())),
 ]
 
+SB_SPECS += [
+    # 0x32BB0 audit_characters: EAX = the first character, EDX = the second (kept in EBX across the first
+    # call). A first above 6, unsigned (`ja` 0x32BB6: c2 is 7, c5 -1), returns with no call, the second not
+    # looked at. Else 0x2DAE4(0x1B + first, 1) (a stub; its EAX is not read) and, for a second at or below 6
+    # (`ja` 0x32BC8: c3 is 7, c4 -1), 0x2DAE4(0x1B + second, 1). Mask 0: `mov eax,ebx` 0x27E37 or `xor
+    # eax,eax` 0x27E3E follows the one call site (0x27E28).
+    Spec("audit_characters", 0x32BB0, [
+        Case("c0", {"eax": 0, "edx": 6}, {}, {0x2DAE4: 0xFFFFFFFF}),
+        Case("c1", {"eax": 6, "edx": 0}, {}, {0x2DAE4: 0x00000005}),
+        Case("c2", {"eax": 7, "edx": 1}),
+        Case("c3", {"eax": 2, "edx": 7}),
+        Case("c4", {"eax": 3, "edx": 0xFFFFFFFF}),
+        Case("c5", {"eax": 0xFFFFFFFF, "edx": 3}),
+    ], calls=(SB_AUDIT,), eax_mask=0,
+       mutants=tuple("@" + m for m in "c0le c1le c0signed c1signed noskip base n swap nofirst nosecond same".split())),
+]
+
 D1_SPECS += SB_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

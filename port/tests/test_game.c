@@ -4547,6 +4547,21 @@ int test_audit(void)
     audit_add_if_bit0(0xFFFFFF01u);
     CHECK_EQ_INT((int)config_field_get(0xEu), 0x13);
 
+    /* characters — 0x32BB0: field 0x1B + c gets 1 for each character at or
+     * below 6, unsigned; a first character above 6 ends the call before the
+     * second (0x32BB6 `ja 0x32bd7`). Fields 0x1A and 0x22 are the neighbours
+     * of the seven. */
+    for (u32 f = 0x1Au; f <= 0x22u; f++) (void)config_field_set(f, 0x20u + f);
+    audit_characters(2u, 6u);
+    audit_characters(7u, 1u);
+    audit_characters(6u, 7u);
+    audit_characters(3u, 0xFFFFFFFFu);                                   /* 0x27E04: -1 for one player */
+    {
+        static const u8 want[9] = { 0u, 0u, 0u, 1u, 1u, 0u, 0u, 2u, 0u };
+        for (u32 f = 0x1Au; f <= 0x22u; f++)
+            CHECK_EQ_INT((int)config_field_get(f), (int)(0x20u + f + want[f - 0x1Au]));
+    }
+
     tf_put(saved, AU_LO, AU_LEN);
     return 0;
 }

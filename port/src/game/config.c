@@ -572,6 +572,21 @@ void audit_add_if_bit0(u32 flags)
         (void)audit_add(0xEu, 1u);                          /* 0x32B99..0x32BA3 */
 }
 
+/* 0x32BB0 — record §S.6. EAX = the first character, EDX = the second (kept
+ * in EBX). A first character above 6, unsigned, returns at once (0x32BB6
+ * `ja 0x32bd7`, past the second's test); else 0x2DAE4(0x1B + c0, 1), and for
+ * a second at or below 6 (0x32BC8 `ja`) 0x2DAE4(0x1B + c1, 1). Caller:
+ * 0x27E28 (0x27DC8), with EDX = -1 for one player; it does not read EAX
+ * (0x27E37 `mov eax,ebx` or 0x27E3E `xor eax,eax` follows). */
+void audit_characters(u32 c0, u32 c1)
+{
+    PR_SEAM(0x32BB0u, c0, c1);
+    if (c0 > 6u) return;                                    /* 0x32BB3/0x32BB6 */
+    (void)audit_add(c0 + 0x1Bu, 1u);                        /* 0x32BB8..0x32BC0 */
+    if (c1 > 6u) return;                                    /* 0x32BC5/0x32BC8 */
+    (void)audit_add(c1 + 0x1Bu, 1u);                        /* 0x32BCA..0x32BD2 */
+}
+
 /* ---- timed screen, key latch and menu helpers (record §49-Y) -------------- */
 
 /* Key-layer globals of the 0x2Exxx cluster. The symbols generator names none

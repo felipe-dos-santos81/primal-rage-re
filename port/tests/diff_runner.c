@@ -41819,6 +41819,25 @@ static void b_sb_32b94(const u32 *r, u32 *eax) { audit_add_if_bit0(r[R_EAX]); *e
 #define SB_B0_MUT(name, n) \
     static void m_sb_b0_##name(const u32 *r, u32 *eax) { sb_32b94_core(r[R_EAX], n); *eax = 0u; }
 SB_B0_MUT(always, 1u) SB_B0_MUT(never, 2u) SB_B0_MUT(bit1, 3u) SB_B0_MUT(eax, 4u) SB_B0_MUT(field, 5u) SB_B0_MUT(n, 6u)
+
+/* 0x32BB0 audit_characters: EAX = c0, EDX = c1. The mutants restate config.c's body; the field index goes
+ * to the stubbed 0x2DAE4 only. */
+static void sb_32bb0_core(u32 c0, u32 c1, u32 mut)
+{
+    if (mut == 8u) { const u32 t = c0; c0 = c1; c1 = t; }                        /* @swap */
+    const u32 base = (mut == 6u) ? 0x1Au : 0x1Bu;                                /* @base */
+    const int skip0 = (mut == 1u) ? c0 > 7u : (mut == 3u) ? (s32)c0 > 6 : c0 > 6u;   /* @c0le @c0signed */
+    if (skip0 && mut != 5u) return;                                              /* @noskip */
+    if (!skip0 && mut != 9u) (void)audit_add(c0 + base, (mut == 7u) ? 2u : 1u);  /* @nofirst @n */
+    if ((mut == 2u) ? c1 > 7u : (mut == 4u) ? (s32)c1 > 6 : c1 > 6u) return;     /* @c1le @c1signed */
+    if (mut != 10u) (void)audit_add(((mut == 11u) ? c0 : c1) + base, 1u);        /* @nosecond @same */
+}
+static void b_sb_32bb0(const u32 *r, u32 *eax) { audit_characters(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define SB_AC_MUT(name, n) \
+    static void m_sb_ac_##name(const u32 *r, u32 *eax) { sb_32bb0_core(r[R_EAX], r[R_EDX], n); *eax = 0u; }
+SB_AC_MUT(c0le, 1u) SB_AC_MUT(c1le, 2u) SB_AC_MUT(c0signed, 3u) SB_AC_MUT(c1signed, 4u) SB_AC_MUT(noskip, 5u)
+SB_AC_MUT(base, 6u) SB_AC_MUT(n, 7u)    SB_AC_MUT(swap, 8u)     SB_AC_MUT(nofirst, 9u)  SB_AC_MUT(nosecond, 10u)
+SB_AC_MUT(same, 11u)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56875,6 +56894,18 @@ static const binding_t k_bindings[] = {
     { "audit_add_if_bit0@eax", m_sb_b0_eax, 0x00000000u },
     { "audit_add_if_bit0@field", m_sb_b0_field, 0x00000000u },
     { "audit_add_if_bit0@n", m_sb_b0_n, 0x00000000u },
+    { "audit_characters",                b_sb_32bb0, 0x00000000u },
+    { "audit_characters@c0le", m_sb_ac_c0le, 0x00000000u },
+    { "audit_characters@c1le", m_sb_ac_c1le, 0x00000000u },
+    { "audit_characters@c0signed", m_sb_ac_c0signed, 0x00000000u },
+    { "audit_characters@c1signed", m_sb_ac_c1signed, 0x00000000u },
+    { "audit_characters@noskip", m_sb_ac_noskip, 0x00000000u },
+    { "audit_characters@base", m_sb_ac_base, 0x00000000u },
+    { "audit_characters@n", m_sb_ac_n, 0x00000000u },
+    { "audit_characters@swap", m_sb_ac_swap, 0x00000000u },
+    { "audit_characters@nofirst", m_sb_ac_nofirst, 0x00000000u },
+    { "audit_characters@nosecond", m_sb_ac_nosecond, 0x00000000u },
+    { "audit_characters@same", m_sb_ac_same, 0x00000000u },
     /* sb table end */
 };
 
