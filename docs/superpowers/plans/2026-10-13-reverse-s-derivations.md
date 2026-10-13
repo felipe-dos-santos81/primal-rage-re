@@ -892,3 +892,183 @@ Named limits of the unit test, each covered by the row instead:
 - Nine evidence lines in `test_audit` read image data only (the descriptors at `0x2D45E`, `0x2D460`,
   `0x2D46E`, `0x2D470`, `0x2D420`, `0x2D418`, `0x2D42C`, `0x2D422`, `0x2D442`): labelled as such, not
   port logic.
+
+## §S.7 Batch `sc`: the save file (`0x1AFE8`, `0x1B084`) and its four call sites
+
+Sources: capstone over `/tmp/pr_sc_img.bin`, `E.callee_clobbers`, `E.static_scan`. Port: `config_file_load` and
+`config_file_save` at the end of `port/src/game/config.c`; the sites in `flow.c` and `svcmenu.c`.
+
+### §S.7.1 `0x1AFE8` `config_file_load`
+
+No argument. `push ebx; push ecx; push edx; push esi` … `pop`s, `ret` (`0x1B080`). 11 blocks.
+
+| Block | Instructions | What it does |
+|---|---|---|
+| `0x1AFE8` | `call 0x10D34`; `mov edx,0x80598; mov eax,0xA2C5C; call 0x61C60`; `mov esi,eax; test eax,eax; je 0x1B05B` | `fopen("cmos", "rb")` (the strings at `0xA2C5C`, `0x80598`); NULL sets the flag |
+| `0x1B006` | `mov ebx,0x7f8; mov edx,1; mov ecx,eax; mov eax,0x100ce4; call 0x61CF6`; `mov edx,eax; mov eax,esi; call 0x61EC0`; `cmp edx,0x7f8; jne 0x1B04D` | `fread(0x100CE4, 1, 0x7F8, file)`, the count kept in EDX across `fclose(file)` (`0x61EC0` pushes and pops EDX; its EAX is not read: `0x1B02D` and `0x1B04D` load EAX) |
+| `0x1B02D`, `0x1B031` | `xor eax,eax; xor dl,dl`; `mov dh,[eax+0x100ce4]; inc eax; xor dl,dh; cmp eax,0x7f7; jl` | DL = the XOR of bytes `0..0x7F6` (signed bound, `0x7F7` passes) |
+| `0x1B041` | `cmp dl,[0x1014db]; jne 0x1B05B` | against the last byte |
+| `0x1B049` | `xor cl,cl; jmp 0x1B05D` | flag 0 |
+| `0x1B04D` | `mov eax,1; mov cl,1; call 0x62003; jmp 0x1B05D` | a count other than `0x7F8`: `exit(1)` |
+| `0x1B05B` | `mov cl,1` | flag 1 |
+| `0x1B05D`, `0x1B061` | `test cl,cl; je 0x1B075`; `mov ebx,0x7f8; mov edx,0xff; mov eax,0x100ce4; call 0x61A70` | the flag fills the image with `0xFF` |
+| `0x1B075` | `call 0x10D0C; mov al,cl`; pops; `ret` | AL = the flag |
+
+`0x62003` is the runtime's `exit`: `push edx; mov edx,eax; call [0xEF934]; call [0xEF938]; mov eax,edx; call
+0x6201B`, and `0x6201B` ends `jmp 0x626EB` → `0x62710 push eax … mov ah,0x4c; int 0x21`. The three hook dwords
+hold `0x62002`, a `ret`. It does not return, so the `jmp 0x1B05D` after it is never reached.
+
+EAX at return is AL = the flag over what the code before left: `0x10D0C` loads EAX only when the byte `0x101520`
+is 0, and with it set the success path returns `0x700` (the loop's `0x7F7` with AL cleared). The one caller,
+`0x2F9CF`, does not read it: `call 0x13ADC` follows, whose first use of EAX is `mov ah,1` (`0x13ADF`).
+
+### §S.7.2 `0x1B084` `config_file_save`
+
+No argument. Same prologue and epilogue, `ret` at `0x1B116`. 8 blocks.
+
+| Block | Instructions | What it does |
+|---|---|---|
+| `0x1B084` | `call 0x10D34`; `mov edx,0x8059c; mov eax,0xA2C5C; call 0x61C60`; `mov esi,eax; test eax,eax; je 0x1B109` | `fopen("cmos", "wb")`; NULL sets the flag and does nothing else |
+| `0x1B0A2` | `mov eax,1; call 0x2D4EC`; `mov eax,2; xor dl,dl; call 0x2D4EC`; `xor eax,eax` | records 1 and 2 are encoded; DL is cleared before the second call, which keeps EDX (`E.callee_clobbers(0x2D4EC) = ()`) |
+| `0x1B0BA` | `mov dh,[eax+0x100ce4]; inc eax; xor dl,dh; cmp eax,0x7f7; jl` | DL = the XOR of bytes `0..0x7F6` |
+| `0x1B0CA` | `mov ebx,0x7f8; mov eax,0x100ce4; mov [0x1014db],dl; mov ecx,esi; mov edx,1; call 0x62031`; `mov edx,eax; mov eax,esi; call 0x61EC0`; `cmp edx,0x7f8; je 0x1B105` | the XOR is stored, then `fwrite(0x100CE4, 1, 0x7F8, file)` and `fclose` (its EAX not read) |
+| `0x1B0F7` | `mov eax,1; mov dl,1; call 0x62003; jmp 0x1B10B` | a short write: `exit(1)` |
+| `0x1B105` | `xor dl,dl; jmp 0x1B10B` | flag 0 |
+| `0x1B109` | `mov dl,1` | flag 1 |
+| `0x1B10B` | `call 0x10D0C; mov al,dl`; pops; `ret` | AL = the flag |
+
+No caller reads AL: `0x1BEBA call 0x10D34` (which does not read EAX: it loads it at `0x10D43` or returns),
+`0x24AA6 mov edx,1; mov eax,0x1044f4`, `0x2CBB4 call 0x2C304` (`mov eax,0x29` first). `0x2CB94` keeps the menu's
+result in EDX across the call (`0x2CBAD mov edx,eax` … `0x2CBB9 mov eax,edx`): `0x1B084` pushes and pops EDX.
+
+### §S.7.3 The host mapping (`PORT:`, named in `config.c`)
+
+| Raw | Port | Difference |
+|---|---|---|
+| `0x10D34` before and `0x10D0C` after the file access (`0x1AFEC`, `0x1B075`, `0x1B088`, `0x1B10B`) | left out | the CD-drive switch, host-owned (record §50-E). With the `-f` byte `0x101520` set (`0x1BEDC`) both return at once (`cmp byte [0x101520],0; jne`, `0x10D38`/`0x10D10`): the port is that path |
+| `fopen("cmos","rb")` + `fread` + `fclose` | `host_save_read(mem + 0x100CE4, 0x7F8)` | the path is the save file, else the game dir's `cmos`/`CMOS`, not the current directory. 0 = the raw's NULL |
+| a count below `0x7F8` (`0x1B04D`) | the same 0 from `host_save_read` | **the raw exits the program** (`0x62003(1)`); the port fills `0xFF` and returns 1, as for a missing file. The host call cannot tell the two apart |
+| a file longer than `0x7F8` | the same 0 | **the raw reads its first `0x7F8` bytes** and checks them; the port's host refuses another length (`host.c save_read_exact`), so a long file whose head is a valid image loads in the raw and gives `0xFF` in the port |
+| `fopen("cmos","wb")` | `host_save_writable()` | the raw truncates the file at the open; the host probes in append mode and truncates at the write. 0 = NULL, and a run with no save path |
+| `fwrite` + `fclose` | `host_save_write(mem + 0x100CE4, 0x7F8)` | the raw does not read `fclose`'s result; the host reports a failed close as a failed write, so the port can return 1 where the raw returns 0. No caller reads AL |
+| a short write (`0x1B0F7`) | returns 1 | the raw exits the program |
+
+The two wrong-length rows contradict the plan's Review Focus 1 ("the image becomes `0xFF` as at `0x1B05D`") and
+the spec's §3 ("a short read … fills the image with `0xFF`"): the raw has no such path. The port implements the
+plan's behaviour, which is what `host_save_read`'s contract gives, and the unit cases `short` and `long` pin it.
+
+### §S.7.4 The rows
+
+Both run the raw under code pokes: each of its three file `call`s is `mov eax,<result>` (`B8 imm32`), the
+case's value, and the binding reads the same dwords from the poked bytes to set up a scratch save path
+(`sc_1afe8_run`, `sc_1b084_run` in `diff_runner.c`). `0x10D34`, `0x10D0C` and the memset `0x61A70` (with
+`0x65490`/`0x654C7`) run from their bytes, the first two with the byte `0x101520` = 1. The rows are blind to
+the file calls' arguments (read from the bytes above). No new seam, no `tools/diff_emu.py` change.
+
+| Row | Entry | Cases | Blocks | Mutants | EAX mask | Notes |
+|---|---|---|---|---|---|---|
+| `config_file_load` | `0x1AFE8` | 6 (`l0`..`l5`) | 10/11 | 12 | `0xFF` | `0x1B04D` named unhit (the `exit` block). Port side: the file holds the case's image and the buffer every byte XOR `0x5A`, so only the read gives the original's bytes |
+| `config_file_save` | `0x1B084` | 4 (`s0`..`s3`) | 7/8 | 18 | `0xFF` | `0x1B0F7` named unhit. `0x2D4EC` is a stub that stores two bytes at image offset `0x20 + kind`. The binding reads the written file back and sets the byte `0x3900200` unless it is the image's `0x7F8` bytes at return |
+
+Mask `0xFF` although no caller reads AL: `mov al,cl` / `mov al,dl` is each function's last store to EAX and the
+port returns the same flag.
+
+Cases. `l0`: no handle over a valid image (it must not be consulted). `l1`: a valid image, `fclose` = -1.
+`l2`: one checksum bit off, dirty registers. `l3`: the last byte is the XOR of the first `0x7F6` bytes only.
+`l4`: the zero image (the captures' file), handle 1. `l5`: handle `0x100`, a second valid image. `s0`: no handle,
+a seeded last byte that must stay. `s1`: a handle, `0x2D4EC`'s EAX `0x12345678`, `fclose` = -1. `s2`: handle
+`0x100`, dirty registers. `s3`: the zero image.
+
+Mutants and the cases that catch them (pinned as `SC_KINDS`/`SC_CASES`):
+
+| Mutant | What it is | Caught by |
+|---|---|---|
+| `config_file_load@noread` | no host read | `l0 l1 l4 l5` (byte, eax) |
+| `@dst` / `@readlen` | reads to image + 1 / reads `0x7F7` bytes | `l1 l2 l3 l4 l5` / `l1 l4 l5` |
+| `@len6` / `@len8` | XOR over `0x7F6` / `0x7F8` bytes | `l1 l3 l5` / `l1 l5` |
+| `@add` / `@sumbyte` | an additive sum / compares with `0x1014DA` | `l1 l5` |
+| `@nofill` / `@fill0` / `@filllen` | no fill / fills 0 / fills `0x7F7` bytes | `l0 l2 l3` (byte) |
+| `@fillall` | fills on success too | `l1 l4 l5` (byte) |
+| `@flag` | the flag inverted | all six (eax) |
+| `config_file_save@gatelate` / `@nogate` | `0x2D4EC` before the open test / no open test | `s0` (call #0, call #1, byte) |
+| `@sumfirst` / `@summid` | the XOR stored before the calls / between them | `s1 s2 s3` (call memory, byte) |
+| `@notouch1` / `@notouch2` / `@touchorder` / `@touch0` | a call dropped / swapped / kinds 0 and 1 | `s1 s2 s3` (call #0/#1) |
+| `@nosum` / `@add` / `@sumat` | no store / additive / stored at `0x1014DA` | `s1 s2 s3` (byte) |
+| `@len6` / `@len8` | XOR over `0x7F6` / `0x7F8` bytes | `s1 s2` (byte) |
+| `@flag` | the flag inverted | all four (eax) |
+| `@nowrite` / `@writefirst` / `@wlen` / `@wsrc` | no write / written before the XOR store / `0x7F7` bytes / from image + 1 | `s1 s2 s3` (the verdict byte `0x3900200`) |
+
+Each row was run ten times: `1/1 functions VERIFIED`, `12/12` and `18/18 mutants detected` every time.
+
+### §S.7.5 The call sites
+
+| Site | In | Port | Row of the caller | Unit assertion |
+|---|---|---|---|---|
+| `0x2F9CF` | `0x2F9CC` (inlined in `game_init`) | `(void)config_file_load();` first line of the inlined block, before `DS_0010740C` and `config_validate()` | none (`game_init`) | the `PR_RESTART` driver boots from a scratch save and finds its bytes `0x1014DA/DB` = `0xA5` |
+| `0x1BEB5` | `0x1BE30` `game_shutdown` | `(void)config_file_save();` after the audio teardown | none (not rowed, track D d3d) | `test_config_file`: the teardown writes the file |
+| `0x24AA1` | `0x249F0` `game_quit_prompt` | between `sound_resume()` and `game_restart_longjmp()` | `game_quit_prompt`: the arm `0x24A9C` stays its named gap (the `0x65431` longjmp does not return into the function); the reason text no longer says the port defers the writer | `ch_check_quit_prompt`: only pass 2 (ABANDON, yes) writes the file |
+| `0x2CBAF` | `0x2CB94` `svc_options_menu` | between `menu_run` and `config_credits_init()` | none | the GAME OPTIONS case: leaving the menu writes the file |
+
+With no save path (`--check`, `run_tests`, every driver) the load reads the game dir's zero `CMOS` and the
+save's open fails. Measured: the 120 `--check` frames (`.ppm`, `.pal`, `.idx`) are byte-identical with and
+without the call at `0x2F9CF`.
+
+**`0x2F9CC` against the port's inlined lines** (reported, not changed). The raw's order is `0x1AFE8`; `0x13ADC`;
+`0x4F1E4(0)`; `0x2BAF4(1, EBX = ECX = 0)`; `0x4F1D0(0, 0)`; `0x38B18(0x9AD84)`; `[0x10740C] = 0x1D2D0`;
+`0x2D6F8`; `[0x107410] = 0x2D974(0x2A)` with `and al,0xfc`; `0x2C9B8(0)`; `0x2C8F0(-1)`; `0x2C8F0(-2)`. The port
+has the load, the two stores and `config_validate()`, then `svcmenu_register()` (`PORT:`). It runs `0x13ADC`
+earlier, inside `actors_init`, and has no line in this block for `0x4F1E4`, `0x2BAF4`, `0x4F1D0`,
+`0x38B18(0x9AD84)`, `0x2C9B8(0)`, `0x2C8F0(-1)` or `0x2C8F0(-2)`.
+
+### §S.7.6 Corrections
+
+- **`0x1B084` returns AL** (`0x1B110 mov al,dl`): `u32 config_file_save(void)`, not the plan's `void`.
+- **A wrong-length file is not the `0xFF` path in the raw** (`0x1B025 jne 0x1B04D`, `0x1B054 call 0x62003`;
+  `0x1B0EF`, `0x1B0FE`): §S.7.3. Spec §3 and the plan's Review Focus 1 state otherwise.
+- **`0x62003` is `exit`**, not an error printer that returns (`0x62721 mov ah,0x4c; int 0x21`).
+- `0x1AFE8`'s EAX is the flag in AL only (`0x700` on success with the byte `0x101520` set): a caller would
+  have to test AL. None reads it.
+
+### §S.7.7 Mutation proofs of the unit assertions
+
+`port/tests/test_game.c` (line numbers at this commit), each mutation applied alone to `port/src`:
+
+| Mutation | Failing lines (in run order) |
+|---|---|
+| load: XOR over all `0x7F8` bytes | 8356 `1 != 0`, 8357, 8368 |
+| load: the flag is never cleared | 8356, 8357, 8368, 8409, 8410 (the fallback) |
+| load: no host read | 8357 "the load brings the saved image back", 8364, 8365, 8369 `85 != 255`, 8374, 8375, 8384, 8385, 8410 |
+| load: no fill | 8365, 8369, 8375, 8385 |
+| load: returns 0 | 8364 `0 != 1`, 8374, 8384 |
+| load: fills `0x7F9` bytes | 8386 `255 != 165` |
+| load: compares with `0x1014DA` | 8356, 8357 |
+| save: no open test | 8401 `2 != 0`, 8402 |
+| save: no `0x2D4EC(1)` | 8350 `1 != 2` |
+| save: no checksum store | 8353 `27 != 228`, 8356, 8357 |
+| save: no write | 8463 `0 != 2040`, 8352, 8354, 8356, 8357, 8368, 8394, 8700 |
+| save: writes `0x7F7` bytes | 8463 `2039 != 2040`, 8352, 8353, 8354, 8356, 8357, 8368, 8394, 8700 |
+| save: returns 1 after a good write | 8349, 8366 |
+| save: XOR over all `0x7F8` bytes | 8353 `255 != 228`, 8356, 8357, 8368 |
+| save: returns 0 on a failed open | 8400 `0 != 1` |
+| `game_shutdown`: no save | 8394 `-1 != 2040` |
+| `game_quit_prompt`: no save / a save on every yes | 8463 `-1 != 2040` / `2040 != -1` |
+| `svc_options_menu`: no save | 8700 `-1 != 2040` |
+| `game_init`: no load (`PR_RESTART` driver) | 13050 `0 != 42405` |
+
+### §S.7.8 Named gaps
+
+- The two `exit` blocks (`0x1B04D`, `0x1B0F7`): no row case, no port equivalent.
+- The file calls' arguments are not compared by any row.
+- Loading or writing a real save has no recording of the original (task 8's capture).
+- `svc_options_menu`, `game_shutdown` and `game_init` have no differential row; their sites rest on the unit
+  assertions above.
+
+### §S.7.9 Measured on the batch's tree
+
+- `PR_DIFF_JOBS=4 python3 tools/diff_verify.py … --self-check`: `965/965 functions VERIFIED; 14379/14379 mutants
+  detected; 1 named gaps; 604/798 rows with callees closed (167 have none)`, `rc 0` (the base line plus 2
+  rows and 30 mutants; neither row closes, `0x10D34`/`0x10D0C` having no row). The run preceded a
+  comment-only edit of `config.c`; the two rows and `game_quit_prompt` were run again after it.
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests` and `PR_RESTART=1 PR_GAME_DIR=data/game/C ./build/run_tests`: `all
+  checks passed`.
+- Not run: `make verify`, the harness unittest suite, any oracle. The counter pin is the integrator's.

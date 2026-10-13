@@ -30023,6 +30023,78 @@ D1_MASKS.update(SA_MASKS)
 D1_KINDS.update(SA_KINDS)
 D1_CASES.extend(SA_CASES)
 # S sa end
+# S sc (record 2026-10-13-reverse-s §S.7): the save file's two rows; measured pins
+SC_MASKS = {
+    "config_file_load": 0xFF,
+    "config_file_save": 0xFF,
+}   # SC_MASKS end
+SC_KINDS = {
+    "config_file_load@noread": {'byte', 'eax'},
+    "config_file_load@dst": {'byte', 'eax'},
+    "config_file_load@readlen": {'byte', 'eax'},
+    "config_file_load@len6": {'byte', 'eax'},
+    "config_file_load@len8": {'byte', 'eax'},
+    "config_file_load@add": {'byte', 'eax'},
+    "config_file_load@sumbyte": {'byte', 'eax'},
+    "config_file_load@nofill": {'byte'},
+    "config_file_load@fill0": {'byte'},
+    "config_file_load@filllen": {'byte'},
+    "config_file_load@fillall": {'byte'},
+    "config_file_load@flag": {'eax'},
+    "config_file_save@gatelate": {'byte', 'call #0', 'call #1'},
+    "config_file_save@nogate": {'byte', 'call #0', 'call #1'},
+    "config_file_save@sumfirst": {'byte', 'call #0 memory', 'call #1 memory'},
+    "config_file_save@summid": {'byte', 'call #1 memory'},
+    "config_file_save@notouch1": {'byte', 'call #0', 'call #1'},
+    "config_file_save@notouch2": {'byte', 'call #1'},
+    "config_file_save@touchorder": {'byte', 'call #0', 'call #1', 'call #1 memory'},
+    "config_file_save@touch0": {'byte', 'call #0', 'call #1', 'call #1 memory'},
+    "config_file_save@nosum": {'byte'},
+    "config_file_save@len6": {'byte'},
+    "config_file_save@len8": {'byte'},
+    "config_file_save@add": {'byte'},
+    "config_file_save@sumat": {'byte'},
+    "config_file_save@flag": {'eax'},
+    "config_file_save@nowrite": {'byte'},
+    "config_file_save@writefirst": {'byte'},
+    "config_file_save@wlen": {'byte'},
+    "config_file_save@wsrc": {'byte'},
+}   # SC_KINDS end
+SC_CASES = [
+    ("config_file_load@noread", ['l0', 'l1', 'l4', 'l5']),
+    ("config_file_load@dst", ['l1', 'l2', 'l3', 'l4', 'l5']),
+    ("config_file_load@readlen", ['l1', 'l4', 'l5']),
+    ("config_file_load@len6", ['l1', 'l3', 'l5']),
+    ("config_file_load@len8", ['l1', 'l5']),
+    ("config_file_load@add", ['l1', 'l5']),
+    ("config_file_load@sumbyte", ['l1', 'l5']),
+    ("config_file_load@nofill", ['l0', 'l2', 'l3']),
+    ("config_file_load@fill0", ['l0', 'l2', 'l3']),
+    ("config_file_load@filllen", ['l0', 'l2', 'l3']),
+    ("config_file_load@fillall", ['l1', 'l4', 'l5']),
+    ("config_file_load@flag", ['l0', 'l1', 'l2', 'l3', 'l4', 'l5']),
+    ("config_file_save@gatelate", ['s0']),
+    ("config_file_save@nogate", ['s0']),
+    ("config_file_save@sumfirst", ['s1', 's2', 's3']),
+    ("config_file_save@summid", ['s1', 's2', 's3']),
+    ("config_file_save@notouch1", ['s1', 's2', 's3']),
+    ("config_file_save@notouch2", ['s1', 's2', 's3']),
+    ("config_file_save@touchorder", ['s1', 's2', 's3']),
+    ("config_file_save@touch0", ['s1', 's2', 's3']),
+    ("config_file_save@nosum", ['s1', 's2', 's3']),
+    ("config_file_save@len6", ['s1', 's2']),
+    ("config_file_save@len8", ['s1', 's2']),
+    ("config_file_save@add", ['s1', 's2', 's3']),
+    ("config_file_save@sumat", ['s1', 's2', 's3']),
+    ("config_file_save@flag", ['s0', 's1', 's2', 's3']),
+    ("config_file_save@nowrite", ['s1', 's2', 's3']),
+    ("config_file_save@writefirst", ['s1', 's2', 's3']),
+    ("config_file_save@wlen", ['s1', 's2', 's3']),
+    ("config_file_save@wsrc", ['s1', 's2', 's3']),
+]   # SC_CASES end
+D1_MASKS.update(SC_MASKS)
+D1_KINDS.update(SC_KINDS)
+D1_CASES.extend(SC_CASES)
 
 
 @needs_unicorn

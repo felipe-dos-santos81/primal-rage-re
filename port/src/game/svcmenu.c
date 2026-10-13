@@ -88,8 +88,7 @@ u32 svc_options_menu(u32 entry)
 {
     (void)entry;
     u32 r = menu_run(SVC_TABLE_OPTIONS, 0x10u, 0u);        /* 0x2CB97..0x2CBA8 0x2FA40, 0x2CBAD mov edx,eax */
-    /* PORT: 0x2CBAF 0x1B084, the CMOS config writer, is deferred
-     * (classification row 1B084, record §50-C); the settings stay in mem[]. */
+    (void)config_file_save();                              /* 0x2CBAF 0x1B084; AL is not read (0x2C304 loads EAX) */
     config_credits_init();                                 /* 0x2CBB4 0x2C304 */
     return r;                                              /* 0x2CBB9 mov eax,edx */
 }

@@ -63,6 +63,7 @@ extern int g_failures;
     X(test_config_storage) \
     X(test_audit)       \
     X(test_cfg_helpers) \
+    X(test_config_file) \
     X(test_svcmenu)     \
     X(test_frontend)    \
     X(test_attract)     \
