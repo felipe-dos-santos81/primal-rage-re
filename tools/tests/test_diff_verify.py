@@ -29766,6 +29766,7 @@ SA_MASKS = {
     "config_validate": 0x0,
     "config_validate_rr": 0x0,
     "config_validate_chain": 0x0,
+    "config_validate_audit": 0x0,                # track S integration: the call at 0x2D962
 }   # SA_MASKS end
 SA_KINDS = {
     "config_image_store@lo": {'byte', 'call #0'},
@@ -29891,6 +29892,9 @@ SA_KINDS = {
     "config_validate_chain@norep1": {'byte', 'call #0 memory'},
     "config_validate_chain@notouch0": {'byte', 'call #1 memory'},
     "config_validate_chain@nocopy": {'byte', 'call #0 memory'},
+    "config_validate_audit@noaudit": {'call #8'},
+    "config_validate_audit@auditsum": {'call #8'},
+    "config_validate_audit@auditfield": {'call #8'},
 }   # SA_KINDS end
 SA_CASES = [
     ("config_image_store@lo", ['e0']),
@@ -30016,6 +30020,9 @@ SA_CASES = [
     ("config_validate_chain@norep1", ['s1']),
     ("config_validate_chain@notouch0", ['zf']),
     ("config_validate_chain@nocopy", ['s1']),
+    ("config_validate_audit@noaudit", ['a0', 'a1']),
+    ("config_validate_audit@auditsum", ['a0', 'a1']),
+    ("config_validate_audit@auditfield", ['a0', 'a1']),
 ]   # SA_CASES end
 SA_OUTSIDE = {}
 P45_OUTSIDE.update(SA_OUTSIDE)

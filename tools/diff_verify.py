@@ -27342,7 +27342,7 @@ D5D_SPECS += [
                   "@widealways", "@nowide", "@uscorealways", "@col", "@row", "@modea", "@flag4", "@idswap", "@rows",
                   "@modeb", "@one")),
 ]
-D5D_TOUCH = E.Call(0x2D4EC, ("eax",))                # config_storage_touch, seamed by this batch (a declared no-op in the port)
+D5D_TOUCH = E.Call(0x2D4EC, ("eax",))                # config_storage_touch, seamed by this batch (a declared no-op then; the raw's body since track S)
 
 
 def d5d_fs_case(field, trail, bitpos, width, flags=0x50):
@@ -32642,9 +32642,13 @@ SA_VALIDATE_DEAD = {
        for a in (0x2D7B2, 0x2D7BB, 0x2D7F4, 0x2D7FD)},
     0x2D8EB: "the clear of the trailing-byte block when its read is below -1: 0x2E990 returns 1 or -1",
     0x2D95D: "0x2DAE4(0x24, [0x105DA5] + [0x105DA4]): both bytes are zeroed at entry and no other instruction "
-             "of the image names them; the port leaves the call out (config.c, PORT: batch sb's function, "
-             "wired at integration)",
+             "of the image names them; the config_validate_audit row reaches it through a stub that stores "
+             "them",
 }
+
+SA_AUDIT_ELSEWHERE = (0x2D754, 0x2D75D, 0x2D761, 0x2D768, 0x2D773, 0x2D7A4, 0x2D7AE, 0x2D7C5, 0x2D7CD, 0x2D7E6,
+                      0x2D7F0, 0x2D828, 0x2D82D, 0x2D83A, 0x2D88D, 0x2D89C, 0x2D8A5, 0x2D8BB, 0x2D8FC, 0x2D900,
+                      0x2D909, 0x2D922, 0x2D92B)     # blocks the config_validate_audit row does not reach
 
 SA_SPECS += [
     # 0x2D6F8 config_validate: no argument. The bytes 0x105DA5 and 0x105DA4 = 0; 0x2D638() (a stub); the
@@ -32731,6 +32735,22 @@ SA_SPECS += [
                        for a in (0x2D75D, 0x2D761, 0x2D768, 0x2D773, 0x2D7A4, 0x2D7AE, 0x2D7C5, 0x2D82D,
                                  0x2D83A, 0x2D88D, 0x2D89C, 0x2D8A5, 0x2D909)}},
        mutants=("@gatecache", "@tailret")),
+    # The same entry with a 0x2DF8C stub that stores the two bytes the tail adds (0x105DA4 = 2, 0x105DA5
+    # = 3; both are zeroed at entry and nothing else in the image names them): the sum is not zero, so
+    # 0x2DAE4(0x24, 5) follows 0x2D974(0x24) (0x2D94B..0x2D962; wired at track S's integration). a0 is the
+    # zero image (the defaults arm); a1 is the same with the 0x2DAE4 stub's EAX 0x80000001 (nothing reads it:
+    # `add esp,0x54` 0x2D967 follows).
+    Spec("config_validate_audit", 0x2D6F8, [
+        sa_validate("a0", seed=False),
+        sa_validate("a1", seed=False, stub={0x2DAE4: 0x80000001}),
+    ], allow_calls=SA_VALIDATE_REAL,
+       calls=(SA_LOAD, D6A_DEFAULTS, D5D_TOUCH, SA_HSLOAD,
+              dataclasses.replace(SA_SVAL, writes=((None, 0x00105DA4, b"\x02\x03"),)), D4C_DIP, SB_AUDIT),
+       eax_mask=0,
+       unhit_named={**{a: v for a, v in SA_VALIDATE_DEAD.items() if a != 0x2D95D},
+                    **{a: "an arm the config_validate and config_validate_rr rows cover"
+                       for a in SA_AUDIT_ELSEWHERE}},
+       mutants=("@noaudit", "@auditsum", "@auditfield")),
     # The same entry with the whole storage layer run from its bytes on both sides (0x2D638, 0x2E990,
     # 0x2D4EC with 0x2D498, 0x2DE98 with 0x2DB58, 0x2DF8C): only 0x2CADC and 0x2D974 are stubs. z0 is the
     # zero image every capture ran on, with the config block zero (record section S.3's measurement: the

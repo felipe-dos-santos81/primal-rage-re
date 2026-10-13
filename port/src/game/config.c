@@ -434,10 +434,11 @@ void config_validate(void)
         return;                                    /* 0x2D92B */
     DSB(DS_00105DA7) = 1u;                         /* 0x2D940 */
     (void)config_field_get(0x24u);                 /* 0x2D946 */
-    /* PORT: 0x2D94B..0x2D962 call 0x2DAE4(0x24, [0x105DA5] + [0x105DA4]) when
-     * that sum is not zero. Both bytes are zeroed at entry and no other
-     * instruction of the image names them, so the call is not reached; 0x2DAE4
-     * is track S batch sb's function and the site is wired at integration. */
+    {
+        u32 n = (u32)DSB(DS_00105DA4) + (u32)DSB(DS_00105DA5);   /* 0x2D94B..0x2D959 */
+        if (n != 0u)                               /* 0x2D95B */
+            (void)audit_add(0x24u, n);             /* 0x2D95D/0x2D962 */
+    }
 }
 
 /* 0x2D4B4 — record §K2.3. EDX = 1 (0x2D4B5); loop: EAX += 1 (0x2D4BA), stop
@@ -445,7 +446,7 @@ void config_validate(void)
  * and back to the `inc` (0x2D4C1). EDX is pushed and popped; the result is
  * EAX, n + r + 1 for the smallest r with 2^r >= n + r + 1. Callers 0x2D533
  * (0x2D4EC), 0x2D8C8 (0x2D6F8's stored-image arm) and 0x2DB11/0x2DB24
- * (0x2DAE4), each with EAX = 0x26; none of those paths runs in the port. */
+ * (0x2DAE4), each with EAX = 0x26. */
 u32 config_codeword_len(u32 n)
 {
     u32 eax = n;

@@ -41946,6 +41946,10 @@ static void sa_2d6f8_core(u32 mut)
 #undef SA_GATE
     if (mut != 17u) DSB(0x00105DA7u) = (mut == 18u) ? 2u : 1u;                   /* @noda7 @da7 */
     if (mut != 19u) (void)config_field_get((mut == 20u) ? 0x2Au : 0x24u);        /* @noget @getfield */
+    {
+        u32 n = (u32)DSB(0x00105DA4u) + ((mut == 45u) ? 0u : (u32)DSB(0x00105DA5u));   /* @auditsum */
+        if (n != 0u && mut != 44u) (void)audit_add((mut == 46u) ? 0x25u : 0x24u, n);  /* @noaudit @auditfield */
+    }
 }
 static void b_sa_2d6f8(const u32 *r, u32 *eax) { (void)r; config_validate(); *eax = 0u; }
 #define SA_CV_MUT(name, n) \
@@ -41959,6 +41963,7 @@ SA_CV_MUT(swap, 25u)   SA_CV_MUT(nofb, 26u)    SA_CV_MUT(fbge, 27u)     SA_CV_MU
 SA_CV_MUT(norep1, 30u) SA_CV_MUT(or4, 31u)     SA_CV_MUT(norep2, 32u)   SA_CV_MUT(storedcell, 33u)
 SA_CV_MUT(nostoredread, 34u) SA_CV_MUT(storedtouch, 35u) SA_CV_MUT(nohs, 36u) SA_CV_MUT(nosv, 37u) SA_CV_MUT(hsorder, 38u)
 SA_CV_MUT(tailret, 39u) SA_CV_MUT(gatecache, 40u) SA_CV_MUT(magicm1, 41u) SA_CV_MUT(hsflag, 42u) SA_CV_MUT(svflag, 43u)
+SA_CV_MUT(noaudit, 44u) SA_CV_MUT(auditsum, 45u) SA_CV_MUT(auditfield, 46u)
 /* ---- sa bindings end ---- */
 /* ---- track S batch sb (record 2026-10-13-reverse-s-derivations §S.6): the audit counters ---- */
 #define SB_STORE 0x0002D444u        /* the 8-byte storage descriptors {u16 cell, u16 size, u32 source} */
@@ -57442,6 +57447,10 @@ static const binding_t k_bindings[] = {
     { "config_validate_rr",              b_sa_2d6f8, 0x00000000u },
     { "config_validate_rr@gatecache", m_sa_cv_gatecache, 0x00000000u },
     { "config_validate_rr@tailret", m_sa_cv_tailret, 0x00000000u },
+    { "config_validate_audit",           b_sa_2d6f8, 0x00000000u },
+    { "config_validate_audit@noaudit", m_sa_cv_noaudit, 0x00000000u },
+    { "config_validate_audit@auditsum", m_sa_cv_auditsum, 0x00000000u },
+    { "config_validate_audit@auditfield", m_sa_cv_auditfield, 0x00000000u },
     { "config_validate_chain",           b_sa_2d6f8, 0x00000000u },
     { "config_validate_chain@nohs", m_sa_cv_nohs, 0x00000000u },
     { "config_validate_chain@nosv", m_sa_cv_nosv, 0x00000000u },

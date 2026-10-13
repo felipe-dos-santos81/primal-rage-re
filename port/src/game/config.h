@@ -7,8 +7,9 @@
 /* The EEPROM/config data layer (0x2Dxxx). The original keeps 63 packed fields in
  * the byte region DS_00105D88..(+0x1000) and describes each field's bit position
  * and width in the obj-0 descriptor table at 0x2D300. The port reads both out of
- * mem[]; no table or value is transcribed. The storage image (0x80CE4) and the
- * save/load I/O are declared no-ops this cycle (spec §7). */
+ * mem[]; no table or value is transcribed. The storage image (DS 0x80CE4,
+ * linear 0x100CE4) and its save file are the storage section below (record
+ * 2026-10-13-reverse-s). */
 
 /* 0x2D974. Reads the packed field `field` (0x00..0x3E) out of the config byte
  * region. Returns 0xFFFFFFFF when field > 0x3E. */
@@ -49,8 +50,8 @@ void config_storage_load(void);
 void config_validate(void);
 
 /* Record §K2.3, 0x2D4B4: n + r + 1 for the smallest r with 2^r >= n + r + 1
- * (a SEC-DED codeword length). Its callers 0x2D4EC, 0x2D6F8's stored-image
- * arm and 0x2DAE4 are not run by the port (declared no-op / deferred). */
+ * (a SEC-DED codeword length). Its callers: 0x2D4EC, 0x2D6F8's stored-image
+ * arm and 0x2DAE4. */
 u32 config_codeword_len(u32 n);
 
 /* ---- the storage image (record 2026-10-13-reverse-s §S.1, §S.5) ------------
