@@ -32426,6 +32426,69 @@ SA_SPECS += [
        mutants=tuple("@" + m for m in "stride cell1 base n nge asc pos0 syn0 syn7 bit le ret nowrite or".split())),
 ]
 
+SA_KINDS = 0x0002D444                           # the kind table: u16 cell, u16 len, u32 source (0x2D519)
+SA_KIND = {0: (None, 0x26, 0x00105DB0), 1: (0x00, 0x53, 0x00105DE1), 2: (0x5B, 0x53, 0x00105DE1),
+           3: (0xB6, 0x14, 0x00105ECD), 4: (0xD0, 0x14, 0x00105EE1), 5: (0xEA, 0x07, 0x00105EF5),
+           6: (0xF6, 0x78, 0x00105E34), 7: (0x176, 0x1C, 0x00105EAC), 8: (0x199, 0x05, 0x00105EC8)}
+SA_STORE_REAL = (0x2D498, 0x2D4B4, 0x61A70, 0x65490, 0x654C7)   # the bounded store, 0x2D4B4 and the memset
+
+
+def sa_touch(cid, kind, slot=0, entry=None, base=None, extra=None):
+    """0x2D4EC: the kind's source bytes seeded (one byte below and past them too) and the image under
+    the record, with two bytes on each side, 0xC3. `slot` is the byte 0x105E2F (kind 0's cell); `entry`
+    replaces the kind's table entry (cell, len, source); `base` replaces the dword 0x2D48C, the record's
+    bytes being seeded where `base` puts them."""
+    cell, length, src = entry or SA_KIND[kind]
+    if kind == 0 and entry is None:
+        cell = 0x1A3 + slot * sa_n(0x26)
+    p = d1d_chunks(src - 1, bytes([0x9E]) + sa_data(length, 0x13 * (kind + 1) + slot) + bytes([0x9F]))
+    p[0x00105E2F] = bytes([slot])
+    if entry is not None:
+        p[SA_KINDS + 8 * kind] = le16(cell) + le16(length) + le32(src)
+    if base is not None:
+        p[SA_BASE] = le32(base)
+    if SA_IMG <= (base or SA_IMG) + 2 * cell - 2 and (base or SA_IMG) + 2 * (cell + sa_n(length)) + 2 <= SA_IMG_END:
+        p.update(d1d_chunks((base or SA_IMG) + 2 * cell - 2, bytes([0xC3]) * (2 * sa_n(length) + 4)))
+    p.update(extra or {})
+    return Case(cid, {**D2E_DIRTY, "eax": kind}, p)
+
+
+SA_SPECS += [
+    # 0x2D4EC config_storage_touch: EAX = the kind (EDX is dirty in every case: `mov edx,eax` 0x2D4F5).
+    # The entry 0x2D444 + 8 * kind gives the cell, the length and the source; k1..k8 are the eight kinds of
+    # the image's table. Kind 0's cell is 0x2D4B4(0x26) * [0x105E2F] + 0x1A3: s0, s2 and s12 have the byte
+    # 0, 2 and 12 (the last slot that is whole inside the image). The codeword's cells go to [0x2D48C] + 2
+    # * (cell + position) through 0x2D498, from the last down: the data from the source's end, the check
+    # bytes at the powers of two, the XOR of all at 0. `cmp eax,0x7f8; jl` 0x2D56A: b0 pokes kind 5's cell
+    # to 0x7EC (0x7EC + 12 = 0x7F8: 0x2EA68(0x80AE4), a stub, then `mov eax,-1` and the return), b1 to
+    # 0x7EB with the image's address lowered 0x700 cells so that the record lands inside the image, b2 to
+    # 0xFFF0 (the cell is a word, zero-extended: `xor eax,eax; mov ax,[esp+0xc]` 0x2D561). f0 is a record
+    # of 0x79 bytes (130 cells, 9 check bytes): the clear 0x61A70(esp, 0, 9) zeroes the low byte of the
+    # frame's pointer 0x2D48C, so the image's address is read from 0x2D400 (poked to the image here, the
+    # dword 0x2D48C to another address), the cell 128 is that zeroed byte and bit 7 of a position reaches
+    # no check byte (`cmp eax,7; jge` 0x2D5E6). 0x2D498, 0x2D4B4 and 0x61A70 run on the original's side.
+    # Not exercised: a store outside the image (kind 0 with the byte 0x105E2F at 13 or more), where the
+    # original exits inside 0x2D498 and the port's menu_fatal_error returns. Mask 0: none of the 18 call
+    # sites reads EAX (record section S.5).
+    Spec("config_storage_touch", 0x2D4EC, [
+        *[sa_touch("k%d" % k, k) for k in range(1, 9)],
+        sa_touch("s0", 0, slot=0),
+        sa_touch("s2", 0, slot=2),
+        sa_touch("s12", 0, slot=12),
+        sa_touch("b0", 5, entry=(0x7EC, 0x07, 0x00105EF5)),
+        sa_touch("b1", 5, entry=(0x7EB, 0x07, 0x00105EF5), base=SA_IMG - 2 * 0x700),
+        sa_touch("b2", 5, entry=(0xFFF0, 0x07, 0x00105EF5)),
+        sa_touch("f0", 5, entry=(0x10, 0x79, 0x00105E34), base=SA_IMG + 0x400,
+                 extra={0x0002D400: le32(SA_IMG), **d1d_chunks(SA_IMG + 0x1E, bytes([0xC3]) * 0x108)}),
+    ], allow_calls=SA_STORE_REAL, calls=(SA_FATAL,), eax_mask=0,
+       unhit_named={0x2D508: "a kind outside 0..8: 0x2EA68(0x80AC8) is the runtime's exit(1) (`mov eax,1; jmp "
+                             "0x62003`), which does not come back; under a stub the bytes run on into the table "
+                             "with the bad kind, which the original never does, and the port returns "
+                             "(config.c, PORT)"},
+       mutants=tuple("@" + m for m in "k0cell k0mul k0base bound bound1 nofatal msg stride up par0 overall "
+                                      "bit six frame cellsext".split())),
+]
+
 D1_SPECS += SA_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

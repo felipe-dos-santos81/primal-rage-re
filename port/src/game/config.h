@@ -16,8 +16,8 @@ u32 config_field_get(u32 field);
 
 /* 0x2DA0C. Writes `value` into the packed field `field` (0x00..0x3E), preserving
  * nibbles the field does not own and raising DS_00105DD8 (|1 for a trailing byte,
- * |6 always). Returns 0, or 0xFFFFFFFF when field > 0x3E. The storage-image
- * maintenance (0x2D4EC) is a no-op this cycle. */
+ * |6 always). Returns 0, or 0xFFFFFFFF when field > 0x3E. Each call re-encodes
+ * the image's records through 0x2D4EC (config_storage_touch). */
 u32 config_field_set(u32 field, u32 value);
 
 /* 0x2CCD0. Walks the obj-1 menu-descriptor table `table` (records are a
@@ -60,10 +60,11 @@ s32 config_storage_read(u32 cell, u8 *dst, u32 len);
  * outside, the fatal exit 0x2EA68 (menu_fatal_error, which returns in the port). */
 void config_image_store(u32 addr, u32 value);
 
-/* 0x2D4EC. Maintains the EEPROM storage image at 0x80CE4, which the port does not
- * keep (no save/load I/O, spec §7). Its call sites are declared no-ops so a
- * later persistence cycle has them in place. It takes EAX only: 0x2D4F5
- * `mov edx,eax` overwrites EDX before any read (record §26 of
+/* 0x2D4EC. Encodes the record of `kind` (0..8, the table 0x2D444: 0 the config
+ * fields' trailing bytes at the slot [0x105E2F], 1 and 2 the two copies of the
+ * 0x53-byte field buffer, 3..5 the audit tables, 6..8 the high-score tables)
+ * from its source bytes into the image. It takes EAX only: 0x2D4F5 `mov
+ * edx,eax` overwrites EDX before any read (record §26 of
  * 2026-09-29-todo-verify-derivations.md). */
 void config_storage_touch(u32 kind);
 

@@ -4378,12 +4378,32 @@ int test_config(void)
 
 #define SA_IMG      0x00100CE4u     /* [0x2D48C]: the image */
 #define SA_IMG_LEN  0x7F8u          /* 0x1014DC - 0x100CE4 (0x2D49F) */
+#define SA_BASE     0x0002D48Cu     /* the dword that holds the image's address (0x2D4F7, 0x2E99E) */
+#define SA_KINDS    0x0002D444u     /* the kind table: u16 cell, u16 len, u32 source (0x2D519) */
+#define SA_CFG      0x00105D88u     /* the config region the records are encoded from */
+#define SA_CFG_LEN  0x180u          /* to 0x105F07: past the last record source (0x105EF5 + 7) */
+
+/* 1 when no image byte differs from `fill`. */
+static int sa_image_is(u8 fill)
+{
+    for (u32 i = 0u; i < SA_IMG_LEN; i++)
+        if (DSB(SA_IMG + i) != fill) return 0;
+    return 1;
+}
 
 int test_config_storage(void)
 {
     int before = g_failures;
     static u8 sv_img[SA_IMG_LEN + 2u];              /* 0x100CE3..0x1014DC */
+    static u8 sv_cfg[SA_CFG_LEN];
+    u8 sv_ent[8];
     memcpy(sv_img, mem + SA_IMG - 1u, sizeof sv_img);
+    memcpy(sv_cfg, mem + SA_CFG, sizeof sv_cfg);
+    memcpy(sv_ent, mem + SA_KINDS + 5u * 8u, sizeof sv_ent);
+    u32 sv_base = DSD(SA_BASE);
+
+    /* evidence line (image only, not port logic): the table is the real one */
+    CHECK_EQ_INT(DSD(SA_KINDS + 6u * 8u), 0x007800F6);
 
     {
         /* store (0x2D498): DL alone goes to the first and the last image byte; the
@@ -4401,6 +4421,81 @@ int test_config_storage(void)
         CHECK_EQ_INT(DSB(SA_IMG + SA_IMG_LEN), 0xA5);
     }
 
+    {
+        /* roundtrip (0x2D4EC, 0x2E990): each kind's source bytes, encoded and read
+         * back at the kind's cell. Kind 0's cell is 0x2D4B4(0x26) * [0x105E2F] +
+         * 0x1A3 (0x2D528..0x2D53B): with the byte at 2 the slot 0x1A3 stays 0xA5
+         * cells, which do not check. The image is 0xA5 before every kind: the byte
+         * below the record, the second byte of its first cell and the byte past it
+         * stay. */
+        for (u32 kind = 0u; kind < 9u; kind++) {
+            u32 ent = SA_KINDS + kind * 8u;
+            u32 cell = DSW(ent), len = DSW(ent + 2u), src = DSD(ent + 4u);
+            u8 want[0x80], got[0x80];
+            mem_fill(SA_IMG, 0xA5u, SA_IMG_LEN);
+            for (u32 i = 0u; i < len; i++) want[i] = (u8)(0x11u * (kind + 1u) + 3u * i + 1u);
+            memcpy(mem + src, want, len);
+            if (kind == 0u) {
+                DSB(DS_00105E2F) = 2u;
+                cell = 0x1A3u + 2u * config_codeword_len(0x26u);
+            }
+            u32 rec = SA_IMG + 2u * cell, n = config_codeword_len(len);
+            config_storage_touch(kind);
+            memset(got, 0xEEu, sizeof got);
+            mem_fill(src, 0u, len);
+            CHECK_EQ_INT(config_storage_read(cell, got, len), 1);
+            CHECK(memcmp(got, want, len) == 0, "roundtrip: the record's bytes");
+            CHECK_EQ_INT(got[len], 0xEE);
+            CHECK(DSB(rec - 1u) == 0xA5u && DSB(rec + 1u) == 0xA5u && DSB(rec + 2u * n) == 0xA5u,
+                  "roundtrip: one byte a cell, n cells");
+            if (kind == 0u) CHECK_EQ_INT(config_storage_read(0x1A3u, got, len), -1);
+        }
+    }
+
+    {
+        /* parity: one changed cell of a record fails the read (0x2EA23); the second
+         * byte of a cell is not read (`sub esi,2` 0x2E9D4). */
+        u8 got[0x14];
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        for (u32 i = 0u; i < 0x14u; i++) DSB(0x00105ECDu + i) = (u8)(0x31u + i);
+        config_storage_touch(3u);
+        DSB(SA_IMG + 2u * 0xB6u + 2u * 7u + 1u) ^= 0x40u;
+        CHECK_EQ_INT(config_storage_read(0xB6u, got, 0x14u), 1);
+        DSB(SA_IMG + 2u * 0xB6u + 2u * 7u) ^= 0x40u;
+        CHECK_EQ_INT(config_storage_read(0xB6u, got, 0x14u), -1);
+    }
+
+    {
+        /* bound (0x2D563..0x2D56F `cmp eax,0x7f8; jl`): kind 5's entry (7 bytes,
+         * 12 cells) with its cell poked. With the image's address lowered by
+         * 0x700 cells the cell 0x7EB (0x7EB + 12 = 0x7F7) lands inside the image
+         * and is written; 0x7EC (0x7F8) is refused and the image stays 0x5A. */
+        u8 got[7];
+        DSD(SA_BASE) = SA_IMG - 2u * 0x700u;
+        for (u32 i = 0u; i < 7u; i++) DSB(0x00105EF5u + i) = (u8)(0x61u + i);
+        mem_fill(SA_IMG, 0x5Au, SA_IMG_LEN);
+        DSW(SA_KINDS + 5u * 8u) = 0x7ECu;
+        config_storage_touch(5u);
+        CHECK(sa_image_is(0x5Au), "bound: a record that ends at cell 0x7F8 is refused");
+        DSW(SA_KINDS + 5u * 8u) = 0x7EBu;
+        config_storage_touch(5u);
+        (void)config_storage_read(0x7EBu, got, 7u);
+        CHECK_EQ_INT(got[6], 0x67);
+        memcpy(mem + SA_KINDS + 5u * 8u, sv_ent, sizeof sv_ent);
+        DSD(SA_BASE) = sv_base;
+
+        /* badkind (0x2D4FF `jl`, 0x2D503 `jb`): kind 10 would read the entry at
+         * 0x2D494 (cell 0, length 0) and store the image's first byte; kind
+         * 0x80000000 would wrap to entry 0 and encode at cell 0. */
+        mem_fill(SA_IMG, 0x5Au, SA_IMG_LEN);
+        config_storage_touch(10u);
+        CHECK(sa_image_is(0x5Au), "badkind: 10");
+        mem_fill(SA_IMG, 0x5Au, SA_IMG_LEN);
+        config_storage_touch(0x80000000u);
+        CHECK(sa_image_is(0x5Au), "badkind: negative");
+    }
+
+    memcpy(mem + SA_CFG, sv_cfg, sizeof sv_cfg);
     memcpy(mem + SA_IMG - 1u, sv_img, sizeof sv_img);
     return g_failures - before;
 }

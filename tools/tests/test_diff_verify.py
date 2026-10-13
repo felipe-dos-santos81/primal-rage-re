@@ -29331,6 +29331,7 @@ D1_CASES.extend(D6A_CASES)
 SA_MASKS = {
     "config_image_store": 0x0,
     "config_storage_read": 0xFFFFFFFF,
+    "config_storage_touch": 0x0,
 }   # SA_MASKS end
 SA_KINDS = {
     "config_image_store@lo": {'byte', 'call #0'},
@@ -29355,6 +29356,21 @@ SA_KINDS = {
     "config_storage_read@ret": {'eax'},
     "config_storage_read@nowrite": {'byte'},
     "config_storage_read@or": {'eax'},
+    "config_storage_touch@k0cell": {'byte'},
+    "config_storage_touch@k0mul": {'byte'},
+    "config_storage_touch@k0base": {'byte'},
+    "config_storage_touch@bound": {'call #0', 'call #1', 'call #10', 'call #11', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "config_storage_touch@bound1": {'byte', 'call #0'},
+    "config_storage_touch@nofatal": {'call #0'},
+    "config_storage_touch@msg": {'call #0'},
+    "config_storage_touch@stride": {'byte', 'call #0', 'call #1', 'call #10', 'call #11', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "config_storage_touch@up": {'byte'},
+    "config_storage_touch@par0": {'byte'},
+    "config_storage_touch@overall": {'byte'},
+    "config_storage_touch@bit": {'byte'},
+    "config_storage_touch@six": {'byte'},
+    "config_storage_touch@frame": {'byte'},
+    "config_storage_touch@cellsext": {'call #0', 'call #1', 'call #10', 'call #11', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
 }   # SA_KINDS end
 SA_CASES = [
     ("config_image_store@lo", ['e0']),
@@ -29379,6 +29395,21 @@ SA_CASES = [
     ("config_storage_read@ret", ['d0', 'l0x', 'p0', 'y0', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7']),
     ("config_storage_read@nowrite", ['d0', 'p0', 'y0', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7']),
     ("config_storage_read@or", ['b0', 'l1', 'l2', 'l3', 'l4', 'r0', 'r1', 'r2']),
+    ("config_storage_touch@k0cell", ['s0', 's12', 's2']),
+    ("config_storage_touch@k0mul", ['s12', 's2']),
+    ("config_storage_touch@k0base", ['s0', 's12', 's2']),
+    ("config_storage_touch@bound", ['b0']),
+    ("config_storage_touch@bound1", ['b1']),
+    ("config_storage_touch@nofatal", ['b0', 'b2']),
+    ("config_storage_touch@msg", ['b0', 'b2']),
+    ("config_storage_touch@stride", ['b1', 'f0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 's0', 's12', 's2']),
+    ("config_storage_touch@up", ['b1', 'f0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 's0', 's12', 's2']),
+    ("config_storage_touch@par0", ['b1', 'f0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 's0', 's12', 's2']),
+    ("config_storage_touch@overall", ['b1', 'f0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 's0', 's12', 's2']),
+    ("config_storage_touch@bit", ['b1', 'f0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 's0', 's12', 's2']),
+    ("config_storage_touch@six", ['f0', 'k1', 'k2', 'k6']),
+    ("config_storage_touch@frame", ['f0']),
+    ("config_storage_touch@cellsext", ['b2']),
 ]   # SA_CASES end
 SA_OUTSIDE = {}
 P45_OUTSIDE.update(SA_OUTSIDE)

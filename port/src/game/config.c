@@ -115,15 +115,61 @@ void config_image_store(u32 addr, u32 value)
     DSB(addr) = (u8)value;                              /* 0x2D4B0 */
 }
 
-/* 0x2D4EC. Maintains the EEPROM storage image at 0x80CE4, which the port does not
- * keep (no save/load I/O, spec §7). Its call sites are declared no-ops so a
- * later persistence cycle has them in place. It takes EAX only: 0x2D4F5
- * `mov edx,eax` overwrites EDX before any read (record §26 of
- * 2026-09-29-todo-verify-derivations.md). */
+/* 0x2D4EC — record 2026-10-13-reverse-s §S.5. EAX = the kind, 0..8 (0x2D4FF
+ * `jl`, 0x2D503 `jb`); EDX is overwritten before any read (0x2D4F5, record §26
+ * of 2026-09-29-todo-verify-derivations.md). Encodes the kind's record into
+ * the image: the entry 0x2D444 + 8 * kind gives the cell, the length and the
+ * source; kind 0's cell is 0x2D4B4(0x26) * [0x105E2F] + 0x1A3 instead
+ * (0x2D524..0x2D53B). A codeword that would end at or past cell 0x7F8 is the
+ * fatal exit 0x2EA68(0x80AE4) (0x2D563..0x2D576). The cells are stored from the
+ * last down through 0x2D498, one byte each at [0x2D48C] + 2 * (cell +
+ * position): a data byte from the source's end down, XORed into the check
+ * byte 1 + j for each bit j < 7 of its position (0x2D5D1..0x2D5EB); at a power
+ * of two the check byte 1 + j (0x2D5F1..0x2D600); at 0 the byte 0, the XOR of
+ * every cell stored (0x2D606, 0x2D609). The frame is kept as the raw lays it
+ * out (the check bytes at +0, the pointer 0x2D48C at +8), because the clear of
+ * the check bytes 0x61A70(esp, 0, n - len) runs into the pointer when a record
+ * has more than 8 of them. No caller reads EAX (1, or -1 after the fatal
+ * exit). */
 void config_storage_touch(u32 kind)
 {
     PR_SEAM(0x2D4ECu, kind);
-    (void)kind;
+    if (kind >= 9u) {                                   /* 0x2D4FF..0x2D506 */
+        menu_fatal_error(0x00080AC8u);                  /* 0x2D508/0x2D50D */
+        return;   /* PORT: 0x62003 does not return; the port stops instead of reading past the table. */
+    }
+    u32 ent = 0x0002D444u + kind * 8u;                  /* 0x2D512/0x2D519 */
+    u32 cell = DSW(ent);                                /* 0x2D521 */
+    if (kind == 0u)                                     /* 0x2D524 */
+        cell = config_codeword_len(0x26u) * DSB(DS_00105E2F) + 0x1A3u;   /* 0x2D528..0x2D53B */
+    u32 len = DSW(ent + 2u);                            /* 0x2D546 */
+    u32 src = DSD(ent + 4u) + len;                      /* 0x2D54C/0x2D556 */
+    u32 n = config_codeword_len(len);                   /* 0x2D541..0x2D55F: 0x2D4B4's loop, inline */
+    if ((s32)((cell & 0xFFFFu) + n) >= 0x7F8) {         /* 0x2D561..0x2D56F */
+        menu_fatal_error(0x00080AE4u);                  /* 0x2D571/0x2D576 */
+        return;                                         /* 0x2D57B/0x2D580 */
+    }
+    u8 fr[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0x8Cu, 0xD4u, 0x02u, 0x00u };   /* +8: 0x2D4F7 */
+    memset(fr, 0, n - len);                             /* 0x2D58F..0x2D59E 0x61A70: at most 12, n < 0x7F8 */
+    u32 base = DSD((u32)fr[8] | ((u32)fr[9] << 8) | ((u32)fr[10] << 16) | ((u32)fr[11] << 24));   /* 0x2D5A3/0x2D5B0 */
+    u32 at = n * 2u + (((cell * 2u) & 0xFFFFu) + base); /* 0x2D585..0x2D58B, 0x2D5AB..0x2D5BB */
+    u8 ch = 0u;
+    for (s32 pos = (s32)n - 1; pos >= 0; pos--) {       /* 0x2D5C2..0x2D5C8 */
+        at -= 2u;                                       /* 0x2D5C3 */
+        if ((pos & (pos - 1)) != 0) {                   /* 0x2D5CA..0x2D5CF */
+            ch = DSB(--src);                            /* 0x2D5D1/0x2D5D4 */
+            for (s32 j = 0; j < 7; j++)                 /* 0x2D5D5..0x2D5EB */
+                if ((pos & (1 << j)) != 0) fr[j + 1] ^= ch;
+        } else if (pos != 0) {                          /* 0x2D5ED */
+            s32 j = 0;
+            while (pos != (1 << j)) j++;                /* 0x2D5F1..0x2D5FE */
+            ch = fr[j + 1];                             /* 0x2D600 */
+        } else {
+            ch = fr[0];                                 /* 0x2D606 */
+        }
+        fr[0] ^= ch;                                    /* 0x2D609 */
+        config_image_store(at, ch);                     /* 0x2D60C..0x2D612 */
+    }
 }
 
 /* 0x2DA0C. Inverse of config_field_get (spec §3). */

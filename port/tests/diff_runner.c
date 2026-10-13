@@ -41696,6 +41696,56 @@ static void b_sa_2e990(const u32 *r, u32 *eax) { *eax = (u32)config_storage_read
 SA_RD_MUT(stride, 1u) SA_RD_MUT(cell1, 2u) SA_RD_MUT(base, 3u) SA_RD_MUT(n, 4u)   SA_RD_MUT(nge, 5u)
 SA_RD_MUT(asc, 6u)    SA_RD_MUT(pos0, 7u)  SA_RD_MUT(syn0, 8u) SA_RD_MUT(syn7, 9u) SA_RD_MUT(bit, 10u)
 SA_RD_MUT(le, 11u)    SA_RD_MUT(ret, 12u)  SA_RD_MUT(nowrite, 13u) SA_RD_MUT(or, 14u)
+
+/* 0x2D4EC config_storage_touch: EAX = the kind. The mutants restate config.c's body. */
+static void sa_2d4ec_core(u32 kind, u32 mut)
+{
+    if (kind >= 9u) { menu_fatal_error(0x00080AC8u); return; }
+    u32 ent = 0x0002D444u + kind * 8u;
+    u32 cell = DSW(ent);
+    if (mut == 15u) cell = (u32)(s32)(s16)DSW(ent);                              /* @cellsext */
+    if (kind == 0u && mut != 1u)                                                 /* @k0cell */
+        cell = ((mut == 2u) ? 0x26u : config_codeword_len(0x26u)) * DSB(0x00105E2Fu)
+               + ((mut == 3u) ? 0x199u : 0x1A3u);                                /* @k0mul @k0base */
+    u32 len = DSW(ent + 2u);
+    u32 src = DSD(ent + 4u) + len, lo = DSD(ent + 4u);
+    u32 n = config_codeword_len(len);
+    s32 end = (s32)(((mut == 15u) ? cell : (cell & 0xFFFFu)) + n);
+    if ((mut == 4u) ? end > 0x7F8 : (mut == 5u) ? end >= 0x7F7 : end >= 0x7F8) { /* @bound @bound1 */
+        if (mut != 6u) menu_fatal_error((mut == 7u) ? 0x00080AA8u : 0x00080AE4u);   /* @nofatal @msg */
+        return;
+    }
+    u8 fr[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0x8Cu, 0xD4u, 0x02u, 0x00u };
+    if (mut == 14u) memset(fr, 0, 8u);                                           /* @frame */
+    else memset(fr, 0, n - len);
+    u32 base = DSD((u32)fr[8] | ((u32)fr[9] << 8) | ((u32)fr[10] << 16) | ((u32)fr[11] << 24));
+    u32 step = (mut == 8u) ? 1u : 2u;                                            /* @stride */
+    u32 at = n * step + (((cell * step) & 0xFFFFu) + base);
+    u8 ch = 0u;
+    for (s32 pos = (s32)n - 1; pos >= 0; pos--) {
+        at -= step;
+        if ((pos & (pos - 1)) != 0) {
+            ch = (mut == 9u) ? DSB(lo++) : DSB(--src);                           /* @up */
+            for (s32 j = 0; j < ((mut == 13u) ? 6 : 7); j++)                     /* @six */
+                if ((pos & (1 << j)) != 0) fr[j + ((mut == 12u) ? 0 : 1)] ^= ch; /* @bit */
+        } else if (pos != 0) {
+            s32 j = 0;
+            while (pos != (1 << j)) j++;
+            ch = fr[j + ((mut == 12u) ? 0 : 1)];
+            if (mut == 14u && j >= 7) ch = 0u;
+        } else {
+            ch = (mut == 10u) ? 0u : fr[0];                                      /* @par0 */
+        }
+        if (mut != 11u || (pos & (pos - 1)) != 0) fr[0] ^= ch;                   /* @overall */
+        config_image_store(at, ch);
+    }
+}
+static void b_sa_2d4ec(const u32 *r, u32 *eax) { config_storage_touch(r[R_EAX]); *eax = 0u; }
+#define SA_TC_MUT(name, n) \
+    static void m_sa_tc_##name(const u32 *r, u32 *eax) { sa_2d4ec_core(r[R_EAX], n); *eax = 0u; }
+SA_TC_MUT(k0cell, 1u) SA_TC_MUT(k0mul, 2u)  SA_TC_MUT(k0base, 3u) SA_TC_MUT(bound, 4u)  SA_TC_MUT(bound1, 5u)
+SA_TC_MUT(nofatal, 6u) SA_TC_MUT(msg, 7u)   SA_TC_MUT(stride, 8u) SA_TC_MUT(up, 9u)     SA_TC_MUT(par0, 10u)
+SA_TC_MUT(overall, 11u) SA_TC_MUT(bit, 12u) SA_TC_MUT(six, 13u)   SA_TC_MUT(frame, 14u) SA_TC_MUT(cellsext, 15u)
 /* ---- sa bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56675,6 +56725,22 @@ static const binding_t k_bindings[] = {
     { "config_storage_read@ret", m_sa_rd_ret, 0xFFFFFFFFu },
     { "config_storage_read@nowrite", m_sa_rd_nowrite, 0xFFFFFFFFu },
     { "config_storage_read@or", m_sa_rd_or, 0xFFFFFFFFu },
+    { "config_storage_touch",            b_sa_2d4ec, 0x00000000u },
+    { "config_storage_touch@k0cell", m_sa_tc_k0cell, 0x00000000u },
+    { "config_storage_touch@k0mul", m_sa_tc_k0mul, 0x00000000u },
+    { "config_storage_touch@k0base", m_sa_tc_k0base, 0x00000000u },
+    { "config_storage_touch@bound", m_sa_tc_bound, 0x00000000u },
+    { "config_storage_touch@bound1", m_sa_tc_bound1, 0x00000000u },
+    { "config_storage_touch@nofatal", m_sa_tc_nofatal, 0x00000000u },
+    { "config_storage_touch@msg", m_sa_tc_msg, 0x00000000u },
+    { "config_storage_touch@stride", m_sa_tc_stride, 0x00000000u },
+    { "config_storage_touch@up", m_sa_tc_up, 0x00000000u },
+    { "config_storage_touch@par0", m_sa_tc_par0, 0x00000000u },
+    { "config_storage_touch@overall", m_sa_tc_overall, 0x00000000u },
+    { "config_storage_touch@bit", m_sa_tc_bit, 0x00000000u },
+    { "config_storage_touch@six", m_sa_tc_six, 0x00000000u },
+    { "config_storage_touch@frame", m_sa_tc_frame, 0x00000000u },
+    { "config_storage_touch@cellsext", m_sa_tc_cellsext, 0x00000000u },
     /* sa table end */
 };
 
