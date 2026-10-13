@@ -91,7 +91,7 @@ static void res_load_present(u32 draw, u32 index)
         game_isr_ticks((size + RES_READ_BYTES_PER_TICK - 1u) / RES_READ_BYTES_PER_TICK);
         DSD(DS_0010150C) = DSD(DS_00101508);   /* 0x1B45F/0x1B464 */
     }
-    DSD(DS_001014FC) = 1u;                                    /* 0x1B3F8 */
+    DSB(DS_001014FC) = 1u;                                    /* 0x1B3F4/0x1B3F8 `mov byte` */
 }
 
 /* PORT: the allocation-failure test seam (res.h), not original state (the

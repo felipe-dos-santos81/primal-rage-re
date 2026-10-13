@@ -760,12 +760,13 @@ int test_res(void)
          * leaves 150C at 0x1234. */
         CHECK((DSD(table + 0u * 20u + 12u) & 0x20000000u) == 0u,
               "lazy entry unread after init");
-        DSD(DS_001014FC) = 0;
+        DSD(DS_001014FC) = 0x11223300u;      /* 0x1B3F8 stores the byte alone */
         DSD(DS_00101508) = 0x5678;
         DSD(DS_00101500) = 0x9ABCu;
         DSD(DS_0010150C) = 0x1234;
         CHECK(res_resolve(res_handle(0u, 0)) != NULL, "s16slabs resolves");
-        CHECK_EQ_INT((int)DSD(DS_001014FC), 1);
+        CHECK_EQ_INT((int)DSD(DS_001014FC), 0x11223301);
+        DSD(DS_001014FC) = 1u;
         /* The exact delta, not merely "advanced": the stall is
          * ceil(res_size(0)/RES_READ_BYTES_PER_TICK) ticks (res.c). The rate is
          * asserted against its literal first — the delta expression below is
