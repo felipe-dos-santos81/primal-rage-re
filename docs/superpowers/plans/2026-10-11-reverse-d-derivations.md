@@ -6,7 +6,7 @@ Waves 1 and 2 (2026-10-11/12). Integration branch `reverse-d1` (off `main` `e53c
 (wave 2). This record is the track's ledger: why, how the batches were merged, the counters, the
 corrections, the named gaps and the gate evidence.
 Wave 3 (2026-10-12, integrated on `reverse-d3int`, per-batch records
-`2026-10-12-reverse-d3{a..e}-derivations.md`) is §D.7, wave 4 (`reverse-d4int`) is §D.8 and the first eight batches of wave 5 (`reverse-d5int`) are §D.9; §D.1-§D.6 describe waves 1 and 2 as they were gated.
+`2026-10-12-reverse-d3{a..e}-derivations.md`) is §D.7, wave 4 (`reverse-d4int`) is §D.8 the first eight batches of wave 5 (`reverse-d5int`) are §D.9 and its ninth with the audits' follow-ups §D.10; §D.1-§D.6 describe waves 1 and 2 as they were gated.
 
 ## §D.1 Why
 
@@ -536,4 +536,50 @@ corrections, `game_loop`'s increment order and `game_state_step`'s state 9 inclu
 and the audits. One thing a merge must know: the composition rebuilds the harness files from the base and the
 listed branches, so an integration edit made on the integration branch itself (here the three stub clobbers
 and the counter pin) is dropped by the next composed merge and has to be applied again.
+
+## §D.10 Wave 5, batch d5i and the audits' follow-ups (19 rows, 5 corrections)
+
+Batch d5i (record `2026-10-12-reverse-d5i-derivations.md`), merged on `reverse-d5int` after §D.9's tree went
+to `main`; the composition's list is the pre-merge `main` (`3886d8ab`) and d5a..d5i, base `3790f323`.
+
+| scope | rows | cases | mutants |
+|---|---|---|---|
+| `game_mode_32_step` `0x296B8` and `game_mode_0d_step` `0x274FC` (four specs each), `game_mode_13_step` `0x424E8` (three), `frontend_match_start` `0x1EA08` (two), `game_mode_0e_step` `0x27A2C` (three), `game_state_4` `0x11578`, `attract_step` `0x11000` (two) | 19 (7 addresses) | 162 | 946 |
+
+`make diff-verify`: **`944/944 functions VERIFIED; 13795/13795 mutants detected; 1 named gaps; 582/777 rows
+with callees closed (167 have none)`**. 695 of the 731 have a row. Of the 36 that do not, 6 are named non-rows,
+28 are the named gaps of §D.8 and §D.9, and **two are open: `0x4BF18` and `0x49C78`** (batch d5j, not merged).
+
+**The corrections** (audits #12 and #13, read-only, from the bytes: 5 of 5 CONFIRMED; d5i's seven functions
+were also read end to end against the raw with nothing else found):
+
+| source | correction | raw |
+|---|---|---|
+| d5i | game_mode_13_step tests AL of `0x1C6D4` | `0x42599 test al,al` |
+| d5i | frontend_match_start reads the row byte `0xA7B94[i*4]` at each of its four calls | `0x1EB4C`, `0x1EB98`, `0x1EBB9`, `0x1EBD4` |
+| d5i | attract_step uses the cycle counter `0xF0A5C` as a dword | `0x11089..0x110A5`, `0x1143A`, `0x114E4` |
+| audit #12 | game_state_select and game_state_3_handoff test AL of `0x1C6D4` | `0x1203D`, `0x126F1` |
+
+None changes ordinary play: `0x1C6D4` leaves the entry's handle in EAX's upper bytes and writes AL only, and
+the port's function returns 0 or 1 (its three callers are these); the row table is constant; the counter's
+seven sites in the image are all dword operands and its only writers leave 0..4. The two `0x1C6D4` casts of
+audit #12 have no case that separates them (the rows of `0x11F6C` and `0x12658` run the callee for real): the
+bytes are their evidence.
+
+**Also in this round.** `check_state9_countdown` gained the set arm of `0x11EF2` that §D.9 owed: with
+`0xF0A71` set at the expiry the hold ends in state 0 with `0xF0A71`, `0xF0A6F` and `0x104B00` rewritten by
+`0x10EE4`; four of its five new checks fail with the call removed. `attract_step`'s increment is written in
+the wrapping form (`0x11091 inc ecx`; audit #13).
+
+**Open, seen by audit #13:** in `attract_step` the C stores the phase byte before a reload the raw makes
+first (`0x11206..0x11211`) and reads `0x108173` after the phase store (`0x114C6`) — no call or aliasing
+between, not observable; `0x110DD`: one stub EAX per case cannot show that the first of the eight `0x33754`
+results is the one stored in `0xF0A48`.
+
+**Gate evidence.** Self-check on the merged tree `944/944; 13795/13795; 1; 582/777 (167)`, rc 0; all 575 stub clobber
+sets equal the image's and the pinned dictionary; no row reads outside the image unnamed (945 specs). The
+soft-assertion pre-check was not run this round; the gate's own harness suite stands in for it. `make verify`
+exits 0 on the first run: 178 harness tests OK, the counter above, entry-triage byte-identical, `symbols.h`
+idempotent, every oracle pin unchanged, and its 782 normalised lines before "== differential verification"
+equal the §D.9 gate's — 0 differing. So no capture distinguishes any of the 5 corrections either.
 
