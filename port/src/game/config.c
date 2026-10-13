@@ -196,10 +196,14 @@ void config_validate(void)
 
     /* 0x2D820: the four bytes at DS_00105E30 read as a little-endian u32. */
     if (DSD(DS_00105E30) != 0x9C94D2C4u || read1 < -1) {
-        /* 0x2D83A: defaults. The two 0x61A70 calls clear the unported pset pool
-         * (no-op); DS_00105E2F is cleared before the defaults writer runs. */
+        /* 0x2D83A: defaults. The two 0x61A70 calls clear the stored-image
+         * buffer 0x105DE1 (0x53 bytes: it holds DS_00105E2F and the magic) and
+         * the config-field block 0x105DB0 (0x26 bytes) before the defaults
+         * writer runs. */
         DSB(DS_00105DD8) |= 6u;                    /* 0x2D84F */
+        mem_fill(0x00105DE1u, 0, 0x53u);           /* 0x2D83A..0x2D855 0x61A70 */
         DSB(DS_00105DD8) |= 1u;                    /* 0x2D86F */
+        mem_fill(0x00105DB0u, 0, 0x26u);           /* 0x2D85A..0x2D875 0x61A70 */
         DSB(DS_00105E2F) = 0u;                     /* 0x2D881 */
         config_set_defaults();                     /* 0x2D886 */
         DSD(DS_00105E30) = 0x9C94D2C4u;            /* 0x2D88D */
