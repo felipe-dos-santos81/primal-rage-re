@@ -4448,12 +4448,12 @@ void fight_4bf18(void)
                             fight_4ac38(entry, index);                        /* 0x4C06F..0x4C074 */
                     } else if (fight_4a868(entry) != 0u) {                     /* 0x4BFDC..0x4BFE5 */
                         (void)sound_voice(0xC8u);                              /* 0x4BFEB/0x4BFF0 0x2C3FC */
-                        DSW(rec + 0x38u) = 0;                                  /* 0x4BFF8 */
-                        DSW(rec + 0x34u) = 0;                                  /* 0x4C001 */
-                        DSW(rec + 0x36u) = 0;                                  /* 0x4C00A */
+                        DSW(DSD(entry + 8u) + 0x38u) = 0;                      /* 0x4BFF5/0x4BFF8 */
+                        DSW(DSD(entry + 8u) + 0x34u) = 0;                      /* 0x4BFFE/0x4C001 */
+                        DSW(DSD(entry + 8u) + 0x36u) = 0;                      /* 0x4C007/0x4C00A */
                         DSB(entry + 0x1Eu) = 8u;                               /* 0x4C013 */
-                        DSB(rec + 0x55u) = 1u;                                 /* 0x4C017 */
-                        actors_anim_begin(rec, DSD(DS_000C958C + index * 4u),
+                        DSB(DSD(entry + 8u) + 0x55u) = 1u;                     /* 0x4C010/0x4C017 */
+                        actors_anim_begin(DSD(entry + 8u), DSD(DS_000C958C + index * 4u),
                                           0x40400000u);                        /* 0x4C01B..0x4C02F 0x2BC30 */
                     }
                     break;
@@ -4465,22 +4465,26 @@ void fight_4bf18(void)
                     break;
                 }
                 case 3:
-                case 4:
-                    DSW(rec + 0x2Cu) = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16); /* 0x4C0A1..0x4C0B2 */
-                    actors_anim_begin(rec, DSD(DS_000C95EC + index * 4u), 0x40400000u); /* 0x4C0BB..0x4C0CA */
+                case 4: {
+                    u16 clamp = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16);        /* 0x4C0A1..0x4C0AA */
+                    DSW(DSD(entry + 8u) + 0x2Cu) = clamp;                             /* 0x4C0AF/0x4C0B2 */
+                    actors_anim_begin(DSD(entry + 8u), DSD(DS_000C95EC + index * 4u), 0x40400000u); /* 0x4C0BB..0x4C0CA */
                     DSW(rec + 0x38u) = 0x0040u;                            /* 0x4C0CF */
                     DSB(entry + 0x1Eu) = 5u;                                /* 0x4C0D8 */
                     DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0x7Fu);  /* 0x4C0D5/0x4C0DC/0x4C0DF */
                     break;
-                case 5:
-                    DSW(rec + 0x2Cu) = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16); /* 0x4C0E7..0x4C0F5 */
+                }
+                case 5: {
+                    u16 clamp = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16);        /* 0x4C0E7..0x4C0ED */
+                    DSW(DSD(entry + 8u) + 0x2Cu) = clamp;                             /* 0x4C0F2/0x4C0F5 */
                     if ((s16)DSW(rec + 0x32u) >= (s16)DSW(entry + 0x1Au)) {  /* 0x4C0F9..0x4C101 `jl` */
-                        actors_anim_begin(rec, DSD(DS_000C9544 + index * 4u), 0x40400000u); /* 0x4C10C..0x4C11B */
+                        actors_anim_begin(DSD(entry + 8u), DSD(DS_000C9544 + index * 4u), 0x40400000u); /* 0x4C10C..0x4C11B */
                         DSW(rec + 0x38u) = 0;                                /* 0x4C120 */
                         DSW(rec + 0x34u) = 0;                                /* 0x4C126 */
                         DSB(entry + 0x1Eu) = 0;                              /* 0x4C12C */
                     }
                     break;
+                }
                 case 6:
                     if ((DSB(entry + 0x1Cu) & 0x20u) == 0u) {                /* 0x4C135..0x4C142 */
                         if ((s16)DSW(rec + 0x36u) < 0)                       /* 0x4C148/0x4C14D */
@@ -4501,10 +4505,10 @@ void fight_4bf18(void)
                                 {
                                     u32 alt = DSD(DS_000C973C + index * 4u);  /* 0x4C19F */
                                     if (alt != 0u) {                          /* 0x4C1A5/0x4C1A7 */
-                                        actors_anim_begin(rec, alt, 0x40000000u); /* 0x4C1A9..0x4C1B1 */
+                                        actors_anim_begin(DSD(entry + 8u), alt, 0x40000000u); /* 0x4C1A9..0x4C1B1 */
                                         DSB(entry + 0x1Eu) = 8u;              /* 0x4C1B6 */
                                     } else {
-                                        actors_anim_begin(rec, DSD(DS_000C9544 + index * 4u), 0x40400000u); /* 0x4C1BC..0x4C1CA */
+                                        actors_anim_begin(DSD(entry + 8u), DSD(DS_000C9544 + index * 4u), 0x40400000u); /* 0x4C1BC..0x4C1CA */
                                         DSB(entry + 0x1Eu) = 4u;              /* 0x4C1CF */
                                     }
                                 }
@@ -4529,8 +4533,8 @@ void fight_4bf18(void)
                         DSB(entry + 0x1Cu) |= 0x80u;                                    /* 0x4C227 */
                     if (DSD(entry + 0x10u) != 0u) {                                     /* 0x4C22B/0x4C22F */
                         u32 held = DSD(entry + 0x10u);
-                        DSD(held + 0x18u) = DSD(rec + 0x18u);                            /* 0x4C231..0x4C23A */
-                        DSW(held + 0x32u) = DSW(rec + 0x32u);                            /* 0x4C23D..0x4C247 */
+                        DSD(held + 0x18u) = DSD(DSD(entry + 8u) + 0x18u);                /* 0x4C231..0x4C23A */
+                        DSW(held + 0x32u) = DSW(DSD(entry + 8u) + 0x32u);                /* 0x4C23D..0x4C247 */
                     }
                     if (DSB(entry + 0x1Eu) == 6u) {                                      /* 0x4C24D/0x4C253 */
                         s32 land = ((s32)DSD(rec + 0x34u) >> 16) + (s32)DSD(rec + 0x1Cu); /* 0x4C259..0x4C262 */
@@ -4554,7 +4558,7 @@ void fight_4bf18(void)
                                 DSB(DS_0010889C + idx) = (u8)(DSB(DS_0010889C + idx) + 1u);         /* 0x4C2BA/0x4C2C1/0x4C2CF or 0x4C2D7/0x4C2DE/0x4C2EC */
                                 DSW(DS_00108898) = (u16)(idx + 1u);                                  /* 0x4C2C3/0x4C2E0 */
                                 actors_anim_begin(DSD(DS_0010886C), stream, 0x40400000u);            /* 0x4C2F2..0x4C2FC */
-                                actors_anim_begin(rec, DSD(DS_000C973C + index * 4u), 0x40000000u);  /* 0x4C301..0x4C315 */
+                                actors_anim_begin(DSD(entry + 8u), DSD(DS_000C973C + index * 4u), 0x40000000u);  /* 0x4C301..0x4C315 */
 
                                 DSB(entry + 0x1Eu) = 8u;                                             /* 0x4C327 */
                                 DSW(DS_001088AC) = 0x0069u;                                          /* 0x4C32B */
