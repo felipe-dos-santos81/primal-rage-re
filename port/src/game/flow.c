@@ -6973,7 +6973,9 @@ void game_shutdown(void)
         AIL_stop_sequence(s_sequence);
         AIL_shutdown();     /* 0x5d86a */
     }
-    /* PORT: 0x1B084 (the config-file writer, deferred storage, record §50-C) and the memory frees are no-ops under flat mem[]. */
+    /* PORT: the memory frees (0x1BE38..0x1BEA6 0x1ADE4) are no-ops under flat mem[]; 0x1BEB0 0x4FB98
+     * (int 10h set mode) and 0x1BEBA 0x10D34 (the CD-drive restore) are the host's. */
+    (void)config_file_save();   /* 0x1BEB5 0x1B084; AL is not read (0x1BEBA calls on) */
 }
 
 int game_main(void)

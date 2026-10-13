@@ -8296,6 +8296,13 @@ static void cf_begin(void)
     pr_seam = cf_touch_probe;
 }
 
+/* The save file's length; -1 when there is none. */
+static long cf_file_len(void)
+{
+    struct stat st;
+    return stat(cf_path, &st) == 0 ? (long)st.st_size : -1L;
+}
+
 static void cf_end(void)
 {
     pr_seam = NULL;
@@ -8325,6 +8332,7 @@ int test_config_file(void)
     static u8 keep[CF_LEN + 1u], snap[CF_LEN], file[CF_LEN + 2u];
     char fb_dir[64], fb_path[80];
     u32 len = 0u;
+    const u8 s_audio = DSB(DS_000A2CB1);
     memcpy(keep, mem + CF_IMAGE, sizeof keep);
     cf_begin();
     snprintf(fb_dir, sizeof fb_dir, "%s/fb", cf_dir);
@@ -8374,6 +8382,13 @@ int test_config_file(void)
         CHECK(cf_image_is(0xFFu), "a wrong length gives the 0xFF image");
         CHECK_EQ_INT(DSB(DS_001014DC), 0xA5);
     }
+
+    /* the teardown saves (0x1BEB5). */
+    (void)unlink(cf_path);
+    DSB(DS_000A2CB1) = 0u;
+    game_shutdown();
+    DSB(DS_000A2CB1) = s_audio;
+    CHECK_EQ_INT(cf_file_len(), (long)CF_LEN);
 
     /* nopath: the open fails (0x1B0A0), so no 0x2D4EC, no checksum store, a non-zero result. */
     host_save_set_path(NULL);
