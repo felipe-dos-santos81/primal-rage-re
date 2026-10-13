@@ -4057,7 +4057,7 @@ void text_glyph_at(s32 col, s32 ch, s32 row, u32 mode)
  * blits through 0x51ED8 and advances *col by the entry's width byte (0x10
  * advances 0xF, else 8). The original's return is the palette entry pointer;
  * no caller reads it. */
-static void text_blit_glyph(u32 ch, s32 *col, s32 *row)
+void text_blit_glyph(u32 ch, s32 *col, s32 *row)
 {
     PR_SEAM(0x1C5E8u, ch, (u32)*col, (u32)*row);
     u32 e = 0xbcd7cu + (ch & 0xffu) * 4u;

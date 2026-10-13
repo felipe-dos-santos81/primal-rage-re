@@ -351,6 +351,8 @@ void sprite_blit(SpriteNode *n)
  * is a dead stack local with zeroed clips (0x1C5EA, 0x1C620..0x1C62C). */
 void sprite_blit_aperture(SpriteNode *n)
 {
+    PR_SEAM(0x51ED8u, (u32)n->x, (u32)n->y, (u32)n->xorg, (u32)n->yorg, n->type, (u32)n->rows, (u32)n->width,
+            n->pal_ptr, n->pixel_handle, (u32)n->clip_l, (u32)n->clip_r, (u32)n->clip_t, (u32)n->clip_b);
     if (n == NULL || n->width == 0 || n->rows == 0) return;
     sprite_blit_at(n, gfx_aperture());
     n->rows -= n->clip_b;                       /* 0x51F2F, not restored */

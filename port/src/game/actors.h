@@ -244,6 +244,11 @@ void host_memset(u8 *dest, u32 fill, u32 len);
  * 0x1C5E8 (the font table 0xBCD7C, no glyph actor) and flushes the palette
  * dirty list. The resource loader calls it for string 489 at (0,192). */
 void text_blit_string(const u8 *s, s32 x, s32 y);
+/* 0x1C5E8. EAX = the character, EDX = &col, EBX = &row: one glyph of the font
+ * table 0xBCD7C blitted through 0x51ED8 with the palette 0x80997C; *col
+ * advances 0xF for a width byte 0x10, else 8. Exported for its differential
+ * row. */
+void text_blit_glyph(u32 ch, s32 *col, s32 *row);
 
 /* 0x37B54 (demo-pose record §46-D): the other side's slot record's +0x53 = 1.
  * Exported for 0x45D98 (record §K8c.6). EAX = rec. */
