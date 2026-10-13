@@ -32001,6 +32001,33 @@ D6A_SPECS += [
        mutants=("@flagcache", "@countcache")),
 ]
 
+# ---- 0x2CADC: the configuration defaults ----------------------------------------------------------------
+# A partial row under three code pokes (the form of game_loop's two pins): the port leaves out three of
+# the raw's ten calls by design (config.c, PORT: the message draw, the 180-tick wait that would present
+# frames inside game_init, the cell release), so `call 0x2f198` 0x2CAF3, `call 0x2ea78` 0x2CB5F and `call
+# 0x2f280` 0x2CB69 are five nops each in every case. Nothing the remaining instructions read comes from
+# them (0x2CAF8 loads EAX; `pop edx; pop ecx; pop ebx; ret` follow 0x2CB69). The row is blind to those
+# three calls and to their arguments (0x2CADF..0x2CAEE, 0x2CB55..0x2CB64 and the EBX/ECX of 0x2CB3A/0x2CB46).
+# Unpoked and with every callee a stub the original makes the ten calls (measured, record section 4).
+D6A_NOP5 = b"\x90" * 5
+D6A_DEFAULTS_PINS = {0x0002CAF3: D6A_NOP5, 0x0002CB5F: D6A_NOP5, 0x0002CB69: D6A_NOP5}
+D6A_MENU_BITS = E.Call(0x2CCD0, ("eax",))                                   # config_menu_default_bits, seamed here
+D6A_KEYS_DEFAULT = E.Call(0x1AE20, (), clobbers=("ebx", "ecx", "edx", "esi", "edi"))   # seamed here
+
+D6A_SPECS += [
+    # 0x2CADC config_set_defaults: no argument. 0x2CCD0(0xA2EB4), whose EAX goes whole to 0x2DA0C(0x29, ..)
+    # (`mov edx,eax` 0x2CB02: t1 has 0xFFFF1234); 0x2DA0C(0x35, 0xA0); 0x2DA0C(0x37, 0xA0); 0x2D974(0x2A),
+    # whose EAX with AL & 0xFC | 3 (`and al,0xfc; or al,3` 0x2CB36/0x2CB38: the upper three bytes kept, t1
+    # has 0x12345678 and t2 0x100) goes to 0x2DA0C(0x2A, ..); 0x1AE20(). All five callees are stubs. Mask 0:
+    # `xor eax,eax` 0x2D88B follows the one call site (0x2D886).
+    Spec("config_set_defaults", 0x2CADC, [
+        Case("t0", {}, dict(D6A_DEFAULTS_PINS), {0x2CCD0: 0x00000015, 0x2D974: 0x000000A4}),
+        Case("t1", D2E_DIRTY, dict(D6A_DEFAULTS_PINS), {0x2CCD0: 0xFFFF1234, 0x2D974: 0x12345678, 0x2DA0C: 0xFFFFFFFF}),
+        Case("t2", {}, dict(D6A_DEFAULTS_PINS), {0x2CCD0: 0, 0x2D974: 0x00000100, 0x2DA0C: 1}),
+    ], calls=(D6A_MENU_BITS, D5D_FIELD_SET, D4C_DIP, D6A_KEYS_DEFAULT), eax_mask=0,
+       mutants=tuple("@" + m for m in "table f29 v29 order a0 get al mask or f2a nokeys keysfirst".split())),
+]
+
 D1_SPECS += D6A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

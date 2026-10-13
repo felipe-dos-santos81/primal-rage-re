@@ -29022,6 +29022,7 @@ D6A_MASKS = {
     "svc_buttons_draw": 0x0,
     "config_code_row": 0x0,
     "config_code_row_rr": 0x0,
+    "config_set_defaults": 0x0,
 }   # D6A_MASKS end
 D6A_KINDS = {
     "text_blit_glyph@chmask": {'byte', 'call #1'},
@@ -29079,6 +29080,18 @@ D6A_KINDS = {
     "config_code_row@nostep": {'byte', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5', 'call #5 memory', 'call #6', 'call #6 memory', 'call #7', 'call #7 memory'},
     "config_code_row_rr@flagcache": {'byte', 'call #6'},
     "config_code_row_rr@countcache": {'call #2', 'call #3', 'call #4', 'call #5'},
+    "config_set_defaults@table": {'call #0'},
+    "config_set_defaults@f29": {'call #1'},
+    "config_set_defaults@v29": {'call #1'},
+    "config_set_defaults@order": {'call #2', 'call #3'},
+    "config_set_defaults@a0": {'call #2'},
+    "config_set_defaults@get": {'call #4'},
+    "config_set_defaults@al": {'call #5'},
+    "config_set_defaults@mask": {'call #5'},
+    "config_set_defaults@or": {'call #5'},
+    "config_set_defaults@f2a": {'call #5'},
+    "config_set_defaults@nokeys": {'call #6'},
+    "config_set_defaults@keysfirst": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6'},
 }   # D6A_KINDS end
 D6A_CASES = [
     ("text_blit_glyph@chmask", ['g3', 'g4']),
@@ -29136,6 +29149,18 @@ D6A_CASES = [
     ("config_code_row@nostep", ['c0', 'c1', 'c2', 'c3']),
     ("config_code_row_rr@flagcache", ['r0']),
     ("config_code_row_rr@countcache", ['r1']),
+    ("config_set_defaults@table", ['t0', 't1', 't2']),
+    ("config_set_defaults@f29", ['t0', 't1', 't2']),
+    ("config_set_defaults@v29", ['t1']),
+    ("config_set_defaults@order", ['t0', 't1', 't2']),
+    ("config_set_defaults@a0", ['t0', 't1', 't2']),
+    ("config_set_defaults@get", ['t0', 't1', 't2']),
+    ("config_set_defaults@al", ['t1', 't2']),
+    ("config_set_defaults@mask", ['t0']),
+    ("config_set_defaults@or", ['t0', 't1', 't2']),
+    ("config_set_defaults@f2a", ['t0', 't1', 't2']),
+    ("config_set_defaults@nokeys", ['t0', 't1', 't2']),
+    ("config_set_defaults@keysfirst", ['t0', 't1', 't2']),
 ]   # D6A_CASES end
 D6A_OUTSIDE = {}
 P45_OUTSIDE.update(D6A_OUTSIDE)
@@ -30208,7 +30233,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
-        0x51ED8: (),
+        0x51ED8: (), 0x2CCD0: (), 0x1AE20: ("ebx", "ecx", "edx", "esi", "edi"),
         # D6 d6a end
         # D5 d5a (record 2026-10-12-reverse-d5a): the stubs its rows add
         0x12658: (), 0x12750: (), 0x12C70: (), 0x13E28: ("edx",), 0x20DF4: ("edx", "edi", "ebp"), 0x28E98: (), 0x2BAF4: (), 0x2C074: (), 0x2C390: (), 0x33EB4: ("ebp",), 0x34978: (), 0x38730: ("edi", "ebp"), 0x38910: (), 0x38B18: ("ebx", "ecx", "edx"), 0x412A0: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x46594: (), 0x49300: (), 0x4F1E4: (), 0x4F980: (),

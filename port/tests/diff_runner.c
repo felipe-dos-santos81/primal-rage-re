@@ -41430,6 +41430,31 @@ D6A_CR_MUT(name2, 6u)  D6A_CR_MUT(from4, 7u)   D6A_CR_MUT(to7, 8u)     D6A_CR_MU
 D6A_CR_MUT(nostop, 11u) D6A_CR_MUT(base, 12u)  D6A_CR_MUT(setearly, 13u) D6A_CR_MUT(rec1, 14u)   D6A_CR_MUT(table, 15u)
 D6A_CR_MUT(noset, 16u) D6A_CR_MUT(set1, 17u)   D6A_CR_MUT(countcache, 18u) D6A_CR_MUT(seven, 19u) D6A_CR_MUT(cmode, 20u)
 D6A_CR_MUT(countsext, 21u) D6A_CR_MUT(gt, 22u) D6A_CR_MUT(second, 23u) D6A_CR_MUT(down, 24u)     D6A_CR_MUT(nostep, 25u)
+
+/* 0x2CADC config_set_defaults: no argument. The raw runs with its three calls the port leaves out (the
+ * message draw, the 180-tick wait and the cell release, PORT in config.c) poked to nops. The mutants
+ * restate config.c's body. */
+static void d6a_2cadc_core(u32 mut)
+{
+    if (mut == 13u) config_keys_apply_defaults();                                /* @keysfirst */
+    u32 v29 = config_menu_default_bits((mut == 1u) ? 0xA2EB0u : 0xA2EB4u);       /* @table */
+    config_field_set((mut == 2u) ? 0x28u : 0x29u, (mut == 3u) ? (v29 & 0xFFu) : v29);   /* @f29 @v29 */
+    config_field_set((mut == 4u) ? 0x37u : 0x35u, (mut == 5u) ? 0xA1u : 0xA0u);  /* @order @a0 */
+    config_field_set((mut == 4u) ? 0x35u : 0x37u, 0xA0u);
+    u32 v2a = config_field_get((mut == 6u) ? 0x29u : 0x2Au);                     /* @get */
+    if (mut == 7u) v2a = (v2a & 0xFCu) | 3u;                                     /* @al: the old code */
+    else if (mut == 8u) v2a = (v2a & 0xFFFFFFF8u) | 3u;                          /* @mask */
+    else if (mut == 9u) v2a = (v2a & 0xFFFFFFFCu) | 1u;                          /* @or */
+    else v2a = (v2a & 0xFFFFFFFCu) | 3u;
+    config_field_set((mut == 11u) ? 0x2Bu : 0x2Au, v2a);                         /* @f2a */
+    if (mut != 12u && mut != 13u) config_keys_apply_defaults();                  /* @nokeys */
+}
+static void b_d6a_2cadc(const u32 *r, u32 *eax) { (void)r; config_set_defaults(); *eax = 0u; }
+#define D6A_SD_MUT(name, n) \
+    static void m_d6a_sd_##name(const u32 *r, u32 *eax) { (void)r; d6a_2cadc_core(n); *eax = 0u; }
+D6A_SD_MUT(table, 1u) D6A_SD_MUT(f29, 2u)  D6A_SD_MUT(v29, 3u)   D6A_SD_MUT(order, 4u)  D6A_SD_MUT(a0, 5u)
+D6A_SD_MUT(get, 6u)   D6A_SD_MUT(al, 7u)   D6A_SD_MUT(mask, 8u)  D6A_SD_MUT(or, 9u)
+D6A_SD_MUT(f2a, 11u)  D6A_SD_MUT(nokeys, 12u) D6A_SD_MUT(keysfirst, 13u)
 /* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56288,6 +56313,19 @@ static const binding_t k_bindings[] = {
     { "config_code_row_rr",              b_d6a_305fc, 0x00000000u },
     { "config_code_row_rr@flagcache", m_d6a_cr_flagcache, 0x00000000u },
     { "config_code_row_rr@countcache", m_d6a_cr_countcache, 0x00000000u },
+    { "config_set_defaults",             b_d6a_2cadc, 0x00000000u },
+    { "config_set_defaults@table", m_d6a_sd_table, 0x00000000u },
+    { "config_set_defaults@f29", m_d6a_sd_f29, 0x00000000u },
+    { "config_set_defaults@v29", m_d6a_sd_v29, 0x00000000u },
+    { "config_set_defaults@order", m_d6a_sd_order, 0x00000000u },
+    { "config_set_defaults@a0", m_d6a_sd_a0, 0x00000000u },
+    { "config_set_defaults@get", m_d6a_sd_get, 0x00000000u },
+    { "config_set_defaults@al", m_d6a_sd_al, 0x00000000u },
+    { "config_set_defaults@mask", m_d6a_sd_mask, 0x00000000u },
+    { "config_set_defaults@or", m_d6a_sd_or, 0x00000000u },
+    { "config_set_defaults@f2a", m_d6a_sd_f2a, 0x00000000u },
+    { "config_set_defaults@nokeys", m_d6a_sd_nokeys, 0x00000000u },
+    { "config_set_defaults@keysfirst", m_d6a_sd_keysfirst, 0x00000000u },
     /* d6a table end */
 };
 
