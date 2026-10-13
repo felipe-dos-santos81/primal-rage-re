@@ -5207,16 +5207,13 @@ void frontend_match_start(void)
  * `xor edx,edx` at 0x1EC3D/0x1EC50's own callers). A rank >= 10 (0x1EC75/
  * 0x1EC78, the low 16 bits of the probe's return, 0xFFFFFFFF included)
  * returns 0. A rank < 10 clears config field 0x26 (0x1ECB1/0x1ECB3
- * config_field_set — the real, unconditional store, not the deferred audit
- * add below), records the rank into DS_001044D6 (0x1ECBA) and returns 1.
- * PORT: 0x1EC44..0x1EC6B and 0x1EC7A..0x1EC9A each post one deferred
- * 0x2DAE4 audit add (field 0x27 always, clamped at 2000 through
- * config_field_set when its running total exceeds it; field 0x26 only on
- * the non-qualifying path, clamped at 200) — 0x2DAE4 is the deferred audit
- * idiom this codebase already treats as out of scope everywhere else
- * (spec §7); neither add changes this function's own return value or
- * DS_001044D6, so omitting them changes no state this port's own callers
- * observe. A rank < 10 first arms the name-entry screen through
+ * config_field_set), records the rank into DS_001044D6 (0x1ECBA) and
+ * returns 1. Two audit adds (track S §S.6): 0x2DAE4(0x27, 1) always
+ * (0x1EC44..0x1EC50), its sum's low word above 2000 (0x1EC55 `and
+ * eax,0xffff`, 0x1EC5A/0x1EC5F) stored back as 2000 through 0x2DA0C; and
+ * on the rank >= 10 arm 0x2DAE4(0x26, 1) (0x1EC7A..0x1EC84), its sum above
+ * 200, signed and whole (0x1EC89/0x1EC8E `jle`), stored back as 200. A
+ * rank < 10 first arms the name-entry screen through
  * nameentry_arm (0x204F4, record §51-A) with EAX = the rank's low word
  * (0x1EC70/0x1EC72 `xor eax,eax; mov ax,cx`) and EDX = the score
  * (0x1ECA5); ECX (the rank) survives it (0x204F5 push/0x2070A pop). */
@@ -5224,10 +5221,11 @@ u32 hiscore_rank_single(u32 score)
 {
     PR_SEAM_RET(0x1EC38u, score);
     u32 rank = hiscore_rank_probe(score, 0u);                  /* 0x1EC3F */
-    /* PORT: 0x1EC44..0x1EC6B — field 0x27's deferred audit add; see header. */
+    if (((u32)audit_add(0x27u, 1u) & 0xFFFFu) > 0x7D0u)        /* 0x1EC44..0x1EC5F */
+        (void)config_field_set(0x27u, 0x7D0u);                 /* 0x1EC61..0x1EC6B */
     if ((u16)rank >= 10u) {                                    /* 0x1EC75/0x1EC78 */
-        /* PORT: 0x1EC7A..0x1EC9A — field 0x26's deferred audit add; see
-         * header. */
+        if (audit_add(0x26u, 1u) > 0xC8)                       /* 0x1EC7A..0x1EC8E */
+            (void)config_field_set(0x26u, 0xC8u);              /* 0x1EC90..0x1EC9A */
         return 0u;                                             /* 0x1EC9F */
     }
     nameentry_arm((u16)rank, score);                            /* 0x1ECA7 0x204F4 */

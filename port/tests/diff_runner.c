@@ -36370,17 +36370,38 @@ D5D_FD_MUT(srcbase, 1u) D5D_FD_MUT(nine, 2u) D5D_FD_MUT(readtable, 3u) D5D_FD_MU
 D5D_FD_MUT(forcelow, 6u) D5D_FD_MUT(inv, 7u) D5D_FD_MUT(args, 8u) D5D_FD_MUT(idx, 9u) D5D_FD_MUT(table, 10u)
 D5D_FD_MUT(stride, 11u) D5D_FD_MUT(nostep, 12u)
 /* 0x1EC38 hiscore_rank_single: EAX = score. 0x2DDE4, 0x204F4 (seamed here) and 0x2DA0C (seamed
- * here) are stubs; the deferred audit add 0x2DAE4 runs in the original only, turned off by its
- * own bytes (the port omits it and the clamps behind it: record §4). Mask 0xFF: `xor al,al`
+ * here) are stubs, and so is the audit add 0x2DAE4 since track S batch sb (record
+ * 2026-10-13-reverse-s §S.6: the two adds and their clamps, mutants 18..33). Mask 0xFF: `xor al,al`
  * 0x1EC9F / `mov al,1` 0x1ECB8, read by `test al,al` at 0x1F1B0 and 0x1F2CE. */
+static void d5d_1ec38_add26(u32 mut)
+{
+    const s32 b = audit_add(0x26u, (mut == 27u) ? 2u : 1u);                  /* @add26n */
+    if ((mut == 28u) ? (u32)b > 0xC8u : (mut == 29u) ? (b & 0xFFFF) > 0xC8   /* @uns26 @mask26 */
+        : (mut == 30u) ? b >= 0xC8 : b > 0xC8) {                             /* @ge26 */
+        if (mut != 31u) (void)config_field_set(0x26u, (mut == 32u) ? 0x7D0u : 0xC8u);   /* @noclamp26 @clamp26v */
+    }
+}
+static void d5d_1ec38_add27(u32 mut)
+{
+    const u32 a = (u32)audit_add((mut == 19u) ? 0x26u : 0x27u, (mut == 20u) ? 2u : 1u);   /* @add27f @add27n */
+    if ((mut == 21u) ? (s32)a > 0x7D0 : (mut == 22u) ? (a & 0xFFFFu) >= 0x7D0u : (a & 0xFFFFu) > 0x7D0u) {   /* @full27 @ge27 */
+        if (mut != 23u) (void)config_field_set(0x27u, (mut == 24u) ? 0xC8u : 0x7D0u);   /* @noclamp27 @clamp27v */
+    }
+}
 static u32 d5d_1ec38_core(u32 score, u32 mut)
 {
+    if (mut == 25u) d5d_1ec38_add27(mut);                                    /* @addfirst */
     u32 rank = (mut == 1u) ? hiscore_rank_probe(score, 1u)                   /* @table */
              : (mut == 2u) ? hiscore_rank_probe(0u, score) : hiscore_rank_probe(score, 0u);   /* @probearg */
+    if (mut != 18u && mut != 25u) d5d_1ec38_add27(mut);                      /* @noadd27 */
     u32 out = (mut == 3u) ? ((s32)(s16)rank >= 10)                           /* @sword */
             : (mut == 4u) ? (rank >= 10u)                                    /* @full */
             : (mut == 5u) ? ((u16)rank > 10u) : ((u16)rank >= 10u);          /* @gt */
-    if (out) return (mut == 6u) ? 1u : 0u;                                   /* @ret0 */
+    if (out) {
+        if (mut != 26u) d5d_1ec38_add26(mut);                                /* @noadd26 */
+        return (mut == 6u) ? 1u : 0u;                                        /* @ret0 */
+    }
+    if (mut == 33u) d5d_1ec38_add26(mut);                                    /* @add26win */
     if (mut == 7u) DSW(0x001044D6u) = (u16)rank;                             /* @d6early */
     if (mut == 8u) (void)config_field_set(0x26u, 0u);                        /* @order */
     if (mut != 9u)                                                           /* @noarm */
@@ -36398,6 +36419,10 @@ D5D_RS_MUT(table, 1u) D5D_RS_MUT(probearg, 2u) D5D_RS_MUT(sword, 3u) D5D_RS_MUT(
 D5D_RS_MUT(ret0, 6u) D5D_RS_MUT(d6early, 7u) D5D_RS_MUT(order, 8u) D5D_RS_MUT(noarm, 9u) D5D_RS_MUT(armrank, 10u)
 D5D_RS_MUT(armscore, 11u) D5D_RS_MUT(noset, 12u) D5D_RS_MUT(setfield, 13u) D5D_RS_MUT(setval, 14u) D5D_RS_MUT(d6w, 15u)
 D5D_RS_MUT(nod6, 16u) D5D_RS_MUT(ret1, 17u)
+D5D_RS_MUT(noadd27, 18u) D5D_RS_MUT(add27f, 19u) D5D_RS_MUT(add27n, 20u) D5D_RS_MUT(full27, 21u) D5D_RS_MUT(ge27, 22u)
+D5D_RS_MUT(noclamp27, 23u) D5D_RS_MUT(clamp27v, 24u) D5D_RS_MUT(addfirst, 25u) D5D_RS_MUT(noadd26, 26u)
+D5D_RS_MUT(add26n, 27u) D5D_RS_MUT(uns26, 28u) D5D_RS_MUT(mask26, 29u) D5D_RS_MUT(ge26, 30u) D5D_RS_MUT(noclamp26, 31u)
+D5D_RS_MUT(clamp26v, 32u) D5D_RS_MUT(add26win, 33u)
 /* 0x20710 nameentry_finish: AL = side (`mov bl,al` 0x20713; `and ebx,0xff` 0x2076A). 0x13EF0
  * (seamed here), 0x2DCA0, 0x2F510, 0x2F4BC and 0x2B150 are stubs. The second row (`_rr`) has a
  * 0x2DCA0 stub that rewrites the side's character byte, which the raw reads again at 0x207B8.
@@ -57023,6 +57048,23 @@ static const binding_t k_bindings[] = {
     { "config_play_time_snap_b_audit@idx", m_sb_sb_idx, 0x00000000u },
     { "config_play_time_snap_b_audit@other", m_sb_sb_other, 0x00000000u },
     { "config_play_time_snap_b_audit@wide", m_sb_sb_wide, 0x00000000u },
+    /* sb: mutants added to rows of other batches (the call sites) */
+    { "hiscore_rank_single@noadd27", m_d5d_1ec38_noadd27, 0x000000FFu },
+    { "hiscore_rank_single@add27f", m_d5d_1ec38_add27f, 0x000000FFu },
+    { "hiscore_rank_single@add27n", m_d5d_1ec38_add27n, 0x000000FFu },
+    { "hiscore_rank_single@full27", m_d5d_1ec38_full27, 0x000000FFu },
+    { "hiscore_rank_single@ge27", m_d5d_1ec38_ge27, 0x000000FFu },
+    { "hiscore_rank_single@noclamp27", m_d5d_1ec38_noclamp27, 0x000000FFu },
+    { "hiscore_rank_single@clamp27v", m_d5d_1ec38_clamp27v, 0x000000FFu },
+    { "hiscore_rank_single@addfirst", m_d5d_1ec38_addfirst, 0x000000FFu },
+    { "hiscore_rank_single@noadd26", m_d5d_1ec38_noadd26, 0x000000FFu },
+    { "hiscore_rank_single@add26n", m_d5d_1ec38_add26n, 0x000000FFu },
+    { "hiscore_rank_single@uns26", m_d5d_1ec38_uns26, 0x000000FFu },
+    { "hiscore_rank_single@mask26", m_d5d_1ec38_mask26, 0x000000FFu },
+    { "hiscore_rank_single@ge26", m_d5d_1ec38_ge26, 0x000000FFu },
+    { "hiscore_rank_single@noclamp26", m_d5d_1ec38_noclamp26, 0x000000FFu },
+    { "hiscore_rank_single@clamp26v", m_d5d_1ec38_clamp26v, 0x000000FFu },
+    { "hiscore_rank_single@add26win", m_d5d_1ec38_add26win, 0x000000FFu },
     /* sb table end */
 };
 

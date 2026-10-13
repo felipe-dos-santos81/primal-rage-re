@@ -16774,6 +16774,7 @@ D2E_M12_PICK = E.Call(0x25848, (), writes=((None, 0x00104AFC, le16(0x0104)),))
 D2E_M12_SELECT = E.Call(0x41350, ("eax", "edx"), clobbers=("edx",))
 D2E_M12_JOIN = E.Call(0x271E0, ())
 D2E_M12_CLOSE = E.Call(0x32A3C, ("eax", "edx"), clobbers=("edx",))
+SB_AUDIT = E.Call(0x2DAE4, ("eax", "edx"), clobbers=("edx",))     # audit_add (track S batch sb): a stub in the rows of its call sites
 # The call set of each state's row (diffrun takes sixteen stubs a case; the function has 24 callees).
 D2E_M12_CALLS = {
     0: (SPAWN, D1D_CURSOR),
@@ -27455,29 +27456,21 @@ D5D_SPECS += [
        mutants=("@srcbase", "@nine", "@readtable", "@valbyte", "@noforce", "@forcelow", "@inv", "@args", "@idx",
                 "@table", "@stride", "@nostep")),
 ]
-# the deferred audit adds 0x2DAE4(0x27, 1) and 0x2DAE4(0x26, 1) made no-ops by their own bytes, as d2e,
-# d3a and d4a do for fields 0x10, 0xF and 0xD: both descriptors read 8 nibbles at byte 0 of 0x105DE1,
-# which is negative (`test eax,eax; jl 0x2db54` 0x2DAEE), so each returns 0x80000000 at once
-D5D_AUDIT_OFF = {0x0002D398: le32(0x0001C000) + le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
-
-
 def d5d_rank_case(k=0):
-    """0x1EC38: the audit fields 0x26/0x27 turned off and the rank word 0x1044D6 between seeded
-    words."""
-    p = dict(D5D_AUDIT_OFF)
-    p[0x001044D4] = le16(0x6161 ^ k) + le16(0x5A5A) + le16(0x6262)
-    return p
+    """0x1EC38: the rank word 0x1044D6 between seeded words."""
+    return {0x001044D4: le16(0x6161 ^ k) + le16(0x5A5A) + le16(0x6262)}
 
 
 D5D_SPECS += [
     # 0x1EC38 hiscore_rank_single: EAX = the score. 0x2DDE4(score, 0); the rank is its low word,
     # zero-extended (`xor eax,eax; mov ax,cx` 0x1EC70; `cmp eax,0xa; jl` 0x1EC75: k3 is -1, k4
     # 0x00010003, k5 0x8009). Below 10: 0x204F4(the rank word, score), 0x2DA0C(0x26, 0), the word
-    # 0x1044D6 = the rank word and AL = 1; else AL = 0. The three callees are stubs. In the
-    # original the audit adds 0x2DAE4(0x27, 1) and, on the losing arm, 0x2DAE4(0x26, 1) run from a
-    # state in which each returns at once; the port omits them (deferred) and with them the two
-    # clamps `0x2DA0C(0x27, 0x7D0)` (0x1EC61) and `0x2DA0C(0x26, 0xC8)` (0x1EC90), which need a
-    # running total above the bound: those two blocks are named, not exercised (record §4).
+    # 0x1044D6 = the rank word and AL = 1; else AL = 0. The callees are stubs. Track S batch sb (record
+    # 2026-10-13-reverse-s §S.6): after the probe, 0x2DAE4(0x27, 1), whose EAX low word above 2000 (`and
+    # eax,0xffff; cmp eax,0x7d0; jle` 0x1EC55: k6 is 0x7D1, k7 0x7D0, ka -1, kc 0x000100C8) stores
+    # 0x2DA0C(0x27, 0x7D0); and on the losing arm 0x2DAE4(0x26, 1), whose EAX above 200, signed and whole
+    # (`cmp eax,0xc8; jle` 0x1EC89: k8 is 0xC8, k9 0xC9, ka -1, kb 0xFFFF0001, kc 0x000100C8) stores
+    # 0x2DA0C(0x26, 0xC8). One stub EAX serves both adds of a case.
     Spec("hiscore_rank_single", 0x1EC38, [
         Case("k0", {"eax": 0x00012345, "ebx": 0x11111111, "ecx": 0x22222222, "edx": 0x33333333}, d5d_rank_case(),
              {0x2DDE4: 0}),
@@ -27486,14 +27479,19 @@ D5D_SPECS += [
         Case("k3", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 0xFFFFFFFF}),
         Case("k4", {"eax": 0x80000000}, d5d_rank_case(), {0x2DDE4: 0x00010003}),
         Case("k5", {"eax": 7}, d5d_rank_case(), {0x2DDE4: 0x00008009}),
-    ], unhit_named={0x1EC61: "the clamp 0x2DA0C(0x27, 0x7D0) behind the deferred audit add 0x2DAE4(0x27, 1), which the "
-                             "port omits (PORT, tools/port_classification.txt 2DAE4): reached only when the add runs "
-                             "and its total passes 2000",
-                    0x1EC90: "the clamp 0x2DA0C(0x26, 0xC8) behind the deferred audit add 0x2DAE4(0x26, 1), which the "
-                             "port omits: reached only when the add runs and its total passes 200"},
-       allow_calls=(0x2DAE4, 0x2D974), calls=(D3A_RANK, D5D_ARM, D5D_FIELD_SET), eax_mask=0xFF,
+        Case("k6", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 10, 0x2DAE4: 0x000007D1}),
+        Case("k7", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 10, 0x2DAE4: 0x000007D0}),
+        Case("k8", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 11, 0x2DAE4: 0x000000C8}),
+        Case("k9", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 11, 0x2DAE4: 0x000000C9}),
+        Case("ka", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 10, 0x2DAE4: 0xFFFFFFFF}),
+        Case("kb", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 10, 0x2DAE4: 0xFFFF0001}),
+        Case("kc", {"eax": 0x00000100}, d5d_rank_case(), {0x2DDE4: 10, 0x2DAE4: 0x000100C8}),
+        Case("kd", {"eax": 0x00000200}, d5d_rank_case(), {0x2DDE4: 3, 0x2DAE4: 0x000007D1}),
+    ], calls=(D3A_RANK, SB_AUDIT, D5D_ARM, D5D_FIELD_SET), eax_mask=0xFF,
        mutants=("@table", "@probearg", "@sword", "@full", "@gt", "@ret0", "@d6early", "@order", "@noarm", "@armrank",
-                "@armscore", "@noset", "@setfield", "@setval", "@d6w", "@nod6", "@ret1")),
+                "@armscore", "@noset", "@setfield", "@setval", "@d6w", "@nod6", "@ret1",
+                "@noadd27", "@add27f", "@add27n", "@full27", "@ge27", "@noclamp27", "@clamp27v", "@addfirst",
+                "@noadd26", "@add26n", "@uns26", "@mask26", "@ge26", "@noclamp26", "@clamp26v", "@add26win")),
 ]
 D5D_FILTER = E.Call(0x13EF0, ("eax",))               # name_filter, seamed by this batch
 D5D_LET = 0x0010A700                                # zero BSS: one letter byte per character (the bytes 0xA7DA0's pointers reach)
@@ -32454,7 +32452,6 @@ SB_SPECS += [
        mutants=tuple("@" + m for m in "nocheck le retneg fieldb field4 xor unsigned sub noinc cells base nolen "
                                       "nowrap no6 or4 slotlate noslot noset setold setn getfield ret retold".split())),
 ]
-SB_AUDIT = E.Call(0x2DAE4, ("eax", "edx"), clobbers=("edx",))               # audit_add, seamed by this batch
 
 SB_SPECS += [
     # 0x32B94 audit_add_if_bit0: AL = the flags. Bit 0 set (`test al,1` 0x32B95: b0 and b3; b1 has bit 1 and
