@@ -41455,6 +41455,41 @@ static void b_d6a_2cadc(const u32 *r, u32 *eax) { (void)r; config_set_defaults()
 D6A_SD_MUT(table, 1u) D6A_SD_MUT(f29, 2u)  D6A_SD_MUT(v29, 3u)   D6A_SD_MUT(order, 4u)  D6A_SD_MUT(a0, 5u)
 D6A_SD_MUT(get, 6u)   D6A_SD_MUT(al, 7u)   D6A_SD_MUT(mask, 8u)  D6A_SD_MUT(or, 9u)
 D6A_SD_MUT(f2a, 11u)  D6A_SD_MUT(nokeys, 12u) D6A_SD_MUT(keysfirst, 13u)
+
+/* 0x2D6F8 config_validate: no argument. The port models the storage as absent (config.c, PORT: both
+ * reads -1); the raw runs its storage load and reads from their bytes and its two deferred high-score
+ * validators as nops. The mutants restate config.c's body for that model. */
+static void d6a_2d6f8_core(u32 mut)
+{
+    if (mut != 1u) DSB(0x00105DA5u) = 0u;                                        /* @noda5 */
+    if (mut != 2u) DSB(0x00105DA4u) = 0u;                                        /* @noda4 */
+    u32 gate = DSB(0x0002D490u);
+    if (mut == 3u) gate = 1u;                                                    /* @noret */
+    if (gate == 0u) return;
+    if (DSD(0x00105E30u) != 0x9C94D2C4u) {
+        DSB(0x00105DD8u) |= (mut == 4u) ? 4u : 6u;                               /* @or6 */
+        if (mut != 5u && mut != 7u) mem_fill(0x00105DE1u, 0, (mut == 8u) ? 0x4Eu : 0x53u);   /* @nofill1 @fill1len */
+        if (mut != 9u) DSB(0x00105DD8u) |= 1u;                                   /* @or1 */
+        if (mut != 6u && mut != 7u) mem_fill(0x00105DB0u, 0, (mut == 10u) ? 0x27u : 0x26u);  /* @nofill2 @fill2len */
+        DSB(0x00105E2Fu) = 0u;
+        if (mut == 11u) DSD(0x00105E30u) = 0x9C94D2C4u;                          /* @magicearly */
+        if (mut != 12u) config_set_defaults();                                   /* @nodefaults */
+        DSD(0x00105E30u) = (mut == 13u) ? 0xC4D2949Cu : 0x9C94D2C4u;             /* @magicbe */
+        if (mut == 14u) { config_storage_touch(2u); config_storage_touch(1u); }  /* @touchorder */
+        else { config_storage_touch(1u); if (mut != 15u) config_storage_touch(2u); }   /* @notouch2 */
+        if (mut != 16u) config_storage_touch(0u);                                /* @notouch0 */
+    }
+    if (mut != 17u) DSB(0x00105DA7u) = (mut == 18u) ? 2u : 1u;                   /* @noda7 @da7 */
+    if (mut != 19u) (void)config_field_get((mut == 20u) ? 0x2Au : 0x24u);        /* @noget @getfield */
+}
+static void b_d6a_2d6f8(const u32 *r, u32 *eax) { (void)r; config_validate(); *eax = 0u; }
+#define D6A_CV_MUT(name, n) \
+    static void m_d6a_cv_##name(const u32 *r, u32 *eax) { (void)r; d6a_2d6f8_core(n); *eax = 0u; }
+D6A_CV_MUT(noda5, 1u)   D6A_CV_MUT(noda4, 2u)    D6A_CV_MUT(noret, 3u)     D6A_CV_MUT(or6, 4u)     D6A_CV_MUT(nofill1, 5u)
+D6A_CV_MUT(nofill2, 6u) D6A_CV_MUT(nofill, 7u)   D6A_CV_MUT(fill1len, 8u)  D6A_CV_MUT(or1, 9u)     D6A_CV_MUT(fill2len, 10u)
+D6A_CV_MUT(magicearly, 11u) D6A_CV_MUT(nodefaults, 12u) D6A_CV_MUT(magicbe, 13u) D6A_CV_MUT(touchorder, 14u)
+D6A_CV_MUT(notouch2, 15u) D6A_CV_MUT(notouch0, 16u) D6A_CV_MUT(noda7, 17u) D6A_CV_MUT(da7, 18u)    D6A_CV_MUT(noget, 19u)
+D6A_CV_MUT(getfield, 20u)
 /* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56326,6 +56361,27 @@ static const binding_t k_bindings[] = {
     { "config_set_defaults@f2a", m_d6a_sd_f2a, 0x00000000u },
     { "config_set_defaults@nokeys", m_d6a_sd_nokeys, 0x00000000u },
     { "config_set_defaults@keysfirst", m_d6a_sd_keysfirst, 0x00000000u },
+    { "config_validate",                 b_d6a_2d6f8, 0x00000000u },
+    { "config_validate@noda5", m_d6a_cv_noda5, 0x00000000u },
+    { "config_validate@noda4", m_d6a_cv_noda4, 0x00000000u },
+    { "config_validate@noret", m_d6a_cv_noret, 0x00000000u },
+    { "config_validate@or6", m_d6a_cv_or6, 0x00000000u },
+    { "config_validate@nofill1", m_d6a_cv_nofill1, 0x00000000u },
+    { "config_validate@nofill2", m_d6a_cv_nofill2, 0x00000000u },
+    { "config_validate@nofill", m_d6a_cv_nofill, 0x00000000u },
+    { "config_validate@fill1len", m_d6a_cv_fill1len, 0x00000000u },
+    { "config_validate@or1", m_d6a_cv_or1, 0x00000000u },
+    { "config_validate@fill2len", m_d6a_cv_fill2len, 0x00000000u },
+    { "config_validate@magicearly", m_d6a_cv_magicearly, 0x00000000u },
+    { "config_validate@nodefaults", m_d6a_cv_nodefaults, 0x00000000u },
+    { "config_validate@magicbe", m_d6a_cv_magicbe, 0x00000000u },
+    { "config_validate@touchorder", m_d6a_cv_touchorder, 0x00000000u },
+    { "config_validate@notouch2", m_d6a_cv_notouch2, 0x00000000u },
+    { "config_validate@notouch0", m_d6a_cv_notouch0, 0x00000000u },
+    { "config_validate@noda7", m_d6a_cv_noda7, 0x00000000u },
+    { "config_validate@da7", m_d6a_cv_da7, 0x00000000u },
+    { "config_validate@noget", m_d6a_cv_noget, 0x00000000u },
+    { "config_validate@getfield", m_d6a_cv_getfield, 0x00000000u },
     /* d6a table end */
 };
 

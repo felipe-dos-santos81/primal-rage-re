@@ -32028,6 +32028,75 @@ D6A_SPECS += [
        mutants=tuple("@" + m for m in "table f29 v29 order a0 get al mask or f2a nokeys keysfirst".split())),
 ]
 
+# ---- 0x2D6F8: the configuration validate ---------------------------------------------------------------
+# A partial row. The port models the storage as absent (config.c, PORT: both reads report -1, no stored
+# image) and has no function for the deferred storage routines (tools/port_classification.txt). Here the
+# raw's storage load 0x2D638 and its checksummed read 0x2E990 run from their bytes on the image's stored
+# bytes ([0x2D48C] = 0x100CE4, zero in the image: both reads return 1, measured) or on two unreadable
+# copies (a non-zero parity cell in each: both return -1, measured), and the two deferred high-score
+# validators are nops in every case (`call 0x2de98` 0x2D912, `call 0x2df8c` 0x2D919: with EAX = the
+# defaults flag they make six more 0x2D4EC calls, record 2026-10-12-reverse-d5g section 4). The row is
+# blind to those two calls and to what the reads store in 0x105DE1..0x105E33 (zeros over the image's
+# zeros, or bytes the defaults arm's fill then clears).
+D6A_STORED = 0x00100CE4                         # the stored image, two bytes a cell
+D6A_UNREADABLE = {D6A_STORED: b"\x01", D6A_STORED + 2 * 0x5B: b"\x01"}
+D6A_VALIDATE_PINS = {0x0002D912: D6A_NOP5, 0x0002D919: D6A_NOP5}
+D6A_STORAGE_REAL = (0x2D638, 0x2E990, 0x61A70, 0x65490, 0x654C7, 0x2D4B4)
+D6A_DEFAULTS = E.Call(0x2CADC, (), clobbers=("edi",))                       # config_set_defaults, seamed here
+
+
+def d6a_validate(cid, seed=False, unreadable=False, gate=None, stub=None):
+    """0x2D6F8: the two pins; the bytes 0x105DA4..0x105DA7 seeded; with `seed` the config-field block and
+    the flags byte (0x105DB0..0x105DDF) and the stored-image buffer with its neighbours (0x105DE0..
+    0x105E37) seeded whole (the four bytes 0x105E30 are not the magic), else the flags byte 0x105DD8
+    alone between seeded bytes; `gate` replaces the byte 0x2D490 (4 in the image)."""
+    p = {**D6A_VALIDATE_PINS, 0x00105DA4: bytes([0x44, 0x55, 0x66, 0x77])}
+    if seed:
+        p[0x00105DB0] = bytes((0x30 + i) & 0xFF for i in range(0x30))
+        p.update(d1d_chunks(0x00105DE0, bytes(0x80 | ((7 * i + 1) & 0x7F) for i in range(0x58))))
+    else:
+        p[0x00105DD6] = bytes([0xD6, 0xD7, 0x50, 0xD9])
+    if unreadable:
+        p.update(D6A_UNREADABLE)
+    if gate is not None:
+        p[0x0002D490] = bytes([gate])
+    return Case(cid, {}, p, stub or {})
+
+
+D6A_SPECS += [
+    # 0x2D6F8 config_validate: no argument. The bytes 0x105DA5 and 0x105DA4 = 0. With a failed read and
+    # the byte 0x2D490 zero it returns (v3; the image's byte is 4 and no instruction stores it). The four
+    # bytes 0x105E30 not being 0x9C94D2C4, the defaults arm: the flags byte 0x105DD8 |= 6, 0x61A70(0x105DE1,
+    # 0, 0x53), |= 1, 0x61A70(0x105DB0, 0, 0x26), the byte 0x105E2F = 0, 0x2CADC() (a stub), the magic
+    # stored after it, then 0x2D4EC(1), (2) and (0) (stubs). The tail: the byte 0x105DA7 = 1 and
+    # 0x2D974(0x24) (a stub; its EAX is not read). v0 and v1 have the image's empty storage (reads 1), v2
+    # and v4 two unreadable copies (reads -1, the port's model); v1, v2 and v4 seed every byte the fills
+    # clear. Mask 0: `mov eax,0x2a` 0x2FA10 follows the one call site.
+    Spec("config_validate", 0x2D6F8, [
+        d6a_validate("v0"),
+        d6a_validate("v1", seed=True, stub={0x2D974: 0xFFFFFFFF, 0x2D4EC: 0x12345678}),
+        d6a_validate("v2", seed=True, unreadable=True),
+        d6a_validate("v3", unreadable=True, gate=0),
+        d6a_validate("v4", seed=True, unreadable=True, gate=0x80, stub={0x2CADC: 0x5A5A5A5A}),
+    ], allow_calls=D6A_STORAGE_REAL, calls=(D6A_DEFAULTS, D5D_TOUCH, D4C_DIP), eax_mask=0,
+       unhit_named={
+           **{a: "the two reads disagree (one stored copy newer or unreadable alone): the port models both "
+                 "as -1 (config.c, PORT) and its version arms are dead; the raw then repairs a copy through "
+                 "0x2D4EC first (measured, record section 4)"
+              for a in (0x2D761, 0x2D773, 0x2D7A4, 0x2D7AE, 0x2D7B2, 0x2D7BB, 0x2D7C5, 0x2D7CD, 0x2D7E6,
+                        0x2D7F0, 0x2D7F4, 0x2D7FD)},
+           **{a: "the stored-image arm: it needs a stored copy that holds the magic, and the port has no "
+                 "stored image (config.c, PORT)"
+              for a in (0x2D828, 0x2D8BB, 0x2D8EB, 0x2D8FC, 0x2D900)},
+           0x2D92B: "the tail's failed-read return: a failed read with the byte 0x2D490 zero returned at "
+                    "0x2D75D already, and nothing stores that byte",
+           0x2D95D: "0x2DAE4(0x24), a deferred no-op the port never calls: reached only when a callee "
+                    "leaves 0x105DA4 or 0x105DA5 non-zero (both are zeroed at entry)"},
+       mutants=tuple("@" + m for m in "noda5 noda4 noret or6 nofill1 nofill2 nofill fill1len or1 fill2len "
+                                      "magicearly nodefaults magicbe touchorder notouch2 notouch0 noda7 da7 "
+                                      "noget getfield".split())),
+]
+
 D1_SPECS += D6A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

@@ -806,3 +806,10 @@ RESOLVED_JUMPS[0x31AD6] = (0x31AC9, 0x31A68, 4)
 # instructions above it (0x2EA74's case). The raw caller 0x2CADC loads ECX and EBX before the call at
 # 0x2CB50 (0x2CB3A `mov ecx,0xb000`, 0x2CB46 `mov ebx,0x809f0`) for the 0x2F280 call at 0x2CB69.
 _CALLEE_CLOBBER_FIXES[0x1AE20] = ()
+# D6 d6a (record 2026-10-13-reverse-d6a section 5): 0x2CADC pushes and pops EBX, ECX and EDX (0x2CADC..
+# 0x2CADE, 0x2CB6E..0x2CB70) and its own instructions write no other register; the scan's (esi, edi, ebp)
+# is its callees' (0x2EA78 and the text routines). Its raw caller 0x2D6F8 keeps ESI (the first read's
+# result, 0x2D72E) and EBP (the defaults flag, 0x2D82D) live across the call at 0x2D886 (read at 0x2D910
+# `mov eax,ebp`, 0x2D917 and 0x2D91E `test esi,esi`), so 0x2CADC preserves them; EDI stays in the set (no
+# caller shown to read it).
+_CALLEE_CLOBBER_FIXES[0x2CADC] = ("edi",)

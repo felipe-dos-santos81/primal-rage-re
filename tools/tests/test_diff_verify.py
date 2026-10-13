@@ -29023,6 +29023,7 @@ D6A_MASKS = {
     "config_code_row": 0x0,
     "config_code_row_rr": 0x0,
     "config_set_defaults": 0x0,
+    "config_validate": 0x0,
 }   # D6A_MASKS end
 D6A_KINDS = {
     "text_blit_glyph@chmask": {'byte', 'call #1'},
@@ -29092,6 +29093,26 @@ D6A_KINDS = {
     "config_set_defaults@f2a": {'call #5'},
     "config_set_defaults@nokeys": {'call #6'},
     "config_set_defaults@keysfirst": {'call #0', 'call #1', 'call #2', 'call #3', 'call #4', 'call #5', 'call #6'},
+    "config_validate@noda5": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "config_validate@noda4": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "config_validate@noret": {'byte', 'call #0', 'call #1', 'call #2', 'call #3', 'call #4'},
+    "config_validate@or6": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "config_validate@nofill1": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "config_validate@nofill2": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "config_validate@nofill": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "config_validate@fill1len": {'call #0 memory'},
+    "config_validate@or1": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "config_validate@fill2len": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "config_validate@magicearly": {'call #0 memory'},
+    "config_validate@nodefaults": {'call #0', 'call #0 memory', 'call #1', 'call #2', 'call #3', 'call #3 memory', 'call #4'},
+    "config_validate@magicbe": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "config_validate@touchorder": {'call #1', 'call #2'},
+    "config_validate@notouch2": {'call #2', 'call #3', 'call #3 memory', 'call #4'},
+    "config_validate@notouch0": {'call #3', 'call #3 memory', 'call #4'},
+    "config_validate@noda7": {'byte', 'call #4 memory'},
+    "config_validate@da7": {'byte', 'call #4 memory'},
+    "config_validate@noget": {'call #4'},
+    "config_validate@getfield": {'call #4'},
 }   # D6A_KINDS end
 D6A_CASES = [
     ("text_blit_glyph@chmask", ['g3', 'g4']),
@@ -29161,6 +29182,26 @@ D6A_CASES = [
     ("config_set_defaults@f2a", ['t0', 't1', 't2']),
     ("config_set_defaults@nokeys", ['t0', 't1', 't2']),
     ("config_set_defaults@keysfirst", ['t0', 't1', 't2']),
+    ("config_validate@noda5", ['v0', 'v1', 'v2', 'v3', 'v4']),
+    ("config_validate@noda4", ['v0', 'v1', 'v2', 'v3', 'v4']),
+    ("config_validate@noret", ['v3']),
+    ("config_validate@or6", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@nofill1", ['v1', 'v2', 'v4']),
+    ("config_validate@nofill2", ['v1', 'v2', 'v4']),
+    ("config_validate@nofill", ['v1', 'v2', 'v4']),
+    ("config_validate@fill1len", ['v1', 'v2', 'v4']),
+    ("config_validate@or1", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@fill2len", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@magicearly", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@nodefaults", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@magicbe", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@touchorder", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@notouch2", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@notouch0", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@noda7", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@da7", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@noget", ['v0', 'v1', 'v2', 'v4']),
+    ("config_validate@getfield", ['v0', 'v1', 'v2', 'v4']),
 ]   # D6A_CASES end
 D6A_OUTSIDE = {}
 P45_OUTSIDE.update(D6A_OUTSIDE)
@@ -30233,7 +30274,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
-        0x51ED8: (), 0x2CCD0: (), 0x1AE20: (),
+        0x51ED8: (), 0x2CCD0: (), 0x1AE20: (), 0x2CADC: ("edi",),
         # D6 d6a end
         # D5 d5a (record 2026-10-12-reverse-d5a): the stubs its rows add
         0x12658: (), 0x12750: (), 0x12C70: (), 0x13E28: ("edx",), 0x20DF4: ("edx", "edi", "ebp"), 0x28E98: (), 0x2BAF4: (), 0x2C074: (), 0x2C390: (), 0x33EB4: ("ebp",), 0x34978: (), 0x38730: ("edi", "ebp"), 0x38910: (), 0x38B18: ("ebx", "ecx", "edx"), 0x412A0: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x46594: (), 0x49300: (), 0x4F1E4: (), 0x4F980: (),
