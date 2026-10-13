@@ -197,6 +197,25 @@ static void check_state9_countdown(void)
     CHECK_EQ_INT((int)DSW(DS_000F0A64), 6);
     CHECK_EQ_INT((int)DSD(DS_000EF6D8), (long)saved_rng);
 
+    /* The other arm of 0x11EF2: the byte set at the expiry. 0x11EF6 calls the
+     * attract reset 0x10EE4 after the state store, so the hold ends in state 0
+     * with the byte and the mode word rewritten, not in DS_000F0A6C. */
+    const u16 saved_b00 = DSW(DS_00104B00);
+    const u8  saved_a6f = DSB(DS_000F0A6F);
+    DSB(DS_000F0A71) = 1;
+    DSB(DS_000F0A6F) = 0x5A;
+    DSW(DS_00104B00) = 0x1234;
+    DSW(DS_000F0A64) = 9;
+    DSW(DS_000F0A6A) = 1;
+    game_state_step();
+    CHECK_EQ_INT((int)DSW(DS_000F0A6A), 0);
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 0);
+    CHECK_EQ_INT((int)DSB(DS_000F0A71), 0);
+    CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 3);
+    DSW(DS_00104B00) = saved_b00;
+    DSB(DS_000F0A6F) = saved_a6f;
+
     DSD(DS_000EF6D8) = saved_rng;
     DSD(DS_001088D8) = saved_8d8;
     DSB(DS_00104B1D) = saved_b1d;
