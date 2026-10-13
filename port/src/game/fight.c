@@ -4925,7 +4925,7 @@ void fight_effects_pass(void)
                      * counting +0x1F. */
                     if ((DSB(entry + 0x1Cu) & 0x40u) == 0u)  /* 0x4A097 */
                         break;
-                    if (fight_4af04((u32)DSB(entry + 0x20u)) != 0) /* 0x4A0A2 */
+                    if ((u8)fight_4af04((u32)DSB(entry + 0x20u)) != 0u) /* 0x4A0A2/0x4A0A7 `test al,al` */
                         break;
                     u32 k = DSB(DSD(entry + 8u) + 0x4Au);    /* 0x4A0B2 */
                     if (k == 0u) break;                      /* 0x4A0B7 */
