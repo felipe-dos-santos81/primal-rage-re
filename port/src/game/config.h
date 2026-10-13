@@ -92,6 +92,12 @@ u32 hiscore_read(u32 rec, u32 table);
  * `rec` of `table`, moving the later records down one; returns 1, or 0. */
 u32 hiscore_insert(u32 rec, u32 src, u32 table);
 
+/* 0x2DE98. The three high-score tables (kinds 6..8) at boot: each block is
+ * zeroed, then read from the image when `defaults` is 0; with `defaults` set
+ * table 2 takes the five bytes at 0x105DDC. A table that was not read, or
+ * whose read failed, is encoded into the image again. */
+void hiscore_storage_load(u32 defaults);
+
 /* 0x2DDE4 — record §49-R. Ranks `value` against `table`'s records (via
  * 0x2DB58) as an insertion index: `value` packed big-endian to the
  * descriptor's own value-byte width (the same packing hiscore_insert's

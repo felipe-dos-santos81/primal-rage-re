@@ -4526,6 +4526,37 @@ int test_config_storage(void)
         CHECK_EQ_INT(DSD(0x00105DDCu), 0xEEEEEEEEu);
     }
 
+    {
+        /* tables (0x2DE98): the three high-score blocks 0x105E34 (0x78 bytes),
+         * 0x105EAC (0x1C) and 0x105EC8 (5), kinds 6..8. With the flag 0 each is
+         * read back from the image, and a record that fails its check is encoded
+         * again (0x2DF51..0x2DF5C). With the flag set the blocks are zeroed, the
+         * third takes the five bytes at 0x105DDC (0x2DF2B..0x2DF4E) and all three
+         * are encoded after that. */
+        static const u8 five[5] = { 0x71u, 0x72u, 0x73u, 0x74u, 0x75u };
+        u8 want[0x99], got[0x78];
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        for (u32 i = 0u; i < 0x99u; i++) want[i] = (u8)(1u + i);
+        memcpy(mem + 0x00105E34u, want, sizeof want);
+        for (u32 kind = 6u; kind < 9u; kind++) config_storage_touch(kind);
+        mem_fill(0x00105E34u, 0xEEu, 0x99u);
+        hiscore_storage_load(0u);
+        CHECK(memcmp(mem + 0x00105E34u, want, sizeof want) == 0, "tables: read back from the image");
+
+        DSB(SA_IMG + 2u * 0x176u + 2u * 5u) ^= 0x10u;
+        hiscore_storage_load(0u);
+        CHECK_EQ_INT(config_storage_read(0x176u, got, 0x1Cu), 1);
+
+        memcpy(mem + 0x00105DDCu, five, 5u);
+        mem_fill(0x00105E34u, 0xEEu, 0x99u);
+        hiscore_storage_load(1u);
+        CHECK(DSB(0x00105E34u) == 0u && DSB(0x00105EABu) == 0u && DSB(0x00105EACu) == 0u
+              && DSB(0x00105EC7u) == 0u, "tables: the flag zeroes the first two");
+        CHECK(memcmp(mem + 0x00105EC8u, five, 5u) == 0, "tables: the third takes 0x105DDC");
+        CHECK(config_storage_read(0x199u, got, 5u) == 1 && memcmp(got, five, 5u) == 0,
+              "tables: encoded after the copy");
+    }
+
     memcpy(mem + SA_CFG, sv_cfg, sizeof sv_cfg);
     memcpy(mem + SA_IMG - 1u, sv_img, sizeof sv_img);
     return g_failures - before;

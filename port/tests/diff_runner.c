@@ -41776,6 +41776,34 @@ static void b_sa_2d638(const u32 *r, u32 *eax) { (void)r; config_storage_load();
 SA_LD_MUT(len53, 1u)   SA_LD_MUT(cell5b, 2u)  SA_LD_MUT(nofb, 3u)    SA_LD_MUT(ge, 4u)   SA_LD_MUT(magicoff, 5u)
 SA_LD_MUT(magicbe, 6u) SA_LD_MUT(nomagic, 7u) SA_LD_MUT(cell199, 8u) SA_LD_MUT(len4, 9u) SA_LD_MUT(dst, 10u)
 SA_LD_MUT(clear, 11u)
+
+/* 0x2DE98 hiscore_storage_load: EAX = the defaults flag. The mutants restate config.c's body. */
+static void sa_2de98_core(u32 defaults, u32 mut)
+{
+    u32 ent = (mut == 15u) ? 0x0002D45Cu : 0x0002D474u;                          /* @ent */
+    u32 kind = (mut == 13u) ? 0u : 6u;                                           /* @kind */
+    if (mut == 3u) defaults &= 0xFFu;                                            /* @al */
+    for (u32 table = 0u; table < 3u; table++, ent += 8u, kind++) {
+        u32 left = 0u;
+        u32 p = hiscore_locate(0u, table, &left, NULL);
+        if (p == 0u) { menu_fatal_error(0x00080B08u); return; }
+        if (mut != 1u) mem_fill(p, 0, (mut == 2u) ? DSW(ent + 2u) : left);      /* @noclear @clearlen */
+        s32 r = -2;
+        if (defaults == 0u || mut == 4u)                                         /* @readdflt */
+            r = config_storage_read(DSW(ent), mem + p, DSW(ent + 2u));
+        if (r < -1 && mut != 5u) mem_fill(p, 0, (mut == 6u) ? left : DSW(ent + 2u));   /* @norefill @refillleft */
+        if (mut == 14u && r < 0) config_storage_touch(kind);                     /* @order */
+        if ((defaults != 0u || mut == 10u) && table == ((mut == 7u) ? 1u : 2u) && mut != 9u)   /* @copyalways @copy1 @nocopy */
+            for (u32 i = 0u; i < ((mut == 8u) ? 4u : 5u); i++) DSB(p + i) = DSB(0x00105DDCu + i);   /* @copy4 */
+        if (mut != 14u && mut != 12u && ((mut == 11u) ? r <= 0 : r < 0)) config_storage_touch(kind);   /* @notouch @touchle */
+    }
+}
+static void b_sa_2de98(const u32 *r, u32 *eax) { hiscore_storage_load(r[R_EAX]); *eax = 0u; }
+#define SA_HL_MUT(name, n) \
+    static void m_sa_hl_##name(const u32 *r, u32 *eax) { sa_2de98_core(r[R_EAX], n); *eax = 0u; }
+SA_HL_MUT(noclear, 1u)    SA_HL_MUT(clearlen, 2u) SA_HL_MUT(al, 3u)     SA_HL_MUT(readdflt, 4u) SA_HL_MUT(norefill, 5u)
+SA_HL_MUT(refillleft, 6u) SA_HL_MUT(copy1, 7u)    SA_HL_MUT(copy4, 8u)  SA_HL_MUT(nocopy, 9u)   SA_HL_MUT(copyalways, 10u)
+SA_HL_MUT(touchle, 11u)   SA_HL_MUT(notouch, 12u) SA_HL_MUT(kind, 13u)  SA_HL_MUT(order, 14u)   SA_HL_MUT(ent, 15u)
 /* ---- sa bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56783,6 +56811,22 @@ static const binding_t k_bindings[] = {
     { "config_storage_load@len4", m_sa_ld_len4, 0x00000000u },
     { "config_storage_load@dst", m_sa_ld_dst, 0x00000000u },
     { "config_storage_load@clear", m_sa_ld_clear, 0x00000000u },
+    { "hiscore_storage_load",            b_sa_2de98, 0x00000000u },
+    { "hiscore_storage_load@noclear", m_sa_hl_noclear, 0x00000000u },
+    { "hiscore_storage_load@clearlen", m_sa_hl_clearlen, 0x00000000u },
+    { "hiscore_storage_load@al", m_sa_hl_al, 0x00000000u },
+    { "hiscore_storage_load@readdflt", m_sa_hl_readdflt, 0x00000000u },
+    { "hiscore_storage_load@norefill", m_sa_hl_norefill, 0x00000000u },
+    { "hiscore_storage_load@refillleft", m_sa_hl_refillleft, 0x00000000u },
+    { "hiscore_storage_load@copy1", m_sa_hl_copy1, 0x00000000u },
+    { "hiscore_storage_load@copy4", m_sa_hl_copy4, 0x00000000u },
+    { "hiscore_storage_load@nocopy", m_sa_hl_nocopy, 0x00000000u },
+    { "hiscore_storage_load@copyalways", m_sa_hl_copyalways, 0x00000000u },
+    { "hiscore_storage_load@touchle", m_sa_hl_touchle, 0x00000000u },
+    { "hiscore_storage_load@notouch", m_sa_hl_notouch, 0x00000000u },
+    { "hiscore_storage_load@kind", m_sa_hl_kind, 0x00000000u },
+    { "hiscore_storage_load@order", m_sa_hl_order, 0x00000000u },
+    { "hiscore_storage_load@ent", m_sa_hl_ent, 0x00000000u },
     /* sa table end */
 };
 

@@ -29333,6 +29333,7 @@ SA_MASKS = {
     "config_storage_read": 0xFFFFFFFF,
     "config_storage_touch": 0x0,
     "config_storage_load": 0x0,
+    "hiscore_storage_load": 0x0,
 }   # SA_MASKS end
 SA_KINDS = {
     "config_image_store@lo": {'byte', 'call #0'},
@@ -29383,6 +29384,21 @@ SA_KINDS = {
     "config_storage_load@len4": {'byte'},
     "config_storage_load@dst": {'byte'},
     "config_storage_load@clear": {'byte'},
+    "hiscore_storage_load@noclear": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_storage_load@clearlen": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "hiscore_storage_load@al": {'byte', 'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory'},
+    "hiscore_storage_load@readdflt": {'byte', 'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory'},
+    "hiscore_storage_load@norefill": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_storage_load@refillleft": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "hiscore_storage_load@copy1": {'byte', 'call #1 memory', 'call #2 memory'},
+    "hiscore_storage_load@copy4": {'byte', 'call #2 memory'},
+    "hiscore_storage_load@nocopy": {'byte', 'call #2 memory'},
+    "hiscore_storage_load@copyalways": {'byte', 'call #5 memory'},
+    "hiscore_storage_load@touchle": {'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5'},
+    "hiscore_storage_load@notouch": {'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5'},
+    "hiscore_storage_load@kind": {'call #0', 'call #1', 'call #2', 'call #3', 'call #5'},
+    "hiscore_storage_load@order": {'call #2 memory'},
+    "hiscore_storage_load@ent": {'byte', 'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5 memory'},
 }   # SA_KINDS end
 SA_CASES = [
     ("config_image_store@lo", ['e0']),
@@ -29433,6 +29449,21 @@ SA_CASES = [
     ("config_storage_load@len4", ['o1', 'o2', 'o3', 'o6']),
     ("config_storage_load@dst", ['o1', 'o2', 'o3', 'o6']),
     ("config_storage_load@clear", ['o6']),
+    ("hiscore_storage_load@noclear", ['h0', 'h1', 'h2', 'h3', 'h6', 'h7']),
+    ("hiscore_storage_load@clearlen", ['h6', 'h7']),
+    ("hiscore_storage_load@al", ['h5']),
+    ("hiscore_storage_load@readdflt", ['h4', 'h5']),
+    ("hiscore_storage_load@norefill", ['h2', 'h7']),
+    ("hiscore_storage_load@refillleft", ['h7']),
+    ("hiscore_storage_load@copy1", ['h4', 'h5']),
+    ("hiscore_storage_load@copy4", ['h4', 'h5']),
+    ("hiscore_storage_load@nocopy", ['h4', 'h5']),
+    ("hiscore_storage_load@copyalways", ['h0', 'h1', 'h2', 'h3', 'h6', 'h7']),
+    ("hiscore_storage_load@touchle", ['h3']),
+    ("hiscore_storage_load@notouch", ['h1', 'h2', 'h4', 'h5', 'h7']),
+    ("hiscore_storage_load@kind", ['h1', 'h2', 'h4', 'h5', 'h7']),
+    ("hiscore_storage_load@order", ['h4', 'h5']),
+    ("hiscore_storage_load@ent", ['h0', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7']),
 ]   # SA_CASES end
 SA_OUTSIDE = {}
 P45_OUTSIDE.update(SA_OUTSIDE)
@@ -30506,7 +30537,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # S sa (record 2026-10-13-reverse-s section S.5): the stubs its rows add
-        0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"),
+        0x2EA68: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x2E990: ("ebx", "edx"),
         # S sa end
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
         0x51ED8: (), 0x2CCD0: (), 0x1AE20: (), 0x2CADC: ("edi",), 0x1D250: (), 0x1D270: (), 0x2EA78: ("edi", "ebp"),

@@ -303,6 +303,40 @@ void config_storage_load(void)
         mem_fill(0x00105DDCu, 0, 5u);                   /* 0x2D6DA..0x2D6E6 */
 }
 
+/* 0x2DE98 — record 2026-10-13-reverse-s §S.5. EAX = the defaults flag, tested
+ * as a dword (0x2DEE2, 0x2DF2B). For the tables 0..2, with the kind table's
+ * entries 6..8 (0x2D474) and the kinds 6..8: 0x2DB58(0, table, &left, 0) gives
+ * the block, which is zeroed over `left` bytes (0x2DED6..0x2DEDD). With the
+ * flag 0 the result is 0x2E990(the entry's cell, the block, the entry's
+ * length), else -2 (0x2DEE9). Below -1 the block is zeroed again over the
+ * entry's length (0x2DF11..0x2DF26); with the flag set, table 2 takes the five
+ * bytes at 0x105DDC (0x2DF2B..0x2DF4E); a negative result encodes the kind
+ * (0x2DF51..0x2DF5C). A table 0x2DB58 does not find is the fatal exit
+ * 0x2EA68(0x80B08) (0x2DEC8..0x2DED1). */
+void hiscore_storage_load(u32 defaults)
+{
+    PR_SEAM(0x2DE98u, defaults);
+    u32 ent = 0x0002D474u;                              /* 0x2DEA5 */
+    u32 kind = 6u;                                      /* 0x2DEAA */
+    for (u32 table = 0u; table < 3u; table++, ent += 8u, kind++) {   /* 0x2DEAF, 0x2DF61..0x2DF79 */
+        u32 left = 0u;
+        u32 p = hiscore_locate(0u, table, &left, NULL); /* 0x2DEB9..0x2DEC1 */
+        if (p == 0u) {                                  /* 0x2DEC8 */
+            menu_fatal_error(0x00080B08u);              /* 0x2DECC/0x2DED1 */
+            return;   /* PORT: 0x62003 does not return; the raw's next bytes would fill from address 0 with a stale length. */
+        }
+        mem_fill(p, 0, left);                           /* 0x2DED6..0x2DEDD */
+        s32 r = -2;                                     /* 0x2DEE9 */
+        if (defaults == 0u)                             /* 0x2DEE2 */
+            r = config_storage_read(DSW(ent), mem + p, DSW(ent + 2u));   /* 0x2DEF3..0x2DF0D */
+        if (r < -1) mem_fill(p, 0, DSW(ent + 2u));      /* 0x2DF11..0x2DF26 */
+        if (defaults != 0u && table == 2u)              /* 0x2DF2B..0x2DF35 */
+            for (u32 i = 0u; i < 5u; i++)               /* 0x2DF37..0x2DF4E: a forward copy */
+                DSB(p + i) = DSB(0x00105DDCu + i);
+        if (r < 0) config_storage_touch(kind);          /* 0x2DF51..0x2DF5C */
+    }
+}
+
 /* 0x2D6F8, no-storage path. */
 void config_validate(void)
 {

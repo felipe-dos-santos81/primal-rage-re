@@ -32543,6 +32543,50 @@ SA_SPECS += [
                                       "clear".split())),
 ]
 
+SA_READ = E.Call(0x2E990, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))    # config_storage_read, seamed here
+SA_HS = 0x00105E34                              # the three high-score blocks: 0x78, 0x1C and 5 bytes
+
+
+def sa_tables(cid, flag, read=None, count0=None, wrote=None):
+    """0x2DE98: the three blocks seeded whole with the byte below and the byte past them (0x105E33..
+    0x105ECD); the five bytes 0x105DDC between seeded bytes; `count0` replaces table 0's record count
+    (10 in the image: the word 0x2D3FC); `read` is the 0x2E990 stub's EAX for the case."""
+    p = d1d_chunks(SA_HS - 1, bytes(0x80 | ((3 * i + 1) & 0x7F) for i in range(0x9B)))
+    p[0x00105DDB] = bytes([0xDB]) + SA_FIVE + bytes([0xE1])
+    if count0 is not None:
+        p[0x0002D3FC] = le16(count0)
+    return Case(cid, {**D2E_DIRTY, "eax": flag}, p, {} if read is None else {0x2E990: read})
+
+
+SA_READ_W = dataclasses.replace(SA_READ, writes=((1, 1, bytes([0x51, 0x52, 0x53])),))
+
+SA_SPECS += [
+    # 0x2DE98 hiscore_storage_load: EAX = the defaults flag, a dword (`cmp dword [esp+4],0` 0x2DEE2,
+    # 0x2DF2B: h5 has 0x100). For the tables 0..2: 0x2DB58(0, table, &left, 0) (run on both sides), the
+    # block zeroed over `left` bytes (h6 and h7 poke table 0's count to 9: 0x6C bytes of its 0x78), then
+    # with the flag 0 the result of 0x2E990(cell, block, length) from the entries 0x2D474.. (a stub that
+    # stores three bytes at the block's +1), else -2; below -1 the block is zeroed again over the
+    # entry's length (h2 and h7 give the stub -2, a value 0x2E990 itself never returns: the function's
+    # own test); with the flag set table 2 takes the five bytes 0x105DDC; a negative result calls
+    # 0x2D4EC(6 + table) (a stub). h0: the read gives 1; h1: -1; h3: 0; h4: the flag 1. Mask 0: `mov
+    # eax,ebp` 0x2D917 follows the one call site.
+    Spec("hiscore_storage_load", 0x2DE98, [
+        sa_tables("h0", 0, read=1),
+        sa_tables("h1", 0, read=0xFFFFFFFF),
+        sa_tables("h2", 0, read=0xFFFFFFFE),
+        sa_tables("h3", 0, read=0),
+        sa_tables("h4", 1, read=0x12345678),
+        sa_tables("h5", 0x100, read=1),
+        sa_tables("h6", 0, read=1, count0=9),
+        sa_tables("h7", 0, read=0xFFFFFFFE, count0=9),
+    ], allow_calls=(0x2DB58, 0x61A70, 0x65490, 0x654C7), calls=(SA_READ_W, D5D_TOUCH), eax_mask=0,
+       unhit_named={0x2DECC: "a table 0x2DB58 does not find: 0x2EA68(0x80B08) is the runtime's exit(1), and "
+                             "the image's descriptors 0x2D3FC hold the counts 10, 1, 1 (the port returns, "
+                             "config.c, PORT)"},
+       mutants=tuple("@" + m for m in "noclear clearlen al readdflt norefill refillleft copy1 copy4 nocopy "
+                                      "copyalways touchle notouch kind order ent".split())),
+]
+
 D1_SPECS += SA_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
