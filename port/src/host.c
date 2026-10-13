@@ -355,31 +355,42 @@ int host_write_file(const char *path, const u8 *src, u32 len)
 static char s_save_path[1024];
 static char s_save_fallback[1024];
 
+/* A path that does not fit is no path, not another file. */
+static void save_copy_path(char *dst, size_t max, const char *a, const char *b)
+{
+    if (!a || snprintf(dst, max, "%s%s", a, b) >= (int)max)
+        dst[0] = '\0';
+}
+
 void host_save_set_path(const char *path)
 {
-    snprintf(s_save_path, sizeof s_save_path, "%s", path ? path : "");
+    save_copy_path(s_save_path, sizeof s_save_path, path, "");
 }
 
 void host_save_set_fallback(const char *dir)
 {
-    snprintf(s_save_fallback, sizeof s_save_fallback, "%s", dir ? dir : "");
+    save_copy_path(s_save_fallback, sizeof s_save_fallback, dir, "");
 }
 
 void host_save_set_default_path(void)
 {
     char *pref = SDL_GetPrefPath(NULL, "primal-rage");   /* ends with a separator; NULL on failure */
 
-    s_save_path[0] = '\0';
-    if (pref) {
-        snprintf(s_save_path, sizeof s_save_path, "%scmos", pref);
-        SDL_free(pref);
-    }
+    save_copy_path(s_save_path, sizeof s_save_path, pref, "cmos");
+    SDL_free(pref);
 }
 
+/* The raw's fread(image, 1, 0x7F8, file) (0x1B017): a longer file gives its
+ * first `len` bytes, a shorter one fails. */
 static int save_read_exact(const char *path, u8 *dst, u32 len)
 {
-    u32 got = 0;
-    return host_read_file(path, dst, len, &got) && got == len;
+    FILE *f = fopen(path, "rb");
+    size_t n;
+
+    if (!f) return 0;
+    n = fread(dst, 1, (size_t)len, f);
+    fclose(f);
+    return n == (size_t)len;
 }
 
 int host_save_read(u8 *dst, u32 len)
@@ -404,9 +415,13 @@ int host_save_writable(void)
 {
     FILE *f;
 
+    long end;
+
     if (!s_save_path[0] || (f = fopen(s_save_path, "ab")) == NULL)
         return 0;
+    end = (fseek(f, 0, SEEK_END) == 0) ? ftell(f) : -1;
     fclose(f);
+    if (end == 0) remove(s_save_path);   /* the probe leaves no empty save behind */
     return 1;
 }
 

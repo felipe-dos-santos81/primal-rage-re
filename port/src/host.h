@@ -92,11 +92,13 @@ void host_save_set_fallback(const char *dir);
 /* Sets the save path to "cmos" in SDL's per-user directory for this app
  * (SDL_GetPrefPath, which creates it); no save path when SDL has none. */
 void host_save_set_default_path(void);
-/* Reads exactly `len` bytes: from the save path when that file exists (a file
- * of another length is a failed read), else from `cmos` or `CMOS` in the
- * fallback directory. Returns 1 on success, else 0. */
+/* Reads `len` bytes: from the save path when that file exists (a shorter file
+ * is a failed read; a longer one gives its first `len` bytes, as the raw's
+ * fread does), else from `cmos` or `CMOS` in the fallback directory. Returns 1
+ * on success, else 0. */
 int  host_save_read(u8 *dst, u32 len);
-/* 1 when the save path can be opened for writing (it never truncates). */
+/* 1 when the save path can be opened for writing (it never truncates and
+ * leaves no empty file behind). */
 int  host_save_writable(void);
 /* Writes `len` bytes to the save path only. Returns 1 when every byte was
  * written, else 0 (no save path included). */

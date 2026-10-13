@@ -42283,7 +42283,7 @@ static char sc_dir[40], sc_path[64];
 static void sc_begin(const char *sub)
 {
     snprintf(sc_dir, sizeof sc_dir, "/tmp/pr_sc_XXXXXX");
-    if (mkdtemp(sc_dir) == NULL) sc_dir[0] = '\0';
+    if (mkdtemp(sc_dir) == NULL) { perror("diffrun: mkdtemp"); exit(2); }
     snprintf(sc_path, sizeof sc_path, "%s/%scmos", sc_dir, sub);
     host_save_set_path(sc_path);
     host_save_set_fallback(NULL);

@@ -4502,6 +4502,20 @@ int test_config_storage(void)
     }
 
     {
+        /* slot (0x2D498's bounds under 0x2D4EC(0)): with the slot byte 13 the
+         * record starts at cell 0x1A3 + 45 * 13 = 0x3EC, which passes the bound
+         * (0x3EC + 45 < 0x7F8), but its last cell, position 44, is image offset
+         * 0x830, past 0x7F8: the raw takes the fatal exit on that first store
+         * (track S audit F1), so no cell is written. */
+        u8 sv_slot = DSB(0x00105E2Fu);
+        mem_fill(SA_IMG, 0x5Au, SA_IMG_LEN);
+        DSB(0x00105E2Fu) = 13u;
+        config_storage_touch(0u);
+        CHECK(sa_image_is(0x5Au), "slot 13: no cell is stored after the store outside the image");
+        DSB(0x00105E2Fu) = sv_slot;
+    }
+
+    {
         /* load (0x2D638), the reader of the older layout: a 0x51-byte record at
          * cell 0 with a second copy at cell 0x2D4B4(0x51) = 0x59, the magic at
          * +0x4D, and a 5-byte record at cell 0x195 that goes to 0x105DDC. Here the
@@ -8833,17 +8847,21 @@ int test_config_file(void)
     CHECK_EQ_INT(config_file_load(), 1);
     CHECK(cf_image_is(0xFFu), "no file gives the 0xFF image");
 
-    /* short and long: a file of another length is a failed read (PORT, config.c); nothing is read
-     * past the image. The long file's first 0x7F8 bytes are a valid image. */
+    /* short: a file below 0x7F8 bytes is a failed read (PORT, config.c: the raw exits at 0x1B04D).
+     * long: fread(…, 1, 0x7F8) of a longer file gives its first 0x7F8 bytes (0x1B017, 0x1B025), a
+     * valid image here, and nothing is read past the image. */
     file[0x123] ^= 0x10u;
     file[CF_LEN] = 0x77u;
-    for (u32 n = CF_LEN - 1u; n <= CF_LEN + 1u; n += 2u) {
-        CHECK(host_write_file(cf_path, file, n), "the wrong-length file");
-        mem_fill(CF_IMAGE, 0x55u, CF_LEN);
-        CHECK_EQ_INT(config_file_load(), 1);
-        CHECK(cf_image_is(0xFFu), "a wrong length gives the 0xFF image");
-        CHECK_EQ_INT(DSB(DS_001014DC), 0xA5);
-    }
+    CHECK(host_write_file(cf_path, file, CF_LEN - 1u), "the short file");
+    mem_fill(CF_IMAGE, 0x55u, CF_LEN);
+    CHECK_EQ_INT(config_file_load(), 1);
+    CHECK(cf_image_is(0xFFu), "a short file gives the 0xFF image");
+    CHECK_EQ_INT(DSB(DS_001014DC), 0xA5);
+    CHECK(host_write_file(cf_path, file, CF_LEN + 1u), "the long file");
+    mem_fill(CF_IMAGE, 0x55u, CF_LEN);
+    CHECK_EQ_INT(config_file_load(), 0);
+    CHECK_EQ_INT(memcmp(mem + CF_IMAGE, file, CF_LEN), 0);
+    CHECK_EQ_INT(DSB(DS_001014DC), 0xA5);
 
     /* the teardown saves (0x1BEB5). */
     (void)unlink(cf_path);

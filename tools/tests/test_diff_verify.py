@@ -29844,8 +29844,8 @@ SA_KINDS = {
     "config_storage_validate@to5": {'byte', 'call #2', 'call #4', 'call #5'},
     "config_storage_validate_rr@lencache": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
     "config_storage_validate_rr@srcreread": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
-    "config_validate@noda5": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
-    "config_validate@noda4": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
+    "config_validate@noda5": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9', 'call #10'},   # the unzeroed byte reaches 0x2DAE4 (0x2D962)
+    "config_validate@noda4": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9', 'call #10'},   # the unzeroed byte reaches 0x2DAE4 (0x2D962)
     "config_validate@noret": {'byte', 'call #1', 'call #2', 'call #3'},
     "config_validate@or6": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
     "config_validate@nofill1": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory', 'call #6 memory', 'call #7 memory'},
@@ -31424,10 +31424,10 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (796 after track D's wave 6, batch d6a);
+        # the closed-row count is over the rows that have callees (821 after track S, the storage layer);
         # the 167 without are counted apart
-        self.assertIn("diff-verify: 963/963 functions VERIFIED; 14349/14349 mutants detected; 1 named gaps; "
-                      "604/796 rows with callees closed (167 have none).", out.getvalue())
+        self.assertIn("diff-verify: 988/988 functions VERIFIED; 14706/14706 mutants detected; 1 named gaps; "
+                      "622/821 rows with callees closed (167 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

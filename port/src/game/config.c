@@ -170,6 +170,8 @@ void config_storage_touch(u32 kind)
         }
         fr[0] ^= ch;                                    /* 0x2D609 */
         config_image_store(at, ch);                     /* 0x2D60C..0x2D612 */
+        if (at < 0x00100CE4u || at >= 0x001014DCu)      /* 0x2D498's bounds: it took the fatal exit */
+            return;   /* PORT: 0x62003 does not return, so the raw makes no later store; the port stops the encode. */
     }
 }
 
@@ -690,7 +692,11 @@ void config_play_time_close(u32 mode, u32 flag)
      * 0x3840 it zeroes it and, for each DS_00107488[i] > 0xE10 (i = 0..2),
      * keeps the remainder mod 0xE10 and posts 0x2DAE4(3 + i, quotient);
      * and DS_00107494 = AL = 0 (0x32A28), clearing the mode mask. It
-     * preserves EDX (0x32972 push). */
+     * preserves EDX (0x32972 push). Until it is ported DS_0010746C[1..2]
+     * are only ever zeroed: every time value posted here and by 0x32B00 and
+     * 0x32B4C is 0 (the time totals do not move, the time histograms count
+     * bucket 0), and fields 3..5 and the slot byte DS_00105E2F never move
+     * (record 2026-10-13-reverse-s §S.8, audit F2). */
     u32 ticks = DSD(DS_0010746C + idx * 4u);            /* 0x32A4F */
     DSD(DS_0010746C + idx * 4u) = 0u;                   /* 0x32A56 */
     if (idx == 0u) return;                              /* 0x32A5D/0x32A5F */
@@ -1320,11 +1326,11 @@ void config_keys_load(u32 rec)
  * PORT: 0x1AFFB 0x61C60 fopen("cmos", "rb" 0x80598), 0x1B017 0x61CF6 fread(0x100CE4, 1, 0x7F8, file)
  * and 0x1B020 0x61EC0 fclose (its result is not read: 0x1B02D and 0x1B04D load EAX) are the host's one
  * host_save_read, whose path is the save file or the game dir's copy and not the current directory's.
- * Its 0 stands for fopen's NULL. It is 0 for a file of another length too, where the raw differs: a
- * count below 0x7F8 ends the program there (0x1B025 `jne`, 0x1B04D..0x1B054 0x62003(1), the runtime's
- * exit, which does not return) and a longer file is read for its first 0x7F8 bytes. The port takes
- * the missing file's path for both, which is also what the bytes after the exit call do (CL = 1 at
- * 0x1B052, `jmp 0x1B05D`). */
+ * Its 0 stands for fopen's NULL. A longer file is read for its first 0x7F8 bytes, as the raw's fread
+ * does. It is 0 for a shorter file too, where the raw differs: a count below 0x7F8 ends the program
+ * there (0x1B025 `jne`, 0x1B04D..0x1B054 0x62003(1), the runtime's exit, which does not return) and
+ * leaves the file as it is. The port takes the missing file's path instead, which is what the bytes
+ * after the exit call do (CL = 1 at 0x1B052, `jmp 0x1B05D`), so the next save replaces the short file. */
 u32 config_file_load(void)
 {
     u32 fail = 1u;                                         /* 0x1B05B */

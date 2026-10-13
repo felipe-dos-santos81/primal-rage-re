@@ -57,7 +57,8 @@ Out of scope:
   add at `0x32A17` stays omitted and stays named;
 - the CD-drive wrappers `0x10D34`/`0x10D0C` that bracket the file I/O
   (host-owned, record §50-E; they stay no-ops);
-- the error printer `0x2EA68`, a named no-op.
+- `0x2EA68`, which the port keeps returning. It is not a printer: its bytes are `mov eax,1; jmp
+  0x62003`, the runtime's exit (corrected by batch `sa`; record §S.5, §S.8 F1).
 
 ## 3. What the bytes say so far
 
@@ -67,8 +68,10 @@ this is a port constant yet.
 
 - `0x1AFE8` opens `cmos` (`0xA2C5C`, mode `"rb"` `0x80598`), reads `0x7F8` bytes
   to `0x100CE4` and XORs bytes `0..0x7F6` against the last byte `0x1014DB`. A
-  missing file, a short read or a checksum mismatch fills the image with `0xFF`
-  (`0x61A70(0x100CE4, 0xFF, 0x7F8)`).
+  missing file or a checksum mismatch fills the image with `0xFF`
+  (`0x61A70(0x100CE4, 0xFF, 0x7F8)`). A short read does not: it ends the program
+  (`0x1B04D..0x1B054`, `0x62003(1)`), and a longer file is read for its first
+  `0x7F8` bytes (corrected by batch `sc`; record §S.7, §S.8 F3/F4).
 - `0x1B084` opens `cmos` for `"wb"` (`0x8059C`), calls `0x2D4EC(1)` and
   `0x2D4EC(2)`, stores the XOR of bytes `0..0x7F6` in `0x1014DB` and writes
   `0x7F8` bytes.

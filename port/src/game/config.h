@@ -153,8 +153,9 @@ void config_credits_init(void);
 
 /* 0x32A3C. The play-time audit close: takes and zeroes the per-mode tick
  * accumulator DS_0010746C[mode & 3] and, for a mode other than 0, posts the
- * game count and the seconds through audit_add (0x2DAE4). Its run-clock call
- * 0x32970 is out of scope (host-owned). Callers: 0x41578, 0x26F58, 0x277C0,
+ * game count and the seconds through audit_add (0x2DAE4). PORT: its run-clock
+ * call 0x32970 is not ported (nor is any of that function's 17 call sites), so
+ * the accumulators never advance and the seconds posted are 0. Callers: 0x41578, 0x26F58, 0x277C0,
  * 0x28788 and 0x41C28 (all ported) and the dead 0x2861C region. */
 void config_play_time_close(u32 mode, u32 flag);
 

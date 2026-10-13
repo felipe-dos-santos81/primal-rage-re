@@ -4067,14 +4067,19 @@ int test_host_save(void)
     /* writable: the save path wins over the fallback from then on */
     CHECK_EQ_INT(mkdir(sub, 0700), 0);
     CHECK_EQ_INT(host_save_writable(), 1);
+    CHECK(access(save, F_OK) != 0, "the writable probe leaves no empty save behind");
     CHECK_EQ_INT(host_save_write(want, 8), 1);
     memset(buf, 0xEE, sizeof buf);
     CHECK_EQ_INT(host_save_read(buf, 8), 1);
     CHECK_EQ_INT(memcmp(buf, want, 8), 0);
 
-    /* a wrong length is a failed read, and the fallback does not stand in for it */
-    CHECK_EQ_INT(host_save_read(buf, 7), 0);        /* the file is longer */
-    CHECK_EQ_INT(host_save_read(big, 9), 0);        /* the file is shorter */
+    /* a longer file gives its first bytes (the raw's fread, 0x1B017); a shorter one is a failed
+     * read, and the fallback does not stand in for it */
+    memset(buf, 0xEE, sizeof buf);
+    CHECK_EQ_INT(host_save_read(buf, 7), 1);
+    CHECK_EQ_INT(memcmp(buf, want, 7), 0);
+    CHECK_EQ_INT(buf[7], 0xEE);
+    CHECK_EQ_INT(host_save_read(big, 9), 0);
 
     host_save_set_path(NULL);
     host_save_set_fallback(NULL);

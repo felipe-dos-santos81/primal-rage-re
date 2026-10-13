@@ -80,7 +80,8 @@ Notes that correct the plan's name table:
   `jb` at `0x2E18B`, `0x2E0AD`, `0x2E03D`) and return -1 past it.
 - `0x2E990(EAX = cell, EDX = dst, EBX = len)` returns 1 (`0x2EA1C`) or -1 (`0x2EA23`) and nothing else.
 - `0x2D498(EAX = address, DL = value)`: `0x100CE4 <= EAX < 0x1014DC` stores the byte, else
-  `jmp 0x2EA68` with `EAX = 0x80AA8` (the named no-op printer).
+  `jmp 0x2EA68` with `EAX = 0x80AA8`. (`0x2EA68` is the runtime's exit, `mov eax,1; jmp 0x62003`,
+  not a printer: §S.5.)
 
 ## §S.3 What the full chain leaves behind (measured)
 
@@ -143,8 +144,9 @@ today; "—" means the port names nothing at that address and the batch finds th
 | `0x32B94` | `0x2786B` | `0x277C0` | ported | `flow.c` ~4367 (`PORT:`) | `sb` |
 | `0x32BB0` | `0x27E28` | `0x27DC8` | ported | `flow.c` ~3010 (`PORT:`) | `sb` |
 
-Every containing function is ported except `0x32970`. The two sites the spec had not checked
-(`0x1E9BB`, `0x1E9EB`) are in the ported `hiscore_audit_reset_due`.
+Every containing function is ported except `0x32970`. Correction (§S.6): `0x1E9BB` and `0x1E9EB` are
+not in `0x1E988`. They sit in two fragments (`0x1E9B0..0x1E9DC`, `0x1E9E0..0x1EA07`) that nothing in
+the image references; nothing is wired there and the two rows above that name them are wrong.
 
 ## §S.5 Batch `sa`: the image and its validators
 
@@ -1072,3 +1074,45 @@ earlier, inside `actors_init`, and has no line in this block for `0x4F1E4`, `0x2
 - `PR_ORACLE_REQUIRED=1 ./build/run_tests` and `PR_RESTART=1 PR_GAME_DIR=data/game/C ./build/run_tests`: `all
   checks passed`.
 - Not run: `make verify`, the harness unittest suite, any oracle. The counter pin is the integrator's.
+
+## §S.8 Integration and the audit
+
+**Integration** (`reverse-sint`). The three batches were merged with the additive compose merge (no
+conflicting change). The one cross-batch site, `0x2D94B..0x2D962`, is wired: `config_validate` calls
+`audit_add(0x24, [0x105DA4] + [0x105DA5])` when the sum is not zero. Both bytes are zeroed at entry
+and no other instruction names them, so the row `config_validate_audit` reaches the call through a
+`0x2DF8C` stub that stores them (2 cases, mutants `@noaudit`, `@auditsum`, `@auditfield`, each caught
+by the call list). Wiring it moved two pins: `config_validate@noda5` and `@noda4` (the mutants that
+do not zero the bytes) now also differ in the call list. The 14 storage rows left
+`tools/port_classification.txt`; `tools/port_progress.py` prints `785 1203 65` and `745 745 100`.
+Counter: `988/988 functions VERIFIED; 14706/14706 mutants detected; 1 named gaps; 622/821 rows with
+callees closed (167 have none)` (25 rows and 357 mutants over track D's last line).
+
+**Audit** (one read-only agent, re-deriving from the bytes; its report is in the ledger). It found the
+bodies of the 16 functions and the changed call sites equal to the bytes, and backed that with its own
+whole-chain run (the original under unicorn against the port with every callee real, the whole data
+object compared: 2,720 random cases, no difference, the defaults writer included). Its findings, and
+what was done:
+
+| # | Finding | Outcome |
+|---|---|---|
+| F1 | `0x2EA68` does not return (`0x62003`, `int 0x21 AH=4Ch`); the port's `menu_fatal_error` returns. With the slot byte `0x105E2F` at 13..35, `0x2D4EC(0)` passes the bound `0x2D56A` and its first store (position 44) is outside the image: the raw exits with no store, the port stored the 16 cells that land inside | **Fixed in part.** `config_storage_touch` stops the encode after a store outside the image, so the image is what the raw leaves (unit case `slot 13`, mutation-proved). The port still returns where the raw exits: **named gap**, with `0x2D508`, `0x2D571`, `0x2DECC` |
+| F2 | The run clock `0x32970` is not ported, nor any of its 17 call sites, so `0x10746C[1..2]` are only ever zeroed: the time values posted by `0x32A3C`, `0x32B00`, `0x32B4C` are 0 (time totals do not move, the time histograms count bucket 0), fields 3..5 are never posted and the slot byte never steps. The rows pass because their cases pin the clock to the state where it changes nothing | **Named gap**, the track's largest. The comments in `config.c` and `config.h` now say so. Porting `0x32970` needs a tick source for `0x105D88` and is a track of its own |
+| F3 | A `cmos` longer than `0x7F8` bytes: the raw's `fread` takes its first `0x7F8` bytes and can load it; the port refused it | **Fixed.** `host_save_read` reads the first `len` bytes of a longer file (unit cases `long` in `test_config_file` and `test_host_save`, mutation-proved) |
+| F4 | A shorter `cmos`, or a short write: the raw exits (`0x1B04D`, `0x1B0F7`) and leaves the file; the port takes the missing-file path and the next save replaces the file | **Named deviation**, kept on purpose: a damaged save does not stop the port |
+| F5 | The rows of `0x1AFE8` and `0x1B084` run under six code pokes (the libc calls become `mov eax,imm32`) and the byte `0x101520 = 1`: they do not see the file calls' arguments, any count but `0x7F8`, the host's path choice, a failed write after a successful open, or `0x10D34`/`0x10D0C` | **Named**: two rows of the weaker class |
+| F6 | No row runs `0x2CADC` with the storage real; `config_validate_rr`/`_audit` and the `0x2E990` stubs prove re-reads and values the image cannot produce | **Named**. The audit's own run covered the defaults writer (312 cases); the gate does not |
+| F7 | No recording of the original behind a written or a loaded save | Task 8 (`save-reload`), or the track's main named gap |
+| F8 | Host: a path that does not fit was cut silently; the writable probe left an empty file; the runner's scratch path fell back to `/cmos` when `mkdtemp` failed | **Fixed** (a path that does not fit is no path; the probe removes an empty file, mutation-proved; the runner stops). The path fix has no assertion: on this host a path that does not fit the buffer cannot be opened either |
+| F9 | The gate's port side reads `data/game/C/CMOS` and nothing checked it is the captures' file | **Fixed.** `make verify` starts with `check_cmos` (`cmos=zero` or `absent`, else it fails) |
+| F10, F11 | Statements the bytes contradict (the spec's `0x2EA68` and short read, this record's §S.2 and §S.4) and docs not yet updated | **Fixed** here and in the track's docs commit |
+
+Not settled (the audit's PLAUSIBLE items): whether the original can itself save a slot byte of 13 or
+more (the runtime's exit-routine walk `0x6C4CF` was not traced); the two "nothing else stores it"
+claims rest on absolute-operand scans (the byte `0x2D490`; `0x105DA4`/`0x105DA5`); which statistics
+screens a capture compares under F2 (the gate decides); and that a checksum-valid save is now input to
+39 `config_field_get` consumers that were not audited for an index leaving `mem[]`.
+
+Also open, found by batch `sc` and not changed: the port's inlined `0x2F9CC` has no line for
+`0x4F1E4(0)`, `0x2BAF4(1)`, `0x4F1D0(0,0)`, `0x38B18(0x9AD84)`, `0x2C9B8(0)`, `0x2C8F0(-1)` and
+`0x2C8F0(-2)`, and runs `0x13ADC` earlier, inside `actors_init`.
