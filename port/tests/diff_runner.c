@@ -17775,7 +17775,8 @@ static void m_d1i_fs_byte(const u32 *r, u32 *eax)      { *eax = d1i_51f72_core(r
 
 /* 0x32B00 config_play_time_snap and 0x32B4C config_play_time_snap_b (EAX = idx, EDX = arm) and
  * 0x32A3C config_play_time_close (EAX = mode, EDX = flag): only the arms that do not reach the
- * deferred audit layer (0x2E934, 0x2DAE4) are exercised (record §4). On those arms the raw leaves
+ * audit layer (0x2E934, 0x2DAE4) are exercised here (record §4); the `_audit` rows of track S batch
+ * sb exercise the others. On those arms the raw leaves
  * EAX = idx << 2 (0x32B08/0x32B54 `shl eax,2`, not rewritten) and EAX = 0x107488 (0x32A2D in the
  * run clock 0x32970); the port's functions are void, so the bindings state those values and the
  * EAX comparison documents the raw, not the port (0x25EF8, 0x28E44, 0x27E02.. reload EAX;
@@ -32517,7 +32518,7 @@ D4C_CG_MUT(notermzero, 33u) D4C_CG_MUT(durgt, 34u) D4C_CG_MUT(duruns, 35u) D4C_C
 D4C_CG_MUT(noadv30, 37u) D4C_CG_MUT(noadv31, 38u) D4C_CG_MUT(noinc31, 39u) D4C_CG_MUT(duroff, 40u)
 D4C_CG_MUT(stride, 41u) D4C_CG_MUT(noinc0c, 42u) D4C_CG_MUT(inc0cw, 43u)
 /* 0x43D60 fight_char_confirm: EAX = side. One restatement with one choice flipped per mutant
- * number (M(n): the mutant n is not selected). The deferred audit post is left out, as in the port. */
+ * number (M(n): the mutant n is not selected). The audit post 0x2E934 is track S batch sb's (SB_M_*). */
 static u32 d4c_43d60_core(const u32 *r, u32 mut)
 {
 #define M(n) (mut != (n))

@@ -23780,7 +23780,7 @@ def d4c_confirm_case(cid, side, cur, btn, o6e=0xFF, o34=0x42, o70=1, o6a=0x62, s
     `o6e`, button byte `o34`, state `o70` and class `o6a`, the side's own confirmed class `s6e`;
     the seven stage bytes 0x108106 (the class the cursor picks tagged with the side, with the other
     side, the next class, the same with bit 7, and three that match nothing) and the count
-    0x108111 between their neighbours; and the audit counter turned off. `btn` is the 0x43D0C
+    0x108111 between their neighbours. `btn` is the 0x43D0C
     stub's EAX."""
     o = 1 - side
     cls = image_byte_c8882(cur)
