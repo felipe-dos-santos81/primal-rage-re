@@ -357,37 +357,56 @@ void config_storage_validate(u32 defaults)
     }
 }
 
-/* 0x2D6F8, no-storage path. */
+/* 0x2D6F8 — record 2026-10-13-reverse-s §S.5. No argument. The bytes 0x105DA5
+ * and 0x105DA4 = 0, then the older layout's reader 0x2D638. The first copy of
+ * the field buffer is read in place, 0x2E990(0, 0x105DE1, 0x53), the second
+ * into the frame, 0x2E990(0x5B, the frame, 0x53) (0x5B is the loop
+ * 0x2D730..0x2D73C on 0x53). A failed read with the byte 0x2D490 zero returns
+ * (0x2D74C..0x2D76A). The copy with the greater result wins: the second is
+ * copied over the buffer with the flags byte 0x105DD8 |= 2 and 0x2D4EC(1)
+ * repairs the first (0x2D76F..0x2D7A9); the first keeps the buffer with |= 4
+ * and 0x2D4EC(2) repairs the second (0x2D7C9..0x2D7EB). The two repairs that
+ * follow a negative winner (0x2D7AE..0x2D7C0, 0x2D7F0..0x2D802) and the
+ * `< -1` tests (0x2D828, 0x2D8E6) never hold, 0x2E990 returning 1 or -1.
+ * Without the magic at 0x105E30 the defaults arm runs (0x2D83A..0x2D8B9);
+ * with it the trailing-byte record is read from its slot, 0x2E990(0x2D4B4(0x26)
+ * * [0x105E2F] + 0x1A3, 0x105DB0, 0x26), and encoded again when the read fails
+ * (0x2D8BB..0x2D90B). Then 0x2DE98 and 0x2DF8C with the defaults flag, and the
+ * tail. Each test of the byte 0x2D490 reads it again. EAX at the return is the
+ * lower result, the winner or 0x2D974's value; the one caller loads EAX next
+ * (0x2FA10). */
 void config_validate(void)
 {
     DSB(DS_00105DA5) = 0u;                         /* 0x2D70F */
     DSB(DS_00105DA4) = 0u;                         /* 0x2D715 */
+    config_storage_load();                         /* 0x2D71B */
+    s32 r1 = config_storage_read(0u, mem + DS_00105DE1, 0x53u);   /* 0x2D720..0x2D72E */
+    u8 two[0x53];                                  /* [esp] */
+    s32 r2 = config_storage_read(config_codeword_len(0x53u), two, 0x53u);   /* 0x2D730..0x2D74A */
 
-    /* PORT: 0x2D638's storage load and the two 0x2E990 reads are declared
-     * no-ops (spec §7; 0x2D638 and 0x2DE98 stay deferred, record §49-Y); a
-     * storage-absent read reports -1, so there is no stored image, the magic
-     * cannot match, and validate takes the defaults path. */
-    s32 read1 = -1;
-    s32 read2 = -1;
+    if ((r1 < 0 || r2 < 0) && DSB(DS_0002D490) == 0u)   /* 0x2D74C..0x2D75B */
+        return;                                    /* 0x2D75D..0x2D76A */
 
-    /* 0x2D754: taken only when a read failed AND DS_0002D490 is clear. The
-     * shipped image holds 4 there, so this never fires. */
-    if ((read1 < 0 || read2 < 0) && DSB(DS_0002D490) == 0u)
-        return;
+    s32 r = r1;                                    /* ESI */
+    if (r2 > r1) {                                 /* 0x2D76F */
+        DSB(DS_00105DD8) |= 2u;                    /* 0x2D778..0x2D786 */
+        memcpy(mem + DS_00105DE1, two, sizeof two);    /* 0x2D773..0x2D798 */
+        if (DSB(DS_0002D490) != 0u) config_storage_touch(1u);   /* 0x2D79B..0x2D7A9 */
+        if (r2 < 0 && DSB(DS_0002D490) != 0u) config_storage_touch(2u);   /* 0x2D7AE..0x2D7C0 */
+        r = r2;                                    /* 0x2D7C5 */
+    } else if (r1 > r2) {                          /* 0x2D7C9 */
+        DSB(DS_00105DD8) |= 4u;                    /* 0x2D7CD..0x2D7DC */
+        if (DSB(DS_0002D490) != 0u) config_storage_touch(2u);   /* 0x2D7D6..0x2D7EB */
+        if (r1 < 0 && DSB(DS_0002D490) != 0u) config_storage_touch(1u);   /* 0x2D7F0..0x2D802 */
+    }
 
-    /* 0x2D76F: version arms. With both reads -1 neither runs; the raw's
-     * stack-buffer copy into DS_00105DE1 has no stored image to copy. */
-    if (read2 > read1)
-        DSB(DS_00105DD8) |= 2u;                    /* 0x2D786 */
-    else if (read1 > read2)
-        DSB(DS_00105DD8) |= 4u;                    /* 0x2D7DC */
-
-    /* 0x2D820: the four bytes at DS_00105E30 read as a little-endian u32. */
-    if (DSD(DS_00105E30) != 0x9C94D2C4u || read1 < -1) {
-        /* 0x2D83A: defaults. The two 0x61A70 calls clear the stored-image
-         * buffer 0x105DE1 (0x53 bytes: it holds DS_00105E2F and the magic) and
-         * the config-field block 0x105DB0 (0x26 bytes) before the defaults
-         * writer runs. */
+    /* 0x2D807..0x2D82D: the four bytes at DS_00105E30 read as a little-endian u32. */
+    u32 defaults = (DSD(DS_00105E30) != 0x9C94D2C4u || r < -1) ? 1u : 0u;   /* EBP */
+    if (defaults != 0u) {                          /* 0x2D832 */
+        /* 0x2D83A: defaults. The two 0x61A70 calls clear the field buffer
+         * 0x105DE1 (0x53 bytes: it holds DS_00105E2F and the magic) and the
+         * trailing-byte block 0x105DB0 (0x26 bytes) before the defaults writer
+         * runs. */
         DSB(DS_00105DD8) |= 6u;                    /* 0x2D84F */
         mem_fill(0x00105DE1u, 0, 0x53u);           /* 0x2D83A..0x2D855 0x61A70 */
         DSB(DS_00105DD8) |= 1u;                    /* 0x2D86F */
@@ -395,26 +414,29 @@ void config_validate(void)
         DSB(DS_00105E2F) = 0u;                     /* 0x2D881 */
         config_set_defaults();                     /* 0x2D886 */
         DSD(DS_00105E30) = 0x9C94D2C4u;            /* 0x2D88D */
-        /* Record §27 of 2026-09-29-todo-verify-derivations.md: the defaults
-         * arm ends with the three storage calls when DS_0002D490 is set. */
         if (DSB(DS_0002D490) != 0u) {              /* 0x2D89C/0x2D8A3 */
             config_storage_touch(1u);              /* 0x2D8A5/0x2D8AA */
             config_storage_touch(2u);              /* 0x2D8AF/0x2D8B4 */
             config_storage_touch(0u);              /* 0x2D8B9 -> 0x2D909/0x2D90B */
         }
+    } else {
+        u32 cell = config_codeword_len(0x26u) * DSB(DS_00105E2F) + 0x1A3u;   /* 0x2D8BB..0x2D8DA */
+        s32 r3 = config_storage_read(cell, mem + 0x00105DB0u, 0x26u);   /* 0x2D8D0..0x2D8E4 */
+        if (r3 < -1) mem_fill(0x00105DB0u, 0, 0x26u);   /* 0x2D8E6..0x2D8F7 */
+        if (r3 < 0 && DSB(DS_0002D490) != 0u)      /* 0x2D8FC..0x2D907 */
+            config_storage_touch(0u);              /* 0x2D909/0x2D90B */
     }
-    /* PORT: the other arm (0x2D8BB) reads the stored image through the deferred
-     * 0x2E990 and calls 0x2D4EC(0) (0x2D909) only when that read fails with
-     * DS_0002D490 set; with no stored image the port has neither (record §27). */
 
-    /* PORT: 0x2D912 0x2DE98(1) and 0x2D919 0x2DF8C(1) are deferred. The raw zeroes tables 0..2 and 0x105ECD..FB there
-     * and copies 0x105DDC..E0 to 0x105EC8: image zeros with no stored image. */
-    if (read1 >= 0 || DSB(DS_0002D490) != 0u) {
-        DSB(DS_00105DA7) = 1u;                     /* 0x2D940 */
-        (void)config_field_get(0x24u);             /* 0x2D946: result discarded */
-        /* 0x2D962 calls 0x2DAE4(0x24) only when DS_00105DA4 + DS_00105DA5 != 0;
-         * both are 0 on this path, and 0x2DAE4 is a deferred no-op (spec §7). */
-    }
+    hiscore_storage_load(defaults);                /* 0x2D910/0x2D912 */
+    config_storage_validate(defaults);             /* 0x2D917/0x2D919 */
+    if (r < 0 && DSB(DS_0002D490) == 0u)           /* 0x2D91E..0x2D929 */
+        return;                                    /* 0x2D92B */
+    DSB(DS_00105DA7) = 1u;                         /* 0x2D940 */
+    (void)config_field_get(0x24u);                 /* 0x2D946 */
+    /* PORT: 0x2D94B..0x2D962 call 0x2DAE4(0x24, [0x105DA5] + [0x105DA4]) when
+     * that sum is not zero. Both bytes are zeroed at entry and no other
+     * instruction of the image names them, so the call is not reached; 0x2DAE4
+     * is track S batch sb's function and the site is wired at integration. */
 }
 
 /* 0x2D4B4 — record §K2.3. EDX = 1 (0x2D4B5); loop: EAX += 1 (0x2D4BA), stop

@@ -4268,12 +4268,17 @@ int test_config(void)
     }
 
     {
-        /* A zeroed config region fails the magic and the defaults path runs:
-         * the magic is rewritten, DS_00105DA7 is set, and the four fields the
-         * defaults writer touches carry the values from the obj-1 default table. */
-        u8 saved[0x100];
-        for (u32 i = 0; i < 0x100u; i++) saved[i] = DSB(DS_00105D88 + i);
+        /* The zero image (the captures' CMOS) holds no magic: the first read
+         * decodes its zeros into DS_00105DE1 with the result 1 (0x2D729) and the
+         * defaults path runs: the magic is rewritten, DS_00105DA7 is set, and the
+         * four fields the defaults writer touches carry the values from the obj-1
+         * default table. The image 0x100CE4..0x1014DB and the config region to
+         * 0x105F07 (the validators zero the tables up to 0x105EFB) are saved. */
+        static u8 saved[0x180], saved_img[0x7F8];
+        for (u32 i = 0; i < 0x180u; i++) saved[i] = DSB(DS_00105D88 + i);
+        for (u32 i = 0; i < 0x7F8u; i++) saved_img[i] = DSB(0x00100CE4u + i);
         for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = 0;
+        for (u32 i = 0; i < 0x7F8u; i++) DSB(0x00100CE4u + i) = 0;
 
         config_validate();
         CHECK_EQ_INT((int)DSD(DS_00105E30), (int)0x9C94D2C4u);
@@ -4297,7 +4302,8 @@ int test_config(void)
         CHECK_EQ_INT((int)config_field_get(0x29u),
                      (int)config_menu_default_bits(0xA2EB4u));
 
-        for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = saved[i];
+        for (u32 i = 0; i < 0x180u; i++) DSB(DS_00105D88 + i) = saved[i];
+        for (u32 i = 0; i < 0x7F8u; i++) DSB(0x00100CE4u + i) = saved_img[i];
     }
 
     {
@@ -4571,6 +4577,63 @@ int test_config_storage(void)
         config_storage_validate(1u);
         CHECK(DSB(0x00105ECDu) == 0u && DSB(0x00105EFBu) == 0u, "tables: the flag zeroes kinds 3..5");
         CHECK(config_storage_read(0xB6u, got, 0x14u) == 1 && got[0] == 0u, "tables: kind 3 encoded zero");
+    }
+
+    {
+        /* validate_zero (0x2D6F8): over the zero image both reads return 1, the
+         * magic is absent and the defaults arm runs; its 0x2D4EC(1) and (2)
+         * (0x2D8AA, 0x2D8B4) leave both copies holding the field buffer as it is
+         * after the defaults and the magic (0x2D88D). */
+        u8 got[0x53];
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        mem_fill(SA_CFG, 0u, SA_CFG_LEN);
+        config_validate();
+        CHECK(config_storage_read(0u, got, 0x53u) == 1 && memcmp(got, mem + 0x00105DE1u, 0x53u) == 0
+              && DSD(DS_00105E30) == 0x9C94D2C4u, "validate_zero: copy 1 holds the defaults and the magic");
+        CHECK(config_storage_read(0x5Bu, got, 0x53u) == 1 && memcmp(got, mem + 0x00105DE1u, 0x53u) == 0,
+              "validate_zero: copy 2 too");
+
+        /* validate_stored: a config that is not the defaults (field 0x35, field 0
+         * with its trailing byte in the kind 0 record, the slot byte 0x105E2F = 1)
+         * and the six tables, all in the image; the RAM is then scrambled. The
+         * stored-image arm (0x2D8BB) brings every byte back and leaves the flags
+         * byte 0x105DD8 alone (the defaults arm ORs 7 into it). */
+        static u8 want[0x14C];                          /* 0x105DB0..0x105EFB */
+        DSB(DS_00105E2F) = 1u;
+        config_field_set(0x35u, 0x5Au);
+        config_field_set(0x00u, 0x0B3Cu);
+        for (u32 i = 0u; i < 0xC8u; i++) DSB(0x00105E34u + i) = (u8)(0x31u + i % 0x61u);
+        for (u32 kind = 3u; kind < 9u; kind++) config_storage_touch(kind);
+        memcpy(want, mem + 0x00105DB0u, sizeof want);
+        mem_fill(0x00105DB0u, 0xEEu, sizeof want);
+        DSB(DS_00105DD8) = 0x40u;
+        config_validate();
+        CHECK(memcmp(mem + 0x00105DE1u, want + 0x31u, 0x53u) == 0, "validate_stored: the field buffer");
+        CHECK(memcmp(mem + 0x00105DB0u, want, 0x26u) == 0, "validate_stored: the kind 0 record at its slot");
+        CHECK(memcmp(mem + 0x00105E34u, want + 0x84u, 0xC8u) == 0, "validate_stored: the six tables");
+        CHECK_EQ_INT(DSB(DS_00105DD8), 0x40);
+
+        /* copy2 (Review Focus 3; 0x2D76F..0x2D7C5): the first copy fails its
+         * check and the second is good: the buffer is the second copy's, the
+         * flags byte gains 2 and 0x2D4EC(1) repairs the first copy. */
+        DSB(SA_IMG + 2u * 0x21u) ^= 0x08u;
+        mem_fill(0x00105DB0u, 0xEEu, sizeof want);
+        DSB(DS_00105DD8) = 0x40u;
+        config_validate();
+        CHECK(memcmp(mem + 0x00105DE1u, want + 0x31u, 0x53u) == 0, "copy2: the second copy's bytes");
+        CHECK_EQ_INT(DSB(DS_00105DD8), 0x42);
+        CHECK(config_storage_read(0u, got, 0x53u) == 1 && memcmp(got, want + 0x31u, 0x53u) == 0,
+              "copy2: the first copy repaired");
+
+        /* the mirror (0x2D7C9..0x2D802): the second copy fails: flags 4, and
+         * 0x2D4EC(2) repairs it. */
+        DSB(SA_IMG + 2u * (0x5Bu + 0x21u)) ^= 0x08u;
+        mem_fill(0x00105DB0u, 0xEEu, sizeof want);
+        DSB(DS_00105DD8) = 0x40u;
+        config_validate();
+        CHECK_EQ_INT(DSB(DS_00105DD8), 0x44);
+        CHECK(config_storage_read(0x5Bu, got, 0x53u) == 1 && memcmp(got, want + 0x31u, 0x53u) == 0,
+              "copy2: the second copy repaired");
     }
 
     memcpy(mem + SA_CFG, sv_cfg, sizeof sv_cfg);

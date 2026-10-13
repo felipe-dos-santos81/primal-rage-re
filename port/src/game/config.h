@@ -40,10 +40,12 @@ void config_set_defaults(void);
  * hiscore_storage_load's defaults pass copies it to table 2. */
 void config_storage_load(void);
 
-/* 0x2D6F8. Validates the stored config against the magic at DS_00105E30 and runs
- * the defaults path when it fails. With the storage layer stubbed (spec §7) the
- * stored image is absent, so the magic never matches and this always takes the
- * defaults path, as on a fresh machine. */
+/* 0x2D6F8. Reads the two copies of the field buffer from the image (the
+ * greater result wins and the other copy is repaired), then validates it
+ * against the magic at DS_00105E30: without the magic the defaults path runs,
+ * as over the zero image the captures ran on; with it the trailing-byte record
+ * is read from its slot. The high-score and audit tables follow
+ * (hiscore_storage_load, config_storage_validate). */
 void config_validate(void);
 
 /* Record §K2.3, 0x2D4B4: n + r + 1 for the smallest r with 2^r >= n + r + 1

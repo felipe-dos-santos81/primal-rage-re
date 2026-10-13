@@ -41456,41 +41456,6 @@ D6A_SD_MUT(table, 1u) D6A_SD_MUT(f29, 2u)  D6A_SD_MUT(v29, 3u)   D6A_SD_MUT(orde
 D6A_SD_MUT(get, 6u)   D6A_SD_MUT(al, 7u)   D6A_SD_MUT(mask, 8u)  D6A_SD_MUT(or, 9u)
 D6A_SD_MUT(f2a, 11u)  D6A_SD_MUT(nokeys, 12u) D6A_SD_MUT(keysfirst, 13u)
 
-/* 0x2D6F8 config_validate: no argument. The port models the storage as absent (config.c, PORT: both
- * reads -1); the raw runs its storage load and reads from their bytes and its two deferred high-score
- * validators as nops. The mutants restate config.c's body for that model. */
-static void d6a_2d6f8_core(u32 mut)
-{
-    if (mut != 1u) DSB(0x00105DA5u) = 0u;                                        /* @noda5 */
-    if (mut != 2u) DSB(0x00105DA4u) = 0u;                                        /* @noda4 */
-    u32 gate = DSB(0x0002D490u);
-    if (mut == 3u) gate = 1u;                                                    /* @noret */
-    if (gate == 0u) return;
-    if (DSD(0x00105E30u) != 0x9C94D2C4u) {
-        DSB(0x00105DD8u) |= (mut == 4u) ? 4u : 6u;                               /* @or6 */
-        if (mut != 5u && mut != 7u) mem_fill(0x00105DE1u, 0, (mut == 8u) ? 0x4Eu : 0x53u);   /* @nofill1 @fill1len */
-        if (mut != 9u) DSB(0x00105DD8u) |= 1u;                                   /* @or1 */
-        if (mut != 6u && mut != 7u) mem_fill(0x00105DB0u, 0, (mut == 10u) ? 0x27u : 0x26u);  /* @nofill2 @fill2len */
-        DSB(0x00105E2Fu) = 0u;
-        if (mut == 11u) DSD(0x00105E30u) = 0x9C94D2C4u;                          /* @magicearly */
-        if (mut != 12u) config_set_defaults();                                   /* @nodefaults */
-        DSD(0x00105E30u) = (mut == 13u) ? 0xC4D2949Cu : 0x9C94D2C4u;             /* @magicbe */
-        if (mut == 14u) { config_storage_touch(2u); config_storage_touch(1u); }  /* @touchorder */
-        else { config_storage_touch(1u); if (mut != 15u) config_storage_touch(2u); }   /* @notouch2 */
-        if (mut != 16u) config_storage_touch(0u);                                /* @notouch0 */
-    }
-    if (mut != 17u) DSB(0x00105DA7u) = (mut == 18u) ? 2u : 1u;                   /* @noda7 @da7 */
-    if (mut != 19u) (void)config_field_get((mut == 20u) ? 0x2Au : 0x24u);        /* @noget @getfield */
-}
-static void b_d6a_2d6f8(const u32 *r, u32 *eax) { (void)r; config_validate(); *eax = 0u; }
-#define D6A_CV_MUT(name, n) \
-    static void m_d6a_cv_##name(const u32 *r, u32 *eax) { (void)r; d6a_2d6f8_core(n); *eax = 0u; }
-D6A_CV_MUT(noda5, 1u)   D6A_CV_MUT(noda4, 2u)    D6A_CV_MUT(noret, 3u)     D6A_CV_MUT(or6, 4u)     D6A_CV_MUT(nofill1, 5u)
-D6A_CV_MUT(nofill2, 6u) D6A_CV_MUT(nofill, 7u)   D6A_CV_MUT(fill1len, 8u)  D6A_CV_MUT(or1, 9u)     D6A_CV_MUT(fill2len, 10u)
-D6A_CV_MUT(magicearly, 11u) D6A_CV_MUT(nodefaults, 12u) D6A_CV_MUT(magicbe, 13u) D6A_CV_MUT(touchorder, 14u)
-D6A_CV_MUT(notouch2, 15u) D6A_CV_MUT(notouch0, 16u) D6A_CV_MUT(noda7, 17u) D6A_CV_MUT(da7, 18u)    D6A_CV_MUT(noget, 19u)
-D6A_CV_MUT(getfield, 20u)
-
 /* 0x2EA78 config_screen_wait: EAX = n. The raw's BIOS peek `int 0x16` (0x2EB15) is `cmp eax,eax` in every
  * case (no key); the port's key queue is empty (input_clear). The mutants restate config.c's body with the
  * ISR gate byte 0x104B22 at 1 (the port's tick model, PORT, is off). */
@@ -41831,6 +41796,84 @@ static void b_sa_2df8c(const u32 *r, u32 *eax) { config_storage_validate(r[R_EAX
 SA_SV_MUT(al, 1u)   SA_SV_MUT(readdflt, 2u) SA_SV_MUT(norefill, 3u) SA_SV_MUT(touchle, 4u) SA_SV_MUT(notouch, 5u)
 SA_SV_MUT(kind, 6u) SA_SV_MUT(ent, 7u)      SA_SV_MUT(from4, 8u)    SA_SV_MUT(to5, 9u)     SA_SV_MUT(lencache, 10u)
 SA_SV_MUT(srcreread, 11u)
+
+/* 0x2D6F8 config_validate: no argument. The mutants restate config.c's body (1..20 are the d6a row's,
+ * which this row replaces). */
+static void sa_2d6f8_core(u32 mut)
+{
+    const u32 buf = 0x00105DE1u, gate_at = 0x0002D490u;
+    if (mut != 1u) DSB(0x00105DA5u) = 0u;                                        /* @noda5 */
+    if (mut != 2u) DSB(0x00105DA4u) = 0u;                                        /* @noda4 */
+    if (mut != 21u) config_storage_load();                                       /* @noload */
+    u8 two[0x53];
+    s32 r1, r2;
+    if (mut == 25u) {                                                            /* @swap */
+        r2 = config_storage_read(config_codeword_len(0x53u), mem + buf, 0x53u);
+        r1 = config_storage_read(0u, two, 0x53u);
+    } else {
+        r1 = config_storage_read(0u, mem + buf + ((mut == 23u) ? 1u : 0u), (mut == 22u) ? 0x51u : 0x53u);   /* @r1dst @r1len */
+        r2 = config_storage_read((mut == 24u) ? 0x59u : config_codeword_len(0x53u), two, 0x53u);   /* @cell2 */
+    }
+    u32 gate0 = DSB(gate_at);
+#define SA_GATE() ((mut == 40u) ? gate0 : (u32)DSB(gate_at))                     /* @gatecache */
+    if ((r1 < 0 || r2 < 0) && mut != 3u && SA_GATE() == 0u) return;              /* @noret */
+    s32 r = r1;
+    if (mut != 26u && ((mut == 27u) ? r2 >= r1 : r2 > r1)) {                     /* @nofb @fbge */
+        DSB(0x00105DD8u) |= (mut == 28u) ? 4u : 2u;                              /* @or2 */
+        if (mut != 29u) memcpy(mem + buf, two, sizeof two);                      /* @nocopy */
+        if (SA_GATE() != 0u && mut != 30u) config_storage_touch(1u);             /* @norep1 */
+        if (r2 < 0 && SA_GATE() != 0u) config_storage_touch(2u);
+        r = r2;
+    } else if (r1 > r2) {
+        DSB(0x00105DD8u) |= (mut == 31u) ? 2u : 4u;                              /* @or4 */
+        if (SA_GATE() != 0u && mut != 32u) config_storage_touch(2u);             /* @norep2 */
+        if (r1 < 0 && SA_GATE() != 0u) config_storage_touch(1u);
+    }
+    u32 defaults = (DSD(0x00105E30u) != 0x9C94D2C4u || ((mut == 41u) ? r < 0 : r < -1)) ? 1u : 0u;   /* @magicm1 */
+    if (defaults != 0u) {
+        DSB(0x00105DD8u) |= (mut == 4u) ? 4u : 6u;                               /* @or6 */
+        if (mut != 5u && mut != 7u) mem_fill(buf, 0, (mut == 8u) ? 0x4Eu : 0x53u);   /* @nofill1 @fill1len */
+        if (mut != 9u) DSB(0x00105DD8u) |= 1u;                                   /* @or1 */
+        if (mut != 6u && mut != 7u) mem_fill(0x00105DB0u, 0, (mut == 10u) ? 0x27u : 0x26u);  /* @nofill2 @fill2len */
+        DSB(0x00105E2Fu) = 0u;
+        if (mut == 11u) DSD(0x00105E30u) = 0x9C94D2C4u;                          /* @magicearly */
+        if (mut != 12u) config_set_defaults();                                   /* @nodefaults */
+        DSD(0x00105E30u) = (mut == 13u) ? 0xC4D2949Cu : 0x9C94D2C4u;             /* @magicbe */
+        if (SA_GATE() != 0u) {
+            if (mut == 14u) { config_storage_touch(2u); config_storage_touch(1u); }  /* @touchorder */
+            else { config_storage_touch(1u); if (mut != 15u) config_storage_touch(2u); }   /* @notouch2 */
+            if (mut != 16u) config_storage_touch(0u);                            /* @notouch0 */
+        }
+    } else {
+        u32 cell = config_codeword_len(0x26u) * ((mut == 33u) ? 0u : (u32)DSB(0x00105E2Fu)) + 0x1A3u;   /* @storedcell */
+        s32 r3 = (mut == 34u) ? 1 : config_storage_read(cell, mem + 0x00105DB0u, 0x26u);   /* @nostoredread */
+        if (r3 < -1) mem_fill(0x00105DB0u, 0, 0x26u);
+        if ((mut == 35u || r3 < 0) && SA_GATE() != 0u) config_storage_touch(0u);   /* @storedtouch */
+    }
+    if (mut == 38u) {                                                            /* @hsorder */
+        config_storage_validate(defaults);
+        hiscore_storage_load(defaults);
+    } else {
+        if (mut != 36u) hiscore_storage_load((mut == 42u) ? !defaults : defaults);       /* @nohs @hsflag */
+        if (mut != 37u) config_storage_validate((mut == 43u) ? !defaults : defaults);    /* @nosv @svflag */
+    }
+    if (r < 0 && mut != 39u && SA_GATE() == 0u) return;                          /* @tailret */
+#undef SA_GATE
+    if (mut != 17u) DSB(0x00105DA7u) = (mut == 18u) ? 2u : 1u;                   /* @noda7 @da7 */
+    if (mut != 19u) (void)config_field_get((mut == 20u) ? 0x2Au : 0x24u);        /* @noget @getfield */
+}
+static void b_sa_2d6f8(const u32 *r, u32 *eax) { (void)r; config_validate(); *eax = 0u; }
+#define SA_CV_MUT(name, n) \
+    static void m_sa_cv_##name(const u32 *r, u32 *eax) { (void)r; sa_2d6f8_core(n); *eax = 0u; }
+SA_CV_MUT(noda5, 1u)   SA_CV_MUT(noda4, 2u)    SA_CV_MUT(noret, 3u)     SA_CV_MUT(or6, 4u)     SA_CV_MUT(nofill1, 5u)
+SA_CV_MUT(nofill2, 6u) SA_CV_MUT(nofill, 7u)   SA_CV_MUT(fill1len, 8u)  SA_CV_MUT(or1, 9u)     SA_CV_MUT(fill2len, 10u)
+SA_CV_MUT(magicearly, 11u) SA_CV_MUT(nodefaults, 12u) SA_CV_MUT(magicbe, 13u) SA_CV_MUT(touchorder, 14u)
+SA_CV_MUT(notouch2, 15u) SA_CV_MUT(notouch0, 16u) SA_CV_MUT(noda7, 17u) SA_CV_MUT(da7, 18u)    SA_CV_MUT(noget, 19u)
+SA_CV_MUT(getfield, 20u) SA_CV_MUT(noload, 21u) SA_CV_MUT(r1len, 22u)   SA_CV_MUT(r1dst, 23u)  SA_CV_MUT(cell2, 24u)
+SA_CV_MUT(swap, 25u)   SA_CV_MUT(nofb, 26u)    SA_CV_MUT(fbge, 27u)     SA_CV_MUT(or2, 28u)    SA_CV_MUT(nocopy, 29u)
+SA_CV_MUT(norep1, 30u) SA_CV_MUT(or4, 31u)     SA_CV_MUT(norep2, 32u)   SA_CV_MUT(storedcell, 33u)
+SA_CV_MUT(nostoredread, 34u) SA_CV_MUT(storedtouch, 35u) SA_CV_MUT(nohs, 36u) SA_CV_MUT(nosv, 37u) SA_CV_MUT(hsorder, 38u)
+SA_CV_MUT(tailret, 39u) SA_CV_MUT(gatecache, 40u) SA_CV_MUT(magicm1, 41u) SA_CV_MUT(hsflag, 42u) SA_CV_MUT(svflag, 43u)
 /* ---- sa bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56702,27 +56745,6 @@ static const binding_t k_bindings[] = {
     { "config_set_defaults@f2a", m_d6a_sd_f2a, 0x00000000u },
     { "config_set_defaults@nokeys", m_d6a_sd_nokeys, 0x00000000u },
     { "config_set_defaults@keysfirst", m_d6a_sd_keysfirst, 0x00000000u },
-    { "config_validate",                 b_d6a_2d6f8, 0x00000000u },
-    { "config_validate@noda5", m_d6a_cv_noda5, 0x00000000u },
-    { "config_validate@noda4", m_d6a_cv_noda4, 0x00000000u },
-    { "config_validate@noret", m_d6a_cv_noret, 0x00000000u },
-    { "config_validate@or6", m_d6a_cv_or6, 0x00000000u },
-    { "config_validate@nofill1", m_d6a_cv_nofill1, 0x00000000u },
-    { "config_validate@nofill2", m_d6a_cv_nofill2, 0x00000000u },
-    { "config_validate@nofill", m_d6a_cv_nofill, 0x00000000u },
-    { "config_validate@fill1len", m_d6a_cv_fill1len, 0x00000000u },
-    { "config_validate@or1", m_d6a_cv_or1, 0x00000000u },
-    { "config_validate@fill2len", m_d6a_cv_fill2len, 0x00000000u },
-    { "config_validate@magicearly", m_d6a_cv_magicearly, 0x00000000u },
-    { "config_validate@nodefaults", m_d6a_cv_nodefaults, 0x00000000u },
-    { "config_validate@magicbe", m_d6a_cv_magicbe, 0x00000000u },
-    { "config_validate@touchorder", m_d6a_cv_touchorder, 0x00000000u },
-    { "config_validate@notouch2", m_d6a_cv_notouch2, 0x00000000u },
-    { "config_validate@notouch0", m_d6a_cv_notouch0, 0x00000000u },
-    { "config_validate@noda7", m_d6a_cv_noda7, 0x00000000u },
-    { "config_validate@da7", m_d6a_cv_da7, 0x00000000u },
-    { "config_validate@noget", m_d6a_cv_noget, 0x00000000u },
-    { "config_validate@getfield", m_d6a_cv_getfield, 0x00000000u },
     { "config_screen_wait",              b_d6a_2ea78, 0x00000000u },
     { "config_screen_wait@nolatch", m_d6a_sw_nolatch, 0x00000000u },
     { "config_screen_wait@latchw", m_d6a_sw_latchw, 0x00000000u },
@@ -56869,6 +56891,57 @@ static const binding_t k_bindings[] = {
     { "config_storage_validate_rr",      b_sa_2df8c, 0x00000000u },
     { "config_storage_validate_rr@lencache", m_sa_sv_lencache, 0x00000000u },
     { "config_storage_validate_rr@srcreread", m_sa_sv_srcreread, 0x00000000u },
+    { "config_validate",                 b_sa_2d6f8, 0x00000000u },
+    { "config_validate@noda5", m_sa_cv_noda5, 0x00000000u },
+    { "config_validate@noda4", m_sa_cv_noda4, 0x00000000u },
+    { "config_validate@noret", m_sa_cv_noret, 0x00000000u },
+    { "config_validate@or6", m_sa_cv_or6, 0x00000000u },
+    { "config_validate@nofill1", m_sa_cv_nofill1, 0x00000000u },
+    { "config_validate@nofill2", m_sa_cv_nofill2, 0x00000000u },
+    { "config_validate@nofill", m_sa_cv_nofill, 0x00000000u },
+    { "config_validate@fill1len", m_sa_cv_fill1len, 0x00000000u },
+    { "config_validate@or1", m_sa_cv_or1, 0x00000000u },
+    { "config_validate@fill2len", m_sa_cv_fill2len, 0x00000000u },
+    { "config_validate@magicearly", m_sa_cv_magicearly, 0x00000000u },
+    { "config_validate@nodefaults", m_sa_cv_nodefaults, 0x00000000u },
+    { "config_validate@magicbe", m_sa_cv_magicbe, 0x00000000u },
+    { "config_validate@touchorder", m_sa_cv_touchorder, 0x00000000u },
+    { "config_validate@notouch2", m_sa_cv_notouch2, 0x00000000u },
+    { "config_validate@notouch0", m_sa_cv_notouch0, 0x00000000u },
+    { "config_validate@noda7", m_sa_cv_noda7, 0x00000000u },
+    { "config_validate@da7", m_sa_cv_da7, 0x00000000u },
+    { "config_validate@noget", m_sa_cv_noget, 0x00000000u },
+    { "config_validate@getfield", m_sa_cv_getfield, 0x00000000u },
+    { "config_validate@noload", m_sa_cv_noload, 0x00000000u },
+    { "config_validate@r1len", m_sa_cv_r1len, 0x00000000u },
+    { "config_validate@r1dst", m_sa_cv_r1dst, 0x00000000u },
+    { "config_validate@cell2", m_sa_cv_cell2, 0x00000000u },
+    { "config_validate@swap", m_sa_cv_swap, 0x00000000u },
+    { "config_validate@nofb", m_sa_cv_nofb, 0x00000000u },
+    { "config_validate@fbge", m_sa_cv_fbge, 0x00000000u },
+    { "config_validate@or2", m_sa_cv_or2, 0x00000000u },
+    { "config_validate@nocopy", m_sa_cv_nocopy, 0x00000000u },
+    { "config_validate@norep1", m_sa_cv_norep1, 0x00000000u },
+    { "config_validate@or4", m_sa_cv_or4, 0x00000000u },
+    { "config_validate@norep2", m_sa_cv_norep2, 0x00000000u },
+    { "config_validate@storedcell", m_sa_cv_storedcell, 0x00000000u },
+    { "config_validate@nostoredread", m_sa_cv_nostoredread, 0x00000000u },
+    { "config_validate@storedtouch", m_sa_cv_storedtouch, 0x00000000u },
+    { "config_validate@nohs", m_sa_cv_nohs, 0x00000000u },
+    { "config_validate@nosv", m_sa_cv_nosv, 0x00000000u },
+    { "config_validate@hsorder", m_sa_cv_hsorder, 0x00000000u },
+    { "config_validate@magicm1", m_sa_cv_magicm1, 0x00000000u },
+    { "config_validate@hsflag", m_sa_cv_hsflag, 0x00000000u },
+    { "config_validate@svflag", m_sa_cv_svflag, 0x00000000u },
+    { "config_validate_rr",              b_sa_2d6f8, 0x00000000u },
+    { "config_validate_rr@gatecache", m_sa_cv_gatecache, 0x00000000u },
+    { "config_validate_rr@tailret", m_sa_cv_tailret, 0x00000000u },
+    { "config_validate_chain",           b_sa_2d6f8, 0x00000000u },
+    { "config_validate_chain@nohs", m_sa_cv_nohs, 0x00000000u },
+    { "config_validate_chain@nosv", m_sa_cv_nosv, 0x00000000u },
+    { "config_validate_chain@norep1", m_sa_cv_norep1, 0x00000000u },
+    { "config_validate_chain@notouch0", m_sa_cv_notouch0, 0x00000000u },
+    { "config_validate_chain@nocopy", m_sa_cv_nocopy, 0x00000000u },
     /* sa table end */
 };
 
