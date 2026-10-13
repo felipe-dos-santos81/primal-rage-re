@@ -201,4 +201,10 @@ void config_keys_load(u32 rec);
  * with 0xFF (no file, a file of another length, a bad checksum). Only AL is the raw's result. */
 u32 config_file_load(void);
 
+/* 0x1B084 — record 2026-10-13-reverse-s §S.7. Saves the stored image: when host_save_writable, runs
+ * config_storage_touch(1) and (2), stores the XOR byte 0x1014DB and writes the 0x7F8 bytes through
+ * host_save_write. Returns 0, or 1 when nothing was opened or the write failed. Only AL is the raw's
+ * result, and no caller reads it. */
+u32 config_file_save(void);
+
 #endif /* PRAGE_GAME_CONFIG_H */

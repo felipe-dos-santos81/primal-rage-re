@@ -1055,3 +1055,29 @@ u32 config_file_load(void)
     if (fail) mem_fill(CFG_IMAGE, 0xFFu, CFG_IMAGE_LEN);   /* 0x1B05D..0x1B070 0x61A70 */
     return fail;                                           /* 0x1B07A */
 }
+
+/* 0x1B084 — record 2026-10-13-reverse-s §S.7. Writes the image to the file "cmos" (0xA2C5C). Once the
+ * file is open (0x1B09E `test eax,eax`): 0x2D4EC(1) and 0x2D4EC(2) (0x1B0A2..0x1B0B3), then the XOR of
+ * bytes 0..0x7F6 (0x1B0B8..0x1B0C8; DL is cleared at 0x1B0B1, before the second call, which keeps EDX)
+ * stored in the last byte 0x1014DB (0x1B0D4), then the 0x7F8 bytes are written. A failed open does none
+ * of it (0x1B0A0 `je 0x1B109`). Returns AL = the failure flag (0x1B110 `mov al,dl`); none of the three
+ * callers reads it (0x1BEBA and 0x2CBB4 call on, 0x24AA6 loads EDX and EAX).
+ * PORT: 0x1B088 0x10D34 and 0x1B10B 0x10D0C, the CD-drive switch around the file access (host-owned,
+ * record §50-E), are left out, as in config_file_load.
+ * PORT: 0x1B097 0x61C60 fopen("cmos", "wb" 0x8059C) is host_save_writable: 0 for the raw's NULL, and
+ * for a run with no save path (the captures' read-only mount refused the open the same way). 0x1B0E1
+ * 0x62031 fwrite(0x100CE4, 1, 0x7F8, file) and 0x1B0EA 0x61EC0 fclose (its result is not read) are
+ * host_save_write. A short write ends the raw's program (0x1B0EF `cmp edx,0x7f8`, 0x1B0F7..0x1B0FE
+ * 0x62003(1), the runtime's exit); the port returns the flag the bytes around that call set (DL = 1 at
+ * 0x1B0FC, `jmp 0x1B10B`). */
+u32 config_file_save(void)
+{
+    if (!host_save_writable()) return 1u;                  /* 0x1B0A0, 0x1B109 */
+    config_storage_touch(1u);                              /* 0x1B0A7 */
+    config_storage_touch(2u);                              /* 0x1B0B3 */
+    u8 sum = 0u;                                           /* 0x1B0B1 */
+    for (u32 i = 0u; i < CFG_IMAGE_LEN - 1u; i++)          /* 0x1B0C3 */
+        sum ^= DSB(CFG_IMAGE + i);                         /* 0x1B0BA/0x1B0C1 */
+    DSB(DS_001014DB) = sum;                                /* 0x1B0D4 */
+    return host_save_write(mem + CFG_IMAGE, CFG_IMAGE_LEN) ? 0u : 1u;   /* 0x1B0EF..0x1B105 */
+}

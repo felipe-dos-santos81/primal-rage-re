@@ -8324,27 +8324,38 @@ int test_config_file(void)
     const int before = g_failures;
     static u8 keep[CF_LEN + 1u], snap[CF_LEN], file[CF_LEN + 2u];
     char fb_dir[64], fb_path[80];
+    u32 len = 0u;
     memcpy(keep, mem + CF_IMAGE, sizeof keep);
     cf_begin();
     snprintf(fb_dir, sizeof fb_dir, "%s/fb", cf_dir);
     snprintf(fb_path, sizeof fb_path, "%s/CMOS", fb_dir);
 
-    /* a valid file (its last byte the XOR of the others) loads over a 0x55 fill. */
-    for (u32 i = 0; i < CF_LEN; i++) file[i] = (u8)(i * 7u + 3u);
-    file[CF_LEN - 1u] = cf_xor(file);
-    memcpy(snap, file, CF_LEN);
-    CHECK(host_write_file(cf_path, file, CF_LEN), "the valid file");
+    /* roundtrip: the save runs 0x2D4EC(1) and (2), stores the XOR and writes the image; the load
+     * brings the same bytes back over a 0x55 fill. The seeded last byte is not the XOR. */
+    for (u32 i = 0; i < CF_LEN; i++) DSB(CF_IMAGE + i) = (u8)(i * 7u + 3u);
+    DSB(DS_001014DB) = (u8)(cf_xor(mem + CF_IMAGE) ^ 0xFFu);
     DSB(DS_001014DC) = 0xA5u;
+    CHECK_EQ_INT(config_file_save(), 0);
+    CHECK_EQ_INT(cf_touches, 2);                           /* 0x1B0A7, 0x1B0B3 */
+    memcpy(snap, mem + CF_IMAGE, CF_LEN);                  /* after the save: 0x2D4EC may rewrite records */
+    CHECK(host_read_file(cf_path, file, sizeof file, &len) && len == CF_LEN, "the file is 0x7F8 bytes");
+    CHECK_EQ_INT(file[CF_LEN - 1u], cf_xor(file));         /* 0x1B0D4 */
+    CHECK(memcmp(file, snap, CF_LEN) == 0, "the file is the image");
     mem_fill(CF_IMAGE, 0x55u, CF_LEN);
     CHECK_EQ_INT(config_file_load(), 0);                   /* 0x1B049 */
     CHECK(memcmp(mem + CF_IMAGE, snap, CF_LEN) == 0, "the load brings the saved image back");
 
-    /* corrupt (one flipped bit): the load fails and fills the image with 0xFF (0x1B05B..0x1B070). */
+    /* corrupt (one flipped bit): the load fails and fills the image with 0xFF (0x1B05B..0x1B070);
+     * the next save overwrites the bad file with one that loads clean. */
     file[0x123] ^= 0x10u;
     CHECK(host_write_file(cf_path, file, CF_LEN), "the corrupt file");
     mem_fill(CF_IMAGE, 0x55u, CF_LEN);
     CHECK_EQ_INT(config_file_load(), 1);
     CHECK(cf_image_is(0xFFu), "a bad checksum gives the 0xFF image");
+    CHECK_EQ_INT(config_file_save(), 0);
+    mem_fill(CF_IMAGE, 0x55u, CF_LEN);
+    CHECK_EQ_INT(config_file_load(), 0);
+    CHECK_EQ_INT(DSB(CF_IMAGE + 0x7F0u), 0xFF);            /* read back, past every record */
 
     /* missing: no file, no fallback (0x1B004). */
     (void)unlink(cf_path);
@@ -8364,7 +8375,13 @@ int test_config_file(void)
         CHECK_EQ_INT(DSB(DS_001014DC), 0xA5);
     }
 
+    /* nopath: the open fails (0x1B0A0), so no 0x2D4EC, no checksum store, a non-zero result. */
     host_save_set_path(NULL);
+    cf_touches = 0u;
+    DSB(DS_001014DB) = (u8)(cf_xor(mem + CF_IMAGE) ^ 0xFFu);
+    CHECK_EQ_INT(config_file_save(), 1);
+    CHECK_EQ_INT(cf_touches, 0);
+    CHECK_EQ_INT(DSB(DS_001014DB), (u8)(cf_xor(mem + CF_IMAGE) ^ 0xFFu));
 
     /* fallback: with no save path the game dir's zero CMOS loads as the zero image. */
     memset(file, 0, CF_LEN);

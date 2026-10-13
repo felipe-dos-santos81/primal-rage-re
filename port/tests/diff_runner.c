@@ -41697,6 +41697,59 @@ static void b_sc_1afe8(const u32 *r, u32 *eax) { (void)r; sc_1afe8_run(eax, 0u);
 SC_LD_MUT(noread, 1u)  SC_LD_MUT(dst, 2u)    SC_LD_MUT(readlen, 3u) SC_LD_MUT(len6, 4u)    SC_LD_MUT(len8, 5u)
 SC_LD_MUT(add, 6u)     SC_LD_MUT(sumbyte, 7u) SC_LD_MUT(nofill, 8u) SC_LD_MUT(fill0, 9u)   SC_LD_MUT(filllen, 10u)
 SC_LD_MUT(fillall, 11u) SC_LD_MUT(flag, 12u)
+
+/* 0x1B084 config_file_save: no argument. fopen's EAX is the dword at 0x1B098: with a handle the save path
+ * is writable, with none its directory does not exist. After the call the binding reads the file back: the
+ * verdict byte SC_VERDICT (above the image, where the original writes nothing) is set unless the file is
+ * the image's 0x7F8 bytes as they are at return, the raw's fwrite(0x100CE4, 1, 0x7F8) (0x1B0CA..0x1B0E1),
+ * or, with no handle, unless there is no file. The mutants restate config.c's body. */
+#define SC_VERDICT 0x03900200u
+static u32 sc_xor(u32 n, u32 add)
+{
+    u32 sum = 0u;
+    for (u32 i = 0u; i < n; i++) sum = add ? ((sum + DSB(SC_IMAGE + i)) & 0xFFu) : (sum ^ DSB(SC_IMAGE + i));
+    return sum;
+}
+static u32 sc_1b084_core(u32 mut)
+{
+    const u32 n = (mut == 10u) ? 0x7F6u : (mut == 11u) ? 0x7F8u : 0x7F7u;        /* @len6 @len8 */
+    const u32 at = (mut == 13u) ? 0x001014DAu : 0x001014DBu;                     /* @sumat */
+    u32 ok;
+    if (mut == 1u) { config_storage_touch(1u); config_storage_touch(2u); }       /* @gatelate */
+    if (mut != 2u && !host_save_writable()) return (mut == 14u) ? 0u : 1u;       /* @nogate @flag */
+    if (mut == 3u) DSB(at) = (u8)sc_xor(n, 0u);                                  /* @sumfirst */
+    if (mut == 7u) { config_storage_touch(2u); config_storage_touch(1u); }       /* @touchorder */
+    else if (mut != 1u) {
+        if (mut != 5u) config_storage_touch((mut == 8u) ? 0u : 1u);              /* @notouch1 @touch0 */
+        if (mut == 4u) DSB(at) = (u8)sc_xor(n, 0u);                              /* @summid */
+        if (mut != 6u) config_storage_touch((mut == 8u) ? 1u : 2u);              /* @notouch2 */
+    }
+    if (mut == 16u) ok = (u32)host_save_write(mem + SC_IMAGE, SC_LEN);           /* @writefirst */
+    if (mut != 3u && mut != 4u && mut != 9u) DSB(at) = (u8)sc_xor(n, mut == 12u);   /* @nosum @add */
+    if (mut == 15u) ok = 1u;                                                     /* @nowrite */
+    else if (mut != 16u)
+        ok = (u32)host_save_write(mem + SC_IMAGE + ((mut == 18u) ? 1u : 0u), (mut == 17u) ? 0x7F7u : SC_LEN);   /* @wsrc @wlen */
+    return ((ok != 0u) != (mut == 14u)) ? 0u : 1u;
+}
+static void sc_1b084_run(u32 *eax, u32 mut)
+{
+    static u8 file[SC_LEN + 1u];
+    const u32 handle = DSD(0x0001B098u);
+    u32 len = 0u;
+    sc_begin(handle != 0u ? "" : "none/");
+    *eax = (mut == 0u) ? config_file_save() : sc_1b084_core(mut);
+    int have = host_read_file(sc_path, file, sizeof file, &len);
+    if (handle == 0u) { if (have) DSB(SC_VERDICT) = 2u; }
+    else if (!have || len != SC_LEN || memcmp(file, mem + SC_IMAGE, SC_LEN) != 0) DSB(SC_VERDICT) = 1u;
+    sc_end();
+}
+static void b_sc_1b084(const u32 *r, u32 *eax) { (void)r; sc_1b084_run(eax, 0u); }
+#define SC_SV_MUT(name, n) \
+    static void m_sc_sv_##name(const u32 *r, u32 *eax) { (void)r; sc_1b084_run(eax, n); }
+SC_SV_MUT(gatelate, 1u)  SC_SV_MUT(nogate, 2u)   SC_SV_MUT(sumfirst, 3u) SC_SV_MUT(summid, 4u)  SC_SV_MUT(notouch1, 5u)
+SC_SV_MUT(notouch2, 6u)  SC_SV_MUT(touchorder, 7u) SC_SV_MUT(touch0, 8u) SC_SV_MUT(nosum, 9u)   SC_SV_MUT(len6, 10u)
+SC_SV_MUT(len8, 11u)     SC_SV_MUT(add, 12u)     SC_SV_MUT(sumat, 13u)   SC_SV_MUT(flag, 14u)   SC_SV_MUT(nowrite, 15u)
+SC_SV_MUT(writefirst, 16u) SC_SV_MUT(wlen, 17u)  SC_SV_MUT(wsrc, 18u)
 /* ---- sc bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56665,6 +56718,25 @@ static const binding_t k_bindings[] = {
     { "config_file_load@filllen", m_sc_ld_filllen, 0x000000FFu },
     { "config_file_load@fillall", m_sc_ld_fillall, 0x000000FFu },
     { "config_file_load@flag", m_sc_ld_flag, 0x000000FFu },
+    { "config_file_save",                b_sc_1b084, 0x000000FFu },
+    { "config_file_save@gatelate", m_sc_sv_gatelate, 0x000000FFu },
+    { "config_file_save@nogate", m_sc_sv_nogate, 0x000000FFu },
+    { "config_file_save@sumfirst", m_sc_sv_sumfirst, 0x000000FFu },
+    { "config_file_save@summid", m_sc_sv_summid, 0x000000FFu },
+    { "config_file_save@notouch1", m_sc_sv_notouch1, 0x000000FFu },
+    { "config_file_save@notouch2", m_sc_sv_notouch2, 0x000000FFu },
+    { "config_file_save@touchorder", m_sc_sv_touchorder, 0x000000FFu },
+    { "config_file_save@touch0", m_sc_sv_touch0, 0x000000FFu },
+    { "config_file_save@nosum", m_sc_sv_nosum, 0x000000FFu },
+    { "config_file_save@len6", m_sc_sv_len6, 0x000000FFu },
+    { "config_file_save@len8", m_sc_sv_len8, 0x000000FFu },
+    { "config_file_save@add", m_sc_sv_add, 0x000000FFu },
+    { "config_file_save@sumat", m_sc_sv_sumat, 0x000000FFu },
+    { "config_file_save@flag", m_sc_sv_flag, 0x000000FFu },
+    { "config_file_save@nowrite", m_sc_sv_nowrite, 0x000000FFu },
+    { "config_file_save@writefirst", m_sc_sv_writefirst, 0x000000FFu },
+    { "config_file_save@wlen", m_sc_sv_wlen, 0x000000FFu },
+    { "config_file_save@wsrc", m_sc_sv_wsrc, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)

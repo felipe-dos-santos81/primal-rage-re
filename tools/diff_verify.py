@@ -32348,6 +32348,17 @@ def sc_load(cid, handle, image, closed=0, regs=None):
     return Case(cid, regs or {}, sc_pokes(image, {0x0001AFFB: handle, 0x0001B017: SC_LEN, 0x0001B020: closed}))
 
 
+def sc_save(cid, handle, image, closed=0, touch=None, regs=None):
+    """0x1B084: fopen's EAX is `handle`, fwrite's the count 0x7F8, fclose's `closed`; `touch` = the EAX of
+    the 0x2D4EC stub."""
+    return Case(cid, regs or {}, sc_pokes(image, {0x0001B097: handle, 0x0001B0E1: SC_LEN, 0x0001B0EA: closed}),
+                {} if touch is None else {0x2D4EC: touch})
+
+
+# 0x2D4EC as 0x1B084's stub: it stores two bytes at the image's offset 0x20 + kind (kind 1: 0x21 and 0x22,
+# kind 2: 0x22 and 0x23), so the XOR depends on both calls having run, in either order of sum and call
+SC_TOUCH = dataclasses.replace(D5D_TOUCH, writes=((0, SC_IMAGE + 0x20, b"\x3c\x5a"),))
+
 SC_SPECS = [
     # 0x1AFE8 config_file_load: no argument. fopen's EAX zero (`test eax,eax; je` 0x1B002: l0, whose image
     # is a valid one that must not be consulted) sets the flag; else the count 0x7F8 (`cmp edx,0x7f8`
@@ -32369,6 +32380,25 @@ SC_SPECS = [
     ], unhit_named={0x1B04D: "a count other than 0x7F8: " + SC_SC_UNHIT}, allow_calls=SC_REAL, eax_mask=0xFF,
        mutants=tuple("@" + m for m in "noread dst readlen len6 len8 add sumbyte nofill fill0 filllen fillall "
                                       "flag".split())),
+    # 0x1B084 config_file_save: no argument. fopen's EAX zero (`test eax,eax; je` 0x1B09E: s0) sets the
+    # flag and does nothing else (the seeded last byte stays). Else (s1; s2, whose handle is 0x100; s3, the
+    # zero image) 0x2D4EC(1) and 0x2D4EC(2) (stubs: their EAX is not read, `mov eax,2` 0x1B0AC and `xor
+    # eax,eax` 0x1B0B8 follow; s1 has 0x12345678), the XOR of bytes 0..0x7F6 (`cmp eax,0x7f7; jl` 0x1B0C3)
+    # stored in the byte 0x1014DB (seeded with another value), and the count 0x7F8 (`cmp edx,0x7f8; je`
+    # 0x1B0EF; fclose's EAX is not read: s1 has -1) clears the flag, which is AL. On the port side the
+    # binding reads the file the host wrote back and stores a non-zero byte at 0x3900200, where the
+    # original writes nothing, unless it is the image's 0x7F8 bytes as they are at return (or, in s0,
+    # unless there is no file). Mask 0xFF: `mov al,dl` 0x1B110; no call site reads it (`call 0x10d34`
+    # 0x1BEBA, `mov edx,1; mov eax,0x1044f4` 0x24AA6, `call 0x2c304` 0x2CBB4, which loads EAX).
+    Spec("config_file_save", 0x1B084, [
+        sc_save("s0", 0, sc_image(7, 3, bad=0x5A)),
+        sc_save("s1", 0x0010A040, sc_image(7, 3, bad=0xFF), closed=0xFFFFFFFF, touch=0x12345678),
+        sc_save("s2", 0x00000100, sc_image(5, 0x81, bad=0x01), closed=0x100, regs=D2E_DIRTY),
+        sc_save("s3", 1, bytes(SC_LEN), regs=D2E_DIRTY),
+    ], unhit_named={0x1B0F7: "a count other than 0x7F8: " + SC_SC_UNHIT}, allow_calls=SC_REAL, calls=(SC_TOUCH,),
+       eax_mask=0xFF,
+       mutants=tuple("@" + m for m in "gatelate nogate sumfirst summid notouch1 notouch2 touchorder touch0 nosum "
+                                      "len6 len8 add sumat flag nowrite writefirst wlen wsrc".split())),
 ]
 
 D1_SPECS += SC_SPECS
