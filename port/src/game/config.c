@@ -129,6 +129,7 @@ u32 config_field_set(u32 field, u32 value)
  * whose count is zero or negative is skipped. */
 u32 config_menu_default_bits(u32 table)
 {
+    PR_SEAM_RET(0x2CCD0u, table);
     u32 bits = 0u;
     u32 rec = table;
     while (DSD(rec) != 0u) {
@@ -149,21 +150,22 @@ u32 config_menu_default_bits(u32 table)
     return bits;
 }
 
-/* 0x2CADC. Order and values are the raw's. The message draw 0x2F198, screen
- * setup 0x1AE20, storage write 0x2EA78 and cursor restore 0x2F280 are declared
- * no-ops (spec §4/§7), so only the config-field effect is ported. PORT: 0x2EA78
- * is ported (config_screen_wait, record §49-Y) but left unwired here: this
- * runs inside game_init, where the raw's 0x2CB55 0x2EA78(0xB4) would present
- * frames and wait 180 ticks before the loop starts, moving the frame-indexed
- * oracles. */
+/* 0x2CADC. Order and values are the raw's. PORT: three of the raw's calls are
+ * omitted: 0x2CAF3 0x2F198 (it draws the defaults message and stores the cursor
+ * words 0x105F34/36), 0x2CB5F 0x2EA78(0xB4) and 0x2CB69 0x2F280 (it releases the
+ * cells). This runs inside game_init, where 0x2EA78 (ported as
+ * config_screen_wait, record §49-Y) would present frames and wait before the
+ * loop starts, moving the frame-indexed oracles; the row of 0x2CADC runs the
+ * raw with those three calls as nops (record 2026-10-13-reverse-d6a). */
 void config_set_defaults(void)
 {
+    PR_SEAM0(0x2CADCu);
     u32 v29 = config_menu_default_bits(0xA2EB4u);  /* 0x2CAF8: obj-1 menu table */
     config_field_set(0x29u, v29);
     config_field_set(0x35u, 0xA0u);
     config_field_set(0x37u, 0xA0u);
     u32 v2a = config_field_get(0x2Au);
-    config_field_set(0x2Au, (v2a & 0xFCu) | 3u);
+    config_field_set(0x2Au, (v2a & 0xFFFFFFFCu) | 3u);   /* 0x2CB36/0x2CB38 `and al,0xfc; or al,3`: AL alone */
     config_keys_apply_defaults();                  /* 0x2CB50, record §50-C */
 }
 
@@ -194,10 +196,14 @@ void config_validate(void)
 
     /* 0x2D820: the four bytes at DS_00105E30 read as a little-endian u32. */
     if (DSD(DS_00105E30) != 0x9C94D2C4u || read1 < -1) {
-        /* 0x2D83A: defaults. The two 0x61A70 calls clear the unported pset pool
-         * (no-op); DS_00105E2F is cleared before the defaults writer runs. */
+        /* 0x2D83A: defaults. The two 0x61A70 calls clear the stored-image
+         * buffer 0x105DE1 (0x53 bytes: it holds DS_00105E2F and the magic) and
+         * the config-field block 0x105DB0 (0x26 bytes) before the defaults
+         * writer runs. */
         DSB(DS_00105DD8) |= 6u;                    /* 0x2D84F */
+        mem_fill(0x00105DE1u, 0, 0x53u);           /* 0x2D83A..0x2D855 0x61A70 */
         DSB(DS_00105DD8) |= 1u;                    /* 0x2D86F */
+        mem_fill(0x00105DB0u, 0, 0x26u);           /* 0x2D85A..0x2D875 0x61A70 */
         DSB(DS_00105E2F) = 0u;                     /* 0x2D881 */
         config_set_defaults();                     /* 0x2D886 */
         DSD(DS_00105E30) = 0x9C94D2C4u;            /* 0x2D88D */
@@ -213,8 +219,8 @@ void config_validate(void)
      * 0x2E990 and calls 0x2D4EC(0) (0x2D909) only when that read fails with
      * DS_0002D490 set; with no stored image the port has neither (record §27). */
 
-    /* 0x2D912/0x2D919: high-score validate 0x2DE98 and 0x2DF8C, both deferred
-     * no-ops (spec §6/§7); called unconditionally. */
+    /* PORT: 0x2D912 0x2DE98(1) and 0x2D919 0x2DF8C(1) are deferred. The raw zeroes tables 0..2 and 0x105ECD..FB there
+     * and copies 0x105DDC..E0 to 0x105EC8: image zeros with no stored image. */
     if (read1 >= 0 || DSB(DS_0002D490) != 0u) {
         DSB(DS_00105DA7) = 1u;                     /* 0x2D940 */
         (void)config_field_get(0x24u);             /* 0x2D946: result discarded */
@@ -564,6 +570,7 @@ static void cfg_swap_buffers(void)
  * EAX = 0xB4), 0x1A38C and 0x31FBF. */
 void config_screen_wait(s32 n)
 {
+    PR_SEAM(0x2EA78u, (u32)n);
     s32 ecx = n;                                            /* 0x2EA7C */
     DSD(CFG_KEY_LATCH) = 0u;                                /* 0x2EA85 */
     actors_update();                                        /* 0x2EA8B */
@@ -978,6 +985,7 @@ void config_keys_apply(u32 rec)
  * into 0x1AE28: applies the default record at DS 0x22C62. */
 void config_keys_apply_defaults(void)
 {
+    PR_SEAM0(0x1AE20u);
     config_keys_apply(KEYCFG_DEFAULTS);                     /* 0x1AE20 */
 }
 

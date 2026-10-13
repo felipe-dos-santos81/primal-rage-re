@@ -323,10 +323,11 @@ consolidation gate).
 - **The differential rows are being extended to every ported function** (track D,
   record `docs/superpowers/plans/2026-10-11-reverse-d-derivations.md`). C3g closed
   the callee frontier at 322 rows; track D rows the ported functions the callee
-  scan never reached. `make diff-verify`'s counter after its five waves is
-  `951/951 functions VERIFIED; 14206/14206 mutants detected; 1 named gaps;
-  601/784 rows with callees closed (167 have none)`; 34 ported functions have no
-  row (28 named gaps and 6 named non-rows, none open; record §D.11), so the open rows are open on those and on the named non-rows
+  scan never reached. `make diff-verify`'s counter after its six waves is
+  `963/963 functions VERIFIED; 14349/14349 mutants detected; 1 named gaps;
+  604/796 rows with callees closed (167 have none)`; 24 ported functions have no
+  row (18 named gaps and 6 named non-rows, none open; record §D.12; ten rows of wave 6 run the original under
+  code pokes or cover part of it, and say so in their claims), so the open rows are open on those and on the named non-rows
   (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
   `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and

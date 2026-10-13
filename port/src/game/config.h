@@ -27,11 +27,11 @@ u32 config_field_set(u32 field, u32 value);
 u32 config_menu_default_bits(u32 table);
 
 /* 0x2CADC. Writes the default config fields: 0x29 from the menu table, 0x35 and
- * 0x37 = 0xA0, 0x2A's low two bits = 3. The message draw (0x2F198), screen setup
- * (0x1AE20; ported in record §50-C as config_keys_apply_defaults and called
- * last, it is the key-config default apply, not a screen setup), storage write (0x2EA78; ported as config_screen_wait but left
- * unwired here, record §49-Y) and cursor restore (0x2F280) are declared no-ops
- * (spec §4/§7). */
+ * 0x37 = 0xA0, 0x2A's low two bits = 3, then the key-config default apply
+ * (0x1AE20, config_keys_apply_defaults, record §50-C). PORT: the message draw
+ * (0x2F198), the screen wait (0x2EA78(0xB4); ported as config_screen_wait,
+ * record §49-Y) and the cell release (0x2F280) are omitted here: see the
+ * function's comment in config.c. */
 void config_set_defaults(void);
 
 /* 0x2D6F8. Validates the stored config against the magic at DS_00105E30 and runs
