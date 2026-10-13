@@ -570,6 +570,7 @@ static void cfg_swap_buffers(void)
  * EAX = 0xB4), 0x1A38C and 0x31FBF. */
 void config_screen_wait(s32 n)
 {
+    PR_SEAM(0x2EA78u, (u32)n);
     s32 ecx = n;                                            /* 0x2EA7C */
     DSD(CFG_KEY_LATCH) = 0u;                                /* 0x2EA85 */
     actors_update();                                        /* 0x2EA8B */
