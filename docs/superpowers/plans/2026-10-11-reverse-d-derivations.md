@@ -659,3 +659,96 @@ harness tests OK, the counter above, entry-triage byte-identical, `symbols.h` id
 unchanged, and its 782 normalised lines before "== differential verification" equal the §D.10 gate's — 0
 differing. So no capture distinguishes any of the 13 corrections either: their evidence is the rows, the
 bytes and audit #14.
+
+## §D.12 Wave 6, batch d6a: rows for ten of the named gaps (12 rows, 3 corrections)
+
+Batch d6a (record `2026-10-13-reverse-d6a-derivations.md`), one batch off `main` `5fee3522`, merged on
+`reverse-d6int`. Its queue was the 11 of the 28 named gaps that might still take a row; each entry was decided
+from the bytes as a full row, a row under a code poke, a partial row, or a gap that stays.
+
+| entry | function | outcome | what decides it |
+|---|---|---|---|
+| `0x1C5E8` | `text_blit_glyph` | full row (2 specs) | it was `static` and `0x51ED8` had no seam; the node is the raw's frame (`mov eax,esp` `0x1C63B`), compared by value at the `0x51ED8` stub |
+| `0x31A78` | `svc_buttons_draw` | full row | the name is in the raw's frame (`mov ebx,esp` `0x31AB0`), compared per character at the `0x2F5A0` stub |
+| `0x305FC` | `config_code_row` | full row (2 specs) | frame strings (`0x306F9`) and frame record (`0x306AB`); `0x2DCA0` runs on both sides |
+| `0x2CADC` | `config_set_defaults` | poked, partial | three calls the port omits under its `PORT:` note are `nop`s in the raw (`0x2CAF3`, `0x2CB5F`, `0x2CB69`) |
+| `0x2D6F8` | `config_validate` | poked, partial (24 of 43 blocks) | the deferred validators `0x2D912`, `0x2D919` are `nop`s; the version arms and the stored-image arm are named unhit |
+| `0x2EA78`, `0x2EA74` | `config_screen_wait`, `config_screen_wait_zero` | poked rows (15 of 23) | `int 0x16` at `0x2EB15` as `cmp eax,eax`: exact for the no-key path, where ZF is all the code takes (the poke of `0x24C5C`, §D.9); the key loop `0x2EB29..0x2EB6C` named unhit |
+| `0x249F0` | `game_quit_prompt` | poked row (16 of 18) | `int 0x16` (AH = 0) at `0x24A64` as `mov al,K`: the code keeps AL alone (`0x24A71/0x24A76`); the soft-restart arm `0x24A9C` named unhit |
+| `0x1C470` | `gfx_flush_palette` | poked, partial | the retrace read `0x1C481..0x1C486` as `mov al,8`, the four `out dx,al` as `nop`s: the row sees the list bookkeeping and no DAC byte |
+| `0x52106` | `gfx_screen_reset` | poked, partial | the retrace read `0x52129`, four `out` and the aperture fill `call 0x51f72` (`0x52151`) as `nop`s |
+| `0x4FBA2` | `int10h_query` | **stays a gap** | `int 0x10` at `0x4FBAD`: the function returns the BIOS's AL and nothing else; a poke would compare a chosen constant with the port's |
+
+| scope | rows | cases | mutants |
+|---|---|---|---|
+| the ten functions above | 12 (10 addresses) | 57 | 143 |
+
+`make diff-verify`: **`963/963 functions VERIFIED; 14349/14349 mutants detected; 1 named gaps; 604/796 rows
+with callees closed (167 have none)`**. 707 of the 731 have a row. The 24 without one are 18 named gaps (`0x11BCC`,
+`0x12CD4`, `0x2F920`, `0x1D018`, `0x2F9CC`: no C function; `0x4FBA2`: `int 0x10`; `0x51ED8`: the VGA aperture;
+`0x1C930`, `0x1CF40`, `0x47370`, `0x1C740`, `0x1BE30`, `0x1B120`, `0x1B3AC`, `0x1BEC4`, `0x20C10`: host
+replacements and the runtime; `0x2EA68`, `0x2D4EC`: declared no-ops) and the 6 named non-rows.
+
+**The corrections** (audit #15, read-only, from the bytes: 3 of 3 CONFIRMED):
+
+| correction | raw |
+|---|---|
+| text_blit_glyph advances by the width byte it loaded before the calls | `0x1C5FF movzx esi,byte [eax+2]`, `0x1C642` |
+| config_set_defaults keeps the upper three bytes of `0x2D974`'s result | `0x2CB36 and al,0xfc; or al,3; mov edx,eax` |
+| config_validate's defaults arm clears the stored-image buffer and the config-field block | `0x2D855`, `0x2D875 call 0x61a70` (§D.9's open note) |
+
+**Harness changes of the batch.** `d6a_scratch_hook` in the runner hides the port's frame-substitute scratch
+(`0x03900000..0x039000FF`, a `PORT:` area above the image that stands for the raw's stack frame) from the
+changed-memory report for the `0x31A78` and `0x305FC` bindings only; `_CALLEE_CLOBBER_FIXES` for `0x51ED8`,
+`0x1AE20` (`()`) and `0x2CADC` (`("edi",)`); `RESOLVED_JUMPS[0x31AD6]`; `0x655FF` (the runtime `memcpy`) in
+`FLAT_SEGMENT_CALLEES`; seven stub entries and one jump window in the pins. Eight seams: `0x51ED8`,
+`0x2CCD0`, `0x1AE20`, `0x2CADC`, `0x2EA78`, `0x1D250`, `0x1D270`, and `text_blit_glyph` exported.
+
+**What the poked and partial rows do not claim** (the batch record's limits): EAX is not compared on
+`config_screen_wait`, `config_screen_wait_zero` and `gfx_screen_reset`; `gfx_flush_palette` is blind to the
+index, count, colours and shifts it would send; `config_validate` is blind to what the reads store in
+`0x105DE1..0x105E33` and does not case a RAM magic over an empty stored image; `config_screen_wait` runs with
+the ISR gate byte `0x104B22` at 1 in every case; `game_quit_prompt` is one key per case.
+
+**Audit #15** also read every code poke, the harness changes, the seams and each row's claim. None of the three
+corrections changes play: no callee of `0x1C5E8` writes the font table; `0x2D974(0x2A)` returns one nibble
+(descriptor `[0x2D3A8] = 0x1B80`, `0x2D9AB..0x2D9B5`), so bits 8..31 are 0 — this closes the batch's open
+question; `config_validate` has one call site, before anything writes either range. Every poke replaces
+whole instructions with bytes of the same length and is exact for the paths the cases run (only ZF is taken
+from `int 0x16` at `0x2EB15`, only AL at `0x24A64`, only `test al,8` from the retrace reads). The scratch hook
+cannot hide original state (the range holds four `PORT:` buffers and the image ends at `0x10B0CF`); the
+clobber fixes for `0x51ED8` and `0x1AE20`, the jump table at `0x31AD6` and the seven seams are CONFIRMED;
+`0x2CADC`'s `("edi",)` is proven for ESI and rests on the caller's use for EBP. No binding does the port's
+work, and no row was found passing against a wrong port on the paths it compares.
+
+**What it corrects in the batch's claims.**
+
+- `config_validate`'s two poked calls are not no-ops in the raw: `0x2DE98(1)` zeroes tables 0..2
+  (`0x105E34` + 0x78, `0x105EAC` + 0x1C, `0x105EC8` + 5; `0x2DEDD`, `0x2DF26`) and copies `0x105DDC..E0` to
+  `0x105EC8` (`0x2DF37..0x2DF4E`); `0x2DF8C(1)` zeroes `0x105ECD..0x105EFB` (`0x2DFD6`). The port does
+  neither and the row cannot see it. Under the port's storage-absent model both are zeros over image zeros
+  (`0x105DDC..E0` is written only by the deferred storage read `0x2D638`), so it is a deviation without an
+  effect, now named `PORT:` in `config.c`; it is not a row of those effects.
+- Of that row's 19 unhit blocks, `0x2D7B2`, `0x2D7BB`, `0x2D7F4`, `0x2D7FD` and `0x2D8EB` are dead in the raw
+  itself (`0x2E990` returns 1 or -1 only, `0x2EA1C/0x2EA23`); `0x2D761` is the gate-zero return's other
+  operand, not a version arm. Two of its cases also poke the data byte `0x2D490`.
+- `config_set_defaults`'s three poked calls are not no-ops either (`0x2F198` draws the defaults message and
+  stores the cursor words `0x105F34/36`, `0x2EA78(0xB4)` presents and waits, `0x2F280` releases the cells);
+  the port omits them deliberately (`game_init`, before the loop) and the header now says so.
+- `gfx_flush_palette`'s row proves the list bookkeeping only (the clamp of `+0xC`, the consumed mark, the
+  head reset). Its "11 of 11 blocks" execute in the original, but the count, the handle arm and the `+4`
+  skip have no observable on either side: the DAC half of the function stays unverified. The port also
+  caches the list head and treats one above `0x107618` as empty where the raw re-reads it (`0x1C4E8`).
+- The counter does not tell a poked or partial row from a full one, and no pin lists the instruction pokes
+  (22 in this batch, 10 older: `0x24D0E` in eight rows, `game_loop`'s two). Named, not built.
+
+**Gate evidence.** Self-check on the merged tree `963/963; 14349/14349; 1; 604/796 (167)`, rc 0; all 594 stub clobber
+sets equal the scan's and the pinned dictionary; no row reads outside the image unnamed (964 specs); the
+real-function tests under a soft assertion report no moved pin. `make verify` exits 0 on the first run: 178
+harness tests OK, the counter above, entry-triage byte-identical, `symbols.h` idempotent, every oracle pin
+unchanged, and its 782 normalised lines before "== differential verification" equal the §D.11 gate's — 0
+differing. The two `PORT:` comments of `config.c`/`config.h` that audit #15 asked for were reworded after
+the gate with the line counts unchanged: 38 of the 39 objects are byte-identical, and `config.c.o` differs
+only outside its code and data (the same `__text`/`__data` bytes and disassembly as the gated object), so
+the gate's result holds for the committed tree.
+
