@@ -132,6 +132,14 @@ void config_play_time_snap(u32 idx, u32 arm);
  * 0x2E934(0, t) audit post deferred (spec §7). Ported caller: 0x25EFD. */
 void config_play_time_snap_b(u32 idx, u32 arm);
 
+/* ---- the audit adds (track S batch sb, record §S.6) ---------------------- */
+
+/* 0x2DAE4. Adds `n` to config field `field` (0x2D974 then 0x2DA0C) and
+ * returns the sum; a field that reads negative (an index above 0x3E reads
+ * -1) is returned as read and not written. Field 3 also steps the slot byte
+ * DS_00105E2F when the sum changes at or above bit 8. */
+s32 audit_add(u32 field, u32 n);
+
 /* ---- timed screen, key latch and menu helpers (record §49-Y) ------------ */
 
 /* 0x2EA78. Builds and presents one frame without the game logic, then waits

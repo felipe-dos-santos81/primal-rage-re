@@ -32422,6 +32422,38 @@ SB_SPECS += [
        mutants=tuple("@" + m for m in "kle ksigned row firstle fsigned nosub step stepw firstw ssigned count "
                                       "countsext countoff bucket add2 kindarg ret".split())),
 ]
+SB_SLOT = 0x00105E2F           # the slot byte: the place of the low-byte block in the stored image
+
+
+def sb_slot(slot=7, flags=0x50):
+    """0x2DAE4: the slot byte 0x105E2F and the dirty byte 0x105DD8, each between seeded bytes."""
+    return {SB_SLOT - 1: bytes([0x71, slot, 0x72]), 0x00105DD7: bytes([0x61, flags, 0x5A, 0x62])}
+
+
+SB_SPECS += [
+    # 0x2DAE4 audit_add: EAX = field, EDX = n. 0x2D974(field) (a stub): a negative EAX is returned as it is
+    # with no store (`jl` 0x2DAF0: d1 is -1, d2 0x80000000). Else the sum old + n goes to 0x2DA0C(field, sum)
+    # (a stub; its EAX is not read, `mov eax,ecx` 0x2DB52 follows: d0, d5) and is returned. For field 3, all
+    # of EBX (`cmp ebx,3` 0x2DAF5: da is 0x103), with old ^ sum >= 0x100 signed (`jl` 0x2DB01: d6 is 0x100,
+    # d7 0xFF, d8 negative; d5's sum - old is 0xCC), before that call: the slot byte 0x105E2F + 1, or 0 when
+    # 0x2D4B4(0x26) * (slot + 1) + 0x1A3 + 0x2D4B4(0x26) >= 0x7F8 unsigned (`jb` 0x2DB30: d5 goes 34 -> 35,
+    # the last slot, d6 35 -> 0, d9 0xFF -> 0), and the dirty byte 0x105DD8 |= 6. 0x2D4B4 runs on both sides.
+    Spec("audit_add", 0x2DAE4, [
+        Case("d0", {"eax": 0x10, "edx": 5}, sb_slot(), {0x2D974: 0x000000FE, 0x2DA0C: 0x5A5A5A5A}),
+        Case("d1", {"eax": 0x3F, "edx": 5}, sb_slot(), {0x2D974: 0xFFFFFFFF}),
+        Case("d2", {"eax": 3, "edx": 0x100}, sb_slot(), {0x2D974: 0x80000000}),
+        Case("d3", {"eax": 3, "edx": 1}, sb_slot(), {0x2D974: 0x000000FF}),
+        Case("d4", {"eax": 3, "edx": 1}, sb_slot(), {0x2D974: 0x000000FE}),
+        Case("d5", {"eax": 3, "edx": 0xCC}, sb_slot(slot=34, flags=0x00), {0x2D974: 0x00001234, 0x2DA0C: 0xFFFFFFFF}),
+        Case("d6", {"eax": 3, "edx": 0x100}, sb_slot(slot=35, flags=0xFF), {0x2D974: 0}),
+        Case("d7", {"eax": 3, "edx": 0xFF}, sb_slot(), {0x2D974: 0}),
+        Case("d8", {"eax": 3, "edx": 1}, sb_slot(), {0x2D974: 0x7FFFFFFF}),
+        Case("d9", {"eax": 3, "edx": 0x00010000}, sb_slot(slot=0xFF), {0x2D974: 0x00000001}),
+        Case("da", {"eax": 0x103, "edx": 1}, sb_slot(), {0x2D974: 0x000000FF}),
+    ], allow_calls=(0x2D4B4,), calls=(D4C_DIP, D5D_FIELD_SET), eax_mask=0xFFFFFFFF,
+       mutants=tuple("@" + m for m in "nocheck le retneg fieldb field4 xor unsigned sub noinc cells base nolen "
+                                      "nowrap no6 or4 slotlate noslot noset setold setn getfield ret retold".split())),
+]
 
 D1_SPECS += SB_SPECS
 SPECS = [

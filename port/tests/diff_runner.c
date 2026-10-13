@@ -41770,6 +41770,43 @@ SB_AP_MUT(kle, 1u)    SB_AP_MUT(ksigned, 2u) SB_AP_MUT(row, 3u)     SB_AP_MUT(fi
 SB_AP_MUT(nosub, 6u)  SB_AP_MUT(step, 7u)    SB_AP_MUT(stepw, 8u)   SB_AP_MUT(firstw, 9u)    SB_AP_MUT(ssigned, 10u)
 SB_AP_MUT(count, 11u) SB_AP_MUT(countsext, 12u) SB_AP_MUT(countoff, 13u) SB_AP_MUT(bucket, 14u) SB_AP_MUT(add2, 15u)
 SB_AP_MUT(kindarg, 16u) SB_AP_MUT(ret, 17u)
+
+/* 0x2DAE4 audit_add: EAX = field, EDX = n. The mutants restate config.c's body. No mutant follows an index:
+ * the two bytes it writes are fixed addresses and the field goes to the stubbed 0x2D974/0x2DA0C. */
+static u32 sb_2dae4_core(u32 field, u32 n, u32 mut)
+{
+    const s32 old = (s32)config_field_get((mut == 21u) ? 3u : field);            /* @getfield */
+    if (mut != 1u && ((mut == 2u) ? old <= 0 : old < 0))                         /* @nocheck @le */
+        return (mut == 3u) ? 0xFFFFFFFFu : (u32)old;                             /* @retneg */
+    const u32 sum = (u32)old + n;
+    const s32 x = (s32)((u32)old ^ sum);
+    const int is3 = (mut == 4u) ? (field & 0xFFu) == 3u : (mut == 5u) ? field == 4u : field == 3u;   /* @fieldb @field4 */
+    const int far = (mut == 6u) ? x > 0x100 : (mut == 7u) ? (u32)x >= 0x100u     /* @xor @unsigned */
+                  : (mut == 8u) ? (s32)(sum - (u32)old) >= 0x100 : x >= 0x100;   /* @sub */
+    if (mut == 16u) (void)config_field_set(field, sum);                          /* @slotlate */
+    if (is3 && far) {
+        u32 slot = (u32)DSB(0x00105E2Fu) + ((mut == 9u) ? 0u : 1u);              /* @noinc */
+        const u32 cells = (mut == 10u) ? 0x26u : config_codeword_len(0x26u);     /* @cells */
+        u32 end = cells * slot + ((mut == 11u) ? 0x1A4u : 0x1A3u);               /* @base */
+        if (mut != 12u) end += cells;                                            /* @nolen */
+        if (mut != 13u && end >= 0x7F8u) slot = 0u;                              /* @nowrap */
+        const u8 flags = DSB(SB_DIRTY) | (u8)((mut == 15u) ? 4u : 6u);           /* @or4 */
+        if (mut != 17u) DSB(0x00105E2Fu) = (u8)slot;                             /* @noslot */
+        if (mut != 14u) DSB(SB_DIRTY) = flags;                                   /* @no6 */
+    }
+    u32 r = 0u;
+    if (mut != 16u && mut != 18u)                                                /* @noset */
+        r = config_field_set(field, (mut == 19u) ? (u32)old : (mut == 20u) ? n : sum);   /* @setold @setn */
+    return (mut == 22u) ? r : (mut == 23u) ? (u32)old : sum;                     /* @ret @retold */
+}
+static void b_sb_2dae4(const u32 *r, u32 *eax) { *eax = (u32)audit_add(r[R_EAX], r[R_EDX]); }
+#define SB_AA_MUT(name, n) \
+    static void m_sb_aa_##name(const u32 *r, u32 *eax) { *eax = sb_2dae4_core(r[R_EAX], r[R_EDX], n); }
+SB_AA_MUT(nocheck, 1u) SB_AA_MUT(le, 2u)     SB_AA_MUT(retneg, 3u)  SB_AA_MUT(fieldb, 4u)  SB_AA_MUT(field4, 5u)
+SB_AA_MUT(xor, 6u)     SB_AA_MUT(unsigned, 7u) SB_AA_MUT(sub, 8u)   SB_AA_MUT(noinc, 9u)   SB_AA_MUT(cells, 10u)
+SB_AA_MUT(base, 11u)   SB_AA_MUT(nolen, 12u) SB_AA_MUT(nowrap, 13u) SB_AA_MUT(no6, 14u)    SB_AA_MUT(or4, 15u)
+SB_AA_MUT(slotlate, 16u) SB_AA_MUT(noslot, 17u) SB_AA_MUT(noset, 18u) SB_AA_MUT(setold, 19u) SB_AA_MUT(setn, 20u)
+SB_AA_MUT(getfield, 21u) SB_AA_MUT(ret, 22u) SB_AA_MUT(retold, 23u)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56795,6 +56832,30 @@ static const binding_t k_bindings[] = {
     { "audit_post@add2", m_sb_ap_add2, 0xFFFFFFFFu },
     { "audit_post@kindarg", m_sb_ap_kindarg, 0xFFFFFFFFu },
     { "audit_post@ret", m_sb_ap_ret, 0xFFFFFFFFu },
+    { "audit_add",                       b_sb_2dae4, 0xFFFFFFFFu },
+    { "audit_add@nocheck", m_sb_aa_nocheck, 0xFFFFFFFFu },
+    { "audit_add@le", m_sb_aa_le, 0xFFFFFFFFu },
+    { "audit_add@retneg", m_sb_aa_retneg, 0xFFFFFFFFu },
+    { "audit_add@fieldb", m_sb_aa_fieldb, 0xFFFFFFFFu },
+    { "audit_add@field4", m_sb_aa_field4, 0xFFFFFFFFu },
+    { "audit_add@xor", m_sb_aa_xor, 0xFFFFFFFFu },
+    { "audit_add@unsigned", m_sb_aa_unsigned, 0xFFFFFFFFu },
+    { "audit_add@sub", m_sb_aa_sub, 0xFFFFFFFFu },
+    { "audit_add@noinc", m_sb_aa_noinc, 0xFFFFFFFFu },
+    { "audit_add@cells", m_sb_aa_cells, 0xFFFFFFFFu },
+    { "audit_add@base", m_sb_aa_base, 0xFFFFFFFFu },
+    { "audit_add@nolen", m_sb_aa_nolen, 0xFFFFFFFFu },
+    { "audit_add@nowrap", m_sb_aa_nowrap, 0xFFFFFFFFu },
+    { "audit_add@no6", m_sb_aa_no6, 0xFFFFFFFFu },
+    { "audit_add@or4", m_sb_aa_or4, 0xFFFFFFFFu },
+    { "audit_add@slotlate", m_sb_aa_slotlate, 0xFFFFFFFFu },
+    { "audit_add@noslot", m_sb_aa_noslot, 0xFFFFFFFFu },
+    { "audit_add@noset", m_sb_aa_noset, 0xFFFFFFFFu },
+    { "audit_add@setold", m_sb_aa_setold, 0xFFFFFFFFu },
+    { "audit_add@setn", m_sb_aa_setn, 0xFFFFFFFFu },
+    { "audit_add@getfield", m_sb_aa_getfield, 0xFFFFFFFFu },
+    { "audit_add@ret", m_sb_aa_ret, 0xFFFFFFFFu },
+    { "audit_add@retold", m_sb_aa_retold, 0xFFFFFFFFu },
     /* sb table end */
 };
 

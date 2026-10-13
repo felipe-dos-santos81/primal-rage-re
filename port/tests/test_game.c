@@ -4501,6 +4501,44 @@ int test_audit(void)
     au_seed();
     CHECK_EQ_INT((int)audit_post(2u, 3u), 0x40 + 0x28 + 3 + 1);          /* 0x2E180's EAX, returned */
 
+    /* add — 0x2DAE4: the field + n through 0x2D974/0x2DA0C; the sum is
+     * returned. Field 0x10 is a byte at 0x105DC0 under two nibbles. */
+    (void)config_field_set(0x10u, 0x0FEu);
+    DSB(DS_00105E2F) = 7u;
+    DSB(DS_00105DD8) = 0x80u;
+    CHECK_EQ_INT((int)audit_add(0x10u, 5u), 0x103);
+    CHECK_EQ_INT((int)config_field_get(0x10u), 0x103);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 7);                              /* 0x2DAF8 `jne`: not field 3 */
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x87);                           /* 0x2DA0C's bits */
+
+    /* negative — 0x2DAF0 `jl`: a field that reads negative is returned as
+     * read and not written (field 0x29 is eight nibbles). */
+    (void)config_field_set(0x29u, 0x80000005u);
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_add(0x29u, 1u), (int)0x80000005u);
+    CHECK_EQ_INT((int)au_changed(ref), 0);
+
+    /* field3 — 0x2DAFA..0x2DB01: when field 3's sum differs from the old
+     * value at or above bit 8, the slot byte 0x105E2F steps (the low-byte
+     * block's place in the stored image). */
+    (void)config_field_set(3u, 0x0FEu);
+    CHECK_EQ_INT((int)audit_add(3u, 1u), 0xFF);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 7);                              /* 0xFE ^ 0xFF < 0x100 */
+    CHECK_EQ_INT((int)audit_add(3u, 1u), 0x100);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 8);
+    CHECK_EQ_INT((int)config_field_get(3u), 0x100);
+
+    /* clamp — 0x2DB2B `cmp eax,0x7f8; jb`: slot 35 is the last whose 45
+     * cells end inside the image (0x1A3 + 45 * 35 + 45 = 0x7F7); the next
+     * step wraps to 0. */
+    DSB(DS_00105E2F) = 34u;
+    (void)config_field_set(3u, 0x1FFu);
+    (void)audit_add(3u, 1u);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 35);
+    (void)config_field_set(3u, 0x2FFu);
+    (void)audit_add(3u, 1u);
+    CHECK_EQ_INT((int)DSB(DS_00105E2F), 0);
+
     tf_put(saved, AU_LO, AU_LEN);
     return 0;
 }

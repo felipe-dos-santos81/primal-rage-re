@@ -530,6 +530,36 @@ void config_play_time_snap_b(u32 idx, u32 arm)
      * 0x32B83 reads, so the value stays as stored. */
 }
 
+/* ---- the audit adds (track S batch sb, record §S.6) ------------------------ */
+
+/* 0x2DAE4 — record §S.6. EAX = field, EDX = n. The field is read through
+ * 0x2D974; a negative value is returned as read and nothing is written
+ * (0x2DAF0 `jl`). Else the sum goes back through 0x2DA0C and is returned
+ * (0x2DB52 `mov eax,ecx`). Field 3 alone (0x2DAF5), when old ^ sum is 0x100
+ * or more, signed (0x2DAFA..0x2DB01 `jl`), first steps the slot byte
+ * DS_00105E2F: slot + 1, or 0 when 0x2D4B4(0x26) * (slot + 1) + 0x1A3 +
+ * 0x2D4B4(0x26) reaches 0x7F8 (0x2DB2B `jb`, unsigned), and sets bits 1 and 2
+ * of DS_00105DD8. Callers that read EAX: 0x1EC50 (`and eax,0xffff`) and
+ * 0x1EC84 (`cmp eax,0xc8`). */
+s32 audit_add(u32 field, u32 n)
+{
+    PR_SEAM_RET(0x2DAE4u, field, n);
+    const s32 old = (s32)config_field_get(field);           /* 0x2DAE9 */
+    if (old < 0) return old;                                /* 0x2DAEE/0x2DAF0 */
+    const u32 sum = (u32)old + n;                           /* 0x2DAF2 */
+    if (field == 3u && (s32)((u32)old ^ sum) >= 0x100) {    /* 0x2DAF5..0x2DB01 */
+        u32 slot = (u32)DSB(DS_00105E2F) + 1u;              /* 0x2DB03..0x2DB10 */
+        const u32 end = config_codeword_len(0x26u) * slot + 0x1A3u   /* 0x2DB0B..0x2DB19 */
+                        + config_codeword_len(0x26u);       /* 0x2DB1F..0x2DB29 */
+        if (end >= 0x7F8u) slot = 0u;                       /* 0x2DB2B..0x2DB32 */
+        const u8 flags = DSB(DS_00105DD8) | 6u;             /* 0x2DB34/0x2DB3A */
+        DSB(DS_00105E2F) = (u8)slot;                        /* 0x2DB3D */
+        DSB(DS_00105DD8) = flags;                           /* 0x2DB43 */
+    }
+    (void)config_field_set(field, sum);                     /* 0x2DB49..0x2DB4D */
+    return (s32)sum;                                        /* 0x2DB52 */
+}
+
 /* ---- timed screen, key latch and menu helpers (record §49-Y) -------------- */
 
 /* Key-layer globals of the 0x2Exxx cluster. The symbols generator names none
