@@ -4387,8 +4387,8 @@ void fight_4cd98(void)
  *   unsigned "still running" test flagged in this session's review notes,
  *   not a signed one — and, reaching 0, calls fight_4CD98() (the match's
  *   timeout end) and returns; every DS_00104AF4 % DS_001088D0 == 0 frame
- *   (computed as an unsigned mod: EDX is pre-cleared before the `idiv`, so
- *   the signed division behaves as unsigned for the actual u16 range) draws
+ *   (a signed remainder: the zero-extended word in EDX:EAX, `sar edx,0x1f`,
+ *   by the signed dword, `idiv ecx` 0x4C3E7) draws
  *   the pip counter (DS_001088F2, whose dword-at-DS_001088EF `sar 0x18` read
  *   is byte-identical to `(s8)DS_001088F2` — its own +3 byte, folded here
  *   directly) when DS_001088F2 != 0, ends the match via fight_4CC0C() when
@@ -4600,8 +4600,8 @@ void fight_4bf18(void)
 
     DSD(DS_00108874) = fight_midpoint();                                                                /* 0x4C3C9/0x4C3DD */
     {
-        u32 rem = (u32)DSW(DS_00104AF4) % DSD(DS_001088D0);                                             /* 0x4C3CE..0x4C3E9 */
-        if (rem == 0u) {                                                                                 /* 0x4C3EB */
+        s32 rem = (s32)(u32)DSW(DS_00104AF4) % (s32)DSD(DS_001088D0);                                   /* 0x4C3CE..0x4C3E9 `idiv ecx` */
+        if (rem == 0) {                                                                                  /* 0x4C3EB */
             if (DSB(DS_001088F2) != 0u) {                                                                /* 0x4C3F1/0x4C3F8 */
                 s32 v = (s32)(s8)DSB(DS_001088F2);                                                         /* 0x4C409/0x4C410 */
                 text_number_draw_font2(0x13, 1, v, 2, 0u, 0x5000u);                                        /* 0x4C3FA..0x4C418 */
