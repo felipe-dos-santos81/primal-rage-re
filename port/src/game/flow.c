@@ -5819,8 +5819,8 @@ void game_mode_23_step(void)
  * game_hook_27134 (DS_00104AE4 = 0x27134 — this is the store the hook's own
  * header comment cites as "stored at 0x27074 (0x26F58)"), DS_00104AFE =
  * 0x78, DS_00104B00 = 0x17, DS_001088EE = 0, config_play_time_close(mode =
- * DS_00104ABC, flag = DS_00104B19), DS_00104B19 = 0, and the deferred
- * 0x2DAE4 audit add (spec §7, per config_play_time_close's own header).
+ * DS_00104ABC, flag = DS_00104B19), DS_00104B19 = 0, and the audit add
+ * 0x2DAE4(0x10, 1) (0x270A9, track S §S.6).
  * Either way, camera_y_commit runs last. EBX/ECX/EDX/ESI/EDI are pushed and
  * popped. Sole caller per get_xrefs_to: 0x24C5C's jump table (record
  * §47-B.1). */
@@ -5861,8 +5861,7 @@ void game_mode_24_step(void)
         DSW(DS_001088EE) = 0u;                               /* 0x2708D */
         config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));  /* 0x27094 0x32A3C */
         DSB(DS_00104B19) = 0u;                               /* 0x270A3 */
-        /* PORT: 0x270A9 0x2DAE4's play-time audit add is out of scope
-         * (spec §7), per config_play_time_close's own header. */
+        (void)audit_add(0x10u, 1u);                          /* 0x27099..0x270A9 0x2DAE4 */
     }
     camera_y_commit();                                       /* 0x270AE 0x12DA8 */
 }

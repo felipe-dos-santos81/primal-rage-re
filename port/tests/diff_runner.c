@@ -25,6 +25,9 @@
 
 /* s0..s3 are the dwords above the return address: a callee's stack arguments (record E3 §E3.5). */
 enum { R_EAX, R_EBX, R_ECX, R_EDX, R_ESI, R_EDI, R_EBP, R_S0, R_S1, R_S2, R_S3, R_N };
+/* Track S batch sb (record 2026-10-13-reverse-s §S.6): the mutant ids of the audit calls this batch added
+ * to the mutant cores of earlier batches' rows (the call sites), above every batch's own ids. */
+enum { SB_M_NOAUDIT = 0x5B000001, SB_M_AUDITF, SB_M_AUDITN, SB_M_AUDITEARLY, SB_M_AUDITALWAYS, SB_M_AUDITLATE };
 static const char *const k_reg[R_N] = { "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp",
                                         "s0", "s1", "s2", "s3" };
 
@@ -36938,8 +36941,13 @@ static void d5e_26f58_core(u32 mut)
         if (mut == D5E_closeswap) config_play_time_close(fl, abc);
         else if (mut != D5E_noclose) config_play_time_close(abc, fl);
         if (mut == D5E_eelate) d5e_26f58_ee(mut);
+        if (mut == SB_M_AUDITEARLY) (void)audit_add(0x10u, 1u);                  /* track S sb: 0x270A9 */
         if (mut == D5E_b19w) DSW(0x00104B19u) = 0u;
         else if (mut != D5E_nob19 && mut != D5E_b19early) DSB(0x00104B19u) = 0u;
+        if (mut != SB_M_NOAUDIT && mut != SB_M_AUDITEARLY)
+            (void)audit_add((mut == SB_M_AUDITF) ? 0x11u : 0x10u, (mut == SB_M_AUDITN) ? 2u : 1u);
+    } else if (mut == SB_M_AUDITALWAYS) {
+        (void)audit_add(0x10u, 1u);
     }
     if (mut != D5E_noyc && mut != D5E_ycearly) camera_y_commit();
 }
@@ -41930,6 +41938,13 @@ static void b_sb_32b4c(const u32 *r, u32 *eax) { config_play_time_snap_b(r[R_EAX
 SB_SB_MUT(kind, 1u) SB_SB_MUT(nopost, 2u) SB_SB_MUT(postearly, 3u) SB_SB_MUT(nostore, 4u) SB_SB_MUT(sdiv, 5u)
 SB_SB_MUT(div, 6u)  SB_SB_MUT(raw, 7u)    SB_SB_MUT(nosub, 8u)     SB_SB_MUT(argraw, 9u)  SB_SB_MUT(idx, 10u)
 SB_SB_MUT(other, 11u) SB_SB_MUT(wide, 12u)
+
+/* The call sites: the mutants this batch added to the cores of earlier batches' rows (SB_M_*). */
+#define SB_SITE_MUT(tag, call, name, id) \
+    static void m_sb_##tag##_##name(const u32 *r, u32 *eax) { (void)r; call(id); *eax = 0u; }
+SB_SITE_MUT(m24, d5e_26f58_core, noaudit, SB_M_NOAUDIT) SB_SITE_MUT(m24, d5e_26f58_core, auditf, SB_M_AUDITF)
+SB_SITE_MUT(m24, d5e_26f58_core, auditn, SB_M_AUDITN)   SB_SITE_MUT(m24, d5e_26f58_core, auditearly, SB_M_AUDITEARLY)
+SB_SITE_MUT(m24, d5e_26f58_core, auditalways, SB_M_AUDITALWAYS)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -57065,6 +57080,11 @@ static const binding_t k_bindings[] = {
     { "hiscore_rank_single@noclamp26", m_d5d_1ec38_noclamp26, 0x000000FFu },
     { "hiscore_rank_single@clamp26v", m_d5d_1ec38_clamp26v, 0x000000FFu },
     { "hiscore_rank_single@add26win", m_d5d_1ec38_add26win, 0x000000FFu },
+    { "game_mode_24_step@noaudit", m_sb_m24_noaudit, 0x00000000u },
+    { "game_mode_24_step@auditf", m_sb_m24_auditf, 0x00000000u },
+    { "game_mode_24_step@auditn", m_sb_m24_auditn, 0x00000000u },
+    { "game_mode_24_step@auditearly", m_sb_m24_auditearly, 0x00000000u },
+    { "game_mode_24_step@auditalways", m_sb_m24_auditalways, 0x00000000u },
     /* sb table end */
 };
 
