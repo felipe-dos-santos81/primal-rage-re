@@ -337,6 +337,26 @@ void hiscore_storage_load(u32 defaults)
     }
 }
 
+/* 0x2DF8C — record 2026-10-13-reverse-s §S.5. EAX = the defaults flag, tested
+ * as a dword (0x2DFA8). For the kinds 3..5, with the kind table's entries from
+ * 0x2D45C: with the flag 0 the result is 0x2E990(the entry's cell, its source,
+ * its length), else -2 (0x2DFAC). Below -1 the source is zeroed over the
+ * entry's length, read again after the call (0x2DFC7..0x2DFD6); a negative
+ * result encodes the kind (0x2DFDB..0x2DFE1). */
+void config_storage_validate(u32 defaults)
+{
+    PR_SEAM(0x2DF8Cu, defaults);
+    u32 ent = 0x0002D45Cu;                              /* 0x2DF98 */
+    for (u32 kind = 3u; kind != 6u; kind++, ent += 8u) {   /* 0x2DF9D, 0x2DFE6..0x2DFED */
+        u32 src = DSD(ent + 4u);                        /* 0x2DFA5 */
+        s32 r = -2;                                     /* 0x2DFAC */
+        if (defaults == 0u)                             /* 0x2DFA8 */
+            r = config_storage_read(DSW(ent), mem + src, DSW(ent + 2u));   /* 0x2DFB3..0x2DFC5 */
+        if (r < -1) mem_fill(src, 0, DSW(ent + 2u));    /* 0x2DFC7..0x2DFD6 */
+        if (r < 0) config_storage_touch(kind);          /* 0x2DFDB..0x2DFE1 */
+    }
+}
+
 /* 0x2D6F8, no-storage path. */
 void config_validate(void)
 {

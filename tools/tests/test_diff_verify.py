@@ -29334,6 +29334,9 @@ SA_MASKS = {
     "config_storage_touch": 0x0,
     "config_storage_load": 0x0,
     "hiscore_storage_load": 0x0,
+    "hiscore_storage_load_rr": 0x0,
+    "config_storage_validate": 0x0,
+    "config_storage_validate_rr": 0x0,
 }   # SA_MASKS end
 SA_KINDS = {
     "config_image_store@lo": {'byte', 'call #0'},
@@ -29399,6 +29402,18 @@ SA_KINDS = {
     "hiscore_storage_load@kind": {'call #0', 'call #1', 'call #2', 'call #3', 'call #5'},
     "hiscore_storage_load@order": {'call #2 memory'},
     "hiscore_storage_load@ent": {'byte', 'call #0', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5 memory'},
+    "hiscore_storage_load_rr@lencache": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "config_storage_validate@al": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory'},
+    "config_storage_validate@readdflt": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory'},
+    "config_storage_validate@norefill": {'byte', 'call #0 memory', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "config_storage_validate@touchle": {'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5'},
+    "config_storage_validate@notouch": {'call #0', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #4', 'call #5'},
+    "config_storage_validate@kind": {'call #0', 'call #1', 'call #2', 'call #3', 'call #5'},
+    "config_storage_validate@ent": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3 memory', 'call #4', 'call #4 memory', 'call #5 memory'},
+    "config_storage_validate@from4": {'byte', 'call #0', 'call #0 memory', 'call #1', 'call #1 memory', 'call #2', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4', 'call #5'},
+    "config_storage_validate@to5": {'byte', 'call #2', 'call #4', 'call #5'},
+    "config_storage_validate_rr@lencache": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
+    "config_storage_validate_rr@srcreread": {'byte', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory', 'call #5 memory'},
 }   # SA_KINDS end
 SA_CASES = [
     ("config_image_store@lo", ['e0']),
@@ -29464,6 +29479,18 @@ SA_CASES = [
     ("hiscore_storage_load@kind", ['h1', 'h2', 'h4', 'h5', 'h7']),
     ("hiscore_storage_load@order", ['h4', 'h5']),
     ("hiscore_storage_load@ent", ['h0', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7']),
+    ("hiscore_storage_load_rr@lencache", ['r0']),
+    ("config_storage_validate@al", ['a5']),
+    ("config_storage_validate@readdflt", ['a4', 'a5']),
+    ("config_storage_validate@norefill", ['a2', 'a4', 'a5']),
+    ("config_storage_validate@touchle", ['a3']),
+    ("config_storage_validate@notouch", ['a1', 'a2', 'a4', 'a5']),
+    ("config_storage_validate@kind", ['a1', 'a2', 'a4', 'a5']),
+    ("config_storage_validate@ent", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5']),
+    ("config_storage_validate@from4", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5']),
+    ("config_storage_validate@to5", ['a0', 'a1', 'a2', 'a3', 'a4', 'a5']),
+    ("config_storage_validate_rr@lencache", ['r0']),
+    ("config_storage_validate_rr@srcreread", ['r0']),
 ]   # SA_CASES end
 SA_OUTSIDE = {}
 P45_OUTSIDE.update(SA_OUTSIDE)

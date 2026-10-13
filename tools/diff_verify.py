@@ -32587,6 +32587,63 @@ SA_SPECS += [
                                       "copyalways touchle notouch kind order ent".split())),
 ]
 
+SA_AUDIT = 0x00105ECD                           # the three audit blocks: 0x14, 0x14 and 7 bytes
+
+
+def sa_audit(cid, flag, read=None):
+    """0x2DF8C: the three blocks seeded whole with the byte below and the byte past them (0x105ECC..
+    0x105EFC); `read` is the 0x2E990 stub's EAX for the case."""
+    p = d1d_chunks(SA_AUDIT - 1, bytes(0x80 | ((5 * i + 2) & 0x7F) for i in range(0x31)))
+    return Case(cid, {**D2E_DIRTY, "eax": flag}, p, {} if read is None else {0x2E990: read})
+
+
+SA_SPECS += [
+    # The same entry with a 0x2E990 stub that stores three bytes at the block's +0x10 and what the raw
+    # reads after it: the length words of the entries 6..8 (0x2D476, 0x2D47E, 0x2D486 = 9, 8, 2). The
+    # second clear reads its length after the call (`mov bx,[eax+2]` 0x2DF20): 9 bytes of table 0 with
+    # the stub's -2 (the stub's bytes at +0x10 stay), and the later calls pass 8 and 2.
+    Spec("hiscore_storage_load_rr", 0x2DE98, [
+        sa_tables("r0", 0, read=0xFFFFFFFE),
+    ], allow_calls=(0x2DB58, 0x61A70, 0x65490, 0x654C7),
+       calls=(dataclasses.replace(SA_READ, writes=(
+           (1, 0x10, bytes([0x51, 0x52, 0x53])),
+           (None, 0x0002D476, le16(9)), (None, 0x0002D47E, le16(8)), (None, 0x0002D486, le16(2)))),
+              D5D_TOUCH), eax_mask=0,
+       unhit_named={0x2DECC: "a table 0x2DB58 does not find: the hiscore_storage_load row's",
+                    0x2DEE9: "the defaults flag set: the hiscore_storage_load row's (h4, h5)",
+                    0x2DF32: "the defaults flag set: the hiscore_storage_load row's (h4, h5)",
+                    0x2DF37: "the defaults flag set: the hiscore_storage_load row's (h4, h5)"},
+       mutants=("@lencache",)),
+    # 0x2DF8C config_storage_validate: EAX = the defaults flag, a dword (`test edx,edx` 0x2DFA8: a5 has
+    # 0x100). For the kinds 3..5 (the entries from 0x2D45C): with the flag 0 the result of 0x2E990(cell,
+    # source, length) (a stub that stores three bytes at the source's +1), else -2; below -1 the source
+    # is zeroed over the entry's length (a2 gives the stub -2, which 0x2E990 itself never returns); a
+    # negative result calls 0x2D4EC(kind) (a stub). a0: the read gives 1; a1: -1; a3: 0; a4: the flag 1.
+    # Mask 0: `test esi,esi` 0x2D91E follows the one call site and EAX is loaded on both of its arms
+    # (0x2D92B, 0x2D939).
+    Spec("config_storage_validate", 0x2DF8C, [
+        sa_audit("a0", 0, read=1),
+        sa_audit("a1", 0, read=0xFFFFFFFF),
+        sa_audit("a2", 0, read=0xFFFFFFFE),
+        sa_audit("a3", 0, read=0),
+        sa_audit("a4", 1, read=0x12345678),
+        sa_audit("a5", 0x100, read=1),
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7), calls=(SA_READ_W, D5D_TOUCH), eax_mask=0,
+       mutants=tuple("@" + m for m in "al readdflt norefill touchle notouch kind ent from4 to5".split())),
+    # The same entry with a 0x2E990 stub that stores what the raw reads after it and what it does not: the
+    # length words of the entries 3..5 (0x2D45E, 0x2D466, 0x2D46E = 4, 6, 3) and the source dword of the
+    # entry 3 (0x2D460). The clear reads its length after the call (`mov bx,[ecx+2]` 0x2DFD2) and uses
+    # the source loaded before it (`mov edi,[ecx+4]` 0x2DFA5, `mov eax,edi` 0x2DFCC).
+    Spec("config_storage_validate_rr", 0x2DF8C, [
+        sa_audit("r0", 0, read=0xFFFFFFFE),
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7),
+       calls=(dataclasses.replace(SA_READ, writes=((None, 0x0002D45E, le16(4)), (None, 0x0002D466, le16(6)),
+                                                   (None, 0x0002D46E, le16(3)), (None, 0x0002D460, le32(SA_DST)))),
+              D5D_TOUCH), eax_mask=0,
+       unhit_named={0x2DFAC: "the defaults flag set: the config_storage_validate row's (a4, a5)"},
+       mutants=("@lencache", "@srcreread")),
+]
+
 D1_SPECS += SA_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

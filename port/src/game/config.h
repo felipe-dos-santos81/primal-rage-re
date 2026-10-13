@@ -98,6 +98,11 @@ u32 hiscore_insert(u32 rec, u32 src, u32 table);
  * whose read failed, is encoded into the image again. */
 void hiscore_storage_load(u32 defaults);
 
+/* 0x2DF8C. The audit tables (kinds 3..5) at boot: each is read from the image
+ * when `defaults` is 0, else zeroed; a table that was not read, or whose read
+ * failed, is encoded into the image again. */
+void config_storage_validate(u32 defaults);
+
 /* 0x2DDE4 — record §49-R. Ranks `value` against `table`'s records (via
  * 0x2DB58) as an insertion index: `value` packed big-endian to the
  * descriptor's own value-byte width (the same packing hiscore_insert's

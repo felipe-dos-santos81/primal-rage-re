@@ -4555,6 +4555,22 @@ int test_config_storage(void)
         CHECK(memcmp(mem + 0x00105EC8u, five, 5u) == 0, "tables: the third takes 0x105DDC");
         CHECK(config_storage_read(0x199u, got, 5u) == 1 && memcmp(got, five, 5u) == 0,
               "tables: encoded after the copy");
+
+        /* (0x2DF8C): the same for the blocks 0x105ECD (0x14 bytes), 0x105EE1 (0x14)
+         * and 0x105EF5 (7), kinds 3..5, with no copy. */
+        memcpy(mem + 0x00105ECDu, want, 0x2Fu);
+        for (u32 kind = 3u; kind < 6u; kind++) config_storage_touch(kind);
+        mem_fill(0x00105ECDu, 0xEEu, 0x2Fu);
+        config_storage_validate(0u);
+        CHECK(memcmp(mem + 0x00105ECDu, want, 0x2Fu) == 0, "tables: kinds 3..5 read back");
+
+        DSB(SA_IMG + 2u * 0xD0u + 2u * 6u) ^= 0x04u;
+        config_storage_validate(0u);
+        CHECK_EQ_INT(config_storage_read(0xD0u, got, 0x14u), 1);
+
+        config_storage_validate(1u);
+        CHECK(DSB(0x00105ECDu) == 0u && DSB(0x00105EFBu) == 0u, "tables: the flag zeroes kinds 3..5");
+        CHECK(config_storage_read(0xB6u, got, 0x14u) == 1 && got[0] == 0u, "tables: kind 3 encoded zero");
     }
 
     memcpy(mem + SA_CFG, sv_cfg, sizeof sv_cfg);

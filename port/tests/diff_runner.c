@@ -41788,10 +41788,11 @@ static void sa_2de98_core(u32 defaults, u32 mut)
         u32 p = hiscore_locate(0u, table, &left, NULL);
         if (p == 0u) { menu_fatal_error(0x00080B08u); return; }
         if (mut != 1u) mem_fill(p, 0, (mut == 2u) ? DSW(ent + 2u) : left);      /* @noclear @clearlen */
+        u32 len0 = DSW(ent + 2u);
         s32 r = -2;
         if (defaults == 0u || mut == 4u)                                         /* @readdflt */
             r = config_storage_read(DSW(ent), mem + p, DSW(ent + 2u));
-        if (r < -1 && mut != 5u) mem_fill(p, 0, (mut == 6u) ? left : DSW(ent + 2u));   /* @norefill @refillleft */
+        if (r < -1 && mut != 5u) mem_fill(p, 0, (mut == 6u) ? left : (mut == 16u) ? len0 : DSW(ent + 2u));   /* @norefill @refillleft @lencache */
         if (mut == 14u && r < 0) config_storage_touch(kind);                     /* @order */
         if ((defaults != 0u || mut == 10u) && table == ((mut == 7u) ? 1u : 2u) && mut != 9u)   /* @copyalways @copy1 @nocopy */
             for (u32 i = 0u; i < ((mut == 8u) ? 4u : 5u); i++) DSB(p + i) = DSB(0x00105DDCu + i);   /* @copy4 */
@@ -41804,6 +41805,32 @@ static void b_sa_2de98(const u32 *r, u32 *eax) { hiscore_storage_load(r[R_EAX]);
 SA_HL_MUT(noclear, 1u)    SA_HL_MUT(clearlen, 2u) SA_HL_MUT(al, 3u)     SA_HL_MUT(readdflt, 4u) SA_HL_MUT(norefill, 5u)
 SA_HL_MUT(refillleft, 6u) SA_HL_MUT(copy1, 7u)    SA_HL_MUT(copy4, 8u)  SA_HL_MUT(nocopy, 9u)   SA_HL_MUT(copyalways, 10u)
 SA_HL_MUT(touchle, 11u)   SA_HL_MUT(notouch, 12u) SA_HL_MUT(kind, 13u)  SA_HL_MUT(order, 14u)   SA_HL_MUT(ent, 15u)
+SA_HL_MUT(lencache, 16u)
+
+/* 0x2DF8C config_storage_validate: EAX = the defaults flag. The mutants restate config.c's body. */
+static void sa_2df8c_core(u32 defaults, u32 mut)
+{
+    u32 ent = (mut == 7u) ? 0x0002D474u : 0x0002D45Cu;                           /* @ent */
+    if (mut == 1u) defaults &= 0xFFu;                                            /* @al */
+    u32 kind = 3u;
+    if (mut == 8u) { kind = 4u; ent += 8u; }                                     /* @from4 */
+    for (; kind != ((mut == 9u) ? 5u : 6u); kind++, ent += 8u) {                 /* @to5 */
+        u32 src = DSD(ent + 4u), len0 = DSW(ent + 2u);
+        s32 r = -2;
+        if (defaults == 0u || mut == 2u)                                         /* @readdflt */
+            r = config_storage_read(DSW(ent), mem + src, DSW(ent + 2u));
+        if (mut == 11u) src = DSD(ent + 4u);                                     /* @srcreread */
+        if (r < -1 && mut != 3u) mem_fill(src, 0, (mut == 10u) ? len0 : DSW(ent + 2u));   /* @norefill @lencache */
+        if (mut != 5u && ((mut == 4u) ? r <= 0 : r < 0))                         /* @notouch @touchle */
+            config_storage_touch((mut == 6u) ? kind - 3u : kind);                /* @kind */
+    }
+}
+static void b_sa_2df8c(const u32 *r, u32 *eax) { config_storage_validate(r[R_EAX]); *eax = 0u; }
+#define SA_SV_MUT(name, n) \
+    static void m_sa_sv_##name(const u32 *r, u32 *eax) { sa_2df8c_core(r[R_EAX], n); *eax = 0u; }
+SA_SV_MUT(al, 1u)   SA_SV_MUT(readdflt, 2u) SA_SV_MUT(norefill, 3u) SA_SV_MUT(touchle, 4u) SA_SV_MUT(notouch, 5u)
+SA_SV_MUT(kind, 6u) SA_SV_MUT(ent, 7u)      SA_SV_MUT(from4, 8u)    SA_SV_MUT(to5, 9u)     SA_SV_MUT(lencache, 10u)
+SA_SV_MUT(srcreread, 11u)
 /* ---- sa bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56827,6 +56854,21 @@ static const binding_t k_bindings[] = {
     { "hiscore_storage_load@kind", m_sa_hl_kind, 0x00000000u },
     { "hiscore_storage_load@order", m_sa_hl_order, 0x00000000u },
     { "hiscore_storage_load@ent", m_sa_hl_ent, 0x00000000u },
+    { "hiscore_storage_load_rr",         b_sa_2de98, 0x00000000u },
+    { "hiscore_storage_load_rr@lencache", m_sa_hl_lencache, 0x00000000u },
+    { "config_storage_validate",         b_sa_2df8c, 0x00000000u },
+    { "config_storage_validate@al", m_sa_sv_al, 0x00000000u },
+    { "config_storage_validate@readdflt", m_sa_sv_readdflt, 0x00000000u },
+    { "config_storage_validate@norefill", m_sa_sv_norefill, 0x00000000u },
+    { "config_storage_validate@touchle", m_sa_sv_touchle, 0x00000000u },
+    { "config_storage_validate@notouch", m_sa_sv_notouch, 0x00000000u },
+    { "config_storage_validate@kind", m_sa_sv_kind, 0x00000000u },
+    { "config_storage_validate@ent", m_sa_sv_ent, 0x00000000u },
+    { "config_storage_validate@from4", m_sa_sv_from4, 0x00000000u },
+    { "config_storage_validate@to5", m_sa_sv_to5, 0x00000000u },
+    { "config_storage_validate_rr",      b_sa_2df8c, 0x00000000u },
+    { "config_storage_validate_rr@lencache", m_sa_sv_lencache, 0x00000000u },
+    { "config_storage_validate_rr@srcreread", m_sa_sv_srcreread, 0x00000000u },
     /* sa table end */
 };
 
