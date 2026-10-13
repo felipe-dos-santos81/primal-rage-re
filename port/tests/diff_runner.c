@@ -26711,6 +26711,7 @@ enum { D3A_RO_NONE, D3A_RO_mask, D3A_RO_maskw, D3A_RO_off, D3A_RO_one, D3A_RO_si
 #define D3A_RO(x) (mut == D3A_RO_##x)
 static void d3a_27ed8_core(u32 mut)
 {
+    if (mut == SB_M_AUDITEARLY) (void)audit_add(0xFu, 1u);                       /* track S sb: before the resets */
     for (u32 side = 0u; side < (D3A_RO(one) ? 1u : 2u); side++) {
         u32 f = 0x001077F0u + side * 0x94u + (D3A_RO(off) ? 4u : 0u);
         if (D3A_RO(resetearly)) fight_hud_side_reset(side);
@@ -26718,10 +26719,13 @@ static void d3a_27ed8_core(u32 mut)
         else DSD(f) &= D3A_RO(mask) ? 0xFFEFFFFFu : 0xFFEFEFFFu;
         if (!D3A_RO(noreset) && !D3A_RO(resetearly)) fight_hud_side_reset(D3A_RO(sideswap) ? 1u - side : side);
     }
+    if (mut != SB_M_NOAUDIT && mut != SB_M_AUDITEARLY && mut != SB_M_AUDITLATE)  /* track S sb: 0x27F1F */
+        (void)audit_add((mut == SB_M_AUDITF) ? 0x10u : 0xFu, (mut == SB_M_AUDITN) ? 2u : 1u);
     if (D3A_RO(order)) fighter_19820();
     if (D3A_RO(f2early)) DSB(0x001088F2u) = 0x1Eu;
     u32 rec = actor_spawn((const u32 *)(mem + (D3A_RO(desc) ? 0x000BB6B4u : 0x000BB6C8u)), D3A_RO(spx) ? 0x2A01u : 0x2A00u,
                           D3A_RO(spz) ? 0xF00u : 0xFFu, D3A_RO(spz) ? 0xFFu : 0xF00u, D3A_RO(sp5) ? 1u : 0u);
+    if (mut == SB_M_AUDITLATE) (void)audit_add(0xFu, 1u);
     if (!D3A_RO(ac8) && !D3A_RO(ac8late)) DSD(0x00104AC8u) = rec;
     if (!D3A_RO(no19820) && !D3A_RO(order)) fighter_19820();
     if (D3A_RO(ac8late)) DSD(0x00104AC8u) = rec;
@@ -41953,6 +41957,9 @@ SB_SITE_MUT(m24, d5e_26f58_core, auditalways, SB_M_AUDITALWAYS)
 SB_SITE_MUT(m0e, d5i_27a2c_core, noaudit, SB_M_NOAUDIT) SB_SITE_MUT(m0e, d5i_27a2c_core, auditf, SB_M_AUDITF)
 SB_SITE_MUT(m0e, d5i_27a2c_core, auditn, SB_M_AUDITN)   SB_SITE_MUT(m0e, d5i_27a2c_core, auditearly, SB_M_AUDITEARLY)
 SB_SITE_MUT(m0e, d5i_27a2c_core, auditlate, SB_M_AUDITLATE) SB_SITE_MUT(m0e, d5i_27a2c_core, auditalways, SB_M_AUDITALWAYS)
+SB_SITE_MUT(ro, d3a_27ed8_core, noaudit, SB_M_NOAUDIT) SB_SITE_MUT(ro, d3a_27ed8_core, auditf, SB_M_AUDITF)
+SB_SITE_MUT(ro, d3a_27ed8_core, auditn, SB_M_AUDITN)   SB_SITE_MUT(ro, d3a_27ed8_core, auditearly, SB_M_AUDITEARLY)
+SB_SITE_MUT(ro, d3a_27ed8_core, auditlate, SB_M_AUDITLATE)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -57099,6 +57106,11 @@ static const binding_t k_bindings[] = {
     { "game_mode_0e_step@auditearly", m_sb_m0e_auditearly, 0x00000000u },
     { "game_mode_0e_step@auditlate", m_sb_m0e_auditlate, 0x00000000u },
     { "game_mode_0e_step@auditalways", m_sb_m0e_auditalways, 0x00000000u },
+    { "flow_round_over@noaudit", m_sb_ro_noaudit, 0x00000000u },
+    { "flow_round_over@auditf", m_sb_ro_auditf, 0x00000000u },
+    { "flow_round_over@auditn", m_sb_ro_auditn, 0x00000000u },
+    { "flow_round_over@auditearly", m_sb_ro_auditearly, 0x00000000u },
+    { "flow_round_over@auditlate", m_sb_ro_auditlate, 0x00000000u },
     /* sb table end */
 };
 

@@ -3046,8 +3046,7 @@ void flow_round_over(void)
         DSD(slot + 0x40u) &= 0xFFEFEFFFu;               /* 0x27EE8..0x27EFB */
         fight_hud_side_reset(side);                     /* 0x27F01 0x1D764 */
     }
-    /* PORT: 0x27F1F 0x2DAE4(0xF, 1), the audit add, is deferred (spec §7),
-     * as in 0x2D962 and 0x32A3C (config.c). */
+    (void)audit_add(0xFu, 1u);                          /* 0x27F0B..0x27F1F 0x2DAE4 */
     DSD(DS_00104AC8) = actor_spawn((const u32 *)(mem + DS_000BB6C8),
                                    0x2A00u, 0xFFu, 0xF00u, 0u);   /* 0x27F24..0x27F35 0x2AE14 */
     fighter_19820();                                    /* 0x27F3A 0x19820 */

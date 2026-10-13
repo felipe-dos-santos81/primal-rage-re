@@ -19531,10 +19531,6 @@ D3A_SPECS += [
 ]
 D3A_HUD_RESET = E.Call(0x1D764, ("eax",))
 D3A_19820 = E.Call(0x19820, ())
-# the deferred audit add 0x2DAE4(0xF, 1) made a no-op by its own bytes, as d2e does for field 0x10:
-# field 0xF's descriptor (0x2D300 + 0xF * 4) reads 8 nibbles at byte 0 of 0x105DE1, which is negative
-# (`test eax,eax; jl 0x2db54` at 0x2DAEE)
-D3A_AUDIT_OFF_F = {0x0002D33C: le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
 
 
 def d3a_rover_case(a, b, d0, f40=(0xFFFFFFFF, 0x00101000), f2=0x80):
@@ -19542,8 +19538,8 @@ def d3a_rover_case(a, b, d0, f40=(0xFFFFFFFF, 0x00101000), f2=0x80):
     bytes (0x10780A/0x10789E) between neighbours, the dword 0x1088EF (its top byte 0x1088F2 =
     `f2`: the raw stores 0x1E there before it reads it back) and the byte after it, the dword
     0x1088D0, the dwords 0x104AA8 (0x5A..) and 0x104AC8 (0x5B..) and the mode word 0x104B00
-    (0x5C5C), each between seeded neighbours; and the audit field that turns 0x2DAE4 off."""
-    p = dict(D3A_AUDIT_OFF_F)
+    (0x5C5C), each between seeded neighbours."""
+    p = {}
     p.update({0x001077EC: le32(0x61616161) + le32(f40[0]) + le32(0x62626262),
               0x00107880: le32(0x63636363) + le32(f40[1]) + le32(0x64646464),
               0x00107809: bytes([0x65, a, 0x66]), 0x0010789D: bytes([0x67, b, 0x68]),
@@ -19557,8 +19553,8 @@ def d3a_rover_case(a, b, d0, f40=(0xFFFFFFFF, 0x00101000), f2=0x80):
 
 D3A_SPECS += [
     # 0x27ED8 flow_round_over: no argument. Per side the slot's +0x40 dword &= 0xFFEFEFFF, then
-    # 0x1D764(side); the audit add 0x2DAE4(0xF, 1) (deferred, the port omits it: real in the
-    # original with the field that makes it return at once); the spawn 0xBB6C8 at (0x2A00, 0xFF,
+    # 0x1D764(side); the audit add 0x2DAE4(0xF, 1) (0x27F1F; a stub since track S batch sb, its EAX
+    # not read: `mov eax,0xbb6c8` 0x27F2B follows); the spawn 0xBB6C8 at (0x2A00, 0xFF,
     # 0xF00, 0) (ECX/EBX loaded before 0x2DAE4) into the dword 0x104AC8; 0x19820; the byte
     # 0x1088F2 = 0x1E; m = the larger +0x5A byte (unsigned `ja`); for m below 0x78 q = the byte
     # 0x1088F2 (sign-extended, the 0x1E just stored) * the dword 0x1088D0 / (0x78 - m) (`imul`,
@@ -19577,11 +19573,11 @@ D3A_SPECS += [
         Case("o5", {}, d3a_rover_case(0x40, 0x30, 0xFFFFFF00), {0x2AE14: 0x0010A300}),
         Case("o6", {}, d3a_rover_case(0x70, 0x70, 0x10000000), {0x2AE14: 0x0010A300}),
         Case("o7", {}, d3a_rover_case(0x05, 0x06, 0x00010004), {0x2AE14: 0x0010A300}),
-    ], allow_calls=(0x2DAE4, 0x2D974), calls=(D3A_HUD_RESET, SPAWN, D3A_19820), eax_mask=0,
+    ], calls=(D3A_HUD_RESET, SB_AUDIT, SPAWN, D3A_19820), eax_mask=0,
        mutants=("@mask", "@maskw", "@off", "@one", "@sideswap", "@resetearly", "@noreset", "@spx", "@spz",
                 "@sp5", "@desc", "@ac8", "@ac8late", "@no19820", "@order", "@f2", "@nof2", "@f2late",
                 "@f2early", "@max", "@maxs", "@thr", "@d0w", "@udiv", "@sub", "@zero", "@b00", "@b00b", "@aa8",
-                "@aa8w")),
+                "@aa8w", "@noaudit", "@auditf", "@auditn", "@auditearly", "@auditlate")),
 ]
 # 0x2C1C8 falls into 0x2C1D4, whose pushes the scan cannot credit to it: the over-approximated set is
 # harmless under 0x28CC8, which reads no register after the call (0x28D50 `xor eax,eax`, three pops)
