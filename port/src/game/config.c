@@ -560,6 +560,18 @@ s32 audit_add(u32 field, u32 n)
     return (s32)sum;                                        /* 0x2DB52 */
 }
 
+/* 0x32B94 — record §S.6. AL = the flags (0x32B95 `test al,1`): bit 0 set
+ * posts 0x2DAE4(0xE, 1). EDX is pushed and popped. It has no `ret` of its
+ * own: after `pop edx` (0x32BA8) and a `lea eax,[eax]` it runs into the
+ * `ret` at 0x32BAC. Caller: 0x2786B (0x277C0), which does not read EAX
+ * (0x27870 `xor eax,eax`). */
+void audit_add_if_bit0(u32 flags)
+{
+    PR_SEAM(0x32B94u, flags);
+    if ((flags & 1u) != 0u)                                 /* 0x32B95/0x32B97 */
+        (void)audit_add(0xEu, 1u);                          /* 0x32B99..0x32BA3 */
+}
+
 /* ---- timed screen, key latch and menu helpers (record §49-Y) -------------- */
 
 /* Key-layer globals of the 0x2Exxx cluster. The symbols generator names none

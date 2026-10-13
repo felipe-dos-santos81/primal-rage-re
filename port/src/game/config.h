@@ -140,6 +140,10 @@ void config_play_time_snap_b(u32 idx, u32 arm);
  * DS_00105E2F when the sum changes at or above bit 8. */
 s32 audit_add(u32 field, u32 n);
 
+/* 0x32B94. audit_add(0xE, 1) when bit 0 of `flags` (the raw's AL) is set.
+ * Caller: 0x2786B (0x277C0) with the byte DS_00104B1F. */
+void audit_add_if_bit0(u32 flags);
+
 /* ---- timed screen, key latch and menu helpers (record §49-Y) ------------ */
 
 /* 0x2EA78. Builds and presents one frame without the game logic, then waits

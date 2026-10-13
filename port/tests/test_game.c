@@ -4539,6 +4539,14 @@ int test_audit(void)
     (void)audit_add(3u, 1u);
     CHECK_EQ_INT((int)DSB(DS_00105E2F), 0);
 
+    /* bit0 — 0x32B94 `test al,1`: one add to field 0xE for an odd AL,
+     * whatever the bytes above it hold. */
+    (void)config_field_set(0xEu, 0x12u);
+    audit_add_if_bit0(0x00000102u);
+    CHECK_EQ_INT((int)config_field_get(0xEu), 0x12);
+    audit_add_if_bit0(0xFFFFFF01u);
+    CHECK_EQ_INT((int)config_field_get(0xEu), 0x13);
+
     tf_put(saved, AU_LO, AU_LEN);
     return 0;
 }

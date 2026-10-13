@@ -41807,6 +41807,18 @@ SB_AA_MUT(xor, 6u)     SB_AA_MUT(unsigned, 7u) SB_AA_MUT(sub, 8u)   SB_AA_MUT(no
 SB_AA_MUT(base, 11u)   SB_AA_MUT(nolen, 12u) SB_AA_MUT(nowrap, 13u) SB_AA_MUT(no6, 14u)    SB_AA_MUT(or4, 15u)
 SB_AA_MUT(slotlate, 16u) SB_AA_MUT(noslot, 17u) SB_AA_MUT(noset, 18u) SB_AA_MUT(setold, 19u) SB_AA_MUT(setn, 20u)
 SB_AA_MUT(getfield, 21u) SB_AA_MUT(ret, 22u) SB_AA_MUT(retold, 23u)
+
+/* 0x32B94 audit_add_if_bit0: AL = the flags. The mutants restate config.c's body. */
+static void sb_32b94_core(u32 flags, u32 mut)
+{
+    const int on = (mut == 1u) ? 1 : (mut == 2u) ? 0 : (mut == 3u) ? (flags & 2u) != 0u   /* @always @never @bit1 */
+                 : (mut == 4u) ? flags != 0u : (flags & 1u) != 0u;               /* @eax */
+    if (on) (void)audit_add((mut == 5u) ? 0xFu : 0xEu, (mut == 6u) ? 2u : 1u);   /* @field @n */
+}
+static void b_sb_32b94(const u32 *r, u32 *eax) { audit_add_if_bit0(r[R_EAX]); *eax = 0u; }
+#define SB_B0_MUT(name, n) \
+    static void m_sb_b0_##name(const u32 *r, u32 *eax) { sb_32b94_core(r[R_EAX], n); *eax = 0u; }
+SB_B0_MUT(always, 1u) SB_B0_MUT(never, 2u) SB_B0_MUT(bit1, 3u) SB_B0_MUT(eax, 4u) SB_B0_MUT(field, 5u) SB_B0_MUT(n, 6u)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56856,6 +56868,13 @@ static const binding_t k_bindings[] = {
     { "audit_add@getfield", m_sb_aa_getfield, 0xFFFFFFFFu },
     { "audit_add@ret", m_sb_aa_ret, 0xFFFFFFFFu },
     { "audit_add@retold", m_sb_aa_retold, 0xFFFFFFFFu },
+    { "audit_add_if_bit0",               b_sb_32b94, 0x00000000u },
+    { "audit_add_if_bit0@always", m_sb_b0_always, 0x00000000u },
+    { "audit_add_if_bit0@never", m_sb_b0_never, 0x00000000u },
+    { "audit_add_if_bit0@bit1", m_sb_b0_bit1, 0x00000000u },
+    { "audit_add_if_bit0@eax", m_sb_b0_eax, 0x00000000u },
+    { "audit_add_if_bit0@field", m_sb_b0_field, 0x00000000u },
+    { "audit_add_if_bit0@n", m_sb_b0_n, 0x00000000u },
     /* sb table end */
 };
 

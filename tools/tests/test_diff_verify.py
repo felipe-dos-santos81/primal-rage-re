@@ -29332,6 +29332,7 @@ SB_MASKS = {
     "audit_counter_add": 0xFFFFFFFF,
     "audit_post": 0xFFFFFFFF,
     "audit_add": 0xFFFFFFFF,
+    "audit_add_if_bit0": 0x0,
 }   # SB_MASKS end
 SB_KINDS = {
     "audit_counter_store@tle": {'byte', 'call #0', 'eax'},
@@ -29423,6 +29424,12 @@ SB_KINDS = {
     "audit_add@getfield": {'call #0'},
     "audit_add@ret": {'eax'},
     "audit_add@retold": {'eax'},
+    "audit_add_if_bit0@always": {'call #0'},
+    "audit_add_if_bit0@never": {'call #0'},
+    "audit_add_if_bit0@bit1": {'call #0'},
+    "audit_add_if_bit0@eax": {'call #0'},
+    "audit_add_if_bit0@field": {'call #0'},
+    "audit_add_if_bit0@n": {'call #0'},
 }   # SB_KINDS end
 SB_CASES = [
     ("audit_counter_store@tle", ['s4']),
@@ -29514,6 +29521,12 @@ SB_CASES = [
     ("audit_add@getfield", ['d0', 'd1', 'da']),
     ("audit_add@ret", ['d0', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9', 'da']),
     ("audit_add@retold", ['d0', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9', 'da']),
+    ("audit_add_if_bit0@always", ['b1', 'b2']),
+    ("audit_add_if_bit0@never", ['b0', 'b3']),
+    ("audit_add_if_bit0@bit1", ['b0', 'b1']),
+    ("audit_add_if_bit0@eax", ['b1', 'b2']),
+    ("audit_add_if_bit0@field", ['b0', 'b3']),
+    ("audit_add_if_bit0@n", ['b0', 'b3']),
 ]   # SB_CASES end
 SB_OUTSIDE = {}
 P45_OUTSIDE.update(SB_OUTSIDE)
@@ -30587,7 +30600,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # S sb (record 2026-10-13-reverse-s §S.6): the stubs its rows add
-        0x2E0A4: (), 0x2E034: ("ebx", "edx"), 0x2E180: ("ebx", "edx"),
+        0x2E0A4: (), 0x2E034: ("ebx", "edx"), 0x2E180: ("ebx", "edx"), 0x2DAE4: ("edx",),
         # S sb end
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
         0x51ED8: (), 0x2CCD0: (), 0x1AE20: (), 0x2CADC: ("edi",), 0x1D250: (), 0x1D270: (), 0x2EA78: ("edi", "ebp"),

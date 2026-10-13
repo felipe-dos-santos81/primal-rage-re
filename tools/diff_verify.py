@@ -32454,6 +32454,21 @@ SB_SPECS += [
        mutants=tuple("@" + m for m in "nocheck le retneg fieldb field4 xor unsigned sub noinc cells base nolen "
                                       "nowrap no6 or4 slotlate noslot noset setold setn getfield ret retold".split())),
 ]
+SB_AUDIT = E.Call(0x2DAE4, ("eax", "edx"), clobbers=("edx",))               # audit_add, seamed by this batch
+
+SB_SPECS += [
+    # 0x32B94 audit_add_if_bit0: AL = the flags. Bit 0 set (`test al,1` 0x32B95: b0 and b3; b1 has bit 1 and
+    # b2 bit 8 alone) calls 0x2DAE4(0xE, 1) (a stub). EDX is pushed and popped around it. The function has no
+    # `ret`: it runs through `pop edx; lea eax,[eax]` into the `ret` at 0x32BAC. Mask 0: `xor eax,eax`
+    # 0x27870 follows the one call site (0x2786B).
+    Spec("audit_add_if_bit0", 0x32B94, [
+        Case("b0", {"eax": 0xFFFFFF01, "edx": 0x11223344}, {}, {0x2DAE4: 0x5A5A5A5A}),
+        Case("b1", {"eax": 0xFFFFFF02, "edx": 0x11223344}),
+        Case("b2", {"eax": 0x00000100}),
+        Case("b3", {"eax": 0x00000003}),
+    ], calls=(SB_AUDIT,), eax_mask=0,
+       mutants=tuple("@" + m for m in "always never bit1 eax field n".split())),
+]
 
 D1_SPECS += SB_SPECS
 SPECS = [
