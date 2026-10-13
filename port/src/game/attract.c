@@ -242,7 +242,7 @@ void attract_step(void)
     case 2: {
         /* 0x11089: the dword DS_000F0A5C = old + 1 (`mov ecx,[0xf0a5c]; inc
          * ecx`), zeroed at >= 4 (signed: 0x1109E `cmp ecx,4`, 0x110A1 `jl`). */
-        s32 c = (s32)DSD(DS_000F0A5C) + 1;          /* 0x11089/0x11091 */
+        s32 c = (s32)(DSD(DS_000F0A5C) + 1u);       /* 0x11089/0x11091 */
         DSB(DS_0009AD58) = 0;                       /* 0x11092 */
         DSD(DS_000F0A5C) = (u32)c;                  /* 0x11098 */
         if (c >= 4) DSD(DS_000F0A5C) = 0u;          /* 0x110A1, 0x110A3/0x110A5 */

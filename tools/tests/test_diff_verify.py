@@ -29478,10 +29478,10 @@ class RealFunctionTests(unittest.TestCase):
             rc = V.main(["--diffrun", DIFFRUN, "--exe", EXE, "--image", os.path.join(self.tmp.name, "a.bin"),
                          "--self-check"])
         self.assertEqual(rc, 0)
-        # the closed-row count is over the rows that have callees (632 after track D's waves 1 to 4);
+        # the closed-row count is over the rows that have callees (777 after track D's wave 5 batches d5a to d5i);
         # the 167 without are counted apart
-        self.assertIn("diff-verify: 799/799 functions VERIFIED; 9285/9285 mutants detected; 1 named gaps; "
-                      "513/632 rows with callees closed (167 have none).", out.getvalue())
+        self.assertIn("diff-verify: 944/944 functions VERIFIED; 13795/13795 mutants detected; 1 named gaps; "
+                      "582/777 rows with callees closed (167 have none).", out.getvalue())
 
 
     def test_each_c3c_mutant_is_caught_by_what_it_breaks(self):

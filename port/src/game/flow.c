@@ -4654,7 +4654,7 @@ void game_state_3_handoff(void)
 }
 
 /* PORT: 0x12484. State 3, the post-select presentation. Phase 0
- * (DS_000F0A6F == 0) re-spawns the four corner rows, spawns a type-3 effect for
+ * (DS_000F0A6F == 0) re-spawns the four corner rows, spawns a type-6 effect for
  * the live list entry whose handle is 0x3E688, then takes the DS_00104528 bit-1
  * branch (text rows or an actor through 0x2AE14) and hands off through 0x12658.
  * Phase 1 tracks the handoff actor's offset and terminates into state 9 when it
