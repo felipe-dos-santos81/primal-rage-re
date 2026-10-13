@@ -4404,7 +4404,7 @@ void game_state_select(void)
             0u, 0xE0u + n, 0x600u, 0u);
         for (u32 node = frontend_list_next(0); node != 0;
              node = frontend_list_next(node)) {
-            if (!frontend_resource_known(node))
+            if ((frontend_resource_known(node) & 0xFFu) == 0u)   /* 0x12038, 0x1203D: test al,al */
                 effects_spawn_pulse(node, 1u);      /* 0x13E28 (edx = 1) */
         }
         if ((DSB(DS_00104528 + 1) & 2u) != 0u) {
@@ -4638,7 +4638,7 @@ void game_state_3_handoff(void)
     for (u32 rec = frontend_list_next(0); rec != 0;             /* 0x126D7 */
          rec = frontend_list_next(rec)) {
         if (DSD(rec) == 0x3E688u) continue;                     /* 0x126E8 */
-        if (frontend_resource_known(rec) != 0u) continue;       /* 0x126F3 */
+        if ((frontend_resource_known(rec) & 0xFFu) != 0u) continue;   /* 0x126EC, 0x126F1: test al,al */
         effects_spawn(rec, 6u, DSD(rec));                       /* 0x126FE */
     }
     DSW(DS_00107A44) = 0;                                       /* 0x12712 */
