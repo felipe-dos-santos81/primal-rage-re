@@ -13008,7 +13008,23 @@ int test_restart_drive(void)
     const char *dir = getenv("PR_GAME_DIR");
     if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
     game_set_game_dir(dir);
-    game_init();
+    {
+        /* 0x2F9CF: game_init loads the save file. A scratch save that is the captures' zero image
+         * but for two bytes past every record (offset 0x7F6 and the XOR byte, both 0xA5) must be
+         * in the image afterwards; the path is dropped before anything can save. */
+        static u8 save[0x7F8];
+        char sdir[] = "/tmp/pr_boot_XXXXXX", spath[40];
+        save[0x7F6] = save[0x7F7] = 0xA5u;
+        CHECK(mkdtemp(sdir) != NULL, "scratch dir");
+        snprintf(spath, sizeof spath, "%s/cmos", sdir);
+        CHECK(host_write_file(spath, save, sizeof save), "the scratch save");
+        host_save_set_path(spath);
+        game_init();
+        host_save_set_path(NULL);
+        (void)unlink(spath);
+        (void)rmdir(sdir);
+        CHECK_EQ_INT((int)DSW(0x001014DAu), 0xA5A5);
+    }
     game_loop_begin();
 
     static u16 boot_state[RD_BOOT];

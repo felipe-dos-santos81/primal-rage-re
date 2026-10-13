@@ -6880,6 +6880,7 @@ void game_init(void)
      * not re-run it (record named-gaps-b §B.2). It runs 0x13ADC (effects_init,
      * inside actors_init above) and 0x2D6F8 (config_validate), so the field
      * 0x29 the tail reads is what the defaults path wrote. */
+    (void)config_file_load();         /* 0x2F9CF 0x1AFE8, 0x2F9CC's first call; AL is not read (0x2F9D4 calls on) */
     DSD(DS_0010740C) = 0x0001D2D0u;   /* 0x2FA01 (record §K11.2): 0x2F9CC's pointer; [0x1D2D4] = 0xA2EB4, CONFIG OPTIONS */
     config_validate();          /* 0x2F9CC's 0x2D6F8 */
     DSD(DS_00107410) = config_field_get(0x2Au) & 0xFFFFFFFCu;   /* 0x2FA10..0x2FA1C `and al,0xfc` */
