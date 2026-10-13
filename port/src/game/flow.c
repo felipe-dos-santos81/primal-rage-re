@@ -1617,8 +1617,7 @@ void flow_player_join(u32 side)
     fight_char_reset(side);                             /* 0x28E12 0x33C18 */
     DSB(DS_0010780B + (side ^ 1u) * 0x94u) = 0u;        /* 0x28E0E/0x28E17..0x28E29 */
     config_play_time_snap(DSD(DS_00104ABC), 1u);        /* 0x28E30..0x28E3F 0x32B00 */
-    /* PORT: 0x28E53 0x2DAE4(0xD, 1), the audit add, is deferred (spec §7),
-     * as in 0x2D962 and 0x32A3C (config.c). */
+    (void)audit_add(0xDu, 1u);                          /* 0x28E44..0x28E53 0x2DAE4 */
     DSB(DS_00104B24) = 1u;                              /* 0x28E27/0x28E5A (BL) */
     DSD(DS_00104AE4) = FN_00028D80;                     /* 0x28E4E/0x28E60 */
     DSW(DS_00104B00) = 0x17u;                           /* 0x28E3A/0x28E66 (CX) */

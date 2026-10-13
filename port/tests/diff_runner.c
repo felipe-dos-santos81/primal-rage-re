@@ -30815,10 +30815,14 @@ static void d4a_28da4_core(u32 side, u32 mut)
     if (mut != D4A_PJ_noreset) fight_char_reset((mut == D4A_PJ_resetother) ? (side ^ 1u) : side);
     if (mut != D4A_PJ_c5bearly) d4a_28da4_c5b(side, mut);
     if (mut == D4A_PJ_tailearly) d4a_28da4_tail(mut);
+    if (mut == SB_M_AUDITEARLY) (void)audit_add(0xDu, 1u);                       /* track S sb: 0x28E53 */
     if (mut != D4A_PJ_nosnap && mut != D4A_PJ_snaporder)
         config_play_time_snap((mut == D4A_PJ_snapidx) ? DSB(0x00104B1Fu) : DSD(0x00104ABCu),
                               (mut == D4A_PJ_snaparm) ? 0u : 1u);
+    if (mut != SB_M_NOAUDIT && mut != SB_M_AUDITEARLY && mut != SB_M_AUDITLATE)
+        (void)audit_add((mut == SB_M_AUDITF) ? 0xEu : 0xDu, (mut == SB_M_AUDITN) ? 2u : 1u);
     if (mut != D4A_PJ_tailearly) d4a_28da4_tail(mut);
+    if (mut == SB_M_AUDITLATE) (void)audit_add(0xDu, 1u);
 }
 #define D4A_PJ_MUT(name) \
     static void m_d4a_pj_##name(const u32 *r, u32 *eax) { d4a_28da4_core(r[R_EAX], D4A_PJ_##name); *eax = 0u; }
@@ -41960,6 +41964,11 @@ SB_SITE_MUT(m0e, d5i_27a2c_core, auditlate, SB_M_AUDITLATE) SB_SITE_MUT(m0e, d5i
 SB_SITE_MUT(ro, d3a_27ed8_core, noaudit, SB_M_NOAUDIT) SB_SITE_MUT(ro, d3a_27ed8_core, auditf, SB_M_AUDITF)
 SB_SITE_MUT(ro, d3a_27ed8_core, auditn, SB_M_AUDITN)   SB_SITE_MUT(ro, d3a_27ed8_core, auditearly, SB_M_AUDITEARLY)
 SB_SITE_MUT(ro, d3a_27ed8_core, auditlate, SB_M_AUDITLATE)
+#define SB_SITE_MUT1(tag, call, name, id) \
+    static void m_sb_##tag##_##name(const u32 *r, u32 *eax) { call(r[R_EAX], id); *eax = 0u; }
+SB_SITE_MUT1(pj, d4a_28da4_core, noaudit, SB_M_NOAUDIT) SB_SITE_MUT1(pj, d4a_28da4_core, auditf, SB_M_AUDITF)
+SB_SITE_MUT1(pj, d4a_28da4_core, auditn, SB_M_AUDITN)   SB_SITE_MUT1(pj, d4a_28da4_core, auditearly, SB_M_AUDITEARLY)
+SB_SITE_MUT1(pj, d4a_28da4_core, auditlate, SB_M_AUDITLATE)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -57111,6 +57120,11 @@ static const binding_t k_bindings[] = {
     { "flow_round_over@auditn", m_sb_ro_auditn, 0x00000000u },
     { "flow_round_over@auditearly", m_sb_ro_auditearly, 0x00000000u },
     { "flow_round_over@auditlate", m_sb_ro_auditlate, 0x00000000u },
+    { "flow_player_join@noaudit", m_sb_pj_noaudit, 0x00000000u },
+    { "flow_player_join@auditf", m_sb_pj_auditf, 0x00000000u },
+    { "flow_player_join@auditn", m_sb_pj_auditn, 0x00000000u },
+    { "flow_player_join@auditearly", m_sb_pj_auditearly, 0x00000000u },
+    { "flow_player_join@auditlate", m_sb_pj_auditlate, 0x00000000u },
     /* sb table end */
 };
 

@@ -22086,10 +22086,6 @@ D4A_SPECS += [
        mutants=("@prehud", "@pre5b", "@preb0b", "@preb12", "@pre41", "@nohud", "@noacc", "@nosnap")),
 ]
 D4A_SNAPA = E.Call(0x32B00, ("eax", "edx"), clobbers=("edx",))
-# the deferred audit add 0x2DAE4(0xD, 1) made a no-op by its own bytes, as d2e does for field 0x10 and
-# d3a for field 0xF: field 0xD's descriptor (0x2D300 + 0xD * 4) reads 8 nibbles at byte 0 of 0x105DE1,
-# which is negative (`test eax,eax; jl 0x2db54` at 0x2DAEE)
-D4A_AUDIT_OFF_D = {0x0002D334: le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
 
 
 def d4a_pj_case(b1f):
@@ -22097,10 +22093,8 @@ def d4a_pj_case(b1f):
     from what is stored, between seeded neighbours (the dwords 0xF0A48, 0x104AE4/E8/EC and
     0x104ABC, the words 0x104AFE, 0x104B00 and 0x1088EE, the bytes 0x104B15, 0x104B17, 0x104B24);
     the +0x5B bytes of slots -2, 0, 1 and 3 (0x5A + i) between seeded bytes; the string buffer;
-    the run clock's no-elapsed-time state (d1i_pt_case) and the audit field that turns 0x2DAE4
-    off."""
+    the run clock's no-elapsed-time state (d1i_pt_case)."""
     p = d1i_pt_case()
-    p.update(D4A_AUDIT_OFF_D)
     p.update({0x00104B1E: bytes([0x6D, b1f, 0x6E]),
               0x000F0A44: le32(0x60606060) + le32(0x5A5A5A5A) + le32(0x7A7A7A7A),
               0x00104AE0: le32(0x61616161) + le32(0x5B5B5B5B) + le32(0x5C5C5C5C) + le32(0x5D5D5D5D)
@@ -22121,12 +22115,12 @@ D4A_SPECS += [
     # 0, the voice 0x100, the dword 0x104ABC = (the byte 0x104B1F == 3) + 1, string 0x44 held by
     # 0x2F510(-1, 0xA, it, 0x4000) (0x1C500 real over the stubbed 0x474E4; the string's first
     # dword by value), 0x4651C, 0x33C18(side), the +0x5B byte of slot side ^ 1 = 0, 0x32B00(the
-    # dword 0x104ABC, 1), then the byte 0x104B24 = 1, the hook dword 0x104AE4 = 0x28D80, the mode
+    # dword 0x104ABC, 1), the audit add 0x2DAE4(0xD, 1) (0x28E53; a stub since track S batch sb,
+    # its EAX not read), then the byte 0x104B24 = 1, the hook dword 0x104AE4 = 0x28D80, the mode
     # word 0x104B00 = 0x17, the bytes 0x104B17 = 2 and 0x104B15 = 0, the words 0x104AFE = 0x78 and
-    # 0x1088EE = 0x1E. The run clock 0x32970(0) and the audit add 0x2DAE4(0xD, 1) are host-owned
-    # or deferred and the port omits both: they run real in the original, the clock from its
-    # no-elapsed-time state and the add with its field negative (it returns at 0x2DAF0), so
-    # neither is compared (record §4). 0x32B00 is seamed here. j2/j3 run sides 2 and -1 (the
+    # 0x1088EE = 0x1E. The run clock 0x32970(0) is host-owned and the port omits it: it runs real
+    # in the original from its no-elapsed-time state, so it is not compared (record §4). 0x32B00
+    # is seamed here. j2/j3 run sides 2 and -1 (the
     # other slot is 3 and -2). Mask 0: record §1.
     Spec("flow_player_join", 0x28DA4, [
         Case("j0", {"eax": 0, "ebx": 0x12345678, "ecx": 0xABCD1234, "edx": 0x0BADF00D, "esi": 0x13572468},
@@ -22135,14 +22129,15 @@ D4A_SPECS += [
         Case("j2", {"eax": 2}, d4a_pj_case(0x83), {0x474E4: 0}),
         Case("j3", {"eax": 0xFFFFFFFF}, d4a_pj_case(2), {0x32B00: 0x100}),
         Case("j4", {"eax": 0x101}, d4a_pj_case(1)),
-    ], allow_calls=(0x1C500, 0x32970, 0x2DAE4, 0x2D974),
-       calls=(VOICE, D1C_STR, D2C_HOLD2, D3A_RESTORE, E.Call(0x33C18, ("eax",)), D4A_SNAPA), eax_mask=0,
+    ], allow_calls=(0x1C500, 0x32970),
+       calls=(VOICE, D1C_STR, D2C_HOLD2, D3A_RESTORE, E.Call(0x33C18, ("eax",)), D4A_SNAPA, SB_AUDIT), eax_mask=0,
        mutants=("@f48", "@nof48", "@f48w", "@noaec", "@aecb", "@noae8", "@ae8b", "@late3", "@voice", "@novoice",
                 "@abc", "@abc3", "@abcbit", "@abcb", "@abclate", "@noabc", "@strid", "@col", "@row", "@mode",
                 "@nohold", "@norestore", "@restoreorder", "@resetother", "@noreset", "@c5bself", "@c5bearly",
                 "@noc5b", "@c5boff", "@c5bw", "@c5bval", "@c5blow", "@snapidx", "@snaparm", "@nosnap", "@snaporder",
                 "@b24", "@nob24", "@hook", "@nohook", "@hookw", "@b00", "@b00b", "@nob00", "@b17", "@nob17", "@b15",
-                "@nob15", "@afe", "@afeb", "@noafe", "@ee", "@eeb", "@noee", "@tailearly")),
+                "@nob15", "@afe", "@afeb", "@noafe", "@ee", "@eeb", "@noee", "@tailearly", "@noaudit", "@auditf",
+                "@auditn", "@auditearly", "@auditlate")),
 ]
 D4A_PASS = E.Call(0x3CB68, ())
 D4A_HUDINIT = E.Call(0x25C1C, (), clobbers=("esi", "edi", "ebp"))
