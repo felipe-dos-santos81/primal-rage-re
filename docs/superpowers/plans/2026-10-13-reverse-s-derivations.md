@@ -1085,8 +1085,10 @@ and no other instruction names them, so the row `config_validate_audit` reaches 
 by the call list). Wiring it moved two pins: `config_validate@noda5` and `@noda4` (the mutants that
 do not zero the bytes) now also differ in the call list. The 14 storage rows left
 `tools/port_classification.txt`; `tools/port_progress.py` prints `785 1203 65` and `745 745 100`.
-Counter: `988/988 functions VERIFIED; 14706/14706 mutants detected; 1 named gaps; 622/821 rows with
-callees closed (167 have none)` (25 rows and 357 mutants over track D's last line).
+Counter then: `988/988 functions VERIFIED; 14706/14706 mutants detected; 1 named gaps; 622/821 rows with
+callees closed (167 have none)`; with the run clock (§S.9): `990/990 functions VERIFIED; 14725/14725
+mutants detected; 1 named gaps; 635/822 rows with callees closed (168 have none)` and `787 1203 65` /
+`747 747 100`.
 
 **Audit** (one read-only agent, re-deriving from the bytes; its report is in the ledger). It found the
 bodies of the 16 functions and the changed call sites equal to the bytes, and backed that with its own
@@ -1097,7 +1099,7 @@ what was done:
 | # | Finding | Outcome |
 |---|---|---|
 | F1 | `0x2EA68` does not return (`0x62003`, `int 0x21 AH=4Ch`); the port's `menu_fatal_error` returns. With the slot byte `0x105E2F` at 13..35, `0x2D4EC(0)` passes the bound `0x2D56A` and its first store (position 44) is outside the image: the raw exits with no store, the port stored the 16 cells that land inside | **Fixed in part.** `config_storage_touch` stops the encode after a store outside the image, so the image is what the raw leaves (unit case `slot 13`, mutation-proved). The port still returns where the raw exits: **named gap**, with `0x2D508`, `0x2D571`, `0x2DECC` |
-| F2 | The run clock `0x32970` is not ported, nor any of its 17 call sites, so `0x10746C[1..2]` are only ever zeroed: the time values posted by `0x32A3C`, `0x32B00`, `0x32B4C` are 0 (time totals do not move, the time histograms count bucket 0), fields 3..5 are never posted and the slot byte never steps. The rows pass because their cases pin the clock to the state where it changes nothing | **Named gap**, the track's largest. The comments in `config.c` and `config.h` now say so. Porting `0x32970` needs a tick source for `0x105D88` and is a track of its own |
+| F2 | The run clock `0x32970` is not ported, nor any of its 17 call sites, so `0x10746C[1..2]` are only ever zeroed: the time values posted by `0x32A3C`, `0x32B00`, `0x32B4C` are 0 (time totals do not move, the time histograms count bucket 0), fields 3..5 are never posted and the slot byte never steps. The rows pass because their cases pin the clock to the state where it changes nothing | **Fixed** on the user's instruction: the run clock, its tick and its 14 live call sites are ported (§S.9) |
 | F3 | A `cmos` longer than `0x7F8` bytes: the raw's `fread` takes its first `0x7F8` bytes and can load it; the port refused it | **Fixed.** `host_save_read` reads the first `len` bytes of a longer file (unit cases `long` in `test_config_file` and `test_host_save`, mutation-proved) |
 | F4 | A shorter `cmos`, or a short write: the raw exits (`0x1B04D`, `0x1B0F7`) and leaves the file; the port takes the missing-file path and the next save replaces the file | **Named deviation**, kept on purpose: a damaged save does not stop the port |
 | F5 | The rows of `0x1AFE8` and `0x1B084` run under six code pokes (the libc calls become `mov eax,imm32`) and the byte `0x101520 = 1`: they do not see the file calls' arguments, any count but `0x7F8`, the host's path choice, a failed write after a successful open, or `0x10D34`/`0x10D0C` | **Named**: two rows of the weaker class |
@@ -1116,3 +1118,122 @@ screens a capture compares under F2 (the gate decides); and that a checksum-vali
 Also open, found by batch `sc` and not changed: the port's inlined `0x2F9CC` has no line for
 `0x4F1E4(0)`, `0x2BAF4(1)`, `0x4F1D0(0,0)`, `0x38B18(0x9AD84)`, `0x2C9B8(0)`, `0x2C8F0(-1)` and
 `0x2C8F0(-2)`, and runs `0x13ADC` earlier, inside `actors_init`.
+
+## §S.9 The run clock `0x32970` and the ISR tick `0x2D62C`
+
+Ported after the audit's F2, on the user's instruction, before anything reached `main`.
+
+**`0x2D62C`** is `inc dword [0x105D88]; mov eax,eax; ret`. Its one caller is the timer ISR `0x1BDF4`
+(`0x1BE28`), which also adds 1 to `0x101508`, `0x101500` and the word `0xEF6DE`, all skipped while the
+byte `0x104B22` is 1 (`0x1BDF8..0x1BE00`); the ISR is registered at 60 Hz (`0x1CFFA push 0x3c`). The
+port is `config_isr_tick`. The port has no ISR: it models the ISR's ticks in `game_isr_ticks(n)`
+(`flow.c`: the master loop's spin, one per frame, and the resource-read stall of `res.c`) and in
+`config.c`'s key wait, and both now advance `0x105D88` with the other counters. So the clock runs on
+the port's own frame ticks, not on wall time, and a replay is deterministic.
+
+**`0x32970(EAX = new mask)`**, `0x32970..0x32A3A`, pushes and pops EBX, ECX, EDX, ESI, EDI:
+
+- `0x3297B..0x32992`: `last = [0x10747C]`, `[0x10747C] = [0x105D88]`, `el = now - last`;
+- `0x32994..0x329AE`: for each set bit `k` of the byte `[0x107494]` (the old mask), `[0x107470 + 4k] += el`;
+- `0x329B0..0x329CE`: `[0x107484] += el` and `[0x107488 + 4 * old mask] += el`, both read from memory
+  after the loop (a mask bit above 4 stores onto them);
+- `0x329D5/0x329DB` `jb`: when the total is at or above `0x3840` it is zeroed (`0x329E9`) and, for
+  `i = 3..5` with `c = [0x107488 + 4(i - 3)]` above `0xE10` (`jbe` `0x329FC`): `q = c / 0xE10` cut to its
+  low word (`mov dx,ax` `0x32A06`), `c -= q * 0xE10`, stored (`0x32A15`), then `0x2DAE4(i, q)` (`0x32A17`);
+- `0x32A25/0x32A28`: the byte `[0x107494]` = AL of the argument; returns `0x107488` (`0x32A2D`).
+
+The port is `config_run_clock` (`config.c`). Rows: `config_run_clock` (7 cases, 10 of 10 blocks,
+`0x2DAE4` a stub, 16 mutants: `@nolast @accbase @noacc @slotnew @nototal @ge @nozero @gec @q32 @norem
+@field @two @maskold @noslot @signedcmp @cached`) and `config_isr_tick` (2 cases, mutants `@two @word
+@none`). Unit test `test_run_clock`.
+
+**Call sites** (a rel32 scan finds 17). Three are in blocks nothing references (no rel32, short-jump or
+dword reference): `0x11A5D` (block `0x11A30`, a copy of state 5's body), `0x11C84` (block `0x11C4C`, a
+copy of state 9's) and `0x11CCA` (block `0x11CC8`, a copy of state 8's). The 14 live ones are wired,
+each where its `PORT:` note stood, with the raw's argument:
+
+| Site | In | Port | EAX |
+|---|---|---|---|
+| `0x10E84` | `0x10E80` | `game_state_init` | 0 |
+| `0x10EE8` | `0x10EE4` | `attract_state_reset` | 0 |
+| `0x11D3A`, `0x11E0C`, `0x11EAE` | `0x11D04` | `game_state_step` (the coin arm, state 5, state 8) | 0 |
+| `0x20CD5` | `0x20C10` | `game_main`, after `0x2BF00` | 0 |
+| `0x25ECA` | `0x25C88` | after the store of `0x104ABC` | the value stored |
+| `0x26B99` | `0x26A50` | after the store of `0x104ABC` | the value stored |
+| `0x2955F` | `0x29328` | after the store of `0x104ABC` | the value stored |
+| `0x26D9F` | `0x26D4C` | before the two voices | 0 |
+| `0x27874` | `0x277C0` | `game_mode_0f_step`, after `0x32B94` | 0 |
+| `0x27DCC` | `0x27DC8` | `flow_match_end`, first | 0 |
+| `0x28DAC` | `0x28DA4` | first | 0 |
+| `0x32A4A` | `0x32A3C` | `config_play_time_close`, before it takes the accumulator | 0 |
+
+The rows of those functions already ran the original's `0x32970` (it is in their `allow_calls`), but
+from a state in which it changes no byte, which is why they passed while the port omitted the call.
+That state (`d1i_pt_case`) now has 600 elapsed ticks and the mask 1, so a missing or misplaced call, or
+a wrong argument, is a byte difference; the state-machine rows (`game_state_step_low`, `_high`, `_coin`)
+took that state too, because they ran the clock from the image's zeros. Proof that the rows can fail:
+with each of the 13 rowed calls removed in turn, a row of its function is a MISMATCH (`0x11D3A` in
+`_low` and `_coin`, `0x11E0C` and `0x11EAE` in `_high`). `0x20C10` (`game_main`) has no row: that one
+site rests on the gate's oracles.
+
+The harness keeps a copy of each of these functions for its mutants. Those twelve copies took the
+call at the raw's position, so that a mutant differs from the original by its mutation and not by a
+missing clock (without that, 866 pins of "what catches each mutant" moved). Fifteen pins still moved
+and were re-measured: mutants that skip or move a call or an arm (`game_mode_0f_step` 9, `game_state_step_low`
+3, `_coin` 1, `flow_26d4c` 1) now also differ in the memory at a later call or in a byte, because the
+clock's stores land at another point; and `config_play_time_close_audit@t12` is caught in one more
+case, because the seconds are no longer 0.
+
+Unit test `test_run_clock`, each assertion mutation-proved (the tick adding 2; `game_isr_ticks` without
+`0x105D88`; no accumulators; `>` for `>=` at `0x3840`; the remainder not stored; the mask not stored;
+the slot taken from the new mask; `config_play_time_close` without the clock). Its last case is the
+audit's example: 600 ticks in mode 1 post 10 seconds to field `0xA`.
+
+## §S.10 The slot step and what happens at slot 13
+
+Read after the run clock was ported, because the clock is what moves the slot.
+
+**The record that rotates.** 38 fields (`0x00..0x23`, `0x26`, `0x27`: the bookkeeping counters) have a
+trailing byte (descriptor bits 0..5, `0x2D300`): their low 8 bits live in the `0x26`-byte block
+`0x105DB0` (kind 0), which `0x2DA0C` rewrites through `0x2D4EC(0)` on every store (`0x2DA49`). The
+settings fields (`0x24`, `0x25`, `0x28` and up) have none and live only in the two copies (kinds 1, 2),
+with the slot byte `0x105E2F` and the magic.
+
+**The step** (`0x2DAF5..0x2DB43`, in `0x2DAE4`). Only a post to field 3 steps it, and only when the old
+and the new value differ in bit 8 or above (`xor eax,ecx; cmp eax,0x100; jl`). Field 3 is 20 bits wide
+and is posted by the run clock alone (`0x32A17`, `i = 3`): the whole minutes of time under the mode
+mask 0, that is outside a game. So the slot steps once per 256 minutes of attract and menu time. The
+new slot is `old + 1`, or 0 when `45 * new + 0x1A3 + 45 >= 0x7F8` (`0x2DB2B`, `jb`): it wraps from 35
+to 0.
+
+**The defect in the original.** That bound, like the one in `0x2D4EC` (`0x2D56A`), compares a cell
+count with `0x7F8`, the image's length in bytes, and a cell is two bytes. The record fits the image
+only up to slot 12 (cells 959..1003, bytes `0x77E..0x7D6`). At slot 13 its last cell is byte `0x830`,
+past `0x7F8`:
+
+| Slot | Cells | Image bytes | Wrap test | `0x2D4EC` bound | Stores |
+|---|---|---|---|---|---|
+| 12 | 959..1003 | `0x77E..0x7D6` | stays | passes | all 45 inside |
+| 13 | 1004..1048 | `0x7D8..0x830` | stays | passes | the first one (position 44) is outside: `0x2D498` -> `0x2EA68`, exit |
+| 35 | 1994..2038 | `0xF94..0xFEC` | stays | passes | outside: exit |
+| 36 | — | — | wraps to 0 | — | — |
+
+**The original at 13.** On the clock flush that carries field 3 across its 13th multiple of 256 (55.5
+hours of accumulated attract and menu time, kept across runs by the save), `0x2DAE4` stores the slot
+13 (`0x2DB3D`) and `0x2DA0C(3, …)` calls `0x2D4EC(0)`, whose first store is outside the image: the
+program ends there (the audit ran it: no store, `0x2EA68` reached with `EAX = 0x80AA8`). Whether the
+runtime's exit then saves is the audit's unsettled P1; no reference puts the save on that path. If it
+does not, the file still holds slot 12 and the last saved field 3, and every later run ends the same
+way a few idle minutes in, at the next flush that crosses the boundary.
+
+**The port at 13.** It does not exit. `menu_fatal_error` returns and `config_storage_touch` stops the
+encode at the first store outside the image (§S.8 F1), so for the slots 13..35 the low-byte record is
+written nowhere. The running session is right (the block `0x105DB0` is in RAM). The save carries the
+slot 13 in its two copies. At the next boot `config_validate`'s stored-image arm reads the record from
+cell 1004 on, past the image, as the raw's code does: the low bytes of the 38 counters come back as
+whatever lies after the image. The counters' upper bits, the settings and the high scores are not
+affected. This lasts until the slot wraps at 36, 23 steps (98 hours of attract time) later. **A named
+gap**: the port's bookkeeping low bytes are wrong at boot while the slot is 13..35, where the original
+exits. Not measured: how long the port takes to get there in practice, and what the original's memory
+after the image holds at boot.
+
