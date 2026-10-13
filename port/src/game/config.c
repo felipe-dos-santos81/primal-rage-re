@@ -159,6 +159,7 @@ u32 config_menu_default_bits(u32 table)
  * oracles. */
 void config_set_defaults(void)
 {
+    PR_SEAM0(0x2CADCu);
     u32 v29 = config_menu_default_bits(0xA2EB4u);  /* 0x2CAF8: obj-1 menu table */
     config_field_set(0x29u, v29);
     config_field_set(0x35u, 0xA0u);
