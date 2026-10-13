@@ -1935,8 +1935,9 @@ void flow_continue_take(void)
  * 0x25376 `jmp 0x2540F`; its only caller). EBX/ECX/EDX are pushed and
  * popped. The side w = (s8)DS_0010810D (`mov eax,[0x10810a]; sar eax,0x18`).
  * - 0x42F60(w) non-zero (the side's start, with a credit spent): DS_00104B1F
- *   = (the byte DS_0010810D != 0) + 1 (`setne al; inc eax`), the 0x2DAE4
- *   audit, 0x2791C (the continue taken, mode 0xC) and 0x41310(w, 1), return.
+ *   = (the byte DS_0010810D != 0) + 1 (`setne al; inc eax`), the audit add
+ *   0x2DAE4(0x11, 1) (0x27A5F, track S §S.6), 0x2791C (the continue taken,
+ *   mode 0xC) and 0x41310(w, 1), return.
  * - Otherwise a tick is forced when DS_00105C04 is set (DS_00108110 = 0xA,
  *   DS_00105C04 = 0 by DH after `xor dh,dh`, EAX = 1), else by a newly
  *   pressed button: 0x4F778(1) with the DS_00104B1F bit 0, else 0x4F778(0)
@@ -1962,8 +1963,7 @@ void game_mode_0e_step(void)
     u32 tick;
     if (flow_continue_poll((u32)(s32)(s8)DSB(DS_0010810D)) != 0u) {  /* 0x27A2F..0x27A3E 0x42F60 */
         DSB(DS_00104B1F) = (u8)((DSB(DS_0010810D) != 0u ? 1u : 0u) + 1u);  /* 0x27A40..0x27A55 */
-        /* PORT: 0x27A5F 0x2DAE4(0x11, 1), the audit add, is deferred (spec
-         * §7), as in 0x28E53 (0x28DA4) and 0x2D962 (config.c). */
+        (void)audit_add(0x11u, 1u);                     /* 0x27A50..0x27A5F 0x2DAE4 */
         flow_continue_take();                           /* 0x27A64 0x2791C */
         fighter_41310((u32)(s32)(s8)DSB(DS_0010810D), 1);   /* 0x27A69..0x27A76 0x41310 */
         return;                                         /* 0x27A7B */

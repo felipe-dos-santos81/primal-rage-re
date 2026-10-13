@@ -30789,44 +30789,39 @@ D5I_CONTTAKE = E.Call(0x2791C, (), clobbers=("ebp",))
 D5I_BTN = E.Call(0x4F778, ("eax",))
 D5I_DARKEN = E.Call(0x29B74, ())
 D5I_COINBLINK = E.Call(0x2C1D4, ("eax", "edx"), clobbers=("ebx", "edx"))
-D5I_M0E_CALLS = (D5I_CONTPOLL, D5I_CONTTAKE, P7_41310, D5I_BTN, VOICE, D5I_DARKEN, D2C_NUMSET, D3A_READY, D3A_BLINK,
-                 D5I_COINBLINK)
+D5I_M0E_CALLS = (D5I_CONTPOLL, SB_AUDIT, D5I_CONTTAKE, P7_41310, D5I_BTN, VOICE, D5I_DARKEN, D2C_NUMSET, D3A_READY,
+                 D3A_BLINK, D5I_COINBLINK)
 # the same callees leaving what 0x27A2C reads after each: 0x42F60 the side byte 0x10810D = 0 (0x27A40), the
 # byte 0x105C04 = 0 (0x27A7F) and the byte 0x104B1F = 1 (0x27A9E); 0x2791C the side byte = 0x80 (0x27A69);
 # 0x4F778 the frame word 0xEF6DC = 0x40 (0x27ACD) and the count byte 0x108110 = 5 (0x27AE5); 0x2F434 the
 # count byte = 0x10 (0x27B51)
 D5I_M0E_CALLS_W = (
-    d5i_w(D5I_CONTPOLL, (0x0010810D, b"\x00"), (0x00105C04, b"\x00"), (0x00104B1F, b"\x01")),
+    d5i_w(D5I_CONTPOLL, (0x0010810D, b"\x00"), (0x00105C04, b"\x00"), (0x00104B1F, b"\x01")), SB_AUDIT,
     d5i_w(D5I_CONTTAKE, (0x0010810D, b"\x80")), P7_41310,
     d5i_w(D5I_BTN, (0x000EF6DC, le16(0x0040)), (0x00108110, b"\x05")), VOICE, D5I_DARKEN,
     d5i_w(D2C_NUMSET, (0x00108110, b"\x10")), D3A_READY, D3A_BLINK, D5I_COINBLINK)
 # and the prompt's: 0x2C060 the side byte = 1 (0x27B71), 0x2C0F4 and 0x2C1D4 the byte 0x104AEC (0x27B97)
 D5I_M0E_CALLS_W2 = (D5I_CONTPOLL, d5i_w(D3A_READY, (0x0010810D, b"\x01")),
                     d5i_w(D3A_BLINK, (0x00104AEC, b"\x30")), d5i_w(D5I_COINBLINK, (0x00104AEC, b"\x30")))
-# the audit add 0x2DAE4(0x11, 1) made a no-op by its own bytes (D4A_AUDIT_OFF_D's form for field 0x11: its
-# descriptor 0x2D300 + 0x11 * 4 reads 8 nibbles at byte 0 of 0x105DE1, which is negative: 0x2DAEE)
-D5I_AUDIT_OFF_11 = {0x0002D344: le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
 
 
 def d5i_m0e(w=0, c04=0, b1f=1, ef=0x0001, cnt=0x0C, aec=0x5C):
     """0x27A2C: the side byte 0x10810D `w` and the count byte 0x108110 `cnt` (the dwords read at
     0x10810A and 0x10810D cover the seeded bytes around them), the bytes 0x105C04 `c04`,
     0x104B1F `b1f`, 0x104B25 (0x5A) and 0x104AEC `aec`, the frame word 0xEF6DC `ef` and the
-    word 0x104AFA (0x5B5B), each between seeded neighbours; the audit field that turns 0x2DAE4
-    off."""
+    word 0x104AFA (0x5B5B), each between seeded neighbours."""
     p = {0x0010810A: bytes([0x22, 0x23, 0x24, w, 0x25, 0x26, cnt, 0x27]), 0x00105C03: bytes([0x61, c04, 0x62]),
          0x00104B1E: bytes([0x63, b1f, 0x64]), 0x000EF6DC: le16(ef) + le16(0x6565),
          0x00104B24: bytes([0x66, 0x5A, 0x67]), 0x00104AF8: le16(0x6868) + le16(0x5B5B) + le16(0x6969),
          0x00104AEB: bytes([0x6A, aec, 0x6B])}
-    p.update(D5I_AUDIT_OFF_11)
     return p
 
 
 D5I_SPECS += [
     # 0x27A2C game_mode_0e_step: no argument. 0x42F60(the signed side byte 0x10810D), tested whole
     # (`test eax,eax`: t1 returns 0x100): non-zero stores 0x104B1F = (the side byte != 0) + 1,
-    # runs the audit add 0x2DAE4(0x11, 1) (real in the original only, from the state where it
-    # changes nothing; the port defers it), 0x2791C and 0x41310(the signed side byte, 1), and
+    # the audit add 0x2DAE4(0x11, 1) (0x27A5F; a stub since track S batch sb, its EAX not read: `call
+    # 0x2791c` follows), 0x2791C and 0x41310(the signed side byte, 1), and
     # returns. Else a tick is forced when the byte 0x105C04 is set (the count 0x108110 = 0xA,
     # 0x105C04 = 0) or asked of 0x4F778(1) with the 0x104B1F bit 0, else 0x4F778(0) with bit 1
     # (`and eax,0xff`: b1 returns 0x100). On a tick or the frame word's low byte & 0x3F == 0 the
@@ -30851,7 +30846,7 @@ D5I_SPECS += [
         Case("b7", {}, d5i_m0e(b1f=2, ef=0x0020, cnt=0x0C), {0x4F778: 0xFFFFFF00, 0x2C060: 0}),
         Case("x0", D5I_REG, d5i_m0e(b1f=1, cnt=0x00), {0x4F778: 1, 0x29B74: 0x12345678}),
         Case("x1", {}, d5i_m0e(b1f=0, ef=0x0000, cnt=0x81), {0x2C3FC: 0xFFFFFFFF}),
-    ], allow_calls=(0x2DAE4, 0x2D974, 0x29D60), calls=D5I_M0E_CALLS, eax_mask=0,
+    ], allow_calls=(0x29D60,), calls=D5I_M0E_CALLS, eax_mask=0,
        mutants=("@pollzext", "@pollal", "@pollinv", "@b1finv", "@b1fside", "@b1flate", "@nob1f", "@b1fw", "@notake",
                 "@noaward", "@awardzext", "@awardamt", "@awardearly", "@takeaec", "@c04inv", "@no8110", "@val8110",
                 "@noc04", "@c04w", "@forcetick0", "@bitswap", "@bit2first", "@btnswap", "@tickeax", "@notick1",
@@ -30859,7 +30854,8 @@ D5I_SPECS += [
                 "@vswap", "@nodarken", "@darkenearly", "@nob25", "@b25val", "@b25early", "@afab", "@noafa",
                 "@afaval", "@timeoutaec", "@nonum", "@numcol", "@numrow", "@numpre", "@numw", "@numpad", "@nummode",
                 "@limle", "@limuns", "@credital", "@creditinv", "@pscol", "@psrow", "@pszext", "@pssprite", "@nops",
-                "@iccol", "@icrow", "@noic", "@aecset", "@noaec", "@aecbit")),
+                "@iccol", "@icrow", "@noic", "@aecset", "@noaec", "@aecbit", "@noaudit", "@auditf", "@auditn",
+                "@auditearly", "@auditlate", "@auditalways")),
     # 0x27A2C again with stubs that write what the raw reads after each call (D5I_M0E_CALLS_W). r0
     # takes the continue (0x104B1F = 1 from the side byte 0x42F60 leaves, the award to the side
     # 0x2791C leaves); r1 polls 0x4F778(1) on the 0x104B1F that 0x42F60 leaves, ticks on the frame
@@ -30868,7 +30864,7 @@ D5I_SPECS += [
     Spec("game_mode_0e_step_rr", 0x27A2C, [
         Case("r0", {}, d5i_m0e(w=1, c04=1, b1f=0), {0x42F60: 1}),
         Case("r1", {}, d5i_m0e(w=1, c04=1, b1f=0, ef=0x0001, cnt=0x0C), {0x42F60: 0, 0x4F778: 0, 0x2C060: 1}),
-    ], allow_calls=(0x2DAE4, 0x2D974, 0x29D60), calls=D5I_M0E_CALLS_W, eax_mask=0,
+    ], allow_calls=(0x29D60,), calls=D5I_M0E_CALLS_W, eax_mask=0,
        unhit_named={a: "not taken under this row's writing stubs (the plain row hits it)"
                     for a in (0x27A88, 0x27AB3, 0x27AC1, 0x27AE1, 0x27AF7, 0x27B5E, 0x27B67, 0x27B83)},
        mutants=("@prew0", "@prew1", "@prec04", "@preb1f", "@preef", "@pre8110", "@pre8110b")),
