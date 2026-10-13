@@ -328,17 +328,17 @@ void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a4, u32 a5)
 
     /* 0x33D1E..0x33D46: the secondary actor, parented to this record
      * (a5 = actor index | 0x400 selects 0x2AE14's child arm). */
-    u32 idx = (u32)DSW(rec + 0x56u) | 0x400u;       /* 0x33D20..0x33D27 */
-    u32 desc2 = DSD(FIGHTER_DESC_B + ch * 4u);
+    u32 idx = (u32)DSW(DSD(slot) + 0x56u) | 0x400u; /* 0x33D1E `mov eax,[esi]`, 0x33D20..0x33D27 */
+    u32 desc2 = DSD(FIGHTER_DESC_B + (u32)DSB(slot + 0x7Au) * 4u);   /* 0x33D31 `mov al,[esi+0x7a]`, 0x33D38 */
     u32 rec2 = actor_spawn((const u32 *)(mem + desc2), 0u, 0u, 0u, idx);
     DSD(slot + 0x04u) = rec2;                       /* 0x33D46 */
     DSB(rec2 + 0x59u) = DSB(DS_000BDB38);           /* 0x33D4E */
 
-    DSD(slot + 0x24u) = DSD(DS_000BDA8C + ch * 4u); /* 0x33D5D */
-    DSD(rec + 0x14u) = slot;                        /* 0x33D62 */
-    DSB(rec + 0x51u) = (u8)side;                    /* 0x33D6B */
-    DSB(rec + 0x4Cu) = 0;                           /* 0x33D70 */
-    DSB(rec + 0x4Du) = 0x1Eu;                       /* 0x33D7D */
+    DSD(slot + 0x24u) = DSD(DS_000BDA8C + (u32)DSB(slot + 0x7Au) * 4u);   /* 0x33D53, 0x33D5D */
+    DSD(DSD(slot) + 0x14u) = slot;                  /* 0x33D60, 0x33D62 */
+    DSB(DSD(slot) + 0x51u) = (u8)side;              /* 0x33D65, 0x33D6B */
+    DSB(DSD(slot) + 0x4Cu) = 0;                     /* 0x33D6E, 0x33D70 */
+    DSB(DSD(slot) + 0x4Du) = 0x1Eu;                 /* 0x33D7B, 0x33D7D */
 
     /* 0x33D86..0x33DDA: slot+0x81 = DS_001088CC + min(slot+0x3C / 0xC350,
      * DS_001088CB); the divide is unsigned (`div`), the compare signed
@@ -371,14 +371,14 @@ void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a4, u32 a5)
     DSD(slot + 0x1Cu) = 0;                          /* 0x33E17 */
 
     /* 0x33E1E 0x29BC8(side, rec, ch): the character palette at pset+0x18. */
-    fighter_29bc8(side, rec, ch);
+    fighter_29bc8(side, DSD(slot), (u32)DSB(slot + 0x7Au));   /* 0x33E12 `mov ebx,[esi]`, 0x33E14 `mov dl,[esi+0x7a]` */
 
     DSB(slot + 0x41u) &= 0x7Fu;                     /* 0x33E23..0x33E2F */
     DSD(DS_001077A0 + side * 4u) = 0;               /* 0x33E38 */
 
     if (DSB(DS_00104B14) == 0)
         fight_dust_build(side);                     /* 0x33E43 0x494A8 */
-    if (fighter_spawn_audio_gate()) {               /* 0x33E48 0x1CEBC */
+    if ((u8)fighter_spawn_audio_gate() != 0u) {     /* 0x33E48 0x1CEBC, 0x33E4D `test al,al` */
         /* 0x33E51..0x33E98: the character's sound bank, DS_000BDB1C[ch] for
          * ch 0..6 (jump table 0x33C5C; `cmp dl,6; ja` leaves EAX = 0 above),
          * resolved when non-zero, then the fixed 0x287B2F5 (s16sound.gra).
@@ -1485,9 +1485,10 @@ void fighter_command_generate(u32 side)
         DSW(DS_001088E0 + side * 2u) = 0;               /* 0x472CA */
         if (DSB(0x00105B39u) != 0u) return;             /* 0x472D4 */
         ai_manage(side);                                /* 0x472DA */
-        entry = DSD(b + 0x1Cu) + (u32)DSB(b + 0x30u) * 8u;   /* 0x472E7 */
-        DSW(DS_001088E0 + side * 2u) =
-            fighter_cmd_facing((u8)fighter_actor_bit15_clear(side), DSD(entry));   /* 0x472F2: and eax,0xff */
+        u32 cmd = DSD(DSD(b + 0x1Cu) + (u32)DSB(b + 0x30u) * 8u);   /* 0x472E1..0x472E7: read before 0x1A570 */
+        u32 facing = (u8)fighter_actor_bit15_clear(side);   /* 0x472ED, 0x472F2: and eax,0xff */
+        DSW(DS_001088E0 + side * 2u) = fighter_cmd_facing(facing, cmd);   /* 0x472F7, 0x472FF */
+        entry = DSD(b + 0x1Cu) + (u32)DSB(b + 0x30u) * 8u;   /* 0x47307..0x47312: loaded again after the calls */
         if (DSD(entry) == 0xFFFFu) {                    /* 0x4731C */
             DSD(b + 0x04u) = 0;
             DSW(DS_001088E0 + side * 2u) = 0;
