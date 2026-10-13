@@ -6808,6 +6808,7 @@ void game_quit_prompt(u32 hard_quit)
 void game_set_game_dir(const char *dir)
 {
     s_game_dir = dir;
+    host_save_set_fallback(dir);   /* PORT: a run with no save file reads the game dir's cmos */
     /* The attract machine's phase-0 boot logos (0x1C740) play from the same
      * directory. */
     attract_set_media_dir(dir);

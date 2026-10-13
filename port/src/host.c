@@ -352,6 +352,69 @@ int host_write_file(const char *path, const u8 *src, u32 len)
     return ok;
 }
 
+static char s_save_path[1024];
+static char s_save_fallback[1024];
+
+void host_save_set_path(const char *path)
+{
+    snprintf(s_save_path, sizeof s_save_path, "%s", path ? path : "");
+}
+
+void host_save_set_fallback(const char *dir)
+{
+    snprintf(s_save_fallback, sizeof s_save_fallback, "%s", dir ? dir : "");
+}
+
+void host_save_set_default_path(void)
+{
+    char *pref = SDL_GetPrefPath(NULL, "primal-rage");   /* ends with a separator; NULL on failure */
+
+    s_save_path[0] = '\0';
+    if (pref) {
+        snprintf(s_save_path, sizeof s_save_path, "%scmos", pref);
+        SDL_free(pref);
+    }
+}
+
+static int save_read_exact(const char *path, u8 *dst, u32 len)
+{
+    u32 got = 0;
+    return host_read_file(path, dst, len, &got) && got == len;
+}
+
+int host_save_read(u8 *dst, u32 len)
+{
+    char path[1100];
+    FILE *f;
+
+    if (s_save_path[0] && (f = fopen(s_save_path, "rb")) != NULL) {
+        fclose(f);
+        return save_read_exact(s_save_path, dst, len);
+    }
+    if (!s_save_fallback[0])
+        return 0;
+    snprintf(path, sizeof path, "%s/cmos", s_save_fallback);
+    if (save_read_exact(path, dst, len))
+        return 1;
+    snprintf(path, sizeof path, "%s/CMOS", s_save_fallback);
+    return save_read_exact(path, dst, len);
+}
+
+int host_save_writable(void)
+{
+    FILE *f;
+
+    if (!s_save_path[0] || (f = fopen(s_save_path, "ab")) == NULL)
+        return 0;
+    fclose(f);
+    return 1;
+}
+
+int host_save_write(const u8 *src, u32 len)
+{
+    return s_save_path[0] ? host_write_file(s_save_path, src, len) : 0;
+}
+
 /* Audio seam. This is the only place SDL's audio device exists; game-side audio
  * modules hand mixed stereo frames to host_audio_submit() and never see SDL.
  * The stream pulls from SDL's own queue (no callback), so host.c has no

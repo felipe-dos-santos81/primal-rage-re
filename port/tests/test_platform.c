@@ -18,6 +18,8 @@
 #include "host.h"
 #include "game/rng.h"
 #include "game/actors.h"
+#include <sys/stat.h>
+#include <unistd.h>
 #include "game/menu.h"
 #include "game/config.h"
 #include <stdlib.h>
@@ -4022,5 +4024,59 @@ int test_text(void)
     check_text_vertical_number();
     check_menu();
 
+    return g_failures - before;
+}
+
+/* The save-file calls (track S, spec 2026-10-13-storage-layer-design §4.2). */
+int test_host_save(void)
+{
+    int before = g_failures;
+    char dir[] = "/tmp/pr_save_XXXXXX";
+    char save[300], fb[300], sub[300];
+    u8 buf[8], big[9], want[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    u8 other[8] = {9, 9, 9, 9, 9, 9, 9, 9};
+
+    CHECK(mkdtemp(dir) != NULL, "scratch dir");
+    snprintf(save, sizeof save, "%s/save/cmos", dir);
+    snprintf(sub, sizeof sub, "%s/save", dir);
+    snprintf(fb, sizeof fb, "%s/CMOS", dir);
+
+    /* nothing set: no read, not writable, no write */
+    host_save_set_path(NULL);
+    host_save_set_fallback(NULL);
+    memset(buf, 0xEE, sizeof buf);
+    CHECK_EQ_INT(host_save_read(buf, 8), 0);
+    CHECK_EQ_INT(host_save_writable(), 0);
+    CHECK_EQ_INT(host_save_write(want, 8), 0);
+
+    /* the fallback alone: read from <dir>/CMOS (the upper-case name on disk) */
+    CHECK_EQ_INT(host_write_file(fb, other, 8), 1);
+    host_save_set_fallback(dir);
+    CHECK_EQ_INT(host_save_read(buf, 8), 1);
+    CHECK_EQ_INT(memcmp(buf, other, 8), 0);
+    CHECK_EQ_INT(host_save_writable(), 0);          /* a fallback is never written */
+    CHECK_EQ_INT(host_save_write(want, 8), 0);
+
+    /* unwritable: the save path's directory does not exist */
+    host_save_set_path(save);
+    CHECK_EQ_INT(host_save_writable(), 0);
+    CHECK_EQ_INT(host_save_write(want, 8), 0);
+    CHECK_EQ_INT(host_save_read(buf, 8), 1);        /* still the fallback */
+    CHECK_EQ_INT(memcmp(buf, other, 8), 0);
+
+    /* writable: the save path wins over the fallback from then on */
+    CHECK_EQ_INT(mkdir(sub, 0700), 0);
+    CHECK_EQ_INT(host_save_writable(), 1);
+    CHECK_EQ_INT(host_save_write(want, 8), 1);
+    memset(buf, 0xEE, sizeof buf);
+    CHECK_EQ_INT(host_save_read(buf, 8), 1);
+    CHECK_EQ_INT(memcmp(buf, want, 8), 0);
+
+    /* a wrong length is a failed read, and the fallback does not stand in for it */
+    CHECK_EQ_INT(host_save_read(buf, 7), 0);        /* the file is longer */
+    CHECK_EQ_INT(host_save_read(big, 9), 0);        /* the file is shorter */
+
+    host_save_set_path(NULL);
+    host_save_set_fallback(NULL);
     return g_failures - before;
 }

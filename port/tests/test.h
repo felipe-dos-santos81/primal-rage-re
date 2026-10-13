@@ -36,6 +36,7 @@ extern int g_failures;
     X(test_call_seam)   \
     X(test_le)          \
     X(test_res)         \
+    X(test_host_save)   \
     X(test_gra)         \
     X(test_gfx)         \
     X(test_input)       \
