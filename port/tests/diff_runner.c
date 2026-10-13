@@ -41612,6 +41612,29 @@ static void b_d6a_1c470(const u32 *r, u32 *eax) { (void)r; gfx_flush_palette(); 
     static void m_d6a_fp_##name(const u32 *r, u32 *eax) { (void)r; d6a_1c470_core(n); *eax = 0u; }
 D6A_FP_MUT(noclamp, 1u) D6A_FP_MUT(unsigned, 2u) D6A_FP_MUT(clampby, 3u) D6A_FP_MUT(clampcount, 4u) D6A_FP_MUT(nomark, 5u)
 D6A_FP_MUT(markw, 6u)   D6A_FP_MUT(mark0, 7u)    D6A_FP_MUT(headfirst, 8u) D6A_FP_MUT(nohead, 9u)  D6A_FP_MUT(one, 10u)
+
+/* 0x52106 gfx_screen_reset: EAX = ticks. The raw runs with its retrace read as `mov al,8`, its four DAC
+ * writes as nops and its third 0x51F72 call, the fill of the aperture 0xA0000, as nops: the two tick
+ * stores and the two offscreen fills are compared (the port's DAC and aperture are the host's). The
+ * mutants restate that part of gfx.c's body. */
+static void d6a_52106_core(u32 ticks, u32 mut)
+{
+    if (mut != 1u) DSD(0x00101508u) = ticks;                                     /* @no508 */
+    if (mut != 2u) DSD(0x0010150Cu) = ticks;                                     /* @no50c */
+    if (mut == 7u) DSD(0x0010150Cu) = ticks & 0xFFFFu;                           /* @w50c */
+    u32 v = (mut == 5u) ? (ticks & 0xFFu) * 0x01010101u : ticks;                 /* @byte */
+    if (mut == 6u) {                                                             /* @short */
+        for (u32 k = 0u; k < 0xFA00u - 4u; k += 4u) DSD(DSD(0x001014E8u) + k) = v;
+    } else {
+        gfx_fill_screen(DSD((mut == 4u) ? 0x001014E4u : 0x001014E8u), v);        /* @e4twice */
+    }
+    if (mut != 3u) gfx_fill_screen(DSD(0x001014E4u), v);                         /* @one */
+}
+static void b_d6a_52106(const u32 *r, u32 *eax) { gfx_screen_reset(r[R_EAX]); *eax = 0u; }
+#define D6A_SR_MUT(name, n) \
+    static void m_d6a_sr_##name(const u32 *r, u32 *eax) { d6a_52106_core(r[R_EAX], n); *eax = 0u; }
+D6A_SR_MUT(no508, 1u) D6A_SR_MUT(no50c, 2u) D6A_SR_MUT(one, 3u) D6A_SR_MUT(e4twice, 4u) D6A_SR_MUT(byte, 5u)
+D6A_SR_MUT(short, 6u) D6A_SR_MUT(w50c, 7u)
 /* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56557,6 +56580,14 @@ static const binding_t k_bindings[] = {
     { "gfx_flush_palette@headfirst", m_d6a_fp_headfirst, 0x00000000u },
     { "gfx_flush_palette@nohead", m_d6a_fp_nohead, 0x00000000u },
     { "gfx_flush_palette@one", m_d6a_fp_one, 0x00000000u },
+    { "gfx_screen_reset",                b_d6a_52106, 0x00000000u },
+    { "gfx_screen_reset@no508", m_d6a_sr_no508, 0x00000000u },
+    { "gfx_screen_reset@no50c", m_d6a_sr_no50c, 0x00000000u },
+    { "gfx_screen_reset@one", m_d6a_sr_one, 0x00000000u },
+    { "gfx_screen_reset@e4twice", m_d6a_sr_e4twice, 0x00000000u },
+    { "gfx_screen_reset@byte", m_d6a_sr_byte, 0x00000000u },
+    { "gfx_screen_reset@short", m_d6a_sr_short, 0x00000000u },
+    { "gfx_screen_reset@w50c", m_d6a_sr_w50c, 0x00000000u },
     /* d6a table end */
 };
 

@@ -29028,6 +29028,7 @@ D6A_MASKS = {
     "config_screen_wait_zero": 0x0,
     "game_quit_prompt": 0x0,
     "gfx_flush_palette": 0x0,
+    "gfx_screen_reset": 0x0,
 }   # D6A_MASKS end
 D6A_KINDS = {
     "text_blit_glyph@chmask": {'byte', 'call #1'},
@@ -29166,6 +29167,13 @@ D6A_KINDS = {
     "gfx_flush_palette@headfirst": {'byte'},
     "gfx_flush_palette@nohead": {'byte'},
     "gfx_flush_palette@one": {'byte'},
+    "gfx_screen_reset@no508": {'byte'},
+    "gfx_screen_reset@no50c": {'byte'},
+    "gfx_screen_reset@one": {'byte'},
+    "gfx_screen_reset@e4twice": {'byte'},
+    "gfx_screen_reset@byte": {'byte'},
+    "gfx_screen_reset@short": {'byte'},
+    "gfx_screen_reset@w50c": {'byte'},
 }   # D6A_KINDS end
 D6A_CASES = [
     ("text_blit_glyph@chmask", ['g3', 'g4']),
@@ -29304,6 +29312,13 @@ D6A_CASES = [
     ("gfx_flush_palette@headfirst", ['f1', 'f2', 'f3']),
     ("gfx_flush_palette@nohead", ['f1', 'f2', 'f3']),
     ("gfx_flush_palette@one", ['f1', 'f2', 'f3']),
+    ("gfx_screen_reset@no508", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@no50c", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@one", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@e4twice", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@byte", ['s1', 's2']),
+    ("gfx_screen_reset@short", ['s0', 's1', 's2']),
+    ("gfx_screen_reset@w50c", ['s1']),
 ]   # D6A_CASES end
 D6A_OUTSIDE = {}
 P45_OUTSIDE.update(D6A_OUTSIDE)

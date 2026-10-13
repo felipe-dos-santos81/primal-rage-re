@@ -32269,6 +32269,42 @@ D6A_SPECS += [
                                       "one".split())),
 ]
 
+# ---- 0x52106: the screen reset --------------------------------------------------------------------------
+# A partial row under six code pokes. The retrace read `mov edx,0x3da; in al,dx` (0x52129..0x5212E) is
+# `mov al,8` and four nops (bit 3 set at the first read: `test al,8; je` 0x5212F is all the code takes
+# from the port); the four DAC writes `out dx,al` (0x5213F the index 0; 0x52145..0x52147 the 256 black
+# entries) are nops; and the third fill, `call 0x51f72` 0x52151 with EAX = 0xA0000, the VGA aperture, is
+# five nops (the aperture rule: the port fills its host aperture, gfx.c PORT). Unpoked, the original
+# stops `unmodeled: in at 0x5212E` (measured). The row compares the two tick stores and the two offscreen
+# fills and is blind to the DAC and to the aperture fill.
+D6A_RESET_PINS = {0x00052129: b"\xb0\x08\x90\x90\x90\x90", 0x0005213F: b"\x90", 0x00052145: b"\x90\x90\x90",
+                  0x00052151: D6A_NOP5}
+
+
+def d6a_reset(cid, eax, buf_a, buf_b, regs=None):
+    """0x52106: the pokes; the two tick dwords 0x101508/0x10150C seeded between seeded dwords; the
+    offscreen buffer pointers 0x1014E4 (`buf_b`) and 0x1014E8 (`buf_a`) between seeded dwords, each
+    0xFA00 bytes of the image's own data."""
+    p = {**D6A_RESET_PINS,
+         0x00101504: le32(0x04040404) + le32(0x08080808) + le32(0x0C0C0C0C) + le32(0x10101010),
+         0x001014E0: le32(0xE0E0E0E0) + le32(buf_b) + le32(buf_a) + le32(0xECECECEC)}
+    return Case(cid, {**(regs or {}), "eax": eax}, p)
+
+
+D6A_SPECS += [
+    # 0x52106 gfx_screen_reset: EAX = ticks. The dwords 0x101508 and 0x10150C = EAX; 0x51F72([0x1014E8],
+    # EAX) and 0x51F72([0x1014E4], EAX) (run on both sides: 0xFA00 bytes each, the dword EAX). Mask 0, and
+    # EAX is not compared: the port's function is void and the third fill, which leaves EAX = 0xAFA00, is
+    # poked out (the raw returns 0xA0000 here); 0x1C873's return hands it to the movie player's callers
+    # (a host replacement), the other sites call on (0x62756, 0x336C0, 0x2F99C).
+    Spec("gfx_screen_reset", 0x52106, [
+        d6a_reset("s0", 0x00000000, 0x000C0000, 0x000D0000),
+        d6a_reset("s1", 0xA1B2C3D4, 0x000C0001, 0x000D0802, regs=D2E_DIRTY),
+        d6a_reset("s2", 0x00000100, 0x000C8000, 0x000C0000),
+    ], allow_calls=(0x51F72,), eax_mask=0,
+       mutants=tuple("@" + m for m in "no508 no50c one e4twice byte short w50c".split())),
+]
+
 D1_SPECS += D6A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
