@@ -84,6 +84,26 @@ int  host_read_file(const char *path, u8 *dst, u32 max, u32 *len_out);
  * byte was written, else 0. */
 int  host_write_file(const char *path, const u8 *src, u32 len);
 
+/* The save file (the original's "cmos", 0xA2C5C). PORT: the original opens it
+ * in the current directory; here the caller names a save path (NULL = none)
+ * and a read-only fallback directory, the game dir (NULL = none). */
+void host_save_set_path(const char *path);
+void host_save_set_fallback(const char *dir);
+/* Sets the save path to "cmos" in SDL's per-user directory for this app
+ * (SDL_GetPrefPath, which creates it); no save path when SDL has none. */
+void host_save_set_default_path(void);
+/* Reads `len` bytes: from the save path when that file exists (a shorter file
+ * is a failed read; a longer one gives its first `len` bytes, as the raw's
+ * fread does), else from `cmos` or `CMOS` in the fallback directory. Returns 1
+ * on success, else 0. */
+int  host_save_read(u8 *dst, u32 len);
+/* 1 when the save path can be opened for writing (it never truncates and
+ * leaves no empty file behind). */
+int  host_save_writable(void);
+/* Writes `len` bytes to the save path only. Returns 1 when every byte was
+ * written, else 0 (no save path included). */
+int  host_save_write(const u8 *src, u32 len);
+
 /* Opens the default playback device for `channels`-channel s16 frames at `rate`
  * Hz, matching opl_render()'s stereo-interleaved output. Returns 1 on success,
  * 0 on failure (non-positive rate/channels, or no audio device); never aborts,

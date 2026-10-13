@@ -7,8 +7,9 @@
 /* The EEPROM/config data layer (0x2Dxxx). The original keeps 63 packed fields in
  * the byte region DS_00105D88..(+0x1000) and describes each field's bit position
  * and width in the obj-0 descriptor table at 0x2D300. The port reads both out of
- * mem[]; no table or value is transcribed. The storage image (0x80CE4) and the
- * save/load I/O are declared no-ops this cycle (spec §7). */
+ * mem[]; no table or value is transcribed. The storage image (DS 0x80CE4,
+ * linear 0x100CE4) and its save file are the storage section below (record
+ * 2026-10-13-reverse-s). */
 
 /* 0x2D974. Reads the packed field `field` (0x00..0x3E) out of the config byte
  * region. Returns 0xFFFFFFFF when field > 0x3E. */
@@ -16,8 +17,8 @@ u32 config_field_get(u32 field);
 
 /* 0x2DA0C. Writes `value` into the packed field `field` (0x00..0x3E), preserving
  * nibbles the field does not own and raising DS_00105DD8 (|1 for a trailing byte,
- * |6 always). Returns 0, or 0xFFFFFFFF when field > 0x3E. The storage-image
- * maintenance (0x2D4EC) is a no-op this cycle. */
+ * |6 always). Returns 0, or 0xFFFFFFFF when field > 0x3E. Each call re-encodes
+ * the image's records through 0x2D4EC (config_storage_touch). */
 u32 config_field_set(u32 field, u32 value);
 
 /* 0x2CCD0. Walks the obj-1 menu-descriptor table `table` (records are a
@@ -34,21 +35,45 @@ u32 config_menu_default_bits(u32 table);
  * function's comment in config.c. */
 void config_set_defaults(void);
 
-/* 0x2D6F8. Validates the stored config against the magic at DS_00105E30 and runs
- * the defaults path when it fails. With the storage layer stubbed (spec §7) the
- * stored image is absent, so the magic never matches and this always takes the
- * defaults path, as on a fresh machine. */
+/* 0x2D638. The reader of an older image layout (a 0x51-byte record at cell 0
+ * with a copy at cell 0x59, the magic at +0x4D): when either copy holds the
+ * magic, the 5-byte record at cell 0x195 is read to 0x105DDC, from where
+ * hiscore_storage_load's defaults pass copies it to table 2. */
+void config_storage_load(void);
+
+/* 0x2D6F8. Reads the two copies of the field buffer from the image (the
+ * greater result wins and the other copy is repaired), then validates it
+ * against the magic at DS_00105E30: without the magic the defaults path runs,
+ * as over the zero image the captures ran on; with it the trailing-byte record
+ * is read from its slot. The high-score and audit tables follow
+ * (hiscore_storage_load, config_storage_validate). */
 void config_validate(void);
 
 /* Record §K2.3, 0x2D4B4: n + r + 1 for the smallest r with 2^r >= n + r + 1
- * (a SEC-DED codeword length). Its callers 0x2D4EC, 0x2D6F8's stored-image
- * arm and 0x2DAE4 are not run by the port (declared no-op / deferred). */
+ * (a SEC-DED codeword length). Its callers: 0x2D4EC, 0x2D6F8's stored-image
+ * arm and 0x2DAE4. */
 u32 config_codeword_len(u32 n);
 
-/* 0x2D4EC. Maintains the EEPROM storage image at 0x80CE4, which the port does not
- * keep (no save/load I/O, spec §7). Its call sites are declared no-ops so a
- * later persistence cycle has them in place. It takes EAX only: 0x2D4F5
- * `mov edx,eax` overwrites EDX before any read (record §26 of
+/* ---- the storage image (record 2026-10-13-reverse-s §S.1, §S.5) ------------
+ * 0x7F8 bytes at 0x100CE4..0x1014DB ([0x2D48C]). A record of `len` bytes is a
+ * codeword of config_codeword_len(len) cells, one byte per two-byte cell: the
+ * data at the positions that are neither 0 nor a power of two, position 2^j
+ * the XOR of the data whose position has bit j, position 0 the XOR of all. */
+
+/* 0x2E990. Decodes the `len`-byte record at cell `cell` into `dst` (a pointer:
+ * the raw's callers pass globals and their own frames) and returns 1 when its
+ * check bytes agree, -1 otherwise; the bytes are stored either way. */
+s32 config_storage_read(u32 cell, u8 *dst, u32 len);
+
+/* 0x2D498. Stores the byte `value` at `addr` when 0x100CE4 <= addr < 0x1014DC;
+ * outside, the fatal exit 0x2EA68 (menu_fatal_error, which returns in the port). */
+void config_image_store(u32 addr, u32 value);
+
+/* 0x2D4EC. Encodes the record of `kind` (0..8, the table 0x2D444: 0 the config
+ * fields' trailing bytes at the slot [0x105E2F], 1 and 2 the two copies of the
+ * 0x53-byte field buffer, 3..5 the audit tables, 6..8 the high-score tables)
+ * from its source bytes into the image. It takes EAX only: 0x2D4F5 `mov
+ * edx,eax` overwrites EDX before any read (record §26 of
  * 2026-09-29-todo-verify-derivations.md). */
 void config_storage_touch(u32 kind);
 
@@ -69,6 +94,17 @@ u32 hiscore_read(u32 rec, u32 table);
 /* 0x2DCA0. Inserts the record at `src` (u32 value, then the name) as record
  * `rec` of `table`, moving the later records down one; returns 1, or 0. */
 u32 hiscore_insert(u32 rec, u32 src, u32 table);
+
+/* 0x2DE98. The three high-score tables (kinds 6..8) at boot: each block is
+ * zeroed, then read from the image when `defaults` is 0; with `defaults` set
+ * table 2 takes the five bytes at 0x105DDC. A table that was not read, or
+ * whose read failed, is encoded into the image again. */
+void hiscore_storage_load(u32 defaults);
+
+/* 0x2DF8C. The audit tables (kinds 3..5) at boot: each is read from the image
+ * when `defaults` is 0, else zeroed; a table that was not read, or whose read
+ * failed, is encoded into the image again. */
+void config_storage_validate(u32 defaults);
 
 /* 0x2DDE4 — record §49-R. Ranks `value` against `table`'s records (via
  * 0x2DB58) as an insertion index: `value` packed big-endian to the
@@ -115,22 +151,56 @@ void config_set_credit_row_init(void);
  * 1. Callers: 0x10ECC (0x10E80, game_state_init) and 0x2CBB4 (svcmenu.c). */
 void config_credits_init(void);
 
-/* 0x32A3C. The play-time audit close: zeroes the per-mode tick accumulator
- * DS_0010746C[mode & 3]. Its run-clock call 0x32970 and its 0x2DAE4 audit adds
- * are out of scope / deferred (spec §7). Callers: 0x41578, 0x26F58, 0x277C0,
+/* 0x2D62C (record 2026-10-13-reverse-s §S.9). `inc dword [0x105D88]`: the tick
+ * the timer ISR 0x1BDF4 adds at 0x1BE28, 60 a second, which the run clock
+ * reads. */
+void config_isr_tick(void);
+
+/* 0x32970 (record 2026-10-13-reverse-s §S.9). The run clock. EAX = the new
+ * mode mask (its low byte is kept, 0x32A25). The ticks since its last call
+ * (DS_00105D88 - DS_0010747C) are added to DS_00107470[k] for each set bit k
+ * of the old mask byte DS_00107494, to the total DS_00107484 and to the minute
+ * counter DS_00107488[old mask]. When the total reaches 0x3840 it is zeroed
+ * and each of the three counters DS_00107488[0..2] above 0xE10 keeps its
+ * remainder and posts its minutes through audit_add(3 + i, minutes). Returns
+ * 0x107488 (0x32A2D); no caller reads it. */
+u32 config_run_clock(u32 mask);
+
+/* 0x32A3C. The play-time audit close: runs the clock (0x32A4A), takes and
+ * zeroes the per-mode tick accumulator DS_0010746C[mode & 3] and, for a mode
+ * other than 0, posts the game count and the seconds through audit_add
+ * (0x2DAE4). Callers: 0x41578, 0x26F58, 0x277C0,
  * 0x28788 and 0x41C28 (all ported) and the dead 0x2861C region. */
 void config_play_time_close(u32 mode, u32 flag);
 
 /* 0x32B00 (record §48-Q). `arm` != 0: DS_00107478 = DS_0010746C[idx]; 0:
- * DS_00107478 = (DS_0010746C[idx] - DS_00107478) / 0x3C, its 0x2E934 audit
- * post deferred (spec §7). Ported callers: 0x28DA4 (flow_player_join) and
- * 0x25EE5 (0x25C88, game_mode_05_step, record §48-U). */
+ * DS_00107478 = (DS_0010746C[idx] - DS_00107478) / 0x3C, posted through
+ * audit_post(1, that) (0x2E934). Ported callers: 0x28DA4 (flow_player_join)
+ * and 0x25EE5 (0x25C88, game_mode_05_step, record §48-U). */
 void config_play_time_snap(u32 idx, u32 arm);
 
 /* 0x32B4C (record §48-U). 0x32B00 on DS_00107480: `arm` != 0 stores
- * DS_0010746C[idx]; 0 stores (DS_0010746C[idx] - DS_00107480) / 0x3C, its
- * 0x2E934(0, t) audit post deferred (spec §7). Ported caller: 0x25EFD. */
+ * DS_0010746C[idx]; 0 stores (DS_0010746C[idx] - DS_00107480) / 0x3C and
+ * posts it through audit_post(0, t) (0x2E934). Ported callers: 0x25EFD and
+ * 0x27DEB. */
 void config_play_time_snap_b(u32 idx, u32 arm);
+
+/* ---- the audit adds (track S batch sb, record §S.6) ---------------------- */
+
+/* 0x2DAE4. Adds `n` to config field `field` (0x2D974 then 0x2DA0C) and
+ * returns the sum; a field that reads negative (an index above 0x3E reads
+ * -1) is returned as read and not written. Field 3 also steps the slot byte
+ * DS_00105E2F when the sum changes at or above bit 8. */
+s32 audit_add(u32 field, u32 n);
+
+/* 0x32B94. audit_add(0xE, 1) when bit 0 of `flags` (the raw's AL) is set.
+ * Caller: 0x2786B (0x277C0) with the byte DS_00104B1F. */
+void audit_add_if_bit0(u32 flags);
+
+/* 0x32BB0. One audit_add(0x1B + c, 1) per character at or below 6
+ * (unsigned); a first character above 6 skips the second too. Caller:
+ * 0x27E28 (0x27DC8), `c1` = -1 with one player. */
+void audit_characters(u32 c0, u32 c1);
 
 /* ---- timed screen, key latch and menu helpers (record §49-Y) ------------ */
 
@@ -195,5 +265,16 @@ void config_keys_pack(u32 rec);
 
 /* 0x1AF64. Loads the BIOS key-config (+0x2D4.. ) from the record at `rec`. */
 void config_keys_load(u32 rec);
+
+/* 0x1AFE8 — record 2026-10-13-reverse-s §S.7. Loads the stored image (0x7F8 bytes at 0x100CE4) from
+ * the save file through host_save_read and checks its XOR byte. Returns 0, or 1 after filling the image
+ * with 0xFF (no file, a file of another length, a bad checksum). Only AL is the raw's result. */
+u32 config_file_load(void);
+
+/* 0x1B084 — record 2026-10-13-reverse-s §S.7. Saves the stored image: when host_save_writable, runs
+ * config_storage_touch(1) and (2), stores the XOR byte 0x1014DB and writes the 0x7F8 bytes through
+ * host_save_write. Returns 0, or 1 when nothing was opened or the write failed. Only AL is the raw's
+ * result, and no caller reads it. */
+u32 config_file_save(void);
 
 #endif /* PRAGE_GAME_CONFIG_H */

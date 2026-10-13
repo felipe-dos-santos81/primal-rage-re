@@ -317,19 +317,31 @@ consolidation gate).
   and `0x29C78` P7: U10's set loses it (distinct=4) with every pin exact and unchanged — record
   2026-10-04-reverse-p7 §P7.8).
 - Captures are git-ignored. `data/` is git-ignored and read-only — never write to it.
+- **The storage layer is ported (track S) and every capture ran on an all-zero `CMOS`.** The image
+  `0x100CE4..0x1014DB` is loaded by `config_file_load` (`0x1AFE8`) and saved by `config_file_save`
+  (`0x1B084`) through the `host_save_*` calls. Only the windowed run has a save path (SDL's per-user
+  directory, or `--cmos FILE`); `--check`, `run_tests`, `diffrun` and every driver read the game dir's
+  `CMOS` and drop the writes, the captures' condition, and `make verify` fails first if that file is not
+  2040 zero bytes or absent. The run clock `0x32970` reads the tick `0x105D88`, which the port's modelled
+  ISR ticks advance (`game_isr_ticks`, `config.c`'s key wait), not wall time (record §S.9). Named gaps
+  (record §S.8): `0x2EA68` returns where the original exits; a short `cmos` gives the defaults where the
+  original exits; no recording of the original writing or loading a real save exists yet.
 - DOSBox captures at 70.09 Hz while the game ticks at 60.05 Hz, which is why the
   title/front-end oracles model a capture frame as a byte-offset splice of two
   adjacent port frames rather than a 1:1 match.
 - **The differential rows are being extended to every ported function** (track D,
   record `docs/superpowers/plans/2026-10-11-reverse-d-derivations.md`). C3g closed
   the callee frontier at 322 rows; track D rows the ported functions the callee
-  scan never reached. `make diff-verify`'s counter after its six waves is
-  `963/963 functions VERIFIED; 14349/14349 mutants detected; 1 named gaps;
-  604/796 rows with callees closed (167 have none)`; 24 ported functions have no
-  row (18 named gaps and 6 named non-rows, none open; record §D.12). The counter does not tell a full row from a
-  weaker one: 9 of the 707 rowed functions have a row that runs the original under code pokes or covers part of it
-  (`0x24C5C`, `game_loop`, and wave 6's `0x2CADC`, `0x2D6F8`, `0x2EA78`, `0x2EA74`, `0x249F0`, `0x1C470`, `0x52106`;
-  the last two see none of the hardware writes): count 698 full rows. The open rows are open on the 24 unrowed functions and on the named non-rows
+  scan never reached. Track S (record `2026-10-13-reverse-s-derivations.md`) then ported the storage layer
+  (14 functions and the body of `0x2D4EC`), the run clock `0x32970` and the ISR tick `0x2D62C`, with a row each.
+  `make diff-verify`'s counter after it is
+  `990/990 functions VERIFIED; 14725/14725 mutants detected; 1 named gaps;
+  635/822 rows with callees closed (168 have none)`; 23 of the 747 ported functions have no
+  row (17 named gaps and 6 named non-rows, none open; record §D.12, §S.8). The counter does not tell a full row from a
+  weaker one: 10 of the 724 rowed functions have a row that runs the original under code pokes or covers part of it
+  (`0x24C5C`, `game_loop`, `0x2CADC`, `0x2EA78`, `0x2EA74`, `0x249F0`, `0x1C470`, `0x52106`, and track S's
+  `0x1AFE8` and `0x1B084`, whose file calls are poked out; `0x1C470` and `0x52106` see none of the hardware
+  writes): count 714 full rows. The open rows are open on the 23 unrowed functions and on the named non-rows
   (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
   `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
@@ -364,16 +376,16 @@ consolidation gate).
   Update the README title and its "N% of the original's D real functions"
   line after any merge that adds or removes a ported function.
   It also prints the adjusted (portable) figure; the README title keeps the raw
-  percentage. As of 2026-10-05 the two lines read `771 1203 64` and
-  `731 731 100`:
-  - **Raw:** 771 ported of 1203 real functions (64%). The 432 unported functions
-    are not porting targets: 81 are host-owned or deferred (the rows of
+  percentage. As of 2026-10-13 (track S) the two lines read `787 1203 65` and
+  `747 747 100`:
+  - **Raw:** 787 ported of 1203 real functions (65%). The 416 unported functions
+    are not porting targets: 65 are host-owned or deferred (the rows of
     `tools/port_classification.txt` that are not ported, one evidence line each)
     and 351 are runtime code (>= 0x5D000: WATCOM libc, DOS/4GW glue) that the
     port serves from the host libc.
-  - **Portable:** 731 of 731 (100%). The denominator leaves out the 81
+  - **Portable:** 747 of 747 (100%). The denominator leaves out the 65
     host-owned/deferred functions and everything at or above 0x5D000; the
-    other 40 ported functions (771 - 731) sit in that runtime region, so they
+    other 40 ported functions (787 - 747) sit in that runtime region, so they
     count in the raw figure only.
   `--unported` lists what is left (addr, size, callers, callees), largest
   first; the `runtime` rows are not targets.

@@ -547,7 +547,7 @@ void flow_winner_pose_step(void);
  * background until it passes y = -0x180, awards 100000 points (0x41310) and
  * draws the updated score, then dispatches to mode 0x17 (continue), 0x417C4
  * (flow_no_continue_screen) or the join-prompt draw + audit close + the
- * audit add 0x2DAE4(0x10, 1) (a call, deferred); 8 a countdown (DS_00104AFE)
+ * audit add 0x2DAE4(0x10, 1) (audit_add, 0x42425); 8 a countdown (DS_00104AFE)
  * that restores DS_00104B25 from DS_00104B23 at zero. 0x416D4's dead stub
  * call 0x32BAC is 0xC3 (a bare RET)
  * confirmed by raw `read_memory` — its 8 call sites across the image
@@ -691,9 +691,9 @@ void game_mode_0a_step(void);
  * table 0 through config.h's hiscore_rank_probe (0x2DDE4): a rank < 10
  * clears config field 0x26 and records the rank in DS_001044D6, returning
  * 1, after arming the name-entry screen through nameentry_arm (0x204F4,
- * record §51-A); a rank >= 10 returns 0. The deferred field-0x27/0x26 audit
- * adds (0x2DAE4) are out of scope — see flow.c's header comment on this
- * function. */
+ * record §51-A); a rank >= 10 returns 0. It also posts the field-0x27 and
+ * field-0x26 audit adds (audit_add, 0x2DAE4) with their clamps at 2000 and
+ * 200 — see flow.c's header comment on this function. */
 u32 hiscore_rank_single(u32 score);
 
 /* 0x1ECC8 — record §49-R. Ranks both fighters' post-match scores
@@ -759,10 +759,10 @@ u32 hiscore_rank_pair(void);
  *   0x1EC38, and states 0xF/0x10, which store DS_00104B25 = 0xE/0xD, reset
  *   the screen, re-probe the other side's score through 0x1EC38 (return
  *   discarded) and prime nameentry_step for that side (return discarded).
- *   Two established gaps recur throughout, left as the same PORT: notes
+ *   One established gap recurs throughout, left as the same PORT: notes
  *   this codebase already uses elsewhere: every 0x2C3FC voice call (record
- *   §45-A) and, inside 0x1EC38, 0x2DAE4 (the deferred audit no-op, spec
- *   §7). EBX/ECX/EDX/ESI/EDI are pushed and popped. */
+ *   §45-A). Inside 0x1EC38 the audit adds 0x2DAE4 are real calls (track S
+ *   §S.6). EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void game_mode_1e_step(void);
 
 /* 0x208F8 — record §49-J. The mode 0x1F handler: the "roar" screen between
@@ -818,8 +818,8 @@ void game_mode_07_step(void);
  * full derivation: a DS_00104AFE countdown (no zero-guard, unlike modes
  * 8/9's DS_00104AF8) that, on reaching zero or below, plays voice 0x2B
  * (record k7-k12 §6), clears a bit on DS_0010810D's (the established winner-side macro)
- * slot, awards fighter_41310(DS_00104AD4, 0x30D40), runs the deferred
- * 0x32B94/0x32970 (audit/run-clock, spec §7, both no-ops here) and
+ * slot, awards fighter_41310(DS_00104AD4, 0x30D40), calls
+ * audit_add_if_bit0(DS_00104B1F) (0x32B94), the run clock 0x32970(0) (0x27874) and
  * config_play_time_close(1, DS_00104B19) — one of the two live callers
  * fighter.h/config.h's own comments named as still unported before this
  * task — then installs frontend_darken_all (0x29B74) under mode 0x17, the

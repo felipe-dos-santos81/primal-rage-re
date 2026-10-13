@@ -926,6 +926,8 @@ audio-render: build ## Render the title FM music headlessly to a WAV (AUDIO_WAV,
 # from the CWD, so the ladder has to produce them (frames >= 25) before the suite
 # consumes them — otherwise that four-frame comparison never runs.
 verify: build ## Full ladder: --check frames, oracle-required tests, every pixel and ratchet oracle, differential verification, E2 triage, symbols.h idempotence
+	@echo "== the game dir's cmos (every capture ran on 2040 zero bytes; the port's drivers read it since track S) =="
+	@$(PYTHON) -c "import sys; sys.path.insert(0, 'tools'); import k11_capture as k; print('cmos=%s' % k.check_cmos('$(GAME_DIR)'))"
 	@echo "== headless frames (must precede the tests that read frames/frame_*.idx) =="
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames)
 	@echo "== tests (oracles required; consume the captured frames) =="

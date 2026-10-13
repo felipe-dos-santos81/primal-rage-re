@@ -1,4 +1,4 @@
-# Primal Rage (DOS, 1995) — Reverse Engineering 64%
+# Primal Rage (DOS, 1995) — Reverse Engineering 65%
 
 ![Primal Rage](docs/intro.jpg)
 
@@ -28,20 +28,22 @@ and covers the whole game — boot, title, attract cycles, front end, service
 menu, character select, one- and two-player matches, the win path, the ending,
 and the game-over/high-score flows. Two claims back that:
 
-- **Porting — 64% raw, 100% portable.** 771 of the original's 1203 real
+- **Porting — 65% raw, 100% portable.** 787 of the original's 1203 real
   functions have a ported, header-commented counterpart in `port/src/` (see
-  `AGENTS.md` for how that figure is computed). The 432 that are not are not
-  porting targets: 81 are host-owned or deferred (`tools/port_classification.txt`,
+  `AGENTS.md` for how that figure is computed). The 416 that are not are not
+  porting targets: 65 are host-owned or deferred (`tools/port_classification.txt`,
   each with its evidence) and 351 are WATCOM libc / DOS/4GW runtime code (at or
-  above `0x5D000`, served by the host libc). Excluding them, **100%** (731 of
-  731) of the portable functions are ported.
+  above `0x5D000`, served by the host libc). Excluding them, **100%** (747 of
+  747) of the portable functions are ported. The last 16 are the storage layer
+  (settings, high scores and audit counters kept in a save file) and the run
+  clock that times them (track S).
 - **Verification — differential.** `make diff-verify` runs the original's own
   bytes in unicorn against the port's C functions from the same image,
   comparing every changed byte, the return register, the ordered calls (with
   the memory changed so far at each) and the block coverage:
-  **963/963 functions VERIFIED; 14349/14349 mutants detected**. C3g closed the
+  **990/990 functions VERIFIED; 14725/14725 mutants detected**. C3g closed the
   callee-row frontier at 322 rows; track D is rowing every ported function the
-  callee scan never reached (707 of 731 have a row after its sixth wave — 698 a full one, and 9 a row that runs the original under code pokes or covers only part of it: `0x24C5C`, `game_loop`, and wave 6's `0x2CADC`, `0x2D6F8`, `0x2EA78`, `0x2EA74`, `0x249F0`, `0x1C470`, `0x52106`, the last two seeing none of the hardware writes; the other 24 are named gaps or non-rows, none is open;
+  callee scan never reached (724 of 747 have a row after its sixth wave and track S — 714 a full one, and 10 a row that runs the original under code pokes or covers only part of it: `0x24C5C`, `game_loop`, `0x2CADC`, `0x2EA78`, `0x2EA74`, `0x249F0`, `0x1C470`, `0x52106`, `0x1AFE8`, `0x1B084`; the other 23 are named gaps or non-rows, none is open;
   record `2026-10-11-reverse-d-derivations.md`), and its rows have found 172
   raw-over-port corrections. The
   E2 triage's remaining rows are the 231 table-driven span-writers — not ported

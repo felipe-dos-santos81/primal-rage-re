@@ -1,6 +1,6 @@
 # Functions the port deliberately does not port.  Format: ADDR CLASS EVIDENCE
 #   host-owned  the SDL host / flat mem[] replaces it (DPMI, ISR key samplers, allocator, drive plumbing)
-#   deferred    a declared no-op layer (EEPROM/config storage, Smacker movie audio)
+#   deferred    a declared no-op layer (Smacker movie audio; the EEPROM/config storage was ported by track S)
 # Every line needs the record section that proves it; seeded from the triage tables §50-C/D/E
 # tools/port_progress.py excludes these from the portable denominator
 10024 deferred record-§50-E
@@ -32,8 +32,6 @@
 1AD64 host-owned record-§50-C
 1ADAC host-owned record-§50-C
 1ADE4 host-owned record-§50-C
-1AFE8 deferred record-§50-C
-1B084 deferred record-§50-C
 1B610 host-owned record-§50-C
 1B6A0 host-owned record-§50-C
 1B730 host-owned record-§50-C
@@ -44,7 +42,7 @@
 1B8DC host-owned record-§50-C
 1B908 host-owned record-§50-C
 1BBAC host-owned record-§50-C
-1BDF4 host-owned record-§K9.5 (tick model config.c; callees 1BBAC §50-C and 2D62C §K9.5 host-owned)
+1BDF4 host-owned record-§K9.5 (tick model flow.c game_isr_ticks and config.c; callee 1BBAC §50-C host-owned; callee 2D62C ported by track S, record 2026-10-13-reverse-s §S.9)
 1C308 host-owned record-§50-D
 1C320 host-owned record-§50-D
 1C884 host-owned record-§50-D
@@ -61,12 +59,6 @@
 1C0F0 host-owned record-§49-V (DPMI extended-memory block list)
 1E30C host-owned record-§49-V (DPMI heap)
 1E458 host-owned record-§49-V (allocator core; res_alloc/flat bump)
-2D638 deferred record-§49-Y.5 (storage load)
-2DE98 deferred record-§49-Y.5 (high-score storage load)
-2E990 deferred record-§49-Y.5 (checksummed storage read)
-2DAE4 deferred record-§48-V (audit no-op)
-2E934 deferred record-§48-V (audit no-op)
-32970 host-owned record-§48-V (host owns wall time)
 4FDF5 host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
 4FBBB host-owned record-§49-V (called by the ISR sampler 0x1BBAC, and by 0x20C10's controller checks at 0x20DAC and 0x20DD1, record named-gaps-b §B.6a)
 4FC05 host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
@@ -77,12 +69,4 @@
 4FB98 host-owned record-§K9.2 (k1-k9 derivations: int 10h set-mode, 0x13 at 0x1BFEA and the saved mode at 0x1BEB0; SDL host_init/host_shutdown own the window)
 4FF8F host-owned record-§K9.3 (k1-k9 derivations: pure joystick A axis bits from 0xE1C1E..0xE1C24, written only by host-owned 0x4FC05/0x4FCFD/0x4FDF5/0x5004A; callers 0x1BBAC and the unreferenced 0x1B934..0x1BB73)
 4FFD8 host-owned record-§K9.4 (k1-k9 derivations: pure joystick B axis bits from 0xE1C26..0xE1C2C; same writers and callers as 4FF8F)
-2D62C host-owned record-§K9.5 (k1-k9 derivations: timer-ISR tick inc [0x105D88], only call 0x1BE28 in 0x1BDF4; counter read only by host-owned 0x32970; host.c g_tick models it)
-2E180 deferred record-§K9.6 (k1-k9 derivations: audit counter add, only caller 0x2E983 in the deferred 0x2E934)
-2E0A4 deferred record-§K9.7 (k1-k9 derivations: audit counter-table halve + dirty bit DS_00105DD8, only caller 0x2E1EB in 0x2E180)
-2E034 deferred record-§K9.8 (k1-k9 derivations: audit counter store + dirty bit, only caller 0x2E20B in 0x2E180)
-2DF8C deferred record-§K9.9 (k1-k9 derivations: storage validate for tables 3..5; on the port's path it memsets 47 image-zero bytes 0x105ECD..0x105EFB no ported code writes, plus no-op 0x2D4EC)
-2D498 deferred record-§K9.10 (k1-k9 derivations: bounds-checked EEPROM-image byte store, only caller 0x2D612 in the declared no-op 0x2D4EC)
-32B94 deferred record-§K9.11 (k1-k9 derivations: 0x2DAE4(0xE,1) on AL bit 0; only callee the deferred 0x2DAE4)
-32BB0 deferred record-§K9.12 (k1-k9 derivations: two 0x2DAE4(0x1B+c,1) audit adds; only callee the deferred 0x2DAE4)
 50D23 host-owned record-§K10 (k10 movie-blit derivations: movie dirty-rect blit, E87A4 vs E87A0 dwords into the aperture (0x50D4A add ebx,0xa0000) and the E87A0 shadow (EDI); the shadow is zeroed by 0x52106(0) at 0x1C873 before any reader; only caller 0x1C82D; movie_present/gfx_present replaces it, smk oracle 120/120 + 41/41, test_movie_blit)

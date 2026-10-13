@@ -5,6 +5,7 @@
  * registers nothing; the arena frame is the state-7 body's first call
  * (0x11E8F). The 0x1975C think step is fighter_think() (fighter.c). */
 #include "game/fight.h"
+#include "game/svcmenu.h"
 #include "game/fighter.h"
 #include "game/camera.h"
 #include "game/actors.h"
@@ -726,11 +727,7 @@ void fight_char_confirm(u32 side)
         fight_stage_mark_drop(DSB(DS_0010816A + side), side);  /* 0x43E4C..0x43E58 0x4248C */
         DSB(DS_0010816E + side) = DSB(DS_0010816A + side);     /* 0x43E5D/0x43E63 */
     }
-    /* PORT: 0x43E77 0x2E934(2, (s8)DS_0010816A[side]), the character-pick
-     * audit count (0x2E180/0x2E034 into the config region, 0x2D4EC), is
-     * deferred with the other audit adds (spec §7, record §48-S; 0x2E934 is
-     * classified by record §48-V and its callees 0x2E180/0x2E0A4/0x2E034 by
-     * record §K9.6-§K9.8 of 2026-09-29-k1-k9-derivations.md). */
+    (void)audit_post(2u, (u32)(s32)(s8)DSB(DS_0010816A + side));  /* 0x43E69..0x43E77 0x2E934 */
     actor_set_dead(DSD(DS_00108154 + side * 4u));       /* 0x43E7C/0x43E83 0x2B150 */
     fight_char_text_clear(side, 0u);                    /* 0x43E88..0x43E8C 0x432EC */
     (void)sound_voice(0x6Cu);                           /* 0x43E91/0x43E96 0x2C3FC */

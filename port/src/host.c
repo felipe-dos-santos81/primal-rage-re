@@ -29,9 +29,11 @@
  * (0x1CFFA push 0x3c; 0x1CFFF AIL_set_timer_frequency 0x5DA87) and starts it
  * (0x1D008 0x5DAA6); 0x1BDF4 calls 0x2D62C at 0x1BE28, only while the byte
  * DS_00104B22 is not 1 (0x1BDF8..0x1BE00). The dword at 0x1BF5C is the
- * 0x109A0 memory lock of 0x2D62C's code, not an install. g_tick ignores that
- * gate: DAT_00105D88's only reader besides the lock is the host-owned run clock
- * 0x32970 (record §1 of 2026-09-29-todo-verify-derivations.md). See
+ * 0x109A0 memory lock of 0x2D62C's code, not an install. g_tick is the host's
+ * own pacing counter and ignores that gate. The game's counter DS_00105D88 is
+ * not g_tick: the port's modelled ISR ticks advance it (flow.c game_isr_ticks,
+ * config.c's key wait; 0x2D62C is config_isr_tick), and the run clock 0x32970
+ * (config_run_clock) reads it (record 2026-10-13-reverse-s §S.9). See
  * port/spec/game_flow.md "Tick". */
 #define HOST_TICK_NS 16666667ull
 
@@ -350,6 +352,84 @@ int host_write_file(const char *path, const u8 *src, u32 len)
     int ok = (n == (size_t)len);
     if (fclose(f) != 0) ok = 0;
     return ok;
+}
+
+static char s_save_path[1024];
+static char s_save_fallback[1024];
+
+/* A path that does not fit is no path, not another file. */
+static void save_copy_path(char *dst, size_t max, const char *a, const char *b)
+{
+    if (!a || snprintf(dst, max, "%s%s", a, b) >= (int)max)
+        dst[0] = '\0';
+}
+
+void host_save_set_path(const char *path)
+{
+    save_copy_path(s_save_path, sizeof s_save_path, path, "");
+}
+
+void host_save_set_fallback(const char *dir)
+{
+    save_copy_path(s_save_fallback, sizeof s_save_fallback, dir, "");
+}
+
+void host_save_set_default_path(void)
+{
+    char *pref = SDL_GetPrefPath(NULL, "primal-rage");   /* ends with a separator; NULL on failure */
+
+    save_copy_path(s_save_path, sizeof s_save_path, pref, "cmos");
+    SDL_free(pref);
+}
+
+/* The raw's fread(image, 1, 0x7F8, file) (0x1B017): a longer file gives its
+ * first `len` bytes, a shorter one fails. */
+static int save_read_exact(const char *path, u8 *dst, u32 len)
+{
+    FILE *f = fopen(path, "rb");
+    size_t n;
+
+    if (!f) return 0;
+    n = fread(dst, 1, (size_t)len, f);
+    fclose(f);
+    return n == (size_t)len;
+}
+
+int host_save_read(u8 *dst, u32 len)
+{
+    char path[1100];
+    FILE *f;
+
+    if (s_save_path[0] && (f = fopen(s_save_path, "rb")) != NULL) {
+        fclose(f);
+        return save_read_exact(s_save_path, dst, len);
+    }
+    if (!s_save_fallback[0])
+        return 0;
+    snprintf(path, sizeof path, "%s/cmos", s_save_fallback);
+    if (save_read_exact(path, dst, len))
+        return 1;
+    snprintf(path, sizeof path, "%s/CMOS", s_save_fallback);
+    return save_read_exact(path, dst, len);
+}
+
+int host_save_writable(void)
+{
+    FILE *f;
+
+    long end;
+
+    if (!s_save_path[0] || (f = fopen(s_save_path, "ab")) == NULL)
+        return 0;
+    end = (fseek(f, 0, SEEK_END) == 0) ? ftell(f) : -1;
+    fclose(f);
+    if (end == 0) remove(s_save_path);   /* the probe leaves no empty save behind */
+    return 1;
+}
+
+int host_save_write(const u8 *src, u32 len)
+{
+    return s_save_path[0] ? host_write_file(s_save_path, src, len) : 0;
 }
 
 /* Audio seam. This is the only place SDL's audio device exists; game-side audio

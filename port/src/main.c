@@ -13,7 +13,8 @@
 
 static void usage(const char *argv0)
 {
-    printf("usage: %s --game-dir DIR [--check N]\n", argv0);
+    printf("usage: %s --game-dir DIR [--check N] [--cmos FILE]\n"
+           "  --cmos FILE  the save file of the windowed run (default: the per-user directory)\n", argv0);
 }
 
 /* Task 14: open the SDL host, then hand control to the ported game flow
@@ -21,7 +22,7 @@ static void usage(const char *argv0)
  * device is opened here, with the window, so --check stays genuinely headless
  * (it never reaches run_windowed). A failed open leaves host_audio_rate() 0 and
  * the flow tick-runs the sequencer without rendering. */
-static int run_windowed(const char *game_dir)
+static int run_windowed(const char *game_dir, const char *cmos_path)
 {
     if (!host_init("Primal Rage", 320, 200)) {
         fprintf(stderr, "prageport: no window/display available\n");
@@ -34,6 +35,10 @@ static int run_windowed(const char *game_dir)
                host_audio_error());
     printf("prageport 0.0.1 game-dir=%s\n", game_dir);
     game_set_game_dir(game_dir);
+    /* PORT: the windowed run alone keeps a save file; --check and the test
+     * drivers read the game dir's cmos and drop the writes, as the captures did. */
+    if (cmos_path) host_save_set_path(cmos_path);
+    else host_save_set_default_path();
     /* PORT: PR_FN_MISSLOG arms the miss log (record gameplay-u0 §U0.1) for a
      * windowed session and reports it on stdout at exit. */
     const char *ml = getenv("PR_FN_MISSLOG");
@@ -294,11 +299,14 @@ static int run_check(const char *game_dir, int frames)
 int main(int argc, char **argv)
 {
     const char *game_dir = "data/game/C";
+    const char *cmos_path = NULL;
     int check_frames = 0;
     int have_check = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--game-dir") == 0 && i + 1 < argc) {
             game_dir = argv[++i];
+        } else if (strcmp(argv[i], "--cmos") == 0 && i + 1 < argc) {
+            cmos_path = argv[++i];
         } else if (strcmp(argv[i], "--check") == 0 && i + 1 < argc) {
             check_frames = atoi(argv[++i]);
             have_check = 1;
@@ -323,5 +331,5 @@ int main(int argc, char **argv)
             fprintf(stderr, "prageport: --check %d assertion failure(s)\n", failures);
         return failures;
     }
-    return run_windowed(game_dir);
+    return run_windowed(game_dir, cmos_path);
 }

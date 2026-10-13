@@ -180,6 +180,27 @@ u32 audit_digits(s32 v);
  * DS_00105DD8; -1 (and nothing written) for g >= 3 (unsigned), else 0
  * — 0x2E11C. */
 u32 audit_hist_clear(u32 g);
+/* Stores the low byte of `value` in counter `index` of histogram `table`,
+ * sets the table's dirty bit and posts 0x2D4EC(table + 3). Returns that
+ * byte, or -1 (nothing written) for table >= 3 or index >= the table's size
+ * — 0x2E034. */
+s32 audit_counter_store(u32 table, u32 index, u32 value);
+/* Halves every counter of histogram `table` (logical shift), sets its dirty
+ * bit and posts 0x2D4EC(table + 3). Returns 0, or -1 (nothing written) for
+ * table >= 3 — 0x2E0A4. */
+s32 audit_counters_halve(u32 table);
+/* Adds `add` to counter `index` of histogram `table`. A sum above 0xFF
+ * (signed) first halves every table named by the descriptor's mask word
+ * (0x2D420 + 0x10 * table) and is itself halved. Returns the sum stored
+ * (whole, not its low byte), or -1 for table >= 3, index >= the size, or a
+ * failed halving — 0x2E180. */
+s32 audit_counter_add(u32 table, u32 index, u32 add);
+/* Counts `value` in histogram `kind`: bucket 0 below the descriptor's first
+ * width, then one bucket per step, the last bucket taking the rest. Returns
+ * audit_counter_add's result, or -1 for kind > 3 (kind 3 is refused by
+ * audit_counter_add). Callers: 0x32B35 (1), 0x32B7E (0), 0x43E77 (2)
+ * — 0x2E934. */
+s32 audit_post(u32 kind, u32 value);
 /* Prepares histogram `g`: copies its title (the template up to a tab or NUL)
  * into `buf` of `size` bytes, lays out the state block, sums the counters and
  * stores the largest in [max_out] and the median bucket in [median_out] (each

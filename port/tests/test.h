@@ -36,6 +36,7 @@ extern int g_failures;
     X(test_call_seam)   \
     X(test_le)          \
     X(test_res)         \
+    X(test_host_save)   \
     X(test_gra)         \
     X(test_gfx)         \
     X(test_input)       \
@@ -59,7 +60,11 @@ extern int g_failures;
     X(test_fight)       \
     X(test_pose_pool)   \
     X(test_config)      \
+    X(test_config_storage) \
+    X(test_audit)       \
+    X(test_run_clock)   \
     X(test_cfg_helpers) \
+    X(test_config_file) \
     X(test_svcmenu)     \
     X(test_frontend)    \
     X(test_attract)     \
