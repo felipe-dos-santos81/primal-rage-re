@@ -8690,12 +8690,15 @@ static void sm_check_shell(void)
     CHECK_EQ_INT((int)DSD(DS_00107418), 4);
     sm_env_end();
 
-    /* GAME OPTIONS: 0x2CB94 = menu_run(0xBCC1C) (blocking), 0x1B084 (deferred), 0x2C304. */
+    /* GAME OPTIONS: 0x2CB94 = menu_run(0xBCC1C) (blocking), 0x1B084 (the save), 0x2C304. */
     static const sm_step_t esc_now[] = { { 0u, 0x2000000u } };
     const u32 want_credits = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;
     DSD(DS_00105C00) = 0xDEADu;
     sm_begin(esc_now, 1u);
+    cf_begin();
     CHECK_EQ_INT((int)svc_options_menu(0xBCBFCu), -1);                /* 0x2FD53..0x2FD60 */
+    CHECK_EQ_INT(cf_file_len(), (long)CF_LEN);                        /* 0x2CBAF */
+    cf_end();
     sm_end(1u, "GAME OPTIONS left on the first Esc");
     CHECK_EQ_INT((int)DSD(DS_00105C00), (int)want_credits);
 
