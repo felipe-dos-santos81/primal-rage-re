@@ -32029,73 +32029,9 @@ D6A_SPECS += [
 ]
 
 # ---- 0x2D6F8: the configuration validate ---------------------------------------------------------------
-# A partial row. The port models the storage as absent (config.c, PORT: both reads report -1, no stored
-# image) and has no function for the deferred storage routines (tools/port_classification.txt). Here the
-# raw's storage load 0x2D638 and its checksummed read 0x2E990 run from their bytes on the image's stored
-# bytes ([0x2D48C] = 0x100CE4, zero in the image: both reads return 1, measured) or on two unreadable
-# copies (a non-zero parity cell in each: both return -1, measured), and the two deferred high-score
-# validators are nops in every case (`call 0x2de98` 0x2D912, `call 0x2df8c` 0x2D919: with EAX = the
-# defaults flag they make six more 0x2D4EC calls, record 2026-10-12-reverse-d5g section 4). The row is
-# blind to those two calls and to what the reads store in 0x105DE1..0x105E33 (zeros over the image's
-# zeros, or bytes the defaults arm's fill then clears).
-D6A_STORED = 0x00100CE4                         # the stored image, two bytes a cell
-D6A_UNREADABLE = {D6A_STORED: b"\x01", D6A_STORED + 2 * 0x5B: b"\x01"}
-D6A_VALIDATE_PINS = {0x0002D912: D6A_NOP5, 0x0002D919: D6A_NOP5}
-D6A_STORAGE_REAL = (0x2D638, 0x2E990, 0x61A70, 0x65490, 0x654C7, 0x2D4B4)
+# The row moved to the track S batch sa block below (record 2026-10-13-reverse-s section S.5): the port
+# now runs the raw's storage code, so the two nop pins 0x2D912/0x2D919 and the no-storage model are gone.
 D6A_DEFAULTS = E.Call(0x2CADC, (), clobbers=("edi",))                       # config_set_defaults, seamed here
-
-
-def d6a_validate(cid, seed=False, unreadable=False, gate=None, stub=None):
-    """0x2D6F8: the two pins; the bytes 0x105DA4..0x105DA7 seeded; with `seed` the config-field block and
-    the flags byte (0x105DB0..0x105DDF) and the stored-image buffer with its neighbours (0x105DE0..
-    0x105E37) seeded whole (the four bytes 0x105E30 are not the magic), else the flags byte 0x105DD8
-    alone between seeded bytes; `gate` replaces the byte 0x2D490 (4 in the image)."""
-    p = {**D6A_VALIDATE_PINS, 0x00105DA4: bytes([0x44, 0x55, 0x66, 0x77])}
-    if seed:
-        p[0x00105DB0] = bytes((0x30 + i) & 0xFF for i in range(0x30))
-        p.update(d1d_chunks(0x00105DE0, bytes(0x80 | ((7 * i + 1) & 0x7F) for i in range(0x58))))
-    else:
-        p[0x00105DD6] = bytes([0xD6, 0xD7, 0x50, 0xD9])
-    if unreadable:
-        p.update(D6A_UNREADABLE)
-    if gate is not None:
-        p[0x0002D490] = bytes([gate])
-    return Case(cid, {}, p, stub or {})
-
-
-D6A_SPECS += [
-    # 0x2D6F8 config_validate: no argument. The bytes 0x105DA5 and 0x105DA4 = 0. With a failed read and
-    # the byte 0x2D490 zero it returns (v3; the image's byte is 4 and no instruction stores it). The four
-    # bytes 0x105E30 not being 0x9C94D2C4, the defaults arm: the flags byte 0x105DD8 |= 6, 0x61A70(0x105DE1,
-    # 0, 0x53), |= 1, 0x61A70(0x105DB0, 0, 0x26), the byte 0x105E2F = 0, 0x2CADC() (a stub), the magic
-    # stored after it, then 0x2D4EC(1), (2) and (0) (stubs). The tail: the byte 0x105DA7 = 1 and
-    # 0x2D974(0x24) (a stub; its EAX is not read). v0 and v1 have the image's empty storage (reads 1), v2
-    # and v4 two unreadable copies (reads -1, the port's model); v1, v2 and v4 seed every byte the fills
-    # clear. Mask 0: `mov eax,0x2a` 0x2FA10 follows the one call site.
-    Spec("config_validate", 0x2D6F8, [
-        d6a_validate("v0"),
-        d6a_validate("v1", seed=True, stub={0x2D974: 0xFFFFFFFF, 0x2D4EC: 0x12345678}),
-        d6a_validate("v2", seed=True, unreadable=True),
-        d6a_validate("v3", unreadable=True, gate=0),
-        d6a_validate("v4", seed=True, unreadable=True, gate=0x80, stub={0x2CADC: 0x5A5A5A5A}),
-    ], allow_calls=D6A_STORAGE_REAL, calls=(D6A_DEFAULTS, D5D_TOUCH, D4C_DIP), eax_mask=0,
-       unhit_named={
-           **{a: "the two reads disagree (one stored copy newer or unreadable alone): the port models both "
-                 "as -1 (config.c, PORT) and its version arms are dead; the raw then repairs a copy through "
-                 "0x2D4EC first (measured, record section 4)"
-              for a in (0x2D761, 0x2D773, 0x2D7A4, 0x2D7AE, 0x2D7B2, 0x2D7BB, 0x2D7C5, 0x2D7CD, 0x2D7E6,
-                        0x2D7F0, 0x2D7F4, 0x2D7FD)},
-           **{a: "the stored-image arm: it needs a stored copy that holds the magic, and the port has no "
-                 "stored image (config.c, PORT)"
-              for a in (0x2D828, 0x2D8BB, 0x2D8EB, 0x2D8FC, 0x2D900)},
-           0x2D92B: "the tail's failed-read return: a failed read with the byte 0x2D490 zero returned at "
-                    "0x2D75D already, and nothing stores that byte",
-           0x2D95D: "0x2DAE4(0x24), a deferred no-op the port never calls: reached only when a callee "
-                    "leaves 0x105DA4 or 0x105DA5 non-zero (both are zeroed at entry)"},
-       mutants=tuple("@" + m for m in "noda5 noda4 noret or6 nofill1 nofill2 nofill fill1len or1 fill2len "
-                                      "magicearly nodefaults magicbe touchorder notouch2 notouch0 noda7 da7 "
-                                      "noget getfield".split())),
-]
 
 # ---- 0x2EA78 / 0x2EA74: one frame without the game logic, then the tick wait --------------------------
 # Rows under one code poke, 0x24C5C's: the BIOS keyboard peek `int 0x16` (AH = 1) at 0x2EB15 is `cmp
@@ -32306,6 +32242,506 @@ D6A_SPECS += [
 ]
 
 D1_SPECS += D6A_SPECS
+
+# ---- track S batch sa (record 2026-10-13-reverse-s section S.5): the storage image and its validators ----
+SA_SPECS = []
+SA_IMG, SA_IMG_END = 0x00100CE4, 0x001014DC     # the image: `cmp eax,0x100ce4` 0x2D498, `cmp eax,0x1014dc` 0x2D49F
+# 0x2EA68 `mov eax,1; jmp 0x62003`: the runtime's exit(1), which does not come back; the port's
+# menu_fatal_error returns (menu.c, PORT). A stub here returns to the instruction after the call, so a
+# row names 0x2EA68 only where those bytes do what the port does after it (seamed by this batch).
+SA_FATAL = E.Call(0x2EA68, ("eax",), clobbers=("ebx", "ecx", "edx", "esi", "edi", "ebp"))
+
+
+def sa_store(cid, addr, edx):
+    """0x2D498: the five bytes around `addr` seeded (none is the byte stored)."""
+    return Case(cid, {**D2E_DIRTY, "eax": addr, "edx": edx}, {addr - 2: bytes([0xB1, 0xB2, 0xB3, 0xB4, 0xB5])})
+
+
+SA_SPECS += [
+    # 0x2D498 config_image_store: EAX = the address, DL = the byte (`mov [eax],dl` 0x2D4B0: e0 and e4 have
+    # the upper bytes of EDX set, e4 a zero DL). Stored when 0x100CE4 <= EAX < 0x1014DC (`jb` 0x2D49D, `jb`
+    # 0x2D4A4): e0 the first byte, e1 the last, e2 one below, e3 one past, e5 address 0x1000 above. Outside,
+    # `mov eax,0x80aa8; jmp 0x2ea68` (a stub: the tail jump's return is the function's). Mask 0: the one
+    # call site 0x2D612 is followed by `jmp 0x2d5c2`, where EAX is loaded (0x2D5CA) or the loop ends
+    # (`mov eax,1` 0x2D61C).
+    Spec("config_image_store", 0x2D498, [
+        sa_store("e0", SA_IMG, 0x12345634),
+        sa_store("e1", SA_IMG_END - 1, 0x00000056),
+        sa_store("e2", SA_IMG - 1, 0x00000077),
+        sa_store("e3", SA_IMG_END, 0x00000088),
+        sa_store("e4", 0x00101000, 0xFFFFFF00),
+        sa_store("e5", SA_IMG_END + 0x1000, 0x00000099),
+    ], calls=(SA_FATAL,), eax_mask=0,
+       mutants=tuple("@" + m for m in "lo lo1 hi hi1 width nofatal msg both".split())),
+]
+
+SA_DST = 0x0010A400                             # a destination in the image's zero BSS
+SA_BASE = 0x0002D48C                            # the dword that holds the image's address (0x2E99E, 0x2D4F7)
+
+
+def sa_n(length):
+    """The codeword length of a record: the loop of 0x2D4B4 (inline at 0x2E9A7 and 0x2D541)."""
+    a = 1
+    while True:
+        length += 1
+        if a >= length:
+            return length
+        a += a
+
+
+def sa_codeword(data):
+    """The cells of the record `data`: a fixture built from the layout the two rows below measure
+    (0x2E9E0..0x2EA05 read side, 0x2D5C2..0x2D61C write side); every expectation comes from the
+    original's run, not from this."""
+    n = sa_n(len(data))
+    cw, it = [0] * n, iter(data)
+    for pos in range(n):
+        if pos & (pos - 1):
+            cw[pos] = next(it)
+            for j in range(pos.bit_length()):
+                if pos >> j & 1:
+                    cw[1 << j] ^= cw[pos]
+    for pos in range(1, n):
+        cw[0] ^= cw[pos]
+    return cw
+
+
+def sa_cells(cell, cw, base=SA_IMG, flips=(), pad=0xEE):
+    """Pokes: the codeword `cw` from cell `cell`, two bytes a cell, the second byte of each (never read:
+    `sub esi,2` 0x2E9D4) `pad`; `flips` is ((position, xor), ...)."""
+    cw = list(cw)
+    for pos, x in flips:
+        cw[pos] ^= x
+    return d1d_chunks(base + 2 * cell, bytes(b for c in cw for b in (c, pad)))
+
+
+def sa_data(n, seed):
+    """`n` record bytes, none zero and none 0xEE."""
+    return bytes(1 + (seed + 5 * i) % 0xED for i in range(n))
+
+
+def sa_read(cid, cell, length, pokes, base=None):
+    """0x2E990: the destination seeded 0xD0.. from one byte below it to one byte past it."""
+    p = {**pokes, **d1d_chunks(SA_DST - 1, bytes(0xD0 | (i & 0xF) for i in range(length + 2)))}
+    if base is not None:
+        p[SA_BASE] = le32(base)
+    return Case(cid, {**D2E_DIRTY, "eax": cell, "edx": SA_DST, "ebx": length}, p)
+
+
+SA_REC26, SA_REC78, SA_REC53 = sa_data(0x26, 0x11), sa_data(0x78, 0x47), sa_data(0x53, 0x83)
+
+SA_SPECS += [
+    # 0x2E990 config_storage_read: EAX = the cell, EDX = the destination, EBX = the length. The codeword
+    # of n cells (the loop 0x2E9A7..0x2E9B3 on the length: l0..l4 are the lengths 0..4, n = 1, 4, 6, 7, 8)
+    # starts at [0x2D48C] + 2 * cell (b0 has another base and a cell above 0xFFFF) and is read one byte
+    # per two (every second byte is 0xEE here). The cells at the positions that are neither 0 nor a power
+    # of two fill the destination from its end (the bytes around it are seeded), whatever the check finds
+    # (d0, p0); every cell is XORed into the syndrome byte 0 and into byte 1 + j for each bit j of its
+    # position; 1 when the eight bytes are zero, else -1. z0 reads the image's zeros, r0..r2 good records
+    # of 0x26, 0x78 and 0x53 bytes, d0 one with a data cell changed, p0 with the cell 1 changed; y0..y7
+    # leave exactly one syndrome byte non-zero (y0: cell 0 changed; yk: cells 0 and 2^(k-1) changed by the
+    # same byte). 0x61A70 (the syndrome's clear) runs on the original's side. Mask full: every caller
+    # compares EAX (0x2D653, 0x2D67A, 0x2D6D5, 0x2D72E, 0x2D74A, 0x2D8E4, 0x2DF0D, 0x2DFC5).
+    Spec("config_storage_read", 0x2E990, [
+        sa_read("z0", 0x199, 5, {}),
+        sa_read("r0", 0x1A3, 0x26, sa_cells(0x1A3, sa_codeword(SA_REC26))),
+        sa_read("r1", 0xF6, 0x78, sa_cells(0xF6, sa_codeword(SA_REC78))),
+        sa_read("r2", 0x5B, 0x53, sa_cells(0x5B, sa_codeword(SA_REC53))),
+        sa_read("d0", 0x1A3, 0x26, sa_cells(0x1A3, sa_codeword(SA_REC26), flips=((0x15, 0x40),))),
+        sa_read("p0", 0x1A3, 0x26, sa_cells(0x1A3, sa_codeword(SA_REC26), flips=((1, 0x01),))),
+        sa_read("y0", 0xF6, 0x78, sa_cells(0xF6, sa_codeword(SA_REC78), flips=((0, 0x80),))),
+        *[sa_read("y%d" % k, 0xF6, 0x78,
+                  sa_cells(0xF6, sa_codeword(SA_REC78), flips=((0, 0x21), (1 << (k - 1), 0x21))))
+          for k in range(1, 8)],
+        sa_read("l0", 0x10, 0, {}),
+        sa_read("l0x", 0x10, 0, {SA_IMG + 0x20: b"\x01\xee"}),
+        *[sa_read("l%d" % n, 0x20, n, sa_cells(0x20, sa_codeword(sa_data(n, 0x31 * n)))) for n in range(1, 5)],
+        sa_read("b0", 0x00010100, 0x26, sa_cells(0x00010100, sa_codeword(SA_REC26), base=0x000E0000),
+                base=0x000E0000),
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7),
+       mutants=tuple("@" + m for m in "stride cell1 base n nge asc pos0 syn0 syn7 bit le ret nowrite or".split())),
+]
+
+SA_KINDS = 0x0002D444                           # the kind table: u16 cell, u16 len, u32 source (0x2D519)
+SA_KIND = {0: (None, 0x26, 0x00105DB0), 1: (0x00, 0x53, 0x00105DE1), 2: (0x5B, 0x53, 0x00105DE1),
+           3: (0xB6, 0x14, 0x00105ECD), 4: (0xD0, 0x14, 0x00105EE1), 5: (0xEA, 0x07, 0x00105EF5),
+           6: (0xF6, 0x78, 0x00105E34), 7: (0x176, 0x1C, 0x00105EAC), 8: (0x199, 0x05, 0x00105EC8)}
+SA_STORE_REAL = (0x2D498, 0x2D4B4, 0x61A70, 0x65490, 0x654C7)   # the bounded store, 0x2D4B4 and the memset
+
+
+def sa_touch(cid, kind, slot=0, entry=None, base=None, extra=None):
+    """0x2D4EC: the kind's source bytes seeded (one byte below and past them too) and the image under
+    the record, with two bytes on each side, 0xC3. `slot` is the byte 0x105E2F (kind 0's cell); `entry`
+    replaces the kind's table entry (cell, len, source); `base` replaces the dword 0x2D48C, the record's
+    bytes being seeded where `base` puts them."""
+    cell, length, src = entry or SA_KIND[kind]
+    if kind == 0 and entry is None:
+        cell = 0x1A3 + slot * sa_n(0x26)
+    p = d1d_chunks(src - 1, bytes([0x9E]) + sa_data(length, 0x13 * (kind + 1) + slot) + bytes([0x9F]))
+    p[0x00105E2F] = bytes([slot])
+    if entry is not None:
+        p[SA_KINDS + 8 * kind] = le16(cell) + le16(length) + le32(src)
+    if base is not None:
+        p[SA_BASE] = le32(base)
+    if SA_IMG <= (base or SA_IMG) + 2 * cell - 2 and (base or SA_IMG) + 2 * (cell + sa_n(length)) + 2 <= SA_IMG_END:
+        p.update(d1d_chunks((base or SA_IMG) + 2 * cell - 2, bytes([0xC3]) * (2 * sa_n(length) + 4)))
+    p.update(extra or {})
+    return Case(cid, {**D2E_DIRTY, "eax": kind}, p)
+
+
+SA_SPECS += [
+    # 0x2D4EC config_storage_touch: EAX = the kind (EDX is dirty in every case: `mov edx,eax` 0x2D4F5).
+    # The entry 0x2D444 + 8 * kind gives the cell, the length and the source; k1..k8 are the eight kinds of
+    # the image's table. Kind 0's cell is 0x2D4B4(0x26) * [0x105E2F] + 0x1A3: s0, s2 and s12 have the byte
+    # 0, 2 and 12 (the last slot that is whole inside the image). The codeword's cells go to [0x2D48C] + 2
+    # * (cell + position) through 0x2D498, from the last down: the data from the source's end, the check
+    # bytes at the powers of two, the XOR of all at 0. `cmp eax,0x7f8; jl` 0x2D56A: b0 pokes kind 5's cell
+    # to 0x7EC (0x7EC + 12 = 0x7F8: 0x2EA68(0x80AE4), a stub, then `mov eax,-1` and the return), b1 to
+    # 0x7EB with the image's address lowered 0x700 cells so that the record lands inside the image, b2 to
+    # 0xFFF0 (the cell is a word, zero-extended: `xor eax,eax; mov ax,[esp+0xc]` 0x2D561). f0 is a record
+    # of 0x79 bytes (130 cells, 9 check bytes): the clear 0x61A70(esp, 0, 9) zeroes the low byte of the
+    # frame's pointer 0x2D48C, so the image's address is read from 0x2D400 (poked to the image here, the
+    # dword 0x2D48C to another address), the cell 128 is that zeroed byte and bit 7 of a position reaches
+    # no check byte (`cmp eax,7; jge` 0x2D5E6). 0x2D498, 0x2D4B4 and 0x61A70 run on the original's side.
+    # Not exercised: a store outside the image (kind 0 with the byte 0x105E2F at 13 or more), where the
+    # original exits inside 0x2D498 and the port's menu_fatal_error returns. Mask 0: none of the 18 call
+    # sites reads EAX (record section S.5).
+    Spec("config_storage_touch", 0x2D4EC, [
+        *[sa_touch("k%d" % k, k) for k in range(1, 9)],
+        sa_touch("s0", 0, slot=0),
+        sa_touch("s2", 0, slot=2),
+        sa_touch("s12", 0, slot=12),
+        sa_touch("b0", 5, entry=(0x7EC, 0x07, 0x00105EF5)),
+        sa_touch("b1", 5, entry=(0x7EB, 0x07, 0x00105EF5), base=SA_IMG - 2 * 0x700),
+        sa_touch("b2", 5, entry=(0xFFF0, 0x07, 0x00105EF5)),
+        sa_touch("f0", 5, entry=(0x10, 0x79, 0x00105E34), base=SA_IMG + 0x400,
+                 extra={0x0002D400: le32(SA_IMG), **d1d_chunks(SA_IMG + 0x1E, bytes([0xC3]) * 0x108)}),
+    ], allow_calls=SA_STORE_REAL, calls=(SA_FATAL,), eax_mask=0,
+       unhit_named={0x2D508: "a kind outside 0..8: 0x2EA68(0x80AC8) is the runtime's exit(1) (`mov eax,1; jmp "
+                             "0x62003`), which does not come back; under a stub the bytes run on into the table "
+                             "with the bad kind, which the original never does, and the port returns "
+                             "(config.c, PORT)"},
+       mutants=tuple("@" + m for m in "k0cell k0mul k0base bound bound1 nofatal msg stride up par0 overall "
+                                      "bit six frame cellsext".split())),
+]
+
+SA_MAGIC = le32(0x9C94D2C4)                     # `cmp eax,0x9c94d2c4` 0x2D6BA, `cmp ecx,0x9c94d2c4` 0x2D820
+SA_READ_REAL = (0x2E990, 0x61A70, 0x65490, 0x654C7)      # the read, into the raw's frame, and its memset
+SA_FIVE = bytes([0x71, 0x72, 0x73, 0x74, 0x75])
+
+
+def sa_old(magic_at=None, seed=0x21):
+    """A 0x51-byte record of the older layout, the magic at `magic_at` (None: nowhere)."""
+    d = bytearray(sa_data(0x51, seed))
+    if magic_at is not None:
+        d[magic_at:magic_at + 4] = SA_MAGIC
+    return bytes(d)
+
+
+def sa_load(cid, one=None, two=None, flip1=(), flip2=(), five=SA_FIVE, flip5=()):
+    """0x2D638: the first copy at cell 0 and the second at cell 0x59 (None: the image's zeros), the
+    5-byte record at cell 0x195; the bytes 0x105DDA..0x105DE2 seeded."""
+    p = {0x00105DDA: bytes([0xDA, 0xDB, 0xEC, 0xED, 0xEE, 0xEF, 0xE0, 0xE1, 0xE2])}
+    if one is not None:
+        p.update(sa_cells(0, sa_codeword(one), flips=flip1))
+    if two is not None:
+        p.update(sa_cells(0x59, sa_codeword(two), flips=flip2))
+    if five is not None:
+        p.update(sa_cells(0x195, sa_codeword(five), flips=flip5))
+    return Case(cid, dict(D2E_DIRTY), p)
+
+
+SA_SPECS += [
+    # 0x2D638 config_storage_load: no argument. 0x2E990(0, the frame's first buffer, 0x51); when that is
+    # negative, 0x2E990(0x59, the second buffer, 0x51) (0x59 is the loop 0x2D659..0x2D66A on 0x51), whose
+    # bytes replace the first's only when its result is greater (`jle` 0x2D67C). When the four bytes at
+    # +0x4D of the buffer kept are 0x9C94D2C4, 0x2E990(0x195, 0x105DDC, 5). o0: the image's zeros. o1: a
+    # good first copy with the magic. o2: a first copy that fails and holds no magic, a good second with
+    # it. o3: both fail, the first holds the magic (-1 is not below -1, 0x2D69B: the 5 bytes are read).
+    # o4: a good first copy without the magic, a good second with it (never read). o5: both fail, only the
+    # second holds the magic (equal results keep the first). o6: o1 with the 5-byte record failing its
+    # check (its bytes stay: -1 is not below -1, 0x2D6D5). o7: the magic one byte lower, at +0x4C. The
+    # reads run on both sides (their buffers are the raw's frame and C arrays). Mask 0: `xor eax,eax`
+    # 0x2D725 follows the one call site.
+    Spec("config_storage_load", 0x2D638, [
+        sa_load("o0"),
+        sa_load("o1", one=sa_old(0x4D)),
+        sa_load("o2", one=sa_old(None), two=sa_old(0x4D, seed=0x35), flip1=((0x13, 0x08),)),
+        sa_load("o3", one=sa_old(0x4D), two=sa_old(None, seed=0x35), flip1=((0x13, 0x08),), flip2=((0x21, 0x10),)),
+        sa_load("o4", one=sa_old(None), two=sa_old(0x4D, seed=0x35)),
+        sa_load("o5", one=sa_old(None), two=sa_old(0x4D, seed=0x35), flip1=((0x13, 0x08),), flip2=((0x21, 0x10),)),
+        sa_load("o6", one=sa_old(0x4D), flip5=((3, 0x55),)),
+        sa_load("o7", one=sa_old(0x4C)),
+    ], allow_calls=SA_READ_REAL, eax_mask=0,
+       unhit_named={0x2D6DA: "the clear of 0x105DDC when the 5-byte read is below -1: 0x2E990 returns 1 "
+                             "(0x2EA1C) or -1 (0x2EA23) and nothing else"},
+       mutants=tuple("@" + m for m in "len53 cell5b nofb ge magicoff magicbe nomagic cell199 len4 dst "
+                                      "clear".split())),
+]
+
+SA_READ = E.Call(0x2E990, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))    # config_storage_read, seamed here
+SA_HS = 0x00105E34                              # the three high-score blocks: 0x78, 0x1C and 5 bytes
+
+
+def sa_tables(cid, flag, read=None, count0=None, wrote=None):
+    """0x2DE98: the three blocks seeded whole with the byte below and the byte past them (0x105E33..
+    0x105ECD); the five bytes 0x105DDC between seeded bytes; `count0` replaces table 0's record count
+    (10 in the image: the word 0x2D3FC); `read` is the 0x2E990 stub's EAX for the case."""
+    p = d1d_chunks(SA_HS - 1, bytes(0x80 | ((3 * i + 1) & 0x7F) for i in range(0x9B)))
+    p[0x00105DDB] = bytes([0xDB]) + SA_FIVE + bytes([0xE1])
+    if count0 is not None:
+        p[0x0002D3FC] = le16(count0)
+    return Case(cid, {**D2E_DIRTY, "eax": flag}, p, {} if read is None else {0x2E990: read})
+
+
+SA_READ_W = dataclasses.replace(SA_READ, writes=((1, 1, bytes([0x51, 0x52, 0x53])),))
+
+SA_SPECS += [
+    # 0x2DE98 hiscore_storage_load: EAX = the defaults flag, a dword (`cmp dword [esp+4],0` 0x2DEE2,
+    # 0x2DF2B: h5 has 0x100). For the tables 0..2: 0x2DB58(0, table, &left, 0) (run on both sides), the
+    # block zeroed over `left` bytes (h6 and h7 poke table 0's count to 9: 0x6C bytes of its 0x78), then
+    # with the flag 0 the result of 0x2E990(cell, block, length) from the entries 0x2D474.. (a stub that
+    # stores three bytes at the block's +1), else -2; below -1 the block is zeroed again over the
+    # entry's length (h2 and h7 give the stub -2, a value 0x2E990 itself never returns: the function's
+    # own test); with the flag set table 2 takes the five bytes 0x105DDC; a negative result calls
+    # 0x2D4EC(6 + table) (a stub). h0: the read gives 1; h1: -1; h3: 0; h4: the flag 1. Mask 0: `mov
+    # eax,ebp` 0x2D917 follows the one call site.
+    Spec("hiscore_storage_load", 0x2DE98, [
+        sa_tables("h0", 0, read=1),
+        sa_tables("h1", 0, read=0xFFFFFFFF),
+        sa_tables("h2", 0, read=0xFFFFFFFE),
+        sa_tables("h3", 0, read=0),
+        sa_tables("h4", 1, read=0x12345678),
+        sa_tables("h5", 0x100, read=1),
+        sa_tables("h6", 0, read=1, count0=9),
+        sa_tables("h7", 0, read=0xFFFFFFFE, count0=9),
+    ], allow_calls=(0x2DB58, 0x61A70, 0x65490, 0x654C7), calls=(SA_READ_W, D5D_TOUCH), eax_mask=0,
+       unhit_named={0x2DECC: "a table 0x2DB58 does not find: 0x2EA68(0x80B08) is the runtime's exit(1), and "
+                             "the image's descriptors 0x2D3FC hold the counts 10, 1, 1 (the port returns, "
+                             "config.c, PORT)"},
+       mutants=tuple("@" + m for m in "noclear clearlen al readdflt norefill refillleft copy1 copy4 nocopy "
+                                      "copyalways touchle notouch kind order ent".split())),
+]
+
+SA_AUDIT = 0x00105ECD                           # the three audit blocks: 0x14, 0x14 and 7 bytes
+
+
+def sa_audit(cid, flag, read=None):
+    """0x2DF8C: the three blocks seeded whole with the byte below and the byte past them (0x105ECC..
+    0x105EFC); `read` is the 0x2E990 stub's EAX for the case."""
+    p = d1d_chunks(SA_AUDIT - 1, bytes(0x80 | ((5 * i + 2) & 0x7F) for i in range(0x31)))
+    return Case(cid, {**D2E_DIRTY, "eax": flag}, p, {} if read is None else {0x2E990: read})
+
+
+SA_SPECS += [
+    # The same entry with a 0x2E990 stub that stores three bytes at the block's +0x10 and what the raw
+    # reads after it: the length words of the entries 6..8 (0x2D476, 0x2D47E, 0x2D486 = 9, 8, 2). The
+    # second clear reads its length after the call (`mov bx,[eax+2]` 0x2DF20): 9 bytes of table 0 with
+    # the stub's -2 (the stub's bytes at +0x10 stay), and the later calls pass 8 and 2.
+    Spec("hiscore_storage_load_rr", 0x2DE98, [
+        sa_tables("r0", 0, read=0xFFFFFFFE),
+    ], allow_calls=(0x2DB58, 0x61A70, 0x65490, 0x654C7),
+       calls=(dataclasses.replace(SA_READ, writes=(
+           (1, 0x10, bytes([0x51, 0x52, 0x53])),
+           (None, 0x0002D476, le16(9)), (None, 0x0002D47E, le16(8)), (None, 0x0002D486, le16(2)))),
+              D5D_TOUCH), eax_mask=0,
+       unhit_named={0x2DECC: "a table 0x2DB58 does not find: the hiscore_storage_load row's",
+                    0x2DEE9: "the defaults flag set: the hiscore_storage_load row's (h4, h5)",
+                    0x2DF32: "the defaults flag set: the hiscore_storage_load row's (h4, h5)",
+                    0x2DF37: "the defaults flag set: the hiscore_storage_load row's (h4, h5)"},
+       mutants=("@lencache",)),
+    # 0x2DF8C config_storage_validate: EAX = the defaults flag, a dword (`test edx,edx` 0x2DFA8: a5 has
+    # 0x100). For the kinds 3..5 (the entries from 0x2D45C): with the flag 0 the result of 0x2E990(cell,
+    # source, length) (a stub that stores three bytes at the source's +1), else -2; below -1 the source
+    # is zeroed over the entry's length (a2 gives the stub -2, which 0x2E990 itself never returns); a
+    # negative result calls 0x2D4EC(kind) (a stub). a0: the read gives 1; a1: -1; a3: 0; a4: the flag 1.
+    # Mask 0: `test esi,esi` 0x2D91E follows the one call site and EAX is loaded on both of its arms
+    # (0x2D92B, 0x2D939).
+    Spec("config_storage_validate", 0x2DF8C, [
+        sa_audit("a0", 0, read=1),
+        sa_audit("a1", 0, read=0xFFFFFFFF),
+        sa_audit("a2", 0, read=0xFFFFFFFE),
+        sa_audit("a3", 0, read=0),
+        sa_audit("a4", 1, read=0x12345678),
+        sa_audit("a5", 0x100, read=1),
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7), calls=(SA_READ_W, D5D_TOUCH), eax_mask=0,
+       mutants=tuple("@" + m for m in "al readdflt norefill touchle notouch kind ent from4 to5".split())),
+    # The same entry with a 0x2E990 stub that stores what the raw reads after it and what it does not: the
+    # length words of the entries 3..5 (0x2D45E, 0x2D466, 0x2D46E = 4, 6, 3) and the source dword of the
+    # entry 3 (0x2D460). The clear reads its length after the call (`mov bx,[ecx+2]` 0x2DFD2) and uses
+    # the source loaded before it (`mov edi,[ecx+4]` 0x2DFA5, `mov eax,edi` 0x2DFCC).
+    Spec("config_storage_validate_rr", 0x2DF8C, [
+        sa_audit("r0", 0, read=0xFFFFFFFE),
+    ], allow_calls=(0x61A70, 0x65490, 0x654C7),
+       calls=(dataclasses.replace(SA_READ, writes=((None, 0x0002D45E, le16(4)), (None, 0x0002D466, le16(6)),
+                                                   (None, 0x0002D46E, le16(3)), (None, 0x0002D460, le32(SA_DST)))),
+              D5D_TOUCH), eax_mask=0,
+       unhit_named={0x2DFAC: "the defaults flag set: the config_storage_validate row's (a4, a5)"},
+       mutants=("@lencache", "@srcreread")),
+]
+
+# ---- 0x2D6F8: the configuration validate (it replaces the d6a row: the port runs the raw's storage code) ----
+SA_LOAD = E.Call(0x2D638, ())                                               # config_storage_load, seamed here
+SA_HSLOAD = E.Call(0x2DE98, ("eax",))                                       # hiscore_storage_load, seamed here
+SA_SVAL = E.Call(0x2DF8C, ("eax",))                                         # config_storage_validate, seamed here
+SA_VALIDATE_REAL = SA_READ_REAL + (0x2D4B4,)    # the reads (the second one's buffer is the raw's frame) and 0x2D4B4
+SA_BAD = {SA_IMG: b"\x01", SA_IMG + 2 * 0x5B: b"\x01"}      # a non-zero cell 0 in each copy of the zero image
+
+
+def sa_buf(seed, slot=0, magic=True):
+    """The 0x53-byte field buffer 0x105DE1: the byte 0x105E2F (the kind 0 slot) at +0x4E, the four bytes
+    0x105E30 at +0x4F (the magic, or the seed's bytes)."""
+    d = bytearray(sa_data(0x53, seed))
+    d[0x4E] = slot
+    if magic:
+        d[0x4F:0x53] = SA_MAGIC
+    return bytes(d)
+
+
+def sa_validate(cid, one=None, two=None, flip1=(), flip2=(), rec0=None, flip0=(), seed=True, gate=None,
+                stub=None, extra=None):
+    """0x2D6F8: the bytes 0x105DA4..0x105DA7 seeded; with `seed` the trailing-byte block and the flags
+    byte (0x105DB0..0x105DDF) and the field buffer with its neighbours (0x105DE0..0x105E37) seeded whole
+    (the four bytes 0x105E30 are not the magic), else the flags byte 0x105DD8 alone between seeded bytes.
+    `one` and `two` are the two copies' records (None: the image's zeros), `rec0` the trailing-byte record
+    at the slot `one`'s +0x4E names; `gate` replaces the byte 0x2D490 (4 in the image)."""
+    p = {0x00105DA4: bytes([0x44, 0x55, 0x66, 0x77])}
+    if seed:
+        p[0x00105DB0] = bytes((0x30 + i) & 0xFF for i in range(0x30))
+        p.update(d1d_chunks(0x00105DE0, bytes(0x80 | ((7 * i + 1) & 0x7F) for i in range(0x58))))
+    else:
+        p[0x00105DD6] = bytes([0xD6, 0xD7, 0x50, 0xD9])
+    if one is not None:
+        p.update(sa_cells(0, sa_codeword(one), flips=flip1))
+    if two is not None:
+        p.update(sa_cells(0x5B, sa_codeword(two), flips=flip2))
+    if rec0 is not None:
+        slot = (one if one is not None else two)[0x4E]
+        p.update(sa_cells(0x1A3 + slot * sa_n(0x26), sa_codeword(rec0), flips=flip0))
+    if gate is not None:
+        p[0x0002D490] = bytes([gate])
+    p.update(extra or {})
+    return Case(cid, {}, p, stub or {})
+
+
+SA_VALIDATE_DEAD = {
+    **{a: "a repair after a negative winner: the winner is the greater of two results that are 1 or -1 "
+          "(0x2EA1C, 0x2EA23), so it is 1"
+       for a in (0x2D7B2, 0x2D7BB, 0x2D7F4, 0x2D7FD)},
+    0x2D8EB: "the clear of the trailing-byte block when its read is below -1: 0x2E990 returns 1 or -1",
+    0x2D95D: "0x2DAE4(0x24, [0x105DA5] + [0x105DA4]): both bytes are zeroed at entry and no other instruction "
+             "of the image names them; the port leaves the call out (config.c, PORT: batch sb's function, "
+             "wired at integration)",
+}
+
+SA_SPECS += [
+    # 0x2D6F8 config_validate: no argument. The bytes 0x105DA5 and 0x105DA4 = 0; 0x2D638() (a stub); the
+    # first copy read in place and the second into the frame (0x2E990, run on both sides). A failed read
+    # with the byte 0x2D490 zero returns (v3: both fail; v5: the first alone). The greater result wins:
+    # c2 (the first copy fails) copies the second over the buffer, flags |= 2 and 0x2D4EC(1); c1 (the
+    # second fails) flags |= 4 and 0x2D4EC(2). Without the magic at 0x105E30 the defaults arm (v0, v1: the
+    # image's zeros; v2, v4: two unreadable copies; m0: two good copies of a buffer without the magic; g2:
+    # the byte 0x2D490 zero, so no 0x2D4EC): flags |= 6, 0x61A70(0x105DE1, 0, 0x53), |= 1,
+    # 0x61A70(0x105DB0, 0, 0x26), the byte 0x105E2F = 0, 0x2CADC() (a stub), the magic stored after it,
+    # 0x2D4EC(1), (2), (0). With the magic the trailing-byte record is read from its slot (c0: the slot
+    # byte 2, both copies good and different: the first is kept; n0: both copies fail their check and hold
+    # the magic: -1 is not below -1, 0x2D828) and 0x2D4EC(0) follows a failed read (c1; g1 has the byte
+    # 0x2D490 zero and none). Then 0x2DE98(flag) and 0x2DF8C(flag) (stubs), the byte 0x105DA7 = 1 and
+    # 0x2D974(0x24) (a stub; its EAX is not read). Mask 0: `mov eax,0x2a` 0x2FA10 follows the one call
+    # site.
+    Spec("config_validate", 0x2D6F8, [
+        sa_validate("v0", seed=False),
+        sa_validate("v1", stub={0x2D974: 0xFFFFFFFF, 0x2D4EC: 0x12345678, 0x2D638: 0x77777777,
+                                0x2DE98: 0xDEAD0001, 0x2DF8C: 0x5A5A5A5A}),
+        sa_validate("v2", extra=SA_BAD),
+        sa_validate("v3", seed=False, extra=SA_BAD, gate=0),
+        sa_validate("v4", extra=SA_BAD, gate=0x80, stub={0x2CADC: 0x5A5A5A5A}),
+        sa_validate("v5", one=sa_buf(0x3B), two=sa_buf(0x3B), flip1=((0x21, 0x08),), gate=0),
+        sa_validate("g2", gate=0),
+        sa_validate("m0", one=sa_buf(0x3B, magic=False), two=sa_buf(0x3B, magic=False)),
+        sa_validate("c0", one=sa_buf(0x3B, slot=2), two=sa_buf(0x57, slot=3), rec0=sa_data(0x26, 0x61)),
+        sa_validate("c1", one=sa_buf(0x3B), two=sa_buf(0x3B), flip2=((0x30, 0x80),),
+                    rec0=sa_data(0x26, 0x61), flip0=((9, 0x02),)),
+        sa_validate("c2", one=sa_buf(0x3B, magic=False), two=sa_buf(0x57, slot=1), flip1=((0x21, 0x08),),
+                    rec0=sa_data(0x26, 0x61)),
+        sa_validate("g1", one=sa_buf(0x3B), two=sa_buf(0x3B), rec0=sa_data(0x26, 0x61), flip0=((9, 0x02),),
+                    gate=0),
+        sa_validate("n0", one=sa_buf(0x3B), two=sa_buf(0x57), flip1=((1, 0x04),), flip2=((2, 0x04),),
+                    rec0=sa_data(0x26, 0x61)),
+    ], allow_calls=SA_VALIDATE_REAL, calls=(SA_LOAD, D6A_DEFAULTS, D5D_TOUCH, SA_HSLOAD, SA_SVAL, D4C_DIP),
+       eax_mask=0,
+       unhit_named={**SA_VALIDATE_DEAD,
+                    0x2D92B: "the tail's return on a negative winner with the byte 0x2D490 zero: that pair "
+                             "returned at 0x2D75D already unless a callee stores the byte (the "
+                             "config_validate_rr row)"},
+       mutants=tuple("@" + m for m in "noda5 noda4 noret or6 nofill1 nofill2 nofill fill1len or1 fill2len "
+                                      "magicearly nodefaults magicbe touchorder notouch2 notouch0 noda7 da7 "
+                                      "noget getfield noload r1len r1dst cell2 swap nofb fbge or2 nocopy "
+                                      "norep1 or4 norep2 storedcell nostoredread storedtouch nohs nosv "
+                                      "hsorder magicm1 hsflag svflag".split())),
+]
+
+SA_GATE0 = ((None, 0x0002D490, b"\x00"),)        # a stub that zeroes the byte 0x2D490
+SA_CHAIN_REAL = SA_VALIDATE_REAL + (0x2D638, 0x2D4EC, 0x2D498, 0x2DE98, 0x2DF8C, 0x2DB58)
+
+
+def sa_image(buf1, buf2, rec0, tables, flips=None):
+    """A whole stored image: the two copies, the trailing-byte record at the slot `buf1`'s +0x4E names,
+    and the kinds 3..8 (`tables`: kind -> bytes). `flips` is {kind: ((position, xor), ...)}."""
+    flips = flips or {}
+    p = {**sa_cells(0, sa_codeword(buf1), flips=flips.get(1, ())),
+         **sa_cells(0x5B, sa_codeword(buf2), flips=flips.get(2, ())),
+         **sa_cells(0x1A3 + buf1[0x4E] * sa_n(0x26), sa_codeword(rec0), flips=flips.get(0, ()))}
+    for kind, data in tables.items():
+        p.update(sa_cells(SA_KIND[kind][0], sa_codeword(data), flips=flips.get(kind, ())))
+    return p
+
+
+SA_TABLES = {k: sa_data(SA_KIND[k][1], 0x17 * k) for k in range(3, 9)}
+
+SA_SPECS += [
+    # The same entry with stubs that store what the raw reads after them: 0x2D4EC and 0x2DF8C zero the
+    # byte 0x2D490, which every test reads again. r0 (n0's image: both copies fail their check and hold
+    # the magic, the byte 4 at entry): after 0x2DF8C the tail finds a negative winner with the byte zero
+    # and returns (0x2D91E..0x2D92B) before the byte 0x105DA7 and 0x2D974. r1 (c1's image: the second
+    # copy fails, and the trailing-byte record): 0x2D4EC(2) zeroes the byte, so the failed read of the
+    # record is not followed by 0x2D4EC(0) (`cmp byte [0x2d490],0` 0x2D900).
+    Spec("config_validate_rr", 0x2D6F8, [
+        sa_validate("r0", one=sa_buf(0x3B), two=sa_buf(0x57), flip1=((1, 0x04),), flip2=((2, 0x04),),
+                    rec0=sa_data(0x26, 0x61)),
+        sa_validate("r1", one=sa_buf(0x3B), two=sa_buf(0x3B), flip2=((0x30, 0x80),),
+                    rec0=sa_data(0x26, 0x61), flip0=((9, 0x02),)),
+    ], allow_calls=SA_VALIDATE_REAL,
+       calls=(SA_LOAD, D6A_DEFAULTS, dataclasses.replace(D5D_TOUCH, writes=SA_GATE0), SA_HSLOAD,
+              dataclasses.replace(SA_SVAL, writes=SA_GATE0), D4C_DIP), eax_mask=0,
+       unhit_named={**SA_VALIDATE_DEAD,
+                    **{a: "an arm the config_validate row covers (its v, m, c and g cases)"
+                       for a in (0x2D75D, 0x2D761, 0x2D768, 0x2D773, 0x2D7A4, 0x2D7AE, 0x2D7C5, 0x2D82D,
+                                 0x2D83A, 0x2D88D, 0x2D89C, 0x2D8A5, 0x2D909)}},
+       mutants=("@gatecache", "@tailret")),
+    # The same entry with the whole storage layer run from its bytes on both sides (0x2D638, 0x2E990,
+    # 0x2D4EC with 0x2D498, 0x2DE98 with 0x2DB58, 0x2DF8C): only 0x2CADC and 0x2D974 are stubs. z0 is the
+    # zero image every capture ran on, with the config block zero (record section S.3's measurement: the
+    # original writes 22 image bytes, the two copies of the magic); zf the 0xFF image of a missing `cmos`
+    # (0x1B05D; no capture ran on it); s0 a whole stored image with the slot byte 1 and the RAM seeded;
+    # s1 the same with the first copy, the trailing-byte record and the kinds 4 and 7 failing their
+    # checks (each is encoded again).
+    Spec("config_validate_chain", 0x2D6F8, [
+        sa_validate("z0", seed=False),
+        sa_validate("zf", seed=False, extra=d1d_chunks(SA_IMG, b"\xff" * (SA_IMG_END - SA_IMG))),
+        sa_validate("s0", extra=sa_image(sa_buf(0x3B, slot=1), sa_buf(0x3B, slot=1), sa_data(0x26, 0x61),
+                                         SA_TABLES)),
+        sa_validate("s1", extra=sa_image(sa_buf(0x3B, slot=1), sa_buf(0x3B, slot=1), sa_data(0x26, 0x61),
+                                         SA_TABLES, flips={1: ((0x21, 0x08),), 0: ((9, 0x02),),
+                                                           4: ((6, 0x04),), 7: ((5, 0x10),)})),
+    ], allow_calls=SA_CHAIN_REAL, calls=(D6A_DEFAULTS, D4C_DIP), eax_mask=0,
+       unhit_named={**SA_VALIDATE_DEAD,
+                    **{a: "an arm the config_validate row covers"
+                       for a in (0x2D75D, 0x2D761, 0x2D768, 0x2D7CD, 0x2D7E6, 0x2D7F0, 0x2D92B)}},
+       mutants=tuple("@" + m for m in "nohs nosv norep1 notouch0 nocopy".split())),
+]
+
+D1_SPECS += SA_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

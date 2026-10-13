@@ -3,6 +3,7 @@
 
 #include "game/actors.h"
 #include "game/flow.h"
+#include "game/menu.h"
 #include "platform/gfx.h"
 #include "platform/input.h"
 #include "platform/render.h"
@@ -11,6 +12,7 @@
 #include "../symbols.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 /* 0x2D974. The walk mirrors the raw exactly (spec §3): the descriptor gives a bit
@@ -56,15 +58,118 @@ u32 config_field_get(u32 field)
     return value;
 }
 
-/* 0x2D4EC. Maintains the EEPROM storage image at 0x80CE4, which the port does not
- * keep (no save/load I/O, spec §7). Its call sites are declared no-ops so a
- * later persistence cycle has them in place. It takes EAX only: 0x2D4F5
- * `mov edx,eax` overwrites EDX before any read (record §26 of
- * 2026-09-29-todo-verify-derivations.md). */
+/* PORT: the seam argument of a destination pointer: its mem[] offset, the
+ * original's linear address, or 0xFFFFFFFF for a C array (the raw's own frame,
+ * 0x2D648, 0x2D671, 0x2D743), which no spec can name. */
+static u32 storage_dst_arg(const u8 *dst)
+{
+    uintptr_t d = (uintptr_t)dst, base = (uintptr_t)mem;
+    return d >= base && d - base < MEM_SIZE ? (u32)(d - base) : 0xFFFFFFFFu;
+}
+
+/* 0x2E990 — record 2026-10-13-reverse-s §S.5. EAX = the cell, EDX = the
+ * destination, EBX = the length. Decodes the codeword of n cells (0x2D4B4's
+ * loop on the length, inline at 0x2E9A7..0x2E9B3) that starts at [0x2D48C] +
+ * 2 * cell, from its last cell down: a cell at a position that is neither 0
+ * nor a power of two is a data byte, stored from the end of the destination
+ * down (0x2E9E0..0x2E9E7), whatever the check finds; every cell is XORed into
+ * the syndrome byte 0 and into byte 1 + j for each bit j of its position
+ * (0x2E9E8..0x2EA03). Returns 1 when the eight syndrome bytes are zero
+ * (0x2EA1C), else -1 (0x2EA23). EBX and EDX are not preserved. */
+s32 config_storage_read(u32 cell, u8 *dst, u32 len)
+{
+    PR_SEAM_RET(0x2E990u, cell, storage_dst_arg(dst), len);
+    u32 at = cell * 2u + DSD(0x0002D48Cu);              /* 0x2E997..0x2E9A5 */
+    u32 n = config_codeword_len(len);                   /* 0x2E9A7..0x2E9B3 */
+    /* PORT: past 0x80 cells a position has bit 7 and the raw XORs it into the
+     * low byte of its own pointer at [esp+8] (0x2E9FC with EDX = ESP + 8), so
+     * the result depends on the stack address. The kind table's longest record
+     * is 0x78 bytes (0x80 cells) and no caller passes more; the port refuses. */
+    if ((s32)n > 0x80) return -1;
+    u8 syn[8] = { 0 };                                  /* 0x2E9B5..0x2E9C3 0x61A70(esp, 0, 8) */
+    u32 left = len;                                     /* 0x2E9B7: EDI = dst + len */
+    at += n * 2u;                                       /* 0x2E9CA/0x2E9CD */
+    for (s32 pos = (s32)n - 1; pos >= 0; pos--) {       /* 0x2E9D3..0x2E9D9 */
+        at -= 2u;                                       /* 0x2E9D4 */
+        u8 b = DSB(at);                                 /* 0x2E9DE */
+        if ((pos & (pos - 1)) != 0) dst[--left] = b;    /* 0x2E9DB..0x2E9E7 */
+        syn[0] ^= b;                                    /* 0x2E9E8 */
+        for (s32 bit = 1, j = 1; bit <= pos; bit += bit, j++)   /* 0x2E9EB..0x2EA03 */
+            if ((bit & pos) != 0) syn[j] ^= b;          /* 0x2E9F8..0x2E9FC */
+    }
+    u8 any = 0u;
+    for (s32 i = 7; i >= 0; i--) any |= syn[i];         /* 0x2EA07..0x2EA16 */
+    return any != 0u ? -1 : 1;                          /* 0x2EA18..0x2EA23 */
+}
+
+/* 0x2D498 — record 2026-10-13-reverse-s §S.5. EAX = the address, DL = the byte
+ * (0x2D4B0 `mov [eax],dl`). Inside 0x100CE4 <= address < 0x1014DC (`jb` 0x2D49D,
+ * `jb` 0x2D4A4) the byte is stored; outside, the fatal exit 0x2EA68 with the
+ * message 0x80AA8 "attempt to write outside eeprom" (a tail jump, 0x2D4A6/0x2D4AB). */
+void config_image_store(u32 addr, u32 value)
+{
+    if (addr < 0x00100CE4u || addr >= 0x001014DCu) {    /* 0x2D498..0x2D4A4 */
+        menu_fatal_error(0x00080AA8u);                  /* 0x2D4A6/0x2D4AB */
+        return;   /* PORT: 0x62003 does not return; the port drops the byte and its caller goes on. */
+    }
+    DSB(addr) = (u8)value;                              /* 0x2D4B0 */
+}
+
+/* 0x2D4EC — record 2026-10-13-reverse-s §S.5. EAX = the kind, 0..8 (0x2D4FF
+ * `jl`, 0x2D503 `jb`); EDX is overwritten before any read (0x2D4F5, record §26
+ * of 2026-09-29-todo-verify-derivations.md). Encodes the kind's record into
+ * the image: the entry 0x2D444 + 8 * kind gives the cell, the length and the
+ * source; kind 0's cell is 0x2D4B4(0x26) * [0x105E2F] + 0x1A3 instead
+ * (0x2D524..0x2D53B). A codeword that would end at or past cell 0x7F8 is the
+ * fatal exit 0x2EA68(0x80AE4) (0x2D563..0x2D576). The cells are stored from the
+ * last down through 0x2D498, one byte each at [0x2D48C] + 2 * (cell +
+ * position): a data byte from the source's end down, XORed into the check
+ * byte 1 + j for each bit j < 7 of its position (0x2D5D1..0x2D5EB); at a power
+ * of two the check byte 1 + j (0x2D5F1..0x2D600); at 0 the byte 0, the XOR of
+ * every cell stored (0x2D606, 0x2D609). The frame is kept as the raw lays it
+ * out (the check bytes at +0, the pointer 0x2D48C at +8), because the clear of
+ * the check bytes 0x61A70(esp, 0, n - len) runs into the pointer when a record
+ * has more than 8 of them. No caller reads EAX (1, or -1 after the fatal
+ * exit). */
 void config_storage_touch(u32 kind)
 {
     PR_SEAM(0x2D4ECu, kind);
-    (void)kind;
+    if (kind >= 9u) {                                   /* 0x2D4FF..0x2D506 */
+        menu_fatal_error(0x00080AC8u);                  /* 0x2D508/0x2D50D */
+        return;   /* PORT: 0x62003 does not return; the port stops instead of reading past the table. */
+    }
+    u32 ent = 0x0002D444u + kind * 8u;                  /* 0x2D512/0x2D519 */
+    u32 cell = DSW(ent);                                /* 0x2D521 */
+    if (kind == 0u)                                     /* 0x2D524 */
+        cell = config_codeword_len(0x26u) * DSB(DS_00105E2F) + 0x1A3u;   /* 0x2D528..0x2D53B */
+    u32 len = DSW(ent + 2u);                            /* 0x2D546 */
+    u32 src = DSD(ent + 4u) + len;                      /* 0x2D54C/0x2D556 */
+    u32 n = config_codeword_len(len);                   /* 0x2D541..0x2D55F: 0x2D4B4's loop, inline */
+    if ((s32)((cell & 0xFFFFu) + n) >= 0x7F8) {         /* 0x2D561..0x2D56F */
+        menu_fatal_error(0x00080AE4u);                  /* 0x2D571/0x2D576 */
+        return;                                         /* 0x2D57B/0x2D580 */
+    }
+    u8 fr[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0x8Cu, 0xD4u, 0x02u, 0x00u };   /* 0x2D4F7: the pointer, at +8 */
+    memset(fr, 0, n - len);                             /* 0x2D58F..0x2D59E 0x61A70: at most 12, n < 0x7F8 */
+    u32 base = DSD((u32)fr[8] | ((u32)fr[9] << 8) | ((u32)fr[10] << 16) | ((u32)fr[11] << 24));   /* 0x2D5A3/0x2D5B0 */
+    u32 at = n * 2u + (((cell * 2u) & 0xFFFFu) + base); /* 0x2D585..0x2D58B, 0x2D5AB..0x2D5BB */
+    u8 ch = 0u;
+    for (s32 pos = (s32)n - 1; pos >= 0; pos--) {       /* 0x2D5C2..0x2D5C8 */
+        at -= 2u;                                       /* 0x2D5C3 */
+        if ((pos & (pos - 1)) != 0) {                   /* 0x2D5CA..0x2D5CF */
+            ch = DSB(--src);                            /* 0x2D5D1/0x2D5D4 */
+            for (s32 j = 0; j < 7; j++)                 /* 0x2D5D5..0x2D5EB */
+                if ((pos & (1 << j)) != 0) fr[j + 1] ^= ch;
+        } else if (pos != 0) {                          /* 0x2D5ED */
+            s32 j = 0;
+            while (pos != (1 << j)) j++;                /* 0x2D5F1..0x2D5FE */
+            ch = fr[j + 1];                             /* 0x2D600 */
+        } else {
+            ch = fr[0];                                 /* 0x2D606 */
+        }
+        fr[0] ^= ch;                                    /* 0x2D609 */
+        config_image_store(at, ch);                     /* 0x2D60C..0x2D612 */
+    }
 }
 
 /* 0x2DA0C. Inverse of config_field_get (spec §3). */
@@ -169,37 +274,139 @@ void config_set_defaults(void)
     config_keys_apply_defaults();                  /* 0x2CB50, record §50-C */
 }
 
-/* 0x2D6F8, no-storage path. */
+/* 0x2D638 — record 2026-10-13-reverse-s §S.5. No argument. The reader of an
+ * older image layout: a 0x51-byte record at cell 0 (0x2D643..0x2D64E; the
+ * current one is 0x53 bytes, 0x2D701) and, when that read fails, its copy at
+ * cell 0x2D4B4(0x51) = 0x59 (the loop inline at 0x2D659..0x2D66A), which
+ * replaces the first only when its result is greater (0x2D67A `jle`). When the
+ * four bytes at +0x4D of the record kept are the magic (0x2D6A0..0x2D6BF), the
+ * 5-byte record at cell 0x195 is read to 0x105DDC (0x2D6C1..0x2D6D0); the two
+ * `< -1` tests (0x2D69B, 0x2D6D5) never hold, 0x2E990 returning 1 or -1. Both
+ * 0x51-byte buffers are the raw's frame. */
+void config_storage_load(void)
+{
+    PR_SEAM0(0x2D638u);
+    u8 a[0x51], b[0x51];                                /* 0x2D648 [esp+0x54], 0x2D671 [esp] */
+    s32 r = config_storage_read(0u, a, 0x51u);          /* 0x2D643..0x2D653 */
+    if (r < 0) {                                        /* 0x2D655 */
+        s32 r2 = config_storage_read(config_codeword_len(0x51u), b, 0x51u);   /* 0x2D659..0x2D678 */
+        if (r2 > r) {                                   /* 0x2D67A */
+            memcpy(a, b, sizeof a);                     /* 0x2D67E..0x2D696 */
+            r = r2;                                     /* 0x2D699 */
+        }
+    }
+    if (r < -1) return;                                 /* 0x2D69B */
+    if (((u32)a[0x4D] | ((u32)a[0x4E] << 8) | ((u32)a[0x4F] << 16) | ((u32)a[0x50] << 24))
+            != 0x9C94D2C4u)                             /* 0x2D6A0..0x2D6BF */
+        return;
+    if (config_storage_read(0x195u, mem + 0x00105DDCu, 5u) < -1)   /* 0x2D6C1..0x2D6D8 */
+        mem_fill(0x00105DDCu, 0, 5u);                   /* 0x2D6DA..0x2D6E6 */
+}
+
+/* 0x2DE98 — record 2026-10-13-reverse-s §S.5. EAX = the defaults flag, tested
+ * as a dword (0x2DEE2, 0x2DF2B). For the tables 0..2, with the kind table's
+ * entries 6..8 (0x2D474) and the kinds 6..8: 0x2DB58(0, table, &left, 0) gives
+ * the block, which is zeroed over `left` bytes (0x2DED6..0x2DEDD). With the
+ * flag 0 the result is 0x2E990(the entry's cell, the block, the entry's
+ * length), else -2 (0x2DEE9). Below -1 the block is zeroed again over the
+ * entry's length (0x2DF11..0x2DF26); with the flag set, table 2 takes the five
+ * bytes at 0x105DDC (0x2DF2B..0x2DF4E); a negative result encodes the kind
+ * (0x2DF51..0x2DF5C). A table 0x2DB58 does not find is the fatal exit
+ * 0x2EA68(0x80B08) (0x2DEC8..0x2DED1). */
+void hiscore_storage_load(u32 defaults)
+{
+    PR_SEAM(0x2DE98u, defaults);
+    u32 ent = 0x0002D474u;                              /* 0x2DEA5 */
+    u32 kind = 6u;                                      /* 0x2DEAA */
+    for (u32 table = 0u; table < 3u; table++, ent += 8u, kind++) {   /* 0x2DEAF, 0x2DF61..0x2DF79 */
+        u32 left = 0u;
+        u32 p = hiscore_locate(0u, table, &left, NULL); /* 0x2DEB9..0x2DEC1 */
+        if (p == 0u) {                                  /* 0x2DEC8 */
+            menu_fatal_error(0x00080B08u);              /* 0x2DECC/0x2DED1 */
+            return;   /* PORT: 0x62003 does not return; the raw's next bytes would fill from address 0 with a stale length. */
+        }
+        mem_fill(p, 0, left);                           /* 0x2DED6..0x2DEDD */
+        s32 r = -2;                                     /* 0x2DEE9 */
+        if (defaults == 0u)                             /* 0x2DEE2 */
+            r = config_storage_read(DSW(ent), mem + p, DSW(ent + 2u));   /* 0x2DEF3..0x2DF0D */
+        if (r < -1) mem_fill(p, 0, DSW(ent + 2u));      /* 0x2DF11..0x2DF26 */
+        if (defaults != 0u && table == 2u)              /* 0x2DF2B..0x2DF35 */
+            for (u32 i = 0u; i < 5u; i++)               /* 0x2DF37..0x2DF4E: a forward copy */
+                DSB(p + i) = DSB(0x00105DDCu + i);
+        if (r < 0) config_storage_touch(kind);          /* 0x2DF51..0x2DF5C */
+    }
+}
+
+/* 0x2DF8C — record 2026-10-13-reverse-s §S.5. EAX = the defaults flag, tested
+ * as a dword (0x2DFA8). For the kinds 3..5, with the kind table's entries from
+ * 0x2D45C: with the flag 0 the result is 0x2E990(the entry's cell, its source,
+ * its length), else -2 (0x2DFAC). Below -1 the source is zeroed over the
+ * entry's length, read again after the call (0x2DFC7..0x2DFD6); a negative
+ * result encodes the kind (0x2DFDB..0x2DFE1). */
+void config_storage_validate(u32 defaults)
+{
+    PR_SEAM(0x2DF8Cu, defaults);
+    u32 ent = 0x0002D45Cu;                              /* 0x2DF98 */
+    for (u32 kind = 3u; kind != 6u; kind++, ent += 8u) {   /* 0x2DF9D, 0x2DFE6..0x2DFED */
+        u32 src = DSD(ent + 4u);                        /* 0x2DFA5 */
+        s32 r = -2;                                     /* 0x2DFAC */
+        if (defaults == 0u)                             /* 0x2DFA8 */
+            r = config_storage_read(DSW(ent), mem + src, DSW(ent + 2u));   /* 0x2DFB3..0x2DFC5 */
+        if (r < -1) mem_fill(src, 0, DSW(ent + 2u));    /* 0x2DFC7..0x2DFD6 */
+        if (r < 0) config_storage_touch(kind);          /* 0x2DFDB..0x2DFE1 */
+    }
+}
+
+/* 0x2D6F8 — record 2026-10-13-reverse-s §S.5. No argument. The bytes 0x105DA5
+ * and 0x105DA4 = 0, then the older layout's reader 0x2D638. The first copy of
+ * the field buffer is read in place, 0x2E990(0, 0x105DE1, 0x53), the second
+ * into the frame, 0x2E990(0x5B, the frame, 0x53) (0x5B is the loop
+ * 0x2D730..0x2D73C on 0x53). A failed read with the byte 0x2D490 zero returns
+ * (0x2D74C..0x2D76A). The copy with the greater result wins: the second is
+ * copied over the buffer with the flags byte 0x105DD8 |= 2 and 0x2D4EC(1)
+ * repairs the first (0x2D76F..0x2D7A9); the first keeps the buffer with |= 4
+ * and 0x2D4EC(2) repairs the second (0x2D7C9..0x2D7EB). The two repairs that
+ * follow a negative winner (0x2D7AE..0x2D7C0, 0x2D7F0..0x2D802) and the
+ * `< -1` tests (0x2D828, 0x2D8E6) never hold, 0x2E990 returning 1 or -1.
+ * Without the magic at 0x105E30 the defaults arm runs (0x2D83A..0x2D8B9);
+ * with it the trailing-byte record is read from its slot, 0x2E990(0x2D4B4(0x26)
+ * * [0x105E2F] + 0x1A3, 0x105DB0, 0x26), and encoded again when the read fails
+ * (0x2D8BB..0x2D90B). Then 0x2DE98 and 0x2DF8C with the defaults flag, and the
+ * tail. Each test of the byte 0x2D490 reads it again. EAX at the return is the
+ * lower result, the winner or 0x2D974's value; the one caller loads EAX next
+ * (0x2FA10). */
 void config_validate(void)
 {
     DSB(DS_00105DA5) = 0u;                         /* 0x2D70F */
     DSB(DS_00105DA4) = 0u;                         /* 0x2D715 */
+    config_storage_load();                         /* 0x2D71B */
+    s32 r1 = config_storage_read(0u, mem + DS_00105DE1, 0x53u);   /* 0x2D720..0x2D72E */
+    u8 two[0x53];                                  /* 0x2D743: [esp] */
+    s32 r2 = config_storage_read(config_codeword_len(0x53u), two, 0x53u);   /* 0x2D730..0x2D74A */
 
-    /* PORT: 0x2D638's storage load and the two 0x2E990 reads are declared
-     * no-ops (spec §7; 0x2D638 and 0x2DE98 stay deferred, record §49-Y); a
-     * storage-absent read reports -1, so there is no stored image, the magic
-     * cannot match, and validate takes the defaults path. */
-    s32 read1 = -1;
-    s32 read2 = -1;
+    if ((r1 < 0 || r2 < 0) && DSB(DS_0002D490) == 0u)   /* 0x2D74C..0x2D75B */
+        return;                                    /* 0x2D75D..0x2D76A */
 
-    /* 0x2D754: taken only when a read failed AND DS_0002D490 is clear. The
-     * shipped image holds 4 there, so this never fires. */
-    if ((read1 < 0 || read2 < 0) && DSB(DS_0002D490) == 0u)
-        return;
+    s32 r = r1;                                    /* 0x2D72E: ESI, the winner's result */
+    if (r2 > r1) {                                 /* 0x2D76F */
+        DSB(DS_00105DD8) |= 2u;                    /* 0x2D778..0x2D786 */
+        memcpy(mem + DS_00105DE1, two, sizeof two);    /* 0x2D773..0x2D798 */
+        if (DSB(DS_0002D490) != 0u) config_storage_touch(1u);   /* 0x2D79B..0x2D7A9 */
+        if (r2 < 0 && DSB(DS_0002D490) != 0u) config_storage_touch(2u);   /* 0x2D7AE..0x2D7C0 */
+        r = r2;                                    /* 0x2D7C5 */
+    } else if (r1 > r2) {                          /* 0x2D7C9 */
+        DSB(DS_00105DD8) |= 4u;                    /* 0x2D7CD..0x2D7DC */
+        if (DSB(DS_0002D490) != 0u) config_storage_touch(2u);   /* 0x2D7D6..0x2D7EB */
+        if (r1 < 0 && DSB(DS_0002D490) != 0u) config_storage_touch(1u);   /* 0x2D7F0..0x2D802 */
+    }
 
-    /* 0x2D76F: version arms. With both reads -1 neither runs; the raw's
-     * stack-buffer copy into DS_00105DE1 has no stored image to copy. */
-    if (read2 > read1)
-        DSB(DS_00105DD8) |= 2u;                    /* 0x2D786 */
-    else if (read1 > read2)
-        DSB(DS_00105DD8) |= 4u;                    /* 0x2D7DC */
-
-    /* 0x2D820: the four bytes at DS_00105E30 read as a little-endian u32. */
-    if (DSD(DS_00105E30) != 0x9C94D2C4u || read1 < -1) {
-        /* 0x2D83A: defaults. The two 0x61A70 calls clear the stored-image
-         * buffer 0x105DE1 (0x53 bytes: it holds DS_00105E2F and the magic) and
-         * the config-field block 0x105DB0 (0x26 bytes) before the defaults
-         * writer runs. */
+    /* 0x2D807..0x2D82D: the four bytes at DS_00105E30 read as a little-endian u32. */
+    u32 defaults = (DSD(DS_00105E30) != 0x9C94D2C4u || r < -1) ? 1u : 0u;   /* 0x2D727, 0x2D82D: EBP */
+    if (defaults != 0u) {                          /* 0x2D832 */
+        /* 0x2D83A: defaults. The two 0x61A70 calls clear the field buffer
+         * 0x105DE1 (0x53 bytes: it holds DS_00105E2F and the magic) and the
+         * trailing-byte block 0x105DB0 (0x26 bytes) before the defaults writer
+         * runs. */
         DSB(DS_00105DD8) |= 6u;                    /* 0x2D84F */
         mem_fill(0x00105DE1u, 0, 0x53u);           /* 0x2D83A..0x2D855 0x61A70 */
         DSB(DS_00105DD8) |= 1u;                    /* 0x2D86F */
@@ -207,26 +414,29 @@ void config_validate(void)
         DSB(DS_00105E2F) = 0u;                     /* 0x2D881 */
         config_set_defaults();                     /* 0x2D886 */
         DSD(DS_00105E30) = 0x9C94D2C4u;            /* 0x2D88D */
-        /* Record §27 of 2026-09-29-todo-verify-derivations.md: the defaults
-         * arm ends with the three storage calls when DS_0002D490 is set. */
         if (DSB(DS_0002D490) != 0u) {              /* 0x2D89C/0x2D8A3 */
             config_storage_touch(1u);              /* 0x2D8A5/0x2D8AA */
             config_storage_touch(2u);              /* 0x2D8AF/0x2D8B4 */
             config_storage_touch(0u);              /* 0x2D8B9 -> 0x2D909/0x2D90B */
         }
+    } else {
+        u32 cell = config_codeword_len(0x26u) * DSB(DS_00105E2F) + 0x1A3u;   /* 0x2D8BB..0x2D8DA */
+        s32 r3 = config_storage_read(cell, mem + 0x00105DB0u, 0x26u);   /* 0x2D8D0..0x2D8E4 */
+        if (r3 < -1) mem_fill(0x00105DB0u, 0, 0x26u);   /* 0x2D8E6..0x2D8F7 */
+        if (r3 < 0 && DSB(DS_0002D490) != 0u)      /* 0x2D8FC..0x2D907 */
+            config_storage_touch(0u);              /* 0x2D909/0x2D90B */
     }
-    /* PORT: the other arm (0x2D8BB) reads the stored image through the deferred
-     * 0x2E990 and calls 0x2D4EC(0) (0x2D909) only when that read fails with
-     * DS_0002D490 set; with no stored image the port has neither (record §27). */
 
-    /* PORT: 0x2D912 0x2DE98(1) and 0x2D919 0x2DF8C(1) are deferred. The raw zeroes tables 0..2 and 0x105ECD..FB there
-     * and copies 0x105DDC..E0 to 0x105EC8: image zeros with no stored image. */
-    if (read1 >= 0 || DSB(DS_0002D490) != 0u) {
-        DSB(DS_00105DA7) = 1u;                     /* 0x2D940 */
-        (void)config_field_get(0x24u);             /* 0x2D946: result discarded */
-        /* 0x2D962 calls 0x2DAE4(0x24) only when DS_00105DA4 + DS_00105DA5 != 0;
-         * both are 0 on this path, and 0x2DAE4 is a deferred no-op (spec §7). */
-    }
+    hiscore_storage_load(defaults);                /* 0x2D910/0x2D912 */
+    config_storage_validate(defaults);             /* 0x2D917/0x2D919 */
+    if (r < 0 && DSB(DS_0002D490) == 0u)           /* 0x2D91E..0x2D929 */
+        return;                                    /* 0x2D92B */
+    DSB(DS_00105DA7) = 1u;                         /* 0x2D940 */
+    (void)config_field_get(0x24u);                 /* 0x2D946 */
+    /* PORT: 0x2D94B..0x2D962 call 0x2DAE4(0x24, [0x105DA5] + [0x105DA4]) when
+     * that sum is not zero. Both bytes are zeroed at entry and no other
+     * instruction of the image names them, so the call is not reached; 0x2DAE4
+     * is track S batch sb's function and the site is wired at integration. */
 }
 
 /* 0x2D4B4 — record §K2.3. EDX = 1 (0x2D4B5); loop: EAX += 1 (0x2D4BA), stop

@@ -16,8 +16,8 @@ u32 config_field_get(u32 field);
 
 /* 0x2DA0C. Writes `value` into the packed field `field` (0x00..0x3E), preserving
  * nibbles the field does not own and raising DS_00105DD8 (|1 for a trailing byte,
- * |6 always). Returns 0, or 0xFFFFFFFF when field > 0x3E. The storage-image
- * maintenance (0x2D4EC) is a no-op this cycle. */
+ * |6 always). Returns 0, or 0xFFFFFFFF when field > 0x3E. Each call re-encodes
+ * the image's records through 0x2D4EC (config_storage_touch). */
 u32 config_field_set(u32 field, u32 value);
 
 /* 0x2CCD0. Walks the obj-1 menu-descriptor table `table` (records are a
@@ -34,10 +34,18 @@ u32 config_menu_default_bits(u32 table);
  * function's comment in config.c. */
 void config_set_defaults(void);
 
-/* 0x2D6F8. Validates the stored config against the magic at DS_00105E30 and runs
- * the defaults path when it fails. With the storage layer stubbed (spec §7) the
- * stored image is absent, so the magic never matches and this always takes the
- * defaults path, as on a fresh machine. */
+/* 0x2D638. The reader of an older image layout (a 0x51-byte record at cell 0
+ * with a copy at cell 0x59, the magic at +0x4D): when either copy holds the
+ * magic, the 5-byte record at cell 0x195 is read to 0x105DDC, from where
+ * hiscore_storage_load's defaults pass copies it to table 2. */
+void config_storage_load(void);
+
+/* 0x2D6F8. Reads the two copies of the field buffer from the image (the
+ * greater result wins and the other copy is repaired), then validates it
+ * against the magic at DS_00105E30: without the magic the defaults path runs,
+ * as over the zero image the captures ran on; with it the trailing-byte record
+ * is read from its slot. The high-score and audit tables follow
+ * (hiscore_storage_load, config_storage_validate). */
 void config_validate(void);
 
 /* Record §K2.3, 0x2D4B4: n + r + 1 for the smallest r with 2^r >= n + r + 1
@@ -45,10 +53,26 @@ void config_validate(void);
  * arm and 0x2DAE4 are not run by the port (declared no-op / deferred). */
 u32 config_codeword_len(u32 n);
 
-/* 0x2D4EC. Maintains the EEPROM storage image at 0x80CE4, which the port does not
- * keep (no save/load I/O, spec §7). Its call sites are declared no-ops so a
- * later persistence cycle has them in place. It takes EAX only: 0x2D4F5
- * `mov edx,eax` overwrites EDX before any read (record §26 of
+/* ---- the storage image (record 2026-10-13-reverse-s §S.1, §S.5) ------------
+ * 0x7F8 bytes at 0x100CE4..0x1014DB ([0x2D48C]). A record of `len` bytes is a
+ * codeword of config_codeword_len(len) cells, one byte per two-byte cell: the
+ * data at the positions that are neither 0 nor a power of two, position 2^j
+ * the XOR of the data whose position has bit j, position 0 the XOR of all. */
+
+/* 0x2E990. Decodes the `len`-byte record at cell `cell` into `dst` (a pointer:
+ * the raw's callers pass globals and their own frames) and returns 1 when its
+ * check bytes agree, -1 otherwise; the bytes are stored either way. */
+s32 config_storage_read(u32 cell, u8 *dst, u32 len);
+
+/* 0x2D498. Stores the byte `value` at `addr` when 0x100CE4 <= addr < 0x1014DC;
+ * outside, the fatal exit 0x2EA68 (menu_fatal_error, which returns in the port). */
+void config_image_store(u32 addr, u32 value);
+
+/* 0x2D4EC. Encodes the record of `kind` (0..8, the table 0x2D444: 0 the config
+ * fields' trailing bytes at the slot [0x105E2F], 1 and 2 the two copies of the
+ * 0x53-byte field buffer, 3..5 the audit tables, 6..8 the high-score tables)
+ * from its source bytes into the image. It takes EAX only: 0x2D4F5 `mov
+ * edx,eax` overwrites EDX before any read (record §26 of
  * 2026-09-29-todo-verify-derivations.md). */
 void config_storage_touch(u32 kind);
 
@@ -69,6 +93,17 @@ u32 hiscore_read(u32 rec, u32 table);
 /* 0x2DCA0. Inserts the record at `src` (u32 value, then the name) as record
  * `rec` of `table`, moving the later records down one; returns 1, or 0. */
 u32 hiscore_insert(u32 rec, u32 src, u32 table);
+
+/* 0x2DE98. The three high-score tables (kinds 6..8) at boot: each block is
+ * zeroed, then read from the image when `defaults` is 0; with `defaults` set
+ * table 2 takes the five bytes at 0x105DDC. A table that was not read, or
+ * whose read failed, is encoded into the image again. */
+void hiscore_storage_load(u32 defaults);
+
+/* 0x2DF8C. The audit tables (kinds 3..5) at boot: each is read from the image
+ * when `defaults` is 0, else zeroed; a table that was not read, or whose read
+ * failed, is encoded into the image again. */
+void config_storage_validate(u32 defaults);
 
 /* 0x2DDE4 — record §49-R. Ranks `value` against `table`'s records (via
  * 0x2DB58) as an insertion index: `value` packed big-endian to the

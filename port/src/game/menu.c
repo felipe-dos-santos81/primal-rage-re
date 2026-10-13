@@ -52,6 +52,7 @@ static u32 menu_call(u32 addr, u32 arg)
 /* 0x2EA68 — record §49-X. */
 void menu_fatal_error(u32 msg)
 {
+    PR_SEAM(0x2EA68u, msg);
     (void)msg;   /* PORT: 0x2EA68 tail-jumps to 0x62003(1) with the message; the runtime's error exit is out of scope (spec §7). */
 }
 

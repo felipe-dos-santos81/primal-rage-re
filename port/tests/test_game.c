@@ -4268,12 +4268,17 @@ int test_config(void)
     }
 
     {
-        /* A zeroed config region fails the magic and the defaults path runs:
-         * the magic is rewritten, DS_00105DA7 is set, and the four fields the
-         * defaults writer touches carry the values from the obj-1 default table. */
-        u8 saved[0x100];
-        for (u32 i = 0; i < 0x100u; i++) saved[i] = DSB(DS_00105D88 + i);
+        /* The zero image (the captures' CMOS) holds no magic: the first read
+         * decodes its zeros into DS_00105DE1 with the result 1 (0x2D729) and the
+         * defaults path runs: the magic is rewritten, DS_00105DA7 is set, and the
+         * four fields the defaults writer touches carry the values from the obj-1
+         * default table. The image 0x100CE4..0x1014DB and the config region to
+         * 0x105F07 (the validators zero the tables up to 0x105EFB) are saved. */
+        static u8 saved[0x180], saved_img[0x7F8];
+        for (u32 i = 0; i < 0x180u; i++) saved[i] = DSB(DS_00105D88 + i);
+        for (u32 i = 0; i < 0x7F8u; i++) saved_img[i] = DSB(0x00100CE4u + i);
         for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = 0;
+        for (u32 i = 0; i < 0x7F8u; i++) DSB(0x00100CE4u + i) = 0;
 
         config_validate();
         CHECK_EQ_INT((int)DSD(DS_00105E30), (int)0x9C94D2C4u);
@@ -4297,7 +4302,8 @@ int test_config(void)
         CHECK_EQ_INT((int)config_field_get(0x29u),
                      (int)config_menu_default_bits(0xA2EB4u));
 
-        for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = saved[i];
+        for (u32 i = 0; i < 0x180u; i++) DSB(DS_00105D88 + i) = saved[i];
+        for (u32 i = 0; i < 0x7F8u; i++) DSB(0x00100CE4u + i) = saved_img[i];
     }
 
     {
@@ -4372,6 +4378,267 @@ int test_config(void)
     CHECK_EQ_INT((int)config_codeword_len(4u), 8);
     CHECK_EQ_INT((int)config_codeword_len(0x26u), 0x2D);
     return 0;
+}
+
+/* ---- track S batch sa: the storage image (record 2026-10-13-reverse-s §S.5) ---- */
+
+#define SA_IMG      0x00100CE4u     /* [0x2D48C]: the image */
+#define SA_IMG_LEN  0x7F8u          /* 0x1014DC - 0x100CE4 (0x2D49F) */
+#define SA_BASE     0x0002D48Cu     /* the dword that holds the image's address (0x2D4F7, 0x2E99E) */
+#define SA_KINDS    0x0002D444u     /* the kind table: u16 cell, u16 len, u32 source (0x2D519) */
+#define SA_CFG      0x00105D88u     /* the config region the records are encoded from */
+#define SA_CFG_LEN  0x180u          /* to 0x105F07: past the last record source (0x105EF5 + 7) */
+
+/* 1 when no image byte differs from `fill`. */
+static int sa_image_is(u8 fill)
+{
+    for (u32 i = 0u; i < SA_IMG_LEN; i++)
+        if (DSB(SA_IMG + i) != fill) return 0;
+    return 1;
+}
+
+int test_config_storage(void)
+{
+    int before = g_failures;
+    static u8 sv_img[SA_IMG_LEN + 2u];              /* 0x100CE3..0x1014DC */
+    static u8 sv_cfg[SA_CFG_LEN];
+    u8 sv_ent[8];
+    memcpy(sv_img, mem + SA_IMG - 1u, sizeof sv_img);
+    memcpy(sv_cfg, mem + SA_CFG, sizeof sv_cfg);
+    memcpy(sv_ent, mem + SA_KINDS + 5u * 8u, sizeof sv_ent);
+    u32 sv_base = DSD(SA_BASE);
+
+    /* evidence line (image only, not port logic): the table is the real one */
+    CHECK_EQ_INT(DSD(SA_KINDS + 6u * 8u), 0x007800F6);
+
+    {
+        /* store (0x2D498): DL alone goes to the first and the last image byte; the
+         * byte below the image and the byte past it are refused (`jb` 0x2D49D,
+         * `jb` 0x2D4A4). The fill is 0xA5 and no value stored is. */
+        mem_fill(SA_IMG - 1u, 0xA5u, SA_IMG_LEN + 2u);
+        config_image_store(SA_IMG, 0x1234u);
+        config_image_store(SA_IMG + SA_IMG_LEN - 1u, 0x56u);
+        config_image_store(SA_IMG - 1u, 0x77u);
+        config_image_store(SA_IMG + SA_IMG_LEN, 0x88u);
+        CHECK_EQ_INT(DSB(SA_IMG), 0x34);
+        CHECK_EQ_INT(DSB(SA_IMG + 1u), 0xA5);
+        CHECK_EQ_INT(DSB(SA_IMG + SA_IMG_LEN - 1u), 0x56);
+        CHECK_EQ_INT(DSB(SA_IMG - 1u), 0xA5);
+        CHECK_EQ_INT(DSB(SA_IMG + SA_IMG_LEN), 0xA5);
+    }
+
+    {
+        /* roundtrip (0x2D4EC, 0x2E990): each kind's source bytes, encoded and read
+         * back at the kind's cell. Kind 0's cell is 0x2D4B4(0x26) * [0x105E2F] +
+         * 0x1A3 (0x2D528..0x2D53B): with the byte at 2 the slot 0x1A3 stays 0xA5
+         * cells, which do not check. The image is 0xA5 before every kind: the byte
+         * below the record, the second byte of its first cell and the byte past it
+         * stay. */
+        for (u32 kind = 0u; kind < 9u; kind++) {
+            u32 ent = SA_KINDS + kind * 8u;
+            u32 cell = DSW(ent), len = DSW(ent + 2u), src = DSD(ent + 4u);
+            u8 want[0x80], got[0x80];
+            mem_fill(SA_IMG, 0xA5u, SA_IMG_LEN);
+            for (u32 i = 0u; i < len; i++) want[i] = (u8)(0x11u * (kind + 1u) + 3u * i + 1u);
+            memcpy(mem + src, want, len);
+            if (kind == 0u) {
+                DSB(DS_00105E2F) = 2u;
+                cell = 0x1A3u + 2u * config_codeword_len(0x26u);
+            }
+            u32 rec = SA_IMG + 2u * cell, n = config_codeword_len(len);
+            config_storage_touch(kind);
+            memset(got, 0xEEu, sizeof got);
+            mem_fill(src, 0u, len);
+            CHECK_EQ_INT(config_storage_read(cell, got, len), 1);
+            CHECK(memcmp(got, want, len) == 0, "roundtrip: the record's bytes");
+            CHECK_EQ_INT(got[len], 0xEE);
+            CHECK(DSB(rec - 1u) == 0xA5u && DSB(rec + 1u) == 0xA5u && DSB(rec + 2u * n) == 0xA5u,
+                  "roundtrip: one byte a cell, n cells");
+            if (kind == 0u) CHECK_EQ_INT(config_storage_read(0x1A3u, got, len), -1);
+        }
+    }
+
+    {
+        /* parity: one changed cell of a record fails the read (0x2EA23); the second
+         * byte of a cell is not read (`sub esi,2` 0x2E9D4). */
+        u8 got[0x14];
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        for (u32 i = 0u; i < 0x14u; i++) DSB(0x00105ECDu + i) = (u8)(0x31u + i);
+        config_storage_touch(3u);
+        DSB(SA_IMG + 2u * 0xB6u + 2u * 7u + 1u) ^= 0x40u;
+        CHECK_EQ_INT(config_storage_read(0xB6u, got, 0x14u), 1);
+        DSB(SA_IMG + 2u * 0xB6u + 2u * 7u) ^= 0x40u;
+        CHECK_EQ_INT(config_storage_read(0xB6u, got, 0x14u), -1);
+    }
+
+    {
+        /* bound (0x2D563..0x2D56F `cmp eax,0x7f8; jl`): kind 5's entry (7 bytes,
+         * 12 cells) with its cell poked. With the image's address lowered by
+         * 0x700 cells the cell 0x7EB (0x7EB + 12 = 0x7F7) lands inside the image
+         * and is written; 0x7EC (0x7F8) is refused and the image stays 0x5A. */
+        u8 got[7];
+        DSD(SA_BASE) = SA_IMG - 2u * 0x700u;
+        for (u32 i = 0u; i < 7u; i++) DSB(0x00105EF5u + i) = (u8)(0x61u + i);
+        mem_fill(SA_IMG, 0x5Au, SA_IMG_LEN);
+        DSW(SA_KINDS + 5u * 8u) = 0x7ECu;
+        config_storage_touch(5u);
+        CHECK(sa_image_is(0x5Au), "bound: a record that ends at cell 0x7F8 is refused");
+        DSW(SA_KINDS + 5u * 8u) = 0x7EBu;
+        config_storage_touch(5u);
+        (void)config_storage_read(0x7EBu, got, 7u);
+        CHECK_EQ_INT(got[6], 0x67);
+        memcpy(mem + SA_KINDS + 5u * 8u, sv_ent, sizeof sv_ent);
+        DSD(SA_BASE) = sv_base;
+
+        /* badkind (0x2D4FF `jl`, 0x2D503 `jb`): kind 10 would read the entry at
+         * 0x2D494 (cell 0, length 0) and store the image's first byte; kind
+         * 0x80000000 would wrap to entry 0 and encode at cell 0. */
+        mem_fill(SA_IMG, 0x5Au, SA_IMG_LEN);
+        config_storage_touch(10u);
+        CHECK(sa_image_is(0x5Au), "badkind: 10");
+        mem_fill(SA_IMG, 0x5Au, SA_IMG_LEN);
+        config_storage_touch(0x80000000u);
+        CHECK(sa_image_is(0x5Au), "badkind: negative");
+    }
+
+    {
+        /* load (0x2D638), the reader of the older layout: a 0x51-byte record at
+         * cell 0 with a second copy at cell 0x2D4B4(0x51) = 0x59, the magic at
+         * +0x4D, and a 5-byte record at cell 0x195 that goes to 0x105DDC. Here the
+         * first copy fails its check and holds no magic; the second is good. The
+         * records are encoded through kind 5's entry, poked. */
+        static const u8 five[5] = { 0x71u, 0x72u, 0x73u, 0x74u, 0x75u };
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        mem_fill(0x00105DE1u, 0x21u, 0x51u);
+        DSD(0x00105DE1u + 0x4Du) = 0x9C94D2C4u;
+        DSD(SA_KINDS + 5u * 8u) = 0x00510059u;
+        DSD(SA_KINDS + 5u * 8u + 4u) = 0x00105DE1u;
+        config_storage_touch(5u);
+        memcpy(mem + 0x00105EC8u, five, 5u);
+        DSD(SA_KINDS + 5u * 8u) = 0x00050195u;
+        DSD(SA_KINDS + 5u * 8u + 4u) = 0x00105EC8u;
+        config_storage_touch(5u);
+        memcpy(mem + SA_KINDS + 5u * 8u, sv_ent, sizeof sv_ent);
+        DSB(SA_IMG) = 0x01u;
+        mem_fill(0x00105DDBu, 0xEEu, 6u);
+        config_storage_load();
+        CHECK(memcmp(mem + 0x00105DDCu, five, 5u) == 0, "load: the second copy's magic lets the 5 bytes in");
+        CHECK_EQ_INT(DSB(0x00105DDBu), 0xEE);
+
+        /* the zero image holds no magic: nothing is read to 0x105DDC */
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        mem_fill(0x00105DDBu, 0xEEu, 6u);
+        config_storage_load();
+        CHECK_EQ_INT(DSD(0x00105DDCu), 0xEEEEEEEEu);
+    }
+
+    {
+        /* tables (0x2DE98): the three high-score blocks 0x105E34 (0x78 bytes),
+         * 0x105EAC (0x1C) and 0x105EC8 (5), kinds 6..8. With the flag 0 each is
+         * read back from the image, and a record that fails its check is encoded
+         * again (0x2DF51..0x2DF5C). With the flag set the blocks are zeroed, the
+         * third takes the five bytes at 0x105DDC (0x2DF2B..0x2DF4E) and all three
+         * are encoded after that. */
+        static const u8 five[5] = { 0x71u, 0x72u, 0x73u, 0x74u, 0x75u };
+        u8 want[0x99], got[0x78];
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        for (u32 i = 0u; i < 0x99u; i++) want[i] = (u8)(1u + i);
+        memcpy(mem + 0x00105E34u, want, sizeof want);
+        for (u32 kind = 6u; kind < 9u; kind++) config_storage_touch(kind);
+        mem_fill(0x00105E34u, 0xEEu, 0x99u);
+        hiscore_storage_load(0u);
+        CHECK(memcmp(mem + 0x00105E34u, want, sizeof want) == 0, "tables: read back from the image");
+
+        DSB(SA_IMG + 2u * 0x176u + 2u * 5u) ^= 0x10u;
+        hiscore_storage_load(0u);
+        CHECK_EQ_INT(config_storage_read(0x176u, got, 0x1Cu), 1);
+
+        memcpy(mem + 0x00105DDCu, five, 5u);
+        mem_fill(0x00105E34u, 0xEEu, 0x99u);
+        hiscore_storage_load(1u);
+        CHECK(DSB(0x00105E34u) == 0u && DSB(0x00105EABu) == 0u && DSB(0x00105EACu) == 0u
+              && DSB(0x00105EC7u) == 0u, "tables: the flag zeroes the first two");
+        CHECK(memcmp(mem + 0x00105EC8u, five, 5u) == 0, "tables: the third takes 0x105DDC");
+        CHECK(config_storage_read(0x199u, got, 5u) == 1 && memcmp(got, five, 5u) == 0,
+              "tables: encoded after the copy");
+
+        /* (0x2DF8C): the same for the blocks 0x105ECD (0x14 bytes), 0x105EE1 (0x14)
+         * and 0x105EF5 (7), kinds 3..5, with no copy. */
+        memcpy(mem + 0x00105ECDu, want, 0x2Fu);
+        for (u32 kind = 3u; kind < 6u; kind++) config_storage_touch(kind);
+        mem_fill(0x00105ECDu, 0xEEu, 0x2Fu);
+        config_storage_validate(0u);
+        CHECK(memcmp(mem + 0x00105ECDu, want, 0x2Fu) == 0, "tables: kinds 3..5 read back");
+
+        DSB(SA_IMG + 2u * 0xD0u + 2u * 6u) ^= 0x04u;
+        config_storage_validate(0u);
+        CHECK_EQ_INT(config_storage_read(0xD0u, got, 0x14u), 1);
+
+        config_storage_validate(1u);
+        CHECK(DSB(0x00105ECDu) == 0u && DSB(0x00105EFBu) == 0u, "tables: the flag zeroes kinds 3..5");
+        CHECK(config_storage_read(0xB6u, got, 0x14u) == 1 && got[0] == 0u, "tables: kind 3 encoded zero");
+    }
+
+    {
+        /* validate_zero (0x2D6F8): over the zero image both reads return 1, the
+         * magic is absent and the defaults arm runs; its 0x2D4EC(1) and (2)
+         * (0x2D8AA, 0x2D8B4) leave both copies holding the field buffer as it is
+         * after the defaults and the magic (0x2D88D). */
+        u8 got[0x53];
+        mem_fill(SA_IMG, 0u, SA_IMG_LEN);
+        mem_fill(SA_CFG, 0u, SA_CFG_LEN);
+        config_validate();
+        CHECK(config_storage_read(0u, got, 0x53u) == 1 && memcmp(got, mem + 0x00105DE1u, 0x53u) == 0
+              && DSD(DS_00105E30) == 0x9C94D2C4u, "validate_zero: copy 1 holds the defaults and the magic");
+        CHECK(config_storage_read(0x5Bu, got, 0x53u) == 1 && memcmp(got, mem + 0x00105DE1u, 0x53u) == 0,
+              "validate_zero: copy 2 too");
+
+        /* validate_stored: a config that is not the defaults (field 0x35, field 0
+         * with its trailing byte in the kind 0 record, the slot byte 0x105E2F = 1)
+         * and the six tables, all in the image; the RAM is then scrambled. The
+         * stored-image arm (0x2D8BB) brings every byte back and leaves the flags
+         * byte 0x105DD8 alone (the defaults arm ORs 7 into it). */
+        static u8 want[0x14C];                          /* 0x105DB0..0x105EFB */
+        DSB(DS_00105E2F) = 1u;
+        config_field_set(0x35u, 0x5Au);
+        config_field_set(0x00u, 0x0B3Cu);
+        for (u32 i = 0u; i < 0xC8u; i++) DSB(0x00105E34u + i) = (u8)(0x31u + i % 0x61u);
+        for (u32 kind = 3u; kind < 9u; kind++) config_storage_touch(kind);
+        memcpy(want, mem + 0x00105DB0u, sizeof want);
+        mem_fill(0x00105DB0u, 0xEEu, sizeof want);
+        DSB(DS_00105DD8) = 0x40u;
+        config_validate();
+        CHECK(memcmp(mem + 0x00105DE1u, want + 0x31u, 0x53u) == 0, "validate_stored: the field buffer");
+        CHECK(memcmp(mem + 0x00105DB0u, want, 0x26u) == 0, "validate_stored: the kind 0 record at its slot");
+        CHECK(memcmp(mem + 0x00105E34u, want + 0x84u, 0xC8u) == 0, "validate_stored: the six tables");
+        CHECK_EQ_INT(DSB(DS_00105DD8), 0x40);
+
+        /* copy2 (Review Focus 3; 0x2D76F..0x2D7C5): the first copy fails its
+         * check and the second is good: the buffer is the second copy's, the
+         * flags byte gains 2 and 0x2D4EC(1) repairs the first copy. */
+        DSB(SA_IMG + 2u * 0x21u) ^= 0x08u;
+        mem_fill(0x00105DB0u, 0xEEu, sizeof want);
+        DSB(DS_00105DD8) = 0x40u;
+        config_validate();
+        CHECK(memcmp(mem + 0x00105DE1u, want + 0x31u, 0x53u) == 0, "copy2: the second copy's bytes");
+        CHECK_EQ_INT(DSB(DS_00105DD8), 0x42);
+        CHECK(config_storage_read(0u, got, 0x53u) == 1 && memcmp(got, want + 0x31u, 0x53u) == 0,
+              "copy2: the first copy repaired");
+
+        /* the mirror (0x2D7C9..0x2D802): the second copy fails: flags 4, and
+         * 0x2D4EC(2) repairs it. */
+        DSB(SA_IMG + 2u * (0x5Bu + 0x21u)) ^= 0x08u;
+        mem_fill(0x00105DB0u, 0xEEu, sizeof want);
+        DSB(DS_00105DD8) = 0x40u;
+        config_validate();
+        CHECK_EQ_INT(DSB(DS_00105DD8), 0x44);
+        CHECK(config_storage_read(0x5Bu, got, 0x53u) == 1 && memcmp(got, want + 0x31u, 0x53u) == 0,
+              "copy2: the second copy repaired");
+    }
+
+    memcpy(mem + SA_CFG, sv_cfg, sizeof sv_cfg);
+    memcpy(mem + SA_IMG - 1u, sv_img, sizeof sv_img);
+    return g_failures - before;
 }
 
 /* ---- test_anim.c ---- */
