@@ -370,6 +370,7 @@ u32 frontend_list_next(u32 node)
  * rejects everything else. Exposed for a unit test. */
 u32 frontend_resource_known(u32 rec)
 {
+    PR_SEAM_RET(0x1C6D4u, rec);
     u32 v = DSD(rec);
     switch (v) {
     case 0x80995Cu: case 0x80997Cu: case 0x809984u: case 0x80998Cu:
@@ -388,6 +389,7 @@ u32 frontend_resource_known(u32 rec)
  * `xor eax,eax`. EBX/ECX/EDX are pushed and popped. */
 void frontend_darken_all(void)
 {
+    PR_SEAM0(0x29B74u);
     effects_clear();                                    /* 0x29B77 0x13DF0 */
     u32 e = frontend_list_next(0u);                     /* 0x29B7E */
     while (e != 0u) {                                   /* 0x29B85/0x29BA0 */
@@ -1548,6 +1550,7 @@ void flow_1082c8_restore(void)
  * Only caller: 0x29871 (0x296B8). */
 void flow_side_char_set(u32 side, u32 ch)
 {
+    PR_SEAM(0x292D4u, side, ch);
     u32 other = side ^ 1u;                              /* 0x292E4/0x292E6 */
     fight_char_reset(side);                             /* 0x292D7 0x33C18 */
     DSB(DS_00105B34 + side) = 0u;                       /* 0x292DC/0x292DE */
@@ -1905,6 +1908,7 @@ u32 flow_continue_poll(u32 side)
  * (0x27A2C). */
 void flow_continue_take(void)
 {
+    PR_SEAM0(0x2791Cu);
     s32 w;
     u8 f;
     s32 n = (s32)strlen((const char *)game_string_get(0x41u)); /* 0x27926 0x1C500, 0x2792B..0x2793B */
@@ -3295,6 +3299,7 @@ void game_mode_21_step(void)
  * call, without the rest. */
 void flow_scroll_reset(u32 stage)
 {
+    PR_SEAM(0x20E90u, stage);
     DSD(DS_000F0AEC) = 0u;                              /* 0x20E93 */
     DSD(DS_000F0AF0) = 0u;                              /* 0x20E99 */
     DSW(DS_000F0AFA) = 0u;                              /* 0x20EA1 */
@@ -3347,6 +3352,7 @@ u32 flow_challenge_handle(u32 side, u32 ch)
  * stores it. */
 void flow_challenge_open(void)
 {
+    PR_SEAM0(0x428B8u);
     u32 r, pa, pb, rec;
     /* 0x428BD 0x29D60 is a ret-only no-op. */
     DSD(DS_001080DC) = 0u;                              /* 0x428D2 */
@@ -3436,6 +3442,7 @@ void flow_challenge_open(void)
  * stores it. */
 void flow_challenge_drop(void)
 {
+    PR_SEAM0(0x42BCCu);
     u32 o;
     if (DSB(DSD(DS_001080B4) + 0x5Bu) != 0u             /* 0x42BD0..0x42BD9 */
             && DSB(DSD(DS_001080B8) + 0x5Bu) != 0u) {   /* 0x42BDB..0x42BE4 */
@@ -3488,6 +3495,7 @@ void flow_challenge_drop(void)
  * DS_001080F0 = DS_00107844. */
 void flow_challenge_fighters(void)
 {
+    PR_SEAM0(0x42724u);
     u32 c0 = DSB(DS_0010782A);                          /* 0x4272C/0x42731 */
     u32 c1 = DSB(DS_001078BE);                          /* 0x42734/0x42739 */
     u32 r = DSD(DS_00104AD4);                           /* 0x4273D */
@@ -3609,6 +3617,7 @@ void flow_challenge_join(u32 side)
  * 0x42FE0. */
 void flow_challenge_poll(void)
 {
+    PR_SEAM0(0x42CB4u);
     u32 r = DSD(DS_00104AD4);                           /* 0x42CBA */
     u32 tick;
     s8 n;
@@ -3766,7 +3775,7 @@ void game_mode_13_step(void)
         for (e = frontend_list_next(0u); e != 0u;       /* 0x42579/0x4257B 0x33904 */
              e = frontend_list_next(e)) {               /* 0x425AB/0x425AD 0x33904, 0x425B4 */
             if (DSD(e) == 0x0003E708u) continue;        /* 0x42586..0x42590 */
-            if (frontend_resource_known(e) != 0u) continue;     /* 0x42592..0x4259B 0x1C6D4 */
+            if ((frontend_resource_known(e) & 0xFFu) != 0u) continue;   /* 0x42592 0x1C6D4, 0x42599 `test al,al` */
             (void)effects_spawn(e, 3u, DSD(e));         /* 0x4259D..0x425A6 0x13C70 */
         }
         DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u); /* 0x425B8 */
@@ -4404,7 +4413,7 @@ void game_state_select(void)
             0u, 0xE0u + n, 0x600u, 0u);
         for (u32 node = frontend_list_next(0); node != 0;
              node = frontend_list_next(node)) {
-            if (!frontend_resource_known(node))
+            if ((frontend_resource_known(node) & 0xFFu) == 0u)   /* 0x12038, 0x1203D: test al,al */
                 effects_spawn_pulse(node, 1u);      /* 0x13E28 (edx = 1) */
         }
         if ((DSB(DS_00104528 + 1) & 2u) != 0u) {
@@ -4638,14 +4647,14 @@ void game_state_3_handoff(void)
     for (u32 rec = frontend_list_next(0); rec != 0;             /* 0x126D7 */
          rec = frontend_list_next(rec)) {
         if (DSD(rec) == 0x3E688u) continue;                     /* 0x126E8 */
-        if (frontend_resource_known(rec) != 0u) continue;       /* 0x126F3 */
+        if ((frontend_resource_known(rec) & 0xFFu) != 0u) continue;   /* 0x126EC, 0x126F1: test al,al */
         effects_spawn(rec, 6u, DSD(rec));                       /* 0x126FE */
     }
     DSW(DS_00107A44) = 0;                                       /* 0x12712 */
 }
 
 /* PORT: 0x12484. State 3, the post-select presentation. Phase 0
- * (DS_000F0A6F == 0) re-spawns the four corner rows, spawns a type-3 effect for
+ * (DS_000F0A6F == 0) re-spawns the four corner rows, spawns a type-6 effect for
  * the live list entry whose handle is 0x3E688, then takes the DS_00104528 bit-1
  * branch (text rows or an actor through 0x2AE14) and hands off through 0x12658.
  * Phase 1 tracks the handoff actor's offset and terminates into state 9 when it
@@ -4913,6 +4922,7 @@ void prompt_press_start(u32 side, s32 row)
  * so the bound is not reached. */
 void prompt_insert_coin_blink(s32 col, s32 row)
 {
+    PR_SEAM(0x2C1D4u, (u32)col, (u32)row);
     u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x2C1E2..0x2C1EC */
     if (phase != 0u) {                                  /* 0x2C1F1 */
         if (phase == 0x18u)                             /* 0x2C1AD */
@@ -5163,14 +5173,19 @@ void frontend_match_start(void)
 
     for (u32 i = 1u; i < 10u; i++) {                            /* 0x1EB15..0x1EBF8 */
         u32 r = hiscore_read(i, 0u);                            /* 0x1EB2F 0x2DBC4 */
-        s32 row = DSB(0xA7B94u + i * 4u);
-        text_number_draw(DSB(0xA7B95u + i * 4u), row, (s32)(i + 1u), 2, 1u, mode);  /* 0x1EB5A */
+        /* 0x1EB4C, 0x1EB98, 0x1EBB9, 0x1EBD4: the row byte 0xA7B94[i] is
+         * loaded before each of the four calls, not kept across them. */
+        text_number_draw(DSB(0xA7B95u + i * 4u), DSB(0xA7B94u + i * 4u),
+                         (s32)(i + 1u), 2, 1u, mode);           /* 0x1EB4C..0x1EB5A 0x2F4D0 */
         for (u32 k = 0u; k < 3u; k++)                           /* 0x1EB68..0x1EB81 */
             name[k] = DSB(r + 4u + k);
         name[3] = 0u;                                           /* 0x1EB92 */
-        text_cursor_hold(DSB(0xA7B96u + i * 4u), row, name, mode);            /* 0x1EBA6 0x2F4BC */
-        text_number_draw(DSB(0xA7B97u + i * 4u), row, (s32)DSD(r), 7, 1u, mode);   /* 0x1EBC7 */
-        text_cursor_hold(DSB(0xA7B96u + i * 4u), row, name, mode);            /* 0x1EBE2 0x2F4BC */
+        text_cursor_hold(DSB(0xA7B96u + i * 4u), DSB(0xA7B94u + i * 4u),
+                         name, mode);                           /* 0x1EB98..0x1EBA6 0x2F4BC */
+        text_number_draw(DSB(0xA7B97u + i * 4u), DSB(0xA7B94u + i * 4u),
+                         (s32)DSD(r), 7, 1u, mode);             /* 0x1EBB1..0x1EBC7 0x2F4D0 */
+        text_cursor_hold(DSB(0xA7B96u + i * 4u), DSB(0xA7B94u + i * 4u),
+                         name, mode);                           /* 0x1EBD4..0x1EBE2 0x2F4BC */
     }
 
     u32 rec = actor_spawn((const u32 *)(mem + DSD(0xA7DCCu + sel * 4u)),   /* 0x1EC15 */

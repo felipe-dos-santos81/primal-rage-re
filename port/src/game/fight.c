@@ -3625,6 +3625,7 @@ void fight_slot_5b_add(u32 slot, s32 amount)
  *   3.0, si = (u16)(the actor's +0x48 - 0x20). */
 void fight_4dbec(void)
 {
+    PR_SEAM0(0x4DBECu);
     u32 w = DSB(FIGHT_SLOT_INDEX);                              /* 0x4DC0E */
     u32 slot = DS_001077B0 + w * 0x94u;                         /* 0x4DC1A..0x4DC32 */
     s32 pos, left, right;
@@ -3745,6 +3746,7 @@ void fight_4dbec(void)
  * 0x5D7DC (pushes EBX/EDX); EDX (si) survives the rng(2) draw. */
 void fight_challenge_crowd(void)
 {
+    PR_SEAM0(0x4B9ACu);
     u32 side;
     for (side = 0; side < 2u; side++) {                         /* 0x4B9BA..0x4B9C9, 0x4BD1F..0x4BD39 */
         u32 slot = DS_001077B0 + side * 0x94u;                  /* 0x4B9BC, 0x4BD27 */
