@@ -24444,6 +24444,310 @@ D4D_SPECS += [
          mutants=("@code8", "@ch7f", "@chany", "@no0d", "@no20", "@ch0", "@wrapinv", "@raw32", "@nowrapc", "@seq", "@updown", "@plus", "@f10", "@fwide", "@minus", "@ef", "@scan2", "@ret", "@ret0", "@nogt", "@nonul")),
 ]
 D1_SPECS += D4D_SPECS
+# ---- D5 d5j (record 2026-10-12-reverse-d5j): fight.c's two large list passes, 0x4BF18 and 0x49C78 ----
+D5J_SPECS = []
+D5J_LIST = 0x0010884C            # DS_0010884C: the active effects list's head
+D5J_NODE = 0x0010A000            # zero BSS: the list nodes, 0x30 apart
+D5J_REC = 0x0010A200             # their actor records, 0x80 apart
+D5J_HELD = 0x0010A800            # the held actors (+0x10), 0x40 apart
+D5J_WA, D5J_WB = 0x0010AA00, 0x0010AA80    # the two records DS_00108868 / DS_0010886C name
+D5J_ALT = 0x0010AB00             # the record the re-read specs' stubs relink a node to
+# 0x4AC38, 0x4C60C: EAX = the entry, EDX = the index (`mov ebx,edx` 0x4AC39; `mov esi,eax; mov edi,edx`
+# 0x4C614), `ret`. 0x4B3F0/0x4B430: EAX, EDX, EBX (D2B's constants carry a write; these do not). 0x493F0,
+# 0x4CD98: no argument. 0x496AC: EAX. Clobbers E.callee_clobbers.
+D5J_4AC38 = E.Call(0x4AC38, ("eax", "edx"), clobbers=("edx",))
+D5J_4C60C = E.Call(0x4C60C, ("eax", "edx"), clobbers=("edx",))
+D5J_4B3F0 = E.Call(0x4B3F0, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+D5J_4B430 = E.Call(0x4B430, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))
+D5J_493F0 = E.Call(0x493F0, ())
+D5J_4CD98 = E.Call(0x4CD98, (), clobbers=("esi", "edi", "ebp"))
+D5J_VB_POST = (BIT15, D2C_NUMSET, D2B_FONT2, D2C_NUMDRAW2, D5J_493F0, D3B_GAMEOVER, D5J_4CD98)
+# the walk's ten callees, then the post-loop's five that no case of the row reaches: they keep a
+# mutant that falls into the post-loop (@snoret, @sa0) from running a real callee's tree
+D5J_VB_WALK = (BIT15, P7_2B150, ANIM_BEGIN, VOICE, D3B_4A868, D5J_4AC38, D5J_4B3F0, D5J_4B430, D5J_4C60C,
+               D3B_GAMEOVER, D5J_493F0, D2C_NUMSET, D2B_FONT2, D2C_NUMDRAW2, D5J_4CD98)
+# the re-read spec's stubs: each rewrites what the raw loads again after it (the first node's +8, the
+# word DS_00108898, the first node's +0x1F, the node's link)
+D5J_VB_RR = (BIT15, VOICE, D3B_GAMEOVER, D5J_4AC38, D5J_4B3F0, D5J_4B430,
+             E.Call(0x2B150, ("eax",), writes=((None, D5J_NODE + 8, le32(D5J_ALT)),)),
+             E.Call(0x2BC30, ("eax", "edx", "s0"), pop=4, clobbers=("edx",), writes=((None, 0x00108898, le16(2)), (None, D5J_NODE + 0x1F, b"\x5F"))),
+             E.Call(0x4A868, ("eax",), writes=((0, 8, le32(D5J_ALT)),)),
+             E.Call(0x496AC, ("eax",), writes=((None, D5J_NODE + 8, le32(D5J_ALT)),)),
+             E.Call(0x4C60C, ("eax", "edx"), clobbers=("edx",),
+                    writes=((0, 8, le32(D5J_ALT)), (0, 0, le32(D5J_LIST)))))
+D5J_VB_STR = {0x53: b"SERVE", 0x54: b"READY", 0x55: b"PLAY"}
+
+
+def d5j_n(ty, fl=0x00, t14=0x00140000, w18=0x1818, w1a=0x1A1A, f1f=0x1F, b20=0x20, side=0x21, held=False,
+          x18=0x00180000, r1c=0x001C0000, lo30=0x0900, xw=0x0100, w34=0x3434, w36=0x3636, w38=0x3838, r48=0x21):
+    """One list node of a 0x4BF18 / 0x49C78 case: its type (+0x1E), flags (+0x1C), +0x14, +0x18, +0x1A,
+    +0x1F, +0x20, +0x21, a held actor (+0x10), and its actor's +0x18, +0x1C, +0x30 (low word), +0x32
+    (x), +0x34, +0x36, +0x38 and +0x48."""
+    return dict(ty=ty, fl=fl, t14=t14, w18=w18, w1a=w1a, f1f=f1f, b20=b20, side=side, held=held, x18=x18,
+                r1c=r1c, lo30=lo30, xw=xw, w34=w34, w36=w36, w38=w38, r48=r48)
+
+
+def d5j_rec(n, k):
+    """The actor record's +0x14..+0x49, every byte seeded."""
+    buf = bytearray(0x40 | (o & 0x3F) for o in range(0x14, 0x4A))
+    def put(off, data):
+        buf[off - 0x14:off - 0x14 + len(data)] = data
+    put(0x14, le32(0x0BAD1400 + k))
+    put(0x18, le32(n["x18"]))
+    put(0x1C, le32(n["r1c"]))
+    put(0x28, le16(0x2828))
+    put(0x2C, le16(0x2C2C))
+    put(0x30, le16(n["lo30"]) + le16(n["xw"]) + le16(n["w34"]) + le16(n["w36"]) + le16(n["w38"]) + le16(0x3A3A))
+    put(0x48, bytes([n["r48"]]))
+    return bytes(buf)
+
+
+def d5j_nodes(p, nodes, alt=None):
+    """The list DS_0010884C: each node's +0..+0x23, its actor's +0x14..+0x49 and +0x54..+0x57, its
+    held actor's +0x16..+0x35. `alt`: the record D5J_ALT a re-read spec's stubs relink to."""
+    addr = [D5J_NODE + k * 0x30 for k in range(len(nodes))]
+    chain = addr + [D5J_LIST]
+    p[D5J_LIST] = le32(chain[0])
+    for k, n in enumerate(nodes):
+        rec, held = D5J_REC + k * 0x80, D5J_HELD + k * 0x40
+        p[addr[k]] = (le32(chain[k + 1]) + le32(0x04040404) + le32(rec) + le32(0x0C0C0C0C)
+                      + le32(held if n["held"] else 0) + le32(n["t14"]) + le16(n["w18"]) + le16(n["w1a"])
+                      + bytes([n["fl"], 0x1D, n["ty"], n["f1f"], n["b20"], n["side"], 0x22, 0x23]))
+        p[rec + 0x14] = d5j_rec(n, k)
+        p[rec + 0x54] = bytes([0x54, 0x77, 0x56, 0x57])
+        if n["held"]:
+            buf = bytearray(0x80 | (o & 0x3F) for o in range(0x16, 0x36))
+            buf[2:6] = le32(0x99999900 + k)
+            buf[0x32 - 0x16:0x34 - 0x16] = le16(0x9200 + k)
+            p[held + 0x16] = bytes(buf)
+    if alt is not None:
+        p[D5J_ALT + 0x14] = d5j_rec(alt, 9)
+        p[D5J_ALT + 0x54] = bytes([0xA4, 0x66, 0xA6, 0xA7])
+
+
+def d5j_vb_case(nodes, w898=0, s9c=0x11, s9d=0x22, a0=2, aa=0xAAAA, ac=0xACAC, x880=0x00008800, mid=0x00050000,
+                wa=(0x001C1C1C, 0x3434, 0x0000), wb36=0xB636, d0=7, af4=1, f2=0xF2, strings=False, alt=None,
+                extra=None):
+    """0x4BF18: DS_00108868/6C (the records D5J_WA/D5J_WB: `wa` = WA's +0x1C dword, +0x34 and +0x36
+    words; WB's +0x36 word), DS_00108874 (seeded), DS_00108880, DS_00108884 (`mid`), the word
+    DS_00108898 and the bytes 0x10889B..0x10889F around the two scores, the words DS_001088A0,
+    DS_001088AA, DS_001088AC, the dword DS_001088D0, the word DS_00104AF4, the byte DS_001088F2
+    inside the dword 0x1088EF, each between seeded neighbours; the list; the string table."""
+    p = d2b_str_case(D5J_VB_STR) if strings else {}
+    p.update({0x00108864: le32(0x0BAD8864) + le32(D5J_WA) + le32(D5J_WB) + le32(0x0BAD8870) + le32(0x74747474)
+              + le32(0x0BAD8878) + le32(0x0BAD887C) + le32(x880) + le32(mid) + le32(0x0BAD8888),
+              0x00108896: le16(0x9696) + le16(w898) + bytes([0x9A, 0x9B, s9c, s9d, 0x9E, 0x9F]) + le16(a0)
+              + le16(0xA2A2),
+              0x001088A8: le16(0xA8A8) + le16(aa) + le16(ac) + le16(0xAEAE),
+              0x001088CC: le32(0x0BAD88CC) + le32(d0) + le32(0x0BAD88D4),
+              0x00104AF2: le16(0xF2F2) + le16(af4) + le16(0xF6F6),
+              0x001088EE: bytes([0xEE, 0xEF, 0xF0, 0xF1, f2, 0xF3]),
+              D5J_WA + 0x1A: le16(0x1A1A) + le32(wa[0]) + le16(0x2020),
+              D5J_WA + 0x32: le16(0x3232) + le16(wa[1]) + le16(wa[2]) + le16(0x3838),
+              D5J_WB + 0x34: le16(0xB434) + le16(wb36) + le16(0xB838)})
+    d5j_nodes(p, nodes, alt)
+    p.update(extra or {})
+    assert len(p) <= 40 and max(len(v) for v in p.values()) <= 64
+    return p
+
+
+def d5j_vb_walk_cases():
+    """See the fight_4bf18 spec's comment. DS_001088A0 is 2 unless stated: the post-loop counts it to
+    1 and returns."""
+    X, C = d5j_n, d5j_vb_case
+    hi = 0x000C973C + 0xFFFF * 4
+    L = dict(fl=0x20, w36=0xFFFF, r1c=1)         # type 6 in the tail: (+0x36) + (+0x1C) = 0, the landing
+    return [
+        # types 0, 7 and above 8 (the default arm), and 8
+        Case("w0", {}, C([X(0, side=0), X(7, side=1), X(9, side=0, r48=0x1F), X(0xFF, side=2, r48=0x00), X(8)],
+                         w898=1)),
+        Case("w1", {}, C([X(0, side=0xFF), X(7, side=0)], w898=0)),
+        Case("w2", {}, C([X(0, side=0xFF), X(0, side=0)], w898=0x0100)),
+        Case("w3", {}, C([X(0, side=1, b20=2), X(0, side=2, b20=1)], w898=2)),
+        # type 1, +0x1C bit 5 clear: the arrival test
+        Case("c0", {}, C([X(1, t14=0x00100000, x18=0x00100030, w34=0x0030),
+                          X(1, t14=0x00100000, x18=0x00100031, w34=0x0030),
+                          X(1, t14=0x00100030, x18=0x00100000, w34=0xFFD0, fl=0x10),
+                          X(1, t14=0x00100000, x18=0x00100031, w34=0xFFD0),
+                          X(1, t14=0x00100031, x18=0x00100000, w34=0x0030, fl=0xDF),
+                          X(1, t14=0x80100000, x18=0x00100000, w34=0x0030)])),
+        # type 1, bit 5 set: the 0x4A868 gate (whole EAX, 0x4BFE3 `test eax,eax`)
+        Case("c1", {}, C([X(1, fl=0x20)]), {0x4A868: 0}),
+        Case("c2", {}, C([X(1, fl=0x20, held=True, r48=0x23)]), {0x4A868: 1}),
+        Case("c3", {}, C([X(1, fl=0xEF, r48=0x1F)]), {0x4A868: 0x100}),
+        Case("c4", {}, C([X(1, fl=0x20, w36=0xFFFF)]), {0x4A868: 0x80000000}),
+        # type 2: the signed word timer
+        Case("t2", {}, C([X(2, w18=2), X(2, w18=1), X(2, w18=0), X(2, w18=0x8001), X(2, w18=0x8000)])),
+        # types 3 and 4
+        Case("t3", {}, C([X(3, xw=0x0700), X(4, fl=0xFF, xw=0x0400, lo30=0x0700), X(3, xw=0x8000, r48=0x25),
+                          X(4, xw=0x0B00, fl=0x80, r48=0x1F)])),
+        # type 5
+        Case("t5", {}, C([X(5, xw=0x00FF, w1a=0x0100), X(5, xw=0x0100, w1a=0x0100, w18=0x7FFF),
+                          X(5, xw=0x8000, w1a=0x7000), X(5, xw=0x0A00, w1a=0x8000, r48=0x24)])),
+        # type 6, bit 5 clear
+        Case("s0", {}, C([X(6, w36=0xFFFF, r1c=2, held=True), X(6, w36=0, r1c=0)])),
+        Case("s1", {}, C([X(6, w36=0xFFFB, r1c=5, held=True, r48=0x22)], extra={0x000C973C + 2 * 4: le32(0)})),
+        Case("s2", {}, C([X(6, w36=0x0001, r1c=0xFFFFFFFF, r48=0x1F)], extra={hi: le32(0x000EE777)})),
+        Case("s3", {}, C([X(6, w36=0x0001, r1c=0, w34=0xFFFF)])),
+        # the tail (bit 5 set, not type 1): 0x4C60C, bit 7, the held actor's copy
+        Case("l0", {}, C([X(8, fl=0x20, w36=0xFFFF, held=True), X(8, fl=0x20, w36=0, held=True), X(8, fl=0x00),
+                          X(8, fl=0xA0, w36=0x8000)])),
+        # the tail's type 6 while it falls: the bounce
+        Case("b0", {}, C([X(6, fl=0x20, w36=1, r1c=0x100, x18=0x000500FF),
+                          X(6, fl=0x20, w36=1, r1c=0x1680, x18=0x00050000),
+                          X(6, fl=0x20, w36=1, r1c=0x167F, x18=0x0004FF00),
+                          X(6, fl=0x20, w36=1, r1c=0x167F, x18=0x0004FF01, held=True),
+                          X(6, fl=0x20, w36=2, r1c=0xFFFFFFFF, x18=0x00050000),
+                          X(6, fl=0x20, w36=0xFFFF, r1c=2, x18=0x00050100),
+                          X(6, fl=0x20, w36=1, r1c=0x100, x18=0x80050000)])),
+        # the tail's type 6 at the landing: the score (0x1A570's AL, 0x4C29C `test al,al`)
+        Case("g0", {}, C([X(6, held=True, x18=0x0004FFFF, **L), X(8)], s9c=1), {0x1A570: 1}),
+        Case("g1", {}, C([X(6, held=True, x18=0x0004FFFF, **L), X(0)], s9d=2, a0=0), {0x1A570: 0}),
+        Case("g2", {}, C([X(6, x18=0x00050000, **L), X(0)], s9c=2, a0=5), {0x1A570: 0x100}),
+        Case("g3", {}, C([X(6, x18=0x00050001, **L), X(0)], s9d=0xFE, a0=0x0100), {0x1A570: 0xFFFFFF01}),
+        Case("g4", {}, C([X(6, x18=0xFFFF0000, **L), X(8)], s9c=0), {0x1A570: 1}),
+    ]
+
+
+def d5j_vb_post_cases():
+    """See the fight_4bf18_post spec's comment: an empty list throughout."""
+    C = d5j_vb_case
+    T = dict(a0=0, strings=True)
+    return [
+        # the preamble
+        Case("p0", {}, C([])),
+        Case("p1", {}, C([], wa=(0x00001000, 0x3434, 0x0100), x880=0x00001100)),
+        Case("p2", {}, C([], wa=(0x00000FFF, 0x0001, 0xFFFF), x880=0x00000FFF)),
+        Case("p3", {}, C([], wa=(0x00000100, 0x3434, 0x0001), x880=0x00010000)),
+        Case("p4", {}, C([], wa=(0x00000000, 0x3434, 0x0001), x880=0x00000000)),
+        # the DS_001088A0 countdown
+        Case("a1", {}, C([], a0=1)),
+        Case("a2", {}, C([], a0=0x8001)),
+        Case("a3", {}, C([], a0=0x0100)),
+        # the DS_00104AF4 % DS_001088D0 gate and the counters
+        Case("m0", {}, C([], af4=10, d0=3, w898=0, ac=0, **T), {0x493F0: 0x12345678}),
+        Case("m1", {}, C([], af4=9, d0=3, f2=0, aa=0, **T), {0x493F0: 0xFFFFFFFF}),
+        Case("m2", {}, C([], af4=0x0104, d0=0x0104, f2=0x85, aa=0x8001, w898=0, ac=5, s9c=0x80, s9d=0x03, **T)),
+        Case("m3", {}, C([], af4=0x8004, d0=0x8004, f2=0x00, aa=0x0100, w898=0, ac=0, **T)),
+        Case("m4", {}, C([], af4=9, d0=0xFFFFFFFD, f2=0x01, aa=1, w898=0, ac=1, **T)),
+        # the serve prompt
+        Case("n0", {}, C([], w898=1, ac=1, **T), {0x1A570: 1}),
+        Case("n1", {}, C([], w898=2, ac=5, **T), {0x1A570: 1}),
+        Case("n2", {}, C([], w898=1, ac=0x0100, **T), {0x1A570: 0}),
+        Case("n3", {}, C([], w898=0x0100, ac=0, **T), {0x1A570: 1}),
+        Case("n4", {}, C([], w898=1, ac=3, **T), {0x1A570: 0x100}),
+        Case("n5", {}, C([], w898=0, ac=2, **T), {0x1A570: 1}),
+        Case("n6", {}, C([], w898=3, ac=0, **T), {0x1A570: 1}),
+    ]
+
+
+def d5j_vb_rr_cases():
+    """One node per arm that mixes the two actors; the relinked record's fields differ from the
+    node's own."""
+    X = d5j_n
+    A = X(0, x18=0x00060000, r1c=0x00000007, lo30=0x0111, xw=0x0000, w34=0x0044, w36=0x0055, w38=0x0066, r48=0x25)
+    def C(cid, nodes, stub=None, **kw):
+        return Case(cid, {}, d5j_vb_case(nodes, alt=A, **kw), stub or {})
+    return [
+        C("r1", [X(1, fl=0x20, w36=0xFFFF, held=True)], {0x4A868: 1}),
+        C("r3", [X(3, xw=0x0700)], {0x496AC: 0x1234ABCD}),
+        C("r4", [X(4, xw=0x0700, fl=0x20, held=True, w36=0xFFFF)], {0x496AC: 0x00000C40}),
+        C("r5", [X(5, xw=0x0100, w1a=0x0100)], {0x496AC: 0xFFFF0F80}),
+        C("r6", [X(6, w36=0xFFFB, r1c=5, held=True)]),
+        C("rt", [X(8, fl=0x20, held=True, w36=0xFFFF), X(0, side=1)], w898=2),
+        C("rs", [X(6, fl=0x20, w36=0xFFFF, r1c=1, held=True, x18=0x0004FFFF), X(0, side=0)], {0x1A570: 1},
+          s9c=2, s9d=0),
+        C("rg", [X(6, fl=0x20, w36=0xFFFF, r1c=1, x18=0x0004FFFF), X(0, side=0)], {0x1A570: 1}, s9c=0, s9d=3, a0=5),
+    ]
+
+
+D5J_VB_POSTLOOP = (0x4C3BA, 0x4C3C9, 0x4C3F1, 0x4C3FA, 0x4C41D, 0x4C429, 0x4C438, 0x4C4A8, 0x4C4B2, 0x4C4C0, 0x4C4CC,
+                   0x4C4D6, 0x4C4E2, 0x4C4E9, 0x4C4F9, 0x4C508, 0x4C528, 0x4C52F, 0x4C594, 0x4C5AA)
+
+D5J_SPECS += [
+    # 0x4BF18 fight_4bf18: no argument. Three specs on the entry (17 callees; a case holds 16 stubs
+    # and 40 pokes): this one is the list walk 0x4BF65..0x4C396 with DS_001088A0 = 2 (the post-loop
+    # counts it to 1 and returns, `ja` 0x4C3B4) or the score's own return (0x4C35B). Ten stubs reached; the
+    # clamp 0x496AC, a leaf, runs on both sides. w0..w3 the default arm (types 0, 7, above 8: the
+    # jump table 0x4BEF4 and `ja` 0x4BF77; the side byte +0x21 against the word DS_00108898 - 1,
+    # `cmp eax,ebx` 0x4BF9F: w2's 0x0100 against the byte 0xFF) and type 8; the index is the 16-bit
+    # (+0x48) - 0x20 (`movzx di,..; sub edi,0x20`, `mov dx,di`): w0's 0x1F and 0x00. c0 type 1's
+    # arrival (bit 5 of +0x1C clear; the distance against the +0x34 word's magnitude, `jg` 0x4C067;
+    # its last node's difference is 0x80000000, which `neg` leaves negative); c1..c4 the 0x4A868
+    # gate, whole EAX (0x4BFE3 `test eax,eax`: c3 returns 0x100). t2 type 2's signed word timer (`jg`
+    # 0x4C08A). t3 types 3 and 4, t5 type 5 (signed words, `jl` 0x4C101). s0..s3 type 6 with bit 5
+    # clear (the fall while (+0x36) + (+0x1C) > 0, `jg` 0x4C180; the settle stream 0xC973C or, when it
+    # is 0, 0xC9544's). l0 the tail (bit 5 set, not type 1): 0x4C60C, bit 7 on a negative +0x36, the
+    # held actor's copy. b0 the tail's falling type 6 and its bounce (`jge` 0x4C37F, 0x4C388). g0..g4
+    # the landing's score: 0x1A570's AL (0x4C29C `test al,al`: g2 returns 0x100, g3 0xFFFFFF01), the
+    # ball's x against DS_00108884 signed (`jge` 0x4C2B3: g2 equal, g4 negative), the score byte
+    # against 3 (g0 2, g1 3, g3 0xFF) and DS_001088A0 as a word (`test di,di` 0x4C34D: g3's 0x0100).
+    # Mask 0: the one caller 0x26687 goes on to `call 0x1282c` (0x2668C), which loads AX at 0x12834
+    # (`mov ax,[0xef6dc]`) and masks EAX at 0x1283E before any read.
+    Spec("fight_4bf18", 0x4BF18, d5j_vb_walk_cases(), calls=D5J_VB_WALK, allow_calls=(0x496AC,), eax_mask=0,
+         unhit_named={**{a: "the preamble's arm (DS_00108868's +0x36 word is 0 here): the fight_4bf18_post row's"
+                         for a in (0x4BF2D, 0x4BF42)},
+                      **{a: "the post-loop past the DS_001088A0 countdown: the fight_4bf18_post row's"
+                         for a in D5J_VB_POSTLOOP}},
+         mutants=tuple("@" + m for m in (
+             "idx32 idx8 once d20 dmode dw dflag dflag2 dswap dnz t7 t9 t8 "
+             "c1bit dist step stepz gt c1noarr c1idx a868al novoice voice no38 no34 "
+             "no36 no1e no55 c1strm c1hold c1order t2dec t2ge t2uns clamparg noclamp "
+             "t3strm t3hold t3s38 t3v38 t3type t3f7f t4 t5clamp t5lt t5uns t5strm "
+             "t5s38 t5s34 t5type t5w18 t6bit t6ge t6no80 t6nocopy18 t6nocopy32 t6copyw "
+             "t6copyd t6sumw t6sum t6gt t6sub t6nodead t6keep10 t6strm t6type t6hold "
+             "t6no1c t6no36 t6s34 t6no1f tlbit tlt1 tlno60c tlge tlno80 tlnocopy18 "
+             "tlnocopy32 tlt6 tlsum tlgt tlnodead tlkeep10 tlno1f tlno38 tlno34 tlno36 "
+             "s1arg s1eax sside scmp suns sinc s898 sstrm sanim1hold sanim2strm "
+             "sanim2hold sanimorder st8 sac s3 sa0 sa0b snoret bsub babs b100 "
+             "b1680 b1cuns bnoneg").split())),
+    # the same entry with an empty list: the preamble (p0..p4: the +0x36 word, DS_00108880 minus the
+    # +0x34 dword's high half against +0x1C, signed `jg` 0x4BF40) and the post-loop. a1..a3 the
+    # DS_001088A0 countdown (a word, unsigned `ja` 0x4C3B4: a2's 0x8001; 0x4CD98 at 0). m0..m4 the
+    # midpoint store and the frame gate, a signed remainder (`sar edx,0x1f; idiv ecx` 0x4C3E4: m4's 9
+    # by -3; the word zero-extended: m3's 0x8004), the DS_001088F2 number (the byte sign-extended:
+    # `mov ebx,[0x1088ef]; sar ebx,0x18`), DS_001088AA (a word; 0x4CC0C at 0, else the decrement
+    # stored before the 0x2F528 call) and the two scores. n0..n6 the serve prompt: the idle prompts
+    # when the words DS_00108898 and DS_001088AC are both 0, else the DS_001088AC countdown, which
+    # clears DS_00108898 at 0, and the string 0x53 at column 0x16 or 7 by 0x1A570's AL (0x4C504
+    # `test al,al`: n4 returns 0x100). The string path runs on both sides (D2B_STR_TREE), so the
+    # memory at each 0x2F510 call carries the decoded string.
+    Spec("fight_4bf18_post", 0x4BF18, d5j_vb_post_cases(), calls=D5J_VB_POST, allow_calls=D2B_STR_TREE, eax_mask=0,
+         unhit_named={a: "the list walk (the list is empty here): the fight_4bf18 row's"
+                      for a in (0x4BF65, 0x4BF79, 0x4BF86, 0x4BFA3, 0x4BFB1, 0x4BFBF, 0x4BFCD, 0x4BFDC, 0x4BFEB, 0x4C039,
+                                0x4C043, 0x4C049, 0x4C04B, 0x4C055, 0x4C05F, 0x4C065, 0x4C06D, 0x4C07E, 0x4C090, 0x4C0A1,
+                                0x4C0E7, 0x4C107, 0x4C135, 0x4C148, 0x4C14F, 0x4C153, 0x4C159, 0x4C173, 0x4C182, 0x4C189,
+                                0x4C197, 0x4C1A9, 0x4C1BC, 0x4C1D3, 0x4C1EE, 0x4C1F3, 0x4C206, 0x4C214, 0x4C227, 0x4C22B,
+                                0x4C231, 0x4C24B, 0x4C259, 0x4C26C, 0x4C273, 0x4C27F, 0x4C2B5, 0x4C2D7, 0x4C2F2, 0x4C342,
+                                0x4C356, 0x4C360, 0x4C378, 0x4C37A, 0x4C381, 0x4C38A, 0x4C38E)},
+         mutants=tuple("@" + m for m in (
+             "p36b pw34 p880w plt puns pno36 pnob pwb a0b a0dec a0sign a0nocd "
+             "nomid midw remu remb remsx remnz f2any f2z f2mode aab aanocc aanoret aadec "
+             "aaorder aaval aasx s9c s9sx idle898 idleac idlew i1 i2 i3 i4 acdec "
+             "acz mode0 pside p1eax pcol pid").split())),
+    # the same entry with stubs that rewrite what the raw loads again after a call. The raw keeps the
+    # entry's actor in ESI from the loop's top (0x4BF65) and loads [ecx+8] again at type 1's gate arm
+    # (0x4BFF5..0x4C027; r1: 0x4A868 relinks), at the clamp's store and the stream call of types 3/4
+    # and 5 (0x4C0AF, 0x4C0C2; 0x4C0F2, 0x4C113; r3, r4, r5: the clamp 0x496AC is a stub here), at
+    # type 6's settle stream (0x4C1A9; r6: 0x2B150 relinks), at the tail's held-actor copy (0x4C231,
+    # 0x4C23D; rt: 0x4C60C relinks) and at the score's stream (0x4C30D; rs); every other use is ESI's.
+    # The score test loads the word DS_00108898 again (0x4C321; rs: the 0x2BC30 stub stores 2, so the
+    # byte read is the other side's) and stores the entry's +0x1F a second time (0x4C349; rg: the
+    # stub rewrites the byte in between). 0x4C60C also cuts its node out of the list: the raw loaded
+    # the link at the loop's top (0x4BF68; rt, rs, rg go on to their second node).
+    Spec("fight_4bf18_rr", 0x4BF18, d5j_vb_rr_cases(), calls=D5J_VB_RR, eax_mask=0,
+         unhit_named={**{a: "the preamble's arm, type 1's arrival, type 2, type 6's 0xC9544 stream and fall, "
+                            "the ball at or past DS_00108884, the game's end and the bounce: the fight_4bf18 row's"
+                         for a in (0x4BF2D, 0x4BF42, 0x4C039, 0x4C043, 0x4C049, 0x4C04B, 0x4C055, 0x4C05F, 0x4C065,
+                                   0x4C06D, 0x4C07E, 0x4C090, 0x4C1BC, 0x4C1EE, 0x4C2D7, 0x4C356, 0x4C360, 0x4C378,
+                                   0x4C37A, 0x4C381, 0x4C38A)},
+                      **{a: "the post-loop past the DS_001088A0 countdown: the fight_4bf18_post row's"
+                         for a in D5J_VB_POSTLOOP}},
+         mutants=tuple("@" + m for m in (
+             "allcached allreread c1cache t3cache t5cache t6cache tlcache scache s898cache nextlate sno1f").split())),
+]
+
+D1_SPECS += D5J_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

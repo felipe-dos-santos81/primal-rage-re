@@ -1342,6 +1342,7 @@ u32 fight_dust_value(u32 side, u32 ch)
  * and `actor+0x2c` = 0xc5b/0xd5c/0xc40/0xd69 = the raw's `(0xb00-y)>>1 + 0xc00`. */
 u16 fight_dust_clamp(s32 v)
 {
+    PR_SEAM_RET(0x496ACu, (u32)v);
     if (v >= 0xb00) return 0xc00u;
     if (v <= 0x400) return 0xf80u;
     return (u16)(((0xb00 - v) >> 1) + 0xc00);
@@ -2360,6 +2361,7 @@ s32 fight_2be00(u32 rec)
  * floor-division by two after the difference is made non-negative). */
 u32 fight_midpoint(void)
 {
+    PR_SEAM_RET0(0x493F0u);
     s32 a = fight_2be00(DSD(DS_001077B0));
     s32 b = fight_2be00(DSD(DS_00107844));
     s32 d = a - b;
@@ -2522,6 +2524,7 @@ int fight_4b5a8(u32 entry, u32 index)
  * the hold 5.0 (`push 0x40a00000`, 0x4AC72). EAX = entry, EDX = index. */
 void fight_4ac38(u32 entry, u32 index)
 {
+    PR_SEAM(0x4AC38u, entry, index);
     u32 actor = DSD(entry + 8u);
     DSB(actor + 0x29u) &= 0xBFu;                    /* 0x4AC3E */
     DSB(actor + 0x29u) |= 0x10u;                    /* 0x4AC45 */
@@ -4218,6 +4221,7 @@ void fight_4c784(u32 side)
  * 0xC..0xF, else 0. */
 void fight_4c60c(u32 entry, u32 index)
 {
+    PR_SEAM(0x4C60Cu, entry, index);
     u32 rec = DSD(entry + 8u);
     u32 ps = DSD(DS_001014EC) + ((u32)DSW(rec + 0x56u) << 5);  /* 0x4C618..0x4C62C */
     u32 hit = camera_point_hit((s32)(s16)DSW(ps + 4u),
@@ -4287,6 +4291,7 @@ void fight_4c60c(u32 entry, u32 index)
  * popped. */
 void fight_4cd98(void)
 {
+    PR_SEAM0(0x4CD98u);
     DSW(DS_00104B00) = 6u;                                        /* 0x4CD9B/0x4CDA8 */
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 1u);               /* 0x4CDA0..0x4CDCA */
     DSB(DS_001088C5) = 0;                                         /* 0x4CDAF */
