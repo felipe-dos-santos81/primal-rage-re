@@ -41539,6 +41539,52 @@ D6A_SW_MUT(pumpfirst, 17u)
 static void m_d6a_swz_n1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(1); *eax = 0u; }
 static void m_d6a_swz_m1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(-1); *eax = 0u; }
 static void m_d6a_swz_eax(const u32 *r, u32 *eax) { input_clear(); config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
+
+/* 0x249F0 game_quit_prompt: AL = hard_quit. The raw's blocking BIOS read `int 0x16` (AH = 0, 0x24A64) is
+ * `mov al,K` (B0 K) in every case; the binding feeds the same K, read from the poked byte 0x24A65, to
+ * the port's BIOS-style key queue (input.c). One key a case. The mutants restate flow.c's body for one
+ * key (a key that matches neither answer leaves the prompt flag set instead of reading another). */
+static void d6a_249f0_key(void) { input_clear(); input_push(0u, DSB(0x00024A65u)); }
+static void d6a_249f0_core(const u32 *r, u32 mut)
+{
+    u32 hard = r[R_EAX];
+    int h = (mut == 1u) ? (hard != 0u) : ((hard & 0xFFu) != 0u);                 /* @hard32 */
+    u32 id = (h != (mut == 2u)) ? 0x1EFu : 0x1EEu;                               /* @id */
+    if (mut != 3u) DSB(0x00104B22u) = 1u;                                        /* @noflag */
+    if (mut != 4u) sound_pause();                                                /* @nopause */
+    text_cursor_set((mut == 5u) ? 0 : -1, (mut == 6u) ? 0xB : 0xA, game_string_get(id),
+                    (mut == 7u) ? 0x2000u : 0x1000u);                            /* @col @row @mode */
+    config_screen_wait((mut == 8u) ? 0 : -1);                                    /* @wait0 */
+    s32 yes = (s8)game_string_get((mut == 9u) ? 0x1F1u : 0x1F0u)[0];             /* @answers */
+    s32 no = (s8)game_string_get((mut == 9u) ? 0x1F0u : 0x1F1u)[0];
+    s32 key = (s32)(input_get_key() & 0xFFu);
+    if (mut != 10u && key >= ((mut == 11u) ? 0x60 : 0x61) && key <= ((mut == 12u) ? 0x7B : 0x7A)) key -= 0x20;   /* @noupper @lo @hi */
+    int isyes = (key == yes), isno = (key == no);
+    if (mut == 13u && isno) isyes = 0;                                           /* @order */
+    if (isyes) {
+        if (mut != 14u) DSB(0x00104B22u) = 0u;                                   /* @flagkeep */
+        if (!h) { if (mut == 16u) DSD(0x000A81A8u) = 1u; else if (mut != 15u) DSB(0x000A81A8u) = 1u; }   /* @noquit @quitw */
+        else return;                                   /* the soft-restart arm: no case */
+    } else if (isno) {
+        DSB(0x00104B22u) = 0u;
+        if (mut != 17u) text_cells_release(-1, 0xA, game_string_get((mut == 18u) ? (id ^ 1u) : id),
+                                           (mut == 19u) ? 0x2000u : 0x1000u);    /* @norelease @relid @relmode */
+    }
+    if (mut != 20u) sound_resume();                                              /* @noresume */
+}
+static void b_d6a_249f0(const u32 *r, u32 *eax)
+{
+    d6a_249f0_key();
+    game_quit_prompt(r[R_EAX]);
+    input_clear();
+    *eax = 0u;
+}
+#define D6A_QP_MUT(name, n) \
+    static void m_d6a_qp_##name(const u32 *r, u32 *eax) { d6a_249f0_key(); d6a_249f0_core(r, n); input_clear(); *eax = 0u; }
+D6A_QP_MUT(hard32, 1u)  D6A_QP_MUT(id, 2u)     D6A_QP_MUT(noflag, 3u)  D6A_QP_MUT(nopause, 4u)  D6A_QP_MUT(col, 5u)
+D6A_QP_MUT(row, 6u)     D6A_QP_MUT(mode, 7u)   D6A_QP_MUT(wait0, 8u)   D6A_QP_MUT(answers, 9u)  D6A_QP_MUT(noupper, 10u)
+D6A_QP_MUT(lo, 11u)     D6A_QP_MUT(hi, 12u)    D6A_QP_MUT(order, 13u)  D6A_QP_MUT(flagkeep, 14u) D6A_QP_MUT(noquit, 15u)
+D6A_QP_MUT(quitw, 16u)  D6A_QP_MUT(norelease, 17u) D6A_QP_MUT(relid, 18u) D6A_QP_MUT(relmode, 19u) D6A_QP_MUT(noresume, 20u)
 /* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56452,6 +56498,27 @@ static const binding_t k_bindings[] = {
     { "config_screen_wait_zero@n1", m_d6a_swz_n1, 0x00000000u },
     { "config_screen_wait_zero@m1", m_d6a_swz_m1, 0x00000000u },
     { "config_screen_wait_zero@eax", m_d6a_swz_eax, 0x00000000u },
+    { "game_quit_prompt",                b_d6a_249f0, 0x00000000u },
+    { "game_quit_prompt@hard32", m_d6a_qp_hard32, 0x00000000u },
+    { "game_quit_prompt@id", m_d6a_qp_id, 0x00000000u },
+    { "game_quit_prompt@noflag", m_d6a_qp_noflag, 0x00000000u },
+    { "game_quit_prompt@nopause", m_d6a_qp_nopause, 0x00000000u },
+    { "game_quit_prompt@col", m_d6a_qp_col, 0x00000000u },
+    { "game_quit_prompt@row", m_d6a_qp_row, 0x00000000u },
+    { "game_quit_prompt@mode", m_d6a_qp_mode, 0x00000000u },
+    { "game_quit_prompt@wait0", m_d6a_qp_wait0, 0x00000000u },
+    { "game_quit_prompt@answers", m_d6a_qp_answers, 0x00000000u },
+    { "game_quit_prompt@noupper", m_d6a_qp_noupper, 0x00000000u },
+    { "game_quit_prompt@lo", m_d6a_qp_lo, 0x00000000u },
+    { "game_quit_prompt@hi", m_d6a_qp_hi, 0x00000000u },
+    { "game_quit_prompt@order", m_d6a_qp_order, 0x00000000u },
+    { "game_quit_prompt@flagkeep", m_d6a_qp_flagkeep, 0x00000000u },
+    { "game_quit_prompt@noquit", m_d6a_qp_noquit, 0x00000000u },
+    { "game_quit_prompt@quitw", m_d6a_qp_quitw, 0x00000000u },
+    { "game_quit_prompt@norelease", m_d6a_qp_norelease, 0x00000000u },
+    { "game_quit_prompt@relid", m_d6a_qp_relid, 0x00000000u },
+    { "game_quit_prompt@relmode", m_d6a_qp_relmode, 0x00000000u },
+    { "game_quit_prompt@noresume", m_d6a_qp_noresume, 0x00000000u },
     /* d6a table end */
 };
 

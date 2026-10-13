@@ -32163,6 +32163,62 @@ D6A_SPECS += [
        mutants=("@n1", "@m1", "@eax")),
 ]
 
+# ---- 0x249F0: the quit prompt ---------------------------------------------------------------------------
+# A row under one code poke: the blocking BIOS keyboard read `int 0x16` (AH = 0) at 0x24A64 is `mov al,K`
+# (B0 K) with the case's key K. Exact for a BIOS answer whose ASCII byte is K: the code keeps AL alone
+# (`and eax,0xffff; and eax,0xff` 0x24A71/0x24A76) and both flag outcomes of the wrapper join at 0x24A71
+# with AX kept (ZF = 1 falls to `and dh,0xf; dec dh`, which is 0xFF for AH = 0, and `jne 0x24a71`).
+# Unpoked, the original stops there (`unmodeled: int at 0x24A64`, measured). The port reads through its
+# BIOS-style queue (input.c), which the binding loads with the same K, read from the poked byte. One
+# key a case: a key that is neither answer reads another (0x24AEC `jne 0x24a60`), which a static poke
+# answers the same way for ever, so every case's key is one of its two answers.
+D6A_PAUSE, D6A_RESUME = E.Call(0x1D250, ()), E.Call(0x1D270, ())            # seamed here
+D6A_WAIT = E.Call(0x2EA78, ("eax",), clobbers=("edi", "ebp"))               # config_screen_wait, seamed here
+D6A_PROMPT_CALLS = (D6A_PAUSE, D1D_CURSOR, D6A_WAIT, D1D_RELEASE, D6A_RESUME, D5H_LONGJMP)
+D6A_PROMPT_UNHIT = {
+    0x24A6F: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x24A6D always jumps)",
+    0x24A9C: "the soft-restart arm (a yes to ABANDON CONQUEST): 0x1D270, the config writer 0x1B084, which "
+             "the port defers (flow.c, PORT), and a tail jump into the runtime's longjmp 0x65431, which "
+             "never returns here; a named gap (record section 4)"}
+
+
+def d6a_prompt(cid, eax, key, yes=b"YES", no=b"NO"):
+    """0x249F0: the poke with the key; the string table (d1d_str_pokes) with the two questions and the
+    two answers; the prompt flag 0x104B22 and the quit flag 0xA81A8, each clear before a seeded byte."""
+    p = d1d_str_pokes({0x1EE: b"QUIT GAME? Y/N", 0x1EF: b"ABANDON? Y/N", 0x1F0: yes, 0x1F1: no})
+    p.update({0x00024A64: bytes([0xB0, key]), 0x00104B21: bytes([0x21, 0x00, 0x23]),
+              0x000A81A8: bytes([0x00, 0x5A])})
+    return Case(cid, {"eax": eax}, p)
+
+
+D6A_SPECS += [
+    # 0x249F0 game_quit_prompt: AL = hard_quit (`mov [esp],al` 0x249F9: q4 has 0x100, q0 0x12345600). The
+    # prompt flag byte 0x104B22 = 1, 0x1D250(), 0x1C500(0x1EE, or 0x1EF with AL non-zero) (run on both
+    # sides, as its four calls are), 0x2F198(-1, 0xA, the string, 0x1000), 0x2EA78(-1); the first bytes of
+    # the strings 0x1F0 and 0x1F1, sign-extended (`movsx` 0x24A4B/0x24A58); the key's ASCII byte through
+    # the runtime's toupper 0x653ED (run: 'a'..'z' minus 0x20, signed; q5 has '{', q6 '`', q7 'z', q8
+    # 'a'). Yes (tested first: q9 has the same letter for both) clears the flag and, with AL zero, sets
+    # the quit flag byte 0xA81A8. No clears the flag and releases the question's cells, 0x2F280(-1, 0xA,
+    # the string again, 0x1000) (q2, q3, q4). Then 0x1D270(). Mask 0: every call site (0x24DDF, 0x24EAD,
+    # 0x24EC5) returns to the dispatcher's `mov ah,1; mov dh,ah; int 0x16` (0x24D08..0x24D0E), after which
+    # AX is the BIOS's and the rest is masked. All stubs but 0x1C500's tree and 0x653ED.
+    Spec("game_quit_prompt", 0x249F0, [
+        d6a_prompt("q0", 0x12345600, 0x59),
+        d6a_prompt("q1", 0x00000000, 0x79),
+        d6a_prompt("q2", 0x00000000, 0x6E),
+        d6a_prompt("q3", 0x00000001, 0x4E),
+        d6a_prompt("q4", 0x00000100, 0x4E),
+        d6a_prompt("q5", 0x00000000, 0x7B, yes=b"{}"),
+        d6a_prompt("q6", 0x00000000, 0x60, yes=b"`"),
+        d6a_prompt("q7", 0x00000000, 0x7A, yes=b"ZED"),
+        d6a_prompt("q8", 0x00000000, 0x61, yes=b"A"),
+        d6a_prompt("q9", 0x00000000, 0x58, yes=b"X", no=b"X"),
+        d6a_prompt("qa", 0xFFFFFF80, 0x6E),
+    ], unhit_named=D6A_PROMPT_UNHIT, allow_calls=D1D_STR_ALLOW + (0x653ED,), calls=D6A_PROMPT_CALLS, eax_mask=0,
+       mutants=tuple("@" + m for m in "hard32 id noflag nopause col row mode wait0 answers noupper lo hi order "
+                                      "flagkeep noquit quitw norelease relid relmode noresume".split())),
+]
+
 D1_SPECS += D6A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

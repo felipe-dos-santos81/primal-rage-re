@@ -29026,6 +29026,7 @@ D6A_MASKS = {
     "config_validate": 0x0,
     "config_screen_wait": 0x0,
     "config_screen_wait_zero": 0x0,
+    "game_quit_prompt": 0x0,
 }   # D6A_MASKS end
 D6A_KINDS = {
     "text_blit_glyph@chmask": {'byte', 'call #1'},
@@ -29134,6 +29135,26 @@ D6A_KINDS = {
     "config_screen_wait_zero@n1": {'call #8', 'call #9'},
     "config_screen_wait_zero@m1": {'call #4', 'call #5', 'call #6', 'call #7'},
     "config_screen_wait_zero@eax": {'call #10', 'call #11', 'call #12', 'call #13', 'call #14', 'call #15', 'call #16', 'call #17', 'call #4', 'call #5', 'call #6', 'call #7', 'call #8', 'call #9'},
+    "game_quit_prompt@hard32": {'byte', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3', 'call #3 memory', 'call #4 memory'},
+    "game_quit_prompt@id": {'byte', 'call #1', 'call #1 memory', 'call #2 memory', 'call #3 memory', 'call #4 memory'},
+    "game_quit_prompt@noflag": {'call #0 memory', 'call #1 memory', 'call #2 memory'},
+    "game_quit_prompt@nopause": {'call #0', 'call #0 memory', 'call #1', 'call #2', 'call #2 memory', 'call #3', 'call #4'},
+    "game_quit_prompt@col": {'call #1'},
+    "game_quit_prompt@row": {'call #1'},
+    "game_quit_prompt@mode": {'call #1'},
+    "game_quit_prompt@wait0": {'call #2'},
+    "game_quit_prompt@answers": {'byte', 'call #3', 'call #3 memory', 'call #4'},
+    "game_quit_prompt@noupper": {'byte', 'call #3', 'call #3 memory', 'call #4'},
+    "game_quit_prompt@lo": {'byte', 'call #3 memory'},
+    "game_quit_prompt@hi": {'byte', 'call #3 memory'},
+    "game_quit_prompt@order": {'byte', 'call #3', 'call #3 memory', 'call #4'},
+    "game_quit_prompt@flagkeep": {'byte', 'call #3 memory'},
+    "game_quit_prompt@noquit": {'byte', 'call #3 memory'},
+    "game_quit_prompt@quitw": {'byte', 'call #3 memory'},
+    "game_quit_prompt@norelease": {'byte', 'call #3', 'call #3 memory', 'call #4'},
+    "game_quit_prompt@relid": {'byte', 'call #3 memory', 'call #4 memory'},
+    "game_quit_prompt@relmode": {'call #3'},
+    "game_quit_prompt@noresume": {'call #3', 'call #4'},
 }   # D6A_KINDS end
 D6A_CASES = [
     ("text_blit_glyph@chmask", ['g3', 'g4']),
@@ -29242,6 +29263,26 @@ D6A_CASES = [
     ("config_screen_wait_zero@n1", ['z0', 'z1']),
     ("config_screen_wait_zero@m1", ['z0', 'z1']),
     ("config_screen_wait_zero@eax", ['z0', 'z1']),
+    ("game_quit_prompt@hard32", ['q0', 'q4']),
+    ("game_quit_prompt@id", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("game_quit_prompt@noflag", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("game_quit_prompt@nopause", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("game_quit_prompt@col", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("game_quit_prompt@row", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("game_quit_prompt@mode", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("game_quit_prompt@wait0", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("game_quit_prompt@answers", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'qa']),
+    ("game_quit_prompt@noupper", ['q1', 'q2', 'q7', 'q8', 'qa']),
+    ("game_quit_prompt@lo", ['q6']),
+    ("game_quit_prompt@hi", ['q5']),
+    ("game_quit_prompt@order", ['q9']),
+    ("game_quit_prompt@flagkeep", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9']),
+    ("game_quit_prompt@noquit", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9']),
+    ("game_quit_prompt@quitw", ['q0', 'q1', 'q5', 'q6', 'q7', 'q8', 'q9']),
+    ("game_quit_prompt@norelease", ['q2', 'q3', 'q4', 'qa']),
+    ("game_quit_prompt@relid", ['q2', 'q3', 'q4', 'qa']),
+    ("game_quit_prompt@relmode", ['q2', 'q3', 'q4', 'qa']),
+    ("game_quit_prompt@noresume", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
 ]   # D6A_CASES end
 D6A_OUTSIDE = {}
 P45_OUTSIDE.update(D6A_OUTSIDE)
@@ -30314,7 +30355,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
-        0x51ED8: (), 0x2CCD0: (), 0x1AE20: (), 0x2CADC: ("edi",),
+        0x51ED8: (), 0x2CCD0: (), 0x1AE20: (), 0x2CADC: ("edi",), 0x1D250: (), 0x1D270: (), 0x2EA78: ("edi", "ebp"),
         # D6 d6a end
         # D5 d5a (record 2026-10-12-reverse-d5a): the stubs its rows add
         0x12658: (), 0x12750: (), 0x12C70: (), 0x13E28: ("edx",), 0x20DF4: ("edx", "edi", "ebp"), 0x28E98: (), 0x2BAF4: (), 0x2C074: (), 0x2C390: (), 0x33EB4: ("ebp",), 0x34978: (), 0x38730: ("edi", "ebp"), 0x38910: (), 0x38B18: ("ebx", "ecx", "edx"), 0x412A0: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x46594: (), 0x49300: (), 0x4F1E4: (), 0x4F980: (),
