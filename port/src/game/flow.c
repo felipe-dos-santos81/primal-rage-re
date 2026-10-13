@@ -4320,14 +4320,9 @@ void game_mode_07_step(void)
  *     on their countdown-arm arms; 0x2782C..0x27843);
  *   - fighter_41310(DS_00104AD4, 0x30D40) — the *match result*, not
  *     DS_0010810D, is this call's side argument (0x2784B..0x27855);
- *   - the deferred 0x32B94 (0x2786B): tests DS_00104B1F bit 0 and, when set,
- *     posts one audit entry through 0x2DAE4(0xE, 1) — the deferred audit
- *     idiom, spec §7 — before an unconditional bare `ret`; no memory-visible
- *     effect either way (confirmed by disassembling 0x32B94 in full: 8
- *     instructions, the only call is the conditional 0x2DAE4, EDX pushed and
- *     popped around it), so this call site is a no-op here, the same
- *     treatment already given the four calls onto the neighbouring 0x32BAC
- *     bare-`ret` stub in mode 9's port;
+ *   - 0x32B94(the byte DS_00104B1F, zero-extended: 0x2785A `xor eax,eax`,
+ *     0x27861 `mov al`) (0x2786B, audit_add_if_bit0, track S §S.6): bit 0
+ *     set posts 0x2DAE4(0xE, 1);
  *   - the run-clock tick 0x32970(0) (0x27874; host-owned, record §48-V:
  *     the host clock owns wall time);
  *   - config_play_time_close(1, DS_00104B19) (0x27879..0x27886 0x32A3C);
@@ -4360,11 +4355,7 @@ void game_mode_0f_step(void)
             (u8)(DSB(DS_001077F1 + (u32)w * 0x94u) & 0xEFu);     /* 0x27835..0x27843 */
     }
     fighter_41310(DSD(DS_00104AD4), 0x30D40);                  /* 0x2784B..0x27855 0x41310 */
-    /* PORT: 0x2786B 0x32B94: tests DS_00104B1F bit 0; when set, posts a
-     * deferred audit entry through 0x2DAE4(0xE, 1) (out of scope, spec §7)
-     * before an unconditional bare `ret`; no memory-visible effect either
-     * way — omitted, the same treatment already given the 0x32BAC-stub call
-     * sites in mode 9's port. */
+    audit_add_if_bit0(DSB(DS_00104B1F));                       /* 0x2785A..0x2786B 0x32B94 */
     /* PORT: 0x27874 0x32970(EAX = 0), the run clock, is out of scope (spec
      * §7); the host clock owns wall time. */
     config_play_time_close(1u, DSB(DS_00104B19));               /* 0x27879..0x27886 0x32A3C */

@@ -26817,6 +26817,10 @@ D5C_SPECS += [
 D5C_HUD = E.Call(0x35658, ("eax",), clobbers=("edi", "ebp"))
 D5C_IDLE = E.Call(0x4DEF4, ())
 D5C_CAM_Y = E.Call(0x12DA8, ())
+# audit_add_if_bit0 (track S batch sb): `pop edx; lea eax,[eax]` before the shared `ret` 0x32BAC keeps EDX,
+# which the scan cannot credit (the pops-before-ret rule); the over-approximated edx is harmless under
+# 0x277C0 (`xor edx,edx` 0x27872 follows the call)
+SB_BIT0 = E.Call(0x32B94, ("eax",), clobbers=("edx",))
 
 
 def d5c_end_case(cid, afe, w=0, b1f=0x02, b19=0x7B, ad4=1, aec=0x5D, voice=1):
@@ -26824,7 +26828,7 @@ def d5c_end_case(cid, afe, w=0, b1f=0x02, b19=0x7B, ad4=1, aec=0x5D, voice=1):
     two dwords; the hook DS_00104AE4, the dword before it, the dword 0x104AE8 and the byte 0x104AEC with
     the three bytes after it; the words 0x104AF8..0x104B03 (the countdown 0x104AFE is `afe`; 0x104AFA
     and 0x104B00 are stored); the bytes 0x104B18..0x104B1C (the flag 0x104B19, the stored 0x104B1B),
-    0x104B1F (bit 0 clear in every case: 0x32B94 then returns without its audit post) and
+    0x104B1F (the argument of 0x32B94) and
     0x104B24..0x104B26; the winner byte 0x10810D between two bytes; both slots' +0x40..+0x42 and the
     three bytes a winner of -1 reaches; the match result DS_00104AD4 between two dwords; and the run
     clock in its no-elapsed-time state (d1i_pt_case)."""
@@ -26868,22 +26872,22 @@ D5C_SPECS += [
     # winner byte 0x10810D names cleared (`sar edx,0x18` 0x27832: m4 is -1), 0x41310(the dword
     # DS_00104AD4, 0x30D40) (m2's is 0x101), 0x32A3C(1, the byte 0x104B19), then the byte 0x104B25 = 0,
     # the words 0x104AFA = 0x1F and 0x104B00 = 0x17 and the hook = 0x29B74. Between 0x41310 and 0x32A3C
-    # the raw calls the deferred 0x32B94(the byte 0x104B1F) and the host-owned run clock 0x32970(0),
-    # which the port omits: both run on the original side, 0x32B94 with bit 0 clear (it returns without
-    # its 0x2DAE4 post) and the clock with no elapsed time (it changes no byte), so neither call nor its
-    # argument is compared. Void: 0x25380 `jmp 0x2540f` (as above).
+    # the raw calls 0x32B94(the byte 0x104B1F zero-extended: `xor eax,eax; mov al,[0x104b1f]` 0x2785A; m1's
+    # is 0x03, m4's 0x80) (0x2786B; a stub since track S batch sb) and the host-owned run clock 0x32970(0),
+    # which the port omits: it runs on the original side with no elapsed time (it changes no byte), so
+    # neither that call nor its argument is compared. Void: 0x25380 `jmp 0x2540f` (as above).
     Spec("game_mode_0f_step", 0x277C0, [
         d5c_end_case("m0", 5),
-        d5c_end_case("m1", 1, w=0, ad4=1),
+        d5c_end_case("m1", 1, w=0, ad4=1, b1f=0x03),
         d5c_end_case("m2", 0, w=1, ad4=0x00000101, b19=0x00, b1f=0x7E, voice=0),
         d5c_end_case("m3", 0x8000, aec=0x00),
-        d5c_end_case("m4", 0x8001, w=0xFF, ad4=0, b19=0xFF),
+        d5c_end_case("m4", 0x8001, w=0xFF, ad4=0, b19=0xFF, b1f=0x80),
         d5c_end_case("m5", 2, aec=0xFF),
-    ], allow_calls=(0x32B94, 0x32970), calls=(D5C_HUD, D5C_IDLE, D5C_CAM_Y, VOICE, P7_41310, D2E_M12_CLOSE),
+    ], allow_calls=(0x32970,), calls=(D5C_HUD, D5C_IDLE, D5C_CAM_Y, VOICE, P7_41310, SB_BIT0, D2E_M12_CLOSE),
        eax_mask=0,
        mutants=D5C_END_MUT + ("@no1b", "@wzext", "@wother", "@no41", "@41bit", "@41off", "@no41310", "@41310args",
                               "@adb", "@delta", "@noclose", "@closemode", "@closeflag", "@noafa", "@afav",
-                              "@closeearly")),
+                              "@closeearly", "@nobit0", "@bit0arg", "@bit0sext", "@bit0early", "@bit0late")),
 ]
 D5C_CONT_POLL = E.Call(0x42F60, ("eax",))
 D5C_CH_JOIN = E.Call(0x42FE0, ("eax",), clobbers=("ebp",))

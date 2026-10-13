@@ -35691,10 +35691,15 @@ static u32 d5c_end_core(u32 mut, int f)
         if (M(28u)) DSB(a) = (u8)(DSB(a) & (M(29u) ? 0xEFu : 0xDFu));                /* @no41, @41bit */
         if (!M(40u)) config_play_time_close(1u, DSB(0x00104B19u));                   /* @closeearly */
         sd = M(33u) ? DSD(0x00104AD4u) : (u32)DSB(0x00104AD4u);                      /* @adb */
+        if (!M(SB_M_AUDITEARLY)) audit_add_if_bit0(DSB(0x00104B1Fu));                /* track S sb: @bit0early */
         if (!M(32u)) fighter_41310(0x30D40u, (s32)sd);                               /* @41310args */
         else if (M(31u)) fighter_41310(sd, M(34u) ? 0x30D40 : 0x30D4);               /* @no41310, @delta */
+        if (M(SB_M_NOAUDIT) && M(SB_M_AUDITEARLY) && M(SB_M_AUDITLATE))              /* track S sb: 0x2786B; @nobit0 */
+            audit_add_if_bit0(!M(SB_M_AUDITF) ? (u32)DSB(0x00104B19u)                /* @bit0arg */
+                              : !M(SB_M_AUDITN) ? (u32)(s32)(s8)DSB(0x00104B1Fu) : (u32)DSB(0x00104B1Fu));   /* @bit0sext */
         if (M(35u) && M(40u))                                                        /* @noclose */
             config_play_time_close(M(36u) ? 1u : 0u, M(37u) ? DSB(0x00104B19u) : DSB(0x00104B1Fu));   /* @closemode, @closeflag */
+        if (!M(SB_M_AUDITLATE)) audit_add_if_bit0(DSB(0x00104B1Fu));                 /* @bit0late */
     }
     if (M(19u)) DSB(0x00104B25u) = 0u;                                               /* @no25 */
     if (f && M(38u)) DSW(0x00104AFAu) = M(39u) ? 0x1Fu : 0x17u;                      /* @noafa, @afav */
@@ -41979,6 +41984,10 @@ SB_SITE_MUT1(pj, d4a_28da4_core, auditlate, SB_M_AUDITLATE)
 SB_SITE_MUT(m12, d2e_41c28_core, noaudit, SB_M_NOAUDIT) SB_SITE_MUT(m12, d2e_41c28_core, auditf, SB_M_AUDITF)
 SB_SITE_MUT(m12, d2e_41c28_core, auditn, SB_M_AUDITN)   SB_SITE_MUT(m12, d2e_41c28_core, auditearly, SB_M_AUDITEARLY)
 SB_SITE_MUT(m12, d2e_41c28_core, auditover, SB_M_AUDITALWAYS)
+#define SB_M0F_MUT(name, id) \
+    static void m_sb_m0f_##name(const u32 *r, u32 *eax) { (void)r; *eax = d5c_end_core(id, 1); }
+SB_M0F_MUT(nobit0, SB_M_NOAUDIT) SB_M0F_MUT(bit0arg, SB_M_AUDITF) SB_M0F_MUT(bit0sext, SB_M_AUDITN)
+SB_M0F_MUT(bit0early, SB_M_AUDITEARLY) SB_M0F_MUT(bit0late, SB_M_AUDITLATE)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -57140,6 +57149,11 @@ static const binding_t k_bindings[] = {
     { "game_mode_12_step_s7@auditn", m_sb_m12_auditn, 0x00000000u },
     { "game_mode_12_step_s7@auditearly", m_sb_m12_auditearly, 0x00000000u },
     { "game_mode_12_step_s7@auditover", m_sb_m12_auditover, 0x00000000u },
+    { "game_mode_0f_step@nobit0", m_sb_m0f_nobit0, 0x00000000u },
+    { "game_mode_0f_step@bit0arg", m_sb_m0f_bit0arg, 0x00000000u },
+    { "game_mode_0f_step@bit0sext", m_sb_m0f_bit0sext, 0x00000000u },
+    { "game_mode_0f_step@bit0early", m_sb_m0f_bit0early, 0x00000000u },
+    { "game_mode_0f_step@bit0late", m_sb_m0f_bit0late, 0x00000000u },
     /* sb table end */
 };
 

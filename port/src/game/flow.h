@@ -818,8 +818,8 @@ void game_mode_07_step(void);
  * full derivation: a DS_00104AFE countdown (no zero-guard, unlike modes
  * 8/9's DS_00104AF8) that, on reaching zero or below, plays voice 0x2B
  * (record k7-k12 §6), clears a bit on DS_0010810D's (the established winner-side macro)
- * slot, awards fighter_41310(DS_00104AD4, 0x30D40), runs the deferred
- * 0x32B94/0x32970 (audit/run-clock, spec §7, both no-ops here) and
+ * slot, awards fighter_41310(DS_00104AD4, 0x30D40), calls
+ * audit_add_if_bit0(DS_00104B1F) (0x32B94; the run clock 0x32970 is omitted) and
  * config_play_time_close(1, DS_00104B19) — one of the two live callers
  * fighter.h/config.h's own comments named as still unported before this
  * task — then installs frontend_darken_all (0x29B74) under mode 0x17, the
