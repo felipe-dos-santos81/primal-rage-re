@@ -29015,6 +29015,52 @@ D1_KINDS.update(D5J_KINDS)
 D1_CASES.extend(D5J_CASES)
 
 
+# D6 d6a (record 2026-10-13-reverse-d6a): rows for the named gaps that take one; measured pins
+D6A_MASKS = {
+    "text_blit_glyph": 0x0,
+    "text_blit_glyph_rr": 0x0,
+}   # D6A_MASKS end
+D6A_KINDS = {
+    "text_blit_glyph@chmask": {'byte', 'call #1'},
+    "text_blit_glyph@nohflip": {'call #1'},
+    "text_blit_glyph@pal": {'call #0'},
+    "text_blit_glyph@nopal": {'call #1'},
+    "text_blit_glyph@xy": {'call #1'},
+    "text_blit_glyph@clip": {'call #1'},
+    "text_blit_glyph@noblit": {'call #1'},
+    "text_blit_glyph@ge": {'byte'},
+    "text_blit_glyph@adv10": {'byte'},
+    "text_blit_glyph@adv8": {'byte'},
+    "text_blit_glyph@bit": {'byte'},
+    "text_blit_glyph_rr@colcache": {'call #1'},
+    "text_blit_glyph_rr@rowcache": {'call #1'},
+    "text_blit_glyph_rr@addcache": {'byte'},
+    "text_blit_glyph_rr@wreread": {'byte'},
+}   # D6A_KINDS end
+D6A_CASES = [
+    ("text_blit_glyph@chmask", ['g3', 'g4']),
+    ("text_blit_glyph@nohflip", ['g1', 'g4']),
+    ("text_blit_glyph@pal", ['g0', 'g1', 'g2', 'g3', 'g4']),
+    ("text_blit_glyph@nopal", ['g0', 'g1', 'g2', 'g4']),
+    ("text_blit_glyph@xy", ['g0', 'g1', 'g2', 'g3']),
+    ("text_blit_glyph@clip", ['g0', 'g1', 'g2', 'g3', 'g4']),
+    ("text_blit_glyph@noblit", ['g0', 'g1', 'g2', 'g3', 'g4']),
+    ("text_blit_glyph@ge", ['g2', 'g4']),
+    ("text_blit_glyph@adv10", ['g1']),
+    ("text_blit_glyph@adv8", ['g1']),
+    ("text_blit_glyph@bit", ['g2', 'g4']),
+    ("text_blit_glyph_rr@colcache", ['rr0', 'rr1']),
+    ("text_blit_glyph_rr@rowcache", ['rr0', 'rr1']),
+    ("text_blit_glyph_rr@addcache", ['rr0', 'rr1']),
+    ("text_blit_glyph_rr@wreread", ['rr0']),
+]   # D6A_CASES end
+D6A_OUTSIDE = {}
+P45_OUTSIDE.update(D6A_OUTSIDE)
+D1_MASKS.update(D6A_MASKS)
+D1_KINDS.update(D6A_KINDS)
+D1_CASES.extend(D6A_CASES)
+
+
 @needs_unicorn
 @unittest.skipUnless((os.path.exists(DIFFRUN) and os.path.exists(EXE)) or REQUIRED,
                      "build/diffrun or PRAGE.EXE absent")
@@ -30078,6 +30124,9 @@ class RealFunctionTests(unittest.TestCase):
         # transitive scan over-approximates the Watcom callee-saved registers their callers keep
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
+        # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
+        0x51ED8: (),
+        # D6 d6a end
         # D5 d5a (record 2026-10-12-reverse-d5a): the stubs its rows add
         0x12658: (), 0x12750: (), 0x12C70: (), 0x13E28: ("edx",), 0x20DF4: ("edx", "edi", "ebp"), 0x28E98: (), 0x2BAF4: (), 0x2C074: (), 0x2C390: (), 0x33EB4: ("ebp",), 0x34978: (), 0x38730: ("edi", "ebp"), 0x38910: (), 0x38B18: ("ebx", "ecx", "edx"), 0x412A0: ("ebx", "ecx", "edx", "esi", "edi", "ebp"), 0x46594: (), 0x49300: (), 0x4F1E4: (), 0x4F980: (),
         # D5 d5b (record 2026-10-12-reverse-d5b): the stubs its rows add

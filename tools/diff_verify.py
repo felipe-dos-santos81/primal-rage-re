@@ -31820,6 +31820,74 @@ D5J_SPECS += [
 ]
 
 D1_SPECS += D5J_SPECS
+# ---- track D wave 6, batch d6a (record 2026-10-13-reverse-d6a): rows for the named gaps that take one ----
+D6A_SPECS = []
+
+# ---- 0x1C5E8: the loader's glyph blit ----------------------------------------------------------------
+# 0x51ED8 (the aperture blit, `add edi,0xa0000` 0x51F1B: a named gap; seamed here): EAX = the node, the
+# first 0x38 bytes of 0x1C5E8's own frame (`mov eax,esp` 0x1C63B), passed by value as 0x51E5C's is: the
+# thirteen fields the C SpriteNode has. It preserves every register but EAX (diff_emu
+# _CALLEE_CLOBBER_FIXES).
+D6A_APERTURE = E.Call(0x51ED8, D5B_BLIT.args)
+D6A_COL, D6A_ROW = 0x0010A204, 0x0010A244       # the caller's column and row dwords (zero BSS)
+D6A_FONT = 0x000BCD7C                           # the 4-byte font entries {id word, width byte, height byte}
+# sprite id -> (handle, (width, height, x origin, y origin), pixel handle); 0x3F56 is the image's id for 'A'
+D6A_GLYPHS = {0x3F56: (0x800040, (40, 30, 7, 5), 0x00812345),
+              0x0124: (0x800060, (0xFFF0, 0xFFF8, 3, 2), 0x00823456),          # a raw bitmap: 16 x 8
+              0x7FFE: (0x1000010, (100, 60, 0xFFFC, 0x0010), 0x01034567)}
+
+
+def d6a_glyph(cid, eax, col, row, entry=None, pal=0x0010A5C0):
+    """0x1C5E8: the column and the row between seeded dwords; the three sprites' table dwords and headers
+    (d5b_rl's form); `entry` = (id word, width byte, height byte) poked over the character's font entry
+    (None: the image's own); the 0x33754 stub's EAX is `pal`."""
+    p = {**d4b_res(), D6A_COL - 4: le32(0xC0C0C0C0) + le32(col) + le32(0xC1C1C1C1),
+         D6A_ROW - 4: le32(0xD0D0D0D0) + le32(row) + le32(0xD1D1D1D1)}
+    for uid, (h, hdr, pix) in D6A_GLYPHS.items():
+        p[0xA8B30 + uid * 4] = le32(h)
+        p[d4b_at(h) - 2] = b"\xee\xee" + b"".join(le16(v) for v in hdr) + le32(pix) + b"\xdd\xdd"
+    if entry is not None:
+        p[D6A_FONT + (eax & 0xFF) * 4] = le16(entry[0]) + bytes(entry[1:])
+    return Case(cid, {"eax": eax, "edx": D6A_COL, "ebx": D6A_ROW}, p, {0x33754: pal})
+
+
+D6A_SPECS += [
+    # 0x1C5E8 text_blit_glyph: AL = the character (`and eax,0xff` 0x1C5EF: g1 has 0x123456C1), EDX and EBX
+    # = the addresses of the column and the row. The font entry 0xBCD7C + 4 * ch: its id word
+    # (zero-extended, bit 15 kept: g1 is 0x8124) goes to 0x1C528(frame node, id) (run on both sides), its
+    # width byte is kept in ESI (`movzx esi,byte [eax+2]` 0x1C5FF). 0x33754(0x80997C)'s EAX is stored at
+    # the node's +0x1C, the four clips +0x28..+0x34 are zeroed, +0 = the column, +4 = the row (read after
+    # the acquire, 0x1C630/0x1C635), 0x51ED8(node); then the column advances 0xF when the width byte is
+    # 0x10 (`cmp esi,0x10` 0x1C642: g2 has 0x11, g3 0x0F, g4 0x90), else 8. Mask 0: EAX at return is the
+    # palette entry (`mov eax,[esp+0x1c]` 0x1C64F); the one call site copies it (`mov esi,eax` 0x1C6C2)
+    # into 0x1C65C's own return (`mov eax,esi` 0x1C6CB), which its one caller overwrites (`mov eax,esp`
+    # 0x1B3F6), and the port's function is void. No case has a zero id: 0x1C528 then leaves the frame
+    # node's +0x10 and +0x20 as the stack held them (no entry of the image's font table has one, measured).
+    Spec("text_blit_glyph", 0x1C5E8, [
+        d6a_glyph("g0", 0x00000041, 0x00000010, 0x00000020),
+        d6a_glyph("g1", 0x123456C1, 0xFFFFFFF8, 0x000000C0, entry=(0x8124, 0x10, 0x10), pal=0x0010A5D0),
+        d6a_glyph("g2", 0x00000000, 0x00000137, 0xFFFFFFFE, entry=(0x7FFE, 0x11, 0x08), pal=0x12345678),
+        d6a_glyph("g3", 0xFFFFFFFF, 0x7FFFFFFC, 0x00000001, entry=(0x3F56, 0x0F, 0x10), pal=0),
+        d6a_glyph("g4", 0x00000180, 0x00000000, 0x00000000, entry=(0xFFFE, 0x90, 0x00), pal=0x0010A5E0),
+    ], allow_calls=(0x1C528, 0x1B544), calls=(C1_PAL_ACQ, D6A_APERTURE), eax_mask=0,
+       mutants=("@chmask", "@nohflip", "@pal", "@nopal", "@xy", "@clip", "@noblit", "@ge", "@adv10", "@adv8",
+                "@bit")),
+    # The same entry with stubs that store what the raw reads after them: 0x33754 rewrites the column and
+    # the row (`mov eax,[ecx]` 0x1C630 and `mov eax,[ebx]` 0x1C635 follow it) and the font entry's width
+    # byte (the raw tests the ESI it loaded before every call); 0x51ED8 rewrites the column (`add
+    # dword [ecx],..` 0x1C647/0x1C64C adds to the cell as it then is).
+    Spec("text_blit_glyph_rr", 0x1C5E8, [
+        d6a_glyph("rr0", 0x00000041, 0x00000010, 0x00000020),
+        d6a_glyph("rr1", 0x00000041, 0x00000030, 0x00000040, entry=(0x0124, 0x10, 0x08), pal=0x0010A5D0),
+    ], allow_calls=(0x1C528, 0x1B544),
+       calls=(dataclasses.replace(C1_PAL_ACQ, writes=((None, D6A_COL, le32(0x00000055)),
+                                                      (None, D6A_ROW, le32(0x00000066)),
+                                                      (None, D6A_FONT + 0x41 * 4 + 2, b"\x10"))),
+              dataclasses.replace(D6A_APERTURE, writes=((None, D6A_COL, le32(0x00000100)),))), eax_mask=0,
+       mutants=("@colcache", "@rowcache", "@addcache", "@wreread")),
+]
+
+D1_SPECS += D6A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

@@ -41274,6 +41274,42 @@ static void b_d5j_49c78(const u32 *r, u32 *eax) { (void)r; fight_effects_pass();
 #define X(n) static void m_d5j_49c78_##n(const u32 *r, u32 *eax) { (void)r; d5j_fx((u32)D5J_F_##n); *eax = 0u; }
 D5J_FX_A(X) D5J_FX_B(X) D5J_FX_RR(X) D5J_FX_PRE(X)
 #undef X
+/* ---- track D wave 6, batch d6a (record 2026-10-13-reverse-d6a): rows for the named gaps that take one ---- */
+/* 0x1C5E8 text_blit_glyph: EAX = the character, EDX and EBX = the addresses of the column and the row
+ * (dwords of mem[] here). The mutants restate actors.c's body over the same callees. */
+static void d6a_1c5e8_core(const u32 *r, u32 mut)
+{
+    u32 ch = r[R_EAX];
+    s32 *col = (s32 *)(mem + r[R_EDX]), *row = (s32 *)(mem + r[R_EBX]);
+    u32 e = 0xbcd7cu + ((mut == 1u) ? (ch & 0x1ffu) : (ch & 0xffu)) * 4u;        /* @chmask */
+    u32 w = DSB(e + 2u);
+    s32 col0 = *col, row0 = *row;
+    SpriteNode n;
+    sprite_node_build(&n, (mut == 2u) ? (DSW(e) & 0x7fffu) : DSW(e));           /* @nohflip */
+    n.pal_ptr = palette_acquire((mut == 3u) ? 0x809984u : 0x80997cu);            /* @pal */
+    if (mut == 4u) n.pal_ptr = 0u;                                               /* @nopal */
+    n.x = (mut == 5u) ? *row : (mut == 12u) ? col0 : *col;                       /* @xy @colcache */
+    n.y = (mut == 5u) ? *col : (mut == 13u) ? row0 : *row;                       /* @rowcache */
+    if (mut == 6u) n.clip_b = 1;                                                 /* @clip */
+    if (mut != 7u) sprite_blit_aperture(&n);                                     /* @noblit */
+    if (mut == 15u) w = DSB(e + 2u);                                             /* @wreread: the old code */
+    int wide = (mut == 8u) ? (w >= 0x10u) : (mut == 11u) ? ((w & 0x10u) != 0u) : (w == 0x10u);   /* @ge @bit */
+    s32 adv = (wide && mut != 10u) ? ((mut == 9u) ? 0x10 : 0xf) : 8;             /* @adv10 @adv8 */
+    if (mut == 14u) *col = n.x + adv;                                            /* @addcache */
+    else *col += adv;
+}
+static void b_d6a_1c5e8(const u32 *r, u32 *eax)
+{
+    text_blit_glyph(r[R_EAX], (s32 *)(mem + r[R_EDX]), (s32 *)(mem + r[R_EBX]));
+    *eax = 0u;
+}
+#define D6A_GL_MUT(name, n) \
+    static void m_d6a_gl_##name(const u32 *r, u32 *eax) { d6a_1c5e8_core(r, n); *eax = 0u; }
+D6A_GL_MUT(chmask, 1u)  D6A_GL_MUT(nohflip, 2u)   D6A_GL_MUT(pal, 3u)       D6A_GL_MUT(nopal, 4u)
+D6A_GL_MUT(xy, 5u)      D6A_GL_MUT(clip, 6u)      D6A_GL_MUT(noblit, 7u)    D6A_GL_MUT(ge, 8u)
+D6A_GL_MUT(adv10, 9u)   D6A_GL_MUT(adv8, 10u)     D6A_GL_MUT(bit, 11u)      D6A_GL_MUT(colcache, 12u)
+D6A_GL_MUT(rowcache, 13u) D6A_GL_MUT(addcache, 14u) D6A_GL_MUT(wreread, 15u)
+/* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -56070,6 +56106,25 @@ static const binding_t k_bindings[] = {
 #define X(n) { "fight_effects_pass_pre@" #n, m_d5j_49c78_##n, 0x00000000u },
     D5J_FX_PRE(X)
 #undef X
+    /* track D wave 6, batch d6a */
+    { "text_blit_glyph",                 b_d6a_1c5e8, 0x00000000u },
+    { "text_blit_glyph@chmask",          m_d6a_gl_chmask, 0x00000000u },
+    { "text_blit_glyph@nohflip",         m_d6a_gl_nohflip, 0x00000000u },
+    { "text_blit_glyph@pal",             m_d6a_gl_pal, 0x00000000u },
+    { "text_blit_glyph@nopal",           m_d6a_gl_nopal, 0x00000000u },
+    { "text_blit_glyph@xy",              m_d6a_gl_xy, 0x00000000u },
+    { "text_blit_glyph@clip",            m_d6a_gl_clip, 0x00000000u },
+    { "text_blit_glyph@noblit",          m_d6a_gl_noblit, 0x00000000u },
+    { "text_blit_glyph@ge",              m_d6a_gl_ge, 0x00000000u },
+    { "text_blit_glyph@adv10",           m_d6a_gl_adv10, 0x00000000u },
+    { "text_blit_glyph@adv8",            m_d6a_gl_adv8, 0x00000000u },
+    { "text_blit_glyph@bit",             m_d6a_gl_bit, 0x00000000u },
+    { "text_blit_glyph_rr",              b_d6a_1c5e8, 0x00000000u },
+    { "text_blit_glyph_rr@colcache",     m_d6a_gl_colcache, 0x00000000u },
+    { "text_blit_glyph_rr@rowcache",     m_d6a_gl_rowcache, 0x00000000u },
+    { "text_blit_glyph_rr@addcache",     m_d6a_gl_addcache, 0x00000000u },
+    { "text_blit_glyph_rr@wreread",      m_d6a_gl_wreread, 0x00000000u },
+    /* d6a table end */
 };
 
 static const binding_t *find_binding(const char *name)
