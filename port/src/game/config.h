@@ -123,9 +123,9 @@ void config_credits_init(void);
 void config_play_time_close(u32 mode, u32 flag);
 
 /* 0x32B00 (record §48-Q). `arm` != 0: DS_00107478 = DS_0010746C[idx]; 0:
- * DS_00107478 = (DS_0010746C[idx] - DS_00107478) / 0x3C, its 0x2E934 audit
- * post deferred (spec §7). Ported callers: 0x28DA4 (flow_player_join) and
- * 0x25EE5 (0x25C88, game_mode_05_step, record §48-U). */
+ * DS_00107478 = (DS_0010746C[idx] - DS_00107478) / 0x3C, posted through
+ * audit_post(1, that) (0x2E934). Ported callers: 0x28DA4 (flow_player_join)
+ * and 0x25EE5 (0x25C88, game_mode_05_step, record §48-U). */
 void config_play_time_snap(u32 idx, u32 arm);
 
 /* 0x32B4C (record §48-U). 0x32B00 on DS_00107480: `arm` != 0 stores

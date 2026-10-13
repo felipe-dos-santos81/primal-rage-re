@@ -29335,6 +29335,7 @@ SB_MASKS = {
     "audit_add_if_bit0": 0x0,
     "audit_characters": 0x0,
     "config_play_time_close_audit": 0x0,
+    "config_play_time_snap_audit": 0x0,
 }   # SB_MASKS end
 SB_KINDS = {
     "audit_counter_store@tle": {'byte', 'call #0', 'eax'},
@@ -29466,6 +29467,18 @@ SB_KINDS = {
     "config_play_time_close_audit@f13": {'call #1'},
     "config_play_time_close_audit@no13": {'call #1'},
     "config_play_time_close_audit@m3": {'call #0', 'call #1', 'call #2', 'call #3'},
+    "config_play_time_snap_audit@kind": {'call #0'},
+    "config_play_time_snap_audit@nopost": {'call #0'},
+    "config_play_time_snap_audit@postearly": {'call #0 memory'},
+    "config_play_time_snap_audit@nostore": {'byte', 'call #0 memory'},
+    "config_play_time_snap_audit@sdiv": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_audit@div": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_audit@raw": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_audit@nosub": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_audit@argraw": {'call #0'},
+    "config_play_time_snap_audit@idx": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_audit@other": {'byte', 'call #0', 'call #0 memory'},
+    "config_play_time_snap_audit@wide": {'byte', 'call #0 memory'},
 }   # SB_KINDS end
 SB_CASES = [
     ("audit_counter_store@tle", ['s4']),
@@ -29597,6 +29610,18 @@ SB_CASES = [
     ("config_play_time_close_audit@f13", ['k2', 'k3', 'k5']),
     ("config_play_time_close_audit@no13", ['k2', 'k3', 'k5']),
     ("config_play_time_close_audit@m3", ['k3']),
+    ("config_play_time_snap_audit@kind", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5']),
+    ("config_play_time_snap_audit@nopost", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5']),
+    ("config_play_time_snap_audit@postearly", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5']),
+    ("config_play_time_snap_audit@nostore", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5']),
+    ("config_play_time_snap_audit@sdiv", ['q0']),
+    ("config_play_time_snap_audit@div", ['q0', 'q2', 'q4', 'q5']),
+    ("config_play_time_snap_audit@raw", ['q0', 'q1', 'q2', 'q4', 'q5']),
+    ("config_play_time_snap_audit@nosub", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5']),
+    ("config_play_time_snap_audit@argraw", ['q0', 'q1', 'q2', 'q4', 'q5']),
+    ("config_play_time_snap_audit@idx", ['q0', 'q1', 'q2', 'q3', 'q4']),
+    ("config_play_time_snap_audit@other", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5']),
+    ("config_play_time_snap_audit@wide", ['q0', 'q1', 'q2', 'q3']),
 ]   # SB_CASES end
 SB_OUTSIDE = {}
 P45_OUTSIDE.update(SB_OUTSIDE)
@@ -30670,7 +30695,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # S sb (record 2026-10-13-reverse-s §S.6): the stubs its rows add
-        0x2E0A4: (), 0x2E034: ("ebx", "edx"), 0x2E180: ("ebx", "edx"), 0x2DAE4: ("edx",),
+        0x2E0A4: (), 0x2E034: ("ebx", "edx"), 0x2E180: ("ebx", "edx"), 0x2DAE4: ("edx",), 0x2E934: ("edx",),
         # S sb end
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
         0x51ED8: (), 0x2CCD0: (), 0x1AE20: (), 0x2CADC: ("edi",), 0x1D250: (), 0x1D270: (), 0x2EA78: ("edi", "ebp"),

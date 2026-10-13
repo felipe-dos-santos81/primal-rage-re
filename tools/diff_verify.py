@@ -32513,6 +32513,35 @@ SB_SPECS += [
         Case("k5", {"eax": 6, "edx": 0x00010000}, d1i_pt_case(acc=(0x11111111, 0x22222222, 0xFFFFFFFF, 0x44444444))),
     ], allow_calls=(0x32970,), calls=(SB_AUDIT,), eax_mask=0, mutants=SB_PT_MUT),
 ]
+SB_POST = E.Call(0x2E934, ("eax", "edx"), clobbers=("edx",))                # audit_post, seamed by this batch
+SB_SNAP_MUT = ("@kind", "@nopost", "@postearly", "@nostore", "@sdiv", "@div", "@raw", "@nosub", "@argraw", "@idx",
+               "@other", "@wide")
+
+
+def sb_snap(acc, snap_b=0x55555555):
+    """0x32B00/0x32B4C: the four accumulators 0x10746C.. (acc[3] is 0x32B00's snapshot 0x107478), the dword
+    0x10747C, 0x32B4C's snapshot 0x107480 and a seeded dword after it."""
+    return {D1I_PT_ACC: b"".join(le32(v) for v in acc) + le32(0x7C7C7C7C) + le32(snap_b) + le32(0x84848484)}
+
+
+SB_SPECS += [
+    # 0x32B00 config_play_time_snap, the arm == 0 block (the D1I row has arm != 0): t = (0x10746C[idx] - the
+    # dword 0x107478) / 0x3C, unsigned (`div ecx` 0x32B24 with EDX = the arm = 0: q0's difference is negative;
+    # q1 is 0x3B, q2 0x3C), stored in 0x107478 before 0x2E934(1, t) (a stub: the memory at the call), which
+    # the reload and store 0x32B3A/0x32B40 leave as it is. `shl eax,2` 0x32B08 has no mask: q4's idx 5 reads
+    # the dword 0x107480; q3's idx 3 reads the snapshot itself. Mask 0: EAX at return is the stub's and no
+    # caller reads it (`mov eax,0xd` 0x28E49; `mov eax,[0x104abc]` 0x25EF8 or `xor eax,eax` 0x25F0B; `lea
+    # eax,[ebx*8]` 0x289E5 or `xor eax,eax` 0x2894B).
+    Spec("config_play_time_snap_audit", 0x32B00, [
+        Case("q0", {"eax": 1, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x33333333, 0x44444444)), {0x2E934: 0xFFFFFFFF}),
+        Case("q1", {"eax": 2, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x4444447F, 0x44444444))),
+        Case("q2", {"eax": 2, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x44444480, 0x44444444)), {0x2E934: 0x12345678}),
+        Case("q3", {"eax": 3, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x33333333, 0x44444444))),
+        Case("q4", {"eax": 5, "edx": 0}, sb_snap((0x11111111, 0x22222222, 0x33333333, 0x00000100), snap_b=0x00010100)),
+        Case("q5", {"eax": 0, "edx": 0}, sb_snap((0x00012345, 0x22222222, 0x33333333, 0x00000045))),
+    ], calls=(SB_POST,), eax_mask=0,
+       unhit_named={0x32B0F: "the arm != 0 store: the config_play_time_snap row's"}, mutants=SB_SNAP_MUT),
+]
 
 D1_SPECS += SB_SPECS
 SPECS = [

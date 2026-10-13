@@ -41878,6 +41878,27 @@ SB_PT_MUT(div, 6u)    SB_PT_MUT(flaginv, 7u)  SB_PT_MUT(flagb, 8u) SB_PT_MUT(f8,
 SB_PT_MUT(f6, 11u)    SB_PT_MUT(fb, 12u)      SB_PT_MUT(nofb, 13u) SB_PT_MUT(fborder, 14u) SB_PT_MUT(fc, 15u)
 SB_PT_MUT(f12, 16u)   SB_PT_MUT(no12, 17u)    SB_PT_MUT(t12, 18u) SB_PT_MUT(f9, 19u)   SB_PT_MUT(f7, 20u)
 SB_PT_MUT(f13, 21u)   SB_PT_MUT(no13, 22u)    SB_PT_MUT(m3, 23u)
+
+/* 0x32B00 config_play_time_snap and 0x32B4C config_play_time_snap_b on their arm == 0 blocks: EAX = idx,
+ * EDX = the arm (0 in every case). `snap` is the function's snapshot dword, `kind` the histogram it posts
+ * to. The mutants restate config.c's bodies; an idx stays below 8 (the run clock's block). */
+static void sb_snap_core(u32 idx, u32 snap, u32 kind, u32 mut)
+{
+    const u32 other = (snap == 0x00107478u) ? 0x00107480u : 0x00107478u;
+    const u32 acc = DSD(0x0010746Cu + ((mut == 10u) ? idx : idx * 4u));          /* @idx */
+    const u32 d = (mut == 8u) ? acc : acc - DSD((mut == 11u) ? other : snap);    /* @nosub @other */
+    const u32 t = (mut == 7u) ? d : (mut == 5u) ? (u32)((s32)d / 0x3C) : d / ((mut == 6u) ? 0x3Du : 0x3Cu);   /* @raw @sdiv @div */
+    if (mut == 3u) (void)audit_post(kind, t);                                    /* @postearly */
+    if (mut == 12u) DSW(snap) = (u16)t;                                          /* @wide */
+    else if (mut != 4u) DSD(snap) = t;                                           /* @nostore */
+    if (mut != 2u && mut != 3u) (void)audit_post((mut == 1u) ? 1u - kind : kind, (mut == 9u) ? d : t);   /* @nopost @kind @argraw */
+}
+static void b_sb_32b00(const u32 *r, u32 *eax) { config_play_time_snap(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define SB_SA_MUT(name, n) \
+    static void m_sb_sa_##name(const u32 *r, u32 *eax) { sb_snap_core(r[R_EAX], 0x00107478u, 1u, n); *eax = 0u; }
+SB_SA_MUT(kind, 1u) SB_SA_MUT(nopost, 2u) SB_SA_MUT(postearly, 3u) SB_SA_MUT(nostore, 4u) SB_SA_MUT(sdiv, 5u)
+SB_SA_MUT(div, 6u)  SB_SA_MUT(raw, 7u)    SB_SA_MUT(nosub, 8u)     SB_SA_MUT(argraw, 9u)  SB_SA_MUT(idx, 10u)
+SB_SA_MUT(other, 11u) SB_SA_MUT(wide, 12u)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56970,6 +56991,19 @@ static const binding_t k_bindings[] = {
     { "config_play_time_close_audit@f13", m_sb_pt_f13, 0x00000000u },
     { "config_play_time_close_audit@no13", m_sb_pt_no13, 0x00000000u },
     { "config_play_time_close_audit@m3", m_sb_pt_m3, 0x00000000u },
+    { "config_play_time_snap_audit",     b_sb_32b00, 0x00000000u },
+    { "config_play_time_snap_audit@kind", m_sb_sa_kind, 0x00000000u },
+    { "config_play_time_snap_audit@nopost", m_sb_sa_nopost, 0x00000000u },
+    { "config_play_time_snap_audit@postearly", m_sb_sa_postearly, 0x00000000u },
+    { "config_play_time_snap_audit@nostore", m_sb_sa_nostore, 0x00000000u },
+    { "config_play_time_snap_audit@sdiv", m_sb_sa_sdiv, 0x00000000u },
+    { "config_play_time_snap_audit@div", m_sb_sa_div, 0x00000000u },
+    { "config_play_time_snap_audit@raw", m_sb_sa_raw, 0x00000000u },
+    { "config_play_time_snap_audit@nosub", m_sb_sa_nosub, 0x00000000u },
+    { "config_play_time_snap_audit@argraw", m_sb_sa_argraw, 0x00000000u },
+    { "config_play_time_snap_audit@idx", m_sb_sa_idx, 0x00000000u },
+    { "config_play_time_snap_audit@other", m_sb_sa_other, 0x00000000u },
+    { "config_play_time_snap_audit@wide", m_sb_sa_wide, 0x00000000u },
     /* sb table end */
 };
 
