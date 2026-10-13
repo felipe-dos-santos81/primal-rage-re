@@ -31820,6 +31820,492 @@ D5J_SPECS += [
 ]
 
 D1_SPECS += D5J_SPECS
+# ---- track D wave 6, batch d6a (record 2026-10-13-reverse-d6a): rows for the named gaps that take one ----
+D6A_SPECS = []
+
+# ---- 0x1C5E8: the loader's glyph blit ----------------------------------------------------------------
+# 0x51ED8 (the aperture blit, `add edi,0xa0000` 0x51F1B: a named gap; seamed here): EAX = the node, the
+# first 0x38 bytes of 0x1C5E8's own frame (`mov eax,esp` 0x1C63B), passed by value as 0x51E5C's is: the
+# thirteen fields the C SpriteNode has. It preserves every register but EAX (diff_emu
+# _CALLEE_CLOBBER_FIXES).
+D6A_APERTURE = E.Call(0x51ED8, D5B_BLIT.args)
+D6A_COL, D6A_ROW = 0x0010A204, 0x0010A244       # the caller's column and row dwords (zero BSS)
+D6A_FONT = 0x000BCD7C                           # the 4-byte font entries {id word, width byte, height byte}
+# sprite id -> (handle, (width, height, x origin, y origin), pixel handle); 0x3F56 is the image's id for 'A'
+D6A_GLYPHS = {0x3F56: (0x800040, (40, 30, 7, 5), 0x00812345),
+              0x0124: (0x800060, (0xFFF0, 0xFFF8, 3, 2), 0x00823456),          # a raw bitmap: 16 x 8
+              0x7FFE: (0x1000010, (100, 60, 0xFFFC, 0x0010), 0x01034567)}
+
+
+def d6a_glyph(cid, eax, col, row, entry=None, pal=0x0010A5C0):
+    """0x1C5E8: the column and the row between seeded dwords; the three sprites' table dwords and headers
+    (d5b_rl's form); `entry` = (id word, width byte, height byte) poked over the character's font entry
+    (None: the image's own); the 0x33754 stub's EAX is `pal`."""
+    p = {**d4b_res(), D6A_COL - 4: le32(0xC0C0C0C0) + le32(col) + le32(0xC1C1C1C1),
+         D6A_ROW - 4: le32(0xD0D0D0D0) + le32(row) + le32(0xD1D1D1D1)}
+    for uid, (h, hdr, pix) in D6A_GLYPHS.items():
+        p[0xA8B30 + uid * 4] = le32(h)
+        p[d4b_at(h) - 2] = b"\xee\xee" + b"".join(le16(v) for v in hdr) + le32(pix) + b"\xdd\xdd"
+    if entry is not None:
+        p[D6A_FONT + (eax & 0xFF) * 4] = le16(entry[0]) + bytes(entry[1:])
+    return Case(cid, {"eax": eax, "edx": D6A_COL, "ebx": D6A_ROW}, p, {0x33754: pal})
+
+
+D6A_SPECS += [
+    # 0x1C5E8 text_blit_glyph: AL = the character (`and eax,0xff` 0x1C5EF: g1 has 0x123456C1), EDX and EBX
+    # = the addresses of the column and the row. The font entry 0xBCD7C + 4 * ch: its id word
+    # (zero-extended, bit 15 kept: g1 is 0x8124) goes to 0x1C528(frame node, id) (run on both sides), its
+    # width byte is kept in ESI (`movzx esi,byte [eax+2]` 0x1C5FF). 0x33754(0x80997C)'s EAX is stored at
+    # the node's +0x1C, the four clips +0x28..+0x34 are zeroed, +0 = the column, +4 = the row (read after
+    # the acquire, 0x1C630/0x1C635), 0x51ED8(node); then the column advances 0xF when the width byte is
+    # 0x10 (`cmp esi,0x10` 0x1C642: g2 has 0x11, g3 0x0F, g4 0x90), else 8. Mask 0: EAX at return is the
+    # palette entry (`mov eax,[esp+0x1c]` 0x1C64F); the one call site copies it (`mov esi,eax` 0x1C6C2)
+    # into 0x1C65C's own return (`mov eax,esi` 0x1C6CB), which its one caller overwrites (`mov eax,esp`
+    # 0x1B3F6), and the port's function is void. No case has a zero id: 0x1C528 then leaves the frame
+    # node's +0x10 and +0x20 as the stack held them (no entry of the image's font table has one, measured).
+    Spec("text_blit_glyph", 0x1C5E8, [
+        d6a_glyph("g0", 0x00000041, 0x00000010, 0x00000020),
+        d6a_glyph("g1", 0x123456C1, 0xFFFFFFF8, 0x000000C0, entry=(0x8124, 0x10, 0x10), pal=0x0010A5D0),
+        d6a_glyph("g2", 0x00000000, 0x00000137, 0xFFFFFFFE, entry=(0x7FFE, 0x11, 0x08), pal=0x12345678),
+        d6a_glyph("g3", 0xFFFFFFFF, 0x7FFFFFFC, 0x00000001, entry=(0x3F56, 0x0F, 0x10), pal=0),
+        d6a_glyph("g4", 0x00000180, 0x00000000, 0x00000000, entry=(0xFFFE, 0x90, 0x00), pal=0x0010A5E0),
+    ], allow_calls=(0x1C528, 0x1B544), calls=(C1_PAL_ACQ, D6A_APERTURE), eax_mask=0,
+       mutants=("@chmask", "@nohflip", "@pal", "@nopal", "@xy", "@clip", "@noblit", "@ge", "@adv10", "@adv8",
+                "@bit")),
+    # The same entry with stubs that store what the raw reads after them: 0x33754 rewrites the column and
+    # the row (`mov eax,[ecx]` 0x1C630 and `mov eax,[ebx]` 0x1C635 follow it) and the font entry's width
+    # byte (the raw tests the ESI it loaded before every call); 0x51ED8 rewrites the column (`add
+    # dword [ecx],..` 0x1C647/0x1C64C adds to the cell as it then is).
+    Spec("text_blit_glyph_rr", 0x1C5E8, [
+        d6a_glyph("rr0", 0x00000041, 0x00000010, 0x00000020),
+        d6a_glyph("rr1", 0x00000041, 0x00000030, 0x00000040, entry=(0x0124, 0x10, 0x08), pal=0x0010A5D0),
+    ], allow_calls=(0x1C528, 0x1B544),
+       calls=(dataclasses.replace(C1_PAL_ACQ, writes=((None, D6A_COL, le32(0x00000055)),
+                                                      (None, D6A_ROW, le32(0x00000066)),
+                                                      (None, D6A_FONT + 0x41 * 4 + 2, b"\x10"))),
+              dataclasses.replace(D6A_APERTURE, writes=((None, D6A_COL, le32(0x00000100)),))), eax_mask=0,
+       mutants=("@colcache", "@rowcache", "@addcache", "@wreread")),
+]
+
+# ---- 0x31A78: the service menu's four button names -----------------------------------------------------
+# The name is built in the function's own frame (`mov ebx,esp` 0x31AB0 for 0x3157C, 0x31AF1/0x31B14/
+# 0x31B4B for 0x2F198), which the port keeps in a scratch above the image (svcmenu.c, PORT): the binding
+# hides that scratch from the call-memory reports and zeroes it at the end (diff_runner.c
+# d6a_scratch_hook), as the emulator leaves the private stack out. 0x3157C with its tree, 0x2F198, 0x2F830
+# and 0x2F0F0 run on both sides, so no seam carries the buffer's address; the name is compared character
+# by character at 0x2F5A0 (a stub, by value: the character, the column, the row, the mode, 0). A stub does
+# not advance the column in 0x2F830's frame, so every character of a name is recorded at its first column;
+# the count reaches the cursor words 0x105F34/0x105F36.
+D6A_KEYREC = 0x0010A300                         # the 0x28-byte key-config record (zero BSS)
+D6A_TEXT_REAL = (0x2F198, 0x2F830, 0x2F0F0)
+D6A_NAME_REAL = (0x3157C,) + D1D_STR_ALLOW + D3A_SPRINTF       # 0x3157C and its tree (the config_key_name row's)
+# names of at most five characters for the ids 0x220..0x22B: wrapped ("<" + name + ">" + NUL) each fits
+# the frame's eight bytes below the locals [esp+8] and [esp+0xC] (a longer name overruns them: no case)
+D6A_NAMES = {0x220: b"HOME", 0x221: b"PGUP", 0x222: b"PGDN", 0x223: b"UP", 0x224: b"LEFT", 0x225: b"RIGHT",
+             0x226: b"DWN", 0x227: b"END", 0x228: b"INS", 0x229: b"DEL", 0x22A: b"BKSP", 0x22B: b"T"}
+
+
+def d6a_buttons(cid, side, col, row, keys0, keys1):
+    """0x31A78: the string table (d1d_str_pokes) with D6A_NAMES; the record seeded whole with the four key
+    words of side 0 at +0xA and of side 1 at +0x1C; the cursor words 0x105F34 seeded."""
+    rec = bytearray((0xE0 + i) & 0xFF for i in range(0x28))
+    rec[0x0A:0x12] = b"".join(le16(k) for k in keys0)
+    rec[0x1C:0x24] = b"".join(le16(k) for k in keys1)
+    p = d1d_str_pokes(D6A_NAMES)
+    p.update({D6A_KEYREC: bytes(rec), 0x00105F34: le16(0x7171) + le16(0x7272)})
+    return Case(cid, {"eax": side, "edx": D6A_KEYREC, "ebx": col, "ecx": row}, p)
+
+
+D6A_SPECS += [
+    # 0x31A78 svc_buttons_draw: EAX = side (whole: `test eax,eax` 0x31A7E; b2 has 0x100), EDX = the record,
+    # EBX = col, ECX = row. The four key words from +0xA (side 0) or +0x1C, zero-extended (`xor eax,eax;
+    # mov ax,[edx]` 0x31AB6/0x31ABB), each named wrapped by 0x3157C(key, 0, frame) (`xor edx,edx` 0x31ABE);
+    # a key with no name leaves the buffer as the key before left it (b0's third, b1's second and third).
+    # half = strlen `shr` 1 (0x31AEF..: names of 3 to 7 characters). Key 0 at (col - 5 - half, row + 8),
+    # key 1 at (col + 5 - half, row + 8), keys 2 and 3 the same columns at row + 0xC (jump table 0x31A68),
+    # each 0x2F198(.., the name, 0x4000). b3's first column is -1, which 0x2F198 centres. Mask 0: every call
+    # site overwrites EAX (0x3220C..0x3222B, `mov eax,0xa` 0x32252, `mov eax,[0x101514]` 0x324AE, `call
+    # 0x2ea74` 0x324E1). Not cased: a first key with no name (the raw then draws its uninitialised frame;
+    # the port zeroes its scratch, PORT).
+    Spec("svc_buttons_draw", 0x31A78, [
+        d6a_buttons("b0", 0, 0x0A, 0x0B, (0x1E41, 0x4700, 0x0100, 0x3D00), (0x4800, 0x1E61, 0x5000, 0x4B00)),
+        d6a_buttons("b1", 1, 0x1E, 0x0B, (0x4800, 0x1E61, 0x5000, 0x4B00), (0x4D00, 0x1C0D, 0x3920, 0x4400)),
+        d6a_buttons("b2", 0x100, 0x15, 0x00, (0x4D00, 0x4700, 0x4900, 0x5100), (0x0E00, 0x4800, 0x5000, 0x4F00)),
+        d6a_buttons("b3", 0, 0x07, 0x03, (0x4700, 0x3062, 0x5200, 0x5300), (0x0F00, 0x4A00, 0x4E00, 0x4200)),
+    ], allow_calls=D6A_NAME_REAL + D6A_TEXT_REAL, calls=(D1G_GLYPH,), eax_mask=0,
+       mutants=tuple("@" + m for m in "side side8 left4 right6 three zero key8 raw step nohalf halfup lr rows "
+                                      "mode rowoff".split())),
+]
+
+# ---- 0x305FC: the code-entry row ------------------------------------------------------------------------
+# Both of its data paths live in the raw's frame: the one-character strings handed to 0x2F198 (`lea
+# ebx,[esp+0x30]` 0x306F9) and the {number, name} record handed to 0x2DCA0 (`mov edx,esp` 0x306AB), which
+# the port keeps in a scratch above the image (config.c, PORT; the binding hides it, d6a_scratch_hook).
+# So 0x2F198, 0x2F830, 0x2F0F0 and 0x2F280 run on both sides and each character is compared at 0x2F5A0
+# (a stub, by value), and 0x2DCA0 runs on both sides with 0x2DB58: the record is compared by what the
+# insert stores in table 2 (three value bytes, one name word: the image's descriptor; the fourth name
+# byte, the NUL of 0x3066F, is never read) and 0x2D4EC(8) is the stub its own row has.
+D6A_CODE = 0x00107450                           # the record: +2 the count, +3 the flags, +4 and +0xD the texts
+D6A_CODE_REAL = D6A_TEXT_REAL + (0x2F280, 0x2DCA0, 0x2DB58)
+
+
+def d6a_code(cid, col, row, flags, count, text1, text2):
+    """0x305FC: d5d_hs_case (the three high-score tables seeded, the flag bytes 0x105DD8/9); the record
+    seeded whole: two bytes, the count, the flags, eight columns of `text1`, one byte, eight of `text2`,
+    a NUL and two more bytes; the cursor words seeded."""
+    assert len(text1) == 8 and len(text2) == 8
+    p = d5d_hs_case(le32(0x51525354) + b"mno")
+    p[D6A_CODE] = bytes([0xA0, 0xA1, count, flags]) + bytes(text1) + b"\xa2" + bytes(text2) + b"\x00\xa3\xa4"
+    p[0x00105F34] = le16(0x7171) + le16(0x7272)
+    return Case(cid, {"eax": col, "edx": row}, p)
+
+
+D6A_SPECS += [
+    # 0x305FC config_code_row: EAX = col, EDX = row. With the flags byte 0x107453 non-zero (a0: 0x02,
+    # a1: 0xFE), the second text at mode 0x1000 as one string; the flags byte is read again (`mov
+    # al,[0x107453]` 0x3063D) and bit 1 returns. Else (b0..b4) the first three characters and a NUL, and
+    # the decimal number from the fourth character on while each is in '0'..'9', signed (`cmp edx,0x30;
+    # jl` 0x30688, `cmp edx,0x39; jg` 0x30690: b2 stops on ':', b3 on '/', b1 runs to the eighth column),
+    # go to 0x2DCA0(0, record, 2) and bit 1 of the flags is set after it. With the flags byte 0 (c0..c3)
+    # eight calls 0x2F198(col + i, row, one character, mode): the first text's at 0x4000 while i is below
+    # the count byte (zero-extended, a signed word compare `cmp si,ax; jl` 0x306E8: c3 has 0xFF), else
+    # the second text's at 0x2000. c3 has a space (0x2F830's all-blank arm, 0x2F280 on empty cells), a
+    # NUL (nothing drawn) and 0x80. Mask 0: `call 0x2ea74` (0x2FE2F) and `xor eax,eax` (0x305E7) follow
+    # the two call sites.
+    Spec("config_code_row", 0x305FC, [
+        d6a_code("a0", 0x11, 0x02, 0x02, 3, b"PASSWORD", b"CODE1234"),
+        d6a_code("a1", 0x00, 0x1B, 0xFE, 0, b"PASSWORD", b"Zz9\x80 !~0"),
+        d6a_code("b0", 0x11, 0x02, 0x01, 3, b"PASSWORD", b"ABC123\x00\x00"),
+        d6a_code("b1", 0x05, 0x07, 0x84, 8, b"PASSWORD", b"xyz00042"),
+        d6a_code("b2", 0x11, 0x02, 0x0D, 0, b"PASSWORD", b"A Z09:55"),
+        d6a_code("b3", 0x11, 0x02, 0x40, 0, b"PASSWORD", b"QRS/4567"),
+        d6a_code("b4", 0x02, 0x03, 0x01, 0, b"PASSWORD", b"T\x00U9a123"),
+        d6a_code("c0", 0x11, 0x02, 0x00, 3, b"PASSWORD", b"--------"),
+        d6a_code("c1", 0x00, 0x00, 0x00, 0, b"PASSWORD", b"abcdefgh"),
+        d6a_code("c2", 0x22, 0x1C, 0x00, 8, b"PASSWORD", b"abcdefgh"),
+        d6a_code("c3", 0x08, 0x10, 0x00, 0xFF, b"A \x00\x80BCDE", b"abcdefgh"),
+    ], allow_calls=D6A_CODE_REAL, calls=(D1G_GLYPH, D5D_TOUCH), eax_mask=0,
+       mutants=tuple("@" + m for m in "flag1 text1 smode bit name2 from4 to7 lt31 gt38 nostop base setearly "
+                                      "rec1 table noset set1 seven cmode countsext gt second down "
+                                      "nostep".split())),
+    # The same entry with a 0x2F5A0 stub that stores what the raw reads after its draws: the flags byte
+    # = 0x03 (r0 enters with 0x01: `mov al,[0x107453]` 0x3063D then finds bit 1 and returns) and the
+    # count byte = 6 (r1 enters with 2: `mov al,[ebx+2]` 0x306E0 is read every column).
+    Spec("config_code_row_rr", 0x305FC, [
+        d6a_code("r0", 0x11, 0x02, 0x01, 3, b"PASSWORD", b"ABC123\x00\x00"),
+        d6a_code("r1", 0x11, 0x02, 0x00, 2, b"PASSWORD", b"abcdefgh"),
+    ], allow_calls=D6A_CODE_REAL,
+       calls=(dataclasses.replace(D1G_GLYPH, writes=((None, D6A_CODE + 2, b"\x06\x03"),)), D5D_TOUCH), eax_mask=0,
+       unhit_named={a: "the insert arm (r0 returns on the flags byte the stub left): the config_code_row row's"
+                    for a in (0x3064F, 0x30677, 0x3068D, 0x30695, 0x3069E, 0x306A6)},
+       mutants=("@flagcache", "@countcache")),
+]
+
+# ---- 0x2CADC: the configuration defaults ----------------------------------------------------------------
+# A partial row under three code pokes (the form of game_loop's two pins): the port leaves out three of
+# the raw's ten calls by design (config.c, PORT: the message draw, the 180-tick wait that would present
+# frames inside game_init, the cell release), so `call 0x2f198` 0x2CAF3, `call 0x2ea78` 0x2CB5F and `call
+# 0x2f280` 0x2CB69 are five nops each in every case. Nothing the remaining instructions read comes from
+# them (0x2CAF8 loads EAX; `pop edx; pop ecx; pop ebx; ret` follow 0x2CB69). The row is blind to those
+# three calls and to their arguments (0x2CADF..0x2CAEE, 0x2CB55..0x2CB64 and the EBX/ECX of 0x2CB3A/0x2CB46).
+# Unpoked and with every callee a stub the original makes the ten calls (measured, record section 4).
+D6A_NOP5 = b"\x90" * 5
+D6A_DEFAULTS_PINS = {0x0002CAF3: D6A_NOP5, 0x0002CB5F: D6A_NOP5, 0x0002CB69: D6A_NOP5}
+D6A_MENU_BITS = E.Call(0x2CCD0, ("eax",))                                   # config_menu_default_bits, seamed here
+D6A_KEYS_DEFAULT = E.Call(0x1AE20, ())            # config_keys_apply_defaults, seamed here (diff_emu fix)
+
+D6A_SPECS += [
+    # 0x2CADC config_set_defaults: no argument. 0x2CCD0(0xA2EB4), whose EAX goes whole to 0x2DA0C(0x29, ..)
+    # (`mov edx,eax` 0x2CB02: t1 has 0xFFFF1234); 0x2DA0C(0x35, 0xA0); 0x2DA0C(0x37, 0xA0); 0x2D974(0x2A),
+    # whose EAX with AL & 0xFC | 3 (`and al,0xfc; or al,3` 0x2CB36/0x2CB38: the upper three bytes kept, t1
+    # has 0x12345678 and t2 0x100) goes to 0x2DA0C(0x2A, ..); 0x1AE20(). All five callees are stubs. Mask 0:
+    # `xor eax,eax` 0x2D88B follows the one call site (0x2D886).
+    Spec("config_set_defaults", 0x2CADC, [
+        Case("t0", {}, dict(D6A_DEFAULTS_PINS), {0x2CCD0: 0x00000015, 0x2D974: 0x000000A4}),
+        Case("t1", D2E_DIRTY, dict(D6A_DEFAULTS_PINS), {0x2CCD0: 0xFFFF1234, 0x2D974: 0x12345678, 0x2DA0C: 0xFFFFFFFF}),
+        Case("t2", {}, dict(D6A_DEFAULTS_PINS), {0x2CCD0: 0, 0x2D974: 0x00000100, 0x2DA0C: 1}),
+    ], calls=(D6A_MENU_BITS, D5D_FIELD_SET, D4C_DIP, D6A_KEYS_DEFAULT), eax_mask=0,
+       mutants=tuple("@" + m for m in "table f29 v29 order a0 get al mask or f2a nokeys keysfirst".split())),
+]
+
+# ---- 0x2D6F8: the configuration validate ---------------------------------------------------------------
+# A partial row. The port models the storage as absent (config.c, PORT: both reads report -1, no stored
+# image) and has no function for the deferred storage routines (tools/port_classification.txt). Here the
+# raw's storage load 0x2D638 and its checksummed read 0x2E990 run from their bytes on the image's stored
+# bytes ([0x2D48C] = 0x100CE4, zero in the image: both reads return 1, measured) or on two unreadable
+# copies (a non-zero parity cell in each: both return -1, measured), and the two deferred high-score
+# validators are nops in every case (`call 0x2de98` 0x2D912, `call 0x2df8c` 0x2D919: with EAX = the
+# defaults flag they make six more 0x2D4EC calls, record 2026-10-12-reverse-d5g section 4). The row is
+# blind to those two calls and to what the reads store in 0x105DE1..0x105E33 (zeros over the image's
+# zeros, or bytes the defaults arm's fill then clears).
+D6A_STORED = 0x00100CE4                         # the stored image, two bytes a cell
+D6A_UNREADABLE = {D6A_STORED: b"\x01", D6A_STORED + 2 * 0x5B: b"\x01"}
+D6A_VALIDATE_PINS = {0x0002D912: D6A_NOP5, 0x0002D919: D6A_NOP5}
+D6A_STORAGE_REAL = (0x2D638, 0x2E990, 0x61A70, 0x65490, 0x654C7, 0x2D4B4)
+D6A_DEFAULTS = E.Call(0x2CADC, (), clobbers=("edi",))                       # config_set_defaults, seamed here
+
+
+def d6a_validate(cid, seed=False, unreadable=False, gate=None, stub=None):
+    """0x2D6F8: the two pins; the bytes 0x105DA4..0x105DA7 seeded; with `seed` the config-field block and
+    the flags byte (0x105DB0..0x105DDF) and the stored-image buffer with its neighbours (0x105DE0..
+    0x105E37) seeded whole (the four bytes 0x105E30 are not the magic), else the flags byte 0x105DD8
+    alone between seeded bytes; `gate` replaces the byte 0x2D490 (4 in the image)."""
+    p = {**D6A_VALIDATE_PINS, 0x00105DA4: bytes([0x44, 0x55, 0x66, 0x77])}
+    if seed:
+        p[0x00105DB0] = bytes((0x30 + i) & 0xFF for i in range(0x30))
+        p.update(d1d_chunks(0x00105DE0, bytes(0x80 | ((7 * i + 1) & 0x7F) for i in range(0x58))))
+    else:
+        p[0x00105DD6] = bytes([0xD6, 0xD7, 0x50, 0xD9])
+    if unreadable:
+        p.update(D6A_UNREADABLE)
+    if gate is not None:
+        p[0x0002D490] = bytes([gate])
+    return Case(cid, {}, p, stub or {})
+
+
+D6A_SPECS += [
+    # 0x2D6F8 config_validate: no argument. The bytes 0x105DA5 and 0x105DA4 = 0. With a failed read and
+    # the byte 0x2D490 zero it returns (v3; the image's byte is 4 and no instruction stores it). The four
+    # bytes 0x105E30 not being 0x9C94D2C4, the defaults arm: the flags byte 0x105DD8 |= 6, 0x61A70(0x105DE1,
+    # 0, 0x53), |= 1, 0x61A70(0x105DB0, 0, 0x26), the byte 0x105E2F = 0, 0x2CADC() (a stub), the magic
+    # stored after it, then 0x2D4EC(1), (2) and (0) (stubs). The tail: the byte 0x105DA7 = 1 and
+    # 0x2D974(0x24) (a stub; its EAX is not read). v0 and v1 have the image's empty storage (reads 1), v2
+    # and v4 two unreadable copies (reads -1, the port's model); v1, v2 and v4 seed every byte the fills
+    # clear. Mask 0: `mov eax,0x2a` 0x2FA10 follows the one call site.
+    Spec("config_validate", 0x2D6F8, [
+        d6a_validate("v0"),
+        d6a_validate("v1", seed=True, stub={0x2D974: 0xFFFFFFFF, 0x2D4EC: 0x12345678}),
+        d6a_validate("v2", seed=True, unreadable=True),
+        d6a_validate("v3", unreadable=True, gate=0),
+        d6a_validate("v4", seed=True, unreadable=True, gate=0x80, stub={0x2CADC: 0x5A5A5A5A}),
+    ], allow_calls=D6A_STORAGE_REAL, calls=(D6A_DEFAULTS, D5D_TOUCH, D4C_DIP), eax_mask=0,
+       unhit_named={
+           **{a: "the two reads disagree (one stored copy newer or unreadable alone): the port models both "
+                 "as -1 (config.c, PORT) and its version arms are dead; the raw then repairs a copy through "
+                 "0x2D4EC first (measured, record section 4)"
+              for a in (0x2D761, 0x2D773, 0x2D7A4, 0x2D7AE, 0x2D7B2, 0x2D7BB, 0x2D7C5, 0x2D7CD, 0x2D7E6,
+                        0x2D7F0, 0x2D7F4, 0x2D7FD)},
+           **{a: "the stored-image arm: it needs a stored copy that holds the magic, and the port has no "
+                 "stored image (config.c, PORT)"
+              for a in (0x2D828, 0x2D8BB, 0x2D8EB, 0x2D8FC, 0x2D900)},
+           0x2D92B: "the tail's failed-read return: a failed read with the byte 0x2D490 zero returned at "
+                    "0x2D75D already, and nothing stores that byte",
+           0x2D95D: "0x2DAE4(0x24), a deferred no-op the port never calls: reached only when a callee "
+                    "leaves 0x105DA4 or 0x105DA5 non-zero (both are zeroed at entry)"},
+       mutants=tuple("@" + m for m in "noda5 noda4 noret or6 nofill1 nofill2 nofill fill1len or1 fill2len "
+                                      "magicearly nodefaults magicbe touchorder notouch2 notouch0 noda7 da7 "
+                                      "noget getfield".split())),
+]
+
+# ---- 0x2EA78 / 0x2EA74: one frame without the game logic, then the tick wait --------------------------
+# Rows under one code poke, 0x24C5C's: the BIOS keyboard peek `int 0x16` (AH = 1) at 0x2EB15 is `cmp
+# eax,eax` (39 C0) in every case: ZF = 1, the BIOS's "no keystroke" answer, after which the code zeroes EAX
+# itself (0x2EB17..0x2EB20) and leaves the key loop (`je 0x2eb6e` 0x2EB27). Exact for the no-key path, the
+# only thing taken from the BIOS there being ZF. Unpoked, the original stops there (`unmodeled: int at
+# 0x2EB15`, measured). The stubs model what the loop waits on, as game_loop's do: the audio service stores
+# the frame word 0xEF6DE = 0x2222 (the timer ISR 0x1BDF4 steps it; the emulator has none) and the key pump
+# stores 0x1111 back, so every pass waits through one audio call. The back buffer 0xE87A4 is 0xA0000, the
+# aperture itself, so the full copy 0x655FF and the dirty blit 0x501A3 (both run from the original's
+# bytes) rewrite the bytes they read: the row is blind to the present (the port's is gfx_present, the
+# aperture rule) and to the camera and clip records handed to 0x1C3FC and 0x14328, whose port functions
+# take none (render.c).
+D6A_WAIT_NOKEY = {0x0002EB15: b"\x39\xc0"}
+D6A_WAIT_AUDIO = E.Call(0x1CF20, (), writes=((None, 0x000EF6DE, le16(0x2222)),))
+D6A_WAIT_PUMP = E.Call(0x500C4, (), writes=((None, 0x000EF6DE, le16(0x1111)),))
+D6A_WAIT_CALLS = (D5H_UPDATE, D5H_SORT, D5H_LIST, D5H_FLUSH, D6A_WAIT_AUDIO, D6A_WAIT_PUMP)
+D6A_WAIT_REAL = (0x655FF, 0x501A3, 0x50188)
+D6A_WAIT_UNHIT = {a: "the key loop: reached only on a keystroke from the BIOS (int 16h at 0x2EB15 and 0x2EB2D); "
+                     "a static poke cannot drain a queue, a named gap (record section 4)"
+                  for a in (0x2EB29, 0x2EB31, 0x2EB38, 0x2EB3A, 0x2EB4D, 0x2EB52, 0x2EB61, 0x2EB64)}
+
+
+def d6a_wait(cid, n, flag=0, word=0x1111, latch=0x5A5A5A5A, regs=None):
+    """0x2EA78: the poke; the key word, the key time and the latch 0x105F28..0x105F33 seeded; the copy
+    flag 0x1014FC before three seeded bytes; the front buffer 0xE87A0 = 0xB0000 and the back buffer
+    0xE87A4 = 0xA0000; the frame word 0xEF6DE between seeded words; the ISR gate byte 0x104B22 = 1 (the
+    port's own tick model in the wait, PORT, is off) and the two tick dwords 0x101500/0x101508 seeded."""
+    p = {**D6A_WAIT_NOKEY,
+         0x00105F28: le32(0x28282828) + le32(0x2C2C2C2C) + le32(latch),
+         0x001014FC: bytes([flag, 0xFD, 0xFE, 0xFF]),
+         0x000E87A0: le32(0x000B0000) + le32(0x000A0000),
+         0x000EF6DC: le16(0xDCDC) + le16(word) + le16(0xE0E0),
+         0x00104B22: b"\x01", 0x00101500: le32(0x15001500), 0x00101508: le32(0x15081508)}
+    return Case(cid, {**(regs or {}), "eax": n}, p)
+
+
+D6A_SPECS += [
+    # 0x2EA78 config_screen_wait: EAX = n. The latch dword 0x105F30 = 0; 0x2A31C, 0x1C3FC, 0x14328; with
+    # the copy flag byte 0x1014FC set (w1: 1, w3: 0x80) the full copy and the flag byte = 0, else the dirty
+    # blit; the swap 0x50188 (run); 0x1C470. n = -1 returns there (`cmp ecx,-1; je` 0x2EAE0: w0, w1). Else,
+    # for ECX = n down while the value before the decrement is above -1, signed (`mov eax,ecx; dec ecx; cmp
+    # eax,-1; jg` 0x2EB6E..0x2EB74: n + 2 passes for n >= 0, w2 and w3; one for n = -2, w4): the wait on the
+    # frame word (0x1CF20 while it is unchanged, a word compare), 0x500C4, the peek. Mask 0, and EAX is not
+    # compared: the port's function is void. The raw's EAX is -1 after the loop, which two callers hand on
+    # (0x313FA..0x31403, 0x32F32..0x32F52, menu callbacks; the port restates it there, svcmenu.c); the
+    # other sites load EAX first (0x24A41, 0x2CB64, 0x31FC4, `call 0x2ebbc` 0x1A391) or have the BIOS's AX
+    # (0x24E50).
+    Spec("config_screen_wait", 0x2EA78, [
+        d6a_wait("w0", 0xFFFFFFFF),
+        d6a_wait("w1", 0xFFFFFFFF, flag=1, latch=0xFFFFFFFF),
+        d6a_wait("w2", 0, word=0x3333),
+        d6a_wait("w3", 2, flag=0x80, regs=D2E_DIRTY),
+        d6a_wait("w4", 0xFFFFFFFE, latch=0x00010000),
+    ], unhit_named=D6A_WAIT_UNHIT, allow_calls=D6A_WAIT_REAL, calls=D6A_WAIT_CALLS, eax_mask=0,
+       mutants=tuple("@" + m for m in "nolatch latchw noupdate nosort nolist order flagkeep flagw noswap swapearly "
+                                      "noflush flushfirst m1 passes ge pumpfirst".split())),
+    # 0x2EA74 config_screen_wait_zero: `xor eax,eax; mov eax,eax` and no `ret`: it falls into 0x2EA78 with
+    # n = 0 whatever EAX held (z1 enters with 0xFFFFFFFF). The same poke, stubs and blindness; mask 0 for
+    # the same reason (its 18 call sites: record section 1).
+    Spec("config_screen_wait_zero", 0x2EA74, [
+        d6a_wait("z0", 0x00000005),
+        d6a_wait("z1", 0xFFFFFFFF, flag=1),
+    ], unhit_named=D6A_WAIT_UNHIT, allow_calls=D6A_WAIT_REAL, calls=D6A_WAIT_CALLS, eax_mask=0,
+       mutants=("@n1", "@m1", "@eax")),
+]
+
+# ---- 0x249F0: the quit prompt ---------------------------------------------------------------------------
+# A row under one code poke: the blocking BIOS keyboard read `int 0x16` (AH = 0) at 0x24A64 is `mov al,K`
+# (B0 K) with the case's key K. Exact for a BIOS answer whose ASCII byte is K: the code keeps AL alone
+# (`and eax,0xffff; and eax,0xff` 0x24A71/0x24A76) and both flag outcomes of the wrapper join at 0x24A71
+# with AX kept (ZF = 1 falls to `and dh,0xf; dec dh`, which is 0xFF for AH = 0, and `jne 0x24a71`).
+# Unpoked, the original stops there (`unmodeled: int at 0x24A64`, measured). The port reads through its
+# BIOS-style queue (input.c), which the binding loads with the same K, read from the poked byte. One
+# key a case: a key that is neither answer reads another (0x24AEC `jne 0x24a60`), which a static poke
+# answers the same way for ever, so every case's key is one of its two answers.
+D6A_PAUSE, D6A_RESUME = E.Call(0x1D250, ()), E.Call(0x1D270, ())            # seamed here
+D6A_WAIT = E.Call(0x2EA78, ("eax",), clobbers=("edi", "ebp"))               # config_screen_wait, seamed here
+D6A_PROMPT_CALLS = (D6A_PAUSE, D1D_CURSOR, D6A_WAIT, D1D_RELEASE, D6A_RESUME, D5H_LONGJMP)
+D6A_PROMPT_UNHIT = {
+    0x24A6F: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x24A6D always jumps)",
+    0x24A9C: "the soft-restart arm (a yes to ABANDON CONQUEST): 0x1D270, the config writer 0x1B084, which "
+             "the port defers (flow.c, PORT), and a tail jump into the runtime's longjmp 0x65431, which "
+             "never returns here; a named gap (record section 4)"}
+
+
+def d6a_prompt(cid, eax, key, yes=b"YES", no=b"NO"):
+    """0x249F0: the poke with the key; the string table (d1d_str_pokes) with the two questions and the
+    two answers; the prompt flag 0x104B22 and the quit flag 0xA81A8, each clear before a seeded byte."""
+    p = d1d_str_pokes({0x1EE: b"QUIT GAME? Y/N", 0x1EF: b"ABANDON? Y/N", 0x1F0: yes, 0x1F1: no})
+    p.update({0x00024A64: bytes([0xB0, key]), 0x00104B21: bytes([0x21, 0x00, 0x23]),
+              0x000A81A8: bytes([0x00, 0x5A])})
+    return Case(cid, {"eax": eax}, p)
+
+
+D6A_SPECS += [
+    # 0x249F0 game_quit_prompt: AL = hard_quit (`mov [esp],al` 0x249F9: q4 has 0x100, q0 0x12345600). The
+    # prompt flag byte 0x104B22 = 1, 0x1D250(), 0x1C500(0x1EE, or 0x1EF with AL non-zero) (run on both
+    # sides, as its four calls are), 0x2F198(-1, 0xA, the string, 0x1000), 0x2EA78(-1); the first bytes of
+    # the strings 0x1F0 and 0x1F1, sign-extended (`movsx` 0x24A4B/0x24A58); the key's ASCII byte through
+    # the runtime's toupper 0x653ED (run: 'a'..'z' minus 0x20, signed; q5 has '{', q6 '`', q7 'z', q8
+    # 'a'). Yes (tested first: q9 has the same letter for both) clears the flag and, with AL zero, sets
+    # the quit flag byte 0xA81A8. No clears the flag and releases the question's cells, 0x2F280(-1, 0xA,
+    # the string again, 0x1000) (q2, q3, q4). Then 0x1D270(). Mask 0: every call site (0x24DDF, 0x24EAD,
+    # 0x24EC5) returns to the dispatcher's `mov ah,1; mov dh,ah; int 0x16` (0x24D08..0x24D0E), after which
+    # AX is the BIOS's and the rest is masked. All stubs but 0x1C500's tree and 0x653ED.
+    Spec("game_quit_prompt", 0x249F0, [
+        d6a_prompt("q0", 0x12345600, 0x59),
+        d6a_prompt("q1", 0x00000000, 0x79),
+        d6a_prompt("q2", 0x00000000, 0x6E),
+        d6a_prompt("q3", 0x00000001, 0x4E),
+        d6a_prompt("q4", 0x00000100, 0x4E),
+        d6a_prompt("q5", 0x00000000, 0x7B, yes=b"{}"),
+        d6a_prompt("q6", 0x00000000, 0x60, yes=b"`"),
+        d6a_prompt("q7", 0x00000000, 0x7A, yes=b"ZED"),
+        d6a_prompt("q8", 0x00000000, 0x61, yes=b"A"),
+        d6a_prompt("q9", 0x00000000, 0x58, yes=b"X", no=b"X"),
+        d6a_prompt("qa", 0xFFFFFF80, 0x6E),
+    ], unhit_named=D6A_PROMPT_UNHIT, allow_calls=D1D_STR_ALLOW + (0x653ED,), calls=D6A_PROMPT_CALLS, eax_mask=0,
+       mutants=tuple("@" + m for m in "hard32 id noflag nopause col row mode wait0 answers noupper lo hi order "
+                                      "flagkeep noquit quitw norelease relid relmode noresume".split())),
+]
+
+# ---- 0x1C470: the palette dirty list's flush ------------------------------------------------------------
+# A partial row under five code pokes. The retrace read `mov edx,0x3da; in al,dx` (0x1C481..0x1C486) is
+# `mov al,8` and four nops: bit 3 set at the first read, the only thing the code takes from the port
+# (`test al,8; je` 0x1C487; AL is loaded again at 0x1C4A7). The four DAC writes `out dx,al` (0x1C4AA the
+# index; 0x1C4CA, 0x1C4CE and 0x1C4D5 the three colour bytes) are nops. Unpoked, the original stops
+# `unmodeled: in at 0x1C486` (measured). The row compares the list's bookkeeping only and is blind to
+# every byte sent to the DAC: the index, the count, the colour dwords and their shifts, and so to whether
+# 0x1B544 resolved the handle (it runs on both sides, unrecorded). The port's DAC is the host's gfx_dac.
+D6A_FLUSH_PINS = {0x0001C481: b"\xb0\x08\x90\x90\x90\x90", 0x0001C4AA: b"\x90", 0x0001C4CA: b"\x90",
+                  0x0001C4CE: b"\x90", 0x0001C4D5: b"\x90"}
+D6A_DIRTY, D6A_DIRTY_HEAD = 0x00107498, 0x00107798
+D6A_COLOURS = 0x0010A300                        # eight colour dwords (zero BSS)
+D6A_PAL_HANDLE = 0x00800040                     # a resident handle (d4b_res): a count dword, then colours
+
+
+def d6a_flush(cid, recs, regs=None):
+    """0x1C470: the pokes; `recs` = [(ptr, first, count, flag dword)] at 0x107498 after a seeded dword and
+    before one more seeded record (not in the list); the head 0x107798 between seeded dwords; eight colour
+    dwords at D6A_COLOURS and, behind the handle, a count dword and eight more."""
+    body = le32(0x94949494) + b"".join(le32(a) + le32(b) + le32(c) + le32(d) for a, b, c, d in recs)
+    body += le32(D6A_COLOURS) + le32(0x00000011) + le32(0x00000022) + le32(0x00000033)
+    cols = b"".join(le32(0x00FCA850 + 0x01010101 * i) for i in range(8))
+    p = {**d4b_res(), **D6A_FLUSH_PINS, D6A_COLOURS: cols, d4b_at(D6A_PAL_HANDLE): le32(8) + cols[::-1],
+         D6A_DIRTY_HEAD - 4: le32(0x97979797) + le32(D6A_DIRTY + 16 * len(recs)) + le32(0x9C9C9C9C)}
+    p.update(d1d_chunks(D6A_DIRTY - 4, body))
+    return Case(cid, regs or {}, p)
+
+
+D6A_SPECS += [
+    # 0x1C470 gfx_flush_palette: no argument. For each 16-byte record from 0x107498 to the head [0x107798]
+    # (read again every record, 0x1C4E8): the dword +4 plus the dword +0xC above 0x100, signed (`cmp
+    # ecx,0x100; jle` 0x1C491: f3 has a sum of 0x80000000, f2 exactly 0x100 and 0x101), takes the excess
+    # off the dword +0xC; the low byte of +0xC non-zero resolves +0 as a handle (0x1B544, run) and skips
+    # its count dword; +8 colours go out (at least one: `dec esi; jg` 0x1C4D6, f1 has counts 0 and -5);
+    # +4 = -1. Then the head = 0x107498. f0 is the empty list. Mask 0: `mov eax,esi` 0x1C6CB, `mov
+    # eax,[0xe87a4]`.. 0x2568E or the dirty blit 0x501A3 (which loads EAX), and 0x2EAE0's `xor eax,eax`
+    # 0x2EAF9 or 0x2EA78's own return, which its callers do not read (the config_screen_wait row).
+    Spec("gfx_flush_palette", 0x1C470, [
+        d6a_flush("f0", []),
+        d6a_flush("f1", [(D6A_COLOURS, 0x10, 3, 0), (D6A_COLOURS + 4, 0xFE, 0, 0),
+                         (D6A_COLOURS + 8, 0x00, 0xFFFFFFFB, 0)], regs=D2E_DIRTY),
+        d6a_flush("f2", [(D6A_PAL_HANDLE, 0xF0, 4, 0x10), (D6A_PAL_HANDLE, 0xF0, 2, 0x11),
+                         (D6A_COLOURS, 0x100, 1, 0x100)]),
+        d6a_flush("f3", [(D6A_PAL_HANDLE, 0x7FFFFFFF, 2, 1), (D6A_COLOURS, 0x00000200, 1, 0x00000100),
+                         (D6A_PAL_HANDLE, 0x80, 8, 0x80000181)]),
+    ], allow_calls=(0x1B544,), eax_mask=0,
+       mutants=tuple("@" + m for m in "noclamp unsigned clampby clampcount nomark markw mark0 headfirst nohead "
+                                      "one".split())),
+]
+
+# ---- 0x52106: the screen reset --------------------------------------------------------------------------
+# A partial row under six code pokes. The retrace read `mov edx,0x3da; in al,dx` (0x52129..0x5212E) is
+# `mov al,8` and four nops (bit 3 set at the first read: `test al,8; je` 0x5212F is all the code takes
+# from the port); the four DAC writes `out dx,al` (0x5213F the index 0; 0x52145..0x52147 the 256 black
+# entries) are nops; and the third fill, `call 0x51f72` 0x52151 with EAX = 0xA0000, the VGA aperture, is
+# five nops (the aperture rule: the port fills its host aperture, gfx.c PORT). Unpoked, the original
+# stops `unmodeled: in at 0x5212E` (measured). The row compares the two tick stores and the two offscreen
+# fills and is blind to the DAC and to the aperture fill.
+D6A_RESET_PINS = {0x00052129: b"\xb0\x08\x90\x90\x90\x90", 0x0005213F: b"\x90", 0x00052145: b"\x90\x90\x90",
+                  0x00052151: D6A_NOP5}
+
+
+def d6a_reset(cid, eax, buf_a, buf_b, regs=None):
+    """0x52106: the pokes; the two tick dwords 0x101508/0x10150C seeded between seeded dwords; the
+    offscreen buffer pointers 0x1014E4 (`buf_b`) and 0x1014E8 (`buf_a`) between seeded dwords, each
+    0xFA00 bytes of the image's own data."""
+    p = {**D6A_RESET_PINS,
+         0x00101504: le32(0x04040404) + le32(0x08080808) + le32(0x0C0C0C0C) + le32(0x10101010),
+         0x001014E0: le32(0xE0E0E0E0) + le32(buf_b) + le32(buf_a) + le32(0xECECECEC)}
+    return Case(cid, {**(regs or {}), "eax": eax}, p)
+
+
+D6A_SPECS += [
+    # 0x52106 gfx_screen_reset: EAX = ticks. The dwords 0x101508 and 0x10150C = EAX; 0x51F72([0x1014E8],
+    # EAX) and 0x51F72([0x1014E4], EAX) (run on both sides: 0xFA00 bytes each, the dword EAX). Mask 0, and
+    # EAX is not compared: the port's function is void and the third fill, which leaves EAX = 0xAFA00, is
+    # poked out (the raw returns 0xA0000 here); 0x1C873's return hands it to the movie player's callers
+    # (a host replacement), the other sites call on (0x62756, 0x336C0, 0x2F99C).
+    Spec("gfx_screen_reset", 0x52106, [
+        d6a_reset("s0", 0x00000000, 0x000C0000, 0x000D0000),
+        d6a_reset("s1", 0xA1B2C3D4, 0x000C0001, 0x000D0802, regs=D2E_DIRTY),
+        d6a_reset("s2", 0x00000100, 0x000C8000, 0x000C0000),
+    ], allow_calls=(0x51F72,), eax_mask=0,
+       mutants=tuple("@" + m for m in "no508 no50c one e4twice byte short w50c".split())),
+]
+
+D1_SPECS += D6A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

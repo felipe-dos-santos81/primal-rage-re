@@ -6504,6 +6504,7 @@ void sound_sample_pause_toggle(void)
  * 0x1D261: DL is 1 across the call); then stops every sample (0x1D267). */
 void sound_pause(void)
 {
+    PR_SEAM0(0x1D250u);
     if (DSB(DS_001028DA) == 0u) {                          /* 0x1D251 */
         sound_music_pause_toggle();                        /* 0x1D25C */
         DSB(DS_001028D8) = 1u;                             /* 0x1D261 */
@@ -6516,6 +6517,7 @@ void sound_pause(void)
  * the byte (0x1D283). */
 void sound_resume(void)
 {
+    PR_SEAM0(0x1D270u);
     if (DSB(DS_001028D8) != 1u) return;                    /* 0x1D272 0x1D27A */
     sound_music_pause_toggle();                            /* 0x1D27C */
     DSB(DS_001028D8) = 0;                                  /* 0x1D283 */

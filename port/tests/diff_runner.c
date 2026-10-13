@@ -41274,6 +41274,368 @@ static void b_d5j_49c78(const u32 *r, u32 *eax) { (void)r; fight_effects_pass();
 #define X(n) static void m_d5j_49c78_##n(const u32 *r, u32 *eax) { (void)r; d5j_fx((u32)D5J_F_##n); *eax = 0u; }
 D5J_FX_A(X) D5J_FX_B(X) D5J_FX_RR(X) D5J_FX_PRE(X)
 #undef X
+/* ---- track D wave 6, batch d6a (record 2026-10-13-reverse-d6a): rows for the named gaps that take one ---- */
+/* 0x1C5E8 text_blit_glyph: EAX = the character, EDX and EBX = the addresses of the column and the row
+ * (dwords of mem[] here). The mutants restate actors.c's body over the same callees. */
+static void d6a_1c5e8_core(const u32 *r, u32 mut)
+{
+    u32 ch = r[R_EAX];
+    s32 *col = (s32 *)(mem + r[R_EDX]), *row = (s32 *)(mem + r[R_EBX]);
+    u32 e = 0xbcd7cu + ((mut == 1u) ? (ch & 0x1ffu) : (ch & 0xffu)) * 4u;        /* @chmask */
+    u32 w = DSB(e + 2u);
+    s32 col0 = *col, row0 = *row;
+    SpriteNode n;
+    sprite_node_build(&n, (mut == 2u) ? (DSW(e) & 0x7fffu) : DSW(e));           /* @nohflip */
+    n.pal_ptr = palette_acquire((mut == 3u) ? 0x809984u : 0x80997cu);            /* @pal */
+    if (mut == 4u) n.pal_ptr = 0u;                                               /* @nopal */
+    n.x = (mut == 5u) ? *row : (mut == 12u) ? col0 : *col;                       /* @xy @colcache */
+    n.y = (mut == 5u) ? *col : (mut == 13u) ? row0 : *row;                       /* @rowcache */
+    if (mut == 6u) n.clip_b = 1;                                                 /* @clip */
+    if (mut != 7u) sprite_blit_aperture(&n);                                     /* @noblit */
+    if (mut == 15u) w = DSB(e + 2u);                                             /* @wreread: the old code */
+    int wide = (mut == 8u) ? (w >= 0x10u) : (mut == 11u) ? ((w & 0x10u) != 0u) : (w == 0x10u);   /* @ge @bit */
+    s32 adv = (wide && mut != 10u) ? ((mut == 9u) ? 0x10 : 0xf) : 8;             /* @adv10 @adv8 */
+    if (mut == 14u) *col = n.x + adv;                                            /* @addcache */
+    else *col += adv;
+}
+static void b_d6a_1c5e8(const u32 *r, u32 *eax)
+{
+    text_blit_glyph(r[R_EAX], (s32 *)(mem + r[R_EDX]), (s32 *)(mem + r[R_EBX]));
+    *eax = 0u;
+}
+#define D6A_GL_MUT(name, n) \
+    static void m_d6a_gl_##name(const u32 *r, u32 *eax) { d6a_1c5e8_core(r, n); *eax = 0u; }
+D6A_GL_MUT(chmask, 1u)  D6A_GL_MUT(nohflip, 2u)   D6A_GL_MUT(pal, 3u)       D6A_GL_MUT(nopal, 4u)
+D6A_GL_MUT(xy, 5u)      D6A_GL_MUT(clip, 6u)      D6A_GL_MUT(noblit, 7u)    D6A_GL_MUT(ge, 8u)
+D6A_GL_MUT(adv10, 9u)   D6A_GL_MUT(adv8, 10u)     D6A_GL_MUT(bit, 11u)      D6A_GL_MUT(colcache, 12u)
+D6A_GL_MUT(rowcache, 13u) D6A_GL_MUT(addcache, 14u) D6A_GL_MUT(wreread, 15u)
+
+/* The frame-substitute scratch of svcmenu.c and config.c (`PORT:` there; 0x03900000..0x039000FF, above the
+ * image): where the raw keeps a record or a string in its own stack frame, which the emulator leaves out
+ * of every comparison (its private stack), the port keeps it in mem[]. d6a_scratch_hook hides those bytes
+ * from the call-memory report of the calls recorded while it is installed and D6A_SCRATCH_RUN zeroes them
+ * when the function returns, so they are compared through the callees that read them and never as
+ * writes. Only the d6a bindings below install it. */
+static int seam_hook(u32 addr, u32 nargs, const u32 *args, u32 *eax);
+#define D6A_SCRATCH     0x03900000u
+#define D6A_SCRATCH_LEN 0x100u
+static int d6a_scratch_hook(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    u8 keep[D6A_SCRATCH_LEN];
+    memcpy(keep, mem + D6A_SCRATCH, sizeof keep);
+    memset(mem + D6A_SCRATCH, 0, sizeof keep);
+    int stubbed = seam_hook(addr, nargs, args, eax);
+    memcpy(mem + D6A_SCRATCH, keep, sizeof keep);
+    return stubbed;
+}
+#define D6A_SCRATCH_RUN(stmt) \
+    do { pr_seam = d6a_scratch_hook; stmt; pr_seam = seam_hook; memset(mem + D6A_SCRATCH, 0, D6A_SCRATCH_LEN); } while (0)
+
+/* 0x31A78 svc_buttons_draw: EAX = side, EDX = the key-config record, EBX = col, ECX = row. The name
+ * buffer is the raw's frame and the port's scratch 0x03900080 (D6A_SCRATCH_RUN). The mutants restate
+ * svcmenu.c's body. */
+static void d6a_31a78_core(const u32 *r, u32 mut)
+{
+    const u32 name = 0x03900080u;
+    u32 side = r[R_EAX], rec = r[R_EDX];
+    s32 col = (s32)r[R_EBX], row = (s32)r[R_ECX];
+    DSD(name) = 0u; DSD(name + 4u) = 0u;
+    u32 p = rec + (((side == 0u) != (mut == 1u)) ? 0xAu : 0x1Cu);                /* @side */
+    if (mut == 2u) p = rec + ((side & 0xFFu) == 0u ? 0xAu : 0x1Cu);               /* @side8 */
+    const s32 left = col - ((mut == 3u) ? 4 : 5), right = col + ((mut == 4u) ? 6 : 5);   /* @left4 @right6 */
+    for (u32 i = 0u; i < ((mut == 5u) ? 3u : 4u); i++) {                          /* @three */
+        if (mut == 6u) { DSD(name) = 0u; DSD(name + 4u) = 0u; }                   /* @zero */
+        (void)config_key_name((mut == 7u) ? (u32)DSB(p) : (u32)DSW(p), (mut == 8u) ? 1u : 0u, name);   /* @key8 @raw */
+        p += (mut == 9u) ? 4u : 2u;                                               /* @step */
+        u32 len = (u32)strlen((const char *)(mem + name));
+        const s32 half = (mut == 10u) ? (s32)len : (mut == 11u) ? (s32)((len + 1u) >> 1) : (s32)(len >> 1);   /* @nohalf @halfup */
+        u32 k = (mut == 12u) ? (i ^ 1u) : (mut == 13u) ? (i ^ 2u) : i;            /* @lr @rows */
+        const u32 mode = (mut == 14u) ? 0x2000u : 0x4000u;                        /* @mode */
+        const s32 lo = row + ((mut == 15u) ? 0xC : 8), hi = row + ((mut == 15u) ? 8 : 0xC);   /* @rowoff */
+        switch (k) {
+        case 0u: text_cursor_set(left - half, lo, mem + name, mode); break;
+        case 1u: text_cursor_set(right - half, lo, mem + name, mode); break;
+        case 2u: text_cursor_set(left - half, hi, mem + name, mode); break;
+        default: text_cursor_set(right - half, hi, mem + name, mode); break;
+        }
+    }
+}
+static void b_d6a_31a78(const u32 *r, u32 *eax)
+{
+    D6A_SCRATCH_RUN(svc_buttons_draw(r[R_EAX], r[R_EDX], (s32)r[R_EBX], (s32)r[R_ECX]));
+    *eax = 0u;
+}
+#define D6A_BD_MUT(name, n) \
+    static void m_d6a_bd_##name(const u32 *r, u32 *eax) { D6A_SCRATCH_RUN(d6a_31a78_core(r, n)); *eax = 0u; }
+D6A_BD_MUT(side, 1u)   D6A_BD_MUT(side8, 2u)   D6A_BD_MUT(left4, 3u)  D6A_BD_MUT(right6, 4u)  D6A_BD_MUT(three, 5u)
+D6A_BD_MUT(zero, 6u)   D6A_BD_MUT(key8, 7u)    D6A_BD_MUT(raw, 8u)    D6A_BD_MUT(step, 9u)    D6A_BD_MUT(nohalf, 10u)
+D6A_BD_MUT(halfup, 11u) D6A_BD_MUT(lr, 12u)    D6A_BD_MUT(rows, 13u)  D6A_BD_MUT(mode, 14u)   D6A_BD_MUT(rowoff, 15u)
+
+/* 0x305FC config_code_row: EAX = col, EDX = row. The insert arm's record is the raw's frame and the port's
+ * scratch 0x03900000 (D6A_SCRATCH_RUN); the one-character strings of the other arm are C locals. The
+ * mutants restate config.c's body. */
+static void d6a_305fc_core(const u32 *r, u32 mut)
+{
+    const u32 base = 0x00107450u, tmp = 0x03900000u;
+    s32 col = (s32)r[R_EAX], row = (s32)r[R_EDX];
+    u32 flags = DSB(base + 3u);
+    if ((mut == 1u) ? ((flags & 1u) != 0u) : (flags != 0u)) {                    /* @flag1 */
+        u32 text = base + ((mut == 2u) ? 4u : 0xDu);                             /* @text1 */
+        text_cursor_set(col, row, mem + text, (mut == 3u) ? 0x2000u : 0x1000u);  /* @smode */
+        if (mut != 4u) flags = DSB(base + 3u);                                   /* @flagcache */
+        if ((flags & ((mut == 5u) ? 4u : 2u)) != 0u) return;                     /* @bit */
+        u32 name = tmp + 4u;
+        for (u32 i = 0u; i < ((mut == 6u) ? 2u : 3u); i++) DSB(name + i) = DSB(text + i);   /* @name2 */
+        DSB(name + 3u) = 0u;
+        u32 num = 0u;
+        for (s16 i = (mut == 7u) ? 4 : 3; i < ((mut == 8u) ? 7 : 8); i++) {      /* @from4 @to7 */
+            s32 c = (s8)DSB(text + (u32)i);
+            if (c < ((mut == 9u) ? 0x31 : 0x30) || c > ((mut == 10u) ? 0x38 : 0x39)) {   /* @lt31 @gt38 */
+                if (mut == 11u) continue;                                        /* @nostop */
+                break;
+            }
+            num = num * ((mut == 12u) ? 16u : 10u) + (u32)(c - 0x30);            /* @base */
+        }
+        DSD(tmp) = num;
+        if (mut == 13u) DSB(base + 3u) |= 2u;                                    /* @setearly */
+        (void)hiscore_insert((mut == 14u) ? 1u : 0u, tmp, (mut == 15u) ? 1u : 2u);   /* @rec1 @table */
+        if (mut != 16u && mut != 13u) DSB(base + 3u) |= (mut == 17u) ? 1u : 2u;  /* @noset @set1 */
+        return;
+    }
+    u8 one[2];
+    one[1] = 0u;
+    u32 count = (mut == 18u) ? (u32)DSB(base + 2u) : 0u;
+    for (s16 i = 0; i < ((mut == 19u) ? 7 : 8); i++) {                           /* @seven */
+        u32 mode = (mut == 20u) ? 0x2000u : 0x4000u;                             /* @cmode */
+        if (mut != 18u) count = DSB(base + 2u);                                  /* @countcache */
+        one[0] = DSB(base + 4u + (u32)i);
+        s32 c = (mut == 21u) ? (s32)(s8)count : (s32)(s16)count;                 /* @countsext */
+        if ((mut == 22u) ? (i > c) : (i >= c)) {                                 /* @gt */
+            one[0] = DSB(base + ((mut == 23u) ? 0xCu : 0xDu) + (u32)i);          /* @second */
+            mode = (mut == 20u) ? 0x4000u : 0x2000u;
+        }
+        if (mut == 24u) text_cursor_set(col, row + i, one, mode);                /* @down */
+        else text_cursor_set(col + ((mut == 25u) ? 0 : i), row, one, mode);      /* @nostep */
+    }
+}
+static void b_d6a_305fc(const u32 *r, u32 *eax)
+{
+    D6A_SCRATCH_RUN(config_code_row((s32)r[R_EAX], (s32)r[R_EDX]));
+    *eax = 0u;
+}
+#define D6A_CR_MUT(name, n) \
+    static void m_d6a_cr_##name(const u32 *r, u32 *eax) { D6A_SCRATCH_RUN(d6a_305fc_core(r, n)); *eax = 0u; }
+D6A_CR_MUT(flag1, 1u)  D6A_CR_MUT(text1, 2u)   D6A_CR_MUT(smode, 3u)   D6A_CR_MUT(flagcache, 4u) D6A_CR_MUT(bit, 5u)
+D6A_CR_MUT(name2, 6u)  D6A_CR_MUT(from4, 7u)   D6A_CR_MUT(to7, 8u)     D6A_CR_MUT(lt31, 9u)      D6A_CR_MUT(gt38, 10u)
+D6A_CR_MUT(nostop, 11u) D6A_CR_MUT(base, 12u)  D6A_CR_MUT(setearly, 13u) D6A_CR_MUT(rec1, 14u)   D6A_CR_MUT(table, 15u)
+D6A_CR_MUT(noset, 16u) D6A_CR_MUT(set1, 17u)   D6A_CR_MUT(countcache, 18u) D6A_CR_MUT(seven, 19u) D6A_CR_MUT(cmode, 20u)
+D6A_CR_MUT(countsext, 21u) D6A_CR_MUT(gt, 22u) D6A_CR_MUT(second, 23u) D6A_CR_MUT(down, 24u)     D6A_CR_MUT(nostep, 25u)
+
+/* 0x2CADC config_set_defaults: no argument. The raw runs with its three calls the port leaves out (the
+ * message draw, the 180-tick wait and the cell release, PORT in config.c) poked to nops. The mutants
+ * restate config.c's body. */
+static void d6a_2cadc_core(u32 mut)
+{
+    if (mut == 13u) config_keys_apply_defaults();                                /* @keysfirst */
+    u32 v29 = config_menu_default_bits((mut == 1u) ? 0xA2EB0u : 0xA2EB4u);       /* @table */
+    config_field_set((mut == 2u) ? 0x28u : 0x29u, (mut == 3u) ? (v29 & 0xFFu) : v29);   /* @f29 @v29 */
+    config_field_set((mut == 4u) ? 0x37u : 0x35u, (mut == 5u) ? 0xA1u : 0xA0u);  /* @order @a0 */
+    config_field_set((mut == 4u) ? 0x35u : 0x37u, 0xA0u);
+    u32 v2a = config_field_get((mut == 6u) ? 0x29u : 0x2Au);                     /* @get */
+    if (mut == 7u) v2a = (v2a & 0xFCu) | 3u;                                     /* @al: the old code */
+    else if (mut == 8u) v2a = (v2a & 0xFFFFFFF8u) | 3u;                          /* @mask */
+    else if (mut == 9u) v2a = (v2a & 0xFFFFFFFCu) | 1u;                          /* @or */
+    else v2a = (v2a & 0xFFFFFFFCu) | 3u;
+    config_field_set((mut == 11u) ? 0x2Bu : 0x2Au, v2a);                         /* @f2a */
+    if (mut != 12u && mut != 13u) config_keys_apply_defaults();                  /* @nokeys */
+}
+static void b_d6a_2cadc(const u32 *r, u32 *eax) { (void)r; config_set_defaults(); *eax = 0u; }
+#define D6A_SD_MUT(name, n) \
+    static void m_d6a_sd_##name(const u32 *r, u32 *eax) { (void)r; d6a_2cadc_core(n); *eax = 0u; }
+D6A_SD_MUT(table, 1u) D6A_SD_MUT(f29, 2u)  D6A_SD_MUT(v29, 3u)   D6A_SD_MUT(order, 4u)  D6A_SD_MUT(a0, 5u)
+D6A_SD_MUT(get, 6u)   D6A_SD_MUT(al, 7u)   D6A_SD_MUT(mask, 8u)  D6A_SD_MUT(or, 9u)
+D6A_SD_MUT(f2a, 11u)  D6A_SD_MUT(nokeys, 12u) D6A_SD_MUT(keysfirst, 13u)
+
+/* 0x2D6F8 config_validate: no argument. The port models the storage as absent (config.c, PORT: both
+ * reads -1); the raw runs its storage load and reads from their bytes and its two deferred high-score
+ * validators as nops. The mutants restate config.c's body for that model. */
+static void d6a_2d6f8_core(u32 mut)
+{
+    if (mut != 1u) DSB(0x00105DA5u) = 0u;                                        /* @noda5 */
+    if (mut != 2u) DSB(0x00105DA4u) = 0u;                                        /* @noda4 */
+    u32 gate = DSB(0x0002D490u);
+    if (mut == 3u) gate = 1u;                                                    /* @noret */
+    if (gate == 0u) return;
+    if (DSD(0x00105E30u) != 0x9C94D2C4u) {
+        DSB(0x00105DD8u) |= (mut == 4u) ? 4u : 6u;                               /* @or6 */
+        if (mut != 5u && mut != 7u) mem_fill(0x00105DE1u, 0, (mut == 8u) ? 0x4Eu : 0x53u);   /* @nofill1 @fill1len */
+        if (mut != 9u) DSB(0x00105DD8u) |= 1u;                                   /* @or1 */
+        if (mut != 6u && mut != 7u) mem_fill(0x00105DB0u, 0, (mut == 10u) ? 0x27u : 0x26u);  /* @nofill2 @fill2len */
+        DSB(0x00105E2Fu) = 0u;
+        if (mut == 11u) DSD(0x00105E30u) = 0x9C94D2C4u;                          /* @magicearly */
+        if (mut != 12u) config_set_defaults();                                   /* @nodefaults */
+        DSD(0x00105E30u) = (mut == 13u) ? 0xC4D2949Cu : 0x9C94D2C4u;             /* @magicbe */
+        if (mut == 14u) { config_storage_touch(2u); config_storage_touch(1u); }  /* @touchorder */
+        else { config_storage_touch(1u); if (mut != 15u) config_storage_touch(2u); }   /* @notouch2 */
+        if (mut != 16u) config_storage_touch(0u);                                /* @notouch0 */
+    }
+    if (mut != 17u) DSB(0x00105DA7u) = (mut == 18u) ? 2u : 1u;                   /* @noda7 @da7 */
+    if (mut != 19u) (void)config_field_get((mut == 20u) ? 0x2Au : 0x24u);        /* @noget @getfield */
+}
+static void b_d6a_2d6f8(const u32 *r, u32 *eax) { (void)r; config_validate(); *eax = 0u; }
+#define D6A_CV_MUT(name, n) \
+    static void m_d6a_cv_##name(const u32 *r, u32 *eax) { (void)r; d6a_2d6f8_core(n); *eax = 0u; }
+D6A_CV_MUT(noda5, 1u)   D6A_CV_MUT(noda4, 2u)    D6A_CV_MUT(noret, 3u)     D6A_CV_MUT(or6, 4u)     D6A_CV_MUT(nofill1, 5u)
+D6A_CV_MUT(nofill2, 6u) D6A_CV_MUT(nofill, 7u)   D6A_CV_MUT(fill1len, 8u)  D6A_CV_MUT(or1, 9u)     D6A_CV_MUT(fill2len, 10u)
+D6A_CV_MUT(magicearly, 11u) D6A_CV_MUT(nodefaults, 12u) D6A_CV_MUT(magicbe, 13u) D6A_CV_MUT(touchorder, 14u)
+D6A_CV_MUT(notouch2, 15u) D6A_CV_MUT(notouch0, 16u) D6A_CV_MUT(noda7, 17u) D6A_CV_MUT(da7, 18u)    D6A_CV_MUT(noget, 19u)
+D6A_CV_MUT(getfield, 20u)
+
+/* 0x2EA78 config_screen_wait: EAX = n. The raw's BIOS peek `int 0x16` (0x2EB15) is `cmp eax,eax` in every
+ * case (no key); the port's key queue is empty (input_clear). The mutants restate config.c's body with the
+ * ISR gate byte 0x104B22 at 1 (the port's tick model, PORT, is off). */
+#include "platform/input.h"
+static void d6a_2ea78_core(s32 n, u32 mut)
+{
+    s32 ecx = n;
+    if (mut == 2u) DSW(0x00105F30u) = 0u;                                        /* @latchw */
+    else if (mut != 1u) DSD(0x00105F30u) = 0u;                                   /* @nolatch */
+    if (mut != 3u) actors_update();                                              /* @noupdate */
+    if (mut == 6u) render_list();                                                /* @order */
+    if (mut != 4u) render_list_sort();                                           /* @nosort */
+    if (mut == 10u) { u32 t = DSD(0x000E87A0u); DSD(0x000E87A0u) = DSD(0x000E87A4u); DSD(0x000E87A4u) = t; }   /* @swapearly */
+    if (mut != 5u && mut != 6u) render_list();                                   /* @nolist */
+    const u8 *src = mem + DSD(0x000E87A4u);
+    if (DSB(0x001014FCu) != 0u) {
+        if (mut == 8u) DSD(0x001014FCu) = 0u;                                    /* @flagw */
+        else if (mut != 7u) DSB(0x001014FCu) = 0u;                               /* @flagkeep */
+    }
+    if (mut == 12u) gfx_flush_palette();                                         /* @flushfirst */
+    if (mut != 9u && mut != 10u) {                                               /* @noswap */
+        u32 t = DSD(0x000E87A0u); DSD(0x000E87A0u) = DSD(0x000E87A4u); DSD(0x000E87A4u) = t;
+    }
+    if (mut != 11u && mut != 12u) gfx_flush_palette();                           /* @noflush */
+    gfx_present(src, 320, 200);
+    if (ecx == -1 && mut != 13u) return;                                         /* @m1 */
+    for (;;) {
+        if (mut == 17u) (void)input_pump();                                      /* @pumpfirst */
+        u16 seen = DSW(0x000EF6DEu);
+        while (DSW(0x000EF6DEu) == seen) game_audio_service();
+        if (mut != 17u) (void)input_pump();
+        s32 prev = ecx;
+        ecx--;
+        if (!((mut == 14u) ? (prev > 0) : (mut == 15u) ? (prev >= -1) : (prev > -1))) break;   /* @passes @ge */
+        if (mut == 15u && prev < -1) break;
+    }
+}
+static void b_d6a_2ea78(const u32 *r, u32 *eax) { input_clear(); config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
+static void b_d6a_2ea74(const u32 *r, u32 *eax) { (void)r; input_clear(); config_screen_wait_zero(); *eax = 0u; }
+#define D6A_SW_MUT(name, n) \
+    static void m_d6a_sw_##name(const u32 *r, u32 *eax) { input_clear(); d6a_2ea78_core((s32)r[R_EAX], n); *eax = 0u; }
+D6A_SW_MUT(nolatch, 1u) D6A_SW_MUT(latchw, 2u)  D6A_SW_MUT(noupdate, 3u) D6A_SW_MUT(nosort, 4u)  D6A_SW_MUT(nolist, 5u)
+D6A_SW_MUT(order, 6u)   D6A_SW_MUT(flagkeep, 7u) D6A_SW_MUT(flagw, 8u)   D6A_SW_MUT(noswap, 9u)  D6A_SW_MUT(swapearly, 10u)
+D6A_SW_MUT(noflush, 11u) D6A_SW_MUT(flushfirst, 12u) D6A_SW_MUT(m1, 13u) D6A_SW_MUT(passes, 14u) D6A_SW_MUT(ge, 15u)
+D6A_SW_MUT(pumpfirst, 17u)
+static void m_d6a_swz_n1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(1); *eax = 0u; }
+static void m_d6a_swz_m1(const u32 *r, u32 *eax)  { (void)r; input_clear(); config_screen_wait(-1); *eax = 0u; }
+static void m_d6a_swz_eax(const u32 *r, u32 *eax) { input_clear(); config_screen_wait((s32)r[R_EAX]); *eax = 0u; }
+
+/* 0x249F0 game_quit_prompt: AL = hard_quit. The raw's blocking BIOS read `int 0x16` (AH = 0, 0x24A64) is
+ * `mov al,K` (B0 K) in every case; the binding feeds the same K, read from the poked byte 0x24A65, to
+ * the port's BIOS-style key queue (input.c). One key a case. The mutants restate flow.c's body for one
+ * key (a key that matches neither answer leaves the prompt flag set instead of reading another). */
+static void d6a_249f0_key(void) { input_clear(); input_push(0u, DSB(0x00024A65u)); }
+static void d6a_249f0_core(const u32 *r, u32 mut)
+{
+    u32 hard = r[R_EAX];
+    int h = (mut == 1u) ? (hard != 0u) : ((hard & 0xFFu) != 0u);                 /* @hard32 */
+    u32 id = (h != (mut == 2u)) ? 0x1EFu : 0x1EEu;                               /* @id */
+    if (mut != 3u) DSB(0x00104B22u) = 1u;                                        /* @noflag */
+    if (mut != 4u) sound_pause();                                                /* @nopause */
+    text_cursor_set((mut == 5u) ? 0 : -1, (mut == 6u) ? 0xB : 0xA, game_string_get(id),
+                    (mut == 7u) ? 0x2000u : 0x1000u);                            /* @col @row @mode */
+    config_screen_wait((mut == 8u) ? 0 : -1);                                    /* @wait0 */
+    s32 yes = (s8)game_string_get((mut == 9u) ? 0x1F1u : 0x1F0u)[0];             /* @answers */
+    s32 no = (s8)game_string_get((mut == 9u) ? 0x1F0u : 0x1F1u)[0];
+    s32 key = (s32)(input_get_key() & 0xFFu);
+    if (mut != 10u && key >= ((mut == 11u) ? 0x60 : 0x61) && key <= ((mut == 12u) ? 0x7B : 0x7A)) key -= 0x20;   /* @noupper @lo @hi */
+    int isyes = (key == yes), isno = (key == no);
+    if (mut == 13u && isno) isyes = 0;                                           /* @order */
+    if (isyes) {
+        if (mut != 14u) DSB(0x00104B22u) = 0u;                                   /* @flagkeep */
+        if (!h) { if (mut == 16u) DSD(0x000A81A8u) = 1u; else if (mut != 15u) DSB(0x000A81A8u) = 1u; }   /* @noquit @quitw */
+        else return;                                   /* the soft-restart arm: no case */
+    } else if (isno) {
+        DSB(0x00104B22u) = 0u;
+        if (mut != 17u) text_cells_release(-1, 0xA, game_string_get((mut == 18u) ? (id ^ 1u) : id),
+                                           (mut == 19u) ? 0x2000u : 0x1000u);    /* @norelease @relid @relmode */
+    }
+    if (mut != 20u) sound_resume();                                              /* @noresume */
+}
+static void b_d6a_249f0(const u32 *r, u32 *eax)
+{
+    d6a_249f0_key();
+    game_quit_prompt(r[R_EAX]);
+    input_clear();
+    *eax = 0u;
+}
+#define D6A_QP_MUT(name, n) \
+    static void m_d6a_qp_##name(const u32 *r, u32 *eax) { d6a_249f0_key(); d6a_249f0_core(r, n); input_clear(); *eax = 0u; }
+D6A_QP_MUT(hard32, 1u)  D6A_QP_MUT(id, 2u)     D6A_QP_MUT(noflag, 3u)  D6A_QP_MUT(nopause, 4u)  D6A_QP_MUT(col, 5u)
+D6A_QP_MUT(row, 6u)     D6A_QP_MUT(mode, 7u)   D6A_QP_MUT(wait0, 8u)   D6A_QP_MUT(answers, 9u)  D6A_QP_MUT(noupper, 10u)
+D6A_QP_MUT(lo, 11u)     D6A_QP_MUT(hi, 12u)    D6A_QP_MUT(order, 13u)  D6A_QP_MUT(flagkeep, 14u) D6A_QP_MUT(noquit, 15u)
+D6A_QP_MUT(quitw, 16u)  D6A_QP_MUT(norelease, 17u) D6A_QP_MUT(relid, 18u) D6A_QP_MUT(relmode, 19u) D6A_QP_MUT(noresume, 20u)
+
+/* 0x1C470 gfx_flush_palette: no argument. The raw runs with its retrace read `in al,dx` as `mov al,8` and
+ * its four DAC writes `out dx,al` as nops: only the dirty list's own bookkeeping is compared (the port's
+ * DAC is the host's gfx_dac). The mutants restate that bookkeeping. */
+static void d6a_1c470_core(u32 mut)
+{
+    u32 rec = 0x00107498u, head = DSD(0x00107798u);
+    if (mut == 8u) { DSD(0x00107798u) = 0x00107498u; head = 0x00107498u; }       /* @headfirst */
+    while (rec != head) {
+        s32 sum = (s32)(DSD(rec + 4u) + DSD(rec + 12u));
+        int over = (mut == 2u) ? ((u32)sum > 0x100u) : (sum > 0x100);            /* @unsigned */
+        if (over && mut != 1u) {                                                 /* @noclamp */
+            if (mut == 4u) DSD(rec + 8u) -= (u32)(sum - 0x100);                  /* @clampcount */
+            else DSD(rec + 12u) -= (u32)(sum - ((mut == 3u) ? 0xFF : 0x100));    /* @clampby */
+        }
+        if (mut == 6u) DSW(rec + 4u) = 0xFFFFu;                                  /* @markw */
+        else if (mut != 5u) DSD(rec + 4u) = (mut == 7u) ? 0u : 0xFFFFFFFFu;      /* @nomark @mark0 */
+        rec += 16u;
+        if (mut == 10u) break;                                                   /* @one */
+    }
+    if (mut != 9u) DSD(0x00107798u) = 0x00107498u;                               /* @nohead */
+}
+static void b_d6a_1c470(const u32 *r, u32 *eax) { (void)r; gfx_flush_palette(); *eax = 0u; }
+#define D6A_FP_MUT(name, n) \
+    static void m_d6a_fp_##name(const u32 *r, u32 *eax) { (void)r; d6a_1c470_core(n); *eax = 0u; }
+D6A_FP_MUT(noclamp, 1u) D6A_FP_MUT(unsigned, 2u) D6A_FP_MUT(clampby, 3u) D6A_FP_MUT(clampcount, 4u) D6A_FP_MUT(nomark, 5u)
+D6A_FP_MUT(markw, 6u)   D6A_FP_MUT(mark0, 7u)    D6A_FP_MUT(headfirst, 8u) D6A_FP_MUT(nohead, 9u)  D6A_FP_MUT(one, 10u)
+
+/* 0x52106 gfx_screen_reset: EAX = ticks. The raw runs with its retrace read as `mov al,8`, its four DAC
+ * writes as nops and its third 0x51F72 call, the fill of the aperture 0xA0000, as nops: the two tick
+ * stores and the two offscreen fills are compared (the port's DAC and aperture are the host's). The
+ * mutants restate that part of gfx.c's body. */
+static void d6a_52106_core(u32 ticks, u32 mut)
+{
+    if (mut != 1u) DSD(0x00101508u) = ticks;                                     /* @no508 */
+    if (mut != 2u) DSD(0x0010150Cu) = ticks;                                     /* @no50c */
+    if (mut == 7u) DSD(0x0010150Cu) = ticks & 0xFFFFu;                           /* @w50c */
+    u32 v = (mut == 5u) ? (ticks & 0xFFu) * 0x01010101u : ticks;                 /* @byte */
+    if (mut == 6u) {                                                             /* @short */
+        for (u32 k = 0u; k < 0xFA00u - 4u; k += 4u) DSD(DSD(0x001014E8u) + k) = v;
+    } else {
+        gfx_fill_screen(DSD((mut == 4u) ? 0x001014E4u : 0x001014E8u), v);        /* @e4twice */
+    }
+    if (mut != 3u) gfx_fill_screen(DSD(0x001014E4u), v);                         /* @one */
+}
+static void b_d6a_52106(const u32 *r, u32 *eax) { gfx_screen_reset(r[R_EAX]); *eax = 0u; }
+#define D6A_SR_MUT(name, n) \
+    static void m_d6a_sr_##name(const u32 *r, u32 *eax) { d6a_52106_core(r[R_EAX], n); *eax = 0u; }
+D6A_SR_MUT(no508, 1u) D6A_SR_MUT(no50c, 2u) D6A_SR_MUT(one, 3u) D6A_SR_MUT(e4twice, 4u) D6A_SR_MUT(byte, 5u)
+D6A_SR_MUT(short, 6u) D6A_SR_MUT(w50c, 7u)
+/* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -56070,6 +56432,163 @@ static const binding_t k_bindings[] = {
 #define X(n) { "fight_effects_pass_pre@" #n, m_d5j_49c78_##n, 0x00000000u },
     D5J_FX_PRE(X)
 #undef X
+    /* track D wave 6, batch d6a */
+    { "text_blit_glyph",                 b_d6a_1c5e8, 0x00000000u },
+    { "text_blit_glyph@chmask",          m_d6a_gl_chmask, 0x00000000u },
+    { "text_blit_glyph@nohflip",         m_d6a_gl_nohflip, 0x00000000u },
+    { "text_blit_glyph@pal",             m_d6a_gl_pal, 0x00000000u },
+    { "text_blit_glyph@nopal",           m_d6a_gl_nopal, 0x00000000u },
+    { "text_blit_glyph@xy",              m_d6a_gl_xy, 0x00000000u },
+    { "text_blit_glyph@clip",            m_d6a_gl_clip, 0x00000000u },
+    { "text_blit_glyph@noblit",          m_d6a_gl_noblit, 0x00000000u },
+    { "text_blit_glyph@ge",              m_d6a_gl_ge, 0x00000000u },
+    { "text_blit_glyph@adv10",           m_d6a_gl_adv10, 0x00000000u },
+    { "text_blit_glyph@adv8",            m_d6a_gl_adv8, 0x00000000u },
+    { "text_blit_glyph@bit",             m_d6a_gl_bit, 0x00000000u },
+    { "text_blit_glyph_rr",              b_d6a_1c5e8, 0x00000000u },
+    { "text_blit_glyph_rr@colcache",     m_d6a_gl_colcache, 0x00000000u },
+    { "text_blit_glyph_rr@rowcache",     m_d6a_gl_rowcache, 0x00000000u },
+    { "text_blit_glyph_rr@addcache",     m_d6a_gl_addcache, 0x00000000u },
+    { "text_blit_glyph_rr@wreread",      m_d6a_gl_wreread, 0x00000000u },
+    { "svc_buttons_draw",                b_d6a_31a78, 0x00000000u },
+    { "svc_buttons_draw@side", m_d6a_bd_side, 0x00000000u },
+    { "svc_buttons_draw@side8", m_d6a_bd_side8, 0x00000000u },
+    { "svc_buttons_draw@left4", m_d6a_bd_left4, 0x00000000u },
+    { "svc_buttons_draw@right6", m_d6a_bd_right6, 0x00000000u },
+    { "svc_buttons_draw@three", m_d6a_bd_three, 0x00000000u },
+    { "svc_buttons_draw@zero", m_d6a_bd_zero, 0x00000000u },
+    { "svc_buttons_draw@key8", m_d6a_bd_key8, 0x00000000u },
+    { "svc_buttons_draw@raw", m_d6a_bd_raw, 0x00000000u },
+    { "svc_buttons_draw@step", m_d6a_bd_step, 0x00000000u },
+    { "svc_buttons_draw@nohalf", m_d6a_bd_nohalf, 0x00000000u },
+    { "svc_buttons_draw@halfup", m_d6a_bd_halfup, 0x00000000u },
+    { "svc_buttons_draw@lr", m_d6a_bd_lr, 0x00000000u },
+    { "svc_buttons_draw@rows", m_d6a_bd_rows, 0x00000000u },
+    { "svc_buttons_draw@mode", m_d6a_bd_mode, 0x00000000u },
+    { "svc_buttons_draw@rowoff", m_d6a_bd_rowoff, 0x00000000u },
+    { "config_code_row",                 b_d6a_305fc, 0x00000000u },
+    { "config_code_row@flag1", m_d6a_cr_flag1, 0x00000000u },
+    { "config_code_row@text1", m_d6a_cr_text1, 0x00000000u },
+    { "config_code_row@smode", m_d6a_cr_smode, 0x00000000u },
+    { "config_code_row@bit", m_d6a_cr_bit, 0x00000000u },
+    { "config_code_row@name2", m_d6a_cr_name2, 0x00000000u },
+    { "config_code_row@from4", m_d6a_cr_from4, 0x00000000u },
+    { "config_code_row@to7", m_d6a_cr_to7, 0x00000000u },
+    { "config_code_row@lt31", m_d6a_cr_lt31, 0x00000000u },
+    { "config_code_row@gt38", m_d6a_cr_gt38, 0x00000000u },
+    { "config_code_row@nostop", m_d6a_cr_nostop, 0x00000000u },
+    { "config_code_row@base", m_d6a_cr_base, 0x00000000u },
+    { "config_code_row@setearly", m_d6a_cr_setearly, 0x00000000u },
+    { "config_code_row@rec1", m_d6a_cr_rec1, 0x00000000u },
+    { "config_code_row@table", m_d6a_cr_table, 0x00000000u },
+    { "config_code_row@noset", m_d6a_cr_noset, 0x00000000u },
+    { "config_code_row@set1", m_d6a_cr_set1, 0x00000000u },
+    { "config_code_row@seven", m_d6a_cr_seven, 0x00000000u },
+    { "config_code_row@cmode", m_d6a_cr_cmode, 0x00000000u },
+    { "config_code_row@countsext", m_d6a_cr_countsext, 0x00000000u },
+    { "config_code_row@gt", m_d6a_cr_gt, 0x00000000u },
+    { "config_code_row@second", m_d6a_cr_second, 0x00000000u },
+    { "config_code_row@down", m_d6a_cr_down, 0x00000000u },
+    { "config_code_row@nostep", m_d6a_cr_nostep, 0x00000000u },
+    { "config_code_row_rr",              b_d6a_305fc, 0x00000000u },
+    { "config_code_row_rr@flagcache", m_d6a_cr_flagcache, 0x00000000u },
+    { "config_code_row_rr@countcache", m_d6a_cr_countcache, 0x00000000u },
+    { "config_set_defaults",             b_d6a_2cadc, 0x00000000u },
+    { "config_set_defaults@table", m_d6a_sd_table, 0x00000000u },
+    { "config_set_defaults@f29", m_d6a_sd_f29, 0x00000000u },
+    { "config_set_defaults@v29", m_d6a_sd_v29, 0x00000000u },
+    { "config_set_defaults@order", m_d6a_sd_order, 0x00000000u },
+    { "config_set_defaults@a0", m_d6a_sd_a0, 0x00000000u },
+    { "config_set_defaults@get", m_d6a_sd_get, 0x00000000u },
+    { "config_set_defaults@al", m_d6a_sd_al, 0x00000000u },
+    { "config_set_defaults@mask", m_d6a_sd_mask, 0x00000000u },
+    { "config_set_defaults@or", m_d6a_sd_or, 0x00000000u },
+    { "config_set_defaults@f2a", m_d6a_sd_f2a, 0x00000000u },
+    { "config_set_defaults@nokeys", m_d6a_sd_nokeys, 0x00000000u },
+    { "config_set_defaults@keysfirst", m_d6a_sd_keysfirst, 0x00000000u },
+    { "config_validate",                 b_d6a_2d6f8, 0x00000000u },
+    { "config_validate@noda5", m_d6a_cv_noda5, 0x00000000u },
+    { "config_validate@noda4", m_d6a_cv_noda4, 0x00000000u },
+    { "config_validate@noret", m_d6a_cv_noret, 0x00000000u },
+    { "config_validate@or6", m_d6a_cv_or6, 0x00000000u },
+    { "config_validate@nofill1", m_d6a_cv_nofill1, 0x00000000u },
+    { "config_validate@nofill2", m_d6a_cv_nofill2, 0x00000000u },
+    { "config_validate@nofill", m_d6a_cv_nofill, 0x00000000u },
+    { "config_validate@fill1len", m_d6a_cv_fill1len, 0x00000000u },
+    { "config_validate@or1", m_d6a_cv_or1, 0x00000000u },
+    { "config_validate@fill2len", m_d6a_cv_fill2len, 0x00000000u },
+    { "config_validate@magicearly", m_d6a_cv_magicearly, 0x00000000u },
+    { "config_validate@nodefaults", m_d6a_cv_nodefaults, 0x00000000u },
+    { "config_validate@magicbe", m_d6a_cv_magicbe, 0x00000000u },
+    { "config_validate@touchorder", m_d6a_cv_touchorder, 0x00000000u },
+    { "config_validate@notouch2", m_d6a_cv_notouch2, 0x00000000u },
+    { "config_validate@notouch0", m_d6a_cv_notouch0, 0x00000000u },
+    { "config_validate@noda7", m_d6a_cv_noda7, 0x00000000u },
+    { "config_validate@da7", m_d6a_cv_da7, 0x00000000u },
+    { "config_validate@noget", m_d6a_cv_noget, 0x00000000u },
+    { "config_validate@getfield", m_d6a_cv_getfield, 0x00000000u },
+    { "config_screen_wait",              b_d6a_2ea78, 0x00000000u },
+    { "config_screen_wait@nolatch", m_d6a_sw_nolatch, 0x00000000u },
+    { "config_screen_wait@latchw", m_d6a_sw_latchw, 0x00000000u },
+    { "config_screen_wait@noupdate", m_d6a_sw_noupdate, 0x00000000u },
+    { "config_screen_wait@nosort", m_d6a_sw_nosort, 0x00000000u },
+    { "config_screen_wait@nolist", m_d6a_sw_nolist, 0x00000000u },
+    { "config_screen_wait@order", m_d6a_sw_order, 0x00000000u },
+    { "config_screen_wait@flagkeep", m_d6a_sw_flagkeep, 0x00000000u },
+    { "config_screen_wait@flagw", m_d6a_sw_flagw, 0x00000000u },
+    { "config_screen_wait@noswap", m_d6a_sw_noswap, 0x00000000u },
+    { "config_screen_wait@swapearly", m_d6a_sw_swapearly, 0x00000000u },
+    { "config_screen_wait@noflush", m_d6a_sw_noflush, 0x00000000u },
+    { "config_screen_wait@flushfirst", m_d6a_sw_flushfirst, 0x00000000u },
+    { "config_screen_wait@m1", m_d6a_sw_m1, 0x00000000u },
+    { "config_screen_wait@passes", m_d6a_sw_passes, 0x00000000u },
+    { "config_screen_wait@ge", m_d6a_sw_ge, 0x00000000u },
+    { "config_screen_wait@pumpfirst", m_d6a_sw_pumpfirst, 0x00000000u },
+    { "config_screen_wait_zero",         b_d6a_2ea74, 0x00000000u },
+    { "config_screen_wait_zero@n1", m_d6a_swz_n1, 0x00000000u },
+    { "config_screen_wait_zero@m1", m_d6a_swz_m1, 0x00000000u },
+    { "config_screen_wait_zero@eax", m_d6a_swz_eax, 0x00000000u },
+    { "game_quit_prompt",                b_d6a_249f0, 0x00000000u },
+    { "game_quit_prompt@hard32", m_d6a_qp_hard32, 0x00000000u },
+    { "game_quit_prompt@id", m_d6a_qp_id, 0x00000000u },
+    { "game_quit_prompt@noflag", m_d6a_qp_noflag, 0x00000000u },
+    { "game_quit_prompt@nopause", m_d6a_qp_nopause, 0x00000000u },
+    { "game_quit_prompt@col", m_d6a_qp_col, 0x00000000u },
+    { "game_quit_prompt@row", m_d6a_qp_row, 0x00000000u },
+    { "game_quit_prompt@mode", m_d6a_qp_mode, 0x00000000u },
+    { "game_quit_prompt@wait0", m_d6a_qp_wait0, 0x00000000u },
+    { "game_quit_prompt@answers", m_d6a_qp_answers, 0x00000000u },
+    { "game_quit_prompt@noupper", m_d6a_qp_noupper, 0x00000000u },
+    { "game_quit_prompt@lo", m_d6a_qp_lo, 0x00000000u },
+    { "game_quit_prompt@hi", m_d6a_qp_hi, 0x00000000u },
+    { "game_quit_prompt@order", m_d6a_qp_order, 0x00000000u },
+    { "game_quit_prompt@flagkeep", m_d6a_qp_flagkeep, 0x00000000u },
+    { "game_quit_prompt@noquit", m_d6a_qp_noquit, 0x00000000u },
+    { "game_quit_prompt@quitw", m_d6a_qp_quitw, 0x00000000u },
+    { "game_quit_prompt@norelease", m_d6a_qp_norelease, 0x00000000u },
+    { "game_quit_prompt@relid", m_d6a_qp_relid, 0x00000000u },
+    { "game_quit_prompt@relmode", m_d6a_qp_relmode, 0x00000000u },
+    { "game_quit_prompt@noresume", m_d6a_qp_noresume, 0x00000000u },
+    { "gfx_flush_palette",               b_d6a_1c470, 0x00000000u },
+    { "gfx_flush_palette@noclamp", m_d6a_fp_noclamp, 0x00000000u },
+    { "gfx_flush_palette@unsigned", m_d6a_fp_unsigned, 0x00000000u },
+    { "gfx_flush_palette@clampby", m_d6a_fp_clampby, 0x00000000u },
+    { "gfx_flush_palette@clampcount", m_d6a_fp_clampcount, 0x00000000u },
+    { "gfx_flush_palette@nomark", m_d6a_fp_nomark, 0x00000000u },
+    { "gfx_flush_palette@markw", m_d6a_fp_markw, 0x00000000u },
+    { "gfx_flush_palette@mark0", m_d6a_fp_mark0, 0x00000000u },
+    { "gfx_flush_palette@headfirst", m_d6a_fp_headfirst, 0x00000000u },
+    { "gfx_flush_palette@nohead", m_d6a_fp_nohead, 0x00000000u },
+    { "gfx_flush_palette@one", m_d6a_fp_one, 0x00000000u },
+    { "gfx_screen_reset",                b_d6a_52106, 0x00000000u },
+    { "gfx_screen_reset@no508", m_d6a_sr_no508, 0x00000000u },
+    { "gfx_screen_reset@no50c", m_d6a_sr_no50c, 0x00000000u },
+    { "gfx_screen_reset@one", m_d6a_sr_one, 0x00000000u },
+    { "gfx_screen_reset@e4twice", m_d6a_sr_e4twice, 0x00000000u },
+    { "gfx_screen_reset@byte", m_d6a_sr_byte, 0x00000000u },
+    { "gfx_screen_reset@short", m_d6a_sr_short, 0x00000000u },
+    { "gfx_screen_reset@w50c", m_d6a_sr_w50c, 0x00000000u },
+    /* d6a table end */
 };
 
 static const binding_t *find_binding(const char *name)
