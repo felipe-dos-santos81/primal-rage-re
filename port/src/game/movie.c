@@ -22,6 +22,19 @@ static u32 s_pace;        /* sub-tick pacing remainder, in us*60 */
 
 u32 movie_frames_presented(void) { return s_presented; }
 
+/* PORT: 0x1C740's name passes by value to the differential harness's call
+ * seam, eight bytes as two little-endian dwords (the bytes up to its NUL, zero
+ * after it): the port's names are C literals, the raw's the image strings
+ * 0x80038 and 0x80044. */
+static u32 movie_name_dw(const char *s, u32 at)
+{
+    u32 v = 0u, n = 0u;
+    if (s == NULL) return 0u;
+    while (n < at + 4u && s[n] != '\0') n++;
+    for (u32 k = at; k < n; k++) v |= (u32)(u8)s[k] << (8u * (k - at));
+    return v;
+}
+
 /* PORT: 0x1C740 blits each of the frame's dirty rectangles (0x64ED8) through
  * the host-owned 0x50D23 (record §K10): the dwords where DAT_000E87A4 differs
  * from the DAT_000E87A0 shadow go to the aperture and the shadow. The shadow
@@ -84,6 +97,7 @@ static void movie_screen_changed(void)
  * blank (capture 2095). */
 int movie_play(const char *game_dir, const char *name)
 {
+    PR_SEAM_RET(0x1C740u, movie_name_dw(name, 0u), movie_name_dw(name, 4u));
     s_presented = 0;
     s_pace = 0;
     if (game_dir == NULL || name == NULL || name[0] == '\0') return 0;

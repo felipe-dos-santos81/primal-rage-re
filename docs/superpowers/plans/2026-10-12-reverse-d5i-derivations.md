@@ -191,9 +191,7 @@ A store moved across a call is caught by the memory at the call alone (`@latchea
 
 ## §6 Queue entries not done
 
-- `0x11000` (the attract sub-machine, 1380 bytes, 49 blocks, 13 phases on the byte `0xF0A6F`, 16 callee
-  addresses, one of them the named gap `0x1C740`): not started beyond its block scan and its caller trace
-  (`0x11D70`, then `0x10DB0`/`0x10E18`/`0x2BF08`, as `0x11578`). No finding either way.
+None: `0x11000`, left open by the batch's first pass, is rowed in §8.
 
 ## §7 Counter
 
@@ -207,3 +205,96 @@ diff-verify: 801/801 functions VERIFIED; 9963/9963 mutants detected; 1 named gap
 of which this batch's 17 rows and 743 mutants. The harness files are additive against the base (`git diff
 --numstat 3790f323`: 0 deletions in `tools/diff_verify.py`, `port/tests/diff_runner.c` and
 `tools/tests/test_diff_verify.py`). Not run here: the full unittest suite, `make verify`, any oracle.
+
+## §8 Second block: `0x11000` (`attract_step`, attract.c)
+
+Added after the first pass, in its own contiguous blocks (`D5I2_SPECS`, the `d5i2_` bindings, `D5I2_MASKS`
+/ `D5I2_KINDS` / `D5I2_CASES`), so the first pass's lines are untouched. §7's counter line is the first
+pass's; §8.6 has the one measured after this block.
+
+### §8.1 The member
+
+| addr | name | size | callers, and what they read of EAX | mask |
+|---|---|---|---|---|
+| `0x11000` | `attract_step` | 1380 | one site `0x11D70`, then `0x11D75 call 0x10db0` and `call 0x10e18`, which load AH alone before any read (`0x10DB1`, `0x10E19`) and then `mov eax,0x100` or return, and `call 0x2bf08`, whose sites are traced (d1h §1 for this caller, d1c §1, d3a §1) | 0 |
+
+### §8.2 The rows
+
+| row | entry | cases | blocks | mutants | EAX mask | notes |
+|---|---|---|---|---|---|---|
+| `attract_step` | `0x11000` | 53 | 49/49 | 198 | 0 | the thirteen phases and two phase bytes above `0xC`; 15 stub addresses, so one row; `0x1C500` real over the stubbed `0x474E4`, `0x2C06C` real |
+| `attract_step_rr` | `0x11000` | 3 | 18/49 | 5 | 0 | phases 2, 4 and 9 with stubs that write what the raw reads after a call |
+
+203 mutants, all detected; the unmutated core is VERIFIED on both rows (temporary `@same` binding); every
+row and mutant binding ran ten times on the port side with identical output. No predicate of `0x11000`
+tests AL: its two tested returns are stored or used whole (`0x110DD mov [0xf0a48],eax`, the width at
+`0x1133A`), so there is no stub-EAX `0x100` case to make. It does not call `0x1C6D4`.
+
+Stubs this block adds (`E.callee_clobbers`; one line appended under the `# D5 d5i` comment of the expected
+dictionary): `0x1C740: (), 0x2C8F0: ("esi", "edi"), 0x10F28: (),`. Seams added, each the first statement:
+
+| addr | function | line |
+|---|---|---|
+| `0x2C8F0` | `attract_config_volumes` | `PR_SEAM(0x2C8F0u, 0xFFFFFFFEu);` |
+| `0x10F28` | `attract_voice_tick` | `PR_SEAM0(0x10F28u);` |
+| `0x1C740` | `movie_play` (movie.c) | `PR_SEAM_RET(0x1C740u, movie_name_dw(name, 0u), movie_name_dw(name, 4u));` |
+
+`0x2C8F0` is two port functions, one per EAX its call sites pass (d2c); `attract_config_volumes` is the
+`-2` one and has no C argument, so its seam reports the constant the raw passes in EAX (`0x110AB mov
+eax,0xfffffffe`). `0x1C740` takes the movie's name in EAX (`0x1C749 mov esi,eax`); the port's names are C
+literals with no mem[] offset, so the seam passes the first eight bytes by value (`movie_name_dw`, a static
+helper added to movie.c beside the seam: the bytes up to the NUL, zero after) and the `E.Call` reads
+`[eax]`, `[eax+4]`. The image strings are `twi5.smk` (`0x80038`) and `twg.smk\0` (`0x80044`).
+
+### §8.3 Correction
+
+3. **`attract_step` used the cycle counter `0xF0A5C` as a byte** — the raw uses the dword at every site:
+   phase 2 `0x11089 mov ecx,[0xf0a5c]`, `0x11091 inc ecx`, `0x11098 mov [0xf0a5c],ecx`, `0x1109E cmp ecx,4`,
+   `0x110A1 jl` (signed), `0x110A5 mov [0xf0a5c],edi` (EDI = 0); phase 9 `0x1143A cmp dword ptr
+   [0xf0a5c],0`; phase 0xB `0x114E4 mov ebx,[0xf0a5c]`, `test ebx,ebx`, then `cmp ebx,2` / `cmp ebx,3` /
+   `cmp ebx,1`. Old: phase 2 `u8 c = (u8)(DSB(..) + 1u); if (c >= 4u) c = 0u; DSB(..) = c;`, phases 9 and
+   0xB `DSB(DS_000F0A5C) == ...`. New: `s32 c = (s32)DSD(..) + 1; DSD(..) = (u32)c; if (c >= 4) DSD(..) =
+   0u;` and `DSD` in phases 9 and 0xB (one read into a local in 0xB). Phase 4 already read the dword. The
+   game keeps the counter in 0..4 (`0x10EBC` stores the dword 4), so no game path changes. Before the
+   correction: `c2` (`0x100`) `byte 0xF0A5C: original unchanged, port 0x01` and `byte 0xF0A5D: original
+   0x00, port unchanged`; `c3` (-2) `byte 0xF0A5C: original 0xFF, port 0x00`; `j2` (`0x100`) `byte 0xF0A68:
+   original 0x78, port 0xF0`; `l7` (`0x100`) `byte 0xF0A64: original 0x06, port 0x01`. The mutants `@p2byte`,
+   `@p9a5cbyte` and `@pba5cbyte` are the old reads (`@p2uns` is the dword with an unsigned compare).
+   Unproven against the oracles until the integrator's full gate.
+
+### §8.4 Limits
+
+- **The movies.** `0x1C740` is a named gap (a host replacement); here it is a stub on both sides, so the
+  row shows only that phase 0 asks for the two names in order, between `0x4F1D0` and the phase store. The
+  port prints a line to stderr when a movie returns 0 (case `a1`); nothing in mem[] changes.
+- **`0x110DD`, which acquire feeds `0xF0A48`.** A stub returns one EAX per case, so the eight `0x33754`
+  calls return the same value: that the first one's result is the one stored is not shown (the call order
+  and arguments are). The `_rr` row shows the later `0x13C70` reads the dword again.
+- **`0x11151`, EDI = `0xB4` at the `0x13C70` call** is not an argument of the port's three-argument
+  `effects_spawn` (a `/* PORT: */` note in attract.c) and is not compared.
+- **Phase 0xA** discards the spawn's EAX; **phase 9** discards it too.
+- Unhit blocks: none in `attract_step`; `attract_step_rr` names its 31, each hit by the plain row.
+
+### §8.5 Store sweep
+
+Every store has a seeded target and a dropped- or altered-store mutant: `0x9AD58` (`@p0no58`, `@p0v58`,
+`@p2no58`), the phase byte in each phase (`@pNnophase`), `0xF0A5C` (`@p2nowrap`, `@p2byte`), `0xF0A48`
+(`@p2noa48`, `@pbnoa48`, `@pba48w`), `0xF0A60`/`62`/`68`/`70` (`@p2noa60`.. `@p2noa70`, `@p8noa68`,
+`@p8noa70`, `@p9a68a`.., `@paa68`, `@paa70`), `0xF0A50`/`0xF0A4C` (`@p3nostore`, `@p3storew`, `@p5nostore`,
+`@p6nostore`, `@p7nostore`, `@p7store50`), the record's `+0x2C` (`@p4nostore`, `@p4no1000`, `@p4val`),
+`0xF0A64` and `0xF0A72` (`@pbv8`, `@pbv1`, `@pbv6`, `@pbno72a`/`b`/`c`), `0xF0A68` in phase 0xC
+(`@pcnodec`) and the copy (`@pcnocopy`, `@pcsrc`). A store moved across a call is caught by the memory at
+the call (`@p0late58`, `@p0phaseearly`, `@p4early`).
+
+### §8.6 Counter
+
+One full `PR_DIFF_JOBS=4 python3 tools/diff_verify.py --image /tmp/pr_d5i_img.bin --self-check` on the tree
+of this block's commit, `rc 0`:
+
+```
+diff-verify: 803/803 functions VERIFIED; 10166/10166 mutants detected; 1 named gaps; 505/636 rows with callees closed (167 have none).
+```
+
+(§7's line plus this block's 2 rows and 203 mutants.) The three harness files are additive against the
+first pass's last commit `150bd593` and against the base (`git diff --numstat`: 0 deletions). Not run: the
+full unittest suite, `make verify`, any oracle.

@@ -25100,6 +25100,158 @@ D5I_SPECS += [
        mutants=D5I_G_MUT),
 ]
 D1_SPECS += D5I_SPECS
+
+
+# ---- track D5 batch d5i, second block (record 2026-10-12-reverse-d5i §8): attract.c's 0x11000 ----
+D5I2_SPECS = []
+D5I2_REC, D5I2_REC2 = 0x0010A300, 0x0010A400                # zero BSS of the image
+# 0x11000's callees that had no stub (clobbers: E.callee_clobbers over the image), seamed by this batch.
+# 0x1C740 takes the movie's name by value (its first eight bytes): the port's names are C literals.
+D5I2_MOVIE = E.Call(0x1C740, ("[eax]", "[eax+4]"), eax=1)
+D5I2_VOL = E.Call(0x2C8F0, ("eax",), clobbers=("esi", "edi"))
+D5I2_TICK = E.Call(0x10F28, ())
+D5I2_WIDTH = E.Call(0x2F0F0, ("eax", "edx"), clobbers=("edx",))
+D5I2_CALLS = (VOICE, D5I_INRESET, D5I_RESETAL, D5I_ORIGIN, D5I2_MOVIE, D5I2_VOL, C1_PAL_ACQ, D5I_ROW, P6_13C70, SPAWN,
+              P7_2B150, D1C_STR, D5I2_WIDTH, D1D_CURSOR, D5I2_TICK)
+# the same callees leaving what 0x11000 reads after each: 0x38B18 the dword 0xF0A48 (0x11147), 0x2C3FC the
+# record dword 0xF0A50 (0x11206), 0x2F198 the option byte 0x104529 (0x113F4), the dword 0xF0A5C (0x1143A)
+# and the byte 0x9AD58 (0x11550)
+D5I2_CALLS_W = (d5i_w(VOICE, (0x000F0A50, le32(D5I2_REC2))), D5I_INRESET, D5I_RESETAL, D5I2_VOL, C1_PAL_ACQ,
+                d5i_w(D5I_ROW, (0x000F0A48, le32(0x0010A580))), P6_13C70, SPAWN, D1C_STR, D5I2_WIDTH,
+                d5i_w(D1D_CURSOR, (0x00104529, b"\x02"), (0x000F0A5C, le32(1)), (0x0009AD58, b"\x01")), D5I2_TICK)
+
+
+def d5i2_at(phase, a5c=0, a68=0x5D5D, f70=0x5E, b58=0, b8173=0, b529=0, d24=0, d24b=1, w2c=0x5F5F, cc4=None):
+    """0x11000: the phase byte 0xF0A6F with the bytes 0xF0A70 `f70` and 0xF0A72 (0x5F), the dwords
+    0xF0A48 (0x5A..), 0xF0A4C (the record D5I2_REC2), 0xF0A50 (the record D5I2_REC) and 0xF0A5C
+    `a5c`, the words 0xF0A60/62/64 (0x5A5A, 0x5B5B, 0x5C5C) and 0xF0A68 `a68`, the bytes 0x9AD58
+    `b58`, 0x108173 `b8173`, 0x104529 `b529` and 0x105C05 (0x5A), each between seeded
+    neighbours (0x9AD58 above the last byte of a descriptor, which is left); the two records'
+    +0x24 dwords `d24`/`d24b` and +0x2C words (`w2c`, 0x5A5A); the string buffer; with `cc4`
+    the eight bytes 0x9ACC4.. the two position dwords of phase 0xA overlap in."""
+    p = {0x000F0A6E: bytes([0x61, phase, f70, 0x62, 0x5F, 0x63]),
+         0x000F0A44: le32(0x64646464) + le32(0x5A5A5A5A) + le32(D5I2_REC2) + le32(D5I2_REC) + le32(0x65656565),
+         0x000F0A58: le32(0x66666666) + le32(a5c) + le16(0x5A5A) + le16(0x5B5B) + le16(0x5C5C) + le16(0x6767)
+                     + le16(a68) + le16(0x6868),
+         0x0009AD58: bytes([b58, 0x6A]), 0x00108172: bytes([0x6B, b8173, 0x6C]),
+         0x00104528: bytes([0x6D, b529, 0x6E]),
+         D5I2_REC + 0x24: le32(d24) + le32(0x6F6F6F6F) + le16(w2c) + le16(0x7070),
+         D5I2_REC2 + 0x24: le32(d24b) + le32(0x71717171) + le16(0x5A5A) + le16(0x7272),
+         0x00105C04: bytes([0x73, 0x5A, 0x74]), 0x00102760: b"\x5a" * 0x10}
+    if cc4 is not None:
+        p[0x0009ACC4] = bytes(cc4)
+    return p
+
+
+D5I2_T_MUT = tuple("@" + n for n in """pd tnotick talways pre9ad58 t58w p0novoice p0voice p0no58 p0v58 p0late58 p0noinreset p0resetal p0noreset p0noorigin p0nomovie1 p0nomovie2 p0movieswap p0nophase p0phase p0phaseearly p1noreset p1noorigin p1nophase p1phase p2byte p2uns p2wrap5 p2nowrap p2no58 p2novol p2noinreset p2noreset p2norow p2rowval p2noa48 p2palswap p2pal7 p2paldup p2palh p2norowspawn p2rowdesc p2rowa2 p2rowa3 p2nofx p2fxsrc p2fxarg p2fxh prea48 p2nov40 p2nov42 p2vswap p2a60 p2noa60 p2a62 p2noa62 p2a68 p2noa68 p2a70 p2noa70 p2nophase p2phase p3desc p3x p3a3 p3y p3a5 p3nospawn p3nostore p3storew p3nophase p3phase p4sub p4nostore p4cmp p4signed p4voiceswap p4a5cbyte p4novoice p4nophase p4no1000 p4val prerec p4early p5nomask p5inv p5desc p5a3 p5nostore p5nophase p6nomask p6inv p6desc p6a3 p6nostore p6nophase p7nomask p7inv p7desc p7a3 p7nostore p7nophase p7nodead p7deadlate p7store50 p8nomask p8src p8a68 p8noa68 p8a70 p8noa70 p8nophase p9bit p9inv3 p9widthid p9widthmode p9nohalf p9floor p9base p9col5 p9spdesc p9spx p9spa3 p9spy p9spa5 p9swaparm pre529 p9a5cbyte p9a5cinv p9a68a p9a70a p9a68b p9a70b p9nophase prea5c padesc paxzext payzext paxsrc paa3 paa5 panospawn paa70 paa68 panophase pbnoa48 pba48w pbnophase pb8173inv pbv8 pba5cbyte pbv1 pbno72a pbno72b pbno72c pbv6 pbswap12 pcnodec pcdec2 pcnew pcuns pcbyte pcsrc pcnocopy""".split() if n not in ("prea48", "prerec", "pre529", "prea5c", "pre9ad58"))
+D5I2_T_MUT += tuple("@p9l%d%s" % (k, f) for k in range(8) for f in ("id", "col", "row", "mode", "drop"))
+D5I2_SPECS += [
+    # 0x11000 attract_step: no argument. A jump table (0x10FCC, thirteen entries; `cmp al,0xc; ja`) on
+    # the phase byte 0xF0A6F; every phase ends at 0x11550, which calls 0x10F28 while the byte
+    # 0x9AD58 is 0.
+    #  0: the voice 0x100, 0x9AD58 = 1, 0x4F1E4, 0x2BAF4(1), 0x4F1D0, the two movies 0x1C740(the
+    #     names 0x80038 and 0x80044: a stub, the port's player is a host replacement), phase 1.
+    #  1: 0x2BAF4(1), 0x4F1D0, phase 2.
+    #  2: the DWORD 0xF0A5C + 1, zeroed at >= 4 (signed `jl`: c2 has 0x100, c3 -2), 0x9AD58 = 0,
+    #     0x2C8F0(-2), 0x4F1E4, 0x2BAF4(1), 0x2C06C(1) (real: the byte 0x105C05), eight 0x33754
+    #     (the first one's result into 0xF0A48), 0x38B18(0x9AC08, 0, 0), 0x13C70(the dword
+    #     0xF0A48, 4, 0x396ED28), the voices 0x40 and 0x42, the words 0xF0A60 = 0x2D, 0xF0A62 =
+    #     0x3C and 0xF0A68 = 0xB4, 0xF0A70 = 3, phase 0xC.
+    #  3: 0x2AE14(0x9ACCC, 0x2A00, 0xE0, 0x1E00, 0) into 0xF0A50, phase 4.
+    #  4: the record's +0x2C word - 0x100; at <= 0x1000 (the zero-extended word: e3 wraps to
+    #     0xFF80) the voice 0x54, or 0x56 with the dword 0xF0A5C non-zero, phase 5 and +0x2C =
+    #     0x1000.
+    #  5, 6, 7: when the record's +0x24 & 0x7FFFFFFF is 0: (7: 0x2B150 on it,) 0x2AE14(0x9ACE0 /
+    #     0x9ACF4 / 0x9AD1C, 0, 0xE2 / 0xE6 / 0xE8, 0, 0) into 0xF0A50 (7: 0xF0A4C), the next phase.
+    #  8: when the +0x24 & 0x7FFFFFFF of the record 0xF0A4C is 0: 0xF0A68 = 0x40, 0xF0A70 = 9,
+    #     phase 0xC.
+    #  9: the text page: string 3 at (-1, 0x15, mode 0x1000) unless the option byte 0x104529 has
+    #     bit 1; the width 0x2F0F0 of string 0x1EB halved toward zero (j2: -5) gives the col 0x15
+    #     - half for string 0x1EB (row 0x17) and, 5 further, the image string 0x9ACC4; strings
+    #     0x1EC, 4, 0x1ED on rows 0x18, 0x19, 0x1B; the image string 0x8004C on row 0x1D, mode
+    #     0; then with bit 1 the actor 0x9AD44 at (0x2A00, 0xFF, 0x780, 0), else string 0x1EA at
+    #     (-1, 4, 0x4003); 0xF0A68/0xF0A70 = 0xF0/0xB when the DWORD 0xF0A5C is 0 (j2: 0x100),
+    #     else 0x78/0xA; phase 0xC. 0x1C500 runs real over the stubbed 0x474E4.
+    #  0xA: 0x2AE14(0x9AD30, the dword 0x9ACC4 >> 16 signed, 0xD0, the dword 0x9ACC6 >> 16
+    #     signed, 0), 0xF0A70 = 0xB, 0xF0A68 = 0xF0, phase 0xC.
+    #  0xB: 0xF0A48 = 0, phase 0; the word 0xF0A64 = 8 with the byte 0x108173, else 1 with the
+    #     DWORD 0xF0A5C zero, else 6 after 0xF0A72 = 5, 0, 4 for 1, 2, 3 (l7: 0x100, l8: -1).
+    #  0xC: the word 0xF0A68 - 1; the phase = 0xF0A70 when the value before was <= 0 (signed
+    #     word: m3 0x8000, m4 0x100).
+    # Above 0xC nothing but the tail (n0, n1). Mask 0: record §8.1.
+    Spec("attract_step", 0x11000, [
+        Case("a0", D5I_REG, d5i2_at(0, b58=0)),
+        Case("a1", {}, d5i2_at(0, b58=0x80), {0x1C740: 0, 0x4F1D0: 0x12345678}),
+        Case("b0", {}, d5i2_at(1, b58=0)),
+        Case("b1", {}, d5i2_at(1, b58=0x80)),
+        Case("c0", D5I_REG, d5i2_at(2, a5c=0, b58=0x5A), {0x33754: 0x0010A500}),
+        Case("c1", {}, d5i2_at(2, a5c=3, b58=1), {0x33754: 0, 0x2C8F0: 0x12345678}),
+        Case("c2", {}, d5i2_at(2, a5c=0x100), {0x33754: 0xFFFFFFFF}),
+        Case("c3", {}, d5i2_at(2, a5c=0xFFFFFFFE), {0x33754: 0x0010A500, 0x13C70: 0x12345678}),
+        Case("c4", {}, d5i2_at(2, a5c=2), {0x33754: 0x0010A540}),
+        Case("c5", {}, d5i2_at(2, a5c=4), {0x33754: 0x0010A500}),
+        Case("d0", D5I_REG, d5i2_at(3), {0x2AE14: D5I2_REC2}),
+        Case("d1", {}, d5i2_at(3, b58=1), {0x2AE14: 0x12345678}),
+        Case("e0", {}, d5i2_at(4, w2c=0x1200)),
+        Case("e1", D5I_REG, d5i2_at(4, w2c=0x1100, a5c=0)),
+        Case("e2", {}, d5i2_at(4, w2c=0x1080, a5c=1, b58=1)),
+        Case("e3", {}, d5i2_at(4, w2c=0x0080, a5c=0)),
+        Case("e4", {}, d5i2_at(4, w2c=0x1001, a5c=0x100), {0x2C3FC: 0xFFFFFFFF}),
+        Case("e5", {}, d5i2_at(4, w2c=0x1101, a5c=0)),
+        Case("f0", D5I_REG, d5i2_at(5, d24=0), {0x2AE14: D5I2_REC2}),
+        Case("f1", {}, d5i2_at(5, d24=0x80000000), {0x2AE14: 0}),
+        Case("f2", {}, d5i2_at(5, d24=1)),
+        Case("f3", {}, d5i2_at(5, d24=0x7FFFFFFF, b58=1)),
+        Case("g0", {}, d5i2_at(6, d24=0x80000000), {0x2AE14: D5I2_REC2}),
+        Case("g1", {}, d5i2_at(6, d24=0x00010000)),
+        Case("h0", D5I_REG, d5i2_at(7, d24=0), {0x2AE14: 0x0010A480, 0x2B150: 0x12345678}),
+        Case("h1", {}, d5i2_at(7, d24=0x80000000), {0x2AE14: 0xFFFFFFFF}),
+        Case("h2", {}, d5i2_at(7, d24=2)),
+        Case("i0", {}, d5i2_at(8, d24=1, d24b=0)),
+        Case("i1", {}, d5i2_at(8, d24=1, d24b=0x80000000, b58=1)),
+        Case("i2", {}, d5i2_at(8, d24=0, d24b=4)),
+        Case("j0", D5I_REG, d5i2_at(9, b529=0x00, a5c=0), {0x2F0F0: 6}),
+        Case("j1", {}, d5i2_at(9, b529=0x02, a5c=1), {0x2F0F0: 7, 0x2AE14: 0x12345678}),
+        Case("j2", {}, d5i2_at(9, b529=0xFD, a5c=0x100), {0x2F0F0: 0xFFFFFFFB, 0x474E4: 0}),
+        Case("j3", {}, d5i2_at(9, b529=0xFF, a5c=0, b58=1), {0x2F0F0: 0}),
+        Case("k0", D5I_REG, d5i2_at(0xA), {0x2AE14: 0x0010A480}),
+        Case("k1", {}, d5i2_at(0xA, cc4=(0x40, 0x00, 0x34, 0x92, 0x78, 0x86, 0x00, 0x00))),
+        Case("l0", {}, d5i2_at(0xB, b8173=1, a5c=0)),
+        Case("l1", {}, d5i2_at(0xB, b8173=0x80, a5c=1)),
+        Case("l2", {}, d5i2_at(0xB, a5c=0)),
+        Case("l3", {}, d5i2_at(0xB, a5c=1)),
+        Case("l4", {}, d5i2_at(0xB, a5c=2)),
+        Case("l5", {}, d5i2_at(0xB, a5c=3, b58=1)),
+        Case("l6", {}, d5i2_at(0xB, a5c=4)),
+        Case("l7", {}, d5i2_at(0xB, a5c=0x100)),
+        Case("l8", {}, d5i2_at(0xB, a5c=0xFFFFFFFF)),
+        Case("m0", {}, d5i2_at(0xC, a68=0x0002)),
+        Case("m1", {}, d5i2_at(0xC, a68=0x0000, f70=9)),
+        Case("m2", {}, d5i2_at(0xC, a68=0x0001, b58=1)),
+        Case("m3", {}, d5i2_at(0xC, a68=0x8000, f70=0xB)),
+        Case("m4", {}, d5i2_at(0xC, a68=0x0100)),
+        Case("m5", {}, d5i2_at(0xC, a68=0x0080)),
+        Case("n0", {}, d5i2_at(0xD, a68=0x0000)),
+        Case("n1", {}, d5i2_at(0xFF, b58=1)),
+    ], allow_calls=(0x1C500, 0x2C06C), calls=D5I2_CALLS, eax_mask=0, mutants=D5I2_T_MUT),
+    # 0x11000 again with stubs that write what the raw reads after each call (D5I2_CALLS_W): phase 2
+    # (0x13C70 gets the 0xF0A48 that 0x38B18 leaves), phase 4 (the +0x2C store goes to the record
+    # the voice leaves in 0xF0A50), phase 9 (the option byte, the dword 0xF0A5C and the byte
+    # 0x9AD58 as the first 0x2F198 leaves them: the actor arm, 0x78/0xA, no 0x10F28).
+    Spec("attract_step_rr", 0x11000, [
+        Case("r2", {}, d5i2_at(2, a5c=0), {0x33754: 0x0010A500}),
+        Case("r4", {}, d5i2_at(4, w2c=0x1100, a5c=0)),
+        Case("r9", {}, d5i2_at(9, b529=0x00, a5c=0, b58=0), {0x2F0F0: 6}),
+    ], allow_calls=(0x1C500, 0x2C06C), calls=D5I2_CALLS_W, eax_mask=0,
+       unhit_named={a: "not taken by this row's three cases, phases 2, 4 and 9 under the writing stubs (the plain "
+                       "row hits it)"
+                    for a in (0x1101F, 0x1106B, 0x110A3, 0x11199, 0x111FA, 0x1121C, 0x1122E, 0x11254, 0x11266, 0x1128C,
+                              0x1129E, 0x112CA, 0x112DC, 0x1141A, 0x11443, 0x11478, 0x114BC, 0x114D6, 0x114E4, 0x114EE,
+                              0x114F9, 0x11500, 0x11502, 0x11507, 0x11509, 0x1150E, 0x11517, 0x1151F, 0x11526, 0x11531,
+                              0x11546)},
+       mutants=("@prea48", "@prerec", "@pre529", "@prea5c", "@pre9ad58")),
+]
+D1_SPECS += D5I2_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
         Case("r1", {"eax": 0x1234}, {DS_RNG: le32(0x12345678)}),

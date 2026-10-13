@@ -100,6 +100,7 @@ void attract_state_reset(void)
 /* 0x10F28. The attract's voice/rng scheduler. */
 void attract_voice_tick(void)
 {
+    PR_SEAM0(0x10F28u);
     DSW(DS_000F0A60) = (u16)(DSW(DS_000F0A60) - 1u);
     if ((s16)DSW(DS_000F0A60) <= 0) {
         (void)sound_voice(0xBDu);                   /* 0x10F3E/0x10F43 0x2C3FC */
@@ -154,6 +155,7 @@ void frontend_continue_tail(void)
 /* 0x2C8F0 with eax = -2. */
 void attract_config_volumes(void)
 {
+    PR_SEAM(0x2C8F0u, 0xFFFFFFFEu);
     u32 scale = config_field_get(0x2Au) & 3u;
     u32 m = config_field_get(0x35u);
     u32 s;
