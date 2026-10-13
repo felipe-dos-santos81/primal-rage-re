@@ -788,25 +788,25 @@ def disasm_range(image, start, end):
 # and EAX is reloaded with the timer word between the guard and the jump)
 RESOLVED_JUMPS[0x11D69] = (0x11D50, 0x11CDC, 10)
 
-# D6 d6a (record 2026-10-13-reverse-d6a section 1): 0x51ED8 is 0x51E5C's shape. It tests two node fields
+# D6 d6a (record 2026-10-13-reverse-d6a section 6): 0x51ED8 is 0x51E5C's shape. It tests two node fields
 # first (0x51ED8, 0x51EE1: no register written; both `je` go to the `ret` at 0x51F44), then pushes EBX,
 # ECX, EDX, ESI, EDI, EBP (0x51EEA..0x51EEF) and pops all six (0x51F3E..0x51F43) around its body and its
 # indirect renderer call (`call [edx*4+0x80c8c]` 0x51F35); the pushes are not at the entry, so the scan
 # credits none. The raw caller 0x1C5E8 keeps ECX (the column's address, 0x1C5ED) and ESI (the width byte,
 # 0x1C5FF) live across the call at 0x1C63D (read at 0x1C642 `cmp esi,0x10` and 0x1C647 `add [ecx],0xf`).
 _CALLEE_CLOBBER_FIXES[0x51ED8] = ()
-# D6 d6a (record 2026-10-13-reverse-d6a section 2): 0x31A78's key switch, 0x319B0's form. cmp edi,3; ja;
+# D6 d6a (record 2026-10-13-reverse-d6a section 6): 0x31A78's key switch, 0x319B0's form. cmp edi,3; ja;
 # mov eax,[esp+0x10]; jmp cs:[eax+0x31a68]. EDI is the counter [esp+0x18] (loaded at 0x31AB2) and the index
 # [esp+0x10] is 4 * it: both start 0 (0x31A96, 0x31AA4) and step together (0x31B65 add eax,4 / 0x31B68
 # inc edx, stored at 0x31B69/0x31B6D).
 RESOLVED_JUMPS[0x31AD6] = (0x31AC9, 0x31A68, 4)
-# D6 d6a (record 2026-10-13-reverse-d6a section 4): 0x1AE20 is `mov eax,0xa2c62; lea eax,[eax]` with no
+# D6 d6a (record 2026-10-13-reverse-d6a section 6): 0x1AE20 is `mov eax,0xa2c62; lea eax,[eax]` with no
 # `ret`: it falls into 0x1AE28, whose leading `push ebx; push ecx; push edx; push esi; push edi`
 # (0x1AE28..0x1AE2C; popped 0x1AED8..0x1AEDC before the `ret`) the scan cannot credit to the entry two
 # instructions above it (0x2EA74's case). The raw caller 0x2CADC loads ECX and EBX before the call at
 # 0x2CB50 (0x2CB3A `mov ecx,0xb000`, 0x2CB46 `mov ebx,0x809f0`) for the 0x2F280 call at 0x2CB69.
 _CALLEE_CLOBBER_FIXES[0x1AE20] = ()
-# D6 d6a (record 2026-10-13-reverse-d6a section 5): 0x2CADC pushes and pops EBX, ECX and EDX (0x2CADC..
+# D6 d6a (record 2026-10-13-reverse-d6a section 6): 0x2CADC pushes and pops EBX, ECX and EDX (0x2CADC..
 # 0x2CADE, 0x2CB6E..0x2CB70) and its own instructions write no other register; the scan's (esi, edi, ebp)
 # is its callees' (0x2EA78 and the text routines). Its raw caller 0x2D6F8 keeps ESI (the first read's
 # result, 0x2D72E) and EBP (the defaults flag, 0x2D82D) live across the call at 0x2D886 (read at 0x2D910

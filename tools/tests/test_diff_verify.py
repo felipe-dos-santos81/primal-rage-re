@@ -30526,7 +30526,7 @@ class RealFunctionTests(unittest.TestCase):
 
     # the hand resolutions of E.RESOLVED_JUMPS (record §E3.5, §E3.12): from the guard to the jump, the bytes
     WINDOWS = {
-        # D6 d6a (record 2026-10-13-reverse-d6a §2)
+        # D6 d6a (record 2026-10-13-reverse-d6a §6)
         0x31AD6: ["cmp edi, 3", "ja 0x31b5d", "mov eax, dword ptr [esp + 0x10]", "jmp dword ptr cs:[eax + 0x31a68]"],
         # D6 d6a windows end
         # D5 d5h (record 2026-10-12-reverse-d5h §2)

@@ -32155,7 +32155,7 @@ D6A_SPECS += [
                                       "noflush flushfirst m1 passes ge pumpfirst".split())),
     # 0x2EA74 config_screen_wait_zero: `xor eax,eax; mov eax,eax` and no `ret`: it falls into 0x2EA78 with
     # n = 0 whatever EAX held (z1 enters with 0xFFFFFFFF). The same poke, stubs and blindness; mask 0 for
-    # the same reason (its 21 call sites: record section 1).
+    # the same reason (its 18 call sites: record section 1).
     Spec("config_screen_wait_zero", 0x2EA74, [
         d6a_wait("z0", 0x00000005),
         d6a_wait("z1", 0xFFFFFFFF, flag=1),
