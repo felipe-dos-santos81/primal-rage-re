@@ -41838,6 +41838,46 @@ static void b_sb_32bb0(const u32 *r, u32 *eax) { audit_characters(r[R_EAX], r[R_
 SB_AC_MUT(c0le, 1u) SB_AC_MUT(c1le, 2u) SB_AC_MUT(c0signed, 3u) SB_AC_MUT(c1signed, 4u) SB_AC_MUT(noskip, 5u)
 SB_AC_MUT(base, 6u) SB_AC_MUT(n, 7u)    SB_AC_MUT(swap, 8u)     SB_AC_MUT(nofirst, 9u)  SB_AC_MUT(nosecond, 10u)
 SB_AC_MUT(same, 11u)
+
+/* 0x32A3C config_play_time_close on its posting arms: EAX = mode, EDX = flag. The mutants restate config.c's
+ * body. @idx masks the mode with 7: the eight dwords from 0x10746C are the run clock's block. */
+static void sb_32a3c_core(u32 mode, u32 flag, u32 mut)
+{
+    const u32 idx = mode & ((mut == 3u) ? 7u : 3u);                              /* @idx */
+    const u32 ticks = DSD(0x0010746Cu + idx * 4u);
+    if (mut != 1u && mut != 2u) DSD(0x0010746Cu + idx * 4u) = 0u;                /* @nozero @zerolate */
+    if (idx != 0u) {
+        const u32 t = (mut == 4u) ? ticks : (mut == 5u) ? (u32)((s32)ticks / 0x3C)   /* @raw @sdiv */
+                    : ticks / ((mut == 6u) ? 0x3Du : 0x3Cu);                     /* @div */
+        const int zero = (mut == 7u) ? flag != 0u : (mut == 8u) ? (flag & 0xFFu) == 0u : flag == 0u;   /* @flaginv @flagb */
+        if (idx == 1u || (mut == 23u && idx == 3u)) {                            /* @m3 */
+            u32 field;
+            if (zero) {
+                (void)audit_add((mut == 9u) ? 9u : 8u, 1u);                      /* @f8 */
+                field = (mut == 10u) ? 0xCu : 0xAu;                              /* @fa */
+            } else {
+                if (mut == 14u) (void)audit_add(0xBu, 1u);                       /* @fborder */
+                (void)audit_add((mut == 11u) ? 7u : 6u, 1u);                     /* @f6 */
+                if (mut != 13u && mut != 14u) (void)audit_add((mut == 12u) ? 0xAu : 0xBu, 1u);   /* @nofb @fb */
+                field = (mut == 15u) ? 0xAu : 0xCu;                              /* @fc */
+            }
+            (void)audit_add(field, t);
+            if (mut != 17u) (void)audit_add((mut == 16u) ? 0x13u : 0x12u, (mut == 18u) ? 1u : t);   /* @no12 @f12 @t12 */
+        } else {
+            (void)audit_add(zero ? ((mut == 19u) ? 8u : 9u) : ((mut == 20u) ? 6u : 7u), 1u);   /* @f9 @f7 */
+            if (mut != 22u) (void)audit_add((mut == 21u) ? 0x12u : 0x13u, t);    /* @no13 @f13 */
+        }
+    }
+    if (mut == 2u) DSD(0x0010746Cu + idx * 4u) = 0u;
+}
+static void b_sb_32a3c(const u32 *r, u32 *eax) { config_play_time_close(r[R_EAX], r[R_EDX]); *eax = 0u; }
+#define SB_PT_MUT(name, n) \
+    static void m_sb_pt_##name(const u32 *r, u32 *eax) { sb_32a3c_core(r[R_EAX], r[R_EDX], n); *eax = 0u; }
+SB_PT_MUT(nozero, 1u) SB_PT_MUT(zerolate, 2u) SB_PT_MUT(idx, 3u)  SB_PT_MUT(raw, 4u)   SB_PT_MUT(sdiv, 5u)
+SB_PT_MUT(div, 6u)    SB_PT_MUT(flaginv, 7u)  SB_PT_MUT(flagb, 8u) SB_PT_MUT(f8, 9u)   SB_PT_MUT(fa, 10u)
+SB_PT_MUT(f6, 11u)    SB_PT_MUT(fb, 12u)      SB_PT_MUT(nofb, 13u) SB_PT_MUT(fborder, 14u) SB_PT_MUT(fc, 15u)
+SB_PT_MUT(f12, 16u)   SB_PT_MUT(no12, 17u)    SB_PT_MUT(t12, 18u) SB_PT_MUT(f9, 19u)   SB_PT_MUT(f7, 20u)
+SB_PT_MUT(f13, 21u)   SB_PT_MUT(no13, 22u)    SB_PT_MUT(m3, 23u)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56906,6 +56946,30 @@ static const binding_t k_bindings[] = {
     { "audit_characters@nofirst", m_sb_ac_nofirst, 0x00000000u },
     { "audit_characters@nosecond", m_sb_ac_nosecond, 0x00000000u },
     { "audit_characters@same", m_sb_ac_same, 0x00000000u },
+    { "config_play_time_close_audit",    b_sb_32a3c, 0x00000000u },
+    { "config_play_time_close_audit@nozero", m_sb_pt_nozero, 0x00000000u },
+    { "config_play_time_close_audit@zerolate", m_sb_pt_zerolate, 0x00000000u },
+    { "config_play_time_close_audit@idx", m_sb_pt_idx, 0x00000000u },
+    { "config_play_time_close_audit@raw", m_sb_pt_raw, 0x00000000u },
+    { "config_play_time_close_audit@sdiv", m_sb_pt_sdiv, 0x00000000u },
+    { "config_play_time_close_audit@div", m_sb_pt_div, 0x00000000u },
+    { "config_play_time_close_audit@flaginv", m_sb_pt_flaginv, 0x00000000u },
+    { "config_play_time_close_audit@flagb", m_sb_pt_flagb, 0x00000000u },
+    { "config_play_time_close_audit@f8", m_sb_pt_f8, 0x00000000u },
+    { "config_play_time_close_audit@fa", m_sb_pt_fa, 0x00000000u },
+    { "config_play_time_close_audit@f6", m_sb_pt_f6, 0x00000000u },
+    { "config_play_time_close_audit@fb", m_sb_pt_fb, 0x00000000u },
+    { "config_play_time_close_audit@nofb", m_sb_pt_nofb, 0x00000000u },
+    { "config_play_time_close_audit@fborder", m_sb_pt_fborder, 0x00000000u },
+    { "config_play_time_close_audit@fc", m_sb_pt_fc, 0x00000000u },
+    { "config_play_time_close_audit@f12", m_sb_pt_f12, 0x00000000u },
+    { "config_play_time_close_audit@no12", m_sb_pt_no12, 0x00000000u },
+    { "config_play_time_close_audit@t12", m_sb_pt_t12, 0x00000000u },
+    { "config_play_time_close_audit@f9", m_sb_pt_f9, 0x00000000u },
+    { "config_play_time_close_audit@f7", m_sb_pt_f7, 0x00000000u },
+    { "config_play_time_close_audit@f13", m_sb_pt_f13, 0x00000000u },
+    { "config_play_time_close_audit@no13", m_sb_pt_no13, 0x00000000u },
+    { "config_play_time_close_audit@m3", m_sb_pt_m3, 0x00000000u },
     /* sb table end */
 };
 

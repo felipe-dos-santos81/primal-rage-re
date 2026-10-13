@@ -11316,8 +11316,8 @@ def d1i_pump_case(k8, k9, prev, level, latch, rpt, cnt, first=0x0030, nxt=0x0008
 
 
 D1I_PT_ACC = 0x0010746C         # the four tick accumulators; [3] = 0x107478 is 0x32B00's snapshot
-D1I_PT_AUDIT = ("calls the deferred audit layer (tools/port_classification.txt: 2DAE4/2E934 deferred "
-                "record-§48-V), which the port declares a no-op; its add always changes audit bytes")
+D1I_PT_AUDIT = ("posts through the audit layer (0x2DAE4/0x2E934, ported by track S batch sb): exercised by "
+                "this function's `_audit` row, whose stubs record the posts (record 2026-10-13-reverse-s §S.6)")
 
 
 def d1i_pt_case(acc=(0x11111111, 0x22222222, 0x33333333, 0x44444444), clock=0x00012345):
@@ -32485,6 +32485,33 @@ SB_SPECS += [
         Case("c5", {"eax": 0xFFFFFFFF, "edx": 3}),
     ], calls=(SB_AUDIT,), eax_mask=0,
        mutants=tuple("@" + m for m in "c0le c1le c0signed c1signed noskip base n swap nofirst nosecond same".split())),
+]
+
+# ---- sb: the call sites. A site's containing function keeps its row; where that row's EAX mask or callee
+# model cannot take the audit arm, the arm gets a second spec on the same entry (`<name>_audit`).
+SB_PT_MUT = ("@nozero", "@zerolate", "@idx", "@raw", "@sdiv", "@div", "@flaginv", "@flagb", "@f8", "@fa", "@f6", "@fb",
+             "@nofb", "@fborder", "@fc", "@f12", "@no12", "@t12", "@f9", "@f7", "@f13", "@no13", "@m3")
+SB_SPECS += [
+    # 0x32A3C config_play_time_close, the arms that post (mode & 3 != 0; the D1I row has mode & 3 == 0). EBX =
+    # the accumulator 0x10746C[mode & 3], zeroed before any post. Mode 1: t = EBX / 0x3C unsigned (`div esi`
+    # 0x32A73: k0's ticks are 0x80000077) and, on all of ECX (`test ecx,ecx` 0x32A77: k1's flag is 0x100),
+    # 0x2DAE4(8, 1) then field 0xA, or 0x2DAE4(6, 1), 0x2DAE4(0xB, 1) then field 0xC; 0x2DAE4(field, t) and
+    # 0x2DAE4(0x12, t). Modes 2 and 3: 0x2DAE4(flag == 0 ? 9 : 7, 1) and 0x2DAE4(0x13, t). 0x2DAE4 is a stub
+    # (its EAX is not read); the run clock 0x32970 (host-owned, the port omits it) runs in the original from
+    # the state where it changes no byte. Mask 0: EAX at return is the last stub's, and no caller reads it:
+    # `mov eax,0x10` 0x2709E and 0x42420 (after `xor ah,ah` 0x42413, a write), `lea eax,[edx*8]` 0x28661,
+    # 0x289BA, 0x28AE0 and 0x28B83, `mov eax,0x33` 0x415D2; 0x27886 returns it from the mode handler 0x277C0
+    # (void, the game_mode_0f_step row).
+    Spec("config_play_time_close_audit", 0x32A3C, [
+        Case("k0", {"eax": 1, "edx": 0}, d1i_pt_case(acc=(0x11111111, 0x80000077, 0x33333333, 0x44444444))),
+        Case("k1", {"eax": 1, "edx": 0x100}, d1i_pt_case(acc=(0x11111111, 0x000000B5, 0x33333333, 0x44444444)),
+             {0x2DAE4: 0xFFFFFFFF}),
+        Case("k2", {"eax": 2, "edx": 0}, d1i_pt_case(acc=(0x11111111, 0x22222222, 0x000000F1, 0x44444444))),
+        Case("k3", {"eax": 3, "edx": 1}, d1i_pt_case(acc=(0x11111111, 0x22222222, 0x33333333, 0x0000003B))),
+        Case("k4", {"eax": 0xFFFFFFFD, "edx": 0x80000000}, d1i_pt_case(acc=(0x11111111, 0x0000003C, 0x33333333, 0x44444444)),
+             {0x2DAE4: 0x12345678}),
+        Case("k5", {"eax": 6, "edx": 0x00010000}, d1i_pt_case(acc=(0x11111111, 0x22222222, 0xFFFFFFFF, 0x44444444))),
+    ], allow_calls=(0x32970,), calls=(SB_AUDIT,), eax_mask=0, mutants=SB_PT_MUT),
 ]
 
 D1_SPECS += SB_SPECS

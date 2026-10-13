@@ -458,10 +458,14 @@ void config_credits_init(void)
     DSD(DS_00105C00) = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;  /* 0x2C309..0x2C317 */
 }
 
-/* 0x32A3C — derivation record §42-E. EAX = the mode (only its low two bits
- * index, 0x32A43 `and edx,3`), EDX = the flag, kept in ECX (0x32A3F). Takes
- * the per-mode tick accumulator DS_0010746C[mode & 3] and zeroes it
- * (0x32A4F/0x32A56); mode 0 stops there (0x32A5F). */
+/* 0x32A3C — derivation record §42-E, track S §S.6. EAX = the mode (only its
+ * low two bits index, 0x32A43 `and edx,3`), EDX = the flag, kept in ECX
+ * (0x32A3F). Takes the per-mode tick accumulator DS_0010746C[mode & 3] and
+ * zeroes it (0x32A4F/0x32A56); mode 0 stops there (0x32A5F). The others post
+ * through 0x2DAE4, with t = the ticks / 0x3C:
+ *   mode 1, flag == 0: (8, 1), (0xA, t), (0x12, t)
+ *   mode 1, flag != 0: (6, 1), (0xB, 1), (0xC, t), (0x12, t)
+ *   mode 2 or 3:       (flag == 0 ? 9 : 7, 1), (0x13, t) */
 void config_play_time_close(u32 mode, u32 flag)
 {
     PR_SEAM(0x32A3Cu, mode, flag);
@@ -477,13 +481,24 @@ void config_play_time_close(u32 mode, u32 flag)
      * preserves EDX (0x32972 push). */
     u32 ticks = DSD(DS_0010746C + idx * 4u);            /* 0x32A4F */
     DSD(DS_0010746C + idx * 4u) = 0u;                   /* 0x32A56 */
-    (void)ticks;
-    (void)flag;
-    /* PORT: the audit adds through 0x2DAE4 (deferred no-op, spec §7) that
-     * follow for mode != 0, with t = ticks / 0x3C (unsigned DIV):
-     *   mode 1, flag == 0: (8, 1), (0xA, t), (0x12, t)          0x32A7B..
-     *   mode 1, flag != 0: (6, 1), (0xB, 1), (0xC, t), (0x12, t) 0x32A91..
-     *   mode 2/3:          (flag == 0 ? 9 : 7, 1), (0x13, t)     0x32AC4.. */
+    if (idx == 0u) return;                              /* 0x32A5D/0x32A5F */
+    const u32 t = ticks / 0x3Cu;                        /* 0x32A6A..0x32A75, 0x32AE3..0x32AEE: unsigned DIV */
+    if (idx == 1u) {                                    /* 0x32A65/0x32A68 */
+        u32 field;
+        if (flag == 0u) {                               /* 0x32A77/0x32A79: all of ECX */
+            (void)audit_add(8u, 1u);                    /* 0x32A7B..0x32A85 */
+            field = 0xAu;                               /* 0x32A8A */
+        } else {
+            (void)audit_add(6u, 1u);                    /* 0x32A91..0x32A9B */
+            (void)audit_add(0xBu, 1u);                  /* 0x32AA0..0x32AAA */
+            field = 0xCu;                               /* 0x32AAF */
+        }
+        (void)audit_add(field, t);                      /* 0x32AB4/0x32AB6 */
+        (void)audit_add(0x12u, t);                      /* 0x32ABB..0x32AC2, 0x32AF5 */
+        return;
+    }
+    (void)audit_add(flag == 0u ? 9u : 7u, 1u);          /* 0x32AC4..0x32ADE */
+    (void)audit_add(0x13u, t);                          /* 0x32AE3..0x32AF5 */
 }
 
 /* 0x32B00 — record §48-Q. EAX = the index (0x32B08 `shl eax,2`, no mask),
