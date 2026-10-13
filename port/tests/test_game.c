@@ -8275,6 +8275,7 @@ static void ch_check_screen_wait_zero(void)
 #define CF_LEN   0x7F8u
 static char cf_dir[40], cf_path[64];
 static u32 cf_touches;
+static u8 cf_keep[CF_LEN + 1u];
 
 /* Counts 0x2D4EC (config_storage_touch) and runs its body. */
 static int cf_touch_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
@@ -8284,9 +8285,11 @@ static int cf_touch_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
     return 0;
 }
 
-/* A scratch directory with the save path in it and no fallback; cf_touches counts from here. */
+/* A scratch directory with the save path in it and no fallback; cf_touches counts from here. The
+ * image and the byte after it are kept for cf_end, which puts them back. */
 static void cf_begin(void)
 {
+    memcpy(cf_keep, mem + CF_IMAGE, sizeof cf_keep);
     snprintf(cf_dir, sizeof cf_dir, "/tmp/pr_cmos_XXXXXX");
     CHECK(mkdtemp(cf_dir) != NULL, "scratch dir");
     snprintf(cf_path, sizeof cf_path, "%s/cmos", cf_dir);
@@ -8310,6 +8313,7 @@ static void cf_end(void)
     host_save_set_fallback(NULL);
     (void)unlink(cf_path);
     (void)rmdir(cf_dir);
+    memcpy(mem + CF_IMAGE, cf_keep, sizeof cf_keep);
 }
 
 static int cf_image_is(u8 v)
@@ -8329,11 +8333,10 @@ static u8 cf_xor(const u8 *p)
 int test_config_file(void)
 {
     const int before = g_failures;
-    static u8 keep[CF_LEN + 1u], snap[CF_LEN], file[CF_LEN + 2u];
+    static u8 snap[CF_LEN], file[CF_LEN + 2u];
     char fb_dir[64], fb_path[80];
     u32 len = 0u;
     const u8 s_audio = DSB(DS_000A2CB1);
-    memcpy(keep, mem + CF_IMAGE, sizeof keep);
     cf_begin();
     snprintf(fb_dir, sizeof fb_dir, "%s/fb", cf_dir);
     snprintf(fb_path, sizeof fb_path, "%s/CMOS", fb_dir);
@@ -8409,7 +8412,6 @@ int test_config_file(void)
     (void)unlink(fb_path);
     (void)rmdir(fb_dir);
     cf_end();
-    memcpy(mem + CF_IMAGE, keep, sizeof keep);
     return g_failures - before;
 }
 
@@ -8437,6 +8439,7 @@ static void ch_check_quit_prompt(void)
     DSD(DS_001028C0) = 0;
     DSD(DS_001028C8) = 0;
     jmp_buf *const qp_prev = game_restart_arm(&qp_jb);
+    cf_begin();
     for (u32 pass = 0; pass < 4u; pass++) {
         /* pass 0: AL = 0, "no" (lower case) after a stray key.
          * pass 1: AL = 0, "yes" upper case.  pass 2: AL = 1, "yes" lower.
@@ -8457,6 +8460,8 @@ static void ch_check_quit_prompt(void)
         volatile int landed = 0;
         if (setjmp(qp_jb) == 0) game_quit_prompt(hard); else landed = 1;
         CHECK_EQ_INT(landed, pass == 2u ? 1 : 0);          /* 0x24AB0 */
+        CHECK_EQ_INT(cf_file_len(), pass == 2u ? (long)CF_LEN : -1L);   /* 0x24AA1: only the soft restart saves */
+        (void)unlink(cf_path);
         CHECK_EQ_INT((int)DSB(DS_00104B22), 0);           /* seed 0x77 */
         CHECK_EQ_INT((int)DSB(DS_000A81A8), want_quit ? 1 : 0x5A);
         CHECK(!input_has_key(), "the prompt consumed its keys");
@@ -8471,6 +8476,7 @@ static void ch_check_quit_prompt(void)
         }
         CHECK_EQ_INT((int)DSD(DS_000E87A0), (int)CH_BUF_B);   /* one frame presented */
     }
+    cf_end();
     (void)game_restart_arm(qp_prev);
 
     DSD(DS_000E87A0) = s_a0;

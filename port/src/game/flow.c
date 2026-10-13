@@ -6788,7 +6788,7 @@ void game_quit_prompt(u32 hard_quit)
                 DSB(DS_000A81A8) = 1u;                     /* 0x24A93 */
             } else {
                 sound_resume();                            /* 0x24A9C 0x1D270 */
-                /* PORT: 0x24AA1 0x1B084 (the config writer) is deferred (record §50-C). */
+                (void)config_file_save();                  /* 0x24AA1 0x1B084; AL is not read (0x24AA6 loads EDX, EAX) */
                 game_restart_longjmp();                    /* 0x24AA6..0x24AB0 jmp 0x65431, longjmp(0x1044F4, 1) */
             }
         } else if (key == no) {                            /* 0x24AB5 */

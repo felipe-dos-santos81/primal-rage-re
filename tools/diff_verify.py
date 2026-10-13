@@ -32177,9 +32177,9 @@ D6A_WAIT = E.Call(0x2EA78, ("eax",), clobbers=("edi", "ebp"))               # co
 D6A_PROMPT_CALLS = (D6A_PAUSE, D1D_CURSOR, D6A_WAIT, D1D_RELEASE, D6A_RESUME, D5H_LONGJMP)
 D6A_PROMPT_UNHIT = {
     0x24A6F: "`sub eax,eax`: dead for AH = 0 (the wrapper's (AH & 0xF) - 1 is 0xFF, so 0x24A6D always jumps)",
-    0x24A9C: "the soft-restart arm (a yes to ABANDON CONQUEST): 0x1D270, the config writer 0x1B084, which "
-             "the port defers (flow.c, PORT), and a tail jump into the runtime's longjmp 0x65431, which "
-             "never returns here; a named gap (record section 4)"}
+    0x24A9C: "the soft-restart arm (a yes to ABANDON CONQUEST): 0x1D270, the config writer 0x1B084 "
+             "(config_file_save since track S: its own row), and a tail jump into the runtime's longjmp "
+             "0x65431, which never returns here; a named gap (record section 4)"}
 
 
 def d6a_prompt(cid, eax, key, yes=b"YES", no=b"NO"):
