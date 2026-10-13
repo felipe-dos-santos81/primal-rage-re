@@ -813,3 +813,8 @@ _CALLEE_CLOBBER_FIXES[0x1AE20] = ()
 # `mov eax,ebp`, 0x2D917 and 0x2D91E `test esi,esi`), so 0x2CADC preserves them; EDI stays in the set (no
 # caller shown to read it).
 _CALLEE_CLOBBER_FIXES[0x2CADC] = ("edi",)
+# D6 d6a (record 2026-10-13-reverse-d6a section 6): the runtime memcpy 0x655FF loads ES from DS around its
+# copy (0x65608 `push es`, 0x65609 `mov eax,ds`, 0x6560B `mov es,eax`, 0x6561D `pop es`), as the memmove
+# 0x653A1 does: without the flat descriptors its `ret` pops through a 16-bit stack (the run stopped `int3
+# at 0x10000`, measured). No row before this batch names 0x655FF.
+FLAT_SEGMENT_CALLEES |= {0x655FF}
