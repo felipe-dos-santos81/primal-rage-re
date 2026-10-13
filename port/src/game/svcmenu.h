@@ -195,6 +195,12 @@ s32 audit_counters_halve(u32 table);
  * (whole, not its low byte), or -1 for table >= 3, index >= the size, or a
  * failed halving — 0x2E180. */
 s32 audit_counter_add(u32 table, u32 index, u32 add);
+/* Counts `value` in histogram `kind`: bucket 0 below the descriptor's first
+ * width, then one bucket per step, the last bucket taking the rest. Returns
+ * audit_counter_add's result, or -1 for kind > 3 (kind 3 is refused by
+ * audit_counter_add). Callers: 0x32B35 (1), 0x32B7E (0), 0x43E77 (2)
+ * — 0x2E934. */
+s32 audit_post(u32 kind, u32 value);
 /* Prepares histogram `g`: copies its title (the template up to a tab or NUL)
  * into `buf` of `size` bytes, lays out the state block, sums the counters and
  * stores the largest in [max_out] and the median bucket in [median_out] (each

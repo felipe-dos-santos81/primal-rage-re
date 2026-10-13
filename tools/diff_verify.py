@@ -32391,6 +32391,37 @@ SB_SPECS += [
        mutants=tuple("@" + m for m in "tle tsigned ile isigned size sext addb ge unsigned maskoff maskrow up two "
                                       "noabort eq nohalf nostore storeswap storeearly ret retbyte".split())),
 ]
+SB_ADD = E.Call(0x2E180, ("eax", "edx", "ebx"), clobbers=("ebx", "edx"))    # audit_counter_add, seamed by this batch
+SB_DESC = 0x0002D414           # the histogram descriptors: +4 the first width, +8 the step, +0xE the count byte
+
+SB_SPECS += [
+    # 0x2E934 audit_post: EAX = kind, EDX = value. A kind above 3 (`jbe` 0x2E93D, unsigned: p9 is 4, pa -1)
+    # returns -1 with no call. Else the descriptor 0x2D414 + 0x10 * kind (kind 3 reads the storage
+    # descriptors behind the three: first 0x105DB0, step 0x530000, count byte 0x10; p7, p8): bucket 0 for a
+    # value below the first width, unsigned (`jb` 0x2E95B: p0 one below, p1 equal), else 1 plus one per step
+    # the rest holds (`jb` 0x2E96B, unsigned: p4) while the bucket is below the count byte, zero-extended,
+    # minus 1 (`jl` 0x2E978: p2 one below the last bucket, p3 and p4 on it; pb's count byte is 1, pc's 0xFF).
+    # pd pokes a first width (0x20000) that differs from the step (0x10000): equal in the image's three.
+    # Then 0x2E180(kind, bucket, 1) (a stub), whose EAX is returned (p0, p1, p5).
+    Spec("audit_post", 0x2E934, [
+        Case("p0", {"eax": 0, "edx": 9}, {}, {0x2E180: 0x00000055}),
+        Case("p1", {"eax": 0, "edx": 10}, {}, {0x2E180: 0xFFFFFFFF}),
+        Case("p2", {"eax": 0, "edx": 189}),
+        Case("p3", {"eax": 0, "edx": 190}),
+        Case("p4", {"eax": 0, "edx": 0xFFFFFFFF}),
+        Case("p5", {"eax": 1, "edx": 30}, {}, {0x2E180: 0x12345678}),
+        Case("p6", {"eax": 2, "edx": 0x80000003}),
+        Case("p7", {"eax": 3, "edx": 5}),
+        Case("p8", {"eax": 3, "edx": 0x00B65DB1}),
+        Case("p9", {"eax": 4, "edx": 5}),
+        Case("pa", {"eax": 0xFFFFFFFF, "edx": 5}),
+        Case("pb", {"eax": 0, "edx": 55}, {SB_DESC + 0xE: b"\x01"}),
+        Case("pc", {"eax": 0, "edx": 0xFFFFFFFF}, {SB_DESC + 0xE: b"\xff"}),
+        Case("pd", {"eax": 2, "edx": 0x00035000}, {SB_DESC + 0x24: le32(0x00020000) + le32(0x00010000)}),
+    ], calls=(SB_ADD,), eax_mask=0xFFFFFFFF,
+       mutants=tuple("@" + m for m in "kle ksigned row firstle fsigned nosub step stepw firstw ssigned count "
+                                      "countsext countoff bucket add2 kindarg ret".split())),
+]
 
 D1_SPECS += SB_SPECS
 SPECS = [

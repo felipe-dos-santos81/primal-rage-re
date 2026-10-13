@@ -41737,6 +41737,39 @@ SB_CA_MUT(sext, 6u)  SB_CA_MUT(addb, 7u)     SB_CA_MUT(ge, 8u)       SB_CA_MUT(u
 SB_CA_MUT(maskrow, 11u) SB_CA_MUT(up, 12u)   SB_CA_MUT(two, 13u)     SB_CA_MUT(noabort, 14u) SB_CA_MUT(eq, 15u)
 SB_CA_MUT(nohalf, 16u) SB_CA_MUT(nostore, 17u) SB_CA_MUT(storeswap, 18u) SB_CA_MUT(storeearly, 19u)
 SB_CA_MUT(ret, 20u)  SB_CA_MUT(retbyte, 21u)
+
+/* 0x2E934 audit_post: EAX = kind, EDX = value. The mutants restate svcmenu.c's body. @ksigned reads the
+ * 0x10 bytes below the descriptors (0x2D404, the image's high-score descriptors), inside mem[]. */
+static u32 sb_2e934_core(u32 kind, u32 value, u32 mut)
+{
+    if (mut == 1u ? kind >= 3u : mut == 2u ? (s32)kind > 3 : kind > 3u) return 0xFFFFFFFFu;   /* @kle @ksigned */
+    const u32 d = SB_DESC + ((mut == 3u) ? 8u : 0x10u) * kind;                   /* @row */
+    const u32 first = (mut == 9u) ? DSW(d + 4u) : DSD(d + 4u);                   /* @firstw */
+    const u32 step = (mut == 7u) ? first : (mut == 8u) ? DSW(d + 8u) : DSD(d + 8u);   /* @step @stepw */
+    s32 limit = (s32)DSB(d + ((mut == 13u) ? 0xFu : 0xEu)) - 1;                  /* @countoff */
+    if (mut == 11u) limit++;                                                     /* @count */
+    if (mut == 12u) limit = (s32)(s8)DSB(d + 0xEu) - 1;                          /* @countsext */
+    u32 bucket = 0u;
+    if (mut == 4u ? value > first : mut == 5u ? (s32)value >= (s32)first : value >= first) {   /* @firstle @fsigned */
+        bucket = 1u;
+        if (mut != 6u) value -= first;                                           /* @nosub */
+        while ((s32)bucket < limit) {
+            if ((mut == 10u) ? (s32)value < (s32)step : value < step) break;     /* @ssigned */
+            bucket++;
+            value -= step;
+        }
+    }
+    if (mut == 14u) bucket++;                                                    /* @bucket */
+    const u32 r = (u32)audit_counter_add((mut == 16u) ? 0u : kind, bucket, (mut == 15u) ? 2u : 1u);   /* @kindarg @add2 */
+    return (mut == 17u) ? 0u : r;                                                /* @ret */
+}
+static void b_sb_2e934(const u32 *r, u32 *eax) { *eax = (u32)audit_post(r[R_EAX], r[R_EDX]); }
+#define SB_AP_MUT(name, n) \
+    static void m_sb_ap_##name(const u32 *r, u32 *eax) { *eax = sb_2e934_core(r[R_EAX], r[R_EDX], n); }
+SB_AP_MUT(kle, 1u)    SB_AP_MUT(ksigned, 2u) SB_AP_MUT(row, 3u)     SB_AP_MUT(firstle, 4u)   SB_AP_MUT(fsigned, 5u)
+SB_AP_MUT(nosub, 6u)  SB_AP_MUT(step, 7u)    SB_AP_MUT(stepw, 8u)   SB_AP_MUT(firstw, 9u)    SB_AP_MUT(ssigned, 10u)
+SB_AP_MUT(count, 11u) SB_AP_MUT(countsext, 12u) SB_AP_MUT(countoff, 13u) SB_AP_MUT(bucket, 14u) SB_AP_MUT(add2, 15u)
+SB_AP_MUT(kindarg, 16u) SB_AP_MUT(ret, 17u)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56744,6 +56777,24 @@ static const binding_t k_bindings[] = {
     { "audit_counter_add@storeearly", m_sb_ca_storeearly, 0xFFFFFFFFu },
     { "audit_counter_add@ret", m_sb_ca_ret, 0xFFFFFFFFu },
     { "audit_counter_add@retbyte", m_sb_ca_retbyte, 0xFFFFFFFFu },
+    { "audit_post",                      b_sb_2e934, 0xFFFFFFFFu },
+    { "audit_post@kle", m_sb_ap_kle, 0xFFFFFFFFu },
+    { "audit_post@ksigned", m_sb_ap_ksigned, 0xFFFFFFFFu },
+    { "audit_post@row", m_sb_ap_row, 0xFFFFFFFFu },
+    { "audit_post@firstle", m_sb_ap_firstle, 0xFFFFFFFFu },
+    { "audit_post@fsigned", m_sb_ap_fsigned, 0xFFFFFFFFu },
+    { "audit_post@nosub", m_sb_ap_nosub, 0xFFFFFFFFu },
+    { "audit_post@step", m_sb_ap_step, 0xFFFFFFFFu },
+    { "audit_post@stepw", m_sb_ap_stepw, 0xFFFFFFFFu },
+    { "audit_post@firstw", m_sb_ap_firstw, 0xFFFFFFFFu },
+    { "audit_post@ssigned", m_sb_ap_ssigned, 0xFFFFFFFFu },
+    { "audit_post@count", m_sb_ap_count, 0xFFFFFFFFu },
+    { "audit_post@countsext", m_sb_ap_countsext, 0xFFFFFFFFu },
+    { "audit_post@countoff", m_sb_ap_countoff, 0xFFFFFFFFu },
+    { "audit_post@bucket", m_sb_ap_bucket, 0xFFFFFFFFu },
+    { "audit_post@add2", m_sb_ap_add2, 0xFFFFFFFFu },
+    { "audit_post@kindarg", m_sb_ap_kindarg, 0xFFFFFFFFu },
+    { "audit_post@ret", m_sb_ap_ret, 0xFFFFFFFFu },
     /* sb table end */
 };
 

@@ -1407,6 +1407,31 @@ s32 audit_counter_add(u32 table, u32 index, u32 add)
     return v;                                               /* 0x2E210 */
 }
 
+/* 0x2E934 — record §S.6. EAX = kind, EDX = value. -1 for a kind above 3
+ * (`jbe`, unsigned: kind 3 reads the four dwords after the three histogram
+ * descriptors and is then refused by 0x2E180). The bucket is 0 for a value
+ * below the descriptor's first width (+4, `jb`), else 1 plus one for each
+ * step (+8) the rest still holds, while the bucket is below the count byte
+ * (+0xE) minus 1, signed (0x2E978 `jl`). Returns 0x2E180(kind, bucket, 1). */
+s32 audit_post(u32 kind, u32 value)
+{
+    PR_SEAM_RET(0x2E934u, kind, value);
+    if (kind > 3u) return -1;                               /* 0x2E93A/0x2E93D */
+    const u32 d = AUDIT_DESC + 0x10u * kind;                /* 0x2E949..0x2E94E */
+    u32 bucket = 0u;                                        /* 0x2E957 */
+    if (value >= DSD(d + 4u)) {                             /* 0x2E954..0x2E95B */
+        bucket = 1u;                                        /* 0x2E95D */
+        value -= DSD(d + 4u);                               /* 0x2E962 */
+        while ((s32)bucket < (s32)DSB(d + 0xEu) - 1) {      /* 0x2E970..0x2E978 */
+            const u32 step = DSD(d + 8u);                   /* 0x2E966 */
+            if (value < step) break;                        /* 0x2E969/0x2E96B */
+            bucket++;                                       /* 0x2E96D */
+            value -= step;                                  /* 0x2E96E */
+        }
+    }
+    return audit_counter_add(kind, bucket, 1u);             /* 0x2E97A..0x2E983 */
+}
+
 /* 0x2E11C — record §K11.8. EAX = g. */
 u32 audit_hist_clear(u32 g)
 {

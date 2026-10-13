@@ -4399,6 +4399,27 @@ static u32 au_changed(const u8 *ref)
     return n;
 }
 
+/* The one counter that audit_post(kind, value) raised by 1 over seeded
+ * histograms, as table * 0x100 + index; -1 when none, another change or more
+ * than one. */
+static s32 au_posted(u32 kind, u32 value)
+{
+    static const u32 base[3] = { AU_H0, AU_H1, AU_H2 }, size[3] = { 0x14u, 0x14u, 7u };
+    u8 ref[AU_LEN];
+    s32 hit = -1;
+    u32 n = 0u;
+    au_seed();
+    tf_snap(ref, AU_LO, AU_LEN);
+    (void)audit_post(kind, value);
+    for (u32 t = 0u; t < 3u; t++)
+        for (u32 i = 0u; i < size[t]; i++) {
+            const u32 a = base[t] + i;
+            if (DSB(a) == (u8)(ref[a - AU_LO] + 1u)) { hit = (s32)(t * 0x100u + i); n++; }
+            else if (DSB(a) != ref[a - AU_LO]) n += 2u;
+        }
+    return n == 1u ? hit : -1;
+}
+
 int test_audit(void)
 {
     u8 saved[AU_LEN], ref[AU_LEN];
@@ -4460,6 +4481,25 @@ int test_audit(void)
     CHECK_EQ_INT((int)audit_counter_add(3u, 0u, 1u), -1);                /* 0x2E18B `jb` */
     CHECK_EQ_INT((int)audit_counter_add(2u, 7u, 1u), -1);                /* 0x2E1A7 `jb`: index == size */
     CHECK_EQ_INT((int)au_changed(ref), 0);
+
+    /* post — 0x2E934: the value's bucket (0 below the first width, then one
+     * per step, at most the count - 1) gets 1. Kinds 0, 1 and 2 are the ones
+     * the call sites pass (0x32B7E, 0x32B35, 0x43E77). Kinds 3 and above store
+     * nothing whichever function refuses them: the differential row tells
+     * 0x2E93D's refusal from 0x2E180's (cases p7..pa). */
+    CHECK_EQ_INT((int)DSD(0x0002D418u), 10);                             /* evidence lines (image only): */
+    CHECK_EQ_INT((int)DSD(0x0002D42Cu), 15);                             /* the widths 10, 15 and 1, and */
+    CHECK_EQ_INT((int)DSB(0x0002D422u), 0x14);                           /* the counts 0x14 and 7 */
+    CHECK_EQ_INT((int)DSB(0x0002D442u), 7);
+    CHECK_EQ_INT((int)au_posted(0u, 9u), 0x000);                         /* 0x2E95B `jb` */
+    CHECK_EQ_INT((int)au_posted(0u, 10u), 0x001);
+    CHECK_EQ_INT((int)au_posted(0u, 189u), 0x012);                       /* one below the last bucket */
+    CHECK_EQ_INT((int)au_posted(0u, 190u), 0x013);
+    CHECK_EQ_INT((int)au_posted(0u, 0xFFFFFFFFu), 0x013);                /* 0x2E978 `jl`: the count - 1 */
+    CHECK_EQ_INT((int)au_posted(1u, 30u), 0x102);
+    CHECK_EQ_INT((int)au_posted(2u, 0xFFFFFFFFu), 0x206);                /* a signed -1 class, unsigned here */
+    au_seed();
+    CHECK_EQ_INT((int)audit_post(2u, 3u), 0x40 + 0x28 + 3 + 1);          /* 0x2E180's EAX, returned */
 
     tf_put(saved, AU_LO, AU_LEN);
     return 0;

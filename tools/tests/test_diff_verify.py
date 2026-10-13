@@ -29330,6 +29330,7 @@ SB_MASKS = {
     "audit_counter_store": 0xFFFFFFFF,
     "audit_counters_halve": 0xFFFFFFFF,
     "audit_counter_add": 0xFFFFFFFF,
+    "audit_post": 0xFFFFFFFF,
 }   # SB_MASKS end
 SB_KINDS = {
     "audit_counter_store@tle": {'byte', 'call #0', 'eax'},
@@ -29381,6 +29382,23 @@ SB_KINDS = {
     "audit_counter_add@storeearly": {'call #0', 'call #1', 'call #2', 'call #3'},
     "audit_counter_add@ret": {'eax'},
     "audit_counter_add@retbyte": {'eax'},
+    "audit_post@kle": {'call #0', 'eax'},
+    "audit_post@ksigned": {'call #0', 'eax'},
+    "audit_post@row": {'call #0'},
+    "audit_post@firstle": {'call #0'},
+    "audit_post@fsigned": {'call #0'},
+    "audit_post@nosub": {'call #0'},
+    "audit_post@step": {'call #0'},
+    "audit_post@stepw": {'call #0'},
+    "audit_post@firstw": {'call #0'},
+    "audit_post@ssigned": {'call #0'},
+    "audit_post@count": {'call #0'},
+    "audit_post@countsext": {'call #0'},
+    "audit_post@countoff": {'call #0'},
+    "audit_post@bucket": {'call #0'},
+    "audit_post@add2": {'call #0'},
+    "audit_post@kindarg": {'call #0'},
+    "audit_post@ret": {'eax'},
 }   # SB_KINDS end
 SB_CASES = [
     ("audit_counter_store@tle", ['s4']),
@@ -29432,6 +29450,23 @@ SB_CASES = [
     ("audit_counter_add@storeearly", ['a2', 'a3', 'a9', 'aa', 'ab', 'ac']),
     ("audit_counter_add@ret", ['a0', 'a1', 'a2', 'a3', 'a4', 'a9', 'ab']),
     ("audit_counter_add@retbyte", ['a3', 'a4']),
+    ("audit_post@kle", ['p7', 'p8']),
+    ("audit_post@ksigned", ['pa']),
+    ("audit_post@row", ['p5', 'p6', 'p8', 'pd']),
+    ("audit_post@firstle", ['p1']),
+    ("audit_post@fsigned", ['p4', 'p6', 'pc']),
+    ("audit_post@nosub", ['p1', 'p2', 'p5', 'pd']),
+    ("audit_post@step", ['p8', 'pd']),
+    ("audit_post@stepw", ['p8', 'pd']),
+    ("audit_post@firstw", ['pd']),
+    ("audit_post@ssigned", ['p4', 'p6', 'pc']),
+    ("audit_post@count", ['p4', 'p6', 'pc']),
+    ("audit_post@countsext", ['pc']),
+    ("audit_post@countoff", ['p2', 'p3', 'p4', 'p5', 'p6', 'p8', 'pc', 'pd']),
+    ("audit_post@bucket", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'pb', 'pc', 'pd']),
+    ("audit_post@add2", ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'pb', 'pc', 'pd']),
+    ("audit_post@kindarg", ['p5', 'p6', 'p7', 'p8', 'pd']),
+    ("audit_post@ret", ['p0', 'p1', 'p5']),
 ]   # SB_CASES end
 SB_OUTSIDE = {}
 P45_OUTSIDE.update(SB_OUTSIDE)
@@ -30505,7 +30540,7 @@ class RealFunctionTests(unittest.TestCase):
         # live (E.callee_clobbers' _CALLEE_CLOBBER_FIXES).
         self.assertEqual(stubs, {
         # S sb (record 2026-10-13-reverse-s §S.6): the stubs its rows add
-        0x2E0A4: (), 0x2E034: ("ebx", "edx"),
+        0x2E0A4: (), 0x2E034: ("ebx", "edx"), 0x2E180: ("ebx", "edx"),
         # S sb end
         # D6 d6a (record 2026-10-13-reverse-d6a): the stubs its rows add
         0x51ED8: (), 0x2CCD0: (), 0x1AE20: (), 0x2CADC: ("edi",), 0x1D250: (), 0x1D270: (), 0x2EA78: ("edi", "ebp"),
