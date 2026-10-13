@@ -4546,7 +4546,7 @@ void fight_4bf18(void)
                             DSW(rec + 0x36u) = DSW(rec + 0x38u);                            /* 0x4C291 */
 
                             {
-                                u32 side0 = (fighter_actor_bit15_clear(0u) != 0) ? 1u : 0u;    /* 0x4C295..0x4C29E */
+                                u32 side0 = ((u8)fighter_actor_bit15_clear(0u) != 0u) ? 1u : 0u; /* 0x4C295..0x4C29E `test al,al` */
                                 u32 mid = DSD(DS_00108884);                                    /* 0x4C2A1 */
                                 u32 ballx = DSD(rec + 0x18u);                                   /* 0x4C2AC */
                                 u32 idx = ((s32)ballx < (s32)mid) ? (side0 ^ 1u) : side0;        /* 0x4C2B1/0x4C2B3/0x4C2B5 */
@@ -4637,7 +4637,7 @@ void fight_4bf18(void)
             if (mode == 0u) return;                                                                       /* 0x4C4F0/0x4C4F3 */
             {
                 u32 side = (u32)mode - 1u;                                                                 /* 0x4C4F9..0x4C4FE */
-                if (fighter_actor_bit15_clear(side) != 0)                                                  /* 0x4C4FF/0x4C504 */
+                if ((u8)fighter_actor_bit15_clear(side) != 0u)                                             /* 0x4C4FF/0x4C504 `test al,al` */
                     text_cursor_hold_font2(0x16, 8, game_string_get(0x53u), 0x5000u);                       /* 0x4C528..0x4C5AA */
                 else
                     text_cursor_hold_font2(7, 8, game_string_get(0x53u), 0x5000u);                          /* 0x4C508..0x4C523/0x4C5AA */
