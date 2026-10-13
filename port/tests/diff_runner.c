@@ -27,7 +27,8 @@
 enum { R_EAX, R_EBX, R_ECX, R_EDX, R_ESI, R_EDI, R_EBP, R_S0, R_S1, R_S2, R_S3, R_N };
 /* Track S batch sb (record 2026-10-13-reverse-s §S.6): the mutant ids of the audit calls this batch added
  * to the mutant cores of earlier batches' rows (the call sites), above every batch's own ids. */
-enum { SB_M_NOAUDIT = 0x5B000001, SB_M_AUDITF, SB_M_AUDITN, SB_M_AUDITEARLY, SB_M_AUDITALWAYS, SB_M_AUDITLATE };
+enum { SB_M_NOAUDIT = 0x5B000001, SB_M_AUDITF, SB_M_AUDITN, SB_M_AUDITEARLY, SB_M_AUDITALWAYS, SB_M_AUDITLATE,
+       SB_M_A, SB_M_B, SB_M_C, SB_M_D, SB_M_E, SB_M_F, SB_M_G, SB_M_H };
 static const char *const k_reg[R_N] = { "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp",
                                         "s0", "s1", "s2", "s3" };
 
@@ -26211,6 +26212,17 @@ static void d3a_27dc8_flags(u32 mut)
     if (mut != D3A_ME_noae8) DSB(0x00104AE8u) = (u8)(DSB(0x00104AE8u) & ((mut == D3A_ME_ae8) ? 0xF7u : 0xFBu));
     if (mut != D3A_ME_noaec) DSB(0x00104AECu) = (u8)(DSB(0x00104AECu) & ((mut == D3A_ME_aec) ? 0xFDu : 0xFEu));
 }
+/* track S batch sb: the 0x32BB0 call (0x27DF0..0x27E28). `abc`, `f63`, `c0`, `c1`: the values read after
+ * 0x32B4C, or before it under the _rr row's cache mutants (SB_M_E..SB_M_H). */
+static void d3a_27dc8_chars(u32 mut, u32 abc, u32 f63, u32 c0, u32 c1)
+{
+    if (mut == SB_M_C) { c0 = (u32)(s32)(s8)c0; c1 = (u32)(s32)(s8)c1; }         /* @charsext */
+    if ((mut == SB_M_D) ? abc == 2u : abc == 1u)                                 /* @abc2 */
+        audit_characters((((f63 != 0u) != (mut == SB_M_B)) ? c1 : c0),           /* @f63inv */
+                         (mut == SB_M_A) ? 0u : 0xFFFFFFFFu);                    /* @chars0 */
+    else if (mut == SB_M_AUDITF) audit_characters(c1, c0);                       /* @charsswap */
+    else audit_characters(c0, c1);
+}
 static void d3a_27dc8_core(u32 mut)
 {
     u32 f = DSB(0x00104B1Fu);
@@ -26219,13 +26231,20 @@ static void d3a_27dc8_core(u32 mut)
     if (mut == D3A_ME_snapearly) config_play_time_snap_b(v, 0u);
     if (mut == D3A_ME_abcb) DSB(0x00104ABCu) = (u8)v;
     else DSD(0x00104ABCu) = v;
+    const u32 abc0 = DSD(0x00104ABCu), f630 = DSB(0x00107813u), c00 = DSB(0x0010782Au), c10 = DSB(0x001078BEu);
+    if (mut == SB_M_AUDITEARLY) d3a_27dc8_chars(mut, abc0, f630, c00, c10);      /* @charsearly */
     if (mut != D3A_ME_nosnap && mut != D3A_ME_snapearly)
         config_play_time_snap_b((mut == D3A_ME_snaparg) ? f : v, (mut == D3A_ME_snapflag) ? 1u : 0u);
+    if (mut != SB_M_NOAUDIT && mut != SB_M_AUDITEARLY && mut != SB_M_AUDITLATE)  /* @nochars */
+        d3a_27dc8_chars(mut, (mut == SB_M_E) ? abc0 : DSD(0x00104ABCu), (mut == SB_M_F) ? f630 : DSB(0x00107813u),
+                        (mut == SB_M_G) ? c00 : DSB(0x0010782Au), (mut == SB_M_H) ? c10 : DSB(0x001078BEu));
     u32 h = DSD(0x00104AC8u);
     if (mut == D3A_ME_deadalways || ((mut == D3A_ME_deadlow) ? ((h & 0xFFu) != 0u) : (h != 0u))) {
         if (mut != D3A_ME_nodead) actor_set_dead(h);
         if (mut == D3A_ME_deadclr) DSD(0x00104AC8u) = 0u;
     }
+    if (mut == SB_M_AUDITLATE)                                                   /* @charslate */
+        d3a_27dc8_chars(mut, DSD(0x00104ABCu), DSB(0x00107813u), DSB(0x0010782Au), DSB(0x001078BEu));
     if (mut == D3A_ME_early) d3a_27dc8_flags(mut);
     if (mut != D3A_ME_novoice && mut != D3A_ME_vorder) sound_voice_match_end();
     prompt_side_erase(0, (mut == D3A_ME_erow) ? 0x1C : 0x1D);
@@ -41988,6 +42007,12 @@ SB_SITE_MUT(m12, d2e_41c28_core, auditover, SB_M_AUDITALWAYS)
     static void m_sb_m0f_##name(const u32 *r, u32 *eax) { (void)r; *eax = d5c_end_core(id, 1); }
 SB_M0F_MUT(nobit0, SB_M_NOAUDIT) SB_M0F_MUT(bit0arg, SB_M_AUDITF) SB_M0F_MUT(bit0sext, SB_M_AUDITN)
 SB_M0F_MUT(bit0early, SB_M_AUDITEARLY) SB_M0F_MUT(bit0late, SB_M_AUDITLATE)
+SB_SITE_MUT(me, d3a_27dc8_core, nochars, SB_M_NOAUDIT)  SB_SITE_MUT(me, d3a_27dc8_core, charsswap, SB_M_AUDITF)
+SB_SITE_MUT(me, d3a_27dc8_core, chars0, SB_M_A)         SB_SITE_MUT(me, d3a_27dc8_core, f63inv, SB_M_B)
+SB_SITE_MUT(me, d3a_27dc8_core, charsext, SB_M_C)       SB_SITE_MUT(me, d3a_27dc8_core, abc2, SB_M_D)
+SB_SITE_MUT(me, d3a_27dc8_core, charsearly, SB_M_AUDITEARLY) SB_SITE_MUT(me, d3a_27dc8_core, charslate, SB_M_AUDITLATE)
+SB_SITE_MUT(me, d3a_27dc8_core, abccache, SB_M_E)       SB_SITE_MUT(me, d3a_27dc8_core, f63cache, SB_M_F)
+SB_SITE_MUT(me, d3a_27dc8_core, c0cache, SB_M_G)        SB_SITE_MUT(me, d3a_27dc8_core, c1cache, SB_M_H)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -57154,6 +57179,22 @@ static const binding_t k_bindings[] = {
     { "game_mode_0f_step@bit0sext", m_sb_m0f_bit0sext, 0x00000000u },
     { "game_mode_0f_step@bit0early", m_sb_m0f_bit0early, 0x00000000u },
     { "game_mode_0f_step@bit0late", m_sb_m0f_bit0late, 0x00000000u },
+    { "flow_match_end@nochars", m_sb_me_nochars, 0x00000000u },
+    { "flow_match_end@charsswap", m_sb_me_charsswap, 0x00000000u },
+    { "flow_match_end@chars0", m_sb_me_chars0, 0x00000000u },
+    { "flow_match_end@f63inv", m_sb_me_f63inv, 0x00000000u },
+    { "flow_match_end@abc2", m_sb_me_abc2, 0x00000000u },
+    { "flow_match_end@charsext", m_sb_me_charsext, 0x00000000u },
+    { "flow_match_end@charsearly", m_sb_me_charsearly, 0x00000000u },
+    { "flow_match_end@charslate", m_sb_me_charslate, 0x00000000u },
+    { "flow_match_end_rr",               b_d3a_27dc8, 0x00000000u },
+    { "flow_match_end_rr@abccache", m_sb_me_abccache, 0x00000000u },
+    { "flow_match_end_rr@c0cache", m_sb_me_c0cache, 0x00000000u },
+    { "flow_match_end_rr@c1cache", m_sb_me_c1cache, 0x00000000u },
+    { "flow_match_end_rr2",              b_d3a_27dc8, 0x00000000u },
+    { "flow_match_end_rr2@abccache", m_sb_me_abccache, 0x00000000u },
+    { "flow_match_end_rr2@f63cache", m_sb_me_f63cache, 0x00000000u },
+    { "flow_match_end_rr2@c1cache", m_sb_me_c1cache, 0x00000000u },
     /* sb table end */
 };
 

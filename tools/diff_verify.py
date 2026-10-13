@@ -19063,17 +19063,22 @@ D3A_SPECS += [
                 "@nof41", "@f41zext", "@b00", "@b00b", "@early", "@fall")),
 ]
 D3A_SNAPB = E.Call(0x32B4C, ("eax", "edx"), clobbers=("edx",))
+SB_CHARS = E.Call(0x32BB0, ("eax", "edx"), clobbers=("edx",))     # audit_characters (track S batch sb)
 D3A_VEND = E.Call(0x4F728, ())               # 0x4F728 never reads EAX (0x4F739 `lea eax` is its first use)
 D3A_RESTORE = E.Call(0x4651C, ())
 D3A_ACCUM = E.Call(0x46534, ("eax", "edx"), clobbers=("edx",))
 
 
+SB_ME_RR_UNHIT = (0x27DF9, 0x27E02, 0x27E10, 0x27E37, 0x27E85)       # flow_match_end_rr and _rr2 (track S batch sb)
+SB_ME_RR2_UNHIT = (0x27E10, 0x27E19, 0x27E23, 0x27E37, 0x27E85)
+
+
 def d3a_end_case(b1f, f63, ac8, b16, ae8=0xFF, aec=0xFF, chars=(7, 0x80)):
     """0x27DC8: the byte 0x104B1F, the dword 0x104ABC (0x5A5A5A5A), the handle dword 0x104AC8,
     the flag bytes 0x104AE8 and 0x104AEC and the winner byte 0x104B16, each between seeded
-    neighbours; slot 0's +0x63 (0x107813) and both +0x7A characters (0x10782A/0x1078BE), which
-    stay above 6 so that the audit callee 0x32BB0 returns at once (`cmp eax,6; ja` 0x32BB3);
-    the stage word 0x104AFC; and the run clock's no-elapsed-time state (d1i_pt_case)."""
+    neighbours; slot 0's +0x63 (0x107813) and both +0x7A characters (0x10782A/0x1078BE), the
+    arguments of 0x32BB0; the stage word 0x104AFC; and the run clock's no-elapsed-time state
+    (d1i_pt_case)."""
     p = d1i_pt_case()
     p.update({0x00104B1E: bytes([0x61, b1f, 0x62]),
               0x00104AB8: le32(0x63636363) + le32(0x5A5A5A5A) + le32(0x64646464),
@@ -19087,26 +19092,48 @@ def d3a_end_case(b1f, f63, ac8, b16, ae8=0xFF, aec=0xFF, chars=(7, 0x80)):
 
 D3A_SPECS += [
     # 0x27DC8 flow_match_end: no argument. The dword 0x104ABC = (the byte 0x104B1F == 3) + 1,
-    # then 0x32B4C(that, 0); 0x2B150 on the dword 0x104AC8 when it is non-zero (all of it; the
+    # then 0x32B4C(that, 0); 0x32BB0 (0x27E28; a stub since track S batch sb): with the dword
+    # 0x104ABC == 1, (slot 1's character when slot 0's +0x63 byte is non-zero, else slot 0's, -1), else
+    # (slot 0's, slot 1's), each byte zero-extended (e0's second is 0x80, e3's first 0xFF); 0x2B150 on
+    # the dword 0x104AC8 when it is non-zero (all of it; the
     # dword is kept); 0x4F728; 0x2C2B0(0, 0x1D) and (1, 0x1D); 0x104AE8 &= 0xFB and 0x104AEC &=
     # 0xFE, then 0x4651C; unless the byte 0x104B16 (zero-extended) is 2, 0x46534(it, -1) and
     # 0x46534(it ^ 1 as a byte, 1). Every one of those callees is a stub. The run clock 0x32970
-    # and the audit callee 0x32BB0 are host-owned or deferred and the port omits both: they run
-    # real in the original, the clock from its no-elapsed-time state and 0x32BB0 with a first
-    # character above 6 (it returns at once), so the three arms that pick its arguments
-    # (0x27DF9..0x27E23) are executed but their choice is not observable. Mask 0: record §1.
+    # is host-owned and the port omits it: it runs real in the original from its no-elapsed-time
+    # state. Mask 0: record §1.
     Spec("flow_match_end", 0x27DC8, [
         Case("e0", {"edx": 0xABCD1234, "ebx": 0x12345678}, d3a_end_case(3, 0, 0x0010A300, 0)),
         Case("e1", {}, d3a_end_case(0, 0, 0, 1, ae8=0x04, aec=0x01), {0x46534: 0xFFFFFF00}),
         Case("e2", {}, d3a_end_case(2, 1, 0, 2, ae8=0x00, aec=0x00)),
         Case("e3", {}, d3a_end_case(0x83, 0x80, 0x00000100, 0xFF, chars=(0xFF, 7)), {0x46534: 0x12345678}),
         Case("e4", {}, d3a_end_case(3, 1, 0x80000000, 3, ae8=0xFB, aec=0xFE, chars=(8, 0x10))),
-    ], allow_calls=(0x32970, 0x32BB0),
-       calls=(D3A_SNAPB, P7_2B150, D3A_VEND, D3A_ERASE, D3A_RESTORE, D3A_ACCUM), eax_mask=0,
+    ], allow_calls=(0x32970,),
+       calls=(D3A_SNAPB, SB_CHARS, P7_2B150, D3A_VEND, D3A_ERASE, D3A_RESTORE, D3A_ACCUM), eax_mask=0,
        mutants=("@abc", "@abc3", "@abcb", "@abcbit", "@snaparg", "@snapflag", "@nosnap", "@snapearly",
                 "@nodead", "@deadalways", "@deadlow", "@deadclr", "@novoice", "@vorder", "@erow", "@eside",
                 "@eone", "@ae8", "@noae8", "@aec", "@noaec", "@late", "@early", "@norestore", "@always",
-                "@b16sext", "@d1", "@d2", "@xor", "@one", "@swap")),
+                "@b16sext", "@d1", "@d2", "@xor", "@one", "@swap", "@nochars", "@charsswap", "@chars0",
+                "@f63inv", "@abc2", "@charsext", "@charsearly", "@charslate")),
+    # 0x27DC8 again with a 0x32B4C stub that writes what the raw reads after it: the dword 0x104ABC
+    # (`cmp dword [0x104abc],1` 0x27DF0) and both characters. _rr leaves 2 where f0 stored 1 (the pair
+    # form, on the characters the stub leaves); _rr2 leaves 1 where g0 stored 2, and slot 0's +0x63 byte
+    # (`cmp byte [0x107813],0` 0x27DF9) the other way round from the case's.
+    Spec("flow_match_end_rr", 0x27DC8, [
+        Case("f0", {}, d3a_end_case(0, 0, 0, 2, chars=(1, 2))),
+    ], allow_calls=(0x32970,),
+       calls=(dataclasses.replace(D3A_SNAPB, writes=((None, 0x00104ABC, le32(2)), (None, 0x0010782A, b"\x05"),
+                                                     (None, 0x001078BE, b"\x06"))),
+              SB_CHARS, P7_2B150, D3A_VEND, D3A_ERASE, D3A_RESTORE, D3A_ACCUM), eax_mask=0,
+       unhit_named={a: "not taken under this row's writing stub and its one case (the plain row hits it)"
+                    for a in SB_ME_RR_UNHIT}, mutants=("@abccache", "@c0cache", "@c1cache")),
+    Spec("flow_match_end_rr2", 0x27DC8, [
+        Case("g0", {}, d3a_end_case(3, 0, 0, 2, chars=(1, 2))),
+    ], allow_calls=(0x32970,),
+       calls=(dataclasses.replace(D3A_SNAPB, writes=((None, 0x00104ABC, le32(1)), (None, 0x00107813, b"\x80"),
+                                                     (None, 0x001078BE, b"\x06"))),
+              SB_CHARS, P7_2B150, D3A_VEND, D3A_ERASE, D3A_RESTORE, D3A_ACCUM), eax_mask=0,
+       unhit_named={a: "not taken under this row's writing stub and its one case (the plain row hits it)"
+                    for a in SB_ME_RR2_UNHIT}, mutants=("@abccache", "@f63cache", "@c1cache")),
 ]
 D3A_WINNER = E.Call(0x27C48, ())
 # the same callee leaving side 1's +0x5A byte below the threshold: 0x29970 reads that byte after its

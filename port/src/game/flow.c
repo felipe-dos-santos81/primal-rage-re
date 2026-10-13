@@ -3004,9 +3004,11 @@ void flow_match_end(void)
      * §7); the host clock owns wall time. */
     DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;   /* 0x27DD1..0x27DE6 */
     config_play_time_snap_b(DSD(DS_00104ABC), 0u);      /* 0x27DE4/0x27DEB 0x32B4C */
-    /* PORT: 0x27DF0..0x27E28 0x32BB0(c0, c1) (or (c, -1) with DS_00104ABC
-     * == 1): two 0x2DAE4(0x1B + c, 1) audit adds for the characters below 7,
-     * deferred (spec §7) as in 0x2D962 and 0x32A3C (config.c). */
+    if (DSD(DS_00104ABC) == 1u)                         /* 0x27DF0: read again after 0x32B4C */
+        audit_characters(DSB(DSB(DS_00107813) != 0u ? DS_001078BE : DS_0010782A),
+                         0xFFFFFFFFu);                  /* 0x27DF9..0x27E17, 0x27E23/0x27E28 0x32BB0 */
+    else
+        audit_characters(DSB(DS_0010782A), DSB(DS_001078BE));   /* 0x27E19..0x27E28 0x32BB0 */
     if (DSD(DS_00104AC8) != 0u)                         /* 0x27E2D/0x27E35 */
         actor_set_dead(DSD(DS_00104AC8));               /* 0x27E39 0x2B150 */
     sound_voice_match_end();                            /* 0x27E3E..0x27E4B 0x4F728 */
