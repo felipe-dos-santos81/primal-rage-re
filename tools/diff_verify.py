@@ -16785,15 +16785,13 @@ D2E_M12_CALLS = {
     5: (D2E_M12_REVEAL, D2E_M12_BOARD, D2E_M12_TALLY, VOICE, D2E_M12_ADVANCE, D2E_M12_CONT),
     6: (VOICE, ANIM_BEGIN),
     7: (P7_2B150, SPAWN, P7_41310, D2E_M12_NUMSET, D2E_M12_DARKEN, D2E_M12_TIMER, D2E_M12_PICK,
-        D2E_M12_SELECT, D2E_M12_OVER, D2E_M12_JOIN, D2E_M12_CLOSE),
+        D2E_M12_SELECT, D2E_M12_OVER, D2E_M12_JOIN, D2E_M12_CLOSE, SB_AUDIT),
     8: (),
 }
-# What runs real: 0x1C500 and its tree where a state draws text, 0x2F41C in state 3 (it only
-# forwards to the stubbed 0x2F198) and, in state 7, the audit add 0x2DAE4 with its field read
-# 0x2D974. The port has no call for 0x2DAE4 (deferred under a PORT comment): the two cases that
-# reach it make it a no-op by its own bytes (field 0x10 negative, 0x2DAF0 `jl 0x2db54`), record §4.
-D2E_M12_ALLOW = {0: D1D_STR_ALLOW, 2: D1D_STR_ALLOW, 3: D1D_STR_ALLOW + (0x2F41C,), 7: (0x2DAE4, 0x2D974)}
-D2E_M12_AUDIT_OFF = {0x0002D340: le32(0x0001C000), 0x00105DE1: le32(0x80000000)}
+# What runs real: 0x1C500 and its tree where a state draws text, and 0x2F41C in state 3 (it only
+# forwards to the stubbed 0x2F198). State 7's audit add 0x2DAE4(0x10, 1) is a stub since track S
+# batch sb ported it (record 2026-10-13-reverse-s §S.6).
+D2E_M12_ALLOW = {0: D1D_STR_ALLOW, 2: D1D_STR_ALLOW, 3: D1D_STR_ALLOW + (0x2F41C,)}
 D2E_DIRTY = {"eax": 0xFFFFFFFF, "ebx": 0xFFFFFFFF, "ecx": 0xFFFFFFFF, "edx": 0xFFFFFFFF}
 
 
@@ -16861,7 +16859,7 @@ D2E_SPECS += [
     # table 0x41C04 (resolved by hand: diff_emu.RESOLVED_JUMPS[0x41C61]). One row per table target
     # (record §2.3): each names the other targets' blocks; together they hit 67/67. Every direct
     # callee a state reaches is a stub (D2E_M12_CALLS) except 0x1C500 (real, with its tree),
-    # 0x2F41C (real: it forwards to the stubbed 0x2F198) and 0x2DAE4 with 0x2D974 (D2E_M12_ALLOW). Mask 0: the one call site 0x253BD is followed
+    # 0x2F41C (real: it forwards to the stubbed 0x2F198) (D2E_M12_ALLOW). Mask 0: the one call site 0x253BD is followed
     # by `jmp 0x2540f`, the mode tail the d1c and d1d records trace dead.
     #
     # State 0: with 0x104529 bit 1 the prompt sprite 0xC876C at (the word 0xC8718 zero-extended,
@@ -16976,13 +16974,14 @@ D2E_SPECS += [
                                     b52c=8, c113=0, tally=(3, 0x85))),
         Case("h6", {}, d2e_m12_case(7, r=0, flag=0x00, bg=(0x1800, 0x2000, 0x0100, 0x3434, 0x3636), b52c=9, b3a=0)),
         Case("h7", {}, d2e_m12_case(7, r=0, flag=0x02, bg=(0x1800, 0x2000, 0x0180, 0x3434, 0x3636), b52c=8,
-                                    c113=1, b3a=1, f63=(0, 1), extra=D2E_M12_AUDIT_OFF)),
+                                    c113=1, b3a=1, f63=(0, 1)), {0x2DAE4: 0x12345678}),
         Case("h8", {}, d2e_m12_case(7, r=1, flag=0x02, bg=(0x1800, 0x2000, 0x0180, 0x3434, 0x3636), b52c=0x80,
-                                    c113=0, b3a=0x80, f63=(1, 0), b19=0x80, extra=D2E_M12_AUDIT_OFF)),
+                                    c113=0, b3a=0x80, f63=(1, 0), b19=0x80)),
     ], ("@sext", "@nowrap", "@dec", "@nostore", "@ge", "@dead", "@spawnxy", "@desc", "@pts", "@ptside", "@bit",
         "@colside", "@valside", "@width", "@pad", "@mode", "@row", "@b1d", "@b1f", "@lt9", "@c113", "@col",
         "@pickorder", "@selside", "@selafc", "@hook", "@ee", "@afe", "@b00", "@b3a", "@a7", "@v3c",
-        "@joinorder", "@close", "@b19", "@b19early")),
+        "@joinorder", "@close", "@b19", "@b19early", "@noaudit", "@auditf", "@auditn", "@auditearly",
+        "@auditover")),
     # State 8 and the guard: the countdown word 0x104AFE decrements; at zero or below (signed,
     # 0x42455 `jg`) 0x104B25 = 0x104B23. A state byte above 8 returns at once (0x41C38 `ja`).
     d2e_m12_spec(8, [

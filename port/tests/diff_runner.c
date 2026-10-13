@@ -24269,7 +24269,11 @@ static void d2e_41c28_core(u32 mut)
             DSW(0x00104B00u) = D2E_M(s7b00) ? 0x15u : 0x17u;
             break;
         }
-        if (D2E_M(s7b3a) ? DSB(0x00105B3Au) != 0u : DSB(0x00105B3Au) == 0u) { flow_no_continue_screen(); break; }
+        if (D2E_M(s7b3a) ? DSB(0x00105B3Au) != 0u : DSB(0x00105B3Au) == 0u) {
+            flow_no_continue_screen();
+            if (mut == SB_M_AUDITALWAYS) (void)audit_add(0x10u, 1u);             /* track S sb: @auditover */
+            break;
+        }
         if ((DSB(0x001078A7u) == 0u) != (D2E_M(s7a7) != 0)) DSB(0x0010789Fu) = D2E_M(s7v3c) ? 0x3Du : 0x3Cu;
         else DSB(0x0010780Bu) = D2E_M(s7v3c) ? 0x3Du : 0x3Cu;
         if (D2E_M(s7b19early)) DSB(0x00104B19u) = 0u;
@@ -24281,7 +24285,10 @@ static void d2e_41c28_core(u32 mut)
             if (D2E_M(s7close)) config_play_time_close(DSB(0x00104B19u), DSD(0x00104ABCu));
             else config_play_time_close(DSD(0x00104ABCu), DSB(0x00104B19u));
         }
+        if (mut == SB_M_AUDITEARLY) (void)audit_add(0x10u, 1u);                  /* track S sb: 0x42425 */
         if (!D2E_M(s7b19)) DSB(0x00104B19u) = 0u;
+        if (mut != SB_M_NOAUDIT && mut != SB_M_AUDITEARLY)
+            (void)audit_add((mut == SB_M_AUDITF) ? 0x11u : 0x10u, (mut == SB_M_AUDITN) ? 2u : 1u);
         break;
     }
 
@@ -41969,6 +41976,9 @@ SB_SITE_MUT(ro, d3a_27ed8_core, auditlate, SB_M_AUDITLATE)
 SB_SITE_MUT1(pj, d4a_28da4_core, noaudit, SB_M_NOAUDIT) SB_SITE_MUT1(pj, d4a_28da4_core, auditf, SB_M_AUDITF)
 SB_SITE_MUT1(pj, d4a_28da4_core, auditn, SB_M_AUDITN)   SB_SITE_MUT1(pj, d4a_28da4_core, auditearly, SB_M_AUDITEARLY)
 SB_SITE_MUT1(pj, d4a_28da4_core, auditlate, SB_M_AUDITLATE)
+SB_SITE_MUT(m12, d2e_41c28_core, noaudit, SB_M_NOAUDIT) SB_SITE_MUT(m12, d2e_41c28_core, auditf, SB_M_AUDITF)
+SB_SITE_MUT(m12, d2e_41c28_core, auditn, SB_M_AUDITN)   SB_SITE_MUT(m12, d2e_41c28_core, auditearly, SB_M_AUDITEARLY)
+SB_SITE_MUT(m12, d2e_41c28_core, auditover, SB_M_AUDITALWAYS)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -57125,6 +57135,11 @@ static const binding_t k_bindings[] = {
     { "flow_player_join@auditn", m_sb_pj_auditn, 0x00000000u },
     { "flow_player_join@auditearly", m_sb_pj_auditearly, 0x00000000u },
     { "flow_player_join@auditlate", m_sb_pj_auditlate, 0x00000000u },
+    { "game_mode_12_step_s7@noaudit", m_sb_m12_noaudit, 0x00000000u },
+    { "game_mode_12_step_s7@auditf", m_sb_m12_auditf, 0x00000000u },
+    { "game_mode_12_step_s7@auditn", m_sb_m12_auditn, 0x00000000u },
+    { "game_mode_12_step_s7@auditearly", m_sb_m12_auditearly, 0x00000000u },
+    { "game_mode_12_step_s7@auditover", m_sb_m12_auditover, 0x00000000u },
     /* sb table end */
 };
 
