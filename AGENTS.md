@@ -326,8 +326,10 @@ consolidation gate).
   scan never reached. `make diff-verify`'s counter after its six waves is
   `963/963 functions VERIFIED; 14349/14349 mutants detected; 1 named gaps;
   604/796 rows with callees closed (167 have none)`; 24 ported functions have no
-  row (18 named gaps and 6 named non-rows, none open; record §D.12; ten rows of wave 6 run the original under
-  code pokes or cover part of it, and say so in their claims), so the open rows are open on those and on the named non-rows
+  row (18 named gaps and 6 named non-rows, none open; record §D.12). The counter does not tell a full row from a
+  weaker one: 9 of the 707 rowed functions have a row that runs the original under code pokes or covers part of it
+  (`0x24C5C`, `game_loop`, and wave 6's `0x2CADC`, `0x2D6F8`, `0x2EA78`, `0x2EA74`, `0x249F0`, `0x1C470`, `0x52106`;
+  the last two see none of the hardware writes): count 698 full rows. The open rows are open on the 24 unrowed functions and on the named non-rows
   (`0x2EA30`, `0x1B544`, `0x5D812`, `0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`,
   `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and

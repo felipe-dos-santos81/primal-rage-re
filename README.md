@@ -41,7 +41,7 @@ and the game-over/high-score flows. Two claims back that:
   the memory changed so far at each) and the block coverage:
   **963/963 functions VERIFIED; 14349/14349 mutants detected**. C3g closed the
   callee-row frontier at 322 rows; track D is rowing every ported function the
-  callee scan never reached (707 of 731 have a row after its sixth wave; the other 24 are named gaps or non-rows, none is open;
+  callee scan never reached (707 of 731 have a row after its sixth wave — 698 a full one, and 9 a row that runs the original under code pokes or covers only part of it: `0x24C5C`, `game_loop`, and wave 6's `0x2CADC`, `0x2D6F8`, `0x2EA78`, `0x2EA74`, `0x249F0`, `0x1C470`, `0x52106`, the last two seeing none of the hardware writes; the other 24 are named gaps or non-rows, none is open;
   record `2026-10-11-reverse-d-derivations.md`), and its rows have found 172
   raw-over-port corrections. The
   E2 triage's remaining rows are the 231 table-driven span-writers — not ported
