@@ -787,3 +787,11 @@ def disasm_range(image, start, end):
 # lea edx,[eax*4]; mov ax,[0xf0a6a]; dec eax; jmp cs:[edx+0x11cdc] (the index is pre-scaled into EDX,
 # and EAX is reloaded with the timer word between the guard and the jump)
 RESOLVED_JUMPS[0x11D69] = (0x11D50, 0x11CDC, 10)
+
+# D6 d6a (record 2026-10-13-reverse-d6a section 1): 0x51ED8 is 0x51E5C's shape. It tests two node fields
+# first (0x51ED8, 0x51EE1: no register written; both `je` go to the `ret` at 0x51F44), then pushes EBX,
+# ECX, EDX, ESI, EDI, EBP (0x51EEA..0x51EEF) and pops all six (0x51F3E..0x51F43) around its body and its
+# indirect renderer call (`call [edx*4+0x80c8c]` 0x51F35); the pushes are not at the entry, so the scan
+# credits none. The raw caller 0x1C5E8 keeps ECX (the column's address, 0x1C5ED) and ESI (the width byte,
+# 0x1C5FF) live across the call at 0x1C63D (read at 0x1C642 `cmp esi,0x10` and 0x1C647 `add [ecx],0xf`).
+_CALLEE_CLOBBER_FIXES[0x51ED8] = ()
