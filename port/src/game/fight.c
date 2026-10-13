@@ -5921,7 +5921,7 @@ void fight_4e67c(void)
 
     if ((u16)stalled == 10u) DSB(DS_001088BE) = 1u;                                                                                                /* 0x4E907/0x4E90C */
     if (DSB(DS_001088B9) != 0u) {                                                                                                                    /* 0x4E91A */
-        fight_4e99c(processed);                                                                                                                        /* 0x4E923 */
+        fight_4e99c((u32)(u16)processed);                                                                                                              /* 0x4E91C..0x4E923 `xor eax,eax; mov ax,si` */
         fight_mode25_scorecard();                                                                                                                       /* 0x4E928 0x4EBB8 */
         if ((DSB(DS_001088BD) & 1u) == 0u) DSB(DS_001088BE) = 0u;                                                                                        /* 0x4E93D/0x4E941/0x4E945 */
     }
