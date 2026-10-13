@@ -41370,6 +41370,66 @@ static void b_d6a_31a78(const u32 *r, u32 *eax)
 D6A_BD_MUT(side, 1u)   D6A_BD_MUT(side8, 2u)   D6A_BD_MUT(left4, 3u)  D6A_BD_MUT(right6, 4u)  D6A_BD_MUT(three, 5u)
 D6A_BD_MUT(zero, 6u)   D6A_BD_MUT(key8, 7u)    D6A_BD_MUT(raw, 8u)    D6A_BD_MUT(step, 9u)    D6A_BD_MUT(nohalf, 10u)
 D6A_BD_MUT(halfup, 11u) D6A_BD_MUT(lr, 12u)    D6A_BD_MUT(rows, 13u)  D6A_BD_MUT(mode, 14u)   D6A_BD_MUT(rowoff, 15u)
+
+/* 0x305FC config_code_row: EAX = col, EDX = row. The insert arm's record is the raw's frame and the port's
+ * scratch 0x03900000 (D6A_SCRATCH_RUN); the one-character strings of the other arm are C locals. The
+ * mutants restate config.c's body. */
+static void d6a_305fc_core(const u32 *r, u32 mut)
+{
+    const u32 base = 0x00107450u, tmp = 0x03900000u;
+    s32 col = (s32)r[R_EAX], row = (s32)r[R_EDX];
+    u32 flags = DSB(base + 3u);
+    if ((mut == 1u) ? ((flags & 1u) != 0u) : (flags != 0u)) {                    /* @flag1 */
+        u32 text = base + ((mut == 2u) ? 4u : 0xDu);                             /* @text1 */
+        text_cursor_set(col, row, mem + text, (mut == 3u) ? 0x2000u : 0x1000u);  /* @smode */
+        if (mut != 4u) flags = DSB(base + 3u);                                   /* @flagcache */
+        if ((flags & ((mut == 5u) ? 4u : 2u)) != 0u) return;                     /* @bit */
+        u32 name = tmp + 4u;
+        for (u32 i = 0u; i < ((mut == 6u) ? 2u : 3u); i++) DSB(name + i) = DSB(text + i);   /* @name2 */
+        DSB(name + 3u) = 0u;
+        u32 num = 0u;
+        for (s16 i = (mut == 7u) ? 4 : 3; i < ((mut == 8u) ? 7 : 8); i++) {      /* @from4 @to7 */
+            s32 c = (s8)DSB(text + (u32)i);
+            if (c < ((mut == 9u) ? 0x31 : 0x30) || c > ((mut == 10u) ? 0x38 : 0x39)) {   /* @lt31 @gt38 */
+                if (mut == 11u) continue;                                        /* @nostop */
+                break;
+            }
+            num = num * ((mut == 12u) ? 16u : 10u) + (u32)(c - 0x30);            /* @base */
+        }
+        DSD(tmp) = num;
+        if (mut == 13u) DSB(base + 3u) |= 2u;                                    /* @setearly */
+        (void)hiscore_insert((mut == 14u) ? 1u : 0u, tmp, (mut == 15u) ? 1u : 2u);   /* @rec1 @table */
+        if (mut != 16u && mut != 13u) DSB(base + 3u) |= (mut == 17u) ? 1u : 2u;  /* @noset @set1 */
+        return;
+    }
+    u8 one[2];
+    one[1] = 0u;
+    u32 count = (mut == 18u) ? (u32)DSB(base + 2u) : 0u;
+    for (s16 i = 0; i < ((mut == 19u) ? 7 : 8); i++) {                           /* @seven */
+        u32 mode = (mut == 20u) ? 0x2000u : 0x4000u;                             /* @cmode */
+        if (mut != 18u) count = DSB(base + 2u);                                  /* @countcache */
+        one[0] = DSB(base + 4u + (u32)i);
+        s32 c = (mut == 21u) ? (s32)(s8)count : (s32)(s16)count;                 /* @countsext */
+        if ((mut == 22u) ? (i > c) : (i >= c)) {                                 /* @gt */
+            one[0] = DSB(base + ((mut == 23u) ? 0xCu : 0xDu) + (u32)i);          /* @second */
+            mode = (mut == 20u) ? 0x4000u : 0x2000u;
+        }
+        if (mut == 24u) text_cursor_set(col, row + i, one, mode);                /* @down */
+        else text_cursor_set(col + ((mut == 25u) ? 0 : i), row, one, mode);      /* @nostep */
+    }
+}
+static void b_d6a_305fc(const u32 *r, u32 *eax)
+{
+    D6A_SCRATCH_RUN(config_code_row((s32)r[R_EAX], (s32)r[R_EDX]));
+    *eax = 0u;
+}
+#define D6A_CR_MUT(name, n) \
+    static void m_d6a_cr_##name(const u32 *r, u32 *eax) { D6A_SCRATCH_RUN(d6a_305fc_core(r, n)); *eax = 0u; }
+D6A_CR_MUT(flag1, 1u)  D6A_CR_MUT(text1, 2u)   D6A_CR_MUT(smode, 3u)   D6A_CR_MUT(flagcache, 4u) D6A_CR_MUT(bit, 5u)
+D6A_CR_MUT(name2, 6u)  D6A_CR_MUT(from4, 7u)   D6A_CR_MUT(to7, 8u)     D6A_CR_MUT(lt31, 9u)      D6A_CR_MUT(gt38, 10u)
+D6A_CR_MUT(nostop, 11u) D6A_CR_MUT(base, 12u)  D6A_CR_MUT(setearly, 13u) D6A_CR_MUT(rec1, 14u)   D6A_CR_MUT(table, 15u)
+D6A_CR_MUT(noset, 16u) D6A_CR_MUT(set1, 17u)   D6A_CR_MUT(countcache, 18u) D6A_CR_MUT(seven, 19u) D6A_CR_MUT(cmode, 20u)
+D6A_CR_MUT(countsext, 21u) D6A_CR_MUT(gt, 22u) D6A_CR_MUT(second, 23u) D6A_CR_MUT(down, 24u)     D6A_CR_MUT(nostep, 25u)
 /* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56201,6 +56261,33 @@ static const binding_t k_bindings[] = {
     { "svc_buttons_draw@rows", m_d6a_bd_rows, 0x00000000u },
     { "svc_buttons_draw@mode", m_d6a_bd_mode, 0x00000000u },
     { "svc_buttons_draw@rowoff", m_d6a_bd_rowoff, 0x00000000u },
+    { "config_code_row",                 b_d6a_305fc, 0x00000000u },
+    { "config_code_row@flag1", m_d6a_cr_flag1, 0x00000000u },
+    { "config_code_row@text1", m_d6a_cr_text1, 0x00000000u },
+    { "config_code_row@smode", m_d6a_cr_smode, 0x00000000u },
+    { "config_code_row@bit", m_d6a_cr_bit, 0x00000000u },
+    { "config_code_row@name2", m_d6a_cr_name2, 0x00000000u },
+    { "config_code_row@from4", m_d6a_cr_from4, 0x00000000u },
+    { "config_code_row@to7", m_d6a_cr_to7, 0x00000000u },
+    { "config_code_row@lt31", m_d6a_cr_lt31, 0x00000000u },
+    { "config_code_row@gt38", m_d6a_cr_gt38, 0x00000000u },
+    { "config_code_row@nostop", m_d6a_cr_nostop, 0x00000000u },
+    { "config_code_row@base", m_d6a_cr_base, 0x00000000u },
+    { "config_code_row@setearly", m_d6a_cr_setearly, 0x00000000u },
+    { "config_code_row@rec1", m_d6a_cr_rec1, 0x00000000u },
+    { "config_code_row@table", m_d6a_cr_table, 0x00000000u },
+    { "config_code_row@noset", m_d6a_cr_noset, 0x00000000u },
+    { "config_code_row@set1", m_d6a_cr_set1, 0x00000000u },
+    { "config_code_row@seven", m_d6a_cr_seven, 0x00000000u },
+    { "config_code_row@cmode", m_d6a_cr_cmode, 0x00000000u },
+    { "config_code_row@countsext", m_d6a_cr_countsext, 0x00000000u },
+    { "config_code_row@gt", m_d6a_cr_gt, 0x00000000u },
+    { "config_code_row@second", m_d6a_cr_second, 0x00000000u },
+    { "config_code_row@down", m_d6a_cr_down, 0x00000000u },
+    { "config_code_row@nostep", m_d6a_cr_nostep, 0x00000000u },
+    { "config_code_row_rr",              b_d6a_305fc, 0x00000000u },
+    { "config_code_row_rr@flagcache", m_d6a_cr_flagcache, 0x00000000u },
+    { "config_code_row_rr@countcache", m_d6a_cr_countcache, 0x00000000u },
     /* d6a table end */
 };
 

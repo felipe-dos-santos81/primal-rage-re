@@ -31937,6 +31937,70 @@ D6A_SPECS += [
                                       "mode rowoff".split())),
 ]
 
+# ---- 0x305FC: the code-entry row ------------------------------------------------------------------------
+# Both of its data paths live in the raw's frame: the one-character strings handed to 0x2F198 (`lea
+# ebx,[esp+0x30]` 0x306F9) and the {number, name} record handed to 0x2DCA0 (`mov edx,esp` 0x306AB), which
+# the port keeps in a scratch above the image (config.c, PORT; the binding hides it, d6a_scratch_hook).
+# So 0x2F198, 0x2F830, 0x2F0F0 and 0x2F280 run on both sides and each character is compared at 0x2F5A0
+# (a stub, by value), and 0x2DCA0 runs on both sides with 0x2DB58: the record is compared by what the
+# insert stores in table 2 (three value bytes, one name word: the image's descriptor; the fourth name
+# byte, the NUL of 0x3066F, is never read) and 0x2D4EC(8) is the stub its own row has.
+D6A_CODE = 0x00107450                           # the record: +2 the count, +3 the flags, +4 and +0xD the texts
+D6A_CODE_REAL = D6A_TEXT_REAL + (0x2F280, 0x2DCA0, 0x2DB58)
+
+
+def d6a_code(cid, col, row, flags, count, text1, text2):
+    """0x305FC: d5d_hs_case (the three high-score tables seeded, the flag bytes 0x105DD8/9); the record
+    seeded whole: two bytes, the count, the flags, eight columns of `text1`, one byte, eight of `text2`,
+    a NUL and two more bytes; the cursor words seeded."""
+    assert len(text1) == 8 and len(text2) == 8
+    p = d5d_hs_case(le32(0x51525354) + b"mno")
+    p[D6A_CODE] = bytes([0xA0, 0xA1, count, flags]) + bytes(text1) + b"\xa2" + bytes(text2) + b"\x00\xa3\xa4"
+    p[0x00105F34] = le16(0x7171) + le16(0x7272)
+    return Case(cid, {"eax": col, "edx": row}, p)
+
+
+D6A_SPECS += [
+    # 0x305FC config_code_row: EAX = col, EDX = row. With the flags byte 0x107453 non-zero (a0: 0x02,
+    # a1: 0xFE), the second text at mode 0x1000 as one string; the flags byte is read again (`mov
+    # al,[0x107453]` 0x3063D) and bit 1 returns. Else (b0..b4) the first three characters and a NUL, and
+    # the decimal number from the fourth character on while each is in '0'..'9', signed (`cmp edx,0x30;
+    # jl` 0x30688, `cmp edx,0x39; jg` 0x30690: b2 stops on ':', b3 on '/', b1 runs to the eighth column),
+    # go to 0x2DCA0(0, record, 2) and bit 1 of the flags is set after it. With the flags byte 0 (c0..c3)
+    # eight calls 0x2F198(col + i, row, one character, mode): the first text's at 0x4000 while i is below
+    # the count byte (zero-extended, a signed word compare `cmp si,ax; jl` 0x306E8: c3 has 0xFF), else
+    # the second text's at 0x2000. c3 has a space (0x2F830's all-blank arm, 0x2F280 on empty cells), a
+    # NUL (nothing drawn) and 0x80. Mask 0: `call 0x2ea74` (0x2FE2F) and `xor eax,eax` (0x305E7) follow
+    # the two call sites.
+    Spec("config_code_row", 0x305FC, [
+        d6a_code("a0", 0x11, 0x02, 0x02, 3, b"PASSWORD", b"CODE1234"),
+        d6a_code("a1", 0x00, 0x1B, 0xFE, 0, b"PASSWORD", b"Zz9\x80 !~0"),
+        d6a_code("b0", 0x11, 0x02, 0x01, 3, b"PASSWORD", b"ABC123\x00\x00"),
+        d6a_code("b1", 0x05, 0x07, 0x84, 8, b"PASSWORD", b"xyz00042"),
+        d6a_code("b2", 0x11, 0x02, 0x0D, 0, b"PASSWORD", b"A Z09:55"),
+        d6a_code("b3", 0x11, 0x02, 0x40, 0, b"PASSWORD", b"QRS/4567"),
+        d6a_code("b4", 0x02, 0x03, 0x01, 0, b"PASSWORD", b"T\x00U9a123"),
+        d6a_code("c0", 0x11, 0x02, 0x00, 3, b"PASSWORD", b"--------"),
+        d6a_code("c1", 0x00, 0x00, 0x00, 0, b"PASSWORD", b"abcdefgh"),
+        d6a_code("c2", 0x22, 0x1C, 0x00, 8, b"PASSWORD", b"abcdefgh"),
+        d6a_code("c3", 0x08, 0x10, 0x00, 0xFF, b"A \x00\x80BCDE", b"abcdefgh"),
+    ], allow_calls=D6A_CODE_REAL, calls=(D1G_GLYPH, D5D_TOUCH), eax_mask=0,
+       mutants=tuple("@" + m for m in "flag1 text1 smode bit name2 from4 to7 lt31 gt38 nostop base setearly "
+                                      "rec1 table noset set1 seven cmode countsext gt second down "
+                                      "nostep".split())),
+    # The same entry with a 0x2F5A0 stub that stores what the raw reads after its draws: the flags byte
+    # = 0x03 (r0 enters with 0x01: `mov al,[0x107453]` 0x3063D then finds bit 1 and returns) and the
+    # count byte = 6 (r1 enters with 2: `mov al,[ebx+2]` 0x306E0 is read every column).
+    Spec("config_code_row_rr", 0x305FC, [
+        d6a_code("r0", 0x11, 0x02, 0x01, 3, b"PASSWORD", b"ABC123\x00\x00"),
+        d6a_code("r1", 0x11, 0x02, 0x00, 2, b"PASSWORD", b"abcdefgh"),
+    ], allow_calls=D6A_CODE_REAL,
+       calls=(dataclasses.replace(D1G_GLYPH, writes=((None, D6A_CODE + 2, b"\x06\x03"),)), D5D_TOUCH), eax_mask=0,
+       unhit_named={a: "the insert arm (r0 returns on the flags byte the stub left): the config_code_row row's"
+                    for a in (0x3064F, 0x30677, 0x3068D, 0x30695, 0x3069E, 0x306A6)},
+       mutants=("@flagcache", "@countcache")),
+]
+
 D1_SPECS += D6A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [
