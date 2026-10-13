@@ -68,7 +68,7 @@ Ledger (git-ignored): `.superpowers/sdd/2026-10-13-reverse-s-storage-layer/progr
 | `0x2D638` | `void config_storage_load(void)` | none |
 | `0x2DE98` | `void hiscore_storage_load(u32 defaults)` | EAX |
 | `0x2DF8C` | `void config_storage_validate(u32 defaults)` | EAX |
-| `0x2DAE4` | `void audit_add(u32 field, u32 n)` | EAX, EDX; reads the field through `0x2D974` (`config_field_get`) and returns early when that is negative (`0x2DAF0`) |
+| `0x2DAE4` | `s32 audit_add(u32 field, u32 n)` | EAX, EDX; its callers read EAX (record §S.2); reads the field through `0x2D974` (`config_field_get`) and returns early when that is negative (`0x2DAF0`) |
 | `0x2E934` | `s32 audit_post(u32 kind, u32 value)` | EAX, EDX; -1 when `kind > 3` (`0x2E93D`) |
 | `0x2E180` | `s32 audit_counter_add(u32 table, u32 value)` | EAX, EDX; -1 path when `table >= 3` (`0x2E18B`) |
 | `0x2E0A4` | `s32 audit_counters_halve(u32 table)` | EAX; -1 when `table >= 3` (`0x2E0AD`) |
