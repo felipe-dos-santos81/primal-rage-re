@@ -456,11 +456,10 @@ void camera_x_commit(s32 arg)
 {
     s32 old = (s32)DSD(DS_000F0AF0);
     s32 step = (s32)DSW(DS_000F0AFC);
-    s32 diff = arg - old;
-    s32 mag = diff < 0 ? -diff : diff;
+    s32 diff = (s32)((u32)arg - (u32)old);                  /* 0x12C88 `sub` */
+    s32 mag = diff < 0 ? (s32)(0u - (u32)diff) : diff;      /* 0x12C8C..0x12C90 `neg`: INT_MIN stays */
     if (mag > step) {
-        old += (diff > 0) ? step : -step;
-        DSD(DS_000F0AF0) = (u32)old;
+        DSD(DS_000F0AF0) = (diff > 0) ? (u32)old + (u32)step : (u32)old - (u32)step;   /* 0x12CB7 `add` / 0x12CC4 `sub` */
     } else {
         DSW(DS_000F0AFC) = 0x400u;
         DSD(DS_000F0AF0) = (u32)arg;
@@ -496,7 +495,8 @@ void camera_mode_track_pair(void)
                 DSD(sa + 0x34u) = (u32)latch;
                 DSD(sa + 0x2cu) = (u32)latch;
                 la = latch;
-                DSD(DSD(sa) + 0x18u) = hit_record_x(a);        /* 0x12F02/0x12F09 */
+                u32 x = hit_record_x(a);                        /* 0x12F02 */
+                DSD(DSD(sa) + 0x18u) = x;                       /* 0x12F07/0x12F09: [slot] loaded after the call */
             }
         }
         {
@@ -505,7 +505,8 @@ void camera_mode_track_pair(void)
                 DSD(sb + 0x34u) = (u32)latch;
                 DSD(sb + 0x2cu) = (u32)latch;
                 lb = latch;
-                DSD(DSD(sb) + 0x18u) = hit_record_x(b);        /* 0x12F22/0x12F29 */
+                u32 x = hit_record_x(b);                        /* 0x12F22 */
+                DSD(DSD(sb) + 0x18u) = x;                       /* 0x12F27/0x12F29: [slot] loaded after the call */
             }
         }
         diff = (s32)((u32)la - (u32)lb);
@@ -980,7 +981,7 @@ int camera_bitplane_merge(u32 bit, u32 src, u32 rows, u32 dst, u32 arg5)
 
 /* 0x15B90. Read the box palette/width pair at (0x17EEC(side) + index) from
  * 0xD5100/0xD5101 into the two out pointers, adjust chars 5/6, then mirror the
- * x out when the actor's bit 15 is clear. */
+ * x out when 0x1A570's AL is 0 (the actor's bit 15 set). */
 void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
 {
     u32 ch = DSB(DS_0010782A + side * 0x94u);
