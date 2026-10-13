@@ -583,3 +583,79 @@ exits 0 on the first run: 178 harness tests OK, the counter above, entry-triage 
 idempotent, every oracle pin unchanged, and its 782 normalised lines before "== differential verification"
 equal the §D.9 gate's — 0 differing. So no capture distinguishes any of the 5 corrections either.
 
+## §D.11 Wave 5, batch d5j and the audits' open notes (7 rows, 13 corrections): the last two functions
+
+Batch d5j (record `2026-10-12-reverse-d5j-derivations.md`), merged on `reverse-d5int` after §D.10's tree went
+to `main` (`d5663cf2`). The three harness files are the integration head plus d5j's insertions (composition
+from the merge base `3790f323` over `HEAD` and `reverse-d5j`: 740, 770 and 844 lines added, none removed);
+`fight_4b470` keeps the integration side, and the three stub-clobber keys d5j repeats (`0x4987C`, `0x4AC38`,
+`0x4B470`) stay once.
+
+| scope | rows | cases | mutants |
+|---|---|---|---|
+| `fight_4bf18` `0x4BF18` (three specs: the list walk, the empty list's preamble and post-loop, `_rr`; 84 of 84 blocks between them) and `fight_effects_pass` `0x49C78` (four: types 0..8 and the tail, `_m9`, `_rr`, `_pre`; 139 of 139) | 7 (2 addresses) | 131 | 411 |
+
+`make diff-verify`: **`951/951 functions VERIFIED; 14206/14206 mutants detected; 1 named gaps; 601/784 rows
+with callees closed (167 have none)`**. 697 of the 731 have a row and **no function is open**: the 34 without
+one are the 28 named gaps of §D.8 and §D.9 and the 6 named non-rows below `0x5D000` (`0x2EA30`, `0x1B544`,
+`0x29D60`, `0x2EA64`, `0x32BAC`, `0x500BB`). d5j adds 15 seams in `fight.c` and no named gap.
+
+**The corrections** (audit #14, read-only, from the bytes: 13 of 13 CONFIRMED, the reloads of both fight
+functions checked both ways — every reload the port makes is one the raw makes, every cached-register site
+still uses the local —, the 15 seams and the merged `fight_4b470` CONFIRMED):
+
+| source | correction | raw |
+|---|---|---|
+| d5j | fight_4bf18 tests AL of `0x1A570` | `0x4C29C`, `0x4C504` `test al,al` |
+| d5j | fight_4bf18's frame gate is a signed remainder | `0x4C3E7 sar edx,0x1f; idiv ecx` |
+| d5j | fight_4bf18 loads the entry's actor `[ecx+8]` again after its calls | `0x4BFF5..0x4C027`, `0x4C0AF/0x4C0C2`, `0x4C0F2/0x4C113`, `0x4C1A9/0x4C1C2`, `0x4C231/0x4C23D`, `0x4C30D` |
+| d5j | fight_4bf18 loads `0x108898` again for the score test | `0x4C321` |
+| d5j | fight_effects_pass tests AL of `0x4AF04` | `0x4A0A7 test al,al` |
+| d5j | fight_effects_pass loads the entry's actor again after the prelude and its arms' calls | `0x49D4C` and the sites of the batch record's §3.6 |
+| audit #10 | res_load_present stores the full-copy flag `0x1014FC` as a byte | `0x1B3F4/0x1B3F8 mov byte` |
+| audit #11 | fight_4e67c hands `0x4E99C` the zero-extended word count | `0x4E91C..0x4E923` |
+| audit #9 | camera_mode_track_pair loads `[slot]` after `0x18714` | `0x12F02/0x12F07`, `0x12F22/0x12F27` |
+| d4c's row, this round | fighter_spawn_slot tests AL of `0x1CEBC` | `0x33E4D test al,al` |
+| d4c's row, this round | fighter_spawn_slot loads the record and the character again | `0x33D1E`, `0x33D31`, `0x33D53`, `0x33D60..0x33D7B`, `0x33E12/0x33E14` |
+| d4c's row, this round | fighter_command_generate reads the command dword before `0x1A570` and recomputes the entry after | `0x472E1..0x472E7`, `0x47307..0x47312` |
+| d5a's row, this round | sound_sample_start loads the length and the buffer again after `0x5DC0F` | `0x1CB73..0x1CB79` |
+
+The six of d5j each have a mutant that is the old code. The seven others are the open notes of audits #9,
+#10 and #11 and of the wave-4 and wave-5 rows, fixed from the bytes; none has a case that separates it (the
+rows of those functions stub nothing that rewrites the reloaded value, and `0x1B3AC` is a named gap), so the
+bytes and the audit are their evidence. `res_load_present`'s is also a unit check: `test_platform.c` seeds
+the upper three bytes of `0x1014FC` and fails with the dword store.
+
+**Also in this round.** `camera_x_commit` is written in the wrapping form (`sub` `0x12C88`, `neg` `0x12C90`,
+`add`/`sub` `0x12CB7/0x12CC4`: the signed C forms were undefined where the raw wraps); `camera_box_palette`'s
+header says what the code does (it mirrors when `0x1A570`'s AL is 0, the actor's bit 15 set, `0x15C1C`).
+
+**What the audit adds.** None of the 13 changes ordinary play as far as the callees it read show: the port's
+predicates return 0 or 1; `0x4E99C` only ever tests `bx`; no instruction addresses `0x1014FD..FF`; and the
+signed remainder differs only for a negative `0x1088D0`, which the image never stores (its nine writers,
+`0x20CB0`, `0x24B48`, `0x24F4C`, `0x24FB4`, `0x25007`, `0x25061`, `0x250B4`, `0x25111`, `0x25163`, all write
+`(x & 0xF) * 5 + 0x1E`, 30..105 — this closes the batch record's §3.2 caveat). It did not read the callees
+for writes to the reloaded cells (`[entry+8]`, `[slot]`, `[slot+0x7a]`), so "no change in play" is not claimed
+for the reload corrections beyond that. One stub clobber set is wider than the bytes: `0x4CD98` pushes and
+pops EBX/ECX/EDX and writes none of ESI/EDI/EBP, but the scan (`callee_clobbers`) reports those three because
+its callee `0x2B150` has an indirect call (`0x2B185`), and the hand fix for `0x2B150` applies only where it is
+the stub. The set is the scan's, it is pinned, it errs towards poisoning more, and the only caller pops the
+three right after (`0x4C3BF`); left as measured.
+
+**Open, named:** the port sets `0x1014FC` after the read's stall and re-sync where the raw sets it before the
+open (`0x1B3F8` precedes `0x1B403`; no reader between); `fight_4bf18`'s `%` has no zero guard where the raw's
+`idiv` faults (`0x4C3E7`; only before any writer of `0x1088D0` ran); the held-actor cell `[ecx+0x10]` is kept in
+a local where the raw loads it twice with no call between (`0x4C168`, `0x4C240`, `0x49F2F`); 23 other callers
+of `0x1A570` (`fighter.c`, `actors.c:1613`) test the whole int where the raw tests AL — value-identical with
+the 0/1 return, not rowed as such; `fight_effects_pass` type 1 and `fight_4bf18`'s bounce negate an `s32` (`d = -d`; `neg` at
+`0x49D5B`/`0x4C043`, `0x4C378`), undefined in C at 0x80000000 where the rows' cases agreed on this build;
+`config_validate`'s two omitted fills (`0x2D83A..0x2D875`); no mutant for `game_loop`'s `0x2569D` store; no
+stub-EAX case separates the two `0x1C6D4` casts of §D.10; the limits of the batch record's §4.
+
+**Gate evidence.** Self-check on the merged tree `951/951; 14206/14206; 1; 601/784 (167)`, rc 0; all 587 stub clobber
+sets equal the scan's and the pinned dictionary; no row reads outside the image unnamed (952 specs); the
+real-function tests under a soft assertion report no moved pin. `make verify` exits 0 on the first run: 178
+harness tests OK, the counter above, entry-triage byte-identical, `symbols.h` idempotent, every oracle pin
+unchanged, and its 782 normalised lines before "== differential verification" equal the §D.10 gate's — 0
+differing. So no capture distinguishes any of the 13 corrections either: their evidence is the rows, the
+bytes and audit #14.
