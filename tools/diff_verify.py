@@ -23758,9 +23758,7 @@ D4C_ENT0, D4C_ENT1 = 0x0010A040, 0x0010A0C0      # 0x43D60: the two select entri
 D4C_BUTTON = E.Call(0x43D0C, ("eax",))
 D4C_RESET = E.Call(0x33C18, ("eax",))
 D4C_CONFIRM = E.Call(0x43D60, ("eax",), clobbers=("esi", "edi", "ebp"))
-# the deferred audit post 0x2E934(2, class) ends in 0x2E180(2, bucket, 1), which stores nothing when the
-# bucket is not below the counter's bucket count, the word 0x2D46E (`cmp edx,esi; jb` 0x2E1A5): 0 here
-D4C_AUDIT_OFF = {0x0002D46E: le16(0)}
+SB_POST = E.Call(0x2E934, ("eax", "edx"), clobbers=("edx",))     # audit_post (track S batch sb): a stub in the rows of its call sites
 
 
 def d4c_sel_pokes(cur=(2, 5), cls=(0x61, 0x62), cd=0x0009, p6e=(0xFF, 0xFF), st=(1, 1), b34=(0x41, 0x42)):
@@ -23796,7 +23794,6 @@ def d4c_confirm_case(cid, side, cur, btn, o6e=0xFF, o34=0x42, o70=1, o6a=0x62, s
     key = (cls | side << 6) & 0xFF
     p[0x00108105] = bytes([0x05, key, (cls | o << 6) & 0xFF, ((cls + 1) | side << 6) & 0xFF, key | 0x80, 0x3F, 0x3E,
                            0xBD, 0x0D, 0x0E, 0x0F, 0x10, 0x25, 0x12])
-    p.update(D4C_AUDIT_OFF)
     p.update(extra or {})
     return Case(cid, {"eax": side}, p, {0x43D0C: btn})
 
@@ -23824,9 +23821,9 @@ D4C_SPECS += [
     # equal (f8 not), the same (f5 0, f6 1). Then, unless the side's own confirmed class is not
     # 0xFF and equals the class (f9), 0x33C18(side) when it is not 0xFF (f10), 0x4248C(class,
     # side) (run on both sides: the stage bytes show its arguments) and the confirmed class = the
-    # class. The audit post 0x2E934(2, the signed class) runs on the original side only, with a
-    # zero bucket count so that its 0x2E180 stores nothing: the port defers the audit layer
-    # (tools/port_classification.txt) and the row does not compare that call. Last 0x2B150(the
+    # class. The audit post 0x2E934(2, the class byte sign-extended: `mov edx,[ebx+0x108167]; sar
+    # edx,0x18` 0x43E69, f14's table byte is 0x86) (0x43E77; a stub since track S batch sb, its EAX
+    # not read: `mov eax,[ebx*4+0x108154]` follows). Last 0x2B150(the
     # entry DS_00108154[side]), 0x432EC(side, 0), 0x2C3FC(0x6C). Void: 0x43AD8 loops to `mov al,
     # [edx+0x108170]` or reaches `mov eax,0x11` (0x43AE3); 0x43CC6 loops to `mov al,..` (0x43B2B)
     # or reaches `xor ah,ah` .. `mov ax,[0xef6dc]` .. `and eax,0xffff` (0x43CE1..0x43CFA).
@@ -23845,12 +23842,14 @@ D4C_SPECS += [
         d4c_confirm_case("f11", 1, 3, 0x101, o6e=0x01, o34=1),
         d4c_confirm_case("f12", 0, 0xFF, 0xFFFFFF02, extra={0x000C8881: b"\x33", 0x000C8981: b"\x44"}),
         d4c_confirm_case("f13", 1, 4, 2, o70=0, o6a=0x06, o34=2),
-    ], allow_calls=(0x4248C, 0x2E934, 0x2E180), calls=(D4C_BUTTON, D4C_RESET, P7_2B150, D3B_TXTCLR, VOICE), eax_mask=0,
+        d4c_confirm_case("f14", 0, 2, 1, extra={0x000C8884: b"\x86"}),
+    ], allow_calls=(0x4248C,), calls=(D4C_BUTTON, D4C_RESET, SB_POST, P7_2B150, D3B_TXTCLR, VOICE), eax_mask=0,
        mutants=("@curzext", "@curother", "@clstab", "@no6a", "@no70", "@v70", "@no63", "@63other", "@btnside",
                 "@no34", "@btnb", "@arm1cls", "@nobtn1", "@arm2no70", "@arm2v", "@arm2cls", "@nobtn2",
                 "@noclash", "@clashinv", "@clashother", "@nosame", "@noreset", "@resetalways", "@resetside",
                 "@nodrop", "@dropside", "@dropcur", "@no6e", "@6eother", "@nodead", "@deadside", "@noclr",
-                "@clrside", "@clrflag", "@novoice", "@order", "@voiceid")),
+                "@clrside", "@clrflag", "@novoice", "@order", "@voiceid", "@nopost", "@postkind", "@postzext",
+                "@postcur", "@postside", "@postearly", "@postlate")),
     # 0x43AAC fight_char_countdown: no argument. The word 0x10816C decremented (`dec edx`, a word
     # store) and, above 0 signed (`test dx,dx; jg` 0x43ABE/0x43AC1: t0 5, t1 2, t5 0x8000 -> 0x7FFF),
     # drawn through 0x2F528(0x13, 1, the value, 2, 0, 0x4000), AL = 0; else (t2 1, t3 0, t4 0x8001)
@@ -32525,7 +32524,6 @@ SB_SPECS += [
         Case("k5", {"eax": 6, "edx": 0x00010000}, d1i_pt_case(acc=(0x11111111, 0x22222222, 0xFFFFFFFF, 0x44444444))),
     ], allow_calls=(0x32970,), calls=(SB_AUDIT,), eax_mask=0, mutants=SB_PT_MUT),
 ]
-SB_POST = E.Call(0x2E934, ("eax", "edx"), clobbers=("edx",))                # audit_post, seamed by this batch
 SB_SNAP_MUT = ("@kind", "@nopost", "@postearly", "@nostore", "@sdiv", "@div", "@raw", "@nosub", "@argraw", "@idx",
                "@other", "@wide")
 

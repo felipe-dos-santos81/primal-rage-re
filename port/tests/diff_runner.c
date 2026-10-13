@@ -32545,6 +32545,7 @@ static u32 d4c_43d60_core(const u32 *r, u32 mut)
         if (!M(19u)) v ^= 1u;                                                        /* @clashinv */
         DSB(B34 + (M(20u) ? side : o)) = v;                                          /* @clashother */
     }
+    if (!M(SB_M_AUDITEARLY)) (void)audit_post(2u, (u32)(s32)(s8)DSB(CLS + side));    /* track S sb: @postearly */
     if ((s8)DSB(P6E + side) == -1 || DSB(P6E + side) != DSB(CLS + side) || !M(21u)) {   /* @nosame */
         if (((s8)DSB(P6E + side) != -1 || !M(23u)) && M(22u))                        /* @resetalways, @noreset */
             fight_char_reset(M(24u) ? side : o);                                     /* @resetside */
@@ -32552,8 +32553,14 @@ static u32 d4c_43d60_core(const u32 *r, u32 mut)
                                           M(26u) ? side : o);                        /* @dropside */
         if (M(28u)) DSB(P6E + (M(29u) ? side : o)) = DSB(CLS + side);                /* @no6e, @6eother */
     }
+    if (M(SB_M_NOAUDIT) && M(SB_M_AUDITEARLY) && M(SB_M_AUDITLATE))                  /* track S sb: 0x43E77; @nopost */
+        (void)audit_post(M(SB_M_AUDITF) ? 2u : 1u,                                   /* @postkind */
+                         !M(SB_M_AUDITN) ? (u32)DSB(CLS + side)                      /* @postzext */
+                         : !M(SB_M_A) ? (u32)(s32)(s8)DSB(CUR + side)                /* @postcur */
+                         : (u32)(s32)(s8)DSB(CLS + (M(SB_M_B) ? side : o)));         /* @postside */
     if (!M(36u)) (void)sound_voice(0x6Cu);                                           /* @order: the voice first */
     if (M(30u)) actor_set_dead(DSD(DS_00108154 + (M(31u) ? side : o) * 4u));         /* @nodead, @deadside */
+    if (!M(SB_M_AUDITLATE)) (void)audit_post(2u, (u32)(s32)(s8)DSB(CLS + side));     /* @postlate */
     if (M(32u)) fight_char_text_clear(M(33u) ? side : o, M(34u) ? 0u : 1u);          /* @noclr, @clrside, @clrflag */
     if (M(36u) && M(35u)) (void)sound_voice(M(37u) ? 0x6Cu : 0x6Du);                 /* @novoice, @voiceid */
     return 0u;
@@ -42013,6 +42020,11 @@ SB_SITE_MUT(me, d3a_27dc8_core, charsext, SB_M_C)       SB_SITE_MUT(me, d3a_27dc
 SB_SITE_MUT(me, d3a_27dc8_core, charsearly, SB_M_AUDITEARLY) SB_SITE_MUT(me, d3a_27dc8_core, charslate, SB_M_AUDITLATE)
 SB_SITE_MUT(me, d3a_27dc8_core, abccache, SB_M_E)       SB_SITE_MUT(me, d3a_27dc8_core, f63cache, SB_M_F)
 SB_SITE_MUT(me, d3a_27dc8_core, c0cache, SB_M_G)        SB_SITE_MUT(me, d3a_27dc8_core, c1cache, SB_M_H)
+#define SB_CF_MUT(name, id) \
+    static void m_sb_cf_##name(const u32 *r, u32 *eax) { *eax = d4c_43d60_core(r, id); }
+SB_CF_MUT(nopost, SB_M_NOAUDIT) SB_CF_MUT(postkind, SB_M_AUDITF) SB_CF_MUT(postzext, SB_M_AUDITN)
+SB_CF_MUT(postcur, SB_M_A)      SB_CF_MUT(postside, SB_M_B)      SB_CF_MUT(postearly, SB_M_AUDITEARLY)
+SB_CF_MUT(postlate, SB_M_AUDITLATE)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -57195,6 +57207,13 @@ static const binding_t k_bindings[] = {
     { "flow_match_end_rr2@abccache", m_sb_me_abccache, 0x00000000u },
     { "flow_match_end_rr2@f63cache", m_sb_me_f63cache, 0x00000000u },
     { "flow_match_end_rr2@c1cache", m_sb_me_c1cache, 0x00000000u },
+    { "fight_char_confirm@nopost", m_sb_cf_nopost, 0x00000000u },
+    { "fight_char_confirm@postkind", m_sb_cf_postkind, 0x00000000u },
+    { "fight_char_confirm@postzext", m_sb_cf_postzext, 0x00000000u },
+    { "fight_char_confirm@postcur", m_sb_cf_postcur, 0x00000000u },
+    { "fight_char_confirm@postside", m_sb_cf_postside, 0x00000000u },
+    { "fight_char_confirm@postearly", m_sb_cf_postearly, 0x00000000u },
+    { "fight_char_confirm@postlate", m_sb_cf_postlate, 0x00000000u },
     /* sb table end */
 };
 
