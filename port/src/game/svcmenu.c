@@ -1394,7 +1394,7 @@ s32 audit_counter_add(u32 table, u32 index, u32 add)
             v = (s32)DSB(DSD(d + 4u) + index);              /* 0x2E1B0/0x2E1B3 `movzx` */
     }
     if (v < 0) return v;                                    /* 0x2E1B7/0x2E1B9 */
-    v += (s32)add;                                          /* 0x2E1BB */
+    v = (s32)((u32)v + add);                                /* 0x2E1BB */
     if (v > 0xFF) {                                         /* 0x2E1BD/0x2E1C3 */
         const u32 mask = DSW(AUDIT_DESC + 0x10u * table + 0xCu);   /* 0x2E1C5..0x2E1D6 */
         for (s32 t = 2; t >= 0; t--) {                      /* 0x2E1D1, 0x2E1FE..0x2E201 */
