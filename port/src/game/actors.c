@@ -4061,13 +4061,14 @@ void text_blit_glyph(u32 ch, s32 *col, s32 *row)
 {
     PR_SEAM(0x1C5E8u, ch, (u32)*col, (u32)*row);
     u32 e = 0xbcd7cu + (ch & 0xffu) * 4u;
+    const u32 width = DSB(e + 2u);                    /* 0x1C5FF `movzx esi,byte [eax+2]`, before the calls */
     SpriteNode n;
     sprite_node_build(&n, DSW(e));                    /* 0x1C5FB/0x1C60B */
     n.pal_ptr = palette_acquire(0x80997cu);           /* 0x1C610/0x1C61C */
     n.x = *col;                                       /* 0x1C630 */
     n.y = *row;                                       /* 0x1C635 */
     sprite_blit_aperture(&n);                         /* 0x1C63D 0x51ED8 */
-    *col += (DSB(e + 2u) == 0x10u) ? 0xfu : 8;        /* 0x1C642/0x1C647 */
+    *col += (width == 0x10u) ? 0xfu : 8;              /* 0x1C642/0x1C647 */
 }
 
 /* 0x1C65C. EAX = the string, EDX = the x seed, EBX = the y seed. The seeds are
