@@ -29325,6 +29325,41 @@ P45_OUTSIDE.update(D6A_OUTSIDE)
 D1_MASKS.update(D6A_MASKS)
 D1_KINDS.update(D6A_KINDS)
 D1_CASES.extend(D6A_CASES)
+# S sc (record 2026-10-13-reverse-s §S.7): the save file's two rows; measured pins
+SC_MASKS = {
+    "config_file_load": 0xFF,
+}   # SC_MASKS end
+SC_KINDS = {
+    "config_file_load@noread": {'byte', 'eax'},
+    "config_file_load@dst": {'byte', 'eax'},
+    "config_file_load@readlen": {'byte', 'eax'},
+    "config_file_load@len6": {'byte', 'eax'},
+    "config_file_load@len8": {'byte', 'eax'},
+    "config_file_load@add": {'byte', 'eax'},
+    "config_file_load@sumbyte": {'byte', 'eax'},
+    "config_file_load@nofill": {'byte'},
+    "config_file_load@fill0": {'byte'},
+    "config_file_load@filllen": {'byte'},
+    "config_file_load@fillall": {'byte'},
+    "config_file_load@flag": {'eax'},
+}   # SC_KINDS end
+SC_CASES = [
+    ("config_file_load@noread", ['l0', 'l1', 'l4', 'l5']),
+    ("config_file_load@dst", ['l1', 'l2', 'l3', 'l4', 'l5']),
+    ("config_file_load@readlen", ['l1', 'l4', 'l5']),
+    ("config_file_load@len6", ['l1', 'l3', 'l5']),
+    ("config_file_load@len8", ['l1', 'l5']),
+    ("config_file_load@add", ['l1', 'l5']),
+    ("config_file_load@sumbyte", ['l1', 'l5']),
+    ("config_file_load@nofill", ['l0', 'l2', 'l3']),
+    ("config_file_load@fill0", ['l0', 'l2', 'l3']),
+    ("config_file_load@filllen", ['l0', 'l2', 'l3']),
+    ("config_file_load@fillall", ['l1', 'l4', 'l5']),
+    ("config_file_load@flag", ['l0', 'l1', 'l2', 'l3', 'l4', 'l5']),
+]   # SC_CASES end
+D1_MASKS.update(SC_MASKS)
+D1_KINDS.update(SC_KINDS)
+D1_CASES.extend(SC_CASES)
 
 
 @needs_unicorn

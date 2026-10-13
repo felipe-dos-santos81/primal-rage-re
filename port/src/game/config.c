@@ -1022,3 +1022,36 @@ void config_keys_load(u32 rec)
     for (u32 i = 0u; i < 8u; i++)                           /* 0x1AFC4 */
         DSB(bios + 0x2E6u + i) = (u8)(DSW(rec + 0x14u + 2u * i) >> 8); /* 0x1AFBE */
 }
+
+/* The stored image: 0x7F8 bytes at 0x100CE4 (0x1B006/0x1B012), the last one, 0x1014DB, the XOR of the
+ * others (0x1B041). */
+#define CFG_IMAGE     DS_00100CE4
+#define CFG_IMAGE_LEN 0x7F8u
+
+/* 0x1AFE8 — record 2026-10-13-reverse-s §S.7. Reads the file "cmos" (0xA2C5C) into the image and
+ * checks it: the XOR of bytes 0..0x7F6 (0x1B02D..0x1B03F, `jl` on 0x7F7) against the last byte
+ * (0x1B041). A failed open (0x1B004) or a mismatch (0x1B047) fills the image with 0xFF (0x1B05D..0x1B070
+ * 0x61A70). Returns AL = the failure flag (0x1B07A `mov al,cl`; the rest of EAX is whatever 0x10D0C or
+ * the code before it left). One caller, 0x2F9CF, which does not read it.
+ * PORT: 0x1AFEC 0x10D34 and 0x1B075 0x10D0C, the CD-drive switch around the file access (host-owned,
+ * record §50-E), are left out: the raw's own path when its `-f` byte 0x101520 is set.
+ * PORT: 0x1AFFB 0x61C60 fopen("cmos", "rb" 0x80598), 0x1B017 0x61CF6 fread(0x100CE4, 1, 0x7F8, file)
+ * and 0x1B020 0x61EC0 fclose (its result is not read: 0x1B02D and 0x1B04D load EAX) are the host's one
+ * host_save_read, whose path is the save file or the game dir's copy and not the current directory's.
+ * Its 0 stands for fopen's NULL. It is 0 for a file of another length too, where the raw differs: a
+ * count below 0x7F8 ends the program there (0x1B025 `jne`, 0x1B04D..0x1B054 0x62003(1), the runtime's
+ * exit, which does not return) and a longer file is read for its first 0x7F8 bytes. The port takes
+ * the missing file's path for both, which is also what the bytes after the exit call do (CL = 1 at
+ * 0x1B052, `jmp 0x1B05D`). */
+u32 config_file_load(void)
+{
+    u32 fail = 1u;                                         /* 0x1B05B */
+    if (host_save_read(mem + CFG_IMAGE, CFG_IMAGE_LEN)) {
+        u8 sum = 0u;                                       /* 0x1B02F */
+        for (u32 i = 0u; i < CFG_IMAGE_LEN - 1u; i++)      /* 0x1B03A */
+            sum ^= DSB(CFG_IMAGE + i);                     /* 0x1B031/0x1B038 */
+        if (sum == DSB(DS_001014DB)) fail = 0u;            /* 0x1B041..0x1B049 */
+    }
+    if (fail) mem_fill(CFG_IMAGE, 0xFFu, CFG_IMAGE_LEN);   /* 0x1B05D..0x1B070 0x61A70 */
+    return fail;                                           /* 0x1B07A */
+}

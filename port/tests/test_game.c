@@ -8268,6 +8268,119 @@ static void ch_check_screen_wait_zero(void)
     DSD(CH_KEY_WORD) = s_kw;
 }
 
+/* ---- the save file: 0x1AFE8 config_file_load and 0x1B084 config_file_save (track S, record
+ * 2026-10-13-reverse-s §S.7). The image is the 0x7F8 bytes at 0x100CE4; its last byte 0x1014DB is the XOR
+ * of the others. Every case works in a mkdtemp scratch directory. ---- */
+#define CF_IMAGE 0x00100CE4u
+#define CF_LEN   0x7F8u
+static char cf_dir[40], cf_path[64];
+static u32 cf_touches;
+
+/* Counts 0x2D4EC (config_storage_touch) and runs its body. */
+static int cf_touch_probe(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    (void)nargs; (void)args; (void)eax;
+    if (addr == 0x2D4ECu) cf_touches++;
+    return 0;
+}
+
+/* A scratch directory with the save path in it and no fallback; cf_touches counts from here. */
+static void cf_begin(void)
+{
+    snprintf(cf_dir, sizeof cf_dir, "/tmp/pr_cmos_XXXXXX");
+    CHECK(mkdtemp(cf_dir) != NULL, "scratch dir");
+    snprintf(cf_path, sizeof cf_path, "%s/cmos", cf_dir);
+    host_save_set_path(cf_path);
+    host_save_set_fallback(NULL);
+    cf_touches = 0u;
+    pr_seam = cf_touch_probe;
+}
+
+static void cf_end(void)
+{
+    pr_seam = NULL;
+    host_save_set_path(NULL);
+    host_save_set_fallback(NULL);
+    (void)unlink(cf_path);
+    (void)rmdir(cf_dir);
+}
+
+static int cf_image_is(u8 v)
+{
+    for (u32 i = 0; i < CF_LEN; i++)
+        if (DSB(CF_IMAGE + i) != v) return 0;
+    return 1;
+}
+
+static u8 cf_xor(const u8 *p)
+{
+    u8 x = 0u;
+    for (u32 i = 0; i < CF_LEN - 1u; i++) x ^= p[i];
+    return x;
+}
+
+int test_config_file(void)
+{
+    const int before = g_failures;
+    static u8 keep[CF_LEN + 1u], snap[CF_LEN], file[CF_LEN + 2u];
+    char fb_dir[64], fb_path[80];
+    memcpy(keep, mem + CF_IMAGE, sizeof keep);
+    cf_begin();
+    snprintf(fb_dir, sizeof fb_dir, "%s/fb", cf_dir);
+    snprintf(fb_path, sizeof fb_path, "%s/CMOS", fb_dir);
+
+    /* a valid file (its last byte the XOR of the others) loads over a 0x55 fill. */
+    for (u32 i = 0; i < CF_LEN; i++) file[i] = (u8)(i * 7u + 3u);
+    file[CF_LEN - 1u] = cf_xor(file);
+    memcpy(snap, file, CF_LEN);
+    CHECK(host_write_file(cf_path, file, CF_LEN), "the valid file");
+    DSB(DS_001014DC) = 0xA5u;
+    mem_fill(CF_IMAGE, 0x55u, CF_LEN);
+    CHECK_EQ_INT(config_file_load(), 0);                   /* 0x1B049 */
+    CHECK(memcmp(mem + CF_IMAGE, snap, CF_LEN) == 0, "the load brings the saved image back");
+
+    /* corrupt (one flipped bit): the load fails and fills the image with 0xFF (0x1B05B..0x1B070). */
+    file[0x123] ^= 0x10u;
+    CHECK(host_write_file(cf_path, file, CF_LEN), "the corrupt file");
+    mem_fill(CF_IMAGE, 0x55u, CF_LEN);
+    CHECK_EQ_INT(config_file_load(), 1);
+    CHECK(cf_image_is(0xFFu), "a bad checksum gives the 0xFF image");
+
+    /* missing: no file, no fallback (0x1B004). */
+    (void)unlink(cf_path);
+    mem_fill(CF_IMAGE, 0x55u, CF_LEN);
+    CHECK_EQ_INT(config_file_load(), 1);
+    CHECK(cf_image_is(0xFFu), "no file gives the 0xFF image");
+
+    /* short and long: a file of another length is a failed read (PORT, config.c); nothing is read
+     * past the image. The long file's first 0x7F8 bytes are a valid image. */
+    file[0x123] ^= 0x10u;
+    file[CF_LEN] = 0x77u;
+    for (u32 n = CF_LEN - 1u; n <= CF_LEN + 1u; n += 2u) {
+        CHECK(host_write_file(cf_path, file, n), "the wrong-length file");
+        mem_fill(CF_IMAGE, 0x55u, CF_LEN);
+        CHECK_EQ_INT(config_file_load(), 1);
+        CHECK(cf_image_is(0xFFu), "a wrong length gives the 0xFF image");
+        CHECK_EQ_INT(DSB(DS_001014DC), 0xA5);
+    }
+
+    host_save_set_path(NULL);
+
+    /* fallback: with no save path the game dir's zero CMOS loads as the zero image. */
+    memset(file, 0, CF_LEN);
+    CHECK(mkdir(fb_dir, 0700) == 0 && host_write_file(fb_path, file, CF_LEN), "the fallback CMOS");
+    host_save_set_fallback(fb_dir);
+    mem_fill(CF_IMAGE, 0x55u, CF_LEN);
+    CHECK_EQ_INT(config_file_load(), 0);
+    CHECK(cf_image_is(0u), "the zero image");
+
+    (void)unlink(fb_path);
+    (void)rmdir(fb_dir);
+    cf_end();
+    memcpy(mem + CF_IMAGE, keep, sizeof keep);
+    return g_failures - before;
+}
+
 /* 0x249F0 (record §50-D): the quit prompt. Strings 0x1F0/0x1F1 are the
  * localised yes/no letters; the seeds differ from every asserted result. AL =
  * 1's yes soft-restarts at 0x24AB0 (record named-gaps-b §B.3), landing at

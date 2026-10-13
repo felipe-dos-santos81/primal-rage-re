@@ -41636,6 +41636,68 @@ static void b_d6a_52106(const u32 *r, u32 *eax) { gfx_screen_reset(r[R_EAX]); *e
 D6A_SR_MUT(no508, 1u) D6A_SR_MUT(no50c, 2u) D6A_SR_MUT(one, 3u) D6A_SR_MUT(e4twice, 4u) D6A_SR_MUT(byte, 5u)
 D6A_SR_MUT(short, 6u) D6A_SR_MUT(w50c, 7u)
 /* ---- d6a bindings end ---- */
+/* ---- track S, batch sc (record 2026-10-13-reverse-s §S.7): the save file ---- */
+#include "host.h"
+#include <unistd.h>
+/* The raw's file calls are `mov eax,<result>` in every case (diff_verify.py SC_SPECS); the port's are the
+ * host's (host_save_read/_writable/_write), which no seam reaches. Each binding reads the case's results
+ * from the poked bytes and gives the host a scratch save path whose state yields them. */
+#define SC_IMAGE 0x00100CE4u
+#define SC_LEN   0x7F8u
+static char sc_dir[40], sc_path[64];
+static void sc_begin(const char *sub)
+{
+    snprintf(sc_dir, sizeof sc_dir, "/tmp/pr_sc_XXXXXX");
+    if (mkdtemp(sc_dir) == NULL) sc_dir[0] = '\0';
+    snprintf(sc_path, sizeof sc_path, "%s/%scmos", sc_dir, sub);
+    host_save_set_path(sc_path);
+    host_save_set_fallback(NULL);
+}
+static void sc_end(void)
+{
+    host_save_set_path(NULL);
+    (void)unlink(sc_path);
+    (void)rmdir(sc_dir);
+}
+
+/* 0x1AFE8 config_file_load: no argument. fopen's EAX is the dword at 0x1AFFC, fread's count the one at
+ * 0x1B018. With a handle the save file holds that many bytes of the image and the buffer is every byte
+ * XOR 0x5A, so the bytes the original holds are there only if the port reads them; with none there is
+ * no file. The mutants restate config.c's body. */
+static u32 sc_1afe8_core(u32 mut)
+{
+    u32 fail = 1u;
+    int got = (mut == 1u) ? 1
+            : host_save_read(mem + SC_IMAGE + ((mut == 2u) ? 1u : 0u), (mut == 3u) ? 0x7F7u : SC_LEN);   /* @noread @dst @readlen */
+    if (got) {
+        u32 sum = 0u;
+        const u32 n = (mut == 4u) ? 0x7F6u : (mut == 5u) ? 0x7F8u : 0x7F7u;      /* @len6 @len8 */
+        for (u32 i = 0u; i < n; i++)
+            sum = (mut == 6u) ? ((sum + DSB(SC_IMAGE + i)) & 0xFFu) : (sum ^ DSB(SC_IMAGE + i));   /* @add */
+        if (sum == DSB((mut == 7u) ? 0x001014DAu : 0x001014DBu)) fail = 0u;      /* @sumbyte */
+    }
+    if ((fail || mut == 11u) && mut != 8u)                                       /* @fillall @nofill */
+        mem_fill(SC_IMAGE, (mut == 9u) ? 0u : 0xFFu, (mut == 10u) ? 0x7F7u : SC_LEN);   /* @fill0 @filllen */
+    return (mut == 12u) ? !fail : fail;                                          /* @flag */
+}
+static void sc_1afe8_run(u32 *eax, u32 mut)
+{
+    const u32 handle = DSD(0x0001AFFCu), count = DSD(0x0001B018u);
+    sc_begin("");
+    if (handle != 0u) {
+        (void)host_write_file(sc_path, mem + SC_IMAGE, count < SC_LEN ? count : SC_LEN);
+        for (u32 i = 0u; i < SC_LEN; i++) DSB(SC_IMAGE + i) ^= 0x5Au;
+    }
+    *eax = (mut == 0u) ? config_file_load() : sc_1afe8_core(mut);
+    sc_end();
+}
+static void b_sc_1afe8(const u32 *r, u32 *eax) { (void)r; sc_1afe8_run(eax, 0u); }
+#define SC_LD_MUT(name, n) \
+    static void m_sc_ld_##name(const u32 *r, u32 *eax) { (void)r; sc_1afe8_run(eax, n); }
+SC_LD_MUT(noread, 1u)  SC_LD_MUT(dst, 2u)    SC_LD_MUT(readlen, 3u) SC_LD_MUT(len6, 4u)    SC_LD_MUT(len8, 5u)
+SC_LD_MUT(add, 6u)     SC_LD_MUT(sumbyte, 7u) SC_LD_MUT(nofill, 8u) SC_LD_MUT(fill0, 9u)   SC_LD_MUT(filllen, 10u)
+SC_LD_MUT(fillall, 11u) SC_LD_MUT(flag, 12u)
+/* ---- sc bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
     { "fighter_slot_flag",        b_slot_flag,    0x000000FFu },
@@ -56589,6 +56651,20 @@ static const binding_t k_bindings[] = {
     { "gfx_screen_reset@short", m_d6a_sr_short, 0x00000000u },
     { "gfx_screen_reset@w50c", m_d6a_sr_w50c, 0x00000000u },
     /* d6a table end */
+    /* track S, batch sc */
+    { "config_file_load",                b_sc_1afe8, 0x000000FFu },
+    { "config_file_load@noread", m_sc_ld_noread, 0x000000FFu },
+    { "config_file_load@dst", m_sc_ld_dst, 0x000000FFu },
+    { "config_file_load@readlen", m_sc_ld_readlen, 0x000000FFu },
+    { "config_file_load@len6", m_sc_ld_len6, 0x000000FFu },
+    { "config_file_load@len8", m_sc_ld_len8, 0x000000FFu },
+    { "config_file_load@add", m_sc_ld_add, 0x000000FFu },
+    { "config_file_load@sumbyte", m_sc_ld_sumbyte, 0x000000FFu },
+    { "config_file_load@nofill", m_sc_ld_nofill, 0x000000FFu },
+    { "config_file_load@fill0", m_sc_ld_fill0, 0x000000FFu },
+    { "config_file_load@filllen", m_sc_ld_filllen, 0x000000FFu },
+    { "config_file_load@fillall", m_sc_ld_fillall, 0x000000FFu },
+    { "config_file_load@flag", m_sc_ld_flag, 0x000000FFu },
 };
 
 static const binding_t *find_binding(const char *name)
