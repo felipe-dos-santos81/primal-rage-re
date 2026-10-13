@@ -41309,6 +41309,67 @@ D6A_GL_MUT(chmask, 1u)  D6A_GL_MUT(nohflip, 2u)   D6A_GL_MUT(pal, 3u)       D6A_
 D6A_GL_MUT(xy, 5u)      D6A_GL_MUT(clip, 6u)      D6A_GL_MUT(noblit, 7u)    D6A_GL_MUT(ge, 8u)
 D6A_GL_MUT(adv10, 9u)   D6A_GL_MUT(adv8, 10u)     D6A_GL_MUT(bit, 11u)      D6A_GL_MUT(colcache, 12u)
 D6A_GL_MUT(rowcache, 13u) D6A_GL_MUT(addcache, 14u) D6A_GL_MUT(wreread, 15u)
+
+/* The frame-substitute scratch of svcmenu.c and config.c (`PORT:` there; 0x03900000..0x039000FF, above the
+ * image): where the raw keeps a record or a string in its own stack frame, which the emulator leaves out
+ * of every comparison (its private stack), the port keeps it in mem[]. d6a_scratch_hook hides those bytes
+ * from the call-memory report of the calls recorded while it is installed and D6A_SCRATCH_RUN zeroes them
+ * when the function returns, so they are compared through the callees that read them and never as
+ * writes. Only the d6a bindings below install it. */
+static int seam_hook(u32 addr, u32 nargs, const u32 *args, u32 *eax);
+#define D6A_SCRATCH     0x03900000u
+#define D6A_SCRATCH_LEN 0x100u
+static int d6a_scratch_hook(u32 addr, u32 nargs, const u32 *args, u32 *eax)
+{
+    u8 keep[D6A_SCRATCH_LEN];
+    memcpy(keep, mem + D6A_SCRATCH, sizeof keep);
+    memset(mem + D6A_SCRATCH, 0, sizeof keep);
+    int stubbed = seam_hook(addr, nargs, args, eax);
+    memcpy(mem + D6A_SCRATCH, keep, sizeof keep);
+    return stubbed;
+}
+#define D6A_SCRATCH_RUN(stmt) \
+    do { pr_seam = d6a_scratch_hook; stmt; pr_seam = seam_hook; memset(mem + D6A_SCRATCH, 0, D6A_SCRATCH_LEN); } while (0)
+
+/* 0x31A78 svc_buttons_draw: EAX = side, EDX = the key-config record, EBX = col, ECX = row. The name
+ * buffer is the raw's frame and the port's scratch 0x03900080 (D6A_SCRATCH_RUN). The mutants restate
+ * svcmenu.c's body. */
+static void d6a_31a78_core(const u32 *r, u32 mut)
+{
+    const u32 name = 0x03900080u;
+    u32 side = r[R_EAX], rec = r[R_EDX];
+    s32 col = (s32)r[R_EBX], row = (s32)r[R_ECX];
+    DSD(name) = 0u; DSD(name + 4u) = 0u;
+    u32 p = rec + (((side == 0u) != (mut == 1u)) ? 0xAu : 0x1Cu);                /* @side */
+    if (mut == 2u) p = rec + ((side & 0xFFu) == 0u ? 0xAu : 0x1Cu);               /* @side8 */
+    const s32 left = col - ((mut == 3u) ? 4 : 5), right = col + ((mut == 4u) ? 6 : 5);   /* @left4 @right6 */
+    for (u32 i = 0u; i < ((mut == 5u) ? 3u : 4u); i++) {                          /* @three */
+        if (mut == 6u) { DSD(name) = 0u; DSD(name + 4u) = 0u; }                   /* @zero */
+        (void)config_key_name((mut == 7u) ? (u32)DSB(p) : (u32)DSW(p), (mut == 8u) ? 1u : 0u, name);   /* @key8 @raw */
+        p += (mut == 9u) ? 4u : 2u;                                               /* @step */
+        u32 len = (u32)strlen((const char *)(mem + name));
+        const s32 half = (mut == 10u) ? (s32)len : (mut == 11u) ? (s32)((len + 1u) >> 1) : (s32)(len >> 1);   /* @nohalf @halfup */
+        u32 k = (mut == 12u) ? (i ^ 1u) : (mut == 13u) ? (i ^ 2u) : i;            /* @lr @rows */
+        const u32 mode = (mut == 14u) ? 0x2000u : 0x4000u;                        /* @mode */
+        const s32 lo = row + ((mut == 15u) ? 0xC : 8), hi = row + ((mut == 15u) ? 8 : 0xC);   /* @rowoff */
+        switch (k) {
+        case 0u: text_cursor_set(left - half, lo, mem + name, mode); break;
+        case 1u: text_cursor_set(right - half, lo, mem + name, mode); break;
+        case 2u: text_cursor_set(left - half, hi, mem + name, mode); break;
+        default: text_cursor_set(right - half, hi, mem + name, mode); break;
+        }
+    }
+}
+static void b_d6a_31a78(const u32 *r, u32 *eax)
+{
+    D6A_SCRATCH_RUN(svc_buttons_draw(r[R_EAX], r[R_EDX], (s32)r[R_EBX], (s32)r[R_ECX]));
+    *eax = 0u;
+}
+#define D6A_BD_MUT(name, n) \
+    static void m_d6a_bd_##name(const u32 *r, u32 *eax) { D6A_SCRATCH_RUN(d6a_31a78_core(r, n)); *eax = 0u; }
+D6A_BD_MUT(side, 1u)   D6A_BD_MUT(side8, 2u)   D6A_BD_MUT(left4, 3u)  D6A_BD_MUT(right6, 4u)  D6A_BD_MUT(three, 5u)
+D6A_BD_MUT(zero, 6u)   D6A_BD_MUT(key8, 7u)    D6A_BD_MUT(raw, 8u)    D6A_BD_MUT(step, 9u)    D6A_BD_MUT(nohalf, 10u)
+D6A_BD_MUT(halfup, 11u) D6A_BD_MUT(lr, 12u)    D6A_BD_MUT(rows, 13u)  D6A_BD_MUT(mode, 14u)   D6A_BD_MUT(rowoff, 15u)
 /* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56124,6 +56185,22 @@ static const binding_t k_bindings[] = {
     { "text_blit_glyph_rr@rowcache",     m_d6a_gl_rowcache, 0x00000000u },
     { "text_blit_glyph_rr@addcache",     m_d6a_gl_addcache, 0x00000000u },
     { "text_blit_glyph_rr@wreread",      m_d6a_gl_wreread, 0x00000000u },
+    { "svc_buttons_draw",                b_d6a_31a78, 0x00000000u },
+    { "svc_buttons_draw@side", m_d6a_bd_side, 0x00000000u },
+    { "svc_buttons_draw@side8", m_d6a_bd_side8, 0x00000000u },
+    { "svc_buttons_draw@left4", m_d6a_bd_left4, 0x00000000u },
+    { "svc_buttons_draw@right6", m_d6a_bd_right6, 0x00000000u },
+    { "svc_buttons_draw@three", m_d6a_bd_three, 0x00000000u },
+    { "svc_buttons_draw@zero", m_d6a_bd_zero, 0x00000000u },
+    { "svc_buttons_draw@key8", m_d6a_bd_key8, 0x00000000u },
+    { "svc_buttons_draw@raw", m_d6a_bd_raw, 0x00000000u },
+    { "svc_buttons_draw@step", m_d6a_bd_step, 0x00000000u },
+    { "svc_buttons_draw@nohalf", m_d6a_bd_nohalf, 0x00000000u },
+    { "svc_buttons_draw@halfup", m_d6a_bd_halfup, 0x00000000u },
+    { "svc_buttons_draw@lr", m_d6a_bd_lr, 0x00000000u },
+    { "svc_buttons_draw@rows", m_d6a_bd_rows, 0x00000000u },
+    { "svc_buttons_draw@mode", m_d6a_bd_mode, 0x00000000u },
+    { "svc_buttons_draw@rowoff", m_d6a_bd_rowoff, 0x00000000u },
     /* d6a table end */
 };
 
