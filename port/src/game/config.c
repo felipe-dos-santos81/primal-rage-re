@@ -150,13 +150,13 @@ u32 config_menu_default_bits(u32 table)
     return bits;
 }
 
-/* 0x2CADC. Order and values are the raw's. The message draw 0x2F198, screen
- * setup 0x1AE20, storage write 0x2EA78 and cursor restore 0x2F280 are declared
- * no-ops (spec §4/§7), so only the config-field effect is ported. PORT: 0x2EA78
- * is ported (config_screen_wait, record §49-Y) but left unwired here: this
- * runs inside game_init, where the raw's 0x2CB55 0x2EA78(0xB4) would present
- * frames and wait 180 ticks before the loop starts, moving the frame-indexed
- * oracles. */
+/* 0x2CADC. Order and values are the raw's. PORT: three of the raw's calls are
+ * omitted: 0x2CAF3 0x2F198 (it draws the defaults message and stores the cursor
+ * words 0x105F34/36), 0x2CB5F 0x2EA78(0xB4) and 0x2CB69 0x2F280 (it releases the
+ * cells). This runs inside game_init, where 0x2EA78 (ported as
+ * config_screen_wait, record §49-Y) would present frames and wait before the
+ * loop starts, moving the frame-indexed oracles; the row of 0x2CADC runs the
+ * raw with those three calls as nops (record 2026-10-13-reverse-d6a). */
 void config_set_defaults(void)
 {
     PR_SEAM0(0x2CADCu);
@@ -219,8 +219,8 @@ void config_validate(void)
      * 0x2E990 and calls 0x2D4EC(0) (0x2D909) only when that read fails with
      * DS_0002D490 set; with no stored image the port has neither (record §27). */
 
-    /* 0x2D912/0x2D919: high-score validate 0x2DE98 and 0x2DF8C, both deferred
-     * no-ops (spec §6/§7); called unconditionally. */
+    /* PORT: 0x2D912 0x2DE98(1) and 0x2D919 0x2DF8C(1) are deferred. The raw zeroes tables 0..2 and 0x105ECD..FB there
+     * and copies 0x105DDC..E0 to 0x105EC8: image zeros with no stored image. */
     if (read1 >= 0 || DSB(DS_0002D490) != 0u) {
         DSB(DS_00105DA7) = 1u;                     /* 0x2D940 */
         (void)config_field_get(0x24u);             /* 0x2D946: result discarded */
