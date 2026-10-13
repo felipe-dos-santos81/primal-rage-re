@@ -1358,6 +1358,24 @@ s32 audit_counter_store(u32 table, u32 index, u32 value)
     return (s32)value;                                      /* 0x2E09B */
 }
 
+/* 0x2E0A4 — record §S.6. EAX = table. -1 for a table >= 3 (`jb`,
+ * unsigned). Else the table's dirty bit is set, every counter of the table
+ * is halved (0x2E100 `shr cl,1`; the count is the size word minus 1 down to
+ * 0, signed: 0x2E0F8..0x2E108), 0x2D4EC(table + 3), and the result is 0. */
+s32 audit_counters_halve(u32 table)
+{
+    PR_SEAM_RET(0x2E0A4u, table);
+    if (table >= 3u) return -1;                             /* 0x2E0AA/0x2E0AD */
+    const u32 s = table + 3u;                               /* 0x2E0B9 */
+    const u32 d = AUDIT_STORE + 8u * s;                     /* 0x2E0C6..0x2E0DD */
+    DSB(DS_00105DD8 + (s >> 3)) |= (u8)(1u << (s & 7u));    /* 0x2E0BC..0x2E0E8 */
+    u32 p = DSD(d + 4u);                                    /* 0x2E0E5 */
+    for (s32 n = (s32)DSW(d + 2u) - 1; n >= 0; n--, p++)    /* 0x2E0EE..0x2E108 */
+        DSB(p) = (u8)(DSB(p) >> 1);                         /* 0x2E0FD..0x2E103 */
+    config_storage_touch(s);                                /* 0x2E10A/0x2E10D 0x2D4EC */
+    return 0;                                               /* 0x2E112 */
+}
+
 /* 0x2E11C — record §K11.8. EAX = g. */
 u32 audit_hist_clear(u32 g)
 {

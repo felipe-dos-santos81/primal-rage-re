@@ -32315,8 +32315,9 @@ SB_HIST = 0x00105ECC           # the byte below histogram 0 (0x105ECD, 0x14 coun
 
 def sb_hist(flags=(0x80, 0x5A), more=None):
     """The three histograms with the byte below and the byte above (0x105ECC..0x105EFC) seeded with
-    distinct non-zero bytes, and the dirty bytes 0x105DD8/0x105DD9 = `flags` between seeded bytes."""
-    p = {SB_HIST: bytes(0x41 + i for i in range(0x31)), 0x00105DD7: bytes([0x61, flags[0], flags[1], 0x62])}
+    distinct non-zero bytes (every other one with bit 7), and the dirty bytes 0x105DD8/0x105DD9 = `flags` between seeded bytes."""
+    p = {SB_HIST: bytes((0x41 + i) | (0x80 if i & 1 else 0) for i in range(0x31)),
+         0x00105DD7: bytes([0x61, flags[0], flags[1], 0x62])}
     p.update(more or {})
     return p
 
@@ -32338,6 +32339,24 @@ SB_SPECS += [
         Case("s6", {"eax": 1, "edx": 0xFFFFFFFF, "ebx": 0x99}, sb_hist()),
     ], calls=(D5D_TOUCH,), eax_mask=0xFFFFFFFF,
        mutants=tuple("@" + m for m in "tle tsigned ile isigned size kind bit nobit noand word nostore notouch "
+                                      "touchearly ret".split())),
+]
+
+SB_SPECS += [
+    # 0x2E0A4 audit_counters_halve: EAX = table. A table >= 3 (`jb` 0x2E0AD, unsigned: h3 is 3, h4 -1) returns
+    # -1. Else the dirty bit (table + 3) is set, each of the size word's counters is shifted right one,
+    # logical (`shr cl,1` 0x2E100: every other seeded byte has bit 7), the count running from size - 1 down
+    # to 0 signed (h5: the size word of table 2 poked to 0, no counter), 0x2D4EC(table + 3) (a stub; `xor
+    # eax,eax` 0x2E112 follows) and the result is 0.
+    Spec("audit_counters_halve", 0x2E0A4, [
+        Case("h0", {"eax": 0}, sb_hist(flags=(0x00, 0x5A))),
+        Case("h1", {"eax": 1}, sb_hist(flags=(0xC1, 0x5A))),
+        Case("h2", {"eax": 2}, sb_hist(), {0x2D4EC: 0x12345678}),
+        Case("h3", {"eax": 3}, sb_hist()),
+        Case("h4", {"eax": 0xFFFFFFFF}, sb_hist()),
+        Case("h5", {"eax": 2}, sb_hist(more={0x0002D46E: le16(0)})),
+    ], calls=(D5D_TOUCH,), eax_mask=0xFFFFFFFF,
+       mutants=tuple("@" + m for m in "tle tsigned sar two bit nobit short long size dowhile kind notouch "
                                       "touchearly ret".split())),
 ]
 

@@ -185,6 +185,10 @@ u32 audit_hist_clear(u32 g);
  * byte, or -1 (nothing written) for table >= 3 or index >= the table's size
  * — 0x2E034. */
 s32 audit_counter_store(u32 table, u32 index, u32 value);
+/* Halves every counter of histogram `table` (logical shift), sets its dirty
+ * bit and posts 0x2D4EC(table + 3). Returns 0, or -1 (nothing written) for
+ * table >= 3 — 0x2E0A4. */
+s32 audit_counters_halve(u32 table);
 /* Prepares histogram `g`: copies its title (the template up to a tab or NUL)
  * into `buf` of `size` bytes, lays out the state block, sums the counters and
  * stores the largest in [max_out] and the median bucket in [median_out] (each

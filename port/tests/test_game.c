@@ -4426,6 +4426,21 @@ int test_audit(void)
     CHECK_EQ_INT((int)audit_counter_store(3u, 0u, 0x77u), -1);          /* 0x2E03D `jb`: table 3 */
     CHECK_EQ_INT((int)au_changed(ref), 0);
 
+    /* halve — 0x2E0A4: every counter of the table >> 1 (logical), the dirty
+     * bit, 0; the other tables stay (0x15 = the 0x14 counters and the flag). */
+    au_seed();
+    DSB(AU_H1) = 0xFFu;
+    DSB(AU_H1 + 0x13u) = 0x81u;
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counters_halve(1u), 0);
+    CHECK_EQ_INT((int)DSB(AU_H1), 0x7F);                                /* 0x2E100 `shr cl,1` */
+    CHECK_EQ_INT((int)DSB(AU_H1 + 0x13u), 0x40);                        /* the last counter */
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x80 | 0x10);
+    CHECK_EQ_INT((int)au_changed(ref), 0x15);
+    tf_snap(ref, AU_LO, AU_LEN);
+    CHECK_EQ_INT((int)audit_counters_halve(3u), -1);                    /* 0x2E0AD `jb` */
+    CHECK_EQ_INT((int)au_changed(ref), 0);
+
     tf_put(saved, AU_LO, AU_LEN);
     return 0;
 }

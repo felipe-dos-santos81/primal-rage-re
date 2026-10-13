@@ -29328,6 +29328,7 @@ D1_CASES.extend(D6A_CASES)
 # ---- track S batch sb (record 2026-10-13-reverse-s-derivations §S.6): the audit counters ----
 SB_MASKS = {
     "audit_counter_store": 0xFFFFFFFF,
+    "audit_counters_halve": 0xFFFFFFFF,
 }   # SB_MASKS end
 SB_KINDS = {
     "audit_counter_store@tle": {'byte', 'call #0', 'eax'},
@@ -29344,6 +29345,20 @@ SB_KINDS = {
     "audit_counter_store@notouch": {'call #0'},
     "audit_counter_store@touchearly": {'call #0 memory'},
     "audit_counter_store@ret": {'eax'},
+    "audit_counters_halve@tle": {'byte', 'call #0', 'eax'},
+    "audit_counters_halve@tsigned": {'byte', 'call #0', 'eax'},
+    "audit_counters_halve@sar": {'byte', 'call #0 memory'},
+    "audit_counters_halve@two": {'byte', 'call #0 memory'},
+    "audit_counters_halve@bit": {'byte', 'call #0 memory'},
+    "audit_counters_halve@nobit": {'byte', 'call #0 memory'},
+    "audit_counters_halve@short": {'byte', 'call #0 memory'},
+    "audit_counters_halve@long": {'byte', 'call #0 memory'},
+    "audit_counters_halve@size": {'byte', 'call #0 memory'},
+    "audit_counters_halve@dowhile": {'byte', 'call #0 memory'},
+    "audit_counters_halve@kind": {'call #0'},
+    "audit_counters_halve@notouch": {'call #0'},
+    "audit_counters_halve@touchearly": {'call #0 memory'},
+    "audit_counters_halve@ret": {'eax'},
 }   # SB_KINDS end
 SB_CASES = [
     ("audit_counter_store@tle", ['s4']),
@@ -29360,6 +29375,20 @@ SB_CASES = [
     ("audit_counter_store@notouch", ['s0', 's1', 's2']),
     ("audit_counter_store@touchearly", ['s0', 's1', 's2']),
     ("audit_counter_store@ret", ['s0', 's2']),
+    ("audit_counters_halve@tle", ['h3']),
+    ("audit_counters_halve@tsigned", ['h4']),
+    ("audit_counters_halve@sar", ['h0', 'h1', 'h2']),
+    ("audit_counters_halve@two", ['h0', 'h1', 'h2']),
+    ("audit_counters_halve@bit", ['h0', 'h1', 'h2', 'h5']),
+    ("audit_counters_halve@nobit", ['h0', 'h1', 'h2', 'h5']),
+    ("audit_counters_halve@short", ['h0', 'h1', 'h2']),
+    ("audit_counters_halve@long", ['h0', 'h1', 'h2', 'h5']),
+    ("audit_counters_halve@size", ['h0', 'h1', 'h2', 'h5']),
+    ("audit_counters_halve@dowhile", ['h5']),
+    ("audit_counters_halve@kind", ['h0', 'h1', 'h2', 'h5']),
+    ("audit_counters_halve@notouch", ['h0', 'h1', 'h2', 'h5']),
+    ("audit_counters_halve@touchearly", ['h0', 'h1', 'h2', 'h5']),
+    ("audit_counters_halve@ret", ['h0', 'h1', 'h2', 'h5']),
 ]   # SB_CASES end
 SB_OUTSIDE = {}
 P45_OUTSIDE.update(SB_OUTSIDE)

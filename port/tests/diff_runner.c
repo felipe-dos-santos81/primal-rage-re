@@ -41666,6 +41666,37 @@ static void b_sb_2e034(const u32 *r, u32 *eax) { *eax = (u32)audit_counter_store
 SB_CS_MUT(tle, 1u)   SB_CS_MUT(tsigned, 2u) SB_CS_MUT(ile, 3u)    SB_CS_MUT(isigned, 4u) SB_CS_MUT(size, 5u)
 SB_CS_MUT(kind, 6u)  SB_CS_MUT(bit, 7u)     SB_CS_MUT(nobit, 8u)  SB_CS_MUT(noand, 9u)   SB_CS_MUT(word, 10u)
 SB_CS_MUT(touchearly, 11u) SB_CS_MUT(nostore, 12u) SB_CS_MUT(notouch, 13u) SB_CS_MUT(ret, 14u)
+
+/* 0x2E0A4 audit_counters_halve: EAX = table. The mutants restate svcmenu.c's body; @tle halves descriptor
+ * 6's block (0x105E34, 0x78 bytes) and @tsigned descriptor 2's (0x105DE1, 0x53), both inside mem[]. */
+static u32 sb_2e0a4_core(u32 table, u32 mut)
+{
+    if (mut == 1u ? table > 3u : mut == 2u ? (s32)table >= 3 : table >= 3u) return 0xFFFFFFFFu;   /* @tle @tsigned */
+    const u32 s = table + 3u;
+    const u32 d = SB_STORE + 8u * s;
+    if (mut == 13u) config_storage_touch(s);                                     /* @touchearly */
+    if (mut != 6u) DSB(SB_DIRTY + (s >> 3)) |= (u8)(1u << (((mut == 5u) ? table : s) & 7u));   /* @nobit @bit */
+    u32 p = DSD(d + 4u);
+    s32 n = (s32)DSW(d + ((mut == 9u) ? 0u : 2u)) - 1;                           /* @size */
+    if (mut == 7u) n--;                                                          /* @short */
+    if (mut == 8u) n++;                                                          /* @long */
+    if (mut == 10u) {                                                            /* @dowhile */
+        do { DSB(p) = (u8)(DSB(p) >> 1); p++; n--; } while (n >= 0);
+    } else {
+        for (; n >= 0; n--, p++) {
+            if (mut == 3u) DSB(p) = (u8)((s8)DSB(p) >> 1);                       /* @sar */
+            else DSB(p) = (u8)(DSB(p) >> ((mut == 4u) ? 2 : 1));                 /* @two */
+        }
+    }
+    if (mut != 12u && mut != 13u) config_storage_touch((mut == 11u) ? table : s);   /* @notouch @kind */
+    return (mut == 14u) ? 1u : 0u;                                               /* @ret */
+}
+static void b_sb_2e0a4(const u32 *r, u32 *eax) { *eax = (u32)audit_counters_halve(r[R_EAX]); }
+#define SB_CH_MUT(name, n) \
+    static void m_sb_ch_##name(const u32 *r, u32 *eax) { *eax = sb_2e0a4_core(r[R_EAX], n); }
+SB_CH_MUT(tle, 1u)  SB_CH_MUT(tsigned, 2u) SB_CH_MUT(sar, 3u)  SB_CH_MUT(two, 4u)      SB_CH_MUT(bit, 5u)
+SB_CH_MUT(nobit, 6u) SB_CH_MUT(short, 7u)  SB_CH_MUT(long, 8u) SB_CH_MUT(size, 9u)     SB_CH_MUT(dowhile, 10u)
+SB_CH_MUT(kind, 11u) SB_CH_MUT(notouch, 12u) SB_CH_MUT(touchearly, 13u) SB_CH_MUT(ret, 14u)
 /* ---- sb bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56636,6 +56667,21 @@ static const binding_t k_bindings[] = {
     { "audit_counter_store@notouch", m_sb_cs_notouch, 0xFFFFFFFFu },
     { "audit_counter_store@touchearly", m_sb_cs_touchearly, 0xFFFFFFFFu },
     { "audit_counter_store@ret", m_sb_cs_ret, 0xFFFFFFFFu },
+    { "audit_counters_halve",            b_sb_2e0a4, 0xFFFFFFFFu },
+    { "audit_counters_halve@tle", m_sb_ch_tle, 0xFFFFFFFFu },
+    { "audit_counters_halve@tsigned", m_sb_ch_tsigned, 0xFFFFFFFFu },
+    { "audit_counters_halve@sar", m_sb_ch_sar, 0xFFFFFFFFu },
+    { "audit_counters_halve@two", m_sb_ch_two, 0xFFFFFFFFu },
+    { "audit_counters_halve@bit", m_sb_ch_bit, 0xFFFFFFFFu },
+    { "audit_counters_halve@nobit", m_sb_ch_nobit, 0xFFFFFFFFu },
+    { "audit_counters_halve@short", m_sb_ch_short, 0xFFFFFFFFu },
+    { "audit_counters_halve@long", m_sb_ch_long, 0xFFFFFFFFu },
+    { "audit_counters_halve@size", m_sb_ch_size, 0xFFFFFFFFu },
+    { "audit_counters_halve@dowhile", m_sb_ch_dowhile, 0xFFFFFFFFu },
+    { "audit_counters_halve@kind", m_sb_ch_kind, 0xFFFFFFFFu },
+    { "audit_counters_halve@notouch", m_sb_ch_notouch, 0xFFFFFFFFu },
+    { "audit_counters_halve@touchearly", m_sb_ch_touchearly, 0xFFFFFFFFu },
+    { "audit_counters_halve@ret", m_sb_ch_ret, 0xFFFFFFFFu },
     /* sb table end */
 };
 
