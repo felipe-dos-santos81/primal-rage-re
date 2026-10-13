@@ -6595,6 +6595,8 @@ void sound_sample_start(u32 slot)
     memcpy(mem + buf, p + 4, size);                        /* 0x1CB51..0x1CB61 rep movsd/movsb */
     HSAMPLE s = s_samples[slot];
     AIL_init_sample(s);                                    /* 0x1CB6B 0x5DC0F */
+    size = DSD((u32)(p - mem));                            /* 0x1CB73/0x1CB76: the length, loaded again */
+    buf = DSD(DS_00102870 + off);                          /* 0x1CB79: and the buffer */
     AIL_set_sample_address(s, mem + buf, size);            /* 0x1CB87 0x5DC2A */
     AIL_set_sample_volume(s, (s32)DSD(DS_000A2CB4));       /* 0x1CB9C 0x5DCC5 */
     AIL_set_sample_rate(s, 0x2B11u);                       /* 0x1CBB0 0x5DCA6 */
