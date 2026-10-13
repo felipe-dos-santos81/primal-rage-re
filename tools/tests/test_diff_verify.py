@@ -29027,6 +29027,7 @@ D6A_MASKS = {
     "config_screen_wait": 0x0,
     "config_screen_wait_zero": 0x0,
     "game_quit_prompt": 0x0,
+    "gfx_flush_palette": 0x0,
 }   # D6A_MASKS end
 D6A_KINDS = {
     "text_blit_glyph@chmask": {'byte', 'call #1'},
@@ -29155,6 +29156,16 @@ D6A_KINDS = {
     "game_quit_prompt@relid": {'byte', 'call #3 memory', 'call #4 memory'},
     "game_quit_prompt@relmode": {'call #3'},
     "game_quit_prompt@noresume": {'call #3', 'call #4'},
+    "gfx_flush_palette@noclamp": {'byte'},
+    "gfx_flush_palette@unsigned": {'byte'},
+    "gfx_flush_palette@clampby": {'byte'},
+    "gfx_flush_palette@clampcount": {'byte'},
+    "gfx_flush_palette@nomark": {'byte'},
+    "gfx_flush_palette@markw": {'byte'},
+    "gfx_flush_palette@mark0": {'byte'},
+    "gfx_flush_palette@headfirst": {'byte'},
+    "gfx_flush_palette@nohead": {'byte'},
+    "gfx_flush_palette@one": {'byte'},
 }   # D6A_KINDS end
 D6A_CASES = [
     ("text_blit_glyph@chmask", ['g3', 'g4']),
@@ -29283,6 +29294,16 @@ D6A_CASES = [
     ("game_quit_prompt@relid", ['q2', 'q3', 'q4', 'qa']),
     ("game_quit_prompt@relmode", ['q2', 'q3', 'q4', 'qa']),
     ("game_quit_prompt@noresume", ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'qa']),
+    ("gfx_flush_palette@noclamp", ['f2', 'f3']),
+    ("gfx_flush_palette@unsigned", ['f3']),
+    ("gfx_flush_palette@clampby", ['f2', 'f3']),
+    ("gfx_flush_palette@clampcount", ['f2', 'f3']),
+    ("gfx_flush_palette@nomark", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@markw", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@mark0", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@headfirst", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@nohead", ['f1', 'f2', 'f3']),
+    ("gfx_flush_palette@one", ['f1', 'f2', 'f3']),
 ]   # D6A_CASES end
 D6A_OUTSIDE = {}
 P45_OUTSIDE.update(D6A_OUTSIDE)

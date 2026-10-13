@@ -32219,6 +32219,56 @@ D6A_SPECS += [
                                       "flagkeep noquit quitw norelease relid relmode noresume".split())),
 ]
 
+# ---- 0x1C470: the palette dirty list's flush ------------------------------------------------------------
+# A partial row under five code pokes. The retrace read `mov edx,0x3da; in al,dx` (0x1C481..0x1C486) is
+# `mov al,8` and four nops: bit 3 set at the first read, the only thing the code takes from the port
+# (`test al,8; je` 0x1C487; AL is loaded again at 0x1C4A7). The four DAC writes `out dx,al` (0x1C4AA the
+# index; 0x1C4CA, 0x1C4CE and 0x1C4D5 the three colour bytes) are nops. Unpoked, the original stops
+# `unmodeled: in at 0x1C486` (measured). The row compares the list's bookkeeping only and is blind to
+# every byte sent to the DAC: the index, the count, the colour dwords and their shifts, and so to whether
+# 0x1B544 resolved the handle (it runs on both sides, unrecorded). The port's DAC is the host's gfx_dac.
+D6A_FLUSH_PINS = {0x0001C481: b"\xb0\x08\x90\x90\x90\x90", 0x0001C4AA: b"\x90", 0x0001C4CA: b"\x90",
+                  0x0001C4CE: b"\x90", 0x0001C4D5: b"\x90"}
+D6A_DIRTY, D6A_DIRTY_HEAD = 0x00107498, 0x00107798
+D6A_COLOURS = 0x0010A300                        # eight colour dwords (zero BSS)
+D6A_PAL_HANDLE = 0x00800040                     # a resident handle (d4b_res): a count dword, then colours
+
+
+def d6a_flush(cid, recs, regs=None):
+    """0x1C470: the pokes; `recs` = [(ptr, first, count, flag dword)] at 0x107498 after a seeded dword and
+    before one more seeded record (not in the list); the head 0x107798 between seeded dwords; eight colour
+    dwords at D6A_COLOURS and, behind the handle, a count dword and eight more."""
+    body = le32(0x94949494) + b"".join(le32(a) + le32(b) + le32(c) + le32(d) for a, b, c, d in recs)
+    body += le32(D6A_COLOURS) + le32(0x00000011) + le32(0x00000022) + le32(0x00000033)
+    cols = b"".join(le32(0x00FCA850 + 0x01010101 * i) for i in range(8))
+    p = {**d4b_res(), **D6A_FLUSH_PINS, D6A_COLOURS: cols, d4b_at(D6A_PAL_HANDLE): le32(8) + cols[::-1],
+         D6A_DIRTY_HEAD - 4: le32(0x97979797) + le32(D6A_DIRTY + 16 * len(recs)) + le32(0x9C9C9C9C)}
+    p.update(d1d_chunks(D6A_DIRTY - 4, body))
+    return Case(cid, regs or {}, p)
+
+
+D6A_SPECS += [
+    # 0x1C470 gfx_flush_palette: no argument. For each 16-byte record from 0x107498 to the head [0x107798]
+    # (read again every record, 0x1C4E8): the dword +4 plus the dword +0xC above 0x100, signed (`cmp
+    # ecx,0x100; jle` 0x1C491: f3 has a sum of 0x80000000, f2 exactly 0x100 and 0x101), takes the excess
+    # off the dword +0xC; the low byte of +0xC non-zero resolves +0 as a handle (0x1B544, run) and skips
+    # its count dword; +8 colours go out (at least one: `dec esi; jg` 0x1C4D6, f1 has counts 0 and -5);
+    # +4 = -1. Then the head = 0x107498. f0 is the empty list. Mask 0: `mov eax,esi` 0x1C6CB, `mov
+    # eax,[0xe87a4]`.. 0x2568E or the dirty blit 0x501A3 (which loads EAX), and 0x2EAE0's `xor eax,eax`
+    # 0x2EAF9 or 0x2EA78's own return, which its callers do not read (the config_screen_wait row).
+    Spec("gfx_flush_palette", 0x1C470, [
+        d6a_flush("f0", []),
+        d6a_flush("f1", [(D6A_COLOURS, 0x10, 3, 0), (D6A_COLOURS + 4, 0xFE, 0, 0),
+                         (D6A_COLOURS + 8, 0x00, 0xFFFFFFFB, 0)], regs=D2E_DIRTY),
+        d6a_flush("f2", [(D6A_PAL_HANDLE, 0xF0, 4, 0x10), (D6A_PAL_HANDLE, 0xF0, 2, 0x11),
+                         (D6A_COLOURS, 0x100, 1, 0x100)]),
+        d6a_flush("f3", [(D6A_PAL_HANDLE, 0x7FFFFFFF, 2, 1), (D6A_COLOURS, 0x00000200, 1, 0x00000100),
+                         (D6A_PAL_HANDLE, 0x80, 8, 0x80000181)]),
+    ], allow_calls=(0x1B544,), eax_mask=0,
+       mutants=tuple("@" + m for m in "noclamp unsigned clampby clampcount nomark markw mark0 headfirst nohead "
+                                      "one".split())),
+]
+
 D1_SPECS += D6A_SPECS
 SPECS = [
     Spec("rng_next", 0x5D7DC, [

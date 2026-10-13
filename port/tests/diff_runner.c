@@ -41585,6 +41585,33 @@ D6A_QP_MUT(hard32, 1u)  D6A_QP_MUT(id, 2u)     D6A_QP_MUT(noflag, 3u)  D6A_QP_MU
 D6A_QP_MUT(row, 6u)     D6A_QP_MUT(mode, 7u)   D6A_QP_MUT(wait0, 8u)   D6A_QP_MUT(answers, 9u)  D6A_QP_MUT(noupper, 10u)
 D6A_QP_MUT(lo, 11u)     D6A_QP_MUT(hi, 12u)    D6A_QP_MUT(order, 13u)  D6A_QP_MUT(flagkeep, 14u) D6A_QP_MUT(noquit, 15u)
 D6A_QP_MUT(quitw, 16u)  D6A_QP_MUT(norelease, 17u) D6A_QP_MUT(relid, 18u) D6A_QP_MUT(relmode, 19u) D6A_QP_MUT(noresume, 20u)
+
+/* 0x1C470 gfx_flush_palette: no argument. The raw runs with its retrace read `in al,dx` as `mov al,8` and
+ * its four DAC writes `out dx,al` as nops: only the dirty list's own bookkeeping is compared (the port's
+ * DAC is the host's gfx_dac). The mutants restate that bookkeeping. */
+static void d6a_1c470_core(u32 mut)
+{
+    u32 rec = 0x00107498u, head = DSD(0x00107798u);
+    if (mut == 8u) { DSD(0x00107798u) = 0x00107498u; head = 0x00107498u; }       /* @headfirst */
+    while (rec != head) {
+        s32 sum = (s32)(DSD(rec + 4u) + DSD(rec + 12u));
+        int over = (mut == 2u) ? ((u32)sum > 0x100u) : (sum > 0x100);            /* @unsigned */
+        if (over && mut != 1u) {                                                 /* @noclamp */
+            if (mut == 4u) DSD(rec + 8u) -= (u32)(sum - 0x100);                  /* @clampcount */
+            else DSD(rec + 12u) -= (u32)(sum - ((mut == 3u) ? 0xFF : 0x100));    /* @clampby */
+        }
+        if (mut == 6u) DSW(rec + 4u) = 0xFFFFu;                                  /* @markw */
+        else if (mut != 5u) DSD(rec + 4u) = (mut == 7u) ? 0u : 0xFFFFFFFFu;      /* @nomark @mark0 */
+        rec += 16u;
+        if (mut == 10u) break;                                                   /* @one */
+    }
+    if (mut != 9u) DSD(0x00107798u) = 0x00107498u;                               /* @nohead */
+}
+static void b_d6a_1c470(const u32 *r, u32 *eax) { (void)r; gfx_flush_palette(); *eax = 0u; }
+#define D6A_FP_MUT(name, n) \
+    static void m_d6a_fp_##name(const u32 *r, u32 *eax) { (void)r; d6a_1c470_core(n); *eax = 0u; }
+D6A_FP_MUT(noclamp, 1u) D6A_FP_MUT(unsigned, 2u) D6A_FP_MUT(clampby, 3u) D6A_FP_MUT(clampcount, 4u) D6A_FP_MUT(nomark, 5u)
+D6A_FP_MUT(markw, 6u)   D6A_FP_MUT(mark0, 7u)    D6A_FP_MUT(headfirst, 8u) D6A_FP_MUT(nohead, 9u)  D6A_FP_MUT(one, 10u)
 /* ---- d6a bindings end ---- */
 static const binding_t k_bindings[] = {
     { "rng_next",                 b_rng_next,     0xFFFFFFFFu },
@@ -56519,6 +56546,17 @@ static const binding_t k_bindings[] = {
     { "game_quit_prompt@relid", m_d6a_qp_relid, 0x00000000u },
     { "game_quit_prompt@relmode", m_d6a_qp_relmode, 0x00000000u },
     { "game_quit_prompt@noresume", m_d6a_qp_noresume, 0x00000000u },
+    { "gfx_flush_palette",               b_d6a_1c470, 0x00000000u },
+    { "gfx_flush_palette@noclamp", m_d6a_fp_noclamp, 0x00000000u },
+    { "gfx_flush_palette@unsigned", m_d6a_fp_unsigned, 0x00000000u },
+    { "gfx_flush_palette@clampby", m_d6a_fp_clampby, 0x00000000u },
+    { "gfx_flush_palette@clampcount", m_d6a_fp_clampcount, 0x00000000u },
+    { "gfx_flush_palette@nomark", m_d6a_fp_nomark, 0x00000000u },
+    { "gfx_flush_palette@markw", m_d6a_fp_markw, 0x00000000u },
+    { "gfx_flush_palette@mark0", m_d6a_fp_mark0, 0x00000000u },
+    { "gfx_flush_palette@headfirst", m_d6a_fp_headfirst, 0x00000000u },
+    { "gfx_flush_palette@nohead", m_d6a_fp_nohead, 0x00000000u },
+    { "gfx_flush_palette@one", m_d6a_fp_one, 0x00000000u },
     /* d6a table end */
 };
 
