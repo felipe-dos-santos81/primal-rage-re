@@ -159,22 +159,48 @@ def parse_port_output(text):
     return res
 
 
-def run_port(diffrun, exe, image_path, text, timeout=60):
-    with tempfile.NamedTemporaryFile("w", suffix=".cases", delete=False) as f:
-        f.write(text)
-        path = f.name
+def run_port_many(diffrun, exe, image_path, texts, timeout=60):
+    """One diffrun process for several case files: the EXE is loaded once and each file runs in a
+    child forked from that state, which is the state a process of its own starts its cases from.
+    Returns one result dict per text, in order. `timeout` is per file."""
+    paths = []
     try:
+        for text in texts:
+            with tempfile.NamedTemporaryFile("w", suffix=".cases", delete=False) as f:
+                f.write(text)
+                paths.append(f.name)
+        cmd = [diffrun, "--exe", exe, "--image-out", image_path]
+        for path in paths:
+            cmd += ["--cases", path]
         # close_fds=False lets subprocess use posix_spawn: a fork of this process, whose address space
         # the emulator's mappings make large, cost about half a second per run (measured)
-        p = subprocess.run([diffrun, "--exe", exe, "--image-out", image_path, "--cases", path],
-                           capture_output=True, text=True, timeout=timeout, close_fds=False)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout * max(1, len(paths)),
+                           close_fds=False)
     except subprocess.TimeoutExpired:
-        raise RuntimeError("diffrun timed out after %ds (a port function did not return)" % timeout)
+        raise RuntimeError("diffrun timed out after %ds a case file (a port function did not return)" % timeout)
     finally:
-        os.unlink(path)
+        for path in paths:
+            os.unlink(path)
     if p.returncode != 0:
         raise RuntimeError("diffrun failed (%d): %s" % (p.returncode, p.stderr.strip()))
-    return parse_port_output(p.stdout)
+    if len(texts) <= 1:
+        return [parse_port_output(p.stdout)] if texts else []
+    chunks, cur = [], None                      # a `file N` line heads each file's output, in order
+    for line in p.stdout.splitlines(keepends=True):
+        if line.strip() == "file %d" % len(chunks):
+            cur = []
+            chunks.append(cur)
+        elif cur is None:
+            raise ValueError("diffrun: output before the first `file` line: %r" % line)
+        else:
+            cur.append(line)
+    if len(chunks) != len(texts):
+        raise ValueError("diffrun: %d case files sent, %d answered" % (len(texts), len(chunks)))
+    return [parse_port_output("".join(c)) for c in chunks]
+
+
+def run_port(diffrun, exe, image_path, text, timeout=60):
+    return run_port_many(diffrun, exe, image_path, [text], timeout)[0]
 
 
 def _call_text(c):
@@ -259,18 +285,26 @@ def verify_gap(spec, image):
     return res
 
 
-def verify_spec(spec, image, port_results, port_name=None):
-    """Compare every case of `spec` against `port_results` (case id -> PortResult)."""
+def spec_original(spec, image):
+    """The original's side of a spec: its static scan and one run per case. It does not depend on the
+    binding, so a function and its mutants share it."""
+    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
+                         resolved=E.RESOLVED_JUMPS)
+    return info, [E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c))
+                  for c in spec.cases]
+
+
+def verify_spec(spec, image, port_results, port_name=None, original=None):
+    """Compare every case of `spec` against `port_results` (case id -> PortResult). `original` is
+    spec_original's result when the caller already has it."""
     sent, got = [c.id for c in spec.cases], set(port_results)
     if got != set(sent):
         raise ValueError("%s: the port's results do not match the cases sent: missing %s, extra %s"
                          % (port_name or spec.name, sorted(set(sent) - got), sorted(got - set(sent))))
-    info = E.static_scan(image, spec.entry, stop=[k.addr for k in spec.calls], switches=True,
-                         resolved=E.RESOLVED_JUMPS)
+    info, origs = original or spec_original(spec, image)
     executed, outside, problems, blocked = set(), set(), [], []
     port_errors, diffs = [], 0
-    for c in spec.cases:
-        orig = E.run_original(image, spec.entry, c.regs, c.pokes, spec.allow_calls, calls=case_calls(spec, c))
+    for c, orig in zip(spec.cases, origs):
         if orig.outcome != "ok":
             blocked.append("%s: %s (%s)" % (c.id, orig.outcome, orig.detail))
             continue
@@ -33222,13 +33256,20 @@ SPECS = [
 
 # ---- driver -------------------------------------------------------------------------------------
 
+def _verify_bindings(diffrun, exe, image_path, spec, names):
+    """A spec against several of its bindings (the function, or its mutants): one diffrun process
+    (run_port_many) and one emulation of the original, shared. One SpecResult per name."""
+    ports = run_port_many(diffrun, exe, image_path, [cases_text(spec, name) for name in names])
+    image = E.Image.load(image_path)
+    original = spec_original(spec, image)
+    return [verify_spec(spec, image, port, name, original) for port, name in zip(ports, names)]
+
+
 def _verify_job(job):
-    """One (spec, binding) item of `verify_all` in a pool worker. diffrun rewrites the image on every
-    run, so each worker process has its own image file, in this run's own directory."""
-    diffrun, exe, images, spec, name = job
-    own = os.path.join(images, "%d.bin" % os.getpid())
-    port = run_port(diffrun, exe, own, cases_text(spec, name))
-    return verify_spec(spec, E.Image.load(own), port, name)
+    """One spec of `verify_all` in a pool worker. diffrun rewrites the image on every run, so each
+    worker process has its own image file, in this run's own directory."""
+    diffrun, exe, images, spec, names = job
+    return _verify_bindings(diffrun, exe, os.path.join(images, "%d.bin" % os.getpid()), spec, names)
 
 
 def verify_all(diffrun, exe, image_path, specs, only=None, mutants=False, jobs=None):
@@ -33247,19 +33288,24 @@ def verify_all(diffrun, exe, image_path, specs, only=None, mutants=False, jobs=N
         work += [(spec, spec.name + s) for s in spec.mutants] if mutants else [(spec, spec.name)]
     jobs = jobs or int(os.environ.get("PR_DIFF_JOBS") or 0) or os.cpu_count() or 1
     runs = [(spec, name) for spec, name in work if name is not None]
+    groups = []                             # (spec, its bindings), in the specs' order
+    for spec, name in runs:
+        if groups and groups[-1][0] is spec:
+            groups[-1][1].append(name)
+        else:
+            groups.append((spec, [name]))
     if jobs <= 1 or len(runs) < 16:
-        done = []
-        for spec, name in runs:
-            port = run_port(diffrun, exe, image_path, cases_text(spec, name))
-            done.append(verify_spec(spec, E.Image.load(image_path), port, name))
+        done = [r for spec, names in groups
+                for r in _verify_bindings(diffrun, exe, image_path, spec, names)]
     else:
         run_port(diffrun, exe, image_path, "")  # the image the gap rows and the callers read
         with tempfile.TemporaryDirectory(prefix="pr_diff_") as images:   # two runs may share image_path
             with concurrent.futures.ProcessPoolExecutor(
-                    max_workers=min(jobs, len(runs)),
+                    max_workers=min(jobs, len(groups)),
                     mp_context=multiprocessing.get_context("spawn")) as pool:
-                done = list(pool.map(_verify_job, [(diffrun, exe, images, spec, name)
-                                                   for spec, name in runs], chunksize=4))
+                done = [r for rs in pool.map(_verify_job, [(diffrun, exe, images, spec, names)
+                                                           for spec, names in groups], chunksize=2)
+                        for r in rs]
     done = iter(done)
     return [verify_gap(spec, E.Image.load(image_path)) if name is None else next(done)
             for spec, name in work]

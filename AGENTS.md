@@ -346,8 +346,16 @@ consolidation gate).
   `0x5DEED`, the AIL wrappers). A change that ports a function or touches a
   row's callees must keep that counter and every pin intact, or re-measure and
   record why they moved. The harness runs its rows on a process pool
-  (`PR_DIFF_JOBS`, default the CPU count; 1 is the sequential loop): a full
-  `--self-check` is a few minutes. `--self-check` does not see every pin: a stub's
+  (`PR_DIFF_JOBS`, default the CPU count; 1 is the sequential loop), one job per function: `diffrun`
+  loads the EXE once and forks a child for the function and for each of its mutants, and the original is
+  emulated once and shared. A full `--self-check` is about half a minute and `make verify` about seven.
+  `diffrun` finds a case's writes outside the image from the pages a write fault marked (they are
+  read-only until written), not from a scan of the 63 MB; `PR_DIFF_FULLSCAN=1 make verify` runs the
+  full scans instead (several times slower), the form to use before a push. Both printed the same bytes
+  on every row and mutant when the tracking went in (990 functions, 15,715 bindings), and
+  `RunnerScanTests` compares them on each gate. A binding that makes a system call write straight into
+  a page of `mem[]` outside the image that was never written (a `read()` into it) would get `EFAULT`
+  under the tracking: none does. `--self-check` does not see every pin: a stub's
   declared clobbers must agree across all specs and with the pinned dictionary, a
   read outside the image must be named, and a seam added to a helper that an
   existing mutant binding calls directly (`effects_list_unlink`, d4b) changes what
